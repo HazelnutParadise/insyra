@@ -26,17 +26,17 @@ type IDataList interface {
 	Reverse()
 	Max() interface{}
 	Min() interface{}
-	Mean() float64
-	GMean() float64
-	Median() float64
+	Mean() interface{}
+	GMean() interface{}
+	Median() interface{}
 	Mode() interface{}
-	Stdev() float64
-	Variance() float64
-	Range() float64
-	Quartile(int) float64
-	IQR() float64
-	Skewness() float64
-	Kurtosis() float64
+	Stdev() interface{}
+	Variance() interface{}
+	Range() interface{}
+	Quartile(int) interface{}
+	IQR() interface{}
+	Skewness() interface{}
+	Kurtosis() interface{}
 	ToF64Slice() []float64
 }
 
@@ -250,11 +250,11 @@ func (dl *DataList) Min() interface{} {
 
 // Mean calculates the arithmetic mean of the DataList.
 // Returns the arithmetic mean.
-// Returns 0 if the DataList is empty.
+// Returns nil if the DataList is empty.
 // Mean returns the arithmetic mean of the DataList.
-func (dl *DataList) Mean() float64 {
+func (dl *DataList) Mean() interface{} {
 	if len(dl.data) == 0 {
-		return 0
+		return nil
 	}
 
 	var sum float64
@@ -269,17 +269,19 @@ func (dl *DataList) Mean() float64 {
 
 // GMean calculates the geometric mean of the DataList.
 // Returns the geometric mean.
-// Returns 0 if the DataList is empty.
+// Returns nil if the DataList is empty.
 // GMean returns the geometric mean of the DataList.
-func (dl *DataList) GMean() float64 {
+func (dl *DataList) GMean() interface{} {
 	if len(dl.data) == 0 {
-		return 0
+		return nil
 	}
 
 	product := 1.0
 	for _, v := range dl.data {
 		if val, ok := ToFloat64Safe(v); ok {
 			product *= val
+		} else {
+			return nil
 		}
 	}
 
@@ -288,11 +290,11 @@ func (dl *DataList) GMean() float64 {
 
 // Median calculates the median of the DataList.
 // Returns the median.
-// Returns 0 if the DataList is empty.
+// Returns nil if the DataList is empty.
 // Median returns the median of the DataList.
-func (dl *DataList) Median() float64 {
+func (dl *DataList) Median() interface{} {
 	if len(dl.data) == 0 {
-		return 0
+		return nil
 	}
 
 	sortedData := make([]interface{}, len(dl.data))
@@ -335,18 +337,24 @@ func (dl *DataList) Mode() interface{} {
 
 // Stdev calculates the standard deviation of the DataList.
 // Returns the standard deviation.
-// Returns 0 if the DataList is empty.
+// Returns nil if the DataList is empty.
 // Stdev returns the standard deviation of the DataList.
-func (dl *DataList) Stdev() float64 {
+func (dl *DataList) Stdev() interface{} {
 	if len(dl.data) == 0 {
 		return 0
 	}
 
-	mean := dl.Mean()
+	m := dl.Mean()
+	mean, ok := ToFloat64Safe(m)
+	if !ok {
+		return nil
+	}
 	var sum float64
 	for _, v := range dl.data {
 		if val, ok := ToFloat64Safe(v); ok {
 			sum += math.Pow(val-mean, 2)
+		} else {
+			return nil
 		}
 	}
 
@@ -355,14 +363,17 @@ func (dl *DataList) Stdev() float64 {
 
 // Variance calculates the variance of the DataList.
 // Returns the variance.
-// Returns 0 if the DataList is empty.
+// Returns nil if the DataList is empty.
 // Variance returns the variance of the DataList.
-func (dl *DataList) Variance() float64 {
+func (dl *DataList) Variance() interface{} {
 	if len(dl.data) == 0 {
-		return 0
+		return nil
 	}
 
-	mean := dl.Mean()
+	mean, ok := ToFloat64Safe(dl.Mean())
+	if !ok {
+		return nil
+	}
 	var sum float64
 	for _, v := range dl.data {
 		if val, ok := ToFloat64Safe(v); ok {
@@ -375,11 +386,11 @@ func (dl *DataList) Variance() float64 {
 
 // Range calculates the range of the DataList.
 // Returns the range.
-// Returns 0 if the DataList is empty.
+// Returns nil if the DataList is empty.
 // Range returns the range of the DataList.
-func (dl *DataList) Range() float64 {
+func (dl *DataList) Range() interface{} {
 	if len(dl.data) == 0 {
-		return 0
+		return nil
 	}
 
 	max := ToFloat64(dl.Max())
@@ -390,12 +401,12 @@ func (dl *DataList) Range() float64 {
 
 // Quartile calculates the quartile based on the input value (1 to 3).
 // 1 corresponds to the first quartile (Q1), 2 to the median (Q2), and 3 to the third quartile (Q3).
-func (dl *DataList) Quartile(q int) float64 {
+func (dl *DataList) Quartile(q int) interface{} {
 	if len(dl.data) == 0 {
-		return 0
+		return nil
 	}
 	if q < 1 || q > 3 {
-		return 0
+		return nil
 	}
 
 	// Convert the DataList to a slice of float64 for numeric operations
@@ -435,21 +446,40 @@ func (dl *DataList) Quartile(q int) float64 {
 }
 
 // IQR calculates the interquartile range of the DataList.
-func (dl *DataList) IQR() float64 {
-	return dl.Quartile(3) - dl.Quartile(1)
+// Returns the interquartile range.
+// Returns nil if the DataList is empty.
+func (dl *DataList) IQR() interface{} {
+	if len(dl.data) == 0 {
+		return nil
+	}
+	q3, ok := ToFloat64Safe(dl.Quartile(3))
+	if !ok {
+		return nil
+	}
+	q1, ok := ToFloat64Safe(dl.Quartile(1))
+	if !ok {
+		return nil
+	}
+	return q3 - q1
 }
 
 // Skewness calculates the skewness of the DataList.
 // Returns the skewness.
-// Returns 0 if the DataList is empty.
+// Returns nil if the DataList is empty.
 // 不知正不正確
-func (dl *DataList) Skewness() float64 {
+func (dl *DataList) Skewness() interface{} {
 	if len(dl.data) == 0 {
-		return 0
+		return nil
 	}
 
-	mean := dl.Mean()
-	stdev := dl.Stdev()
+	mean, ok := ToFloat64Safe(dl.Mean())
+	if !ok {
+		return nil
+	}
+	stdev, ok := ToFloat64Safe(dl.Stdev())
+	if !ok {
+		return nil
+	}
 	n := float64(dl.Len())
 
 	if stdev == 0 {
@@ -470,13 +500,19 @@ func (dl *DataList) Skewness() float64 {
 // Returns the kurtosis.
 // Returns 0 if the DataList is empty.
 // 錯誤！
-func (dl *DataList) Kurtosis() float64 {
+func (dl *DataList) Kurtosis() interface{} {
 	if len(dl.data) == 0 {
-		return 0
+		return nil
 	}
 
-	mean := dl.Mean()
-	stdev := dl.Stdev()
+	mean, ok := ToFloat64Safe(dl.Mean())
+	if !ok {
+		return nil
+	}
+	stdev, ok := ToFloat64Safe(dl.Stdev())
+	if !ok {
+		return nil
+	}
 	n := float64(dl.Len())
 
 	if stdev == 0 {
