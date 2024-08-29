@@ -1,4 +1,4 @@
-module github.com/HazelnutParadise/Insyra
+module github.com/HazelnutParadise/insyra
 
 go 1.21.6
 
