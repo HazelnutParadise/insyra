@@ -17,6 +17,7 @@ type DataList struct {
 
 // IDataList defines the behavior expected from a DataList
 type IDataList interface {
+	Data() []interface{}
 	Append(value interface{})
 	Get(index int) interface{}
 	Pop() interface{}
@@ -37,6 +38,11 @@ type IDataList interface {
 	Skewness() float64
 	Kurtosis() float64
 	ToF64Slice() []float64
+}
+
+// Data returns the data stored in the DataList.
+func (dl *DataList) Data() []interface{} {
+	return dl.data
 }
 
 // NewDataList creates a new DataList, supporting both slice and variadic inputs,
