@@ -33,7 +33,7 @@ type IDataList interface {
 	Stdev() float64
 	Variance() float64
 	Range() float64
-	Quartiles() (float64, float64)
+	Quartile(int) float64
 	IQR() float64
 	Skewness() float64
 	Kurtosis() float64
@@ -405,19 +405,33 @@ func (dl *DataList) Quartile(q int) float64 {
 	sort.Float64s(numericData)
 
 	n := len(numericData)
+
+	var pos float64
+	var lower, upper float64
+
 	switch q {
 	case 1:
-		return numericData[(n+1)/4-1] // First quartile (Q1)
+		pos = 0.25 * float64(n-1)
 	case 2:
-		if n%2 == 0 {
-			return (numericData[n/2-1] + numericData[n/2]) / 2 // Median (Q2)
-		}
-		return numericData[n/2] // Median (Q2)
+		pos = 0.5 * float64(n-1)
 	case 3:
-		return numericData[(3*(n+1))/4-1] // Third quartile (Q3)
+		pos = 0.75 * float64(n-1)
 	}
 
-	return 0
+	// Get the index for lower and upper bounds
+	lowerIndex := int(math.Floor(pos))
+	upperIndex := int(math.Ceil(pos))
+
+	// Handle the case where the position is exactly an integer
+	if lowerIndex == upperIndex {
+		return numericData[lowerIndex]
+	}
+
+	// Interpolate between the lower and upper bounds
+	lower = numericData[lowerIndex]
+	upper = numericData[upperIndex]
+
+	return lower + (pos-float64(lowerIndex))*(upper-lower)
 }
 
 // IQR calculates the interquartile range of the DataList.
@@ -426,6 +440,9 @@ func (dl *DataList) IQR() float64 {
 }
 
 // Skewness calculates the skewness of the DataList.
+// Returns the skewness.
+// Returns 0 if the DataList is empty.
+// 不知正不正確
 func (dl *DataList) Skewness() float64 {
 	if len(dl.data) == 0 {
 		return 0
@@ -435,6 +452,10 @@ func (dl *DataList) Skewness() float64 {
 	stdev := dl.Stdev()
 	n := float64(dl.Len())
 
+	if stdev == 0 {
+		return 0
+	}
+
 	var sum float64
 	for _, v := range dl.data {
 		if val, ok := ToFloat64Safe(v); ok {
@@ -442,10 +463,13 @@ func (dl *DataList) Skewness() float64 {
 		}
 	}
 
-	return (n / ((n - 1) * (n - 2))) * sum
+	return n * sum / ((n - 1) * (n - 2))
 }
 
 // Kurtosis calculates the kurtosis of the DataList.
+// Returns the kurtosis.
+// Returns 0 if the DataList is empty.
+// 錯誤！
 func (dl *DataList) Kurtosis() float64 {
 	if len(dl.data) == 0 {
 		return 0
@@ -455,6 +479,10 @@ func (dl *DataList) Kurtosis() float64 {
 	stdev := dl.Stdev()
 	n := float64(dl.Len())
 
+	if stdev == 0 {
+		return 0
+	}
+
 	var sum float64
 	for _, v := range dl.data {
 		if val, ok := ToFloat64Safe(v); ok {
@@ -462,7 +490,11 @@ func (dl *DataList) Kurtosis() float64 {
 		}
 	}
 
-	return ((n*(n+1)*sum)/((n-1)*(n-2)*(n-3)) - (3*math.Pow(n-1, 2))/((n-2)*(n-3)))
+	// Calculate kurtosis
+	kurtosis := (n*(n+1)*sum - 3*math.Pow(n-1, 2)) / ((n - 1) * (n - 2) * (n - 3))
+
+	// Adjust to make it an excess kurtosis by subtracting 3
+	return kurtosis - 3
 }
 
 // ToF64Slice converts the DataList to a float64 slice.
