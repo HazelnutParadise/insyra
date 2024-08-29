@@ -388,69 +388,44 @@ func (dl *DataList) Range() float64 {
 	return max - min
 }
 
-// Quartile calculates the quartile based on the input value (0 to 4).
-// 0 corresponds to the minimum, 2 to the median (Q2), and 4 to the maximum.
+// Quartile calculates the quartile based on the input value (1 to 3).
+// 1 corresponds to the first quartile (Q1), 2 to the median (Q2), and 3 to the third quartile (Q3).
 func (dl *DataList) Quartile(q int) float64 {
 	if len(dl.data) == 0 {
 		return 0
 	}
-	if q < 0 || q > 4 {
+	if q < 1 || q > 3 {
 		return 0
 	}
 
 	// Convert the DataList to a slice of float64 for numeric operations
-	numericData := make([]float64, len(dl.data))
-	for i, v := range dl.data {
-		num, ok := ToFloat64Safe(v)
-		if !ok {
-			return 0
-		}
-		numericData[i] = num
-	}
+	numericData := dl.ToF64Slice()
 
 	// Sort the data
 	sort.Float64s(numericData)
 
 	n := len(numericData)
 	switch q {
-	case 0:
-		return numericData[0] // Minimum value
 	case 1:
-		return NewDataList(numericData[:n/2]).Median() // First quartile (Q1)
+		return numericData[(n+1)/4-1] // First quartile (Q1)
 	case 2:
-		return NewDataList(numericData).Median() // Median (Q2)
-	case 3:
 		if n%2 == 0 {
-			return NewDataList(numericData[n/2:]).Median() // Third quartile (Q3)
+			return (numericData[n/2-1] + numericData[n/2]) / 2 // Median (Q2)
 		}
-		return NewDataList(numericData[n/2+1:]).Median()
-	case 4:
-		return numericData[n-1] // Maximum value
+		return numericData[n/2] // Median (Q2)
+	case 3:
+		return numericData[(3*(n+1))/4-1] // Third quartile (Q3)
 	}
 
 	return 0
 }
 
 // IQR calculates the interquartile range of the DataList.
-// Returns the interquartile range.
-// Returns 0 if the DataList is empty.
-// IQR returns the interquartile range of the DataList.
 func (dl *DataList) IQR() float64 {
-	if len(dl.data) == 0 {
-		return 0
-	}
-
-	sortedData := make([]interface{}, len(dl.data))
-	copy(sortedData, dl.data)
-	dl.Sort()
-
 	return dl.Quartile(3) - dl.Quartile(1)
 }
 
 // Skewness calculates the skewness of the DataList.
-// Returns the skewness.
-// Returns 0 if the DataList is empty.
-// Skewness returns the skewness of the DataList.
 func (dl *DataList) Skewness() float64 {
 	if len(dl.data) == 0 {
 		return 0
@@ -458,21 +433,19 @@ func (dl *DataList) Skewness() float64 {
 
 	mean := dl.Mean()
 	stdev := dl.Stdev()
+	n := float64(dl.Len())
 
 	var sum float64
 	for _, v := range dl.data {
 		if val, ok := ToFloat64Safe(v); ok {
-			sum += math.Pow(val-mean, 3)
+			sum += math.Pow((val-mean)/stdev, 3)
 		}
 	}
 
-	return sum / (float64(len(dl.data)) * math.Pow(stdev, 3))
+	return (n / ((n - 1) * (n - 2))) * sum
 }
 
 // Kurtosis calculates the kurtosis of the DataList.
-// Returns the kurtosis.
-// Returns 0 if the DataList is empty.
-// Kurtosis returns the kurtosis of the DataList.
 func (dl *DataList) Kurtosis() float64 {
 	if len(dl.data) == 0 {
 		return 0
@@ -480,15 +453,16 @@ func (dl *DataList) Kurtosis() float64 {
 
 	mean := dl.Mean()
 	stdev := dl.Stdev()
+	n := float64(dl.Len())
 
 	var sum float64
 	for _, v := range dl.data {
 		if val, ok := ToFloat64Safe(v); ok {
-			sum += math.Pow(val-mean, 4)
+			sum += math.Pow((val-mean)/stdev, 4)
 		}
 	}
 
-	return sum / (float64(len(dl.data)) * math.Pow(stdev, 4))
+	return ((n*(n+1)*sum)/((n-1)*(n-2)*(n-3)) - (3*math.Pow(n-1, 2))/((n-2)*(n-3)))
 }
 
 // ToF64Slice converts the DataList to a float64 slice.
