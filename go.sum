@@ -1,2 +1,6 @@
 github.com/HazelnutParadise/Go-Utils v0.6.4 h1:VuZbM+vPcac370yRNybKvncSThLefyqRwN24sx/b1bI=
 github.com/HazelnutParadise/Go-Utils v0.6.4/go.mod h1:JzuH5U+UNgAQzzotFf6k4zoJiOkBPyWPK7JTJrheYas=
+github.com/HazelnutParadise/Go-Utils v0.7.0 h1:o/Go78mv4e4zj3xbBjyyVLpgEIzktSDsjJ0qrq22/Ow=
+github.com/HazelnutParadise/Go-Utils v0.7.0/go.mod h1:JzuH5U+UNgAQzzotFf6k4zoJiOkBPyWPK7JTJrheYas=
+golang.org/x/exp v0.0.0-20240823005443-9b4947da3948 h1:kx6Ds3MlpiUHKj7syVnbp57++8WpuKPcR5yjLBjvLEA=
+golang.org/x/exp v0.0.0-20240823005443-9b4947da3948/go.mod h1:akd2r19cwCdwSwWeIdzYQGa/EZZyqcOdwWiwj5L5eKQ=

@@ -3,9 +3,11 @@ package insyra
 import (
 	"fmt"
 	"math"
+	"runtime"
 	"sort"
 	"time"
 
+	"github.com/HazelnutParadise/Go-Utils/asyncutil"
 	"github.com/HazelnutParadise/Go-Utils/conv"
 	"github.com/HazelnutParadise/Go-Utils/sliceutil"
 )
@@ -125,15 +127,71 @@ func (dl *DataList) Drop(index int) {
 // DropAll removes all occurrences of the specified values from the DataList.
 // Supports multiple values to drop.
 func (dl *DataList) DropAll(toDrop ...interface{}) {
-	for _, v := range toDrop {
-		for i := 0; i < len(dl.data); i++ {
-			if dl.data[i] == v {
-				dl.Drop(i)
-				go dl.updateTimestamp()
-				i--
+	length := len(dl.data)
+	if length == 0 {
+		return
+	}
+
+	// 決定要開多少個線程
+	numCPUs := runtime.NumCPU()
+	numGoroutines := numCPUs
+	if numGoroutines == 0 {
+		numGoroutines = 1
+	}
+
+	chunkSize := length / numGoroutines
+	if length%numGoroutines != 0 {
+		chunkSize++
+	}
+
+	// 儲存所有的 Awaitable
+	var awaitables []*asyncutil.Awaitable
+
+	// 啟動 Awaitables 處理每個部分
+	for i := 0; i < numGoroutines; i++ {
+		start := i * chunkSize
+		end := start + chunkSize
+		if end > length {
+			end = length
+		}
+
+		awaitable := asyncutil.Async(func(dataChunk []interface{}) []interface{} {
+			var result []interface{}
+			for _, v := range dataChunk {
+				shouldDrop := false
+				for _, drop := range toDrop {
+					if v == drop {
+						shouldDrop = true
+						break
+					}
+				}
+				if !shouldDrop {
+					result = append(result, v)
+				}
 			}
+			return result
+		}, dl.data[start:end])
+
+		awaitables = append(awaitables, awaitable)
+	}
+
+	// 收集所有結果並合併
+	var finalResult []interface{}
+	for _, awaitable := range awaitables {
+		results, err := awaitable.Await()
+		if err != nil {
+			fmt.Println("[insyra] DropAllParallelAsync(): Error in async task:", err)
+			continue
+		}
+
+		if len(results) > 0 {
+			finalResult = append(finalResult, results[0].([]interface{})...)
 		}
 	}
+
+	// 更新 DataList
+	dl.data = finalResult
+	go dl.updateTimestamp()
 }
 
 // Clear removes all elements from the DataList and updates the timestamp.
