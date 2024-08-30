@@ -50,6 +50,7 @@ type IDataList interface {
 	Range() interface{}
 	Quartile(int) interface{}
 	IQR() interface{}
+	Percentile(float64) interface{}
 	ToF64Slice() []float64
 }
 
@@ -634,6 +635,41 @@ func (dl *DataList) IQR() interface{} {
 		return nil
 	}
 	return q3 - q1
+}
+
+// Percentile calculates the percentile based on the input value (0 to 100).
+// Returns the percentile value, or nil if the DataList is empty.
+func (dl *DataList) Percentile(p float64) interface{} {
+	if len(dl.data) == 0 {
+		fmt.Println("[insyra] DataList.Percentile(): DataList is empty, returning nil.")
+		return nil
+	}
+	if p < 0 || p > 100 {
+		fmt.Println("[insyra] DataList.Percentile(): Invalid percentile value, returning nil.")
+		return nil
+	}
+
+	// Convert the DataList to a slice of float64 for numeric operations
+	numericData := dl.ToF64Slice()
+
+	// Sort the data
+	sort.Float64s(numericData)
+
+	// Calculate the index
+	pos := p / 100 * float64(len(numericData)-1)
+	lowerIndex := int(math.Floor(pos))
+	upperIndex := int(math.Ceil(pos))
+
+	// Handle the case where the position is exactly an integer
+	if lowerIndex == upperIndex {
+		return numericData[lowerIndex]
+	}
+
+	// Interpolate between the lower and upper bounds
+	lower := numericData[lowerIndex]
+	upper := numericData[upperIndex]
+
+	return lower + (pos-float64(lowerIndex))*(upper-lower)
 }
 
 // ======================== Conversion ========================

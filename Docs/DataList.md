@@ -50,6 +50,7 @@ The `DataList` type provides a dynamic and generic way to store and manage a col
 * **Range:** Returns the difference between the maximum and minimum values in the DataList.
 * **Quartile:** Calculates the quartile value (Q1, Q2, or Q3) based on the provided input.
 * **IQR:** Calculates the interquartile range (IQR) of the DataList, which represents the range between the first and third quartiles.
+* **Percentile:** Percentile: Calculates the percentile value based on the provided input, which represents the value below which a given percentage of observations fall. For example, entering 25 (the input scale is 0 to 100) would return the value at the 25th percentile, also known as the first quartile (Q1).
 
 **Data Conversion:**
 
