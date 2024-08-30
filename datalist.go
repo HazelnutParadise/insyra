@@ -50,9 +50,6 @@ type IDataList interface {
 	Range() interface{}
 	Quartile(int) interface{}
 	IQR() interface{}
-	Skew() interface{}
-	SkewP() interface{}
-	Kurtosis() interface{}
 	ToF64Slice() []float64
 }
 
@@ -639,92 +636,6 @@ func (dl *DataList) IQR() interface{} {
 	return q3 - q1
 }
 
-// Skew calculates the skewness(sample) of the DataList.
-// Returns the skewness.
-// Returns nil if the DataList is empty or the skewness cannot be calculated.
-// 錯誤！
-func (dl *DataList) Skew(method ...string) interface{} {
-	methodStr := "pearson"
-	if len(method) > 0 {
-		methodStr = method[0]
-	}
-	if len(method) > 1 {
-		fmt.Println("[insyra] DataList.Skew(): Too many arguments, returning nil.")
-		return nil
-	}
-	if len(dl.data) == 0 {
-		fmt.Println("[insyra] DataList.Skew(): DataList is empty, returning nil.")
-		return nil
-	}
-	data := dl.ToF64Slice()
-
-	var result interface{}
-	switch methodStr {
-	case "pearson":
-		result = calculateSkewPearson(data)
-		goto returnResult
-	case "moments":
-		result = calculateSkewMoments(data)
-		goto returnResult
-	default:
-		fmt.Println("[insyra] DataList.Skew(): Invalid method, returning nil.")
-		return nil
-	}
-returnResult:
-	if result == nil {
-		fmt.Println("[insyra] DataList.Skew(): Skewness calculation failed, returning nil.")
-		return nil
-	}
-	resultFloat, ok := result.(float64)
-	if !ok {
-		fmt.Println("[insyra] DataList.Skew(): Skewness is not a float64, returning nil.")
-		return nil
-	}
-	return resultFloat
-}
-
-// Kurtosis calculates the kurtosis(sample) of the DataList.
-// Returns the kurtosis.
-// Returns nil if the DataList is empty or the kurtosis cannot be calculated.
-// 錯誤！
-func (dl *DataList) Kurtosis() interface{} {
-	n := float64(dl.Len())
-	if n == 0.0 {
-		return nil
-	}
-	mean, ok := ToFloat64Safe(dl.Mean())
-	if !ok {
-		return nil
-	}
-	stdev, ok := ToFloat64Safe(dl.Stdev())
-	if !ok {
-		return nil
-	}
-	if stdev == 0 {
-		return nil
-	}
-	denominator1 := (n - 1) * (n - 2) * (n - 3)
-	if denominator1 == 0 {
-		return nil
-	}
-	denominator2 := (n - 2) * (n - 3)
-	if denominator2 == 0 {
-		return nil
-	}
-	y1 := (n * (n + 1)) / denominator1
-	y2 := 0.0
-	for i := 0; i < len(dl.data); i++ {
-		xi, ok := ToFloat64Safe(dl.data[i])
-		if !ok {
-			return nil
-		}
-		y2 += math.Pow((xi-mean)/stdev, 4)
-	}
-	y3 := (3 * math.Pow(n-1, 2)) / denominator2
-
-	return y1*y2 - y3
-}
-
 // ======================== Conversion ========================
 
 // ToF64Slice converts the DataList to a float64 slice.
@@ -771,17 +682,4 @@ func (dl *DataList) SetName(name string) {
 	// 未來可限制名稱
 	dl.name = name
 	dl.updateTimestamp()
-}
-
-// ======================== calculation functions ========================
-func calculateSkewPearson(data []float64) interface{} {
-	// todo
-	var result float64
-	return result
-}
-
-func calculateSkewMoments(data []float64) interface{} {
-	// todo
-	var result float64
-	return result
 }
