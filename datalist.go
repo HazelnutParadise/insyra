@@ -10,7 +10,7 @@ import (
 	"github.com/HazelnutParadise/Go-Utils/sliceutil"
 )
 
-// DataList is a generic dynamic data list
+// DataList is a generic dynamic data list.
 type DataList struct {
 	data                  []interface{}
 	name                  string
@@ -18,7 +18,7 @@ type DataList struct {
 	lastModifiedTimestamp int64
 }
 
-// IDataList defines the behavior expected from a DataList
+// IDataList defines the behavior expected from a DataList.
 type IDataList interface {
 	GetCreationTimestamp() int64
 	GetLastModifiedTimestamp() int64
@@ -190,7 +190,7 @@ func (dl *DataList) Sort(ascending ...bool) {
 
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Println("Sorting failed, restoring original order:", r)
+			fmt.Println("[insyra] DataList.Sort(): Sorting failed, restoring original order:", r)
 			dl.data = originalData
 		}
 	}()
@@ -583,41 +583,51 @@ func (dl *DataList) IQR() interface{} {
 	return q3 - q1
 }
 
-// Skewness calculates the skewness of the DataList.
+// Skewness calculates the skewness(sample) of the DataList.
 // Returns the skewness.
 // Returns nil if the DataList is empty or the skewness cannot be calculated.
 // 錯誤！
-// Skewness calculates the skewness of the DataList using Gonum's Skew function.
-func (dl *DataList) Skewness() interface{} {
-	data := dl.ToF64Slice() // 将 DataList 转换为 float64 切片
-	if len(data) == 0 {
+func (dl *DataList) Skew(method ...string) interface{} {
+	methodStr := "pearson"
+	if len(method) > 0 {
+		methodStr = method[0]
+	}
+	if len(method) > 1 {
+		fmt.Println("[insyra] DataList.Skew(): Too many arguments, returning nil.")
 		return nil
 	}
-	n := float64(len(data))
-	mean, ok := ToFloat64Safe(dl.Mean())
+	if len(dl.data) == 0 {
+		fmt.Println("[insyra] DataList.Skew(): DataList is empty, returning nil.")
+		return nil
+	}
+	data := dl.ToF64Slice()
+
+	var result interface{}
+	switch methodStr {
+	case "pearson":
+		result = calculateSkewPearson(data)
+		goto returnResult
+	case "moments":
+		result = calculateSkewMoments(data)
+		goto returnResult
+	default:
+		fmt.Println("[insyra] DataList.Skew(): Invalid method, returning nil.")
+		return nil
+	}
+returnResult:
+	if result == nil {
+		fmt.Println("[insyra] DataList.Skew(): Skewness calculation failed, returning nil.")
+		return nil
+	}
+	resultFloat, ok := result.(float64)
 	if !ok {
+		fmt.Println("[insyra] DataList.Skew(): Skewness is not a float64, returning nil.")
 		return nil
 	}
-	stdev, ok := ToFloat64Safe(dl.Stdev())
-	if !ok {
-		return nil
-	}
-	y := 0.0
-	denominator1 := (n - 1) * (n - 2)
-	if denominator1 == 0 || stdev == 0 {
-		return nil
-	}
-	for i := 0; i < len(data); i++ {
-		xi, ok := ToFloat64Safe(data[i])
-		if !ok {
-			return nil
-		}
-		y += math.Pow((xi-mean)/stdev, 3)
-	}
-	return (n / denominator1) * y
+	return resultFloat
 }
 
-// Kurtosis calculates the kurtosis of the DataList.
+// Kurtosis calculates the kurtosis(sample) of the DataList.
 // Returns the kurtosis.
 // Returns nil if the DataList is empty or the kurtosis cannot be calculated.
 // 錯誤！
@@ -693,4 +703,17 @@ func (dl *DataList) GetLastModifiedTimestamp() int64 {
 // updateTimestamp updates the lastModifiedTimestamp to the current Unix time.
 func (dl *DataList) updateTimestamp() {
 	dl.lastModifiedTimestamp = time.Now().Unix()
+}
+
+// ======================== calculation functions ========================
+func calculateSkewPearson(data []float64) interface{} {
+	// todo
+	var result float64
+	return result
+}
+
+func calculateSkewMoments(data []float64) interface{} {
+	// todo
+	var result float64
+	return result
 }
