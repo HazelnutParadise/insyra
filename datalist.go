@@ -13,6 +13,7 @@ import (
 // DataList is a generic dynamic data list
 type DataList struct {
 	data                  []interface{}
+	name                  string
 	creationTimestamp     int64
 	lastModifiedTimestamp int64
 }
