@@ -80,7 +80,7 @@ func NewDataList(values ...interface{}) *DataList {
 // The value is appended to the end of the DataList.
 func (dl *DataList) Append(value interface{}) {
 	dl.data = append(dl.data, value)
-	dl.updateTimestamp()
+	go dl.updateTimestamp()
 }
 
 // Get retrieves the value at the specified index in the DataList.
@@ -104,7 +104,7 @@ func (dl *DataList) Pop() interface{} {
 		fmt.Println("[insyra] DataList.Pop(): DataList is empty, returning nil.")
 		return nil
 	}
-	dl.updateTimestamp()
+	go dl.updateTimestamp()
 	return n
 }
 
@@ -119,7 +119,7 @@ func (dl *DataList) Drop(index int) {
 		return
 	}
 	dl.data = append(dl.data[:index], dl.data[index+1:]...)
-	dl.updateTimestamp()
+	go dl.updateTimestamp()
 }
 
 // DropAll removes all occurrences of the specified values from the DataList.
@@ -129,7 +129,7 @@ func (dl *DataList) DropAll(toDrop ...interface{}) {
 		for i := 0; i < len(dl.data); i++ {
 			if dl.data[i] == v {
 				dl.Drop(i)
-				dl.updateTimestamp()
+				go dl.updateTimestamp()
 				i--
 			}
 		}
@@ -139,7 +139,7 @@ func (dl *DataList) DropAll(toDrop ...interface{}) {
 // Clear removes all elements from the DataList and updates the timestamp.
 func (dl *DataList) Clear() {
 	dl.data = []interface{}{}
-	dl.updateTimestamp()
+	go dl.updateTimestamp()
 }
 
 func (dl *DataList) Len() int {
@@ -158,7 +158,7 @@ func (dl *DataList) ClearStrings() {
 	}
 
 	dl.data = filteredData
-	dl.updateTimestamp()
+	go dl.updateTimestamp()
 }
 
 // ClearNumbers removes all numeric elements (int, float, etc.) from the DataList and updates the timestamp.
@@ -177,7 +177,7 @@ func (dl *DataList) ClearNumbers() {
 	}
 
 	dl.data = filteredData
-	dl.updateTimestamp()
+	go dl.updateTimestamp()
 }
 
 // Sort sorts the DataList using a mixed sorting logic.
@@ -717,5 +717,5 @@ func (dl *DataList) GetName() string {
 func (dl *DataList) SetName(name string) {
 	// 未來可限制名稱
 	dl.name = name
-	dl.updateTimestamp()
+	go dl.updateTimestamp()
 }
