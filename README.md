@@ -51,7 +51,3 @@ Contributions are welcome! For more details, see the [contributing guidelines](h
 ## License
 
 Insyra is licensed under the MIT License. See the [LICENSE](https://github.com/HazelnutParadise/insyra/blob/main/LICENSE) file for more information.
-
----
-
-This documentation provides an overview and quick start guide, emphasizing the importance of referring to the `DataList` documentation for detailed information.
