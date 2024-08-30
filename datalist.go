@@ -205,16 +205,60 @@ func (dl *DataList) Len() int {
 
 // ClearStrings removes all string elements from the DataList and updates the timestamp.
 func (dl *DataList) ClearStrings() {
-	filteredData := dl.data[:0] // Create a new slice with the same length as the original
+	length := len(dl.data)
+	if length == 0 {
+		return
+	}
 
-	for _, v := range dl.data {
-		// If the element is not a string, keep it
-		if _, ok := v.(string); !ok {
-			filteredData = append(filteredData, v)
+	// 獲取可用的 CPU 核心數量
+	numGoroutines := runtime.NumCPU()
+
+	// 決定每個線程處理的數據量
+	chunkSize := length / numGoroutines
+	if length%numGoroutines != 0 {
+		chunkSize++
+	}
+
+	// 儲存所有的 Awaitable
+	var awaitables []*asyncutil.Awaitable
+
+	// 啟動 Awaitables 處理每個部分
+	for i := 0; i < numGoroutines; i++ {
+		start := i * chunkSize
+		end := start + chunkSize
+		if end > length {
+			end = length
+		}
+
+		awaitable := asyncutil.Async(func(dataChunk []interface{}) []interface{} {
+			var result []interface{}
+			for _, v := range dataChunk {
+				if _, ok := v.(string); !ok {
+					result = append(result, v)
+				}
+			}
+			return result
+		}, dl.data[start:end])
+
+		awaitables = append(awaitables, awaitable)
+	}
+
+	// 收集所有結果並合併
+	var finalResult []interface{}
+	for _, awaitable := range awaitables {
+		results, err := awaitable.Await()
+		if err != nil {
+			fmt.Println("[insyra] ClearStringsParallelAsync(): Error in async task:", err)
+			continue
+		}
+
+		if len(results) > 0 {
+			finalResult = append(finalResult, results[0].([]interface{})...)
 		}
 	}
 
-	dl.data = filteredData
+	// 更新 DataList
+	dl.data = finalResult
 	go dl.updateTimestamp()
 }
 
