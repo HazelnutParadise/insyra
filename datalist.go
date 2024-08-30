@@ -28,6 +28,9 @@ type IDataList interface {
 	Pop() interface{}
 	Drop(index int)
 	DropAll(...interface{})
+	Clear()
+	ClearStrings()
+	ClearNumbers()
 	Len() int
 	Sort(acending ...bool)
 	Reverse()
@@ -125,8 +128,49 @@ func (dl *DataList) DropAll(toDrop ...interface{}) {
 	}
 }
 
+// Clear removes all elements from the DataList and updates the timestamp.
+func (dl *DataList) Clear() {
+	dl.data = []interface{}{}
+	dl.updateTimestamp()
+}
+
 func (dl *DataList) Len() int {
 	return len(dl.data)
+}
+
+// ClearStrings removes all string elements from the DataList and updates the timestamp.
+func (dl *DataList) ClearStrings() {
+	filteredData := dl.data[:0] // Create a new slice with the same length as the original
+
+	for _, v := range dl.data {
+		// If the element is not a string, keep it
+		if _, ok := v.(string); !ok {
+			filteredData = append(filteredData, v)
+		}
+	}
+
+	dl.data = filteredData
+	dl.updateTimestamp()
+}
+
+// ClearNumbers removes all numeric elements (int, float, etc.) from the DataList and updates the timestamp.
+func (dl *DataList) ClearNumbers() {
+	filteredData := dl.data[:0] // 创建一个新的切片，容量与现有切片相同
+
+	for _, v := range dl.data {
+		// 只保留不是数字的元素
+		switch v.(type) {
+		case int, int8, int16, int32, int64:
+		case uint, uint8, uint16, uint32, uint64:
+		case float32, float64:
+			// 以上类型为数字，跳过
+		default:
+			filteredData = append(filteredData, v)
+		}
+	}
+
+	dl.data = filteredData
+	dl.updateTimestamp()
 }
 
 // Sort sorts the DataList using a mixed sorting logic.
@@ -193,6 +237,8 @@ func (dl *DataList) Sort(ascending ...bool) {
 func (dl *DataList) Reverse() {
 	sliceutil.Reverse(dl.data)
 }
+
+// ======================== Statistics ========================
 
 // Max returns the maximum value in the DataList.
 // Returns the maximum value.
