@@ -262,6 +262,8 @@ func (dl *DataList) ClearStrings() {
 	go dl.updateTimestamp()
 }
 
+// ++++ 此處之後尚未提升性能 ++++
+
 // ClearNumbers removes all numeric elements (int, float, etc.) from the DataList and updates the timestamp.
 func (dl *DataList) ClearNumbers() {
 	filteredData := dl.data[:0] // Create a new slice with the same length as the original
