@@ -133,8 +133,7 @@ func (dl *DataList) DropAll(toDrop ...interface{}) {
 	}
 
 	// 決定要開多少個線程
-	numCPUs := runtime.NumCPU()
-	numGoroutines := numCPUs
+	numGoroutines := runtime.NumCPU()
 	if numGoroutines == 0 {
 		numGoroutines = 1
 	}
