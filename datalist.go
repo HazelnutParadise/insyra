@@ -549,13 +549,15 @@ func (dl *DataList) IQR() interface{} {
 
 // Skewness calculates the skewness of the DataList.
 // Returns the skewness.
-// Returns nil if the DataList is empty.
+// Returns nil if the DataList is empty or the skewness cannot be calculated.
 // 不知正不正確
+// Skewness calculates the skewness of the DataList using Gonum's Skew function.
 func (dl *DataList) Skewness() interface{} {
-	if len(dl.data) == 0 {
+	data := dl.ToF64Slice() // 将 DataList 转换为 float64 切片
+	if len(data) == 0 {
 		return nil
 	}
-
+	n := float64(len(data))
 	mean, ok := ToFloat64Safe(dl.Mean())
 	if !ok {
 		return nil
@@ -564,20 +566,11 @@ func (dl *DataList) Skewness() interface{} {
 	if !ok {
 		return nil
 	}
-	n := float64(dl.Len())
-
-	if stdev == 0 {
-		return 0
+	y := 0.0
+	for i := 0; i < len(data); i++ {
+		y += math.Pow((data[i]-mean)/stdev, 3)
 	}
-
-	var sum float64
-	for _, v := range dl.data {
-		if val, ok := ToFloat64Safe(v); ok {
-			sum += math.Pow((val-mean)/stdev, 3)
-		}
-	}
-
-	return n * sum / ((n - 1) * (n - 2))
+	return (n / ((n - 1) * (n - 2))) * y
 }
 
 // Kurtosis calculates the kurtosis of the DataList.
@@ -616,6 +609,8 @@ func (dl *DataList) Kurtosis() interface{} {
 	// Adjust to make it an excess kurtosis by subtracting 3
 	return kurtosis - 3
 }
+
+// ======================== Conversion ========================
 
 // ToF64Slice converts the DataList to a float64 slice.
 // Returns the float64 slice.
