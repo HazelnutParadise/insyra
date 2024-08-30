@@ -23,6 +23,8 @@ type IDataList interface {
 	GetCreationTimestamp() int64
 	GetLastModifiedTimestamp() int64
 	updateTimestamp()
+	GetName() string
+	SetName(string)
 	Data() []interface{}
 	Append(value interface{})
 	Get(index int) interface{}
@@ -758,6 +760,17 @@ func (dl *DataList) GetLastModifiedTimestamp() int64 {
 // updateTimestamp updates the lastModifiedTimestamp to the current Unix time.
 func (dl *DataList) updateTimestamp() {
 	dl.lastModifiedTimestamp = time.Now().Unix()
+}
+
+// ======================== Name ========================
+func (dl *DataList) GetName() string {
+	return dl.name
+}
+
+func (dl *DataList) SetName(name string) {
+	// 未來可限制名稱
+	dl.name = name
+	dl.updateTimestamp()
 }
 
 // ======================== calculation functions ========================
