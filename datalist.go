@@ -41,7 +41,9 @@ type IDataList interface {
 	Median() interface{}
 	Mode() interface{}
 	Stdev() interface{}
+	StdevP() interface{}
 	Variance() interface{}
+	VarianceP() interface{}
 	Range() interface{}
 	Quartile(int) interface{}
 	IQR() interface{}
@@ -419,7 +421,7 @@ func (dl *DataList) Mode() interface{} {
 	return mode
 }
 
-// Stdev calculates the standard deviation of the DataList.
+// Stdev calculates the standard deviation(sample) of the DataList.
 // Returns the standard deviation.
 // Returns nil if the DataList is empty.
 // Stdev returns the standard deviation of the DataList.
@@ -434,10 +436,23 @@ func (dl *DataList) Stdev() interface{} {
 	return math.Sqrt(ToFloat64(variance))
 }
 
-// Variance calculates the variance of the DataList.
+// StdevP calculates the standard deviation(population) of the DataList.
+// Returns the standard deviation.
+// Returns nil if the DataList is empty or the standard deviation cannot be calculated.
+func (dl *DataList) StdevP() interface{} {
+	if len(dl.data) == 0 {
+		return nil
+	}
+	varianceP := dl.VarianceP()
+	if varianceP == nil {
+		return nil
+	}
+	return math.Sqrt(ToFloat64(varianceP))
+}
+
+// Variance calculates the variance(sample) of the DataList.
 // Returns the variance.
-// Returns nil if the DataList is empty.
-// Variance returns the variance of the DataList.
+// Returns nil if the DataList is empty or the variance cannot be calculated.
 func (dl *DataList) Variance() interface{} {
 	n := float64(dl.Len())
 	if n == 0.0 {
@@ -449,16 +464,43 @@ func (dl *DataList) Variance() interface{} {
 		return nil
 	}
 
-	y1 := 1.0 / n
-	y2 := 0.0
+	denominator := n - 1
+	if denominator == 0 {
+		return nil
+	}
+	numerator := 0.0
 	for i := 0; i < len(dl.data); i++ {
 		xi, ok := ToFloat64Safe(dl.data[i])
 		if !ok {
 			return nil
 		}
-		y2 += math.Pow(xi-mean, 2)
+		numerator += math.Pow(xi-mean, 2)
 	}
-	return y1 * y2
+	return numerator / denominator
+}
+
+// VarianceP calculates the variance(population) of the DataList.
+// Returns the variance.
+// Returns nil if the DataList is empty or the variance cannot be calculated.
+func (dl *DataList) VarianceP() interface{} {
+	n := float64(dl.Len())
+	if n == 0.0 {
+		return nil
+	}
+	m := dl.Mean()
+	mean, ok := ToFloat64Safe(m)
+	if !ok {
+		return nil
+	}
+	numerator := 0.0
+	for i := 0; i < len(dl.data); i++ {
+		xi, ok := ToFloat64Safe(dl.data[i])
+		if !ok {
+			return nil
+		}
+		numerator += math.Pow(xi-mean, 2)
+	}
+	return numerator / n
 }
 
 // Range calculates the range of the DataList.
