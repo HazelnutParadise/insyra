@@ -48,7 +48,7 @@ type IDataList interface {
 	Range() interface{}
 	Quartile(int) interface{}
 	IQR() interface{}
-	Skewness() interface{}
+	Skew() interface{}
 	Kurtosis() interface{}
 	ToF64Slice() []float64
 }
@@ -64,6 +64,7 @@ func NewDataList(values ...interface{}) *DataList {
 	// Flatten the input values using sliceutil.Flatten with the specified generic type
 	flatData, err := sliceutil.Flatten[interface{}](values)
 	if err != nil {
+		fmt.Printf("[insyra] NewDataList(): Failed to flatten input values:%v\nUsing the original input values.\n", err)
 		flatData = values
 	}
 	return &DataList{
@@ -87,6 +88,7 @@ func (dl *DataList) Append(value interface{}) {
 // Returns the value at the specified index.
 func (dl *DataList) Get(index int) interface{} {
 	if index < -len(dl.data) || index >= len(dl.data) {
+		fmt.Println("[insyra] DataList.Get(): Index out of bounds, returning nil.")
 		return nil
 	}
 	return dl.data[index]
@@ -98,6 +100,7 @@ func (dl *DataList) Get(index int) interface{} {
 func (dl *DataList) Pop() interface{} {
 	n, err := sliceutil.Drt_PopFrom(&dl.data)
 	if err != nil {
+		fmt.Println("[insyra] DataList.Pop(): DataList is empty, returning nil.")
 		return nil
 	}
 	dl.updateTimestamp()
@@ -111,6 +114,7 @@ func (dl *DataList) Drop(index int) {
 		index += len(dl.data)
 	}
 	if index >= len(dl.data) {
+		fmt.Println("[insyra] DataList.Drop(): Index out of bounds, returning.")
 		return
 	}
 	dl.data = append(dl.data[:index], dl.data[index+1:]...)
@@ -158,15 +162,14 @@ func (dl *DataList) ClearStrings() {
 
 // ClearNumbers removes all numeric elements (int, float, etc.) from the DataList and updates the timestamp.
 func (dl *DataList) ClearNumbers() {
-	filteredData := dl.data[:0] // 创建一个新的切片，容量与现有切片相同
+	filteredData := dl.data[:0] // Create a new slice with the same length as the original
 
 	for _, v := range dl.data {
-		// 只保留不是数字的元素
+		// If the element is not a number, keep it
 		switch v.(type) {
 		case int, int8, int16, int32, int64:
 		case uint, uint8, uint16, uint32, uint64:
 		case float32, float64:
-			// 以上类型为数字，跳过
 		default:
 			filteredData = append(filteredData, v)
 		}
@@ -181,6 +184,7 @@ func (dl *DataList) ClearNumbers() {
 // If sorting fails, it restores the original order.
 func (dl *DataList) Sort(ascending ...bool) {
 	if len(dl.data) == 0 {
+		fmt.Println("[insyra] DataList.Sort(): DataList is empty, returning.")
 		return
 	}
 
@@ -198,6 +202,10 @@ func (dl *DataList) Sort(ascending ...bool) {
 	ascendingOrder := true
 	if len(ascending) > 0 {
 		ascendingOrder = ascending[0]
+	}
+	if len(ascending) > 1 {
+		fmt.Println("[insyra] DataList.Sort(): Too many arguments, returning.")
+		return
 	}
 
 	// Mixed sorting
@@ -265,6 +273,7 @@ func (dl *DataList) Max() interface{} {
 			if val, ok := v.(int); ok && val > maxVal {
 				max = val
 			} else if !ok {
+				fmt.Println("[insyra] DataList.Max(): Data types cannot be compared, returning nil.")
 				return nil
 			}
 		case float64:
@@ -273,15 +282,30 @@ func (dl *DataList) Max() interface{} {
 			} else if intVal, ok := v.(int); ok && float64(intVal) > maxVal {
 				max = float64(intVal)
 			} else if !ok {
+				fmt.Println("[insyra] DataList.Max(): Data types cannot be compared, returning nil.")
 				return nil
 			}
 		case string:
-			if val, ok := v.(string); ok && conv.ParseF64(val) > conv.ParseF64(maxVal) {
-				max = val
+			if val, ok := v.(string); ok {
+				valF64, ok := ToFloat64Safe(val)
+				if !ok {
+					fmt.Println("[insyra] DataList.Max(): Data types cannot be compared, returning nil.")
+					return nil
+				}
+				maxValF64, ok := ToFloat64Safe(maxVal)
+				if !ok {
+					fmt.Println("[insyra] DataList.Max(): Data types cannot be compared, returning nil.")
+					return nil
+				}
+				if valF64 > maxValF64 {
+					max = val
+				}
 			} else if !ok {
+				fmt.Println("[insyra] DataList.Max(): Data types cannot be compared, returning nil.")
 				return nil
 			}
 		default:
+			fmt.Println("[insyra] DataList.Max(): Data types cannot be compared, returning nil.")
 			return nil
 		}
 	}
@@ -295,11 +319,11 @@ func (dl *DataList) Max() interface{} {
 // Min returns the minimum value in the DataList, or nil if the data types cannot be compared.
 func (dl *DataList) Min() interface{} {
 	if len(dl.data) == 0 {
+		fmt.Println("[insyra] DataList.Min(): DataList is empty, returning nil.")
 		return nil
 	}
 
 	var min interface{}
-
 	for _, v := range dl.data {
 		if min == nil {
 			min = v
@@ -311,6 +335,7 @@ func (dl *DataList) Min() interface{} {
 			if val, ok := v.(int); ok && val < minVal {
 				min = val
 			} else if !ok {
+				fmt.Println("[insyra] DataList.Min(): Data types cannot be compared, returning nil.")
 				return nil
 			}
 		case float64:
@@ -319,15 +344,18 @@ func (dl *DataList) Min() interface{} {
 			} else if intVal, ok := v.(int); ok && float64(intVal) < minVal {
 				min = float64(intVal)
 			} else if !ok {
+				fmt.Println("[insyra] DataList.Min(): Data types cannot be compared, returning nil.")
 				return nil
 			}
 		case string:
 			if val, ok := v.(string); ok && conv.ParseF64(val) < conv.ParseF64(minVal) {
 				min = val
 			} else if !ok {
+				fmt.Println("[insyra] DataList.Min(): Data types cannot be compared, returning nil.")
 				return nil
 			}
 		default:
+			fmt.Println("[insyra] DataList.Min(): Data types cannot be compared, returning nil.")
 			return nil
 		}
 	}
@@ -341,6 +369,7 @@ func (dl *DataList) Min() interface{} {
 // Mean returns the arithmetic mean of the DataList.
 func (dl *DataList) Mean() interface{} {
 	if len(dl.data) == 0 {
+		fmt.Println("[insyra] DataList.Mean(): DataList is empty, returning nil.")
 		return nil
 	}
 
@@ -348,6 +377,9 @@ func (dl *DataList) Mean() interface{} {
 	for _, v := range dl.data {
 		if val, ok := ToFloat64Safe(v); ok {
 			sum += val
+		} else {
+			fmt.Println("[insyra] DataList.Mean(): Data types cannot be compared, returning nil.")
+			return nil
 		}
 	}
 
@@ -360,6 +392,7 @@ func (dl *DataList) Mean() interface{} {
 // GMean returns the geometric mean of the DataList.
 func (dl *DataList) GMean() interface{} {
 	if len(dl.data) == 0 {
+		fmt.Println("[insyra] DataList.GMean(): DataList is empty, returning nil.")
 		return nil
 	}
 
@@ -368,6 +401,7 @@ func (dl *DataList) GMean() interface{} {
 		if val, ok := ToFloat64Safe(v); ok {
 			product *= val
 		} else {
+			fmt.Println("[insyra] DataList.GMean(): Data types cannot be compared, returning nil.")
 			return nil
 		}
 	}
@@ -381,6 +415,7 @@ func (dl *DataList) GMean() interface{} {
 // Median returns the median of the DataList.
 func (dl *DataList) Median() interface{} {
 	if len(dl.data) == 0 {
+		fmt.Println("[insyra] DataList.Median(): DataList is empty, returning nil.")
 		return nil
 	}
 
@@ -402,6 +437,7 @@ func (dl *DataList) Median() interface{} {
 // Mode returns the mode of the DataList.
 func (dl *DataList) Mode() interface{} {
 	if len(dl.data) == 0 {
+		fmt.Println("[insyra] DataList.Mode(): DataList is empty, returning nil.")
 		return nil
 	}
 
@@ -428,10 +464,12 @@ func (dl *DataList) Mode() interface{} {
 // Stdev returns the standard deviation of the DataList.
 func (dl *DataList) Stdev() interface{} {
 	if len(dl.data) == 0 {
+		fmt.Println("[insyra] DataList.Stdev(): DataList is empty, returning nil.")
 		return nil
 	}
 	variance := dl.Variance()
 	if variance == nil {
+		fmt.Println("[insyra] DataList.Stdev(): Variance calculation failed, returning nil.")
 		return nil
 	}
 	return math.Sqrt(ToFloat64(variance))
@@ -442,10 +480,12 @@ func (dl *DataList) Stdev() interface{} {
 // Returns nil if the DataList is empty or the standard deviation cannot be calculated.
 func (dl *DataList) StdevP() interface{} {
 	if len(dl.data) == 0 {
+		fmt.Println("[insyra] DataList.StdevP(): DataList is empty, returning nil.")
 		return nil
 	}
 	varianceP := dl.VarianceP()
 	if varianceP == nil {
+		fmt.Println("[insyra] DataList.StdevP(): Variance calculation failed, returning nil.")
 		return nil
 	}
 	return math.Sqrt(ToFloat64(varianceP))
@@ -457,22 +497,26 @@ func (dl *DataList) StdevP() interface{} {
 func (dl *DataList) Variance() interface{} {
 	n := float64(dl.Len())
 	if n == 0.0 {
+		fmt.Println("[insyra] DataList.Variance(): DataList is empty, returning nil.")
 		return nil
 	}
 	m := dl.Mean()
 	mean, ok := ToFloat64Safe(m)
 	if !ok {
+		fmt.Println("[insyra] DataList.Variance(): Mean is not a float64, returning nil.")
 		return nil
 	}
 
 	denominator := n - 1
 	if denominator == 0 {
+		fmt.Println("[insyra] DataList.Variance(): Denominator is 0, returning nil.")
 		return nil
 	}
 	numerator := 0.0
 	for i := 0; i < len(dl.data); i++ {
 		xi, ok := ToFloat64Safe(dl.data[i])
 		if !ok {
+			fmt.Println("[insyra] DataList.Variance(): Element is not a float64, returning nil.")
 			return nil
 		}
 		numerator += math.Pow(xi-mean, 2)
@@ -486,17 +530,20 @@ func (dl *DataList) Variance() interface{} {
 func (dl *DataList) VarianceP() interface{} {
 	n := float64(dl.Len())
 	if n == 0.0 {
+		fmt.Println("[insyra] DataList.VarianceP(): DataList is empty, returning nil.")
 		return nil
 	}
 	m := dl.Mean()
 	mean, ok := ToFloat64Safe(m)
 	if !ok {
+		fmt.Println("[insyra] DataList.VarianceP(): Mean is not a float64, returning nil.")
 		return nil
 	}
 	numerator := 0.0
 	for i := 0; i < len(dl.data); i++ {
 		xi, ok := ToFloat64Safe(dl.data[i])
 		if !ok {
+			fmt.Println("[insyra] DataList.VarianceP(): Element is not a float64, returning nil.")
 			return nil
 		}
 		numerator += math.Pow(xi-mean, 2)
@@ -510,6 +557,7 @@ func (dl *DataList) VarianceP() interface{} {
 // Range returns the range of the DataList.
 func (dl *DataList) Range() interface{} {
 	if len(dl.data) == 0 {
+		fmt.Println("[insyra] DataList.Range(): DataList is empty, returning nil.")
 		return nil
 	}
 
@@ -523,9 +571,11 @@ func (dl *DataList) Range() interface{} {
 // 1 corresponds to the first quartile (Q1), 2 to the median (Q2), and 3 to the third quartile (Q3).
 func (dl *DataList) Quartile(q int) interface{} {
 	if len(dl.data) == 0 {
+		fmt.Println("[insyra] DataList.Quartile(): DataList is empty, returning nil.")
 		return nil
 	}
 	if q < 1 || q > 3 {
+		fmt.Println("[insyra] DataList.Quartile(): Invalid quartile value, returning nil.")
 		return nil
 	}
 
@@ -570,20 +620,23 @@ func (dl *DataList) Quartile(q int) interface{} {
 // Returns nil if the DataList is empty.
 func (dl *DataList) IQR() interface{} {
 	if len(dl.data) == 0 {
+		fmt.Println("[insyra] DataList.IQR(): DataList is empty, returning nil.")
 		return nil
 	}
 	q3, ok := ToFloat64Safe(dl.Quartile(3))
 	if !ok {
+		fmt.Println("[insyra] DataList.IQR(): Q3 is not a float64, returning nil.")
 		return nil
 	}
 	q1, ok := ToFloat64Safe(dl.Quartile(1))
 	if !ok {
+		fmt.Println("[insyra] DataList.IQR(): Q1 is not a float64, returning nil.")
 		return nil
 	}
 	return q3 - q1
 }
 
-// Skewness calculates the skewness(sample) of the DataList.
+// Skew calculates the skewness(sample) of the DataList.
 // Returns the skewness.
 // Returns nil if the DataList is empty or the skewness cannot be calculated.
 // 錯誤！
@@ -677,6 +730,7 @@ func (dl *DataList) Kurtosis() interface{} {
 // ToF64Slice converts the DataList to a float64 slice.
 func (dl *DataList) ToF64Slice() []float64 {
 	if len(dl.data) == 0 {
+		fmt.Println("[insyra] DataList.ToF64Slice(): DataList is empty, returning nil.")
 		return nil
 	}
 
