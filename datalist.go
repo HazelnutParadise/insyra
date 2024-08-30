@@ -568,14 +568,18 @@ func (dl *DataList) Skewness() interface{} {
 	}
 	y := 0.0
 	for i := 0; i < len(data); i++ {
-		y += math.Pow((data[i]-mean)/stdev, 3)
+		xi, ok := ToFloat64Safe(data[i])
+		if !ok {
+			return nil
+		}
+		y += math.Pow((xi-mean)/stdev, 3)
 	}
 	return (n / ((n - 1) * (n - 2))) * y
 }
 
 // Kurtosis calculates the kurtosis of the DataList.
 // Returns the kurtosis.
-// Returns 0 if the DataList is empty.
+// Returns nil if the DataList is empty or the kurtosis cannot be calculated.
 // 錯誤！
 func (dl *DataList) Kurtosis() interface{} {
 	if len(dl.data) == 0 {
@@ -596,18 +600,18 @@ func (dl *DataList) Kurtosis() interface{} {
 		return 0
 	}
 
-	var sum float64
-	for _, v := range dl.data {
-		if val, ok := ToFloat64Safe(v); ok {
-			sum += math.Pow((val-mean)/stdev, 4)
+	y1 := (n * (n + 1)) / ((n - 1) * (n - 2) * (n - 3))
+	y2 := 0.0
+	for i := 0; i < len(dl.data); i++ {
+		xi, ok := ToFloat64Safe(dl.data[i])
+		if !ok {
+			return nil
 		}
+		y2 += math.Pow((xi-mean)/stdev, 4)
 	}
+	y3 := (3 * math.Pow(n-1, 2)) / ((n - 2) * (n - 3))
 
-	// Calculate kurtosis
-	kurtosis := (n*(n+1)*sum - 3*math.Pow(n-1, 2)) / ((n - 1) * (n - 2) * (n - 3))
-
-	// Adjust to make it an excess kurtosis by subtracting 3
-	return kurtosis - 3
+	return y1*y2 - y3
 }
 
 // ======================== Conversion ========================
