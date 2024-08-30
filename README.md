@@ -36,11 +36,11 @@ func main() {
 
 The `DataList` is the core structure in **Insyra**, enabling the storage, management, and analysis of dynamic data collections. It offers various methods for data manipulation and statistical analysis. 
 
-For a complete list of methods and features, please refer to the **[DataList Documentation](https://github.com/HazelnutParadise/insyra/Docs/DataList.md)**.
+For a complete list of methods and features, please refer to the **[DataList Documentation](https://github.com/HazelnutParadise/insyra/tree/main/Docs/DataList.md)**.
 
 ## Advanced Usage
 
-Beyond basic usage, **Insyra** provides extensive capabilities for handling different data types and performing complex statistical operations. Explore more in the **[detailed documentation](https://github.com/HazelnutParadise/insyra/Docs)**.
+Beyond basic usage, **Insyra** provides extensive capabilities for handling different data types and performing complex statistical operations. Explore more in the **[detailed documentation](https://github.com/HazelnutParadise/insyra/tree/main/Docs)**.
 
 <!-- ## Contributing
 
