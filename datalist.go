@@ -492,7 +492,7 @@ func (dl *DataList) StdevP() interface{} {
 	return math.Sqrt(ToFloat64(varianceP))
 }
 
-// Variance calculates the Var(sample) of the DataList.
+// Var calculates the variance(sample) of the DataList.
 // Returns the variance.
 // Returns nil if the DataList is empty or the variance cannot be calculated.
 func (dl *DataList) Var() interface{} {
@@ -525,7 +525,7 @@ func (dl *DataList) Var() interface{} {
 	return numerator / denominator
 }
 
-// VarianceP calculates the Var(population) of the DataList.
+// VarP calculates the variance(population) of the DataList.
 // Returns the variance.
 // Returns nil if the DataList is empty or the variance cannot be calculated.
 func (dl *DataList) VarP() interface{} {
