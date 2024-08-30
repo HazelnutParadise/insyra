@@ -550,7 +550,7 @@ func (dl *DataList) IQR() interface{} {
 // Skewness calculates the skewness of the DataList.
 // Returns the skewness.
 // Returns nil if the DataList is empty or the skewness cannot be calculated.
-// 不知正不正確
+// 錯誤！
 // Skewness calculates the skewness of the DataList using Gonum's Skew function.
 func (dl *DataList) Skewness() interface{} {
 	data := dl.ToF64Slice() // 将 DataList 转换为 float64 切片
@@ -597,7 +597,7 @@ func (dl *DataList) Kurtosis() interface{} {
 	n := float64(dl.Len())
 
 	if stdev == 0 {
-		return 0
+		return nil
 	}
 
 	y1 := (n * (n + 1)) / ((n - 1) * (n - 2) * (n - 3))
