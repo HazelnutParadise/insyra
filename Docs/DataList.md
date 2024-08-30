@@ -19,6 +19,14 @@ The `DataList` type provides a dynamic and generic way to store and manage a col
 * **NewDataList:** Creates a new DataList instance. It accepts a variadic list of elements and flattens them before storing them internally.
 * **Append:** Adds a new element to the end of the DataList.
 * **Get:** Retrieves the element at a specific index. Supports negative indexing for accessing elements from the end.
+* **Update:** Updates the element at a specific index with a new value.
+* **InsertAt:** Inserts a new element at a specific index, shifting the existing elements to the right.
+* **FindFirst:** Finds the first occurrence of a specified value in the DataList and returns its index.
+* **FindLast:** Finds the last occurrence of a specified value in the DataList and returns its index.
+* **FindAll:** Finds all occurrences of a specified value in the DataList and returns their indices.
+* **ReplaceFirst:** Replaces the first occurrence of a specified value with a new value.
+* **ReplaceLast:** Replaces the last occurrence of a specified value with a new value.
+* **ReplaceAll:** Replaces all occurrences of a specified value with a new value.
 * **Pop:** Removes and returns the last element from the DataList.
 * **Drop:** Removes the element at a specific index.
 * **DropAll:** Removes all occurrences of specified values from the DataList.
@@ -29,6 +37,9 @@ The `DataList` type provides a dynamic and generic way to store and manage a col
 
 * **Sort:** Sorts the elements in the DataList using a mixed sorting logic that handles strings, numbers (various integer and float types), and time data types. If sorting fails, the original order is restored.
 * **Reverse:** Reverses the order of elements in the DataList.
+* **Upper:** Converts all string elements in the DataList to uppercase.
+* **Lower:** Converts all string elements in the DataList to lowercase.
+* **Capitalize:** Capitalizes the first letter of each string element in the DataList.
 
 **Data Filtering:**
 

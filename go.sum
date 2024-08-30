@@ -2,5 +2,11 @@ github.com/HazelnutParadise/Go-Utils v0.6.4 h1:VuZbM+vPcac370yRNybKvncSThLefyqRw
 github.com/HazelnutParadise/Go-Utils v0.6.4/go.mod h1:JzuH5U+UNgAQzzotFf6k4zoJiOkBPyWPK7JTJrheYas=
 github.com/HazelnutParadise/Go-Utils v0.7.0 h1:o/Go78mv4e4zj3xbBjyyVLpgEIzktSDsjJ0qrq22/Ow=
 github.com/HazelnutParadise/Go-Utils v0.7.0/go.mod h1:JzuH5U+UNgAQzzotFf6k4zoJiOkBPyWPK7JTJrheYas=
+github.com/HazelnutParadise/Go-Utils v0.7.1 h1:Aq2jh+Np8G0jkFShuH/JjYNh1HU1syIFc4eRo3CXEDU=
+github.com/HazelnutParadise/Go-Utils v0.7.1/go.mod h1:JzuH5U+UNgAQzzotFf6k4zoJiOkBPyWPK7JTJrheYas=
+github.com/HazelnutParadise/Go-Utils v0.7.2 h1:IjZ7axySZmdM/B6ONgbmbUK5JwVcaZAXh1ldzMtNyPQ=
+github.com/HazelnutParadise/Go-Utils v0.7.2/go.mod h1:JzuH5U+UNgAQzzotFf6k4zoJiOkBPyWPK7JTJrheYas=
 golang.org/x/exp v0.0.0-20240823005443-9b4947da3948 h1:kx6Ds3MlpiUHKj7syVnbp57++8WpuKPcR5yjLBjvLEA=
 golang.org/x/exp v0.0.0-20240823005443-9b4947da3948/go.mod h1:akd2r19cwCdwSwWeIdzYQGa/EZZyqcOdwWiwj5L5eKQ=
+golang.org/x/text v0.17.0 h1:XtiM5bkSOt+ewxlOE/aE/AKEHibwj/6gvWMl9Rsh0Qc=
+golang.org/x/text v0.17.0/go.mod h1:BuEKDfySbSR4drPmRPG/7iBdf8hvFMuRexcpahXilzY=

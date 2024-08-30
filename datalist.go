@@ -5,6 +5,7 @@ import (
 	"math"
 	"runtime"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/HazelnutParadise/Go-Utils/asyncutil"
@@ -30,6 +31,14 @@ type IDataList interface {
 	Data() []interface{}
 	Append(value interface{})
 	Get(index int) interface{}
+	Update(index int, value interface{})
+	InsertAt(index int, value interface{})
+	FindFirst(interface{}) interface{}
+	FindLast(interface{}) interface{}
+	FindAll(interface{}) []int
+	ReplaceFirst(interface{}, interface{})
+	ReplaceLast(interface{}, interface{})
+	ReplaceAll(interface{}, interface{})
 	Pop() interface{}
 	Drop(index int)
 	DropAll(...interface{})
@@ -39,6 +48,9 @@ type IDataList interface {
 	Len() int
 	Sort(acending ...bool)
 	Reverse()
+	Upper()
+	Lower()
+	Capitalize()
 	Max() interface{}
 	Min() interface{}
 	Mean() interface{}
@@ -95,6 +107,210 @@ func (dl *DataList) Get(index int) interface{} {
 		return nil
 	}
 	return dl.data[index]
+}
+
+// Update replaces the value at the specified index with the new value.
+func (dl *DataList) Update(index int, newValue interface{}) {
+	if index < 0 {
+		index += len(dl.data)
+	}
+	if index < 0 || index >= len(dl.data) {
+		fmt.Printf("[insyra] ReplaceAtIndex(): Index %d out of bounds", index)
+	}
+	dl.data[index] = newValue
+	go dl.updateTimestamp()
+}
+
+// InsertAt inserts a value at the specified index in the DataList.
+// If the index is out of bounds, the value is appended to the end of the list.
+func (dl *DataList) InsertAt(index int, value interface{}) {
+	// Handle negative index
+	if index < 0 {
+		index += len(dl.data) + 1
+	}
+
+	// If index is out of bounds, append the value to the end
+	if index < 0 || index > len(dl.data) {
+		fmt.Println("[insyra] InsertAt(): Index out of bounds, appending value to the end.")
+		dl.data = append(dl.data, value)
+	} else {
+		var err error
+		dl.data, err = sliceutil.InsertAt(dl.data, index, value)
+		if err != nil {
+			fmt.Println("[insyra] InsertAt(): Failed to insert value at index:", err)
+			return
+		}
+	}
+
+	go dl.updateTimestamp()
+}
+
+// FindFirst returns the index of the first occurrence of the specified value in the DataList.
+// If the value is not found, it returns nil.
+func (dl *DataList) FindFirst(value interface{}) interface{} {
+	for i, v := range dl.data {
+		if v == value {
+			return i
+		}
+	}
+	fmt.Println("[insyra] FindFirst(): Value not found, returning nil.")
+	return nil
+}
+
+// FindLast returns the index of the last occurrence of the specified value in the DataList.
+// If the value is not found, it returns nil.
+func (dl *DataList) FindLast(value interface{}) interface{} {
+	for i := len(dl.data) - 1; i >= 0; i-- {
+		if dl.data[i] == value {
+			return i
+		}
+	}
+	fmt.Println("[insyra] FindLast(): Value not found, returning nil.")
+	return nil
+}
+
+// FindAll returns a slice of all the indices where the specified value is found in the DataList using parallel processing.
+// If the value is not found, it returns an empty slice.
+func (dl *DataList) FindAll(value interface{}) []int {
+	length := len(dl.data)
+	if length == 0 {
+		fmt.Println("[insyra] FindAll(): DataList is empty, returning an empty slice.")
+		return []int{}
+	}
+
+	// 獲取可用的 CPU 核心數量
+	numGoroutines := runtime.NumCPU()
+
+	// 決定每個線程處理的數據量
+	chunkSize := length / numGoroutines
+	if length%numGoroutines != 0 {
+		chunkSize++
+	}
+
+	var tasks []asyncutil.Task
+
+	// 創建並行任務
+	for i := 0; i < numGoroutines; i++ {
+		start := i * chunkSize
+		end := start + chunkSize
+		if end > length {
+			end = length
+		}
+
+		task := asyncutil.Task{
+			ID: fmt.Sprintf("task-%d", i),
+			Fn: func(dataChunk []interface{}, startIndex int) []int {
+				var localIndices []int
+				for j, v := range dataChunk {
+					if v == value {
+						localIndices = append(localIndices, startIndex+j)
+					}
+				}
+				return localIndices
+			},
+			Args: []interface{}{dl.data[start:end], start},
+		}
+
+		tasks = append(tasks, task)
+	}
+
+	// 使用 ParallelProcess 來處理所有任務
+	taskResults := asyncutil.ParallelProcess(tasks)
+
+	var indices []int
+	for _, result := range taskResults {
+		if len(result.Results) > 0 {
+			indices = append(indices, result.Results[0].([]int)...)
+		}
+	}
+
+	if len(indices) == 0 {
+		fmt.Println("[insyra] FindAll(): Value not found, returning an empty slice.")
+	}
+
+	return indices
+}
+
+// ReplaceFirst replaces the first occurrence of oldValue with newValue.
+func (dl *DataList) ReplaceFirst(oldValue, newValue interface{}) {
+	for i, v := range dl.data {
+		if v == oldValue {
+			dl.data[i] = newValue
+			go dl.updateTimestamp()
+		}
+	}
+	fmt.Printf("[insyra] ReplaceFirst(): value not found.")
+}
+
+// ReplaceLast replaces the last occurrence of oldValue with newValue.
+func (dl *DataList) ReplaceLast(oldValue, newValue interface{}) {
+	for i := len(dl.data) - 1; i >= 0; i-- {
+		if dl.data[i] == oldValue {
+			dl.data[i] = newValue
+			go dl.updateTimestamp()
+		}
+	}
+	fmt.Printf("[insyra] ReplaceLast(): value not found.")
+}
+
+// ReplaceAll replaces all occurrences of oldValue with newValue in the DataList.
+// If oldValue is not found, no changes are made.
+func (dl *DataList) ReplaceAll(oldValue, newValue interface{}) {
+	length := len(dl.data)
+	if length == 0 {
+		fmt.Println("[insyra] ReplaceAll(): DataList is empty, no replacements made.")
+		return
+	}
+
+	// 獲取可用的 CPU 核心數量
+	numGoroutines := runtime.NumCPU()
+
+	// 決定每個線程處理的數據量
+	chunkSize := length / numGoroutines
+	if length%numGoroutines != 0 {
+		chunkSize++
+	}
+
+	var tasks []asyncutil.Task
+
+	// 創建並行任務
+	for i := 0; i < numGoroutines; i++ {
+		start := i * chunkSize
+		end := start + chunkSize
+		if end > length {
+			end = length
+		}
+
+		task := asyncutil.Task{
+			ID: fmt.Sprintf("task-%d", i),
+			Fn: func(dataChunk []interface{}) []interface{} {
+				for j, v := range dataChunk {
+					if v == oldValue {
+						dataChunk[j] = newValue
+					}
+				}
+				return dataChunk
+			},
+			Args: []interface{}{dl.data[start:end]},
+		}
+
+		tasks = append(tasks, task)
+	}
+
+	// 使用 ParallelProcess 來處理所有任務
+	taskResults := asyncutil.ParallelProcess(tasks)
+
+	// 合併結果
+	for i, result := range taskResults {
+		start := i * chunkSize
+		end := start + chunkSize
+		if end > length {
+			end = length
+		}
+		copy(dl.data[start:end], result.Results[0].([]interface{}))
+	}
+
+	go dl.updateTimestamp()
 }
 
 // Pop removes and returns the last element from the DataList.
@@ -179,7 +395,7 @@ func (dl *DataList) DropAll(toDrop ...interface{}) {
 	for _, awaitable := range awaitables {
 		results, err := awaitable.Await()
 		if err != nil {
-			fmt.Println("[insyra] DropAllParallelAsync(): Error in async task:", err)
+			fmt.Println("[insyra] DropAll(): Error in async task:", err)
 			continue
 		}
 
@@ -219,10 +435,9 @@ func (dl *DataList) ClearStrings() {
 		chunkSize++
 	}
 
-	// 儲存所有的 Awaitable
-	var awaitables []*asyncutil.Awaitable
+	// 構建任務切片
+	var tasks []asyncutil.Task
 
-	// 啟動 Awaitables 處理每個部分
 	for i := 0; i < numGoroutines; i++ {
 		start := i * chunkSize
 		end := start + chunkSize
@@ -230,31 +445,30 @@ func (dl *DataList) ClearStrings() {
 			end = length
 		}
 
-		awaitable := asyncutil.Async(func(dataChunk []interface{}) []interface{} {
-			var result []interface{}
-			for _, v := range dataChunk {
-				if _, ok := v.(string); !ok {
-					result = append(result, v)
+		task := asyncutil.Task{
+			ID: fmt.Sprintf("Task-%d", i),
+			Fn: func(dataChunk []interface{}) []interface{} {
+				var result []interface{}
+				for _, v := range dataChunk {
+					if _, ok := v.(string); !ok {
+						result = append(result, v)
+					}
 				}
-			}
-			return result
-		}, dl.data[start:end])
+				return result
+			},
+			Args: []interface{}{dl.data[start:end]},
+		}
 
-		awaitables = append(awaitables, awaitable)
+		tasks = append(tasks, task)
 	}
 
-	// 收集所有結果並合併
-	var finalResult []interface{}
-	for _, awaitable := range awaitables {
-		results, err := awaitable.Await()
-		if err != nil {
-			fmt.Println("[insyra] ClearStringsParallelAsync(): Error in async task:", err)
-			continue
-		}
+	// 使用 ParallelProcess 進行平行處理
+	taskResults := asyncutil.ParallelProcess(tasks)
 
-		if len(results) > 0 {
-			finalResult = append(finalResult, results[0].([]interface{})...)
-		}
+	// 合併所有的結果
+	var finalResult []interface{}
+	for _, taskResult := range taskResults {
+		finalResult = append(finalResult, taskResult.Results[0].([]interface{})...)
 	}
 
 	// 更新 DataList
@@ -351,6 +565,36 @@ func (dl *DataList) Sort(ascending ...bool) {
 // Reverse reverses the order of the elements in the DataList.
 func (dl *DataList) Reverse() {
 	sliceutil.Reverse(dl.data)
+}
+
+// Upper converts all string elements in the DataList to uppercase.
+func (dl *DataList) Upper() {
+	for i, v := range dl.data {
+		if str, ok := v.(string); ok {
+			dl.data[i] = strings.ToUpper(str)
+		}
+	}
+	go dl.updateTimestamp()
+}
+
+// Lower converts all string elements in the DataList to lowercase.
+func (dl *DataList) Lower() {
+	for i, v := range dl.data {
+		if str, ok := v.(string); ok {
+			dl.data[i] = strings.ToLower(str)
+		}
+	}
+	go dl.updateTimestamp()
+}
+
+// Capitalize capitalizes the first letter of each string element in the DataList.
+func (dl *DataList) Capitalize() {
+	for i, v := range dl.data {
+		if str, ok := v.(string); ok {
+			dl.data[i] = strings.Title(strings.ToLower(str))
+		}
+	}
+	go dl.updateTimestamp()
 }
 
 // ======================== Statistics ========================
