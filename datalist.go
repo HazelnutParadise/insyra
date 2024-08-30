@@ -12,15 +12,22 @@ import (
 
 // DataList is a generic dynamic data list
 type DataList struct {
-	data []interface{}
+	data                  []interface{}
+	creationTimestamp     int64
+	lastModifiedTimestamp int64
 }
 
 // IDataList defines the behavior expected from a DataList
 type IDataList interface {
+	GetCreationTimestamp() int64
+	GetLastModifiedTimestamp() int64
+	updateTimestamp()
 	Data() []interface{}
 	Append(value interface{})
 	Get(index int) interface{}
 	Pop() interface{}
+	Drop(index int)
+	DropAll(...interface{})
 	Len() int
 	Sort(acending ...bool)
 	Reverse()
@@ -54,7 +61,9 @@ func NewDataList(values ...interface{}) *DataList {
 		flatData = values
 	}
 	return &DataList{
-		data: flatData,
+		data:                  flatData,
+		creationTimestamp:     time.Now().Unix(),
+		lastModifiedTimestamp: time.Now().Unix(),
 	}
 }
 
@@ -63,6 +72,7 @@ func NewDataList(values ...interface{}) *DataList {
 // The value is appended to the end of the DataList.
 func (dl *DataList) Append(value interface{}) {
 	dl.data = append(dl.data, value)
+	dl.updateTimestamp()
 }
 
 // Get retrieves the value at the specified index in the DataList.
@@ -84,7 +94,35 @@ func (dl *DataList) Pop() interface{} {
 	if err != nil {
 		return nil
 	}
+	dl.updateTimestamp()
 	return n
+}
+
+// Drop removes the element at the specified index from the DataList and updates the timestamp.
+// Returns an error if the index is out of bounds.
+func (dl *DataList) Drop(index int) {
+	if index < 0 {
+		index += len(dl.data)
+	}
+	if index >= len(dl.data) {
+		return
+	}
+	dl.data = append(dl.data[:index], dl.data[index+1:]...)
+	dl.updateTimestamp()
+}
+
+// DropAll removes all occurrences of the specified values from the DataList.
+// Supports multiple values to drop.
+func (dl *DataList) DropAll(toDrop ...interface{}) {
+	for _, v := range toDrop {
+		for i := 0; i < len(dl.data); i++ {
+			if dl.data[i] == v {
+				dl.Drop(i)
+				dl.updateTimestamp()
+				i--
+			}
+		}
+	}
 }
 
 func (dl *DataList) Len() int {
@@ -548,4 +586,21 @@ func (dl *DataList) ToF64Slice() []float64 {
 	}
 
 	return floatData
+}
+
+// ======================== Timestamp ========================
+
+// GetCreationTimestamp returns the creation time of the DataList in Unix timestamp.
+func (dl *DataList) GetCreationTimestamp() int64 {
+	return dl.creationTimestamp
+}
+
+// GetLastModifiedTimestamp returns the last updated time of the DataList in Unix timestamp.
+func (dl *DataList) GetLastModifiedTimestamp() int64 {
+	return dl.lastModifiedTimestamp
+}
+
+// updateTimestamp updates the lastModifiedTimestamp to the current Unix time.
+func (dl *DataList) updateTimestamp() {
+	dl.lastModifiedTimestamp = time.Now().Unix()
 }
