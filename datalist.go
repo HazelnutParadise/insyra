@@ -425,24 +425,13 @@ func (dl *DataList) Mode() interface{} {
 // Stdev returns the standard deviation of the DataList.
 func (dl *DataList) Stdev() interface{} {
 	if len(dl.data) == 0 {
-		return 0
-	}
-
-	m := dl.Mean()
-	mean, ok := ToFloat64Safe(m)
-	if !ok {
 		return nil
 	}
-	var sum float64
-	for _, v := range dl.data {
-		if val, ok := ToFloat64Safe(v); ok {
-			sum += math.Pow(val-mean, 2)
-		} else {
-			return nil
-		}
+	variance := dl.Variance()
+	if variance == nil {
+		return nil
 	}
-
-	return math.Sqrt(sum / float64(len(dl.data)))
+	return math.Sqrt(ToFloat64(variance))
 }
 
 // Variance calculates the variance of the DataList.
@@ -450,22 +439,26 @@ func (dl *DataList) Stdev() interface{} {
 // Returns nil if the DataList is empty.
 // Variance returns the variance of the DataList.
 func (dl *DataList) Variance() interface{} {
-	if len(dl.data) == 0 {
+	n := float64(dl.Len())
+	if n == 0.0 {
 		return nil
 	}
-
-	mean, ok := ToFloat64Safe(dl.Mean())
+	m := dl.Mean()
+	mean, ok := ToFloat64Safe(m)
 	if !ok {
 		return nil
 	}
-	var sum float64
-	for _, v := range dl.data {
-		if val, ok := ToFloat64Safe(v); ok {
-			sum += math.Pow(val-mean, 2)
-		}
-	}
 
-	return sum / float64(len(dl.data))
+	y1 := 1.0 / n
+	y2 := 0.0
+	for i := 0; i < len(dl.data); i++ {
+		xi, ok := ToFloat64Safe(dl.data[i])
+		if !ok {
+			return nil
+		}
+		y2 += math.Pow(xi-mean, 2)
+	}
+	return y1 * y2
 }
 
 // Range calculates the range of the DataList.
@@ -567,6 +560,10 @@ func (dl *DataList) Skewness() interface{} {
 		return nil
 	}
 	y := 0.0
+	denominator1 := (n - 1) * (n - 2)
+	if denominator1 == 0 || stdev == 0 {
+		return nil
+	}
 	for i := 0; i < len(data); i++ {
 		xi, ok := ToFloat64Safe(data[i])
 		if !ok {
@@ -574,7 +571,7 @@ func (dl *DataList) Skewness() interface{} {
 		}
 		y += math.Pow((xi-mean)/stdev, 3)
 	}
-	return (n / ((n - 1) * (n - 2))) * y
+	return (n / denominator1) * y
 }
 
 // Kurtosis calculates the kurtosis of the DataList.
@@ -582,10 +579,10 @@ func (dl *DataList) Skewness() interface{} {
 // Returns nil if the DataList is empty or the kurtosis cannot be calculated.
 // 錯誤！
 func (dl *DataList) Kurtosis() interface{} {
-	if len(dl.data) == 0 {
+	n := float64(dl.Len())
+	if n == 0.0 {
 		return nil
 	}
-
 	mean, ok := ToFloat64Safe(dl.Mean())
 	if !ok {
 		return nil
@@ -594,13 +591,18 @@ func (dl *DataList) Kurtosis() interface{} {
 	if !ok {
 		return nil
 	}
-	n := float64(dl.Len())
-
 	if stdev == 0 {
 		return nil
 	}
-
-	y1 := (n * (n + 1)) / ((n - 1) * (n - 2) * (n - 3))
+	denominator1 := (n - 1) * (n - 2) * (n - 3)
+	if denominator1 == 0 {
+		return nil
+	}
+	denominator2 := (n - 2) * (n - 3)
+	if denominator2 == 0 {
+		return nil
+	}
+	y1 := (n * (n + 1)) / denominator1
 	y2 := 0.0
 	for i := 0; i < len(dl.data); i++ {
 		xi, ok := ToFloat64Safe(dl.data[i])
@@ -609,7 +611,7 @@ func (dl *DataList) Kurtosis() interface{} {
 		}
 		y2 += math.Pow((xi-mean)/stdev, 4)
 	}
-	y3 := (3 * math.Pow(n-1, 2)) / ((n - 2) * (n - 3))
+	y3 := (3 * math.Pow(n-1, 2)) / denominator2
 
 	return y1*y2 - y3
 }
