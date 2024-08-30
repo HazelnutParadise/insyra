@@ -43,12 +43,13 @@ type IDataList interface {
 	Mode() interface{}
 	Stdev() interface{}
 	StdevP() interface{}
-	Variance() interface{}
-	VarianceP() interface{}
+	Var() interface{}
+	VarP() interface{}
 	Range() interface{}
 	Quartile(int) interface{}
 	IQR() interface{}
 	Skew() interface{}
+	SkewP() interface{}
 	Kurtosis() interface{}
 	ToF64Slice() []float64
 }
@@ -467,7 +468,7 @@ func (dl *DataList) Stdev() interface{} {
 		fmt.Println("[insyra] DataList.Stdev(): DataList is empty, returning nil.")
 		return nil
 	}
-	variance := dl.Variance()
+	variance := dl.Var()
 	if variance == nil {
 		fmt.Println("[insyra] DataList.Stdev(): Variance calculation failed, returning nil.")
 		return nil
@@ -483,7 +484,7 @@ func (dl *DataList) StdevP() interface{} {
 		fmt.Println("[insyra] DataList.StdevP(): DataList is empty, returning nil.")
 		return nil
 	}
-	varianceP := dl.VarianceP()
+	varianceP := dl.VarP()
 	if varianceP == nil {
 		fmt.Println("[insyra] DataList.StdevP(): Variance calculation failed, returning nil.")
 		return nil
@@ -491,32 +492,32 @@ func (dl *DataList) StdevP() interface{} {
 	return math.Sqrt(ToFloat64(varianceP))
 }
 
-// Variance calculates the variance(sample) of the DataList.
+// Variance calculates the Var(sample) of the DataList.
 // Returns the variance.
 // Returns nil if the DataList is empty or the variance cannot be calculated.
-func (dl *DataList) Variance() interface{} {
+func (dl *DataList) Var() interface{} {
 	n := float64(dl.Len())
 	if n == 0.0 {
-		fmt.Println("[insyra] DataList.Variance(): DataList is empty, returning nil.")
+		fmt.Println("[insyra] DataList.Var(): DataList is empty, returning nil.")
 		return nil
 	}
 	m := dl.Mean()
 	mean, ok := ToFloat64Safe(m)
 	if !ok {
-		fmt.Println("[insyra] DataList.Variance(): Mean is not a float64, returning nil.")
+		fmt.Println("[insyra] DataList.Var(): Mean is not a float64, returning nil.")
 		return nil
 	}
 
 	denominator := n - 1
 	if denominator == 0 {
-		fmt.Println("[insyra] DataList.Variance(): Denominator is 0, returning nil.")
+		fmt.Println("[insyra] DataList.Var(): Denominator is 0, returning nil.")
 		return nil
 	}
 	numerator := 0.0
 	for i := 0; i < len(dl.data); i++ {
 		xi, ok := ToFloat64Safe(dl.data[i])
 		if !ok {
-			fmt.Println("[insyra] DataList.Variance(): Element is not a float64, returning nil.")
+			fmt.Println("[insyra] DataList.Var(): Element is not a float64, returning nil.")
 			return nil
 		}
 		numerator += math.Pow(xi-mean, 2)
@@ -524,26 +525,26 @@ func (dl *DataList) Variance() interface{} {
 	return numerator / denominator
 }
 
-// VarianceP calculates the variance(population) of the DataList.
+// VarianceP calculates the Var(population) of the DataList.
 // Returns the variance.
 // Returns nil if the DataList is empty or the variance cannot be calculated.
-func (dl *DataList) VarianceP() interface{} {
+func (dl *DataList) VarP() interface{} {
 	n := float64(dl.Len())
 	if n == 0.0 {
-		fmt.Println("[insyra] DataList.VarianceP(): DataList is empty, returning nil.")
+		fmt.Println("[insyra] DataList.VarP(): DataList is empty, returning nil.")
 		return nil
 	}
 	m := dl.Mean()
 	mean, ok := ToFloat64Safe(m)
 	if !ok {
-		fmt.Println("[insyra] DataList.VarianceP(): Mean is not a float64, returning nil.")
+		fmt.Println("[insyra] DataList.VarP(): Mean is not a float64, returning nil.")
 		return nil
 	}
 	numerator := 0.0
 	for i := 0; i < len(dl.data); i++ {
 		xi, ok := ToFloat64Safe(dl.data[i])
 		if !ok {
-			fmt.Println("[insyra] DataList.VarianceP(): Element is not a float64, returning nil.")
+			fmt.Println("[insyra] DataList.VarP(): Element is not a float64, returning nil.")
 			return nil
 		}
 		numerator += math.Pow(xi-mean, 2)
