@@ -10,7 +10,10 @@ import (
 // Returns the skewness.
 // Returns nil if the DataList is empty or the skewness cannot be calculated.
 // 錯誤！
-func Skew(dl insyra.IDataList, method ...string) interface{} {
+func Skew(data []interface{}, method ...string) interface{} {
+	d, dLen := insyra.ProcessData(data)
+	d64 := insyra.SliceToF64(d)
+
 	methodStr := "pearson"
 	if len(method) > 0 {
 		methodStr = method[0]
@@ -19,25 +22,22 @@ func Skew(dl insyra.IDataList, method ...string) interface{} {
 		fmt.Println("[insyra] DataList.Skew(): Too many arguments, returning nil.")
 		return nil
 	}
-	if dl.Len() == 0 {
+	if dLen == 0 {
 		fmt.Println("[insyra] DataList.Skew(): DataList is empty, returning nil.")
 		return nil
 	}
-	data := dl.ToF64Slice()
 
 	var result interface{}
 	switch methodStr {
 	case "pearson":
-		result = calculateSkewPearson(data)
-		goto returnResult
+		result = calculateSkewPearson(d64)
 	case "moments":
-		result = calculateSkewMoments(data)
-		goto returnResult
+		result = calculateSkewMoments(d64)
 	default:
 		fmt.Println("[insyra] DataList.Skew(): Invalid method, returning nil.")
 		return nil
 	}
-returnResult:
+
 	if result == nil {
 		fmt.Println("[insyra] DataList.Skew(): Skewness calculation failed, returning nil.")
 		return nil

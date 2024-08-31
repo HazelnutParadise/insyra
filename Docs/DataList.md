@@ -24,6 +24,7 @@ The `DataList` type provides a dynamic and generic way to store and manage a col
 * **FindFirst:** Finds the first occurrence of a specified value in the DataList and returns its index.
 * **FindLast:** Finds the last occurrence of a specified value in the DataList and returns its index.
 * **FindAll:** Finds all occurrences of a specified value in the DataList and returns their indices.
+* **Filter**: Filters the DataList based on a provided function that returns a boolean value for each element.
 * **ReplaceFirst:** Replaces the first occurrence of a specified value with a new value.
 * **ReplaceLast:** Replaces the last occurrence of a specified value with a new value.
 * **ReplaceAll:** Replaces all occurrences of a specified value with a new value.
