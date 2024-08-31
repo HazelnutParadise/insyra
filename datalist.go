@@ -2,11 +2,11 @@ package insyra
 
 import (
 	"fmt"
-	"log"
 	"math"
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/HazelnutParadise/Go-Utils/asyncutil"
@@ -20,6 +20,10 @@ type DataList struct {
 	name                  string
 	creationTimestamp     int64
 	lastModifiedTimestamp int64
+	// 記憶體管理
+	refCount       int
+	mu             sync.Mutex
+	needReorganize bool
 }
 
 // IDataList defines the behavior expected from a DataList.
@@ -78,25 +82,32 @@ func (dl *DataList) Data() []interface{} {
 // NewDataList creates a new DataList, supporting both slice and variadic inputs,
 // and flattens the input before storing it.
 func NewDataList(values ...interface{}) *DataList {
-	// Flatten the input values using sliceutil.Flatten with the specified generic type
-	flatData, err := sliceutil.Flatten[interface{}](values)
-	if err != nil {
-		log.Printf("[insyra] NewDataList(): Failed to flatten input values:%v\nUsing the original input values.\n", err)
-		flatData = values
-	}
-	return &DataList{
+	flatData, _ := sliceutil.Flatten[interface{}](values)
+	dl := &DataList{
 		data:                  flatData,
+		refCount:              1,
 		creationTimestamp:     time.Now().Unix(),
 		lastModifiedTimestamp: time.Now().Unix(),
 	}
+	GetMemoryManager().Register(dl)
+	return dl
 }
 
 // Append adds a new value to the DataList.
 // The value can be of any type.
 // The value is appended to the end of the DataList.
 func (dl *DataList) Append(value interface{}) {
+	dl.mu.Lock()
+	defer dl.mu.Unlock()
+
+	// Append data and update timestamp
 	dl.data = append(dl.data, value)
-	go dl.updateTimestamp()
+	dl.updateTimestamp()
+
+	// Check if memory reorganization is needed
+	if dl.isFragmented() {
+		dl.needReorganize = true
+	}
 }
 
 // Get retrieves the value at the specified index in the DataList.
@@ -105,7 +116,7 @@ func (dl *DataList) Append(value interface{}) {
 // Returns the value at the specified index.
 func (dl *DataList) Get(index int) interface{} {
 	if index < -len(dl.data) || index >= len(dl.data) {
-		log.Println("[insyra] DataList.Get(): Index out of bounds, returning nil.")
+		LogWarning("DataList.Get(): Index out of bounds, returning nil.")
 		return nil
 	}
 	return dl.data[index]
@@ -117,7 +128,7 @@ func (dl *DataList) Update(index int, newValue interface{}) {
 		index += len(dl.data)
 	}
 	if index < 0 || index >= len(dl.data) {
-		log.Printf("[insyra] ReplaceAtIndex(): Index %d out of bounds", index)
+		LogWarning("ReplaceAtIndex(): Index %d out of bounds", index)
 	}
 	dl.data[index] = newValue
 	go dl.updateTimestamp()
@@ -133,13 +144,13 @@ func (dl *DataList) InsertAt(index int, value interface{}) {
 
 	// If index is out of bounds, append the value to the end
 	if index < 0 || index > len(dl.data) {
-		log.Println("[insyra] InsertAt(): Index out of bounds, appending value to the end.")
+		LogWarning("InsertAt(): Index out of bounds, appending value to the end.")
 		dl.data = append(dl.data, value)
 	} else {
 		var err error
 		dl.data, err = sliceutil.InsertAt(dl.data, index, value)
 		if err != nil {
-			log.Println("[insyra] InsertAt(): Failed to insert value at index:", err)
+			LogWarning("InsertAt(): Failed to insert value at index:", err)
 			return
 		}
 	}
@@ -155,7 +166,7 @@ func (dl *DataList) FindFirst(value interface{}) interface{} {
 			return i
 		}
 	}
-	log.Println("[insyra] FindFirst(): Value not found, returning nil.")
+	LogWarning("FindFirst(): Value not found, returning nil.")
 	return nil
 }
 
@@ -167,7 +178,7 @@ func (dl *DataList) FindLast(value interface{}) interface{} {
 			return i
 		}
 	}
-	log.Println("[insyra] FindLast(): Value not found, returning nil.")
+	LogWarning("FindLast(): Value not found, returning nil.")
 	return nil
 }
 
@@ -176,7 +187,7 @@ func (dl *DataList) FindLast(value interface{}) interface{} {
 func (dl *DataList) FindAll(value interface{}) []int {
 	length := len(dl.data)
 	if length == 0 {
-		log.Println("[insyra] FindAll(): DataList is empty, returning an empty slice.")
+		LogWarning("FindAll(): DataList is empty, returning an empty slice.")
 		return []int{}
 	}
 
@@ -227,7 +238,7 @@ func (dl *DataList) FindAll(value interface{}) []int {
 	}
 
 	if len(indices) == 0 {
-		log.Println("[insyra] FindAll(): Value not found, returning an empty slice.")
+		LogWarning("FindAll(): Value not found, returning an empty slice.")
 	}
 
 	return indices
@@ -255,7 +266,7 @@ func (dl *DataList) ReplaceFirst(oldValue, newValue interface{}) {
 			go dl.updateTimestamp()
 		}
 	}
-	log.Printf("[insyra] ReplaceFirst(): value not found.")
+	LogWarning("ReplaceFirst(): value not found.")
 }
 
 // ReplaceLast replaces the last occurrence of oldValue with newValue.
@@ -266,7 +277,7 @@ func (dl *DataList) ReplaceLast(oldValue, newValue interface{}) {
 			go dl.updateTimestamp()
 		}
 	}
-	log.Printf("[insyra] ReplaceLast(): value not found.")
+	LogWarning("ReplaceLast(): value not found.")
 }
 
 // ReplaceAll replaces all occurrences of oldValue with newValue in the DataList.
@@ -274,7 +285,7 @@ func (dl *DataList) ReplaceLast(oldValue, newValue interface{}) {
 func (dl *DataList) ReplaceAll(oldValue, newValue interface{}) {
 	length := len(dl.data)
 	if length == 0 {
-		log.Println("[insyra] ReplaceAll(): DataList is empty, no replacements made.")
+		LogWarning("ReplaceAll(): DataList is empty, no replacements made.")
 		return
 	}
 
@@ -335,7 +346,7 @@ func (dl *DataList) ReplaceAll(oldValue, newValue interface{}) {
 func (dl *DataList) Pop() interface{} {
 	n, err := sliceutil.Drt_PopFrom(&dl.data)
 	if err != nil {
-		log.Println("[insyra] DataList.Pop(): DataList is empty, returning nil.")
+		LogWarning("DataList.Pop(): DataList is empty, returning nil.")
 		return nil
 	}
 	go dl.updateTimestamp()
@@ -349,7 +360,7 @@ func (dl *DataList) Drop(index int) {
 		index += len(dl.data)
 	}
 	if index >= len(dl.data) {
-		log.Println("[insyra] DataList.Drop(): Index out of bounds, returning.")
+		LogWarning("DataList.Drop(): Index out of bounds, returning.")
 		return
 	}
 	dl.data = append(dl.data[:index], dl.data[index+1:]...)
@@ -411,7 +422,7 @@ func (dl *DataList) DropAll(toDrop ...interface{}) {
 	for _, awaitable := range awaitables {
 		results, err := awaitable.Await()
 		if err != nil {
-			log.Println("[insyra] DropAll(): Error in async task:", err)
+			LogWarning("DropAll(): Error in async task:", err)
 			continue
 		}
 
@@ -518,7 +529,7 @@ func (dl *DataList) ClearNumbers() {
 // If sorting fails, it restores the original order.
 func (dl *DataList) Sort(ascending ...bool) {
 	if len(dl.data) == 0 {
-		log.Println("[insyra] DataList.Sort(): DataList is empty, returning.")
+		LogWarning("DataList.Sort(): DataList is empty, returning.")
 		return
 	}
 
@@ -528,7 +539,7 @@ func (dl *DataList) Sort(ascending ...bool) {
 
 	defer func() {
 		if r := recover(); r != nil {
-			log.Println("[insyra] DataList.Sort(): Sorting failed, restoring original order:", r)
+			LogWarning("DataList.Sort(): Sorting failed, restoring original order:", r)
 			dl.data = originalData
 		}
 	}()
@@ -538,7 +549,7 @@ func (dl *DataList) Sort(ascending ...bool) {
 		ascendingOrder = ascending[0]
 	}
 	if len(ascending) > 1 {
-		log.Println("[insyra] DataList.Sort(): Too many arguments, returning.")
+		LogWarning("DataList.Sort(): Too many arguments, returning.")
 		return
 	}
 
@@ -637,7 +648,7 @@ func (dl *DataList) Max() interface{} {
 			if val, ok := v.(int); ok && val > maxVal {
 				max = val
 			} else if !ok {
-				log.Println("[insyra] DataList.Max(): Data types cannot be compared, returning nil.")
+				LogWarning("DataList.Max(): Data types cannot be compared, returning nil.")
 				return nil
 			}
 		case float64:
@@ -646,30 +657,30 @@ func (dl *DataList) Max() interface{} {
 			} else if intVal, ok := v.(int); ok && float64(intVal) > maxVal {
 				max = float64(intVal)
 			} else if !ok {
-				log.Println("[insyra] DataList.Max(): Data types cannot be compared, returning nil.")
+				LogWarning("DataList.Max(): Data types cannot be compared, returning nil.")
 				return nil
 			}
 		case string:
 			if val, ok := v.(string); ok {
 				valF64, ok := ToFloat64Safe(val)
 				if !ok {
-					log.Println("[insyra] DataList.Max(): Data types cannot be compared, returning nil.")
+					LogWarning("DataList.Max(): Data types cannot be compared, returning nil.")
 					return nil
 				}
 				maxValF64, ok := ToFloat64Safe(maxVal)
 				if !ok {
-					log.Println("[insyra] DataList.Max(): Data types cannot be compared, returning nil.")
+					LogWarning("DataList.Max(): Data types cannot be compared, returning nil.")
 					return nil
 				}
 				if valF64 > maxValF64 {
 					max = val
 				}
 			} else if !ok {
-				log.Println("[insyra] DataList.Max(): Data types cannot be compared, returning nil.")
+				LogWarning("DataList.Max(): Data types cannot be compared, returning nil.")
 				return nil
 			}
 		default:
-			log.Println("[insyra] DataList.Max(): Data types cannot be compared, returning nil.")
+			LogWarning("DataList.Max(): Data types cannot be compared, returning nil.")
 			return nil
 		}
 	}
@@ -683,7 +694,7 @@ func (dl *DataList) Max() interface{} {
 // Min returns the minimum value in the DataList, or nil if the data types cannot be compared.
 func (dl *DataList) Min() interface{} {
 	if len(dl.data) == 0 {
-		log.Println("[insyra] DataList.Min(): DataList is empty, returning nil.")
+		LogWarning("DataList.Min(): DataList is empty, returning nil.")
 		return nil
 	}
 
@@ -699,7 +710,7 @@ func (dl *DataList) Min() interface{} {
 			if val, ok := v.(int); ok && val < minVal {
 				min = val
 			} else if !ok {
-				log.Println("[insyra] DataList.Min(): Data types cannot be compared, returning nil.")
+				LogWarning("DataList.Min(): Data types cannot be compared, returning nil.")
 				return nil
 			}
 		case float64:
@@ -708,18 +719,18 @@ func (dl *DataList) Min() interface{} {
 			} else if intVal, ok := v.(int); ok && float64(intVal) < minVal {
 				min = float64(intVal)
 			} else if !ok {
-				log.Println("[insyra] DataList.Min(): Data types cannot be compared, returning nil.")
+				LogWarning("DataList.Min(): Data types cannot be compared, returning nil.")
 				return nil
 			}
 		case string:
 			if val, ok := v.(string); ok && conv.ParseF64(val) < conv.ParseF64(minVal) {
 				min = val
 			} else if !ok {
-				log.Println("[insyra] DataList.Min(): Data types cannot be compared, returning nil.")
+				LogWarning("DataList.Min(): Data types cannot be compared, returning nil.")
 				return nil
 			}
 		default:
-			log.Println("[insyra] DataList.Min(): Data types cannot be compared, returning nil.")
+			LogWarning("DataList.Min(): Data types cannot be compared, returning nil.")
 			return nil
 		}
 	}
@@ -733,7 +744,7 @@ func (dl *DataList) Min() interface{} {
 // Mean returns the arithmetic mean of the DataList.
 func (dl *DataList) Mean() interface{} {
 	if len(dl.data) == 0 {
-		log.Println("[insyra] DataList.Mean(): DataList is empty, returning nil.")
+		LogWarning("DataList.Mean(): DataList is empty, returning nil.")
 		return nil
 	}
 
@@ -742,7 +753,7 @@ func (dl *DataList) Mean() interface{} {
 		if val, ok := ToFloat64Safe(v); ok {
 			sum += val
 		} else {
-			log.Println("[insyra] DataList.Mean(): Data types cannot be compared, returning nil.")
+			LogWarning("DataList.Mean(): Data types cannot be compared, returning nil.")
 			return nil
 		}
 	}
@@ -756,7 +767,7 @@ func (dl *DataList) Mean() interface{} {
 // GMean returns the geometric mean of the DataList.
 func (dl *DataList) GMean() interface{} {
 	if len(dl.data) == 0 {
-		log.Println("[insyra] DataList.GMean(): DataList is empty, returning nil.")
+		LogWarning("DataList.GMean(): DataList is empty, returning nil.")
 		return nil
 	}
 
@@ -765,7 +776,7 @@ func (dl *DataList) GMean() interface{} {
 		if val, ok := ToFloat64Safe(v); ok {
 			product *= val
 		} else {
-			log.Println("[insyra] DataList.GMean(): Data types cannot be compared, returning nil.")
+			LogWarning("DataList.GMean(): Data types cannot be compared, returning nil.")
 			return nil
 		}
 	}
@@ -779,7 +790,7 @@ func (dl *DataList) GMean() interface{} {
 // Median returns the median of the DataList.
 func (dl *DataList) Median() interface{} {
 	if len(dl.data) == 0 {
-		log.Println("[insyra] DataList.Median(): DataList is empty, returning nil.")
+		LogWarning("DataList.Median(): DataList is empty, returning nil.")
 		return nil
 	}
 
@@ -801,7 +812,7 @@ func (dl *DataList) Median() interface{} {
 // Mode returns the mode of the DataList.
 func (dl *DataList) Mode() interface{} {
 	if len(dl.data) == 0 {
-		log.Println("[insyra] DataList.Mode(): DataList is empty, returning nil.")
+		LogWarning("DataList.Mode(): DataList is empty, returning nil.")
 		return nil
 	}
 
@@ -828,12 +839,12 @@ func (dl *DataList) Mode() interface{} {
 // Stdev returns the standard deviation of the DataList.
 func (dl *DataList) Stdev() interface{} {
 	if len(dl.data) == 0 {
-		log.Println("[insyra] DataList.Stdev(): DataList is empty, returning nil.")
+		LogWarning("DataList.Stdev(): DataList is empty, returning nil.")
 		return nil
 	}
 	variance := dl.Var()
 	if variance == nil {
-		log.Println("[insyra] DataList.Stdev(): Variance calculation failed, returning nil.")
+		LogWarning("DataList.Stdev(): Variance calculation failed, returning nil.")
 		return nil
 	}
 	return math.Sqrt(ToFloat64(variance))
@@ -844,12 +855,12 @@ func (dl *DataList) Stdev() interface{} {
 // Returns nil if the DataList is empty or the standard deviation cannot be calculated.
 func (dl *DataList) StdevP() interface{} {
 	if len(dl.data) == 0 {
-		log.Println("[insyra] DataList.StdevP(): DataList is empty, returning nil.")
+		LogWarning("DataList.StdevP(): DataList is empty, returning nil.")
 		return nil
 	}
 	varianceP := dl.VarP()
 	if varianceP == nil {
-		log.Println("[insyra] DataList.StdevP(): Variance calculation failed, returning nil.")
+		LogWarning("DataList.StdevP(): Variance calculation failed, returning nil.")
 		return nil
 	}
 	return math.Sqrt(ToFloat64(varianceP))
@@ -861,26 +872,26 @@ func (dl *DataList) StdevP() interface{} {
 func (dl *DataList) Var() interface{} {
 	n := float64(dl.Len())
 	if n == 0.0 {
-		log.Println("[insyra] DataList.Var(): DataList is empty, returning nil.")
+		LogWarning("DataList.Var(): DataList is empty, returning nil.")
 		return nil
 	}
 	m := dl.Mean()
 	mean, ok := ToFloat64Safe(m)
 	if !ok {
-		log.Println("[insyra] DataList.Var(): Mean is not a float64, returning nil.")
+		LogWarning("DataList.Var(): Mean is not a float64, returning nil.")
 		return nil
 	}
 
 	denominator := n - 1
 	if denominator == 0 {
-		log.Println("[insyra] DataList.Var(): Denominator is 0, returning nil.")
+		LogWarning("DataList.Var(): Denominator is 0, returning nil.")
 		return nil
 	}
 	numerator := 0.0
 	for i := 0; i < len(dl.data); i++ {
 		xi, ok := ToFloat64Safe(dl.data[i])
 		if !ok {
-			log.Println("[insyra] DataList.Var(): Element is not a float64, returning nil.")
+			LogWarning("DataList.Var(): Element is not a float64, returning nil.")
 			return nil
 		}
 		numerator += math.Pow(xi-mean, 2)
@@ -894,20 +905,20 @@ func (dl *DataList) Var() interface{} {
 func (dl *DataList) VarP() interface{} {
 	n := float64(dl.Len())
 	if n == 0.0 {
-		log.Println("[insyra] DataList.VarP(): DataList is empty, returning nil.")
+		LogWarning("DataList.VarP(): DataList is empty, returning nil.")
 		return nil
 	}
 	m := dl.Mean()
 	mean, ok := ToFloat64Safe(m)
 	if !ok {
-		log.Println("[insyra] DataList.VarP(): Mean is not a float64, returning nil.")
+		LogWarning("DataList.VarP(): Mean is not a float64, returning nil.")
 		return nil
 	}
 	numerator := 0.0
 	for i := 0; i < len(dl.data); i++ {
 		xi, ok := ToFloat64Safe(dl.data[i])
 		if !ok {
-			log.Println("[insyra] DataList.VarP(): Element is not a float64, returning nil.")
+			LogWarning("DataList.VarP(): Element is not a float64, returning nil.")
 			return nil
 		}
 		numerator += math.Pow(xi-mean, 2)
@@ -921,7 +932,7 @@ func (dl *DataList) VarP() interface{} {
 // Range returns the range of the DataList.
 func (dl *DataList) Range() interface{} {
 	if len(dl.data) == 0 {
-		log.Println("[insyra] DataList.Range(): DataList is empty, returning nil.")
+		LogWarning("DataList.Range(): DataList is empty, returning nil.")
 		return nil
 	}
 
@@ -935,11 +946,11 @@ func (dl *DataList) Range() interface{} {
 // 1 corresponds to the first quartile (Q1), 2 to the median (Q2), and 3 to the third quartile (Q3).
 func (dl *DataList) Quartile(q int) interface{} {
 	if len(dl.data) == 0 {
-		log.Println("[insyra] DataList.Quartile(): DataList is empty, returning nil.")
+		LogWarning("DataList.Quartile(): DataList is empty, returning nil.")
 		return nil
 	}
 	if q < 1 || q > 3 {
-		log.Println("[insyra] DataList.Quartile(): Invalid quartile value, returning nil.")
+		LogWarning("DataList.Quartile(): Invalid quartile value, returning nil.")
 		return nil
 	}
 
@@ -984,17 +995,17 @@ func (dl *DataList) Quartile(q int) interface{} {
 // Returns nil if the DataList is empty.
 func (dl *DataList) IQR() interface{} {
 	if len(dl.data) == 0 {
-		log.Println("[insyra] DataList.IQR(): DataList is empty, returning nil.")
+		LogWarning("DataList.IQR(): DataList is empty, returning nil.")
 		return nil
 	}
 	q3, ok := ToFloat64Safe(dl.Quartile(3))
 	if !ok {
-		log.Println("[insyra] DataList.IQR(): Q3 is not a float64, returning nil.")
+		LogWarning("DataList.IQR(): Q3 is not a float64, returning nil.")
 		return nil
 	}
 	q1, ok := ToFloat64Safe(dl.Quartile(1))
 	if !ok {
-		log.Println("[insyra] DataList.IQR(): Q1 is not a float64, returning nil.")
+		LogWarning("DataList.IQR(): Q1 is not a float64, returning nil.")
 		return nil
 	}
 	return q3 - q1
@@ -1004,11 +1015,11 @@ func (dl *DataList) IQR() interface{} {
 // Returns the percentile value, or nil if the DataList is empty.
 func (dl *DataList) Percentile(p float64) interface{} {
 	if len(dl.data) == 0 {
-		log.Println("[insyra] DataList.Percentile(): DataList is empty, returning nil.")
+		LogWarning("DataList.Percentile(): DataList is empty, returning nil.")
 		return nil
 	}
 	if p < 0 || p > 100 {
-		log.Println("[insyra] DataList.Percentile(): Invalid percentile value, returning nil.")
+		LogWarning("DataList.Percentile(): Invalid percentile value, returning nil.")
 		return nil
 	}
 
@@ -1043,7 +1054,7 @@ func (dl *DataList) Percentile(p float64) interface{} {
 // ToF64Slice converts the DataList to a float64 slice.
 func (dl *DataList) ToF64Slice() []float64 {
 	if len(dl.data) == 0 {
-		log.Println("[insyra] DataList.ToF64Slice(): DataList is empty, returning nil.")
+		LogWarning("DataList.ToF64Slice(): DataList is empty, returning nil.")
 		return nil
 	}
 
