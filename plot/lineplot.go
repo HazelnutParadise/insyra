@@ -27,7 +27,7 @@ type LinePlotOptions struct {
 }
 
 // NewLinePlot 創建一個新的 LinePlot
-func NewLinePlot(data []float64, options *LinePlotOptions) *LinePlot {
+func NewLinePlot(data []float64, plotter *Plotter, options *LinePlotOptions) *LinePlot {
 	defaultOptions := &LinePlotOptions{
 		LineStyle:       Solid,
 		XLabel:          "X-Axis",
@@ -39,12 +39,16 @@ func NewLinePlot(data []float64, options *LinePlotOptions) *LinePlot {
 		BackgroundColor: color.White,
 	}
 
+	if plotter == nil {
+		plotter = NewPlotter(data, nil)
+	}
+
 	if options != nil {
 		defaultOptions = options
 	}
 
 	return &LinePlot{
-		Plotter: NewPlotter(data, &GeneralOptions{}),
+		Plotter: plotter,
 		Options: defaultOptions,
 	}
 }
