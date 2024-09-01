@@ -68,7 +68,11 @@ The `DataList` type provides a dynamic and generic way to store and manage a col
 
 * **ParseNumbers:** Converts all elements in the DataList to numeric values (float) if possible.
 
-* **ToF64Slice:** Converts the DataList elements to a slice of float64 values. Useful for operations requiring numerical data.
+* **ParseStrings:** Converts all elements in the DataList to string values.
+
+* **ToF64Slice:** Converts the DataList to a slice of float64 values. Useful for operations requiring numerical data.
+
+* **ToStringSlice:** Converts the DataList to a slice of string values.
 
 **Timestamps:**
 

@@ -72,7 +72,9 @@ type IDataList interface {
 	IQR() interface{}
 	Percentile(float64) interface{}
 	ParseNumbers()
+	ParseStrings()
 	ToF64Slice() []float64
+	ToStringSlice() []string
 }
 
 // Data returns the data stored in the DataList.
@@ -1060,8 +1062,22 @@ func (dl *DataList) ParseNumbers() {
 				}
 			}()
 
-			val := conv.ParseF64(v)
-			dl.data[i] = val
+			dl.data[i] = conv.ParseF64(v)
+		}()
+	}
+}
+
+// ParseStrings converts all elements in the DataList to strings.
+func (dl *DataList) ParseStrings() {
+	for i, v := range dl.data {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					LogWarning("DataList.ParseStrings(): Failed to convert %v to string: %v, the element left unchanged.", v, r)
+				}
+			}()
+
+			dl.data[i] = conv.ToString(v)
 		}()
 	}
 }
@@ -1082,6 +1098,23 @@ func (dl *DataList) ToF64Slice() []float64 {
 	}
 
 	return floatData
+}
+
+// ToStringSlice converts the DataList to a string slice.
+// Returns the string slice.
+// Returns nil if the DataList is empty.
+func (dl *DataList) ToStringSlice() []string {
+	if len(dl.data) == 0 {
+		LogWarning("DataList.ToStringSlice(): DataList is empty, returning nil.")
+		return nil
+	}
+
+	stringData := make([]string, len(dl.data))
+	for i, v := range dl.data {
+		stringData[i] = conv.ToString(v)
+	}
+
+	return stringData
 }
 
 // ======================== Timestamp ========================
