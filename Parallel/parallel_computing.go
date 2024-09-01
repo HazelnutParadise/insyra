@@ -19,7 +19,7 @@ func GroupUp(fns ...interface{}) *ParallelGroup {
 	}
 }
 
-// Run starts the execution of all functions in parallel.
+// Run starts the execution of all functions in parallel goroutines.
 func (pg *ParallelGroup) Run() *ParallelGroup {
 	for i, fn := range pg.fns {
 		pg.wg.Add(1)
