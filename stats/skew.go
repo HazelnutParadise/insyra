@@ -26,7 +26,6 @@ const (
 // Skew calculates the skewness(sample) of the DataList.
 // Returns the skewness.
 // Returns nil if the DataList is empty or the skewness cannot be calculated.
-// 錯誤！
 func Skew(sample interface{}, method ...SkewnessMode) interface{} {
 	d, dLen := insyra.ProcessData(sample)
 	d64 := insyra.SliceToF64(d)
