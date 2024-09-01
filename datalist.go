@@ -36,6 +36,7 @@ type IDataList interface {
 	Data() []interface{}
 	Append(values ...interface{})
 	Get(index int) interface{}
+	Count(interface{}) int
 	Update(index int, value interface{})
 	InsertAt(index int, value interface{})
 	FindFirst(interface{}) interface{}
@@ -142,6 +143,15 @@ func (dl *DataList) Get(index int) interface{} {
 	return dl.data[index]
 }
 
+// Count returns the number of occurrences of the specified value in the DataList.
+func (dl *DataList) Count(value interface{}) int {
+	found := dl.FindAll(value)
+	if found == nil {
+		return 0
+	}
+	return len(found)
+}
+
 // Update replaces the value at the specified index with the new value.
 func (dl *DataList) Update(index int, newValue interface{}) {
 	defer func() {
@@ -236,56 +246,12 @@ func (dl *DataList) FindAll(value interface{}) []int {
 		return []int{}
 	}
 
-	// 獲取可用的 CPU 核心數量
-	numGoroutines := runtime.NumCPU()
-
-	// 決定每個線程處理的數據量
-	chunkSize := length / numGoroutines
-	if length%numGoroutines != 0 {
-		chunkSize++
-	}
-
-	var tasks []asyncutil.Task
-
-	// 創建並行任務
-	for i := 0; i < numGoroutines; i++ {
-		start := i * chunkSize
-		end := start + chunkSize
-		if end > length {
-			end = length
-		}
-
-		task := asyncutil.Task{
-			ID: fmt.Sprintf("task-%d", i),
-			Fn: func(dataChunk []interface{}, startIndex int) []int {
-				var localIndices []int
-				for j, v := range dataChunk {
-					if v == value {
-						localIndices = append(localIndices, startIndex+j)
-					}
-				}
-				return localIndices
-			},
-			Args: []interface{}{dl.data[start:end], start},
-		}
-
-		tasks = append(tasks, task)
-	}
-
-	// 使用 ParallelProcess 來處理所有任務
-	taskResults := asyncutil.ParallelProcess(tasks)
-
 	var indices []int
-	for _, result := range taskResults {
-		if len(result.Results) > 0 {
-			indices = append(indices, result.Results[0].([]int)...)
+	for i, v := range dl.data {
+		if v == value {
+			indices = append(indices, i)
 		}
 	}
-
-	if len(indices) == 0 {
-		LogWarning("FindAll(): Value not found, returning an empty slice.")
-	}
-
 	return indices
 }
 
