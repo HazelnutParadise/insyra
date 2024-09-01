@@ -2,8 +2,8 @@
 package plot
 
 type LinePlot struct {
-	plotter         *Plotter
-	linePlotOptions *LinePlotOptions
+	*Plotter
+	Options *LinePlotOptions
 }
 
 type LinePlotOptions struct {
