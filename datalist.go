@@ -63,9 +63,9 @@ type IDataList interface {
 	GMean() interface{}
 	Median(highPrecision ...bool) interface{}
 	Mode() interface{}
-	Stdev() interface{}
+	Stdev(highPrecision ...bool) interface{}
 	StdevP() interface{}
-	Var() interface{}
+	Var(highPrecision ...bool) interface{}
 	VarP() interface{}
 	Range() interface{}
 	Quartile(int) interface{}
@@ -1019,16 +1019,39 @@ func (dl *DataList) Mode() interface{} {
 // Returns the standard deviation.
 // Returns nil if the DataList is empty.
 // Stdev returns the standard deviation of the DataList.
-func (dl *DataList) Stdev() interface{} {
+func (dl *DataList) Stdev(highPrecision ...bool) interface{} {
 	if len(dl.data) == 0 {
 		LogWarning("DataList.Stdev(): DataList is empty, returning nil.")
 		return nil
 	}
-	variance := dl.Var()
+
+	// 判斷是否使用高精度模式
+	useHighPrecision := len(highPrecision) == 1 && highPrecision[0]
+	if len(highPrecision) > 1 {
+		LogWarning("DataList.Stdev(): Too many arguments, returning nil.")
+		return nil
+	}
+
+	var variance interface{}
+	if useHighPrecision {
+		variance = dl.Var(true)
+	} else {
+		variance = dl.Var(false)
+	}
+
 	if variance == nil {
 		LogWarning("DataList.Stdev(): Variance calculation failed, returning nil.")
 		return nil
 	}
+
+	if useHighPrecision {
+		// 高精度模式下使用 big.Rat 進行開方運算
+		varianceRat := variance.(*big.Rat)
+		sqrtVariance := SqrtRat(varianceRat)
+		return sqrtVariance
+	}
+
+	// 普通模式下使用 float64 計算
 	return math.Sqrt(ToFloat64(variance))
 }
 
@@ -1051,19 +1074,46 @@ func (dl *DataList) StdevP() interface{} {
 // Var calculates the variance(sample) of the DataList.
 // Returns the variance.
 // Returns nil if the DataList is empty or the variance cannot be calculated.
-func (dl *DataList) Var() interface{} {
+func (dl *DataList) Var(highPrecision ...bool) interface{} {
 	n := float64(dl.Len())
 	if n == 0.0 {
 		LogWarning("DataList.Var(): DataList is empty, returning nil.")
 		return nil
 	}
-	m := dl.Mean()
-	mean, ok := ToFloat64Safe(m)
-	if !ok {
-		LogWarning("DataList.Var(): Mean is not a float64, returning nil.")
+
+	// 判斷是否使用高精度模式
+	useHighPrecision := len(highPrecision) == 1 && highPrecision[0]
+	if len(highPrecision) > 1 {
+		LogWarning("DataList.Var(): Too many arguments, returning nil.")
 		return nil
 	}
 
+	if useHighPrecision {
+		// 使用 big.Rat 進行高精度計算
+		mean := dl.Mean(true).(*big.Rat)
+		denominator := new(big.Rat).SetFloat64(n - 1)
+		if denominator.Cmp(big.NewRat(0, 1)) == 0 {
+			LogWarning("DataList.Var(): Denominator is 0, returning nil.")
+			return nil
+		}
+		numerator := new(big.Rat)
+		for i := 0; i < len(dl.data); i++ {
+			xi, ok := ToFloat64Safe(dl.data[i])
+			if !ok {
+				LogWarning("DataList.Var(): Element is not a float64, returning nil.")
+				return nil
+			}
+			ratXi := new(big.Rat).SetFloat64(xi)
+			diff := new(big.Rat).Sub(ratXi, mean)
+			squareDiff := new(big.Rat).Mul(diff, diff)
+			numerator.Add(numerator, squareDiff)
+		}
+		variance := new(big.Rat).Quo(numerator, denominator)
+		return variance
+	}
+
+	// 普通模式使用 float64 計算
+	mean := dl.Mean(false).(float64)
 	denominator := n - 1
 	if denominator == 0 {
 		LogWarning("DataList.Var(): Denominator is 0, returning nil.")

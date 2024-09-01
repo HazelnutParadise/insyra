@@ -1,6 +1,8 @@
 package insyra
 
 import (
+	"math/big"
+
 	"github.com/HazelnutParadise/Go-Utils/conv"
 )
 
@@ -79,4 +81,17 @@ func ProcessData(input interface{}) ([]interface{}, int) {
 	}
 
 	return data, len(data)
+}
+
+func SqrtRat(x *big.Rat) *big.Rat {
+	// 將 *big.Rat 轉換為 *big.Float
+	floatValue := new(big.Float).SetRat(x)
+
+	// 計算平方根
+	sqrtValue := new(big.Float).Sqrt(floatValue)
+
+	// 將 *big.Float 轉換為 *big.Rat
+	result := new(big.Rat)
+	sqrtXRat, _ := sqrtValue.Rat(result)
+	return sqrtXRat
 }
