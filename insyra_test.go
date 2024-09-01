@@ -1,9 +1,20 @@
 package insyra
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 )
+
+func TestProcessData(t *testing.T) {
+	dl := NewDataList(1, 2, 3)
+	_, ok := interface{}(dl).(IDataList)
+	if !ok {
+		fmt.Println("DataList does not implement IDataList")
+	} else {
+		fmt.Println("DataList implements IDataList")
+	}
+}
 
 // 測試 NewDataList 函數
 func TestNewDataList(t *testing.T) {
