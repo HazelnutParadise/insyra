@@ -21,7 +21,7 @@ jobs:
         go-version: 1.21
 
     - name: Install dependencies
-      run: go mod tidy&&go get .
+      run: rm go.sum&&go mod tidy&&go get .
 
     - name: Run tests
       run: go test -v ./...
