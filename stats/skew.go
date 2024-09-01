@@ -1,6 +1,8 @@
 package stats
 
 import (
+	"math/big"
+
 	"github.com/HazelnutParadise/insyra"
 )
 
@@ -53,22 +55,24 @@ func Skew(sample interface{}, method ...string) interface{} {
 
 // ======================== calculation functions ========================
 func calculateSkewPearson(sample insyra.IDataList) interface{} {
-	mean := sample.Mean()
-	median := sample.Median()
+	mean := new(big.Rat).SetFloat64(sample.Mean().(float64))
+	median := new(big.Rat).SetFloat64(sample.Median().(float64))
 	if mean == nil || median == nil {
 		insyra.LogWarning("DataList.Skew(): Mean or median is nil, returning nil.")
 		return nil
 	}
-	numerator := 3 * (mean.(float64) - median.(float64))
-	denominator := sample.Stdev().(float64)
-	if denominator == 0.0 {
+	THREE := new(big.Rat).SetInt64(3)
+	numerator := new(big.Rat).Mul(THREE, new(big.Rat).Sub(mean, median))
+	denominator := new(big.Rat).SetFloat64(sample.Stdev().(float64))
+	if denominator == new(big.Rat).SetFloat64(0.0) {
 		insyra.LogWarning("DataList.Skew(): Denominator is 0, returning nil.")
 		return nil
 	}
 
-	result := numerator / denominator
+	result := new(big.Rat).Quo(numerator, denominator)
+	f64Result, _ := result.Float64()
 
-	return result
+	return f64Result
 }
 
 func calculateSkewMoments(sample insyra.IDataList) interface{} {
