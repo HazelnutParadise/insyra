@@ -21,13 +21,12 @@ type DataList struct {
 	creationTimestamp     int64
 	lastModifiedTimestamp int64
 	// 記憶體管理
-	refCount       int
-	mu             sync.Mutex
-	needReorganize bool
+	mu sync.Mutex
 }
 
 // IDataList defines the behavior expected from a DataList.
 type IDataList interface {
+	isFragmented() bool
 	GetCreationTimestamp() int64
 	GetLastModifiedTimestamp() int64
 	updateTimestamp()
@@ -79,6 +78,9 @@ type IDataList interface {
 
 // Data returns the data stored in the DataList.
 func (dl *DataList) Data() []interface{} {
+	defer func() {
+		go reorganizeMemory(dl)
+	}()
 	return dl.data
 }
 
@@ -86,13 +88,13 @@ func (dl *DataList) Data() []interface{} {
 // and flattens the input before storing it.
 func NewDataList(values ...interface{}) *DataList {
 	flatData, _ := sliceutil.Flatten[interface{}](values)
+	continuousMemData := make([]interface{}, len(flatData))
+	copy(continuousMemData, flatData)
 	dl := &DataList{
-		data:                  flatData,
-		refCount:              1,
+		data:                  continuousMemData,
 		creationTimestamp:     time.Now().Unix(),
 		lastModifiedTimestamp: time.Now().Unix(),
 	}
-	GetMemoryManager().Register(dl)
 	return dl
 }
 
@@ -100,17 +102,15 @@ func NewDataList(values ...interface{}) *DataList {
 // The value can be of any type.
 // The value is appended to the end of the DataList.
 func (dl *DataList) Append(value interface{}) {
+	defer func() {
+		dl.mu.Unlock()
+		go reorganizeMemory(dl)
+	}()
 	dl.mu.Lock()
-	defer dl.mu.Unlock()
 
 	// Append data and update timestamp
 	dl.data = append(dl.data, value)
-	dl.updateTimestamp()
-
-	// Check if memory reorganization is needed
-	if dl.isFragmented() {
-		dl.needReorganize = true
-	}
+	go dl.updateTimestamp()
 }
 
 // Get retrieves the value at the specified index in the DataList.
@@ -118,7 +118,16 @@ func (dl *DataList) Append(value interface{}) {
 // Returns nil if the index is out of bounds.
 // Returns the value at the specified index.
 func (dl *DataList) Get(index int) interface{} {
-	if index < -len(dl.data) || index >= len(dl.data) {
+	defer func() {
+		dl.mu.Unlock()
+		go reorganizeMemory(dl)
+	}()
+	dl.mu.Lock()
+	// 支持負索引
+	if index < 0 {
+		index += len(dl.data)
+	}
+	if index < 0 || index >= len(dl.data) {
 		LogWarning("DataList.Get(): Index out of bounds, returning nil.")
 		return nil
 	}
@@ -127,6 +136,11 @@ func (dl *DataList) Get(index int) interface{} {
 
 // Update replaces the value at the specified index with the new value.
 func (dl *DataList) Update(index int, newValue interface{}) {
+	defer func() {
+		dl.mu.Unlock()
+		go reorganizeMemory(dl)
+	}()
+	dl.mu.Lock()
 	if index < 0 {
 		index += len(dl.data)
 	}
@@ -140,6 +154,11 @@ func (dl *DataList) Update(index int, newValue interface{}) {
 // InsertAt inserts a value at the specified index in the DataList.
 // If the index is out of bounds, the value is appended to the end of the list.
 func (dl *DataList) InsertAt(index int, value interface{}) {
+	defer func() {
+		dl.mu.Unlock()
+		go reorganizeMemory(dl)
+	}()
+	dl.mu.Lock()
 	// Handle negative index
 	if index < 0 {
 		index += len(dl.data) + 1
@@ -164,6 +183,11 @@ func (dl *DataList) InsertAt(index int, value interface{}) {
 // FindFirst returns the index of the first occurrence of the specified value in the DataList.
 // If the value is not found, it returns nil.
 func (dl *DataList) FindFirst(value interface{}) interface{} {
+	defer func() {
+		dl.mu.Unlock()
+		go reorganizeMemory(dl)
+	}()
+	dl.mu.Lock()
 	for i, v := range dl.data {
 		if v == value {
 			return i
@@ -176,6 +200,11 @@ func (dl *DataList) FindFirst(value interface{}) interface{} {
 // FindLast returns the index of the last occurrence of the specified value in the DataList.
 // If the value is not found, it returns nil.
 func (dl *DataList) FindLast(value interface{}) interface{} {
+	defer func() {
+		dl.mu.Unlock()
+		go reorganizeMemory(dl)
+	}()
+	dl.mu.Lock()
 	for i := len(dl.data) - 1; i >= 0; i-- {
 		if dl.data[i] == value {
 			return i
@@ -188,6 +217,11 @@ func (dl *DataList) FindLast(value interface{}) interface{} {
 // FindAll returns a slice of all the indices where the specified value is found in the DataList using parallel processing.
 // If the value is not found, it returns an empty slice.
 func (dl *DataList) FindAll(value interface{}) []int {
+	defer func() {
+		dl.mu.Unlock()
+		go reorganizeMemory(dl)
+	}()
+	dl.mu.Lock()
 	length := len(dl.data)
 	if length == 0 {
 		LogWarning("FindAll(): DataList is empty, returning an empty slice.")
@@ -250,6 +284,11 @@ func (dl *DataList) FindAll(value interface{}) []int {
 // Filter filters the DataList based on a custom filter function provided by the user.
 // The filter function should return true for elements that should be included in the result.
 func (dl *DataList) Filter(filterFunc func(interface{}) bool) *DataList {
+	defer func() {
+		dl.mu.Unlock()
+		go reorganizeMemory(dl)
+	}()
+	dl.mu.Lock()
 	filteredData := []interface{}{}
 
 	for _, v := range dl.data {
@@ -263,6 +302,11 @@ func (dl *DataList) Filter(filterFunc func(interface{}) bool) *DataList {
 
 // ReplaceFirst replaces the first occurrence of oldValue with newValue.
 func (dl *DataList) ReplaceFirst(oldValue, newValue interface{}) {
+	defer func() {
+		dl.mu.Unlock()
+		go reorganizeMemory(dl)
+	}()
+	dl.mu.Lock()
 	for i, v := range dl.data {
 		if v == oldValue {
 			dl.data[i] = newValue
@@ -274,6 +318,11 @@ func (dl *DataList) ReplaceFirst(oldValue, newValue interface{}) {
 
 // ReplaceLast replaces the last occurrence of oldValue with newValue.
 func (dl *DataList) ReplaceLast(oldValue, newValue interface{}) {
+	defer func() {
+		dl.mu.Unlock()
+		go reorganizeMemory(dl)
+	}()
+	dl.mu.Lock()
 	for i := len(dl.data) - 1; i >= 0; i-- {
 		if dl.data[i] == oldValue {
 			dl.data[i] = newValue
@@ -286,6 +335,11 @@ func (dl *DataList) ReplaceLast(oldValue, newValue interface{}) {
 // ReplaceAll replaces all occurrences of oldValue with newValue in the DataList.
 // If oldValue is not found, no changes are made.
 func (dl *DataList) ReplaceAll(oldValue, newValue interface{}) {
+	defer func() {
+		dl.mu.Unlock()
+		go reorganizeMemory(dl)
+	}()
+	dl.mu.Lock()
 	length := len(dl.data)
 	if length == 0 {
 		LogWarning("ReplaceAll(): DataList is empty, no replacements made.")
@@ -347,6 +401,11 @@ func (dl *DataList) ReplaceAll(oldValue, newValue interface{}) {
 // Returns the last element.
 // Returns nil if the DataList is empty.
 func (dl *DataList) Pop() interface{} {
+	defer func() {
+		dl.mu.Unlock()
+		go reorganizeMemory(dl)
+	}()
+	dl.mu.Lock()
 	n, err := sliceutil.Drt_PopFrom(&dl.data)
 	if err != nil {
 		LogWarning("DataList.Pop(): DataList is empty, returning nil.")
@@ -359,6 +418,11 @@ func (dl *DataList) Pop() interface{} {
 // Drop removes the element at the specified index from the DataList and updates the timestamp.
 // Returns an error if the index is out of bounds.
 func (dl *DataList) Drop(index int) {
+	defer func() {
+		dl.mu.Unlock()
+		go reorganizeMemory(dl)
+	}()
+	dl.mu.Lock()
 	if index < 0 {
 		index += len(dl.data)
 	}
@@ -373,6 +437,11 @@ func (dl *DataList) Drop(index int) {
 // DropAll removes all occurrences of the specified values from the DataList.
 // Supports multiple values to drop.
 func (dl *DataList) DropAll(toDrop ...interface{}) {
+	defer func() {
+		dl.mu.Unlock()
+		go reorganizeMemory(dl)
+	}()
+	dl.mu.Lock()
 	length := len(dl.data)
 	if length == 0 {
 		return
@@ -441,6 +510,11 @@ func (dl *DataList) DropAll(toDrop ...interface{}) {
 
 // Clear removes all elements from the DataList and updates the timestamp.
 func (dl *DataList) Clear() {
+	defer func() {
+		dl.mu.Unlock()
+		go reorganizeMemory(dl)
+	}()
+	dl.mu.Lock()
 	dl.data = []interface{}{}
 	go dl.updateTimestamp()
 }
@@ -451,6 +525,11 @@ func (dl *DataList) Len() int {
 
 // ClearStrings removes all string elements from the DataList and updates the timestamp.
 func (dl *DataList) ClearStrings() {
+	defer func() {
+		dl.mu.Unlock()
+		go reorganizeMemory(dl)
+	}()
+	dl.mu.Lock()
 	length := len(dl.data)
 	if length == 0 {
 		return
@@ -510,6 +589,11 @@ func (dl *DataList) ClearStrings() {
 
 // ClearNumbers removes all numeric elements (int, float, etc.) from the DataList and updates the timestamp.
 func (dl *DataList) ClearNumbers() {
+	defer func() {
+		dl.mu.Unlock()
+		go reorganizeMemory(dl)
+	}()
+	dl.mu.Lock()
 	filteredData := dl.data[:0] // Create a new slice with the same length as the original
 
 	for _, v := range dl.data {
@@ -531,6 +615,11 @@ func (dl *DataList) ClearNumbers() {
 // It handles string, numeric (including all integer and float types), and time data types.
 // If sorting fails, it restores the original order.
 func (dl *DataList) Sort(ascending ...bool) {
+	defer func() {
+		dl.mu.Unlock()
+		go reorganizeMemory(dl)
+	}()
+	dl.mu.Lock()
 	if len(dl.data) == 0 {
 		LogWarning("DataList.Sort(): DataList is empty, returning.")
 		return
@@ -594,11 +683,21 @@ func (dl *DataList) Sort(ascending ...bool) {
 
 // Reverse reverses the order of the elements in the DataList.
 func (dl *DataList) Reverse() {
+	defer func() {
+		dl.mu.Unlock()
+		go reorganizeMemory(dl)
+	}()
+	dl.mu.Lock()
 	sliceutil.Reverse(dl.data)
 }
 
 // Upper converts all string elements in the DataList to uppercase.
 func (dl *DataList) Upper() {
+	defer func() {
+		dl.mu.Unlock()
+		go reorganizeMemory(dl)
+	}()
+	dl.mu.Lock()
 	for i, v := range dl.data {
 		if str, ok := v.(string); ok {
 			dl.data[i] = strings.ToUpper(str)
@@ -609,6 +708,11 @@ func (dl *DataList) Upper() {
 
 // Lower converts all string elements in the DataList to lowercase.
 func (dl *DataList) Lower() {
+	defer func() {
+		dl.mu.Unlock()
+		go reorganizeMemory(dl)
+	}()
+	dl.mu.Lock()
 	for i, v := range dl.data {
 		if str, ok := v.(string); ok {
 			dl.data[i] = strings.ToLower(str)
@@ -619,6 +723,11 @@ func (dl *DataList) Lower() {
 
 // Capitalize capitalizes the first letter of each string element in the DataList.
 func (dl *DataList) Capitalize() {
+	defer func() {
+		dl.mu.Unlock()
+		go reorganizeMemory(dl)
+	}()
+	dl.mu.Lock()
 	for i, v := range dl.data {
 		if str, ok := v.(string); ok {
 			dl.data[i] = strings.Title(strings.ToLower(str))
@@ -1054,6 +1163,11 @@ func (dl *DataList) Percentile(p float64) interface{} {
 // ParseNumbers attempts to parse all string elements in the DataList to numeric types.
 // If parsing fails, the element is left unchanged.
 func (dl *DataList) ParseNumbers() {
+	defer func() {
+		dl.mu.Unlock()
+		go reorganizeMemory(dl)
+	}()
+	dl.mu.Lock()
 	for i, v := range dl.data {
 		func() {
 			defer func() {
@@ -1069,6 +1183,11 @@ func (dl *DataList) ParseNumbers() {
 
 // ParseStrings converts all elements in the DataList to strings.
 func (dl *DataList) ParseStrings() {
+	defer func() {
+		dl.mu.Unlock()
+		go reorganizeMemory(dl)
+	}()
+	dl.mu.Lock()
 	for i, v := range dl.data {
 		func() {
 			defer func() {
@@ -1087,6 +1206,11 @@ func (dl *DataList) ParseStrings() {
 // Returns nil if the DataList is empty.
 // ToF64Slice converts the DataList to a float64 slice.
 func (dl *DataList) ToF64Slice() []float64 {
+	defer func() {
+		dl.mu.Unlock()
+		go reorganizeMemory(dl)
+	}()
+	dl.mu.Lock()
 	if len(dl.data) == 0 {
 		LogWarning("DataList.ToF64Slice(): DataList is empty, returning nil.")
 		return nil
@@ -1104,6 +1228,11 @@ func (dl *DataList) ToF64Slice() []float64 {
 // Returns the string slice.
 // Returns nil if the DataList is empty.
 func (dl *DataList) ToStringSlice() []string {
+	defer func() {
+		dl.mu.Unlock()
+		go reorganizeMemory(dl)
+	}()
+	dl.mu.Lock()
 	if len(dl.data) == 0 {
 		LogWarning("DataList.ToStringSlice(): DataList is empty, returning nil.")
 		return nil
@@ -1139,8 +1268,24 @@ func (dl *DataList) GetName() string {
 	return dl.name
 }
 
-func (dl *DataList) SetName(name string) {
-	// 未來可限制名稱
-	dl.name = name
+func (dl *DataList) SetName(newName string) {
+	nm := getNameManager()
+
+	// 鎖定 DataList 以確保名稱設置過程的同步性
+	dl.mu.Lock()
+	defer dl.mu.Unlock()
+
+	// 檢查並註冊新名稱
+	if err := nm.registerName(newName); err != nil {
+		LogWarning("DataList.SetName(): %v, remaining the old name.", err)
+		return
+	}
+
+	// 解除舊名稱的註冊（如果已有名稱）
+	if dl.name != "" {
+		nm.unregisterName(dl.name)
+	}
+
+	dl.name = newName
 	go dl.updateTimestamp()
 }
