@@ -3,13 +3,11 @@ package insyra
 import (
 	"reflect"
 	"testing"
-
-	"github.com/HazelnutParadise/insyra"
 )
 
 // 測試 NewDataList 函數
 func TestNewDataList(t *testing.T) {
-	dl := insyra.NewDataList(1, 2, 3)
+	dl := NewDataList(1, 2, 3)
 	if dl.Len() != 3 {
 		t.Errorf("Expected length 3, got %d", dl.Len())
 	}
@@ -22,7 +20,7 @@ func TestNewDataList(t *testing.T) {
 
 // 測試 Append 函數
 func TestAppend(t *testing.T) {
-	dl := insyra.NewDataList()
+	dl := NewDataList()
 	dl.Append(1)
 	dl.Append(2)
 
@@ -34,7 +32,7 @@ func TestAppend(t *testing.T) {
 
 // 測試 Get 函數
 func TestGet(t *testing.T) {
-	dl := insyra.NewDataList(1, 2, 3)
+	dl := NewDataList(1, 2, 3)
 	val := dl.Get(1)
 	if val != 2 {
 		t.Errorf("Expected value 2, got %v", val)
@@ -53,7 +51,7 @@ func TestGet(t *testing.T) {
 
 // 測試 Update 函數
 func TestUpdate(t *testing.T) {
-	dl := insyra.NewDataList(1, 2, 3)
+	dl := NewDataList(1, 2, 3)
 	dl.Update(1, 5)
 
 	expected := []interface{}{1, 5, 3}
@@ -64,7 +62,7 @@ func TestUpdate(t *testing.T) {
 
 // 測試 InsertAt 函數
 func TestInsertAt(t *testing.T) {
-	dl := insyra.NewDataList(1, 2, 3)
+	dl := NewDataList(1, 2, 3)
 	dl.InsertAt(1, 5)
 
 	expected := []interface{}{1, 5, 2, 3}
@@ -81,7 +79,7 @@ func TestInsertAt(t *testing.T) {
 
 // 測試 FindFirst 函數
 func TestFindFirst(t *testing.T) {
-	dl := insyra.NewDataList(1, 2, 3, 2)
+	dl := NewDataList(1, 2, 3, 2)
 	index := dl.FindFirst(2)
 
 	if index != 1 {
@@ -91,7 +89,7 @@ func TestFindFirst(t *testing.T) {
 
 // 測試 FindLast 函數
 func TestFindLast(t *testing.T) {
-	dl := insyra.NewDataList(1, 2, 3, 2)
+	dl := NewDataList(1, 2, 3, 2)
 	index := dl.FindLast(2)
 
 	if index != 3 {
@@ -101,7 +99,7 @@ func TestFindLast(t *testing.T) {
 
 // 測試 Drop 函數
 func TestDrop(t *testing.T) {
-	dl := insyra.NewDataList(1, 2, 3, 4)
+	dl := NewDataList(1, 2, 3, 4)
 	dl.Drop(2)
 
 	expected := []interface{}{1, 2, 4}
@@ -112,7 +110,7 @@ func TestDrop(t *testing.T) {
 
 // 測試 Clear 函數
 func TestClear(t *testing.T) {
-	dl := insyra.NewDataList(1, 2, 3, 4)
+	dl := NewDataList(1, 2, 3, 4)
 	dl.Clear()
 
 	if dl.Len() != 0 {
@@ -122,7 +120,7 @@ func TestClear(t *testing.T) {
 
 // 測試 Max 函數
 func TestMax(t *testing.T) {
-	dl := insyra.NewDataList(1, 2, 3, 4)
+	dl := NewDataList(1, 2, 3, 4)
 	max := dl.Max()
 
 	if max != 4 {
@@ -132,7 +130,7 @@ func TestMax(t *testing.T) {
 
 // 測試 Min 函數
 func TestMin(t *testing.T) {
-	dl := insyra.NewDataList(1, 2, 3, 4)
+	dl := NewDataList(1, 2, 3, 4)
 	min := dl.Min()
 
 	if min != 1 {
@@ -142,7 +140,7 @@ func TestMin(t *testing.T) {
 
 // 測試 Mean 函數
 func TestMean(t *testing.T) {
-	dl := insyra.NewDataList(1, 2, 3, 4)
+	dl := NewDataList(1, 2, 3, 4)
 	mean := dl.Mean()
 
 	if mean != 2.5 {
@@ -152,7 +150,7 @@ func TestMean(t *testing.T) {
 
 // 測試 SetName 和 GetName 函數
 func TestSetName(t *testing.T) {
-	dl := insyra.NewDataList(1, 2, 3, 4)
+	dl := NewDataList(1, 2, 3, 4)
 	dl.SetName("TestName")
 
 	if dl.GetName() != "TestName" {
