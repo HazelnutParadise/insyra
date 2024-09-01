@@ -19,6 +19,12 @@ type GeneralOptions struct {
 	BackgroundColor color.Color // 背景顏色
 }
 
+// Plot is an interface that defines the methods for plotting
+type Plot interface {
+	Draw()
+	Save(outputFile string)
+}
+
 // NewPlotter creates a new Plotter instance
 func NewPlotter(data interface{}, options *GeneralOptions) *Plotter {
 	defaultOptions := &GeneralOptions{
