@@ -4,10 +4,10 @@ import (
 	"image/color"
 	"os"
 
-	"github.com/HazelnutParadise/insyra" // 假設 insyra 是你的主包
+	"github.com/HazelnutParadise/insyra"
 )
 
-// Plotter 是畫圖包的主要結構
+// Plotter is a struct that contains the data to be plotted
 type Plotter struct {
 	data   *insyra.DataList
 	title  string
@@ -16,7 +16,7 @@ type Plotter struct {
 	color  color.Color
 }
 
-// NewPlotter 創建一個新的 Plotter
+// NewPlotter creates a new Plotter instance
 func NewPlotter(data *insyra.DataList, title, xLabel, yLabel string, color color.Color) *Plotter {
 	return &Plotter{
 		data:   data,
@@ -27,14 +27,14 @@ func NewPlotter(data *insyra.DataList, title, xLabel, yLabel string, color color
 	}
 }
 
-// LinePlot 畫出折線圖
+// LinePlot draws a line plot
 func (p *Plotter) LinePlot(outputFile string) error {
 	// 這裡實現折線圖繪製的邏輯
 	// 使用第三方包或者原生的 Go 庫來處理圖形繪製
 	return nil
 }
 
-// BarPlot 畫出柱狀圖
+// BarPlot draws a bar plot
 func (p *Plotter) BarPlot(outputFile string) error {
 	// 這裡實現柱狀圖繪製的邏輯
 	return nil
