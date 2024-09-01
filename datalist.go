@@ -57,6 +57,7 @@ type IDataList interface {
 	Upper()
 	Lower()
 	Capitalize()
+	Sum() interface{}
 	Max() interface{}
 	Min() interface{}
 	Mean(highPrecision ...bool) interface{}
@@ -744,6 +745,24 @@ func (dl *DataList) Capitalize() {
 }
 
 // ======================== Statistics ========================
+
+func (dl *DataList) Sum() interface{} {
+	if len(dl.data) == 0 {
+		LogWarning("DataList.Sum(): DataList is empty, returning nil.")
+		return nil
+	}
+	var sum float64
+	for _, v := range dl.data {
+		vfloat, ok := ToFloat64Safe(v)
+		if !ok {
+			LogWarning("DataList.Sum(): Data types cannot be compared, returning nil.")
+			return nil
+		}
+		sum += vfloat
+	}
+
+	return sum
+}
 
 // Max returns the maximum value in the DataList.
 // Returns the maximum value.
