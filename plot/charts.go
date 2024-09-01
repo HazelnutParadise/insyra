@@ -7,8 +7,7 @@ type LinePlot struct {
 }
 
 type LinePlotOptions struct {
-	GerenalOptions *GeneralOptions
-	LineStyle      LineStyle
-	XLabel         string
-	YLabel         string
+	LineStyle LineStyle
+	XLabel    string
+	YLabel    string
 }
