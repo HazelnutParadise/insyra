@@ -1,6 +1,7 @@
 # Insyra
 
 A Golang data analysis library.
+[![Test Status](https://github.com/HazelnutParadise/insyra/actions/workflows/test_code.yml/badge.svg)](https://github.com/HazelnutParadise/insyra/actions/workflows/test_code.yml)
 
 ## Overview
 
