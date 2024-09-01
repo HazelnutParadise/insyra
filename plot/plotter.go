@@ -36,13 +36,6 @@ func NewPlotter(data interface{}, options *GeneralOptions) *Plotter {
 	}
 }
 
-// LinePlot draws a line plot
-func (p *Plotter) LinePlot(outputFile string) error {
-	// 這裡實現折線圖繪製的邏輯
-	// 使用第三方包或者原生的 Go 庫來處理圖形繪製
-	return nil
-}
-
 // BarPlot draws a bar plot
 func (p *Plotter) BarPlot(outputFile string) error {
 	// 這裡實現柱狀圖繪製的邏輯
