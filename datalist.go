@@ -3,6 +3,7 @@ package insyra
 import (
 	"fmt"
 	"math"
+	"math/big"
 	"runtime"
 	"sort"
 	"strings"
@@ -58,9 +59,9 @@ type IDataList interface {
 	Capitalize()
 	Max() interface{}
 	Min() interface{}
-	Mean() interface{}
+	Mean(highPrecision ...bool) interface{}
 	GMean() interface{}
-	Median() interface{}
+	Median(highPrecision ...bool) interface{}
 	Mode() interface{}
 	Stdev() interface{}
 	StdevP() interface{}
@@ -856,15 +857,46 @@ func (dl *DataList) Min() interface{} {
 }
 
 // Mean calculates the arithmetic mean of the DataList.
-// Returns the arithmetic mean.
-// Returns nil if the DataList is empty.
-// Mean returns the arithmetic mean of the DataList.
-func (dl *DataList) Mean() interface{} {
+// If highPrecision is true, it will calculate using big.Rat for high precision.
+// Otherwise, it calculates using float64.
+// Returns nil if the DataList is empty or if an invalid number of parameters is provided.
+func (dl *DataList) Mean(highPrecision ...bool) interface{} {
 	if len(dl.data) == 0 {
 		LogWarning("DataList.Mean(): DataList is empty, returning nil.")
 		return nil
 	}
 
+	// 檢查參數數量
+	if len(highPrecision) > 1 {
+		LogWarning("DataList.Mean(): Too many arguments, returning nil.")
+		return nil
+	}
+
+	// 默認使用普通模式（float64），若有參數則使用參數設定
+	highPrecisionMode := false
+	if len(highPrecision) == 1 {
+		highPrecisionMode = highPrecision[0]
+	}
+
+	if highPrecisionMode {
+		sum := new(big.Rat)
+		count := big.NewRat(int64(len(dl.data)), 1)
+
+		for _, v := range dl.data {
+			if val, ok := ToFloat64Safe(v); ok {
+				ratValue := new(big.Rat).SetFloat64(val)
+				sum.Add(sum, ratValue)
+			} else {
+				LogWarning("DataList.Mean(): Data types cannot be compared, returning nil.")
+				return nil
+			}
+		}
+
+		mean := new(big.Rat).Quo(sum, count)
+		return mean
+	}
+
+	// 普通模式（float64）
 	var sum float64
 	for _, v := range dl.data {
 		if val, ok := ToFloat64Safe(v); ok {
@@ -904,23 +936,56 @@ func (dl *DataList) GMean() interface{} {
 // Median calculates the median of the DataList.
 // Returns the median.
 // Returns nil if the DataList is empty.
-// Median returns the median of the DataList.
-func (dl *DataList) Median() interface{} {
+// Turn on highPrecision to return a big.Rat instead of a float64.
+func (dl *DataList) Median(highPrecision ...bool) interface{} {
 	if len(dl.data) == 0 {
 		LogWarning("DataList.Median(): DataList is empty, returning nil.")
 		return nil
 	}
 
+	// 檢查參數數量
+	if len(highPrecision) > 1 {
+		LogWarning("DataList.Median(): Too many arguments, returning nil.")
+		return nil
+	}
+
+	// 對數據進行排序
 	sortedData := make([]interface{}, len(dl.data))
 	copy(sortedData, dl.data)
 	dl.Sort()
 
 	mid := len(sortedData) / 2
+	useHighPrecision := len(highPrecision) == 1 && highPrecision[0]
+
 	if len(sortedData)%2 == 0 {
-		return (ToFloat64(sortedData[mid-1]) + ToFloat64(sortedData[mid])) / 2
+		// 當元素個數為偶數時，返回中間兩個數的平均值
+		mid1 := ToFloat64(sortedData[mid-1])
+		mid2 := ToFloat64(sortedData[mid])
+
+		if useHighPrecision {
+			// 使用 big.Rat 進行精確的有理數運算
+			ratMid1 := new(big.Rat).SetFloat64(mid1)
+			ratMid2 := new(big.Rat).SetFloat64(mid2)
+
+			// 計算平均值
+			sum := new(big.Rat).Add(ratMid1, ratMid2)
+			mean := new(big.Rat).Quo(sum, big.NewRat(2, 1))
+
+			// 返回高精度結果
+			return mean
+		} else {
+			// 使用 float64 計算並返回
+			return (mid1 + mid2) / 2
+		}
 	}
 
-	return ToFloat64(sortedData[mid])
+	// 當元素個數為奇數時，返回中間的那個數
+	midValue := ToFloat64(sortedData[mid])
+	if useHighPrecision {
+		return new(big.Rat).SetFloat64(midValue)
+	}
+
+	return midValue
 }
 
 // Mode calculates the mode of the DataList.
