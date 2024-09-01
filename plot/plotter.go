@@ -3,27 +3,50 @@ package plot
 import (
 	"image/color"
 	"os"
-
-	"github.com/HazelnutParadise/insyra"
 )
 
 // Plotter is a struct that contains the data to be plotted
 type Plotter struct {
-	data   *insyra.DataList
-	title  string
-	xLabel string
-	yLabel string
-	color  color.Color
+	data    interface{} // 要繪製的數據
+	title   string      // 圖表標題
+	options Options     // 圖表選項
 }
 
+type Options struct {
+	Title           string      // 圖表標題
+	XLabel          string      // X軸標籤
+	YLabel          string      // Y軸標籤
+	Style           PlotStyle   // 繪圖樣式，如線條圖、散點圖等
+	Width           int         // 圖表寬度
+	Height          int         // 圖表高度
+	BackgroundColor color.Color // 背景顏色
+}
+
+type PlotStyle int
+
+const (
+	StyleLine    PlotStyle = iota // 折線圖
+	StyleScatter                  // 散點圖
+	// 其他樣式可以繼續添加
+)
+
 // NewPlotter creates a new Plotter instance
-func NewPlotter(data *insyra.DataList, title, xLabel, yLabel string, color color.Color) *Plotter {
+func NewPlotter(data interface{}, options *Options) *Plotter {
+	defaultOptions := Options{
+		Title:           "Default Title",
+		XLabel:          "X Axis",
+		YLabel:          "Y Axis",
+		Style:           StyleLine, // 默認為折線圖
+		Width:           800,
+		Height:          600,
+		BackgroundColor: color.White,
+	}
+	if options != nil {
+		defaultOptions = *options
+	}
 	return &Plotter{
-		data:   data,
-		title:  title,
-		xLabel: xLabel,
-		yLabel: yLabel,
-		color:  color,
+		data:    data,
+		options: defaultOptions,
 	}
 }
 
