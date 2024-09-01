@@ -71,6 +71,7 @@ type IDataList interface {
 	Quartile(int) interface{}
 	IQR() interface{}
 	Percentile(float64) interface{}
+	ParseNumbers()
 	ToF64Slice() []float64
 }
 
@@ -1047,6 +1048,23 @@ func (dl *DataList) Percentile(p float64) interface{} {
 }
 
 // ======================== Conversion ========================
+
+// ParseNumbers attempts to parse all string elements in the DataList to numeric types.
+// If parsing fails, the element is left unchanged.
+func (dl *DataList) ParseNumbers() {
+	for i, v := range dl.data {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					LogWarning("DataList.ParseNumbers(): Failed to parse %v to float64: %v, the element left unchanged.", v, r)
+				}
+			}()
+
+			val := conv.ParseF64(v)
+			dl.data[i] = val
+		}()
+	}
+}
 
 // ToF64Slice converts the DataList to a float64 slice.
 // Returns the float64 slice.

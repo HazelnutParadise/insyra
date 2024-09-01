@@ -1,4 +1,4 @@
-# parallel
+# [ parallel ] Package
 
 > **Note:** When using the `parallel` package, you may encounter editor warnings related to type assertions or function signatures. Rest assured, these warnings are expected due to the use of reflection and generic function signatures in Go. They do not affect the performance or correctness of your code and can be safely ignored.
 
