@@ -34,7 +34,7 @@ type IDataList interface {
 	GetName() string
 	SetName(string)
 	Data() []interface{}
-	Append(value interface{})
+	Append(values ...interface{})
 	Get(index int) interface{}
 	Update(index int, value interface{})
 	InsertAt(index int, value interface{})
@@ -104,10 +104,10 @@ func NewDataList(values ...interface{}) *DataList {
 	return dl
 }
 
-// Append adds a new value to the DataList.
+// Append adds a new values to the DataList.
 // The value can be of any type.
 // The value is appended to the end of the DataList.
-func (dl *DataList) Append(value interface{}) {
+func (dl *DataList) Append(values ...interface{}) {
 	defer func() {
 		dl.mu.Unlock()
 		go reorganizeMemory(dl)
@@ -115,7 +115,7 @@ func (dl *DataList) Append(value interface{}) {
 	dl.mu.Lock()
 
 	// Append data and update timestamp
-	dl.data = append(dl.data, value)
+	dl.data = append(dl.data, values...)
 	go dl.updateTimestamp()
 }
 
