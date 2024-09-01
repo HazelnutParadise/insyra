@@ -15,6 +15,8 @@ const (
 	LogLevelInfo
 	// LogLevelWarning is the log level for warning messages.
 	LogLevelWarning
+	// LogLevelFatal is the log level for fatal messages.
+	LogLevelFatal
 )
 
 func (c *configStruct) SetLogLevel(level LogLevel) {

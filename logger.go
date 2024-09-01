@@ -2,6 +2,13 @@ package insyra
 
 import "log"
 
+func LogFatal(msg string, args ...interface{}) {
+	if msg[len(msg)-1] != '\n' {
+		msg += "\n"
+	}
+	log.Fatalf("<{[insyra - FATAL!]}> "+msg, args...)
+}
+
 func LogWarning(msg string, args ...interface{}) {
 	if Config.GetLogLevel() > LogLevelWarning {
 		return
