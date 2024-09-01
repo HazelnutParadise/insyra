@@ -1,3 +1,4 @@
+// plotter.go
 package plot
 
 import (
@@ -7,42 +8,27 @@ import (
 
 // Plotter is a struct that contains the data to be plotted
 type Plotter struct {
-	data    interface{} // 要繪製的數據
-	options Options     // 圖表選項
+	data    interface{}     // 要繪製的數據
+	options *GeneralOptions // 圖表選項
 }
 
-type Options struct {
-	Title           string // 圖表標題
-	XLabel          string // X軸標籤
-	YLabel          string // Y軸標籤
-	LineStyle       LineStyle
+type GeneralOptions struct {
+	Title           string      // 圖表標題
 	Width           int         // 圖表寬度
 	Height          int         // 圖表高度
 	BackgroundColor color.Color // 背景顏色
 }
 
-type LineStyle int
-
-const (
-	Solid   LineStyle = iota // 實線
-	Dashed                   // 虛線
-	Dotted                   // 點線
-	DashDot                  // 虛點線
-)
-
 // NewPlotter creates a new Plotter instance
-func NewPlotter(data interface{}, options *Options) *Plotter {
-	defaultOptions := Options{
+func NewPlotter(data interface{}, options *GeneralOptions) *Plotter {
+	defaultOptions := &GeneralOptions{
 		Title:           "Insyra Plot",
-		XLabel:          "X Axis",
-		YLabel:          "Y Axis",
-		Style:           StyleLine, // 默認為折線圖
 		Width:           800,
 		Height:          600,
 		BackgroundColor: color.White,
 	}
 	if options != nil {
-		defaultOptions = *options
+		defaultOptions = options
 	}
 	return &Plotter{
 		data:    data,
