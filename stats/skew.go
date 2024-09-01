@@ -3,27 +3,42 @@ package stats
 import (
 	"math/big"
 
+	"github.com/HazelnutParadise/Go-Utils/conv"
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/parallel"
+)
+
+// SkewnessMode is an enum type for skewness calculation mode.
+type SkewnessMode int
+
+const (
+	// PearsonFirst represents Type 1 skewness calculation mode.
+	Skew_PearsonFirst SkewnessMode = iota
+
+	// FisherPearson represents Type 2 skewness calculation mode.
+	Skew_FisherPearson
+
+	// AdjustedFisherPearson represents Type 3 skewness calculation mode.
+	Skew_AdjustedFisherPearson
 )
 
 // Skew calculates the skewness(sample) of the DataList.
 // Returns the skewness.
 // Returns nil if the DataList is empty or the skewness cannot be calculated.
 // 錯誤！
-func Skew(sample interface{}, method ...string) interface{} {
+func Skew(sample interface{}, method ...SkewnessMode) interface{} {
 	d, dLen := insyra.ProcessData(sample)
 	d64 := insyra.SliceToF64(d)
 	insyra.LogDebug("stats.Skew(): d64: ", d64)
 	dl := insyra.NewDataList(d64)
 	insyra.LogDebug("stats.Skew(): dl: ", dl)
 
-	methodStr := "pearson"
+	usemethod := Skew_PearsonFirst
 	if len(method) > 0 {
-		methodStr = method[0]
+		usemethod = method[0]
 	}
 	if len(method) > 1 {
-		insyra.LogWarning("stats.Skew(): More than one method specified, using the first one.")
+		insyra.LogWarning("stats.Skew(): More than one method specified, returning nil.")
 		return nil
 	}
 	if dLen == 0 {
@@ -32,11 +47,13 @@ func Skew(sample interface{}, method ...string) interface{} {
 	}
 
 	var result interface{}
-	switch methodStr {
-	case "pearson":
-		result = calculateSkewPearson(dl)
-	case "moments":
-		result = calculateSkewMoments(dl)
+	switch usemethod {
+	case Skew_PearsonFirst:
+		result = calculateSkewPearsonFirst(dl)
+	case Skew_FisherPearson:
+		result = calculateSkewFisherPearson(dl)
+	case Skew_AdjustedFisherPearson:
+		result = calculateSkewAdjustedFisherPearson(dl)
 	default:
 		insyra.LogWarning("stats.Skew(): Invalid method, returning nil.")
 		return nil
@@ -55,66 +72,84 @@ func Skew(sample interface{}, method ...string) interface{} {
 }
 
 // ======================== calculation functions ========================
-func calculateSkewPearson(sample insyra.IDataList) interface{} {
-	mean := sample.Mean(true).(*big.Rat)
-	median := sample.Median(true).(*big.Rat)
-	if mean == nil || median == nil {
-		insyra.LogWarning("stats.Skew(): Mean or median is nil, returning nil.")
-		return nil
+func calculateSkewPearsonFirst(dl *insyra.DataList, highPrecision ...bool) interface{} {
+	n := new(big.Rat).SetFloat64(conv.ParseF64(dl.Len()))
+	nReciprocal := new(big.Rat).Inv(n)
+	m1 := dl.Mean(true).(*big.Rat)
+	toM2Fn := func() *big.Rat {
+		var m2Cal = new(big.Rat)
+		for _, v := range dl.Data() {
+			vRat := new(big.Rat).SetFloat64(v.(float64))
+			vRat.Sub(vRat, m1)
+			vRat.Mul(vRat, vRat)
+			m2Cal.Add(m2Cal, vRat)
+		}
+		return m2Cal
 	}
-	THREE := new(big.Rat).SetInt64(3)
-	numerator := new(big.Rat).Mul(THREE, new(big.Rat).Sub(mean, median))
-	denominator := sample.Stdev(true).(*big.Rat)
-	if denominator == new(big.Rat).SetFloat64(0.0) {
-		insyra.LogWarning("stats.Skew(): Denominator is 0, returning nil.")
-		return nil
+	toM3Fn := func() *big.Rat {
+		var m3Cal = new(big.Rat)
+		for _, v := range dl.Data() {
+			vRat := new(big.Rat).SetFloat64(v.(float64))
+			vRat.Sub(vRat, m1)
+			v2 := new(big.Rat).Mul(vRat, vRat)
+			vRat.Mul(vRat, v2)
+			m3Cal.Add(m3Cal, vRat)
+		}
+		return m3Cal
 	}
 
-	result := new(big.Rat).Quo(numerator, denominator)
-	insyra.LogDebug("stats.Skew(): result: ", result)
+	results := parallel.GroupUp(toM2Fn, toM3Fn).Run().AwaitResult()
+
+	m2 := new(big.Rat).Mul(nReciprocal, results[0][0].(*big.Rat))
+	m3 := new(big.Rat).Mul(nReciprocal, results[1][0].(*big.Rat))
+
+	m2Powed := new(big.Rat).Mul(m2, m2)
+	m2Powed = new(big.Rat).Mul(m2Powed, m2)
+	m2Sqrted := insyra.SqrtRat(m2Powed)
+
+	g1 := new(big.Rat).Quo(m3, m2Sqrted)
+	if len(highPrecision) > 0 && highPrecision[0] {
+		return g1
+	}
+
+	f64g1, _ := g1.Float64()
+
+	return f64g1
+}
+
+// 錯誤
+func calculateSkewFisherPearson(dl *insyra.DataList) interface{} {
+	n := new(big.Rat).SetFloat64(conv.ParseF64(dl.Len()))
+
+	// n(n-1)
+	numerator := new(big.Rat).Mul(n, new(big.Rat).Sub(n, new(big.Rat).SetInt64(1)))
+
+	// n-2
+	denominator := new(big.Rat).Sub(n, new(big.Rat).SetInt64(2))
+
+	y := new(big.Rat).Quo(numerator, denominator)
+	ySqrted := insyra.SqrtRat(y)
+
+	result := calculateSkewPearsonFirst(dl, true).(*big.Rat)
+	result.Mul(result, ySqrted)
 	f64Result, _ := result.Float64()
 
 	return f64Result
 }
 
-func calculateSkewMoments(sample insyra.IDataList) interface{} {
-	// todo
-	mean := sample.Mean(true).(*big.Rat)
-	median := sample.Median(true).(*big.Rat)
-	if mean == nil || median == nil {
-		insyra.LogWarning("stats.Skew(): Mean or median is nil, returning nil.")
-		return nil
-	}
+func calculateSkewAdjustedFisherPearson(dl *insyra.DataList) interface{} {
+	g1 := calculateSkewPearsonFirst(dl, true).(*big.Rat)
+	n := new(big.Rat).SetFloat64(conv.ParseF64(dl.Len()))
 
-	numeratorFn := func() *big.Rat {
-		numerator := new(big.Rat)
-		for _, v := range sample.Data() {
-			x := new(big.Rat).SetFloat64(v.(float64))
-			sub := new(big.Rat).Sub(x, mean)
-			sub3 := new(big.Rat).Mul(sub, new(big.Rat).Mul(sub, sub))
-			numerator.Add(numerator, sub3)
-		}
-		numerator = new(big.Rat).Quo(numerator, new(big.Rat).SetInt64(int64(sample.Len())))
-		return numerator
-	}
+	// (n-1)/n
+	y := new(big.Rat).Quo(new(big.Rat).Sub(n, new(big.Rat).SetFloat64(1)), n)
 
-	denominatorFn := func() *big.Rat {
-		insyra.LogDebug("stats.Skew(): denominatorFn(): sample.Data(): ", sample.Data())
-		denominator := new(big.Rat)
-		for _, v := range sample.Data() {
-			x := new(big.Rat).SetFloat64(v.(float64))
-			sub := new(big.Rat).Sub(x, mean)
-			sub2 := new(big.Rat).Mul(sub, sub)
-			denominator.Add(denominator, sub2)
-		}
-		denominator = new(big.Rat).Quo(denominator, new(big.Rat).SetInt64(int64(sample.Len())))
-		denominator = insyra.SqrtRat(denominator)
-		return denominator
-	}
+	yPowed := new(big.Rat).Mul(new(big.Rat).Mul(y, y), y)
+	ySqrted := insyra.SqrtRat(yPowed)
 
-	resultSlice := parallel.GroupUp(numeratorFn, denominatorFn).Run().AwaitResult()
-	result := new(big.Rat).Quo(resultSlice[0][0].(*big.Rat), resultSlice[1][0].(*big.Rat))
-	f64result, _ := result.Float64()
+	result := new(big.Rat).Mul(g1, ySqrted)
 
-	return f64result
+	f64Result, _ := result.Float64()
+
+	return f64Result
 }

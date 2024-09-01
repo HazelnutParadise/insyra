@@ -936,9 +936,9 @@ func (dl *DataList) Median(highPrecision ...bool) interface{} {
 	}
 
 	// 對數據進行排序
-	sortedData := make([]interface{}, len(dl.data))
-	copy(sortedData, dl.data)
-	dl.Sort()
+	sortedData := make([]float64, len(dl.data))
+	copy(sortedData, dl.ToF64Slice())
+	sliceutil.Sort(sortedData)
 
 	mid := len(sortedData) / 2
 	useHighPrecision := len(highPrecision) == 1 && highPrecision[0]
