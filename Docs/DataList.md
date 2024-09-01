@@ -17,7 +17,7 @@ The `DataList` type provides a dynamic and generic way to store and manage a col
 **Data Handling:**
 
 * **NewDataList:** Creates a new DataList instance. It accepts a variadic list of elements and flattens them before storing them internally.
-* **Append:** Adds a new element to the end of the DataList.
+* **Append:** Adds new elements to the end of the DataList.
 * **Get:** Retrieves the element at a specific index. Supports negative indexing for accessing elements from the end.
 * **Update:** Updates the element at a specific index with a new value.
 * **InsertAt:** Inserts a new element at a specific index, shifting the existing elements to the right.
