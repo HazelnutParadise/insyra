@@ -1,6 +1,7 @@
 package stats
 
 import (
+	"math"
 	"math/big"
 
 	"github.com/HazelnutParadise/Go-Utils/conv"
@@ -119,22 +120,40 @@ func calculateSkewPearsonFirst(dl *insyra.DataList, highPrecision ...bool) inter
 
 // 錯誤
 func calculateSkewFisherPearson(dl *insyra.DataList) interface{} {
-	n := new(big.Rat).SetFloat64(conv.ParseF64(dl.Len()))
+	n := float64(dl.Len())
 
-	// n(n-1)
-	numerator := new(big.Rat).Mul(n, new(big.Rat).Sub(n, new(big.Rat).SetInt64(1)))
+	// 檢查樣本大小是否小於 3
+	if n < 3 {
+		insyra.LogWarning("calculateSkewFisherPearson: Sample size too small to calculate skewness, returning nil.")
+		return nil
+	}
 
-	// n-2
-	denominator := new(big.Rat).Sub(n, new(big.Rat).SetInt64(2))
+	// 計算均值
+	m1 := dl.Mean(false).(float64)
 
-	y := new(big.Rat).Quo(numerator, denominator)
-	ySqrted := insyra.SqrtRat(y)
+	// 計算二階矩 (m2) 和 三階矩 (m3)
+	m2, m3 := 0.0, 0.0
+	for _, v := range dl.Data() {
+		delta := v.(float64) - m1
+		deltaSquared := delta * delta
+		m2 += deltaSquared
+		m3 += deltaSquared * delta
+	}
 
-	result := calculateSkewPearsonFirst(dl, true).(*big.Rat)
-	result.Mul(result, ySqrted)
-	f64Result, _ := result.Float64()
+	// 除以樣本數 n 得到 m2 和 m3
+	m2 /= n
+	m3 /= n
 
-	return f64Result
+	// 計算 Type 1 偏度 (g1)
+	g1 := m3 / math.Pow(m2, 1.5)
+
+	// 計算 Fisher-Pearson 修正項
+	correctionFactor := math.Sqrt(n * (n - 1) / (n - 2))
+
+	// 最終的 Fisher-Pearson 偏度
+	G1 := g1 * correctionFactor
+
+	return G1
 }
 
 func calculateSkewAdjustedFisherPearson(dl *insyra.DataList) interface{} {
