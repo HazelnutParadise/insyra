@@ -63,6 +63,7 @@ func calculateSkewPearson(sample insyra.IDataList) interface{} {
 	}
 	THREE := new(big.Rat).SetInt64(3)
 	numerator := new(big.Rat).Mul(THREE, new(big.Rat).Sub(mean, median))
+<<<<<<< Updated upstream
 
 	stdev := sample.Stdev()
 	if stdev == nil {
@@ -72,6 +73,10 @@ func calculateSkewPearson(sample insyra.IDataList) interface{} {
 
 	denominator := new(big.Rat).SetFloat64(stdev.(float64))
 	if denominator.Cmp(new(big.Rat).SetInt64(0)) == 0 {
+=======
+	denominator := sample.Stdev(true).(*big.Rat)
+	if denominator == new(big.Rat).SetFloat64(0.0) {
+>>>>>>> Stashed changes
 		insyra.LogWarning("DataList.Skew(): Denominator is 0, returning nil.")
 		return nil
 	}
