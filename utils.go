@@ -1,7 +1,7 @@
 package insyra
 
 import (
-	"fmt"
+	"github.com/HazelnutParadise/Go-Utils/conv"
 )
 
 // ToFloat64 converts any numeric value to float64.
@@ -47,10 +47,15 @@ func ToFloat64Safe(v interface{}) (float64, bool) {
 }
 
 func SliceToF64(data []interface{}) []float64 {
+	defer func() {
+		if r := recover(); r != nil {
+			LogWarning("SliceToF64(): Failed to convert data to float64")
+		}
+	}()
 	var floatSlice []float64
 	for _, v := range data {
-		v = ToFloat64(v)
-		floatSlice = append(floatSlice, v.(float64)) // 將 interface{} 轉換為 float64
+		f64v := conv.ParseF64(v)              // 將 interface{} 轉換為 float64
+		floatSlice = append(floatSlice, f64v) // 將 interface{} 轉換為 float64
 	}
 
 	return floatSlice
@@ -69,7 +74,7 @@ func ProcessData(input interface{}) ([]interface{}, int) {
 	case []interface{}:
 		data = v
 	default:
-		fmt.Println("Unsupported data type")
+		LogWarning("ProcessData(): Unsupported data type %T, returning nil.", input)
 		return nil, 0
 	}
 

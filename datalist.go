@@ -40,7 +40,7 @@ type IDataList interface {
 	FindFirst(interface{}) interface{}
 	FindLast(interface{}) interface{}
 	FindAll(interface{}) []int
-	Filter(func(interface{}) bool) []interface{}
+	Filter(func(interface{}) bool) *DataList
 	ReplaceFirst(interface{}, interface{})
 	ReplaceLast(interface{}, interface{})
 	ReplaceAll(interface{}, interface{})
@@ -87,9 +87,14 @@ func (dl *DataList) Data() []interface{} {
 // NewDataList creates a new DataList, supporting both slice and variadic inputs,
 // and flattens the input before storing it.
 func NewDataList(values ...interface{}) *DataList {
-	flatData, _ := sliceutil.Flatten[interface{}](values)
+	var flatData []interface{}
+
+	flatData, _ = sliceutil.Flatten[interface{}](values)
+	LogDebug("NewDataList(): Flattened data:", flatData)
+
 	continuousMemData := make([]interface{}, len(flatData))
 	copy(continuousMemData, flatData)
+
 	dl := &DataList{
 		data:                  continuousMemData,
 		creationTimestamp:     time.Now().Unix(),
@@ -869,8 +874,8 @@ func (dl *DataList) Mean() interface{} {
 			return nil
 		}
 	}
-
-	return sum / float64(len(dl.data))
+	mean := sum / float64(len(dl.data))
+	return mean
 }
 
 // GMean calculates the geometric mean of the DataList.
@@ -942,7 +947,7 @@ func (dl *DataList) Mode() interface{} {
 		}
 	}
 
-	return mode
+	return mode.(float64)
 }
 
 // Stdev calculates the standard deviation(sample) of the DataList.
