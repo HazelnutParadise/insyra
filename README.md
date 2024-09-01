@@ -1,7 +1,5 @@
 # Insyra
 
-[![Test](https://github.com/HazelnutParadise/insyra/actions/workflows/test_code.yml/badge.svg)](https://github.com/HazelnutParadise/insyra/actions/workflows/test_code.yml)
-
 A Golang data analysis library.
 
 ## Overview
