@@ -55,16 +55,23 @@ func Skew(sample interface{}, method ...string) interface{} {
 
 // ======================== calculation functions ========================
 func calculateSkewPearson(sample insyra.IDataList) interface{} {
-	mean := new(big.Rat).SetFloat64(sample.Mean().(float64))
-	median := new(big.Rat).SetFloat64(sample.Median().(float64))
+	mean := sample.Mean(true).(*big.Rat)
+	median := sample.Median(true).(*big.Rat)
 	if mean == nil || median == nil {
 		insyra.LogWarning("DataList.Skew(): Mean or median is nil, returning nil.")
 		return nil
 	}
 	THREE := new(big.Rat).SetInt64(3)
 	numerator := new(big.Rat).Mul(THREE, new(big.Rat).Sub(mean, median))
-	denominator := new(big.Rat).SetFloat64(sample.Stdev().(float64))
-	if denominator == new(big.Rat).SetFloat64(0.0) {
+
+	stdev := sample.Stdev()
+	if stdev == nil {
+		insyra.LogWarning("DataList.Skew(): Stdev is nil, returning nil.")
+		return nil
+	}
+
+	denominator := new(big.Rat).SetFloat64(stdev.(float64))
+	if denominator.Cmp(new(big.Rat).SetInt64(0)) == 0 {
 		insyra.LogWarning("DataList.Skew(): Denominator is 0, returning nil.")
 		return nil
 	}
