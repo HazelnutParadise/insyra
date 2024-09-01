@@ -15,18 +15,19 @@ type Options struct {
 	Title           string // 圖表標題
 	XLabel          string // X軸標籤
 	YLabel          string // Y軸標籤
-	Style           PlotStyle
+	LineStyle       LineStyle
 	Width           int         // 圖表寬度
 	Height          int         // 圖表高度
 	BackgroundColor color.Color // 背景顏色
 }
 
-type PlotStyle int
+type LineStyle int
 
 const (
-	StyleLine    PlotStyle = iota // 折線圖
-	StyleScatter                  // 散點圖
-	// 其他樣式可以繼續添加
+	Solid   LineStyle = iota // 實線
+	Dashed                   // 虛線
+	Dotted                   // 點線
+	DashDot                  // 虛點線
 )
 
 // NewPlotter creates a new Plotter instance
