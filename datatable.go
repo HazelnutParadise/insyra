@@ -83,7 +83,10 @@ func (dt *DataTable) AppendColumns(columns ...*DataList) {
 // AppendRow appends a new row to the DataTable.
 func (dt *DataTable) AppendRows(rowsData ...map[string]interface{}) {
 	dt.mu.Lock()
-	defer dt.mu.Unlock()
+	defer func() {
+		dt.mu.Unlock()
+		go dt.updateTimestamp()
+	}()
 
 	// 檢查是否需要新增自訂索引
 	if len(dt.customIndex) < dt.getMaxColumnLength()+1 {
@@ -107,8 +110,6 @@ func (dt *DataTable) AppendRows(rowsData ...map[string]interface{}) {
 			}
 		}
 	}
-
-	dt.updateTimestamp()
 }
 
 // Data 方法返回一個 map，可以選擇使用 DataList 的 name 作為鍵或使用自動生成的列索引。
