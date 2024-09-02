@@ -17,6 +17,7 @@ type DataTable struct {
 
 type IDataTable interface {
 	AppendColumns(columns ...*DataList)
+	AppendRowsFromDataList(rowsData ...*DataList)
 	AppendRowsByIndex(rowsData ...map[string]interface{})
 	AppendRowsByName(rowsData ...map[string]interface{})
 	Data(useNamesAsKeys ...bool) map[string][]interface{}
@@ -34,7 +35,6 @@ type IDataTable interface {
 	getMaxColumnLength()
 }
 
-// NewDataTable creates a new empty DataTable or initializes it with provided DataLists as columns.
 func NewDataTable(columns ...*DataList) *DataTable {
 	newTable := &DataTable{
 		columns:               make(map[string]*DataList),
@@ -43,19 +43,18 @@ func NewDataTable(columns ...*DataList) *DataTable {
 	}
 
 	if len(columns) > 0 {
-		// 依照順序生成列索引
-		for i, column := range columns {
-			columnName := generateColumnName(i)
-			newTable.columns[columnName] = column
-		}
+		newTable.AppendColumns(columns...)
 	}
+
+	// 按照生成順序將列名排序
+	newTable.updateColumnNames()
 
 	return newTable
 }
 
 // ======================== Append ========================
 
-// AddColumns adds columns to the DataTable and ensures that all columns have the same length.
+// AddColumns adds columns to the DataTable.
 func (dt *DataTable) AppendColumns(columns ...*DataList) {
 	dt.mu.Lock()
 	defer func() {
@@ -63,36 +62,64 @@ func (dt *DataTable) AppendColumns(columns ...*DataList) {
 		go dt.updateTimestamp()
 	}()
 
-	// Find the maximum length of existing columns
-	maxLength := 0
-	for _, col := range dt.columns {
-		if len(col.data) > maxLength {
-			maxLength = len(col.data)
-		}
-	}
+	maxLength := dt.getMaxColumnLength()
 
-	// Add new columns and ensure their length matches the maximum length
 	for i, column := range columns {
+		columnName := generateColumnName(len(dt.columns) + i)
 		if len(column.data) < maxLength {
-			// Fill with nil to match the length
 			column.data = append(column.data, make([]interface{}, maxLength-len(column.data))...)
 		}
-		columnName := generateColumnName(len(dt.columns) + i)
 		dt.columns[columnName] = column
 	}
 
-	// Update other columns to match the new max length
+	// 更新其他列的長度以匹配新插入的列長度
 	for _, col := range dt.columns {
 		if len(col.data) < maxLength {
 			col.data = append(col.data, make([]interface{}, maxLength-len(col.data))...)
 		}
 	}
 
-	// Update custom index length if needed
-	if len(dt.customIndex) < maxLength {
-		dt.customIndex = append(dt.customIndex, make([]string, maxLength-len(dt.customIndex))...)
-	}
+	// 確保列名按照字母順序排列
+	dt.updateColumnNames()
+}
 
+// AppendRowsFromDataList appends new rows to the DataTable using a DataList as input.
+// Each element in the DataList will be inserted into the corresponding column based on alphabetical order.
+func (dt *DataTable) AppendRowsFromDataList(rowsData ...*DataList) {
+	dt.mu.Lock()
+	defer func() {
+		dt.mu.Unlock()
+		go dt.updateTimestamp()
+	}()
+
+	for _, rowData := range rowsData {
+		maxLength := dt.getMaxColumnLength()
+
+		// 如果需要新增的 column 多於目前的 column，先補齊現有的 column
+		if len(rowData.data) > len(dt.columns) {
+			for i := len(dt.columns); i < len(rowData.data); i++ {
+				dt.columns[generateColumnName(i)] = newEmptyDataList(maxLength)
+			}
+		}
+
+		// 按照字母順序將 DataList 的元素插入到 DataTable 的每一列
+		i := 0
+		for _, column := range dt.columns {
+			if i < len(rowData.data) {
+				column.data = append(column.data, rowData.data[i])
+			} else {
+				column.data = append(column.data, nil)
+			}
+			i++
+		}
+
+		// 確保所有列的長度一致，並填充缺少的列
+		for _, column := range dt.columns {
+			if len(column.data) == maxLength {
+				column.data = append(column.data, nil)
+			}
+		}
+	}
 }
 
 // AppendRowsByIndex appends new rows to the DataTable based on the auto-generated column index.
