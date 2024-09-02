@@ -24,14 +24,14 @@ type IDataTable interface {
 	DropColumnsByIndex(columnIndices ...string)
 	DropColumnsByName(columnNames ...string)
 	DropRowsByIndex(rowIndices ...int)
+	GetColumnByName(columnName string) *DataList
+	GetRowByIndex(rowIndex int) *DataList
 	updateTimestamp()
 	updateColumnNames()
 	GetCreationTimestamp() int64
 	GetLastModifiedTimestamp() int64
 	SetCustomIndex(index []string)
 	getMaxColumnLength()
-	GetColumn(columnName string) *DataList
-	GetRow(rowIndex int) map[string]interface{}
 }
 
 // NewDataTable creates a new empty DataTable or initializes it with provided DataLists as columns.
@@ -281,6 +281,47 @@ func (dt *DataTable) DropRowsByIndex(rowIndices ...int) {
 	}
 }
 
+// ======================== Get ========================
+
+// GetColumnByName gets a column by name and return a DataList.
+// Return nil if columnName is not found.
+func (dt *DataTable) GetColumnByName(columnName string) *DataList {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	for _, column := range dt.columns {
+		if column.name == columnName {
+			dl := NewDataList(column.data)
+			return dl
+		}
+	}
+	LogWarning("DataTable.GetColumn(): column not found, returning nil.")
+	return nil
+}
+
+// GetRowByIndex gets a row by index and return a DataList.
+// Return nil if rowIndex is out of range.
+func (dt *DataTable) GetRowByIndex(rowIndex int) *DataList {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	if rowIndex < 0 {
+		rowIndex += dt.getMaxColumnLength()
+	}
+	if rowIndex >= dt.getMaxColumnLength() {
+		LogWarning("DataTable.GetRowByIndex(): row index out of range, returning nil.")
+		return nil
+	}
+
+	dl := NewDataList()
+
+	for _, column := range dt.columns {
+		dl.Append(column.data[rowIndex])
+	}
+
+	return dl
+}
+
 // SetCustomIndex sets a custom index for the DataTable and ensures it matches the length of columns.
 func (dt *DataTable) SetCustomIndex(index []string) {
 	dt.mu.Lock()
@@ -363,28 +404,4 @@ func newEmptyDataList(rowCount int) *DataList {
 		creationTimestamp:     time.Now().Unix(),
 		lastModifiedTimestamp: time.Now().Unix(),
 	}
-}
-
-// GetColumn 取得指定名稱的列
-func (dt *DataTable) GetColumn(columnName string) *DataList {
-	dt.mu.Lock()
-	defer dt.mu.Unlock()
-
-	return dt.columns[columnName]
-}
-
-// GetRow 取得指定索引的行
-func (dt *DataTable) GetRow(rowIndex int) map[string]interface{} {
-	dt.mu.Lock()
-	defer dt.mu.Unlock()
-
-	rowData := make(map[string]interface{})
-	for colName, col := range dt.columns {
-		if rowIndex < len(col.data) {
-			rowData[colName] = col.data[rowIndex]
-		} else {
-			rowData[colName] = nil
-		}
-	}
-	return rowData
 }
