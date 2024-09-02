@@ -80,7 +80,7 @@ func (dt *DataTable) AppendColumns(columns ...*DataList) {
 
 }
 
-// AppendRow appends a new row to the DataTable.
+// AppendRow appends new rows to the DataTable.
 func (dt *DataTable) AppendRows(rowsData ...map[string]interface{}) {
 	dt.mu.Lock()
 	defer func() {
