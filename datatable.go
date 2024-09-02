@@ -1,15 +1,16 @@
 package insyra
 
 import (
+	"fmt"
+	"sort"
 	"sync"
 	"time"
-
-	"github.com/HazelnutParadise/Go-Utils/sliceutil"
 )
 
 type DataTable struct {
 	mu                    sync.Mutex
-	columns               map[string]*DataList
+	columns               []*DataList
+	columnIndex           map[string]int // 儲存字母索引與切片中的索引對應
 	rowNames              map[string]int
 	creationTimestamp     int64
 	lastModifiedTimestamp int64
@@ -21,23 +22,26 @@ type IDataTable interface {
 	AppendRowsByIndex(rowsData ...map[string]interface{})
 	AppendRowsByName(rowsData ...map[string]interface{})
 	Data(useNamesAsKeys ...bool) map[string][]interface{}
+
 	Size() (int, int)
 	DropColumnsByIndex(columnIndices ...string)
 	DropColumnsByName(columnNames ...string)
 	DropRowsByIndex(rowIndices ...int)
 	GetColumnByName(columnName string) *DataList
 	GetRowByIndex(rowIndex int) *DataList
-	updateTimestamp()
+	updateTimestamp() // 新增的 updateTimestamp 方法
 	updateColumnNames()
 	GetCreationTimestamp() int64
 	GetLastModifiedTimestamp() int64
 	SetCustomIndex(index []string)
-	getMaxColumnLength()
+	getMaxColumnLength() int
 }
 
 func NewDataTable(columns ...*DataList) *DataTable {
 	newTable := &DataTable{
-		columns:               make(map[string]*DataList),
+		columns:               []*DataList{},
+		columnIndex:           make(map[string]int),
+		rowNames:              make(map[string]int),
 		creationTimestamp:     time.Now().Unix(),
 		lastModifiedTimestamp: time.Now().Unix(),
 	}
@@ -46,51 +50,38 @@ func NewDataTable(columns ...*DataList) *DataTable {
 		newTable.AppendColumns(columns...)
 	}
 
-	// 按照生成順序將列名排序
-	newTable.updateColumnNames()
-
 	return newTable
 }
 
 // ======================== Append ========================
 
-// AddColumns adds columns to the DataTable.
 func (dt *DataTable) AppendColumns(columns ...*DataList) {
 	dt.mu.Lock()
-	defer func() {
-		dt.mu.Unlock()
-		go dt.updateTimestamp()
-	}()
+	defer dt.mu.Unlock()
 
 	maxLength := dt.getMaxColumnLength()
 
 	for i, column := range columns {
 		columnName := generateColumnName(len(dt.columns) + i)
+		dt.columns = append(dt.columns, column)
+		dt.columnIndex[columnName] = len(dt.columns) - 1
 		if len(column.data) < maxLength {
 			column.data = append(column.data, make([]interface{}, maxLength-len(column.data))...)
 		}
-		dt.columns[columnName] = column
 	}
 
-	// 更新其他列的長度以匹配新插入的列長度
 	for _, col := range dt.columns {
 		if len(col.data) < maxLength {
 			col.data = append(col.data, make([]interface{}, maxLength-len(col.data))...)
 		}
 	}
 
-	// 確保列名按照字母順序排列
-	dt.updateColumnNames()
+	dt.updateTimestamp()
 }
 
-// AppendRowsFromDataList appends new rows to the DataTable using a DataList as input.
-// Each element in the DataList will be inserted into the corresponding column based on alphabetical order.
 func (dt *DataTable) AppendRowsFromDataList(rowsData ...*DataList) {
 	dt.mu.Lock()
-	defer func() {
-		dt.mu.Unlock()
-		go dt.updateTimestamp()
-	}()
+	defer dt.mu.Unlock()
 
 	for _, rowData := range rowsData {
 		maxLength := dt.getMaxColumnLength()
@@ -99,115 +90,104 @@ func (dt *DataTable) AppendRowsFromDataList(rowsData ...*DataList) {
 			dt.rowNames[rowData.name] = maxLength
 		}
 
-		// 如果需要新增的 column 多於目前的 column，先補齊現有的 column
 		if len(rowData.data) > len(dt.columns) {
 			for i := len(dt.columns); i < len(rowData.data); i++ {
-				dt.columns[generateColumnName(i)] = newEmptyDataList(maxLength)
+				newCol := newEmptyDataList(maxLength)
+				columnName := generateColumnName(i)
+				dt.columns = append(dt.columns, newCol)
+				dt.columnIndex[columnName] = len(dt.columns) - 1
 			}
 		}
 
-		// 按照字母順序將 DataList 的元素插入到 DataTable 的每一列
-		i := 0
-		for _, column := range dt.columns {
+		for i, column := range dt.columns {
 			if i < len(rowData.data) {
 				column.data = append(column.data, rowData.data[i])
 			} else {
 				column.data = append(column.data, nil)
 			}
-			i++
 		}
 
-		// 確保所有列的長度一致，並填充缺少的列
 		for _, column := range dt.columns {
 			if len(column.data) == maxLength {
 				column.data = append(column.data, nil)
 			}
 		}
 	}
+
+	dt.updateTimestamp()
 }
 
-// AppendRowsByIndex appends new rows to the DataTable based on the auto-generated column index.
 func (dt *DataTable) AppendRowsByIndex(rowsData ...map[string]interface{}) {
 	dt.mu.Lock()
-	defer func() {
-		dt.mu.Unlock()
-		go dt.updateTimestamp()
-	}()
+	defer dt.mu.Unlock()
 
-	// 先確定要新增的行數
 	for _, rowData := range rowsData {
 		maxLength := dt.getMaxColumnLength()
 
-		// 先檢查是否有新的 column，提前補齊舊的 column
 		for colIndex := range rowData {
-			if _, exists := dt.columns[colIndex]; !exists {
-				dt.columns[colIndex] = newEmptyDataList(maxLength) // 創建新列
+			if _, exists := dt.columnIndex[colIndex]; !exists {
+				newCol := newEmptyDataList(maxLength)
+				dt.columns = append(dt.columns, newCol)
+				dt.columnIndex[colIndex] = len(dt.columns) - 1
 			}
 		}
 
-		// 插入新行
 		for colIndex, value := range rowData {
-			dt.columns[colIndex].data = append(dt.columns[colIndex].data, value)
+			dt.columns[dt.columnIndex[colIndex]].data = append(dt.columns[dt.columnIndex[colIndex]].data, value)
 		}
 
-		// 將缺少資料的列補齊 nil
 		for _, column := range dt.columns {
 			if len(column.data) == maxLength {
 				column.data = append(column.data, nil)
 			}
 		}
 	}
+
+	dt.updateTimestamp()
 }
 
-// AppendRowsByName appends new rows to the DataTable based on the DataList name.
 func (dt *DataTable) AppendRowsByName(rowsData ...map[string]interface{}) {
 	dt.mu.Lock()
-	defer func() {
-		dt.mu.Unlock()
-		go dt.updateTimestamp()
-	}()
+	defer dt.mu.Unlock()
 
 	for _, rowData := range rowsData {
 		maxLength := dt.getMaxColumnLength()
 
-		// 先檢查是否有新的 column，提前補齊舊的 column
 		for colName := range rowData {
-			columnFound := false
-			for _, column := range dt.columns {
-				if column.name == colName {
-					columnFound = true
+			found := false
+			for _, colIdx := range dt.columnIndex {
+				if dt.columns[colIdx].name == colName {
+					found = true
 					break
 				}
 			}
-
-			if !columnFound {
+			if !found {
 				newCol := newEmptyDataList(maxLength)
-				newCol.name = colName
-				dt.columns[generateColumnName(len(dt.columns))] = newCol
+				dt.columns = append(dt.columns, newCol)
+				dt.columnIndex[generateColumnName(len(dt.columns)-1)] = len(dt.columns) - 1
 			}
 		}
 
-		// 插入新行
 		for colName, value := range rowData {
-			for _, column := range dt.columns {
-				if column.name == colName {
-					column.data = append(column.data, value)
+			for _, col := range dt.columns {
+				if col.name == colName {
+					col.data = append(col.data, value)
 				}
 			}
 		}
 
-		// 將缺少資料的列補齊 nil
 		for _, column := range dt.columns {
 			if len(column.data) == maxLength {
 				column.data = append(column.data, nil)
 			}
 		}
 	}
+
+	dt.updateTimestamp()
 }
 
 // ======================== Data ========================
 
-// Data 方法返回一個 map，可以選擇使用 DataList 的 name 作為鍵或使用自動生成的列索引。
 func (dt *DataTable) Data(useNamesAsKeys ...bool) map[string][]interface{} {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
@@ -226,9 +206,9 @@ func (dt *DataTable) Data(useNamesAsKeys ...bool) map[string][]interface{} {
 	for i, col := range dt.columns {
 		var key string
 		if useNamesAsKeysBool && col.name != "" {
-			key = col.name + "(" + i + ")"
+			key = fmt.Sprintf("%s(%s)", generateColumnName(i), col.name)
 		} else {
-			key = "(" + i + ")"
+			key = generateColumnName(i)
 		}
 		dataMap[key] = col.data
 	}
@@ -236,158 +216,97 @@ func (dt *DataTable) Data(useNamesAsKeys ...bool) map[string][]interface{} {
 	return dataMap
 }
 
-// Size returns the number of rows and columns in the DataTable.
-func (dt *DataTable) Size() (int, int) {
+// ======================== Show ========================
+
+func (dt *DataTable) Show() {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
 
-	numColumns := len(dt.columns)
-
-	var numRows int
-	for _, col := range dt.columns {
-		numRows = len(col.data)
-		break
+	// 構建資料地圖，但不使用 Data() 方法以避免死鎖
+	dataMap := make(map[string][]interface{})
+	for i, col := range dt.columns {
+		key := generateColumnName(i)
+		if col.name != "" {
+			key += fmt.Sprintf("(%s)", col.name)
+		}
+		dataMap[key] = col.data
 	}
 
-	return numRows, numColumns
-}
-
-// ======================== Drop ========================
-
-// DropColumnsByIndex drops columns by their auto-generated index and then renames the remaining columns in alphabetical order.
-func (dt *DataTable) DropColumnsByIndex(columnIndices ...string) {
-	dt.mu.Lock()
-	defer func() {
-		dt.mu.Unlock()
-		go dt.updateTimestamp()
-	}()
-
-	for _, delColumnIndex := range columnIndices {
-		delete(dt.columns, delColumnIndex)
+	// 取得所有的列索引並排序
+	var colIndices []string
+	for colIndex := range dataMap {
+		colIndices = append(colIndices, colIndex)
 	}
+	sort.Strings(colIndices)
 
-	// 更新其餘列的名稱
-	dt.updateColumnNames()
-}
-
-// DropColumnsByName drops columns by name and then renames the remaining columns in alphabetical order.
-func (dt *DataTable) DropColumnsByName(columnNames ...string) {
-	dt.mu.Lock()
-	defer func() {
-		dt.mu.Unlock()
-		go dt.updateTimestamp()
-	}()
-
-	for _, columnName := range columnNames {
-		for columnIndex, column := range dt.columns {
-			if column.name == columnName {
-				delete(dt.columns, columnIndex)
+	// 計算每一列的最大寬度
+	colWidths := make(map[string]int)
+	for _, colIndex := range colIndices {
+		colWidths[colIndex] = len(colIndex)
+		for _, value := range dataMap[colIndex] {
+			valueStr := fmt.Sprintf("%v", value)
+			if len(valueStr) > colWidths[colIndex] {
+				colWidths[colIndex] = len(valueStr)
 			}
 		}
 	}
 
-	// 更新其餘列的名稱
-	dt.updateColumnNames()
-}
-
-// DropRowsByIndex drops rows by index.
-func (dt *DataTable) DropRowsByIndex(rowIndices ...int) {
-	dt.mu.Lock()
-	defer func() {
-		dt.mu.Unlock()
-		go dt.updateTimestamp()
-	}()
-
-	if len(rowIndices) == 0 {
-		LogWarning("DataTable.DropRowsByIndex(): no row indices provided, skipping.")
-		return
+	// 計算 RowNames 的最大寬度
+	rowNames := make([]string, dt.getMaxColumnLength())
+	maxRowNameWidth := len("RowNames")
+	for i := range rowNames {
+		if rowName, exists := dt.getRowNameByIndex(i); exists {
+			rowNames[i] = rowName
+		} else {
+			rowNames[i] = fmt.Sprintf("%d", i)
+		}
+		if len(rowNames[i]) > maxRowNameWidth {
+			maxRowNameWidth = len(rowNames[i])
+		}
 	}
 
-	for i, rowIndex := range rowIndices {
-		if rowIndex < 0 {
-			rowIndex = len(dt.columns) + rowIndex
-		}
-		if rowIndex >= dt.getMaxColumnLength() {
-			LogWarning("DataTable.DropRowsByIndex(): row index out of range, skipping.")
-			rowIndices, _ = sliceutil.Remove[int](rowIndices, i)
-			i-- // 因為刪除了一個元素，所以 i 要減 1
-			continue
-		}
-		for rowName, index := range dt.rowNames {
-			if index == rowIndex {
-				delete(dt.rowNames, rowName)
+	// 打印列名
+	fmt.Printf("%-*s", maxRowNameWidth+2, "RowNames") // +2 是為了讓其更清晰
+	for _, colIndex := range colIndices {
+		fmt.Printf("%-*s", colWidths[colIndex]+2, colIndex)
+	}
+	fmt.Println()
+
+	// 打印行資料
+	for rowIndex := 0; rowIndex < dt.getMaxColumnLength(); rowIndex++ {
+		fmt.Printf("%-*s", maxRowNameWidth+2, rowNames[rowIndex])
+
+		for _, colIndex := range colIndices {
+			value := "nil"
+			if rowIndex < len(dataMap[colIndex]) && dataMap[colIndex][rowIndex] != nil {
+				value = fmt.Sprintf("%v", dataMap[colIndex][rowIndex])
 			}
+			fmt.Printf("%-*s", colWidths[colIndex]+2, value)
 		}
-	}
-
-	for _, rowIndex := range rowIndices {
-		for _, column := range dt.columns {
-			column.Drop(rowIndex)
-		}
+		fmt.Println()
 	}
 }
 
-// ======================== Get ========================
+// ======================== Utilities ========================
 
-// GetColumnByName gets a column by name and return a DataList.
-// Return nil if columnName is not found.
-func (dt *DataTable) GetColumnByName(columnName string) *DataList {
-	dt.mu.Lock()
-	defer dt.mu.Unlock()
+func (dt *DataTable) getSortedColumnNames() []string {
+	colNames := make([]string, 0, len(dt.columnIndex))
+	for colName := range dt.columnIndex {
+		colNames = append(colNames, colName)
+	}
+	sort.Strings(colNames)
+	return colNames
+}
 
-	for _, column := range dt.columns {
-		if column.name == columnName {
-			dl := NewDataList(column.data)
-			return dl
+func (dt *DataTable) getRowNameByIndex(index int) (string, bool) {
+	for rowName, rowIndex := range dt.rowNames {
+		if rowIndex == index {
+			return rowName, true
 		}
 	}
-	LogWarning("DataTable.GetColumn(): column not found, returning nil.")
-	return nil
+	return "", false
 }
 
-// GetRowByIndex gets a row by index and return a DataList.
-// Return nil if rowIndex is out of range.
-func (dt *DataTable) GetRowByIndex(rowIndex int) *DataList {
-	dt.mu.Lock()
-	defer dt.mu.Unlock()
-
-	if rowIndex < 0 {
-		rowIndex += dt.getMaxColumnLength()
-	}
-	if rowIndex >= dt.getMaxColumnLength() {
-		LogWarning("DataTable.GetRowByIndex(): row index out of range, returning nil.")
-		return nil
-	}
-
-	dl := NewDataList()
-
-	for _, column := range dt.columns {
-		dl.Append(column.data[rowIndex])
-	}
-
-	return dl
-}
-
-// SetCustomIndex sets a custom index for the DataTable and ensures it matches the length of columns.
-// func (dt *DataTable) SetCustomIndex(index []string) {
-// 	dt.mu.Lock()
-// 	defer func() {
-// 		dt.mu.Unlock()
-// 		go dt.updateTimestamp()
-// 	}()
-
-// 	maxLength := dt.getMaxColumnLength()
-
-// 	if len(index) < maxLength {
-// 		// Fill the custom index with empty strings to match the length
-// 		index = append(index, make([]string, maxLength-len(index))...)
-// 	}
-
-// 	dt.customIndex = index[:maxLength]
-
-// }
-
-// getMaxColumnLength returns the maximum length of the columns in the DataTable.
 func (dt *DataTable) getMaxColumnLength() int {
 	maxLength := 0
 	for _, col := range dt.columns {
@@ -396,37 +315,6 @@ func (dt *DataTable) getMaxColumnLength() int {
 		}
 	}
 	return maxLength
-}
-
-// ======================== Timestamp ========================
-// updateTimestamp updates the last modified timestamp of the DataTable.
-func (dt *DataTable) updateTimestamp() {
-	dt.lastModifiedTimestamp = time.Now().Unix()
-}
-
-func (dt *DataTable) GetCreationTimestamp() int64 {
-	return dt.creationTimestamp
-}
-
-func (dt *DataTable) GetLastModifiedTimestamp() int64 {
-	return dt.lastModifiedTimestamp
-}
-
-// ======================== Column Names ========================
-// updateColumnNames updates the column names (keys in the map) to be in sequential order without skipping letters.
-// Auto update timestamp.
-func (dt *DataTable) updateColumnNames() {
-	defer func() {
-		go dt.updateTimestamp()
-	}()
-	updatedColumns := make(map[string]*DataList)
-	i := 0
-	for _, column := range dt.columns {
-		columnName := generateColumnName(i)
-		updatedColumns[columnName] = column
-		i++
-	}
-	dt.columns = updatedColumns
 }
 
 func generateColumnName(index int) string {
@@ -438,8 +326,6 @@ func generateColumnName(index int) string {
 	return name
 }
 
-// ======================== functions ========================
-// newEmptyDataList creates a new DataList with a specified number of empty rows (filled with nil).
 func newEmptyDataList(rowCount int) *DataList {
 	data := make([]interface{}, rowCount)
 	for i := 0; i < rowCount; i++ {
@@ -450,4 +336,16 @@ func newEmptyDataList(rowCount int) *DataList {
 		creationTimestamp:     time.Now().Unix(),
 		lastModifiedTimestamp: time.Now().Unix(),
 	}
+}
+
+func (dt *DataTable) updateTimestamp() {
+	dt.lastModifiedTimestamp = time.Now().Unix()
+}
+
+func (dt *DataTable) GetCreationTimestamp() int64 {
+	return dt.creationTimestamp
+}
+
+func (dt *DataTable) GetLastModifiedTimestamp() int64 {
+	return dt.lastModifiedTimestamp
 }
