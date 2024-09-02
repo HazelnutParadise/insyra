@@ -118,20 +118,22 @@ func (dt *DataTable) AppendRowsByIndex(rowsData ...map[string]interface{}) {
 	for _, rowData := range rowsData {
 		maxLength := dt.getMaxColumnLength()
 
-		for colIndex := range rowData {
-			if _, exists := dt.columnIndex[colIndex]; !exists {
+		for colIndex, value := range rowData {
+			// 使用 columnIndex 查找對應的切片索引
+			colPos, exists := dt.columnIndex[colIndex]
+			if !exists {
+				// 如果列不存在，創建新列
 				newCol := newEmptyDataList(maxLength)
 				dt.columns = append(dt.columns, newCol)
-				dt.columnIndex[colIndex] = len(dt.columns) - 1
+				colPos = len(dt.columns) - 1
+				dt.columnIndex[colIndex] = colPos // 確保 columnIndex map 正確更新
 			}
+			dt.columns[colPos].data = append(dt.columns[colPos].data, value)
 		}
 
-		for colIndex, value := range rowData {
-			dt.columns[dt.columnIndex[colIndex]].data = append(dt.columns[dt.columnIndex[colIndex]].data, value)
-		}
-
+		// 填補空白資料
 		for _, column := range dt.columns {
-			if len(column.data) == maxLength {
+			if len(column.data) <= maxLength {
 				column.data = append(column.data, nil)
 			}
 		}
@@ -147,29 +149,27 @@ func (dt *DataTable) AppendRowsByName(rowsData ...map[string]interface{}) {
 	for _, rowData := range rowsData {
 		maxLength := dt.getMaxColumnLength()
 
-		for colName := range rowData {
+		for colName, value := range rowData {
 			found := false
-			for _, colIdx := range dt.columnIndex {
-				if dt.columns[colIdx].name == colName {
+			for i := 0; i < len(dt.columns); i++ {
+				if dt.columns[i].name == colName {
+					dt.columns[i].data = append(dt.columns[i].data, value)
 					found = true
 					break
 				}
 			}
 			if !found {
+				// 創建新列並插入資料
 				newCol := newEmptyDataList(maxLength)
+				newCol.name = colName
+				newCol.data = append(newCol.data, value)
 				dt.columns = append(dt.columns, newCol)
-				dt.columnIndex[generateColumnName(len(dt.columns)-1)] = len(dt.columns) - 1
+				// 更新字母索引
+				dt.columnIndex[generateColumnName(len(dt.columns)-1)] = len(dt.columns) - 1 // 確保 columnIndex map 正確更新
 			}
 		}
 
-		for colName, value := range rowData {
-			for _, col := range dt.columns {
-				if col.name == colName {
-					col.data = append(col.data, value)
-				}
-			}
-		}
-
+		// 填充其他缺少資料的列
 		for _, column := range dt.columns {
 			if len(column.data) == maxLength {
 				column.data = append(column.data, nil)
