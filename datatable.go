@@ -43,7 +43,11 @@ func NewDataTable(columns ...*DataList) *DataTable {
 	}
 
 	if len(columns) > 0 {
-		newTable.AppendColumns(columns...)
+		// 依照順序生成列索引
+		for i, column := range columns {
+			columnName := generateColumnName(i)
+			newTable.columns[columnName] = column
+		}
 	}
 
 	return newTable
@@ -219,6 +223,7 @@ func (dt *DataTable) Size() (int, int) {
 
 // ======================== Drop ========================
 
+// DropColumnsByIndex drops columns by their auto-generated index and then renames the remaining columns in alphabetical order.
 func (dt *DataTable) DropColumnsByIndex(columnIndices ...string) {
 	dt.mu.Lock()
 	defer func() {
@@ -229,9 +234,12 @@ func (dt *DataTable) DropColumnsByIndex(columnIndices ...string) {
 	for _, delColumnIndex := range columnIndices {
 		delete(dt.columns, delColumnIndex)
 	}
+
+	// 更新其餘列的名稱
+	dt.updateColumnNames()
 }
 
-// DropColumnsByName drops columns by name.
+// DropColumnsByName drops columns by name and then renames the remaining columns in alphabetical order.
 func (dt *DataTable) DropColumnsByName(columnNames ...string) {
 	dt.mu.Lock()
 	defer func() {
@@ -246,6 +254,9 @@ func (dt *DataTable) DropColumnsByName(columnNames ...string) {
 			}
 		}
 	}
+
+	// 更新其餘列的名稱
+	dt.updateColumnNames()
 }
 
 // DropRowsByIndex drops rows by index.
@@ -367,7 +378,7 @@ func (dt *DataTable) GetLastModifiedTimestamp() int64 {
 }
 
 // ======================== Column Names ========================
-// updateColumnNames updates the column names (keys in the map) to be in sequential order.
+// updateColumnNames updates the column names (keys in the map) to be in sequential order without skipping letters.
 // Auto update timestamp.
 func (dt *DataTable) updateColumnNames() {
 	defer func() {
