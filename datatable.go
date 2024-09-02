@@ -21,6 +21,8 @@ type IDataTable interface {
 	Size() (int, int)
 	updateTimestamp()
 	updateColumnNames()
+	GetCreationTimestamp() int64
+	GetLastModifiedTimestamp() int64
 	SetCustomIndex(index []string)
 	getMaxColumnLength() int
 }
@@ -234,11 +236,21 @@ func (dt *DataTable) getMaxColumnLength() int {
 	return maxLength
 }
 
+// ======================== Timestamp ========================
 // updateTimestamp updates the last modified timestamp of the DataTable.
 func (dt *DataTable) updateTimestamp() {
 	dt.lastModifiedTimestamp = time.Now().Unix()
 }
 
+func (dt *DataTable) GetCreationTimestamp() int64 {
+	return dt.creationTimestamp
+}
+
+func (dt *DataTable) GetLastModifiedTimestamp() int64 {
+	return dt.lastModifiedTimestamp
+}
+
+// ======================== Column Names ========================
 // updateColumnNames updates the column names (keys in the map) to be in sequential order.
 // Auto update timestamp.
 func (dt *DataTable) updateColumnNames() {
@@ -264,6 +276,7 @@ func generateColumnName(index int) string {
 	return name
 }
 
+// ======================== functions ========================
 // newEmptyDataList creates a new DataList with a specified number of empty rows (filled with nil).
 func newEmptyDataList(rowCount int) *DataList {
 	data := make([]interface{}, rowCount)
