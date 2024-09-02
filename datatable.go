@@ -25,17 +25,16 @@ type IDataTable interface {
 	getMaxColumnLength() int
 }
 
-// NewDataTable creates a new DataTable with a specified number of columns and rows.
-func NewDataTable(rowCount, columnCount int) *DataTable {
+// NewDataTable creates a new empty DataTable or initializes it with provided DataLists as columns.
+func NewDataTable(columns ...*DataList) *DataTable {
 	newTable := &DataTable{
 		columns:               make(map[string]*DataList),
 		creationTimestamp:     time.Now().Unix(),
 		lastModifiedTimestamp: time.Now().Unix(),
 	}
 
-	for i := 0; i < columnCount; i++ {
-		columnName := generateColumnName(i)
-		newTable.columns[columnName] = newEmptyDataList(rowCount)
+	if len(columns) > 0 {
+		newTable.AppendColumns(columns...)
 	}
 
 	return newTable
@@ -89,42 +88,27 @@ func (dt *DataTable) AppendRowsByIndex(rowsData ...map[string]interface{}) {
 		go dt.updateTimestamp()
 	}()
 
+	// 先確定要新增的行數
 	for _, rowData := range rowsData {
-		maxLength := dt.getMaxColumnLength() + 1
+		maxLength := dt.getMaxColumnLength()
 
-		// 檢查該行是否全為 nil
-		allNil := true
-		for _, value := range rowData {
-			if value != nil {
-				allNil = false
-				break
+		// 先檢查是否有新的 column，提前補齊舊的 column
+		for colIndex := range rowData {
+			if _, exists := dt.columns[colIndex]; !exists {
+				dt.columns[colIndex] = newEmptyDataList(maxLength) // 創建新列
 			}
 		}
 
-		// 如果該行全為 nil，則跳過該行
-		if allNil {
-			continue
-		}
-
-		// 將資料插入對應的列
+		// 插入新行
 		for colIndex, value := range rowData {
-			if column, exists := dt.columns[colIndex]; exists {
-				column.data = append(column.data, value)
-			} else {
-				LogWarning("column %s does not exist in the DataTable, skipping.", colIndex)
-			}
+			dt.columns[colIndex].data = append(dt.columns[colIndex].data, value)
 		}
 
-		// 保持其他列的長度一致，如果該列在這一行中沒有插入數據，則插入 nil
+		// 將缺少資料的列補齊 nil
 		for _, column := range dt.columns {
-			if len(column.data) < maxLength {
+			if len(column.data) == maxLength {
 				column.data = append(column.data, nil)
 			}
-		}
-
-		// 更新自訂索引長度
-		if len(dt.customIndex) < maxLength {
-			dt.customIndex = append(dt.customIndex, generateColumnName(len(dt.customIndex)))
 		}
 	}
 }
@@ -138,48 +122,39 @@ func (dt *DataTable) AppendRowsByName(rowsData ...map[string]interface{}) {
 	}()
 
 	for _, rowData := range rowsData {
-		maxLength := dt.getMaxColumnLength() + 1
+		maxLength := dt.getMaxColumnLength()
 
-		// 檢查該行是否全為 nil
-		allNil := true
-		for _, value := range rowData {
-			if value != nil {
-				allNil = false
-				break
-			}
-		}
-
-		// 如果該行全為 nil，則跳過該行
-		if allNil {
-			continue
-		}
-
-		// 將資料插入對應的列
-		for colName, value := range rowData {
+		// 先檢查是否有新的 column，提前補齊舊的 column
+		for colName := range rowData {
 			columnFound := false
 			for _, column := range dt.columns {
 				if column.name == colName {
-					column.data = append(column.data, value)
 					columnFound = true
 					break
 				}
 			}
 
 			if !columnFound {
-				LogWarning("column %s does not exist in the DataTable, skipping.", colName)
+				newCol := newEmptyDataList(maxLength)
+				newCol.name = colName
+				dt.columns[generateColumnName(len(dt.columns))] = newCol
 			}
 		}
 
-		// 保持其他列的長度一致，如果該列在這一行中沒有插入數據，則插入 nil
+		// 插入新行
+		for colName, value := range rowData {
+			for _, column := range dt.columns {
+				if column.name == colName {
+					column.data = append(column.data, value)
+				}
+			}
+		}
+
+		// 將缺少資料的列補齊 nil
 		for _, column := range dt.columns {
-			if len(column.data) < maxLength {
+			if len(column.data) == maxLength {
 				column.data = append(column.data, nil)
 			}
-		}
-
-		// 更新自訂索引長度
-		if len(dt.customIndex) < maxLength {
-			dt.customIndex = append(dt.customIndex, generateColumnName(len(dt.customIndex)))
 		}
 	}
 }
