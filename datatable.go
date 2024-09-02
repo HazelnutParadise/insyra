@@ -14,8 +14,8 @@ type DataTable struct {
 }
 
 type IDataTable interface {
-	// AddColumns adds columns to the DataTable.
-	AddColumns(columns ...*DataList)
+	AppendColumns(columns ...*DataList)
+	AppendRows(rowsData ...map[string]interface{})
 	Data(useNamesAsKeys ...bool) map[string][]interface{}
 	Size() (int, int)
 	updateTimestamp()
@@ -41,7 +41,7 @@ func NewDataTable(rowCount, columnCount int) *DataTable {
 }
 
 // AddColumns adds columns to the DataTable and ensures that all columns have the same length.
-func (dt *DataTable) AddColumns(columns ...*DataList) {
+func (dt *DataTable) AppendColumns(columns ...*DataList) {
 	dt.mu.Lock()
 	defer func() {
 		dt.mu.Unlock()
@@ -78,6 +78,37 @@ func (dt *DataTable) AddColumns(columns ...*DataList) {
 		dt.customIndex = append(dt.customIndex, make([]string, maxLength-len(dt.customIndex))...)
 	}
 
+}
+
+// AppendRow appends a new row to the DataTable.
+func (dt *DataTable) AppendRows(rowsData ...map[string]interface{}) {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	// 檢查是否需要新增自訂索引
+	if len(dt.customIndex) < dt.getMaxColumnLength()+1 {
+		dt.customIndex = append(dt.customIndex, generateColumnName(len(dt.customIndex)))
+	}
+
+	// 將新的資料插入到對應的 DataList 中
+	for _, rowData := range rowsData {
+		for colName, value := range rowData {
+			if _, exists := dt.columns[colName]; !exists {
+				LogWarning("column %s does not exist in the DataTable, skipping.", colName)
+				continue
+			}
+			dt.columns[colName].data = append(dt.columns[colName].data, value)
+		}
+
+		// 如果某一個 column 沒有對應的新數據，則插入 nil 來保持每列的長度一致
+		for colName, column := range dt.columns {
+			if _, exists := rowData[colName]; !exists {
+				column.data = append(column.data, nil)
+			}
+		}
+	}
+
+	dt.updateTimestamp()
 }
 
 // Data 方法返回一個 map，可以選擇使用 DataList 的 name 作為鍵或使用自動生成的列索引。
