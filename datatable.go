@@ -55,13 +55,14 @@ func (dt *DataTable) AppendColumns(columns ...*DataList) {
 
 	maxLength := dt.getMaxColumnLength()
 
-	for i, column := range columns {
-		columnName := generateColumnName(len(dt.columns) + i)
+	for _, column := range columns {
+		columnName := generateColumnName(len(dt.columns)) // 修改這行確保按順序生成列名
 		dt.columns = append(dt.columns, column)
 		dt.columnIndex[columnName] = len(dt.columns) - 1
 		if len(column.data) < maxLength {
 			column.data = append(column.data, make([]interface{}, maxLength-len(column.data))...)
 		}
+		LogDebug(fmt.Sprintf("AppendColumns: Added column %s at index %d", columnName, dt.columnIndex[columnName]))
 	}
 
 	for _, col := range dt.columns {
@@ -119,19 +120,18 @@ func (dt *DataTable) AppendRowsByIndex(rowsData ...map[string]interface{}) {
 		maxLength := dt.getMaxColumnLength()
 
 		for colIndex, value := range rowData {
-			// 使用 columnIndex 查找對應的切片索引
 			colPos, exists := dt.columnIndex[colIndex]
+			LogDebug(fmt.Sprintf("AppendRowsByIndex: Handling column %s, exists: %t", colIndex, exists))
 			if !exists {
-				// 如果列不存在，創建新列
 				newCol := newEmptyDataList(maxLength)
 				dt.columns = append(dt.columns, newCol)
 				colPos = len(dt.columns) - 1
-				dt.columnIndex[colIndex] = colPos // 確保 columnIndex map 正確更新
+				dt.columnIndex[colIndex] = colPos // 更新 columnIndex
+				LogDebug(fmt.Sprintf("AppendRowsByIndex: Added new column %s at index %d", colIndex, colPos))
 			}
 			dt.columns[colPos].data = append(dt.columns[colPos].data, value)
 		}
 
-		// 填補空白資料
 		for _, column := range dt.columns {
 			if len(column.data) <= maxLength {
 				column.data = append(column.data, nil)
@@ -155,21 +155,20 @@ func (dt *DataTable) AppendRowsByName(rowsData ...map[string]interface{}) {
 				if dt.columns[i].name == colName {
 					dt.columns[i].data = append(dt.columns[i].data, value)
 					found = true
+					LogDebug(fmt.Sprintf("AppendRowsByName: Found column %s at index %d", colName, i))
 					break
 				}
 			}
 			if !found {
-				// 創建新列並插入資料
 				newCol := newEmptyDataList(maxLength)
 				newCol.name = colName
 				newCol.data = append(newCol.data, value)
 				dt.columns = append(dt.columns, newCol)
-				// 更新字母索引
-				dt.columnIndex[generateColumnName(len(dt.columns)-1)] = len(dt.columns) - 1 // 確保 columnIndex map 正確更新
+				dt.columnIndex[generateColumnName(len(dt.columns)-1)] = len(dt.columns) - 1 // 更新 columnIndex
+				LogDebug(fmt.Sprintf("AppendRowsByName: Added new column %s at index %d", colName, len(dt.columns)-1))
 			}
 		}
 
-		// 填充其他缺少資料的列
 		for _, column := range dt.columns {
 			if len(column.data) == maxLength {
 				column.data = append(column.data, nil)
@@ -334,6 +333,7 @@ func newEmptyDataList(rowCount int) *DataList {
 
 func (dt *DataTable) updateTimestamp() {
 	dt.lastModifiedTimestamp = time.Now().Unix()
+	LogDebug(fmt.Sprintf("Timestamp updated: %d", dt.lastModifiedTimestamp))
 }
 
 func (dt *DataTable) GetCreationTimestamp() int64 {
