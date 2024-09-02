@@ -10,7 +10,7 @@ import (
 type DataTable struct {
 	mu                    sync.Mutex
 	columns               map[string]*DataList
-	customIndex           []string
+	rowNames              map[string]int
 	creationTimestamp     int64
 	lastModifiedTimestamp int64
 }
@@ -94,6 +94,10 @@ func (dt *DataTable) AppendRowsFromDataList(rowsData ...*DataList) {
 
 	for _, rowData := range rowsData {
 		maxLength := dt.getMaxColumnLength()
+
+		if rowData.name != "" {
+			dt.rowNames[rowData.name] = maxLength
+		}
 
 		// 如果需要新增的 column 多於目前的 column，先補齊現有的 column
 		if len(rowData.data) > len(dt.columns) {
@@ -309,7 +313,11 @@ func (dt *DataTable) DropRowsByIndex(rowIndices ...int) {
 			i-- // 因為刪除了一個元素，所以 i 要減 1
 			continue
 		}
-
+		for rowName, index := range dt.rowNames {
+			if index == rowIndex {
+				delete(dt.rowNames, rowName)
+			}
+		}
 	}
 
 	for _, rowIndex := range rowIndices {
@@ -361,23 +369,23 @@ func (dt *DataTable) GetRowByIndex(rowIndex int) *DataList {
 }
 
 // SetCustomIndex sets a custom index for the DataTable and ensures it matches the length of columns.
-func (dt *DataTable) SetCustomIndex(index []string) {
-	dt.mu.Lock()
-	defer func() {
-		dt.mu.Unlock()
-		go dt.updateTimestamp()
-	}()
+// func (dt *DataTable) SetCustomIndex(index []string) {
+// 	dt.mu.Lock()
+// 	defer func() {
+// 		dt.mu.Unlock()
+// 		go dt.updateTimestamp()
+// 	}()
 
-	maxLength := dt.getMaxColumnLength()
+// 	maxLength := dt.getMaxColumnLength()
 
-	if len(index) < maxLength {
-		// Fill the custom index with empty strings to match the length
-		index = append(index, make([]string, maxLength-len(index))...)
-	}
+// 	if len(index) < maxLength {
+// 		// Fill the custom index with empty strings to match the length
+// 		index = append(index, make([]string, maxLength-len(index))...)
+// 	}
 
-	dt.customIndex = index[:maxLength]
+// 	dt.customIndex = index[:maxLength]
 
-}
+// }
 
 // getMaxColumnLength returns the maximum length of the columns in the DataTable.
 func (dt *DataTable) getMaxColumnLength() int {
