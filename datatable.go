@@ -217,6 +217,70 @@ func (dt *DataTable) Size() (int, int) {
 	return numRows, numColumns
 }
 
+// ======================== Drop ========================
+
+func (dt *DataTable) DropColumnsByIndex(columnIndices ...string) {
+	dt.mu.Lock()
+	defer func() {
+		dt.mu.Unlock()
+		go dt.updateTimestamp()
+	}()
+
+	for _, delColumnIndex := range columnIndices {
+		delete(dt.columns, delColumnIndex)
+	}
+}
+
+// DropColumnsByName drops columns by name.
+func (dt *DataTable) DropColumnsByName(columnNames ...string) {
+	dt.mu.Lock()
+	defer func() {
+		dt.mu.Unlock()
+		go dt.updateTimestamp()
+	}()
+
+	for _, columnName := range columnNames {
+		for columnIndex, column := range dt.columns {
+			if column.name == columnName {
+				delete(dt.columns, columnIndex)
+			}
+		}
+	}
+}
+
+// DropRowsByIndex drops rows by index.
+func (dt *DataTable) DropRowsByIndex(rowIndices ...int) {
+	dt.mu.Lock()
+	defer func() {
+		dt.mu.Unlock()
+		go dt.updateTimestamp()
+	}()
+
+	if len(rowIndices) == 0 {
+		LogWarning("DataTable.DropRowsByIndex(): no row indices provided, skipping.")
+		return
+	}
+
+	for i, rowIndex := range rowIndices {
+		if rowIndex < 0 {
+			rowIndex = len(dt.columns) + rowIndex
+		}
+		if rowIndex >= dt.getMaxColumnLength() {
+			LogWarning("DataTable.DropRowsByIndex(): row index out of range, skipping.")
+			rowIndices, _ = sliceutil.Remove[int](rowIndices, i)
+			i-- // 因為刪除了一個元素，所以 i 要減 1
+			continue
+		}
+
+	}
+
+	for _, rowIndex := range rowIndices {
+		for _, column := range dt.columns {
+			column.Drop(rowIndex)
+		}
+	}
+}
+
 // SetCustomIndex sets a custom index for the DataTable and ensures it matches the length of columns.
 func (dt *DataTable) SetCustomIndex(index []string) {
 	dt.mu.Lock()
@@ -298,68 +362,6 @@ func newEmptyDataList(rowCount int) *DataList {
 		data:                  data,
 		creationTimestamp:     time.Now().Unix(),
 		lastModifiedTimestamp: time.Now().Unix(),
-	}
-}
-
-func (dt *DataTable) DropColumnsByIndex(columnIndices ...string) {
-	dt.mu.Lock()
-	defer func() {
-		dt.mu.Unlock()
-		go dt.updateTimestamp()
-	}()
-
-	for _, delColumnIndex := range columnIndices {
-		delete(dt.columns, delColumnIndex)
-	}
-}
-
-// DropColumnsByName drops columns by name.
-func (dt *DataTable) DropColumnsByName(columnNames ...string) {
-	dt.mu.Lock()
-	defer func() {
-		dt.mu.Unlock()
-		go dt.updateTimestamp()
-	}()
-
-	for _, columnName := range columnNames {
-		for columnIndex, column := range dt.columns {
-			if column.name == columnName {
-				delete(dt.columns, columnIndex)
-			}
-		}
-	}
-}
-
-// DropRowsByIndex drops rows by index.
-func (dt *DataTable) DropRowsByIndex(rowIndices ...int) {
-	dt.mu.Lock()
-	defer func() {
-		dt.mu.Unlock()
-		go dt.updateTimestamp()
-	}()
-
-	if len(rowIndices) == 0 {
-		LogWarning("DataTable.DropRowsByIndex(): no row indices provided, skipping.")
-		return
-	}
-
-	for i, rowIndex := range rowIndices {
-		if rowIndex < 0 {
-			rowIndex = len(dt.columns) + rowIndex
-		}
-		if rowIndex >= dt.getMaxColumnLength() {
-			LogWarning("DataTable.DropRowsByIndex(): row index out of range, skipping.")
-			rowIndices, _ = sliceutil.Remove[int](rowIndices, i)
-			i-- // 因為刪除了一個元素，所以 i 要減 1
-			continue
-		}
-
-	}
-
-	for _, rowIndex := range rowIndices {
-		for _, column := range dt.columns {
-			column.Drop(rowIndex)
-		}
 	}
 }
 
