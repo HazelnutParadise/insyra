@@ -22,19 +22,13 @@ type IDataTable interface {
 	AppendRowsByIndex(rowsData ...map[string]interface{})
 	AppendRowsByName(rowsData ...map[string]interface{})
 	Data(useNamesAsKeys ...bool) map[string][]interface{}
-
-	Size() (int, int)
-	DropColumnsByIndex(columnIndices ...string)
-	DropColumnsByName(columnNames ...string)
-	DropRowsByIndex(rowIndices ...int)
-	GetColumnByName(columnName string) *DataList
-	GetRowByIndex(rowIndex int) *DataList
-	updateTimestamp() // 新增的 updateTimestamp 方法
-	updateColumnNames()
+	Show()
 	GetCreationTimestamp() int64
 	GetLastModifiedTimestamp() int64
-	SetCustomIndex(index []string)
+	getSortedColumnNames() []string
+	getRowNameByIndex(index int) (string, bool)
 	getMaxColumnLength() int
+	updateTimestamp()
 }
 
 func NewDataTable(columns ...*DataList) *DataTable {
