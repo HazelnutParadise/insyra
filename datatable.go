@@ -178,9 +178,9 @@ func (dt *DataTable) Data(useNamesAsKeys ...bool) map[string][]interface{} {
 	for i, col := range dt.columns {
 		var key string
 		if useNamesAsKeysBool && col.name != "" {
-			key = col.name + "[" + i + "]"
+			key = col.name + "(" + i + ")"
 		} else {
-			key = "[" + i + "]"
+			key = "(" + i + ")"
 		}
 		dataMap[key] = col.data
 	}
