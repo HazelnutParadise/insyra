@@ -1,6 +1,7 @@
 package insyra
 
 import (
+	"sort"
 	"sync"
 	"time"
 )
@@ -19,12 +20,16 @@ type IDataTable interface {
 	AppendRowsByName(rowsData ...map[string]interface{})
 	Data(useNamesAsKeys ...bool) map[string][]interface{}
 	Size() (int, int)
+	DropColumnsByName(columnNames ...string)
+	DropRowsByIndex(rowIndices ...int)
 	updateTimestamp()
 	updateColumnNames()
 	GetCreationTimestamp() int64
 	GetLastModifiedTimestamp() int64
 	SetCustomIndex(index []string)
-	getMaxColumnLength() int
+	getMaxColumnLength()
+	GetColumn(columnName string) *DataList
+	GetRow(rowIndex int) map[string]interface{}
 }
 
 // NewDataTable creates a new empty DataTable or initializes it with provided DataLists as columns.
@@ -288,4 +293,65 @@ func newEmptyDataList(rowCount int) *DataList {
 		creationTimestamp:     time.Now().Unix(),
 		lastModifiedTimestamp: time.Now().Unix(),
 	}
+}
+
+// DropColumnsByName drops columns by name.
+func (dt *DataTable) DropColumnsByName(columnNames ...string) {
+	dt.mu.Lock()
+	defer func() {
+		dt.mu.Unlock()
+		go dt.updateTimestamp()
+	}()
+
+	for _, columnName := range columnNames {
+		for columnIndex, column := range dt.columns {
+			if column.name == columnName {
+				delete(dt.columns, columnIndex)
+			}
+		}
+	}
+}
+
+// DropRowsByIndex drops rows by index.
+func (dt *DataTable) DropRowsByIndex(rowIndices ...int) {
+	dt.mu.Lock()
+	defer func() {
+		dt.mu.Unlock()
+		go dt.updateTimestamp()
+	}()
+
+	// 先排序索引，從大到小移除，避免影響其他索引
+	sort.Sort(sort.Reverse(sort.IntSlice(rowIndices)))
+
+	for _, rowIndex := range rowIndices {
+		for _, col := range dt.columns {
+			if rowIndex < len(col.data) {
+				col.data = append(col.data[:rowIndex], col.data[rowIndex+1:]...)
+			}
+		}
+	}
+}
+
+// GetColumn 取得指定名稱的列
+func (dt *DataTable) GetColumn(columnName string) *DataList {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	return dt.columns[columnName]
+}
+
+// GetRow 取得指定索引的行
+func (dt *DataTable) GetRow(rowIndex int) map[string]interface{} {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	rowData := make(map[string]interface{})
+	for colName, col := range dt.columns {
+		if rowIndex < len(col.data) {
+			rowData[colName] = col.data[rowIndex]
+		} else {
+			rowData[colName] = nil
+		}
+	}
+	return rowData
 }
