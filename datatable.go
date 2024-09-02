@@ -18,29 +18,92 @@ type IDataTable interface {
 	AddColumns(columns ...*DataList)
 	updateTimestamp()
 	updateColumnNames()
+	SetCustomIndex(index []string)
+	getMaxColumnLength() int
 }
 
-// NewDataTable creates a new DataTable.
-func NewDataTable(columns ...*DataList) *DataTable {
+// NewDataTable creates a new DataTable with a specified number of columns and rows.
+func NewDataTable(columnCount, rowCount int) *DataTable {
 	newTable := &DataTable{
 		columns:               make(map[string]*DataList),
 		creationTimestamp:     time.Now().Unix(),
 		lastModifiedTimestamp: time.Now().Unix(),
 	}
-	if len(columns) > 0 {
-		newTable.AddColumns(columns...)
+
+	for i := 0; i < columnCount; i++ {
+		columnName := generateColumnName(i)
+		newTable.columns[columnName] = newEmptyDataList(rowCount)
 	}
+
 	return newTable
 }
 
-// AddColumns adds columns to the DataTable.
+// AddColumns adds columns to the DataTable and ensures that all columns have the same length.
 func (dt *DataTable) AddColumns(columns ...*DataList) {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
+
+	// Find the maximum length of existing columns
+	maxLength := 0
+	for _, col := range dt.columns {
+		if len(col.data) > maxLength {
+			maxLength = len(col.data)
+		}
+	}
+
+	// Add new columns and ensure their length matches the maximum length
 	for i, column := range columns {
-		columnName := generateColumnName(i)
+		if len(column.data) < maxLength {
+			// Fill with nil to match the length
+			column.data = append(column.data, make([]interface{}, maxLength-len(column.data))...)
+		}
+		columnName := generateColumnName(len(dt.columns) + i)
 		dt.columns[columnName] = column
 	}
+
+	// Update other columns to match the new max length
+	for _, col := range dt.columns {
+		if len(col.data) < maxLength {
+			col.data = append(col.data, make([]interface{}, maxLength-len(col.data))...)
+		}
+	}
+
+	// Update custom index length if needed
+	if len(dt.customIndex) < maxLength {
+		dt.customIndex = append(dt.customIndex, make([]string, maxLength-len(dt.customIndex))...)
+	}
+
+	dt.updateTimestamp()
+}
+
+// SetCustomIndex sets a custom index for the DataTable and ensures it matches the length of columns.
+func (dt *DataTable) SetCustomIndex(index []string) {
+	dt.mu.Lock()
+	defer func() {
+		dt.mu.Unlock()
+		go dt.updateTimestamp()
+	}()
+
+	maxLength := dt.getMaxColumnLength()
+
+	if len(index) < maxLength {
+		// Fill the custom index with empty strings to match the length
+		index = append(index, make([]string, maxLength-len(index))...)
+	}
+
+	dt.customIndex = index[:maxLength]
+
+}
+
+// getMaxColumnLength returns the maximum length of the columns in the DataTable.
+func (dt *DataTable) getMaxColumnLength() int {
+	maxLength := 0
+	for _, col := range dt.columns {
+		if len(col.data) > maxLength {
+			maxLength = len(col.data)
+		}
+	}
+	return maxLength
 }
 
 // updateTimestamp updates the last modified timestamp of the DataTable.
@@ -71,4 +134,17 @@ func generateColumnName(index int) string {
 		index = index/26 - 1
 	}
 	return name
+}
+
+// newEmptyDataList creates a new DataList with a specified number of empty rows (filled with nil).
+func newEmptyDataList(rowCount int) *DataList {
+	data := make([]interface{}, rowCount)
+	for i := 0; i < rowCount; i++ {
+		data[i] = nil
+	}
+	return &DataList{
+		data:                  data,
+		creationTimestamp:     time.Now().Unix(),
+		lastModifiedTimestamp: time.Now().Unix(),
+	}
 }
