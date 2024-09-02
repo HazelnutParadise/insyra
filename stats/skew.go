@@ -1,7 +1,6 @@
 package stats
 
 import (
-	"math"
 	"math/big"
 
 	"github.com/HazelnutParadise/Go-Utils/conv"
@@ -26,6 +25,7 @@ const (
 // Skew calculates the skewness(sample) of the DataList.
 // Returns the skewness.
 // Returns nil if the DataList is empty or the skewness cannot be calculated.
+// Skew_FisherPearson method is not correct yet.
 func Skew(sample interface{}, method ...SkewnessMode) interface{} {
 	d, dLen := insyra.ProcessData(sample)
 	d64 := insyra.SliceToF64(d)
@@ -119,40 +119,25 @@ func calculateSkewPearsonFirst(dl *insyra.DataList, highPrecision ...bool) inter
 
 // 錯誤
 func calculateSkewFisherPearson(dl *insyra.DataList) interface{} {
-	n := float64(dl.Len())
+	n := new(big.Rat).SetFloat64(conv.ParseF64(dl.Len()))
+	g1 := calculateSkewPearsonFirst(dl, true).(*big.Rat)
 
-	// 檢查樣本大小是否小於 3
-	if n < 3 {
-		insyra.LogWarning("calculateSkewFisherPearson: Sample size too small to calculate skewness, returning nil.")
-		return nil
-	}
+	// 计算 n(n-1)
+	nMinus1 := new(big.Rat).Sub(n, new(big.Rat).SetInt64(1))
+	numerator := new(big.Rat).Mul(n, nMinus1)
 
-	// 計算均值
-	m1 := dl.Mean(false).(float64)
+	// 计算 (n-2)
+	nMinus2 := new(big.Rat).Sub(n, new(big.Rat).SetInt64(2))
 
-	// 計算二階矩 (m2) 和 三階矩 (m3)
-	m2, m3 := 0.0, 0.0
-	for _, v := range dl.Data() {
-		delta := v.(float64) - m1
-		deltaSquared := delta * delta
-		m2 += deltaSquared
-		m3 += deltaSquared * delta
-	}
+	// 计算修正项 sqrt(n(n-1)/(n-2))
+	correctionFactor := new(big.Rat).Quo(numerator, nMinus2)
+	correctionFactorSqrt := insyra.SqrtRat(correctionFactor)
 
-	// 除以樣本數 n 得到 m2 和 m3
-	m2 /= n
-	m3 /= n
+	// 计算最终的 Fisher-Pearson 偏度
+	G1 := new(big.Rat).Mul(g1, correctionFactorSqrt)
+	f64G1, _ := G1.Float64()
 
-	// 計算 Type 1 偏度 (g1)
-	g1 := m3 / math.Pow(m2, 1.5)
-
-	// 計算 Fisher-Pearson 修正項
-	correctionFactor := math.Sqrt(n * (n - 1) / (n - 2))
-
-	// 最終的 Fisher-Pearson 偏度
-	G1 := g1 * correctionFactor
-
-	return G1
+	return f64G1
 }
 
 func calculateSkewAdjustedFisherPearson(dl *insyra.DataList) interface{} {
