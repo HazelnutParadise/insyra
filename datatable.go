@@ -21,6 +21,7 @@ type IDataTable interface {
 	AppendRowsByName(rowsData ...map[string]interface{})
 	Data(useNamesAsKeys ...bool) map[string][]interface{}
 	Size() (int, int)
+	DropColumnsByIndex(columnIndices ...string)
 	DropColumnsByName(columnNames ...string)
 	DropRowsByIndex(rowIndices ...int)
 	updateTimestamp()
@@ -47,6 +48,8 @@ func NewDataTable(columns ...*DataList) *DataTable {
 
 	return newTable
 }
+
+// ======================== Append ========================
 
 // AddColumns adds columns to the DataTable and ensures that all columns have the same length.
 func (dt *DataTable) AppendColumns(columns ...*DataList) {
@@ -166,6 +169,8 @@ func (dt *DataTable) AppendRowsByName(rowsData ...map[string]interface{}) {
 		}
 	}
 }
+
+// ======================== Data ========================
 
 // Data 方法返回一個 map，可以選擇使用 DataList 的 name 作為鍵或使用自動生成的列索引。
 func (dt *DataTable) Data(useNamesAsKeys ...bool) map[string][]interface{} {
@@ -293,6 +298,18 @@ func newEmptyDataList(rowCount int) *DataList {
 		data:                  data,
 		creationTimestamp:     time.Now().Unix(),
 		lastModifiedTimestamp: time.Now().Unix(),
+	}
+}
+
+func (dt *DataTable) DropColumnsByIndex(columnIndices ...string) {
+	dt.mu.Lock()
+	defer func() {
+		dt.mu.Unlock()
+		go dt.updateTimestamp()
+	}()
+
+	for _, delColumnIndex := range columnIndices {
+		delete(dt.columns, delColumnIndex)
 	}
 }
 
