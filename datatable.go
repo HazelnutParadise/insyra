@@ -21,6 +21,10 @@ type IDataTable interface {
 	AppendRowsFromDataList(rowsData ...*DataList)
 	AppendRowsByIndex(rowsData ...map[string]interface{})
 	AppendRowsByName(rowsData ...map[string]interface{})
+	DropColumnsByName(columnNames ...string)
+	DropColumnsByIndex(columnIndices ...string)
+	DropRowsByIndex(rowIndices ...int)
+	DropRowsByName(rowNames ...string)
 	Data(useNamesAsKeys ...bool) map[string][]interface{}
 	Show()
 	GetCreationTimestamp() int64
@@ -51,7 +55,10 @@ func NewDataTable(columns ...*DataList) *DataTable {
 
 func (dt *DataTable) AppendColumns(columns ...*DataList) {
 	dt.mu.Lock()
-	defer dt.mu.Unlock()
+	defer func() {
+		dt.mu.Unlock()
+		go dt.updateTimestamp()
+	}()
 
 	maxLength := dt.getMaxColumnLength()
 
@@ -70,13 +77,14 @@ func (dt *DataTable) AppendColumns(columns ...*DataList) {
 			col.data = append(col.data, make([]interface{}, maxLength-len(col.data))...)
 		}
 	}
-
-	dt.updateTimestamp()
 }
 
 func (dt *DataTable) AppendRowsFromDataList(rowsData ...*DataList) {
 	dt.mu.Lock()
-	defer dt.mu.Unlock()
+	defer func() {
+		dt.mu.Unlock()
+		go dt.updateTimestamp()
+	}()
 
 	for _, rowData := range rowsData {
 		maxLength := dt.getMaxColumnLength()
@@ -108,13 +116,14 @@ func (dt *DataTable) AppendRowsFromDataList(rowsData ...*DataList) {
 			}
 		}
 	}
-
-	dt.updateTimestamp()
 }
 
 func (dt *DataTable) AppendRowsByIndex(rowsData ...map[string]interface{}) {
 	dt.mu.Lock()
-	defer dt.mu.Unlock()
+	defer func() {
+		dt.mu.Unlock()
+		go dt.updateTimestamp()
+	}()
 
 	for _, rowData := range rowsData {
 		maxLength := dt.getMaxColumnLength()
@@ -138,13 +147,14 @@ func (dt *DataTable) AppendRowsByIndex(rowsData ...map[string]interface{}) {
 			}
 		}
 	}
-
-	dt.updateTimestamp()
 }
 
 func (dt *DataTable) AppendRowsByName(rowsData ...map[string]interface{}) {
 	dt.mu.Lock()
-	defer dt.mu.Unlock()
+	defer func() {
+		dt.mu.Unlock()
+		go dt.updateTimestamp()
+	}()
 
 	for _, rowData := range rowsData {
 		maxLength := dt.getMaxColumnLength()
@@ -172,6 +182,115 @@ func (dt *DataTable) AppendRowsByName(rowsData ...map[string]interface{}) {
 		for _, column := range dt.columns {
 			if len(column.data) == maxLength {
 				column.data = append(column.data, nil)
+			}
+		}
+	}
+}
+
+// ======================== Drop ========================
+
+// DropColumnsByName drops columns by their names.
+func (dt *DataTable) DropColumnsByName(columnNames ...string) {
+	dt.mu.Lock()
+	defer func() {
+		dt.mu.Unlock()
+		go dt.updateTimestamp()
+	}()
+
+	for _, name := range columnNames {
+		for colName, colPos := range dt.columnIndex {
+			if dt.columns[colPos].name == name {
+				// 刪除對應的列
+				dt.columns = append(dt.columns[:colPos], dt.columns[colPos+1:]...)
+				delete(dt.columnIndex, colName)
+				// 更新剩餘列的索引
+				for i := colPos; i < len(dt.columns); i++ {
+					newColName := generateColumnName(i)
+					dt.columnIndex[newColName] = i
+				}
+				break
+			}
+		}
+	}
+}
+
+// DropColumnsByIndex drops columns by their index names.
+func (dt *DataTable) DropColumnsByIndex(columnIndices ...string) {
+	dt.mu.Lock()
+	defer func() {
+		dt.mu.Unlock()
+		go dt.updateTimestamp()
+	}()
+
+	for _, index := range columnIndices {
+		colPos, exists := dt.columnIndex[index]
+		if exists {
+			// 刪除對應的列
+			dt.columns = append(dt.columns[:colPos], dt.columns[colPos+1:]...)
+			delete(dt.columnIndex, index)
+			// 更新剩餘列的索引
+			for i := colPos; i < len(dt.columns); i++ {
+				newColName := generateColumnName(i)
+				dt.columnIndex[newColName] = i
+			}
+		}
+	}
+}
+
+// DropRowsByIndex drops rows by their indices.
+func (dt *DataTable) DropRowsByIndex(rowIndices ...int) {
+	dt.mu.Lock()
+	defer func() {
+		dt.mu.Unlock()
+		go dt.updateTimestamp()
+	}()
+
+	sort.Ints(rowIndices) // 確保從最小索引開始刪除
+
+	for i, rowIndex := range rowIndices {
+		adjustedIndex := rowIndex - i // 因為每刪除一行，後續的行索引會變動
+		for _, column := range dt.columns {
+			if adjustedIndex >= 0 && adjustedIndex < len(column.data) {
+				column.data = append(column.data[:adjustedIndex], column.data[adjustedIndex+1:]...)
+			}
+		}
+
+		// 如果該行有名稱，也從 rowNames 中刪除
+		for rowName, index := range dt.rowNames {
+			if index == rowIndex {
+				delete(dt.rowNames, rowName)
+				break
+			}
+		}
+	}
+}
+
+// DropRowsByName drops rows by their names.
+func (dt *DataTable) DropRowsByName(rowNames ...string) {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	for _, rowName := range rowNames {
+		rowIndex, exists := dt.rowNames[rowName]
+		if !exists {
+			LogWarning(fmt.Sprintf("Row name '%s' does not exist.", rowName))
+			continue
+		}
+
+		// 移除所有列中對應行索引的資料
+		for _, column := range dt.columns {
+			if rowIndex < len(column.data) {
+				column.data = append(column.data[:rowIndex], column.data[rowIndex+1:]...)
+			}
+		}
+
+		// 移除行名索引
+		delete(dt.rowNames, rowName)
+
+		// 更新所有行名索引，以反映行被刪除後的變化
+		for name, idx := range dt.rowNames {
+			if idx > rowIndex {
+				dt.rowNames[name] = idx - 1
 			}
 		}
 	}
