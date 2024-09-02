@@ -1,9 +1,10 @@
 package insyra
 
 import (
-	"sort"
 	"sync"
 	"time"
+
+	"github.com/HazelnutParadise/Go-Utils/sliceutil"
 )
 
 type DataTable struct {
@@ -320,14 +321,27 @@ func (dt *DataTable) DropRowsByIndex(rowIndices ...int) {
 		go dt.updateTimestamp()
 	}()
 
-	// 先排序索引，從大到小移除，避免影響其他索引
-	sort.Sort(sort.Reverse(sort.IntSlice(rowIndices)))
+	if len(rowIndices) == 0 {
+		LogWarning("DataTable.DropRowsByIndex(): no row indices provided, skipping.")
+		return
+	}
+
+	for i, rowIndex := range rowIndices {
+		if rowIndex < 0 {
+			rowIndex = len(dt.columns) + rowIndex
+		}
+		if rowIndex >= dt.getMaxColumnLength() {
+			LogWarning("DataTable.DropRowsByIndex(): row index out of range, skipping.")
+			rowIndices, _ = sliceutil.Remove[int](rowIndices, i)
+			i-- // 因為刪除了一個元素，所以 i 要減 1
+			continue
+		}
+
+	}
 
 	for _, rowIndex := range rowIndices {
-		for _, col := range dt.columns {
-			if rowIndex < len(col.data) {
-				col.data = append(col.data[:rowIndex], col.data[rowIndex+1:]...)
-			}
+		for _, column := range dt.columns {
+			column.Drop(rowIndex)
 		}
 	}
 }
