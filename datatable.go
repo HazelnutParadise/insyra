@@ -16,6 +16,8 @@ type DataTable struct {
 type IDataTable interface {
 	// AddColumns adds columns to the DataTable.
 	AddColumns(columns ...*DataList)
+	Data(useNamesAsKeys ...bool) map[string][]interface{}
+	Size() (int, int)
 	updateTimestamp()
 	updateColumnNames()
 	SetCustomIndex(index []string)
@@ -23,7 +25,7 @@ type IDataTable interface {
 }
 
 // NewDataTable creates a new DataTable with a specified number of columns and rows.
-func NewDataTable(columnCount, rowCount int) *DataTable {
+func NewDataTable(rowCount, columnCount int) *DataTable {
 	newTable := &DataTable{
 		columns:               make(map[string]*DataList),
 		creationTimestamp:     time.Now().Unix(),
@@ -41,7 +43,10 @@ func NewDataTable(columnCount, rowCount int) *DataTable {
 // AddColumns adds columns to the DataTable and ensures that all columns have the same length.
 func (dt *DataTable) AddColumns(columns ...*DataList) {
 	dt.mu.Lock()
-	defer dt.mu.Unlock()
+	defer func() {
+		dt.mu.Unlock()
+		go dt.updateTimestamp()
+	}()
 
 	// Find the maximum length of existing columns
 	maxLength := 0
@@ -73,7 +78,51 @@ func (dt *DataTable) AddColumns(columns ...*DataList) {
 		dt.customIndex = append(dt.customIndex, make([]string, maxLength-len(dt.customIndex))...)
 	}
 
-	dt.updateTimestamp()
+}
+
+// Data 方法返回一個 map，可以選擇使用 DataList 的 name 作為鍵或使用自動生成的列索引。
+func (dt *DataTable) Data(useNamesAsKeys ...bool) map[string][]interface{} {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	dataMap := make(map[string][]interface{})
+
+	useNamesAsKeysBool := true
+	if len(useNamesAsKeys) == 1 {
+		useNamesAsKeysBool = useNamesAsKeys[0]
+	}
+	if len(useNamesAsKeys) > 1 {
+		LogWarning("DataTable.Data(): too many arguments, returning empty map.")
+		return dataMap
+	}
+
+	for i, col := range dt.columns {
+		var key string
+		if useNamesAsKeysBool && col.name != "" {
+			key = col.name
+		} else {
+			key = "[" + i + "]"
+		}
+		dataMap[key] = col.data
+	}
+
+	return dataMap
+}
+
+// Size returns the number of rows and columns in the DataTable.
+func (dt *DataTable) Size() (int, int) {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	numColumns := len(dt.columns)
+
+	var numRows int
+	for _, col := range dt.columns {
+		numRows = len(col.data)
+		break
+	}
+
+	return numRows, numColumns
 }
 
 // SetCustomIndex sets a custom index for the DataTable and ensures it matches the length of columns.
