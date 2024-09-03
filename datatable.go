@@ -678,7 +678,7 @@ func (dt *DataTable) DropRowsByName(rowNames ...string) {
 		}
 	}
 
-	dt.updateTimestamp()
+	go dt.updateTimestamp()
 }
 
 // DropRowsContainStringElements drops rows that contain string elements.
@@ -774,7 +774,7 @@ func (dt *DataTable) DropRowsContainNumbers() {
 	}
 	dt.rowNames = newRowNames
 
-	dt.updateTimestamp()
+	go dt.updateTimestamp()
 }
 
 // DropRowsContainNil drops rows that contain nil elements.
