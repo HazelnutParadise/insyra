@@ -28,6 +28,7 @@ type IDataTable interface {
 	FindColumnsIfContains(value interface{}) []string
 	FindColumnsIfContainsAll(values ...interface{}) []string
 	FindColumnsIfAnyElementContainsSubstring(substring string) []string
+	FindColumnsIfAllElementsContainSubstring(substring string) []string
 	DropColumnsByName(columnNames ...string)
 	DropColumnsByIndex(columnIndices ...string)
 	DropRowsByIndex(rowIndices ...int)
@@ -387,6 +388,33 @@ func (dt *DataTable) FindColumnsIfAnyElementContainsSubstring(substring string) 
 		}
 
 		if found {
+			result = append(result, colName)
+		}
+	}
+
+	return result
+}
+
+// FindColumnsIfAllElementsContainSubstring returns the indices of columns that contain all elements that contain the given substring.
+func (dt *DataTable) FindColumnsIfAllElementsContainSubstring(substring string) []string {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	var result []string
+
+	for colName, colPos := range dt.columnIndex {
+		foundAll := true
+
+		for _, value := range dt.columns[colPos].data {
+			if value != nil {
+				if str, ok := value.(string); ok && !containsSubstring(str, substring) {
+					foundAll = false
+					break
+				}
+			}
+		}
+
+		if foundAll {
 			result = append(result, colName)
 		}
 	}
