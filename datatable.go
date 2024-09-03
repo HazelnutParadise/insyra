@@ -37,6 +37,7 @@ type IDataTable interface {
 	FindColumnsIfAllElementsContainSubstring(substring string) []string
 	DropColumnsByName(columnNames ...string)
 	DropColumnsByIndex(columnIndices ...string)
+	DropColumnsContainStringElements()
 	DropRowsByIndex(rowIndices ...int)
 	DropRowsByName(rowNames ...string)
 	DropRowsContainStringElements()
@@ -618,6 +619,45 @@ func (dt *DataTable) DropColumnsByIndex(columnIndices ...string) {
 			}
 		}
 	}
+}
+
+// DropColumnsContainStringElements drops columns that contain string elements.
+func (dt *DataTable) DropColumnsContainStringElements() {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	columnsToDelete := make([]int, 0)
+
+	// 找出包含字串元素的列索引
+	for colIndex, column := range dt.columns {
+		containsString := false
+
+		for _, value := range column.data {
+			if _, ok := value.(string); ok {
+				containsString = true
+				break
+			}
+		}
+
+		if containsString {
+			columnsToDelete = append(columnsToDelete, colIndex)
+		}
+	}
+
+	// 反向刪除列，以避免索引錯誤
+	for i := len(columnsToDelete) - 1; i >= 0; i-- {
+		colIndex := columnsToDelete[i]
+		dt.columns = append(dt.columns[:colIndex], dt.columns[colIndex+1:]...)
+		delete(dt.columnIndex, generateColumnName(colIndex))
+	}
+
+	// 更新 columnIndex 映射，以反映列被刪除後的變化
+	for i, _ := range dt.columns {
+		newColName := generateColumnName(i)
+		dt.columnIndex[newColName] = i
+	}
+
+	go dt.updateTimestamp()
 }
 
 // DropRowsByIndex drops rows by their indices.
