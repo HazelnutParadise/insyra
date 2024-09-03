@@ -193,6 +193,7 @@ func (dt *DataTable) AppendRowsByName(rowsData ...map[string]interface{}) {
 
 // ======================== Find ========================
 
+// FindRowsIfContains returns the indices of rows that contain the given element.
 func (dt *DataTable) FindRowsIfContains(value interface{}) []int {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
