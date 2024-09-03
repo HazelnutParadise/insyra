@@ -22,7 +22,7 @@ func getNameManager() *NameManager {
 	return globalNameManager
 }
 
-// registerName 註冊一個名稱，如果名稱已存在則返回錯誤 (私有方法)(關閉)
+// registerName 註冊一個名稱，如果名稱已存在則返回錯誤 (私有方法)(目前使用註解關閉，因為 DataTable 已有 SafeName 機制)
 func (nm *NameManager) registerName(name string) error {
 	nm.mu.Lock()
 	defer nm.mu.Unlock()
