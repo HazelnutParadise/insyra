@@ -366,11 +366,6 @@ All methods in DataTable are thread-safe, using a mutex to ensure safe concurren
 
 The DataTable uses a logging system to report warnings and errors. Users should monitor these logs for potential issues during operations.
 
-## Performance Considerations
-
-- The column-based storage model allows for efficient column operations but may have slightly slower row operations for very wide tables.
-- Large-scale operations (e.g., dropping many rows or columns) may be slower due to the need to update indices and maintain consistency.
-
 ## Best Practices
 
 1. Use appropriate method calls to manipulate data (e.g., use AppendRowsByName when you have named columns).
