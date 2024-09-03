@@ -22,6 +22,7 @@ type IDataTable interface {
 	AppendRowsByIndex(rowsData ...map[string]interface{})
 	AppendRowsByName(rowsData ...map[string]interface{})
 	GetColumn(index string) *DataList
+	GetRow(index int) *DataList
 	FindRowsIfContains(value interface{}) []int
 	FindRowsIfContainsAll(values ...interface{}) []int
 	FindRowsIfAnyElementContainsSubstring(substring string) []int
@@ -213,6 +214,7 @@ func (dt *DataTable) AppendRowsByName(rowsData ...map[string]interface{}) {
 
 // ======================== Get ========================
 
+// GetColumn returns a new DataList containing the data of the column with the given index.
 func (dt *DataTable) GetColumn(index string) *DataList {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
@@ -228,6 +230,32 @@ func (dt *DataTable) GetColumn(index string) *DataList {
 		return dl
 	}
 	return nil
+}
+
+// GetRow returns a new DataList containing the data of the row with the given index.
+func (dt *DataTable) GetRow(index int) *DataList {
+	dt.mu.Lock()
+	if index < 0 {
+		index = dt.getMaxColumnLength() + index
+	}
+	if index < 0 || index >= dt.getMaxColumnLength() {
+		LogWarning("DataTable.GetRow(): Row index is out of range, returning nil.")
+		return nil
+	}
+
+	// 初始化新的 DataList 並分配 data 切片的大小
+	dl := NewDataList()
+	dl.data = make([]interface{}, len(dt.columns))
+
+	// 拷貝數據到新的 DataList
+	for i, column := range dt.columns {
+		if index < len(column.data) {
+			dl.data[i] = column.data[index]
+		}
+	}
+	dt.mu.Unlock()
+	dl.name = dt.GetRowNameByIndex(index)
+	return dl
 }
 
 // ======================== Find ========================
