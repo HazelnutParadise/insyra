@@ -35,6 +35,9 @@ type IDataTable interface {
 	DropColumnsByIndex(columnIndices ...string)
 	DropRowsByIndex(rowIndices ...int)
 	DropRowsByName(rowNames ...string)
+	DropRowsContainStringElements()
+	DropRowsContainNumbers()
+	DropRowsContainNil()
 	Data(useNamesAsKeys ...bool) map[string][]interface{}
 	Show()
 	GetRowNameByIndex(index int) string
@@ -579,6 +582,154 @@ func (dt *DataTable) DropRowsByName(rowNames ...string) {
 	}
 
 	dt.updateTimestamp()
+}
+
+// DropRowsContainStringElements drops rows that contain string elements.
+func (dt *DataTable) DropRowsContainStringElements() {
+	dt.mu.Lock()
+	defer func() {
+		dt.mu.Unlock()
+		go dt.updateTimestamp()
+	}()
+
+	rowsToDelete := make([]int, 0)
+
+	// 找出包含字串元素的行索引
+	for rowIndex := 0; rowIndex < dt.getMaxColumnLength(); rowIndex++ {
+		containsString := false
+
+		for _, col := range dt.columns {
+			if rowIndex < len(col.data) {
+				if _, ok := col.data[rowIndex].(string); ok {
+					containsString = true
+					break
+				}
+			}
+		}
+
+		if containsString {
+			rowsToDelete = append(rowsToDelete, rowIndex)
+		}
+	}
+
+	// 反向刪除行，以避免索引錯誤
+	for i := len(rowsToDelete) - 1; i >= 0; i-- {
+		rowIndex := rowsToDelete[i]
+		for _, col := range dt.columns {
+			if rowIndex < len(col.data) {
+				col.data = append(col.data[:rowIndex], col.data[rowIndex+1:]...)
+			}
+		}
+
+		// 刪除行名對應
+		for rowName, idx := range dt.rowNames {
+			if idx == rowIndex {
+				delete(dt.rowNames, rowName)
+			} else if idx > rowIndex {
+				dt.rowNames[rowName] = idx - 1
+			}
+		}
+	}
+}
+
+// DropRowsContainNumbers drops rows that contain number elements.
+func (dt *DataTable) DropRowsContainNumbers() {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	maxLength := dt.getMaxColumnLength()
+	rowsToKeep := make([]bool, maxLength)
+
+	for rowIndex := 0; rowIndex < maxLength; rowIndex++ {
+		keepRow := true
+		for _, column := range dt.columns {
+			if rowIndex < len(column.data) {
+				if _, isNumber := column.data[rowIndex].(int); isNumber {
+					keepRow = false
+					break
+				} else if _, isNumber := column.data[rowIndex].(float64); isNumber {
+					keepRow = false
+					break
+				}
+			}
+		}
+		rowsToKeep[rowIndex] = keepRow
+	}
+
+	for i := len(rowsToKeep) - 1; i >= 0; i-- {
+		if !rowsToKeep[i] {
+			for _, column := range dt.columns {
+				if i < len(column.data) {
+					column.data = append(column.data[:i], column.data[i+1:]...)
+				}
+			}
+		}
+	}
+
+	// 更新 rowNames 索引
+	newRowNames := make(map[string]int)
+	newIndex := 0
+	for name, oldIndex := range dt.rowNames {
+		if rowsToKeep[oldIndex] {
+			newRowNames[name] = newIndex
+			newIndex++
+		}
+	}
+	dt.rowNames = newRowNames
+
+	dt.updateTimestamp()
+}
+
+// DropRowsContainNil drops rows that contain nil elements.
+func (dt *DataTable) DropRowsContainNil() {
+	dt.mu.Lock()
+	defer func() {
+		dt.mu.Unlock()
+		go dt.updateTimestamp()
+	}()
+
+	maxLength := dt.getMaxColumnLength()
+
+	// 這個切片將存儲所有非nil的行的索引
+	nonNilRowIndices := []int{}
+
+	// 遍歷每一行
+	for rowIndex := 0; rowIndex < maxLength; rowIndex++ {
+		rowHasNil := false
+
+		// 檢查該行是否包含 nil
+		for _, column := range dt.columns {
+			if rowIndex < len(column.data) && column.data[rowIndex] == nil {
+				rowHasNil = true
+				break
+			}
+		}
+
+		// 如果該行不包含 nil，將其索引加入到 nonNilRowIndices 中
+		if !rowHasNil {
+			nonNilRowIndices = append(nonNilRowIndices, rowIndex)
+		}
+	}
+
+	// 建立新的列資料，僅保留非nil的行
+	for _, column := range dt.columns {
+		newData := []interface{}{}
+		for _, rowIndex := range nonNilRowIndices {
+			if rowIndex < len(column.data) {
+				newData = append(newData, column.data[rowIndex])
+			}
+		}
+		column.data = newData
+	}
+
+	// 更新 rowNames 映射，以移除被刪除的行
+	for rowName, rowIndex := range dt.rowNames {
+		if rowIndex >= len(nonNilRowIndices) || rowIndex != nonNilRowIndices[rowIndex] {
+			delete(dt.rowNames, rowName)
+		} else {
+			dt.rowNames[rowName] = rowIndex
+		}
+	}
 }
 
 // ======================== Data ========================
