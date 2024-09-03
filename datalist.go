@@ -32,7 +32,7 @@ type IDataList interface {
 	GetLastModifiedTimestamp() int64
 	updateTimestamp()
 	GetName() string
-	SetName(string)
+	SetName(string) *DataList
 	Data() []interface{}
 	Append(values ...interface{})
 	Get(index int) interface{}
@@ -1466,7 +1466,7 @@ func (dl *DataList) GetName() string {
 	return dl.name
 }
 
-func (dl *DataList) SetName(newName string) {
+func (dl *DataList) SetName(newName string) *DataList {
 	nm := getNameManager()
 
 	// 鎖定 DataList 以確保名稱設置過程的同步性
@@ -1476,7 +1476,7 @@ func (dl *DataList) SetName(newName string) {
 	// 檢查並註冊新名稱
 	if err := nm.registerName(newName); err != nil {
 		LogWarning("DataList.SetName(): %v, remaining the old name.", err)
-		return
+		return dl
 	}
 
 	// 解除舊名稱的註冊（如果已有名稱）
@@ -1486,4 +1486,5 @@ func (dl *DataList) SetName(newName string) {
 
 	dl.name = newName
 	go dl.updateTimestamp()
+	return dl
 }
