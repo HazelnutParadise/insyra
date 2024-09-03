@@ -25,6 +25,7 @@ type IDataTable interface {
 	GetColumn(index string) *DataList
 	GetRow(index int) *DataList
 	UpdateElement(rowIndex int, columnIndex string, value interface{})
+	UpdateColumn(index string, dl *DataList)
 	FindRowsIfContains(value interface{}) []int
 	FindRowsIfContainsAll(values ...interface{}) []int
 	FindRowsIfAnyElementContainsSubstring(substring string) []int
@@ -303,6 +304,21 @@ func (dt *DataTable) UpdateElement(rowIndex int, columnIndex string, value inter
 		dt.columns[colPos].data[rowIndex] = value
 	} else {
 		LogWarning("DataTable.UpdateElement(): Column index does not exist, returning.")
+	}
+}
+
+// UpdateColumn updates the column with the given index.
+func (dt *DataTable) UpdateColumn(index string, dl *DataList) {
+	dt.mu.Lock()
+	defer func() {
+		dt.mu.Unlock()
+		go dt.updateTimestamp()
+	}()
+
+	if colPos, exists := dt.columnIndex[index]; exists {
+		dt.columns[colPos] = dl
+	} else {
+		LogWarning("DataTable.UpdateColumn(): Column index does not exist, returning.")
 	}
 }
 
