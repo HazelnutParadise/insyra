@@ -25,6 +25,7 @@ type IDataTable interface {
 	FindRowsIfContainsAll(values ...interface{}) []int
 	FindRowsIfAnyElementContainsSubstring(substring string) []int
 	FindColumnsIfContains(value interface{}) []string
+	FindColumnsIfContainsAll(values ...interface{}) []string
 	DropColumnsByName(columnNames ...string)
 	DropColumnsByIndex(columnIndices ...string)
 	DropRowsByIndex(rowIndices ...int)
@@ -303,6 +304,31 @@ func (dt *DataTable) FindColumnsIfContains(value interface{}) []string {
 
 	for colName, colPos := range dt.columnIndex {
 		if dt.columns[colPos].FindFirst(value) != nil {
+			result = append(result, colName)
+		}
+	}
+
+	return result
+}
+
+// FindColumnsIfContainsAll returns the indices of columns that contain all the given elements.
+func (dt *DataTable) FindColumnsIfContainsAll(values ...interface{}) []string {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	var result []string
+
+	for colName, colPos := range dt.columnIndex {
+		foundAll := true
+
+		for _, value := range values {
+			if dt.columns[colPos].FindFirst(value) == nil {
+				foundAll = false
+				break
+			}
+		}
+
+		if foundAll {
 			result = append(result, colName)
 		}
 	}
