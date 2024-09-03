@@ -21,6 +21,7 @@ type IDataTable interface {
 	AppendRowsFromDataList(rowsData ...*DataList)
 	AppendRowsByIndex(rowsData ...map[string]interface{})
 	AppendRowsByName(rowsData ...map[string]interface{})
+	FindRowsIfContains(value interface{}) []int
 	DropColumnsByName(columnNames ...string)
 	DropColumnsByIndex(columnIndices ...string)
 	DropRowsByIndex(rowIndices ...int)
@@ -188,6 +189,35 @@ func (dt *DataTable) AppendRowsByName(rowsData ...map[string]interface{}) {
 			}
 		}
 	}
+}
+
+// ======================== Find ========================
+
+func (dt *DataTable) FindRowsIfContains(value interface{}) []int {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	// 使用 map 來確保行索引唯一性
+	indexMap := make(map[int]struct{})
+
+	for _, column := range dt.columns {
+		// 找到該列中包含 value 的所有行索引
+		indexes := column.FindAll(value)
+		for _, index := range indexes {
+			indexMap[index] = struct{}{}
+		}
+	}
+
+	// 將唯一的行索引轉換為 slice
+	var result []int
+	for index := range indexMap {
+		result = append(result, index)
+	}
+
+	// 排序結果以保證順序
+	sort.Ints(result)
+
+	return result
 }
 
 // ======================== Drop ========================
