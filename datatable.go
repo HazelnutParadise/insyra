@@ -415,6 +415,23 @@ func (dt *DataTable) GetRowNameByIndex(index int) string {
 	}
 }
 
+func (dt *DataTable) SetRowNameByIndex(index int, name string) {
+	dt.mu.Lock()
+	defer func() {
+		dt.mu.Unlock()
+	}()
+	originalIndex := index
+	if index < 0 {
+		index = dt.getMaxColumnLength() + index
+	}
+	if index < 0 || index >= dt.getMaxColumnLength() {
+		LogWarning("DataTable.SetRowNameByIndex(): Row index %d is out of range, returning.", originalIndex)
+		return
+	}
+	dt.rowNames[name] = index
+	go dt.updateTimestamp()
+}
+
 // ======================== Utilities ========================
 
 func (dt *DataTable) getSortedColumnNames() []string {
