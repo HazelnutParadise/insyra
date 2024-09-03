@@ -23,6 +23,8 @@ type IDataTable interface {
 	AppendRowsByName(rowsData ...map[string]interface{})
 	FindRowsIfContains(value interface{}) []int
 	FindRowsIfContainsAll(values ...interface{}) []int
+	FindRowsIfAnyElementContainsSubstring(substring string) []int
+	FindColumnsIfContains(value interface{}) []string
 	DropColumnsByName(columnNames ...string)
 	DropColumnsByIndex(columnIndices ...string)
 	DropRowsByIndex(rowIndices ...int)
@@ -263,6 +265,45 @@ func (dt *DataTable) FindRowsIfContainsAll(values ...interface{}) []int {
 		// 如果該行包含所有指定的值，則將其索引添加到結果中
 		if foundAll {
 			result = append(result, rowIndex)
+		}
+	}
+
+	return result
+}
+
+// FindRowsIfAnyElementContainsSubstring returns the indices of rows that contain at least one element that contains the given substring.
+func (dt *DataTable) FindRowsIfAnyElementContainsSubstring(substring string) []int {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	var matchingRows []int
+
+	for rowIndex := 0; rowIndex < dt.getMaxColumnLength(); rowIndex++ {
+		for _, col := range dt.columns {
+			if rowIndex < len(col.data) {
+				if value, ok := col.data[rowIndex].(string); ok {
+					if containsSubstring(value, substring) {
+						matchingRows = append(matchingRows, rowIndex)
+						break // 一旦找到匹配的元素，跳出內層循環檢查下一行
+					}
+				}
+			}
+		}
+	}
+
+	return matchingRows
+}
+
+// FindColumnsIfContains returns the indices of columns that contain the given element.
+func (dt *DataTable) FindColumnsIfContains(value interface{}) []string {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	var result []string
+
+	for colName, colPos := range dt.columnIndex {
+		if dt.columns[colPos].FindFirst(value) != nil {
+			result = append(result, colName)
 		}
 	}
 
@@ -585,6 +626,11 @@ func safeRowName(dt *DataTable, name string) string {
 	}
 
 	return name
+}
+
+// containsSubstring 是一個輔助函數，用來檢查一個字符串是否包含子字符串
+func containsSubstring(value string, substring string) bool {
+	return len(value) >= len(substring) && (value == substring || len(value) > len(substring) && (value[:len(substring)] == substring || containsSubstring(value[1:], substring)))
 }
 
 func (dt *DataTable) updateTimestamp() {
