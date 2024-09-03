@@ -1,4 +1,4 @@
-## DataList
+# DataList
 
 This document describes the `DataList` type and its functionalities within the `insyra` package.
 
