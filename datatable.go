@@ -22,6 +22,7 @@ type IDataTable interface {
 	AppendRowsByIndex(rowsData ...map[string]interface{})
 	AppendRowsByName(rowsData ...map[string]interface{})
 	FindRowsIfContains(value interface{}) []int
+	FindRowsIfContainsAll(values ...interface{}) []int
 	DropColumnsByName(columnNames ...string)
 	DropColumnsByIndex(columnIndices ...string)
 	DropRowsByIndex(rowIndices ...int)
@@ -56,6 +57,9 @@ func NewDataTable(columns ...*DataList) *DataTable {
 
 // ======================== Append ========================
 
+// AppendColumns appends columns to the DataTable, with each column represented by a DataList.
+// If the columns are shorter than the existing columns, nil values will be appended to match the length.
+// If the columns are longer than the existing columns, the existing columns will be extended with nil values.
 func (dt *DataTable) AppendColumns(columns ...*DataList) {
 	dt.mu.Lock()
 	defer func() {
@@ -82,6 +86,9 @@ func (dt *DataTable) AppendColumns(columns ...*DataList) {
 	}
 }
 
+// AppendRowsFromDataList appends rows to the DataTable, with each row represented by a DataList.
+// If the rows are shorter than the existing columns, nil values will be appended to match the length.
+// If the rows are longer than the existing columns, the existing columns will be extended with nil values.
 func (dt *DataTable) AppendRowsFromDataList(rowsData ...*DataList) {
 	dt.mu.Lock()
 	defer func() {
@@ -122,6 +129,9 @@ func (dt *DataTable) AppendRowsFromDataList(rowsData ...*DataList) {
 	}
 }
 
+// AppendRowsByIndex appends rows to the DataTable, with each row represented by a map of column index and value.
+// If the rows are shorter than the existing columns, nil values will be appended to match the length.
+// If the rows are longer than the existing columns, the existing columns will be extended with nil values.
 func (dt *DataTable) AppendRowsByIndex(rowsData ...map[string]interface{}) {
 	dt.mu.Lock()
 	defer func() {
@@ -153,6 +163,9 @@ func (dt *DataTable) AppendRowsByIndex(rowsData ...map[string]interface{}) {
 	}
 }
 
+// AppendRowsByName appends rows to the DataTable, with each row represented by a map of column name and value.
+// If the rows are shorter than the existing columns, nil values will be appended to match the length.
+// If the rows are longer than the existing columns, the existing columns will be extended with nil values.
 func (dt *DataTable) AppendRowsByName(rowsData ...map[string]interface{}) {
 	dt.mu.Lock()
 	defer func() {
@@ -217,6 +230,41 @@ func (dt *DataTable) FindRowsIfContains(value interface{}) []int {
 
 	// 排序結果以保證順序
 	sort.Ints(result)
+
+	return result
+}
+
+// FindRowsIfContainsAll returns the indices of rows that contain all the given elements.
+func (dt *DataTable) FindRowsIfContainsAll(values ...interface{}) []int {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	var result []int
+
+	// 檢查每一行是否包含所有指定的值
+	for rowIndex := 0; rowIndex < dt.getMaxColumnLength(); rowIndex++ {
+		foundAll := true
+
+		// 檢查該行中的所有列是否包含指定的值
+		for _, value := range values {
+			found := false
+			for _, column := range dt.columns {
+				if rowIndex < len(column.data) && column.data[rowIndex] == value {
+					found = true
+					break
+				}
+			}
+			if !found {
+				foundAll = false
+				break
+			}
+		}
+
+		// 如果該行包含所有指定的值，則將其索引添加到結果中
+		if foundAll {
+			result = append(result, rowIndex)
+		}
+	}
 
 	return result
 }
