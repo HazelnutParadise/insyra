@@ -49,6 +49,7 @@ type IDataList interface {
 	Pop() interface{}
 	Drop(index int)
 	DropAll(...interface{})
+	DropIfContains(interface{})
 	Clear()
 	ClearStrings()
 	ClearNumbers()
@@ -480,6 +481,33 @@ func (dl *DataList) DropAll(toDrop ...interface{}) {
 	// 更新 DataList
 	dl.data = finalResult
 	go dl.updateTimestamp()
+}
+
+// DropIfContains removes all elements from the DataList that contain the specified value.
+func (dl *DataList) DropIfContains(value interface{}) {
+	dl.mu.Lock()
+	defer func() {
+		dl.mu.Unlock()
+		go reorganizeMemory(dl)
+	}()
+
+	// 創建一個臨時切片存放保留的元素
+	var newData []interface{}
+
+	for _, v := range dl.data {
+		if str, ok := v.(string); ok {
+			// 如果當前元素不包含指定的值，將其添加到 newData 中
+			if !strings.Contains(str, value.(string)) {
+				newData = append(newData, v)
+			}
+		} else {
+			// 如果元素不是字符串類型，也將其保留
+			newData = append(newData, v)
+		}
+	}
+
+	// 將新的數據賦值回 dl.data
+	dl.data = newData
 }
 
 // Clear removes all elements from the DataList and updates the timestamp.

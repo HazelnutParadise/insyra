@@ -31,6 +31,7 @@ The `DataList` type provides a dynamic and generic way to store and manage a col
 * **Pop:** Removes and returns the last element from the DataList.
 * **Drop:** Removes the element at a specific index.
 * **DropAll:** Removes all occurrences of specified values from the DataList.
+* **DropIfContains:** Removes all elements that contain a specified substring.
 * **Clear:** Removes all elements from the DataList.
 * **Len:** Returns the number of elements currently stored in the DataList.
 
