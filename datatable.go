@@ -26,6 +26,7 @@ type IDataTable interface {
 	GetRow(index int) *DataList
 	UpdateElement(rowIndex int, columnIndex string, value interface{})
 	UpdateColumn(index string, dl *DataList)
+	UpdateRow(index int, dl *DataList)
 	FindRowsIfContains(value interface{}) []int
 	FindRowsIfContainsAll(values ...interface{}) []int
 	FindRowsIfAnyElementContainsSubstring(substring string) []int
@@ -320,6 +321,41 @@ func (dt *DataTable) UpdateColumn(index string, dl *DataList) {
 	} else {
 		LogWarning("DataTable.UpdateColumn(): Column index does not exist, returning.")
 	}
+}
+
+// UpdateRow updates the row at the given index.
+func (dt *DataTable) UpdateRow(index int, dl *DataList) {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	if index < 0 || index >= dt.getMaxColumnLength() {
+		LogWarning("DataTable.UpdateRow(): Index out of bounds")
+		return
+	}
+
+	if len(dl.data) > len(dt.columns) {
+		LogWarning("DataTable.UpdateRow(): DataList has more elements than DataTable columns, returning.")
+		return
+	}
+
+	// 更新 DataTable 中對應行的資料
+	for i := 0; i < len(dl.data); i++ {
+		dt.columns[i].data[index] = dl.data[i]
+	}
+
+	// 更新行名
+	if dl.name != "" {
+		for rowName, rowIndex := range dt.rowNames {
+			if rowIndex == index {
+				delete(dt.rowNames, rowName)
+				break
+			}
+		}
+		srn := safeRowName(dt, dl.name)
+		dt.rowNames[srn] = index
+	}
+
+	go dt.updateTimestamp()
 }
 
 // ======================== Find ========================
