@@ -27,6 +27,7 @@ type IDataTable interface {
 	DropRowsByName(rowNames ...string)
 	Data(useNamesAsKeys ...bool) map[string][]interface{}
 	Show()
+	GetRowNameByIndex(index int) string
 	GetCreationTimestamp() int64
 	GetLastModifiedTimestamp() int64
 	getSortedColumnNames() []string
@@ -363,15 +364,16 @@ func (dt *DataTable) Show() {
 		}
 	}
 
-	// 計算 RowNames 的最大寬度
+	// 計算 RowNames 的最大寬度，並顯示 RowIndex
 	rowNames := make([]string, dt.getMaxColumnLength())
 	maxRowNameWidth := len("RowNames")
 	for i := range rowNames {
 		if rowName, exists := dt.getRowNameByIndex(i); exists {
 			rowNames[i] = rowName
 		} else {
-			rowNames[i] = fmt.Sprintf("%d", i)
+			rowNames[i] = "" // 如果沒有名字則顯示為空
 		}
+		rowNames[i] = fmt.Sprintf("%d: %s", i, rowNames[i]) // 加上 RowIndex
 		if len(rowNames[i]) > maxRowNameWidth {
 			maxRowNameWidth = len(rowNames[i])
 		}
@@ -396,6 +398,20 @@ func (dt *DataTable) Show() {
 			fmt.Printf("%-*s", colWidths[colIndex]+2, value)
 		}
 		fmt.Println()
+	}
+}
+
+// ======================== RowName ========================
+
+// GetRowNameByIndex returns the name of the row at the given index.
+func (dt *DataTable) GetRowNameByIndex(index int) string {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+	if rowName, exists := dt.getRowNameByIndex(index); exists {
+		return rowName
+	} else {
+		LogWarning("DataTable.GetRowNameByIndex(): Row index %d does not have a name.", index)
+		return ""
 	}
 }
 
