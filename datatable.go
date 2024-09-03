@@ -55,6 +55,24 @@ type IDataTable interface {
 	getRowNameByIndex(index int) (string, bool)
 	getMaxColumnLength() int
 	updateTimestamp()
+
+	// Filters
+	Filter(f func(rowIndex int, columnIndex string, value interface{}) bool) *DataTable
+	FilterByCustomElement(f func(value interface{}) bool) *DataTable
+	FilterByColumnIndexGreaterThan(threshold string) *DataTable
+	FilterByColumnIndexGreaterThanOrEqualTo(threshold string) *DataTable
+	FilterByColumnIndexLessThan(threshold string) *DataTable
+	FilterByColumnIndexLessThanOrEqualTo(threshold string) *DataTable
+	FilterByColumnIndexEqualTo(index string) *DataTable
+	FilterByColumnNameEqualTo(name string) *DataTable
+	FilterByColumnNameContains(substring string) *DataTable
+	FilterByRowNameEqualTo(name string) *DataTable
+	FilterByRowNameContains(substring string) *DataTable
+	FilterByRowIndexGreaterThan(threshold int) *DataTable
+	FilterByRowIndexGreaterThanOrEqualTo(threshold int) *DataTable
+	FilterByRowIndexLessThan(threshold int) *DataTable
+	FilterByRowIndexLessThanOrEqualTo(threshold int) *DataTable
+	FilterByRowIndexEqualTo(index int) *DataTable
 }
 
 func NewDataTable(columns ...*DataList) *DataTable {
