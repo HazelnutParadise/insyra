@@ -210,6 +210,25 @@ func (dt *DataTable) AppendRowsByName(rowsData ...map[string]interface{}) {
 	}
 }
 
+// ======================== Get ========================
+
+func (dt *DataTable) GetColumn(index string) *DataList {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	if colPos, exists := dt.columnIndex[index]; exists {
+		// 初始化新的 DataList 並分配 data 切片的大小
+		dl := NewDataList()
+		dl.data = make([]interface{}, len(dt.columns[colPos].data))
+
+		// 拷貝數據到新的 DataList
+		copy(dl.data, dt.columns[colPos].data)
+		dl.name = dt.columns[colPos].name
+		return dl
+	}
+	return nil
+}
+
 // ======================== Find ========================
 
 // FindRowsIfContains returns the indices of rows that contain the given element.
