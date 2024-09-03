@@ -1,7 +1,6 @@
 package insyra
 
 import (
-	"fmt"
 	"sync"
 )
 
@@ -23,14 +22,14 @@ func getNameManager() *NameManager {
 	return globalNameManager
 }
 
-// registerName 註冊一個名稱，如果名稱已存在則返回錯誤 (私有方法)
+// registerName 註冊一個名稱，如果名稱已存在則返回錯誤 (私有方法)(關閉)
 func (nm *NameManager) registerName(name string) error {
 	nm.mu.Lock()
 	defer nm.mu.Unlock()
 
-	if _, exists := nm.names[name]; exists {
-		return fmt.Errorf("名稱 '%s' 已經被使用", name)
-	}
+	// if _, exists := nm.names[name]; exists {
+	// 	return fmt.Errorf("名稱 '%s' 已經被使用", name)
+	// }
 	nm.names[name] = struct{}{}
 	return nil
 }
