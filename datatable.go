@@ -28,6 +28,7 @@ type IDataTable interface {
 	Data(useNamesAsKeys ...bool) map[string][]interface{}
 	Show()
 	GetRowNameByIndex(index int) string
+	SetRowNameByIndex(index int, name string)
 	GetCreationTimestamp() int64
 	GetLastModifiedTimestamp() int64
 	getSortedColumnNames() []string
@@ -91,7 +92,8 @@ func (dt *DataTable) AppendRowsFromDataList(rowsData ...*DataList) {
 		maxLength := dt.getMaxColumnLength()
 
 		if rowData.name != "" {
-			dt.rowNames[rowData.name] = maxLength
+			srn := safeRowName(dt, rowData.name)
+			dt.rowNames[srn] = maxLength
 		}
 
 		if len(rowData.data) > len(dt.columns) {
@@ -428,7 +430,8 @@ func (dt *DataTable) SetRowNameByIndex(index int, name string) {
 		LogWarning("DataTable.SetRowNameByIndex(): Row index %d is out of range, returning.", originalIndex)
 		return
 	}
-	dt.rowNames[name] = index
+	srn := safeRowName(dt, name)
+	dt.rowNames[srn] = index
 	go dt.updateTimestamp()
 }
 
@@ -481,6 +484,28 @@ func newEmptyDataList(rowCount int) *DataList {
 		creationTimestamp:     time.Now().Unix(),
 		lastModifiedTimestamp: time.Now().Unix(),
 	}
+}
+
+func safeRowName(dt *DataTable, name string) string {
+	if name == "" {
+		return ""
+	}
+
+	originalName := name
+	counter := 1
+
+	for {
+		// 檢查是否已經存在該行名
+		if _, exists := dt.rowNames[name]; !exists {
+			break // 如果行名不存在，跳出循環
+		}
+
+		// 如果行名存在，則生成新的行名並繼續檢查
+		name = fmt.Sprintf("%s_%d", originalName, counter)
+		counter++
+	}
+
+	return name
 }
 
 func (dt *DataTable) updateTimestamp() {
