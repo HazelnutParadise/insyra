@@ -21,8 +21,7 @@ type DataList struct {
 	name                  string
 	creationTimestamp     int64
 	lastModifiedTimestamp int64
-	// 記憶體管理
-	mu sync.Mutex
+	mu                    sync.Mutex
 }
 
 // IDataList defines the behavior expected from a DataList.
