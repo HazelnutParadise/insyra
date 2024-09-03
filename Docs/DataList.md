@@ -84,7 +84,7 @@ The `DataList` type provides a dynamic and generic way to store and manage a col
 **Names (Optional):**
 
 * **GetName:** Retrieves the assigned name for the DataList.
-* **SetName:** Sets a name for the DataList. (**Note:** Currently allows any string value.)
+* **SetName:** Sets a name for the DataList.
 
 **Error Handling:**
 
