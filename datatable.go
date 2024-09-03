@@ -24,6 +24,7 @@ type IDataTable interface {
 	FindRowsIfContains(value interface{}) []int
 	FindRowsIfContainsAll(values ...interface{}) []int
 	FindRowsIfAnyElementContainsSubstring(substring string) []int
+	FindRowsIfAllElementsContainSubstring(substring string) []int
 	FindColumnsIfContains(value interface{}) []string
 	FindColumnsIfContainsAll(values ...interface{}) []string
 	DropColumnsByName(columnNames ...string)
@@ -289,6 +290,35 @@ func (dt *DataTable) FindRowsIfAnyElementContainsSubstring(substring string) []i
 					}
 				}
 			}
+		}
+	}
+
+	return matchingRows
+}
+
+// FindRowsIfAllElementsContainSubstring returns the indices of rows that contain all elements that contain the given substring.
+func (dt *DataTable) FindRowsIfAllElementsContainSubstring(substring string) []int {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	var matchingRows []int
+
+	for rowIndex := 0; rowIndex < dt.getMaxColumnLength(); rowIndex++ {
+		foundAll := true
+
+		for _, col := range dt.columns {
+			if rowIndex < len(col.data) {
+				if value, ok := col.data[rowIndex].(string); ok {
+					if !containsSubstring(value, substring) {
+						foundAll = false
+						break
+					}
+				}
+			}
+		}
+
+		if foundAll {
+			matchingRows = append(matchingRows, rowIndex)
 		}
 	}
 
