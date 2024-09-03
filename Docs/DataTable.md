@@ -36,7 +36,7 @@ func NewDataTable(columns ...*DataList) *DataTable
 
 Creates a new DataTable with optional initial columns.
 
-## Methods:
+## Methods
 
 ##### `AppendColumns(columns ...*DataList)`
 Appends columns to the `DataTable`. If the new columns are shorter than existing ones, `nil` values will be appended to match the length. If they are longer, existing columns will be extended with `nil` values.
