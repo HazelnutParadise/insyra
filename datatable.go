@@ -21,6 +21,7 @@ type IDataTable interface {
 	AppendRowsFromDataList(rowsData ...*DataList)
 	AppendRowsByIndex(rowsData ...map[string]interface{})
 	AppendRowsByName(rowsData ...map[string]interface{})
+	GetColumn(index string) *DataList
 	FindRowsIfContains(value interface{}) []int
 	FindRowsIfContainsAll(values ...interface{}) []int
 	FindRowsIfAnyElementContainsSubstring(substring string) []int
