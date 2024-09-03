@@ -24,6 +24,7 @@ type IDataTable interface {
 	GetElement(rowIndex int, columnIndex string) interface{}
 	GetColumn(index string) *DataList
 	GetRow(index int) *DataList
+	UpdateElement(rowIndex int, columnIndex string, value interface{})
 	FindRowsIfContains(value interface{}) []int
 	FindRowsIfContainsAll(values ...interface{}) []int
 	FindRowsIfAnyElementContainsSubstring(substring string) []int
@@ -279,6 +280,30 @@ func (dt *DataTable) GetRow(index int) *DataList {
 	dt.mu.Unlock()
 	dl.name = dt.GetRowNameByIndex(index)
 	return dl
+}
+
+// ======================== Update ========================
+
+// UpdateElement updates the element at the given row and column index.
+func (dt *DataTable) UpdateElement(rowIndex int, columnIndex string, value interface{}) {
+	dt.mu.Lock()
+	defer func() {
+		dt.mu.Unlock()
+		go dt.updateTimestamp()
+	}()
+
+	if colPos, exists := dt.columnIndex[columnIndex]; exists {
+		if rowIndex < 0 {
+			rowIndex = len(dt.columns[colPos].data) + rowIndex
+		}
+		if rowIndex < 0 || rowIndex >= len(dt.columns[colPos].data) {
+			LogWarning("DataTable.UpdateElement(): Row index is out of range, returning.")
+			return
+		}
+		dt.columns[colPos].data[rowIndex] = value
+	} else {
+		LogWarning("DataTable.UpdateElement(): Column index does not exist, returning.")
+	}
 }
 
 // ======================== Find ========================
