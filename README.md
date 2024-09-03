@@ -40,6 +40,12 @@ The `DataList` is the core structure in **Insyra**, enabling the storage, manage
 
 For a complete list of methods and features, please refer to the **[DataList Documentation](https://github.com/HazelnutParadise/insyra/tree/main/Docs/DataList.md)**.
 
+## DataTable
+
+The `DataTable` structure provides a tabular data representation, allowing for the storage and manipulation of data in a structured format. It offers methods for data filtering, sorting, and aggregation, making it a powerful tool for data analysis.
+
+For a complete list of methods and features, please refer to the **[DataTable Documentation](https://github.com/HazelnutParadise/insyra/tree/main/Docs/DataTable.md)
+
 ## Advanced Usage
 
 Beyond basic usage, **Insyra** provides extensive capabilities for handling different data types and performing complex statistical operations. Explore more in the **[detailed documentation](https://github.com/HazelnutParadise/insyra/tree/main/Docs)**.
