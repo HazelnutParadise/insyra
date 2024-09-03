@@ -21,6 +21,7 @@ type IDataTable interface {
 	AppendRowsFromDataList(rowsData ...*DataList)
 	AppendRowsByIndex(rowsData ...map[string]interface{})
 	AppendRowsByName(rowsData ...map[string]interface{})
+	GetElement(rowIndex int, columnIndex string) interface{}
 	GetColumn(index string) *DataList
 	GetRow(index int) *DataList
 	FindRowsIfContains(value interface{}) []int
@@ -216,6 +217,25 @@ func (dt *DataTable) AppendRowsByName(rowsData ...map[string]interface{}) {
 }
 
 // ======================== Get ========================
+
+// GetElement returns the element at the given row and column index.
+func (dt *DataTable) GetElement(rowIndex int, columnIndex string) interface{} {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	if colPos, exists := dt.columnIndex[columnIndex]; exists {
+		if rowIndex < 0 {
+			rowIndex = len(dt.columns[colPos].data) + rowIndex
+		}
+		if rowIndex < 0 || rowIndex >= len(dt.columns[colPos].data) {
+			LogWarning("DataTable.GetElement(): Row index is out of range, returning nil.")
+			return nil
+		}
+		return dt.columns[colPos].data[rowIndex]
+	}
+	return nil
+
+}
 
 // GetColumn returns a new DataList containing the data of the column with the given index.
 func (dt *DataTable) GetColumn(index string) *DataList {
