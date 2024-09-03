@@ -38,6 +38,8 @@ type IDataTable interface {
 	DropColumnsByName(columnNames ...string)
 	DropColumnsByIndex(columnIndices ...string)
 	DropColumnsContainStringElements()
+	DropColumnsContainNumbers()
+	DropColumnsContainNil()
 	DropRowsByIndex(rowIndices ...int)
 	DropRowsByName(rowNames ...string)
 	DropRowsContainStringElements()
@@ -652,6 +654,81 @@ func (dt *DataTable) DropColumnsContainStringElements() {
 	}
 
 	// 更新 columnIndex 映射，以反映列被刪除後的變化
+	for i, _ := range dt.columns {
+		newColName := generateColumnName(i)
+		dt.columnIndex[newColName] = i
+	}
+
+	go dt.updateTimestamp()
+}
+
+// DropColumnsContainNumbers drops columns that contain number elements.
+func (dt *DataTable) DropColumnsContainNumbers() {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	columnsToDelete := make([]int, 0)
+
+	for colIndex, column := range dt.columns {
+		containsNumber := false
+
+		for _, value := range column.data {
+			if _, isNumber := value.(int); isNumber {
+				containsNumber = true
+				break
+			} else if _, isNumber := value.(float64); isNumber {
+				containsNumber = true
+				break
+			}
+		}
+
+		if containsNumber {
+			columnsToDelete = append(columnsToDelete, colIndex)
+		}
+	}
+
+	for i := len(columnsToDelete) - 1; i >= 0; i-- {
+		colIndex := columnsToDelete[i]
+		dt.columns = append(dt.columns[:colIndex], dt.columns[colIndex+1:]...)
+		delete(dt.columnIndex, generateColumnName(colIndex))
+	}
+
+	for i, _ := range dt.columns {
+		newColName := generateColumnName(i)
+		dt.columnIndex[newColName] = i
+	}
+
+	go dt.updateTimestamp()
+}
+
+// DropColumnsContainNil drops columns that contain nil elements.
+func (dt *DataTable) DropColumnsContainNil() {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	columnsToDelete := make([]int, 0)
+
+	for colIndex, column := range dt.columns {
+		containsNil := false
+
+		for _, value := range column.data {
+			if value == nil {
+				containsNil = true
+				break
+			}
+		}
+
+		if containsNil {
+			columnsToDelete = append(columnsToDelete, colIndex)
+		}
+	}
+
+	for i := len(columnsToDelete) - 1; i >= 0; i-- {
+		colIndex := columnsToDelete[i]
+		dt.columns = append(dt.columns[:colIndex], dt.columns[colIndex+1:]...)
+		delete(dt.columnIndex, generateColumnName(colIndex))
+	}
+
 	for i, _ := range dt.columns {
 		newColName := generateColumnName(i)
 		dt.columnIndex[newColName] = i
