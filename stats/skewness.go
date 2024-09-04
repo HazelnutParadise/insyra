@@ -126,15 +126,16 @@ func calculateSkewFisherPearson(dl *insyra.DataList) interface{} {
 	nMinus1 := new(big.Rat).Sub(n, new(big.Rat).SetInt64(1))
 	numerator := new(big.Rat).Mul(n, nMinus1)
 
+	// sqrt(n(n-1))
+	numeratorSqrt := insyra.SqrtRat(numerator)
+
 	// 计算 (n-2)
 	nMinus2 := new(big.Rat).Sub(n, new(big.Rat).SetInt64(2))
 
-	// 计算修正项 sqrt(n(n-1)/(n-2))
-	correctionFactor := new(big.Rat).Quo(numerator, nMinus2)
-	correctionFactorSqrt := insyra.SqrtRat(correctionFactor)
+	y := new(big.Rat).Quo(numeratorSqrt, nMinus2)
 
 	// 计算最终的 Fisher-Pearson 偏度
-	G1 := new(big.Rat).Mul(g1, correctionFactorSqrt)
+	G1 := new(big.Rat).Mul(g1, y)
 	f64G1, _ := G1.Float64()
 
 	return f64G1
