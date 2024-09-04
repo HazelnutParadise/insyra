@@ -1,3 +1,5 @@
+// skewness.go - Skewness calculation functions.
+
 package stats
 
 import (

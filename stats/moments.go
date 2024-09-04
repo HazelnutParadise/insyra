@@ -1,3 +1,5 @@
+// moments.go - 計算數據集的 n 階矩
+
 package stats
 
 import (

@@ -1,3 +1,5 @@
+// kurtosis.go - Calculate the kurtosis of the DataList.
+
 package stats
 
 import (

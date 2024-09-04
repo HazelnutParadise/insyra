@@ -48,6 +48,13 @@ The `DataTable` structure provides a tabular data representation, allowing for t
 
 For a complete list of methods and features, please refer to the **[DataTable Documentation](https://github.com/HazelnutParadise/insyra/tree/main/Docs/DataTable.md)**.
 
+## Packages
+
+**Insyra** also provides several expansion packages, each focusing on a specific aspect of data analysis.
+
+- **[stats](https://github.com/HazelnutParadise/insyra/tree/main/Docs/stats.md)**: Provides statistical functions for data analysis, including skewness, kurtosis, and moment calculations.
+- **[parallel](https://github.com/HazelnutParadise/insyra/tree/main/Docs/parallel.md)**: Offers parallel processing capabilities for data manipulation and analysis.
+
 ## Advanced Usage
 
 Beyond basic usage, **Insyra** provides extensive capabilities for handling different data types and performing complex statistical operations. Explore more in the **[detailed documentation](https://github.com/HazelnutParadise/insyra/tree/main/Docs)**.
