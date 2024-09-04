@@ -7,9 +7,10 @@ import (
 	"github.com/HazelnutParadise/insyra"
 )
 
-// calculateMoment 函數用於計算 n 階矩，使用 big.Rat 進行高精度計算
-// 如果 central 為 true，則計算中心矩（基於均值）；如果為 false，則計算非中心矩（基於 0）。
-func calculateMoment(dl *insyra.DataList, n int, central bool) (*big.Rat, error) {
+// CalculateMoment calculates the n-th moment of the DataList.
+// Returns the n-th moment and error.
+// Returns nil if the DataList is empty or the n-th moment cannot be calculated.
+func CalculateMoment(dl insyra.IDataList, n int, central bool) (*big.Rat, error) {
 	// 檢查數據長度
 	if dl.Len() == 0 {
 		return nil, fmt.Errorf("數據集不能為空")

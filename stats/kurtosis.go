@@ -30,6 +30,8 @@ func Kurtosis(data interface{}, method ...int) interface{} {
 		result, ok = calculateKurtType1(dl)
 	case 2:
 		result, ok = calculateKurtType2(dl)
+	case 3:
+		result, ok = calculateKurtType3(dl)
 	default:
 		insyra.LogWarning("stats.Kurtosis(): Invalid method, returning nil.")
 		return nil
@@ -45,13 +47,13 @@ func Kurtosis(data interface{}, method ...int) interface{} {
 }
 
 // ======================== calculation functions ========================
-func calculateKurtType1(dl *insyra.DataList) (*big.Rat, bool) {
+func calculateKurtType1(dl insyra.IDataList) (*big.Rat, bool) {
 	// 初始化 m2 和 m4 的計算
 	var m2, m4 *big.Rat
 	parallel.GroupUp(func() {
-		m2, _ = calculateMoment(dl, 2, true)
+		m2, _ = CalculateMoment(dl, 2, true)
 	}, func() {
-		m4, _ = calculateMoment(dl, 4, true)
+		m4, _ = CalculateMoment(dl, 4, true)
 	}).Run().AwaitResult()
 
 	// 計算峰態
@@ -66,7 +68,7 @@ func calculateKurtType1(dl *insyra.DataList) (*big.Rat, bool) {
 	return result, true
 }
 
-func calculateKurtType2(dl *insyra.DataList) (*big.Rat, bool) {
+func calculateKurtType2(dl insyra.IDataList) (*big.Rat, bool) {
 	n := new(big.Rat).SetFloat64(float64(dl.Len()))
 	g2, ok := calculateKurtType1(dl)
 	if !ok {
@@ -87,5 +89,21 @@ func calculateKurtType2(dl *insyra.DataList) (*big.Rat, bool) {
 
 	result := new(big.Rat).Quo(numerator, denominator)
 
+	return result, true
+}
+
+func calculateKurtType3(dl insyra.IDataList) (*big.Rat, bool) {
+	g2, ok := calculateKurtType1(dl)
+	if !ok {
+		return nil, false
+	}
+
+	g2Plus3 := new(big.Rat).Add(g2, new(big.Rat).SetInt64(3))
+
+	nReciprocal := new(big.Rat).SetFloat64(1.0 / float64(dl.Len()))
+	oneMinusNReciprocal := new(big.Rat).Sub(new(big.Rat).SetInt64(1), nReciprocal)
+	oneMinusNReciprocalPow2 := new(big.Rat).Mul(oneMinusNReciprocal, oneMinusNReciprocal)
+
+	result := new(big.Rat).Sub(new(big.Rat).Mul(g2Plus3, oneMinusNReciprocalPow2), new(big.Rat).SetInt64(3))
 	return result, true
 }
