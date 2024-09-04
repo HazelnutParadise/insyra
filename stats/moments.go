@@ -3,19 +3,18 @@
 package stats
 
 import (
-	"fmt"
 	"math/big"
 
 	"github.com/HazelnutParadise/insyra"
 )
 
 // CalculateMoment calculates the n-th moment of the DataList.
-// Returns the n-th moment and error.
+// Returns the n-th moment.
 // Returns nil if the DataList is empty or the n-th moment cannot be calculated.
-func CalculateMoment(dl insyra.IDataList, n int, central bool) (*big.Rat, error) {
+func CalculateMoment(dl insyra.IDataList, n int, central bool) *big.Rat {
 	// 檢查數據長度
 	if dl.Len() == 0 {
-		return nil, fmt.Errorf("數據集不能為空")
+		return nil
 	}
 
 	// 初始化均值
@@ -39,5 +38,5 @@ func CalculateMoment(dl insyra.IDataList, n int, central bool) (*big.Rat, error)
 	length := new(big.Rat).SetInt64(int64(dl.Len()))
 	moment.Quo(moment, length) // moment / len(data)
 
-	return moment, nil
+	return moment
 }

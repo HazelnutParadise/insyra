@@ -53,10 +53,14 @@ func calculateKurtType1(dl insyra.IDataList) (*big.Rat, bool) {
 	// 初始化 m2 和 m4 的計算
 	var m2, m4 *big.Rat
 	parallel.GroupUp(func() {
-		m2, _ = CalculateMoment(dl, 2, true)
+		m2 = CalculateMoment(dl, 2, true)
 	}, func() {
-		m4, _ = CalculateMoment(dl, 4, true)
+		m4 = CalculateMoment(dl, 4, true)
 	}).Run().AwaitResult()
+
+	if m2 == nil || m4 == nil {
+		return nil, false
+	}
 
 	// 計算峰態
 	m2Pow2 := new(big.Rat).Mul(m2, m2) // m2^2

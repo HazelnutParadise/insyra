@@ -53,10 +53,9 @@ The `CalculateMoment` function computes the n-th moment of the dataset.
 ```go
 import "github.com/HazelnutParadise/insyra/stats"
 
-moment, err := stats.CalculateMoment(dataList, 3, true) // Central third moment
-if err == nil {
-    fmt.Println("Third moment:", moment)
-}
+moment := stats.CalculateMoment(dataList, 3, true) // Central third moment
+
+fmt.Println("Third moment:", moment)
 ```
 
 ## Method Reference
