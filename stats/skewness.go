@@ -22,11 +22,11 @@ const (
 	Skew_AdjustedFisherPearson
 )
 
-// Skew calculates the skewness(sample) of the DataList.
+// Skewness calculates the skewness(sample) of the DataList.
 // Returns the skewness.
 // Returns nil if the DataList is empty or the skewness cannot be calculated.
 // Skew_FisherPearson method is not correct yet.
-func Skew(sample interface{}, method ...SkewnessMode) interface{} {
+func Skewness(sample interface{}, method ...SkewnessMode) interface{} {
 	d, dLen := insyra.ProcessData(sample)
 	d64 := insyra.SliceToF64(d)
 	insyra.LogDebug("stats.Skew(): d64: ", d64)
