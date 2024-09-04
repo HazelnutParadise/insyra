@@ -140,7 +140,7 @@ Returns the timestamp when the `DataTable` was created.
 ##### `GetLastModifiedTimestamp() int64`
 Returns the timestamp when the `DataTable` was last modified.
 
-##### `Filter(f func(rowIndex int, columnIndex string, value interface{}) bool) *DataTable`
+##### `FilterFilter(filterFunc FilterFunc) *DataTable`
 Returns a new `DataTable` with rows that satisfy the given filter function.
 
 ##### `FilterByCustomElement(f func(value interface{}) bool) *DataTable`
@@ -187,6 +187,12 @@ Returns a new `DataTable` with rows where the row index is less than or equal to
 
 ##### `FilterByRowIndexEqualTo(index int) *DataTable`
 Returns a new `DataTable` with rows where the row index equals the specified index.
+
+#### `ToCSV(filePath string, setRowNamesToFirstColumn bool, setColumnNamesToFirstRow bool) error`
+Writes the `DataTable` to a CSV file. If `setRowNamesToFirstColumn` is `true`, the first column will be used as row names. If `setColumnNamesToFirstRow` is `true`, the first row will be used as column names.
+
+#### `LoadFromCSV(filePath string, setFirstColumnToRowNames bool, setFirstRowToColumnNames bool) error`
+Loads a `DataTable` from a CSV file. If `setFirstColumnToRowNames` is `true`, the first column will be used as row names. If `setFirstRowToColumnNames` is `true`, the first row will be used as column names.
 
 ## Best Practices
 
