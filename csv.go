@@ -9,9 +9,10 @@ import (
 
 // ToCSV converts the DataTable to CSV format and writes it to the provided file path.
 // The function accepts two parameters:
-// - setColumnNamesToFirstRow: if true, the column names will be included as the first row in the CSV.
-// - setRowNamesToFirstColumn: if true, the row names will be included as the first column in the CSV.
-func (dt *DataTable) ToCSV(filePath string, setColumnNamesToFirstRow bool, setRowNamesToFirstColumn bool) error {
+// - filePath: the file path to write the CSV file to
+// - setRowNamesToFirstColumn: if true, the first column will be used as row names
+// - setColumnNamesToFirstRow: if true, the first row will be used as column names
+func (dt *DataTable) ToCSV(filePath string, setRowNamesToFirstColumn bool, setColumnNamesToFirstRow bool) error {
 	file, err := os.Create(filePath)
 	if err != nil {
 		return err

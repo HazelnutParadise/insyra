@@ -75,7 +75,7 @@ type IDataTable interface {
 	FilterByRowIndexEqualTo(index int) *DataTable
 
 	// CSV
-	ToCSV(filePath string, setColumnNamesToFirstRow bool, setRowNamesToFirstColumn bool) error
+	ToCSV(filePath string, setRowNamesToFirstColumn bool, setColumnNamesToFirstRow bool) error
 	LoadFromCSV(filePath string, setFirstColumnToRowNames bool, setFirstRowToColumnNames bool) error
 }
 
