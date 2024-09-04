@@ -57,7 +57,7 @@ type IDataTable interface {
 	updateTimestamp()
 
 	// Filters
-	Filter(f func(rowIndex int, columnIndex string, value interface{}) bool) *DataTable
+	Filter(filterFunc FilterFunc) *DataTable
 	FilterByCustomElement(f func(value interface{}) bool) *DataTable
 	FilterByColumnIndexGreaterThan(threshold string) *DataTable
 	FilterByColumnIndexGreaterThanOrEqualTo(threshold string) *DataTable

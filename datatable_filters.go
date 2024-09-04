@@ -279,6 +279,7 @@ func (dt *DataTable) FilterByCustomElement(filterFunc func(value interface{}) bo
 
 // ==================== Custom Filter ====================
 
+// FilterFunc is a custom filter function that takes the row index, column name, and value as input and returns a boolean.
 type FilterFunc func(rowIndex int, columnIndex string, value interface{}) bool
 
 // Filter applies a custom filter function to the DataTable and returns the filtered DataTable.
