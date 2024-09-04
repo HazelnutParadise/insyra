@@ -35,7 +35,7 @@ type IDataList interface {
 	Data() []interface{}
 	Append(values ...interface{})
 	Get(index int) interface{}
-	Count(interface{}) int
+	Count(value interface{}) int
 	Update(index int, value interface{})
 	InsertAt(index int, value interface{})
 	FindFirst(interface{}) interface{}

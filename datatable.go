@@ -5,6 +5,9 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/HazelnutParadise/Go-Utils/asyncutil"
+	"github.com/HazelnutParadise/Go-Utils/conv"
 )
 
 type DataTable struct {
@@ -56,6 +59,10 @@ type IDataTable interface {
 	getRowNameByIndex(index int) (string, bool)
 	getMaxColumnLength() int
 	updateTimestamp()
+
+	// Statistics
+	Size() (int, int)
+	Count(value interface{}) int
 
 	// Filters
 	Filter(filterFunc FilterFunc) *DataTable
@@ -1173,6 +1180,24 @@ func (dt *DataTable) SetRowNameByIndex(index int, name string) {
 	srn := safeRowName(dt, name)
 	dt.rowNames[srn] = index
 	go dt.updateTimestamp()
+}
+
+// ======================== Statistics ========================
+
+// Count returns the number of occurrences of the given value in the DataTable.
+func (dt *DataTable) Count(value interface{}) int {
+	result := asyncutil.ParallelForEach(dt.columns, func(i int, column interface{}) int {
+		return dt.columns[i].Count(value)
+	})
+	count := NewDataList(result).Sum()
+	return conv.ParseInt(count)
+}
+
+// Size returns the number of rows and columns in the DataTable.
+func (dt *DataTable) Size() (int, int) {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+	return dt.getMaxColumnLength(), len(dt.columns)
 }
 
 // ======================== Utilities ========================

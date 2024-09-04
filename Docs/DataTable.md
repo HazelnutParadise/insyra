@@ -131,6 +131,13 @@ Prints the content of the `DataTable` in a tabular format.
 ##### `ShowTypes()`
 Prints the types of elements in the `DataTable`.
 
+##### `Size() (int, int)`
+Returns the number of rows and columns in the `DataTable`.
+The first return value is the number of rows, and the second return value is the number of columns.
+
+##### `Count(value interface{}) int`
+Returns the number of occurrences of the specified value in the `DataTable`.
+
 ##### `GetRowNameByIndex(index int) string`
 Returns the name of the row at the specified index.
 
