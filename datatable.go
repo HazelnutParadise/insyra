@@ -106,7 +106,9 @@ func (dt *DataTable) AppendColumns(columns ...*DataList) {
 	maxLength := dt.getMaxColumnLength()
 
 	for _, column := range columns {
-		columnName := generateColumnName(len(dt.columns)) // 修改這行確保按順序生成列名
+		columnName := generateColumnIndex(len(dt.columns)) // 修改這行確保按順序生成列名
+		column.name = safeColumnName(dt, column.name)
+
 		dt.columns = append(dt.columns, column)
 		dt.columnIndex[columnName] = len(dt.columns) - 1
 		if len(column.data) < maxLength {
@@ -143,7 +145,7 @@ func (dt *DataTable) AppendRowsFromDataList(rowsData ...*DataList) {
 		if len(rowData.data) > len(dt.columns) {
 			for i := len(dt.columns); i < len(rowData.data); i++ {
 				newCol := newEmptyDataList(maxLength)
-				columnName := generateColumnName(i)
+				columnName := generateColumnIndex(i)
 				dt.columns = append(dt.columns, newCol)
 				dt.columnIndex[columnName] = len(dt.columns) - 1
 			}
@@ -227,7 +229,7 @@ func (dt *DataTable) AppendRowsByName(rowsData ...map[string]interface{}) {
 				newCol.name = colName
 				newCol.data = append(newCol.data, value)
 				dt.columns = append(dt.columns, newCol)
-				dt.columnIndex[generateColumnName(len(dt.columns)-1)] = len(dt.columns) - 1 // 更新 columnIndex
+				dt.columnIndex[generateColumnIndex(len(dt.columns)-1)] = len(dt.columns) - 1 // 更新 columnIndex
 				LogDebug(fmt.Sprintf("AppendRowsByName: Added new column %s at index %d", colName, len(dt.columns)-1))
 			}
 		}
@@ -609,7 +611,7 @@ func (dt *DataTable) DropColumnsByName(columnNames ...string) {
 				delete(dt.columnIndex, colName)
 				// 更新剩餘列的索引
 				for i := colPos; i < len(dt.columns); i++ {
-					newColName := generateColumnName(i)
+					newColName := generateColumnIndex(i)
 					dt.columnIndex[newColName] = i
 				}
 				break
@@ -634,7 +636,7 @@ func (dt *DataTable) DropColumnsByIndex(columnIndices ...string) {
 			delete(dt.columnIndex, index)
 			// 更新剩餘列的索引
 			for i := colPos; i < len(dt.columns); i++ {
-				newColName := generateColumnName(i)
+				newColName := generateColumnIndex(i)
 				dt.columnIndex[newColName] = i
 			}
 		}
@@ -668,12 +670,12 @@ func (dt *DataTable) DropColumnsContainStringElements() {
 	for i := len(columnsToDelete) - 1; i >= 0; i-- {
 		colIndex := columnsToDelete[i]
 		dt.columns = append(dt.columns[:colIndex], dt.columns[colIndex+1:]...)
-		delete(dt.columnIndex, generateColumnName(colIndex))
+		delete(dt.columnIndex, generateColumnIndex(colIndex))
 	}
 
 	// 更新 columnIndex 映射，以反映列被刪除後的變化
 	for i, _ := range dt.columns {
-		newColName := generateColumnName(i)
+		newColName := generateColumnIndex(i)
 		dt.columnIndex[newColName] = i
 	}
 
@@ -708,11 +710,11 @@ func (dt *DataTable) DropColumnsContainNumbers() {
 	for i := len(columnsToDelete) - 1; i >= 0; i-- {
 		colIndex := columnsToDelete[i]
 		dt.columns = append(dt.columns[:colIndex], dt.columns[colIndex+1:]...)
-		delete(dt.columnIndex, generateColumnName(colIndex))
+		delete(dt.columnIndex, generateColumnIndex(colIndex))
 	}
 
 	for i, _ := range dt.columns {
-		newColName := generateColumnName(i)
+		newColName := generateColumnIndex(i)
 		dt.columnIndex[newColName] = i
 	}
 
@@ -744,11 +746,11 @@ func (dt *DataTable) DropColumnsContainNil() {
 	for i := len(columnsToDelete) - 1; i >= 0; i-- {
 		colIndex := columnsToDelete[i]
 		dt.columns = append(dt.columns[:colIndex], dt.columns[colIndex+1:]...)
-		delete(dt.columnIndex, generateColumnName(colIndex))
+		delete(dt.columnIndex, generateColumnIndex(colIndex))
 	}
 
 	for i, _ := range dt.columns {
-		newColName := generateColumnName(i)
+		newColName := generateColumnIndex(i)
 		dt.columnIndex[newColName] = i
 	}
 
@@ -984,9 +986,9 @@ func (dt *DataTable) Data(useNamesAsKeys ...bool) map[string][]interface{} {
 	for i, col := range dt.columns {
 		var key string
 		if useNamesAsKeysBool && col.name != "" {
-			key = fmt.Sprintf("%s(%s)", generateColumnName(i), col.name)
+			key = fmt.Sprintf("%s(%s)", generateColumnIndex(i), col.name)
 		} else {
-			key = generateColumnName(i)
+			key = generateColumnIndex(i)
 		}
 		dataMap[key] = col.data
 	}
@@ -1003,7 +1005,7 @@ func (dt *DataTable) Show() {
 	// 構建資料地圖，但不使用 Data() 方法以避免死鎖
 	dataMap := make(map[string][]interface{})
 	for i, col := range dt.columns {
-		key := generateColumnName(i)
+		key := generateColumnIndex(i)
 		if col.name != "" {
 			key += fmt.Sprintf("(%s)", col.name)
 		}
@@ -1128,7 +1130,7 @@ func (dt *DataTable) getMaxColumnLength() int {
 	return maxLength
 }
 
-func generateColumnName(index int) string {
+func generateColumnIndex(index int) string {
 	name := ""
 	for index >= 0 {
 		name = string('A'+(index%26)) + name
@@ -1164,6 +1166,35 @@ func safeRowName(dt *DataTable, name string) string {
 		}
 
 		// 如果行名存在，則生成新的行名並繼續檢查
+		name = fmt.Sprintf("%s_%d", originalName, counter)
+		counter++
+	}
+
+	return name
+}
+
+func safeColumnName(dt *DataTable, name string) string {
+	if name == "" {
+		return ""
+	}
+
+	originalName := name
+	counter := 1
+
+	for {
+		// 檢查是否已經存在該列名
+		found := false
+		for _, col := range dt.columns {
+			if col.name == name {
+				found = true
+			}
+		}
+
+		if !found {
+			break // 如果列名不存在，跳出循環
+		}
+
+		// 如果列名存在，則生成新的列名並繼續檢查
 		name = fmt.Sprintf("%s_%d", originalName, counter)
 		counter++
 	}
