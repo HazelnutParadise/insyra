@@ -128,6 +128,9 @@ Returns a map representing the data in the `DataTable`. The keys can be column n
 ##### `Show()`
 Prints the content of the `DataTable` in a tabular format.
 
+##### `ShowTypes()`
+Prints the types of elements in the `DataTable`.
+
 ##### `GetRowNameByIndex(index int) string`
 Returns the name of the row at the specified index.
 

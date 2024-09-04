@@ -47,6 +47,7 @@ type IDataTable interface {
 	DropRowsContainNil()
 	Data(useNamesAsKeys ...bool) map[string][]interface{}
 	Show()
+	ShowTypes()
 	GetRowNameByIndex(index int) string
 	SetRowNameByIndex(index int, name string)
 	GetCreationTimestamp() int64
@@ -1067,6 +1068,76 @@ func (dt *DataTable) Show() {
 				value = fmt.Sprintf("%v", dataMap[colIndex][rowIndex])
 			}
 			fmt.Printf("%-*s", colWidths[colIndex]+2, value)
+		}
+		fmt.Println()
+	}
+}
+
+func (dt *DataTable) ShowTypes() {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	// 構建資料地圖，但不使用 Data() 方法以避免死鎖
+	dataMap := make(map[string][]interface{})
+	for i, col := range dt.columns {
+		key := generateColumnIndex(i)
+		if col.name != "" {
+			key += fmt.Sprintf("(%s)", col.name)
+		}
+		dataMap[key] = col.data
+	}
+
+	// 取得所有的列索引並排序
+	var colIndices []string
+	for colIndex := range dataMap {
+		colIndices = append(colIndices, colIndex)
+	}
+	sort.Strings(colIndices)
+
+	// 計算每一列的最大寬度
+	colWidths := make(map[string]int)
+	for _, colIndex := range colIndices {
+		colWidths[colIndex] = len(colIndex)
+		for _, value := range dataMap[colIndex] {
+			valueStr := fmt.Sprintf("%v", value)
+			if len(valueStr) > colWidths[colIndex] {
+				colWidths[colIndex] = len(valueStr)
+			}
+		}
+	}
+
+	// 計算 RowNames 的最大寬度，並顯示 RowIndex
+	rowNames := make([]string, dt.getMaxColumnLength())
+	maxRowNameWidth := len("RowNames")
+	for i := range rowNames {
+		if rowName, exists := dt.getRowNameByIndex(i); exists {
+			rowNames[i] = rowName
+		} else {
+			rowNames[i] = "" // 如果沒有名字則顯示為空
+		}
+		rowNames[i] = fmt.Sprintf("%d: %s", i, rowNames[i]) // 加上 RowIndex
+		if len(rowNames[i]) > maxRowNameWidth {
+			maxRowNameWidth = len(rowNames[i])
+		}
+	}
+
+	// 打印列名
+	fmt.Printf("%-*s", maxRowNameWidth+2, "RowNames") // +2 是為了讓其更清晰
+	for _, colIndex := range colIndices {
+		fmt.Printf("%-*s", colWidths[colIndex]+8, colIndex)
+	}
+	fmt.Println()
+
+	// 打印行資料
+	for rowIndex := 0; rowIndex < dt.getMaxColumnLength(); rowIndex++ {
+		fmt.Printf("%-*s", maxRowNameWidth+2, rowNames[rowIndex])
+
+		for _, colIndex := range colIndices {
+			value := "nil"
+			if rowIndex < len(dataMap[colIndex]) && dataMap[colIndex][rowIndex] != nil {
+				value = fmt.Sprintf("%T", dataMap[colIndex][rowIndex])
+			}
+			fmt.Printf("%-*s", colWidths[colIndex]+8, value)
 		}
 		fmt.Println()
 	}
