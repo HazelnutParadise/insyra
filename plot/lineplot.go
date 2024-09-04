@@ -1,3 +1,5 @@
+// lineplot.go - 繪製折線圖的結構體和方法
+
 package plot
 
 import (

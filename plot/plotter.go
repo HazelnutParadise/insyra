@@ -1,4 +1,5 @@
 // plotter.go
+
 package plot
 
 import (
