@@ -95,3 +95,12 @@ func SqrtRat(x *big.Rat) *big.Rat {
 	sqrtXRat, _ := sqrtValue.Rat(result)
 	return sqrtXRat
 }
+
+// PowRat 計算 big.Rat 的次方 (v^n)
+func PowRat(base *big.Rat, exponent int) *big.Rat {
+	result := new(big.Rat).SetInt64(1) // 初始化為 1
+	for i := 0; i < exponent; i++ {
+		result.Mul(result, base) // result = result * base
+	}
+	return result
+}

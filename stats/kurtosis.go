@@ -1,39 +1,91 @@
 package stats
 
-import "github.com/HazelnutParadise/insyra"
+import (
+	"math/big"
 
-type KurtosisMode int
-
-const (
-	// Excess represents excess kurtosis calculation mode.
-	Kurt_Excess KurtosisMode = iota
-
-	// Moment represents moment kurtosis calculation mode.
-	Kurt_Moment
-
-	// Fisher represents fisher kurtosis calculation mode.
-	Kurt_Fisher
-
-	// Sample represents sample kurtosis calculation mode.
-	Kurt_Sample
-
-	// SampleExcess represents sample excess kurtosis calculation mode.
-	Kurt_SampleExcess
+	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/parallel"
 )
 
 // Kurtosis calculates the kurtosis(sample) of the DataList.
 // Returns the kurtosis.
 // Returns nil if the DataList is empty or the kurtosis cannot be calculated.
-// 錯誤！
-func Kurtosis(data, method ...KurtosisMode) interface{} {
-	d, dLen := insyra.ProcessData(data)
+func Kurtosis(data interface{}, method ...int) interface{} {
+	d, _ := insyra.ProcessData(data)
 	d64 := insyra.SliceToF64(d)
-	usemethod := Kurt_Excess
+	dl := insyra.NewDataList(d64)
+	usemethod := 1
 	if len(method) > 1 {
-		LogWarning("stats.Kurtosis(): More than one method specified, returning nil.")
+		insyra.LogWarning("stats.Kurtosis(): More than one method specified, returning nil.")
 		return nil
 	}
 	if len(method) == 1 {
 		usemethod = method[0]
 	}
+
+	var result *big.Rat
+	var ok bool
+	switch usemethod {
+	case 1:
+		result, ok = calculateKurtType1(dl)
+	case 2:
+		result, ok = calculateKurtType2(dl)
+	default:
+		insyra.LogWarning("stats.Kurtosis(): Invalid method, returning nil.")
+		return nil
+	}
+
+	if !ok {
+		insyra.LogWarning("stats.Kurtosis(): Kurtosis is nil, returning nil.")
+		return nil
+	}
+
+	f64Result, _ := result.Float64()
+	return f64Result
+}
+
+// ======================== calculation functions ========================
+func calculateKurtType1(dl *insyra.DataList) (*big.Rat, bool) {
+	// 初始化 m2 和 m4 的計算
+	var m2, m4 *big.Rat
+	parallel.GroupUp(func() {
+		m2, _ = calculateMoment(dl, 2, true)
+	}, func() {
+		m4, _ = calculateMoment(dl, 4, true)
+	}).Run().AwaitResult()
+
+	// 計算峰態
+	m2Pow2 := new(big.Rat).Mul(m2, m2) // m2^2
+	if m2Pow2.Sign() == 0 {
+		return nil, false // 如果二階矩為0，返回錯誤，避免除以0
+	}
+
+	// g2 = m4 / m2^2 - 3
+	result := new(big.Rat).Sub(new(big.Rat).Quo(m4, m2Pow2), new(big.Rat).SetInt64(3))
+
+	return result, true
+}
+
+func calculateKurtType2(dl *insyra.DataList) (*big.Rat, bool) {
+	n := new(big.Rat).SetFloat64(float64(dl.Len()))
+	g2, ok := calculateKurtType1(dl)
+	if !ok {
+		return nil, false
+	}
+
+	nPlus1 := new(big.Rat).Add(n, new(big.Rat).SetInt64(1))
+	nMinus1 := new(big.Rat).Sub(n, new(big.Rat).SetInt64(1))
+	nMinus2 := new(big.Rat).Sub(n, new(big.Rat).SetInt64(2))
+	nMinus3 := new(big.Rat).Sub(n, new(big.Rat).SetInt64(3))
+
+	// g2*(n+1)+6
+	x1 := new(big.Rat).Add(new(big.Rat).Mul(g2, nPlus1), new(big.Rat).SetInt64(6))
+
+	numerator := new(big.Rat).Mul(x1, nMinus1)
+
+	denominator := new(big.Rat).Mul(nMinus2, nMinus3)
+
+	result := new(big.Rat).Quo(numerator, denominator)
+
+	return result, true
 }

@@ -8,31 +8,17 @@ import (
 	"github.com/HazelnutParadise/insyra/parallel"
 )
 
-// SkewnessMode is an enum type for skewness calculation mode.
-type SkewnessMode int
-
-const (
-	// PearsonFirst represents Type 1 skewness calculation mode.
-	Skew_PearsonFirst SkewnessMode = iota
-
-	// FisherPearson represents Type 2 skewness calculation mode.
-	Skew_FisherPearson
-
-	// AdjustedFisherPearson represents Type 3 skewness calculation mode.
-	Skew_AdjustedFisherPearson
-)
-
 // Skewness calculates the skewness(sample) of the DataList.
 // Returns the skewness.
 // Returns nil if the DataList is empty or the skewness cannot be calculated.
-func Skewness(sample interface{}, method ...SkewnessMode) interface{} {
+func Skewness(sample interface{}, method ...int) interface{} {
 	d, dLen := insyra.ProcessData(sample)
 	d64 := insyra.SliceToF64(d)
 	insyra.LogDebug("stats.Skew(): d64: ", d64)
 	dl := insyra.NewDataList(d64)
 	insyra.LogDebug("stats.Skew(): dl: ", dl)
 
-	usemethod := Skew_PearsonFirst
+	usemethod := 1
 	if len(method) > 0 {
 		usemethod = method[0]
 	}
@@ -47,12 +33,12 @@ func Skewness(sample interface{}, method ...SkewnessMode) interface{} {
 
 	var result interface{}
 	switch usemethod {
-	case Skew_PearsonFirst:
-		result = calculateSkewPearsonFirst(dl)
-	case Skew_FisherPearson:
-		result = calculateSkewFisherPearson(dl)
-	case Skew_AdjustedFisherPearson:
-		result = calculateSkewAdjustedFisherPearson(dl)
+	case 1:
+		result = calculateSkewType1(dl)
+	case 2:
+		result = calculateSkewTyep2(dl)
+	case 3:
+		result = calculateSkewType3(dl)
 	default:
 		insyra.LogWarning("stats.Skew(): Invalid method, returning nil.")
 		return nil
@@ -71,7 +57,7 @@ func Skewness(sample interface{}, method ...SkewnessMode) interface{} {
 }
 
 // ======================== calculation functions ========================
-func calculateSkewPearsonFirst(dl *insyra.DataList, highPrecision ...bool) interface{} {
+func calculateSkewType1(dl *insyra.DataList, highPrecision ...bool) interface{} {
 	n := new(big.Rat).SetFloat64(conv.ParseF64(dl.Len()))
 	nReciprocal := new(big.Rat).Inv(n)
 	m1 := dl.Mean(true).(*big.Rat)
@@ -116,9 +102,9 @@ func calculateSkewPearsonFirst(dl *insyra.DataList, highPrecision ...bool) inter
 	return f64g1
 }
 
-func calculateSkewFisherPearson(dl *insyra.DataList) interface{} {
+func calculateSkewTyep2(dl *insyra.DataList) interface{} {
 	n := new(big.Rat).SetFloat64(conv.ParseF64(dl.Len()))
-	g1 := calculateSkewPearsonFirst(dl, true).(*big.Rat)
+	g1 := calculateSkewType1(dl, true).(*big.Rat)
 
 	// 计算 n(n-1)
 	nMinus1 := new(big.Rat).Sub(n, new(big.Rat).SetInt64(1))
@@ -139,8 +125,8 @@ func calculateSkewFisherPearson(dl *insyra.DataList) interface{} {
 	return f64G1
 }
 
-func calculateSkewAdjustedFisherPearson(dl *insyra.DataList) interface{} {
-	g1 := calculateSkewPearsonFirst(dl, true).(*big.Rat)
+func calculateSkewType3(dl *insyra.DataList) interface{} {
+	g1 := calculateSkewType1(dl, true).(*big.Rat)
 	n := new(big.Rat).SetFloat64(conv.ParseF64(dl.Len()))
 
 	// (n-1)/n
