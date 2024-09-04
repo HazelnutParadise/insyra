@@ -73,6 +73,10 @@ type IDataTable interface {
 	FilterByRowIndexLessThan(threshold int) *DataTable
 	FilterByRowIndexLessThanOrEqualTo(threshold int) *DataTable
 	FilterByRowIndexEqualTo(index int) *DataTable
+
+	// CSV
+	ToCSV(filePath string, setColumnNamesToFirstRow bool, setRowNamesToFirstColumn bool) error
+	LoadFromCSV(filePath string, setFirstColumnToRowNames bool, setFirstRowToColumnNames bool) error
 }
 
 func NewDataTable(columns ...*DataList) *DataTable {
