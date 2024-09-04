@@ -44,6 +44,8 @@ For a complete list of methods and features, please refer to the **[DataList Doc
 
 The `DataTable` structure provides a tabular data representation, allowing for the storage and manipulation of data in a structured format. It offers methods for data filtering, sorting, and aggregation, making it a powerful tool for data analysis.
 
+**You can also convert between DataTables and CSV files with simply one line of code, enabling seamless integration with external data sources.**
+
 For a complete list of methods and features, please refer to the **[DataTable Documentation](https://github.com/HazelnutParadise/insyra/tree/main/Docs/DataTable.md)**.
 
 ## Advanced Usage
