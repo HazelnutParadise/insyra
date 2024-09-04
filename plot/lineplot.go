@@ -116,7 +116,7 @@ func (lp *LinePlot) drawGrid(img *image.RGBA, margin int) {
 	}
 }
 
-// drawAxes 畫軸線
+// drawAxes 畫軸線並添加軸標
 func (lp *LinePlot) drawAxes(img *image.RGBA, margin int) {
 	width := lp.options.Width - margin*2
 	height := lp.options.Height - margin*2
@@ -131,6 +131,12 @@ func (lp *LinePlot) drawAxes(img *image.RGBA, margin int) {
 	for y := margin; y < height+margin; y++ {
 		img.Set(width/2+margin, y, axisColor)
 	}
+
+	// 繪製X軸標籤
+	drawText(img, lp.Options.XLabel, width/2+margin-50, lp.options.Height-margin/4, color.Black)
+
+	// 繪製Y軸標籤
+	drawText(img, lp.Options.YLabel, margin/4, height/2+margin, color.Black)
 }
 
 // drawLine 畫折線
