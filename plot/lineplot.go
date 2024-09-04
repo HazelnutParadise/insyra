@@ -26,6 +26,7 @@ type LinePlotOptions struct {
 	LineColor       color.Color
 	PointColor      color.Color
 	BackgroundColor color.Color
+	LineThickness   int // 新增線條粗細選項
 }
 
 // NewLinePlot 創建一個新的 LinePlot
@@ -60,19 +61,19 @@ func (lp *LinePlot) Draw() *image.RGBA {
 	width := lp.options.Width
 	height := lp.options.Height
 
+	margin := 50 // 設置邊界
+
 	img := image.NewRGBA(image.Rect(0, 0, width, height))
 
 	// 填充背景
 	draw.Draw(img, img.Bounds(), &image.Uniform{C: lp.Options.BackgroundColor}, image.Point{}, draw.Src)
 
-	// 畫網格線
-	lp.drawGrid(img)
+	// 調整網格線和軸線的位置，留出邊界空間
+	lp.drawGrid(img, margin)
+	lp.drawAxes(img, margin)
 
-	// 畫軸線
-	lp.drawAxes(img)
-
-	// 畫數據線和點
-	lp.drawLine(img)
+	// 繪製數據折線，考慮邊界
+	lp.drawLine(img, margin)
 
 	return img
 }
@@ -93,49 +94,49 @@ func (lp *LinePlot) Save(outputFile string) error {
 }
 
 // drawGrid 畫網格線
-func (lp *LinePlot) drawGrid(img *image.RGBA) {
-	width := lp.options.Width
-	height := lp.options.Height
+func (lp *LinePlot) drawGrid(img *image.RGBA, margin int) {
+	width := lp.options.Width - margin*2
+	height := lp.options.Height - margin*2
 	gridColor := lp.Options.GridColor
 
 	// 畫橫向網格線
 	for i := 1; i <= 10; i++ {
-		y := i * height / 10
-		for x := 0; x < width; x++ {
+		y := margin + i*height/10
+		for x := margin; x < width+margin; x++ {
 			img.Set(x, y, gridColor)
 		}
 	}
 
 	// 畫縱向網格線
 	for i := 1; i <= 10; i++ {
-		x := i * width / 10
-		for y := 0; y < height; y++ {
+		x := margin + i*width/10
+		for y := margin; y < height+margin; y++ {
 			img.Set(x, y, gridColor)
 		}
 	}
 }
 
 // drawAxes 畫軸線
-func (lp *LinePlot) drawAxes(img *image.RGBA) {
-	width := lp.options.Width
-	height := lp.options.Height
+func (lp *LinePlot) drawAxes(img *image.RGBA, margin int) {
+	width := lp.options.Width - margin*2
+	height := lp.options.Height - margin*2
 	axisColor := lp.Options.AxisColor
 
 	// 畫X軸
-	for x := 0; x < width; x++ {
-		img.Set(x, height/2, axisColor)
+	for x := margin; x < width+margin; x++ {
+		img.Set(x, height/2+margin, axisColor)
 	}
 
 	// 畫Y軸
-	for y := 0; y < height; y++ {
-		img.Set(width/2, y, axisColor)
+	for y := margin; y < height+margin; y++ {
+		img.Set(width/2+margin, y, axisColor)
 	}
 }
 
 // drawLine 畫折線
-func (lp *LinePlot) drawLine(img *image.RGBA) {
-	width := lp.options.Width
-	height := lp.options.Height
+func (lp *LinePlot) drawLine(img *image.RGBA, margin int) {
+	width := lp.options.Width - margin*2
+	height := lp.options.Height - margin*2
 	lineColor := lp.Options.LineColor
 	pointColor := lp.Options.PointColor
 
@@ -147,8 +148,8 @@ func (lp *LinePlot) drawLine(img *image.RGBA) {
 
 	prevX, prevY := 0, 0
 	for i, val := range data {
-		x := int(float64(i) * scaleX)
-		y := int(float64(height) - (val-minY)*scaleY)
+		x := margin + int(float64(i)*scaleX)
+		y := margin + int(float64(height)-(val-minY)*scaleY)
 
 		// 畫點
 		img.Set(x, y, pointColor)
@@ -177,8 +178,14 @@ func (lp *LinePlot) drawLineSegment(img *image.RGBA, x1, y1, x2, y2 int, c color
 	}
 	err := dx - dy
 
+	thickness := lp.Options.LineThickness // 使用設定的線條粗細
+
 	for {
-		img.Set(x1, y1, c)
+		// 使用厚度填充線條
+		for i := -thickness / 2; i <= thickness/2; i++ {
+			img.Set(x1+i, y1, c)
+			img.Set(x1, y1+i, c)
+		}
 		if x1 == x2 && y1 == y2 {
 			break
 		}
