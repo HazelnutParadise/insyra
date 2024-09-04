@@ -25,7 +25,6 @@ const (
 // Skewness calculates the skewness(sample) of the DataList.
 // Returns the skewness.
 // Returns nil if the DataList is empty or the skewness cannot be calculated.
-// Skew_FisherPearson method is not correct yet.
 func Skewness(sample interface{}, method ...SkewnessMode) interface{} {
 	d, dLen := insyra.ProcessData(sample)
 	d64 := insyra.SliceToF64(d)
@@ -117,7 +116,6 @@ func calculateSkewPearsonFirst(dl *insyra.DataList, highPrecision ...bool) inter
 	return f64g1
 }
 
-// 錯誤
 func calculateSkewFisherPearson(dl *insyra.DataList) interface{} {
 	n := new(big.Rat).SetFloat64(conv.ParseF64(dl.Len()))
 	g1 := calculateSkewPearsonFirst(dl, true).(*big.Rat)
