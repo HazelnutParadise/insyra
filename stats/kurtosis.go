@@ -18,7 +18,7 @@ func Kurtosis(data interface{}, method ...int) interface{} {
 	dl := insyra.NewDataList(d64)
 	usemethod := 1
 	if len(method) > 1 {
-		insyra.LogWarning("stats.Kurtosis(): More than one method specified, returning nil.")
+		insyra.LogWarning("stats.Kurtosis: More than one method specified, returning nil.")
 		return nil
 	}
 	if len(method) == 1 {
@@ -35,12 +35,12 @@ func Kurtosis(data interface{}, method ...int) interface{} {
 	case 3:
 		result, ok = calculateKurtType3(dl)
 	default:
-		insyra.LogWarning("stats.Kurtosis(): Invalid method, returning nil.")
+		insyra.LogWarning("stats.Kurtosis: Invalid method, returning nil.")
 		return nil
 	}
 
 	if !ok {
-		insyra.LogWarning("stats.Kurtosis(): Kurtosis is nil, returning nil.")
+		insyra.LogWarning("stats.Kurtosis: Kurtosis is nil, returning nil.")
 		return nil
 	}
 
