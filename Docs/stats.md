@@ -1,11 +1,12 @@
 # [ stats ] Package 
 
-Welcome to the **stats** package, which provides efficient functions for calculating statistical measures such as **skewness**, **kurtosis**, and general **moment calculations**. The methods used in this package correspond directly to those found in the **e1071** R package.
+Welcome to the **stats** package, which provides efficient functions for calculating statistical measures such as **correlation**, **skewness**, **kurtosis**, and general **moment calculations**.
 
 ## Features
 
-- **Skewness Calculation**: Multiple methods for skewness calculation corresponding to those in `e1071`.
-- **Kurtosis Calculation**: Provides kurtosis calculation with options that map directly to `e1071`'s types.
+- **Correlation Calculation**: Supports **Pearson**, **Kendall**, and **Spearman** correlation coefficient calculations.
+- **Skewness Calculation**: Corresponds directly to **e1071** package's skewness methods.
+- **Kurtosis Calculation**: Provides kurtosis calculation that maps directly to **e1071** types.
 - **Moment Calculation**: Supports n-th moment calculations for datasets, both central and non-central.
 
 ## Installation
@@ -18,9 +19,29 @@ go get github.com/HazelnutParadise/insyra/stats
 
 ## Usage
 
+### Correlation
+
+The `Correlation` function calculates the correlation coefficient between two datasets. It supports **Pearson**, **Kendall**, and **Spearman** methods.
+
+```go
+import "github.com/HazelnutParadise/insyra/stats"
+
+// Calculate Pearson correlation
+result := stats.Correlation(dataListX, dataListY, stats.PearsonCorrelation)
+fmt.Println("Pearson correlation:", result)
+
+// Calculate Kendall correlation
+result := stats.Correlation(dataListX, dataListY, stats.KendallCorrelation)
+fmt.Println("Kendall correlation:", result)
+
+// Calculate Spearman correlation
+result := stats.Correlation(dataListX, dataListY, stats.SpearmanCorrelation)
+fmt.Println("Spearman correlation:", result)
+```
+
 ### Skewness
 
-The `Skewness` function calculates the skewness of the dataset. The method corresponds directly to the `e1071` package's types.
+The `Skewness` function calculates the skewness of a dataset. The method corresponds directly to **e1071** package's `type` options.
 
 ```go
 import "github.com/HazelnutParadise/insyra/stats"
@@ -28,13 +49,13 @@ import "github.com/HazelnutParadise/insyra/stats"
 result := stats.Skewness(data)
 fmt.Println("Skewness:", result)
 
-// Specify the method corresponding to `e1071`'s type
-result := stats.Skewness(data, 2) // Corresponds to Type 2 in `e1071`
+// Specify the method corresponding to **e1071**'s type
+result := stats.Skewness(data, 2) // Corresponds to Type 2 in **e1071**
 ```
 
 ### Kurtosis
 
-The `Kurtosis` function calculates the kurtosis of the dataset. The method corresponds to the `e1071` types.
+The `Kurtosis` function calculates the kurtosis of the dataset. The method corresponds to the **e1071** types.
 
 ```go
 import "github.com/HazelnutParadise/insyra/stats"
@@ -42,8 +63,8 @@ import "github.com/HazelnutParadise/insyra/stats"
 result := stats.Kurtosis(data)
 fmt.Println("Kurtosis:", result)
 
-// Specify the method corresponding to `e1071`'s type
-result := stats.Kurtosis(data, 3) // Corresponds to Type 3 in `e1071`
+// Specify the method corresponding to **e1071**'s type
+result := stats.Kurtosis(data, 3) // Corresponds to Type 3 in **e1071**
 ```
 
 ### Moment Calculation
@@ -54,7 +75,6 @@ The `CalculateMoment` function computes the n-th moment of the dataset.
 import "github.com/HazelnutParadise/insyra/stats"
 
 moment := stats.CalculateMoment(dataList, 3, true) // Central third moment
-
 fmt.Println("Third moment:", moment)
 ```
 
