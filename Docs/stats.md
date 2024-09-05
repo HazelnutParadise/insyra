@@ -1,10 +1,11 @@
 # [ stats ] Package 
 
-Welcome to the **stats** package, which provides efficient functions for calculating statistical measures such as **correlation**, **skewness**, **kurtosis**, and general **moment calculations**.
+Welcome to the **stats** package, which provides efficient functions for calculating statistical measures such as **correlation**, **skewness**, **kurtosis**, **t-tests**, and general **moment calculations**.
 
 ## Features
 
 - **Correlation Calculation**: Supports **Pearson**, **Kendall**, and **Spearman** correlation coefficient calculations.
+- **T-Test**: Includes **Single Sample**, **Two Sample**, and **Paired** t-tests.
 - **Skewness Calculation**: Corresponds directly to **e1071** package's skewness methods.
 - **Kurtosis Calculation**: Provides kurtosis calculation that maps directly to **e1071** types.
 - **Moment Calculation**: Supports n-th moment calculations for datasets, both central and non-central.
@@ -37,6 +38,37 @@ fmt.Println("Kendall correlation:", result)
 // Calculate Spearman correlation
 result := stats.Correlation(dataListX, dataListY, stats.SpearmanCorrelation)
 fmt.Println("Spearman correlation:", result)
+```
+
+### T-Test
+
+The `TTest` functions allow performing single-sample, two-sample, and paired t-tests. 
+
+#### Single Sample T-Test
+
+```go
+import "github.com/HazelnutParadise/insyra/stats"
+
+result := stats.SingleSampleTTest(dataList, 2.5)
+fmt.Printf("Single Sample T-Test: t=%.4f, p=%.4f, df=%d\n", result.TValue, result.PValue, result.Df)
+```
+
+#### Two Sample T-Test
+
+```go
+import "github.com/HazelnutParadise/insyra/stats"
+
+result := stats.TwoSampleTTest(dataListX, dataListY, true)
+fmt.Printf("Two Sample T-Test: t=%.4f, p=%.4f, df=%d\n", result.TValue, result.PValue, result.Df)
+```
+
+#### Paired T-Test
+
+```go
+import "github.com/HazelnutParadise/insyra/stats"
+
+result := stats.PairedTTest(dataListX, dataListY)
+fmt.Printf("Paired T-Test: t=%.4f, p=%.4f, df=%d\n", result.TValue, result.PValue, result.Df)
 ```
 
 ### Skewness
@@ -80,4 +112,4 @@ fmt.Println("Third moment:", moment)
 
 ## Method Reference
 
-The methods available for **skewness** and **kurtosis** in this package directly correspond to the `type` options in the **e1071** R package. For further details on the specific calculations and their formulas, please refer to the [e1071 documentation](https://cran.r-project.org/web/packages/e1071/e1071.pdf).
+The methods available for **skewness**, **kurtosis**, and **t-tests** in this package directly correspond to the `type` options in the **e1071** R package. For further details on the specific calculations and their formulas, please refer to the [e1071 documentation](https://cran.r-project.org/web/packages/e1071/e1071.pdf).

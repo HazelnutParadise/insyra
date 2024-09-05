@@ -7,7 +7,6 @@ import (
 	"math/big"
 
 	"github.com/HazelnutParadise/insyra"
-	"gonum.org/v1/gonum/stat/distuv"
 )
 
 // LinearRegressionResult holds the result of a linear regression, including slope, intercept, and other statistical details.
@@ -115,24 +114,4 @@ func LinearRegression(dlX, dlY insyra.IDataList) *LinearRegressionResult {
 		TValue:           tValue,
 		Pvalue:           pValue,
 	}
-}
-
-// calculatePValue 基於 t 值和自由度計算 P 值
-func calculatePValue(tValue float64, df int) float64 {
-	if df <= 0 {
-		return 1.0 // 當自由度無效時，P-value 為 1
-	}
-
-	// 使用 t 分布來計算雙尾 P-value
-	tDist := distuv.StudentsT{
-		Mu:    0,           // 平均值
-		Sigma: 1,           // 標準差
-		Nu:    float64(df), // 自由度
-	}
-
-	// 計算 t 值的絕對值，然後進行雙尾檢驗
-	tValueAbs := math.Abs(tValue)
-	pValue := 2 * (1 - tDist.CDF(tValueAbs))
-
-	return pValue
 }
