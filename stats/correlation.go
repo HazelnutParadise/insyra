@@ -1,6 +1,7 @@
 package stats
 
 import (
+	"math"
 	"math/big"
 
 	"github.com/HazelnutParadise/insyra"
@@ -104,18 +105,27 @@ func pearsonCorrelation(dlX, dlY insyra.IDataList) *big.Rat {
 	return corr
 }
 
-// kendallCorrelation calculates Kendall rank correlation coefficient.
+// kendallCorrelation calculates Kendall rank correlation coefficient with tie correction.
 func kendallCorrelation(dlX, dlY insyra.IDataList) *big.Rat {
 	n := dlX.Len()
-	// 計算 Concordant 和 Discordant 配對
-	var concordant, discordant int
+
+	// 計算 Concordant 和 Discordant 配對，以及處理 tie 情況
+	var concordant, discordant, tieX, tieY, tieBoth int
 	for i := 0; i < n-1; i++ {
 		for j := i + 1; j < n; j++ {
 			xi, yi := dlX.Data()[i].(float64), dlY.Data()[i].(float64)
 			xj, yj := dlX.Data()[j].(float64), dlY.Data()[j].(float64)
+
 			signX := xi - xj
 			signY := yi - yj
-			if signX*signY > 0 {
+
+			if signX == 0 && signY == 0 {
+				tieBoth++ // x 和 y 都相等
+			} else if signX == 0 {
+				tieX++ // x 相等
+			} else if signY == 0 {
+				tieY++ // y 相等
+			} else if signX*signY > 0 {
 				concordant++
 			} else if signX*signY < 0 {
 				discordant++
@@ -123,8 +133,15 @@ func kendallCorrelation(dlX, dlY insyra.IDataList) *big.Rat {
 		}
 	}
 
-	// 計算 Kendall's Tau
-	tau := new(big.Rat).SetFloat64(float64(concordant-discordant) / float64(n*(n-1)/2))
+	// Kendall's Tau-b 公式
+	numerator := float64(concordant - discordant)
+	denominator := math.Sqrt(float64((concordant + discordant + tieX) * (concordant + discordant + tieY)))
+
+	if denominator == 0 {
+		return new(big.Rat).SetInt64(0) // 避免除以0
+	}
+
+	tau := new(big.Rat).SetFloat64(numerator / denominator)
 	return tau
 }
 
