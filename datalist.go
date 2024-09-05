@@ -54,6 +54,7 @@ type IDataList interface {
 	ClearNumbers()
 	Len() int
 	Sort(acending ...bool)
+	Rank() *DataList
 	Reverse()
 	Upper()
 	Lower()
@@ -680,6 +681,41 @@ func (dl *DataList) Sort(ascending ...bool) {
 		// Fallback: compare as strings
 		return fmt.Sprint(v1) < fmt.Sprint(v2)
 	})
+}
+
+// Rank assigns ranks to the elements in the DataList.
+func (dl *DataList) Rank() *DataList {
+	data := dl.ToF64Slice()
+	ranked := make([]float64, len(data))
+
+	// 建立一個索引來追蹤原始位置
+	indexes := make([]int, len(data))
+	for i := range data {
+		indexes[i] = i
+	}
+
+	// 根據數據排序，並追蹤索引
+	sort.Slice(indexes, func(i, j int) bool {
+		return data[indexes[i]] < data[indexes[j]]
+	})
+
+	// 分配秩次，處理重複值的情況
+	for i := 0; i < len(indexes); {
+		sumRank := 0.0
+		count := 0
+		val := data[indexes[i]]
+		for j := i; j < len(indexes) && data[indexes[j]] == val; j++ {
+			sumRank += float64(j + 1)
+			count++
+		}
+		avgRank := sumRank / float64(count) // 計算平均秩次
+		for j := 0; j < count; j++ {
+			ranked[indexes[i+j]] = avgRank
+		}
+		i += count
+	}
+
+	return NewDataList(ranked)
 }
 
 // Reverse reverses the order of the elements in the DataList.

@@ -23,7 +23,7 @@ const (
 
 // Covariance calculates the covariance between two datasets.
 // Always returns *big.Rat.
-func Covariance(dlX, dlY *insyra.DataList) *big.Rat {
+func Covariance(dlX, dlY insyra.IDataList) *big.Rat {
 	meanX := dlX.Mean(true).(*big.Rat)
 	meanY := dlY.Mean(true).(*big.Rat)
 
@@ -41,7 +41,8 @@ func Covariance(dlX, dlY *insyra.DataList) *big.Rat {
 
 	// 取平均
 	length := new(big.Rat).SetInt64(int64(dlX.Len()))
-	cov.Quo(cov, length) // cov = cov / n
+	lenMinusOne := new(big.Rat).Sub(length, big.NewRat(1, 1))
+	cov.Quo(cov, lenMinusOne) // cov = cov / n
 
 	return cov
 }
@@ -49,7 +50,7 @@ func Covariance(dlX, dlY *insyra.DataList) *big.Rat {
 // Correlation calculates the correlation coefficient between two datasets.
 // Supports Pearson, Kendall, and Spearman methods.
 // If highPrecision is set to true, it returns *big.Rat, otherwise float64.
-func Correlation(dlX, dlY *insyra.DataList, method CorrelationMethod, highPrecision ...bool) interface{} {
+func Correlation(dlX, dlY insyra.IDataList, method CorrelationMethod, highPrecision ...bool) interface{} {
 	if len(highPrecision) > 1 {
 		insyra.LogWarning("stats.Correlation: Too many arguments.")
 		return nil
@@ -85,7 +86,7 @@ func Correlation(dlX, dlY *insyra.DataList, method CorrelationMethod, highPrecis
 // ======================= calculation functions =======================
 
 // pearsonCorrelation calculates Pearson correlation coefficient.
-func pearsonCorrelation(dlX, dlY *insyra.DataList) *big.Rat {
+func pearsonCorrelation(dlX, dlY insyra.IDataList) *big.Rat {
 	cov := Covariance(dlX, dlY)
 
 	// 計算標準差
@@ -104,7 +105,7 @@ func pearsonCorrelation(dlX, dlY *insyra.DataList) *big.Rat {
 }
 
 // kendallCorrelation calculates Kendall rank correlation coefficient.
-func kendallCorrelation(dlX, dlY *insyra.DataList) *big.Rat {
+func kendallCorrelation(dlX, dlY insyra.IDataList) *big.Rat {
 	n := dlX.Len()
 	// 計算 Concordant 和 Discordant 配對
 	var concordant, discordant int
@@ -128,11 +129,11 @@ func kendallCorrelation(dlX, dlY *insyra.DataList) *big.Rat {
 }
 
 // spearmanCorrelation calculates Spearman rank correlation coefficient.
-func spearmanCorrelation(dlX, dlY *insyra.DataList) *big.Rat {
-	// 對 X 和 Y 進行排序並分別計算排序
-	dlX.Sort() // 使用 dlX 的內部排序方法
-	dlY.Sort() // 使用 dlY 的內部排序方法
+func spearmanCorrelation(dlX, dlY insyra.IDataList) *big.Rat {
+	// 計算秩次
+	rankX := dlX.Rank()
+	rankY := dlY.Rank()
 
-	// 計算 Pearson 相關係數，基於排序後的數據
-	return pearsonCorrelation(dlX, dlY)
+	// 基於秩次計算 Pearson 相關係數
+	return pearsonCorrelation(rankX, rankY)
 }
