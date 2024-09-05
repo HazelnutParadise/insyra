@@ -1,3 +1,5 @@
+// linear_regression.go - 線性回歸分析(尚未完成)
+
 package stats
 
 import (
