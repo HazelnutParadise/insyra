@@ -655,7 +655,11 @@ func (dl *DataList) ClearNaNs() *DataList {
 // Directly modifies the DataList.
 func (dl *DataList) Normalize() *DataList {
 	defer func() {
-		dl.mu.Unlock()
+		r := recover()
+		if r != nil {
+			LogWarning("Normalize: Data types cannot be compared, returning nil.")
+		}
+
 		go reorganizeMemory(dl)
 		go dl.updateTimestamp()
 	}()
@@ -664,14 +668,10 @@ func (dl *DataList) Normalize() *DataList {
 		LogWarning("Normalize: Cannot normalize due to invalid Min/Max values.")
 		return nil
 	}
-	dl.mu.Lock()
+
 	for i, v := range dl.Data() {
-		if val, ok := v.(float64); ok {
-			dl.data[i] = (val - min.(float64)) / (max.(float64) - min.(float64))
-		} else {
-			LogWarning("Normalize: Non-float64 value found, skipping.")
-			dl.data[i] = math.NaN()
-		}
+		vfloat := conv.ParseF64(v)
+		dl.data[i] = (vfloat - min.(float64)) / (max.(float64) - min.(float64))
 	}
 	return dl
 }
@@ -680,6 +680,10 @@ func (dl *DataList) Normalize() *DataList {
 // Directly modifies the DataList.
 func (dl *DataList) Standardize() *DataList {
 	defer func() {
+		r := recover()
+		if r != nil {
+			LogWarning("Standardize(): Data types cannot be compared, returning nil.")
+		}
 		dl.mu.Unlock()
 		go reorganizeMemory(dl)
 		go dl.updateTimestamp()
@@ -688,7 +692,8 @@ func (dl *DataList) Standardize() *DataList {
 	stddev := dl.Stdev(false).(float64)
 	dl.mu.Lock()
 	for i, v := range dl.Data() {
-		dl.data[i] = (v.(float64) - mean) / stddev
+		vfloat := conv.ParseF64(v)
+		dl.data[i] = (vfloat - mean) / stddev
 	}
 	return dl
 }
@@ -697,6 +702,10 @@ func (dl *DataList) Standardize() *DataList {
 // Directly modifies the DataList.
 func (dl *DataList) FillNaNWithMean() *DataList {
 	defer func() {
+		r := recover()
+		if r != nil {
+			LogWarning("FillNaNWithMean(): Data types cannot be compared, returning nil.")
+		}
 		dl.mu.Unlock()
 		go reorganizeMemory(dl)
 		go dl.updateTimestamp()
@@ -706,10 +715,11 @@ func (dl *DataList) FillNaNWithMean() *DataList {
 	mean := dlNoNaN.Mean(false).(float64)
 	dl.mu.Lock()
 	for i, v := range dl.Data() {
-		if math.IsNaN(v.(float64)) {
+		vfloat := conv.ParseF64(v)
+		if math.IsNaN(vfloat) {
 			dl.data[i] = mean
 		} else {
-			dl.data[i] = v.(float64)
+			dl.data[i] = vfloat
 		}
 	}
 	return dl
@@ -925,6 +935,12 @@ func (dl *DataList) Sum() interface{} {
 // Returns nil if the DataList is empty.
 // Max returns the maximum value in the DataList, or nil if the data types cannot be compared.
 func (dl *DataList) Max() interface{} {
+	defer func() {
+		r := recover()
+		if r != nil {
+			LogWarning("DataList.Max(): Data types cannot be compared, returning nil.")
+		}
+	}()
 	if len(dl.data) == 0 {
 		return nil
 	}
@@ -933,11 +949,6 @@ func (dl *DataList) Max() interface{} {
 
 	for _, v := range dl.data {
 		vfloat := conv.ParseF64(v)
-		r := recover()
-		if r != nil {
-			LogWarning("DataList.Max(): Data types cannot be compared, returning nil.")
-			return nil
-		}
 		if math.IsNaN(max) {
 			max = vfloat
 			continue
@@ -955,6 +966,12 @@ func (dl *DataList) Max() interface{} {
 // Returns nil if the DataList is empty.
 // Min returns the minimum value in the DataList, or nil if the data types cannot be compared.
 func (dl *DataList) Min() interface{} {
+	defer func() {
+		r := recover()
+		if r != nil {
+			LogWarning("DataList.Min(): Data types cannot be compared, returning nil.")
+		}
+	}()
 	if len(dl.data) == 0 {
 		LogWarning("DataList.Min(): DataList is empty, returning nil.")
 		return nil
@@ -963,11 +980,6 @@ func (dl *DataList) Min() interface{} {
 	var min = math.NaN()
 	for _, v := range dl.data {
 		vfloat := conv.ParseF64(v)
-		r := recover()
-		if r != nil {
-			LogWarning("DataList.Min(): Data types cannot be compared, returning nil.")
-			return nil
-		}
 		if math.IsNaN(min) {
 			min = vfloat
 			continue
