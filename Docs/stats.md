@@ -1,11 +1,12 @@
 # [ stats ] Package 
 
-Welcome to the **stats** package, which provides efficient functions for calculating statistical measures such as **correlation**, **skewness**, **kurtosis**, **t-tests**, and general **moment calculations**.
+Welcome to the **stats** package, which provides efficient functions for calculating statistical measures such as **correlation**, **skewness**, **kurtosis**, **t-tests**, **chi-square tests**, and general **moment calculations**.
 
 ## Features
 
 - **Correlation Calculation**: Supports **Pearson**, **Kendall**, and **Spearman** correlation coefficient calculations.
 - **T-Test**: Includes **Single Sample**, **Two Sample**, and **Paired** t-tests.
+- **Chi-Square Test**: Supports both one-dimensional (1D) and two-dimensional (2D) chi-square tests with optional custom probabilities.
 - **Skewness Calculation**: Corresponds directly to **e1071** package's skewness methods.
 - **Kurtosis Calculation**: Provides kurtosis calculation that maps directly to **e1071** types.
 - **Moment Calculation**: Supports n-th moment calculations for datasets, both central and non-central.
@@ -42,7 +43,7 @@ fmt.Println("Spearman correlation:", result)
 
 ### T-Test
 
-The `TTest` functions allow performing single-sample, two-sample, and paired t-tests. 
+The `TTest` functions allow performing single-sample, two-sample, and paired t-tests.
 
 #### Single Sample T-Test
 
@@ -69,6 +70,35 @@ import "github.com/HazelnutParadise/insyra/stats"
 
 result := stats.PairedTTest(dataListX, dataListY)
 fmt.Printf("Paired T-Test: t=%.4f, p=%.4f, df=%d\n", result.TValue, result.PValue, result.Df)
+```
+
+### Chi-Square Test
+
+The `ChiSquareTest` function supports both **one-dimensional** and **two-dimensional** chi-square tests. You can also specify custom probabilities for the expected values and rescale the probabilities if needed.
+
+#### One-Dimensional Chi-Square Test
+
+```go
+import "github.com/HazelnutParadise/insyra/stats"
+
+observed := insyra.NewDataList(20, 15, 25)
+p := []float64{1/3, 1/3, 1/3} // Expected probabilities
+
+result := stats.ChiSquareTest(observed, p, true)
+fmt.Printf("Chi-Square Value: %.4f, P-Value: %.4f, Degrees of Freedom: %d\n", result.ChiSquare, result.PValue, result.Df)
+```
+
+#### Two-Dimensional Chi-Square Test
+
+```go
+import "github.com/HazelnutParadise/insyra/stats"
+
+table := insyra.NewDataTable(
+    insyra.NewDataList(12, 5, 7),
+    insyra.NewDataList(7, 7, 7),
+)
+result := stats.ChiSquareTest(table, nil, false)
+fmt.Printf("Chi-Square Value: %.4f, P-Value: %.4f, Degrees of Freedom: %d\n", result.ChiSquare, result.PValue, result.Df)
 ```
 
 ### Skewness
