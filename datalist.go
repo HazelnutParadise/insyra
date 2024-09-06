@@ -46,6 +46,7 @@ type IDataList interface {
 	ReplaceFirst(interface{}, interface{})
 	ReplaceLast(interface{}, interface{})
 	ReplaceAll(interface{}, interface{})
+	ReplaceOutliers(float64, float64) *DataList
 	Pop() interface{}
 	Drop(index int) *DataList
 	DropAll(...interface{}) *DataList
@@ -59,6 +60,7 @@ type IDataList interface {
 	Standardize() *DataList
 	FillNaNWithMean() *DataList
 	MovingAverage(int) *DataList
+	MovingStdev(int) *DataList
 	Len() int
 	Sort(acending ...bool) *DataList
 	Rank() *DataList
@@ -390,6 +392,21 @@ func (dl *DataList) ReplaceAll(oldValue, newValue interface{}) {
 	}
 
 	go dl.updateTimestamp()
+}
+
+// ReplaceOutliers replaces outliers in the DataList with the specified replacement value (e.g., mean, median).
+func (dl *DataList) ReplaceOutliers(stdDevs float64, replacement float64) *DataList {
+	mean := dl.Mean(false).(float64)
+	stddev := dl.Stdev(false).(float64)
+	threshold := stdDevs * stddev
+
+	for i, v := range dl.Data() {
+		val := conv.ParseF64(v)
+		if math.Abs(val-mean) > threshold {
+			dl.data[i] = replacement
+		}
+	}
+	return dl
 }
 
 // Pop removes and returns the last element from the DataList.
@@ -774,6 +791,20 @@ func (dl *DataList) MovingAverage(windowSize int) *DataList {
 		movingAverageData[i] = windowSum / float64(windowSize)
 	}
 	return NewDataList(movingAverageData)
+}
+
+// MovingStdDev calculates the moving standard deviation for the DataList using a specified window size.
+func (dl *DataList) MovingStdev(windowSize int) *DataList {
+	if windowSize <= 0 || windowSize > dl.Len() {
+		LogWarning("MovingStdDev: Invalid window size.")
+		return nil
+	}
+	movingStdDevData := make([]float64, dl.Len()-windowSize+1)
+	for i := 0; i < len(movingStdDevData); i++ {
+		window := NewDataList(dl.Data()[i : i+windowSize])
+		movingStdDevData[i] = window.Stdev(false).(float64)
+	}
+	return NewDataList(movingStdDevData)
 }
 
 // Sort sorts the DataList using a mixed sorting logic.
