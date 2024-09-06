@@ -47,6 +47,13 @@ The `DataList` type provides a dynamic and generic way to store and manage a col
 
 * **ClearStrings:** Removes all string elements from the DataList.
 * **ClearNumbers:** Removes all numeric elements (int, float, etc.) from the DataList.
+* **ClearNaNs:** Removes all NaN (Not a Number) elements from the DataList.
+
+**Data Preprocessing:**
+* **Normalize():** Normalizes the DataList elements to a specified range (default: 0 to 1).
+* **Standardize():** Standardizes the DataList elements by subtracting the mean and dividing by the standard deviation.
+* **FillNaNWithMean():** Replaces all NaN (Not a Number) elements with the mean value of the DataList.
+* **MovingAverage(int):** Calculates the moving average of the DataList elements using a specified window size. Returns a new DataList with the moving average values.
 
 **Data Analysis:**
 

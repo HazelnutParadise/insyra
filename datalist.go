@@ -35,6 +35,7 @@ type IDataList interface {
 	Data() []interface{}
 	Append(values ...interface{})
 	Get(index int) interface{}
+	Clone() *DataList
 	Count(value interface{}) int
 	Update(index int, value interface{})
 	InsertAt(index int, value interface{})
@@ -52,6 +53,11 @@ type IDataList interface {
 	Clear()
 	ClearStrings()
 	ClearNumbers()
+	ClearNaNs() *DataList
+	Normalize() *DataList
+	Standardize() *DataList
+	FillNaNWithMean() *DataList
+	MovingAverage(int) *DataList
 	Len() int
 	Sort(acending ...bool)
 	Rank() *DataList
@@ -142,6 +148,17 @@ func (dl *DataList) Get(index int) interface{} {
 		return nil
 	}
 	return dl.data[index]
+}
+
+// Clone creates a deep copy of the DataList.
+func (dl *DataList) Clone() *DataList {
+	defer func() {
+		dl.mu.Unlock()
+	}()
+	dl.mu.Lock()
+	newDL := NewDataList(dl.data)
+	newDL.SetName(dl.name)
+	return newDL
 }
 
 // Count returns the number of occurrences of the specified value in the DataList.
@@ -613,6 +630,101 @@ func (dl *DataList) ClearNumbers() {
 	go dl.updateTimestamp()
 }
 
+// ClearNaNs removes all NaN values from the DataList and updates the timestamp.
+func (dl *DataList) ClearNaNs() *DataList {
+	defer func() {
+		go reorganizeMemory(dl)
+		go dl.updateTimestamp()
+	}()
+	for i, v := range dl.Data() {
+		if math.IsNaN(v.(float64)) {
+			dl.Drop(i)
+		}
+	}
+	return dl
+}
+
+// Normalize normalizes the data in the DataList, skipping NaN values.
+// Directly modifies the DataList.
+func (dl *DataList) Normalize() *DataList {
+	defer func() {
+		dl.mu.Unlock()
+		go reorganizeMemory(dl)
+		go dl.updateTimestamp()
+	}()
+	min, max := dl.Min(), dl.Max()
+	if min == nil || max == nil {
+		LogWarning("Normalize: Cannot normalize due to invalid Min/Max values.")
+		return nil
+	}
+	dl.mu.Lock()
+	for i, v := range dl.Data() {
+		if val, ok := v.(float64); ok {
+			dl.data[i] = (val - min.(float64)) / (max.(float64) - min.(float64))
+		} else {
+			LogWarning("Normalize: Non-float64 value found, skipping.")
+			dl.data[i] = math.NaN()
+		}
+	}
+	return dl
+}
+
+// Standardize standardizes the data in the DataList.
+// Directly modifies the DataList.
+func (dl *DataList) Standardize() *DataList {
+	defer func() {
+		dl.mu.Unlock()
+		go reorganizeMemory(dl)
+		go dl.updateTimestamp()
+	}()
+	mean := dl.Mean(false).(float64)
+	stddev := dl.Stdev(false).(float64)
+	dl.mu.Lock()
+	for i, v := range dl.Data() {
+		dl.data[i] = (v.(float64) - mean) / stddev
+	}
+	return dl
+}
+
+// FillNaNWithMean replaces all NaN values in the DataList with the mean value.
+// Directly modifies the DataList.
+func (dl *DataList) FillNaNWithMean() *DataList {
+	defer func() {
+		dl.mu.Unlock()
+		go reorganizeMemory(dl)
+		go dl.updateTimestamp()
+	}()
+	dlclone := dl.Clone()
+	dlNoNaN := dlclone.ClearNaNs()
+	mean := dlNoNaN.Mean(false).(float64)
+	dl.mu.Lock()
+	for i, v := range dl.Data() {
+		if math.IsNaN(v.(float64)) {
+			dl.data[i] = mean
+		} else {
+			dl.data[i] = v.(float64)
+		}
+	}
+	return dl
+}
+
+// MovingAverage calculates the moving average of the DataList using a specified window size.
+// Returns a new DataList containing the moving average values.
+func (dl *DataList) MovingAverage(windowSize int) *DataList {
+	if windowSize <= 0 || windowSize > dl.Len() {
+		return nil
+	}
+	movingAverageData := make([]float64, dl.Len()-windowSize+1)
+	for i := 0; i < len(movingAverageData); i++ {
+		windowSum := 0.0
+		for j := 0; j < windowSize; j++ {
+			windowSum += dl.Data()[i+j].(float64)
+		}
+		movingAverageData[i] = windowSum / float64(windowSize)
+	}
+	return NewDataList(movingAverageData)
+}
+
 // Sort sorts the DataList using a mixed sorting logic.
 // It handles string, numeric (including all integer and float types), and time data types.
 // If sorting fails, it restores the original order.
@@ -802,53 +914,21 @@ func (dl *DataList) Max() interface{} {
 		return nil
 	}
 
-	var max interface{}
+	var max = math.NaN()
 
 	for _, v := range dl.data {
-		if max == nil {
-			max = v
-			continue
-		}
-
-		switch maxVal := max.(type) {
-		case int:
-			if val, ok := v.(int); ok && val > maxVal {
-				max = val
-			} else if !ok {
-				LogWarning("DataList.Max(): Data types cannot be compared, returning nil.")
-				return nil
-			}
-		case float64:
-			if val, ok := v.(float64); ok && val > maxVal {
-				max = val
-			} else if intVal, ok := v.(int); ok && float64(intVal) > maxVal {
-				max = float64(intVal)
-			} else if !ok {
-				LogWarning("DataList.Max(): Data types cannot be compared, returning nil.")
-				return nil
-			}
-		case string:
-			if val, ok := v.(string); ok {
-				valF64, ok := ToFloat64Safe(val)
-				if !ok {
-					LogWarning("DataList.Max(): Data types cannot be compared, returning nil.")
-					return nil
-				}
-				maxValF64, ok := ToFloat64Safe(maxVal)
-				if !ok {
-					LogWarning("DataList.Max(): Data types cannot be compared, returning nil.")
-					return nil
-				}
-				if valF64 > maxValF64 {
-					max = val
-				}
-			} else if !ok {
-				LogWarning("DataList.Max(): Data types cannot be compared, returning nil.")
-				return nil
-			}
-		default:
+		vfloat := conv.ParseF64(v)
+		r := recover()
+		if r != nil {
 			LogWarning("DataList.Max(): Data types cannot be compared, returning nil.")
 			return nil
+		}
+		if math.IsNaN(max) {
+			max = vfloat
+			continue
+		}
+		if vfloat > max {
+			max = vfloat
 		}
 	}
 
@@ -865,40 +945,20 @@ func (dl *DataList) Min() interface{} {
 		return nil
 	}
 
-	var min interface{}
+	var min = math.NaN()
 	for _, v := range dl.data {
-		if min == nil {
-			min = v
-			continue
-		}
-
-		switch minVal := min.(type) {
-		case int:
-			if val, ok := v.(int); ok && val < minVal {
-				min = val
-			} else if !ok {
-				LogWarning("DataList.Min(): Data types cannot be compared, returning nil.")
-				return nil
-			}
-		case float64:
-			if val, ok := v.(float64); ok && val < minVal {
-				min = val
-			} else if intVal, ok := v.(int); ok && float64(intVal) < minVal {
-				min = float64(intVal)
-			} else if !ok {
-				LogWarning("DataList.Min(): Data types cannot be compared, returning nil.")
-				return nil
-			}
-		case string:
-			if val, ok := v.(string); ok && conv.ParseF64(val) < conv.ParseF64(minVal) {
-				min = val
-			} else if !ok {
-				LogWarning("DataList.Min(): Data types cannot be compared, returning nil.")
-				return nil
-			}
-		default:
+		vfloat := conv.ParseF64(v)
+		r := recover()
+		if r != nil {
 			LogWarning("DataList.Min(): Data types cannot be compared, returning nil.")
 			return nil
+		}
+		if math.IsNaN(min) {
+			min = vfloat
+			continue
+		}
+		if vfloat < min {
+			min = vfloat
 		}
 	}
 
