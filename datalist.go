@@ -76,7 +76,7 @@ type IDataList interface {
 	GMean() interface{}
 	Median(highPrecision ...bool) interface{}
 	Mode() interface{}
-	Mad() interface{}
+	MAD() interface{}
 	Stdev(highPrecision ...bool) interface{}
 	StdevP(highPrecision ...bool) interface{}
 	Var(highPrecision ...bool) interface{}
@@ -1239,10 +1239,10 @@ func (dl *DataList) Mode() interface{} {
 	return mode.(float64)
 }
 
-// Mad calculates the mean absolute deviation of the DataList.
+// MAD calculates the mean absolute deviation of the DataList.
 // Returns the mean absolute deviation.
 // Returns nil if the DataList is empty.
-func (dl *DataList) Mad() interface{} {
+func (dl *DataList) MAD() interface{} {
 	if len(dl.data) == 0 {
 		LogWarning("DataList.Mad(): DataList is empty, returning nil.")
 		return nil
