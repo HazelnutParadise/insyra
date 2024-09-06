@@ -47,24 +47,24 @@ type IDataList interface {
 	ReplaceLast(interface{}, interface{})
 	ReplaceAll(interface{}, interface{})
 	Pop() interface{}
-	Drop(index int)
-	DropAll(...interface{})
-	DropIfContains(interface{})
-	Clear()
-	ClearStrings()
-	ClearNumbers()
+	Drop(index int) *DataList
+	DropAll(...interface{}) *DataList
+	DropIfContains(interface{}) *DataList
+	Clear() *DataList
+	ClearStrings() *DataList
+	ClearNumbers() *DataList
 	ClearNaNs() *DataList
 	Normalize() *DataList
 	Standardize() *DataList
 	FillNaNWithMean() *DataList
 	MovingAverage(int) *DataList
 	Len() int
-	Sort(acending ...bool)
+	Sort(acending ...bool) *DataList
 	Rank() *DataList
-	Reverse()
-	Upper()
-	Lower()
-	Capitalize()
+	Reverse() *DataList
+	Upper() *DataList
+	Lower() *DataList
+	Capitalize() *DataList
 	Sum() interface{}
 	Max() interface{}
 	Min() interface{}
@@ -409,7 +409,7 @@ func (dl *DataList) Pop() interface{} {
 
 // Drop removes the element at the specified index from the DataList and updates the timestamp.
 // Returns an error if the index is out of bounds.
-func (dl *DataList) Drop(index int) {
+func (dl *DataList) Drop(index int) *DataList {
 	defer func() {
 		dl.mu.Unlock()
 		go reorganizeMemory(dl)
@@ -420,15 +420,16 @@ func (dl *DataList) Drop(index int) {
 	}
 	if index >= len(dl.data) {
 		LogWarning("DataList.Drop(): Index out of bounds, returning.")
-		return
+		return dl
 	}
 	dl.data = append(dl.data[:index], dl.data[index+1:]...)
 	go dl.updateTimestamp()
+	return dl
 }
 
 // DropAll removes all occurrences of the specified values from the DataList.
 // Supports multiple values to drop.
-func (dl *DataList) DropAll(toDrop ...interface{}) {
+func (dl *DataList) DropAll(toDrop ...interface{}) *DataList {
 	defer func() {
 		dl.mu.Unlock()
 		go reorganizeMemory(dl)
@@ -436,7 +437,7 @@ func (dl *DataList) DropAll(toDrop ...interface{}) {
 	dl.mu.Lock()
 	length := len(dl.data)
 	if length == 0 {
-		return
+		return dl
 	}
 
 	// 決定要開多少個線程
@@ -498,10 +499,11 @@ func (dl *DataList) DropAll(toDrop ...interface{}) {
 	// 更新 DataList
 	dl.data = finalResult
 	go dl.updateTimestamp()
+	return dl
 }
 
 // DropIfContains removes all elements from the DataList that contain the specified value.
-func (dl *DataList) DropIfContains(value interface{}) {
+func (dl *DataList) DropIfContains(value interface{}) *DataList {
 	dl.mu.Lock()
 	defer func() {
 		dl.mu.Unlock()
@@ -525,10 +527,12 @@ func (dl *DataList) DropIfContains(value interface{}) {
 
 	// 將新的數據賦值回 dl.data
 	dl.data = newData
+	go dl.updateTimestamp()
+	return dl
 }
 
 // Clear removes all elements from the DataList and updates the timestamp.
-func (dl *DataList) Clear() {
+func (dl *DataList) Clear() *DataList {
 	defer func() {
 		dl.mu.Unlock()
 		go reorganizeMemory(dl)
@@ -536,6 +540,7 @@ func (dl *DataList) Clear() {
 	dl.mu.Lock()
 	dl.data = []interface{}{}
 	go dl.updateTimestamp()
+	return dl
 }
 
 func (dl *DataList) Len() int {
@@ -543,7 +548,7 @@ func (dl *DataList) Len() int {
 }
 
 // ClearStrings removes all string elements from the DataList and updates the timestamp.
-func (dl *DataList) ClearStrings() {
+func (dl *DataList) ClearStrings() *DataList {
 	defer func() {
 		dl.mu.Unlock()
 		go reorganizeMemory(dl)
@@ -551,7 +556,7 @@ func (dl *DataList) ClearStrings() {
 	dl.mu.Lock()
 	length := len(dl.data)
 	if length == 0 {
-		return
+		return dl
 	}
 
 	// 獲取可用的 CPU 核心數量
@@ -602,12 +607,13 @@ func (dl *DataList) ClearStrings() {
 	// 更新 DataList
 	dl.data = finalResult
 	go dl.updateTimestamp()
+	return dl
 }
 
 // ++++ 此處之後尚未提升性能 ++++
 
 // ClearNumbers removes all numeric elements (int, float, etc.) from the DataList and updates the timestamp.
-func (dl *DataList) ClearNumbers() {
+func (dl *DataList) ClearNumbers() *DataList {
 	defer func() {
 		dl.mu.Unlock()
 		go reorganizeMemory(dl)
@@ -628,6 +634,7 @@ func (dl *DataList) ClearNumbers() {
 
 	dl.data = filteredData
 	go dl.updateTimestamp()
+	return dl
 }
 
 // ClearNaNs removes all NaN values from the DataList and updates the timestamp.
@@ -728,7 +735,7 @@ func (dl *DataList) MovingAverage(windowSize int) *DataList {
 // Sort sorts the DataList using a mixed sorting logic.
 // It handles string, numeric (including all integer and float types), and time data types.
 // If sorting fails, it restores the original order.
-func (dl *DataList) Sort(ascending ...bool) {
+func (dl *DataList) Sort(ascending ...bool) *DataList {
 	defer func() {
 		dl.mu.Unlock()
 		go reorganizeMemory(dl)
@@ -736,7 +743,7 @@ func (dl *DataList) Sort(ascending ...bool) {
 	dl.mu.Lock()
 	if len(dl.data) == 0 {
 		LogWarning("DataList.Sort(): DataList is empty, returning.")
-		return
+		return dl
 	}
 
 	// Save the original order
@@ -756,7 +763,7 @@ func (dl *DataList) Sort(ascending ...bool) {
 	}
 	if len(ascending) > 1 {
 		LogWarning("DataList.Sort(): Too many arguments, returning.")
-		return
+		return dl
 	}
 
 	// Mixed sorting
@@ -793,6 +800,9 @@ func (dl *DataList) Sort(ascending ...bool) {
 		// Fallback: compare as strings
 		return fmt.Sprint(v1) < fmt.Sprint(v2)
 	})
+
+	go dl.updateTimestamp()
+	return dl
 }
 
 // Rank assigns ranks to the elements in the DataList.
@@ -831,17 +841,19 @@ func (dl *DataList) Rank() *DataList {
 }
 
 // Reverse reverses the order of the elements in the DataList.
-func (dl *DataList) Reverse() {
+func (dl *DataList) Reverse() *DataList {
 	defer func() {
 		dl.mu.Unlock()
 		go reorganizeMemory(dl)
+		go dl.updateTimestamp()
 	}()
 	dl.mu.Lock()
 	sliceutil.Reverse(dl.data)
+	return dl
 }
 
 // Upper converts all string elements in the DataList to uppercase.
-func (dl *DataList) Upper() {
+func (dl *DataList) Upper() *DataList {
 	defer func() {
 		dl.mu.Unlock()
 		go reorganizeMemory(dl)
@@ -853,10 +865,11 @@ func (dl *DataList) Upper() {
 		}
 	}
 	go dl.updateTimestamp()
+	return dl
 }
 
 // Lower converts all string elements in the DataList to lowercase.
-func (dl *DataList) Lower() {
+func (dl *DataList) Lower() *DataList {
 	defer func() {
 		dl.mu.Unlock()
 		go reorganizeMemory(dl)
@@ -868,10 +881,11 @@ func (dl *DataList) Lower() {
 		}
 	}
 	go dl.updateTimestamp()
+	return dl
 }
 
 // Capitalize capitalizes the first letter of each string element in the DataList.
-func (dl *DataList) Capitalize() {
+func (dl *DataList) Capitalize() *DataList {
 	defer func() {
 		dl.mu.Unlock()
 		go reorganizeMemory(dl)
@@ -883,6 +897,7 @@ func (dl *DataList) Capitalize() {
 		}
 	}
 	go dl.updateTimestamp()
+	return dl
 }
 
 // ======================== Statistics ========================
