@@ -54,6 +54,7 @@ type IDataList interface {
 	ClearStrings() *DataList
 	ClearNumbers() *DataList
 	ClearNaNs() *DataList
+	ClearOutliers(float64) *DataList
 	Normalize() *DataList
 	Standardize() *DataList
 	FillNaNWithMean() *DataList
@@ -69,6 +70,7 @@ type IDataList interface {
 	Max() interface{}
 	Min() interface{}
 	Mean(highPrecision ...bool) interface{}
+	WeightedMean(weights interface{}) interface{}
 	GMean() interface{}
 	Median(highPrecision ...bool) interface{}
 	Mode() interface{}
@@ -81,6 +83,7 @@ type IDataList interface {
 	Quartile(int) interface{}
 	IQR() interface{}
 	Percentile(float64) interface{}
+	Difference() *DataList
 	ParseNumbers()
 	ParseStrings()
 	ToF64Slice() []float64
@@ -651,6 +654,37 @@ func (dl *DataList) ClearNaNs() *DataList {
 	return dl
 }
 
+// ClearOutliers removes values from the DataList that are outside the specified number of standard deviations.
+// This method modifies the original DataList and returns it.
+func (dl *DataList) ClearOutliers(stdDevs float64) *DataList {
+	defer func() {
+		r := recover()
+		if r != nil {
+			LogWarning("DataList.ClearOutliers(): Data types cannot be compared.")
+		}
+		go dl.updateTimestamp()
+	}()
+
+	mean := dl.Mean(false).(float64)
+	stddev := dl.Stdev(false).(float64)
+	threshold := stdDevs * stddev
+
+	// 打印調試信息，確保計算值與 R 相同
+	LogDebug("Mean: %f\n", mean)
+	LogDebug("Standard Deviation: %f\n", stddev)
+	LogDebug("Threshold: %f\n", threshold)
+
+	for i := dl.Len() - 1; i >= 0; i-- {
+		val := conv.ParseF64(dl.Data()[i])
+		LogDebug("Checking value: %f\n", val) // 打印每個檢查的值
+		if math.Abs(val-mean) > threshold {
+			LogDebug("Removing outlier: %f\n", val) // 打印要移除的異常值
+			dl.Drop(i)
+		}
+	}
+	return dl
+}
+
 // Normalize normalizes the data in the DataList, skipping NaN values.
 // Directly modifies the DataList.
 func (dl *DataList) Normalize() *DataList {
@@ -1044,6 +1078,29 @@ func (dl *DataList) Mean(highPrecision ...bool) interface{} {
 	}
 	mean := sum / float64(len(dl.data))
 	return mean
+}
+
+// WeightedMean calculates the weighted mean of the DataList using the provided weights.
+func (dl *DataList) WeightedMean(weights interface{}) interface{} {
+	weightsSlice, sliceLen := ProcessData(weights)
+	if sliceLen != dl.Len() {
+		LogWarning("DataList.WeightedMean(): Weights length does not match data length, returning nil.")
+		return nil
+	}
+
+	totalWeight := 0.0
+	weightedSum := 0.0
+	for i, v := range dl.Data() {
+		weightedSum += conv.ParseF64(v) * weightsSlice[i].(float64)
+		totalWeight += weightsSlice[i].(float64)
+	}
+
+	if totalWeight == 0 {
+		LogWarning("DataList.WeightedMean(): Total weight is zero, returning 0.")
+		return 0
+	}
+
+	return weightedSum / totalWeight
 }
 
 // GMean calculates the geometric mean of the DataList.
@@ -1476,6 +1533,27 @@ func (dl *DataList) Percentile(p float64) interface{} {
 	upper := numericData[upperIndex]
 
 	return lower + (pos-float64(lowerIndex))*(upper-lower)
+}
+
+// Difference calculates the differences between adjacent elements in the DataList.
+func (dl *DataList) Difference() *DataList {
+	defer func() {
+		r := recover()
+		if r != nil {
+			LogWarning("DataList.Difference(): Data types cannot be compared.")
+		}
+	}()
+	if dl.Len() < 2 {
+		LogWarning("DataList.Difference(): DataList is too short to calculate differences, returning nil.")
+		return nil
+	}
+
+	differenceData := make([]float64, dl.Len()-1)
+	for i := 1; i < dl.Len(); i++ {
+		differenceData[i-1] = conv.ParseF64(dl.Data()[i]) - conv.ParseF64(dl.Data()[i-1])
+	}
+
+	return NewDataList(differenceData)
 }
 
 // ======================== Conversion ========================

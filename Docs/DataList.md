@@ -50,10 +50,11 @@ The `DataList` type provides a dynamic and generic way to store and manage a col
 * **ClearNaNs:** Removes all NaN (Not a Number) elements from the DataList.
 
 **Data Preprocessing:**
-* **Normalize():** Normalizes the DataList elements to a specified range (default: 0 to 1).
-* **Standardize():** Standardizes the DataList elements by subtracting the mean and dividing by the standard deviation.
-* **FillNaNWithMean():** Replaces all NaN (Not a Number) elements with the mean value of the DataList.
-* **MovingAverage(int):** Calculates the moving average of the DataList elements using a specified window size. Returns a new DataList with the moving average values.
+* **Normalize:** Normalizes the DataList elements to a specified range (default: 0 to 1).
+* **Standardize:** Standardizes the DataList elements by subtracting the mean and dividing by the standard deviation.
+* **FillNaNWithMean:** Replaces all NaN (Not a Number) elements with the mean value of the DataList.
+* **MovingAverage:** Calculates the moving average of the DataList elements using a specified window size. Returns a new DataList with the moving average values.
+* **ClearOutliers:** Removes values from the DataList that are outside the specified number of standard deviations. This method modifies the original DataList and returns it.
 
 **Data Analysis:**
 
@@ -61,6 +62,7 @@ The `DataList` type provides a dynamic and generic way to store and manage a col
 * **Max:** Returns the maximum value in the DataList. Handles different data types by converting them to a common base (float64) for comparison.
 * **Min:** Returns the minimum value in the DataList. Similar logic to Max is applied for data type handling.
 * **Mean:** Calculates the arithmetic mean (average) of the DataList elements. Excludes non-numeric data types.
+* **WeightedMean:** Calculates the weighted mean of the DataList elements based on the provided weights.
 * **GMean:** Calculates the geometric mean of the DataList elements. Excludes non-numeric data types.
 * **Median:** Returns the median value of the DataList after sorting the elements.
 * **Mode:** Returns the most frequent value (mode) in the DataList.
@@ -72,6 +74,7 @@ The `DataList` type provides a dynamic and generic way to store and manage a col
 * **Quartile:** Calculates the quartile value (Q1, Q2, or Q3) based on the provided input.
 * **IQR:** Calculates the interquartile range (IQR) of the DataList, which represents the range between the first and third quartiles.
 * **Percentile:** Percentile: Calculates the percentile value based on the provided input, which represents the value below which a given percentage of observations fall. For example, entering 25 (the input scale is 0 to 100) would return the value at the 25th percentile, also known as the first quartile (Q1).
+* **Difference:** Calculates the difference between consecutive elements in the DataList. Returns a new DataList with the differences.
 
 **Data Conversion:**
 
