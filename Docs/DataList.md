@@ -77,6 +77,9 @@ The `DataList` type provides a dynamic and generic way to store and manage a col
 * **MAD:** Calculates the median absolute deviation (MAD) of the DataList elements.
 * **Difference:** Calculates the difference between consecutive elements in the DataList. Returns a new DataList with the differences.
 * **MovingAverage:** Calculates the moving average of the DataList elements using a specified window size. Returns a new DataList with the moving average values.
+* **WeightedMovingAverage:** Calculates the weighted moving average of the DataList elements using a specified window size and weights. Returns a new DataList with the weighted moving average values.
+* **ExponentialSmoothing:** Calculates the exponential smoothing of the DataList elements using a specified smoothing factor (alpha). Returns a new DataList with the smoothed values.
+* **DoubleExponentialSmoothing:** Calculates the double exponential smoothing of the DataList elements using specified smoothing factors (alpha and beta). Returns a new DataList with the smoothed values.
 * **MovingStdev:** Calculates the moving standard deviation of the DataList elements using a specified window size. Returns a new DataList with the moving standard deviation values.
 
 **Data Conversion:**

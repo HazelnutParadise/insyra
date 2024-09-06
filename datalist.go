@@ -60,6 +60,9 @@ type IDataList interface {
 	Standardize() *DataList
 	FillNaNWithMean() *DataList
 	MovingAverage(int) *DataList
+	WeightedMovingAverage(int, interface{}) *DataList
+	ExponentialSmoothing(float64) *DataList
+	DoubleExponentialSmoothing(float64, float64) *DataList
 	MovingStdev(int) *DataList
 	Len() int
 	Sort(acending ...bool) *DataList
@@ -791,6 +794,74 @@ func (dl *DataList) MovingAverage(windowSize int) *DataList {
 		movingAverageData[i] = windowSum / float64(windowSize)
 	}
 	return NewDataList(movingAverageData)
+}
+
+// WeightedMovingAverage applies a weighted moving average to the DataList with a given window size.
+// The weights parameter should be a slice or a DataList of the same length as the window size.
+// Returns a new DataList containing the weighted moving average values.
+func (dl *DataList) WeightedMovingAverage(windowSize int, weights interface{}) *DataList {
+	weightsSlice, sliceLen := ProcessData(weights)
+	if windowSize <= 0 || windowSize > dl.Len() || sliceLen != windowSize {
+		LogWarning("DataList.WeightedMovingAverage(): Invalid window size or weights length.")
+		return nil
+	}
+
+	// 計算權重總和，避免直接除以 windowSize
+	weightsSum := 0.0
+	for _, w := range weightsSlice {
+		weightsSum += w.(float64)
+	}
+
+	movingAvgData := make([]float64, dl.Len()-windowSize+1)
+	for i := 0; i < len(movingAvgData); i++ {
+		window := dl.Data()[i : i+windowSize]
+		sum := 0.0
+		for j := 0; j < windowSize; j++ {
+			sum += window[j].(float64) * weightsSlice[j].(float64)
+		}
+		movingAvgData[i] = sum / weightsSum // 使用權重總和
+	}
+	return NewDataList(movingAvgData)
+}
+
+// ExponentialSmoothing applies exponential smoothing to the DataList.
+// The alpha parameter controls the smoothing factor.
+// Returns a new DataList containing the smoothed values.
+func (dl *DataList) ExponentialSmoothing(alpha float64) *DataList {
+	if alpha < 0 || alpha > 1 {
+		LogWarning("ExponentialSmoothing: Invalid alpha value.")
+		return nil
+	}
+
+	smoothedData := make([]float64, dl.Len())
+	smoothedData[0] = dl.Data()[0].(float64) // 使用初始值作為第一個平滑值
+	for i := 1; i < dl.Len(); i++ {
+		smoothedData[i] = alpha*dl.Data()[i].(float64) + (1-alpha)*smoothedData[i-1]
+	}
+	return NewDataList(smoothedData)
+}
+
+// DoubleExponentialSmoothing applies double exponential smoothing to the DataList.
+// The alpha parameter controls the level smoothing, and the beta parameter controls the trend smoothing.
+// Returns a new DataList containing the smoothed values.
+func (dl *DataList) DoubleExponentialSmoothing(alpha, beta float64) *DataList {
+	if alpha < 0 || alpha > 1 || beta < 0 || beta > 1 {
+		LogWarning("DoubleExponentialSmoothing: Invalid alpha or beta value.")
+		return nil
+	}
+
+	smoothedData := make([]float64, dl.Len())
+	trend := 0.0
+	level := dl.Data()[0].(float64)
+
+	smoothedData[0] = level
+	for i := 1; i < dl.Len(); i++ {
+		prevLevel := level
+		level = alpha*dl.Data()[i].(float64) + (1-alpha)*(level+trend)
+		trend = beta*(level-prevLevel) + (1-beta)*trend
+		smoothedData[i] = level + trend
+	}
+	return NewDataList(smoothedData)
 }
 
 // MovingStdDev calculates the moving standard deviation for the DataList using a specified window size.
