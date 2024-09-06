@@ -56,6 +56,14 @@ The `DataList` type provides a dynamic and generic way to store and manage a col
 * **FillNaNWithMean:** Replaces all NaN (Not a Number) elements with the mean value of the DataList.
 * **ClearOutliers:** Removes values from the DataList that are outside the specified number of standard deviations. This method modifies the original DataList and returns it.
 
+**Interpolation:**
+* **LinearInterpolation:** Performs linear interpolation on the DataList to fill in missing values. The method assumes that the DataList represents a time series with equally spaced intervals.
+* **QuadraticInterpolation:** Performs quadratic interpolation on the DataList to fill in missing values. The method assumes that the DataList represents a time series with equally spaced intervals.
+* **LagrangeInterpolation:** Performs Lagrange interpolation on the DataList to fill in missing values. The method assumes that the DataList represents a time series with equally spaced intervals.
+* **NearestNeighborInterpolation:** Performs nearest neighbor interpolation on the DataList to fill in missing values. The method assumes that the DataList represents a time series with equally spaced intervals.
+* **NewtonInterpolation:** Performs Newton interpolation on the DataList to fill in missing values. The method assumes that the DataList represents a time series with equally spaced intervals.
+* **HermiteInterpolation:** Performs Hermite interpolation on the DataList to fill in missing values. The method assumes that the DataList represents a time series with equally spaced intervals.
+
 **Data Analysis:**
 
 * **Rank:** Assigns a rank to each element in the DataList based on their values. Returns a new DataList with the ranks.

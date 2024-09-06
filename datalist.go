@@ -93,6 +93,14 @@ type IDataList interface {
 	ParseStrings()
 	ToF64Slice() []float64
 	ToStringSlice() []string
+
+	// Interpolation
+	LinearInterpolation(float64) float64
+	QuadraticInterpolation(float64) float64
+	LagrangeInterpolation(float64) float64
+	NearestNeighborInterpolation(float64) float64
+	NewtonInterpolation(float64) float64
+	HermiteInterpolation(float64, []float64) float64
 }
 
 // Data returns the data stored in the DataList.
