@@ -1159,7 +1159,7 @@ func (dt *DataTable) GetRowNameByIndex(index int) string {
 	if rowName, exists := dt.getRowNameByIndex(index); exists {
 		return rowName
 	} else {
-		LogWarning("DataTable.GetRowNameByIndex(): Row index %d does not have a name.", index)
+		// LogWarning("DataTable.GetRowNameByIndex(): Row index %d does not have a name.", index)
 		return ""
 	}
 }
