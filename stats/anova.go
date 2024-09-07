@@ -5,6 +5,7 @@ import (
 	"math"
 
 	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/parallel"
 	"gonum.org/v1/gonum/stat/distuv"
 )
 
@@ -18,7 +19,6 @@ type ANOVAResult struct {
 	TotalSS float64 // Total Sum of Squares
 }
 
-// OneWayANOVA 接受 DataTable 並執行單因子 ANOVA 分析。
 func OneWayANOVA(dataTable insyra.IDataTable) *ANOVAResult {
 	var groups []insyra.IDataList
 
@@ -29,7 +29,7 @@ func OneWayANOVA(dataTable insyra.IDataTable) *ANOVAResult {
 		groups = append(groups, column)
 	}
 
-	// 計算總均值
+	// 計算總均值和總數
 	totalSum := 0.0
 	totalCount := 0
 	for _, group := range groups {
@@ -38,22 +38,32 @@ func OneWayANOVA(dataTable insyra.IDataTable) *ANOVAResult {
 	}
 	totalMean := totalSum / float64(totalCount)
 
-	// 計算 SSB (Between-group Sum of Squares)
-	SSB := 0.0
-	for _, group := range groups {
-		groupMean := group.Mean().(float64)
-		SSB += float64(group.Len()) * math.Pow(groupMean-totalMean, 2)
-	}
+	// 並行計算 SSB 和 SSW
+	pg := parallel.GroupUp(
+		func() (float64, float64) {
+			SSB := 0.0
+			for _, group := range groups {
+				groupMean := group.Mean().(float64)
+				SSB += float64(group.Len()) * math.Pow(groupMean-totalMean, 2)
+			}
+			return SSB, 0
+		},
+		func() (float64, float64) {
+			SSW := 0.0
+			for _, group := range groups {
+				groupMean := group.Mean().(float64)
+				for i := 0; i < group.Len(); i++ {
+					value, _ := group.Get(i).(float64)
+					SSW += math.Pow(value-groupMean, 2)
+				}
+			}
+			return 0, SSW
+		},
+	).Run()
 
-	// 計算 SSW (Within-group Sum of Squares)
-	SSW := 0.0
-	for _, group := range groups {
-		groupMean := group.Mean().(float64)
-		for i := 0; i < group.Len(); i++ {
-			value, _ := group.Get(i).(float64)
-			SSW += math.Pow(value-groupMean, 2)
-		}
-	}
+	results := pg.AwaitResult()
+	SSB := results[0][0].(float64)
+	SSW := results[1][1].(float64)
 
 	// 計算自由度
 	DFB := len(groups) - 1          // Between-group Degrees of Freedom
