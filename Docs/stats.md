@@ -10,6 +10,7 @@ Welcome to the **stats** package, which provides efficient functions for calcula
 - **Skewness Calculation**: Corresponds directly to **e1071** package's skewness methods.
 - **Kurtosis Calculation**: Provides kurtosis calculation that maps directly to **e1071** types.
 - **Moment Calculation**: Supports n-th moment calculations for datasets, both central and non-central.
+- **One-Way ANOVA:** Supports analysis of variance for **wide-format data**.
 
 ## Installation
 
@@ -138,6 +139,24 @@ import "github.com/HazelnutParadise/insyra/stats"
 
 moment := stats.CalculateMoment(dataList, 3, true) // Central third moment
 fmt.Println("Third moment:", moment)
+```
+
+### One-Way ANOVA
+
+The `OneWayANOVA` function computes a One-Way ANOVA for wide-format data using a **DataTable** where each column represents a different group.
+
+```go
+import "github.com/HazelnutParadise/insyra/stats"
+
+// Perform One-Way ANOVA on wide-format data
+table := insyra.NewDataTable(
+    insyra.NewDataList(4, 5, 6),  // Group 1
+    insyra.NewDataList(7, 8, 9),  // Group 2
+    insyra.NewDataList(1, 2, 3),  // Group 3
+)
+
+result := stats.OneWayANOVA(table)
+fmt.Printf("SSB: %.2f, SSW: %.2f, F-Value: %.2f, P-Value: %.4f\n", result.SSB, result.SSW, result.FValue, result.PValue)
 ```
 
 ## Method Reference

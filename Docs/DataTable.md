@@ -56,6 +56,9 @@ Returns the element at the specified row and column index. If the indices are ou
 ##### `GetColumn(index string) *DataList`
 Returns a `DataList` containing the data of the specified column index.
 
+##### `GetColumnByNumber(index int) *DataList`
+Returns a `DataList` containing the data of the specified column number.
+
 ##### `GetRow(index int) *DataList`
 Returns a `DataList` containing the data of the specified row index.
 

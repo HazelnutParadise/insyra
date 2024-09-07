@@ -26,6 +26,7 @@ type IDataTable interface {
 	AppendRowsByName(rowsData ...map[string]interface{})
 	GetElement(rowIndex int, columnIndex string) interface{}
 	GetColumn(index string) *DataList
+	GetColumnByNumber(index int) *DataList
 	GetRow(index int) *DataList
 	UpdateElement(rowIndex int, columnIndex string, value interface{})
 	UpdateColumn(index string, dl *DataList)
@@ -291,6 +292,28 @@ func (dt *DataTable) GetColumn(index string) *DataList {
 		return dl
 	}
 	return nil
+}
+
+func (dt *DataTable) GetColumnByNumber(index int) *DataList {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+	if index < 0 {
+		index = len(dt.columns) + index
+	}
+
+	if index < 0 || index >= len(dt.columns) {
+		LogWarning("DataTable.GetColumnByNumber(): Column index is out of range, returning nil.")
+		return nil
+	}
+
+	// 初始化新的 DataList 並分配 data 切片的大小
+	dl := NewDataList()
+	dl.data = make([]interface{}, len(dt.columns[index].data))
+
+	// 拷貝數據到新的 DataList
+	copy(dl.data, dt.columns[index].data)
+	dl.name = dt.columns[index].name
+	return dl
 }
 
 // GetRow returns a new DataList containing the data of the row with the given index.
