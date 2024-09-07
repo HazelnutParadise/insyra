@@ -207,8 +207,6 @@ Writes the `DataTable` to a CSV file. If `setRowNamesToFirstColumn` is `true`, t
 #### `LoadFromCSV(filePath string, setFirstColumnToRowNames bool, setFirstRowToColumnNames bool) error`
 Loads a `DataTable` from a CSV file. If `setFirstColumnToRowNames` is `true`, the first column will be used as row names. If `setFirstRowToColumnNames` is `true`, the first row will be used as column names.
 
-#### `ToLongFormat() *DataTable`
-Converts the `DataTable` to a long format, where each row represents a single data point.
 
 ## Best Practices
 

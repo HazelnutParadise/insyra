@@ -66,7 +66,6 @@ type IDataTable interface {
 	Count(value interface{}) int
 
 	// Conversion
-	ToLongFormat() *DataTable
 
 	// Filters
 	Filter(filterFunc FilterFunc) *DataTable
@@ -1085,7 +1084,7 @@ func (dt *DataTable) Show() {
 	}
 
 	// 打印列名
-	fmt.Printf("%-*s", maxRowNameWidth+2, "RowNames") // +2 是為了讓其更清晰
+	fmt.Printf("%-*s", maxRowNameWidth+2, "RowNames") // +2 是為了讓其��清晰
 	for _, colIndex := range colIndices {
 		fmt.Printf("%-*s", colWidths[colIndex]+2, colIndex)
 	}
@@ -1227,83 +1226,6 @@ func (dt *DataTable) Size() (int, int) {
 }
 
 // ======================== Conversion ========================
-
-// ToLongFormat converts the DataTable to a long format.
-func (dt *DataTable) ToLongFormat() *DataTable {
-	// 建立長格式的 DataTable
-	longTable := NewDataTable(
-		NewDataList().SetName("row_index"),
-		NewDataList().SetName("column_index"),
-		NewDataList().SetName("value"),
-	)
-
-	for rowIndex := 0; rowIndex < dt.getMaxColumnLength(); rowIndex++ {
-		for colIndex, col := range dt.columns {
-			rowName := dt.GetRowNameByIndex(rowIndex)
-			if rowName == "" {
-				rowName = fmt.Sprintf("%d", rowIndex)
-			}
-			colName := col.name
-			if colName == "" {
-				colName = fmt.Sprintf("Column %d", colIndex)
-			}
-			value := col.data[rowIndex]
-
-			// 將資料正確地根據 row_index、column_index 和 value 插入
-			longTable.AppendRowsByName(map[string]interface{}{
-				"row_index":    rowName,
-				"column_index": colName,
-				"value":        value,
-			})
-		}
-	}
-
-	return longTable
-}
-
-// 有問題
-func (dt *DataTable) ToWideFormat() *DataTable {
-	// 建立寬格式的 DataTable
-	wideTable := NewDataTable()
-
-	// 提取所有 column_index 作為欄位名稱
-	columnNames := make(map[string]struct{})
-	for i := 0; i < dt.getMaxColumnLength(); i++ {
-		colIndex := dt.GetElement(i, "column_index")
-		if colIndex != nil {
-			columnNames[fmt.Sprintf("%v", colIndex)] = struct{}{}
-		}
-	}
-
-	// 動態生成每個 column_index 的 DataList
-	for colName := range columnNames {
-		wideTable.AppendColumns(NewDataList().SetName(colName))
-	}
-
-	// 逐行插入每一行資料
-	for rowIndex := 0; rowIndex < dt.getMaxColumnLength(); rowIndex++ {
-		newRow := make(map[string]interface{})
-
-		// 遍歷當前的所有資料，找到相同的 row_index，並按 column_index 填入資料
-		for i := 0; i < dt.getMaxColumnLength(); i++ {
-			currentRowIndex := dt.GetElement(i, "row_index")
-			currentColIndex := dt.GetElement(i, "column_index")
-			value := dt.GetElement(i, "value")
-
-			// 當 row_index 和 column_index 匹配時，將資料填入對應欄位
-			if currentRowIndex != nil && fmt.Sprintf("%v", currentRowIndex) == fmt.Sprintf("%v", rowIndex) {
-				newRow[fmt.Sprintf("%v", currentColIndex)] = value
-			}
-		}
-
-		// 只要 newRow 有資料，就插入資料到寬資料表
-		if len(newRow) > 0 {
-			wideTable.AppendRowsByIndex(newRow)
-		}
-	}
-
-	return wideTable
-}
 
 // ======================== Utilities ========================
 
