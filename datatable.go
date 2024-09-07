@@ -65,6 +65,8 @@ type IDataTable interface {
 	Size() (int, int)
 	Count(value interface{}) int
 
+	// Conversion
+
 	// Filters
 	Filter(filterFunc FilterFunc) *DataTable
 	FilterByCustomElement(f func(value interface{}) bool) *DataTable
@@ -1222,6 +1224,8 @@ func (dt *DataTable) Size() (int, int) {
 	defer dt.mu.Unlock()
 	return dt.getMaxColumnLength(), len(dt.columns)
 }
+
+// ======================== Conversion ========================
 
 // ======================== Utilities ========================
 
