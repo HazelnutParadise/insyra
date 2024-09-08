@@ -25,6 +25,7 @@ type IDataTable interface {
 	AppendRowsByIndex(rowsData ...map[string]interface{})
 	AppendRowsByName(rowsData ...map[string]interface{})
 	GetElement(rowIndex int, columnIndex string) interface{}
+	GetElementByNumberIndex(rowIndex int, columnIndex int) interface{}
 	GetColumn(index string) *DataList
 	GetColumnByNumber(index int) *DataList
 	GetRow(index int) *DataList
@@ -64,6 +65,7 @@ type IDataTable interface {
 	// Statistics
 	Size() (int, int)
 	Count(value interface{}) int
+	Mean() interface{}
 
 	// Conversion
 
@@ -276,6 +278,20 @@ func (dt *DataTable) GetElement(rowIndex int, columnIndex string) interface{} {
 	}
 	return nil
 
+}
+
+func (dt *DataTable) GetElementByNumberIndex(rowIndex int, columnIndex int) interface{} {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	if rowIndex < 0 {
+		rowIndex = len(dt.columns[columnIndex].data) + rowIndex
+	}
+	if rowIndex < 0 || rowIndex >= len(dt.columns[columnIndex].data) {
+		LogWarning("DataTable.GetElementByNumberIndex(): Row index is out of range, returning nil.")
+		return nil
+	}
+	return dt.columns[columnIndex].data[rowIndex]
 }
 
 // GetColumn returns a new DataList containing the data of the column with the given index.
@@ -1223,6 +1239,18 @@ func (dt *DataTable) Size() (int, int) {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
 	return dt.getMaxColumnLength(), len(dt.columns)
+}
+
+func (dt *DataTable) Mean() interface{} {
+	defer dt.mu.Unlock()
+	var totalSum float64
+	rowNum, colNum := dt.Size()
+	dt.mu.Lock()
+	totalCount := rowNum * colNum
+	for _, column := range dt.columns {
+		totalSum += column.Sum().(float64)
+	}
+	return totalSum / float64(totalCount)
 }
 
 // ======================== Conversion ========================
