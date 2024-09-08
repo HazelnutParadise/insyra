@@ -126,58 +126,60 @@ func TwoWayANOVA(dataTable insyra.IDataTable) *TwoWayANOVAResult {
 	rowNum, colNum := dataTable.Size()
 	for i := 0; i < rowNum; i++ {
 		for j := 0; j < colNum; j++ {
-			// 保存觀測值
 			observations = append(observations, dataTable.GetElementByNumberIndex(i, j).(float64))
-			// 因子 A 是行
 			factorsA = append(factorsA, i)
-			// 因子 B 是列
 			factorsB = append(factorsB, j)
 		}
 	}
 
-	// 計算總均值
+	// 計算總和和均值
 	totalSum := 0.0
-	totalCount := len(observations)
 	for _, value := range observations {
 		totalSum += value
 	}
+	totalCount := len(observations)
 	totalMean := totalSum / float64(totalCount)
 
-	// 計算 SSA 和 SSB
-	SSA, SSB := 0.0, 0.0
-	for i := 0; i < rowNum; i++ {
-		groupSum := 0.0
-		count := 0
-		for j, factor := range factorsA {
-			if factor == i {
-				groupSum += observations[j]
-				count++
+	// 並行計算 SSA 和 SSB
+	var SSA, SSB float64
+	calcSS := func() {
+		for i := 0; i < rowNum; i++ {
+			groupSum := 0.0
+			count := 0
+			for j, factor := range factorsA {
+				if factor == i {
+					groupSum += observations[j]
+					count++
+				}
 			}
+			groupMean := groupSum / float64(count)
+			SSA += float64(count) * math.Pow(groupMean-totalMean, 2)
 		}
-		groupMean := groupSum / float64(count)
-		SSA += float64(count) * math.Pow(groupMean-totalMean, 2)
 	}
 
-	for j := 0; j < colNum; j++ {
-		groupSum := 0.0
-		count := 0
-		for i, factor := range factorsB {
-			if factor == j {
-				groupSum += observations[i]
-				count++
+	calcSSB := func() {
+		for j := 0; j < colNum; j++ {
+			groupSum := 0.0
+			count := 0
+			for i, factor := range factorsB {
+				if factor == j {
+					groupSum += observations[i]
+					count++
+				}
 			}
+			groupMean := groupSum / float64(count)
+			SSB += float64(count) * math.Pow(groupMean-totalMean, 2)
 		}
-		groupMean := groupSum / float64(count)
-		SSB += float64(count) * math.Pow(groupMean-totalMean, 2)
 	}
+
+	parallel.GroupUp(calcSS, calcSSB).Run().AwaitResult()
 
 	// 計算 SSAB 和 SSW
-	SSAB, SSW := 0.0, 0.0
+	var SSAB, SSW float64
 	for idx, value := range observations {
 		meanA := 0.0
 		meanB := 0.0
 
-		// 找出當前觀測值對應的因子 A 和 B 的均值
 		for i := 0; i < rowNum; i++ {
 			if factorsA[idx] == i {
 				groupSum := 0.0
@@ -208,7 +210,6 @@ func TwoWayANOVA(dataTable insyra.IDataTable) *TwoWayANOVAResult {
 			}
 		}
 
-		// 計算交互項和組內變異
 		expected := meanA + meanB - totalMean
 		SSAB += math.Pow(value-expected, 2)
 		SSW += math.Pow(value-expected, 2)
@@ -225,15 +226,24 @@ func TwoWayANOVA(dataTable insyra.IDataTable) *TwoWayANOVAResult {
 	FBValue := (SSB / float64(DFB)) / (SSW / float64(DFW))
 	FABValue := (SSAB / float64(DFAxB)) / (SSW / float64(DFW))
 
-	// 使用 F 分佈計算 P 值
-	fDistA := distuv.F{D1: float64(DFA), D2: float64(DFW)}
-	PAValue := 1 - fDistA.CDF(FAValue)
+	// 並行計算 P 值
+	var PAValue, PBValue, PABValue float64
+	calcPA := func() {
+		fDistA := distuv.F{D1: float64(DFA), D2: float64(DFW)}
+		PAValue = 1 - fDistA.CDF(FAValue)
+	}
 
-	fDistB := distuv.F{D1: float64(DFB), D2: float64(DFW)}
-	PBValue := 1 - fDistB.CDF(FBValue)
+	calcPB := func() {
+		fDistB := distuv.F{D1: float64(DFB), D2: float64(DFW)}
+		PBValue = 1 - fDistB.CDF(FBValue)
+	}
 
-	fDistAB := distuv.F{D1: float64(DFAxB), D2: float64(DFW)}
-	PABValue := 1 - fDistAB.CDF(FABValue)
+	calcPAB := func() {
+		fDistAB := distuv.F{D1: float64(DFAxB), D2: float64(DFW)}
+		PABValue = 1 - fDistAB.CDF(FABValue)
+	}
+
+	parallel.GroupUp(calcPA, calcPB, calcPAB).Run().AwaitResult()
 
 	// 返回結果
 	return &TwoWayANOVAResult{
