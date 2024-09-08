@@ -53,6 +53,9 @@ Appends rows to the `DataTable` by mapping column names to values. New columns a
 ##### `GetElement(rowIndex int, columnIndex string) interface{}`
 Returns the element at the specified row and column index. If the indices are out of bounds, it returns `nil`.
 
+##### `GetElementByNumberIndex(rowIndex int, columnIndex int) interface{}`
+Returns the element at the specified row and column number index. If the indices are out of bounds, it returns `nil`.
+
 ##### `GetColumn(index string) *DataList`
 Returns a `DataList` containing the data of the specified column index.
 
@@ -140,6 +143,9 @@ The first return value is the number of rows, and the second return value is the
 
 ##### `Count(value interface{}) int`
 Returns the number of occurrences of the specified value in the `DataTable`.
+
+##### `Mean() interface{}`
+Returns the mean of the `DataTable`.
 
 ##### `GetRowNameByIndex(index int) string`
 Returns the name of the row at the specified index.
