@@ -262,74 +262,95 @@ func TwoWayANOVA_WideFormat(dataTable insyra.IDataTable) *TwoWayANOVAResult {
 	}
 }
 
-// type RepeatedMeasuresANOVAResult struct {
-// 	SSB     float64 // Between-group Sum of Squares
-// 	SSW     float64 // Within-group Sum of Squares
-// 	FValue  float64 // F-value
-// 	PValue  float64 // P-value
-// 	DFB     int     // Between-group Degrees of Freedom
-// 	DFW     int     // Within-group Degrees of Freedom
-// 	DFSubj  int     // Degrees of Freedom for subjects
-// 	TotalSS float64 // Total Sum of Squares
-// }
+type RepeatedMeasuresANOVAResult struct {
+	SSB     float64 // Between-group Sum of Squares
+	SSW     float64 // Within-group Sum of Squares
+	FValue  float64 // F-value
+	PValue  float64 // P-value
+	DFB     int     // Between-group Degrees of Freedom
+	DFW     int     // Within-group Degrees of Freedom
+	DFSubj  int     // Degrees of Freedom for subjects
+	TotalSS float64 // Total Sum of Squares
+}
 
-// func RepeatedMeasuresANOVA_WideFormat(dataTable insyra.IDataTable) *RepeatedMeasuresANOVAResult {
-// 	// 使用行代表組別，列代表受試者
-// 	var groups []insyra.IDataList
-// 	rowNum, colNum := dataTable.Size()
-// 	for i := 0; i < rowNum; i++ {
-// 		groups = append(groups, dataTable.GetRow(i))
-// 	}
+// RepeatedMeasuresANOVA_WideFormat calculates the repeated measures ANOVA of the given data table.
+// Use wide data format to calculate the ANOVA.
+// It returns a pointer to a RepeatedMeasuresANOVAResult struct containing the results.
+func RepeatedMeasuresANOVA_WideFormat(dataTable insyra.IDataTable) *RepeatedMeasuresANOVAResult {
+	rowNum, colNum := dataTable.Size() // rowNum: number of conditions, colNum: number of subjects
 
-// 	// 計算總均值和總數
-// 	totalSum := 0.0
-// 	totalCount := 0
-// 	for _, group := range groups {
-// 		totalSum += group.Sum().(float64)
-// 		totalCount += group.Len()
-// 	}
-// 	totalMean := totalSum / float64(totalCount)
+	// Calculate grand mean
 
-// 	// 計算 SSB (組間平方和) 和 SSW (組內平方和)
-// 	SSB, SSW := 0.0, 0.0
-// 	for _, group := range groups {
-// 		groupMean := group.Mean().(float64)
-// 		SSB += float64(group.Len()) * math.Pow(groupMean-totalMean, 2) // 組別與總均值的偏差平方和
+	grandTotal := 0.0
+	for i := 0; i < rowNum; i++ {
+		for j := 0; j < colNum; j++ {
+			grandTotal += dataTable.GetElementByNumberIndex(i, j).(float64)
+		}
+	}
 
-// 		// 修正組內變異：對於每個測量值計算與受試者平均值的偏差
-// 		for j := 0; j < group.Len(); j++ {
-// 			value, _ := group.Get(j).(float64)
-// 			// 計算該受試者的均值（所有組別中的數值）
-// 			subjectMean := 0.0
-// 			for k := 0; k < rowNum; k++ {
-// 				subjectMean += dataTable.GetElementByNumberIndex(k, j).(float64)
-// 			}
-// 			subjectMean /= float64(rowNum)        // 受試者的平均值
-// 			SSW += math.Pow(value-subjectMean, 2) // 計算受試者內的變異
-// 		}
-// 	}
+	grandMean := grandTotal / float64(rowNum*colNum)
 
-// 	// 計算自由度
-// 	DFB := rowNum - 1            // 組別自由度
-// 	DFSubj := colNum - 1         // 受試者自由度
-// 	DFW := rowNum * (colNum - 1) // 組內自由度（根據受試者自由度）
+	var ssTotal, ssBetween, ssSubjects float64
+	// Calculate SSTotal, SSBetween, and SSSubjects in parallel
+	ssTotalFunc := func() {
+		ssTotal = 0.0
+		for i := 0; i < rowNum; i++ {
+			for j := 0; j < colNum; j++ {
+				value := dataTable.GetElementByNumberIndex(i, j).(float64)
+				ssTotal += math.Pow(value-grandMean, 2)
+			}
+		}
+	}
 
-// 	// 計算 F 值
-// 	FValue := (SSB / float64(DFB)) / (SSW / float64(DFW))
+	ssBetweenFunc := func() {
+		ssBetween = 0.0
+		for i := 0; i < rowNum; i++ {
+			conditionMean := dataTable.GetRow(i).Mean().(float64)
+			ssBetween += float64(colNum) * math.Pow(conditionMean-grandMean, 2)
+		}
+	}
 
-// 	// 使用 F 分佈計算 P 值
-// 	fDist := distuv.F{D1: float64(DFB), D2: float64(DFW)}
-// 	PValue := 1 - fDist.CDF(FValue)
+	ssSubjectsFunc := func() {
+		ssSubjects = 0.0
+		for j := 0; j < colNum; j++ {
+			subjectMean := 0.0
+			for i := 0; i < rowNum; i++ {
+				subjectMean += dataTable.GetElementByNumberIndex(i, j).(float64)
+			}
+			subjectMean /= float64(rowNum)
+			ssSubjects += float64(rowNum) * math.Pow(subjectMean-grandMean, 2)
+		}
+	}
 
-// 	// 返回結果
-// 	return &RepeatedMeasuresANOVAResult{
-// 		SSB:     SSB,
-// 		SSW:     SSW,
-// 		FValue:  FValue,
-// 		PValue:  PValue,
-// 		DFB:     DFB,
-// 		DFW:     DFW,
-// 		DFSubj:  DFSubj,
-// 		TotalSS: SSB + SSW,
-// 	}
-// }
+	parallel.GroupUp(ssTotalFunc, ssBetweenFunc, ssSubjectsFunc).Run().AwaitResult()
+
+	// Calculate SSWithin
+	SSWithin := ssTotal - ssBetween - ssSubjects
+
+	// Calculate degrees of freedom
+	DFBetween := rowNum - 1
+	DFSubjects := colNum - 1
+	DFWithin := (rowNum - 1) * (colNum - 1)
+
+	// Calculate Mean Squares
+	MSBetween := ssBetween / float64(DFBetween)
+	MSWithin := SSWithin / float64(DFWithin)
+
+	// Calculate F-value
+	FValue := MSBetween / MSWithin
+
+	// Calculate p-value
+	fDist := distuv.F{D1: float64(DFBetween), D2: float64(DFWithin)}
+	PValue := 1 - fDist.CDF(FValue)
+
+	return &RepeatedMeasuresANOVAResult{
+		SSB:     ssBetween,
+		SSW:     SSWithin,
+		FValue:  FValue,
+		PValue:  PValue,
+		DFB:     DFBetween,
+		DFW:     DFWithin,
+		DFSubj:  DFSubjects,
+		TotalSS: ssTotal,
+	}
+}

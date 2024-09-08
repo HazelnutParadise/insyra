@@ -12,6 +12,7 @@ Welcome to the **stats** package, which provides efficient functions for calcula
 - **Moment Calculation**: Supports n-th moment calculations for datasets, both central and non-central.
 - **OneWayANOVA_WideFormat:** Supports analysis of variance for **wide-format data**.
 - **TwoWayANOVA_WideFormat**: Supports analysis of variance for **wide-format data**.
+- **RepeatedMeasuresANOVA_WideFormat**: Supports analysis of variance for **wide-format data**.
 
 ## Installation
 
@@ -190,7 +191,39 @@ fmt.Printf("SSA: %.2f, SSB: %.2f, SSAB: %.2f, SSW: %.2f, FA-Value: %.2f, FB-Valu
   - **Rows** represent different levels of **Factor A**.
   - **Columns** represent different levels of **Factor B**.
   - **Cells** contain the observed values for combinations of Factor A and Factor B levels.
-  
+
+### Repeated Measures ANOVA
+
+The `RepeatedMeasuresANOVA_WideFormat` function computes a Repeated Measures ANOVA for **wide-format data** using a **DataTable** where rows represent different conditions, and columns represent different subjects.
+
+```go
+import "github.com/HazelnutParadise/insyra/stats"
+
+// Create a DataTable with repeated measures data
+dataTable := insyra.NewDataTable()
+dataTable.AppendRowsFromDataList(
+    insyra.NewDataList(6.0, 9.0, 5.0, 7.0),  // Condition 1
+    insyra.NewDataList(8.0, 10.0, 6.0, 6.0), // Condition 2
+    insyra.NewDataList(7.0, 9.0, 7.0, 8.0),  // Condition 3
+)
+
+// Perform Repeated Measures ANOVA
+result := stats.RepeatedMeasuresANOVA_WideFormat(dataTable)
+fmt.Printf("SSB: %.2f, SSW: %.2f, F-Value: %.2f, P-Value: %.4f\n", result.SSB, result.SSW, result.FValue, result.PValue)
+```
+
+#### Input Data Format
+
+The input data is expected to be in wide format, where each row represents a different condition, and each column represents a subject's repeated measures across different conditions.
+
+For example, for 3 conditions and 4 subjects, the table might look like this:
+
+| Condition | Subject 1 | Subject 2 | Subject 3 | Subject 4 |
+|-----------|-----------|-----------|-----------|-----------|
+| 1         | 6.0       | 9.0       | 5.0       | 7.0       |
+| 2         | 8.0       | 10.0      | 6.0       | 6.0       |
+| 3         | 7.0       | 9.0       | 7.0       | 8.0       |
+
 ## Method Reference
 
 The methods available for **skewness** and **kurtosis** in this package directly correspond to the `type` options in the **e1071** R package. For further details on the specific calculations and their formulas, please refer to the [e1071 documentation](https://cran.r-project.org/web/packages/e1071/e1071.pdf).
