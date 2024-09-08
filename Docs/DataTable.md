@@ -74,6 +74,12 @@ Updates the column with the specified index with a new `DataList`.
 ##### `UpdateRow(index int, dl *DataList)`
 Updates the row at the specified index with a new `DataList`.
 
+##### `SetColumnToRowNames(columnIndex string) *DataTable`
+Sets the row names to the values of the specified column and drops the column.
+
+##### `SetRowToColumnNames(rowIndex int) *DataTable`
+Sets the column names to the values of the specified row and drops the row.
+
 ##### `FindRowsIfContains(value interface{}) []int`
 Returns the indices of rows that contain the specified value.
 

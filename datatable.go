@@ -32,6 +32,8 @@ type IDataTable interface {
 	UpdateElement(rowIndex int, columnIndex string, value interface{})
 	UpdateColumn(index string, dl *DataList)
 	UpdateRow(index int, dl *DataList)
+	SetColumnToRowNames(columnIndex string) *DataTable
+	SetRowToColumnNames(rowIndex int) *DataTable
 	FindRowsIfContains(value interface{}) []int
 	FindRowsIfContainsAll(values ...interface{}) []int
 	FindRowsIfAnyElementContainsSubstring(substring string) []int
@@ -432,6 +434,38 @@ func (dt *DataTable) UpdateRow(index int, dl *DataList) {
 	}
 
 	go dt.updateTimestamp()
+}
+
+// ======================== Set ========================
+
+// SetColumnToRowNames sets the row names to the values of the specified column and drops the column.
+func (dt *DataTable) SetColumnToRowNames(columnIndex string) *DataTable {
+	column := dt.GetColumn(columnIndex)
+	for i, value := range column.data {
+		if value != nil {
+			rowName := safeRowName(dt, conv.ToString(value))
+			dt.rowNames[rowName] = i
+		}
+	}
+
+	dt.DropColumnsByIndex(columnIndex)
+	go dt.updateTimestamp()
+	return dt
+}
+
+// SetRowToColumnNames sets the column names to the values of the specified row and drops the row.
+func (dt *DataTable) SetRowToColumnNames(rowIndex int) *DataTable {
+	row := dt.GetRow(rowIndex)
+	for i, value := range row.data {
+		if value != nil {
+			columnName := safeColumnName(dt, conv.ToString(value))
+			dt.columns[i].name = columnName
+		}
+	}
+
+	dt.DropRowsByIndex(rowIndex)
+	go dt.updateTimestamp()
+	return dt
 }
 
 // ======================== Find ========================
