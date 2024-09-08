@@ -1,6 +1,7 @@
 package insyra
 
 import (
+	"fmt"
 	"math/big"
 	"reflect"
 
@@ -120,4 +121,98 @@ func PowRat(base *big.Rat, exponent int) *big.Rat {
 		result.Mul(result, base) // result = result * base
 	}
 	return result
+}
+
+// ConvertLongDataToWide converts long data to wide data.
+// data: 觀測值(依變數)
+// factor: 因子
+// independents: 自變數
+// aggFunc: 聚合函數
+// Return DataTable.
+func ConvertLongDataToWide(data, factor IDataList, independents []IDataList, aggFunc func([]float64) float64) IDataTable {
+
+	// 檢查是否存在空的 factor 或 data
+	if factor == nil || data == nil {
+		fmt.Println("Factor or data is nil")
+		return nil
+	}
+
+	var independentName []string
+	for _, independent := range independents {
+		independentName = append(independentName, independent.GetName())
+	}
+
+	wideTable := NewDataTable()
+
+	// 建立一個 map 儲存每個因子對應的觀測值及自變數
+	factorMap := make(map[interface{}][][]float64)
+
+	// 迭代資料，根據因子將觀測值和自變數分組
+	for i := 0; i < factor.Len(); i++ {
+		key := factor.Get(i)
+
+		// 如果該因子尚未在 map 中，初始化空的觀測值和自變數切片
+		if _, exists := factorMap[key]; !exists {
+			factorMap[key] = make([][]float64, 0)
+		}
+
+		// 收集自變數的值
+		row := make([]float64, len(independents))
+		for j, independent := range independents {
+			row[j] = conv.ParseF64(independent.Get(i))
+		}
+
+		// 加入觀測值
+		value := conv.ParseF64(data.Get(i))
+		row = append(row, value)
+
+		// 將該行資料加入對應的因子組
+		factorMap[key] = append(factorMap[key], row)
+	}
+
+	// 如果提供的聚合函數為 nil，則將資料直接轉換為寬資料
+	if aggFunc == nil {
+		aggFunc = func(values []float64) float64 {
+			if len(values) > 0 {
+				return values[0] // 直接返回第一筆資料
+			}
+			return 0.0
+		}
+	}
+
+	// 將因子映射到寬資料表
+	for key, rows := range factorMap {
+		row := NewDataList()
+
+		// 將因子值作為行標題
+		row.Append(key)
+
+		// 依次處理每個自變數
+		for j := 0; j < len(independents); j++ {
+			columnValues := make([]float64, len(rows))
+			for i, r := range rows {
+				columnValues[i] = r[j]
+			}
+			// 聚合自變數的數據
+			row.Append(aggFunc(columnValues))
+		}
+
+		// 聚合觀測值
+		observations := make([]float64, len(rows))
+		for i, r := range rows {
+			observations[i] = r[len(independents)] // 最後一列是觀測值
+		}
+		row.Append(aggFunc(observations))
+
+		// 將結果加入寬資料表
+		wideTable.AppendRowsFromDataList(row)
+	}
+
+	wideTable.SetColumnToRowNames("A")
+	for i, _ := range independents {
+		wideTable.columns[i].name = fmt.Sprintf("%v", independentName[i])
+	}
+	wideTable.columns[len(independents)].name = data.GetName()
+
+	return wideTable
 }

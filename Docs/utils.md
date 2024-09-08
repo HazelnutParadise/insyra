@@ -18,6 +18,45 @@ Calculates the square root of a `*big.Rat` (rational number) and returns the res
 ### 6. `PowRat(base *big.Rat, exponent int) *big.Rat`
 Computes the power of a `*big.Rat` number raised to a given exponent. This is useful for large or arbitrary precision calculations.
 
+### 7. `ConvertLongDataToWide(data, factor IDataList, independents []IDataList, aggFunc func([]float64) float64) IDataTable`
+Converts long data to wide data.
+
+#### Parameters
+
+- **data**: `IDataList` type, representing the dependent variable (observations).
+- **factor**: `IDataList` type, representing the factor (typically a categorical variable).
+- **independents**: `[]IDataList` type, representing multiple independent variables.
+- **aggFunc**: `func([]float64) float64` type, a custom aggregation function to handle multiple repeated data entries. If `nil`, the function defaults to returning the first entry.
+
+#### Returns
+
+- Returns an `IDataTable` type containing the wide-format data.
+
+#### Example Usage
+
+```go
+package main
+
+import (
+	"fmt"
+	"github.com/HazelnutParadise/insyra"
+)
+
+func main() {
+	// Example data
+	data := insyra.NewDataList(5, 15, 25, 35)
+	factor := insyra.NewDataList("A", "B", "C", "A").SetName("Factor")
+	independent1 := insyra.NewDataList(1, 2, 1, 2).SetName("Independent1")
+	independent2 := insyra.NewDataList(10, 20, 10, 20).SetName("Independent2")
+
+	// Convert long data to wide
+	wideTable := insyra.ConvertLongDataToWide(data, factor, []insyra.IDataList{independent1, independent2}, nil)
+	wideTable.Show()
+}
+```
+
+This example shows how to convert long-format data to wide-format, including how to handle factors, dependent variables, and multiple independent variables.
+
 ## Installation
 
 To install **Insyra**, use the following command:
