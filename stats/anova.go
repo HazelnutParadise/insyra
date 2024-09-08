@@ -265,7 +265,6 @@ func TwoWayANOVA_WideFormat(dataTable insyra.IDataTable) *TwoWayANOVAResult {
 // type RepeatedMeasuresANOVAResult struct {
 // 	SSB     float64 // Between-group Sum of Squares
 // 	SSW     float64 // Within-group Sum of Squares
-// 	SSSubj  float64 // Sum of Squares for subjects
 // 	FValue  float64 // F-value
 // 	PValue  float64 // P-value
 // 	DFB     int     // Between-group Degrees of Freedom
@@ -274,41 +273,49 @@ func TwoWayANOVA_WideFormat(dataTable insyra.IDataTable) *TwoWayANOVAResult {
 // 	TotalSS float64 // Total Sum of Squares
 // }
 
-// func RepeatedMeasuresANOVA(dataTable insyra.IDataTable) *RepeatedMeasuresANOVAResult {
+// func RepeatedMeasuresANOVA_WideFormat(dataTable insyra.IDataTable) *RepeatedMeasuresANOVAResult {
 // 	// 使用行代表組別，列代表受試者
-// 	var subjects []insyra.IDataList
-// 	rowNum, _ := dataTable.Size()
+// 	var groups []insyra.IDataList
+// 	rowNum, colNum := dataTable.Size()
 // 	for i := 0; i < rowNum; i++ {
-// 		subjects = append(subjects, dataTable.GetRow(i))
+// 		groups = append(groups, dataTable.GetRow(i))
 // 	}
 
 // 	// 計算總均值和總數
 // 	totalSum := 0.0
 // 	totalCount := 0
-// 	for _, subject := range subjects {
-// 		totalSum += subject.Sum().(float64)
-// 		totalCount += subject.Len()
+// 	for _, group := range groups {
+// 		totalSum += group.Sum().(float64)
+// 		totalCount += group.Len()
 // 	}
 // 	totalMean := totalSum / float64(totalCount)
 
-// 	// 計算 SSB 和 SSSubj
-// 	SSB, SSSubj := 0.0, 0.0
-// 	for _, subject := range subjects {
-// 		subjMean := subject.Mean().(float64)
-// 		SSB += float64(subject.Len()) * math.Pow(subjMean-totalMean, 2)
-// 		for i := 0; i < subject.Len(); i++ {
-// 			value, _ := subject.Get(i).(float64)
-// 			SSSubj += math.Pow(value-subjMean, 2)
+// 	// 計算 SSB (組間平方和) 和 SSW (組內平方和)
+// 	SSB, SSW := 0.0, 0.0
+// 	for _, group := range groups {
+// 		groupMean := group.Mean().(float64)
+// 		SSB += float64(group.Len()) * math.Pow(groupMean-totalMean, 2) // 組別與總均值的偏差平方和
+
+// 		// 修正組內變異：對於每個測量值計算與受試者平均值的偏差
+// 		for j := 0; j < group.Len(); j++ {
+// 			value, _ := group.Get(j).(float64)
+// 			// 計算該受試者的均值（所有組別中的數值）
+// 			subjectMean := 0.0
+// 			for k := 0; k < rowNum; k++ {
+// 				subjectMean += dataTable.GetElementByNumberIndex(k, j).(float64)
+// 			}
+// 			subjectMean /= float64(rowNum)        // 受試者的平均值
+// 			SSW += math.Pow(value-subjectMean, 2) // 計算受試者內的變異
 // 		}
 // 	}
 
 // 	// 計算自由度
-// 	DFB := rowNum - 1
-// 	DFW := totalCount - rowNum
-// 	DFSubj := totalCount / rowNum
+// 	DFB := rowNum - 1            // 組別自由度
+// 	DFSubj := colNum - 1         // 受試者自由度
+// 	DFW := rowNum * (colNum - 1) // 組內自由度（根據受試者自由度）
 
 // 	// 計算 F 值
-// 	FValue := (SSB / float64(DFB)) / (SSSubj / float64(DFSubj))
+// 	FValue := (SSB / float64(DFB)) / (SSW / float64(DFW))
 
 // 	// 使用 F 分佈計算 P 值
 // 	fDist := distuv.F{D1: float64(DFB), D2: float64(DFW)}
@@ -317,13 +324,12 @@ func TwoWayANOVA_WideFormat(dataTable insyra.IDataTable) *TwoWayANOVAResult {
 // 	// 返回結果
 // 	return &RepeatedMeasuresANOVAResult{
 // 		SSB:     SSB,
-// 		SSW:     SSSubj,
-// 		SSSubj:  SSSubj,
+// 		SSW:     SSW,
 // 		FValue:  FValue,
 // 		PValue:  PValue,
 // 		DFB:     DFB,
 // 		DFW:     DFW,
 // 		DFSubj:  DFSubj,
-// 		TotalSS: SSB + SSSubj,
+// 		TotalSS: SSB + SSW,
 // 	}
 // }
