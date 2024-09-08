@@ -70,6 +70,7 @@ type IDataTable interface {
 	Mean() interface{}
 
 	// Conversion
+	Transpose() *DataTable
 
 	// Filters
 	Filter(filterFunc FilterFunc) *DataTable
@@ -1292,6 +1293,41 @@ func (dt *DataTable) Mean() interface{} {
 }
 
 // ======================== Conversion ========================
+
+// Transpose transposes the DataTable, converting rows into columns and vice versa.
+func (dt *DataTable) Transpose() *DataTable {
+	dls := make([]*DataList, 0)
+	for _, col := range dt.columns {
+		dls = append(dls, col)
+	}
+
+	oldRowNames := dt.rowNames
+	dt.rowNames = make(map[string]int)
+	newDt := &DataTable{
+		columns:               make([]*DataList, 0),
+		rowNames:              make(map[string]int),
+		columnIndex:           make(map[string]int),
+		creationTimestamp:     dt.GetCreationTimestamp(),
+		lastModifiedTimestamp: dt.GetLastModifiedTimestamp(),
+	}
+
+	for i, col := range dls {
+
+		newDt.AppendRowsFromDataList(col)
+		for rowName, rowIndex := range oldRowNames {
+			if rowIndex == i {
+				newDt.columns[i].name = rowName
+			}
+		}
+
+	}
+	dt.columns = newDt.columns
+	dt.rowNames = newDt.rowNames
+	dt.columnIndex = newDt.columnIndex
+
+	go dt.updateTimestamp()
+	return dt
+}
 
 // ======================== Utilities ========================
 
