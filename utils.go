@@ -49,6 +49,7 @@ func ToFloat64Safe(v interface{}) (float64, bool) {
 	}
 }
 
+// SliceToF64 converts a []interface{} to a []float64.
 func SliceToF64(data []interface{}) []float64 {
 	defer func() {
 		if r := recover(); r != nil {
@@ -97,6 +98,7 @@ func ProcessData(input interface{}) ([]interface{}, int) {
 }
 
 // SqrtRat calculates the square root of a big.Rat.
+// 計算 big.Rat 的平方根
 func SqrtRat(x *big.Rat) *big.Rat {
 	// 將 *big.Rat 轉換為 *big.Float
 	floatValue := new(big.Float).SetRat(x)
@@ -111,6 +113,7 @@ func SqrtRat(x *big.Rat) *big.Rat {
 }
 
 // PowRat calculates the power of a big.Rat.
+// 計算 big.Rat 的次方 (v^n)
 func PowRat(base *big.Rat, exponent int) *big.Rat {
 	result := new(big.Rat).SetInt64(1) // 初始化為 1
 	for i := 0; i < exponent; i++ {
