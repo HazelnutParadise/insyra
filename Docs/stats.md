@@ -10,8 +10,8 @@ Welcome to the **stats** package, which provides efficient functions for calcula
 - **Skewness Calculation**: Corresponds directly to **e1071** package's skewness methods.
 - **Kurtosis Calculation**: Provides kurtosis calculation that maps directly to **e1071** types.
 - **Moment Calculation**: Supports n-th moment calculations for datasets, both central and non-central.
-- **One-Way ANOVA:** Supports analysis of variance for **wide-format data**.
-- **Two-Way ANOVA:** Supports analysis of variance for **long-format data**.
+- **OneWayANOVA_WideFormat:** Supports analysis of variance for **wide-format data**.
+- **TwoWayANOVA:** Supports analysis of variance for **long-format data**.
 
 ## Installation
 
