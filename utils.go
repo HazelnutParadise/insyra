@@ -96,6 +96,7 @@ func ProcessData(input interface{}) ([]interface{}, int) {
 	return data, len(data)
 }
 
+// SqrtRat calculates the square root of a big.Rat.
 func SqrtRat(x *big.Rat) *big.Rat {
 	// 將 *big.Rat 轉換為 *big.Float
 	floatValue := new(big.Float).SetRat(x)
@@ -109,7 +110,7 @@ func SqrtRat(x *big.Rat) *big.Rat {
 	return sqrtXRat
 }
 
-// PowRat 計算 big.Rat 的次方 (v^n)
+// PowRat calculates the power of a big.Rat.
 func PowRat(base *big.Rat, exponent int) *big.Rat {
 	result := new(big.Rat).SetInt64(1) // 初始化為 1
 	for i := 0; i < exponent; i++ {
