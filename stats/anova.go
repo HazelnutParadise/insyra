@@ -22,11 +22,11 @@ type OneWayANOVAResult struct {
 func OneWayANOVA_WideFormat(dataTable insyra.IDataTable) *OneWayANOVAResult {
 	var groups []insyra.IDataList
 
-	// 將每一列資料視為不同的組別
-	colNum, _ := dataTable.Size()
-	for i := 0; i < colNum; i++ {
-		column := dataTable.GetColumnByNumber(i)
-		groups = append(groups, column)
+	// 將每一行資料視為不同的組別
+	rowNum, _ := dataTable.Size()
+	for i := 0; i < rowNum; i++ {
+		row := dataTable.GetRow(i)
+		groups = append(groups, row)
 	}
 
 	// 計算總均值和總數
@@ -38,18 +38,19 @@ func OneWayANOVA_WideFormat(dataTable insyra.IDataTable) *OneWayANOVAResult {
 	}
 	totalMean := totalSum / float64(totalCount)
 
+	var SSB, SSW float64
+
 	// 並行計算 SSB 和 SSW
-	pg := parallel.GroupUp(
-		func() (float64, float64) {
-			SSB := 0.0
+	parallel.GroupUp(
+		func() {
+			SSB = 0.0
 			for _, group := range groups {
 				groupMean := group.Mean().(float64)
 				SSB += float64(group.Len()) * math.Pow(groupMean-totalMean, 2)
 			}
-			return SSB, 0
 		},
-		func() (float64, float64) {
-			SSW := 0.0
+		func() {
+			SSW = 0.0
 			for _, group := range groups {
 				groupMean := group.Mean().(float64)
 				for i := 0; i < group.Len(); i++ {
@@ -57,13 +58,9 @@ func OneWayANOVA_WideFormat(dataTable insyra.IDataTable) *OneWayANOVAResult {
 					SSW += math.Pow(value-groupMean, 2)
 				}
 			}
-			return 0, SSW
-		},
-	).Run()
 
-	results := pg.AwaitResult()
-	SSB := results[0][0].(float64)
-	SSW := results[1][1].(float64)
+		},
+	).Run().AwaitResult()
 
 	// 計算自由度
 	DFB := len(groups) - 1          // Between-group Degrees of Freedom
@@ -116,9 +113,9 @@ type TwoWayANOVAResult struct {
 }
 
 // TwoWayANOVA calculates the two-way ANOVA of the given data table.
-// Use long data format to calculate the ANOVA.
+// Use wide data format to calculate the ANOVA.
 // It returns a pointer to a TwoWayANOVAResult struct containing the results.
-func TwoWayANOVA(dataTable insyra.IDataTable) *TwoWayANOVAResult {
+func TwoWayANOVA_WideFormat(dataTable insyra.IDataTable) *TwoWayANOVAResult {
 	var observations []float64
 	var factorsA, factorsB []int
 
