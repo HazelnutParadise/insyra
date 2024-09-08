@@ -1139,22 +1139,22 @@ func (dt *DataTable) Show() {
 	}
 
 	// 打印列名
-	fmt.Printf("%-*s", maxRowNameWidth+2, "RowNames") // +2 是為了讓其��清晰
+	fmt.Printf("%-*s", maxRowNameWidth+5, "RowNames") // +2 是為了讓其更清晰
 	for _, colIndex := range colIndices {
-		fmt.Printf("%-*s", colWidths[colIndex]+2, colIndex)
+		fmt.Printf("%-*s", colWidths[colIndex]+5, colIndex)
 	}
 	fmt.Println()
 
 	// 打印行資料
 	for rowIndex := 0; rowIndex < dt.getMaxColumnLength(); rowIndex++ {
-		fmt.Printf("%-*s", maxRowNameWidth+2, rowNames[rowIndex])
+		fmt.Printf("%-*s", maxRowNameWidth+5, rowNames[rowIndex])
 
 		for _, colIndex := range colIndices {
 			value := "nil"
 			if rowIndex < len(dataMap[colIndex]) && dataMap[colIndex][rowIndex] != nil {
 				value = fmt.Sprintf("%v", dataMap[colIndex][rowIndex])
 			}
-			fmt.Printf("%-*s", colWidths[colIndex]+2, value)
+			fmt.Printf("%-*s", colWidths[colIndex]+5, value)
 		}
 		fmt.Println()
 	}
@@ -1317,10 +1317,11 @@ func (dt *DataTable) Transpose() *DataTable {
 		for rowName, rowIndex := range oldRowNames {
 			if rowIndex == i {
 				newDt.columns[i].name = rowName
+				newDt.columnIndex[generateColumnIndex(i)] = i
 			}
 		}
-
 	}
+
 	dt.columns = newDt.columns
 	dt.rowNames = newDt.rowNames
 	dt.columnIndex = newDt.columnIndex
