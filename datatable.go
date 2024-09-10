@@ -411,7 +411,10 @@ func (dt *DataTable) UpdateColumn(index string, dl *DataList) {
 // UpdateColumnByNumber updates the column at the given index.
 func (dt *DataTable) UpdateColumnByNumber(index int, dl *DataList) {
 	dt.mu.Lock()
-	defer dt.mu.Unlock()
+	defer func() {
+		dt.mu.Unlock()
+		go dt.updateTimestamp()
+	}()
 
 	if index < 0 {
 		index = len(dt.columns) + index
