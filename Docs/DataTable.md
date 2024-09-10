@@ -71,6 +71,9 @@ Updates the element at the specified row and column index.
 ##### `UpdateColumn(index string, dl *DataList)`
 Updates the column with the specified index with a new `DataList`.
 
+##### `UpdateColumnByNumber(index int, dl *DataList)`
+Updates the column at the specified number index with a new `DataList`.
+
 ##### `UpdateRow(index int, dl *DataList)`
 Updates the row at the specified index with a new `DataList`.
 
@@ -109,6 +112,9 @@ Drops columns from the `DataTable` by their names.
 
 ##### `DropColumnsByIndex(columnIndices ...string)`
 Drops columns from the `DataTable` by their indices.
+
+##### `DropColumnsByNumber(columnIndices ...int)`
+Drops columns from the `DataTable` by their number indices.
 
 ##### `DropColumnsContainStringElements()`
 Drops columns that contain any string elements.

@@ -31,6 +31,7 @@ type IDataTable interface {
 	GetRow(index int) *DataList
 	UpdateElement(rowIndex int, columnIndex string, value interface{})
 	UpdateColumn(index string, dl *DataList)
+	UpdateColumnByNumber(index int, dl *DataList)
 	UpdateRow(index int, dl *DataList)
 	SetColumnToRowNames(columnIndex string) *DataTable
 	SetRowToColumnNames(rowIndex int) *DataTable
@@ -44,6 +45,7 @@ type IDataTable interface {
 	FindColumnsIfAllElementsContainSubstring(substring string) []string
 	DropColumnsByName(columnNames ...string)
 	DropColumnsByIndex(columnIndices ...string)
+	DropColumnsByNumber(columnIndices ...int)
 	DropColumnsContainStringElements()
 	DropColumnsContainNumbers()
 	DropColumnsContainNil()
@@ -406,6 +408,24 @@ func (dt *DataTable) UpdateColumn(index string, dl *DataList) {
 	}
 }
 
+// UpdateColumnByNumber updates the column at the given index.
+func (dt *DataTable) UpdateColumnByNumber(index int, dl *DataList) {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	if index < 0 {
+		index = len(dt.columns) + index
+	}
+
+	if index < 0 || index >= len(dt.columns) {
+		LogWarning("DataTable.UpdateColumnByNumber(): Index out of bounds")
+		return
+	}
+
+	dt.columns[index] = dl
+	dt.columnIndex[generateColumnIndex(index)] = index
+}
+
 // UpdateRow updates the row at the given index.
 func (dt *DataTable) UpdateRow(index int, dl *DataList) {
 	dt.mu.Lock()
@@ -731,6 +751,25 @@ func (dt *DataTable) DropColumnsByIndex(columnIndices ...string) {
 				newColName := generateColumnIndex(i)
 				dt.columnIndex[newColName] = i
 			}
+		}
+	}
+}
+
+// DropColumnsByNumber drops columns by their number.
+func (dt *DataTable) DropColumnsByNumber(columnIndices ...int) {
+	dt.mu.Lock()
+	defer func() {
+		dt.mu.Unlock()
+		go dt.updateTimestamp()
+	}()
+
+	// 從大到小排序，防止刪除後索引變動
+	sort.Sort(sort.Reverse(sort.IntSlice(columnIndices)))
+
+	for _, index := range columnIndices {
+		if index >= 0 && index < len(dt.columns) {
+			dt.columns = append(dt.columns[:index], dt.columns[index+1:]...)
+			delete(dt.columnIndex, generateColumnIndex(index))
 		}
 	}
 }
