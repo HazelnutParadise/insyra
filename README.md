@@ -1,5 +1,7 @@
 # Insyra
 
+[![Test](https://github.com/HazelnutParadise/insyra/actions/workflows/test.yml/badge.svg)](https://github.com/HazelnutParadise/insyra/actions/workflows/test.yml)
+
 A Golang data analysis library.
 
 ## Overview
