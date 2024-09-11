@@ -129,12 +129,20 @@ func TestClear(t *testing.T) {
 	}
 }
 
+func float64Equal(a, b float64) bool {
+	diff := a - b
+	if diff < 0 {
+		diff = -diff
+	}
+	return diff < 1e-5
+}
+
 // 測試 Max 函數
 func TestMax(t *testing.T) {
 	dl := NewDataList(1, 2, 3, 4)
 	max := dl.Max()
 
-	if max != 4 {
+	if v, ok := max.(float64); !ok || !float64Equal(v, 4) {
 		t.Errorf("Expected max 4, got %v", max)
 	}
 }
@@ -144,7 +152,7 @@ func TestMin(t *testing.T) {
 	dl := NewDataList(1, 2, 3, 4)
 	min := dl.Min()
 
-	if min != 1 {
+	if v, ok := min.(float64); !ok || !float64Equal(v, 1) {
 		t.Errorf("Expected min 1, got %v", min)
 	}
 }
@@ -154,7 +162,7 @@ func TestMean(t *testing.T) {
 	dl := NewDataList(1, 2, 3, 4)
 	mean := dl.Mean()
 
-	if mean != 2.5 {
+	if v, ok := mean.(float64); !ok || !float64Equal(v, 2.5) {
 		t.Errorf("Expected mean 2.5, got %v", mean)
 	}
 }
