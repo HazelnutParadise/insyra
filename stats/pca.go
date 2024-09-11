@@ -2,27 +2,34 @@ package stats
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/HazelnutParadise/insyra"
 	"gonum.org/v1/gonum/mat"
 	"gonum.org/v1/gonum/stat"
 )
 
-// PCAResult 用來儲存 PCA 分析的結果
+// PCAResult contains the results of a Principal Component Analysis.
 type PCAResult struct {
 	Components        insyra.IDataTable // 主成分存為 DataTable
 	Eigenvalues       []float64         // 對應的特徵值
 	ExplainedVariance []float64         // 每個主成分解釋的變異百分比
 }
 
-// PCADataTable 執行主成分分析，接受 IDataTable 形式的資料
-// dataTable 是輸入的數據表，nComponents 是主成分數量
-func PCADataTable(dataTable insyra.IDataTable, nComponents int) *PCAResult {
+// PCA calculates the Principal Component Analysis of a DataTable.
+// The function returns a PCAResult struct containing the principal components,
+// eigenvalues, and explained variance.
+// The number of components to extract can be specified using the nComponents parameter.
+// If nComponents is not specified or exceeds the number of columns, all components will be extracted.
+func PCA(dataTable insyra.IDataTable, nComponents ...int) *PCAResult {
 	rowNum, colNum := dataTable.Size()
 
-	// 檢查 nComponents 是否合理
-	if nComponents > colNum {
-		nComponents = colNum // 返回全部主成分
+	// 如果 nComponents 沒有指定，或者超過列數，則提取所有主成分
+	numComponents := colNum
+	if len(nComponents) == 1 && nComponents[0] > 0 && nComponents[0] <= colNum {
+		numComponents = nComponents[0]
+	} else {
+		insyra.LogWarning("Invalid number of components, extracting all components.")
 	}
 
 	// 將 DataTable 轉換為矩陣，將每行視為一個樣本
@@ -41,7 +48,7 @@ func PCADataTable(dataTable insyra.IDataTable, nComponents int) *PCAResult {
 	for j := 0; j < colNum; j++ {
 		col := mat.Col(nil, j, data)
 		mean, std := stat.MeanStdDev(col, nil)
-		if std == 0 { // 防止標準差為 0
+		if std == 0 {
 			std = 1
 		}
 		for i := 0; i < rowNum; i++ {
@@ -65,39 +72,53 @@ func PCADataTable(dataTable insyra.IDataTable, nComponents int) *PCAResult {
 	var eigenvectors mat.Dense
 	eig.VectorsTo(&eigenvectors)
 
-	// 確認特徵向量矩陣的尺寸
-	fmt.Printf("Eigenvectors matrix size: %dx%d\n", eigenvectors.RawMatrix().Rows, eigenvectors.RawMatrix().Cols)
-
-	// 確保行列次序正確
-	if nComponents > eigenvectors.RawMatrix().Cols {
-		nComponents = eigenvectors.RawMatrix().Cols
+	// 將特徵值與特徵向量根據特徵值大小進行排序
+	indices := make([]int, len(eigenvalues))
+	for i := range indices {
+		indices[i] = i
 	}
+	sort.Slice(indices, func(i, j int) bool {
+		return eigenvalues[indices[i]] > eigenvalues[indices[j]] // 根據特徵值由大到小排序
+	})
 
 	// 生成 DataTable 並存儲主成分
 	componentTable := insyra.NewDataTable()
 
-	// 將主成分轉換為 DataTable，這次按列填入主成分
-	for j := 0; j < nComponents; j++ {
+	// 手動調整每個主成分的正負號，使其與 R 的結果一致
+	for compIndex := 0; compIndex < numComponents; compIndex++ {
 		column := insyra.NewDataList()
-		for i := 0; i < eigenvectors.RawMatrix().Rows; i++ { // 按照行來取主成分數據
-			column.Append(eigenvectors.At(i, j))
+		sign := 1.0 // 默認正負號
+
+		// 根據某個基準來確定特徵向量的正負號，這裡你可以自行設置基準，例如 R 的結果
+		if eigenvectors.At(0, indices[compIndex]) < 0 {
+			sign = -1.0 // 若第一個值為負數，則反轉整列的正負號
 		}
-		componentTable.AppendColumns(column.SetName(fmt.Sprintf("PC%d", j+1)))
+
+		for i := 0; i < eigenvectors.RawMatrix().Rows; i++ {
+			column.Append(sign * eigenvectors.At(i, indices[compIndex])) // 根據排序後的索引提取數據並調整正負號
+		}
+		componentTable.AppendColumns(column.SetName(fmt.Sprintf("PC%d", compIndex+1)))
 	}
 
 	// 計算解釋變異百分比，使用協方差矩陣的特徵值
 	totalVariance := 0.0
 	for _, v := range eigenvalues {
-		totalVariance += v // 使用特徵值來計算總變異
+		totalVariance += v
 	}
-	explainedVariance := make([]float64, nComponents)
-	for i := 0; i < nComponents; i++ {
-		explainedVariance[i] = (eigenvalues[i] / totalVariance) * 100
+	explainedVariance := make([]float64, numComponents)
+	for i := 0; i < numComponents; i++ {
+		explainedVariance[i] = (eigenvalues[indices[i]] / totalVariance) * 100
+	}
+
+	// 按排序後的特徵值順序返回結果
+	sortedEigenvalues := make([]float64, numComponents)
+	for i := 0; i < numComponents; i++ {
+		sortedEigenvalues[i] = eigenvalues[indices[i]]
 	}
 
 	return &PCAResult{
 		Components:        componentTable,
-		Eigenvalues:       eigenvalues[:nComponents],
+		Eigenvalues:       sortedEigenvalues,
 		ExplainedVariance: explainedVariance,
 	}
 }
