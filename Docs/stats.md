@@ -13,6 +13,7 @@ Welcome to the **stats** package, which provides efficient functions for calcula
 - **OneWayANOVA_WideFormat:** Supports analysis of variance for **wide-format data**.
 - **TwoWayANOVA_WideFormat**: Supports analysis of variance for **wide-format data**.
 - **RepeatedMeasuresANOVA_WideFormat**: Supports analysis of variance for **wide-format data**.
+- **Principal Component Analysis**: Principal Component Analysis (PCA) for dimensionality reduction and data visualization.
 
 ## Installation
 
@@ -223,6 +224,52 @@ For example, for 3 conditions and 4 subjects, the table might look like this:
 | 1         | 6.0       | 9.0       | 5.0       | 7.0       |
 | 2         | 8.0       | 10.0      | 6.0       | 6.0       |
 | 3         | 7.0       | 9.0       | 7.0       | 8.0       |
+
+### Principal Component Analysis (PCA)
+
+The `PCA` function performs Principal Component Analysis (PCA) on a dataset to reduce dimensionality or for visualization purposes. This function outputs the principal components (PCs), eigenvalues, and explained variance.
+
+#### Example Usage
+
+```go
+package main
+
+import (
+	"fmt"
+
+	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/stats"
+)
+
+func main() {
+	// Initialize test data where each column represents a variable
+	dataTable := insyra.NewDataTable(
+		insyra.NewDataList(2.5, 2.4, 2.8).SetName("Var1"),
+		insyra.NewDataList(0.5, 0.7, 0.1).SetName("Var2"),
+		insyra.NewDataList(1.5, 1.6, 1.7).SetName("Var3"),
+	)
+
+	// Perform PCA, extracting all components
+	pcaResult := stats.PCA(dataTable)
+
+	// Display the principal components
+	pcaResult.Components.Show()
+	fmt.Println("Eigenvalues:", pcaResult.Eigenvalues)
+	fmt.Println("Explained Variance:", pcaResult.ExplainedVariance)
+}
+```
+
+#### Parameters
+
+- **dataTable** (`IDataTable`): The input data table, where each column represents a variable and each row represents a sample.
+- **nComponents** (`int`, optional): The number of principal components to extract. If not specified or exceeds the number of variables, all components are extracted.
+
+#### Returns
+
+The function returns a `PCAResult` struct containing:
+- **Components** (`IDataTable`): The principal component matrix, where columns represent principal components.
+- **Eigenvalues** (`[]float64`): The eigenvalues associated with each principal component.
+- **Explained Variance** (`[]float64`): The percentage of variance explained by each principal component.
 
 ## Method Reference
 
