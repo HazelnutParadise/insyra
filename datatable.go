@@ -1405,7 +1405,7 @@ func (dt *DataTable) getMaxColumnLength() int {
 func generateColumnIndex(index int) string {
 	name := ""
 	for index >= 0 {
-		name = fmt.Sprintf("%c%s", (index % 26), name)
+		name = fmt.Sprintf("%c%s", 'A'+(index%26), name)
 		index = index/26 - 1
 	}
 	return name
