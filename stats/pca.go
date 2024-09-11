@@ -28,7 +28,7 @@ func PCA(dataTable insyra.IDataTable, nComponents ...int) *PCAResult {
 	numComponents := colNum
 	if len(nComponents) == 1 && nComponents[0] > 0 && nComponents[0] <= colNum {
 		numComponents = nComponents[0]
-	} else {
+	} else if len(nComponents) > 1 {
 		insyra.LogWarning("stats.PCA: Invalid number of components, extracting all components.")
 	}
 
