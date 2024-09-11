@@ -41,6 +41,9 @@ func PCADataTable(dataTable insyra.IDataTable, nComponents int) *PCAResult {
 	for j := 0; j < colNum; j++ {
 		col := mat.Col(nil, j, data)
 		mean, std := stat.MeanStdDev(col, nil)
+		if std == 0 { // 防止標準差為 0
+			std = 1
+		}
 		for i := 0; i < rowNum; i++ {
 			data.Set(i, j, (data.At(i, j)-mean)/std)
 		}
@@ -82,14 +85,14 @@ func PCADataTable(dataTable insyra.IDataTable, nComponents int) *PCAResult {
 		componentTable.AppendColumns(column.SetName(fmt.Sprintf("PC%d", j+1)))
 	}
 
-	// 計算解釋變異百分比
+	// 計算解釋變異百分比，使用協方差矩陣的特徵值
 	totalVariance := 0.0
 	for _, v := range eigenvalues {
-		totalVariance += v * v // 使用標準差的平方來計算總變異
+		totalVariance += v // 使用特徵值來計算總變異
 	}
 	explainedVariance := make([]float64, nComponents)
 	for i := 0; i < nComponents; i++ {
-		explainedVariance[i] = (eigenvalues[i] * eigenvalues[i] / totalVariance) * 100
+		explainedVariance[i] = (eigenvalues[i] / totalVariance) * 100
 	}
 
 	return &PCAResult{
