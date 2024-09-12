@@ -8,6 +8,10 @@ import (
 	"github.com/HazelnutParadise/Go-Utils/conv"
 )
 
+type F64orRat interface {
+	float64 | *big.Rat
+}
+
 // ToFloat64 converts any numeric value to float64.
 func ToFloat64(v interface{}) float64 {
 	switch v := v.(type) {
