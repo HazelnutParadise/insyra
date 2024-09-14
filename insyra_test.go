@@ -198,6 +198,26 @@ func TestGMean(t *testing.T) {
 	}
 }
 
+// 測試 Stdev 函數
+func TestStdev(t *testing.T) {
+	dl := NewDataList(1, 2, 3, 4)
+	stdev := dl.Stdev().(float64)
+
+	if !float64Equal(stdev, 1.2909944487358056) {
+		t.Errorf("Expected standard deviation 1.2909944487358056, got %v", stdev)
+	}
+}
+
+// 測試 StdevP 函數
+func TestStdevP(t *testing.T) {
+	dl := NewDataList(1, 2, 3, 4)
+	stdev := dl.StdevP().(float64)
+
+	if !float64Equal(stdev, 1.118033988749895) {
+		t.Errorf("Expected population standard deviation 1.118033988749895, got %v", stdev)
+	}
+}
+
 // 測試 SetName 和 GetName 函數
 func TestSetName(t *testing.T) {
 	dl := NewDataList(1, 2, 3, 4)
