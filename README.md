@@ -14,7 +14,7 @@ The **Insyra** library is a dynamic and versatile tool designed for managing and
 
 For any functions or methods not explicitly listed in Insyra documents, it indicates that the feature is still under active development. These experimental features might provide unstable results. 
 
-Please refer to our latest updates in **[Docs](https://github.com/HazelnutParadise/insyra/tree/main/Docs)** folder for more details.
+Please refer to our latest updates in **[Docs](/Docs)** folder for more details.
 
 
 ## Getting Started
