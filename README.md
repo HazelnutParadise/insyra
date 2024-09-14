@@ -49,7 +49,7 @@ func main() {
 
 The `DataList` is the core structure in **Insyra**, enabling the storage, management, and analysis of dynamic data collections. It offers various methods for data manipulation and statistical analysis. 
 
-For a complete list of methods and features, please refer to the **[DataList Documentation](https://github.com/HazelnutParadise/insyra/tree/main/Docs/DataList.md)**.
+For a complete list of methods and features, please refer to the **[DataList Documentation](/Docs/DataList.md)**.
 
 ## DataTable
 
@@ -57,18 +57,18 @@ The `DataTable` structure provides a tabular data representation, allowing for t
 
 **You can also convert between DataTables and CSV files with simply one line of code, enabling seamless integration with external data sources.**
 
-For a complete list of methods and features, please refer to the **[DataTable Documentation](https://github.com/HazelnutParadise/insyra/tree/main/Docs/DataTable.md)**.
+For a complete list of methods and features, please refer to the **[DataTable Documentation](/Docs/DataTable.md)**.
 
 ## Packages
 
 **Insyra** also provides several expansion packages, each focusing on a specific aspect of data analysis.
 
-- **[stats](https://github.com/HazelnutParadise/insyra/tree/main/Docs/stats.md)**: Provides statistical functions for data analysis, including skewness, kurtosis, and moment calculations.
-- **[parallel](https://github.com/HazelnutParadise/insyra/tree/main/Docs/parallel.md)**: Offers parallel processing capabilities for data manipulation and analysis.
+- **[stats](/Docs/stats.md)**: Provides statistical functions for data analysis, including skewness, kurtosis, and moment calculations.
+- **[parallel](/Docs/parallel.md)**: Offers parallel processing capabilities for data manipulation and analysis.
 
 ## Advanced Usage
 
-Beyond basic usage, **Insyra** provides extensive capabilities for handling different data types and performing complex statistical operations. Explore more in the **[detailed documentation](https://github.com/HazelnutParadise/insyra/tree/main/Docs)**.
+Beyond basic usage, **Insyra** provides extensive capabilities for handling different data types and performing complex statistical operations. Explore more in the **[detailed documentation](/Docs)**.
 
 ## Contributing
 
@@ -80,4 +80,4 @@ Contributions are welcome! You can contribute to **Insyra** by:
 
 ## License
 
-Insyra is licensed under the MIT License. See the [LICENSE](https://github.com/HazelnutParadise/insyra/blob/main/LICENSE) file for more information.
+Insyra is licensed under the MIT License. See the [LICENSE](LICENSE) file for more information.
