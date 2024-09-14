@@ -77,7 +77,7 @@ type IDataList interface {
 	Min() interface{}
 	Mean() float64
 	WeightedMean(weights interface{}) interface{}
-	GMean() interface{}
+	GMean() float64
 	Median(highPrecision ...bool) interface{}
 	Mode() interface{}
 	MAD() interface{}
@@ -1154,7 +1154,7 @@ func (dl *DataList) Mean() float64 {
 			count++
 		} else {
 			LogWarning("DataList.Mean(): Element %v is not a numeric type, skipping.", v)
-			// 跳过无法转换的元素
+			// 跳過非數字類型的元素
 			continue
 		}
 	}
@@ -1193,25 +1193,38 @@ func (dl *DataList) WeightedMean(weights interface{}) interface{} {
 
 // GMean calculates the geometric mean of the DataList.
 // Returns the geometric mean.
-// Returns nil if the DataList is empty.
-// GMean returns the geometric mean of the DataList.
-func (dl *DataList) GMean() interface{} {
+// Returns math.NaN() if the DataList is empty or if no elements can be converted to float64.
+func (dl *DataList) GMean() float64 {
+	gmean := math.NaN()
 	if len(dl.data) == 0 {
-		LogWarning("DataList.GMean(): DataList is empty, returning nil.")
-		return nil
+		LogWarning("DataList.GMean(): DataList is empty.")
+		return gmean
 	}
 
 	product := 1.0
+	count := 0
 	for _, v := range dl.data {
 		if val, ok := ToFloat64Safe(v); ok {
+			if val <= 0 {
+				LogWarning("DataList.GMean(): Non-positive value encountered, skipping.")
+				continue
+			}
 			product *= val
+			count++
 		} else {
-			LogWarning("DataList.GMean(): Data types cannot be compared, returning nil.")
-			return nil
+			LogWarning("DataList.GMean(): Element %v is not a numeric type, skipping.", v)
+			// 跳過無法轉換為 float64 的元素
+			continue
 		}
 	}
 
-	return math.Pow(product, 1.0/float64(len(dl.data)))
+	if count == 0 {
+		LogWarning("DataList.GMean(): No valid elements to compute geometric mean.")
+		return gmean
+	}
+
+	gmean = math.Pow(product, 1.0/float64(count))
+	return gmean
 }
 
 // Median calculates the median of the DataList.
