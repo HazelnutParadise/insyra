@@ -3,7 +3,6 @@ package insyra
 import (
 	"fmt"
 	"math"
-	"math/big"
 	"runtime"
 	"sort"
 	"strings"
@@ -85,7 +84,7 @@ type IDataList interface {
 	Stdev() interface{}
 	StdevP() interface{}
 	Var() interface{}
-	VarP(highPrecision ...bool) interface{}
+	VarP() interface{}
 	Range() interface{}
 	Quartile(int) interface{}
 	IQR() interface{}
@@ -1424,51 +1423,29 @@ func (dl *DataList) Var() interface{} {
 // VarP calculates the variance(population) of the DataList.
 // Returns the variance.
 // Returns nil if the DataList is empty or the variance cannot be calculated.
-func (dl *DataList) VarP(highPrecision ...bool) interface{} {
-	if len(highPrecision) > 1 {
-		LogWarning("VarP(): More than one highPrecision argument, returning nil.")
-		return nil
-	}
-
-	useHighPrecision := len(highPrecision) == 1 && highPrecision[0]
-
+func (dl *DataList) VarP() interface{} {
 	n := float64(dl.Len())
 	if n == 0.0 {
 		LogWarning("DataList.VarP(): DataList is empty, returning nil.")
 		return nil
 	}
 
-	if useHighPrecision {
-		// 使用高精度计算
-		mean := new(big.Rat).SetFloat64(dl.Mean())
-		numerator := new(big.Rat)
-		for i := 0; i < len(dl.data); i++ {
-			xi := new(big.Rat).SetFloat64(ToFloat64(dl.data[i]))
-			diff := new(big.Rat).Sub(xi, mean)
-			diffSquared := new(big.Rat).Mul(diff, diff)
-			numerator.Add(numerator, diffSquared)
-		}
-		denominator := new(big.Rat).SetFloat64(n)
-		variance := new(big.Rat).Quo(numerator, denominator)
-		return variance
-	} else {
-		// 使用普通精度计算
-		mean, ok := ToFloat64Safe(dl.Mean())
+	mean, ok := ToFloat64Safe(dl.Mean())
+	if !ok {
+		LogWarning("DataList.VarP(): Mean is not a float64, returning nil.")
+		return nil
+	}
+	numerator := 0.0
+	for i := 0; i < len(dl.data); i++ {
+		xi, ok := ToFloat64Safe(dl.data[i])
 		if !ok {
-			LogWarning("DataList.VarP(): Mean is not a float64, returning nil.")
+			LogWarning("DataList.VarP(): Element is not a float64, returning nil.")
 			return nil
 		}
-		numerator := 0.0
-		for i := 0; i < len(dl.data); i++ {
-			xi, ok := ToFloat64Safe(dl.data[i])
-			if !ok {
-				LogWarning("DataList.VarP(): Element is not a float64, returning nil.")
-				return nil
-			}
-			numerator += math.Pow(xi-mean, 2)
-		}
-		return numerator / n
+		numerator += math.Pow(xi-mean, 2)
 	}
+	return numerator / n
+
 }
 
 // Range calculates the range of the DataList.
