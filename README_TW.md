@@ -67,9 +67,14 @@ func main() {
 
 除了基本用法外，**Insyra** 還提供了處理不同數據類型和執行複雜統計操作的強大功能。請在 **[詳細文檔](https://github.com/HazelnutParadise/insyra/tree/main/Docs)** 中探索更多內容。
 
-<!-- ## 貢獻
+## 貢獻
 
-歡迎貢獻！有關詳細信息，請參閱 [貢獻指南](https://github.com/HazelnutParadise/insyra/blob/main/CONTRIBUTING.md)。 -->
+歡迎各種形式的貢獻！您可以通過以下方式貢獻 **Insyra**：
+- **Issues：** 提出問題、建議或功能請求。
+- **Pull Requests：** 提交代碼更改或新功能。
+- **Discussions：** 參與討論，分享您的想法和建議。
+
+<!-- 有關詳細信息，請參閱 [貢獻指南](https://github.com/HazelnutParadise/insyra/blob/main/CONTRIBUTING.md)。 -->
 
 ## 授權
 

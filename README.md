@@ -70,9 +70,13 @@ For a complete list of methods and features, please refer to the **[DataTable Do
 
 Beyond basic usage, **Insyra** provides extensive capabilities for handling different data types and performing complex statistical operations. Explore more in the **[detailed documentation](https://github.com/HazelnutParadise/insyra/tree/main/Docs)**.
 
-<!-- ## Contributing
+## Contributing
 
-Contributions are welcome! For more details, see the [contributing guidelines](https://github.com/HazelnutParadise/insyra/blob/main/CONTRIBUTING.md). -->
+Contributions are welcome! You can contribute to **Insyra** by:
+- **Issues:** Reporting issues or suggesting new features.
+- **Pull Requests:** Submitting pull requests to enhance the library.
+- **Discussions:** Sharing your feedback and ideas to improve the project.
+<!-- For more details, see the [contributing guidelines](https://github.com/HazelnutParadise/insyra/blob/main/CONTRIBUTING.md). -->
 
 ## License
 
