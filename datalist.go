@@ -90,8 +90,8 @@ type IDataList interface {
 	IQR() float64
 	Percentile(float64) float64
 	Difference() *DataList
-	ParseNumbers()
-	ParseStrings()
+	ParseNumbers() *DataList
+	ParseStrings() *DataList
 	ToF64Slice() []float64
 	ToStringSlice() []string
 
@@ -1721,10 +1721,11 @@ func (dl *DataList) Difference() *DataList {
 
 // ParseNumbers attempts to parse all string elements in the DataList to numeric types.
 // If parsing fails, the element is left unchanged.
-func (dl *DataList) ParseNumbers() {
+func (dl *DataList) ParseNumbers() *DataList {
 	defer func() {
 		dl.mu.Unlock()
 		go reorganizeMemory(dl)
+		go dl.updateTimestamp()
 	}()
 	dl.mu.Lock()
 	for i, v := range dl.data {
@@ -1738,13 +1739,15 @@ func (dl *DataList) ParseNumbers() {
 			dl.data[i] = conv.ParseF64(v)
 		}()
 	}
+	return dl
 }
 
 // ParseStrings converts all elements in the DataList to strings.
-func (dl *DataList) ParseStrings() {
+func (dl *DataList) ParseStrings() *DataList {
 	defer func() {
 		dl.mu.Unlock()
 		go reorganizeMemory(dl)
+		go dl.updateTimestamp()
 	}()
 	dl.mu.Lock()
 	for i, v := range dl.data {
@@ -1758,6 +1761,7 @@ func (dl *DataList) ParseStrings() {
 			dl.data[i] = conv.ToString(v)
 		}()
 	}
+	return dl
 }
 
 // ToF64Slice converts the DataList to a float64 slice.
