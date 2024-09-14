@@ -81,7 +81,7 @@ type IDataList interface {
 	Median() float64
 	Mode() float64
 	MAD() float64
-	Stdev() interface{}
+	Stdev() float64
 	StdevP() interface{}
 	Var() interface{}
 	VarP() interface{}
@@ -409,7 +409,7 @@ func (dl *DataList) ReplaceAll(oldValue, newValue interface{}) {
 // ReplaceOutliers replaces outliers in the DataList with the specified replacement value (e.g., mean, median).
 func (dl *DataList) ReplaceOutliers(stdDevs float64, replacement float64) *DataList {
 	mean := dl.Mean()
-	stddev := dl.Stdev().(float64)
+	stddev := dl.Stdev()
 	threshold := stdDevs * stddev
 
 	for i, v := range dl.Data() {
@@ -695,7 +695,7 @@ func (dl *DataList) ClearOutliers(stdDevs float64) *DataList {
 	}()
 
 	mean := dl.Mean()
-	stddev := dl.Stdev().(float64)
+	stddev := dl.Stdev()
 	threshold := stdDevs * stddev
 
 	// 打印調試信息，確保計算值與 R 相同
@@ -752,7 +752,7 @@ func (dl *DataList) Standardize() *DataList {
 		go dl.updateTimestamp()
 	}()
 	mean := dl.Mean()
-	stddev := dl.Stdev().(float64)
+	stddev := dl.Stdev()
 	dl.mu.Lock()
 	for i, v := range dl.Data() {
 		vfloat := conv.ParseF64(v)
@@ -882,7 +882,7 @@ func (dl *DataList) MovingStdev(windowSize int) *DataList {
 	movingStdDevData := make([]float64, dl.Len()-windowSize+1)
 	for i := 0; i < len(movingStdDevData); i++ {
 		window := NewDataList(dl.Data()[i : i+windowSize])
-		movingStdDevData[i] = window.Stdev().(float64)
+		movingStdDevData[i] = window.Stdev()
 	}
 	return NewDataList(movingStdDevData)
 }
@@ -1382,25 +1382,21 @@ func (dl *DataList) MAD() float64 {
 	return sum / float64(count)
 }
 
-// Stdev calculates the standard deviation(sample) of the DataList.
-// Returns the standard deviation.
-// Returns nil if the DataList is empty.
-// Stdev returns the standard deviation of the DataList.
-func (dl *DataList) Stdev() interface{} {
+// Stdev calculates the standard deviation (sample) of the DataList.
+// Returns math.NaN() if the DataList is empty or if no valid elements can be used.
+func (dl *DataList) Stdev() float64 {
 	if len(dl.data) == 0 {
-		LogWarning("DataList.Stdev(): DataList is empty, returning nil.")
-		return nil
+		LogWarning("DataList.Stdev(): DataList is empty.")
+		return math.NaN()
 	}
 
-	variance := dl.Var()
-
-	if variance == nil {
-		LogWarning("DataList.Stdev(): Variance calculation failed, returning nil.")
-		return nil
+	variance := dl.Var().(float64)
+	if math.IsNaN(variance) {
+		LogWarning("DataList.Stdev(): Variance calculation failed.")
+		return math.NaN()
 	}
 
-	// 普通模式下使用 float64 計算
-	return math.Sqrt(ToFloat64(variance))
+	return math.Sqrt(variance)
 }
 
 // StdevP calculates the standard deviation(population) of the DataList.

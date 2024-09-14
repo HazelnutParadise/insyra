@@ -231,7 +231,7 @@ func TestMAD(t *testing.T) {
 // 測試 Stdev 函數
 func TestStdev(t *testing.T) {
 	dl := NewDataList(1, 2, 3, 4)
-	stdev := dl.Stdev().(float64)
+	stdev := dl.Stdev()
 
 	if !float64Equal(stdev, 1.2909944487358056) {
 		t.Errorf("Expected standard deviation 1.2909944487358056, got %v", stdev)
