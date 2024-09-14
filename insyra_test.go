@@ -142,7 +142,7 @@ func TestMax(t *testing.T) {
 	dl := NewDataList(1, 2, 3, 4)
 	max := dl.Max()
 
-	if v, ok := max.(float64); !ok || !float64Equal(v, 4) {
+	if !float64Equal(max, 4) {
 		t.Errorf("Expected max 4, got %v", max)
 	}
 }

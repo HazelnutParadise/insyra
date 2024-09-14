@@ -73,7 +73,7 @@ type IDataList interface {
 	Capitalize() *DataList
 	// Statistics
 	Sum() float64
-	Max() interface{}
+	Max() float64
 	Min() interface{}
 	Mean() float64
 	WeightedMean(weights interface{}) interface{}
@@ -727,14 +727,14 @@ func (dl *DataList) Normalize() *DataList {
 		go dl.updateTimestamp()
 	}()
 	min, max := dl.Min(), dl.Max()
-	if min == nil || max == nil {
+	if min == nil || math.IsNaN(max) {
 		LogWarning("Normalize: Cannot normalize due to invalid Min/Max values.")
 		return nil
 	}
 
 	for i, v := range dl.Data() {
 		vfloat := conv.ParseF64(v)
-		dl.data[i] = (vfloat - min.(float64)) / (max.(float64) - min.(float64))
+		dl.data[i] = (vfloat - min.(float64)) / (max - min.(float64))
 	}
 	return dl
 }
@@ -1086,31 +1086,35 @@ func (dl *DataList) Sum() float64 {
 }
 
 // Max returns the maximum value in the DataList.
-// Returns the maximum value.
-// Returns nil if the DataList is empty.
-// Max returns the maximum value in the DataList, or nil if the data types cannot be compared.
-func (dl *DataList) Max() interface{} {
-	defer func() {
-		r := recover()
-		if r != nil {
-			LogWarning("DataList.Max(): Data types cannot be compared, returning nil.")
-		}
-	}()
+// Returns math.NaN() if the DataList is empty or if no elements can be converted to float64.
+func (dl *DataList) Max() float64 {
 	if len(dl.data) == 0 {
-		return nil
+		LogWarning("DataList.Max(): DataList is empty.")
+		return math.NaN()
 	}
 
-	var max = math.NaN()
+	var max float64
+	var foundValid bool
 
 	for _, v := range dl.data {
-		vfloat := conv.ParseF64(v)
-		if math.IsNaN(max) {
+		vfloat, ok := ToFloat64Safe(v)
+		if !ok {
+			LogWarning("DataList.Max(): Element %v is not a numeric type, skipping.", v)
+			continue
+		}
+		if !foundValid {
 			max = vfloat
+			foundValid = true
 			continue
 		}
 		if vfloat > max {
 			max = vfloat
 		}
+	}
+
+	if !foundValid {
+		LogWarning("DataList.Max(): No valid elements to compute maximum.")
+		return math.NaN()
 	}
 
 	return max
