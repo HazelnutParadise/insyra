@@ -117,8 +117,8 @@ func (lp *LinePlot) Draw() *image.RGBA {
 	width := lp.Plotter.Width
 	height := lp.Plotter.Height
 
-	margin := 120     // 增加左側邊界以留更多空間給縱軸文字
-	rightMargin := 50 // 新增右側邊界
+	margin := 150     // 增加左側邊界以留更多空間給縱軸文字
+	rightMargin := 80 // 新增右側邊界
 
 	img := image.NewRGBA(image.Rect(0, 0, width, height))
 
@@ -190,7 +190,7 @@ func (lp *LinePlot) drawAxes(img *image.RGBA, margin int, rightMargin int) {
 	}
 
 	// 繪製X軸標籤
-	drawText(img, lp.Options.XLabel, margin+width/2-50, margin+height+50, color.Black, lp.Options.FontSize) // 新增字體大小參數
+	drawText(img, lp.Options.XLabel, margin+width/2-50, margin+height+60, color.Black, lp.Options.FontSize) // 新增字體大小參數
 
 	// 繪製Y軸標籤，增加更多左側空間
 	drawText(img, lp.Options.YLabel, margin-100, height/2+margin, color.Black, lp.Options.FontSize) // 新增字體大小參數
