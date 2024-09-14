@@ -167,6 +167,16 @@ func TestMean(t *testing.T) {
 	}
 }
 
+// 測試 GMean 函數
+func TestGMean(t *testing.T) {
+	dl := NewDataList(1, 2, 3, "J", 4)
+	gmean := dl.GMean()
+
+	if !float64Equal(gmean, 2.213363839400643) {
+		t.Errorf("Expected geometric mean 2.213363839400643, got %v", gmean)
+	}
+}
+
 // 測試 SetName 和 GetName 函數
 func TestSetName(t *testing.T) {
 	dl := NewDataList(1, 2, 3, 4)
