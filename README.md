@@ -4,7 +4,7 @@
 
 A Golang data analysis library.
 
-**[繁體中文版 README](https://github.com/HazelnutParadise/insyra/blob/0a417963ec4181de157c48115b8f75fc7d204269/README_TW.md)**
+**[繁體中文版 README](README_TW.md)**
 
 ## Overview
 
