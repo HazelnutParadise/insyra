@@ -72,7 +72,7 @@ type IDataList interface {
 	Lower() *DataList
 	Capitalize() *DataList
 	// Statistics
-	Sum() interface{}
+	Sum() float64
 	Max() interface{}
 	Min() interface{}
 	Mean() float64
@@ -1057,19 +1057,29 @@ func (dl *DataList) Capitalize() *DataList {
 
 // ======================== Statistics ========================
 
-func (dl *DataList) Sum() interface{} {
+// Sum calculates the sum of all elements in the DataList.
+// Returns math.NaN() if the DataList is empty or if no elements can be converted to float64.
+func (dl *DataList) Sum() float64 {
 	if len(dl.data) == 0 {
-		LogWarning("DataList.Sum(): DataList is empty, returning nil.")
-		return nil
+		LogWarning("DataList.Sum(): DataList is empty.")
+		return math.NaN()
 	}
-	var sum float64
+
+	sum := 0.0
+	count := 0
 	for _, v := range dl.data {
 		vfloat, ok := ToFloat64Safe(v)
 		if !ok {
-			LogWarning("DataList.Sum(): Data types cannot be compared, returning nil.")
-			return nil
+			LogWarning("DataList.Sum(): Element %v cannot be converted to float64, skipping.", v)
+			continue
 		}
 		sum += vfloat
+		count++
+	}
+
+	if count == 0 {
+		LogWarning("DataList.Sum(): No valid elements to compute sum.")
+		return math.NaN()
 	}
 
 	return sum

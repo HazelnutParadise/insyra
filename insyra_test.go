@@ -157,6 +157,16 @@ func TestMin(t *testing.T) {
 	}
 }
 
+// 測試 Sum 函數
+func TestSum(t *testing.T) {
+	dl := NewDataList(1, 2, 3, 4, "J")
+	sum := dl.Sum()
+
+	if !float64Equal(sum, 10) {
+		t.Errorf("Expected sum 10, got %v", sum)
+	}
+}
+
 // 測試 Mean 函數
 func TestMean(t *testing.T) {
 	dl := NewDataList(1, 2, 3, int(4), "5")

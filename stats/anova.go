@@ -33,7 +33,7 @@ func OneWayANOVA_WideFormat(dataTable insyra.IDataTable) *OneWayANOVAResult {
 	totalSum := 0.0
 	totalCount := 0
 	for _, group := range groups {
-		totalSum += group.Sum().(float64)
+		totalSum += group.Sum()
 		totalCount += group.Len()
 	}
 	totalMean := totalSum / float64(totalCount)

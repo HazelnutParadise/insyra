@@ -1329,7 +1329,7 @@ func (dt *DataTable) Mean() interface{} {
 	dt.mu.Lock()
 	totalCount := rowNum * colNum
 	for _, column := range dt.columns {
-		totalSum += column.Sum().(float64)
+		totalSum += column.Sum()
 	}
 	return totalSum / float64(totalCount)
 }
