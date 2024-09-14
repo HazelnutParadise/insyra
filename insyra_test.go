@@ -268,6 +268,16 @@ func TestVarP(t *testing.T) {
 	}
 }
 
+// 測試 Range 函數
+func TestRange(t *testing.T) {
+	dl := NewDataList(1, 2, 3, 4)
+	r := dl.Range()
+
+	if !float64Equal(r, 3) {
+		t.Errorf("Expected range 3, got %v", r)
+	}
+}
+
 // 測試 SetName 和 GetName 函數
 func TestSetName(t *testing.T) {
 	dl := NewDataList(1, 2, 3, 4)

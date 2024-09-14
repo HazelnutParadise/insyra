@@ -85,7 +85,7 @@ type IDataList interface {
 	StdevP() float64
 	Var() float64
 	VarP() float64
-	Range() interface{}
+	Range() float64
 	Quartile(int) interface{}
 	IQR() interface{}
 	Percentile(float64) interface{}
@@ -1508,17 +1508,20 @@ func (dl *DataList) VarP() float64 {
 }
 
 // Range calculates the range of the DataList.
-// Returns the range.
-// Returns nil if the DataList is empty.
-// Range returns the range of the DataList.
-func (dl *DataList) Range() interface{} {
+// Returns math.NaN() if the DataList is empty or if Max or Min cannot be calculated.
+func (dl *DataList) Range() float64 {
 	if len(dl.data) == 0 {
-		LogWarning("DataList.Range(): DataList is empty, returning nil.")
-		return nil
+		LogWarning("DataList.Range(): DataList is empty.")
+		return math.NaN()
 	}
 
-	max := ToFloat64(dl.Max())
-	min := ToFloat64(dl.Min())
+	max := dl.Max()
+	min := dl.Min()
+
+	if math.IsNaN(max) || math.IsNaN(min) {
+		LogWarning("DataList.Range(): Max or Min calculation failed.")
+		return math.NaN()
+	}
 
 	return max - min
 }
