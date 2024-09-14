@@ -76,7 +76,7 @@ type IDataList interface {
 	Max() float64
 	Min() float64
 	Mean() float64
-	WeightedMean(weights interface{}) interface{}
+	WeightedMean(weights interface{}) float64
 	GMean() float64
 	Median(highPrecision ...bool) interface{}
 	Mode() interface{}
@@ -1187,23 +1187,48 @@ func (dl *DataList) Mean() float64 {
 }
 
 // WeightedMean calculates the weighted mean of the DataList using the provided weights.
-func (dl *DataList) WeightedMean(weights interface{}) interface{} {
+// The weights parameter should be a slice or a DataList of the same length as the DataList.
+// Returns math.NaN() if the DataList is empty, weights are invalid, or if no valid elements can be used.
+func (dl *DataList) WeightedMean(weights interface{}) float64 {
+	if dl.Len() == 0 {
+		LogWarning("DataList.WeightedMean(): DataList is empty.")
+		return math.NaN()
+	}
+
 	weightsSlice, sliceLen := ProcessData(weights)
 	if sliceLen != dl.Len() {
-		LogWarning("DataList.WeightedMean(): Weights length does not match data length, returning nil.")
-		return nil
+		LogWarning("DataList.WeightedMean(): Weights length does not match data length.")
+		return math.NaN()
 	}
 
 	totalWeight := 0.0
 	weightedSum := 0.0
+	validElements := 0
+
 	for i, v := range dl.Data() {
-		weightedSum += conv.ParseF64(v) * weightsSlice[i].(float64)
-		totalWeight += weightsSlice[i].(float64)
+		vfloat, ok1 := ToFloat64Safe(v)
+		wfloat, ok2 := ToFloat64Safe(weightsSlice[i])
+		if !ok1 {
+			LogWarning(fmt.Sprintf("DataList.WeightedMean(): Data element at index %d cannot be converted to float64, skipping.", i))
+			continue
+		}
+		if !ok2 {
+			LogWarning(fmt.Sprintf("DataList.WeightedMean(): Weight at index %d cannot be converted to float64, skipping.", i))
+			continue
+		}
+		weightedSum += vfloat * wfloat
+		totalWeight += wfloat
+		validElements++
+	}
+
+	if validElements == 0 {
+		LogWarning("DataList.WeightedMean(): No valid elements to compute weighted mean.")
+		return math.NaN()
 	}
 
 	if totalWeight == 0 {
-		LogWarning("DataList.WeightedMean(): Total weight is zero, returning 0.")
-		return 0
+		LogWarning("DataList.WeightedMean(): Total weight is zero, returning NaN.")
+		return math.NaN()
 	}
 
 	return weightedSum / totalWeight

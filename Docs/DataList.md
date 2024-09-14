@@ -70,7 +70,7 @@ The `DataList` type provides a dynamic and generic way to store and manage a col
 * **Max:** Returns the maximum value in the DataList. Skips non-numeric data types during comparison.
 * **Min:** Returns the minimum value in the DataList. Similar logic to Max is applied for data type handling.
 * **Mean:** Calculates the arithmetic mean (average) of the DataList elements. Excludes non-numeric data types.
-* **WeightedMean:** Calculates the weighted mean of the DataList elements based on the provided weights.
+* **WeightedMean:** Calculates the weighted mean of the DataList elements based on the provided weights. The weights can be provided as a DataList or a slice of float64 values.
 * **GMean:** Calculates the geometric mean of the DataList elements. Excludes non-numeric data types.
 * **Median:** Returns the median value of the DataList after sorting the elements.
 * **Mode:** Returns the most frequent value (mode) in the DataList.

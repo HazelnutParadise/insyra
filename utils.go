@@ -72,31 +72,48 @@ func SliceToF64(data []interface{}) []float64 {
 
 // ProcessData processes the input data and returns the data and the length of the data.
 // Returns nil and 0 if the data type is unsupported.
-// Supported data types are []interface{} and IDataList.
-// ProcessData 將各種數字類型的切片轉換為 interface{} 切片
+// Supported data types are slices, IDataList, and pointers to these types.
+// ProcessData 将各种数字类型的切片转换为 []interface{}
 func ProcessData(input interface{}) ([]interface{}, int) {
 	var data []interface{}
 
-	// 使用反射來處理數據類型
+	// 使用反射来处理数据类型
 	value := reflect.ValueOf(input)
+
+	// 处理指针类型，获取指针指向的元素
+	if value.Kind() == reflect.Ptr {
+		value = value.Elem()
+	}
+
 	switch value.Kind() {
 	case reflect.Slice:
-		// 遍歷切片中的每一個元素
+		// 遍历切片中的每一个元素
 		for i := 0; i < value.Len(); i++ {
 			element := value.Index(i).Interface()
-			data = append(data, element) // 將數據轉換為 float64 類型
+			data = append(data, element)
 		}
 	case reflect.Interface:
-		// 支援 IDataList 的斷言
+		// 支持 IDataList 的断言
 		if dl, ok := input.(IDataList); ok {
 			data = dl.Data()
 		} else {
 			LogWarning("ProcessData(): Unsupported data type %T, returning nil.", input)
 			return nil, 0
 		}
+	case reflect.Array:
+		// 如果需要支持数组类型，可以添加对 reflect.Array 的处理
+		for i := 0; i < value.Len(); i++ {
+			element := value.Index(i).Interface()
+			data = append(data, element)
+		}
 	default:
-		LogWarning("ProcessData(): Unsupported data type %T, returning nil.", input)
-		return nil, 0
+		// 尝试类型断言为 IDataList
+		if dl, ok := input.(IDataList); ok {
+			data = dl.Data()
+		} else {
+			LogWarning("ProcessData(): Unsupported data type %T, returning nil.", input)
+			return nil, 0
+		}
 	}
 
 	return data, len(data)

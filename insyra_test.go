@@ -177,6 +177,17 @@ func TestMean(t *testing.T) {
 	}
 }
 
+// 測試 WeightedMean 函數
+func TestWeightedMean(t *testing.T) {
+	dl := NewDataList(1, 2, 3, 4)
+	weights := NewDataList(1, 2, 3, 4)
+	mean := dl.WeightedMean(weights)
+
+	if !float64Equal(mean, 3) {
+		t.Errorf("Expected weighted mean 3, got %v", mean)
+	}
+}
+
 // 測試 GMean 函數
 func TestGMean(t *testing.T) {
 	dl := NewDataList(1, 2, 3, "J", 4)
