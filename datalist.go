@@ -84,7 +84,7 @@ type IDataList interface {
 	Stdev() float64
 	StdevP() float64
 	Var() float64
-	VarP() interface{}
+	VarP() float64
 	Range() interface{}
 	Quartile(int) interface{}
 	IQR() interface{}
@@ -1408,12 +1408,12 @@ func (dl *DataList) StdevP() float64 {
 	}
 
 	varianceP := dl.VarP()
-	if math.IsNaN(varianceP.(float64)) {
+	if math.IsNaN(varianceP) {
 		LogWarning("DataList.StdevP(): Variance calculation failed.")
 		return math.NaN()
 	}
 
-	return math.Sqrt(varianceP.(float64))
+	return math.Sqrt(varianceP)
 }
 
 // Var calculates the variance (sample variance) of the DataList.
@@ -1462,32 +1462,49 @@ func (dl *DataList) Var() float64 {
 	return variance
 }
 
-// VarP calculates the variance(population) of the DataList.
-// Returns the variance.
-// Returns nil if the DataList is empty or the variance cannot be calculated.
-func (dl *DataList) VarP() interface{} {
-	n := float64(dl.Len())
-	if n == 0.0 {
-		LogWarning("DataList.VarP(): DataList is empty, returning nil.")
-		return nil
+// VarP calculates the variance (population variance) of the DataList.
+// Returns math.NaN() if the DataList is empty or if no valid elements can be used.
+func (dl *DataList) VarP() float64 {
+	if len(dl.data) == 0 {
+		LogWarning("DataList.VarP(): DataList is empty.")
+		return math.NaN()
 	}
 
-	mean, ok := ToFloat64Safe(dl.Mean())
-	if !ok {
-		LogWarning("DataList.VarP(): Mean is not a float64, returning nil.")
-		return nil
-	}
-	numerator := 0.0
-	for i := 0; i < len(dl.data); i++ {
-		xi, ok := ToFloat64Safe(dl.data[i])
+	// First pass: compute mean over valid elements
+	var sum float64
+	var count int
+
+	for _, v := range dl.data {
+		xi, ok := ToFloat64Safe(v)
 		if !ok {
-			LogWarning("DataList.VarP(): Element is not a float64, returning nil.")
-			return nil
+			LogWarning("DataList.VarP(): Element %v is not a numeric type, skipping.", v)
+			continue
+		}
+		sum += xi
+		count++
+	}
+
+	if count == 0 {
+		LogWarning("DataList.VarP(): No valid elements to compute variance.")
+		return math.NaN()
+	}
+
+	mean := sum / float64(count)
+
+	// Second pass: compute variance
+	var numerator float64
+	for _, v := range dl.data {
+		xi, ok := ToFloat64Safe(v)
+		if !ok {
+			// Already logged, skip this element
+			continue
 		}
 		numerator += math.Pow(xi-mean, 2)
 	}
-	return numerator / n
 
+	variance := numerator / float64(count) // Population variance divides by N
+
+	return variance
 }
 
 // Range calculates the range of the DataList.
