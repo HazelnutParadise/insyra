@@ -87,7 +87,7 @@ type IDataList interface {
 	VarP() float64
 	Range() float64
 	Quartile(int) float64
-	IQR() interface{}
+	IQR() float64
 	Percentile(float64) interface{}
 	Difference() *DataList
 	ParseNumbers()
@@ -1609,23 +1609,22 @@ func (dl *DataList) Quartile(q int) float64 {
 }
 
 // IQR calculates the interquartile range of the DataList.
-// Returns the interquartile range.
-// Returns nil if the DataList is empty.
-func (dl *DataList) IQR() interface{} {
+// Returns math.NaN() if the DataList is empty or if Q1 or Q3 cannot be calculated.
+// Returns the interquartile range (Q3 - Q1) as a float64.
+func (dl *DataList) IQR() float64 {
 	if len(dl.data) == 0 {
-		LogWarning("DataList.IQR(): DataList is empty, returning nil.")
-		return nil
+		LogWarning("DataList.IQR(): DataList is empty.")
+		return math.NaN()
 	}
-	q3, ok := ToFloat64Safe(dl.Quartile(3))
-	if !ok {
-		LogWarning("DataList.IQR(): Q3 is not a float64, returning nil.")
-		return nil
+
+	q1 := dl.Quartile(1)
+	q3 := dl.Quartile(3)
+
+	if math.IsNaN(q1) || math.IsNaN(q3) {
+		LogWarning("DataList.IQR(): Q1 or Q3 calculation failed.")
+		return math.NaN()
 	}
-	q1, ok := ToFloat64Safe(dl.Quartile(1))
-	if !ok {
-		LogWarning("DataList.IQR(): Q1 is not a float64, returning nil.")
-		return nil
-	}
+
 	return q3 - q1
 }
 

@@ -288,6 +288,16 @@ func TestQuartile(t *testing.T) {
 	}
 }
 
+// 測試 IQR 函數
+func TestIQR(t *testing.T) {
+	dl := NewDataList(6, 47, 49, 15, 42, 41, 7, 39, 43, 40, 36)
+	iqr := dl.IQR()
+
+	if !float64Equal(iqr, 28) {
+		t.Errorf("Expected IQR 28, got %v", iqr)
+	}
+}
+
 // 測試 SetName 和 GetName 函數
 func TestSetName(t *testing.T) {
 	dl := NewDataList(1, 2, 3, 4)
