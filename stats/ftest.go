@@ -17,8 +17,8 @@ type FTestResult struct {
 // FTestForVarianceEquality performs an F-test for variance equality
 func FTestForVarianceEquality(data1, data2 *insyra.DataList) *FTestResult {
 	// 計算方差
-	var1 := data1.Var(false).(float64)
-	var2 := data2.Var(false).(float64)
+	var1 := data1.Var().(float64)
+	var2 := data2.Var().(float64)
 
 	// 計算 F 值
 	var fValue float64

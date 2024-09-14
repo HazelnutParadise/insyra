@@ -84,7 +84,7 @@ type IDataList interface {
 	MAD() interface{}
 	Stdev() interface{}
 	StdevP() interface{}
-	Var(highPrecision ...bool) interface{}
+	Var() interface{}
 	VarP(highPrecision ...bool) interface{}
 	Range() interface{}
 	Quartile(int) interface{}
@@ -1363,7 +1363,7 @@ func (dl *DataList) Stdev() interface{} {
 		return nil
 	}
 
-	variance := dl.Var(false)
+	variance := dl.Var()
 
 	if variance == nil {
 		LogWarning("DataList.Stdev(): Variance calculation failed, returning nil.")
@@ -1396,45 +1396,13 @@ func (dl *DataList) StdevP() interface{} {
 // Var calculates the variance(sample) of the DataList.
 // Returns the variance.
 // Returns nil if the DataList is empty or the variance cannot be calculated.
-func (dl *DataList) Var(highPrecision ...bool) interface{} {
+func (dl *DataList) Var() interface{} {
 	n := float64(dl.Len())
 	if n == 0.0 {
 		LogWarning("DataList.Var(): DataList is empty, returning nil.")
 		return nil
 	}
 
-	// 判斷是否使用高精度模式
-	useHighPrecision := len(highPrecision) == 1 && highPrecision[0]
-	if len(highPrecision) > 1 {
-		LogWarning("DataList.Var(): Too many arguments, returning nil.")
-		return nil
-	}
-
-	if useHighPrecision {
-		// 使用 big.Rat 進行高精度計算
-		mean := new(big.Rat).SetFloat64(dl.Mean())
-		denominator := new(big.Rat).SetFloat64(n - 1)
-		if denominator.Cmp(big.NewRat(0, 1)) == 0 {
-			LogWarning("DataList.Var(): Denominator is 0, returning nil.")
-			return nil
-		}
-		numerator := new(big.Rat)
-		for i := 0; i < len(dl.data); i++ {
-			xi, ok := ToFloat64Safe(dl.data[i])
-			if !ok {
-				LogWarning("DataList.Var(): Element is not a float64, returning nil.")
-				return nil
-			}
-			ratXi := new(big.Rat).SetFloat64(xi)
-			diff := new(big.Rat).Sub(ratXi, mean)
-			squareDiff := new(big.Rat).Mul(diff, diff)
-			numerator.Add(numerator, squareDiff)
-		}
-		variance := new(big.Rat).Quo(numerator, denominator)
-		return variance
-	}
-
-	// 普通模式使用 float64 計算
 	mean := dl.Mean()
 	denominator := n - 1
 	if denominator == 0 {
