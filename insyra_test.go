@@ -208,6 +208,16 @@ func TestMedian(t *testing.T) {
 	}
 }
 
+// 測試 Mode 函數
+func TestMode(t *testing.T) {
+	dl := NewDataList(1, 2, 3, 2, 4)
+	mode := dl.Mode()
+
+	if !float64Equal(mode, 2) {
+		t.Errorf("Expected mode 2, got %v", mode)
+	}
+}
+
 // 測試 Stdev 函數
 func TestStdev(t *testing.T) {
 	dl := NewDataList(1, 2, 3, 4)

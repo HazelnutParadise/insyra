@@ -79,7 +79,7 @@ type IDataList interface {
 	WeightedMean(weights interface{}) float64
 	GMean() float64
 	Median() float64
-	Mode() interface{}
+	Mode() float64
 	MAD() interface{}
 	Stdev() interface{}
 	StdevP() interface{}
@@ -1311,21 +1311,29 @@ func (dl *DataList) Median() float64 {
 }
 
 // Mode calculates the mode of the DataList.
-// Returns the mode.
-// Returns nil if the DataList is empty.
-// Mode returns the mode of the DataList.
-func (dl *DataList) Mode() interface{} {
+// Returns math.NaN() if the DataList is empty or if no valid elements can be used.
+func (dl *DataList) Mode() float64 {
 	if len(dl.data) == 0 {
-		LogWarning("DataList.Mode(): DataList is empty, returning nil.")
-		return nil
+		LogWarning("DataList.Mode(): DataList is empty.")
+		return math.NaN()
 	}
 
-	freqMap := make(map[interface{}]int)
+	freqMap := make(map[float64]int)
 	for _, v := range dl.data {
-		freqMap[v]++
+		vfloat, ok := ToFloat64Safe(v)
+		if !ok {
+			LogWarning("DataList.Mode(): Element %v is not a numeric type, skipping.", v)
+			continue
+		}
+		freqMap[vfloat]++
 	}
 
-	var mode interface{}
+	if len(freqMap) == 0 {
+		LogWarning("DataList.Mode(): No valid elements to compute mode.")
+		return math.NaN()
+	}
+
+	var mode float64
 	maxFreq := 0
 	for k, v := range freqMap {
 		if v > maxFreq {
@@ -1334,7 +1342,7 @@ func (dl *DataList) Mode() interface{} {
 		}
 	}
 
-	return mode.(float64)
+	return mode
 }
 
 // MAD calculates the mean absolute deviation of the DataList.
