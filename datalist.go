@@ -1311,6 +1311,7 @@ func (dl *DataList) Median() float64 {
 }
 
 // Mode calculates the mode of the DataList.
+// Only works with numeric data types.
 // Returns math.NaN() if the DataList is empty or if no valid elements can be used.
 func (dl *DataList) Mode() float64 {
 	if len(dl.data) == 0 {
