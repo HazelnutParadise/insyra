@@ -251,7 +251,7 @@ func TestStdevP(t *testing.T) {
 // 測試 Var 函數
 func TestVar(t *testing.T) {
 	dl := NewDataList(1, 2, 3, 4)
-	variance := dl.Var().(float64)
+	variance := dl.Var()
 
 	if !float64Equal(variance, 1.6666666666666667) {
 		t.Errorf("Expected variance 1.6666666666666667, got %v", variance)
