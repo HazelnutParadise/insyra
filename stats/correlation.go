@@ -91,8 +91,8 @@ func pearsonCorrelation(dlX, dlY insyra.IDataList) *big.Rat {
 	cov := Covariance(dlX, dlY)
 
 	// 計算標準差
-	stdX := new(big.Rat).SetFloat64(dlX.Stdev().(float64))
-	stdY := new(big.Rat).SetFloat64(dlY.Stdev().(float64))
+	stdX := new(big.Rat).SetFloat64(dlX.Stdev())
+	stdY := new(big.Rat).SetFloat64(dlY.Stdev())
 
 	// 防止除以0
 	if stdX.Sign() == 0 || stdY.Sign() == 0 {
