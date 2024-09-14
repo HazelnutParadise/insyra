@@ -78,7 +78,7 @@ type IDataList interface {
 	Mean() float64
 	WeightedMean(weights interface{}) float64
 	GMean() float64
-	Median() interface{}
+	Median() float64
 	Mode() interface{}
 	MAD() interface{}
 	Stdev() interface{}
@@ -1271,33 +1271,43 @@ func (dl *DataList) GMean() float64 {
 }
 
 // Median calculates the median of the DataList.
-// Returns the median.
-// Returns nil if the DataList is empty.
-func (dl *DataList) Median() interface{} {
+// Returns math.NaN() if the DataList is empty or if no valid elements can be used.
+func (dl *DataList) Median() float64 {
 	if len(dl.data) == 0 {
-		LogWarning("DataList.Median(): DataList is empty, returning nil.")
-		return nil
+		LogWarning("DataList.Median(): DataList is empty.")
+		return math.NaN()
 	}
 
-	// 對數據進行排序
-	sortedData := make([]float64, len(dl.data))
-	copy(sortedData, dl.ToF64Slice())
-	sliceutil.Sort(sortedData)
+	// Convert data to float64 and skip invalid elements
+	var validData []float64
+	for _, v := range dl.data {
+		vfloat, ok := ToFloat64Safe(v)
+		if !ok {
+			LogWarning("DataList.Median(): Element %v is not a numeric type, skipping.", v)
+			continue
+		}
+		validData = append(validData, vfloat)
+	}
 
-	mid := len(sortedData) / 2
+	if len(validData) == 0 {
+		LogWarning("DataList.Median(): No valid elements to compute median.")
+		return math.NaN()
+	}
 
-	if len(sortedData)%2 == 0 {
-		// 當元素個數為偶數時，返回中間兩個數的平均值
-		mid1 := ToFloat64(sortedData[mid-1])
-		mid2 := ToFloat64(sortedData[mid])
+	// Sort the valid data
+	sort.Float64s(validData)
 
-		// 使用 float64 計算並返回
+	mid := len(validData) / 2
+
+	if len(validData)%2 == 0 {
+		// Even number of elements, return the average of the middle two
+		mid1 := validData[mid-1]
+		mid2 := validData[mid]
 		return (mid1 + mid2) / 2
 	}
 
-	// 當元素個數為奇數時，返回中間的那個數
-	midValue := ToFloat64(sortedData[mid])
-	return midValue
+	// Odd number of elements, return the middle one
+	return validData[mid]
 }
 
 // Mode calculates the mode of the DataList.
@@ -1337,7 +1347,7 @@ func (dl *DataList) MAD() interface{} {
 	}
 
 	median := dl.Median()
-	if median == nil {
+	if math.IsNaN(median) {
 		LogWarning("DataList.Mad(): Median calculation failed, returning nil.")
 		return nil
 	}
@@ -1346,7 +1356,7 @@ func (dl *DataList) MAD() interface{} {
 	var sum float64
 	for _, v := range dl.data {
 		val := ToFloat64(v)
-		sum += math.Abs(val - median.(float64))
+		sum += math.Abs(val - median)
 	}
 
 	return sum / float64(len(dl.data))

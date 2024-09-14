@@ -198,6 +198,16 @@ func TestGMean(t *testing.T) {
 	}
 }
 
+// 測試 Median 函數
+func TestMedian(t *testing.T) {
+	dl := NewDataList(1, 2, 3, 4)
+	median := dl.Median()
+
+	if !float64Equal(median, 2.5) {
+		t.Errorf("Expected median 2.5, got %v", median)
+	}
+}
+
 // 測試 Stdev 函數
 func TestStdev(t *testing.T) {
 	dl := NewDataList(1, 2, 3, 4)
