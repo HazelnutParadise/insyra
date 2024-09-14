@@ -62,7 +62,7 @@ func Skewness(sample interface{}, method ...int) interface{} {
 func calculateSkewType1(dl *insyra.DataList, highPrecision ...bool) interface{} {
 	n := new(big.Rat).SetFloat64(conv.ParseF64(dl.Len()))
 	nReciprocal := new(big.Rat).Inv(n)
-	m1 := dl.Mean(true).(*big.Rat)
+	m1 := new(big.Rat).SetFloat64(dl.Mean())
 	toM2Fn := func() *big.Rat {
 		var m2Cal = new(big.Rat)
 		for _, v := range dl.Data() {

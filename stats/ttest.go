@@ -26,7 +26,7 @@ func SingleSampleTTest(data insyra.IDataList, mu float64) *TTestResult {
 	}
 
 	// 計算樣本均值
-	mean := data.Mean(false).(float64)
+	mean := data.Mean()
 
 	// 計算標準差和標準誤差
 	stddev := data.Stdev(false).(float64)
@@ -56,8 +56,8 @@ func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool) *TTestRes
 	}
 
 	// 計算兩個樣本的均值
-	mean1 := data1.Mean(false).(float64)
-	mean2 := data2.Mean(false).(float64)
+	mean1 := data1.Mean()
+	mean2 := data2.Mean()
 
 	// 計算兩個樣本的標準差
 	stddev1 := data1.Stdev(false).(float64)
@@ -109,7 +109,7 @@ func PairedTTest(data1, data2 insyra.IDataList) *TTestResult {
 	}
 
 	// 計算差值的均值和標準差
-	meanDiff := insyra.NewDataList(diffs).Mean(false).(float64)
+	meanDiff := insyra.NewDataList(diffs).Mean()
 	stddevDiff := insyra.NewDataList(diffs).Stdev(false).(float64)
 
 	// 計算 t 值

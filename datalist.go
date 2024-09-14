@@ -71,10 +71,11 @@ type IDataList interface {
 	Upper() *DataList
 	Lower() *DataList
 	Capitalize() *DataList
+	// Statistics
 	Sum() interface{}
 	Max() interface{}
 	Min() interface{}
-	Mean(highPrecision ...bool) interface{}
+	Mean() float64
 	WeightedMean(weights interface{}) interface{}
 	GMean() interface{}
 	Median(highPrecision ...bool) interface{}
@@ -407,7 +408,7 @@ func (dl *DataList) ReplaceAll(oldValue, newValue interface{}) {
 
 // ReplaceOutliers replaces outliers in the DataList with the specified replacement value (e.g., mean, median).
 func (dl *DataList) ReplaceOutliers(stdDevs float64, replacement float64) *DataList {
-	mean := dl.Mean(false).(float64)
+	mean := dl.Mean()
 	stddev := dl.Stdev(false).(float64)
 	threshold := stdDevs * stddev
 
@@ -693,7 +694,7 @@ func (dl *DataList) ClearOutliers(stdDevs float64) *DataList {
 		go dl.updateTimestamp()
 	}()
 
-	mean := dl.Mean(false).(float64)
+	mean := dl.Mean()
 	stddev := dl.Stdev(false).(float64)
 	threshold := stdDevs * stddev
 
@@ -750,7 +751,7 @@ func (dl *DataList) Standardize() *DataList {
 		go reorganizeMemory(dl)
 		go dl.updateTimestamp()
 	}()
-	mean := dl.Mean(false).(float64)
+	mean := dl.Mean()
 	stddev := dl.Stdev(false).(float64)
 	dl.mu.Lock()
 	for i, v := range dl.Data() {
@@ -774,7 +775,7 @@ func (dl *DataList) FillNaNWithMean() *DataList {
 	}()
 	dlclone := dl.Clone()
 	dlNoNaN := dlclone.ClearNaNs()
-	mean := dlNoNaN.Mean(false).(float64)
+	mean := dlNoNaN.Mean()
 	dl.mu.Lock()
 	for i, v := range dl.Data() {
 		vfloat := conv.ParseF64(v)
@@ -1137,56 +1138,33 @@ func (dl *DataList) Min() interface{} {
 }
 
 // Mean calculates the arithmetic mean of the DataList.
-// If highPrecision is true, it will calculate using big.Rat for high precision.
-// Otherwise, it calculates using float64.
-// Returns nil if the DataList is empty or if an invalid number of parameters is provided.
-func (dl *DataList) Mean(highPrecision ...bool) interface{} {
+// Returns math.NaN() if the DataList is empty or if no elements can be converted to float64.
+func (dl *DataList) Mean() float64 {
+	mean := math.NaN()
 	if len(dl.data) == 0 {
-		LogWarning("DataList.Mean(): DataList is empty, returning nil.")
-		return nil
-	}
-
-	// 檢查參數數量
-	if len(highPrecision) > 1 {
-		LogWarning("DataList.Mean(): Too many arguments, returning nil.")
-		return nil
-	}
-
-	// 默認使用普通模式（float64），若有參數則使用參數設定
-	highPrecisionMode := false
-	if len(highPrecision) == 1 {
-		highPrecisionMode = highPrecision[0]
-	}
-
-	if highPrecisionMode {
-		sum := new(big.Rat)
-		count := big.NewRat(int64(len(dl.data)), 1)
-
-		for _, v := range dl.data {
-			if val, ok := ToFloat64Safe(v); ok {
-				ratValue := new(big.Rat).SetFloat64(val)
-				sum.Add(sum, ratValue)
-			} else {
-				LogWarning("DataList.Mean(): Data types cannot be compared, returning nil.")
-				return nil
-			}
-		}
-
-		mean := new(big.Rat).Quo(sum, count)
+		LogWarning("DataList.Mean(): DataList is empty.")
 		return mean
 	}
 
-	// 普通模式（float64）
 	var sum float64
+	var count int
 	for _, v := range dl.data {
 		if val, ok := ToFloat64Safe(v); ok {
 			sum += val
+			count++
 		} else {
-			LogWarning("DataList.Mean(): Data types cannot be compared, returning nil.")
-			return nil
+			LogWarning("DataList.Mean(): Element %v cannot be converted to float64, skipping.", val)
+			// 跳过无法转换的元素
+			continue
 		}
 	}
-	mean := sum / float64(len(dl.data))
+
+	if count == 0 {
+		LogWarning("DataList.Mean(): No elements could be converted to float64.")
+		return mean
+	}
+
+	mean = sum / float64(count)
 	return mean
 }
 
@@ -1434,7 +1412,7 @@ func (dl *DataList) Var(highPrecision ...bool) interface{} {
 
 	if useHighPrecision {
 		// 使用 big.Rat 進行高精度計算
-		mean := dl.Mean(true).(*big.Rat)
+		mean := new(big.Rat).SetFloat64(dl.Mean())
 		denominator := new(big.Rat).SetFloat64(n - 1)
 		if denominator.Cmp(big.NewRat(0, 1)) == 0 {
 			LogWarning("DataList.Var(): Denominator is 0, returning nil.")
@@ -1457,7 +1435,7 @@ func (dl *DataList) Var(highPrecision ...bool) interface{} {
 	}
 
 	// 普通模式使用 float64 計算
-	mean := dl.Mean(false).(float64)
+	mean := dl.Mean()
 	denominator := n - 1
 	if denominator == 0 {
 		LogWarning("DataList.Var(): Denominator is 0, returning nil.")
@@ -1494,7 +1472,7 @@ func (dl *DataList) VarP(highPrecision ...bool) interface{} {
 
 	if useHighPrecision {
 		// 使用高精度计算
-		mean := dl.Mean(true).(*big.Rat)
+		mean := new(big.Rat).SetFloat64(dl.Mean())
 		numerator := new(big.Rat)
 		for i := 0; i < len(dl.data); i++ {
 			xi := new(big.Rat).SetFloat64(ToFloat64(dl.data[i]))

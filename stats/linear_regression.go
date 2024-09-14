@@ -30,8 +30,8 @@ func LinearRegression(dlX, dlY insyra.IDataList) *LinearRegressionResult {
 	}
 
 	// 計算 X 和 Y 的均值
-	meanX := dlX.Mean(true).(*big.Rat)
-	meanY := dlY.Mean(true).(*big.Rat)
+	meanX := new(big.Rat).SetFloat64(dlX.Mean())
+	meanY := new(big.Rat).SetFloat64(dlY.Mean())
 
 	// 初始化變量
 	numerator := new(big.Rat)

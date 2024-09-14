@@ -45,14 +45,14 @@ func OneWayANOVA_WideFormat(dataTable insyra.IDataTable) *OneWayANOVAResult {
 		func() {
 			SSB = 0.0
 			for _, group := range groups {
-				groupMean := group.Mean().(float64)
+				groupMean := group.Mean()
 				SSB += float64(group.Len()) * math.Pow(groupMean-totalMean, 2)
 			}
 		},
 		func() {
 			SSW = 0.0
 			for _, group := range groups {
-				groupMean := group.Mean().(float64)
+				groupMean := group.Mean()
 				for i := 0; i < group.Len(); i++ {
 					value, _ := group.Get(i).(float64)
 					SSW += math.Pow(value-groupMean, 2)
@@ -305,7 +305,7 @@ func RepeatedMeasuresANOVA_WideFormat(dataTable insyra.IDataTable) *RepeatedMeas
 	ssBetweenFunc := func() {
 		ssBetween = 0.0
 		for i := 0; i < rowNum; i++ {
-			conditionMean := dataTable.GetRow(i).Mean().(float64)
+			conditionMean := dataTable.GetRow(i).Mean()
 			ssBetween += float64(colNum) * math.Pow(conditionMean-grandMean, 2)
 		}
 	}

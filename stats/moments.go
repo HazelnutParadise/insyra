@@ -20,7 +20,7 @@ func CalculateMoment(dl insyra.IDataList, n int, central bool) *big.Rat {
 	// 初始化均值
 	mean := new(big.Rat)
 	if central {
-		mean = dl.Mean(true).(*big.Rat) // 計算均值
+		mean = new(big.Rat).SetFloat64(dl.Mean()) // 計算均值
 	}
 
 	// 初始化 n 階矩

@@ -25,8 +25,8 @@ const (
 // Covariance calculates the covariance between two datasets.
 // Always returns *big.Rat.
 func Covariance(dlX, dlY insyra.IDataList) *big.Rat {
-	meanX := dlX.Mean(true).(*big.Rat)
-	meanY := dlY.Mean(true).(*big.Rat)
+	meanX := new(big.Rat).SetFloat64(dlX.Mean())
+	meanY := new(big.Rat).SetFloat64(dlY.Mean())
 
 	cov := new(big.Rat)
 	for i := 0; i < dlX.Len(); i++ {

@@ -162,7 +162,7 @@ func TestMean(t *testing.T) {
 	dl := NewDataList(1, 2, 3, 4)
 	mean := dl.Mean()
 
-	if v, ok := mean.(float64); !ok || !float64Equal(v, 2.5) {
+	if !float64Equal(mean, 2.5) {
 		t.Errorf("Expected mean 2.5, got %v", mean)
 	}
 }
