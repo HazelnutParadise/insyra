@@ -83,7 +83,7 @@ type IDataList interface {
 	Mode() interface{}
 	MAD() interface{}
 	Stdev() interface{}
-	StdevP(highPrecision ...bool) interface{}
+	StdevP() interface{}
 	Var(highPrecision ...bool) interface{}
 	VarP(highPrecision ...bool) interface{}
 	Range() interface{}
@@ -1377,33 +1377,20 @@ func (dl *DataList) Stdev() interface{} {
 // StdevP calculates the standard deviation(population) of the DataList.
 // Returns the standard deviation.
 // Returns nil if the DataList is empty or the standard deviation cannot be calculated.
-func (dl *DataList) StdevP(highPrecision ...bool) interface{} {
+func (dl *DataList) StdevP() interface{} {
 	if len(dl.data) == 0 {
 		LogWarning("DataList.StdevP(): DataList is empty, returning nil.")
 		return nil
 	}
-	if len(highPrecision) > 1 {
-		LogWarning("DataList.StdevP(): Too many arguments, returning nil.")
-		return nil
-	}
-	var varianceP interface{}
-	if len(highPrecision) == 1 && highPrecision[0] {
-		// 使用 big.Rat 進行高精度計算
-		varianceP = dl.VarP(true)
-	} else {
-		varianceP = dl.VarP()
-	}
+
+	varianceP := dl.VarP()
 
 	if varianceP == nil {
 		LogWarning("DataList.StdevP(): Variance calculation failed, returning nil.")
 		return nil
 	}
 
-	if !highPrecision[0] {
-		return math.Sqrt(ToFloat64(varianceP))
-	} else {
-		return SqrtRat(varianceP.(*big.Rat))
-	}
+	return math.Sqrt(ToFloat64(varianceP))
 }
 
 // Var calculates the variance(sample) of the DataList.
