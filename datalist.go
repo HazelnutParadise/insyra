@@ -74,7 +74,7 @@ type IDataList interface {
 	// Statistics
 	Sum() float64
 	Max() float64
-	Min() interface{}
+	Min() float64
 	Mean() float64
 	WeightedMean(weights interface{}) interface{}
 	GMean() float64
@@ -727,14 +727,14 @@ func (dl *DataList) Normalize() *DataList {
 		go dl.updateTimestamp()
 	}()
 	min, max := dl.Min(), dl.Max()
-	if min == nil || math.IsNaN(max) {
+	if math.IsNaN(min) || math.IsNaN(max) {
 		LogWarning("Normalize: Cannot normalize due to invalid Min/Max values.")
 		return nil
 	}
 
 	for i, v := range dl.Data() {
 		vfloat := conv.ParseF64(v)
-		dl.data[i] = (vfloat - min.(float64)) / (max - min.(float64))
+		dl.data[i] = (vfloat - min) / (max - min)
 	}
 	return dl
 }
@@ -1121,31 +1121,35 @@ func (dl *DataList) Max() float64 {
 }
 
 // Min returns the minimum value in the DataList.
-// Returns the minimum value.
-// Returns nil if the DataList is empty.
-// Min returns the minimum value in the DataList, or nil if the data types cannot be compared.
-func (dl *DataList) Min() interface{} {
-	defer func() {
-		r := recover()
-		if r != nil {
-			LogWarning("DataList.Min(): Data types cannot be compared, returning nil.")
-		}
-	}()
+// Returns math.NaN() if the DataList is empty or if no elements can be converted to float64.
+func (dl *DataList) Min() float64 {
 	if len(dl.data) == 0 {
-		LogWarning("DataList.Min(): DataList is empty, returning nil.")
-		return nil
+		LogWarning("DataList.Min(): DataList is empty.")
+		return math.NaN()
 	}
 
-	var min = math.NaN()
+	var min float64
+	var foundValid bool
+
 	for _, v := range dl.data {
-		vfloat := conv.ParseF64(v)
-		if math.IsNaN(min) {
+		vfloat, ok := ToFloat64Safe(v)
+		if !ok {
+			LogWarning("DataList.Min(): Element %v is not a numeric type, skipping.", v)
+			continue
+		}
+		if !foundValid {
 			min = vfloat
+			foundValid = true
 			continue
 		}
 		if vfloat < min {
 			min = vfloat
 		}
+	}
+
+	if !foundValid {
+		LogWarning("DataList.Min(): No valid elements to compute minimum.")
+		return math.NaN()
 	}
 
 	return min

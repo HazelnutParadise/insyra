@@ -152,7 +152,7 @@ func TestMin(t *testing.T) {
 	dl := NewDataList(1, 2, 3, 4)
 	min := dl.Min()
 
-	if v, ok := min.(float64); !ok || !float64Equal(v, 1) {
+	if !float64Equal(min, 1) {
 		t.Errorf("Expected min 1, got %v", min)
 	}
 }
