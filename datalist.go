@@ -86,7 +86,7 @@ type IDataList interface {
 	Var() float64
 	VarP() float64
 	Range() float64
-	Quartile(int) interface{}
+	Quartile(int) float64
 	IQR() interface{}
 	Percentile(float64) interface{}
 	Difference() *DataList
@@ -1528,39 +1528,70 @@ func (dl *DataList) Range() float64 {
 
 // Quartile calculates the quartile based on the input value (1 to 3).
 // 1 corresponds to the first quartile (Q1), 2 to the median (Q2), and 3 to the third quartile (Q3).
-func (dl *DataList) Quartile(q int) interface{} {
+// This implementation uses percentiles to compute quartiles.
+func (dl *DataList) Quartile(q int) float64 {
 	if len(dl.data) == 0 {
-		LogWarning("DataList.Quartile(): DataList is empty, returning nil.")
-		return nil
+		LogWarning("DataList.Quartile(): DataList is empty.")
+		return math.NaN()
 	}
 	if q < 1 || q > 3 {
-		LogWarning("DataList.Quartile(): Invalid quartile value, returning nil.")
-		return nil
+		LogWarning("DataList.Quartile(): Invalid quartile value.")
+		return math.NaN()
 	}
 
-	// Convert the DataList to a slice of float64 for numeric operations
-	numericData := dl.ToF64Slice()
+	// Convert the DataList to a slice of float64 for numeric operations, skipping invalid elements
+	var numericData []float64
+	for _, v := range dl.data {
+		vfloat, ok := ToFloat64Safe(v)
+		if !ok {
+			LogWarning("DataList.Quartile(): Element %v is not a numeric type, skipping.", v)
+			continue
+		}
+		numericData = append(numericData, vfloat)
+	}
+
+	if len(numericData) == 0 {
+		LogWarning("DataList.Quartile(): No valid elements to compute quartile.")
+		return math.NaN()
+	}
 
 	// Sort the data
 	sort.Float64s(numericData)
 
 	n := len(numericData)
+	var p float64
 
-	var pos float64
-	var lower, upper float64
-
+	// Set the percentile based on the quartile
 	switch q {
 	case 1:
-		pos = 0.25 * float64(n-1)
+		p = 0.25
 	case 2:
-		pos = 0.5 * float64(n-1)
+		p = 0.5
 	case 3:
-		pos = 0.75 * float64(n-1)
+		p = 0.75
 	}
 
-	// Get the index for lower and upper bounds
-	lowerIndex := int(math.Floor(pos))
-	upperIndex := int(math.Ceil(pos))
+	// Calculate the position using the percentile
+	pos := p * float64(n+1)
+
+	// Adjust position if it is outside the range
+	if pos < 1.0 {
+		pos = 1.0
+	} else if pos > float64(n) {
+		pos = float64(n)
+	}
+
+	// Convert position to indices
+	lowerIndex := int(math.Floor(pos)) - 1 // Subtract 1 for zero-based index
+	upperIndex := int(math.Ceil(pos)) - 1
+
+	// Ensure indices are within bounds
+	if lowerIndex < 0 {
+		lowerIndex = 0
+	}
+	if upperIndex >= n {
+		upperIndex = n - 1
+	}
 
 	// Handle the case where the position is exactly an integer
 	if lowerIndex == upperIndex {
@@ -1568,10 +1599,13 @@ func (dl *DataList) Quartile(q int) interface{} {
 	}
 
 	// Interpolate between the lower and upper bounds
-	lower = numericData[lowerIndex]
-	upper = numericData[upperIndex]
+	lowerValue := numericData[lowerIndex]
+	upperValue := numericData[upperIndex]
+	fraction := pos - math.Floor(pos)
 
-	return lower + (pos-float64(lowerIndex))*(upper-lower)
+	quartile := lowerValue + fraction*(upperValue-lowerValue)
+
+	return quartile
 }
 
 // IQR calculates the interquartile range of the DataList.

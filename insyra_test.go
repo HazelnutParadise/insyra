@@ -278,6 +278,16 @@ func TestRange(t *testing.T) {
 	}
 }
 
+// 測試 Quantile 函數
+func TestQuartile(t *testing.T) {
+	dl := NewDataList(6, 47, 49, 15, 42, 41, 7, 39, 43, 40, 36)
+	q := dl.Quartile(3)
+
+	if !float64Equal(q, 43) {
+		t.Errorf("Expected quartile 43, got %v", q)
+	}
+}
+
 // 測試 SetName 和 GetName 函數
 func TestSetName(t *testing.T) {
 	dl := NewDataList(1, 2, 3, 4)
