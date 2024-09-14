@@ -298,6 +298,16 @@ func TestIQR(t *testing.T) {
 	}
 }
 
+// 測試 Percentile 函數
+func TestPercentile(t *testing.T) {
+	dl := NewDataList(10, 2, 38, 23, 38, 23, 21, 234)
+	p := dl.Percentile(15)
+
+	if !float64Equal(p, 10.55) {
+		t.Errorf("Expected percentile 10.55, got %v", p)
+	}
+}
+
 // 測試 SetName 和 GetName 函數
 func TestSetName(t *testing.T) {
 	dl := NewDataList(1, 2, 3, 4)

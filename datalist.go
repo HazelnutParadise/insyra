@@ -88,7 +88,7 @@ type IDataList interface {
 	Range() float64
 	Quartile(int) float64
 	IQR() float64
-	Percentile(float64) interface{}
+	Percentile(float64) float64
 	Difference() *DataList
 	ParseNumbers()
 	ParseStrings()
@@ -1629,38 +1629,71 @@ func (dl *DataList) IQR() float64 {
 }
 
 // Percentile calculates the percentile based on the input value (0 to 100).
-// Returns the percentile value, or nil if the DataList is empty.
-func (dl *DataList) Percentile(p float64) interface{} {
+// Returns the percentile value as float64, or math.NaN() if the DataList is empty or invalid percentile is provided.
+func (dl *DataList) Percentile(p float64) float64 {
 	if len(dl.data) == 0 {
-		LogWarning("DataList.Percentile(): DataList is empty, returning nil.")
-		return nil
+		LogWarning("DataList.Percentile(): DataList is empty.")
+		return math.NaN()
 	}
 	if p < 0 || p > 100 {
-		LogWarning("DataList.Percentile(): Invalid percentile value, returning nil.")
-		return nil
+		LogWarning("DataList.Percentile(): Invalid percentile value.")
+		return math.NaN()
 	}
 
-	// Convert the DataList to a slice of float64 for numeric operations
-	numericData := dl.ToF64Slice()
+	// Convert the DataList to a slice of float64 for numeric operations, skipping invalid elements
+	var numericData []float64
+	for _, v := range dl.data {
+		vfloat, ok := ToFloat64Safe(v)
+		if !ok {
+			LogWarning("DataList.Percentile(): Element %v cannot be converted to float64, skipping.", v)
+			continue
+		}
+		numericData = append(numericData, vfloat)
+	}
+
+	if len(numericData) == 0 {
+		LogWarning("DataList.Percentile(): No valid elements to compute percentile.")
+		return math.NaN()
+	}
 
 	// Sort the data
 	sort.Float64s(numericData)
 
-	// Calculate the index
-	pos := p / 100 * float64(len(numericData)-1)
-	lowerIndex := int(math.Floor(pos))
-	upperIndex := int(math.Ceil(pos))
-
-	// Handle the case where the position is exactly an integer
-	if lowerIndex == upperIndex {
-		return numericData[lowerIndex]
+	n := len(numericData)
+	if n == 1 {
+		return numericData[0]
 	}
 
-	// Interpolate between the lower and upper bounds
-	lower := numericData[lowerIndex]
-	upper := numericData[upperIndex]
+	// Calculate the position using R's type=7 method
+	p /= 100.0
+	h := p*(float64(n)-1) + 1
 
-	return lower + (pos-float64(lowerIndex))*(upper-lower)
+	// Adjust position for zero-based index
+	h -= 1
+
+	lowerIndex := int(math.Floor(h))
+	upperIndex := int(math.Ceil(h))
+
+	// Ensure indices are within bounds
+	if lowerIndex < 0 {
+		lowerIndex = 0
+	}
+	if upperIndex >= n {
+		upperIndex = n - 1
+	}
+
+	lowerValue := numericData[lowerIndex]
+	upperValue := numericData[upperIndex]
+
+	if lowerIndex == upperIndex {
+		return lowerValue
+	}
+
+	// Interpolate between the lower and upper values
+	fraction := h - float64(lowerIndex)
+	percentileValue := lowerValue + fraction*(upperValue-lowerValue)
+
+	return percentileValue
 }
 
 // Difference calculates the differences between adjacent elements in the DataList.
