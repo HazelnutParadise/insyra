@@ -71,6 +71,7 @@ type IDataList interface {
 	Upper() *DataList
 	Lower() *DataList
 	Capitalize() *DataList
+
 	// Statistics
 	Sum() float64
 	Max() float64
@@ -81,7 +82,7 @@ type IDataList interface {
 	Median() interface{}
 	Mode() interface{}
 	MAD() interface{}
-	Stdev(highPrecision ...bool) interface{}
+	Stdev() interface{}
 	StdevP(highPrecision ...bool) interface{}
 	Var(highPrecision ...bool) interface{}
 	VarP(highPrecision ...bool) interface{}
@@ -409,7 +410,7 @@ func (dl *DataList) ReplaceAll(oldValue, newValue interface{}) {
 // ReplaceOutliers replaces outliers in the DataList with the specified replacement value (e.g., mean, median).
 func (dl *DataList) ReplaceOutliers(stdDevs float64, replacement float64) *DataList {
 	mean := dl.Mean()
-	stddev := dl.Stdev(false).(float64)
+	stddev := dl.Stdev().(float64)
 	threshold := stdDevs * stddev
 
 	for i, v := range dl.Data() {
@@ -695,7 +696,7 @@ func (dl *DataList) ClearOutliers(stdDevs float64) *DataList {
 	}()
 
 	mean := dl.Mean()
-	stddev := dl.Stdev(false).(float64)
+	stddev := dl.Stdev().(float64)
 	threshold := stdDevs * stddev
 
 	// 打印調試信息，確保計算值與 R 相同
@@ -752,7 +753,7 @@ func (dl *DataList) Standardize() *DataList {
 		go dl.updateTimestamp()
 	}()
 	mean := dl.Mean()
-	stddev := dl.Stdev(false).(float64)
+	stddev := dl.Stdev().(float64)
 	dl.mu.Lock()
 	for i, v := range dl.Data() {
 		vfloat := conv.ParseF64(v)
@@ -882,7 +883,7 @@ func (dl *DataList) MovingStdev(windowSize int) *DataList {
 	movingStdDevData := make([]float64, dl.Len()-windowSize+1)
 	for i := 0; i < len(movingStdDevData); i++ {
 		window := NewDataList(dl.Data()[i : i+windowSize])
-		movingStdDevData[i] = window.Stdev(false).(float64)
+		movingStdDevData[i] = window.Stdev().(float64)
 	}
 	return NewDataList(movingStdDevData)
 }
@@ -1356,36 +1357,17 @@ func (dl *DataList) MAD() interface{} {
 // Returns the standard deviation.
 // Returns nil if the DataList is empty.
 // Stdev returns the standard deviation of the DataList.
-func (dl *DataList) Stdev(highPrecision ...bool) interface{} {
+func (dl *DataList) Stdev() interface{} {
 	if len(dl.data) == 0 {
 		LogWarning("DataList.Stdev(): DataList is empty, returning nil.")
 		return nil
 	}
 
-	// 判斷是否使用高精度模式
-	useHighPrecision := len(highPrecision) == 1 && highPrecision[0]
-	if len(highPrecision) > 1 {
-		LogWarning("DataList.Stdev(): Too many arguments, returning nil.")
-		return nil
-	}
-
-	var variance interface{}
-	if useHighPrecision {
-		variance = dl.Var(true)
-	} else {
-		variance = dl.Var(false)
-	}
+	variance := dl.Var(false)
 
 	if variance == nil {
 		LogWarning("DataList.Stdev(): Variance calculation failed, returning nil.")
 		return nil
-	}
-
-	if useHighPrecision {
-		// 高精度模式下使用 SqrtRat 進行開方運算
-		varianceRat := variance.(*big.Rat)
-		sqrtVariance := SqrtRat(varianceRat)
-		return sqrtVariance
 	}
 
 	// 普通模式下使用 float64 計算
