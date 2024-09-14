@@ -218,6 +218,16 @@ func TestMode(t *testing.T) {
 	}
 }
 
+// 測試 MAD 函數
+func TestMAD(t *testing.T) {
+	dl := NewDataList(1, 2, 3, 4)
+	mad := dl.MAD()
+
+	if !float64Equal(mad, 1) {
+		t.Errorf("Expected MAD 1, got %v", mad)
+	}
+}
+
 // 測試 Stdev 函數
 func TestStdev(t *testing.T) {
 	dl := NewDataList(1, 2, 3, 4)

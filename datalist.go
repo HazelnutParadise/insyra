@@ -80,7 +80,7 @@ type IDataList interface {
 	GMean() float64
 	Median() float64
 	Mode() float64
-	MAD() interface{}
+	MAD() float64
 	Stdev() interface{}
 	StdevP() interface{}
 	Var() interface{}
@@ -1347,28 +1347,39 @@ func (dl *DataList) Mode() float64 {
 }
 
 // MAD calculates the mean absolute deviation of the DataList.
-// Returns the mean absolute deviation.
-// Returns nil if the DataList is empty.
-func (dl *DataList) MAD() interface{} {
+// Returns math.NaN() if the DataList is empty or if no valid elements can be used.
+func (dl *DataList) MAD() float64 {
 	if len(dl.data) == 0 {
-		LogWarning("DataList.Mad(): DataList is empty, returning nil.")
-		return nil
+		LogWarning("DataList.MAD(): DataList is empty.")
+		return math.NaN()
 	}
 
+	// Calculate the median using the modified Median function
 	median := dl.Median()
 	if math.IsNaN(median) {
-		LogWarning("DataList.Mad(): Median calculation failed, returning nil.")
-		return nil
+		LogWarning("DataList.MAD(): Median calculation failed.")
+		return math.NaN()
 	}
 
 	// Calculate the mean absolute deviation
 	var sum float64
+	var count int
 	for _, v := range dl.data {
-		val := ToFloat64(v)
+		val, ok := ToFloat64Safe(v)
+		if !ok {
+			LogWarning("DataList.MAD(): Element %v is not a numeric type, skipping.", v)
+			continue
+		}
 		sum += math.Abs(val - median)
+		count++
 	}
 
-	return sum / float64(len(dl.data))
+	if count == 0 {
+		LogWarning("DataList.MAD(): No valid elements to compute MAD.")
+		return math.NaN()
+	}
+
+	return sum / float64(count)
 }
 
 // Stdev calculates the standard deviation(sample) of the DataList.
