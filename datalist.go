@@ -82,7 +82,7 @@ type IDataList interface {
 	Mode() float64
 	MAD() float64
 	Stdev() float64
-	StdevP() interface{}
+	StdevP() float64
 	Var() interface{}
 	VarP() interface{}
 	Range() interface{}
@@ -1399,23 +1399,21 @@ func (dl *DataList) Stdev() float64 {
 	return math.Sqrt(variance)
 }
 
-// StdevP calculates the standard deviation(population) of the DataList.
-// Returns the standard deviation.
-// Returns nil if the DataList is empty or the standard deviation cannot be calculated.
-func (dl *DataList) StdevP() interface{} {
+// StdevP calculates the standard deviation (population) of the DataList.
+// Returns math.NaN() if the DataList is empty or if no valid elements can be used.
+func (dl *DataList) StdevP() float64 {
 	if len(dl.data) == 0 {
-		LogWarning("DataList.StdevP(): DataList is empty, returning nil.")
-		return nil
+		LogWarning("DataList.StdevP(): DataList is empty.")
+		return math.NaN()
 	}
 
 	varianceP := dl.VarP()
-
-	if varianceP == nil {
-		LogWarning("DataList.StdevP(): Variance calculation failed, returning nil.")
-		return nil
+	if math.IsNaN(varianceP.(float64)) {
+		LogWarning("DataList.StdevP(): Variance calculation failed.")
+		return math.NaN()
 	}
 
-	return math.Sqrt(ToFloat64(varianceP))
+	return math.Sqrt(varianceP.(float64))
 }
 
 // Var calculates the variance(sample) of the DataList.

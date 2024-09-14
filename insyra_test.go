@@ -241,7 +241,7 @@ func TestStdev(t *testing.T) {
 // 測試 StdevP 函數
 func TestStdevP(t *testing.T) {
 	dl := NewDataList(1, 2, 3, 4)
-	stdev := dl.StdevP().(float64)
+	stdev := dl.StdevP()
 
 	if !float64Equal(stdev, 1.118033988749895) {
 		t.Errorf("Expected population standard deviation 1.118033988749895, got %v", stdev)
