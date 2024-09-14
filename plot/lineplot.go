@@ -11,6 +11,9 @@ import (
 	"os"
 )
 
+// 定義 LTGray
+var LTGray = color.RGBA{R: 211, G: 211, B: 211, A: 255}
+
 // LinePlot 繪製折線圖的結構體
 type LinePlot struct {
 	*Plotter
@@ -26,7 +29,8 @@ type LinePlotOptions struct {
 	LineColor       color.Color
 	PointColor      color.Color
 	BackgroundColor color.Color
-	LineThickness   int // 新增線條粗細選項
+	LineThickness   int    // 新增線條粗細選項
+	Theme           string // 新增主題選項
 }
 
 // NewLinePlot 創建一個新的 LinePlot
@@ -40,6 +44,8 @@ func NewLinePlot(data []float64, plotter *Plotter, options *LinePlotOptions) *Li
 		LineColor:       color.RGBA{R: 255, G: 0, B: 0, A: 255},
 		PointColor:      color.RGBA{R: 0, G: 0, B: 255, A: 255},
 		BackgroundColor: color.White,
+		LineThickness:   1,
+		Theme:           "default", // 設定預設主題
 	}
 
 	if plotter == nil {
@@ -47,7 +53,51 @@ func NewLinePlot(data []float64, plotter *Plotter, options *LinePlotOptions) *Li
 	}
 
 	if options != nil {
-		defaultOptions = options
+		// 合併用戶提供的選項到默認選項
+		if options.LineStyle != 0 {
+			defaultOptions.LineStyle = options.LineStyle
+		}
+		if options.XLabel != "" {
+			defaultOptions.XLabel = options.XLabel
+		}
+		if options.YLabel != "" {
+			defaultOptions.YLabel = options.YLabel
+		}
+		if options.GridColor != nil {
+			defaultOptions.GridColor = options.GridColor
+		}
+		if options.AxisColor != nil {
+			defaultOptions.AxisColor = options.AxisColor
+		}
+		if options.LineColor != nil {
+			defaultOptions.LineColor = options.LineColor
+		}
+		if options.PointColor != nil {
+			defaultOptions.PointColor = options.PointColor
+		}
+		if options.BackgroundColor != nil {
+			defaultOptions.BackgroundColor = options.BackgroundColor
+		}
+		if options.LineThickness != 0 {
+			defaultOptions.LineThickness = options.LineThickness
+		}
+		if options.Theme != "" {
+			defaultOptions.Theme = options.Theme
+		}
+
+		// 根據主題調整顏色
+		switch defaultOptions.Theme {
+		case "dark":
+			defaultOptions.BackgroundColor = color.Black
+			defaultOptions.GridColor = color.Gray{Y: 128}
+			defaultOptions.AxisColor = color.White
+			defaultOptions.LineColor = color.RGBA{R: 0, G: 255, B: 0, A: 255}
+			defaultOptions.PointColor = color.RGBA{R: 255, G: 255, B: 0, A: 255}
+		case "whitegrid":
+			defaultOptions.BackgroundColor = color.White
+			defaultOptions.GridColor = LTGray // 使用定義的 LTGray
+			// 可根據需求添加更多顏色設定
+		}
 	}
 
 	return &LinePlot{
@@ -58,8 +108,8 @@ func NewLinePlot(data []float64, plotter *Plotter, options *LinePlotOptions) *Li
 
 // Draw 繪製折線圖
 func (lp *LinePlot) Draw() *image.RGBA {
-	width := lp.options.Width
-	height := lp.options.Height
+	width := lp.Plotter.Width
+	height := lp.Plotter.Height
 
 	margin := 50 // 設置邊界
 
@@ -95,8 +145,8 @@ func (lp *LinePlot) Save(outputFile string) error {
 
 // drawGrid 畫網格線
 func (lp *LinePlot) drawGrid(img *image.RGBA, margin int) {
-	width := lp.options.Width - margin*2
-	height := lp.options.Height - margin*2
+	width := lp.Plotter.Width - margin*2
+	height := lp.Plotter.Height - margin*2
 	gridColor := lp.Options.GridColor
 
 	// 畫橫向網格線
@@ -118,8 +168,8 @@ func (lp *LinePlot) drawGrid(img *image.RGBA, margin int) {
 
 // drawAxes 畫軸線並添加軸標
 func (lp *LinePlot) drawAxes(img *image.RGBA, margin int) {
-	width := lp.options.Width - margin*2
-	height := lp.options.Height - margin*2
+	width := lp.Plotter.Width - margin*2
+	height := lp.Plotter.Height - margin*2
 	axisColor := lp.Options.AxisColor
 
 	// 畫X軸
@@ -133,7 +183,7 @@ func (lp *LinePlot) drawAxes(img *image.RGBA, margin int) {
 	}
 
 	// 繪製X軸標籤
-	drawText(img, lp.Options.XLabel, width/2+margin-50, lp.options.Height-margin/4, color.Black)
+	drawText(img, lp.Options.XLabel, width/2+margin-50, lp.Plotter.Height-margin/4, color.Black)
 
 	// 繪製Y軸標籤
 	drawText(img, lp.Options.YLabel, margin/4, height/2+margin, color.Black)
@@ -141,12 +191,12 @@ func (lp *LinePlot) drawAxes(img *image.RGBA, margin int) {
 
 // drawLine 畫折線
 func (lp *LinePlot) drawLine(img *image.RGBA, margin int) {
-	width := lp.options.Width - margin*2
-	height := lp.options.Height - margin*2
+	width := lp.Plotter.Width - margin*2
+	height := lp.Plotter.Height - margin*2
 	lineColor := lp.Options.LineColor
 	pointColor := lp.Options.PointColor
 
-	data := lp.Plotter.data.([]float64)
+	data := lp.Plotter.data
 	maxY := max(data)
 	minY := min(data)
 	scaleY := float64(height) / (maxY - minY)
