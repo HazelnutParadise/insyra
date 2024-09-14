@@ -78,7 +78,7 @@ type IDataList interface {
 	Mean() float64
 	WeightedMean(weights interface{}) float64
 	GMean() float64
-	Median(highPrecision ...bool) interface{}
+	Median() interface{}
 	Mode() interface{}
 	MAD() interface{}
 	Stdev(highPrecision ...bool) interface{}
@@ -1273,16 +1273,9 @@ func (dl *DataList) GMean() float64 {
 // Median calculates the median of the DataList.
 // Returns the median.
 // Returns nil if the DataList is empty.
-// Turn on highPrecision to return a big.Rat instead of a float64.
-func (dl *DataList) Median(highPrecision ...bool) interface{} {
+func (dl *DataList) Median() interface{} {
 	if len(dl.data) == 0 {
 		LogWarning("DataList.Median(): DataList is empty, returning nil.")
-		return nil
-	}
-
-	// 檢查參數數量
-	if len(highPrecision) > 1 {
-		LogWarning("DataList.Median(): Too many arguments, returning nil.")
 		return nil
 	}
 
@@ -1292,36 +1285,18 @@ func (dl *DataList) Median(highPrecision ...bool) interface{} {
 	sliceutil.Sort(sortedData)
 
 	mid := len(sortedData) / 2
-	useHighPrecision := len(highPrecision) == 1 && highPrecision[0]
 
 	if len(sortedData)%2 == 0 {
 		// 當元素個數為偶數時，返回中間兩個數的平均值
 		mid1 := ToFloat64(sortedData[mid-1])
 		mid2 := ToFloat64(sortedData[mid])
 
-		if useHighPrecision {
-			// 使用 big.Rat 進行精確的有理數運算
-			ratMid1 := new(big.Rat).SetFloat64(mid1)
-			ratMid2 := new(big.Rat).SetFloat64(mid2)
-
-			// 計算平均值
-			sum := new(big.Rat).Add(ratMid1, ratMid2)
-			mean := new(big.Rat).Quo(sum, big.NewRat(2, 1))
-
-			// 返回高精度結果
-			return mean
-		} else {
-			// 使用 float64 計算並返回
-			return (mid1 + mid2) / 2
-		}
+		// 使用 float64 計算並返回
+		return (mid1 + mid2) / 2
 	}
 
 	// 當元素個數為奇數時，返回中間的那個數
 	midValue := ToFloat64(sortedData[mid])
-	if useHighPrecision {
-		return new(big.Rat).SetFloat64(midValue)
-	}
-
 	return midValue
 }
 
