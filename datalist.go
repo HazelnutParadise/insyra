@@ -1153,7 +1153,7 @@ func (dl *DataList) Mean() float64 {
 			sum += val
 			count++
 		} else {
-			LogWarning("DataList.Mean(): Element %v cannot be converted to float64, skipping.", val)
+			LogWarning("DataList.Mean(): Element %v is not a numeric type, skipping.", v)
 			// 跳过无法转换的元素
 			continue
 		}

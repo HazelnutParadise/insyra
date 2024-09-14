@@ -159,7 +159,7 @@ func TestMin(t *testing.T) {
 
 // 測試 Mean 函數
 func TestMean(t *testing.T) {
-	dl := NewDataList(1, 2, 3, 4)
+	dl := NewDataList(1, 2, 3, int(4), "5")
 	mean := dl.Mean()
 
 	if !float64Equal(mean, 2.5) {
