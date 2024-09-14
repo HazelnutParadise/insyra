@@ -16,8 +16,8 @@ type PlotterOptions struct {
 // NewPlotter 創建一個新的 Plotter
 func NewPlotter(data []float64, options *PlotterOptions) *Plotter {
 	defaultOptions := &PlotterOptions{
-		Width:  800,
-		Height: 600,
+		Width:  1920,
+		Height: 1080,
 	}
 
 	if options != nil {

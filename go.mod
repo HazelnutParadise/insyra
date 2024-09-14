@@ -10,5 +10,6 @@ require (
 
 require (
 	golang.org/x/exp v0.0.0-20230321023759-10a507213a29 // indirect
+	golang.org/x/text v0.17.0 // indirect
 	gonum.org/v1/gonum v0.12.0 // indirect
 )

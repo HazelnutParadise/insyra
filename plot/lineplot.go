@@ -3,6 +3,7 @@
 package plot
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
@@ -31,6 +32,7 @@ type LinePlotOptions struct {
 	BackgroundColor color.Color
 	LineThickness   int    // 新增線條粗細選項
 	Theme           string // 新增主題選項
+	FontSize        int    // 新增字體大小選項
 }
 
 // NewLinePlot 創建一個新的 LinePlot
@@ -46,6 +48,7 @@ func NewLinePlot(data []float64, plotter *Plotter, options *LinePlotOptions) *Li
 		BackgroundColor: color.White,
 		LineThickness:   1,
 		Theme:           "default", // 設定預設主題
+		FontSize:        16,        // 設定預設字體大小
 	}
 
 	if plotter == nil {
@@ -84,6 +87,9 @@ func NewLinePlot(data []float64, plotter *Plotter, options *LinePlotOptions) *Li
 		if options.Theme != "" {
 			defaultOptions.Theme = options.Theme
 		}
+		if options.FontSize != 0 {
+			defaultOptions.FontSize = options.FontSize
+		}
 
 		// 根據主題調整顏色
 		switch defaultOptions.Theme {
@@ -111,19 +117,20 @@ func (lp *LinePlot) Draw() *image.RGBA {
 	width := lp.Plotter.Width
 	height := lp.Plotter.Height
 
-	margin := 50 // 設置邊界
+	margin := 120     // 增加左側邊界以留更多空間給縱軸文字
+	rightMargin := 50 // 新增右側邊界
 
 	img := image.NewRGBA(image.Rect(0, 0, width, height))
 
 	// 填充背景
 	draw.Draw(img, img.Bounds(), &image.Uniform{C: lp.Options.BackgroundColor}, image.Point{}, draw.Src)
 
-	// 調整網格線和軸線的位置，留出邊界空間
-	lp.drawGrid(img, margin)
-	lp.drawAxes(img, margin)
+	// 調整網格線和軸線的位置，留出更大的邊界空間
+	lp.drawGrid(img, margin, rightMargin)
+	lp.drawAxes(img, margin, rightMargin)
 
 	// 繪製數據折線，考慮邊界
-	lp.drawLine(img, margin)
+	lp.drawLine(img, margin, rightMargin)
 
 	return img
 }
@@ -144,8 +151,8 @@ func (lp *LinePlot) Save(outputFile string) error {
 }
 
 // drawGrid 畫網格線
-func (lp *LinePlot) drawGrid(img *image.RGBA, margin int) {
-	width := lp.Plotter.Width - margin*2
+func (lp *LinePlot) drawGrid(img *image.RGBA, margin int, rightMargin int) {
+	width := lp.Plotter.Width - margin - rightMargin
 	height := lp.Plotter.Height - margin*2
 	gridColor := lp.Options.GridColor
 
@@ -167,31 +174,45 @@ func (lp *LinePlot) drawGrid(img *image.RGBA, margin int) {
 }
 
 // drawAxes 畫軸線並添加軸標
-func (lp *LinePlot) drawAxes(img *image.RGBA, margin int) {
-	width := lp.Plotter.Width - margin*2
+func (lp *LinePlot) drawAxes(img *image.RGBA, margin int, rightMargin int) {
+	width := lp.Plotter.Width - margin - rightMargin
 	height := lp.Plotter.Height - margin*2
 	axisColor := lp.Options.AxisColor
 
-	// 畫X軸
+	// 畫X軸在下方
 	for x := margin; x < width+margin; x++ {
-		img.Set(x, height/2+margin, axisColor)
+		img.Set(x, margin+height, axisColor)
 	}
 
-	// 畫Y軸
+	// 畫Y軸在左側
 	for y := margin; y < height+margin; y++ {
-		img.Set(width/2+margin, y, axisColor)
+		img.Set(margin, y, axisColor)
 	}
 
 	// 繪製X軸標籤
-	drawText(img, lp.Options.XLabel, width/2+margin-50, lp.Plotter.Height-margin/4, color.Black)
+	drawText(img, lp.Options.XLabel, margin+width/2-50, margin+height+50, color.Black, lp.Options.FontSize) // 新增字體大小參數
 
-	// 繪製Y軸標籤
-	drawText(img, lp.Options.YLabel, margin/4, height/2+margin, color.Black)
+	// 繪製Y軸標籤，增加更多左側空間
+	drawText(img, lp.Options.YLabel, margin-100, height/2+margin, color.Black, lp.Options.FontSize) // 新增字體大小參數
+
+	// 繪製X軸數字標籤
+	for i := 0; i <= 10; i++ {
+		x := margin + i*width/10
+		y := margin + height + 20                                                              // 增加與X軸的距離
+		drawText(img, fmt.Sprintf("%.1f", float64(i)), x, y, color.Black, lp.Options.FontSize) // 新增字體大小參數
+	}
+
+	// 繪製Y軸數字標籤，減少左側空間
+	for i := 0; i <= 10; i++ {
+		y := margin + height - i*height/10
+		x := margin - 40                                                                       // 從 margin-60 調整為 margin-40
+		drawText(img, fmt.Sprintf("%.1f", float64(i)), x, y, color.Black, lp.Options.FontSize) // 新增字體大小參數
+	}
 }
 
 // drawLine 畫折線
-func (lp *LinePlot) drawLine(img *image.RGBA, margin int) {
-	width := lp.Plotter.Width - margin*2
+func (lp *LinePlot) drawLine(img *image.RGBA, margin int, rightMargin int) {
+	width := lp.Plotter.Width - margin - rightMargin
 	height := lp.Plotter.Height - margin*2
 	lineColor := lp.Options.LineColor
 	pointColor := lp.Options.PointColor
