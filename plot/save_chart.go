@@ -5,6 +5,7 @@ package plot
 import (
 	"bytes"
 	"io"
+	"net/http"
 	"os"
 
 	"github.com/HazelnutParadise/insyra"
@@ -38,6 +39,35 @@ func SaveHTML(chart Renderable, path string) {
 
 // SavePNG 將圖表渲染為 PNG 文件，使用 orcgen
 func SavePNG(chart Renderable, pngPath string) {
+	defer func() {
+		// 使用 recover 捕捉 panic 並嘗試使用備援服務
+		r := recover()
+		if r != nil {
+			insyra.LogWarning("plot.SavePNG: failed to render chart locally. Trying to use HazelnutParadise online service.")
+
+			// 使用備援服務
+			resp, err := http.Post("https://server3.hazelnut-paradise.com/htmltoimage", "application/x-www-form-urlencoded", nil)
+			if err != nil {
+				insyra.LogFatal("plot.SavePNG: failed to use online service", err)
+			}
+			defer resp.Body.Close()
+
+			// 讀取備援服務返回的圖片數據
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				insyra.LogFatal("plot.SavePNG: failed to read response from online service", err)
+			}
+
+			// 將接收到的圖片數據寫入本地 PNG 文件
+			err = os.WriteFile(pngPath, body, 0644)
+			if err != nil {
+				insyra.LogFatal("plot.SavePNG: failed to save PNG file from online service", err)
+			}
+
+			insyra.LogInfo("plot.SavePNG: successfully saved PNG file from online service.")
+		}
+	}()
+
 	// Render the chart to a buffer
 	var buf bytes.Buffer
 	if err := chart.Render(&buf); err != nil {
