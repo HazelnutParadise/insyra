@@ -64,7 +64,7 @@ func main() {
 - **[parallel](/Docs/parallel.md)**：為數據操作和分析提供並行處理能力。
 - **[plot](/Docs/plot.md)**：強大的 [github.com/go-echarts/go-echarts](https://github.com/go-echarts/go-echarts) 庫的封裝，用於簡化資料視覺化。
 
-## 進階用法
+## 進階使用
 
 除了基本用法外，**Insyra** 還提供了處理不同數據類型和執行複雜統計操作的強大功能。請在 **[詳細文檔](https://github.com/HazelnutParadise/insyra/tree/main/Docs)** 中探索更多內容。
 
