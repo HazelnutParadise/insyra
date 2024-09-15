@@ -1,4 +1,4 @@
-# `plot` Package Documentation
+# [ plot ] Package
 
 ## Overview
 
