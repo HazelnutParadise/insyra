@@ -7,26 +7,26 @@ import (
 	"github.com/go-echarts/go-echarts/v2/opts"
 )
 
-// BarChartConfig 定義柱狀圖的配置參數
+// BarChartConfig defines the configuration for a bar chart.
 type BarChartConfig struct {
-	Title        string
-	Subtitle     string
-	XAxis        []string
-	SeriesData   any    // 可接受 map[string][]float64 或 []*insyra.DataList 或 []insyra.IDataList
-	XAxisName    string // 可選
-	YAxisName    string // 可選
-	YAxisNameGap int    // 可選，設置 Y 軸名稱與副標題之間的間距
-	Colors       []string
-	ShowLabels   bool
-	LabelPos     string // Optional: "top" | "bottom" | "left" | "right", default: "top"
-	GridTop      string // Optional, default: "80"
+	Title        string   // Title of the chart.
+	Subtitle     string   // Subtitle of the chart.
+	XAxis        []string // X-axis data.
+	SeriesData   any      // Accepts map[string][]float64, []*insyra.DataList, or []insyra.IDataList.
+	XAxisName    string   // Optional: X-axis name.
+	YAxisName    string   // Optional: Y-axis name.
+	YAxisNameGap int      // Optional: Gap between Y-axis name and subtitle.
+	Colors       []string // Optional: Colors for the bars, for example: ["green", "orange"].
+	ShowLabels   bool     // Optional: Show labels on the bars.
+	LabelPos     string   // Optional: "top" | "bottom" | "left" | "right", default: "top".
+	GridTop      string   // Optional, default: "80".
 }
 
-// CreateBarChart 根據 BarChartConfig 生成並返回一個 *charts.Bar 對象
+// CreateBarChart generates and returns a *charts.Bar object based on BarChartConfig.
 func CreateBarChart(config BarChartConfig) *charts.Bar {
 	bar := charts.NewBar()
 
-	// 設置標題和副標題
+	// Set title and subtitle
 	bar.SetGlobalOptions(
 		charts.WithTitleOpts(opts.Title{
 			Title:    config.Title,
