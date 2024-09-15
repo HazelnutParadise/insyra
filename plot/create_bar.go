@@ -22,9 +22,9 @@ type BarChartConfig struct {
 	YAxisNameGap int    // 可選，設置 Y 軸名稱與副標題之間的間距
 	Colors       []string
 	ShowLabels   bool
-	LabelPos     string
-	OutputPath   string // 可選，如果提供，將自動渲染並保存圖表
-	GridTop      string // 可選，用於增加副標題下的空間，例如 "60"
+	LabelPos     string // Optional: "top" | "bottom" | "left" | "right", default: "top"
+	OutputPath   string // Optional: if provided, the chart will be rendered and saved to the specified path
+	GridTop      string // Optional, default: "80"
 }
 
 // CreateBarChart 根據 BarChartConfig 生成並返回一個 *charts.Bar 對象
@@ -103,6 +103,9 @@ func CreateBarChart(config BarChartConfig) (*charts.Bar, error) {
 
 	// 顯示標籤（如果啟用）
 	if config.ShowLabels {
+		if config.LabelPos == "" {
+			config.LabelPos = "top"
+		}
 		bar.SetSeriesOptions(
 			charts.WithLabelOpts(opts.Label{
 				Show:     opts.Bool(true),
