@@ -1,4 +1,4 @@
-// plot/create_bar.go
+// plot/bar.go
 package plot
 
 import (
