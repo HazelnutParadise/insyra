@@ -19,7 +19,7 @@ type BarChartConfig struct {
 	Colors       []string // Optional: Colors for the bars, for example: ["green", "orange"].
 	ShowLabels   bool     // Optional: Show labels on the bars.
 	LabelPos     string   // Optional: "top" | "bottom" | "left" | "right", default: "top".
-	GridTop      string   // Optional, default: "80".
+	GridTop      string   // Optional: default: "80".
 }
 
 // CreateBarChart generates and returns a *charts.Bar object based on BarChartConfig.
