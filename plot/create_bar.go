@@ -2,10 +2,6 @@
 package plot
 
 import (
-	"fmt"
-	"io"
-	"os"
-
 	"github.com/HazelnutParadise/insyra" // 確保這是正確的導入路徑
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
@@ -23,12 +19,11 @@ type BarChartConfig struct {
 	Colors       []string
 	ShowLabels   bool
 	LabelPos     string // Optional: "top" | "bottom" | "left" | "right", default: "top"
-	OutputPath   string // Optional: if provided, the chart will be rendered and saved to the specified path
 	GridTop      string // Optional, default: "80"
 }
 
 // CreateBarChart 根據 BarChartConfig 生成並返回一個 *charts.Bar 對象
-func CreateBarChart(config BarChartConfig) (*charts.Bar, error) {
+func CreateBarChart(config BarChartConfig) *charts.Bar {
 	bar := charts.NewBar()
 
 	// 設置標題和副標題
@@ -98,7 +93,8 @@ func CreateBarChart(config BarChartConfig) (*charts.Bar, error) {
 			bar.AddSeries(dataList.GetName(), convertToBarDataFloat(dataList.ToF64Slice()))
 		}
 	default:
-		return nil, fmt.Errorf("unsupported SeriesData type: %T", config.SeriesData)
+		insyra.LogWarning("unsupported SeriesData type: %T", config.SeriesData)
+		return nil
 	}
 
 	// 顯示標籤（如果啟用）
@@ -114,21 +110,7 @@ func CreateBarChart(config BarChartConfig) (*charts.Bar, error) {
 		)
 	}
 
-	// 如果指定了輸出路徑，則渲染並保存圖表
-	if config.OutputPath != "" {
-		f, err := os.Create(config.OutputPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create file %s: %w", config.OutputPath, err)
-		}
-		defer f.Close()
-
-		// 渲染圖表到指定文件
-		if err := bar.Render(io.MultiWriter(f)); err != nil {
-			return nil, fmt.Errorf("failed to render chart: %w", err)
-		}
-	}
-
-	return bar, nil
+	return bar
 }
 
 // convertToBarDataFloat 將 []float64 轉換為 []opts.BarData
