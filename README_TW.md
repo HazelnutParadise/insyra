@@ -60,8 +60,9 @@ func main() {
 
 **Insyra** 還提供了多個擴展套件，每個都專注於數據分析的特定方面。
 
-- **[stats](https://github.com/HazelnutParadise/insyra/tree/main/Docs/stats.md)**：提供數據分析的統計函數，包括偏度、峰度和矩計算。
-- **[parallel](https://github.com/HazelnutParadise/insyra/tree/main/Docs/parallel.md)**：為數據操作和分析提供並行處理能力。
+- **[stats](/Docs/stats.md)**：提供數據分析的統計函數，包括偏度、峰度和矩計算。
+- **[parallel](/Docs/parallel.md)**：為數據操作和分析提供並行處理能力。
+- **[plot](/Docs/plot.md)**：強大的 [github.com/go-echarts/go-echarts](https://github.com/go-echarts/go-echarts) 庫的封裝，用於簡化資料視覺化。
 
 ## 進階用法
 
