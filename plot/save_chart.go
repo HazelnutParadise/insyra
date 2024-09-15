@@ -45,7 +45,7 @@ func SavePNG(chart Renderable, pngPath string) {
 		// 使用 recover 捕捉 panic 並嘗試使用備援服務
 		r := recover()
 		if r != nil {
-			insyra.LogWarning("plot.SavePNG: failed to render chart locally. Trying to use HazelnutParadise online service.")
+			insyra.LogWarning("plot.SavePNG: failed to render chart locally. Trying to use HazelnutParadise online service. Waiting for the result...")
 
 			// 將 Renderable 渲染成 HTML
 			var buf bytes.Buffer
@@ -80,7 +80,7 @@ func SavePNG(chart Renderable, pngPath string) {
 				return
 			}
 
-			insyra.LogInfo("plot.SavePNG: successfully saved PNG file from online service.")
+			insyra.LogInfo("plot.SavePNG: successfully saved PNG file from hazelnut-paradise.com .")
 		}
 	}()
 
@@ -106,10 +106,9 @@ func SavePNG(chart Renderable, pngPath string) {
 		insyra.LogFatal("plot.SavePNG: failed to convert HTML to PNG: %w", err)
 	}
 
-	insyra.LogInfo("plot.SavePNG: saving PNG file...")
-
 	// 保存 PNG 文件
 	if err := fileinfo.Output(pngPath); err != nil {
 		insyra.LogFatal("plot.SavePNG: failed to save PNG file: %w", err)
 	}
+	insyra.LogInfo("plot.SavePNG: successfully saved PNG file.")
 }
