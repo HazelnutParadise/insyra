@@ -44,7 +44,7 @@ func SavePNG(chart Renderable, pngPath string) {
 		// 使用 recover 捕捉 panic 並嘗試使用備援服務
 		r := recover()
 		if r != nil {
-			insyra.LogWarning("plot.SavePNG: failed to render chart locally. Trying to use HazelnutParadise online service. Waiting for the result...")
+			insyra.LogWarning("plot.SavePNG: failed to render chart locally. Trying to use HazelnutParadise online service.\nWaiting for the result...")
 
 			// 將 Renderable 渲染成 HTML
 			var buf bytes.Buffer
