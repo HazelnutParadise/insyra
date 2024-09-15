@@ -2,7 +2,7 @@
 
 ## Overview
 
-The `plot` package is a wrapper around the powerful [github.com/go-echarts/go-echarts](https://github.com/go-echarts/go-echarts) library, designed to simplify data visualization. It provides an easy-to-use interface for generating common chart types, such as bar charts, while also giving users the flexibility to leverage the full power of `go-echarts` for more advanced customizations.
+The `plot` package is a wrapper around the powerful [github.com/go-echarts/go-echarts](https://github.com/go-echarts/go-echarts) library, designed to simplify data visualization. It provides an easy-to-use interface for generating common chart types, such as bar charts and line charts, while also giving users the flexibility to leverage the full power of `go-echarts` for more advanced customizations.
 
 This package is perfect for users who want to quickly visualize their data without needing to write verbose code. Advanced users can still access and configure all the underlying `go-echarts` features for more complex use cases.
 
@@ -12,9 +12,6 @@ This package is perfect for users who want to quickly visualize their data witho
 
 ```bash
 go get github.com/HazelnutParadise/insyra/plot
-go get github.com/go-echarts/go-echarts/v2
-go get github.com/go-rod/rod/lib/proto
-go get github.com/luabagg/orcgen/v2
 ```
 
 ---
@@ -125,7 +122,36 @@ func main() {
 
 Creates a bar chart based on the provided `BarChartConfig` and returns a `*charts.Bar` object, which can be customized further using `go-echarts` options.
 
-### Saving Charts
+### Line Chart
+
+#### `LineChartConfig`
+
+- `Title`: The title of the chart.
+- `Subtitle`: The subtitle of the chart.
+- `XAxis`: Data for the X-axis (categories).
+- `SeriesData`: The data for the series. Supported types:
+  - `map[string][]float64`: A map where keys are series names, and values are data points.
+  - `[]*insyra.DataList`: A list of `DataList` structures.
+  - `[]insyra.IDataList`: A list of `IDataList` interface implementations.
+- `XAxisName` (optional): Name for the X-axis.
+- `YAxisName` (optional): Name for the Y-axis.
+- `YAxisNameGap` (optional): Gap between the Y-axis name and the chart.
+- `Colors` (optional): Colors for the lines.
+- `ShowLabels` (optional): Display labels on the lines.
+- `LabelPos` (optional): Position of the labels (e.g., "top", "bottom"). Default is "top".
+- `Smooth` (optional): Make the lines smooth.
+- `FillArea` (optional): Fill the area under the lines.
+- `GridTop` (optional): Space between the top of the chart and the title. Default is `"80"`.
+
+#### `CreateLineChart`
+
+`func CreateLineChart(config LineChartConfig) *charts.Line`
+
+Creates a line chart based on the provided `LineChartConfig` and returns a `*charts.Line` object, which can be customized further using `go-echarts` options.
+
+---
+
+## Saving Charts
 
 #### `SaveHTML`
 

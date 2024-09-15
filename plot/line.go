@@ -1,15 +1,15 @@
-// plot/bar.go
+// plot/line.go
 
 package plot
 
 import (
-	"github.com/HazelnutParadise/insyra" // 確保這是正確的導入路徑
+	"github.com/HazelnutParadise/insyra"
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
 )
 
-// BarChartConfig defines the configuration for a bar chart.
-type BarChartConfig struct {
+// LineChartConfig defines the configuration for a line chart.
+type LineChartConfig struct {
 	Title        string   // Title of the chart.
 	Subtitle     string   // Subtitle of the chart.
 	XAxis        []string // X-axis data.
@@ -17,18 +17,20 @@ type BarChartConfig struct {
 	XAxisName    string   // Optional: X-axis name.
 	YAxisName    string   // Optional: Y-axis name.
 	YAxisNameGap int      // Optional: Gap between Y-axis name and subtitle.
-	Colors       []string // Optional: Colors for the bars, for example: ["green", "orange"].
-	ShowLabels   bool     // Optional: Show labels on the bars.
+	Colors       []string // Optional: Colors for the lines, for example: ["blue", "red"].
+	ShowLabels   bool     // Optional: Show labels on the lines.
 	LabelPos     string   // Optional: "top" | "bottom" | "left" | "right", default: "top".
-	GridTop      string   // Optional: default: "80".
+	Smooth       bool     // Optional: Make the lines smooth.
+	FillArea     bool     // Optional: Fill the area under the lines.
+	GridTop      string   // Optional, default: "80".
 }
 
-// CreateBarChart generates and returns a *charts.Bar object based on BarChartConfig.
-func CreateBarChart(config BarChartConfig) *charts.Bar {
-	bar := charts.NewBar()
+// CreateLineChart generates and returns a *charts.Line object based on LineChartConfig.
+func CreateLineChart(config LineChartConfig) *charts.Line {
+	line := charts.NewLine()
 
 	// Set title and subtitle
-	bar.SetGlobalOptions(
+	line.SetGlobalOptions(
 		charts.WithTitleOpts(opts.Title{
 			Title:    config.Title,
 			Subtitle: config.Subtitle,
@@ -37,7 +39,7 @@ func CreateBarChart(config BarChartConfig) *charts.Bar {
 
 	// 設置 X 軸名稱（如果提供）
 	if config.XAxisName != "" {
-		bar.SetGlobalOptions(
+		line.SetGlobalOptions(
 			charts.WithXAxisOpts(opts.XAxis{
 				Name: config.XAxisName,
 			}),
@@ -46,7 +48,7 @@ func CreateBarChart(config BarChartConfig) *charts.Bar {
 
 	// 設置 Y 軸名稱和 NameGap（增加間距）
 	if config.YAxisName != "" {
-		bar.SetGlobalOptions(
+		line.SetGlobalOptions(
 			charts.WithYAxisOpts(opts.YAxis{
 				Name:    config.YAxisName,
 				NameGap: config.YAxisNameGap, // 使用配置中的 NameGap
@@ -56,20 +58,20 @@ func CreateBarChart(config BarChartConfig) *charts.Bar {
 
 	// 設置系列顏色（如果提供）
 	if len(config.Colors) > 0 {
-		bar.SetGlobalOptions(
+		line.SetGlobalOptions(
 			charts.WithColorsOpts(opts.Colors(config.Colors)),
 		)
 	}
 
 	// 設置 GridTop 以增加副標題下的空間
 	if config.GridTop != "" {
-		bar.SetGlobalOptions(
+		line.SetGlobalOptions(
 			charts.WithGridOpts(opts.Grid{
 				Top: config.GridTop,
 			}),
 		)
 	} else {
-		bar.SetGlobalOptions(
+		line.SetGlobalOptions(
 			charts.WithGridOpts(opts.Grid{
 				Top: "80",
 			}),
@@ -77,21 +79,21 @@ func CreateBarChart(config BarChartConfig) *charts.Bar {
 	}
 
 	// 設置 X 軸標籤
-	bar.SetXAxis(config.XAxis)
+	line.SetXAxis(config.XAxis)
 
 	// 添加系列數據，根據 SeriesData 的類型進行處理
 	switch data := config.SeriesData.(type) {
 	case map[string][]float64:
 		for name, vals := range data {
-			bar.AddSeries(name, convertToBarDataFloat(vals))
+			line.AddSeries(name, convertToLineDataFloat(vals))
 		}
 	case []*insyra.DataList:
 		for _, dataList := range data {
-			bar.AddSeries(dataList.GetName(), convertToBarDataFloat(dataList.ToF64Slice()))
+			line.AddSeries(dataList.GetName(), convertToLineDataFloat(dataList.ToF64Slice()))
 		}
 	case []insyra.IDataList:
 		for _, dataList := range data {
-			bar.AddSeries(dataList.GetName(), convertToBarDataFloat(dataList.ToF64Slice()))
+			line.AddSeries(dataList.GetName(), convertToLineDataFloat(dataList.ToF64Slice()))
 		}
 	default:
 		insyra.LogWarning("unsupported SeriesData type: %T", config.SeriesData)
@@ -103,7 +105,7 @@ func CreateBarChart(config BarChartConfig) *charts.Bar {
 		if config.LabelPos == "" {
 			config.LabelPos = "top"
 		}
-		bar.SetSeriesOptions(
+		line.SetSeriesOptions(
 			charts.WithLabelOpts(opts.Label{
 				Show:     opts.Bool(true),
 				Position: config.LabelPos,
@@ -111,14 +113,32 @@ func CreateBarChart(config BarChartConfig) *charts.Bar {
 		)
 	}
 
-	return bar
+	// 平滑線條（如果啟用）
+	if config.Smooth {
+		line.SetSeriesOptions(
+			charts.WithLineChartOpts(opts.LineChart{
+				Smooth: opts.Bool(true),
+			}),
+		)
+	}
+
+	// 填充區域（如果啟用）
+	if config.FillArea {
+		line.SetSeriesOptions(
+			charts.WithAreaStyleOpts(opts.AreaStyle{
+				Opacity: 0.5, // 設置填充區域的透明度
+			}),
+		)
+	}
+
+	return line
 }
 
-// convertToBarDataFloat 將 []float64 轉換為 []opts.BarData
-func convertToBarDataFloat(data []float64) []opts.BarData {
-	barData := make([]opts.BarData, len(data))
+// convertToLineDataFloat 將 []float64 轉換為 []opts.LineData
+func convertToLineDataFloat(data []float64) []opts.LineData {
+	lineData := make([]opts.LineData, len(data))
 	for i, v := range data {
-		barData[i] = opts.BarData{Value: v}
+		lineData[i] = opts.LineData{Value: v}
 	}
-	return barData
+	return lineData
 }
