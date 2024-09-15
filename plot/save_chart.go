@@ -24,8 +24,6 @@ type Renderable interface {
 
 // SaveHTML 將圖表渲染並保存為 HTML 文件
 func SaveHTML(chart Renderable, path string) {
-	insyra.LogInfo("plot.SaveHTML: saving HTML file...")
-
 	// 創建輸出文件
 	f, err := os.Create(path)
 	if err != nil {
@@ -37,6 +35,7 @@ func SaveHTML(chart Renderable, path string) {
 	if err := chart.Render(f); err != nil {
 		insyra.LogFatal("plot.SaveHTML: failed to render chart: %w", err)
 	}
+	insyra.LogInfo("plot.SaveHTML: successfully saved HTML file.")
 }
 
 // SavePNG 將圖表渲染為 PNG 文件，使用 orcgen
@@ -97,8 +96,6 @@ func SavePNG(chart Renderable, pngPath string) {
 
 		// 可根據需要設置其他配置，如 Clip、Quality、Delay 等
 	})
-
-	insyra.LogInfo("plot.SavePNG: rendering chart to PNG...")
 
 	// 使用 orcgen 轉換 HTML 為 PNG
 	fileinfo, err := orcgen.ConvertHTML(screenshotHandler, buf.Bytes())
