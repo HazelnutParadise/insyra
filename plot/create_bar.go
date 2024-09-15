@@ -13,16 +13,18 @@ import (
 
 // BarChartConfig 定義柱狀圖的配置參數
 type BarChartConfig struct {
-	Title      string
-	Subtitle   string
-	XAxis      []string
-	SeriesData any    // 可接受 map[string][]float64 或 []*insyra.DataList
-	XAxisName  string // 可選
-	YAxisName  string // 可選
-	Colors     []string
-	ShowLabels bool
-	LabelPos   string
-	OutputPath string // 可選，如果提供，將自動渲染並保存圖表
+	Title        string
+	Subtitle     string
+	XAxis        []string
+	SeriesData   any    // 可接受 map[string][]float64 或 []*insyra.DataList 或 []insyra.IDataList
+	XAxisName    string // 可選
+	YAxisName    string // 可選
+	YAxisNameGap int    // 可選，設置 Y 軸名稱與副標題之間的間距
+	Colors       []string
+	ShowLabels   bool
+	LabelPos     string
+	OutputPath   string // 可選，如果提供，將自動渲染並保存圖表
+	GridTop      string // 可選，用於增加副標題下的空間，例如 "60"
 }
 
 // CreateBarChart 根據 BarChartConfig 生成並返回一個 *charts.Bar 對象
@@ -46,11 +48,12 @@ func CreateBarChart(config BarChartConfig) (*charts.Bar, error) {
 		)
 	}
 
-	// 設置 Y 軸名稱（如果提供）
+	// 設置 Y 軸名稱和 NameGap（增加間距）
 	if config.YAxisName != "" {
 		bar.SetGlobalOptions(
 			charts.WithYAxisOpts(opts.YAxis{
-				Name: config.YAxisName,
+				Name:    config.YAxisName,
+				NameGap: config.YAxisNameGap, // 使用配置中的 NameGap
 			}),
 		)
 	}
@@ -59,6 +62,21 @@ func CreateBarChart(config BarChartConfig) (*charts.Bar, error) {
 	if len(config.Colors) > 0 {
 		bar.SetGlobalOptions(
 			charts.WithColorsOpts(opts.Colors(config.Colors)),
+		)
+	}
+
+	// 設置 GridTop 以增加副標題下的空間
+	if config.GridTop != "" {
+		bar.SetGlobalOptions(
+			charts.WithGridOpts(opts.Grid{
+				Top: config.GridTop,
+			}),
+		)
+	} else {
+		bar.SetGlobalOptions(
+			charts.WithGridOpts(opts.Grid{
+				Top: "80",
+			}),
 		)
 	}
 
