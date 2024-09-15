@@ -21,6 +21,8 @@ go get github.com/luabagg/orcgen/v2
 
 ## Usage Example
 
+> We recommend using `[]*insyra.DataList` as `SeriesData` for better performance and flexibility, ensuring that the data is in the correct order, while `map[string][]float64` does not.
+
 ### 1. Using `map[string][]float64`
 
 This example shows how to create a bar chart using `map[string][]float64` as the `SeriesData`.
