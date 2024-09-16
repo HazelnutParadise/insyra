@@ -79,6 +79,10 @@ Contributions are welcome! You can contribute to **Insyra** by:
 - **Discussions:** Sharing your feedback and ideas to improve the project.
 <!-- For more details, see the [contributing guidelines](https://github.com/HazelnutParadise/insyra/blob/main/CONTRIBUTING.md). -->
 
+## Contributors
+![contributors](https://contrib.rocks/image?repo=HazelnutParadise/insyra)
+
 ## License
 
 Insyra is licensed under the MIT License. See the [LICENSE](LICENSE) file for more information.
+
