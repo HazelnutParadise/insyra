@@ -188,6 +188,8 @@ Renders the chart and saves it as an HTML file at the specified path.
 
 Renders the chart as a PNG file and saves it to the specified path. This utilizes the `orcgen` library to convert the chart into a PNG.
 
+*This function will automatically use HazelnutParadise online service to render the chart when local rendering failed.*
+
 ---
 
 ## Advanced Customization
