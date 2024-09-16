@@ -9,7 +9,7 @@
 
 A Golang data analysis library.
 
-![logo](/logo.png)
+![logo](/logo.jpg)
 
 **[繁體中文版 README](README_TW.md)**
 
