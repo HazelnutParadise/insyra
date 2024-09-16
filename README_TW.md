@@ -77,6 +77,9 @@ func main() {
 
 <!-- 有關詳細信息，請參閱 [貢獻指南](https://github.com/HazelnutParadise/insyra/blob/main/CONTRIBUTING.md)。 -->
 
+## 貢獻者
+![contributors](https://contrib.rocks/image?repo=HazelnutParadise/insyra)
+
 ## 授權
 
 Insyra 採用 MIT 許可證授權。請參閱 [LICENSE](https://github.com/HazelnutParadise/insyra/blob/main/LICENSE) 文件以獲取更多資訊。
