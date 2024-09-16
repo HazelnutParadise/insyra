@@ -2,9 +2,8 @@
 
 [![Test](https://github.com/HazelnutParadise/insyra/actions/workflows/test.yml/badge.svg)](https://github.com/HazelnutParadise/insyra/actions/workflows/test.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/HazelnutParadise/insyra)](https://goreportcard.com/report/github.com/HazelnutParadise/insyra)
-<a href="https://pkg.go.dev/github.com/HazelnutParadise/insyra" style="text-decoration: none;">
-    <img src="https://godoc.org/github.com/HazelnutParadise/insyra?status.svg" alt="GoDoc">
-</a>
+[![GoDoc](https://godoc.org/github.com/HazelnutParadise/insyra?status.svg)](https://pkg.go.dev/github.com/HazelnutParadise/insyra)
+
 
 A Golang data analysis library.
 
