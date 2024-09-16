@@ -149,7 +149,30 @@ Creates a bar chart based on the provided `BarChartConfig` and returns a `*chart
 
 Creates a line chart based on the provided `LineChartConfig` and returns a `*charts.Line` object, which can be customized further using `go-echarts` options.
 
----
+### Pie Chart
+
+#### `PieChartConfig`
+
+- `Title`: The title of the pie chart.
+- `Subtitle`: The subtitle of the pie chart.
+- `SeriesData`: The data for the pie slices. Supported types:
+  - `[]float64`: A list of float values representing each slice's value.
+  - `[]*insyra.DataList`: A list of `DataList` structures, where each `DataList` contains values for the slices.
+  - `[]insyra.IDataList`: A list of `IDataList` interface implementations.
+- `Labels`: The labels for each pie slice (e.g., category names). Must match the length of `SeriesData`.
+- `Colors` (optional): Colors for the slices.
+- `ShowLabels` (optional): Display labels on the slices. Default is `false`.
+- `LabelPos` (optional): Position of the labels (e.g., "inside", "outside"). Default is `"outside"`.
+- `RoseType` (optional): The rose type of the pie chart. Use `"radius"` or `"area"` to create rose charts.
+- `Radius` (optional): Radius configuration for the pie chart. Example: `["40%", "75%"]` for inner and outer radius.
+- `Center` (optional): Position of the pie chart center. Example: `["50%", "50%"]`.
+- `ShowPercent` (optional): Show the percentage of each slice on the labels. Default is `false`.
+
+#### `CreatePieChart`
+
+`func CreatePieChart(config PieChartConfig) *charts.Pie`
+
+Creates a pie chart based on the provided `PieChartConfig` and returns a `*charts.Pie` object, which can be customized further using `go-echarts` options.
 
 ## Saving Charts
 
