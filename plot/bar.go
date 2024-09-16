@@ -3,6 +3,8 @@
 package plot
 
 import (
+	"fmt"
+
 	"github.com/HazelnutParadise/insyra" // 確保這是正確的導入路徑
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
@@ -74,6 +76,37 @@ func CreateBarChart(config BarChartConfig) *charts.Bar {
 				Top: "80",
 			}),
 		)
+	}
+
+	if len(config.XAxis) == 0 {
+		// 如果 X 軸沒有提供，則根據數據長度生成默認標籤
+		var maxDataLength int
+		switch data := config.SeriesData.(type) {
+		case map[string][]float64:
+			for _, vals := range data {
+				if len(vals) > maxDataLength {
+					maxDataLength = len(vals)
+				}
+			}
+		case []*insyra.DataList:
+			for _, dataList := range data {
+				if dataList.Len() > maxDataLength {
+					maxDataLength = len(dataList.ToF64Slice())
+				}
+			}
+		case []insyra.IDataList:
+			for _, dataList := range data {
+				if dataList.Len() > maxDataLength {
+					maxDataLength = len(dataList.ToF64Slice())
+				}
+			}
+		}
+
+		// 生成 1, 2, 3, ... n 的 X 軸標籤
+		config.XAxis = make([]string, maxDataLength)
+		for i := 0; i < maxDataLength; i++ {
+			config.XAxis[i] = fmt.Sprintf("%d", i+1)
+		}
 	}
 
 	// 設置 X 軸標籤
