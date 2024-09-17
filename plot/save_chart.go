@@ -86,6 +86,7 @@ func SavePNG(chart Renderable, pngPath string) {
 
 	disableAnimation(chart)
 	setBackgroundToWhite(chart)
+
 	// 先將 Renderable 渲染為 HTML
 	var buf bytes.Buffer
 	if err := chart.Render(&buf); err != nil {
