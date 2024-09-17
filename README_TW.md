@@ -6,7 +6,7 @@
 [![GoDoc](https://godoc.org/github.com/HazelnutParadise/insyra?status.svg)](https://pkg.go.dev/github.com/HazelnutParadise/insyra)
 [![MIT license](https://img.shields.io/badge/license-MIT-brightgreen.svg)](https://opensource.org/licenses/MIT)
 
-一個 Go 語言的資料分析庫。
+一個 Go 語言次世代資料分析庫。
 
 ![logo](/logo.png)
 
