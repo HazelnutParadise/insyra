@@ -281,15 +281,15 @@ func main() {
 
 #### `SaveHTML`
 
-`func SaveHTML(chart Renderable, path string)`
+`func SaveHTML(chart Renderable, path string, animation ...bool)`
 
-Renders the chart and saves it as an HTML file at the specified path.
+Renders the chart and saves it as an HTML file at the specified path. Default animation is `true`.
 
 #### `SavePNG`
 
 `func SavePNG(chart Renderable, pngPath string)`
 
-Renders the chart as a PNG file and saves it to the specified path. This utilizes the `orcgen` library to convert the chart into a PNG.
+Renders the chart as a PNG file and saves it to the specified path.
 
 *This function will automatically use HazelnutParadise online service to render the chart when local rendering failed.*
 

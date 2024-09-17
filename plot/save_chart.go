@@ -11,10 +11,9 @@ import (
 	"strings"
 
 	"github.com/HazelnutParadise/insyra"
+	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
-	"github.com/go-rod/rod/lib/proto"
-	"github.com/luabagg/orcgen/v2"
-	"github.com/luabagg/orcgen/v2/pkg/handlers/screenshot"
+	"github.com/go-echarts/snapshot-chromedp/render"
 )
 
 // Renderable 定義了可以被渲染的圖表接口
@@ -23,39 +22,42 @@ type Renderable interface {
 }
 
 // SaveHTML 將圖表渲染並保存為 HTML 文件
-func SaveHTML(chart Renderable, path string) {
+func SaveHTML(chart Renderable, path string, animation ...bool) {
+	if len(animation) > 0 && !animation[0] {
+		disableAnimation(chart)
+	} else {
+		enableAnimation(chart)
+	}
+
 	// 創建輸出文件
 	f, err := os.Create(path)
 	if err != nil {
-		insyra.LogFatal("plot.SaveHTML: failed to create file %s: %w", path, err)
+		insyra.LogFatal("plot.SaveHTML: failed to create file %s: %v", path, err)
 	}
 	defer f.Close()
 
 	// 渲染圖表到指定文件
 	if err := chart.Render(f); err != nil {
-		insyra.LogFatal("plot.SaveHTML: failed to render chart: %w", err)
+		insyra.LogFatal("plot.SaveHTML: failed to render chart: %v", err)
 	}
 	insyra.LogInfo("plot.SaveHTML: successfully saved HTML file.")
 }
 
-// SavePNG 將圖表渲染為 PNG 文件，使用 orcgen
+// SavePNG 將圖表渲染為 PNG 文件，使用 snapshot-chromedp
 func SavePNG(chart Renderable, pngPath string) {
 	defer func() {
-		// 使用 recover 捕捉 panic 並嘗試使用備援服務
-		r := recover()
-		if r != nil {
+		if r := recover(); r != nil {
 			insyra.LogWarning("plot.SavePNG: failed to render chart locally. Trying to use HazelnutParadise online service.\nWaiting for the result...")
 
 			// 將 Renderable 渲染成 HTML
 			var buf bytes.Buffer
-			err := chart.Render(&buf) // chart 是 Renderable 類型
-			if err != nil {
+			if err := chart.Render(&buf); err != nil {
 				insyra.LogFatal("plot.SavePNG: failed to render chart to HTML", err)
 				return
 			}
 
 			// 將渲染的 HTML 放入表單數據
-			formData := "html=" + url.QueryEscape(buf.String()) // 轉為字串並進行 URL 編碼
+			formData := "html=" + url.QueryEscape(buf.String())
 
 			// 使用備援服務發送請求
 			resp, err := http.Post("https://server3.hazelnut-paradise.com/htmltoimage", "application/x-www-form-urlencoded", strings.NewReader(formData))
@@ -73,39 +75,94 @@ func SavePNG(chart Renderable, pngPath string) {
 			}
 
 			// 將接收到的圖片數據寫入本地 PNG 文件
-			err = os.WriteFile(pngPath, body, 0644)
-			if err != nil {
+			if err := os.WriteFile(pngPath, body, 0644); err != nil {
 				insyra.LogFatal("plot.SavePNG: failed to save PNG file from online service", err)
 				return
 			}
 
-			insyra.LogInfo("plot.SavePNG: successfully saved PNG file from hazelnut-paradise.com .")
+			insyra.LogInfo("plot.SavePNG: successfully saved PNG file from hazelnut-paradise.com.")
 		}
 	}()
 
-	// Render the chart to a buffer
+	disableAnimation(chart)
+	setBackgroundToWhite(chart)
+	// 先將 Renderable 渲染為 HTML
 	var buf bytes.Buffer
 	if err := chart.Render(&buf); err != nil {
-		insyra.LogFatal("plot.SavePNG: failed to render chart: %w", err)
+		insyra.LogFatal("plot.SavePNG: failed to render chart to HTML: %v", err)
+		return
 	}
 
-	// Configure the screenshot handler
-	screenshotHandler := screenshot.New().SetConfig(proto.PageCaptureScreenshot{
-		Format:  proto.PageCaptureScreenshotFormatPng,
-		Quality: opts.Int(100),
-
-		// 可根據需要設置其他配置，如 Clip、Quality、Delay 等
-	})
-
-	// 使用 orcgen 轉換 HTML 為 PNG
-	fileinfo, err := orcgen.ConvertHTML(screenshotHandler, buf.Bytes())
+	// 使用 snapshot-chromedp 將 HTML 渲染為 PNG
+	err := render.MakeChartSnapshot(buf.Bytes(), pngPath)
 	if err != nil {
-		insyra.LogFatal("plot.SavePNG: failed to convert HTML to PNG: %w", err)
-	}
-
-	// 保存 PNG 文件
-	if err := fileinfo.Output(pngPath); err != nil {
-		insyra.LogFatal("plot.SavePNG: failed to save PNG file: %w", err)
+		insyra.LogFatal("plot.SavePNG: failed to save PNG: %v", err)
 	}
 	insyra.LogInfo("plot.SavePNG: successfully saved PNG file.")
+}
+
+func disableAnimation(chart Renderable) {
+	if barChart, ok := chart.(*charts.Bar); ok {
+		barChart.SetGlobalOptions(charts.WithAnimation(false)) // 關閉動畫
+	} else if lineChart, ok := chart.(*charts.Line); ok {
+		lineChart.SetGlobalOptions(charts.WithAnimation(false)) // 關閉動畫
+	} else if pieChart, ok := chart.(*charts.Pie); ok {
+		pieChart.SetGlobalOptions(charts.WithAnimation(false)) // 關閉動畫
+	} else if scatterChart, ok := chart.(*charts.Scatter); ok {
+		scatterChart.SetGlobalOptions(charts.WithAnimation(false)) // 關閉動畫
+	} else if heatMap, ok := chart.(*charts.HeatMap); ok {
+		heatMap.SetGlobalOptions(charts.WithAnimation(false)) // 關閉動畫
+	} else if mapChart, ok := chart.(*charts.Map); ok {
+		mapChart.SetGlobalOptions(charts.WithAnimation(false)) // 關閉動畫
+	} else if radarChart, ok := chart.(*charts.Radar); ok {
+		radarChart.SetGlobalOptions(charts.WithAnimation(false)) // 關閉動畫
+	} else if funnelChart, ok := chart.(*charts.Funnel); ok {
+		funnelChart.SetGlobalOptions(charts.WithAnimation(false)) // 關閉動畫
+	} else {
+		insyra.LogFatal("plot.SavePNG: unsupported chart type. Using default animation settings.")
+	}
+}
+
+func enableAnimation(chart Renderable) {
+	if barChart, ok := chart.(*charts.Bar); ok {
+		barChart.SetGlobalOptions(charts.WithAnimation(true)) // 開啟動畫
+	} else if lineChart, ok := chart.(*charts.Line); ok {
+		lineChart.SetGlobalOptions(charts.WithAnimation(true)) // 開啟動畫
+	} else if pieChart, ok := chart.(*charts.Pie); ok {
+		pieChart.SetGlobalOptions(charts.WithAnimation(true)) // 開啟動畫
+	} else if scatterChart, ok := chart.(*charts.Scatter); ok {
+		scatterChart.SetGlobalOptions(charts.WithAnimation(true)) // 開啟動畫
+	} else if heatMap, ok := chart.(*charts.HeatMap); ok {
+		heatMap.SetGlobalOptions(charts.WithAnimation(true)) // 開啟動畫
+	} else if mapChart, ok := chart.(*charts.Map); ok {
+		mapChart.SetGlobalOptions(charts.WithAnimation(true)) // 開啟動畫
+	} else if radarChart, ok := chart.(*charts.Radar); ok {
+		radarChart.SetGlobalOptions(charts.WithAnimation(true)) // 開啟動畫
+	} else if funnelChart, ok := chart.(*charts.Funnel); ok {
+		funnelChart.SetGlobalOptions(charts.WithAnimation(true)) // 開啟動畫
+	} else {
+		insyra.LogFatal("plot.SavePNG: unsupported chart type. Using default animation settings.")
+	}
+}
+
+func setBackgroundToWhite(chart Renderable) {
+	if barChart, ok := chart.(*charts.Bar); ok {
+		barChart.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
+	} else if lineChart, ok := chart.(*charts.Line); ok {
+		lineChart.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
+	} else if pieChart, ok := chart.(*charts.Pie); ok {
+		pieChart.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
+	} else if scatterChart, ok := chart.(*charts.Scatter); ok {
+		scatterChart.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
+	} else if heatMap, ok := chart.(*charts.HeatMap); ok {
+		heatMap.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
+	} else if mapChart, ok := chart.(*charts.Map); ok {
+		mapChart.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
+	} else if radarChart, ok := chart.(*charts.Radar); ok {
+		radarChart.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
+	} else if funnelChart, ok := chart.(*charts.Funnel); ok {
+		funnelChart.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
+	} else {
+		insyra.LogFatal("plot.SavePNG: unsupported chart type. Using default background color.")
+	}
 }
