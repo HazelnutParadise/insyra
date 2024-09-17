@@ -8,7 +8,7 @@
 
 一個 Go 語言的資料分析庫。
 
-![logo](/logo.jpg)
+![logo](/logo.png)
 
 ## 概述
 
