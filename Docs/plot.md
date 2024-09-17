@@ -99,8 +99,6 @@ func main() {
 
 ### Bar Chart
 
-![bar_example](./img/bar_example.png)
-
 #### `BarChartConfig`
 
 - `Title`: The title of the chart.
@@ -123,6 +121,9 @@ func main() {
 `func CreateBarChart(config BarChartConfig) *charts.Bar`
 
 Creates a bar chart based on the provided `BarChartConfig` and returns a `*charts.Bar` object, which can be customized further using `go-echarts` options.
+
+#### Example
+![bar_example](./img/bar_example.png)
 
 ### Line Chart
 
