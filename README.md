@@ -7,7 +7,7 @@
 [![MIT license](https://img.shields.io/badge/license-MIT-brightgreen.svg)](https://opensource.org/licenses/MIT)
 
 
-A Golang data analysis library.
+A next-generation data analysis library for Golang.
 
 ![logo](/logo.png)
 
