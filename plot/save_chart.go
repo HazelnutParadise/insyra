@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/HazelnutParadise/insyra"
@@ -84,6 +85,9 @@ func SavePNG(chart Renderable, pngPath string) {
 		}
 	}()
 
+	dir := filepath.Dir(pngPath)
+	baseName := strings.TrimSuffix(pngPath, filepath.Ext(pngPath)) // 分離主檔名和副檔名
+
 	disableAnimation(chart)
 	setBackgroundToWhite(chart)
 
@@ -94,8 +98,19 @@ func SavePNG(chart Renderable, pngPath string) {
 		return
 	}
 
-	// 使用 snapshot-chromedp 將 HTML 渲染為 PNG
-	err := render.MakeChartSnapshot(buf.Bytes(), pngPath)
+	// 使用 snapshot-chromedp 將 HTML 渲染為 PNG，並設置高品質
+	config := &render.SnapshotConfig{
+		RenderContent: buf.Bytes(),
+		Path:          dir,
+		Suffix:        "png",
+		FileName:      baseName,
+		HtmlPath:      dir,
+		KeepHtml:      false,
+		Quality:       3, // 將圖片質量設置為 3，這裡可以根據需求進行調整
+	}
+
+	// 使用自定義配置進行渲染
+	err := render.MakeSnapshot(config)
 	if err != nil {
 		insyra.LogWarning("plot.SavePNG: failed to save PNG: %v", err)
 	}

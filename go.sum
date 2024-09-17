@@ -12,6 +12,8 @@ github.com/go-echarts/go-echarts/v2 v2.4.2 h1:1FC3tGzsLSgdeO4Ltc3OAtcIiRomfEKxKX
 github.com/go-echarts/go-echarts/v2 v2.4.2/go.mod h1:56YlvzhW/a+du15f3S2qUGNDfKnFOeJSThBIrVFHDtI=
 github.com/go-echarts/snapshot-chromedp v0.0.4 h1:RpSttzl1H850Kqzg6WdIBAVwVI8vMls+MQTexPI9pMg=
 github.com/go-echarts/snapshot-chromedp v0.0.4/go.mod h1:E7ugvjSUoFjFi2CpACHK79QxH/R7HCuoqV8UC54LhrI=
+github.com/go-echarts/snapshot-chromedp v0.0.5-0.20240525070751-982145486328 h1:/ow4C2hnlnG8eM0gNJiZ9PXGR4sGwJXFTaGxKbTenhE=
+github.com/go-echarts/snapshot-chromedp v0.0.5-0.20240525070751-982145486328/go.mod h1:E7ugvjSUoFjFi2CpACHK79QxH/R7HCuoqV8UC54LhrI=
 github.com/go-rod/rod v0.116.2 h1:A5t2Ky2A+5eD/ZJQr1EfsQSe5rms5Xof/qj296e+ZqA=
 github.com/go-rod/rod v0.116.2/go.mod h1:H+CMO9SCNc2TJ2WfrG+pKhITz57uGNYU43qYHh438Mg=
 github.com/gobwas/httphead v0.1.0 h1:exrUm0f4YX0L7EBwZHuCF4GDp8aJfVeBrlLQrs6NqWU=
