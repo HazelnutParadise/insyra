@@ -29,6 +29,12 @@ type BarChartConfig struct {
 func CreateBarChart(config BarChartConfig) *charts.Bar {
 	bar := charts.NewBar()
 
+	bar.SetGlobalOptions(
+		charts.WithLegendOpts(opts.Legend{
+			Bottom: "0%",
+		}),
+	)
+
 	// Set title and subtitle
 	bar.SetGlobalOptions(
 		charts.WithTitleOpts(opts.Title{

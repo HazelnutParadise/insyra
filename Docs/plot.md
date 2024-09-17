@@ -123,7 +123,7 @@ func main() {
 Creates a bar chart based on the provided `BarChartConfig` and returns a `*charts.Bar` object, which can be customized further using `go-echarts` options.
 
 #### Example
-![bar_example](./img/bar_example.png)
+![bar_example](./img/plot_bar_example.png)
 
 ### Line Chart
 
@@ -152,6 +152,9 @@ Creates a bar chart based on the provided `BarChartConfig` and returns a `*chart
 
 Creates a line chart based on the provided `LineChartConfig` and returns a `*charts.Line` object, which can be customized further using `go-echarts` options.
 
+#### Example
+![line_example](./img/plot_line_example.png)
+
 ### Pie Chart
 
 #### `PieChartConfig`
@@ -160,8 +163,8 @@ Creates a line chart based on the provided `LineChartConfig` and returns a `*cha
 - `Subtitle`: The subtitle of the pie chart.
 - `SeriesData`: The data for the pie slices. Supported types:
   - `[]float64`: A list of float values representing each slice's value.
-  - `[]*insyra.DataList`: A list of `DataList` structures, where each `DataList` contains values for the slices.
-  - `[]insyra.IDataList`: A list of `IDataList` interface implementations.
+  - `*insyra.DataList`: `DataList` structure.
+  - `insyra.IDataList`: `IDataList` interface implementation.
 - `Labels`: The labels for each pie slice (e.g., category names). Must match the length of `SeriesData`.
 - `Colors` (optional): Colors for the slices.
 - `ShowLabels` (optional): Display labels on the slices. Default is `false`.
@@ -177,26 +180,23 @@ Creates a line chart based on the provided `LineChartConfig` and returns a `*cha
 
 Creates a pie chart based on the provided `PieChartConfig` and returns a `*charts.Pie` object, which can be customized further using `go-echarts` options.
 
+#### Example
+![pie_example](./img/plot_pie_example.png)
+
 ### Scatter Chart
 
 #### `ScatterChartConfig`
 
 - `Title`: The title of the scatter chart.
 - `Subtitle`: The subtitle of the scatter chart.
-- `XAxis`: Data for the X-axis (categories). If not provided, default labels will be generated based on the length of the data.
 - `SeriesData`: The data for the scatter points. Supported types:
-  - `map[string][]float64`: A map where keys are series names, and values are data points.
-  - `[]*insyra.DataList`: A list of `DataList` structures.
-  - `[]insyra.IDataList`: A list of `IDataList` interface implementations.
+  - `map[string][][]float64`: A map where keys are series names, and values are two-dimensional data (X, Y).
 - `XAxisName` (optional): The name of the X-axis.
 - `YAxisName` (optional): The name of the Y-axis.
 - `Colors` (optional): Colors for the scatter points.
 - `ShowLabels` (optional): Display labels on the scatter points. Default is `false`.
 - `LabelPos` (optional): Position of the labels (e.g., "right"). Default is `"right"`.
 - `GridTop` (optional): Space between the top of the chart and the title. Default is `"80"`.
-- `Symbol` (optional): Shape of the scatter points, such as `"circle"`, `"rect"`, `"roundRect"`, etc.
-- `SymbolSize` (optional): Size of the scatter points. Default is `0`.
-- `SymbolRotate` (optional): Rotation of the scatter points, in degrees.
 - `SplitLine` (optional): Whether to show split lines on the X and Y axes. Default is `false`.
 
 #### `CreateScatterChart`
@@ -205,77 +205,8 @@ Creates a pie chart based on the provided `PieChartConfig` and returns a `*chart
 
 Creates a scatter chart based on the provided `ScatterChartConfig` and returns a `*charts.Scatter` object, which can be further customized with `go-echarts` options.
 
----
-
-## Usage Example
-
-### 1. Using `map[string][]float64`
-
-```go
-package main
-
-import (
-	"github.com/HazelnutParadise/insyra/plot"
-)
-
-func main() {
-	config := plot.ScatterChartConfig{
-		Title:      "Player Performance",
-		Subtitle:   "Performance by Sports",
-		XAxis:      []string{"Swimming", "Surfing", "Shooting", "Skating", "Wrestling", "Diving"},
-		SeriesData: map[string][]float64{
-			"Player A": {80, 90, 85, 88, 92, 75},
-			"Player B": {60, 65, 70, 68, 72, 55},
-		},
-		ShowLabels: true,
-		Symbol:     "circle",
-		SymbolSize: 15,
-	}
-
-	// Create scatter chart
-	scatterChart := plot.CreateScatterChart(config)
-
-	// Save the chart as an HTML file
-	plot.SaveHTML(scatterChart, "scatter_chart.html")
-
-	// Save the chart as a PNG file
-	plot.SavePNG(scatterChart, "scatter_chart.png")
-}
-```
-
-### 2. Using `insyra.DataList`
-
-```go
-package main
-
-import (
-	"github.com/HazelnutParadise/insyra"
-	"github.com/HazelnutParadise/insyra/plot"
-)
-
-func main() {
-	dataListA := insyra.NewDataList(80, 90, 85, 88, 92, 75).SetName("Player A")
-	dataListB := insyra.NewDataList(60, 65, 70, 68, 72, 55).SetName("Player B")
-
-	config := plot.ScatterChartConfig{
-		Title:      "Player Performance",
-		Subtitle:   "Performance by Sports",
-		SeriesData: []*insyra.DataList{dataListA, dataListB},
-		ShowLabels: true,
-		Symbol:     "roundRect",
-		SymbolSize: 20,
-	}
-
-	// Create scatter chart
-	scatterChart := plot.CreateScatterChart(config)
-
-	// Save the chart as an HTML file
-	plot.SaveHTML(scatterChart, "scatter_chart_datalist.html")
-
-	// Save the chart as a PNG file
-	plot.SavePNG(scatterChart, "scatter_chart_datalist.png")
-}
-```
+#### Example
+![scatter_example](./img/plot_scatter_example.png)
 
 ## Saving Charts
 

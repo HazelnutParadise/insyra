@@ -46,7 +46,42 @@ func SaveHTML(chart Renderable, path string, animation ...bool) {
 
 // SavePNG 將圖表渲染為 PNG 文件，使用 snapshot-chromedp
 func SavePNG(chart Renderable, pngPath string) {
-	defer func() {
+
+	dir := filepath.Dir(pngPath)
+	baseName := strings.TrimSuffix(pngPath, filepath.Ext(pngPath)) // 分離主檔名和副檔名
+
+	disableAnimation(chart)
+	setBackgroundToWhite(chart)
+
+	// 先將 Renderable 渲染為 HTML
+	var buf bytes.Buffer
+	if err := chart.Render(&buf); err != nil {
+		insyra.LogFatal("plot.SavePNG: failed to render chart to HTML: %v", err)
+		return
+	}
+
+	// 使用 snapshot-chromedp 將 HTML 渲染為 PNG，並設置高品質
+	config := &render.SnapshotConfig{
+		RenderContent: buf.Bytes(),
+		Path:          dir,
+		Suffix:        "png",
+		FileName:      baseName,
+		HtmlPath:      dir,
+		KeepHtml:      false,
+		Quality:       3, // 將圖片質量設置為 3，這裡可以根據需求進行調整
+	}
+
+	// 使用自定義配置進行渲染
+	err := render.MakeSnapshot(config)
+	if err != nil {
+		insyra.LogWarning("plot.SavePNG: failed to save PNG: %v", err)
+		goto useOnlineService
+	}
+	insyra.LogInfo("plot.SavePNG: successfully saved PNG file.")
+	return
+
+useOnlineService:
+	func() {
 		if r := recover(); r != nil {
 			insyra.LogWarning("plot.SavePNG: failed to render chart locally. Trying to use HazelnutParadise online service.\nWaiting for the result...")
 
@@ -84,37 +119,6 @@ func SavePNG(chart Renderable, pngPath string) {
 			insyra.LogInfo("plot.SavePNG: successfully saved PNG file from hazelnut-paradise.com.")
 		}
 	}()
-
-	dir := filepath.Dir(pngPath)
-	baseName := strings.TrimSuffix(pngPath, filepath.Ext(pngPath)) // 分離主檔名和副檔名
-
-	disableAnimation(chart)
-	setBackgroundToWhite(chart)
-
-	// 先將 Renderable 渲染為 HTML
-	var buf bytes.Buffer
-	if err := chart.Render(&buf); err != nil {
-		insyra.LogFatal("plot.SavePNG: failed to render chart to HTML: %v", err)
-		return
-	}
-
-	// 使用 snapshot-chromedp 將 HTML 渲染為 PNG，並設置高品質
-	config := &render.SnapshotConfig{
-		RenderContent: buf.Bytes(),
-		Path:          dir,
-		Suffix:        "png",
-		FileName:      baseName,
-		HtmlPath:      dir,
-		KeepHtml:      false,
-		Quality:       3, // 將圖片質量設置為 3，這裡可以根據需求進行調整
-	}
-
-	// 使用自定義配置進行渲染
-	err := render.MakeSnapshot(config)
-	if err != nil {
-		insyra.LogWarning("plot.SavePNG: failed to save PNG: %v", err)
-	}
-	insyra.LogInfo("plot.SavePNG: successfully saved PNG file.")
 }
 
 func disableAnimation(chart Renderable) {

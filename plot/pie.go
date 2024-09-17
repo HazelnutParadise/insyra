@@ -25,6 +25,12 @@ type PieChartConfig struct {
 func CreatePieChart(config PieChartConfig) *charts.Pie {
 	pie := charts.NewPie()
 
+	pie.SetGlobalOptions(
+		charts.WithLegendOpts(opts.Legend{
+			Bottom: "0%",
+		}),
+	)
+
 	// Set title and subtitle
 	pie.SetGlobalOptions(
 		charts.WithTitleOpts(opts.Title{
@@ -48,25 +54,21 @@ func CreatePieChart(config PieChartConfig) *charts.Pie {
 			return nil
 		}
 		pie.AddSeries("pie", convertToPieData(data, config.Labels))
-	case []*insyra.DataList:
-		for _, dataList := range data {
-			// 假設 DataList 提供了方法來返回數據
-			values := dataList.ToF64Slice() // 返回 []float64 數據
-			if len(config.Labels) != len(values) {
-				insyra.LogWarning("The length of Labels and DataList values does not match.")
-				return nil
-			}
-			pie.AddSeries(dataList.GetName(), convertToPieData(values, config.Labels))
+	case *insyra.DataList:
+		// 假設 DataList 提供了方法來返回數據
+		values := data.ToF64Slice() // 返回 []float64 數據
+		if len(config.Labels) != len(values) {
+			insyra.LogWarning("The length of Labels and DataList values does not match.")
+			return nil
 		}
-	case []insyra.IDataList:
-		for _, dataList := range data {
-			values := dataList.ToF64Slice() // 返回 []float64 數據
-			if len(config.Labels) != len(values) {
-				insyra.LogWarning("The length of Labels and DataList values does not match.")
-				return nil
-			}
-			pie.AddSeries(dataList.GetName(), convertToPieData(values, config.Labels))
+		pie.AddSeries(data.GetName(), convertToPieData(values, config.Labels))
+	case insyra.IDataList:
+		values := data.ToF64Slice() // 返回 []float64 數據
+		if len(config.Labels) != len(values) {
+			insyra.LogWarning("The length of Labels and DataList values does not match.")
+			return nil
 		}
+		pie.AddSeries(data.GetName(), convertToPieData(values, config.Labels))
 	default:
 		insyra.LogWarning("Unsupported SeriesData type: %T", config.SeriesData)
 		return nil
@@ -74,8 +76,10 @@ func CreatePieChart(config PieChartConfig) *charts.Pie {
 
 	// 設置標籤和其他選項
 	labelFormatter := "{b}: {c}" // 預設顯示名稱和值
-	if config.ShowPercent {
+	if config.ShowPercent && config.ShowLabels {
 		labelFormatter = "{b}: {c} ({d}%)" // 增加百分比顯示
+	} else if config.ShowPercent {
+		labelFormatter = "{d}%"
 	}
 
 	if config.Center == nil {
@@ -87,7 +91,7 @@ func CreatePieChart(config PieChartConfig) *charts.Pie {
 
 	pie.SetSeriesOptions(
 		charts.WithLabelOpts(opts.Label{
-			Show:      opts.Bool(config.ShowLabels),
+			Show:      opts.Bool(config.ShowLabels || config.ShowPercent),
 			Position:  config.LabelPos,
 			Formatter: labelFormatter,
 		}),

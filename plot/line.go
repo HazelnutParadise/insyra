@@ -31,6 +31,12 @@ type LineChartConfig struct {
 func CreateLineChart(config LineChartConfig) *charts.Line {
 	line := charts.NewLine()
 
+	line.SetGlobalOptions(
+		charts.WithLegendOpts(opts.Legend{
+			Bottom: "0%",
+		}),
+	)
+
 	// Set title and subtitle
 	line.SetGlobalOptions(
 		charts.WithTitleOpts(opts.Title{
