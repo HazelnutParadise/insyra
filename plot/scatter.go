@@ -20,7 +20,7 @@ type ScatterChartConfig struct {
 	GridTop    string                 // Optional: Space between the top of the chart and the title. Default is "80".
 	SplitLine  bool                   // Optional: Whether to show split lines on the X and Y axes.
 	Symbol     string                 // Optional: Symbol of the scatter points. Default is "circle".
-	SymbolSize int                    // Optional: Size of the scatter points. Default is 4.
+	SymbolSize int                    // Optional: Size of the scatter points. Default is 10.
 }
 
 // CreateScatterChart generates and returns a *charts.Scatter object based on ScatterChartConfig.
@@ -34,7 +34,7 @@ func CreateScatterChart(config ScatterChartConfig) *charts.Scatter {
 		config.Symbol = "circle"
 	}
 	if config.SymbolSize == 0 {
-		config.SymbolSize = 4
+		config.SymbolSize = 10
 	}
 
 	scatter.SetGlobalOptions(
