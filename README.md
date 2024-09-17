@@ -9,7 +9,11 @@
 
 A next-generation data analysis library for Golang.
 
-![logo](/logo.webp)
+<picture>
+  <source srcset="logo_dark.png" media="(prefers-color-scheme: dark)">
+  <img src="logo.webp" alt="Insyra Logo">
+</picture>
+
 
 **[繁體中文版 README](README_TW.md)**
 
