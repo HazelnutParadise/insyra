@@ -97,7 +97,7 @@ func SavePNG(chart Renderable, pngPath string) {
 	// 使用 snapshot-chromedp 將 HTML 渲染為 PNG
 	err := render.MakeChartSnapshot(buf.Bytes(), pngPath)
 	if err != nil {
-		insyra.LogFatal("plot.SavePNG: failed to save PNG: %v", err)
+		insyra.LogWarning("plot.SavePNG: failed to save PNG: %v", err)
 	}
 	insyra.LogInfo("plot.SavePNG: successfully saved PNG file.")
 }
