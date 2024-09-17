@@ -17,13 +17,25 @@ type ScatterChartConfig struct {
 	Colors     []string               // Optional: Colors for the scatter points.
 	ShowLabels bool                   // Optional: Show labels on the scatter points.
 	LabelPos   string                 // Optional: Position of the labels, default is "right".
-	GridTop    string                 // Optional: Space between the top of the chart and the title.
+	GridTop    string                 // Optional: Space between the top of the chart and the title. Default is "80".
 	SplitLine  bool                   // Optional: Whether to show split lines on the X and Y axes.
+	Symbol     string                 // Optional: Symbol of the scatter points. Default is "circle".
+	SymbolSize int                    // Optional: Size of the scatter points. Default is 4.
 }
 
 // CreateScatterChart generates and returns a *charts.Scatter object based on ScatterChartConfig.
 func CreateScatterChart(config ScatterChartConfig) *charts.Scatter {
 	scatter := charts.NewScatter()
+
+	if config.GridTop == "" {
+		config.GridTop = "80"
+	}
+	if config.Symbol == "" {
+		config.Symbol = "circle"
+	}
+	if config.SymbolSize == 0 {
+		config.SymbolSize = 4
+	}
 
 	scatter.SetGlobalOptions(
 		charts.WithLegendOpts(
@@ -90,6 +102,14 @@ func CreateScatterChart(config ScatterChartConfig) *charts.Scatter {
 				},
 			}),
 		)
+	} else {
+		scatter.SetGlobalOptions(
+			charts.WithXAxisOpts(opts.XAxis{
+				SplitLine: &opts.SplitLine{
+					Show: opts.Bool(false),
+				},
+			}),
+		)
 	}
 
 	return scatter
@@ -104,7 +124,9 @@ func convertToScatterData(data [][]float64, config ScatterChartConfig) []opts.Sc
 			continue
 		}
 		scatterData[i] = opts.ScatterData{
-			Value: [2]float64{v[0], v[1]}, // 第一個是 X 值，第二個是 Y 值
+			Value:      [2]float64{v[0], v[1]}, // 第一個是 X 值，第二個是 Y 值
+			Symbol:     config.Symbol,
+			SymbolSize: config.SymbolSize,
 		}
 	}
 	return scatterData

@@ -49,6 +49,7 @@ func SavePNG(chart Renderable, pngPath string) {
 
 	dir := filepath.Dir(pngPath)
 	baseName := strings.TrimSuffix(pngPath, filepath.Ext(pngPath)) // 分離主檔名和副檔名
+	tempBaseName := "temp_" + baseName + "_temp"
 
 	disableAnimation(chart)
 	setBackgroundToWhite(chart)
@@ -65,10 +66,14 @@ func SavePNG(chart Renderable, pngPath string) {
 		RenderContent: buf.Bytes(),
 		Path:          dir,
 		Suffix:        "png",
-		FileName:      baseName,
+		FileName:      tempBaseName,
 		HtmlPath:      dir,
 		KeepHtml:      false,
 		Quality:       3, // 將圖片質量設置為 3，這裡可以根據需求進行調整
+	}
+
+	if config.KeepHtml {
+		config.FileName = baseName
 	}
 
 	// 使用自定義配置進行渲染
@@ -77,6 +82,11 @@ func SavePNG(chart Renderable, pngPath string) {
 		insyra.LogWarning("plot.SavePNG: failed to save PNG: %v", err)
 		goto useOnlineService
 	}
+
+	if !config.KeepHtml {
+		os.Rename(tempBaseName+".png", baseName+".png")
+	}
+
 	insyra.LogInfo("plot.SavePNG: successfully saved PNG file.")
 	return
 
