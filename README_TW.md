@@ -8,7 +8,7 @@
 
 Go 語言次世代資料分析庫。
 
-![logo](/logo.png)
+![logo](/logo.webp)
 
 ## 概述
 

@@ -9,7 +9,7 @@
 
 A next-generation data analysis library for Golang.
 
-![logo](/logo.png)
+![logo](/logo.webp)
 
 **[繁體中文版 README](README_TW.md)**
 
