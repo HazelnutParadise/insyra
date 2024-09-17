@@ -99,6 +99,8 @@ func main() {
 
 ### Bar Chart
 
+![bar_example](./img/bar_example.png)
+
 #### `BarChartConfig`
 
 - `Title`: The title of the chart.
