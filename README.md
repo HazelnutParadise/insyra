@@ -73,6 +73,7 @@ For a complete list of methods and features, please refer to the **[DataTable Do
 - **[stats](/Docs/stats.md)**: Provides statistical functions for data analysis, including skewness, kurtosis, and moment calculations.
 - **[parallel](/Docs/parallel.md)**: Offers parallel processing capabilities for data manipulation and analysis.
 - **[plot](/Docs/plot.md)**: Provides a wrapper around the powerful [github.com/go-echarts/go-echarts](https://github.com/go-echarts/go-echarts) library, designed to simplify data visualization.
+- **[gplot](/Docs/gplot.md)**: A visualization package based on [github.com/gonum/plot](https://github.com/gonum/plot). Fast and no need for Chrome.
 
 ## Advanced Usage
 
