@@ -245,7 +245,7 @@ Renders the chart and saves it as an HTML file at the specified path. Default an
 
 `func SavePNG(chart Renderable, pngPath string)`
 
-Renders the chart as a PNG file and saves it to the specified path. Your computer must have installed `Chrome` browser to render the chart locally.
+Renders the chart as a PNG file and saves it to the specified path. **Your computer must have installed `Chrome` browser to render the chart locally.**
 
 > [!NOTE]
 > *This function will automatically use HazelnutParadise online service to render the chart when local rendering failed. However, the local rendering is recommended for better performance.*
