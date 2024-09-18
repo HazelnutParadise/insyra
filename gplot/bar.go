@@ -57,7 +57,8 @@ func CreateBarChart(config BarChartConfig) *plot.Plot {
 
 	bars, err := plotter.NewBarChart(barData, vg.Points(barWidth))
 	if err != nil {
-		panic(err)
+		insyra.LogWarning("gplot.CreateBarChart: failed to create bar chart: %w", err)
+		return nil
 	}
 
 	// Set axis labels (categories).
