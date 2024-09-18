@@ -59,7 +59,7 @@ func CreateHeatmapChart(config HeatmapChartConfig) *charts.HeatMap {
 			InRange: &opts.VisualMapInRange{
 				Color: config.Colors,
 			},
-			Orient: "horizontal",
+			// Orient: "horizontal",
 			Bottom: "0%",
 			Right:  "0%",
 		}),
