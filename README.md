@@ -75,7 +75,7 @@ For a complete list of methods and features, please refer to the **[DataTable Do
 Provides statistical functions for data analysis, including skewness, kurtosis, and moment calculations.
 
 ### **[parallel](/Docs/parallel.md)**
-Offers parallel processing capabilities for data manipulation and analysis.
+Offers parallel processing capabilities for data manipulation and analysis. Allows you to execute any function and automatically wait for all goroutines to complete.
 
 ### **[plot](/Docs/plot.md)**
 

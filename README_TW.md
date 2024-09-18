@@ -65,10 +65,21 @@ func main() {
 
 **Insyra** 還提供了多個擴展套件，每個都專注於數據分析的特定方面。
 
-- **[stats](/Docs/stats.md)**：提供數據分析的統計函數，包括偏度、峰度和矩計算。
-- **[parallel](/Docs/parallel.md)**：為數據操作和分析提供並行處理能力。
-- **[plot](/Docs/plot.md)**：強大的 [github.com/go-echarts/go-echarts](https://github.com/go-echarts/go-echarts) 庫的封裝，用於簡化資料視覺化。
-- **[gplot](/Docs/gplot.md)**：基於 [github.com/gonum/plot](https://github.com/gonum/plot) 的視覺化套件。快速且不需要 Chrome。
+### **[stats](/Docs/stats.md)**
+
+提供數據分析的統計函數，包括偏度、峰度和矩計算。
+
+### **[parallel](/Docs/parallel.md)**
+
+為數據操作和分析提供並行處理能力。可用於執行任何函數，並自動等待所有 goroutine 完成。
+
+### **[plot](/Docs/plot.md)**
+
+強大的 [github.com/go-echarts/go-echarts](https://github.com/go-echarts/go-echarts) 庫的封裝，用於簡化資料視覺化。
+
+### **[gplot](/Docs/gplot.md)**
+
+基於 [github.com/gonum/plot](https://github.com/gonum/plot) 的視覺化套件。快速且不需要 Chrome。
 
 ## 進階使用
 
