@@ -45,6 +45,7 @@ func CreateHeatmapChart(config HeatmapChartConfig) *charts.HeatMap {
 		}),
 		charts.WithXAxisOpts(opts.XAxis{
 			Type:      "category",
+			Data:      config.XAxis,
 			SplitArea: &opts.SplitArea{Show: opts.Bool(true)},
 		}),
 		charts.WithYAxisOpts(opts.YAxis{
