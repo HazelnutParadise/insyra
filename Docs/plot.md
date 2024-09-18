@@ -210,6 +210,29 @@ Creates a scatter chart based on the provided `ScatterChartConfig` and returns a
 #### Example
 ![scatter_example](./img/plot_scatter_example.png)
 
+### Heatmap Chart
+
+#### `HeatmapChartConfig`
+
+- `Title`: The title of the heatmap.
+- `Subtitle`: The subtitle of the heatmap.
+- `XAxis`: Data for the X-axis (categories).
+- `YAxis`: Data for the Y-axis (categories).
+- `Data`: The data for the heatmap.
+- `Colors`: Colors for the heatmap. Default is `["#50a3ba", "#eac736", "#d94e5d"]`.
+- `Min`: Minimum value for the heatmap.
+- `Max`: Maximum value for the heatmap.
+- `GridTop` (optional): Space between the top of the chart and the title. Default is `"80"`.
+
+#### `CreateHeatmapChart`
+
+`func CreateHeatmapChart(config HeatmapChartConfig) *charts.HeatMap`
+
+Creates a heatmap chart based on the provided `HeatmapChartConfig` and returns a `*charts.HeatMap` object, which can be further customized with `go-echarts` options.
+
+#### Example
+![heatmap_example](./img/plot_heatmap_example.png)
+
 ## Saving Charts
 
 #### `SaveHTML`
