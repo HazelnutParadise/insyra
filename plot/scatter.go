@@ -19,7 +19,7 @@ type ScatterChartConfig struct {
 	LabelPos   string                 // Optional: Position of the labels, default is "right".
 	GridTop    string                 // Optional: Space between the top of the chart and the title. Default is "80".
 	SplitLine  bool                   // Optional: Whether to show split lines on the X and Y axes.
-	Symbol     string                 // Optional: Symbol of the scatter points. Default is "circle".
+	Symbol     []string               // Optional: Symbol of the scatter points. Default is "circle". If there are multiple series, you can specify different symbols for each series. If the length of the array is less than the number of series, the remaining series will repeat the order of the symbols.
 	SymbolSize int                    // Optional: Size of the scatter points. Default is 10.
 }
 
@@ -30,8 +30,8 @@ func CreateScatterChart(config ScatterChartConfig) *charts.Scatter {
 	if config.GridTop == "" {
 		config.GridTop = "80"
 	}
-	if config.Symbol == "" {
-		config.Symbol = "circle"
+	if config.Symbol == nil {
+		config.Symbol = []string{"circle"}
 	}
 	if config.SymbolSize == 0 {
 		config.SymbolSize = 10
@@ -69,9 +69,13 @@ func CreateScatterChart(config ScatterChartConfig) *charts.Scatter {
 	}
 
 	// 處理多個系列的二維數據
+	symbolIndex := 0
 	for seriesName, seriesData := range config.SeriesData {
-		scatterData := convertToScatterData(seriesData, config)
-
+		if symbolIndex >= len(config.Symbol) {
+			symbolIndex = 0
+		}
+		scatterData := convertToScatterData(seriesData, config, symbolIndex)
+		symbolIndex++
 		// 添加系列數據
 		scatter.AddSeries(seriesName, scatterData)
 	}
@@ -116,7 +120,7 @@ func CreateScatterChart(config ScatterChartConfig) *charts.Scatter {
 }
 
 // convertToScatterData 將 [][]float64 轉換為 []opts.ScatterData
-func convertToScatterData(data [][]float64, config ScatterChartConfig) []opts.ScatterData {
+func convertToScatterData(data [][]float64, config ScatterChartConfig, symbolIndex int) []opts.ScatterData {
 	scatterData := make([]opts.ScatterData, len(data))
 	for i, v := range data {
 		if len(v) != 2 {
@@ -125,7 +129,7 @@ func convertToScatterData(data [][]float64, config ScatterChartConfig) []opts.Sc
 		}
 		scatterData[i] = opts.ScatterData{
 			Value:      [2]float64{v[0], v[1]}, // 第一個是 X 值，第二個是 Y 值
-			Symbol:     config.Symbol,
+			Symbol:     config.Symbol[symbolIndex],
 			SymbolSize: config.SymbolSize,
 		}
 	}
