@@ -68,6 +68,7 @@ func main() {
 - **[stats](/Docs/stats.md)**：提供數據分析的統計函數，包括偏度、峰度和矩計算。
 - **[parallel](/Docs/parallel.md)**：為數據操作和分析提供並行處理能力。
 - **[plot](/Docs/plot.md)**：強大的 [github.com/go-echarts/go-echarts](https://github.com/go-echarts/go-echarts) 庫的封裝，用於簡化資料視覺化。
+- **[gplot](/Docs/gplot.md)**：基於 [github.com/gonum/plot](https://github.com/gonum/plot) 的視覺化套件。快速且不需要 Chrome。
 
 ## 進階使用
 
