@@ -33,6 +33,7 @@ func CreateLineChart(config LineChartConfig) *charts.Line {
 
 	line.SetGlobalOptions(
 		charts.WithLegendOpts(opts.Legend{
+			Show:   opts.Bool(true),
 			Bottom: "0%",
 		}),
 	)
