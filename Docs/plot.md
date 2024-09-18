@@ -233,6 +233,21 @@ Creates a heatmap chart based on the provided `HeatmapChartConfig` and returns a
 #### Example
 ![heatmap_example](./img/plot_heatmap_example.png)
 
+<div class="container">
+    <script src="https://go-echarts.github.io/go-echarts-assets/assets/echarts.min.js"></script>
+    <div class="item" id="XNREMByZqFBO" style="width:900px;height:500px;"></div>
+</div><script type="text/javascript">
+    "use strict";
+    let goecharts_XNREMByZqFBO = echarts.init(document.getElementById('XNREMByZqFBO'), "white", { renderer: "canvas" });
+    let option_XNREMByZqFBO = {"animation":true,"color":["#5470c6","#91cc75","#fac858","#ee6666","#73c0de","#3ba272","#fc8452","#9a60b4","#ea7ccc"],"grid":[{"top":"80"}],"legend":{"show":false},"series":[{"name":"heatmap","type":"heatmap","data":[{"value":[0,0,3]},{"value":[0,1,7]},{"value":[0,2,2]},{"value":[0,3,6]},{"value":[0,4,4]},{"value":[0,5,8]},{"value":[0,6,1]},{"value":[1,0,5]},{"value":[1,1,9]},{"value":[1,2,4]},{"value":[1,3,3]},{"value":[1,4,0]},{"value":[1,5,6]},{"value":[1,6,7]},{"value":[2,0,1]},{"value":[2,1,5]},{"value":[2,2,2]},{"value":[2,3,8]},{"value":[2,4,3]},{"value":[2,5,6]},{"value":[2,6,4]},{"value":[3,0,7]},{"value":[3,1,2]},{"value":[3,2,4]},{"value":[3,3,6]},{"value":[3,4,9]},{"value":[3,5,5]},{"value":[3,6,8]},{"value":[4,0,6]},{"value":[4,1,4]},{"value":[4,2,3]},{"value":[4,3,5]},{"value":[4,4,2]},{"value":[4,5,7]},{"value":[4,6,9]},{"value":[5,0,9]},{"value":[5,1,2]},{"value":[5,2,7]},{"value":[5,3,4]},{"value":[5,4,6]},{"value":[5,5,3]},{"value":[5,6,1]},{"value":[6,0,4]},{"value":[6,1,6]},{"value":[6,2,2]},{"value":[6,3,5]},{"value":[6,4,3]},{"value":[6,5,7]},{"value":[6,6,8]}]}],"title":{"text":"Activity Heatmap","subtext":"Daily Activity by Hour"},"toolbox":{},"tooltip":{},"visualMap":[{"calculable":true,"max":10,"inRange":{"color":["#50a3ba","#eac736","#d94e5d"]},"right":"0%","bottom":"0%","orient":"horizontal"}],"xAxis":[{"type":"category","splitArea":{"show":true}}],"yAxis":[{"type":"category","data":["Saturday","Friday","Thursday","Wednesday","Tuesday","Monday","Sunday"],"splitArea":{"show":true}}]}
+
+    goecharts_XNREMByZqFBO.setOption(option_XNREMByZqFBO);
+</script>
+<style>
+    .container {margin-top:30px; display: flex;justify-content: center;align-items: center;}
+    .item {margin: auto;}
+</style>
+
 ## Saving Charts
 
 #### `SaveHTML`
