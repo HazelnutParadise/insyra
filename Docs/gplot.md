@@ -28,6 +28,10 @@ go get github.com/HazelnutParadise/insyra/gplot
 - `YAxisName`: Optional: Name for the Y-axis.
 - `BarWidth`: Optional: Width of each bar in the chart. Default is 20.
 
+#### `CreateBarChart(config BarChartConfig) *plot.Plot`
+
+Creates a bar chart based on the provided configuration.
+
 #### Example
 
 ![bar_example](./img/gplot_bar_example.png)

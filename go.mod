@@ -25,11 +25,14 @@ require (
 	golang.org/x/image v0.18.0 // indirect
 	golang.org/x/sys v0.23.0 // indirect
 	golang.org/x/text v0.16.0 // indirect
+	golang.org/x/tools v0.21.1-0.20240508182429-e35e4ccd0d2d // indirect
 )
 
 require (
+	github.com/draffensperger/golp v0.0.0-20240729130716-1e42e6000a3a
 	github.com/go-echarts/go-echarts/v2 v2.4.2
 	github.com/go-echarts/snapshot-chromedp v0.0.4
+	github.com/lukpank/go-glpk v0.0.0-20180303121012-2e64496cbbfa
 	golang.org/x/exp v0.0.0-20231110203233-9a3e6036ecaa // indirect
 	gonum.org/v1/gonum v0.15.1
 	gonum.org/v1/plot v0.14.0
