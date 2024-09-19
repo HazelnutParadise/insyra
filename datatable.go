@@ -477,6 +477,12 @@ func (dt *DataTable) SetColumnToRowNames(columnIndex string) *DataTable {
 	}
 
 	dt.DropColumnsByIndex(columnIndex)
+
+	dt.columnIndex = make(map[string]int)
+	for i, _ := range dt.columns {
+		dt.columnIndex[generateColumnIndex(i)] = i
+	}
+
 	go dt.updateTimestamp()
 	return dt
 }

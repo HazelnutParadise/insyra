@@ -1,8 +1,10 @@
 package lp
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -11,7 +13,7 @@ import (
 	"github.com/HazelnutParadise/insyra"
 )
 
-// SolveLPWithGLPK solve lp file with glpk and set a timeout in seconds.
+// SolveLPWithGLPK solves an LP file with GLPK and sets a timeout in seconds.
 // Returns two DataTables: one with the parsed results and one with additional info.
 func SolveLPWithGLPK(lpFile string, timeoutSeconds ...int) (*insyra.DataTable, *insyra.DataTable) {
 	timeout := 0 * time.Second
@@ -22,112 +24,142 @@ func SolveLPWithGLPK(lpFile string, timeoutSeconds ...int) (*insyra.DataTable, *
 		return nil, nil
 	}
 
-	// 創建一個帶有超時的 context
+	// Temporary file to store GLPK output
+	tmpFile := "solution.txt"
+
+	// Create context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	// 使用 GLPK 命令行工具 glpsol 解決 LP 問題
-	cmd := exec.CommandContext(ctx, "glpsol", "--lp", lpFile)
+	// Use GLPK command-line tool to solve LP problem and output to a file
+	cmd := exec.CommandContext(ctx, "glpsol", "--lp", lpFile, "--output", tmpFile)
 	start := time.Now()
 	output, err := cmd.CombinedOutput()
 	executionTime := time.Since(start).Seconds()
 
-	// 將原本的輸出打印出來
-	fmt.Printf("GLPK Output:\n%s", output)
-
 	if ctx.Err() == context.DeadlineExceeded {
 		insyra.LogWarning("SolveLPWithGLPK: Command timed out after %d seconds", timeoutSeconds)
-		return nil, createAdditionalInfoDataTable("Timeout", executionTime, output)
+		return nil, createAdditionalInfoDataTable("Timeout", executionTime, "", string(output), "", "")
 	}
 
 	if err != nil {
 		insyra.LogWarning("Failed to solve LP file with GLPK: %v\n", err)
-		return nil, createAdditionalInfoDataTable("Error", executionTime, output)
+		return nil, createAdditionalInfoDataTable("Error", executionTime, err.Error(), string(output), "", "")
 	}
 
-	// 解析 GLPK 輸出並生成 DataTable
-	resultTable := parseGLPKOutputToDataTable(string(output))
-	additionalInfoTable := createAdditionalInfoDataTable("Success", executionTime, output)
+	// Parse the solution file and store results in DataTables
+	resultTable := parseGLPKOutputFromFile(tmpFile)
+	iterations, nodes := extractIterationNodeCounts(tmpFile)
+	additionalInfoTable := createAdditionalInfoDataTable("Success", executionTime, extractWarnings(output), string(output), iterations, nodes)
+
+	// Clean up temporary file
+	_ = os.Remove(tmpFile)
 
 	return resultTable, additionalInfoTable
 }
 
-// parseGLPKOutputToDataTable 解析 GLPK 輸出並將結果存入 DataTable
-func parseGLPKOutputToDataTable(output string) *insyra.DataTable {
-	parsedData := make(map[string]string)
-
-	// 解析目標函數值
-	reObjective := regexp.MustCompile(`\*\s*\d+:\s*obj\s*=\s*([-\d.]+).*`)
-	matchObjective := reObjective.FindStringSubmatch(output)
-	if len(matchObjective) > 1 {
-		parsedData["Objective Value"] = matchObjective[1]
-	}
-
-	// 解析變數及其值
-	reVars := regexp.MustCompile(`(\w\d+)\s*=\s*([-\d.]+)`)
-	varMatches := reVars.FindAllStringSubmatch(output, -1)
-	for _, v := range varMatches {
-		if len(v) == 3 {
-			parsedData[v[1]] = v[2]
-		}
-	}
-
-	// 將解析出的數據存入 DataTable
-	return storeInDataTable(parsedData)
-}
-
-// storeInDataTable 將解析出的數據存入 DataTable
-func storeInDataTable(data map[string]string) *insyra.DataTable {
+// parseGLPKOutputFromFile parses the GLPK solution output from the given file.
+func parseGLPKOutputFromFile(filePath string) *insyra.DataTable {
 	dataTable := insyra.NewDataTable()
 
-	// 創建一個 DataList，並將變數和值存入其中
-	for name, value := range data {
-		dataList := insyra.NewDataList(value)
-		dataList.SetName(name)
-		dataTable.AppendColumns(dataList)
+	// Open the file and read line by line
+	file, err := os.Open(filePath)
+	if err != nil {
+		insyra.LogWarning("Failed to open solution file: %v", err)
+		return nil
+	}
+	defer file.Close()
+
+	// Scan through each line and extract variable values
+	scanner := bufio.NewScanner(file)
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+
+		// Create a DataList for each line and append as a row
+		dataList := insyra.NewDataList(line)
+		dataTable.AppendRowsFromDataList(dataList)
+	}
+
+	if err := scanner.Err(); err != nil {
+		insyra.LogWarning("Error reading solution file: %v", err)
 	}
 
 	return dataTable
 }
 
-// createAdditionalInfoDataTable 創建存儲額外資訊的 DataTable
-func createAdditionalInfoDataTable(status string, executionTime float64, output []byte) *insyra.DataTable {
+// createAdditionalInfoDataTable stores additional info like execution time, status, and warnings
+func createAdditionalInfoDataTable(status string, executionTime float64, warnings, fullOutput, iterations, nodes string) *insyra.DataTable {
 	additionalInfo := map[string]interface{}{
 		"Status":         status,
 		"Execution Time": fmt.Sprintf("%.2f seconds", executionTime),
-		"Warnings":       parseWarnings(output),
-		"Full Output":    string(output), // 完整原始輸出
+		"Warnings":       warnings,
+		"Full Output":    fullOutput,
+		"Iterations":     iterations,
+		"Nodes":          nodes,
 	}
 
-	// 將額外信息存入 DataTable
 	dataTable := insyra.NewDataTable()
+	rowNames := []string{}
+	values := []interface{}{}
 
-	// 將額外資訊存入 DataList
 	for name, value := range additionalInfo {
-		dataList := insyra.NewDataList(value)
-		dataList.SetName(name)
-		dataTable.AppendColumns(dataList)
+		rowNames = append(rowNames, name)
+		values = append(values, value)
 	}
+
+	// Append results to a horizontal row
+	rowNameDl := insyra.NewDataList(rowNames)
+	dataList := insyra.NewDataList(values...).SetName("Additional Info")
+	dataTable.AppendColumns(rowNameDl, dataList)
+
+	dataTable.SetColumnToRowNames("A")
 
 	return dataTable
 }
 
-// parseWarnings 用於解析 GLPK 輸出中的警告訊息
-func parseWarnings(output []byte) string {
-	// 假設 GLPK 的警告訊息會包含 "warning"
-	outputStr := string(output)
-	lines := strings.Split(outputStr, "\n")
-	warnings := []string{}
+// extractIterationNodeCounts extracts iterations and node counts from the GLPK output file
+func extractIterationNodeCounts(filePath string) (string, string) {
+	iterations := ""
+	nodes := ""
 
-	for _, line := range lines {
-		if strings.Contains(strings.ToLower(line), "warning") {
-			warnings = append(warnings, strings.TrimSpace(line))
+	// Open the GLPK output file and extract iteration and node counts
+	file, err := os.Open(filePath)
+	if err == nil {
+		defer file.Close()
+		scanner := bufio.NewScanner(file)
+
+		reIter := regexp.MustCompile(`\*\s*\d+:\s*obj\s*=\s*[-\d.]+\s*inf\s*=\s*[-\d.]+\s*\((\d+)\)`)
+		reNode := regexp.MustCompile(`\+\s*\d+:\s*mip\s*=\s*[-\d.]+\s*<=\s*[-\d.]+\s*\d+.\d+%\s*\((\d+);\s*(\d+)\)`)
+
+		for scanner.Scan() {
+			line := scanner.Text()
+
+			// Extract iteration counts
+			if match := reIter.FindStringSubmatch(line); len(match) > 1 {
+				iterations = match[1]
+			}
+
+			// Extract node counts
+			if match := reNode.FindStringSubmatch(line); len(match) > 1 {
+				nodes = match[1]
+			}
 		}
 	}
 
-	if len(warnings) == 0 {
-		return "No warnings"
-	}
+	return iterations, nodes
+}
 
+// extractWarnings extracts warnings from the output
+func extractWarnings(output []byte) string {
+	warnings := []string{}
+	re := regexp.MustCompile(`warning:.*`)
+	matches := re.FindAllString(string(output), -1)
+	for _, match := range matches {
+		warnings = append(warnings, match)
+	}
 	return strings.Join(warnings, "; ")
 }
