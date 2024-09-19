@@ -5,20 +5,21 @@ import (
 	"fmt"
 	"os/exec"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/HazelnutParadise/insyra"
 )
 
 // SolveLPWithGLPK solve lp file with glpk and set a timeout in seconds.
-// Returns a DataTable with the parsed GLPK output.
-func SolveLPWithGLPK(lpFile string, timeoutSeconds ...int) *insyra.DataTable {
+// Returns two DataTables: one with the parsed results and one with additional info.
+func SolveLPWithGLPK(lpFile string, timeoutSeconds ...int) (*insyra.DataTable, *insyra.DataTable) {
 	timeout := 0 * time.Second
 	if len(timeoutSeconds) == 1 {
 		timeout = time.Duration(timeoutSeconds[0]) * time.Second
 	} else if len(timeoutSeconds) > 1 {
 		insyra.LogWarning("SolveLPWithGLPK: Only one timeout can be set")
-		return nil
+		return nil, nil
 	}
 
 	// 創建一個帶有超時的 context
@@ -27,38 +28,43 @@ func SolveLPWithGLPK(lpFile string, timeoutSeconds ...int) *insyra.DataTable {
 
 	// 使用 GLPK 命令行工具 glpsol 解決 LP 問題
 	cmd := exec.CommandContext(ctx, "glpsol", "--lp", lpFile)
+	start := time.Now()
 	output, err := cmd.CombinedOutput()
+	executionTime := time.Since(start).Seconds()
+
+	// 將原本的輸出打印出來
+	fmt.Printf("GLPK Output:\n%s", output)
 
 	if ctx.Err() == context.DeadlineExceeded {
 		insyra.LogWarning("SolveLPWithGLPK: Command timed out after %d seconds", timeoutSeconds)
-		fmt.Printf("GLPK Output (partial):\n%s", output)
-		return nil
+		return nil, createAdditionalInfoDataTable("Timeout", executionTime, output)
 	}
 
 	if err != nil {
 		insyra.LogWarning("Failed to solve LP file with GLPK: %v\n", err)
-		fmt.Printf("GLPK Output:\n%s", output)
-		return nil
+		return nil, createAdditionalInfoDataTable("Error", executionTime, output)
 	}
 
 	// 解析 GLPK 輸出並生成 DataTable
-	dataTable := parseGLPKOutputToDataTable(string(output))
-	return dataTable
+	resultTable := parseGLPKOutputToDataTable(string(output))
+	additionalInfoTable := createAdditionalInfoDataTable("Success", executionTime, output)
+
+	return resultTable, additionalInfoTable
 }
 
 // parseGLPKOutputToDataTable 解析 GLPK 輸出並將結果存入 DataTable
 func parseGLPKOutputToDataTable(output string) *insyra.DataTable {
 	parsedData := make(map[string]string)
 
-	// 使用正則表達式來提取 GLPK 輸出的關鍵數據
-	re := regexp.MustCompile(`\*\s*\d+:\s*obj\s*=\s*([-\d.]+).*`) // 解析目標函數值
-	match := re.FindStringSubmatch(output)
-	if len(match) > 1 {
-		parsedData["Objective Value"] = match[1]
+	// 解析目標函數值
+	reObjective := regexp.MustCompile(`\*\s*\d+:\s*obj\s*=\s*([-\d.]+).*`)
+	matchObjective := reObjective.FindStringSubmatch(output)
+	if len(matchObjective) > 1 {
+		parsedData["Objective Value"] = matchObjective[1]
 	}
 
-	// 假設 x1、x2、x3 是變數，並且提取其對應的值
-	reVars := regexp.MustCompile(`(\w\d)\s*=\s*([-\d.]+)`)
+	// 解析變數及其值
+	reVars := regexp.MustCompile(`(\w\d+)\s*=\s*([-\d.]+)`)
 	varMatches := reVars.FindAllStringSubmatch(output, -1)
 	for _, v := range varMatches {
 		if len(v) == 3 {
@@ -72,21 +78,56 @@ func parseGLPKOutputToDataTable(output string) *insyra.DataTable {
 
 // storeInDataTable 將解析出的數據存入 DataTable
 func storeInDataTable(data map[string]string) *insyra.DataTable {
-	// 初始化一個 DataTable
 	dataTable := insyra.NewDataTable()
 
-	// 將解析出的結果添加為一列
-	columnNames := []string{}
-	values := []interface{}{}
-
+	// 創建一個 DataList，並將變數和值存入其中
 	for name, value := range data {
-		columnNames = append(columnNames, name)
-		values = append(values, value)
+		dataList := insyra.NewDataList(value)
+		dataList.SetName(name)
+		dataTable.AppendColumns(dataList)
 	}
 
-	// 創建一個 DataList，並將變數和值存入其中
-	dataList := insyra.NewDataList(values...)
-	dataTable.AppendColumns(dataList)
+	return dataTable
+}
+
+// createAdditionalInfoDataTable 創建存儲額外資訊的 DataTable
+func createAdditionalInfoDataTable(status string, executionTime float64, output []byte) *insyra.DataTable {
+	additionalInfo := map[string]interface{}{
+		"Status":         status,
+		"Execution Time": fmt.Sprintf("%.2f seconds", executionTime),
+		"Warnings":       parseWarnings(output),
+		"Full Output":    string(output), // 完整原始輸出
+	}
+
+	// 將額外信息存入 DataTable
+	dataTable := insyra.NewDataTable()
+
+	// 將額外資訊存入 DataList
+	for name, value := range additionalInfo {
+		dataList := insyra.NewDataList(value)
+		dataList.SetName(name)
+		dataTable.AppendColumns(dataList)
+	}
 
 	return dataTable
+}
+
+// parseWarnings 用於解析 GLPK 輸出中的警告訊息
+func parseWarnings(output []byte) string {
+	// 假設 GLPK 的警告訊息會包含 "warning"
+	outputStr := string(output)
+	lines := strings.Split(outputStr, "\n")
+	warnings := []string{}
+
+	for _, line := range lines {
+		if strings.Contains(strings.ToLower(line), "warning") {
+			warnings = append(warnings, strings.TrimSpace(line))
+		}
+	}
+
+	if len(warnings) == 0 {
+		return "No warnings"
+	}
+
+	return strings.Join(warnings, "; ")
 }
