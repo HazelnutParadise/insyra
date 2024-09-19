@@ -24,7 +24,7 @@ Solves an LP model using GLPK and returns the result as two DataTable. First Dat
 #### Parameters
 
 - `mlpFile string`: The path to the LP file.
-- `timeoutSeconds int`: The timeout for the solver in seconds.
+- `timeoutSeconds int`(optional): The timeout for the solver in seconds.
 
 #### Returns
 
