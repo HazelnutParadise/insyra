@@ -87,7 +87,7 @@ func main() {
 
 ### **[lp](/Docs/lp.md)**
 
-使用 [GLPK](https://www.gnu.org/software/glpk/) 的完全自動線性規劃（LP）求解器。
+使用 [GLPK](https://www.gnu.org/software/glpk/) 的全自動線性規劃（LP）包。
 
 ## 進階使用
 
