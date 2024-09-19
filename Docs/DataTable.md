@@ -1,7 +1,5 @@
 # DataTable
 
-## Overview
-
 DataTable is a flexible and efficient data structure for managing two-dimensional data in Go. It provides a variety of methods for data manipulation, querying, and display. The DataTable structure uses a column-based storage model, which allows for efficient column operations and flexible row management.
 
 ## Structure
