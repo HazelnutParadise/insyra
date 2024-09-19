@@ -25,7 +25,13 @@ The `LPModel` struct is the core of the `lpgen` package, allowing users to defin
 
 #### Functions in `lpgen`
 
-1. **`SetObjective`**:  
+1. **`NewLPModel`**:  
+   Creates a new LPModel instance.
+   ```go
+   func NewLPModel() *LPModel
+   ```
+
+2. **`SetObjective`**:  
    Sets the objective function and its type (Maximize or Minimize).
    ```go
    func (lp *LPModel) SetObjective(objType, obj string)
@@ -33,35 +39,35 @@ The `LPModel` struct is the core of the `lpgen` package, allowing users to defin
    - `objType`: Either "Maximize" or "Minimize".
    - `obj`: The objective function (e.g., "3 x1 + 4 x2").
 
-2. **`AddConstraint`**:  
+3. **`AddConstraint`**:  
    Adds a constraint to the model.
    ```go
    func (lp *LPModel) AddConstraint(constr string)
    ```
    - `constr`: A string representing the constraint (e.g., "2 x1 + 3 x2 <= 12").
 
-3. **`AddBound`**:  
+4. **`AddBound`**:  
    Adds a variable bound to the model.
    ```go
    func (lp *LPModel) AddBound(bound string)
    ```
    - `bound`: A string representing the bound (e.g., "0 <= x1 <= 10").
 
-4. **`AddBinaryVar`**:  
+5. **`AddBinaryVar`**:  
    Adds a binary variable to the model.
    ```go
    func (lp *LPModel) AddBinaryVar(varName string)
    ```
    - `varName`: The name of the binary variable (e.g., "x3").
 
-5. **`AddIntegerVar`**:  
+6. **`AddIntegerVar`**:  
    Adds an integer variable to the model.
    ```go
    func (lp *LPModel) AddIntegerVar(varName string)
    ```
    - `varName`: The name of the integer variable (e.g., "x4").
 
-6. **`GenerateLPFile`**:  
+7. **`GenerateLPFile`**:  
    Generates an LP file based on the current model and saves it to disk.
    ```go
    func (lp *LPModel) GenerateLPFile(filename string)
@@ -80,7 +86,7 @@ The `LPModel` struct is the core of the `lpgen` package, allowing users to defin
 #### Example Usage
 
 ```go
-lpModel := &lpgen.LPModel{}
+lpModel := lpgen.NewLPModel()
 
 // Set objective function to maximize
 lpModel.SetObjective("Maximize", "3 x1 + 4 x2")

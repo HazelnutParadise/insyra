@@ -16,6 +16,10 @@ type LPModel struct {
 	IntegerVars   []string // 整數變數
 }
 
+func NewLPModel() *LPModel {
+	return &LPModel{}
+}
+
 // 設定目標函數（最大化或最小化）
 func (lp *LPModel) SetObjective(objType, obj string) {
 	lp.ObjectiveType = objType
