@@ -74,8 +74,8 @@ func (lp *LPModel) GenerateLPFile(filename string) {
 
 	// 添加約束條件
 	file.WriteString("Subject To\n")
-	for _, constr := range lp.Constraints {
-		file.WriteString("  " + fmt.Sprintf("%s\n", constr))
+	for i, constr := range lp.Constraints {
+		file.WriteString("  " + fmt.Sprintf("c%d: %s\n", i+1, constr))
 	}
 
 	// 添加變數邊界
