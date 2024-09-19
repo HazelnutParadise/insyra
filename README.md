@@ -89,6 +89,10 @@ A visualization package based on [github.com/gonum/plot](https://github.com/gonu
 
 Provides a **super simple** and intuitive way to generate linear programming (LP) models and save them as `.lp` files. It supports setting objectives, adding constraints, defining variable bounds, and specifying binary or integer variables.
 
+### **[lp](/Docs/lp.md)**
+
+Fully automatic linear programming (LP) solver using [GLPK](https://www.gnu.org/software/glpk/).
+
 ## Advanced Usage
 
 Beyond basic usage, **Insyra** provides extensive capabilities for handling different data types and performing complex statistical operations. Explore more in the **[detailed documentation](/Docs)**.

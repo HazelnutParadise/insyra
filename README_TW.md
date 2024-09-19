@@ -85,6 +85,10 @@ func main() {
 
 提供一個 **超級簡單** 且直觀的方式來生成線性規劃（LP）模型並將其保存為 `.lp` 檔。支援設置目標、添加約束、定義變量邊界，並指定二進制或整數變量。
 
+### **[lp](/Docs/lp.md)**
+
+使用 [GLPK](https://www.gnu.org/software/glpk/) 的完全自動線性規劃（LP）求解器。
+
 ## 進階使用
 
 除了基本用法外，**Insyra** 還提供了處理不同數據類型和執行複雜統計操作的強大功能。請在 **[詳細文檔](https://github.com/HazelnutParadise/insyra/tree/main/Docs)** 中探索更多內容。
