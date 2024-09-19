@@ -196,7 +196,7 @@ Creates a pie chart based on the provided `PieChartConfig` and returns a `*chart
 - `LabelPos` (optional): Position of the labels (e.g., "right"). Default is `"right"`.
 - `GridTop` (optional): Space between the top of the chart and the title. Default is `"80"`.
 - `SplitLine` (optional): Whether to show split lines on the X and Y axes. Default is `false`.
-- `Symbol` (optional): Symbol of the scatter points. Repeat the symbol if the length is less than the number of scatter points (e.g. `["circle", "triangle"]` will be `["circle", "triangle", "circle", "triangle"]`). Options: `["circle", "rect", "triangle", "diamond"]`.
+- `Symbol` (optional): Symbol of the scatter points. Repeat the symbol if the length is less than the number of scatter points (e.g. `["circle", "triangle"]` will be `["circle", "triangle", "circle", "triangle"]`). Options: `["circle", "rect", "triangle", "diamond", "roundRect"]`.
 - `SymbolSize` (optional): Size of the scatter points. Default is `10`.
 
 #### `CreateScatterChart`
