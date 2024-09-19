@@ -1,4 +1,4 @@
-### [ lpgen ] Package
+# [ lpgen ] Package
 
 The `lpgen` package provides a simple and intuitive way to generate linear programming (LP) models and save them as LP files. It supports setting objectives, adding constraints, defining variable bounds, and specifying binary or integer variables.
 
