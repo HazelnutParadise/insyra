@@ -27,9 +27,15 @@ func SolveLPWithGLPK(lpFile string, timeoutSeconds ...int) (*insyra.DataTable, *
 	// Temporary file to store GLPK output
 	tmpFile := "solution.txt"
 
-	// Create context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
+	var ctx context.Context
+	var cancel context.CancelFunc
+	if timeout > 0 {
+		// Create context with timeout
+		ctx, cancel = context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+	} else {
+		ctx = context.Background()
+	}
 
 	// Use GLPK command-line tool to solve LP problem and output to a file
 	cmd := exec.CommandContext(ctx, "glpsol", "--lp", lpFile, "--output", tmpFile)
