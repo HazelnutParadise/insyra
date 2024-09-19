@@ -87,7 +87,7 @@ A visualization package based on [github.com/gonum/plot](https://github.com/gonu
 
 ### **[lpgen](/Docs/lpgen.md)**
 
-Provides a **super simple** and intuitive way to generate linear programming (LP) models and save them as LP files. It supports setting objectives, adding constraints, defining variable bounds, and specifying binary or integer variables.
+Provides a **super simple** and intuitive way to generate linear programming (LP) models and save them as `.lp` files. It supports setting objectives, adding constraints, defining variable bounds, and specifying binary or integer variables.
 
 ## Advanced Usage
 
