@@ -1,7 +1,5 @@
 # [ gplot ] Package
 
-## Overview
-
 The `gplot` package is designed to create and save various types of charts using the Gonum library. It provides a simple interface to generate and export charts in different formats such as PNG, PDF, JPEG, and SVG.
 
 ## Installation
