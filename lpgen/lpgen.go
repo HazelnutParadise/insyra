@@ -38,11 +38,25 @@ func (lp *LPModel) AddBound(bound string) {
 
 // 新增二進制變數
 func (lp *LPModel) AddBinaryVar(varName string) {
+	// 確保變數不會同時是整數和二進制
+	for i, intVar := range lp.IntegerVars {
+		if intVar == varName {
+			lp.IntegerVars = append(lp.IntegerVars[:i], lp.IntegerVars[i+1:]...)
+			break
+		}
+	}
 	lp.BinaryVars = append(lp.BinaryVars, varName)
 }
 
 // 新增整數變數
 func (lp *LPModel) AddIntegerVar(varName string) {
+	// 確保變數不會同時是整數和二進制
+	for i, binVar := range lp.BinaryVars {
+		if binVar == varName {
+			lp.BinaryVars = append(lp.BinaryVars[:i], lp.BinaryVars[i+1:]...)
+			break
+		}
+	}
 	lp.IntegerVars = append(lp.IntegerVars, varName)
 }
 
@@ -60,8 +74,8 @@ func (lp *LPModel) GenerateLPFile(filename string) {
 
 	// 添加約束條件
 	file.WriteString("Subject To\n")
-	for i, constr := range lp.Constraints {
-		file.WriteString(fmt.Sprintf("  c%d: %s\n", i+1, constr))
+	for _, constr := range lp.Constraints {
+		file.WriteString("  " + fmt.Sprintf("%s\n", constr))
 	}
 
 	// 添加變數邊界
