@@ -1,7 +1,5 @@
 # [ lp ] Package
 
-## Overview
-
 The `lp` package provides functionality to solve Linear Programming (LP) problems using the GLPK library. It allows you to define and solve LP models, and provides tools to handle the results.
 
 > [!NOTE]
