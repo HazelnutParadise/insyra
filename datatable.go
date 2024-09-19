@@ -478,10 +478,7 @@ func (dt *DataTable) SetColumnToRowNames(columnIndex string) *DataTable {
 
 	dt.DropColumnsByIndex(columnIndex)
 
-	dt.columnIndex = make(map[string]int)
-	for i, _ := range dt.columns {
-		dt.columnIndex[generateColumnIndex(i)] = i
-	}
+	dt.regenerateColumnIndex()
 
 	go dt.updateTimestamp()
 	return dt
@@ -739,6 +736,7 @@ func (dt *DataTable) DropColumnsByName(columnNames ...string) {
 			}
 		}
 	}
+	dt.regenerateColumnIndex()
 }
 
 // DropColumnsByIndex drops columns by their index names.
@@ -762,6 +760,8 @@ func (dt *DataTable) DropColumnsByIndex(columnIndices ...string) {
 			}
 		}
 	}
+
+	dt.regenerateColumnIndex()
 }
 
 // DropColumnsByNumber drops columns by their number.
@@ -781,6 +781,8 @@ func (dt *DataTable) DropColumnsByNumber(columnIndices ...int) {
 			delete(dt.columnIndex, generateColumnIndex(index))
 		}
 	}
+
+	dt.regenerateColumnIndex()
 }
 
 // DropColumnsContainStringElements drops columns that contain string elements.
@@ -813,11 +815,7 @@ func (dt *DataTable) DropColumnsContainStringElements() {
 		delete(dt.columnIndex, generateColumnIndex(colIndex))
 	}
 
-	// 更新 columnIndex 映射，以反映列被刪除後的變化
-	for i, _ := range dt.columns {
-		newColName := generateColumnIndex(i)
-		dt.columnIndex[newColName] = i
-	}
+	dt.regenerateColumnIndex()
 
 	go dt.updateTimestamp()
 }
@@ -853,10 +851,7 @@ func (dt *DataTable) DropColumnsContainNumbers() {
 		delete(dt.columnIndex, generateColumnIndex(colIndex))
 	}
 
-	for i, _ := range dt.columns {
-		newColName := generateColumnIndex(i)
-		dt.columnIndex[newColName] = i
-	}
+	dt.regenerateColumnIndex()
 
 	go dt.updateTimestamp()
 }
@@ -889,10 +884,7 @@ func (dt *DataTable) DropColumnsContainNil() {
 		delete(dt.columnIndex, generateColumnIndex(colIndex))
 	}
 
-	for i, _ := range dt.columns {
-		newColName := generateColumnIndex(i)
-		dt.columnIndex[newColName] = i
-	}
+	dt.regenerateColumnIndex()
 
 	go dt.updateTimestamp()
 }
@@ -1406,6 +1398,13 @@ func (dt *DataTable) getMaxColumnLength() int {
 		}
 	}
 	return maxLength
+}
+
+func (dt *DataTable) regenerateColumnIndex() {
+	dt.columnIndex = make(map[string]int)
+	for i, _ := range dt.columns {
+		dt.columnIndex[generateColumnIndex(i)] = i
+	}
 }
 
 func generateColumnIndex(index int) string {
