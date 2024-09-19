@@ -14,9 +14,9 @@ A next-generation data analysis library for Golang.
 
 **[繁體中文版 README](README_TW.md)**
 
-## Overview
+## Too Fast, Too Lovely, Too Easy To Use.
 
-The **Insyra** library is a dynamic and versatile tool designed for managing and analyzing data in Go. It offers a rich set of features for data manipulation, statistical calculations, and more, making it an essential toolkit for developers handling complex data structures.
+The **Insyra** library is a dynamic and versatile tool designed for managing and analyzing data in Go. It offers a rich set of features for data manipulation, statistical calculations, data visualization, and more, making it an essential toolkit for developers handling complex data structures.
 
 > [!NOTE]
 > **For any functions or methods not explicitly listed in Insyra documents, it indicates that the feature is still under active development. These experimental features might provide unstable results.** 
