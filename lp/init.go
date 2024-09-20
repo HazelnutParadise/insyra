@@ -68,7 +68,7 @@ func installOnMacOS() {
 // Windows 平台的安裝邏輯
 func installOnWindows() {
 	// 檢查 glpsol 是否已經安裝
-	cmd := exec.Command("where", "glpsol")
+	cmd := exec.Command("which", "glpsol")
 	err := cmd.Run()
 	if err != nil {
 		insyra.LogInfo("lp.init: GLPK not found, installing on Windows...")
