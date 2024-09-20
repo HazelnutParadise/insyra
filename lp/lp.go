@@ -82,6 +82,8 @@ func parseGLPKOutputFromFile(filePath string) *insyra.DataTable {
 
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
+		line = strings.ReplaceAll(line, "Rows:", "Rows(Constraints):")
+		line = strings.ReplaceAll(line, "Columns:", "Columns(Variables):")
 		if line == "" {
 			continue
 		}
