@@ -37,7 +37,7 @@ result.Show()
 info.Show()
 
 // convert to csv
-result.ToCSV("solution.csv")
-info.ToCSV("info.csv")
+result.ToCSV("solution.csv", false, false)
+info.ToCSV("info.csv", true, true)
 ```
 
