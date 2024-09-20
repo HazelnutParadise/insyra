@@ -55,7 +55,8 @@ func SolveLPWithGLPK(lpFile string, timeoutSeconds ...int) (*insyra.DataTable, *
 
 	// Parse the solution file and store results in DataTables
 	resultTable := parseGLPKOutputFromFile(tmpFile)
-	iterations, nodes := extractIterationNodeCounts(tmpFile)
+	iterations, nodes := extractIterationNodeCounts(string(output))
+
 	additionalInfoTable := createAdditionalInfoDataTable("Success", executionTime, extractWarnings(output), string(output), iterations, nodes)
 
 	// Clean up temporary file
@@ -128,32 +129,21 @@ func createAdditionalInfoDataTable(status string, executionTime float64, warning
 }
 
 // extractIterationNodeCounts extracts iterations and node counts from the GLPK output file
-func extractIterationNodeCounts(filePath string) (string, string) {
+func extractIterationNodeCounts(output string) (string, string) {
 	iterations := ""
 	nodes := ""
 
-	// Open the GLPK output file and extract iteration and node counts
-	file, err := os.Open(filePath)
-	if err == nil {
-		defer file.Close()
-		scanner := bufio.NewScanner(file)
+	iterRegex := regexp.MustCompile(`\*\s+(\d+):`)
+	nodeRegex := regexp.MustCompile(`\+\s+(\d+):`)
 
-		reIter := regexp.MustCompile(`\*\s*\d+:\s*obj\s*=\s*[-\d.]+\s*inf\s*=\s*[-\d.]+\s*\((\d+)\)`)
-		reNode := regexp.MustCompile(`\+\s*\d+:\s*mip\s*=\s*[-\d.]+\s*<=\s*[-\d.]+\s*\d+.\d+%\s*\((\d+);\s*(\d+)\)`)
+	iterMatches := iterRegex.FindAllStringSubmatch(output, -1)
+	nodeMatches := nodeRegex.FindAllStringSubmatch(output, -1)
 
-		for scanner.Scan() {
-			line := scanner.Text()
-
-			// Extract iteration counts
-			if match := reIter.FindStringSubmatch(line); len(match) > 1 {
-				iterations = match[1]
-			}
-
-			// Extract node counts
-			if match := reNode.FindStringSubmatch(line); len(match) > 1 {
-				nodes = match[1]
-			}
-		}
+	if len(iterMatches) > 0 {
+		iterations = iterMatches[len(iterMatches)-1][1]
+	}
+	if len(nodeMatches) > 0 {
+		nodes = nodeMatches[len(nodeMatches)-1][1]
 	}
 
 	return iterations, nodes
