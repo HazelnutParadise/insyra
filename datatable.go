@@ -139,7 +139,7 @@ func (dt *DataTable) AppendColumns(columns ...*DataList) *DataTable {
 		if len(column.data) < maxLength {
 			column.data = append(column.data, make([]interface{}, maxLength-len(column.data))...)
 		}
-		LogDebug(fmt.Sprintf("AppendColumns: Added column %s at index %d", columnName, dt.columnIndex[columnName]))
+		LogDebug("AppendColumns: Added column %s at index %d", columnName, dt.columnIndex[columnName])
 	}
 
 	for _, col := range dt.columns {
@@ -209,13 +209,13 @@ func (dt *DataTable) AppendRowsByIndex(rowsData ...map[string]interface{}) *Data
 
 		for colIndex, value := range rowData {
 			colPos, exists := dt.columnIndex[colIndex]
-			LogDebug(fmt.Sprintf("AppendRowsByIndex: Handling column %s, exists: %t", colIndex, exists))
+			LogDebug("AppendRowsByIndex: Handling column %s, exists: %t", colIndex, exists)
 			if !exists {
 				newCol := newEmptyDataList(maxLength)
 				dt.columns = append(dt.columns, newCol)
 				colPos = len(dt.columns) - 1
 				dt.columnIndex[colIndex] = colPos // 更新 columnIndex
-				LogDebug(fmt.Sprintf("AppendRowsByIndex: Added new column %s at index %d", colIndex, colPos))
+				LogDebug("AppendRowsByIndex: Added new column %s at index %d", colIndex, colPos)
 			}
 			dt.columns[colPos].data = append(dt.columns[colPos].data, value)
 		}
@@ -248,7 +248,7 @@ func (dt *DataTable) AppendRowsByName(rowsData ...map[string]interface{}) *DataT
 				if dt.columns[i].name == colName {
 					dt.columns[i].data = append(dt.columns[i].data, value)
 					found = true
-					LogDebug(fmt.Sprintf("AppendRowsByName: Found column %s at index %d", colName, i))
+					LogDebug("AppendRowsByName: Found column %s at index %d", colName, i)
 					break
 				}
 			}
@@ -258,7 +258,7 @@ func (dt *DataTable) AppendRowsByName(rowsData ...map[string]interface{}) *DataT
 				newCol.data = append(newCol.data, value)
 				dt.columns = append(dt.columns, newCol)
 				dt.columnIndex[generateColumnIndex(len(dt.columns)-1)] = len(dt.columns) - 1 // 更新 columnIndex
-				LogDebug(fmt.Sprintf("AppendRowsByName: Added new column %s at index %d", colName, len(dt.columns)-1))
+				LogDebug("AppendRowsByName: Added new column %s at index %d", colName, len(dt.columns)-1)
 			}
 		}
 
@@ -1495,7 +1495,7 @@ func containsSubstring(value string, substring string) bool {
 func (dt *DataTable) updateTimestamp() {
 	now := time.Now().Unix()
 	dt.lastModifiedTimestamp.Store(now)
-	LogDebug(fmt.Sprintf("Timestamp updated: %d", now))
+	LogDebug("Timestamp updated: %d", now)
 }
 
 func (dt *DataTable) GetCreationTimestamp() int64 {
