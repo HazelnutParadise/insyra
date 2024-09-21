@@ -17,7 +17,6 @@ go get github.com/HazelnutParadise/insyra/gplot
 #### `BarChartConfig`
 
 - `Title`: The title of the chart.
-- `Subtitle`: The subtitle of the chart.
 - `XAxis`: Data for the X-axis (categories).
 - `SeriesData`: The data for the series. Supported types:
   - `[]float64`
@@ -33,6 +32,28 @@ Creates a bar chart based on the provided configuration.
 #### Example
 
 ![bar_example](./img/gplot_bar_example.png)
+
+
+### Histogram
+
+#### `HistogramConfig`
+
+- `Title`: The title of the chart.
+- `SeriesData`: The data for the histogram. Supported types:
+  - `[]float64`
+  - `*insyra.DataList`
+  - `insyra.IDataList`
+- `XAxisName`: Optional: Name for the X-axis.
+- `YAxisName`: Optional: Name for the Y-axis.
+- `Bins`: Number of bins for the histogram.
+
+#### `CreateHistogram(config HistogramConfig) *plot.Plot`
+
+Creates a histogram based on the provided configuration.
+
+#### Example
+
+![histogram_example](./img/gplot_histogram_example.png)
 
 ### Saving Charts
 
