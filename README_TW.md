@@ -24,6 +24,48 @@ Go 語言次世代資料分析庫。
 
 ## 開始使用
 
+### 致初學者
+
+> [!TIP]
+> 如果您已熟悉 Go，請跳至 [安裝](#installation) 或 [快速範例](#quick-example)。
+
+1. 從 [這裡](https://golang.org/dl/) 下載並安裝 Golang。
+2. 設置您的編輯器，我們推薦使用 [VSCode](https://code.visualstudio.com/)。
+3. 在您的專案中開啟或建立一個資料夾，並在編輯器中開啟它。
+
+4. 使用以下命令建立新專案：
+
+```sh
+go mod init your_project_name
+```
+
+5. 在您的專案中安裝 **Insyra**：
+
+```sh
+go get github.com/HazelnutParadise/insyra
+```
+
+6. 建立一個新文件，例如 `main.go`，並寫入以下代碼：
+
+```go
+package main
+
+import (
+    "fmt"
+    "github.com/HazelnutParadise/insyra"
+)
+
+func main() {
+    // 將您的代碼寫在這裡
+}
+```
+
+7. 運行您的專案：
+
+```sh
+go run main.go
+```
+
 ### 安裝
 
 要開始使用 **Insyra**，請使用以下命令進行安裝：

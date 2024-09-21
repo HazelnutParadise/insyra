@@ -44,13 +44,13 @@ The **Insyra** library is a dynamic and versatile tool designed for managing and
     go mod init your_project_name
     ```
 
-3. Install **Insyra**:
+5. Install **Insyra**:
 
     ```sh
     go get github.com/HazelnutParadise/insyra
     ```
 
-4. Create a new file, e.g., `main.go`, and write the following code:
+6. Create a new file, e.g., `main.go`, and write the following code:
 
     ```go
     package main
@@ -65,7 +65,7 @@ The **Insyra** library is a dynamic and versatile tool designed for managing and
     }
     ```
 
-5. Run your project:
+7. Run your project:
 
     ```sh
     go run main.go
