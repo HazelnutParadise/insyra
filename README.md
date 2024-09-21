@@ -109,7 +109,7 @@ Contributions are welcome! You can contribute to **Insyra** by:
 <!-- For more details, see the [contributing guidelines](https://github.com/HazelnutParadise/insyra/blob/main/CONTRIBUTING.md). -->
 
 ## Contributors
-![contributors](https://contrib.rocks/image?repo=HazelnutParadise/insyra)
+[![contributors](https://contrib.rocks/image?repo=HazelnutParadise/insyra)](https://github.com/HazelnutParadise/insyra/contributors)
 
 ## License
 
