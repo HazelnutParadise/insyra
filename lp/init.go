@@ -24,18 +24,18 @@ func init() {
 func installGLPK() {
 	switch runtime.GOOS {
 	case "linux":
-		installOnLinux()
+		initializeOnLinux()
 	case "darwin":
-		installOnMacOS()
+		initializeOnMacOS()
 	case "windows":
-		installOnWindows()
+		initializeOnWindows()
 	default:
 		log.Println("Unsupported operating system.")
 	}
 }
 
 // Linux 平台的安裝邏輯
-func installOnLinux() {
+func initializeOnLinux() {
 	cmd := exec.Command("which", "glpsol")
 	err := cmd.Run()
 	if err != nil {
@@ -51,7 +51,7 @@ func installOnLinux() {
 }
 
 // macOS 平台的安裝邏輯
-func installOnMacOS() {
+func initializeOnMacOS() {
 	cmd := exec.Command("which", "glpsol")
 	err := cmd.Run()
 	if err != nil {
@@ -67,7 +67,7 @@ func installOnMacOS() {
 }
 
 // Windows 平台的安裝邏輯
-func installOnWindows() {
+func initializeOnWindows() {
 	// 檢查 glpsol 是否已經安裝
 	glpsolPath, err := locateOrInstallGLPK_Win()
 	if err != nil {
