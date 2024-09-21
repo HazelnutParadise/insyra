@@ -26,8 +26,8 @@ Solves an LP model using GLPK and returns the result as two DataTable. First Dat
 
 #### Returns
 
-- `*DataTable`: The solution DataTable.
-- `*DataTable`: The additional information DataTable.
+- `*DataTable`: The solution DataTable(the column name and the row name will not be set).
+- `*DataTable`: The additional information DataTable(the column name and the row name will be set).
 
 #### Example
 
@@ -41,3 +41,5 @@ result.ToCSV("solution.csv", false, false)
 info.ToCSV("info.csv", true, true)
 ```
 
+> [!TIP]
+> Using `ToCSV` method, you can easily export the result to a CSV file.
