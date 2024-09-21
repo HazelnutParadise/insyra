@@ -11,7 +11,7 @@ type DataTable struct {
     columnIndex           map[string]int
     rowNames              map[string]int
     creationTimestamp     int64
-    lastModifiedTimestamp int64
+    lastModifiedTimestamp atomic.Int64
 }
 ```
 
