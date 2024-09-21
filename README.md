@@ -29,9 +29,46 @@ The **Insyra** library is a dynamic and versatile tool designed for managing and
 
 ## Getting Started
 
-<!-- ### For those new to Golang
+### For those new to Golang
 
-If you are new to Golang, you can follow these steps to  -->
+If you are new to Golang, here are the steps to create your first project.
+
+1. Download and install Golang from [here](https://golang.org/dl/).
+2. Set up your editor, we recommend using [VSCode](https://code.visualstudio.com/).
+3. Open or create a folder for your project, and open it in the editor.
+
+4. Create a new project by running the following command:
+
+    ```sh
+    go mod init your_project_name
+    ```
+
+3. Install **Insyra**:
+
+    ```sh
+    go get github.com/HazelnutParadise/insyra
+    ```
+
+4. Create a new file, e.g., `main.go`, and write the following code:
+
+    ```go
+    package main
+
+    import (
+        "fmt"
+        "github.com/HazelnutParadise/insyra"
+    )
+
+    func main() {
+        // Your code here
+    }
+    ```
+
+5. Run your project:
+
+    ```sh
+    go run main.go
+    ```
 
 ### Installation
 
