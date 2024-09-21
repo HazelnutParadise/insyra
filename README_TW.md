@@ -27,7 +27,7 @@ Go 語言次世代資料分析庫。
 ### 致初學者
 
 > [!TIP]
-> 如果您已熟悉 Go，請跳至 [安裝](#installation) 或 [快速範例](#quick-example)。
+> 如果您已熟悉 Go，請跳至 [安裝](#安裝) 或 [快速範例](#快速範例)。
 
 1. 從 [這裡](https://golang.org/dl/) 下載並安裝 Golang。
 2. 設置您的編輯器，我們推薦使用 [VSCode](https://code.visualstudio.com/)。
