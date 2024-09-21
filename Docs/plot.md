@@ -231,6 +231,27 @@ Creates a heatmap chart based on the provided `HeatmapChartConfig` and returns a
 #### Example
 ![heatmap_example](./img/plot_heatmap_example.png)
 
+### Liquid Chart
+
+#### `LiquidChartConfig`
+
+- `Title`: The title of the liquid chart.
+- `Subtitle`: The subtitle of the liquid chart.
+- `SeriesData`: The data for the liquid chart. Supported types:
+  - `map[string]float32`: A map where keys are series names, and values are float values.
+- `ShowLabels` (optional): Display labels on the liquid chart.
+- `IsWaveAnimation` (optional): Enable/Disable wave animation.
+- `Shape` (optional): Shape of the liquid chart (e.g., "diamond", "pin", "arrow", "triangle").
+
+#### `CreateLiquidChart`
+
+`func CreateLiquidChart(config LiquidChartConfig) *charts.Liquid`
+
+Creates a liquid chart based on the provided `LiquidChartConfig` and returns a `*charts.Liquid` object, which can be further customized with `go-echarts` options.
+
+#### Example
+![liquid_example](./img/plot_liquid_example.png)
+
 ## Saving Charts
 
 #### `SaveHTML`

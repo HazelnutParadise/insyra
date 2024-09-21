@@ -148,6 +148,8 @@ func disableAnimation(chart Renderable) {
 		radarChart.SetGlobalOptions(charts.WithAnimation(false)) // 關閉動畫
 	} else if funnelChart, ok := chart.(*charts.Funnel); ok {
 		funnelChart.SetGlobalOptions(charts.WithAnimation(false)) // 關閉動畫
+	} else if liquidChart, ok := chart.(*charts.Liquid); ok {
+		liquidChart.SetGlobalOptions(charts.WithAnimation(false)) // 關閉動畫
 	} else {
 		insyra.LogFatal("plot.SavePNG: unsupported chart type. Using default animation settings.")
 	}
@@ -170,6 +172,8 @@ func enableAnimation(chart Renderable) {
 		radarChart.SetGlobalOptions(charts.WithAnimation(true)) // 開啟動畫
 	} else if funnelChart, ok := chart.(*charts.Funnel); ok {
 		funnelChart.SetGlobalOptions(charts.WithAnimation(true)) // 開啟動畫
+	} else if liquidChart, ok := chart.(*charts.Liquid); ok {
+		liquidChart.SetGlobalOptions(charts.WithAnimation(true)) // 開啟動畫
 	} else {
 		insyra.LogFatal("plot.SavePNG: unsupported chart type. Using default animation settings.")
 	}
@@ -192,6 +196,8 @@ func setBackgroundToWhite(chart Renderable) {
 		radarChart.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
 	} else if funnelChart, ok := chart.(*charts.Funnel); ok {
 		funnelChart.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
+	} else if liquidChart, ok := chart.(*charts.Liquid); ok {
+		liquidChart.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
 	} else {
 		insyra.LogFatal("plot.SavePNG: unsupported chart type. Using default background color.")
 	}
