@@ -106,7 +106,7 @@ func main() {
 <!-- 有關詳細信息，請參閱 [貢獻指南](https://github.com/HazelnutParadise/insyra/blob/main/CONTRIBUTING.md)。 -->
 
 ## 貢獻者
-![contributors](https://contrib.rocks/image?repo=HazelnutParadise/insyra)
+[![contributors](https://contrib.rocks/image?repo=HazelnutParadise/insyra)](https://github.com/HazelnutParadise/insyra/contributors)
 
 ## 授權
 
