@@ -35,36 +35,36 @@ Go 語言次世代資料分析庫。
 
 4. 使用以下命令建立新專案：
 
-```sh
-go mod init your_project_name
-```
+    ```sh
+    go mod init your_project_name
+    ```
 
 5. 在您的專案中安裝 **Insyra**：
 
-```sh
-go get github.com/HazelnutParadise/insyra
-```
+    ```sh
+    go get github.com/HazelnutParadise/insyra
+    ```
 
 6. 建立一個新文件，例如 `main.go`，並寫入以下代碼：
 
-```go
-package main
+    ```go
+    package main
 
-import (
-    "fmt"
-    "github.com/HazelnutParadise/insyra"
-)
+    import (
+        "fmt"
+        "github.com/HazelnutParadise/insyra"
+    )
 
-func main() {
-    // 將您的代碼寫在這裡
-}
-```
+    func main() {
+        // 將您的代碼寫在這裡
+    }
+    ```
 
 7. 運行您的專案：
 
-```sh
-go run main.go
-```
+    ```sh
+    go run main.go
+    ```
 
 ### 安裝
 
