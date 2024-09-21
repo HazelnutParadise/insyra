@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/HazelnutParadise/Go-Utils/asyncutil"
@@ -19,7 +20,7 @@ type DataList struct {
 	data                  []interface{}
 	name                  string
 	creationTimestamp     int64
-	lastModifiedTimestamp int64
+	lastModifiedTimestamp atomic.Int64
 	mu                    sync.Mutex
 }
 
@@ -123,11 +124,13 @@ func NewDataList(values ...interface{}) *DataList {
 	continuousMemData := make([]interface{}, len(flatData))
 	copy(continuousMemData, flatData)
 
+	timestamp := time.Now().Unix()
 	dl := &DataList{
-		data:                  continuousMemData,
-		creationTimestamp:     time.Now().Unix(),
-		lastModifiedTimestamp: time.Now().Unix(),
+		data:              continuousMemData,
+		creationTimestamp: timestamp,
 	}
+	dl.lastModifiedTimestamp.Store(timestamp)
+
 	return dl
 }
 
@@ -1818,12 +1821,12 @@ func (dl *DataList) GetCreationTimestamp() int64 {
 
 // GetLastModifiedTimestamp returns the last updated time of the DataList in Unix timestamp.
 func (dl *DataList) GetLastModifiedTimestamp() int64 {
-	return dl.lastModifiedTimestamp
+	return dl.lastModifiedTimestamp.Load()
 }
 
 // updateTimestamp updates the lastModifiedTimestamp to the current Unix time.
 func (dl *DataList) updateTimestamp() {
-	dl.lastModifiedTimestamp = time.Now().Unix()
+	dl.lastModifiedTimestamp.Store(time.Now().Unix())
 }
 
 // ======================== Name ========================

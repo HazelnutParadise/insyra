@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/HazelnutParadise/Go-Utils/asyncutil"
@@ -16,7 +17,7 @@ type DataTable struct {
 	columnIndex           map[string]int // 儲存字母索引與切片中的索引對應
 	rowNames              map[string]int
 	creationTimestamp     int64
-	lastModifiedTimestamp int64
+	lastModifiedTimestamp atomic.Int64
 }
 
 type IDataTable interface {
@@ -98,13 +99,15 @@ type IDataTable interface {
 }
 
 func NewDataTable(columns ...*DataList) *DataTable {
+	now := time.Now().Unix()
 	newTable := &DataTable{
-		columns:               []*DataList{},
-		columnIndex:           make(map[string]int),
-		rowNames:              make(map[string]int),
-		creationTimestamp:     time.Now().Unix(),
-		lastModifiedTimestamp: time.Now().Unix(),
+		columns:           []*DataList{},
+		columnIndex:       make(map[string]int),
+		rowNames:          make(map[string]int),
+		creationTimestamp: now,
 	}
+
+	newTable.lastModifiedTimestamp.Store(now)
 
 	if len(columns) > 0 {
 		newTable.AppendColumns(columns...)
@@ -1344,12 +1347,13 @@ func (dt *DataTable) Transpose() *DataTable {
 	oldRowNames := dt.rowNames
 	dt.rowNames = make(map[string]int)
 	newDt := &DataTable{
-		columns:               make([]*DataList, 0),
-		rowNames:              make(map[string]int),
-		columnIndex:           make(map[string]int),
-		creationTimestamp:     dt.GetCreationTimestamp(),
-		lastModifiedTimestamp: dt.GetLastModifiedTimestamp(),
+		columns:           make([]*DataList, 0),
+		rowNames:          make(map[string]int),
+		columnIndex:       make(map[string]int),
+		creationTimestamp: dt.GetCreationTimestamp(),
 	}
+
+	newDt.lastModifiedTimestamp.Store(dt.GetLastModifiedTimestamp())
 
 	for i, col := range dls {
 
@@ -1421,11 +1425,15 @@ func newEmptyDataList(rowCount int) *DataList {
 	for i := 0; i < rowCount; i++ {
 		data[i] = nil
 	}
-	return &DataList{
-		data:                  data,
-		creationTimestamp:     time.Now().Unix(),
-		lastModifiedTimestamp: time.Now().Unix(),
+
+	now := time.Now().Unix()
+	dl := &DataList{
+		data:              data,
+		creationTimestamp: now,
 	}
+	dl.lastModifiedTimestamp.Store(now)
+
+	return dl
 }
 
 func safeRowName(dt *DataTable, name string) string {
@@ -1485,8 +1493,9 @@ func containsSubstring(value string, substring string) bool {
 }
 
 func (dt *DataTable) updateTimestamp() {
-	dt.lastModifiedTimestamp = time.Now().Unix()
-	LogDebug(fmt.Sprintf("Timestamp updated: %d", dt.lastModifiedTimestamp))
+	now := time.Now().Unix()
+	dt.lastModifiedTimestamp.Store(now)
+	LogDebug(fmt.Sprintf("Timestamp updated: %d", now))
 }
 
 func (dt *DataTable) GetCreationTimestamp() int64 {
@@ -1494,5 +1503,5 @@ func (dt *DataTable) GetCreationTimestamp() int64 {
 }
 
 func (dt *DataTable) GetLastModifiedTimestamp() int64 {
-	return dt.lastModifiedTimestamp
+	return dt.lastModifiedTimestamp.Load()
 }
