@@ -68,11 +68,24 @@ go run main.go
 
 ### 安裝
 
-要開始使用 **Insyra**，請使用以下命令進行安裝：
+- 要開始使用 **Insyra**，請使用以下命令進行安裝：
 
-```sh
-go get github.com/HazelnutParadise/insyra
-```
+    ```sh
+    go get github.com/HazelnutParadise/insyra
+    ```
+
+- 更新 **Insyra** 到最新版本：
+
+    ```sh
+    go get -u github.com/HazelnutParadise/insyra
+    ```
+
+    或者
+
+    ```sh
+    go get github.com/HazelnutParadise/insyra@latest
+    ```
+
 
 ### 快速範例
 
