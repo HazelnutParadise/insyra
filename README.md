@@ -31,7 +31,8 @@ The **Insyra** library is a dynamic and versatile tool designed for managing and
 
 ### For those new to Golang
 
-If you are new to Golang, here are the steps to create your first project.
+> [!TIP]
+> Jump to [Installation](#installation) or [Quick Example](#quick-example) if you are familiar with Go.
 
 1. Download and install Golang from [here](https://golang.org/dl/).
 2. Set up your editor, we recommend using [VSCode](https://code.visualstudio.com/).
