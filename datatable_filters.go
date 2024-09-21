@@ -19,13 +19,16 @@ func (dt *DataTable) FilterByColumnIndexGreaterThan(columnLetter string) *DataTa
 
 	filteredColumns := dt.columns[colIdx+1:]
 
-	return &DataTable{
-		columns:               filteredColumns,
-		columnIndex:           dt.columnIndex,
-		rowNames:              dt.rowNames,
-		creationTimestamp:     dt.creationTimestamp,
-		lastModifiedTimestamp: dt.lastModifiedTimestamp,
+	newDt := &DataTable{
+		columns:           filteredColumns,
+		columnIndex:       dt.columnIndex,
+		rowNames:          dt.rowNames,
+		creationTimestamp: dt.creationTimestamp,
 	}
+
+	newDt.lastModifiedTimestamp.Store(dt.lastModifiedTimestamp.Load())
+
+	return newDt
 }
 
 // FilterByColumnIndexGreaterThanOrEqualTo filters columns with index greater than or equal to the specified column.
@@ -40,13 +43,16 @@ func (dt *DataTable) FilterByColumnIndexGreaterThanOrEqualTo(columnLetter string
 
 	filteredColumns := dt.columns[colIdx:]
 
-	return &DataTable{
-		columns:               filteredColumns,
-		columnIndex:           dt.columnIndex,
-		rowNames:              dt.rowNames,
-		creationTimestamp:     dt.creationTimestamp,
-		lastModifiedTimestamp: dt.lastModifiedTimestamp,
+	newDt := &DataTable{
+		columns:           filteredColumns,
+		columnIndex:       dt.columnIndex,
+		rowNames:          dt.rowNames,
+		creationTimestamp: dt.creationTimestamp,
 	}
+
+	newDt.lastModifiedTimestamp.Store(dt.lastModifiedTimestamp.Load())
+
+	return newDt
 }
 
 // FilterByColumnIndexEqualTo filters to only keep the column with the specified index.
@@ -61,13 +67,16 @@ func (dt *DataTable) FilterByColumnIndexEqualTo(columnLetter string) *DataTable 
 
 	filteredColumns := []*DataList{dt.columns[colIdx]}
 
-	return &DataTable{
-		columns:               filteredColumns,
-		columnIndex:           dt.columnIndex,
-		rowNames:              dt.rowNames,
-		creationTimestamp:     dt.creationTimestamp,
-		lastModifiedTimestamp: dt.lastModifiedTimestamp,
+	newDt := &DataTable{
+		columns:           filteredColumns,
+		columnIndex:       dt.columnIndex,
+		rowNames:          dt.rowNames,
+		creationTimestamp: dt.creationTimestamp,
 	}
+
+	newDt.lastModifiedTimestamp.Store(dt.lastModifiedTimestamp.Load())
+
+	return newDt
 }
 
 // FilterByColumnIndexLessThan filters columns with index less than the specified column.
@@ -82,13 +91,16 @@ func (dt *DataTable) FilterByColumnIndexLessThan(columnLetter string) *DataTable
 
 	filteredColumns := dt.columns[:colIdx]
 
-	return &DataTable{
-		columns:               filteredColumns,
-		columnIndex:           dt.columnIndex,
-		rowNames:              dt.rowNames,
-		creationTimestamp:     dt.creationTimestamp,
-		lastModifiedTimestamp: dt.lastModifiedTimestamp,
+	newDt := &DataTable{
+		columns:           filteredColumns,
+		columnIndex:       dt.columnIndex,
+		rowNames:          dt.rowNames,
+		creationTimestamp: dt.creationTimestamp,
 	}
+
+	newDt.lastModifiedTimestamp.Store(dt.lastModifiedTimestamp.Load())
+
+	return newDt
 }
 
 // FilterByColumnIndexLessThanOrEqualTo filters columns with index less than or equal to the specified column.
@@ -103,13 +115,16 @@ func (dt *DataTable) FilterByColumnIndexLessThanOrEqualTo(columnLetter string) *
 
 	filteredColumns := dt.columns[:colIdx+1]
 
-	return &DataTable{
-		columns:               filteredColumns,
-		columnIndex:           dt.columnIndex,
-		rowNames:              dt.rowNames,
-		creationTimestamp:     dt.creationTimestamp,
-		lastModifiedTimestamp: dt.lastModifiedTimestamp,
+	newDt := &DataTable{
+		columns:           filteredColumns,
+		columnIndex:       dt.columnIndex,
+		rowNames:          dt.rowNames,
+		creationTimestamp: dt.creationTimestamp,
 	}
+
+	newDt.lastModifiedTimestamp.Store(dt.lastModifiedTimestamp.Load())
+
+	return newDt
 }
 
 // ==================== Column Name ====================
@@ -132,13 +147,16 @@ func (dt *DataTable) FilterByColumnNameEqualTo(columnName string) *DataTable {
 
 	filteredColumns := []*DataList{dt.columns[colIdx]}
 
-	return &DataTable{
-		columns:               filteredColumns,
-		columnIndex:           dt.columnIndex,
-		rowNames:              dt.rowNames,
-		creationTimestamp:     dt.creationTimestamp,
-		lastModifiedTimestamp: dt.lastModifiedTimestamp,
+	newDt := &DataTable{
+		columns:           filteredColumns,
+		columnIndex:       dt.columnIndex,
+		rowNames:          dt.rowNames,
+		creationTimestamp: dt.creationTimestamp,
 	}
+
+	newDt.lastModifiedTimestamp.Store(dt.lastModifiedTimestamp.Load())
+
+	return newDt
 }
 
 // FilterByColumnNameContains filters columns whose name contains the specified substring.
@@ -153,13 +171,16 @@ func (dt *DataTable) FilterByColumnNameContains(substring string) *DataTable {
 		}
 	}
 
-	return &DataTable{
-		columns:               filteredColumns,
-		columnIndex:           dt.columnIndex,
-		rowNames:              dt.rowNames,
-		creationTimestamp:     dt.creationTimestamp,
-		lastModifiedTimestamp: dt.lastModifiedTimestamp,
+	newDt := &DataTable{
+		columns:           filteredColumns,
+		columnIndex:       dt.columnIndex,
+		rowNames:          dt.rowNames,
+		creationTimestamp: dt.creationTimestamp,
 	}
+
+	newDt.lastModifiedTimestamp.Store(dt.lastModifiedTimestamp.Load())
+
+	return newDt
 }
 
 // ==================== Row Index ====================
@@ -234,11 +255,13 @@ func (dt *DataTable) FilterByRowNameContains(substring string) *DataTable {
 	filteredColumns := make([]*DataList, len(dt.columns))
 	for i := range dt.columns {
 		filteredColumns[i] = &DataList{
-			data:                  make([]interface{}, 0, len(filteredRowIndices)),
-			name:                  dt.columns[i].name,
-			creationTimestamp:     dt.columns[i].creationTimestamp,
-			lastModifiedTimestamp: dt.columns[i].lastModifiedTimestamp,
+			data:              make([]interface{}, 0, len(filteredRowIndices)),
+			name:              dt.columns[i].name,
+			creationTimestamp: dt.columns[i].creationTimestamp,
 		}
+
+		filteredColumns[i].lastModifiedTimestamp.Store(
+			dt.columns[i].lastModifiedTimestamp.Load())
 		for _, rowIndex := range filteredRowIndices {
 			if rowIndex < len(dt.columns[i].data) {
 				filteredColumns[i].data = append(filteredColumns[i].data, dt.columns[i].data[rowIndex])
@@ -246,13 +269,16 @@ func (dt *DataTable) FilterByRowNameContains(substring string) *DataTable {
 		}
 	}
 
-	return &DataTable{
-		columns:               filteredColumns,
-		columnIndex:           dt.columnIndex,
-		rowNames:              filterRowNames(dt.rowNames, filteredRowIndices),
-		creationTimestamp:     dt.creationTimestamp,
-		lastModifiedTimestamp: time.Now().Unix(),
+	newDt := &DataTable{
+		columns:           filteredColumns,
+		columnIndex:       dt.columnIndex,
+		rowNames:          filterRowNames(dt.rowNames, filteredRowIndices),
+		creationTimestamp: dt.creationTimestamp,
 	}
+
+	newDt.lastModifiedTimestamp.Store(time.Now().Unix())
+
+	return newDt
 }
 
 // filterRowNames creates a new map of row names with updated indices after filtering.
@@ -317,11 +343,14 @@ func (dt *DataTable) Filter(filterFunc FilterFunc) *DataTable {
 		}
 	}
 
-	return &DataTable{
-		columns:               filteredColumns,
-		columnIndex:           dt.columnIndex,
-		rowNames:              dt.rowNames,
-		creationTimestamp:     dt.creationTimestamp,
-		lastModifiedTimestamp: dt.lastModifiedTimestamp,
+	newDt := &DataTable{
+		columns:           filteredColumns,
+		columnIndex:       dt.columnIndex,
+		rowNames:          dt.rowNames,
+		creationTimestamp: dt.creationTimestamp,
 	}
+
+	newDt.lastModifiedTimestamp.Store(dt.lastModifiedTimestamp.Load())
+
+	return newDt
 }
