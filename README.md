@@ -29,13 +29,29 @@ The **Insyra** library is a dynamic and versatile tool designed for managing and
 
 ## Getting Started
 
+<!-- ### For those new to Golang
+
+If you are new to Golang, you can follow these steps to  -->
+
 ### Installation
 
-To start using **Insyra**, install it with the following command:
+- To start using **Insyra**, install it with the following command:
 
-```sh
-go get github.com/HazelnutParadise/insyra
-```
+    ```sh
+    go get github.com/HazelnutParadise/insyra
+    ```
+
+- Update **Insyra** to the latest version:
+
+    ```sh
+    go get -u github.com/HazelnutParadise/insyra
+    ```
+
+    or
+
+    ```sh
+    go get -u github.com/HazelnutParadise/insyra@latest
+    ```
 
 ### Quick Example
 
