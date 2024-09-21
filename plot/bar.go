@@ -142,13 +142,13 @@ func CreateBarChart(config BarChartConfig) *charts.Bar {
 		if config.LabelPos == "" {
 			config.LabelPos = "top"
 		}
-		bar.SetSeriesOptions(
-			charts.WithLabelOpts(opts.Label{
-				Show:     opts.Bool(true),
-				Position: config.LabelPos,
-			}),
-		)
 	}
+	bar.SetSeriesOptions(
+		charts.WithLabelOpts(opts.Label{
+			Show:     opts.Bool(config.ShowLabels),
+			Position: config.LabelPos,
+		}),
+	)
 
 	return bar
 }

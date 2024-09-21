@@ -85,13 +85,13 @@ func CreateScatterChart(config ScatterChartConfig) *charts.Scatter {
 		if config.LabelPos == "" {
 			config.LabelPos = "right"
 		}
-		scatter.SetSeriesOptions(
-			charts.WithLabelOpts(opts.Label{
-				Show:     opts.Bool(true),
-				Position: config.LabelPos,
-			}),
-		)
 	}
+	scatter.SetSeriesOptions(
+		charts.WithLabelOpts(opts.Label{
+			Show:     opts.Bool(config.ShowLabels),
+			Position: config.LabelPos,
+		}),
+	)
 
 	if config.SplitLine {
 		scatter.SetGlobalOptions(

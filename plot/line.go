@@ -145,13 +145,13 @@ func CreateLineChart(config LineChartConfig) *charts.Line {
 		if config.LabelPos == "" {
 			config.LabelPos = "top"
 		}
-		line.SetSeriesOptions(
-			charts.WithLabelOpts(opts.Label{
-				Show:     opts.Bool(true),
-				Position: config.LabelPos,
-			}),
-		)
 	}
+	line.SetSeriesOptions(
+		charts.WithLabelOpts(opts.Label{
+			Show:     opts.Bool(config.ShowLabels),
+			Position: config.LabelPos,
+		}),
+	)
 
 	// 平滑線條（如果啟用）
 	if config.Smooth {
