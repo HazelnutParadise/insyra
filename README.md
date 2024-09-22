@@ -157,9 +157,9 @@ Beyond basic usage, **Insyra** provides extensive capabilities for handling diff
 ## Contributing
 
 Contributions are welcome! You can contribute to **Insyra** by:
-- **Issues:** Reporting issues or suggesting new features.
-- **Pull Requests:** Submitting pull requests to enhance the library.
-- **Discussions:** Sharing your feedback and ideas to improve the project.
+- **[Issues](https://github.com/HazelnutParadise/insyra/issues):** Reporting issues or suggesting new features.
+- **[Pull Requests](https://github.com/HazelnutParadise/insyra/pulls):** Submitting pull requests to enhance the library.
+- **[Discussions](https://github.com/HazelnutParadise/insyra/discussions):** Sharing your feedback and ideas to improve the project.
 <!-- For more details, see the [contributing guidelines](https://github.com/HazelnutParadise/insyra/blob/main/CONTRIBUTING.md). -->
 
 ## Contributors
