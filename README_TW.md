@@ -154,10 +154,9 @@ func main() {
 ## 貢獻
 
 歡迎各種形式的貢獻！您可以通過以下方式貢獻 **Insyra**：
-- **Issues：** 提出問題、建議或功能請求。
-- **Pull Requests：** 提交代碼更改或新功能。
-- **Discussions：** 參與討論，分享您的想法和建議。
-
+- **[Issues](https://github.com/HazelnutParadise/insyra/issues):** 提出問題、建議或功能請求。
+- **[Pull Requests](https://github.com/HazelnutParadise/insyra/pulls):** 提交代碼更改或新功能。
+- **[Discussions](https://github.com/HazelnutParadise/insyra/discussions):** 參與討論，分享您的想法和建議。
 <!-- 有關詳細信息，請參閱 [貢獻指南](https://github.com/HazelnutParadise/insyra/blob/main/CONTRIBUTING.md)。 -->
 
 ## 貢獻者
