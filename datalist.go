@@ -1830,10 +1830,13 @@ func (dl *DataList) updateTimestamp() {
 }
 
 // ======================== Name ========================
+
+// GetName returns the name of the DataList.
 func (dl *DataList) GetName() string {
 	return dl.name
 }
 
+// SetName sets the name of the DataList.
 func (dl *DataList) SetName(newName string) *DataList {
 	nm := getNameManager()
 
