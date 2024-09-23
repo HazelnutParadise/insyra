@@ -92,42 +92,40 @@ func SavePNG(chart Renderable, pngPath string) {
 
 useOnlineService:
 	func() {
-		if r := recover(); r != nil {
-			insyra.LogWarning("plot.SavePNG: failed to render chart locally. Trying to use HazelnutParadise online service.\nWaiting for the result...")
+		insyra.LogWarning("plot.SavePNG: failed to render chart locally. Trying to use HazelnutParadise online service.\nWaiting for the result...")
 
-			// 將 Renderable 渲染成 HTML
-			var buf bytes.Buffer
-			if err := chart.Render(&buf); err != nil {
-				insyra.LogFatal("plot.SavePNG: failed to render chart to HTML", err)
-				return
-			}
-
-			// 將渲染的 HTML 放入表單數據
-			formData := "html=" + url.QueryEscape(buf.String())
-
-			// 使用備援服務發送請求
-			resp, err := http.Post("https://server3.hazelnut-paradise.com/htmltoimage", "application/x-www-form-urlencoded", strings.NewReader(formData))
-			if err != nil {
-				insyra.LogFatal("plot.SavePNG: failed to use online service", err)
-				return
-			}
-			defer resp.Body.Close()
-
-			// 讀取備援服務返回的圖片數據
-			body, err := io.ReadAll(resp.Body)
-			if err != nil {
-				insyra.LogFatal("plot.SavePNG: failed to read response from online service", err)
-				return
-			}
-
-			// 將接收到的圖片數據寫入本地 PNG 文件
-			if err := os.WriteFile(pngPath, body, 0644); err != nil {
-				insyra.LogFatal("plot.SavePNG: failed to save PNG file from online service", err)
-				return
-			}
-
-			insyra.LogInfo("plot.SavePNG: successfully saved PNG file from hazelnut-paradise.com.")
+		// 將 Renderable 渲染成 HTML
+		var buf bytes.Buffer
+		if err := chart.Render(&buf); err != nil {
+			insyra.LogFatal("plot.SavePNG: failed to render chart to HTML", err)
+			return
 		}
+
+		// 將渲染的 HTML 放入表單數據
+		formData := "html=" + url.QueryEscape(buf.String())
+
+		// 使用備援服務發送請求
+		resp, err := http.Post("https://server3.hazelnut-paradise.com/htmltoimage", "application/x-www-form-urlencoded", strings.NewReader(formData))
+		if err != nil {
+			insyra.LogFatal("plot.SavePNG: failed to use online service", err)
+			return
+		}
+		defer resp.Body.Close()
+
+		// 讀取備援服務返回的圖片數據
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			insyra.LogFatal("plot.SavePNG: failed to read response from online service", err)
+			return
+		}
+
+		// 將接收到的圖片數據寫入本地 PNG 文件
+		if err := os.WriteFile(pngPath, body, 0644); err != nil {
+			insyra.LogFatal("plot.SavePNG: failed to save PNG file from online service", err)
+			return
+		}
+
+		insyra.LogInfo("plot.SavePNG: successfully saved PNG file from hazelnut-paradise.com.")
 	}()
 }
 
