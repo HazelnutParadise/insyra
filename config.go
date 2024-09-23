@@ -1,3 +1,5 @@
+// config.go
+
 package insyra
 
 type configStruct struct {
@@ -28,6 +30,7 @@ func (c *configStruct) GetLogLevel() LogLevel {
 }
 
 // ======================== Configs ========================
+
 // DefaultConfig returns a Config with default values.
 func SetDefaultConfig() {
 	Config = &configStruct{
