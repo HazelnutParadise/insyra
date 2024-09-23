@@ -73,7 +73,6 @@ func SliceToF64(data []interface{}) []float64 {
 // ProcessData processes the input data and returns the data and the length of the data.
 // Returns nil and 0 if the data type is unsupported.
 // Supported data types are slices, IDataList, and pointers to these types.
-// ProcessData 将各种数字类型的切片转换为 []interface{}
 func ProcessData(input interface{}) ([]interface{}, int) {
 	var data []interface{}
 
