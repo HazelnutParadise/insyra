@@ -3,6 +3,7 @@
 package stats
 
 import (
+	"math"
 	"math/big"
 
 	"github.com/HazelnutParadise/insyra"
@@ -11,15 +12,15 @@ import (
 
 // Kurtosis calculates the kurtosis(sample) of the DataList.
 // Returns the kurtosis.
-// Returns nil if the DataList is empty or the kurtosis cannot be calculated.
-func Kurtosis(data interface{}, method ...int) interface{} {
+// Returns NaN if the DataList is empty or the kurtosis cannot be calculated.
+func Kurtosis(data interface{}, method ...int) float64 {
 	d, _ := insyra.ProcessData(data)
 	d64 := insyra.SliceToF64(d)
 	dl := insyra.NewDataList(d64)
 	usemethod := 1
 	if len(method) > 1 {
-		insyra.LogWarning("stats.Kurtosis: More than one method specified, returning nil.")
-		return nil
+		insyra.LogWarning("stats.Kurtosis: More than one method specified, returning.")
+		return math.NaN()
 	}
 	if len(method) == 1 {
 		usemethod = method[0]
@@ -35,13 +36,13 @@ func Kurtosis(data interface{}, method ...int) interface{} {
 	case 3:
 		result, ok = calculateKurtType3(dl)
 	default:
-		insyra.LogWarning("stats.Kurtosis: Invalid method, returning nil.")
-		return nil
+		insyra.LogWarning("stats.Kurtosis: Invalid method, returning.")
+		return math.NaN()
 	}
 
 	if !ok {
-		insyra.LogWarning("stats.Kurtosis: Kurtosis is nil, returning nil.")
-		return nil
+		insyra.LogWarning("stats.Kurtosis: Kurtosis is nil, returning.")
+		return math.NaN()
 	}
 
 	f64Result, _ := result.Float64()
