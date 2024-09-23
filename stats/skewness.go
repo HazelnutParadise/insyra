@@ -3,6 +3,7 @@
 package stats
 
 import (
+	"math"
 	"math/big"
 
 	"github.com/HazelnutParadise/Go-Utils/conv"
@@ -12,8 +13,8 @@ import (
 
 // Skewness calculates the skewness(sample) of the DataList.
 // Returns the skewness.
-// Returns nil if the DataList is empty or the skewness cannot be calculated.
-func Skewness(sample interface{}, method ...int) interface{} {
+// Returns NaN if the DataList is empty or the skewness cannot be calculated.
+func Skewness(sample interface{}, method ...int) float64 {
 	d, dLen := insyra.ProcessData(sample)
 	d64 := insyra.SliceToF64(d)
 	insyra.LogDebug("stats.Skew: d64: ", d64)
@@ -25,12 +26,12 @@ func Skewness(sample interface{}, method ...int) interface{} {
 		usemethod = method[0]
 	}
 	if len(method) > 1 {
-		insyra.LogWarning("stats.Skew: More than one method specified, returning nil.")
-		return nil
+		insyra.LogWarning("stats.Skew: More than one method specified, returning NaN.")
+		return math.NaN()
 	}
 	if dLen == 0 {
-		insyra.LogWarning("stats.Skew: DataList is empty, returning nil.")
-		return nil
+		insyra.LogWarning("stats.Skew: DataList is empty, returning NaN.")
+		return math.NaN()
 	}
 
 	var result interface{}
@@ -42,18 +43,18 @@ func Skewness(sample interface{}, method ...int) interface{} {
 	case 3:
 		result = calculateSkewType3(dl)
 	default:
-		insyra.LogWarning("stats.Skew: Invalid method, returning nil.")
-		return nil
+		insyra.LogWarning("stats.Skew: Invalid method, returning NaN.")
+		return math.NaN()
 	}
 
 	if result == nil {
-		insyra.LogWarning("stats.Skew: Skewness is nil, returning nil.")
-		return nil
+		insyra.LogWarning("stats.Skew: Skewness is nil, returning NaN.")
+		return math.NaN()
 	}
 	resultFloat, ok := result.(float64)
 	if !ok {
-		insyra.LogWarning("stats.Skew: Skewness is not a float64, returning nil.")
-		return nil
+		insyra.LogWarning("stats.Skew: Skewness is not a float64, returning NaN.")
+		return math.NaN()
 	}
 	return resultFloat
 }
