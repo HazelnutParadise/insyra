@@ -150,6 +150,10 @@ Provides a **super simple** and intuitive way to generate linear programming (LP
 
 Fully automatic linear programming (LP) solver using [GLPK](https://www.gnu.org/software/glpk/).
 
+### **[csvxl](/Docs/csvxl.md)**
+
+Work with Excel and CSV files. Such as convert CSV to Excel.
+
 ## Advanced Usage
 
 Beyond basic usage, **Insyra** provides extensive capabilities for handling different data types and performing complex statistical operations. Explore more in the **[detailed documentation](/Docs)**.
