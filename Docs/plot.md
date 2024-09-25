@@ -272,6 +272,26 @@ Creates a word cloud based on the provided `WordCloudConfig` and returns a `*cha
 #### Example
 ![wordcloud_example](./img/plot_wordcloud_example.png)
 
+### Radar Chart
+
+#### `RadarChartConfig`
+
+- `Title`: The title of the radar chart.
+- `Subtitle`: The subtitle of the radar chart.
+- `Indicators`: The indicators for the radar chart.
+- `MaxValues`: The maximum values for the indicators.
+- `SeriesData`: The data for the radar chart. Supported types:
+  - `map[string]map[string]float32`: A map where keys are series names, and values are maps of indicator names and their corresponding values.
+
+#### `CreateRadarChart`
+
+`func CreateRadarChart(config RadarChartConfig) *charts.Radar`
+
+Creates a radar chart based on the provided `RadarChartConfig` and returns a `*charts.Radar` object, which can be further customized with `go-echarts` options.
+
+#### Example
+![radar_example](./img/plot_radar_example.png)
+
 ## Saving Charts
 
 #### `SaveHTML`
