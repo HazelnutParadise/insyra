@@ -58,7 +58,7 @@ func CreateLineChart(config LineChartConfig) *plot.Plot {
 			addLineSeries(plt, dataList.GetName(), dataList.ToF64Slice(), config.XAxis, nil, i)
 		}
 	default:
-		insyra.LogWarning("Unsupported SeriesData type: %T\n", config.SeriesData)
+		insyra.LogWarning("gplot.CreateLineChart: Unsupported SeriesData type: %T\n", config.SeriesData)
 		return nil
 	}
 
@@ -110,7 +110,7 @@ func autoGenerateXAxisForIDataList(data []insyra.IDataList) []float64 {
 func addLineSeries(plt *plot.Plot, seriesName string, values []float64, xAxis []float64, colors []color.Color, index int) {
 	// Check if X-axis and SeriesData lengths match
 	if len(xAxis) != len(values) {
-		insyra.LogWarning("Length of XAxis and SeriesData for series %s do not match", seriesName)
+		insyra.LogWarning("gplot.addLineSeries: Length of XAxis and SeriesData for series %s do not match", seriesName)
 		return
 	}
 
