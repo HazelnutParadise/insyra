@@ -11,8 +11,8 @@ import (
 type RadarChartConfig struct {
 	Title      string
 	Subtitle   string
-	Indicators []string // Optional: Automatically generated if not provided.
-	MaxValues  map[string]float32
+	Indicators []string           // Optional: Automatically generated if not provided.
+	MaxValues  map[string]float32 // Optional: Automatically generated if not provided.
 	SeriesData map[string]map[string]float32
 }
 
