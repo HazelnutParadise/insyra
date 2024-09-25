@@ -252,6 +252,26 @@ Creates a liquid chart based on the provided `LiquidChartConfig` and returns a `
 #### Example
 ![liquid_example](./img/plot_liquid_example.png)
 
+### Word Cloud
+
+#### `WordCloudConfig`
+
+- `Title`: The title of the word cloud.
+- `Subtitle`: The subtitle of the word cloud.
+- `SeriesData`: The data for the word cloud. Supported types:
+  - `map[string]float32`: A map where keys are words, and values are float values.
+- `Shape` (optional): Shape of the word cloud (e.g., "circle", "cardioid", "star").
+- `SizeRange` (optional): Size range for the words, e.g., [14, 80].
+
+#### `CreateWordCloud`
+
+`func CreateWordCloud(config WordCloudConfig) *charts.WordCloud`
+
+Creates a word cloud based on the provided `WordCloudConfig` and returns a `*charts.WordCloud` object, which can be further customized with `go-echarts` options.
+
+#### Example
+![wordcloud_example](./img/plot_wordcloud_example.png)
+
 ## Saving Charts
 
 #### `SaveHTML`
