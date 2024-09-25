@@ -33,7 +33,6 @@ Creates a bar chart based on the provided configuration.
 
 ![bar_example](./img/gplot_bar_example.png)
 
-
 ### Histogram
 
 #### `HistogramConfig`
@@ -54,6 +53,27 @@ Creates a histogram based on the provided configuration.
 #### Example
 
 ![histogram_example](./img/gplot_histogram_example.png)
+
+### Line Chart
+
+#### `LineChartConfig`
+
+- `Title`: The title of the chart.
+- `XAxis`: Data for the X-axis (categories).
+- `SeriesData`: The data for the series. Supported types:
+  - `map[string][]float64`
+  - `[]*insyra.DataList`
+  - `[]insyra.IDataList`
+- `XAxisName`: Optional: Name for the X-axis.
+- `YAxisName`: Optional: Name for the Y-axis.
+
+#### `CreateLineChart(config LineChartConfig) *plot.Plot`
+
+Creates a line chart based on the provided configuration.
+
+#### Example
+
+![line_example](./img/gplot_line_example.png)
 
 ### Saving Charts
 
