@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/HazelnutParadise/Go-Utils/sliceutil"
 	"github.com/HazelnutParadise/insyra"
 
 	"github.com/xuri/excelize/v2"
@@ -91,7 +92,7 @@ func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile strin
 
 // ExcelToCsv splits an Excel file into multiple CSV files, one per sheet.
 // If customNames is provided, it uses them as CSV filenames; otherwise, it uses the sheet names.
-func ExcelToCsv(excelFile string, outputDir string, csvNames []string) {
+func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyContainSheets ...string) {
 	f, err := excelize.OpenFile(excelFile)
 	if err != nil {
 		insyra.LogWarning("csvxl.ExcelToCsv(): Failed to open Excel file %s: %v", excelFile, err)
@@ -99,14 +100,20 @@ func ExcelToCsv(excelFile string, outputDir string, csvNames []string) {
 	}
 
 	sheets := f.GetSheetList()
-	for idx, sheet := range sheets {
+	nameIdx := 0
+	for _, sheet := range sheets {
+		if len(onlyContainSheets) > 0 && !sliceutil.Contains(onlyContainSheets, sheet) {
+			continue
+		}
+
 		csvName := sheet + ".csv"
-		if len(csvNames) > idx && csvNames[idx] != "" {
-			if strings.HasSuffix(csvNames[idx], ".csv") {
-				csvName = csvNames[idx]
+		if len(csvNames) > nameIdx && csvNames[nameIdx] != "" {
+			if strings.HasSuffix(csvNames[nameIdx], ".csv") {
+				csvName = csvNames[nameIdx]
 			} else {
-				csvName = csvNames[idx] + ".csv"
+				csvName = csvNames[nameIdx] + ".csv"
 			}
+			nameIdx++
 		}
 
 		// Check if output directory exists, if not create it

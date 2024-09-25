@@ -111,7 +111,7 @@ func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile strin
 ### 3. `ExcelToCsv`
 
 ```go
-func ExcelToCsv(excelFile string, outputDir string, csvNames []string)
+func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyContainSheets ...string)
 ```
 
 **Description**: Splits each sheet in an Excel file into individual CSV files.
@@ -119,6 +119,7 @@ func ExcelToCsv(excelFile string, outputDir string, csvNames []string)
 - `excelFile`: The path to the input Excel file.
 - `outputDir`: The directory where the split CSV files will be saved. The directory will be created automatically if it does not exist.
 - `csvNames`: Custom CSV file names. If not provided, the sheet name will be used as the default CSV file name.
+- `onlyContainSheets`(optional): Only convert the specified sheets. If not provided, all sheets will be converted.
 
 ---
 
