@@ -278,8 +278,8 @@ Creates a word cloud based on the provided `WordCloudConfig` and returns a `*cha
 
 - `Title`: The title of the radar chart.
 - `Subtitle`: The subtitle of the radar chart.
-- `Indicators`: The indicators for the radar chart.
-- `MaxValues`: The maximum values for the indicators.
+- `Indicators` (optional): The indicators for the radar chart. Automatically generated if not provided.
+- `MaxValues` (optional): The maximum values for the indicators. Automatically generated if not provided.
 - `SeriesData`: The data for the radar chart. Supported types:
   - `map[string]map[string]float32`: A map where keys are series names, and values are maps of indicator names and their corresponding values.
 
