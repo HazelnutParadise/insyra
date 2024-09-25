@@ -459,19 +459,34 @@ func TestDataListPercentile(t *testing.T) {
 }
 
 func TestDataListDifference(t *testing.T) {
-	// TODO
+	// Todo
 }
 
 func TestDataListParseNumbers(t *testing.T) {
-	// TODO
+	dl := NewDataList("1", 2, "3", 8)
+	dl = dl.ParseNumbers()
+
+	if !reflect.DeepEqual(dl.Data(), []interface{}{1.0, 2.0, 3.0, 8.0}) {
+		t.Errorf("Expected data %v, got %v", []interface{}{1.0, 2.0, 3.0, 8.0}, dl.Data())
+	}
 }
 
 func TestDataListParseStrings(t *testing.T) {
-	// TODO
+	dl := NewDataList("1", 2, "3", 8)
+	dl = dl.ParseStrings()
+
+	if !reflect.DeepEqual(dl.Data(), []interface{}{"1", "2", "3", "8"}) {
+		t.Errorf("Expected data %v, got %v", []interface{}{"1", "2", "3", "8"}, dl.Data())
+	}
 }
 
 func TestDataListToF64Slice(t *testing.T) {
-	// TODO
+	dl := NewDataList(1.9, 2, 3, 4)
+	slice := dl.ToF64Slice()
+
+	if !reflect.DeepEqual(slice, []float64{1.9, 2, 3, 4}) {
+		t.Errorf("Expected float64 slice %v, got %v", []float64{1.9, 2, 3, 4}, slice)
+	}
 }
 
 func TestDataListToStringSlice(t *testing.T) {
