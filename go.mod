@@ -40,6 +40,8 @@ require (
 	github.com/go-echarts/go-echarts/v2 v2.4.2
 	github.com/go-echarts/snapshot-chromedp v0.0.4
 	github.com/lukpank/go-glpk v0.0.0-20180303121012-2e64496cbbfa
+	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d
+	github.com/u2takey/go-utils v0.3.1
 	github.com/xuri/excelize/v2 v2.8.1
 	golang.org/x/exp v0.0.0-20231110203233-9a3e6036ecaa // indirect
 	gonum.org/v1/gonum v0.15.1

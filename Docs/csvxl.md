@@ -1,13 +1,16 @@
 # [ csvxl ] Package
 
-`csvxl` is a Go package for working with CSV and Excel files. It allows you to convert multiple CSV files into an Excel workbook or append CSV files to an existing Excel file. The package supports custom sheet names and automatically handles various encodings, including Big5 and UTF-8.
+`csvxl` is a Go package designed for working with CSV and Excel files. It allows you to convert multiple CSV files into an Excel workbook or append CSV files to an existing Excel file.
 
 ## Features
 
 - **CSV to Excel conversion**: Convert multiple CSV files into an Excel file, where each CSV becomes a new sheet.
 - **Append to Excel**: Append CSV files to an existing Excel workbook, with support for custom sheet names and the option to overwrite existing sheets.
-- **Automatic encoding handling**: Automatically detects and handles file encodings such as Big5 and UTF-8, ensuring correct display of characters.
 - **Custom sheet names**: You can specify custom sheet names for each CSV file. If no sheet name is provided, the CSV file name is used as the default.
+- **Automatic directory creation**: When splitting an Excel file into multiple CSV files, the target directory is automatically created if it does not exist.
+
+> [!NOTE]
+> Currently not work well with files containing non-ASCII characters.
 
 ---
 
@@ -59,6 +62,24 @@ func main() {
 }
 ```
 
+### 3. Split an Excel file into multiple CSV files
+
+```go
+package main
+
+import (
+    "github.com/HazelnutParadise/csvxl"
+)
+
+func main() {
+    excelFile := "input.xlsx"
+    outputDir := "csv_output"
+    csvNames := []string{"custom1.csv", "custom2.csv"} // Optional: Specify names for the output CSV files
+
+    csvxl.ExcelToCsv(excelFile, outputDir, csvNames)
+}
+```
+
 ---
 
 ## Function Descriptions
@@ -78,29 +99,41 @@ func CsvToExcel(csvFiles []string, sheetNames []string, output string)
 ### 2. `AppendCsvToExcel`
 
 ```go
-func AppendCsvToExcel(csvFiles []string, sheetNames []string, existing string)
+func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile string)
 ```
 
 **Description**: Appends multiple CSV files to an existing Excel workbook.
 
->[!NOTE]
->If the sheet is exists, it will be overwritten.
-
 - `csvFiles`: A list of CSV file paths.
 - `sheetNames`: Custom sheet names corresponding to each CSV file. If not provided, the CSV filename will be used as the sheet name.
-- `existing`: The name of the existing Excel file.
+- `existingFile`: The name of the existing Excel file.
+
+### 3. `ExcelToCsv`
+
+```go
+func ExcelToCsv(excelFile string, outputDir string, csvNames []string)
+```
+
+**Description**: Splits each sheet in an Excel file into individual CSV files.
+
+- `excelFile`: The path to the input Excel file.
+- `outputDir`: The directory where the split CSV files will be saved. The directory will be created automatically if it does not exist.
+- `csvNames`: Custom CSV file names. If not provided, the sheet name will be used as the default CSV file name.
 
 ---
 
 ## Encoding Support
 
-`csvxl` automatically handles different CSV file encodings, including UTF-8 and Big5. This ensures that all characters (including non-English ones like Chinese) are correctly written into the Excel file.
+> [!NOTE]
+> Currently not work well with files containing non-ASCII characters.
+
+`csvxl` automatically handles different CSV file encodings, including UTF-8 and Big5. This ensures that all characters (including non-English ones like Chinese) are correctly written into the Excel file or split into CSV files.
 
 ---
 
 ## Error Handling
 
-All functions log and skip files that cannot be processed, while continuing with the rest of the files. Results and errors are logged, allowing you to track which files succeeded or failed.
+All functions log and skip files that cannot be processed while continuing with the remaining files. The results and errors are logged, allowing you to track which files succeeded or failed.
 
 ---
 
