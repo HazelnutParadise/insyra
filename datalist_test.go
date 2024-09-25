@@ -122,11 +122,23 @@ func TestDataListFilter(t *testing.T) {
 }
 
 func TestDataListReplaceFirst(t *testing.T) {
-	// TODO
+	dl := NewDataList(1, 2, 3, 2, 2, 1)
+	dl.ReplaceFirst(2, 10)
+
+	expected := []interface{}{1, 10, 3, 2, 2, 1}
+	if !reflect.DeepEqual(dl.Data(), expected) {
+		t.Errorf("Expected data %v, got %v", expected, dl.Data())
+	}
 }
 
 func TestDataListReplaceLast(t *testing.T) {
-	// TODO
+	dl := NewDataList(1, 2, 3, 2, 2, 1)
+	dl.ReplaceLast(2, 10)
+
+	expected := []interface{}{1, 2, 3, 2, 10, 1}
+	if !reflect.DeepEqual(dl.Data(), expected) {
+		t.Errorf("Expected data %v, got %v", expected, dl.Data())
+	}
 }
 
 func TestDataListReplaceAll(t *testing.T) {

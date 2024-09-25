@@ -323,6 +323,7 @@ func (dl *DataList) ReplaceFirst(oldValue, newValue interface{}) {
 		if v == oldValue {
 			dl.data[i] = newValue
 			go dl.updateTimestamp()
+			return
 		}
 	}
 	LogWarning("ReplaceFirst(): value not found.")
@@ -339,6 +340,7 @@ func (dl *DataList) ReplaceLast(oldValue, newValue interface{}) {
 		if dl.data[i] == oldValue {
 			dl.data[i] = newValue
 			go dl.updateTimestamp()
+			return
 		}
 	}
 	LogWarning("ReplaceLast(): value not found.")
