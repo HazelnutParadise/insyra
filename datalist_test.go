@@ -5,6 +5,7 @@ import (
 	"slices"
 	"sort"
 	"testing"
+	"time"
 )
 
 func float64Equal(a, b float64) bool {
@@ -474,18 +475,36 @@ func TestDataListToF64Slice(t *testing.T) {
 }
 
 func TestDataListToStringSlice(t *testing.T) {
-	// TODO
+	dl := NewDataList(1, 2, 3, 4)
+	slice := dl.ToStringSlice()
+
+	if !reflect.DeepEqual(slice, []string{"1", "2", "3", "4"}) {
+		t.Errorf("Expected string slice %v, got %v", []string{"1", "2", "3", "4"}, slice)
+	}
 }
 
 func TestDataListGetCreationTimestamp(t *testing.T) {
-	// TODO
+	dl := NewDataList(1, 2, 3, 4)
+	time.Sleep(1 * time.Second)
+	newTime := time.Now().Unix()
+	dl.SetName("TestName2")
+
+	if dl.GetCreationTimestamp() == newTime || dl.GetCreationTimestamp() == 0 {
+		t.Errorf("Creation timestamp wrong, got %v", dl.GetCreationTimestamp())
+	}
 }
 
 func TestDataListGetLastModifiedTimestamp(t *testing.T) {
 	// TODO
 }
+
 func TestDataListGetName(t *testing.T) {
-	// TODO
+	dl := NewDataList(1, 2, 3, 4)
+	dl.SetName("TestName")
+
+	if dl.GetName() != "TestName" {
+		t.Errorf("Expected name TestName, got %v", dl.GetName())
+	}
 }
 
 // 測試 SetName 和 GetName 函數
