@@ -91,6 +91,8 @@ type IDataList interface {
 	IQR() float64
 	Percentile(float64) float64
 	Difference() *DataList
+
+	// conversion
 	ParseNumbers() *DataList
 	ParseStrings() *DataList
 	ToF64Slice() []float64
