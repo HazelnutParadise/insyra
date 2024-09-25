@@ -130,15 +130,39 @@ func TestDataListReplaceLast(t *testing.T) {
 }
 
 func TestDataListReplaceAll(t *testing.T) {
-	// TODO
+	dl := NewDataList(1, 4, 4, 5, 4, 9)
+	dl.ReplaceAll(4, 10)
+
+	expected := []interface{}{1, 10, 10, 5, 10, 9}
+	if !reflect.DeepEqual(dl.Data(), expected) {
+		t.Errorf("Expected data %v, got %v", expected, dl.Data())
+	}
+
+	dlstr := NewDataList("a", "b", "c", "a")
+	dlstr.ReplaceAll("a", "d")
+
+	expected = []interface{}{"d", "b", "c", "d"}
+	if !reflect.DeepEqual(dlstr.Data(), expected) {
+		t.Errorf("Expected data %v, got %v", expected, dlstr.Data())
+	}
 }
 
 func TestDataListReplaceOutliers(t *testing.T) {
-	//TODO
+	// TODO
 }
 
 func TestDataListPop(t *testing.T) {
-	//TODO
+	dl := NewDataList(1, 2, 3, 4)
+	last := dl.Pop()
+
+	if last != 4 {
+		t.Errorf("Expected last element 4, got %v", last)
+	}
+
+	expected := []interface{}{1, 2, 3}
+	if !reflect.DeepEqual(dl.Data(), expected) {
+		t.Errorf("Expected data %v, got %v", expected, dl.Data())
+	}
 }
 
 // 測試 Drop 函數

@@ -358,52 +358,11 @@ func (dl *DataList) ReplaceAll(oldValue, newValue interface{}) {
 		return
 	}
 
-	// 獲取可用的 CPU 核心數量
-	numGoroutines := runtime.NumCPU()
-
-	// 決定每個線程處理的數據量
-	chunkSize := length / numGoroutines
-	if length%numGoroutines != 0 {
-		chunkSize++
-	}
-
-	var tasks []asyncutil.Task
-
-	// 創建並行任務
-	for i := 0; i < numGoroutines; i++ {
-		start := i * chunkSize
-		end := start + chunkSize
-		if end > length {
-			end = length
+	// 單線程處理資料替換
+	for i, v := range dl.data {
+		if v == oldValue {
+			dl.data[i] = newValue
 		}
-
-		task := asyncutil.Task{
-			ID: fmt.Sprintf("task-%d", i),
-			Fn: func(dataChunk []interface{}) []interface{} {
-				for j, v := range dataChunk {
-					if v == oldValue {
-						dataChunk[j] = newValue
-					}
-				}
-				return dataChunk
-			},
-			Args: []interface{}{dl.data[start:end]},
-		}
-
-		tasks = append(tasks, task)
-	}
-
-	// 使用 ParallelProcess 來處理所有任務
-	taskResults := asyncutil.ParallelProcess(tasks)
-
-	// 合併結果
-	for i, result := range taskResults {
-		start := i * chunkSize
-		end := start + chunkSize
-		if end > length {
-			end = length
-		}
-		copy(dl.data[start:end], result.Results[0].([]interface{}))
 	}
 
 	go dl.updateTimestamp()
