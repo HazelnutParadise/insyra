@@ -11,7 +11,7 @@ import (
 type RadarChartConfig struct {
 	Title      string
 	Subtitle   string
-	Indicators []string
+	Indicators []string // Optional: Automatically generated if not provided.
 	MaxValues  map[string]float32
 	SeriesData map[string]map[string]float32
 }
@@ -31,6 +31,23 @@ func CreateRadarChart(config RadarChartConfig) *charts.Radar {
 			Bottom: "0%",
 		}),
 	)
+
+	if config.Indicators == nil {
+		indicatorSet := make(map[string]struct{})
+
+		// 從所有城市中提取所有指標
+		for _, indicators := range config.SeriesData {
+			for key := range indicators {
+				indicatorSet[key] = struct{}{}
+			}
+		}
+
+		// 將 map 中的 keys 轉換為 slice
+		config.Indicators = make([]string, 0, len(indicatorSet))
+		for key := range indicatorSet {
+			config.Indicators = append(config.Indicators, key)
+		}
+	}
 
 	// 計算缺失的最大值
 	if config.MaxValues == nil {
