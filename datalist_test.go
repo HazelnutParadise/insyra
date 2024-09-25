@@ -118,7 +118,15 @@ func TestDataListFinalAll(t *testing.T) {
 }
 
 func TestDataListFilter(t *testing.T) {
-	// TODO
+	dl := NewDataList(1, 2, 3, 2, 2, 1)
+	dl = dl.Filter(func(value interface{}) bool {
+		return value != 2
+	})
+
+	expected := []interface{}{1, 3, 1}
+	if !reflect.DeepEqual(dl.Data(), expected) {
+		t.Errorf("Expected data %v, got %v", expected, dl.Data())
+	}
 }
 
 func TestDataListReplaceFirst(t *testing.T) {
