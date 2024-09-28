@@ -314,6 +314,25 @@ Creates a box plot chart based on the provided `BoxPlotConfig` and returns a `*c
 #### Example
 ![boxplot_example](./img/plot_boxplot_example.png)
 
+### K-Line Chart
+
+#### `KlineChartConfig`
+
+- `Title`: The title of the K-line chart.
+- `Subtitle`: The subtitle of the K-line chart.
+- `SeriesData`: The data for the K-line chart. Supported types:
+  - `map[string][4]float32`: A map where keys are dates, and values are arrays of [open, close, high, low] float values.
+- `DataZoom` (optional): Enable/Disable data zoom.
+
+#### `CreateKlineChart`
+
+`func CreateKlineChart(config KlineChartConfig) *charts.Kline`
+
+Creates a K-line chart based on the provided `KlineChartConfig` and returns a `*charts.Kline` object, which can be further customized with `go-echarts` options.
+
+#### Example
+![kline_example](./img/plot_kline_example.png)
+
 ## Saving Charts
 
 #### `SaveHTML`
