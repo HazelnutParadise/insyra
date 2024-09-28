@@ -292,6 +292,28 @@ Creates a radar chart based on the provided `RadarChartConfig` and returns a `*c
 #### Example
 ![radar_example](./img/plot_radar_example.png)
 
+### Box Plot
+
+#### `BoxPlotConfig`
+
+- `Title`: The title of the box plot.
+- `Subtitle`: The subtitle of the box plot.
+- `XAxis`: Data for the X-axis (categories).
+- `SeriesData`: The data for the box plot. Supported types:
+  - `map[string][][]float64`: A map where keys are series names, and values are float64 slices.
+  - `map[string][]*insyra.DataList`: A map where keys are series names, and values are `DataList` structures.
+  - `map[string]insyra.IDataList`: A map where keys are series names, and values are `IDataList` interface implementations.
+- `GridTop` (optional): Space between the top of the chart and the title. Default is `"80"`.
+
+#### `CreateBoxPlot`
+
+`func CreateBoxPlot(config BoxPlotConfig) *charts.BoxPlot`
+
+Creates a box plot chart based on the provided `BoxPlotConfig` and returns a `*charts.BoxPlot` object, which can be further customized with `go-echarts` options.
+
+#### Example
+![boxplot_example](./img/plot_boxplot_example.png)
+
 ## Saving Charts
 
 #### `SaveHTML`

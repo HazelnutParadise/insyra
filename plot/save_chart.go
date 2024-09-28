@@ -150,6 +150,8 @@ func disableAnimation(chart Renderable) {
 		liquidChart.SetGlobalOptions(charts.WithAnimation(false)) // 關閉動畫
 	} else if wordCloudChart, ok := chart.(*charts.WordCloud); ok {
 		wordCloudChart.SetGlobalOptions(charts.WithAnimation(false)) // 關閉動畫
+	} else if boxPlot, ok := chart.(*charts.BoxPlot); ok {
+		boxPlot.SetGlobalOptions(charts.WithAnimation(false)) // 關閉動畫
 	} else {
 		insyra.LogFatal("plot.SavePNG: unsupported chart type. Using default animation settings.")
 	}
@@ -176,6 +178,8 @@ func enableAnimation(chart Renderable) {
 		liquidChart.SetGlobalOptions(charts.WithAnimation(true)) // 開啟動畫
 	} else if wordCloudChart, ok := chart.(*charts.WordCloud); ok {
 		wordCloudChart.SetGlobalOptions(charts.WithAnimation(true)) // 開啟動畫
+	} else if boxPlot, ok := chart.(*charts.BoxPlot); ok {
+		boxPlot.SetGlobalOptions(charts.WithAnimation(true)) // 開啟動畫
 	} else {
 		insyra.LogFatal("plot.SavePNG: unsupported chart type. Using default animation settings.")
 	}
@@ -202,6 +206,8 @@ func setBackgroundToWhite(chart Renderable) {
 		liquidChart.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
 	} else if wordCloudChart, ok := chart.(*charts.WordCloud); ok {
 		wordCloudChart.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
+	} else if boxPlot, ok := chart.(*charts.BoxPlot); ok {
+		boxPlot.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
 	} else {
 		insyra.LogFatal("plot.SavePNG: unsupported chart type. Using default background color.")
 	}
