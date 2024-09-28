@@ -301,8 +301,8 @@ Creates a radar chart based on the provided `RadarChartConfig` and returns a `*c
 - `XAxis`: Data for the X-axis (categories).
 - `SeriesData`: The data for the box plot. Supported types:
   - `map[string][][]float64`: A map where keys are series names, and values are float64 slices.
-  - `map[string][]*insyra.DataList`: A map where keys are series names, and values are `DataList` structures.
-  - `map[string]insyra.IDataList`: A map where keys are series names, and values are `IDataList` interface implementations.
+  - `[]*insyra.DataList`: A list of `DataList` structures. The name of the `DataList` will be used as the X-axis data.
+  - `[]insyra.IDataList`: A list of `IDataList` interface implementations. The name of the `IDataList` will be used as the X-axis data.
 - `GridTop` (optional): Space between the top of the chart and the title. Default is `"80"`.
 
 #### `CreateBoxPlot`
