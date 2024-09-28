@@ -12,9 +12,8 @@ import (
 type BoxPlotConfig struct {
 	Title      string
 	Subtitle   string
-	XAxis      []string // X-axis data.
-	SeriesData any      // Accepts [][]float64 or []*insyra.DataList.
-	GridTop    string   // Optional: Top grid line. Default: "80".
+	SeriesData any    // Accepts map[string][]float64 or []*insyra.DataList.
+	GridTop    string // Optional: Top grid line. Default: "80".
 }
 
 // CreateBoxPlot generates and returns a *charts.BoxPlot object
@@ -40,12 +39,12 @@ func CreateBoxPlot(config BoxPlotConfig) *charts.BoxPlot {
 	)
 
 	var boxPlotItems []opts.BoxPlotData
-	xAxis := config.XAxis
+	var xAxis []string
 
-	// Handle SeriesData as [][]float64 or []*insyra.DataList
+	// Handle SeriesData as map[string][]float64 or []*insyra.DataList
 	switch data := config.SeriesData.(type) {
-	case [][]float64:
-		boxPlotItems = generateBoxPlotItems(data)
+	case map[string][]float64:
+		boxPlotItems, xAxis = generateBoxPlotItemsFromMapFloat64(data)
 	case []*insyra.DataList:
 		boxPlotItems, xAxis = generateBoxPlotItemsFromDataList(data)
 	case []insyra.IDataList:
@@ -83,13 +82,17 @@ func createBoxPlotData(data []float64) []float64 {
 	}
 }
 
-// generateBoxPlotItems creates a list of opts.BoxPlotData for [][]float64
-func generateBoxPlotItems(boxPlotData [][]float64) []opts.BoxPlotData {
+// generateBoxPlotItemsFromMapFloat64 creates a list of opts.BoxPlotData for map[string][]float64 and auto-generates X-axis
+func generateBoxPlotItemsFromMapFloat64(dataMap map[string][]float64) ([]opts.BoxPlotData, []string) {
 	items := make([]opts.BoxPlotData, 0)
-	for _, data := range boxPlotData {
-		items = append(items, opts.BoxPlotData{Value: createBoxPlotData(data)})
+	xAxis := make([]string, len(dataMap))
+	i := 0
+	for name, boxPlotData := range dataMap {
+		items = append(items, opts.BoxPlotData{Value: createBoxPlotData(boxPlotData)})
+		xAxis[i] = name // Use map keys as X-axis labels
+		i++
 	}
-	return items
+	return items, xAxis
 }
 
 // generateBoxPlotItemsFromDataList creates a list of opts.BoxPlotData for []*insyra.DataList and auto-generates X-axis
