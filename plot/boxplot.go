@@ -3,6 +3,8 @@
 package plot
 
 import (
+	"fmt"
+
 	"github.com/HazelnutParadise/insyra"
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
@@ -12,8 +14,9 @@ import (
 type BoxPlotConfig struct {
 	Title      string
 	Subtitle   string
-	SeriesData any    // Accepts map[string][]float64 or []*insyra.DataList.
-	GridTop    string // Optional: Top grid line. Default: "80".
+	XAxis      []string // X-axis data.
+	SeriesData any      // Accepts map[string][][]float64, []*insyra.DataList, or map[string]any for multiple series.
+	GridTop    string   // Optional: Top grid line. Default: "80".
 }
 
 // CreateBoxPlot generates and returns a *charts.BoxPlot object
@@ -38,27 +41,47 @@ func CreateBoxPlot(config BoxPlotConfig) *charts.BoxPlot {
 		}),
 	)
 
-	var boxPlotItems []opts.BoxPlotData
-	var xAxis []string
-
-	// Handle SeriesData as map[string][]float64 or []*insyra.DataList
+	// Process SeriesData for single or multiple series
 	switch data := config.SeriesData.(type) {
-	case map[string][]float64:
-		boxPlotItems, xAxis = generateBoxPlotItemsFromMapFloat64(data)
-	case []*insyra.DataList:
-		boxPlotItems, xAxis = generateBoxPlotItemsFromDataList(data)
-	case []insyra.IDataList:
-		boxPlotItems, xAxis = generateBoxPlotItemsFromIDataList(data)
+	case map[string][][]float64:
+		// Handle multiple series with [][]float64
+		if config.XAxis == nil {
+			config.XAxis = []string{}
+			for i := 0; i < len(data); i++ {
+				config.XAxis = append(config.XAxis, fmt.Sprintf("Category %d", i+1))
+			}
+		}
+		for seriesName, seriesData := range data {
+			boxPlotItems := generateBoxPlotItemsFromMapFloat64(seriesData)
+			boxPlot.SetXAxis(config.XAxis).AddSeries(seriesName, boxPlotItems)
+		}
+	case map[string][]*insyra.DataList:
+		// Handle multiple series with []*insyra.DataList
+		if config.XAxis == nil {
+			config.XAxis = []string{}
+			for i := 0; i < len(data); i++ {
+				config.XAxis = append(config.XAxis, fmt.Sprintf("Category %d", i+1))
+			}
+		}
+		for seriesName, seriesData := range data {
+			boxPlotItems := generateBoxPlotItemsFromDataList(seriesData)
+			boxPlot.SetXAxis(config.XAxis).AddSeries(seriesName, boxPlotItems)
+		}
+	case map[string][]insyra.IDataList:
+		// Handle multiple series with []insyra.IDataList
+		if config.XAxis == nil {
+			config.XAxis = []string{}
+			for i := 0; i < len(data); i++ {
+				config.XAxis = append(config.XAxis, fmt.Sprintf("Category %d", i+1))
+			}
+		}
+		for seriesName, seriesData := range data {
+			boxPlotItems := generateBoxPlotItemsFromIDataList(seriesData)
+			boxPlot.SetXAxis(config.XAxis).AddSeries(seriesName, boxPlotItems)
+		}
 	default:
 		insyra.LogWarning("plot.CreateBoxPlot: Unsupported SeriesData type")
 		return nil
-	}
-
-	// Set X-axis data if not provided, auto-generate from DataList
-	if len(xAxis) > 0 {
-		boxPlot.SetXAxis(xAxis).AddSeries("boxplot", boxPlotItems)
-	} else {
-		boxPlot.AddSeries("boxplot", boxPlotItems)
 	}
 
 	return boxPlot
@@ -67,54 +90,40 @@ func CreateBoxPlot(config BoxPlotConfig) *charts.BoxPlot {
 // createBoxPlotData generates the five-number summary (Min, Q1, Q2, Q3, Max)
 func createBoxPlotData(data []float64) []float64 {
 	dl := insyra.NewDataList(data)
-	min := dl.Min()
-	max := dl.Max()
-	q1 := dl.Quartile(1)
-	q2 := dl.Quartile(2)
-	q3 := dl.Quartile(3)
-
 	return []float64{
-		min,
-		q1,
-		q2,
-		q3,
-		max,
+		dl.Min(),
+		dl.Quartile(1),
+		dl.Quartile(2),
+		dl.Quartile(3),
+		dl.Max(),
 	}
 }
 
-// generateBoxPlotItemsFromMapFloat64 creates a list of opts.BoxPlotData for map[string][]float64 and auto-generates X-axis
-func generateBoxPlotItemsFromMapFloat64(dataMap map[string][]float64) ([]opts.BoxPlotData, []string) {
-	items := make([]opts.BoxPlotData, 0)
-	xAxis := make([]string, len(dataMap))
-	i := 0
-	for name, boxPlotData := range dataMap {
-		items = append(items, opts.BoxPlotData{Value: createBoxPlotData(boxPlotData)})
-		xAxis[i] = name // Use map keys as X-axis labels
-		i++
+// generateBoxPlotItemsFromMapFloat64 processes [][]float64 and generates BoxPlotData
+func generateBoxPlotItemsFromMapFloat64(data [][]float64) []opts.BoxPlotData {
+	items := make([]opts.BoxPlotData, len(data))
+	for i, d := range data {
+		items[i] = opts.BoxPlotData{Value: createBoxPlotData(d)}
 	}
-	return items, xAxis
+	return items
 }
 
-// generateBoxPlotItemsFromDataList creates a list of opts.BoxPlotData for []*insyra.DataList and auto-generates X-axis
-func generateBoxPlotItemsFromDataList(dataLists []*insyra.DataList) ([]opts.BoxPlotData, []string) {
-	items := make([]opts.BoxPlotData, 0)
-	xAxis := make([]string, len(dataLists))
+// generateBoxPlotItemsFromDataList generates BoxPlotData from []*insyra.DataList
+func generateBoxPlotItemsFromDataList(dataLists []*insyra.DataList) []opts.BoxPlotData {
+	items := make([]opts.BoxPlotData, len(dataLists))
 	for i, dataList := range dataLists {
 		values := dataList.ToF64Slice() // Convert DataList to []float64
-		items = append(items, opts.BoxPlotData{Value: createBoxPlotData(values)})
-		xAxis[i] = dataList.GetName() // Use the DataList name as the X-axis label
+		items[i] = opts.BoxPlotData{Value: createBoxPlotData(values)}
 	}
-	return items, xAxis
+	return items
 }
 
-// generateBoxPlotItemsFromIDataList creates a list of opts.BoxPlotData for []insyra.IDataList
-func generateBoxPlotItemsFromIDataList(dataLists []insyra.IDataList) ([]opts.BoxPlotData, []string) {
-	items := make([]opts.BoxPlotData, 0)
-	xAxis := make([]string, len(dataLists))
+// generateBoxPlotItemsFromIDataList generates BoxPlotData from []insyra.IDataList
+func generateBoxPlotItemsFromIDataList(dataLists []insyra.IDataList) []opts.BoxPlotData {
+	items := make([]opts.BoxPlotData, len(dataLists))
 	for i, dataList := range dataLists {
 		values := dataList.ToF64Slice() // Convert IDataList to []float64
-		items = append(items, opts.BoxPlotData{Value: createBoxPlotData(values)})
-		xAxis[i] = dataList.GetName() // Use the IDataList name as the X-axis label
+		items[i] = opts.BoxPlotData{Value: createBoxPlotData(values)}
 	}
-	return items, xAxis
+	return items
 }
