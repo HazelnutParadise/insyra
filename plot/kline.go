@@ -5,6 +5,7 @@ package plot
 import (
 	"sort"
 
+	"github.com/HazelnutParadise/insyra" // 確保這是正確的導入路徑
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
 )
@@ -13,8 +14,8 @@ import (
 type KlineChartConfig struct {
 	Title      string
 	Subtitle   string
-	SeriesData map[string][4]float32 // date: [open, close, lowest, highest]
-	DataZoom   bool                  // Turn on/off data zoom
+	SeriesData any  // Accepts map[string][4]float32 or []*insyra.DataList
+	DataZoom   bool // Turn on/off data zoom
 }
 
 // CreateKlineChart generates and returns a *charts.Kline object.
@@ -52,19 +53,72 @@ func CreateKlineChart(config KlineChartConfig) *charts.Kline {
 		)
 	}
 
-	// Prepare the K-line chart data with sorted dates
-	xAxis := make([]string, 0, len(config.SeriesData))
-	for date := range config.SeriesData {
-		xAxis = append(xAxis, date)
-	}
+	var xAxis []string
+	var series []opts.KlineData
 
-	// Sort the dates
-	sort.Strings(xAxis)
+	// Handle SeriesData for both map[string][4]float32 and []*insyra.DataList
+	switch data := config.SeriesData.(type) {
+	case map[string][4]float32:
+		// Prepare the K-line chart data with sorted dates
+		xAxis = make([]string, 0, len(data))
+		for date := range data {
+			xAxis = append(xAxis, date)
+		}
+		sort.Strings(xAxis)
 
-	// Add sorted data to the series
-	series := make([]opts.KlineData, len(xAxis))
-	for i, date := range xAxis {
-		series[i] = opts.KlineData{Value: config.SeriesData[date]}
+		// Add sorted data to the series
+		series = make([]opts.KlineData, len(xAxis))
+		for i, date := range xAxis {
+			series[i] = opts.KlineData{Value: data[date]}
+		}
+
+	case []*insyra.DataList:
+		// Prepare the K-line chart data using DataList
+		xAxis = make([]string, 0, len(data))
+		series = make([]opts.KlineData, 0, len(data))
+
+		for _, dataList := range data {
+			if dataList.Len() == 4 { // Ensure that we have the open, close, lowest, highest values
+				xAxis = append(xAxis, dataList.GetName())
+				values := dataList.ToF64Slice()
+				series = append(series, opts.KlineData{
+					Value: [4]float32{
+						float32(values[0]), // Open
+						float32(values[1]), // Close
+						float32(values[2]), // Lowest
+						float32(values[3]), // Highest
+					},
+				})
+			}
+		}
+
+		// Sort the dates
+		sort.Strings(xAxis)
+	case []insyra.IDataList:
+		// Prepare the K-line chart data using DataList
+		xAxis = make([]string, 0, len(data))
+		series = make([]opts.KlineData, 0, len(data))
+
+		for _, dataList := range data {
+			if dataList.Len() == 4 { // Ensure that we have the open, close, lowest, highest values
+				xAxis = append(xAxis, dataList.GetName())
+				values := dataList.ToF64Slice()
+				series = append(series, opts.KlineData{
+					Value: [4]float32{
+						float32(values[0]), // Open
+						float32(values[1]), // Close
+						float32(values[2]), // Lowest
+						float32(values[3]), // Highest
+					},
+				})
+			}
+		}
+
+		// Sort the dates
+		sort.Strings(xAxis)
+	default:
+		// Log a warning or handle unsupported data type
+		return nil
 	}
 
 	// Set X axis and add series data

@@ -322,6 +322,8 @@ Creates a box plot chart based on the provided `BoxPlotConfig` and returns a `*c
 - `Subtitle`: The subtitle of the K-line chart.
 - `SeriesData`: The data for the K-line chart. Supported types:
   - `map[string][4]float32`: A map where keys are dates, and values are arrays of [open, close, high, low] float values.
+  - `[]*insyra.DataList`: A list of `DataList` structures, each containing the open, close, highest, and lowest values, and the date as the name.
+  - `[]insyra.IDataList`: A list of `IDataList` interface implementations.
 - `DataZoom` (optional): Enable/Disable data zoom.
 
 #### `CreateKlineChart`
