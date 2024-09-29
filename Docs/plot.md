@@ -335,6 +335,24 @@ Creates a K-line chart based on the provided `KlineChartConfig` and returns a `*
 #### Example
 ![kline_example](./img/plot_kline_example.png)
 
+### Gauge Chart
+
+#### `GaugeChartConfig`
+
+- `Title`: The title of the gauge chart.
+- `Subtitle`: The subtitle of the gauge chart.
+- `SeriesName`: The name of the series.
+- `Value`: The value to display on the gauge.
+
+#### `CreateGaugeChart`
+
+`func CreateGaugeChart(config GaugeChartConfig) *charts.Gauge`
+
+Creates a gauge chart based on the provided `GaugeChartConfig` and returns a `*charts.Gauge` object, which can be further customized with `go-echarts` options.
+
+#### Example
+![gauge_example](./img/plot_gauge_example.png)
+
 ## Saving Charts
 
 #### `SaveHTML`
