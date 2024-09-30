@@ -1317,7 +1317,7 @@ func (dt *DataTable) Count(value interface{}) int {
 }
 
 // Size returns the number of rows and columns in the DataTable.
-func (dt *DataTable) Size() (int, int) {
+func (dt *DataTable) Size() (rows int, cols int) {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
 	return dt.getMaxColumnLength(), len(dt.columns)
