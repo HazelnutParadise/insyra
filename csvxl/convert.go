@@ -15,9 +15,23 @@ import (
 	"golang.org/x/text/transform"
 )
 
+// CsvEncoding Options
+const (
+	UTF8 = "utf-8"
+	Big5 = "big5"
+)
+
 // Convert multiple CSV files to an Excel file, supporting custom sheet names.
 // If the sheet name is not specified, the file name of the CSV file will be used.
-func CsvToExcel(csvFiles []string, sheetNames []string, output string) {
+func CsvToExcel(csvFiles []string, sheetNames []string, output string, csvEncoding ...string) {
+	encoding := "utf-8"
+	if len(csvEncoding) == 1 {
+		encoding = csvEncoding[0]
+	} else if len(csvEncoding) > 1 {
+		insyra.LogWarning("csvxl.CsvToExcel: Too many arguments for csvEncoding")
+		return
+	}
+
 	f := excelize.NewFile()
 	failedFiles := 0
 
@@ -36,29 +50,37 @@ func CsvToExcel(csvFiles []string, sheetNames []string, output string) {
 			f.NewSheet(sheetName)
 		}
 
-		err := addCsvSheet(f, sheetName, csvFile)
+		err := addCsvSheet(f, sheetName, csvFile, encoding)
 		if err != nil {
-			insyra.LogWarning("csvxl.CsvToExcel(): Failed to add CSV sheet %s: %v", csvFile, err)
+			insyra.LogWarning("csvxl.CsvToExcel: Failed to add CSV sheet %s: %v", csvFile, err)
 			failedFiles++
 			continue
 		}
 	}
 
 	if err := f.SaveAs(output); err != nil {
-		insyra.LogWarning("csvxl.CsvToExcel(): Failed to save Excel file %s: %v", output, err)
+		insyra.LogWarning("csvxl.CsvToExcel: Failed to save Excel file %s: %v", output, err)
 		return
 	}
 
-	insyra.LogInfo("csvxl.CsvToExcel(): Successfully converted %d CSV files to Excel file %s. %d files failed.", len(csvFiles)-failedFiles, output, failedFiles)
+	insyra.LogInfo("csvxl.CsvToExcel: Successfully converted %d CSV files to Excel file %s. %d files failed.", len(csvFiles)-failedFiles, output, failedFiles)
 }
 
 // Append CSV files to an existing Excel file, supporting custom sheet names.
 // If the sheet name is not specified, the file name of the CSV file will be used.
 // If the sheet is exists, it will be overwritten.
-func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile string) {
+func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile string, csvEncoding ...string) {
+	encoding := "utf-8"
+	if len(csvEncoding) == 1 {
+		encoding = csvEncoding[0]
+	} else if len(csvEncoding) > 1 {
+		insyra.LogWarning("csvxl.AppendCsvToExcel: Too many arguments for csvEncoding")
+		return
+	}
+
 	f, err := excelize.OpenFile(existingFile)
 	if err != nil {
-		insyra.LogWarning("csvxl.AppendCsvToExcel(): Failed to open Excel file %s: %v", existingFile, err)
+		insyra.LogWarning("csvxl.AppendCsvToExcel: Failed to open Excel file %s: %v", existingFile, err)
 		return
 	}
 
@@ -74,20 +96,20 @@ func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile strin
 
 		f.NewSheet(sheetName)
 
-		err := addCsvSheet(f, sheetName, csvFile)
+		err := addCsvSheet(f, sheetName, csvFile, encoding)
 		if err != nil {
-			insyra.LogWarning("csvxl.AppendCsvToExcel(): Failed to add CSV sheet %s: %v", csvFile, err)
+			insyra.LogWarning("csvxl.AppendCsvToExcel: Failed to add CSV sheet %s: %v", csvFile, err)
 			failedFiles++
 			continue
 		}
 	}
 
 	if err := f.SaveAs(existingFile); err != nil {
-		insyra.LogWarning("csvxl.AppendCsvToExcel(): Failed to save Excel file %s: %v", existingFile, err)
+		insyra.LogWarning("csvxl.AppendCsvToExcel: Failed to save Excel file %s: %v", existingFile, err)
 		return
 	}
 
-	insyra.LogInfo("csvxl.AppendCsvToExcel(): Successfully appended %d CSV files to Excel file %s. %d files failed.", len(csvFiles)-failedFiles, existingFile, failedFiles)
+	insyra.LogInfo("csvxl.AppendCsvToExcel: Successfully appended %d CSV files to Excel file %s. %d files failed.", len(csvFiles)-failedFiles, existingFile, failedFiles)
 }
 
 // ExcelToCsv splits an Excel file into multiple CSV files, one per sheet.
@@ -95,7 +117,7 @@ func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile strin
 func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyContainSheets ...string) {
 	f, err := excelize.OpenFile(excelFile)
 	if err != nil {
-		insyra.LogWarning("csvxl.ExcelToCsv(): Failed to open Excel file %s: %v", excelFile, err)
+		insyra.LogWarning("csvxl.ExcelToCsv: Failed to open Excel file %s: %v", excelFile, err)
 		return
 	}
 
@@ -120,19 +142,19 @@ func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyConta
 		if _, err := os.Stat(outputDir); os.IsNotExist(err) {
 			err := os.MkdirAll(outputDir, os.ModePerm)
 			if err != nil {
-				insyra.LogWarning("csvxl.ExcelToCsv(): Failed to create directory %s: %v", outputDir, err)
+				insyra.LogWarning("csvxl.ExcelToCsv: Failed to create directory %s: %v", outputDir, err)
 				return
 			}
 		}
 		outputCsv := filepath.Join(outputDir, csvName)
 		err := saveSheetAsCsv(f, sheet, outputCsv)
 		if err != nil {
-			insyra.LogWarning("csvxl.ExcelToCsv(): Failed to save sheet %s as CSV: %v", sheet, err)
+			insyra.LogWarning("csvxl.ExcelToCsv: Failed to save sheet %s as CSV: %v", sheet, err)
 			return
 		}
 	}
 
-	insyra.LogInfo("csvxl.ExcelToCsv(): Successfully converted %d sheets to CSV files in %s.", len(sheets), outputDir)
+	insyra.LogInfo("csvxl.ExcelToCsv: Successfully converted %d sheets to CSV files in %s.", len(sheets), outputDir)
 }
 
 // saveSheetAsCsv saves a specific sheet in an Excel file as a CSV file.
@@ -162,19 +184,29 @@ func saveSheetAsCsv(f *excelize.File, sheet string, outputCsv string) error {
 }
 
 // 私有函數：將 CSV 數據加入 Excel 的指定工作表，並處理非 UTF-8 編碼
-func addCsvSheet(f *excelize.File, sheetName, csvFile string) error {
+func addCsvSheet(f *excelize.File, sheetName, csvFile string, encoding string) error {
 	file, err := os.Open(csvFile)
 	if err != nil {
 		return fmt.Errorf("failed to open CSV file %s: %v", csvFile, err)
 	}
 	defer file.Close()
 
-	// 嘗試使用 Big5 編碼進行轉換，處理非 UTF-8 字符
-	reader := transform.NewReader(file, traditionalchinese.Big5.NewDecoder())
-	csvReader := csv.NewReader(reader)
-	records, err := csvReader.ReadAll()
-	if err != nil {
-		return fmt.Errorf("failed to read CSV file %s: %v", csvFile, err)
+	var records [][]string
+
+	switch encoding {
+	case "big5":
+		reader := transform.NewReader(file, traditionalchinese.Big5.NewDecoder())
+		csvReader := csv.NewReader(reader)
+		records, err = csvReader.ReadAll()
+		if err != nil {
+			return fmt.Errorf("failed to read CSV file %s: %v", csvFile, err)
+		}
+	default:
+		reader := csv.NewReader(file)
+		records, err = reader.ReadAll()
+		if err != nil {
+			return fmt.Errorf("failed to read CSV file %s: %v", csvFile, err)
+		}
 	}
 
 	for rowIdx, record := range records {

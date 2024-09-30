@@ -10,9 +10,7 @@
 - **Automatic directory creation**: When splitting an Excel file into multiple CSV files, the target directory is automatically created if it does not exist.
 
 > [!NOTE]
-> Currently not work well with files containing non-ASCII characters.
-
----
+> Currently only support `UTF-8` and `Big5` encoding.
 
 ## Installation
 
@@ -21,8 +19,6 @@ You can install the package using `go get`:
 ```bash
 go get github.com/HazelnutParadise/csvxl
 ```
-
----
 
 ## Usage Examples
 
@@ -40,7 +36,7 @@ func main() {
     sheetNames := []string{"Sheet1", "Sheet2", "Sheet3"} // Optional: If not provided, CSV filenames will be used as sheet names
     output := "output.xlsx"
 
-    csvxl.CsvToExcel(csvFiles, sheetNames, output)
+    csvxl.CsvToExcel(csvFiles, sheetNames, output, csvxl.UTF8)
 }
 ```
 
@@ -80,7 +76,15 @@ func main() {
 }
 ```
 
----
+## Constants
+
+### CsvEncoding
+```go
+const (
+	UTF8 = "utf-8"
+	Big5 = "big5"
+)
+```
 
 ## Function Descriptions
 
@@ -121,16 +125,12 @@ func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyConta
 - `csvNames`: Custom CSV file names. If not provided, the sheet name will be used as the default CSV file name.
 - `onlyContainSheets`(optional): Only convert the specified sheets. If not provided, all sheets will be converted.
 
----
-
 ## Encoding Support
 
 > [!NOTE]
-> Currently not work well with files containing non-ASCII characters.
+> Currently only support `UTF-8` and `Big5` encoding.
 
 `csvxl` automatically handles different CSV file encodings, including UTF-8 and Big5. This ensures that all characters (including non-English ones like Chinese) are correctly written into the Excel file or split into CSV files.
-
----
 
 ## Error Handling
 
