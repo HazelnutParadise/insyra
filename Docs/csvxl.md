@@ -130,7 +130,9 @@ func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyConta
 > [!NOTE]
 > Currently only support `UTF-8` and `Big5` encoding.
 
-`csvxl` automatically handles different CSV file encodings, including UTF-8 and Big5. This ensures that all characters (including non-English ones like Chinese) are correctly written into the Excel file or split into CSV files.
+`csvxl` supports different CSV file encodings when reading, including UTF-8 and Big5. This ensures that all characters (including non-English ones like Chinese) are correctly written into the Excel file or split into CSV files.
+
+However, when writing to CSV files, only `UTF-8` encoding is supported(and default).
 
 ## Error Handling
 
