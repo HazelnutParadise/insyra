@@ -39,3 +39,4 @@ jobs:
         git add README.md README_TW.md
         git commit -m "Update coverage badge"
         git push https://x-access-token:${{ secrets.ORG_PAT }}@github.com/HazelnutParadise/insyra.git
+
