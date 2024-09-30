@@ -474,7 +474,7 @@ func TestDataListIsEqualTo(t *testing.T) {
 func TestDataListIsTheSameAs(t *testing.T) {
 	dl1 := NewDataList("M", 2, "3", 4.9)
 	dl2 := NewDataList("M", 2, "3", 8)
-	time.Sleep(5 * time.Second)
+	time.Sleep(20 * time.Second)
 	dl2.ReplaceFirst(8, 4.9)
 
 	if dl1.IsTheSameAs(dl2) {
