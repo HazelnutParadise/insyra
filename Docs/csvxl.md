@@ -91,7 +91,7 @@ const (
 ### 1. `CsvToExcel`
 
 ```go
-func CsvToExcel(csvFiles []string, sheetNames []string, output string)
+func CsvToExcel(csvFiles []string, sheetNames []string, output string, csvEncoding ...string)
 ```
 
 **Description**: Converts multiple CSV files into a new Excel file.
@@ -103,7 +103,7 @@ func CsvToExcel(csvFiles []string, sheetNames []string, output string)
 ### 2. `AppendCsvToExcel`
 
 ```go
-func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile string)
+func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile string, csvEncoding ...string)
 ```
 
 **Description**: Appends multiple CSV files to an existing Excel workbook.
