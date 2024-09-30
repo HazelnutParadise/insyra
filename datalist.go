@@ -92,6 +92,9 @@ type IDataList interface {
 	Percentile(float64) float64
 	Difference() *DataList
 
+	// comparison
+	IsEqualTo(*DataList) bool
+
 	// conversion
 	ParseNumbers() *DataList
 	ParseStrings() *DataList
@@ -1681,6 +1684,23 @@ func (dl *DataList) Difference() *DataList {
 	}
 
 	return NewDataList(differenceData)
+}
+
+// ======================== Comparison ========================
+
+// IsEqualTo checks if the data of the DataList is equal to another DataList.
+func (dl *DataList) IsEqualTo(anotherDl *DataList) bool {
+	if dl.Len() != anotherDl.Len() {
+		return false
+	}
+
+	for i, v := range dl.Data() {
+		if v != anotherDl.Data()[i] {
+			return false
+		}
+	}
+
+	return true
 }
 
 // ======================== Conversion ========================

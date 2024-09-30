@@ -462,6 +462,15 @@ func TestDataListDifference(t *testing.T) {
 	// Todo
 }
 
+func TestDataListIsEqualTo(t *testing.T) {
+	dl1 := NewDataList("M", 2, "3", 4.9)
+	dl2 := NewDataList("M", 2, "3", 4.9)
+
+	if !dl1.IsEqualTo(dl2) {
+		t.Errorf("Expected dl1 and dl2 to be equal, but they are not")
+	}
+}
+
 func TestDataListParseNumbers(t *testing.T) {
 	dl := NewDataList("1", 2, "3", 8)
 	dl = dl.ParseNumbers()
