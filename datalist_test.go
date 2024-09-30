@@ -16,6 +16,21 @@ func float64Equal(a, b float64) bool {
 	return diff < 1e-5
 }
 
+func IDataListTest(dl IDataList) {
+	return
+}
+
+func TestIDataList(t *testing.T) {
+	defer func() {
+		r := recover()
+		if r != nil {
+			t.Errorf("IDataListTest() panicked with: %v", r)
+		}
+	}()
+	dl := NewDataList()
+	IDataListTest(dl)
+}
+
 // 測試 NewDataList 函數
 func TestNewDataList(t *testing.T) {
 	dl := NewDataList(1, 2, 3)
