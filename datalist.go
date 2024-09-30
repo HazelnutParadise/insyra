@@ -1705,6 +1705,7 @@ func (dl *DataList) IsEqualTo(anotherDl *DataList) bool {
 }
 
 // IsTheSameAs checks if the DataList is fully the same as another DataList.
+// It checks for equality in name, data, creation timestamp, and last modified timestamp.
 func (dl *DataList) IsTheSameAs(anotherDl *DataList) bool {
 	if dl.Len() != anotherDl.Len() {
 		return false
