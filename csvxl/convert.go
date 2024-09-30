@@ -157,6 +157,8 @@ func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyConta
 	insyra.LogInfo("csvxl.ExcelToCsv: Successfully converted %d sheets to CSV files in %s.", len(sheets), outputDir)
 }
 
+// ===============================
+
 // saveSheetAsCsv saves a specific sheet in an Excel file as a CSV file.
 func saveSheetAsCsv(f *excelize.File, sheet string, outputCsv string) error {
 	file, err := os.Create(outputCsv)
