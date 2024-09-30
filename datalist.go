@@ -1721,9 +1721,13 @@ func (dl *DataList) IsTheSameAs(anotherDl *DataList) bool {
 		return false
 	}
 
-	if dl.GetCreationTimestamp() != anotherDl.GetCreationTimestamp() || dl.GetLastModifiedTimestamp() != anotherDl.GetLastModifiedTimestamp() {
+	dl.mu.Lock()
+	anotherDl.mu.Lock()
+	if dl.creationTimestamp != anotherDl.creationTimestamp || dl.lastModifiedTimestamp.Load() != anotherDl.lastModifiedTimestamp.Load() {
 		return false
 	}
+	dl.mu.Unlock()
+	anotherDl.mu.Unlock()
 
 	return true
 }
