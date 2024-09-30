@@ -91,7 +91,8 @@ The `DataList` type provides a dynamic and generic way to store and manage a col
 * **MovingStdev:** Calculates the moving standard deviation of the DataList elements using a specified window size. Returns a new DataList with the moving standard deviation values.
 
 **Data Comparison:**
-* **IsEqualTo:** Checks if the data of a DataList is equal to another DataList. 
+* **IsEqualTo:** Checks if the data of the DataList is equal to another DataList. 
+* **IsTheSameAs:** Checks if the DataList is the same as another DataList. It checks for equality in name, data, creation timestamp, and last modified timestamp.
 
 **Data Conversion:**
 

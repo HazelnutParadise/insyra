@@ -94,6 +94,7 @@ type IDataList interface {
 
 	// comparison
 	IsEqualTo(*DataList) bool
+	IsTheSameAs(*DataList) bool
 
 	// conversion
 	ParseNumbers() *DataList
@@ -1698,6 +1699,29 @@ func (dl *DataList) IsEqualTo(anotherDl *DataList) bool {
 		if v != anotherDl.Data()[i] {
 			return false
 		}
+	}
+
+	return true
+}
+
+// IsTheSameAs checks if the DataList is fully the same as another DataList.
+func (dl *DataList) IsTheSameAs(anotherDl *DataList) bool {
+	if dl.Len() != anotherDl.Len() {
+		return false
+	}
+
+	for i, v := range dl.Data() {
+		if v != anotherDl.Data()[i] {
+			return false
+		}
+	}
+
+	if dl.GetName() != anotherDl.GetName() {
+		return false
+	}
+
+	if dl.GetCreationTimestamp() != anotherDl.GetCreationTimestamp() || dl.GetLastModifiedTimestamp() != anotherDl.GetLastModifiedTimestamp() {
+		return false
 	}
 
 	return true
