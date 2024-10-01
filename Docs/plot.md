@@ -353,6 +353,27 @@ Creates a gauge chart based on the provided `GaugeChartConfig` and returns a `*c
 #### Example
 ![gauge_example](./img/plot_gauge_example.png)
 
+### Funnel Chart
+
+#### `FunnelChartConfig`
+
+- `Title`: The title of the funnel chart.
+- `Subtitle`: The subtitle of the funnel chart.
+- `SeriesName`: The name of the series.
+- `Data`: The data for the funnel chart. Supported types:
+  - `map[string]int`: A map where keys are series names, and values are integer values.
+- `ShowLabels` (optional): Display labels on the funnel chart.
+- `LabelPos` (optional): Position of the labels (e.g., "left", "right").
+
+#### `CreateFunnelChart`
+
+`func CreateFunnelChart(config FunnelChartConfig) *charts.Funnel`
+
+Creates a funnel chart based on the provided `FunnelChartConfig` and returns a `*charts.Funnel` object, which can be further customized with `go-echarts` options.
+
+#### Example
+![funnel_example](./img/plot_funnel_example.png)
+
 ## Saving Charts
 
 #### `SaveHTML`
