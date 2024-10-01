@@ -562,7 +562,7 @@ func (dl *DataList) ClearStrings() *DataList {
 	}
 
 	// 獲取可用的 CPU 核心數量
-	numGoroutines := runtime.NumCPU()
+	numGoroutines := min(runtime.NumCPU(), length)
 
 	// 決定每個線程處理的數據量
 	chunkSize := length / numGoroutines
