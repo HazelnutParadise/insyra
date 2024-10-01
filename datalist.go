@@ -37,6 +37,7 @@ type IDataList interface {
 	Get(index int) interface{}
 	Clone() *DataList
 	Count(value interface{}) int
+	Counter() map[interface{}]int
 	Update(index int, value interface{})
 	InsertAt(index int, value interface{})
 	FindFirst(interface{}) interface{}
