@@ -63,6 +63,33 @@ func TestDataTable_AppendRowsByName(t *testing.T) {
 	}
 }
 
+func TestDataTable_GetElement(t *testing.T) {
+	dt := NewDataTable()
+	dt.AppendRowsByName(map[string]interface{}{"first": 1, "second": 2, "third": 3})
+	dt.Show()
+	if dt.GetElement(0, "A") != 1 {
+		t.Errorf("GetElement() did not return the correct element")
+	}
+}
+
+func TestDataTable_GetElementByNumberIndex(t *testing.T) {
+	dt := NewDataTable()
+	dt.AppendRowsByName(map[string]interface{}{"first": 1, "second": 2, "third": 3})
+	dt.Show()
+	if dt.GetElementByNumberIndex(0, 0) != 1 {
+		t.Errorf("GetElementByNumberIndex() did not return the correct element")
+	}
+}
+
+func TestDataTable_GetColumn(t *testing.T) {
+	dt := NewDataTable()
+	dt.AppendRowsByName(map[string]interface{}{"first": 1, "second": 2, "third": 3})
+	dt.Show()
+	if dt.GetColumn("A").Data()[0] != 1 {
+		t.Errorf("GetColumn() did not return the correct column")
+	}
+}
+
 func TestDataTable_GetLastModifiedTimestamp(t *testing.T) {
 	dt := NewDataTable()
 	dl := NewDataList(1, 2, 3)
