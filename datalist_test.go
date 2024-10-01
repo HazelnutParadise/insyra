@@ -1,6 +1,7 @@
 package insyra
 
 import (
+	"fmt"
 	"reflect"
 	"slices"
 	"sort"
@@ -231,7 +232,43 @@ func TestDataListClear(t *testing.T) {
 }
 
 func TestDataListClearStrings(t *testing.T) {
-	// TODO
+	// for small test
+	dl := NewDataList("a", "b", "c", 0, 1, 2)
+
+	dl.ClearStrings()
+	if dl.Len() != 3 {
+		t.Errorf("Expected length 3, got %d", dl.Len())
+	}
+
+	var visited [3]bool
+	for i := 0; i < 3; i++ {
+		visited[dl.Get(i).(int)] = true
+	}
+	for i := 0; i < 3; i++ {
+		if !visited[i] {
+			t.Errorf("Expected %d in dataList", i)
+		}
+	}
+
+	// for large test
+	const n = 5000
+	dl = NewDataList()
+	for i := 0; i < n; i++ {
+		dl.Append(fmt.Sprintf("string-%d", i))
+	}
+	for i := 0; i < n; i++ {
+		dl.Append(i)
+	}
+	dl.ClearStrings()
+	var visited2 [n]bool
+	for i := 0; i < n; i++ {
+		visited2[i] = true
+	}
+	for i := 0; i < n; i++ {
+		if !visited2[i] {
+			t.Errorf("Expected %d in dataList", i)
+		}
+	}
 }
 
 func TestDataListClearNumbers(t *testing.T) {
