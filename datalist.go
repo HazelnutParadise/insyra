@@ -1838,7 +1838,12 @@ func (dl *DataList) GetLastModifiedTimestamp() int64 {
 
 // updateTimestamp updates the lastModifiedTimestamp to the current Unix time.
 func (dl *DataList) updateTimestamp() {
-	dl.lastModifiedTimestamp.Store(time.Now().Unix())
+	now := time.Now().Unix()
+	oldTimestamp := dl.lastModifiedTimestamp.Load()
+
+	if oldTimestamp < now {
+		dl.lastModifiedTimestamp.Store(now)
+	}
 }
 
 // ======================== Name ========================

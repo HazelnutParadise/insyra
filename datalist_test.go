@@ -489,7 +489,8 @@ func TestDataListIsEqualTo(t *testing.T) {
 func TestDataListIsTheSameAs(t *testing.T) {
 	dl1 := NewDataList("M", 2, "3", 4.9)
 	dl2 := NewDataList("M", 2, "3", 8)
-	dl2.lastModifiedTimestamp.Store(50)
+	dl2.lastModifiedTimestamp.Add(1)
+	dl2.ReplaceLast(8, 4.9)
 
 	if dl1.IsTheSameAs(dl2) {
 		t.Errorf("Expected dl1 and dl2 not to be the same, but they are")
