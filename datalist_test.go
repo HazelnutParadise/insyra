@@ -603,3 +603,21 @@ func TestDataListSetName(t *testing.T) {
 		t.Errorf("Expected name TestName, got %v", dl.GetName())
 	}
 }
+
+func TestDataListCounter(t *testing.T) {
+	dl := NewDataList(1, "k", "k", 4, 4, 6, 7, "9", "9", 10, "4")
+	counter := dl.Counter()
+
+	if counter[1] != 1 || counter["k"] != 2 || counter[4] != 2 || counter["9"] != 2 || counter[10] != 1 || counter["4"] != 1 {
+		t.Errorf("Expected counter %v, got %v", map[interface{}]int{1: 1, "k": 2, 4: 2, "9": 2, 10: 1, "4": 1}, counter)
+	}
+}
+
+func TestDataListCount(t *testing.T) {
+	dl := NewDataList(1, "k", "k", 4, 4, 6, 7, "9", "9", 10, "4")
+	count := dl.Count(4)
+
+	if count != 2 {
+		t.Errorf("Expected count 2, got %v", count)
+	}
+}
