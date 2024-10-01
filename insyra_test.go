@@ -1,16 +1,16 @@
 package insyra
 
 import (
-	"fmt"
 	"testing"
 )
 
 func TestProcessData(t *testing.T) {
 	dl := NewDataList(1, 2, 3)
-	_, ok := interface{}(dl).(IDataList)
-	if !ok {
-		fmt.Println("DataList does not implement IDataList")
-	} else {
-		fmt.Println("DataList implements IDataList")
+	s, len := ProcessData(dl)
+	if len != 3 {
+		t.Errorf("ProcessData() did not return the correct length")
+	}
+	if s == nil {
+		t.Errorf("ProcessData() did not return the correct slice")
 	}
 }
