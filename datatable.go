@@ -1494,8 +1494,10 @@ func containsSubstring(value string, substring string) bool {
 
 func (dt *DataTable) updateTimestamp() {
 	now := time.Now().Unix()
-	dt.lastModifiedTimestamp.Store(now)
-	LogDebug("Timestamp updated: %d", now)
+	oldTimestamp := dt.lastModifiedTimestamp.Load()
+	if oldTimestamp < now {
+		dt.lastModifiedTimestamp.Store(now)
+	}
 }
 
 func (dt *DataTable) GetCreationTimestamp() int64 {
