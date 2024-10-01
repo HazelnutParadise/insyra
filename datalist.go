@@ -196,6 +196,15 @@ func (dl *DataList) Count(value interface{}) int {
 	return len(found)
 }
 
+// Counter returns a map of the number of occurrences of each value in the DataList.
+func (dl *DataList) Counter() map[interface{}]int {
+	counter := make(map[interface{}]int)
+	for _, value := range dl.Data() {
+		counter[value]++
+	}
+	return counter
+}
+
 // Update replaces the value at the specified index with the new value.
 func (dl *DataList) Update(index int, newValue interface{}) {
 	defer func() {

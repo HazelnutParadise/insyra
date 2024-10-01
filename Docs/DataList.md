@@ -20,6 +20,8 @@ The `DataList` type provides a dynamic and generic way to store and manage a col
 * **Append:** Adds new elements to the end of the DataList.
 * **Get:** Retrieves the element at a specific index. Supports negative indexing for accessing elements from the end.
 * **Update:** Updates the element at a specific index with a new value.
+* **Count:** Returns the number of occurrences of a specified value in the DataList.
+* **Counter:** Returns a map of the number of occurrences of each value in the DataList.
 * **InsertAt:** Inserts a new element at a specific index, shifting the existing elements to the right.
 * **FindFirst:** Finds the first occurrence of a specified value in the DataList and returns its index.
 * **FindLast:** Finds the last occurrence of a specified value in the DataList and returns its index.
