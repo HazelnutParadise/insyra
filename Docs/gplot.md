@@ -18,7 +18,7 @@ go get github.com/HazelnutParadise/insyra/gplot
 
 - `Title`: The title of the chart.
 - `XAxis`: Data for the X-axis (categories).
-- `SeriesData`: The data for the series. Supported types:
+- `Data`: The data for the series. Supported types:
   - `[]float64`
   - `*insyra.DataList`
 - `XAxisName`: Optional: Name for the X-axis.
@@ -38,7 +38,7 @@ Creates a bar chart based on the provided configuration.
 #### `HistogramConfig`
 
 - `Title`: The title of the chart.
-- `SeriesData`: The data for the histogram. Supported types:
+- `Data`: The data for the histogram. Supported types:
   - `[]float64`
   - `*insyra.DataList`
   - `insyra.IDataList`
@@ -60,7 +60,7 @@ Creates a histogram based on the provided configuration.
 
 - `Title`: The title of the chart.
 - `XAxis`: Data for the X-axis (categories).
-- `SeriesData`: The data for the series. Supported types:
+- `Data`: The data for the series. Supported types:
   - `map[string][]float64`
   - `[]*insyra.DataList`
   - `[]insyra.IDataList`

@@ -16,11 +16,11 @@ go get github.com/HazelnutParadise/insyra/plot
 
 ## Usage Example
 
-> We recommend using `[]*insyra.DataList` as `SeriesData` for better performance and flexibility, ensuring that the data is in the correct order, while `map[string][]float64` does not.
+> We recommend using `[]*insyra.DataList` as `Data` for better performance and flexibility, ensuring that the data is in the correct order, while `map[string][]float64` does not.
 
 ### 1. Using `map[string][]float64`
 
-This example shows how to create a bar chart using `map[string][]float64` as the `SeriesData`.
+This example shows how to create a bar chart using `map[string][]float64` as the `Data`.
 
 ```go
 package main
@@ -34,7 +34,7 @@ func main() {
 		Title:      "Sales Data",
 		Subtitle:   "Monthly Sales",
 		XAxis:      []string{"January", "February", "March"},
-		SeriesData: map[string][]float64{
+		Data: map[string][]float64{
 			"Product A": {120, 200, 150},
 			"Product B": {80, 160, 90},
 		},
@@ -55,7 +55,7 @@ func main() {
 
 ### 2. Using `insyra.DataList`
 
-This example demonstrates how to create a bar chart using `[]*insyra.DataList` as the `SeriesData`.
+This example demonstrates how to create a bar chart using `[]*insyra.DataList` as the `Data`.
 
 ```go
 package main
@@ -75,7 +75,7 @@ func main() {
 		Title:      "Sales Data",
 		Subtitle:   "Monthly Sales",
 		XAxis:      []string{"January", "February", "March"},
-		SeriesData: []*insyra.DataList{dataListA, dataListB},
+		Data: []*insyra.DataList{dataListA, dataListB},
 		ShowLabels: true,
 		Colors:     []string{"#5470C6", "#91CC75"},
 	}
@@ -102,7 +102,7 @@ func main() {
 - `Title`: The title of the chart.
 - `Subtitle`: The subtitle of the chart.
 - `XAxis`: Data for the X-axis (categories).
-- `SeriesData`: The data for the series. Supported types:
+- `Data`: The data for the series. Supported types:
   - `map[string][]float64`: A map where keys are series names, and values are data points.
   - `[]*insyra.DataList`: A list of `DataList` structures.
   - `[]insyra.IDataList`: A list of `IDataList` interface implementations.
@@ -130,7 +130,7 @@ Creates a bar chart based on the provided `BarChartConfig` and returns a `*chart
 - `Title`: The title of the chart.
 - `Subtitle`: The subtitle of the chart.
 - `XAxis`: Data for the X-axis (categories).
-- `SeriesData`: The data for the series. Supported types:
+- `Data`: The data for the series. Supported types:
   - `map[string][]float64`: A map where keys are series names, and values are data points.
   - `[]*insyra.DataList`: A list of `DataList` structures.
   - `[]insyra.IDataList`: A list of `IDataList` interface implementations.
@@ -159,11 +159,11 @@ Creates a line chart based on the provided `LineChartConfig` and returns a `*cha
 
 - `Title`: The title of the pie chart.
 - `Subtitle`: The subtitle of the pie chart.
-- `SeriesData`: The data for the pie slices. Supported types:
+- `Data`: The data for the pie slices. Supported types:
   - `[]float64`: A list of float values representing each slice's value.
   - `*insyra.DataList`: `DataList` structure.
   - `insyra.IDataList`: `IDataList` interface implementation.
-- `Labels`: The labels for each pie slice (e.g., category names). Must match the length of `SeriesData`.
+- `Labels`: The labels for each pie slice (e.g., category names). Must match the length of `Data`.
 - `Colors` (optional): Colors for the slices.
 - `ShowLabels` (optional): Display labels on the slices. Default is `false`.
 - `LabelPos` (optional): Position of the labels (e.g., "inside", "outside"). Default is `"outside"`.
@@ -187,7 +187,7 @@ Creates a pie chart based on the provided `PieChartConfig` and returns a `*chart
 
 - `Title`: The title of the scatter chart.
 - `Subtitle`: The subtitle of the scatter chart.
-- `SeriesData`: The data for the scatter points. Supported types:
+- `Data`: The data for the scatter points. Supported types:
   - `map[string][][]float64`: A map where keys are series names, and values are two-dimensional data (X, Y).
 - `XAxisName` (optional): The name of the X-axis.
 - `YAxisName` (optional): The name of the Y-axis.
@@ -237,7 +237,7 @@ Creates a heatmap chart based on the provided `HeatmapChartConfig` and returns a
 
 - `Title`: The title of the liquid chart.
 - `Subtitle`: The subtitle of the liquid chart.
-- `SeriesData`: The data for the liquid chart. Supported types:
+- `Data`: The data for the liquid chart. Supported types:
   - `map[string]float32`: A map where keys are series names, and values are float values.
 - `ShowLabels` (optional): Display labels on the liquid chart.
 - `IsWaveAnimation` (optional): Enable/Disable wave animation.
@@ -258,7 +258,7 @@ Creates a liquid chart based on the provided `LiquidChartConfig` and returns a `
 
 - `Title`: The title of the word cloud.
 - `Subtitle`: The subtitle of the word cloud.
-- `SeriesData`: The data for the word cloud. Supported types:
+- `Data`: The data for the word cloud. Supported types:
   - `map[string]float32`: A map where keys are words, and values are float values.
 - `Shape` (optional): Shape of the word cloud (e.g., "circle", "cardioid", "star").
 - `SizeRange` (optional): Size range for the words, e.g., [14, 80].
@@ -280,7 +280,7 @@ Creates a word cloud based on the provided `WordCloudConfig` and returns a `*cha
 - `Subtitle`: The subtitle of the radar chart.
 - `Indicators` (optional): The indicators for the radar chart. Automatically generated if not provided.
 - `MaxValues` (optional): The maximum values for the indicators. Automatically generated if not provided.
-- `SeriesData`: The data for the radar chart. Supported types:
+- `Data`: The data for the radar chart. Supported types:
   - `map[string]map[string]float32`: A map where keys are series names, and values are maps of indicator names and their corresponding values.
 
 #### `CreateRadarChart`
@@ -298,7 +298,7 @@ Creates a radar chart based on the provided `RadarChartConfig` and returns a `*c
 
 - `Title`: The title of the box plot.
 - `Subtitle`: The subtitle of the box plot.
-- `SeriesData`: The data for the box plot. Supported types:
+- `Data`: The data for the box plot. Supported types:
   - `map[string][][]float64`: A map where keys are series names, and values are two-dimensional float64 slices.
   - `map[string][]*insyra.DataList`: A map where keys are series names, and values are `DataList` structures.
   - `map[string][]insyra.IDataList`: A map where keys are series names, and values are `IDataList` interface implementations.
@@ -320,7 +320,7 @@ Creates a box plot chart based on the provided `BoxPlotConfig` and returns a `*c
 
 - `Title`: The title of the K-line chart.
 - `Subtitle`: The subtitle of the K-line chart.
-- `SeriesData`: The data for the K-line chart. Supported types:
+- `Data`: The data for the K-line chart. Supported types:
   - `map[string][4]float32`: A map where keys are dates, and values are arrays of [open, close, high, low] float values.
   - `[]*insyra.DataList`: A list of `DataList` structures, each containing the open, close, highest, and lowest values, and the date as the name.
   - `[]insyra.IDataList`: A list of `IDataList` interface implementations.
@@ -417,5 +417,5 @@ This flexibility ensures that users can start with simple visualizations and evo
 
 ## Error Handling
 
-- **Unsupported `SeriesData` types**: If an unsupported data type is passed to `SeriesData`, a warning will be logged and the chart will not be created.
+- **Unsupported `Data` types**: If an unsupported data type is passed to `Data`, a warning will be logged and the chart will not be created.
 - **File and rendering errors**: Both `SaveHTML` and `SavePNG` will log fatal errors if they encounter issues while rendering or saving the files.

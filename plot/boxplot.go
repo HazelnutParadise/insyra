@@ -12,11 +12,11 @@ import (
 
 // BoxPlotConfig defines the configuration for a box plot chart.
 type BoxPlotConfig struct {
-	Title      string
-	Subtitle   string
-	XAxis      []string // X-axis data.
-	SeriesData any      // Accepts map[string][][]float64, []*insyra.DataList, or map[string]any for multiple series.
-	GridTop    string   // Optional: Top grid line. Default: "80".
+	Title    string
+	Subtitle string
+	XAxis    []string // X-axis data.
+	Data     any      // Accepts map[string][][]float64, []*insyra.DataList, or map[string]any for multiple series.
+	GridTop  string   // Optional: Top grid line. Default: "80".
 }
 
 // CreateBoxPlot generates and returns a *charts.BoxPlot object
@@ -41,8 +41,8 @@ func CreateBoxPlot(config BoxPlotConfig) *charts.BoxPlot {
 		}),
 	)
 
-	// Process SeriesData for single or multiple series
-	switch data := config.SeriesData.(type) {
+	// Process Data for single or multiple series
+	switch data := config.Data.(type) {
 	case map[string][][]float64:
 		// Handle multiple series with [][]float64
 		if config.XAxis == nil {
@@ -51,8 +51,8 @@ func CreateBoxPlot(config BoxPlotConfig) *charts.BoxPlot {
 				config.XAxis = append(config.XAxis, fmt.Sprintf("Category %d", i+1))
 			}
 		}
-		for seriesName, seriesData := range data {
-			boxPlotItems := generateBoxPlotItemsFromMapFloat64(seriesData)
+		for seriesName, Data := range data {
+			boxPlotItems := generateBoxPlotItemsFromMapFloat64(Data)
 			boxPlot.SetXAxis(config.XAxis).AddSeries(seriesName, boxPlotItems)
 		}
 	case map[string][]*insyra.DataList:
@@ -63,8 +63,8 @@ func CreateBoxPlot(config BoxPlotConfig) *charts.BoxPlot {
 				config.XAxis = append(config.XAxis, fmt.Sprintf("Category %d", i+1))
 			}
 		}
-		for seriesName, seriesData := range data {
-			boxPlotItems := generateBoxPlotItemsFromDataList(seriesData)
+		for seriesName, Data := range data {
+			boxPlotItems := generateBoxPlotItemsFromDataList(Data)
 			boxPlot.SetXAxis(config.XAxis).AddSeries(seriesName, boxPlotItems)
 		}
 	case map[string][]insyra.IDataList:
@@ -75,12 +75,12 @@ func CreateBoxPlot(config BoxPlotConfig) *charts.BoxPlot {
 				config.XAxis = append(config.XAxis, fmt.Sprintf("Category %d", i+1))
 			}
 		}
-		for seriesName, seriesData := range data {
-			boxPlotItems := generateBoxPlotItemsFromIDataList(seriesData)
+		for seriesName, Data := range data {
+			boxPlotItems := generateBoxPlotItemsFromIDataList(Data)
 			boxPlot.SetXAxis(config.XAxis).AddSeries(seriesName, boxPlotItems)
 		}
 	default:
-		insyra.LogWarning("plot.CreateBoxPlot: Unsupported SeriesData type")
+		insyra.LogWarning("plot.CreateBoxPlot: Unsupported Data type")
 		return nil
 	}
 

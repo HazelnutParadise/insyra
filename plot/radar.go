@@ -13,7 +13,7 @@ type RadarChartConfig struct {
 	Subtitle   string
 	Indicators []string           // Optional: Automatically generated if not provided.
 	MaxValues  map[string]float32 // Optional: Automatically generated if not provided.
-	SeriesData map[string]map[string]float32
+	Data       map[string]map[string]float32
 }
 
 // CreateRadarChart 生成並返回 *charts.Radar 對象
@@ -36,7 +36,7 @@ func CreateRadarChart(config RadarChartConfig) *charts.Radar {
 		indicatorSet := make(map[string]struct{})
 
 		// 從所有城市中提取所有指標
-		for _, indicators := range config.SeriesData {
+		for _, indicators := range config.Data {
 			for key := range indicators {
 				indicatorSet[key] = struct{}{}
 			}
@@ -55,7 +55,7 @@ func CreateRadarChart(config RadarChartConfig) *charts.Radar {
 	}
 	for _, indicator := range config.Indicators {
 		if _, exists := config.MaxValues[indicator]; !exists {
-			config.MaxValues[indicator] = calculateMaxValue(config.SeriesData, indicator)
+			config.MaxValues[indicator] = calculateMaxValue(config.Data, indicator)
 		}
 	}
 
@@ -75,7 +75,7 @@ func CreateRadarChart(config RadarChartConfig) *charts.Radar {
 		}),
 	)
 
-	for city, indicatorData := range config.SeriesData {
+	for city, indicatorData := range config.Data {
 		values := make([]float32, len(config.Indicators))
 		for i, indicator := range config.Indicators {
 			value, ok := indicatorData[indicator]
@@ -94,9 +94,9 @@ func CreateRadarChart(config RadarChartConfig) *charts.Radar {
 }
 
 // calculateMaxValue 計算指標的最大值
-func calculateMaxValue(seriesData map[string]map[string]float32, indicator string) float32 {
+func calculateMaxValue(Data map[string]map[string]float32, indicator string) float32 {
 	var maxValue float32
-	for _, data := range seriesData {
+	for _, data := range Data {
 		if value, ok := data[indicator]; ok && value > maxValue {
 			maxValue = value
 		}

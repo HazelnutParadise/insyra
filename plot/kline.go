@@ -12,10 +12,10 @@ import (
 
 // KlineChartConfig defines the configuration for a K-line chart.
 type KlineChartConfig struct {
-	Title      string
-	Subtitle   string
-	SeriesData any  // Accepts map[string][4]float32 or []*insyra.DataList
-	DataZoom   bool // Turn on/off data zoom
+	Title    string
+	Subtitle string
+	Data     any  // Accepts map[string][4]float32 or []*insyra.DataList
+	DataZoom bool // Turn on/off data zoom
 }
 
 // CreateKlineChart generates and returns a *charts.Kline object.
@@ -56,8 +56,8 @@ func CreateKlineChart(config KlineChartConfig) *charts.Kline {
 	var xAxis []string
 	var series []opts.KlineData
 
-	// Handle SeriesData for both map[string][4]float32 and []*insyra.DataList
-	switch data := config.SeriesData.(type) {
+	// Handle Data for both map[string][4]float32 and []*insyra.DataList
+	switch data := config.Data.(type) {
 	case map[string][4]float32:
 		// Prepare the K-line chart data with sorted dates
 		xAxis = make([]string, 0, len(data))

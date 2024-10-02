@@ -7,11 +7,11 @@ import (
 
 // WordCloudConfig defines the configuration for a word cloud chart.
 type WordCloudConfig struct {
-	Title      string             // Title of the word cloud chart.
-	Subtitle   string             // Subtitle of the word cloud chart.
-	SeriesData map[string]float32 // Accepts map[string]float32 for words and their frequencies.
-	Shape      string             // Optional: Shape of the word cloud (e.g., "circle", "cardioid", "star").
-	SizeRange  []float32          // Optional: Size range for the words, e.g., [14, 80].
+	Title     string             // Title of the word cloud chart.
+	Subtitle  string             // Subtitle of the word cloud chart.
+	Data      map[string]float32 // Accepts map[string]float32 for words and their frequencies.
+	Shape     string             // Optional: Shape of the word cloud (e.g., "circle", "cardioid", "star").
+	SizeRange []float32          // Optional: Size range for the words, e.g., [14, 80].
 }
 
 // CreateWordCloud generates and returns a *charts.WordCloud object based on WordCloudChartConfig.
@@ -33,7 +33,7 @@ func CreateWordCloud(config WordCloudConfig) *charts.WordCloud {
 	}
 
 	// Add series data to word cloud
-	wc.AddSeries("wordcloud", convertToWordCloudData(config.SeriesData)).
+	wc.AddSeries("wordcloud", convertToWordCloudData(config.Data)).
 		SetSeriesOptions(
 			charts.WithWorldCloudChartOpts(
 				opts.WordCloudChart{

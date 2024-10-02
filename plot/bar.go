@@ -5,7 +5,7 @@ package plot
 import (
 	"fmt"
 
-	"github.com/HazelnutParadise/insyra" // 確保這是正確的導入路徑
+	"github.com/HazelnutParadise/insyra"
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
 )
@@ -15,7 +15,7 @@ type BarChartConfig struct {
 	Title        string   // Title of the chart.
 	Subtitle     string   // Subtitle of the chart.
 	XAxis        []string // X-axis data.
-	SeriesData   any      // Accepts map[string][]float64, []*insyra.DataList, or []insyra.IDataList.
+	Data         any      // Accepts map[string][]float64, []*insyra.DataList, or []insyra.IDataList.
 	XAxisName    string   // Optional: X-axis name.
 	YAxisName    string   // Optional: Y-axis name.
 	YAxisNameGap int      // Optional: Gap between Y-axis name and subtitle.
@@ -87,7 +87,7 @@ func CreateBarChart(config BarChartConfig) *charts.Bar {
 	if len(config.XAxis) == 0 {
 		// 如果 X 軸沒有提供，則根據數據長度生成默認標籤
 		var maxDataLength int
-		switch data := config.SeriesData.(type) {
+		switch data := config.Data.(type) {
 		case map[string][]float64:
 			for _, vals := range data {
 				if len(vals) > maxDataLength {
@@ -118,8 +118,8 @@ func CreateBarChart(config BarChartConfig) *charts.Bar {
 	// 設置 X 軸標籤
 	bar.SetXAxis(config.XAxis)
 
-	// 添加系列數據，根據 SeriesData 的類型進行處理
-	switch data := config.SeriesData.(type) {
+	// 添加系列數據，根據 Data 的類型進行處理
+	switch data := config.Data.(type) {
 	case map[string][]float64:
 		for name, vals := range data {
 			bar.AddSeries(name, convertToBarDataFloat(vals))
@@ -133,7 +133,7 @@ func CreateBarChart(config BarChartConfig) *charts.Bar {
 			bar.AddSeries(dataList.GetName(), convertToBarDataFloat(dataList.ToF64Slice()))
 		}
 	default:
-		insyra.LogWarning("unsupported SeriesData type: %T", config.SeriesData)
+		insyra.LogWarning("unsupported Data type: %T", config.Data)
 		return nil
 	}
 

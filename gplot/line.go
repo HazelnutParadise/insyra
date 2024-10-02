@@ -13,11 +13,11 @@ import (
 
 // LineChartConfig defines the configuration for a multi-series line chart.
 type LineChartConfig struct {
-	Title      string    // Title of the chart.
-	XAxis      []float64 // X-axis data.
-	SeriesData any       // Supports map[string][]float64 or []*insyra.DataList.
-	XAxisName  string    // Optional: X-axis name.
-	YAxisName  string    // Optional: Y-axis name.
+	Title     string    // Title of the chart.
+	XAxis     []float64 // X-axis data.
+	Data      any       // Supports map[string][]float64 or []*insyra.DataList.
+	XAxisName string    // Optional: X-axis name.
+	YAxisName string    // Optional: Y-axis name.
 }
 
 // CreateLineChart generates and returns a plot.Plot object based on LineChartConfig.
@@ -30,13 +30,13 @@ func CreateLineChart(config LineChartConfig) *plot.Plot {
 	plt.X.Label.Text = config.XAxisName
 	plt.Y.Label.Text = config.YAxisName
 
-	// Handle different types of SeriesData
-	switch data := config.SeriesData.(type) {
+	// Handle different types of Data
+	switch data := config.Data.(type) {
 	case map[string][]float64:
 		if config.XAxis == nil {
 			config.XAxis = autoGenerateXAxis(data)
 		}
-		// If SeriesData is map[string][]float64
+		// If Data is map[string][]float64
 		i := 0
 		for seriesName, values := range data {
 			addLineSeries(plt, seriesName, values, config.XAxis, nil, i)
@@ -58,7 +58,7 @@ func CreateLineChart(config LineChartConfig) *plot.Plot {
 			addLineSeries(plt, dataList.GetName(), dataList.ToF64Slice(), config.XAxis, nil, i)
 		}
 	default:
-		insyra.LogWarning("gplot.CreateLineChart: Unsupported SeriesData type: %T\n", config.SeriesData)
+		insyra.LogWarning("gplot.CreateLineChart: Unsupported Data type: %T\n", config.Data)
 		return nil
 	}
 
@@ -108,9 +108,9 @@ func autoGenerateXAxisForIDataList(data []insyra.IDataList) []float64 {
 
 // addLineSeries is a helper function to add a line series to the plot.
 func addLineSeries(plt *plot.Plot, seriesName string, values []float64, xAxis []float64, colors []color.Color, index int) {
-	// Check if X-axis and SeriesData lengths match
+	// Check if X-axis and Data lengths match
 	if len(xAxis) != len(values) {
-		insyra.LogWarning("gplot.addLineSeries: Length of XAxis and SeriesData for series %s do not match", seriesName)
+		insyra.LogWarning("gplot.addLineSeries: Length of XAxis and Data for series %s do not match", seriesName)
 		return
 	}
 

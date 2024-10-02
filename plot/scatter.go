@@ -11,7 +11,7 @@ import (
 type ScatterChartConfig struct {
 	Title      string                 // Title of the chart.
 	Subtitle   string                 // Subtitle of the chart.
-	SeriesData map[string][][]float64 // Accepts multiple series, where each series is identified by a string and contains two-dimensional data (X, Y).
+	Data       map[string][][]float64 // Accepts multiple series, where each series is identified by a string and contains two-dimensional data (X, Y).
 	XAxisName  string                 // Optional: X-axis name.
 	YAxisName  string                 // Optional: Y-axis name.
 	Colors     []string               // Optional: Colors for the scatter points.
@@ -70,11 +70,11 @@ func CreateScatterChart(config ScatterChartConfig) *charts.Scatter {
 
 	// 處理多個系列的二維數據
 	symbolIndex := 0
-	for seriesName, seriesData := range config.SeriesData {
+	for seriesName, Data := range config.Data {
 		if symbolIndex >= len(config.Symbol) {
 			symbolIndex = 0
 		}
-		scatterData := convertToScatterData(seriesData, config, symbolIndex)
+		scatterData := convertToScatterData(Data, config, symbolIndex)
 		symbolIndex++
 		// 添加系列數據
 		scatter.AddSeries(seriesName, scatterData)

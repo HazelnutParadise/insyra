@@ -12,7 +12,7 @@ import (
 type LiquidChartConfig struct {
 	Title           string             // Title of the chart.
 	Subtitle        string             // Subtitle of the chart.
-	SeriesData      map[string]float32 // Accepts map[string]float32.
+	Data            map[string]float32 // Accepts map[string]float32.
 	ShowLabels      bool               // Optional: Show labels on the liquid chart.
 	IsWaveAnimation bool               // Optional: Enable/Disable wave animation.
 	Shape           string             // Optional: Shape of the liquid chart (e.g., "diamond", "pin", "arrow", "triangle").
@@ -34,14 +34,14 @@ func CreateLiquidChart(config LiquidChartConfig) *charts.Liquid {
 		}),
 	)
 
-	// Sort SeriesData by value in ascending order
+	// Sort Data by value in ascending order
 	type seriesEntry struct {
 		Name  string
 		Value float32
 	}
 
 	var entries []seriesEntry
-	for name, value := range config.SeriesData {
+	for name, value := range config.Data {
 		entries = append(entries, seriesEntry{Name: name, Value: value})
 	}
 
@@ -52,7 +52,7 @@ func CreateLiquidChart(config LiquidChartConfig) *charts.Liquid {
 	// Track the highest value
 	var maxValue float32
 
-	// Process sorted SeriesData
+	// Process sorted Data
 	for _, entry := range entries {
 		if entry.Value > maxValue {
 			maxValue = entry.Value

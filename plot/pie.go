@@ -10,7 +10,7 @@ import (
 type PieChartConfig struct {
 	Title       string   // Title of the chart.
 	Subtitle    string   // Subtitle of the chart.
-	SeriesData  any      // Accepts []float64 or []*insyra.DataList.
+	Data        any      // Accepts []float64 or []*insyra.DataList.
 	Labels      []string // Labels for each slice (for example: product names).
 	Colors      []string // Optional: Colors for the slices, for example: ["green", "orange"].
 	ShowLabels  bool     // Optional: Show labels on the slices.
@@ -46,11 +46,11 @@ func CreatePieChart(config PieChartConfig) *charts.Pie {
 		)
 	}
 
-	// 添加系列數據，根據 SeriesData 的類型進行處理
-	switch data := config.SeriesData.(type) {
+	// 添加系列數據，根據 Data 的類型進行處理
+	switch data := config.Data.(type) {
 	case []float64:
 		if len(config.Labels) != len(data) {
-			insyra.LogWarning("The length of Labels and SeriesData does not match.")
+			insyra.LogWarning("The length of Labels and Data does not match.")
 			return nil
 		}
 		pie.AddSeries("pie", convertToPieData(data, config.Labels))
@@ -70,7 +70,7 @@ func CreatePieChart(config PieChartConfig) *charts.Pie {
 		}
 		pie.AddSeries(data.GetName(), convertToPieData(values, config.Labels))
 	default:
-		insyra.LogWarning("Unsupported SeriesData type: %T", config.SeriesData)
+		insyra.LogWarning("Unsupported Data type: %T", config.Data)
 		return nil
 	}
 
