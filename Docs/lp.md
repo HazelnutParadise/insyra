@@ -43,3 +43,40 @@ info.ToCSV("info.csv", true, true)
 
 > [!TIP]
 > Using `ToCSV` method, you can easily export the result to a CSV file.
+
+### `SolveModel(model *lpgen.LPModel, timeoutSeconds ...int) (*DataTable, *DataTable)`
+
+Solves an LPModel directly by passing the model to GLPK without generating a model file.
+
+#### Parameters
+
+- `model *lpgen.LPModel`: The LPModel to solve.
+- `timeoutSeconds int`(optional): The timeout for the solver in seconds.
+
+#### Returns
+
+- `*DataTable`: The solution DataTable(the column name and the row name will not be set).
+- `*DataTable`: The additional information DataTable(the column name and the row name will be set).
+
+#### Example
+
+```go
+model := lpgen.NewLPModel()
+model.SetObjective("Maximize", "3 x1 + 5 x2 + x3")
+model.AddConstraint("x1 + 2 x2 + 3 x3 <= 12")
+model.AddConstraint("x2 + x3 + x4 <= 3")
+model.AddConstraint("x1 + x2 + x3 + x4 <= 100")
+model.AddBound("0 <= x1 <= 4")
+model.AddBound("1 <= x2 <= 6")
+model.AddBound("0 <= x3 <= 10")
+model.AddIntegerVar("x1")
+model.AddIntegerVar("x2")
+model.AddIntegerVar("x3")
+model.AddIntegerVar("x4")
+model.AddBinaryVar("x1")
+model.AddBinaryVar("x2")
+
+result, info := lp.SolveModel(model, 10)
+result.ToCSV("solution.csv", false, false)
+info.ToCSV("info.csv", true, true)
+```

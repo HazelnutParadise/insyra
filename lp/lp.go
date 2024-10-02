@@ -2,6 +2,7 @@ package lp
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/lpgen"
 )
 
 // SolveFromFile solves an LP file with GLPK and sets a timeout in seconds.
@@ -20,7 +22,7 @@ func SolveFromFile(lpFile string, timeoutSeconds ...int) (*insyra.DataTable, *in
 	if len(timeoutSeconds) == 1 {
 		timeout = time.Duration(timeoutSeconds[0]) * time.Second
 	} else if len(timeoutSeconds) > 1 {
-		insyra.LogWarning("SolveLPWithGLPK: Only one timeout can be set")
+		insyra.LogWarning("SolveFromFile: Only one timeout can be set")
 		return nil, nil
 	}
 
@@ -44,7 +46,7 @@ func SolveFromFile(lpFile string, timeoutSeconds ...int) (*insyra.DataTable, *in
 	executionTime := time.Since(start).Seconds()
 
 	if ctx.Err() == context.DeadlineExceeded {
-		insyra.LogWarning("SolveLPWithGLPK: Command timed out after %d seconds", timeoutSeconds)
+		insyra.LogWarning("SolveFromFile: Command timed out after %d seconds", timeoutSeconds)
 		return nil, createAdditionalInfoDataTable("Timeout", executionTime, "", string(output), "", "")
 	}
 
@@ -61,6 +63,103 @@ func SolveFromFile(lpFile string, timeoutSeconds ...int) (*insyra.DataTable, *in
 
 	// Clean up temporary file
 	_ = os.Remove(tmpFile)
+
+	return resultTable, additionalInfoTable
+}
+
+// SolveModel solves an LPModel directly by passing the model to GLPK without generating a model file.
+// Returns two DataTables: one with the parsed results and one with additional info.
+func SolveModel(model *lpgen.LPModel, timeoutSeconds ...int) (*insyra.DataTable, *insyra.DataTable) {
+	var timeout time.Duration
+	if len(timeoutSeconds) > 0 {
+		timeout = time.Duration(timeoutSeconds[0]) * time.Second
+	} else {
+		timeout = 0
+	}
+
+	// 將 LPModel 轉換為 LP 格式的文本
+	var lpBuffer bytes.Buffer
+	lpBuffer.WriteString(model.ObjectiveType + "\n")
+	lpBuffer.WriteString("  " + model.Objective + "\n")
+
+	// 添加約束條件
+	lpBuffer.WriteString("Subject To\n")
+	for _, constr := range model.Constraints {
+		lpBuffer.WriteString("  " + constr + "\n")
+	}
+
+	// 添加變數邊界
+	if len(model.Bounds) > 0 {
+		lpBuffer.WriteString("Bounds\n")
+		for _, bound := range model.Bounds {
+			lpBuffer.WriteString("  " + bound + "\n")
+		}
+	}
+
+	// 添加整數變數
+	if len(model.IntegerVars) > 0 {
+		lpBuffer.WriteString("General\n")
+		for _, intVar := range model.IntegerVars {
+			lpBuffer.WriteString("  " + intVar + "\n")
+		}
+	}
+
+	// 添加二進制變數
+	if len(model.BinaryVars) > 0 {
+		lpBuffer.WriteString("Binary\n")
+		for _, binVar := range model.BinaryVars {
+			lpBuffer.WriteString("  " + binVar + "\n")
+		}
+	}
+
+	// 結尾
+	lpBuffer.WriteString("End\n")
+
+	// 設置上下文與超時
+	var ctx context.Context
+	var cancel context.CancelFunc
+	if timeout > 0 {
+		ctx, cancel = context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+	} else {
+		ctx = context.Background()
+	}
+
+	// 創建臨時文件來存儲解決結果
+	tmpFile, err := os.CreateTemp("", "solution-*.txt")
+	if err != nil {
+		insyra.LogFatal("SolveModel: Failed to create temporary file for solution: %v", err)
+		return nil, nil
+	}
+	defer os.Remove(tmpFile.Name()) // 確保在解決完成後刪除臨時文件
+
+	// 使用 GLPK 直接從標準輸入解 LP 問題，並將結果輸出到臨時文件
+	cmd := exec.CommandContext(ctx, "glpsol", "--lp", "/dev/stdin", "--output", tmpFile.Name())
+	cmd.Stdin = &lpBuffer // 將 LPModel 的內容傳給標準輸入
+	var outputBuffer bytes.Buffer
+	cmd.Stdout = &outputBuffer
+	cmd.Stderr = &outputBuffer
+
+	start := time.Now()
+	err = cmd.Run()
+	executionTime := time.Since(start).Seconds()
+
+	// 處理 GLPK 執行錯誤
+	if ctx.Err() == context.DeadlineExceeded {
+		insyra.LogWarning("SolveModel: Command timed out after %d seconds", timeoutSeconds)
+		return nil, createAdditionalInfoDataTable("Timeout", executionTime, "", outputBuffer.String(), "", "")
+	}
+
+	if err != nil {
+		insyra.LogWarning("Failed to solve LP model with GLPK: %v\n", err)
+		return nil, createAdditionalInfoDataTable("Error", executionTime, err.Error(), outputBuffer.String(), "", "")
+	}
+
+	// 解析 GLPK 的解決結果
+	resultTable := parseGLPKOutputFromFile(tmpFile.Name())
+	iterations, nodes := extractIterationNodeCounts(outputBuffer.String())
+
+	additionalInfoTable := createAdditionalInfoDataTable("Success", executionTime, extractWarnings(outputBuffer.Bytes()), outputBuffer.String(), iterations, nodes)
 
 	return resultTable, additionalInfoTable
 }
