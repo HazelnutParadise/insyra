@@ -13,9 +13,9 @@ import (
 	"github.com/HazelnutParadise/insyra"
 )
 
-// SolveLPWithGLPK solves an LP file with GLPK and sets a timeout in seconds.
+// SolveFromFile solves an LP file with GLPK and sets a timeout in seconds.
 // Returns two DataTables: one with the parsed results and one with additional info.
-func SolveLPWithGLPK(lpFile string, timeoutSeconds ...int) (*insyra.DataTable, *insyra.DataTable) {
+func SolveFromFile(lpFile string, timeoutSeconds ...int) (*insyra.DataTable, *insyra.DataTable) {
 	timeout := 0 * time.Second
 	if len(timeoutSeconds) == 1 {
 		timeout = time.Duration(timeoutSeconds[0]) * time.Second

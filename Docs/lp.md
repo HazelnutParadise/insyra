@@ -15,13 +15,13 @@ go get github.com/HazelnutParadise/insyra/lp
 
 ## Features
 
-### `SolveLPWithGLPK(mlpFile string, timeoutSeconds ...int) (*DataTable, *DataTable)`
+### `SolveFromFile(lpFile string, timeoutSeconds ...int) (*DataTable, *DataTable)`
 
-Solves an LP model using GLPK and returns the result as two DataTable. First DataTable contains the solution, and the second one contains additional information.
+Solves an LP file using GLPK and returns the result as two DataTable. First DataTable contains the solution, and the second one contains additional information.
 
 #### Parameters
 
-- `mlpFile string`: The path to the LP file.
+- `lpFile string`: The path to the LP file.
 - `timeoutSeconds int`(optional): The timeout for the solver in seconds.
 
 #### Returns
