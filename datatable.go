@@ -225,6 +225,8 @@ func (dt *DataTable) AppendRowsByIndex(rowsData ...map[string]interface{}) *Data
 			}
 		}
 	}
+
+	dt.regenerateColumnIndex()
 	return dt
 }
 
