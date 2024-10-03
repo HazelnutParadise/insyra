@@ -315,6 +315,8 @@ func (dt *DataTable) GetColumn(index string) *DataList {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
 
+	dt.regenerateColumnIndex()
+
 	if colPos, exists := dt.columnIndex[index]; exists {
 		// 初始化新的 DataList 並分配 data 切片的大小
 		dl := NewDataList()
@@ -386,6 +388,8 @@ func (dt *DataTable) UpdateElement(rowIndex int, columnIndex string, value inter
 		go dt.updateTimestamp()
 	}()
 
+	dt.regenerateColumnIndex()
+
 	if colPos, exists := dt.columnIndex[columnIndex]; exists {
 		if rowIndex < 0 {
 			rowIndex = len(dt.columns[colPos].data) + rowIndex
@@ -407,6 +411,8 @@ func (dt *DataTable) UpdateColumn(index string, dl *DataList) {
 		dt.mu.Unlock()
 		go dt.updateTimestamp()
 	}()
+
+	dt.regenerateColumnIndex()
 
 	if colPos, exists := dt.columnIndex[index]; exists {
 		dt.columns[colPos] = dl
