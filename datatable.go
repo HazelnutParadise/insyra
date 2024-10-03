@@ -207,6 +207,8 @@ func (dt *DataTable) AppendRowsByIndex(rowsData ...map[string]interface{}) *Data
 	for _, rowData := range rowsData {
 		maxLength := dt.getMaxColumnLength()
 
+		dt.regenerateColumnIndex()
+
 		for colIndex, value := range rowData {
 			colPos, exists := dt.columnIndex[colIndex]
 			LogDebug("AppendRowsByIndex: Handling column %s, exists: %t", colIndex, exists)
