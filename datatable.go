@@ -314,6 +314,8 @@ func (dt *DataTable) GetColumn(index string) *DataList {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
 
+	dt.regenerateColumnIndex()
+
 	if colPos, exists := dt.columnIndex[index]; exists {
 		// 初始化新的 DataList 並分配 data 切片的大小
 		dl := NewDataList()
