@@ -206,19 +206,37 @@ func (dt *DataTable) AppendRowsByIndex(rowsData ...map[string]interface{}) *Data
 
 	for _, rowData := range rowsData {
 		maxLength := dt.getMaxColumnLength()
-		for colIndex, value := range rowData {
-			colPos, exists := dt.columnIndex[colIndex]
-			LogDebug("AppendRowsByIndex: Handling column %s, exists: %t", colIndex, exists)
-			if !exists {
-				newCol := newEmptyDataList(maxLength)
-				dt.columns = append(dt.columns, newCol)
-				colPos = len(dt.columns) - 1
-				dt.columnIndex[colIndex] = colPos // 更新 columnIndex
-				LogDebug("AppendRowsByIndex: Added new column %s at index %d", colIndex, colPos)
-			}
-			dt.columns[colPos].data = append(dt.columns[colPos].data, value)
+
+		// 搜集所有要處理的欄位索引（確保無論是否存在都處理）
+		allCols := make([]string, 0, len(rowData))
+		for colIndex := range rowData {
+			allCols = append(allCols, colIndex)
 		}
 
+		// 按照字母順序對欄位進行排序
+		sort.Strings(allCols)
+
+		// 按照排序順序處理每個欄位
+		for _, colIndex := range allCols {
+			value := rowData[colIndex]
+			_, exists := dt.columnIndex[colIndex]
+			LogDebug("AppendRowsByIndex: Handling column %s, exists: %t", colIndex, exists)
+
+			if !exists {
+				// 如果該欄位不存在，新增該欄位並插入字母順序位置
+				newCol := newEmptyDataList(maxLength)
+				dt.columns = append(dt.columns, newCol)
+				dt.columnIndex[colIndex] = len(dt.columns) - 1
+				LogDebug("AppendRowsByIndex: Added new column %s at index %d", colIndex, dt.columnIndex[colIndex])
+
+				// 重新排序欄位以符合字母順序
+				dt.sortColumnsByIndex()
+			}
+
+			dt.columns[dt.columnIndex[colIndex]].data = append(dt.columns[dt.columnIndex[colIndex]].data, value)
+		}
+
+		// 確保所有欄位的長度一致
 		for _, column := range dt.columns {
 			if len(column.data) <= maxLength {
 				column.data = append(column.data, nil)
@@ -1417,6 +1435,24 @@ func (dt *DataTable) regenerateColumnIndex() {
 	for i, _ := range dt.columns {
 		dt.columnIndex[generateColumnIndex(i)] = i
 	}
+}
+
+// 新增一個方法來根據字母順序重新排序 columns 及更新 columnIndex
+func (dt *DataTable) sortColumnsByIndex() {
+	// 取得所有欄位名稱並排序
+	keys := make([]string, 0, len(dt.columnIndex))
+	for key := range dt.columnIndex {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	// 根據排序的欄位名稱重建 columns 和 columnIndex
+	newColumns := make([]*DataList, len(keys))
+	for i, key := range keys {
+		newColumns[i] = dt.columns[dt.columnIndex[key]]
+		dt.columnIndex[key] = i // 更新對應的 index
+	}
+	dt.columns = newColumns
 }
 
 func generateColumnIndex(index int) string {
