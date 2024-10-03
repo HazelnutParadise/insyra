@@ -335,6 +335,8 @@ func (dt *DataTable) GetColumn(index string) *DataList {
 func (dt *DataTable) GetColumnByNumber(index int) *DataList {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
+
+	dt.regenerateColumnIndex()
 	if index < 0 {
 		index = len(dt.columns) + index
 	}
