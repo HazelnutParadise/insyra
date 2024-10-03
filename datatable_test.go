@@ -65,7 +65,7 @@ func TestDataTable_AppendRowsByName(t *testing.T) {
 
 func TestDataTable_GetElement(t *testing.T) {
 	dt := NewDataTable()
-	dt.AppendRowsByName(map[string]interface{}{"first": 1, "second": 2, "third": 3})
+	dt.AppendRowsByIndex(map[string]interface{}{"A": 1, "B": 2, "C": 3})
 	dt.Show()
 	if dt.GetElement(0, "A") != 1 {
 		t.Errorf("GetElement() did not return the correct element")
