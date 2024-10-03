@@ -74,7 +74,7 @@ func TestDataTable_GetElement(t *testing.T) {
 
 func TestDataTable_GetElementByNumberIndex(t *testing.T) {
 	dt := NewDataTable()
-	dt.AppendRowsByName(map[string]interface{}{"first": 1, "second": 2, "third": 3})
+	dt.AppendRowsByIndex(map[string]interface{}{"A": 1, "B": 2, "C": 3})
 	dt.Show()
 	if dt.GetElementByNumberIndex(0, 0) != 1 {
 		t.Errorf("GetElementByNumberIndex() did not return the correct element")
