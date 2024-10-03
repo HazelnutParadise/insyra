@@ -280,6 +280,8 @@ func (dt *DataTable) GetElement(rowIndex int, columnIndex string) interface{} {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
 
+	dt.regenerateColumnIndex()
+
 	if colPos, exists := dt.columnIndex[columnIndex]; exists {
 		if rowIndex < 0 {
 			rowIndex = len(dt.columns[colPos].data) + rowIndex
