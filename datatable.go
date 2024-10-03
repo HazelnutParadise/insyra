@@ -299,8 +299,6 @@ func (dt *DataTable) GetElementByNumberIndex(rowIndex int, columnIndex int) inte
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
 
-	dt.regenerateColumnIndex()
-
 	if rowIndex < 0 {
 		rowIndex = len(dt.columns[columnIndex].data) + rowIndex
 	}
