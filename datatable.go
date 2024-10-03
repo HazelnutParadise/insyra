@@ -96,6 +96,9 @@ type IDataTable interface {
 	// CSV
 	ToCSV(filePath string, setRowNamesToFirstColumn bool, setColumnNamesToFirstRow bool) error
 	LoadFromCSV(filePath string, setFirstColumnToRowNames bool, setFirstRowToColumnNames bool) error
+
+	sortColumnsByIndex()
+	regenerateColumnIndex()
 }
 
 func NewDataTable(columns ...*DataList) *DataTable {
