@@ -204,8 +204,6 @@ func (dt *DataTable) AppendRowsByIndex(rowsData ...map[string]interface{}) *Data
 		go dt.updateTimestamp()
 	}()
 
-	dt.regenerateColumnIndex()
-
 	for _, rowData := range rowsData {
 		maxLength := dt.getMaxColumnLength()
 		for colIndex, value := range rowData {
