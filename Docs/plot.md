@@ -374,6 +374,30 @@ Creates a funnel chart based on the provided `FunnelChartConfig` and returns a `
 #### Example
 ![funnel_example](./img/plot_funnel_example.png)
 
+### ThemeRiver Chart
+
+#### `ThemeRiverChartConfig`
+
+- `Title`: The title of the ThemeRiver chart.
+- `Subtitle`: The subtitle of the ThemeRiver chart.
+- `Data`: The data for the ThemeRiver chart. Supported types:
+  - `[]ThemeRiverData`: A list of `ThemeRiverData` structures.
+
+#### `ThemeRiverData`
+
+- `Date`: The date of the data. Format: `"yyyy/MM/dd"`.
+- `Value`: The value of the data.
+- `Name`: The name of the data.
+
+#### `CreateThemeRiverChart`
+
+`func CreateThemeRiverChart(config ThemeRiverChartConfig) *charts.ThemeRiver`
+
+Creates a ThemeRiver chart based on the provided `ThemeRiverChartConfig` and returns a `*charts.ThemeRiver` object, which can be further customized with `go-echarts` options.
+
+#### Example
+![themeriver_example](./img/plot_themeriver_example.png)
+
 ## Saving Charts
 
 #### `SaveHTML`
