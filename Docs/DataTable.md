@@ -42,10 +42,10 @@ Appends columns to the `DataTable`. If the new columns are shorter than existing
 ##### `AppendRowsFromDataList(rowsData ...*DataList) *DataTable`
 Appends rows to the `DataTable` using `DataList` objects. If the new rows are shorter than existing columns, `nil` values will be appended to match the length.
 
-##### `AppendRowsByIndex(rowsData ...map[string]interface{}) *DataTable`
+##### `AppendRowsByColumnIndex(rowsData ...map[string]interface{}) *DataTable`
 Appends rows to the `DataTable` by mapping column indices to values. If necessary, new columns are created, and existing columns are extended with `nil` values.
 
-##### `AppendRowsByName(rowsData ...map[string]interface{}) *DataTable`
+##### `AppendRowsByColumnName(rowsData ...map[string]interface{}) *DataTable`
 Appends rows to the `DataTable` by mapping column names to values. New columns are created if necessary, and existing columns are extended with `nil` values.
 
 ##### `GetElement(rowIndex int, columnIndex string) interface{}`

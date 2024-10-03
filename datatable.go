@@ -23,8 +23,8 @@ type DataTable struct {
 type IDataTable interface {
 	AppendColumns(columns ...*DataList) *DataTable
 	AppendRowsFromDataList(rowsData ...*DataList) *DataTable
-	AppendRowsByIndex(rowsData ...map[string]interface{}) *DataTable
-	AppendRowsByName(rowsData ...map[string]interface{}) *DataTable
+	AppendRowsByColumnIndex(rowsData ...map[string]interface{}) *DataTable
+	AppendRowsByColumnName(rowsData ...map[string]interface{}) *DataTable
 	GetElement(rowIndex int, columnIndex string) interface{}
 	GetElementByNumberIndex(rowIndex int, columnIndex int) interface{}
 	GetColumn(index string) *DataList
@@ -200,7 +200,7 @@ func (dt *DataTable) AppendRowsFromDataList(rowsData ...*DataList) *DataTable {
 // AppendRowsByIndex appends rows to the DataTable, with each row represented by a map of column index and value.
 // If the rows are shorter than the existing columns, nil values will be appended to match the length.
 // If the rows are longer than the existing columns, the existing columns will be extended with nil values.
-func (dt *DataTable) AppendRowsByIndex(rowsData ...map[string]interface{}) *DataTable {
+func (dt *DataTable) AppendRowsByColumnIndex(rowsData ...map[string]interface{}) *DataTable {
 	dt.mu.Lock()
 	defer func() {
 		dt.mu.Unlock()
@@ -253,7 +253,7 @@ func (dt *DataTable) AppendRowsByIndex(rowsData ...map[string]interface{}) *Data
 // AppendRowsByName appends rows to the DataTable, with each row represented by a map of column name and value.
 // If the rows are shorter than the existing columns, nil values will be appended to match the length.
 // If the rows are longer than the existing columns, the existing columns will be extended with nil values.
-func (dt *DataTable) AppendRowsByName(rowsData ...map[string]interface{}) *DataTable {
+func (dt *DataTable) AppendRowsByColumnName(rowsData ...map[string]interface{}) *DataTable {
 	dt.mu.Lock()
 	defer func() {
 		dt.mu.Unlock()
