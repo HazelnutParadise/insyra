@@ -99,6 +99,27 @@ func TestDataTable_GetColumnByNumber(t *testing.T) {
 	}
 }
 
+func TestDataTable_GetRow(t *testing.T) {
+	dt := NewDataTable()
+	dl := NewDataList(1, 2, 3)
+	dt.AppendColumns(dl, dl, dl)
+	dt.Show()
+	if dt.GetRow(2).Data()[0] != 3 {
+		t.Errorf("GetRow() did not return the correct row")
+	}
+}
+
+func TestDataTable_UpdateElement(t *testing.T) {
+	dt := NewDataTable()
+	dt.AppendRowsByColumnIndex(map[string]interface{}{"A": 1, "B": 2, "C": 3})
+	dt.Show()
+	dt.UpdateElement(0, "A", 10)
+	dt.Show()
+	if dt.GetElement(0, "A") != 10 {
+		t.Errorf("UpdateElement() did not update the correct element")
+	}
+}
+
 func TestDataTable_GetLastModifiedTimestamp(t *testing.T) {
 	dt := NewDataTable()
 	dl := NewDataList(1, 2, 3)
