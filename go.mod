@@ -2,7 +2,10 @@ module github.com/HazelnutParadise/insyra
 
 go 1.22.7
 
-require github.com/HazelnutParadise/Go-Utils v0.7.9
+require (
+	github.com/HazelnutParadise/Go-Utils v0.7.9
+	golang.org/x/text v0.16.0
+)
 
 require (
 	git.sr.ht/~sbinet/gg v0.5.0 // indirect
@@ -31,17 +34,11 @@ require (
 	golang.org/x/image v0.18.0 // indirect
 	golang.org/x/net v0.25.0 // indirect
 	golang.org/x/sys v0.23.0 // indirect
-	golang.org/x/text v0.16.0 // indirect
-	golang.org/x/tools v0.21.1-0.20240508182429-e35e4ccd0d2d // indirect
 )
 
 require (
-	github.com/draffensperger/golp v0.0.0-20240729130716-1e42e6000a3a
 	github.com/go-echarts/go-echarts/v2 v2.4.2
 	github.com/go-echarts/snapshot-chromedp v0.0.4
-	github.com/lukpank/go-glpk v0.0.0-20180303121012-2e64496cbbfa
-	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d
-	github.com/u2takey/go-utils v0.3.1
 	github.com/xuri/excelize/v2 v2.8.1
 	golang.org/x/exp v0.0.0-20231110203233-9a3e6036ecaa // indirect
 	gonum.org/v1/gonum v0.15.1
