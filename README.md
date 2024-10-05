@@ -140,7 +140,7 @@ Provides a wrapper around the powerful [github.com/go-echarts/go-echarts](https:
 
 ### **[gplot](/Docs/gplot.md)**
 
-A visualization package based on [github.com/gonum/plot](https://github.com/gonum/plot). Fast and no need for Chrome.
+A visualization package based on [github.com/gonum/plot](https://github.com/gonum/plot). Fast and no need for Chrome. Even supports function plot.
 
 ### **[lpgen](/Docs/lpgen.md)**
 

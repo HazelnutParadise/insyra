@@ -137,7 +137,7 @@ func main() {
 
 ### **[gplot](/Docs/gplot.md)**
 
-基於 [github.com/gonum/plot](https://github.com/gonum/plot) 的視覺化套件。快速且不需要 Chrome。
+基於 [github.com/gonum/plot](https://github.com/gonum/plot) 的視覺化套件。快速且不需要 Chrome。甚至支援函數繪圖。
 
 ### **[lpgen](/Docs/lpgen.md)**
 
