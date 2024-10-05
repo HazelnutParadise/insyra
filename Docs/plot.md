@@ -398,6 +398,33 @@ Creates a ThemeRiver chart based on the provided `ThemeRiverChartConfig` and ret
 #### Example
 ![themeriver_example](./img/plot_themeriver_example.png)
 
+### Sankey Chart
+
+#### `SankeyChartConfig`
+
+- `Title`: The title of the Sankey chart.
+- `Subtitle`: The subtitle of the Sankey chart.
+- `Nodes`: The nodes of the Sankey chart.
+- `Links`: The links of the Sankey chart.
+- `Curveness` (optional): The curveness of the links.
+- `Color` (optional): The color of the links.
+- `ShowLabels` (optional): Display labels on the links.
+
+#### `SankeyLink`
+
+- `Source`: The source node of the link.
+- `Target`: The target node of the link.
+- `Value`: The value of the link.
+
+#### `CreateSankeyChart`
+
+`func CreateSankeyChart(config SankeyChartConfig) *charts.Sankey`
+
+Creates a Sankey chart based on the provided `SankeyChartConfig` and returns a `*charts.Sankey` object, which can be further customized with `go-echarts` options.
+
+#### Example
+![sankey_example](./img/plot_sankey_example.png)
+
 ## Saving Charts
 
 #### `SaveHTML`
