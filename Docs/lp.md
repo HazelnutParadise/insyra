@@ -3,7 +3,8 @@
 The `lp` package provides functionality to solve Linear Programming (LP) problems using the GLPK library. It allows you to define and solve LP models, and provides tools to handle the results.
 
 > [!NOTE]
-> This package will automatically install GLPK on your system if it is not already installed.
+> - This package will automatically install GLPK on your system if it is not already installed.
+> - If you use Linux, you must have C Compiler installed.
 
 ## Installation
 
