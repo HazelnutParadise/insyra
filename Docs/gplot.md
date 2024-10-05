@@ -75,6 +75,37 @@ Creates a line chart based on the provided configuration.
 
 ![line_example](./img/gplot_line_example.png)
 
+### Function Plot
+
+#### `FunctionPlotConfig`
+
+- `Title`: The title of the chart.
+- `XAxis`: Label for the X-axis.
+- `YAxis`: Label for the Y-axis.
+- `Func`: The mathematical function to plot.
+- `XMin`: Minimum value of X (optional).
+- `XMax`: Maximum value of X (optional).
+- `YMin`: Minimum value of Y (optional).
+- `YMax`: Maximum value of Y (optional).
+
+#### `CreateFunctionPlot(config FunctionPlotConfig) *plot.Plot`
+
+Creates a function plot based on the provided configuration.
+
+#### Usage of `FunctionPlotConfig.Func`
+
+The `Func` field is a function that takes a float64 value as input and returns a float64 value as output. This function is used to generate the data points for the plot.
+
+```go
+func(x float64) float64 {
+	return x * x
+}
+```
+
+#### Example
+
+![function_example](./img/gplot_function_example.png)
+
 ### Saving Charts
 
 `func SaveChart(plt *plot.Plot, filename string)`
