@@ -107,20 +107,20 @@ func downloadAndInstallGLPK_Source() {
 	tarPath := filepath.Join(os.TempDir(), "glpk.tar.gz")
 	installDir := filepath.Join(os.TempDir(), "glpk")
 
-	insyra.LogInfo(fmt.Sprintf("lp.init: Downloading GLPK from %s", downloadURL))
+	insyra.LogDebug("lp.init: Downloading GLPK from %s", downloadURL)
 	if err := downloadFile(tarPath, downloadURL); err != nil {
-		insyra.LogFatal(fmt.Sprintf("Failed to download GLPK: %v", err))
+		insyra.LogFatal("lp.init: Failed to download GLPK: %v", err)
 	}
 
 	// 解壓並安裝
 	if err := untar(tarPath, installDir); err != nil {
-		insyra.LogFatal(fmt.Sprintf("Failed to extract GLPK: %v", err))
+		insyra.LogFatal("lp.init: Failed to extract GLPK: %v", err)
 	}
 
 	// 查找 configure 文件的路徑
 	configurePath, err := findSubDirWithConfigure(installDir)
 	if err != nil {
-		insyra.LogFatal(fmt.Sprintf("Failed to find configure file: %v", err))
+		insyra.LogFatal("lp.init: Failed to find configure file: %v", err)
 	}
 
 	// 編譯安裝 GLPK
@@ -151,28 +151,28 @@ func findSubDirWithConfigure(baseDir string) (string, error) {
 func buildAndInstallGLPK(configurePath string) {
 	// 設置 configure 文件的執行權限
 	if err := exec.Command("chmod", "+x", filepath.Join(configurePath, "configure")).Run(); err != nil {
-		insyra.LogFatal(fmt.Sprintf("Failed to set configure executable permission: %v", err))
+		insyra.LogFatal("lp.init: Failed to set configure executable permission: %v", err)
 	}
 
 	// 執行 configure
 	configureCmd := exec.Command("./configure", "--prefix="+filepath.Join(os.Getenv("HOME"), "local"))
 	configureCmd.Dir = configurePath
 	if output, err := configureCmd.CombinedOutput(); err != nil {
-		insyra.LogFatal(fmt.Sprintf("Failed to configure GLPK: %v, output: %s", err, string(output)))
+		insyra.LogFatal("lp.init: Failed to configure GLPK: %v, output: %s", err, string(output))
 	}
 
 	// 執行 make
 	makeCmd := exec.Command("make", "-j"+strconv.Itoa(runtime.NumCPU()))
 	makeCmd.Dir = configurePath
 	if output, err := makeCmd.CombinedOutput(); err != nil {
-		insyra.LogFatal(fmt.Sprintf("Failed to make GLPK: %v, output: %s", err, string(output)))
+		insyra.LogFatal("lp.init: Failed to make GLPK: %v, output: %s", err, string(output))
 	}
 
 	// 執行 make install，將 GLPK 安裝到用戶目錄
 	makeInstallCmd := exec.Command("make", "install")
 	makeInstallCmd.Dir = configurePath
 	if output, err := makeInstallCmd.CombinedOutput(); err != nil {
-		insyra.LogFatal(fmt.Sprintf("Failed to install GLPK: %v, output: %s", err, string(output)))
+		insyra.LogFatal("lp.init: Failed to install GLPK: %v, output: %s", err, string(output))
 	}
 
 	insyra.LogInfo("lp.init: GLPK installed successfully.")
@@ -204,7 +204,7 @@ func locateOrInstallGLPK_Win() (string, error) {
 			sort.Slice(matches, func(i, j int) bool {
 				return matches[i] > matches[j]
 			})
-			insyra.LogInfo(fmt.Sprintf("lp.init: GLPK found at: %s", matches[0]))
+			insyra.LogInfo("lp.init: GLPK found at: %s", matches[0])
 			return matches[0], nil
 		}
 	}
@@ -212,7 +212,7 @@ func locateOrInstallGLPK_Win() (string, error) {
 	// 如果沒有找到，嘗試在 PATH 中查找
 	glpsolPath, err := exec.LookPath("glpsol.exe")
 	if err == nil {
-		insyra.LogInfo(fmt.Sprintf("lp.init: GLPK found in PATH: %s", glpsolPath))
+		insyra.LogInfo("lp.init: GLPK found in PATH: %s", glpsolPath)
 		return glpsolPath, nil
 	}
 
@@ -222,7 +222,7 @@ func locateOrInstallGLPK_Win() (string, error) {
 	// 下載 GLPK 安裝包
 	downloadURL := "https://sourceforge.net/projects/winglpk/files/latest/download"
 	zipPath := filepath.Join(os.TempDir(), "glpk.zip")
-	insyra.LogInfo(fmt.Sprintf("lp.init: Downloading GLPK from %s", downloadURL))
+	insyra.LogDebug("lp.init: Downloading GLPK from %s", downloadURL)
 
 	if err := downloadFile(zipPath, downloadURL); err != nil {
 		return "", fmt.Errorf("failed to download GLPK: %v", err)
@@ -240,7 +240,7 @@ func locateOrInstallGLPK_Win() (string, error) {
 		return "", fmt.Errorf("failed to find GLPK executable after installation")
 	}
 
-	insyra.LogInfo(fmt.Sprintf("lp.init: GLPK installed successfully at %s", glpsolPath))
+	insyra.LogInfo("lp.init: GLPK installed successfully at %s", glpsolPath)
 	return glpsolPath, nil
 }
 
@@ -249,6 +249,12 @@ func findGLPKExecutable(baseDir string) string {
 	var glpkExecPath string
 	filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error {
 		if err == nil && info.IsDir() && filepath.Base(path) == "w64" {
+			potentialExecPath := filepath.Join(path, "glpsol.exe")
+			if _, err := os.Stat(potentialExecPath); err == nil {
+				glpkExecPath = potentialExecPath
+				return filepath.SkipDir
+			}
+		} else if err == nil && info.IsDir() && filepath.Base(path) == "w32" {
 			potentialExecPath := filepath.Join(path, "glpsol.exe")
 			if _, err := os.Stat(potentialExecPath); err == nil {
 				glpkExecPath = potentialExecPath
