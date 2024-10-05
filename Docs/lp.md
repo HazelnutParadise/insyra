@@ -5,7 +5,7 @@ The `lp` package provides functionality to solve Linear Programming (LP) problem
 > [!NOTE]
 > - This package will automatically install GLPK on your system if it is not already installed.
 > - If you use Linux, you must have C Compiler(make) installed.
-> - If you use MacOS, you must have XCode installed.
+> - If you use MacOS, you must have Xcode installed.
 
 ## Installation
 
