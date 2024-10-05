@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 
 	"github.com/HazelnutParadise/insyra"
 )
@@ -36,6 +37,27 @@ func installGLPK() {
 	}
 }
 
+// =========================== macOS 安裝邏輯 ===========================
+func initializeOnMacOS() {
+	// 常見的 macOS 路徑，用於查找 glpsol，包括使用者安裝目錄
+	commonPaths := []string{
+		"/usr/local/bin/glpsol",
+		"/opt/homebrew/bin/glpsol",
+		filepath.Join(os.Getenv("HOME"), "local", "bin", "glpsol"),
+	}
+
+	glpsolPath, err := findInPaths(commonPaths)
+	if err == nil {
+		insyra.LogInfo(fmt.Sprintf("GLPK already installed at: %s", glpsolPath))
+		return
+	}
+
+	insyra.LogInfo("lp.init: GLPK not found, installing from source on macOS...")
+
+	// 下載並安裝 GLPK 源碼
+	downloadAndInstallGLPK_Source()
+}
+
 // =========================== Linux 安裝邏輯 ===========================
 func initializeOnLinux() {
 	// 常見的 Linux 路徑，用於查找 glpsol
@@ -43,6 +65,7 @@ func initializeOnLinux() {
 		"/usr/local/bin/glpsol",
 		"/usr/bin/glpsol",
 		"/bin/glpsol",
+		filepath.Join(os.Getenv("HOME"), "local", "bin", "glpsol"),
 	}
 
 	glpsolPath, err := findInPaths(commonPaths)
@@ -51,30 +74,10 @@ func initializeOnLinux() {
 		return
 	}
 
-	insyra.LogInfo("lp.init: GLPK not found, installing on Linux...")
+	insyra.LogInfo("lp.init: GLPK not found, installing from source on Linux...")
 
-	// 下載並安裝 GLPK
-	downloadAndInstallGLPK_Linux()
-}
-
-// =========================== macOS 安裝邏輯 ===========================
-func initializeOnMacOS() {
-	// 常見的 macOS 路徑，用於查找 glpsol
-	commonPaths := []string{
-		"/usr/local/bin/glpsol",
-		"/opt/homebrew/bin/glpsol", // Homebrew 在 Apple Silicon 的安裝路徑
-	}
-
-	glpsolPath, err := findInPaths(commonPaths)
-	if err == nil {
-		insyra.LogInfo(fmt.Sprintf("GLPK already installed at: %s", glpsolPath))
-		return
-	}
-
-	insyra.LogInfo("lp.init: GLPK not found, installing on macOS...")
-
-	// 下載並安裝 GLPK
-	downloadAndInstallGLPK_MacOS()
+	// 下載並安裝 GLPK 源碼
+	downloadAndInstallGLPK_Source()
 }
 
 // =========================== Windows 安裝邏輯 ===========================
@@ -97,6 +100,84 @@ func initializeOnWindows() {
 	insyra.LogDebug(fmt.Sprintf("lp.init: GLPK environment variables set. GLPK_PATH=%s", glpkDir))
 }
 
+// 用於下載並安裝 GLPK 源碼
+func downloadAndInstallGLPK_Source() {
+	// 下載 GLPK 源碼包
+	downloadURL := "https://ftp.gnu.org/gnu/glpk/glpk-5.0.tar.gz"
+	tarPath := filepath.Join(os.TempDir(), "glpk.tar.gz")
+	installDir := filepath.Join(os.TempDir(), "glpk")
+
+	insyra.LogInfo(fmt.Sprintf("lp.init: Downloading GLPK from %s", downloadURL))
+	if err := downloadFile(tarPath, downloadURL); err != nil {
+		insyra.LogFatal(fmt.Sprintf("Failed to download GLPK: %v", err))
+	}
+
+	// 解壓並安裝
+	if err := untar(tarPath, installDir); err != nil {
+		insyra.LogFatal(fmt.Sprintf("Failed to extract GLPK: %v", err))
+	}
+
+	// 查找 configure 文件的路徑
+	configurePath, err := findSubDirWithConfigure(installDir)
+	if err != nil {
+		insyra.LogFatal(fmt.Sprintf("Failed to find configure file: %v", err))
+	}
+
+	// 編譯安裝 GLPK
+	buildAndInstallGLPK(configurePath)
+}
+
+// 查找 configure 文件所在的目錄
+func findSubDirWithConfigure(baseDir string) (string, error) {
+	var configureDir string
+	err := filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		// 如果找到 configure 文件，返回它的目錄
+		if !info.IsDir() && filepath.Base(path) == "configure" {
+			configureDir = filepath.Dir(path)
+			return filepath.SkipDir
+		}
+		return nil
+	})
+	if configureDir == "" {
+		return "", fmt.Errorf("configure script not found in %s", baseDir)
+	}
+	return configureDir, err
+}
+
+// 編譯並安裝 GLPK
+func buildAndInstallGLPK(configurePath string) {
+	// 設置 configure 文件的執行權限
+	if err := exec.Command("chmod", "+x", filepath.Join(configurePath, "configure")).Run(); err != nil {
+		insyra.LogFatal(fmt.Sprintf("Failed to set configure executable permission: %v", err))
+	}
+
+	// 執行 configure
+	configureCmd := exec.Command("./configure", "--prefix="+filepath.Join(os.Getenv("HOME"), "local"))
+	configureCmd.Dir = configurePath
+	if output, err := configureCmd.CombinedOutput(); err != nil {
+		insyra.LogFatal(fmt.Sprintf("Failed to configure GLPK: %v, output: %s", err, string(output)))
+	}
+
+	// 執行 make
+	makeCmd := exec.Command("make", "-j"+strconv.Itoa(runtime.NumCPU()))
+	makeCmd.Dir = configurePath
+	if output, err := makeCmd.CombinedOutput(); err != nil {
+		insyra.LogFatal(fmt.Sprintf("Failed to make GLPK: %v, output: %s", err, string(output)))
+	}
+
+	// 執行 make install，將 GLPK 安裝到用戶目錄
+	makeInstallCmd := exec.Command("make", "install")
+	makeInstallCmd.Dir = configurePath
+	if output, err := makeInstallCmd.CombinedOutput(); err != nil {
+		insyra.LogFatal(fmt.Sprintf("Failed to install GLPK: %v, output: %s", err, string(output)))
+	}
+
+	insyra.LogInfo("lp.init: GLPK installed successfully.")
+}
+
 // 用於查找常見路徑中的 glpsol
 func findInPaths(paths []string) (string, error) {
 	for _, path := range paths {
@@ -107,85 +188,7 @@ func findInPaths(paths []string) (string, error) {
 	return "", fmt.Errorf("glpsol not found in specified paths")
 }
 
-// 用於在 Linux 平台上下載並安裝 GLPK
-func downloadAndInstallGLPK_Linux() {
-	// 下載 GLPK 源碼包
-	downloadURL := "https://ftp.gnu.org/gnu/glpk/glpk-5.0.tar.gz"
-	tarPath := filepath.Join(os.TempDir(), "glpk.tar.gz")
-	installDir := filepath.Join(os.TempDir(), "glpk")
-
-	insyra.LogInfo(fmt.Sprintf("lp.init: Downloading GLPK from %s", downloadURL))
-	if err := downloadFile(tarPath, downloadURL); err != nil {
-		insyra.LogFatal(fmt.Sprintf("Failed to download GLPK: %v", err))
-	}
-
-	// 解壓並安裝
-	if err := untar(tarPath, installDir); err != nil {
-		insyra.LogFatal(fmt.Sprintf("Failed to extract GLPK: %v", err))
-	}
-
-	// 編譯安裝
-	cmd := exec.Command("./configure", "--prefix=/usr/local")
-	cmd.Dir = installDir
-	if err := cmd.Run(); err != nil {
-		insyra.LogFatal(fmt.Sprintf("Failed to configure GLPK: %v", err))
-	}
-
-	cmd = exec.Command("make")
-	cmd.Dir = installDir
-	if err := cmd.Run(); err != nil {
-		insyra.LogFatal(fmt.Sprintf("Failed to build GLPK: %v", err))
-	}
-
-	cmd = exec.Command("sudo", "make", "install")
-	cmd.Dir = installDir
-	if err := cmd.Run(); err != nil {
-		insyra.LogFatal(fmt.Sprintf("Failed to install GLPK: %v", err))
-	}
-
-	insyra.LogInfo("lp.init: GLPK installed successfully on Linux.")
-}
-
-// 用於在 macOS 上下載並安裝 GLPK
-func downloadAndInstallGLPK_MacOS() {
-	// 下載 GLPK 源碼包
-	downloadURL := "https://ftp.gnu.org/gnu/glpk/glpk-5.0.tar.gz"
-	tarPath := filepath.Join(os.TempDir(), "glpk.tar.gz")
-	installDir := filepath.Join(os.TempDir(), "glpk")
-
-	insyra.LogInfo(fmt.Sprintf("lp.init: Downloading GLPK from %s", downloadURL))
-	if err := downloadFile(tarPath, downloadURL); err != nil {
-		insyra.LogFatal(fmt.Sprintf("Failed to download GLPK: %v", err))
-	}
-
-	// 解壓並安裝
-	if err := untar(tarPath, installDir); err != nil {
-		insyra.LogFatal(fmt.Sprintf("Failed to extract GLPK: %v", err))
-	}
-
-	// 編譯安裝
-	cmd := exec.Command("./configure", "--prefix=/usr/local")
-	cmd.Dir = installDir
-	if err := cmd.Run(); err != nil {
-		insyra.LogFatal(fmt.Sprintf("Failed to configure GLPK: %v", err))
-	}
-
-	cmd = exec.Command("make")
-	cmd.Dir = installDir
-	if err := cmd.Run(); err != nil {
-		insyra.LogFatal(fmt.Sprintf("Failed to build GLPK: %v", err))
-	}
-
-	cmd = exec.Command("sudo", "make", "install")
-	cmd.Dir = installDir
-	if err := cmd.Run(); err != nil {
-		insyra.LogFatal(fmt.Sprintf("Failed to install GLPK: %v", err))
-	}
-
-	insyra.LogInfo("lp.init: GLPK installed successfully on macOS.")
-}
-
-// Windows 平台的 GLPK 安裝邏輯保持不變
+// Windows 平台的 GLPK 安裝邏輯
 func locateOrInstallGLPK_Win() (string, error) {
 	// 首先檢查常見安裝位置
 	commonPaths := []string{
@@ -281,7 +284,53 @@ func downloadFile(filepath string, url string) error {
 	return err
 }
 
-// 用於解壓縮的輔助函數
+// 用於解壓 tar.gz 文件的輔助函數
+func untar(src string, dest string) error {
+	file, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	uncompressedStream, err := gzip.NewReader(file)
+	if err != nil {
+		return err
+	}
+	defer uncompressedStream.Close()
+
+	tarReader := tar.NewReader(uncompressedStream)
+
+	for {
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break // 沒有更多文件了
+		}
+		if err != nil {
+			return err
+		}
+
+		fpath := filepath.Join(dest, header.Name)
+		switch header.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(fpath, os.ModePerm); err != nil {
+				return err
+			}
+		case tar.TypeReg:
+			outFile, err := os.Create(fpath)
+			if err != nil {
+				return err
+			}
+			if _, err := io.Copy(outFile, tarReader); err != nil {
+				return err
+			}
+			outFile.Close()
+		}
+	}
+
+	return nil
+}
+
+// 用於解壓 zip 文件的輔助函數
 func unzip(src string, dest string) error {
 	r, err := zip.OpenReader(src)
 	if err != nil {
@@ -317,51 +366,5 @@ func unzip(src string, dest string) error {
 			}
 		}
 	}
-	return nil
-}
-
-// 用於解壓 tar.gz 文件的輔助函數
-func untar(src string, dest string) error {
-	file, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	uncompressedStream, err := gzip.NewReader(file)
-	if err != nil {
-		return err
-	}
-	defer uncompressedStream.Close()
-
-	tarReader := tar.NewReader(uncompressedStream)
-
-	for {
-		header, err := tarReader.Next()
-		if err == io.EOF {
-			break // No more files
-		}
-		if err != nil {
-			return err
-		}
-
-		fpath := filepath.Join(dest, header.Name)
-		switch header.Typeflag {
-		case tar.TypeDir:
-			if err := os.MkdirAll(fpath, os.ModePerm); err != nil {
-				return err
-			}
-		case tar.TypeReg:
-			outFile, err := os.Create(fpath)
-			if err != nil {
-				return err
-			}
-			if _, err := io.Copy(outFile, tarReader); err != nil {
-				return err
-			}
-			outFile.Close()
-		}
-	}
-
 	return nil
 }
