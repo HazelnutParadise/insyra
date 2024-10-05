@@ -46,9 +46,19 @@ func initializeOnMacOS() {
 		filepath.Join(os.Getenv("HOME"), "local", "bin", "glpsol"),
 	}
 
+findGLPK:
 	glpsolPath, err := findInPaths(commonPaths)
 	if err == nil {
 		insyra.LogInfo(fmt.Sprintf("GLPK already installed at: %s", glpsolPath))
+		// 設置 GLPK_PATH 環境變數
+		glpkDir := filepath.Dir(glpsolPath)
+		os.Setenv("GLPK_PATH", glpkDir)
+
+		// 將 GLPK 目錄添加到 PATH 環境變數
+		currentPath := os.Getenv("PATH")
+		newPath := glpkDir + string(os.PathListSeparator) + currentPath
+		os.Setenv("PATH", newPath)
+
 		return
 	}
 
@@ -56,6 +66,7 @@ func initializeOnMacOS() {
 
 	// 下載並安裝 GLPK 源碼
 	downloadAndInstallGLPK_Source()
+	goto findGLPK
 }
 
 // =========================== Linux 安裝邏輯 ===========================
@@ -68,9 +79,20 @@ func initializeOnLinux() {
 		filepath.Join(os.Getenv("HOME"), "local", "bin", "glpsol"),
 	}
 
+findGLPK:
 	glpsolPath, err := findInPaths(commonPaths)
 	if err == nil {
 		insyra.LogInfo(fmt.Sprintf("GLPK already installed at: %s", glpsolPath))
+		// 設置 GLPK_PATH 環境變數
+		glpkDir := filepath.Dir(glpsolPath)
+		os.Setenv("GLPK_PATH", glpkDir)
+
+		// 將 GLPK 目錄添加到 PATH 環境變數
+		currentPath := os.Getenv("PATH")
+		newPath := glpkDir + string(os.PathListSeparator) + currentPath
+		os.Setenv("PATH", newPath)
+
+		insyra.LogDebug(fmt.Sprintf("lp.init: GLPK environment variables set. GLPK_PATH=%s", glpkDir))
 		return
 	}
 
@@ -78,6 +100,7 @@ func initializeOnLinux() {
 
 	// 下載並安裝 GLPK 源碼
 	downloadAndInstallGLPK_Source()
+	goto findGLPK
 }
 
 // =========================== Windows 安裝邏輯 ===========================
