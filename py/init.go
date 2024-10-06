@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"time"
 
 	"github.com/HazelnutParadise/insyra"
 )
@@ -81,6 +82,8 @@ func installPythonOnWindows(version string) error {
 	if err != nil {
 		return fmt.Errorf("failed to update PATH environment variable: %w", err)
 	}
+
+	moveLibDirectory(pythonSourceDir, pythonInstallDir)
 
 	return nil
 }
@@ -221,6 +224,26 @@ func compilePythonSourceWindows(sourceDir string, installDir string) error {
 	return nil
 }
 
+func moveLibDirectory(sourceDir, installDir string) error {
+	// 檢查 sourceDir 中的 'Lib' 目錄是否存在
+	libSourcePath := filepath.Join(sourceDir, "python-"+pythonVersion, "Lib")
+	if _, err := os.Stat(libSourcePath); os.IsNotExist(err) {
+		return fmt.Errorf("Lib directory not found in source directory: %s", sourceDir)
+	}
+
+	// 目標路徑
+	libDestPath := filepath.Join(installDir, "Lib")
+
+	// 使用系統命令將 'Lib' 目錄複製到安裝目錄
+	fmt.Println("Moving Lib directory to installation path...")
+	err := exec.Command("xcopy", libSourcePath, libDestPath, "/E", "/I").Run()
+	if err != nil {
+		return fmt.Errorf("failed to move Lib directory: %w", err)
+	}
+
+	return nil
+}
+
 // 顯示進度條的輔助函數（單行持續更新）
 func showProgress(completed, total int) {
 	// 防止進度超過 100%
@@ -247,36 +270,55 @@ func showProgress(completed, total int) {
 }
 
 func installDependencies() error {
-	if _, err := os.Stat(pyPath); os.IsNotExist(err) {
-		return fmt.Errorf("python executable not found at %s", pyPath)
-	}
+	totalDeps := len(pyDependencies)           // 總依賴數量
+	progressChan := make(chan bool, totalDeps) // 進度管道，設置緩衝區為依賴數量
 
-	// 確保 pip 已經安裝
-	cmd := exec.Command(pyPath, "-m", "ensurepip", "--upgrade")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	err := cmd.Run()
-	if err != nil {
-		return fmt.Errorf("failed to ensure pip is installed: %w", err)
-	}
+	// 設置一個 Goroutine 來統一更新進度條
+	go func() {
+		completed := 0
+		ticker := time.NewTicker(1 * time.Millisecond) // 每 1 毫秒統一更新一次
+		defer ticker.Stop()
+
+		for range ticker.C {
+			select {
+			case <-progressChan:
+				completed++
+				if completed >= totalDeps {
+					showProgress(completed, totalDeps)
+					return // 停止更新進度
+				}
+				showProgress(completed, totalDeps)
+			}
+		}
+	}()
 
 	// 單線程安裝依賴
 	for _, dep := range pyDependencies {
 		if dep == "" {
+			progressChan <- true
 			continue
 		}
 
-		// 使用完整的 python.exe 路徑來安裝依賴
-		cmdSlice := append([]string{pyPath, "-m", "pip", "install"}, dep)
+		// 構建命令
+		cmdSlice := append([]string{pyPath, "-m"}, "pip", "install", dep)
+
+		// 執行命令，將輸出丟棄
 		cmd := exec.Command(cmdSlice[0], cmdSlice[1:]...)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
+		cmd.Dir = absInstallDir
+		cmd.Stdout = io.Discard
+		cmd.Stderr = io.Discard
 
 		err := cmd.Run()
 		if err != nil {
+			progressChan <- true // 即便失敗，依然更新進度
 			return fmt.Errorf("failed to install dependency %s: %w", dep, err)
 		}
+
+		// 安裝成功，發送進度信號
+		progressChan <- true
 	}
+
+	close(progressChan) // 關閉進度管道
 
 	return nil
 }
