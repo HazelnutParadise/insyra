@@ -9,14 +9,14 @@ import (
 
 // FunctionPlotConfig defines the configuration for a function plot.
 type FunctionPlotConfig struct {
-	Title string                  // Title of the chart.
-	XAxis string                  // Label for the X-axis.
-	YAxis string                  // Label for the Y-axis.
-	Func  func(x float64) float64 // The mathematical function to plot.
-	XMin  float64                 // Minimum value of X (optional).
-	XMax  float64                 // Maximum value of X (optional).
-	YMin  float64                 // Minimum value of Y (optional).
-	YMax  float64                 // Maximum value of Y (optional).
+	Title     string                  // Title of the chart.
+	XAxisName string                  // Label for the X-axis.
+	YAxisName string                  // Label for the Y-axis.
+	Func      func(x float64) float64 // The mathematical function to plot.
+	XMin      float64                 // Minimum value of X (optional).
+	XMax      float64                 // Maximum value of X (optional).
+	YMin      float64                 // Minimum value of Y (optional).
+	YMax      float64                 // Maximum value of Y (optional).
 }
 
 // CreateFunctionPlot generates and returns a plot.Plot object based on FunctionPlotConfig.
@@ -27,13 +27,20 @@ func CreateFunctionPlot(config FunctionPlotConfig) *plot.Plot {
 		config.XMax = 10
 	}
 
+	if config.XAxisName == "" {
+		config.XAxisName = "X"
+	}
+	if config.YAxisName == "" {
+		config.YAxisName = "Y"
+	}
+
 	// Create a new plot.
 	plt := plot.New()
 
 	// Set chart title and axis labels.
 	plt.Title.Text = config.Title
-	plt.X.Label.Text = config.XAxis
-	plt.Y.Label.Text = config.YAxis
+	plt.X.Label.Text = config.XAxisName
+	plt.Y.Label.Text = config.YAxisName
 
 	// Create the function plot using plotter.NewFunction
 	functionPlot := plotter.NewFunction(config.Func)
