@@ -151,6 +151,10 @@ func main() {
 
 處理 Excel 和 CSV 文件。例如將 CSV 轉換為 Excel。
 
+### **[py](/Docs/py.md)**
+
+在 Go 中執行 Python 程式碼，無需手動安裝 Python 環境和依賴庫。
+
 ## 進階使用
 
 除了基本用法外，**Insyra** 還提供了處理不同數據類型和執行複雜統計操作的強大功能。請在 **[詳細文檔](https://github.com/HazelnutParadise/insyra/tree/main/Docs)** 中探索更多內容。
