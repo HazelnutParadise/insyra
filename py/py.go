@@ -78,14 +78,18 @@ import json
 }
 
 func generateDefaultPyCode() string {
+	imports := ""
+	for imps, _ := range pyDependencies {
+		if imps != "" {
+			imports += fmt.Sprintf("%s\n", imps)
+		}
+	}
 	return fmt.Sprintf(`
-import requests
-import json
-
+%v
 def insyra_return(data, url="http://localhost:%v/pyresult"):
     response = requests.post(url, json=data)
     if response.status_code != 200:
         print(f"Failed to send result: {response.status_code}")
 
-`, port)
+`, imports, port)
 }

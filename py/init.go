@@ -8,14 +8,17 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
+	"time"
 
+	"github.com/HazelnutParadise/Go-Utils/asyncutil"
 	"github.com/HazelnutParadise/insyra"
 )
 
 // 主要邏輯
 func init() {
 	go startServer()
-
+	insyra.LogInfo("py.init: Preparing Python environment...")
 	// 如果目錄不存在，自動創建
 	if _, err := os.Stat(installDir); os.IsNotExist(err) {
 		os.MkdirAll(installDir, os.ModePerm)
@@ -146,10 +149,93 @@ func installPythonFromSource(srcDir string, installDir string) error {
 	return installCmd.Run()
 }
 
+// 顯示進度條的輔助函數（單行持續更新）
+func showProgress(completed, total int) {
+	// 防止進度超過 100%
+	if completed > total {
+		completed = total
+	}
+
+	percentage := (completed * 100) / total
+	barWidth := 50
+	progressBar := (completed * barWidth) / total
+
+	// 使用 "\r" 符號來覆蓋當前行，實現單行更新
+	fmt.Printf("\r[")
+	for i := 0; i < progressBar; i++ {
+		fmt.Print("=")
+	}
+	for i := progressBar; i < barWidth; i++ {
+		fmt.Print(" ")
+	}
+	fmt.Printf("] %d%% (%d/%d prepared)", percentage, completed, total)
+
+	// 強制刷新輸出
+	os.Stdout.Sync()
+}
+
+// 安裝依賴時使用單行持續更新進度
 func installDependencies() error {
-	cmd := exec.Command(pyPath, "-m", "pip", "install", "requests")
-	cmd.Dir = absInstallDir
-	// cmd.Stdout = os.Stdout
-	// cmd.Stderr = os.Stderr
-	return cmd.Run()
+	totalDeps := len(pyDependencies)           // 總依賴數量
+	progressChan := make(chan bool, totalDeps) // 進度管道，設置緩衝區為依賴數量
+
+	// 設置一個 Goroutine 來統一更新進度條
+	go func() {
+		completed := 0
+		ticker := time.NewTicker(1000 * time.Millisecond) // 每 1000 毫秒統一更新一次
+		defer ticker.Stop()
+
+		for range ticker.C {
+			select {
+			case <-progressChan:
+				completed++
+				if completed >= totalDeps {
+					showProgress(completed, totalDeps)
+					fmt.Println("\nAll dependencies installed successfully!")
+					return // 停止更新進度
+				}
+				showProgress(completed, totalDeps)
+			}
+		}
+	}()
+
+	// 併行安裝依賴，無限制
+	err := asyncutil.ParallelForEach(pyDependencies, func(key string, dep string) []interface{} {
+		if dep == "" {
+			progressChan <- true
+			return nil
+		}
+
+		// 構建命令
+		deps := strings.Split(dep, " ")
+		cmdSlice := append([]string{pyPath, "-m"}, deps...)
+
+		// 執行命令，將輸出丟棄
+		cmd := exec.Command(cmdSlice[0], cmdSlice[1:]...)
+		cmd.Dir = absInstallDir
+		cmd.Stdout = io.Discard
+		cmd.Stderr = io.Discard
+
+		err := cmd.Run()
+		if err != nil {
+			progressChan <- true // 即便失敗，依然更新進度
+			return []interface{}{fmt.Errorf("failed to install dependency %s: %w", dep, err)}
+		}
+
+		// 安裝成功，發送進度信號
+		progressChan <- true
+		return nil
+	})
+
+	close(progressChan) // 關閉進度管道
+	if err != nil {
+		// 檢查是否包含錯誤
+		if len(err) > 0 {
+			if actualErr, ok := err[0].(error); ok {
+				return actualErr // 正確地返回錯誤類型
+			}
+		}
+	}
+
+	return nil
 }
