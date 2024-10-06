@@ -154,6 +154,10 @@ Fully automatic linear programming (LP) solver using [GLPK](https://www.gnu.org/
 
 Work with Excel and CSV files. Such as convert CSV to Excel.
 
+### **[py](/Docs/py.md)**
+
+Execute Python code in Go without manually installing Python environment and dependencies. Allows passing variables between Go and Python.
+
 ## Advanced Usage
 
 Beyond basic usage, **Insyra** provides extensive capabilities for handling different data types and performing complex statistical operations. Explore more in the **[detailed documentation](/Docs)**.
