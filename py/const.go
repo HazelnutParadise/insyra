@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	pythonVersion = "3.11.10"
+	pythonVersion = "3.11.9"
 	installDir    = ".insyra_py_env"
 	port          = "9955"
 	backupPort    = "9956"
@@ -23,17 +23,17 @@ var (
 	absInstallDir, _ = filepath.Abs(installDir)
 	pyPath           = filepath.Join(absInstallDir, "bin", pyExec)
 	pyDependencies   = map[string]string{
-		"import requests":                   "pip install requests",       // HTTP requests
-		"import json":                       "",                           // JSON data processing (built-in module)
-		"import numpy as np":                "pip install numpy",          // Numerical operations
-		"import pandas as pd":               "pip install pandas",         // Data analysis and processing
-		"import matplotlib.pyplot as plt":   "pip install matplotlib",     // Data visualization
-		"import seaborn as sns":             "pip install seaborn",        // Data visualization
-		"import scipy":                      "pip install scipy",          // Scientific computing
-		"import sklearn":                    "pip install scikit-learn",   // Machine learning
-		"import statsmodels.api as sm":      "pip install statsmodels",    // Statistical modeling
-		"import plotly.graph_objects as go": "pip install plotly",         // Interactive data visualization
-		"import spacy":                      "pip install spacy",          // Efficient natural language processing
-		"import bs4":                        "pip install beautifulsoup4", // Web scraping
+		"import requests":                   "requests",       // HTTP requests
+		"import json":                       "",               // JSON data processing (built-in module)
+		"import numpy as np":                "numpy",          // Numerical operations
+		"import pandas as pd":               "pandas",         // Data analysis and processing
+		"import matplotlib.pyplot as plt":   "matplotlib",     // Data visualization
+		"import seaborn as sns":             "seaborn",        // Data visualization
+		"import scipy":                      "scipy",          // Scientific computing
+		"import sklearn":                    "scikit-learn",   // Machine learning
+		"import statsmodels.api as sm":      "statsmodels",    // Statistical modeling
+		"import plotly.graph_objects as go": "plotly",         // Interactive data visualization
+		"import spacy":                      "spacy",          // Efficient natural language processing
+		"import bs4":                        "beautifulsoup4", // Web scraping
 	}
 )

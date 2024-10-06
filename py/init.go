@@ -10,14 +10,16 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strings"
-	"time"
 
 	"github.com/HazelnutParadise/insyra"
 )
 
 // 主要邏輯
 func init() {
+	if runtime.GOOS == "windows" {
+		pyPath = filepath.Join(absInstallDir, "python", "python.exe")
+	}
+
 	go startServer()
 	insyra.LogInfo("py.init: Preparing Python environment...")
 	// 如果目錄不存在，自動創建
@@ -51,29 +53,36 @@ func init() {
 
 // 下載並安裝 Python 的邏輯
 func installPython(version string) error {
-
 	if runtime.GOOS == "windows" {
-		return installPythonOnWindows(version, absInstallDir)
+		return installPythonOnWindows(version)
 	}
 	return installPythonOnUnix(version, absInstallDir)
 }
 
-// Windows 平台安裝
-func installPythonOnWindows(version string, installDir string) error {
-	downloadURL := fmt.Sprintf("https://www.python.org/ftp/python/%s/python-%s-amd64.exe", version, version)
-	installerPath := filepath.Join(os.TempDir(), fmt.Sprintf("python-%s-installer.exe", version))
+func installPythonOnWindows(version string) error {
+	// 指定安裝路徑
+	pythonSourceDir := filepath.Join(absInstallDir, "python-source")
+	pythonInstallDir := filepath.Join(absInstallDir, "python")
 
-	fmt.Println("Downloading Python installer for Windows...")
-	err := downloadFile(installerPath, downloadURL)
+	// 下載 Python 原始碼
+	err := downloadPythonSource(version, pythonSourceDir)
 	if err != nil {
-		return fmt.Errorf("failed to download installer: %w", err)
+		return fmt.Errorf("failed to download Python source: %w", err)
 	}
 
-	fmt.Println("Running Python installer...")
-	cmd := exec.Command(installerPath, "/quiet", "InstallAllUsers=1", fmt.Sprintf("TargetDir=%s", installDir))
-	// cmd.Stdout = os.Stdout
-	// cmd.Stderr = os.Stderr
-	return cmd.Run()
+	// 編譯並安裝 Python
+	err = compilePythonSourceWindows(pythonSourceDir, pythonInstallDir)
+	if err != nil {
+		return fmt.Errorf("failed to compile and install Python: %w", err)
+	}
+
+	// 將 Python 安裝路徑添加到 PATH
+	err = os.Setenv("PATH", fmt.Sprintf("%s;%s", os.Getenv("PATH"), pythonInstallDir))
+	if err != nil {
+		return fmt.Errorf("failed to update PATH environment variable: %w", err)
+	}
+
+	return nil
 }
 
 // Unix-like 平台安裝 (Linux/macOS)
@@ -97,6 +106,42 @@ func installPythonOnUnix(version string, installDir string) error {
 
 	fmt.Println("Configuring and installing Python...")
 	return installPythonFromSource(pythonSrcDir, installDir)
+}
+
+// 確保目錄存在，如果不存在則創建
+func ensureDir(dir string) error {
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		err := os.MkdirAll(dir, os.ModePerm)
+		if err != nil {
+			return fmt.Errorf("failed to create directory %s: %w", dir, err)
+		}
+	}
+	return nil
+}
+
+func downloadPythonSource(version string, destDir string) error {
+	// 確保目標目錄存在
+	err := ensureDir(destDir)
+	if err != nil {
+		return fmt.Errorf("failed to ensure destination directory: %w", err)
+	}
+
+	downloadURL := fmt.Sprintf("https://www.python.org/ftp/python/%s/Python-%s.tgz", version, version)
+	pythonTar := filepath.Join(destDir, fmt.Sprintf("Python-%s.tgz", version))
+
+	fmt.Println("Downloading Python source code...")
+	err = downloadFile(pythonTar, downloadURL)
+	if err != nil {
+		return fmt.Errorf("failed to download Python source code: %w", err)
+	}
+
+	fmt.Println("Extracting Python source code...")
+	err = extractTar(pythonTar, destDir)
+	if err != nil {
+		return fmt.Errorf("failed to extract Python source code: %w", err)
+	}
+
+	return nil
 }
 
 // 下載檔案
@@ -150,6 +195,32 @@ func installPythonFromSource(srcDir string, installDir string) error {
 	return installCmd.Run()
 }
 
+func compilePythonSourceWindows(sourceDir string, installDir string) error {
+	// 使用 Windows 特定的構建方式
+	buildCmd := exec.Command(filepath.Join(sourceDir, "Python-"+pythonVersion, "PCbuild", "build.bat"), "-e", "-v")
+	buildCmd.Dir = filepath.Join(sourceDir, "Python-"+pythonVersion, "PCbuild")
+	// buildCmd.Stdout = os.Stdout
+	// buildCmd.Stderr = os.Stderr
+
+	err := buildCmd.Run()
+	if err != nil {
+		return fmt.Errorf("failed to compile Python source code using build.bat: %w", err)
+	}
+
+	// 將編譯後的文件複製到安裝目錄
+	fmt.Println("Installing Python...")
+	installCmd := exec.Command("xcopy", "/E", "/I", filepath.Join(sourceDir, "Python-"+pythonVersion, "PCbuild", "amd64"), installDir)
+	// installCmd.Stdout = os.Stdout
+	// installCmd.Stderr = os.Stderr
+
+	err = installCmd.Run()
+	if err != nil {
+		return fmt.Errorf("failed to install compiled Python: %w", err)
+	}
+
+	return nil
+}
+
 // 顯示進度條的輔助函數（單行持續更新）
 func showProgress(completed, total int) {
 	// 防止進度超過 100%
@@ -176,56 +247,36 @@ func showProgress(completed, total int) {
 }
 
 func installDependencies() error {
-	totalDeps := len(pyDependencies)           // 總依賴數量
-	progressChan := make(chan bool, totalDeps) // 進度管道，設置緩衝區為依賴數量
+	if _, err := os.Stat(pyPath); os.IsNotExist(err) {
+		return fmt.Errorf("python executable not found at %s", pyPath)
+	}
 
-	// 設置一個 Goroutine 來統一更新進度條
-	go func() {
-		completed := 0
-		ticker := time.NewTicker(1 * time.Millisecond) // 每 1 毫秒統一更新一次
-		defer ticker.Stop()
-
-		for range ticker.C {
-			select {
-			case <-progressChan:
-				completed++
-				if completed >= totalDeps {
-					showProgress(completed, totalDeps)
-					return // 停止更新進度
-				}
-				showProgress(completed, totalDeps)
-			}
-		}
-	}()
+	// 確保 pip 已經安裝
+	cmd := exec.Command(pyPath, "-m", "ensurepip", "--upgrade")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	err := cmd.Run()
+	if err != nil {
+		return fmt.Errorf("failed to ensure pip is installed: %w", err)
+	}
 
 	// 單線程安裝依賴
 	for _, dep := range pyDependencies {
 		if dep == "" {
-			progressChan <- true
 			continue
 		}
 
-		// 構建命令
-		deps := strings.Split(dep, " ")
-		cmdSlice := append([]string{pyPath, "-m"}, deps...)
-
-		// 執行命令，將輸出丟棄
+		// 使用完整的 python.exe 路徑來安裝依賴
+		cmdSlice := append([]string{pyPath, "-m", "pip", "install"}, dep)
 		cmd := exec.Command(cmdSlice[0], cmdSlice[1:]...)
-		cmd.Dir = absInstallDir
-		cmd.Stdout = io.Discard
-		cmd.Stderr = io.Discard
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
 
 		err := cmd.Run()
 		if err != nil {
-			progressChan <- true // 即便失敗，依然更新進度
 			return fmt.Errorf("failed to install dependency %s: %w", dep, err)
 		}
-
-		// 安裝成功，發送進度信號
-		progressChan <- true
 	}
-
-	close(progressChan) // 關閉進度管道
 
 	return nil
 }
