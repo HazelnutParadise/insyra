@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/HazelnutParadise/insyra"
 )
 
 // Run the Python code and return the result.
@@ -75,6 +77,34 @@ import json
 
 	// 從 server 接收資料
 	return pyResult
+}
+
+// Install dependencies using pip
+func PipInstall(dep string) {
+	pythonCmd := exec.Command(pyPath, "-m", "pip", "install", dep)
+	pythonCmd.Dir = installDir
+	pythonCmd.Stdout = os.Stdout
+	pythonCmd.Stderr = os.Stderr
+	err := pythonCmd.Run()
+	if err != nil {
+		log.Fatalf("Failed to install dependency: %v", err)
+	} else {
+		insyra.LogInfo("py.PipInstall: Installed dependency: %s", dep)
+	}
+}
+
+// Uninstall dependencies using pip
+func PipUninstall(dep string) {
+	pythonCmd := exec.Command(pyPath, "-m", "pip", "uninstall", "-y", dep)
+	pythonCmd.Dir = installDir
+	pythonCmd.Stdout = os.Stdout
+	pythonCmd.Stderr = os.Stderr
+	err := pythonCmd.Run()
+	if err != nil {
+		log.Fatalf("Failed to uninstall dependency: %v", err)
+	} else {
+		insyra.LogInfo("py.PipUninstall: Uninstalled dependency: %s", dep)
+	}
 }
 
 func generateDefaultPyCode() string {
