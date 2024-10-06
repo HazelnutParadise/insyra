@@ -4,6 +4,8 @@
 
 The `py` package allows Golang programs to execute Python code seamlessly and interactively. It provides functionality to pass Go variables into Python scripts, and execute the Python code. Results from the Python script can be sent back to the Go program automatically.
 
+`py` package automatically installs common Python libraries, you can use them directly in your Python code. Installing your own dependencies is also supported.
+
 ## Functions
 
 ### `RunCode`
@@ -86,6 +88,30 @@ plt.show()
 }
 
 ```
+
+### `PipInstall`
+
+```go
+func PipInstall(dep string)
+```
+
+This function is used to install Python dependencies using pip.
+
+#### Parameters
+
+- `dep` (string): The name of the dependency to be installed.
+
+### `PipUninstall`
+
+```go
+func PipUninstall(dep string)
+```
+
+This function is used to uninstall Python dependencies using pip.
+
+#### Parameters
+
+- `dep` (string): The name of the dependency to be uninstalled.
 
 ## Auto-installed Dependencies
 
