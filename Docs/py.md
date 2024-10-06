@@ -114,6 +114,32 @@ This function is used to uninstall Python dependencies using pip.
 
 - `dep` (string): The name of the dependency to be uninstalled.
 
+## Functions for Python Code
+
+Here are some functions that are useful when writing Python code to be executed with `RunCode` or `RunCodef`.
+
+### `insyra_return`
+
+```python
+insyra_return(data, url)
+```
+
+This function is used to return data from Python to Go.
+
+#### Parameters
+
+- `data` (dict): The data to be returned to Go.
+- `url` (string): The URL to send the data to. Insyra will automatically set it, you don't need to set it manually.
+
+#### Example
+
+```python
+insyra_return({
+	"message": "Hello from Python",
+	"value": 123,
+})
+```
+
 ## Pre-installed Dependencies
 
 - **Python Environment**: Insyra automatically installs Python environment in the `.insyra_py_env` directory in your project root.
