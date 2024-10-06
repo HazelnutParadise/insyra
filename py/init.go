@@ -30,6 +30,7 @@ func init() {
 		// 檢查 Python 執行檔是否已存在
 		if _, err := os.Stat(pyPath); err == nil {
 			insyra.LogDebug("Python installation already exists!")
+			checkPythonPath()
 			err = installDependencies()
 			if err != nil {
 				insyra.LogFatal("Failed to install dependencies: %v", err)
@@ -45,11 +46,35 @@ func init() {
 		insyra.LogFatal("py.init: Failed to install Python: %v", err)
 	}
 	insyra.LogInfo("py.init: Python installation completed successfully!")
+
+	checkPythonPath()
 	err = installDependencies()
 	if err != nil {
 		insyra.LogFatal("py.init: Failed to install dependencies: %v", err)
 	}
 	insyra.LogInfo("py.init: Dependencies has been prepared successfully!")
+}
+
+func checkPythonPath() {
+	if runtime.GOOS == "windows" {
+		// 執行 Python 檢查腳本
+		cmd := exec.Command(pyPath, "-c", fmt.Sprintf(`
+		 import sys
+		 sys.path.append(r'%s')
+		 sys.path.append(r'%s')
+		 try:
+			 import encodings
+			 print("encodings module loaded successfully")
+		 except Exception as e:
+			 print(f"Failed to load encodings module: {e}")
+		 `, filepath.Join(absInstallDir, "python", "Lib"), filepath.Join(absInstallDir, "python", "DLLs")))
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		err := cmd.Run()
+		if err != nil {
+			fmt.Printf("Failed to run Python script: %v\n", err)
+		}
+	}
 }
 
 // 下載並安裝 Python 的邏輯
