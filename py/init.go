@@ -1,3 +1,5 @@
+// py/init.go
+
 package py
 
 import (

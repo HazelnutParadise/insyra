@@ -1,3 +1,5 @@
+// py/pyresult.go
+
 package py
 
 import (
