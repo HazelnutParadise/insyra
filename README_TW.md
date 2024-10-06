@@ -153,7 +153,7 @@ func main() {
 
 ### **[py](/Docs/py.md)**
 
-在 Go 中執行 Python 程式碼，無需手動安裝 Python 環境和依賴庫。
+在 Go 中執行 Python 程式碼，無需手動安裝 Python 環境和依賴庫。允許在 Go 和 Python 之間傳遞變數。
 
 ## 進階使用
 
