@@ -56,16 +56,35 @@ In the Python code template, use `$v1`, `$v2`, `$v3`, etc., as placeholders for 
 #### Example
 
 ```go
-message := "Hello from Go"
-numbers := []int{1, 2, 3, 4}
+package main
 
-result := RunCodef(`
-print(f"Message: {$v1}")
-print(f"Numbers: {$v2}")
-insyra_return({"message": $v1, "value": $v2})
-`, message, numbers)
+import (
+	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/py"
+)
 
-fmt.Println(result)
+func main() {
+	// Create DataList
+	xData := insyra.NewDataList(45, 50, 55, 60, 65, 70, 75, 80, 85, 90)
+	yData := insyra.NewDataList(110, 120, 135, 145, 150, 160, 170, 180, 190, 200)
+
+	// Submit Code to Python
+	py.RunCodef(`
+x = np.array($v1)
+y = np.array($v2)
+
+sns.set(style="whitegrid")
+
+sns.scatterplot(x=x, y=y)
+
+plt.title("Scatter Plot from Go DataList")
+plt.xlabel("X Values")
+plt.ylabel("Y Values")
+
+plt.show()
+`, xData.Data(), yData.Data())
+}
+
 ```
 
 ## Auto-installed Dependencies
@@ -76,7 +95,7 @@ fmt.Println(result)
 	pyDependencies   = map[string]string{
 		"import requests":                   "pip install requests",       // HTTP requests
 		"import json":                       "",                           // JSON data processing (built-in module)
-		"import numpy as np":                "pip install numpy<2",        // Numerical operations
+		"import numpy as np":                "pip install numpy",        // Numerical operations
 		"import pandas as pd":               "pip install pandas",         // Data analysis and processing
 		"import matplotlib.pyplot as plt":   "pip install matplotlib",     // Data visualization
 		"import seaborn as sns":             "pip install seaborn",        // Data visualization

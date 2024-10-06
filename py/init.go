@@ -45,7 +45,7 @@ func init() {
 	if err != nil {
 		insyra.LogFatal("py.init: Failed to install dependencies: %v", err)
 	}
-	insyra.LogInfo("py.init: Dependencies installation completed successfully!")
+	insyra.LogInfo("py.init: Dependencies has been prepared successfully!")
 }
 
 // 下載並安裝 Python 的邏輯
@@ -70,8 +70,8 @@ func installPythonOnWindows(version string, installDir string) error {
 
 	fmt.Println("Running Python installer...")
 	cmd := exec.Command(installerPath, "/quiet", "InstallAllUsers=1", fmt.Sprintf("TargetDir=%s", installDir))
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	// cmd.Stdout = os.Stdout
+	// cmd.Stderr = os.Stderr
 	return cmd.Run()
 }
 
@@ -119,8 +119,8 @@ func downloadFile(filepath string, url string) error {
 // 解壓縮 .tgz（適用於 Unix-like 系統）
 func extractTar(filepath string, destDir string) error {
 	cmd := exec.Command("tar", "-xvzf", filepath, "-C", destDir)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	// cmd.Stdout = os.Stdout
+	// cmd.Stderr = os.Stderr
 	return cmd.Run()
 }
 
@@ -128,24 +128,24 @@ func extractTar(filepath string, destDir string) error {
 func installPythonFromSource(srcDir string, installDir string) error {
 	configureCmd := exec.Command("./configure", fmt.Sprintf("--prefix=%s", installDir))
 	configureCmd.Dir = srcDir
-	configureCmd.Stdout = os.Stdout
-	configureCmd.Stderr = os.Stderr
+	// configureCmd.Stdout = os.Stdout
+	// configureCmd.Stderr = os.Stderr
 	if err := configureCmd.Run(); err != nil {
 		return err
 	}
 
 	makeCmd := exec.Command("make")
 	makeCmd.Dir = srcDir
-	makeCmd.Stdout = os.Stdout
-	makeCmd.Stderr = os.Stderr
+	// makeCmd.Stdout = os.Stdout
+	// makeCmd.Stderr = os.Stderr
 	if err := makeCmd.Run(); err != nil {
 		return err
 	}
 
 	installCmd := exec.Command("make", "install")
 	installCmd.Dir = srcDir
-	installCmd.Stdout = os.Stdout
-	installCmd.Stderr = os.Stderr
+	// installCmd.Stdout = os.Stdout
+	// installCmd.Stderr = os.Stderr
 	return installCmd.Run()
 }
 
@@ -182,7 +182,7 @@ func installDependencies() error {
 	// 設置一個 Goroutine 來統一更新進度條
 	go func() {
 		completed := 0
-		ticker := time.NewTicker(1000 * time.Millisecond) // 每 1000 毫秒統一更新一次
+		ticker := time.NewTicker(1 * time.Millisecond) // 每 1 毫秒統一更新一次
 		defer ticker.Stop()
 
 		for range ticker.C {
@@ -191,7 +191,6 @@ func installDependencies() error {
 				completed++
 				if completed >= totalDeps {
 					showProgress(completed, totalDeps)
-					fmt.Println("\nAll dependencies installed successfully!")
 					return // 停止更新進度
 				}
 				showProgress(completed, totalDeps)

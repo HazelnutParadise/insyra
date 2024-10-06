@@ -23,7 +23,7 @@ var (
 	pyDependencies   = map[string]string{
 		"import requests":                   "pip install requests",       // HTTP requests
 		"import json":                       "",                           // JSON data processing (built-in module)
-		"import numpy as np":                "pip install numpy<2",        // Numerical operations
+		"import numpy as np":                "pip install numpy",          // Numerical operations
 		"import pandas as pd":               "pip install pandas",         // Data analysis and processing
 		"import matplotlib.pyplot as plt":   "pip install matplotlib",     // Data visualization
 		"import seaborn as sns":             "pip install seaborn",        // Data visualization
