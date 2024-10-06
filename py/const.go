@@ -33,7 +33,6 @@ var (
 		"import sklearn":                    "pip install scikit-learn",   // Machine learning
 		"import statsmodels.api as sm":      "pip install statsmodels",    // Statistical modeling
 		"import plotly.graph_objects as go": "pip install plotly",         // Interactive data visualization
-		"import nltk":                       "pip install nltk",           // Natural language processing
 		"import spacy":                      "pip install spacy",          // Efficient natural language processing
 		"import bs4":                        "pip install beautifulsoup4", // Web scraping
 	}
