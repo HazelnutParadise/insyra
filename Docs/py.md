@@ -113,7 +113,7 @@ This function is used to uninstall Python dependencies using pip.
 
 - `dep` (string): The name of the dependency to be uninstalled.
 
-## Auto-installed Dependencies
+## Pre-installed Dependencies
 
 - **Python Environment**: Insyra automatically installs Python environment in the `.insyra_py_env` directory in your project root.
 - **Python Libraries**: Insyra automatically installs following Python libraries, you can use them directly in your Python code:
