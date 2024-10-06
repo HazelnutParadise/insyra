@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/HazelnutParadise/Go-Utils/asyncutil"
 	"github.com/HazelnutParadise/insyra"
 )
 
@@ -176,7 +175,6 @@ func showProgress(completed, total int) {
 	os.Stdout.Sync()
 }
 
-// 安裝依賴時使用單行持續更新進度
 func installDependencies() error {
 	totalDeps := len(pyDependencies)           // 總依賴數量
 	progressChan := make(chan bool, totalDeps) // 進度管道，設置緩衝區為依賴數量
@@ -200,11 +198,11 @@ func installDependencies() error {
 		}
 	}()
 
-	// 併行安裝依賴，無限制
-	err := asyncutil.ParallelForEach(pyDependencies, func(key string, dep string) []interface{} {
+	// 單線程安裝依賴
+	for _, dep := range pyDependencies {
 		if dep == "" {
 			progressChan <- true
-			return nil
+			continue
 		}
 
 		// 構建命令
@@ -220,23 +218,14 @@ func installDependencies() error {
 		err := cmd.Run()
 		if err != nil {
 			progressChan <- true // 即便失敗，依然更新進度
-			return []interface{}{fmt.Errorf("failed to install dependency %s: %w", dep, err)}
+			return fmt.Errorf("failed to install dependency %s: %w", dep, err)
 		}
 
 		// 安裝成功，發送進度信號
 		progressChan <- true
-		return nil
-	})
+	}
 
 	close(progressChan) // 關閉進度管道
-	if err != nil {
-		// 檢查是否包含錯誤
-		if len(err) > 0 {
-			if actualErr, ok := err[0].(error); ok {
-				return actualErr // 正確地返回錯誤類型
-			}
-		}
-	}
 
 	return nil
 }

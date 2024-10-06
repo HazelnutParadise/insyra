@@ -1,6 +1,7 @@
-# `py` Package Documentation
+# [ py ] Package
 
-## Overview
+> [!WARNING]
+> This package currently only works on MacOS.
 
 The `py` package allows Golang programs to execute Python code seamlessly and interactively. It provides functionality to pass Go variables into Python scripts, and execute the Python code. Results from the Python script can be sent back to the Go program automatically.
 
