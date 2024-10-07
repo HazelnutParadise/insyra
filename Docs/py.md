@@ -1,7 +1,14 @@
 # [ py ] Package
 
-> [!WARNING]
-> This package currently only works on MacOS and Linux.
+> [!NOTE]
+> - **Windows**: This package only works on Windows 10 and above. Needs Visual Studio C++ Build Tools installed.
+> - **MacOS**: Needs Xcode installed.
+> - **Linux**: Needs following dependencies installed:
+> 	```sh
+> 	sudo apt-get update
+> 	sudo apt-get install build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev libffi-dev liblzma-dev wget tar
+> 	```
+
 
 The `py` package allows Golang programs to execute Python code seamlessly and interactively. It provides functionality to pass Go variables into Python scripts, and execute the Python code. Results from the Python script can be sent back to the Go program automatically.
 
