@@ -18,14 +18,6 @@ import (
 
 // 主要邏輯
 func init() {
-	if runtime.GOOS == "windows" {
-		pyPath = filepath.Join(absInstallDir, "python", "python.exe")
-		pythonHome := filepath.Join(absInstallDir, "python")
-		pythonLib := filepath.Join(absInstallDir, "Lib")
-		os.Setenv("PYTHONHOME", pythonHome)
-		os.Setenv("PYTHONPATH", pythonLib)
-	}
-
 	go startServer()
 	insyra.LogInfo("py.init: Preparing Python environment...")
 	// 如果目錄不存在，自動創建
@@ -35,6 +27,14 @@ func init() {
 		// 檢查 Python 執行檔是否已存在
 		if _, err := os.Stat(pyPath); err == nil {
 			insyra.LogDebug("Python installation already exists!")
+
+			if runtime.GOOS == "windows" {
+				pyPath = filepath.Join(absInstallDir, "python", "python.exe")
+				pythonHome := filepath.Join(absInstallDir, "python")
+				pythonLib := filepath.Join(absInstallDir, "Lib")
+				os.Setenv("PYTHONHOME", pythonHome)
+				os.Setenv("PYTHONPATH", pythonLib)
+			}
 
 			err = installDependencies()
 			if err != nil {
@@ -226,6 +226,14 @@ func compilePythonSourceWindows(sourceDir string, installDir string) error {
 	err = installCmd.Run()
 	if err != nil {
 		return fmt.Errorf("failed to install compiled Python: %w", err)
+	}
+
+	if runtime.GOOS == "windows" {
+		pyPath = filepath.Join(absInstallDir, "python", "python.exe")
+		pythonHome := filepath.Join(absInstallDir, "python")
+		pythonLib := filepath.Join(absInstallDir, "Lib")
+		os.Setenv("PYTHONHOME", pythonHome)
+		os.Setenv("PYTHONPATH", pythonLib)
 	}
 
 	return nil
