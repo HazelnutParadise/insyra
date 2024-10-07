@@ -422,6 +422,12 @@ Creates a ThemeRiver chart based on the provided `ThemeRiverChartConfig` and ret
 
 Creates a Sankey chart based on the provided `SankeyChartConfig` and returns a `*charts.Sankey` object, which can be further customized with `go-echarts` options.
 
+#### `LoadSankeyDataFromFile`
+
+`func LoadSankeyDataFromFile(filePath string) ([]string, []SankeyLink)`
+
+Loads the Sankey chart node and link data from a JSON file.
+
 #### Example
 ![sankey_example](./img/plot_sankey_example.png)
 
