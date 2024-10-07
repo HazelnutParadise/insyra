@@ -3,6 +3,7 @@
 package py
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,6 +20,10 @@ import (
 func init() {
 	if runtime.GOOS == "windows" {
 		pyPath = filepath.Join(absInstallDir, "python", "python.exe")
+		pythonHome := filepath.Join(absInstallDir, "python")
+		pythonLib := filepath.Join(absInstallDir, "Lib")
+		os.Setenv("PYTHONHOME", pythonHome)
+		os.Setenv("PYTHONPATH", pythonLib)
 	}
 
 	go startServer()
@@ -30,7 +35,7 @@ func init() {
 		// 檢查 Python 執行檔是否已存在
 		if _, err := os.Stat(pyPath); err == nil {
 			insyra.LogDebug("Python installation already exists!")
-			checkPythonPath()
+
 			err = installDependencies()
 			if err != nil {
 				insyra.LogFatal("Failed to install dependencies: %v", err)
@@ -47,34 +52,11 @@ func init() {
 	}
 	insyra.LogInfo("py.init: Python installation completed successfully!")
 
-	checkPythonPath()
 	err = installDependencies()
 	if err != nil {
 		insyra.LogFatal("py.init: Failed to install dependencies: %v", err)
 	}
 	insyra.LogInfo("py.init: Dependencies has been prepared successfully!")
-}
-
-func checkPythonPath() {
-	if runtime.GOOS == "windows" {
-		// 執行 Python 檢查腳本
-		cmd := exec.Command(pyPath, "-c", fmt.Sprintf(`
-		 import sys
-		 sys.path.append(r'%s')
-		 sys.path.append(r'%s')
-		 try:
-			 import encodings
-			 print("encodings module loaded successfully")
-		 except Exception as e:
-			 print(f"Failed to load encodings module: {e}")
-		 `, filepath.Join(absInstallDir, "python", "Lib"), filepath.Join(absInstallDir, "python", "DLLs")))
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		err := cmd.Run()
-		if err != nil {
-			fmt.Printf("Failed to run Python script: %v\n", err)
-		}
-	}
 }
 
 // 下載並安裝 Python 的邏輯
@@ -295,13 +277,12 @@ func showProgress(completed, total int) {
 }
 
 func installDependencies() error {
-	totalDeps := len(pyDependencies)           // 總依賴數量
-	progressChan := make(chan bool, totalDeps) // 進度管道，設置緩衝區為依賴數量
+	totalDeps := len(pyDependencies)
+	progressChan := make(chan bool, totalDeps)
 
-	// 設置一個 Goroutine 來統一更新進度條
 	go func() {
 		completed := 0
-		ticker := time.NewTicker(1 * time.Millisecond) // 每 1 毫秒統一更新一次
+		ticker := time.NewTicker(1 * time.Millisecond)
 		defer ticker.Stop()
 
 		for range ticker.C {
@@ -310,40 +291,39 @@ func installDependencies() error {
 				completed++
 				if completed >= totalDeps {
 					showProgress(completed, totalDeps)
-					return // 停止更新進度
+					return
 				}
 				showProgress(completed, totalDeps)
 			}
 		}
 	}()
 
-	// 單線程安裝依賴
 	for _, dep := range pyDependencies {
 		if dep == "" {
 			progressChan <- true
 			continue
 		}
 
-		// 構建命令
 		cmdSlice := append([]string{pyPath, "-m"}, "pip", "install", dep)
-
-		// 執行命令，將輸出丟棄
 		cmd := exec.Command(cmdSlice[0], cmdSlice[1:]...)
 		cmd.Dir = absInstallDir
-		cmd.Stdout = io.Discard
-		cmd.Stderr = io.Discard
+
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
 
 		err := cmd.Run()
 		if err != nil {
-			progressChan <- true // 即便失敗，依然更新進度
+			progressChan <- true
+			fmt.Printf("Stdout: %s", stdout.String())
+			fmt.Printf("Stderr: %s", stderr.String())
 			return fmt.Errorf("failed to install dependency %s: %w", dep, err)
 		}
 
-		// 安裝成功，發送進度信號
 		progressChan <- true
 	}
 
-	close(progressChan) // 關閉進度管道
+	close(progressChan)
 
 	return nil
 }
