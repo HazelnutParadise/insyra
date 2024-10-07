@@ -11,13 +11,15 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"time"
 
 	"github.com/HazelnutParadise/insyra"
 )
 
 // 主要邏輯
 func init() {
+	if runtime.GOOS == "windows" {
+		pyPath = filepath.Join(absInstallDir, "python", "python.exe")
+	}
 	go startServer()
 	insyra.LogInfo("py.init: Preparing Python environment...")
 	// 如果目錄不存在，自動創建
@@ -26,7 +28,7 @@ func init() {
 	} else {
 		// 檢查 Python 執行檔是否已存在
 		if _, err := os.Stat(pyPath); err == nil {
-			insyra.LogDebug("Python installation already exists!")
+			insyra.LogDebug("py.init: Python installation already exists!")
 
 			if runtime.GOOS == "windows" {
 				pyPath = filepath.Join(absInstallDir, "python", "python.exe")
@@ -38,9 +40,9 @@ func init() {
 
 			err = installDependencies()
 			if err != nil {
-				insyra.LogFatal("Failed to install dependencies: %v", err)
+				insyra.LogFatal("py.init: Failed to install dependencies: %v", err)
 			}
-			insyra.LogInfo("Dependencies installation completed successfully!")
+			insyra.LogInfo("py.init: Dependencies prepared successfully!\n\n")
 			return
 		}
 	}
@@ -286,29 +288,12 @@ func showProgress(completed, total int) {
 
 func installDependencies() error {
 	totalDeps := len(pyDependencies)
-	progressChan := make(chan bool, totalDeps)
-
-	go func() {
-		completed := 0
-		ticker := time.NewTicker(1 * time.Millisecond)
-		defer ticker.Stop()
-
-		for range ticker.C {
-			select {
-			case <-progressChan:
-				completed++
-				if completed >= totalDeps {
-					showProgress(completed, totalDeps)
-					return
-				}
-				showProgress(completed, totalDeps)
-			}
-		}
-	}()
+	completed := 0
 
 	for _, dep := range pyDependencies {
 		if dep == "" {
-			progressChan <- true
+			completed++
+			showProgress(completed, totalDeps)
 			continue
 		}
 
@@ -322,16 +307,16 @@ func installDependencies() error {
 
 		err := cmd.Run()
 		if err != nil {
-			progressChan <- true
 			fmt.Printf("Stdout: %s", stdout.String())
 			fmt.Printf("Stderr: %s", stderr.String())
 			return fmt.Errorf("failed to install dependency %s: %w", dep, err)
 		}
 
-		progressChan <- true
+		completed++
+		showProgress(completed, totalDeps) // 在主線程中顯示進度條
 	}
 
-	close(progressChan)
+	fmt.Println() // 完成後換行
 
 	return nil
 }
