@@ -2,152 +2,204 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
-// 迴圈處理函數，根據索引執行指定的運算邏輯
-func lingoFor(index int, action func(i int) string) string {
-	result := ""
-	for i := 1; i <= index; i++ {
-		result += action(i) + "\n"
+// 定義一個結構來存儲集合和變數
+type Set struct {
+	Name       string
+	Range      []int
+	Attributes []string
+}
+
+// 解析 SETS 部分
+func parseSets(lingoText string) []Set {
+	sets := []Set{}
+	re := regexp.MustCompile(`(\w+)\s*/(\d+)\.\.(\d+)\s*/:(.+);`)
+	matches := re.FindAllStringSubmatch(lingoText, -1)
+
+	for _, match := range matches {
+		setName := match[1]
+		startRange := parseInt(match[2])
+		endRange := parseInt(match[3])
+		attributes := strings.Split(match[4], ",")
+
+		set := Set{
+			Name:       setName,
+			Range:      generateRange(startRange, endRange),
+			Attributes: trimSpaces(attributes),
+		}
+		sets = append(sets, set)
+	}
+
+	return sets
+}
+
+// 將數字範圍生成為 slice
+func generateRange(start, end int) []int {
+	var result []int
+	for i := start; i <= end; i++ {
+		result = append(result, i)
 	}
 	return result
 }
 
-// 變數替換函數：將 Lingo 變數轉換成 LP 格式，但不替換 RHS
-func replaceLingoVariables(lingoText string, varIndexMap map[string]int) string {
-	// 匹配變數形式，例如 X(I)、Cost(I)，但跳過 RHS(I)
-	re := regexp.MustCompile(`(\w+)\(([^)]+)\)`)
-
-	replacedText := re.ReplaceAllStringFunc(lingoText, func(match string) string {
-		subMatches := re.FindStringSubmatch(match)
-		varName := strings.ToLower(subMatches[1]) // 變數名稱，如 X 或 Cost
-		indexes := subMatches[2]                  // 索引名稱，如 I 或 I, J
-
-		// 跳過 RHS，保持不變
-		if strings.ToLower(varName) == "rhs" {
-			return match
-		}
-
-		// 將索引部分拆解並轉換成 _ 分隔的格式，如 I, J -> 1_2
-		indexList := strings.Split(indexes, ",")
-		var indexStringBuilder strings.Builder
-
-		for i, index := range indexList {
-			// 去掉空格
-			index = strings.TrimSpace(index)
-
-			// 確定索引是否已經分配
-			if _, exists := varIndexMap[index]; !exists {
-				varIndexMap[index] = 1 // 從 1 開始
-			}
-
-			// 如果不是第一個索引，前面加上 _
-			if i > 0 {
-				indexStringBuilder.WriteString("_")
-			}
-			indexStringBuilder.WriteString(fmt.Sprintf("%d", varIndexMap[index]))
-
-			// 每次索引遞增
-			varIndexMap[index]++
-		}
-
-		// 將變數轉換成 LP 格式變數，並用 _ 分隔索引
-		return fmt.Sprintf("%s%s", varName, indexStringBuilder.String())
-	})
-
-	return replacedText
-}
-
-// 處理目標函數邏輯 (如 MIN, MAX)
-func lingoObjectiveFunction(lingoText string, varIndexMap map[string]int) string {
-	// 匹配 MIN 或 MAX 語法
-	re := regexp.MustCompile(`(MIN|MAX) = @SUM\((\w+): (.+)\)`)
-	subMatches := re.FindStringSubmatch(lingoText)
-
-	if len(subMatches) == 0 {
-		return ""
+// 去除屬性名稱中的空格
+func trimSpaces(attributes []string) []string {
+	for i := range attributes {
+		attributes[i] = strings.TrimSpace(attributes[i])
 	}
-
-	objectiveType := strings.ToLower(subMatches[1]) // MIN 或 MAX
-	sumExpression := subMatches[3]                  // 目標函數中的運算部分
-
-	// 進行變數替換，考慮索引
-	lpExpression := replaceLingoVariables(sumExpression, varIndexMap)
-
-	// 生成 LP 語法
-	if objectiveType == "min" {
-		return fmt.Sprintf("Minimize\n  obj: %s", lpExpression)
-	}
-	return fmt.Sprintf("Maximize\n  obj: %s", lpExpression)
+	return attributes
 }
 
-// 處理 @SUM 函數邏輯
-func lingoSum(index int, sumExpression string, varIndexMap map[string]int) string {
-	return lingoFor(index, func(i int) string {
-		// 根據索引 i 替換 sumExpression 中的變數
-		lpExpression := replaceLingoVariables(sumExpression, varIndexMap)
-		return fmt.Sprintf("sum_term%d: %s", i, lpExpression)
-	})
-}
-
-// 處理 @FOR 函數邏輯
-func lingoForConstraints(index int, body string, varIndexMap map[string]int) string {
-	// 使用 lingoFor 函數展開 @FOR 迴圈
-	return lingoFor(index, func(i int) string {
-		lpExpression := replaceLingoVariables(body, varIndexMap)
-		return fmt.Sprintf("for_constraint%d: %s", i, lpExpression)
-	})
-}
-
-// 處理所有 Lingo 函數的統一入口
-func convertLingoFunction(lingoText string, varIndexMap map[string]int) string {
-	// 根據函數類型匹配並處理
-	if strings.Contains(lingoText, "@SUM") {
-		// 使用正則表達式提取出 SUM 的內容
-		re := regexp.MustCompile(`@SUM\((\w+): (.+)\)`)
-		subMatches := re.FindStringSubmatch(lingoText)
-		if len(subMatches) > 0 {
-			sumExpression := subMatches[2]
-			return lingoSum(3, sumExpression, varIndexMap) // 假設 I 的範圍是 3
-		}
-	} else if strings.Contains(lingoText, "@FOR") {
-		// 使用正則表達式提取出 FOR 的內容
-		re := regexp.MustCompile(`@FOR\((\w+): (.+)\)`)
-		subMatches := re.FindStringSubmatch(lingoText)
-		if len(subMatches) > 0 {
-			forBody := subMatches[2]
-			return lingoForConstraints(3, forBody, varIndexMap) // 假設 I 的範圍是 3
-		}
-	}
-	return ""
-}
-
-// 整體轉換邏輯
-func LingoToLP(lingoText string) string {
-	result := ""
-	varIndexMap := make(map[string]int) // 追蹤索引狀況
-
-	// 轉換目標函數
-	result += lingoObjectiveFunction(lingoText, varIndexMap) + "\n"
-
-	// 假設 @FOR 的索引範圍
-	result += convertLingoFunction(lingoText, varIndexMap) + "\n"
-
-	// 結束
-	result += "End"
-
+// 將字串轉換為整數
+func parseInt(value string) int {
+	var result int
+	fmt.Sscanf(value, "%d", &result)
 	return result
+}
+
+// 解析數據部分，適用於所有 Lingo 檔案
+func parseData(lingoText string) map[string][]float64 {
+	data := make(map[string][]float64)
+	re := regexp.MustCompile(`(\w+)\s*=\s*([0-9.\s]+);`)
+	matches := re.FindAllStringSubmatch(lingoText, -1)
+
+	for _, match := range matches {
+		varName := match[1]
+		values := strings.Fields(match[2])
+		var floatValues []float64
+
+		for _, value := range values {
+			if floatVal, err := strconv.ParseFloat(value, 64); err == nil {
+				floatValues = append(floatValues, floatVal)
+			}
+		}
+
+		data[varName] = floatValues
+	}
+
+	return data
+}
+
+// 處理約束條件並轉換為 LP 格式的 Subject To 部分
+func parseConstraints(lingoText string, data map[string][]float64) string {
+	constraints := ""
+	re := regexp.MustCompile(`@FOR\(\w+\((\w+)\):\s*(.+)\)`)
+	matches := re.FindAllStringSubmatch(lingoText, -1)
+
+	for _, match := range matches {
+		index := match[1]
+		expression := match[2]
+
+		for i := 0; i < len(data["group_size"]); i++ {
+			currentExpr := strings.Replace(expression, index, strconv.Itoa(i+1), -1)
+			constraints += fmt.Sprintf("constraint%d: %s\n", i+1, currentExpr)
+		}
+	}
+	return constraints
+}
+
+// 處理變數邊界條件並轉換為 LP 格式的 Bounds 部分
+func parseBounds(lingoText string, data map[string][]float64) string {
+	bounds := ""
+	re := regexp.MustCompile(`@FOR\(\w+\((\w+)\):\s*(.+)\)`)
+	matches := re.FindAllStringSubmatch(lingoText, -1)
+
+	for _, match := range matches {
+		index := match[1]
+		expression := match[2]
+
+		for i := 0; i < len(data["group_size"]); i++ {
+			currentExpr := strings.Replace(expression, index, strconv.Itoa(i+1), -1)
+			bounds += fmt.Sprintf("Bound%d: %s\n", i+1, currentExpr)
+		}
+	}
+	return bounds
+}
+
+// 計算表達式的值，包括 @SUM 和 @pow 等運算
+func evaluateExpression(expression string, data map[string][]float64) float64 {
+	rePow := regexp.MustCompile(`@pow\(([^,]+),([^)]+)\)`)
+	expression = rePow.ReplaceAllStringFunc(expression, func(match string) string {
+		subMatches := rePow.FindStringSubmatch(match)
+		base, _ := strconv.ParseFloat(subMatches[1], 64)
+		exp, _ := strconv.ParseFloat(subMatches[2], 64)
+		return fmt.Sprintf("%.4f", math.Pow(base, exp))
+	})
+
+	re := regexp.MustCompile(`(\w+)\((\d+)\)`)
+	matches := re.FindAllStringSubmatch(expression, -1)
+
+	result := 1.0
+	for _, match := range matches {
+		varName := match[1]
+		index, _ := strconv.Atoi(match[2])
+		if values, exists := data[varName]; exists && index-1 < len(values) {
+			result *= values[index-1]
+		}
+	}
+	return result
+}
+
+// 將解析的 Lingo 轉換為 LP 格式
+func convertToLP(lingoText string, data map[string][]float64) {
+	// LP 格式的目標函數
+	objectiveFunction := parseSumExpression("@SUM(group(I): group_size(I) * vaccine_coverage(I))", data)
+	fmt.Println("Minimize\n obj:", objectiveFunction)
+
+	// LP 格式的約束條件
+	constraints := parseConstraints(lingoText, data)
+	fmt.Println("Subject To\n", constraints)
+
+	// LP 格式的變數邊界條件
+	bounds := parseBounds(lingoText, data)
+	fmt.Println("Bounds\n", bounds)
+}
+
+// 解析 @SUM 公式，適用於目標函數
+func parseSumExpression(expression string, data map[string][]float64) float64 {
+	total := 0.0
+	re := regexp.MustCompile(`@SUM\((\w+)\((\w+)\): (.+)\)`)
+	matches := re.FindStringSubmatch(expression)
+
+	if len(matches) > 0 {
+		indexVar := matches[2]
+		operation := matches[3]
+
+		for i := 0; i < len(data["group_size"]); i++ {
+			currentOp := strings.Replace(operation, indexVar, strconv.Itoa(i+1), -1)
+			total += evaluateExpression(currentOp, data)
+		}
+	}
+	return total
 }
 
 func main() {
-	// 假設這是你的 Lingo 模型
 	lingoText := `
-MIN = @SUM(I: Cost(I) * X(I));
-@FOR(I: @SUM(J: Coeff(I, J) * X(J)) <= RHS(I));
+SETS:
+group /1..5/: group_size, vaccine_coverage, next_generation, eignvector_subgroup;
+ENDSETS
+
+DATA: 
+   group_size = 77 241 375 204 103;
+   vaccine_coverage = 0.1 0.2 0.3 0.4 0.5;
+   next_generation = 1.1 1.2 2.1 2.2 2.3;
+ENDDATA
+
+@FOR(group(I):  
+	@SUM(group(J): next_generation(I,J)*eignvector_subgroup(J)) <= 1
+);
+@FOR(group(I): vaccine_coverage(I) <= 1 );
+@FOR(group(I): vaccine_coverage(I) >= 0 );
 `
 
-	// 最終輸出 LP 模型
-	fmt.Println(LingoToLP(lingoText))
+	// 解析數據
+	data := parseData(lingoText)
+
+	// 將 Lingo 轉換為 LP 格式
+	convertToLP(lingoText, data)
 }
