@@ -101,31 +101,25 @@ func lingoForConstraints(index int, body string, varIndexMap map[string]int) str
 	})
 }
 
-// 處理 @PROD 函數邏輯 (如乘積)
-func lingoProd(index int, prodExpression string, varIndexMap map[string]int) string {
-	return lingoFor(index, func(i int) string {
-		lpExpression := replaceLingoVariables(prodExpression, varIndexMap)
-		return fmt.Sprintf("prod_term%d: %s", i, lpExpression)
-	})
-}
-
-// 處理 @ABS 函數邏輯 (如絕對值)
-func lingoAbs(expression string, varIndexMap map[string]int) string {
-	lpExpression := replaceLingoVariables(expression, varIndexMap)
-	return fmt.Sprintf("abs_term: |%s|", lpExpression)
-}
-
 // 處理所有 Lingo 函數的統一入口
 func convertLingoFunction(lingoText string, varIndexMap map[string]int) string {
 	// 根據函數類型匹配並處理
 	if strings.Contains(lingoText, "@SUM") {
-		return lingoSum(3, lingoText, varIndexMap) // 假設 I 的範圍是 3
+		// 使用正則表達式提取出 SUM 的內容
+		re := regexp.MustCompile(`@SUM\((\w+): (.+)\)`)
+		subMatches := re.FindStringSubmatch(lingoText)
+		if len(subMatches) > 0 {
+			sumExpression := subMatches[2]
+			return lingoSum(3, sumExpression, varIndexMap) // 假設 I 的範圍是 3
+		}
 	} else if strings.Contains(lingoText, "@FOR") {
-		return lingoForConstraints(3, lingoText, varIndexMap) // 假設 I 的範圍是 3
-	} else if strings.Contains(lingoText, "@PROD") {
-		return lingoProd(3, lingoText, varIndexMap) // 假設 I 的範圍是 3
-	} else if strings.Contains(lingoText, "@ABS") {
-		return lingoAbs(lingoText, varIndexMap)
+		// 使用正則表達式提取出 FOR 的內容
+		re := regexp.MustCompile(`@FOR\((\w+): (.+)\)`)
+		subMatches := re.FindStringSubmatch(lingoText)
+		if len(subMatches) > 0 {
+			forBody := subMatches[2]
+			return lingoForConstraints(3, forBody, varIndexMap) // 假設 I 的範圍是 3
+		}
 	}
 	return ""
 }
