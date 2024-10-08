@@ -12,11 +12,11 @@ type Token struct {
 	Value string
 }
 
-// 定義 Lexer 函數
+// 定義 Lexer 函數，支援更多語法和關鍵字
 func Lexer(lingoText string) []Token {
 	tokens := []Token{}
 	tokenPatterns := map[string]string{
-		"KEYWORD":   `(@SUM|@FOR|@BIN|@POW|SETS|DATA|ENDSETS|ENDDATA|MIN|MAX|RHS)`, // 支持@開頭的語法
+		"KEYWORD":   `(@SUM|@FOR|@POW|@BIN|@LOG|@ABS|@SIN|@COS|@EXP|SETS|ENDSETS|DATA|ENDDATA|MIN|MAX|RHS|IF|THEN|ELSE|ENDIF)`,
 		"VARIABLE":  `\b[a-zA-Z_]\w*\b`,
 		"NUMBER":    `\b\d+(\.\d+)?\b`,
 		"OPERATOR":  `[+\-*/=<>]`,
@@ -66,6 +66,7 @@ func main() {
 	@FOR(group(I): @SUM(group(J): next_generation(I,J) * eignvector_subgroup(J)) <= 1);
 	@BIN(x(I,K));
 	@POW(2,(-1)*K);
+	IF vaccine_coverage(1) >= 0.5 THEN vaccine_coverage(1) = 1 ELSE vaccine_coverage(1) = 0 ENDIF;
 	`
 
 	// 使用 Lexer 解析 Lingo 代碼
