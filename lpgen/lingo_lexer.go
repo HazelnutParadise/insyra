@@ -12,7 +12,7 @@ type Token struct {
 	Value string
 }
 
-// 定義 Lexer 函數，支援更多語法和關鍵字
+// 定義 Lexer 函數
 func Lexer(lingoText string) []Token {
 	tokens := []Token{}
 	tokenPatterns := map[string]string{
@@ -60,16 +60,14 @@ func main() {
 	group_size = 77 241 375 204 103;
 	vaccine_coverage = 0.1 0.2 0.3 0.4 0.5;
 	next_generation = 1.1 1.2 2.1 2.2 2.3;
+	eignvector_subgroup = 0.05 0.10 0.15 0.20 0.50;
+	contact_rate = 0.12 0.15 0.18 0.20 0.22;
 	ENDDATA
 
 	@SUM(group(I): group_size(I) * vaccine_coverage(I));
 	@FOR(group(I): @SUM(group(J): next_generation(I,J) * eignvector_subgroup(J)) <= 1);
 	@BIN(x(I,K));
 	@POW(2,(-1)*K);
-	IF vaccine_coverage(1) >= 0.5 THEN vaccine_coverage(1) = 1 ELSE vaccine_coverage(1) = 0 ENDIF;
-	@LOG(group_size(1) * 10);
-	@EXP(3 * 4);
-	@COS(vaccine_coverage(1));
 	`
 
 	// 使用 Lexer 解析 Lingo 代碼
