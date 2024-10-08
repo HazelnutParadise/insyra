@@ -67,6 +67,9 @@ func main() {
 	@BIN(x(I,K));
 	@POW(2,(-1)*K);
 	IF vaccine_coverage(1) >= 0.5 THEN vaccine_coverage(1) = 1 ELSE vaccine_coverage(1) = 0 ENDIF;
+	@LOG(group_size(1) * 10);
+	@EXP(3 * 4);
+	@COS(vaccine_coverage(1));
 	`
 
 	// 使用 Lexer 解析 Lingo 代碼
