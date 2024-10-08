@@ -70,7 +70,7 @@ func (lp *LPModel) GenerateLPFile(filename string) {
 
 	// 設定最大化或最小化
 	file.WriteString(lp.ObjectiveType + "\n")
-	file.WriteString("  " + lp.Objective + "\n")
+	file.WriteString("  " + "obj: " + lp.Objective + "\n")
 
 	// 添加約束條件
 	file.WriteString("Subject To\n")
