@@ -45,10 +45,10 @@ func (p *Parser) match(tokenType string) bool {
 }
 
 func (p *Parser) nextToken() Token {
-	if p.current+1 < len(p.tokens) { // 這裡要確保 p.current 不會超出範圍
-		fmt.Printf("Moving to next token: %s\n", p.tokens[p.current].Value)
+	if p.current < len(p.tokens)-1 { // 防止超過範圍
 		p.current++
 	}
+	fmt.Printf("Moving to next token: %s\n", p.currentToken().Value)
 	return p.currentToken()
 }
 
@@ -182,23 +182,70 @@ func (p *Parser) parseFor() *Node {
 	return node
 }
 
+// 解析 @BIN 語法
+func (p *Parser) parseBin() *Node {
+	node := &Node{Type: "BIN"}
+	fmt.Println("Starting @BIN parsing")
+
+	if p.match("KEYWORD") && p.currentToken().Value == "@BIN" {
+		p.nextToken() // 消費掉 @BIN
+
+		// 處理括號內的變量
+		if p.match("SEPARATOR") && p.currentToken().Value == "(" {
+			fmt.Println("Parsing @BIN expression")
+			node.Children = append(node.Children, p.parseExpression())
+			p.nextToken() // 消費掉右括號
+		}
+	}
+	return node
+}
+
+// 解析 @POW 語法
+func (p *Parser) parsePow() *Node {
+	node := &Node{Type: "POW"}
+	fmt.Println("Starting @POW parsing")
+
+	if p.match("KEYWORD") && p.currentToken().Value == "@POW" {
+		p.nextToken() // 消費掉 @POW
+
+		// 處理括號內的運算
+		if p.match("SEPARATOR") && p.currentToken().Value == "(" {
+			fmt.Println("Parsing @POW expression")
+			node.Children = append(node.Children, p.parseExpression())
+			p.nextToken() // 消費掉右括號
+		}
+	}
+	return node
+}
+
 func (p *Parser) Parse() *Node {
 	root := &Node{Type: "PROGRAM"}
 
 	for p.current < len(p.tokens) {
-		switch p.currentToken().Type {
+		currentToken := p.currentToken()
+
+		switch currentToken.Type {
 		case "KEYWORD":
-			fmt.Printf("Parsing keyword: %s\n", p.currentToken().Value)
-			if p.currentToken().Value == "SETS" {
+			if currentToken.Value == "SETS" {
 				root.Children = append(root.Children, p.parseSets())
-			} else if p.currentToken().Value == "DATA" {
+			} else if currentToken.Value == "DATA" {
 				root.Children = append(root.Children, p.parseData())
-			} else if p.currentToken().Value == "@SUM" {
-				fmt.Println("Detected @SUM keyword")
+			} else if currentToken.Value == "@SUM" {
 				root.Children = append(root.Children, p.parseSum())
-			} else if p.currentToken().Value == "@FOR" {
-				fmt.Println("Detected @FOR keyword")
+			} else if currentToken.Value == "@FOR" {
 				root.Children = append(root.Children, p.parseFor())
+			} else if currentToken.Value == "@BIN" {
+				root.Children = append(root.Children, p.parseBin())
+			} else if currentToken.Value == "@POW" {
+				root.Children = append(root.Children, p.parsePow())
+			} else if currentToken.Value == "ENDDATA" {
+				fmt.Println("Skipping ENDDATA keyword")
+				p.nextToken() // 消費掉 ENDDATA
+			}
+		case "SEPARATOR":
+			if currentToken.Value == ";" {
+				fmt.Println("Skipping semicolon")
+				p.nextToken() // 跳過分號
 			}
 		default:
 			p.nextToken() // 繼續讀取下一個 Token
