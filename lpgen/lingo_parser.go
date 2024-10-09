@@ -117,6 +117,7 @@ func (p *Parser) parseData() *Node {
 	return node
 }
 
+// 解析表達式，處理嵌套括號情況
 func (p *Parser) parseExpression() *Node {
 	node := &Node{Type: "EXPRESSION"}
 	fmt.Println("Starting expression parsing")
@@ -139,18 +140,20 @@ func (p *Parser) parseExpression() *Node {
 			if p.currentToken().Value == "(" {
 				fmt.Println("Found left parenthesis, parsing nested expression")
 				p.nextToken()                     // 消費掉左括號
-				nestedExpr := p.parseExpression() // 遞迴解析括號內的內容
+				nestedExpr := p.parseExpression() // 解析括號內的表達式
 				node.Children = append(node.Children, nestedExpr)
 			} else if p.currentToken().Value == ")" {
 				fmt.Println("Found right parenthesis, ending expression parsing")
-				return node
+				return node // 遇到閉合括號，結束解析
+			} else if p.currentToken().Value == ";" {
+				fmt.Println("Found semicolon, ending expression parsing")
+				return node // 結束當前表達式
 			}
 		default:
 			fmt.Printf("Unknown token in expression: %s\n", p.currentToken().Value)
 		}
-		p.nextToken() // 繼續處理
+		p.nextToken() // 進入下一個 token
 	}
-
 	return node
 }
 
@@ -158,18 +161,17 @@ func (p *Parser) parseSum() *Node {
 	node := &Node{Type: "SUM"}
 	fmt.Println("Starting @SUM parsing")
 
+	// 消費掉 @SUM
 	if p.match("KEYWORD") && p.currentToken().Value == "@SUM" {
-		p.nextToken() // 消費掉 @SUM
-
-		// 處理括號內的表達式
+		// 檢查括號開始
 		if p.match("SEPARATOR") && p.currentToken().Value == "(" {
 			fmt.Println("Parsing @SUM expression")
+			// 解析括號內的表達式
 			node.Children = append(node.Children, p.parseExpression())
-
-			// 檢查是否遇到右括號
+			// 檢查閉合括號
 			if p.currentToken().Value == ")" {
 				fmt.Println("Found closing parenthesis, ending @SUM parsing")
-				p.nextToken() // 消費掉右括號
+				p.nextToken() // 消費掉閉合括號
 			} else {
 				fmt.Println("Error: missing closing parenthesis for @SUM")
 			}
