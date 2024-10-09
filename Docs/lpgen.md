@@ -42,28 +42,28 @@ The `LPModel` struct is the core of the `lpgen` package, allowing users to defin
 3. **`AddConstraint`**:  
    Adds a constraint to the model.
    ```go
-   func (lp *LPModel) AddConstraint(constr string)
+   func (lp *LPModel) AddConstraint(constr string) *LPModel
    ```
    - `constr`: A string representing the constraint (e.g., "2 x1 + 3 x2 <= 12").
 
 4. **`AddBound`**:  
    Adds a variable bound to the model.
    ```go
-   func (lp *LPModel) AddBound(bound string)
+   func (lp *LPModel) AddBound(bound string) *LPModel
    ```
    - `bound`: A string representing the bound (e.g., "0 <= x1 <= 10").
 
 5. **`AddBinaryVar`**:  
    Adds a binary variable to the model.
    ```go
-   func (lp *LPModel) AddBinaryVar(varName string)
+   func (lp *LPModel) AddBinaryVar(varName string) *LPModel
    ```
    - `varName`: The name of the binary variable (e.g., "x3").
 
 6. **`AddIntegerVar`**:  
    Adds an integer variable to the model.
    ```go
-   func (lp *LPModel) AddIntegerVar(varName string)
+   func (lp *LPModel) AddIntegerVar(varName string) *LPModel
    ```
    - `varName`: The name of the integer variable (e.g., "x4").
 
