@@ -19,6 +19,7 @@ func LingoExtractor(tokens []lingoToken) *ExtractResult {
 		Data:      make(map[string][]string),
 	}
 	result = lingoExtractData(result)
+	result = lingoExtractVariables(result)
 	result = lingoReplaceConst(result)
 	result = lingoExtractObj(result)
 
@@ -29,7 +30,8 @@ func lingoExtractObj(result *ExtractResult) *ExtractResult {
 	extractObj := false
 	objType := ""
 	for i, token := range result.tokens {
-		if token.Type == "KEYWORD" && strings.ToUpper(token.Value) == "MODEL" {
+		upperTokenValue := strings.ToUpper(token.Value)
+		if token.Type == "KEYWORD" && upperTokenValue == "MODEL" {
 			// 如果遇到MODEL，則開始提取目標函數
 			extractObj = true
 			// 前往下一個token
@@ -56,10 +58,11 @@ func lingoExtractData(result *ExtractResult) *ExtractResult {
 	extractData := false
 	extractingVariableName := "" // 目前正在提取的變數名稱
 	for _, token := range result.tokens {
+		upperTokenValue := strings.ToUpper(token.Value)
 		// 如果遇到DATA，則開始提取數據
-		if token.Type == "KEYWORD" && token.Value == "DATA" {
+		if token.Type == "KEYWORD" && upperTokenValue == "DATA" {
 			extractData = true
-		} else if token.Type == "KEYWORD" && token.Value == "ENDDATA" {
+		} else if token.Type == "KEYWORD" && upperTokenValue == "ENDDATA" {
 			// 如果遇到ENDDATA，則停止提取數據
 			extractData = false
 		}
@@ -71,6 +74,23 @@ func lingoExtractData(result *ExtractResult) *ExtractResult {
 			case "NUMBER":
 				result.Data[extractingVariableName] = append(result.Data[extractingVariableName], token.Value)
 			}
+		}
+	}
+	return result
+}
+
+func lingoExtractVariables(result *ExtractResult) *ExtractResult {
+	extractVariables := true
+	for _, token := range result.tokens {
+		upperTokenValue := strings.ToUpper(token.Value)
+		if token.Type == "KEYWORD" && (upperTokenValue == "SETS" || upperTokenValue == "DATA") {
+			extractVariables = false
+		} else if token.Type == "KEYWORD" && (upperTokenValue == "ENDSETS" || upperTokenValue == "ENDDATA") {
+			extractVariables = true
+		}
+
+		if extractVariables {
+			result.Variables[token.Value] = append(result.Variables[token.Value], token.Value)
 		}
 	}
 	return result
