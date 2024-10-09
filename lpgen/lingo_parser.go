@@ -2,22 +2,23 @@ package lpgen
 
 import (
 	"fmt"
+	"strings"
 )
 
-// AST 節點定義
+// AST node definition
 type Node struct {
 	Type     string
 	Value    string
 	Children []*Node
 }
 
-// 定義 Parser 結構
+// Parser structure definition
 type Parser struct {
 	tokens  []Token
 	current int
 }
 
-// 構造一個新的 Parser
+// Construct a new Parser
 func NewParser(tokens []Token) *Parser {
 	return &Parser{
 		tokens:  tokens,
@@ -25,155 +26,192 @@ func NewParser(tokens []Token) *Parser {
 	}
 }
 
-// 獲取當前的 Token
+// Get the current Token
 func (p *Parser) currentToken() Token {
 	if p.current < len(p.tokens) {
 		return p.tokens[p.current]
 	}
-	return Token{} // 空 Token 表示結束
-}
-
-func (p *Parser) match(tokenType string) bool {
-	fmt.Printf("Trying to match %s, current token: %s\n", tokenType, p.currentToken().Type)
-	if p.currentToken().Type == tokenType {
-		fmt.Println("Match success!")
-		p.nextToken() // 消費掉該 Token
-		return true
-	}
-	fmt.Println("Match failed!")
-	return false
+	return Token{} // 空的 Token 代表結束
 }
 
 func (p *Parser) nextToken() Token {
-	if p.current < len(p.tokens)-1 { // 防止超過範圍
+	if p.current < len(p.tokens)-1 {
 		p.current++
 	}
-	fmt.Printf("Moving to next token: %s\n", p.currentToken().Value)
 	return p.currentToken()
 }
 
-func (p *Parser) parseSets() *Node {
-	node := &Node{Type: "SETS"}
-	fmt.Println("Starting SETS parsing")
+func (p *Parser) match(tokenType string) bool {
+	if p.currentToken().Type == tokenType {
+		p.nextToken() // Consume the token
+		return true
+	}
+	return false
+}
 
-	// 只在關鍵字為 SETS 的時候解析
-	if p.currentToken().Type == "KEYWORD" && p.currentToken().Value == "SETS" {
-		fmt.Println("Matched SETS keyword")
-		p.nextToken() // 消費掉 SETS
+// parseExpression handles nested expressions and parentheses matching.
+func (p *Parser) parseExpression() *Node {
+	node := &Node{Type: "EXPRESSION"}
 
-		for p.current < len(p.tokens) {
-			currentToken := p.currentToken()
-			fmt.Printf("Current token: Type = %s, Value = %s\n", currentToken.Type, currentToken.Value)
+	for p.current < len(p.tokens) {
+		currentToken := p.currentToken()
 
-			// 檢查是否到達 ENDSETS
-			if currentToken.Type == "KEYWORD" && currentToken.Value == "ENDSETS" {
-				fmt.Println("Found ENDSETS, finishing SETS parsing")
-				p.nextToken() // 消費掉 "ENDSETS"
-				break         // 結束解析
+		switch currentToken.Type {
+		case "VARIABLE":
+			varNode := &Node{Type: "VARIABLE", Value: currentToken.Value}
+			node.Children = append(node.Children, varNode)
+			p.nextToken()
+
+		case "NUMBER":
+			numNode := &Node{Type: "NUMBER", Value: currentToken.Value}
+			node.Children = append(node.Children, numNode)
+			p.nextToken()
+
+		case "OPERATOR":
+			opNode := &Node{Type: "OPERATOR", Value: currentToken.Value}
+			node.Children = append(node.Children, opNode)
+			p.nextToken()
+
+		case "SEPARATOR":
+			if currentToken.Value == "(" {
+				// Start parsing a nested expression
+				p.nextToken()                     // Consume the opening parenthesis
+				nestedExpr := p.parseExpression() // Recursively parse the nested expression
+				node.Children = append(node.Children, nestedExpr)
+			} else if currentToken.Value == ")" {
+				// End of the current expression level
+				p.nextToken() // Consume the closing parenthesis
+				return node   // Return to the previous level of expression
+			} else {
+				// If it's another type of separator, just move on
+				p.nextToken()
 			}
 
-			// 解析變數名稱
-			if currentToken.Type == "VARIABLE" {
-				fmt.Printf("Found variable: %s\n", currentToken.Value)
-				varNode := &Node{Type: "VARIABLE", Value: currentToken.Value}
-				node.Children = append(node.Children, varNode)
-			}
-
-			// 處理運算符或其他符號，跳過分號等不重要符號
-			if currentToken.Type == "SEPARATOR" && currentToken.Value == ";" {
-				fmt.Println("Found semicolon, skipping")
-			}
-
-			// 推進到下一個 token
+		default:
+			// Skip any unrecognized token types
+			fmt.Printf("Skipping unrecognized token: Type=%s, Value=%s\n", currentToken.Type, currentToken.Value)
 			p.nextToken()
 		}
-	} else {
-		fmt.Printf("SETS keyword not matched: current token type = %s, value = %s\n", p.currentToken().Type, p.currentToken().Value)
 	}
 
-	fmt.Println("Finished SETS parsing")
 	return node
 }
 
+// 解析 Assignment，並確保 token 逐步消耗
+func (p *Parser) parseAssignment() *Node {
+	assignNode := &Node{Type: "ASSIGNMENT"}
+
+	if p.currentToken().Type == "VARIABLE" {
+		varNode := &Node{Type: "VARIABLE", Value: p.currentToken().Value}
+		assignNode.Children = append(assignNode.Children, varNode)
+		p.nextToken() // Move to '='
+
+		if p.match("OPERATOR") && p.currentToken().Value == "=" {
+			p.nextToken() // Move to the first value
+
+			valuesNode := &Node{Type: "VALUES"}
+			for p.current < len(p.tokens) && p.currentToken().Type != "SEPARATOR" {
+				if p.currentToken().Type == "NUMBER" {
+					valueNode := &Node{Type: "NUMBER", Value: p.currentToken().Value}
+					valuesNode.Children = append(valuesNode.Children, valueNode)
+				}
+				p.nextToken() // 正確消耗每個值 token
+			}
+
+			assignNode.Children = append(assignNode.Children, valuesNode)
+			return assignNode
+		}
+	}
+
+	return nil
+}
+
+// parseData 的改良版本，確保 token 消耗正確
 func (p *Parser) parseData() *Node {
 	node := &Node{Type: "DATA"}
 	if p.match("KEYWORD") && p.currentToken().Value == "DATA" {
-		p.nextToken() // 推進到下一個 token
-		for {
-			// 檢查是否到達 ENDDATA
-			if p.currentToken().Value == "ENDDATA" {
-				fmt.Println("Found ENDDATA, exiting data parsing")
-				p.nextToken() // 消費掉 ENDDATA
-				break         // 跳出迴圈
+		p.nextToken() // Move to the next token
+
+		for p.current < len(p.tokens) {
+			if p.currentToken().Type == "KEYWORD" && p.currentToken().Value == "ENDDATA" {
+				p.nextToken() // Consume ENDDATA
+				break
 			}
 
-			if p.match("VARIABLE") {
-				varNode := &Node{Type: "VARIABLE", Value: p.currentToken().Value}
-				node.Children = append(node.Children, varNode)
+			if p.currentToken().Type == "VARIABLE" {
+				assignmentNode := p.parseAssignment()
+				if assignmentNode != nil {
+					node.Children = append(node.Children, assignmentNode)
+				}
 			}
-			p.nextToken() // 確保每次迴圈中都推進
+
+			p.nextToken() // 確保每個 token 都被正確消耗
 		}
 	}
 	return node
 }
 
-// 解析表達式，處理嵌套括號情況
-func (p *Parser) parseExpression() *Node {
-	node := &Node{Type: "EXPRESSION"}
-	fmt.Println("Starting expression parsing")
+// parseSets 的改良版本，確保消耗所有無效的 token
+func (p *Parser) parseSets() *Node {
+	node := &Node{Type: "SETS"}
 
-	for p.current < len(p.tokens) {
-		switch p.currentToken().Type {
-		case "VARIABLE":
-			fmt.Printf("Found variable: %s\n", p.currentToken().Value)
-			varNode := &Node{Type: "VARIABLE", Value: p.currentToken().Value}
-			node.Children = append(node.Children, varNode)
-		case "NUMBER":
-			fmt.Printf("Found number: %s\n", p.currentToken().Value)
-			numNode := &Node{Type: "NUMBER", Value: p.currentToken().Value}
-			node.Children = append(node.Children, numNode)
-		case "OPERATOR":
-			fmt.Printf("Found operator: %s\n", p.currentToken().Value)
-			opNode := &Node{Type: "OPERATOR", Value: p.currentToken().Value}
-			node.Children = append(node.Children, opNode)
-		case "SEPARATOR":
-			if p.currentToken().Value == "(" {
-				fmt.Println("Found left parenthesis, parsing nested expression")
-				p.nextToken()                     // 消費掉左括號
-				nestedExpr := p.parseExpression() // 解析括號內的表達式
-				node.Children = append(node.Children, nestedExpr)
-			} else if p.currentToken().Value == ")" {
-				fmt.Println("Found right parenthesis, ending expression parsing")
-				return node // 遇到閉合括號，結束解析
-			} else if p.currentToken().Value == ";" {
-				fmt.Println("Found semicolon, ending expression parsing")
-				return node // 結束當前表達式
+	if p.match("KEYWORD") && p.currentToken().Value == "SETS" {
+		p.nextToken() // Consume SETS keyword
+
+		for p.current < len(p.tokens) {
+			if p.currentToken().Type == "KEYWORD" && p.currentToken().Value == "ENDSETS" {
+				p.nextToken() // Consume ENDSETS keyword
+				break
 			}
-		default:
-			fmt.Printf("Unknown token in expression: %s\n", p.currentToken().Value)
+
+			if p.currentToken().Type == "VARIABLE" {
+				varNode := &Node{Type: "VARIABLE", Value: p.currentToken().Value}
+				node.Children = append(node.Children, varNode)
+			} else if p.currentToken().Type == "OPERATOR" && p.currentToken().Value == "/" {
+				rangeNode := p.parseRange()
+				if rangeNode != nil {
+					node.Children = append(node.Children, rangeNode)
+				}
+			}
+
+			p.nextToken() // 移動到下一個 token
 		}
-		p.nextToken() // 進入下一個 token
 	}
+
 	return node
+}
+
+// parseRange handles parsing of ranges in the form a / .. / b.
+func (p *Parser) parseRange() *Node {
+	rangeNode := &Node{Type: "RANGE"}
+
+	if p.match("OPERATOR") && p.currentToken().Value == "/" {
+		start := p.currentToken()
+		p.nextToken() // Move to the range separator
+		if p.match("OPERATOR") && p.currentToken().Value == ".." {
+			p.nextToken() // Move to the end of the range
+			end := p.currentToken()
+			p.nextToken() // Move past the end
+			if p.match("OPERATOR") && p.currentToken().Value == "/" {
+				rangeNode.Value = fmt.Sprintf("%s..%s", start.Value, end.Value)
+				return rangeNode
+			}
+		}
+	}
+
+	return nil
 }
 
 func (p *Parser) parseSum() *Node {
 	node := &Node{Type: "SUM"}
-	fmt.Println("Starting @SUM parsing")
 
-	// 消費掉 @SUM
 	if p.match("KEYWORD") && p.currentToken().Value == "@SUM" {
-		// 檢查括號開始
+		p.nextToken() // Consume @SUM
+
 		if p.match("SEPARATOR") && p.currentToken().Value == "(" {
-			fmt.Println("Parsing @SUM expression")
-			// 解析括號內的表達式
 			node.Children = append(node.Children, p.parseExpression())
-			// 檢查閉合括號
 			if p.currentToken().Value == ")" {
-				fmt.Println("Found closing parenthesis, ending @SUM parsing")
-				p.nextToken() // 消費掉閉合括號
-			} else {
-				fmt.Println("Error: missing closing parenthesis for @SUM")
+				p.nextToken() // Consume the closing parenthesis
 			}
 		}
 	}
@@ -182,103 +220,112 @@ func (p *Parser) parseSum() *Node {
 
 func (p *Parser) parseFor() *Node {
 	node := &Node{Type: "FOR"}
-	fmt.Println("Starting @FOR parsing")
 
 	if p.match("KEYWORD") && p.currentToken().Value == "@FOR" {
-		p.nextToken() // 消費掉 @FOR
+		p.nextToken() // Consume @FOR
 
-		// 處理括號內的表達式
 		if p.match("SEPARATOR") && p.currentToken().Value == "(" {
-			fmt.Println("Parsing @FOR expression")
 			node.Children = append(node.Children, p.parseExpression())
 			if p.currentToken().Value == ")" {
-				p.nextToken() // 消費掉右括號
+				p.nextToken() // Consume the closing parenthesis
 			}
 		}
 	}
 	return node
 }
 
-// 解析 @BIN 語法
 func (p *Parser) parseBin() *Node {
 	node := &Node{Type: "BIN"}
-	fmt.Println("Starting @BIN parsing")
 
 	if p.match("KEYWORD") && p.currentToken().Value == "@BIN" {
-		p.nextToken() // 消費掉 @BIN
+		p.nextToken() // Consume @BIN
 
-		// 處理括號內的變量
 		if p.match("SEPARATOR") && p.currentToken().Value == "(" {
-			fmt.Println("Parsing @BIN expression")
 			node.Children = append(node.Children, p.parseExpression())
-			p.nextToken() // 消費掉右括號
+			if p.currentToken().Value == ")" {
+				p.nextToken() // Consume the closing parenthesis
+			}
 		}
 	}
 	return node
 }
 
-// 解析 @POW 語法
 func (p *Parser) parsePow() *Node {
 	node := &Node{Type: "POW"}
-	fmt.Println("Starting @POW parsing")
 
 	if p.match("KEYWORD") && p.currentToken().Value == "@POW" {
-		p.nextToken() // 消費掉 @POW
+		p.nextToken() // Consume @POW
 
-		// 處理括號內的運算
 		if p.match("SEPARATOR") && p.currentToken().Value == "(" {
-			fmt.Println("Parsing @POW expression")
 			node.Children = append(node.Children, p.parseExpression())
-			p.nextToken() // 消費掉右括號
+			if p.currentToken().Value == ")" {
+				p.nextToken() // Consume the closing parenthesis
+			}
 		}
 	}
 	return node
 }
 
 func (p *Parser) Parse() *Node {
+	fmt.Println("Parse function started")
 	root := &Node{Type: "PROGRAM"}
 
 	for p.current < len(p.tokens) {
 		currentToken := p.currentToken()
+		fmt.Printf("Parsing token: Type=%s, Value=%s\n", currentToken.Type, currentToken.Value)
 
 		switch currentToken.Type {
 		case "KEYWORD":
-			if currentToken.Value == "SETS" {
+			switch currentToken.Value {
+			case "SETS":
+				fmt.Println("Parsing SETS")
 				root.Children = append(root.Children, p.parseSets())
-			} else if currentToken.Value == "DATA" {
+			case "DATA":
+				fmt.Println("Parsing DATA")
 				root.Children = append(root.Children, p.parseData())
-			} else if currentToken.Value == "@SUM" {
+			case "@SUM":
+				fmt.Println("Parsing @SUM")
 				root.Children = append(root.Children, p.parseSum())
-			} else if currentToken.Value == "@FOR" {
+			case "@FOR":
+				fmt.Println("Parsing @FOR")
 				root.Children = append(root.Children, p.parseFor())
-			} else if currentToken.Value == "@BIN" {
+			case "@BIN":
+				fmt.Println("Parsing @BIN")
 				root.Children = append(root.Children, p.parseBin())
-			} else if currentToken.Value == "@POW" {
+			case "@POW":
+				fmt.Println("Parsing @POW")
 				root.Children = append(root.Children, p.parsePow())
-			} else if currentToken.Value == "ENDDATA" {
-				fmt.Println("Skipping ENDDATA keyword")
-				p.nextToken() // 消費掉 ENDDATA
-			} else {
-				fmt.Println("Unknown keyword, skipping...")
+			default:
+				fmt.Printf("Skipping unknown keyword: %s\n", currentToken.Value)
+				p.nextToken()
 			}
 		case "SEPARATOR":
 			if currentToken.Value == ";" {
 				fmt.Println("Skipping semicolon")
-				p.nextToken() // 跳過分號
+				p.nextToken() // 確保跳過分號
+			} else {
+				fmt.Printf("Moving to next token for separator: %s\n", currentToken.Value)
+				p.nextToken()
 			}
 		default:
-			p.nextToken() // 繼續讀取下一個 Token
+			fmt.Printf("Skipping token: Type=%s, Value=%s\n", currentToken.Type, currentToken.Value)
+			p.nextToken()
+		}
+
+		// 增加防止無限循環的邏輯，跳過無意義 token，並確保有意義的 token 被解析
+		if p.currentToken().Type == "SEPARATOR" && p.currentToken().Value == ";" {
+			continue // 繼續跳過不必要的分號
 		}
 	}
+
+	fmt.Println("Parse function completed")
 	return root
 }
 
-// 打印 AST 的輔助函數
+// Helper function to print AST for debugging purposes
 func PrintAST(node *Node, level int) {
-	for i := 0; i < level; i++ {
-		fmt.Print("  ")
-	}
-	fmt.Printf("Node Type: %s, Value: %s\n", node.Type, node.Value)
+	indent := strings.Repeat("  ", level)
+	fmt.Printf("%sNode Type: %s, Value: %s\n", indent, node.Type, node.Value)
 	for _, child := range node.Children {
 		PrintAST(child, level+1)
 	}
