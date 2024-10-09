@@ -7,16 +7,16 @@ import (
 )
 
 // Token 定義
-type Token struct {
+type lingoToken struct {
 	Type  string
 	Value string
 }
 
 // 定義 Lexer 函數
-func Lexer(lingoText string) []Token {
+func Lexer(lingoText string) []lingoToken {
 	originalText := lingoText               // 保留原始字串
 	upperText := strings.ToUpper(lingoText) // 全大寫字串用於匹配
-	tokens := []Token{}
+	tokens := []lingoToken{}
 	tokenPatterns := map[string]string{
 		"KEYWORD":   `(@SUM|@FOR|@POW|@BIN|@LOG|@ABS|@SIN|@COS|@EXP|MODEL|SETS|ENDSETS|DATA|ENDDATA|MIN|MINIMIZE|MAX|MAXIMIZE|RHS|IF|THEN|ELSE|ENDIF)`,
 		"VARIABLE":  `\b[a-zA-Z_]\w*\b`,
@@ -47,7 +47,7 @@ func Lexer(lingoText string) []Token {
 			if matched, _ := regexp.MatchString(pattern, matchedText); matched {
 				// 使用原始文本對應部分的子串作為值，保留大小寫
 				originalValue := originalText[start:end]
-				tokens = append(tokens, Token{Type: tokenType, Value: originalValue})
+				tokens = append(tokens, lingoToken{Type: tokenType, Value: originalValue})
 				break
 			}
 		}

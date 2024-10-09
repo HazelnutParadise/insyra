@@ -1,12 +1,12 @@
 package lpgen
 
 type ExtractResult struct {
-	tokens    []Token
+	tokens    []lingoToken
 	Variables map[string][]string // 用來儲存變數及其對應的數值
 	Data      map[string][]string // 用來儲存數據
 }
 
-func LingoExtractor(tokens []Token) *ExtractResult {
+func LingoExtractor(tokens []lingoToken) *ExtractResult {
 	result := &ExtractResult{
 		tokens:    tokens,
 		Variables: make(map[string][]string),
