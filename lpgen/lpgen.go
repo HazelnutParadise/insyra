@@ -20,24 +20,27 @@ func NewLPModel() *LPModel {
 	return &LPModel{}
 }
 
-// 設定目標函數（最大化或最小化）
-func (lp *LPModel) SetObjective(objType, obj string) {
+// set objective
+func (lp *LPModel) SetObjective(objType, obj string) *LPModel {
 	lp.ObjectiveType = objType
 	lp.Objective = obj
+	return lp
 }
 
-// 新增約束條件
-func (lp *LPModel) AddConstraint(constr string) {
+// add constraint
+func (lp *LPModel) AddConstraint(constr string) *LPModel {
 	lp.Constraints = append(lp.Constraints, constr)
+	return lp
 }
 
-// 新增變數邊界
-func (lp *LPModel) AddBound(bound string) {
+// add bound
+func (lp *LPModel) AddBound(bound string) *LPModel {
 	lp.Bounds = append(lp.Bounds, bound)
+	return lp
 }
 
-// 新增二進制變數
-func (lp *LPModel) AddBinaryVar(varName string) {
+// add binary var
+func (lp *LPModel) AddBinaryVar(varName string) *LPModel {
 	// 確保變數不會同時是整數和二進制
 	for i, intVar := range lp.IntegerVars {
 		if intVar == varName {
@@ -46,10 +49,11 @@ func (lp *LPModel) AddBinaryVar(varName string) {
 		}
 	}
 	lp.BinaryVars = append(lp.BinaryVars, varName)
+	return lp
 }
 
-// 新增整數變數
-func (lp *LPModel) AddIntegerVar(varName string) {
+// add integer var
+func (lp *LPModel) AddIntegerVar(varName string) *LPModel {
 	// 確保變數不會同時是整數和二進制
 	for i, binVar := range lp.BinaryVars {
 		if binVar == varName {
@@ -58,9 +62,10 @@ func (lp *LPModel) AddIntegerVar(varName string) {
 		}
 	}
 	lp.IntegerVars = append(lp.IntegerVars, varName)
+	return lp
 }
 
-// 生成 LP 檔案
+// generate lp file
 func (lp *LPModel) GenerateLPFile(filename string) {
 	file, err := os.Create(filename)
 	if err != nil {
