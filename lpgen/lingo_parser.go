@@ -137,13 +137,11 @@ func (p *Parser) parseExpression() *Node {
 			node.Children = append(node.Children, opNode)
 		case "SEPARATOR":
 			if p.currentToken().Value == "(" {
-				// 遇到左括號，進入遞迴處理嵌套表達式
 				fmt.Println("Found left parenthesis, parsing nested expression")
 				p.nextToken()                     // 消費掉左括號
 				nestedExpr := p.parseExpression() // 遞迴解析括號內的內容
 				node.Children = append(node.Children, nestedExpr)
 			} else if p.currentToken().Value == ")" {
-				// 遇到右括號，結束當前表達式
 				fmt.Println("Found right parenthesis, ending expression parsing")
 				return node
 			}
@@ -168,12 +166,12 @@ func (p *Parser) parseSum() *Node {
 			fmt.Println("Parsing @SUM expression")
 			node.Children = append(node.Children, p.parseExpression())
 
-			// 確保括號結束
+			// 檢查是否遇到右括號
 			if p.currentToken().Value == ")" {
-				fmt.Println("Found closing parenthesis for @SUM")
+				fmt.Println("Found closing parenthesis, ending @SUM parsing")
 				p.nextToken() // 消費掉右括號
 			} else {
-				fmt.Println("Error: Missing closing parenthesis in @SUM")
+				fmt.Println("Error: missing closing parenthesis for @SUM")
 			}
 		}
 	}
