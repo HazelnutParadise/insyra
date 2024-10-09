@@ -2,12 +2,13 @@ package lpgen
 
 import (
 	"strings"
+	"unicode"
 )
 
 type ExtractResult struct {
 	tokens    []lingoToken
 	Obj       map[string]string   // 用來儲存目標函數
-	Variables map[string][]string // 用來儲存變數及其對應的數值
+	Variables map[string]string   // 用來儲存變數及其對應的數值
 	Data      map[string][]string // 用來儲存數據
 }
 
@@ -15,12 +16,12 @@ func LingoExtractor(tokens []lingoToken) *ExtractResult {
 	result := &ExtractResult{
 		tokens:    tokens,
 		Obj:       make(map[string]string),
-		Variables: make(map[string][]string),
+		Variables: make(map[string]string),
 		Data:      make(map[string][]string),
 	}
 	result = lingoExtractData(result)
-	result = lingoExtractVariables(result)
-	result = lingoReplaceConst(result)
+	result = lingoExtractVariablesNotUsingFunc(result)
+	// result = lingoReplaceConst(result)
 	result = lingoExtractObj(result)
 
 	return result
@@ -79,8 +80,9 @@ func lingoExtractData(result *ExtractResult) *ExtractResult {
 	return result
 }
 
-func lingoExtractVariables(result *ExtractResult) *ExtractResult {
+func lingoExtractVariablesNotUsingFunc(result *ExtractResult) *ExtractResult {
 	extractVariables := true
+	extractingVariableName := ""
 	for _, token := range result.tokens {
 		upperTokenValue := strings.ToUpper(token.Value)
 		if token.Type == "KEYWORD" && (upperTokenValue == "SETS" || upperTokenValue == "DATA") {
@@ -90,18 +92,30 @@ func lingoExtractVariables(result *ExtractResult) *ExtractResult {
 		}
 
 		if extractVariables {
-			result.Variables[token.Value] = append(result.Variables[token.Value], token.Value)
+			if token.Type == "VARIABLE" {
+				extractingVariableName = token.Value
+			} else if token.Type == "NUMBER" || token.Type == "OPERATOR" {
+				if extractingVariableName != "" && upperTokenValue != "=" {
+					result.Variables[extractingVariableName] += token.Value
+				}
+			}
+			if token.Type == "SEPARATOR" {
+				extractingVariableName = ""
+			}
 		}
+	}
+
+	// 清理變數值尾端的任何非數字字元
+	for variable, value := range result.Variables {
+		result.Variables[variable] = strings.TrimFunc(value, func(r rune) bool {
+			return !unicode.IsDigit(r)
+		})
 	}
 	return result
 }
 
 // TODO
-func lingoReplaceConst(result *ExtractResult) *ExtractResult {
-	for _, token := range result.tokens {
-		if token.Type == "VARIABLE" {
-			result.Obj[token.Value] = token.Value
-		}
-	}
-	return result
-}
+// func lingoReplaceConst(result *ExtractResult) *ExtractResult {
+//
+// 	return result
+// }
