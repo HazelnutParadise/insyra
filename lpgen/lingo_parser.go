@@ -95,13 +95,18 @@ func (p *Parser) parseSets() *Node {
 	return node
 }
 
-// 解析 DATA 區塊的語法
 func (p *Parser) parseData() *Node {
 	node := &Node{Type: "DATA"}
 	if p.match("KEYWORD") && p.currentToken().Value == "DATA" {
-		// 處理數據
 		p.nextToken() // 推進到下一個 token
-		for p.currentToken().Value != "ENDDATA" {
+		for {
+			// 檢查是否到達 ENDDATA
+			if p.currentToken().Value == "ENDDATA" {
+				fmt.Println("Found ENDDATA, exiting data parsing")
+				p.nextToken() // 消費掉 ENDDATA
+				break         // 跳出迴圈
+			}
+
 			if p.match("VARIABLE") {
 				varNode := &Node{Type: "VARIABLE", Value: p.currentToken().Value}
 				node.Children = append(node.Children, varNode)
@@ -109,7 +114,6 @@ func (p *Parser) parseData() *Node {
 			p.nextToken() // 確保每次迴圈中都推進
 		}
 	}
-	p.nextToken() // 消費掉 ENDDATA
 	return node
 }
 
