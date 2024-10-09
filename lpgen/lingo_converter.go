@@ -18,8 +18,10 @@ func LingoExtractor(tokens []lingoToken) *ExtractResult {
 		Variables: make(map[string][]string),
 		Data:      make(map[string][]string),
 	}
-	result = lingoExtractObj(result)
 	result = lingoExtractData(result)
+	result = lingoReplaceConst(result)
+	result = lingoExtractObj(result)
+
 	return result
 }
 
@@ -69,6 +71,15 @@ func lingoExtractData(result *ExtractResult) *ExtractResult {
 			case "NUMBER":
 				result.Data[extractingVariableName] = append(result.Data[extractingVariableName], token.Value)
 			}
+		}
+	}
+	return result
+}
+
+func lingoReplaceConst(result *ExtractResult) *ExtractResult {
+	for _, token := range result.tokens {
+		if token.Type == "VARIABLE" {
+			result.Obj[token.Value] = token.Value
 		}
 	}
 	return result

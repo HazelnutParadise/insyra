@@ -18,7 +18,7 @@ func LingoLexer(lingoText string) []lingoToken {
 	upperText := strings.ToUpper(lingoText) // 全大寫字串用於匹配
 	tokens := []lingoToken{}
 	tokenPatterns := map[string]string{
-		"KEYWORD":   `(@SUM|@FOR|@POW|@BIN|@LOG|@ABS|@SIN|@COS|@EXP|MODEL|SETS|ENDSETS|DATA|ENDDATA|MIN|MINIMIZE|MAX|MAXIMIZE|RHS|IF|THEN|ELSE|ENDIF)`,
+		"KEYWORD":   `(@SIZE|@SUM|@FOR|@POW|@BIN|@LOG|@ABS|@SIN|@COS|@EXP|MODEL|SETS|ENDSETS|DATA|ENDDATA|MIN|MINIMIZE|MAX|MAXIMIZE|RHS|IF|THEN|ELSE|ENDIF)`,
 		"VARIABLE":  `\b[a-zA-Z_]\w*\b`,
 		"NUMBER":    `\b\d+(\.\d+)?\b`,
 		"OPERATOR":  `[+\-*/=<>]`,
