@@ -13,7 +13,7 @@ type lingoToken struct {
 }
 
 // 定義 Lexer 函數
-func Lexer(lingoText string) []lingoToken {
+func LingoLexer(lingoText string) []lingoToken {
 	originalText := lingoText               // 保留原始字串
 	upperText := strings.ToUpper(lingoText) // 全大寫字串用於匹配
 	tokens := []lingoToken{}
