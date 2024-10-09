@@ -117,7 +117,6 @@ func (p *Parser) parseData() *Node {
 	return node
 }
 
-// 解析運算式
 func (p *Parser) parseExpression() *Node {
 	node := &Node{Type: "EXPRESSION"}
 	fmt.Println("Starting expression parsing")
@@ -241,6 +240,8 @@ func (p *Parser) Parse() *Node {
 			} else if currentToken.Value == "ENDDATA" {
 				fmt.Println("Skipping ENDDATA keyword")
 				p.nextToken() // 消費掉 ENDDATA
+			} else {
+				fmt.Println("Unknown keyword, skipping...")
 			}
 		case "SEPARATOR":
 			if currentToken.Value == ";" {
