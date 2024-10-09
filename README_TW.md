@@ -105,13 +105,13 @@ func main() {
 }
 ```
 
-## DataList
+## [DataList](/Docs/DataList.md)
 
 `DataList` 是 **Insyra** 的核心結構，能夠存儲、管理和分析動態數據集合。它提供了各種用於數據操作和統計分析的方法。
 
 有關方法和功能的完整列表，請參閱 **[DataList 文檔](https://github.com/HazelnutParadise/insyra/tree/main/Docs/DataList.md)**。
 
-## DataTable
+## [DataTable](/Docs/DataTable.md)
 
 `DataTable` 結構提供了表格數據的表示方式，允許以結構化格式存儲和操作數據。它提供了數據過濾、排序和聚合的方法，使其成為數據分析的強大工具。
 
