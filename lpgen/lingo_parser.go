@@ -137,19 +137,20 @@ func (p *Parser) parseExpression() *Node {
 			node.Children = append(node.Children, opNode)
 		case "SEPARATOR":
 			if p.currentToken().Value == "(" {
+				// 遇到左括號，進入遞迴處理嵌套表達式
 				fmt.Println("Found left parenthesis, parsing nested expression")
 				p.nextToken()                     // 消費掉左括號
 				nestedExpr := p.parseExpression() // 遞迴解析括號內的內容
 				node.Children = append(node.Children, nestedExpr)
 			} else if p.currentToken().Value == ")" {
+				// 遇到右括號，結束當前表達式
 				fmt.Println("Found right parenthesis, ending expression parsing")
 				return node
 			}
 		default:
 			fmt.Printf("Unknown token in expression: %s\n", p.currentToken().Value)
 		}
-
-		p.nextToken() // 繼續處理下一個 token
+		p.nextToken() // 繼續處理
 	}
 
 	return node
