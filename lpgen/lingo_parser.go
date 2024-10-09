@@ -122,36 +122,31 @@ func (p *Parser) parseExpression() *Node {
 	fmt.Println("Starting expression parsing")
 
 	for p.current < len(p.tokens) {
-		currentToken := p.currentToken()
-
-		switch currentToken.Type {
+		switch p.currentToken().Type {
 		case "VARIABLE":
-			fmt.Printf("Found variable: %s\n", currentToken.Value)
-			varNode := &Node{Type: "VARIABLE", Value: currentToken.Value}
+			fmt.Printf("Found variable: %s\n", p.currentToken().Value)
+			varNode := &Node{Type: "VARIABLE", Value: p.currentToken().Value}
 			node.Children = append(node.Children, varNode)
 		case "NUMBER":
-			fmt.Printf("Found number: %s\n", currentToken.Value)
-			numNode := &Node{Type: "NUMBER", Value: currentToken.Value}
+			fmt.Printf("Found number: %s\n", p.currentToken().Value)
+			numNode := &Node{Type: "NUMBER", Value: p.currentToken().Value}
 			node.Children = append(node.Children, numNode)
 		case "OPERATOR":
-			fmt.Printf("Found operator: %s\n", currentToken.Value)
-			opNode := &Node{Type: "OPERATOR", Value: currentToken.Value}
+			fmt.Printf("Found operator: %s\n", p.currentToken().Value)
+			opNode := &Node{Type: "OPERATOR", Value: p.currentToken().Value}
 			node.Children = append(node.Children, opNode)
 		case "SEPARATOR":
-			if currentToken.Value == "(" {
-				// 遇到左括號，進入遞迴處理嵌套表達式
+			if p.currentToken().Value == "(" {
 				fmt.Println("Found left parenthesis, parsing nested expression")
 				p.nextToken()                     // 消費掉左括號
 				nestedExpr := p.parseExpression() // 遞迴解析括號內的內容
 				node.Children = append(node.Children, nestedExpr)
-			} else if currentToken.Value == ")" {
-				// 遇到右括號，結束當前表達式
+			} else if p.currentToken().Value == ")" {
 				fmt.Println("Found right parenthesis, ending expression parsing")
-				p.nextToken() // 消費掉右括號
 				return node
 			}
 		default:
-			fmt.Printf("Unknown token in expression: %s\n", currentToken.Value)
+			fmt.Printf("Unknown token in expression: %s\n", p.currentToken().Value)
 		}
 
 		p.nextToken() // 繼續處理下一個 token
@@ -171,7 +166,10 @@ func (p *Parser) parseSum() *Node {
 		if p.match("SEPARATOR") && p.currentToken().Value == "(" {
 			fmt.Println("Parsing @SUM expression")
 			node.Children = append(node.Children, p.parseExpression())
+
+			// 確保括號結束
 			if p.currentToken().Value == ")" {
+				fmt.Println("Found closing parenthesis for @SUM")
 				p.nextToken() // 消費掉右括號
 			} else {
 				fmt.Println("Error: Missing closing parenthesis in @SUM")
