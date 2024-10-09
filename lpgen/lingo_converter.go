@@ -1,179 +1,114 @@
-package lpgen
+package main
 
 import (
 	"fmt"
-	"strings"
 )
 
-// 定義轉換器
-type Converter struct {
-	tokens  []Token
-	current int
+type Token struct {
+	Type  string
+	Value string
 }
 
-// 創建新的轉換器
-func NewConverter(tokens []Token) *Converter {
-	return &Converter{
-		tokens:  tokens,
-		current: 0,
+type Extractor struct {
+	tokens    []Token
+	current   int
+	variables map[string][]string // 用來儲存變數及其對應的數值
+}
+
+// 初始化
+func NewExtractor(tokens []Token) *Extractor {
+	return &Extractor{
+		tokens:    tokens,
+		current:   0,
+		variables: make(map[string][]string), // 初始化變數 map
 	}
 }
 
 // 獲取當前 token
-func (c *Converter) currentToken() Token {
-	if c.current < len(c.tokens) {
-		return c.tokens[c.current]
+func (e *Extractor) currentToken() Token {
+	if e.current < len(e.tokens) {
+		return e.tokens[e.current]
 	}
-	return Token{} // 空 token 表示結束
+	return Token{Type: "EOF"} // 空 token 表示結束
 }
 
-// 前進到下一個 token
-func (c *Converter) nextToken() Token {
-	if c.current < len(c.tokens)-1 {
-		c.current++
+// 前進至下一個 token
+func (e *Extractor) nextToken() {
+	if e.current < len(e.tokens)-1 {
+		e.current++
 	}
-	return c.currentToken()
 }
 
-// 匹配指定的 token 類型和值
-func (c *Converter) match(tokenType string, value string) bool {
-	current := c.currentToken()
-	if current.Type == tokenType && (value == "" || current.Value == value) {
-		c.nextToken()
-		return true
-	}
-	return false
-}
-
-// 處理 @SUM 關鍵字
-func (c *Converter) lingoSum() string {
-	result := "@SUM("
-	c.nextToken() // 跳過 @SUM
-
-	// 處理內部表達式
-	result += c.parseExpression()
-
-	if c.match("SEPARATOR", ")") {
-		result += ")"
-	}
-	return result
-}
-
-// 處理 @FOR 關鍵字
-func (c *Converter) lingoFor() string {
-	result := "@FOR("
-	c.nextToken() // 跳過 @FOR
-
-	// 處理內部表達式
-	result += c.parseExpression()
-
-	if c.match("SEPARATOR", ")") {
-		result += ")"
-	}
-	return result
-}
-
-// 處理 @BIN 關鍵字
-func (c *Converter) lingoBin() string {
-	result := "@BIN("
-	c.nextToken() // 跳過 @BIN
-
-	// 處理內部表達式
-	result += c.parseExpression()
-
-	if c.match("SEPARATOR", ")") {
-		result += ")"
-	}
-	return result
-}
-
-// 處理 @POW 關鍵字
-func (c *Converter) lingoPow() string {
-	result := "@POW("
-	c.nextToken() // 跳過 @POW
-
-	// 處理內部表達式
-	result += c.parseExpression()
-
-	if c.match("SEPARATOR", ")") {
-		result += ")"
-	}
-	return result
-}
-
-// 解析表達式
-func (c *Converter) parseExpression() string {
-	var expr strings.Builder
-
-	for c.current < len(c.tokens) {
-		token := c.currentToken()
-		switch token.Type {
-		case "VARIABLE", "NUMBER", "OPERATOR":
-			// 變數、數字和操作符直接加入表達式
-			expr.WriteString(token.Value)
-		case "SEPARATOR":
-			if token.Value == "(" || token.Value == ")" {
-				// 處理括號
-				expr.WriteString(token.Value)
-			} else if token.Value == ";" {
-				// 到達分號時結束
-				return expr.String()
-			}
-		case "KEYWORD":
-			// 根據不同的關鍵字進行對應的處理
-			switch token.Value {
-			case "@SUM":
-				expr.WriteString(c.lingoSum())
-			case "@FOR":
-				expr.WriteString(c.lingoFor())
-			case "@BIN":
-				expr.WriteString(c.lingoBin())
-			case "@POW":
-				expr.WriteString(c.lingoPow())
-			}
-		default:
-			fmt.Printf("Skipping token: Type=%s, Value=%s\n", token.Type, token.Value)
-		}
-		c.nextToken()
-	}
-
-	return expr.String()
-}
-
-// 轉換整個 token 列表為 LP 語法
-func (c *Converter) Convert() string {
-	var result strings.Builder
-
-	for c.current < len(c.tokens) {
-		token := c.currentToken()
+// 提取變數
+func (e *Extractor) ExtractVariables() {
+	var currentVariable string
+	for e.current < len(e.tokens) {
+		token := e.currentToken()
 
 		switch token.Type {
-		case "KEYWORD":
-			// 處理關鍵字，匹配並展開相應語法
-			switch token.Value {
-			case "@SUM":
-				result.WriteString(c.lingoSum())
-			case "@FOR":
-				result.WriteString(c.lingoFor())
-			case "@BIN":
-				result.WriteString(c.lingoBin())
-			case "@POW":
-				result.WriteString(c.lingoPow())
-			default:
-				result.WriteString(token.Value + " ")
+		case "VARIABLE":
+			currentVariable = token.Value
+			e.variables[currentVariable] = []string{} // 初始化切片
+			fmt.Printf("Found variable: %s\n", currentVariable)
+
+		case "NUMBER":
+			if currentVariable != "" {
+				fmt.Printf("Adding number %s to variable %s\n", token.Value, currentVariable)
+				e.variables[currentVariable] = append(e.variables[currentVariable], token.Value)
 			}
-		case "VARIABLE", "NUMBER", "OPERATOR":
-			// 直接加入變數、數字和操作符
-			result.WriteString(token.Value + " ")
+
 		case "SEPARATOR":
-			// 加入分號或括號
-			result.WriteString(token.Value + " ")
+			if token.Value == ";" {
+				currentVariable = "" // 碰到分號，變數結束
+				fmt.Println("End of statement.")
+			}
+
+		case "KEYWORD":
+			// 遇到結束的關鍵字，直接跳過剩餘處理，並跳過多餘的 ENDSETS
+			if token.Value == "ENDSETS" || token.Value == "ENDDATA" {
+				fmt.Printf("Skipping keyword: %s\n", token.Value)
+				for e.currentToken().Value == token.Value {
+					e.nextToken()
+				}
+
+			}
+
 		default:
+			// 跳過無法處理的 token
 			fmt.Printf("Skipping token: Type=%s, Value=%s\n", token.Type, token.Value)
 		}
 
-		c.nextToken()
+		e.nextToken()
+	}
+}
+
+func main() {
+	// 示例 token 列表
+	tokens := []Token{
+		{Type: "KEYWORD", Value: "SETS"},
+		{Type: "VARIABLE", Value: "group_size"},
+		{Type: "OPERATOR", Value: "="},
+		{Type: "NUMBER", Value: "77"},
+		{Type: "NUMBER", Value: "241"},
+		{Type: "NUMBER", Value: "375"},
+		{Type: "SEPARATOR", Value: ";"},
+		{Type: "VARIABLE", Value: "vaccine_coverage"},
+		{Type: "OPERATOR", Value: "="},
+		{Type: "NUMBER", Value: "0.1"},
+		{Type: "NUMBER", Value: "0.2"},
+		{Type: "NUMBER", Value: "0.3"},
+		{Type: "SEPARATOR", Value: ";"},
+		{Type: "KEYWORD", Value: "ENDSETS"},
 	}
 
-	return result.String()
+	extractor := NewExtractor(tokens)
+	extractor.ExtractVariables()
+
+	// 變數提取完成，打印結果並退出
+	fmt.Println("\nExtracted Variables and Values:")
+	for variable, values := range extractor.variables {
+		fmt.Printf("%s: %v\n", variable, values)
+	}
+
+	fmt.Println("Finished processing. Exiting...")
 }
