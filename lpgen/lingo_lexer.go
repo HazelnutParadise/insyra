@@ -1,4 +1,4 @@
-package main
+package lpgen
 
 import (
 	"fmt"
@@ -48,31 +48,4 @@ func Lexer(lingoText string) []Token {
 	}
 
 	return tokens
-}
-
-func main() {
-	lingoText := `
-	SETS:
-	group /1..5/: group_size, vaccine_coverage, next_generation, eignvector_subgroup;
-	ENDSETS
-
-	DATA: 
-	group_size = 77 241 375 204 103;
-	vaccine_coverage = 0.1 0.2 0.3 0.4 0.5;
-	next_generation = 1.1 1.2 2.1 2.2 2.3;
-	eignvector_subgroup = 0.05 0.10 0.15 0.20 0.50;
-	contact_rate = 0.12 0.15 0.18 0.20 0.22;
-	ENDDATA
-
-	@SUM(group(I): group_size(I) * vaccine_coverage(I));
-	@FOR(group(I): @SUM(group(J): next_generation(I,J) * eignvector_subgroup(J)) <= 1);
-	@BIN(x(I,K));
-	@POW(2,(-1)*K);
-	`
-
-	// 使用 Lexer 解析 Lingo 代碼
-	tokens := Lexer(lingoText)
-	for _, token := range tokens {
-		fmt.Printf("Token Type: %s, Value: %s\n", token.Type, token.Value)
-	}
 }
