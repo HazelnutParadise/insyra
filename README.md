@@ -109,13 +109,13 @@ func main() {
 }
 ```
 
-## DataList
+## [DataList](/Docs/DataList.md)
 
 The `DataList` is the core structure in **Insyra**, enabling the storage, management, and analysis of dynamic data collections. It offers various methods for data manipulation and statistical analysis. 
 
 For a complete list of methods and features, please refer to the **[DataList Documentation](/Docs/DataList.md)**.
 
-## DataTable
+## [DataTable](/Docs/DataTable.md)
 
 The `DataTable` structure provides a tabular data representation, allowing for the storage and manipulation of data in a structured format. It offers methods for data filtering, sorting, and aggregation, making it a powerful tool for data analysis.
 
