@@ -7,7 +7,7 @@
 [![MIT license](https://img.shields.io/badge/license-MIT-brightgreen.svg)](https://opensource.org/licenses/MIT)
 
 
-A next-generation data analysis library for Golang. Supports parallel processing, data visualization, and seamless integration with Python.
+A next-generation data analysis library for Golang. Supports **parallel processing**, **data visualization**, and **seamless integration with Python**.
 
 ![logo](logo/logo_transparent.png)
 
