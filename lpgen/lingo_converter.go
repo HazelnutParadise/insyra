@@ -76,6 +76,7 @@ func lingoExtractData(result *ExtractResult) *ExtractResult {
 	return result
 }
 
+// TODO
 func lingoReplaceConst(result *ExtractResult) *ExtractResult {
 	for _, token := range result.tokens {
 		if token.Type == "VARIABLE" {
