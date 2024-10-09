@@ -1,13 +1,8 @@
-package main
+package lpgen
 
 import (
 	"fmt"
 )
-
-type Token struct {
-	Type  string
-	Value string
-}
 
 type Extractor struct {
 	tokens    []Token
@@ -80,35 +75,4 @@ func (e *Extractor) ExtractVariables() {
 
 		e.nextToken()
 	}
-}
-
-func main() {
-	// 示例 token 列表
-	tokens := []Token{
-		{Type: "KEYWORD", Value: "SETS"},
-		{Type: "VARIABLE", Value: "group_size"},
-		{Type: "OPERATOR", Value: "="},
-		{Type: "NUMBER", Value: "77"},
-		{Type: "NUMBER", Value: "241"},
-		{Type: "NUMBER", Value: "375"},
-		{Type: "SEPARATOR", Value: ";"},
-		{Type: "VARIABLE", Value: "vaccine_coverage"},
-		{Type: "OPERATOR", Value: "="},
-		{Type: "NUMBER", Value: "0.1"},
-		{Type: "NUMBER", Value: "0.2"},
-		{Type: "NUMBER", Value: "0.3"},
-		{Type: "SEPARATOR", Value: ";"},
-		{Type: "KEYWORD", Value: "ENDSETS"},
-	}
-
-	extractor := NewExtractor(tokens)
-	extractor.ExtractVariables()
-
-	// 變數提取完成，打印結果並退出
-	fmt.Println("\nExtracted Variables and Values:")
-	for variable, values := range extractor.variables {
-		fmt.Printf("%s: %v\n", variable, values)
-	}
-
-	fmt.Println("Finished processing. Exiting...")
 }
