@@ -3,16 +3,23 @@ package lpgen
 import (
 	"strings"
 	"unicode"
+
+	"github.com/HazelnutParadise/Go-Utils/conv"
 )
 
 // 索引字母 I, J, K, L, M, N
 
 type ExtractResult struct {
 	tokens    []lingoToken
-	Obj       map[string]string      // 用來儲存目標函數
-	Variables map[string]string      // 用來儲存變數及其對應的數值
-	Data      map[string][]string    // 用來儲存數據
-	Sets      map[string][2][]string // 用來儲存集合及其對應的數值
+	Obj       map[string]string   // 用來儲存目標函數
+	Variables map[string]string   // 用來儲存變數及其對應的數值
+	Data      map[string][]string // 用來儲存數據
+	Sets      map[string]Set      // 用來儲存集合及其對應的數值
+}
+
+type Set struct {
+	Index  []string
+	Values []string
 }
 
 func LingoExtractor(tokens []lingoToken) *ExtractResult {
@@ -21,6 +28,7 @@ func LingoExtractor(tokens []lingoToken) *ExtractResult {
 		Obj:       make(map[string]string),
 		Variables: make(map[string]string),
 		Data:      make(map[string][]string),
+		Sets:      make(map[string]Set),
 	}
 	result = lingoExtractData(result)
 	result = lingoExtractVariablesPureNumbers(result)
@@ -119,6 +127,40 @@ func lingoExtractVariablesPureNumbers(result *ExtractResult) *ExtractResult {
 
 // TODO
 func lingoExtractSetsNoFuncOrIndex(result *ExtractResult) *ExtractResult {
+	extractSets := false
+	extractingSetName := ""
+	for i, token := range result.tokens {
+		if i+1 >= len(result.tokens) {
+			break
+		}
+		nextToken := result.tokens[i+1]
+		if token.Type == "KEYWORD" && token.Value == "SETS" {
+			extractSets = true
+		} else if token.Type == "KEYWORD" && token.Value == "ENDSETS" {
+			extractSets = false
+		}
 
+		if extractSets {
+			if token.Type == "VARIABLE" && (nextToken.Type == "OPERATOR" && nextToken.Value == "/") {
+				extractingSetName = token.Value
+			} else if token.Type == "OPERATOR" && token.Value == "/" {
+				if nextToken.Type == "NUMBER" {
+					// 取得集合數量起點
+					extractingSetStart := conv.ParseInt(nextToken.Value)
+					// 取得集合數量終點
+					extractingSetEnd := conv.ParseInt(result.tokens[i+2].Value)
+					// 設定集合數量
+					for j := extractingSetStart; j <= extractingSetEnd; j++ {
+						set := Set{
+							Index:  append(result.Sets[extractingSetName].Index, conv.ToString(j)),
+							Values: result.Sets[extractingSetName].Values,
+						}
+						result.Sets[extractingSetName] = set
+					}
+				}
+			}
+
+		}
+	}
 	return result
 }
