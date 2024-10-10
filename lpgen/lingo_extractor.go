@@ -209,7 +209,6 @@ func lingoExtractSetsOneDimension(result *ExtractResult) *ExtractResult {
 }
 
 func lingoExtractFuncsOutermost(result *ExtractResult) *ExtractResult {
-	extractFuncs := false
 	extractingFuncName := ""
 
 	for i, token := range result.Tokens {
@@ -217,7 +216,6 @@ func lingoExtractFuncsOutermost(result *ExtractResult) *ExtractResult {
 			if code, exists := funcCode[strings.ToUpper(token.Value)]; exists {
 				codeWithNumber := code + conv.ToString(result.funcCount)
 				extractingFuncName = codeWithNumber
-				extractFuncs = true
 
 				// 將 token 的值轉換為 codeWithNumber
 				token.Value = codeWithNumber
@@ -227,9 +225,8 @@ func lingoExtractFuncsOutermost(result *ExtractResult) *ExtractResult {
 				result.funcCount++
 			}
 		}
-		if extractFuncs {
+		if extractingFuncName != "" {
 			if token.Type == "SEPARATOR" && token.Value == ";" {
-				extractFuncs = false
 				extractingFuncName = ""
 				continue
 			}
