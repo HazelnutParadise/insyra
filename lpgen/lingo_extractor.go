@@ -32,7 +32,7 @@ func LingoExtractor(tokens []lingoToken) *ExtractResult {
 	}
 	result = lingoExtractData(result)
 	result = lingoExtractVariablesPureNumbers(result)
-	result = lingoExtractSetsNoFuncOrIndex(result)
+	result = lingoExtractSetsOneDimension(result)
 	result = lingoExtractObj(result)
 
 	return result
@@ -48,10 +48,10 @@ func lingoExtractObj(result *ExtractResult) *ExtractResult {
 			extractObj = true
 			// 前往下一個token
 			continue
-		} else if token.Type == "KEYWORD" && i != 1 {
+		} else if token.Type == "KEYWORD" && i != 2 {
 			// 如果遇到其他關鍵字，則停止提取目標函數
 			extractObj = false
-		} else if token.Type == "OPERATOR" && i == 2 {
+		} else if token.Type == "OPERATOR" && i == 3 {
 			continue
 		}
 
@@ -125,7 +125,7 @@ func lingoExtractVariablesPureNumbers(result *ExtractResult) *ExtractResult {
 	return result
 }
 
-func lingoExtractSetsNoFuncOrIndex(result *ExtractResult) *ExtractResult {
+func lingoExtractSetsOneDimension(result *ExtractResult) *ExtractResult {
 	extractSets := false
 	extractingSetName := ""
 	extractingSetInsideVariables := false
@@ -165,18 +165,20 @@ func lingoExtractSetsNoFuncOrIndex(result *ExtractResult) *ExtractResult {
 				}
 			} else if token.Type == "VARIABLE" {
 				// 取得集合內屬性
-				if prevToken.Type == "OPERATOR" && prevToken.Value == "/" {
+				if prevToken.Type == "SEPARATOR" && prevToken.Value == ":" {
 					// 開始取得集合內屬性
 					extractingSetInsideVariables = true
 				}
-				if extractingSetInsideVariables {
+				if extractingSetInsideVariables && extractingSetName != "" {
 					set := result.Sets[extractingSetName]
 					set.Values = append(set.Values, token.Value)
 					result.Sets[extractingSetName] = set
 				}
-			} else if token.Type == "SEPARATOR" {
+			}
+			if token.Type == "SEPARATOR" && token.Value == ";" {
 				// 結束取得集合內屬性
 				extractingSetInsideVariables = false
+				extractingSetName = ""
 			}
 
 		}

@@ -22,7 +22,7 @@ func LingoLexer(lingoText string) []lingoToken {
 		"VARIABLE":  `\b[a-zA-Z_]\w*\b`,
 		"NUMBER":    `\b\d+(\.\d+)?\b`,
 		"OPERATOR":  `[+\-*/=<>]`,
-		"SEPARATOR": `[();]`,
+		"SEPARATOR": `[();:]`,
 	}
 
 	// 合併所有正則表達式
