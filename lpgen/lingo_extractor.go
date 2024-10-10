@@ -10,11 +10,12 @@ import (
 // 索引字母 I, J, K, L, M, N
 
 type ExtractResult struct {
-	tokens    []lingoToken
+	Tokens    []lingoToken
 	Obj       map[string]string   // 用來儲存目標函數
 	Variables map[string]string   // 用來儲存變數及其對應的數值
 	Data      map[string][]string // 用來儲存數據
 	Sets      map[string]Set      // 用來儲存集合及其對應的數值
+	Funcs     map[string][]string // 用來儲存函數代號及其對應的式
 }
 
 type Set struct {
@@ -22,18 +23,32 @@ type Set struct {
 	Values []string
 }
 
-func LingoExtractor(tokens []lingoToken) *ExtractResult {
+var funcCode = map[string]string{
+	"@FOR": "$FOR",
+	"@SUM": "$SUM",
+	"@POW": "$POW",
+	"@BIN": "$BIN",
+	"@LOG": "$LOG",
+	"@ABS": "$ABS",
+	"@SIN": "$SIN",
+	"@COS": "$COS",
+	"@EXP": "$EXP",
+}
+
+func LingoExtractor(Tokens []lingoToken) *ExtractResult {
 	result := &ExtractResult{
-		tokens:    tokens,
+		Tokens:    Tokens,
 		Obj:       make(map[string]string),
 		Variables: make(map[string]string),
 		Data:      make(map[string][]string),
 		Sets:      make(map[string]Set),
+		Funcs:     make(map[string][]string),
 	}
 	result = lingoExtractData(result)
 	result = lingoExtractVariablesPureNumbers(result)
 	result = lingoExtractSetsOneDimension(result)
 	result = lingoExtractObj(result)
+	result = lingoExtractFuncs(result)
 
 	return result
 }
@@ -41,7 +56,7 @@ func LingoExtractor(tokens []lingoToken) *ExtractResult {
 func lingoExtractObj(result *ExtractResult) *ExtractResult {
 	extractObj := false
 	objType := ""
-	for i, token := range result.tokens {
+	for i, token := range result.Tokens {
 		upperTokenValue := strings.ToUpper(token.Value)
 		if token.Type == "KEYWORD" && upperTokenValue == "MODEL" {
 			// 如果遇到MODEL，則開始提取目標函數
@@ -69,7 +84,7 @@ func lingoExtractObj(result *ExtractResult) *ExtractResult {
 func lingoExtractData(result *ExtractResult) *ExtractResult {
 	extractData := false
 	extractingVariableName := "" // 目前正在提取的變數名稱
-	for _, token := range result.tokens {
+	for _, token := range result.Tokens {
 		upperTokenValue := strings.ToUpper(token.Value)
 		// 如果遇到DATA，則開始提取數據
 		if token.Type == "KEYWORD" && upperTokenValue == "DATA" {
@@ -94,13 +109,13 @@ func lingoExtractData(result *ExtractResult) *ExtractResult {
 func lingoExtractVariablesPureNumbers(result *ExtractResult) *ExtractResult {
 	extractVariables := true
 	extractingVariableName := ""
-	for i, token := range result.tokens {
+	for i, token := range result.Tokens {
 		upperTokenValue := strings.ToUpper(token.Value)
-		if i+2 >= len(result.tokens) {
+		if i+2 >= len(result.Tokens) {
 
 			break
 		}
-		nextToken := result.tokens[i+1]
+		nextToken := result.Tokens[i+1]
 		if token.Type == "KEYWORD" && (upperTokenValue == "SETS" || upperTokenValue == "DATA") {
 			extractVariables = false
 		} else if token.Type == "KEYWORD" && (upperTokenValue == "ENDSETS" || upperTokenValue == "ENDDATA") {
@@ -108,7 +123,7 @@ func lingoExtractVariablesPureNumbers(result *ExtractResult) *ExtractResult {
 		}
 
 		if extractVariables {
-			if token.Type == "VARIABLE" && (nextToken.Type == "OPERATOR" && nextToken.Value == "=") && (result.tokens[i+2].Type == "NUMBER") {
+			if token.Type == "VARIABLE" && (nextToken.Type == "OPERATOR" && nextToken.Value == "=") && (result.Tokens[i+2].Type == "NUMBER") {
 				extractingVariableName = token.Value
 			} else if token.Type == "NUMBER" || (nextToken.Type == "SEPARATOR" && nextToken.Value == ";") {
 				if extractingVariableName != "" && upperTokenValue != "=" {
@@ -134,16 +149,16 @@ func lingoExtractSetsOneDimension(result *ExtractResult) *ExtractResult {
 	extractSets := false
 	extractingSetName := ""
 	extractingSetInsideVariables := false
-	for i, token := range result.tokens {
-		if i+1 >= len(result.tokens) {
+	for i, token := range result.Tokens {
+		if i+1 >= len(result.Tokens) {
 			break
 		}
-		nextToken := result.tokens[i+1]
+		nextToken := result.Tokens[i+1]
 		var prevToken lingoToken
 		if i-1 < 0 {
 			prevToken = token
 		} else {
-			prevToken = result.tokens[i-1]
+			prevToken = result.Tokens[i-1]
 		}
 		if token.Type == "KEYWORD" && token.Value == "SETS" {
 			extractSets = true
@@ -159,7 +174,7 @@ func lingoExtractSetsOneDimension(result *ExtractResult) *ExtractResult {
 					// 取得集合內屬性數量起點
 					extractingSetStart := conv.ParseInt(nextToken.Value)
 					// 取得集合內屬性數量終點
-					extractingSetEnd := conv.ParseInt(result.tokens[i+2].Value)
+					extractingSetEnd := conv.ParseInt(result.Tokens[i+2].Value)
 					// 設定集合內屬性數量
 					for j := extractingSetStart; j <= extractingSetEnd; j++ {
 						set := Set{
@@ -186,6 +201,39 @@ func lingoExtractSetsOneDimension(result *ExtractResult) *ExtractResult {
 				extractingSetName = ""
 			}
 
+		}
+	}
+	return result
+}
+
+func lingoExtractFuncs(result *ExtractResult) *ExtractResult {
+	extractFuncs := false
+	extractingFuncName := ""
+	funcNumber := 0
+	for i, token := range result.Tokens {
+		if token.Type == "KEYWORD" {
+			if code, exists := funcCode[token.Value]; exists {
+				codeWithNumber := code + conv.ToString(funcNumber)
+				extractingFuncName = codeWithNumber
+				extractFuncs = true
+
+				// 將 token 的值轉換為 codeWithNumber
+				token.Value = codeWithNumber
+				result.Tokens[i] = token
+
+				// 增加函數編號
+				funcNumber++
+			}
+		}
+		if extractFuncs {
+			if token.Type == "SEPARATOR" && token.Value == ";" {
+				extractFuncs = false
+				extractingFuncName = ""
+				continue
+			}
+			if token.Type != "KEYWORD" {
+				result.Funcs[extractingFuncName] = append(result.Funcs[extractingFuncName], token.Value)
+			}
 		}
 	}
 	return result
