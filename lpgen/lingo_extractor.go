@@ -129,11 +129,18 @@ func lingoExtractVariablesPureNumbers(result *ExtractResult) *ExtractResult {
 func lingoExtractSetsNoFuncOrIndex(result *ExtractResult) *ExtractResult {
 	extractSets := false
 	extractingSetName := ""
+	extractingSetInsideVariables := false
 	for i, token := range result.tokens {
 		if i+1 >= len(result.tokens) {
 			break
 		}
 		nextToken := result.tokens[i+1]
+		var prevToken lingoToken
+		if i-1 < 0 {
+			prevToken = token
+		} else {
+			prevToken = result.tokens[i-1]
+		}
 		if token.Type == "KEYWORD" && token.Value == "SETS" {
 			extractSets = true
 		} else if token.Type == "KEYWORD" && token.Value == "ENDSETS" {
@@ -152,12 +159,22 @@ func lingoExtractSetsNoFuncOrIndex(result *ExtractResult) *ExtractResult {
 					// 設定集合數量
 					for j := extractingSetStart; j <= extractingSetEnd; j++ {
 						set := Set{
-							Index:  append(result.Sets[extractingSetName].Index, conv.ToString(j)),
-							Values: result.Sets[extractingSetName].Values,
+							Index: append(result.Sets[extractingSetName].Index, conv.ToString(j)),
 						}
 						result.Sets[extractingSetName] = set
 					}
 				}
+			} else if token.Type == "VARIABLE" {
+				if prevToken.Type == "OPERATOR" && prevToken.Value == "/" {
+					extractingSetInsideVariables = true
+				}
+				if extractingSetInsideVariables {
+					set := result.Sets[extractingSetName]
+					set.Values = append(set.Values, token.Value)
+					result.Sets[extractingSetName] = set
+				}
+			} else if token.Type == "SEPARATOR" {
+				extractingSetInsideVariables = false
 			}
 
 		}
