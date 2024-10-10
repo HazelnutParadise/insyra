@@ -48,7 +48,7 @@ func LingoExtractor(Tokens []lingoToken) *ExtractResult {
 	result = lingoExtractVariablesPureNumbers(result)
 	result = lingoExtractSetsOneDimension(result)
 	result = lingoExtractObj(result)
-	result = lingoExtractFuncs(result)
+	result = lingoExtractFuncsOutermost(result)
 
 	return result
 }
@@ -206,13 +206,13 @@ func lingoExtractSetsOneDimension(result *ExtractResult) *ExtractResult {
 	return result
 }
 
-func lingoExtractFuncs(result *ExtractResult) *ExtractResult {
+func lingoExtractFuncsOutermost(result *ExtractResult) *ExtractResult {
 	extractFuncs := false
 	extractingFuncName := ""
 	funcNumber := 0
 	for i, token := range result.Tokens {
 		if token.Type == "KEYWORD" {
-			if code, exists := funcCode[token.Value]; exists {
+			if code, exists := funcCode[strings.ToUpper(token.Value)]; exists {
 				codeWithNumber := code + conv.ToString(funcNumber)
 				extractingFuncName = codeWithNumber
 				extractFuncs = true
