@@ -208,6 +208,7 @@ func lingoExtractSetsOneDimension(result *ExtractResult) *ExtractResult {
 	return result
 }
 
+// WARNING: 無法處理某些函數
 func lingoExtractFuncsOutermost(result *ExtractResult) *ExtractResult {
 	extractingFuncName := ""
 
