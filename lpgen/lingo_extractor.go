@@ -152,11 +152,11 @@ func lingoExtractSetsNoFuncOrIndex(result *ExtractResult) *ExtractResult {
 				extractingSetName = token.Value
 			} else if token.Type == "OPERATOR" && token.Value == "/" {
 				if nextToken.Type == "NUMBER" {
-					// 取得集合內變數數量起點
+					// 取得集合內屬性數量起點
 					extractingSetStart := conv.ParseInt(nextToken.Value)
-					// 取得集合內變數數量終點
+					// 取得集合內屬性數量終點
 					extractingSetEnd := conv.ParseInt(result.tokens[i+2].Value)
-					// 設定集合內變數數量
+					// 設定集合內屬性數量
 					for j := extractingSetStart; j <= extractingSetEnd; j++ {
 						set := Set{
 							Index: append(result.Sets[extractingSetName].Index, conv.ToString(j)),
@@ -165,9 +165,9 @@ func lingoExtractSetsNoFuncOrIndex(result *ExtractResult) *ExtractResult {
 					}
 				}
 			} else if token.Type == "VARIABLE" {
-				// 取得集合內變數
+				// 取得集合內屬性
 				if prevToken.Type == "OPERATOR" && prevToken.Value == "/" {
-					// 開始取得集合內變數
+					// 開始取得集合內屬性
 					extractingSetInsideVariables = true
 				}
 				if extractingSetInsideVariables {
@@ -176,7 +176,7 @@ func lingoExtractSetsNoFuncOrIndex(result *ExtractResult) *ExtractResult {
 					result.Sets[extractingSetName] = set
 				}
 			} else if token.Type == "SEPARATOR" {
-				// 結束取得集合內變數
+				// 結束取得集合內屬性
 				extractingSetInsideVariables = false
 			}
 
