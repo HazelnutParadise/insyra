@@ -110,7 +110,7 @@ func lingoExtractVariablesPureNumbers(result *ExtractResult) *ExtractResult {
 		if extractVariables {
 			if token.Type == "VARIABLE" && (nextToken.Type == "OPERATOR" && nextToken.Value == "=") && (result.tokens[i+2].Type == "NUMBER") {
 				extractingVariableName = token.Value
-			} else if token.Type == "NUMBER" || nextToken.Type == "SEPARATOR" && nextToken.Value == ";" {
+			} else if token.Type == "NUMBER" || (nextToken.Type == "SEPARATOR" && nextToken.Value == ";") {
 				if extractingVariableName != "" && upperTokenValue != "=" {
 					result.Variables[extractingVariableName] += token.Value
 				}
