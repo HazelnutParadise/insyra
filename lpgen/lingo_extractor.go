@@ -16,6 +16,7 @@ type ExtractResult struct {
 	Data      map[string][]string // 用來儲存數據
 	Sets      map[string]Set      // 用來儲存集合及其對應的數值
 	Funcs     map[string][]string // 用來儲存函數代號及其對應的式
+	funcCount int
 }
 
 type Set struct {
@@ -43,6 +44,7 @@ func LingoExtractor(Tokens []lingoToken) *ExtractResult {
 		Data:      make(map[string][]string),
 		Sets:      make(map[string]Set),
 		Funcs:     make(map[string][]string),
+		funcCount: 0,
 	}
 	result = lingoExtractData(result)
 	result = lingoExtractVariablesPureNumbers(result)
@@ -209,11 +211,11 @@ func lingoExtractSetsOneDimension(result *ExtractResult) *ExtractResult {
 func lingoExtractFuncsOutermost(result *ExtractResult) *ExtractResult {
 	extractFuncs := false
 	extractingFuncName := ""
-	funcNumber := 0
+
 	for i, token := range result.Tokens {
 		if token.Type == "KEYWORD" {
 			if code, exists := funcCode[strings.ToUpper(token.Value)]; exists {
-				codeWithNumber := code + conv.ToString(funcNumber)
+				codeWithNumber := code + conv.ToString(result.funcCount)
 				extractingFuncName = codeWithNumber
 				extractFuncs = true
 
@@ -222,7 +224,7 @@ func lingoExtractFuncsOutermost(result *ExtractResult) *ExtractResult {
 				result.Tokens[i] = token
 
 				// 增加函數編號
-				funcNumber++
+				result.funcCount++
 			}
 		}
 		if extractFuncs {
