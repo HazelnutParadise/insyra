@@ -120,6 +120,28 @@ func TestDataTable_UpdateElement(t *testing.T) {
 	}
 }
 
+func TestDataTable_UpdateColumn(t *testing.T) {
+	dt := NewDataTable()
+	dt.AppendRowsByColumnIndex(map[string]interface{}{"A": 1, "B": 2, "C": 3})
+	dt.Show()
+	dt.UpdateColumn("A", NewDataList(10, 20, 30))
+	dt.Show()
+	if dt.GetColumn("A").Data()[0] != 10 {
+		t.Errorf("UpdateColumn() did not update the correct column")
+	}
+}
+
+func TestDataTable_UpdateColumnByNumber(t *testing.T) {
+	dt := NewDataTable()
+	dt.AppendRowsByColumnIndex(map[string]interface{}{"A": 1, "B": 2, "C": 3})
+	dt.Show()
+	dt.UpdateColumnByNumber(0, NewDataList(10, 20, 30))
+	dt.Show()
+	if dt.GetColumnByNumber(0).Data()[0] != 10 {
+		t.Errorf("UpdateColumnByNumber() did not update the correct column")
+	}
+}
+
 func TestDataTable_GetLastModifiedTimestamp(t *testing.T) {
 	dt := NewDataTable()
 	dl := NewDataList(1, 2, 3)
