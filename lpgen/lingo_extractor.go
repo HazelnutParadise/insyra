@@ -5,11 +5,14 @@ import (
 	"unicode"
 )
 
+// 索引字母 I, J, K, L, M, N
+
 type ExtractResult struct {
 	tokens    []lingoToken
-	Obj       map[string]string   // 用來儲存目標函數
-	Variables map[string]string   // 用來儲存變數及其對應的數值
-	Data      map[string][]string // 用來儲存數據
+	Obj       map[string]string      // 用來儲存目標函數
+	Variables map[string]string      // 用來儲存變數及其對應的數值
+	Data      map[string][]string    // 用來儲存數據
+	Sets      map[string][2][]string // 用來儲存集合及其對應的數值
 }
 
 func LingoExtractor(tokens []lingoToken) *ExtractResult {
@@ -20,8 +23,8 @@ func LingoExtractor(tokens []lingoToken) *ExtractResult {
 		Data:      make(map[string][]string),
 	}
 	result = lingoExtractData(result)
-	result = lingoExtractVariablesNotUsingFunc(result)
-	// result = lingoReplaceConst(result)
+	result = lingoExtractVariablesPureNumbers(result)
+	result = lingoExtractSetsNoFuncOrIndex(result)
 	result = lingoExtractObj(result)
 
 	return result
@@ -80,7 +83,7 @@ func lingoExtractData(result *ExtractResult) *ExtractResult {
 	return result
 }
 
-func lingoExtractVariablesNotUsingFunc(result *ExtractResult) *ExtractResult {
+func lingoExtractVariablesPureNumbers(result *ExtractResult) *ExtractResult {
 	extractVariables := true
 	extractingVariableName := ""
 	for _, token := range result.tokens {
@@ -115,7 +118,7 @@ func lingoExtractVariablesNotUsingFunc(result *ExtractResult) *ExtractResult {
 }
 
 // TODO
-// func lingoReplaceConst(result *ExtractResult) *ExtractResult {
-//
-// 	return result
-// }
+func lingoExtractSetsNoFuncOrIndex(result *ExtractResult) *ExtractResult {
+
+	return result
+}
