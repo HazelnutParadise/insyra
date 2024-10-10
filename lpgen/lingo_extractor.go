@@ -125,7 +125,6 @@ func lingoExtractVariablesPureNumbers(result *ExtractResult) *ExtractResult {
 	return result
 }
 
-// TODO
 func lingoExtractSetsNoFuncOrIndex(result *ExtractResult) *ExtractResult {
 	extractSets := false
 	extractingSetName := ""
