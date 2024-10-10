@@ -94,8 +94,13 @@ func lingoExtractData(result *ExtractResult) *ExtractResult {
 func lingoExtractVariablesPureNumbers(result *ExtractResult) *ExtractResult {
 	extractVariables := true
 	extractingVariableName := ""
-	for _, token := range result.tokens {
+	for i, token := range result.tokens {
 		upperTokenValue := strings.ToUpper(token.Value)
+		if i+2 >= len(result.tokens) {
+
+			break
+		}
+		nextToken := result.tokens[i+1]
 		if token.Type == "KEYWORD" && (upperTokenValue == "SETS" || upperTokenValue == "DATA") {
 			extractVariables = false
 		} else if token.Type == "KEYWORD" && (upperTokenValue == "ENDSETS" || upperTokenValue == "ENDDATA") {
@@ -103,14 +108,14 @@ func lingoExtractVariablesPureNumbers(result *ExtractResult) *ExtractResult {
 		}
 
 		if extractVariables {
-			if token.Type == "VARIABLE" {
+			if token.Type == "VARIABLE" && (nextToken.Type == "OPERATOR" && nextToken.Value == "=") && (result.tokens[i+2].Type == "NUMBER") {
 				extractingVariableName = token.Value
-			} else if token.Type == "NUMBER" || token.Type == "OPERATOR" {
+			} else if token.Type == "NUMBER" || nextToken.Type == "SEPARATOR" && nextToken.Value == ";" {
 				if extractingVariableName != "" && upperTokenValue != "=" {
 					result.Variables[extractingVariableName] += token.Value
 				}
 			}
-			if token.Type == "SEPARATOR" {
+			if token.Type == "SEPARATOR" && token.Value == ";" {
 				extractingVariableName = ""
 			}
 		}
