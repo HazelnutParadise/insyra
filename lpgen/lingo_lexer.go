@@ -14,6 +14,9 @@ type lingoToken struct {
 
 // 定義 Lexer 函數
 func LingoLexer(lingoText string) []lingoToken {
+	// 移除 Lingo 註釋
+	lingoText = removeLingoComments(lingoText)
+
 	originalText := lingoText               // 保留原始字串
 	upperText := strings.ToUpper(lingoText) // 全大寫字串用於匹配
 	tokens := []lingoToken{}
@@ -54,4 +57,16 @@ func LingoLexer(lingoText string) []lingoToken {
 	}
 
 	return tokens
+}
+
+func removeLingoComments(text string) string {
+	// 移除單行註釋
+	singleLineCommentRegex := regexp.MustCompile(`!.*`)
+	text = singleLineCommentRegex.ReplaceAllString(text, "")
+
+	// 移除多行註釋
+	multiLineCommentRegex := regexp.MustCompile(`(?s)/\*.*?\*/`)
+	text = multiLineCommentRegex.ReplaceAllString(text, "")
+
+	return strings.TrimSpace(text)
 }
