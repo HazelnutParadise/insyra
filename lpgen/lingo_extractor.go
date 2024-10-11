@@ -261,6 +261,7 @@ func lingoProcessNestedParentheses(result *ExtractResult) *ExtractResult {
 		if 函數代號tokens != nil {
 			// 移除括號內的東西
 			result.Tokens, _ = sliceutil.ReplaceWithSlice(result.Tokens, 左括號索引-1, i, 函數代號tokens)
+			i = 左括號索引 - 1
 		}
 	}
 	return result
