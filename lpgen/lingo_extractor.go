@@ -5,6 +5,7 @@ import (
 	"unicode"
 
 	"github.com/HazelnutParadise/Go-Utils/conv"
+	"github.com/HazelnutParadise/Go-Utils/sliceutil"
 )
 
 // 索引字母 I, J, K, L, M, N
@@ -14,17 +15,17 @@ type ExtractResult struct {
 	Obj       map[string]string   // 用來儲存目標函數
 	Variables map[string]string   // 用來儲存變數及其對應的數值
 	Data      map[string][]string // 用來儲存數據
-	Sets      map[string]Set      // 用來儲存集合及其對應的數值
+	Sets      map[string]lingoSet // 用來儲存集合及其對應的數值
 	Funcs     map[string][]string // 用來儲存函數代號及其對應的式
 	funcCount int
 }
 
-type Set struct {
+type lingoSet struct {
 	Index  []string
 	Values []string
 }
 
-var funcCode = map[string]string{
+var lingoFuncCode = map[string]string{
 	"@FOR": "$FOR",
 	"@SUM": "$SUM",
 	"@POW": "$POW",
@@ -42,7 +43,7 @@ func LingoExtractor(Tokens []lingoToken) *ExtractResult {
 		Obj:       make(map[string]string),
 		Variables: make(map[string]string),
 		Data:      make(map[string][]string),
-		Sets:      make(map[string]Set),
+		Sets:      make(map[string]lingoSet),
 		Funcs:     make(map[string][]string),
 		funcCount: 0,
 	}
@@ -50,7 +51,8 @@ func LingoExtractor(Tokens []lingoToken) *ExtractResult {
 	result = lingoExtractVariablesPureNumbers(result)
 	result = lingoExtractSetsOneDimension(result)
 	result = lingoExtractObj(result)
-	result = lingoExtractFuncsOutermost(result)
+	// result = lingoExtractFuncsOutermost(result)
+	result = lingoProcessNestedParentheses(result)
 
 	return result
 }
@@ -179,7 +181,7 @@ func lingoExtractSetsOneDimension(result *ExtractResult) *ExtractResult {
 					extractingSetEnd := conv.ParseInt(result.Tokens[i+2].Value)
 					// 設定集合內屬性數量
 					for j := extractingSetStart; j <= extractingSetEnd; j++ {
-						set := Set{
+						set := lingoSet{
 							Index: append(result.Sets[extractingSetName].Index, conv.ToString(j)),
 						}
 						result.Sets[extractingSetName] = set
@@ -214,7 +216,7 @@ func lingoExtractFuncsOutermost(result *ExtractResult) *ExtractResult {
 
 	for i, token := range result.Tokens {
 		if token.Type == "KEYWORD" {
-			if code, exists := funcCode[strings.ToUpper(token.Value)]; exists {
+			if code, exists := lingoFuncCode[strings.ToUpper(token.Value)]; exists {
 				codeWithNumber := code + conv.ToString(result.funcCount)
 				extractingFuncName = codeWithNumber
 
@@ -237,4 +239,34 @@ func lingoExtractFuncsOutermost(result *ExtractResult) *ExtractResult {
 		}
 	}
 	return result
+}
+
+// TODO
+func lingoProcessNestedParentheses(result *ExtractResult) *ExtractResult {
+	for i := 0; i < len(result.Tokens); i++ {
+		左括號索引 := -1
+		var 函數代號tokens []lingoToken
+		if result.Tokens[i].Type == "SEPARATOR" {
+			if result.Tokens[i].Value == "(" {
+				左括號索引 = i
+			} else if result.Tokens[i].Value == ")" {
+				// 開始處理括號內的東西
+				if result.Tokens[i-1].Type == "KEYWORD" {
+					if _, exists := lingoFuncCode[strings.ToUpper(result.Tokens[i-1].Value)]; exists {
+						函數代號tokens = lingoHandleFuncs(result, i)
+					}
+				}
+			}
+		}
+		if 函數代號tokens != nil {
+			// 移除括號內的東西
+			result.Tokens, _ = sliceutil.ReplaceWithSlice(result.Tokens, 左括號索引-1, i, 函數代號tokens)
+		}
+	}
+	return result
+}
+
+func lingoHandleFuncs(result *ExtractResult, funcStartIndex int) []lingoToken {
+	// TODO
+	return nil
 }
