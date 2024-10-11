@@ -256,49 +256,25 @@ func lingoProcessNestedParentheses(result *ExtractResult) *ExtractResult {
 				// 從堆疊中移除
 				左括號堆疊 = 左括號堆疊[:len(左括號堆疊)-1]
 
-				// 處理括號內的所有內容，包括函數
-				updatedTokens, startIndex, endIndex := processParenthesesContents(result, 左括號索引, i)
+				// 檢查是否為函數調用
+				if 左括號索引 > 0 && result.Tokens[左括號索引-1].Type == "KEYWORD" {
+					if _, exists := lingoFuncCode[strings.ToUpper(result.Tokens[左括號索引-1].Value)]; exists {
+						// 處理函數代號及其括號內的內容
+						result, 函數代號tokens := lingoExtractFuncs(result, 左括號索引-1, i)
 
-				// 如果成功提取到內容，進行替換
-				if updatedTokens != nil {
-					// 替換原來的括號內容
-					result.Tokens, _ = sliceutil.ReplaceWithSlice(result.Tokens, startIndex, endIndex, updatedTokens)
-					// 調整索引，因為我們已經替換了部分 tokens
-					i = startIndex + len(updatedTokens) - 1
+						// 更新 token 並將結果寫回
+						if 函數代號tokens != nil {
+							result.Tokens, _ = sliceutil.ReplaceWithSlice(result.Tokens, 左括號索引-1, i, 函數代號tokens)
+
+							// 調整索引，以應對已經替換的 token
+							i = 左括號索引 + len(函數代號tokens) - 2
+						}
+					}
 				}
 			}
 		}
 	}
 	return result
-}
-
-func processParenthesesContents(result *ExtractResult, 左括號索引 int, 右括號索引 int) ([]lingoToken, int, int) {
-	內容tokens := []lingoToken{}
-	startIndex := 左括號索引
-	endIndex := 右括號索引
-
-	// 遍歷括號內的所有 token，識別函數並處理
-	for i := 左括號索引 + 1; i < 右括號索引; i++ {
-		token := result.Tokens[i]
-		if token.Type == "KEYWORD" {
-			// 如果是函數，呼叫 lingoExtractFuncs 來提取函數
-			if _, exists := lingoFuncCode[strings.ToUpper(token.Value)]; exists {
-				extractedResult, newTokens := lingoExtractFuncs(result, i, 右括號索引)
-				result = extractedResult
-
-				// 更新函數代號的 tokens
-				內容tokens = append(內容tokens, newTokens...)
-			} else {
-				// 非函數關鍵字，保持原樣
-				內容tokens = append(內容tokens, token)
-			}
-		} else {
-			// 其他非函數的 token 保持不變
-			內容tokens = append(內容tokens, token)
-		}
-	}
-
-	return 內容tokens, startIndex, endIndex
 }
 
 // func processNonFuncContent(result *ExtractResult, 左括號索引 int, 右括號索引 int) *ExtractResult {
