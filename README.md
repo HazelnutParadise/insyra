@@ -26,6 +26,10 @@ The **Insyra** library is a dynamic and versatile tool designed for managing and
 >
 > Please refer to our latest updates in **[Docs](/Docs)** folder for more details.
 
+## [Idensyra](https://github.com/HazelnutParadise/idensyra)
+We provide a mini Go IDE, `Idensyra`, with Insyra pre-installed. Run Go code without installing Go environment!
+
+**[Know more about Idensyra](https://github.com/HazelnutParadise/idensyra)**
 
 ## Getting Started
 
@@ -35,7 +39,7 @@ The **Insyra** library is a dynamic and versatile tool designed for managing and
 > Jump to [Installation](#installation) or [Quick Example](#quick-example) if you are familiar with Go.
 
 1. Download and install Golang from [here](https://golang.org/dl/).
-2. Set up your editor, we recommend using [VSCode](https://code.visualstudio.com/).
+2. Set up your editor, we recommend using [VSCode](https://code.visualstudio.com/). Or even lighter weight, [Idensyra](https://github.com/HazelnutParadise/idensyra).
 3. Open or create a folder for your project, and open it in the editor.
 
 4. Create a new project by running the following command:
