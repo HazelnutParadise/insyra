@@ -267,7 +267,7 @@ func lingoProcessNestedParentheses(result *ExtractResult) *ExtractResult {
 							result.Tokens, _ = sliceutil.ReplaceWithSlice(result.Tokens, 左括號索引-1, i, 函數代號tokens)
 
 							// 調整索引，以應對已經替換的 token
-							i = 左括號索引 + len(函數代號tokens) - 2
+							i = 左括號索引 - 1
 						}
 					}
 				}
