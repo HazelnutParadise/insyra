@@ -211,82 +211,54 @@ func lingoExtractSetsOneDimension(result *ExtractResult) *ExtractResult {
 	return result
 }
 
-// WARNING: 無法處理某些函數
-func lingoExtractFuncsOutermost(result *ExtractResult) *ExtractResult {
-	extractingFuncName := ""
-
-	for i, token := range result.Tokens {
-		if token.Type == "KEYWORD" {
-			if code, exists := lingoFuncCode[strings.ToUpper(token.Value)]; exists {
-				codeWithNumber := code + conv.ToString(result.funcCount)
-				extractingFuncName = codeWithNumber
-
-				// 將 token 的值轉換為 codeWithNumber
-				token.Value = codeWithNumber
-				result.Tokens[i] = token
-
-				// 增加函數編號
-				result.funcCount++
-			}
-		}
-		if extractingFuncName != "" {
-			if token.Type == "SEPARATOR" && token.Value == ";" {
-				extractingFuncName = ""
-				continue
-			}
-			if token.Type != "KEYWORD" {
-				result.Funcs[extractingFuncName] = append(result.Funcs[extractingFuncName], token.Value)
-			}
-		}
-	}
-	return result
-}
-
-// TODO
+// 擷取tokens內的括號
 func lingoProcessNestedParentheses(result *ExtractResult) *ExtractResult {
-	左括號堆疊 := []int{} // 堆疊來儲存左括號的索引
-	for i := 0; i < len(result.Tokens); i++ {
-		if result.Tokens[i].Type == "SEPARATOR" {
-			if result.Tokens[i].Value == "(" {
-				// 將左括號的位置推入堆疊
-				左括號堆疊 = append(左括號堆疊, i)
-			} else if result.Tokens[i].Value == ")" && len(左括號堆疊) > 0 {
-				// 取出最近的一個左括號索引
-				左括號索引 := 左括號堆疊[len(左括號堆疊)-1]
-				// 從堆疊中移除
-				左括號堆疊 = 左括號堆疊[:len(左括號堆疊)-1]
+	var stopExtract bool = false
+	for !stopExtract {
+		左括號堆疊 := []int{} // 堆疊來儲存左括號的索引
+		for i := 0; i < len(result.Tokens); i++ {
+			if result.Tokens[i].Type == "SEPARATOR" {
+				if result.Tokens[i].Value == "(" {
+					// 將左括號的位置推入堆疊
+					左括號堆疊 = append(左括號堆疊, i)
+				} else if result.Tokens[i].Value == ")" && len(左括號堆疊) > 0 {
+					// 取出最近的一個左括號索引
+					左括號索引 := 左括號堆疊[len(左括號堆疊)-1]
+					// 從堆疊中移除
+					左括號堆疊 = 左括號堆疊[:len(左括號堆疊)-1]
 
-				// 檢查是否為函數調用
-				if 左括號索引 > 0 && result.Tokens[左括號索引-1].Type == "KEYWORD" {
-					if _, exists := lingoFuncCode[strings.ToUpper(result.Tokens[左括號索引-1].Value)]; exists {
-						// 處理函數代號及其括號內的內容
-						result, 函數代號tokens := lingoExtractFuncs(result, 左括號索引-1, i)
+					// 檢查是否為函數調用
+					if 左括號索引 > 0 && result.Tokens[左括號索引-1].Type == "KEYWORD" {
+						if _, exists := lingoFuncCode[strings.ToUpper(result.Tokens[左括號索引-1].Value)]; exists {
+							// 處理函數代號及其括號內的內容
+							result, 函數代號tokens := lingoExtractFuncs(result, 左括號索引-1, i)
 
-						// 更新 token 並將結果寫回
-						if 函數代號tokens != nil {
-							result.Tokens, _ = sliceutil.ReplaceWithSlice(result.Tokens, 左括號索引-1, i, 函數代號tokens)
+							// 更新 token 並將結果寫回
+							if 函數代號tokens != nil {
+								result.Tokens, _ = sliceutil.ReplaceWithSlice(result.Tokens, 左括號索引-1, i, 函數代號tokens)
 
-							// 調整索引，以應對已經替換的 token
-							i = 左括號索引 - 1
+								// 調整索引，以應對已經替換的 token
+								i = 左括號索引 - 1
+							}
 						}
 					}
 				}
 			}
 		}
+
+		var hasFunc bool = false
+		for _, token := range result.Tokens {
+			if token.Type == "KEYWORD" && strings.Contains(strings.ToUpper(token.Value), "@") {
+				hasFunc = true
+				break
+			}
+		}
+		if !hasFunc {
+			stopExtract = true
+		}
 	}
 	return result
 }
-
-// func processNonFuncContent(result *ExtractResult, 左括號索引 int, 右括號索引 int) *ExtractResult {
-// 	// 遍歷括號內的 token，保持原內容不變
-// 	nonFuncContent := []lingoToken{}
-// 	for i := 左括號索引 + 1; i < 右括號索引; i++ {
-// 		nonFuncContent = append(nonFuncContent, result.Tokens[i])
-// 	}
-// 	// 如果需要，這裡可以加入對於非函數表達式的額外處理邏輯
-// 	// 例如數學運算符號、變數操作等
-// 	return result
-// }
 
 func lingoExtractFuncs(result *ExtractResult, funcStartIndex int, funEndIndex int) (*ExtractResult, []lingoToken) {
 	函數代號 := ""
