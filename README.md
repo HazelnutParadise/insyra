@@ -27,7 +27,9 @@ The **Insyra** library is a dynamic and versatile tool designed for managing and
 > Please refer to our latest updates in **[Docs](/Docs)** folder for more details.
 
 ## [Idensyra](https://github.com/HazelnutParadise/idensyra)
-We provide a mini Go IDE, `Idensyra`, with Insyra pre-installed. Run Go code without installing Go environment!
+We provide a mini Go IDE, `Idensyra`, which aims to make data analysis easier.
+
+`Idensyra` comes with Insyra pre-installed, allowing you to run Go code without Go environment!
 
 **[Know more about Idensyra](https://github.com/HazelnutParadise/idensyra)**
 
