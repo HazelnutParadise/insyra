@@ -53,11 +53,11 @@ func RunCodef(codeTemplate string, args ...interface{}) map[string]interface{} {
 	// 替換 codeTemplate 中的 $v1, $v2... 佔位符為對應的 vars['var1'], vars['var2']...
 	for i := range args {
 		placeholder := fmt.Sprintf("$v%d", i+1)
-		codeTemplate = strings.ReplaceAll(codeTemplate, placeholder, fmt.Sprintf("vars['var%d']", i+1))
+		codeTemplate = strings.ReplaceAll(codeTemplate, placeholder, fmt.Sprintf("insyra_變數v['var%d']", i+1))
 	}
 
 	// 在 Python 中生成變數賦值語句
-	pythonVarCode := fmt.Sprintf("vars = json.loads('%s')", string(jsonData))
+	pythonVarCode := fmt.Sprintf("insyra_變數v = json.loads('%s')", string(jsonData))
 
 	// 構建完整的 Python 代碼，並確保正確導入 json 模組
 	fullCode := fmt.Sprintf(`
