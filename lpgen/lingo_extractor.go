@@ -277,3 +277,9 @@ func lingoExtractFuncs(result *ExtractResult, funcStartIndex int, funEndIndex in
 	// 返回新構造的函數 token
 	return result, []lingoToken{{Type: "FUNC", Value: 函數代號}}
 }
+
+// TODO: 須在Funcs內再遞迴處理一次括號
+func lingoProcessParenthesesInFuncs(result *ExtractResult) *ExtractResult {
+
+	return result
+}
