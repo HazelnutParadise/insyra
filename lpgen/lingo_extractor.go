@@ -11,13 +11,13 @@ import (
 // 索引字母 I, J, K, L, M, N
 
 type ExtractResult struct {
-	Tokens    []lingoToken
-	Obj       map[string]string   // 用來儲存目標函數
-	Variables map[string]string   // 用來儲存變數及其對應的數值
-	Data      map[string][]string // 用來儲存數據
-	Sets      map[string]lingoSet // 用來儲存集合及其對應的數值
-	Funcs     map[string][]string // 用來儲存函數代號及其對應的式
-	funcCount int
+	Tokens      []lingoToken
+	Obj         map[string]string       // 用來儲存目標函數
+	Variables   map[string]string       // 用來儲存變數及其對應的數值
+	Data        map[string][]string     // 用來儲存數據
+	Sets        map[string]lingoSet     // 用來儲存集合及其對應的數值
+	Funcs       map[string][]lingoToken // 用來儲存函數代號及其對應的式
+	nextFuncNum int
 }
 
 type lingoSet struct {
@@ -38,22 +38,22 @@ var lingoFuncCode = map[string]string{
 	"@SIZE": "$SIZE",
 }
 
-func LingoExtractor(Tokens []lingoToken) *ExtractResult {
+func LingoExtractor(Tokens *[]lingoToken) *ExtractResult {
 	result := &ExtractResult{
-		Tokens:    Tokens,
-		Obj:       make(map[string]string),
-		Variables: make(map[string]string),
-		Data:      make(map[string][]string),
-		Sets:      make(map[string]lingoSet),
-		Funcs:     make(map[string][]string),
-		funcCount: 0,
+		Tokens:      *Tokens,
+		Obj:         make(map[string]string),
+		Variables:   make(map[string]string),
+		Data:        make(map[string][]string),
+		Sets:        make(map[string]lingoSet),
+		Funcs:       make(map[string][]lingoToken),
+		nextFuncNum: 0,
 	}
 	result = lingoExtractData(result)
 	result = lingoExtractVariablesPureNumbers(result)
 	result = lingoExtractSetsOneDimension(result)
 	result = lingoExtractObj(result)
-	// result = lingoExtractFuncsOutermost(result)
 	result = lingoProcessNestedParentheses(result)
+	result = lingoProcessParenthesesInFuncs(result)
 
 	return result
 }
@@ -228,7 +228,7 @@ func lingoProcessNestedParentheses(result *ExtractResult) *ExtractResult {
 					左括號堆疊 = 左括號堆疊[:len(左括號堆疊)-1]
 
 					// 檢查是否為函數調用
-					if 左括號索引 > 0 && result.Tokens[左括號索引-1].Type == "KEYWORD" {
+					if 左括號索引 > 0 {
 						if _, exists := lingoFuncCode[strings.ToUpper(result.Tokens[左括號索引-1].Value)]; exists {
 							// 處理函數代號及其括號內的內容
 							result, 函數代號tokens := lingoExtractFuncs(result, 左括號索引-1, i)
@@ -248,7 +248,7 @@ func lingoProcessNestedParentheses(result *ExtractResult) *ExtractResult {
 
 		var hasFunc bool = false
 		for _, token := range result.Tokens {
-			if token.Type == "KEYWORD" && strings.Contains(strings.ToUpper(token.Value), "@") {
+			if strings.Contains(strings.ToUpper(token.Value), "@") {
 				hasFunc = true
 				break
 			}
@@ -263,23 +263,67 @@ func lingoProcessNestedParentheses(result *ExtractResult) *ExtractResult {
 func lingoExtractFuncs(result *ExtractResult, funcStartIndex int, funEndIndex int) (*ExtractResult, []lingoToken) {
 	函數代號 := ""
 	if code, exists := lingoFuncCode[strings.ToUpper(result.Tokens[funcStartIndex].Value)]; exists {
-		函數代號 = code + conv.ToString(result.funcCount)
-		result.funcCount++
+		函數代號 = code + conv.ToString(result.nextFuncNum)
+		result.nextFuncNum++
 	} else {
 		return nil, nil
 	}
 
 	// 將括號內的所有內容放入對應的函數
 	for i := funcStartIndex + 1; i <= funEndIndex; i++ {
-		result.Funcs[函數代號] = append(result.Funcs[函數代號], result.Tokens[i].Value)
+		result.Funcs[函數代號] = append(result.Funcs[函數代號], result.Tokens[i])
 	}
 
 	// 返回新構造的函數 token
 	return result, []lingoToken{{Type: "FUNC", Value: 函數代號}}
 }
 
-// TODO: 須在Funcs內再遞迴處理一次括號
+// 須在Funcs內再遞迴處理一次括號
 func lingoProcessParenthesesInFuncs(result *ExtractResult) *ExtractResult {
+	var stopExtract = false
+	for !stopExtract {
+		leftParenthesesStack := []int{}
+		leftParenthesesIndex := -1
+		rightParenthesesIndex := -1
+		for key, funcTokens := range result.Funcs {
+			for i, funcToken := range funcTokens {
+				if funcToken.Type == "SEPARATOR" && funcToken.Value == "(" {
+					leftParenthesesStack = append(leftParenthesesStack, i)
+				} else if funcToken.Type == "SEPARATOR" && funcToken.Value == ")" && len(leftParenthesesStack) > 0 {
+					leftParenthesesStack = leftParenthesesStack[:len(leftParenthesesStack)-1]
+					rightParenthesesIndex = i
+				}
+				if leftParenthesesIndex > 0 {
+					// 處理括號內的內容
+					if code, exists := lingoFuncCode[strings.ToUpper(funcTokens[leftParenthesesIndex-1].Value)]; exists {
+						// 處理函數代號及其括號內的內容
+						funcCode := code + conv.ToString(result.nextFuncNum)
+						result.nextFuncNum++
+						// 將括號內的所有內容放入對應的函數
+						for i := leftParenthesesIndex + 1; i <= rightParenthesesIndex; i++ {
+							result.Funcs[funcCode] = append(result.Funcs[funcCode], funcTokens[i])
+						}
+						// 將原本的函數代號及其括號內的內容刪除
+						result.Funcs[key], _ = sliceutil.ReplaceWithSlice(funcTokens, leftParenthesesIndex, rightParenthesesIndex, []lingoToken{{Type: "FUNC", Value: funcCode}})
+						// 調整索引，以應對已經替換的 token
 
+					}
+				}
+			}
+		}
+		var hasFunc bool = false
+		for _, funcTokens := range result.Funcs {
+			for _, funcToken := range funcTokens {
+				// 由於lexer有小bug，有些@不會被當成KEYWORD，所以這邊不加入KEYWORD的判斷
+				if strings.Contains(strings.ToUpper(funcToken.Value), "@") {
+					hasFunc = true
+					break
+				}
+			}
+		}
+		if !hasFunc {
+			stopExtract = true
+		}
+	}
 	return result
 }
