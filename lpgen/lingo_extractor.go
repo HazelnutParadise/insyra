@@ -229,6 +229,7 @@ func lingoProcessNestedParentheses(result *ExtractResult) *ExtractResult {
 
 					// 檢查是否為函數調用
 					if 左括號索引 > 0 {
+						// 由於lexer有小bug，有些@不會被當成KEYWORD，所以這邊不加入KEYWORD的判斷
 						if _, exists := lingoFuncCode[strings.ToUpper(result.Tokens[左括號索引-1].Value)]; exists {
 							// 處理函數代號及其括號內的內容
 							result, 函數代號tokens := lingoExtractFuncs(result, 左括號索引-1, i)
@@ -248,6 +249,7 @@ func lingoProcessNestedParentheses(result *ExtractResult) *ExtractResult {
 
 		var hasFunc bool = false
 		for _, token := range result.Tokens {
+			// 由於lexer有小bug，有些@不會被當成KEYWORD，所以這邊不加入KEYWORD的判斷
 			if strings.Contains(strings.ToUpper(token.Value), "@") {
 				hasFunc = true
 				break
@@ -294,7 +296,7 @@ func lingoProcessParenthesesInFuncs(result *ExtractResult) *ExtractResult {
 					rightParenthesesIndex = i
 				}
 				if leftParenthesesIndex > 0 {
-					// 處理括號內的內容
+					// 由於lexer有小bug，有些@不會被當成KEYWORD，所以這邊不加入KEYWORD的判斷
 					if code, exists := lingoFuncCode[strings.ToUpper(funcTokens[leftParenthesesIndex-1].Value)]; exists {
 						// 處理函數代號及其括號內的內容
 						funcCode := code + conv.ToString(result.nextFuncNum)
