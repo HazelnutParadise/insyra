@@ -5,10 +5,10 @@ import (
 	"time"
 )
 
-// ==================== Column Index ====================
+// ==================== Col Index ====================
 
-// FilterByColumnIndexGreaterThan filters columns with index greater than the specified column.
-func (dt *DataTable) FilterByColumnIndexGreaterThan(columnLetter string) *DataTable {
+// FilterByColIndexGreaterThan filters columns with index greater than the specified column.
+func (dt *DataTable) FilterByColIndexGreaterThan(columnLetter string) *DataTable {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
 
@@ -17,10 +17,10 @@ func (dt *DataTable) FilterByColumnIndexGreaterThan(columnLetter string) *DataTa
 		return &DataTable{}
 	}
 
-	filteredColumns := dt.columns[colIdx+1:]
+	filteredCols := dt.columns[colIdx+1:]
 
 	newDt := &DataTable{
-		columns:           filteredColumns,
+		columns:           filteredCols,
 		columnIndex:       dt.columnIndex,
 		rowNames:          dt.rowNames,
 		creationTimestamp: dt.creationTimestamp,
@@ -31,8 +31,8 @@ func (dt *DataTable) FilterByColumnIndexGreaterThan(columnLetter string) *DataTa
 	return newDt
 }
 
-// FilterByColumnIndexGreaterThanOrEqualTo filters columns with index greater than or equal to the specified column.
-func (dt *DataTable) FilterByColumnIndexGreaterThanOrEqualTo(columnLetter string) *DataTable {
+// FilterByColIndexGreaterThanOrEqualTo filters columns with index greater than or equal to the specified column.
+func (dt *DataTable) FilterByColIndexGreaterThanOrEqualTo(columnLetter string) *DataTable {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
 
@@ -41,10 +41,10 @@ func (dt *DataTable) FilterByColumnIndexGreaterThanOrEqualTo(columnLetter string
 		return &DataTable{}
 	}
 
-	filteredColumns := dt.columns[colIdx:]
+	filteredCols := dt.columns[colIdx:]
 
 	newDt := &DataTable{
-		columns:           filteredColumns,
+		columns:           filteredCols,
 		columnIndex:       dt.columnIndex,
 		rowNames:          dt.rowNames,
 		creationTimestamp: dt.creationTimestamp,
@@ -55,8 +55,8 @@ func (dt *DataTable) FilterByColumnIndexGreaterThanOrEqualTo(columnLetter string
 	return newDt
 }
 
-// FilterByColumnIndexEqualTo filters to only keep the column with the specified index.
-func (dt *DataTable) FilterByColumnIndexEqualTo(columnLetter string) *DataTable {
+// FilterByColIndexEqualTo filters to only keep the column with the specified index.
+func (dt *DataTable) FilterByColIndexEqualTo(columnLetter string) *DataTable {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
 
@@ -65,10 +65,10 @@ func (dt *DataTable) FilterByColumnIndexEqualTo(columnLetter string) *DataTable 
 		return &DataTable{}
 	}
 
-	filteredColumns := []*DataList{dt.columns[colIdx]}
+	filteredCols := []*DataList{dt.columns[colIdx]}
 
 	newDt := &DataTable{
-		columns:           filteredColumns,
+		columns:           filteredCols,
 		columnIndex:       dt.columnIndex,
 		rowNames:          dt.rowNames,
 		creationTimestamp: dt.creationTimestamp,
@@ -79,8 +79,8 @@ func (dt *DataTable) FilterByColumnIndexEqualTo(columnLetter string) *DataTable 
 	return newDt
 }
 
-// FilterByColumnIndexLessThan filters columns with index less than the specified column.
-func (dt *DataTable) FilterByColumnIndexLessThan(columnLetter string) *DataTable {
+// FilterByColIndexLessThan filters columns with index less than the specified column.
+func (dt *DataTable) FilterByColIndexLessThan(columnLetter string) *DataTable {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
 
@@ -89,10 +89,10 @@ func (dt *DataTable) FilterByColumnIndexLessThan(columnLetter string) *DataTable
 		return &DataTable{}
 	}
 
-	filteredColumns := dt.columns[:colIdx]
+	filteredCols := dt.columns[:colIdx]
 
 	newDt := &DataTable{
-		columns:           filteredColumns,
+		columns:           filteredCols,
 		columnIndex:       dt.columnIndex,
 		rowNames:          dt.rowNames,
 		creationTimestamp: dt.creationTimestamp,
@@ -103,8 +103,8 @@ func (dt *DataTable) FilterByColumnIndexLessThan(columnLetter string) *DataTable
 	return newDt
 }
 
-// FilterByColumnIndexLessThanOrEqualTo filters columns with index less than or equal to the specified column.
-func (dt *DataTable) FilterByColumnIndexLessThanOrEqualTo(columnLetter string) *DataTable {
+// FilterByColIndexLessThanOrEqualTo filters columns with index less than or equal to the specified column.
+func (dt *DataTable) FilterByColIndexLessThanOrEqualTo(columnLetter string) *DataTable {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
 
@@ -113,10 +113,10 @@ func (dt *DataTable) FilterByColumnIndexLessThanOrEqualTo(columnLetter string) *
 		return &DataTable{}
 	}
 
-	filteredColumns := dt.columns[:colIdx+1]
+	filteredCols := dt.columns[:colIdx+1]
 
 	newDt := &DataTable{
-		columns:           filteredColumns,
+		columns:           filteredCols,
 		columnIndex:       dt.columnIndex,
 		rowNames:          dt.rowNames,
 		creationTimestamp: dt.creationTimestamp,
@@ -127,10 +127,10 @@ func (dt *DataTable) FilterByColumnIndexLessThanOrEqualTo(columnLetter string) *
 	return newDt
 }
 
-// ==================== Column Name ====================
+// ==================== Col Name ====================
 
-// FilterByColumnNameEqualTo filters to only keep the column with the specified name.
-func (dt *DataTable) FilterByColumnNameEqualTo(columnName string) *DataTable {
+// FilterByColNameEqualTo filters to only keep the column with the specified name.
+func (dt *DataTable) FilterByColNameEqualTo(columnName string) *DataTable {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
 
@@ -145,10 +145,10 @@ func (dt *DataTable) FilterByColumnNameEqualTo(columnName string) *DataTable {
 		return &DataTable{}
 	}
 
-	filteredColumns := []*DataList{dt.columns[colIdx]}
+	filteredCols := []*DataList{dt.columns[colIdx]}
 
 	newDt := &DataTable{
-		columns:           filteredColumns,
+		columns:           filteredCols,
 		columnIndex:       dt.columnIndex,
 		rowNames:          dt.rowNames,
 		creationTimestamp: dt.creationTimestamp,
@@ -159,20 +159,20 @@ func (dt *DataTable) FilterByColumnNameEqualTo(columnName string) *DataTable {
 	return newDt
 }
 
-// FilterByColumnNameContains filters columns whose name contains the specified substring.
-func (dt *DataTable) FilterByColumnNameContains(substring string) *DataTable {
+// FilterByColNameContains filters columns whose name contains the specified substring.
+func (dt *DataTable) FilterByColNameContains(substring string) *DataTable {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
 
-	var filteredColumns []*DataList
+	var filteredCols []*DataList
 	for _, col := range dt.columns {
 		if strings.Contains(col.name, substring) {
-			filteredColumns = append(filteredColumns, col)
+			filteredCols = append(filteredCols, col)
 		}
 	}
 
 	newDt := &DataTable{
-		columns:           filteredColumns,
+		columns:           filteredCols,
 		columnIndex:       dt.columnIndex,
 		rowNames:          dt.rowNames,
 		creationTimestamp: dt.creationTimestamp,
@@ -252,25 +252,25 @@ func (dt *DataTable) FilterByRowNameContains(substring string) *DataTable {
 	}
 
 	// 構建新的 DataTable，只包含符合條件的行
-	filteredColumns := make([]*DataList, len(dt.columns))
+	filteredCols := make([]*DataList, len(dt.columns))
 	for i := range dt.columns {
-		filteredColumns[i] = &DataList{
+		filteredCols[i] = &DataList{
 			data:              make([]interface{}, 0, len(filteredRowIndices)),
 			name:              dt.columns[i].name,
 			creationTimestamp: dt.columns[i].creationTimestamp,
 		}
 
-		filteredColumns[i].lastModifiedTimestamp.Store(
+		filteredCols[i].lastModifiedTimestamp.Store(
 			dt.columns[i].lastModifiedTimestamp.Load())
 		for _, rowIndex := range filteredRowIndices {
 			if rowIndex < len(dt.columns[i].data) {
-				filteredColumns[i].data = append(filteredColumns[i].data, dt.columns[i].data[rowIndex])
+				filteredCols[i].data = append(filteredCols[i].data, dt.columns[i].data[rowIndex])
 			}
 		}
 	}
 
 	newDt := &DataTable{
-		columns:           filteredColumns,
+		columns:           filteredCols,
 		columnIndex:       dt.columnIndex,
 		rowNames:          filterRowNames(dt.rowNames, filteredRowIndices),
 		creationTimestamp: dt.creationTimestamp,
@@ -313,9 +313,9 @@ func (dt *DataTable) Filter(filterFunc FilterFunc) *DataTable {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
 
-	filteredColumns := make([]*DataList, len(dt.columns))
+	filteredCols := make([]*DataList, len(dt.columns))
 	for i := range dt.columns {
-		filteredColumns[i] = &DataList{}
+		filteredCols[i] = &DataList{}
 	}
 
 	for rowIdx := range dt.columns[0].data {
@@ -331,20 +331,20 @@ func (dt *DataTable) Filter(filterFunc FilterFunc) *DataTable {
 			}
 			if filterFunc(rowIdx, colName, value) {
 				keepRow = true
-				filteredColumns[colIdx].data = append(filteredColumns[colIdx].data, value)
+				filteredCols[colIdx].data = append(filteredCols[colIdx].data, value)
 			} else {
-				filteredColumns[colIdx].data = append(filteredColumns[colIdx].data, nil)
+				filteredCols[colIdx].data = append(filteredCols[colIdx].data, nil)
 			}
 		}
 		if !keepRow {
-			for _, col := range filteredColumns {
+			for _, col := range filteredCols {
 				col.data = col.data[:len(col.data)-1]
 			}
 		}
 	}
 
 	newDt := &DataTable{
-		columns:           filteredColumns,
+		columns:           filteredCols,
 		columnIndex:       dt.columnIndex,
 		rowNames:          dt.rowNames,
 		creationTimestamp: dt.creationTimestamp,

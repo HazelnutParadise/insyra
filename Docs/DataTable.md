@@ -36,16 +36,16 @@ Creates a new DataTable with optional initial columns.
 
 ## Methods
 
-##### `AppendColumns(columns ...*DataList) *DataTable`
+##### `AppendCols(columns ...*DataList) *DataTable`
 Appends columns to the `DataTable`. If the new columns are shorter than existing ones, `nil` values will be appended to match the length. If they are longer, existing columns will be extended with `nil` values.
 
 ##### `AppendRowsFromDataList(rowsData ...*DataList) *DataTable`
 Appends rows to the `DataTable` using `DataList` objects. If the new rows are shorter than existing columns, `nil` values will be appended to match the length.
 
-##### `AppendRowsByColumnIndex(rowsData ...map[string]interface{}) *DataTable`
+##### `AppendRowsByColIndex(rowsData ...map[string]interface{}) *DataTable`
 Appends rows to the `DataTable` by mapping column indices to values. If necessary, new columns are created, and existing columns are extended with `nil` values.
 
-##### `AppendRowsByColumnName(rowsData ...map[string]interface{}) *DataTable`
+##### `AppendRowsByColName(rowsData ...map[string]interface{}) *DataTable`
 Appends rows to the `DataTable` by mapping column names to values. New columns are created if necessary, and existing columns are extended with `nil` values.
 
 ##### `GetElement(rowIndex int, columnIndex string) interface{}`
@@ -54,10 +54,10 @@ Returns the element at the specified row and column index. If the indices are ou
 ##### `GetElementByNumberIndex(rowIndex int, columnIndex int) interface{}`
 Returns the element at the specified row and column number index. If the indices are out of bounds, it returns `nil`.
 
-##### `GetColumn(index string) *DataList`
+##### `GetCol(index string) *DataList`
 Returns a `DataList` containing the data of the specified column index.
 
-##### `GetColumnByNumber(index int) *DataList`
+##### `GetColByNumber(index int) *DataList`
 Returns a `DataList` containing the data of the specified column number.
 
 ##### `GetRow(index int) *DataList`
@@ -66,19 +66,19 @@ Returns a `DataList` containing the data of the specified row index.
 ##### `UpdateElement(rowIndex int, columnIndex string, value interface{})`
 Updates the element at the specified row and column index.
 
-##### `UpdateColumn(index string, dl *DataList)`
+##### `UpdateCol(index string, dl *DataList)`
 Updates the column with the specified index with a new `DataList`.
 
-##### `UpdateColumnByNumber(index int, dl *DataList)`
+##### `UpdateColByNumber(index int, dl *DataList)`
 Updates the column at the specified number index with a new `DataList`.
 
 ##### `UpdateRow(index int, dl *DataList)`
 Updates the row at the specified index with a new `DataList`.
 
-##### `SetColumnToRowNames(columnIndex string) *DataTable`
+##### `SetColToRowNames(columnIndex string) *DataTable`
 Sets the row names to the values of the specified column and drops the column.
 
-##### `SetRowToColumnNames(rowIndex int) *DataTable`
+##### `SetRowToColNames(rowIndex int) *DataTable`
 Sets the column names to the values of the specified row and drops the row.
 
 ##### `FindRowsIfContains(value interface{}) []int`
@@ -93,34 +93,34 @@ Returns the indices of rows that contain at least one element with the specified
 ##### `FindRowsIfAllElementsContainSubstring(substring string) []int`
 Returns the indices of rows where all elements contain the specified substring.
 
-##### `FindColumnsIfContains(value interface{}) []string`
+##### `FindColsIfContains(value interface{}) []string`
 Returns the names of columns that contain the specified value.
 
-##### `FindColumnsIfContainsAll(values ...interface{}) []string`
+##### `FindColsIfContainsAll(values ...interface{}) []string`
 Returns the names of columns that contain all specified values.
 
-##### `FindColumnsIfAnyElementContainsSubstring(substring string) []string`
+##### `FindColsIfAnyElementContainsSubstring(substring string) []string`
 Returns the names of columns that contain at least one element with the specified substring.
 
-##### `FindColumnsIfAllElementsContainSubstring(substring string) []string`
+##### `FindColsIfAllElementsContainSubstring(substring string) []string`
 Returns the names of columns where all elements contain the specified substring.
 
-##### `DropColumnsByName(columnNames ...string)`
+##### `DropColsByName(columnNames ...string)`
 Drops columns from the `DataTable` by their names.
 
-##### `DropColumnsByIndex(columnIndices ...string)`
+##### `DropColsByIndex(columnIndices ...string)`
 Drops columns from the `DataTable` by their indices.
 
-##### `DropColumnsByNumber(columnIndices ...int)`
+##### `DropColsByNumber(columnIndices ...int)`
 Drops columns from the `DataTable` by their number indices.
 
-##### `DropColumnsContainStringElements()`
+##### `DropColsContainStringElements()`
 Drops columns that contain any string elements.
 
-##### `DropColumnsContainNumbers()`
+##### `DropColsContainNumbers()`
 Drops columns that contain any numeric elements.
 
-##### `DropColumnsContainNil()`
+##### `DropColsContainNil()`
 Drops columns that contain any `nil` elements.
 
 ##### `DropRowsByIndex(rowIndices ...int)`
@@ -178,25 +178,25 @@ Returns a new `DataTable` with rows that satisfy the given filter function.
 ##### `FilterByCustomElement(f func(value interface{}) bool) *DataTable`
 Returns a new `DataTable` with rows where any element satisfies the custom filter function.
 
-##### `FilterByColumnIndexGreaterThan(threshold string) *DataTable`
+##### `FilterByColIndexGreaterThan(threshold string) *DataTable`
 Returns a new `DataTable` with rows where the column index is greater than the specified threshold.
 
-##### `FilterByColumnIndexGreaterThanOrEqualTo(threshold string) *DataTable`
+##### `FilterByColIndexGreaterThanOrEqualTo(threshold string) *DataTable`
 Returns a new `DataTable` with rows where the column index is greater than or equal to the specified threshold.
 
-##### `FilterByColumnIndexLessThan(threshold string) *DataTable`
+##### `FilterByColIndexLessThan(threshold string) *DataTable`
 Returns a new `DataTable` with rows where the column index is less than the specified threshold.
 
-##### `FilterByColumnIndexLessThanOrEqualTo(threshold string) *DataTable`
+##### `FilterByColIndexLessThanOrEqualTo(threshold string) *DataTable`
 Returns a new `DataTable` with rows where the column index is less than or equal to the specified threshold.
 
-##### `FilterByColumnIndexEqualTo(index string) *DataTable`
+##### `FilterByColIndexEqualTo(index string) *DataTable`
 Returns a new `DataTable` with rows where the column index equals the specified index.
 
-##### `FilterByColumnNameEqualTo(name string) *DataTable`
+##### `FilterByColNameEqualTo(name string) *DataTable`
 Returns a new `DataTable` with rows where the column name equals the specified name.
 
-##### `FilterByColumnNameContains(substring string) *DataTable`
+##### `FilterByColNameContains(substring string) *DataTable`
 Returns a new `DataTable` with rows where the column name contains the specified substring.
 
 ##### `FilterByRowNameEqualTo(name string) *DataTable`
@@ -220,11 +220,11 @@ Returns a new `DataTable` with rows where the row index is less than or equal to
 ##### `FilterByRowIndexEqualTo(index int) *DataTable`
 Returns a new `DataTable` with rows where the row index equals the specified index.
 
-#### `ToCSV(filePath string, setRowNamesToFirstColumn bool, setColumnNamesToFirstRow bool) error`
-Writes the `DataTable` to a CSV file. If `setRowNamesToFirstColumn` is `true`, the first column will be used as row names. If `setColumnNamesToFirstRow` is `true`, the first row will be used as column names.
+#### `ToCSV(filePath string, setRowNamesToFirstCol bool, setColNamesToFirstRow bool) error`
+Writes the `DataTable` to a CSV file. If `setRowNamesToFirstCol` is `true`, the first column will be used as row names. If `setColNamesToFirstRow` is `true`, the first row will be used as column names.
 
-#### `LoadFromCSV(filePath string, setFirstColumnToRowNames bool, setFirstRowToColumnNames bool) error`
-Loads a `DataTable` from a CSV file. If `setFirstColumnToRowNames` is `true`, the first column will be used as row names. If `setFirstRowToColumnNames` is `true`, the first row will be used as column names.
+#### `LoadFromCSV(filePath string, setFirstColToRowNames bool, setFirstRowToColNames bool) error`
+Loads a `DataTable` from a CSV file. If `setFirstColToRowNames` is `true`, the first column will be used as row names. If `setFirstRowToColNames` is `true`, the first row will be used as column names.
 
 
 ## Best Practices

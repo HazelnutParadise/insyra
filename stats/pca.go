@@ -97,7 +97,7 @@ func PCA(dataTable insyra.IDataTable, nComponents ...int) *PCAResult {
 		for i := 0; i < eigenvectors.RawMatrix().Rows; i++ {
 			column.Append(sign * eigenvectors.At(i, indices[compIndex])) // 根據排序後的索引提取數據並調整正負號
 		}
-		componentTable.AppendColumns(column.SetName(fmt.Sprintf("PC%d", compIndex+1)))
+		componentTable.AppendCols(column.SetName(fmt.Sprintf("PC%d", compIndex+1)))
 	}
 
 	// 計算解釋變異百分比，使用協方差矩陣的特徵值

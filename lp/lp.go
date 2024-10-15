@@ -222,9 +222,9 @@ func createAdditionalInfoDataTable(status string, executionTime float64, warning
 	// Append results to a horizontal row
 	rowNameDl := insyra.NewDataList(rowNames)
 	dataList := insyra.NewDataList(values...).SetName("Additional Info")
-	dataTable.AppendColumns(rowNameDl, dataList)
+	dataTable.AppendCols(rowNameDl, dataList)
 
-	dataTable.SetColumnToRowNames("A")
+	dataTable.SetColToRowNames("A")
 
 	return dataTable
 }
