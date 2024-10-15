@@ -228,7 +228,7 @@ func ConvertLongDataToWide(data, factor IDataList, independents []IDataList, agg
 		wideTable.AppendRowsFromDataList(row)
 	}
 
-	wideTable.SetColumnToRowNames("A")
+	wideTable.SetColToRowNames("A")
 	for i, _ := range independents {
 		wideTable.columns[i].name = fmt.Sprintf("%v", independentName[i])
 	}
