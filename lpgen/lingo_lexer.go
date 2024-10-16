@@ -28,9 +28,11 @@ func LingoLexer(lingoText string) []lingoToken {
 		"SEPARATOR": `[();:,]`,
 	}
 
-	// 合併所有正則表達式
+	// 按順序合併所有正則表達式
 	var combinedPattern strings.Builder
-	for key, pattern := range tokenPatterns {
+	keys := []string{"KEYWORD", "VARIABLE", "NUMBER", "OPERATOR", "SEPARATOR"}
+	for _, key := range keys {
+		pattern := tokenPatterns[key]
 		combinedPattern.WriteString(fmt.Sprintf("(?P<%s>%s)|", key, pattern))
 	}
 	combinedPatternStr := strings.TrimSuffix(combinedPattern.String(), "|")
