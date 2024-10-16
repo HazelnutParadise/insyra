@@ -46,10 +46,10 @@ func LingoExtractor(Tokens *[]lingoToken) *lingoExtractResult {
 		Funcs:       make(map[string][]lingoToken),
 		nextFuncNum: 0,
 	}
+	result = lingoExtractObj(result)
 	result = lingoExtractData(result)
 	result = lingoExtractConstants(result)
 	result = lingoExtractSets(result)
-	result = lingoExtractObj(result)
 	result = lingoProcessNestedParentheses(result)
 	result = lingoProcessParenthesesInFuncs(result)
 
@@ -61,18 +61,18 @@ func LingoExtractor(Tokens *[]lingoToken) *lingoExtractResult {
 func lingoExtractObj(result *lingoExtractResult) *lingoExtractResult {
 	extractObj := false
 	objType := ""
-	for i, token := range result.Tokens {
+	for _, token := range result.Tokens {
 		upperTokenValue := strings.ToUpper(token.Value)
 		if token.Type == "KEYWORD" && upperTokenValue == "MODEL" {
 			// 如果遇到MODEL，則開始提取目標函數
 			extractObj = true
 			// 前往下一個token
 			continue
-		} else if token.Type == "KEYWORD" && i != 2 {
+		} else if token.Value == "=" {
+			continue
+		} else if token.Value == ";" {
 			// 如果遇到其他關鍵字，則停止提取目標函數
 			extractObj = false
-		} else if token.Type == "OPERATOR" && i == 3 {
-			continue
 		}
 
 		if extractObj {
