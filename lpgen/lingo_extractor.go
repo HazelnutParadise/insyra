@@ -50,7 +50,7 @@ func LingoExtractor(Tokens *[]lingoToken) *ExtractResult {
 	}
 	result = lingoExtractData(result)
 	result = lingoExtractConstants(result)
-	result = lingoExtractSetsOneDimension(result)
+	result = lingoExtractSets(result)
 	result = lingoExtractObj(result)
 	result = lingoProcessNestedParentheses(result)
 	result = lingoProcessParenthesesInFuncs(result)
@@ -115,7 +115,7 @@ func lingoExtractData(result *ExtractResult) *ExtractResult {
 }
 
 func lingoExtractConstants(result *ExtractResult) *ExtractResult {
-	extractVariables := true
+	extractConstants := true
 	extractingVariableName := ""
 	for i, token := range result.Tokens {
 		upperTokenValue := strings.ToUpper(token.Value)
@@ -125,12 +125,12 @@ func lingoExtractConstants(result *ExtractResult) *ExtractResult {
 		}
 		nextToken := result.Tokens[i+1]
 		if token.Type == "KEYWORD" && (upperTokenValue == "SETS" || upperTokenValue == "DATA") {
-			extractVariables = false
+			extractConstants = false
 		} else if token.Type == "KEYWORD" && (upperTokenValue == "ENDSETS" || upperTokenValue == "ENDDATA") {
-			extractVariables = true
+			extractConstants = true
 		}
 
-		if extractVariables {
+		if extractConstants {
 			if token.Type == "VARIABLE" && (nextToken.Type == "OPERATOR" && nextToken.Value == "=") && (result.Tokens[i+2].Type == "NUMBER") {
 				extractingVariableName = token.Value
 			} else if token.Type == "NUMBER" || (nextToken.Type == "SEPARATOR" && nextToken.Value == ";") {
@@ -153,64 +153,110 @@ func lingoExtractConstants(result *ExtractResult) *ExtractResult {
 	return result
 }
 
-func lingoExtractSetsOneDimension(result *ExtractResult) *ExtractResult {
+func lingoExtractSets(result *ExtractResult) *ExtractResult {
 	extractSets := false
 	extractingSetName := ""
 	extractingSetInsideVariables := false
-	for i, token := range result.Tokens {
-		if i+1 >= len(result.Tokens) {
-			break
-		}
-		nextToken := result.Tokens[i+1]
-		var prevToken lingoToken
-		if i-1 < 0 {
-			prevToken = token
-		} else {
-			prevToken = result.Tokens[i-1]
-		}
-		if token.Type == "KEYWORD" && token.Value == "SETS" {
-			extractSets = true
-		} else if token.Type == "KEYWORD" && token.Value == "ENDSETS" {
-			extractSets = false
-		}
 
-		if extractSets {
-			if token.Type == "VARIABLE" && (nextToken.Type == "OPERATOR" && nextToken.Value == "/") {
-				extractingSetName = token.Value
-			} else if token.Type == "OPERATOR" && token.Value == "/" {
-				if nextToken.Type == "NUMBER" {
-					// 取得集合內屬性數量起點
-					extractingSetStart := conv.ParseInt(nextToken.Value)
-					// 取得集合內屬性數量終點
-					extractingSetEnd := conv.ParseInt(result.Tokens[i+2].Value)
-					// 設定集合內屬性數量
-					for j := extractingSetStart; j <= extractingSetEnd; j++ {
-						set := lingoSet{
-							Index: append(result.Sets[extractingSetName].Index, conv.ToString(j)),
+	// 提取一維集合
+	func() {
+		for i, token := range result.Tokens {
+			if i+1 >= len(result.Tokens) {
+				break
+			}
+			nextToken := result.Tokens[i+1]
+			var prevToken lingoToken
+			if i-1 < 0 {
+				prevToken = token
+			} else {
+				prevToken = result.Tokens[i-1]
+			}
+			if token.Type == "KEYWORD" && token.Value == "SETS" {
+				extractSets = true
+			} else if token.Type == "KEYWORD" && token.Value == "ENDSETS" {
+				extractSets = false
+			}
+
+			if extractSets {
+				if token.Type == "VARIABLE" && (nextToken.Type == "OPERATOR" && nextToken.Value == "/") {
+					extractingSetName = token.Value
+				} else if token.Type == "OPERATOR" && token.Value == "/" {
+					if nextToken.Type == "NUMBER" {
+						// 取得集合內屬性數量起點
+						extractingSetStart := conv.ParseInt(nextToken.Value)
+						// 取得集合內屬性數量終點
+						extractingSetEnd := conv.ParseInt(result.Tokens[i+2].Value)
+						// 設定集合內屬性數量
+						for j := extractingSetStart; j <= extractingSetEnd; j++ {
+							set := lingoSet{
+								Index: append(result.Sets[extractingSetName].Index, conv.ToString(j)),
+							}
+							result.Sets[extractingSetName] = set
 						}
+					}
+				} else if token.Type == "VARIABLE" {
+					// 取得集合內屬性
+					if prevToken.Type == "SEPARATOR" && prevToken.Value == ":" {
+						// 開始取得集合內屬性
+						extractingSetInsideVariables = true
+					}
+					if extractingSetInsideVariables && extractingSetName != "" {
+						set := result.Sets[extractingSetName]
+						set.Values = append(set.Values, token.Value)
 						result.Sets[extractingSetName] = set
 					}
 				}
-			} else if token.Type == "VARIABLE" {
-				// 取得集合內屬性
-				if prevToken.Type == "SEPARATOR" && prevToken.Value == ":" {
-					// 開始取得集合內屬性
+				if token.Type == "SEPARATOR" && token.Value == ";" {
+					// 結束取得集合內屬性
+					extractingSetInsideVariables = false
+					extractingSetName = ""
+				}
+
+			}
+		}
+	}()
+
+	// 提取多維集合
+	func() {
+		extractSets = false
+		extractSetName := false
+		for i, token := range result.Tokens {
+			if i+1 >= len(result.Tokens) {
+				break
+			}
+			nextToken := result.Tokens[i+1]
+			if token.Value == "SETS" {
+				extractSets = true
+			} else if token.Value == "ENDSETS" {
+				extractSets = false
+			}
+
+			if extractSets {
+				if token.Type == "VARIABLE" && (nextToken.Value == "(") {
+					extractSetName = true
+					extractingSetName = token.Value
+				} else if extractSetName && token.Value != ":" && token.Type == "VARIABLE" {
+					set := result.Sets[extractingSetName]
+					set.Index = append(set.Index, token.Value)
+					result.Sets[extractingSetName] = set
+				} else if extractSetName && token.Value == ":" {
+					extractSetName = false
 					extractingSetInsideVariables = true
 				}
-				if extractingSetInsideVariables && extractingSetName != "" {
-					set := result.Sets[extractingSetName]
-					set.Values = append(set.Values, token.Value)
-					result.Sets[extractingSetName] = set
-				}
 			}
+
+			if extractingSetInsideVariables && token.Type == "VARIABLE" {
+				set := result.Sets[extractingSetName]
+				set.Values = append(set.Values, token.Value)
+				result.Sets[extractingSetName] = set
+			}
+
 			if token.Type == "SEPARATOR" && token.Value == ";" {
-				// 結束取得集合內屬性
 				extractingSetInsideVariables = false
 				extractingSetName = ""
 			}
-
 		}
-	}
+	}()
 	return result
 }
 
