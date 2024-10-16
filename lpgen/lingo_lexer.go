@@ -21,8 +21,8 @@ func LingoLexer(lingoText string) []lingoToken {
 	upperText := strings.ToUpper(lingoText) // 全大寫字串用於匹配
 	tokens := []lingoToken{}
 	tokenPatterns := map[string]string{
-		"KEYWORD":   `(@SIZE|@SUM|@FOR|@POW|@BIN|@LOG|@ABS|@SIN|@COS|@EXP|MODEL|SETS|ENDSETS|DATA|ENDDATA|MIN|MINIMIZE|MAX|MAXIMIZE|RHS|IF|THEN|ELSE|ENDIF)`,
-		"VARIABLE":  `\b[a-zA-Z_]\w*\b`,
+		"KEYWORD":   `@SIZE|@SUM|@FOR|@POW|@BIN|@LOG|@ABS|@SIN|@COS|@EXP|MODEL|SETS|ENDSETS|DATA|ENDDATA|MIN|MINIMIZE|MAX|MAXIMIZE|RHS|IF|THEN|ELSE|ENDIF`,
+		"VARIABLE":  `[a-zA-Z_]\w*`,
 		"NUMBER":    `\b\d+(\.\d+)?\b`,
 		"OPERATOR":  `[+\-*/=<>]`,
 		"SEPARATOR": `[();:,]`,
@@ -47,6 +47,13 @@ func LingoLexer(lingoText string) []lingoToken {
 		// 取得對應於全大寫文本的匹配片段
 		matchedText := upperText[start:end]
 
+		// 先檢查是否為關鍵字
+		if tokenType, exists := checkKeyword(matchedText); exists {
+			originalValue := originalText[start:end]
+			tokens = append(tokens, lingoToken{Type: tokenType, Value: originalValue})
+			continue
+		}
+
 		// 找出是哪種類型的匹配
 		for tokenType, pattern := range tokenPatterns {
 			if matched, _ := regexp.MatchString(pattern, matchedText); matched {
@@ -59,6 +66,17 @@ func LingoLexer(lingoText string) []lingoToken {
 	}
 
 	return tokens
+}
+
+// 檢查是否為關鍵字
+func checkKeyword(text string) (string, bool) {
+	keywords := []string{"@SIZE", "@SUM", "@FOR", "@POW", "@BIN", "@LOG", "@ABS", "@SIN", "@COS", "@EXP", "MODEL", "SETS", "ENDSETS", "DATA", "ENDDATA", "MIN", "MINIMIZE", "MAX", "MAXIMIZE", "RHS", "IF", "THEN", "ELSE", "ENDIF"}
+	for _, keyword := range keywords {
+		if text == keyword {
+			return "KEYWORD", true
+		}
+	}
+	return "", false
 }
 
 func removeLingoComments(text string) string {
