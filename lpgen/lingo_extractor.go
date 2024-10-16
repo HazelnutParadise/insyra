@@ -8,8 +8,6 @@ import (
 	"github.com/HazelnutParadise/Go-Utils/sliceutil"
 )
 
-// 索引字母 I, J, K, L, M, N
-
 type ExtractResult struct {
 	Tokens      []lingoToken
 	Obj         map[string]string       // 用來儲存目標函數
