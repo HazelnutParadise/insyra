@@ -13,7 +13,7 @@ import (
 type ExtractResult struct {
 	Tokens      []lingoToken
 	Obj         map[string]string       // 用來儲存目標函數
-	Variables   map[string]string       // 用來儲存變數及其對應的數值
+	Constants   map[string]string       // 用來儲存常數及其對應的數值
 	Data        map[string][]string     // 用來儲存數據
 	Sets        map[string]lingoSet     // 用來儲存集合及其對應的數值
 	Funcs       map[string][]lingoToken // 用來儲存函數代號及其對應的式
@@ -42,14 +42,14 @@ func LingoExtractor(Tokens *[]lingoToken) *ExtractResult {
 	result := &ExtractResult{
 		Tokens:      *Tokens,
 		Obj:         make(map[string]string),
-		Variables:   make(map[string]string),
+		Constants:   make(map[string]string),
 		Data:        make(map[string][]string),
 		Sets:        make(map[string]lingoSet),
 		Funcs:       make(map[string][]lingoToken),
 		nextFuncNum: 0,
 	}
 	result = lingoExtractData(result)
-	result = lingoExtractVariablesPureNumbers(result)
+	result = lingoExtractConstants(result)
 	result = lingoExtractSetsOneDimension(result)
 	result = lingoExtractObj(result)
 	result = lingoProcessNestedParentheses(result)
@@ -114,7 +114,7 @@ func lingoExtractData(result *ExtractResult) *ExtractResult {
 	return result
 }
 
-func lingoExtractVariablesPureNumbers(result *ExtractResult) *ExtractResult {
+func lingoExtractConstants(result *ExtractResult) *ExtractResult {
 	extractVariables := true
 	extractingVariableName := ""
 	for i, token := range result.Tokens {
@@ -135,7 +135,7 @@ func lingoExtractVariablesPureNumbers(result *ExtractResult) *ExtractResult {
 				extractingVariableName = token.Value
 			} else if token.Type == "NUMBER" || (nextToken.Type == "SEPARATOR" && nextToken.Value == ";") {
 				if extractingVariableName != "" && upperTokenValue != "=" {
-					result.Variables[extractingVariableName] += token.Value
+					result.Constants[extractingVariableName] += token.Value
 				}
 			}
 			if token.Type == "SEPARATOR" && token.Value == ";" {
@@ -145,8 +145,8 @@ func lingoExtractVariablesPureNumbers(result *ExtractResult) *ExtractResult {
 	}
 
 	// 清理變數值尾端的任何非數字字元
-	for variable, value := range result.Variables {
-		result.Variables[variable] = strings.TrimFunc(value, func(r rune) bool {
+	for variable, value := range result.Constants {
+		result.Constants[variable] = strings.TrimFunc(value, func(r rune) bool {
 			return !unicode.IsDigit(r)
 		})
 	}
