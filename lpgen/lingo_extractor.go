@@ -55,7 +55,6 @@ func LingoExtractor(Tokens *[]lingoToken) *ExtractResult {
 	result = lingoProcessNestedParentheses(result)
 	result = lingoProcessParenthesesInFuncs(result)
 
-	// TODO: 處理多維度Sets
 	// TODO: 處理有索引的變數
 
 	return result
