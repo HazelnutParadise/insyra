@@ -63,7 +63,7 @@ func lingoExtractObj(result *lingoExtractResult) *lingoExtractResult {
 	objType := ""
 	for _, token := range result.Tokens {
 		upperTokenValue := strings.ToUpper(token.Value)
-		if token.Type == "KEYWORD" && upperTokenValue == "MODEL" {
+		if upperTokenValue == "MODEL" {
 			// 如果遇到MODEL，則開始提取目標函數
 			extractObj = true
 			// 前往下一個token
@@ -71,7 +71,7 @@ func lingoExtractObj(result *lingoExtractResult) *lingoExtractResult {
 		} else if token.Value == "=" {
 			continue
 		} else if token.Value == ";" {
-			// 如果遇到其他關鍵字，則停止提取目標函數
+			// 如果遇到分號，則停止提取目標函數
 			extractObj = false
 		}
 
