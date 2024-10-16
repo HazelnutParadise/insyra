@@ -8,7 +8,7 @@ import (
 	"github.com/HazelnutParadise/Go-Utils/sliceutil"
 )
 
-type ExtractResult struct {
+type lingoExtractResult struct {
 	Tokens      []lingoToken
 	Obj         map[string]string       // 用來儲存目標函數
 	Constants   map[string]string       // 用來儲存常數及其對應的數值
@@ -36,8 +36,8 @@ var lingoFuncCode = map[string]string{
 	"@SIZE": "$SIZE",
 }
 
-func LingoExtractor(Tokens *[]lingoToken) *ExtractResult {
-	result := &ExtractResult{
+func LingoExtractor(Tokens *[]lingoToken) *lingoExtractResult {
+	result := &lingoExtractResult{
 		Tokens:      *Tokens,
 		Obj:         make(map[string]string),
 		Constants:   make(map[string]string),
@@ -58,7 +58,7 @@ func LingoExtractor(Tokens *[]lingoToken) *ExtractResult {
 	return result
 }
 
-func lingoExtractObj(result *ExtractResult) *ExtractResult {
+func lingoExtractObj(result *lingoExtractResult) *lingoExtractResult {
 	extractObj := false
 	objType := ""
 	for i, token := range result.Tokens {
@@ -86,7 +86,7 @@ func lingoExtractObj(result *ExtractResult) *ExtractResult {
 	return result
 }
 
-func lingoExtractData(result *ExtractResult) *ExtractResult {
+func lingoExtractData(result *lingoExtractResult) *lingoExtractResult {
 	extractData := false
 	extractingVariableName := "" // 目前正在提取的變數名稱
 	for _, token := range result.Tokens {
@@ -111,7 +111,7 @@ func lingoExtractData(result *ExtractResult) *ExtractResult {
 	return result
 }
 
-func lingoExtractConstants(result *ExtractResult) *ExtractResult {
+func lingoExtractConstants(result *lingoExtractResult) *lingoExtractResult {
 	extractConstants := true
 	extractingVariableName := ""
 	for i, token := range result.Tokens {
@@ -150,7 +150,7 @@ func lingoExtractConstants(result *ExtractResult) *ExtractResult {
 	return result
 }
 
-func lingoExtractSets(result *ExtractResult) *ExtractResult {
+func lingoExtractSets(result *lingoExtractResult) *lingoExtractResult {
 	extractSets := false
 	extractingSetName := ""
 	extractingSetInsideVariables := false
@@ -258,7 +258,7 @@ func lingoExtractSets(result *ExtractResult) *ExtractResult {
 }
 
 // 擷取tokens內的括號
-func lingoProcessNestedParentheses(result *ExtractResult) *ExtractResult {
+func lingoProcessNestedParentheses(result *lingoExtractResult) *lingoExtractResult {
 	var stopExtract bool = false
 	for !stopExtract {
 		左括號堆疊 := []int{} // 堆疊來儲存左括號的索引
@@ -308,7 +308,7 @@ func lingoProcessNestedParentheses(result *ExtractResult) *ExtractResult {
 	return result
 }
 
-func lingoExtractFuncs(result *ExtractResult, funcStartIndex int, funEndIndex int) (*ExtractResult, []lingoToken) {
+func lingoExtractFuncs(result *lingoExtractResult, funcStartIndex int, funEndIndex int) (*lingoExtractResult, []lingoToken) {
 	函數代號 := ""
 	if code, exists := lingoFuncCode[strings.ToUpper(result.Tokens[funcStartIndex].Value)]; exists {
 		函數代號 = code + conv.ToString(result.nextFuncNum)
@@ -327,7 +327,7 @@ func lingoExtractFuncs(result *ExtractResult, funcStartIndex int, funEndIndex in
 }
 
 // 須在Funcs內再遞迴處理一次括號
-func lingoProcessParenthesesInFuncs(result *ExtractResult) *ExtractResult {
+func lingoProcessParenthesesInFuncs(result *lingoExtractResult) *lingoExtractResult {
 	var stopExtract = false
 	for !stopExtract {
 		leftParenthesesStack := []int{}
