@@ -255,8 +255,6 @@ func extractWarnings(output []byte) string {
 	warnings := []string{}
 	re := regexp.MustCompile(`warning:.*`)
 	matches := re.FindAllString(string(output), -1)
-	for _, match := range matches {
-		warnings = append(warnings, match)
-	}
+	warnings = append(warnings, matches...)
 	return strings.Join(warnings, "; ")
 }
