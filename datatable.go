@@ -1369,9 +1369,7 @@ func (dt *DataTable) Mean() interface{} {
 // Transpose transposes the DataTable, converting rows into columns and vice versa.
 func (dt *DataTable) Transpose() *DataTable {
 	dls := make([]*DataList, 0)
-	for _, col := range dt.columns {
-		dls = append(dls, col)
-	}
+	dls = append(dls, dt.columns...)
 
 	oldRowNames := dt.rowNames
 	dt.rowNames = make(map[string]int)
