@@ -130,7 +130,11 @@ func (lp *LPModel) GenerateLPFile(filename string) {
 
 	// 添加二進制變數
 	if len(lp.BinaryVars) > 0 {
-		file.WriteString("Binary\n")
+		_, err = file.WriteString("Binary\n")
+		if err != nil {
+			insyra.LogWarning("lpgen.GenerateLPFile: Failed to write binary: %v, returning", err)
+			return
+		}
 		for _, binVar := range lp.BinaryVars {
 			_, err = file.WriteString("  " + binVar + "\n")
 			if err != nil {
