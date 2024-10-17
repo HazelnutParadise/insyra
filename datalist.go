@@ -13,6 +13,8 @@ import (
 	"github.com/HazelnutParadise/Go-Utils/asyncutil"
 	"github.com/HazelnutParadise/Go-Utils/conv"
 	"github.com/HazelnutParadise/Go-Utils/sliceutil"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 // DataList is a generic dynamic data list.
@@ -1028,7 +1030,7 @@ func (dl *DataList) Capitalize() *DataList {
 	dl.mu.Lock()
 	for i, v := range dl.data {
 		if str, ok := v.(string); ok {
-			dl.data[i] = strings.Title(strings.ToLower(str))
+			dl.data[i] = cases.Title(language.English, cases.NoLower).String(strings.ToLower(str))
 		}
 	}
 	go dl.updateTimestamp()
