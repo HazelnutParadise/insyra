@@ -45,9 +45,17 @@ func CsvToExcel(csvFiles []string, sheetNames []string, output string, csvEncodi
 
 		// 第一個工作表重命名，而不是創建新工作表
 		if idx == 0 {
-			f.SetSheetName(f.GetSheetName(0), sheetName)
+			err := f.SetSheetName(f.GetSheetName(0), sheetName)
+			if err != nil {
+				insyra.LogWarning("csvxl.CsvToExcel: Failed to set sheet name %s: %v", sheetName, err)
+				return
+			}
 		} else {
-			f.NewSheet(sheetName)
+			_, err := f.NewSheet(sheetName)
+			if err != nil {
+				insyra.LogWarning("csvxl.CsvToExcel: Failed to create new sheet %s: %v", sheetName, err)
+				return
+			}
 		}
 
 		err := addCsvSheet(f, sheetName, csvFile, encoding)
