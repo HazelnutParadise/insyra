@@ -74,20 +74,35 @@ func (lp *LPModel) GenerateLPFile(filename string) {
 	defer file.Close()
 
 	// 設定最大化或最小化
-	file.WriteString(lp.ObjectiveType + "\n")
-	file.WriteString("  " + "obj: " + lp.Objective + "\n")
+	_, err = file.WriteString(lp.ObjectiveType + "\n")
+	if err != nil {
+		insyra.LogFatal("lpgen.GenerateLPFile: Failed to write objective type: %v", err)
+	}
+	_, err = file.WriteString("  " + "obj: " + lp.Objective + "\n")
+	if err != nil {
+		insyra.LogFatal("lpgen.GenerateLPFile: Failed to write objective: %v", err)
+	}
 
 	// 添加約束條件
-	file.WriteString("Subject To\n")
+	_, err = file.WriteString("Subject To\n")
+	if err != nil {
+		insyra.LogFatal("lpgen.GenerateLPFile: Failed to write subject to: %v", err)
+	}
 	for i, constr := range lp.Constraints {
-		file.WriteString("  " + fmt.Sprintf("c%d: %s\n", i+1, constr))
+		_, err = file.WriteString("  " + fmt.Sprintf("c%d: %s\n", i+1, constr))
+		if err != nil {
+			insyra.LogFatal("lpgen.GenerateLPFile: Failed to write constraint: %v", err)
+		}
 	}
 
 	// 添加變數邊界
 	if len(lp.Bounds) > 0 {
 		file.WriteString("Bounds\n")
 		for _, bound := range lp.Bounds {
-			file.WriteString("  " + bound + "\n")
+			_, err = file.WriteString("  " + bound + "\n")
+			if err != nil {
+				insyra.LogFatal("lpgen.GenerateLPFile: Failed to write bound: %v", err)
+			}
 		}
 	}
 
@@ -95,7 +110,10 @@ func (lp *LPModel) GenerateLPFile(filename string) {
 	if len(lp.IntegerVars) > 0 {
 		file.WriteString("General\n")
 		for _, intVar := range lp.IntegerVars {
-			file.WriteString("  " + intVar + "\n")
+			_, err = file.WriteString("  " + intVar + "\n")
+			if err != nil {
+				insyra.LogFatal("lpgen.GenerateLPFile: Failed to write integer var: %v", err)
+			}
 		}
 	}
 
@@ -103,10 +121,16 @@ func (lp *LPModel) GenerateLPFile(filename string) {
 	if len(lp.BinaryVars) > 0 {
 		file.WriteString("Binary\n")
 		for _, binVar := range lp.BinaryVars {
-			file.WriteString("  " + binVar + "\n")
+			_, err = file.WriteString("  " + binVar + "\n")
+			if err != nil {
+				insyra.LogFatal("lpgen.GenerateLPFile: Failed to write binary var: %v", err)
+			}
 		}
 	}
 
 	// LP 文件結尾
-	file.WriteString("End\n")
+	_, err = file.WriteString("End\n")
+	if err != nil {
+		insyra.LogFatal("lpgen.GenerateLPFile: Failed to write end: %v", err)
+	}
 }
