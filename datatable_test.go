@@ -5,8 +5,8 @@ import (
 	"time"
 )
 
-func IDataTableTest(dt IDataTable) {
-	return
+func IDataTableTest(dt IDataTable) bool {
+	return true
 }
 
 func TestIDataTable(t *testing.T) {
@@ -17,7 +17,9 @@ func TestIDataTable(t *testing.T) {
 		}
 	}()
 	dt := NewDataTable()
-	IDataTableTest(dt)
+	if !IDataTableTest(dt) {
+		t.Errorf("IDataTableTest() failed")
+	}
 }
 
 func TestNewDataTable(t *testing.T) {
