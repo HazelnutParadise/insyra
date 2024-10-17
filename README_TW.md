@@ -24,6 +24,14 @@ Go 語言次世代資料分析庫。支援 **平行處理**、**資料視覺化*
 >
 > 請參閱我們 **[文檔](https://github.com/HazelnutParadise/insyra/tree/main/Docs)** 資料夾中的最新更新以獲取更多詳細資訊。
 
+## [Idensyra](https://github.com/HazelnutParadise/idensyra)
+
+我們提供了一個迷你 Go IDE，`Idensyra`，旨在使數據分析變得更簡單（儘管 Insyra 已經使其非常簡單）。
+
+`Idensyra` 預裝了 Insyra，不需要安裝 Go 環境即可運行 Go 程式碼！
+
+**[了解更多關於 Idensyra](https://github.com/HazelnutParadise/idensyra)**
+
 ## 開始使用
 
 ### 致初學者
