@@ -84,7 +84,11 @@ func SavePNG(chart Renderable, pngPath string) {
 	}
 
 	if !config.KeepHtml {
-		os.Rename(tempBaseName+".png", baseName+".png")
+		err := os.Rename(tempBaseName+".png", baseName+".png")
+		if err != nil {
+			insyra.LogWarning("plot.SavePNG: failed to rename PNG file: %v", err)
+			return
+		}
 	}
 
 	insyra.LogInfo("plot.SavePNG: successfully saved PNG file.")
