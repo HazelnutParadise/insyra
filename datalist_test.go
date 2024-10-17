@@ -17,8 +17,8 @@ func float64Equal(a, b float64) bool {
 	return diff < 1e-5
 }
 
-func IDataListTest(dl IDataList) {
-	return
+func IDataListTest(dl IDataList) bool {
+	return true
 }
 
 func TestIDataList(t *testing.T) {
@@ -29,7 +29,9 @@ func TestIDataList(t *testing.T) {
 		}
 	}()
 	dl := NewDataList()
-	IDataListTest(dl)
+	if !IDataListTest(dl) {
+		t.Errorf("IDataListTest() failed")
+	}
 }
 
 // 測試 NewDataList 函數
