@@ -258,9 +258,9 @@ func locateOrInstallGLPK_Win() (string, error) {
 	}
 
 	// 查找新安裝的 glpsol.exe
-	glpsolPath = findGLPKExecutable(installDir)
-	if glpsolPath == "" {
-		return "", fmt.Errorf("failed to find GLPK executable after installation")
+	glpsolPath, err = findGLPKExecutable(installDir)
+	if err != nil {
+		return "", fmt.Errorf("failed to find GLPK executable after installation: %v", err)
 	}
 
 	insyra.LogInfo("lp.init: GLPK installed successfully at %s", glpsolPath)
@@ -268,9 +268,9 @@ func locateOrInstallGLPK_Win() (string, error) {
 }
 
 // 動態尋找包含 w64 的資料夾
-func findGLPKExecutable(baseDir string) string {
+func findGLPKExecutable(baseDir string) (string, error) {
 	var glpkExecPath string
-	filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error {
 		if err == nil && info.IsDir() && filepath.Base(path) == "w64" {
 			potentialExecPath := filepath.Join(path, "glpsol.exe")
 			if _, err := os.Stat(potentialExecPath); err == nil {
@@ -286,7 +286,10 @@ func findGLPKExecutable(baseDir string) string {
 		}
 		return nil
 	})
-	return glpkExecPath
+	if err != nil {
+		return "", err
+	}
+	return glpkExecPath, nil
 }
 
 // =========================== 輔助函數 ===========================
