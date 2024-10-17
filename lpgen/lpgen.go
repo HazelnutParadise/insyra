@@ -118,7 +118,11 @@ func (lp *LPModel) GenerateLPFile(filename string) {
 
 	// 添加整數變數
 	if len(lp.IntegerVars) > 0 {
-		file.WriteString("General\n")
+		_, err = file.WriteString("General\n")
+		if err != nil {
+			insyra.LogWarning("lpgen.GenerateLPFile: Failed to write general: %v, returning", err)
+			return
+		}
 		for _, intVar := range lp.IntegerVars {
 			_, err = file.WriteString("  " + intVar + "\n")
 			if err != nil {
