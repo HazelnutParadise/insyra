@@ -102,11 +102,15 @@ func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile strin
 		// 如果提供了自訂工作表名稱，則使用它，否則使用 CSV 檔案的名稱
 		sheetName := getSheetName(csvFile, sheetNames, idx)
 
-		f.NewSheet(sheetName)
-
-		err := addCsvSheet(f, sheetName, csvFile, encoding)
+		_, err := f.NewSheet(sheetName)
 		if err != nil {
-			insyra.LogWarning("csvxl.AppendCsvToExcel: Failed to add CSV sheet %s: %v", csvFile, err)
+			insyra.LogWarning("csvxl.AppendCsvToExcel: Failed to create new sheet %s: %v, returning", sheetName, err)
+			return
+		}
+
+		err = addCsvSheet(f, sheetName, csvFile, encoding)
+		if err != nil {
+			insyra.LogWarning("csvxl.AppendCsvToExcel: Failed to add CSV sheet %s: %v, skipping", csvFile, err)
 			failedFiles++
 			continue
 		}
@@ -222,7 +226,10 @@ func addCsvSheet(f *excelize.File, sheetName, csvFile string, encoding string) e
 	for rowIdx, record := range records {
 		for colIdx, cell := range record {
 			cellAddr, _ := excelize.CoordinatesToCellName(colIdx+1, rowIdx+1)
-			f.SetCellValue(sheetName, cellAddr, cell)
+			err := f.SetCellValue(sheetName, cellAddr, cell)
+			if err != nil {
+				return fmt.Errorf("failed to set cell value %s: %v", cellAddr, err)
+			}
 		}
 	}
 
