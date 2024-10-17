@@ -318,7 +318,12 @@ func TestDataListMovingStdev(t *testing.T) {
 }
 
 func TestDataListSort(t *testing.T) {
-	// TODO
+	dl := NewDataList(3, 1, 4, 1, 5, 9, 2, 6, 5, 3, 5)
+	dl.Sort()
+
+	if !reflect.DeepEqual(dl.Data(), []interface{}{1, 1, 2, 3, 3, 4, 5, 5, 5, 6, 9}) {
+		t.Errorf("Expected data %v, got %v", []interface{}{1, 1, 2, 3, 3, 4, 5, 5, 5, 6, 9}, dl.Data())
+	}
 }
 
 func TestDataListRank(t *testing.T) {
@@ -326,19 +331,39 @@ func TestDataListRank(t *testing.T) {
 }
 
 func TestDataListReverse(t *testing.T) {
-	// TODO
+	dl := NewDataList("hello", "world", "this", "is", "a", "test")
+	dl.Reverse()
+
+	if !reflect.DeepEqual(dl.Data(), []interface{}{"test", "a", "is", "this", "world", "hello"}) {
+		t.Errorf("Expected data %v, got %v", []interface{}{"test", "a", "is", "this", "world", "hello"}, dl.Data())
+	}
 }
 
 func TestDataListUpper(t *testing.T) {
-	// TODO
+	dl := NewDataList("hello", "world", "this", "is", "a", "test")
+	dl.Upper()
+
+	if !reflect.DeepEqual(dl.Data(), []interface{}{"HELLO", "WORLD", "THIS", "IS", "A", "TEST"}) {
+		t.Errorf("Expected data %v, got %v", []interface{}{"HELLO", "WORLD", "THIS", "IS", "A", "TEST"}, dl.Data())
+	}
 }
 
 func TestDataListLower(t *testing.T) {
-	// TODO
+	dl := NewDataList("Hello", "World", "This", "Is", "A", "Test")
+	dl.Lower()
+
+	if !reflect.DeepEqual(dl.Data(), []interface{}{"hello", "world", "this", "is", "a", "test"}) {
+		t.Errorf("Expected data %v, got %v", []interface{}{"hello", "world", "this", "is", "a", "test"}, dl.Data())
+	}
 }
 
 func TestDataListCapitalize(t *testing.T) {
-	// TODO
+	dl := NewDataList("hello", "world", "this", "is", "a", "test")
+	dl.Capitalize()
+
+	if !reflect.DeepEqual(dl.Data(), []interface{}{"Hello", "World", "This", "Is", "A", "Test"}) {
+		t.Errorf("Expected data %v, got %v", []interface{}{"Hello", "World", "This", "Is", "A", "Test"}, dl.Data())
+	}
 }
 
 // 測試 Sum 函數
