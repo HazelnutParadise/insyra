@@ -46,9 +46,7 @@ func CreateBarChart(config BarChartConfig) *plot.Plot {
 
 	// Create a Bar plot with the processed values.
 	barData := make(plotter.Values, len(values))
-	for i, v := range values {
-		barData[i] = v
-	}
+	copy(barData, values)
 
 	barWidth := config.BarWidth
 	if barWidth == 0 {

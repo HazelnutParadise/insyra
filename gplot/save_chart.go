@@ -16,4 +16,5 @@ func SaveChart(plt *plot.Plot, filename string) {
 	if err := plt.Save(8*vg.Inch, 4*vg.Inch, filename); err != nil {
 		insyra.LogFatal("gplot.SaveChart: failed to save chart: %w", err)
 	}
+	insyra.LogInfo("gplot.SaveChart: saved chart to %s", filename)
 }
