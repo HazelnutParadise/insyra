@@ -11,11 +11,8 @@ on:
 jobs:
   vulnerability-scan:
     runs-on: ubuntu-latest
-    name: Run Govulncheck
+    name: Vulnerability Scan
     steps:
     - uses: golang/govulncheck-action@v1
-    - name: Set up Go
-      uses: actions/setup-go@v4
       with:
         go-package: ./...
-        go-version-file: go.mod
