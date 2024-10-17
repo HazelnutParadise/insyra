@@ -1,6 +1,6 @@
 # Govulncheck for push and pull_request, fails the steps if vulnerabilities are found
 
-name: Govulncheck on Push/PR
+name: Govulncheck
 
 on:
   push:
