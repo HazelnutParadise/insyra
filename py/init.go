@@ -24,7 +24,10 @@ func init() {
 	insyra.LogInfo("py.init: Preparing Python environment...")
 	// 如果目錄不存在，自動創建
 	if _, err := os.Stat(installDir); os.IsNotExist(err) {
-		os.MkdirAll(installDir, os.ModePerm)
+		err := os.MkdirAll(installDir, os.ModePerm)
+		if err != nil {
+			insyra.LogFatal("py.init: Failed to create directory %s: %v", installDir, err)
+		}
 	} else {
 		// 檢查 Python 執行檔是否已存在
 		if _, err := os.Stat(pyPath); err == nil {
@@ -92,7 +95,10 @@ func installPythonOnWindows(version string) error {
 		return fmt.Errorf("failed to update PATH environment variable: %w", err)
 	}
 
-	moveLibDirectory(pythonSourceDir, pythonInstallDir)
+	err = moveLibDirectory(pythonSourceDir, pythonInstallDir)
+	if err != nil {
+		return fmt.Errorf("failed to move Lib directory: %w", err)
+	}
 
 	return nil
 }
