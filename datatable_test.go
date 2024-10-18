@@ -49,7 +49,7 @@ func TestDataTable_AppendRowsFromDataList(t *testing.T) {
 
 func TestDataTable_AppendRowsByIndex(t *testing.T) {
 	dt := NewDataTable()
-	dt.AppendRowsByColIndex(map[string]interface{}{"A": 1, "B": 2, "C": 3})
+	dt.AppendRowsByColIndex(map[string]interface{}{"a": 1, "B": 2, "C": 3})
 	dt.Show()
 	if r, c := dt.Size(); r != 1 || c != 3 {
 		t.Errorf("AppendRowsByIndex() did not add the row correctly")

@@ -208,13 +208,22 @@ func (dt *DataTable) AppendRowsByColIndex(rowsData ...map[string]interface{}) *D
 		go dt.updateTimestamp()
 	}()
 
+	upperCaseRowsData := make([]map[string]interface{}, len(rowsData))
+	for i, rowData := range rowsData {
+		upperCaseRowData := make(map[string]interface{})
+		for colIndex, value := range rowData {
+			upperCaseRowData[strings.ToUpper(colIndex)] = value
+		}
+		upperCaseRowsData[i] = upperCaseRowData
+	}
+	rowsData = upperCaseRowsData
+
 	for _, rowData := range rowsData {
 		maxLength := dt.getMaxColLength()
 
 		// 搜集所有要處理的欄位索引（確保無論是否存在都處理）
 		allCols := make([]string, 0, len(rowData))
 		for colIndex := range rowData {
-			colIndex = strings.ToUpper(colIndex)
 			allCols = append(allCols, colIndex)
 		}
 
@@ -223,7 +232,6 @@ func (dt *DataTable) AppendRowsByColIndex(rowsData ...map[string]interface{}) *D
 
 		// 按照排序順序處理每個欄位
 		for _, colIndex := range allCols {
-			colIndex = strings.ToUpper(colIndex)
 			value := rowData[colIndex]
 			_, exists := dt.columnIndex[colIndex]
 			LogDebug("AppendRowsByIndex: Handling column %s, exists: %t", colIndex, exists)
