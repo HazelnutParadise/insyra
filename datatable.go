@@ -1364,10 +1364,14 @@ func (dt *DataTable) Count(value interface{}) int {
 
 // Counter returns the number of occurrences of the given value in the DataTable.
 // Return a map[interface{}]int
-func (dt *DataTable) Counter(value interface{}) map[interface{}]int {
+func (dt *DataTable) Counter() map[interface{}]int {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
 	result := make(map[interface{}]int)
 	for _, column := range dt.columns {
-		result[value] += column.Count(value)
+		for _, value := range column.data {
+			result[value] += 1
+		}
 	}
 	return result
 }

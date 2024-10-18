@@ -1,6 +1,7 @@
 package insyra
 
 import (
+	"fmt"
 	"testing"
 	"time"
 )
@@ -152,6 +153,17 @@ func TestDataTable_UpdateRow(t *testing.T) {
 	dt.Show()
 	if dt.GetRow(0).Data()[2] != 30 {
 		t.Errorf("UpdateRow() did not update the correct row")
+	}
+}
+
+func TestDataTable_Counter(t *testing.T) {
+	dt := NewDataTable()
+	dt.AppendRowsByColIndex(map[string]interface{}{"A": 1, "B": 2, "C": 1})
+	dt.Show()
+	counter := dt.Counter()
+	fmt.Println(counter)
+	if counter[1] != 2 {
+		t.Errorf("Counter() did not return the correct counter")
 	}
 }
 
