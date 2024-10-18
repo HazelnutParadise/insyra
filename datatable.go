@@ -3,6 +3,7 @@ package insyra
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -213,6 +214,7 @@ func (dt *DataTable) AppendRowsByColIndex(rowsData ...map[string]interface{}) *D
 		// 搜集所有要處理的欄位索引（確保無論是否存在都處理）
 		allCols := make([]string, 0, len(rowData))
 		for colIndex := range rowData {
+			colIndex = strings.ToUpper(colIndex)
 			allCols = append(allCols, colIndex)
 		}
 
@@ -221,6 +223,7 @@ func (dt *DataTable) AppendRowsByColIndex(rowsData ...map[string]interface{}) *D
 
 		// 按照排序順序處理每個欄位
 		for _, colIndex := range allCols {
+			colIndex = strings.ToUpper(colIndex)
 			value := rowData[colIndex]
 			_, exists := dt.columnIndex[colIndex]
 			LogDebug("AppendRowsByIndex: Handling column %s, exists: %t", colIndex, exists)
@@ -302,6 +305,7 @@ func (dt *DataTable) GetElement(rowIndex int, columnIndex string) interface{} {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
 
+	columnIndex = strings.ToUpper(columnIndex)
 	if colPos, exists := dt.columnIndex[columnIndex]; exists {
 		if rowIndex < 0 {
 			rowIndex = len(dt.columns[colPos].data) + rowIndex
@@ -335,6 +339,7 @@ func (dt *DataTable) GetCol(index string) *DataList {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
 
+	index = strings.ToUpper(index)
 	if colPos, exists := dt.columnIndex[index]; exists {
 		// 初始化新的 DataList 並分配 data 切片的大小
 		dl := NewDataList()
@@ -409,6 +414,7 @@ func (dt *DataTable) UpdateElement(rowIndex int, columnIndex string, value inter
 
 	dt.regenerateColIndex()
 
+	columnIndex = strings.ToUpper(columnIndex)
 	if colPos, exists := dt.columnIndex[columnIndex]; exists {
 		if rowIndex < 0 {
 			rowIndex = len(dt.columns[colPos].data) + rowIndex
@@ -433,6 +439,7 @@ func (dt *DataTable) UpdateCol(index string, dl *DataList) {
 
 	dt.regenerateColIndex()
 
+	index = strings.ToUpper(index)
 	if colPos, exists := dt.columnIndex[index]; exists {
 		dt.columns[colPos] = dl
 	} else {
@@ -500,6 +507,7 @@ func (dt *DataTable) UpdateRow(index int, dl *DataList) {
 
 // SetColToRowNames sets the row names to the values of the specified column and drops the column.
 func (dt *DataTable) SetColToRowNames(columnIndex string) *DataTable {
+	columnIndex = strings.ToUpper(columnIndex)
 	column := dt.GetCol(columnIndex)
 	for i, value := range column.data {
 		if value != nil {
@@ -780,6 +788,7 @@ func (dt *DataTable) DropColsByIndex(columnIndices ...string) {
 	}()
 
 	for _, index := range columnIndices {
+		index = strings.ToUpper(index)
 		colPos, exists := dt.columnIndex[index]
 		if exists {
 			// 刪除對應的列
@@ -787,8 +796,8 @@ func (dt *DataTable) DropColsByIndex(columnIndices ...string) {
 			delete(dt.columnIndex, index)
 			// 更新剩餘列的索引
 			for i := colPos; i < len(dt.columns); i++ {
-				newColName := generateColIndex(i)
-				dt.columnIndex[newColName] = i
+				newColIndex := generateColIndex(i)
+				dt.columnIndex[newColIndex] = i
 			}
 		}
 	}
@@ -1345,6 +1354,16 @@ func (dt *DataTable) Count(value interface{}) int {
 	return conv.ParseInt(count)
 }
 
+// Counter returns the number of occurrences of the given value in the DataTable.
+// Return a map[interface{}]int
+func (dt *DataTable) Counter(value interface{}) map[interface{}]int {
+	result := make(map[interface{}]int)
+	for _, column := range dt.columns {
+		result[value] += column.Count(value)
+	}
+	return result
+}
+
 // Size returns the number of rows and columns in the DataTable.
 func (dt *DataTable) Size() (rows int, cols int) {
 	dt.mu.Lock()
@@ -1352,6 +1371,7 @@ func (dt *DataTable) Size() (rows int, cols int) {
 	return dt.getMaxColLength(), len(dt.columns)
 }
 
+// Mean returns the mean of the DataTable.
 func (dt *DataTable) Mean() interface{} {
 	defer dt.mu.Unlock()
 	var totalSum float64
