@@ -50,11 +50,11 @@ func LingoExtractor(Tokens *[]lingoToken) *lingoExtractResult {
 	}
 	result = lingoExtractObj(result)
 	result = lingoExtractData(result)
+	result = lingoExtractProcessNestedParentheses(result)
+	result = lingoExtractProcessParenthesesInFuncs(result)
 	result = lingoExtractConstants(result)
 	result = lingoExtractVariables(result)
 	result = lingoExtractSets(result)
-	result = lingoExtractProcessNestedParentheses(result)
-	result = lingoExtractProcessParenthesesInFuncs(result)
 
 	// TODO: 處理有索引的變數
 
