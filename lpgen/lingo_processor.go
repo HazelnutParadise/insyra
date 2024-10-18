@@ -68,3 +68,18 @@ func lingoProcessFunc_SUM(funcTokens []lingoToken, extractResult *lingoExtractRe
 	// TODO
 	return nil
 }
+
+func lingoProcessFunc_FOR(funcTokens []lingoToken, extractResult *lingoExtractResult) []lingoToken {
+	// TODO
+	return nil
+}
+
+func lingoProcessFunc_POW(funcTokens []lingoToken, extractResult *lingoExtractResult) []lingoToken {
+	// TODO
+	return nil
+}
+
+func lingoProcessFunc_BIN(funcTokens []lingoToken, extractResult *lingoExtractResult) []lingoToken {
+	// TODO
+	return nil
+}
