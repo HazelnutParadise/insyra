@@ -6,6 +6,7 @@ import (
 )
 
 // 索引字母 I, J, K, L, M, N
+var indexLetters = []string{"I", "J", "K", "L", "M", "N"}
 
 type lingoProcessResult struct {
 	Tokens []lingoToken
@@ -61,4 +62,9 @@ func lingoProcessFunc_SIZE(funcTokens []lingoToken, extractResult *lingoExtractR
 			Value: strconv.Itoa(len(set.Index) * len(set.Values)),
 		},
 	}
+}
+
+func lingoProcessFunc_SUM(funcTokens []lingoToken, extractResult *lingoExtractResult) []lingoToken {
+	// TODO
+	return nil
 }
