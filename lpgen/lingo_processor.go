@@ -1,6 +1,7 @@
 package lpgen
 
 import (
+	"strconv"
 	"strings"
 )
 
@@ -16,16 +17,18 @@ func LingoProcessor(extractResult *lingoExtractResult) *lingoProcessResult {
 		Tokens: extractResult.Tokens,
 	}
 
-	lingoProcessFuncs(extractResult)
+	result.Funcs = lingoProcessFuncs(extractResult)
 
 	return result
 }
 
 func lingoProcessFuncs(extractResult *lingoExtractResult) map[string][]lingoToken {
 	funcs := make(map[string][]lingoToken)
+	// TODO: 重複直到token.Type沒有FUNC
 
 	for funcName, funcTokens := range extractResult.Funcs {
 		if strings.HasPrefix(funcName, "$SIZE") {
+			funcs[funcName] = lingoProcessFunc_SIZE(funcTokens, extractResult)
 			// TODO: 處理 SIZE 函數
 		} else if strings.HasPrefix(funcName, "$SUM") {
 			// TODO: 處理 SUM 函數
@@ -40,4 +43,22 @@ func lingoProcessFuncs(extractResult *lingoExtractResult) map[string][]lingoToke
 	}
 
 	return funcs
+}
+
+func lingoProcessFunc_SIZE(funcTokens []lingoToken, extractResult *lingoExtractResult) []lingoToken {
+	var variableName string
+	for _, token := range funcTokens {
+		if token.Type == "VARIABLE" {
+			variableName = token.Value
+		}
+	}
+	// 去Sets找
+	set := extractResult.Sets[variableName]
+
+	return []lingoToken{
+		{
+			Type:  "NUMBER",
+			Value: strconv.Itoa(len(set.Index) * len(set.Values)),
+		},
+	}
 }
