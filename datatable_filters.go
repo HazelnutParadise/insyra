@@ -8,11 +8,12 @@ import (
 // ==================== Col Index ====================
 
 // FilterByColIndexGreaterThan filters columns with index greater than the specified column.
-func (dt *DataTable) FilterByColIndexGreaterThan(columnLetter string) *DataTable {
+func (dt *DataTable) FilterByColIndexGreaterThan(columnIndexLetter string) *DataTable {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
 
-	colIdx, exists := dt.columnIndex[columnLetter]
+	columnIndexLetter = strings.ToUpper(columnIndexLetter)
+	colIdx, exists := dt.columnIndex[columnIndexLetter]
 	if !exists {
 		return &DataTable{}
 	}
@@ -32,11 +33,12 @@ func (dt *DataTable) FilterByColIndexGreaterThan(columnLetter string) *DataTable
 }
 
 // FilterByColIndexGreaterThanOrEqualTo filters columns with index greater than or equal to the specified column.
-func (dt *DataTable) FilterByColIndexGreaterThanOrEqualTo(columnLetter string) *DataTable {
+func (dt *DataTable) FilterByColIndexGreaterThanOrEqualTo(columnIndexLetter string) *DataTable {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
 
-	colIdx, exists := dt.columnIndex[columnLetter]
+	columnIndexLetter = strings.ToUpper(columnIndexLetter)
+	colIdx, exists := dt.columnIndex[columnIndexLetter]
 	if !exists {
 		return &DataTable{}
 	}
@@ -56,11 +58,12 @@ func (dt *DataTable) FilterByColIndexGreaterThanOrEqualTo(columnLetter string) *
 }
 
 // FilterByColIndexEqualTo filters to only keep the column with the specified index.
-func (dt *DataTable) FilterByColIndexEqualTo(columnLetter string) *DataTable {
+func (dt *DataTable) FilterByColIndexEqualTo(columnIndexLetter string) *DataTable {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
 
-	colIdx, exists := dt.columnIndex[columnLetter]
+	columnIndexLetter = strings.ToUpper(columnIndexLetter)
+	colIdx, exists := dt.columnIndex[columnIndexLetter]
 	if !exists {
 		return &DataTable{}
 	}
@@ -80,11 +83,12 @@ func (dt *DataTable) FilterByColIndexEqualTo(columnLetter string) *DataTable {
 }
 
 // FilterByColIndexLessThan filters columns with index less than the specified column.
-func (dt *DataTable) FilterByColIndexLessThan(columnLetter string) *DataTable {
+func (dt *DataTable) FilterByColIndexLessThan(columnIndexLetter string) *DataTable {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
 
-	colIdx, exists := dt.columnIndex[columnLetter]
+	columnIndexLetter = strings.ToUpper(columnIndexLetter)
+	colIdx, exists := dt.columnIndex[columnIndexLetter]
 	if !exists {
 		return &DataTable{}
 	}
@@ -104,11 +108,12 @@ func (dt *DataTable) FilterByColIndexLessThan(columnLetter string) *DataTable {
 }
 
 // FilterByColIndexLessThanOrEqualTo filters columns with index less than or equal to the specified column.
-func (dt *DataTable) FilterByColIndexLessThanOrEqualTo(columnLetter string) *DataTable {
+func (dt *DataTable) FilterByColIndexLessThanOrEqualTo(columnIndexLetter string) *DataTable {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
 
-	colIdx, exists := dt.columnIndex[columnLetter]
+	columnIndexLetter = strings.ToUpper(columnIndexLetter)
+	colIdx, exists := dt.columnIndex[columnIndexLetter]
 	if !exists {
 		return &DataTable{}
 	}
