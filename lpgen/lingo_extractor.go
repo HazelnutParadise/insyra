@@ -12,6 +12,7 @@ type lingoExtractResult struct {
 	Tokens      []lingoToken
 	Obj         map[string]string       // 用來儲存目標函數
 	Constants   map[string]string       // 用來儲存常數及其對應的數值
+	Variables   map[string]string       // 用來儲存變數及其對應的數值
 	Data        map[string][]string     // 用來儲存數據
 	Sets        map[string]lingoSet     // 用來儲存集合及其對應的數值
 	Funcs       map[string][]lingoToken // 用來儲存函數代號及其對應的式
@@ -41,6 +42,7 @@ func LingoExtractor(Tokens *[]lingoToken) *lingoExtractResult {
 		Tokens:      *Tokens,
 		Obj:         make(map[string]string),
 		Constants:   make(map[string]string),
+		Variables:   make(map[string]string),
 		Data:        make(map[string][]string),
 		Sets:        make(map[string]lingoSet),
 		Funcs:       make(map[string][]lingoToken),
@@ -49,9 +51,10 @@ func LingoExtractor(Tokens *[]lingoToken) *lingoExtractResult {
 	result = lingoExtractObj(result)
 	result = lingoExtractData(result)
 	result = lingoExtractConstants(result)
+	result = lingoExtractVariables(result)
 	result = lingoExtractSets(result)
-	result = lingoProcessNestedParentheses(result)
-	result = lingoProcessParenthesesInFuncs(result)
+	result = lingoExtractProcessNestedParentheses(result)
+	result = lingoExtractProcessParenthesesInFuncs(result)
 
 	// TODO: 處理有索引的變數
 
@@ -147,6 +150,48 @@ func lingoExtractConstants(result *lingoExtractResult) *lingoExtractResult {
 			return !unicode.IsDigit(r)
 		})
 	}
+	return result
+}
+
+func lingoExtractVariables(result *lingoExtractResult) *lingoExtractResult {
+	extractVariables := false
+	extractingVariableName := ""
+
+	for i, token := range result.Tokens {
+		upperTokenValue := strings.ToUpper(token.Value)
+		if i+1 >= len(result.Tokens) {
+			break
+		}
+		nextToken := result.Tokens[i+1]
+		if upperTokenValue == "SETS" || upperTokenValue == "DATA" {
+			extractVariables = false
+		} else if upperTokenValue == "ENDSETS" || upperTokenValue == "ENDDATA" {
+			extractVariables = true
+		}
+
+		if extractVariables {
+			if token.Type == "VARIABLE" && nextToken.Value == "=" {
+				extractingVariableName = token.Value
+				continue
+			} else if token.Value == "=" {
+				continue
+			} else if token.Value == ";" {
+				extractingVariableName = ""
+			}
+
+			if extractingVariableName != "" {
+				result.Variables[extractingVariableName] += token.Value
+			}
+		}
+	}
+
+	// 移除已在Constants的變數
+	for variable := range result.Variables {
+		if _, exists := result.Constants[variable]; exists {
+			delete(result.Variables, variable)
+		}
+	}
+
 	return result
 }
 
@@ -258,7 +303,7 @@ func lingoExtractSets(result *lingoExtractResult) *lingoExtractResult {
 }
 
 // 擷取tokens內的括號
-func lingoProcessNestedParentheses(result *lingoExtractResult) *lingoExtractResult {
+func lingoExtractProcessNestedParentheses(result *lingoExtractResult) *lingoExtractResult {
 	var stopExtract bool = false
 	for !stopExtract {
 		左括號堆疊 := []int{} // 堆疊來儲存左括號的索引
@@ -327,7 +372,7 @@ func lingoExtractFuncs(result *lingoExtractResult, funcStartIndex int, funEndInd
 }
 
 // 須在Funcs內再遞迴處理一次括號
-func lingoProcessParenthesesInFuncs(result *lingoExtractResult) *lingoExtractResult {
+func lingoExtractProcessParenthesesInFuncs(result *lingoExtractResult) *lingoExtractResult {
 	var stopExtract = false
 	for !stopExtract {
 		leftParenthesesStack := []int{}

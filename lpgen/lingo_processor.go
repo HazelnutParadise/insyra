@@ -7,7 +7,9 @@ type lingoProcessResult struct {
 }
 
 func lingoProcessor(extractResult *lingoExtractResult) *lingoProcessResult {
-	result := &lingoProcessResult{}
-	result.Tokens = extractResult.Tokens
+	result := &lingoProcessResult{
+		Tokens: extractResult.Tokens,
+	}
+
 	return result
 }
