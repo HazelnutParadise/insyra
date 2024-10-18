@@ -17,17 +17,27 @@ func LingoProcessor(extractResult *lingoExtractResult) *lingoProcessResult {
 	result := &lingoProcessResult{
 		Tokens: extractResult.Tokens,
 	}
-
-	result.Funcs = lingoProcessFuncs(extractResult)
+	var err error
+	result.Funcs, err = lingoProcessFuncs(extractResult)
+	if err != nil {
+		panic(err)
+	}
 
 	return result
 }
 
-func lingoProcessFuncs(extractResult *lingoExtractResult) map[string][]lingoToken {
+func lingoProcessFuncs(extractResult *lingoExtractResult) (map[string][]lingoToken, error) {
 	funcs := make(map[string][]lingoToken)
 	// TODO: 重複直到token.Type沒有FUNC
 
+processFunc:
 	for funcName, funcTokens := range extractResult.Funcs {
+		for _, token := range funcTokens {
+			if token.Type == "FUNC" {
+				// 先解決裡面沒有其他函數的
+				continue processFunc
+			}
+		}
 		if strings.HasPrefix(funcName, "$SIZE") {
 			funcs[funcName] = lingoProcessFunc_SIZE(funcTokens, extractResult)
 			// TODO: 處理 SIZE 函數
@@ -43,7 +53,7 @@ func lingoProcessFuncs(extractResult *lingoExtractResult) map[string][]lingoToke
 		// TODO: 其他函數
 	}
 
-	return funcs
+	return funcs, nil
 }
 
 func lingoProcessFunc_SIZE(funcTokens []lingoToken, extractResult *lingoExtractResult) []lingoToken {
