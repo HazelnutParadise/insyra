@@ -154,6 +154,9 @@ The first return value is the number of rows, and the second return value is the
 ##### `Count(value interface{}) int`
 Returns the number of occurrences of the specified value in the `DataTable`.
 
+##### `Counter() map[interface{}]int`
+Returns a map of the number of occurrences of each value in the `DataTable`.
+
 ##### `Transpose() *DataTable`
 Transposes the `DataTable`, converting rows into columns and vice versa.
 
