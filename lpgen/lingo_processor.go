@@ -58,7 +58,6 @@ processFunc:
 		if strings.HasPrefix(funcName, "$SIZE") {
 			funcs[funcName] = append(funcs[funcName], lingoProcessFunc_SIZE(funcTokens, extractResult))
 		} else if strings.HasPrefix(funcName, "$SUM") {
-			// TODO: 處理 SUM 函數
 			sumTokens, err := lingoProcessFunc_SUM(funcTokens, extractResult, setsMap)
 			if err != nil {
 				return nil, err
@@ -97,7 +96,6 @@ func lingoProcessFunc_SIZE(funcTokens []lingoToken, extractResult *lingoExtractR
 
 func lingoProcessFunc_SUM(funcTokens []lingoToken, extractResult *lingoExtractResult, setsMap map[string]string) ([][]lingoToken, error) {
 	expandedTokens := make([][]lingoToken, 0)
-	// TODO
 	toMerge := make(map[int][]string)
 	variableToMergeCount := 0
 
@@ -136,34 +134,57 @@ func lingoProcessFunc_SUM(funcTokens []lingoToken, extractResult *lingoExtractRe
 		}
 	}
 
-	// 有問題
-	for toMerge != nil {
-		for _, token := range funcTokens {
-			if token.Type == "TO_MERGE" {
-				// 去掉 #
-				nowMerge := conv.ParseInt(token.Value[1:])
-				expandedTokens = append(expandedTokens, []lingoToken{})
-				// 邏輯有問題
-				slice := toMerge[nowMerge]
-				poped, err := sliceutil.Drt_PopFrom(&slice)
-				if err != nil {
-					return nil, err
-				}
-				toMerge[nowMerge] = slice
-				expandedTokens[nowMerge] = append(expandedTokens[nowMerge], lingoToken{
-					Type:  "VARIABLE",
-					Value: poped,
-				})
-
-				if len(toMerge[nowMerge]) == 0 {
-					delete(toMerge, nowMerge)
-					break
-				}
-
-			}
+	maxMergeLength := 0
+	for _, mergeList := range toMerge {
+		if len(mergeList) > maxMergeLength {
+			maxMergeLength = len(mergeList)
 		}
 	}
-	return expandedTokens, nil
+
+	for mergeIndex := 0; mergeIndex < maxMergeLength; mergeIndex++ {
+		currentExpression := make([]lingoToken, 0)
+		for _, token := range funcTokens {
+			if token.Type == "TO_MERGE" {
+				nowMerge := conv.ParseInt(token.Value[1:])
+				if mergeIndex < len(toMerge[nowMerge]) {
+					currentExpression = append(currentExpression, lingoToken{
+						Type:  "VARIABLE",
+						Value: toMerge[nowMerge][mergeIndex],
+					})
+				}
+			} else {
+				currentExpression = append(currentExpression, token)
+			}
+
+		}
+
+		// 移除最後一個加號（如果存在）
+		if len(currentExpression) > 0 && currentExpression[len(currentExpression)-1].Value == "+" {
+			currentExpression = currentExpression[:len(currentExpression)-1]
+		}
+
+		// 移除最後一個右括號
+		if len(currentExpression) > 0 && currentExpression[len(currentExpression)-1].Value == ")" {
+			currentExpression = currentExpression[:len(currentExpression)-1]
+		}
+
+		if len(currentExpression) > 0 {
+			expandedTokens = append(expandedTokens, currentExpression)
+		}
+	}
+
+	result := make([]lingoToken, 0)
+	for i, token := range expandedTokens {
+		result = append(result, token...)
+		if i < len(expandedTokens)-1 {
+			result = append(result, lingoToken{
+				Type:  "OPERATOR",
+				Value: "+",
+			})
+		}
+	}
+
+	return [][]lingoToken{result}, nil
 }
 
 func lingoProcessFunc_FOR(funcTokens []lingoToken, extractResult *lingoExtractResult) []lingoToken {
