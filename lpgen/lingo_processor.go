@@ -179,9 +179,9 @@ func lingoProcessGetSetsInFunc(funcTokens []lingoToken) map[string]string {
 			continue
 		}
 
-		if token.Type == "VARIABLE" {
+		if token.Type == "VARIABLE" && i+2 < len(funcTokens) {
 			nowSetName = token.Value
-			indexToken := funcTokens[i+1]
+			indexToken := funcTokens[i+2]
 			for _, indexLetter := range indexLetters {
 				if indexLetter == indexToken.Value {
 					sets[indexLetter] = nowSetName
