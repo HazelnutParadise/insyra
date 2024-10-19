@@ -136,16 +136,29 @@ func lingoProcessFunc_SUM(funcTokens []lingoToken, extractResult *lingoExtractRe
 		}
 	}
 
-	for _, token := range funcTokens {
-		if token.Type == "TO_MERGE" {
-			// 去掉 #
-			nowMerge := conv.ParseInt(token.Value[1:])
-			expandedTokens = append(expandedTokens, []lingoToken{})
-			for _, value := range toMerge[nowMerge] {
+	for toMerge != nil {
+		for _, token := range funcTokens {
+			if token.Type == "TO_MERGE" {
+				// 去掉 #
+				nowMerge := conv.ParseInt(token.Value[1:])
+				expandedTokens = append(expandedTokens, []lingoToken{})
+				// 邏輯有問題
+				slice := toMerge[nowMerge]
+				poped, err := sliceutil.Drt_PopFrom(&slice)
+				if err != nil {
+					return nil, err
+				}
+				toMerge[nowMerge] = slice
 				expandedTokens[nowMerge] = append(expandedTokens[nowMerge], lingoToken{
 					Type:  "VARIABLE",
-					Value: value,
+					Value: poped,
 				})
+
+				if len(toMerge[nowMerge]) == 0 {
+					delete(toMerge, nowMerge)
+					break
+				}
+
 			}
 		}
 	}
