@@ -3,6 +3,9 @@ package lpgen
 import (
 	"strconv"
 	"strings"
+
+	"github.com/HazelnutParadise/Go-Utils/conv"
+	"github.com/HazelnutParadise/Go-Utils/sliceutil"
 )
 
 // 索引字母 I, J, K, L, M, N
@@ -10,12 +13,13 @@ var indexLetters = []string{"I", "J", "K", "L", "M", "N"}
 
 type lingoProcessResult struct {
 	Tokens []lingoToken
-	Funcs  map[string][]lingoToken
+	Funcs  map[string][][]lingoToken
 }
 
 func LingoProcessor(extractResult *lingoExtractResult) *lingoProcessResult {
 	result := &lingoProcessResult{
 		Tokens: extractResult.Tokens,
+		Funcs:  make(map[string][][]lingoToken),
 	}
 	var err error
 	result.Funcs, err = lingoProcessFuncs(extractResult)
@@ -26,8 +30,8 @@ func LingoProcessor(extractResult *lingoExtractResult) *lingoProcessResult {
 	return result
 }
 
-func lingoProcessFuncs(extractResult *lingoExtractResult) (map[string][]lingoToken, error) {
-	funcs := make(map[string][]lingoToken)
+func lingoProcessFuncs(extractResult *lingoExtractResult) (map[string][][]lingoToken, error) {
+	funcs := make(map[string][][]lingoToken)
 	// TODO: 重複直到token.Type沒有FUNC
 
 processFunc:
@@ -35,14 +39,30 @@ processFunc:
 		for _, token := range funcTokens {
 			if token.Type == "FUNC" {
 				// 先解決裡面沒有其他函數的
+				// 遇到裡面有其他函數的，先跳過
 				continue processFunc
 			}
 		}
+		setsMap := lingoProcessGetSetsInFunc(funcTokens)
+		toCutIndex := 0
+		for i, token := range funcTokens {
+			if token.Value == ":" {
+				toCutIndex = i
+				break
+			}
+		}
+		funcTokens, err := sliceutil.ReplaceWithSlice(funcTokens, 0, toCutIndex, []lingoToken{})
+		if err != nil {
+			return nil, err
+		}
 		if strings.HasPrefix(funcName, "$SIZE") {
-			funcs[funcName] = lingoProcessFunc_SIZE(funcTokens, extractResult)
-			// TODO: 處理 SIZE 函數
+			funcs[funcName] = append(funcs[funcName], lingoProcessFunc_SIZE(funcTokens, extractResult))
 		} else if strings.HasPrefix(funcName, "$SUM") {
 			// TODO: 處理 SUM 函數
+			funcs[funcName], err = lingoProcessFunc_SUM(funcTokens, extractResult, setsMap)
+			if err != nil {
+				return nil, err
+			}
 		} else if strings.HasPrefix(funcName, "$FOR") {
 			// TODO: 處理 FOR 函數
 		} else if strings.HasPrefix(funcName, "$POW") {
@@ -74,9 +94,54 @@ func lingoProcessFunc_SIZE(funcTokens []lingoToken, extractResult *lingoExtractR
 	}
 }
 
-func lingoProcessFunc_SUM(funcTokens []lingoToken, extractResult *lingoExtractResult) []lingoToken {
+func lingoProcessFunc_SUM(funcTokens []lingoToken, extractResult *lingoExtractResult, setsMap map[string]string) ([][]lingoToken, error) {
+	expandedTokens := make([][]lingoToken, 0)
 	// TODO
-	return nil
+	toMerge := make(map[int][]string)
+	variableToMergeCount := 0
+
+	for i, token := range funcTokens {
+		if i+1 >= len(funcTokens) {
+			break
+		}
+		nextToken := funcTokens[i+1]
+		if token.Type == "VARIABLE" && nextToken.Value == "(" {
+			thisVariable := token.Value
+			// 取得該遍歷的Set
+			set := setsMap[funcTokens[i+2].Value]
+			// 取得該遍歷的Set的子元素
+			setIndex := extractResult.Sets[set].Index
+
+			// 開始展開邏輯
+			for _, index := range setIndex {
+				subVariable := thisVariable + "_" + index
+				toMerge[variableToMergeCount] = append(toMerge[variableToMergeCount], subVariable)
+			}
+
+			// 原本含索引的變數替換成符號
+			sliceutil.ReplaceWithSlice(funcTokens, i, i+3, []lingoToken{
+				{
+					Type:  "TO_MERGE",
+					Value: "#" + strconv.Itoa(variableToMergeCount),
+				},
+			})
+
+			variableToMergeCount++
+		}
+	}
+
+	for _, token := range funcTokens {
+		if token.Type == "TO_MERGE" {
+			nowMerge := conv.ParseInt(token.Value[1:])
+			for _, value := range toMerge[nowMerge] {
+				expandedTokens[nowMerge] = append(expandedTokens[nowMerge], lingoToken{
+					Type:  "VARIABLE",
+					Value: value,
+				})
+			}
+		}
+	}
+	return nil, nil
 }
 
 func lingoProcessFunc_FOR(funcTokens []lingoToken, extractResult *lingoExtractResult) []lingoToken {
@@ -92,4 +157,29 @@ func lingoProcessFunc_POW(funcTokens []lingoToken, extractResult *lingoExtractRe
 func lingoProcessFunc_BIN(funcTokens []lingoToken, extractResult *lingoExtractResult) []lingoToken {
 	// TODO
 	return nil
+}
+
+func lingoProcessGetSetsInFunc(funcTokens []lingoToken) map[string]string {
+	sets := make(map[string]string)
+	gettingSets := true
+	nowSetName := ""
+
+	for i, token := range funcTokens {
+		if token.Value == ":" {
+			gettingSets = false
+		} else if token.Value == "," {
+			nowSetName = ""
+			continue
+		}
+
+		if gettingSets && nowSetName != "" {
+			if token.Type == "VARIABLE" {
+				nowSetName = token.Value
+				indexToken := funcTokens[i+1]
+				sets[indexToken.Value] = nowSetName
+			}
+		}
+	}
+
+	return sets
 }
