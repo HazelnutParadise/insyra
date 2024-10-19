@@ -59,10 +59,11 @@ processFunc:
 			funcs[funcName] = append(funcs[funcName], lingoProcessFunc_SIZE(funcTokens, extractResult))
 		} else if strings.HasPrefix(funcName, "$SUM") {
 			// TODO: 處理 SUM 函數
-			funcs[funcName], err = lingoProcessFunc_SUM(funcTokens, extractResult, setsMap)
+			sumTokens, err := lingoProcessFunc_SUM(funcTokens, extractResult, setsMap)
 			if err != nil {
 				return nil, err
 			}
+			funcs[funcName] = append(funcs[funcName], sumTokens...)
 		} else if strings.HasPrefix(funcName, "$FOR") {
 			// TODO: 處理 FOR 函數
 		} else if strings.HasPrefix(funcName, "$POW") {
@@ -119,12 +120,16 @@ func lingoProcessFunc_SUM(funcTokens []lingoToken, extractResult *lingoExtractRe
 			}
 
 			// 原本含索引的變數替換成符號
-			sliceutil.ReplaceWithSlice(funcTokens, i, i+3, []lingoToken{
+			var err error
+			funcTokens, err = sliceutil.ReplaceWithSlice(funcTokens, i, i+3, []lingoToken{
 				{
 					Type:  "TO_MERGE",
 					Value: "#" + strconv.Itoa(variableToMergeCount),
 				},
 			})
+			if err != nil {
+				return nil, err
+			}
 
 			variableToMergeCount++
 		}
@@ -133,6 +138,7 @@ func lingoProcessFunc_SUM(funcTokens []lingoToken, extractResult *lingoExtractRe
 	for _, token := range funcTokens {
 		if token.Type == "TO_MERGE" {
 			nowMerge := conv.ParseInt(token.Value[1:])
+			expandedTokens = append(expandedTokens, []lingoToken{})
 			for _, value := range toMerge[nowMerge] {
 				expandedTokens[nowMerge] = append(expandedTokens[nowMerge], lingoToken{
 					Type:  "VARIABLE",
@@ -141,7 +147,7 @@ func lingoProcessFunc_SUM(funcTokens []lingoToken, extractResult *lingoExtractRe
 			}
 		}
 	}
-	return nil, nil
+	return expandedTokens, nil
 }
 
 func lingoProcessFunc_FOR(funcTokens []lingoToken, extractResult *lingoExtractResult) []lingoToken {
@@ -176,7 +182,11 @@ func lingoProcessGetSetsInFunc(funcTokens []lingoToken) map[string]string {
 			if token.Type == "VARIABLE" {
 				nowSetName = token.Value
 				indexToken := funcTokens[i+1]
-				sets[indexToken.Value] = nowSetName
+				for _, indexLetter := range indexLetters {
+					if indexLetter == indexToken.Value {
+						sets[indexLetter] = nowSetName
+					}
+				}
 			}
 		}
 	}
