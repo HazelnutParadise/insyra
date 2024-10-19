@@ -136,6 +136,7 @@ func lingoProcessFunc_SUM(funcTokens []lingoToken, extractResult *lingoExtractRe
 		}
 	}
 
+	// 有問題
 	for toMerge != nil {
 		for _, token := range funcTokens {
 			if token.Type == "TO_MERGE" {
