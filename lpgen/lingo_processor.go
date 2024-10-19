@@ -106,10 +106,11 @@ func lingoProcessFunc_SUM(funcTokens []lingoToken, extractResult *lingoExtractRe
 			break
 		}
 		nextToken := funcTokens[i+1]
-		if token.Type == "VARIABLE" && nextToken.Value == "(" {
+		if nextToken.Value == "(" {
 			thisVariable := token.Value
 			// 取得該遍歷的Set
 			set := setsMap[funcTokens[i+2].Value]
+
 			// 取得該遍歷的Set的子元素
 			setIndex := extractResult.Sets[set].Index
 
@@ -137,6 +138,7 @@ func lingoProcessFunc_SUM(funcTokens []lingoToken, extractResult *lingoExtractRe
 
 	for _, token := range funcTokens {
 		if token.Type == "TO_MERGE" {
+			// 去掉 #
 			nowMerge := conv.ParseInt(token.Value[1:])
 			expandedTokens = append(expandedTokens, []lingoToken{})
 			for _, value := range toMerge[nowMerge] {
@@ -167,29 +169,25 @@ func lingoProcessFunc_BIN(funcTokens []lingoToken, extractResult *lingoExtractRe
 
 func lingoProcessGetSetsInFunc(funcTokens []lingoToken) map[string]string {
 	sets := make(map[string]string)
-	gettingSets := true
 	nowSetName := ""
 
 	for i, token := range funcTokens {
 		if token.Value == ":" {
-			gettingSets = false
+			break
 		} else if token.Value == "," {
 			nowSetName = ""
 			continue
 		}
 
-		if gettingSets && nowSetName != "" {
-			if token.Type == "VARIABLE" {
-				nowSetName = token.Value
-				indexToken := funcTokens[i+1]
-				for _, indexLetter := range indexLetters {
-					if indexLetter == indexToken.Value {
-						sets[indexLetter] = nowSetName
-					}
+		if token.Type == "VARIABLE" {
+			nowSetName = token.Value
+			indexToken := funcTokens[i+1]
+			for _, indexLetter := range indexLetters {
+				if indexLetter == indexToken.Value {
+					sets[indexLetter] = nowSetName
 				}
 			}
 		}
 	}
-
 	return sets
 }
