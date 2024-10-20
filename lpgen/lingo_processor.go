@@ -99,16 +99,23 @@ func lingoProcessFunc_SUM(funcTokens []lingoToken, extractResult *lingoExtractRe
 	expandedTokens := make([][]lingoToken, 0)
 	toMerge := make(map[int][]string)
 	variableToMergeCount := 0
+	thisVariable := ""
 
 	for i, token := range funcTokens {
 		if i+1 >= len(funcTokens) {
 			break
 		}
 		nextToken := funcTokens[i+1]
+		indexToProcess := make([]string, 0)
 		if nextToken.Value == "(" {
-			thisVariable := token.Value
+			thisVariable = token.Value
 			// 取得該遍歷的Set
-			set := setsMap[funcTokens[i+2].Value]
+			indexToProcess = append(indexToProcess, funcTokens[i+2].Value)
+		} else if token.Value == "," {
+			indexToProcess = append(indexToProcess, nextToken.Value)
+		}
+		for _, index := range indexToProcess {
+			set := setsMap[index]
 
 			// 取得該遍歷的Set的子元素
 			setIndex := extractResult.Sets[set].Index
