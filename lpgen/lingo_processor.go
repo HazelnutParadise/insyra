@@ -1,6 +1,7 @@
 package lpgen
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -202,27 +203,33 @@ func lingoProcessFunc_BIN(funcTokens []lingoToken, extractResult *lingoExtractRe
 	return nil
 }
 
+// 取得函數中的Set
+// 已完成，沒問題
 func lingoProcessGetSetsInFunc(funcTokens []lingoToken) map[string]string {
 	sets := make(map[string]string)
 	nowSetName := ""
+	indexTokens := make([]lingoToken, 0)
 
 	for i, token := range funcTokens {
 		if token.Value == ":" {
 			break
 		} else if token.Value == "," {
-			nowSetName = ""
 			continue
 		}
 
-		if token.Type == "VARIABLE" && i+2 < len(funcTokens) {
+		if token.Type == "VARIABLE" && i+2 < len(funcTokens) && funcTokens[i+1].Value == "(" {
 			nowSetName = token.Value
-			indexToken := funcTokens[i+2]
-			for _, indexLetter := range indexLetters {
-				if indexLetter == indexToken.Value {
-					sets[indexLetter] = nowSetName
-				}
+		} else if token.Type == "VARIABLE" && (funcTokens[i-1].Value == "(" || funcTokens[i-1].Value == ",") {
+			indexTokens = append(indexTokens, token)
+		}
+	}
+	for _, indexToken := range indexTokens {
+		for _, indexLetter := range indexLetters {
+			if indexLetter == indexToken.Value {
+				sets[indexLetter] = nowSetName
 			}
 		}
 	}
+	fmt.Println(sets)
 	return sets
 }
