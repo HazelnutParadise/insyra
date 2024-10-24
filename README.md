@@ -18,7 +18,7 @@ A next-generation data analysis library for Golang. Supports **parallel processi
 
 Welcome to join [**Side Project Taiwan**(Discord Server)](https://discord.com/channels/1205906503073140776/1280539658551558368) for further discussions.
 
-## Too Fast, Too Lovely, Too Easy To Use.
+## Fast, Lovely, Easy To Use.
 
 The **Insyra** library is a dynamic and versatile tool designed for managing and analyzing data in Go. It offers a rich set of features for data manipulation, statistical calculations, data visualization, and more, making it an essential toolkit for developers handling complex data structures.
 
