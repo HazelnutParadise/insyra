@@ -77,28 +77,34 @@ func ParseLingoFile(filePath string) (*LPModel, error) {
 		// 根據表達式內容分類
 		if strings.HasPrefix(strings.ToUpper(expr), "MIN=") || strings.HasPrefix(strings.ToUpper(expr), "MAX=") {
 			// 處理目標函數
-			objType := "MIN"
+			objType := "Minimize"
 			if strings.HasPrefix(strings.ToUpper(expr), "MAX=") {
-				objType = "MAX"
+				objType = "Maximize"
 			}
-			content := strings.TrimSpace(strings.TrimPrefix(strings.ToUpper(expr), objType+"="))
+			// 直接取得 = 後面的內容
+			content := strings.TrimSpace(strings.SplitN(expr, "=", 2)[1])
 			model.ObjectiveType = objType
-
-			// 格式化目標函數
-			content = formatExpression(content, multiplyRe, spaceRe)
 			model.Objective = content
-
 		} else if strings.HasPrefix(strings.ToUpper(expr), "@BIN") {
-			// 處理 Binary
-			start := strings.Index(expr, "(")
-			end := strings.Index(expr, ")")
-			if start != -1 && end != -1 {
-				vars := expr[start+1 : end]
-				// 分割多個二進制變數
-				binVars := strings.Split(vars, ",")
-				for _, binVar := range binVars {
+			// 處理多個 Binary 變數宣告
+			binDeclarations := strings.Split(expr, ";")
+			for _, declaration := range binDeclarations {
+				declaration = strings.TrimSpace(declaration)
+				if !strings.HasPrefix(strings.ToUpper(declaration), "@BIN") {
+					continue
+				}
+				start := strings.Index(declaration, "(")
+				end := strings.Index(declaration, ")")
+				if start != -1 && end != -1 {
+					binVar := declaration[start+1 : end]
 					binVar = strings.TrimSpace(binVar)
 					model.BinaryVars = append(model.BinaryVars, binVar)
+
+					// 如果是 X 變數，也要加入對應的 Q 變數
+					if strings.HasPrefix(binVar, "X_") {
+						qVar := "Q" + binVar[1:] // 把 X 換成 Q
+						model.BinaryVars = append(model.BinaryVars, qVar)
+					}
 				}
 			}
 		} else if strings.ContainsAny(expr, "<=>=") {
@@ -114,6 +120,17 @@ func ParseLingoFile(filePath string) (*LPModel, error) {
 		}
 	}
 
+	// 在處理完所有表達式後，添加 OPT_VACC_NUM 的界限
+	for i := 1; i <= 5; i++ {
+		model.Bounds = append(model.Bounds, fmt.Sprintf("OPT_VACC_NUM_%d >= 0", i))
+	}
+
+	// 添加 S 和 H 變數的界限
+	for i := 1; i <= 5; i++ {
+		model.Bounds = append(model.Bounds, fmt.Sprintf("S_%d >= 0", i))
+		model.Bounds = append(model.Bounds, fmt.Sprintf("H_%d >= 0", i))
+	}
+
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("讀取檔案時發生錯誤: %w", err)
 	}
@@ -121,18 +138,48 @@ func ParseLingoFile(filePath string) (*LPModel, error) {
 	return model, nil
 }
 
-// formatExpression 格式化表達式，確保運算符前後有單一空格，並移除乘號
+// formatExpression 格式化表達式，確保運算符前後有單一空格，並除乘號
 func formatExpression(expr string, multiplyRe, spaceRe *regexp.Regexp) string {
 	// 移除乘號並保持係數和變數之間的空格
 	expr = multiplyRe.ReplaceAllString(expr, " ")
-	// 替換多餘空格為單一空格
-	expr = spaceRe.ReplaceAllString(expr, " ")
+
+	// 先處理科學記號
+	parts := strings.Split(expr, " ")
+	for i, part := range parts {
+		if strings.Contains(part, "e") {
+			// 移除科學記號中的所有空格
+			part = strings.ReplaceAll(part, " ", "")
+			parts[i] = part
+		}
+	}
+	expr = strings.Join(parts, " ")
+
+	// 修正數字格式 (移除尾端的多餘 0 和 1)
+	numbers := strings.Fields(expr)
+	for i, num := range numbers {
+		if strings.Contains(num, ".") && !strings.Contains(num, "e") {
+			// 保持原始精度，只移除尾端的零
+			for strings.HasSuffix(num, "0") {
+				num = num[:len(num)-1]
+			}
+			if strings.HasSuffix(num, ".") {
+				num = num[:len(num)-1]
+			}
+			numbers[i] = num
+		}
+	}
+	expr = strings.Join(numbers, " ")
+
 	// 確保運算符前後有單一空格
-	expr = regexp.MustCompile(`([+-])`).ReplaceAllString(expr, " $1 ")
+	expr = strings.ReplaceAll(expr, "+", " + ")
+	expr = strings.ReplaceAll(expr, "-", " - ")
+
 	// 替換多個空格為單一空格
 	expr = spaceRe.ReplaceAllString(expr, " ")
+
 	// 去除表達式前後的空格
 	expr = strings.TrimSpace(expr)
+
 	return expr
 }
 

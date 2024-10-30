@@ -75,12 +75,18 @@ func (lp *LPModel) GenerateLPFile(filename string) {
 	defer file.Close()
 
 	// 設定最大化或最小化
-	_, err = file.WriteString(lp.ObjectiveType + "\n")
+	if lp.ObjectiveType == "Minimize" {
+		_, err = file.WriteString("MIN\n")
+	} else {
+		_, err = file.WriteString("MAX\n")
+	}
 	if err != nil {
 		insyra.LogWarning("lpgen.GenerateLPFile: Failed to write objective type: %v, returning", err)
 		return
 	}
-	_, err = file.WriteString("  " + "obj: " + lp.Objective + "\n")
+
+	// 寫入目標函數
+	_, err = file.WriteString("  obj: " + lp.Objective + "\n")
 	if err != nil {
 		insyra.LogWarning("lpgen.GenerateLPFile: Failed to write objective: %v, returning", err)
 		return
