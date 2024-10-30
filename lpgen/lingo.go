@@ -70,9 +70,7 @@ func ParseLingoFile(filePath string) (*LPModel, error) {
 		// 獲取完整表達式並清理
 		expr := currentExpr.String()
 		expr = strings.TrimSpace(expr)
-		if strings.HasSuffix(expr, ";") {
-			expr = expr[:len(expr)-1]
-		}
+		expr = strings.TrimSuffix(expr, ";")
 		currentExpr.Reset()
 		isFirstLine = true
 
