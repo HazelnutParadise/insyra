@@ -88,10 +88,10 @@ func ParseLingoFile(filePath string) (*LPModel, error) {
 			model.Objective = content
 		} else if strings.HasPrefix(strings.ToUpper(expr), "@BIN") {
 			// 處理 Binary 變數宣告
-			handleVariableDeclarations(expr, model, "@BIN", &model.BinaryVars)
+			handleVariableDeclarations(expr, "@BIN", &model.BinaryVars)
 		} else if strings.HasPrefix(strings.ToUpper(expr), "@INT") {
 			// 處理 Integer 變數宣告
-			handleVariableDeclarations(expr, model, "@INT", &model.IntegerVars)
+			handleVariableDeclarations(expr, "@INT", &model.IntegerVars)
 		} else if strings.ContainsAny(expr, "<=>=") {
 			// 處理 Bounds 和 Constraints
 			content := expr
@@ -111,7 +111,7 @@ func ParseLingoFile(filePath string) (*LPModel, error) {
 }
 
 // handleVariableDeclarations 處理變數宣告並將變數名稱添加到相應的列表中
-func handleVariableDeclarations(expr string, model *LPModel, declarationType string, targetList *[]string) {
+func handleVariableDeclarations(expr string, declarationType string, targetList *[]string) {
 	// 切分宣告語句並處理每個宣告
 	declarations := strings.Split(expr, ";")
 	for _, declaration := range declarations {
