@@ -33,6 +33,10 @@ func ParseLingoFile(filePath string) (*LPModel, error) {
 	multiplyRe := regexp.MustCompile(`\s*\*\s*`)
 	// 定義正則表達式處理多餘空格
 	spaceRe := regexp.MustCompile(`\s+`)
+	// 定義正則表達式處理缺少空格的項目
+	missingSpaceRe := regexp.MustCompile(`([a-zA-Z_0-9]+)([+-])`)
+	// 定義正則表達式處理科學記號中的空格
+	scientificNotationRe := regexp.MustCompile(`(\d)e\s*([+-]?\d+)`)
 
 	// 用於累積多行表達式
 	var currentExpr strings.Builder
@@ -74,6 +78,18 @@ func ParseLingoFile(filePath string) (*LPModel, error) {
 		currentExpr.Reset()
 		isFirstLine = true
 
+		// 移除乘號符號 `*` 以符合 LP 格式要求
+		expr = multiplyRe.ReplaceAllString(expr, " ")
+
+		// 確保每個項目之間有空格
+		expr = missingSpaceRe.ReplaceAllString(expr, `$1 $2`)
+
+		// 確保科學記號中的 `e` 和符號之間沒有空格
+		expr = scientificNotationRe.ReplaceAllString(expr, `$1e$2`)
+
+		// 確保運算項之間有單一空格
+		expr = spaceRe.ReplaceAllString(expr, " ")
+
 		// 根據表達式內容分類
 		if strings.HasPrefix(strings.ToUpper(expr), "MIN=") || strings.HasPrefix(strings.ToUpper(expr), "MAX=") {
 			// 處理目標函數
@@ -109,7 +125,7 @@ func ParseLingoFile(filePath string) (*LPModel, error) {
 			}
 		} else if strings.ContainsAny(expr, "<=>=") {
 			// 處理 Bounds 和 Constraints
-			content := formatExpression(expr, multiplyRe, spaceRe)
+			content := expr
 
 			// 判斷是否為 Bound（不包含運算符號 + 或 -）
 			if !strings.ContainsAny(content, "+-") {
@@ -136,70 +152,4 @@ func ParseLingoFile(filePath string) (*LPModel, error) {
 	}
 
 	return model, nil
-}
-
-// formatExpression 格式化表達式，確保運算符前後有單一空格，並除乘號
-func formatExpression(expr string, multiplyRe, spaceRe *regexp.Regexp) string {
-	// 移除乘號並保持係數和變數之間的空格
-	expr = multiplyRe.ReplaceAllString(expr, " ")
-
-	// 先處理科學記號
-	parts := strings.Split(expr, " ")
-	for i, part := range parts {
-		if strings.Contains(part, "e") {
-			// 移除科學記號中的所有空格
-			part = strings.ReplaceAll(part, " ", "")
-			parts[i] = part
-		}
-	}
-	expr = strings.Join(parts, " ")
-
-	// 修正數字格式 (移除尾端的多餘 0 和 1)
-	numbers := strings.Fields(expr)
-	for i, num := range numbers {
-		if strings.Contains(num, ".") && !strings.Contains(num, "e") {
-			// 保持原始精度，只移除尾端的零
-			for strings.HasSuffix(num, "0") {
-				num = num[:len(num)-1]
-			}
-			if strings.HasSuffix(num, ".") {
-				num = num[:len(num)-1]
-			}
-			numbers[i] = num
-		}
-	}
-	expr = strings.Join(numbers, " ")
-
-	// 確保運算符前後有單一空格
-	expr = strings.ReplaceAll(expr, "+", " + ")
-	expr = strings.ReplaceAll(expr, "-", " - ")
-
-	// 替換多個空格為單一空格
-	expr = spaceRe.ReplaceAllString(expr, " ")
-
-	// 去除表達式前後的空格
-	expr = strings.TrimSpace(expr)
-
-	return expr
-}
-
-// PrintModel 輸出模型內容
-func (m *LPModel) PrintModel() {
-	fmt.Println("目標函數（Objectives）:")
-	fmt.Printf(" - %s: %s\n", m.ObjectiveType, m.Objective)
-
-	fmt.Println("\nBinary 限制（Binary Constraints）:")
-	for _, bin := range m.BinaryVars {
-		fmt.Println(" -", bin)
-	}
-
-	fmt.Println("\n限制式（Constraints）:")
-	for _, constraint := range m.Constraints {
-		fmt.Println(" -", constraint)
-	}
-
-	fmt.Println("\n界限（Bounds）:")
-	for _, bound := range m.Bounds {
-		fmt.Println(" -", bound)
-	}
 }
