@@ -23,7 +23,7 @@ The `LPModel` struct is the core of the `lpgen` package, allowing users to defin
 - **BinaryVars**: Specifies which variables are binary.
 - **IntegerVars**: Specifies which variables are integers.
 
-#### Functions in `lpgen`
+#### General Functions and Methods in `lpgen`
 
 1. **`NewLPModel`**:  
    Creates a new LPModel instance.
@@ -109,3 +109,10 @@ lpModel.GenerateLPFile("my_model.lp")
 
 This example defines a simple linear programming model with two variables and constraints, and saves it as an LP file named `my_model.lp`.
 
+#### LINGO Support
+
+1. `ParseLingoModel_txt`
+   Parse LINGO model from txt file. Go to `LINGO > Generate > Display Model` in LINGO to get the model.
+   ```go
+   func ParseLingoModel_txt(filePath string) *LPModel
+   ```
