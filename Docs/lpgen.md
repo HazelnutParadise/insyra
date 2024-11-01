@@ -111,9 +111,9 @@ This example defines a simple linear programming model with two variables and co
 
 #### LINGO Support
 
-The `lpgen` package also supports LINGO, which is a popular optimization software.
+The `lpgen` package also supports **LINGO**, which is a popular optimization software.
 
-1. `ParseLingoModel_txt`
+1. **`ParseLingoModel_txt`**
    Parse LINGO model from txt file. It turns LINGO model to standard lp model.
    Go to `LINGO > Generate > Display Model` in LINGO to get the model.
    ```go
