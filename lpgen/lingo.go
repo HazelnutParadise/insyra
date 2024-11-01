@@ -3,7 +3,6 @@ package lpgen
 import (
 	"bufio"
 	"fmt"
-	"math"
 	"os"
 	"regexp"
 	"strings"
@@ -36,8 +35,8 @@ func ParseLingoFile(filePath string) (*LPModel, error) {
 	spaceRe := regexp.MustCompile(`\s+`)
 	// 定義正則表達式處理缺少空格的項目
 	missingSpaceRe := regexp.MustCompile(`([a-zA-Z_0-9]+)([+-])`)
-	// 定義正則表達式來匹配科學記號的常見格式，並轉換成 e 表示法
-	scientificNotationDetectionRe := regexp.MustCompile(`(\d+\.?\d*)[eE][ ]*([+-]?\d+)`)
+	// 定義正則表達式確保科學記號中的 e 周圍沒有空格
+	scientificNotationSpaceFixRe := regexp.MustCompile(`(\d)([eE])\s*([+-]?\d+)`)
 
 	// 用於累積多行表達式
 	var currentExpr strings.Builder
@@ -85,8 +84,8 @@ func ParseLingoFile(filePath string) (*LPModel, error) {
 		// 確保每個項目之間有空格
 		expr = missingSpaceRe.ReplaceAllString(expr, `$1 $2`)
 
-		// 使用 `convertScientificNotation` 將科學記號轉為標準形式
-		expr = convertScientificNotation(expr, scientificNotationDetectionRe)
+		// 確保科學記號中的 e 和指數之間沒有空格
+		expr = scientificNotationSpaceFixRe.ReplaceAllString(expr, `$1$2$3`)
 
 		// 確保運算項之間有單一空格
 		expr = spaceRe.ReplaceAllString(expr, " ")
@@ -116,12 +115,6 @@ func ParseLingoFile(filePath string) (*LPModel, error) {
 					binVar := declaration[start+1 : end]
 					binVar = strings.TrimSpace(binVar)
 					model.BinaryVars = append(model.BinaryVars, binVar)
-
-					// // 如果是 X 變數，也要加入對應的 Q 變數
-					// if strings.HasPrefix(binVar, "X_") {
-					// 	qVar := "Q" + binVar[1:] // 把 X 換成 Q
-					// 	model.BinaryVars = append(model.BinaryVars, qVar)
-					// }
 				}
 			}
 		} else if strings.ContainsAny(expr, "<=>=") {
@@ -153,14 +146,4 @@ func ParseLingoFile(filePath string) (*LPModel, error) {
 	}
 
 	return model, nil
-}
-
-// convertScientificNotation 將科學記號轉換為標準 e 表示法
-func convertScientificNotation(expr string, scientificNotationRe *regexp.Regexp) string {
-	return scientificNotationRe.ReplaceAllStringFunc(expr, func(match string) string {
-		var base float64
-		var exponent int
-		fmt.Sscanf(match, "%fe%d", &base, &exponent) // 讀取基數和指數
-		return fmt.Sprintf("%e", base*math.Pow(10, float64(exponent)))
-	})
 }
