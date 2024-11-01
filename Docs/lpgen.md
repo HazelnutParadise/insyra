@@ -119,3 +119,11 @@ The `lpgen` package also supports **LINGO**, which is a popular optimization sof
    ```go
    func ParseLingoModel_txt(filePath string) *LPModel
    ```
+
+2. **`ParseLingoModel_str`**
+   Parse LINGO model from string. It turns LINGO model to standard lp model.
+   Go to `LINGO > Generate > Display Model` in LINGO to get the model.
+   ```go
+   func ParseLingoModel_str(modelStr string) *LPModel
+   ```
+
