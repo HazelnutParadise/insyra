@@ -2,18 +2,21 @@ package lpgen
 
 import (
 	"bufio"
-	"fmt"
 	"os"
 	"regexp"
 	"strings"
+
+	"github.com/HazelnutParadise/insyra"
 )
 
-// ParseLingoFile 解析 Lingo 檔案並返回 LPModel
-func ParseLingoFile(filePath string) (*LPModel, error) {
+// ParseLingoModel_txt parse lingo model from txt file.
+// Go to `LINGO > Generate > Display Model` in LINGO to get the model.
+func ParseLingoModel_txt(filePath string) *LPModel {
 	// 讀取文件
 	file, err := os.Open(filePath)
 	if err != nil {
-		return nil, fmt.Errorf("無法開啟檔案: %w", err)
+		insyra.LogWarning("lpgen.ParseLingoModel_txt: " + err.Error())
+		return nil
 	}
 	defer file.Close()
 
@@ -88,10 +91,10 @@ func ParseLingoFile(filePath string) (*LPModel, error) {
 			model.Objective = content
 		} else if strings.HasPrefix(strings.ToUpper(expr), "@BIN") {
 			// 處理 Binary 變數宣告
-			handleVariableDeclarations(expr, "@BIN", &model.BinaryVars)
+			lingo_handleVariableDeclarations(expr, "@BIN", &model.BinaryVars)
 		} else if strings.HasPrefix(strings.ToUpper(expr), "@INT") {
 			// 處理 Integer 變數宣告
-			handleVariableDeclarations(expr, "@INT", &model.IntegerVars)
+			lingo_handleVariableDeclarations(expr, "@INT", &model.IntegerVars)
 		} else if strings.ContainsAny(expr, "<=>=") {
 			// 處理 Bounds 和 Constraints
 			content := expr
@@ -104,14 +107,15 @@ func ParseLingoFile(filePath string) (*LPModel, error) {
 	}
 
 	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("讀取檔案時發生錯誤: %w", err)
+		insyra.LogWarning("lpgen.ParseLingoModel_txt: " + err.Error())
+		return nil
 	}
 
-	return model, nil
+	return model
 }
 
 // handleVariableDeclarations 處理變數宣告並將變數名稱添加到相應的列表中
-func handleVariableDeclarations(expr string, declarationType string, targetList *[]string) {
+func lingo_handleVariableDeclarations(expr string, declarationType string, targetList *[]string) {
 	// 切分宣告語句並處理每個宣告
 	declarations := strings.Split(expr, ";")
 	for _, declaration := range declarations {
