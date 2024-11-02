@@ -4,7 +4,6 @@ package stats
 
 import (
 	"math"
-	"math/big"
 
 	"github.com/HazelnutParadise/Go-Utils/conv"
 	"github.com/HazelnutParadise/insyra"
@@ -31,47 +30,42 @@ func LinearRegression(dlX, dlY insyra.IDataList) *LinearRegressionResult {
 	}
 
 	// 計算 X 和 Y 值
-	meanX := new(big.Rat).SetFloat64(dlX.Mean())
-	meanY := new(big.Rat).SetFloat64(dlY.Mean())
+	meanX := dlX.Mean()
+	meanY := dlY.Mean()
 
 	// 初始化變量
-	numerator := new(big.Rat)
-	denominator := new(big.Rat)
+	numerator := 0.0
+	denominator := 0.0
 	var residuals []float64
 	var sumSquaredResiduals, sumTotalSquares float64
 
 	// 計算斜率的分子和分母
 	for i := 0; i < dlX.Len(); i++ {
-		x := new(big.Rat).SetFloat64(conv.ParseF64(dlX.Data()[i]))
-		y := new(big.Rat).SetFloat64(conv.ParseF64(dlY.Data()[i]))
+		x := conv.ParseF64(dlX.Data()[i])
+		y := conv.ParseF64(dlY.Data()[i])
 
 		// (x_i - meanX) 和 (y_i - meanY)
-		diffX := new(big.Rat).Sub(x, meanX)
-		diffY := new(big.Rat).Sub(y, meanY)
+		diffX := x - meanX
+		diffY := y - meanY
 
 		// 分子: sum((x_i - meanX) * (y_i - meanY))
-		numerator.Add(numerator, new(big.Rat).Mul(diffX, diffY))
+		numerator += diffX * diffY
 
 		// 分母: sum((x_i - meanX)^2)
-		denominator.Add(denominator, new(big.Rat).Mul(diffX, diffX))
+		denominator += diffX * diffX
 	}
 
 	// 防止除以 0
-	if denominator.Sign() == 0 {
+	if denominator == 0 {
 		insyra.LogWarning("stats.LinearRegression: denominator is zero, unable to calculate slope.")
 		return nil
 	}
 
 	// 計算斜率 beta_1
-	slopeRat := new(big.Rat).Quo(numerator, denominator)
-	slopeFloat, _ := slopeRat.Float64()
+	slope := numerator / denominator
 
 	// 計算截距 beta_0 = meanY - slope * meanX
-	interceptRat := new(big.Rat).Sub(meanY, new(big.Rat).Mul(slopeRat, meanX))
-	interceptFloat, _ := interceptRat.Float64()
-
-	// 計算 y 的均值 (修正 R-squared 計算)
-	meanYFloat, _ := meanY.Float64()
+	intercept := meanY - slope*meanX
 
 	// 計算殘差和平方和
 	for i := 0; i < dlX.Len(); i++ {
@@ -79,7 +73,7 @@ func LinearRegression(dlX, dlY insyra.IDataList) *LinearRegressionResult {
 		y := conv.ParseF64(dlY.Data()[i])
 
 		// 預測值: y_pred = beta_0 + beta_1 * x_i
-		yPred := interceptFloat + slopeFloat*x
+		yPred := intercept + slope*x
 
 		// 殘差: residual = y_i - y_pred
 		residual := y - yPred
@@ -89,7 +83,7 @@ func LinearRegression(dlX, dlY insyra.IDataList) *LinearRegressionResult {
 		sumSquaredResiduals += residual * residual
 
 		// 計算總平方和 (y_i - meanY)^2
-		sumTotalSquares += (y - meanYFloat) * (y - meanYFloat)
+		sumTotalSquares += (y - meanY) * (y - meanY)
 	}
 
 	// 計算 R-squared 和 Adjusted R-squared
@@ -98,10 +92,9 @@ func LinearRegression(dlX, dlY insyra.IDataList) *LinearRegressionResult {
 
 	// 計算 X 的平方和
 	sumXSquared := 0.0
-	meanXFloat, _ := meanX.Float64()
 	for i := 0; i < dlX.Len(); i++ {
 		x := conv.ParseF64(dlX.Data()[i])
-		sumXSquared += (x - meanXFloat) * (x - meanXFloat)
+		sumXSquared += (x - meanX) * (x - meanX)
 	}
 
 	// 修正標準誤差的計算
@@ -110,15 +103,15 @@ func LinearRegression(dlX, dlY insyra.IDataList) *LinearRegressionResult {
 	standardError := math.Sqrt(mse / sumXSquared)
 
 	// 修正 t 值的計算
-	tValue := slopeFloat / standardError
+	tValue := slope / standardError
 
 	// 修改 p 值計算
 	degreesOfFreedom := dlX.Len() - 2
 	pValue := 2.0 * tCDF(-math.Abs(tValue), degreesOfFreedom)
 
 	return &LinearRegressionResult{
-		Slope:            slopeFloat,
-		Intercept:        interceptFloat,
+		Slope:            slope,
+		Intercept:        intercept,
 		Residuals:        residuals,
 		RSquared:         rSquared,
 		AdjustedRSquared: adjustedRsquared,
