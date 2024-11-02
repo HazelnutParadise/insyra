@@ -271,6 +271,31 @@ The function returns a `PCAResult` struct containing:
 - **Eigenvalues** (`[]float64`): The eigenvalues associated with each principal component.
 - **Explained Variance** (`[]float64`): The percentage of variance explained by each principal component.
 
+### Linear Regression
+
+The `LinearRegression` function performs linear regression on two datasets.
+
+#### Linear Regression Result
+
+The function returns a `LinearRegressionResult` struct containing:
+- **Slope** (`float64`): The slope of the regression line.
+- **Intercept** (`float64`): The intercept of the regression line.
+- **Residuals** (`[]float64`): The residuals of the regression.
+- **RSquared** (`float64`): The R-squared value.
+- **AdjustedRSquared** (`float64`): The adjusted R-squared value.
+- **StandardError** (`float64`): The standard error.
+- **TValue** (`float64`): The t-value.
+- **PValue** (`float64`): The p-value.
+
+#### Example Usage
+
+```go
+import "github.com/HazelnutParadise/insyra/stats"
+
+result := stats.LinearRegression(dataListX, dataListY)
+fmt.Printf("Slope: %.4f, Intercept: %.4f, R-squared: %.4f, P-value: %.4f\n", result.Slope, result.Intercept, result.RSquared, result.PValue)
+```
+
 ## Method Reference
 
 The methods available for **skewness** and **kurtosis** in this package directly correspond to the `type` options in the **e1071** R package. For further details on the specific calculations and their formulas, please refer to the [e1071 documentation](https://cran.r-project.org/web/packages/e1071/e1071.pdf).
