@@ -30,7 +30,7 @@ func LinearRegression(dlX, dlY insyra.IDataList) *LinearRegressionResult {
 		return nil
 	}
 
-	// 計算 X 和 Y 的均值
+	// 計算 X 和 Y 值
 	meanX := new(big.Rat).SetFloat64(dlX.Mean())
 	meanY := new(big.Rat).SetFloat64(dlY.Mean())
 
@@ -96,14 +96,25 @@ func LinearRegression(dlX, dlY insyra.IDataList) *LinearRegressionResult {
 	rSquared := 1 - (sumSquaredResiduals / sumTotalSquares)
 	adjustedRsquared := 1 - (1-rSquared)*float64(dlX.Len()-1)/float64(dlX.Len()-2)
 
-	// 計算標準誤差
-	standardError := math.Sqrt(sumSquaredResiduals / float64(dlX.Len()-2))
+	// 計算 X 的平方和
+	sumXSquared := 0.0
+	meanXFloat, _ := meanX.Float64()
+	for i := 0; i < dlX.Len(); i++ {
+		x := conv.ParseF64(dlX.Data()[i])
+		sumXSquared += (x - meanXFloat) * (x - meanXFloat)
+	}
 
-	// 計算 t 值
+	// 修正標準誤差的計算
+	n := float64(dlX.Len())
+	mse := sumSquaredResiduals / (n - 2) // Mean Square Error
+	standardError := math.Sqrt(mse / sumXSquared)
+
+	// 修正 t 值的計算
 	tValue := slopeFloat / standardError
 
-	// 使用 t 分布來計算 P 值
-	pValue := calculatePValue(tValue, dlX.Len()-2)
+	// 修改 p 值計算
+	degreesOfFreedom := dlX.Len() - 2
+	pValue := 2.0 * tCDF(-math.Abs(tValue), degreesOfFreedom)
 
 	return &LinearRegressionResult{
 		Slope:            slopeFloat,
@@ -115,4 +126,80 @@ func LinearRegression(dlX, dlY insyra.IDataList) *LinearRegressionResult {
 		TValue:           tValue,
 		PValue:           pValue,
 	}
+}
+
+// 新增 t 分布的累積分布函數
+func tCDF(t float64, df int) float64 {
+	x := float64(df) / (float64(df) + t*t)
+	return betaInc(float64(df)/2.0, 0.5, x) / 2.0
+}
+
+// 新增不完全貝塔函數
+func betaInc(a, b, x float64) float64 {
+	if x < 0.0 || x > 1.0 {
+		return 0.0
+	}
+
+	bt := math.Exp(lgamma(a+b) - lgamma(a) - lgamma(b) + a*math.Log(x) + b*math.Log(1.0-x))
+
+	if x < (a+1.0)/(a+b+2.0) {
+		return bt * betaCF(a, b, x) / a
+	}
+
+	return 1.0 - bt*betaCF(b, a, 1.0-x)/b
+}
+
+// 新增連分數展開
+func betaCF(a, b, x float64) float64 {
+	const MAXIT = 200
+	const EPS = 3.0e-7
+	const FPMIN = 1.0e-30
+
+	qab := a + b
+	qap := a + 1.0
+	qam := a - 1.0
+	c := 1.0
+	d := 1.0 - qab*x/qap
+
+	if math.Abs(d) < FPMIN {
+		d = FPMIN
+	}
+	d = 1.0 / d
+	h := d
+
+	for m := 1; m <= MAXIT; m++ {
+		m2 := 2 * m
+		aa := float64(m) * (b - float64(m)) * x / ((qam + float64(m2)) * (a + float64(m2)))
+		d = 1.0 + aa*d
+		if math.Abs(d) < FPMIN {
+			d = FPMIN
+		}
+		c = 1.0 + aa/c
+		if math.Abs(c) < FPMIN {
+			c = FPMIN
+		}
+		d = 1.0 / d
+		h *= d * c
+		aa = -(a + float64(m)) * (qab + float64(m)) * x / ((a + float64(m2)) * (qap + float64(m2)))
+		d = 1.0 + aa*d
+		if math.Abs(d) < FPMIN {
+			d = FPMIN
+		}
+		c = 1.0 + aa/c
+		if math.Abs(c) < FPMIN {
+			c = FPMIN
+		}
+		d = 1.0 / d
+		del := d * c
+		h *= del
+		if math.Abs(del-1.0) < EPS {
+			break
+		}
+	}
+	return h
+}
+
+// 新增對數伽瑪函數
+func lgamma(x float64) float64 {
+	return math.Log(math.Gamma(x))
 }
