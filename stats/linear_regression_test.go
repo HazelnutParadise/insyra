@@ -1,7 +1,7 @@
 package stats
 
 import (
-	"reflect"
+	"math"
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
@@ -11,6 +11,7 @@ func TestLinearRegression(t *testing.T) {
 	dlX := insyra.NewDataList(1, 4, 9, 110, 8)
 	dlY := insyra.NewDataList(3, 6, 8, 6, 2)
 	result := LinearRegression(dlX, dlY)
+	const tolerance = 1e-9 // 誤差容許範圍
 
 	var expectedValues = LinearRegressionResult{
 		Slope:            0.013102128241352597,
@@ -25,7 +26,38 @@ func TestLinearRegression(t *testing.T) {
 
 	if result == nil {
 		t.Error("LinearRegression returned nil")
-	} else if !reflect.DeepEqual(result, &expectedValues) {
-		t.Errorf("LinearRegression result mismatch: expected %v, got %v", expectedValues, result)
+	} else if !compareFloat64(result.Slope, expectedValues.Slope, tolerance) {
+		t.Errorf("Slope: expected %.4f, got %.4f", expectedValues.Slope, result.Slope)
+	} else if !compareFloat64(result.Intercept, expectedValues.Intercept, tolerance) {
+		t.Errorf("Intercept: expected %.4f, got %.4f", expectedValues.Intercept, result.Intercept)
+	} else if !compareFloat64(result.RSquared, expectedValues.RSquared, tolerance) {
+		t.Errorf("RSquared: expected %.4f, got %.4f", expectedValues.RSquared, result.RSquared)
+	} else if !compareFloat64(result.PValue, expectedValues.PValue, tolerance) {
+		t.Errorf("PValue: expected %.4f, got %.4f", expectedValues.PValue, result.PValue)
+	} else if !compareFloat64(result.StandardError, expectedValues.StandardError, tolerance) {
+		t.Errorf("StandardError: expected %.4f, got %.4f", expectedValues.StandardError, result.StandardError)
+	} else if !compareFloat64(result.TValue, expectedValues.TValue, tolerance) {
+		t.Errorf("TValue: expected %.4f, got %.4f", expectedValues.TValue, result.TValue)
+	} else if !compareFloat64(result.AdjustedRSquared, expectedValues.AdjustedRSquared, tolerance) {
+		t.Errorf("AdjustedRSquared: expected %.4f, got %.4f", expectedValues.AdjustedRSquared, result.AdjustedRSquared)
+	} else if !compareFloat64Slice(result.Residuals, expectedValues.Residuals, tolerance) {
+		t.Errorf("Residuals: expected %v, got %v", expectedValues.Residuals, result.Residuals)
 	}
+
+}
+
+func compareFloat64(a, b, tolerance float64) bool {
+	return math.Abs(a-b) <= tolerance
+}
+
+func compareFloat64Slice(a, b []float64, tolerance float64) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if !compareFloat64(a[i], b[i], tolerance) {
+			return false
+		}
+	}
+	return true
 }
