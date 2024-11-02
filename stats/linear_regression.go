@@ -6,6 +6,7 @@ import (
 	"math"
 	"math/big"
 
+	"github.com/HazelnutParadise/Go-Utils/conv"
 	"github.com/HazelnutParadise/insyra"
 )
 
@@ -41,8 +42,8 @@ func LinearRegression(dlX, dlY insyra.IDataList) *LinearRegressionResult {
 
 	// 計算斜率的分子和分母
 	for i := 0; i < dlX.Len(); i++ {
-		x := new(big.Rat).SetFloat64(dlX.Data()[i].(float64))
-		y := new(big.Rat).SetFloat64(dlY.Data()[i].(float64))
+		x := new(big.Rat).SetFloat64(conv.ParseF64(dlX.Data()[i]))
+		y := new(big.Rat).SetFloat64(conv.ParseF64(dlY.Data()[i]))
 
 		// (x_i - meanX) 和 (y_i - meanY)
 		diffX := new(big.Rat).Sub(x, meanX)
@@ -74,8 +75,8 @@ func LinearRegression(dlX, dlY insyra.IDataList) *LinearRegressionResult {
 
 	// 計算殘差和平方和
 	for i := 0; i < dlX.Len(); i++ {
-		x := dlX.Data()[i].(float64)
-		y := dlY.Data()[i].(float64)
+		x := conv.ParseF64(dlX.Data()[i])
+		y := conv.ParseF64(dlY.Data()[i])
 
 		// 預測值: y_pred = beta_0 + beta_1 * x_i
 		yPred := interceptFloat + slopeFloat*x
