@@ -15,11 +15,11 @@ type LinearRegressionResult struct {
 	Slope            float64   // 斜率
 	Intercept        float64   // 截距
 	Residuals        []float64 // 殘差
-	Rsquared         float64   // R-squared
-	AdjustedRsquared float64   // 調整後的 R-squared
+	RSquared         float64   // R-squared
+	AdjustedRSquared float64   // 調整後的 R-squared
 	StandardError    float64   // 標準誤差
 	TValue           float64   // t 值
-	Pvalue           float64   // p 值
+	PValue           float64   // p 值
 }
 
 // LinearRegression performs simple linear regression on two datasets (X and Y).
@@ -109,10 +109,10 @@ func LinearRegression(dlX, dlY insyra.IDataList) *LinearRegressionResult {
 		Slope:            slopeFloat,
 		Intercept:        interceptFloat,
 		Residuals:        residuals,
-		Rsquared:         rSquared,
-		AdjustedRsquared: adjustedRsquared,
+		RSquared:         rSquared,
+		AdjustedRSquared: adjustedRsquared,
 		StandardError:    standardError,
 		TValue:           tValue,
-		Pvalue:           pValue,
+		PValue:           pValue,
 	}
 }
