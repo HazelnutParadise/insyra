@@ -125,6 +125,32 @@ func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyConta
 - `csvNames`: Custom CSV file names. If not provided, the sheet name will be used as the default CSV file name.
 - `onlyContainSheets`(optional): Only convert the specified sheets. If not provided, all sheets will be converted.
 
+> [!NOTE]
+> The CSV file names will be in the format of "ExcelFileName_SheetName.csv".
+
+### 4. `EachExcelToCsv`
+
+```go
+func EachExcelToCsv(dir string, outputDir string)
+```
+
+**Description**: Splits each sheet in each Excel file in the given directory into individual CSV files.
+
+- `dir`: The directory containing the input Excel files.
+- `outputDir`: The directory where the split CSV files will be saved.
+
+### 5. `EachCsvToOneExcel`
+
+```go
+func EachCsvToOneExcel(dir string, output string, encoding ...string)
+```
+
+**Description**: Converts each CSV file in the given directory to an Excel file.
+
+- `dir`: The directory containing the input CSV files.
+- `output`: The name of the output Excel file.
+- `encoding`(optional): The encoding of the CSV files. If not provided, `UTF-8` encoding is used.
+
 ## Encoding Support
 
 > [!NOTE]
