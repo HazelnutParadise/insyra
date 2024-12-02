@@ -27,7 +27,7 @@ func EachCsvToOneExcel(dir string, output string, encoding ...string) {
 // EachExcelToCsv converts each Excel file in the given directory to CSV files.
 // The output CSV files will be saved in the given output directory.
 // The CSV files will be named as the Excel file name plus the sheet name plus ".csv",
-// for example, "excelFileName_SheetName.csv".
+// for example, "ExcelFileName_SheetName.csv".
 func EachExcelToCsv(dir string, outputDir string) {
 	files, err := filepath.Glob(filepath.Join(dir, "*.xlsx"))
 	if err != nil {
