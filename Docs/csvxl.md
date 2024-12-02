@@ -125,6 +125,9 @@ func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyConta
 - `csvNames`: Custom CSV file names. If not provided, the sheet name will be used as the default CSV file name.
 - `onlyContainSheets`(optional): Only convert the specified sheets. If not provided, all sheets will be converted.
 
+> [!NOTE]
+> The CSV file names will be in the format of "ExcelFileName_SheetName.csv".
+
 ### 4. `EachExcelToCsv`
 
 ```go
