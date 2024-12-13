@@ -2,6 +2,5 @@ package insyra
 
 func init() {
 	SetDefaultConfig()
-	LogInfo("Insyra version %s", Version)
-	LogInfo("Thank you for using Insyra!\nSee our repository and documentation at https://github.com/HazelnutParadise/insyra .\nStar it if you like it.\n\n")
+	LogInfo("Thank you for using Insyra v%s!\nOfficial website: https://insyra.hazelnut-paradise.com\n\n", Version)
 }
