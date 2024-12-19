@@ -3,8 +3,8 @@ module github.com/HazelnutParadise/insyra
 go 1.22.7
 
 require (
-	github.com/HazelnutParadise/Go-Utils v0.7.9
-	golang.org/x/text v0.16.0
+	github.com/HazelnutParadise/Go-Utils v0.7.10
+	golang.org/x/text v0.21.0
 )
 
 require (
