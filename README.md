@@ -139,6 +139,10 @@ For a complete list of methods and features, please refer to the **[DataTable Do
 
 **Insyra** also provides several expansion packages, each focusing on a specific aspect of data analysis.
 
+### **[datafetch](/Docs/datafetch.md)**
+
+Allows you to fetch data easily. It currently supports fetching comments from stores on Google Maps.
+
 ### **[stats](/Docs/stats.md)**
 
 Provides statistical functions for data analysis, including skewness, kurtosis, and moment calculations.

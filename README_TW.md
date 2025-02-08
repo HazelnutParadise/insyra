@@ -137,6 +137,10 @@ func main() {
 
 **Insyra** 還提供了多個擴展套件，每個都專注於數據分析的特定方面。
 
+### **[datafetch](/Docs/datafetch.md)**
+
+讓您輕鬆取得網路上的數據。目前支援從 Google Maps 取得商家評論資料。
+
 ### **[stats](/Docs/stats.md)**
 
 提供數據分析的統計函數，包括偏度、峰度和矩計算。
