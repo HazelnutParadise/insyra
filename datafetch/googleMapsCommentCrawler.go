@@ -149,7 +149,7 @@ func (c *googleMapsStoreCrawler) Search(storeName string) []storeData {
 // If pageCount is 0, all comments will be fetched.
 // Returns a list of comments.
 // Returns nil if failed to fetch comments.
-func (c *googleMapsStoreCrawler) GetComments(storeId string, pageCount int, options ...GoogleMapsStoreCommentsFetchingOptions) (googleMapsStoreComments, error) {
+func (c *googleMapsStoreCrawler) GetComments(storeId string, pageCount int, options ...GoogleMapsStoreCommentsFetchingOptions) googleMapsStoreComments {
 	fetchingOptions := GoogleMapsStoreCommentsFetchingOptions{
 		SortBy:             SortByRelevance,
 		MaxWaitingInterval: 5000,
@@ -157,7 +157,7 @@ func (c *googleMapsStoreCrawler) GetComments(storeId string, pageCount int, opti
 	if len(options) == 1 {
 		fetchingOptions = options[0]
 	} else if len(options) > 1 {
-		insyra.LogWarning("datafetch.googleMapsStoreCrawler.GetComments: Got too many options. Using default options.")
+		insyra.LogWarning("datafetch.GoogleMapsStores().GetComments: Got too many options. Using default options.")
 	}
 
 	commentUrl := c.storeCommentUrl
@@ -181,7 +181,8 @@ func (c *googleMapsStoreCrawler) GetComments(storeId string, pageCount int, opti
 		// 建立 HTTP 請求
 		req, err := http.NewRequest("GET", commentUrl+"?"+params.Encode(), nil)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create the request: %w", err)
+			insyra.LogWarning("datafetch.GoogleMapsStores().GetComments: Failed to create request. Error: %v. Returning nil.", err)
+			return nil
 		}
 		for key, value := range headers {
 			req.Header.Set(key, value)
@@ -190,25 +191,29 @@ func (c *googleMapsStoreCrawler) GetComments(storeId string, pageCount int, opti
 		client := &http.Client{}
 		resp, err := client.Do(req)
 		if err != nil {
-			return nil, fmt.Errorf("failed to fetch comments: %w", err)
+			insyra.LogWarning("datafetch.GoogleMapsStores().GetComments: Failed to send request. Error: %v. Returning nil.", err)
+			return nil
 		}
 		defer resp.Body.Close()
 
 		// 確保回應狀態碼為 200 OK
 		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("failed to fetch comments: HTTP status code %d", resp.StatusCode)
+			insyra.LogWarning("datafetch.GoogleMapsStores().GetComments: Failed to fetch comments. HTTP status code: %d. Returning nil.", resp.StatusCode)
+			return nil
 		}
 
 		// 讀取回應內容
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read the response: %w", err)
+			insyra.LogWarning("datafetch.GoogleMapsStores().GetComments: Failed to read response. Error: %v. Returning nil.", err)
+			return nil
 		}
 
 		// Google 回應有 `)]}'` 前綴，需去除前 4 個字元
 		jsonData := []interface{}{}
 		if err := json.Unmarshal(body[4:], &jsonData); err != nil {
-			return nil, fmt.Errorf("failed to decode JSON: %w", err)
+			insyra.LogWarning("datafetch.GoogleMapsStores().GetComments: Failed to decode JSON. Error: %v. Returning nil.", err)
+			return nil
 		}
 
 		// 解析 `nextToken`
@@ -241,7 +246,8 @@ func (c *googleMapsStoreCrawler) GetComments(storeId string, pageCount int, opti
 
 					commentDateObj, err := time.Parse("2006-01-02", commentDate)
 					if err != nil {
-						return nil, fmt.Errorf("failed to parse comment date: %w", err)
+						insyra.LogWarning("datafetch.GoogleMapsStores().GetComments: Failed to parse comment date. Error: %v. Returning nil.", err)
+						return nil
 					}
 
 					comments = append(comments, GoogleMapsStoreComment{
@@ -271,9 +277,10 @@ func (c *googleMapsStoreCrawler) GetComments(storeId string, pageCount int, opti
 		page++
 	}
 
-	return comments, nil
+	return comments
 }
 
+// ToDataTable converts the comments to a DataTable.
 func (comments googleMapsStoreComments) ToDataTable() *insyra.DataTable {
 	dt := insyra.NewDataTable()
 	for _, comment := range comments {
