@@ -6,7 +6,7 @@ type DL struct {
 	*insyra.DataList
 }
 
-func (dl DL) From(data ...any) DL {
+func (dl DL) From(data ...any) *DL {
 	dl.DataList = insyra.NewDataList(data)
-	return dl
+	return &dl
 }

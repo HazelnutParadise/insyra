@@ -28,6 +28,7 @@ type DataList struct {
 
 // IDataList defines the behavior expected from a DataList.
 type IDataList interface {
+	From(...any) *DataList
 	isFragmented() bool
 	GetCreationTimestamp() int64
 	GetLastModifiedTimestamp() int64
@@ -112,6 +113,12 @@ type IDataList interface {
 	NearestNeighborInterpolation(float64) float64
 	NewtonInterpolation(float64) float64
 	HermiteInterpolation(float64, []float64) float64
+}
+
+// From creates a new DataList from the specified values.
+func (dl DataList) From(values ...any) *DataList {
+	newdl := NewDataList(values...)
+	return newdl
 }
 
 // Data returns the data stored in the DataList.
