@@ -16,14 +16,14 @@ import (
 
 // GoogleMapsStoreComment is a struct for Google Maps store comments.
 type GoogleMapsStoreComment struct {
-	Reviewer      string `json:"reviewer"`
-	ReviewerID    string `json:"reviewer_id"`
-	ReviewerState string `json:"reviewer_state"`
-	ReviewerLevel int    `json:"reviewer_level"`
-	CommentTime   string `json:"comment_time"`
-	CommentDate   string `json:"comment_date"`
-	Content       string `json:"content"`
-	Rating        int    `json:"rating"`
+	Reviewer      string    `json:"reviewer"`
+	ReviewerID    string    `json:"reviewer_id"`
+	ReviewerState string    `json:"reviewer_state"`
+	ReviewerLevel int       `json:"reviewer_level"`
+	CommentTime   string    `json:"comment_time"`
+	CommentDate   time.Time `json:"comment_date"`
+	Content       string    `json:"content"`
+	Rating        int       `json:"rating"`
 }
 
 type googleMapsStoreComments []GoogleMapsStoreComment
@@ -231,9 +231,18 @@ func (c *googleMapsStoreCrawler) GetComments(storeId string, pageCount int, opti
 					reviewerState := extractString(commentData, 0, 1, 4, 5, 10, 0)
 					reviewerLevel := extractInt(commentData, 0, 1, 4, 5, 9)
 					commentTime := extractString(commentData, 0, 1, 6)
-					commentDate := extractString(commentData, 0, 1, 2, 2, 0, 1, 21, 6, -1)
+					commentDate := strings.Join([]string{
+						extractString(commentData, 0, 2, 2, 0, 1, 21, 6, -1, 0),
+						strings.Repeat("0", 2-len(extractString(commentData, 0, 2, 2, 0, 1, 21, 6, -1, 1))) + extractString(commentData, 0, 2, 2, 0, 1, 21, 6, -1, 1),
+						strings.Repeat("0", 2-len(extractString(commentData, 0, 2, 2, 0, 1, 21, 6, -1, 2))) + extractString(commentData, 0, 2, 2, 0, 1, 21, 6, -1, 2),
+					}, "-")
 					content := extractString(commentData, 0, 2, -1, 0, 0)
 					rating := extractInt(commentData, 0, 2, 0, 0)
+
+					commentDateObj, err := time.Parse("2006-01-02", commentDate)
+					if err != nil {
+						return nil, fmt.Errorf("failed to parse comment date: %w", err)
+					}
 
 					comments = append(comments, GoogleMapsStoreComment{
 						Reviewer:      reviewer,
@@ -241,7 +250,7 @@ func (c *googleMapsStoreCrawler) GetComments(storeId string, pageCount int, opti
 						ReviewerState: reviewerState,
 						ReviewerLevel: reviewerLevel,
 						CommentTime:   commentTime,
-						CommentDate:   commentDate,
+						CommentDate:   commentDateObj,
 						Content:       content,
 						Rating:        rating,
 					})
@@ -341,6 +350,9 @@ func extractString(data []interface{}, indices ...int) string {
 	if str, ok := val.(string); ok {
 		return str
 	}
+	if num, ok := val.(float64); ok {
+		return fmt.Sprintf("%.0f", num) // 轉換為整數格式的字串
+	}
 	return ""
 }
 
@@ -358,12 +370,20 @@ func extractValue(data []interface{}, indices ...int) interface{} {
 	current := interface{}(data)
 	for _, idx := range indices {
 		arr, ok := current.([]interface{})
+		if !ok {
+			return nil
+		}
+
+		// **支援 `.at(-1)`**
 		if idx < 0 {
 			idx = len(arr) + idx
 		}
-		if !ok || idx < 0 || idx >= len(arr) {
+
+		// **防止索引超界**
+		if idx < 0 || idx >= len(arr) {
 			return nil
 		}
+
 		current = arr[idx]
 	}
 	return current
