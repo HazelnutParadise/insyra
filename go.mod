@@ -25,6 +25,8 @@ require (
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/mailru/easyjson v0.9.0 // indirect
+	github.com/modern-go/concurrent v0.0.0-20180228061459-e0a39a4cb421 // indirect
+	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/richardlehane/mscfb v1.0.4 // indirect
@@ -41,6 +43,7 @@ require (
 require (
 	github.com/go-echarts/go-echarts/v2 v2.4.6
 	github.com/go-echarts/snapshot-chromedp v0.0.5
+	github.com/json-iterator/go v1.1.12
 	github.com/xuri/excelize/v2 v2.9.0
 	golang.org/x/exp v0.0.0-20241217172543-b2144cdd0a67 // indirect
 	gonum.org/v1/gonum v0.15.1
