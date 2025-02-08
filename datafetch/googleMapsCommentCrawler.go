@@ -26,6 +26,8 @@ type GoogleMapsStoreComment struct {
 	Rating        int    `json:"rating"`
 }
 
+type googleMapsStoreComments []GoogleMapsStoreComment
+
 type GoogleMapsStoreCommentsFetchingOptions struct {
 	SortBy             GoogleMapsStoreCommentSortBy
 	MaxWaitingInterval uint
@@ -142,8 +144,12 @@ func (c *googleMapsStoreCrawler) Search(storeName string) []storeData {
 	return storeList
 }
 
-// getComments 獲取 Google Maps 商家評論
-func (c *googleMapsStoreCrawler) GetComments(storeId string, pageCount int, options ...GoogleMapsStoreCommentsFetchingOptions) ([]GoogleMapsStoreComment, error) {
+// GetComments fetches comments for the store with the given ID.
+// The pageCount parameter specifies the number of pages to fetch.
+// If pageCount is 0, all comments will be fetched.
+// Returns a list of comments.
+// Returns nil if failed to fetch comments.
+func (c *googleMapsStoreCrawler) GetComments(storeId string, pageCount int, options ...GoogleMapsStoreCommentsFetchingOptions) (googleMapsStoreComments, error) {
 	fetchingOptions := GoogleMapsStoreCommentsFetchingOptions{
 		SortBy:             SortByRelevance,
 		MaxWaitingInterval: 5000,
@@ -225,8 +231,8 @@ func (c *googleMapsStoreCrawler) GetComments(storeId string, pageCount int, opti
 					reviewerState := extractString(commentData, 0, 1, 4, 5, 10, 0)
 					reviewerLevel := extractInt(commentData, 0, 1, 4, 5, 9)
 					commentTime := extractString(commentData, 0, 1, 6)
-					commentDate := extractString(commentData, 0, 1, 2, 2, 0, 1, 21, 6)
-					content := extractString(commentData, 0, 2, len(commentData[0].([]interface{}))-1, 0, 0)
+					commentDate := extractString(commentData, 0, 1, 2, 2, 0, 1, 21, 6, -1)
+					content := extractString(commentData, 0, 2, -1, 0, 0)
 					rating := extractInt(commentData, 0, 2, 0, 0)
 
 					comments = append(comments, GoogleMapsStoreComment{
@@ -257,6 +263,26 @@ func (c *googleMapsStoreCrawler) GetComments(storeId string, pageCount int, opti
 	}
 
 	return comments, nil
+}
+
+func (comments googleMapsStoreComments) ToDataTable() *insyra.DataTable {
+	dt := insyra.NewDataTable()
+	for _, comment := range comments {
+		dt.AppendRowsByColName(
+			map[string]interface{}{
+				"Reviewer":      comment.Reviewer,
+				"ReviewerID":    comment.ReviewerID,
+				"ReviewerState": comment.ReviewerState,
+				"ReviewerLevel": comment.ReviewerLevel,
+				"CommentTime":   comment.CommentTime,
+				"CommentDate":   comment.CommentDate,
+				"Content":       comment.Content,
+				"Rating":        comment.Rating,
+			},
+		)
+	}
+
+	return dt
 }
 
 func (c *googleMapsStoreCrawler) getStoreName(storeId string) (string, error) {
@@ -332,14 +358,13 @@ func extractValue(data []interface{}, indices ...int) interface{} {
 	current := interface{}(data)
 	for _, idx := range indices {
 		arr, ok := current.([]interface{})
+		if idx < 0 {
+			idx = len(arr) + idx
+		}
 		if !ok || idx < 0 || idx >= len(arr) {
 			return nil
 		}
 		current = arr[idx]
 	}
 	return current
-}
-
-func (c *googleMapsStoreCrawler) FetchData() {
-	fmt.Println(c)
 }
