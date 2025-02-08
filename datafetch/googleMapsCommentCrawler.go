@@ -77,7 +77,11 @@ func GoogleMapsStores() *googleMapsStoreCrawler {
 		StoreSearchUrl  string            `json:"storeSearchUrl"`
 		StoreCommentUrl string            `json:"commentUrl"`
 	}{}
-	json.NewDecoder(res.Body).Decode(&config)
+	err = json.NewDecoder(res.Body).Decode(&config)
+	if err != nil {
+		insyra.LogWarning("datafetch.GoogleMapsStores: Failed to decode GoogleMapsStoreCommentCrawler config. Error: %v. Returning nil.", err)
+		return nil
+	}
 
 	return &googleMapsStoreCrawler{
 		headers:         config.Headers,
@@ -94,7 +98,7 @@ func (c *googleMapsStoreCrawler) Search(storeName string) []storeData {
 	url := strings.Replace(c.storeSearchUrl, "{store_name}", storeName, 1)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		insyra.LogWarning("datafetch.googleMapsStoreCrawler.Search: Failed to create request. Error: %v. Returning nil.", err)
+		insyra.LogWarning("datafetch.GoogleMapsStores().Search: Failed to create request. Error: %v. Returning nil.", err)
 		return nil
 	}
 	for k, v := range c.headers {
@@ -102,13 +106,16 @@ func (c *googleMapsStoreCrawler) Search(storeName string) []storeData {
 	}
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		insyra.LogWarning("datafetch.googleMapsStoreCrawler.Search: Failed to send request. Error: %v. Returning nil.", err)
+		insyra.LogWarning("datafetch.GoogleMapsStores().Search: Failed to send request. Error: %v. Returning nil.", err)
 		return nil
 	}
 	defer res.Body.Close()
 
-	resTxt := []byte{}
-	resTxt, err = io.ReadAll(res.Body)
+	resTxt, err := io.ReadAll(res.Body)
+	if err != nil {
+		insyra.LogWarning("datafetch.GoogleMapsStores().Search: Failed to read response. Error: %v. Returning nil.", err)
+		return nil
+	}
 
 	// 定義正則表達式
 	pattern := regexp.MustCompile(`0x.{16}:0x.{16}`)
@@ -132,7 +139,7 @@ func (c *googleMapsStoreCrawler) Search(storeName string) []storeData {
 	for _, storeId := range storeIdList {
 		storeName, err := c.getStoreName(storeId)
 		if err != nil {
-			insyra.LogWarning("GoogleMapsStores().Search: Error fetching store name for %s: %v\n", storeId, err)
+			insyra.LogWarning("datafetch.GoogleMapsStores().Search: Error fetching store name for %s: %v\n", storeId, err)
 			continue // 碰到錯誤就跳過
 		}
 		storeList = append(storeList, storeData{
