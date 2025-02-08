@@ -28,7 +28,6 @@ type DataList struct {
 
 // IDataList defines the behavior expected from a DataList.
 type IDataList interface {
-	From(...any) *DataList
 	isFragmented() bool
 	GetCreationTimestamp() int64
 	GetLastModifiedTimestamp() int64
