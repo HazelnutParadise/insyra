@@ -29,6 +29,26 @@ func (dt DT) From(item any) *DT {
 		dt.DataTable = insyra.NewDataTable(val)
 	case *DL:
 		dt.DataTable = insyra.NewDataTable(val.DataList)
+	case []*insyra.DataList:
+		dt.DataTable = insyra.NewDataTable()
+		for _, dl := range val {
+			dt.DataTable.AppendCols(dl)
+		}
+	case []*DL:
+		dt.DataTable = insyra.NewDataTable()
+		for _, dl := range val {
+			dt.DataTable.AppendCols(dl.DataList)
+		}
+	case []DL:
+		dt.DataTable = insyra.NewDataTable()
+		for _, dl := range val {
+			dt.DataTable.AppendCols(dl.DataList)
+		}
+	case DLs:
+		dt.DataTable = insyra.NewDataTable()
+		for _, dl := range val {
+			dt.DataTable.AppendCols(dl.DataList)
+		}
 	case Row:
 		dt.DataTable = insyra.NewDataTable()
 		err := fromRowToDT(&dt, val)

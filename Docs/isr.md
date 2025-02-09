@@ -58,6 +58,20 @@ dataTable := isr.DT{}.From(
 )
 ```
 
+##### From Multiple DataLists
+
+```go
+dataTable := isr.DT{}.From(
+    DLs{
+        isr.DL{}.From("A", "B", "C"),
+        isr.DL{}.From(1, 2, 3),
+        isr.DL{}.From(4, 5, 6),
+    },
+)
+```
+
+`DLs` is a type alias for `[]*DL`.
+
 ##### From Row
 
 ```go
