@@ -19,7 +19,7 @@ type Row map[any]any
 // Every key in the map represents a row Index.
 type Col map[any]any
 
-// From converts a DataList, DL, Row, map[string]any, or map[int]any to a DataTable.
+// From converts a DataList, DL, Row, CSV, map[string]any, or map[int]any to a DataTable.
 func (dt DT) From(dl any) *DT {
 	switch val := dl.(type) {
 	case *insyra.DataList:
