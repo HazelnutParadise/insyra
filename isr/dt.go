@@ -34,11 +34,6 @@ func (dt DT) From(item any) *DT {
 		for _, dl := range val {
 			dt.DataTable.AppendCols(dl)
 		}
-	case []*DL:
-		dt.DataTable = insyra.NewDataTable()
-		for _, dl := range val {
-			dt.DataTable.AppendCols(dl.DataList)
-		}
 	case []DL:
 		dt.DataTable = insyra.NewDataTable()
 		for _, dl := range val {
@@ -47,7 +42,8 @@ func (dt DT) From(item any) *DT {
 	case DLs:
 		dt.DataTable = insyra.NewDataTable()
 		for _, dl := range val {
-			dt.DataTable.AppendCols(dl.DataList)
+			newdl := insyra.NewDataList(dl.Data()...)
+			dt.DataTable.AppendCols(newdl)
 		}
 	case Row:
 		dt.DataTable = insyra.NewDataTable()

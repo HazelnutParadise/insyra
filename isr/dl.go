@@ -3,8 +3,8 @@ package isr
 import "github.com/HazelnutParadise/insyra"
 
 // DLs is a type alias for []*DL.
-// It is used to represent a list of DataLists.
-type DLs []*DL
+// It is used to represent a list of DataList.
+type DLs = []insyra.IDataList
 
 // DL is a type alias for *insyra.DataList.
 type DL struct {

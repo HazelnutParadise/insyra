@@ -62,7 +62,7 @@ dataTable := isr.DT{}.From(
 
 ```go
 dataTable := isr.DT{}.From(
-    DLs{
+    isr.DLs{
         isr.DL{}.From("A", "B", "C"),
         isr.DL{}.From(1, 2, 3),
         isr.DL{}.From(4, 5, 6),
