@@ -41,7 +41,7 @@ func TestNewDataList(t *testing.T) {
 		t.Errorf("Expected length 3, got %d", dl.Len())
 	}
 
-	expected := []interface{}{1, 2, 3}
+	expected := []any{1, 2, 3}
 	if !reflect.DeepEqual(dl.Data(), expected) {
 		t.Errorf("Expected data %v, got %v", expected, dl.Data())
 	}
@@ -53,7 +53,7 @@ func TestDataListAppend(t *testing.T) {
 	dl.Append(1)
 	dl.Append(2)
 
-	expected := []interface{}{1, 2}
+	expected := []any{1, 2}
 	if !reflect.DeepEqual(dl.Data(), expected) {
 		t.Errorf("Expected data %v, got %v", expected, dl.Data())
 	}
@@ -83,7 +83,7 @@ func TestDataListUpdate(t *testing.T) {
 	dl := NewDataList(1, 2, 3)
 	dl.Update(1, 5)
 
-	expected := []interface{}{1, 5, 3}
+	expected := []any{1, 5, 3}
 	if !reflect.DeepEqual(dl.Data(), expected) {
 		t.Errorf("Expected data %v, got %v", expected, dl.Data())
 	}
@@ -94,13 +94,13 @@ func TestDataListInsertAt(t *testing.T) {
 	dl := NewDataList(1, 2, 3)
 	dl.InsertAt(1, 5)
 
-	expected := []interface{}{1, 5, 2, 3}
+	expected := []any{1, 5, 2, 3}
 	if !reflect.DeepEqual(dl.Data(), expected) {
 		t.Errorf("Expected data %v, got %v", expected, dl.Data())
 	}
 
 	dl.InsertAt(-1, 7)
-	expected = []interface{}{1, 5, 2, 3, 7}
+	expected = []any{1, 5, 2, 3, 7}
 	if !reflect.DeepEqual(dl.Data(), expected) {
 		t.Errorf("Expected data %v, got %v", expected, dl.Data())
 	}
@@ -138,11 +138,11 @@ func TestDataListFinalAll(t *testing.T) {
 
 func TestDataListFilter(t *testing.T) {
 	dl := NewDataList(1, 2, 3, 2, 2, 1)
-	dl = dl.Filter(func(value interface{}) bool {
+	dl = dl.Filter(func(value any) bool {
 		return value != 2
 	})
 
-	expected := []interface{}{1, 3, 1}
+	expected := []any{1, 3, 1}
 	if !reflect.DeepEqual(dl.Data(), expected) {
 		t.Errorf("Expected data %v, got %v", expected, dl.Data())
 	}
@@ -152,7 +152,7 @@ func TestDataListReplaceFirst(t *testing.T) {
 	dl := NewDataList(1, 2, 3, 2, 2, 1)
 	dl.ReplaceFirst(2, 10)
 
-	expected := []interface{}{1, 10, 3, 2, 2, 1}
+	expected := []any{1, 10, 3, 2, 2, 1}
 	if !reflect.DeepEqual(dl.Data(), expected) {
 		t.Errorf("Expected data %v, got %v", expected, dl.Data())
 	}
@@ -162,7 +162,7 @@ func TestDataListReplaceLast(t *testing.T) {
 	dl := NewDataList(1, 2, 3, 2, 2, 1)
 	dl.ReplaceLast(2, 10)
 
-	expected := []interface{}{1, 2, 3, 2, 10, 1}
+	expected := []any{1, 2, 3, 2, 10, 1}
 	if !reflect.DeepEqual(dl.Data(), expected) {
 		t.Errorf("Expected data %v, got %v", expected, dl.Data())
 	}
@@ -172,7 +172,7 @@ func TestDataListReplaceAll(t *testing.T) {
 	dl := NewDataList(1, 4, 4, 5, 4, 9)
 	dl.ReplaceAll(4, 10)
 
-	expected := []interface{}{1, 10, 10, 5, 10, 9}
+	expected := []any{1, 10, 10, 5, 10, 9}
 	if !reflect.DeepEqual(dl.Data(), expected) {
 		t.Errorf("Expected data %v, got %v", expected, dl.Data())
 	}
@@ -180,7 +180,7 @@ func TestDataListReplaceAll(t *testing.T) {
 	dlstr := NewDataList("a", "b", "c", "a")
 	dlstr.ReplaceAll("a", "d")
 
-	expected = []interface{}{"d", "b", "c", "d"}
+	expected = []any{"d", "b", "c", "d"}
 	if !reflect.DeepEqual(dlstr.Data(), expected) {
 		t.Errorf("Expected data %v, got %v", expected, dlstr.Data())
 	}
@@ -198,7 +198,7 @@ func TestDataListPop(t *testing.T) {
 		t.Errorf("Expected last element 4, got %v", last)
 	}
 
-	expected := []interface{}{1, 2, 3}
+	expected := []any{1, 2, 3}
 	if !reflect.DeepEqual(dl.Data(), expected) {
 		t.Errorf("Expected data %v, got %v", expected, dl.Data())
 	}
@@ -209,7 +209,7 @@ func TestDataListDrop(t *testing.T) {
 	dl := NewDataList(1, 2, 3, 4)
 	dl.Drop(2)
 
-	expected := []interface{}{1, 2, 4}
+	expected := []any{1, 2, 4}
 	if !reflect.DeepEqual(dl.Data(), expected) {
 		t.Errorf("Expected data %v, got %v", expected, dl.Data())
 	}
@@ -321,8 +321,8 @@ func TestDataListSort(t *testing.T) {
 	dl := NewDataList(3, 1, 4, 1, 5, 9, 2, 6, 5, 3, 5)
 	dl.Sort()
 
-	if !reflect.DeepEqual(dl.Data(), []interface{}{1, 1, 2, 3, 3, 4, 5, 5, 5, 6, 9}) {
-		t.Errorf("Expected data %v, got %v", []interface{}{1, 1, 2, 3, 3, 4, 5, 5, 5, 6, 9}, dl.Data())
+	if !reflect.DeepEqual(dl.Data(), []any{1, 1, 2, 3, 3, 4, 5, 5, 5, 6, 9}) {
+		t.Errorf("Expected data %v, got %v", []any{1, 1, 2, 3, 3, 4, 5, 5, 5, 6, 9}, dl.Data())
 	}
 }
 
@@ -334,8 +334,8 @@ func TestDataListReverse(t *testing.T) {
 	dl := NewDataList("hello", "world", "this", "is", "a", "test")
 	dl.Reverse()
 
-	if !reflect.DeepEqual(dl.Data(), []interface{}{"test", "a", "is", "this", "world", "hello"}) {
-		t.Errorf("Expected data %v, got %v", []interface{}{"test", "a", "is", "this", "world", "hello"}, dl.Data())
+	if !reflect.DeepEqual(dl.Data(), []any{"test", "a", "is", "this", "world", "hello"}) {
+		t.Errorf("Expected data %v, got %v", []any{"test", "a", "is", "this", "world", "hello"}, dl.Data())
 	}
 }
 
@@ -343,8 +343,8 @@ func TestDataListUpper(t *testing.T) {
 	dl := NewDataList("hello", "world", "this", "is", "a", "test")
 	dl.Upper()
 
-	if !reflect.DeepEqual(dl.Data(), []interface{}{"HELLO", "WORLD", "THIS", "IS", "A", "TEST"}) {
-		t.Errorf("Expected data %v, got %v", []interface{}{"HELLO", "WORLD", "THIS", "IS", "A", "TEST"}, dl.Data())
+	if !reflect.DeepEqual(dl.Data(), []any{"HELLO", "WORLD", "THIS", "IS", "A", "TEST"}) {
+		t.Errorf("Expected data %v, got %v", []any{"HELLO", "WORLD", "THIS", "IS", "A", "TEST"}, dl.Data())
 	}
 }
 
@@ -352,8 +352,8 @@ func TestDataListLower(t *testing.T) {
 	dl := NewDataList("Hello", "World", "This", "Is", "A", "Test")
 	dl.Lower()
 
-	if !reflect.DeepEqual(dl.Data(), []interface{}{"hello", "world", "this", "is", "a", "test"}) {
-		t.Errorf("Expected data %v, got %v", []interface{}{"hello", "world", "this", "is", "a", "test"}, dl.Data())
+	if !reflect.DeepEqual(dl.Data(), []any{"hello", "world", "this", "is", "a", "test"}) {
+		t.Errorf("Expected data %v, got %v", []any{"hello", "world", "this", "is", "a", "test"}, dl.Data())
 	}
 }
 
@@ -361,8 +361,8 @@ func TestDataListCapitalize(t *testing.T) {
 	dl := NewDataList("hello", "world", "this", "is", "a", "test")
 	dl.Capitalize()
 
-	if !reflect.DeepEqual(dl.Data(), []interface{}{"Hello", "World", "This", "Is", "A", "Test"}) {
-		t.Errorf("Expected data %v, got %v", []interface{}{"Hello", "World", "This", "Is", "A", "Test"}, dl.Data())
+	if !reflect.DeepEqual(dl.Data(), []any{"Hello", "World", "This", "Is", "A", "Test"}) {
+		t.Errorf("Expected data %v, got %v", []any{"Hello", "World", "This", "Is", "A", "Test"}, dl.Data())
 	}
 }
 
@@ -565,8 +565,8 @@ func TestDataListParseNumbers(t *testing.T) {
 	dl := NewDataList("1", 2, "3", 8)
 	dl = dl.ParseNumbers()
 
-	if !reflect.DeepEqual(dl.Data(), []interface{}{1.0, 2.0, 3.0, 8.0}) {
-		t.Errorf("Expected data %v, got %v", []interface{}{1.0, 2.0, 3.0, 8.0}, dl.Data())
+	if !reflect.DeepEqual(dl.Data(), []any{1.0, 2.0, 3.0, 8.0}) {
+		t.Errorf("Expected data %v, got %v", []any{1.0, 2.0, 3.0, 8.0}, dl.Data())
 	}
 }
 
@@ -574,8 +574,8 @@ func TestDataListParseStrings(t *testing.T) {
 	dl := NewDataList("1", 2, "3", 8)
 	dl = dl.ParseStrings()
 
-	if !reflect.DeepEqual(dl.Data(), []interface{}{"1", "2", "3", "8"}) {
-		t.Errorf("Expected data %v, got %v", []interface{}{"1", "2", "3", "8"}, dl.Data())
+	if !reflect.DeepEqual(dl.Data(), []any{"1", "2", "3", "8"}) {
+		t.Errorf("Expected data %v, got %v", []any{"1", "2", "3", "8"}, dl.Data())
 	}
 }
 
@@ -636,7 +636,7 @@ func TestDataListCounter(t *testing.T) {
 	counter := dl.Counter()
 
 	if counter[1] != 1 || counter["k"] != 2 || counter[4] != 2 || counter["9"] != 2 || counter[10] != 1 || counter["4"] != 1 {
-		t.Errorf("Expected counter %v, got %v", map[interface{}]int{1: 1, "k": 2, 4: 2, "9": 2, 10: 1, "4": 1}, counter)
+		t.Errorf("Expected counter %v, got %v", map[any]int{1: 1, "k": 2, 4: 2, "9": 2, 10: 1, "4": 1}, counter)
 	}
 }
 

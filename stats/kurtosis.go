@@ -13,7 +13,7 @@ import (
 // Kurtosis calculates the kurtosis(sample) of the DataList.
 // Returns the kurtosis.
 // Returns NaN if the DataList is empty or the kurtosis cannot be calculated.
-func Kurtosis(data interface{}, method ...int) float64 {
+func Kurtosis(data any, method ...int) float64 {
 	d, _ := insyra.ProcessData(data)
 	d64 := insyra.SliceToF64(d)
 	dl := insyra.NewDataList(d64)

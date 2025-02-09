@@ -10,7 +10,7 @@ func reorganizeMemory(dl *DataList) {
 	dl.mu.Lock()
 	defer dl.mu.Unlock()
 
-	newData := make([]interface{}, len(dl.data))
+	newData := make([]any, len(dl.data))
 	copy(newData, dl.data)
 	dl.data = newData
 	LogDebug("MemoryManager.ReorganizeMemory(): DataList reorganized with len=%d, cap=%d\n", len(dl.data), cap(dl.data))

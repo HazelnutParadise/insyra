@@ -6,16 +6,16 @@ import (
 )
 
 type ParallelGroup struct {
-	fns     []interface{}
-	results [][]interface{}
+	fns     []any
+	results [][]any
 	wg      sync.WaitGroup
 }
 
 // GroupUp initializes a new ParallelGroup with the given functions.
-func GroupUp(fns ...interface{}) *ParallelGroup {
+func GroupUp(fns ...any) *ParallelGroup {
 	return &ParallelGroup{
 		fns:     fns,
-		results: make([][]interface{}, len(fns)),
+		results: make([][]any, len(fns)),
 	}
 }
 
@@ -23,11 +23,11 @@ func GroupUp(fns ...interface{}) *ParallelGroup {
 func (pg *ParallelGroup) Run() *ParallelGroup {
 	for i, fn := range pg.fns {
 		pg.wg.Add(1)
-		go func(i int, fn interface{}) {
+		go func(i int, fn any) {
 			defer pg.wg.Done()
 			fnValue := reflect.ValueOf(fn)
 			resultValues := fnValue.Call(nil)
-			results := make([]interface{}, len(resultValues))
+			results := make([]any, len(resultValues))
 			for j, v := range resultValues {
 				results[j] = v.Interface()
 			}
@@ -38,7 +38,7 @@ func (pg *ParallelGroup) Run() *ParallelGroup {
 }
 
 // AwaitResult waits for all functions to complete and returns their results.
-func (pg *ParallelGroup) AwaitResult() [][]interface{} {
+func (pg *ParallelGroup) AwaitResult() [][]any {
 	pg.wg.Wait()
 	return pg.results
 }

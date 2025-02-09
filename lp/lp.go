@@ -201,7 +201,7 @@ func parseGLPKOutputFromFile(filePath string) *insyra.DataTable {
 
 // createAdditionalInfoDataTable stores additional info like execution time, status, and warnings
 func createAdditionalInfoDataTable(status string, executionTime float64, warnings, fullOutput, iterations, nodes string) *insyra.DataTable {
-	additionalInfo := map[string]interface{}{
+	additionalInfo := map[string]any{
 		"Status":         status,
 		"Execution Time": fmt.Sprintf("%.2f seconds", executionTime),
 		"Warnings":       warnings,
@@ -212,7 +212,7 @@ func createAdditionalInfoDataTable(status string, executionTime float64, warning
 
 	dataTable := insyra.NewDataTable()
 	rowNames := []string{}
-	values := []interface{}{}
+	values := []any{}
 
 	for name, value := range additionalInfo {
 		rowNames = append(rowNames, name)

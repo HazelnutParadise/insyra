@@ -75,7 +75,7 @@ func CreateHeatmapChart(config HeatmapChartConfig) *charts.HeatMap {
 func convertToHeatMapData(data [][3]int) []opts.HeatMapData {
 	items := make([]opts.HeatMapData, len(data))
 	for i, v := range data {
-		items[i] = opts.HeatMapData{Value: [3]interface{}{v[0], v[1], v[2]}}
+		items[i] = opts.HeatMapData{Value: [3]any{v[0], v[1], v[2]}}
 	}
 	return items
 }

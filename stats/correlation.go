@@ -51,7 +51,7 @@ func Covariance(dlX, dlY insyra.IDataList) *big.Rat {
 // Correlation calculates the correlation coefficient between two datasets.
 // Supports Pearson, Kendall, and Spearman methods.
 // If highPrecision is set to true, it returns *big.Rat, otherwise float64.
-func Correlation(dlX, dlY insyra.IDataList, method CorrelationMethod, highPrecision ...bool) interface{} {
+func Correlation(dlX, dlY insyra.IDataList, method CorrelationMethod, highPrecision ...bool) any {
 	if len(highPrecision) > 1 {
 		insyra.LogWarning("stats.Correlation: Too many arguments.")
 		return nil

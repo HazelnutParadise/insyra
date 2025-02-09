@@ -114,7 +114,7 @@ func (dt *DT) Row(row int) *DL {
 	return &dl
 }
 
-// func (dt *DT) Iloc(indices ...interface{}) *DT {
+// func (dt *DT) Iloc(indices ...any) *DT {
 // 	switch len(indices) {
 // 	case 1:
 // 		switch v := indices[0].(type) {

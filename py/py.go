@@ -14,7 +14,7 @@ import (
 )
 
 // Run the Python code and return the result.
-func RunCode(code string) map[string]interface{} {
+func RunCode(code string) map[string]any {
 	code = generateDefaultPyCode() + code
 
 	// 執行 Python 代碼
@@ -33,12 +33,12 @@ func RunCode(code string) map[string]interface{} {
 
 // Run the Python code with the given Golang variables and return the result.
 // The variables should be passed by $v1, $v2, $v3... in the codeTemplate.
-func RunCodef(codeTemplate string, args ...interface{}) map[string]interface{} {
+func RunCodef(codeTemplate string, args ...any) map[string]any {
 	// 產生包含 insyra_return 函數的預設 Python 代碼
 	codeTemplate = generateDefaultPyCode() + codeTemplate
 
 	// 將所有 Go 變數轉換為一個 JSON 字典傳遞給 Python
-	dataMap := make(map[string]interface{})
+	dataMap := make(map[string]any)
 	for i, arg := range args {
 		pythonVarName := fmt.Sprintf("var%d", i+1)
 		dataMap[pythonVarName] = arg

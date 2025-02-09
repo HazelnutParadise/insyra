@@ -14,7 +14,7 @@ import (
 // Skewness calculates the skewness(sample) of the DataList.
 // Returns the skewness.
 // Returns NaN if the DataList is empty or the skewness cannot be calculated.
-func Skewness(sample interface{}, method ...int) float64 {
+func Skewness(sample any, method ...int) float64 {
 	d, dLen := insyra.ProcessData(sample)
 	d64 := insyra.SliceToF64(d)
 	insyra.LogDebug("stats.Skew: d64: ", d64)
@@ -34,7 +34,7 @@ func Skewness(sample interface{}, method ...int) float64 {
 		return math.NaN()
 	}
 
-	var result interface{}
+	var result any
 	switch usemethod {
 	case 1:
 		result = calculateSkewType1(dl)
@@ -60,7 +60,7 @@ func Skewness(sample interface{}, method ...int) float64 {
 }
 
 // ======================== calculation functions ========================
-func calculateSkewType1(dl *insyra.DataList, highPrecision ...bool) interface{} {
+func calculateSkewType1(dl *insyra.DataList, highPrecision ...bool) any {
 	n := new(big.Rat).SetFloat64(conv.ParseF64(dl.Len()))
 	nReciprocal := new(big.Rat).Inv(n)
 	m1 := new(big.Rat).SetFloat64(dl.Mean())
@@ -105,7 +105,7 @@ func calculateSkewType1(dl *insyra.DataList, highPrecision ...bool) interface{} 
 	return f64g1
 }
 
-func calculateSkewTyep2(dl *insyra.DataList) interface{} {
+func calculateSkewTyep2(dl *insyra.DataList) any {
 	n := new(big.Rat).SetFloat64(conv.ParseF64(dl.Len()))
 	g1 := calculateSkewType1(dl, true).(*big.Rat)
 
@@ -128,7 +128,7 @@ func calculateSkewTyep2(dl *insyra.DataList) interface{} {
 	return f64G1
 }
 
-func calculateSkewType3(dl *insyra.DataList) interface{} {
+func calculateSkewType3(dl *insyra.DataList) any {
 	g1 := calculateSkewType1(dl, true).(*big.Rat)
 	n := new(big.Rat).SetFloat64(conv.ParseF64(dl.Len()))
 

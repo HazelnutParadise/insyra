@@ -2,14 +2,14 @@ package insyra
 
 import "log"
 
-func LogFatal(msg string, args ...interface{}) {
+func LogFatal(msg string, args ...any) {
 	if msg[len(msg)-1] != '\n' {
 		msg += "\n"
 	}
 	log.Fatalf("<{[insyra - FATAL!]}> "+msg, args...)
 }
 
-func LogWarning(msg string, args ...interface{}) {
+func LogWarning(msg string, args ...any) {
 	if Config.GetLogLevel() > LogLevelWarning {
 		return
 	}
@@ -19,7 +19,7 @@ func LogWarning(msg string, args ...interface{}) {
 	log.Printf("[insyra - Warning] "+msg, args...)
 }
 
-func LogDebug(msg string, args ...interface{}) {
+func LogDebug(msg string, args ...any) {
 	if Config.GetLogLevel() > LogLevelDebug {
 		return
 	}
@@ -29,7 +29,7 @@ func LogDebug(msg string, args ...interface{}) {
 	log.Printf("<insyra - Debug> "+msg, args...)
 }
 
-func LogInfo(msg string, args ...interface{}) {
+func LogInfo(msg string, args ...any) {
 	if Config.GetLogLevel() > LogLevelInfo {
 		return
 	}

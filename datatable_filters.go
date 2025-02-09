@@ -192,35 +192,35 @@ func (dt *DataTable) FilterByColNameContains(substring string) *DataTable {
 
 // FilterByRowIndexGreaterThan filters rows with index greater than the specified threshold.
 func (dt *DataTable) FilterByRowIndexGreaterThan(threshold int) *DataTable {
-	return dt.Filter(func(rowIndex int, columnIndex string, value interface{}) bool {
+	return dt.Filter(func(rowIndex int, columnIndex string, value any) bool {
 		return rowIndex > threshold
 	})
 }
 
 // FilterByRowIndexGreaterThanOrEqualTo filters rows with index greater than or equal to the specified threshold.
 func (dt *DataTable) FilterByRowIndexGreaterThanOrEqualTo(threshold int) *DataTable {
-	return dt.Filter(func(rowIndex int, columnIndex string, value interface{}) bool {
+	return dt.Filter(func(rowIndex int, columnIndex string, value any) bool {
 		return rowIndex >= threshold
 	})
 }
 
 // FilterByRowIndexEqualTo filters to only keep the row with the specified index.
 func (dt *DataTable) FilterByRowIndexEqualTo(index int) *DataTable {
-	return dt.Filter(func(rowIndex int, columnIndex string, value interface{}) bool {
+	return dt.Filter(func(rowIndex int, columnIndex string, value any) bool {
 		return rowIndex == index
 	})
 }
 
 // FilterByRowIndexLessThan filters rows with index less than the specified threshold.
 func (dt *DataTable) FilterByRowIndexLessThan(threshold int) *DataTable {
-	return dt.Filter(func(rowIndex int, columnIndex string, value interface{}) bool {
+	return dt.Filter(func(rowIndex int, columnIndex string, value any) bool {
 		return rowIndex < threshold
 	})
 }
 
 // FilterByRowIndexLessThanOrEqualTo filters rows with index less than or equal to the specified threshold.
 func (dt *DataTable) FilterByRowIndexLessThanOrEqualTo(threshold int) *DataTable {
-	return dt.Filter(func(rowIndex int, columnIndex string, value interface{}) bool {
+	return dt.Filter(func(rowIndex int, columnIndex string, value any) bool {
 		return rowIndex <= threshold
 	})
 }
@@ -260,7 +260,7 @@ func (dt *DataTable) FilterByRowNameContains(substring string) *DataTable {
 	filteredCols := make([]*DataList, len(dt.columns))
 	for i := range dt.columns {
 		filteredCols[i] = &DataList{
-			data:              make([]interface{}, 0, len(filteredRowIndices)),
+			data:              make([]any, 0, len(filteredRowIndices)),
 			name:              dt.columns[i].name,
 			creationTimestamp: dt.columns[i].creationTimestamp,
 		}
@@ -302,8 +302,8 @@ func filterRowNames(originalRowNames map[string]int, filteredIndices []int) map[
 // ==================== Custom Element ====================
 
 // FilterByCustomElement filters the table based on a custom function applied to each element.
-func (dt *DataTable) FilterByCustomElement(filterFunc func(value interface{}) bool) *DataTable {
-	return dt.Filter(func(rowIndex int, columnIndex string, value interface{}) bool {
+func (dt *DataTable) FilterByCustomElement(filterFunc func(value any) bool) *DataTable {
+	return dt.Filter(func(rowIndex int, columnIndex string, value any) bool {
 		return filterFunc(value)
 	})
 }
@@ -311,7 +311,7 @@ func (dt *DataTable) FilterByCustomElement(filterFunc func(value interface{}) bo
 // ==================== Custom Filter ====================
 
 // FilterFunc is a custom filter function that takes the row index, column name, and value as input and returns a boolean.
-type FilterFunc func(rowIndex int, columnIndex string, value interface{}) bool
+type FilterFunc func(rowIndex int, columnIndex string, value any) bool
 
 // Filter applies a custom filter function to the DataTable and returns the filtered DataTable.
 func (dt *DataTable) Filter(filterFunc FilterFunc) *DataTable {
