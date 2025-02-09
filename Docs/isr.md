@@ -85,3 +85,22 @@ dataTable := isr.DT{}.From(
     }},
 )
 ```
+
+##### From CSV
+
+```go
+dataTable := isr.DT{}.From(
+    isr.CSV{FilePath: "data.csv"},
+)
+
+// with options
+dataTable := isr.DT{}.From(
+    isr.CSV{
+        FilePath: "data.csv",
+        LoadOpts: isr.CSV_inOpts{
+            FirstCol2RowNames: true,
+            FirstRow2ColNames: true,
+        },
+    },
+)
+```
