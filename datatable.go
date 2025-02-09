@@ -24,25 +24,25 @@ type DataTable struct {
 type IDataTable interface {
 	AppendCols(columns ...*DataList) *DataTable
 	AppendRowsFromDataList(rowsData ...*DataList) *DataTable
-	AppendRowsByColIndex(rowsData ...map[string]interface{}) *DataTable
-	AppendRowsByColName(rowsData ...map[string]interface{}) *DataTable
-	GetElement(rowIndex int, columnIndex string) interface{}
-	GetElementByNumberIndex(rowIndex int, columnIndex int) interface{}
+	AppendRowsByColIndex(rowsData ...map[string]any) *DataTable
+	AppendRowsByColName(rowsData ...map[string]any) *DataTable
+	GetElement(rowIndex int, columnIndex string) any
+	GetElementByNumberIndex(rowIndex int, columnIndex int) any
 	GetCol(index string) *DataList
 	GetColByNumber(index int) *DataList
 	GetRow(index int) *DataList
-	UpdateElement(rowIndex int, columnIndex string, value interface{})
+	UpdateElement(rowIndex int, columnIndex string, value any)
 	UpdateCol(index string, dl *DataList)
 	UpdateColByNumber(index int, dl *DataList)
 	UpdateRow(index int, dl *DataList)
 	SetColToRowNames(columnIndex string) *DataTable
 	SetRowToColNames(rowIndex int) *DataTable
-	FindRowsIfContains(value interface{}) []int
-	FindRowsIfContainsAll(values ...interface{}) []int
+	FindRowsIfContains(value any) []int
+	FindRowsIfContainsAll(values ...any) []int
 	FindRowsIfAnyElementContainsSubstring(substring string) []int
 	FindRowsIfAllElementsContainSubstring(substring string) []int
-	FindColsIfContains(value interface{}) []string
-	FindColsIfContainsAll(values ...interface{}) []string
+	FindColsIfContains(value any) []string
+	FindColsIfContainsAll(values ...any) []string
 	FindColsIfAnyElementContainsSubstring(substring string) []string
 	FindColsIfAllElementsContainSubstring(substring string) []string
 	DropColsByName(columnNames ...string)
@@ -56,7 +56,7 @@ type IDataTable interface {
 	DropRowsContainStringElements()
 	DropRowsContainNumbers()
 	DropRowsContainNil()
-	Data(useNamesAsKeys ...bool) map[string][]interface{}
+	Data(useNamesAsKeys ...bool) map[string][]any
 	Show()
 	ShowTypes()
 	GetRowNameByIndex(index int) string
@@ -70,15 +70,15 @@ type IDataTable interface {
 
 	// Statistics
 	Size() (int, int)
-	Count(value interface{}) int
-	Mean() interface{}
+	Count(value any) int
+	Mean() any
 
 	// Conversion
 	Transpose() *DataTable
 
 	// Filters
 	Filter(filterFunc FilterFunc) *DataTable
-	FilterByCustomElement(f func(value interface{}) bool) *DataTable
+	FilterByCustomElement(f func(value any) bool) *DataTable
 	FilterByColIndexGreaterThan(threshold string) *DataTable
 	FilterByColIndexGreaterThanOrEqualTo(threshold string) *DataTable
 	FilterByColIndexLessThan(threshold string) *DataTable
@@ -141,14 +141,14 @@ func (dt *DataTable) AppendCols(columns ...*DataList) *DataTable {
 		dt.columns = append(dt.columns, column)
 		dt.columnIndex[columnName] = len(dt.columns) - 1
 		if len(column.data) < maxLength {
-			column.data = append(column.data, make([]interface{}, maxLength-len(column.data))...)
+			column.data = append(column.data, make([]any, maxLength-len(column.data))...)
 		}
 		LogDebug("AppendCols: Added column %s at index %d", columnName, dt.columnIndex[columnName])
 	}
 
 	for _, col := range dt.columns {
 		if len(col.data) < maxLength {
-			col.data = append(col.data, make([]interface{}, maxLength-len(col.data))...)
+			col.data = append(col.data, make([]any, maxLength-len(col.data))...)
 		}
 	}
 	return dt
@@ -201,16 +201,16 @@ func (dt *DataTable) AppendRowsFromDataList(rowsData ...*DataList) *DataTable {
 // AppendRowsByIndex appends rows to the DataTable, with each row represented by a map of column index and value.
 // If the rows are shorter than the existing columns, nil values will be appended to match the length.
 // If the rows are longer than the existing columns, the existing columns will be extended with nil values.
-func (dt *DataTable) AppendRowsByColIndex(rowsData ...map[string]interface{}) *DataTable {
+func (dt *DataTable) AppendRowsByColIndex(rowsData ...map[string]any) *DataTable {
 	dt.mu.Lock()
 	defer func() {
 		dt.mu.Unlock()
 		go dt.updateTimestamp()
 	}()
 
-	upperCaseRowsData := make([]map[string]interface{}, len(rowsData))
+	upperCaseRowsData := make([]map[string]any, len(rowsData))
 	for i, rowData := range rowsData {
-		upperCaseRowData := make(map[string]interface{})
+		upperCaseRowData := make(map[string]any)
 		for colIndex, value := range rowData {
 			upperCaseRowData[strings.ToUpper(colIndex)] = value
 		}
@@ -264,7 +264,7 @@ func (dt *DataTable) AppendRowsByColIndex(rowsData ...map[string]interface{}) *D
 // AppendRowsByName appends rows to the DataTable, with each row represented by a map of column name and value.
 // If the rows are shorter than the existing columns, nil values will be appended to match the length.
 // If the rows are longer than the existing columns, the existing columns will be extended with nil values.
-func (dt *DataTable) AppendRowsByColName(rowsData ...map[string]interface{}) *DataTable {
+func (dt *DataTable) AppendRowsByColName(rowsData ...map[string]any) *DataTable {
 	dt.mu.Lock()
 	defer func() {
 		dt.mu.Unlock()
@@ -309,7 +309,7 @@ func (dt *DataTable) AppendRowsByColName(rowsData ...map[string]interface{}) *Da
 // ======================== Get ========================
 
 // GetElement returns the element at the given row and column index.
-func (dt *DataTable) GetElement(rowIndex int, columnIndex string) interface{} {
+func (dt *DataTable) GetElement(rowIndex int, columnIndex string) any {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
 
@@ -328,7 +328,7 @@ func (dt *DataTable) GetElement(rowIndex int, columnIndex string) interface{} {
 
 }
 
-func (dt *DataTable) GetElementByNumberIndex(rowIndex int, columnIndex int) interface{} {
+func (dt *DataTable) GetElementByNumberIndex(rowIndex int, columnIndex int) any {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
 
@@ -351,7 +351,7 @@ func (dt *DataTable) GetCol(index string) *DataList {
 	if colPos, exists := dt.columnIndex[index]; exists {
 		// 初始化新的 DataList 並分配 data 切片的大小
 		dl := NewDataList()
-		dl.data = make([]interface{}, len(dt.columns[colPos].data))
+		dl.data = make([]any, len(dt.columns[colPos].data))
 
 		// 拷貝數據到新的 DataList
 		copy(dl.data, dt.columns[colPos].data)
@@ -376,7 +376,7 @@ func (dt *DataTable) GetColByNumber(index int) *DataList {
 
 	// 初始化新的 DataList 並分配 data 切片的大小
 	dl := NewDataList()
-	dl.data = make([]interface{}, len(dt.columns[index].data))
+	dl.data = make([]any, len(dt.columns[index].data))
 
 	// 拷貝數據到新的 DataList
 	copy(dl.data, dt.columns[index].data)
@@ -397,7 +397,7 @@ func (dt *DataTable) GetRow(index int) *DataList {
 
 	// 初始化新的 DataList 並分配 data 切片的大小
 	dl := NewDataList()
-	dl.data = make([]interface{}, len(dt.columns))
+	dl.data = make([]any, len(dt.columns))
 
 	// 拷貝數據到新的 DataList
 	for i, column := range dt.columns {
@@ -413,7 +413,7 @@ func (dt *DataTable) GetRow(index int) *DataList {
 // ======================== Update ========================
 
 // UpdateElement updates the element at the given row and column index.
-func (dt *DataTable) UpdateElement(rowIndex int, columnIndex string, value interface{}) {
+func (dt *DataTable) UpdateElement(rowIndex int, columnIndex string, value any) {
 	dt.mu.Lock()
 	defer func() {
 		dt.mu.Unlock()
@@ -550,7 +550,7 @@ func (dt *DataTable) SetRowToColNames(rowIndex int) *DataTable {
 // ======================== Find ========================
 
 // FindRowsIfContains returns the indices of rows that contain the given element.
-func (dt *DataTable) FindRowsIfContains(value interface{}) []int {
+func (dt *DataTable) FindRowsIfContains(value any) []int {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
 
@@ -578,7 +578,7 @@ func (dt *DataTable) FindRowsIfContains(value interface{}) []int {
 }
 
 // FindRowsIfContainsAll returns the indices of rows that contain all the given elements.
-func (dt *DataTable) FindRowsIfContainsAll(values ...interface{}) []int {
+func (dt *DataTable) FindRowsIfContainsAll(values ...any) []int {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
 
@@ -665,7 +665,7 @@ func (dt *DataTable) FindRowsIfAllElementsContainSubstring(substring string) []i
 }
 
 // FindColsIfContains returns the indices of columns that contain the given element.
-func (dt *DataTable) FindColsIfContains(value interface{}) []string {
+func (dt *DataTable) FindColsIfContains(value any) []string {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
 
@@ -681,7 +681,7 @@ func (dt *DataTable) FindColsIfContains(value interface{}) []string {
 }
 
 // FindColsIfContainsAll returns the indices of columns that contain all the given elements.
-func (dt *DataTable) FindColsIfContainsAll(values ...interface{}) []string {
+func (dt *DataTable) FindColsIfContainsAll(values ...any) []string {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
 
@@ -1128,7 +1128,7 @@ func (dt *DataTable) DropRowsContainNil() {
 
 	// 建立新的列資料，僅保留非nil的行
 	for _, column := range dt.columns {
-		newData := []interface{}{}
+		newData := []any{}
 		for _, rowIndex := range nonNilRowIndices {
 			if rowIndex < len(column.data) {
 				newData = append(newData, column.data[rowIndex])
@@ -1149,11 +1149,11 @@ func (dt *DataTable) DropRowsContainNil() {
 
 // ======================== Data ========================
 
-func (dt *DataTable) Data(useNamesAsKeys ...bool) map[string][]interface{} {
+func (dt *DataTable) Data(useNamesAsKeys ...bool) map[string][]any {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
 
-	dataMap := make(map[string][]interface{})
+	dataMap := make(map[string][]any)
 
 	useNamesAsKeysBool := true
 	if len(useNamesAsKeys) == 1 {
@@ -1184,7 +1184,7 @@ func (dt *DataTable) Show() {
 	defer dt.mu.Unlock()
 
 	// 構建資料地圖，但不使用 Data() 方法以避免死鎖
-	dataMap := make(map[string][]interface{})
+	dataMap := make(map[string][]any)
 	for i, col := range dt.columns {
 		key := generateColIndex(i)
 		if col.name != "" {
@@ -1254,7 +1254,7 @@ func (dt *DataTable) ShowTypes() {
 	defer dt.mu.Unlock()
 
 	// 構建資料地圖，但不使用 Data() 方法以避免死鎖
-	dataMap := make(map[string][]interface{})
+	dataMap := make(map[string][]any)
 	for i, col := range dt.columns {
 		key := generateColIndex(i)
 		if col.name != "" {
@@ -1354,8 +1354,8 @@ func (dt *DataTable) SetRowNameByIndex(index int, name string) {
 // ======================== Statistics ========================
 
 // Count returns the number of occurrences of the given value in the DataTable.
-func (dt *DataTable) Count(value interface{}) int {
-	result := asyncutil.ParallelForEach(dt.columns, func(i int, column interface{}) int {
+func (dt *DataTable) Count(value any) int {
+	result := asyncutil.ParallelForEach(dt.columns, func(i int, column any) int {
 		return dt.columns[i].Count(value)
 	})
 	count := NewDataList(result).Sum()
@@ -1363,11 +1363,11 @@ func (dt *DataTable) Count(value interface{}) int {
 }
 
 // Counter returns the number of occurrences of the given value in the DataTable.
-// Return a map[interface{}]int
-func (dt *DataTable) Counter() map[interface{}]int {
+// Return a map[any]int
+func (dt *DataTable) Counter() map[any]int {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
-	result := make(map[interface{}]int)
+	result := make(map[any]int)
 	for _, column := range dt.columns {
 		for _, value := range column.data {
 			result[value] += 1
@@ -1384,7 +1384,7 @@ func (dt *DataTable) Size() (rows int, cols int) {
 }
 
 // Mean returns the mean of the DataTable.
-func (dt *DataTable) Mean() interface{} {
+func (dt *DataTable) Mean() any {
 	defer dt.mu.Unlock()
 	var totalSum float64
 	rowNum, colNum := dt.Size()
@@ -1498,7 +1498,7 @@ func generateColIndex(index int) string {
 }
 
 func newEmptyDataList(rowCount int) *DataList {
-	data := make([]interface{}, rowCount)
+	data := make([]any, rowCount)
 	for i := 0; i < rowCount; i++ {
 		data[i] = nil
 	}

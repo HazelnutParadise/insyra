@@ -50,7 +50,7 @@ func TestDataTable_AppendRowsFromDataList(t *testing.T) {
 
 func TestDataTable_AppendRowsByIndex(t *testing.T) {
 	dt := NewDataTable()
-	dt.AppendRowsByColIndex(map[string]interface{}{"a": 1, "B": 2, "C": 3})
+	dt.AppendRowsByColIndex(map[string]any{"a": 1, "B": 2, "C": 3})
 	dt.Show()
 	if r, c := dt.Size(); r != 1 || c != 3 {
 		t.Errorf("AppendRowsByIndex() did not add the row correctly")
@@ -59,7 +59,7 @@ func TestDataTable_AppendRowsByIndex(t *testing.T) {
 
 func TestDataTable_AppendRowsByName(t *testing.T) {
 	dt := NewDataTable()
-	dt.AppendRowsByColName(map[string]interface{}{"first": 1, "second": 2, "third": 3})
+	dt.AppendRowsByColName(map[string]any{"first": 1, "second": 2, "third": 3})
 	dt.Show()
 	if r, c := dt.Size(); r != 1 || c != 3 {
 		t.Errorf("AppendRowsByName() did not add the row correctly")
@@ -68,7 +68,7 @@ func TestDataTable_AppendRowsByName(t *testing.T) {
 
 func TestDataTable_GetElement(t *testing.T) {
 	dt := NewDataTable()
-	dt.AppendRowsByColIndex(map[string]interface{}{"A": 1, "B": 2, "C": 3})
+	dt.AppendRowsByColIndex(map[string]any{"A": 1, "B": 2, "C": 3})
 	dt.Show()
 	if dt.GetElement(0, "A") != 1 {
 		t.Errorf("GetElement() did not return the correct element")
@@ -77,7 +77,7 @@ func TestDataTable_GetElement(t *testing.T) {
 
 func TestDataTable_GetElementByNumberIndex(t *testing.T) {
 	dt := NewDataTable()
-	dt.AppendRowsByColIndex(map[string]interface{}{"A": 1, "B": 2, "C": 3})
+	dt.AppendRowsByColIndex(map[string]any{"A": 1, "B": 2, "C": 3})
 	dt.Show()
 	if dt.GetElementByNumberIndex(0, 0) != 1 {
 		t.Errorf("GetElementByNumberIndex() did not return the correct element")
@@ -86,7 +86,7 @@ func TestDataTable_GetElementByNumberIndex(t *testing.T) {
 
 func TestDataTable_GetCol(t *testing.T) {
 	dt := NewDataTable()
-	dt.AppendRowsByColIndex(map[string]interface{}{"A": 1, "B": 2, "C": 3})
+	dt.AppendRowsByColIndex(map[string]any{"A": 1, "B": 2, "C": 3})
 	dt.Show()
 	if dt.GetCol("A").Data()[0] != 1 {
 		t.Errorf("GetCol() did not return the correct column")
@@ -95,7 +95,7 @@ func TestDataTable_GetCol(t *testing.T) {
 
 func TestDataTable_GetColByNumber(t *testing.T) {
 	dt := NewDataTable()
-	dt.AppendRowsByColIndex(map[string]interface{}{"A": 1, "B": 2, "C": 3})
+	dt.AppendRowsByColIndex(map[string]any{"A": 1, "B": 2, "C": 3})
 	dt.Show()
 	if dt.GetColByNumber(0).Data()[0] != 1 {
 		t.Errorf("GetColByNumber() did not return the correct column")
@@ -114,7 +114,7 @@ func TestDataTable_GetRow(t *testing.T) {
 
 func TestDataTable_UpdateElement(t *testing.T) {
 	dt := NewDataTable()
-	dt.AppendRowsByColIndex(map[string]interface{}{"A": 1, "B": 2, "C": 3})
+	dt.AppendRowsByColIndex(map[string]any{"A": 1, "B": 2, "C": 3})
 	dt.Show()
 	dt.UpdateElement(0, "A", 10)
 	dt.Show()
@@ -125,7 +125,7 @@ func TestDataTable_UpdateElement(t *testing.T) {
 
 func TestDataTable_UpdateCol(t *testing.T) {
 	dt := NewDataTable()
-	dt.AppendRowsByColIndex(map[string]interface{}{"A": 1, "B": 2, "C": 3})
+	dt.AppendRowsByColIndex(map[string]any{"A": 1, "B": 2, "C": 3})
 	dt.Show()
 	dt.UpdateCol("A", NewDataList(10, 20, 30))
 	dt.Show()
@@ -136,7 +136,7 @@ func TestDataTable_UpdateCol(t *testing.T) {
 
 func TestDataTable_UpdateColByNumber(t *testing.T) {
 	dt := NewDataTable()
-	dt.AppendRowsByColIndex(map[string]interface{}{"A": 1, "B": 2, "C": 3})
+	dt.AppendRowsByColIndex(map[string]any{"A": 1, "B": 2, "C": 3})
 	dt.Show()
 	dt.UpdateColByNumber(0, NewDataList(10, 20, 30))
 	dt.Show()
@@ -147,7 +147,7 @@ func TestDataTable_UpdateColByNumber(t *testing.T) {
 
 func TestDataTable_UpdateRow(t *testing.T) {
 	dt := NewDataTable()
-	dt.AppendRowsByColIndex(map[string]interface{}{"A": 1, "B": 2, "C": 3})
+	dt.AppendRowsByColIndex(map[string]any{"A": 1, "B": 2, "C": 3})
 	dt.Show()
 	dt.UpdateRow(0, NewDataList(10, 20, 30))
 	dt.Show()
@@ -158,7 +158,7 @@ func TestDataTable_UpdateRow(t *testing.T) {
 
 func TestDataTable_Counter(t *testing.T) {
 	dt := NewDataTable()
-	dt.AppendRowsByColIndex(map[string]interface{}{"A": 1, "B": 2, "C": 1})
+	dt.AppendRowsByColIndex(map[string]any{"A": 1, "B": 2, "C": 1})
 	dt.Show()
 	counter := dt.Counter()
 	fmt.Println(counter)

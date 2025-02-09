@@ -20,12 +20,16 @@ Go 語言次世代資料分析庫。支援 **平行處理**、**資料視覺化*
 
 **Insyra** 庫是一個動態且多功能的 Go 語言資料分析工具。提供了豐富的功能集，可用於數據操作、統計計算、資料視覺化等，對於處理複雜數據結構的開發者來說，是一個必不可少的工具包。
 
+> [!TIP]
+> 我們推出了全新的 `isr` 套件，提供了 **語法糖**！<br/>
+> 建議任何新專案使用 `isr` 套件取代直接呼叫 `insyra` 主套件包的寫法。<br/>
+> 更多詳細資訊，請參閱 **[說明文件](/Docs/isr.md)**。
+
 > [!NOTE]
 > 如果文檔中的某些功能無法使用，可能是該功能還未包含在最新發布的版本中。請至 **[Releases](https://github.com/HazelnutParadise/insyra/releases)** 查看對應版本源碼中的文檔。
 
 > [!IMPORTANT]
-> **對於 Insyra 文檔中未明確列出的任何函數或方法，表示該功能仍在積極開發中。這些實驗性功能可能會提供不穩定的結果。**    
->
+> **對於 Insyra 文檔中未明確列出的任何函數或方法，表示該功能仍在積極開發中。這些實驗性功能可能會提供不穩定的結果。**<br/>
 > 請參閱我們 **[文檔](https://github.com/HazelnutParadise/insyra/tree/main/Docs)** 資料夾中的最新更新以獲取更多詳細資訊。
 
 ## [Idensyra](https://github.com/HazelnutParadise/idensyra)
@@ -112,12 +116,35 @@ import (
 )
 
 func main() {
-    dl := insyra.NewDataList(1, 2, 3, 4, 5)
+    dl := insyra.DataList{}.From(1, 2, 3, 4, 5)
     dl.Append(6)
     fmt.Println("DataList:", dl.Data())
     fmt.Println("Mean:", dl.Mean())
 }
 ```
+
+#### 語法糖
+
+強烈建議使用 **語法糖**，因為它更強大且更易於使用。例如，上面的程式碼可以寫成：
+
+```go
+package main
+
+import (
+	"fmt"
+
+	"github.com/HazelnutParadise/insyra/isr"
+)
+
+func main() {
+	dl := isr.DL{}.From(1, 2, 3, 4, 5)
+	dl.Append(6)
+	fmt.Println("DataList:", dl.Data())
+	fmt.Println("Mean:", dl.Mean())
+}
+```
+
+若要使用語法糖，請引用 `github.com/HazelnutParadise/insyra/isr`。
 
 ## [DataList](/Docs/DataList.md)
 
@@ -136,6 +163,10 @@ func main() {
 ## 套件
 
 **Insyra** 還提供了多個擴展套件，每個都專注於數據分析的特定方面。
+
+### **[isr](/Docs/isr.md)**
+
+提供 **語法糖**，使 Insyra 更易於使用。使用 `isr` 套件，您可以更快地編寫代碼，並更容易地理解和維護程式碼。
 
 ### **[datafetch](/Docs/datafetch.md)**
 

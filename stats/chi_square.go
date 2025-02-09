@@ -14,7 +14,7 @@ type ChiSquareTestResult struct {
 }
 
 // ChiSquareTest supports both DataList (1D) and DataTable (2D) for chi-square tests.
-func ChiSquareTest(input interface{}, p []float64, rescaleP bool) *ChiSquareTestResult {
+func ChiSquareTest(input any, p []float64, rescaleP bool) *ChiSquareTestResult {
 	var observed []float64
 	var expected []float64
 	var df int

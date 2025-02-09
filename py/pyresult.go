@@ -9,7 +9,7 @@ import (
 	"github.com/HazelnutParadise/insyra"
 )
 
-var pyResult map[string]interface{}
+var pyResult map[string]any
 
 // 啟動 HTTP 伺服器來接收 Python 回傳的複雜資料結構
 func startServer() {
@@ -17,7 +17,7 @@ func startServer() {
 		defer r.Body.Close()
 
 		// 使用 map 接收任意類型的資料
-		var result map[string]interface{}
+		var result map[string]any
 		err := json.NewDecoder(r.Body).Decode(&result)
 		if err != nil {
 			http.Error(w, "Invalid request", http.StatusBadRequest)

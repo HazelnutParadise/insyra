@@ -6,6 +6,25 @@ This document describes the `DataList` type and its functionalities within the `
 
 The `DataList` type provides a dynamic and generic way to store and manage a collection of elements. It supports various data types, including strings, numbers, booleans, and even time data.
 
+## Creating a DataList
+
+You can create a new `DataList` instance using the `NewDataList` function, or by initializing an empty `DataList` struct and using the From method to populate it with initial values.
+```go
+import "github.com/HazelnutParadise/insyra"
+
+dl := insyra.DataList{}.From(1, 2, 3, 4, 5) // recommended
+```
+or
+```go
+dl := insyra.NewDataList(1, 2, 3, 4, 5) // legacy
+```
+or using syntax sugar
+```go
+import "github.com/HazelnutParadise/insyra/isr"
+
+dl := isr.DL{}.From(1, 2, 3, 4, 5) // modern
+```
+
 **Key Features:**
 
 * **Generic:** Accepts elements of any data type.

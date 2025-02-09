@@ -217,7 +217,7 @@ func (c *googleMapsStoreCrawler) GetComments(storeId string, pageCount int, opti
 		}
 
 		// Google 回應有 `)]}'` 前綴，需去除前 4 個字元
-		jsonData := []interface{}{}
+		jsonData := []any{}
 		if err := json.Unmarshal(body[4:], &jsonData); err != nil {
 			insyra.LogWarning("datafetch.GoogleMapsStores().GetComments: Failed to decode JSON. Error: %v. Returning nil.", err)
 			return nil
@@ -230,10 +230,10 @@ func (c *googleMapsStoreCrawler) GetComments(storeId string, pageCount int, opti
 
 		// 解析評論數據
 		if len(jsonData) > 2 {
-			rawComments, ok := jsonData[2].([]interface{})
+			rawComments, ok := jsonData[2].([]any)
 			if ok {
 				for _, item := range rawComments {
-					commentData, _ := item.([]interface{})
+					commentData, _ := item.([]any)
 					if len(commentData) < 3 {
 						continue
 					}
@@ -292,7 +292,7 @@ func (comments googleMapsStoreComments) ToDataTable() *insyra.DataTable {
 	dt := insyra.NewDataTable()
 	for _, comment := range comments {
 		dt.AppendRowsByColName(
-			map[string]interface{}{
+			map[string]any{
 				"Reviewer":      comment.Reviewer,
 				"ReviewerID":    comment.ReviewerID,
 				"ReviewerState": comment.ReviewerState,
@@ -359,7 +359,7 @@ func (c *googleMapsStoreCrawler) getStoreName(storeId string) (string, error) {
 }
 
 // extractString 從 JSON 層級結構中擷取字串
-func extractString(data []interface{}, indices ...int) string {
+func extractString(data []any, indices ...int) string {
 	val := extractValue(data, indices...)
 	if str, ok := val.(string); ok {
 		return str
@@ -371,7 +371,7 @@ func extractString(data []interface{}, indices ...int) string {
 }
 
 // extractInt 從 JSON 層級結構中擷取整數
-func extractInt(data []interface{}, indices ...int) int {
+func extractInt(data []any, indices ...int) int {
 	val := extractValue(data, indices...)
 	if num, ok := val.(float64); ok {
 		return int(num)
@@ -380,10 +380,10 @@ func extractInt(data []interface{}, indices ...int) int {
 }
 
 // extractValue 用於遍歷 JSON 層級結構
-func extractValue(data []interface{}, indices ...int) interface{} {
-	current := interface{}(data)
+func extractValue(data []any, indices ...int) any {
+	current := any(data)
 	for _, idx := range indices {
-		arr, ok := current.([]interface{})
+		arr, ok := current.([]any)
 		if !ok {
 			return nil
 		}

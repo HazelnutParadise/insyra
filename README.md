@@ -24,12 +24,16 @@ Welcome to join [**Side Project Taiwan**(Discord Server)](https://discord.com/ch
 
 The **Insyra** library is a dynamic and versatile tool designed for managing and analyzing data in Go. It offers a rich set of features for data manipulation, statistical calculations, data visualization, and more, making it an essential toolkit for developers handling complex data structures.
 
+> [!TIP]
+> We got brand new `isr` package, which provides **Sytax Sugar**!<br/>
+> Any new project is recommended to use `isr` package instead of calling `insyra` main package directly.<br/>
+> For more details, please refer to the **[Documentation](/Docs/isr.md)**.
+
 > [!NOTE]
 > If some functions or methods in the documentation are not working, it may be because the feature is not yet included in the latest release. Please refer to the documentation in the source code of the corresponding version in **[Releases](https://github.com/HazelnutParadise/insyra/releases)**.
 
 > [!IMPORTANT]
-> **For any functions or methods not explicitly listed in Insyra documents, it indicates that the feature is still under active development. These experimental features might provide unstable results.** 
->
+> **For any functions or methods not explicitly listed in Insyra documents, it indicates that the feature is still under active development. These experimental features might provide unstable results.** <br/>
 > Please refer to our latest updates in **[Docs](/Docs)** folder for more details.
 
 ## [Idensyra](https://github.com/HazelnutParadise/idensyra)
@@ -114,12 +118,35 @@ import (
 )
 
 func main() {
-    dl := insyra.NewDataList(1, 2, 3, 4, 5)
+    dl := insyra.DataList{}.From(1, 2, 3, 4, 5)
     dl.Append(6)
     fmt.Println("DataList:", dl.Data())
     fmt.Println("Mean:", dl.Mean())
 }
 ```
+
+#### Syntactic Sugar
+
+It is strongly recommended to use syntactic sugar since it is much more power and easier to use. For example, the above code can be written as:
+
+```go
+package main
+
+import (
+	"fmt"
+
+	"github.com/HazelnutParadise/insyra/isr"
+)
+
+func main() {
+	dl := isr.DL{}.From(1, 2, 3, 4, 5)
+	dl.Append(6)
+	fmt.Println("DataList:", dl.Data())
+	fmt.Println("Mean:", dl.Mean())
+}
+```
+
+To use the syntactic sugar, import `github.com/HazelnutParadise/insyra/isr`.
 
 ## [DataList](/Docs/DataList.md)
 
@@ -138,6 +165,10 @@ For a complete list of methods and features, please refer to the **[DataTable Do
 ## Packages
 
 **Insyra** also provides several expansion packages, each focusing on a specific aspect of data analysis.
+
+### **[isr](/Docs/isr.md)**
+
+Provides **Syntactic Sugar** for **Insyra**. It is designed to simplify the usage of **Insyra** and make it more intuitive.
 
 ### **[datafetch](/Docs/datafetch.md)**
 

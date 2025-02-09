@@ -19,7 +19,7 @@ import (
 
 // DataList is a generic dynamic data list.
 type DataList struct {
-	data                  []interface{}
+	data                  []any
 	name                  string
 	creationTimestamp     int64
 	lastModifiedTimestamp atomic.Int64
@@ -34,26 +34,26 @@ type IDataList interface {
 	updateTimestamp()
 	GetName() string
 	SetName(string) *DataList
-	Data() []interface{}
-	Append(values ...interface{})
-	Get(index int) interface{}
+	Data() []any
+	Append(values ...any)
+	Get(index int) any
 	Clone() *DataList
-	Count(value interface{}) int
-	Counter() map[interface{}]int
-	Update(index int, value interface{})
-	InsertAt(index int, value interface{})
-	FindFirst(interface{}) interface{}
-	FindLast(interface{}) interface{}
-	FindAll(interface{}) []int
-	Filter(func(interface{}) bool) *DataList
-	ReplaceFirst(interface{}, interface{})
-	ReplaceLast(interface{}, interface{})
-	ReplaceAll(interface{}, interface{})
+	Count(value any) int
+	Counter() map[any]int
+	Update(index int, value any)
+	InsertAt(index int, value any)
+	FindFirst(any) any
+	FindLast(any) any
+	FindAll(any) []int
+	Filter(func(any) bool) *DataList
+	ReplaceFirst(any, any)
+	ReplaceLast(any, any)
+	ReplaceAll(any, any)
 	ReplaceOutliers(float64, float64) *DataList
-	Pop() interface{}
+	Pop() any
 	Drop(index int) *DataList
-	DropAll(...interface{}) *DataList
-	DropIfContains(interface{}) *DataList
+	DropAll(...any) *DataList
+	DropIfContains(any) *DataList
 	Clear() *DataList
 	ClearStrings() *DataList
 	ClearNumbers() *DataList
@@ -63,7 +63,7 @@ type IDataList interface {
 	Standardize() *DataList
 	FillNaNWithMean() *DataList
 	MovingAverage(int) *DataList
-	WeightedMovingAverage(int, interface{}) *DataList
+	WeightedMovingAverage(int, any) *DataList
 	ExponentialSmoothing(float64) *DataList
 	DoubleExponentialSmoothing(float64, float64) *DataList
 	MovingStdev(int) *DataList
@@ -80,7 +80,7 @@ type IDataList interface {
 	Max() float64
 	Min() float64
 	Mean() float64
-	WeightedMean(weights interface{}) float64
+	WeightedMean(weights any) float64
 	GMean() float64
 	Median() float64
 	Mode() float64
@@ -114,8 +114,15 @@ type IDataList interface {
 	HermiteInterpolation(float64, []float64) float64
 }
 
+// From creates a new DataList from the specified values.
+// nolint:govet
+func (_ DataList) From(values ...any) *DataList {
+	newdl := NewDataList(values...)
+	return newdl
+}
+
 // Data returns the data stored in the DataList.
-func (dl *DataList) Data() []interface{} {
+func (dl *DataList) Data() []any {
 	defer func() {
 		go reorganizeMemory(dl)
 	}()
@@ -124,13 +131,13 @@ func (dl *DataList) Data() []interface{} {
 
 // NewDataList creates a new DataList, supporting both slice and variadic inputs,
 // and flattens the input before storing it.
-func NewDataList(values ...interface{}) *DataList {
-	var flatData []interface{}
+func NewDataList(values ...any) *DataList {
+	var flatData []any
 
-	flatData, _ = sliceutil.Flatten[interface{}](values)
+	flatData, _ = sliceutil.Flatten[any](values)
 	LogDebug("NewDataList(): Flattened data:", flatData)
 
-	continuousMemData := make([]interface{}, len(flatData))
+	continuousMemData := make([]any, len(flatData))
 	copy(continuousMemData, flatData)
 
 	timestamp := time.Now().Unix()
@@ -146,7 +153,7 @@ func NewDataList(values ...interface{}) *DataList {
 // Append adds a new values to the DataList.
 // The value can be of any type.
 // The value is appended to the end of the DataList.
-func (dl *DataList) Append(values ...interface{}) {
+func (dl *DataList) Append(values ...any) {
 	defer func() {
 		dl.mu.Unlock()
 		go reorganizeMemory(dl)
@@ -162,7 +169,7 @@ func (dl *DataList) Append(values ...interface{}) {
 // Supports negative indexing.
 // Returns nil if the index is out of bounds.
 // Returns the value at the specified index.
-func (dl *DataList) Get(index int) interface{} {
+func (dl *DataList) Get(index int) any {
 	defer func() {
 		dl.mu.Unlock()
 		go reorganizeMemory(dl)
@@ -191,7 +198,7 @@ func (dl *DataList) Clone() *DataList {
 }
 
 // Count returns the number of occurrences of the specified value in the DataList.
-func (dl *DataList) Count(value interface{}) int {
+func (dl *DataList) Count(value any) int {
 	found := dl.FindAll(value)
 	if found == nil {
 		return 0
@@ -200,8 +207,8 @@ func (dl *DataList) Count(value interface{}) int {
 }
 
 // Counter returns a map of the number of occurrences of each value in the DataList.
-func (dl *DataList) Counter() map[interface{}]int {
-	counter := make(map[interface{}]int)
+func (dl *DataList) Counter() map[any]int {
+	counter := make(map[any]int)
 	for _, value := range dl.Data() {
 		counter[value]++
 	}
@@ -209,7 +216,7 @@ func (dl *DataList) Counter() map[interface{}]int {
 }
 
 // Update replaces the value at the specified index with the new value.
-func (dl *DataList) Update(index int, newValue interface{}) {
+func (dl *DataList) Update(index int, newValue any) {
 	defer func() {
 		dl.mu.Unlock()
 		go reorganizeMemory(dl)
@@ -227,7 +234,7 @@ func (dl *DataList) Update(index int, newValue interface{}) {
 
 // InsertAt inserts a value at the specified index in the DataList.
 // If the index is out of bounds, the value is appended to the end of the list.
-func (dl *DataList) InsertAt(index int, value interface{}) {
+func (dl *DataList) InsertAt(index int, value any) {
 	defer func() {
 		dl.mu.Unlock()
 		go reorganizeMemory(dl)
@@ -256,7 +263,7 @@ func (dl *DataList) InsertAt(index int, value interface{}) {
 
 // FindFirst returns the index of the first occurrence of the specified value in the DataList.
 // If the value is not found, it returns nil.
-func (dl *DataList) FindFirst(value interface{}) interface{} {
+func (dl *DataList) FindFirst(value any) any {
 	defer func() {
 		dl.mu.Unlock()
 		go reorganizeMemory(dl)
@@ -273,7 +280,7 @@ func (dl *DataList) FindFirst(value interface{}) interface{} {
 
 // FindLast returns the index of the last occurrence of the specified value in the DataList.
 // If the value is not found, it returns nil.
-func (dl *DataList) FindLast(value interface{}) interface{} {
+func (dl *DataList) FindLast(value any) any {
 	defer func() {
 		dl.mu.Unlock()
 		go reorganizeMemory(dl)
@@ -290,7 +297,7 @@ func (dl *DataList) FindLast(value interface{}) interface{} {
 
 // FindAll returns a slice of all the indices where the specified value is found in the DataList using parallel processing.
 // If the value is not found, it returns an empty slice.
-func (dl *DataList) FindAll(value interface{}) []int {
+func (dl *DataList) FindAll(value any) []int {
 	defer func() {
 		dl.mu.Unlock()
 		go reorganizeMemory(dl)
@@ -313,13 +320,13 @@ func (dl *DataList) FindAll(value interface{}) []int {
 
 // Filter filters the DataList based on a custom filter function provided by the user.
 // The filter function should return true for elements that should be included in the result.
-func (dl *DataList) Filter(filterFunc func(interface{}) bool) *DataList {
+func (dl *DataList) Filter(filterFunc func(any) bool) *DataList {
 	defer func() {
 		dl.mu.Unlock()
 		go reorganizeMemory(dl)
 	}()
 	dl.mu.Lock()
-	filteredData := []interface{}{}
+	filteredData := []any{}
 
 	for _, v := range dl.data {
 		if filterFunc(v) {
@@ -331,7 +338,7 @@ func (dl *DataList) Filter(filterFunc func(interface{}) bool) *DataList {
 }
 
 // ReplaceFirst replaces the first occurrence of oldValue with newValue.
-func (dl *DataList) ReplaceFirst(oldValue, newValue interface{}) {
+func (dl *DataList) ReplaceFirst(oldValue, newValue any) {
 	defer func() {
 		dl.mu.Unlock()
 		go reorganizeMemory(dl)
@@ -348,7 +355,7 @@ func (dl *DataList) ReplaceFirst(oldValue, newValue interface{}) {
 }
 
 // ReplaceLast replaces the last occurrence of oldValue with newValue.
-func (dl *DataList) ReplaceLast(oldValue, newValue interface{}) {
+func (dl *DataList) ReplaceLast(oldValue, newValue any) {
 	defer func() {
 		dl.mu.Unlock()
 		go reorganizeMemory(dl)
@@ -366,7 +373,7 @@ func (dl *DataList) ReplaceLast(oldValue, newValue interface{}) {
 
 // ReplaceAll replaces all occurrences of oldValue with newValue in the DataList.
 // If oldValue is not found, no changes are made.
-func (dl *DataList) ReplaceAll(oldValue, newValue interface{}) {
+func (dl *DataList) ReplaceAll(oldValue, newValue any) {
 	defer func() {
 		dl.mu.Unlock()
 		go reorganizeMemory(dl)
@@ -406,7 +413,7 @@ func (dl *DataList) ReplaceOutliers(stdDevs float64, replacement float64) *DataL
 // Pop removes and returns the last element from the DataList.
 // Returns the last element.
 // Returns nil if the DataList is empty.
-func (dl *DataList) Pop() interface{} {
+func (dl *DataList) Pop() any {
 	defer func() {
 		dl.mu.Unlock()
 		go reorganizeMemory(dl)
@@ -443,7 +450,7 @@ func (dl *DataList) Drop(index int) *DataList {
 
 // DropAll removes all occurrences of the specified values from the DataList.
 // Supports multiple values to drop.
-func (dl *DataList) DropAll(toDrop ...interface{}) *DataList {
+func (dl *DataList) DropAll(toDrop ...any) *DataList {
 	defer func() {
 		dl.mu.Unlock()
 		go reorganizeMemory(dl)
@@ -476,8 +483,8 @@ func (dl *DataList) DropAll(toDrop ...interface{}) *DataList {
 			end = length
 		}
 
-		awaitable := asyncutil.Async(func(dataChunk []interface{}) []interface{} {
-			var result []interface{}
+		awaitable := asyncutil.Async(func(dataChunk []any) []any {
+			var result []any
 			for _, v := range dataChunk {
 				shouldDrop := false
 				for _, drop := range toDrop {
@@ -497,7 +504,7 @@ func (dl *DataList) DropAll(toDrop ...interface{}) *DataList {
 	}
 
 	// 收集所有結果並合併
-	var finalResult []interface{}
+	var finalResult []any
 	for _, awaitable := range awaitables {
 		results, err := awaitable.Await()
 		if err != nil {
@@ -506,7 +513,7 @@ func (dl *DataList) DropAll(toDrop ...interface{}) *DataList {
 		}
 
 		if len(results) > 0 {
-			finalResult = append(finalResult, results[0].([]interface{})...)
+			finalResult = append(finalResult, results[0].([]any)...)
 		}
 	}
 
@@ -517,7 +524,7 @@ func (dl *DataList) DropAll(toDrop ...interface{}) *DataList {
 }
 
 // DropIfContains removes all elements from the DataList that contain the specified value.
-func (dl *DataList) DropIfContains(value interface{}) *DataList {
+func (dl *DataList) DropIfContains(value any) *DataList {
 	dl.mu.Lock()
 	defer func() {
 		dl.mu.Unlock()
@@ -525,7 +532,7 @@ func (dl *DataList) DropIfContains(value interface{}) *DataList {
 	}()
 
 	// 創建一個臨時切片存放保留的元素
-	var newData []interface{}
+	var newData []any
 
 	for _, v := range dl.data {
 		if str, ok := v.(string); ok {
@@ -552,7 +559,7 @@ func (dl *DataList) Clear() *DataList {
 		go reorganizeMemory(dl)
 	}()
 	dl.mu.Lock()
-	dl.data = []interface{}{}
+	dl.data = []any{}
 	go dl.updateTimestamp()
 	return dl
 }
@@ -594,8 +601,8 @@ func (dl *DataList) ClearStrings() *DataList {
 
 		task := asyncutil.Task{
 			ID: fmt.Sprintf("Task-%d", i),
-			Fn: func(dataChunk []interface{}) []interface{} {
-				var result []interface{}
+			Fn: func(dataChunk []any) []any {
+				var result []any
 				for _, v := range dataChunk {
 					if _, ok := v.(string); !ok {
 						result = append(result, v)
@@ -603,7 +610,7 @@ func (dl *DataList) ClearStrings() *DataList {
 				}
 				return result
 			},
-			Args: []interface{}{dl.data[start:end]},
+			Args: []any{dl.data[start:end]},
 		}
 
 		tasks = append(tasks, task)
@@ -613,9 +620,9 @@ func (dl *DataList) ClearStrings() *DataList {
 	taskResults := asyncutil.ParallelProcess(tasks)
 
 	// 合併所有的結果
-	var finalResult []interface{}
+	var finalResult []any
 	for _, taskResult := range taskResults {
-		finalResult = append(finalResult, taskResult.Results[0].([]interface{})...)
+		finalResult = append(finalResult, taskResult.Results[0].([]any)...)
 	}
 
 	// 更新 DataList
@@ -790,7 +797,7 @@ func (dl *DataList) MovingAverage(windowSize int) *DataList {
 // WeightedMovingAverage applies a weighted moving average to the DataList with a given window size.
 // The weights parameter should be a slice or a DataList of the same length as the window size.
 // Returns a new DataList containing the weighted moving average values.
-func (dl *DataList) WeightedMovingAverage(windowSize int, weights interface{}) *DataList {
+func (dl *DataList) WeightedMovingAverage(windowSize int, weights any) *DataList {
 	weightsSlice, sliceLen := ProcessData(weights)
 	if windowSize <= 0 || windowSize > dl.Len() || sliceLen != windowSize {
 		LogWarning("DataList.WeightedMovingAverage(): Invalid window size or weights length.")
@@ -884,7 +891,7 @@ func (dl *DataList) Sort(ascending ...bool) *DataList {
 	}
 
 	// Save the original order
-	originalData := make([]interface{}, len(dl.data))
+	originalData := make([]any, len(dl.data))
 	copy(originalData, dl.data)
 
 	defer func() {
@@ -1171,7 +1178,7 @@ func (dl *DataList) Mean() float64 {
 // WeightedMean calculates the weighted mean of the DataList using the provided weights.
 // The weights parameter should be a slice or a DataList of the same length as the DataList.
 // Returns math.NaN() if the DataList is empty, weights are invalid, or if no valid elements can be used.
-func (dl *DataList) WeightedMean(weights interface{}) float64 {
+func (dl *DataList) WeightedMean(weights any) float64 {
 	if dl.Len() == 0 {
 		LogWarning("DataList.WeightedMean(): DataList is empty.")
 		return math.NaN()
