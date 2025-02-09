@@ -115,7 +115,7 @@ type IDataList interface {
 }
 
 // From creates a new DataList from the specified values.
-func (dl DataList) From(values ...any) *DataList {
+func (_ DataList) From(values ...any) *DataList {
 	newdl := NewDataList(values...)
 	return newdl
 }
