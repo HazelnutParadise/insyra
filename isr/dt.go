@@ -59,6 +59,12 @@ func (dt DT) From(dl any) *DT {
 			dt.DataTable.AppendRowsByColName(strMap)
 		}
 		dt.Transpose()
+	case CSV:
+		dt.DataTable = insyra.NewDataTable()
+		err := dt.LoadFromCSV(val.FilePath, val.LoadOpts.FirstCol2RowNames, val.LoadOpts.FirstRow2ColNames)
+		if err != nil {
+			insyra.LogFatal("DT{}.From(): %v", err)
+		}
 	case map[string]any:
 		dt.DataTable = insyra.NewDataTable().AppendRowsByColIndex(val)
 	case map[int]any:
