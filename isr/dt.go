@@ -14,34 +14,56 @@ type DT struct {
 // Every key in the map represents a column Index or Number Index.
 type Row map[any]any
 
+// DL is a type alias for map[any]any.
+// It is used to represent a column in a DataTable.
+// Every key in the map represents a row Index.
+type Col map[any]any
+
 // From converts a DataList, DL, Row, map[string]any, or map[int]any to a DataTable.
 func (dt DT) From(dl any) *DT {
-	switch v := dl.(type) {
+	switch val := dl.(type) {
 	case *insyra.DataList:
-		dt.DataTable = insyra.NewDataTable(v)
+		dt.DataTable = insyra.NewDataTable(val)
 	case *DL:
-		dt.DataTable = insyra.NewDataTable(v.DataList)
+		dt.DataTable = insyra.NewDataTable(val.DataList)
 	case Row:
-		if isIntKey(v) || isStrKey(v) {
-			strMap := make(map[string]any)
-			for k, v := range v {
-				strMap[conv.ToString(k)] = v
+		strMap := make(map[string]any)
+		if isIntKey(val) || isStrKey(val) {
+			for k, v := range val {
+				if isInt(k) || isStr(k) {
+					strMap[conv.ToString(k)] = v
+				}
 			}
 			dt.DataTable = insyra.NewDataTable().AppendRowsByColIndex(strMap)
-		} else if isNameKey(v) {
-			strMap := make(map[string]any)
-			for k, v := range v {
+		} else if isNameKey(val) {
+			for k, v := range val {
 				strMap[k.(name).value] = v
 			}
 			dt.DataTable = insyra.NewDataTable().AppendRowsByColName(strMap)
 		} else {
 			insyra.LogFatal("DT{}.FromDL(): got unexpected type %T", dl)
 		}
+	case Col:
+		dt.DataTable = insyra.NewDataTable()
+		if isIntKey(val) {
+			strMap := make(map[string]any)
+			for k, v := range val {
+				strMap[conv.ToString(k)] = v
+			}
+			dt.DataTable.AppendRowsByColIndex(strMap)
+		} else if isNameKey(val) {
+			strMap := make(map[string]any)
+			for k, v := range val {
+				strMap[k.(name).value] = v
+			}
+			dt.DataTable.AppendRowsByColName(strMap)
+		}
+		dt.Transpose()
 	case map[string]any:
-		dt.DataTable = insyra.NewDataTable().AppendRowsByColIndex(v)
+		dt.DataTable = insyra.NewDataTable().AppendRowsByColIndex(val)
 	case map[int]any:
 		strV := make(map[string]any)
-		for k, v := range v {
+		for k, v := range val {
 			strV[conv.ToString(k)] = v
 		}
 		dt.DataTable = insyra.NewDataTable().AppendRowsByColIndex(strV)
@@ -95,6 +117,11 @@ func isStrKey(m map[any]any) bool {
 	return true
 }
 
+func isStr(m any) bool {
+	_, ok := m.(string)
+	return ok
+}
+
 func isIntKey(m map[any]any) bool {
 	for k := range m {
 		_, ok := k.(int)
@@ -105,6 +132,11 @@ func isIntKey(m map[any]any) bool {
 	return true
 }
 
+func isInt(m any) bool {
+	_, ok := m.(int)
+	return ok
+}
+
 func isNameKey(m map[any]any) bool {
 	for k := range m {
 		_, ok := k.(name)
@@ -113,4 +145,9 @@ func isNameKey(m map[any]any) bool {
 		}
 	}
 	return true
+}
+
+func isName(m any) bool {
+	_, ok := m.(name)
+	return ok
 }
