@@ -24,6 +24,11 @@ Welcome to join [**Side Project Taiwan**(Discord Server)](https://discord.com/ch
 
 The **Insyra** library is a dynamic and versatile tool designed for managing and analyzing data in Go. It offers a rich set of features for data manipulation, statistical calculations, data visualization, and more, making it an essential toolkit for developers handling complex data structures.
 
+> [!INFO]
+> We got brand new `isr` package, which provides **Sytax Sugar**!
+> Any new project is recommended to use `isr` package instead of calling `insyra` main package directly.
+> For more details, please refer to the **[Documentation](/Docs/isr.md)**.
+
 > [!NOTE]
 > If some functions or methods in the documentation are not working, it may be because the feature is not yet included in the latest release. Please refer to the documentation in the source code of the corresponding version in **[Releases](https://github.com/HazelnutParadise/insyra/releases)**.
 
@@ -120,6 +125,29 @@ func main() {
     fmt.Println("Mean:", dl.Mean())
 }
 ```
+
+#### Syntactic Sugar
+
+It is strongly recommended to use syntactic sugar since it is much more power and easier to use. For example, the above code can be written as:
+
+```go
+package main
+
+import (
+	"fmt"
+
+	"github.com/HazelnutParadise/insyra/isr"
+)
+
+func main() {
+	dl := isr.DL{}.From(1, 2, 3, 4, 5)
+	dl.Append(6)
+	fmt.Println("DataList:", dl.Data())
+	fmt.Println("Mean:", dl.Mean())
+}
+```
+
+To use the syntactic sugar, import `github.com/HazelnutParadise/insyra/isr`.
 
 ## [DataList](/Docs/DataList.md)
 
