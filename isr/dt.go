@@ -1,6 +1,9 @@
 package isr
 
 import (
+	"errors"
+	"fmt"
+
 	"github.com/HazelnutParadise/Go-Utils/conv"
 	"github.com/HazelnutParadise/insyra"
 )
@@ -19,44 +22,41 @@ type Row map[any]any
 // Every key in the map represents a row Index.
 type Col map[any]any
 
-// From converts a DataList, DL, Row, CSV, map[string]any, or map[int]any to a DataTable.
-func (dt DT) From(dl any) *DT {
-	switch val := dl.(type) {
+// From converts a DataList, DL, Row, Col, []Row, []Col, CSV, map[string]any, or map[int]any to a DataTable.
+func (dt DT) From(item any) *DT {
+	switch val := item.(type) {
 	case *insyra.DataList:
 		dt.DataTable = insyra.NewDataTable(val)
 	case *DL:
 		dt.DataTable = insyra.NewDataTable(val.DataList)
 	case Row:
-		strMap := make(map[string]any)
-		if isIntKey(val) || isStrKey(val) {
-			for k, v := range val {
-				if isInt(k) || isStr(k) {
-					strMap[conv.ToString(k)] = v
-				}
+		dt.DataTable = insyra.NewDataTable()
+		err := fromRowToDT(&dt, val)
+		if err != nil {
+			insyra.LogFatal("DT{}.From(): %v", err)
+		}
+	case []Row:
+		dt.DataTable = insyra.NewDataTable()
+		for _, r := range val {
+			err := fromRowToDT(&dt, r)
+			if err != nil {
+				insyra.LogFatal("DT{}.From(): %v", err)
 			}
-			dt.DataTable = insyra.NewDataTable().AppendRowsByColIndex(strMap)
-		} else if isNameKey(val) {
-			for k, v := range val {
-				strMap[k.(name).value] = v
-			}
-			dt.DataTable = insyra.NewDataTable().AppendRowsByColName(strMap)
-		} else {
-			insyra.LogFatal("DT{}.FromDL(): got unexpected type %T", dl)
 		}
 	case Col:
 		dt.DataTable = insyra.NewDataTable()
-		if isIntKey(val) {
-			strMap := make(map[string]any)
-			for k, v := range val {
-				strMap[conv.ToString(k)] = v
+		err := fromRowToDT(&dt, val)
+		if err != nil {
+			insyra.LogFatal("DT{}.From(): %v", err)
+		}
+		dt.Transpose()
+	case []Col:
+		dt.DataTable = insyra.NewDataTable()
+		for _, r := range val {
+			err := fromRowToDT(&dt, r)
+			if err != nil {
+				insyra.LogFatal("DT{}.From(): %v", err)
 			}
-			dt.DataTable.AppendRowsByColIndex(strMap)
-		} else if isNameKey(val) {
-			strMap := make(map[string]any)
-			for k, v := range val {
-				strMap[k.(name).value] = v
-			}
-			dt.DataTable.AppendRowsByColName(strMap)
 		}
 		dt.Transpose()
 	case CSV:
@@ -74,7 +74,7 @@ func (dt DT) From(dl any) *DT {
 		}
 		dt.DataTable = insyra.NewDataTable().AppendRowsByColIndex(strV)
 	default:
-		insyra.LogFatal("DT{}.FromDL(): got unexpected type %T", dl)
+		insyra.LogFatal("DT{}.FromDL(): got unexpected type %T", item)
 	}
 	return &dt
 }
@@ -112,6 +112,26 @@ func (dt *DT) Row(row int) *DL {
 // 	}
 // 	return dl
 // }
+
+func fromRowToDT(dt *DT, val map[any]any) error {
+	strMap := make(map[string]any)
+	if isIntKey(val) || isStrKey(val) {
+		for k, v := range val {
+			if isInt(k) || isStr(k) {
+				strMap[conv.ToString(k)] = v
+			}
+		}
+		dt.AppendRowsByColIndex(strMap)
+	} else if isNameKey(val) {
+		for k, v := range val {
+			strMap[k.(name).value] = v
+		}
+		dt.AppendRowsByColName(strMap)
+	} else {
+		return errors.New(fmt.Sprintf("got unexpected type %T", val))
+	}
+	return nil
+}
 
 func isStrKey(m map[any]any) bool {
 	for k := range m {
