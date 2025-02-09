@@ -1,6 +1,7 @@
 package isr
 
 import (
+	"github.com/HazelnutParadise/Go-Utils/conv"
 	"github.com/HazelnutParadise/insyra"
 )
 
@@ -8,12 +9,42 @@ type DT struct {
 	*insyra.DataTable
 }
 
-func (dt DT) FromDL(dl insyra.IDataList) *DT {
+// Row is a type alias for map[any]any.
+// It is used to represent a row in a DataTable.
+// Every key in the map represents a column Index or Number Index.
+type Row map[any]any
+
+// From converts a DataList, DL, Row, map[string]any, or map[int]any to a DataTable.
+func (dt DT) From(dl any) *DT {
 	switch v := dl.(type) {
 	case *insyra.DataList:
 		dt.DataTable = insyra.NewDataTable(v)
 	case *DL:
 		dt.DataTable = insyra.NewDataTable(v.DataList)
+	case Row:
+		if isIntKey(v) || isStrKey(v) {
+			strMap := make(map[string]any)
+			for k, v := range v {
+				strMap[conv.ToString(k)] = v
+			}
+			dt.DataTable = insyra.NewDataTable().AppendRowsByColIndex(strMap)
+		} else if isNameKey(v) {
+			strMap := make(map[string]any)
+			for k, v := range v {
+				strMap[k.(name).value] = v
+			}
+			dt.DataTable = insyra.NewDataTable().AppendRowsByColName(strMap)
+		} else {
+			insyra.LogFatal("DT{}.FromDL(): got unexpected type %T", dl)
+		}
+	case map[string]any:
+		dt.DataTable = insyra.NewDataTable().AppendRowsByColIndex(v)
+	case map[int]any:
+		strV := make(map[string]any)
+		for k, v := range v {
+			strV[conv.ToString(k)] = v
+		}
+		dt.DataTable = insyra.NewDataTable().AppendRowsByColIndex(strV)
 	default:
 		insyra.LogFatal("DT{}.FromDL(): got unexpected type %T", dl)
 	}
@@ -53,3 +84,33 @@ func (dt *DT) Row(row int) *DL {
 // 	}
 // 	return dl
 // }
+
+func isStrKey(m map[any]any) bool {
+	for k := range m {
+		_, ok := k.(string)
+		if !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func isIntKey(m map[any]any) bool {
+	for k := range m {
+		_, ok := k.(int)
+		if !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func isNameKey(m map[any]any) bool {
+	for k := range m {
+		_, ok := k.(name)
+		if !ok {
+			return false
+		}
+	}
+	return true
+}
