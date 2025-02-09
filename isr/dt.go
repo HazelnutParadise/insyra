@@ -20,17 +20,23 @@ func (dt DT) FromDL(dl insyra.IDataList) *DT {
 	return &dt
 }
 
-func (dt *DT) Col(col any) *insyra.DataList {
-	var dl *insyra.DataList
+func (dt *DT) Col(col any) *DL {
+	var dl DL
 	switch v := col.(type) {
 	case int:
-		dl = dt.DataTable.GetColByNumber(v)
+		dl.DataList = dt.DataTable.GetColByNumber(v)
 	case string:
-		dl = dt.DataTable.GetCol(v)
+		dl.DataList = dt.DataTable.GetCol(v)
 	default:
 		insyra.LogFatal("DT{}.Col(): got unexpected type %T", col)
 	}
-	return dl
+	return &dl
+}
+
+func (dt *DT) Row(row int) *DL {
+	var dl DL
+	dl.DataList = dt.DataTable.GetRow(row)
+	return &dl
 }
 
 // func (dt *DT) Iloc(indices ...interface{}) *DT {
