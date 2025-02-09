@@ -1,7 +1,6 @@
 package isr
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/HazelnutParadise/Go-Utils/conv"
@@ -144,7 +143,7 @@ func fromRowToDT(dt *DT, val map[any]any) error {
 		}
 		dt.AppendRowsByColName(strMap)
 	} else {
-		return errors.New(fmt.Sprintf("got unexpected type %T", val))
+		return fmt.Errorf("got unexpected type %T", val)
 	}
 	return nil
 }
@@ -189,7 +188,7 @@ func isNameKey(m map[any]any) bool {
 	return true
 }
 
-func isName(m any) bool {
-	_, ok := m.(name)
-	return ok
-}
+// func isName(m any) bool {
+// 	_, ok := m.(name)
+// 	return ok
+// }

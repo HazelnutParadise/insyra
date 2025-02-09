@@ -115,6 +115,7 @@ type IDataList interface {
 }
 
 // From creates a new DataList from the specified values.
+// nolint:govet
 func (_ DataList) From(values ...any) *DataList {
 	newdl := NewDataList(values...)
 	return newdl
