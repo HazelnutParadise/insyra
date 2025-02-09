@@ -164,6 +164,10 @@ func main() {
 
 **Insyra** 還提供了多個擴展套件，每個都專注於數據分析的特定方面。
 
+### **[isr](/Docs/isr.md)**
+
+提供 **語法糖**，使 Insyra 更易於使用。使用 `isr` 套件，您可以更快地編寫代碼，並更容易地理解和維護程式碼。
+
 ### **[datafetch](/Docs/datafetch.md)**
 
 讓您輕鬆取得網路上的數據。目前支援從 Google Maps 取得商家評論資料。

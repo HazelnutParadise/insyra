@@ -166,6 +166,10 @@ For a complete list of methods and features, please refer to the **[DataTable Do
 
 **Insyra** also provides several expansion packages, each focusing on a specific aspect of data analysis.
 
+### **[isr](/Docs/isr.md)**
+
+Provides **Syntactic Sugar** for **Insyra**. It is designed to simplify the usage of **Insyra** and make it more intuitive.
+
 ### **[datafetch](/Docs/datafetch.md)**
 
 Allows you to fetch data easily. It currently supports fetching comments from stores on Google Maps.
