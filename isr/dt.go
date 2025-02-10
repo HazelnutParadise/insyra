@@ -21,6 +21,19 @@ type Row map[any]any
 // Every key in the map represents a row Index.
 type Col map[any]any
 
+// PtrDT converts a DataTable or DT to a *DT.
+func PtrDT[T *insyra.DataTable | DT](dt T) *DT {
+	switch concrete := any(dt).(type) {
+	case *insyra.DataTable:
+		return &DT{concrete}
+	case DT:
+		return &concrete
+	default:
+		insyra.LogFatal("isr.PtrDT(): got unexpected type %T", dt)
+		return nil
+	}
+}
+
 // From converts a DataList, DL, Row, Col, []Row, []Col, CSV, map[string]any, or map[int]any to a DataTable.
 func (dt DT) From(item any) *DT {
 	switch val := item.(type) {

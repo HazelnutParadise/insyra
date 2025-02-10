@@ -18,7 +18,22 @@ import "github.com/HazelnutParadise/insyra/isr"
 
 ### DataList
 
-In `isr`, we use `DL{}` to represent a DataList. Use `DL{}.From()` to create a DataList.
+In `isr`, we use `DL{}` to represent a DataList. Use `DL{}.From()` to create a DataList. Use `PrtDL()` to convert a `*DataList` to a `*DL`.
+
+#### PtrDL
+
+PtrDL converts a DataList or DL to a *DL.
+If you have a DataList created by `insyra` main package, you can use `PtrDL()` to convert a it to a `*DL`.
+
+```go
+dataList := insyra.NewDataList(1, 2, 3)
+ptrDataList := isr.PtrDL(dataList)
+
+// then you can use ptrDataList to call methods in isr package
+value := ptrDataList.At(0)
+```
+
+If any DataList fails to call methods from the `isr` package, try it.
 
 #### From
 
@@ -42,7 +57,22 @@ dataList.At(0, 1) // 2
 
 ### DataTable
 
-In `isr`, we use `DT{}` to represent a DataTable. Use `DT{}.From()` to create a DataTable.
+In `isr`, we use `DT{}` to represent a DataTable. Use `DT{}.From()` to create a DataTable. Use `PrtDT()` to convert a `*DataTable` to a `*DT`.
+
+#### PtrDT
+
+PtrDT converts a DataTable or DT to a *DT.
+If you have a DataTable created by `insyra` main package, you can use `PtrDT()` to convert a it to a `*DT`.
+
+```go
+dataTable := insyra.NewDataTable()
+ptrDataTable := isr.PtrDT(dataTable)
+
+// then you can use ptrDataTable to call methods in isr package
+colZero := ptrDataTable.Col(0)
+```
+
+If any DataTable fails to call methods from the `isr` package, try it.
 
 #### From
 
