@@ -35,28 +35,28 @@ for _, store := range stores {
 ### Fetch Store Reviews
 
 ```go
-comments := crawler.GetComments("0x123456789abcdef:0xfedcba987654321", 5)
-if comments == nil {
+reviews := crawler.GetReviews("0x123456789abcdef:0xfedcba987654321", 5)
+if reviews == nil {
     log.Fatalf("Error fetching reviews")
 }
 
-for _, comment := range comments {
-    fmt.Printf("Reviewer: %s, Rating: %d, Comment: %s\n", comment.Reviewer, comment.Rating, comment.Content)
+for _, review := range reviews {
+    fmt.Printf("Reviewer: %s, Rating: %d, Review: %s\n", review.Reviewer, review.Rating, review.Content)
 }
 ```
 
 ### Using Review Fetching Options
 
-You can customize review fetching options using `GoogleMapsStoreCommentsFetchingOptions`. For example:
+You can customize review fetching options using `GoogleMapsStoreReviewsFetchingOptions`. For example:
 
 ```go
-options := datafetch.GoogleMapsStoreCommentsFetchingOptions{
+options := datafetch.GoogleMapsStoreReviewsFetchingOptions{
     SortBy:             datafetch.SortByNewest,
     MaxWaitingInterval: 3000,
 }
 
-comments := crawler.GetComments("0x123456789abcdef:0xfedcba987654321", 5, options)
-if comments == nil {
+reviews := crawler.GetReviews("0x123456789abcdef:0xfedcba987654321", 5, options)
+if reviews == nil {
     log.Fatalf("Error fetching reviews")
 }
 ```
@@ -67,7 +67,7 @@ You can use method chaining to fetch store reviews and convert them into a `Data
 
 ```go
 crawler := datafetch.GoogleMapsStores()
-dt := crawler.GetComments(crawler.Search("Din Tai Fung")[0].ID, 5).ToDataTable()
+dt := crawler.GetReviews(crawler.Search("Din Tai Fung")[0].ID, 5).ToDataTable()
 if dt == nil {
     log.Fatalf("Error")
 }
@@ -78,49 +78,49 @@ dt.Show()
 ### Convert Reviews to DataTable or CSV
 
 ```go
-dt := comments.ToDataTable() // Convert comments to DataTable
-csv := dt.ToCSV("comments.csv", false, true) // Convert DataTable to CSV
+dt := reviews.ToDataTable() // Convert reviews to DataTable
+csv := dt.ToCSV("reviews.csv", false, true) // Convert DataTable to CSV
 ```
 
 ## Structs and Functions
 
-### `GoogleMapsStoreComment`
+### `GoogleMapsStoreReview`
 
 Represents a Google Maps store review.
 
 ```go
-type GoogleMapsStoreComment struct {
+type GoogleMapsStoreReview struct {
     Reviewer      string    `json:"reviewer"`
     ReviewerID    string    `json:"reviewer_id"`
     ReviewerState string    `json:"reviewer_state"`
     ReviewerLevel int       `json:"reviewer_level"`
-    CommentTime   string    `json:"comment_time"`
-    CommentDate   time.Time `json:"comment_date"`
+    ReviewTime   string    `json:"review_time"`
+    ReviewDate   time.Time `json:"review_date"`
     Content       string    `json:"content"`
     Rating        int       `json:"rating"`
 }
 ```
 
-### `GoogleMapsStoreCommentsFetchingOptions`
+### `GoogleMapsStoreReviewsFetchingOptions`
 
 Options for fetching reviews.
 
 ```go
-type GoogleMapsStoreCommentsFetchingOptions struct {
-    SortBy             GoogleMapsStoreCommentSortBy
+type GoogleMapsStoreReviewsFetchingOptions struct {
+    SortBy             GoogleMapsStoreReviewSortBy
     MaxWaitingInterval uint
 }
 ```
 
-### `GoogleMapsStoreCommentSortBy`
+### `GoogleMapsStoreReviewSortBy`
 
 Sorting options for reviews.
 
 ```go
 const (
-    SortByRelevance      GoogleMapsStoreCommentSortBy = 1
-    SortByNewest         GoogleMapsStoreCommentSortBy = 2
-    SortByHighestRating  GoogleMapsStoreCommentSortBy = 3
-    SortByLowestRating   GoogleMapsStoreCommentSortBy = 4
+    SortByRelevance      GoogleMapsStoreReviewSortBy = 1
+    SortByNewest         GoogleMapsStoreReviewSortBy = 2
+    SortByHighestRating  GoogleMapsStoreReviewSortBy = 3
+    SortByLowestRating   GoogleMapsStoreReviewSortBy = 4
 )
 ```

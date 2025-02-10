@@ -14,45 +14,45 @@ import (
 	"golang.org/x/exp/rand"
 )
 
-// GoogleMapsStoreComment is a struct for Google Maps store comments.
-type GoogleMapsStoreComment struct {
-	Reviewer      string    `json:"reviewer"`
-	ReviewerID    string    `json:"reviewer_id"`
-	ReviewerState string    `json:"reviewer_state"`
-	ReviewerLevel int       `json:"reviewer_level"`
-	CommentTime   string    `json:"comment_time"`
-	CommentDate   time.Time `json:"comment_date"`
-	Content       string    `json:"content"`
-	Rating        int       `json:"rating"`
+// GoogleMapsStoreReview is a struct for Google Maps store reviews.
+type GoogleMapsStoreReview struct {
+	Reviewer      string `json:"reviewer"`
+	ReviewerID    string `json:"reviewer_id"`
+	ReviewerState string `json:"reviewer_state"`
+	ReviewerLevel int    `json:"reviewer_level"`
+	ReviewTime    string `json:"review_time"`
+	ReviewDate    string `json:"review_date"`
+	Content       string `json:"content"`
+	Rating        int    `json:"rating"`
 }
 
-type googleMapsStoreComments []GoogleMapsStoreComment
+type googleMapsStoreReviews []GoogleMapsStoreReview
 
-type GoogleMapsStoreCommentsFetchingOptions struct {
-	SortBy             GoogleMapsStoreCommentSortBy
+type GoogleMapsStoreReviewsFetchingOptions struct {
+	SortBy             GoogleMapsStoreReviewSortBy
 	MaxWaitingInterval uint
 }
 
-type GoogleMapsStoreCommentSortBy uint8
+type GoogleMapsStoreReviewSortBy uint8
 
 const (
 	// SortByRelevance 按相關性排序
-	SortByRelevance GoogleMapsStoreCommentSortBy = 1
+	SortByRelevance GoogleMapsStoreReviewSortBy = 1
 	// SortByNewest 按最新排序
-	SortByNewest GoogleMapsStoreCommentSortBy = 2
+	SortByNewest GoogleMapsStoreReviewSortBy = 2
 	// SortByRating 按評分排序
-	SortByHighestRating GoogleMapsStoreCommentSortBy = 3
+	SortByHighestRating GoogleMapsStoreReviewSortBy = 3
 	// SortByLowestRating 按最低評分排序
-	SortByLowestRating GoogleMapsStoreCommentSortBy = 4
+	SortByLowestRating GoogleMapsStoreReviewSortBy = 4
 )
 
 var json = jsoniter.ConfigFastest
 
 type googleMapsStoreCrawler struct {
-	headers         map[string]string
-	storeNameUrl    string
-	storeSearchUrl  string
-	storeCommentUrl string
+	headers        map[string]string
+	storeNameUrl   string
+	storeSearchUrl string
+	storeReviewUrl string
 }
 
 type storeData struct {
@@ -63,31 +63,31 @@ type storeData struct {
 // GoogleMapsStores returns a crawler for Google Maps store data.
 // Returns nil if failed to initialize.
 func GoogleMapsStores() *googleMapsStoreCrawler {
-	const configUrl = "https://raw.githubusercontent.com/TimLai666/google-maps-store-comment-crawler/main/crawler_config.json"
+	const configUrl = "https://raw.githubusercontent.com/TimLai666/google-maps-store-review-crawler/refs/heads/main/crawler_config.json"
 	res, err := http.Get(configUrl)
 	if err != nil || res.StatusCode != 200 {
-		insyra.LogWarning("datafetch.GoogleMapsStores: Failed to fetch GoogleMapsStoreCommentCrawler config. Error: %v. Returning nil.", err)
+		insyra.LogWarning("datafetch.GoogleMapsStores: Failed to fetch GoogleMapsStoreReviewCrawler config. Error: %v. Returning nil.", err)
 		return nil
 	}
 	defer res.Body.Close()
 
 	config := struct {
-		Headers         map[string]string `json:"headers"`
-		StoreNameUrl    string            `json:"storeNameUrl"`
-		StoreSearchUrl  string            `json:"storeSearchUrl"`
-		StoreCommentUrl string            `json:"commentUrl"`
+		Headers        map[string]string `json:"headers"`
+		StoreNameUrl   string            `json:"storeNameUrl"`
+		StoreSearchUrl string            `json:"storeSearchUrl"`
+		StoreReviewUrl string            `json:"reviewUrl"`
 	}{}
 	err = json.NewDecoder(res.Body).Decode(&config)
 	if err != nil {
-		insyra.LogWarning("datafetch.GoogleMapsStores: Failed to decode GoogleMapsStoreCommentCrawler config. Error: %v. Returning nil.", err)
+		insyra.LogWarning("datafetch.GoogleMapsStores: Failed to decode GoogleMapsStoreReviewCrawler config. Error: %v. Returning nil.", err)
 		return nil
 	}
 
 	return &googleMapsStoreCrawler{
-		headers:         config.Headers,
-		storeNameUrl:    config.StoreNameUrl,
-		storeSearchUrl:  config.StoreSearchUrl,
-		storeCommentUrl: config.StoreCommentUrl,
+		headers:        config.Headers,
+		storeNameUrl:   config.StoreNameUrl,
+		storeSearchUrl: config.StoreSearchUrl,
+		storeReviewUrl: config.StoreReviewUrl,
 	}
 }
 
@@ -151,31 +151,31 @@ func (c *googleMapsStoreCrawler) Search(storeName string) []storeData {
 	return storeList
 }
 
-// GetComments fetches comments for the store with the given ID.
+// GetReviews fetches reviews for the store with the given ID.
 // The pageCount parameter specifies the number of pages to fetch.
-// If pageCount is 0, all comments will be fetched.
-// Returns a list of comments.
-// Returns nil if failed to fetch comments.
-func (c *googleMapsStoreCrawler) GetComments(storeId string, pageCount int, options ...GoogleMapsStoreCommentsFetchingOptions) googleMapsStoreComments {
-	fetchingOptions := GoogleMapsStoreCommentsFetchingOptions{
+// If pageCount is 0, all reviews will be fetched.
+// Returns a list of reviews.
+// Returns nil if failed to fetch reviews.
+func (c *googleMapsStoreCrawler) GetReviews(storeId string, pageCount int, options ...GoogleMapsStoreReviewsFetchingOptions) googleMapsStoreReviews {
+	fetchingOptions := GoogleMapsStoreReviewsFetchingOptions{
 		SortBy:             SortByRelevance,
 		MaxWaitingInterval: 5000,
 	}
 	if len(options) == 1 {
 		fetchingOptions = options[0]
 	} else if len(options) > 1 {
-		insyra.LogWarning("datafetch.GoogleMapsStores().GetComments: Got too many options. Using default options.")
+		insyra.LogWarning("datafetch.GoogleMapsStores().GetReviews: Got too many options. Using default options.")
 	}
 
-	commentUrl := c.storeCommentUrl
+	reviewUrl := c.storeReviewUrl
 	headers := c.headers
 
 	nextToken := ""
-	comments := []GoogleMapsStoreComment{}
+	reviews := []GoogleMapsStoreReview{}
 	page := 1
 
 	for pageCount == 0 || page <= pageCount {
-		fmt.Printf("fetching comments on page %d...\n", page)
+		fmt.Printf("fetching reviews on page %d...\n", page)
 
 		// 組合請求參數
 		params := url.Values{}
@@ -186,9 +186,9 @@ func (c *googleMapsStoreCrawler) GetComments(storeId string, pageCount int, opti
 			storeId, nextToken, fetchingOptions.SortBy))
 
 		// 建立 HTTP 請求
-		req, err := http.NewRequest("GET", commentUrl+"?"+params.Encode(), nil)
+		req, err := http.NewRequest("GET", reviewUrl+"?"+params.Encode(), nil)
 		if err != nil {
-			insyra.LogWarning("datafetch.GoogleMapsStores().GetComments: Failed to create request. Error: %v. Returning nil.", err)
+			insyra.LogWarning("datafetch.GoogleMapsStores().GetReviews: Failed to create request. Error: %v. Returning nil.", err)
 			return nil
 		}
 		for key, value := range headers {
@@ -198,28 +198,28 @@ func (c *googleMapsStoreCrawler) GetComments(storeId string, pageCount int, opti
 		client := &http.Client{}
 		resp, err := client.Do(req)
 		if err != nil {
-			insyra.LogWarning("datafetch.GoogleMapsStores().GetComments: Failed to send request. Error: %v. Returning nil.", err)
+			insyra.LogWarning("datafetch.GoogleMapsStores().GetReviews: Failed to send request. Error: %v. Returning nil.", err)
 			return nil
 		}
 		defer resp.Body.Close()
 
 		// 確保回應狀態碼為 200 OK
 		if resp.StatusCode != http.StatusOK {
-			insyra.LogWarning("datafetch.GoogleMapsStores().GetComments: Failed to fetch comments. HTTP status code: %d. Returning nil.", resp.StatusCode)
+			insyra.LogWarning("datafetch.GoogleMapsStores().GetReviews: Failed to fetch reviews. HTTP status code: %d. Returning nil.", resp.StatusCode)
 			return nil
 		}
 
 		// 讀取回應內容
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			insyra.LogWarning("datafetch.GoogleMapsStores().GetComments: Failed to read response. Error: %v. Returning nil.", err)
+			insyra.LogWarning("datafetch.GoogleMapsStores().GetReviews: Failed to read response. Error: %v. Returning nil.", err)
 			return nil
 		}
 
 		// Google 回應有 `)]}'` 前綴，需去除前 4 個字元
 		jsonData := []any{}
 		if err := json.Unmarshal(body[4:], &jsonData); err != nil {
-			insyra.LogWarning("datafetch.GoogleMapsStores().GetComments: Failed to decode JSON. Error: %v. Returning nil.", err)
+			insyra.LogWarning("datafetch.GoogleMapsStores().GetReviews: Failed to decode JSON. Error: %v. Returning nil.", err)
 			return nil
 		}
 
@@ -230,40 +230,40 @@ func (c *googleMapsStoreCrawler) GetComments(storeId string, pageCount int, opti
 
 		// 解析評論數據
 		if len(jsonData) > 2 {
-			rawComments, ok := jsonData[2].([]any)
+			rawReviews, ok := jsonData[2].([]any)
 			if ok {
-				for _, item := range rawComments {
-					commentData, _ := item.([]any)
-					if len(commentData) < 3 {
+				for _, item := range rawReviews {
+					reviewData, _ := item.([]any)
+					if len(reviewData) < 3 {
 						continue
 					}
 
-					reviewer := extractString(commentData, 0, 1, 4, 5, 0)
-					reviewerID := extractString(commentData, 0, 0)
-					reviewerState := extractString(commentData, 0, 1, 4, 5, 10, 0)
-					reviewerLevel := extractInt(commentData, 0, 1, 4, 5, 9)
-					commentTime := extractString(commentData, 0, 1, 6)
-					commentDate := strings.Join([]string{
-						extractString(commentData, 0, 2, 2, 0, 1, 21, 6, -1, 0),
-						strings.Repeat("0", 2-len(extractString(commentData, 0, 2, 2, 0, 1, 21, 6, -1, 1))) + extractString(commentData, 0, 2, 2, 0, 1, 21, 6, -1, 1),
-						strings.Repeat("0", 2-len(extractString(commentData, 0, 2, 2, 0, 1, 21, 6, -1, 2))) + extractString(commentData, 0, 2, 2, 0, 1, 21, 6, -1, 2),
+					reviewer := extractString(reviewData, 0, 1, 4, 5, 0)
+					reviewerID := extractString(reviewData, 0, 0)
+					reviewerState := extractString(reviewData, 0, 1, 4, 5, 10, 0)
+					reviewerLevel := extractInt(reviewData, 0, 1, 4, 5, 9)
+					reviewTime := extractString(reviewData, 0, 1, 6)
+					reviewDate := strings.Join([]string{
+						extractString(reviewData, 0, 2, 2, 0, 1, 21, 6, -1, 0),
+						strings.Repeat("0", 2-len(extractString(reviewData, 0, 2, 2, 0, 1, 21, 6, -1, 1))) + extractString(reviewData, 0, 2, 2, 0, 1, 21, 6, -1, 1),
+						strings.Repeat("0", 2-len(extractString(reviewData, 0, 2, 2, 0, 1, 21, 6, -1, 2))) + extractString(reviewData, 0, 2, 2, 0, 1, 21, 6, -1, 2),
 					}, "-")
-					content := extractString(commentData, 0, 2, -1, 0, 0)
-					rating := extractInt(commentData, 0, 2, 0, 0)
+					content := extractString(reviewData, 0, 2, -1, 0, 0)
+					rating := extractInt(reviewData, 0, 2, 0, 0)
 
-					commentDateObj, err := time.Parse("2006-01-02", commentDate)
-					if err != nil {
-						insyra.LogWarning("datafetch.GoogleMapsStores().GetComments: Failed to parse comment date. Error: %v. Returning nil.", err)
-						return nil
-					}
+					// reviewDateObj, err := time.Parse("2006-01-02", reviewDate)
+					// if err != nil {
+					// 	insyra.LogWarning("datafetch.GoogleMapsStores().GetReviews: Failed to parse review date. Error: %v. Skipping.", err)
+					// 	reviewDateObj = time.Time{} // 預設為零值
+					// }
 
-					comments = append(comments, GoogleMapsStoreComment{
+					reviews = append(reviews, GoogleMapsStoreReview{
 						Reviewer:      reviewer,
 						ReviewerID:    reviewerID,
 						ReviewerState: reviewerState,
 						ReviewerLevel: reviewerLevel,
-						CommentTime:   commentTime,
-						CommentDate:   commentDateObj,
+						ReviewTime:    reviewTime,
+						ReviewDate:    reviewDate,
 						Content:       content,
 						Rating:        rating,
 					})
@@ -284,23 +284,23 @@ func (c *googleMapsStoreCrawler) GetComments(storeId string, pageCount int, opti
 		page++
 	}
 
-	return comments
+	return reviews
 }
 
-// ToDataTable converts the comments to a DataTable.
-func (comments googleMapsStoreComments) ToDataTable() *insyra.DataTable {
+// ToDataTable converts the reviews to a DataTable.
+func (reviews googleMapsStoreReviews) ToDataTable() *insyra.DataTable {
 	dt := insyra.NewDataTable()
-	for _, comment := range comments {
+	for _, review := range reviews {
 		dt.AppendRowsByColName(
 			map[string]any{
-				"Reviewer":      comment.Reviewer,
-				"ReviewerID":    comment.ReviewerID,
-				"ReviewerState": comment.ReviewerState,
-				"ReviewerLevel": comment.ReviewerLevel,
-				"CommentTime":   comment.CommentTime,
-				"CommentDate":   comment.CommentDate,
-				"Content":       comment.Content,
-				"Rating":        comment.Rating,
+				"Reviewer":      review.Reviewer,
+				"ReviewerID":    review.ReviewerID,
+				"ReviewerState": review.ReviewerState,
+				"ReviewerLevel": review.ReviewerLevel,
+				"ReviewTime":    review.ReviewTime,
+				"ReviewDate":    review.ReviewDate,
+				"Content":       review.Content,
+				"Rating":        review.Rating,
 			},
 		)
 	}
