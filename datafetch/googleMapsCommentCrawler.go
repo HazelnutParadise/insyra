@@ -31,7 +31,8 @@ type GoogleMapsStoreReviews []GoogleMapsStoreReview
 
 // GoogleMapsStoreReviewsFetchingOptions is a struct for options when fetching reviews.
 type GoogleMapsStoreReviewsFetchingOptions struct {
-	SortBy             GoogleMapsStoreReviewSortBy
+	SortBy GoogleMapsStoreReviewSortBy
+	// MaxWaitingInterval is the maximum waiting interval in milliseconds between requests.
 	MaxWaitingInterval uint
 }
 
