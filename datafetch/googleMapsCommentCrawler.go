@@ -26,7 +26,7 @@ type GoogleMapsStoreReview struct {
 	Rating        int    `json:"rating"`
 }
 
-type googleMapsStoreReviews []GoogleMapsStoreReview
+type GoogleMapsStoreReviews []GoogleMapsStoreReview
 
 type GoogleMapsStoreReviewsFetchingOptions struct {
 	SortBy             GoogleMapsStoreReviewSortBy
@@ -156,7 +156,7 @@ func (c *googleMapsStoreCrawler) Search(storeName string) []storeData {
 // If pageCount is 0, all reviews will be fetched.
 // Returns a list of reviews.
 // Returns nil if failed to fetch reviews.
-func (c *googleMapsStoreCrawler) GetReviews(storeId string, pageCount int, options ...GoogleMapsStoreReviewsFetchingOptions) googleMapsStoreReviews {
+func (c *googleMapsStoreCrawler) GetReviews(storeId string, pageCount int, options ...GoogleMapsStoreReviewsFetchingOptions) GoogleMapsStoreReviews {
 	fetchingOptions := GoogleMapsStoreReviewsFetchingOptions{
 		SortBy:             SortByRelevance,
 		MaxWaitingInterval: 5000,
@@ -288,7 +288,7 @@ func (c *googleMapsStoreCrawler) GetReviews(storeId string, pageCount int, optio
 }
 
 // ToDataTable converts the reviews to a DataTable.
-func (reviews googleMapsStoreReviews) ToDataTable() *insyra.DataTable {
+func (reviews GoogleMapsStoreReviews) ToDataTable() *insyra.DataTable {
 	dt := insyra.NewDataTable()
 	for _, review := range reviews {
 		dt.AppendRowsByColName(
