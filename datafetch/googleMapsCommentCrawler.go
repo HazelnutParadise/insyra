@@ -166,6 +166,14 @@ func (c *googleMapsStoreCrawler) GetReviews(storeId string, pageCount int, optio
 	}
 	if len(options) == 1 {
 		fetchingOptions = options[0]
+		if fetchingOptions.MaxWaitingInterval < 1000 {
+			insyra.LogWarning("datafetch.GoogleMapsStores().GetReviews: MaxWaitingInterval is too small. Using default value.")
+			fetchingOptions.MaxWaitingInterval = 5000
+		}
+		if fetchingOptions.SortBy < SortByRelevance || fetchingOptions.SortBy > SortByLowestRating {
+			insyra.LogWarning("datafetch.GoogleMapsStores().GetReviews: SortBy is invalid. Using default value.")
+			fetchingOptions.SortBy = SortByRelevance
+		}
 	} else if len(options) > 1 {
 		insyra.LogWarning("datafetch.GoogleMapsStores().GetReviews: Got too many options. Using default options.")
 	}
