@@ -26,8 +26,10 @@ type GoogleMapsStoreReview struct {
 	Rating        int    `json:"rating"`
 }
 
+// GoogleMapsStoreReviews is a slice of GoogleMapsStoreReview.
 type GoogleMapsStoreReviews []GoogleMapsStoreReview
 
+// GoogleMapsStoreReviewsFetchingOptions is a struct for options when fetching reviews.
 type GoogleMapsStoreReviewsFetchingOptions struct {
 	SortBy             GoogleMapsStoreReviewSortBy
 	MaxWaitingInterval uint
