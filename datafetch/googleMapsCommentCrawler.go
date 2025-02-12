@@ -57,7 +57,7 @@ type googleMapsStoreCrawler struct {
 	storeReviewUrl string
 }
 
-type storeData struct {
+type GoogleMapsStoreData struct {
 	ID   string
 	Name string
 }
@@ -96,7 +96,7 @@ func GoogleMapsStores() *googleMapsStoreCrawler {
 // Search searches for stores with the given name.
 // Returns a list of store data.
 // Returns nil if failed to search.
-func (c *googleMapsStoreCrawler) Search(storeName string) []storeData {
+func (c *googleMapsStoreCrawler) Search(storeName string) []GoogleMapsStoreData {
 	url := strings.Replace(c.storeSearchUrl, "{store_name}", storeName, 1)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -137,14 +137,14 @@ func (c *googleMapsStoreCrawler) Search(storeName string) []storeData {
 	}
 
 	// 同步處理：逐個獲取商店名稱
-	var storeList []storeData
+	var storeList []GoogleMapsStoreData
 	for _, storeId := range storeIdList {
 		storeName, err := c.getStoreName(storeId)
 		if err != nil {
 			insyra.LogWarning("datafetch.GoogleMapsStores().Search: Error fetching store name for %s: %v\n", storeId, err)
 			continue // 碰到錯誤就跳過
 		}
-		storeList = append(storeList, storeData{
+		storeList = append(storeList, GoogleMapsStoreData{
 			ID:   storeId,
 			Name: storeName,
 		})
