@@ -100,7 +100,7 @@ type IDataTable interface {
 
 	// JSON
 	ToJSON(filePath string, useColName bool) error
-	ToJSON_Byte(useColName bool) []byte
+	ToJSON_Bytes(useColName bool) []byte
 
 	sortColsByIndex()
 	regenerateColIndex()
