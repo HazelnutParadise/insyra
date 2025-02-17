@@ -55,6 +55,9 @@ func (dt DT) From(item any) *DT {
 		dt.DataTable = insyra.NewDataTable()
 		for _, dl := range val {
 			newdl := insyra.NewDataList(dl.Data()...)
+			if dl.GetName() != "" {
+				newdl.SetName(dl.GetName())
+			}
 			dt.DataTable.AppendCols(newdl)
 		}
 	case Row:

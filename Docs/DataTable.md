@@ -229,6 +229,11 @@ Writes the `DataTable` to a CSV file. If `setRowNamesToFirstCol` is `true`, the 
 #### `LoadFromCSV(filePath string, setFirstColToRowNames bool, setFirstRowToColNames bool) error`
 Loads a `DataTable` from a CSV file. If `setFirstColToRowNames` is `true`, the first column will be used as row names. If `setFirstRowToColNames` is `true`, the first row will be used as column names.
 
+#### `ToJSON(filePath string, useColNames bool) error`
+Writes the `DataTable` to a JSON file.
+
+#### `ToJSON_Bytes(useColNames bool) []byte`
+Returns the JSON representation of the `DataTable` as a byte array.
 
 ## Best Practices
 

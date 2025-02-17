@@ -98,6 +98,10 @@ type IDataTable interface {
 	ToCSV(filePath string, setRowNamesToFirstCol bool, setColNamesToFirstRow bool) error
 	LoadFromCSV(filePath string, setFirstColToRowNames bool, setFirstRowToColNames bool) error
 
+	// JSON
+	ToJSON(filePath string, useColName bool) error
+	ToJSON_Byte(useColName bool) []byte
+
 	sortColsByIndex()
 	regenerateColIndex()
 }
@@ -1167,7 +1171,7 @@ func (dt *DataTable) Data(useNamesAsKeys ...bool) map[string][]any {
 	for i, col := range dt.columns {
 		var key string
 		if useNamesAsKeysBool && col.name != "" {
-			key = fmt.Sprintf("%s(%s)", generateColIndex(i), col.name)
+			key = col.name
 		} else {
 			key = generateColIndex(i)
 		}
