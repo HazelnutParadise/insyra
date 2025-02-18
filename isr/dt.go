@@ -128,6 +128,51 @@ func (dt *DT) At(row int, col any) any {
 	return nil
 }
 
+func (dt *DT) Push(data any) *DT {
+	switch val := data.(type) {
+	case *insyra.DataList:
+		dt.DataTable.AppendCols(val)
+	case *DL:
+		dt.DataTable.AppendCols(val.DataList)
+	case []*insyra.DataList:
+		for _, dl := range val {
+			dt.DataTable.AppendCols(dl)
+		}
+	case []DL:
+		for _, dl := range val {
+			dt.DataTable.AppendCols(dl.DataList)
+		}
+	case DLs:
+		for _, dl := range val {
+			newdl := insyra.NewDataList(dl.Data()...)
+			dt.DataTable.AppendCols(newdl)
+		}
+	case Row:
+		// TODO
+		err := fromRowToDT(dt, val)
+		if err != nil {
+			insyra.LogFatal("DT{}.Push(): %v", err)
+		}
+	case []Row:
+		for _, r := range val {
+			// TODO
+			err := fromRowToDT(dt, r)
+			if err != nil {
+				insyra.LogFatal("DT{}.Push(): %v", err)
+			}
+		}
+	case Col:
+		// TODO
+	case []Col:
+		// for _, r := range val {
+		// 	// TODO
+		// }
+	default:
+		insyra.LogFatal("DT{}.Push(): got unexpected type %T", data)
+	}
+	return dt
+}
+
 // func (dt *DT) Iloc(indices ...any) *DT {
 // 	switch len(indices) {
 // 	case 1:
