@@ -21,3 +21,9 @@ func (dl DL) From(data ...any) *DL {
 func (dl *DL) At(index int) any {
 	return dl.Get(index)
 }
+
+// Push is equivalent to dl.DataList.Append(data...).
+func (dl *DL) Push(data ...any) *DL {
+	dl.DataList.Append(data...)
+	return dl
+}

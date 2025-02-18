@@ -40,6 +40,14 @@ dataList := isr.DL{}.From(
 dataList.At(0, 1) // 2
 ```
 
+#### Push
+
+`Push()` is equivalent to `insyra.DataList.Append()`. It appends the specified values to the end of the DataList.
+
+```go
+dataList.Push(7, 8, 9)
+```
+
 ### DataTable
 
 In `isr`, we use `DT{}` to represent a DataTable. Use `DT{}.From()` to create a DataTable.
