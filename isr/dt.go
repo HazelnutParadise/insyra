@@ -148,7 +148,7 @@ func (dt *DT) Push(data any) *DT {
 			dt.DataTable.AppendCols(newdl)
 		}
 	case Row:
-		// TODO
+		// TODO: insyra包處理數字索引的問題
 		err := fromRowToDT(dt, val)
 		if err != nil {
 			insyra.LogFatal("DT{}.Push(): %v", err)
