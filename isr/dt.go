@@ -94,6 +94,7 @@ func (dt DT) From(item any) *DT {
 	return &dt
 }
 
+// Col returns a DL that contains the column at the specified index.
 func (dt *DT) Col(col any) *DL {
 	var dl DL
 	switch v := col.(type) {
@@ -107,10 +108,24 @@ func (dt *DT) Col(col any) *DL {
 	return &dl
 }
 
+// Row returns a DL that contains the row at the specified index.
 func (dt *DT) Row(row int) *DL {
 	var dl DL
 	dl.DataList = dt.DataTable.GetRow(row)
 	return &dl
+}
+
+// At returns the element at the specified row and column.
+func (dt *DT) At(row int, col any) any {
+	switch v := col.(type) {
+	case int:
+		return dt.DataTable.GetElementByNumberIndex(row, v)
+	case string:
+		return dt.DataTable.GetElement(row, v)
+	default:
+		insyra.LogWarning("DT{}.At(): got unexpected type %T. Returning nil.", col)
+	}
+	return nil
 }
 
 // func (dt *DT) Iloc(indices ...any) *DT {
