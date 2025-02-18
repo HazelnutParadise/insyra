@@ -163,6 +163,8 @@ func (dt *DT) Push(data any) *DT {
 		}
 	case Col:
 		// TODO
+		// 先創建新dt 當成row插入 再轉置
+		// 轉置後抽出為dl 再插入
 	case []Col:
 		// for _, r := range val {
 		// 	// TODO
