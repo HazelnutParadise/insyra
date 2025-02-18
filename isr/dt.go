@@ -194,7 +194,9 @@ func fromRowToDT(dt *DT, val map[any]any) error {
 	strMap := make(map[string]any)
 	if isIntKey(val) || isStrKey(val) {
 		for k, v := range val {
-			if isInt(k) || isStr(k) {
+			if isInt(k) {
+				strMap[numberToColIndex(k.(int))] = v
+			} else if isStr(k) {
 				strMap[conv.ToString(k)] = v
 			}
 		}
@@ -254,3 +256,12 @@ func isNameKey(m map[any]any) bool {
 // 	_, ok := m.(name)
 // 	return ok
 // }
+
+func numberToColIndex(index int) string {
+	name := ""
+	for index >= 0 {
+		name = fmt.Sprintf("%c%s", 'A'+(index%26), name)
+		index = index/26 - 1
+	}
+	return name
+}
