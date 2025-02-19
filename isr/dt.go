@@ -148,14 +148,12 @@ func (dt *DT) Push(data any) *DT {
 			dt.DataTable.AppendCols(newdl)
 		}
 	case Row:
-		// TODO: insyra包處理數字索引的問題
 		err := fromRowToDT(dt, val)
 		if err != nil {
 			insyra.LogFatal("DT{}.Push(): %v", err)
 		}
 	case []Row:
 		for _, r := range val {
-			// TODO
 			err := fromRowToDT(dt, r)
 			if err != nil {
 				insyra.LogFatal("DT{}.Push(): %v", err)
@@ -165,6 +163,14 @@ func (dt *DT) Push(data any) *DT {
 		// TODO
 		// 先創建新dt 當成row插入 再轉置
 		// 轉置後抽出為dl 再插入
+		// temDT := PtrDT(insyra.NewDataTable())
+		// err := fromRowToDT(temDT, val)
+		// if err != nil {
+		// 	insyra.LogFatal("DT{}.Push(): %v", err)
+		// }
+		// for i := range temDT.Size() {
+
+		// }
 	case []Col:
 		// for _, r := range val {
 		// 	// TODO
