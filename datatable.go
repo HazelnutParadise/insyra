@@ -138,7 +138,10 @@ func (dt *DataTable) AppendCols(columns ...*DataList) *DataTable {
 
 	maxLength := dt.getMaxColLength()
 
-	for _, column := range columns {
+	for _, col := range columns {
+		column := NewDataList()
+		column.data = col.data
+		column.name = col.name
 		columnName := generateColIndex(len(dt.columns)) // 修改這行確保按順序生成列名
 		column.name = safeColName(dt, column.name)
 
