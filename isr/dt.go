@@ -110,6 +110,7 @@ func (dt DT) From(item any) *DT {
 	return &dt
 }
 
+// Col returns a DL that contains the column at the specified index.
 func (dt *DT) Col(col any) *DL {
 	var dl DL
 	switch v := col.(type) {
@@ -123,10 +124,77 @@ func (dt *DT) Col(col any) *DL {
 	return &dl
 }
 
+// Row returns a DL that contains the row at the specified index.
 func (dt *DT) Row(row int) *DL {
 	var dl DL
 	dl.DataList = dt.DataTable.GetRow(row)
 	return &dl
+}
+
+// At returns the element at the specified row and column.
+func (dt *DT) At(row int, col any) any {
+	switch v := col.(type) {
+	case int:
+		return dt.DataTable.GetElementByNumberIndex(row, v)
+	case string:
+		return dt.DataTable.GetElement(row, v)
+	default:
+		insyra.LogWarning("DT{}.At(): got unexpected type %T. Returning nil.", col)
+	}
+	return nil
+}
+
+func (dt *DT) Push(data any) *DT {
+	switch val := data.(type) {
+	case *insyra.DataList:
+		dt.DataTable.AppendCols(val)
+	case *DL:
+		dt.DataTable.AppendCols(val.DataList)
+	case []*insyra.DataList:
+		for _, dl := range val {
+			dt.DataTable.AppendCols(dl)
+		}
+	case []DL:
+		for _, dl := range val {
+			dt.DataTable.AppendCols(dl.DataList)
+		}
+	case DLs:
+		for _, dl := range val {
+			newdl := insyra.NewDataList(dl.Data()...)
+			dt.DataTable.AppendCols(newdl)
+		}
+	case Row:
+		err := fromRowToDT(dt, val)
+		if err != nil {
+			insyra.LogFatal("DT{}.Push(): %v", err)
+		}
+	case []Row:
+		for _, r := range val {
+			err := fromRowToDT(dt, r)
+			if err != nil {
+				insyra.LogFatal("DT{}.Push(): %v", err)
+			}
+		}
+	case Col:
+		// TODO
+		// 先創建新dt 當成row插入 再轉置
+		// 轉置後抽出為dl 再插入
+		// temDT := PtrDT(insyra.NewDataTable())
+		// err := fromRowToDT(temDT, val)
+		// if err != nil {
+		// 	insyra.LogFatal("DT{}.Push(): %v", err)
+		// }
+		// for i := range temDT.Size() {
+
+		// }
+	case []Col:
+		// for _, r := range val {
+		// 	// TODO
+		// }
+	default:
+		insyra.LogFatal("DT{}.Push(): got unexpected type %T", data)
+	}
+	return dt
 }
 
 // func (dt *DT) Iloc(indices ...any) *DT {
@@ -148,7 +216,9 @@ func fromRowToDT(dt *DT, val map[any]any) error {
 	strMap := make(map[string]any)
 	if isIntKey(val) || isStrKey(val) {
 		for k, v := range val {
-			if isInt(k) || isStr(k) {
+			if isInt(k) {
+				strMap[numberToColIndex(k.(int))] = v
+			} else if isStr(k) {
 				strMap[conv.ToString(k)] = v
 			}
 		}
@@ -208,3 +278,12 @@ func isNameKey(m map[any]any) bool {
 // 	_, ok := m.(name)
 // 	return ok
 // }
+
+func numberToColIndex(index int) string {
+	name := ""
+	for index >= 0 {
+		name = fmt.Sprintf("%c%s", 'A'+(index%26), name)
+		index = index/26 - 1
+	}
+	return name
+}

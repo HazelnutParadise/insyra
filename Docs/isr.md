@@ -55,6 +55,14 @@ dataList := isr.DL{}.From(
 dataList.At(0, 1) // 2
 ```
 
+#### Push
+
+`Push()` is equivalent to `insyra.DataList.Append()`. It appends the specified values to the end of the DataList.
+
+```go
+dataList.Push(7, 8, 9)
+```
+
 ### DataTable
 
 In `isr`, we use `DT{}` to represent a DataTable. Use `DT{}.From()` to create a DataTable. Use `PrtDT()` to convert a `*DataTable` to a `*DT`.
@@ -147,4 +155,20 @@ dataTable := isr.DT{}.From(
         },
     },
 )
+```
+
+#### Row
+
+`Row()` is equivalent to `insyra.DataTable.GetRow()`. It returns the row at the specified index.
+
+#### Col
+
+`Col()` is equivalent to `insyra.DataTable.GetCol()`. It returns the column at the specified index. The column can be accessed by index(A, B, C...) or number.
+
+#### At
+
+`At()` is equivalent to `insyra.DataTable.GetElement()`. It returns the value at the specified row and column. The column can be accessed by index(A, B, C...) or number.
+
+```go
+dataTable.At(0, 1)
 ```
