@@ -176,21 +176,31 @@ func (dt *DT) Push(data any) *DT {
 			}
 		}
 	case Col:
-		// TODO
 		// 先創建新dt 當成row插入 再轉置
 		// 轉置後抽出為dl 再插入
-		// temDT := PtrDT(insyra.NewDataTable())
-		// err := fromRowToDT(temDT, val)
-		// if err != nil {
-		// 	insyra.LogFatal("DT{}.Push(): %v", err)
-		// }
-		// for i := range temDT.Size() {
-
-		// }
+		temDT := PtrDT(insyra.NewDataTable())
+		err := fromRowToDT(temDT, val)
+		if err != nil {
+			insyra.LogFatal("DT{}.Push(): %v", err)
+		}
+		numRow, _ := temDT.Size()
+		for i := 0; i < numRow; i++ {
+			dl := temDT.GetRow(i)
+			dt.DataTable.AppendCols(dl)
+		}
 	case []Col:
-		// for _, r := range val {
-		// 	// TODO
-		// }
+		for _, r := range val {
+			temDT := PtrDT(insyra.NewDataTable())
+			err := fromRowToDT(temDT, r)
+			if err != nil {
+				insyra.LogFatal("DT{}.Push(): %v", err)
+			}
+			numRow, _ := temDT.Size()
+			for i := 0; i < numRow; i++ {
+				dl := temDT.GetRow(i)
+				dt.DataTable.AppendCols(dl)
+			}
+		}
 	default:
 		insyra.LogFatal("DT{}.Push(): got unexpected type %T", data)
 	}
