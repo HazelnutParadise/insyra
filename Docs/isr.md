@@ -172,3 +172,17 @@ dataTable := isr.DT{}.From(
 ```go
 dataTable.At(0, 1)
 ```
+
+#### Push
+
+`Push()` appends the specified row or column to the end of the DataTable.
+
+```go
+dataTable.Push(
+    isr.Row{
+        "A": 7,
+        "B": 8,
+        "C": 9,
+    },
+)
+```
