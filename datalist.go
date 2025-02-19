@@ -83,7 +83,7 @@ type IDataList interface {
 	WeightedMean(weights any) float64
 	GMean() float64
 	Median() float64
-	Mode() float64
+	Mode() []float64
 	MAD() float64
 	Stdev() float64
 	StdevP() float64
@@ -1301,11 +1301,11 @@ func (dl *DataList) Median() float64 {
 
 // Mode calculates the mode of the DataList.
 // Only works with numeric data types.
-// Returns math.NaN() if the DataList is empty or if no valid elements can be used.
-func (dl *DataList) Mode() float64 {
+// Returns nil if the DataList is empty or if no valid elements can be used.
+func (dl *DataList) Mode() []float64 {
 	if len(dl.data) == 0 {
-		LogWarning("DataList.Mode(): DataList is empty.")
-		return math.NaN()
+		LogWarning("DataList.Mode(): DataList is empty. Returning nil.")
+		return nil
 	}
 
 	freqMap := make(map[float64]int)
@@ -1319,20 +1319,39 @@ func (dl *DataList) Mode() float64 {
 	}
 
 	if len(freqMap) == 0 {
-		LogWarning("DataList.Mode(): No valid elements to compute mode.")
-		return math.NaN()
+		LogWarning("DataList.Mode(): No valid elements to compute mode. Returning nil.")
+		return nil
 	}
 
-	var mode float64
+	var modes []float64
 	maxFreq := 0
-	for k, v := range freqMap {
-		if v > maxFreq {
-			mode = k
-			maxFreq = v
+	for _, freq := range freqMap {
+		if freq > maxFreq {
+			maxFreq = freq
 		}
 	}
 
-	return mode
+	// Check if all elements have the same frequency
+	allSameFrequency := true
+	for _, freq := range freqMap {
+		if freq != maxFreq {
+			allSameFrequency = false
+			break
+		}
+	}
+
+	if allSameFrequency {
+		LogWarning("DataList.Mode(): All elements have the same frequency. No mode.")
+		return nil
+	}
+
+	for num, freq := range freqMap {
+		if freq == maxFreq {
+			modes = append(modes, num)
+		}
+	}
+
+	return modes
 }
 
 // MAD calculates the mean absolute deviation of the DataList.

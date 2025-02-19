@@ -94,7 +94,7 @@ dl := isr.DL{}.From(1, 2, 3, 4, 5) // modern
 * **WeightedMean:** Calculates the weighted mean of the DataList elements based on the provided weights. The weights can be provided as a DataList or a slice of float64 values.
 * **GMean:** Calculates the geometric mean of the DataList elements. Excludes non-numeric data types.
 * **Median:** Returns the median value of the DataList after sorting the elements.
-* **Mode:** Returns the most frequent value (mode) in the DataList.
+* **Mode:** Returns the most frequent value(s) (mode) in the DataList.
 * **Stdev:** Calculates the sample standard deviation of the DataList elements. Excludes non-numeric data types.
 * **StdevP:** Calculates the population standard deviation of the DataList elements. Excludes non-numeric data types.
 * **Var:** Calculates the sample variance of the DataList elements. Excludes non-numeric data types.
