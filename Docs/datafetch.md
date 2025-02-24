@@ -107,8 +107,8 @@ Options for fetching reviews.
 
 ```go
 type GoogleMapsStoreReviewsFetchingOptions struct {
-    SortBy             GoogleMapsStoreReviewSortBy
-    MaxWaitingInterval uint
+    SortBy                          GoogleMapsStoreReviewSortBy
+    MaxWaitingInterval_Milliseconds uint
 }
 ```
 

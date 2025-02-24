@@ -32,8 +32,8 @@ type GoogleMapsStoreReviews []GoogleMapsStoreReview
 // GoogleMapsStoreReviewsFetchingOptions is a struct for options when fetching reviews.
 type GoogleMapsStoreReviewsFetchingOptions struct {
 	SortBy GoogleMapsStoreReviewSortBy
-	// MaxWaitingInterval is the maximum waiting interval in milliseconds between requests.
-	MaxWaitingInterval uint
+	// MaxWaitingInterval_Milliseconds is the maximum waiting interval in milliseconds between requests.
+	MaxWaitingInterval_Milliseconds uint
 }
 
 type GoogleMapsStoreReviewSortBy uint8
@@ -161,14 +161,14 @@ func (c *googleMapsStoreCrawler) Search(storeName string) []GoogleMapsStoreData 
 // Returns nil if failed to fetch reviews.
 func (c *googleMapsStoreCrawler) GetReviews(storeId string, pageCount int, options ...GoogleMapsStoreReviewsFetchingOptions) GoogleMapsStoreReviews {
 	fetchingOptions := GoogleMapsStoreReviewsFetchingOptions{
-		SortBy:             SortByRelevance,
-		MaxWaitingInterval: 5000,
+		SortBy:                          SortByRelevance,
+		MaxWaitingInterval_Milliseconds: 5000,
 	}
 	if len(options) == 1 {
 		fetchingOptions = options[0]
-		if fetchingOptions.MaxWaitingInterval < 1000 {
+		if fetchingOptions.MaxWaitingInterval_Milliseconds < 1000 {
 			insyra.LogWarning("datafetch.GoogleMapsStores().GetReviews: MaxWaitingInterval is too small. Using default value.")
-			fetchingOptions.MaxWaitingInterval = 5000
+			fetchingOptions.MaxWaitingInterval_Milliseconds = 5000
 		}
 		if fetchingOptions.SortBy < SortByRelevance || fetchingOptions.SortBy > SortByLowestRating {
 			insyra.LogWarning("datafetch.GoogleMapsStores().GetReviews: SortBy is invalid. Using default value.")
@@ -288,7 +288,7 @@ func (c *googleMapsStoreCrawler) GetReviews(storeId string, pageCount int, optio
 		}
 
 		// 隨機等待時間，防止被 Google 封鎖
-		waitTime := rand.Intn(int(fetchingOptions.MaxWaitingInterval)-1000) + 1000
+		waitTime := rand.Intn(int(fetchingOptions.MaxWaitingInterval_Milliseconds)-1000) + 1000
 		fmt.Printf("Waiting %.1fs before fetching the next page...\n", float64(waitTime)/1000)
 		time.Sleep(time.Duration(waitTime) * time.Millisecond)
 
