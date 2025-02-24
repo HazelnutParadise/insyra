@@ -255,7 +255,7 @@ func (c *googleMapsStoreCrawler) GetReviews(storeId string, pageCount int, optio
 					reviewerLevel := extractInt(reviewData, 0, 1, 4, 5, 9)
 					reviewTime := extractString(reviewData, 0, 1, 6)
 					reviewDate := strings.Join([]string{
-						extractString(reviewData, 0, 2, 2, 0, 1, 21, 6, -1, 0),
+						strings.Repeat("0", 4-len(extractString(reviewData, 0, 2, 2, 0, 1, 21, 6, -1, 0))) + extractString(reviewData, 0, 2, 2, 0, 1, 21, 6, -1, 0),
 						strings.Repeat("0", 2-len(extractString(reviewData, 0, 2, 2, 0, 1, 21, 6, -1, 1))) + extractString(reviewData, 0, 2, 2, 0, 1, 21, 6, -1, 1),
 						strings.Repeat("0", 2-len(extractString(reviewData, 0, 2, 2, 0, 1, 21, 6, -1, 2))) + extractString(reviewData, 0, 2, 2, 0, 1, 21, 6, -1, 2),
 					}, "-")
