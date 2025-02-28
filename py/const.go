@@ -10,7 +10,7 @@ import (
 
 const (
 	pythonVersion = "3.11.9"
-	installDir    = ".insyra_py_env"
+	installDir    = ".insyra_py25a"
 	port          = "9955"
 	backupPort    = "9956"
 )
