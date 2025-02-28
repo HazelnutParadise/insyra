@@ -3,7 +3,6 @@
 package py
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -11,10 +10,37 @@ import (
 	"strings"
 
 	"github.com/HazelnutParadise/insyra"
+	jsoniter "github.com/json-iterator/go"
 )
+
+var json = jsoniter.ConfigFastest
+
+// Run the Python file and return the result.
+func RunFile(filePath string) map[string]any {
+	pyEnvInit()
+	file, err := os.ReadFile(filePath)
+	if err != nil {
+		insyra.LogFatal("py.RunFile: Failed to read Python file: %v", err)
+	}
+	code := string(file)
+	return RunCode(code)
+}
+
+// Run the Python file with the given Golang variables and return the result.
+// The variables should be passed by $v1, $v2, $v3... in the codeTemplate.
+func RunFilef(filePath string, args ...any) map[string]any {
+	pyEnvInit()
+	file, err := os.ReadFile(filePath)
+	if err != nil {
+		insyra.LogFatal("py.RunFilef: Failed to read Python file: %v", err)
+	}
+	code := string(file)
+	return RunCodef(code, args...)
+}
 
 // Run the Python code and return the result.
 func RunCode(code string) map[string]any {
+	pyEnvInit()
 	code = generateDefaultPyCode() + code
 
 	// 執行 Python 代碼
@@ -24,7 +50,7 @@ func RunCode(code string) map[string]any {
 	pythonCmd.Stderr = os.Stderr
 	err := pythonCmd.Run()
 	if err != nil {
-		log.Fatalf("Failed to run Python code: %v", err)
+		insyra.LogFatal("py.RunCode: Failed to run Python code: %v", err)
 	}
 
 	// 從 server 接收資料
@@ -34,6 +60,7 @@ func RunCode(code string) map[string]any {
 // Run the Python code with the given Golang variables and return the result.
 // The variables should be passed by $v1, $v2, $v3... in the codeTemplate.
 func RunCodef(codeTemplate string, args ...any) map[string]any {
+	pyEnvInit()
 	// 產生包含 insyra_return 函數的預設 Python 代碼
 	codeTemplate = generateDefaultPyCode() + codeTemplate
 
@@ -47,7 +74,7 @@ func RunCodef(codeTemplate string, args ...any) map[string]any {
 	// 將字典序列化為 JSON
 	jsonData, err := json.Marshal(dataMap)
 	if err != nil {
-		log.Fatalf("Failed to serialize variables: %v", err)
+		insyra.LogFatal("py.RunCodef: Failed to serialize variables: %v", err)
 	}
 
 	// 替換 codeTemplate 中的 $v1, $v2... 佔位符為對應的 vars['var1'], vars['var2']...
@@ -83,13 +110,14 @@ import json
 
 // Install dependencies using pip
 func PipInstall(dep string) {
+	pyEnvInit()
 	pythonCmd := exec.Command(pyPath, "-m", "pip", "install", dep)
 	pythonCmd.Dir = installDir
 	pythonCmd.Stdout = os.Stdout
 	pythonCmd.Stderr = os.Stderr
 	err := pythonCmd.Run()
 	if err != nil {
-		log.Fatalf("Failed to install dependency: %v", err)
+		insyra.LogFatal("py.PipInstall: Failed to install dependency: %v", err)
 	} else {
 		insyra.LogInfo("py.PipInstall: Installed dependency: %s", dep)
 	}
@@ -97,13 +125,14 @@ func PipInstall(dep string) {
 
 // Uninstall dependencies using pip
 func PipUninstall(dep string) {
+	pyEnvInit()
 	pythonCmd := exec.Command(pyPath, "-m", "pip", "uninstall", "-y", dep)
 	pythonCmd.Dir = installDir
 	pythonCmd.Stdout = os.Stdout
 	pythonCmd.Stderr = os.Stderr
 	err := pythonCmd.Run()
 	if err != nil {
-		log.Fatalf("Failed to uninstall dependency: %v", err)
+		insyra.LogFatal("py.PipUninstall: Failed to uninstall dependency: %v", err)
 	} else {
 		insyra.LogInfo("py.PipUninstall: Uninstalled dependency: %s", dep)
 	}

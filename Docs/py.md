@@ -97,6 +97,31 @@ plt.show()
 
 ```
 
+### `RunFile`
+
+Run Python code from a file.
+
+#### Parameters
+
+- `filepath` (string): The Python file to be executed.
+
+#### Returns
+
+- `map[string]interface{}`: A map representing the result received from the Python server. This map will contain the data returned from Python through the `insyra_return` function.
+
+### `RunFilef`
+
+Run Python code from a file with variables passed from Go.
+
+#### Parameters
+
+- `filepath` (string): The Python file to be executed.
+- `args` (`...interface{}`): A variable-length argument list of Go variables to be passed to Python.
+
+#### Returns
+
+- `map[string]interface{}`: A map representing the result received from the Python server. This map will contain the data returned from Python through the `insyra_return` function.
+
 ### `PipInstall`
 
 ```go

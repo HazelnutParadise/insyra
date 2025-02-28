@@ -15,12 +15,24 @@ import (
 	"github.com/HazelnutParadise/insyra"
 )
 
+var isPyEnvInit = false
+var isServerRunning = false
+
 // 主要邏輯
-func init() {
+func pyEnvInit() {
+	if !isServerRunning {
+		isServerRunning = true
+		go func() {
+			startServer()
+		}()
+	}
+	if isPyEnvInit {
+		return
+	}
+	isPyEnvInit = true
 	if runtime.GOOS == "windows" {
 		pyPath = filepath.Join(absInstallDir, "python", "python.exe")
 	}
-	go startServer()
 	insyra.LogInfo("py.init: Preparing Python environment...")
 	// 如果目錄不存在，自動創建
 	if _, err := os.Stat(installDir); os.IsNotExist(err) {
@@ -41,11 +53,12 @@ func init() {
 				os.Setenv("PYTHONPATH", pythonLib)
 			}
 
-			err = installDependencies()
-			if err != nil {
-				insyra.LogFatal("py.init: Failed to install dependencies: %v", err)
-			}
-			insyra.LogInfo("py.init: Dependencies prepared successfully!\n\n")
+			// 不再每次都安裝依賴
+			// err = installDependencies()
+			// if err != nil {
+			// 	insyra.LogFatal("py.init: Failed to install dependencies: %v", err)
+			// }
+			// insyra.LogInfo("py.init: Dependencies prepared successfully!\n\n")
 			return
 		}
 	}
