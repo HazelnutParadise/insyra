@@ -306,6 +306,7 @@ func showProgress(completed, total int) {
 }
 
 func installDependencies() error {
+	fmt.Println("Installing dependencies...")
 	totalDeps := len(pyDependencies)
 	completed := 0
 
