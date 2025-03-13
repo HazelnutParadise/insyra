@@ -118,6 +118,9 @@ func (dt *DT) Col(col any) *DL {
 		dl.DataList = dt.DataTable.GetColByNumber(v)
 	case string:
 		dl.DataList = dt.DataTable.GetCol(v)
+	case name:
+		colDt := dt.DataTable.FilterByColNameEqualTo(v.value)
+		dl.DataList = colDt.GetColByNumber(0)
 	default:
 		insyra.LogFatal("DT{}.Col(): got unexpected type %T", col)
 	}
@@ -125,19 +128,55 @@ func (dt *DT) Col(col any) *DL {
 }
 
 // Row returns a DL that contains the row at the specified index.
-func (dt *DT) Row(row int) *DL {
+func (dt *DT) Row(row any) *DL {
 	var dl DL
-	dl.DataList = dt.DataTable.GetRow(row)
+	switch v := row.(type) {
+	case int:
+		dl.DataList = dt.DataTable.GetRow(v)
+	case name:
+		rowDt := dt.DataTable.FilterByRowNameEqualTo(v.value)
+		dl.DataList = rowDt.GetRow(0)
+	default:
+		insyra.LogFatal("DT{}.Row(): got unexpected type %T", row)
+	}
 	return &dl
 }
 
 // At returns the element at the specified row and column.
-func (dt *DT) At(row int, col any) any {
+func (dt *DT) At(row any, col any) any {
 	switch v := col.(type) {
 	case int:
-		return dt.DataTable.GetElementByNumberIndex(row, v)
+		switch r := row.(type) {
+		case int:
+			return dt.DataTable.GetElementByNumberIndex(r, v)
+		case name:
+			rowDt := dt.DataTable.FilterByRowNameEqualTo(r.value)
+			return rowDt.GetElementByNumberIndex(0, v)
+		default:
+			insyra.LogWarning("DT{}.At(): got unexpected type %T. Returning nil.", row)
+		}
 	case string:
-		return dt.DataTable.GetElement(row, v)
+		switch r := row.(type) {
+		case int:
+			return dt.DataTable.GetElement(r, v)
+		case name:
+			rowDt := dt.DataTable.FilterByRowNameEqualTo(r.value)
+			return rowDt.GetElement(0, v)
+		default:
+			insyra.LogWarning("DT{}.At(): got unexpected type %T. Returning nil.", row)
+		}
+	case name:
+		switch r := row.(type) {
+		case int:
+			colDt := dt.DataTable.FilterByColNameEqualTo(v.value)
+			return colDt.GetElementByNumberIndex(r, 0)
+		case name:
+			rowDt := dt.DataTable.FilterByRowNameEqualTo(r.value)
+			colDt := rowDt.FilterByColNameEqualTo(v.value)
+			return colDt.GetElementByNumberIndex(0, 0)
+		default:
+			insyra.LogWarning("DT{}.At(): got unexpected type %T. Returning nil.", row)
+		}
 	default:
 		insyra.LogWarning("DT{}.At(): got unexpected type %T. Returning nil.", col)
 	}
