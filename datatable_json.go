@@ -121,9 +121,6 @@ func (dt *DataTable) LoadFromJSON(filePath string) error {
 		return fmt.Errorf("failed to unmarshal JSON: %w", err)
 	}
 
-	// 除錯輸出
-	fmt.Printf("Loaded rows: %+v\n", rows)
-
 	// 將資料加入 DataTable
 	for _, row := range rows {
 		dt.AppendRowsByColName(row)
