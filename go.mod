@@ -1,12 +1,11 @@
 module github.com/HazelnutParadise/insyra
 
 go 1.23
-
-toolchain go1.23.4
+toolchain go1.24.1
 
 require (
 	github.com/HazelnutParadise/Go-Utils v0.7.10
-	golang.org/x/text v0.21.0
+	golang.org/x/text v0.22.0
 )
 
 require (
@@ -34,10 +33,10 @@ require (
 	github.com/stretchr/testify v1.9.0 // indirect
 	github.com/xuri/efp v0.0.0-20241211021726-c4e992084aa6 // indirect
 	github.com/xuri/nfp v0.0.0-20240318013403-ab9948c2c4a7 // indirect
-	golang.org/x/crypto v0.31.0 // indirect
+	golang.org/x/crypto v0.35.0 // indirect
 	golang.org/x/image v0.23.0 // indirect
-	golang.org/x/net v0.33.0 // indirect
-	golang.org/x/sys v0.28.0 // indirect
+	golang.org/x/net v0.36.0 // indirect
+	golang.org/x/sys v0.30.0 // indirect
 )
 
 require (
@@ -45,7 +44,7 @@ require (
 	github.com/go-echarts/snapshot-chromedp v0.0.5
 	github.com/json-iterator/go v1.1.12
 	github.com/xuri/excelize/v2 v2.9.0
-	golang.org/x/exp v0.0.0-20241217172543-b2144cdd0a67 // indirect
+	golang.org/x/exp v0.0.0-20241217172543-b2144cdd0a67
 	gonum.org/v1/gonum v0.15.1
 	gonum.org/v1/plot v0.15.0
 )
