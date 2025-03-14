@@ -96,6 +96,12 @@ func (dt DT) From(item any) *DT {
 		if err != nil {
 			insyra.LogFatal("DT{}.From(): %v", err)
 		}
+	case JSON:
+		dt.DataTable = insyra.NewDataTable()
+		err := dt.LoadFromJSON(val.FilePath)
+		if err != nil {
+			insyra.LogFatal("DT{}.From(): %v", err)
+		}
 	case map[string]any:
 		dt.DataTable = insyra.NewDataTable().AppendRowsByColIndex(val)
 	case map[int]any:

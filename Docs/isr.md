@@ -157,6 +157,14 @@ dataTable := isr.DT{}.From(
 )
 ```
 
+##### From JSON
+
+```go
+dataTable := isr.DT{}.From(
+    isr.JSON{FilePath: "data.json"},
+)
+```
+
 #### Row
 
 `Row()` is equivalent to `insyra.DataTable.GetRow()`. It returns the row at the specified index.
