@@ -1,7 +1,6 @@
 module github.com/HazelnutParadise/insyra
 
-go 1.23
-toolchain go1.24.1
+go 1.23.0
 
 require (
 	github.com/HazelnutParadise/Go-Utils v0.7.10
