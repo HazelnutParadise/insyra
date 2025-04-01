@@ -12,12 +12,19 @@ import (
 // - filePath: the file path to write the CSV file to
 // - setRowNamesToFirstCol: if true, the first column will be used as row names
 // - setColNamesToFirstRow: if true, the first row will be used as column names
-func (dt *DataTable) ToCSV(filePath string, setRowNamesToFirstCol bool, setColNamesToFirstRow bool) error {
+func (dt *DataTable) ToCSV(filePath string, setRowNamesToFirstCol bool, setColNamesToFirstRow bool, includeBOM bool) error {
 	file, err := os.Create(filePath)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
+
+	// 寫入 UTF-8 BOM
+	if includeBOM {
+		if _, err := file.Write([]byte{0xEF, 0xBB, 0xBF}); err != nil {
+			return err
+		}
+	}
 
 	writer := csv.NewWriter(file)
 	defer writer.Flush()

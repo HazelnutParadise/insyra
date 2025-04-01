@@ -95,7 +95,7 @@ type IDataTable interface {
 	FilterByRowIndexEqualTo(index int) *DataTable
 
 	// CSV
-	ToCSV(filePath string, setRowNamesToFirstCol bool, setColNamesToFirstRow bool) error
+	ToCSV(filePath string, setRowNamesToFirstCol bool, setColNamesToFirstRow bool, includeBOM bool) error
 	LoadFromCSV(filePath string, setFirstColToRowNames bool, setFirstRowToColNames bool) error
 
 	// JSON

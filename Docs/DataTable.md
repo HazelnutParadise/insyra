@@ -223,8 +223,8 @@ Returns a new `DataTable` with rows where the row index is less than or equal to
 ##### `FilterByRowIndexEqualTo(index int) *DataTable`
 Returns a new `DataTable` with rows where the row index equals the specified index.
 
-#### `ToCSV(filePath string, setRowNamesToFirstCol bool, setColNamesToFirstRow bool) error`
-Writes the `DataTable` to a CSV file. If `setRowNamesToFirstCol` is `true`, the first column will be used as row names. If `setColNamesToFirstRow` is `true`, the first row will be used as column names.
+#### `ToCSV(filePath string, setRowNamesToFirstCol bool, setColNamesToFirstRow bool, includeBOM bool) error`
+Writes the `DataTable` to a CSV file. If `setRowNamesToFirstCol` is `true`, the first column will be used as row names. If `setColNamesToFirstRow` is `true`, the first row will be used as column names. If `includeBOM` is `true`, a BOM will be included at the beginning of the file(compatible with excel).
 
 #### `LoadFromCSV(filePath string, setFirstColToRowNames bool, setFirstRowToColNames bool) error`
 Loads a `DataTable` from a CSV file. If `setFirstColToRowNames` is `true`, the first column will be used as row names. If `setFirstRowToColNames` is `true`, the first row will be used as column names.
