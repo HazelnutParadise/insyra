@@ -103,7 +103,7 @@ type IDataTable interface {
 	ToJSON(filePath string, useColName bool) error
 	ToJSON_Bytes(useColName bool) []byte
 
-	ToSQL(db *gorm.DB, tableName string) error
+	ToSQL(db *gorm.DB, tableName string, options ...ToSQLOptions) error
 
 	sortColsByIndex()
 	regenerateColIndex()
