@@ -18,3 +18,4 @@ output_pie_chart_datalist.html
 lingo.txt
 *.csv
 /.insyra_py25a
+/local
