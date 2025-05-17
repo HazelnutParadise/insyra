@@ -10,6 +10,7 @@ import (
 
 	"github.com/HazelnutParadise/Go-Utils/asyncutil"
 	"github.com/HazelnutParadise/Go-Utils/conv"
+	"gorm.io/gorm"
 )
 
 type DataTable struct {
@@ -101,6 +102,8 @@ type IDataTable interface {
 	// JSON
 	ToJSON(filePath string, useColName bool) error
 	ToJSON_Bytes(useColName bool) []byte
+
+	ToSQL(db *gorm.DB, tableName string) error
 
 	sortColsByIndex()
 	regenerateColIndex()
