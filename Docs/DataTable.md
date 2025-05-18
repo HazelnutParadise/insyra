@@ -147,6 +147,19 @@ Prints the content of the `DataTable` in a tabular format.
 ##### `ShowTypes()`
 Prints the types of elements in the `DataTable`.
 
+##### `ShowRange(...interface{})`
+Displays the DataTable with a specified range of rows. It accepts various parameter combinations:
+- No parameters: shows all rows
+- Single positive integer (n): shows the first n rows
+- Single negative integer (-n): shows the last n rows
+- Two parameters (start, end): shows rows from index start (inclusive) to index end (exclusive)
+- Two parameters (start, nil): shows rows from index start to the end of the table
+
+Both the start and end parameters can be negative, in which case they represent positions relative to the end of the table.
+
+##### `ShowTypesRange(...interface{})`
+Displays the data types of elements in the DataTable within a specified range of rows. It follows the same parameter rules as `ShowRange`.
+
 ##### `Summary()`
 Displays a comprehensive statistical summary of the DataTable directly to the console, showing descriptive statistics for each column including count, mean, median, min, max, and standard deviation where applicable.
 

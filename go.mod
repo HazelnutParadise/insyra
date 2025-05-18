@@ -45,7 +45,6 @@ require (
 	golang.org/x/image v0.23.0 // indirect
 	golang.org/x/net v0.36.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect
-	golang.org/x/term v0.32.0 // indirect
 	modernc.org/libc v1.22.5 // indirect
 	modernc.org/mathutil v1.5.0 // indirect
 	modernc.org/memory v1.5.0 // indirect
@@ -60,6 +59,7 @@ require (
 	github.com/json-iterator/go v1.1.12
 	github.com/xuri/excelize/v2 v2.9.0
 	golang.org/x/exp v0.0.0-20241217172543-b2144cdd0a67
+	golang.org/x/term v0.32.0
 	gonum.org/v1/gonum v0.15.1
 	gonum.org/v1/plot v0.15.0
 	gorm.io/gorm v1.26.1

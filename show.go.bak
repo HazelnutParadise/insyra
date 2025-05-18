@@ -67,39 +67,51 @@ func (dt *DataTable) ShowRange(startEnd ...interface{}) {
 	colCount := len(dt.columns)
 	// Adjust start and end indices based on input parameters
 	start, end := 0, rowCount
-	if len(startEnd) > 0 {
-		if len(startEnd) == 1 {
+	if len(startEnd) > 0 {		if len(startEnd) == 1 {
+			// 憒??芣?靘????賂?撠閬閬＊蝷箇?銵
 			if countVal, ok := startEnd[0].(int); ok {
+				// 憒??航??賂?銵函內憿舐內?敺?n 銵?
 				if countVal < 0 {
-					start = max(0, rowCount+countVal)
-					end = rowCount
+					start = max(0, rowCount+countVal) // 敺蝚?n 銵?憪?
+					end = rowCount                    // ?唳?敺?銵?
 				} else {
+					// ?嗆?靘迤?賂?銵函內憿舐內??n 銵?
 					start = 0
-					end = min(countVal, rowCount)
+					end = min(countVal, rowCount) // 憿舐內??count 銵?雿?頞?蝮質???
 				}
 			}
 		} else if len(startEnd) >= 2 {
+			// 憒????拙??賂?撠閬韏瑕????揣撘?
 			if startVal, ok := startEnd[0].(int); ok {
 				start = startVal
+				// ??鞎揣撘?
 				if start < 0 {
 					start = rowCount + start
 				}
 			}
-
+			
+			// 瑼Ｘ蝚砌????豢?衣 nil
 			if startEnd[1] == nil {
+				// 憒?蝚砌????豢 nil嚗”蝷粹＊蝷箏?敺?銵?
 				end = rowCount
 			} else if endVal, ok := startEnd[1].(int); ok {
 				end = endVal
+				// ??鞎揣撘?
 				if end < 0 {
+					// 撠鞎揣撘?撠頧??箇撠蝮質??貊?蝝Ｗ?
+					// 蝯曹???鞎揣撘?銝??寞??? -1
 					end = rowCount + end
 				}
 			}
+			}
+
+			// 蝣箔?蝭???
+			if end > rowCount {
+				end = rowCount
+			}
 		}
 
-		if end > rowCount {
-			end = rowCount
-		}
-
+		// 蝣箔?蝭??冽????
 		if start < 0 {
 			start = 0
 		}
@@ -428,37 +440,49 @@ func (dt *DataTable) ShowTypesRange(startEnd ...interface{}) {
 	start, end := 0, rowCount
 	if len(startEnd) > 0 {
 		if len(startEnd) == 1 {
+			// 憒??芣?靘????賂?撠閬閬＊蝷箇?銵
 			if countVal, ok := startEnd[0].(int); ok {
+				// 憒??航??賂?銵函內憿舐內?敺?n 銵?
 				if countVal < 0 {
-					start = max(0, rowCount+countVal)
-					end = rowCount
+					start = max(0, rowCount+countVal) // 敺蝚?n 銵?憪?
+					end = rowCount                    // ?唳?敺?銵?
 				} else {
+					// ?嗆?靘迤?賂?銵函內憿舐內??n 銵?
 					start = 0
-					end = min(countVal, rowCount)
+					end = min(countVal, rowCount) // 憿舐內??count 銵?雿?頞?蝮質???
 				}
 			}
 		} else if len(startEnd) >= 2 {
+			// 憒????拙??賂?撠閬韏瑕????揣撘?
 			if startVal, ok := startEnd[0].(int); ok {
 				start = startVal
+				// ??鞎揣撘?
 				if start < 0 {
 					start = rowCount + start
 				}
 			}
-
+			
+			// 瑼Ｘ蝚砌????豢?衣 nil
 			if startEnd[1] == nil {
+				// 憒?蝚砌????豢 nil嚗”蝷粹＊蝷箏?敺?銵?
 				end = rowCount
 			} else if endVal, ok := startEnd[1].(int); ok {
 				end = endVal
+				// ??鞎揣撘?
 				if end < 0 {
+					// 撠鞎揣撘?撠頧??箇撠蝮質??貊?蝝Ｗ?
+					// 蝯曹???鞎揣撘?銝??寞??? -1
 					end = rowCount + end
 				}
 			}
 		}
 
+		// 蝣箔?蝭???
 		if end > rowCount {
 			end = rowCount
 		}
-
+		
+		// 蝣箔?蝭??冽????
 		if start < 0 {
 			start = 0
 		}
@@ -686,6 +710,210 @@ func (dl *DataList) Show() {
 // Example: dl.ShowRange(2, -1) - shows items from index 2 to the end of the list
 // Example: dl.ShowRange(2, nil) - shows items from index 2 to the end of the list
 func (dl *DataList) ShowRange(startEnd ...interface{}) {
+// Safety check to prevent nil pointer
+if dl == nil {
+fmt.Println("\033[1;31mERROR: Unable to show a nil DataList\033[0m")
+return
+}
+
+dl.mu.Lock()
+defer dl.mu.Unlock()
+
+// Get terminal window width
+width := getDataListTerminalWidth()
+// Generate data title
+dataTitle := "DataList"
+if dl.name != "" {
+dataTitle += ": " + dl.name
+}
+
+// Get total items count
+totalItems := len(dl.data)
+
+// Adjust start and end indices based on input parameters
+start, end := 0, totalItems
+if len(startEnd) > 0 {
+if len(startEnd) == 1 {
+// 處理單個參數的情況
+if countVal, ok := startEnd[0].(int); ok {
+// 如果是負數，表示顯示最後 -count 個項目
+if countVal < 0 {
+start = max(0, totalItems+countVal) // 從倒數第 -count 項開始
+end = totalItems                    // 到最後一項
+} else {
+// 如果是正數，表示顯示前 count 個項目
+start = 0
+end = min(countVal, totalItems) // 顯示前 count 項目，但不超過總數
+}
+}
+} else if len(startEnd) >= 2 {
+// 如果提供兩個參數，將其視為起始和結束索引
+if startVal, ok := startEnd[0].(int); ok {
+start = startVal
+// 處理負索引
+if start < 0 {
+start = totalItems + start
+}
+}
+
+// 檢查第二個參數是否為 nil
+if startEnd[1] == nil {
+// 如果第二個參數是 nil，表示顯示到最後一項
+end = totalItems
+} else if endVal, ok := startEnd[1].(int); ok {
+end = endVal
+// 處理負索引
+if end < 0 {
+// 對於負索引，將其轉換為相對於總行數的索引
+// 統一處理負索引，不再特殊處理 -1
+end = totalItems + end
+}
+}
+}
+
+// 確保範圍有效
+if end > totalItems {
+end = totalItems
+}
+
+// 確保範圍在有效範圍內
+if start < 0 {
+start = 0
+}
+
+if start >= end {
+// Nothing to display if start is greater than or equal to end
+fmt.Printf("\033[1;33m%s\033[0m \033[3;33m(%d items)\033[0m\n", dataTitle, totalItems)
+fmt.Println(strings.Repeat("=", min(width, 80)))
+fmt.Println("\033[2;37m(empty range)\033[0m")
+return
+}
+}
+
+// Display range information in the summary if it's a subset
+rangeInfo := ""
+if start > 0 || end < totalItems {
+rangeInfo = fmt.Sprintf(" [showing items %d to %d]", start, end-1)
+}
+
+dataSummary := fmt.Sprintf("(%d items)%s", totalItems, rangeInfo)
+// Display basic data information - using DataList primary color
+fmt.Printf("\033[1;33m%s\033[0m \033[3;33m%s\033[0m\n", dataTitle, dataSummary)
+fmt.Println(strings.Repeat("=", min(width, 80)))
+
+// Check if DataList is empty
+if totalItems == 0 {
+fmt.Println("\033[2;37m(empty)\033[0m")
+return
+}
+
+// Display basic statistics for the selected range
+showStatistics := true
+if showStatistics && (end-start) > 0 {
+// Create a subset of data for the visible range
+rangeData := make([]any, 0, end-start)
+for i := start; i < end; i++ {
+rangeData = append(rangeData, dl.data[i])
+}
+rangeDl := NewDataList(rangeData...)
+rangeDl.ParseNumbers() // Try to parse as numbers
+
+// Try to calculate statistics for the range
+mean, dlmin, max := rangeDl.Mean(), rangeDl.Min(), rangeDl.Max()
+if !math.IsNaN(mean) && !math.IsNaN(dlmin) && !math.IsNaN(max) { // Using secondary color to display statistics
+statsLabel := "stat"
+if start > 0 || end < totalItems {
+statsLabel = "stat (selected range)"
+}
+fmt.Printf("\033[3;33m %s: mean=%.4g, min=%.4g, max=%.4g, range=%.4g\033[0m\n",
+statsLabel, mean, dlmin, max, max-dlmin)
+if len(rangeData) > 10 {
+fmt.Printf("\033[3;33m      SD=%.4g, median=%.4g\033[0m\n",
+rangeDl.Stdev(), rangeDl.Median())
+}
+fmt.Println(strings.Repeat("-", min(width, 80)))
+}
+}
+
+// Always show in linear format regardless of terminal width
+fmt.Println("\033[1;32mIndex\033[0m  \033[1;32mValue\033[0m")
+fmt.Println(strings.Repeat("-", min(width, 80)))
+// Calculate how many items to display in the range
+selectedItems := end - start
+maxDisplay := 25
+
+// Check if range was explicitly specified
+explicitRangeSpecified := len(startEnd) > 0
+
+// Show all items if either:
+// 1. The selected range is small (less than maxDisplay), or
+// 2. The user explicitly specified a range (even if it's large)
+showAll := selectedItems <= maxDisplay || explicitRangeSpecified
+
+// Display items
+displayCount := selectedItems
+if !showAll {
+displayCount = 20 // Show first 20 items
+}
+
+// Display items with appropriate formatting and colors
+for i := 0; i < displayCount; i++ {
+itemIndex := start + i
+if itemIndex < end {
+value := dl.data[itemIndex]
+strValue := FormatValue(value)
+
+// Color based on value type
+valueColor := "\033[0m" // Default color
+if value == nil {
+valueColor = "\033[2;37m" // Nil value color
+} else {
+switch value.(type) {
+case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+valueColor = "\033[0;34m" // Numeric data color
+case string:
+valueColor = "\033[0;32m" // Text data color
+case bool:
+valueColor = "\033[0;35m" // Purple for boolean values
+}
+}
+
+fmt.Printf("\033[1;37m%-6d\033[0m %s%s\033[0m\n", itemIndex, valueColor, strValue)
+}
+}
+
+// If there are too many items in the range, show ellipsis and the last few items
+if !showAll {
+fmt.Println("\033[1;33m...    ...\033[0m")
+
+// Show last 5 items from the range
+for i := end - 5; i < end; i++ {
+value := dl.data[i]
+strValue := FormatValue(value)
+
+// Color based on value type
+valueColor := "\033[0m" // Default color
+if value == nil {
+valueColor = "\033[2;37m" // Nil value color
+} else {
+switch value.(type) {
+case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+valueColor = "\033[0;34m" // Numeric data color
+case string:
+valueColor = "\033[0;32m" // Text data color
+case bool:
+valueColor = "\033[0;35m" // Purple for boolean values
+}
+}
+
+fmt.Printf("\033[1;37m%-6d\033[0m %s%s\033[0m\n", i, valueColor, strValue)
+}
+
+// Show data summary
+fmt.Printf("\n\033[3;33mDisplaying %d items (from index %d to index %d)\033[0m\n",
+selectedItems, start, end-1)
+}
+}) {
 	// Safety check to prevent nil pointer
 	if dl == nil {
 		fmt.Println("\033[1;31mERROR: Unable to show a nil DataList\033[0m")
@@ -702,53 +930,53 @@ func (dl *DataList) ShowRange(startEnd ...interface{}) {
 	if dl.name != "" {
 		dataTitle += ": " + dl.name
 	}
-
 	// Get total items count
 	totalItems := len(dl.data)
-
 	// Adjust start and end indices based on input parameters
 	start, end := 0, totalItems
 	if len(startEnd) > 0 {
 		if len(startEnd) == 1 {
+			// ???桀??貊???
 			if countVal, ok := startEnd[0].(int); ok {
+				// 憒??航??賂?銵函內憿舐內?敺?-count ????
 				if countVal < 0 {
-					start = max(0, totalItems+countVal)
-					end = totalItems
+					start = max(0, totalItems+countVal) // 敺蝚?-count ??憪?
+					end = totalItems                    // ?唳?敺???
 				} else {
+					// 憒??舀迤?賂?銵函內憿舐內??count ????
 					start = 0
-					end = min(countVal, totalItems)
+					end = min(countVal, totalItems) // 憿舐內??count ?嚗?銝??蜇??
 				}
 			}
 		} else if len(startEnd) >= 2 {
+			// 憒????拙??賂?撠閬韏瑕????揣撘?
 			if startVal, ok := startEnd[0].(int); ok {
 				start = startVal
+				// ??鞎揣撘?
 				if start < 0 {
-					// 對於負索引，將其轉換為相對於總行數的索引
 					start = totalItems + start
 				}
 			}
-
+			
+			// 瑼Ｘ蝚砌????豢?衣 nil
 			if startEnd[1] == nil {
-				// 如果第二個參數是 nil，表示顯示到最後一個元素
+				// 憒?蝚砌????豢 nil嚗”蝷粹＊蝷箏?敺???
 				end = totalItems
 			} else if endVal, ok := startEnd[1].(int); ok {
 				end = endVal
+				// ??鞎揣撘?
 				if end < 0 {
-					// 對於負索引，將其轉換為相對於總行數的索引
+					// 撠鞎揣撘?撠頧??箇撠蝮質??貊?蝝Ｗ?
+					// 蝯曹???鞎揣撘?銝??寞??? -1
 					end = totalItems + end
 				}
 			}
 
+			// 蝣箔?蝭???
 			if end > totalItems {
 				end = totalItems
 			}
 		}
-
-		// 確保起始索引不會小於0（適用於所有情況）
-		if start < 0 {
-			start = 0
-		}
-
 		if start >= end {
 			// Nothing to display if start is greater than or equal to end
 			fmt.Printf("\033[1;33m%s\033[0m \033[3;33m(%d items)\033[0m\n", dataTitle, totalItems)
@@ -911,3 +1139,4 @@ func max(a, b int) int {
 	}
 	return b
 }
+

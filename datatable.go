@@ -61,6 +61,8 @@ type IDataTable interface {
 	Data(useNamesAsKeys ...bool) map[string][]any
 	Show()
 	ShowTypes()
+	ShowRange(startEnd ...any)
+	ShowTypesRange(startEnd ...any)
 	GetRowNameByIndex(index int) string
 	SetRowNameByIndex(index int, name string)
 	GetCreationTimestamp() int64

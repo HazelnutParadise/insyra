@@ -99,6 +99,7 @@ type IDataList interface {
 	IsTheSameAs(*DataList) bool
 
 	Show()
+	ShowRange(startEnd ...any)
 
 	// conversion
 	ParseNumbers() *DataList

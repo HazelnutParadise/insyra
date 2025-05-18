@@ -116,6 +116,15 @@ dl := isr.DL{}.From(1, 2, 3, 4, 5) // modern
 
 * **Show:** Displays the content of DataList in a clean linear format with colored output based on data types. It adapts to terminal width and includes basic statistical information about the data. This method is useful for quick data inspection and shows items in a linear format (not as a table) regardless of terminal width.
 
+* **ShowRange(...interface{}):** Displays the content of DataList within a specified range in a clean linear format. It accepts various parameter combinations:
+  - No parameters: shows all items
+  - Single positive integer (n): shows the first n items
+  - Single negative integer (-n): shows the last n items
+  - Two parameters (start, end): shows items from index start (inclusive) to index end (exclusive)
+  - Two parameters (start, nil): shows items from index start to the end of the list
+
+  Both the start and end parameters can be negative, in which case they represent positions relative to the end of the list.
+
 **Data Comparison:**
 
 * **IsEqualTo:** Checks if the data of the DataList is equal to another DataList. 
