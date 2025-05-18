@@ -368,7 +368,8 @@ func (dt *DataTable) GetCol(index string) *DataList {
 		dl.name = dt.columns[colPos].name
 		return dl
 	}
-	return nil
+	LogWarning("DataTable.GetCol(): Column '%s' not found, returning empty DataList.", index)
+	return NewDataList() // 返回空的 DataList 而不是 nil
 }
 
 func (dt *DataTable) GetColByNumber(index int) *DataList {
@@ -380,8 +381,8 @@ func (dt *DataTable) GetColByNumber(index int) *DataList {
 	}
 
 	if index < 0 || index >= len(dt.columns) {
-		LogWarning("DataTable.GetColByNumber(): Col index is out of range, returning nil.")
-		return nil
+		LogWarning("DataTable.GetColByNumber(): Col index is out of range, returning empty DataList.")
+		return NewDataList() // 返回空的 DataList 而不是 nil
 	}
 
 	// 初始化新的 DataList 並分配 data 切片的大小
@@ -1187,148 +1188,6 @@ func (dt *DataTable) Data(useNamesAsKeys ...bool) map[string][]any {
 	return dataMap
 }
 
-// ======================== Show ========================
-
-func (dt *DataTable) Show() {
-	dt.mu.Lock()
-	defer dt.mu.Unlock()
-
-	// 構建資料地圖，但不使用 Data() 方法以避免死鎖
-	dataMap := make(map[string][]any)
-	for i, col := range dt.columns {
-		key := generateColIndex(i)
-		if col.name != "" {
-			key += fmt.Sprintf("(%s)", col.name)
-		}
-		dataMap[key] = col.data
-	}
-
-	// 取得所有的列索引並排序
-	var colIndices []string
-	for colIndex := range dataMap {
-		colIndices = append(colIndices, colIndex)
-	}
-	sort.Strings(colIndices)
-
-	// 計算每一列的最大寬度
-	colWidths := make(map[string]int)
-	for _, colIndex := range colIndices {
-		colWidths[colIndex] = len(colIndex)
-		for _, value := range dataMap[colIndex] {
-			valueStr := fmt.Sprintf("%v", value)
-			if len(valueStr) > colWidths[colIndex] {
-				colWidths[colIndex] = len(valueStr)
-			}
-		}
-	}
-
-	// 計算 RowNames 的最大寬度，並顯示 RowIndex
-	rowNames := make([]string, dt.getMaxColLength())
-	maxRowNameWidth := len("RowNames")
-	for i := range rowNames {
-		if rowName, exists := dt.getRowNameByIndex(i); exists {
-			rowNames[i] = rowName
-		} else {
-			rowNames[i] = "" // 如果沒有名字則顯示為空
-		}
-		rowNames[i] = fmt.Sprintf("%d: %s", i, rowNames[i]) // 加上 RowIndex
-		if len(rowNames[i]) > maxRowNameWidth {
-			maxRowNameWidth = len(rowNames[i])
-		}
-	}
-
-	// 打印列名
-	fmt.Printf("%-*s", maxRowNameWidth+5, "RowNames") // +2 是為了讓其更清晰
-	for _, colIndex := range colIndices {
-		fmt.Printf("%-*s", colWidths[colIndex]+5, colIndex)
-	}
-	fmt.Println()
-
-	// 打印行資料
-	for rowIndex := 0; rowIndex < dt.getMaxColLength(); rowIndex++ {
-		fmt.Printf("%-*s", maxRowNameWidth+5, rowNames[rowIndex])
-
-		for _, colIndex := range colIndices {
-			value := "nil"
-			if rowIndex < len(dataMap[colIndex]) && dataMap[colIndex][rowIndex] != nil {
-				value = fmt.Sprintf("%v", dataMap[colIndex][rowIndex])
-			}
-			fmt.Printf("%-*s", colWidths[colIndex]+5, value)
-		}
-		fmt.Println()
-	}
-}
-
-func (dt *DataTable) ShowTypes() {
-	dt.mu.Lock()
-	defer dt.mu.Unlock()
-
-	// 構建資料地圖，但不使用 Data() 方法以避免死鎖
-	dataMap := make(map[string][]any)
-	for i, col := range dt.columns {
-		key := generateColIndex(i)
-		if col.name != "" {
-			key += fmt.Sprintf("(%s)", col.name)
-		}
-		dataMap[key] = col.data
-	}
-
-	// 取得所有的列索引並排序
-	var colIndices []string
-	for colIndex := range dataMap {
-		colIndices = append(colIndices, colIndex)
-	}
-	sort.Strings(colIndices)
-
-	// 計算每一列的最大寬度
-	colWidths := make(map[string]int)
-	for _, colIndex := range colIndices {
-		colWidths[colIndex] = len(colIndex)
-		for _, value := range dataMap[colIndex] {
-			valueStr := fmt.Sprintf("%v", value)
-			if len(valueStr) > colWidths[colIndex] {
-				colWidths[colIndex] = len(valueStr)
-			}
-		}
-	}
-
-	// 計算 RowNames 的最大寬度，並顯示 RowIndex
-	rowNames := make([]string, dt.getMaxColLength())
-	maxRowNameWidth := len("RowNames")
-	for i := range rowNames {
-		if rowName, exists := dt.getRowNameByIndex(i); exists {
-			rowNames[i] = rowName
-		} else {
-			rowNames[i] = "" // 如果沒有名字則顯示為空
-		}
-		rowNames[i] = fmt.Sprintf("%d: %s", i, rowNames[i]) // 加上 RowIndex
-		if len(rowNames[i]) > maxRowNameWidth {
-			maxRowNameWidth = len(rowNames[i])
-		}
-	}
-
-	// 打印列名
-	fmt.Printf("%-*s", maxRowNameWidth+2, "RowNames") // +2 是為了讓其更清晰
-	for _, colIndex := range colIndices {
-		fmt.Printf("%-*s", colWidths[colIndex]+8, colIndex)
-	}
-	fmt.Println()
-
-	// 打印行資料
-	for rowIndex := 0; rowIndex < dt.getMaxColLength(); rowIndex++ {
-		fmt.Printf("%-*s", maxRowNameWidth+2, rowNames[rowIndex])
-
-		for _, colIndex := range colIndices {
-			value := "nil"
-			if rowIndex < len(dataMap[colIndex]) && dataMap[colIndex][rowIndex] != nil {
-				value = fmt.Sprintf("%T", dataMap[colIndex][rowIndex])
-			}
-			fmt.Printf("%-*s", colWidths[colIndex]+8, value)
-		}
-		fmt.Println()
-	}
-}
-
 // ======================== RowName ========================
 
 // GetRowNameByIndex returns the name of the row at the given index.
@@ -1475,7 +1334,7 @@ func (dt *DataTable) getMaxColLength() int {
 
 func (dt *DataTable) regenerateColIndex() {
 	dt.columnIndex = make(map[string]int)
-	for i, _ := range dt.columns {
+	for i := range dt.columns {
 		dt.columnIndex[generateColIndex(i)] = i
 	}
 }

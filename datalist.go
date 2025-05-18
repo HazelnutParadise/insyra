@@ -470,6 +470,7 @@ func (dl *DataList) DropAll(toDrop ...any) *DataList {
 	chunkSize := length / numGoroutines
 	if length%numGoroutines != 0 {
 		chunkSize++
+
 	}
 
 	// 儲存所有的 Awaitable

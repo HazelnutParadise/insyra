@@ -2,8 +2,11 @@ package insyra
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"reflect"
+	"strings"
+	"time"
 
 	"github.com/HazelnutParadise/Go-Utils/conv"
 )
@@ -235,4 +238,118 @@ func ConvertLongDataToWide(data, factor IDataList, independents []IDataList, agg
 	wideTable.columns[len(independents)].name = data.GetName()
 
 	return wideTable
+}
+
+// TruncateString 截斷字符串到指定長度，太長的字符串末尾加上省略號
+// 公共函數版本，可以被其他包或文件使用
+func TruncateString(s string, maxLength int) string {
+	if len(s) <= maxLength {
+		return s
+	}
+	if maxLength <= 3 {
+		return s[:maxLength]
+	}
+	return s[:maxLength-3] + "..."
+}
+
+// FormatValue 根據值的類型格式化輸出，改善顯示效果
+func FormatValue(value any) string {
+	if value == nil {
+		return "nil"
+	}
+
+	switch v := value.(type) {
+	case float64:
+		// 處理特殊浮點數
+		if math.IsNaN(v) {
+			return "NaN"
+		}
+		if math.IsInf(v, 1) {
+			return "+Inf"
+		}
+		if math.IsInf(v, -1) {
+			return "-Inf"
+		}
+
+		// 針對整數值的浮點數使用整數格式
+		if v == float64(int(v)) {
+			return fmt.Sprintf("%d", int(v))
+		}
+
+		// 根據大小動態調整小數位數
+		if math.Abs(v) < 0.0001 || math.Abs(v) >= 10000 {
+			return fmt.Sprintf("%.4e", v) // 科學計數法
+		}
+
+		// 顯示數字，但不顯示尾部的零
+		s := fmt.Sprintf("%.4f", v)
+		s = strings.TrimRight(s, "0")
+		return strings.TrimRight(s, ".")
+
+	case float32:
+		return FormatValue(float64(v))
+
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+		return fmt.Sprintf("%d", v)
+
+	case bool:
+		if v {
+			return "true"
+		}
+		return "false"
+
+	case string:
+		// 如果是多行字符串，只顯示第一行
+		if strings.Contains(v, "\n") {
+			lines := strings.Split(v, "\n")
+			return lines[0] + "..."
+		}
+		return v
+
+	case []byte:
+		if len(v) > 20 {
+			return fmt.Sprintf("%x... (%d bytes)", v[:10], len(v))
+		}
+		return fmt.Sprintf("%x", v)
+
+	case time.Time:
+		return v.Format("2006-01-02 15:04:05")
+
+	default:
+		// 檢測是否是數組或切片類型
+		rv := reflect.ValueOf(value)
+		kind := rv.Kind()
+
+		if kind == reflect.Slice || kind == reflect.Array {
+			length := rv.Len()
+			if length == 0 {
+				return "[]"
+			}
+			if length > 3 {
+				return fmt.Sprintf("[%v, %v, ... +%d]",
+					rv.Index(0).Interface(),
+					rv.Index(1).Interface(),
+					length-2)
+			}
+			return fmt.Sprintf("%v", value)
+		}
+
+		// 檢測是否是 map 類型
+		if kind == reflect.Map {
+			size := rv.Len()
+			if size == 0 {
+				return "{}"
+			}
+			return fmt.Sprintf("{...%d keys}", size)
+		}
+
+		// 檢測是否是結構體
+		if kind == reflect.Struct {
+			typeName := reflect.TypeOf(value).String()
+			return fmt.Sprintf("<%s>", typeName)
+		}
+
+		// 其他類型使用默認格式化
+		return fmt.Sprintf("%v", value)
+	}
 }
