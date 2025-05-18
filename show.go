@@ -17,8 +17,7 @@ import (
 func (dt *DataTable) Show() {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
-
-	// 構建資料地圖，但不使用 Data() 方法以避免死鎖
+	// Build data map without using Data() method to avoid deadlock
 	dataMap := make(map[string][]any)
 	for i, col := range dt.columns {
 		key := generateColIndex(i)
@@ -28,33 +27,34 @@ func (dt *DataTable) Show() {
 		dataMap[key] = col.data
 	}
 
-	// 取得所有的列索引並排序
+	// Get all column indices and sort them
 	var colIndices []string
 	for colIndex := range dataMap {
 		colIndices = append(colIndices, colIndex)
 	}
 	sort.Strings(colIndices)
 
-	// 獲取終端視窗寬度
+	// Get terminal window width
 	width := getTerminalWidth()
-	// 生成資料表標題
+	// Generate table title
 	tableTitle := "DataTable"
-
-	// 在同一個鎖內獲取行數和列數，避免再次調用 Size() 導致死鎖
+	if dt.name != "" {
+		tableTitle += ": " + dt.name
+	}
+	// Get row and column counts inside the same lock to avoid deadlock with Size()
 	rowCount := dt.getMaxColLength()
 	colCount := len(dt.columns)
 	tableSummary := fmt.Sprintf("(%d rows x %d columns)", rowCount, colCount)
-
-	// 資料表基本信息的顯示 - 青色是 DataTable 的主要顏色
-	fmt.Printf("\033[1;36m%s\033[0m %s\n", tableTitle, tableSummary)
+	// Display table basic info - using DataTable primary color
+	fmt.Printf("\033[1;36m%s\033[0m \033[3;36m%s\033[0m\n", tableTitle, tableSummary)
 	fmt.Println(strings.Repeat("=", min(width, 80)))
 
-	// 資料表為空的處理
+	// Handle empty table
 	if rowCount == 0 || colCount == 0 {
-		fmt.Println("\033[3;33m(empty)\033[0m")
+		fmt.Println("\033[2;37m(empty)\033[0m")
 		return
 	}
-	// 計算每一列的最大寬度
+	// Calculate the maximum width for each column
 	colWidths := make(map[string]int)
 	for _, colIndex := range colIndices {
 		colWidths[colIndex] = len(colIndex)
@@ -64,69 +64,69 @@ func (dt *DataTable) Show() {
 				colWidths[colIndex] = len(valueStr)
 			}
 		}
-		// 限制列寬度不超過特定值
+		// Limit column width to a specific value
 		if colWidths[colIndex] > 30 {
 			colWidths[colIndex] = 30
 		}
 	}
 
-	// 計算 RowNames 的最大寬度，並顯示 RowIndex
+	// Calculate the maximum width of RowNames and display RowIndex
 	rowNames := make([]string, dt.getMaxColLength())
 	maxRowNameWidth := len("RowNames")
 	for i := range rowNames {
 		if rowName, exists := dt.getRowNameByIndex(i); exists {
 			rowNames[i] = rowName
 		} else {
-			rowNames[i] = "" // 如果沒有名字則顯示為空
+			rowNames[i] = "" // Display empty if no name
 		}
-		rowNames[i] = fmt.Sprintf("%d: %s", i, rowNames[i]) // 加上 RowIndex
+		rowNames[i] = fmt.Sprintf("%d: %s", i, rowNames[i]) // Add RowIndex
 		if len(rowNames[i]) > maxRowNameWidth {
 			maxRowNameWidth = len(rowNames[i])
 		}
 	}
 
-	// 限制行名寬度不超過特定值
+	// Limit row name width to a specific value
 	if maxRowNameWidth > 25 {
 		maxRowNameWidth = 25
 	}
-	// 嘗試顯示一些基本統計資訊
+	// Try to display some basic statistics
 	if rowCount > 0 && colCount > 0 {
-		// 為每一列顯示基本統計資訊
+		// Display basic statistics for each column
 		hasNumbers := false
 		statsInfo := "\033[3;36m stat: "
 
-		for _, colIndex := range colIndices[:min(3, len(colIndices))] { // 只顯示前三列的統計資訊
-			// 嘗試將列轉換為數值以計算統計數據
+		for _, colIndex := range colIndices[:min(3, len(colIndices))] { // Only show statistics for the first three columns
+			// Try to convert columns to numbers for statistical calculations
 			dl := NewDataList(dataMap[colIndex])
-			dl.ParseNumbers() // 嘗試解析為數字
+			dl.ParseNumbers() // Try to parse as numbers
 
 			mean, colMin, colMax := dl.Mean(), dl.Min(), dl.Max()
 			if !math.IsNaN(mean) && !math.IsNaN(colMin) && !math.IsNaN(colMax) {
 				hasNumbers = true
-				shortColName := strings.Split(colIndex, "(")[0] // 僅使用簡短的列名
+				shortColName := strings.Split(colIndex, "(")[0] // Only use short column name
 				statsInfo += fmt.Sprintf("%s(mean=%.4g, range=[%.4g, %.4g]) ",
 					shortColName, mean, colMin, colMax)
 			}
 		}
 
 		if hasNumbers {
-			// 如果有數值型列，則顯示統計資訊
+			// If there are numeric columns, display statistics
 			statsInfo += "\033[0m"
 			fmt.Println(statsInfo)
 			fmt.Println(strings.Repeat("-", min(width, 80)))
 		}
 	}
 
-	// 根據當前視窗寬度動態調整要顯示的列數
+	// Dynamically adjust the number of columns to display based on current window width
 	totalColsToShow := determineColumnsToShow(colIndices, colWidths, maxRowNameWidth, width)
 
-	// 如果列數超過可顯示範圍，分頁顯示
+	// If columns exceed display range, paginate display
 	pageSize := totalColsToShow
 	if pageSize <= 0 {
-		pageSize = 1 // 至少顯示一列
+		pageSize = 1 // Display at least one column
 	}
 
-	// 計算需要多少頁
+	// Calculate how many pages are needed
 	totalPages := (len(colIndices) + pageSize - 1) / pageSize
 
 	for page := 0; page < totalPages; page++ {
@@ -139,67 +139,63 @@ func (dt *DataTable) Show() {
 		currentPageCols := colIndices[start:end]
 
 		if page > 0 {
-			fmt.Println("\n\033[1;35m--- 繼續顯示 ---\033[0m")
+			fmt.Println("\n\033[1;35m--- Continue Display ---\033[0m")
 		}
-
 		if totalPages > 1 {
-			pageInfo := fmt.Sprintf("--- 頁數 %d/%d ---", page+1, totalPages)
-			fmt.Printf("\033[1;33m%s\033[0m\n", pageInfo)
+			pageInfo := fmt.Sprintf("--- Page %d/%d ---", page+1, totalPages)
+			fmt.Printf("\033[1;36m%s\033[0m\n", pageInfo)
 
-			// 顯示頁面導航提示
+			// Display page navigation prompt
 			if page > 0 && page < totalPages-1 {
-				fmt.Println("(查看更多請滾動屏幕)")
+				fmt.Println("(Scroll screen to see more)")
 			}
 		}
-		// 打印列名
+		// Print column names - using header text color
 		fmt.Printf("\033[1;32m%-*s\033[0m", maxRowNameWidth+2, "RowNames")
 		for _, colIndex := range currentPageCols {
 			fmt.Printf(" \033[1;32m%-*s\033[0m", colWidths[colIndex]+1, TruncateString(colIndex, colWidths[colIndex]))
 		}
 		fmt.Println()
 
-		// 打印分隔線
+		// Print separator
 		printSeparator(maxRowNameWidth+2, currentPageCols, colWidths)
 
-		// 打印行資料
+		// Print row data
 		rowCount := dt.getMaxColLength()
-		// 如果行數太多，只顯示前 20 行，中間省略，再顯示後 5 行
+		// If there are too many rows, only show the first 20 rows, ellipsis in the middle, then the last 5 rows
 		if rowCount > 25 {
-			// 顯示前 20 行
-			printRowsColored(dataMap, 0, 20, rowNames, maxRowNameWidth, currentPageCols, colWidths)
-
-			// 顯示省略號
-			fmt.Printf("\033[1;33m%-*s\033[0m", maxRowNameWidth+2, "...")
+			// Show first 20 rows
+			printRowsColored(dataMap, 0, 20, rowNames, maxRowNameWidth, currentPageCols, colWidths) // Show ellipsis
+			fmt.Printf("\033[1;36m%-*s\033[0m", maxRowNameWidth+2, "...")
 			for range currentPageCols {
-				fmt.Printf(" \033[1;33m%-*s\033[0m", colWidths[currentPageCols[0]]+1, "...")
+				fmt.Printf(" \033[1;36m%-*s\033[0m", colWidths[currentPageCols[0]]+1, "...")
 			}
 			fmt.Println()
 
-			// 顯示後 5 行
+			// Show last 5 rows
 			printRowsColored(dataMap, rowCount-5, rowCount, rowNames, maxRowNameWidth, currentPageCols, colWidths)
-
-			// 顯示資料摘要
-			fmt.Printf("\n\033[3;36m共 %d 行資料，顯示了前 20 行和後 5 行\033[0m\n", rowCount)
+			// Show data summary - using secondary color
+			fmt.Printf("\n\033[3;36mTotal %d rows of data, showing first 20 and last 5\033[0m\n", rowCount)
 		} else {
-			// 行數不多，全部顯示
+			// Not many rows, show all
 			printRowsColored(dataMap, 0, rowCount, rowNames, maxRowNameWidth, currentPageCols, colWidths)
 		}
 
-		// 如果是多頁，顯示页尾分隔线
+		// If multiple pages, show footer separator
 		if totalPages > 1 {
 			fmt.Println(strings.Repeat("-", min(width, 80)))
 		}
 	}
 }
 
-// 打印指定範圍的行（帶顏色）
+// Print specified range of rows (with color)
 func printRowsColored(dataMap map[string][]any, start, end int, rowNames []string, maxRowNameWidth int, colIndices []string, colWidths map[string]int) {
 	for rowIndex := start; rowIndex < end; rowIndex++ {
 		rowName := ""
 		if rowIndex < len(rowNames) {
 			rowName = rowNames[rowIndex]
 		}
-		// 使用淺灰色顯示行名
+		// Use row name color
 		fmt.Printf("\033[1;37m%-*s\033[0m", maxRowNameWidth+2, TruncateString(rowName, maxRowNameWidth))
 
 		for _, colIndex := range colIndices {
@@ -212,20 +208,20 @@ func printRowsColored(dataMap map[string][]any, start, end int, rowNames []strin
 				}
 			}
 
-			// 根據值的類型使用不同的顏色
-			valueColor := "\033[0m" // 默認顏色
+			// Use different colors based on value type
+			valueColor := "\033[0m" // Default color
 
-			// 如果是空值，使用灰色
+			// If value is nil, use gray
 			if rawValue == nil {
-				valueColor = "\033[2;37m" // 灰色
+				valueColor = "\033[2;37m" // Nil value color
 			} else {
 				switch rawValue.(type) {
 				case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
-					valueColor = "\033[0;34m" // 藍色表示數字
+					valueColor = "\033[0;34m" // Numeric data color
 				case string:
-					valueColor = "\033[0;32m" // 綠色表示字符串
+					valueColor = "\033[0;32m" // Text data color
 				case bool:
-					valueColor = "\033[0;35m" // 紫色表示布爾值
+					valueColor = "\033[0;35m" // Purple for boolean values
 				}
 			}
 
@@ -235,7 +231,7 @@ func printRowsColored(dataMap map[string][]any, start, end int, rowNames []strin
 	}
 }
 
-// 打印分隔線
+// Print separator
 func printSeparator(rowNameWidth int, colIndices []string, colWidths map[string]int) {
 	fmt.Print(strings.Repeat("-", rowNameWidth))
 	for _, colIndex := range colIndices {
@@ -244,11 +240,11 @@ func printSeparator(rowNameWidth int, colIndices []string, colWidths map[string]
 	fmt.Println()
 }
 
-// 獲取終端視窗寬度
+// Get terminal window width
 func getTerminalWidth() int {
-	width := 80 // 默認寬度
+	width := 80 // Default width
 
-	// 嘗試獲取終端視窗大小
+	// Try to get terminal window size
 	fd := int(os.Stdout.Fd())
 	if w, _, err := term.GetSize(fd); err == nil && w > 0 {
 		width = w
@@ -257,20 +253,20 @@ func getTerminalWidth() int {
 	return width
 }
 
-// 根據終端寬度決定顯示的列數
+// Determine the number of columns to display based on terminal width
 func determineColumnsToShow(colIndices []string, colWidths map[string]int, rowNameWidth, terminalWidth int) int {
-	availableWidth := terminalWidth - rowNameWidth - 2 // 減去 RowNames 列和邊距
+	availableWidth := terminalWidth - rowNameWidth - 2 // Subtract RowNames column and margins
 
 	if availableWidth <= 0 {
 		return 0
 	}
 
-	// 計算每列需要的寬度（包括間距）
+	// Calculate the width required for each column (including spacing)
 	var columnsToShow int
 	usedWidth := 0
 
 	for i, colIndex := range colIndices {
-		colWidth := colWidths[colIndex] + 2 // 加上間距
+		colWidth := colWidths[colIndex] + 2 // Add spacing
 		if usedWidth+colWidth <= availableWidth {
 			usedWidth += colWidth
 			columnsToShow = i + 1
@@ -286,7 +282,7 @@ func (dt *DataTable) ShowTypes() {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
 
-	// 構建資料地圖，但不使用 Data() 方法以避免死鎖
+	// Build data map without using Data() method to avoid deadlock
 	dataMap := make(map[string][]any)
 	for i, col := range dt.columns {
 		key := generateColIndex(i)
@@ -296,36 +292,33 @@ func (dt *DataTable) ShowTypes() {
 		dataMap[key] = col.data
 	}
 
-	// 取得所有的列索引並排序
+	// Get all column indices and sort them
 	var colIndices []string
 	for colIndex := range dataMap {
 		colIndices = append(colIndices, colIndex)
 	}
 	sort.Strings(colIndices)
-
-	// 獲取終端視窗寬度
+	// Get terminal window width
 	width := getTerminalWidth()
-	// 生成資料表標題
-	tableTitle := "DataTable 類型資訊"
+	// Generate table title
+	tableTitle := "DataTable Type Info"
 	if len(dt.columns) > 0 && dt.columns[0].name != "" {
 		tableTitle += ": " + dt.columns[0].name
 	}
 
-	// 在同一個鎖內獲取行數和列數，避免再次調用 Size() 導致死鎖
+	// Get row and column counts inside the same lock to avoid deadlock with Size()
 	rowCount := dt.getMaxColLength()
 	colCount := len(dt.columns)
-	tableSummary := fmt.Sprintf("(%d 行 x %d 列)", rowCount, colCount)
-
-	// 資料表基本信息的顯示
-	fmt.Printf("\033[1;36m%s\033[0m %s\n", tableTitle, tableSummary)
+	tableSummary := fmt.Sprintf("(%d rows x %d columns)", rowCount, colCount)
+	// Display table basic info
+	fmt.Printf("\033[1;36m%s\033[0m \033[3;36m%s\033[0m\n", tableTitle, tableSummary)
 	fmt.Println(strings.Repeat("=", min(width, 80)))
-
-	// 如果 DataTable 為空，顯示一個消息
+	// Handle empty table
 	if rowCount == 0 || colCount == 0 {
-		fmt.Println("\033[3;33m(空表)\033[0m")
+		fmt.Println("\033[3;36m(empty)\033[0m")
 		return
 	}
-	// 計算每一列的最大寬度
+	// Calculate the maximum width for each column
 	colWidths := make(map[string]int)
 	for _, colIndex := range colIndices {
 		colWidths[colIndex] = len(colIndex)
@@ -335,42 +328,42 @@ func (dt *DataTable) ShowTypes() {
 				colWidths[colIndex] = len(valueStr)
 			}
 		}
-		// 限制列寬度不超過特定值
+		// Limit column width to a specific value
 		if colWidths[colIndex] > 25 {
 			colWidths[colIndex] = 25
 		}
 	}
 
-	// 計算 RowNames 的最大寬度，並顯示 RowIndex
+	// Calculate the maximum width of RowNames and display RowIndex
 	rowNames := make([]string, dt.getMaxColLength())
 	maxRowNameWidth := len("RowNames")
 	for i := range rowNames {
 		if rowName, exists := dt.getRowNameByIndex(i); exists {
 			rowNames[i] = rowName
 		} else {
-			rowNames[i] = "" // 如果沒有名字則顯示為空
+			rowNames[i] = "" // Display empty if no name
 		}
-		rowNames[i] = fmt.Sprintf("%d: %s", i, rowNames[i]) // 加上 RowIndex
+		rowNames[i] = fmt.Sprintf("%d: %s", i, rowNames[i]) // Add RowIndex
 		if len(rowNames[i]) > maxRowNameWidth {
 			maxRowNameWidth = len(rowNames[i])
 		}
 	}
 
-	// 限制行名寬度不超過特定值
+	// Limit row name width to a specific value
 	if maxRowNameWidth > 25 {
 		maxRowNameWidth = 25
 	}
 
-	// 根據當前視窗寬度動態調整要顯示的列數
+	// Dynamically adjust the number of columns to display based on current window width
 	totalColsToShow := determineColumnsToShow(colIndices, colWidths, maxRowNameWidth, width)
 
-	// 如果列數超過可顯示範圍，分頁顯示
+	// If columns exceed display range, paginate display
 	pageSize := totalColsToShow
 	if pageSize <= 0 {
-		pageSize = 1 // 至少顯示一列
+		pageSize = 1 // Display at least one column
 	}
 
-	// 計算需要多少頁
+	// Calculate how many pages are needed
 	totalPages := (len(colIndices) + pageSize - 1) / pageSize
 
 	for page := 0; page < totalPages; page++ {
@@ -383,66 +376,67 @@ func (dt *DataTable) ShowTypes() {
 		currentPageCols := colIndices[start:end]
 
 		if page > 0 {
-			fmt.Println("\n\033[1;35m--- 繼續顯示類型 ---\033[0m")
+			fmt.Println("\n\033[1;35m--- Continue Type Display ---\033[0m")
 		}
-
 		if totalPages > 1 {
-			pageInfo := fmt.Sprintf("--- 類型頁數 %d/%d ---", page+1, totalPages)
-			fmt.Printf("\033[1;33m%s\033[0m\n", pageInfo)
+			pageInfo := fmt.Sprintf("--- Type Page %d/%d ---", page+1, totalPages)
+			fmt.Printf("\033[1;36m%s\033[0m\n", pageInfo)
 
-			// 顯示頁面導航提示
+			// Display page navigation prompt
 			if page > 0 && page < totalPages-1 {
-				fmt.Println("(查看更多請滾動屏幕)")
+				fmt.Println("(Scroll screen to see more)")
 			}
 		}
 
-		// 打印列名
+		// Print column names
 		fmt.Printf("\033[1;32m%-*s\033[0m", maxRowNameWidth+2, "RowNames")
 		for _, colIndex := range currentPageCols {
 			fmt.Printf(" \033[1;32m%-*s\033[0m", colWidths[colIndex]+1, TruncateString(colIndex, colWidths[colIndex]))
 		}
 		fmt.Println()
 
-		// 打印分隔線
+		// Print separator
 		printSeparator(maxRowNameWidth+2, currentPageCols, colWidths)
 
-		// 打印行資料
+		// Print row data
 		rowCount := dt.getMaxColLength()
-		// 如果行數太多，只顯示前 20 行，中間省略，再顯示後 5 行
+		// If there are too many rows, only show the first 20 rows, ellipsis in the middle, then the last 5 rows
 		if rowCount > 25 {
-			// 顯示前 20 行
-			printTypeRows(dataMap, 0, 20, rowNames, maxRowNameWidth, currentPageCols, colWidths) // 顯示省略號
-			fmt.Printf("\033[1;33m%-*s\033[0m", maxRowNameWidth+2, "...")
+			// Show first 20 rows
+			printTypeRows(dataMap, 0, 20, rowNames, maxRowNameWidth, currentPageCols, colWidths)
+
+			// Show ellipsis
+			fmt.Printf("\033[1;36m%-*s\033[0m", maxRowNameWidth+2, "...")
 			for range currentPageCols {
-				fmt.Printf(" \033[1;33m%-*s\033[0m", colWidths[currentPageCols[0]]+1, "...")
+				fmt.Printf(" \033[1;36m%-*s\033[0m", colWidths[currentPageCols[0]]+1, "...")
 			}
 			fmt.Println()
 
-			// 顯示後 5 行
+			// Show last 5 rows
 			printTypeRows(dataMap, rowCount-5, rowCount, rowNames, maxRowNameWidth, currentPageCols, colWidths)
 
-			// 顯示資料摘要
-			fmt.Printf("\n\033[3;36m共 %d 行資料，顯示了前 20 行和後 5 行\033[0m\n", rowCount)
+			// Show data summary
+			fmt.Printf("\n\033[3;36mTotal %d rows of data, showing first 20 and last 5\033[0m\n", rowCount)
 		} else {
-			// 行數不多，全部顯示
+			// Not many rows, show all
 			printTypeRows(dataMap, 0, rowCount, rowNames, maxRowNameWidth, currentPageCols, colWidths)
 		}
 
-		// 如果是多頁，顯示页尾分隔线
+		// If multiple pages, show footer separator
 		if totalPages > 1 {
 			fmt.Println(strings.Repeat("-", min(width, 80)))
 		}
 	}
 }
 
-// 打印指定範圍的行（類型信息）
+// Print specified range of rows (type information)
 func printTypeRows(dataMap map[string][]any, start, end int, rowNames []string, maxRowNameWidth int, colIndices []string, colWidths map[string]int) {
 	for rowIndex := start; rowIndex < end; rowIndex++ {
 		rowName := ""
 		if rowIndex < len(rowNames) {
 			rowName = rowNames[rowIndex]
 		}
-		// 使用淺灰色顯示行名
+		// Use light gray color for row names
 		fmt.Printf("\033[1;37m%-*s\033[0m", maxRowNameWidth+2, TruncateString(rowName, maxRowNameWidth))
 
 		for _, colIndex := range colIndices {
@@ -451,11 +445,11 @@ func printTypeRows(dataMap map[string][]any, start, end int, rowNames []string, 
 
 			if rowIndex < len(dataMap[colIndex]) && dataMap[colIndex][rowIndex] != nil {
 				rawValue := dataMap[colIndex][rowIndex]
-				// 獲取更豐富的類型信息
+				// Get richer type information
 				typeName = reflect.TypeOf(rawValue).String()
 				value = typeName
 
-				// 對於特殊類型添加額外信息
+				// Add extra information for special types
 				switch v := rawValue.(type) {
 				case []any:
 					value = fmt.Sprintf("[]any(len=%d)", len(v))
@@ -468,22 +462,22 @@ func printTypeRows(dataMap map[string][]any, start, end int, rowNames []string, 
 				}
 			}
 
-			// 根據類型使用不同的顏色
-			typeColor := "\033[0m" // 默認顏色
+			// Use different colors based on type
+			typeColor := "\033[0m" // Default color
 
-			// 使用不同顏色區分不同類型
+			// Use different colors to distinguish types
 			if value == "nil" {
-				typeColor = "\033[2;37m" // 淺灰色
+				typeColor = "\033[2;37m" // Light gray
 			} else if strings.Contains(value, "int") || strings.Contains(value, "float") {
-				typeColor = "\033[0;34m" // 藍色表示數字類型
+				typeColor = "\033[0;34m" // Blue for numeric types
 			} else if strings.Contains(value, "string") {
-				typeColor = "\033[0;32m" // 綠色表示字符串
+				typeColor = "\033[0;32m" // Green for strings
 			} else if strings.Contains(value, "bool") {
-				typeColor = "\033[0;35m" // 紫色表示布爾值
+				typeColor = "\033[0;35m" // Purple for booleans
 			} else if strings.Contains(value, "map") || strings.Contains(value, "struct") {
-				typeColor = "\033[0;33m" // 黃色表示複雜類型
+				typeColor = "\033[0;33m" // Yellow for complex types
 			} else if strings.Contains(value, "slice") || strings.Contains(value, "array") || strings.Contains(value, "[]") {
-				typeColor = "\033[0;36m" // 青色表示陣列或切片
+				typeColor = "\033[0;36m" // Cyan for arrays or slices
 			}
 
 			fmt.Printf(" %s%-*s\033[0m", typeColor, colWidths[colIndex]+1, TruncateString(value, colWidths[colIndex]))
@@ -513,20 +507,19 @@ func (dl *DataList) Show() {
 
 	// Get terminal window width
 	width := getDataListTerminalWidth()
-
 	// Generate data title
 	dataTitle := "DataList"
 	if dl.name != "" {
 		dataTitle += ": " + dl.name
 	}
 	dataSummary := fmt.Sprintf("(%d items)", len(dl.data))
-	// Display basic data information - 使用橘色作為 DataList 的主要顏色
-	fmt.Printf("\033[1;33m%s\033[0m %s\n", dataTitle, dataSummary)
+	// Display basic data information - using DataList primary color
+	fmt.Printf("\033[1;33m%s\033[0m \033[3;33m%s\033[0m\n", dataTitle, dataSummary)
 	fmt.Println(strings.Repeat("=", min(width, 80)))
 
 	// Check if DataList is empty
 	if len(dl.data) == 0 {
-		fmt.Println("\033[3;33m(empty)\033[0m")
+		fmt.Println("\033[2;37m(empty)\033[0m")
 		return
 	}
 	// Display basic statistics
@@ -534,8 +527,7 @@ func (dl *DataList) Show() {
 	if showStatistics {
 		// Try to calculate statistics
 		mean, dlmin, max := dl.Mean(), dl.Min(), dl.Max()
-		if !math.IsNaN(mean) && !math.IsNaN(dlmin) && !math.IsNaN(max) {
-			// 使用橘色作為統計資訊的顏色
+		if !math.IsNaN(mean) && !math.IsNaN(dlmin) && !math.IsNaN(max) { // Using secondary color to display statistics
 			fmt.Printf("\033[3;33m stat: mean=%.4g, min=%.4g, max=%.4g, range=%.4g\033[0m\n",
 				mean, dlmin, max, max-dlmin)
 			if len(dl.data) > 10 {
@@ -546,7 +538,7 @@ func (dl *DataList) Show() {
 		}
 	}
 	// Always show in linear format regardless of terminal width
-	fmt.Println("\033[1;33mIndex  Value\033[0m")
+	fmt.Println("\033[1;32mIndex\033[0m  \033[1;32mValue\033[0m")
 	fmt.Println(strings.Repeat("-", min(width, 80)))
 
 	// Calculate how many items to display
@@ -569,15 +561,15 @@ func (dl *DataList) Show() {
 			// Color based on value type
 			valueColor := "\033[0m" // Default color
 			if value == nil {
-				valueColor = "\033[2;37m" // Gray for nil
+				valueColor = "\033[2;37m" // Nil value color
 			} else {
 				switch value.(type) {
 				case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
-					valueColor = "\033[0;34m" // Blue for numbers
+					valueColor = "\033[0;34m" // Numeric data color
 				case string:
-					valueColor = "\033[0;32m" // Green for strings
+					valueColor = "\033[0;32m" // Text data color
 				case bool:
-					valueColor = "\033[0;35m" // Purple for booleans
+					valueColor = "\033[0;35m" // Purple for boolean values
 				}
 			}
 
@@ -597,20 +589,21 @@ func (dl *DataList) Show() {
 			// Color based on value type
 			valueColor := "\033[0m" // Default color
 			if value == nil {
-				valueColor = "\033[2;37m" // Gray for nil
+				valueColor = "\033[2;37m" // Nil value color
 			} else {
 				switch value.(type) {
 				case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
-					valueColor = "\033[0;34m" // Blue for numbers
+					valueColor = "\033[0;34m" // Numeric data color
 				case string:
-					valueColor = "\033[0;32m" // Green for strings
+					valueColor = "\033[0;32m" // Text data color
 				case bool:
-					valueColor = "\033[0;35m" // Purple for booleans
+					valueColor = "\033[0;35m" // Purple for boolean values
 				}
 			}
 
 			fmt.Printf("\033[1;37m%-6d\033[0m %s%s\033[0m\n", i, valueColor, strValue)
 		}
+
 		// Show data summary
 		fmt.Printf("\n\033[3;33mTotal %d items, showing first 20 and last 5\033[0m\n", totalItems)
 	}
@@ -632,6 +625,14 @@ func getDataListTerminalWidth() int {
 // min returns the smaller of two integers
 func min(a, b int) int {
 	if a < b {
+		return a
+	}
+	return b
+}
+
+// max returns the larger of two integers
+func max(a, b int) int {
+	if a > b {
 		return a
 	}
 	return b
