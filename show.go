@@ -520,9 +520,8 @@ func (dl *DataList) Show() {
 		dataTitle += ": " + dl.name
 	}
 	dataSummary := fmt.Sprintf("(%d items)", len(dl.data))
-
-	// Display basic data information - 使用洋紅色作為 DataList 的主要顏色
-	fmt.Printf("\033[1;35m%s\033[0m %s\n", dataTitle, dataSummary)
+	// Display basic data information - 使用橘色作為 DataList 的主要顏色
+	fmt.Printf("\033[1;33m%s\033[0m %s\n", dataTitle, dataSummary)
 	fmt.Println(strings.Repeat("=", min(width, 80)))
 
 	// Check if DataList is empty
@@ -530,25 +529,24 @@ func (dl *DataList) Show() {
 		fmt.Println("\033[3;33m(empty)\033[0m")
 		return
 	}
-
 	// Display basic statistics
 	showStatistics := true
 	if showStatistics {
 		// Try to calculate statistics
 		mean, dlmin, max := dl.Mean(), dl.Min(), dl.Max()
 		if !math.IsNaN(mean) && !math.IsNaN(dlmin) && !math.IsNaN(max) {
-			// 使用洋紅色調作為統計資訊的顏色
-			fmt.Printf("\033[3;35m stat: mean=%.4g, min=%.4g, max=%.4g, range=%.4g\033[0m\n",
+			// 使用橘色作為統計資訊的顏色
+			fmt.Printf("\033[3;33m stat: mean=%.4g, min=%.4g, max=%.4g, range=%.4g\033[0m\n",
 				mean, dlmin, max, max-dlmin)
 			if len(dl.data) > 10 {
-				fmt.Printf("\033[3;35m      SD=%.4g, median=%.4g\033[0m\n",
+				fmt.Printf("\033[3;33m      SD=%.4g, median=%.4g\033[0m\n",
 					dl.Stdev(), dl.Median())
 			}
 			fmt.Println(strings.Repeat("-", min(width, 80)))
 		}
 	}
 	// Always show in linear format regardless of terminal width
-	fmt.Println("\033[1;35mIndex  Value\033[0m")
+	fmt.Println("\033[1;33mIndex  Value\033[0m")
 	fmt.Println(strings.Repeat("-", min(width, 80)))
 
 	// Calculate how many items to display
@@ -613,9 +611,8 @@ func (dl *DataList) Show() {
 
 			fmt.Printf("\033[1;37m%-6d\033[0m %s%s\033[0m\n", i, valueColor, strValue)
 		}
-
 		// Show data summary
-		fmt.Printf("\n\033[3;36mTotal %d items, showing first 20 and last 5\033[0m\n", totalItems)
+		fmt.Printf("\n\033[3;33mTotal %d items, showing first 20 and last 5\033[0m\n", totalItems)
 	}
 }
 

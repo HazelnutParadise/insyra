@@ -45,8 +45,7 @@ func (dt *DataTable) Summary() {
 		if colName != "" {
 			colIndex = fmt.Sprintf("%s (%s)", colIndex, colName)
 		}
-
-		fmt.Printf("\n%s\n", ColorText("1;36", fmt.Sprintf("Column: %s", colIndex)))
+		fmt.Printf("\n%s\n", ColorText("1;33", fmt.Sprintf("Column: %s", colIndex)))
 		fmt.Println(strings.Repeat("-", min(width, 50)))
 
 		showColumnStatistics(col.data)
@@ -67,31 +66,66 @@ func showColumnStatistics(data []any) {
 		}
 	}
 
-	// Display basic info
-	fmt.Printf("Total items: %s\n", ColorText("1;36", fmt.Sprintf("%d", totalCount)))
-	fmt.Printf("Numeric items: %s\n", ColorText("1;34", fmt.Sprintf("%d (%.1f%%)", numericCount, float64(numericCount)/float64(totalCount)*100)))
+	// 先進行所有計算，再一次性顯示結果
+	// 基本統計數據結構
+	type StatisticsData struct {
+		// 基本信息
+		totalCount     int
+		numericCount   int
+		numericPercent float64
+
+		// 集中趨勢
+		mean       float64
+		median     float64
+		modeValues []float64
+
+		// 離散程度
+		min      float64
+		max      float64
+		rangeVal float64
+		stdev    float64
+		variance float64
+
+		// 分位數
+		q1  float64
+		q3  float64
+		iqr float64
+	}
+
+	// 初始化統計數據
+	stats := StatisticsData{
+		totalCount:     totalCount,
+		numericCount:   numericCount,
+		numericPercent: float64(numericCount) / float64(totalCount) * 100,
+	}
 
 	// 檢查是否有數值數據
 	if numericCount == 0 {
+		// 顯示基本信息
+		fmt.Printf("Total items: %s\n", ColorText("1;33", fmt.Sprintf("%d", stats.totalCount)))
+		fmt.Printf("Numeric items: %s\n", ColorText("1;33", fmt.Sprintf("%d (%.1f%%)", stats.numericCount, stats.numericPercent)))
 		fmt.Println(ColorText("3;33", "No numeric data available for statistical analysis"))
 		return
 	}
 
-	// Calculate statistics
-	mean := dl.Mean()
-	median := dl.Median()
-	min := dl.Min()
-	max := dl.Max()
-	rangeVal := dl.Range()
-	stdev := dl.Stdev()
-	variance := dl.Var()
+	// 計算所有統計指標
+	stats.mean = dl.Mean()
+	stats.median = dl.Median()
+	stats.min = dl.Min()
+	stats.max = dl.Max()
+	stats.rangeVal = dl.Range()
+	stats.stdev = dl.Stdev()
+	stats.variance = dl.Var()
+	stats.q1 = dl.Quartile(1)
+	stats.q3 = dl.Quartile(3)
+	stats.iqr = dl.IQR()
+	stats.modeValues = dl.Mode()
 
-	// Calculate quartiles
-	q1 := dl.Quartile(1)
-	q3 := dl.Quartile(3)
-	iqr := dl.IQR()
-
-	// Calculate table display widths
+	// 顯示統計結果
+	// 首先顯示基本信息
+	fmt.Printf("Total items: %s\n", ColorText("1;33", fmt.Sprintf("%d", stats.totalCount)))
+	fmt.Printf("Numeric items: %s\n", ColorText("1;33", fmt.Sprintf("%d (%.1f%%)", stats.numericCount, stats.numericPercent)))
+	// 計算表格顯示寬度
 	statNameWidth := 16 // 統計指標名稱欄位寬度
 	valueWidth := 15    // 值欄位寬度
 
@@ -100,19 +134,17 @@ func showColumnStatistics(data []any) {
 	dividerLine := "├" + strings.Repeat("─", statNameWidth+2) + "┼" + strings.Repeat("─", valueWidth+2) + "┤"
 	topLine := "┌" + strings.Repeat("─", statNameWidth+2) + "┬" + strings.Repeat("─", valueWidth+2) + "┐"
 	bottomLine := "└" + strings.Repeat("─", statNameWidth+2) + "┴" + strings.Repeat("─", valueWidth+2) + "┘"
-
-	// Central Tendency section
+	// 集中趨勢部分
 	fmt.Println(topLine)
-	fmt.Printf(headerFmt, ColorText("1;34", "Central Tendency"), ColorText("1;34", "Value"))
+	fmt.Printf(headerFmt, "Central Tendency", "Value")
 	fmt.Println(dividerLine)
-	fmt.Printf(headerFmt, "Mean", formatFloat(mean))
-	fmt.Printf(headerFmt, "Median", formatFloat(median))
+	fmt.Printf(headerFmt, "Mean", formatFloat(stats.mean))
+	fmt.Printf(headerFmt, "Median", formatFloat(stats.median))
 
-	// Mode calculation
-	modeValues := dl.Mode()
-	if modeValues != nil {
+	// 處理眾數
+	if stats.modeValues != nil {
 		modeStr := ""
-		for i, mv := range modeValues {
+		for i, mv := range stats.modeValues {
 			if i > 0 {
 				modeStr += ", "
 			}
@@ -120,24 +152,22 @@ func showColumnStatistics(data []any) {
 		}
 		fmt.Printf(headerFmt, "Mode", modeStr)
 	}
-
-	// Dispersion section
+	// 離散程度部分
 	fmt.Println(dividerLine)
-	fmt.Printf(headerFmt, ColorText("1;34", "Dispersion"), ColorText("1;34", "Value"))
+	fmt.Printf(headerFmt, "Dispersion", "Value")
 	fmt.Println(dividerLine)
-	fmt.Printf(headerFmt, "Minimum", formatFloat(min))
-	fmt.Printf(headerFmt, "Maximum", formatFloat(max))
-	fmt.Printf(headerFmt, "Range", formatFloat(rangeVal))
-	fmt.Printf(headerFmt, "Std Deviation", formatFloat(stdev))
-	fmt.Printf(headerFmt, "Variance", formatFloat(variance))
-
-	// Quantiles section
+	fmt.Printf(headerFmt, "Minimum", formatFloat(stats.min))
+	fmt.Printf(headerFmt, "Maximum", formatFloat(stats.max))
+	fmt.Printf(headerFmt, "Range", formatFloat(stats.rangeVal))
+	fmt.Printf(headerFmt, "Std Deviation", formatFloat(stats.stdev))
+	fmt.Printf(headerFmt, "Variance", formatFloat(stats.variance))
+	// 分位數部分
 	fmt.Println(dividerLine)
-	fmt.Printf(headerFmt, ColorText("1;34", "Quantiles"), ColorText("1;34", "Value"))
+	fmt.Printf(headerFmt, "Quantiles", "Value")
 	fmt.Println(dividerLine)
-	fmt.Printf(headerFmt, "Q1 (25%)", formatFloat(q1))
-	fmt.Printf(headerFmt, "Q2 (50%)", formatFloat(median)) // Q2 is the same as median
-	fmt.Printf(headerFmt, "Q3 (75%)", formatFloat(q3))
-	fmt.Printf(headerFmt, "IQR", formatFloat(iqr))
+	fmt.Printf(headerFmt, "Q1 (25%)", formatFloat(stats.q1))
+	fmt.Printf(headerFmt, "Q2 (50%)", formatFloat(stats.median)) // Q2 與中位數相同
+	fmt.Printf(headerFmt, "Q3 (75%)", formatFloat(stats.q3))
+	fmt.Printf(headerFmt, "IQR", formatFloat(stats.iqr))
 	fmt.Println(bottomLine)
 }

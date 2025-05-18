@@ -1307,7 +1307,7 @@ func (dl *DataList) Median() float64 {
 // Returns nil if the DataList is empty or if no valid elements can be used.
 func (dl *DataList) Mode() []float64 {
 	if len(dl.data) == 0 {
-		LogWarning("DataList.Mode(): DataList is empty. Returning nil.")
+		LogWarning("DataList.Mode(): DataList is empty, returning nil.")
 		return nil
 	}
 
@@ -1315,14 +1315,13 @@ func (dl *DataList) Mode() []float64 {
 	for _, v := range dl.data {
 		vfloat, ok := ToFloat64Safe(v)
 		if !ok {
-			LogWarning("DataList.Mode(): Element %v is not a numeric type, skipping.", v)
 			continue
 		}
 		freqMap[vfloat]++
 	}
 
 	if len(freqMap) == 0 {
-		LogWarning("DataList.Mode(): No valid elements to compute mode. Returning nil.")
+		LogWarning("DataList.Mode(): No valid elements to compute mode, returning nil.")
 		return nil
 	}
 
@@ -1344,10 +1343,9 @@ func (dl *DataList) Mode() []float64 {
 	}
 
 	if allSameFrequency {
-		LogWarning("DataList.Mode(): All elements have the same frequency. No mode.")
+		LogWarning("DataList.Mode(): All elements have the same frequency. No mode exists, returning nil.")
 		return nil
 	}
-
 	for num, freq := range freqMap {
 		if freq == maxFreq {
 			modes = append(modes, num)
@@ -1745,13 +1743,38 @@ func (dl *DataList) Summary() {
 		dataTitle += ": " + dl.name
 	}
 
-	// Display header - 使用洋紅色作為 DataList 的主要顏色
-	fmt.Println(ColorText("1;35", dataTitle))
-	fmt.Println(strings.Repeat("=", min(width, 80)))
+	// 先計算所有統計資料，再一次性顯示
+	// 基本統計數據結構
+	type StatisticsData struct {
+		// 基本信息
+		totalCount     int
+		numericCount   int
+		numericPercent float64
+
+		// 集中趨勢
+		mean       float64
+		median     float64
+		modeValues []float64
+
+		// 離散程度
+		min      float64
+		max      float64
+		rangeVal float64
+		stdev    float64
+		variance float64
+
+		// 分位數
+		q1  float64
+		q3  float64
+		iqr float64
+	}
 
 	// Check if DataList is empty
 	totalCount := len(dl.data)
 	if totalCount == 0 {
+		// Display header - 使用橘色作為 DataList 的主要顏色
+		fmt.Println(ColorText("1;33", dataTitle))
+		fmt.Println(strings.Repeat("=", min(width, 80)))
 		fmt.Println(ColorText("3;33", "Empty dataset"))
 		return
 	}
@@ -1764,10 +1787,38 @@ func (dl *DataList) Summary() {
 		}
 	}
 
+	// 顯示結果部分開始
+	// Display header - 使用橘色作為 DataList 的主要顏色
+	fmt.Println(ColorText("1;33", dataTitle))
+	fmt.Println(strings.Repeat("=", min(width, 80)))
+
+	// 初始化統計數據
+	stats := StatisticsData{
+		totalCount:     totalCount,
+		numericCount:   numericCount,
+		numericPercent: float64(numericCount) / float64(totalCount) * 100,
+	}
+
 	// Display basic info
-	fmt.Printf("Total items: %s\n", ColorText("1;35", fmt.Sprintf("%d", totalCount)))
-	fmt.Printf("Numeric items: %s\n", ColorText("1;34", fmt.Sprintf("%d (%.1f%%)", numericCount, float64(numericCount)/float64(totalCount)*100)))
+	fmt.Printf("Total items: %s\n", ColorText("1;33", fmt.Sprintf("%d", stats.totalCount)))
+	fmt.Printf("Numeric items: %s\n", ColorText("1;33", fmt.Sprintf("%d (%.1f%%)", stats.numericCount, stats.numericPercent)))
 	fmt.Println()
+
+	// Calculate statistics only if we have numeric values
+	if numericCount > 0 {
+		// 計算所有統計指標
+		stats.mean = dl.Mean()
+		stats.median = dl.Median()
+		stats.min = dl.Min()
+		stats.max = dl.Max()
+		stats.rangeVal = dl.Range()
+		stats.stdev = dl.Stdev()
+		stats.variance = dl.Var()
+		stats.q1 = dl.Quartile(1)
+		stats.q3 = dl.Quartile(3)
+		stats.iqr = dl.IQR()
+		stats.modeValues = dl.Mode()
+	}
 
 	// Calculate statistics only if we have numeric values
 	if numericCount == 0 {
@@ -1775,71 +1826,54 @@ func (dl *DataList) Summary() {
 		return
 	}
 
-	// Calculate statistics
-	mean := dl.Mean()
-	median := dl.Median()
-	min := dl.Min()
-	max := dl.Max()
-	rangeVal := dl.Range()
-	stdev := dl.Stdev()
-	variance := dl.Var()
-
-	// Calculate quartiles
-	q1 := dl.Quartile(1)
-	q3 := dl.Quartile(3)
-	iqr := dl.IQR()
-
-	// Calculate table display widths
+	// 計算表格顯示寬度
 	statNameWidth := 16
 	valueWidth := 15
 
 	// Create a nice table with borders for statistics
-	fmt.Println(ColorText("1;35", "Statistical Summary"))
+	fmt.Println(ColorText("1;33", "Statistical Summary"))
 
 	// Print table header
 	headerFmt := "│ %-" + fmt.Sprintf("%d", statNameWidth) + "s │ %-" + fmt.Sprintf("%d", valueWidth) + "s │\n"
 	dividerLine := "├" + strings.Repeat("─", statNameWidth+2) + "┼" + strings.Repeat("─", valueWidth+2) + "┤"
 	topLine := "┌" + strings.Repeat("─", statNameWidth+2) + "┬" + strings.Repeat("─", valueWidth+2) + "┐"
 	bottomLine := "└" + strings.Repeat("─", statNameWidth+2) + "┴" + strings.Repeat("─", valueWidth+2) + "┘"
-
 	// Central Tendency section
 	fmt.Println(topLine)
-	fmt.Printf(headerFmt, ColorText("1;34", "Central Tendency"), ColorText("1;34", "Value"))
+	fmt.Printf(headerFmt, "Central Tendency", "Value")
 	fmt.Println(dividerLine)
-	fmt.Printf(headerFmt, "Mean", formatFloat(mean))
-	fmt.Printf(headerFmt, "Median", formatFloat(median))
+	fmt.Printf(headerFmt, "Mean", formatFloat(stats.mean))
+	fmt.Printf(headerFmt, "Median", formatFloat(stats.median))
 
 	// Mode calculation
-	modeValues := dl.Mode()
-	if modeValues != nil {
-		modeStr := ""
-		for i, mv := range modeValues {
+	modeStr := "N/A" // 預設值，如果無法計算模式
+	if stats.modeValues != nil && len(stats.modeValues) > 0 {
+		modeStr = ""
+		for i, mv := range stats.modeValues {
 			if i > 0 {
 				modeStr += ", "
 			}
 			modeStr += fmt.Sprintf("%v", mv)
 		}
-		fmt.Printf(headerFmt, "Mode", modeStr)
 	}
-
+	fmt.Printf(headerFmt, "Mode", modeStr)
 	// Dispersion section
 	fmt.Println(dividerLine)
-	fmt.Printf(headerFmt, ColorText("1;34", "Dispersion"), ColorText("1;34", "Value"))
+	fmt.Printf(headerFmt, "Dispersion", "Value")
 	fmt.Println(dividerLine)
-	fmt.Printf(headerFmt, "Minimum", formatFloat(min))
-	fmt.Printf(headerFmt, "Maximum", formatFloat(max))
-	fmt.Printf(headerFmt, "Range", formatFloat(rangeVal))
-	fmt.Printf(headerFmt, "Std Deviation", formatFloat(stdev))
-	fmt.Printf(headerFmt, "Variance", formatFloat(variance))
-
+	fmt.Printf(headerFmt, "Minimum", formatFloat(stats.min))
+	fmt.Printf(headerFmt, "Maximum", formatFloat(stats.max))
+	fmt.Printf(headerFmt, "Range", formatFloat(stats.rangeVal))
+	fmt.Printf(headerFmt, "Std Deviation", formatFloat(stats.stdev))
+	fmt.Printf(headerFmt, "Variance", formatFloat(stats.variance))
 	// Quantiles section
 	fmt.Println(dividerLine)
-	fmt.Printf(headerFmt, ColorText("1;34", "Quantiles"), ColorText("1;34", "Value"))
+	fmt.Printf(headerFmt, "Quantiles", "Value")
 	fmt.Println(dividerLine)
-	fmt.Printf(headerFmt, "Q1 (25%)", formatFloat(q1))
-	fmt.Printf(headerFmt, "Q2 (50%)", formatFloat(median)) // Q2 is the same as median
-	fmt.Printf(headerFmt, "Q3 (75%)", formatFloat(q3))
-	fmt.Printf(headerFmt, "IQR", formatFloat(iqr))
+	fmt.Printf(headerFmt, "Q1 (25%)", formatFloat(stats.q1))
+	fmt.Printf(headerFmt, "Q2 (50%)", formatFloat(stats.median)) // Q2 is the same as median
+	fmt.Printf(headerFmt, "Q3 (75%)", formatFloat(stats.q3))
+	fmt.Printf(headerFmt, "IQR", formatFloat(stats.iqr))
 	fmt.Println(bottomLine)
 }
 

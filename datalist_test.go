@@ -440,10 +440,11 @@ func TestDataListMedian(t *testing.T) {
 // 測試 Mode 函數
 func TestDataListMode(t *testing.T) {
 	dl := NewDataList(1, 2, 3, 2, 4)
-	mode := dl.Mode()[0]
+	mode := dl.Mode()
+	modeValue := mode[0]
 
-	if !float64Equal(mode, 2) {
-		t.Errorf("Expected mode 2, got %v", mode)
+	if !float64Equal(modeValue, 2) {
+		t.Errorf("Expected mode 2, got %v", modeValue)
 	}
 }
 
