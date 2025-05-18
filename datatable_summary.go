@@ -11,31 +11,35 @@ import (
 // The output is formatted for easy reading with proper color coding.
 func (dt *DataTable) Summary() {
 	dt.mu.Lock()
-	defer dt.mu.Unlock()
+
+	// 在持有鎖的情況下直接讀取 dt.name，不通過 GetName() 方法
+	tableName := dt.name
+	columns := dt.columns
+
+	dt.mu.Unlock()
 
 	// Get terminal width
 	width := getTerminalWidth()
 
 	// Generate table title
 	tableTitle := "DataTable Statistical Summary"
-	// 檢查 DataTable 的名稱訪問方法
-	// 嘗試使用不同的訪問方法
-	// if dt.name != "" { // 使用直接訪問欄位的方式
-	// 	tableTitle += ": " + dt.name
-	// }
+	// 檢查 DataTable 的名稱，不使用 GetName()
+	if tableName != "" {
+		tableTitle += ": " + tableName
+	}
 
 	// Display header - 使用青色作為 DataTable 的主要顏色
 	fmt.Println(ColorText("1;36", tableTitle))
 	fmt.Println(strings.Repeat("=", min(width, 80)))
 
 	// Check if DataTable is empty
-	if len(dt.columns) == 0 {
+	if len(columns) == 0 {
 		fmt.Println(ColorText("3;33", "Empty dataset"))
 		return
 	}
 
 	// Print column statistics
-	for i, col := range dt.columns {
+	for i, col := range columns {
 		colIndex := generateColIndex(i)
 		colName := col.name
 		if colName != "" {
@@ -88,11 +92,10 @@ func showColumnStatistics(data []any) {
 	iqr := dl.IQR()
 
 	// Calculate table display widths
-	statNameWidth := 16
-	valueWidth := 15
+	statNameWidth := 16 // 統計指標名稱欄位寬度
+	valueWidth := 15    // 值欄位寬度
 
-	// Create a nice table with borders for statistics
-	// Print table header
+	// 創建帶邊框的統計表格
 	headerFmt := "│ %-" + fmt.Sprintf("%d", statNameWidth) + "s │ %-" + fmt.Sprintf("%d", valueWidth) + "s │\n"
 	dividerLine := "├" + strings.Repeat("─", statNameWidth+2) + "┼" + strings.Repeat("─", valueWidth+2) + "┤"
 	topLine := "┌" + strings.Repeat("─", statNameWidth+2) + "┬" + strings.Repeat("─", valueWidth+2) + "┐"

@@ -172,6 +172,12 @@ Returns the name of the row at the specified index.
 ##### `SetRowNameByIndex(index int, name string)`
 Sets the name of the row at the specified index.
 
+##### `GetName() string`
+Returns the name of the `DataTable`.
+
+##### `SetName(name string) *DataTable`
+Sets the name of the `DataTable` and returns the `DataTable` for method chaining.
+
 ##### `GetCreationTimestamp() int64`
 Returns the timestamp when the `DataTable` was created.
 

@@ -18,6 +18,7 @@ type DataTable struct {
 	columns               []*DataList
 	columnIndex           map[string]int // 儲存字母索引與切片中的索引對應
 	rowNames              map[string]int
+	name                  string // 新增 name 欄位
 	creationTimestamp     int64
 	lastModifiedTimestamp atomic.Int64
 }
@@ -68,6 +69,11 @@ type IDataTable interface {
 	getRowNameByIndex(index int) (string, bool)
 	getMaxColLength() int
 	updateTimestamp()
+
+	// name
+	GetName() string
+	SetName(name string) *DataTable
+
 	// Statistics
 	Size() (int, int)
 	Count(value any) int
