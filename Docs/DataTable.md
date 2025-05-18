@@ -235,6 +235,12 @@ Writes the `DataTable` to a JSON file.
 #### `ToJSON_Bytes(useColNames bool) []byte`
 Returns the JSON representation of the `DataTable` as a byte array.
 
+#### `ToSQL(db *gorm.DB, tableName string, options ...ToSQLOptions) error`
+Writes the `DataTable` to a SQL database table. The `options` parameter allows you to specify how to handle existing tables, whether to include row names, and custom column types.
+
+#### `ReadSQL(db *gorm.DB, tableName string, options ...ReadSQLOptions) (*DataTable, error)`
+Reads a SQL database table into a `DataTable`. The `options` parameter allows you to customize the query, including WHERE clauses, ORDER BY, LIMIT, and OFFSET. You can also specify a custom column to use as row names.
+
 ## Best Practices
 
 1. Use appropriate method calls to manipulate data (e.g., use AppendRowsByName when you have named columns).
