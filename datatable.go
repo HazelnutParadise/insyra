@@ -68,11 +68,11 @@ type IDataTable interface {
 	getRowNameByIndex(index int) (string, bool)
 	getMaxColLength() int
 	updateTimestamp()
-
 	// Statistics
 	Size() (int, int)
 	Count(value any) int
 	Mean() any
+	Summary()
 
 	// Conversion
 	Transpose() *DataTable

@@ -147,6 +147,9 @@ Prints the content of the `DataTable` in a tabular format.
 ##### `ShowTypes()`
 Prints the types of elements in the `DataTable`.
 
+##### `Summary()`
+Displays a comprehensive statistical summary of the DataTable directly to the console, showing descriptive statistics for each column including count, mean, median, min, max, and standard deviation where applicable.
+
 ##### `Size() (int, int)`
 Returns the number of rows and columns in the `DataTable`.
 The first return value is the number of rows, and the second return value is the number of columns.

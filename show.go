@@ -39,16 +39,13 @@ func (dt *DataTable) Show() {
 	width := getTerminalWidth()
 	// 生成資料表標題
 	tableTitle := "DataTable"
-	if len(dt.columns) > 0 && dt.columns[0].name != "" {
-		tableTitle += ": " + dt.columns[0].name
-	}
 
 	// 在同一個鎖內獲取行數和列數，避免再次調用 Size() 導致死鎖
 	rowCount := dt.getMaxColLength()
 	colCount := len(dt.columns)
 	tableSummary := fmt.Sprintf("(%d rows x %d columns)", rowCount, colCount)
 
-	// 資料表基本信息的顯示
+	// 資料表基本信息的顯示 - 青色是 DataTable 的主要顏色
 	fmt.Printf("\033[1;36m%s\033[0m %s\n", tableTitle, tableSummary)
 	fmt.Println(strings.Repeat("=", min(width, 80)))
 
@@ -92,7 +89,6 @@ func (dt *DataTable) Show() {
 	if maxRowNameWidth > 25 {
 		maxRowNameWidth = 25
 	}
-
 	// 嘗試顯示一些基本統計資訊
 	if rowCount > 0 && colCount > 0 {
 		// 為每一列顯示基本統計資訊
@@ -500,6 +496,11 @@ func printTypeRows(dataMap map[string][]any, start, end int, rowNames []string, 
 
 // Show displays the content of DataList in a clean linear format.
 // It adapts to terminal width and always displays in a linear format, not as a table.
+// This method includes:
+// - Basic information about the DataList (name, number of items)
+// - Statistical summary (mean, min, max, range, etc.) if numeric data is present
+// - Color-coded display of different data types (blue for numbers, green for strings, etc.)
+// - Truncation for very large lists (showing only first 20 and last 5 items)
 func (dl *DataList) Show() {
 	// Safety check to prevent nil pointer
 	if dl == nil {
@@ -520,8 +521,8 @@ func (dl *DataList) Show() {
 	}
 	dataSummary := fmt.Sprintf("(%d items)", len(dl.data))
 
-	// Display basic data information
-	fmt.Printf("\033[1;36m%s\033[0m %s\n", dataTitle, dataSummary)
+	// Display basic data information - 使用洋紅色作為 DataList 的主要顏色
+	fmt.Printf("\033[1;35m%s\033[0m %s\n", dataTitle, dataSummary)
 	fmt.Println(strings.Repeat("=", min(width, 80)))
 
 	// Check if DataList is empty
@@ -536,18 +537,18 @@ func (dl *DataList) Show() {
 		// Try to calculate statistics
 		mean, dlmin, max := dl.Mean(), dl.Min(), dl.Max()
 		if !math.IsNaN(mean) && !math.IsNaN(dlmin) && !math.IsNaN(max) {
-			fmt.Printf("\033[3;36m stat: mean=%.4g, min=%.4g, max=%.4g, range=%.4g\033[0m\n",
+			// 使用洋紅色調作為統計資訊的顏色
+			fmt.Printf("\033[3;35m stat: mean=%.4g, min=%.4g, max=%.4g, range=%.4g\033[0m\n",
 				mean, dlmin, max, max-dlmin)
 			if len(dl.data) > 10 {
-				fmt.Printf("\033[3;36m      SD=%.4g, median=%.4g\033[0m\n",
+				fmt.Printf("\033[3;35m      SD=%.4g, median=%.4g\033[0m\n",
 					dl.Stdev(), dl.Median())
 			}
 			fmt.Println(strings.Repeat("-", min(width, 80)))
 		}
 	}
-
 	// Always show in linear format regardless of terminal width
-	fmt.Println("\033[1;32mIndex  Value\033[0m")
+	fmt.Println("\033[1;35mIndex  Value\033[0m")
 	fmt.Println(strings.Repeat("-", min(width, 80)))
 
 	// Calculate how many items to display
@@ -612,7 +613,7 @@ func (dl *DataList) Show() {
 
 			fmt.Printf("\033[1;37m%-6d\033[0m %s%s\033[0m\n", i, valueColor, strValue)
 		}
-		
+
 		// Show data summary
 		fmt.Printf("\n\033[3;36mTotal %d items, showing first 20 and last 5\033[0m\n", totalItems)
 	}

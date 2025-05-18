@@ -73,9 +73,7 @@ type IDataList interface {
 	Reverse() *DataList
 	Upper() *DataList
 	Lower() *DataList
-	Capitalize() *DataList
-
-	// Statistics
+	Capitalize() *DataList // Statistics
 	Sum() float64
 	Max() float64
 	Min() float64
@@ -94,10 +92,13 @@ type IDataList interface {
 	IQR() float64
 	Percentile(float64) float64
 	Difference() *DataList
+	Summary()
 
 	// comparison
 	IsEqualTo(*DataList) bool
 	IsTheSameAs(*DataList) bool
+
+	Show()
 
 	// conversion
 	ParseNumbers() *DataList
@@ -1725,6 +1726,129 @@ func (dl *DataList) Difference() *DataList {
 	}
 
 	return NewDataList(differenceData)
+}
+
+// Summary displays a comprehensive statistical summary of the DataList directly to the console.
+func (dl *DataList) Summary() {
+	defer func() {
+		dl.mu.Unlock()
+		go reorganizeMemory(dl)
+	}()
+	dl.mu.Lock()
+
+	// Get terminal window width
+	width := getDataListTerminalWidth()
+
+	// Generate data title
+	dataTitle := "DataList Statistical Summary"
+	if dl.name != "" {
+		dataTitle += ": " + dl.name
+	}
+
+	// Display header - 使用洋紅色作為 DataList 的主要顏色
+	fmt.Println(ColorText("1;35", dataTitle))
+	fmt.Println(strings.Repeat("=", min(width, 80)))
+
+	// Check if DataList is empty
+	totalCount := len(dl.data)
+	if totalCount == 0 {
+		fmt.Println(ColorText("3;33", "Empty dataset"))
+		return
+	}
+
+	// Count numeric values
+	numericCount := 0
+	for _, v := range dl.data {
+		if isNumeric(v) {
+			numericCount++
+		}
+	}
+
+	// Display basic info
+	fmt.Printf("Total items: %s\n", ColorText("1;35", fmt.Sprintf("%d", totalCount)))
+	fmt.Printf("Numeric items: %s\n", ColorText("1;34", fmt.Sprintf("%d (%.1f%%)", numericCount, float64(numericCount)/float64(totalCount)*100)))
+	fmt.Println()
+
+	// Calculate statistics only if we have numeric values
+	if numericCount == 0 {
+		fmt.Println(ColorText("3;33", "No numeric data available for statistical analysis"))
+		return
+	}
+
+	// Calculate statistics
+	mean := dl.Mean()
+	median := dl.Median()
+	min := dl.Min()
+	max := dl.Max()
+	rangeVal := dl.Range()
+	stdev := dl.Stdev()
+	variance := dl.Var()
+
+	// Calculate quartiles
+	q1 := dl.Quartile(1)
+	q3 := dl.Quartile(3)
+	iqr := dl.IQR()
+
+	// Calculate table display widths
+	statNameWidth := 16
+	valueWidth := 15
+
+	// Create a nice table with borders for statistics
+	fmt.Println(ColorText("1;35", "Statistical Summary"))
+
+	// Print table header
+	headerFmt := "│ %-" + fmt.Sprintf("%d", statNameWidth) + "s │ %-" + fmt.Sprintf("%d", valueWidth) + "s │\n"
+	dividerLine := "├" + strings.Repeat("─", statNameWidth+2) + "┼" + strings.Repeat("─", valueWidth+2) + "┤"
+	topLine := "┌" + strings.Repeat("─", statNameWidth+2) + "┬" + strings.Repeat("─", valueWidth+2) + "┐"
+	bottomLine := "└" + strings.Repeat("─", statNameWidth+2) + "┴" + strings.Repeat("─", valueWidth+2) + "┘"
+
+	// Central Tendency section
+	fmt.Println(topLine)
+	fmt.Printf(headerFmt, ColorText("1;34", "Central Tendency"), ColorText("1;34", "Value"))
+	fmt.Println(dividerLine)
+	fmt.Printf(headerFmt, "Mean", formatFloat(mean))
+	fmt.Printf(headerFmt, "Median", formatFloat(median))
+
+	// Mode calculation
+	modeValues := dl.Mode()
+	if modeValues != nil {
+		modeStr := ""
+		for i, mv := range modeValues {
+			if i > 0 {
+				modeStr += ", "
+			}
+			modeStr += fmt.Sprintf("%v", mv)
+		}
+		fmt.Printf(headerFmt, "Mode", modeStr)
+	}
+
+	// Dispersion section
+	fmt.Println(dividerLine)
+	fmt.Printf(headerFmt, ColorText("1;34", "Dispersion"), ColorText("1;34", "Value"))
+	fmt.Println(dividerLine)
+	fmt.Printf(headerFmt, "Minimum", formatFloat(min))
+	fmt.Printf(headerFmt, "Maximum", formatFloat(max))
+	fmt.Printf(headerFmt, "Range", formatFloat(rangeVal))
+	fmt.Printf(headerFmt, "Std Deviation", formatFloat(stdev))
+	fmt.Printf(headerFmt, "Variance", formatFloat(variance))
+
+	// Quantiles section
+	fmt.Println(dividerLine)
+	fmt.Printf(headerFmt, ColorText("1;34", "Quantiles"), ColorText("1;34", "Value"))
+	fmt.Println(dividerLine)
+	fmt.Printf(headerFmt, "Q1 (25%)", formatFloat(q1))
+	fmt.Printf(headerFmt, "Q2 (50%)", formatFloat(median)) // Q2 is the same as median
+	fmt.Printf(headerFmt, "Q3 (75%)", formatFloat(q3))
+	fmt.Printf(headerFmt, "IQR", formatFloat(iqr))
+	fmt.Println(bottomLine)
+}
+
+// formatFloat 用於格式化浮點數，處理 NaN 值
+func formatFloat(f float64) string {
+	if math.IsNaN(f) {
+		return "N/A"
+	}
+	return fmt.Sprintf("%.4f", f)
 }
 
 // ======================== Comparison ========================

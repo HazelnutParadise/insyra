@@ -110,8 +110,14 @@ dl := isr.DL{}.From(1, 2, 3, 4, 5) // modern
 * **ExponentialSmoothing:** Calculates the exponential smoothing of the DataList elements using a specified smoothing factor (alpha). Returns a new DataList with the smoothed values.
 * **DoubleExponentialSmoothing:** Calculates the double exponential smoothing of the DataList elements using specified smoothing factors (alpha and beta). Returns a new DataList with the smoothed values.
 * **MovingStdev:** Calculates the moving standard deviation of the DataList elements using a specified window size. Returns a new DataList with the moving standard deviation values.
+* **Summary:** Displays a comprehensive statistical summary of the DataList directly to the console. Shows various descriptive statistics including count, mean, median, min, max, range, standard deviation, variance, quartiles, and IQR. The output is formatted for easy reading with proper color coding.
+
+**Data Visualization:**
+
+* **Show:** Displays the content of DataList in a clean linear format with colored output based on data types. It adapts to terminal width and includes basic statistical information about the data. This method is useful for quick data inspection and shows items in a linear format (not as a table) regardless of terminal width.
 
 **Data Comparison:**
+
 * **IsEqualTo:** Checks if the data of the DataList is equal to another DataList. 
 * **IsTheSameAs:** Checks if the DataList is the same as another DataList. It checks for equality in name, data, creation timestamp, and last modified timestamp.
 

@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"os"
 	"reflect"
+	"runtime"
 	"strings"
 	"time"
 
@@ -348,8 +350,63 @@ func FormatValue(value any) string {
 			typeName := reflect.TypeOf(value).String()
 			return fmt.Sprintf("<%s>", typeName)
 		}
-
 		// 其他類型使用默認格式化
 		return fmt.Sprintf("%v", value)
 	}
+}
+
+// isNumeric 檢查一個值是否為數值類型
+func isNumeric(v interface{}) bool {
+	if v == nil {
+		return false
+	}
+
+	switch v.(type) {
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+		return true
+	}
+
+	// 處理反射類型
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+		reflect.Float32, reflect.Float64:
+		return true
+	}
+
+	return false
+}
+
+// ColorText 根據環境支持自動決定是否添加顏色到文本
+// code 是 ANSI 顏色代碼，text 是要設置顏色的文本
+func ColorText(code string, text interface{}) string {
+	if isColorSupported() {
+		return fmt.Sprintf("\033[%sm%v\033[0m", code, text)
+	}
+	return fmt.Sprintf("%v", text)
+}
+
+// isColorSupported 檢測當前終端是否支持 ANSI 顏色代碼
+func isColorSupported() bool {
+	// 檢測 NO_COLOR 環境變量
+	if os.Getenv("NO_COLOR") != "" {
+		return false
+	}
+
+	// 檢測 TERM 環境變量
+	term := os.Getenv("TERM")
+	if term == "dumb" {
+		return false
+	}
+
+	// 檢測是否是 Windows 並判斷控制台類型
+	if runtime.GOOS == "windows" {
+		// Windows 10 1909 之後的版本支持 ANSI 顏色
+		// 這裡使用簡單的判斷方式，實際上可能需要更複雜的檢測
+		return true
+	}
+
+	// 大多數 Unix-like 系統默認支持 ANSI 顏色
+	return true
 }
