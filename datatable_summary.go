@@ -260,22 +260,18 @@ func displayColumnOverviewTable(columns []*DataList, width int) {
 
 		// 分行處理長統計數據，避免破壞表格結構
 		if len(quickStats) > statWidth {
-			// 如果寬度實在不夠，就强制截斷而不是多行顯示
-			if statWidth < 15 {
-				quickStats = quickStats[:statWidth-3] + "..."
-			} else {
-				// 將長數據分成多行顯示
-				lines := splitStringByWidth(quickStats, statWidth-2)
+			// 將長數據分成多行顯示
+			lines := splitStringByWidth(quickStats, statWidth-2)
 
-				// 打印第一行數據
-				fmt.Printf(headerFmt, colIndex, dataType, lines[0])
+			// 打印第一行數據
+			fmt.Printf(headerFmt, colIndex, dataType, lines[0])
 
-				// 如果有多行，繼續打印
-				for j := 1; j < len(lines); j++ {
-					fmt.Printf("│ %-"+fmt.Sprintf("%d", colNameWidth)+"s │ %-"+fmt.Sprintf("%d", typeWidth)+"s │ %-"+fmt.Sprintf("%d", statWidth)+"s │\n",
-						"", "", lines[j])
-				}
+			// 如果有多行，繼續打印
+			for j := 1; j < len(lines); j++ {
+				fmt.Printf("│ %-"+fmt.Sprintf("%d", colNameWidth)+"s │ %-"+fmt.Sprintf("%d", typeWidth)+"s │ %-"+fmt.Sprintf("%d", statWidth)+"s │\n",
+					"", "", lines[j])
 			}
+
 		} else {
 			fmt.Printf(headerFmt, colIndex, dataType, quickStats)
 		}

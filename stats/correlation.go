@@ -75,12 +75,6 @@ func pearsonCorrelation(dlX, dlY insyra.IDataList) float64 {
 	return cov / (stdX * stdY)
 }
 
-func kendallCorrelation(dlX, dlY insyra.IDataList) float64 {
-	x := dlX.ToF64Slice()
-	y := dlY.ToF64Slice()
-	return stat.Kendall(x, y, nil)
-}
-
 func pearsonCorrelationWithStats(dlX, dlY insyra.IDataList) CorrelationResult {
 	result := CorrelationResult{}
 	corr := pearsonCorrelation(dlX, dlY)

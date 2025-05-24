@@ -182,8 +182,3 @@ func betaCF(a, b, x float64) float64 {
 
 	return h
 }
-
-// 新增對數伽瑪函數
-func lgamma(x float64) float64 {
-	return math.Log(math.Gamma(x))
-}

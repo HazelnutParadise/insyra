@@ -108,9 +108,6 @@ func ReadSQL(db *gorm.DB, tableName string, options ...ReadSQLOptions) (*DataTab
 		}
 	}
 
-	// 創建 DataTable
-	dt := NewDataTable()
-
 	// 為每一列創建 DataList
 	dataLists := make([]*DataList, len(columnNames))
 	for i, colName := range columnNames {
@@ -174,7 +171,7 @@ func ReadSQL(db *gorm.DB, tableName string, options ...ReadSQLOptions) (*DataTab
 
 	// 將列添加到 DataTable 中
 	// 確保列顯示順序與資料庫表格相同
-	dt = NewDataTable()
+	dt := NewDataTable()
 	validColumns := make([]*DataList, 0, len(dataLists))
 	for i, dl := range dataLists {
 		if i != rowNameColIndex || rowNameColIndex == -1 {
