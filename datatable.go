@@ -77,7 +77,7 @@ type IDataTable interface {
 	SetName(name string) *DataTable
 
 	// Statistics
-	Size() (int, int)
+	Size() (numRows int, numCols int)
 	Count(value any) int
 	Mean() any
 	Summary()
@@ -1254,7 +1254,7 @@ func (dt *DataTable) Counter() map[any]int {
 }
 
 // Size returns the number of rows and columns in the DataTable.
-func (dt *DataTable) Size() (rows int, cols int) {
+func (dt *DataTable) Size() (numRows int, numCols int) {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
 	return dt.getMaxColLength(), len(dt.columns)

@@ -5,7 +5,6 @@ package stats
 import (
 	"math"
 
-	"github.com/HazelnutParadise/Go-Utils/conv"
 	"github.com/HazelnutParadise/insyra"
 )
 
@@ -29,111 +28,99 @@ func LinearRegression(dlX, dlY insyra.IDataList) *LinearRegressionResult {
 		return nil
 	}
 
-	// 計算 X 和 Y 值
-	meanX := dlX.Mean()
-	meanY := dlY.Mean()
+	xVals := dlX.ToF64Slice()
+	yVals := dlY.ToF64Slice()
+	n := float64(len(xVals))
 
-	// 初始化變量
-	numerator := 0.0
-	denominator := 0.0
-	var residuals []float64
-	var sumSquaredResiduals, sumTotalSquares float64
+	// 計算平均值
+	var sumX, sumY float64
+	for i := 0; i < len(xVals); i++ {
+		sumX += xVals[i]
+		sumY += yVals[i]
+	}
+	meanX := sumX / n
+	meanY := sumY / n
 
-	// 計算斜率的分子和分母
-	for i := 0; i < dlX.Len(); i++ {
-		x := conv.ParseF64(dlX.Data()[i])
-		y := conv.ParseF64(dlY.Data()[i])
-
-		// (x_i - meanX) 和 (y_i - meanY)
-		diffX := x - meanX
-		diffY := y - meanY
-
-		// 分子: sum((x_i - meanX) * (y_i - meanY))
+	// 計算斜率
+	var numerator, denominator float64
+	for i := 0; i < len(xVals); i++ {
+		diffX := xVals[i] - meanX
+		diffY := yVals[i] - meanY
 		numerator += diffX * diffY
-
-		// 分母: sum((x_i - meanX)^2)
 		denominator += diffX * diffX
 	}
-
-	// 防止除以 0
 	if denominator == 0 {
 		insyra.LogWarning("stats.LinearRegression: denominator is zero, unable to calculate slope.")
 		return nil
 	}
-
-	// 計算斜率 beta_1
 	slope := numerator / denominator
-
-	// 計算截距 beta_0 = meanY - slope * meanX
 	intercept := meanY - slope*meanX
 
-	// 計算殘差和平方和
-	for i := 0; i < dlX.Len(); i++ {
-		x := conv.ParseF64(dlX.Data()[i])
-		y := conv.ParseF64(dlY.Data()[i])
-
-		// 預測值: y_pred = beta_0 + beta_1 * x_i
-		yPred := intercept + slope*x
-
-		// 殘差: residual = y_i - y_pred
-		residual := y - yPred
-		residuals = append(residuals, residual)
-
-		// 計算殘差平方和
+	// 計算預測值與殘差
+	residuals := make([]float64, len(xVals))
+	var sumSquaredResiduals, sumTotalSquares float64
+	for i := 0; i < len(xVals); i++ {
+		yPred := intercept + slope*xVals[i]
+		residual := yVals[i] - yPred
+		residuals[i] = residual
 		sumSquaredResiduals += residual * residual
-
-		// 計算總平方和 (y_i - meanY)^2
-		sumTotalSquares += (y - meanY) * (y - meanY)
+		sumTotalSquares += (yVals[i] - meanY) * (yVals[i] - meanY)
 	}
 
-	// 計算 R-squared 和 Adjusted R-squared
+	// 計算統計指標
 	rSquared := 1 - (sumSquaredResiduals / sumTotalSquares)
-	adjustedRsquared := 1 - (1-rSquared)*float64(dlX.Len()-1)/float64(dlX.Len()-2)
+	adjustedRSquared := 1 - (1-rSquared)*(n-1)/(n-2)
 
-	// 計算 X 的平方和
 	sumXSquared := 0.0
-	for i := 0; i < dlX.Len(); i++ {
-		x := conv.ParseF64(dlX.Data()[i])
-		sumXSquared += (x - meanX) * (x - meanX)
+	for i := 0; i < len(xVals); i++ {
+		sumXSquared += (xVals[i] - meanX) * (xVals[i] - meanX)
 	}
-
-	// 修正標準誤差的計算
-	n := float64(dlX.Len())
-	mse := sumSquaredResiduals / (n - 2) // Mean Square Error
+	mse := sumSquaredResiduals / (n - 2)
 	standardError := math.Sqrt(mse / sumXSquared)
-
-	// 修正 t 值的計算
 	tValue := slope / standardError
-
-	// 修改 p 值計算
-	degreesOfFreedom := dlX.Len() - 2
-	pValue := 2.0 * tCDF(-math.Abs(tValue), degreesOfFreedom)
+	pValue := 2.0 * tCDF(-math.Abs(tValue), int(n-2))
 
 	return &LinearRegressionResult{
 		Slope:            slope,
 		Intercept:        intercept,
 		Residuals:        residuals,
 		RSquared:         rSquared,
-		AdjustedRSquared: adjustedRsquared,
+		AdjustedRSquared: adjustedRSquared,
 		StandardError:    standardError,
 		TValue:           tValue,
 		PValue:           pValue,
 	}
 }
 
-// 新增 t 分布的累積分布函數
+// tCDF returns the cumulative distribution function (CDF) of the Student's t-distribution
 func tCDF(t float64, df int) float64 {
 	x := float64(df) / (float64(df) + t*t)
-	return betaInc(float64(df)/2.0, 0.5, x) / 2.0
+
+	// 根據 t 值的正負決定如何計算 CDF
+	if t <= 0 {
+		// t ≤ 0 時，CDF(t) = 0.5 * Beta(df/2, 1/2, x)
+		return 0.5 * betaInc(float64(df)/2.0, 0.5, x)
+	}
+	// t > 0 時，CDF(t) = 1 - 0.5 * Beta(df/2, 1/2, x)
+	return 1.0 - 0.5*betaInc(float64(df)/2.0, 0.5, x)
 }
 
-// 新增不完全貝塔函數
+// betaInc implements the regularized incomplete beta function I_x(a, b)
 func betaInc(a, b, x float64) float64 {
 	if x < 0.0 || x > 1.0 {
-		return 0.0
+		return math.NaN()
 	}
 
-	bt := math.Exp(lgamma(a+b) - lgamma(a) - lgamma(b) + a*math.Log(x) + b*math.Log(1.0-x))
+	if x == 0.0 || x == 1.0 {
+		return x
+	}
+
+	// 正確使用 Lgamma 回傳值
+	lg1, _ := math.Lgamma(a + b)
+	lg2, _ := math.Lgamma(a)
+	lg3, _ := math.Lgamma(b)
+
+	bt := math.Exp(lg1 - lg2 - lg3 + a*math.Log(x) + b*math.Log(1.0-x))
 
 	if x < (a+1.0)/(a+b+2.0) {
 		return bt * betaCF(a, b, x) / a
@@ -142,53 +129,57 @@ func betaInc(a, b, x float64) float64 {
 	return 1.0 - bt*betaCF(b, a, 1.0-x)/b
 }
 
-// 新增連分數展開
+// betaCF implements the continued fraction approximation for the incomplete beta function
 func betaCF(a, b, x float64) float64 {
-	const MAXIT = 200
-	const EPS = 3.0e-7
-	const FPMIN = 1.0e-30
+	const maxIter = 100
+	const eps = 1e-14
+	const fpmin = 1e-30
 
-	qab := a + b
-	qap := a + 1.0
-	qam := a - 1.0
+	m2 := 0
+	aa := 0.0
 	c := 1.0
-	d := 1.0 - qab*x/qap
-
-	if math.Abs(d) < FPMIN {
-		d = FPMIN
+	d := 1.0 - (a+b)*x/(a+1.0)
+	if math.Abs(d) < fpmin {
+		d = fpmin
 	}
 	d = 1.0 / d
 	h := d
 
-	for m := 1; m <= MAXIT; m++ {
-		m2 := 2 * m
-		aa := float64(m) * (b - float64(m)) * x / ((qam + float64(m2)) * (a + float64(m2)))
+	for m := 1; m <= maxIter; m++ {
+		m2 = 2 * m
+
+		// even step
+		aa = float64(m) * (b - float64(m)) * x / ((a + float64(m2) - 1) * (a + float64(m2)))
 		d = 1.0 + aa*d
-		if math.Abs(d) < FPMIN {
-			d = FPMIN
+		if math.Abs(d) < fpmin {
+			d = fpmin
 		}
 		c = 1.0 + aa/c
-		if math.Abs(c) < FPMIN {
-			c = FPMIN
+		if math.Abs(c) < fpmin {
+			c = fpmin
 		}
 		d = 1.0 / d
 		h *= d * c
-		aa = -(a + float64(m)) * (qab + float64(m)) * x / ((a + float64(m2)) * (qap + float64(m2)))
+
+		// odd step
+		aa = -(a + float64(m)) * (a + b + float64(m)) * x / ((a + float64(m2)) * (a + float64(m2) + 1))
 		d = 1.0 + aa*d
-		if math.Abs(d) < FPMIN {
-			d = FPMIN
+		if math.Abs(d) < fpmin {
+			d = fpmin
 		}
 		c = 1.0 + aa/c
-		if math.Abs(c) < FPMIN {
-			c = FPMIN
+		if math.Abs(c) < fpmin {
+			c = fpmin
 		}
 		d = 1.0 / d
-		del := d * c
-		h *= del
-		if math.Abs(del-1.0) < EPS {
+		delta := d * c
+		h *= delta
+
+		if math.Abs(delta-1.0) < eps {
 			break
 		}
 	}
+
 	return h
 }
 

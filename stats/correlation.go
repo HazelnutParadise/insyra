@@ -2,155 +2,210 @@ package stats
 
 import (
 	"math"
-	"math/big"
+	"sort"
 
 	"github.com/HazelnutParadise/insyra"
+	"gonum.org/v1/gonum/stat"
+	"gonum.org/v1/gonum/stat/distuv"
 )
 
 // CorrelationMethod 定義了相關係數的計算方法
 type CorrelationMethod int
 
 const (
-	// PearsonCorrelation 表示皮爾森相關係數的計算方法，用於測量線性相關性
-	// PearsonCorrelation means Pearson correlation coefficient, used to measure linear correlation.
 	PearsonCorrelation CorrelationMethod = iota
-	// KendallCorrelation 表示肯德爾秩相關係數的計算方法，用於測量單調相關性
-	// KendallCorrelation means Kendall rank correlation coefficient, used to measure monotonic correlation.
 	KendallCorrelation
-	// SpearmanCorrelation 表示斯皮爾曼秩相關係數的計算方法，基於排序後的數據。
-	// SpearmanCorrelation means Spearman rank correlation coefficient, based on sorted data.
 	SpearmanCorrelation
 )
 
-// Covariance calculates the covariance between two datasets.
-// Always returns *big.Rat.
-func Covariance(dlX, dlY insyra.IDataList) *big.Rat {
-	meanX := new(big.Rat).SetFloat64(dlX.Mean())
-	meanY := new(big.Rat).SetFloat64(dlY.Mean())
-
-	cov := new(big.Rat)
-	for i := 0; i < dlX.Len(); i++ {
-		x := new(big.Rat).SetFloat64(dlX.Data()[i].(float64))
-		y := new(big.Rat).SetFloat64(dlY.Data()[i].(float64))
-
-		x.Sub(x, meanX) // (X_i - mean_X)
-		y.Sub(y, meanY) // (Y_i - mean_Y)
-
-		term := new(big.Rat).Mul(x, y) // (X_i - mean_X) * (Y_i - mean_Y)
-		cov.Add(cov, term)             // 累加到協方差
+func Covariance(dlX, dlY insyra.IDataList) float64 {
+	meanX := dlX.Mean()
+	meanY := dlY.Mean()
+	var sum float64 = 0
+	for i := range dlX.Len() {
+		x := dlX.Data()[i].(float64)
+		y := dlY.Data()[i].(float64)
+		sum += (x - meanX) * (y - meanY)
 	}
-
-	// 取平均
-	length := new(big.Rat).SetInt64(int64(dlX.Len()))
-	lenMinusOne := new(big.Rat).Sub(length, big.NewRat(1, 1))
-	cov.Quo(cov, lenMinusOne) // cov = cov / n
-
-	return cov
+	return sum / float64(dlX.Len()-1)
 }
 
-// Correlation calculates the correlation coefficient between two datasets.
-// Supports Pearson, Kendall, and Spearman methods.
-// If highPrecision is set to true, it returns *big.Rat, otherwise float64.
-func Correlation(dlX, dlY insyra.IDataList, method CorrelationMethod, highPrecision ...bool) any {
-	if len(highPrecision) > 1 {
-		insyra.LogWarning("stats.Correlation: Too many arguments.")
+type CorrelationResult struct {
+	testResultBase
+}
+
+func Correlation(dlX, dlY insyra.IDataList, method CorrelationMethod) *CorrelationResult {
+	if dlX == nil || dlY == nil || dlX.Len() != dlY.Len() || dlX.Len() < 2 {
+		insyra.LogWarning("stats.Correlation: Invalid input length or nil input.")
+		return nil
+	}
+	if dlX.Stdev() == 0 || dlY.Stdev() == 0 {
+		insyra.LogWarning("stats.Correlation: Cannot calculate correlation due to zero variance.")
 		return nil
 	}
 
-	var result *big.Rat
+	var result CorrelationResult
 	switch method {
 	case PearsonCorrelation:
-		result = pearsonCorrelation(dlX, dlY)
+		result = pearsonCorrelationWithStats(dlX, dlY)
 	case KendallCorrelation:
-		result = kendallCorrelation(dlX, dlY)
+		result = kendallCorrelationWithStats(dlX, dlY)
 	case SpearmanCorrelation:
-		result = spearmanCorrelation(dlX, dlY)
+		result = spearmanCorrelationWithStats(dlX, dlY)
 	default:
 		insyra.LogWarning("stats.Correlation: Unsupported method.")
-		return nil // 無效的 method，返回 nil
+		return nil
 	}
 
-	if result == nil {
+	if math.IsNaN(result.Statistic) {
 		insyra.LogWarning("stats.Correlation: Cannot calculate correlation.")
 		return nil
 	}
 
-	// 根據 highPrecision 決定是否轉換為 float64
-	if len(highPrecision) > 0 && !highPrecision[0] {
-		f64Result, _ := result.Float64()
-		return f64Result
+	return &result
+}
+
+func pearsonCorrelation(dlX, dlY insyra.IDataList) float64 {
+	cov := Covariance(dlX, dlY)
+	stdX := dlX.Stdev()
+	stdY := dlY.Stdev()
+	if stdX == 0 || stdY == 0 {
+		return math.NaN()
+	}
+	return cov / (stdX * stdY)
+}
+
+func kendallCorrelation(dlX, dlY insyra.IDataList) float64 {
+	x := dlX.ToF64Slice()
+	y := dlY.ToF64Slice()
+	return stat.Kendall(x, y, nil)
+}
+
+func pearsonCorrelationWithStats(dlX, dlY insyra.IDataList) CorrelationResult {
+	result := CorrelationResult{}
+	corr := pearsonCorrelation(dlX, dlY)
+	result.Statistic = corr
+
+	n := float64(dlX.Len())
+	if !math.IsNaN(corr) && n > 2 {
+		// 使用 Student's t 分布計算 p 值
+		tStat := corr * math.Sqrt((n-2)/(1-corr*corr))
+		tDist := distuv.StudentsT{
+			Mu:    0,
+			Sigma: 1,
+			Nu:    n - 2,
+		}
+		pValue := 2 * tDist.CDF(-math.Abs(tStat))
+		result.PValue = pValue
+
+		z := 0.5 * math.Log((1+corr)/(1-corr))
+		se := 1 / math.Sqrt(n-3)
+		zLower := z - 1.96*se
+		zUpper := z + 1.96*se
+		rLower := (math.Exp(2*zLower) - 1) / (math.Exp(2*zLower) + 1)
+		rUpper := (math.Exp(2*zUpper) - 1) / (math.Exp(2*zUpper) + 1)
+		ci := [2]float64{rLower, rUpper}
+		result.CI = &ci
+		df := n - 2
+		result.DF = &df
+	}
+	return result
+}
+
+func kendallCorrelationWithStats(dlX, dlY insyra.IDataList) CorrelationResult {
+	result := CorrelationResult{}
+	x := dlX.ToF64Slice()
+	y := dlY.ToF64Slice()
+	tau := stat.Kendall(x, y, nil)
+	result.Statistic = tau
+
+	n := len(x)
+	if n <= 7 {
+		perms := generatePermutations(y)
+		extreme := 0
+		obs := math.Abs(tau)
+		for _, perm := range perms {
+			altTau := stat.Kendall(x, perm, nil)
+			if math.Abs(altTau) >= obs {
+				extreme++
+			}
+		}
+		result.PValue = float64(extreme) / float64(len(perms))
+	} else {
+		z := 3 * tau * math.Sqrt(float64(n*(n-1))) / math.Sqrt(2*float64(2*n+5))
+		result.PValue = 2 * (1 - normalCDF(math.Abs(z)))
 	}
 
 	return result
 }
 
-// ======================= calculation functions =======================
+func generatePermutations(arr []float64) [][]float64 {
+	sort.Float64s(arr)
+	res := [][]float64{}
+	n := len(arr)
+	used := make([]bool, n)
+	perm := make([]float64, n)
 
-// pearsonCorrelation calculates Pearson correlation coefficient.
-func pearsonCorrelation(dlX, dlY insyra.IDataList) *big.Rat {
-	cov := Covariance(dlX, dlY)
-
-	// 計算標準差
-	stdX := new(big.Rat).SetFloat64(dlX.Stdev())
-	stdY := new(big.Rat).SetFloat64(dlY.Stdev())
-
-	// 防止除以0
-	if stdX.Sign() == 0 || stdY.Sign() == 0 {
-		return nil
-	}
-
-	// 計算相關係數
-	corr := new(big.Rat).Quo(cov, new(big.Rat).Mul(stdX, stdY))
-
-	return corr
-}
-
-// kendallCorrelation calculates Kendall rank correlation coefficient with tie correction.
-func kendallCorrelation(dlX, dlY insyra.IDataList) *big.Rat {
-	n := dlX.Len()
-
-	// 計算 Concordant 和 Discordant 配對，以及處理 tie 情況
-	var concordant, discordant, tieX, tieY, tieBoth int
-	for i := 0; i < n-1; i++ {
-		for j := i + 1; j < n; j++ {
-			xi, yi := dlX.Data()[i].(float64), dlY.Data()[i].(float64)
-			xj, yj := dlX.Data()[j].(float64), dlY.Data()[j].(float64)
-
-			signX := xi - xj
-			signY := yi - yj
-
-			if signX == 0 && signY == 0 {
-				tieBoth++ // x 和 y 都相等
-			} else if signX == 0 {
-				tieX++ // x 相等
-			} else if signY == 0 {
-				tieY++ // y 相等
-			} else if signX*signY > 0 {
-				concordant++
-			} else if signX*signY < 0 {
-				discordant++
+	var dfs func(int)
+	dfs = func(depth int) {
+		if depth == n {
+			copyPerm := make([]float64, n)
+			copy(copyPerm, perm)
+			res = append(res, copyPerm)
+			return
+		}
+		for i := 0; i < n; i++ {
+			if used[i] {
+				continue
 			}
+			used[i] = true
+			perm[depth] = arr[i]
+			dfs(depth + 1)
+			used[i] = false
 		}
 	}
-
-	// Kendall's Tau-b 公式
-	numerator := float64(concordant - discordant)
-	denominator := math.Sqrt(float64((concordant + discordant + tieX) * (concordant + discordant + tieY)))
-
-	if denominator == 0 {
-		return new(big.Rat).SetInt64(0) // 避免除以0
-	}
-
-	tau := new(big.Rat).SetFloat64(numerator / denominator)
-	return tau
+	dfs(0)
+	return res
 }
 
-// spearmanCorrelation calculates Spearman rank correlation coefficient.
-func spearmanCorrelation(dlX, dlY insyra.IDataList) *big.Rat {
-	// 計算秩次
+func spearmanCorrelationWithStats(dlX, dlY insyra.IDataList) CorrelationResult {
+	result := CorrelationResult{}
 	rankX := dlX.Rank()
 	rankY := dlY.Rank()
+	rho := pearsonCorrelation(rankX, rankY)
+	result.Statistic = rho
 
-	// 基於秩次計算 Pearson 相關係數
-	return pearsonCorrelation(rankX, rankY)
+	n := float64(dlX.Len())
+	if math.IsNaN(rho) {
+		result.PValue = math.NaN()
+		return result
+	}
+
+	if n > 2 {
+		if math.Abs(rho) >= 0.9999 {
+			result.PValue = 0.0
+		} else {
+			t := rho * math.Sqrt(n-2) / math.Sqrt(1-rho*rho)
+			df := n - 2
+			tDist := distuv.StudentsT{
+				Mu:    0,
+				Sigma: 1,
+				Nu:    df,
+			}
+			pValue := 2 * tDist.CDF(-math.Abs(t))
+			result.PValue = pValue
+			se := 1.0 / math.Sqrt(n-3)
+			ci := [2]float64{rho - 1.96*se, rho + 1.96*se}
+			result.CI = &ci
+			result.DF = &df
+		}
+	} else {
+		result.PValue = math.NaN()
+	}
+
+	return result
+}
+
+func normalCDF(z float64) float64 {
+	return 0.5 * (1 + math.Erf(z/math.Sqrt(2)))
 }

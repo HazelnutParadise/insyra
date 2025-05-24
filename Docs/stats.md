@@ -1,301 +1,596 @@
-# [ stats ] Package 
+# stats Package - AI-Friendly Documentation
 
-Welcome to the **stats** package, which provides efficient functions for calculating statistical measures such as **correlation**, **skewness**, **kurtosis**, **t-tests**, **chi-square tests**, and general **moment calculations**.
+This document describes all public APIs in the `stats` package, designed for AI/automated applications to directly understand each function, type, parameter, and return value.
 
-## Features
-
-- **Correlation Calculation**: Supports **Pearson**, **Kendall**, and **Spearman** correlation coefficient calculations.
-- **T-Test**: Includes **Single Sample**, **Two Sample**, and **Paired** t-tests.
-- **Chi-Square Test**: Supports both one-dimensional (1D) and two-dimensional (2D) chi-square tests with optional custom probabilities.
-- **Skewness Calculation**: Corresponds directly to **e1071** package's skewness methods.
-- **Kurtosis Calculation**: Provides kurtosis calculation that maps directly to **e1071** types.
-- **Moment Calculation**: Supports n-th moment calculations for datasets, both central and non-central.
-- **OneWayANOVA_WideFormat:** Supports analysis of variance for **wide-format data**.
-- **TwoWayANOVA_WideFormat**: Supports analysis of variance for **wide-format data**.
-- **RepeatedMeasuresANOVA_WideFormat**: Supports analysis of variance for **wide-format data**.
-- **Principal Component Analysis**: Principal Component Analysis (PCA) for dimensionality reduction and data visualization.
+---
 
 ## Installation
-
-To install the package, use the following command:
 
 ```bash
 go get github.com/HazelnutParadise/insyra/stats
 ```
 
-## Usage
+---
 
-### Correlation
+## Overview
 
-The `Correlation` function calculates the correlation coefficient between two datasets. It supports **Pearson**, **Kendall**, and **Spearman** methods.
+The stats package provides comprehensive statistical analysis functions:
 
-```go
-import "github.com/HazelnutParadise/insyra/stats"
+- **Correlation Analysis**: Pearson, Kendall, Spearman correlation coefficients
+- **Hypothesis Testing**: t-tests (single, two-sample, paired), z-tests, chi-square tests
+- **Distribution Analysis**: Skewness, Kurtosis, n-th moments
+- **Analysis of Variance**: One-way, Two-way, Repeated measures ANOVA
+- **Regression Analysis**: Linear regression
+- **F-Tests**: Variance equality, Levene's test, Bartlett's test, regression F-test, nested models
 
-// Calculate Pearson correlation
-result := stats.Correlation(dataListX, dataListY, stats.PearsonCorrelation)
-fmt.Println("Pearson correlation:", result)
+---
 
-// Calculate Kendall correlation
-result := stats.Correlation(dataListX, dataListY, stats.KendallCorrelation)
-fmt.Println("Kendall correlation:", result)
+## Core Types
 
-// Calculate Spearman correlation
-result := stats.Correlation(dataListX, dataListY, stats.SpearmanCorrelation)
-fmt.Println("Spearman correlation:", result)
-```
-
-### T-Test
-
-The `TTest` functions allow performing single-sample, two-sample, and paired t-tests.
-
-#### Single Sample T-Test
+### Common Result Structure
 
 ```go
-import "github.com/HazelnutParadise/insyra/stats"
+type testResultBase struct {
+    Statistic   float64           // Test statistic value
+    PValue      float64           // P-value
+    DF          *float64          // Degrees of freedom (nil if not applicable)
+    CI          *[2]float64       // Confidence interval (nil if not calculated)
+    EffectSizes []EffectSizeEntry // Effect size measures
+}
 
-result := stats.SingleSampleTTest(dataList, 2.5)
-fmt.Printf("Single Sample T-Test: t=%.4f, p=%.4f, df=%d\n", result.TValue, result.PValue, result.Df)
-```
-
-#### Two Sample T-Test
-
-```go
-import "github.com/HazelnutParadise/insyra/stats"
-
-result := stats.TwoSampleTTest(dataListX, dataListY, true)
-fmt.Printf("Two Sample T-Test: t=%.4f, p=%.4f, df=%d\n", result.TValue, result.PValue, result.Df)
-```
-
-#### Paired T-Test
-
-```go
-import "github.com/HazelnutParadise/insyra/stats"
-
-result := stats.PairedTTest(dataListX, dataListY)
-fmt.Printf("Paired T-Test: t=%.4f, p=%.4f, df=%d\n", result.TValue, result.PValue, result.Df)
-```
-
-### Chi-Square Test
-
-The `ChiSquareTest` function supports both **one-dimensional** and **two-dimensional** chi-square tests. You can also specify custom probabilities for the expected values and rescale the probabilities if needed.
-
-#### One-Dimensional Chi-Square Test
-
-```go
-import "github.com/HazelnutParadise/insyra/stats"
-
-observed := insyra.NewDataList(20, 15, 25)
-p := []float64{1/3, 1/3, 1/3} // Expected probabilities
-
-result := stats.ChiSquareTest(observed, p, true)
-fmt.Printf("Chi-Square Value: %.4f, P-Value: %.4f, Degrees of Freedom: %d\n", result.ChiSquare, result.PValue, result.Df)
-```
-
-#### Two-Dimensional Chi-Square Test
-
-```go
-import "github.com/HazelnutParadise/insyra/stats"
-
-table := insyra.NewDataTable(
-    insyra.NewDataList(12, 5, 7),
-    insyra.NewDataList(7, 7, 7),
-)
-result := stats.ChiSquareTest(table, nil, false)
-fmt.Printf("Chi-Square Value: %.4f, P-Value: %.4f, Degrees of Freedom: %d\n", result.ChiSquare, result.PValue, result.Df)
-```
-
-### Skewness
-
-The `Skewness` function calculates the skewness of a dataset. The method corresponds directly to **e1071** package's `type` options.
-
-```go
-import "github.com/HazelnutParadise/insyra/stats"
-
-result := stats.Skewness(data)
-fmt.Println("Skewness:", result)
-
-// Specify the method corresponding to **e1071**'s type
-result := stats.Skewness(data, 2) // Corresponds to Type 2 in **e1071**
-```
-
-### Kurtosis
-
-The `Kurtosis` function calculates the kurtosis of the dataset. The method corresponds to the **e1071** types.
-
-```go
-import "github.com/HazelnutParadise/insyra/stats"
-
-result := stats.Kurtosis(data)
-fmt.Println("Kurtosis:", result)
-
-// Specify the method corresponding to **e1071**'s type
-result := stats.Kurtosis(data, 3) // Corresponds to Type 3 in **e1071**
-```
-
-### Moment Calculation
-
-The `CalculateMoment` function computes the n-th moment of the dataset.
-
-```go
-import "github.com/HazelnutParadise/insyra/stats"
-
-moment := stats.CalculateMoment(dataList, 3, true) // Central third moment
-fmt.Println("Third moment:", moment)
-```
-
-### One-Way ANOVA
-
-The `OneWayANOVA_WideFormat` function computes a One-Way ANOVA for **wide-format data** using a **DataTable** where each row represents a different group.
-
-```go
-import "github.com/HazelnutParadise/insyra/stats"
-
-// Perform One-Way ANOVA on wide-format data
-table := insyra.NewDataTable()
-table.AppendRowsFromDataList(
-    insyra.NewDataList(4, 5, 6),  // Group 1
-    insyra.NewDataList(7, 8, 9),  // Group 2
-    insyra.NewDataList(1, 2, 3),  // Group 3
-)
-
-result := stats.OneWayANOVA_WideFormat(table)
-fmt.Printf("SSB: %.2f, SSW: %.2f, F-Value: %.2f, P-Value: %.4f\n", result.SSB, result.SSW, result.FValue, result.PValue)
-```
-
-#### Input Data Explanation
-
-- **Wide-Format**: Each **row** in the DataTable represents a group, and the **columns** represent observations within each group. All observations must be numeric values.
-
-### Two-Way ANOVA
-
-The `TwoWayANOVA_WideFormat` function computes a Two-Way ANOVA for **wide-format data** using a **DataTable** where rows represent levels of Factor A, and columns represent levels of Factor B. Each cell in the table represents the observation for that combination of factors.
-
-```go
-import "github.com/HazelnutParadise/insyra/stats"
-
-// Perform Two-Way ANOVA on wide-format data
-table := insyra.NewDataTable()
-table.AppendRowsFromDataList(
-    insyra.NewDataList(6.0, 8.0, 5.0, 7.0),  // Factor A1 (group 1)
-    insyra.NewDataList(9.0, 10.0, 7.0, 6.0), // Factor A2 (group 2)
-    insyra.NewDataList(7.0, 8.0, 6.0, 9.0),  // Factor A3 (group 3)
-)
-
-result := stats.TwoWayANOVA_WideFormat(table)
-fmt.Printf("SSA: %.2f, SSB: %.2f, SSAB: %.2f, SSW: %.2f, FA-Value: %.2f, FB-Value: %.2f, FAB-Value: %.2f, P-Value A: %.4f, P-Value B: %.4f, P-Value AB: %.4f\n", result.SSA, result.SSB, result.SSAB, result.SSW, result.FAValue, result.FBValue, result.FABValue, result.PAValue, result.PBValue, result.PABValue)
-```
-
-#### Input Data Explanation
-
-- **Wide-Format**: The data is structured such that:
-  - **Rows** represent different levels of **Factor A**.
-  - **Columns** represent different levels of **Factor B**.
-  - **Cells** contain the observed values for combinations of Factor A and Factor B levels.
-
-### Repeated Measures ANOVA
-
-The `RepeatedMeasuresANOVA_WideFormat` function computes a Repeated Measures ANOVA for **wide-format data** using a **DataTable** where rows represent different conditions, and columns represent different subjects.
-
-```go
-import "github.com/HazelnutParadise/insyra/stats"
-
-// Create a DataTable with repeated measures data
-dataTable := insyra.NewDataTable()
-dataTable.AppendRowsFromDataList(
-    insyra.NewDataList(6.0, 9.0, 5.0, 7.0),  // Condition 1
-    insyra.NewDataList(8.0, 10.0, 6.0, 6.0), // Condition 2
-    insyra.NewDataList(7.0, 9.0, 7.0, 8.0),  // Condition 3
-)
-
-// Perform Repeated Measures ANOVA
-result := stats.RepeatedMeasuresANOVA_WideFormat(dataTable)
-fmt.Printf("SSB: %.2f, SSW: %.2f, F-Value: %.2f, P-Value: %.4f\n", result.SSB, result.SSW, result.FValue, result.PValue)
-```
-
-#### Input Data Format
-
-The input data is expected to be in wide format, where each row represents a different condition, and each column represents a subject's repeated measures across different conditions.
-
-For example, for 3 conditions and 4 subjects, the table might look like this:
-
-| Condition | Subject 1 | Subject 2 | Subject 3 | Subject 4 |
-|-----------|-----------|-----------|-----------|-----------|
-| 1         | 6.0       | 9.0       | 5.0       | 7.0       |
-| 2         | 8.0       | 10.0      | 6.0       | 6.0       |
-| 3         | 7.0       | 9.0       | 7.0       | 8.0       |
-
-### Principal Component Analysis (PCA)
-
-The `PCA` function performs Principal Component Analysis (PCA) on a dataset to reduce dimensionality or for visualization purposes. This function outputs the principal components (PCs), eigenvalues, and explained variance.
-
-#### Example Usage
-
-```go
-package main
-
-import (
-	"fmt"
-
-	"github.com/HazelnutParadise/insyra"
-	"github.com/HazelnutParadise/insyra/stats"
-)
-
-func main() {
-	// Initialize test data where each column represents a variable
-	dataTable := insyra.NewDataTable(
-		insyra.NewDataList(2.5, 2.4, 2.8).SetName("Var1"),
-		insyra.NewDataList(0.5, 0.7, 0.1).SetName("Var2"),
-		insyra.NewDataList(1.5, 1.6, 1.7).SetName("Var3"),
-	)
-
-	// Perform PCA, extracting all components
-	pcaResult := stats.PCA(dataTable)
-
-	// Display the principal components
-	pcaResult.Components.Show()
-	fmt.Println("Eigenvalues:", pcaResult.Eigenvalues)
-	fmt.Println("Explained Variance:", pcaResult.ExplainedVariance)
+type EffectSizeEntry struct {
+    Type  string  // "cohen_d", "hedges_g", etc.
+    Value float64 // Effect size value
 }
 ```
 
-#### Parameters
-
-- **dataTable** (`IDataTable`): The input data table, where each column represents a variable and each row represents a sample.
-- **nComponents** (`int`, optional): The number of principal components to extract. If not specified or exceeds the number of variables, all components are extracted.
-
-#### Returns
-
-The function returns a `PCAResult` struct containing:
-- **Components** (`IDataTable`): The principal component matrix, where columns represent principal components.
-- **Eigenvalues** (`[]float64`): The eigenvalues associated with each principal component.
-- **Explained Variance** (`[]float64`): The percentage of variance explained by each principal component.
-
-### Linear Regression
-
-The `LinearRegression` function performs linear regression on two datasets.
-
-#### Linear Regression Result
-
-The function returns a `LinearRegressionResult` struct containing:
-- **Slope** (`float64`): The slope of the regression line.
-- **Intercept** (`float64`): The intercept of the regression line.
-- **Residuals** (`[]float64`): The residuals of the regression.
-- **RSquared** (`float64`): The R-squared value.
-- **AdjustedRSquared** (`float64`): The adjusted R-squared value.
-- **StandardError** (`float64`): The standard error.
-- **TValue** (`float64`): The t-value.
-- **PValue** (`float64`): The p-value.
-
-#### Example Usage
+### Alternative Hypothesis
 
 ```go
-import "github.com/HazelnutParadise/insyra/stats"
-
-result := stats.LinearRegression(dataListX, dataListY)
-fmt.Printf("Slope: %.4f, Intercept: %.4f, R-squared: %.4f, P-value: %.4f\n", result.Slope, result.Intercept, result.RSquared, result.PValue)
+type AlternativeHypothesis string
+const (
+    TwoSided AlternativeHypothesis = "two-sided"
+    Greater  AlternativeHypothesis = "greater"
+    Less     AlternativeHypothesis = "less"
+)
 ```
+
+---
+
+## Correlation Analysis
+
+### Correlation
+
+```go
+func Correlation(dlX, dlY insyra.IDataList, method CorrelationMethod) *CorrelationResult
+```
+
+**Purpose**: Calculate correlation coefficient between two datasets.
+
+**Parameters**:
+
+- `dlX, dlY`: Input data lists (must have same length, minimum 2 elements)
+- `method`: Correlation method (see CorrelationMethod below)
+
+**Returns**: `*CorrelationResult` containing correlation coefficient and statistical significance.
+
+#### CorrelationMethod
+
+```go
+type CorrelationMethod int
+const (
+    PearsonCorrelation  CorrelationMethod = iota // Linear correlation
+    KendallCorrelation                           // Rank-based correlation (robust)
+    SpearmanCorrelation                          // Monotonic correlation
+)
+```
+
+#### CorrelationResult
+
+```go
+type CorrelationResult struct {
+    testResultBase // Statistic = correlation coefficient, PValue = significance
+}
+```
+
+**Example**:
+
+```go
+result := stats.Correlation(dataX, dataY, stats.PearsonCorrelation)
+fmt.Printf("Correlation: %.4f, P-value: %.4f\n", result.Statistic, result.PValue)
+```
+
+### Covariance
+
+```go
+func Covariance(dlX, dlY insyra.IDataList) float64
+```
+
+**Purpose**: Calculate sample covariance between two datasets.
+
+---
+
+## T-Tests
+
+### SingleSampleTTest
+
+```go
+func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel float64) *TTestResult
+```
+
+**Purpose**: Test if sample mean differs from hypothesized population mean.
+
+**Parameters**:
+
+- `data`: Sample data (minimum 2 elements)
+- `mu`: Hypothesized population mean
+- `confidenceLevel`: Confidence level (0 < confidenceLevel < 1, default 0.95)
+
+### TwoSampleTTest
+
+```go
+func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenceLevel ...float64) *TTestResult
+```
+
+**Purpose**: Compare means of two independent samples.
+
+**Parameters**:
+
+- `data1, data2`: Two independent samples
+- `equalVariance`: true for pooled variance, false for Welch's t-test
+- `confidenceLevel`: Optional confidence level (default 0.95)
+
+### PairedTTest
+
+```go
+func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel ...float64) *TTestResult
+```
+
+**Purpose**: Compare means of paired/dependent samples.
+
+**Parameters**:
+
+- `data1, data2`: Paired samples (must have same length)
+- `confidenceLevel`: Optional confidence level (default 0.95)
+
+#### TTestResult
+
+```go
+type TTestResult struct {
+    testResultBase
+    Mean     *float64 // Mean of first group
+    Mean2    *float64 // Mean of second group (nil for single sample)
+    MeanDiff *float64 // Mean difference (paired t-test only)
+    N        int      // Sample size of first group
+    N2       *int     // Sample size of second group (nil for single/paired)
+}
+```
+
+**Example**:
+
+```go
+// Single sample t-test
+result := stats.SingleSampleTTest(data, 100.0, 0.95)
+fmt.Printf("t=%.4f, p=%.4f, df=%.0f\n", result.Statistic, result.PValue, *result.DF)
+
+// Two sample t-test
+result := stats.TwoSampleTTest(group1, group2, true, 0.95)
+fmt.Printf("t=%.4f, p=%.4f\n", result.Statistic, result.PValue)
+
+// Paired t-test
+result := stats.PairedTTest(before, after, 0.95)
+fmt.Printf("t=%.4f, p=%.4f, mean diff=%.4f\n", result.Statistic, result.PValue, *result.MeanDiff)
+```
+
+---
+
+## Z-Tests
+
+### SingleSampleZTest
+
+```go
+func SingleSampleZTest(data insyra.IDataList, mu float64, sigma float64, alternative AlternativeHypothesis, confidenceLevel float64) *ZTestResult
+```
+
+**Purpose**: Test sample mean against population mean when population standard deviation is known.
+
+**Parameters**:
+
+- `data`: Sample data
+- `mu`: Hypothesized population mean
+- `sigma`: Known population standard deviation (must be > 0)
+- `alternative`: Type of alternative hypothesis
+- `confidenceLevel`: Confidence level (0 < confidenceLevel < 1)
+
+#### ZTestResult
+
+```go
+type ZTestResult struct {
+    testResultBase
+    Mean  float64  // Sample mean
+    Mean2 *float64 // Second sample mean (nil for single sample)
+    N     int      // Sample size
+    N2    *int     // Second sample size (nil for single sample)
+}
+```
+
+**Example**:
+
+```go
+result := stats.SingleSampleZTest(data, 100.0, 15.0, stats.TwoSided, 0.95)
+fmt.Printf("z=%.4f, p=%.4f\n", result.Statistic, result.PValue)
+```
+
+---
+
+## Chi-Square Tests
+
+### ChiSquareGoodnessOfFit
+
+```go
+func ChiSquareGoodnessOfFit(input insyra.IDataList, p []float64, rescaleP bool) *ChiSquareTestResult
+```
+
+**Purpose**: Test if observed frequencies match expected frequencies.
+
+**Parameters**:
+
+- `input`: Observed frequencies
+- `p`: Expected probabilities (nil for equal probabilities)
+- `rescaleP`: Whether to rescale probabilities to sum to 1
+
+### ChiSquareIndependenceTest
+
+```go
+func ChiSquareIndependenceTest(rowData, colData insyra.IDataList) *ChiSquareTestResult
+```
+
+**Purpose**: Test independence between two categorical variables.
+
+**Parameters**:
+
+- `rowData, colData`: Categorical data lists
+
+#### ChiSquareTestResult
+
+```go
+type ChiSquareTestResult struct {
+    testResultBase // Statistic = chi-square statistic
+}
+```
+
+**Example**:
+
+```go
+// Goodness of fit test
+observed := insyra.NewDataList(20, 15, 25)
+p := []float64{1.0/3, 1.0/3, 1.0/3}
+result := stats.ChiSquareGoodnessOfFit(observed, p, true)
+fmt.Printf("Chi-square=%.4f, p=%.4f, df=%.0f\n", result.Statistic, result.PValue, *result.DF)
+
+// Independence test
+result := stats.ChiSquareIndependenceTest(rowData, colData)
+fmt.Printf("Chi-square=%.4f, p=%.4f\n", result.Statistic, result.PValue)
+```
+
+---
+
+## Distribution Analysis
+
+### Skewness
+
+```go
+func Skewness(sample any, method ...SkewnessMethod) float64
+```
+
+**Purpose**: Calculate skewness (asymmetry) of a distribution.
+
+**Parameters**:
+
+- `sample`: Data (any type convertible to float64 slice)
+- `method`: Optional skewness calculation method (default: SkewnessG1)
+
+#### SkewnessMethod
+
+```go
+type SkewnessMethod int
+const (
+    SkewnessG1           SkewnessMethod = iota + 1 // Type 1: G1 (default)
+    SkewnessAdjusted                               // Type 2: Adjusted Fisher-Pearson
+    SkewnessBiasAdjusted                           // Type 3: Bias-adjusted
+)
+```
+
+**Returns**: Skewness value (float64). NaN if data is invalid.
+
+### Kurtosis
+
+```go
+func Kurtosis(data any, method ...KurtosisMethod) float64
+```
+
+**Purpose**: Calculate kurtosis (tail heaviness) of a distribution.
+
+**Parameters**:
+
+- `data`: Data (any type convertible to float64 slice)
+- `method`: Optional kurtosis calculation method (default: KurtosisG2)
+
+#### KurtosisMethod
+
+```go
+type KurtosisMethod int
+const (
+    KurtosisG2           KurtosisMethod = iota + 1 // Type 1: g2 (default)
+    KurtosisAdjusted                               // Type 2: adjusted Fisher kurtosis
+    KurtosisBiasAdjusted                           // Type 3: bias-adjusted
+)
+```
+
+**Returns**: Kurtosis value (float64). NaN if data is invalid.
+
+### CalculateMoment
+
+```go
+func CalculateMoment(dl insyra.IDataList, n int, central bool) float64
+```
+
+**Purpose**: Calculate n-th moment of a dataset.
+
+**Parameters**:
+
+- `dl`: Input data list
+- `n`: Moment order (positive integer)
+- `central`: true for central moments, false for raw moments
+
+**Returns**: n-th moment value (float64). NaN if calculation fails.
+
+**Example**:
+
+```go
+// Calculate skewness
+skew := stats.Skewness(data, stats.SkewnessG1)
+fmt.Printf("Skewness: %.4f\n", skew)
+
+// Calculate kurtosis
+kurt := stats.Kurtosis(data, stats.KurtosisG2)
+fmt.Printf("Kurtosis: %.4f\n", kurt)
+
+// Calculate 3rd central moment
+moment3 := stats.CalculateMoment(dataList, 3, true)
+fmt.Printf("3rd central moment: %.4f\n", moment3)
+```
+
+---
+
+## Analysis of Variance (ANOVA)
+
+### OneWayANOVA
+
+```go
+func OneWayANOVA(groups ...insyra.IDataList) *OneWayANOVAResult
+```
+
+**Purpose**: Compare means across multiple independent groups.
+
+**Parameters**:
+
+- `groups`: Variable number of data groups (minimum 2 groups)
+
+### TwoWayANOVA
+
+```go
+func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) *TwoWayANOVAResult
+```
+
+**Purpose**: Analyze effects of two factors and their interaction.
+
+**Parameters**:
+
+- `factorALevels, factorBLevels`: Number of levels for each factor
+- `cells`: Data for each factor combination
+
+#### ANOVA Result Types
+
+```go
+type OneWayANOVAResult struct {
+    Factor  ANOVAResultComponent
+    Within  ANOVAResultComponent
+    TotalSS float64
+}
+
+type TwoWayANOVAResult struct {
+    FactorA     ANOVAResultComponent
+    FactorB     ANOVAResultComponent
+    Interaction ANOVAResultComponent
+    Within      ANOVAResultComponent
+    TotalSS     float64
+}
+
+type ANOVAResultComponent struct {
+    SumOfSquares float64
+    DF           int
+    F            float64
+    P            float64
+    EtaSquared   float64
+}
+```
+
+**Example**:
+
+```go
+// One-way ANOVA
+group1 := insyra.NewDataList(4, 5, 6)
+group2 := insyra.NewDataList(7, 8, 9)
+group3 := insyra.NewDataList(1, 2, 3)
+result := stats.OneWayANOVA(group1, group2, group3)
+fmt.Printf("F=%.4f, p=%.4f\n", result.Factor.F, result.Factor.P)
+
+// Two-way ANOVA
+cells := []insyra.IDataList{
+    insyra.NewDataList(1, 2, 3),  // A1B1
+    insyra.NewDataList(4, 5, 6),  // A1B2
+    insyra.NewDataList(7, 8, 9),  // A2B1
+    insyra.NewDataList(10, 11, 12), // A2B2
+}
+result := stats.TwoWayANOVA(2, 2, cells...)
+fmt.Printf("Factor A F=%.4f, p=%.4f\n", result.FactorA.F, result.FactorA.P)
+```
+
+---
+
+## F-Tests
+
+### FTestForVarianceEquality
+
+```go
+func FTestForVarianceEquality(data1, data2 insyra.IDataList) *FTestResult
+```
+
+**Purpose**: Test equality of variances between two groups.
+
+### LeveneTest
+
+```go
+func LeveneTest(groups []insyra.IDataList) *FTestResult
+```
+
+**Purpose**: Test equality of variances across multiple groups (robust).
+
+### BartlettTest
+
+```go
+func BartlettTest(groups []insyra.IDataList) *FTestResult
+```
+
+**Purpose**: Test equality of variances across multiple groups (assumes normality).
+
+### FTestForRegression
+
+```go
+func FTestForRegression(ssr, sse float64, df1, df2 int) *FTestResult
+```
+
+**Purpose**: Test overall significance of regression model.
+
+**Parameters**:
+
+- `ssr`: Regression sum of squares
+- `sse`: Error sum of squares
+- `df1, df2`: Degrees of freedom
+
+### FTestForNestedModels
+
+```go
+func FTestForNestedModels(rssReduced, rssFull float64, dfReduced, dfFull int) *FTestResult
+```
+
+**Purpose**: Compare nested regression models.
+
+**Parameters**:
+
+- `rssReduced, rssFull`: Residual sum of squares for each model
+- `dfReduced, dfFull`: Degrees of freedom for each model
+
+#### FTestResult
+
+```go
+type FTestResult struct {
+    testResultBase
+    DF2 float64 // Second degrees of freedom
+}
+```
+
+**Example**:
+
+```go
+// Test variance equality
+result := stats.FTestForVarianceEquality(group1, group2)
+fmt.Printf("F=%.4f, p=%.4f\n", result.Statistic, result.PValue)
+
+// Levene's test
+groups := []insyra.IDataList{group1, group2, group3}
+result := stats.LeveneTest(groups)
+fmt.Printf("Levene F=%.4f, p=%.4f\n", result.Statistic, result.PValue)
+
+// Regression F-test
+result := stats.FTestForRegression(1200.0, 800.0, 3, 20)
+fmt.Printf("Regression F=%.4f, p=%.4f\n", result.Statistic, result.PValue)
+```
+
+---
+
+## Linear Regression
+
+### LinearRegression
+
+```go
+func LinearRegression(dlX, dlY insyra.IDataList) *LinearRegressionResult
+```
+
+**Purpose**: Perform simple linear regression analysis.
+
+**Parameters**:
+
+- `dlX`: Independent variable data
+- `dlY`: Dependent variable data
+
+#### LinearRegressionResult
+
+```go
+type LinearRegressionResult struct {
+    Slope            float64   // Regression slope
+    Intercept        float64   // Y-intercept
+    Residuals        []float64 // Residual values
+    RSquared         float64   // R-squared value
+    AdjustedRSquared float64   // Adjusted R-squared
+    StandardError    float64   // Standard error of estimate
+    TValue           float64   // t-statistic for slope
+    PValue           float64   // p-value for slope significance
+}
+```
+
+**Example**:
+
+```go
+result := stats.LinearRegression(xData, yData)
+fmt.Printf("y = %.4fx + %.4f\n", result.Slope, result.Intercept)
+fmt.Printf("R² = %.4f, p = %.4f\n", result.RSquared, result.PValue)
+```
+
+---
 
 ## Method Reference
 
-The methods available for **skewness** and **kurtosis** in this package directly correspond to the `type` options in the **e1071** R package. For further details on the specific calculations and their formulas, please refer to the [e1071 documentation](https://cran.r-project.org/web/packages/e1071/e1071.pdf).
+### Skewness and Kurtosis Methods
+
+The methods available for skewness and kurtosis calculations correspond directly to the `type` options in the R package `e1071`:
+
+- **Type 1** (G1/g2): Default methods using sample moments
+- **Type 2** (Adjusted): Adjusted Fisher-Pearson estimators  
+- **Type 3** (Bias-adjusted): Bias-corrected versions
+
+For detailed mathematical formulas, refer to the [e1071 documentation](https://cran.r-project.org/web/packages/e1071/e1071.pdf).
+
+### Confidence Levels
+
+Most functions accept optional confidence levels. If not specified or invalid (outside 0-1 range), the default confidence level of 0.95 (95%) is used.
+
+### Data Input Types
+
+Functions accept various data input types:
+
+- `insyra.IDataList`: Primary interface for data lists
+- `any`: Raw data that can be converted to float64 slices
+- `[]float64`: Direct float64 slices where applicable
+
+### Error Handling
+
+Functions return `nil` or `NaN` values when:
+
+- Input data is empty or invalid
+- Sample sizes are too small for the test
+- Mathematical requirements are not met
+- Invalid parameter combinations are provided
+
+All error conditions are logged via `insyra.LogWarning()` for debugging purposes.

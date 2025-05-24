@@ -1,116 +1,98 @@
-// kurtosis.go - Calculate the kurtosis of the DataList.
-
 package stats
 
 import (
 	"math"
-	"math/big"
 
 	"github.com/HazelnutParadise/insyra"
-	"github.com/HazelnutParadise/insyra/parallel"
 )
 
-// Kurtosis calculates the kurtosis(sample) of the DataList.
-// Returns the kurtosis.
-// Returns NaN if the DataList is empty or the kurtosis cannot be calculated.
-func Kurtosis(data any, method ...int) float64 {
-	d, _ := insyra.ProcessData(data)
+// KurtosisMethod defines available kurtosis calculation methods.
+type KurtosisMethod int
+
+const (
+	KurtosisG2           KurtosisMethod = iota + 1 // Type 1: g2 (default)
+	KurtosisAdjusted                               // Type 2: adjusted Fisher kurtosis
+	KurtosisBiasAdjusted                           // Type 3: bias-adjusted
+)
+
+// Kurtosis calculates the kurtosis of the DataList.
+// method: 1 = g2, 2 = adjusted Fisher kurtosis, 3 = bias-adjusted.
+// Default is KurtosisG2.
+// Returns NaN if the data is empty or undefined.
+func Kurtosis(data any, method ...KurtosisMethod) float64 {
+	d, dLen := insyra.ProcessData(data)
+	if dLen == 0 {
+		return math.NaN()
+	}
 	d64 := insyra.SliceToF64(d)
 	dl := insyra.NewDataList(d64)
-	usemethod := 1
+
+	useMethod := KurtosisG2
+	if len(method) > 0 {
+		useMethod = method[0]
+	}
 	if len(method) > 1 {
-		insyra.LogWarning("stats.Kurtosis: More than one method specified, returning.")
 		return math.NaN()
 	}
-	if len(method) == 1 {
-		usemethod = method[0]
-	}
 
-	var result *big.Rat
-	var ok bool
-	switch usemethod {
-	case 1:
-		result, ok = calculateKurtType1(dl)
-	case 2:
-		result, ok = calculateKurtType2(dl)
-	case 3:
-		result, ok = calculateKurtType3(dl)
+	switch useMethod {
+	case KurtosisG2:
+		return calculateKurtType1(dl)
+	case KurtosisAdjusted:
+		return calculateKurtType2(dl)
+	case KurtosisBiasAdjusted:
+		return calculateKurtType3(dl)
 	default:
-		insyra.LogWarning("stats.Kurtosis: Invalid method, returning.")
 		return math.NaN()
 	}
-
-	if !ok {
-		insyra.LogWarning("stats.Kurtosis: Kurtosis is nil, returning.")
-		return math.NaN()
-	}
-
-	f64Result, _ := result.Float64()
-	return f64Result
 }
 
 // ======================== calculation functions ========================
-func calculateKurtType1(dl insyra.IDataList) (*big.Rat, bool) {
-	// 初始化 m2 和 m4 的計算
-	var m2, m4 *big.Rat
-	parallel.GroupUp(func() {
-		m2 = CalculateMoment(dl, 2, true)
-	}, func() {
-		m4 = CalculateMoment(dl, 4, true)
-	}).Run().AwaitResult()
 
-	if m2 == nil || m4 == nil {
-		return nil, false
+func calculateKurtType1(dl insyra.IDataList) float64 {
+	n := float64(dl.Len())
+	if n == 0 {
+		return math.NaN()
 	}
+	m2 := CalculateMoment(dl, 2, true)
+	m4 := CalculateMoment(dl, 4, true)
 
-	// 計算峰態
-	m2Pow2 := new(big.Rat).Mul(m2, m2) // m2^2
-	if m2Pow2.Sign() == 0 {
-		return nil, false // 如果二階矩為0，返回錯誤，避免除以0
+	if m2 == 0 {
+		return math.NaN()
 	}
 
 	// g2 = m4 / m2^2 - 3
-	result := new(big.Rat).Sub(new(big.Rat).Quo(m4, m2Pow2), new(big.Rat).SetInt64(3))
-
-	return result, true
+	return m4/math.Pow(m2, 2) - 3
 }
 
-func calculateKurtType2(dl insyra.IDataList) (*big.Rat, bool) {
-	n := new(big.Rat).SetFloat64(float64(dl.Len()))
-	g2, ok := calculateKurtType1(dl)
-	if !ok {
-		return nil, false
+func calculateKurtType2(dl insyra.IDataList) float64 {
+	n := float64(dl.Len())
+	if n < 4 {
+		return math.NaN()
 	}
+	g2 := calculateKurtType1(dl)
 
-	nPlus1 := new(big.Rat).Add(n, new(big.Rat).SetInt64(1))
-	nMinus1 := new(big.Rat).Sub(n, new(big.Rat).SetInt64(1))
-	nMinus2 := new(big.Rat).Sub(n, new(big.Rat).SetInt64(2))
-	nMinus3 := new(big.Rat).Sub(n, new(big.Rat).SetInt64(3))
+	// adjusted Fisher kurtosis
+	nPlus1 := n + 1
+	nMinus1 := n - 1
+	nMinus2 := n - 2
+	nMinus3 := n - 3
 
-	// g2*(n+1)+6
-	x1 := new(big.Rat).Add(new(big.Rat).Mul(g2, nPlus1), new(big.Rat).SetInt64(6))
+	numerator := (g2*(nPlus1) + 6) * nMinus1
+	denominator := nMinus2 * nMinus3
 
-	numerator := new(big.Rat).Mul(x1, nMinus1)
-
-	denominator := new(big.Rat).Mul(nMinus2, nMinus3)
-
-	result := new(big.Rat).Quo(numerator, denominator)
-
-	return result, true
+	return numerator / denominator
 }
 
-func calculateKurtType3(dl insyra.IDataList) (*big.Rat, bool) {
-	g2, ok := calculateKurtType1(dl)
-	if !ok {
-		return nil, false
+func calculateKurtType3(dl insyra.IDataList) float64 {
+	n := float64(dl.Len())
+	if n == 0 {
+		return math.NaN()
 	}
+	g2 := calculateKurtType1(dl)
+	kurt := g2 + 3 // convert to raw kurtosis
 
-	g2Plus3 := new(big.Rat).Add(g2, new(big.Rat).SetInt64(3))
-
-	nReciprocal := new(big.Rat).SetFloat64(1.0 / float64(dl.Len()))
-	oneMinusNReciprocal := new(big.Rat).Sub(new(big.Rat).SetInt64(1), nReciprocal)
-	oneMinusNReciprocalPow2 := new(big.Rat).Mul(oneMinusNReciprocal, oneMinusNReciprocal)
-
-	result := new(big.Rat).Sub(new(big.Rat).Mul(g2Plus3, oneMinusNReciprocalPow2), new(big.Rat).SetInt64(3))
-	return result, true
+	// bias-adjusted version
+	adjustment := math.Pow((1 - 1/n), 2)
+	return kurt*adjustment - 3
 }

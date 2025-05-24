@@ -4,50 +4,64 @@ package stats
 
 import (
 	"math"
+	"sync"
 
 	"github.com/HazelnutParadise/insyra"
 	"gonum.org/v1/gonum/stat/distuv"
 )
 
-// TTestResult holds the result of a t-test, including t-value and p-value.
 type TTestResult struct {
-	TValue float64 // t 值
-	PValue float64 // p 值
-	Df     int     // 自由度
+	testResultBase
+	Mean     *float64 // mean of the first group (or the only group)
+	Mean2    *float64 // mean of the second group (nil if not applicable)
+	MeanDiff *float64 // mean difference (only for paired t-test)
+	N        int      // sample size of the first group (or the only group or paired group)
+	N2       *int     // sample size of the second group (nil if not applicable)
 }
 
-// SingleSampleTTest performs a single-sample t-test, comparing the mean of the sample to a given value.
-// It returns the t-value, p-value, and degrees of freedom.
-func SingleSampleTTest(data insyra.IDataList, mu float64) *TTestResult {
+func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel float64) *TTestResult {
 	n := data.Len()
 	if n <= 1 {
 		insyra.LogWarning("stats.SingleSampleTTest: sample size too small.")
 		return nil
 	}
 
-	// 計算樣本均值
 	mean := data.Mean()
-
-	// 計算標準差和標準誤差
 	stddev := data.Stdev()
 	standardError := stddev / math.Sqrt(float64(n))
-
-	// 計算 t 值
 	tValue := (mean - mu) / standardError
+	df := float64(n - 1)
+	pValue := calculatePValue(tValue, df)
 
-	// 計算 P 值
-	pValue := calculatePValue(tValue, n-1)
+	if confidenceLevel <= 0 || confidenceLevel >= 1 {
+		confidenceLevel = defaultConfidenceLevel
+	}
+
+	tDist := distuv.StudentsT{Mu: 0, Sigma: 1, Nu: df}
+	tCritical := tDist.Quantile(1 - (1-confidenceLevel)/2)
+	marginOfError := tCritical * standardError
+
+	ci := &[2]float64{mean - marginOfError, mean + marginOfError}
+
+	effectSize := math.Abs(mean-mu) / stddev
+	effectSizes := []EffectSizeEntry{
+		{Type: "cohen_d", Value: effectSize},
+	}
 
 	return &TTestResult{
-		TValue: tValue,
-		PValue: pValue,
-		Df:     n - 1,
+		testResultBase: testResultBase{
+			Statistic:   tValue,
+			PValue:      pValue,
+			DF:          &df,
+			CI:          ci,
+			EffectSizes: effectSizes,
+		},
+		Mean: &mean,
+		N:    n,
 	}
 }
 
-// TwoSampleTTest performs an independent two-sample t-test, comparing the means of two samples.
-// It returns the t-value, p-value, and degrees of freedom.
-func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool) *TTestResult {
+func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenceLevel float64) *TTestResult {
 	n1 := data1.Len()
 	n2 := data2.Len()
 	if n1 <= 1 || n2 <= 1 {
@@ -55,96 +69,193 @@ func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool) *TTestRes
 		return nil
 	}
 
-	// 計算兩個樣本的均值
 	mean1 := data1.Mean()
 	mean2 := data2.Mean()
-
-	// 計算兩個樣本的標準差
+	meanDiff := mean1 - mean2
 	stddev1 := data1.Stdev()
 	stddev2 := data2.Stdev()
 
-	var standardError float64
-	var df int
+	n1Float := float64(n1)
+	n2Float := float64(n2)
+	var1 := stddev1 * stddev1
+	var2 := stddev2 * stddev2
 
-	// 是否假設兩個樣本具有相等的變異數
+	var standardError float64
+	var df float64
+
 	if equalVariance {
-		// 使用合併標準差
-		poolVariance := ((float64(n1-1) * stddev1 * stddev1) + (float64(n2-1) * stddev2 * stddev2)) / float64(n1+n2-2)
-		standardError = math.Sqrt(poolVariance * (1/float64(n1) + 1/float64(n2)))
-		df = n1 + n2 - 2
+		poolVar := ((float64(n1-1)*var1 + float64(n2-1)*var2) / float64(n1+n2-2))
+		standardError = math.Sqrt(poolVar * (1/n1Float + 1/n2Float))
+		df = float64(n1 + n2 - 2)
 	} else {
-		// 使用各自標準差
-		standardError = math.Sqrt((stddev1 * stddev1 / float64(n1)) + (stddev2 * stddev2 / float64(n2)))
-		df = int(math.Pow((stddev1*stddev1/float64(n1))+(stddev2*stddev2/float64(n2)), 2) /
-			((math.Pow(stddev1, 4) / (float64(n1 * n1 * (n1 - 1)))) + (math.Pow(stddev2, 4) / (float64(n2 * n2 * (n2 - 1))))))
+		se1 := var1 / n1Float
+		se2 := var2 / n2Float
+		standardError = math.Sqrt(se1 + se2)
+
+		seSum := se1 + se2
+		num := seSum * seSum
+		den := (se1 * se1 / (n1Float - 1)) + (se2 * se2 / (n2Float - 1))
+		df = num / den
 	}
 
-	// 計算 t 值
-	tValue := (mean1 - mean2) / standardError
-
-	// 計算 P 值
+	tValue := meanDiff / standardError
 	pValue := calculatePValue(tValue, df)
 
+	if confidenceLevel <= 0 || confidenceLevel >= 1 {
+		confidenceLevel = defaultConfidenceLevel
+	}
+
+	tDist := distuv.StudentsT{Mu: 0, Sigma: 1, Nu: df}
+	tCritical := tDist.Quantile(1 - (1-confidenceLevel)/2)
+	marginOfError := tCritical * standardError
+
+	ci := &[2]float64{meanDiff - marginOfError, meanDiff + marginOfError}
+
+	pooledSigma := math.Sqrt((var1 + var2) / 2)
+	effectSize := math.Abs(meanDiff) / pooledSigma
+	effectSizes := []EffectSizeEntry{
+		{Type: "cohen_d", Value: effectSize},
+	}
+
 	return &TTestResult{
-		TValue: tValue,
-		PValue: pValue,
-		Df:     df,
+		testResultBase: testResultBase{
+			Statistic:   tValue,
+			PValue:      pValue,
+			DF:          &df,
+			CI:          ci,
+			EffectSizes: effectSizes,
+		},
+		Mean:  &mean1,
+		Mean2: &mean2,
+		N:     n1,
+		N2:    &n2,
 	}
 }
 
-// PairedTTest performs a paired t-test, comparing the differences between two paired samples.
-// It returns the t-value, p-value, and degrees of freedom.
-func PairedTTest(data1, data2 insyra.IDataList) *TTestResult {
+func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel float64) *TTestResult {
 	n := data1.Len()
 	if n != data2.Len() || n <= 1 {
 		insyra.LogWarning("stats.PairedTTest: paired samples must have the same non-zero length.")
 		return nil
 	}
 
-	// 計算差值
-	var diffs []float64
-	for i := 0; i < n; i++ {
-		diff := data1.Data()[i].(float64) - data2.Data()[i].(float64)
-		diffs = append(diffs, diff)
+	data1Slice := data1.Data()
+	data2Slice := data2.Data()
+
+	// 僅對大型數據集使用平行運算
+	const minSizeForParallel = 5000
+	var sum, sumSq float64
+
+	if n >= minSizeForParallel {
+		// 決定 goroutine 數量 (根據 CPU 核心數和數據大小調整)
+		numGoroutines := 4
+		if n > 50000 {
+			numGoroutines = 8
+		}
+
+		chunkSize := n / numGoroutines
+		var wg sync.WaitGroup
+
+		// 創建結果集合
+		sums := make([]float64, numGoroutines)
+		sumSqs := make([]float64, numGoroutines)
+
+		// 啟動多個 goroutine 平行處理數據
+		for i := range numGoroutines {
+			wg.Add(1)
+
+			// 計算每個 goroutine 的數據範圍
+			start := i * chunkSize
+			end := start + chunkSize
+			if i == numGoroutines-1 {
+				end = n // 確保最後一個處理所有剩餘數據
+			}
+
+			go func(id, start, end int) {
+				defer wg.Done()
+
+				// 每個 goroutine 計算自己的部分和
+				var localSum, localSumSq float64
+				for j := start; j < end; j++ {
+					diff := data1Slice[j].(float64) - data2Slice[j].(float64)
+					localSum += diff
+					localSumSq += diff * diff
+				}
+
+				// 保存到對應的結果陣列
+				sums[id] = localSum
+				sumSqs[id] = localSumSq
+			}(i, start, end)
+		}
+
+		// 等待所有 goroutine 完成
+		wg.Wait()
+
+		// 合併所有 goroutine 的結果
+		for i := range numGoroutines {
+			sum += sums[i]
+			sumSq += sumSqs[i]
+		}
+	} else {
+		// 對小型數據集使用順序處理
+		for i := range n {
+			diff := data1Slice[i].(float64) - data2Slice[i].(float64)
+			sum += diff
+			sumSq += diff * diff
+		}
 	}
 
-	// 計算差值的均值和標準差
-	meanDiff := insyra.NewDataList(diffs).Mean()
-	stddevDiff := insyra.NewDataList(diffs).Stdev()
+	// 計算統計量（與原始代碼相同）
+	nFloat := float64(n)
+	meanDiff := sum / nFloat
+	variance := (sumSq - sum*sum/nFloat) / (nFloat - 1)
+	stddevDiff := math.Sqrt(variance)
 
-	// 計算 t 值
-	standardError := stddevDiff / math.Sqrt(float64(n))
+	standardError := stddevDiff / math.Sqrt(nFloat)
 	tValue := meanDiff / standardError
-
-	// 計算自由度 (n - 1)
-	df := n - 1
-
-	// 計算 P 值
+	df := nFloat - 1
 	pValue := calculatePValue(tValue, df)
 
+	if confidenceLevel <= 0 || confidenceLevel >= 1 {
+		confidenceLevel = defaultConfidenceLevel
+	}
+
+	tDist := distuv.StudentsT{Mu: 0, Sigma: 1, Nu: df}
+	tCritical := tDist.Quantile(1 - (1-confidenceLevel)/2)
+	marginOfError := tCritical * standardError
+
+	ci := &[2]float64{meanDiff - marginOfError, meanDiff + marginOfError}
+
+	effectSize := math.Abs(meanDiff) / stddevDiff
+	effectSizes := []EffectSizeEntry{
+		{Type: "cohen_d", Value: effectSize},
+	}
+
 	return &TTestResult{
-		TValue: tValue,
-		PValue: pValue,
-		Df:     df,
+		testResultBase: testResultBase{
+			Statistic:   tValue,
+			PValue:      pValue,
+			DF:          &df,
+			CI:          ci,
+			EffectSizes: effectSizes,
+		},
+		MeanDiff: &meanDiff,
+		N:        n,
 	}
 }
 
-// calculatePValue 基於 t 值和自由度計算 P 值
-func calculatePValue(tValue float64, df int) float64 {
+func calculatePValue(tValue float64, df float64) float64 {
 	if df <= 0 {
-		return 1.0 // 當自由度無效時，P-value 為 1
+		return 1.0
 	}
 
-	// 使用 t 分布來計算雙尾 P-value
 	tDist := distuv.StudentsT{
-		Mu:    0,           // 平均值
-		Sigma: 1,           // 標準差
-		Nu:    float64(df), // 自由度
+		Mu:    0,
+		Sigma: 1,
+		Nu:    df,
 	}
 
-	// 計算 t 值的絕對值，然後進行雙尾檢驗
-	tValueAbs := math.Abs(tValue)
-	pValue := 2 * (1 - tDist.CDF(tValueAbs))
-
-	return pValue
+	tAbs := math.Abs(tValue)
+	cdfValue := tDist.CDF(tAbs)
+	return 2 * (1 - cdfValue)
 }
