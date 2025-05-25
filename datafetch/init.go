@@ -1,0 +1,3 @@
+package datafetch
+
+func init() {}

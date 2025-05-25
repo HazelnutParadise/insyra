@@ -1,0 +1,3 @@
+package lpgen
+
+func init() {}

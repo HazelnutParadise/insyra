@@ -1,0 +1,3 @@
+package parallel
+
+func init() {}
