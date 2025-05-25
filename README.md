@@ -66,7 +66,7 @@ We provide a mini Go IDE, `Idensyra`, which aims to make data analysis even more
 5. Install **Insyra**:
 
     ```sh
-    go get github.com/HazelnutParadise/insyra
+    go get github.com/HazelnutParadise/insyra/allpkgs
     ```
 
 6. Create a new file, e.g., `main.go`, and write the following code:
@@ -95,19 +95,19 @@ We provide a mini Go IDE, `Idensyra`, which aims to make data analysis even more
 - To start using **Insyra**, install it with the following command:
 
     ```sh
-    go get github.com/HazelnutParadise/insyra
+    go get github.com/HazelnutParadise/insyra/allpkgs
     ```
 
 - Update **Insyra** to the latest version:
 
     ```sh
-    go get -u github.com/HazelnutParadise/insyra
+    go get -u github.com/HazelnutParadise/insyra/allpkgs
     ```
 
     or
 
     ```sh
-    go get -u github.com/HazelnutParadise/insyra@latest
+    go get -u github.com/HazelnutParadise/insyra/allpkgs@latest
     ```
 
 ### Quick Example

@@ -63,7 +63,7 @@ Go 語言次世代資料分析庫。支援 **平行處理**、**資料視覺化*
 5. 在您的專案中安裝 **Insyra**：
 
     ```sh
-    go get github.com/HazelnutParadise/insyra
+    go get github.com/HazelnutParadise/insyra/allpkgs
     ```
 
 6. 建立一個新文件，例如 `main.go`，並寫入以下代碼：
@@ -92,19 +92,19 @@ Go 語言次世代資料分析庫。支援 **平行處理**、**資料視覺化*
 - 要開始使用 **Insyra**，請使用以下命令進行安裝：
 
     ```sh
-    go get github.com/HazelnutParadise/insyra
+    go get github.com/HazelnutParadise/insyra/allpkgs
     ```
 
 - 更新 **Insyra** 到最新版本：
 
     ```sh
-    go get -u github.com/HazelnutParadise/insyra
+    go get -u github.com/HazelnutParadise/insyra/allpkgs
     ```
 
     或者
 
     ```sh
-    go get github.com/HazelnutParadise/insyra@latest
+    go get github.com/HazelnutParadise/insyra/allpkgs@latest
     ```
 
 
