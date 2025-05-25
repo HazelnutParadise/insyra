@@ -271,11 +271,10 @@ func (dt *DataTable) ShowRange(startEnd ...interface{}) {
 			if page > 0 && page < totalPages-1 {
 				fmt.Println("(Scroll screen to see more)")
 			}
-		}
-		// Print column names - using header text color
+		} // Print column names - using header text color
 		fmt.Printf("\033[1;32m%-*s\033[0m", maxRowNameWidth+2, "RowNames")
 		for _, colIndex := range currentPageCols {
-			fmt.Printf(" \033[1;32m%-*s\033[0m", colWidths[colIndex]+1, TruncateString(colIndex, colWidths[colIndex]))
+			fmt.Printf(" \033[1;32m%-*s\033[0m", colWidths[colIndex], TruncateString(colIndex, colWidths[colIndex]))
 		}
 		fmt.Println()
 
@@ -286,7 +285,6 @@ func (dt *DataTable) ShowRange(startEnd ...interface{}) {
 
 		// Check if range was explicitly specified
 		explicitRangeSpecified := len(startEnd) > 0
-
 		// If there are too many rows in the selected range, only show first 20 and last 5
 		// UNLESS a range was explicitly specified by the user
 		if selectedRowCount > 25 && !explicitRangeSpecified {
@@ -296,7 +294,7 @@ func (dt *DataTable) ShowRange(startEnd ...interface{}) {
 			// Show ellipsis
 			fmt.Printf("\033[1;36m%-*s\033[0m", maxRowNameWidth+2, "...")
 			for range currentPageCols {
-				fmt.Printf(" \033[1;36m%-*s\033[0m", colWidths[currentPageCols[0]]+1, "...")
+				fmt.Printf(" \033[1;36m%-*s\033[0m", colWidths[currentPageCols[0]], "...")
 			}
 			fmt.Println()
 
@@ -356,7 +354,7 @@ func printRowsColored(dataMap map[string][]any, start, end int, rowNames []strin
 				}
 			}
 
-			fmt.Printf(" %s%-*s\033[0m", valueColor, colWidths[colIndex]+1, TruncateString(value, colWidths[colIndex]))
+			fmt.Printf(" %s%-*s\033[0m", valueColor, colWidths[colIndex], TruncateString(value, colWidths[colIndex]))
 		}
 		fmt.Println()
 	}
@@ -366,7 +364,7 @@ func printRowsColored(dataMap map[string][]any, start, end int, rowNames []strin
 func printSeparator(rowNameWidth int, colIndices []string, colWidths map[string]int) {
 	fmt.Print(strings.Repeat("-", rowNameWidth))
 	for _, colIndex := range colIndices {
-		fmt.Print(" " + strings.Repeat("-", colWidths[colIndex]+1))
+		fmt.Print(" " + strings.Repeat("-", colWidths[colIndex]))
 	}
 	fmt.Println()
 }
