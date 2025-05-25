@@ -185,16 +185,14 @@ func (dt *DataTable) ShowRange(startEnd ...interface{}) {
 			hasNumericData := false
 			for _, val := range rangeData {
 				if val != nil {
-					switch val.(type) {
+					switch v := val.(type) {
 					case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
 						hasNumericData = true
 					case string:
 						// Check if string can be parsed as number using strconv directly
-						if strVal, ok := val.(string); ok {
-							if _, err := strconv.ParseFloat(strVal, 64); err == nil {
-								hasNumericData = true
-								break
-							}
+						if _, err := strconv.ParseFloat(v, 64); err == nil {
+							hasNumericData = true
+							break
 						}
 					}
 					if hasNumericData {
@@ -828,16 +826,14 @@ func (dl *DataList) ShowRange(startEnd ...any) {
 		hasNumericData := false
 		for _, val := range rangeData {
 			if val != nil {
-				switch val.(type) {
+				switch v := val.(type) {
 				case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
 					hasNumericData = true
 				case string:
 					// Check if string can be parsed as number using strconv directly
-					if strVal, ok := val.(string); ok {
-						if _, err := strconv.ParseFloat(strVal, 64); err == nil {
-							hasNumericData = true
-							break
-						}
+					if _, err := strconv.ParseFloat(v, 64); err == nil {
+						hasNumericData = true
+						break
 					}
 				}
 				if hasNumericData {
