@@ -12,6 +12,9 @@ Go 語言次世代資料分析庫。支援 **平行處理**、**資料視覺化*
 
 **官方網站: https://insyra.hazelnut-paradise.com**
 
+> [!NOTE]
+> 本專案正在快速迭代中，請為此專案加星並關注，以便隨時了解最新變化！
+
 ![logo](logo/logo.webp)
 
 歡迎加入 [**Side Project Taiwan**(Discord 社群)](https://discord.com/channels/1205906503073140776/1280539658551558368) 與我們一起討論。

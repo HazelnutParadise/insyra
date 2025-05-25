@@ -13,6 +13,9 @@ A next-generation data analysis library for Golang. Supports **parallel processi
 
 **Official Website: https://insyra.hazelnut-paradise.com**
 
+> [!NOTE]
+> This project is evolving rapidly—please star and watch the repository to stay up to date with the latest changes!
+
 ![logo](logo/logo_transparent.png)
 
 
