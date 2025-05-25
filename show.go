@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mattn/go-runewidth"
 	"golang.org/x/term"
 )
 
@@ -128,41 +129,8 @@ func (dt *DataTable) ShowRange(startEnd ...interface{}) {
 		fmt.Println("\033[2;37m(empty)\033[0m")
 		return
 	}
-	// Calculate the maximum width for each column
-	colWidths := make(map[string]int)
-	for _, colIndex := range colIndices {
-		colWidths[colIndex] = len(colIndex)
-		for _, value := range dataMap[colIndex] {
-			valueStr := FormatValue(value)
-			if len(valueStr) > colWidths[colIndex] {
-				colWidths[colIndex] = len(valueStr)
-			}
-		}
-		// Limit column width to a specific value
-		if colWidths[colIndex] > 30 {
-			colWidths[colIndex] = 30
-		}
-	}
-
-	// Calculate the maximum width of RowNames and display RowIndex
-	rowNames := make([]string, dt.getMaxColLength())
-	maxRowNameWidth := len("RowNames")
-	for i := range rowNames {
-		if rowName, exists := dt.getRowNameByIndex(i); exists {
-			rowNames[i] = rowName
-		} else {
-			rowNames[i] = "" // Display empty if no name
-		}
-		rowNames[i] = fmt.Sprintf("%d: %s", i, rowNames[i]) // Add RowIndex
-		if len(rowNames[i]) > maxRowNameWidth {
-			maxRowNameWidth = len(rowNames[i])
-		}
-	}
-
-	// Limit row name width to a specific value
-	if maxRowNameWidth > 25 {
-		maxRowNameWidth = 25
-	}
+	// Compute table layout (column widths, row names, and max row name width)
+	colWidths, rowNames, maxRowNameWidth := prepareTableLayout(dt, dataMap, colIndices)
 
 	// Try to display some basic statistics for the visible range
 	if end-start > 0 && colCount > 0 {
@@ -174,7 +142,7 @@ func (dt *DataTable) ShowRange(startEnd ...interface{}) {
 		}
 		statsInfo += ": "
 
-		for _, colIndex := range colIndices[:min(3, len(colIndices))] { // Only show statistics for the first three columns
+		for _, colIndex := range colIndices[:min(3, len(colIndices))] {
 			// Create a subset of data for the visible range
 			rangeData := make([]any, 0, end-start)
 			for i := start; i < end && i < len(dataMap[colIndex]); i++ {
@@ -224,7 +192,7 @@ func (dt *DataTable) ShowRange(startEnd ...interface{}) {
 					if !math.IsNaN(mean) && !math.IsNaN(colMin) && !math.IsNaN(colMax) {
 						hasNumbers = true
 						shortColName := strings.Split(colIndex, "(")[0] // Only use short column name
-						statsInfo += fmt.Sprintf("%s(mean=%.4g, range=[%.4g, %.4g]) ",
+						statsInfo += fmt.Sprintf("%s(mean=%.2f, range=[%.2f, %.2f]) ",
 							shortColName, mean, colMin, colMax)
 					}
 				}
@@ -272,14 +240,20 @@ func (dt *DataTable) ShowRange(startEnd ...interface{}) {
 				fmt.Println("(Scroll screen to see more)")
 			}
 		} // Print column names - using header text color
-		fmt.Printf("\033[1;32m%-*s\033[0m", maxRowNameWidth+2, "RowNames")
+		// Print header with proper alignment using runewidth
+		fmt.Print("\033[1;32m" + runewidth.FillRight("RowNames", maxRowNameWidth+2) + "\033[0m")
 		for _, colIndex := range currentPageCols {
-			fmt.Printf(" \033[1;32m%-*s\033[0m", colWidths[colIndex], TruncateString(colIndex, colWidths[colIndex]))
+			label := TruncateString(colIndex, colWidths[colIndex])
+			fmt.Print(" \033[1;32m" + runewidth.FillRight(label, colWidths[colIndex]+1) + "\033[0m")
 		}
 		fmt.Println()
 
-		// Print separator
-		printSeparator(maxRowNameWidth+2, currentPageCols, colWidths)
+		// Print separator aligned to header widths
+		fmt.Print(strings.Repeat("-", maxRowNameWidth+2))
+		for _, colIndex := range currentPageCols {
+			fmt.Print(" " + strings.Repeat("-", colWidths[colIndex]+1))
+		}
+		fmt.Println()
 		// Print row data for the specified range
 		selectedRowCount := end - start
 
@@ -291,12 +265,12 @@ func (dt *DataTable) ShowRange(startEnd ...interface{}) {
 			// Show first 20 rows
 			printRowsColored(dataMap, start, start+20, rowNames, maxRowNameWidth, currentPageCols, colWidths)
 
-			// Show ellipsis
-			fmt.Printf("\033[1;36m%-*s\033[0m", maxRowNameWidth+2, "...")
-			for range currentPageCols {
-				fmt.Printf(" \033[1;36m%-*s\033[0m", colWidths[currentPageCols[0]], "...")
+			// Show ellipsis line aligned to columns
+			fmt.Print("\033[1;36m" + runewidth.FillRight("...", maxRowNameWidth+2))
+			for _, idx := range currentPageCols {
+				fmt.Print(" " + runewidth.FillRight("...", colWidths[idx]+1))
 			}
-			fmt.Println()
+			fmt.Println("\033[0m")
 
 			// Show last 5 rows
 			printRowsColored(dataMap, end-5, end, rowNames, maxRowNameWidth, currentPageCols, colWidths)
@@ -324,37 +298,39 @@ func printRowsColored(dataMap map[string][]any, start, end int, rowNames []strin
 		if rowIndex < len(rowNames) {
 			rowName = rowNames[rowIndex]
 		}
-		// Use row name color
-		fmt.Printf("\033[1;37m%-*s\033[0m", maxRowNameWidth+2, TruncateString(rowName, maxRowNameWidth))
+		// Print row name with proper alignment
+		fmt.Print("\033[1;37m")
+		fmt.Print(runewidth.FillRight(TruncateString(rowName, maxRowNameWidth), maxRowNameWidth+2))
+		fmt.Print("\033[0m")
 
 		for _, colIndex := range colIndices {
-			value := "nil"
-			var rawValue any = nil
+			// Determine cell value and type
+			var rawValue any
 			if rowIndex < len(dataMap[colIndex]) {
 				rawValue = dataMap[colIndex][rowIndex]
-				if rawValue != nil {
-					value = FormatValue(rawValue)
-				}
+			}
+			value := "nil"
+			if rawValue != nil {
+				value = FormatValue(rawValue)
 			}
 
-			// Use different colors based on value type
-			valueColor := "\033[0m" // Default color
-
-			// If value is nil, use gray
+			// Choose color based on value type
+			valueColor := "\033[0m"
 			if rawValue == nil {
-				valueColor = "\033[2;37m" // Nil value color
+				valueColor = "\033[2;37m"
 			} else {
 				switch rawValue.(type) {
 				case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
-					valueColor = "\033[0;34m" // Numeric data color
+					valueColor = "\033[0;34m"
 				case string:
-					valueColor = "\033[0;32m" // Text data color
+					valueColor = "\033[0;32m"
 				case bool:
-					valueColor = "\033[0;35m" // Purple for boolean values
+					valueColor = "\033[0;35m"
 				}
 			}
 
-			fmt.Printf(" %s%-*s\033[0m", valueColor, colWidths[colIndex], TruncateString(value, colWidths[colIndex]))
+			// Print cell with proper alignment using runewidth
+			fmt.Print(" " + valueColor + runewidth.FillRight(TruncateString(value, colWidths[colIndex]), colWidths[colIndex]+1) + "\033[0m")
 		}
 		fmt.Println()
 	}
@@ -453,8 +429,8 @@ func (dt *DataTable) ShowTypesRange(startEnd ...interface{}) {
 
 	// Generate table title
 	tableTitle := "DataTable Type Info"
-	if len(dt.columns) > 0 && dt.columns[0].name != "" {
-		tableTitle += ": " + dt.columns[0].name
+	if dt.name != "" {
+		tableTitle += ": " + dt.name
 	}
 
 	// Get row and column counts inside the same lock to avoid deadlock with Size()
@@ -522,41 +498,8 @@ func (dt *DataTable) ShowTypesRange(startEnd ...interface{}) {
 		return
 	}
 
-	// Calculate the maximum width for each column
-	colWidths := make(map[string]int)
-	for _, colIndex := range colIndices {
-		colWidths[colIndex] = len(colIndex)
-		for _, value := range dataMap[colIndex] {
-			valueStr := fmt.Sprintf("%T", value)
-			if len(valueStr) > colWidths[colIndex] {
-				colWidths[colIndex] = len(valueStr)
-			}
-		}
-		// Limit column width to a specific value
-		if colWidths[colIndex] > 25 {
-			colWidths[colIndex] = 25
-		}
-	}
-
-	// Calculate the maximum width of RowNames and display RowIndex
-	rowNames := make([]string, dt.getMaxColLength())
-	maxRowNameWidth := len("RowNames")
-	for i := range rowNames {
-		if rowName, exists := dt.getRowNameByIndex(i); exists {
-			rowNames[i] = rowName
-		} else {
-			rowNames[i] = "" // Display empty if no name
-		}
-		rowNames[i] = fmt.Sprintf("%d: %s", i, rowNames[i]) // Add RowIndex
-		if len(rowNames[i]) > maxRowNameWidth {
-			maxRowNameWidth = len(rowNames[i])
-		}
-	}
-
-	// Limit row name width to a specific value
-	if maxRowNameWidth > 25 {
-		maxRowNameWidth = 25
-	}
+	// Compute layout for type display (column widths, row names, and max row name width)
+	colWidths, rowNames, maxRowNameWidth := prepareTableLayoutTypes(dt, dataMap, colIndices)
 
 	// Dynamically adjust the number of columns to display based on current window width
 	totalColsToShow := determineColumnsToShow(colIndices, colWidths, maxRowNameWidth, width)
@@ -592,15 +535,20 @@ func (dt *DataTable) ShowTypesRange(startEnd ...interface{}) {
 			}
 		}
 
-		// Print column names
-		fmt.Printf("\033[1;32m%-*s\033[0m", maxRowNameWidth+2, "RowNames")
+		// Print column names with runewidth alignment
+		fmt.Print("\033[1;32m" + runewidth.FillRight("RowNames", maxRowNameWidth+2) + "\033[0m")
 		for _, colIndex := range currentPageCols {
-			fmt.Printf(" \033[1;32m%-*s\033[0m", colWidths[colIndex]+1, TruncateString(colIndex, colWidths[colIndex]))
+			lbl := TruncateString(colIndex, colWidths[colIndex])
+			fmt.Print(" \033[1;32m" + runewidth.FillRight(lbl, colWidths[colIndex]+1) + "\033[0m")
 		}
 		fmt.Println()
 
-		// Print separator
-		printSeparator(maxRowNameWidth+2, currentPageCols, colWidths)
+		// Print separator aligned to header widths
+		fmt.Print(strings.Repeat("-", maxRowNameWidth+2))
+		for _, colIndex := range currentPageCols {
+			fmt.Print(" " + strings.Repeat("-", colWidths[colIndex]+1))
+		}
+		fmt.Println()
 		// Print row data for the specified range
 		selectedRowCount := end - start
 
@@ -613,10 +561,10 @@ func (dt *DataTable) ShowTypesRange(startEnd ...interface{}) {
 			// Show first 20 rows
 			printTypeRows(dataMap, start, start+20, rowNames, maxRowNameWidth, currentPageCols, colWidths)
 
-			// Show ellipsis
-			fmt.Printf("\033[1;36m%-*s\033[0m", maxRowNameWidth+2, "...")
-			for range currentPageCols {
-				fmt.Printf(" \033[1;36m%-*s\033[0m", colWidths[currentPageCols[0]]+1, "...")
+			// Show ellipsis line aligned to columns
+			fmt.Print("\033[1;36m" + runewidth.FillRight("...", maxRowNameWidth+2) + "\033[0m")
+			for _, colIndex := range currentPageCols {
+				fmt.Print(" \033[1;36m" + runewidth.FillRight("...", colWidths[colIndex]+1) + "\033[0m")
 			}
 			fmt.Println()
 
@@ -646,8 +594,8 @@ func printTypeRows(dataMap map[string][]any, start, end int, rowNames []string, 
 		if rowIndex < len(rowNames) {
 			rowName = rowNames[rowIndex]
 		}
-		// Use light gray color for row names
-		fmt.Printf("\033[1;37m%-*s\033[0m", maxRowNameWidth+2, TruncateString(rowName, maxRowNameWidth))
+		// Use light gray color for row names with proper alignment using runewidth
+		fmt.Print("\033[1;37m" + runewidth.FillRight(TruncateString(rowName, maxRowNameWidth), maxRowNameWidth+2) + "\033[0m")
 
 		for _, colIndex := range colIndices {
 			value := "nil"
@@ -690,7 +638,8 @@ func printTypeRows(dataMap map[string][]any, start, end int, rowNames []string, 
 				typeColor = "\033[0;36m" // Cyan for arrays or slices
 			}
 
-			fmt.Printf(" %s%-*s\033[0m", typeColor, colWidths[colIndex]+1, TruncateString(value, colWidths[colIndex]))
+			// Print type cell with proper alignment using runewidth
+			fmt.Print(" " + typeColor + runewidth.FillRight(TruncateString(value, colWidths[colIndex]), colWidths[colIndex]+1) + "\033[0m")
 		}
 		fmt.Println()
 	}
@@ -866,10 +815,11 @@ func (dl *DataList) ShowRange(startEnd ...any) {
 					if start > 0 || end < totalItems {
 						statsLabel = "stat (selected range)"
 					}
-					fmt.Printf("\033[3;33m %s: mean=%.4g, min=%.4g, max=%.4g, range=%.4g\033[0m\n",
+					fmt.Printf("\033[3;33m %s: mean=%.2f, min=%.2f, max=%.2f, range=%.2f\033[0m\n",
 						statsLabel, mean, dlmin, max, max-dlmin)
 					if len(numericValues) > 10 {
-						fmt.Printf("\033[3;33m      SD=%.4g, median=%.4g\033[0m\n",
+						// Show sd and median with two decimal places
+						fmt.Printf("\033[3;33m      sd=%.2f, median=%.2f\033[0m\n",
 							rangeDl.Stdev(), rangeDl.Median())
 					}
 					fmt.Println(strings.Repeat("-", min(width, 80)))
@@ -958,6 +908,143 @@ func (dl *DataList) ShowRange(startEnd ...any) {
 	}
 }
 
+// ShowTypes displays the data types of each element in the DataList.
+// It adapts to terminal width and always displays in a linear format.
+func (dl *DataList) ShowTypes() {
+	dl.ShowTypesRange()
+}
+
+// ShowTypesRange displays the data types of DataList within a specified range.
+// startEnd 参数同 ShowRange。
+func (dl *DataList) ShowTypesRange(startEnd ...any) {
+	if dl == nil {
+		fmt.Println("\033[1;31mERROR: Unable to show types of a nil DataList\033[0m")
+		return
+	}
+	dl.mu.Lock()
+	defer dl.mu.Unlock()
+
+	// 取 terminal 寬度
+	width := getDataListTerminalWidth()
+	// 標題
+	title := "DataList Type Info"
+	if dl.name != "" {
+		title += ": " + dl.name
+	}
+
+	// 計算顯示範圍
+	total := len(dl.data)
+	start, end := 0, total
+	if len(startEnd) > 0 {
+		if v, ok := startEnd[0].(int); ok {
+			if v < 0 {
+				start = max(0, total+v)
+			} else {
+				end = min(v, total)
+			}
+		}
+		if len(startEnd) >= 2 {
+			if v2 := startEnd[1]; v2 == nil {
+				end = total
+			} else if e, ok := v2.(int); ok {
+				if e < 0 {
+					end = total + e
+				} else {
+					end = min(e, total)
+				}
+			}
+		}
+		if start < 0 {
+			start = 0
+		}
+		if end > total {
+			end = total
+		}
+		if start >= end {
+			fmt.Printf("\033[1;33m%s\033[0m \033[3;33m(%d items)\033[0m\n", title, total)
+			fmt.Println(strings.Repeat("=", min(width, 80)))
+			fmt.Println("\033[2;37m(empty range)\033[0m")
+			return
+		}
+	}
+
+	// 標題列
+	summary := fmt.Sprintf("(%d items)", total)
+	if len(startEnd) > 0 {
+		summary += fmt.Sprintf(" [showing items %d to %d]", start, end-1)
+	}
+	fmt.Printf("\033[1;33m%s\033[0m \033[3;33m%s\033[0m\n", title, summary)
+	fmt.Println(strings.Repeat("=", min(width, 80)))
+
+	// 無資料
+	if end-start == 0 {
+		fmt.Println("\033[2;37m(empty)\033[0m")
+		return
+	}
+
+	// 計算 Index 與 Type 欄位最大寬度
+	maxIdxW := runewidth.StringWidth("Index")
+	maxTypW := runewidth.StringWidth("Type")
+	types := make([]string, end-start)
+	for i := start; i < end; i++ {
+		idx := strconv.Itoa(i)
+		if w := runewidth.StringWidth(idx); w > maxIdxW {
+			maxIdxW = w
+		}
+		var tstr string
+		if dl.data[i] == nil {
+			tstr = "nil"
+		} else {
+			tstr = reflect.TypeOf(dl.data[i]).String()
+		}
+		types[i-start] = tstr
+		if w := runewidth.StringWidth(tstr); w > maxTypW {
+			maxTypW = w
+		}
+	}
+
+	// 列印表頭
+	fmt.Print("\033[1;32m" + runewidth.FillRight("Index", maxIdxW+2) + "\033[0m")
+	fmt.Println(" " + "\033[1;32m" + runewidth.FillRight("Type", maxTypW+1) + "\033[0m")
+	// 列印分隔線
+	fmt.Println(strings.Repeat("-", maxIdxW+2+1+maxTypW+1))
+
+	// 計算範圍內項目數
+	totalItems := end - start
+	explicit := len(startEnd) > 0
+	const maxShow = 25
+	showAll := explicit || totalItems <= maxShow
+	firstCount := totalItems
+	if !showAll {
+		firstCount = 20
+	}
+
+	// 列印前幾項
+	for i := start; i < start+firstCount; i++ {
+		idx := strconv.Itoa(i)
+		tstr := types[i-start]
+		fmt.Print("\033[1;37m" + runewidth.FillRight(idx, maxIdxW+2) + "\033[0m")
+		fmt.Println(" " + runewidth.FillRight(tstr, maxTypW+1))
+	}
+
+	// 如果有截斷，則列印省略號及最後幾項
+	if !showAll {
+		// ellipsis line
+		fmt.Print("\033[1;33m" + runewidth.FillRight("...", maxIdxW+2) + "\033[0m")
+		fmt.Println(" " + "\033[1;33m" + runewidth.FillRight("...", maxTypW+1) + "\033[0m")
+		// last 5 items
+		for i := end - 5; i < end; i++ {
+			idx := strconv.Itoa(i)
+			tstr := types[i-start]
+			fmt.Print("\033[1;37m" + runewidth.FillRight(idx, maxIdxW+2) + "\033[0m")
+			fmt.Println(" " + runewidth.FillRight(tstr, maxTypW+1))
+		}
+		// summary
+		fmt.Printf("\n\033[3;33mDisplaying %d items (from index %d to index %d)\033[0m\n",
+			totalItems, start, end-1)
+	}
+}
+
 // getDataListTerminalWidth gets the terminal window width, specifically for DataList
 func getDataListTerminalWidth() int {
 	width := 80 // Default width
@@ -985,4 +1072,96 @@ func max(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// prepareTableLayout 计算每个列的宽度、行名列表及最大行名宽度
+func prepareTableLayout(dt *DataTable, dataMap map[string][]any, colIndices []string) (map[string]int, []string, int) {
+	// 计算每个列的最大宽度
+	colWidths := make(map[string]int, len(colIndices))
+	for _, idx := range colIndices {
+		width := runewidth.StringWidth(idx)
+		for _, v := range dataMap[idx] {
+			s := FormatValue(v)
+			if w := runewidth.StringWidth(s); w > width {
+				width = w
+			}
+		}
+		// 限制列宽不超过30
+		if width > 30 {
+			width = 30
+		}
+		colWidths[idx] = width
+	}
+	// 计算行名及最大行名宽度
+	totalRows := dt.getMaxColLength()
+	rowNames := make([]string, totalRows)
+	maxRowName := runewidth.StringWidth("RowNames")
+	for i := 0; i < totalRows; i++ {
+		name, _ := dt.getRowNameByIndex(i)
+		label := fmt.Sprintf("%d: %s", i, name)
+		rowNames[i] = label
+		if w := runewidth.StringWidth(label); w > maxRowName {
+			maxRowName = w
+		}
+	}
+	// 限制行名宽度不超过25
+	if maxRowName > 25 {
+		maxRowName = 25
+	}
+	return colWidths, rowNames, maxRowName
+}
+
+// prepareTableLayoutTypes 计算 ShowTypesRange 使用的列宽、行名列表及最大行名宽度
+func prepareTableLayoutTypes(dt *DataTable, dataMap map[string][]any, colIndices []string) (map[string]int, []string, int) {
+	// 计算每个列的最大宽度（以类型字符串宽度为根据）
+	colWidths := make(map[string]int, len(colIndices))
+	for _, idx := range colIndices {
+		// 初始宽度为列名宽度
+		width := runewidth.StringWidth(idx)
+		// 遍历每个单元格，计算类型字符串或特殊标记宽度
+		for _, v := range dataMap[idx] {
+			var s string
+			if v == nil {
+				s = "nil"
+			} else {
+				// 获取类型字符串或特殊描述
+				switch val := v.(type) {
+				case []any:
+					s = fmt.Sprintf("[]any(len=%d)", len(val))
+				case []string:
+					s = fmt.Sprintf("[]string(len=%d)", len(val))
+				case map[string]any:
+					s = fmt.Sprintf("map[string]any(len=%d)", len(val))
+				case time.Time:
+					s = "time.Time"
+				default:
+					s = reflect.TypeOf(v).String()
+				}
+			}
+			if w := runewidth.StringWidth(s); w > width {
+				width = w
+			}
+		}
+		// 限制列宽不超过25
+		if width > 25 {
+			width = 25
+		}
+		colWidths[idx] = width
+	}
+	// 计算行名及最大行名宽度
+	total := dt.getMaxColLength()
+	rowNames := make([]string, total)
+	maxName := runewidth.StringWidth("RowNames")
+	for i := 0; i < total; i++ {
+		name, _ := dt.getRowNameByIndex(i)
+		label := fmt.Sprintf("%d: %s", i, name)
+		rowNames[i] = label
+		if w := runewidth.StringWidth(label); w > maxName {
+			maxName = w
+		}
+	}
+	if maxName > 25 {
+		maxName = 25
+	}
+	return colWidths, rowNames, maxName
 }

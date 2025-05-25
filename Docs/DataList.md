@@ -125,6 +125,10 @@ dl := isr.DL{}.From(1, 2, 3, 4, 5) // modern
 
   Both the start and end parameters can be negative, in which case they represent positions relative to the end of the list.
 
+* **ShowTypes:** Displays the content of DataList along with their data types in a clean linear format. This method is useful for understanding the types of data stored in the DataList.
+
+* **ShowTypesRange(...interface{}):** Displays the content of DataList along with their data types within a specified range. It accepts the same parameter combinations as `ShowRange`.
+
 **Data Comparison:**
 
 * **IsEqualTo:** Checks if the data of the DataList is equal to another DataList. 

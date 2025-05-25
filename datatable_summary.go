@@ -27,6 +27,7 @@ func (dt *DataTable) Summary() {
 	if tableName != "" {
 		tableTitle += ": " + tableName
 	}
+
 	// Display header - using blue as DataTable's primary color
 	fmt.Println(ColorText("1;36", tableTitle))
 	fmt.Println(strings.Repeat("=", min(width, 80)))

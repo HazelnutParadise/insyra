@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/HazelnutParadise/Go-Utils/conv"
+	"github.com/mattn/go-runewidth"
 )
 
 type F64orRat interface {
@@ -242,16 +243,32 @@ func ConvertLongDataToWide(data, factor IDataList, independents []IDataList, agg
 	return wideTable
 }
 
-// TruncateString 截斷字符串到指定長度，太長的字符串末尾加上省略號
-// 公共函數版本，可以被其他包或文件使用
+// TruncateString 截斷字符串到指定寬度，太長的字符串末尾加上省略號，使用 runewidth 計算字元寬度
 func TruncateString(s string, maxLength int) string {
-	if len(s) <= maxLength {
+	// 總寬度小於等於限制，直接返回
+	if runewidth.StringWidth(s) <= maxLength {
 		return s
 	}
+	// 若限制過小，按 rune 長度裁剪
 	if maxLength <= 3 {
-		return s[:maxLength]
+		rs := []rune(s)
+		if len(rs) <= maxLength {
+			return s
+		}
+		return string(rs[:maxLength])
 	}
-	return s[:maxLength-3] + "..."
+	// 留出 3 單位寬度給省略號
+	width := 0
+	var b strings.Builder
+	for _, r := range s {
+		rw := runewidth.RuneWidth(r)
+		if width+rw > maxLength-3 {
+			break
+		}
+		b.WriteRune(r)
+		width += rw
+	}
+	return b.String() + "..."
 }
 
 // FormatValue 根據值的類型格式化輸出，改善顯示效果
