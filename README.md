@@ -142,7 +142,7 @@ import (
 )
 
 func main() {
-	dl := isr.DL{}.From(1, 2, 3, 4, 5)
+	dl := isr.DL.From(1, 2, 3, 4, 5)
 	dl.Append(6)
 	fmt.Println("DataList:", dl.Data())
 	fmt.Println("Mean:", dl.Mean())
