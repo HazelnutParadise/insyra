@@ -47,3 +47,31 @@ func TestKurtosis_InvalidOrEmpty(t *testing.T) {
 		t.Errorf("Expected NaN for multiple method args")
 	}
 }
+
+func TestKurtosis_MultipleDatasets(t *testing.T) {
+	tolerance := 1e-6
+
+	cases := []struct {
+		data   []float64
+		method stats.KurtosisMethod
+		expect float64
+	}{
+		// Verified via scipy.stats.kurtosis(data, fisher=True)
+		{[]float64{1, 2, 3, 4, 5}, stats.KurtosisG2, -1.3},
+		{[]float64{10, 12, 23, 23, 16, 23, 21, 16}, stats.KurtosisG2, -1.3984375},
+		{[]float64{6, 6, 6, 6, 6}, stats.KurtosisG2, math.NaN()}, // Variance = 0 → should return NaN
+		{[]float64{1, 100, 1000, 10000, 100000}, stats.KurtosisG2, 0.2021924443706249},
+		{[]float64{2.5, 3.5, 2.8, 3.3, 3.0}, stats.KurtosisG2, -1.292405371414662},
+	}
+
+	for i, c := range cases {
+		got := stats.Kurtosis(c.data, c.method)
+		if math.IsNaN(c.expect) {
+			if !math.IsNaN(got) {
+				t.Errorf("Case %d: Expected NaN but got %f", i+1, got)
+			}
+		} else if !almostEqual(got, c.expect, tolerance) {
+			t.Errorf("Case %d: Kurtosis(data, method=%v) = %f; want %f", i+1, c.method, got, c.expect)
+		}
+	}
+}
