@@ -1,4 +1,4 @@
-# stats Package - AI-Friendly Documentation
+# stats Package Documentation
 
 This document describes all public APIs in the `stats` package, designed for AI/automated applications to directly understand each function, type, parameter, and return value.
 

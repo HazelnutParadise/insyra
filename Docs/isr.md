@@ -1,4 +1,4 @@
-# ISR Package Documentation
+# isr Package Documentation
 
 ## Overview
 
