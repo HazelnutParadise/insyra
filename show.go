@@ -336,15 +336,6 @@ func printRowsColored(dataMap map[string][]any, start, end int, rowNames []strin
 	}
 }
 
-// Print separator
-func printSeparator(rowNameWidth int, colIndices []string, colWidths map[string]int) {
-	fmt.Print(strings.Repeat("-", rowNameWidth))
-	for _, colIndex := range colIndices {
-		fmt.Print(" " + strings.Repeat("-", colWidths[colIndex]))
-	}
-	fmt.Println()
-}
-
 // Get terminal window width
 func getTerminalWidth() int {
 	width := 80 // Default width
