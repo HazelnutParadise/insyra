@@ -28,7 +28,8 @@ func PtrDL[T *insyra.DataList | dl](l T) *dl {
 }
 
 // From is equivalent to insyra.NewDataList(data...).
-func (l dl) From(data ...any) *dl {
+// nolint:govet
+func (_ dl) From(data ...any) *dl {
 	newDL := dl{}
 	newDL.DataList = insyra.NewDataList(data)
 	return &newDL

@@ -38,7 +38,8 @@ func PtrDT[T *insyra.DataTable | dt](t T) *dt {
 }
 
 // From converts a DataList, DL, Row, Col, []Row, []Col, CSV, map[string]any, or map[int]any to a DataTable.
-func (dtt dt) From(item any) *dt {
+// nolint:govet
+func (_ dt) From(item any) *dt {
 	t := dt{}
 	switch val := item.(type) {
 	case *insyra.DataList:
