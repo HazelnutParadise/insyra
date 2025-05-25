@@ -7,7 +7,10 @@ import (
 	"github.com/HazelnutParadise/insyra"
 )
 
-type DT struct {
+// Use `DT.From` to create a new DataTable from a DataList, DL, Row, Col, []Row, []Col, CSV, JSON, map[string]any, or map[int]any.
+var DT = dt{}
+
+type dt struct {
 	*insyra.DataTable
 }
 
@@ -22,205 +25,206 @@ type Row map[any]any
 type Col map[any]any
 
 // PtrDT converts a DataTable or DT to a *DT.
-func PtrDT[T *insyra.DataTable | DT](dt T) *DT {
-	switch concrete := any(dt).(type) {
+func PtrDT[T *insyra.DataTable | dt](t T) *dt {
+	switch concrete := any(t).(type) {
 	case *insyra.DataTable:
-		return &DT{concrete}
-	case DT:
+		return &dt{concrete}
+	case dt:
 		return &concrete
 	default:
-		insyra.LogFatal("isr.PtrDT(): got unexpected type %T", dt)
+		insyra.LogFatal("isr.PtrDT(): got unexpected type %T", t)
 		return nil
 	}
 }
 
 // From converts a DataList, DL, Row, Col, []Row, []Col, CSV, map[string]any, or map[int]any to a DataTable.
-func (dt DT) From(item any) *DT {
+func (dtt dt) From(item any) *dt {
+	t := dt{}
 	switch val := item.(type) {
 	case *insyra.DataList:
-		dt.DataTable = insyra.NewDataTable(val)
-	case *DL:
-		dt.DataTable = insyra.NewDataTable(val.DataList)
+		t.DataTable = insyra.NewDataTable(val)
+	case *dl:
+		t.DataTable = insyra.NewDataTable(val.DataList)
 	case []*insyra.DataList:
-		dt.DataTable = insyra.NewDataTable()
-		for _, dl := range val {
-			dt.DataTable.AppendCols(dl)
+		t.DataTable = insyra.NewDataTable()
+		for _, l := range val {
+			t.DataTable.AppendCols(l)
 		}
-	case []DL:
-		dt.DataTable = insyra.NewDataTable()
-		for _, dl := range val {
-			dt.DataTable.AppendCols(dl.DataList)
+	case []dl:
+		t.DataTable = insyra.NewDataTable()
+		for _, l := range val {
+			t.DataTable.AppendCols(l.DataList)
 		}
 	case DLs:
-		dt.DataTable = insyra.NewDataTable()
-		for _, dl := range val {
-			newdl := insyra.NewDataList(dl.Data()...)
-			if dl.GetName() != "" {
-				newdl.SetName(dl.GetName())
+		t.DataTable = insyra.NewDataTable()
+		for _, l := range val {
+			newdl := insyra.NewDataList(l.Data()...)
+			if l.GetName() != "" {
+				newdl.SetName(l.GetName())
 			}
-			dt.DataTable.AppendCols(newdl)
+			t.DataTable.AppendCols(newdl)
 		}
 	case Row:
-		dt.DataTable = insyra.NewDataTable()
-		err := fromRowToDT(&dt, val)
+		t.DataTable = insyra.NewDataTable()
+		err := fromRowToDT(&t, val)
 		if err != nil {
-			insyra.LogFatal("DT{}.From(): %v", err)
+			insyra.LogFatal("DT.From(): %v", err)
 		}
 	case []Row:
-		dt.DataTable = insyra.NewDataTable()
+		t.DataTable = insyra.NewDataTable()
 		for _, r := range val {
-			err := fromRowToDT(&dt, r)
+			err := fromRowToDT(&t, r)
 			if err != nil {
-				insyra.LogFatal("DT{}.From(): %v", err)
+				insyra.LogFatal("DT.From(): %v", err)
 			}
 		}
 	case Col:
-		dt.DataTable = insyra.NewDataTable()
-		err := fromRowToDT(&dt, val)
+		t.DataTable = insyra.NewDataTable()
+		err := fromRowToDT(&t, val)
 		if err != nil {
-			insyra.LogFatal("DT{}.From(): %v", err)
+			insyra.LogFatal("DT.From(): %v", err)
 		}
-		dt.Transpose()
+		t.Transpose()
 	case []Col:
-		dt.DataTable = insyra.NewDataTable()
+		t.DataTable = insyra.NewDataTable()
 		for _, r := range val {
-			err := fromRowToDT(&dt, r)
+			err := fromRowToDT(&t, r)
 			if err != nil {
-				insyra.LogFatal("DT{}.From(): %v", err)
+				insyra.LogFatal("DT.From(): %v", err)
 			}
 		}
-		dt.Transpose()
+		t.Transpose()
 	case CSV:
-		dt.DataTable = insyra.NewDataTable()
-		err := dt.LoadFromCSV(val.FilePath, val.LoadOpts.FirstCol2RowNames, val.LoadOpts.FirstRow2ColNames)
+		t.DataTable = insyra.NewDataTable()
+		err := t.LoadFromCSV(val.FilePath, val.LoadOpts.FirstCol2RowNames, val.LoadOpts.FirstRow2ColNames)
 		if err != nil {
-			insyra.LogFatal("DT{}.From(): %v", err)
+			insyra.LogFatal("DT.From(): %v", err)
 		}
 	case JSON:
-		dt.DataTable = insyra.NewDataTable()
-		err := dt.LoadFromJSON(val.FilePath)
+		t.DataTable = insyra.NewDataTable()
+		err := t.LoadFromJSON(val.FilePath)
 		if err != nil {
-			insyra.LogFatal("DT{}.From(): %v", err)
+			insyra.LogFatal("DT.From(): %v", err)
 		}
 	case map[string]any:
-		dt.DataTable = insyra.NewDataTable().AppendRowsByColIndex(val)
+		t.DataTable = insyra.NewDataTable().AppendRowsByColIndex(val)
 	case map[int]any:
 		strV := make(map[string]any)
 		for k, v := range val {
 			strV[conv.ToString(k)] = v
 		}
-		dt.DataTable = insyra.NewDataTable().AppendRowsByColIndex(strV)
+		t.DataTable = insyra.NewDataTable().AppendRowsByColIndex(strV)
 	default:
-		insyra.LogFatal("DT{}.FromDL(): got unexpected type %T", item)
+		insyra.LogFatal("DT.FromDL(): got unexpected type %T", item)
 	}
-	return &dt
+	return &t
 }
 
 // Col returns a DL that contains the column at the specified index.
-func (dt *DT) Col(col any) *DL {
-	var dl DL
+func (t *dt) Col(col any) *dl {
+	var l dl
 	switch v := col.(type) {
 	case int:
-		dl.DataList = dt.DataTable.GetColByNumber(v)
+		l.DataList = t.DataTable.GetColByNumber(v)
 	case string:
-		dl.DataList = dt.DataTable.GetCol(v)
+		l.DataList = t.DataTable.GetCol(v)
 	case name:
-		colDt := dt.DataTable.FilterByColNameEqualTo(v.value)
-		dl.DataList = colDt.GetColByNumber(0)
+		colDt := t.DataTable.FilterByColNameEqualTo(v.value)
+		l.DataList = colDt.GetColByNumber(0)
 	default:
-		insyra.LogFatal("DT{}.Col(): got unexpected type %T", col)
+		insyra.LogFatal("DT.Col(): got unexpected type %T", col)
 	}
-	return &dl
+	return &l
 }
 
 // Row returns a DL that contains the row at the specified index.
-func (dt *DT) Row(row any) *DL {
-	var dl DL
+func (t *dt) Row(row any) *dl {
+	var l dl
 	switch v := row.(type) {
 	case int:
-		dl.DataList = dt.DataTable.GetRow(v)
+		l.DataList = t.DataTable.GetRow(v)
 	case name:
-		rowDt := dt.DataTable.FilterByRowNameEqualTo(v.value)
-		dl.DataList = rowDt.GetRow(0)
+		rowDt := t.DataTable.FilterByRowNameEqualTo(v.value)
+		l.DataList = rowDt.GetRow(0)
 	default:
-		insyra.LogFatal("DT{}.Row(): got unexpected type %T", row)
+		insyra.LogFatal("DT.Row(): got unexpected type %T", row)
 	}
-	return &dl
+	return &l
 }
 
 // At returns the element at the specified row and column.
-func (dt *DT) At(row any, col any) any {
+func (t *dt) At(row any, col any) any {
 	switch v := col.(type) {
 	case int:
 		switch r := row.(type) {
 		case int:
-			return dt.DataTable.GetElementByNumberIndex(r, v)
+			return t.DataTable.GetElementByNumberIndex(r, v)
 		case name:
-			rowDt := dt.DataTable.FilterByRowNameEqualTo(r.value)
+			rowDt := t.DataTable.FilterByRowNameEqualTo(r.value)
 			return rowDt.GetElementByNumberIndex(0, v)
 		default:
-			insyra.LogWarning("DT{}.At(): got unexpected type %T. Returning nil.", row)
+			insyra.LogWarning("DT.At(): got unexpected type %T. Returning nil.", row)
 		}
 	case string:
 		switch r := row.(type) {
 		case int:
-			return dt.DataTable.GetElement(r, v)
+			return t.DataTable.GetElement(r, v)
 		case name:
-			rowDt := dt.DataTable.FilterByRowNameEqualTo(r.value)
+			rowDt := t.DataTable.FilterByRowNameEqualTo(r.value)
 			return rowDt.GetElement(0, v)
 		default:
-			insyra.LogWarning("DT{}.At(): got unexpected type %T. Returning nil.", row)
+			insyra.LogWarning("DT.At(): got unexpected type %T. Returning nil.", row)
 		}
 	case name:
 		switch r := row.(type) {
 		case int:
-			colDt := dt.DataTable.FilterByColNameEqualTo(v.value)
+			colDt := t.DataTable.FilterByColNameEqualTo(v.value)
 			return colDt.GetElementByNumberIndex(r, 0)
 		case name:
-			rowDt := dt.DataTable.FilterByRowNameEqualTo(r.value)
+			rowDt := t.DataTable.FilterByRowNameEqualTo(r.value)
 			colDt := rowDt.FilterByColNameEqualTo(v.value)
 			return colDt.GetElementByNumberIndex(0, 0)
 		default:
-			insyra.LogWarning("DT{}.At(): got unexpected type %T. Returning nil.", row)
+			insyra.LogWarning("DT.At(): got unexpected type %T. Returning nil.", row)
 		}
 	default:
-		insyra.LogWarning("DT{}.At(): got unexpected type %T. Returning nil.", col)
+		insyra.LogWarning("DT.At(): got unexpected type %T. Returning nil.", col)
 	}
 	return nil
 }
 
-func (dt *DT) Push(data any) *DT {
+func (t *dt) Push(data any) *dt {
 	switch val := data.(type) {
 	case *insyra.DataList:
-		dt.DataTable.AppendCols(val)
-	case *DL:
-		dt.DataTable.AppendCols(val.DataList)
+		t.DataTable.AppendCols(val)
+	case *dl:
+		t.DataTable.AppendCols(val.DataList)
 	case []*insyra.DataList:
-		for _, dl := range val {
-			dt.DataTable.AppendCols(dl)
+		for _, l := range val {
+			t.DataTable.AppendCols(l)
 		}
-	case []DL:
-		for _, dl := range val {
-			dt.DataTable.AppendCols(dl.DataList)
+	case []dl:
+		for _, l := range val {
+			t.DataTable.AppendCols(l.DataList)
 		}
 	case DLs:
-		for _, dl := range val {
-			newdl := insyra.NewDataList(dl.Data()...)
-			if dl.GetName() != "" {
-				newdl.SetName(dl.GetName())
+		for _, l := range val {
+			newdl := insyra.NewDataList(l.Data()...)
+			if l.GetName() != "" {
+				newdl.SetName(l.GetName())
 			}
-			dt.DataTable.AppendCols(newdl)
+			t.DataTable.AppendCols(newdl)
 		}
 	case Row:
-		err := fromRowToDT(dt, val)
+		err := fromRowToDT(t, val)
 		if err != nil {
-			insyra.LogFatal("DT{}.Push(): %v", err)
+			insyra.LogFatal("DT.Push(): %v", err)
 		}
 	case []Row:
 		for _, r := range val {
-			err := fromRowToDT(dt, r)
+			err := fromRowToDT(t, r)
 			if err != nil {
-				insyra.LogFatal("DT{}.Push(): %v", err)
+				insyra.LogFatal("DT.Push(): %v", err)
 			}
 		}
 	case Col:
@@ -229,48 +233,33 @@ func (dt *DT) Push(data any) *DT {
 		temDT := PtrDT(insyra.NewDataTable())
 		err := fromRowToDT(temDT, val)
 		if err != nil {
-			insyra.LogFatal("DT{}.Push(): %v", err)
+			insyra.LogFatal("DT.Push(): %v", err)
 		}
 		numRow, _ := temDT.Size()
 		for i := 0; i < numRow; i++ {
-			dl := temDT.GetRow(i)
-			dt.DataTable.AppendCols(dl)
+			l := temDT.GetRow(i)
+			t.DataTable.AppendCols(l)
 		}
 	case []Col:
 		for _, r := range val {
 			temDT := PtrDT(insyra.NewDataTable())
 			err := fromRowToDT(temDT, r)
 			if err != nil {
-				insyra.LogFatal("DT{}.Push(): %v", err)
+				insyra.LogFatal("DT.Push(): %v", err)
 			}
 			numRow, _ := temDT.Size()
-			for i := 0; i < numRow; i++ {
-				dl := temDT.GetRow(i)
-				dt.DataTable.AppendCols(dl)
+			for i := range numRow {
+				l := temDT.GetRow(i)
+				t.DataTable.AppendCols(l)
 			}
 		}
 	default:
-		insyra.LogFatal("DT{}.Push(): got unexpected type %T", data)
+		insyra.LogFatal("DT.Push(): got unexpected type %T", data)
 	}
-	return dt
+	return t
 }
 
-// func (dt *DT) Iloc(indices ...any) *DT {
-// 	switch len(indices) {
-// 	case 1:
-// 		switch v := indices[0].(type) {
-// 		case int:
-// 			DT{}. = dt.GetColByNumber(v)
-
-// 			dl.DataList = dl.DataList.SelectRows(v.Start, v.End) // 切片選取
-// 		}
-// 	default:
-// 		dl.DataList = dl.DataList.SelectRows(indices...) // 多行選取
-// 	}
-// 	return dl
-// }
-
-func fromRowToDT(dt *DT, val map[any]any) error {
+func fromRowToDT(t *dt, val map[any]any) error {
 	strMap := make(map[string]any)
 	if isIntKey(val) || isStrKey(val) {
 		for k, v := range val {
@@ -280,12 +269,12 @@ func fromRowToDT(dt *DT, val map[any]any) error {
 				strMap[conv.ToString(k)] = v
 			}
 		}
-		dt.AppendRowsByColIndex(strMap)
+		t.AppendRowsByColIndex(strMap)
 	} else if isNameKey(val) {
 		for k, v := range val {
 			strMap[k.(name).value] = v
 		}
-		dt.AppendRowsByColName(strMap)
+		t.AppendRowsByColName(strMap)
 	} else {
 		return fmt.Errorf("got unexpected type %T", val)
 	}
