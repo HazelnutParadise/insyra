@@ -6,6 +6,7 @@ import (
 	"os"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -180,16 +181,55 @@ func (dt *DataTable) ShowRange(startEnd ...interface{}) {
 				rangeData = append(rangeData, dataMap[colIndex][i])
 			}
 
-			// Try to convert columns to numbers for statistical calculations
-			dl := NewDataList(rangeData...)
-			dl.ParseNumbers() // Try to parse as numbers
+			// Check if the column contains numeric data before attempting statistics
+			hasNumericData := false
+			for _, val := range rangeData {
+				if val != nil {
+					switch val.(type) {
+					case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+						hasNumericData = true
+					case string:
+						// Check if string can be parsed as number using strconv directly
+						if strVal, ok := val.(string); ok {
+							if _, err := strconv.ParseFloat(strVal, 64); err == nil {
+								hasNumericData = true
+								break
+							}
+						}
+					}
+					if hasNumericData {
+						break
+					}
+				}
+			}
 
-			mean, colMin, colMax := dl.Mean(), dl.Min(), dl.Max()
-			if !math.IsNaN(mean) && !math.IsNaN(colMin) && !math.IsNaN(colMax) {
-				hasNumbers = true
-				shortColName := strings.Split(colIndex, "(")[0] // Only use short column name
-				statsInfo += fmt.Sprintf("%s(mean=%.4g, range=[%.4g, %.4g]) ",
-					shortColName, mean, colMin, colMax)
+			// Only attempt statistical calculations if numeric data is found
+			if hasNumericData {
+				// Create a temporary DataList with only numeric values for statistics
+				numericValues := make([]any, 0)
+				for _, val := range rangeData {
+					if val != nil {
+						switch v := val.(type) {
+						case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+							numericValues = append(numericValues, v)
+						case string:
+							if floatVal, err := strconv.ParseFloat(v, 64); err == nil {
+								numericValues = append(numericValues, floatVal)
+							}
+						}
+					}
+				}
+
+				if len(numericValues) > 0 {
+					dl := NewDataList(numericValues...)
+					mean, colMin, colMax := dl.Mean(), dl.Min(), dl.Max()
+					if !math.IsNaN(mean) && !math.IsNaN(colMin) && !math.IsNaN(colMax) {
+						hasNumbers = true
+						shortColName := strings.Split(colIndex, "(")[0] // Only use short column name
+						statsInfo += fmt.Sprintf("%s(mean=%.4g, range=[%.4g, %.4g]) ",
+							shortColName, mean, colMin, colMax)
+					}
+				}
 			}
 		}
 
@@ -685,7 +725,7 @@ func (dl *DataList) Show() {
 // Example: dl.ShowRange(2, 10) - shows items with indices 2 to 9 (not including 10)
 // Example: dl.ShowRange(2, -1) - shows items from index 2 to the end of the list
 // Example: dl.ShowRange(2, nil) - shows items from index 2 to the end of the list
-func (dl *DataList) ShowRange(startEnd ...interface{}) {
+func (dl *DataList) ShowRange(startEnd ...any) {
 	// Safety check to prevent nil pointer
 	if dl == nil {
 		fmt.Println("\033[1;31mERROR: Unable to show a nil DataList\033[0m")
@@ -783,23 +823,64 @@ func (dl *DataList) ShowRange(startEnd ...interface{}) {
 		for i := start; i < end; i++ {
 			rangeData = append(rangeData, dl.data[i])
 		}
-		rangeDl := NewDataList(rangeData...)
-		rangeDl.ParseNumbers() // Try to parse as numbers
 
-		// Try to calculate statistics for the range
-		mean, dlmin, max := rangeDl.Mean(), rangeDl.Min(), rangeDl.Max()
-		if !math.IsNaN(mean) && !math.IsNaN(dlmin) && !math.IsNaN(max) { // Using secondary color to display statistics
-			statsLabel := "stat"
-			if start > 0 || end < totalItems {
-				statsLabel = "stat (selected range)"
+		// Check if the data contains numeric values before attempting statistics
+		hasNumericData := false
+		for _, val := range rangeData {
+			if val != nil {
+				switch val.(type) {
+				case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+					hasNumericData = true
+				case string:
+					// Check if string can be parsed as number using strconv directly
+					if strVal, ok := val.(string); ok {
+						if _, err := strconv.ParseFloat(strVal, 64); err == nil {
+							hasNumericData = true
+							break
+						}
+					}
+				}
+				if hasNumericData {
+					break
+				}
 			}
-			fmt.Printf("\033[3;33m %s: mean=%.4g, min=%.4g, max=%.4g, range=%.4g\033[0m\n",
-				statsLabel, mean, dlmin, max, max-dlmin)
-			if len(rangeData) > 10 {
-				fmt.Printf("\033[3;33m      SD=%.4g, median=%.4g\033[0m\n",
-					rangeDl.Stdev(), rangeDl.Median())
+		}
+
+		// Only attempt statistical calculations if numeric data is found
+		if hasNumericData {
+			// Create a temporary DataList with only numeric values for statistics
+			numericValues := make([]any, 0)
+			for _, val := range rangeData {
+				if val != nil {
+					switch v := val.(type) {
+					case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+						numericValues = append(numericValues, v)
+					case string:
+						if floatVal, err := strconv.ParseFloat(v, 64); err == nil {
+							numericValues = append(numericValues, floatVal)
+						}
+					}
+				}
 			}
-			fmt.Println(strings.Repeat("-", min(width, 80)))
+
+			if len(numericValues) > 0 {
+				rangeDl := NewDataList(numericValues...)
+				// Try to calculate statistics for the range
+				mean, dlmin, max := rangeDl.Mean(), rangeDl.Min(), rangeDl.Max()
+				if !math.IsNaN(mean) && !math.IsNaN(dlmin) && !math.IsNaN(max) { // Using secondary color to display statistics
+					statsLabel := "stat"
+					if start > 0 || end < totalItems {
+						statsLabel = "stat (selected range)"
+					}
+					fmt.Printf("\033[3;33m %s: mean=%.4g, min=%.4g, max=%.4g, range=%.4g\033[0m\n",
+						statsLabel, mean, dlmin, max, max-dlmin)
+					if len(numericValues) > 10 {
+						fmt.Printf("\033[3;33m      SD=%.4g, median=%.4g\033[0m\n",
+							rangeDl.Stdev(), rangeDl.Median())
+					}
+					fmt.Println(strings.Repeat("-", min(width, 80)))
+				}
+			}
 		}
 	}
 
