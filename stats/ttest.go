@@ -19,7 +19,13 @@ type TTestResult struct {
 	N2       *int     // sample size of the second group (nil if not applicable)
 }
 
-func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel float64) *TTestResult {
+// SingleSampleTTest performs a one-sample t-test comparing the sample mean to a known population mean.
+// Parameters:
+//   - data: The sample data to test
+//   - mu: The hypothesized population mean to compare against
+//   - confidenceLevel: (Optional) Confidence level for the confidence interval (e.g., 0.95 for 95%, 0.99 for 99%)
+//     Must be between 0 and 1. If not provided or invalid, defaults to 0.95
+func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...float64) *TTestResult {
 	n := data.Len()
 	if n <= 1 {
 		insyra.LogWarning("stats.SingleSampleTTest: sample size too small.")
@@ -33,12 +39,20 @@ func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel float6
 	df := float64(n - 1)
 	pValue := calculatePValue(tValue, df)
 
-	if confidenceLevel <= 0 || confidenceLevel >= 1 {
-		confidenceLevel = defaultConfidenceLevel
+	// Handle optional confidence level parameter
+	var cl float64
+	if len(confidenceLevel) > 0 {
+		cl = confidenceLevel[0]
+	} else {
+		cl = defaultConfidenceLevel
+	}
+
+	if cl <= 0 || cl >= 1 {
+		cl = defaultConfidenceLevel
 	}
 
 	tDist := distuv.StudentsT{Mu: 0, Sigma: 1, Nu: df}
-	tCritical := tDist.Quantile(1 - (1-confidenceLevel)/2)
+	tCritical := tDist.Quantile(1 - (1-cl)/2)
 	marginOfError := tCritical * standardError
 
 	ci := &[2]float64{mean - marginOfError, mean + marginOfError}
@@ -61,7 +75,13 @@ func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel float6
 	}
 }
 
-func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenceLevel float64) *TTestResult {
+// TwoSampleTTest performs a two-sample t-test comparing the means of two independent groups.
+// Parameters:
+//   - data1, data2: The two data groups to compare
+//   - equalVariance: Whether to assume equal variances between groups
+//   - confidenceLevel: (Optional) Confidence level for the confidence interval (e.g., 0.95 for 95%, 0.99 for 99%)
+//     Must be between 0 and 1. If not provided or invalid, defaults to 0.95
+func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenceLevel ...float64) *TTestResult {
 	n1 := data1.Len()
 	n2 := data2.Len()
 	if n1 <= 1 || n2 <= 1 {
@@ -97,16 +117,23 @@ func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenc
 		den := (se1 * se1 / (n1Float - 1)) + (se2 * se2 / (n2Float - 1))
 		df = num / den
 	}
-
 	tValue := meanDiff / standardError
 	pValue := calculatePValue(tValue, df)
 
-	if confidenceLevel <= 0 || confidenceLevel >= 1 {
-		confidenceLevel = defaultConfidenceLevel
+	// Handle optional confidence level parameter
+	var cl float64
+	if len(confidenceLevel) > 0 {
+		cl = confidenceLevel[0]
+	} else {
+		cl = defaultConfidenceLevel
+	}
+
+	if cl <= 0 || cl >= 1 {
+		cl = defaultConfidenceLevel
 	}
 
 	tDist := distuv.StudentsT{Mu: 0, Sigma: 1, Nu: df}
-	tCritical := tDist.Quantile(1 - (1-confidenceLevel)/2)
+	tCritical := tDist.Quantile(1 - (1-cl)/2)
 	marginOfError := tCritical * standardError
 
 	ci := &[2]float64{meanDiff - marginOfError, meanDiff + marginOfError}
@@ -132,7 +159,13 @@ func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenc
 	}
 }
 
-func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel float64) *TTestResult {
+// PairedTTest performs a paired-samples t-test comparing the means of two related groups.
+// The data must be paired observations (same subjects measured twice).
+// Parameters:
+//   - data1, data2: The paired data groups to compare (must have same length)
+//   - confidenceLevel: (Optional) Confidence level for the confidence interval (e.g., 0.95 for 95%, 0.99 for 99%)
+//     Must be between 0 and 1. If not provided or invalid, defaults to 0.95
+func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel ...float64) *TTestResult {
 	n := data1.Len()
 	if n != data2.Len() || n <= 1 {
 		insyra.LogWarning("stats.PairedTTest: paired samples must have the same non-zero length.")
@@ -210,18 +243,25 @@ func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel float64) *TTestR
 	meanDiff := sum / nFloat
 	variance := (sumSq - sum*sum/nFloat) / (nFloat - 1)
 	stddevDiff := math.Sqrt(variance)
-
 	standardError := stddevDiff / math.Sqrt(nFloat)
 	tValue := meanDiff / standardError
 	df := nFloat - 1
 	pValue := calculatePValue(tValue, df)
 
-	if confidenceLevel <= 0 || confidenceLevel >= 1 {
-		confidenceLevel = defaultConfidenceLevel
+	// Handle optional confidence level parameter
+	var cl float64
+	if len(confidenceLevel) > 0 {
+		cl = confidenceLevel[0]
+	} else {
+		cl = defaultConfidenceLevel
+	}
+
+	if cl <= 0 || cl >= 1 {
+		cl = defaultConfidenceLevel
 	}
 
 	tDist := distuv.StudentsT{Mu: 0, Sigma: 1, Nu: df}
-	tCritical := tDist.Quantile(1 - (1-confidenceLevel)/2)
+	tCritical := tDist.Quantile(1 - (1-cl)/2)
 	marginOfError := tCritical * standardError
 
 	ci := &[2]float64{meanDiff - marginOfError, meanDiff + marginOfError}
