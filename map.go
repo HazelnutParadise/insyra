@@ -1,8 +1,8 @@
 package insyra
 
 // Map applies a function to all elements in the DataList and returns a new DataList with the results.
-// The mapFunc should take an element of any type and return a transformed value of any type.
-func (dl *DataList) Map(mapFunc func(any) any) *DataList {
+// The mapFunc should take an element of any type and its index, then return a transformed value of any type.
+func (dl *DataList) Map(mapFunc func(int, any) any) *DataList {
 	defer func() {
 		dl.mu.Unlock()
 	}()
@@ -24,7 +24,7 @@ func (dl *DataList) Map(mapFunc func(any) any) *DataList {
 				}
 			}()
 
-			mappedData[i] = mapFunc(v)
+			mappedData[i] = mapFunc(i, v)
 		}()
 	}
 

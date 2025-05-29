@@ -69,7 +69,7 @@ type IDataList interface {
 	MovingStdev(int) *DataList
 	Len() int
 	Sort(acending ...bool) *DataList
-	Map(mapFunc func(any) any) *DataList
+	Map(mapFunc func(int, any) any) *DataList
 	Rank() *DataList
 	Reverse() *DataList
 	Upper() *DataList

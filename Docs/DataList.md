@@ -60,11 +60,44 @@ dl := isr.DL{}.From(1, 2, 3, 4, 5) // modern
 **Data Manipulation:**
 
 * **Sort:** Sorts the elements in the DataList using a mixed sorting logic that handles strings, numbers (various integer and float types), and time data types. If sorting fails, the original order is restored.
-* **Map:** Applies a transformation function to all elements in the DataList and returns a new DataList with the transformed results. The function should take an element of any type and return a transformed value of any type. If an error occurs during transformation of any element, the original value is preserved.
+* **Map:** Applies a transformation function to all elements in the DataList and returns a new DataList with the transformed results. The function should take two parameters: the index (int) and the element (any), and return a transformed value of any type. This allows for index-aware transformations where the position of an element can influence the transformation logic. If an error occurs during transformation of any element, the original value is preserved.
 * **Reverse:** Reverses the order of elements in the DataList.
 * **Upper:** Converts all string elements in the DataList to uppercase.
 * **Lower:** Converts all string elements in the DataList to lowercase.
 * **Capitalize:** Capitalizes the first letter of each string element in the DataList.
+
+**Map Function Examples:**
+
+The `Map` function provides powerful index-aware transformation capabilities. Here are some common usage patterns:
+
+```go
+// Example 1: Add index to each element
+dl := isr.DL.From("a", "b", "c")
+result := dl.Map(func(index int, value any) any {
+    return fmt.Sprintf("Index %d: %s", index, value.(string))
+})
+// Result: ["Index 0: a", "Index 1: b", "Index 2: c"]
+
+// Example 2: Apply different transformations based on index
+numbers := isr.DL.From(1, 2, 3, 4, 5)
+result := numbers.Map(func(index int, value any) any {
+    if index%2 == 0 {
+        return value.(int) * 2  // Even indices: multiply by 2
+    }
+    return value.(int) + 10     // Odd indices: add 10
+})
+// Result: [2, 12, 6, 14, 10]
+
+// Example 3: Mixed data types with index-based logic
+mixed := isr.DL.From("hello", 42, "world", 100)
+result := mixed.Map(func(index int, value any) any {
+    if str, ok := value.(string); ok {
+        return fmt.Sprintf("%s_%d", str, index)
+    }
+    return value.(int) + index
+})
+// Result: ["hello_0", 43, "world_2", 103]
+```
 
 **Data Filtering:**
 
