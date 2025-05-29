@@ -1,9 +1,9 @@
 package isr
 
 type CSV struct {
-	FilePath  string
-	LoadOpts  CSV_inOpts
-	OuputOpts CSV_outOpts
+	FilePath   string
+	InputOpts  CSV_inOpts
+	OutputOpts CSV_outOpts
 }
 
 type CSV_inOpts struct {

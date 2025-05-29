@@ -163,7 +163,7 @@ dataTable := isr.DT.From([]isr.Col{
 // From CSV file
 dataTable := isr.DT.From(isr.CSV{
     FilePath: "data.csv",
-    LoadOpts: isr.CSV_inOpts{
+    InputOpts: isr.CSV_inOpts{
         FirstCol2RowNames: true,
         FirstRow2ColNames: true,
     },

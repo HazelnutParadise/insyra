@@ -97,7 +97,7 @@ func (_ dt) From(item any) *dt {
 		t.Transpose()
 	case CSV:
 		t.DataTable = insyra.NewDataTable()
-		err := t.LoadFromCSV(val.FilePath, val.LoadOpts.FirstCol2RowNames, val.LoadOpts.FirstRow2ColNames)
+		err := t.LoadFromCSV(val.FilePath, val.InputOpts.FirstCol2RowNames, val.InputOpts.FirstRow2ColNames)
 		if err != nil {
 			insyra.LogFatal("DT.From(): %v", err)
 		}
