@@ -1552,6 +1552,73 @@ func (dt *DataTable) SetName(name string) *DataTable
 dt.SetName("updated_data")
 ```
 
+### Map
+
+Applies a transformation function to all elements in the DataTable and returns a new DataTable with the transformed results. The function provides access to row index, column index, and element value for context-aware transformations.
+
+```go
+func (dt *DataTable) Map(mapFunc func(rowIndex int, colIndex string, element any) any) *DataTable
+```
+
+**Parameters:**
+
+- `mapFunc`: Transformation function that takes three parameters:
+  - `rowIndex` (int): Zero-based row index
+  - `colIndex` (string): Column index (A, B, C, ...)
+  - `element` (any): The current element value
+  - Returns: Transformed value of any type
+
+**Returns:**
+
+- `*DataTable`: A new DataTable with the transformed values
+
+**Features:**
+
+- **Index-aware transformations**: Access both row and column positions
+- **Error recovery**: If transformation fails for any element, the original value is preserved
+- **Structure preservation**: The new DataTable maintains the same structure and row names
+- **Type flexibility**: Can transform between different data types
+
+**Example:**
+
+```go
+// Example 1: Add position information to each element
+mappedDt := dt.Map(func(rowIndex int, colIndex string, element any) any {
+    return fmt.Sprintf("R%d_%s_%v", rowIndex, colIndex, element)
+})
+
+// Example 2: Apply different transformations based on column
+conditionalDt := dt.Map(func(rowIndex int, colIndex string, element any) any {
+    switch colIndex {
+    case "A": // First column
+        if num, ok := element.(int); ok {
+            return num * 10 // Multiply by 10
+        }
+    case "B": // Second column
+        if num, ok := element.(int); ok {
+            return num + rowIndex // Add row index
+        }
+    default:
+        return fmt.Sprintf("Col_%s_Row_%d", colIndex, rowIndex)
+    }
+    return element
+})
+
+// Example 3: Mixed data type handling with index logic
+transformedDt := dt.Map(func(rowIndex int, colIndex string, element any) any {
+    // Apply transformation only to even rows in column A
+    if colIndex == "A" && rowIndex%2 == 0 {
+        if str, ok := element.(string); ok {
+            return strings.ToUpper(str)
+        }
+        if num, ok := element.(int); ok {
+            return num * 2
+        }
+    }
+    return element
+})
+```
+
 ### Transpose
 
 Transposes the DataTable (rows become columns and vice versa).

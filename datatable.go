@@ -80,10 +80,9 @@ type IDataTable interface {
 	Size() (numRows int, numCols int)
 	Count(value any) int
 	Mean() any
-	Summary()
-
-	// Conversion
+	Summary() // Conversion
 	Transpose() *DataTable
+	Map(mapFunc func(rowIndex int, colIndex string, element any) any) *DataTable
 
 	// Filters
 	Filter(filterFunc FilterFunc) *DataTable
