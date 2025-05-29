@@ -60,6 +60,7 @@ dl := isr.DL{}.From(1, 2, 3, 4, 5) // modern
 **Data Manipulation:**
 
 * **Sort:** Sorts the elements in the DataList using a mixed sorting logic that handles strings, numbers (various integer and float types), and time data types. If sorting fails, the original order is restored.
+* **Map:** Applies a transformation function to all elements in the DataList and returns a new DataList with the transformed results. The function should take an element of any type and return a transformed value of any type. If an error occurs during transformation of any element, the original value is preserved.
 * **Reverse:** Reverses the order of elements in the DataList.
 * **Upper:** Converts all string elements in the DataList to uppercase.
 * **Lower:** Converts all string elements in the DataList to lowercase.
