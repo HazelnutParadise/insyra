@@ -28,7 +28,7 @@ func ApplyCCLOnDataTable(table *DataTable, formula string) ([]any, error) {
 	for i := 0; i < numRow; i++ {
 		// 建構第 i 行的資料
 		row := make([]any, numCol)
-		for j := 0; j < numCol; j++ {
+		for j := range numCol {
 			if i < len(table.columns[j].data) {
 				row[j] = table.columns[j].data[i]
 			} else {
