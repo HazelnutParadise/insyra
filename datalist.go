@@ -464,47 +464,60 @@ func (dl *DataList) DropAll(toDrop ...any) *DataList {
 		return dl
 	}
 
-	// 決定要開多少個線程
+	// 決定要開多少個線程，但不超過資料長度
 	numGoroutines := runtime.NumCPU()
 	if numGoroutines == 0 {
 		numGoroutines = 1
 	}
+	if numGoroutines > length {
+		numGoroutines = length
+	}
 
 	chunkSize := length / numGoroutines
-	if length%numGoroutines != 0 {
-		chunkSize++
-
-	}
+	remainder := length % numGoroutines
 
 	// 儲存所有的 Awaitable
 	var awaitables []*asyncutil.Awaitable
 
 	// 啟動 Awaitables 處理每個部分
+	start := 0
 	for i := 0; i < numGoroutines; i++ {
-		start := i * chunkSize
-		end := start + chunkSize
+		// 計算當前塊的大小，前 remainder 個塊多分配一個元素
+		currentChunkSize := chunkSize
+		if i < remainder {
+			currentChunkSize++
+		}
+
+		end := start + currentChunkSize
+
+		// 確保不會超出邊界
 		if end > length {
 			end = length
 		}
 
-		awaitable := asyncutil.Async(func(dataChunk []any) []any {
-			var result []any
-			for _, v := range dataChunk {
-				shouldDrop := false
-				for _, drop := range toDrop {
-					if v == drop {
-						shouldDrop = true
-						break
+		// 只有當 start < end 時才創建任務，避免空塊
+		if start < end {
+			awaitable := asyncutil.Async(func(dataChunk []any) []any {
+				var result []any
+				for _, v := range dataChunk {
+					shouldDrop := false
+					for _, drop := range toDrop {
+						if v == drop {
+							shouldDrop = true
+							break
+						}
+					}
+					if !shouldDrop {
+						result = append(result, v)
 					}
 				}
-				if !shouldDrop {
-					result = append(result, v)
-				}
-			}
-			return result
-		}, dl.data[start:end])
+				return result
+			}, dl.data[start:end])
 
-		awaitables = append(awaitables, awaitable)
+			awaitables = append(awaitables, awaitable)
+		}
+
+		start = end
 	}
 
 	// 收集所有結果並合併
