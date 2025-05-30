@@ -44,8 +44,6 @@ func ApplyCCLOnDataTable(table *DataTable, formula string) ([]any, error) {
 	return result, nil
 }
 
-var precomputedValues = map[string]interface{}{}
-
 // InitCCLFunctions registers default functions for use with CCL.
 func initCCLFunctions() {
 	RegisterFunction("IF", func(args ...any) (any, error) {
