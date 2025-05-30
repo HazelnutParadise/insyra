@@ -2,6 +2,7 @@ package insyra
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 )
@@ -56,6 +57,8 @@ func applyOperator(op string, left, right any) (any, error) {
 		return lf * rf, nil
 	case "/":
 		return lf / rf, nil
+	case "^":
+		return math.Pow(lf, rf), nil
 	case ">":
 		return lf > rf, nil
 	case "<":
