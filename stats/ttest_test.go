@@ -66,7 +66,7 @@ func TestSingleSampleTTest(t *testing.T) {
 	}
 }
 
-func TestTwoSampleTTest_VariousCases(t *testing.T) {
+func TestTwoSampleTTest_VariousCases_R(t *testing.T) {
 	tests := []struct {
 		name     string
 		data1    []float64
@@ -120,7 +120,61 @@ func TestTwoSampleTTest_VariousCases(t *testing.T) {
 			expectP:  0.001411,
 			expectDF: 5.7781,
 			expectCI: [2]float64{2.9710, 7.4890},
-			expectD:  3.1710,
+			expectD:  3.3217,
+		},
+		{
+			name:     "diff_sample_size_equal_var_small_diff",
+			data1:    []float64{10.1, 10.3, 10.0, 9.9, 10.2},
+			data2:    []float64{9.8, 9.7, 9.9, 10.0, 9.6, 9.5, 9.4},
+			equalVar: true,
+			expectT:  3.5044,
+			expectP:  0.0056847,
+			expectDF: 10.0,
+			expectCI: [2]float64{0.1457, 0.6543},
+			expectD:  2.052,
+		},
+		{
+			name:     "diff_sample_size_unequal_var_large_diff",
+			data1:    []float64{100, 105, 98, 110, 102, 103},
+			data2:    []float64{80, 85, 78, 90, 82},
+			equalVar: false,
+			expectT:  7.3855,
+			expectP:  0.0000682,
+			expectDF: 8.1967,
+			expectCI: [2]float64{13.7813, 26.2187},
+			expectD:  4.4947,
+		}, {
+			name:     "data_near_zero_equal_var",
+			data1:    []float64{0.01, 0.02, 0.015, 0.025},
+			data2:    []float64{-0.01, -0.005, -0.012, -0.008},
+			equalVar: true,
+			expectT:  7.3817,
+			expectP:  0.0003170,
+			expectDF: 6.0,
+			expectCI: [2]float64{0.0175, 0.035},
+			expectD:  5.2196,
+		},
+		{
+			name:     "data_with_negative_values_unequal_var",
+			data1:    []float64{-5, -4, -6, -3, -5},
+			data2:    []float64{1, 2, 0, 3, 1, 2},
+			equalVar: false,
+			expectT:  -9.1615,
+			expectP:  0.0000125,
+			expectDF: 8.3203,
+			expectCI: [2]float64{-7.6252, -4.5748},
+			expectD:  -5.5685,
+		},
+		{
+			name:     "data_with_duplicates_equal_var",
+			data1:    []float64{10, 12, 10, 11, 12, 10},
+			data2:    []float64{8, 9, 8, 7, 9, 8},
+			equalVar: true,
+			expectT:  5.275,
+			expectP:  0.0003602,
+			expectDF: 10.0,
+			expectCI: [2]float64{1.5403, 3.793},
+			expectD:  3.0455,
 		},
 	}
 

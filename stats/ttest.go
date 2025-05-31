@@ -81,6 +81,8 @@ func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...flo
 //   - equalVariance: Whether to assume equal variances between groups
 //   - confidenceLevel: (Optional) Confidence level for the confidence interval (e.g., 0.95 for 95%, 0.99 for 99%)
 //     Must be between 0 and 1. If not provided or invalid, defaults to 0.95
+//
+// ** Verified using R **
 func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenceLevel ...float64) *TTestResult {
 	n1 := data1.Len()
 	n2 := data2.Len()
@@ -138,9 +140,15 @@ func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenc
 
 	ci := &[2]float64{meanDiff - marginOfError, meanDiff + marginOfError}
 
-	pooledVar := ((n1Float-1)*var1 + (n2Float-1)*var2) / (n1Float + n2Float - 2)
-	pooledStd := math.Sqrt(pooledVar)
-	effectSize := math.Abs(meanDiff) / pooledStd
+	var effectSize float64
+	if equalVariance {
+		pooledVar := ((n1Float-1)*var1 + (n2Float-1)*var2) / (n1Float + n2Float - 2)
+		pooledStd := math.Sqrt(pooledVar)
+		effectSize = meanDiff / pooledStd // Preserve the sign
+	} else {
+		effectSize = meanDiff / math.Sqrt((var1+var2)/2) // Preserve the sign
+	}
+
 	effectSizes := []EffectSizeEntry{
 		{Type: "cohen_d", Value: effectSize},
 	}
