@@ -66,31 +66,87 @@ func TestSingleSampleTTest(t *testing.T) {
 	}
 }
 
-func TestTwoSampleTTest(t *testing.T) {
-	data1 := insyra.NewDataList([]float64{55.1, 49.3, 58.2, 61.9, 47.3, 51.0, 53.8, 59.7, 52.4, 56.1})
-	data2 := insyra.NewDataList([]float64{46.9, 41.2, 45.7, 49.8, 44.0, 47.6, 46.5, 43.9, 48.3, 45.4})
-	result := stats.TwoSampleTTest(data1, data2, false, 0.95)
+func TestTwoSampleTTest_VariousCases(t *testing.T) {
+	tests := []struct {
+		name     string
+		data1    []float64
+		data2    []float64
+		equalVar bool
+		expectT  float64
+		expectP  float64
+		expectDF float64
+		expectCI [2]float64
+		expectD  float64
+	}{
+		{
+			name:     "equal_var_true_strong_diff",
+			data1:    []float64{55.1, 49.3, 58.2, 61.9, 47.3, 51.0, 53.8, 59.7, 52.4, 56.1},
+			data2:    []float64{46.9, 41.2, 45.7, 49.8, 44.0, 47.6, 46.5, 43.9, 48.3, 45.4},
+			equalVar: true,
+			expectT:  5.1337,
+			expectP:  0.00007,
+			expectDF: 18.0,
+			expectCI: [2]float64{5.0510, 12.0490},
+			expectD:  2.2959,
+		},
+		{
+			name:     "equal_var_false_strong_diff",
+			data1:    []float64{55.1, 49.3, 58.2, 61.9, 47.3, 51.0, 53.8, 59.7, 52.4, 56.1},
+			data2:    []float64{46.9, 41.2, 45.7, 49.8, 44.0, 47.6, 46.5, 43.9, 48.3, 45.4},
+			equalVar: false,
+			expectT:  5.1337,
+			expectP:  0.000162,
+			expectDF: 13.7291,
+			expectCI: [2]float64{4.9713, 12.1287},
+			expectD:  2.2959,
+		},
+		{
+			name:     "equal_var_true_small_diff",
+			data1:    []float64{50.2, 48.5, 52.1, 51.3, 50.5, 49.9, 48.7, 50.8},
+			data2:    []float64{47.9, 48.1, 49.5, 50.2, 48.8, 49.7, 48.9, 49.1},
+			equalVar: true,
+			expectT:  2.3881,
+			expectP:  0.031579,
+			expectDF: 14.0,
+			expectCI: [2]float64{0.1248, 2.3252},
+			expectD:  1.1941,
+		},
+		{
+			name:     "equal_var_false_small_diff",
+			data1:    []float64{60.0, 59.5, 58.8, 60.2, 59.9},
+			data2:    []float64{55.1, 52.3, 58.4, 53.6, 54.2, 53.1},
+			equalVar: false,
+			expectT:  5.7181,
+			expectP:  0.001411,
+			expectDF: 5.7781,
+			expectCI: [2]float64{2.9710, 7.4890},
+			expectD:  3.1710,
+		},
+	}
 
-	expectT := 5.1337
-	expectP := 0.000162
-	expectDF := 13.7291
-	expectCI := [2]float64{4.9713, 12.1287}
-	expectCohen := 2.2959
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data1 := insyra.NewDataList(tt.data1)
+			data2 := insyra.NewDataList(tt.data2)
+			result := stats.TwoSampleTTest(data1, data2, tt.equalVar, 0.95)
 
-	if !floatEquals(result.Statistic, expectT, 0.01) {
-		t.Errorf("Two-sample T mismatch, got %f, want %f", result.Statistic, expectT)
-	}
-	if !floatEquals(result.PValue, expectP, 0.01) {
-		t.Errorf("Two-sample P mismatch, got %f, want %f", result.PValue, expectP)
-	}
-	if !floatEquals(*result.DF, expectDF, 0.1) {
-		t.Errorf("Two-sample DF mismatch, got %f, want %f", *result.DF, expectDF)
-	}
-	if !floatEquals(result.CI[0], expectCI[0], 0.05) || !floatEquals(result.CI[1], expectCI[1], 0.05) {
-		t.Errorf("Two-sample CI mismatch, got [%f, %f], want [%f, %f]", result.CI[0], result.CI[1], expectCI[0], expectCI[1])
-	}
-	if len(result.EffectSizes) > 0 && !floatEquals(result.EffectSizes[0].Value, expectCohen, 0.01) {
-		t.Errorf("Two-sample Effect size mismatch, got %f, want %f", result.EffectSizes[0].Value, expectCohen)
+			if !floatEquals(result.Statistic, tt.expectT, 0.01) {
+				t.Errorf("[%s] T value mismatch: got %f, want %f", tt.name, result.Statistic, tt.expectT)
+			}
+			if !floatEquals(result.PValue, tt.expectP, 0.001) {
+				t.Errorf("[%s] P value mismatch: got %f, want %f", tt.name, result.PValue, tt.expectP)
+			}
+			if !floatEquals(*result.DF, tt.expectDF, 0.1) {
+				t.Errorf("[%s] DF mismatch: got %f, want %f", tt.name, *result.DF, tt.expectDF)
+			}
+			if !floatEquals(result.CI[0], tt.expectCI[0], 0.05) || !floatEquals(result.CI[1], tt.expectCI[1], 0.05) {
+				t.Errorf("[%s] CI mismatch: got [%f, %f], want [%f, %f]",
+					tt.name, result.CI[0], result.CI[1], tt.expectCI[0], tt.expectCI[1])
+			}
+			if len(result.EffectSizes) > 0 && !floatEquals(result.EffectSizes[0].Value, tt.expectD, 0.01) {
+				t.Errorf("[%s] Cohen's d mismatch: got %f, want %f", tt.name, result.EffectSizes[0].Value, tt.expectD)
+			}
+		})
 	}
 }
 

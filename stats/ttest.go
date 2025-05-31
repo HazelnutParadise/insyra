@@ -138,8 +138,9 @@ func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenc
 
 	ci := &[2]float64{meanDiff - marginOfError, meanDiff + marginOfError}
 
-	pooledSigma := math.Sqrt((var1 + var2) / 2)
-	effectSize := math.Abs(meanDiff) / pooledSigma
+	pooledVar := ((n1Float-1)*var1 + (n2Float-1)*var2) / (n1Float + n2Float - 2)
+	pooledStd := math.Sqrt(pooledVar)
+	effectSize := math.Abs(meanDiff) / pooledStd
 	effectSizes := []EffectSizeEntry{
 		{Type: "cohen_d", Value: effectSize},
 	}
