@@ -25,6 +25,8 @@ type TTestResult struct {
 //   - mu: The hypothesized population mean to compare against
 //   - confidenceLevel: (Optional) Confidence level for the confidence interval (e.g., 0.95 for 95%, 0.99 for 99%)
 //     Must be between 0 and 1. If not provided or invalid, defaults to 0.95
+//
+// ** Verified using R **
 func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...float64) *TTestResult {
 	n := data.Len()
 	if n <= 1 {
@@ -57,7 +59,45 @@ func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...flo
 
 	ci := &[2]float64{mean - marginOfError, mean + marginOfError}
 
-	effectSize := math.Abs(mean-mu) / stddev
+	// Handle constant data (stddev == 0)
+	if stddev == 0 {
+		if mean == mu {
+			effectSize := 0.0
+			tValue = math.NaN()
+			pValue = math.NaN()
+			effectSizes := []EffectSizeEntry{{Type: "cohen_d", Value: effectSize}}
+			return &TTestResult{
+				testResultBase: testResultBase{
+					Statistic:   tValue,
+					PValue:      pValue,
+					DF:          &df,
+					CI:          ci,
+					EffectSizes: effectSizes,
+				},
+				Mean: &mean,
+				N:    n,
+			}
+
+		} else {
+			effectSize := math.Inf(int(math.Copysign(1, mean-mu)))
+			tValue = math.Inf(int(math.Copysign(1, mean-mu)))
+			pValue = 0
+			effectSizes := []EffectSizeEntry{{Type: "cohen_d", Value: effectSize}}
+			return &TTestResult{
+				testResultBase: testResultBase{
+					Statistic:   tValue,
+					PValue:      pValue,
+					DF:          &df,
+					CI:          ci,
+					EffectSizes: effectSizes,
+				},
+				Mean: &mean,
+				N:    n,
+			}
+		}
+	}
+
+	effectSize := (mean - mu) / stddev //Preserve the sign
 	effectSizes := []EffectSizeEntry{
 		{Type: "cohen_d", Value: effectSize},
 	}

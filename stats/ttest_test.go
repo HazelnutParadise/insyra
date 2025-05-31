@@ -9,6 +9,7 @@ import (
 )
 
 type tTestCase struct {
+	name        string
 	data        []float64
 	mu          float64
 	expectT     float64
@@ -19,12 +20,19 @@ type tTestCase struct {
 }
 
 func floatEquals(a, b, epsilon float64) bool {
+	if math.IsNaN(a) && math.IsNaN(b) {
+		return true
+	}
+	if math.IsInf(a, 0) && math.IsInf(b, 0) && ((a > 0 && b > 0) || (a < 0 && b < 0)) {
+		return true
+	}
 	return math.Abs(a-b) <= epsilon
 }
 
-func TestSingleSampleTTest(t *testing.T) {
+func TestSingleSampleTTest_R(t *testing.T) {
 	tests := []tTestCase{
 		{
+			name:        "test1",
 			data:        []float64{52.12, 58.36, 57.49, 51.31, 61.25, 42.88, 46.89, 59.45, 56.20, 44.39, 48.15, 50.99, 56.84, 47.90, 49.78},
 			mu:          50,
 			expectT:     1.5367,
@@ -34,39 +42,101 @@ func TestSingleSampleTTest(t *testing.T) {
 			expectCohen: 0.3968,
 		},
 		{
+			name:        "test2",
 			data:        []float64{49.55, 42.01, 50.22, 52.88, 42.75, 47.36, 54.17, 41.29, 45.63, 47.48, 55.81, 44.10, 43.75, 46.52, 50.94, 53.60, 43.07, 48.77, 46.82, 50.90},
 			mu:          50,
 			expectT:     -2.1928,
 			expectP:     0.0410,
 			expectDF:    19,
 			expectCI:    [2]float64{45.8584, 49.9036},
-			expectCohen: 0.4903,
+			expectCohen: -0.4903214,
+		},
+		{
+			name:        "small_data_large_diff",
+			data:        []float64{12, 14, 15, 11, 13},
+			mu:          10,
+			expectT:     4.2426,
+			expectP:     0.0132356,
+			expectDF:    4.0,
+			expectCI:    [2]float64{11.0368, 14.9632},
+			expectCohen: 1.8974,
+		},
+		{
+			name: "large_data_small_diff",
+			data: []float64{9.8, 10.1, 9.9, 10.2, 9.7, 10.0, 10.3, 9.6, 10.4, 10.0,
+				9.9, 10.1, 9.8, 10.2, 10.0, 9.7, 10.3, 9.6, 10.4, 9.9},
+			mu:          10,
+			expectT:     -0.0886,
+			expectP:     0.9303070,
+			expectDF:    19,
+			expectCI:    [2]float64{9.8769, 10.1131},
+			expectCohen: -0.0198,
+		},
+		{
+			name:        "data_equals_mu_constant",
+			data:        []float64{50, 50, 50, 50, 50},
+			mu:          50,
+			expectT:     math.NaN(),
+			expectP:     math.NaN(),
+			expectDF:    4.0,
+			expectCI:    [2]float64{50, 50},
+			expectCohen: 0.0,
+		},
+		{
+			name:        "constant_data_not_equal_mu",
+			data:        []float64{10, 10, 10},
+			mu:          5,
+			expectT:     math.Inf(1),
+			expectP:     0.0000000,
+			expectDF:    2.0,
+			expectCI:    [2]float64{10, 10},
+			expectCohen: math.Inf(1),
+		},
+		{
+			name:        "data_with_negative_values",
+			data:        []float64{-5, -2, -6, -3, -4},
+			mu:          0,
+			expectT:     -5.6569,
+			expectP:     0.0048127,
+			expectDF:    4.0,
+			expectCI:    [2]float64{-5.9632, -2.0368},
+			expectCohen: -2.5298,
+		},
+		{
+			name:        "data_very_close_to_mu",
+			data:        []float64{10.01, 9.99, 10.02, 9.98, 10.00},
+			mu:          10,
+			expectT:     0.0,
+			expectP:     1.0,
+			expectDF:    4.0,
+			expectCI:    [2]float64{9.9804, 10.0196},
+			expectCohen: 0.0,
 		},
 	}
 
-	for i, test := range tests {
+	for _, test := range tests {
 		dl := insyra.NewDataList(test.data)
 		result := stats.SingleSampleTTest(dl, test.mu, 0.95)
 
 		if !floatEquals(result.Statistic, test.expectT, 0.01) {
-			t.Errorf("case %d: T mismatch, got %f, want %f", i, result.Statistic, test.expectT)
+			t.Errorf("case %s: T mismatch, got %f, want %f", test.name, result.Statistic, test.expectT)
 		}
 		if !floatEquals(result.PValue, test.expectP, 0.01) {
-			t.Errorf("case %d: P mismatch, got %f, want %f", i, result.PValue, test.expectP)
+			t.Errorf("case %s: P mismatch, got %f, want %f", test.name, result.PValue, test.expectP)
 		}
 		if !floatEquals(*result.DF, test.expectDF, 0.01) {
-			t.Errorf("case %d: DF mismatch, got %f, want %f", i, *result.DF, test.expectDF)
+			t.Errorf("case %s: DF mismatch, got %f, want %f", test.name, *result.DF, test.expectDF)
 		}
 		if !floatEquals(result.CI[0], test.expectCI[0], 0.05) || !floatEquals(result.CI[1], test.expectCI[1], 0.05) {
-			t.Errorf("case %d: CI mismatch, got [%f, %f], want [%f, %f]", i, result.CI[0], result.CI[1], test.expectCI[0], test.expectCI[1])
+			t.Errorf("case %s: CI mismatch, got [%f, %f], want [%f, %f]", test.name, result.CI[0], result.CI[1], test.expectCI[0], test.expectCI[1])
 		}
 		if len(result.EffectSizes) > 0 && !floatEquals(result.EffectSizes[0].Value, test.expectCohen, 0.01) {
-			t.Errorf("case %d: Effect size mismatch, got %f, want %f", i, result.EffectSizes[0].Value, test.expectCohen)
+			t.Errorf("case %s: Effect size mismatch, got %f, want %f", test.name, result.EffectSizes[0].Value, test.expectCohen)
 		}
 	}
 }
 
-func TestTwoSampleTTest_VariousCases_R(t *testing.T) {
+func TestTwoSampleTTest_R(t *testing.T) {
 	tests := []struct {
 		name     string
 		data1    []float64
