@@ -18,10 +18,10 @@ const (
 	SpearmanCorrelation
 )
 
-// CorrelationMatrix 計算多個資料列表之間的相關係數矩陣
-// dataLists: 一個包含多個 insyra.IDataList 的切片
-// method: 計算相關性的方法 (Pearson, Kendall, Spearman)
-// 返回一個二維的 float64 切片表示相關係數矩陣，以及一個錯誤物件
+// CorrelationMatrix calculates the correlation matrix for a given IDataTable.
+// dataLists: a DataTable containing the data for which to calculate the correlation matrix.
+// method: the method to use for calculating the correlation (Pearson, Kendall, or Spearman).
+// Returns a new DataTable containing the correlation matrix.
 func CorrelationMatrix(dataTable insyra.IDataTable, method CorrelationMethod) *insyra.DataTable {
 	_, n := dataTable.Size()
 	if n < 2 {
@@ -73,7 +73,7 @@ func Covariance(dlX, dlY insyra.IDataList) float64 {
 	meanX := dlX.Mean()
 	meanY := dlY.Mean()
 	var sum float64 = 0
-	for i := range dlX.Len() {
+	for i := 0; i < dlX.Len(); i++ {
 		x := dlX.Data()[i].(float64)
 		y := dlY.Data()[i].(float64)
 		sum += (x - meanX) * (y - meanY)
@@ -85,6 +85,11 @@ type CorrelationResult struct {
 	testResultBase
 }
 
+// Correlation calculates the correlation between two IDataLists using the specified method.
+// dlX: the first IDataList.
+// dlY: the second IDataList.
+// method: the method to use for calculating the correlation (Pearson, Kendall, or Spearman).
+// Returns a CorrelationResult containing the correlation statistic, p-value, confidence interval, and degrees of freedom.
 func Correlation(dlX, dlY insyra.IDataList, method CorrelationMethod) *CorrelationResult {
 	if dlX == nil || dlY == nil || dlX.Len() != dlY.Len() || dlX.Len() < 2 {
 		insyra.LogWarning("stats.Correlation: Invalid input length or nil input.")
