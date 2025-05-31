@@ -493,20 +493,6 @@ func PolynomialRegression(dlX, dlY insyra.IDataList, degree int) *PolynomialRegr
 	}
 }
 
-// Helper function to calculate SSE and MSE for a log-linear fit (used for perfect fit check)
-func calcSSEAndMSEForLogLinearFit(xs, ys []float64, intercept, slope, df float64) (float64, float64) {
-	var sseLog float64
-	for i := range xs {
-		yHatLog := intercept + slope*xs[i] // Note: xs here are logXs for PowerReg, original xs for ExpReg
-		residLog := ys[i] - yHatLog        // Note: ys here are logYs
-		sseLog += residLog * residLog
-	}
-	if df <= 0 {
-		return sseLog, math.Inf(1)
-	}
-	return sseLog, sseLog / df
-}
-
 // gaussianElimination solves Ax = b using Gaussian elimination with partial pivoting
 func gaussianElimination(A [][]float64, b []float64) []float64 {
 	n := len(A)
