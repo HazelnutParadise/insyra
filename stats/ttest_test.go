@@ -274,7 +274,7 @@ func TestTwoSampleTTest_R(t *testing.T) {
 	}
 }
 
-func TestPairedTTest(t *testing.T) {
+func TestPairedTTest_R(t *testing.T) {
 	before := insyra.NewDataList([]float64{55.0, 48.5, 51.6, 53.2, 50.4, 52.1, 54.0, 56.3})
 	after := insyra.NewDataList([]float64{52.2, 45.7, 49.8, 50.9, 47.6, 50.3, 52.1, 53.9})
 	result := stats.PairedTTest(before, after, 0.95)
@@ -284,6 +284,7 @@ func TestPairedTTest(t *testing.T) {
 	expectDF := 7.0
 	expectCI := [2]float64{1.9491, 2.7009}
 	expectCohen := 5.1712
+	expectMeanDiff := 2.325
 
 	if !floatEquals(result.Statistic, expectT, 0.01) {
 		t.Errorf("Paired T mismatch, got %f, want %f", result.Statistic, expectT)
@@ -299,5 +300,8 @@ func TestPairedTTest(t *testing.T) {
 	}
 	if len(result.EffectSizes) > 0 && !floatEquals(result.EffectSizes[0].Value, expectCohen, 0.01) {
 		t.Errorf("Paired Effect size mismatch, got %f, want %f", result.EffectSizes[0].Value, expectCohen)
+	}
+	if !floatEquals(*result.MeanDiff, expectMeanDiff, 0.01) {
+		t.Errorf("Paired Mean difference mismatch, got %f, want %f", *result.MeanDiff, expectMeanDiff)
 	}
 }

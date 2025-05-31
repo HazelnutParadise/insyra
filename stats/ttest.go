@@ -214,6 +214,8 @@ func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenc
 //   - data1, data2: The paired data groups to compare (must have same length)
 //   - confidenceLevel: (Optional) Confidence level for the confidence interval (e.g., 0.95 for 95%, 0.99 for 99%)
 //     Must be between 0 and 1. If not provided or invalid, defaults to 0.95
+//
+// ** Verified using R **
 func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel ...float64) *TTestResult {
 	n := data1.Len()
 	if n != data2.Len() || n <= 1 {
