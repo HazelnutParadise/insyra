@@ -67,7 +67,6 @@ type IDataTable interface {
 	SetRowNameByIndex(index int, name string)
 	GetCreationTimestamp() int64
 	GetLastModifiedTimestamp() int64
-	getSortedColNames() []string
 	getRowNameByIndex(index int) (string, bool)
 	getMaxColLength() int
 	updateTimestamp()
@@ -553,14 +552,16 @@ func (dt *DataTable) SetColToRowNames(columnIndex string) *DataTable {
 // SetRowToColNames sets the column names to the values of the specified row and drops the row.
 func (dt *DataTable) SetRowToColNames(rowIndex int) *DataTable {
 	row := dt.GetRow(rowIndex)
+	dt.mu.Lock()
 	for i, value := range row.data {
 		if value != nil {
 			columnName := safeColName(dt, conv.ToString(value))
 			dt.columns[i].name = columnName
 		}
 	}
-
+	dt.mu.Unlock()
 	dt.DropRowsByIndex(rowIndex)
+
 	go dt.updateTimestamp()
 	return dt
 }
@@ -967,6 +968,9 @@ func (dt *DataTable) DropRowsByIndex(rowIndices ...int) {
 	sort.Ints(rowIndices) // 確保從最小索引開始刪除
 
 	for i, rowIndex := range rowIndices {
+		if rowIndex < 0 {
+			rowIndex = dt.getMaxColLength() + rowIndex
+		}
 		adjustedIndex := rowIndex - i // 因為每刪除一行，後續的行索引會變動
 		for _, column := range dt.columns {
 			if adjustedIndex >= 0 && adjustedIndex < len(column.data) {
@@ -1310,15 +1314,6 @@ func (dt *DataTable) Transpose() *DataTable {
 }
 
 // ======================== Utilities ========================
-
-func (dt *DataTable) getSortedColNames() []string {
-	colNames := make([]string, 0, len(dt.columnIndex))
-	for colName := range dt.columnIndex {
-		colNames = append(colNames, colName)
-	}
-	sort.Strings(colNames)
-	return colNames
-}
 
 func (dt *DataTable) getRowNameByIndex(index int) (string, bool) {
 	for rowName, rowIndex := range dt.rowNames {

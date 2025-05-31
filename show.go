@@ -55,7 +55,22 @@ func (dt *DataTable) ShowRange(startEnd ...interface{}) {
 	for colIndex := range dataMap {
 		colIndices = append(colIndices, colIndex)
 	}
-	sort.Strings(colIndices)
+	// sort.Strings(colIndices) // Original sorting
+	sort.Slice(colIndices, func(i, j int) bool {
+		s1 := colIndices[i]
+		s2 := colIndices[j]
+
+		prefix1 := s1
+		if idx := strings.Index(s1, "("); idx != -1 {
+			prefix1 = s1[:idx]
+		}
+
+		prefix2 := s2
+		if idx := strings.Index(s2, "("); idx != -1 {
+			prefix2 = s2[:idx]
+		}
+		return parseColIndex(prefix1) < parseColIndex(prefix2)
+	})
 
 	// Get terminal window width
 	width := getTerminalWidth()
@@ -1155,4 +1170,13 @@ func prepareTableLayoutTypes(dt *DataTable, dataMap map[string][]any, colIndices
 		maxName = 25
 	}
 	return colWidths, rowNames, maxName
+}
+
+// parseColIndex converts an Excel-like column name (e.g., "A", "Z", "AA") to its 0-based integer index.
+func parseColIndex(colName string) int {
+	result := 0
+	for _, char := range colName {
+		result = result*26 + int(char-'A') + 1
+	}
+	return result - 1
 }

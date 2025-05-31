@@ -29,6 +29,7 @@ func (dt *DataTable) ToCSV(filePath string, setRowNamesToFirstCol bool, setColNa
 	writer := csv.NewWriter(file)
 	defer writer.Flush()
 
+	dt.mu.Lock()
 	maxLength := dt.getMaxColLength()
 
 	// Write column names as the first row if setColNamesToFirstRow is true
@@ -37,15 +38,15 @@ func (dt *DataTable) ToCSV(filePath string, setRowNamesToFirstCol bool, setColNa
 		if setRowNamesToFirstCol {
 			header = append(header, "") // Leave the first cell empty for row names
 		}
-		sortedColNames := dt.getSortedColNames()
-		for _, colName := range sortedColNames {
-			column := dt.GetCol(colName)
+		for _, column := range dt.columns {
 			header = append(header, column.name)
 		}
 		if err := writer.Write(header); err != nil {
 			return err
 		}
 	}
+
+	dt.mu.Unlock()
 
 	// Write the data rows
 	for rowIndex := 0; rowIndex < maxLength; rowIndex++ {

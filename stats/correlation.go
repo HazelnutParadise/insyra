@@ -18,6 +18,57 @@ const (
 	SpearmanCorrelation
 )
 
+// CorrelationMatrix 計算多個資料列表之間的相關係數矩陣
+// dataLists: 一個包含多個 insyra.IDataList 的切片
+// method: 計算相關性的方法 (Pearson, Kendall, Spearman)
+// 返回一個二維的 float64 切片表示相關係數矩陣，以及一個錯誤物件
+func CorrelationMatrix(dataTable insyra.IDataTable, method CorrelationMethod) *insyra.DataTable {
+	_, n := dataTable.Size()
+	if n < 2 {
+		insyra.LogWarning("stats.CorrelationMatrix: Need at least two columns for correlation.")
+		return nil
+	}
+
+	matrix := make([][]float64, n)
+	for i := range matrix {
+		matrix[i] = make([]float64, n)
+	}
+
+	for i := 0; i < n; i++ {
+		for j := i; j < n; j++ {
+			if i == j {
+				matrix[i][j] = 1.0 // 變數與自身的相關性為 1
+				continue
+			}
+
+			corrResult := Correlation(dataTable.GetColByNumber(i), dataTable.GetColByNumber(j), method)
+			if corrResult != nil && !math.IsNaN(corrResult.Statistic) {
+				matrix[i][j] = corrResult.Statistic
+				matrix[j][i] = corrResult.Statistic // 矩陣是對稱的
+			} else {
+				insyra.LogWarning("stats.CorrelationMatrix: 無法計算列表 %d 和列表 %d 之間的相關性。將設定為 NaN。", i, j)
+				matrix[i][j] = math.NaN()
+				matrix[j][i] = math.NaN()
+			}
+		}
+	}
+	// 將結果轉換為 insyra.DataTable
+	dt := insyra.NewDataTable()
+	colNames := insyra.NewDataList()
+	for i := range matrix {
+		rowName := dataTable.GetColByNumber(i).GetName()
+		row := insyra.NewDataList().SetName(rowName)
+		colNames.Append(rowName)
+		for j := range matrix[i] {
+			row.Append(matrix[i][j])
+		}
+		dt.AppendRowsFromDataList(row)
+	}
+	dt.AppendRowsFromDataList(colNames)
+	dt.SetRowToColNames(-1)
+	return dt
+}
+
 func Covariance(dlX, dlY insyra.IDataList) float64 {
 	meanX := dlX.Mean()
 	meanY := dlY.Mean()
