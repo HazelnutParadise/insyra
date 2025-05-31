@@ -427,3 +427,12 @@ func isColorSupported() bool {
 	// 大多數 Unix-like 系統默認支持 ANSI 顏色
 	return true
 }
+
+// parseColIndex converts an Excel-like column name (e.g., "A", "Z", "AA") to its 0-based integer index.
+func parseColIndex(colName string) int {
+	result := 0
+	for _, char := range colName {
+		result = result*26 + int(char-'A') + 1
+	}
+	return result - 1
+}
