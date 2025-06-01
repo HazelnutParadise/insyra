@@ -18,13 +18,13 @@ import (
 	"github.com/HazelnutParadise/insyra"
 )
 
-// init 函數將會自動檢查並安裝 GLPK
-func init() {
-	installGLPK()
-}
+var installed bool = false
 
 // 自動安裝 GLPK 的函數
-func installGLPK() {
+func initGLPK() {
+	if installed {
+		return
+	}
 	switch runtime.GOOS {
 	case "linux":
 		initializeOnLinux()
@@ -35,6 +35,7 @@ func installGLPK() {
 	default:
 		log.Println("Unsupported operating system.")
 	}
+	installed = true
 }
 
 // =========================== macOS 安裝邏輯 ===========================
