@@ -914,7 +914,7 @@ func (dl *DataList) Sort(ascending ...bool) *DataList {
 
 	defer func() {
 		if r := recover(); r != nil {
-			LogWarning("DataList", "Sort", "Sorting failed, restoring original order:", r)
+			LogWarning("DataList", "Sort", "Sorting failed, restoring original order: %v", r)
 			dl.data = originalData
 		}
 	}()

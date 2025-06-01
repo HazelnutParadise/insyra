@@ -101,7 +101,7 @@ useOnlineService:
 		// 將 Renderable 渲染成 HTML
 		var buf bytes.Buffer
 		if err := chart.Render(&buf); err != nil {
-			insyra.LogFatal("plot", "SavePNG", "failed to render chart to HTML", err)
+			insyra.LogFatal("plot", "SavePNG", "failed to render chart to HTML: %v", err)
 			return
 		}
 
@@ -111,7 +111,7 @@ useOnlineService:
 		// 使用備援服務發送請求
 		resp, err := http.Post("https://server3.hazelnut-paradise.com/htmltoimage", "application/x-www-form-urlencoded", strings.NewReader(formData))
 		if err != nil {
-			insyra.LogFatal("plot", "SavePNG", "failed to use online service", err)
+			insyra.LogFatal("plot", "SavePNG", "failed to use online service: %v", err)
 			return
 		}
 		defer resp.Body.Close()
@@ -119,13 +119,13 @@ useOnlineService:
 		// 讀取備援服務返回的圖片數據
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			insyra.LogFatal("plot", "SavePNG", "failed to read response from online service", err)
+			insyra.LogFatal("plot", "SavePNG", "failed to read response from online service: %v", err)
 			return
 		}
 
 		// 將接收到的圖片數據寫入本地 PNG 文件
 		if err := os.WriteFile(pngPath, body, 0644); err != nil {
-			insyra.LogFatal("plot", "SavePNG", "failed to save PNG file from online service", err)
+			insyra.LogFatal("plot", "SavePNG", "failed to save PNG file from online service: %v", err)
 			return
 		}
 

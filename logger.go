@@ -7,7 +7,7 @@ import (
 )
 
 func LogFatal(packageName, funcName, msg string, args ...any) {
-	pushError(LogLevelFatal, fmt.Sprintf(msg, args...))
+	pushError(LogLevelFatal, packageName, funcName, fmt.Sprintf(msg, args...))
 	if msg[len(msg)-1] != '\n' {
 		msg += "\n"
 	}
@@ -20,7 +20,7 @@ func LogFatal(packageName, funcName, msg string, args ...any) {
 }
 
 func LogWarning(packageName, funcName, msg string, args ...any) {
-	pushError(LogLevelWarning, fmt.Sprintf(msg, args...))
+	pushError(LogLevelWarning, packageName, funcName, fmt.Sprintf(msg, args...))
 	if Config.GetLogLevel() > LogLevelWarning {
 		return
 	}

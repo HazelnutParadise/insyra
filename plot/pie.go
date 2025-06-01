@@ -127,7 +127,7 @@ func CreatePieChart(config PieChartConfig) *charts.Pie {
 // convertToPieData 將 []float64 和 []string 轉換為 []opts.PieData
 func convertToPieData(data []float64, labels []string) ([]opts.PieData, error) {
 	if len(data) != len(labels) {
-		return nil, errors.New("Data length and label length do not match")
+		return nil, errors.New("data length and label length do not match")
 	}
 	pieData := make([]opts.PieData, len(data))
 	for i, value := range data {

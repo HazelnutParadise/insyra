@@ -19,8 +19,10 @@ var (
 )
 
 type errorStruct struct {
-	errType LogLevel
-	message string
+	packageName string
+	fnName      string
+	errType     LogLevel
+	message     string
 }
 
 func init() {
@@ -34,10 +36,12 @@ func init() {
 	}()
 }
 
-func pushError(errType LogLevel, errMes string) {
+func pushError(errType LogLevel, packageName, fnName, errMes string) {
 	err := errorStruct{
-		errType: errType,
-		message: errMes,
+		errType:     errType,
+		packageName: packageName,
+		fnName:      fnName,
+		message:     errMes,
 	}
 	errorChan <- err
 }
