@@ -9,7 +9,7 @@ type Func = func(args ...any) (any, error)
 
 var defaultFunctions = map[string]Func{}
 
-func RegisterFunction(name string, fn Func) {
+func cclRegisterFunction(name string, fn Func) {
 	defaultFunctions[strings.ToUpper(name)] = fn
 }
 

@@ -6,8 +6,8 @@ import (
 	"github.com/HazelnutParadise/Go-Utils/conv"
 )
 
-// EvaluateFormula evaluates a formula string on a single row of data.
-func EvaluateCCLFormula(row []any, formula string) (any, error) {
+// evaluateFormula evaluates a formula string on a single row of data.
+func evaluateCCLFormula(row []any, formula string) (any, error) {
 	tokens, err := tokenize(formula)
 	if err != nil {
 		return nil, err
@@ -19,8 +19,8 @@ func EvaluateCCLFormula(row []any, formula string) (any, error) {
 	return evaluate(ast, row)
 }
 
-// ApplyCCLOnDataTable evaluates the formula on each row of a DataTable.
-func ApplyCCLOnDataTable(table *DataTable, formula string) ([]any, error) {
+// applyCCLOnDataTable evaluates the formula on each row of a DataTable.
+func applyCCLOnDataTable(table *DataTable, formula string) ([]any, error) {
 	table.mu.Lock()
 	defer table.mu.Unlock()
 	numRow, numCol := table.getMaxColLength(), len(table.columns)
@@ -35,7 +35,7 @@ func ApplyCCLOnDataTable(table *DataTable, formula string) ([]any, error) {
 				row[j] = nil
 			}
 		}
-		val, err := EvaluateCCLFormula(row, formula)
+		val, err := evaluateCCLFormula(row, formula)
 		if err != nil {
 			return nil, err
 		}
@@ -46,7 +46,7 @@ func ApplyCCLOnDataTable(table *DataTable, formula string) ([]any, error) {
 
 // InitCCLFunctions registers default functions for use with CCL.
 func initCCLFunctions() {
-	RegisterFunction("IF", func(args ...any) (any, error) {
+	cclRegisterFunction("IF", func(args ...any) (any, error) {
 		if len(args) != 3 {
 			return nil, fmt.Errorf("IF requires 3 arguments")
 		}
@@ -73,7 +73,7 @@ func initCCLFunctions() {
 		}
 		return args[2], nil
 	})
-	RegisterFunction("AND", func(args ...any) (any, error) {
+	cclRegisterFunction("AND", func(args ...any) (any, error) {
 		if len(args) < 2 {
 			return nil, fmt.Errorf("AND requires at least 2 arguments")
 		}
@@ -84,7 +84,7 @@ func initCCLFunctions() {
 		}
 		return true, nil
 	})
-	RegisterFunction("OR", func(args ...any) (any, error) {
+	cclRegisterFunction("OR", func(args ...any) (any, error) {
 		if len(args) < 2 {
 			return nil, fmt.Errorf("OR requires at least 2 arguments")
 		}
@@ -95,7 +95,7 @@ func initCCLFunctions() {
 		}
 		return false, nil
 	})
-	RegisterFunction("CONCAT", func(args ...any) (any, error) {
+	cclRegisterFunction("CONCAT", func(args ...any) (any, error) {
 		if len(args) < 2 {
 			return nil, fmt.Errorf("CONCAT requires at least 2 arguments")
 		}
