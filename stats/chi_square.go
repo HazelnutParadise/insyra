@@ -76,7 +76,7 @@ func ChiSquareGoodnessOfFit(input insyra.IDataList, p []float64, rescaleP bool) 
 	df = len(observed) - 1
 	result, errMsg := calculateChiSquare(observed, expected, df)
 	if errMsg != "" {
-		insyra.LogWarning("stats", "ChiSquareGoodnessOfFit", errMsg)
+		insyra.LogWarning("stats", "ChiSquareGoodnessOfFit", "%s", errMsg)
 		return nil
 	}
 	return result
@@ -163,7 +163,7 @@ func ChiSquareIndependenceTest(rowData, colData insyra.IDataList) *ChiSquareTest
 	df := (rows - 1) * (cols - 1)
 	result, errMsg := calculateChiSquare(observed, expected, df)
 	if errMsg != "" {
-		insyra.LogWarning("stats", "ChiSquareIndependenceTest", errMsg)
+		insyra.LogWarning("stats", "ChiSquareIndependenceTest", "%s", errMsg)
 		return nil
 	}
 	return result

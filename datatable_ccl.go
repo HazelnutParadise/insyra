@@ -31,7 +31,7 @@ func (dt *DataTable) AddColUsingCCL(newColName, ccl string) *DataTable {
 	}()
 	// 等待結果或超時 (增加到15秒)
 	timeoutDuration := 15 * time.Second // 增加超時時間
-	timeoutMsg := "CCL evaluation timed out after 15 seconds"
+	const timeoutMsg = "CCL evaluation timed out after 15 seconds"
 
 	// 優先記錄表達式開始評估的時間
 	startTime := time.Now()
