@@ -1,15 +1,24 @@
 package insyra
 
-import "log"
+import (
+	"fmt"
+	"log"
+)
 
 func LogFatal(msg string, args ...any) {
+	pushError(LogLevelFatal, fmt.Sprintf(msg, args...))
 	if msg[len(msg)-1] != '\n' {
 		msg += "\n"
+	}
+	if Config.dontPanic {
+		log.Printf("<{[insyra - FATAL!]}> "+msg, args...)
+		return
 	}
 	log.Fatalf("<{[insyra - FATAL!]}> "+msg, args...)
 }
 
 func LogWarning(msg string, args ...any) {
+	pushError(LogLevelWarning, fmt.Sprintf(msg, args...))
 	if Config.GetLogLevel() > LogLevelWarning {
 		return
 	}

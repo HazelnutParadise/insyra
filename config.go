@@ -3,10 +3,11 @@
 package insyra
 
 type configStruct struct {
-	logLevel LogLevel
+	logLevel  LogLevel
+	dontPanic bool
 }
 
-var Config *configStruct
+var Config *configStruct = &configStruct{}
 
 type LogLevel int
 
@@ -29,11 +30,14 @@ func (c *configStruct) GetLogLevel() LogLevel {
 	return LogLevel(c.logLevel)
 }
 
+func (c *configStruct) SetDontPanic(dontPanic bool) {
+	c.dontPanic = dontPanic
+}
+
 // ======================== Configs ========================
 
 // DefaultConfig returns a Config with default values.
 func SetDefaultConfig() {
-	Config = &configStruct{
-		logLevel: LogLevelInfo,
-	}
+	Config.logLevel = LogLevelInfo
+	Config.dontPanic = false
 }
