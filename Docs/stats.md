@@ -60,28 +60,65 @@ const (
 
 ## Correlation Analysis
 
-### CorrelationMatrix
+### CorrelationAnalysis
 
 ```go
-func CorrelationMatrix(dataTable insyra.IDataTable, method CorrelationMethod) *insyra.DataTable
+func CorrelationAnalysis(dataTable insyra.IDataTable, method CorrelationMethod) (*insyra.DataTable, *insyra.DataTable, float64, float64, int)
 ```
 
-**Purpose**: Calculate correlation matrix for all columns in a DataTable.
+**Purpose**: Provides a comprehensive correlation analysis including correlation coefficient matrix, p-value matrix, and overall test (Bartlett's sphericity test).
 
 **Parameters**:
 
 - `dataTable`: Input data table with at least 2 columns
 - `method`: Correlation method (see CorrelationMethod below)
 
-**Returns**: A new DataTable containing the correlation matrix with row and column names matching the original column names.
+**Returns**: 
+- Correlation coefficient matrix (as DataTable)
+- P-value matrix (as DataTable)
+- Chi-square value (from Bartlett's sphericity test, only for Pearson correlation)
+- P-value of the sphericity test (only for Pearson correlation)
+- Degrees of freedom (only for Pearson correlation)
 
 **Example**:
 
 ```go
-// Calculate correlation matrix using Pearson correlation
-corMatrix := stats.CorrelationMatrix(dataTable, stats.PearsonCorrelation)
-corMatrix.Show() // Display the correlation matrix
-corMatrix.ToCSV("correlation_matrix.csv", true, true, true) // Export to CSV
+// Calculate correlations with p-values and Bartlett's test
+corrMatrix, pMatrix, chiSquare, pValue, df := stats.CorrelationAnalysis(dataTable, stats.PearsonCorrelation)
+corrMatrix.Show() // Display the correlation matrix
+pMatrix.Show()    // Display the p-value matrix
+fmt.Printf("Bartlett's test: χ²=%.4f, p=%.4f, df=%d\n", chiSquare, pValue, df)
+corrMatrix.ToCSV("correlation_matrix.csv", true, true, true) // Export to CSV
+pMatrix.ToCSV("correlation_matrix_p.csv", true, true, true)  // Export p-values to CSV
+```
+
+### CorrelationMatrix
+
+```go
+func CorrelationMatrix(dataTable insyra.IDataTable, method CorrelationMethod) (*insyra.DataTable, *insyra.DataTable)
+```
+
+**Purpose**: Calculate correlation matrix and corresponding p-value matrix for all columns in a DataTable.
+
+**Parameters**:
+
+- `dataTable`: Input data table with at least 2 columns
+- `method`: Correlation method (see CorrelationMethod below)
+
+**Returns**: Two DataTables:
+- The first contains the correlation coefficients matrix
+- The second contains the p-values matrix
+- Both matrices have row and column names matching the original column names
+
+**Example**:
+
+```go
+// Calculate correlation matrix with p-values using Pearson correlation
+corrMatrix, pMatrix := stats.CorrelationMatrix(dataTable, stats.PearsonCorrelation)
+corrMatrix.Show() // Display the correlation matrix
+pMatrix.Show()    // Display the p-value matrix
+corrMatrix.ToCSV("correlation_matrix.csv", true, true, true) // Export to CSV
+pMatrix.ToCSV("correlation_matrix_p.csv", true, true, true)  // Export p-values to CSV
 ```
 
 ### Correlation
@@ -132,6 +169,33 @@ func Covariance(dlX, dlY insyra.IDataList) float64
 ```
 
 **Purpose**: Calculate sample covariance between two datasets.
+
+### BartlettSphericity
+
+```go
+func BartlettSphericity(dataTable insyra.IDataTable) (chiSquare float64, pValue float64, df int)
+```
+
+**Purpose**: Performs Bartlett's test of sphericity to assess whether the correlation matrix is significantly different from an identity matrix.
+
+**Parameters**:
+
+- `dataTable`: Input data table with at least 2 columns
+
+**Returns**:
+- `chiSquare`: The chi-square statistic
+- `pValue`: The p-value of the test
+- `df`: The degrees of freedom
+
+**Example**:
+
+```go
+// Perform Bartlett's test of sphericity
+chiSquare, pValue, df := stats.BartlettSphericity(dataTable)
+fmt.Printf("Bartlett's test: χ²=%.4f, p=%.4f, df=%d\n", chiSquare, pValue, df)
+// A p-value < 0.05 generally indicates that the correlation matrix is significantly 
+// different from an identity matrix, making it suitable for factor analysis or PCA
+```
 
 ---
 
