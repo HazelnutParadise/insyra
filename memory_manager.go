@@ -13,10 +13,10 @@ func reorganizeMemory(dl *DataList) {
 	newData := make([]any, len(dl.data))
 	copy(newData, dl.data)
 	dl.data = newData
-	LogDebug("MemoryManager.ReorganizeMemory(): DataList reorganized with len=%d, cap=%d\n", len(dl.data), cap(dl.data))
+	LogDebug("core", "reorganizeMemory", "DataList reorganized with len=%d, cap=%d\n", len(dl.data), cap(dl.data))
 }
 
 func (dl *DataList) isFragmented() bool {
-	LogDebug("DataList.isFragmented(): len=%d, cap=%d\n", len(dl.data), cap(dl.data))
+	LogDebug("DataList", "isFragmented", "len=%d, cap=%d\n", len(dl.data), cap(dl.data))
 	return len(dl.data) < cap(dl.data)/2
 }

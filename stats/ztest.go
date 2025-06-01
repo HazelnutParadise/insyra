@@ -17,7 +17,7 @@ type ZTestResult struct {
 func SingleSampleZTest(data insyra.IDataList, mu float64, sigma float64, alternative AlternativeHypothesis, confidenceLevel float64) *ZTestResult {
 	n := data.Len()
 	if n <= 0 {
-		insyra.LogWarning("stats.SingleSampleZTest: sample size too small.")
+		insyra.LogWarning("stats", "SingleSampleZTest", "Sample size too small")
 		return nil
 	}
 
@@ -72,7 +72,7 @@ func TwoSampleZTest(data1, data2 insyra.IDataList, sigma1, sigma2 float64, alter
 	n1 := data1.Len()
 	n2 := data2.Len()
 	if n1 <= 0 || n2 <= 0 {
-		insyra.LogWarning("stats.TwoSampleZTest: sample sizes too small.")
+		insyra.LogWarning("stats", "TwoSampleZTest", "Sample sizes too small")
 		return nil
 	}
 

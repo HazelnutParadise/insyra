@@ -159,7 +159,7 @@ func (dt *DataTable) AppendCols(columns ...*DataList) *DataTable {
 		if len(column.data) < maxLength {
 			column.data = append(column.data, make([]any, maxLength-len(column.data))...)
 		}
-		LogDebug("AppendCols: Added column %s at index %d", columnName, dt.columnIndex[columnName])
+		LogDebug("DataTable", "AppendCols", "Added column %s at index %d", columnName, dt.columnIndex[columnName])
 	}
 
 	for _, col := range dt.columns {
@@ -250,14 +250,14 @@ func (dt *DataTable) AppendRowsByColIndex(rowsData ...map[string]any) *DataTable
 		for _, colIndex := range allCols {
 			value := rowData[colIndex]
 			_, exists := dt.columnIndex[colIndex]
-			LogDebug("AppendRowsByIndex: Handling column %s, exists: %t", colIndex, exists)
+			LogDebug("DataTable", "AppendRowsByColIndex", "Handling column %s, exists: %t", colIndex, exists)
 
 			if !exists {
 				// 如果該欄位不存在，新增該欄位並插入字母順序位置
 				newCol := newEmptyDataList(maxLength)
 				dt.columns = append(dt.columns, newCol)
 				dt.columnIndex[colIndex] = len(dt.columns) - 1
-				LogDebug("AppendRowsByIndex: Added new column %s at index %d", colIndex, dt.columnIndex[colIndex])
+				LogDebug("DataTable", "AppendRowsByColIndex", "Added new column %s at index %d", colIndex, dt.columnIndex[colIndex])
 
 				// 重新排序欄位以符合字母順序
 				dt.sortColsByIndex()
@@ -296,7 +296,7 @@ func (dt *DataTable) AppendRowsByColName(rowsData ...map[string]any) *DataTable 
 				if dt.columns[i].name == colName {
 					dt.columns[i].data = append(dt.columns[i].data, value)
 					found = true
-					LogDebug("AppendRowsByName: Found column %s at index %d", colName, i)
+					LogDebug("DataTable", "AppendRowsByColName", "Found column %s at index %d", colName, i)
 					break
 				}
 			}
@@ -306,7 +306,7 @@ func (dt *DataTable) AppendRowsByColName(rowsData ...map[string]any) *DataTable 
 				newCol.data = append(newCol.data, value)
 				dt.columns = append(dt.columns, newCol)
 				dt.columnIndex[generateColIndex(len(dt.columns)-1)] = len(dt.columns) - 1 // 更新 columnIndex
-				LogDebug("AppendRowsByName: Added new column %s at index %d", colName, len(dt.columns)-1)
+				LogDebug("DataTable", "AppendRowsByColName", "Added new column %s at index %d", colName, len(dt.columns)-1)
 			}
 		}
 
@@ -335,7 +335,7 @@ func (dt *DataTable) GetElement(rowIndex int, columnIndex string) any {
 			rowIndex = len(dt.columns[colPos].data) + rowIndex
 		}
 		if rowIndex < 0 || rowIndex >= len(dt.columns[colPos].data) {
-			LogWarning("DataTable.GetElement(): Row index is out of range, returning nil.")
+			LogWarning("DataTable", "GetElement", "Row index is out of range, returning nil")
 			return nil
 		}
 		return dt.columns[colPos].data[rowIndex]
@@ -352,7 +352,7 @@ func (dt *DataTable) GetElementByNumberIndex(rowIndex int, columnIndex int) any 
 		rowIndex = len(dt.columns[columnIndex].data) + rowIndex
 	}
 	if rowIndex < 0 || rowIndex >= len(dt.columns[columnIndex].data) {
-		LogWarning("DataTable.GetElementByNumberIndex(): Row index is out of range, returning nil.")
+		LogWarning("DataTable", "GetElementByNumberIndex", "Row index is out of range, returning nil")
 		return nil
 	}
 	return dt.columns[columnIndex].data[rowIndex]
@@ -374,7 +374,7 @@ func (dt *DataTable) GetCol(index string) *DataList {
 		dl.name = dt.columns[colPos].name
 		return dl
 	}
-	LogWarning("DataTable.GetCol(): Column '%s' not found, returning empty DataList.", index)
+	LogWarning("DataTable", "GetCol", "Column '%s' not found, returning empty DataList", index)
 	return NewDataList() // 返回空的 DataList 而不是 nil
 }
 
@@ -387,7 +387,7 @@ func (dt *DataTable) GetColByNumber(index int) *DataList {
 	}
 
 	if index < 0 || index >= len(dt.columns) {
-		LogWarning("DataTable.GetColByNumber(): Col index is out of range, returning empty DataList.")
+		LogWarning("DataTable", "GetColByNumber", "Col index is out of range, returning empty DataList")
 		return NewDataList() // 返回空的 DataList 而不是 nil
 	}
 
@@ -408,7 +408,7 @@ func (dt *DataTable) GetRow(index int) *DataList {
 		index = dt.getMaxColLength() + index
 	}
 	if index < 0 || index >= dt.getMaxColLength() {
-		LogWarning("DataTable.GetRow(): Row index is out of range, returning nil.")
+		LogWarning("DataTable", "GetRow", "Row index is out of range, returning nil")
 		return nil
 	}
 
@@ -445,12 +445,12 @@ func (dt *DataTable) UpdateElement(rowIndex int, columnIndex string, value any) 
 			rowIndex = len(dt.columns[colPos].data) + rowIndex
 		}
 		if rowIndex < 0 || rowIndex >= len(dt.columns[colPos].data) {
-			LogWarning("DataTable.UpdateElement(): Row index is out of range, returning.")
+			LogWarning("DataTable", "UpdateElement", "Row index is out of range, returning")
 			return
 		}
 		dt.columns[colPos].data[rowIndex] = value
 	} else {
-		LogWarning("DataTable.UpdateElement(): Col index does not exist, returning.")
+		LogWarning("DataTable", "UpdateElement", "Col index does not exist, returning")
 	}
 }
 
@@ -468,7 +468,7 @@ func (dt *DataTable) UpdateCol(index string, dl *DataList) {
 	if colPos, exists := dt.columnIndex[index]; exists {
 		dt.columns[colPos] = dl
 	} else {
-		LogWarning("DataTable.UpdateCol(): Col index does not exist, returning.")
+		LogWarning("DataTable", "UpdateCol", "Col index does not exist, returning")
 	}
 }
 
@@ -485,7 +485,7 @@ func (dt *DataTable) UpdateColByNumber(index int, dl *DataList) {
 	}
 
 	if index < 0 || index >= len(dt.columns) {
-		LogWarning("DataTable.UpdateColByNumber(): Index out of bounds")
+		LogWarning("DataTable", "UpdateColByNumber", "Index out of bounds")
 		return
 	}
 
@@ -499,12 +499,12 @@ func (dt *DataTable) UpdateRow(index int, dl *DataList) {
 	defer dt.mu.Unlock()
 
 	if index < 0 || index >= dt.getMaxColLength() {
-		LogWarning("DataTable.UpdateRow(): Index out of bounds")
+		LogWarning("DataTable", "UpdateRow", "Index out of bounds")
 		return
 	}
 
 	if len(dl.data) > len(dt.columns) {
-		LogWarning("DataTable.UpdateRow(): DataList has more elements than DataTable columns, returning.")
+		LogWarning("DataTable", "UpdateRow", "DataList has more elements than DataTable columns, returning")
 		return
 	}
 
@@ -996,7 +996,7 @@ func (dt *DataTable) DropRowsByName(rowNames ...string) {
 	for _, rowName := range rowNames {
 		rowIndex, exists := dt.rowNames[rowName]
 		if !exists {
-			LogWarning(fmt.Sprintf("Row name '%s' does not exist.", rowName))
+			LogWarning("DataTable", "DropRowsByName", "Row name '%s' does not exist", rowName)
 			continue
 		}
 
@@ -1182,7 +1182,7 @@ func (dt *DataTable) Data(useNamesAsKeys ...bool) map[string][]any {
 		useNamesAsKeysBool = useNamesAsKeys[0]
 	}
 	if len(useNamesAsKeys) > 1 {
-		LogWarning("DataTable.Data(): too many arguments, returning empty map.")
+		LogWarning("DataTable", "Data", "Too many arguments, returning empty map")
 		return dataMap
 	}
 
@@ -1223,7 +1223,7 @@ func (dt *DataTable) SetRowNameByIndex(index int, name string) {
 		index = dt.getMaxColLength() + index
 	}
 	if index < 0 || index >= dt.getMaxColLength() {
-		LogWarning("DataTable.SetRowNameByIndex(): Row index %d is out of range, returning.", originalIndex)
+		LogWarning("DataTable", "SetRowNameByIndex", "Row index %d is out of range, returning", originalIndex)
 		return
 	}
 	srn := safeRowName(dt, name)

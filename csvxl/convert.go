@@ -28,7 +28,7 @@ func CsvToExcel(csvFiles []string, sheetNames []string, output string, csvEncodi
 	if len(csvEncoding) == 1 {
 		encoding = csvEncoding[0]
 	} else if len(csvEncoding) > 1 {
-		insyra.LogWarning("csvxl.CsvToExcel: Too many arguments for csvEncoding")
+		insyra.LogWarning("csvxl", "CsvToExcel", "Too many arguments for csvEncoding")
 		return
 	}
 
@@ -47,31 +47,31 @@ func CsvToExcel(csvFiles []string, sheetNames []string, output string, csvEncodi
 		if idx == 0 {
 			err := f.SetSheetName(f.GetSheetName(0), sheetName)
 			if err != nil {
-				insyra.LogWarning("csvxl.CsvToExcel: Failed to set sheet name %s: %v", sheetName, err)
+				insyra.LogWarning("csvxl", "CsvToExcel", "Failed to set sheet name %s: %v", sheetName, err)
 				return
 			}
 		} else {
 			_, err := f.NewSheet(sheetName)
 			if err != nil {
-				insyra.LogWarning("csvxl.CsvToExcel: Failed to create new sheet %s: %v", sheetName, err)
+				insyra.LogWarning("csvxl", "CsvToExcel", "Failed to create new sheet %s: %v", sheetName, err)
 				return
 			}
 		}
 
 		err := addCsvSheet(f, sheetName, csvFile, encoding)
 		if err != nil {
-			insyra.LogWarning("csvxl.CsvToExcel: Failed to add CSV sheet %s: %v", csvFile, err)
+			insyra.LogWarning("csvxl", "CsvToExcel", "Failed to add CSV sheet %s: %v", csvFile, err)
 			failedFiles++
 			continue
 		}
 	}
 
 	if err := f.SaveAs(output); err != nil {
-		insyra.LogWarning("csvxl.CsvToExcel: Failed to save Excel file %s: %v", output, err)
+		insyra.LogWarning("csvxl", "CsvToExcel", "Failed to save Excel file %s: %v", output, err)
 		return
 	}
 
-	insyra.LogInfo("csvxl.CsvToExcel: Successfully converted %d CSV files to Excel file %s. %d files failed.", len(csvFiles)-failedFiles, output, failedFiles)
+	insyra.LogInfo("csvxl", "CsvToExcel", "Successfully converted %d CSV files to Excel file %s. %d files failed.", len(csvFiles)-failedFiles, output, failedFiles)
 }
 
 // Append CSV files to an existing Excel file, supporting custom sheet names.
@@ -82,13 +82,13 @@ func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile strin
 	if len(csvEncoding) == 1 {
 		encoding = csvEncoding[0]
 	} else if len(csvEncoding) > 1 {
-		insyra.LogWarning("csvxl.AppendCsvToExcel: Too many arguments for csvEncoding")
+		insyra.LogWarning("csvxl", "AppendCsvToExcel", "Too many arguments for csvEncoding")
 		return
 	}
 
 	f, err := excelize.OpenFile(existingFile)
 	if err != nil {
-		insyra.LogWarning("csvxl.AppendCsvToExcel: Failed to open Excel file %s: %v", existingFile, err)
+		insyra.LogWarning("csvxl", "AppendCsvToExcel", "Failed to open Excel file %s: %v", existingFile, err)
 		return
 	}
 
@@ -104,24 +104,24 @@ func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile strin
 
 		_, err := f.NewSheet(sheetName)
 		if err != nil {
-			insyra.LogWarning("csvxl.AppendCsvToExcel: Failed to create new sheet %s: %v, returning", sheetName, err)
+			insyra.LogWarning("csvxl", "AppendCsvToExcel", "Failed to create new sheet %s: %v, returning", sheetName, err)
 			return
 		}
 
 		err = addCsvSheet(f, sheetName, csvFile, encoding)
 		if err != nil {
-			insyra.LogWarning("csvxl.AppendCsvToExcel: Failed to add CSV sheet %s: %v, skipping", csvFile, err)
+			insyra.LogWarning("csvxl", "AppendCsvToExcel", "Failed to add CSV sheet %s: %v, skipping", csvFile, err)
 			failedFiles++
 			continue
 		}
 	}
 
 	if err := f.SaveAs(existingFile); err != nil {
-		insyra.LogWarning("csvxl.AppendCsvToExcel: Failed to save Excel file %s: %v", existingFile, err)
+		insyra.LogWarning("csvxl", "AppendCsvToExcel", "Failed to save Excel file %s: %v", existingFile, err)
 		return
 	}
 
-	insyra.LogInfo("csvxl.AppendCsvToExcel: Successfully appended %d CSV files to Excel file %s. %d files failed.", len(csvFiles)-failedFiles, existingFile, failedFiles)
+	insyra.LogInfo("csvxl", "AppendCsvToExcel", "Successfully appended %d CSV files to Excel file %s. %d files failed.", len(csvFiles)-failedFiles, existingFile, failedFiles)
 }
 
 // ExcelToCsv splits an Excel file into multiple CSV files, one per sheet.
@@ -129,7 +129,7 @@ func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile strin
 func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyContainSheets ...string) {
 	f, err := excelize.OpenFile(excelFile)
 	if err != nil {
-		insyra.LogWarning("csvxl.ExcelToCsv: Failed to open Excel file %s: %v", excelFile, err)
+		insyra.LogWarning("csvxl", "ExcelToCsv", "Failed to open Excel file %s: %v", excelFile, err)
 		return
 	}
 
@@ -154,19 +154,19 @@ func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyConta
 		if _, err := os.Stat(outputDir); os.IsNotExist(err) {
 			err := os.MkdirAll(outputDir, os.ModePerm)
 			if err != nil {
-				insyra.LogWarning("csvxl.ExcelToCsv: Failed to create directory %s: %v", outputDir, err)
+				insyra.LogWarning("csvxl", "ExcelToCsv", "Failed to create directory %s: %v", outputDir, err)
 				return
 			}
 		}
 		outputCsv := filepath.Join(outputDir, csvName)
 		err := saveSheetAsCsv(f, sheet, outputCsv)
 		if err != nil {
-			insyra.LogWarning("csvxl.ExcelToCsv: Failed to save sheet %s as CSV: %v", sheet, err)
+			insyra.LogWarning("csvxl", "ExcelToCsv", "Failed to save sheet %s as CSV: %v", sheet, err)
 			return
 		}
 	}
 
-	insyra.LogInfo("csvxl.ExcelToCsv: Successfully converted %d sheets to CSV files in %s.", len(sheets), outputDir)
+	insyra.LogInfo("csvxl", "ExcelToCsv", "Successfully converted %d sheets to CSV files in %s.", len(sheets), outputDir)
 }
 
 // ===============================

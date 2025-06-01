@@ -69,7 +69,7 @@ func GoogleMapsStores() *googleMapsStoreCrawler {
 	const configUrl = "https://raw.githubusercontent.com/TimLai666/google-maps-store-review-crawler/refs/heads/main/crawler_config.json"
 	res, err := http.Get(configUrl)
 	if err != nil || res.StatusCode != 200 {
-		insyra.LogWarning("datafetch.GoogleMapsStores: Failed to fetch GoogleMapsStoreReviewCrawler config. Error: %v. Returning nil.", err)
+		insyra.LogWarning("datafetch", "GoogleMapsStores", "Failed to fetch GoogleMapsStoreReviewCrawler config. Error: %v. Returning nil.", err)
 		return nil
 	}
 	defer res.Body.Close()
@@ -82,7 +82,7 @@ func GoogleMapsStores() *googleMapsStoreCrawler {
 	}{}
 	err = json.NewDecoder(res.Body).Decode(&config)
 	if err != nil {
-		insyra.LogWarning("datafetch.GoogleMapsStores: Failed to decode GoogleMapsStoreReviewCrawler config. Error: %v. Returning nil.", err)
+		insyra.LogWarning("datafetch", "GoogleMapsStores", "Failed to decode GoogleMapsStoreReviewCrawler config. Error: %v. Returning nil.", err)
 		return nil
 	}
 
@@ -101,7 +101,7 @@ func (c *googleMapsStoreCrawler) Search(storeName string) []GoogleMapsStoreData 
 	url := strings.Replace(c.storeSearchUrl, "{store_name}", storeName, 1)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		insyra.LogWarning("datafetch.GoogleMapsStores().Search: Failed to create request. Error: %v. Returning nil.", err)
+		insyra.LogWarning("datafetch", "GoogleMapsStores.Search", "Failed to create request. Error: %v. Returning nil.", err)
 		return nil
 	}
 	for k, v := range c.headers {
@@ -109,14 +109,14 @@ func (c *googleMapsStoreCrawler) Search(storeName string) []GoogleMapsStoreData 
 	}
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		insyra.LogWarning("datafetch.GoogleMapsStores().Search: Failed to send request. Error: %v. Returning nil.", err)
+		insyra.LogWarning("datafetch", "GoogleMapsStores.Search", "Failed to send request. Error: %v. Returning nil.", err)
 		return nil
 	}
 	defer res.Body.Close()
 
 	resTxt, err := io.ReadAll(res.Body)
 	if err != nil {
-		insyra.LogWarning("datafetch.GoogleMapsStores().Search: Failed to read response. Error: %v. Returning nil.", err)
+		insyra.LogWarning("datafetch", "GoogleMapsStores.Search", "Failed to read response. Error: %v. Returning nil.", err)
 		return nil
 	}
 
@@ -142,7 +142,7 @@ func (c *googleMapsStoreCrawler) Search(storeName string) []GoogleMapsStoreData 
 	for _, storeId := range storeIdList {
 		storeName, err := c.getStoreName(storeId)
 		if err != nil {
-			insyra.LogWarning("datafetch.GoogleMapsStores().Search: Error fetching store name for %s: %v\n", storeId, err)
+			insyra.LogWarning("datafetch", "GoogleMapsStores.Search", "Error fetching store name for %s: %v\n", storeId, err)
 			continue // 碰到錯誤就跳過
 		}
 		storeList = append(storeList, GoogleMapsStoreData{
@@ -167,15 +167,15 @@ func (c *googleMapsStoreCrawler) GetReviews(storeId string, pageCount int, optio
 	if len(options) == 1 {
 		fetchingOptions = options[0]
 		if fetchingOptions.MaxWaitingInterval_Milliseconds < 1000 {
-			insyra.LogWarning("datafetch.GoogleMapsStores().GetReviews: MaxWaitingInterval is too small. Using default value.")
+			insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "MaxWaitingInterval is too small. Using default value.")
 			fetchingOptions.MaxWaitingInterval_Milliseconds = 5000
 		}
 		if fetchingOptions.SortBy < SortByRelevance || fetchingOptions.SortBy > SortByLowestRating {
-			insyra.LogWarning("datafetch.GoogleMapsStores().GetReviews: SortBy is invalid. Using default value.")
+			insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "SortBy is invalid. Using default value.")
 			fetchingOptions.SortBy = SortByRelevance
 		}
 	} else if len(options) > 1 {
-		insyra.LogWarning("datafetch.GoogleMapsStores().GetReviews: Got too many options. Using default options.")
+		insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "Got too many options. Using default options.")
 	}
 
 	reviewUrl := c.storeReviewUrl
@@ -199,7 +199,7 @@ func (c *googleMapsStoreCrawler) GetReviews(storeId string, pageCount int, optio
 		// 建立 HTTP 請求
 		req, err := http.NewRequest("GET", reviewUrl+"?"+params.Encode(), nil)
 		if err != nil {
-			insyra.LogWarning("datafetch.GoogleMapsStores().GetReviews: Failed to create request. Error: %v. Returning nil.", err)
+			insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "Failed to create request. Error: %v. Returning nil.", err)
 			return nil
 		}
 		for key, value := range headers {
@@ -209,28 +209,28 @@ func (c *googleMapsStoreCrawler) GetReviews(storeId string, pageCount int, optio
 		client := &http.Client{}
 		resp, err := client.Do(req)
 		if err != nil {
-			insyra.LogWarning("datafetch.GoogleMapsStores().GetReviews: Failed to send request. Error: %v. Returning nil.", err)
+			insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "Failed to send request. Error: %v. Returning nil.", err)
 			return nil
 		}
 		defer resp.Body.Close()
 
 		// 確保回應狀態碼為 200 OK
 		if resp.StatusCode != http.StatusOK {
-			insyra.LogWarning("datafetch.GoogleMapsStores().GetReviews: Failed to fetch reviews. HTTP status code: %d. Returning nil.", resp.StatusCode)
+			insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "Failed to fetch reviews. HTTP status code: %d. Returning nil.", resp.StatusCode)
 			return nil
 		}
 
 		// 讀取回應內容
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			insyra.LogWarning("datafetch.GoogleMapsStores().GetReviews: Failed to read response. Error: %v. Returning nil.", err)
+			insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "Failed to read response. Error: %v. Returning nil.", err)
 			return nil
 		}
 
 		// Google 回應有 `)]}'` 前綴，需去除前 4 個字元
 		jsonData := []any{}
 		if err := json.Unmarshal(body[4:], &jsonData); err != nil {
-			insyra.LogWarning("datafetch.GoogleMapsStores().GetReviews: Failed to decode JSON. Error: %v. Returning nil.", err)
+			insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "Failed to decode JSON. Error: %v. Returning nil.", err)
 			return nil
 		}
 

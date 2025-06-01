@@ -136,7 +136,7 @@ func CreateLineChart(config LineChartConfig) *charts.Line {
 			line.AddSeries(dataList.GetName(), convertToLineDataFloat(dataList.ToF64Slice()))
 		}
 	default:
-		insyra.LogWarning("unsupported Data type: %T", config.Data)
+		insyra.LogWarning("plot", "CreateLineChart", "unsupported Data type: %T", config.Data)
 		return nil
 	}
 

@@ -5,7 +5,7 @@ import "math"
 // LinearInterpolation performs linear interpolation for the given x value using the DataList.
 func (dl *DataList) LinearInterpolation(x float64) float64 {
 	if dl.Len() < 2 {
-		LogWarning("DataList.LinearInterpolation(): Not enough data points.")
+		LogWarning("DataList", "LinearInterpolation", "Not enough data points")
 		return math.NaN()
 	}
 	for i := 0; i < dl.Len()-1; i++ {
@@ -18,14 +18,14 @@ func (dl *DataList) LinearInterpolation(x float64) float64 {
 			return y0 + (y1-y0)*(x-x0)/(x1-x0)
 		}
 	}
-	LogWarning("DataList.LinearInterpolation(): X value out of bounds.")
+	LogWarning("DataList", "LinearInterpolation", "X value out of bounds")
 	return math.NaN()
 }
 
 // QuadraticInterpolation performs quadratic interpolation for the given x value using the DataList.
 func (dl *DataList) QuadraticInterpolation(x float64) float64 {
 	if dl.Len() < 3 {
-		LogWarning("DataList.QuadraticInterpolation(): Not enough data points.")
+		LogWarning("DataList", "QuadraticInterpolation", "Not enough data points")
 		return math.NaN()
 	}
 	for i := 0; i < dl.Len()-2; i++ {
@@ -43,7 +43,7 @@ func (dl *DataList) QuadraticInterpolation(x float64) float64 {
 			return y0*l0 + y1*l1 + y2*l2
 		}
 	}
-	LogWarning("DataList.QuadraticInterpolation(): X value out of bounds.")
+	LogWarning("DataList", "QuadraticInterpolation", "X value out of bounds")
 	return math.NaN()
 }
 
@@ -51,7 +51,7 @@ func (dl *DataList) QuadraticInterpolation(x float64) float64 {
 func (dl *DataList) LagrangeInterpolation(x float64) float64 {
 	n := dl.Len()
 	if n < 2 {
-		LogWarning("DataList.LagrangeInterpolation(): Not enough data points.")
+		LogWarning("DataList", "LagrangeInterpolation", "Not enough data points")
 		return math.NaN()
 	}
 	result := 0.0
@@ -81,7 +81,7 @@ func (dl *DataList) NearestNeighborInterpolation(x float64) float64 {
 	}
 
 	if closestIndex < 0 || closestIndex >= dl.Len() {
-		LogWarning("DataList.NearestNeighborInterpolation(): X value out of bounds.")
+		LogWarning("DataList", "NearestNeighborInterpolation", "X value out of bounds")
 		return math.NaN()
 	}
 	return dl.Data()[closestIndex].(float64)
@@ -91,7 +91,7 @@ func (dl *DataList) NearestNeighborInterpolation(x float64) float64 {
 func (dl *DataList) NewtonInterpolation(x float64) float64 {
 	n := dl.Len()
 	if n < 2 {
-		LogWarning("DataList.NewtonInterpolation(): Not enough data points.")
+		LogWarning("DataList", "NewtonInterpolation", "Not enough data points")
 		return math.NaN()
 	}
 	// 計算差分
@@ -115,11 +115,11 @@ func (dl *DataList) NewtonInterpolation(x float64) float64 {
 func (dl *DataList) HermiteInterpolation(x float64, derivatives []float64) float64 {
 	n := dl.Len()
 	if n != len(derivatives) {
-		LogWarning("DataList.HermiteInterpolation(): Data and derivatives length mismatch.")
+		LogWarning("DataList", "HermiteInterpolation", "Data and derivatives length mismatch")
 		return math.NaN()
 	}
 	if n < 2 {
-		LogWarning("DataList.HermiteInterpolation(): Not enough data points.")
+		LogWarning("DataList", "HermiteInterpolation", "Not enough data points")
 		return math.NaN()
 	}
 

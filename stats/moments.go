@@ -14,13 +14,13 @@ import (
 func CalculateMoment(dl insyra.IDataList, n int, central bool) float64 {
 	// 處理無效輸入
 	if n <= 0 {
-		insyra.LogWarning("stats.CalculateMoment: invalid moment order")
+		insyra.LogWarning("stats", "CalculateMoment", "Invalid moment order")
 		return math.NaN()
 	}
 
 	length := dl.Len()
 	if length == 0 {
-		insyra.LogWarning("stats.CalculateMoment: empty DataList")
+		insyra.LogWarning("stats", "CalculateMoment", "Empty DataList")
 		return math.NaN()
 	}
 
@@ -46,7 +46,7 @@ func CalculateMoment(dl insyra.IDataList, n int, central bool) float64 {
 	for i, v := range data {
 		val, ok := v.(float64)
 		if !ok {
-			insyra.LogWarning("stats.CalculateMoment: data contains non-float64 value")
+			insyra.LogWarning("stats", "CalculateMoment", "Data contains non-float64 value")
 			return math.NaN()
 		}
 		floatData[i] = val

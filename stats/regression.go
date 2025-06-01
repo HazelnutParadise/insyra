@@ -72,11 +72,11 @@ type LogarithmicRegressionResult struct {
 func LinearRegression(dlX, dlY insyra.IDataList) *LinearRegressionResult {
 	// --- sanity checks ------------------------------------------------------
 	if dlX.Len() != dlY.Len() {
-		insyra.LogWarning("stats.LinearRegression: x and y must have the same length")
+		insyra.LogWarning("stats", "LinearRegression", "x and y must have the same length")
 		return nil
 	}
 	if dlX.Len() < 3 {
-		insyra.LogWarning("stats.LinearRegression: need at least 3 observations")
+		insyra.LogWarning("stats", "LinearRegression", "need at least 3 observations")
 		return nil
 	}
 
@@ -103,7 +103,7 @@ func LinearRegression(dlX, dlY insyra.IDataList) *LinearRegressionResult {
 		sxx += dx * dx
 	}
 	if sxx == 0 {
-		insyra.LogWarning("stats.LinearRegression: variance of x is zero; slope undefined")
+		insyra.LogWarning("stats", "LinearRegression", "variance of x is zero; slope undefined")
 		return nil
 	}
 
@@ -122,13 +122,13 @@ func LinearRegression(dlX, dlY insyra.IDataList) *LinearRegressionResult {
 	}
 
 	// --- SST (total sum of squares) ----------------------------------------
-	var sst float64 // Σ (yᵢ − ȳ)²
+	var sst float64 // Σ (yᵢ − ȳ)²
 	for i := range ys {
 		dy := ys[i] - meanY
 		sst += dy * dy
 	}
 	if sst == 0 {
-		insyra.LogWarning("stats.LinearRegression: variance of y is zero; R² undefined")
+		insyra.LogWarning("stats", "LinearRegression", "variance of y is zero; R² undefined")
 		return nil
 	}
 
@@ -171,7 +171,7 @@ func LinearRegression(dlX, dlY insyra.IDataList) *LinearRegressionResult {
 // ** Verified using R **
 func ExponentialRegression(dlX, dlY insyra.IDataList) *ExponentialRegressionResult {
 	if dlX.Len() != dlY.Len() || dlX.Len() == 0 {
-		insyra.LogWarning("stats.ExponentialRegression: input lengths mismatch or zero")
+		insyra.LogWarning("stats", "ExponentialRegression", "input lengths mismatch or zero")
 		return nil
 	}
 
@@ -184,7 +184,7 @@ func ExponentialRegression(dlX, dlY insyra.IDataList) *ExponentialRegressionResu
 	logYs := make([]float64, len(ys))
 	for i := range ys {
 		if ys[i] <= 0 {
-			insyra.LogWarning("stats.ExponentialRegression: y must be > 0 for log computation")
+			insyra.LogWarning("stats", "ExponentialRegression", "y must be > 0 for log computation")
 			return nil
 		}
 		logYs[i] = math.Log(ys[i])
@@ -204,7 +204,7 @@ func ExponentialRegression(dlX, dlY insyra.IDataList) *ExponentialRegressionResu
 
 	denom := n*sumX2 - sumX*sumX
 	if denom == 0 {
-		insyra.LogWarning("stats.ExponentialRegression: denominator zero, cannot compute coefficients")
+		insyra.LogWarning("stats", "ExponentialRegression", "denominator zero, cannot compute coefficients")
 		return nil
 	}
 
@@ -231,7 +231,7 @@ func ExponentialRegression(dlX, dlY insyra.IDataList) *ExponentialRegressionResu
 	}
 
 	if sst == 0 {
-		insyra.LogWarning("stats.ExponentialRegression: variance of y is zero; R² undefined")
+		insyra.LogWarning("stats", "ExponentialRegression", "variance of y is zero; R² undefined")
 		return nil
 	}
 
@@ -288,7 +288,7 @@ func ExponentialRegression(dlX, dlY insyra.IDataList) *ExponentialRegressionResu
 // ** Verified using R **
 func LogarithmicRegression(dlX, dlY insyra.IDataList) *LogarithmicRegressionResult {
 	if dlX.Len() != dlY.Len() || dlX.Len() == 0 {
-		insyra.LogWarning("stats.LogarithmicRegression: input lengths mismatch or zero")
+		insyra.LogWarning("stats", "LogarithmicRegression", "input lengths mismatch or zero")
 		return nil
 	}
 
@@ -298,7 +298,7 @@ func LogarithmicRegression(dlX, dlY insyra.IDataList) *LogarithmicRegressionResu
 	var sumLX, sumYLX, sumY, sumLX2 float64
 	for i := range xs {
 		if xs[i] <= 0 {
-			insyra.LogWarning("stats.LogarithmicRegression: x must be > 0 for ln computation")
+			insyra.LogWarning("stats", "LogarithmicRegression", "x must be > 0 for ln computation")
 			return nil
 		}
 		lx := math.Log(xs[i])
@@ -312,7 +312,7 @@ func LogarithmicRegression(dlX, dlY insyra.IDataList) *LogarithmicRegressionResu
 	n := float64(dlX.Len())
 	denom := n*sumLX2 - sumLX*sumLX
 	if denom == 0 {
-		insyra.LogWarning("stats.LogarithmicRegression: denominator zero, cannot compute coefficients")
+		insyra.LogWarning("stats", "LogarithmicRegression", "denominator zero, cannot compute coefficients")
 		return nil
 	}
 
@@ -339,7 +339,7 @@ func LogarithmicRegression(dlX, dlY insyra.IDataList) *LogarithmicRegressionResu
 	}
 
 	if sst == 0 {
-		insyra.LogWarning("stats.LogarithmicRegression: variance of y is zero; R² undefined")
+		insyra.LogWarning("stats", "LogarithmicRegression", "variance of y is zero; R² undefined")
 		return nil
 	}
 
@@ -387,11 +387,11 @@ func LogarithmicRegression(dlX, dlY insyra.IDataList) *LogarithmicRegressionResu
 // ** Verified using R **
 func PolynomialRegression(dlX, dlY insyra.IDataList, degree int) *PolynomialRegressionResult {
 	if dlX.Len() != dlY.Len() || dlX.Len() == 0 {
-		insyra.LogWarning("stats.PolynomialRegression: input lengths mismatch or zero")
+		insyra.LogWarning("stats", "PolynomialRegression", "input lengths mismatch or zero")
 		return nil
 	}
 	if degree < 1 || degree >= dlX.Len() {
-		insyra.LogWarning("stats.PolynomialRegression: invalid degree")
+		insyra.LogWarning("stats", "PolynomialRegression", "invalid degree")
 		return nil
 	}
 
@@ -432,7 +432,7 @@ func PolynomialRegression(dlX, dlY insyra.IDataList, degree int) *PolynomialRegr
 	// Solve XTX * coeffs = XTy using Gaussian elimination
 	coeffs := gaussianElimination(XTX, XTy)
 	if coeffs == nil {
-		insyra.LogWarning("stats.PolynomialRegression: matrix is singular, cannot solve")
+		insyra.LogWarning("stats", "PolynomialRegression", "matrix is singular, cannot solve")
 		return nil
 	}
 
@@ -456,7 +456,7 @@ func PolynomialRegression(dlX, dlY insyra.IDataList, degree int) *PolynomialRegr
 	}
 
 	if sst == 0 {
-		insyra.LogWarning("stats.PolynomialRegression: variance of y is zero; R² undefined")
+		insyra.LogWarning("stats", "PolynomialRegression", "variance of y is zero; R² undefined")
 		return nil
 	}
 

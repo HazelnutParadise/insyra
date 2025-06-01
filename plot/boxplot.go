@@ -80,7 +80,7 @@ func CreateBoxPlot(config BoxPlotConfig) *charts.BoxPlot {
 			boxPlot.SetXAxis(config.XAxis).AddSeries(seriesName, boxPlotItems)
 		}
 	default:
-		insyra.LogWarning("plot.CreateBoxPlot: Unsupported Data type")
+		insyra.LogWarning("plot", "CreateBoxPlot", "Unsupported Data type")
 		return nil
 	}
 

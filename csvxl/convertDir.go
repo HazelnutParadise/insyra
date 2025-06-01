@@ -14,7 +14,7 @@ import (
 func EachCsvToOneExcel(dir string, output string, encoding ...string) {
 	files, err := filepath.Glob(filepath.Join(dir, "*.csv"))
 	if err != nil {
-		insyra.LogWarning("csvxl.EachCsvToOneExcel: %s", err)
+		insyra.LogWarning("csvxl", "EachCsvToOneExcel", "%s", err)
 		return
 	}
 
@@ -31,14 +31,14 @@ func EachCsvToOneExcel(dir string, output string, encoding ...string) {
 func EachExcelToCsv(dir string, outputDir string) {
 	files, err := filepath.Glob(filepath.Join(dir, "*.xlsx"))
 	if err != nil {
-		insyra.LogWarning("csvxl.EachExcelToCsv: %s", err)
+		insyra.LogWarning("csvxl", "EachCsvToOneExcel", "%s", err)
 		return
 	}
 
 	xlsx2Csv := func(excelFile string, outputDir string) {
 		f, err := excelize.OpenFile(excelFile)
 		if err != nil {
-			insyra.LogWarning("csvxl.ExcelToCsv: Failed to open Excel file %s: %v", excelFile, err)
+			insyra.LogWarning("csvxl", "EachCsvToOneExcel", "Failed to open Excel file %s: %v", excelFile, err)
 			return
 		}
 
@@ -54,19 +54,19 @@ func EachExcelToCsv(dir string, outputDir string) {
 			if _, err := os.Stat(outputDir); os.IsNotExist(err) {
 				err := os.MkdirAll(outputDir, os.ModePerm)
 				if err != nil {
-					insyra.LogWarning("csvxl.ExcelToCsv: Failed to create directory %s: %v", outputDir, err)
+					insyra.LogWarning("csvxl", "EachCsvToOneExcel", "Failed to create directory %s: %v", outputDir, err)
 					return
 				}
 			}
 			outputCsv := filepath.Join(outputDir, csvName)
 			err := saveSheetAsCsv(f, sheet, outputCsv)
 			if err != nil {
-				insyra.LogWarning("csvxl.ExcelToCsv: Failed to save sheet %s as CSV: %v", sheet, err)
+				insyra.LogWarning("csvxl", "EachCsvToOneExcel", "Failed to save sheet %s as CSV: %v", sheet, err)
 				return
 			}
 		}
 
-		insyra.LogInfo("csvxl.ExcelToCsv: Successfully converted %d sheets to CSV files in %s.", len(sheets), outputDir)
+		insyra.LogInfo("csvxl", "EachCsvToOneExcel", "Successfully converted %d sheets to CSV files in %s.", len(sheets), outputDir)
 	}
 
 	for _, file := range files {

@@ -42,7 +42,7 @@ func CorrelationAnalysis(dataTable insyra.IDataTable, method CorrelationMethod) 
 func CorrelationMatrix(dataTable insyra.IDataTable, method CorrelationMethod) (corrMatrix *insyra.DataTable, pMatrix *insyra.DataTable) {
 	_, n := dataTable.Size()
 	if n < 2 {
-		insyra.LogWarning("stats.CorrelationMatrixWithP: Need at least two columns for correlation.")
+		insyra.LogWarning("stats", "CorrelationMatrix", "Need at least two columns for correlation")
 		return nil, nil
 	}
 
@@ -68,7 +68,7 @@ func CorrelationMatrix(dataTable insyra.IDataTable, method CorrelationMethod) (c
 				pmatrix[i][j] = corrResult.PValue
 				pmatrix[j][i] = corrResult.PValue // p值矩陣也是對稱的
 			} else {
-				insyra.LogWarning("stats.CorrelationMatrixWithP: Unable to calculate correlation between column %d and column %d. Setting as NaN.", i, j)
+				insyra.LogWarning("stats", "CorrelationMatrix", "Unable to calculate correlation between column %d and column %d. Setting as NaN", i, j)
 				matrix[i][j] = math.NaN()
 				matrix[j][i] = math.NaN()
 				pmatrix[i][j] = math.NaN()
@@ -133,11 +133,11 @@ type CorrelationResult struct {
 // Returns a CorrelationResult containing the correlation statistic, p-value, confidence interval, and degrees of freedom.
 func Correlation(dlX, dlY insyra.IDataList, method CorrelationMethod) *CorrelationResult {
 	if dlX == nil || dlY == nil || dlX.Len() != dlY.Len() || dlX.Len() < 2 {
-		insyra.LogWarning("stats.Correlation: Invalid input length or nil input.")
+		insyra.LogWarning("stats", "Correlation", "Invalid input length or nil input")
 		return nil
 	}
 	if dlX.Stdev() == 0 || dlY.Stdev() == 0 {
-		insyra.LogWarning("stats.Correlation: Cannot calculate correlation due to zero variance.")
+		insyra.LogWarning("stats", "Correlation", "Cannot calculate correlation due to zero variance")
 		return nil
 	}
 
@@ -150,12 +150,12 @@ func Correlation(dlX, dlY insyra.IDataList, method CorrelationMethod) *Correlati
 	case SpearmanCorrelation:
 		result = spearmanCorrelationWithStats(dlX, dlY)
 	default:
-		insyra.LogWarning("stats.Correlation: Unsupported method.")
+		insyra.LogWarning("stats", "Correlation", "Unsupported method")
 		return nil
 	}
 
 	if math.IsNaN(result.Statistic) {
-		insyra.LogWarning("stats.Correlation: Cannot calculate correlation.")
+		insyra.LogWarning("stats", "Correlation", "Cannot calculate correlation")
 		return nil
 	}
 
@@ -168,7 +168,7 @@ func Correlation(dlX, dlY insyra.IDataList, method CorrelationMethod) *Correlati
 func BartlettSphericity(dataTable insyra.IDataTable) (chiSquare float64, pValue float64, df int) {
 	rows, cols := dataTable.Size()
 	if cols < 2 {
-		insyra.LogWarning("stats.BartlettSphericity: Need at least two columns for sphericity test.")
+		insyra.LogWarning("stats", "BartlettSphericity", "Need at least two columns for sphericity test")
 		return math.NaN(), math.NaN(), 0
 	}
 
@@ -194,7 +194,7 @@ func BartlettSphericity(dataTable insyra.IDataTable) (chiSquare float64, pValue 
 	// 計算行列式 (使用高斯消元法)
 	det := determinantGauss(corrMatrix)
 	if det <= 0 {
-		insyra.LogWarning("stats.BartlettSphericity: Correlation matrix is singular or not positive definite.")
+		insyra.LogWarning("stats", "BartlettSphericity", "Correlation matrix is singular or not positive definite")
 		return math.NaN(), math.NaN(), 0
 	}
 

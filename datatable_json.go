@@ -99,7 +99,7 @@ func (dt *DataTable) ToJSON_Bytes(useColNames bool) []byte {
 
 	jsonData, err := json.MarshalIndent(rows, "", "  ")
 	if err != nil {
-		LogWarning("DataTable.ToJSON_Byte: %v", err)
+		LogWarning("DataTable", "ToJSON_Byte", "%v", err)
 		return nil
 	}
 

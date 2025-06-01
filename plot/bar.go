@@ -133,7 +133,7 @@ func CreateBarChart(config BarChartConfig) *charts.Bar {
 			bar.AddSeries(dataList.GetName(), convertToBarDataFloat(dataList.ToF64Slice()))
 		}
 	default:
-		insyra.LogWarning("unsupported Data type: %T", config.Data)
+		insyra.LogWarning("plot", "CreateBarChart", "unsupported Data type: %T", config.Data)
 		return nil
 	}
 

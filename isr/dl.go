@@ -22,7 +22,7 @@ func PtrDL[T *insyra.DataList | dl](l T) *dl {
 	case dl:
 		return &concrete
 	default:
-		insyra.LogFatal("isr.PtrDL(): got unexpected type %T", l)
+		insyra.LogFatal("isr", "PtrDL", "got unexpected type %T", l)
 		return nil
 	}
 }

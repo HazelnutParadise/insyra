@@ -39,14 +39,14 @@ type RepeatedMeasuresANOVAResult struct {
 
 func OneWayANOVA(groups ...insyra.IDataList) *OneWayANOVAResult {
 	if len(groups) < 2 {
-		insyra.LogWarning("stats.OneWayANOVA: At least two groups are required")
+		insyra.LogWarning("stats", "OneWayANOVA", "At least two groups are required")
 		return nil
 	}
 	totalSum := 0.0
 	totalCount := 0
 	for i, g := range groups {
 		if g.Len() == 0 {
-			insyra.LogWarning("stats.OneWayANOVA: Group %d is empty", i)
+			insyra.LogWarning("stats", "OneWayANOVA", "Group %d is empty", i)
 			return nil
 		}
 		totalSum += g.Sum()
@@ -67,7 +67,7 @@ func OneWayANOVA(groups ...insyra.IDataList) *OneWayANOVAResult {
 			for j, v := range g.Data() {
 				x, ok := insyra.ToFloat64Safe(v)
 				if !ok {
-					insyra.LogWarning("stats.OneWayANOVA: Invalid data at group %d index %d", i, j)
+					insyra.LogWarning("stats", "OneWayANOVA", "Invalid data at group %d index %d", i, j)
 					return
 				}
 				SSW += math.Pow(x-groupMean, 2)
@@ -89,7 +89,7 @@ func OneWayANOVA(groups ...insyra.IDataList) *OneWayANOVAResult {
 
 func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) *TwoWayANOVAResult {
 	if factorALevels < 2 || factorBLevels < 2 || len(cells) != factorALevels*factorBLevels {
-		insyra.LogWarning("stats.TwoWayANOVA: Invalid levels or cells")
+		insyra.LogWarning("stats", "TwoWayANOVA", "Invalid levels or cells")
 		return nil
 	}
 
@@ -102,7 +102,7 @@ func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) *T
 		for j := range factorBLevels {
 			cell := cells[i*factorBLevels+j]
 			if cell.Len() == 0 {
-				insyra.LogWarning("Empty cell")
+				insyra.LogWarning("stats", "TwoWayANOVA", "Empty cell")
 				return nil
 			}
 			cellCounts[i*factorBLevels+j] = cell.Len()
@@ -210,18 +210,18 @@ func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) *T
 
 func RepeatedMeasuresANOVA(subjects ...insyra.IDataList) *RepeatedMeasuresANOVAResult {
 	if len(subjects) < 2 {
-		insyra.LogWarning("stats.RepeatedMeasuresANOVA: At least two subjects are required")
+		insyra.LogWarning("stats", "RepeatedMeasuresANOVA", "At least two subjects are required")
 		return nil
 	}
 	conditionCount := subjects[0].Len()
 	for i, subj := range subjects {
 		if subj.Len() != conditionCount {
-			insyra.LogWarning("stats.RepeatedMeasuresANOVA: Inconsistent condition count at subject %d", i)
+			insyra.LogWarning("stats", "RepeatedMeasuresANOVA", "Inconsistent condition count at subject %d", i)
 			return nil
 		}
 	}
 	if conditionCount < 2 {
-		insyra.LogWarning("stats.RepeatedMeasuresANOVA: Less than two conditions")
+		insyra.LogWarning("stats", "RepeatedMeasuresANOVA", "Less than two conditions")
 		return nil
 	}
 

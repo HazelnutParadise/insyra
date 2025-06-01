@@ -22,7 +22,7 @@ func SolveFromFile(lpFile string, timeoutSeconds ...int) (*insyra.DataTable, *in
 	if len(timeoutSeconds) == 1 {
 		timeout = time.Duration(timeoutSeconds[0]) * time.Second
 	} else if len(timeoutSeconds) > 1 {
-		insyra.LogWarning("SolveFromFile: Only one timeout can be set")
+		insyra.LogWarning("lp", "SolveFromFile", "Only one timeout can be set")
 		return nil, nil
 	}
 
@@ -46,12 +46,12 @@ func SolveFromFile(lpFile string, timeoutSeconds ...int) (*insyra.DataTable, *in
 	executionTime := time.Since(start).Seconds()
 
 	if ctx.Err() == context.DeadlineExceeded {
-		insyra.LogWarning("SolveFromFile: Command timed out after %d seconds", timeoutSeconds)
+		insyra.LogWarning("lp", "SolveFromFile", "Command timed out after %d seconds", timeoutSeconds)
 		return nil, createAdditionalInfoDataTable("Timeout", executionTime, "", string(output), "", "")
 	}
 
 	if err != nil {
-		insyra.LogWarning("Failed to solve LP file with GLPK: %v\n", err)
+		insyra.LogWarning("lp", "SolveFromFile", "Failed to solve LP file with GLPK: %v\n", err)
 		return nil, createAdditionalInfoDataTable("Error", executionTime, err.Error(), string(output), "", "")
 	}
 
@@ -128,7 +128,7 @@ func SolveModel(model *lpgen.LPModel, timeoutSeconds ...int) (*insyra.DataTable,
 	// 創建臨時文件來存儲解決結果
 	tmpFile, err := os.CreateTemp("", "solution-*.txt")
 	if err != nil {
-		insyra.LogFatal("lp.SolveModel: Failed to create temporary file for solution: %v", err)
+		insyra.LogFatal("lp", "SolveModel", "Failed to create temporary file for solution: %v", err)
 		return nil, nil
 	}
 	defer os.Remove(tmpFile.Name()) // 確保在解決完成後刪除臨時文件
@@ -146,12 +146,12 @@ func SolveModel(model *lpgen.LPModel, timeoutSeconds ...int) (*insyra.DataTable,
 
 	// 處理 GLPK 執行錯誤
 	if ctx.Err() == context.DeadlineExceeded {
-		insyra.LogWarning("lp.SolveModel: Command timed out after %d seconds", timeoutSeconds)
+		insyra.LogWarning("lp", "SolveModel", "Command timed out after %d seconds", timeoutSeconds)
 		return nil, createAdditionalInfoDataTable("Timeout", executionTime, "", outputBuffer.String(), "", "")
 	}
 
 	if err != nil {
-		insyra.LogWarning("lp.SolveModel: Failed to solve LP model with GLPK: %v\n", err)
+		insyra.LogWarning("lp", "SolveModel", "Failed to solve LP model with GLPK: %v\n", err)
 		return nil, createAdditionalInfoDataTable("Error", executionTime, err.Error(), outputBuffer.String(), "", "")
 	}
 
@@ -171,7 +171,7 @@ func parseGLPKOutputFromFile(filePath string) *insyra.DataTable {
 	// Open the file and read line by line
 	file, err := os.Open(filePath)
 	if err != nil {
-		insyra.LogWarning("lp.parseGLPKOutputFromFile: Failed to open solution file: %v", err)
+		insyra.LogWarning("lp", "parseGLPKOutputFromFile", "Failed to open solution file: %v", err)
 		return nil
 	}
 	defer file.Close()
@@ -193,7 +193,7 @@ func parseGLPKOutputFromFile(filePath string) *insyra.DataTable {
 	}
 
 	if err := scanner.Err(); err != nil {
-		insyra.LogWarning("lp.parseGLPKOutputFromFile: Error reading solution file: %v", err)
+		insyra.LogWarning("lp", "parseGLPKOutputFromFile", "Error reading solution file: %v", err)
 	}
 
 	return dataTable

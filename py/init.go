@@ -33,17 +33,17 @@ func pyEnvInit() {
 	if runtime.GOOS == "windows" {
 		pyPath = filepath.Join(absInstallDir, "python", "python.exe")
 	}
-	insyra.LogInfo("py.init: Preparing Python environment...")
+	insyra.LogInfo("py", "init", "Preparing Python environment...")
 	// 如果目錄不存在，自動創建
 	if _, err := os.Stat(installDir); os.IsNotExist(err) {
 		err := os.MkdirAll(installDir, os.ModePerm)
 		if err != nil {
-			insyra.LogFatal("py.init: Failed to create directory %s: %v", installDir, err)
+			insyra.LogFatal("py", "init", "Failed to create directory %s: %v", installDir, err)
 		}
 	} else {
 		// 檢查 Python 執行檔是否已存在
 		if _, err := os.Stat(pyPath); err == nil {
-			insyra.LogDebug("py.init: Python installation already exists!")
+			insyra.LogDebug("py", "init", "Python installation already exists!")
 
 			if runtime.GOOS == "windows" {
 				pyPath = filepath.Join(absInstallDir, "python", "python.exe")
@@ -66,15 +66,15 @@ func pyEnvInit() {
 	// 安裝 Python
 	err := installPython(pythonVersion)
 	if err != nil {
-		insyra.LogFatal("py.init: Failed to install Python: %v", err)
+		insyra.LogFatal("py", "init", "Failed to install Python: %v", err)
 	}
-	insyra.LogInfo("py.init: Python installation completed successfully!")
+	insyra.LogInfo("py", "init", "Python installation completed successfully!")
 
 	err = installDependencies()
 	if err != nil {
-		insyra.LogFatal("py.init: Failed to install dependencies: %v", err)
+		insyra.LogFatal("py", "init", "Failed to install dependencies: %v", err)
 	}
-	insyra.LogInfo("py.init: Dependencies has been prepared successfully!")
+	insyra.LogInfo("py", "init", "Dependencies has been prepared successfully!")
 }
 
 // 下載並安裝 Python 的邏輯

@@ -32,7 +32,7 @@ func PtrDT[T *insyra.DataTable | dt](t T) *dt {
 	case dt:
 		return &concrete
 	default:
-		insyra.LogFatal("isr.PtrDT(): got unexpected type %T", t)
+		insyra.LogFatal("isr", "PtrDT", "got unexpected type %T", t)
 		return nil
 	}
 }
@@ -69,21 +69,21 @@ func (_ dt) From(item any) *dt {
 		t.DataTable = insyra.NewDataTable()
 		err := fromRowToDT(&t, val)
 		if err != nil {
-			insyra.LogFatal("DT.From(): %v", err)
+			insyra.LogFatal("DT", "From", "%v", err)
 		}
 	case []Row:
 		t.DataTable = insyra.NewDataTable()
 		for _, r := range val {
 			err := fromRowToDT(&t, r)
 			if err != nil {
-				insyra.LogFatal("DT.From(): %v", err)
+				insyra.LogFatal("DT", "From", "%v", err)
 			}
 		}
 	case Col:
 		t.DataTable = insyra.NewDataTable()
 		err := fromRowToDT(&t, val)
 		if err != nil {
-			insyra.LogFatal("DT.From(): %v", err)
+			insyra.LogFatal("DT", "From", "%v", err)
 		}
 		t.Transpose()
 	case []Col:
@@ -91,7 +91,7 @@ func (_ dt) From(item any) *dt {
 		for _, r := range val {
 			err := fromRowToDT(&t, r)
 			if err != nil {
-				insyra.LogFatal("DT.From(): %v", err)
+				insyra.LogFatal("DT", "From", "%v", err)
 			}
 		}
 		t.Transpose()
@@ -99,13 +99,13 @@ func (_ dt) From(item any) *dt {
 		t.DataTable = insyra.NewDataTable()
 		err := t.LoadFromCSV(val.FilePath, val.InputOpts.FirstCol2RowNames, val.InputOpts.FirstRow2ColNames)
 		if err != nil {
-			insyra.LogFatal("DT.From(): %v", err)
+			insyra.LogFatal("DT", "From", "%v", err)
 		}
 	case JSON:
 		t.DataTable = insyra.NewDataTable()
 		err := t.LoadFromJSON(val.FilePath)
 		if err != nil {
-			insyra.LogFatal("DT.From(): %v", err)
+			insyra.LogFatal("DT", "From", "%v", err)
 		}
 	case map[string]any:
 		t.DataTable = insyra.NewDataTable().AppendRowsByColIndex(val)
@@ -116,7 +116,7 @@ func (_ dt) From(item any) *dt {
 		}
 		t.DataTable = insyra.NewDataTable().AppendRowsByColIndex(strV)
 	default:
-		insyra.LogFatal("DT.FromDL(): got unexpected type %T", item)
+		insyra.LogFatal("DT", "From", "got unexpected type %T", item)
 	}
 	return &t
 }
@@ -133,7 +133,7 @@ func (t *dt) Col(col any) *dl {
 		colDt := t.DataTable.FilterByColNameEqualTo(v.value)
 		l.DataList = colDt.GetColByNumber(0)
 	default:
-		insyra.LogFatal("DT.Col(): got unexpected type %T", col)
+		insyra.LogFatal("DT", "Col", "got unexpected type %T", col)
 	}
 	return &l
 }
@@ -148,7 +148,7 @@ func (t *dt) Row(row any) *dl {
 		rowDt := t.DataTable.FilterByRowNameEqualTo(v.value)
 		l.DataList = rowDt.GetRow(0)
 	default:
-		insyra.LogFatal("DT.Row(): got unexpected type %T", row)
+		insyra.LogFatal("DT", "Row", "got unexpected type %T", row)
 	}
 	return &l
 }
@@ -164,7 +164,7 @@ func (t *dt) At(row any, col any) any {
 			rowDt := t.DataTable.FilterByRowNameEqualTo(r.value)
 			return rowDt.GetElementByNumberIndex(0, v)
 		default:
-			insyra.LogWarning("DT.At(): got unexpected type %T. Returning nil.", row)
+			insyra.LogWarning("DT", "At", "got unexpected type %T. Returning nil.", row)
 		}
 	case string:
 		switch r := row.(type) {
@@ -174,7 +174,7 @@ func (t *dt) At(row any, col any) any {
 			rowDt := t.DataTable.FilterByRowNameEqualTo(r.value)
 			return rowDt.GetElement(0, v)
 		default:
-			insyra.LogWarning("DT.At(): got unexpected type %T. Returning nil.", row)
+			insyra.LogWarning("DT", "At", "got unexpected type %T. Returning nil.", row)
 		}
 	case name:
 		switch r := row.(type) {
@@ -186,10 +186,10 @@ func (t *dt) At(row any, col any) any {
 			colDt := rowDt.FilterByColNameEqualTo(v.value)
 			return colDt.GetElementByNumberIndex(0, 0)
 		default:
-			insyra.LogWarning("DT.At(): got unexpected type %T. Returning nil.", row)
+			insyra.LogWarning("DT", "At", "got unexpected type %T. Returning nil.", row)
 		}
 	default:
-		insyra.LogWarning("DT.At(): got unexpected type %T. Returning nil.", col)
+		insyra.LogWarning("DT", "At", "got unexpected type %T. Returning nil.", col)
 	}
 	return nil
 }
@@ -219,13 +219,13 @@ func (t *dt) Push(data any) *dt {
 	case Row:
 		err := fromRowToDT(t, val)
 		if err != nil {
-			insyra.LogFatal("DT.Push(): %v", err)
+			insyra.LogFatal("DT", "Push", "%v", err)
 		}
 	case []Row:
 		for _, r := range val {
 			err := fromRowToDT(t, r)
 			if err != nil {
-				insyra.LogFatal("DT.Push(): %v", err)
+				insyra.LogFatal("DT", "Push", "%v", err)
 			}
 		}
 	case Col:
@@ -234,7 +234,7 @@ func (t *dt) Push(data any) *dt {
 		temDT := PtrDT(insyra.NewDataTable())
 		err := fromRowToDT(temDT, val)
 		if err != nil {
-			insyra.LogFatal("DT.Push(): %v", err)
+			insyra.LogFatal("DT", "Push", "%v", err)
 		}
 		numRow, _ := temDT.Size()
 		for i := 0; i < numRow; i++ {
@@ -246,7 +246,7 @@ func (t *dt) Push(data any) *dt {
 			temDT := PtrDT(insyra.NewDataTable())
 			err := fromRowToDT(temDT, r)
 			if err != nil {
-				insyra.LogFatal("DT.Push(): %v", err)
+				insyra.LogFatal("DT", "Push", "%v", err)
 			}
 			numRow, _ := temDT.Size()
 			for i := range numRow {
@@ -255,7 +255,7 @@ func (t *dt) Push(data any) *dt {
 			}
 		}
 	default:
-		insyra.LogFatal("DT.Push(): got unexpected type %T", data)
+		insyra.LogFatal("DT", "Push", "got unexpected type %T", data)
 	}
 	return t
 }

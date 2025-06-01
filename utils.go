@@ -64,7 +64,7 @@ func ToFloat64Safe(v interface{}) (float64, bool) {
 func SliceToF64(data []interface{}) []float64 {
 	defer func() {
 		if r := recover(); r != nil {
-			LogWarning("SliceToF64(): Failed to convert data to float64")
+			LogWarning("core", "SliceToF64", "Failed to convert data to float64")
 		}
 	}()
 	var floatSlice []float64
@@ -102,7 +102,7 @@ func ProcessData(input interface{}) ([]interface{}, int) {
 		if dl, ok := input.(IDataList); ok {
 			data = dl.Data()
 		} else {
-			LogWarning("ProcessData(): Unsupported data type %T, returning nil.", input)
+			LogWarning("core", "ProcessData", "Unsupported data type %T, returning nil.", input)
 			return nil, 0
 		}
 	case reflect.Array:
@@ -116,7 +116,7 @@ func ProcessData(input interface{}) ([]interface{}, int) {
 		if dl, ok := input.(IDataList); ok {
 			data = dl.Data()
 		} else {
-			LogWarning("ProcessData(): Unsupported data type %T, returning nil.", input)
+			LogWarning("core", "ProcessData", "Unsupported data type %T, returning nil.", input)
 			return nil, 0
 		}
 	}

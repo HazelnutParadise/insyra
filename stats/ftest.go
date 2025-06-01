@@ -50,7 +50,7 @@ func FTestForVarianceEquality(data1, data2 insyra.IDataList) *FTestResult {
 func LeveneTest(groups []insyra.IDataList) *FTestResult {
 	k := len(groups)
 	if k < 2 {
-		insyra.LogWarning("LeveneTest: at least two groups required")
+		insyra.LogWarning("stats", "LeveneTest", "At least two groups required")
 		return nil
 	}
 
@@ -78,7 +78,7 @@ func LeveneTest(groups []insyra.IDataList) *FTestResult {
 func BartlettTest(groups []insyra.IDataList) *FTestResult {
 	k := len(groups)
 	if k < 2 {
-		insyra.LogWarning("BartlettTest: at least two groups required")
+		insyra.LogWarning("stats", "BartlettTest", "At least two groups required")
 		return nil
 	}
 

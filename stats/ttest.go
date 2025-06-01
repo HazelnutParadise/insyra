@@ -30,7 +30,7 @@ type TTestResult struct {
 func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...float64) *TTestResult {
 	n := data.Len()
 	if n <= 1 {
-		insyra.LogWarning("stats.SingleSampleTTest: sample size too small.")
+		insyra.LogWarning("stats", "SingleSampleTTest", "Sample size too small")
 		return nil
 	}
 
@@ -127,7 +127,7 @@ func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenc
 	n1 := data1.Len()
 	n2 := data2.Len()
 	if n1 <= 1 || n2 <= 1 {
-		insyra.LogWarning("stats.TwoSampleTTest: sample sizes too small.")
+		insyra.LogWarning("stats", "TwoSampleTTest", "Sample sizes too small")
 		return nil
 	}
 
@@ -219,7 +219,7 @@ func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenc
 func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel ...float64) *TTestResult {
 	n := data1.Len()
 	if n != data2.Len() || n <= 1 {
-		insyra.LogWarning("stats.PairedTTest: paired samples must have the same non-zero length.")
+		insyra.LogWarning("stats", "PairedTTest", "Paired samples must have the same non-zero length")
 		return nil
 	}
 

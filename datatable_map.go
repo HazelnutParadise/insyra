@@ -13,7 +13,7 @@ func (dt *DataTable) Map(mapFunc func(rowIndex int, colIndex string, element any
 	numRows := dt.getMaxColLength()
 	numCols := len(dt.columns)
 	if numRows == 0 || numCols == 0 {
-		LogWarning("DataTable.Map: DataTable is empty, returning empty DataTable.")
+		LogWarning("DataTable", "Map", "DataTable is empty, returning empty DataTable.")
 		return NewDataTable()
 	} // 創建新的 DataTable
 	newDt := NewDataTable()
@@ -31,7 +31,7 @@ func (dt *DataTable) Map(mapFunc func(rowIndex int, colIndex string, element any
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
-						LogWarning("DataTable.Map: Error applying function to element at row %d, column %s: %v, keeping original value.", rowIndex, colIndex, r)
+						LogWarning("DataTable", "Map", "Error applying function to element at row %d, column %s: %v, keeping original value.", rowIndex, colIndex, r)
 						// 保留原始值
 						if rowIndex < originalCol.Len() {
 							newCol.Append(originalCol.Get(rowIndex))

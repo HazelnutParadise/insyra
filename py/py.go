@@ -20,7 +20,7 @@ func RunFile(filePath string) map[string]any {
 	pyEnvInit()
 	file, err := os.ReadFile(filePath)
 	if err != nil {
-		insyra.LogFatal("py.RunFile: Failed to read Python file: %v", err)
+		insyra.LogFatal("py", "RunFile", "Failed to read Python file: %v", err)
 	}
 	code := string(file)
 	return RunCode(code)
@@ -32,7 +32,7 @@ func RunFilef(filePath string, args ...any) map[string]any {
 	pyEnvInit()
 	file, err := os.ReadFile(filePath)
 	if err != nil {
-		insyra.LogFatal("py.RunFilef: Failed to read Python file: %v", err)
+		insyra.LogFatal("py", "RunFilef", "Failed to read Python file: %v", err)
 	}
 	code := string(file)
 	return RunCodef(code, args...)
@@ -50,7 +50,7 @@ func RunCode(code string) map[string]any {
 	pythonCmd.Stderr = os.Stderr
 	err := pythonCmd.Run()
 	if err != nil {
-		insyra.LogFatal("py.RunCode: Failed to run Python code: %v", err)
+		insyra.LogFatal("py", "RunCode", "Failed to run Python code: %v", err)
 	}
 
 	// 從 server 接收資料
@@ -74,7 +74,7 @@ func RunCodef(codeTemplate string, args ...any) map[string]any {
 	// 將字典序列化為 JSON
 	jsonData, err := json.Marshal(dataMap)
 	if err != nil {
-		insyra.LogFatal("py.RunCodef: Failed to serialize variables: %v", err)
+		insyra.LogFatal("py", "RunCodef", "Failed to serialize variables: %v", err)
 	}
 
 	// 替換 codeTemplate 中的 $v1, $v2... 佔位符為對應的 vars['var1'], vars['var2']...
@@ -117,9 +117,9 @@ func PipInstall(dep string) {
 	pythonCmd.Stderr = os.Stderr
 	err := pythonCmd.Run()
 	if err != nil {
-		insyra.LogFatal("py.PipInstall: Failed to install dependency: %v", err)
+		insyra.LogFatal("py", "PipInstall", "Failed to install dependency: %v", err)
 	} else {
-		insyra.LogInfo("py.PipInstall: Installed dependency: %s", dep)
+		insyra.LogInfo("py", "PipInstall", "Installed dependency: %s", dep)
 	}
 }
 
@@ -132,9 +132,9 @@ func PipUninstall(dep string) {
 	pythonCmd.Stderr = os.Stderr
 	err := pythonCmd.Run()
 	if err != nil {
-		insyra.LogFatal("py.PipUninstall: Failed to uninstall dependency: %v", err)
+		insyra.LogFatal("py", "PipUninstall", "Failed to uninstall dependency: %v", err)
 	} else {
-		insyra.LogInfo("py.PipUninstall: Uninstalled dependency: %s", dep)
+		insyra.LogInfo("py", "PipUninstall", "Uninstalled dependency: %s", dep)
 	}
 }
 

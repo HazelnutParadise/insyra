@@ -13,6 +13,30 @@ type ChiSquareTestResult struct {
 	testResultBase
 }
 
+// calculateChiSquare calculates the chi-square statistic and related results.
+// Returns nil and an error message if any problems occur.
+func calculateChiSquare(observed, expected []float64, df int) (*ChiSquareTestResult, string) {
+	chiSquare := 0.0
+	for i := range observed {
+		if expected[i] == 0 {
+			return nil, "Expected values must not be zero"
+		}
+		chiSquare += math.Pow(observed[i]-expected[i], 2) / expected[i]
+	}
+
+	chiDist := distuv.ChiSquared{K: float64(df)}
+	pValue := 1 - chiDist.CDF(chiSquare)
+
+	float64DF := float64(df)
+	return &ChiSquareTestResult{
+		testResultBase: testResultBase{
+			Statistic: chiSquare,
+			PValue:    pValue,
+			DF:        &float64DF,
+		},
+	}, ""
+}
+
 // ChiSquareGoodnessOfFit performs a one-dimensional chi-square goodness of fit test.
 func ChiSquareGoodnessOfFit(input insyra.IDataList, p []float64, rescaleP bool) *ChiSquareTestResult {
 	observed := input.ToF64Slice()
@@ -25,7 +49,7 @@ func ChiSquareGoodnessOfFit(input insyra.IDataList, p []float64, rescaleP bool) 
 			p[i] = 1.0 / float64(len(observed))
 		}
 	} else if len(p) != len(observed) {
-		insyra.LogWarning("stats.ChiSquareTest: Length of p does not match observed data length.")
+		insyra.LogWarning("stats", "ChiSquareGoodnessOfFit", "Length of p does not match observed data length")
 		return nil
 	}
 
@@ -50,7 +74,12 @@ func ChiSquareGoodnessOfFit(input insyra.IDataList, p []float64, rescaleP bool) 
 	}
 
 	df = len(observed) - 1
-	return calculateChiSquare(observed, expected, df)
+	result, errMsg := calculateChiSquare(observed, expected, df)
+	if errMsg != "" {
+		insyra.LogWarning("stats", "ChiSquareGoodnessOfFit", errMsg)
+		return nil
+	}
+	return result
 }
 
 // ChiSquareIndependenceTest performs a chi-square test of independence.
@@ -59,11 +88,11 @@ func ChiSquareIndependenceTest(rowData, colData insyra.IDataList) *ChiSquareTest
 	colVals := colData.Data()
 
 	if len(rowVals) == 0 || len(colVals) == 0 {
-		insyra.LogWarning("stats.ChiSquareIndependenceTest: Input DataLists cannot be empty.")
+		insyra.LogWarning("stats", "ChiSquareIndependenceTest", "Input DataLists cannot be empty")
 		return nil
 	}
 	if len(rowVals) != len(colVals) {
-		insyra.LogWarning("stats.ChiSquareIndependenceTest: Both DataLists must have the same length.")
+		insyra.LogWarning("stats", "ChiSquareIndependenceTest", "Both DataLists must have the same length")
 		return nil
 	}
 
@@ -132,29 +161,10 @@ func ChiSquareIndependenceTest(rowData, colData insyra.IDataList) *ChiSquareTest
 	}
 
 	df := (rows - 1) * (cols - 1)
-	return calculateChiSquare(observed, expected, df)
-}
-
-// calculateChiSquare calculates the chi-square statistic and related results.
-func calculateChiSquare(observed, expected []float64, df int) *ChiSquareTestResult {
-	chiSquare := 0.0
-	for i := range observed {
-		if expected[i] == 0 {
-			insyra.LogWarning("stats.calculateChiSquare: Expected values must not be zero.")
-			return nil
-		}
-		chiSquare += math.Pow(observed[i]-expected[i], 2) / expected[i]
+	result, errMsg := calculateChiSquare(observed, expected, df)
+	if errMsg != "" {
+		insyra.LogWarning("stats", "ChiSquareIndependenceTest", errMsg)
+		return nil
 	}
-
-	chiDist := distuv.ChiSquared{K: float64(df)}
-	pValue := 1 - chiDist.CDF(chiSquare)
-
-	float64DF := float64(df)
-	return &ChiSquareTestResult{
-		testResultBase: testResultBase{
-			Statistic: chiSquare,
-			PValue:    pValue,
-			DF:        &float64DF,
-		},
-	}
+	return result
 }

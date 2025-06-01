@@ -29,7 +29,7 @@ func PCA(dataTable insyra.IDataTable, nComponents ...int) *PCAResult {
 	if len(nComponents) == 1 && nComponents[0] > 0 && nComponents[0] <= colNum {
 		numComponents = nComponents[0]
 	} else if len(nComponents) > 1 {
-		insyra.LogWarning("stats.PCA: Invalid number of components, extracting all components.")
+		insyra.LogWarning("stats", "PCA", "Invalid number of components, extracting all components")
 	}
 
 	// 將 DataTable 轉換為矩陣，將每行視為一個樣本
@@ -63,7 +63,7 @@ func PCA(dataTable insyra.IDataTable, nComponents ...int) *PCAResult {
 	// 特徵值分解協方差矩陣
 	var eig mat.EigenSym
 	if !eig.Factorize(covMatrix, true) {
-		insyra.LogWarning("stats.PCA: Eigenvalue decomposition failed")
+		insyra.LogWarning("stats", "PCA", "Eigenvalue decomposition failed")
 		return nil
 	}
 

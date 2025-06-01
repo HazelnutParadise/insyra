@@ -16,7 +16,7 @@ func ParseLingoModel_txt(filePath string) *LPModel {
 	// 讀取文件
 	file, err := os.Open(filePath)
 	if err != nil {
-		insyra.LogWarning("lpgen.ParseLingoModel_txt: " + err.Error())
+		insyra.LogWarning("lpgen", "ParseLingoModel_txt", err.Error())
 		return nil
 	}
 	defer file.Close()
@@ -108,7 +108,7 @@ func ParseLingoModel_txt(filePath string) *LPModel {
 	}
 
 	if err := scanner.Err(); err != nil {
-		insyra.LogWarning("lpgen.ParseLingoModel_txt: " + err.Error())
+		insyra.LogWarning("lpgen", "ParseLingoModel_txt", err.Error())
 		return nil
 	}
 
@@ -206,7 +206,7 @@ func ParseLingoModel_str(modelStr string) *LPModel {
 	}
 
 	if err := scanner.Err(); err != nil {
-		insyra.LogWarning("lpgen.ParseLingoModel_str: " + err.Error())
+		insyra.LogWarning("lpgen", "ParseLingoModel_str", err.Error())
 		return nil
 	}
 

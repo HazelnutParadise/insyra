@@ -22,7 +22,7 @@ func Skewness(sample any, method ...SkewnessMethod) float64 {
 	// 數據預處理和錯誤檢查
 	d, dLen := insyra.ProcessData(sample)
 	if dLen == 0 {
-		insyra.LogWarning("stats.Skewness: empty data")
+		insyra.LogWarning("stats", "Skewness", "Empty data")
 		return math.NaN()
 	}
 
@@ -36,13 +36,13 @@ func Skewness(sample any, method ...SkewnessMethod) float64 {
 		usemethod = method[0]
 	}
 	if len(method) > 1 {
-		insyra.LogWarning("stats.Skewness: too many methods specified, returning NaN")
+		insyra.LogWarning("stats", "Skewness", "Too many methods specified, returning NaN")
 		return math.NaN()
 	}
 
 	// 特定方法的數據長度檢查
 	if usemethod == SkewnessAdjusted && n < 3 {
-		insyra.LogWarning("stats.Skewness: insufficient data for adjusted method (n < 3)")
+		insyra.LogWarning("stats", "Skewness", "Insufficient data for adjusted method (n < 3)")
 		return math.NaN()
 	}
 
@@ -67,7 +67,7 @@ func Skewness(sample any, method ...SkewnessMethod) float64 {
 	case SkewnessBiasAdjusted:
 		return g1 * math.Pow((n-1)/n, 1.5)
 	default:
-		insyra.LogWarning("stats.Skewness: unknown method")
+		insyra.LogWarning("stats", "Skewness", "Unknown method")
 		return math.NaN()
 	}
 }

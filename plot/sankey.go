@@ -79,7 +79,7 @@ func CreateSankeyChart(config SankeyChartConfig) *charts.Sankey {
 func LoadSankeyDataFromFile(filePath string) ([]string, []SankeyLink) {
 	file, err := os.ReadFile(filePath)
 	if err != nil {
-		insyra.LogWarning("Failed to read file: %v, return nil.", err)
+		insyra.LogWarning("plot", "LoadSankeyDataFromFile", "Failed to read file: %v, return nil.", err)
 		return nil, nil
 	}
 
@@ -90,7 +90,7 @@ func LoadSankeyDataFromFile(filePath string) ([]string, []SankeyLink) {
 
 	var data SankeyData
 	if err := json.Unmarshal(file, &data); err != nil {
-		insyra.LogWarning("Failed to unmarshal JSON: %v, return nil.", err)
+		insyra.LogWarning("plot", "LoadSankeyDataFromFile", "Failed to unmarshal JSON: %v, return nil.", err)
 		return nil, nil
 	}
 

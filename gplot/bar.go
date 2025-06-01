@@ -40,7 +40,7 @@ func CreateBarChart(config BarChartConfig) *plot.Plot {
 	case insyra.IDataList:
 		values = data.ToF64Slice()
 	default:
-		insyra.LogWarning("Unsupported Data type: %T\n", config.Data)
+		insyra.LogWarning("gplot", "CreateBarChart", "Unsupported Data type: %T\n", config.Data)
 		return nil
 	}
 
@@ -55,7 +55,7 @@ func CreateBarChart(config BarChartConfig) *plot.Plot {
 
 	bars, err := plotter.NewBarChart(barData, vg.Points(barWidth))
 	if err != nil {
-		insyra.LogWarning("gplot.CreateBarChart: failed to create bar chart: %w", err)
+		insyra.LogWarning("gplot", "CreateBarChart", "failed to create bar chart: %w", err)
 		return nil
 	}
 

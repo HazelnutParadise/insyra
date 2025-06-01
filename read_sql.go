@@ -86,7 +86,7 @@ func ReadSQL(db *gorm.DB, tableName string, options ...ReadSQLOptions) (*DataTab
 		}
 	}
 	// 執行查詢
-	LogDebug("執行SQL查詢: %s", query)
+	LogDebug("core", "ReadSQL", "執行SQL查詢: %s", query)
 	rows, err := db.Raw(query, params...).Rows()
 	if err != nil {
 		return nil, fmt.Errorf("執行查詢時發生錯誤: %w", err)

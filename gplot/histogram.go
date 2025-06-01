@@ -36,7 +36,7 @@ func CreateHistogram(config HistogramConfig) *plot.Plot {
 	case insyra.IDataList:
 		values = data.ToF64Slice()
 	default:
-		insyra.LogWarning("Unsupported Data type: %T\n", config.Data)
+		insyra.LogWarning("gplot", "CreateHistogram", "Unsupported Data type: %T\n", config.Data)
 		return nil
 	}
 

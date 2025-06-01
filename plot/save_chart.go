@@ -33,15 +33,15 @@ func SaveHTML(chart Renderable, path string, animation ...bool) {
 	// 創建輸出文件
 	f, err := os.Create(path)
 	if err != nil {
-		insyra.LogFatal("plot.SaveHTML: failed to create file %s: %v", path, err)
+		insyra.LogFatal("plot", "SaveHTML", "failed to create file %s: %v", path, err)
 	}
 	defer f.Close()
 
 	// 渲染圖表到指定文件
 	if err := chart.Render(f); err != nil {
-		insyra.LogFatal("plot.SaveHTML: failed to render chart: %v", err)
+		insyra.LogFatal("plot", "SaveHTML", "failed to render chart: %v", err)
 	}
-	insyra.LogInfo("plot.SaveHTML: successfully saved HTML file.")
+	insyra.LogInfo("plot", "SaveHTML", "successfully saved HTML file.")
 }
 
 // SavePNG 將圖表渲染為 PNG 文件，使用 snapshot-chromedp
@@ -57,7 +57,7 @@ func SavePNG(chart Renderable, pngPath string) {
 	// 先將 Renderable 渲染為 HTML
 	var buf bytes.Buffer
 	if err := chart.Render(&buf); err != nil {
-		insyra.LogFatal("plot.SavePNG: failed to render chart to HTML: %v", err)
+		insyra.LogFatal("plot", "SavePNG", "failed to render chart to HTML: %v", err)
 		return
 	}
 
@@ -79,29 +79,29 @@ func SavePNG(chart Renderable, pngPath string) {
 	// 使用自定義配置進行渲染
 	err := render.MakeSnapshot(config)
 	if err != nil {
-		insyra.LogWarning("plot.SavePNG: failed to save PNG: %v", err)
+		insyra.LogWarning("plot", "SavePNG", "failed to save PNG: %v", err)
 		goto useOnlineService
 	}
 
 	if !config.KeepHtml {
 		err := os.Rename(tempBaseName+".png", baseName+".png")
 		if err != nil {
-			insyra.LogWarning("plot.SavePNG: failed to rename PNG file: %v", err)
+			insyra.LogWarning("plot", "SavePNG", "failed to rename PNG file: %v", err)
 			return
 		}
 	}
 
-	insyra.LogInfo("plot.SavePNG: successfully saved PNG file.")
+	insyra.LogInfo("plot", "SavePNG", "successfully saved PNG file.")
 	return
 
 useOnlineService:
 	func() {
-		insyra.LogWarning("plot.SavePNG: failed to render chart locally. Trying to use HazelnutParadise online service.\nWaiting for the result...")
+		insyra.LogWarning("plot", "SavePNG", "failed to render chart locally. Trying to use HazelnutParadise online service.\nWaiting for the result...")
 
 		// 將 Renderable 渲染成 HTML
 		var buf bytes.Buffer
 		if err := chart.Render(&buf); err != nil {
-			insyra.LogFatal("plot.SavePNG: failed to render chart to HTML", err)
+			insyra.LogFatal("plot", "SavePNG", "failed to render chart to HTML", err)
 			return
 		}
 
@@ -111,7 +111,7 @@ useOnlineService:
 		// 使用備援服務發送請求
 		resp, err := http.Post("https://server3.hazelnut-paradise.com/htmltoimage", "application/x-www-form-urlencoded", strings.NewReader(formData))
 		if err != nil {
-			insyra.LogFatal("plot.SavePNG: failed to use online service", err)
+			insyra.LogFatal("plot", "SavePNG", "failed to use online service", err)
 			return
 		}
 		defer resp.Body.Close()
@@ -119,17 +119,17 @@ useOnlineService:
 		// 讀取備援服務返回的圖片數據
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			insyra.LogFatal("plot.SavePNG: failed to read response from online service", err)
+			insyra.LogFatal("plot", "SavePNG", "failed to read response from online service", err)
 			return
 		}
 
 		// 將接收到的圖片數據寫入本地 PNG 文件
 		if err := os.WriteFile(pngPath, body, 0644); err != nil {
-			insyra.LogFatal("plot.SavePNG: failed to save PNG file from online service", err)
+			insyra.LogFatal("plot", "SavePNG", "failed to save PNG file from online service", err)
 			return
 		}
 
-		insyra.LogInfo("plot.SavePNG: successfully saved PNG file from hazelnut-paradise.com.")
+		insyra.LogInfo("plot", "SavePNG", "successfully saved PNG file from hazelnut-paradise.com.")
 	}()
 }
 
@@ -165,7 +165,7 @@ func disableAnimation(chart Renderable) {
 	} else if sankeyChart, ok := chart.(*charts.Sankey); ok {
 		sankeyChart.SetGlobalOptions(charts.WithAnimation(false)) // 關閉動畫
 	} else {
-		insyra.LogFatal("plot.SavePNG: unsupported chart type. Using default animation settings.")
+		insyra.LogFatal("plot", "SavePNG", "unsupported chart type. Using default animation settings.")
 	}
 }
 
@@ -201,7 +201,7 @@ func enableAnimation(chart Renderable) {
 	} else if sankeyChart, ok := chart.(*charts.Sankey); ok {
 		sankeyChart.SetGlobalOptions(charts.WithAnimation(true)) // 開啟動畫
 	} else {
-		insyra.LogFatal("plot.SavePNG: unsupported chart type. Using default animation settings.")
+		insyra.LogFatal("plot", "SavePNG", "unsupported chart type. Using default animation settings.")
 	}
 }
 
@@ -237,6 +237,6 @@ func setBackgroundToWhite(chart Renderable) {
 	} else if sankeyChart, ok := chart.(*charts.Sankey); ok {
 		sankeyChart.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
 	} else {
-		insyra.LogFatal("plot.SavePNG: unsupported chart type. Using default background color.")
+		insyra.LogFatal("plot", "SavePNG", "unsupported chart type. Using default background color.")
 	}
 }

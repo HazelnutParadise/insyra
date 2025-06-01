@@ -69,7 +69,7 @@ func (lp *LPModel) AddIntegerVar(varName string) *LPModel {
 func (lp *LPModel) GenerateLPFile(filename string) {
 	file, err := os.Create(filename)
 	if err != nil {
-		insyra.LogWarning("lpgen.GenerateLPFile: Failed to create LP file: %v", err)
+		insyra.LogWarning("lpgen", "GenerateLPFile", "Failed to create LP file: %v", err)
 		return
 	}
 	defer file.Close()
@@ -79,7 +79,7 @@ func (lp *LPModel) GenerateLPFile(filename string) {
 \Visit https://insyra.hazelnut-paradise.com for more information.
 ` + "\n")
 	if err != nil {
-		insyra.LogWarning("lpgen.GenerateLPFile: Failed to write marketing content: %v, returning", err)
+		insyra.LogWarning("lpgen", "GenerateLPFile", "Failed to write marketing content: %v, returning", err)
 		return
 	}
 
@@ -90,27 +90,27 @@ func (lp *LPModel) GenerateLPFile(filename string) {
 		_, err = file.WriteString("MAX\n")
 	}
 	if err != nil {
-		insyra.LogWarning("lpgen.GenerateLPFile: Failed to write objective type: %v, returning", err)
+		insyra.LogWarning("lpgen", "GenerateLPFile", "Failed to write objective type: %v, returning", err)
 		return
 	}
 
 	// 寫入目標函數
 	_, err = file.WriteString("  obj: " + lp.Objective + "\n")
 	if err != nil {
-		insyra.LogWarning("lpgen.GenerateLPFile: Failed to write objective: %v, returning", err)
+		insyra.LogWarning("lpgen", "GenerateLPFile", "Failed to write objective: %v, returning", err)
 		return
 	}
 
 	// 添加約束條件
 	_, err = file.WriteString("Subject To\n")
 	if err != nil {
-		insyra.LogWarning("lpgen.GenerateLPFile: Failed to write subject to: %v, returning", err)
+		insyra.LogWarning("lpgen", "GenerateLPFile", "Failed to write subject to: %v, returning", err)
 		return
 	}
 	for i, constr := range lp.Constraints {
 		_, err = file.WriteString("  " + fmt.Sprintf("c%d: %s\n", i+1, constr))
 		if err != nil {
-			insyra.LogWarning("lpgen.GenerateLPFile: Failed to write constraint: %v, returning", err)
+			insyra.LogWarning("lpgen", "GenerateLPFile", "Failed to write constraint: %v, returning", err)
 			return
 		}
 	}
@@ -119,13 +119,13 @@ func (lp *LPModel) GenerateLPFile(filename string) {
 	if len(lp.Bounds) > 0 {
 		_, err = file.WriteString("Bounds\n")
 		if err != nil {
-			insyra.LogWarning("lpgen.GenerateLPFile: Failed to write bounds: %v, returning", err)
+			insyra.LogWarning("lpgen", "GenerateLPFile", "Failed to write bounds: %v, returning", err)
 			return
 		}
 		for _, bound := range lp.Bounds {
 			_, err = file.WriteString("  " + bound + "\n")
 			if err != nil {
-				insyra.LogWarning("lpgen.GenerateLPFile: Failed to write bound: %v, returning", err)
+				insyra.LogWarning("lpgen", "GenerateLPFile", "Failed to write bound: %v, returning", err)
 				return
 			}
 		}
@@ -135,13 +135,13 @@ func (lp *LPModel) GenerateLPFile(filename string) {
 	if len(lp.IntegerVars) > 0 {
 		_, err = file.WriteString("General\n")
 		if err != nil {
-			insyra.LogWarning("lpgen.GenerateLPFile: Failed to write general: %v, returning", err)
+			insyra.LogWarning("lpgen", "GenerateLPFile", "Failed to write general: %v, returning", err)
 			return
 		}
 		for _, intVar := range lp.IntegerVars {
 			_, err = file.WriteString("  " + intVar + "\n")
 			if err != nil {
-				insyra.LogWarning("lpgen.GenerateLPFile: Failed to write integer var: %v, returning", err)
+				insyra.LogWarning("lpgen", "GenerateLPFile", "Failed to write integer var: %v, returning", err)
 				return
 			}
 		}
@@ -151,13 +151,13 @@ func (lp *LPModel) GenerateLPFile(filename string) {
 	if len(lp.BinaryVars) > 0 {
 		_, err = file.WriteString("Binary\n")
 		if err != nil {
-			insyra.LogWarning("lpgen.GenerateLPFile: Failed to write binary: %v, returning", err)
+			insyra.LogWarning("lpgen", "GenerateLPFile", "Failed to write binary: %v, returning", err)
 			return
 		}
 		for _, binVar := range lp.BinaryVars {
 			_, err = file.WriteString("  " + binVar + "\n")
 			if err != nil {
-				insyra.LogWarning("lpgen.GenerateLPFile: Failed to write binary var: %v, returning", err)
+				insyra.LogWarning("lpgen", "GenerateLPFile", "Failed to write binary var: %v, returning", err)
 				return
 			}
 		}
@@ -166,7 +166,7 @@ func (lp *LPModel) GenerateLPFile(filename string) {
 	// LP 文件結尾
 	_, err = file.WriteString("End\n")
 	if err != nil {
-		insyra.LogWarning("lpgen.GenerateLPFile: Failed to write end: %v, returning", err)
+		insyra.LogWarning("lpgen", "GenerateLPFile", "Failed to write end: %v, returning", err)
 		return
 	}
 }

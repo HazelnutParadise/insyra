@@ -219,9 +219,9 @@ func saveDataMapToDB(db *gorm.DB, tableName string, data []map[string]interface{
 		if opts.RowNames && !existingColsMap["row_name"] {
 			alterSQL := fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s;", tableName, "row_name", "TEXT")
 			if err := db.Exec(alterSQL).Error; err != nil {
-				LogWarning("Failed to add column row_name to table %s: %v", tableName, err)
+				LogWarning("DataTable", "ToSQL", "Failed to add column row_name to table %s: %v", tableName, err)
 			} else {
-				LogInfo("Added column row_name to table %s", tableName)
+				LogInfo("DataTable", "ToSQL", "Added column row_name to table %s", tableName)
 				existingColsMap["row_name"] = true
 			}
 		}
@@ -231,9 +231,9 @@ func saveDataMapToDB(db *gorm.DB, tableName string, data []map[string]interface{
 				// 添加新列
 				alterSQL := fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s;", tableName, col, typ)
 				if err := db.Exec(alterSQL).Error; err != nil {
-					LogWarning("Failed to add column %s to table %s: %v", col, tableName, err)
+					LogWarning("DataTable", "ToSQL", "Failed to add column %s to table %s: %v", col, tableName, err)
 				} else {
-					LogInfo("Added column %s to table %s", col, tableName)
+					LogInfo("DataTable", "ToSQL", "Added column %s to table %s", col, tableName)
 				}
 			}
 		}
