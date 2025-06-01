@@ -19,21 +19,29 @@ func tokenize(input string) ([]cclToken, error) {
 			for i < len(input) && (isLetter(input[i]) || isDigit(input[i])) {
 				i++
 			}
-			tokens = append(tokens, cclToken{typ: tIDENT, value: input[start:i]})
+			word := input[start:i]
+
+			// 檢查是否為布林關鍵字
+			if word == "true" || word == "false" {
+				tokens = append(tokens, cclToken{typ: tBOOLEAN, value: word})
+			} else {
+				tokens = append(tokens, cclToken{typ: tIDENT, value: word})
+			}
 		case isDigit(ch) || ch == '.':
 			start := i
 			for i < len(input) && (isDigit(input[i]) || input[i] == '.') {
 				i++
 			}
 			tokens = append(tokens, cclToken{typ: tNUMBER, value: input[start:i]})
-		case ch == '"':
+		case ch == '"' || ch == '\'':
+			quoteChar := ch // 保存當前引號字符
 			i++
 			start := i
-			for i < len(input) && input[i] != '"' {
+			for i < len(input) && input[i] != quoteChar {
 				i++
 			}
 			if i >= len(input) {
-				return nil, fmt.Errorf("unclosed string")
+				return nil, fmt.Errorf("unclosed string starting with %c", quoteChar)
 			}
 			tokens = append(tokens, cclToken{typ: tSTRING, value: input[start:i]})
 			i++

@@ -9,6 +9,7 @@ DataTable is the core data structure of Insyra for handling structured data. It 
 - [Data Loading](#data-loading)
 - [Data Saving](#data-saving)
 - [Data Operations](#data-operations)
+- [Column Calculation](#column-calculation)
 - [Searching](#searching)
 - [Filtering](#filtering)
 - [Statistical Analysis](#statistical-analysis)
@@ -838,6 +839,54 @@ func (dt *DataTable) GetLastModifiedTimestamp() int64
 timestamp := dt.GetLastModifiedTimestamp()
 fmt.Printf("Last modified at: %d\n", timestamp)
 ```
+
+## Column Calculation
+
+### AddColUsingCCL
+
+Adds a new column to the DataTable by evaluating a Column Calculation Language (CCL) expression on each row.
+
+```go
+func (dt *DataTable) AddColUsingCCL(newColName, ccl string) *DataTable
+```
+
+**Parameters:**
+
+- `newColName`: Name of the new column to be created
+- `ccl`: CCL expression to evaluate
+
+**Returns:**
+
+- `*DataTable`: The modified DataTable
+
+**Example:**
+
+```go
+// Adding a column that contains conditional values
+dt.AddColUsingCCL("age_group", "IF(B > 30, 'Senior', 'Junior')")
+
+// Using math operations
+dt.AddColUsingCCL("total", "A + B + C")
+
+// Using logical operators
+dt.AddColUsingCCL("is_valid", "AND(A > 0, B < 100)")
+
+// Nested conditions
+dt.AddColUsingCCL("category", "IF(A > 90, 'Excellent', IF(A > 70, 'Good', IF(A > 50, 'Average', 'Poor')))")
+
+// Using CASE for multiple conditions
+dt.AddColUsingCCL("status", "CASE(A > 90, 'A', A > 80, 'B', A > 70, 'C', 'F')")
+
+// Using range comparisons
+dt.AddColUsingCCL("in_range", "IF(10 < A <= 20, 'In range', 'Out of range')")
+```
+
+**Notes:**
+
+- CCL allows performing calculations and operations on columns in a DataTable
+- Column references use Excel-style notation (A, B, C...) for simplicity
+- Supports mathematical operations, logical operations, conditionals and more
+- See [CCL Documentation](CCL.md) for a comprehensive guide to CCL syntax and functions
 
 ## Searching
 

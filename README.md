@@ -163,7 +163,33 @@ The `DataTable` structure provides a tabular data representation, allowing for t
 
 **You can also convert between DataTables and CSV files with simply one line of code, enabling seamless integration with external data sources.**
 
-For a complete list of methods and features, please refer to the **[DataTable Documentation](/Docs/DataTable.md)**.
+### [Column Calculation Language (CCL)](/Docs/CCL.md)
+
+**Insyra** features a powerful **Column Calculation Language (CCL)** that works just like Excel formulas!
+
+With CCL, you can:
+
+- Create calculated columns using familiar Excel-like syntax
+- Reference columns using Excel-style notation (A, B, C...)
+- Use conditional logic with `IF`, `AND`, `OR`, and `CASE` functions
+- Perform mathematical operations and string manipulations
+- Execute chained comparisons like `1 < A <= 10` for range checks
+
+```go
+// Add a column that classifies data based on values in column A
+dt.AddColUsingCCL("category", "IF(A > 90, 'Excellent', IF(A > 70, 'Good', 'Average'))")
+
+// Perform calculations just like in Excel
+dt.AddColUsingCCL("total", "A + B + C")
+dt.AddColUsingCCL("average", "(A + B + C) / 3")
+
+// Use range checks with chained comparisons (try this in Excel!)
+dt.AddColUsingCCL("in_range", "IF(10 <= A <= 20, 'Yes', 'No')")
+```
+
+For a complete guide to CCL syntax and features, see the **[CCL Documentation](/Docs/CCL.md)**.
+
+For a complete list of DataTable methods and features, please refer to the **[DataTable Documentation](/Docs/DataTable.md)**.
 
 ## Packages
 

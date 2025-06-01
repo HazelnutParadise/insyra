@@ -2,6 +2,7 @@ package insyra
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/HazelnutParadise/Go-Utils/conv"
 )
@@ -109,5 +110,56 @@ func initCCLFunctions() {
 			}
 		}
 		return result, nil
+	})
+	cclRegisterFunction("CASE", func(args ...any) (any, error) {
+		if len(args) < 3 {
+			return nil, fmt.Errorf("CASE requires at least 3 arguments")
+		}
+
+		// 參數數量必須是奇數 (條件1,結果1,條件2,結果2,...,預設值)
+		if len(args)%2 != 1 {
+			return nil, fmt.Errorf("CASE requires an odd number of arguments, with conditions and results in pairs, ending with a default value")
+		}
+
+		// 檢查條件和對應值
+		for i := 0; i < len(args)-1; i += 2 {
+			// 直接處理布林值
+			if cond, ok := args[i].(bool); ok {
+				if cond {
+					return args[i+1], nil
+				}
+				continue // 跳過到下一個條件
+			}
+
+			// 安全地轉換其他類型為布林值
+			var condition bool
+			switch v := args[i].(type) {
+			case int:
+				condition = v != 0
+			case int32:
+				condition = v != 0
+			case int64:
+				condition = v != 0
+			case float32:
+				condition = v != 0
+			case float64:
+				condition = v != 0
+			case string:
+				// 簡化字串到布林值的轉換
+				v = strings.TrimSpace(v)
+				condition = v != "" && v != "0" && v != "false" && v != "False" && v != "FALSE"
+			case nil:
+				condition = false
+			default:
+				return nil, fmt.Errorf("condition at position %d of type %T cannot be evaluated as boolean", i, args[i])
+			}
+
+			if condition {
+				return args[i+1], nil
+			}
+		}
+
+		// 如果沒有條件符合，返回最後一個參數作為預設值
+		return args[len(args)-1], nil
 	})
 }

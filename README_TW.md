@@ -161,7 +161,33 @@ func main() {
 
 **您還可以僅用一行代碼在 DataTables 和 CSV 文件之間進行轉換，實現與外部數據源的無縫整合。**
 
-有關方法和功能的完整列表，請參閱 **[DataTable 文檔](https://github.com/HazelnutParadise/insyra/tree/main/Docs/DataTable.md)**。
+### [Column Calculation Language (CCL)](/Docs/CCL.md)
+
+**Insyra** 提供強大的 **Column Calculation Language (CCL)** 功能，其使用方式就像 Excel 公式一樣直觀！
+
+使用 CCL，您可以：
+
+- 使用熟悉的 Excel 式語法建立計算欄位
+- 使用 Excel 風格的欄位引用方式 (A, B, C...)
+- 使用 `IF`、`AND`、`OR` 和 `CASE` 等函數實現條件邏輯
+- 執行數學運算和字串操作
+- 執行連鎖比較，如 `1 < A <= 10`，用於範圍檢查
+
+```go
+// 根據 A 欄位的值分類資料
+dt.AddColUsingCCL("category", "IF(A > 90, 'Excellent', IF(A > 70, 'Good', 'Average'))")
+
+// 像在 Excel 中一樣執行計算
+dt.AddColUsingCCL("total", "A + B + C")
+dt.AddColUsingCCL("average", "(A + B + C) / 3")
+
+// 使用連鎖比較進行範圍檢查 (在 Excel 中也可使用！)
+dt.AddColUsingCCL("in_range", "IF(10 <= A <= 20, 'Yes', 'No')")
+```
+
+關於 CCL 語法和功能的完整指南，請參閱 **[CCL 文檔](/Docs/CCL.md)**。
+
+有關 DataTable 方法和功能的完整列表，請參閱 **[DataTable 文檔](https://github.com/HazelnutParadise/insyra/tree/main/Docs/DataTable.md)**。
 
 ## 套件
 

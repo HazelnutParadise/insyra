@@ -114,7 +114,7 @@ func Covariance(dlX, dlY insyra.IDataList) float64 {
 	meanX := dlX.Mean()
 	meanY := dlY.Mean()
 	var sum float64 = 0
-	for i := 0; i < dlX.Len(); i++ {
+	for i := range dlX.Len() {
 		x := dlX.Data()[i].(float64)
 		y := dlY.Data()[i].(float64)
 		sum += (x - meanX) * (y - meanY)
@@ -209,45 +209,6 @@ func BartlettSphericity(dataTable insyra.IDataTable) (chiSquare float64, pValue 
 	pval := 1 - distuv.ChiSquared{K: float64(degreesOfFreedom)}.CDF(chisq)
 
 	return chisq, pval, degreesOfFreedom
-}
-
-// determinant 計算方陣的行列式
-func determinant(matrix [][]float64) float64 {
-	n := len(matrix)
-	if n == 1 {
-		return matrix[0][0]
-	}
-	if n == 2 {
-		return matrix[0][0]*matrix[1][1] - matrix[0][1]*matrix[1][0]
-	}
-
-	// 對較大的矩陣使用拉普拉斯展開
-	det := 0.0
-	for i := 0; i < n; i++ {
-		minor := make([][]float64, n-1)
-		for j := range minor {
-			minor[j] = make([]float64, n-1)
-		}
-
-		for j := 1; j < n; j++ {
-			for k := 0; k < n; k++ {
-				if k < i {
-					minor[j-1][k] = matrix[j][k]
-				} else if k > i {
-					minor[j-1][k-1] = matrix[j][k]
-				}
-			}
-		}
-
-		sign := 1.0
-		if i%2 != 0 {
-			sign = -1.0
-		}
-
-		det += sign * matrix[0][i] * determinant(minor)
-	}
-
-	return det
 }
 
 func pearsonCorrelation(dlX, dlY insyra.IDataList) float64 {

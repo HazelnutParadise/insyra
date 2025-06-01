@@ -7,11 +7,35 @@ import (
 	"strings"
 )
 
+// 新增一個全域變數來追蹤遞迴深度
+var evalDepth int = 0
+var maxEvalDepth int = 100 // 設置合理的最大遞迴深度
+
 func evaluate(n cclNode, row []any) (any, error) {
+	// 檢查遞迴深度並添加除錯日誌
+	evalDepth++
+
+	// 每10層輸出一次當前深度
+	if evalDepth%10 == 0 {
+		fmt.Printf("CCL evaluation depth: %d\n", evalDepth)
+	}
+
+	if evalDepth > maxEvalDepth {
+		evalDepth = 0
+		return nil, fmt.Errorf("evaluate: maximum recursion depth exceeded (%d), possibly infinite recursion", maxEvalDepth)
+	}
+
+	// 使用 defer 確保退出前減少深度計數
+	defer func() {
+		evalDepth--
+	}()
+
 	switch t := n.(type) {
 	case *cclNumberNode:
 		return t.value, nil
 	case *cclStringNode:
+		return t.value, nil
+	case *cclBooleanNode:
 		return t.value, nil
 	case *cclIdentifierNode:
 		idx := colNameToIndex(t.name)
@@ -22,7 +46,10 @@ func evaluate(n cclNode, row []any) (any, error) {
 	case *funcCallNode:
 		args := []any{}
 		for _, arg := range t.args {
-			val, _ := evaluate(arg, row)
+			val, err := evaluate(arg, row)
+			if err != nil {
+				return nil, err
+			}
 			args = append(args, val)
 		}
 		return callFunction(t.name, args)
@@ -36,12 +63,62 @@ func evaluate(n cclNode, row []any) (any, error) {
 			return nil, err
 		}
 		return applyOperator(t.op, left, right)
+	case *cclChainedComparisonNode:
+		// 處理連續比較運算
+		if len(t.values) != len(t.ops)+1 {
+			return nil, fmt.Errorf("invalid chained comparison: number of values (%d) should be one more than number of operators (%d)", len(t.values), len(t.ops))
+		}
+
+		// 評估所有值
+		values := make([]any, len(t.values))
+		for i, valNode := range t.values {
+			val, err := evaluate(valNode, row)
+			if err != nil {
+				return nil, err
+			}
+			values[i] = val
+		}
+
+		// 逐對比較所有值
+		for i := 0; i < len(t.ops); i++ {
+			result, err := applyOperator(t.ops[i], values[i], values[i+1])
+			if err != nil {
+				return nil, err
+			}
+
+			// 如果任何一個比較結果為假，整個連續比較的結果就為假
+			boolResult, ok := result.(bool)
+			if !ok {
+				return nil, fmt.Errorf("comparison did not result in a boolean: %v", result)
+			}
+			if !boolResult {
+				return false, nil
+			}
+		}
+
+		// 所有比較都為真，整個結果為真
+		return true, nil
 	}
 
 	return nil, fmt.Errorf("invalid node")
 }
 
 func applyOperator(op string, left, right any) (any, error) {
+	// 對於布林運算，特別處理
+	if op == "==" || op == "!=" {
+		// 如果是布林值，直接比較
+		lb, lokBool := left.(bool)
+		rb, rokBool := right.(bool)
+		if lokBool && rokBool {
+			if op == "==" {
+				return lb == rb, nil
+			} else {
+				return lb != rb, nil
+			}
+		}
+	}
+
+	// 其他情況處理數值比較
 	lf, lok := toFloat64(left)
 	rf, rok := toFloat64(right)
 	if !lok || !rok {
@@ -82,6 +159,11 @@ func toFloat64(val any) (float64, bool) {
 		return v, true
 	case int:
 		return float64(v), true
+	case bool:
+		if v {
+			return 1.0, true
+		}
+		return 0.0, true
 	case string:
 		f, err := strconv.ParseFloat(v, 64)
 		return f, err == nil
