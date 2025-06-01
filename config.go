@@ -3,8 +3,9 @@
 package insyra
 
 type configStruct struct {
-	logLevel  LogLevel
-	dontPanic bool
+	logLevel               LogLevel
+	dontPanic              bool
+	defaultErrHandlingFunc func(errType LogLevel, packageName string, funcName string, errMsg string)
 }
 
 var Config *configStruct = &configStruct{}
@@ -32,6 +33,18 @@ func (c *configStruct) GetLogLevel() LogLevel {
 
 func (c *configStruct) SetDontPanic(dontPanic bool) {
 	c.dontPanic = dontPanic
+}
+
+func (c *configStruct) GetDontPanicStatus() bool {
+	return c.dontPanic
+}
+
+func (c *configStruct) SetDefaultErrHandlingFunc(fn func(errType LogLevel, packageName string, funcName string, errMsg string)) {
+	c.defaultErrHandlingFunc = fn
+}
+
+func (c *configStruct) GetDefaultErrHandlingFunc() func(errType LogLevel, packageName string, funcName string, errMsg string) {
+	return c.defaultErrHandlingFunc
 }
 
 // ======================== Configs ========================

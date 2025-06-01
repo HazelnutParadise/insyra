@@ -29,6 +29,9 @@ func init() {
 	// Initialize the error channel
 	go func() {
 		for err := range errorChan {
+			if Config.defaultErrHandlingFunc != nil {
+				go Config.defaultErrHandlingFunc(err.errType, err.packageName, err.fnName, err.message)
+			}
 			errorMutex.Lock()
 			errorSlice = append(errorSlice, err)
 			errorMutex.Unlock()
@@ -67,7 +70,7 @@ func PopError(mode ErrPoppingMode) (LogLevel, string) {
 	return err.errType, err.message
 }
 
-func PopErrorAndCallback(mode ErrPoppingMode, callback func(LogLevel, string)) {
+func PopErrorAndCallback(mode ErrPoppingMode, callback func(errType LogLevel, packageName string, funcName string, errMsg string)) {
 	errorMutex.Lock()
 	defer errorMutex.Unlock()
 
@@ -83,7 +86,7 @@ func PopErrorAndCallback(mode ErrPoppingMode, callback func(LogLevel, string)) {
 		err = errorSlice[len(errorSlice)-1]
 		errorSlice = errorSlice[:len(errorSlice)-1]
 	}
-	callback(err.errType, err.message)
+	callback(err.errType, err.packageName, err.fnName, err.message)
 }
 
 func ClearErrors() {
