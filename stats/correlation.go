@@ -21,12 +21,10 @@ const (
 // CorrelationAnalysis provides a comprehensive correlation analysis.
 // It calculates the correlation coefficient matrix, p-value matrix, and overall test (Bartlett's sphericity test) at once.
 // Returns: correlation coefficient matrix, p-value matrix, chi-square value, p-value, degrees of freedom.
-func CorrelationAnalysis(dataTable insyra.IDataTable, method CorrelationMethod) (*insyra.DataTable, *insyra.DataTable, float64, float64, int) {
-	corrMatrix, pMatrix := CorrelationMatrix(dataTable, method)
+func CorrelationAnalysis(dataTable insyra.IDataTable, method CorrelationMethod) (corrMatrix *insyra.DataTable, pMatrix *insyra.DataTable, chiSquare float64, pValue float64, df int) {
+	corrMatrix, pMatrix = CorrelationMatrix(dataTable, method)
 
 	// 只有在使用 Pearson 相關係數時執行巴特萊特球形檢定
-	var chiSquare, pValue float64
-	var df int
 	if method == PearsonCorrelation {
 		chiSquare, pValue, df = BartlettSphericity(dataTable)
 	} else {
