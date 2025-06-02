@@ -11,12 +11,17 @@ func LogFatal(packageName, funcName, msg string, args ...any) {
 	if msg[len(msg)-1] != '\n' {
 		msg += "\n"
 	}
-	msg = strings.ToUpper(msg[0:0]) + msg[1:]
+	msg = strings.ToUpper(msg[0:1]) + msg[1:]
+	var fullMsg = "<{[insyra - FATAL!]}> "
+	if packageName != "" {
+		fullMsg += packageName + "." + funcName + ": "
+	}
+	fullMsg += msg
 	if Config.dontPanic {
-		log.Printf("<{[insyra - FATAL!]}> "+packageName+"."+funcName+": "+msg, args...)
+		log.Printf(fullMsg, args...)
 		return
 	}
-	log.Fatalf("<{[insyra - FATAL!]}> "+msg, args...)
+	log.Fatalf(fullMsg, args...)
 }
 
 func LogWarning(packageName, funcName, msg string, args ...any) {
@@ -27,8 +32,13 @@ func LogWarning(packageName, funcName, msg string, args ...any) {
 	if msg[len(msg)-1] != '\n' {
 		msg += "\n"
 	}
-	msg = strings.ToUpper(msg[0:0]) + msg[1:]
-	log.Printf("[insyra - Warning] "+packageName+"."+funcName+": "+msg, args...)
+	msg = strings.ToUpper(msg[0:1]) + msg[1:]
+	var fullMsg = "[insyra - Warning] "
+	if packageName != "" {
+		fullMsg += packageName + "." + funcName + ": "
+	}
+	fullMsg += msg
+	log.Printf(fullMsg, args...)
 }
 
 func LogDebug(packageName, funcName, msg string, args ...any) {
@@ -38,8 +48,13 @@ func LogDebug(packageName, funcName, msg string, args ...any) {
 	if msg[len(msg)-1] != '\n' {
 		msg += "\n"
 	}
-	msg = strings.ToUpper(msg[0:0]) + msg[1:]
-	log.Printf("<insyra - Debug> "+packageName+"."+funcName+": "+msg, args...)
+	msg = strings.ToUpper(msg[0:1]) + msg[1:]
+	var fullMsg = "<insyra - Debug> "
+	if packageName != "" {
+		fullMsg += packageName + "." + funcName + ": "
+	}
+	fullMsg += msg
+	log.Printf(fullMsg, args...)
 }
 
 func LogInfo(packageName, funcName, msg string, args ...any) {
@@ -49,6 +64,11 @@ func LogInfo(packageName, funcName, msg string, args ...any) {
 	if msg[len(msg)-1] != '\n' {
 		msg += "\n"
 	}
-	msg = strings.ToUpper(msg[0:0]) + msg[1:]
-	log.Printf("[insyra - Info] "+packageName+"."+funcName+": "+msg, args...)
+	msg = strings.ToUpper(msg[0:1]) + msg[1:]
+	var fullMsg = "[insyra - Info] "
+	if packageName != "" {
+		fullMsg += packageName + "." + funcName + ": "
+	}
+	fullMsg += msg
+	log.Printf(fullMsg, args...)
 }
