@@ -104,6 +104,21 @@ func evaluate(n cclNode, row []any) (any, error) {
 }
 
 func applyOperator(op string, left, right any) (any, error) {
+	// 特殊情況處理：其中一方為nil
+	if left == nil || right == nil {
+		switch op {
+		case "==":
+			// 只有當兩者都是nil時才相等
+			return left == nil && right == nil, nil
+		case "!=":
+			// 只要有一方不是nil就不相等
+			return left != nil || right != nil, nil
+		case ">", "<", ">=", "<=":
+			// nil與任何值進行大小比較都返回false
+			return false, nil
+		}
+	}
+
 	// 對於布林運算，特別處理
 	if op == "==" || op == "!=" {
 		// 如果是布林值，直接比較
@@ -116,12 +131,34 @@ func applyOperator(op string, left, right any) (any, error) {
 				return lb != rb, nil
 			}
 		}
+
+		// 如果是字串比較
+		ls, lokStr := left.(string)
+		rs, rokStr := right.(string)
+		if lokStr && rokStr {
+			if op == "==" {
+				return ls == rs, nil
+			} else {
+				return ls != rs, nil
+			}
+		}
+
+		// 不同數據類型間的比較，直接返回false或true
+		if op == "==" {
+			return false, nil
+		} else { // op == "!="
+			return true, nil
+		}
 	}
 
 	// 其他情況處理數值比較
 	lf, lok := toFloat64(left)
 	rf, rok := toFloat64(right)
 	if !lok || !rok {
+		// 不同數據類型間的大小比較，直接返回false
+		if op == ">" || op == "<" || op == ">=" || op == "<=" {
+			return false, nil
+		}
 		return nil, fmt.Errorf("invalid operands for %s: %v, %v", op, left, right)
 	}
 
