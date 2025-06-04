@@ -598,6 +598,29 @@ func (dt *DataTable) SetRowToColNames(rowIndex int) *DataTable
 dt.SetRowToColNames(0) // Use first row values as column names
 ```
 
+### SetColNameByNumber
+
+Sets the name of a column by its numeric index.
+
+```go
+func (dt *DataTable) SetColNameByNumber(numberIndex int, name string) *DataTable
+```
+
+**Parameters:**
+
+- `numberIndex`: Numeric column index (0-based)
+- `name`: New column name
+
+**Returns:**
+
+- `*DataTable`: The modified DataTable
+
+**Example:**
+
+```go
+dt.SetColNameByNumber(0, "ID") // Set the name of the first column to "ID"
+```
+
 ### DropRowsByName
 
 Drops rows by their names.
