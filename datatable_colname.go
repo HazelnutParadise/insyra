@@ -1,5 +1,26 @@
 package insyra
 
+func (dt *DataTable) SetColNameByNumber(numberIndex int, name string) *DataTable {
+	dt.mu.Lock()
+	defer func() {
+		dt.mu.Unlock()
+		go dt.updateTimestamp()
+	}()
+	if numberIndex < 0 {
+		numberIndex += len(dt.columns)
+	}
+
+	if numberIndex < 0 || numberIndex >= len(dt.columns) {
+		LogWarning("DataTable", "SetColNameByNumber", "Index out of bounds")
+		return dt
+	}
+
+	name = safeColName(dt, name)
+	dt.columns[numberIndex].name = name
+
+	return dt
+}
+
 func (dt *DataTable) ChangeColName(oldName, newName string) *DataTable {
 	dt.mu.Lock()
 	defer dt.mu.Unlock()
