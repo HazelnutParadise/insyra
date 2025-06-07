@@ -39,6 +39,9 @@ type IDataTable interface {
 	UpdateRow(index int, dl *DataList)
 	SetColToRowNames(columnIndex string) *DataTable
 	SetRowToColNames(rowIndex int) *DataTable
+	ChangeColName(oldName, newName string) *DataTable
+	ChangeColNameByNumber(numberIndex int, newName string) *DataTable
+	GetColNameByNumber(index int) string
 	FindRowsIfContains(value any) []int
 	FindRowsIfContainsAll(values ...any) []int
 	FindRowsIfAnyElementContainsSubstring(substring string) []int
