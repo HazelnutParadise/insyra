@@ -428,6 +428,28 @@ func (dt *DataTable) GetColByNumber(index int) *DataList
 column := dt.GetColByNumber(0)
 ```
 
+### GetColByName
+
+Gets a column by its name.
+
+```go
+func (dt *DataTable) GetColByName(name string) *DataList
+```
+
+**Parameters:**
+
+- `name`: The name of the column.
+
+**Returns:**
+
+- `*DataList`: The specified column.
+
+**Example:**
+
+```go
+column := dt.GetColByName("column_name")
+```
+
 ### GetRow
 
 Gets a row by its index.
