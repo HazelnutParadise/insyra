@@ -1,12 +1,14 @@
-package insyra
+package insyra_test
 
 import (
 	"testing"
+
+	"github.com/HazelnutParadise/insyra"
 )
 
 func TestProcessData(t *testing.T) {
-	dl := NewDataList(1, 2, 3)
-	s, len := ProcessData(dl)
+	dl := insyra.NewDataList(1, 2, 3)
+	s, len := insyra.ProcessData(dl)
 	if len != 3 {
 		t.Errorf("ProcessData() did not return the correct length")
 	}

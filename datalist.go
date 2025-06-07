@@ -3,6 +3,7 @@ package insyra
 import (
 	"fmt"
 	"math"
+	"reflect"
 	"runtime"
 	"sort"
 	"strings"
@@ -132,12 +133,41 @@ func (dl *DataList) Data() []any {
 	return dl.data
 }
 
+// flattenWithNilSupport flattens a slice of any values, properly handling nil values
+func flattenWithNilSupport(values []any) []any {
+	var result []any
+
+	for _, value := range values {
+		if value == nil {
+			result = append(result, nil)
+			continue
+		}
+
+		// Use reflection to check if the value is a slice
+		rv := reflect.ValueOf(value)
+		if rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array {
+			// Recursively flatten slice elements
+			sliceLen := rv.Len()
+			subSlice := make([]any, sliceLen)
+			for i := 0; i < sliceLen; i++ {
+				subSlice[i] = rv.Index(i).Interface()
+			}
+			result = append(result, flattenWithNilSupport(subSlice)...)
+		} else {
+			result = append(result, value)
+		}
+	}
+
+	return result
+}
+
 // NewDataList creates a new DataList, supporting both slice and variadic inputs,
 // and flattens the input before storing it.
 func NewDataList(values ...any) *DataList {
 	var flatData []any
 
-	flatData, _ = sliceutil.Flatten[any](values)
+	// Use custom flatten function that properly handles nil values
+	flatData = flattenWithNilSupport(values)
 	LogDebug("DataList", "NewDataList", "Flattened data: %v", flatData)
 
 	continuousMemData := make([]any, len(flatData))

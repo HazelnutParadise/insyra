@@ -55,10 +55,14 @@ func (dt *DataTable) ToCSV(filePath string, setRowNamesToFirstCol bool, setColNa
 			rowName := dt.GetRowNameByIndex(rowIndex)
 			record = append(record, rowName)
 		}
-
 		for _, column := range dt.columns {
 			if rowIndex < len(column.data) {
-				record = append(record, fmt.Sprintf("%v", column.data[rowIndex]))
+				value := column.data[rowIndex]
+				if value == nil {
+					record = append(record, "")
+				} else {
+					record = append(record, fmt.Sprintf("%v", value))
+				}
 			} else {
 				record = append(record, "")
 			}
