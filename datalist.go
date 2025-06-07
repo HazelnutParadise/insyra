@@ -164,10 +164,8 @@ func flattenWithNilSupport(values []any) []any {
 // NewDataList creates a new DataList, supporting both slice and variadic inputs,
 // and flattens the input before storing it.
 func NewDataList(values ...any) *DataList {
-	var flatData []any
-
 	// Use custom flatten function that properly handles nil values
-	flatData = flattenWithNilSupport(values)
+	flatData := flattenWithNilSupport(values)
 	LogDebug("DataList", "NewDataList", "Flattened data: %v", flatData)
 
 	continuousMemData := make([]any, len(flatData))
