@@ -1402,9 +1402,6 @@ func (dl *DataList) Stdev() float64 {
 // StdevP calculates the standard deviation (population) of the DataList.
 // Returns math.NaN() if the DataList is empty or if no valid elements can be used.
 func (dl *DataList) StdevP() float64 {
-	defer func() {
-		dl.mu.Unlock()
-	}()
 	dl.mu.Lock()
 
 	if len(dl.data) == 0 {
@@ -1412,6 +1409,7 @@ func (dl *DataList) StdevP() float64 {
 		return math.NaN()
 	}
 
+	dl.mu.Unlock()
 	varianceP := dl.VarP()
 	if math.IsNaN(varianceP) {
 		LogWarning("DataList", "StdevP", "Variance calculation failed")
