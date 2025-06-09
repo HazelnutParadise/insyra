@@ -1,3 +1,3 @@
 package insyra
 
-const Version = "0.2.2-a.5"
+const Version = "0.2.2-a.6"

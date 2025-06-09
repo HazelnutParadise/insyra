@@ -18,6 +18,9 @@ import (
 	"github.com/HazelnutParadise/insyra"
 )
 
+// 用於allpkgs安裝
+func init() {}
+
 var installed bool = false
 
 // 自動安裝 GLPK 的函數

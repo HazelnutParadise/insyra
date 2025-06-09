@@ -15,6 +15,9 @@ import (
 	"github.com/HazelnutParadise/insyra"
 )
 
+// 用於allpkgs安裝
+func init() {}
+
 var isPyEnvInit = false
 var isServerRunning = false
 
