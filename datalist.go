@@ -1345,12 +1345,7 @@ func (dl *DataList) Mode() []float64 {
 // MAD calculates the mean absolute deviation of the DataList.
 // Returns math.NaN() if the DataList is empty or if no valid elements can be used.
 func (dl *DataList) MAD() float64 {
-	defer func() {
-		dl.mu.Unlock()
-	}()
-	dl.mu.Lock()
-
-	if len(dl.data) == 0 {
+	if dl.Len() == 0 {
 		LogWarning("DataList", "MAD", "DataList is empty")
 		return math.NaN()
 	}
@@ -1365,7 +1360,7 @@ func (dl *DataList) MAD() float64 {
 	// Calculate the mean absolute deviation
 	var sum float64
 	var count int
-	for _, v := range dl.data {
+	for _, v := range dl.Data() {
 		val, ok := ToFloat64Safe(v)
 		if !ok {
 			LogWarning("DataList", "MAD", "Element %v is not a numeric type, skipping", v)
