@@ -108,6 +108,13 @@ type IDataTable interface {
 	FilterByRowIndexLessThanOrEqualTo(threshold int) *DataTable
 	FilterByRowIndexEqualTo(index int) *DataTable
 
+	// Swap
+	SwapColsByName(columnName1 string, columnName2 string) *DataTable
+	SwapColsByIndex(columnIndex1 string, columnIndex2 string) *DataTable
+	SwapColsByNumber(columnNumber1 int, columnNumber2 int) *DataTable
+	SwapRowsByIndex(rowIndex1 int, rowIndex2 int) *DataTable
+	SwapRowsByName(rowName1 string, rowName2 string) *DataTable
+
 	// CSV
 	ToCSV(filePath string, setRowNamesToFirstCol bool, setColNamesToFirstRow bool, includeBOM bool) error
 	LoadFromCSV(filePath string, setFirstColToRowNames bool, setFirstRowToColNames bool) error

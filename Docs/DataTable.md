@@ -965,6 +965,121 @@ func (dt *DataTable) DropRowsContainNil() *DataTable
 dt.DropRowsContainNil()
 ```
 
+### SwapColsByName
+
+Swaps two columns by their names.
+
+```go
+func (dt *DataTable) SwapColsByName(columnName1 string, columnName2 string) *DataTable
+```
+
+**Parameters:**
+
+- `columnName1`: Name of the first column to swap.
+- `columnName2`: Name of the second column to swap.
+
+**Returns:**
+
+- `*DataTable`: The modified DataTable.
+
+**Example:**
+
+```go
+dt.SwapColsByName("ColumnA", "ColumnB")
+```
+
+### SwapColsByIndex
+
+Swaps two columns by their letter indices (e.g., "A", "B").
+
+```go
+func (dt *DataTable) SwapColsByIndex(columnIndex1 string, columnIndex2 string) *DataTable
+```
+
+**Parameters:**
+
+- `columnIndex1`: Letter index of the first column.
+- `columnIndex2`: Letter index of the second column.
+
+**Returns:**
+
+- `*DataTable`: The modified DataTable.
+
+**Example:**
+
+```go
+dt.SwapColsByIndex("A", "C")
+```
+
+### SwapColsByNumber
+
+Swaps two columns by their numerical indices (0-based).
+
+```go
+func (dt *DataTable) SwapColsByNumber(columnNumber1 int, columnNumber2 int) *DataTable
+```
+
+**Parameters:**
+
+- `columnNumber1`: Numerical index of the first column.
+- `columnNumber2`: Numerical index of the second column.
+
+**Returns:**
+
+- `*DataTable`: The modified DataTable.
+
+**Example:**
+
+```go
+dt.SwapColsByNumber(0, 2)
+```
+
+### SwapRowsByIndex
+
+Swaps two rows by their numerical indices (0-based).
+
+```go
+func (dt *DataTable) SwapRowsByIndex(rowIndex1 int, rowIndex2 int) *DataTable
+```
+
+**Parameters:**
+
+- `rowIndex1`: Numerical index of the first row.
+- `rowIndex2`: Numerical index of the second row.
+
+**Returns:**
+
+- `*DataTable`: The modified DataTable.
+
+**Example:**
+
+```go
+dt.SwapRowsByIndex(0, 1)
+```
+
+### SwapRowsByName
+
+Swaps two rows by their names.
+
+```go
+func (dt *DataTable) SwapRowsByName(rowName1 string, rowName2 string) *DataTable
+```
+
+**Parameters:**
+
+- `rowName1`: Name of the first row to swap.
+- `rowName2`: Name of the second row to swap.
+
+**Returns:**
+
+- `*DataTable`: The modified DataTable.
+
+**Example:**
+
+```go
+dt.SwapRowsByName("RowX", "RowY")
+```
+
 ### Count
 
 Returns the number of rows in the DataTable.
