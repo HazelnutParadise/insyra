@@ -116,6 +116,26 @@ func applyOperator(op string, left, right any) (any, error) {
 		case ">", "<", ">=", "<=":
 			// nil與任何值進行大小比較都返回false
 			return false, nil
+		case "+", "-", "*", "/": // Added "^" to this line in the original thought process, but it's handled by toFloat64
+			// 將 nil 視為 0 進行算術運算
+			lf, lok := toFloat64(left)
+			rf, rok := toFloat64(right)
+			if !lok || !rok { // Should not happen if toFloat64 handles nil
+				return nil, fmt.Errorf("internal error: failed to convert nil to float64 for operator %s", op)
+			}
+			switch op {
+			case "+":
+				return lf + rf, nil
+			case "-":
+				return lf - rf, nil
+			case "*":
+				return lf * rf, nil
+			case "/":
+				if rf == 0 {
+					return nil, fmt.Errorf("division by zero")
+				}
+				return lf / rf, nil
+			}
 		}
 	}
 
@@ -204,6 +224,8 @@ func toFloat64(val any) (float64, bool) {
 	case string:
 		f, err := strconv.ParseFloat(v, 64)
 		return f, err == nil
+	case nil:
+		return 0.0, true
 	default:
 		return 0, false
 	}
