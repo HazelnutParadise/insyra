@@ -837,9 +837,9 @@ func (dl *DataList) MovingStdev(windowSize int) *DataList {
 func (dl *DataList) Sort(ascending ...bool) *DataList {
 	defer func() {
 		dl.mu.Unlock()
-		go reorganizeMemory(dl)
 	}()
 	dl.mu.Lock()
+
 	if len(dl.data) == 0 {
 		LogWarning("DataList", "Sort", "DataList is empty, returning")
 		return dl
@@ -930,7 +930,7 @@ func (dl *DataList) Rank() *DataList {
 			count++
 		}
 		avgRank := sumRank / float64(count) // 計算平均秩次
-		for j := 0; j < count; j++ {
+		for j := range count {
 			ranked[indexes[i+j]] = avgRank
 		}
 		i += count
@@ -943,7 +943,6 @@ func (dl *DataList) Rank() *DataList {
 func (dl *DataList) Reverse() *DataList {
 	defer func() {
 		dl.mu.Unlock()
-		go reorganizeMemory(dl)
 		go dl.updateTimestamp()
 	}()
 	dl.mu.Lock()
@@ -955,7 +954,6 @@ func (dl *DataList) Reverse() *DataList {
 func (dl *DataList) Upper() *DataList {
 	defer func() {
 		dl.mu.Unlock()
-		go reorganizeMemory(dl)
 	}()
 	dl.mu.Lock()
 	for i, v := range dl.data {
@@ -971,7 +969,6 @@ func (dl *DataList) Upper() *DataList {
 func (dl *DataList) Lower() *DataList {
 	defer func() {
 		dl.mu.Unlock()
-		go reorganizeMemory(dl)
 	}()
 	dl.mu.Lock()
 	for i, v := range dl.data {
@@ -987,7 +984,6 @@ func (dl *DataList) Lower() *DataList {
 func (dl *DataList) Capitalize() *DataList {
 	defer func() {
 		dl.mu.Unlock()
-		go reorganizeMemory(dl)
 	}()
 	dl.mu.Lock()
 	for i, v := range dl.data {
@@ -1004,6 +1000,10 @@ func (dl *DataList) Capitalize() *DataList {
 // Sum calculates the sum of all elements in the DataList.
 // Returns math.NaN() if the DataList is empty or if no elements can be converted to float64.
 func (dl *DataList) Sum() float64 {
+	defer func() {
+		dl.mu.Unlock()
+	}()
+	dl.mu.Lock()
 	if len(dl.data) == 0 {
 		LogWarning("DataList", "Sum", "DataList is empty")
 		return math.NaN()
@@ -1032,6 +1032,11 @@ func (dl *DataList) Sum() float64 {
 // Max returns the maximum value in the DataList.
 // Returns math.NaN() if the DataList is empty or if no elements can be converted to float64.
 func (dl *DataList) Max() float64 {
+	defer func() {
+		dl.mu.Unlock()
+	}()
+	dl.mu.Lock()
+
 	if len(dl.data) == 0 {
 		LogWarning("DataList", "Max", "DataList is empty")
 		return math.NaN()
@@ -1067,6 +1072,11 @@ func (dl *DataList) Max() float64 {
 // Min returns the minimum value in the DataList.
 // Returns math.NaN() if the DataList is empty or if no elements can be converted to float64.
 func (dl *DataList) Min() float64 {
+	defer func() {
+		dl.mu.Unlock()
+	}()
+	dl.mu.Lock()
+
 	if len(dl.data) == 0 {
 		LogWarning("DataList", "Min", "DataList is empty")
 		return math.NaN()
@@ -1102,6 +1112,11 @@ func (dl *DataList) Min() float64 {
 // Mean calculates the arithmetic mean of the DataList.
 // Returns math.NaN() if the DataList is empty or if no elements can be converted to float64.
 func (dl *DataList) Mean() float64 {
+	defer func() {
+		dl.mu.Unlock()
+	}()
+	dl.mu.Lock()
+
 	mean := math.NaN()
 	if len(dl.data) == 0 {
 		LogWarning("DataList", "Mean", "DataList is empty")
@@ -1134,13 +1149,18 @@ func (dl *DataList) Mean() float64 {
 // The weights parameter should be a slice or a DataList of the same length as the DataList.
 // Returns math.NaN() if the DataList is empty, weights are invalid, or if no valid elements can be used.
 func (dl *DataList) WeightedMean(weights any) float64 {
+	defer func() {
+		dl.mu.Unlock()
+	}()
+	dl.mu.Lock()
+
 	if dl.Len() == 0 {
 		LogWarning("DataList", "WeightedMean", "DataList is empty")
 		return math.NaN()
 	}
 
 	weightsSlice, sliceLen := ProcessData(weights)
-	if sliceLen != dl.Len() {
+	if sliceLen != len(dl.data) {
 		LogWarning("DataList", "WeightedMean", "Weights length does not match data length")
 		return math.NaN()
 	}
@@ -1149,7 +1169,7 @@ func (dl *DataList) WeightedMean(weights any) float64 {
 	weightedSum := 0.0
 	validElements := 0
 
-	for i, v := range dl.Data() {
+	for i, v := range dl.data {
 		vfloat, ok1 := ToFloat64Safe(v)
 		wfloat, ok2 := ToFloat64Safe(weightsSlice[i])
 		if !ok1 {
@@ -1182,6 +1202,11 @@ func (dl *DataList) WeightedMean(weights any) float64 {
 // Returns the geometric mean.
 // Returns math.NaN() if the DataList is empty or if no elements can be converted to float64.
 func (dl *DataList) GMean() float64 {
+	defer func() {
+		dl.mu.Unlock()
+	}()
+	dl.mu.Lock()
+
 	gmean := math.NaN()
 	if len(dl.data) == 0 {
 		LogWarning("DataList", "GMean", "DataList is empty")
@@ -1216,6 +1241,11 @@ func (dl *DataList) GMean() float64 {
 // Median calculates the median of the DataList.
 // Returns math.NaN() if the DataList is empty or if no valid elements can be used.
 func (dl *DataList) Median() float64 {
+	defer func() {
+		dl.mu.Unlock()
+	}()
+	dl.mu.Lock()
+
 	if len(dl.data) == 0 {
 		LogWarning("DataList", "Median", "DataList is empty")
 		return math.NaN()
@@ -1258,6 +1288,11 @@ func (dl *DataList) Median() float64 {
 // Mode could be a single value or multiple values.
 // Returns nil if the DataList is empty or if no valid elements can be used.
 func (dl *DataList) Mode() []float64 {
+	defer func() {
+		dl.mu.Unlock()
+	}()
+	dl.mu.Lock()
+
 	if len(dl.data) == 0 {
 		LogWarning("DataList", "Mode", "DataList is empty, returning nil")
 		return nil
@@ -1310,6 +1345,11 @@ func (dl *DataList) Mode() []float64 {
 // MAD calculates the mean absolute deviation of the DataList.
 // Returns math.NaN() if the DataList is empty or if no valid elements can be used.
 func (dl *DataList) MAD() float64 {
+	defer func() {
+		dl.mu.Unlock()
+	}()
+	dl.mu.Lock()
+
 	if len(dl.data) == 0 {
 		LogWarning("DataList", "MAD", "DataList is empty")
 		return math.NaN()
@@ -1346,6 +1386,11 @@ func (dl *DataList) MAD() float64 {
 // Stdev calculates the standard deviation (sample) of the DataList.
 // Returns math.NaN() if the DataList is empty or if no valid elements can be used.
 func (dl *DataList) Stdev() float64 {
+	defer func() {
+		dl.mu.Unlock()
+	}()
+	dl.mu.Lock()
+
 	if len(dl.data) == 0 {
 		LogWarning("DataList", "Stdev", "DataList is empty")
 		return math.NaN()
@@ -1363,6 +1408,11 @@ func (dl *DataList) Stdev() float64 {
 // StdevP calculates the standard deviation (population) of the DataList.
 // Returns math.NaN() if the DataList is empty or if no valid elements can be used.
 func (dl *DataList) StdevP() float64 {
+	defer func() {
+		dl.mu.Unlock()
+	}()
+	dl.mu.Lock()
+
 	if len(dl.data) == 0 {
 		LogWarning("DataList", "StdevP", "DataList is empty")
 		return math.NaN()
@@ -1380,6 +1430,11 @@ func (dl *DataList) StdevP() float64 {
 // Var calculates the variance (sample variance) of the DataList.
 // Returns math.NaN() if the DataList is empty or if not enough valid elements are available.
 func (dl *DataList) Var() float64 {
+	defer func() {
+		dl.mu.Unlock()
+	}()
+	dl.mu.Lock()
+
 	if len(dl.data) == 0 {
 		LogWarning("DataList", "Var", "DataList is empty")
 		return math.NaN()
@@ -1426,6 +1481,11 @@ func (dl *DataList) Var() float64 {
 // VarP calculates the variance (population variance) of the DataList.
 // Returns math.NaN() if the DataList is empty or if no valid elements can be used.
 func (dl *DataList) VarP() float64 {
+	defer func() {
+		dl.mu.Unlock()
+	}()
+	dl.mu.Lock()
+
 	if len(dl.data) == 0 {
 		LogWarning("DataList", "VarP", "DataList is empty")
 		return math.NaN()
@@ -1471,6 +1531,11 @@ func (dl *DataList) VarP() float64 {
 // Range calculates the range of the DataList.
 // Returns math.NaN() if the DataList is empty or if Max or Min cannot be calculated.
 func (dl *DataList) Range() float64 {
+	defer func() {
+		dl.mu.Unlock()
+	}()
+	dl.mu.Lock()
+
 	if len(dl.data) == 0 {
 		LogWarning("DataList", "Range", "DataList is empty")
 		return math.NaN()
@@ -1491,6 +1556,11 @@ func (dl *DataList) Range() float64 {
 // 1 corresponds to the first quartile (Q1), 2 to the median (Q2), and 3 to the third quartile (Q3).
 // This implementation uses percentiles to compute quartiles.
 func (dl *DataList) Quartile(q int) float64 {
+	defer func() {
+		dl.mu.Unlock()
+	}()
+	dl.mu.Lock()
+
 	if len(dl.data) == 0 {
 		LogWarning("DataList", "Quartile", "DataList is empty")
 		return math.NaN()
@@ -1573,7 +1643,7 @@ func (dl *DataList) Quartile(q int) float64 {
 // Returns math.NaN() if the DataList is empty or if Q1 or Q3 cannot be calculated.
 // Returns the interquartile range (Q3 - Q1) as a float64.
 func (dl *DataList) IQR() float64 {
-	if len(dl.data) == 0 {
+	if dl.Len() == 0 {
 		LogWarning("DataList", "IQR", "DataList is empty")
 		return math.NaN()
 	}
@@ -1591,6 +1661,11 @@ func (dl *DataList) IQR() float64 {
 
 // Percentile calculates the percentile based on the input value (0 to 100).
 func (dl *DataList) Percentile(p float64) float64 {
+	defer func() {
+		dl.mu.Unlock()
+	}()
+	dl.mu.Lock()
+
 	if len(dl.data) == 0 {
 		LogWarning("DataList", "Percentile", "DataList is empty")
 		return math.NaN()
@@ -1663,15 +1738,19 @@ func (dl *DataList) Difference() *DataList {
 		if r != nil {
 			LogWarning("DataList", "Difference", "Data types cannot be compared")
 		}
+
+		dl.mu.Unlock()
 	}()
-	if dl.Len() < 2 {
+	dl.mu.Lock()
+
+	if len(dl.data) < 2 {
 		LogWarning("DataList", "Difference", "DataList is too short to calculate differences, returning nil")
 		return nil
 	}
 
 	differenceData := make([]float64, dl.Len()-1)
 	for i := 1; i < dl.Len(); i++ {
-		differenceData[i-1] = conv.ParseF64(dl.Data()[i]) - conv.ParseF64(dl.Data()[i-1])
+		differenceData[i-1] = conv.ParseF64(dl.data[i]) - conv.ParseF64(dl.data[i-1])
 	}
 
 	return NewDataList(differenceData)
