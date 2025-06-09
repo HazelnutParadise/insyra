@@ -739,9 +739,9 @@ func (dl *DataList) MovingAverage(windowSize int) *DataList {
 		return nil
 	}
 	movingAverageData := make([]float64, dl.Len()-windowSize+1)
-	for i := 0; i < len(movingAverageData); i++ {
+	for i := range movingAverageData {
 		windowSum := 0.0
-		for j := 0; j < windowSize; j++ {
+		for j := range windowSize {
 			windowSum += dl.Data()[i+j].(float64)
 		}
 		movingAverageData[i] = windowSum / float64(windowSize)
@@ -1681,12 +1681,19 @@ func (dl *DataList) Difference() *DataList {
 
 // IsEqualTo checks if the data of the DataList is equal to another DataList.
 func (dl *DataList) IsEqualTo(anotherDl *DataList) bool {
-	if dl.Len() != anotherDl.Len() {
+	defer func() {
+		dl.mu.Unlock()
+		anotherDl.mu.Unlock()
+	}()
+	dl.mu.Lock()
+	anotherDl.mu.Lock()
+
+	if len(dl.data) != len(anotherDl.data) {
 		return false
 	}
 
-	for i, v := range dl.Data() {
-		if v != anotherDl.Data()[i] {
+	for i, v := range dl.data {
+		if v != anotherDl.data[i] {
 			return false
 		}
 	}
@@ -1697,10 +1704,12 @@ func (dl *DataList) IsEqualTo(anotherDl *DataList) bool {
 // IsTheSameAs checks if the DataList is fully the same as another DataList.
 // It checks for equality in name, data, creation timestamp, and last modified timestamp.
 func (dl *DataList) IsTheSameAs(anotherDl *DataList) bool {
+	defer func() {
+		dl.mu.Unlock()
+		anotherDl.mu.Unlock()
+	}()
 	dl.mu.Lock()
-	defer dl.mu.Unlock()
 	anotherDl.mu.Lock()
-	defer anotherDl.mu.Unlock()
 
 	if dl == anotherDl {
 		return true
@@ -1740,9 +1749,9 @@ func (dl *DataList) ParseNumbers() *DataList {
 	defer func() {
 		dl.mu.Unlock()
 		go reorganizeMemory(dl)
-		go dl.updateTimestamp()
 	}()
 	dl.mu.Lock()
+
 	for i, v := range dl.data {
 		func() {
 			defer func() {
@@ -1754,6 +1763,8 @@ func (dl *DataList) ParseNumbers() *DataList {
 			dl.data[i] = conv.ParseF64(v)
 		}()
 	}
+
+	go dl.updateTimestamp()
 	return dl
 }
 
@@ -1761,10 +1772,9 @@ func (dl *DataList) ParseNumbers() *DataList {
 func (dl *DataList) ParseStrings() *DataList {
 	defer func() {
 		dl.mu.Unlock()
-		go reorganizeMemory(dl)
-		go dl.updateTimestamp()
 	}()
 	dl.mu.Lock()
+
 	for i, v := range dl.data {
 		func() {
 			defer func() {
@@ -1776,6 +1786,8 @@ func (dl *DataList) ParseStrings() *DataList {
 			dl.data[i] = conv.ToString(v)
 		}()
 	}
+
+	go dl.updateTimestamp()
 	return dl
 }
 
@@ -1786,9 +1798,9 @@ func (dl *DataList) ParseStrings() *DataList {
 func (dl *DataList) ToF64Slice() []float64 {
 	defer func() {
 		dl.mu.Unlock()
-		go reorganizeMemory(dl)
 	}()
 	dl.mu.Lock()
+
 	if len(dl.data) == 0 {
 		LogWarning("DataList", "ToF64Slice", "DataList is empty, returning nil")
 		return nil
@@ -1808,8 +1820,8 @@ func (dl *DataList) ToF64Slice() []float64 {
 func (dl *DataList) ToStringSlice() []string {
 	defer func() {
 		dl.mu.Unlock()
-		go reorganizeMemory(dl)
 	}()
+
 	dl.mu.Lock()
 	if len(dl.data) == 0 {
 		LogWarning("DataList", "ToStringSlice", "DataList is empty, returning nil")
