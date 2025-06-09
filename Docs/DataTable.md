@@ -620,6 +620,71 @@ func (dt *DataTable) SetRowToColNames(rowIndex int) *DataTable
 dt.SetRowToColNames(0) // Use first row values as column names
 ```
 
+### ChangeRowName
+
+Changes the name of a row.
+
+```go
+func (dt *DataTable) ChangeRowName(oldName, newName string) *DataTable
+```
+
+**Parameters:**
+
+- `oldName`: The current name of the row.
+- `newName`: The new name for the row.
+
+**Returns:**
+
+- `*DataTable`: The modified DataTable.
+
+**Example:**
+
+```go
+dt.ChangeRowName("old_row_name", "new_row_name")
+```
+
+### SetRowNameByIndex
+
+Sets the name of a row by its index.
+
+```go
+func (dt *DataTable) SetRowNameByIndex(index int, name string)
+```
+
+**Parameters:**
+
+- `index`: Row index (0-based)
+- `name`: New row name
+
+**Example:**
+
+```go
+dt.SetRowNameByIndex(0, "FirstRow") // Set the name of the first row to "FirstRow"
+```
+
+### GetRowNameByIndex
+
+Gets the name of a row by its index.
+
+```go
+func (dt *DataTable) GetRowNameByIndex(index int) string
+```
+
+**Parameters:**
+
+- `index`: The numeric index of the row (0-based).
+
+**Returns:**
+
+- `string`: The name of the row. Returns an empty string if the row does not exist or has no name.
+
+**Example:**
+
+```go
+rowName := dt.GetRowNameByIndex(0)
+fmt.Printf("Name of the first row: %s\\n", rowName)
+```
+
 ### ChangeColName
 
 Changes the name of a column.
@@ -641,29 +706,6 @@ func (dt *DataTable) ChangeColName(oldName, newName string) *DataTable
 
 ```go
 dt.ChangeColName("old_column_name", "new_column_name")
-```
-
-### ChangeColNameByNumber
-
-Changes the name of a column by its numeric index.
-
-```go
-func (dt *DataTable) ChangeColNameByNumber(numberIndex int, newName string) *DataTable
-```
-
-**Parameters:**
-
-- `numberIndex`: The numeric index of the column (0-based).
-- `newName`: The new name for the column.
-
-**Returns:**
-
-- `*DataTable`: The modified DataTable.
-
-**Example:**
-
-```go
-dt.ChangeColNameByNumber(0, "new_column_name_for_first_col")
 ```
 
 ### GetColNameByNumber
@@ -710,6 +752,29 @@ func (dt *DataTable) SetColNameByNumber(numberIndex int, name string) *DataTable
 
 ```go
 dt.SetColNameByNumber(0, "ID") // Set the name of the first column to "ID"
+```
+
+### SetColNameByIndex
+
+Sets the name of a column by its alphabetical index.
+
+```go
+func (dt *DataTable) SetColNameByIndex(index string, name string) *DataTable
+```
+
+**Parameters:**
+
+- `index`: Alphabetical column index (A, B, C...)
+- `name`: New column name
+
+**Returns:**
+
+- `*DataTable`: The modified DataTable
+
+**Example:**
+
+```go
+dt.SetColNameByIndex("A", "Identifier") // Set the name of column A to "Identifier"
 ```
 
 ### DropRowsByName

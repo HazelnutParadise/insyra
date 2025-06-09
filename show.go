@@ -69,7 +69,7 @@ func (dt *DataTable) ShowRange(startEnd ...interface{}) {
 		if idx := strings.Index(s2, "("); idx != -1 {
 			prefix2 = s2[:idx]
 		}
-		return parseColIndex(prefix1) < parseColIndex(prefix2)
+		return ParseColIndex(prefix1) < ParseColIndex(prefix2)
 	})
 
 	// Get terminal window width

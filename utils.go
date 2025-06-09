@@ -19,7 +19,7 @@ type F64orRat interface {
 }
 
 // ToFloat64 converts any numeric value to float64.
-func ToFloat64(v interface{}) float64 {
+func ToFloat64(v any) float64 {
 	switch v := v.(type) {
 	case int:
 		return float64(v)
@@ -51,7 +51,7 @@ func ToFloat64(v interface{}) float64 {
 }
 
 // ToFloat64Safe tries to convert any numeric value to float64 and returns a boolean indicating success.
-func ToFloat64Safe(v interface{}) (float64, bool) {
+func ToFloat64Safe(v any) (float64, bool) {
 	switch v := v.(type) {
 	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
 		return ToFloat64(v), true
@@ -60,8 +60,8 @@ func ToFloat64Safe(v interface{}) (float64, bool) {
 	}
 }
 
-// SliceToF64 converts a []interface{} to a []float64.
-func SliceToF64(data []interface{}) []float64 {
+// SliceToF64 converts a []any to a []float64.
+func SliceToF64(data []any) []float64 {
 	defer func() {
 		if r := recover(); r != nil {
 			LogWarning("core", "SliceToF64", "Failed to convert data to float64")
@@ -79,8 +79,8 @@ func SliceToF64(data []interface{}) []float64 {
 // ProcessData processes the input data and returns the data and the length of the data.
 // Returns nil and 0 if the data type is unsupported.
 // Supported data types are slices, IDataList, and pointers to these types.
-func ProcessData(input interface{}) ([]interface{}, int) {
-	var data []interface{}
+func ProcessData(input any) ([]any, int) {
+	var data []any
 
 	// 使用反射来处理数据类型
 	value := reflect.ValueOf(input)
@@ -93,7 +93,7 @@ func ProcessData(input interface{}) ([]interface{}, int) {
 	switch value.Kind() {
 	case reflect.Slice:
 		// 遍历切片中的每一个元素
-		for i := 0; i < value.Len(); i++ {
+		for i := range value.Len() {
 			element := value.Index(i).Interface()
 			data = append(data, element)
 		}
@@ -107,7 +107,7 @@ func ProcessData(input interface{}) ([]interface{}, int) {
 		}
 	case reflect.Array:
 		// 如果需要支持数组类型，可以添加对 reflect.Array 的处理
-		for i := 0; i < value.Len(); i++ {
+		for i := range value.Len() {
 			element := value.Index(i).Interface()
 			data = append(data, element)
 		}
@@ -143,7 +143,7 @@ func SqrtRat(x *big.Rat) *big.Rat {
 // 計算 big.Rat 的次方 (v^n)
 func PowRat(base *big.Rat, exponent int) *big.Rat {
 	result := new(big.Rat).SetInt64(1) // 初始化為 1
-	for i := 0; i < exponent; i++ {
+	for range exponent {
 		result.Mul(result, base) // result = result * base
 	}
 	return result
@@ -174,7 +174,7 @@ func ConvertLongDataToWide(data, factor IDataList, independents []IDataList, agg
 	factorMap := make(map[interface{}][][]float64)
 
 	// 迭代資料，根據因子將觀測值和自變數分組
-	for i := 0; i < factor.Len(); i++ {
+	for i := range factor.Len() {
 		key := factor.Get(i)
 
 		// 如果該因子尚未在 map 中，初始化空的觀測值和自變數切片
@@ -372,8 +372,8 @@ func FormatValue(value any) string {
 	}
 }
 
-// isNumeric 檢查一個值是否為數值類型
-func isNumeric(v interface{}) bool {
+// isNumeric checks if the value is numeric.
+func IsNumeric(v any) bool {
 	if v == nil {
 		return false
 	}
@@ -428,8 +428,8 @@ func isColorSupported() bool {
 	return true
 }
 
-// parseColIndex converts an Excel-like column name (e.g., "A", "Z", "AA") to its 0-based integer index.
-func parseColIndex(colName string) int {
+// ParseColIndex converts an Excel-like column name (e.g., "A", "Z", "AA") to its 0-based integer index.
+func ParseColIndex(colName string) int {
 	result := 0
 	for _, char := range colName {
 		result = result*26 + int(char-'A') + 1

@@ -41,8 +41,9 @@ type IDataTable interface {
 	SetColToRowNames(columnIndex string) *DataTable
 	SetRowToColNames(rowIndex int) *DataTable
 	ChangeColName(oldName, newName string) *DataTable
-	ChangeColNameByNumber(numberIndex int, newName string) *DataTable
 	GetColNameByNumber(index int) string
+	SetColNameByIndex(index string, name string) *DataTable
+	SetColNameByNumber(numberIndex int, name string) *DataTable
 	FindRowsIfContains(value any) []int
 	FindRowsIfContainsAll(values ...any) []int
 	FindRowsIfAnyElementContainsSubstring(substring string) []int
@@ -69,6 +70,7 @@ type IDataTable interface {
 	ShowTypesRange(startEnd ...any)
 	GetRowNameByIndex(index int) string
 	SetRowNameByIndex(index int, name string)
+	ChangeRowName(oldName, newName string) *DataTable
 	GetCreationTimestamp() int64
 	GetLastModifiedTimestamp() int64
 	getRowNameByIndex(index int) (string, bool)
@@ -1221,38 +1223,6 @@ func (dt *DataTable) Data(useNamesAsKeys ...bool) map[string][]any {
 	}
 
 	return dataMap
-}
-
-// ======================== RowName ========================
-
-// GetRowNameByIndex returns the name of the row at the given index.
-func (dt *DataTable) GetRowNameByIndex(index int) string {
-	dt.mu.Lock()
-	defer dt.mu.Unlock()
-	if rowName, exists := dt.getRowNameByIndex(index); exists {
-		return rowName
-	} else {
-		// LogWarning("DataTable.GetRowNameByIndex(): Row index %d does not have a name.", index)
-		return ""
-	}
-}
-
-func (dt *DataTable) SetRowNameByIndex(index int, name string) {
-	dt.mu.Lock()
-	defer func() {
-		dt.mu.Unlock()
-	}()
-	originalIndex := index
-	if index < 0 {
-		index = dt.getMaxColLength() + index
-	}
-	if index < 0 || index >= dt.getMaxColLength() {
-		LogWarning("DataTable", "SetRowNameByIndex", "Row index %d is out of range, returning", originalIndex)
-		return
-	}
-	srn := safeRowName(dt, name)
-	dt.rowNames[srn] = index
-	go dt.updateTimestamp()
 }
 
 // ======================== Statistics ========================

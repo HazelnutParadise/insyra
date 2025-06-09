@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math"
 	"strconv"
-	"strings"
 )
 
 // 新增一個全域變數來追蹤遞迴深度
@@ -38,7 +37,7 @@ func evaluate(n cclNode, row []any) (any, error) {
 	case *cclBooleanNode:
 		return t.value, nil
 	case *cclIdentifierNode:
-		idx := colNameToIndex(t.name)
+		idx := ParseColIndex(t.name)
 		if idx >= len(row) {
 			return nil, fmt.Errorf("column %s out of range", t.name)
 		}
@@ -229,13 +228,4 @@ func toFloat64(val any) (float64, bool) {
 	default:
 		return 0, false
 	}
-}
-
-func colNameToIndex(name string) int {
-	name = strings.ToUpper(name)
-	sum := 0
-	for i := range len(name) {
-		sum = sum*26 + int(name[i]-'A'+1)
-	}
-	return sum - 1
 }

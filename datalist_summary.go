@@ -60,7 +60,7 @@ func (dl *DataList) Summary() {
 	// Count numeric values
 	numericCount := 0
 	for _, v := range dl.data {
-		if isNumeric(v) {
+		if IsNumeric(v) {
 			numericCount++
 		}
 	}
