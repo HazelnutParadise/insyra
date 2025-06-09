@@ -34,6 +34,7 @@ type IDataTable interface {
 	GetColByNumber(index int) *DataList
 	GetColByName(name string) *DataList
 	GetRow(index int) *DataList
+	GetRowByName(name string) *DataList // Add this line
 	UpdateElement(rowIndex int, columnIndex string, value any)
 	UpdateCol(index string, dl *DataList)
 	UpdateColByNumber(index int, dl *DataList)
@@ -451,6 +452,26 @@ func (dt *DataTable) GetRow(index int) *DataList {
 	dt.mu.Unlock()
 	dl.name = dt.GetRowNameByIndex(index)
 	return dl
+}
+
+func (dt *DataTable) GetRowByName(name string) *DataList {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+	if index, exists := dt.rowNames[name]; exists {
+		// 初始化新的 DataList 並分配 data 切片的大小
+		dl := NewDataList()
+		// 拷貝數據到新的 DataList
+		for _, column := range dt.columns {
+			colData := column.data
+			if index < column.Len() {
+				dl.Append(colData[index])
+			}
+		}
+		dl.name = name
+		return dl
+	}
+	LogWarning("DataTable", "GetRowByName", "Row name '%s' not found, returning nil", name)
+	return nil
 }
 
 // ======================== Update ========================

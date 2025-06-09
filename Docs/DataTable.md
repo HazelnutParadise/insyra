@@ -472,6 +472,28 @@ func (dt *DataTable) GetRow(index int) *DataList
 row := dt.GetRow(0)
 ```
 
+### GetRowByName
+
+Gets a row by its name.
+
+```go
+func (dt *DataTable) GetRowByName(name string) *DataList
+```
+
+**Parameters:**
+
+- `name`: The name of the row.
+
+**Returns:**
+
+- `*DataList`: The specified row. Returns nil if the row name is not found.
+
+**Example:**
+
+```go
+row := dt.GetRowByName("row_name")
+```
+
 ### UpdateElement
 
 Updates the value at a specific position.
