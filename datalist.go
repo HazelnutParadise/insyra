@@ -1697,27 +1697,37 @@ func (dl *DataList) IsEqualTo(anotherDl *DataList) bool {
 // IsTheSameAs checks if the DataList is fully the same as another DataList.
 // It checks for equality in name, data, creation timestamp, and last modified timestamp.
 func (dl *DataList) IsTheSameAs(anotherDl *DataList) bool {
-	if dl.Len() != anotherDl.Len() {
+	dl.mu.Lock()
+	defer dl.mu.Unlock()
+	anotherDl.mu.Lock()
+	defer anotherDl.mu.Unlock()
+
+	if dl == anotherDl {
+		return true
+	}
+
+	if anotherDl == nil {
+		LogWarning("DataList", "IsTheSameAs", "Another DataList is nil, returning false")
 		return false
 	}
 
-	for i, v := range dl.Data() {
-		if v != anotherDl.Data()[i] {
+	if len(dl.data) != len(anotherDl.data) {
+		return false
+	}
+
+	for i, v := range dl.data {
+		if v != anotherDl.data[i] {
 			return false
 		}
 	}
 
-	if dl.GetName() != anotherDl.GetName() {
+	if dl.name != anotherDl.name {
 		return false
 	}
 
-	dl.mu.Lock()
-	anotherDl.mu.Lock()
 	if dl.creationTimestamp != anotherDl.creationTimestamp || dl.lastModifiedTimestamp.Load() != anotherDl.lastModifiedTimestamp.Load() {
 		return false
 	}
-	dl.mu.Unlock()
-	anotherDl.mu.Unlock()
 
 	return true
 }
