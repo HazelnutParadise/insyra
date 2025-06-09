@@ -1523,15 +1523,13 @@ func (dl *DataList) VarP() float64 {
 // Range calculates the range of the DataList.
 // Returns math.NaN() if the DataList is empty or if Max or Min cannot be calculated.
 func (dl *DataList) Range() float64 {
-	defer func() {
-		dl.mu.Unlock()
-	}()
 	dl.mu.Lock()
 
 	if len(dl.data) == 0 {
 		LogWarning("DataList", "Range", "DataList is empty")
 		return math.NaN()
 	}
+	dl.mu.Unlock()
 
 	max := dl.Max()
 	min := dl.Min()
