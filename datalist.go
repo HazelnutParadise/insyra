@@ -1381,15 +1381,14 @@ func (dl *DataList) MAD() float64 {
 // Stdev calculates the standard deviation (sample) of the DataList.
 // Returns math.NaN() if the DataList is empty or if no valid elements can be used.
 func (dl *DataList) Stdev() float64 {
-	defer func() {
-		dl.mu.Unlock()
-	}()
 	dl.mu.Lock()
 
 	if len(dl.data) == 0 {
 		LogWarning("DataList", "Stdev", "DataList is empty")
 		return math.NaN()
 	}
+
+	dl.mu.Unlock()
 
 	variance := dl.Var()
 	if math.IsNaN(variance) {
