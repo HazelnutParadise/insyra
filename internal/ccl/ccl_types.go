@@ -1,4 +1,4 @@
-package insyra
+package ccl
 
 type cclTokenType int
 

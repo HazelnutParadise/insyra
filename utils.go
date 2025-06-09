@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/HazelnutParadise/Go-Utils/conv"
+	"github.com/HazelnutParadise/insyra/internal/utils"
 	"github.com/mattn/go-runewidth"
 )
 
@@ -430,9 +431,5 @@ func isColorSupported() bool {
 
 // ParseColIndex converts an Excel-like column name (e.g., "A", "Z", "AA") to its 0-based integer index.
 func ParseColIndex(colName string) int {
-	result := 0
-	for _, char := range colName {
-		result = result*26 + int(char-'A') + 1
-	}
-	return result - 1
+	return utils.ParseColIndex(colName)
 }

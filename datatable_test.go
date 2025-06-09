@@ -39,6 +39,21 @@ func TestDataTable_AppendCols(t *testing.T) {
 	}
 }
 
+func TestDataTable_AddColUsingCCL(t *testing.T) {
+	dt := NewDataTable()
+	dlA := NewDataList(1, 2, 3)
+	dlB := NewDataList(2, 3, 4)
+	dlC := NewDataList(3, 4, 5)
+	dt.AppendCols(dlA, dlB, dlC)
+	dt.AddColUsingCCL("new_col", "A + B + C")
+	if len(dt.columns) != 4 {
+		t.Errorf("AddColUsingCCL() did not add the column correctly")
+	}
+	if dt.GetCol("D").Data()[0] != 6.0 {
+		t.Errorf("AddColUsingCCL() did not compute the column correctly")
+	}
+}
+
 func TestDataTable_AppendRowsFromDataList(t *testing.T) {
 	dt := NewDataTable()
 	dl := NewDataList(1, 2, 3)

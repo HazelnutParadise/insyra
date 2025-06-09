@@ -1,4 +1,4 @@
-package insyra
+package ccl
 
 import (
 	"fmt"
@@ -6,7 +6,7 @@ import (
 	"unicode"
 )
 
-func tokenize(input string) ([]cclToken, error) {
+func Tokenize(input string) ([]cclToken, error) {
 	tokens := []cclToken{}
 	i := 0
 	for i < len(input) {

@@ -1,4 +1,4 @@
-package insyra
+package ccl
 
 import (
 	"fmt"
@@ -10,7 +10,7 @@ type parser struct {
 	pos    int
 }
 
-func parse(tokens []cclToken) (cclNode, error) {
+func Parse(tokens []cclToken) (cclNode, error) {
 	p := &parser{tokens: tokens}
 	return p.parseExpression(0)
 }

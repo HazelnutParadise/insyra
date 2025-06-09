@@ -1,4 +1,4 @@
-package insyra
+package ccl
 
 import (
 	"fmt"
@@ -11,7 +11,11 @@ var defaultFunctions = map[string]Func{}
 var funcCallDepth int = 0
 var maxFuncCallDepth int = 20 // 合理的函數調用深度上限
 
-func cclRegisterFunction(name string, fn Func) {
+func ResetFuncCallDepth() {
+	funcCallDepth = 0
+}
+
+func RegisterFunction(name string, fn Func) {
 	defaultFunctions[strings.ToUpper(name)] = fn
 }
 

@@ -17,8 +17,8 @@ func (dt *DataTable) AddColUsingCCL(newColName, ccl string) *DataTable {
 	errorChan := make(chan error, 1)
 
 	// 重設遞迴深度和調用深度計數器
-	evalDepth = 0
-	funcCallDepth = 0
+	resetCCLEvalDepth()
+	resetCCLFuncCallDepth()
 
 	// 使用 goroutine 運行 CCL 表達式計算
 	go func() {

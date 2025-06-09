@@ -1,16 +1,23 @@
-package insyra
+package ccl
 
 import (
 	"fmt"
 	"math"
 	"strconv"
+
+	"github.com/HazelnutParadise/insyra/internal/utils"
 )
 
 // 新增一個全域變數來追蹤遞迴深度
 var evalDepth int = 0
 var maxEvalDepth int = 100 // 設置合理的最大遞迴深度
 
-func evaluate(n cclNode, row []any) (any, error) {
+// ResetEvalDepth 重置全域評估深度變數
+func ResetEvalDepth() {
+	evalDepth = 0
+}
+
+func Evaluate(n cclNode, row []any) (any, error) {
 	// 檢查遞迴深度並添加除錯日誌
 	evalDepth++
 
@@ -37,7 +44,7 @@ func evaluate(n cclNode, row []any) (any, error) {
 	case *cclBooleanNode:
 		return t.value, nil
 	case *cclIdentifierNode:
-		idx := ParseColIndex(t.name)
+		idx := utils.ParseColIndex(t.name)
 		if idx >= len(row) {
 			return nil, fmt.Errorf("column %s out of range", t.name)
 		}
@@ -45,7 +52,7 @@ func evaluate(n cclNode, row []any) (any, error) {
 	case *funcCallNode:
 		args := []any{}
 		for _, arg := range t.args {
-			val, err := evaluate(arg, row)
+			val, err := Evaluate(arg, row)
 			if err != nil {
 				return nil, err
 			}
@@ -53,11 +60,11 @@ func evaluate(n cclNode, row []any) (any, error) {
 		}
 		return callFunction(t.name, args)
 	case *cclBinaryOpNode:
-		left, err := evaluate(t.left, row)
+		left, err := Evaluate(t.left, row)
 		if err != nil {
 			return nil, err
 		}
-		right, err := evaluate(t.right, row)
+		right, err := Evaluate(t.right, row)
 		if err != nil {
 			return nil, err
 		}
@@ -71,7 +78,7 @@ func evaluate(n cclNode, row []any) (any, error) {
 		// 評估所有值
 		values := make([]any, len(t.values))
 		for i, valNode := range t.values {
-			val, err := evaluate(valNode, row)
+			val, err := Evaluate(valNode, row)
 			if err != nil {
 				return nil, err
 			}

@@ -5,19 +5,30 @@ import (
 	"strings"
 
 	"github.com/HazelnutParadise/Go-Utils/conv"
+	"github.com/HazelnutParadise/insyra/internal/ccl"
 )
+
+func resetCCLEvalDepth() {
+	// Reset the global evaluation depth variable to 0
+	ccl.ResetEvalDepth()
+}
+
+func resetCCLFuncCallDepth() {
+	// Reset the global function call depth variable to 0
+	ccl.ResetFuncCallDepth()
+}
 
 // evaluateFormula evaluates a formula string on a single row of data.
 func evaluateCCLFormula(row []any, formula string) (any, error) {
-	tokens, err := tokenize(formula)
+	tokens, err := ccl.Tokenize(formula)
 	if err != nil {
 		return nil, err
 	}
-	ast, err := parse(tokens)
+	ast, err := ccl.Parse(tokens)
 	if err != nil {
 		return nil, err
 	}
-	return evaluate(ast, row)
+	return ccl.Evaluate(ast, row)
 }
 
 // applyCCLOnDataTable evaluates the formula on each row of a DataTable.
@@ -47,7 +58,7 @@ func applyCCLOnDataTable(table *DataTable, formula string) ([]any, error) {
 
 // InitCCLFunctions registers default functions for use with CCL.
 func initCCLFunctions() {
-	cclRegisterFunction("IF", func(args ...any) (any, error) {
+	ccl.RegisterFunction("IF", func(args ...any) (any, error) {
 		if len(args) != 3 {
 			return nil, fmt.Errorf("IF requires 3 arguments")
 		}
@@ -74,7 +85,7 @@ func initCCLFunctions() {
 		}
 		return args[2], nil
 	})
-	cclRegisterFunction("AND", func(args ...any) (any, error) {
+	ccl.RegisterFunction("AND", func(args ...any) (any, error) {
 		if len(args) < 2 {
 			return nil, fmt.Errorf("AND requires at least 2 arguments")
 		}
@@ -85,7 +96,7 @@ func initCCLFunctions() {
 		}
 		return true, nil
 	})
-	cclRegisterFunction("OR", func(args ...any) (any, error) {
+	ccl.RegisterFunction("OR", func(args ...any) (any, error) {
 		if len(args) < 2 {
 			return nil, fmt.Errorf("OR requires at least 2 arguments")
 		}
@@ -96,7 +107,7 @@ func initCCLFunctions() {
 		}
 		return false, nil
 	})
-	cclRegisterFunction("CONCAT", func(args ...any) (any, error) {
+	ccl.RegisterFunction("CONCAT", func(args ...any) (any, error) {
 		if len(args) < 2 {
 			return nil, fmt.Errorf("CONCAT requires at least 2 arguments")
 		}
@@ -111,7 +122,7 @@ func initCCLFunctions() {
 		}
 		return result, nil
 	})
-	cclRegisterFunction("CASE", func(args ...any) (any, error) {
+	ccl.RegisterFunction("CASE", func(args ...any) (any, error) {
 		if len(args) < 3 {
 			return nil, fmt.Errorf("CASE requires at least 3 arguments")
 		}
