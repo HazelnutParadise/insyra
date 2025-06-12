@@ -1112,10 +1112,8 @@ func (dl *DataList) Min() float64 {
 // Mean calculates the arithmetic mean of the DataList.
 // Returns math.NaN() if the DataList is empty or if no elements can be converted to float64.
 func (dl *DataList) Mean() float64 {
-	defer func() {
-		dl.mu.Unlock()
-	}()
 	dl.mu.Lock()
+	defer dl.mu.Unlock() // 確保解鎖
 
 	mean := math.NaN()
 	if len(dl.data) == 0 {
@@ -1131,7 +1129,6 @@ func (dl *DataList) Mean() float64 {
 			count++
 		} else {
 			LogWarning("DataList", "Mean", "Element %v is not a numeric type, skipping.", v)
-			// 跳過非數字類型的元素
 			continue
 		}
 	}

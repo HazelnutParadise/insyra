@@ -8,11 +8,7 @@ import (
 
 // Summary displays a comprehensive statistical summary of the DataList directly to the console.
 func (dl *DataList) Summary() {
-	defer func() {
-		dl.mu.Unlock()
-		go reorganizeMemory(dl)
-	}()
-	dl.mu.Lock()
+	// 無鎖操作，避免與 Mean/Median 等方法重入鎖時造成死鎖
 
 	// Get terminal window width
 	width := getDataListTerminalWidth()
