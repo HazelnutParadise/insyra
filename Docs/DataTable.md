@@ -71,12 +71,12 @@ dt := insyra.NewDataTable(col1, col2)
 
 ## Data Loading
 
-### LoadFromCSV
+### ReadCSV
 
-Loads data from a CSV file.
+Reads a CSV file and loads the data into a new DataTable.
 
 ```go
-func (dt *DataTable) LoadFromCSV(filePath string, setFirstColToRowNames bool, setFirstRowToColNames bool) error
+func ReadCSV(filePath string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error)
 ```
 
 **Parameters:**
@@ -87,13 +87,42 @@ func (dt *DataTable) LoadFromCSV(filePath string, setFirstColToRowNames bool, se
 
 **Returns:**
 
+- `*DataTable`: New DataTable with loaded data
 - `error`: Error information, returns nil if successful
 
 **Example:**
 
 ```go
-dt := insyra.NewDataTable()
-err := dt.LoadFromCSV("data.csv", false, true)
+dt, err := insyra.ReadCSV("data.csv", false, true)
+if err != nil {
+    log.Fatal(err)
+}
+```
+
+### ReadCSV_String
+
+Reads CSV data from a string and loads it into a new DataTable.
+
+```go
+func ReadCSV_String(csvString string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error)
+```
+
+**Parameters:**
+
+- `csvString`: CSV data as string
+- `setFirstColToRowNames`: Whether to use the first column as row names
+- `setFirstRowToColNames`: Whether to use the first row as column names
+
+**Returns:**
+
+- `*DataTable`: New DataTable with loaded data
+- `error`: Error information, returns nil if successful
+
+**Example:**
+
+```go
+csvData := "name,age,city\nJohn,30,NYC\nJane,25,LA"
+dt, err := insyra.ReadCSV_String(csvData, false, true)
 if err != nil {
     log.Fatal(err)
 }
