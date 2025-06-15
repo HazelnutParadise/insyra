@@ -107,7 +107,7 @@ func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) *LinearReg
 	X := make([][]float64, n)
 	ys := dlY.ToF64Slice()
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		X[i] = make([]float64, p+1)
 		X[i][0] = 1.0 // intercept column
 		for j, dlX := range dlXs {
@@ -129,7 +129,7 @@ func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) *LinearReg
 	// --- compute X^T * y ----------------------------------------------------
 	XTy := make([]float64, p+1)
 	for i := 0; i <= p; i++ {
-		for k := 0; k < n; k++ {
+		for k := range n {
 			XTy[i] += X[k][i] * ys[k]
 		}
 	}
@@ -473,7 +473,7 @@ func PolynomialRegression(dlY, dlX insyra.IDataList, degree int) *PolynomialRegr
 	// Compute X^T * y
 	XTy := make([]float64, degree+1)
 	for i := 0; i <= degree; i++ {
-		for j := 0; j < n; j++ {
+		for j := range n {
 			XTy[i] += X[j][i] * ys[j]
 		}
 	}
@@ -494,7 +494,7 @@ func PolynomialRegression(dlY, dlX insyra.IDataList, degree int) *PolynomialRegr
 	}
 	meanY /= float64(n)
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		yHat := 0.0
 		for j := 0; j <= degree; j++ {
 			yHat += coeffs[j] * X[i][j]
@@ -558,7 +558,7 @@ func gaussianElimination(A [][]float64, b []float64) []float64 {
 	}
 
 	// Forward elimination with partial pivoting
-	for i := 0; i < n; i++ {
+	for i := range n {
 		// Find pivot
 		maxRow := i
 		for k := i + 1; k < n; k++ {
@@ -613,7 +613,7 @@ func invertMatrix(A [][]float64) [][]float64 {
 	}
 
 	// Gauss-Jordan elimination
-	for i := 0; i < n; i++ {
+	for i := range n {
 		// Find pivot
 		maxRow := i
 		for k := i + 1; k < n; k++ {
