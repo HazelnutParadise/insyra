@@ -890,7 +890,7 @@ dt.SetColNameByIndex("A", "Identifier") // Set the name of column A to "Identifi
 
 ### ColNamesToFirstRow
 
-Moves all column names to the first row of data and keeps the names as column headers.
+Moves all column names to the first row of data and then clears the column names.
 
 ```go
 func (dt *DataTable) ColNamesToFirstRow() *DataTable
@@ -905,6 +905,7 @@ func (dt *DataTable) ColNamesToFirstRow() *DataTable
 ```go
 // If DataTable has columns named "Name", "Age", "Role"
 // After calling ColNamesToFirstRow(), the first row will contain ["Name", "Age", "Role"]
+// and the column names will be cleared (set to empty strings)
 dt.ColNamesToFirstRow()
 ```
 
@@ -928,6 +929,31 @@ dt.DropColNames()
 
 // Can be chained with other methods
 dt.ColNamesToFirstRow().DropColNames().Show()
+```
+
+### ColNames
+
+Returns a slice containing all column names in order.
+
+```go
+func (dt *DataTable) ColNames() []string
+```
+
+**Returns:**
+
+- `[]string`: Slice of column names
+
+**Example:**
+
+```go
+names := dt.ColNames()
+for i, name := range names {
+    if name != "" {
+        fmt.Printf("Column %d: %s\n", i, name)
+    } else {
+        fmt.Printf("Column %d: (unnamed)\n", i)
+    }
+}
 ```
 
 ### DropRowsByName

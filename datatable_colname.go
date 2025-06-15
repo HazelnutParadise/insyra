@@ -80,6 +80,7 @@ func (dt *DataTable) ColNamesToFirstRow() *DataTable {
 
 	for _, col := range dt.columns {
 		col.data = append([]any{col.name}, col.data...)
+		col.name = "" // Clear the name after moving it to the first row
 	}
 
 	return dt
@@ -102,4 +103,15 @@ func (dt *DataTable) DropColNames() *DataTable {
 	}
 
 	return dt
+}
+
+func (dt *DataTable) ColNames() []string {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	names := make([]string, len(dt.columns))
+	for i, col := range dt.columns {
+		names[i] = col.name
+	}
+	return names
 }
