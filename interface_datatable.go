@@ -54,6 +54,9 @@ type IDataTable interface {
 	GetRowNameByIndex(index int) string
 	SetRowNameByIndex(index int, name string)
 	ChangeRowName(oldName, newName string) *DataTable
+	RowNamesToFirstCol() *DataTable
+	DropRowNames() *DataTable
+	RowNames() []string
 	GetCreationTimestamp() int64
 	GetLastModifiedTimestamp() int64
 	getRowNameByIndex(index int) (string, bool)

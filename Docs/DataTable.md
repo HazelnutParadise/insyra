@@ -734,6 +734,68 @@ rowName := dt.GetRowNameByIndex(0)
 fmt.Printf("Name of the first row: %s\\n", rowName)
 ```
 
+### RowNamesToFirstCol
+
+Moves all row names to the first column of the DataTable and clears the row names mapping.
+
+```go
+func (dt *DataTable) RowNamesToFirstCol() *DataTable
+```
+
+**Returns:**
+
+- `*DataTable`: The modified DataTable (for method chaining)
+
+**Example:**
+
+```go
+// If DataTable has rows named "row1", "row2", "row3"
+// After calling RowNamesToFirstCol(), these names will appear in the first column
+dt.RowNamesToFirstCol()
+```
+
+### DropRowNames
+
+Removes all row names from the DataTable.
+
+```go
+func (dt *DataTable) DropRowNames() *DataTable
+```
+
+**Returns:**
+
+- `*DataTable`: The modified DataTable (for method chaining)
+
+**Example:**
+
+```go
+// Remove all row names
+dt.DropRowNames()
+```
+
+### RowNames
+
+Returns a slice containing all row names in order. Returns empty strings for rows without names.
+
+```go
+func (dt *DataTable) RowNames() []string
+```
+
+**Returns:**
+
+- `[]string`: Slice of row names
+
+**Example:**
+
+```go
+names := dt.RowNames()
+for i, name := range names {
+    if name != "" {
+        fmt.Printf("Row %d: %s\n", i, name)
+    }
+}
+```
+
 ### ChangeColName
 
 Changes the name of a column.

@@ -42,3 +42,53 @@ func (dt *DataTable) GetRowNameByIndex(index int) string {
 		return ""
 	}
 }
+
+// RowNamesToFirstCol moves the row names to the first column of the DataTable.
+func (dt *DataTable) RowNamesToFirstCol() *DataTable {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	rowNames := NewDataList()
+	for range dt.columns {
+		rowNames.Append("")
+	}
+	for name, index := range dt.rowNames {
+		if index < 0 || index >= len(dt.columns) {
+			continue
+		}
+		rowNames.data[index] = name
+	}
+	dt.columns = append([]*DataList{rowNames}, dt.columns...)
+
+	dt.rowNames = make(map[string]int)
+
+	return dt
+}
+
+func (dt *DataTable) DropRowNames() *DataTable {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+
+	if len(dt.rowNames) == 0 {
+		LogWarning("DataTable", "DropRowNames", "No row names to drop")
+		return dt
+	}
+
+	dt.rowNames = make(map[string]int)
+
+	return dt
+}
+
+func (dt *DataTable) RowNames() []string {
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+	rowNames := make([]string, 0, len(dt.columns))
+	for i := 0; i < dt.getMaxColLength(); i++ {
+		if rowName, exists := dt.getRowNameByIndex(i); exists {
+			rowNames = append(rowNames, rowName)
+		} else {
+			rowNames = append(rowNames, "")
+		}
+	}
+	return rowNames
+}
