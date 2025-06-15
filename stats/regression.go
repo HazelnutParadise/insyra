@@ -6,20 +6,31 @@ import (
 	"github.com/HazelnutParadise/insyra"
 )
 
-// LinearRegressionResult holds the result of a simple linear regression.
+// LinearRegressionResult holds the result of both simple and multiple linear regression.
+// For simple regression: Coefficients[0] = intercept, Coefficients[1] = slope
+// For multiple regression: Coefficients[0] = intercept, Coefficients[1:] = slopes
 // Comments are kept in English per project convention.
 type LinearRegressionResult struct {
-	Slope                  float64   // regression coefficient β₁
-	Intercept              float64   // regression coefficient β₀
-	Residuals              []float64 // yᵢ − ŷᵢ
-	RSquared               float64   // coefficient of determination
-	AdjustedRSquared       float64   // adjusted R²
-	StandardError          float64   // SE(β₁) - slope standard error
-	StandardErrorIntercept float64   // SE(β₀) - intercept standard error
-	TValue                 float64   // t statistic for β₁
-	TValueIntercept        float64   // t statistic for β₀
-	PValue                 float64   // two-tailed p-value for β₁
-	PValueIntercept        float64   // two-tailed p-value for β₀
+	// Legacy fields for simple regression compatibility
+	Slope                  float64 // regression coefficient β₁ (for simple regression)
+	Intercept              float64 // regression coefficient β₀ (for simple regression)
+	StandardError          float64 // SE(β₁) - slope standard error (for simple regression)
+	StandardErrorIntercept float64 // SE(β₀) - intercept standard error (for simple regression)
+	TValue                 float64 // t statistic for β₁ (for simple regression)
+	TValueIntercept        float64 // t statistic for β₀ (for simple regression)
+	PValue                 float64 // two-tailed p-value for β₁ (for simple regression)
+	PValueIntercept        float64 // two-tailed p-value for β₀ (for simple regression)
+
+	// Extended fields for multiple regression
+	Coefficients   []float64 // [β₀, β₁, ..., βₚ] (intercept + slopes)
+	StandardErrors []float64 // standard errors for each coefficient
+	TValues        []float64 // t statistics for each coefficient
+	PValues        []float64 // two-tailed p-values for each coefficient
+
+	// Common fields
+	Residuals        []float64 // yᵢ − ŷᵢ
+	RSquared         float64   // coefficient of determination
+	AdjustedRSquared float64   // adjusted R²
 }
 
 // PolynomialRegressionResult holds the result of polynomial regression.
@@ -64,69 +75,91 @@ type LogarithmicRegressionResult struct {
 	PValueSlope            float64   // p-value for coefficient b
 }
 
-// LinearRegression performs ordinary least-squares simple linear regression on two variables X, Y.
-//
-// dlX, dlY must have identical length ≥ 3.
+// LinearRegression performs ordinary least-squares linear regression.
+// Supports both simple (one X) and multiple (multiple X) linear regression.
+// dlY is dependent variable, dlXs are independent variables (variadic).
 //
 // ** Verified using R **
-func LinearRegression(dlX, dlY insyra.IDataList) *LinearRegressionResult {
+func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) *LinearRegressionResult {
 	// --- sanity checks ------------------------------------------------------
-	if dlX.Len() != dlY.Len() {
-		insyra.LogWarning("stats", "LinearRegression", "x and y must have the same length")
-		return nil
-	}
-	if dlX.Len() < 3 {
-		insyra.LogWarning("stats", "LinearRegression", "need at least 3 observations")
+	n := dlY.Len()
+	p := len(dlXs)
+
+	if p == 0 {
+		insyra.LogWarning("stats", "LinearRegression", "no independent variables provided")
 		return nil
 	}
 
-	// --- convert input ------------------------------------------------------
-	n := float64(dlX.Len())
-	xs := dlX.ToF64Slice()
+	for _, dlX := range dlXs {
+		if dlX.Len() != n {
+			insyra.LogWarning("stats", "LinearRegression", "x and y must have the same length")
+			return nil
+		}
+	}
+
+	if n <= p {
+		insyra.LogWarning("stats", "LinearRegression", "need more observations than variables")
+		return nil
+	}
+
+	// --- build design matrix X (n×(p+1)) -----------------------------------
+	// First column is 1s for intercept, remaining columns are the X variables
+	X := make([][]float64, n)
 	ys := dlY.ToF64Slice()
 
-	// --- means --------------------------------------------------------------
-	var sumX, sumY float64
-	for i := range xs {
-		sumX += xs[i]
-		sumY += ys[i]
+	for i := 0; i < n; i++ {
+		X[i] = make([]float64, p+1)
+		X[i][0] = 1.0 // intercept column
+		for j, dlX := range dlXs {
+			X[i][j+1] = dlX.ToF64Slice()[i]
+		}
 	}
-	meanX := sumX / n
-	meanY := sumY / n
 
-	// --- covariance & variance of X ----------------------------------------
-	var sxy, sxx float64
-	for i := range xs {
-		dx := xs[i] - meanX
-		dy := ys[i] - meanY
-		sxy += dx * dy
-		sxx += dx * dx
+	// --- compute X^T * X (normal matrix) -----------------------------------
+	XTX := make([][]float64, p+1)
+	for i := 0; i <= p; i++ {
+		XTX[i] = make([]float64, p+1)
+		for j := 0; j <= p; j++ {
+			for k := 0; k < n; k++ {
+				XTX[i][j] += X[k][i] * X[k][j]
+			}
+		}
 	}
-	if sxx == 0 {
-		insyra.LogWarning("stats", "LinearRegression", "variance of x is zero; slope undefined")
+
+	// --- compute X^T * y ----------------------------------------------------
+	XTy := make([]float64, p+1)
+	for i := 0; i <= p; i++ {
+		for k := 0; k < n; k++ {
+			XTy[i] += X[k][i] * ys[k]
+		}
+	}
+
+	// --- solve normal equations β = (X^T*X)^-1 * X^T*y ---------------------
+	coeffs := gaussianElimination(XTX, XTy)
+	if coeffs == nil {
+		insyra.LogWarning("stats", "LinearRegression", "matrix is singular, cannot solve")
 		return nil
 	}
 
-	// --- coefficients -------------------------------------------------------
-	slope := sxy / sxx
-	intercept := meanY - slope*meanX
+	// --- calculate predicted values and residuals --------------------------
+	residuals := make([]float64, n)
+	var sse, sst, sumY float64
 
-	// --- residuals & SSE ----------------------------------------------------
-	residuals := make([]float64, len(xs))
-	var sse float64 // Σ eᵢ²
-	for i := range xs {
-		yHat := intercept + slope*xs[i]
-		resid := ys[i] - yHat
-		residuals[i] = resid
-		sse += resid * resid
+	for _, y := range ys {
+		sumY += y
+	}
+	meanY := sumY / float64(n)
+
+	for i := 0; i < n; i++ {
+		yHat := 0.0
+		for j := 0; j <= p; j++ {
+			yHat += coeffs[j] * X[i][j]
+		}
+		residuals[i] = ys[i] - yHat
+		sse += residuals[i] * residuals[i]
+		sst += (ys[i] - meanY) * (ys[i] - meanY)
 	}
 
-	// --- SST (total sum of squares) ----------------------------------------
-	var sst float64 // Σ (yᵢ − ȳ)²
-	for i := range ys {
-		dy := ys[i] - meanY
-		sst += dy * dy
-	}
 	if sst == 0 {
 		insyra.LogWarning("stats", "LinearRegression", "variance of y is zero; R² undefined")
 		return nil
@@ -134,34 +167,50 @@ func LinearRegression(dlX, dlY insyra.IDataList) *LinearRegressionResult {
 
 	// --- goodness-of-fit ----------------------------------------------------
 	rSquared := 1.0 - sse/sst
-	df := n - 2 // degrees of freedom
+	df := float64(n - p - 1)
+	adjRSquared := 1.0 - (1.0-rSquared)*(float64(n-1))/df
+
+	// --- statistical inference ---------------------------------------------
+	XTXInv := invertMatrix(XTX)
 	mse := sse / df
+	standardErrors := make([]float64, p+1)
+	tValues := make([]float64, p+1)
+	pValues := make([]float64, p+1)
 
-	// --- inference for slope ----------------------------------------------
-	seSlope := math.Sqrt(mse / sxx)
-	tValue := slope / seSlope
-	pValue := 2.0 * studentTCDF(-math.Abs(tValue), int(df))
-
-	// --- inference for intercept -----------------------------------------
-	seIntercept := math.Sqrt(mse * (1.0/n + meanX*meanX/sxx))
-	tValueIntercept := intercept / seIntercept
-	pValueIntercept := 2.0 * studentTCDF(-math.Abs(tValueIntercept), int(df))
-
-	adjRSquared := 1.0 - (1.0-rSquared)*(n-1.0)/df
-
-	return &LinearRegressionResult{
-		Slope:                  slope,
-		Intercept:              intercept,
-		Residuals:              residuals,
-		RSquared:               rSquared,
-		AdjustedRSquared:       adjRSquared,
-		StandardError:          seSlope,
-		StandardErrorIntercept: seIntercept,
-		TValue:                 tValue,
-		TValueIntercept:        tValueIntercept,
-		PValue:                 pValue,
-		PValueIntercept:        pValueIntercept,
+	for i := 0; i <= p; i++ {
+		if XTXInv != nil && XTXInv[i][i] >= 0 {
+			standardErrors[i] = math.Sqrt(mse * XTXInv[i][i])
+			if standardErrors[i] > 0 {
+				tValues[i] = coeffs[i] / standardErrors[i]
+				pValues[i] = 2.0 * studentTCDF(-math.Abs(tValues[i]), int(df))
+			}
+		}
 	}
+
+	// --- prepare result with both legacy and extended fields ---------------
+	result := &LinearRegressionResult{
+		Residuals:        residuals,
+		RSquared:         rSquared,
+		AdjustedRSquared: adjRSquared,
+		Coefficients:     coeffs,
+		StandardErrors:   standardErrors,
+		TValues:          tValues,
+		PValues:          pValues,
+	}
+
+	// Fill legacy fields for simple regression compatibility
+	if p == 1 {
+		result.Intercept = coeffs[0]
+		result.Slope = coeffs[1]
+		result.StandardErrorIntercept = standardErrors[0]
+		result.StandardError = standardErrors[1]
+		result.TValueIntercept = tValues[0]
+		result.TValue = tValues[1]
+		result.PValueIntercept = pValues[0]
+		result.PValue = pValues[1]
+	}
+
+	return result
 }
 
 // --------------------------- Exponential ----------------------------------
@@ -169,7 +218,7 @@ func LinearRegression(dlX, dlY insyra.IDataList) *LinearRegressionResult {
 // y = a·e^{b·x}
 //
 // ** Verified using R **
-func ExponentialRegression(dlX, dlY insyra.IDataList) *ExponentialRegressionResult {
+func ExponentialRegression(dlY, dlX insyra.IDataList) *ExponentialRegressionResult {
 	if dlX.Len() != dlY.Len() || dlX.Len() == 0 {
 		insyra.LogWarning("stats", "ExponentialRegression", "input lengths mismatch or zero")
 		return nil
@@ -286,7 +335,7 @@ func ExponentialRegression(dlX, dlY insyra.IDataList) *ExponentialRegressionResu
 // y = a + b·ln(x)
 //
 // ** Verified using R **
-func LogarithmicRegression(dlX, dlY insyra.IDataList) *LogarithmicRegressionResult {
+func LogarithmicRegression(dlY, dlX insyra.IDataList) *LogarithmicRegressionResult {
 	if dlX.Len() != dlY.Len() || dlX.Len() == 0 {
 		insyra.LogWarning("stats", "LogarithmicRegression", "input lengths mismatch or zero")
 		return nil
@@ -385,7 +434,7 @@ func LogarithmicRegression(dlX, dlY insyra.IDataList) *LogarithmicRegressionResu
 // y = a₀ + a₁x + a₂x² + ... + aₙxⁿ
 //
 // ** Verified using R **
-func PolynomialRegression(dlX, dlY insyra.IDataList, degree int) *PolynomialRegressionResult {
+func PolynomialRegression(dlY, dlX insyra.IDataList, degree int) *PolynomialRegressionResult {
 	if dlX.Len() != dlY.Len() || dlX.Len() == 0 {
 		insyra.LogWarning("stats", "PolynomialRegression", "input lengths mismatch or zero")
 		return nil

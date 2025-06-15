@@ -8,6 +8,108 @@ import (
 	"github.com/HazelnutParadise/insyra/stats"
 )
 
+func TestMultipleLinearRegression_R(t *testing.T) {
+	// Test data verified with R:
+	// x1 <- c(1.2, 2.5, 3.1, 4.8, 5.3)
+	// x2 <- c(0.8, 1.9, 2.7, 3.4, 4.1)
+	// y <- c(3.5, 7.2, 9.8, 15.1, 17.9)
+	// model <- lm(y ~ x1 + x2)
+
+	x1 := []float64{1.2, 2.5, 3.1, 4.8, 5.3}
+	x2 := []float64{0.8, 1.9, 2.7, 3.4, 4.1}
+	y := []float64{3.5, 7.2, 9.8, 15.1, 17.9}
+
+	dlX1 := insyra.NewDataList(x1)
+	dlX2 := insyra.NewDataList(x2)
+	dlY := insyra.NewDataList(y)
+
+	result := stats.LinearRegression(dlY, dlX1, dlX2)
+
+	if result == nil {
+		t.Fatal("LinearRegression returned nil")
+	}
+
+	// R results (updated with actual output):
+	// Coefficients: -1.011136, 2.872656, 0.775798
+	// Multiple R-squared:  0.9942,    Adjusted R-squared:  0.9885
+
+	expectedIntercept := -1.011136
+	expectedSlope1 := 2.872656
+	expectedSlope2 := 0.775798
+	expectedRSquared := 0.9942
+	expectedAdjRSquared := 0.9885
+
+	// Check coefficients with reasonable tolerance
+	tolerance := 1e-3
+
+	if math.Abs(result.Coefficients[0]-expectedIntercept) > tolerance {
+		t.Errorf("Intercept: expected %.6f, got %.6f",
+			expectedIntercept, result.Coefficients[0])
+	}
+
+	if math.Abs(result.Coefficients[1]-expectedSlope1) > tolerance {
+		t.Errorf("Slope1: expected %.6f, got %.6f",
+			expectedSlope1, result.Coefficients[1])
+	}
+
+	if math.Abs(result.Coefficients[2]-expectedSlope2) > tolerance {
+		t.Errorf("Slope2: expected %.6f, got %.6f",
+			expectedSlope2, result.Coefficients[2])
+	}
+
+	if math.Abs(result.RSquared-expectedRSquared) > tolerance {
+		t.Errorf("R²: expected %.4f, got %.4f",
+			expectedRSquared, result.RSquared)
+	}
+
+	if math.Abs(result.AdjustedRSquared-expectedAdjRSquared) > tolerance {
+		t.Errorf("Adjusted R²: expected %.4f, got %.4f",
+			expectedAdjRSquared, result.AdjustedRSquared)
+	}
+}
+
+// TestMultipleLinearRegression_EdgeCases tests edge cases and error conditions
+func TestMultipleLinearRegression_EdgeCases(t *testing.T) {
+	// Test case 1: No independent variables
+	y := []float64{1, 2, 3}
+	dlY := insyra.NewDataList(y)
+
+	result := stats.LinearRegression(dlY)
+	if result != nil {
+		t.Error("Expected nil for no independent variables")
+	}
+
+	// Test case 2: Mismatched lengths
+	x1 := []float64{1, 2}
+	x2 := []float64{1, 2, 3}
+	y2 := []float64{1, 2, 3}
+
+	dlX1 := insyra.NewDataList(x1)
+	dlX2 := insyra.NewDataList(x2)
+	dlY2 := insyra.NewDataList(y2)
+
+	result2 := stats.LinearRegression(dlY2, dlX1, dlX2)
+	if result2 != nil {
+		t.Error("Expected nil for mismatched lengths")
+	}
+
+	// Test case 3: More variables than observations
+	x1_small := []float64{1, 2}
+	x2_small := []float64{1, 2}
+	x3_small := []float64{1, 2}
+	y_small := []float64{1, 2}
+
+	dlX1_small := insyra.NewDataList(x1_small)
+	dlX2_small := insyra.NewDataList(x2_small)
+	dlX3_small := insyra.NewDataList(x3_small)
+	dlY_small := insyra.NewDataList(y_small)
+
+	result3 := stats.LinearRegression(dlY_small, dlX1_small, dlX2_small, dlX3_small)
+	if result3 != nil {
+		t.Error("Expected nil for more variables than observations")
+	}
+}
+
 func TestLinearRegression_R(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -78,7 +180,7 @@ func TestLinearRegression_R(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dlX := insyra.NewDataList(tc.x)
 			dlY := insyra.NewDataList(tc.y)
-			result := stats.LinearRegression(dlX, dlY)
+			result := stats.LinearRegression(dlY, dlX)
 
 			if result == nil {
 				t.Error("LinearRegression returned nil")
