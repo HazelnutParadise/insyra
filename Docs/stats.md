@@ -652,56 +652,119 @@ fmt.Printf("Explained variance: %.2f%%\n", result.ExplainedVariance[0])
 ### LinearRegression
 
 ```go
-func LinearRegression(dlX, dlY insyra.IDataList) *LinearRegressionResult
+func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) *LinearRegressionResult
 ```
 
-**Purpose**: Perform simple linear regression analysis (y = a + bx).
+**Purpose**: Performs ordinary least-squares linear regression. Supports both simple (one X) and multiple (multiple X) linear regression.
 
 **Parameters**:
 
-- `dlX`: Independent variable data
-- `dlY`: Dependent variable data
+- `dlY`: Dependent variable (IDataList).
+- `dlXs`: Independent variable(s) (variadic IDataList). At least one independent variable must be provided. All IDataList inputs must have the same length, and the number of observations must be greater than the number of independent variables.
 
-**Returns**: Result containing regression coefficients, statistical significance, and model evaluation metrics.
+**Returns**: `*LinearRegressionResult` containing the regression analysis results. Returns `nil` if inputs are invalid (e.g., length mismatch, insufficient observations, singular matrix).
 
 #### LinearRegressionResult
 
 ```go
 type LinearRegressionResult struct {
-    Slope                  float64   // Regression coefficient β₁
-    Intercept              float64   // Regression coefficient β₀
-    Residuals              []float64 // Residual values (yᵢ − ŷᵢ)
-    RSquared               float64   // Coefficient of determination
-    AdjustedRSquared       float64   // Adjusted R²
-    StandardError          float64   // SE(β₁) - slope standard error
-    StandardErrorIntercept float64   // SE(β₀) - intercept standard error
-    TValue                 float64   // t statistic for β₁
-    TValueIntercept        float64   // t statistic for β₀
-    PValue                 float64   // p-value for β₁
-    PValueIntercept        float64   // p-value for β₀
+    // Legacy fields for simple regression (when only one dlX is provided)
+    Slope                  float64 // Regression coefficient β₁ (slope)
+    Intercept              float64 // Regression coefficient β₀ (intercept)
+    StandardError          float64 // Standard error of the slope (SE(β₁))
+    StandardErrorIntercept float64 // Standard error of the intercept (SE(β₀))
+    TValue                 float64 // t-statistic for the slope (β₁)
+    TValueIntercept        float64 // t-statistic for the intercept (β₀)
+    PValue                 float64 // Two-tailed p-value for the slope (β₁)
+    PValueIntercept        float64 // Two-tailed p-value for the intercept (β₀)
+
+    // Extended fields for multiple regression (and also populated for simple regression)
+    Coefficients   []float64 // Slice of coefficients: [β₀, β₁, ..., βₚ] (intercept followed by slopes)
+    StandardErrors []float64 // Slice of standard errors for each coefficient
+    TValues        []float64 // Slice of t-statistics for each coefficient
+    PValues        []float64 // Slice of two-tailed p-values for each coefficient
+
+    // Common fields for both simple and multiple regression
+    Residuals        []float64 // Residuals (yᵢ − ŷᵢ)
+    RSquared         float64   // Coefficient of determination (R²)
+    AdjustedRSquared float64   // Adjusted R²
 }
 ```
 
-**Example**:
+**Fields in LinearRegressionResult**:
+
+- **Legacy Fields (for simple regression, where `len(dlXs) == 1`)**:
+  - `Slope`: The slope of the regression line (β₁).
+  - `Intercept`: The y-intercept of the regression line (β₀).
+  - `StandardError`: The standard error of the slope coefficient.
+  - `StandardErrorIntercept`: The standard error of the intercept coefficient.
+  - `TValue`: The t-statistic for the slope, used to test its significance.
+  - `TValueIntercept`: The t-statistic for the intercept, used to test its significance.
+  - `PValue`: The p-value associated with the t-statistic for the slope.
+  - `PValueIntercept`: The p-value associated with the t-statistic for the intercept.
+
+- **Extended Fields (for multiple regression, also available for simple regression)**:
+  - `Coefficients`: A slice containing all model coefficients. The first element (`Coefficients[0]`) is the intercept (β₀), and subsequent elements (`Coefficients[1:]`) are the coefficients for the independent variables (β₁, β₂, ..., βₚ).
+  - `StandardErrors`: A slice of standard errors corresponding to each coefficient in `Coefficients`.
+  - `TValues`: A slice of t-statistics corresponding to each coefficient.
+  - `PValues`: A slice of p-values corresponding to each t-statistic.
+
+- **Common Fields**:
+  - `Residuals`: A slice of the differences between the observed and predicted values for the dependent variable.
+  - `RSquared`: The proportion of the variance in the dependent variable that is predictable from the independent variable(s).
+  - `AdjustedRSquared`: R-squared adjusted for the number of predictors in the model.
+
+**Example (Simple Linear Regression)**:
 
 ```go
-result := stats.LinearRegression(xData, yData)
-fmt.Printf("y = %.4fx + %.4f\n", result.Slope, result.Intercept)
-fmt.Printf("R² = %.4f, p = %.4f\n", result.RSquared, result.PValue)
+y := insyra.NewDataList([]float64{1, 2, 3, 4, 5})
+x1 := insyra.NewDataList([]float64{2, 4, 5, 4, 5})
+
+result := stats.LinearRegression(y, x1)
+if result != nil {
+    fmt.Printf("Simple Linear Regression:\n")
+    fmt.Printf("  Intercept (β₀): %.4f (p=%.4f)\n", result.Intercept, result.PValueIntercept)
+    fmt.Printf("  Slope (β₁ for x1): %.4f (p=%.4f)\n", result.Slope, result.PValue)
+    fmt.Printf("  R-squared: %.4f\n", result.RSquared)
+    fmt.Printf("  Adjusted R-squared: %.4f\n", result.AdjustedRSquared)
+
+    // Accessing via Coefficients slice:
+    // fmt.Printf("  Intercept (from Coeffs): %.4f (p=%.4f)\n", result.Coefficients[0], result.PValues[0])
+    // fmt.Printf("  Slope (from Coeffs): %.4f (p=%.4f)\n", result.Coefficients[1], result.PValues[1])
+}
+```
+
+**Example (Multiple Linear Regression)**:
+
+```go
+y := insyra.NewDataList([]float64{15, 25, 30, 35, 40, 50})
+x1 := insyra.NewDataList([]float64{2, 3, 4, 5, 6, 7})
+x2 := insyra.NewDataList([]float64{1, 2, 2, 3, 3, 4})
+
+result := stats.LinearRegression(y, x1, x2)
+if result != nil {
+    fmt.Printf("\nMultiple Linear Regression:\n")
+    fmt.Printf("  Intercept (β₀): %.4f (p=%.4f)\n", result.Coefficients[0], result.PValues[0])
+    for i := 1; i < len(result.Coefficients); i++ {
+        fmt.Printf("  Slope (β%d for x%d): %.4f (p=%.4f)\n", i, i, result.Coefficients[i], result.PValues[i])
+    }
+    fmt.Printf("  R-squared: %.4f\n", result.RSquared)
+    fmt.Printf("  Adjusted R-squared: %.4f\n", result.AdjustedRSquared)
+}
 ```
 
 ### PolynomialRegression
 
 ```go
-func PolynomialRegression(dlX, dlY insyra.IDataList, degree int) *PolynomialRegressionResult
+func PolynomialRegression(dlY insyra.IDataList, dlX insyra.IDataList, degree int) *PolynomialRegressionResult
 ```
 
 **Purpose**: Perform polynomial regression analysis (y = a₀ + a₁x + a₂x² + ... + aₙxⁿ).
 
 **Parameters**:
 
-- `dlX`: Independent variable data
 - `dlY`: Dependent variable data
+- `dlX`: Independent variable data
 - `degree`: Degree of the polynomial (≥ 1)
 
 **Returns**: Result containing polynomial coefficients and model evaluation metrics.
@@ -710,13 +773,13 @@ func PolynomialRegression(dlX, dlY insyra.IDataList, degree int) *PolynomialRegr
 
 ```go
 type PolynomialRegressionResult struct {
-    Coefficients     []float64 // Polynomial coefficients [a₀, a₁, a₂, ...]
-    Degree           int       // Degree of polynomial
-    Residuals        []float64 // Residual values (yᵢ − ŷᵢ)
-    RSquared         float64   // Coefficient of determination
-    AdjustedRSquared float64   // Adjusted R²
-    StandardErrors   []float64 // Standard errors for each coefficient
-    TValues          []float64 // t statistics for each coefficient
+    Coefficients     []float64 // Polynomial coefficients [a₀, a₁, a₂, ...]\r
+    Degree           int       // Degree of polynomial\r
+    Residuals        []float64 // Residual values (yᵢ − ŷᵢ)\r
+    RSquared         float64   // Coefficient of determination\r
+    AdjustedRSquared float64   // Adjusted R²\r
+    StandardErrors   []float64 // Standard errors for each coefficient\r
+    TValues          []float64 // t statistics for each coefficient\r
     PValues          []float64 // p-values for each coefficient
 }
 ```
@@ -725,42 +788,42 @@ type PolynomialRegressionResult struct {
 
 ```go
 // Perform cubic polynomial regression: y = a₀ + a₁x + a₂x² + a₃x³
-result := stats.PolynomialRegression(xData, yData, 3)
-fmt.Printf("Equation: y = %.4f + %.4f·x + %.4f·x² + %.4f·x³\n", 
-    result.Coefficients[0], result.Coefficients[1], 
+result := stats.PolynomialRegression(yData, xData, 3) // Corrected parameter order
+fmt.Printf("Equation: y = %.4f + %.4f·x + %.4f·x² + %.4f·x³\\n", \r
+    result.Coefficients[0], result.Coefficients[1], \r
     result.Coefficients[2], result.Coefficients[3])
-fmt.Printf("R² = %.4f\n", result.RSquared)
+fmt.Printf("R² = %.4f\\n", result.RSquared)
 ```
 
 ### ExponentialRegression
 
 ```go
-func ExponentialRegression(dlX, dlY insyra.IDataList) *ExponentialRegressionResult
+func ExponentialRegression(dlY insyra.IDataList, dlX insyra.IDataList) *ExponentialRegressionResult
 ```
 
 **Purpose**: Perform exponential regression analysis (y = a·e^(b·x)).
 
 **Parameters**:
 
+- `dlY`: Dependent variable data (must contain positive values)
 - `dlX`: Independent variable data
-- `dlY`: Dependent variable data (all values must be positive)
 
-**Returns**: Result containing exponential model coefficients and evaluation metrics.
+**Returns**: Result containing coefficients (a, b) and model evaluation metrics.
 
 #### ExponentialRegressionResult
 
 ```go
 type ExponentialRegressionResult struct {
-    Intercept              float64   // Coefficient a in y = a·e^(b·x)
-    Slope                  float64   // Coefficient b in y = a·e^(b·x)
-    Residuals              []float64 // Residual values (yᵢ − ŷᵢ)
-    RSquared               float64   // Coefficient of determination
-    AdjustedRSquared       float64   // Adjusted R²
-    StandardErrorIntercept float64   // Standard error of coefficient a
-    StandardErrorSlope     float64   // Standard error of coefficient b
-    TValueIntercept        float64   // t statistic for coefficient a
-    TValueSlope            float64   // t statistic for coefficient b
-    PValueIntercept        float64   // p-value for coefficient a
+    Intercept              float64   // coefficient a in y = a·e^(b·x)\r
+    Slope                  float64   // coefficient b in y = a·e^(b·x)\r
+    Residuals              []float64 // yᵢ − ŷᵢ\r
+    RSquared               float64   // coefficient of determination\r
+    AdjustedRSquared       float64   // adjusted R²\r
+    StandardErrorIntercept float64   // standard error of coefficient a\r
+    StandardErrorSlope     float64   // standard error of coefficient b\r
+    TValueIntercept        float64   // t statistic for coefficient a\r
+    TValueSlope            float64   // t statistic for coefficient b\r
+    PValueIntercept        float64   // p-value for coefficient a\r
     PValueSlope            float64   // p-value for coefficient b
 }
 ```
@@ -768,40 +831,41 @@ type ExponentialRegressionResult struct {
 **Example**:
 
 ```go
-result := stats.ExponentialRegression(xData, yData)
-fmt.Printf("y = %.4f·e^(%.4f·x)\n", result.Intercept, result.Slope)
-fmt.Printf("R² = %.4f\n", result.RSquared)
+// Perform exponential regression: y = a·e^(b·x)
+result := stats.ExponentialRegression(yData, xData) // Corrected parameter order
+fmt.Printf("Equation: y = %.4f · e^(%.4f·x)\\n\", result.Intercept, result.Slope)
+fmt.Printf("R² = %.4f\\n", result.RSquared)
 ```
 
 ### LogarithmicRegression
 
 ```go
-func LogarithmicRegression(dlX, dlY insyra.IDataList) *LogarithmicRegressionResult
+func LogarithmicRegression(dlY insyra.IDataList, dlX insyra.IDataList) *LogarithmicRegressionResult
 ```
 
 **Purpose**: Perform logarithmic regression analysis (y = a + b·ln(x)).
 
 **Parameters**:
 
-- `dlX`: Independent variable data (all values must be positive)
 - `dlY`: Dependent variable data
+- `dlX`: Independent variable data (must contain positive values)
 
-**Returns**: Result containing logarithmic model coefficients and evaluation metrics.
+**Returns**: Result containing coefficients (a, b) and model evaluation metrics.
 
 #### LogarithmicRegressionResult
 
 ```go
 type LogarithmicRegressionResult struct {
-    Intercept              float64   // Intercept coefficient in y = a + b·ln(x)
-    Slope                  float64   // Slope coefficient in y = a + b·ln(x)
-    Residuals              []float64 // Residual values (yᵢ − ŷᵢ)
-    RSquared               float64   // Coefficient of determination
-    AdjustedRSquared       float64   // Adjusted R²
-    StandardErrorIntercept float64   // Standard error of coefficient a
-    StandardErrorSlope     float64   // Standard error of coefficient b
-    TValueIntercept        float64   // t statistic for coefficient a
-    TValueSlope            float64   // t statistic for coefficient b
-    PValueIntercept        float64   // p-value for coefficient a
+    Intercept              float64   // intercept coefficient in y = a + b·ln(x)\r
+    Slope                  float64   // slope coefficient in y = a + b·ln(x)\r
+    Residuals              []float64 // yᵢ − ŷᵢ\r
+    RSquared               float64   // coefficient of determination\r
+    AdjustedRSquared       float64   // adjusted R²\r
+    StandardErrorIntercept float64   // standard error of coefficient a\r
+    StandardErrorSlope     float64   // standard error of coefficient b\r
+    TValueIntercept        float64   // t statistic for coefficient a\r
+    TValueSlope            float64   // t statistic for coefficient b\r
+    PValueIntercept        float64   // p-value for coefficient a\r
     PValueSlope            float64   // p-value for coefficient b
 }
 ```
@@ -809,9 +873,10 @@ type LogarithmicRegressionResult struct {
 **Example**:
 
 ```go
-result := stats.LogarithmicRegression(xData, yData)
-fmt.Printf("y = %.4f + %.4f·ln(x)\n", result.Intercept, result.Slope)
-fmt.Printf("R² = %.4f\n", result.RSquared)
+// Perform logarithmic regression: y = a + b·ln(x)
+result := stats.LogarithmicRegression(yData, xData) // Corrected parameter order
+fmt.Printf("Equation: y = %.4f + %.4f·ln(x)\\n\", result.Intercept, result.Slope)
+fmt.Printf("R² = %.4f\\n", result.RSquared)
 ```
 
 ---

@@ -245,7 +245,7 @@ func TestPolynomialRegression_R(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dlX := insyra.NewDataList(tc.x)
 			dlY := insyra.NewDataList(tc.y)
-			result := stats.PolynomialRegression(dlX, dlY, tc.degree)
+			result := stats.PolynomialRegression(dlY, dlX, tc.degree)
 
 			if result == nil {
 				t.Error("PolynomialRegression returned nil")
@@ -315,7 +315,7 @@ func TestExponentialRegression_R(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dlX := insyra.NewDataList(tc.x)
 			dlY := insyra.NewDataList(tc.y)
-			result := stats.ExponentialRegression(dlX, dlY)
+			result := stats.ExponentialRegression(dlY, dlX)
 
 			if result == nil {
 				t.Error("ExponentialRegression returned nil")
@@ -373,7 +373,7 @@ func TestLogarithmicRegression_R(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dlX := insyra.NewDataList(tc.x)
 			dlY := insyra.NewDataList(tc.y)
-			result := stats.LogarithmicRegression(dlX, dlY)
+			result := stats.LogarithmicRegression(dlY, dlX)
 
 			if result == nil {
 				t.Error("LogarithmicRegression returned nil")
