@@ -104,7 +104,11 @@ func (_ dt) From(item any) *dt {
 	case CSV:
 		t.DataTable = insyra.NewDataTable()
 		var err error
-		t.DataTable, err = insyra.ReadCSV(val.FilePath, val.InputOpts.FirstCol2RowNames, val.InputOpts.FirstRow2ColNames)
+		if val.FilePath != "" {
+			t.DataTable, err = insyra.ReadCSV(val.FilePath, val.InputOpts.FirstCol2RowNames, val.InputOpts.FirstRow2ColNames)
+		} else {
+			t.DataTable, err = insyra.ReadCSV_String(val.String, val.InputOpts.FirstCol2RowNames, val.InputOpts.FirstRow2ColNames)
+		}
 		if err != nil {
 			insyra.LogFatal("DT", "From", "%v", err)
 		}
@@ -113,12 +117,9 @@ func (_ dt) From(item any) *dt {
 		var err error
 		if val.FilePath != "" {
 			t.DataTable, err = insyra.ReadJSON(val.FilePath)
-			if err != nil {
-				insyra.LogFatal("DT", "From", "%v", err)
-			}
+		} else {
+			t.DataTable, err = insyra.ReadJSON_Bytes(val.Bytes)
 		}
-
-		t.DataTable, err = insyra.ReadJSON_Bytes(val.Bytes)
 		if err != nil {
 			insyra.LogFatal("DT", "From", "%v", err)
 		}

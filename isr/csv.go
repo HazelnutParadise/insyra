@@ -2,6 +2,7 @@ package isr
 
 type CSV struct {
 	FilePath   string
+	String     string
 	InputOpts  CSV_inOpts
 	OutputOpts CSV_outOpts
 }
