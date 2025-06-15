@@ -102,6 +102,8 @@ type IDataTable interface {
 	// JSON
 	ToJSON(filePath string, useColName bool) error
 	ToJSON_Bytes(useColName bool) []byte
+	LoadFromJSON(filePath string) error
+	LoadFromJSON_Bytes(jsonData []byte) error
 
 	ToSQL(db *gorm.DB, tableName string, options ...ToSQLOptions) error
 

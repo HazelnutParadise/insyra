@@ -128,3 +128,19 @@ func (dt *DataTable) LoadFromJSON(filePath string) error {
 
 	return nil
 }
+
+func (dt *DataTable) LoadFromJSON_Bytes(data []byte) error {
+	// 解析 JSON
+	var rows []map[string]any
+	err := json.Unmarshal(data, &rows)
+	if err != nil {
+		return fmt.Errorf("failed to unmarshal JSON: %w", err)
+	}
+
+	// 將資料加入 DataTable
+	for _, row := range rows {
+		dt.AppendRowsByColName(row)
+	}
+
+	return nil
+}
