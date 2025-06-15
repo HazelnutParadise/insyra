@@ -115,6 +115,8 @@ func (_ dt) From(item any) *dt {
 			strV[conv.ToString(k)] = v
 		}
 		t.DataTable = insyra.NewDataTable().AppendRowsByColIndex(strV)
+	case nil:
+		// do nothing, return an empty DataTable
 	default:
 		insyra.LogFatal("DT", "From", "got unexpected type %T", item)
 	}

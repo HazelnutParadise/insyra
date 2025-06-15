@@ -106,6 +106,20 @@ result := isr.DL.From(1, 2, 3).Push(4, 5).At(3) // Returns 4
 
 ### Creating DataTables
 
+#### Empty DataTable
+
+```go
+// Create empty DataTable
+dataTable := isr.DT.From(nil)
+```
+
+**Method**: `isr.DT.From(nil) *dt`
+
+- **Input**: `nil` value
+- **Output**: Pointer to empty DataTable wrapper (*dt)
+- **Purpose**: Creates an empty DataTable that can be populated later
+- **Equivalent**: `insyra.NewDataTable()`
+
 #### Basic Creation from DataList
 
 ```go
