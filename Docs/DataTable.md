@@ -826,6 +826,48 @@ func (dt *DataTable) SetColNameByIndex(index string, name string) *DataTable
 dt.SetColNameByIndex("A", "Identifier") // Set the name of column A to "Identifier"
 ```
 
+### ColNamesToFirstRow
+
+Moves all column names to the first row of data and keeps the names as column headers.
+
+```go
+func (dt *DataTable) ColNamesToFirstRow() *DataTable
+```
+
+**Returns:**
+
+- `*DataTable`: The modified DataTable (for method chaining)
+
+**Example:**
+
+```go
+// If DataTable has columns named "Name", "Age", "Role"
+// After calling ColNamesToFirstRow(), the first row will contain ["Name", "Age", "Role"]
+dt.ColNamesToFirstRow()
+```
+
+### DropColNames
+
+Removes all column names, setting them to empty strings.
+
+```go
+func (dt *DataTable) DropColNames() *DataTable
+```
+
+**Returns:**
+
+- `*DataTable`: The modified DataTable (for method chaining)
+
+**Example:**
+
+```go
+// Remove all column names
+dt.DropColNames()
+
+// Can be chained with other methods
+dt.ColNamesToFirstRow().DropColNames().Show()
+```
+
 ### DropRowsByName
 
 Drops rows by their names.

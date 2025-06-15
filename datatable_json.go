@@ -108,7 +108,6 @@ func (dt *DataTable) ToJSON_Bytes(useColNames bool) []byte {
 
 // LoadFromJSON reads a JSON file and loads the data into the DataTable.
 func (dt *DataTable) LoadFromJSON(filePath string) error {
-	dt = NewDataTable()
 	// 讀取檔案
 	buf, err := os.ReadFile(filePath)
 	if err != nil {
@@ -131,7 +130,6 @@ func (dt *DataTable) LoadFromJSON(filePath string) error {
 }
 
 func (dt *DataTable) LoadFromJSON_Bytes(data []byte) error {
-	dt = NewDataTable()
 	// 解析 JSON
 	var rows []map[string]any
 	err := json.Unmarshal(data, &rows)

@@ -65,3 +65,41 @@ func (dt *DataTable) GetColNameByNumber(index int) string {
 	}
 	return dt.columns[index].name
 }
+
+func (dt *DataTable) ColNamesToFirstRow() *DataTable {
+	dt.mu.Lock()
+	defer func() {
+		dt.mu.Unlock()
+		go dt.updateTimestamp()
+	}()
+
+	if len(dt.columns) == 0 {
+		LogWarning("DataTable", "ColNamesToFirstRow", "No columns to set names")
+		return dt
+	}
+
+	for _, col := range dt.columns {
+		col.data = append([]any{col.name}, col.data...)
+	}
+
+	return dt
+}
+
+func (dt *DataTable) DropColNames() *DataTable {
+	dt.mu.Lock()
+	defer func() {
+		dt.mu.Unlock()
+		go dt.updateTimestamp()
+	}()
+
+	if len(dt.columns) == 0 {
+		LogWarning("DataTable", "DropColNames", "No columns to drop names")
+		return dt
+	}
+
+	for _, col := range dt.columns {
+		col.name = ""
+	}
+
+	return dt
+}

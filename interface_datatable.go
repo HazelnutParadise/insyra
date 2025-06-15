@@ -25,6 +25,8 @@ type IDataTable interface {
 	GetColNameByNumber(index int) string
 	SetColNameByIndex(index string, name string) *DataTable
 	SetColNameByNumber(numberIndex int, name string) *DataTable
+	ColNamesToFirstRow() *DataTable
+	DropColNames() *DataTable
 	FindRowsIfContains(value any) []int
 	FindRowsIfContainsAll(values ...any) []int
 	FindRowsIfAnyElementContainsSubstring(substring string) []int
