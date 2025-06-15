@@ -125,6 +125,33 @@ if err != nil {
 }
 ```
 
+### LoadFromJSON_Bytes
+
+Loads data from JSON byte data.
+
+```go
+func (dt *DataTable) LoadFromJSON_Bytes(data []byte) error
+```
+
+**Parameters:**
+
+- `data`: JSON data as byte slice
+
+**Returns:**
+
+- `error`: Error information, returns nil if successful
+
+**Example:**
+
+```go
+dt := insyra.NewDataTable()
+jsonData := []byte(`[{"name":"John","age":30},{"name":"Jane","age":25}]`)
+err := dt.LoadFromJSON_Bytes(jsonData)
+if err != nil {
+    log.Fatal(err)
+}
+```
+
 ### ReadSQL
 
 Loads data from SQL query results.

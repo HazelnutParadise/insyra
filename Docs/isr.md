@@ -34,8 +34,8 @@ import "github.com/HazelnutParadise/insyra/isr"
 - `isr.Col` - `map[any]any` representing a table column
 - `isr.Cols` - `[]Col` slice of table columns
 - `isr.DLs` - `[]insyra.IDataList` slice of DataLists
-- `isr.CSV` - CSV file configuration
-- `isr.JSON` - JSON file configuration
+- `isr.CSV` - CSV file configuration with input/output options
+- `isr.JSON` - JSON file/data configuration (supports both file path and byte data)
 - `isr.Name` - Function to create named references for rows/columns
 
 ### Type Alias Details
@@ -85,6 +85,45 @@ email := isr.Name("Email")
 
 // Use in DataTable operations
 value := dataTable.At(userID, email)
+```
+
+#### JSON Configuration
+
+```go
+// Load from JSON file
+jsonFromFile := isr.JSON{
+    FilePath: "data.json",
+}
+
+// Load from JSON byte data
+jsonData := []byte(`[{"name":"John","age":30},{"name":"Jane","age":25}]`)
+jsonFromBytes := isr.JSON{
+    Bytes: jsonData,
+}
+
+// Use in DataTable creation
+dataTable1 := isr.DT.From(jsonFromFile)
+dataTable2 := isr.DT.From(jsonFromBytes)
+```
+
+#### CSV Configuration
+
+```go
+// CSV with input options
+csvConfig := isr.CSV{
+    FilePath: "data.csv",
+    InputOpts: isr.CSV_inOpts{
+        FirstCol2RowNames: true,
+        FirstRow2ColNames: true,
+    },
+    OutputOpts: isr.CSV_outOpts{
+        RowNames2FirstCol: true,
+        ColNames2FirstRow: true,
+    },
+}
+
+// Use in DataTable creation
+dataTable := isr.DT.From(csvConfig)
 ```
 
 ## DataList Operations
@@ -239,6 +278,12 @@ dataTable := isr.DT.From(isr.CSV{
 dataTable := isr.DT.From(isr.JSON{
     FilePath: "data.json",
 })
+
+// From JSON byte data
+jsonData := []byte(`[{"name":"John","age":30},{"name":"Jane","age":25}]`)
+dataTable := isr.DT.From(isr.JSON{
+    Bytes: jsonData,
+})
 ```
 
 #### From Maps
@@ -385,8 +430,8 @@ processed := isr.DL.From(1, 2, 3).Push(4, 5).At(4) // Returns 5
 - `Col` - `map[any]any` for column data
 - `Cols` - `[]Col` for multiple columns
 - `DLs` - `[]insyra.IDataList` for multiple DataLists
-- `CSV` - Struct for CSV file loading
-- `JSON` - Struct for JSON file loading
+- `CSV` - Struct for CSV file loading with input/output options
+- `JSON` - Struct for JSON file/data loading (supports both file path and byte data)
 
 ### Key Functions
 
@@ -440,6 +485,10 @@ dt.Push(isr.Col{0: "Value"})         // Add column
 // Load from files
 csvTable := isr.DT.From(isr.CSV{FilePath: "data.csv"})
 jsonTable := isr.DT.From(isr.JSON{FilePath: "data.json"})
+
+// Load from byte data
+jsonData := []byte(`[{"name":"John","age":30}]`)
+jsonFromBytes := isr.DT.From(isr.JSON{Bytes: jsonData})
 ```
 
 ### Conversion Operations
