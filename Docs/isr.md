@@ -30,10 +30,62 @@ import "github.com/HazelnutParadise/insyra/isr"
 ### Type Aliases
 
 - `isr.Row` - `map[any]any` representing a table row
+- `isr.Rows` - `[]Row` slice of table rows
 - `isr.Col` - `map[any]any` representing a table column
-- `isr.DLs` - `[]*DL` slice of DataLists
+- `isr.Cols` - `[]Col` slice of table columns
+- `isr.DLs` - `[]insyra.IDataList` slice of DataLists
 - `isr.CSV` - CSV file configuration
 - `isr.JSON` - JSON file configuration
+- `isr.Name` - Function to create named references for rows/columns
+
+### Type Alias Details
+
+#### Row and Rows Types
+
+```go
+// Single row
+row := isr.Row{
+    "Name": "John",
+    "Age":  30,
+    "City": "NYC",
+}
+
+// Multiple rows using Rows alias
+rows := isr.Rows{
+    {"Name": "John", "Age": 30},
+    {"Name": "Jane", "Age": 25},
+    {"Name": "Bob",  "Age": 35},
+}
+```
+
+#### Col and Cols Types
+
+```go
+// Single column
+col := isr.Col{
+    0: "John",
+    1: "Jane",
+    2: "Bob",
+}
+
+// Multiple columns using Cols alias
+cols := isr.Cols{
+    {0: "John", 1: "Jane", 2: "Bob"},     // Names column
+    {0: 30, 1: 25, 2: 35},               // Ages column
+    {0: "NYC", 1: "LA", 2: "Chicago"},   // Cities column
+}
+```
+
+#### Name Function
+
+```go
+// Create named references for accessing rows/columns
+userID := isr.Name("UserID")
+email := isr.Name("Email")
+
+// Use in DataTable operations
+value := dataTable.At(userID, email)
+```
 
 ## DataList Operations
 
@@ -148,8 +200,8 @@ dataTable := isr.DT.From(isr.Row{
     "City": "NYC",
 })
 
-// Multiple rows
-dataTable := isr.DT.From([]isr.Row{
+// Multiple rows using Rows alias
+dataTable := isr.DT.From(isr.Rows{
     {"Name": "John", "Age": 30},
     {"Name": "Jane", "Age": 25},
 })
@@ -164,8 +216,8 @@ dataTable := isr.DT.From(isr.Col{
     isr.Name("Jane"): 25,
 })
 
-// Multiple columns
-dataTable := isr.DT.From([]isr.Col{
+// Multiple columns using Cols alias
+dataTable := isr.DT.From(isr.Cols{
     {0: "John", 1: "Jane"},      // Names column
     {0: 30, 1: 25},              // Ages column
 })
@@ -269,13 +321,12 @@ value := dataTable.At(isr.Name("ID"), "Name")  // Named row and column
 
 ```go
 // Add new rows
-dataTable.Push(isr.Row{
-    "Name": "Bob",
+dataTable.Push(isr.Row{    "Name": "Bob",
     "Age": 35,
 })
 
-// Add multiple rows
-dataTable.Push([]isr.Row{
+// Add multiple rows using Rows alias
+dataTable.Push(isr.Rows{
     {"Name": "Alice", "Age": 28},
     {"Name": "Charlie", "Age": 42},
 })
@@ -330,8 +381,10 @@ processed := isr.DL.From(1, 2, 3).Push(4, 5).At(4) // Returns 5
 ### Input Types
 
 - `Row` - `map[any]any` for row data
+- `Rows` - `[]Row` for multiple rows
 - `Col` - `map[any]any` for column data
-- `DLs` - `[]*dl` for multiple DataLists
+- `Cols` - `[]Col` for multiple columns
+- `DLs` - `[]insyra.IDataList` for multiple DataLists
 - `CSV` - Struct for CSV file loading
 - `JSON` - Struct for JSON file loading
 

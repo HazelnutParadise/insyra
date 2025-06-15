@@ -19,10 +19,16 @@ type dt struct {
 // Every key in the map represents a column Index or Number Index.
 type Row map[any]any
 
+// Rows is a type alias for []Row.
+type Rows = []Row
+
 // DL is a type alias for map[any]any.
 // It is used to represent a column in a DataTable.
 // Every key in the map represents a row Index.
 type Col map[any]any
+
+// Cols is a type alias for []Col.
+type Cols = []Col
 
 // PtrDT converts a DataTable or DT to a *DT.
 func PtrDT[T *insyra.DataTable | dt](t T) *dt {
@@ -71,7 +77,7 @@ func (_ dt) From(item any) *dt {
 		if err != nil {
 			insyra.LogFatal("DT", "From", "%v", err)
 		}
-	case []Row:
+	case Rows:
 		t.DataTable = insyra.NewDataTable()
 		for _, r := range val {
 			err := fromRowToDT(&t, r)
@@ -86,7 +92,7 @@ func (_ dt) From(item any) *dt {
 			insyra.LogFatal("DT", "From", "%v", err)
 		}
 		t.Transpose()
-	case []Col:
+	case Cols:
 		t.DataTable = insyra.NewDataTable()
 		for _, r := range val {
 			err := fromRowToDT(&t, r)
@@ -239,7 +245,7 @@ func (t *dt) Push(data any) *dt {
 			insyra.LogFatal("DT", "Push", "%v", err)
 		}
 		numRow, _ := temDT.Size()
-		for i := 0; i < numRow; i++ {
+		for i := range numRow {
 			l := temDT.GetRow(i)
 			t.DataTable.AppendCols(l)
 		}
