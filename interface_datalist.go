@@ -42,7 +42,7 @@ type IDataList interface {
 	DoubleExponentialSmoothing(float64, float64) *DataList
 	MovingStdev(int) *DataList
 	Len() int
-	Sort(acending ...bool) *DataList
+	Sort(ascending ...bool) *DataList
 	Map(mapFunc func(int, any) any) *DataList
 	Rank() *DataList
 	Reverse() *DataList
@@ -72,9 +72,10 @@ type IDataList interface {
 	// comparison
 	IsEqualTo(*DataList) bool
 	IsTheSameAs(*DataList) bool
-
 	Show()
 	ShowRange(startEnd ...any)
+	ShowTypes()
+	ShowTypesRange(startEnd ...any)
 
 	// conversion
 	ParseNumbers() *DataList
