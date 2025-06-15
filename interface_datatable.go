@@ -104,12 +104,9 @@ type IDataTable interface {
 	// CSV
 	ToCSV(filePath string, setRowNamesToFirstCol bool, setColNamesToFirstRow bool, includeBOM bool) error
 	LoadFromCSV(filePath string, setFirstColToRowNames bool, setFirstRowToColNames bool) error
-
 	// JSON
 	ToJSON(filePath string, useColName bool) error
 	ToJSON_Bytes(useColName bool) []byte
-	LoadFromJSON(filePath string) error
-	LoadFromJSON_Bytes(jsonData []byte) error
 
 	ToSQL(db *gorm.DB, tableName string, options ...ToSQLOptions) error
 

@@ -99,12 +99,12 @@ if err != nil {
 }
 ```
 
-### LoadFromJSON
+### ReadJSON
 
-Loads data from a JSON file.
+Reads a JSON file and loads the data into a new DataTable.
 
 ```go
-func (dt *DataTable) LoadFromJSON(filePath string) error
+func ReadJSON(filePath string) (*DataTable, error)
 ```
 
 **Parameters:**
@@ -113,24 +113,24 @@ func (dt *DataTable) LoadFromJSON(filePath string) error
 
 **Returns:**
 
+- `*DataTable`: New DataTable with loaded data
 - `error`: Error information, returns nil if successful
 
 **Example:**
 
 ```go
-dt := insyra.NewDataTable()
-err := dt.LoadFromJSON("data.json")
+dt, err := insyra.ReadJSON("data.json")
 if err != nil {
     log.Fatal(err)
 }
 ```
 
-### LoadFromJSON_Bytes
+### ReadJSON_Bytes
 
-Loads data from JSON byte data.
+Reads JSON byte data and loads it into a new DataTable.
 
 ```go
-func (dt *DataTable) LoadFromJSON_Bytes(data []byte) error
+func ReadJSON_Bytes(data []byte) (*DataTable, error)
 ```
 
 **Parameters:**
@@ -139,14 +139,14 @@ func (dt *DataTable) LoadFromJSON_Bytes(data []byte) error
 
 **Returns:**
 
+- `*DataTable`: New DataTable with loaded data
 - `error`: Error information, returns nil if successful
 
 **Example:**
 
 ```go
-dt := insyra.NewDataTable()
 jsonData := []byte(`[{"name":"John","age":30},{"name":"Jane","age":25}]`)
-err := dt.LoadFromJSON_Bytes(jsonData)
+dt, err := insyra.ReadJSON_Bytes(jsonData)
 if err != nil {
     log.Fatal(err)
 }

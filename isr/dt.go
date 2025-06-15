@@ -109,14 +109,15 @@ func (_ dt) From(item any) *dt {
 		}
 	case JSON:
 		t.DataTable = insyra.NewDataTable()
+		var err error
 		if val.FilePath != "" {
-			err := t.LoadFromJSON(val.FilePath)
+			t.DataTable, err = insyra.ReadJSON(val.FilePath)
 			if err != nil {
 				insyra.LogFatal("DT", "From", "%v", err)
 			}
 		}
 
-		err := t.LoadFromJSON_Bytes(val.Bytes)
+		t.DataTable, err = insyra.ReadJSON_Bytes(val.Bytes)
 		if err != nil {
 			insyra.LogFatal("DT", "From", "%v", err)
 		}

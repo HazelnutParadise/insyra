@@ -1,7 +1,6 @@
 package insyra
 
 import (
-	"fmt"
 	"os"
 
 	jsoniter "github.com/json-iterator/go"
@@ -104,43 +103,4 @@ func (dt *DataTable) ToJSON_Bytes(useColNames bool) []byte {
 	}
 
 	return jsonData
-}
-
-// LoadFromJSON reads a JSON file and loads the data into the DataTable.
-func (dt *DataTable) LoadFromJSON(filePath string) error {
-	// 讀取檔案
-	buf, err := os.ReadFile(filePath)
-	if err != nil {
-		return fmt.Errorf("failed to read file %s: %w", filePath, err)
-	}
-
-	// 解析 JSON
-	var rows []map[string]any
-	err = json.Unmarshal(buf, &rows)
-	if err != nil {
-		return fmt.Errorf("failed to unmarshal JSON: %w", err)
-	}
-
-	// 將資料加入 DataTable
-	for _, row := range rows {
-		dt.AppendRowsByColName(row)
-	}
-
-	return nil
-}
-
-func (dt *DataTable) LoadFromJSON_Bytes(data []byte) error {
-	// 解析 JSON
-	var rows []map[string]any
-	err := json.Unmarshal(data, &rows)
-	if err != nil {
-		return fmt.Errorf("failed to unmarshal JSON: %w", err)
-	}
-
-	// 將資料加入 DataTable
-	for _, row := range rows {
-		dt.AppendRowsByColName(row)
-	}
-
-	return nil
 }
