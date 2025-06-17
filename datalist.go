@@ -25,6 +25,10 @@ type DataList struct {
 	creationTimestamp     int64
 	lastModifiedTimestamp atomic.Int64
 	mu                    sync.Mutex
+
+	// AtomicDo support
+	initOnce sync.Once
+	cmdCh    chan func()
 }
 
 // From creates a new DataList from the specified values.
