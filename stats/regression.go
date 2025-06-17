@@ -111,9 +111,8 @@ func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) *LinearReg
 			return nil
 		}
 	}
-
-	if n <= p {
-		insyra.LogWarning("stats", "LinearRegression", "need more observations than variables")
+	if n <= p+1 {
+		insyra.LogWarning("stats", "LinearRegression", "need at least p+2 observations for p independent variables to compute statistics")
 		return nil
 	}
 
@@ -179,25 +178,38 @@ func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) *LinearReg
 		insyra.LogWarning("stats", "LinearRegression", "variance of y is zero; R² undefined")
 		return nil
 	}
-
 	// --- goodness-of-fit ----------------------------------------------------
 	rSquared := 1.0 - sse/sst
 	df := float64(n - p - 1)
-	adjRSquared := 1.0 - (1.0-rSquared)*(float64(n-1))/df
-
+	var adjRSquared float64
+	if df > 0 {
+		adjRSquared = 1.0 - (1.0-rSquared)*(float64(n-1))/df
+	} else {
+		adjRSquared = math.NaN()
+	}
 	// --- statistical inference ---------------------------------------------
 	XTXInv := invertMatrix(XTX)
-	mse := sse / df
+	var mse float64
+	if df > 0 {
+		mse = sse / df
+	} else {
+		mse = math.NaN()
+	}
+
 	standardErrors := make([]float64, p+1)
 	tValues := make([]float64, p+1)
 	pValues := make([]float64, p+1)
 
 	for i := 0; i <= p; i++ {
-		if XTXInv != nil && XTXInv[i][i] >= 0 {
+		if XTXInv != nil && XTXInv[i][i] >= 0 && !math.IsNaN(mse) {
 			standardErrors[i] = math.Sqrt(mse * XTXInv[i][i])
 			if standardErrors[i] > 0 {
 				tValues[i] = coeffs[i] / standardErrors[i]
-				pValues[i] = 2.0 * studentTCDF(-math.Abs(tValues[i]), int(df))
+				if df > 0 {
+					pValues[i] = 2.0 * studentTCDF(-math.Abs(tValues[i]), int(df))
+				} else {
+					pValues[i] = math.NaN()
+				}
 			}
 		}
 	}
@@ -222,15 +234,26 @@ func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) *LinearReg
 		result.TValue = tValues[1]
 		result.PValueIntercept = pValues[0]
 		result.PValue = pValues[1]
-	}
-	// --- calculate confidence intervals ------------------------------------
+	} // --- calculate confidence intervals ------------------------------------
 	confidenceLevel := 0.95
-	tDist := distuv.StudentsT{Mu: 0, Sigma: 1, Nu: float64(df)}
-	criticalValue := tDist.Quantile(1 - (1-confidenceLevel)/2)
-	confIntervals := make([][2]float64, p+1)
-	for i := 0; i <= p; i++ {
-		marginOfError := criticalValue * standardErrors[i]
-		confIntervals[i] = [2]float64{coeffs[i] - marginOfError, coeffs[i] + marginOfError}
+	var confIntervals [][2]float64
+
+	if df > 0 {
+		tDist := distuv.StudentsT{Mu: 0, Sigma: 1, Nu: df}
+		criticalValue := tDist.Quantile(1 - (1-confidenceLevel)/2)
+		confIntervals = make([][2]float64, p+1)
+		for i := 0; i <= p; i++ {
+			marginOfError := criticalValue * standardErrors[i]
+			confIntervals[i] = [2]float64{coeffs[i] - marginOfError, coeffs[i] + marginOfError}
+		}
+	} else {
+		// If df <= 0, cannot compute confidence intervals
+		insyra.LogWarning("stats", "LinearRegression", "insufficient degrees of freedom for confidence intervals")
+		confIntervals = make([][2]float64, p+1)
+		// Set to NaN or zero intervals
+		for i := 0; i <= p; i++ {
+			confIntervals[i] = [2]float64{math.NaN(), math.NaN()}
+		}
 	}
 
 	result.ConfidenceIntervals = confIntervals
@@ -252,6 +275,11 @@ func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) *LinearReg
 func ExponentialRegression(dlY, dlX insyra.IDataList) *ExponentialRegressionResult {
 	if dlX.Len() != dlY.Len() || dlX.Len() == 0 {
 		insyra.LogWarning("stats", "ExponentialRegression", "input lengths mismatch or zero")
+		return nil
+	}
+
+	if dlX.Len() <= 2 {
+		insyra.LogWarning("stats", "ExponentialRegression", "need at least 3 observations for exponential regression")
 		return nil
 	}
 
@@ -345,17 +373,23 @@ func ExponentialRegression(dlY, dlX insyra.IDataList) *ExponentialRegressionResu
 	tValA := a / seA // 修正：使用 a/seA 而不是 lnA/seLnA
 	pValB := 2.0 * studentTCDF(-math.Abs(tValB), int(df))
 	pValA := 2.0 * studentTCDF(-math.Abs(tValA), int(df))
-
 	// Calculate confidence intervals
 	confidenceLevel := 0.95
-	tDist := distuv.StudentsT{Mu: 0, Sigma: 1, Nu: float64(df)}
-	criticalValue := tDist.Quantile(1 - (1-confidenceLevel)/2)
+	var ciIntercept, ciSlope [2]float64
 
-	marginOfErrorIntercept := criticalValue * seA
-	marginOfErrorSlope := criticalValue * seB
+	if df > 0 {
+		tDist := distuv.StudentsT{Mu: 0, Sigma: 1, Nu: float64(df)}
+		criticalValue := tDist.Quantile(1 - (1-confidenceLevel)/2)
 
-	ciIntercept := [2]float64{a - marginOfErrorIntercept, a + marginOfErrorIntercept}
-	ciSlope := [2]float64{b - marginOfErrorSlope, b + marginOfErrorSlope}
+		marginOfErrorIntercept := criticalValue * seA
+		marginOfErrorSlope := criticalValue * seB
+
+		ciIntercept = [2]float64{a - marginOfErrorIntercept, a + marginOfErrorIntercept}
+		ciSlope = [2]float64{b - marginOfErrorSlope, b + marginOfErrorSlope}
+	} else {
+		ciIntercept = [2]float64{math.NaN(), math.NaN()}
+		ciSlope = [2]float64{math.NaN(), math.NaN()}
+	}
 
 	return &ExponentialRegressionResult{
 		Intercept:                   a,
@@ -381,6 +415,11 @@ func ExponentialRegression(dlY, dlX insyra.IDataList) *ExponentialRegressionResu
 func LogarithmicRegression(dlY, dlX insyra.IDataList) *LogarithmicRegressionResult {
 	if dlX.Len() != dlY.Len() || dlX.Len() == 0 {
 		insyra.LogWarning("stats", "LogarithmicRegression", "input lengths mismatch or zero")
+		return nil
+	}
+
+	if dlX.Len() <= 2 {
+		insyra.LogWarning("stats", "LogarithmicRegression", "need at least 3 observations for logarithmic regression")
 		return nil
 	}
 
@@ -459,14 +498,21 @@ func LogarithmicRegression(dlY, dlX insyra.IDataList) *LogarithmicRegressionResu
 
 	// Calculate confidence intervals
 	confidenceLevel := 0.95
-	tDist := distuv.StudentsT{Mu: 0, Sigma: 1, Nu: float64(df)}
-	criticalValue := tDist.Quantile(1 - (1-confidenceLevel)/2)
+	var ciIntercept, ciSlope [2]float64
 
-	marginOfErrorIntercept := criticalValue * seA
-	marginOfErrorSlope := criticalValue * seB
+	if df > 0 {
+		tDist := distuv.StudentsT{Mu: 0, Sigma: 1, Nu: float64(df)}
+		criticalValue := tDist.Quantile(1 - (1-confidenceLevel)/2)
 
-	ciIntercept := [2]float64{a - marginOfErrorIntercept, a + marginOfErrorIntercept}
-	ciSlope := [2]float64{b - marginOfErrorSlope, b + marginOfErrorSlope}
+		marginOfErrorIntercept := criticalValue * seA
+		marginOfErrorSlope := criticalValue * seB
+
+		ciIntercept = [2]float64{a - marginOfErrorIntercept, a + marginOfErrorIntercept}
+		ciSlope = [2]float64{b - marginOfErrorSlope, b + marginOfErrorSlope}
+	} else {
+		ciIntercept = [2]float64{math.NaN(), math.NaN()}
+		ciSlope = [2]float64{math.NaN(), math.NaN()}
+	}
 
 	return &LogarithmicRegressionResult{
 		Intercept:                   a, // intercept in y = a + b·ln(x)
@@ -496,6 +542,10 @@ func PolynomialRegression(dlY, dlX insyra.IDataList, degree int) *PolynomialRegr
 	}
 	if degree < 1 || degree >= dlX.Len() {
 		insyra.LogWarning("stats", "PolynomialRegression", "invalid degree")
+		return nil
+	}
+	if dlX.Len() <= degree+1 {
+		insyra.LogWarning("stats", "PolynomialRegression", "need at least degree+2 observations for polynomial regression")
 		return nil
 	}
 
@@ -563,36 +613,56 @@ func PolynomialRegression(dlY, dlX insyra.IDataList, degree int) *PolynomialRegr
 		insyra.LogWarning("stats", "PolynomialRegression", "variance of y is zero; R² undefined")
 		return nil
 	}
-
 	r2 := 1.0 - sse/sst
 	df := float64(n - degree - 1)
-	adjR2 := 1.0 - (1.0-r2)*(float64(n-1))/df
+	var adjR2 float64
+	if df > 0 {
+		adjR2 = 1.0 - (1.0-r2)*(float64(n-1))/df
+	} else {
+		adjR2 = math.NaN()
+	}
 
 	// Calculate standard errors using diagonal of (X^T * X)^(-1)
 	XTXInv := invertMatrix(XTX)
-	mse := sse / df
+	var mse float64
+	if df > 0 {
+		mse = sse / df
+	} else {
+		mse = math.NaN()
+	}
+
 	standardErrors := make([]float64, degree+1)
 	tValues := make([]float64, degree+1)
 	pValues := make([]float64, degree+1)
 	for i := 0; i <= degree; i++ {
-		if XTXInv != nil && XTXInv[i][i] >= 0 {
+		if XTXInv != nil && XTXInv[i][i] >= 0 && !math.IsNaN(mse) {
 			standardErrors[i] = math.Sqrt(mse * XTXInv[i][i])
 			if standardErrors[i] > 0 {
 				tValues[i] = coeffs[i] / standardErrors[i]
-				pValues[i] = 2.0 * studentTCDF(-math.Abs(tValues[i]), int(df))
+				if df > 0 {
+					pValues[i] = 2.0 * studentTCDF(-math.Abs(tValues[i]), int(df))
+				} else {
+					pValues[i] = math.NaN()
+				}
 			}
 		}
 	}
-
 	// Calculate confidence intervals
 	confidenceLevel := 0.95
-	tDist := distuv.StudentsT{Mu: 0, Sigma: 1, Nu: float64(df)}
-	criticalValue := tDist.Quantile(1 - (1-confidenceLevel)/2)
 	confIntervals := make([][2]float64, degree+1)
 
-	for i := 0; i <= degree; i++ {
-		marginOfError := criticalValue * standardErrors[i]
-		confIntervals[i] = [2]float64{coeffs[i] - marginOfError, coeffs[i] + marginOfError}
+	if df > 0 {
+		tDist := distuv.StudentsT{Mu: 0, Sigma: 1, Nu: float64(df)}
+		criticalValue := tDist.Quantile(1 - (1-confidenceLevel)/2)
+
+		for i := 0; i <= degree; i++ {
+			marginOfError := criticalValue * standardErrors[i]
+			confIntervals[i] = [2]float64{coeffs[i] - marginOfError, coeffs[i] + marginOfError}
+		}
+	} else {
+		for i := 0; i <= degree; i++ {
+			confIntervals[i] = [2]float64{math.NaN(), math.NaN()}
+		}
 	}
 
 	return &PolynomialRegressionResult{
