@@ -4,14 +4,14 @@ import (
 	"math"
 
 	"github.com/HazelnutParadise/insyra"
+	"gonum.org/v1/gonum/stat/distuv"
 )
 
 // LinearRegressionResult holds the result of both simple and multiple linear regression.
 // For simple regression: Coefficients[0] = intercept, Coefficients[1] = slope
 // For multiple regression: Coefficients[0] = intercept, Coefficients[1:] = slopes
 // Comments are kept in English per project convention.
-type LinearRegressionResult struct {
-	// Legacy fields for simple regression compatibility
+type LinearRegressionResult struct { // Legacy fields for simple regression compatibility
 	Slope                  float64 // regression coefficient β₁ (for simple regression)
 	Intercept              float64 // regression coefficient β₀ (for simple regression)
 	StandardError          float64 // SE(β₁) - slope standard error (for simple regression)
@@ -21,11 +21,17 @@ type LinearRegressionResult struct {
 	PValue                 float64 // two-tailed p-value for β₁ (for simple regression)
 	PValueIntercept        float64 // two-tailed p-value for β₀ (for simple regression)
 
+	// Legacy confidence intervals for simple regression compatibility
+	ConfidenceIntervalIntercept [2]float64 // 95% confidence interval for intercept [lower, upper]
+	ConfidenceIntervalSlope     [2]float64 // 95% confidence interval for slope [lower, upper]
+
 	// Extended fields for multiple regression
 	Coefficients   []float64 // [β₀, β₁, ..., βₚ] (intercept + slopes)
 	StandardErrors []float64 // standard errors for each coefficient
 	TValues        []float64 // t statistics for each coefficient
 	PValues        []float64 // two-tailed p-values for each coefficient
+	// Confidence intervals for coefficients (95% by default)
+	ConfidenceIntervals [][2]float64 // confidence intervals for each coefficient [lower, upper]
 
 	// Common fields
 	Residuals        []float64 // yᵢ − ŷᵢ
@@ -43,6 +49,8 @@ type PolynomialRegressionResult struct {
 	StandardErrors   []float64 // standard errors for each coefficient
 	TValues          []float64 // t statistics for each coefficient
 	PValues          []float64 // p-values for each coefficient
+	// Confidence intervals for coefficients (95% by default)
+	ConfidenceIntervals [][2]float64 // confidence intervals for each coefficient [lower, upper]
 }
 
 // ExponentialRegressionResult holds the result of exponential regression y = a·e^(b·x).
@@ -58,6 +66,10 @@ type ExponentialRegressionResult struct {
 	TValueSlope            float64   // t statistic for coefficient b
 	PValueIntercept        float64   // p-value for coefficient a
 	PValueSlope            float64   // p-value for coefficient b
+
+	// Confidence intervals for coefficients (95% by default)
+	ConfidenceIntervalIntercept [2]float64 // confidence interval for intercept [lower, upper]
+	ConfidenceIntervalSlope     [2]float64 // confidence interval for slope [lower, upper]
 }
 
 // LogarithmicRegressionResult holds the result of logarithmic regression y = a + b·ln(x).
@@ -73,6 +85,9 @@ type LogarithmicRegressionResult struct {
 	TValueSlope            float64   // t statistic for coefficient b
 	PValueIntercept        float64   // p-value for coefficient a
 	PValueSlope            float64   // p-value for coefficient b
+	// Confidence intervals for coefficients (95% by default)
+	ConfidenceIntervalIntercept [2]float64 // confidence interval for intercept [lower, upper]
+	ConfidenceIntervalSlope     [2]float64 // confidence interval for slope [lower, upper]
 }
 
 // LinearRegression performs ordinary least-squares linear regression.
@@ -197,7 +212,6 @@ func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) *LinearReg
 		TValues:          tValues,
 		PValues:          pValues,
 	}
-
 	// Fill legacy fields for simple regression compatibility
 	if p == 1 {
 		result.Intercept = coeffs[0]
@@ -208,6 +222,23 @@ func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) *LinearReg
 		result.TValue = tValues[1]
 		result.PValueIntercept = pValues[0]
 		result.PValue = pValues[1]
+	}
+	// --- calculate confidence intervals ------------------------------------
+	confidenceLevel := 0.95
+	tDist := distuv.StudentsT{Mu: 0, Sigma: 1, Nu: float64(df)}
+	criticalValue := tDist.Quantile(1 - (1-confidenceLevel)/2)
+	confIntervals := make([][2]float64, p+1)
+	for i := 0; i <= p; i++ {
+		marginOfError := criticalValue * standardErrors[i]
+		confIntervals[i] = [2]float64{coeffs[i] - marginOfError, coeffs[i] + marginOfError}
+	}
+
+	result.ConfidenceIntervals = confIntervals
+
+	// Fill legacy confidence intervals for simple regression compatibility
+	if p == 1 {
+		result.ConfidenceIntervalIntercept = confIntervals[0]
+		result.ConfidenceIntervalSlope = confIntervals[1]
 	}
 
 	return result
@@ -310,24 +341,36 @@ func ExponentialRegression(dlY, dlX insyra.IDataList) *ExponentialRegressionResu
 
 	// 使用 delta method 計算 a 的標準誤差
 	seA := a * seLnA
-
 	tValB := b / seB
 	tValA := a / seA // 修正：使用 a/seA 而不是 lnA/seLnA
 	pValB := 2.0 * studentTCDF(-math.Abs(tValB), int(df))
 	pValA := 2.0 * studentTCDF(-math.Abs(tValA), int(df))
 
+	// Calculate confidence intervals
+	confidenceLevel := 0.95
+	tDist := distuv.StudentsT{Mu: 0, Sigma: 1, Nu: float64(df)}
+	criticalValue := tDist.Quantile(1 - (1-confidenceLevel)/2)
+
+	marginOfErrorIntercept := criticalValue * seA
+	marginOfErrorSlope := criticalValue * seB
+
+	ciIntercept := [2]float64{a - marginOfErrorIntercept, a + marginOfErrorIntercept}
+	ciSlope := [2]float64{b - marginOfErrorSlope, b + marginOfErrorSlope}
+
 	return &ExponentialRegressionResult{
-		Intercept:              a,
-		Slope:                  b,
-		Residuals:              residuals,
-		RSquared:               rSquared,
-		AdjustedRSquared:       adjRSquared,
-		StandardErrorIntercept: seA,
-		StandardErrorSlope:     seB,
-		TValueIntercept:        tValA,
-		TValueSlope:            tValB,
-		PValueIntercept:        pValA,
-		PValueSlope:            pValB,
+		Intercept:                   a,
+		Slope:                       b,
+		Residuals:                   residuals,
+		RSquared:                    rSquared,
+		AdjustedRSquared:            adjRSquared,
+		StandardErrorIntercept:      seA,
+		StandardErrorSlope:          seB,
+		TValueIntercept:             tValA,
+		TValueSlope:                 tValB,
+		PValueIntercept:             pValA,
+		PValueSlope:                 pValB,
+		ConfidenceIntervalIntercept: ciIntercept,
+		ConfidenceIntervalSlope:     ciSlope,
 	}
 }
 
@@ -409,24 +452,36 @@ func LogarithmicRegression(dlY, dlX insyra.IDataList) *LogarithmicRegressionResu
 
 	seB := math.Sqrt(mse / sxxLX)
 	seA := math.Sqrt(mse * (1.0/n + meanLX*meanLX/sxxLX))
-
 	tValB := b / seB
 	tValA := a / seA
 	pValB := 2.0 * studentTCDF(-math.Abs(tValB), int(df))
 	pValA := 2.0 * studentTCDF(-math.Abs(tValA), int(df))
 
+	// Calculate confidence intervals
+	confidenceLevel := 0.95
+	tDist := distuv.StudentsT{Mu: 0, Sigma: 1, Nu: float64(df)}
+	criticalValue := tDist.Quantile(1 - (1-confidenceLevel)/2)
+
+	marginOfErrorIntercept := criticalValue * seA
+	marginOfErrorSlope := criticalValue * seB
+
+	ciIntercept := [2]float64{a - marginOfErrorIntercept, a + marginOfErrorIntercept}
+	ciSlope := [2]float64{b - marginOfErrorSlope, b + marginOfErrorSlope}
+
 	return &LogarithmicRegressionResult{
-		Intercept:              a, // intercept in y = a + b·ln(x)
-		Slope:                  b, // slope coefficient in ln(x) in y = a + b·ln(x)
-		Residuals:              residuals,
-		RSquared:               r2,
-		AdjustedRSquared:       adjR2,
-		StandardErrorIntercept: seA,
-		StandardErrorSlope:     seB,
-		TValueIntercept:        tValA,
-		TValueSlope:            tValB,
-		PValueIntercept:        pValA,
-		PValueSlope:            pValB,
+		Intercept:                   a, // intercept in y = a + b·ln(x)
+		Slope:                       b, // slope coefficient in ln(x) in y = a + b·ln(x)
+		Residuals:                   residuals,
+		RSquared:                    r2,
+		AdjustedRSquared:            adjR2,
+		StandardErrorIntercept:      seA,
+		StandardErrorSlope:          seB,
+		TValueIntercept:             tValA,
+		TValueSlope:                 tValB,
+		PValueIntercept:             pValA,
+		PValueSlope:                 pValB,
+		ConfidenceIntervalIntercept: ciIntercept,
+		ConfidenceIntervalSlope:     ciSlope,
 	}
 }
 
@@ -519,7 +574,6 @@ func PolynomialRegression(dlY, dlX insyra.IDataList, degree int) *PolynomialRegr
 	standardErrors := make([]float64, degree+1)
 	tValues := make([]float64, degree+1)
 	pValues := make([]float64, degree+1)
-
 	for i := 0; i <= degree; i++ {
 		if XTXInv != nil && XTXInv[i][i] >= 0 {
 			standardErrors[i] = math.Sqrt(mse * XTXInv[i][i])
@@ -530,15 +584,27 @@ func PolynomialRegression(dlY, dlX insyra.IDataList, degree int) *PolynomialRegr
 		}
 	}
 
+	// Calculate confidence intervals
+	confidenceLevel := 0.95
+	tDist := distuv.StudentsT{Mu: 0, Sigma: 1, Nu: float64(df)}
+	criticalValue := tDist.Quantile(1 - (1-confidenceLevel)/2)
+	confIntervals := make([][2]float64, degree+1)
+
+	for i := 0; i <= degree; i++ {
+		marginOfError := criticalValue * standardErrors[i]
+		confIntervals[i] = [2]float64{coeffs[i] - marginOfError, coeffs[i] + marginOfError}
+	}
+
 	return &PolynomialRegressionResult{
-		Coefficients:     coeffs,
-		Degree:           degree,
-		Residuals:        residuals,
-		RSquared:         r2,
-		AdjustedRSquared: adjR2,
-		StandardErrors:   standardErrors,
-		TValues:          tValues,
-		PValues:          pValues,
+		Coefficients:        coeffs,
+		Degree:              degree,
+		Residuals:           residuals,
+		RSquared:            r2,
+		AdjustedRSquared:    adjR2,
+		StandardErrors:      standardErrors,
+		TValues:             tValues,
+		PValues:             pValues,
+		ConfidenceIntervals: confIntervals,
 	}
 }
 
@@ -657,104 +723,21 @@ func invertMatrix(A [][]float64) [][]float64 {
 	return inv
 }
 
-// ---------------------------------------------------------------------------
-// Auxiliary maths: CDF of two-tailed Student's t using the regularised beta.
-// ---------------------------------------------------------------------------
-
-// studentTCDF returns P(T ≤ t) for Student's t-distribution with `df` degrees
-// of freedom using the relation to the regularised incomplete beta function.
+// studentTCDF returns the cumulative distribution function of Student's t-distribution
 func studentTCDF(t float64, df int) float64 {
 	if df <= 0 {
 		return math.NaN()
 	}
-	x := float64(df) / (float64(df) + t*t)
 
-	ib := regIncBeta(float64(df)/2.0, 0.5, x)
-	if t <= 0 {
-		return 0.5 * ib
+	tDist := distuv.StudentsT{
+		Mu:    0,
+		Sigma: 1,
+		Nu:    float64(df),
 	}
-	return 1.0 - 0.5*ib
+
+	return tDist.CDF(t)
 }
 
-// regIncBeta computes the regularised incomplete beta Iₓ(a,b) via a continued
-// fraction expansion (modified Lentz algorithm).
-func regIncBeta(a, b, x float64) float64 {
-	if x < 0.0 || x > 1.0 {
-		return math.NaN()
-	}
-	if x == 0.0 || x == 1.0 {
-		return x
-	}
-
-	lgab, _ := math.Lgamma(a + b)
-	lga, _ := math.Lgamma(a)
-	lgb, _ := math.Lgamma(b)
-
-	// Prefactor for I_z(alpha, beta) is Exp(Lgamma(alpha+beta)-Lgamma(alpha)-Lgamma(beta)+alpha*Log(z)+beta*Log(1-z)) / alpha
-	// Common term for B(a,b)^-1 or B(b,a)^-1
-	betaCoeff := math.Exp(lgab - lga - lgb)
-
-	var cf float64
-	if x < (a+1.0)/(a+b+2.0) {
-		// Calculate I_x(a,b) directly
-		prefactor := betaCoeff * math.Pow(x, a) * math.Pow(1.0-x, b) / a
-		cf = betaCF(a, b, x)
-		return prefactor * cf
-	}
-	// Calculate I_x(a,b) as 1 - I_{1-x}(b,a)
-	// Need prefactor for I_{1-x}(b,a)
-	// Here, alpha=b, beta=a, z=1-x
-	prefactorForSwappedTerm := betaCoeff * math.Pow(1.0-x, b) * math.Pow(x, a) / b
-	cf = betaCF(b, a, 1.0-x) // Continued fraction for I_{1-x}(b,a)
-	return 1.0 - prefactorForSwappedTerm*cf
-}
-
-// betaCF evaluates the continued-fraction form for the incomplete beta.
-func betaCF(a, b, x float64) float64 {
-	const (
-		maxIter = 300
-		eps     = 1e-14
-		tiny    = 1e-30
-	)
-
-	c, d := 1.0, 1.0-((a+b)*x)/(a+1.0)
-	if math.Abs(d) < tiny {
-		d = tiny
-	}
-	d = 1.0 / d
-	h := d
-
-	for m := 1; m <= maxIter; m++ {
-		m2 := 2 * m
-
-		aa := float64(m) * (b - float64(m)) * x / ((a + float64(m2) - 1) * (a + float64(m2)))
-		d = 1.0 + aa*d
-		if math.Abs(d) < tiny {
-			d = tiny
-		}
-		c = 1.0 + aa/c
-		if math.Abs(c) < tiny {
-			c = tiny
-		}
-		d = 1.0 / d
-		h *= d * c
-
-		aa = -(a + float64(m)) * (a + b + float64(m)) * x / ((a + float64(m2)) * (a + float64(m2) + 1))
-		d = 1.0 + aa*d
-		if math.Abs(d) < tiny {
-			d = tiny
-		}
-		c = 1.0 + aa/c
-		if math.Abs(c) < tiny {
-			c = tiny
-		}
-		d = 1.0 / d
-		delta := d * c
-		h *= delta
-
-		if math.Abs(delta-1.0) < eps {
-			break
-		}
-	}
-	return h
-}
+// ---------------------------------------------------------------------------
+// Auxiliary maths: CDF of two-tailed Student's t using the regularised beta.
+// ---------------------------------------------------------------------------
