@@ -40,9 +40,11 @@ func (_ DataList) From(values ...any) *DataList {
 
 // Data returns the data stored in the DataList.
 func (dl *DataList) Data() []any {
+	dl.mu.Lock()
 	defer func() {
-		go reorganizeMemory(dl)
+		dl.mu.Unlock()
 	}()
+
 	return dl.data
 }
 
@@ -62,7 +64,7 @@ func flattenWithNilSupport(values []any) []any {
 			// Recursively flatten slice elements
 			sliceLen := rv.Len()
 			subSlice := make([]any, sliceLen)
-			for i := 0; i < sliceLen; i++ {
+			for i := range sliceLen {
 				subSlice[i] = rv.Index(i).Interface()
 			}
 			result = append(result, flattenWithNilSupport(subSlice)...)
@@ -103,10 +105,11 @@ func (dl *DataList) Append(values ...any) {
 		go reorganizeMemory(dl)
 	}()
 	dl.mu.Lock()
-
-	// Append data and update timestamp
-	dl.data = append(dl.data, values...)
-	go dl.updateTimestamp()
+	dl.AtomicDo(func(dl *DataList) {
+		// Append data and update timestamp
+		dl.data = append(dl.data, values...)
+		go dl.updateTimestamp()
+	})
 }
 
 // Get retrieves the value at the specified index in the DataList.
