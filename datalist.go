@@ -109,11 +109,11 @@ func (dl *DataList) Append(values ...any) {
 		go reorganizeMemory(dl)
 	}()
 	dl.mu.Lock()
-	dl.AtomicDo(func(dl *DataList) {
-		// Append data and update timestamp
-		dl.data = append(dl.data, values...)
-		go dl.updateTimestamp()
-	})
+	// dl.AtomicDo(func(dl *DataList) {
+	// Append data and update timestamp
+	dl.data = append(dl.data, values...)
+	go dl.updateTimestamp()
+	// })
 }
 
 // Get retrieves the value at the specified index in the DataList.
