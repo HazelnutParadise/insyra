@@ -23,7 +23,8 @@ func (s *DataList) AtomicDo(f func(*DataList)) {
 	s.initOnce.Do(func() {
 		s.cmdCh = make(chan func())
 		go s.actorLoop()
-		// finalizer 已經在 NewDataList 中設置，不需要重複設置
+		// 設置finalizer來清理資源
+		runtime.SetFinalizer(s, (*DataList).cleanup)
 	})
 
 	if inActorLoop() {
@@ -74,4 +75,23 @@ func (s *DataList) actorLoop() {
 	for fn := range s.cmdCh {
 		fn()
 	}
+}
+
+// Close 關閉DataList，清理資源
+func (s *DataList) Close() {
+	if s.closed.Load() {
+		return
+	}
+	s.closed.Store(true)
+
+	// 關閉channel，這會導致actorLoop goroutine退出
+	if s.cmdCh != nil {
+		close(s.cmdCh)
+		s.cmdCh = nil
+	}
+}
+
+// cleanup 是finalizer函數，用於垃圾回收時清理資源
+func (s *DataList) cleanup() {
+	s.Close()
 }

@@ -37,273 +37,273 @@ func (dt *DataTable) Show() {
 // Example: dt.ShowRange(2, 10) - shows rows with indices 2 to 9 (not including 10)
 // Example: dt.ShowRange(2, nil) - shows rows from index 2 to the end of the table
 func (dt *DataTable) ShowRange(startEnd ...interface{}) {
-	dt.mu.Lock()
-	defer dt.mu.Unlock()
+	dt.AtomicDo(func(dt *DataTable) {
 
-	// Build data map without using Data() method to avoid deadlock
-	dataMap := make(map[string][]any)
-	for i, col := range dt.columns {
-		key := generateColIndex(i)
-		if col.name != "" {
-			key += fmt.Sprintf("(%s)", col.name)
-		}
-		dataMap[key] = col.data
-	}
-
-	// Get all column indices and sort them
-	var colIndices []string
-	for colIndex := range dataMap {
-		colIndices = append(colIndices, colIndex)
-	}
-
-	sort.Slice(colIndices, func(i, j int) bool {
-		s1 := colIndices[i]
-		s2 := colIndices[j]
-
-		prefix1 := s1
-		if idx := strings.Index(s1, "("); idx != -1 {
-			prefix1 = s1[:idx]
+		// Build data map without using Data() method to avoid deadlock
+		dataMap := make(map[string][]any)
+		for i, col := range dt.columns {
+			key := generateColIndex(i)
+			if col.name != "" {
+				key += fmt.Sprintf("(%s)", col.name)
+			}
+			dataMap[key] = col.data
 		}
 
-		prefix2 := s2
-		if idx := strings.Index(s2, "("); idx != -1 {
-			prefix2 = s2[:idx]
+		// Get all column indices and sort them
+		var colIndices []string
+		for colIndex := range dataMap {
+			colIndices = append(colIndices, colIndex)
 		}
-		return ParseColIndex(prefix1) < ParseColIndex(prefix2)
-	})
 
-	// Get terminal window width
-	width := getTerminalWidth()
-	// Generate table title
-	tableTitle := "DataTable"
-	if dt.name != "" {
-		tableTitle += ": " + dt.name
-	}
-	// Get row and column counts inside the same lock to avoid deadlock with Size()
-	rowCount := dt.getMaxColLength()
-	colCount := len(dt.columns)
-	// Adjust start and end indices based on input parameters
-	start, end := 0, rowCount
-	if len(startEnd) > 0 {
-		if len(startEnd) == 1 {
-			if countVal, ok := startEnd[0].(int); ok {
-				if countVal < 0 {
-					start = max(0, rowCount+countVal)
+		sort.Slice(colIndices, func(i, j int) bool {
+			s1 := colIndices[i]
+			s2 := colIndices[j]
+
+			prefix1 := s1
+			if idx := strings.Index(s1, "("); idx != -1 {
+				prefix1 = s1[:idx]
+			}
+
+			prefix2 := s2
+			if idx := strings.Index(s2, "("); idx != -1 {
+				prefix2 = s2[:idx]
+			}
+			return ParseColIndex(prefix1) < ParseColIndex(prefix2)
+		})
+
+		// Get terminal window width
+		width := getTerminalWidth()
+		// Generate table title
+		tableTitle := "DataTable"
+		if dt.name != "" {
+			tableTitle += ": " + dt.name
+		}
+		// Get row and column counts inside the same lock to avoid deadlock with Size()
+		rowCount := dt.getMaxColLength()
+		colCount := len(dt.columns)
+		// Adjust start and end indices based on input parameters
+		start, end := 0, rowCount
+		if len(startEnd) > 0 {
+			if len(startEnd) == 1 {
+				if countVal, ok := startEnd[0].(int); ok {
+					if countVal < 0 {
+						start = max(0, rowCount+countVal)
+						end = rowCount
+					} else {
+						start = 0
+						end = min(countVal, rowCount)
+					}
+				}
+			} else if len(startEnd) >= 2 {
+				if startVal, ok := startEnd[0].(int); ok {
+					start = startVal
+					if start < 0 {
+						start = rowCount + start
+					}
+				}
+
+				if startEnd[1] == nil {
 					end = rowCount
-				} else {
-					start = 0
-					end = min(countVal, rowCount)
-				}
-			}
-		} else if len(startEnd) >= 2 {
-			if startVal, ok := startEnd[0].(int); ok {
-				start = startVal
-				if start < 0 {
-					start = rowCount + start
+				} else if endVal, ok := startEnd[1].(int); ok {
+					end = endVal
+					if end < 0 {
+						end = rowCount + end
+					}
 				}
 			}
 
-			if startEnd[1] == nil {
+			if end > rowCount {
 				end = rowCount
-			} else if endVal, ok := startEnd[1].(int); ok {
-				end = endVal
-				if end < 0 {
-					end = rowCount + end
-				}
+			}
+
+			if start < 0 {
+				start = 0
+			}
+
+			if start >= end {
+				// Nothing to display if start is greater than or equal to end
+				fmt.Println("\033[2;37m(empty range)\033[0m")
+				return
 			}
 		}
 
-		if end > rowCount {
-			end = rowCount
+		// Display range information in the summary if it's a subset
+		rangeInfo := ""
+		if start > 0 || end < rowCount {
+			rangeInfo = fmt.Sprintf(" [showing rows %d to %d]", start, end-1)
 		}
 
-		if start < 0 {
-			start = 0
-		}
+		tableSummary := fmt.Sprintf("(%d rows x %d columns)%s", rowCount, colCount, rangeInfo)
+		// Display table basic info - using DataTable primary color
+		fmt.Printf("\033[1;36m%s\033[0m \033[3;36m%s\033[0m\n", tableTitle, tableSummary)
+		fmt.Println(strings.Repeat("=", min(width, 80)))
 
-		if start >= end {
-			// Nothing to display if start is greater than or equal to end
-			fmt.Println("\033[2;37m(empty range)\033[0m")
+		// Handle empty table
+		if rowCount == 0 || colCount == 0 {
+			fmt.Println("\033[2;37m(empty)\033[0m")
 			return
 		}
-	}
+		// Compute table layout (column widths, row names, and max row name width)
+		colWidths, rowNames, maxRowNameWidth := prepareTableLayout(dt, dataMap, colIndices)
 
-	// Display range information in the summary if it's a subset
-	rangeInfo := ""
-	if start > 0 || end < rowCount {
-		rangeInfo = fmt.Sprintf(" [showing rows %d to %d]", start, end-1)
-	}
-
-	tableSummary := fmt.Sprintf("(%d rows x %d columns)%s", rowCount, colCount, rangeInfo)
-	// Display table basic info - using DataTable primary color
-	fmt.Printf("\033[1;36m%s\033[0m \033[3;36m%s\033[0m\n", tableTitle, tableSummary)
-	fmt.Println(strings.Repeat("=", min(width, 80)))
-
-	// Handle empty table
-	if rowCount == 0 || colCount == 0 {
-		fmt.Println("\033[2;37m(empty)\033[0m")
-		return
-	}
-	// Compute table layout (column widths, row names, and max row name width)
-	colWidths, rowNames, maxRowNameWidth := prepareTableLayout(dt, dataMap, colIndices)
-
-	// Try to display some basic statistics for the visible range
-	if end-start > 0 && colCount > 0 {
-		// Display basic statistics for each column
-		hasNumbers := false
-		statsInfo := "\033[3;36m stat"
-		if start > 0 || end < rowCount {
-			statsInfo += " (selected range)"
-		}
-		statsInfo += ": "
-
-		for _, colIndex := range colIndices[:min(3, len(colIndices))] {
-			// Create a subset of data for the visible range
-			rangeData := make([]any, 0, end-start)
-			for i := start; i < end && i < len(dataMap[colIndex]); i++ {
-				rangeData = append(rangeData, dataMap[colIndex][i])
+		// Try to display some basic statistics for the visible range
+		if end-start > 0 && colCount > 0 {
+			// Display basic statistics for each column
+			hasNumbers := false
+			statsInfo := "\033[3;36m stat"
+			if start > 0 || end < rowCount {
+				statsInfo += " (selected range)"
 			}
+			statsInfo += ": "
 
-			// Check if the column contains numeric data before attempting statistics
-			hasNumericData := false
-			for _, val := range rangeData {
-				if val != nil {
-					switch v := val.(type) {
-					case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
-						hasNumericData = true
-					case string:
-						// Check if string can be parsed as number using strconv directly
-						if _, err := strconv.ParseFloat(v, 64); err == nil {
-							hasNumericData = true
-							break
-						}
-					}
-					if hasNumericData {
-						break
-					}
+			for _, colIndex := range colIndices[:min(3, len(colIndices))] {
+				// Create a subset of data for the visible range
+				rangeData := make([]any, 0, end-start)
+				for i := start; i < end && i < len(dataMap[colIndex]); i++ {
+					rangeData = append(rangeData, dataMap[colIndex][i])
 				}
-			}
 
-			// Only attempt statistical calculations if numeric data is found
-			if hasNumericData {
-				// Create a temporary DataList with only numeric values for statistics
-				numericValues := make([]any, 0)
+				// Check if the column contains numeric data before attempting statistics
+				hasNumericData := false
 				for _, val := range rangeData {
 					if val != nil {
 						switch v := val.(type) {
 						case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
-							numericValues = append(numericValues, v)
+							hasNumericData = true
 						case string:
-							if floatVal, err := strconv.ParseFloat(v, 64); err == nil {
-								numericValues = append(numericValues, floatVal)
+							// Check if string can be parsed as number using strconv directly
+							if _, err := strconv.ParseFloat(v, 64); err == nil {
+								hasNumericData = true
+								break
 							}
+						}
+						if hasNumericData {
+							break
 						}
 					}
 				}
 
-				if len(numericValues) > 0 {
-					dl := NewDataList(numericValues...)
-					mean, colMin, colMax := dl.Mean(), dl.Min(), dl.Max()
-					if !math.IsNaN(mean) && !math.IsNaN(colMin) && !math.IsNaN(colMax) {
-						hasNumbers = true
-						shortColName := strings.Split(colIndex, "(")[0] // Only use short column name
-						statsInfo += fmt.Sprintf("%s(mean=%.2f, range=[%.2f, %.2f]) ",
-							shortColName, mean, colMin, colMax)
+				// Only attempt statistical calculations if numeric data is found
+				if hasNumericData {
+					// Create a temporary DataList with only numeric values for statistics
+					numericValues := make([]any, 0)
+					for _, val := range rangeData {
+						if val != nil {
+							switch v := val.(type) {
+							case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+								numericValues = append(numericValues, v)
+							case string:
+								if floatVal, err := strconv.ParseFloat(v, 64); err == nil {
+									numericValues = append(numericValues, floatVal)
+								}
+							}
+						}
+					}
+
+					if len(numericValues) > 0 {
+						dl := NewDataList(numericValues...)
+						mean, colMin, colMax := dl.Mean(), dl.Min(), dl.Max()
+						if !math.IsNaN(mean) && !math.IsNaN(colMin) && !math.IsNaN(colMax) {
+							hasNumbers = true
+							shortColName := strings.Split(colIndex, "(")[0] // Only use short column name
+							statsInfo += fmt.Sprintf("%s(mean=%.2f, range=[%.2f, %.2f]) ",
+								shortColName, mean, colMin, colMax)
+						}
 					}
 				}
 			}
-		}
 
-		if hasNumbers {
-			// If there are numeric columns, display statistics
-			statsInfo += "\033[0m"
-			fmt.Println(statsInfo)
-			fmt.Println(strings.Repeat("-", min(width, 80)))
-		}
-	}
-
-	// Dynamically adjust the number of columns to display based on current window width
-	totalColsToShow := determineColumnsToShow(colIndices, colWidths, maxRowNameWidth, width)
-
-	// If columns exceed display range, paginate display
-	pageSize := totalColsToShow
-	if pageSize <= 0 {
-		pageSize = 1 // Display at least one column
-	}
-
-	// Calculate how many pages are needed
-	totalPages := (len(colIndices) + pageSize - 1) / pageSize
-
-	for page := 0; page < totalPages; page++ {
-		pageStart := page * pageSize
-		pageEnd := (page + 1) * pageSize
-		if pageEnd > len(colIndices) {
-			pageEnd = len(colIndices)
-		}
-
-		currentPageCols := colIndices[pageStart:pageEnd]
-
-		if page > 0 {
-			fmt.Println("\n\033[1;35m--- Continue Display ---\033[0m")
-		}
-		if totalPages > 1 {
-			pageInfo := fmt.Sprintf("--- Page %d/%d ---", page+1, totalPages)
-			fmt.Printf("\033[1;36m%s\033[0m\n", pageInfo)
-
-			// Display page navigation prompt
-			if page > 0 && page < totalPages-1 {
-				fmt.Println("(Scroll screen to see more)")
+			if hasNumbers {
+				// If there are numeric columns, display statistics
+				statsInfo += "\033[0m"
+				fmt.Println(statsInfo)
+				fmt.Println(strings.Repeat("-", min(width, 80)))
 			}
-		} // Print column names - using header text color
-		// Print header with proper alignment using runewidth
-		fmt.Print("\033[1;32m" + runewidth.FillRight("RowNames", maxRowNameWidth+2) + "\033[0m")
-		for _, colIndex := range currentPageCols {
-			label := TruncateString(colIndex, colWidths[colIndex])
-			fmt.Print(" \033[1;32m" + runewidth.FillRight(label, colWidths[colIndex]+1) + "\033[0m")
 		}
-		fmt.Println()
 
-		// Print separator aligned to header widths
-		fmt.Print(strings.Repeat("-", maxRowNameWidth+2))
-		for _, colIndex := range currentPageCols {
-			fmt.Print(" " + strings.Repeat("-", colWidths[colIndex]+1))
+		// Dynamically adjust the number of columns to display based on current window width
+		totalColsToShow := determineColumnsToShow(colIndices, colWidths, maxRowNameWidth, width)
+
+		// If columns exceed display range, paginate display
+		pageSize := totalColsToShow
+		if pageSize <= 0 {
+			pageSize = 1 // Display at least one column
 		}
-		fmt.Println()
-		// Print row data for the specified range
-		selectedRowCount := end - start
 
-		// Check if range was explicitly specified
-		explicitRangeSpecified := len(startEnd) > 0
-		// If there are too many rows in the selected range, only show first 20 and last 5
-		// UNLESS a range was explicitly specified by the user
-		if selectedRowCount > 25 && !explicitRangeSpecified {
-			// Show first 20 rows
-			printRowsColored(dataMap, start, start+20, rowNames, maxRowNameWidth, currentPageCols, colWidths)
+		// Calculate how many pages are needed
+		totalPages := (len(colIndices) + pageSize - 1) / pageSize
 
-			// Show ellipsis line aligned to columns
-			fmt.Print("\033[1;36m" + runewidth.FillRight("...", maxRowNameWidth+2))
-			for _, idx := range currentPageCols {
-				fmt.Print(" " + runewidth.FillRight("...", colWidths[idx]+1))
+		for page := 0; page < totalPages; page++ {
+			pageStart := page * pageSize
+			pageEnd := (page + 1) * pageSize
+			if pageEnd > len(colIndices) {
+				pageEnd = len(colIndices)
 			}
-			fmt.Println("\033[0m")
 
-			// Show last 5 rows
-			printRowsColored(dataMap, end-5, end, rowNames, maxRowNameWidth, currentPageCols, colWidths)
+			currentPageCols := colIndices[pageStart:pageEnd]
 
-			// Show data summary - using secondary color
-			fmt.Printf("\n\033[3;36mDisplaying %d rows (from row %d to row %d)\033[0m\n",
-				selectedRowCount, start, end-1)
-		} else {
-			// Either not many rows or user explicitly requested the range,
-			// so show all rows in the range without truncation
-			printRowsColored(dataMap, start, end, rowNames, maxRowNameWidth, currentPageCols, colWidths)
+			if page > 0 {
+				fmt.Println("\n\033[1;35m--- Continue Display ---\033[0m")
+			}
+			if totalPages > 1 {
+				pageInfo := fmt.Sprintf("--- Page %d/%d ---", page+1, totalPages)
+				fmt.Printf("\033[1;36m%s\033[0m\n", pageInfo)
+
+				// Display page navigation prompt
+				if page > 0 && page < totalPages-1 {
+					fmt.Println("(Scroll screen to see more)")
+				}
+			} // Print column names - using header text color
+			// Print header with proper alignment using runewidth
+			fmt.Print("\033[1;32m" + runewidth.FillRight("RowNames", maxRowNameWidth+2) + "\033[0m")
+			for _, colIndex := range currentPageCols {
+				label := TruncateString(colIndex, colWidths[colIndex])
+				fmt.Print(" \033[1;32m" + runewidth.FillRight(label, colWidths[colIndex]+1) + "\033[0m")
+			}
+			fmt.Println()
+
+			// Print separator aligned to header widths
+			fmt.Print(strings.Repeat("-", maxRowNameWidth+2))
+			for _, colIndex := range currentPageCols {
+				fmt.Print(" " + strings.Repeat("-", colWidths[colIndex]+1))
+			}
+			fmt.Println()
+			// Print row data for the specified range
+			selectedRowCount := end - start
+
+			// Check if range was explicitly specified
+			explicitRangeSpecified := len(startEnd) > 0
+			// If there are too many rows in the selected range, only show first 20 and last 5
+			// UNLESS a range was explicitly specified by the user
+			if selectedRowCount > 25 && !explicitRangeSpecified {
+				// Show first 20 rows
+				printRowsColored(dataMap, start, start+20, rowNames, maxRowNameWidth, currentPageCols, colWidths)
+
+				// Show ellipsis line aligned to columns
+				fmt.Print("\033[1;36m" + runewidth.FillRight("...", maxRowNameWidth+2))
+				for _, idx := range currentPageCols {
+					fmt.Print(" " + runewidth.FillRight("...", colWidths[idx]+1))
+				}
+				fmt.Println("\033[0m")
+
+				// Show last 5 rows
+				printRowsColored(dataMap, end-5, end, rowNames, maxRowNameWidth, currentPageCols, colWidths)
+
+				// Show data summary - using secondary color
+				fmt.Printf("\n\033[3;36mDisplaying %d rows (from row %d to row %d)\033[0m\n",
+					selectedRowCount, start, end-1)
+			} else {
+				// Either not many rows or user explicitly requested the range,
+				// so show all rows in the range without truncation
+				printRowsColored(dataMap, start, end, rowNames, maxRowNameWidth, currentPageCols, colWidths)
+			}
+
+			// If multiple pages, show footer separator
+			if totalPages > 1 {
+				fmt.Println(strings.Repeat("-", min(width, 80)))
+			}
 		}
-
-		// If multiple pages, show footer separator
-		if totalPages > 1 {
-			fmt.Println(strings.Repeat("-", min(width, 80)))
-		}
-	}
+	})
 }
 
 // Print specified range of rows (with color)
@@ -410,187 +410,187 @@ func (dt *DataTable) ShowTypes() {
 // Example: dt.ShowTypesRange(2, 10) - shows rows with indices 2 to 9 (not including 10)
 // Example: dt.ShowTypesRange(2, nil) - shows rows from index 2 to the end of the table
 func (dt *DataTable) ShowTypesRange(startEnd ...interface{}) {
-	dt.mu.Lock()
-	defer dt.mu.Unlock()
+	dt.AtomicDo(func(dt *DataTable) {
 
-	// Build data map without using Data() method to avoid deadlock
-	dataMap := make(map[string][]any)
-	for i, col := range dt.columns {
-		key := generateColIndex(i)
-		if col.name != "" {
-			key += fmt.Sprintf("(%s)", col.name)
+		// Build data map without using Data() method to avoid deadlock
+		dataMap := make(map[string][]any)
+		for i, col := range dt.columns {
+			key := generateColIndex(i)
+			if col.name != "" {
+				key += fmt.Sprintf("(%s)", col.name)
+			}
+			dataMap[key] = col.data
 		}
-		dataMap[key] = col.data
-	}
 
-	// Get all column indices and sort them
-	var colIndices []string
-	for colIndex := range dataMap {
-		colIndices = append(colIndices, colIndex)
-	}
-	sort.Strings(colIndices)
+		// Get all column indices and sort them
+		var colIndices []string
+		for colIndex := range dataMap {
+			colIndices = append(colIndices, colIndex)
+		}
+		sort.Strings(colIndices)
 
-	// Get terminal window width
-	width := getTerminalWidth()
+		// Get terminal window width
+		width := getTerminalWidth()
 
-	// Generate table title
-	tableTitle := "DataTable Type Info"
-	if dt.name != "" {
-		tableTitle += ": " + dt.name
-	}
+		// Generate table title
+		tableTitle := "DataTable Type Info"
+		if dt.name != "" {
+			tableTitle += ": " + dt.name
+		}
 
-	// Get row and column counts inside the same lock to avoid deadlock with Size()
-	rowCount := dt.getMaxColLength()
-	colCount := len(dt.columns)
-	// Adjust start and end indices based on input parameters
-	start, end := 0, rowCount
-	if len(startEnd) > 0 {
-		if len(startEnd) == 1 {
-			if countVal, ok := startEnd[0].(int); ok {
-				if countVal < 0 {
-					start = max(0, rowCount+countVal)
+		// Get row and column counts inside the same lock to avoid deadlock with Size()
+		rowCount := dt.getMaxColLength()
+		colCount := len(dt.columns)
+		// Adjust start and end indices based on input parameters
+		start, end := 0, rowCount
+		if len(startEnd) > 0 {
+			if len(startEnd) == 1 {
+				if countVal, ok := startEnd[0].(int); ok {
+					if countVal < 0 {
+						start = max(0, rowCount+countVal)
+						end = rowCount
+					} else {
+						start = 0
+						end = min(countVal, rowCount)
+					}
+				}
+			} else if len(startEnd) >= 2 {
+				if startVal, ok := startEnd[0].(int); ok {
+					start = startVal
+					if start < 0 {
+						start = rowCount + start
+					}
+				}
+
+				if startEnd[1] == nil {
 					end = rowCount
-				} else {
-					start = 0
-					end = min(countVal, rowCount)
-				}
-			}
-		} else if len(startEnd) >= 2 {
-			if startVal, ok := startEnd[0].(int); ok {
-				start = startVal
-				if start < 0 {
-					start = rowCount + start
+				} else if endVal, ok := startEnd[1].(int); ok {
+					end = endVal
+					if end < 0 {
+						end = rowCount + end
+					}
 				}
 			}
 
-			if startEnd[1] == nil {
+			if end > rowCount {
 				end = rowCount
-			} else if endVal, ok := startEnd[1].(int); ok {
-				end = endVal
-				if end < 0 {
-					end = rowCount + end
-				}
+			}
+
+			if start < 0 {
+				start = 0
+			}
+			if start >= end {
+				// Nothing to display if start is greater than or equal to end
+				fmt.Println("\033[2;37m(empty range)\033[0m")
+				return
 			}
 		}
 
-		if end > rowCount {
-			end = rowCount
+		// Display range information in the summary if it's a subset
+		rangeInfo := ""
+		if start > 0 || end < rowCount {
+			rangeInfo = fmt.Sprintf(" [showing rows %d to %d]", start, end-1)
 		}
 
-		if start < 0 {
-			start = 0
-		}
-		if start >= end {
-			// Nothing to display if start is greater than or equal to end
-			fmt.Println("\033[2;37m(empty range)\033[0m")
+		tableSummary := fmt.Sprintf("(%d rows x %d columns)%s", rowCount, colCount, rangeInfo)
+		// Display table basic info
+		fmt.Printf("\033[1;36m%s\033[0m \033[3;36m%s\033[0m\n", tableTitle, tableSummary)
+		fmt.Println(strings.Repeat("=", min(width, 80)))
+
+		// Handle empty table
+		if rowCount == 0 || colCount == 0 {
+			fmt.Println("\033[3;36m(empty)\033[0m")
 			return
 		}
-	}
 
-	// Display range information in the summary if it's a subset
-	rangeInfo := ""
-	if start > 0 || end < rowCount {
-		rangeInfo = fmt.Sprintf(" [showing rows %d to %d]", start, end-1)
-	}
+		// Compute layout for type display (column widths, row names, and max row name width)
+		colWidths, rowNames, maxRowNameWidth := prepareTableLayoutTypes(dt, dataMap, colIndices)
 
-	tableSummary := fmt.Sprintf("(%d rows x %d columns)%s", rowCount, colCount, rangeInfo)
-	// Display table basic info
-	fmt.Printf("\033[1;36m%s\033[0m \033[3;36m%s\033[0m\n", tableTitle, tableSummary)
-	fmt.Println(strings.Repeat("=", min(width, 80)))
+		// Dynamically adjust the number of columns to display based on current window width
+		totalColsToShow := determineColumnsToShow(colIndices, colWidths, maxRowNameWidth, width)
 
-	// Handle empty table
-	if rowCount == 0 || colCount == 0 {
-		fmt.Println("\033[3;36m(empty)\033[0m")
-		return
-	}
-
-	// Compute layout for type display (column widths, row names, and max row name width)
-	colWidths, rowNames, maxRowNameWidth := prepareTableLayoutTypes(dt, dataMap, colIndices)
-
-	// Dynamically adjust the number of columns to display based on current window width
-	totalColsToShow := determineColumnsToShow(colIndices, colWidths, maxRowNameWidth, width)
-
-	// If columns exceed display range, paginate display
-	pageSize := totalColsToShow
-	if pageSize <= 0 {
-		pageSize = 1 // Display at least one column
-	}
-
-	// Calculate how many pages are needed
-	totalPages := (len(colIndices) + pageSize - 1) / pageSize
-
-	for page := 0; page < totalPages; page++ {
-		pageStart := page * pageSize
-		pageEnd := (page + 1) * pageSize
-		if pageEnd > len(colIndices) {
-			pageEnd = len(colIndices)
+		// If columns exceed display range, paginate display
+		pageSize := totalColsToShow
+		if pageSize <= 0 {
+			pageSize = 1 // Display at least one column
 		}
 
-		currentPageCols := colIndices[pageStart:pageEnd]
+		// Calculate how many pages are needed
+		totalPages := (len(colIndices) + pageSize - 1) / pageSize
 
-		if page > 0 {
-			fmt.Println("\n\033[1;35m--- Continue Type Display ---\033[0m")
-		}
-		if totalPages > 1 {
-			pageInfo := fmt.Sprintf("--- Type Page %d/%d ---", page+1, totalPages)
-			fmt.Printf("\033[1;36m%s\033[0m\n", pageInfo)
-
-			// Display page navigation prompt
-			if page > 0 && page < totalPages-1 {
-				fmt.Println("(Scroll screen to see more)")
+		for page := 0; page < totalPages; page++ {
+			pageStart := page * pageSize
+			pageEnd := (page + 1) * pageSize
+			if pageEnd > len(colIndices) {
+				pageEnd = len(colIndices)
 			}
-		}
 
-		// Print column names with runewidth alignment
-		fmt.Print("\033[1;32m" + runewidth.FillRight("RowNames", maxRowNameWidth+2) + "\033[0m")
-		for _, colIndex := range currentPageCols {
-			lbl := TruncateString(colIndex, colWidths[colIndex])
-			fmt.Print(" \033[1;32m" + runewidth.FillRight(lbl, colWidths[colIndex]+1) + "\033[0m")
-		}
-		fmt.Println()
+			currentPageCols := colIndices[pageStart:pageEnd]
 
-		// Print separator aligned to header widths
-		fmt.Print(strings.Repeat("-", maxRowNameWidth+2))
-		for _, colIndex := range currentPageCols {
-			fmt.Print(" " + strings.Repeat("-", colWidths[colIndex]+1))
-		}
-		fmt.Println()
-		// Print row data for the specified range
-		selectedRowCount := end - start
+			if page > 0 {
+				fmt.Println("\n\033[1;35m--- Continue Type Display ---\033[0m")
+			}
+			if totalPages > 1 {
+				pageInfo := fmt.Sprintf("--- Type Page %d/%d ---", page+1, totalPages)
+				fmt.Printf("\033[1;36m%s\033[0m\n", pageInfo)
 
-		// Check if range was explicitly specified
-		explicitRangeSpecified := len(startEnd) > 0
+				// Display page navigation prompt
+				if page > 0 && page < totalPages-1 {
+					fmt.Println("(Scroll screen to see more)")
+				}
+			}
 
-		// If there are too many rows in the selected range, only show first 20 and last 5
-		// UNLESS a range was explicitly specified by the user
-		if selectedRowCount > 25 && !explicitRangeSpecified {
-			// Show first 20 rows
-			printTypeRows(dataMap, start, start+20, rowNames, maxRowNameWidth, currentPageCols, colWidths)
-
-			// Show ellipsis line aligned to columns
-			fmt.Print("\033[1;36m" + runewidth.FillRight("...", maxRowNameWidth+2) + "\033[0m")
+			// Print column names with runewidth alignment
+			fmt.Print("\033[1;32m" + runewidth.FillRight("RowNames", maxRowNameWidth+2) + "\033[0m")
 			for _, colIndex := range currentPageCols {
-				fmt.Print(" \033[1;36m" + runewidth.FillRight("...", colWidths[colIndex]+1) + "\033[0m")
+				lbl := TruncateString(colIndex, colWidths[colIndex])
+				fmt.Print(" \033[1;32m" + runewidth.FillRight(lbl, colWidths[colIndex]+1) + "\033[0m")
 			}
 			fmt.Println()
 
-			// Show last 5 rows
-			printTypeRows(dataMap, end-5, end, rowNames, maxRowNameWidth, currentPageCols, colWidths)
+			// Print separator aligned to header widths
+			fmt.Print(strings.Repeat("-", maxRowNameWidth+2))
+			for _, colIndex := range currentPageCols {
+				fmt.Print(" " + strings.Repeat("-", colWidths[colIndex]+1))
+			}
+			fmt.Println()
+			// Print row data for the specified range
+			selectedRowCount := end - start
 
-			// Show data summary
-			fmt.Printf("\n\033[3;36mDisplaying %d rows (from row %d to row %d)\033[0m\n",
-				selectedRowCount, start, end-1)
-		} else {
-			// Either not many rows or user explicitly requested the range,
-			// so show all rows in the range without truncation
-			printTypeRows(dataMap, start, end, rowNames, maxRowNameWidth, currentPageCols, colWidths)
-		}
+			// Check if range was explicitly specified
+			explicitRangeSpecified := len(startEnd) > 0
 
-		// If multiple pages, show footer separator
-		if totalPages > 1 {
-			fmt.Println(strings.Repeat("-", min(width, 80)))
+			// If there are too many rows in the selected range, only show first 20 and last 5
+			// UNLESS a range was explicitly specified by the user
+			if selectedRowCount > 25 && !explicitRangeSpecified {
+				// Show first 20 rows
+				printTypeRows(dataMap, start, start+20, rowNames, maxRowNameWidth, currentPageCols, colWidths)
+
+				// Show ellipsis line aligned to columns
+				fmt.Print("\033[1;36m" + runewidth.FillRight("...", maxRowNameWidth+2) + "\033[0m")
+				for _, colIndex := range currentPageCols {
+					fmt.Print(" \033[1;36m" + runewidth.FillRight("...", colWidths[colIndex]+1) + "\033[0m")
+				}
+				fmt.Println()
+
+				// Show last 5 rows
+				printTypeRows(dataMap, end-5, end, rowNames, maxRowNameWidth, currentPageCols, colWidths)
+
+				// Show data summary
+				fmt.Printf("\n\033[3;36mDisplaying %d rows (from row %d to row %d)\033[0m\n",
+					selectedRowCount, start, end-1)
+			} else {
+				// Either not many rows or user explicitly requested the range,
+				// so show all rows in the range without truncation
+				printTypeRows(dataMap, start, end, rowNames, maxRowNameWidth, currentPageCols, colWidths)
+			}
+
+			// If multiple pages, show footer separator
+			if totalPages > 1 {
+				fmt.Println(strings.Repeat("-", min(width, 80)))
+			}
 		}
-	}
+	})
 }
 
 // Print specified range of rows (type information)

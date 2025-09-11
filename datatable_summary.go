@@ -10,14 +10,17 @@ import (
 // and aggregate information about data types and values across the whole table.
 // The output is formatted for easy reading with proper color coding.
 func (dt *DataTable) Summary() {
-	dt.mu.Lock()
+	var tableName string
+	var columns []*DataList
+	var rowCount int
 
-	// Access dt.name directly while holding the lock, not through GetName() method
-	tableName := dt.name
-	columns := dt.columns
-	rowCount := dt.getMaxColLength()
-
-	dt.mu.Unlock()
+	dt.AtomicDo(func(dt *DataTable) {
+		// Access dt.name directly while holding the lock, not through GetName() method
+		tableName = dt.name
+		columns = make([]*DataList, len(dt.columns))
+		copy(columns, dt.columns)
+		rowCount = dt.getMaxColLength()
+	})
 
 	// Get terminal width
 	width := getTerminalWidth()

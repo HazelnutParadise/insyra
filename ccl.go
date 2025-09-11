@@ -33,27 +33,30 @@ func evaluateCCLFormula(row []any, formula string) (any, error) {
 
 // applyCCLOnDataTable evaluates the formula on each row of a DataTable.
 func applyCCLOnDataTable(table *DataTable, formula string) ([]any, error) {
-	table.mu.Lock()
-	defer table.mu.Unlock()
-	numRow, numCol := table.getMaxColLength(), len(table.columns)
-	result := make([]any, numRow)
-	for i := 0; i < numRow; i++ {
-		// 建構第 i 行的資料
-		row := make([]any, numCol)
-		for j := range numCol {
-			if i < len(table.columns[j].data) {
-				row[j] = table.columns[j].data[i]
-			} else {
-				row[j] = nil
+	var result []any
+	var err error
+	table.AtomicDo(func(table *DataTable) {
+		numRow, numCol := table.getMaxColLength(), len(table.columns)
+		result = make([]any, numRow)
+		for i := 0; i < numRow; i++ {
+			// 建構第 i 行的資料
+			row := make([]any, numCol)
+			for j := range numCol {
+				if i < len(table.columns[j].data) {
+					row[j] = table.columns[j].data[i]
+				} else {
+					row[j] = nil
+				}
 			}
+			val, err2 := evaluateCCLFormula(row, formula)
+			if err2 != nil {
+				err = err2
+				return
+			}
+			result[i] = val
 		}
-		val, err := evaluateCCLFormula(row, formula)
-		if err != nil {
-			return nil, err
-		}
-		result[i] = val
-	}
-	return result, nil
+	})
+	return result, err
 }
 
 // InitCCLFunctions registers default functions for use with CCL.

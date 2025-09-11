@@ -4,18 +4,20 @@ package insyra
 
 // GetName returns the name of the DataTable.
 func (dt *DataTable) GetName() string {
-	dt.mu.Lock()
-	defer dt.mu.Unlock()
-	return dt.name
+	var result string
+	dt.AtomicDo(func(dt *DataTable) {
+		result = dt.name
+	})
+	return result
 }
 
 // SetName sets the name of the DataTable.
 func (dt *DataTable) SetName(name string) *DataTable {
-	dt.mu.Lock()
-	defer func() {
-		dt.mu.Unlock()
+	var result *DataTable
+	dt.AtomicDo(func(dt *DataTable) {
+		dt.name = name
+		result = dt
 		go dt.updateTimestamp()
-	}()
-	dt.name = name
-	return dt
+	})
+	return result
 }

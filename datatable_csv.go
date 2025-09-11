@@ -28,8 +28,19 @@ func (dt *DataTable) ToCSV(filePath string, setRowNamesToFirstCol bool, setColNa
 	writer := csv.NewWriter(file)
 	defer writer.Flush()
 
-	dt.mu.Lock()
-	maxLength := dt.getMaxColLength()
+	var maxLength int
+	var columns []*DataList
+	var columnNames []string
+
+	dt.AtomicDo(func(dt *DataTable) {
+		maxLength = dt.getMaxColLength()
+		columns = make([]*DataList, len(dt.columns))
+		copy(columns, dt.columns)
+		columnNames = make([]string, len(dt.columns))
+		for i, column := range dt.columns {
+			columnNames[i] = column.name
+		}
+	})
 
 	// Write column names as the first row if setColNamesToFirstRow is true
 	if setColNamesToFirstRow {
@@ -37,15 +48,13 @@ func (dt *DataTable) ToCSV(filePath string, setRowNamesToFirstCol bool, setColNa
 		if setRowNamesToFirstCol {
 			header = append(header, "") // Leave the first cell empty for row names
 		}
-		for _, column := range dt.columns {
-			header = append(header, column.name)
+		for _, name := range columnNames {
+			header = append(header, name)
 		}
 		if err := writer.Write(header); err != nil {
 			return err
 		}
 	}
-
-	dt.mu.Unlock()
 
 	// Write the data rows
 	for rowIndex := 0; rowIndex < maxLength; rowIndex++ {
@@ -54,7 +63,7 @@ func (dt *DataTable) ToCSV(filePath string, setRowNamesToFirstCol bool, setColNa
 			rowName := dt.GetRowNameByIndex(rowIndex)
 			record = append(record, rowName)
 		}
-		for _, column := range dt.columns {
+		for _, column := range columns {
 			if rowIndex < len(column.data) {
 				value := column.data[rowIndex]
 				if value == nil {
