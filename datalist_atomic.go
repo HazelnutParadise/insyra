@@ -7,8 +7,6 @@ import (
 	"sync"
 )
 
-// ! 這裡的機制尚未啟用，若要保證邏輯原子性，需以AtomicDo取代所有互斥鎖
-
 var actorContext sync.Map // map[uint64]bool
 func inActorLoop() bool {
 	gid := getGID()
@@ -49,8 +47,7 @@ func (s *DataList) AtomicDo(f func(*DataList)) {
 	}()
 
 	// 阻塞發送，確保序列化
-	select {
-	case s.cmdCh <- func() {
+	s.cmdCh <- func() {
 		gid := getGID()
 		actorContext.Store(gid, true) // 標記為 actor goroutine
 		defer actorContext.Delete(gid)
@@ -60,9 +57,8 @@ func (s *DataList) AtomicDo(f func(*DataList)) {
 			f(s)
 		}
 		close(done)
-	}:
-		<-done
 	}
+	<-done
 }
 
 func getGID() uint64 {
