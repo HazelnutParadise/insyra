@@ -683,235 +683,235 @@ func (dl *DataList) ShowRange(startEnd ...any) {
 		return
 	}
 
-	dl.mu.Lock()
-	defer dl.mu.Unlock()
+	dl.AtomicDo(func(dl *DataList) {
 
-	// Get terminal window width
-	width := getDataListTerminalWidth()
-	// Generate data title
-	dataTitle := "DataList"
-	if dl.name != "" {
-		dataTitle += ": " + dl.name
-	}
-
-	// Get total items count
-	totalItems := len(dl.data)
-
-	// Adjust start and end indices based on input parameters
-	start, end := 0, totalItems
-	if len(startEnd) > 0 {
-		if len(startEnd) == 1 {
-			if countVal, ok := startEnd[0].(int); ok {
-				if countVal < 0 {
-					start = max(0, totalItems+countVal)
-					end = totalItems
-				} else {
-					start = 0
-					end = min(countVal, totalItems)
-				}
-			}
-		} else if len(startEnd) >= 2 {
-			if startVal, ok := startEnd[0].(int); ok {
-				start = startVal
-				if start < 0 {
-					// 對於負索引，將其轉換為相對於總行數的索引
-					start = totalItems + start
-				}
-			}
-
-			if startEnd[1] == nil {
-				// 如果第二個參數是 nil，表示顯示到最後一個元素
-				end = totalItems
-			} else if endVal, ok := startEnd[1].(int); ok {
-				end = endVal
-				if end < 0 {
-					// 對於負索引，將其轉換為相對於總行數的索引
-					end = totalItems + end
-				}
-			}
-
-			if end > totalItems {
-				end = totalItems
-			}
+		// Get terminal window width
+		width := getDataListTerminalWidth()
+		// Generate data title
+		dataTitle := "DataList"
+		if dl.name != "" {
+			dataTitle += ": " + dl.name
 		}
 
-		// 確保起始索引不會小於0（適用於所有情況）
-		if start < 0 {
-			start = 0
-		}
+		// Get total items count
+		totalItems := len(dl.data)
 
-		if start >= end {
-			// Nothing to display if start is greater than or equal to end
-			fmt.Printf("\033[1;33m%s\033[0m \033[3;33m(%d items)\033[0m\n", dataTitle, totalItems)
-			fmt.Println(strings.Repeat("=", min(width, 80)))
-			fmt.Println("\033[2;37m(empty range)\033[0m")
-			return
-		}
-	}
-
-	// Display range information in the summary if it's a subset
-	rangeInfo := ""
-	if start > 0 || end < totalItems {
-		rangeInfo = fmt.Sprintf(" [showing items %d to %d]", start, end-1)
-	}
-
-	dataSummary := fmt.Sprintf("(%d items)%s", totalItems, rangeInfo)
-	// Display basic data information - using DataList primary color
-	fmt.Printf("\033[1;33m%s\033[0m \033[3;33m%s\033[0m\n", dataTitle, dataSummary)
-	fmt.Println(strings.Repeat("=", min(width, 80)))
-
-	// Check if DataList is empty
-	if totalItems == 0 {
-		fmt.Println("\033[2;37m(empty)\033[0m")
-		return
-	}
-
-	// Display basic statistics for the selected range
-	showStatistics := true
-	if showStatistics && (end-start) > 0 {
-		// Create a subset of data for the visible range
-		rangeData := make([]any, 0, end-start)
-		for i := start; i < end; i++ {
-			rangeData = append(rangeData, dl.data[i])
-		}
-
-		// Check if the data contains numeric values before attempting statistics
-		hasNumericData := false
-		for _, val := range rangeData {
-			if val != nil {
-				switch v := val.(type) {
-				case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
-					hasNumericData = true
-				case string:
-					// Check if string can be parsed as number using strconv directly
-					if _, err := strconv.ParseFloat(v, 64); err == nil {
-						hasNumericData = true
-						break
+		// Adjust start and end indices based on input parameters
+		start, end := 0, totalItems
+		if len(startEnd) > 0 {
+			if len(startEnd) == 1 {
+				if countVal, ok := startEnd[0].(int); ok {
+					if countVal < 0 {
+						start = max(0, totalItems+countVal)
+						end = totalItems
+					} else {
+						start = 0
+						end = min(countVal, totalItems)
 					}
 				}
-				if hasNumericData {
-					break
+			} else if len(startEnd) >= 2 {
+				if startVal, ok := startEnd[0].(int); ok {
+					start = startVal
+					if start < 0 {
+						// 對於負索引，將其轉換為相對於總行數的索引
+						start = totalItems + start
+					}
 				}
+
+				if startEnd[1] == nil {
+					// 如果第二個參數是 nil，表示顯示到最後一個元素
+					end = totalItems
+				} else if endVal, ok := startEnd[1].(int); ok {
+					end = endVal
+					if end < 0 {
+						// 對於負索引，將其轉換為相對於總行數的索引
+						end = totalItems + end
+					}
+				}
+
+				if end > totalItems {
+					end = totalItems
+				}
+			}
+
+			// 確保起始索引不會小於0（適用於所有情況）
+			if start < 0 {
+				start = 0
+			}
+
+			if start >= end {
+				// Nothing to display if start is greater than or equal to end
+				fmt.Printf("\033[1;33m%s\033[0m \033[3;33m(%d items)\033[0m\n", dataTitle, totalItems)
+				fmt.Println(strings.Repeat("=", min(width, 80)))
+				fmt.Println("\033[2;37m(empty range)\033[0m")
+				return
 			}
 		}
 
-		// Only attempt statistical calculations if numeric data is found
-		if hasNumericData {
-			// Create a temporary DataList with only numeric values for statistics
-			numericValues := make([]any, 0)
+		// Display range information in the summary if it's a subset
+		rangeInfo := ""
+		if start > 0 || end < totalItems {
+			rangeInfo = fmt.Sprintf(" [showing items %d to %d]", start, end-1)
+		}
+
+		dataSummary := fmt.Sprintf("(%d items)%s", totalItems, rangeInfo)
+		// Display basic data information - using DataList primary color
+		fmt.Printf("\033[1;33m%s\033[0m \033[3;33m%s\033[0m\n", dataTitle, dataSummary)
+		fmt.Println(strings.Repeat("=", min(width, 80)))
+
+		// Check if DataList is empty
+		if totalItems == 0 {
+			fmt.Println("\033[2;37m(empty)\033[0m")
+			return
+		}
+
+		// Display basic statistics for the selected range
+		showStatistics := true
+		if showStatistics && (end-start) > 0 {
+			// Create a subset of data for the visible range
+			rangeData := make([]any, 0, end-start)
+			for i := start; i < end; i++ {
+				rangeData = append(rangeData, dl.data[i])
+			}
+
+			// Check if the data contains numeric values before attempting statistics
+			hasNumericData := false
 			for _, val := range rangeData {
 				if val != nil {
 					switch v := val.(type) {
 					case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
-						numericValues = append(numericValues, v)
+						hasNumericData = true
 					case string:
-						if floatVal, err := strconv.ParseFloat(v, 64); err == nil {
-							numericValues = append(numericValues, floatVal)
+						// Check if string can be parsed as number using strconv directly
+						if _, err := strconv.ParseFloat(v, 64); err == nil {
+							hasNumericData = true
+							break
+						}
+					}
+					if hasNumericData {
+						break
+					}
+				}
+			}
+
+			// Only attempt statistical calculations if numeric data is found
+			if hasNumericData {
+				// Create a temporary DataList with only numeric values for statistics
+				numericValues := make([]any, 0)
+				for _, val := range rangeData {
+					if val != nil {
+						switch v := val.(type) {
+						case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+							numericValues = append(numericValues, v)
+						case string:
+							if floatVal, err := strconv.ParseFloat(v, 64); err == nil {
+								numericValues = append(numericValues, floatVal)
+							}
 						}
 					}
 				}
-			}
 
-			if len(numericValues) > 0 {
-				rangeDl := NewDataList(numericValues...)
-				// Try to calculate statistics for the range
-				mean, dlmin, max := rangeDl.Mean(), rangeDl.Min(), rangeDl.Max()
-				if !math.IsNaN(mean) && !math.IsNaN(dlmin) && !math.IsNaN(max) { // Using secondary color to display statistics
-					statsLabel := "stat"
-					if start > 0 || end < totalItems {
-						statsLabel = "stat (selected range)"
+				if len(numericValues) > 0 {
+					rangeDl := NewDataList(numericValues...)
+					// Try to calculate statistics for the range
+					mean, dlmin, max := rangeDl.Mean(), rangeDl.Min(), rangeDl.Max()
+					if !math.IsNaN(mean) && !math.IsNaN(dlmin) && !math.IsNaN(max) { // Using secondary color to display statistics
+						statsLabel := "stat"
+						if start > 0 || end < totalItems {
+							statsLabel = "stat (selected range)"
+						}
+						fmt.Printf("\033[3;33m %s: mean=%.2f, min=%.2f, max=%.2f, range=%.2f\033[0m\n",
+							statsLabel, mean, dlmin, max, max-dlmin)
+						if len(numericValues) > 10 {
+							// Show sd and median with two decimal places
+							fmt.Printf("\033[3;33m      sd=%.2f, median=%.2f\033[0m\n",
+								rangeDl.Stdev(), rangeDl.Median())
+						}
+						fmt.Println(strings.Repeat("-", min(width, 80)))
 					}
-					fmt.Printf("\033[3;33m %s: mean=%.2f, min=%.2f, max=%.2f, range=%.2f\033[0m\n",
-						statsLabel, mean, dlmin, max, max-dlmin)
-					if len(numericValues) > 10 {
-						// Show sd and median with two decimal places
-						fmt.Printf("\033[3;33m      sd=%.2f, median=%.2f\033[0m\n",
-							rangeDl.Stdev(), rangeDl.Median())
+				}
+			}
+		}
+
+		// Always show in linear format regardless of terminal width
+		fmt.Println("\033[1;32mIndex\033[0m  \033[1;32mValue\033[0m")
+		fmt.Println(strings.Repeat("-", min(width, 80)))
+		// Calculate how many items to display in the range
+		selectedItems := end - start
+		maxDisplay := 25
+
+		// Check if range was explicitly specified
+		explicitRangeSpecified := len(startEnd) > 0
+
+		// Show all items if either:
+		// 1. The selected range is small (less than maxDisplay), or
+		// 2. The user explicitly specified a range (even if it's large)
+		showAll := selectedItems <= maxDisplay || explicitRangeSpecified
+
+		// Display items
+		displayCount := selectedItems
+		if !showAll {
+			displayCount = 20 // Show first 20 items
+		}
+
+		// Display items with appropriate formatting and colors
+		for i := 0; i < displayCount; i++ {
+			itemIndex := start + i
+			if itemIndex < end {
+				value := dl.data[itemIndex]
+				strValue := FormatValue(value)
+
+				// Color based on value type
+				valueColor := "\033[0m" // Default color
+				if value == nil {
+					valueColor = "\033[2;37m" // Nil value color
+				} else {
+					switch value.(type) {
+					case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+						valueColor = "\033[0;34m" // Numeric data color
+					case string:
+						valueColor = "\033[0;32m" // Text data color
+					case bool:
+						valueColor = "\033[0;35m" // Purple for boolean values
 					}
-					fmt.Println(strings.Repeat("-", min(width, 80)))
 				}
+
+				fmt.Printf("\033[1;37m%-6d\033[0m %s%s\033[0m\n", itemIndex, valueColor, strValue)
 			}
 		}
-	}
 
-	// Always show in linear format regardless of terminal width
-	fmt.Println("\033[1;32mIndex\033[0m  \033[1;32mValue\033[0m")
-	fmt.Println(strings.Repeat("-", min(width, 80)))
-	// Calculate how many items to display in the range
-	selectedItems := end - start
-	maxDisplay := 25
+		// If there are too many items in the range, show ellipsis and the last few items
+		if !showAll {
+			fmt.Println("\033[1;33m...    ...\033[0m")
 
-	// Check if range was explicitly specified
-	explicitRangeSpecified := len(startEnd) > 0
+			// Show last 5 items from the range
+			for i := end - 5; i < end; i++ {
+				value := dl.data[i]
+				strValue := FormatValue(value)
 
-	// Show all items if either:
-	// 1. The selected range is small (less than maxDisplay), or
-	// 2. The user explicitly specified a range (even if it's large)
-	showAll := selectedItems <= maxDisplay || explicitRangeSpecified
-
-	// Display items
-	displayCount := selectedItems
-	if !showAll {
-		displayCount = 20 // Show first 20 items
-	}
-
-	// Display items with appropriate formatting and colors
-	for i := 0; i < displayCount; i++ {
-		itemIndex := start + i
-		if itemIndex < end {
-			value := dl.data[itemIndex]
-			strValue := FormatValue(value)
-
-			// Color based on value type
-			valueColor := "\033[0m" // Default color
-			if value == nil {
-				valueColor = "\033[2;37m" // Nil value color
-			} else {
-				switch value.(type) {
-				case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
-					valueColor = "\033[0;34m" // Numeric data color
-				case string:
-					valueColor = "\033[0;32m" // Text data color
-				case bool:
-					valueColor = "\033[0;35m" // Purple for boolean values
+				// Color based on value type
+				valueColor := "\033[0m" // Default color
+				if value == nil {
+					valueColor = "\033[2;37m" // Nil value color
+				} else {
+					switch value.(type) {
+					case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+						valueColor = "\033[0;34m" // Numeric data color
+					case string:
+						valueColor = "\033[0;32m" // Text data color
+					case bool:
+						valueColor = "\033[0;35m" // Purple for boolean values
+					}
 				}
+
+				fmt.Printf("\033[1;37m%-6d\033[0m %s%s\033[0m\n", i, valueColor, strValue)
 			}
 
-			fmt.Printf("\033[1;37m%-6d\033[0m %s%s\033[0m\n", itemIndex, valueColor, strValue)
+			// Show data summary
+			fmt.Printf("\n\033[3;33mDisplaying %d items (from index %d to index %d)\033[0m\n",
+				selectedItems, start, end-1)
 		}
-	}
-
-	// If there are too many items in the range, show ellipsis and the last few items
-	if !showAll {
-		fmt.Println("\033[1;33m...    ...\033[0m")
-
-		// Show last 5 items from the range
-		for i := end - 5; i < end; i++ {
-			value := dl.data[i]
-			strValue := FormatValue(value)
-
-			// Color based on value type
-			valueColor := "\033[0m" // Default color
-			if value == nil {
-				valueColor = "\033[2;37m" // Nil value color
-			} else {
-				switch value.(type) {
-				case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
-					valueColor = "\033[0;34m" // Numeric data color
-				case string:
-					valueColor = "\033[0;32m" // Text data color
-				case bool:
-					valueColor = "\033[0;35m" // Purple for boolean values
-				}
-			}
-
-			fmt.Printf("\033[1;37m%-6d\033[0m %s%s\033[0m\n", i, valueColor, strValue)
-		}
-
-		// Show data summary
-		fmt.Printf("\n\033[3;33mDisplaying %d items (from index %d to index %d)\033[0m\n",
-			selectedItems, start, end-1)
-	}
+	})
 }
 
 // ShowTypes displays the data types of each element in the DataList.
@@ -927,128 +927,128 @@ func (dl *DataList) ShowTypesRange(startEnd ...any) {
 		fmt.Println("\033[1;31mERROR: Unable to show types of a nil DataList\033[0m")
 		return
 	}
-	dl.mu.Lock()
-	defer dl.mu.Unlock()
+	dl.AtomicDo(func(dl *DataList) {
 
-	// 取 terminal 寬度
-	width := getDataListTerminalWidth()
-	// 標題
-	title := "DataList Type Info"
-	if dl.name != "" {
-		title += ": " + dl.name
-	}
-
-	// 計算顯示範圍
-	total := len(dl.data)
-	start, end := 0, total
-	if len(startEnd) > 0 {
-		if v, ok := startEnd[0].(int); ok {
-			if v < 0 {
-				start = max(0, total+v)
-			} else {
-				end = min(v, total)
-			}
+		// 取 terminal 寬度
+		width := getDataListTerminalWidth()
+		// 標題
+		title := "DataList Type Info"
+		if dl.name != "" {
+			title += ": " + dl.name
 		}
-		if len(startEnd) >= 2 {
-			if v2 := startEnd[1]; v2 == nil {
-				end = total
-			} else if e, ok := v2.(int); ok {
-				if e < 0 {
-					end = total + e
+
+		// 計算顯示範圍
+		total := len(dl.data)
+		start, end := 0, total
+		if len(startEnd) > 0 {
+			if v, ok := startEnd[0].(int); ok {
+				if v < 0 {
+					start = max(0, total+v)
 				} else {
-					end = min(e, total)
+					end = min(v, total)
 				}
 			}
+			if len(startEnd) >= 2 {
+				if v2 := startEnd[1]; v2 == nil {
+					end = total
+				} else if e, ok := v2.(int); ok {
+					if e < 0 {
+						end = total + e
+					} else {
+						end = min(e, total)
+					}
+				}
+			}
+			if start < 0 {
+				start = 0
+			}
+			if end > total {
+				end = total
+			}
+			if start >= end {
+				fmt.Printf("\033[1;33m%s\033[0m \033[3;33m(%d items)\033[0m\n", title, total)
+				fmt.Println(strings.Repeat("=", min(width, 80)))
+				fmt.Println("\033[2;37m(empty range)\033[0m")
+				return
+			}
 		}
-		if start < 0 {
-			start = 0
+
+		// 標題列
+		summary := fmt.Sprintf("(%d items)", total)
+		if len(startEnd) > 0 {
+			summary += fmt.Sprintf(" [showing items %d to %d]", start, end-1)
 		}
-		if end > total {
-			end = total
-		}
-		if start >= end {
-			fmt.Printf("\033[1;33m%s\033[0m \033[3;33m(%d items)\033[0m\n", title, total)
-			fmt.Println(strings.Repeat("=", min(width, 80)))
-			fmt.Println("\033[2;37m(empty range)\033[0m")
+		fmt.Printf("\033[1;33m%s\033[0m \033[3;33m%s\033[0m\n", title, summary)
+		fmt.Println(strings.Repeat("=", min(width, 80)))
+
+		// 無資料
+		if end-start == 0 {
+			fmt.Println("\033[2;37m(empty)\033[0m")
 			return
 		}
-	}
 
-	// 標題列
-	summary := fmt.Sprintf("(%d items)", total)
-	if len(startEnd) > 0 {
-		summary += fmt.Sprintf(" [showing items %d to %d]", start, end-1)
-	}
-	fmt.Printf("\033[1;33m%s\033[0m \033[3;33m%s\033[0m\n", title, summary)
-	fmt.Println(strings.Repeat("=", min(width, 80)))
-
-	// 無資料
-	if end-start == 0 {
-		fmt.Println("\033[2;37m(empty)\033[0m")
-		return
-	}
-
-	// 計算 Index 與 Type 欄位最大寬度
-	maxIdxW := runewidth.StringWidth("Index")
-	maxTypW := runewidth.StringWidth("Type")
-	types := make([]string, end-start)
-	for i := start; i < end; i++ {
-		idx := strconv.Itoa(i)
-		if w := runewidth.StringWidth(idx); w > maxIdxW {
-			maxIdxW = w
+		// 計算 Index 與 Type 欄位最大寬度
+		maxIdxW := runewidth.StringWidth("Index")
+		maxTypW := runewidth.StringWidth("Type")
+		types := make([]string, end-start)
+		for i := start; i < end; i++ {
+			idx := strconv.Itoa(i)
+			if w := runewidth.StringWidth(idx); w > maxIdxW {
+				maxIdxW = w
+			}
+			var tstr string
+			if dl.data[i] == nil {
+				tstr = "nil"
+			} else {
+				tstr = reflect.TypeOf(dl.data[i]).String()
+			}
+			types[i-start] = tstr
+			if w := runewidth.StringWidth(tstr); w > maxTypW {
+				maxTypW = w
+			}
 		}
-		var tstr string
-		if dl.data[i] == nil {
-			tstr = "nil"
-		} else {
-			tstr = reflect.TypeOf(dl.data[i]).String()
+
+		// 列印表頭
+		fmt.Print("\033[1;32m" + runewidth.FillRight("Index", maxIdxW+2) + "\033[0m")
+		fmt.Println(" " + "\033[1;32m" + runewidth.FillRight("Type", maxTypW+1) + "\033[0m")
+		// 列印分隔線
+		fmt.Println(strings.Repeat("-", maxIdxW+2+1+maxTypW+1))
+
+		// 計算範圍內項目數
+		totalItems := end - start
+		explicit := len(startEnd) > 0
+		const maxShow = 25
+		showAll := explicit || totalItems <= maxShow
+		firstCount := totalItems
+		if !showAll {
+			firstCount = 20
 		}
-		types[i-start] = tstr
-		if w := runewidth.StringWidth(tstr); w > maxTypW {
-			maxTypW = w
-		}
-	}
 
-	// 列印表頭
-	fmt.Print("\033[1;32m" + runewidth.FillRight("Index", maxIdxW+2) + "\033[0m")
-	fmt.Println(" " + "\033[1;32m" + runewidth.FillRight("Type", maxTypW+1) + "\033[0m")
-	// 列印分隔線
-	fmt.Println(strings.Repeat("-", maxIdxW+2+1+maxTypW+1))
-
-	// 計算範圍內項目數
-	totalItems := end - start
-	explicit := len(startEnd) > 0
-	const maxShow = 25
-	showAll := explicit || totalItems <= maxShow
-	firstCount := totalItems
-	if !showAll {
-		firstCount = 20
-	}
-
-	// 列印前幾項
-	for i := start; i < start+firstCount; i++ {
-		idx := strconv.Itoa(i)
-		tstr := types[i-start]
-		fmt.Print("\033[1;37m" + runewidth.FillRight(idx, maxIdxW+2) + "\033[0m")
-		fmt.Println(" " + runewidth.FillRight(tstr, maxTypW+1))
-	}
-
-	// 如果有截斷，則列印省略號及最後幾項
-	if !showAll {
-		// ellipsis line
-		fmt.Print("\033[1;33m" + runewidth.FillRight("...", maxIdxW+2) + "\033[0m")
-		fmt.Println(" " + "\033[1;33m" + runewidth.FillRight("...", maxTypW+1) + "\033[0m")
-		// last 5 items
-		for i := end - 5; i < end; i++ {
+		// 列印前幾項
+		for i := start; i < start+firstCount; i++ {
 			idx := strconv.Itoa(i)
 			tstr := types[i-start]
 			fmt.Print("\033[1;37m" + runewidth.FillRight(idx, maxIdxW+2) + "\033[0m")
 			fmt.Println(" " + runewidth.FillRight(tstr, maxTypW+1))
 		}
-		// summary
-		fmt.Printf("\n\033[3;33mDisplaying %d items (from index %d to index %d)\033[0m\n",
-			totalItems, start, end-1)
-	}
+
+		// 如果有截斷，則列印省略號及最後幾項
+		if !showAll {
+			// ellipsis line
+			fmt.Print("\033[1;33m" + runewidth.FillRight("...", maxIdxW+2) + "\033[0m")
+			fmt.Println(" " + "\033[1;33m" + runewidth.FillRight("...", maxTypW+1) + "\033[0m")
+			// last 5 items
+			for i := end - 5; i < end; i++ {
+				idx := strconv.Itoa(i)
+				tstr := types[i-start]
+				fmt.Print("\033[1;37m" + runewidth.FillRight(idx, maxIdxW+2) + "\033[0m")
+				fmt.Println(" " + runewidth.FillRight(tstr, maxTypW+1))
+			}
+			// summary
+			fmt.Printf("\n\033[3;33mDisplaying %d items (from index %d to index %d)\033[0m\n",
+				totalItems, start, end-1)
+		}
+	})
 }
 
 // getDataListTerminalWidth gets the terminal window width, specifically for DataList

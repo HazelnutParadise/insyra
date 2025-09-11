@@ -24,7 +24,7 @@ type DataList struct {
 	name                  string
 	creationTimestamp     int64
 	lastModifiedTimestamp atomic.Int64
-	mu                    sync.Mutex
+	// mu                    sync.Mutex
 
 	// AtomicDo support
 	initOnce sync.Once
@@ -92,9 +92,6 @@ func NewDataList(values ...any) *DataList {
 		creationTimestamp: timestamp,
 	}
 	dl.lastModifiedTimestamp.Store(timestamp)
-
-	// 設置 finalizer 以確保資源自動清理
-	runtime.SetFinalizer(dl, (*DataList).finalize)
 
 	return dl
 }
@@ -1920,35 +1917,4 @@ func (dl *DataList) SetName(newName string) *DataList {
 		go dl.updateTimestamp()
 	})
 	return dl
-}
-
-// finalize 是 finalizer 方法，用於自動清理 DataList 資源
-func (dl *DataList) finalize() {
-	if dl.cmdCh != nil && !dl.closed.Load() {
-		dl.close()
-	}
-}
-
-// Close 手動關閉 DataList 資源（公開方法，供用戶主動調用）
-func (dl *DataList) Close() {
-	dl.close()
-	// 清除 finalizer，因為已經手動清理了
-	runtime.SetFinalizer(dl, nil)
-}
-
-func (dl *DataList) close() {
-	dl.mu.Lock()
-	defer dl.mu.Unlock()
-
-	if dl.closed.Load() {
-		return
-	}
-
-	dl.closed.Store(true)
-
-	// 執行清理任務
-	if dl.cmdCh != nil {
-		close(dl.cmdCh)
-		dl.cmdCh = nil
-	}
 }
