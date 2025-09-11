@@ -19,7 +19,8 @@ func inActorLoop() bool {
 func (s *DataList) AtomicDo(f func(*DataList)) {
 	// 檢查是否已關閉
 	if s.closed.Load() {
-		return // 已關閉，不執行操作
+		f(s)
+		return
 	}
 	s.initOnce.Do(func() {
 		s.cmdCh = make(chan func())
@@ -35,11 +36,19 @@ func (s *DataList) AtomicDo(f func(*DataList)) {
 
 	// 再次檢查是否在初始化後被關閉
 	if s.closed.Load() {
+		f(s)
 		return
 	}
 
 	done := make(chan struct{})
-	// 使用 select 來避免在關閉的通道上阻塞
+	defer func() {
+		if r := recover(); r != nil {
+			// 如果發送失敗（通道關閉），直接執行 f
+			f(s)
+		}
+	}()
+
+	// 阻塞發送，確保序列化
 	select {
 	case s.cmdCh <- func() {
 		gid := getGID()
@@ -53,9 +62,6 @@ func (s *DataList) AtomicDo(f func(*DataList)) {
 		close(done)
 	}:
 		<-done
-	default:
-		// 通道已滿或已關閉，直接返回
-		return
 	}
 }
 

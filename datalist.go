@@ -118,30 +118,30 @@ func (dl *DataList) Append(values ...any) {
 // Returns nil if the index is out of bounds.
 // Returns the value at the specified index.
 func (dl *DataList) Get(index int) any {
-	defer func() {
-		dl.mu.Unlock()
+	var result any
+	dl.AtomicDo(func(dl *DataList) {
+		// 支持負索引
+		if index < 0 {
+			index += len(dl.data)
+		}
+		if index < 0 || index >= len(dl.data) {
+			LogWarning("DataList", "Get", "Index out of bounds, returning nil.")
+			result = nil
+			return
+		}
+		result = dl.data[index]
 		go reorganizeMemory(dl)
-	}()
-	dl.mu.Lock()
-	// 支持負索引
-	if index < 0 {
-		index += len(dl.data)
-	}
-	if index < 0 || index >= len(dl.data) {
-		LogWarning("DataList", "Get", "Index out of bounds, returning nil.")
-		return nil
-	}
-	return dl.data[index]
+	})
+	return result
 }
 
 // Clone creates a deep copy of the DataList.
 func (dl *DataList) Clone() *DataList {
-	defer func() {
-		dl.mu.Unlock()
-	}()
-	dl.mu.Lock()
-	newDL := NewDataList(dl.data)
-	newDL.SetName(dl.name)
+	var newDL *DataList
+	dl.AtomicDo(func(dl *DataList) {
+		newDL = NewDataList(dl.data)
+		newDL.SetName(dl.name)
+	})
 	return newDL
 }
 
@@ -165,182 +165,171 @@ func (dl *DataList) Counter() map[any]int {
 
 // Update replaces the value at the specified index with the new value.
 func (dl *DataList) Update(index int, newValue any) {
-	defer func() {
-		dl.mu.Unlock()
+	dl.AtomicDo(func(dl *DataList) {
+		if index < 0 {
+			index += len(dl.data)
+		}
+		if index < 0 || index >= len(dl.data) {
+			LogWarning("DataList", "ReplaceAtIndex", "Index %d out of bounds", index)
+		}
+		dl.data[index] = newValue
+		go dl.updateTimestamp()
 		go reorganizeMemory(dl)
-	}()
-	dl.mu.Lock()
-	if index < 0 {
-		index += len(dl.data)
-	}
-	if index < 0 || index >= len(dl.data) {
-		LogWarning("DataList", "ReplaceAtIndex", "Index %d out of bounds", index)
-	}
-	dl.data[index] = newValue
-	go dl.updateTimestamp()
+	})
 }
 
 // InsertAt inserts a value at the specified index in the DataList.
 // If the index is out of bounds, the value is appended to the end of the list.
 func (dl *DataList) InsertAt(index int, value any) {
-	defer func() {
-		dl.mu.Unlock()
-		go reorganizeMemory(dl)
-	}()
-	dl.mu.Lock()
-	// Handle negative index
-	if index < 0 {
-		index += len(dl.data) + 1
-	}
-
-	// If index is out of bounds, append the value to the end
-	if index < 0 || index > len(dl.data) {
-		LogWarning("DataList", "InsertAt", "Index out of bounds, appending value to the end.")
-		dl.data = append(dl.data, value)
-	} else {
-		var err error
-		dl.data, err = sliceutil.InsertAt(dl.data, index, value)
-		if err != nil {
-			LogWarning("DataList", "InsertAt", "Failed to insert value at index: %v", err)
-			return
+	dl.AtomicDo(func(dl *DataList) {
+		// Handle negative index
+		if index < 0 {
+			index += len(dl.data) + 1
 		}
-	}
 
-	go dl.updateTimestamp()
+		// If index is out of bounds, append the value to the end
+		if index < 0 || index > len(dl.data) {
+			LogWarning("DataList", "InsertAt", "Index out of bounds, appending value to the end.")
+			dl.data = append(dl.data, value)
+		} else {
+			var err error
+			dl.data, err = sliceutil.InsertAt(dl.data, index, value)
+			if err != nil {
+				LogWarning("DataList", "InsertAt", "Failed to insert value at index: %v", err)
+				return
+			}
+		}
+
+		go dl.updateTimestamp()
+		go reorganizeMemory(dl)
+	})
 }
 
 // FindFirst returns the index of the first occurrence of the specified value in the DataList.
 // If the value is not found, it returns nil.
 func (dl *DataList) FindFirst(value any) any {
-	defer func() {
-		dl.mu.Unlock()
-		go reorganizeMemory(dl)
-	}()
-	dl.mu.Lock()
-	for i, v := range dl.data {
-		if v == value {
-			return i
+	var result any
+	dl.AtomicDo(func(dl *DataList) {
+		for i, v := range dl.data {
+			if v == value {
+				result = i
+				return
+			}
 		}
-	}
-	LogWarning("DataList", "FindFirst", "Value not found, returning nil.")
-	return nil
+		LogWarning("DataList", "FindFirst", "Value not found, returning nil.")
+		result = nil
+		go reorganizeMemory(dl)
+	})
+	return result
 }
 
 // FindLast returns the index of the last occurrence of the specified value in the DataList.
 // If the value is not found, it returns nil.
 func (dl *DataList) FindLast(value any) any {
-	defer func() {
-		dl.mu.Unlock()
-		go reorganizeMemory(dl)
-	}()
-	dl.mu.Lock()
-	for i := len(dl.data) - 1; i >= 0; i-- {
-		if dl.data[i] == value {
-			return i
+	var result any
+	dl.AtomicDo(func(dl *DataList) {
+		for i := len(dl.data) - 1; i >= 0; i-- {
+			if dl.data[i] == value {
+				result = i
+				return
+			}
 		}
-	}
-	LogWarning("DataList", "FindLast", "Value not found, returning nil.")
-	return nil
+		LogWarning("DataList", "FindLast", "Value not found, returning nil.")
+		result = nil
+		go reorganizeMemory(dl)
+	})
+	return result
 }
 
 // FindAll returns a slice of all the indices where the specified value is found in the DataList using parallel processing.
 // If the value is not found, it returns an empty slice.
 func (dl *DataList) FindAll(value any) []int {
-	defer func() {
-		dl.mu.Unlock()
-		go reorganizeMemory(dl)
-	}()
-	dl.mu.Lock()
-	length := len(dl.data)
-	if length == 0 {
-		LogWarning("DataList", "FindAll", "DataList is empty, returning an empty slice.")
-		return []int{}
-	}
-
 	var indices []int
-	for i, v := range dl.data {
-		if v == value {
-			indices = append(indices, i)
+	dl.AtomicDo(func(dl *DataList) {
+		length := len(dl.data)
+		if length == 0 {
+			LogWarning("DataList", "FindAll", "DataList is empty, returning an empty slice.")
+			indices = []int{}
+			return
 		}
-	}
+
+		for i, v := range dl.data {
+			if v == value {
+				indices = append(indices, i)
+			}
+		}
+		go reorganizeMemory(dl)
+	})
 	return indices
 }
 
 // Filter filters the DataList based on a custom filter function provided by the user.
 // The filter function should return true for elements that should be included in the result.
 func (dl *DataList) Filter(filterFunc func(any) bool) *DataList {
-	defer func() {
-		dl.mu.Unlock()
-		go reorganizeMemory(dl)
-	}()
-	dl.mu.Lock()
-	filteredData := []any{}
+	var filteredData []any
+	dl.AtomicDo(func(dl *DataList) {
+		filteredData = []any{}
 
-	for _, v := range dl.data {
-		if filterFunc(v) {
-			filteredData = append(filteredData, v)
+		for _, v := range dl.data {
+			if filterFunc(v) {
+				filteredData = append(filteredData, v)
+			}
 		}
-	}
-
+		go reorganizeMemory(dl)
+	})
 	return NewDataList(filteredData...)
 }
 
 // ReplaceFirst replaces the first occurrence of oldValue with newValue.
 func (dl *DataList) ReplaceFirst(oldValue, newValue any) {
-	defer func() {
-		dl.mu.Unlock()
-		go reorganizeMemory(dl)
-	}()
-	dl.mu.Lock()
-	for i, v := range dl.data {
-		if v == oldValue {
-			dl.data[i] = newValue
-			go dl.updateTimestamp()
-			return
+	dl.AtomicDo(func(dl *DataList) {
+		for i, v := range dl.data {
+			if v == oldValue {
+				dl.data[i] = newValue
+				go dl.updateTimestamp()
+				return
+			}
 		}
-	}
-	LogWarning("DataList", "ReplaceFirst", "value not found.")
+		LogWarning("DataList", "ReplaceFirst", "value not found.")
+		go reorganizeMemory(dl)
+	})
 }
 
 // ReplaceLast replaces the last occurrence of oldValue with newValue.
 func (dl *DataList) ReplaceLast(oldValue, newValue any) {
-	defer func() {
-		dl.mu.Unlock()
-		go reorganizeMemory(dl)
-	}()
-	dl.mu.Lock()
-	for i := len(dl.data) - 1; i >= 0; i-- {
-		if dl.data[i] == oldValue {
-			dl.data[i] = newValue
-			go dl.updateTimestamp()
-			return
+	dl.AtomicDo(func(dl *DataList) {
+		for i := len(dl.data) - 1; i >= 0; i-- {
+			if dl.data[i] == oldValue {
+				dl.data[i] = newValue
+				go dl.updateTimestamp()
+				return
+			}
 		}
-	}
-	LogWarning("DataList", "ReplaceLast", "value not found.")
+		LogWarning("DataList", "ReplaceLast", "value not found.")
+		go reorganizeMemory(dl)
+	})
 }
 
 // ReplaceAll replaces all occurrences of oldValue with newValue in the DataList.
 // If oldValue is not found, no changes are made.
 func (dl *DataList) ReplaceAll(oldValue, newValue any) {
-	defer func() {
-		dl.mu.Unlock()
-		go reorganizeMemory(dl)
-	}()
-	dl.mu.Lock()
-	length := len(dl.data)
-	if length == 0 {
-		LogWarning("DataList", "ReplaceAll", "DataList is empty, no replacements made.")
-		return
-	}
-
-	// 單線程處理資料替換
-	for i, v := range dl.data {
-		if v == oldValue {
-			dl.data[i] = newValue
+	dl.AtomicDo(func(dl *DataList) {
+		length := len(dl.data)
+		if length == 0 {
+			LogWarning("DataList", "ReplaceAll", "DataList is empty, no replacements made.")
+			return
 		}
-	}
 
-	go dl.updateTimestamp()
+		// 單線程處理資料替換
+		for i, v := range dl.data {
+			if v == oldValue {
+				dl.data[i] = newValue
+			}
+		}
+
+		go dl.updateTimestamp()
+		go reorganizeMemory(dl)
+	})
 }
 
 // ReplaceOutliers replaces outliers in the DataList with the specified replacement value (e.g., mean, median).
@@ -362,37 +351,36 @@ func (dl *DataList) ReplaceOutliers(stdDevs float64, replacement float64) *DataL
 // Returns the last element.
 // Returns nil if the DataList is empty.
 func (dl *DataList) Pop() any {
-	defer func() {
-		dl.mu.Unlock()
+	var result any
+	dl.AtomicDo(func(dl *DataList) {
+		n, err := sliceutil.Drt_PopFrom(&dl.data)
+		if err != nil {
+			LogWarning("DataList", "Pop", "DataList is empty, returning nil.")
+			result = nil
+			return
+		}
+		result = n
+		go dl.updateTimestamp()
 		go reorganizeMemory(dl)
-	}()
-	dl.mu.Lock()
-	n, err := sliceutil.Drt_PopFrom(&dl.data)
-	if err != nil {
-		LogWarning("DataList", "Pop", "DataList is empty, returning nil.")
-		return nil
-	}
-	go dl.updateTimestamp()
-	return n
+	})
+	return result
 }
 
 // Drop removes the element at the specified index from the DataList and updates the timestamp.
 // Returns an error if the index is out of bounds.
 func (dl *DataList) Drop(index int) *DataList {
-	defer func() {
-		dl.mu.Unlock()
+	dl.AtomicDo(func(dl *DataList) {
+		if index < 0 {
+			index += len(dl.data)
+		}
+		if index >= len(dl.data) {
+			LogWarning("DataList", "Drop", "Index out of bounds, returning")
+			return
+		}
+		dl.data = append(dl.data[:index], dl.data[index+1:]...)
+		go dl.updateTimestamp()
 		go reorganizeMemory(dl)
-	}()
-	dl.mu.Lock()
-	if index < 0 {
-		index += len(dl.data)
-	}
-	if index >= len(dl.data) {
-		LogWarning("DataList", "Drop", "Index out of bounds, returning")
-		return dl
-	}
-	dl.data = append(dl.data[:index], dl.data[index+1:]...)
-	go dl.updateTimestamp()
+	})
 	return dl
 }
 
@@ -516,13 +504,11 @@ func (dl *DataList) DropIfContains(value any) *DataList {
 
 // Clear removes all elements from the DataList and updates the timestamp.
 func (dl *DataList) Clear() *DataList {
-	defer func() {
-		dl.mu.Unlock()
+	dl.AtomicDo(func(dl *DataList) {
+		dl.data = []any{}
+		go dl.updateTimestamp()
 		go reorganizeMemory(dl)
-	}()
-	dl.mu.Lock()
-	dl.data = []any{}
-	go dl.updateTimestamp()
+	})
 	return dl
 }
 
@@ -843,72 +829,69 @@ func (dl *DataList) MovingStdev(windowSize int) *DataList {
 // It handles string, numeric (including all integer and float types), and time data types.
 // If sorting fails, it restores the original order.
 func (dl *DataList) Sort(ascending ...bool) *DataList {
-	defer func() {
-		dl.mu.Unlock()
-	}()
-	dl.mu.Lock()
-
-	if len(dl.data) == 0 {
-		LogWarning("DataList", "Sort", "DataList is empty, returning")
-		return dl
-	}
-
-	// Save the original order
-	originalData := make([]any, len(dl.data))
-	copy(originalData, dl.data)
-
-	defer func() {
-		if r := recover(); r != nil {
-			LogWarning("DataList", "Sort", "Sorting failed, restoring original order: %v", r)
-			dl.data = originalData
-		}
-	}()
-
-	ascendingOrder := true
-	if len(ascending) > 0 {
-		ascendingOrder = ascending[0]
-	}
-	if len(ascending) > 1 {
-		LogWarning("DataList", "Sort", "Too many arguments, returning")
-		return dl
-	}
-
-	// Mixed sorting
-	sort.SliceStable(dl.data, func(i, j int) bool {
-		v1 := dl.data[i]
-		v2 := dl.data[j]
-
-		switch v1 := v1.(type) {
-		case string:
-			if v2, ok := v2.(string); ok {
-				return (v1 < v2) == ascendingOrder
-			}
-		case int, int8, int16, int32, int64:
-			v1Float := ToFloat64(v1)
-			if v2Float, ok := ToFloat64Safe(v2); ok {
-				return (v1Float < v2Float) == ascendingOrder
-			}
-		case uint, uint8, uint16, uint32, uint64:
-			v1Float := ToFloat64(v1)
-			if v2Float, ok := ToFloat64Safe(v2); ok {
-				return (v1Float < v2Float) == ascendingOrder
-			}
-		case float32, float64:
-			v1Float := ToFloat64(v1)
-			if v2Float, ok := ToFloat64Safe(v2); ok {
-				return (v1Float < v2Float) == ascendingOrder
-			}
-		case time.Time:
-			if v2, ok := v2.(time.Time); ok {
-				return v1.Before(v2) == ascendingOrder
-			}
+	dl.AtomicDo(func(dl *DataList) {
+		if len(dl.data) == 0 {
+			LogWarning("DataList", "Sort", "DataList is empty, returning")
+			return
 		}
 
-		// Fallback: compare as strings
-		return fmt.Sprint(v1) < fmt.Sprint(v2)
+		// Save the original order
+		originalData := make([]any, len(dl.data))
+		copy(originalData, dl.data)
+
+		defer func() {
+			if r := recover(); r != nil {
+				LogWarning("DataList", "Sort", "Sorting failed, restoring original order: %v", r)
+				dl.data = originalData
+			}
+		}()
+
+		ascendingOrder := true
+		if len(ascending) > 0 {
+			ascendingOrder = ascending[0]
+		}
+		if len(ascending) > 1 {
+			LogWarning("DataList", "Sort", "Too many arguments, returning")
+			return
+		}
+
+		// Mixed sorting
+		sort.SliceStable(dl.data, func(i, j int) bool {
+			v1 := dl.data[i]
+			v2 := dl.data[j]
+
+			switch v1 := v1.(type) {
+			case string:
+				if v2, ok := v2.(string); ok {
+					return (v1 < v2) == ascendingOrder
+				}
+			case int, int8, int16, int32, int64:
+				v1Float := ToFloat64(v1)
+				if v2Float, ok := ToFloat64Safe(v2); ok {
+					return (v1Float < v2Float) == ascendingOrder
+				}
+			case uint, uint8, uint16, uint32, uint64:
+				v1Float := ToFloat64(v1)
+				if v2Float, ok := ToFloat64Safe(v2); ok {
+					return (v1Float < v2Float) == ascendingOrder
+				}
+			case float32, float64:
+				v1Float := ToFloat64(v1)
+				if v2Float, ok := ToFloat64Safe(v2); ok {
+					return (v1Float < v2Float) == ascendingOrder
+				}
+			case time.Time:
+				if v2, ok := v2.(time.Time); ok {
+					return v1.Before(v2) == ascendingOrder
+				}
+			}
+
+			// Fallback: compare as strings
+			return fmt.Sprint(v1) < fmt.Sprint(v2)
+		})
+
+		go dl.updateTimestamp()
 	})
-
-	go dl.updateTimestamp()
 	return dl
 }
 
@@ -949,57 +932,49 @@ func (dl *DataList) Rank() *DataList {
 
 // Reverse reverses the order of the elements in the DataList.
 func (dl *DataList) Reverse() *DataList {
-	defer func() {
-		dl.mu.Unlock()
+	dl.AtomicDo(func(dl *DataList) {
+		sliceutil.Reverse(dl.data)
 		go dl.updateTimestamp()
-	}()
-	dl.mu.Lock()
-	sliceutil.Reverse(dl.data)
+	})
 	return dl
 }
 
 // Upper converts all string elements in the DataList to uppercase.
 func (dl *DataList) Upper() *DataList {
-	defer func() {
-		dl.mu.Unlock()
-	}()
-	dl.mu.Lock()
-	for i, v := range dl.data {
-		if str, ok := v.(string); ok {
-			dl.data[i] = strings.ToUpper(str)
+	dl.AtomicDo(func(dl *DataList) {
+		for i, v := range dl.data {
+			if str, ok := v.(string); ok {
+				dl.data[i] = strings.ToUpper(str)
+			}
 		}
-	}
-	go dl.updateTimestamp()
+		go dl.updateTimestamp()
+	})
 	return dl
 }
 
 // Lower converts all string elements in the DataList to lowercase.
 func (dl *DataList) Lower() *DataList {
-	defer func() {
-		dl.mu.Unlock()
-	}()
-	dl.mu.Lock()
-	for i, v := range dl.data {
-		if str, ok := v.(string); ok {
-			dl.data[i] = strings.ToLower(str)
+	dl.AtomicDo(func(dl *DataList) {
+		for i, v := range dl.data {
+			if str, ok := v.(string); ok {
+				dl.data[i] = strings.ToLower(str)
+			}
 		}
-	}
-	go dl.updateTimestamp()
+		go dl.updateTimestamp()
+	})
 	return dl
 }
 
 // Capitalize capitalizes the first letter of each string element in the DataList.
 func (dl *DataList) Capitalize() *DataList {
-	defer func() {
-		dl.mu.Unlock()
-	}()
-	dl.mu.Lock()
-	for i, v := range dl.data {
-		if str, ok := v.(string); ok {
-			dl.data[i] = cases.Title(language.English, cases.NoLower).String(strings.ToLower(str))
+	dl.AtomicDo(func(dl *DataList) {
+		for i, v := range dl.data {
+			if str, ok := v.(string); ok {
+				dl.data[i] = cases.Title(language.English, cases.NoLower).String(strings.ToLower(str))
+			}
 		}
-	}
-	go dl.updateTimestamp()
+		go dl.updateTimestamp()
+	})
 	return dl
 }
 
@@ -1008,145 +983,143 @@ func (dl *DataList) Capitalize() *DataList {
 // Sum calculates the sum of all elements in the DataList.
 // Returns math.NaN() if the DataList is empty or if no elements can be converted to float64.
 func (dl *DataList) Sum() float64 {
-	defer func() {
-		dl.mu.Unlock()
-	}()
-	dl.mu.Lock()
-	if len(dl.data) == 0 {
-		LogWarning("DataList", "Sum", "DataList is empty")
-		return math.NaN()
-	}
-
-	sum := 0.0
-	count := 0
-	for _, v := range dl.data {
-		vfloat, ok := ToFloat64Safe(v)
-		if !ok {
-			LogWarning("DataList", "Sum", "Element %v cannot be converted to float64, skipping.", v)
-			continue
+	var sum float64
+	var count int
+	dl.AtomicDo(func(dl *DataList) {
+		if len(dl.data) == 0 {
+			LogWarning("DataList", "Sum", "DataList is empty")
+			sum = math.NaN()
+			return
 		}
-		sum += vfloat
-		count++
-	}
 
-	if count == 0 {
-		LogWarning("DataList", "Sum", "No valid elements to compute sum")
-		return math.NaN()
-	}
+		sum = 0.0
+		count = 0
+		for _, v := range dl.data {
+			vfloat, ok := ToFloat64Safe(v)
+			if !ok {
+				LogWarning("DataList", "Sum", "Element %v cannot be converted to float64, skipping.", v)
+				continue
+			}
+			sum += vfloat
+			count++
+		}
 
+		if count == 0 {
+			LogWarning("DataList", "Sum", "No valid elements to compute sum")
+			sum = math.NaN()
+		}
+	})
 	return sum
 }
 
 // Max returns the maximum value in the DataList.
 // Returns math.NaN() if the DataList is empty or if no elements can be converted to float64.
 func (dl *DataList) Max() float64 {
-	defer func() {
-		dl.mu.Unlock()
-	}()
-	dl.mu.Lock()
-
-	if len(dl.data) == 0 {
-		LogWarning("DataList", "Max", "DataList is empty")
-		return math.NaN()
-	}
-
 	var max float64
 	var foundValid bool
-
-	for _, v := range dl.data {
-		vfloat, ok := ToFloat64Safe(v)
-		if !ok {
-			LogWarning("DataList", "Max", "Element %v is not a numeric type, skipping.", v)
-			continue
+	dl.AtomicDo(func(dl *DataList) {
+		if len(dl.data) == 0 {
+			LogWarning("DataList", "Max", "DataList is empty")
+			max = math.NaN()
+			return
 		}
+
+		max = 0.0
+		foundValid = false
+
+		for _, v := range dl.data {
+			vfloat, ok := ToFloat64Safe(v)
+			if !ok {
+				LogWarning("DataList", "Max", "Element %v is not a numeric type, skipping.", v)
+				continue
+			}
+			if !foundValid {
+				max = vfloat
+				foundValid = true
+				continue
+			}
+			if vfloat > max {
+				max = vfloat
+			}
+		}
+
 		if !foundValid {
-			max = vfloat
-			foundValid = true
-			continue
+			LogWarning("DataList", "Max", "No valid elements to compute maximum")
+			max = math.NaN()
 		}
-		if vfloat > max {
-			max = vfloat
-		}
-	}
-
-	if !foundValid {
-		LogWarning("DataList", "Max", "No valid elements to compute maximum")
-		return math.NaN()
-	}
-
+	})
 	return max
 }
 
 // Min returns the minimum value in the DataList.
 // Returns math.NaN() if the DataList is empty or if no elements can be converted to float64.
 func (dl *DataList) Min() float64 {
-	defer func() {
-		dl.mu.Unlock()
-	}()
-	dl.mu.Lock()
-
-	if len(dl.data) == 0 {
-		LogWarning("DataList", "Min", "DataList is empty")
-		return math.NaN()
-	}
-
 	var min float64
 	var foundValid bool
-
-	for _, v := range dl.data {
-		vfloat, ok := ToFloat64Safe(v)
-		if !ok {
-			LogWarning("DataList", "Min", "Element %v is not a numeric type, skipping.", v)
-			continue
+	dl.AtomicDo(func(dl *DataList) {
+		if len(dl.data) == 0 {
+			LogWarning("DataList", "Min", "DataList is empty")
+			min = math.NaN()
+			return
 		}
+
+		min = 0.0
+		foundValid = false
+
+		for _, v := range dl.data {
+			vfloat, ok := ToFloat64Safe(v)
+			if !ok {
+				LogWarning("DataList", "Min", "Element %v is not a numeric type, skipping.", v)
+				continue
+			}
+			if !foundValid {
+				min = vfloat
+				foundValid = true
+				continue
+			}
+			if vfloat < min {
+				min = vfloat
+			}
+		}
+
 		if !foundValid {
-			min = vfloat
-			foundValid = true
-			continue
+			LogWarning("DataList", "Min", "No valid elements to compute minimum")
+			min = math.NaN()
 		}
-		if vfloat < min {
-			min = vfloat
-		}
-	}
-
-	if !foundValid {
-		LogWarning("DataList", "Min", "No valid elements to compute minimum")
-		return math.NaN()
-	}
-
+	})
 	return min
 }
 
 // Mean calculates the arithmetic mean of the DataList.
 // Returns math.NaN() if the DataList is empty or if no elements can be converted to float64.
 func (dl *DataList) Mean() float64 {
-	dl.mu.Lock()
-	defer dl.mu.Unlock() // 確保解鎖
-
-	mean := math.NaN()
-	if len(dl.data) == 0 {
-		LogWarning("DataList", "Mean", "DataList is empty")
-		return mean
-	}
-
-	var sum float64
-	var count int
-	for _, v := range dl.data {
-		if val, ok := ToFloat64Safe(v); ok {
-			sum += val
-			count++
-		} else {
-			LogWarning("DataList", "Mean", "Element %v is not a numeric type, skipping.", v)
-			continue
+	var mean float64
+	dl.AtomicDo(func(dl *DataList) {
+		mean = math.NaN()
+		if len(dl.data) == 0 {
+			LogWarning("DataList", "Mean", "DataList is empty")
+			return
 		}
-	}
 
-	if count == 0 {
-		LogWarning("DataList", "Mean", "No elements could be converted to float64")
-		return mean
-	}
+		var sum float64
+		var count int
+		for _, v := range dl.data {
+			if val, ok := ToFloat64Safe(v); ok {
+				sum += val
+				count++
+			} else {
+				LogWarning("DataList", "Mean", "Element %v is not a numeric type, skipping.", v)
+				continue
+			}
+		}
 
-	mean = sum / float64(count)
+		if count == 0 {
+			LogWarning("DataList", "Mean", "No elements could be converted to float64")
+			return
+		}
+
+		mean = sum / float64(count)
+	})
 	return mean
 }
 
@@ -1941,12 +1914,10 @@ func (dl *DataList) GetName() string {
 
 // SetName sets the name of the DataList.
 func (dl *DataList) SetName(newName string) *DataList {
-	// 鎖定 DataList 以確保名稱設置過程的同步性
-	dl.mu.Lock()
-	defer dl.mu.Unlock()
-
-	dl.name = newName
-	go dl.updateTimestamp()
+	dl.AtomicDo(func(dl *DataList) {
+		dl.name = newName
+		go dl.updateTimestamp()
+	})
 	return dl
 }
 
