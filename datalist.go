@@ -45,11 +45,7 @@ func (dl *DataList) Data() []any {
 	defer func() {
 		dl.mu.Unlock()
 	}()
-	var data []any
-	dl.AtomicDo(func(dl *DataList) {
-		data = dl.data
-	})
-	return data
+	return dl.data
 }
 
 // flattenWithNilSupport flattens a slice of any values, properly handling nil values
@@ -112,11 +108,9 @@ func (dl *DataList) Append(values ...any) {
 		go reorganizeMemory(dl)
 	}()
 	dl.mu.Lock()
-	dl.AtomicDo(func(dl *DataList) {
-		// Append data and update timestamp
-		dl.data = append(dl.data, values...)
-		go dl.updateTimestamp()
-	})
+	// Append data and update timestamp
+	dl.data = append(dl.data, values...)
+	go dl.updateTimestamp()
 }
 
 // Get retrieves the value at the specified index in the DataList.
