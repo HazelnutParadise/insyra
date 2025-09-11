@@ -45,8 +45,11 @@ func (dl *DataList) Data() []any {
 	defer func() {
 		dl.mu.Unlock()
 	}()
-
-	return dl.data
+	var data []any
+	dl.AtomicDo(func(dl *DataList) {
+		data = dl.data
+	})
+	return data
 }
 
 // flattenWithNilSupport flattens a slice of any values, properly handling nil values
