@@ -48,9 +48,7 @@ func (dt *DataTable) ToCSV(filePath string, setRowNamesToFirstCol bool, setColNa
 		if setRowNamesToFirstCol {
 			header = append(header, "") // Leave the first cell empty for row names
 		}
-		for _, name := range columnNames {
-			header = append(header, name)
-		}
+		header = append(header, columnNames...)
 		if err := writer.Write(header); err != nil {
 			return err
 		}
