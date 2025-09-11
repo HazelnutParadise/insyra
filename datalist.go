@@ -41,11 +41,11 @@ func (_ DataList) From(values ...any) *DataList {
 
 // Data returns the data stored in the DataList.
 func (dl *DataList) Data() []any {
-	dl.mu.Lock()
-	defer func() {
-		dl.mu.Unlock()
-	}()
-	return dl.data
+	var result []any
+	dl.AtomicDo(func(dl *DataList) {
+		result = dl.data
+	})
+	return result
 }
 
 // flattenWithNilSupport flattens a slice of any values, properly handling nil values
@@ -103,14 +103,12 @@ func NewDataList(values ...any) *DataList {
 // The value can be of any type.
 // The value is appended to the end of the DataList.
 func (dl *DataList) Append(values ...any) {
-	defer func() {
-		dl.mu.Unlock()
+	dl.AtomicDo(func(dl *DataList) {
+		// Append data and update timestamp
+		dl.data = append(dl.data, values...)
+		go dl.updateTimestamp()
 		go reorganizeMemory(dl)
-	}()
-	dl.mu.Lock()
-	// Append data and update timestamp
-	dl.data = append(dl.data, values...)
-	go dl.updateTimestamp()
+	})
 }
 
 // Get retrieves the value at the specified index in the DataList.
@@ -387,118 +385,113 @@ func (dl *DataList) Drop(index int) *DataList {
 // DropAll removes all occurrences of the specified values from the DataList.
 // Supports multiple values to drop.
 func (dl *DataList) DropAll(toDrop ...any) *DataList {
-	defer func() {
-		dl.mu.Unlock()
-		go reorganizeMemory(dl)
-	}()
-	dl.mu.Lock()
-	length := len(dl.data)
-	if length == 0 {
-		return dl
-	}
-
-	// 決定要開多少個線程，但不超過資料長度
-	numGoroutines := runtime.NumCPU()
-	if numGoroutines == 0 {
-		numGoroutines = 1
-	}
-	if numGoroutines > length {
-		numGoroutines = length
-	}
-
-	chunkSize := length / numGoroutines
-	remainder := length % numGoroutines
-
-	// 儲存所有的 Awaitable
-	var awaitables []*asyncutil.Awaitable
-
-	// 啟動 Awaitables 處理每個部分
-	start := 0
-	for i := 0; i < numGoroutines; i++ {
-		// 計算當前塊的大小，前 remainder 個塊多分配一個元素
-		currentChunkSize := chunkSize
-		if i < remainder {
-			currentChunkSize++
+	dl.AtomicDo(func(dl *DataList) {
+		length := len(dl.data)
+		if length == 0 {
+			return
 		}
 
-		end := start + currentChunkSize
-
-		// 確保不會超出邊界
-		if end > length {
-			end = length
+		// 決定要開多少個線程，但不超過資料長度
+		numGoroutines := runtime.NumCPU()
+		if numGoroutines == 0 {
+			numGoroutines = 1
+		}
+		if numGoroutines > length {
+			numGoroutines = length
 		}
 
-		// 只有當 start < end 時才創建任務，避免空塊
-		if start < end {
-			awaitable := asyncutil.Async(func(dataChunk []any) []any {
-				var result []any
-				for _, v := range dataChunk {
-					shouldDrop := false
-					for _, drop := range toDrop {
-						if v == drop {
-							shouldDrop = true
-							break
+		chunkSize := length / numGoroutines
+		remainder := length % numGoroutines
+
+		// 儲存所有的 Awaitable
+		var awaitables []*asyncutil.Awaitable
+
+		// 啟動 Awaitables 處理每個部分
+		start := 0
+		for i := 0; i < numGoroutines; i++ {
+			// 計算當前塊的大小，前 remainder 個塊多分配一個元素
+			currentChunkSize := chunkSize
+			if i < remainder {
+				currentChunkSize++
+			}
+
+			end := start + currentChunkSize
+
+			// 確保不會超出邊界
+			if end > length {
+				end = length
+			}
+
+			// 只有當 start < end 時才創建任務，避免空塊
+			if start < end {
+				awaitable := asyncutil.Async(func(dataChunk []any) []any {
+					var result []any
+					for _, v := range dataChunk {
+						shouldDrop := false
+						for _, drop := range toDrop {
+							if v == drop {
+								shouldDrop = true
+								break
+							}
+						}
+						if !shouldDrop {
+							result = append(result, v)
 						}
 					}
-					if !shouldDrop {
-						result = append(result, v)
-					}
-				}
-				return result
-			}, dl.data[start:end])
+					return result
+				}, dl.data[start:end])
 
-			awaitables = append(awaitables, awaitable)
+				awaitables = append(awaitables, awaitable)
+			}
+
+			start = end
 		}
 
-		start = end
-	}
+		// 收集所有結果並合併
+		var finalResult []any
+		for _, awaitable := range awaitables {
+			results, err := awaitable.Await()
+			if err != nil {
+				LogWarning("DataList", "DropAll", "Error in async task: %v", err)
+				continue
+			}
 
-	// 收集所有結果並合併
-	var finalResult []any
-	for _, awaitable := range awaitables {
-		results, err := awaitable.Await()
-		if err != nil {
-			LogWarning("DataList", "DropAll", "Error in async task: %v", err)
-			continue
+			if len(results) > 0 {
+				finalResult = append(finalResult, results[0].([]any)...)
+			}
 		}
 
-		if len(results) > 0 {
-			finalResult = append(finalResult, results[0].([]any)...)
-		}
-	}
-
-	// 更新 DataList
-	dl.data = finalResult
-	go dl.updateTimestamp()
+		// 更新 DataList
+		dl.data = finalResult
+		go dl.updateTimestamp()
+		go reorganizeMemory(dl)
+	})
 	return dl
 }
 
 // DropIfContains removes all elements from the DataList that contain the specified value.
 func (dl *DataList) DropIfContains(value any) *DataList {
-	dl.mu.Lock()
-	defer func() {
-		dl.mu.Unlock()
-		go reorganizeMemory(dl)
-	}()
+	dl.AtomicDo(func(dl *DataList) {
+		// 創建一個臨時切片存放保留的元素
+		var newData []any
 
-	// 創建一個臨時切片存放保留的元素
-	var newData []any
-
-	for _, v := range dl.data {
-		if str, ok := v.(string); ok {
-			// 如果當前元素不包含指定的值，將其添加到 newData 中
-			if !strings.Contains(str, value.(string)) {
+		for _, v := range dl.data {
+			if str, ok := v.(string); ok {
+				// 如果當前元素不包含指定的值，將其添加到 newData 中
+				if !strings.Contains(str, value.(string)) {
+					newData = append(newData, v)
+				}
+			} else {
+				// 如果元素不是字符串類型，也將其保留
 				newData = append(newData, v)
 			}
-		} else {
-			// 如果元素不是字符串類型，也將其保留
-			newData = append(newData, v)
 		}
-	}
 
-	// 將新的數據賦值回 dl.data
-	dl.data = newData
-	go dl.updateTimestamp()
+		// 將新的數據賦值回 dl.data
+		dl.data = newData
+		go dl.updateTimestamp()
+		go reorganizeMemory(dl)
+	})
 	return dl
 }
 
@@ -518,91 +511,85 @@ func (dl *DataList) Len() int {
 
 // ClearStrings removes all string elements from the DataList and updates the timestamp.
 func (dl *DataList) ClearStrings() *DataList {
-	defer func() {
-		dl.mu.Unlock()
-		go reorganizeMemory(dl)
-	}()
-	dl.mu.Lock()
-	length := len(dl.data)
-	if length == 0 {
-		return dl
-	}
-
-	// 獲取可用的 CPU 核心數量
-	numGoroutines := min(runtime.NumCPU(), length)
-
-	// 決定每個線程處理的數據量
-	chunkSize := length / numGoroutines
-	if length%numGoroutines != 0 {
-		chunkSize++
-	}
-
-	// 構建任務切片
-	var tasks []asyncutil.Task
-
-	for i := 0; i < numGoroutines; i++ {
-		start := i * chunkSize
-		end := start + chunkSize
-		if end > length {
-			end = length
+	dl.AtomicDo(func(dl *DataList) {
+		length := len(dl.data)
+		if length == 0 {
+			return
 		}
 
-		task := asyncutil.Task{
-			ID: fmt.Sprintf("Task-%d", i),
-			Fn: func(dataChunk []any) []any {
-				var result []any
-				for _, v := range dataChunk {
-					if _, ok := v.(string); !ok {
-						result = append(result, v)
+		// 獲取可用的 CPU 核心數量
+		numGoroutines := min(runtime.NumCPU(), length)
+
+		// 決定每個線程處理的數據量
+		chunkSize := length / numGoroutines
+		if length%numGoroutines != 0 {
+			chunkSize++
+		}
+
+		// 構建任務切片
+		var tasks []asyncutil.Task
+
+		for i := 0; i < numGoroutines; i++ {
+			start := i * chunkSize
+			end := start + chunkSize
+			if end > length {
+				end = length
+			}
+
+			task := asyncutil.Task{
+				ID: fmt.Sprintf("Task-%d", i),
+				Fn: func(dataChunk []any) []any {
+					var result []any
+					for _, v := range dataChunk {
+						if _, ok := v.(string); !ok {
+							result = append(result, v)
+						}
 					}
-				}
-				return result
-			},
-			Args: []any{dl.data[start:end]},
+					return result
+				},
+				Args: []any{dl.data[start:end]},
+			}
+
+			tasks = append(tasks, task)
 		}
 
-		tasks = append(tasks, task)
-	}
+		// 使用 ParallelProcess 進行平行處理
+		taskResults := asyncutil.ParallelProcess(tasks)
 
-	// 使用 ParallelProcess 進行平行處理
-	taskResults := asyncutil.ParallelProcess(tasks)
+		// 合併所有的結果
+		var finalResult []any
+		for _, taskResult := range taskResults {
+			finalResult = append(finalResult, taskResult.Results[0].([]any)...)
+		}
 
-	// 合併所有的結果
-	var finalResult []any
-	for _, taskResult := range taskResults {
-		finalResult = append(finalResult, taskResult.Results[0].([]any)...)
-	}
-
-	// 更新 DataList
-	dl.data = finalResult
-	go dl.updateTimestamp()
+		// 更新 DataList
+		dl.data = finalResult
+		go dl.updateTimestamp()
+		go reorganizeMemory(dl)
+	})
 	return dl
-}
-
-// ++++ 此處之後尚未提升性能 ++++
+} // ++++ 此處之後尚未提升性能 ++++
 
 // ClearNumbers removes all numeric elements (int, float, etc.) from the DataList and updates the timestamp.
 func (dl *DataList) ClearNumbers() *DataList {
-	defer func() {
-		dl.mu.Unlock()
-		go reorganizeMemory(dl)
-	}()
-	dl.mu.Lock()
-	filteredData := dl.data[:0] // Create a new slice with the same length as the original
+	dl.AtomicDo(func(dl *DataList) {
+		filteredData := dl.data[:0] // Create a new slice with the same length as the original
 
-	for _, v := range dl.data {
-		// If the element is not a number, keep it
-		switch v.(type) {
-		case int, int8, int16, int32, int64:
-		case uint, uint8, uint16, uint32, uint64:
-		case float32, float64:
-		default:
-			filteredData = append(filteredData, v)
+		for _, v := range dl.data {
+			// If the element is not a number, keep it
+			switch v.(type) {
+			case int, int8, int16, int32, int64:
+			case uint, uint8, uint16, uint32, uint64:
+			case float32, float64:
+			default:
+				filteredData = append(filteredData, v)
+			}
 		}
-	}
 
-	dl.data = filteredData
-	go dl.updateTimestamp()
+		dl.data = filteredData
+		go dl.updateTimestamp()
+		go reorganizeMemory(dl)
+	})
 	return dl
 }
 
@@ -684,17 +671,17 @@ func (dl *DataList) Standardize() *DataList {
 		if r != nil {
 			LogWarning("DataList", "Standardize", "Data types cannot be compared, returning nil")
 		}
-		dl.mu.Unlock()
-		go reorganizeMemory(dl)
-		go dl.updateTimestamp()
 	}()
-	mean := dl.Mean()
-	stddev := dl.Stdev()
-	dl.mu.Lock()
-	for i, v := range dl.Data() {
-		vfloat := conv.ParseF64(v)
-		dl.data[i] = (vfloat - mean) / stddev
-	}
+	dl.AtomicDo(func(dl *DataList) {
+		mean := dl.Mean()
+		stddev := dl.Stdev()
+		for i, v := range dl.data {
+			vfloat := conv.ParseF64(v)
+			dl.data[i] = (vfloat - mean) / stddev
+		}
+		go dl.updateTimestamp()
+		go reorganizeMemory(dl)
+	})
 	return dl
 }
 
@@ -706,22 +693,22 @@ func (dl *DataList) FillNaNWithMean() *DataList {
 		if r != nil {
 			LogWarning("DataList", "FillNaNWithMean", "Data types cannot be compared, returning nil")
 		}
-		dl.mu.Unlock()
-		go reorganizeMemory(dl)
-		go dl.updateTimestamp()
 	}()
-	dlclone := dl.Clone()
-	dlNoNaN := dlclone.ClearNaNs()
-	mean := dlNoNaN.Mean()
-	dl.mu.Lock()
-	for i, v := range dl.Data() {
-		vfloat := conv.ParseF64(v)
-		if math.IsNaN(vfloat) {
-			dl.data[i] = mean
-		} else {
-			dl.data[i] = vfloat
+	dl.AtomicDo(func(dl *DataList) {
+		dlclone := dl.Clone()
+		dlNoNaN := dlclone.ClearNaNs()
+		mean := dlNoNaN.Mean()
+		for i, v := range dl.data {
+			vfloat := conv.ParseF64(v)
+			if math.IsNaN(vfloat) {
+				dl.data[i] = mean
+			} else {
+				dl.data[i] = vfloat
+			}
 		}
-	}
+		go dl.updateTimestamp()
+		go reorganizeMemory(dl)
+	})
 	return dl
 }
 
@@ -1127,138 +1114,139 @@ func (dl *DataList) Mean() float64 {
 // The weights parameter should be a slice or a DataList of the same length as the DataList.
 // Returns math.NaN() if the DataList is empty, weights are invalid, or if no valid elements can be used.
 func (dl *DataList) WeightedMean(weights any) float64 {
-	defer func() {
-		dl.mu.Unlock()
-	}()
-	dl.mu.Lock()
+	var result float64
+	dl.AtomicDo(func(dl *DataList) {
 
-	if dl.Len() == 0 {
-		LogWarning("DataList", "WeightedMean", "DataList is empty")
-		return math.NaN()
-	}
-
-	weightsSlice, sliceLen := ProcessData(weights)
-	if sliceLen != len(dl.data) {
-		LogWarning("DataList", "WeightedMean", "Weights length does not match data length")
-		return math.NaN()
-	}
-
-	totalWeight := 0.0
-	weightedSum := 0.0
-	validElements := 0
-
-	for i, v := range dl.data {
-		vfloat, ok1 := ToFloat64Safe(v)
-		wfloat, ok2 := ToFloat64Safe(weightsSlice[i])
-		if !ok1 {
-			LogWarning("DataList", "WeightedMean", "Data element at index %d cannot be converted to float64, skipping", i)
-			continue
+		if dl.Len() == 0 {
+			LogWarning("DataList", "WeightedMean", "DataList is empty")
+			result = math.NaN()
+			return
 		}
-		if !ok2 {
-			LogWarning("DataList", "WeightedMean", "Weight at index %d cannot be converted to float64, skipping", i)
-			continue
+		weightsSlice, sliceLen := ProcessData(weights)
+		if sliceLen != len(dl.data) {
+			LogWarning("DataList", "WeightedMean", "Weights length does not match data length")
+			result = math.NaN()
+			return
 		}
-		weightedSum += vfloat * wfloat
-		totalWeight += wfloat
-		validElements++
-	}
 
-	if validElements == 0 {
-		LogWarning("DataList", "WeightedMean", "No valid elements to compute weighted mean")
-		return math.NaN()
-	}
+		totalWeight := 0.0
+		weightedSum := 0.0
+		validElements := 0
 
-	if totalWeight == 0 {
-		LogWarning("DataList", "WeightedMean", "Total weight is zero, returning NaN")
-		return math.NaN()
-	}
+		for i, v := range dl.data {
+			vfloat, ok1 := ToFloat64Safe(v)
+			wfloat, ok2 := ToFloat64Safe(weightsSlice[i])
+			if !ok1 {
+				LogWarning("DataList", "WeightedMean", "Data element at index %d cannot be converted to float64, skipping", i)
+				continue
+			}
+			if !ok2 {
+				LogWarning("DataList", "WeightedMean", "Weight at index %d cannot be converted to float64, skipping", i)
+				continue
+			}
+			weightedSum += vfloat * wfloat
+			totalWeight += wfloat
+			validElements++
+		}
 
-	return weightedSum / totalWeight
+		if validElements == 0 {
+			LogWarning("DataList", "WeightedMean", "No valid elements to compute weighted mean")
+			result = math.NaN()
+			return
+		}
+		if totalWeight == 0 {
+			LogWarning("DataList", "WeightedMean", "Total weight is zero, returning NaN")
+			result = math.NaN()
+			return
+		}
+
+		result = weightedSum / totalWeight
+	})
+	return result
 }
 
 // GMean calculates the geometric mean of the DataList.
 // Returns the geometric mean.
 // Returns math.NaN() if the DataList is empty or if no elements can be converted to float64.
 func (dl *DataList) GMean() float64 {
-	defer func() {
-		dl.mu.Unlock()
-	}()
-	dl.mu.Lock()
+	var result float64
+	dl.AtomicDo(func(dl *DataList) {
+		result = math.NaN()
+		if len(dl.data) == 0 {
+			LogWarning("DataList", "GMean", "DataList is empty")
+			return
+		}
 
-	gmean := math.NaN()
-	if len(dl.data) == 0 {
-		LogWarning("DataList", "GMean", "DataList is empty")
-		return gmean
-	}
-
-	product := 1.0
-	count := 0
-	for _, v := range dl.data {
-		if val, ok := ToFloat64Safe(v); ok {
-			if val <= 0 {
-				LogWarning("DataList", "GMean", "Non-positive value encountered, skipping")
+		product := 1.0
+		count := 0
+		for _, v := range dl.data {
+			if val, ok := ToFloat64Safe(v); ok {
+				if val <= 0 {
+					LogWarning("DataList", "GMean", "Non-positive value encountered, skipping")
+					continue
+				}
+				product *= val
+				count++
+			} else {
+				LogWarning("DataList", "GMean", "Element %v is not a numeric type, skipping", v)
 				continue
 			}
-			product *= val
-			count++
-		} else {
-			LogWarning("DataList", "GMean", "Element %v is not a numeric type, skipping", v)
-			continue
 		}
-	}
 
-	if count == 0 {
-		LogWarning("DataList", "GMean", "No valid elements to compute geometric mean")
-		return gmean
-	}
+		if count == 0 {
+			LogWarning("DataList", "GMean", "No valid elements to compute geometric mean")
+			return
+		}
 
-	gmean = math.Pow(product, 1.0/float64(count))
-	return gmean
+		result = math.Pow(product, 1.0/float64(count))
+	})
+	return result
 }
 
 // Median calculates the median of the DataList.
 // Returns math.NaN() if the DataList is empty or if no valid elements can be used.
 func (dl *DataList) Median() float64 {
-	defer func() {
-		dl.mu.Unlock()
-	}()
-	dl.mu.Lock()
-
-	if len(dl.data) == 0 {
-		LogWarning("DataList", "Median", "DataList is empty")
-		return math.NaN()
-	}
-
-	// Convert data to float64 and skip invalid elements
-	var validData []float64
-	for _, v := range dl.data {
-		vfloat, ok := ToFloat64Safe(v)
-		if !ok {
-			LogWarning("DataList", "Median", "Element %v is not a numeric type, skipping", v)
-			continue
+	var result float64
+	dl.AtomicDo(func(dl *DataList) {
+		if len(dl.data) == 0 {
+			LogWarning("DataList", "Median", "DataList is empty")
+			result = math.NaN()
+			return
 		}
-		validData = append(validData, vfloat)
-	}
 
-	if len(validData) == 0 {
-		LogWarning("DataList", "Median", "No valid elements to compute median")
-		return math.NaN()
-	}
+		// Convert data to float64 and skip invalid elements
+		var validData []float64
+		for _, v := range dl.data {
+			vfloat, ok := ToFloat64Safe(v)
+			if !ok {
+				LogWarning("DataList", "Median", "Element %v is not a numeric type, skipping", v)
+				continue
+			}
+			validData = append(validData, vfloat)
+		}
 
-	// Sort the valid data
-	sort.Float64s(validData)
+		if len(validData) == 0 {
+			LogWarning("DataList", "Median", "No valid elements to compute median")
+			result = math.NaN()
+			return
+		}
 
-	mid := len(validData) / 2
+		// Sort the valid data
+		sort.Float64s(validData)
 
-	if len(validData)%2 == 0 {
-		// Even number of elements, return the average of the middle two
-		mid1 := validData[mid-1]
-		mid2 := validData[mid]
-		return (mid1 + mid2) / 2
-	}
+		mid := len(validData) / 2
 
-	// Odd number of elements, return the middle one
-	return validData[mid]
+		if len(validData)%2 == 0 {
+			// Even number of elements, return the average of the middle two
+			mid1 := validData[mid-1]
+			mid2 := validData[mid]
+			result = (mid1 + mid2) / 2
+		} else {
+			// Odd number of elements, return the middle one
+			result = validData[mid]
+		}
+	})
+	return result
 }
 
 // Mode calculates the mode of the DataList.
@@ -1266,58 +1254,60 @@ func (dl *DataList) Median() float64 {
 // Mode could be a single value or multiple values.
 // Returns nil if the DataList is empty or if no valid elements can be used.
 func (dl *DataList) Mode() []float64 {
-	defer func() {
-		dl.mu.Unlock()
-	}()
-	dl.mu.Lock()
-
-	if len(dl.data) == 0 {
-		LogWarning("DataList", "Mode", "DataList is empty, returning nil")
-		return nil
-	}
-
-	freqMap := make(map[float64]int)
-	for _, v := range dl.data {
-		vfloat, ok := ToFloat64Safe(v)
-		if !ok {
-			continue
+	var result []float64
+	dl.AtomicDo(func(dl *DataList) {
+		if len(dl.data) == 0 {
+			LogWarning("DataList", "Mode", "DataList is empty, returning nil")
+			result = nil
+			return
 		}
-		freqMap[vfloat]++
-	}
 
-	if len(freqMap) == 0 {
-		LogWarning("DataList", "Mode", "No valid elements to compute mode, returning nil")
-		return nil
-	}
-
-	var modes []float64
-	maxFreq := 0
-	for _, freq := range freqMap {
-		if freq > maxFreq {
-			maxFreq = freq
+		freqMap := make(map[float64]int)
+		for _, v := range dl.data {
+			vfloat, ok := ToFloat64Safe(v)
+			if !ok {
+				continue
+			}
+			freqMap[vfloat]++
 		}
-	}
 
-	// Check if all elements have the same frequency
-	allSameFrequency := true
-	for _, freq := range freqMap {
-		if freq != maxFreq {
-			allSameFrequency = false
-			break
+		if len(freqMap) == 0 {
+			LogWarning("DataList", "Mode", "No valid elements to compute mode, returning nil")
+			result = nil
+			return
 		}
-	}
 
-	if allSameFrequency {
-		LogWarning("DataList", "Mode", "All elements have the same frequency. No mode exists, returning nil")
-		return nil
-	}
-	for num, freq := range freqMap {
-		if freq == maxFreq {
-			modes = append(modes, num)
+		var modes []float64
+		maxFreq := 0
+		for _, freq := range freqMap {
+			if freq > maxFreq {
+				maxFreq = freq
+			}
 		}
-	}
 
-	return modes
+		// Check if all elements have the same frequency
+		allSameFrequency := true
+		for _, freq := range freqMap {
+			if freq != maxFreq {
+				allSameFrequency = false
+				break
+			}
+		}
+
+		if allSameFrequency {
+			LogWarning("DataList", "Mode", "All elements have the same frequency. No mode exists, returning nil")
+			result = nil
+			return
+		}
+		for num, freq := range freqMap {
+			if freq == maxFreq {
+				modes = append(modes, num)
+			}
+		}
+
+		result = modes
+	})
+	return result
 }
 
 // MAD calculates the mean absolute deviation of the DataList.
@@ -1359,252 +1349,259 @@ func (dl *DataList) MAD() float64 {
 // Stdev calculates the standard deviation (sample) of the DataList.
 // Returns math.NaN() if the DataList is empty or if no valid elements can be used.
 func (dl *DataList) Stdev() float64 {
-	dl.mu.Lock()
+	var result float64
+	dl.AtomicDo(func(dl *DataList) {
+		if len(dl.data) == 0 {
+			LogWarning("DataList", "Stdev", "DataList is empty")
+			result = math.NaN()
+			return
+		}
 
-	if len(dl.data) == 0 {
-		LogWarning("DataList", "Stdev", "DataList is empty")
-		return math.NaN()
-	}
+		variance := dl.Var()
+		if math.IsNaN(variance) {
+			LogWarning("DataList", "Stdev", "Variance calculation failed")
+			result = math.NaN()
+			return
+		}
 
-	dl.mu.Unlock()
-
-	variance := dl.Var()
-	if math.IsNaN(variance) {
-		LogWarning("DataList", "Stdev", "Variance calculation failed")
-		return math.NaN()
-	}
-
-	return math.Sqrt(variance)
+		result = math.Sqrt(variance)
+	})
+	return result
 }
 
 // StdevP calculates the standard deviation (population) of the DataList.
 // Returns math.NaN() if the DataList is empty or if no valid elements can be used.
 func (dl *DataList) StdevP() float64 {
-	dl.mu.Lock()
+	var result float64
+	dl.AtomicDo(func(dl *DataList) {
+		if len(dl.data) == 0 {
+			LogWarning("DataList", "StdevP", "DataList is empty")
+			result = math.NaN()
+			return
+		}
 
-	if len(dl.data) == 0 {
-		LogWarning("DataList", "StdevP", "DataList is empty")
-		return math.NaN()
-	}
+		varianceP := dl.VarP()
+		if math.IsNaN(varianceP) {
+			LogWarning("DataList", "StdevP", "Variance calculation failed")
+			result = math.NaN()
+			return
+		}
 
-	dl.mu.Unlock()
-	varianceP := dl.VarP()
-	if math.IsNaN(varianceP) {
-		LogWarning("DataList", "StdevP", "Variance calculation failed")
-		return math.NaN()
-	}
-
-	return math.Sqrt(varianceP)
+		result = math.Sqrt(varianceP)
+	})
+	return result
 }
 
 // Var calculates the variance (sample variance) of the DataList.
 // Returns math.NaN() if the DataList is empty or if not enough valid elements are available.
 func (dl *DataList) Var() float64 {
-	defer func() {
-		dl.mu.Unlock()
-	}()
-	dl.mu.Lock()
-
-	if len(dl.data) == 0 {
-		LogWarning("DataList", "Var", "DataList is empty")
-		return math.NaN()
-	}
-
-	var sum float64
-	var count int
-
-	// First pass: calculate the mean of valid elements
-	for _, v := range dl.data {
-		xi, ok := ToFloat64Safe(v)
-		if !ok {
-			LogWarning("DataList", "Var", "Element %v is not a numeric type, skipping", v)
-			continue
+	var result float64
+	dl.AtomicDo(func(dl *DataList) {
+		if len(dl.data) == 0 {
+			LogWarning("DataList", "Var", "DataList is empty")
+			result = math.NaN()
+			return
 		}
-		sum += xi
-		count++
-	}
 
-	if count < 2 {
-		LogWarning("DataList", "Var", "Not enough valid elements to compute variance")
-		return math.NaN()
-	}
+		var sum float64
+		var count int
 
-	mean := sum / float64(count)
-
-	// Second pass: calculate the variance
-	var numerator float64
-	for _, v := range dl.data {
-		xi, ok := ToFloat64Safe(v)
-		if !ok {
-			// Already logged, skip this element
-			continue
+		// First pass: calculate the mean of valid elements
+		for _, v := range dl.data {
+			xi, ok := ToFloat64Safe(v)
+			if !ok {
+				LogWarning("DataList", "Var", "Element %v is not a numeric type, skipping", v)
+				continue
+			}
+			sum += xi
+			count++
 		}
-		numerator += math.Pow(xi-mean, 2)
-	}
 
-	denominator := float64(count - 1)
-	variance := numerator / denominator
+		if count < 2 {
+			LogWarning("DataList", "Var", "Not enough valid elements to compute variance")
+			result = math.NaN()
+			return
+		}
 
-	return variance
+		mean := sum / float64(count)
+
+		// Second pass: calculate the variance
+		var numerator float64
+		for _, v := range dl.data {
+			xi, ok := ToFloat64Safe(v)
+			if !ok {
+				// Already logged, skip this element
+				continue
+			}
+			numerator += math.Pow(xi-mean, 2)
+		}
+
+		denominator := float64(count - 1)
+		result = numerator / denominator
+	})
+	return result
 }
 
 // VarP calculates the variance (population variance) of the DataList.
 // Returns math.NaN() if the DataList is empty or if no valid elements can be used.
 func (dl *DataList) VarP() float64 {
-	defer func() {
-		dl.mu.Unlock()
-	}()
-	dl.mu.Lock()
-
-	if len(dl.data) == 0 {
-		LogWarning("DataList", "VarP", "DataList is empty")
-		return math.NaN()
-	}
-
-	// First pass: compute mean over valid elements
-	var sum float64
-	var count int
-
-	for _, v := range dl.data {
-		xi, ok := ToFloat64Safe(v)
-		if !ok {
-			LogWarning("DataList", "VarP", "Element %v is not a numeric type, skipping", v)
-			continue
+	var result float64
+	dl.AtomicDo(func(dl *DataList) {
+		if len(dl.data) == 0 {
+			LogWarning("DataList", "VarP", "DataList is empty")
+			result = math.NaN()
+			return
 		}
-		sum += xi
-		count++
-	}
 
-	if count == 0 {
-		LogWarning("DataList", "VarP", "No valid elements to compute variance")
-		return math.NaN()
-	}
+		// First pass: compute mean over valid elements
+		var sum float64
+		var count int
 
-	mean := sum / float64(count)
-
-	// Second pass: compute variance
-	var numerator float64
-	for _, v := range dl.data {
-		xi, ok := ToFloat64Safe(v)
-		if !ok {
-			// Already logged, skip this element
-			continue
+		for _, v := range dl.data {
+			xi, ok := ToFloat64Safe(v)
+			if !ok {
+				LogWarning("DataList", "VarP", "Element %v is not a numeric type, skipping", v)
+				continue
+			}
+			sum += xi
+			count++
 		}
-		numerator += math.Pow(xi-mean, 2)
-	}
 
-	variance := numerator / float64(count) // Population variance divides by N
+		if count == 0 {
+			LogWarning("DataList", "VarP", "No valid elements to compute variance")
+			result = math.NaN()
+			return
+		}
 
-	return variance
+		mean := sum / float64(count)
+
+		// Second pass: compute variance
+		var numerator float64
+		for _, v := range dl.data {
+			xi, ok := ToFloat64Safe(v)
+			if !ok {
+				// Already logged, skip this element
+				continue
+			}
+			numerator += math.Pow(xi-mean, 2)
+		}
+
+		result = numerator / float64(count) // Population variance divides by N
+	})
+	return result
 }
 
 // Range calculates the range of the DataList.
 // Returns math.NaN() if the DataList is empty or if Max or Min cannot be calculated.
 func (dl *DataList) Range() float64 {
-	dl.mu.Lock()
+	var result float64
+	dl.AtomicDo(func(dl *DataList) {
+		if len(dl.data) == 0 {
+			LogWarning("DataList", "Range", "DataList is empty")
+			result = math.NaN()
+			return
+		}
 
-	if len(dl.data) == 0 {
-		LogWarning("DataList", "Range", "DataList is empty")
-		return math.NaN()
-	}
-	dl.mu.Unlock()
+		max := dl.Max()
+		min := dl.Min()
 
-	max := dl.Max()
-	min := dl.Min()
+		if math.IsNaN(max) || math.IsNaN(min) {
+			LogWarning("DataList", "Range", "Max or Min calculation failed")
+			result = math.NaN()
+			return
+		}
 
-	if math.IsNaN(max) || math.IsNaN(min) {
-		LogWarning("DataList", "Range", "Max or Min calculation failed")
-		return math.NaN()
-	}
-
-	return max - min
+		result = max - min
+	})
+	return result
 }
 
 // Quartile calculates the quartile based on the input value (1 to 3).
 // 1 corresponds to the first quartile (Q1), 2 to the median (Q2), and 3 to the third quartile (Q3).
 // This implementation uses percentiles to compute quartiles.
 func (dl *DataList) Quartile(q int) float64 {
-	defer func() {
-		dl.mu.Unlock()
-	}()
-	dl.mu.Lock()
-
-	if len(dl.data) == 0 {
-		LogWarning("DataList", "Quartile", "DataList is empty")
-		return math.NaN()
-	}
-	if q < 1 || q > 3 {
-		LogWarning("DataList", "Quartile", "Invalid quartile value")
-		return math.NaN()
-	}
-
-	// Convert the DataList to a slice of float64 for numeric operations, skipping invalid elements
-	var numericData []float64
-	for _, v := range dl.data {
-		vfloat, ok := ToFloat64Safe(v)
-		if !ok {
-			LogWarning("DataList", "Quartile", "Element %v is not a numeric type, skipping", v)
-			continue
+	var result float64
+	dl.AtomicDo(func(dl *DataList) {
+		if len(dl.data) == 0 {
+			LogWarning("DataList", "Quartile", "DataList is empty")
+			result = math.NaN()
+			return
 		}
-		numericData = append(numericData, vfloat)
-	}
+		if q < 1 || q > 3 {
+			LogWarning("DataList", "Quartile", "Invalid quartile value")
+			result = math.NaN()
+			return
+		}
 
-	if len(numericData) == 0 {
-		LogWarning("DataList", "Quartile", "No valid elements to compute quartile")
-		return math.NaN()
-	}
+		// Convert the DataList to a slice of float64 for numeric operations, skipping invalid elements
+		var numericData []float64
+		for _, v := range dl.data {
+			vfloat, ok := ToFloat64Safe(v)
+			if !ok {
+				LogWarning("DataList", "Quartile", "Element %v is not a numeric type, skipping", v)
+				continue
+			}
+			numericData = append(numericData, vfloat)
+		}
 
-	// Sort the data
-	sort.Float64s(numericData)
+		if len(numericData) == 0 {
+			LogWarning("DataList", "Quartile", "No valid elements to compute quartile")
+			result = math.NaN()
+			return
+		}
 
-	n := len(numericData)
-	var p float64
+		// Sort the data
+		sort.Float64s(numericData)
 
-	// Set the percentile based on the quartile
-	switch q {
-	case 1:
-		p = 0.25
-	case 2:
-		p = 0.5
-	case 3:
-		p = 0.75
-	}
+		n := len(numericData)
+		var p float64
 
-	// Calculate the position using the percentile
-	pos := p * float64(n+1)
+		// Set the percentile based on the quartile
+		switch q {
+		case 1:
+			p = 0.25
+		case 2:
+			p = 0.5
+		case 3:
+			p = 0.75
+		}
 
-	// Adjust position if it is outside the range
-	if pos < 1.0 {
-		pos = 1.0
-	} else if pos > float64(n) {
-		pos = float64(n)
-	}
+		// Calculate the position using the percentile
+		pos := p * float64(n+1)
 
-	// Convert position to indices
-	lowerIndex := int(math.Floor(pos)) - 1 // Subtract 1 for zero-based index
-	upperIndex := int(math.Ceil(pos)) - 1
+		// Adjust position if it is outside the range
+		if pos < 1.0 {
+			pos = 1.0
+		} else if pos > float64(n) {
+			pos = float64(n)
+		}
 
-	// Ensure indices are within bounds
-	if lowerIndex < 0 {
-		lowerIndex = 0
-	}
-	if upperIndex >= n {
-		upperIndex = n - 1
-	}
+		// Convert position to indices
+		lowerIndex := int(math.Floor(pos)) - 1 // Subtract 1 for zero-based index
+		upperIndex := int(math.Ceil(pos)) - 1
 
-	// Handle the case where the position is exactly an integer
-	if lowerIndex == upperIndex {
-		return numericData[lowerIndex]
-	}
+		// Ensure indices are within bounds
+		if lowerIndex < 0 {
+			lowerIndex = 0
+		}
+		if upperIndex >= n {
+			upperIndex = n - 1
+		}
 
-	// Interpolate between the lower and upper bounds
-	lowerValue := numericData[lowerIndex]
-	upperValue := numericData[upperIndex]
-	fraction := pos - math.Floor(pos)
+		// Handle the case where the position is exactly an integer
+		if lowerIndex == upperIndex {
+			result = numericData[lowerIndex]
+			return
+		}
 
-	quartile := lowerValue + fraction*(upperValue-lowerValue)
+		// Interpolate between the lower and upper bounds
+		lowerValue := numericData[lowerIndex]
+		upperValue := numericData[upperIndex]
+		fraction := pos - math.Floor(pos)
 
-	return quartile
+		result = lowerValue + fraction*(upperValue-lowerValue)
+	})
+	return result
 }
 
 // IQR calculates the interquartile range of the DataList.
@@ -1629,163 +1626,172 @@ func (dl *DataList) IQR() float64 {
 
 // Percentile calculates the percentile based on the input value (0 to 100).
 func (dl *DataList) Percentile(p float64) float64 {
-	defer func() {
-		dl.mu.Unlock()
-	}()
-	dl.mu.Lock()
-
-	if len(dl.data) == 0 {
-		LogWarning("DataList", "Percentile", "DataList is empty")
-		return math.NaN()
-	}
-	if p < 0 || p > 100 {
-		LogWarning("DataList", "Percentile", "Invalid percentile value")
-		return math.NaN()
-	}
-
-	// Convert the DataList to a slice of float64 for numeric operations, skipping invalid elements
-	var numericData []float64
-	for _, v := range dl.data {
-		vfloat, ok := ToFloat64Safe(v)
-		if !ok {
-			LogWarning("DataList", "Percentile", "Element %v cannot be converted to float64, skipping", v)
-			continue
+	var result float64
+	dl.AtomicDo(func(dl *DataList) {
+		if len(dl.data) == 0 {
+			LogWarning("DataList", "Percentile", "DataList is empty")
+			result = math.NaN()
+			return
 		}
-		numericData = append(numericData, vfloat)
-	}
+		if p < 0 || p > 100 {
+			LogWarning("DataList", "Percentile", "Invalid percentile value")
+			result = math.NaN()
+			return
+		}
 
-	if len(numericData) == 0 {
-		LogWarning("DataList", "Percentile", "No valid elements to compute percentile")
-		return math.NaN()
-	}
+		// Convert the DataList to a slice of float64 for numeric operations, skipping invalid elements
+		var numericData []float64
+		for _, v := range dl.data {
+			vfloat, ok := ToFloat64Safe(v)
+			if !ok {
+				LogWarning("DataList", "Percentile", "Element %v cannot be converted to float64, skipping", v)
+				continue
+			}
+			numericData = append(numericData, vfloat)
+		}
 
-	// Sort the data
-	sort.Float64s(numericData)
+		if len(numericData) == 0 {
+			LogWarning("DataList", "Percentile", "No valid elements to compute percentile")
+			result = math.NaN()
+			return
+		}
 
-	n := len(numericData)
-	if n == 1 {
-		return numericData[0]
-	}
+		// Sort the data
+		sort.Float64s(numericData)
 
-	// Calculate the position using R's type=7 method
-	p /= 100.0
-	h := p*(float64(n)-1) + 1
+		n := len(numericData)
+		if n == 1 {
+			result = numericData[0]
+			return
+		}
 
-	// Adjust position for zero-based index
-	h -= 1
+		// Calculate the position using R's type=7 method
+		p /= 100.0
+		h := p*(float64(n)-1) + 1
 
-	lowerIndex := int(math.Floor(h))
-	upperIndex := int(math.Ceil(h))
+		// Adjust position for zero-based index
+		h -= 1
 
-	// Ensure indices are within bounds
-	if lowerIndex < 0 {
-		lowerIndex = 0
-	}
-	if upperIndex >= n {
-		upperIndex = n - 1
-	}
+		lowerIndex := int(math.Floor(h))
+		upperIndex := int(math.Ceil(h))
 
-	lowerValue := numericData[lowerIndex]
-	upperValue := numericData[upperIndex]
+		// Ensure indices are within bounds
+		if lowerIndex < 0 {
+			lowerIndex = 0
+		}
+		if upperIndex >= n {
+			upperIndex = n - 1
+		}
 
-	if lowerIndex == upperIndex {
-		return lowerValue
-	}
+		lowerValue := numericData[lowerIndex]
+		upperValue := numericData[upperIndex]
 
-	// Interpolate between the lower and upper values
-	fraction := h - float64(lowerIndex)
-	percentileValue := lowerValue + fraction*(upperValue-lowerValue)
+		if lowerIndex == upperIndex {
+			result = lowerValue
+			return
+		}
 
-	return percentileValue
+		// Interpolate between the lower and upper values
+		fraction := h - float64(lowerIndex)
+		result = lowerValue + fraction*(upperValue-lowerValue)
+	})
+	return result
 }
 
 // Difference calculates the differences between adjacent elements in the DataList.
 func (dl *DataList) Difference() *DataList {
-	defer func() {
-		r := recover()
-		if r != nil {
-			LogWarning("DataList", "Difference", "Data types cannot be compared")
+	var result *DataList
+	dl.AtomicDo(func(dl *DataList) {
+		defer func() {
+			if r := recover(); r != nil {
+				LogWarning("DataList", "Difference", "Data types cannot be compared")
+			}
+		}()
+
+		if len(dl.data) < 2 {
+			LogWarning("DataList", "Difference", "DataList is too short to calculate differences, returning nil")
+			result = nil
+			return
 		}
 
-		dl.mu.Unlock()
-	}()
-	dl.mu.Lock()
+		differenceData := make([]float64, dl.Len()-1)
+		for i := 1; i < dl.Len(); i++ {
+			differenceData[i-1] = conv.ParseF64(dl.data[i]) - conv.ParseF64(dl.data[i-1])
+		}
 
-	if len(dl.data) < 2 {
-		LogWarning("DataList", "Difference", "DataList is too short to calculate differences, returning nil")
-		return nil
-	}
-
-	differenceData := make([]float64, dl.Len()-1)
-	for i := 1; i < dl.Len(); i++ {
-		differenceData[i-1] = conv.ParseF64(dl.data[i]) - conv.ParseF64(dl.data[i-1])
-	}
-
-	return NewDataList(differenceData)
+		result = NewDataList(differenceData)
+	})
+	return result
 }
 
 // ======================== Comparison ========================
 
 // IsEqualTo checks if the data of the DataList is equal to another DataList.
 func (dl *DataList) IsEqualTo(anotherDl *DataList) bool {
-	defer func() {
-		dl.mu.Unlock()
-		anotherDl.mu.Unlock()
-	}()
-	dl.mu.Lock()
-	anotherDl.mu.Lock()
+	var result bool
+	dl.AtomicDo(func(dl *DataList) {
+		anotherDl.AtomicDo(func(anotherDl *DataList) {
+			if len(dl.data) != len(anotherDl.data) {
+				result = false
+				return
+			}
 
-	if len(dl.data) != len(anotherDl.data) {
-		return false
-	}
+			for i, v := range dl.data {
+				if v != anotherDl.data[i] {
+					result = false
+					return
+				}
+			}
 
-	for i, v := range dl.data {
-		if v != anotherDl.data[i] {
-			return false
-		}
-	}
-
-	return true
+			result = true
+		})
+	})
+	return result
 }
 
 // IsTheSameAs checks if the DataList is fully the same as another DataList.
 // It checks for equality in name, data, creation timestamp, and last modified timestamp.
 func (dl *DataList) IsTheSameAs(anotherDl *DataList) bool {
-	defer func() {
-		dl.mu.Unlock()
-		anotherDl.mu.Unlock()
-	}()
-	dl.mu.Lock()
-	anotherDl.mu.Lock()
+	var result bool
+	dl.AtomicDo(func(dl *DataList) {
+		anotherDl.AtomicDo(func(anotherDl *DataList) {
+			if dl == anotherDl {
+				result = true
+				return
+			}
 
-	if dl == anotherDl {
-		return true
-	}
+			if anotherDl == nil {
+				LogWarning("DataList", "IsTheSameAs", "Another DataList is nil, returning false")
+				result = false
+				return
+			}
 
-	if anotherDl == nil {
-		LogWarning("DataList", "IsTheSameAs", "Another DataList is nil, returning false")
-		return false
-	}
+			if len(dl.data) != len(anotherDl.data) {
+				result = false
+				return
+			}
 
-	if len(dl.data) != len(anotherDl.data) {
-		return false
-	}
+			for i, v := range dl.data {
+				if v != anotherDl.data[i] {
+					result = false
+					return
+				}
+			}
 
-	for i, v := range dl.data {
-		if v != anotherDl.data[i] {
-			return false
-		}
-	}
+			if dl.name != anotherDl.name {
+				result = false
+				return
+			}
 
-	if dl.name != anotherDl.name {
-		return false
-	}
+			if dl.creationTimestamp != anotherDl.creationTimestamp || dl.lastModifiedTimestamp.Load() != anotherDl.lastModifiedTimestamp.Load() {
+				result = false
+				return
+			}
 
-	if dl.creationTimestamp != anotherDl.creationTimestamp || dl.lastModifiedTimestamp.Load() != anotherDl.lastModifiedTimestamp.Load() {
-		return false
-	}
-
-	return true
+			result = true
+		})
+	})
+	return result
 }
 
 // ======================== Conversion ========================
@@ -1793,48 +1799,43 @@ func (dl *DataList) IsTheSameAs(anotherDl *DataList) bool {
 // ParseNumbers attempts to parse all string elements in the DataList to numeric types.
 // If parsing fails, the element is left unchanged.
 func (dl *DataList) ParseNumbers() *DataList {
-	defer func() {
-		dl.mu.Unlock()
-		go reorganizeMemory(dl)
-	}()
-	dl.mu.Lock()
+	dl.AtomicDo(func(dl *DataList) {
 
-	for i, v := range dl.data {
-		func() {
-			defer func() {
-				if r := recover(); r != nil {
-					LogWarning("DataList", "ParseNumbers", "Failed to parse %v to float64: %v, the element left unchanged", v, r)
-				}
+		for i, v := range dl.data {
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						LogWarning("DataList", "ParseNumbers", "Failed to parse %v to float64: %v, the element left unchanged", v, r)
+					}
+				}()
+
+				dl.data[i] = conv.ParseF64(v)
 			}()
+		}
 
-			dl.data[i] = conv.ParseF64(v)
-		}()
-	}
-
-	go dl.updateTimestamp()
+		go dl.updateTimestamp()
+		go reorganizeMemory(dl)
+	})
 	return dl
 }
 
 // ParseStrings converts all elements in the DataList to strings.
 func (dl *DataList) ParseStrings() *DataList {
-	defer func() {
-		dl.mu.Unlock()
-	}()
-	dl.mu.Lock()
+	dl.AtomicDo(func(dl *DataList) {
+		for i, v := range dl.data {
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						LogWarning("DataList", "ParseStrings", "Failed to convert %v to string: %v, the element left unchanged", v, r)
+					}
+				}()
 
-	for i, v := range dl.data {
-		func() {
-			defer func() {
-				if r := recover(); r != nil {
-					LogWarning("DataList", "ParseStrings", "Failed to convert %v to string: %v, the element left unchanged", v, r)
-				}
+				dl.data[i] = conv.ToString(v)
 			}()
+		}
 
-			dl.data[i] = conv.ToString(v)
-		}()
-	}
-
-	go dl.updateTimestamp()
+		go dl.updateTimestamp()
+	})
 	return dl
 }
 
@@ -1843,44 +1844,44 @@ func (dl *DataList) ParseStrings() *DataList {
 // Returns nil if the DataList is empty.
 // ToF64Slice converts the DataList to a float64 slice.
 func (dl *DataList) ToF64Slice() []float64 {
-	defer func() {
-		dl.mu.Unlock()
-	}()
-	dl.mu.Lock()
+	var result []float64
+	dl.AtomicDo(func(dl *DataList) {
+		if len(dl.data) == 0 {
+			LogWarning("DataList", "ToF64Slice", "DataList is empty, returning nil")
+			result = nil
+			return
+		}
 
-	if len(dl.data) == 0 {
-		LogWarning("DataList", "ToF64Slice", "DataList is empty, returning nil")
-		return nil
-	}
+		floatData := make([]float64, len(dl.data))
+		for i, v := range dl.data {
+			floatData[i] = ToFloat64(v)
+		}
 
-	floatData := make([]float64, len(dl.data))
-	for i, v := range dl.data {
-		floatData[i] = ToFloat64(v)
-	}
-
-	return floatData
+		result = floatData
+	})
+	return result
 }
 
 // ToStringSlice converts the DataList to a string slice.
 // Returns the string slice.
 // Returns nil if the DataList is empty.
 func (dl *DataList) ToStringSlice() []string {
-	defer func() {
-		dl.mu.Unlock()
-	}()
+	var result []string
+	dl.AtomicDo(func(dl *DataList) {
+		if len(dl.data) == 0 {
+			LogWarning("DataList", "ToStringSlice", "DataList is empty, returning nil")
+			result = nil
+			return
+		}
 
-	dl.mu.Lock()
-	if len(dl.data) == 0 {
-		LogWarning("DataList", "ToStringSlice", "DataList is empty, returning nil")
-		return nil
-	}
+		stringData := make([]string, len(dl.data))
+		for i, v := range dl.data {
+			stringData[i] = conv.ToString(v)
+		}
 
-	stringData := make([]string, len(dl.data))
-	for i, v := range dl.data {
-		stringData[i] = conv.ToString(v)
-	}
-
-	return stringData
+		result = stringData
+	})
+	return result
 }
 
 // ======================== Timestamp ========================
