@@ -2,7 +2,6 @@ package insyra
 
 // IDataList defines the behavior expected from a DataList.
 type IDataList interface {
-	isFragmented() bool
 	GetCreationTimestamp() int64
 	GetLastModifiedTimestamp() int64
 	updateTimestamp()

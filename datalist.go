@@ -104,7 +104,6 @@ func (dl *DataList) Append(values ...any) {
 		// Append data and update timestamp
 		dl.data = append(dl.data, values...)
 		go dl.updateTimestamp()
-		go reorganizeMemory(dl)
 	})
 }
 
@@ -125,7 +124,6 @@ func (dl *DataList) Get(index int) any {
 			return
 		}
 		result = dl.data[index]
-		go reorganizeMemory(dl)
 	})
 	return result
 }
@@ -169,7 +167,6 @@ func (dl *DataList) Update(index int, newValue any) {
 		}
 		dl.data[index] = newValue
 		go dl.updateTimestamp()
-		go reorganizeMemory(dl)
 	})
 }
 
@@ -196,7 +193,6 @@ func (dl *DataList) InsertAt(index int, value any) {
 		}
 
 		go dl.updateTimestamp()
-		go reorganizeMemory(dl)
 	})
 }
 
@@ -213,7 +209,6 @@ func (dl *DataList) FindFirst(value any) any {
 		}
 		LogWarning("DataList", "FindFirst", "Value not found, returning nil.")
 		result = nil
-		go reorganizeMemory(dl)
 	})
 	return result
 }
@@ -231,7 +226,6 @@ func (dl *DataList) FindLast(value any) any {
 		}
 		LogWarning("DataList", "FindLast", "Value not found, returning nil.")
 		result = nil
-		go reorganizeMemory(dl)
 	})
 	return result
 }
@@ -253,7 +247,6 @@ func (dl *DataList) FindAll(value any) []int {
 				indices = append(indices, i)
 			}
 		}
-		go reorganizeMemory(dl)
 	})
 	return indices
 }
@@ -270,7 +263,6 @@ func (dl *DataList) Filter(filterFunc func(any) bool) *DataList {
 				filteredData = append(filteredData, v)
 			}
 		}
-		go reorganizeMemory(dl)
 	})
 	return NewDataList(filteredData...)
 }
@@ -286,7 +278,6 @@ func (dl *DataList) ReplaceFirst(oldValue, newValue any) {
 			}
 		}
 		LogWarning("DataList", "ReplaceFirst", "value not found.")
-		go reorganizeMemory(dl)
 	})
 }
 
@@ -301,7 +292,6 @@ func (dl *DataList) ReplaceLast(oldValue, newValue any) {
 			}
 		}
 		LogWarning("DataList", "ReplaceLast", "value not found.")
-		go reorganizeMemory(dl)
 	})
 }
 
@@ -323,22 +313,23 @@ func (dl *DataList) ReplaceAll(oldValue, newValue any) {
 		}
 
 		go dl.updateTimestamp()
-		go reorganizeMemory(dl)
 	})
 }
 
 // ReplaceOutliers replaces outliers in the DataList with the specified replacement value (e.g., mean, median).
 func (dl *DataList) ReplaceOutliers(stdDevs float64, replacement float64) *DataList {
-	mean := dl.Mean()
-	stddev := dl.Stdev()
-	threshold := stdDevs * stddev
+	dl.AtomicDo(func(dl *DataList) {
+		mean := dl.Mean()
+		stddev := dl.Stdev()
+		threshold := stdDevs * stddev
 
-	for i, v := range dl.Data() {
-		val := conv.ParseF64(v)
-		if math.Abs(val-mean) > threshold {
-			dl.data[i] = replacement
+		for i, v := range dl.Data() {
+			val := conv.ParseF64(v)
+			if math.Abs(val-mean) > threshold {
+				dl.data[i] = replacement
+			}
 		}
-	}
+	})
 	return dl
 }
 
@@ -356,7 +347,6 @@ func (dl *DataList) Pop() any {
 		}
 		result = n
 		go dl.updateTimestamp()
-		go reorganizeMemory(dl)
 	})
 	return result
 }
@@ -374,7 +364,6 @@ func (dl *DataList) Drop(index int) *DataList {
 		}
 		dl.data = append(dl.data[:index], dl.data[index+1:]...)
 		go dl.updateTimestamp()
-		go reorganizeMemory(dl)
 	})
 	return dl
 }
@@ -461,7 +450,6 @@ func (dl *DataList) DropAll(toDrop ...any) *DataList {
 		// 更新 DataList
 		dl.data = finalResult
 		go dl.updateTimestamp()
-		go reorganizeMemory(dl)
 	})
 	return dl
 }
@@ -487,7 +475,6 @@ func (dl *DataList) DropIfContains(value any) *DataList {
 		// 將新的數據賦值回 dl.data
 		dl.data = newData
 		go dl.updateTimestamp()
-		go reorganizeMemory(dl)
 	})
 	return dl
 }
@@ -497,7 +484,6 @@ func (dl *DataList) Clear() *DataList {
 	dl.AtomicDo(func(dl *DataList) {
 		dl.data = []any{}
 		go dl.updateTimestamp()
-		go reorganizeMemory(dl)
 	})
 	return dl
 }
@@ -562,7 +548,6 @@ func (dl *DataList) ClearStrings() *DataList {
 		// 更新 DataList
 		dl.data = finalResult
 		go dl.updateTimestamp()
-		go reorganizeMemory(dl)
 	})
 	return dl
 } // ++++ 此處之後尚未提升性能 ++++
@@ -585,7 +570,6 @@ func (dl *DataList) ClearNumbers() *DataList {
 
 		dl.data = filteredData
 		go dl.updateTimestamp()
-		go reorganizeMemory(dl)
 	})
 	return dl
 }
@@ -593,14 +577,15 @@ func (dl *DataList) ClearNumbers() *DataList {
 // ClearNaNs removes all NaN values from the DataList and updates the timestamp.
 func (dl *DataList) ClearNaNs() *DataList {
 	defer func() {
-		go reorganizeMemory(dl)
 		go dl.updateTimestamp()
 	}()
-	for i, v := range dl.Data() {
-		if math.IsNaN(v.(float64)) {
-			dl.Drop(i)
+	dl.AtomicDo(func(dl *DataList) {
+		for i, v := range dl.Data() {
+			if math.IsNaN(v.(float64)) {
+				dl.Drop(i)
+			}
 		}
-	}
+	})
 	return dl
 }
 
@@ -644,7 +629,6 @@ func (dl *DataList) Normalize() *DataList {
 			LogWarning("DataList", "Normalize", "Data types cannot be compared, returning nil")
 		}
 
-		go reorganizeMemory(dl)
 		go dl.updateTimestamp()
 	}()
 	min, max := dl.Min(), dl.Max()
@@ -677,7 +661,6 @@ func (dl *DataList) Standardize() *DataList {
 			dl.data[i] = (vfloat - mean) / stddev
 		}
 		go dl.updateTimestamp()
-		go reorganizeMemory(dl)
 	})
 	return dl
 }
@@ -704,7 +687,6 @@ func (dl *DataList) FillNaNWithMean() *DataList {
 			}
 		}
 		go dl.updateTimestamp()
-		go reorganizeMemory(dl)
 	})
 	return dl
 }
@@ -1811,7 +1793,6 @@ func (dl *DataList) ParseNumbers() *DataList {
 		}
 
 		go dl.updateTimestamp()
-		go reorganizeMemory(dl)
 	})
 	return dl
 }
