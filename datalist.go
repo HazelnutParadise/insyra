@@ -489,7 +489,11 @@ func (dl *DataList) Clear() *DataList {
 }
 
 func (dl *DataList) Len() int {
-	return len(dl.data)
+    var l int
+    dl.AtomicDo(func(dl *DataList) {
+        l = len(dl.data)
+    })
+    return l
 }
 
 // ClearStrings removes all string elements from the DataList and updates the timestamp.
@@ -1866,12 +1870,20 @@ func (dl *DataList) ToStringSlice() []string {
 
 // GetCreationTimestamp returns the creation time of the DataList in Unix timestamp.
 func (dl *DataList) GetCreationTimestamp() int64 {
-	return dl.creationTimestamp
+    var ts int64
+    dl.AtomicDo(func(dl *DataList) {
+        ts = dl.creationTimestamp
+    })
+    return ts
 }
 
 // GetLastModifiedTimestamp returns the last updated time of the DataList in Unix timestamp.
 func (dl *DataList) GetLastModifiedTimestamp() int64 {
-	return dl.lastModifiedTimestamp.Load()
+    var ts int64
+    dl.AtomicDo(func(dl *DataList) {
+        ts = dl.lastModifiedTimestamp.Load()
+    })
+    return ts
 }
 
 // updateTimestamp updates the lastModifiedTimestamp to the current Unix time.
@@ -1888,7 +1900,11 @@ func (dl *DataList) updateTimestamp() {
 
 // GetName returns the name of the DataList.
 func (dl *DataList) GetName() string {
-	return dl.name
+    var name string
+    dl.AtomicDo(func(dl *DataList) {
+        name = dl.name
+    })
+    return name
 }
 
 // SetName sets the name of the DataList.

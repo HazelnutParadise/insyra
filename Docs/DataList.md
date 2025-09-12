@@ -18,6 +18,7 @@ DataList is a fundamental data structure in Insyra that provides a dynamic, gene
 - [Data Conversion](#data-conversion)
 - [Metadata Management](#metadata-management)
 - [Utility Methods](#utility-methods)
+- [AtomicDo](#atomicdo)
 - [Notes](#notes)
 
 ## Data Structure
@@ -30,7 +31,11 @@ type DataList struct {
     name                  string
     creationTimestamp     int64
     lastModifiedTimestamp atomic.Int64
-    mu                    sync.Mutex
+
+    // AtomicDo support (actor-style serialization)
+    initOnce sync.Once
+    cmdCh    chan func()
+    closed   atomic.Bool
 }
 ```
 
@@ -40,7 +45,57 @@ type DataList struct {
 - `name`: Optional name for the DataList
 - `creationTimestamp`: Unix timestamp when the DataList was created
 - `lastModifiedTimestamp`: Unix timestamp when the DataList was last modified
-- `mu`: Mutex for thread-safe operations
+- `initOnce`, `cmdCh`, `closed`: Internal fields enabling `AtomicDo` actor-style, serialized execution for thread-safety without external locks
+
+## AtomicDo
+
+`AtomicDo` provides safe, serialized access to a DataList using an internal actor goroutine. It ensures all mutations and reads inside the function run in order and without races, even across multiple goroutines.
+
+```go
+func (dl *DataList) AtomicDo(f func(*DataList))
+```
+
+- Single-threaded execution: Functions passed to `AtomicDo` are processed one at a time.
+- Reentrant: If called from within `AtomicDo`, the function runs immediately (no deadlock).
+- Cross-list nesting: Calling `anotherDl.AtomicDo` inside `dl.AtomicDo` is supported; nested calls execute inline to avoid deadlocks.
+- Closed behavior: After `dl.Close()`, `AtomicDo` executes the function inline without scheduling.
+
+Examples
+
+- Batch update safely from multiple goroutines:
+
+```go
+dl := insyra.NewDataList()
+wg := sync.WaitGroup{}
+for i := 0; i < 100; i++ {
+    wg.Add(1)
+    go func(v int) {
+        defer wg.Done()
+        dl.AtomicDo(func(dl *insyra.DataList) {
+            dl.Append(v)
+        })
+    }(i)
+}
+wg.Wait()
+```
+
+- Multi-step, consistent transformation:
+
+```go
+dl.AtomicDo(func(dl *insyra.DataList) {
+    // read-modify-write happens atomically relative to other calls
+    if dl.Len() > 0 {
+        first := dl.Get(0)
+        dl.InsertAt(0, first)
+    }
+})
+```
+
+Guidelines
+
+- Keep functions short; avoid long blocking work inside `AtomicDo`.
+- Do heavy computation outside and mutate inside `AtomicDo`.
+- Prefer `AtomicDo` for any sequence of dependent operations that must see a consistent view.
 
 ## Creating DataList
 

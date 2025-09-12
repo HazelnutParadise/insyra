@@ -14,6 +14,7 @@ DataTable is the core data structure of Insyra for handling structured data. It 
 - [Filtering](#filtering)
 - [Statistical Analysis](#statistical-analysis)
 - [Utility Methods](#utility-methods)
+- [AtomicDo](#atomicdo)
 - [Notes](#notes)
 
 ## Data Structure
@@ -28,6 +29,11 @@ type DataTable struct {
     name                  string                 // Table name
     creationTimestamp     int64                  // Creation timestamp
     lastModifiedTimestamp atomic.Int64           // Last modified timestamp
+
+    // AtomicDo support (actor-style serialization)
+    cmdCh    chan func()
+    initOnce sync.Once
+    closed   atomic.Bool
 }
 ```
 
@@ -39,6 +45,54 @@ type DataTable struct {
 - `name`: Name of the DataTable
 - `creationTimestamp`: Unix timestamp when the table was created
 - `lastModifiedTimestamp`: Unix timestamp when the table was last modified
+- `cmdCh`, `initOnce`, `closed`: Internal fields enabling `AtomicDo` actor-style, serialized execution for thread-safety without external locks
+
+## AtomicDo
+
+`AtomicDo` provides safe, serialized access to a DataTable via an internal actor goroutine. All operations inside the function run in order and without races, allowing concurrent callers to compose multi-step updates safely.
+
+```go
+func (dt *DataTable) AtomicDo(f func(*DataTable))
+```
+
+- Single-threaded execution: `AtomicDo` tasks run one at a time.
+- Reentrant: Calls made within `AtomicDo` run immediately (no deadlock).
+- Cross-object nesting: Calling `dl.AtomicDo` from within `dt.AtomicDo` (and vice versa) is supported by inline execution to avoid deadlocks.
+- Closed behavior: After `dt.Close()`, `AtomicDo` executes the function inline without scheduling.
+
+Examples
+
+- Append rows and update indices atomically:
+
+```go
+dt.AtomicDo(func(dt *insyra.DataTable) {
+    dt.AppendRowsByColName(map[string]any{"name": "Alice", "age": 25})
+    // Accessing and updating structures here is serialized
+    _ = dt.Size()
+})
+```
+
+- Concurrent writers without locks:
+
+```go
+wg := sync.WaitGroup{}
+for i := 0; i < 10; i++ {
+    wg.Add(1)
+    go func(idx int) {
+        defer wg.Done()
+        dt.AtomicDo(func(dt *insyra.DataTable) {
+            dt.UpdateElement(idx, "A", idx)
+        })
+    }(i)
+}
+wg.Wait()
+```
+
+Guidelines
+
+- Keep the function body short; avoid blocking I/O or long CPU work inside `AtomicDo`.
+- Prepare data outside; perform minimal mutations inside `AtomicDo`.
+- Use `AtomicDo` for sequences that must observe consistent state across columns/rows.
 
 ## Creating DataTable
 
