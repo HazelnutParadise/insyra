@@ -81,6 +81,22 @@ func (dt *DataTable) GetColNameByIndex(index string) string {
 	return result
 }
 
+func (dt *DataTable) GetColNumberByName(name string) int {
+	var result int = -1
+	dt.AtomicDo(func(dt *DataTable) {
+		for i, col := range dt.columns {
+			if col.name == name {
+				result = i
+				return
+			}
+		}
+	})
+	if result == -1 {
+		LogWarning("DataTable", "GetColIndexByName", "Column name not found: "+name+", returning -1")
+	}
+	return result
+}
+
 func (dt *DataTable) ColNamesToFirstRow() *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {

@@ -193,11 +193,10 @@ func TestDataTable_GetLastModifiedTimestamp(t *testing.T) {
 
 func TestDataTable_GetColNameByIndex(t *testing.T) {
 	dt := NewDataTable()
-	dl1 := NewDataList(1, 2, 3)
+	dl1 := NewDataList(1, 2, 3).SetName("ColA")
 	dl2 := NewDataList(4, 5, 6)
 	dl3 := NewDataList(7, 8, 9)
 	dt.AppendCols(dl1, dl2, dl3)
-	dt.SetColNameByIndex("A", "ColA")
 	dt.SetColNameByIndex("B", "ColB")
 	dt.SetColNameByIndex("C", "ColC")
 
@@ -213,5 +212,59 @@ func TestDataTable_GetColNameByIndex(t *testing.T) {
 	// Test invalid index
 	if dt.GetColNameByIndex("Z") != "" {
 		t.Errorf("GetColNameByIndex(\"Z\") = %s; want empty string", dt.GetColNameByIndex("Z"))
+	}
+}
+
+func TestDataTable_GetColIndexByName(t *testing.T) {
+	dt := NewDataTable()
+	dl1 := NewDataList(1, 2, 3)
+	dl2 := NewDataList(4, 5, 6)
+	dl3 := NewDataList(7, 8, 9)
+	dt.AppendCols(dl1, dl2, dl3)
+	dt.SetColNameByIndex("A", "ColA")
+	dt.SetColNameByIndex("B", "ColB")
+	dt.SetColNameByIndex("C", "ColC")
+
+	if dt.GetColIndexByName("ColA") != "A" {
+		t.Errorf("GetColIndexByName(\"ColA\") = %s; want A", dt.GetColIndexByName("ColA"))
+	}
+	if dt.GetColIndexByName("ColB") != "B" {
+		t.Errorf("GetColIndexByName(\"ColB\") = %s; want B", dt.GetColIndexByName("ColB"))
+	}
+	if dt.GetColIndexByName("ColC") != "C" {
+		t.Errorf("GetColIndexByName(\"ColC\") = %s; want C", dt.GetColIndexByName("ColC"))
+	}
+	// Test invalid name
+	if dt.GetColIndexByName("NonExistent") != "" {
+		t.Errorf("GetColIndexByName(\"NonExistent\") = %s; want empty string", dt.GetColIndexByName("NonExistent"))
+	}
+}
+
+func TestDataTable_GetColIndexByNumber(t *testing.T) {
+	dt := NewDataTable()
+	dl1 := NewDataList(1, 2, 3)
+	dl2 := NewDataList(4, 5, 6)
+	dl3 := NewDataList(7, 8, 9)
+	dt.AppendCols(dl1, dl2, dl3)
+
+	if dt.GetColIndexByNumber(0) != "A" {
+		t.Errorf("GetColIndexByNumber(0) = %s; want A", dt.GetColIndexByNumber(0))
+	}
+	if dt.GetColIndexByNumber(1) != "B" {
+		t.Errorf("GetColIndexByNumber(1) = %s; want B", dt.GetColIndexByNumber(1))
+	}
+	if dt.GetColIndexByNumber(2) != "C" {
+		t.Errorf("GetColIndexByNumber(2) = %s; want C", dt.GetColIndexByNumber(2))
+	}
+	// Test negative index (from end)
+	if dt.GetColIndexByNumber(-1) != "C" {
+		t.Errorf("GetColIndexByNumber(-1) = %s; want C", dt.GetColIndexByNumber(-1))
+	}
+	if dt.GetColIndexByNumber(-2) != "B" {
+		t.Errorf("GetColIndexByNumber(-2) = %s; want B", dt.GetColIndexByNumber(-2))
+	}
+	// Test invalid number
+	if dt.GetColIndexByNumber(10) != "" {
+		t.Errorf("GetColIndexByNumber(10) = %s; want empty string", dt.GetColIndexByNumber(10))
 	}
 }
