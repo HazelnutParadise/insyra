@@ -948,6 +948,33 @@ columnName := dt.GetColNameByIndex("A")
 fmt.Printf("Name of column A: %s\\n", columnName)
 ```
 
+### GetColNumberByName
+
+Gets the numeric index of a column by its name.
+
+```go
+func (dt *DataTable) GetColNumberByName(name string) int
+```
+
+**Parameters:**
+
+- `name`: The name of the column.
+
+**Returns:**
+
+- `int`: The numeric index of the column (0-based). Returns -1 if the column name is not found.
+
+**Example:**
+
+```go
+index := dt.GetColNumberByName("column_name")
+if index != -1 {
+    fmt.Printf("Column index: %d\\n", index)
+} else {
+    fmt.Println("Column not found")
+}
+```
+
 ### GetColIndexByName
 
 Gets the column index (A, B, C, ...) by its name.

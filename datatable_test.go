@@ -268,3 +268,28 @@ func TestDataTable_GetColIndexByNumber(t *testing.T) {
 		t.Errorf("GetColIndexByNumber(10) = %s; want empty string", dt.GetColIndexByNumber(10))
 	}
 }
+
+func TestDataTable_GetColNumberByName(t *testing.T) {
+	dt := NewDataTable()
+	dl1 := NewDataList(1, 2, 3)
+	dl2 := NewDataList(4, 5, 6)
+	dl3 := NewDataList(7, 8, 9)
+	dt.AppendCols(dl1, dl2, dl3)
+	dt.SetColNameByIndex("A", "ColA")
+	dt.SetColNameByIndex("B", "ColB")
+	dt.SetColNameByIndex("C", "ColC")
+
+	if dt.GetColNumberByName("ColA") != 0 {
+		t.Errorf("GetColNumberByName(\"ColA\") = %d; want 0", dt.GetColNumberByName("ColA"))
+	}
+	if dt.GetColNumberByName("ColB") != 1 {
+		t.Errorf("GetColNumberByName(\"ColB\") = %d; want 1", dt.GetColNumberByName("ColB"))
+	}
+	if dt.GetColNumberByName("ColC") != 2 {
+		t.Errorf("GetColNumberByName(\"ColC\") = %d; want 2", dt.GetColNumberByName("ColC"))
+	}
+	// Test invalid name
+	if dt.GetColNumberByName("NonExistent") != -1 {
+		t.Errorf("GetColNumberByName(\"NonExistent\") = %d; want -1", dt.GetColNumberByName("NonExistent"))
+	}
+}
