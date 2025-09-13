@@ -8,6 +8,7 @@ import (
 	_ "github.com/HazelnutParadise/insyra/isr"
 	_ "github.com/HazelnutParadise/insyra/lp"
 	_ "github.com/HazelnutParadise/insyra/lpgen"
+	_ "github.com/HazelnutParadise/insyra/mkt"
 	_ "github.com/HazelnutParadise/insyra/parallel"
 	_ "github.com/HazelnutParadise/insyra/plot"
 	_ "github.com/HazelnutParadise/insyra/py"
