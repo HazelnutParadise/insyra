@@ -71,6 +71,16 @@ func (dt *DataTable) GetColNameByNumber(index int) string {
 	return result
 }
 
+// GetColNameByIndex gets the column name by its Excel-style index (A, B, C, ..., Z, AA, AB, ...).
+func (dt *DataTable) GetColNameByIndex(index string) string {
+	var result string
+	dt.AtomicDo(func(dt *DataTable) {
+		nIndex := ParseColIndex(index)
+		result = dt.GetColNameByNumber(nIndex)
+	})
+	return result
+}
+
 func (dt *DataTable) ColNamesToFirstRow() *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {

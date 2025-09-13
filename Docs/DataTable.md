@@ -925,6 +925,29 @@ columnName := dt.GetColNameByNumber(0)
 fmt.Printf("Name of the first column: %s\\n", columnName)
 ```
 
+### GetColNameByIndex
+
+Gets the name of a column by its Excel-style index (A, B, C, ..., Z, AA, AB, ...).
+
+```go
+func (dt *DataTable) GetColNameByIndex(index string) string
+```
+
+**Parameters:**
+
+- `index`: The Excel-style column index (e.g., "A", "B", "C", "AA", "AB").
+
+**Returns:**
+
+- `string`: The name of the column. Returns an empty string if the index is invalid or out of bounds.
+
+**Example:**
+
+```go
+columnName := dt.GetColNameByIndex("A")
+fmt.Printf("Name of column A: %s\\n", columnName)
+```
+
 ### SetColNameByNumber
 
 Sets the name of a column by its numeric index.

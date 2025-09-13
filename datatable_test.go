@@ -190,3 +190,28 @@ func TestDataTable_GetLastModifiedTimestamp(t *testing.T) {
 		t.Errorf("GetLastModifiedTimestamp() did not return the correct timestamp")
 	}
 }
+
+func TestDataTable_GetColNameByIndex(t *testing.T) {
+	dt := NewDataTable()
+	dl1 := NewDataList(1, 2, 3)
+	dl2 := NewDataList(4, 5, 6)
+	dl3 := NewDataList(7, 8, 9)
+	dt.AppendCols(dl1, dl2, dl3)
+	dt.SetColNameByIndex("A", "ColA")
+	dt.SetColNameByIndex("B", "ColB")
+	dt.SetColNameByIndex("C", "ColC")
+
+	if dt.GetColNameByIndex("A") != "ColA" {
+		t.Errorf("GetColNameByIndex(\"A\") = %s; want ColA", dt.GetColNameByIndex("A"))
+	}
+	if dt.GetColNameByIndex("B") != "ColB" {
+		t.Errorf("GetColNameByIndex(\"B\") = %s; want ColB", dt.GetColNameByIndex("B"))
+	}
+	if dt.GetColNameByIndex("C") != "ColC" {
+		t.Errorf("GetColNameByIndex(\"C\") = %s; want ColC", dt.GetColNameByIndex("C"))
+	}
+	// Test invalid index
+	if dt.GetColNameByIndex("Z") != "" {
+		t.Errorf("GetColNameByIndex(\"Z\") = %s; want empty string", dt.GetColNameByIndex("Z"))
+	}
+}
