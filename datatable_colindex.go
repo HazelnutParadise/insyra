@@ -1,7 +1,5 @@
 package insyra
 
-import "fmt"
-
 // GetColIndexByName returns the column index (A, B, C, ...) by its name.
 func (dt *DataTable) GetColIndexByName(name string) string {
 	var result string = ""
@@ -12,7 +10,7 @@ func (dt *DataTable) GetColIndexByName(name string) string {
 		}
 	})
 	if result == "" {
-		LogWarning("DataTable", "GetColIndexByName", "Column name not found: "+name+", returning empty string")
+		LogWarning("DataTable", "GetColIndexByName", "Column name not found: %s, returning empty string", name)
 	}
 	return result
 }
@@ -32,7 +30,7 @@ func (dt *DataTable) GetColIndexByNumber(number int) string {
 		}
 	})
 	if result == "" {
-		LogWarning("DataTable", "GetColIndexByNumber", "Column number not found: "+fmt.Sprintf("%d", number)+", returning empty string")
+		LogWarning("DataTable", "GetColIndexByNumber", "Column number not found: %d, returning empty string", number)
 	}
 	return result
 }

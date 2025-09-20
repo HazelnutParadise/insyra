@@ -92,7 +92,7 @@ func (dt *DataTable) GetColNumberByName(name string) int {
 		}
 	})
 	if result == -1 {
-		LogWarning("DataTable", "GetColIndexByName", "Column name not found: "+name+", returning -1")
+		LogWarning("DataTable", "GetColIndexByName", "Column name not found: %s, returning -1", name)
 	}
 	return result
 }

@@ -62,7 +62,7 @@ func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable {
 			// 解析日期字串
 			lastTradingDay, err := time.Parse(goDateFormat, lastTradingDayStr)
 			if err != nil {
-				insyra.LogWarning("mkt", "RFM", "Failed to parse date: "+lastTradingDayStr+", returning nil")
+				insyra.LogWarning("mkt", "RFM", "Failed to parse date: %s, returning nil", lastTradingDayStr)
 				fail = true
 				return
 			}
