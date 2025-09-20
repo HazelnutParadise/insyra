@@ -24,6 +24,9 @@ type IDataTable interface {
 	SetRowToColNames(rowIndex int) *DataTable
 	ChangeColName(oldName, newName string) *DataTable
 	GetColNameByNumber(index int) string
+	GetColIndexByName(name string) string
+	GetColIndexByNumber(number int) string
+	GetColNumberByName(name string) int
 	SetColNameByIndex(index string, name string) *DataTable
 	SetColNameByNumber(numberIndex int, name string) *DataTable
 	ColNamesToFirstRow() *DataTable

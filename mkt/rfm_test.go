@@ -42,11 +42,11 @@ func TestRFM(t *testing.T) {
 
 	// RFM 配置
 	config := RFMConfig{
-		CustomerIDCol: "A",
-		TradingDayCol: "B",
-		AmountCol:     "C",
-		NumGroups:     5,
-		DateFormat:    "2006-01-02",
+		CustomerIDColName:  "CustomerID",
+		TradingDayColIndex: "B",
+		AmountColIndex:     "C",
+		NumGroups:          5,
+		DateFormat:         "2006-01-02",
 	}
 
 	// 執行 RFM
@@ -75,7 +75,7 @@ func TestRFM(t *testing.T) {
 
 	// 打印結果以手動檢查
 	t.Logf("RFM Result:")
-	for i := 0; i < numRows; i++ {
+	for i := range numRows {
 		row := result.GetRow(i)
 		t.Logf("Row %d: %v", i, row)
 	}

@@ -11,19 +11,49 @@ import (
 )
 
 type RFMConfig struct {
-	CustomerIDCol string // The column index(A, B, C, ...) of customer ID in the data table
-	TradingDayCol string // The column index(A, B, C, ...) of trading day in the data table
-	AmountCol     string // The column index(A, B, C, ...) of amount in the data table
-	NumGroups     uint   // The number of groups to divide the customers into
-	DateFormat    string // The format of the date string (e.g., "YYYY-MM-DD", "DD/MM/YYYY", "yyyy-mm-dd")
+	CustomerIDColIndex string // The column index(A, B, C, ...) of customer ID in the data table
+	CustomerIDColName  string // The column name of customer ID in the data table (if both index and name are provided, index takes precedence)
+	TradingDayColIndex string // The column index(A, B, C, ...) of trading day in the data table
+	TradingDayColName  string // The column name of trading day in the data table (if both index and name are provided, index takes precedence)
+	AmountColIndex     string // The column index(A, B, C, ...) of amount in the data table
+	AmountColName      string // The column name of amount in the data table (if both index and name are provided, index takes precedence)
+	NumGroups          uint   // The number of groups to divide the customers into
+	DateFormat         string // The format of the date string (e.g., "YYYY-MM-DD", "DD/MM/YYYY", "yyyy-mm-dd")
 }
 
 // RFM performs RFM analysis on the given data table based on the provided configuration.
 // It returns a new data table containing the R, F, M scores and the combined RFM score for each customer.
 func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable {
-	customerIDColIndex := rfmConfig.CustomerIDCol
-	tradingDayColIndex := rfmConfig.TradingDayCol
-	amountColIndex := rfmConfig.AmountCol
+	var customerIDColIndex string
+	if rfmConfig.CustomerIDColIndex != "" {
+		customerIDColIndex = rfmConfig.CustomerIDColIndex
+	} else if rfmConfig.CustomerIDColName != "" {
+		customerIDColIndex = dt.GetColIndexByName(rfmConfig.CustomerIDColName)
+	} else {
+		insyra.LogWarning("mkt", "RFM", "CustomerIDColIndex or CustomerIDColName must be provided, returning nil")
+		return nil
+	}
+
+	var tradingDayColIndex string
+	if rfmConfig.TradingDayColIndex != "" {
+		tradingDayColIndex = rfmConfig.TradingDayColIndex
+	} else if rfmConfig.TradingDayColName != "" {
+		tradingDayColIndex = dt.GetColIndexByName(rfmConfig.TradingDayColName)
+	} else {
+		insyra.LogWarning("mkt", "RFM", "TradingDayColIndex or TradingDayColName must be provided, returning nil")
+		return nil
+	}
+
+	var amountColIndex string
+	if rfmConfig.AmountColIndex != "" {
+		amountColIndex = rfmConfig.AmountColIndex
+	} else if rfmConfig.AmountColName != "" {
+		amountColIndex = dt.GetColIndexByName(rfmConfig.AmountColName)
+	} else {
+		insyra.LogWarning("mkt", "RFM", "AmountColIndex or AmountColName must be provided, returning nil")
+		return nil
+	}
+
 	numGroups := rfmConfig.NumGroups
 	dateFormat := rfmConfig.DateFormat
 

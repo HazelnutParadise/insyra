@@ -28,19 +28,25 @@ Configuration structure for RFM analysis.
 
 ```go
 type RFMConfig struct {
-    CustomerIDCol string // The column index(A, B, C, ...) of customer ID in the data table
-    TradingDayCol string // The column index(A, B, C, ...) of trading day in the data table
-    AmountCol     string // The column index(A, B, C, ...) of amount in the data table
-    NumGroups     uint   // The number of groups to divide the customers into
-    DateFormat    string // The format of the date string (e.g., "YYYY-MM-DD", "DD/MM/YYYY", "yyyy-mm-dd")
+    CustomerIDColIndex string // The column index(A, B, C, ...) of customer ID in the data table
+    CustomerIDColName  string // The column name of customer ID in the data table (if both index and name are provided, index takes precedence)
+    TradingDayColIndex string // The column index(A, B, C, ...) of trading day in the data table
+    TradingDayColName  string // The column name of trading day in the data table (if both index and name are provided, index takes precedence)
+    AmountColIndex     string // The column index(A, B, C, ...) of amount in the data table
+    AmountColName      string // The column name of amount in the data table (if both index and name are provided, index takes precedence)
+    NumGroups          uint   // The number of groups to divide the customers into
+    DateFormat         string // The format of the date string (e.g., "YYYY-MM-DD", "DD/MM/YYYY", "yyyy-mm-dd")
 }
 ```
 
 **Fields:**
 
-- `CustomerIDCol`: Column identifier for customer ID (e.g., "A", "B", "C")
-- `TradingDayCol`: Column identifier for transaction date
-- `AmountCol`: Column identifier for transaction amount
+- `CustomerIDColIndex`: Column index for customer ID (e.g., "A", "B", "C")
+- `CustomerIDColName`: Column name for customer ID (column index takes precedence if both are provided)
+- `TradingDayColIndex`: Column index for transaction date
+- `TradingDayColName`: Column name for transaction date (column index takes precedence if both are provided)
+- `AmountColIndex`: Column index for transaction amount
+- `AmountColName`: Column name for transaction amount (column index takes precedence if both are provided)
 - `NumGroups`: Number of RFM score groups (typically 3-5)
 - `DateFormat`: Date format string (defaults to "YYYY-MM-DD" if empty)
 
@@ -125,11 +131,11 @@ func main() {
 
     // Configure RFM analysis
     config := mkt.RFMConfig{
-        CustomerIDCol: "A",
-        TradingDayCol: "B",
-        AmountCol:     "C",
-        NumGroups:     5,  // 5-point scale
-        DateFormat:    "2006-01-02",
+        CustomerIDColIndex: "A",
+        TradingDayColIndex: "B",
+        AmountColIndex:     "C",
+        NumGroups:          5,  // 5-point scale
+        DateFormat:         "2006-01-02",
     }
 
     // Perform RFM analysis
@@ -155,17 +161,27 @@ func main() {
 ### Advanced Configuration
 
 ```go
-// Different date formats
+// Using column names instead of indices
 config := mkt.RFMConfig{
-    CustomerIDCol: "CustomerID",
-    TradingDayCol: "PurchaseDate",
-    AmountCol:     "TotalAmount",
-    NumGroups:     3,  // 3-point scale (Low/Medium/High)
-    DateFormat:    "02/01/2006",  // DD/MM/YYYY format
+    CustomerIDColName:  "CustomerID",
+    TradingDayColName:  "PurchaseDate",
+    AmountColName:      "TotalAmount",
+    NumGroups:          3,  // 3-point scale (Low/Medium/High)
+    DateFormat:         "02/01/2006",  // DD/MM/YYYY format
 }
 
 // For European date format
 config.DateFormat = "2006-01-02"  // ISO format
+
+// Mixed usage (index takes precedence if both are provided)
+config := mkt.RFMConfig{
+    CustomerIDColIndex: "A",           // This will be used
+    CustomerIDColName:  "CustomerID",  // Ignored
+    TradingDayColIndex: "B",
+    AmountColIndex:     "C",
+    NumGroups:          5,
+    DateFormat:         "2006-01-02",
+}
 ```
 
 ---
@@ -177,6 +193,7 @@ The RFM function returns `nil` in the following cases:
 - Invalid date format in transaction data
 - Missing or invalid customer ID
 - Date parsing errors
+- Missing required configuration fields (CustomerID, TradingDay, Amount columns)
 
 Always check the return value:
 
@@ -189,6 +206,12 @@ if result == nil {
 }
 ```
 
+The function logs warnings for specific issues:
+
+- Invalid date strings
+- Missing column specifications
+- Data parsing failures
+
 ---
 
 ## Best Practices
@@ -198,15 +221,20 @@ if result == nil {
    - Remove invalid or incomplete records
    - Verify customer IDs are unique per transaction
 
-2. **Group Selection**:
+2. **Column Specification**:
+   - Use column names for better readability (e.g., "CustomerID" vs "A")
+   - Column indices take precedence if both name and index are provided
+   - Ensure specified columns exist in the data table
+
+3. **Group Selection**:
    - Use 3-5 groups for most analyses
    - Higher group counts provide more granularity but may over-segment
 
-3. **Date Format**:
+4. **Date Format**:
    - Use Go time format strings (e.g., "2006-01-02" for YYYY-MM-DD)
    - Test with sample data first
 
-4. **Performance**:
+5. **Performance**:
    - Function processes data in parallel for large datasets
    - Consider data size for very large transaction tables
 
