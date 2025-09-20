@@ -7,6 +7,7 @@ import (
 	"github.com/HazelnutParadise/Go-Utils/conv"
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/internal/utils"
+	"github.com/HazelnutParadise/insyra/parallel"
 )
 
 type RFMConfig struct {
@@ -82,60 +83,55 @@ func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable {
 		return nil
 	}
 
-	// 全體客戶的最後交易日
-	allLastTradingDays := insyra.NewDataList()
-	for _, lastTradingDay := range customerLastTradingDayMap {
-		allLastTradingDays.Append(lastTradingDay)
-	}
-
-	// 全體客戶的交易頻率
-	allTradingFrequencies := insyra.NewDataList()
-	for _, tradingFrequency := range customerTradingFrequencyMap {
-		allTradingFrequencies.Append(tradingFrequency)
-	}
-
-	// 全體客戶的總交易金額
-	allTotalAmounts := insyra.NewDataList()
-	for _, totalAmount := range customerTotalAmountMap {
-		allTotalAmounts.Append(totalAmount)
-	}
-
-	// 計算當前時間
-	now := time.Now().Unix()
-
-	// 計算R值（天數差異）
-	customerRMap := make(map[string]int) // map[customerID]R_value (days since last trade)
-	for customerID, lastTradingDay := range customerLastTradingDayMap {
-		rValue := int((now - lastTradingDay) / (24 * 60 * 60)) // 轉換為天數
-		customerRMap[customerID] = rValue
-	}
-
-	// 全體客戶的R值
-	allRValues := insyra.NewDataList()
-	for _, rValue := range customerRMap {
-		allRValues.Append(rValue)
-	}
-
-	// 計算R分組門檻（反向：小值高分）
 	rThresholds := make([]float64, numGroups-1)
-	for i := 0; i < int(numGroups)-1; i++ {
-		percentile := float64(i+1) / float64(numGroups) * 100
-		rThresholds[i] = allRValues.Percentile(percentile)
-	}
-
-	// 計算F分組門檻（正向：大值高分）
 	fThresholds := make([]float64, numGroups-1)
-	for i := 0; i < int(numGroups)-1; i++ {
-		percentile := float64(i+1) / float64(numGroups) * 100
-		fThresholds[i] = allTradingFrequencies.Percentile(percentile)
-	}
-
-	// 計算M分組門檻（正向：大值高分）
 	mThresholds := make([]float64, numGroups-1)
-	for i := 0; i < int(numGroups)-1; i++ {
-		percentile := float64(i+1) / float64(numGroups) * 100
-		mThresholds[i] = allTotalAmounts.Percentile(percentile)
-	}
+	customerRMap := make(map[string]int) // map[customerID]R_value (days since last trade)
+	parallel.GroupUp(func() {
+		// 計算當前時間
+		now := time.Now().Unix()
+
+		// 計算R值（天數差異）
+		for customerID, lastTradingDay := range customerLastTradingDayMap {
+			rValue := int((now - lastTradingDay) / (24 * 60 * 60)) // 轉換為天數
+			customerRMap[customerID] = rValue
+		}
+
+		// 全體客戶的R值
+		allRValues := insyra.NewDataList()
+		for _, rValue := range customerRMap {
+			allRValues.Append(rValue)
+		}
+
+		// 計算R分組門檻（反向：小值高分）
+		for i := 0; i < int(numGroups)-1; i++ {
+			percentile := float64(i+1) / float64(numGroups) * 100
+			rThresholds[i] = allRValues.Percentile(percentile)
+		}
+	}, func() {
+		// 全體客戶的交易頻率
+		allTradingFrequencies := insyra.NewDataList()
+		for _, tradingFrequency := range customerTradingFrequencyMap {
+			allTradingFrequencies.Append(tradingFrequency)
+		}
+
+		// 計算F分組門檻（正向：大值高分）
+		for i := 0; i < int(numGroups)-1; i++ {
+			percentile := float64(i+1) / float64(numGroups) * 100
+			fThresholds[i] = allTradingFrequencies.Percentile(percentile)
+		}
+	}, func() {
+		// 全體客戶的總交易金額
+		allTotalAmounts := insyra.NewDataList()
+		for _, totalAmount := range customerTotalAmountMap {
+			allTotalAmounts.Append(totalAmount)
+		}
+		// 計算M分組門檻（正向：大值高分）
+		for i := 0; i < int(numGroups)-1; i++ {
+			percentile := float64(i+1) / float64(numGroups) * 100
+			mThresholds[i] = allTotalAmounts.Percentile(percentile)
+		}
+	}).Run().AwaitResult()
 
 	// 創建RFM表
 	rfmTable := insyra.NewDataTable()
