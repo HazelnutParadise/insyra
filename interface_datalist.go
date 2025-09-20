@@ -2,6 +2,7 @@ package insyra
 
 // IDataList defines the behavior expected from a DataList.
 type IDataList interface {
+	AtomicDo(func(*DataList))
 	GetCreationTimestamp() int64
 	GetLastModifiedTimestamp() int64
 	updateTimestamp()

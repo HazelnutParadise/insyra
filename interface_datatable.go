@@ -4,6 +4,7 @@ import "gorm.io/gorm"
 
 // IDataTable defines the behavior expected from a DataTable.
 type IDataTable interface {
+	AtomicDo(func(*DataTable))
 	AppendCols(columns ...*DataList) *DataTable
 	AppendRowsFromDataList(rowsData ...*DataList) *DataTable
 	AppendRowsByColIndex(rowsData ...map[string]any) *DataTable
