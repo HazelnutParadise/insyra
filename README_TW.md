@@ -10,7 +10,7 @@
 
 Go 語言次世代資料分析庫。支援 **平行處理**、**資料視覺化**，並 **與 Python 無縫整合**。
 
-**官方網站: https://insyra.hazelnut-paradise.com**
+**官方網站: <https://insyra.hazelnut-paradise.com>**
 
 > [!NOTE]
 > 本專案正在快速迭代中，請為此專案加星並關注，以便隨時了解最新變化！
@@ -19,7 +19,7 @@ Go 語言次世代資料分析庫。支援 **平行處理**、**資料視覺化*
 
 歡迎加入 [**Side Project Taiwan**(Discord 社群)](https://discord.com/channels/1205906503073140776/1280539658551558368) 與我們一起討論。
 
-## 太快、太美、太簡單。
+## 太快、太美、太簡單
 
 **Insyra** 庫是一個動態且多功能的 Go 語言資料分析工具。提供了豐富的功能集，可用於數據操作、統計計算、資料視覺化等，對於處理複雜數據結構的開發者來說，是一個必不可少的工具包。
 
@@ -107,7 +107,6 @@ Go 語言次世代資料分析庫。支援 **平行處理**、**資料視覺化*
     go get github.com/HazelnutParadise/insyra/allpkgs@latest
     ```
 
-
 ### 快速範例
 
 ```go
@@ -134,16 +133,16 @@ func main() {
 package main
 
 import (
-	"fmt"
+ "fmt"
 
-	"github.com/HazelnutParadise/insyra/isr"
+ "github.com/HazelnutParadise/insyra/isr"
 )
 
 func main() {
-	dl := isr.DL.From(1, 2, 3, 4, 5)
-	dl.Append(6)
-	fmt.Println("DataList:", dl.Data())
-	fmt.Println("Mean:", dl.Mean())
+ dl := isr.DL.From(1, 2, 3, 4, 5)
+ dl.Append(6)
+ fmt.Println("DataList:", dl.Data())
+ fmt.Println("Mean:", dl.Mean())
 }
 ```
 
@@ -217,6 +216,10 @@ dt.AddColUsingCCL("in_range", "IF(10 <= A <= 20, 'Yes', 'No')")
 
 基於 [github.com/gonum/plot](https://github.com/gonum/plot) 的視覺化套件。快速且不需要 Chrome。甚至支援函數繪圖。
 
+### **[mkt](/Docs/mkt.md)**
+
+提供與行銷相關的數據分析功能，例如 RFM 分析。不必煩惱如何計算，一個函數搞定！
+
 ### **[lpgen](/Docs/lpgen.md)**
 
 提供一個 **超級簡單** 且直觀的方式來生成線性規劃（LP）模型並將其保存為 `.lp` 檔。支援設置目標、添加約束、定義變量邊界，並指定二進制或整數變量。
@@ -240,12 +243,14 @@ dt.AddColUsingCCL("in_range", "IF(10 <= A <= 20, 'Yes', 'No')")
 ## 貢獻
 
 歡迎各種形式的貢獻！您可以通過以下方式貢獻 **Insyra**：
+
 - **[Issues](https://github.com/HazelnutParadise/insyra/issues):** 提出問題、建議或功能請求。
 - **[Pull Requests](https://github.com/HazelnutParadise/insyra/pulls):** 提交代碼更改或新功能。
 - **[Discussions](https://github.com/HazelnutParadise/insyra/discussions):** 參與討論，分享您的想法和建議。
 <!-- 有關詳細信息，請參閱 [貢獻指南](https://github.com/HazelnutParadise/insyra/blob/main/CONTRIBUTING.md)。 -->
 
 ## 貢獻者
+
 [![contributors](https://contrib.rocks/image?repo=HazelnutParadise/insyra)](https://github.com/HazelnutParadise/insyra/contributors)
 
 ## 授權

@@ -18,7 +18,8 @@ type RFMConfig struct {
 	DateFormat    string // The format of the date string (e.g., "YYYY-MM-DD", "DD/MM/YYYY", "yyyy-mm-dd")
 }
 
-// todo
+// RFM performs RFM analysis on the given data table based on the provided configuration.
+// It returns a new data table containing the R, F, M scores and the combined RFM score for each customer.
 func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable {
 	customerIDColIndex := rfmConfig.CustomerIDCol
 	tradingDayColIndex := rfmConfig.TradingDayCol

@@ -8,22 +8,20 @@
 [![GoDoc](https://godoc.org/github.com/HazelnutParadise/insyra?status.svg)](https://pkg.go.dev/github.com/HazelnutParadise/insyra)
 [![MIT license](https://img.shields.io/badge/license-MIT-brightgreen.svg)](https://opensource.org/licenses/MIT)
 
-
 A next-generation data analysis library for Golang. Supports **parallel processing**, **data visualization**, and **seamless integration with Python**.
 
-**Official Website: https://insyra.hazelnut-paradise.com**
+**Official Website: <https://insyra.hazelnut-paradise.com>**
 
 > [!NOTE]
 > This project is evolving rapidly—please star and watch the repository to stay up to date with the latest changes!
 
 ![logo](logo/logo_transparent.png)
 
-
 **[繁體中文版 README](README_TW.md)**
 
 Welcome to join [**Side Project Taiwan**(Discord Server)](https://discord.com/channels/1205906503073140776/1280539658551558368) for further discussions.
 
-## Fast, Lovely, Easy To Use.
+## Fast, Lovely, Easy To Use
 
 The **Insyra** library is a dynamic and versatile tool designed for managing and analyzing data in Go. It offers a rich set of features for data manipulation, statistical calculations, data visualization, and more, making it an essential toolkit for developers handling complex data structures.
 
@@ -40,6 +38,7 @@ The **Insyra** library is a dynamic and versatile tool designed for managing and
 > Please refer to our latest updates in **[Docs](/Docs)** folder for more details.
 
 ## [Idensyra](https://github.com/HazelnutParadise/idensyra)
+
 We provide a mini Go IDE, `Idensyra`, which aims to make data analysis even more easier (though Insyra has already made it very easy).
 
 `Idensyra` comes with Insyra pre-installed, and allows you to run Go code without installing Go environment!
@@ -136,16 +135,16 @@ It is strongly recommended to use syntactic sugar since it is much more power an
 package main
 
 import (
-	"fmt"
+ "fmt"
 
-	"github.com/HazelnutParadise/insyra/isr"
+ "github.com/HazelnutParadise/insyra/isr"
 )
 
 func main() {
-	dl := isr.DL.From(1, 2, 3, 4, 5)
-	dl.Append(6)
-	fmt.Println("DataList:", dl.Data())
-	fmt.Println("Mean:", dl.Mean())
+ dl := isr.DL.From(1, 2, 3, 4, 5)
+ dl.Append(6)
+ fmt.Println("DataList:", dl.Data())
+ fmt.Println("Mean:", dl.Mean())
 }
 ```
 
@@ -153,7 +152,7 @@ To use the syntactic sugar, import `github.com/HazelnutParadise/insyra/isr`.
 
 ## [DataList](/Docs/DataList.md)
 
-The `DataList` is the core structure in **Insyra**, enabling the storage, management, and analysis of dynamic data collections. It offers various methods for data manipulation and statistical analysis. 
+The `DataList` is the core structure in **Insyra**, enabling the storage, management, and analysis of dynamic data collections. It offers various methods for data manipulation and statistical analysis.
 
 For a complete list of methods and features, please refer to the **[DataList Documentation](/Docs/DataList.md)**.
 
@@ -208,6 +207,7 @@ Allows you to fetch data easily. It currently supports fetching comments from st
 Provides statistical functions for data analysis, including skewness, kurtosis, and moment calculations.
 
 ### **[parallel](/Docs/parallel.md)**
+
 Offers parallel processing capabilities for data manipulation and analysis. Allows you to execute any function and automatically wait for all goroutines to complete.
 
 ### **[plot](/Docs/plot.md)**
@@ -217,6 +217,10 @@ Provides a wrapper around the powerful [github.com/go-echarts/go-echarts](https:
 ### **[gplot](/Docs/gplot.md)**
 
 A visualization package based on [github.com/gonum/plot](https://github.com/gonum/plot). Fast and no need for Chrome. Even supports function plot.
+
+### **[mkt](/Docs/mkt.md)**
+
+Provides marketing-related data analysis functions, such as RFM analysis. No need to worry about how to calculate, one function does it all!
 
 ### **[lpgen](/Docs/lpgen.md)**
 
@@ -241,15 +245,16 @@ Beyond basic usage, **Insyra** provides extensive capabilities for handling diff
 ## Contributing
 
 Contributions are welcome! You can contribute to **Insyra** by:
+
 - **[Issues](https://github.com/HazelnutParadise/insyra/issues):** Reporting issues or suggesting new features.
 - **[Pull Requests](https://github.com/HazelnutParadise/insyra/pulls):** Submitting pull requests to enhance the library.
 - **[Discussions](https://github.com/HazelnutParadise/insyra/discussions):** Sharing your feedback and ideas to improve the project.
 <!-- For more details, see the [contributing guidelines](https://github.com/HazelnutParadise/insyra/blob/main/CONTRIBUTING.md). -->
 
 ## Contributors
+
 [![contributors](https://contrib.rocks/image?repo=HazelnutParadise/insyra)](https://github.com/HazelnutParadise/insyra/contributors)
 
 ## License
 
 Insyra is licensed under the MIT License. See the [LICENSE](LICENSE) file for more information.
-
