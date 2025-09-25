@@ -11,6 +11,7 @@ import (
 
 	"github.com/HazelnutParadise/Go-Utils/asyncutil"
 	"github.com/HazelnutParadise/Go-Utils/conv"
+	"github.com/HazelnutParadise/insyra/parallel"
 )
 
 type DataTable struct {
@@ -1343,19 +1344,21 @@ func (dt *DataTable) Clone() *DataTable {
 	var newDT *DataTable
 	now := time.Now().Unix()
 	dt.AtomicDo(func(dt *DataTable) {
-		// Clone columns
 		clonedColumns := make([]*DataList, len(dt.columns))
-		for i, col := range dt.columns {
-			clonedColumns[i] = col.Clone()
-		}
-
-		// Clone columnIndex map
 		clonedColumnIndex := make(map[string]int)
-		maps.Copy(clonedColumnIndex, dt.columnIndex)
-
-		// Clone rowNames map
 		clonedRowNames := make(map[string]int)
-		maps.Copy(clonedRowNames, dt.rowNames)
+		parallel.GroupUp(func() {
+			// Clone columns
+			for i, col := range dt.columns {
+				clonedColumns[i] = col.Clone()
+			}
+		}, func() {
+			// Clone columnIndex map
+			maps.Copy(clonedColumnIndex, dt.columnIndex)
+		}, func() {
+			// Clone rowNames map
+			maps.Copy(clonedRowNames, dt.rowNames)
+		}).Run().AwaitResult()
 
 		// Create new DataTable with cloned data
 		newDT = &DataTable{
