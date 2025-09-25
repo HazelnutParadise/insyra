@@ -293,3 +293,46 @@ func TestDataTable_GetColNumberByName(t *testing.T) {
 		t.Errorf("GetColNumberByName(\"NonExistent\") = %d; want -1", dt.GetColNumberByName("NonExistent"))
 	}
 }
+
+func TestDataTable_Clone(t *testing.T) {
+	// Create original DataTable
+	dt := NewDataTable()
+	dl1 := NewDataList(1, 2, 3).SetName("Col1")
+	dl2 := NewDataList("a", "b", "c").SetName("Col2")
+	dt.AppendCols(dl1, dl2)
+	dt.SetName("OriginalTable")
+
+	// Clone the DataTable
+	clonedDT := dt.Clone()
+
+	// Check if cloned DataTable is not nil
+	if clonedDT == nil {
+		t.Errorf("Clone() returned nil")
+	}
+
+	// Check if name is copied
+	if clonedDT.GetName() != dt.GetName() {
+		t.Errorf("Clone() did not copy name correctly: got %s, want %s", clonedDT.GetName(), dt.GetName())
+	}
+
+	// Check if columns are cloned (deep copy)
+	if len(clonedDT.columns) != len(dt.columns) {
+		t.Errorf("Clone() did not copy columns correctly: got %d columns, want %d", len(clonedDT.columns), len(dt.columns))
+	}
+
+	// Check if data is independent (modify original and check clone)
+	dt.columns[0].data[0] = 999
+	if clonedDT.columns[0].data[0] == 999 {
+		t.Errorf("Clone() did not create deep copy: clone was affected by original modification")
+	}
+
+	// Check if columnIndex is copied
+	if len(clonedDT.columnIndex) != len(dt.columnIndex) {
+		t.Errorf("Clone() did not copy columnIndex correctly")
+	}
+
+	// Check if rowNames is copied
+	if len(clonedDT.rowNames) != len(dt.rowNames) {
+		t.Errorf("Clone() did not copy rowNames correctly")
+	}
+}

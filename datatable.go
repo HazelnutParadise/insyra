@@ -2,6 +2,7 @@ package insyra
 
 import (
 	"fmt"
+	"maps"
 	"sort"
 	"strings"
 	"sync"
@@ -1332,4 +1333,44 @@ func (dt *DataTable) GetCreationTimestamp() int64 {
 
 func (dt *DataTable) GetLastModifiedTimestamp() int64 {
 	return dt.lastModifiedTimestamp.Load()
+}
+
+// Clone creates a deep copy of the DataTable.
+// It copies all columns, column indices, row names, and metadata,
+// ensuring that modifications to the original DataTable do not affect the clone.
+// The cloned DataTable has a new creation timestamp and is fully independent.
+func (dt *DataTable) Clone() *DataTable {
+	var newDT *DataTable
+	dt.AtomicDo(func(dt *DataTable) {
+		// Clone columns
+		clonedColumns := make([]*DataList, len(dt.columns))
+		for i, col := range dt.columns {
+			clonedColumns[i] = col.Clone()
+		}
+
+		// Clone columnIndex map
+		clonedColumnIndex := make(map[string]int)
+		maps.Copy(clonedColumnIndex, dt.columnIndex)
+
+		// Clone rowNames map
+		clonedRowNames := make(map[string]int)
+		maps.Copy(clonedRowNames, dt.rowNames)
+
+		// Create new DataTable with cloned data
+		now := time.Now().Unix()
+		newDT = &DataTable{
+			columns:           clonedColumns,
+			columnIndex:       clonedColumnIndex,
+			rowNames:          clonedRowNames,
+			name:              dt.name,
+			creationTimestamp: time.Now().Unix(),
+		}
+		newDT.lastModifiedTimestamp.Store(now)
+
+		// Initialize atomic fields
+		newDT.cmdCh = make(chan func())
+		newDT.initOnce = sync.Once{}
+		newDT.closed = atomic.Bool{}
+	})
+	return newDT
 }
