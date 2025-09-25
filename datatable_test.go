@@ -304,6 +304,9 @@ func TestDataTable_Clone(t *testing.T) {
 
 	// Clone the DataTable
 	clonedDT := dt.Clone()
+	dt.AtomicDo(func(dt *DataTable) {
+		dt.Show()
+	})
 
 	// Check if cloned DataTable is not nil
 	if clonedDT == nil {

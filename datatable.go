@@ -1341,6 +1341,7 @@ func (dt *DataTable) GetLastModifiedTimestamp() int64 {
 // The cloned DataTable has a new creation timestamp and is fully independent.
 func (dt *DataTable) Clone() *DataTable {
 	var newDT *DataTable
+	now := time.Now().Unix()
 	dt.AtomicDo(func(dt *DataTable) {
 		// Clone columns
 		clonedColumns := make([]*DataList, len(dt.columns))
@@ -1357,20 +1358,14 @@ func (dt *DataTable) Clone() *DataTable {
 		maps.Copy(clonedRowNames, dt.rowNames)
 
 		// Create new DataTable with cloned data
-		now := time.Now().Unix()
 		newDT = &DataTable{
 			columns:           clonedColumns,
 			columnIndex:       clonedColumnIndex,
 			rowNames:          clonedRowNames,
 			name:              dt.name,
-			creationTimestamp: time.Now().Unix(),
+			creationTimestamp: now,
 		}
-		newDT.lastModifiedTimestamp.Store(now)
-
-		// Initialize atomic fields
-		newDT.cmdCh = make(chan func())
-		newDT.initOnce = sync.Once{}
-		newDT.closed = atomic.Bool{}
 	})
+	newDT.lastModifiedTimestamp.Store(now)
 	return newDT
 }
