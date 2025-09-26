@@ -68,7 +68,7 @@ func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable {
 	}
 
 	timeScale := rfmConfig.TimeScale
-	if timeScale != "" {
+	if timeScale == "" {
 		insyra.LogInfo("mkt", "RFM", "No TimeScale specified, using default scale 'daily'")
 		timeScale = TimeScaleDaily
 	}
@@ -124,7 +124,7 @@ func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable {
 	rThresholds := make([]float64, numGroups-1)
 	fThresholds := make([]float64, numGroups-1)
 	mThresholds := make([]float64, numGroups-1)
-	customerRMap := make(map[string]int) // map[customerID]R_value (days since last trade)
+	customerRMap := make(map[string]int64) // map[customerID]R_value (days since last trade)
 	parallel.GroupUp(func() {
 		// 計算當前時間（UTC）
 		now := time.Now().UTC()

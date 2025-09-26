@@ -11,7 +11,7 @@ func TestCalculateTimeDifference(t *testing.T) {
 		name           string
 		lastTradingDay time.Time
 		timeScale      TimeScale
-		expected       int
+		expected       int64
 	}{
 		{
 			name:           "Hourly difference",
