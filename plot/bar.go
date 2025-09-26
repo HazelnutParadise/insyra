@@ -96,15 +96,19 @@ func CreateBarChart(config BarChartConfig) *charts.Bar {
 			}
 		case []*insyra.DataList:
 			for _, dataList := range data {
-				if dataList.Len() > maxDataLength {
-					maxDataLength = len(dataList.ToF64Slice())
-				}
+				dataList.AtomicDo(func(dl *insyra.DataList) {
+					if dl.Len() > maxDataLength {
+						maxDataLength = len(dl.ToF64Slice())
+					}
+				})
 			}
 		case []insyra.IDataList:
 			for _, dataList := range data {
-				if dataList.Len() > maxDataLength {
-					maxDataLength = len(dataList.ToF64Slice())
-				}
+				dataList.AtomicDo(func(dl *insyra.DataList) {
+					if dl.Len() > maxDataLength {
+						maxDataLength = len(dl.ToF64Slice())
+					}
+				})
 			}
 		}
 
@@ -126,11 +130,15 @@ func CreateBarChart(config BarChartConfig) *charts.Bar {
 		}
 	case []*insyra.DataList:
 		for _, dataList := range data {
-			bar.AddSeries(dataList.GetName(), convertToBarDataFloat(dataList.ToF64Slice()))
+			dataList.AtomicDo(func(dl *insyra.DataList) {
+				bar.AddSeries(dl.GetName(), convertToBarDataFloat(dl.ToF64Slice()))
+			})
 		}
 	case []insyra.IDataList:
 		for _, dataList := range data {
-			bar.AddSeries(dataList.GetName(), convertToBarDataFloat(dataList.ToF64Slice()))
+			dataList.AtomicDo(func(dl *insyra.DataList) {
+				bar.AddSeries(dl.GetName(), convertToBarDataFloat(dl.ToF64Slice()))
+			})
 		}
 	default:
 		insyra.LogWarning("plot", "CreateBarChart", "unsupported Data type: %T", config.Data)

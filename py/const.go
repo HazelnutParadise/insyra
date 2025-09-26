@@ -20,6 +20,7 @@ var versionParts = strings.Split(pythonVersion, ".")
 var pyExec = fmt.Sprintf("python%s.%s", versionParts[0], versionParts[1])
 
 var (
+	// uvInstallCmd     []string
 	absInstallDir, _ = filepath.Abs(installDir)
 	pyPath           = filepath.Join(absInstallDir, "bin", pyExec)
 	pyDependencies   = map[string]string{

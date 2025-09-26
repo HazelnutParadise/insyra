@@ -21,6 +21,7 @@ var isPyEnvInit = false
 var isServerRunning = false
 
 // 主要邏輯
+// todo: 改用uv
 func pyEnvInit() {
 	if !isServerRunning {
 		isServerRunning = true

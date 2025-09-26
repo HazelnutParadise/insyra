@@ -99,15 +99,19 @@ func CreateLineChart(config LineChartConfig) *charts.Line {
 			}
 		case []*insyra.DataList:
 			for _, dataList := range data {
-				if dataList.Len() > maxDataLength {
-					maxDataLength = len(dataList.ToF64Slice())
-				}
+				dataList.AtomicDo(func(dl *insyra.DataList) {
+					if dl.Len() > maxDataLength {
+						maxDataLength = len(dl.ToF64Slice())
+					}
+				})
 			}
 		case []insyra.IDataList:
 			for _, dataList := range data {
-				if dataList.Len() > maxDataLength {
-					maxDataLength = len(dataList.ToF64Slice())
-				}
+				dataList.AtomicDo(func(dl *insyra.DataList) {
+					if dl.Len() > maxDataLength {
+						maxDataLength = len(dl.ToF64Slice())
+					}
+				})
 			}
 		}
 
@@ -129,11 +133,15 @@ func CreateLineChart(config LineChartConfig) *charts.Line {
 		}
 	case []*insyra.DataList:
 		for _, dataList := range data {
-			line.AddSeries(dataList.GetName(), convertToLineDataFloat(dataList.ToF64Slice()))
+			dataList.AtomicDo(func(dl *insyra.DataList) {
+				line.AddSeries(dl.GetName(), convertToLineDataFloat(dl.ToF64Slice()))
+			})
 		}
 	case []insyra.IDataList:
 		for _, dataList := range data {
-			line.AddSeries(dataList.GetName(), convertToLineDataFloat(dataList.ToF64Slice()))
+			dataList.AtomicDo(func(dl *insyra.DataList) {
+				line.AddSeries(dl.GetName(), convertToLineDataFloat(dl.ToF64Slice()))
+			})
 		}
 	default:
 		insyra.LogWarning("plot", "CreateLineChart", "unsupported Data type: %T", config.Data)

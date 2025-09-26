@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/HazelnutParadise/insyra"
+	json "github.com/goccy/go-json"
 )
 
 var (
@@ -49,3 +50,13 @@ func startServer() {
 		}
 	}
 }
+
+// todo: pop機制與執行id
+// func popPyResult() map[string]any {
+// 	mu.Lock()
+// 	defer mu.Unlock()
+// 	result := pyResult
+// 	pyResult = nil
+
+// 	return result
+// }
