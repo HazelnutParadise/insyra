@@ -30,7 +30,9 @@ type Col map[any]any
 // Cols is a type alias for []Col.
 type Cols = []Col
 
+// Deprecated: Use UseDT instead.
 // PtrDT converts a DataTable or DT to a *DT.
+// You should no longer use this function, use UseDT instead.
 func PtrDT[T *insyra.DataTable | dt](t T) *dt {
 	switch concrete := any(t).(type) {
 	case *insyra.DataTable:

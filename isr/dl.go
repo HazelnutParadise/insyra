@@ -14,7 +14,9 @@ type dl struct {
 	*insyra.DataList
 }
 
+// Deprecated: Use UseDL instead.
 // PtrDL converts a DataList or DL to a *DL.
+// You should no longer use this function, use UseDL instead.
 func PtrDL[T *insyra.DataList | dl](l T) *dl {
 	switch concrete := any(l).(type) {
 	case *insyra.DataList:
