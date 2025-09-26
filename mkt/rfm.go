@@ -62,16 +62,15 @@ func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable {
 	}
 
 	dateFormat := rfmConfig.DateFormat
-
-	// 如果沒有指定日期格式，使用預設格式
 	if dateFormat == "" {
 		insyra.LogInfo("mkt", "RFM", "No DateFormat specified, using default format YYYY-MM-DD")
 		dateFormat = "YYYY-MM-DD" // 預設使用 ISO 8601 格式（大寫）
 	}
 
-	if rfmConfig.TimeScale != "" {
+	timeScale := rfmConfig.TimeScale
+	if timeScale != "" {
 		insyra.LogInfo("mkt", "RFM", "No TimeScale specified, using default scale 'daily'")
-		rfmConfig.TimeScale = TimeScaleDaily
+		timeScale = TimeScaleDaily
 	}
 
 	// 轉換為 Go 語言的日期格式
@@ -138,7 +137,7 @@ func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable {
 		// 計算R值（根據 TimeScale 的時間差異）
 		for customerID, lastTradingDayUnix := range customerLastTradingDayMap {
 			lastTradingDay := time.Unix(lastTradingDayUnix, 0).UTC()
-			rValue := calculateTimeDifference(now, lastTradingDay, rfmConfig.TimeScale)
+			rValue := calculateTimeDifference(now, lastTradingDay, timeScale)
 			customerRMap[customerID] = rValue
 		}
 
