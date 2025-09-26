@@ -1,5 +1,4 @@
-// py/init.go
-
+// `py` package provides functions for working with Python.
 package py
 
 import (

@@ -1,3 +1,6 @@
+// `allpkgs` package imports all Insyra packages.
+//
+// Use this package to install all Insyra packages at once.
 package allpkgs
 
 import (

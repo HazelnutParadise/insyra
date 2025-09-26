@@ -1,3 +1,4 @@
+// `lp` package provides linear programming functionalities using GLPK.
 package lp
 
 import (
