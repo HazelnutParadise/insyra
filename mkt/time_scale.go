@@ -14,29 +14,29 @@ const (
 
 // calculateTimeDifference 根據 TimeScale 計算兩個時間點之間的差異
 // 先將時間截斷到對應的時間尺度單位，再計算差異
-func calculateTimeDifference(now, prevTime time.Time, timeScale TimeScale) int {
+func calculateTimeDifference(laterTime, prevTime time.Time, timeScale TimeScale) int {
 	// 將時間截斷到對應的時間尺度單位
-	nowTruncated := truncateTime(now, timeScale)
+	laterTruncated := truncateTime(laterTime, timeScale)
 	prevTruncated := truncateTime(prevTime, timeScale)
 
 	// 計算差異
 	switch timeScale {
 	case TimeScaleHourly:
-		return int(nowTruncated.Sub(prevTruncated).Hours())
+		return int(laterTruncated.Sub(prevTruncated).Hours())
 	case TimeScaleDaily:
-		return int(nowTruncated.Sub(prevTruncated).Hours() / 24)
+		return int(laterTruncated.Sub(prevTruncated).Hours() / 24)
 	case TimeScaleWeekly:
-		return int(nowTruncated.Sub(prevTruncated).Hours() / (24 * 7))
+		return int(laterTruncated.Sub(prevTruncated).Hours() / (24 * 7))
 	case TimeScaleMonthly:
 		// 計算月數差異
-		years := nowTruncated.Year() - prevTruncated.Year()
-		months := int(nowTruncated.Month()) - int(prevTruncated.Month())
+		years := laterTruncated.Year() - prevTruncated.Year()
+		months := int(laterTruncated.Month()) - int(prevTruncated.Month())
 		return years*12 + months
 	case TimeScaleYearly:
-		return nowTruncated.Year() - prevTruncated.Year()
+		return laterTruncated.Year() - prevTruncated.Year()
 	default:
 		// 默認使用天數
-		return int(nowTruncated.Sub(prevTruncated).Hours() / 24)
+		return int(laterTruncated.Sub(prevTruncated).Hours() / 24)
 	}
 }
 
