@@ -22,20 +22,37 @@ The mkt package provides marketing analytics functions for customer segmentation
 
 ## Core Types
 
+### TimeScale
+
+Time scale for RFM analysis recency calculation.
+
+```go
+type TimeScale string
+```
+
+**Constants:**
+
+- `TimeScaleHourly`: Calculate recency in hours
+- `TimeScaleDaily`: Calculate recency in days (default)
+- `TimeScaleWeekly`: Calculate recency in weeks
+- `TimeScaleMonthly`: Calculate recency in months
+- `TimeScaleYearly`: Calculate recency in years
+
 ### RFMConfig
 
 Configuration structure for RFM analysis.
 
 ```go
 type RFMConfig struct {
-    CustomerIDColIndex string // The column index(A, B, C, ...) of customer ID in the data table
-    CustomerIDColName  string // The column name of customer ID in the data table (if both index and name are provided, index takes precedence)
-    TradingDayColIndex string // The column index(A, B, C, ...) of trading day in the data table
-    TradingDayColName  string // The column name of trading day in the data table (if both index and name are provided, index takes precedence)
-    AmountColIndex     string // The column index(A, B, C, ...) of amount in the data table
-    AmountColName      string // The column name of amount in the data table (if both index and name are provided, index takes precedence)
-    NumGroups          uint   // The number of groups to divide the customers into
-    DateFormat         string // The format of the date string (e.g., "YYYY-MM-DD", "DD/MM/YYYY", "yyyy-mm-dd")
+    CustomerIDColIndex string    // The column index(A, B, C, ...) of customer ID in the data table
+    CustomerIDColName  string    // The column name of customer ID in the data table (if both index and name are provided, index takes precedence)
+    TradingDayColIndex string    // The column index(A, B, C, ...) of trading day in the data table
+    TradingDayColName  string    // The column name of trading day in the data table (if both index and name are provided, index takes precedence)
+    AmountColIndex     string    // The column index(A, B, C, ...) of amount in the data table
+    AmountColName      string    // The column name of amount in the data table (if both index and name are provided, index takes precedence)
+    NumGroups          uint      // The number of groups to divide the customers into
+    DateFormat         string    // The format of the date string (e.g., "YYYY-MM-DD", "DD/MM/YYYY", "yyyy-mm-dd")
+    TimeScale          TimeScale // The time scale for recency calculation (e.g., hourly, daily, weekly, monthly, yearly)
 }
 ```
 
@@ -49,6 +66,7 @@ type RFMConfig struct {
 - `AmountColName`: Column name for transaction amount (column index takes precedence if both are provided)
 - `NumGroups`: Number of RFM score groups (typically 3-5)
 - `DateFormat`: Date format string (defaults to "YYYY-MM-DD" if empty)
+- `TimeScale`: Time scale for recency calculation (defaults to "daily" if empty)
 
 ---
 
@@ -74,11 +92,11 @@ func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable
 **Description:**
 RFM analysis segments customers based on three key metrics:
 
-- **Recency (R)**: Days since last purchase (lower values = higher scores)
+- **Recency (R)**: Time since last purchase in the specified time scale (lower values = higher scores)
 - **Frequency (F)**: Number of purchases (higher values = higher scores)
 - **Monetary (M)**: Total purchase amount (higher values = higher scores)
 
-The function calculates percentile-based scores for each metric and assigns customers to groups.
+The function calculates percentile-based scores for each metric and assigns customers to groups. The TimeScale parameter determines how recency is calculated (hours, days, weeks, months, or years).
 
 **Output Table Structure:**
 
@@ -184,6 +202,26 @@ config := mkt.RFMConfig{
 }
 ```
 
+### RFM Analysis with TimeScale
+
+```go
+// Configure RFM analysis with weekly time scale
+config := mkt.RFMConfig{
+    CustomerIDColName:  "CustomerID",
+    TradingDayColName:  "PurchaseDate",
+    AmountColName:      "TotalAmount",
+    NumGroups:          5,
+    DateFormat:         "2006-01-02",
+    TimeScale:          mkt.TimeScaleWeekly,  // Calculate recency in weeks
+}
+
+// Perform RFM analysis
+result := mkt.RFM(dt, config)
+
+// Recency scores will now be calculated in weeks instead of days
+// For example, a customer who purchased 2 weeks ago will have R=2
+```
+
 ---
 
 ## Error Handling
@@ -234,7 +272,12 @@ The function logs warnings for specific issues:
    - Use Go time format strings (e.g., "2006-01-02" for YYYY-MM-DD)
    - Test with sample data first
 
-5. **Performance**:
+5. **Time Scale Selection**:
+   - Choose TimeScale based on business context (daily for retail, weekly for B2B)
+   - Default is daily if TimeScale is not specified
+   - Recency calculation truncates times to the start of the time unit
+
+6. **Performance**:
    - Function processes data in parallel for large datasets
    - Consider data size for very large transaction tables
 
