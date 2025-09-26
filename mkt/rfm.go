@@ -80,7 +80,6 @@ func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable {
 	customerTradingFrequencyMap := make(map[string]uint) // map[customerID]tradingFrequency
 	customerTotalAmountMap := make(map[string]float64)   // map[customerID]totalAmount
 
-	fail := false
 	dt.AtomicDo(func(dt *insyra.DataTable) {
 		// 找出每個客戶的最後交易日
 		numRows, _ := dt.Size()
@@ -103,9 +102,8 @@ func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable {
 			// 解析日期字串，並轉換為 UTC 以避免時區問題
 			lastTradingDay, err := time.Parse(goDateFormat, lastTradingDayStr)
 			if err != nil {
-				insyra.LogWarning("mkt", "RFM", "Failed to parse date: %s, returning nil", lastTradingDayStr)
-				fail = true
-				return
+				insyra.LogWarning("mkt", "RFM", "Failed to parse date: %s, skipping the row", lastTradingDayStr)
+				continue
 			}
 			lastTradingDayUTC := lastTradingDay.UTC()
 			lastTradingDayUnix := lastTradingDayUTC.Unix()
@@ -122,9 +120,6 @@ func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable {
 			customerTotalAmountMap[customerID] += amount
 		}
 	})
-	if fail {
-		return nil
-	}
 
 	rThresholds := make([]float64, numGroups-1)
 	fThresholds := make([]float64, numGroups-1)
