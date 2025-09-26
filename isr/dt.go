@@ -34,15 +34,7 @@ type Cols = []Col
 // PtrDT converts a DataTable or DT to a *DT.
 // You should no longer use this function, use UseDT instead.
 func PtrDT[T *insyra.DataTable | dt](t T) *dt {
-	switch concrete := any(t).(type) {
-	case *insyra.DataTable:
-		return &dt{concrete}
-	case dt:
-		return &concrete
-	default:
-		insyra.LogFatal("isr", "PtrDT", "got unexpected type %T", t)
-		return nil
-	}
+	return UseDT(t)
 }
 
 // From converts a DataList, DL, Row, Col, []Row, []Col, CSV, map[string]any, or map[int]any to a DataTable.

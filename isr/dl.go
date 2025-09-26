@@ -18,15 +18,7 @@ type dl struct {
 // PtrDL converts a DataList or DL to a *DL.
 // You should no longer use this function, use UseDL instead.
 func PtrDL[T *insyra.DataList | dl](l T) *dl {
-	switch concrete := any(l).(type) {
-	case *insyra.DataList:
-		return &dl{concrete}
-	case dl:
-		return &concrete
-	default:
-		insyra.LogFatal("isr", "PtrDL", "got unexpected type %T", l)
-		return nil
-	}
+	return UseDL(l)
 }
 
 // From is equivalent to insyra.NewDataList(data...).
