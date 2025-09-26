@@ -1,7 +1,7 @@
 package gplot
 
 import (
-	"github.com/HazelnutParadise/insyra" // 確保這是正確的導入路徑
+	"github.com/HazelnutParadise/insyra"
 	"gonum.org/v1/plot"
 	"gonum.org/v1/plot/plotter"
 )
