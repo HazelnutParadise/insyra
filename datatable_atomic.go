@@ -13,6 +13,13 @@ func inDataTableActorLoop() bool {
 }
 
 func (dt *DataTable) AtomicDo(f func(*DataTable)) {
+	LogDebug("DataTable", "AtomicDo", "threadSafe: %v", Config.threadSafe)
+	if !Config.threadSafe {
+		// 如果全域配置關閉了線程安全，直接執行
+		f(dt)
+		return
+	}
+
 	// 檢查是否已關閉
 	if dt.closed.Load() {
 		f(dt)
