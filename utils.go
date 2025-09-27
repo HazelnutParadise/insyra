@@ -17,19 +17,19 @@ var ToFloat64 = utils.ToFloat64
 var ToFloat64Safe = utils.ToFloat64Safe
 
 // SliceToF64 converts a []any to a []float64.
-func SliceToF64(data []any) []float64 {
-	defer func() {
-		if r := recover(); r != nil {
-			LogWarning("core", "SliceToF64", "Failed to convert data to float64")
+func SliceToF64(input []interface{}) []float64 {
+	var out []float64
+	for _, v := range input {
+		switch val := v.(type) {
+		case float64:
+			out = append(out, val)
+		case int:
+			out = append(out, float64(val))
+		default:
+			out = append(out, 0) // Substitute 0 for non-numeric values
 		}
-	}()
-	var floatSlice []float64
-	for _, v := range data {
-		f64v := conv.ParseF64(v)              // 將 interface{} 轉換為 float64
-		floatSlice = append(floatSlice, f64v) // 將 interface{} 轉換為 float64
 	}
-
-	return floatSlice
+	return out
 }
 
 // ProcessData processes the input data and returns the data and the length of the data.
