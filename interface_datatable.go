@@ -82,6 +82,7 @@ type IDataTable interface {
 	Transpose() *DataTable
 	Clone() *DataTable
 	Map(mapFunc func(rowIndex int, colIndex string, element any) any) *DataTable
+	SortBy(configs ...DataTableSortConfig) *DataTable
 
 	// Filters
 	Filter(filterFunc FilterFunc) *DataTable

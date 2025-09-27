@@ -2342,6 +2342,53 @@ func (dt *DataTable) Transpose() *DataTable
 transposed := dt.Transpose()
 ```
 
+### SortBy
+
+Sorts the DataTable rows based on one or more column configurations. Supports multi-level sorting with stable sort.
+
+```go
+func (dt *DataTable) SortBy(configs ...DataTableSortConfig) *DataTable
+```
+
+**Parameters:**
+
+- `configs`: Variable number of DataTableSortConfig structs specifying sort criteria
+
+**DataTableSortConfig:**
+
+```go
+type DataTableSortConfig struct {
+    ColumnIndex  string // Column index (A, B, C...)
+    ColumnNumber int    // Column number (0-based)
+    ColumnName   string // Column name
+    Descending   bool   // Sort in descending order
+}
+```
+
+**Returns:**
+
+- `*DataTable`: The sorted DataTable (modified in-place)
+
+**Description:**
+
+- Supports sorting by column index, number, or name
+- Multi-level sorting: sorts by the first config, then by subsequent configs for ties
+- Uses stable sort to maintain relative order of equal elements
+- At least one of ColumnIndex, ColumnNumber, or ColumnName must be specified
+
+**Example:**
+
+```go
+// Single column sort
+dt.SortBy(insyra.DataTableSortConfig{ColumnName: "Age", Descending: false})
+
+// Multi-column sort: sort by Age ascending, then by Name descending
+dt.SortBy(
+    insyra.DataTableSortConfig{ColumnName: "Age", Descending: false},
+    insyra.DataTableSortConfig{ColumnName: "Name", Descending: true},
+)
+```
+
 ### Clone
 
 Creates a deep copy of the DataTable.
