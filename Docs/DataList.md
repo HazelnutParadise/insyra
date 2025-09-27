@@ -412,6 +412,17 @@ func (dl *DataList) Sort(ascending ...bool) *DataList
 
 - `*DataList`: Reference to the sorted DataList
 
+**Type Priority for Mixed Types:**
+
+When sorting DataLists containing different data types, elements are first sorted by type priority, then by their natural order within the same type. The type priority (from highest to lowest in ascending order) is:
+
+1. `nil` - Null values
+2. `bool` - Boolean values (false before true)
+3. Numeric types (`int`, `uint`, `float`, etc.) - Numbers by value
+4. `string` - Strings in lexicographical order
+5. `time.Time` - Time values chronologically
+6. Other types - Custom types by string representation
+
 **Example:**
 
 ```go
@@ -421,6 +432,11 @@ dl.Sort() // ascending order
 
 dl.Sort(false) // descending order
 // dl now contains: [9, 5, 4, 3, 1, 1]
+
+// Mixed types example
+dl2 := insyra.NewDataList(nil, true, 42, "hello", time.Now())
+dl2.Sort()
+// dl2 will be sorted: [nil, true, 42, "hello", time_value]
 ```
 
 ### Reverse

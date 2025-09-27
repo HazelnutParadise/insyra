@@ -324,6 +324,33 @@ func TestDataListSort(t *testing.T) {
 	if !reflect.DeepEqual(dl.Data(), []any{1, 1, 2, 3, 3, 4, 5, 5, 5, 6, 9}) {
 		t.Errorf("Expected data %v, got %v", []any{1, 1, 2, 3, 3, 4, 5, 5, 5, 6, 9}, dl.Data())
 	}
+
+	dlStr := NewDataList("banana", "apple", "cherry")
+	dlStr.Sort()
+
+	if !reflect.DeepEqual(dlStr.Data(), []any{"apple", "banana", "cherry"}) {
+		t.Errorf("Expected data %v, got %v", []any{"apple", "banana", "cherry"}, dlStr.Data())
+	}
+
+	dlTime := NewDataList(time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC))
+	dlTime.Sort()
+
+	if !reflect.DeepEqual(dlTime.Data(), []any{time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC)}) {
+		t.Errorf("Expected data %v, got %v", []any{time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC)}, dlTime.Data())
+	}
+
+	dlMixed := NewDataList(3.9, "banana", 1, "apple", 4, "cherry")
+	dlMixed.Sort()
+
+	if !reflect.DeepEqual(dlMixed.Data(), []any{1, 3.9, 4, "apple", "banana", "cherry"}) {
+		t.Errorf("Expected data %v, got %v", []any{1, 3.9, 4, "apple", "banana", "cherry"}, dlMixed.Data())
+	}
+
+	dlMixed2 := NewDataList("banana", 3.9, "apple", 1, time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), "cherry", time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC), 4)
+	dlMixed2.Sort()
+	if !reflect.DeepEqual(dlMixed2.Data(), []any{1, 3.9, 4, "apple", "banana", "cherry", time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC)}) {
+		t.Errorf("Expected data %v, got %v", []any{1, 3.9, 4, "apple", "banana", "cherry", time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC)}, dlMixed2.Data())
+	}
 }
 
 func TestDataListRank(t *testing.T) {
