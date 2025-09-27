@@ -11,14 +11,15 @@ import (
 )
 
 type RFMConfig struct {
-	CustomerIDColIndex string // The column index(A, B, C, ...) of customer ID in the data table
-	CustomerIDColName  string // The column name of customer ID in the data table (if both index and name are provided, index takes precedence)
-	TradingDayColIndex string // The column index(A, B, C, ...) of trading day in the data table
-	TradingDayColName  string // The column name of trading day in the data table (if both index and name are provided, index takes precedence)
-	AmountColIndex     string // The column index(A, B, C, ...) of amount in the data table
-	AmountColName      string // The column name of amount in the data table (if both index and name are provided, index takes precedence)
-	NumGroups          uint   // The number of groups to divide the customers into
-	DateFormat         string // The format of the date string (e.g., "YYYY-MM-DD", "DD/MM/YYYY", "yyyy-mm-dd")
+	CustomerIDColIndex string    // The column index(A, B, C, ...) of customer ID in the data table
+	CustomerIDColName  string    // The column name of customer ID in the data table (if both index and name are provided, index takes precedence)
+	TradingDayColIndex string    // The column index(A, B, C, ...) of trading day in the data table
+	TradingDayColName  string    // The column name of trading day in the data table (if both index and name are provided, index takes precedence)
+	AmountColIndex     string    // The column index(A, B, C, ...) of amount in the data table
+	AmountColName      string    // The column name of amount in the data table (if both index and name are provided, index takes precedence)
+	NumGroups          uint      // The number of groups to divide the customers into
+	DateFormat         string    // The format of the date string (e.g., "YYYY-MM-DD", "DD/MM/YYYY", "yyyy-mm-dd")
+	TimeScale          TimeScale // The time scale for analysis (e.g., hourly, daily, weekly, monthly, yearly)
 }
 
 // RFM performs RFM analysis on the given data table based on the provided configuration.
@@ -55,11 +56,21 @@ func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable {
 	}
 
 	numGroups := rfmConfig.NumGroups
-	dateFormat := rfmConfig.DateFormat
+	if numGroups < 2 {
+		insyra.LogWarning("mkt", "RFM", "NumGroups must be at least 2, returning nil")
+		return nil
+	}
 
-	// 如果沒有指定日期格式，使用預設格式
+	dateFormat := rfmConfig.DateFormat
 	if dateFormat == "" {
+		insyra.LogInfo("mkt", "RFM", "No DateFormat specified, using default format YYYY-MM-DD")
 		dateFormat = "YYYY-MM-DD" // 預設使用 ISO 8601 格式（大寫）
+	}
+
+	timeScale := rfmConfig.TimeScale
+	if timeScale == "" {
+		insyra.LogInfo("mkt", "RFM", "No TimeScale specified, using default scale 'daily'")
+		timeScale = TimeScaleDaily
 	}
 
 	// 轉換為 Go 語言的日期格式
@@ -69,7 +80,6 @@ func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable {
 	customerTradingFrequencyMap := make(map[string]uint) // map[customerID]tradingFrequency
 	customerTotalAmountMap := make(map[string]float64)   // map[customerID]totalAmount
 
-	fail := false
 	dt.AtomicDo(func(dt *insyra.DataTable) {
 		// 找出每個客戶的最後交易日
 		numRows, _ := dt.Size()
@@ -89,14 +99,14 @@ func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable {
 			}
 			customerTradingFrequencyMap[customerID]++
 
-			// 解析日期字串
+			// 解析日期字串，並轉換為 UTC 以避免時區問題
 			lastTradingDay, err := time.Parse(goDateFormat, lastTradingDayStr)
 			if err != nil {
-				insyra.LogWarning("mkt", "RFM", "Failed to parse date: %s, returning nil", lastTradingDayStr)
-				fail = true
-				return
+				insyra.LogWarning("mkt", "RFM", "Failed to parse date: %s, skipping the row", lastTradingDayStr)
+				continue
 			}
-			lastTradingDayUnix := lastTradingDay.Unix()
+			lastTradingDayUTC := lastTradingDay.UTC()
+			lastTradingDayUnix := lastTradingDayUTC.Unix()
 
 			// 計算最後交易日
 			if existingLastTradingDay, exists := customerLastTradingDayMap[customerID]; !exists || lastTradingDayUnix > existingLastTradingDay {
@@ -110,21 +120,19 @@ func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable {
 			customerTotalAmountMap[customerID] += amount
 		}
 	})
-	if fail {
-		return nil
-	}
 
 	rThresholds := make([]float64, numGroups-1)
 	fThresholds := make([]float64, numGroups-1)
 	mThresholds := make([]float64, numGroups-1)
-	customerRMap := make(map[string]int) // map[customerID]R_value (days since last trade)
+	customerRMap := make(map[string]int64) // map[customerID]R_value (days since last trade)
 	parallel.GroupUp(func() {
-		// 計算當前時間
-		now := time.Now().Unix()
+		// 計算當前時間（UTC）
+		now := time.Now().UTC()
 
-		// 計算R值（天數差異）
-		for customerID, lastTradingDay := range customerLastTradingDayMap {
-			rValue := int((now - lastTradingDay) / (24 * 60 * 60)) // 轉換為天數
+		// 計算R值（根據 TimeScale 的時間差異）
+		for customerID, lastTradingDayUnix := range customerLastTradingDayMap {
+			lastTradingDay := time.Unix(lastTradingDayUnix, 0).UTC()
+			rValue := calculateTimeDifference(now, lastTradingDay, timeScale)
 			customerRMap[customerID] = rValue
 		}
 

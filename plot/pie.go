@@ -3,7 +3,7 @@ package plot
 import (
 	"errors"
 
-	"github.com/HazelnutParadise/insyra" // 確保這是正確的導入路徑
+	"github.com/HazelnutParadise/insyra"
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
 )
@@ -63,7 +63,12 @@ func CreatePieChart(config PieChartConfig) *charts.Pie {
 		pie.AddSeries("pie", convertedData)
 	case *insyra.DataList:
 		// 假設 DataList 提供了方法來返回數據
-		values := data.ToF64Slice() // 返回 []float64 數據
+		var name string
+		var values []float64
+		data.AtomicDo(func(dl *insyra.DataList) {
+			values = dl.ToF64Slice()
+			name = dl.GetName()
+		})
 		if len(config.Labels) != len(values) {
 			insyra.LogWarning("plot", "CreatePieChart", "The length of Labels and DataList values does not match.")
 			return nil
@@ -74,9 +79,14 @@ func CreatePieChart(config PieChartConfig) *charts.Pie {
 			insyra.LogWarning("plot", "CreatePieChart", "Failed to convert DataList values: %v", err)
 			return nil
 		}
-		pie.AddSeries(data.GetName(), convertedData)
+		pie.AddSeries(name, convertedData)
 	case insyra.IDataList:
-		values := data.ToF64Slice() // 返回 []float64 數據
+		var name string
+		var values []float64
+		data.AtomicDo(func(dl *insyra.DataList) {
+			values = dl.ToF64Slice()
+			name = dl.GetName()
+		})
 		if len(config.Labels) != len(values) {
 			insyra.LogWarning("plot", "CreatePieChart", "The length of Labels and DataList values does not match.")
 			return nil
@@ -87,7 +97,7 @@ func CreatePieChart(config PieChartConfig) *charts.Pie {
 			insyra.LogWarning("plot", "CreatePieChart", "Failed to convert IDataList values: %v", err)
 			return nil
 		}
-		pie.AddSeries(data.GetName(), convertedData)
+		pie.AddSeries(name, convertedData)
 	default:
 		insyra.LogWarning("plot", "CreatePieChart", "Unsupported Data type: %T", config.Data)
 		return nil

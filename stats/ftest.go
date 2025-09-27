@@ -14,9 +14,17 @@ type FTestResult struct {
 
 // FTestForVarianceEquality performs an F-test for variance equality
 func FTestForVarianceEquality(data1, data2 insyra.IDataList) *FTestResult {
-	// 計算方差
-	var1 := data1.Var()
-	var2 := data2.Var()
+	var var1, var2 float64
+	var len1, len2 int
+
+	data1.AtomicDo(func(d1 *insyra.DataList) {
+		data2.AtomicDo(func(d2 *insyra.DataList) {
+			var1 = d1.Var()
+			var2 = d2.Var()
+			len1 = d1.Len()
+			len2 = d2.Len()
+		})
+	})
 
 	// 計算 F 值
 	var fValue float64
@@ -27,8 +35,8 @@ func FTestForVarianceEquality(data1, data2 insyra.IDataList) *FTestResult {
 	}
 
 	// 計算自由度
-	df1 := float64(data1.Len() - 1)
-	df2 := float64(data2.Len() - 1)
+	df1 := float64(len1 - 1)
+	df2 := float64(len2 - 1)
 
 	// 使用卡方分佈計算 P 值
 	fDist := distuv.F{D1: df1, D2: float64(df2)}
@@ -58,15 +66,17 @@ func LeveneTest(groups []insyra.IDataList) *FTestResult {
 	var groupLabels []int
 
 	for i, group := range groups {
-		median := group.Median()
-		for _, v := range group.Data() {
-			x, ok := insyra.ToFloat64Safe(v)
-			if !ok {
-				continue
+		group.AtomicDo(func(gdl *insyra.DataList) {
+			median := gdl.Median()
+			for _, v := range gdl.Data() {
+				x, ok := insyra.ToFloat64Safe(v)
+				if !ok {
+					continue
+				}
+				allDiffs = append(allDiffs, math.Abs(x-median))
+				groupLabels = append(groupLabels, i)
 			}
-			allDiffs = append(allDiffs, math.Abs(x-median))
-			groupLabels = append(groupLabels, i)
-		}
+		})
 	}
 
 	// 對 |x - median| 做單因子 ANOVA
@@ -89,14 +99,17 @@ func BartlettTest(groups []insyra.IDataList) *FTestResult {
 	var weight float64
 
 	for _, group := range groups {
-		n := group.Len()
-		if n < 2 {
+		var n int
+		var v float64
+		group.AtomicDo(func(gdl *insyra.DataList) {
+			n = gdl.Len()
+			v = gdl.Var()
+		})
+
+		if n < 2 || v <= 0 {
 			continue
 		}
-		v := group.Var()
-		if v <= 0 {
-			continue
-		}
+
 		totalN += n
 		sumNMinus1 += n - 1
 		pooledLogVar += float64(n-1) * math.Log(v)

@@ -5,7 +5,7 @@ package plot
 import (
 	"sort"
 
-	"github.com/HazelnutParadise/insyra" // 確保這是正確的導入路徑
+	"github.com/HazelnutParadise/insyra"
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
 )
@@ -78,18 +78,20 @@ func CreateKlineChart(config KlineChartConfig) *charts.Kline {
 		series = make([]opts.KlineData, 0, len(data))
 
 		for _, dataList := range data {
-			if dataList.Len() == 4 { // Ensure that we have the open, close, lowest, highest values
-				xAxis = append(xAxis, dataList.GetName())
-				values := dataList.ToF64Slice()
-				series = append(series, opts.KlineData{
-					Value: [4]float32{
-						float32(values[0]), // Open
-						float32(values[1]), // Close
-						float32(values[2]), // Lowest
-						float32(values[3]), // Highest
-					},
-				})
-			}
+			dataList.AtomicDo(func(dl *insyra.DataList) {
+				if dl.Len() == 4 { // Ensure that we have the open, close, lowest, highest values
+					xAxis = append(xAxis, dl.GetName())
+					values := dl.ToF64Slice()
+					series = append(series, opts.KlineData{
+						Value: [4]float32{
+							float32(values[0]), // Open
+							float32(values[1]), // Close
+							float32(values[2]), // Lowest
+							float32(values[3]), // Highest
+						},
+					})
+				}
+			})
 		}
 
 		// Sort the dates
@@ -100,18 +102,20 @@ func CreateKlineChart(config KlineChartConfig) *charts.Kline {
 		series = make([]opts.KlineData, 0, len(data))
 
 		for _, dataList := range data {
-			if dataList.Len() == 4 { // Ensure that we have the open, close, lowest, highest values
-				xAxis = append(xAxis, dataList.GetName())
-				values := dataList.ToF64Slice()
-				series = append(series, opts.KlineData{
-					Value: [4]float32{
-						float32(values[0]), // Open
-						float32(values[1]), // Close
-						float32(values[2]), // Lowest
-						float32(values[3]), // Highest
-					},
-				})
-			}
+			dataList.AtomicDo(func(dl *insyra.DataList) {
+				if dl.Len() == 4 { // Ensure that we have the open, close, lowest, highest values
+					xAxis = append(xAxis, dl.GetName())
+					values := dl.ToF64Slice()
+					series = append(series, opts.KlineData{
+						Value: [4]float32{
+							float32(values[0]), // Open
+							float32(values[1]), // Close
+							float32(values[2]), // Lowest
+							float32(values[3]), // Highest
+						},
+					})
+				}
+			})
 		}
 
 		// Sort the dates

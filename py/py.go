@@ -9,11 +9,10 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/HazelnutParadise/insyra"
-	jsoniter "github.com/json-iterator/go"
-)
+	json "github.com/goccy/go-json"
 
-var json = jsoniter.ConfigFastest
+	"github.com/HazelnutParadise/insyra"
+)
 
 // Run the Python file and return the result.
 func RunFile(filePath string) map[string]any {

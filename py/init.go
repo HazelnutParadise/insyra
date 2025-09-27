@@ -1,5 +1,4 @@
-// py/init.go
-
+// `py` package provides functions for working with Python.
 package py
 
 import (
@@ -22,6 +21,7 @@ var isPyEnvInit = false
 var isServerRunning = false
 
 // 主要邏輯
+// todo: 改用uv
 func pyEnvInit() {
 	if !isServerRunning {
 		isServerRunning = true
@@ -267,7 +267,7 @@ func moveLibDirectory(sourceDir, installDir string) error {
 	// 檢查 sourceDir 中的 'Lib' 目錄是否存在
 	libSourcePath := filepath.Join(sourceDir, "python-"+pythonVersion, "Lib")
 	if _, err := os.Stat(libSourcePath); os.IsNotExist(err) {
-		return fmt.Errorf("Lib directory not found in source directory: %s", sourceDir)
+		return fmt.Errorf("lib directory not found in source directory: %s", sourceDir)
 	}
 
 	// 目標路徑

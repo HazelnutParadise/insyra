@@ -22,27 +22,31 @@ type PCAResult struct {
 // The number of components to extract can be specified using the nComponents parameter.
 // If nComponents is not specified or exceeds the number of columns, all components will be extracted.
 func PCA(dataTable insyra.IDataTable, nComponents ...int) *PCAResult {
-	rowNum, colNum := dataTable.Size()
+	var rowNum, colNum, numComponents int
+	var data *mat.Dense
+	dataTable.AtomicDo(func(dt *insyra.DataTable) {
+		rowNum, colNum = dt.Size()
 
-	// 如果 nComponents 沒有指定，或者超過列數，則提取所有主成分
-	numComponents := colNum
-	if len(nComponents) == 1 && nComponents[0] > 0 && nComponents[0] <= colNum {
-		numComponents = nComponents[0]
-	} else if len(nComponents) > 1 {
-		insyra.LogWarning("stats", "PCA", "Invalid number of components, extracting all components")
-	}
+		// 如果 nComponents 沒有指定，或者超過列數，則提取所有主成分
+		numComponents = colNum
+		if len(nComponents) == 1 && nComponents[0] > 0 && nComponents[0] <= colNum {
+			numComponents = nComponents[0]
+		} else if len(nComponents) > 1 {
+			insyra.LogWarning("stats", "PCA", "Invalid number of components, extracting all components")
+		}
 
-	// 將 DataTable 轉換為矩陣，將每行視為一個樣本
-	data := mat.NewDense(rowNum, colNum, nil)
-	for i := range rowNum {
-		row := dataTable.GetRow(i)
-		for j := range colNum {
-			value, ok := row.Get(j).(float64)
-			if ok {
-				data.Set(i, j, value)
+		// 將 DataTable 轉換為矩陣，將每行視為一個樣本
+		data = mat.NewDense(rowNum, colNum, nil)
+		for i := range rowNum {
+			row := dt.GetRow(i)
+			for j := range colNum {
+				value, ok := row.Get(j).(float64)
+				if ok {
+					data.Set(i, j, value)
+				}
 			}
 		}
-	}
+	})
 
 	// 進行數據標準化（Z-Score 標準化）
 	for j := range colNum {

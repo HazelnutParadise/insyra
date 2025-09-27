@@ -15,6 +15,13 @@ func inActorLoop() bool {
 }
 
 func (s *DataList) AtomicDo(f func(*DataList)) {
+	LogDebug("DataList", "AtomicDo", "threadSafe: %v", Config.threadSafe)
+	if !Config.threadSafe {
+		// 如果全域配置關閉了線程安全，直接執行
+		f(s)
+		return
+	}
+
 	// 檢查是否已關閉
 	if s.closed.Load() {
 		f(s)

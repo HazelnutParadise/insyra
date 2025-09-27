@@ -17,10 +17,27 @@ go get github.com/HazelnutParadise/insyra/mkt
 The mkt package provides marketing analytics functions for customer segmentation and analysis:
 
 - **RFM Analysis**: Customer segmentation based on Recency, Frequency, and Monetary value
+- **CAI Analysis**: Customer Activity Index calculation to evaluate customer activity trends over time
 
 ---
 
 ## Core Types
+
+### TimeScale
+
+Time scale for RFM analysis recency calculation.
+
+```go
+type TimeScale string
+```
+
+**Constants:**
+
+- `TimeScaleHourly`: Calculate recency in hours
+- `TimeScaleDaily`: Calculate recency in days (default)
+- `TimeScaleWeekly`: Calculate recency in weeks
+- `TimeScaleMonthly`: Calculate recency in months
+- `TimeScaleYearly`: Calculate recency in years
 
 ### RFMConfig
 
@@ -28,14 +45,15 @@ Configuration structure for RFM analysis.
 
 ```go
 type RFMConfig struct {
-    CustomerIDColIndex string // The column index(A, B, C, ...) of customer ID in the data table
-    CustomerIDColName  string // The column name of customer ID in the data table (if both index and name are provided, index takes precedence)
-    TradingDayColIndex string // The column index(A, B, C, ...) of trading day in the data table
-    TradingDayColName  string // The column name of trading day in the data table (if both index and name are provided, index takes precedence)
-    AmountColIndex     string // The column index(A, B, C, ...) of amount in the data table
-    AmountColName      string // The column name of amount in the data table (if both index and name are provided, index takes precedence)
-    NumGroups          uint   // The number of groups to divide the customers into
-    DateFormat         string // The format of the date string (e.g., "YYYY-MM-DD", "DD/MM/YYYY", "yyyy-mm-dd")
+    CustomerIDColIndex string    // The column index(A, B, C, ...) of customer ID in the data table
+    CustomerIDColName  string    // The column name of customer ID in the data table (if both index and name are provided, index takes precedence)
+    TradingDayColIndex string    // The column index(A, B, C, ...) of trading day in the data table
+    TradingDayColName  string    // The column name of trading day in the data table (if both index and name are provided, index takes precedence)
+    AmountColIndex     string    // The column index(A, B, C, ...) of amount in the data table
+    AmountColName      string    // The column name of amount in the data table (if both index and name are provided, index takes precedence)
+    NumGroups          uint      // The number of groups to divide the customers into
+    DateFormat         string    // The format of the date string (e.g., "YYYY-MM-DD", "DD/MM/YYYY", "yyyy-mm-dd")
+    TimeScale          TimeScale // The time scale for recency calculation (e.g., hourly, daily, weekly, monthly, yearly)
 }
 ```
 
@@ -49,6 +67,31 @@ type RFMConfig struct {
 - `AmountColName`: Column name for transaction amount (column index takes precedence if both are provided)
 - `NumGroups`: Number of RFM score groups (typically 3-5)
 - `DateFormat`: Date format string (defaults to "YYYY-MM-DD" if empty)
+- `TimeScale`: Time scale for recency calculation (defaults to "daily" if empty)
+
+### CAIConfig
+
+Configuration structure for CAI (Customer Activity Index) analysis.
+
+```go
+type CAIConfig struct {
+    CustomerIDColIndex string    // The column index(A, B, C, ...) of customer ID in the data table
+    CustomerIDColName  string    // The column name of customer ID in the data table (if both index and name are provided, index takes precedence)
+    TradingDayColIndex string    // The column index(A, B, C, ...) of trading day in the data table
+    TradingDayColName  string    // The column name of trading day in the data table (if both index and name are provided, index takes precedence)
+    DateFormat         string    // The format of the date string (e.g., "YYYY-MM-DD", "DD/MM/YYYY", "yyyy-mm-dd")
+    TimeScale          TimeScale // The time scale for analysis (e.g., hourly, daily, weekly, monthly, yearly)
+}
+```
+
+**Fields:**
+
+- `CustomerIDColIndex`: Column index for customer ID (e.g., "A", "B", "C")
+- `CustomerIDColName`: Column name for customer ID (column index takes precedence if both are provided)
+- `TradingDayColIndex`: Column index for transaction date
+- `TradingDayColName`: Column name for transaction date (column index takes precedence if both are provided)
+- `DateFormat`: Date format string (defaults to "YYYY-MM-DD" if empty)
+- `TimeScale`: Time scale for analysis (defaults to "daily" if empty)
 
 ---
 
@@ -74,11 +117,11 @@ func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable
 **Description:**
 RFM analysis segments customers based on three key metrics:
 
-- **Recency (R)**: Days since last purchase (lower values = higher scores)
+- **Recency (R)**: Time since last purchase in the specified time scale (lower values = higher scores)
 - **Frequency (F)**: Number of purchases (higher values = higher scores)
 - **Monetary (M)**: Total purchase amount (higher values = higher scores)
 
-The function calculates percentile-based scores for each metric and assigns customers to groups.
+The function calculates percentile-based scores for each metric and assigns customers to groups. The TimeScale parameter determines how recency is calculated (hours, days, weeks, months, or years).
 
 **Output Table Structure:**
 
@@ -87,6 +130,47 @@ The function calculates percentile-based scores for each metric and assigns cust
 - `F_Score`: Frequency score (1 to NumGroups, higher is better)
 - `M_Score`: Monetary score (1 to NumGroups, higher is better)
 - `RFM_Score`: Combined RFM score (e.g., "555", "123")
+
+### CAI
+
+Alias for CustomerActivityIndex function.
+
+```go
+var CAI = CustomerActivityIndex
+```
+
+### CustomerActivityIndex
+
+Calculates the Customer Activity Index (CAI) for each customer based on their transaction history.
+
+```go
+func CustomerActivityIndex(dt insyra.IDataTable, caiConfig CAIConfig) insyra.IDataTable
+```
+
+**Parameters:**
+
+- `dt`: Input data table containing transaction records
+- `caiConfig`: Configuration for CAI calculation
+
+**Returns:**
+
+- `insyra.IDataTable`: Result table with CustomerID, MLE, WMLE, and CAI for each customer, or `nil` if an error occurs
+
+**Description:**
+CAI (Customer Activity Index) is a metric used to evaluate customer activity based on their transaction history. It indicates the change in customer activity level over time. A positive CAI indicates a customer whose activity is increasing, while a negative CAI indicates a customer whose activity is decreasing.
+
+The calculation involves:
+
+- **MLE (Mean Lifetime Expectancy)**: Average time interval between transactions
+- **WMLE (Weighted Mean Lifetime Expectancy)**: Weighted average where recent intervals have higher weights
+- **CAI**: Calculated as (MLE - WMLE) / MLE
+
+**Output Table Structure:**
+
+- `CustomerID`: Customer identifier
+- `MLE`: Mean Lifetime Expectancy (average transaction interval)
+- `WMLE`: Weighted Mean Lifetime Expectancy
+- `CAI`: Customer Activity Index (activity trend indicator)
 
 ---
 
@@ -184,6 +268,115 @@ config := mkt.RFMConfig{
 }
 ```
 
+### RFM Analysis with TimeScale
+
+```go
+// Configure RFM analysis with weekly time scale
+config := mkt.RFMConfig{
+    CustomerIDColName:  "CustomerID",
+    TradingDayColName:  "PurchaseDate",
+    AmountColName:      "TotalAmount",
+    NumGroups:          5,
+    DateFormat:         "2006-01-02",
+    TimeScale:          mkt.TimeScaleWeekly,  // Calculate recency in weeks
+}
+
+// Perform RFM analysis
+result := mkt.RFM(dt, config)
+
+// Recency scores will now be calculated in weeks instead of days
+// For example, a customer who purchased 2 weeks ago will have R=2
+```
+
+### Basic CAI Analysis
+
+```go
+package main
+
+import (
+    "fmt"
+    "github.com/HazelnutParadise/insyra"
+    "github.com/HazelnutParadise/insyra/mkt"
+)
+
+func main() {
+    // Create sample transaction data
+    dt := insyra.NewDataTable()
+
+    // Add transaction records
+    dt.AppendRowsByColIndex(map[string]any{
+        "A": "C001",        // Customer ID
+        "B": "2023-01-01",  // Transaction Date
+    })
+    dt.AppendRowsByColIndex(map[string]any{
+        "A": "C001",
+        "B": "2023-01-15",
+    })
+    dt.AppendRowsByColIndex(map[string]any{
+        "A": "C001",
+        "B": "2023-02-01",
+    })
+    dt.AppendRowsByColIndex(map[string]any{
+        "A": "C002",
+        "B": "2023-01-10",
+    })
+    dt.AppendRowsByColIndex(map[string]any{
+        "A": "C002",
+        "B": "2023-02-15",
+    })
+
+    // Set column names
+    dt.SetColNameByIndex("A", "CustomerID")
+    dt.SetColNameByIndex("B", "Date")
+
+    // Configure CAI analysis
+    config := mkt.CAIConfig{
+        CustomerIDColIndex: "A",
+        TradingDayColIndex: "B",
+        DateFormat:         "2006-01-02",
+        TimeScale:          mkt.TimeScaleDaily,
+    }
+
+    // Perform CAI analysis
+    result := mkt.CAI(dt, config)
+    if result == nil {
+        fmt.Println("CAI analysis failed")
+        return
+    }
+
+    // Display results
+    result.Show()
+
+    // Access individual CAI values
+    numRows, _ := result.Size()
+    for i := 0; i < numRows; i++ {
+        customerID := result.GetElement(i, "CustomerID")
+        cai := result.GetElement(i, "CAI")
+        mle := result.GetElement(i, "MLE")
+        wmle := result.GetElement(i, "WMLE")
+        fmt.Printf("Customer %s: CAI=%.3f, MLE=%.1f, WMLE=%.1f\n", customerID, cai, mle, wmle)
+    }
+}
+```
+
+### CAI Analysis with Different Time Scales
+
+```go
+// Configure CAI analysis with weekly time scale
+config := mkt.CAIConfig{
+    CustomerIDColName:  "CustomerID",
+    TradingDayColName:  "PurchaseDate",
+    DateFormat:         "2006-01-02",
+    TimeScale:          mkt.TimeScaleWeekly,  // Calculate intervals in weeks
+}
+
+// Perform CAI analysis
+result := mkt.CAI(dt, config)
+
+// CAI values will be calculated based on weekly intervals
+// Positive CAI indicates increasing activity, negative indicates decreasing
+```
+
 ---
 
 ## Error Handling
@@ -212,6 +405,31 @@ The function logs warnings for specific issues:
 - Missing column specifications
 - Data parsing failures
 
+The CAI function returns `nil` in the following cases:
+
+- Invalid date format in transaction data
+- Missing or invalid customer ID
+- Date parsing errors
+- Missing required configuration fields (CustomerID, TradingDay columns)
+
+Always check the return value:
+
+```go
+result := mkt.CAI(dt, config)
+if result == nil {
+    // Handle error - check logs for details
+    insyra.LogError("mkt", "CAI", "Analysis failed")
+    return
+}
+```
+
+The function logs warnings for specific issues:
+
+- Invalid date strings
+- Missing column specifications
+- Data parsing failures
+- Customers with insufficient transaction data (less than 2 transactions)
+
 ---
 
 ## Best Practices
@@ -234,9 +452,21 @@ The function logs warnings for specific issues:
    - Use Go time format strings (e.g., "2006-01-02" for YYYY-MM-DD)
    - Test with sample data first
 
-5. **Performance**:
+5. **Time Scale Selection**:
+   - Choose TimeScale based on business context (daily for retail, weekly for B2B)
+   - Default is daily if TimeScale is not specified
+   - Recency calculation truncates times to the start of the time unit
+
+6. **Performance**:
    - Function processes data in parallel for large datasets
    - Consider data size for very large transaction tables
+
+7. **CAI Analysis Considerations**:
+   - Ensure customers have sufficient transaction history (at least 2 transactions)
+   - Choose appropriate TimeScale based on business cycle length
+   - CAI values close to 0 indicate stable activity patterns
+   - Positive CAI indicates increasing activity, negative indicates decreasing
+   - Use CAI in combination with RFM for comprehensive customer insights
 
 ---
 

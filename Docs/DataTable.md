@@ -2342,6 +2342,98 @@ func (dt *DataTable) Transpose() *DataTable
 transposed := dt.Transpose()
 ```
 
+### SortBy
+
+Sorts the DataTable rows based on one or more column configurations. Supports multi-level sorting with stable sort.
+
+```go
+func (dt *DataTable) SortBy(configs ...DataTableSortConfig) *DataTable
+```
+
+**Parameters:**
+
+- `configs`: Variable number of DataTableSortConfig structs specifying sort criteria
+
+**DataTableSortConfig:**
+
+```go
+type DataTableSortConfig struct {
+    ColumnIndex  string // Column index (A, B, C...)
+    ColumnNumber int    // Column number (0-based)
+    ColumnName   string // Column name
+    Descending   bool   // Sort in descending order
+}
+```
+
+**Returns:**
+
+- `*DataTable`: The sorted DataTable (modified in-place)
+
+**Description:**
+
+- Supports sorting by column index, number, or name
+- Multi-level sorting: sorts by the first config, then by subsequent configs for ties
+- Uses stable sort to maintain relative order of equal elements
+- At least one of ColumnIndex, ColumnNumber, or ColumnName must be specified
+
+**Example:**
+
+```go
+// Single column sort
+dt.SortBy(insyra.DataTableSortConfig{ColumnName: "Age", Descending: false})
+
+// Multi-column sort: sort by Age ascending, then by Name descending
+dt.SortBy(
+    insyra.DataTableSortConfig{ColumnName: "Age", Descending: false},
+    insyra.DataTableSortConfig{ColumnName: "Name", Descending: true},
+)
+```
+
+### Clone
+
+Creates a deep copy of the DataTable.
+
+```go
+func (dt *DataTable) Clone() *DataTable
+```
+
+**Returns:**
+
+- `*DataTable`: A new DataTable instance that is a deep copy of the original
+
+**Description:**
+
+The Clone method creates a complete deep copy of the DataTable, including:
+
+- All columns (each DataList is also cloned)
+- Column index mapping
+- Row names mapping
+- Table name
+- Creation timestamp (original timestamp is preserved)
+- Last modified timestamp (reset to current time)
+
+The cloned DataTable is completely independent of the original, so modifications to one will not affect the other.
+
+**Example:**
+
+```go
+// Create original DataTable
+original := NewDataTable()
+original.AppendCols(NewDataList(1, 2, 3), NewDataList("a", "b", "c"))
+original.SetName("Original Table")
+
+// Clone the DataTable
+cloned := original.Clone()
+
+// Modify original - cloned remains unchanged
+original.SetName("Modified Table")
+original.columns[0].data[0] = 999
+
+// cloned still has original name and data
+fmt.Println(cloned.GetName()) // Output: Original Table
+fmt.Println(cloned.columns[0].data[0]) // Output: 1
+```
+
 ## Notes
 
 1. **Type Safety**: DataTable uses the `any` type to store data. Please ensure proper type conversion when operating on the data.

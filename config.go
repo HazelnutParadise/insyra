@@ -6,6 +6,7 @@ type configStruct struct {
 	logLevel               LogLevel
 	dontPanic              bool
 	defaultErrHandlingFunc func(errType LogLevel, packageName string, funcName string, errMsg string)
+	threadSafe             bool
 }
 
 var Config *configStruct = &configStruct{}
@@ -47,10 +48,21 @@ func (c *configStruct) GetDefaultErrHandlingFunc() func(errType LogLevel, packag
 	return c.defaultErrHandlingFunc
 }
 
+// # NOT RECOMMENDED!
+//
+// Dangerously_TurnOffThreadSafety turns off thread safety for all data structures.
+// You can enjoy extreme performance boost, but data consistency is NOT guaranteed.
+func (c *configStruct) Dangerously_TurnOffThreadSafety() {
+	c.threadSafe = false
+	LogWarning("config", "Dangerously_TurnOffThreadSafety", "Thread safety is turned off. Data consistency is NOT guaranteed!\nIt may be a mistake. Remove `Dangerously_TurnOffThreadSafety()` in your code to restore thread safety.")
+}
+
 // ======================== Configs ========================
 
 // DefaultConfig returns a Config with default values.
 func SetDefaultConfig() {
 	Config.logLevel = LogLevelInfo
 	Config.dontPanic = false
+	Config.defaultErrHandlingFunc = nil
+	Config.threadSafe = true
 }

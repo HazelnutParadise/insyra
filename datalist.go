@@ -5,6 +5,7 @@ import (
 	"math"
 	"reflect"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -14,6 +15,7 @@ import (
 	"github.com/HazelnutParadise/Go-Utils/asyncutil"
 	"github.com/HazelnutParadise/Go-Utils/conv"
 	"github.com/HazelnutParadise/Go-Utils/sliceutil"
+	"github.com/HazelnutParadise/insyra/internal/utils"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
@@ -30,13 +32,6 @@ type DataList struct {
 	initOnce sync.Once
 	cmdCh    chan func()
 	closed   atomic.Bool
-}
-
-// From creates a new DataList from the specified values.
-// nolint:govet
-func (_ DataList) From(values ...any) *DataList {
-	newdl := NewDataList(values...)
-	return newdl
 }
 
 // Data returns the data stored in the DataList.
@@ -489,11 +484,11 @@ func (dl *DataList) Clear() *DataList {
 }
 
 func (dl *DataList) Len() int {
-    var l int
-    dl.AtomicDo(func(dl *DataList) {
-        l = len(dl.data)
-    })
-    return l
+	var l int
+	dl.AtomicDo(func(dl *DataList) {
+		l = len(dl.data)
+	})
+	return l
 }
 
 // ClearStrings removes all string elements from the DataList and updates the timestamp.
@@ -826,38 +821,12 @@ func (dl *DataList) Sort(ascending ...bool) *DataList {
 		}
 
 		// Mixed sorting
-		sort.SliceStable(dl.data, func(i, j int) bool {
-			v1 := dl.data[i]
-			v2 := dl.data[j]
-
-			switch v1 := v1.(type) {
-			case string:
-				if v2, ok := v2.(string); ok {
-					return (v1 < v2) == ascendingOrder
-				}
-			case int, int8, int16, int32, int64:
-				v1Float := ToFloat64(v1)
-				if v2Float, ok := ToFloat64Safe(v2); ok {
-					return (v1Float < v2Float) == ascendingOrder
-				}
-			case uint, uint8, uint16, uint32, uint64:
-				v1Float := ToFloat64(v1)
-				if v2Float, ok := ToFloat64Safe(v2); ok {
-					return (v1Float < v2Float) == ascendingOrder
-				}
-			case float32, float64:
-				v1Float := ToFloat64(v1)
-				if v2Float, ok := ToFloat64Safe(v2); ok {
-					return (v1Float < v2Float) == ascendingOrder
-				}
-			case time.Time:
-				if v2, ok := v2.(time.Time); ok {
-					return v1.Before(v2) == ascendingOrder
-				}
-			}
-
-			// Fallback: compare as strings
-			return fmt.Sprint(v1) < fmt.Sprint(v2)
+		order := 1
+		if !ascendingOrder {
+			order = -1
+		}
+		slices.SortStableFunc(dl.data, func(a, b any) int {
+			return utils.CompareAny(a, b) * order
 		})
 
 		go dl.updateTimestamp()
@@ -1870,20 +1839,20 @@ func (dl *DataList) ToStringSlice() []string {
 
 // GetCreationTimestamp returns the creation time of the DataList in Unix timestamp.
 func (dl *DataList) GetCreationTimestamp() int64 {
-    var ts int64
-    dl.AtomicDo(func(dl *DataList) {
-        ts = dl.creationTimestamp
-    })
-    return ts
+	var ts int64
+	dl.AtomicDo(func(dl *DataList) {
+		ts = dl.creationTimestamp
+	})
+	return ts
 }
 
 // GetLastModifiedTimestamp returns the last updated time of the DataList in Unix timestamp.
 func (dl *DataList) GetLastModifiedTimestamp() int64 {
-    var ts int64
-    dl.AtomicDo(func(dl *DataList) {
-        ts = dl.lastModifiedTimestamp.Load()
-    })
-    return ts
+	var ts int64
+	dl.AtomicDo(func(dl *DataList) {
+		ts = dl.lastModifiedTimestamp.Load()
+	})
+	return ts
 }
 
 // updateTimestamp updates the lastModifiedTimestamp to the current Unix time.
@@ -1900,11 +1869,11 @@ func (dl *DataList) updateTimestamp() {
 
 // GetName returns the name of the DataList.
 func (dl *DataList) GetName() string {
-    var name string
-    dl.AtomicDo(func(dl *DataList) {
-        name = dl.name
-    })
-    return name
+	var name string
+	dl.AtomicDo(func(dl *DataList) {
+		name = dl.name
+	})
+	return name
 }
 
 // SetName sets the name of the DataList.

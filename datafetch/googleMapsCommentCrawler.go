@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/HazelnutParadise/insyra"
-	jsoniter "github.com/json-iterator/go"
+	json "github.com/goccy/go-json"
 	"golang.org/x/exp/rand"
 )
 
@@ -48,8 +48,6 @@ const (
 	// SortByLowestRating 按最低評分排序
 	SortByLowestRating GoogleMapsStoreReviewSortBy = 4
 )
-
-var json = jsoniter.ConfigFastest
 
 type googleMapsStoreCrawler struct {
 	headers        map[string]string

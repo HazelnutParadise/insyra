@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/HazelnutParadise/insyra/internal/utils"
 	"github.com/mattn/go-runewidth"
 	"golang.org/x/term"
 )
@@ -257,7 +258,7 @@ func (dt *DataTable) ShowRange(startEnd ...interface{}) {
 			// Print header with proper alignment using runewidth
 			fmt.Print("\033[1;32m" + runewidth.FillRight("RowNames", maxRowNameWidth+2) + "\033[0m")
 			for _, colIndex := range currentPageCols {
-				label := TruncateString(colIndex, colWidths[colIndex])
+				label := utils.TruncateString(colIndex, colWidths[colIndex])
 				fmt.Print(" \033[1;32m" + runewidth.FillRight(label, colWidths[colIndex]+1) + "\033[0m")
 			}
 			fmt.Println()
@@ -315,7 +316,7 @@ func printRowsColored(dataMap map[string][]any, start, end int, rowNames []strin
 		}
 		// Print row name with proper alignment
 		fmt.Print("\033[1;37m")
-		fmt.Print(runewidth.FillRight(TruncateString(rowName, maxRowNameWidth), maxRowNameWidth+2))
+		fmt.Print(runewidth.FillRight(utils.TruncateString(rowName, maxRowNameWidth), maxRowNameWidth+2))
 		fmt.Print("\033[0m")
 
 		for _, colIndex := range colIndices {
@@ -326,7 +327,7 @@ func printRowsColored(dataMap map[string][]any, start, end int, rowNames []strin
 			}
 			value := "nil"
 			if rawValue != nil {
-				value = FormatValue(rawValue)
+				value = utils.FormatValue(rawValue)
 			}
 
 			// Choose color based on value type
@@ -345,7 +346,7 @@ func printRowsColored(dataMap map[string][]any, start, end int, rowNames []strin
 			}
 
 			// Print cell with proper alignment using runewidth
-			fmt.Print(" " + valueColor + runewidth.FillRight(TruncateString(value, colWidths[colIndex]), colWidths[colIndex]+1) + "\033[0m")
+			fmt.Print(" " + valueColor + runewidth.FillRight(utils.TruncateString(value, colWidths[colIndex]), colWidths[colIndex]+1) + "\033[0m")
 		}
 		fmt.Println()
 	}
@@ -543,7 +544,7 @@ func (dt *DataTable) ShowTypesRange(startEnd ...interface{}) {
 			// Print column names with runewidth alignment
 			fmt.Print("\033[1;32m" + runewidth.FillRight("RowNames", maxRowNameWidth+2) + "\033[0m")
 			for _, colIndex := range currentPageCols {
-				lbl := TruncateString(colIndex, colWidths[colIndex])
+				lbl := utils.TruncateString(colIndex, colWidths[colIndex])
 				fmt.Print(" \033[1;32m" + runewidth.FillRight(lbl, colWidths[colIndex]+1) + "\033[0m")
 			}
 			fmt.Println()
@@ -601,7 +602,7 @@ func printTypeRows(dataMap map[string][]any, start, end int, rowNames []string, 
 			rowName = rowNames[rowIndex]
 		}
 		// Use light gray color for row names with proper alignment using runewidth
-		fmt.Print("\033[1;37m" + runewidth.FillRight(TruncateString(rowName, maxRowNameWidth), maxRowNameWidth+2) + "\033[0m")
+		fmt.Print("\033[1;37m" + runewidth.FillRight(utils.TruncateString(rowName, maxRowNameWidth), maxRowNameWidth+2) + "\033[0m")
 
 		for _, colIndex := range colIndices {
 			value := "nil"
@@ -645,7 +646,7 @@ func printTypeRows(dataMap map[string][]any, start, end int, rowNames []string, 
 			}
 
 			// Print type cell with proper alignment using runewidth
-			fmt.Print(" " + typeColor + runewidth.FillRight(TruncateString(value, colWidths[colIndex]), colWidths[colIndex]+1) + "\033[0m")
+			fmt.Print(" " + typeColor + runewidth.FillRight(utils.TruncateString(value, colWidths[colIndex]), colWidths[colIndex]+1) + "\033[0m")
 		}
 		fmt.Println()
 	}
@@ -859,7 +860,7 @@ func (dl *DataList) ShowRange(startEnd ...any) {
 			itemIndex := start + i
 			if itemIndex < end {
 				value := dl.data[itemIndex]
-				strValue := FormatValue(value)
+				strValue := utils.FormatValue(value)
 
 				// Color based on value type
 				valueColor := "\033[0m" // Default color
@@ -887,7 +888,7 @@ func (dl *DataList) ShowRange(startEnd ...any) {
 			// Show last 5 items from the range
 			for i := end - 5; i < end; i++ {
 				value := dl.data[i]
-				strValue := FormatValue(value)
+				strValue := utils.FormatValue(value)
 
 				// Color based on value type
 				valueColor := "\033[0m" // Default color
@@ -1087,7 +1088,7 @@ func prepareTableLayout(dt *DataTable, dataMap map[string][]any, colIndices []st
 	for _, idx := range colIndices {
 		width := runewidth.StringWidth(idx)
 		for _, v := range dataMap[idx] {
-			s := FormatValue(v)
+			s := utils.FormatValue(v)
 			if w := runewidth.StringWidth(s); w > width {
 				width = w
 			}

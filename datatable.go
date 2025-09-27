@@ -2,6 +2,7 @@ package insyra
 
 import (
 	"fmt"
+	"maps"
 	"sort"
 	"strings"
 	"sync"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/HazelnutParadise/Go-Utils/asyncutil"
 	"github.com/HazelnutParadise/Go-Utils/conv"
+	"github.com/HazelnutParadise/insyra/parallel"
 )
 
 type DataTable struct {
@@ -266,17 +268,11 @@ func (dt *DataTable) GetCol(index string) *DataList {
 		index = strings.ToUpper(index)
 		if colPos, exists := dt.columnIndex[index]; exists {
 			// 初始化新的 DataList 並分配 data 切片的大小
-			dl := NewDataList()
-			dl.data = make([]any, len(dt.columns[colPos].data))
-
-			// 拷貝數據到新的 DataList
-			copy(dl.data, dt.columns[colPos].data)
-			dl.name = dt.columns[colPos].name
-			result = dl
+			result = dt.columns[colPos].Clone()
 			return
 		}
-		LogWarning("DataTable", "GetCol", "Column '%s' not found, returning empty DataList", index)
-		result = NewDataList() // 返回空的 DataList 而不是 nil
+		LogWarning("DataTable", "GetCol", "Column '%s' not found, returning nil", index)
+		result = nil
 	})
 	return result
 }
@@ -289,19 +285,12 @@ func (dt *DataTable) GetColByNumber(index int) *DataList {
 		}
 
 		if index < 0 || index >= len(dt.columns) {
-			LogWarning("DataTable", "GetColByNumber", "Col index is out of range, returning empty DataList")
-			result = NewDataList() // 返回空的 DataList 而不是 nil
+			LogWarning("DataTable", "GetColByNumber", "Col index is out of range, returning nil")
+			result = nil
 			return
 		}
 
-		// 初始化新的 DataList 並分配 data 切片的大小
-		dl := NewDataList()
-		dl.data = make([]any, len(dt.columns[index].data))
-
-		// 拷貝數據到新的 DataList
-		copy(dl.data, dt.columns[index].data)
-		dl.name = dt.columns[index].name
-		result = dl
+		result = dt.columns[index].Clone()
 	})
 	return result
 }
@@ -312,13 +301,7 @@ func (dt *DataTable) GetColByName(name string) *DataList {
 		for _, column := range dt.columns {
 			if column.name == name {
 				// 初始化新的 DataList 並分配 data 切片的大小
-				dl := NewDataList()
-				dl.data = make([]any, len(column.data))
-
-				// 拷貝數據到新的 DataList
-				copy(dl.data, column.data)
-				dl.name = column.name
-				result = dl
+				result = column.Clone()
 				return
 			}
 		}
@@ -1332,4 +1315,41 @@ func (dt *DataTable) GetCreationTimestamp() int64 {
 
 func (dt *DataTable) GetLastModifiedTimestamp() int64 {
 	return dt.lastModifiedTimestamp.Load()
+}
+
+// Clone creates a deep copy of the DataTable.
+// It copies all columns, column indices, row names, and metadata,
+// ensuring that modifications to the original DataTable do not affect the clone.
+// The cloned DataTable has a new creation timestamp and is fully independent.
+func (dt *DataTable) Clone() *DataTable {
+	var newDT *DataTable
+	now := time.Now().Unix()
+	dt.AtomicDo(func(dt *DataTable) {
+		clonedColumns := make([]*DataList, len(dt.columns))
+		clonedColumnIndex := make(map[string]int)
+		clonedRowNames := make(map[string]int)
+		parallel.GroupUp(func() {
+			// Clone columns
+			for i, col := range dt.columns {
+				clonedColumns[i] = col.Clone()
+			}
+		}, func() {
+			// Clone columnIndex map
+			maps.Copy(clonedColumnIndex, dt.columnIndex)
+		}, func() {
+			// Clone rowNames map
+			maps.Copy(clonedRowNames, dt.rowNames)
+		}).Run().AwaitResult()
+
+		// Create new DataTable with cloned data
+		newDT = &DataTable{
+			columns:           clonedColumns,
+			columnIndex:       clonedColumnIndex,
+			rowNames:          clonedRowNames,
+			name:              dt.name,
+			creationTimestamp: now,
+		}
+	})
+	newDT.lastModifiedTimestamp.Store(now)
+	return newDT
 }

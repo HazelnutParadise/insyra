@@ -76,9 +76,13 @@ type IDataTable interface {
 	Size() (numRows int, numCols int)
 	Count(value any) int
 	Mean() any
-	Summary() // Conversion
+	Summary()
+
+	// Operations
 	Transpose() *DataTable
+	Clone() *DataTable
 	Map(mapFunc func(rowIndex int, colIndex string, element any) any) *DataTable
+	SortBy(configs ...DataTableSortConfig) *DataTable
 
 	// Filters
 	Filter(filterFunc FilterFunc) *DataTable

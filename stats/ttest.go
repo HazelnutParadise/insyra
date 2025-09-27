@@ -28,14 +28,23 @@ type TTestResult struct {
 //
 // ** Verified using R **
 func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...float64) *TTestResult {
-	n := data.Len()
-	if n <= 1 {
-		insyra.LogWarning("stats", "SingleSampleTTest", "Sample size too small")
+	var n int
+	var mean, stddev float64
+	isFailed := false
+	data.AtomicDo(func(dl *insyra.DataList) {
+		n = dl.Len()
+		if n <= 1 {
+			insyra.LogWarning("stats", "SingleSampleTTest", "Sample size too small")
+			isFailed = true
+			return
+		}
+		mean = dl.Mean()
+		stddev = dl.Stdev()
+	})
+	if isFailed {
 		return nil
 	}
 
-	mean := data.Mean()
-	stddev := data.Stdev()
 	standardError := stddev / math.Sqrt(float64(n))
 	tValue := (mean - mu) / standardError
 	df := float64(n - 1)
@@ -124,18 +133,31 @@ func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...flo
 //
 // ** Verified using R **
 func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenceLevel ...float64) *TTestResult {
-	n1 := data1.Len()
-	n2 := data2.Len()
-	if n1 <= 1 || n2 <= 1 {
-		insyra.LogWarning("stats", "TwoSampleTTest", "Sample sizes too small")
+	var n1, n2 int
+	var mean1, mean2 float64
+	var stddev1, stddev2 float64
+	isFailed := false
+	data1.AtomicDo(func(dl1 *insyra.DataList) {
+		data2.AtomicDo(func(dl2 *insyra.DataList) {
+			n1 = dl1.Len()
+			n2 = dl2.Len()
+			if n1 <= 1 || n2 <= 1 {
+				insyra.LogWarning("stats", "TwoSampleTTest", "Sample sizes too small")
+				isFailed = true
+				return
+			}
+
+			mean1 = dl1.Mean()
+			mean2 = dl2.Mean()
+			stddev1 = dl1.Stdev()
+			stddev2 = dl2.Stdev()
+		})
+	})
+	if isFailed {
 		return nil
 	}
 
-	mean1 := data1.Mean()
-	mean2 := data2.Mean()
 	meanDiff := mean1 - mean2
-	stddev1 := data1.Stdev()
-	stddev2 := data2.Stdev()
 
 	n1Float := float64(n1)
 	n2Float := float64(n2)
@@ -217,14 +239,25 @@ func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenc
 //
 // ** Verified using R **
 func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel ...float64) *TTestResult {
-	n := data1.Len()
-	if n != data2.Len() || n <= 1 {
-		insyra.LogWarning("stats", "PairedTTest", "Paired samples must have the same non-zero length")
+	var n int
+	isFailed := false
+	var data1Slice, data2Slice []any
+	data1.AtomicDo(func(dl1 *insyra.DataList) {
+		data2.AtomicDo(func(dl2 *insyra.DataList) {
+			n = dl1.Len()
+			if n != dl2.Len() || n <= 1 {
+				insyra.LogWarning("stats", "PairedTTest", "Paired samples must have the same non-zero length")
+				isFailed = true
+				return
+			}
+
+			data1Slice = dl1.Data()
+			data2Slice = dl2.Data()
+		})
+	})
+	if isFailed {
 		return nil
 	}
-
-	data1Slice := data1.Data()
-	data2Slice := data2.Data()
 
 	// 僅對大型數據集使用平行運算
 	const minSizeForParallel = 5000

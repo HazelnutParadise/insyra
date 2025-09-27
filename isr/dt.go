@@ -30,20 +30,14 @@ type Col map[any]any
 // Cols is a type alias for []Col.
 type Cols = []Col
 
+// Deprecated: Use UseDT instead.
 // PtrDT converts a DataTable or DT to a *DT.
+// You should no longer use this function, use UseDT instead.
 func PtrDT[T *insyra.DataTable | dt](t T) *dt {
-	switch concrete := any(t).(type) {
-	case *insyra.DataTable:
-		return &dt{concrete}
-	case dt:
-		return &concrete
-	default:
-		insyra.LogFatal("isr", "PtrDT", "got unexpected type %T", t)
-		return nil
-	}
+	return UseDT(t)
 }
 
-// From converts a DataList, DL, Row, Col, []Row, []Col, CSV, map[string]any, or map[int]any to a DataTable.
+// From converts a DataList, DL, Row, Col, []DL, []Row, []Col, CSV, map[string]any, or map[int]any to a DataTable.
 // nolint:govet
 func (_ dt) From(item any) *dt {
 	t := dt{}
@@ -219,58 +213,68 @@ func (t *dt) Push(data any) *dt {
 	case *dl:
 		t.DataTable.AppendCols(val.DataList)
 	case []*insyra.DataList:
-		for _, l := range val {
-			t.DataTable.AppendCols(l)
-		}
+		t.AtomicDo(func(dt *insyra.DataTable) {
+			for _, l := range val {
+				dt.AppendCols(l)
+			}
+		})
 	case []dl:
 		for _, l := range val {
 			t.DataTable.AppendCols(l.DataList)
 		}
 	case DLs:
-		for _, l := range val {
-			newdl := insyra.NewDataList(l.Data()...)
-			if l.GetName() != "" {
-				newdl.SetName(l.GetName())
+		t.AtomicDo(func(dt *insyra.DataTable) {
+			for _, l := range val {
+				newdl := insyra.NewDataList(l.Data()...)
+				if l.GetName() != "" {
+					newdl.SetName(l.GetName())
+				}
+				dt.AppendCols(newdl)
 			}
-			t.DataTable.AppendCols(newdl)
-		}
+		})
 	case Row:
 		err := fromRowToDT(t, val)
 		if err != nil {
 			insyra.LogFatal("DT", "Push", "%v", err)
 		}
 	case []Row:
-		for _, r := range val {
-			err := fromRowToDT(t, r)
-			if err != nil {
-				insyra.LogFatal("DT", "Push", "%v", err)
+		t.AtomicDo(func(dt *insyra.DataTable) {
+			for _, r := range val {
+				err := fromRowToDT(UseDT(dt), r)
+				if err != nil {
+					insyra.LogFatal("DT", "Push", "%v", err)
+				}
 			}
-		}
+		})
 	case Col:
 		// 先創建新dt 當成row插入 再轉置
 		// 轉置後抽出為dl 再插入
-		temDT := PtrDT(insyra.NewDataTable())
+		temDT := UseDT(insyra.NewDataTable())
 		err := fromRowToDT(temDT, val)
 		if err != nil {
 			insyra.LogFatal("DT", "Push", "%v", err)
 		}
 		numRow, _ := temDT.Size()
-		for i := range numRow {
-			l := temDT.GetRow(i)
-			t.DataTable.AppendCols(l)
-		}
+		t.AtomicDo(func(dt *insyra.DataTable) {
+			for i := range numRow {
+				l := temDT.GetRow(i)
+				dt.AppendCols(l)
+			}
+		})
 	case []Col:
 		for _, r := range val {
-			temDT := PtrDT(insyra.NewDataTable())
+			temDT := UseDT(insyra.NewDataTable())
 			err := fromRowToDT(temDT, r)
 			if err != nil {
 				insyra.LogFatal("DT", "Push", "%v", err)
 			}
 			numRow, _ := temDT.Size()
-			for i := range numRow {
-				l := temDT.GetRow(i)
-				t.DataTable.AppendCols(l)
-			}
+			t.AtomicDo(func(dt *insyra.DataTable) {
+				for i := range numRow {
+					l := temDT.GetRow(i)
+					dt.AppendCols(l)
+				}
+			})
 		}
 	default:
 		insyra.LogFatal("DT", "Push", "got unexpected type %T", data)
