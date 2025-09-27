@@ -821,71 +821,12 @@ func (dl *DataList) Sort(ascending ...bool) *DataList {
 		}
 
 		// Mixed sorting
+		order := 1
+		if !ascendingOrder {
+			order = -1
+		}
 		slices.SortStableFunc(dl.data, func(a, b any) int {
-			typeRankA := utils.GetTypeSortingRank(a)
-			typeRankB := utils.GetTypeSortingRank(b)
-			if typeRankA != typeRankB {
-				return typeRankA - typeRankB
-			}
-			// Same type rank, compare values
-			var cmp int
-			switch va := a.(type) {
-			case string:
-				if vb, ok := b.(string); ok {
-					cmp = strings.Compare(va, vb)
-				} else {
-					cmp = strings.Compare(va, fmt.Sprint(b))
-				}
-			case int, int8, int16, int32, int64:
-				fa := ToFloat64(a)
-				if fb, ok := ToFloat64Safe(b); ok {
-					if fa < fb {
-						cmp = -1
-					} else if fa > fb {
-						cmp = 1
-					}
-				} else {
-					cmp = strings.Compare(fmt.Sprint(a), fmt.Sprint(b))
-				}
-			case uint, uint8, uint16, uint32, uint64:
-				fa := ToFloat64(a)
-				if fb, ok := ToFloat64Safe(b); ok {
-					if fa < fb {
-						cmp = -1
-					} else if fa > fb {
-						cmp = 1
-					}
-				} else {
-					cmp = strings.Compare(fmt.Sprint(a), fmt.Sprint(b))
-				}
-			case float32, float64:
-				fa := ToFloat64(a)
-				if fb, ok := ToFloat64Safe(b); ok {
-					if fa < fb {
-						cmp = -1
-					} else if fa > fb {
-						cmp = 1
-					}
-				} else {
-					cmp = strings.Compare(fmt.Sprint(a), fmt.Sprint(b))
-				}
-			case time.Time:
-				if vb, ok := b.(time.Time); ok {
-					if va.Before(vb) {
-						cmp = -1
-					} else if va.After(vb) {
-						cmp = 1
-					}
-				} else {
-					cmp = strings.Compare(fmt.Sprint(a), fmt.Sprint(b))
-				}
-			default:
-				cmp = strings.Compare(fmt.Sprint(a), fmt.Sprint(b))
-			}
-			if !ascendingOrder {
-				cmp = -cmp
-			}
-			return cmp
+			return utils.CompareAny(a, b) * order
 		})
 
 		go dl.updateTimestamp()

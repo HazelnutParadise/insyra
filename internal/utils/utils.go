@@ -3,6 +3,7 @@ package utils
 import (
 	"fmt"
 	"math"
+	"math/big"
 	"os"
 	"reflect"
 	"runtime"
@@ -11,6 +12,52 @@ import (
 
 	"github.com/mattn/go-runewidth"
 )
+
+type F64orRat interface {
+	float64 | *big.Rat
+}
+
+// ToFloat64 converts any numeric value to float64.
+func ToFloat64(v any) float64 {
+	switch v := v.(type) {
+	case int:
+		return float64(v)
+	case int8:
+		return float64(v)
+	case int16:
+		return float64(v)
+	case int32:
+		return float64(v)
+	case int64:
+		return float64(v)
+	case uint:
+		return float64(v)
+	case uint8:
+		return float64(v)
+	case uint16:
+		return float64(v)
+	case uint32:
+		return float64(v)
+	case uint64:
+		return float64(v)
+	case float32:
+		return float64(v)
+	case float64:
+		return v
+	default:
+		return 0
+	}
+}
+
+// ToFloat64Safe tries to convert any numeric value to float64 and returns a boolean indicating success.
+func ToFloat64Safe(v any) (float64, bool) {
+	switch v := v.(type) {
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+		return ToFloat64(v), true
+	default:
+		return 0, false
+	}
+}
 
 func ParseColIndex(colIndex string) int {
 	result := 0
@@ -239,4 +286,57 @@ func GetTypeSortingRank(v any) int {
 	default:
 		return 5
 	}
+}
+
+// CompareAny compares two values of any type and returns:
+// -1 if a < b
+//
+//	0 if a == b
+//	1 if a > b
+//
+// It uses type ranking and type-specific comparison logic.
+func CompareAny(a, b any) int {
+	typeRankA := GetTypeSortingRank(a)
+	typeRankB := GetTypeSortingRank(b)
+	if typeRankA != typeRankB {
+		return typeRankA - typeRankB
+	}
+	// Same type rank, compare values
+	var cmp int
+	switch va := a.(type) {
+	case string:
+		if vb, ok := b.(string); ok {
+			cmp = strings.Compare(va, vb)
+		} else {
+			cmp = strings.Compare(va, fmt.Sprint(b))
+		}
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+		fa := ToFloat64(a)
+		if fb, ok := ToFloat64Safe(b); ok {
+			if fa < fb {
+				cmp = -1
+			} else if fa > fb {
+				cmp = 1
+			} else {
+				cmp = 0
+			}
+		} else {
+			cmp = strings.Compare(fmt.Sprint(a), fmt.Sprint(b))
+		}
+	case time.Time:
+		if vb, ok := b.(time.Time); ok {
+			if va.Before(vb) {
+				cmp = -1
+			} else if va.After(vb) {
+				cmp = 1
+			} else {
+				cmp = 0
+			}
+		} else {
+			cmp = strings.Compare(fmt.Sprint(a), fmt.Sprint(b))
+		}
+	default:
+		cmp = strings.Compare(fmt.Sprint(a), fmt.Sprint(b))
+	}
+	return cmp
 }
