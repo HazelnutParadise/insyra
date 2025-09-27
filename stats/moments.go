@@ -18,44 +18,50 @@ func CalculateMoment(dl insyra.IDataList, n int, central bool) float64 {
 		return math.NaN()
 	}
 
-	length := dl.Len()
-	if length == 0 {
-		insyra.LogWarning("stats", "CalculateMoment", "Empty DataList")
-		return math.NaN()
-	}
-
-	// 快速處理特殊情況
-	if central {
-		if n == 1 {
-			return 0.0
-		}
-		if n == 2 {
-			return dl.VarP()
-		}
-	} else {
-		if n == 1 {
-			return dl.Mean()
-		}
-	}
-
-	// 獲取數據並預檢查
-	data := dl.Data()
-
-	// 預先驗證所有數據類型
-	floatData := make([]float64, length)
-	for i, v := range data {
-		val, ok := v.(float64)
-		if !ok {
-			insyra.LogWarning("stats", "CalculateMoment", "Data contains non-float64 value")
-			return math.NaN()
-		}
-		floatData[i] = val
-	}
-
-	// 預先計算平均值（如果需要）
+	var length int
 	var mean float64
-	if central {
-		mean = dl.Mean()
+	var floatData []float64
+	var result float64
+	hasResult := false
+	dl.AtomicDo(func(l *insyra.DataList) {
+		length = l.Len()
+		if length == 0 {
+			insyra.LogWarning("stats", "CalculateMoment", "Empty DataList")
+			result = math.NaN()
+			hasResult = true
+			return
+		}
+
+		// 快速處理特殊情況
+		if central {
+			if n == 1 {
+				result = 0.0
+				hasResult = true
+				return
+			}
+			if n == 2 {
+				result = l.VarP()
+				hasResult = true
+				return
+			}
+		} else {
+			if n == 1 {
+				result = l.Mean()
+				hasResult = true
+				return
+			}
+		}
+
+		// 獲取數據並預檢查
+		floatData = l.ToF64Slice()
+
+		// 預先計算平均值（如果需要）
+		if central {
+			mean = l.Mean()
+		}
+	})
+	if hasResult {
+		return result
 	}
 
 	// 對於大型數據集和高階矩，考慮並行計算

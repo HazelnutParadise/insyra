@@ -134,7 +134,7 @@ func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) *LinearReg
 	for i := 0; i <= p; i++ {
 		XTX[i] = make([]float64, p+1)
 		for j := 0; j <= p; j++ {
-			for k := 0; k < n; k++ {
+			for k := range n {
 				XTX[i][j] += X[k][i] * X[k][j]
 			}
 		}

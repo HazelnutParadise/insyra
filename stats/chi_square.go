@@ -145,7 +145,7 @@ func ChiSquareIndependenceTest(rowData, colData insyra.IDataList) *ChiSquareTest
 	colSums := make([]float64, cols)
 	totalSum := 0.0
 
-	for i := 0; i < rows; i++ {
+	for i := range rows {
 		for j := 0; j < cols; j++ {
 			val := observed[i*cols+j]
 			rowSums[i] += val

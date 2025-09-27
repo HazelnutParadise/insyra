@@ -42,29 +42,48 @@ func OneWayANOVA(groups ...insyra.IDataList) *OneWayANOVAResult {
 		insyra.LogWarning("stats", "OneWayANOVA", "At least two groups are required")
 		return nil
 	}
+
 	totalSum := 0.0
 	totalCount := 0
 	for i, g := range groups {
-		if g.Len() == 0 {
+		var groupLen int
+		var groupSum float64
+		g.AtomicDo(func(gdl *insyra.DataList) {
+			groupLen = gdl.Len()
+			groupSum = gdl.Sum()
+		})
+
+		if groupLen == 0 {
 			insyra.LogWarning("stats", "OneWayANOVA", "Group %d is empty", i)
 			return nil
 		}
-		totalSum += g.Sum()
-		totalCount += g.Len()
+		totalSum += groupSum
+		totalCount += groupLen
 	}
+
 	totalMean := totalSum / float64(totalCount)
 
 	var SSB, SSW float64
 
 	parallel.GroupUp(func() {
 		for _, g := range groups {
-			groupMean := g.Mean()
-			SSB += float64(g.Len()) * math.Pow(groupMean-totalMean, 2)
+			var groupMean float64
+			var groupLen int
+			g.AtomicDo(func(gdl *insyra.DataList) {
+				groupMean = gdl.Mean()
+				groupLen = gdl.Len()
+			})
+			SSB += float64(groupLen) * math.Pow(groupMean-totalMean, 2)
 		}
 	}, func() {
 		for i, g := range groups {
-			groupMean := g.Mean()
-			for j, v := range g.Data() {
+			var groupData []any
+			var groupMean float64
+			g.AtomicDo(func(gdl *insyra.DataList) {
+				groupMean = gdl.Mean()
+				groupData = gdl.Data()
+			})
+			for j, v := range groupData {
 				x, ok := insyra.ToFloat64Safe(v)
 				if !ok {
 					insyra.LogWarning("stats", "OneWayANOVA", "Invalid data at group %d index %d", i, j)
@@ -101,12 +120,18 @@ func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) *T
 	for i := range factorALevels {
 		for j := range factorBLevels {
 			cell := cells[i*factorBLevels+j]
-			if cell.Len() == 0 {
+			var cellData []any
+			var cellLen int
+			cell.AtomicDo(func(cdl *insyra.DataList) {
+				cellData = cdl.Data()
+				cellLen = cdl.Len()
+			})
+			if cellLen == 0 {
 				insyra.LogWarning("stats", "TwoWayANOVA", "Empty cell")
 				return nil
 			}
-			cellCounts[i*factorBLevels+j] = cell.Len()
-			for _, v := range cell.Data() {
+			cellCounts[i*factorBLevels+j] = cellLen
+			for _, v := range cellData {
 				value, _ := insyra.ToFloat64Safe(v)
 				allValues = append(allValues, value)
 				factorsA = append(factorsA, i)

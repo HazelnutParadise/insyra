@@ -15,13 +15,23 @@ type ZTestResult struct {
 }
 
 func SingleSampleZTest(data insyra.IDataList, mu float64, sigma float64, alternative AlternativeHypothesis, confidenceLevel float64) *ZTestResult {
-	n := data.Len()
-	if n <= 0 {
-		insyra.LogWarning("stats", "SingleSampleZTest", "Sample size too small")
+	var n int
+	var mean float64
+	isFailed := false
+	data.AtomicDo(func(dl *insyra.DataList) {
+		n = dl.Len()
+		if n <= 0 {
+			insyra.LogWarning("stats", "SingleSampleZTest", "Sample size too small")
+			isFailed = true
+			return
+		}
+
+		mean = dl.Mean()
+	})
+	if isFailed {
 		return nil
 	}
 
-	mean := data.Mean()
 	standardError := sigma / math.Sqrt(float64(n))
 	zValue := (mean - mu) / standardError
 	pValue := calculateZPValue(zValue, alternative)
@@ -69,15 +79,27 @@ func SingleSampleZTest(data insyra.IDataList, mu float64, sigma float64, alterna
 }
 
 func TwoSampleZTest(data1, data2 insyra.IDataList, sigma1, sigma2 float64, alternative AlternativeHypothesis, confidenceLevel float64) *ZTestResult {
-	n1 := data1.Len()
-	n2 := data2.Len()
-	if n1 <= 0 || n2 <= 0 {
-		insyra.LogWarning("stats", "TwoSampleZTest", "Sample sizes too small")
+	var n1, n2 int
+	var mean1, mean2 float64
+	isFailed := false
+	data1.AtomicDo(func(dl1 *insyra.DataList) {
+		data2.AtomicDo(func(dl2 *insyra.DataList) {
+			n1 = dl1.Len()
+			n2 = dl2.Len()
+			if n1 <= 0 || n2 <= 0 {
+				insyra.LogWarning("stats", "TwoSampleZTest", "Sample sizes too small")
+				isFailed = true
+				return
+			}
+
+			mean1 = dl1.Mean()
+			mean2 = dl2.Mean()
+		})
+	})
+	if isFailed {
 		return nil
 	}
 
-	mean1 := data1.Mean()
-	mean2 := data2.Mean()
 	meanDiff := mean1 - mean2
 
 	// 避免重複計算
