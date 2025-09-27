@@ -268,17 +268,11 @@ func (dt *DataTable) GetCol(index string) *DataList {
 		index = strings.ToUpper(index)
 		if colPos, exists := dt.columnIndex[index]; exists {
 			// 初始化新的 DataList 並分配 data 切片的大小
-			dl := NewDataList()
-			dl.data = make([]any, len(dt.columns[colPos].data))
-
-			// 拷貝數據到新的 DataList
-			copy(dl.data, dt.columns[colPos].data)
-			dl.name = dt.columns[colPos].name
-			result = dl
+			result = dt.columns[colPos].Clone()
 			return
 		}
-		LogWarning("DataTable", "GetCol", "Column '%s' not found, returning empty DataList", index)
-		result = NewDataList() // 返回空的 DataList 而不是 nil
+		LogWarning("DataTable", "GetCol", "Column '%s' not found, returning nil", index)
+		result = nil
 	})
 	return result
 }
@@ -291,19 +285,12 @@ func (dt *DataTable) GetColByNumber(index int) *DataList {
 		}
 
 		if index < 0 || index >= len(dt.columns) {
-			LogWarning("DataTable", "GetColByNumber", "Col index is out of range, returning empty DataList")
-			result = NewDataList() // 返回空的 DataList 而不是 nil
+			LogWarning("DataTable", "GetColByNumber", "Col index is out of range, returning nil")
+			result = nil
 			return
 		}
 
-		// 初始化新的 DataList 並分配 data 切片的大小
-		dl := NewDataList()
-		dl.data = make([]any, len(dt.columns[index].data))
-
-		// 拷貝數據到新的 DataList
-		copy(dl.data, dt.columns[index].data)
-		dl.name = dt.columns[index].name
-		result = dl
+		result = dt.columns[index].Clone()
 	})
 	return result
 }
@@ -314,13 +301,7 @@ func (dt *DataTable) GetColByName(name string) *DataList {
 		for _, column := range dt.columns {
 			if column.name == name {
 				// 初始化新的 DataList 並分配 data 切片的大小
-				dl := NewDataList()
-				dl.data = make([]any, len(column.data))
-
-				// 拷貝數據到新的 DataList
-				copy(dl.data, column.data)
-				dl.name = column.name
-				result = dl
+				result = column.Clone()
 				return
 			}
 		}
