@@ -15,6 +15,7 @@ import (
 	"github.com/HazelnutParadise/Go-Utils/asyncutil"
 	"github.com/HazelnutParadise/Go-Utils/conv"
 	"github.com/HazelnutParadise/Go-Utils/sliceutil"
+	"github.com/HazelnutParadise/insyra/internal/utils"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
@@ -88,26 +89,6 @@ func NewDataList(values ...any) *DataList {
 	dl.lastModifiedTimestamp.Store(timestamp)
 
 	return dl
-}
-
-// getTypeRank returns the type rank for sorting mixed types.
-// Lower rank means higher priority (comes first in ascending order).
-func getTypeRank(v any) int {
-	if v == nil {
-		return 0
-	}
-	switch v.(type) {
-	case bool:
-		return 1
-	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
-		return 2
-	case string:
-		return 3
-	case time.Time:
-		return 4
-	default:
-		return 5
-	}
 }
 
 // Append adds a new values to the DataList.
@@ -841,8 +822,8 @@ func (dl *DataList) Sort(ascending ...bool) *DataList {
 
 		// Mixed sorting
 		slices.SortStableFunc(dl.data, func(a, b any) int {
-			typeRankA := getTypeRank(a)
-			typeRankB := getTypeRank(b)
+			typeRankA := utils.GetTypeSortingRank(a)
+			typeRankB := utils.GetTypeSortingRank(b)
 			if typeRankA != typeRankB {
 				return typeRankA - typeRankB
 			}

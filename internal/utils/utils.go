@@ -220,3 +220,23 @@ func ConvertDateFormat(pattern string) string {
 
 	return result
 }
+
+// GetTypeSortingRank returns the type rank for sorting mixed types.
+// Lower rank means higher priority (comes first in ascending order).
+func GetTypeSortingRank(v any) int {
+	if v == nil {
+		return 0
+	}
+	switch v.(type) {
+	case bool:
+		return 1
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+		return 2
+	case string:
+		return 3
+	case time.Time:
+		return 4
+	default:
+		return 5
+	}
+}
