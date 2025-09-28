@@ -93,3 +93,31 @@ func (dt *DataTable) RowNames() []string {
 	})
 	return rowNames
 }
+
+// SetRowNames sets the row names of the DataTable.
+// Different from SetColNames, it only sets names for existing rows.
+func (dt *DataTable) SetRowNames(rowNames []string) *DataTable {
+	var result *DataTable
+	dt.AtomicDo(func(dt *DataTable) {
+		maxRows := dt.getMaxColLength()
+		for i, name := range rowNames {
+			if i < maxRows {
+				dt.SetRowNameByIndex(i, name)
+			}
+		}
+		// Set excess rows to empty name
+		for i := len(rowNames); i < maxRows; i++ {
+			if _, exists := dt.getRowNameByIndex(i); exists {
+				// Remove the name by deleting from map
+				for name, idx := range dt.rowNames {
+					if idx == i {
+						delete(dt.rowNames, name)
+						break
+					}
+				}
+			}
+		}
+		result = dt
+	})
+	return result
+}

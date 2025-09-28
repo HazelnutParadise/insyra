@@ -65,6 +65,7 @@ type IDataTable interface {
 	RowNamesToFirstCol() *DataTable
 	DropRowNames() *DataTable
 	RowNames() []string
+	SetRowNames(rowNames []string) *DataTable
 	GetCreationTimestamp() int64
 	GetLastModifiedTimestamp() int64
 	getRowNameByIndex(index int) (string, bool)

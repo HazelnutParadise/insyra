@@ -34,9 +34,7 @@ func (dt *DataTable) SimpleRandomSample(sampleSize int) *DataTable {
 	if earlyResult != nil {
 		return earlyResult
 	}
-	for _, colName := range colNames {
-		ndt.AppendCols(NewDataList().SetName(colName))
-	}
+	ndt.SetColNames(colNames)
 	ndt.AppendRowsFromDataList(sampledRows...)
 
 	return ndt

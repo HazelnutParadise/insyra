@@ -879,6 +879,28 @@ for i, name := range names {
 }
 ```
 
+### SetRowNames
+
+Sets the row names of the DataTable using a slice of strings. Only sets names for existing rows; excess names are ignored.
+
+```go
+func (dt *DataTable) SetRowNames(rowNames []string) *DataTable
+```
+
+**Parameters:**
+
+- `rowNames`: Slice of strings representing the new row names
+
+**Returns:**
+
+- `*DataTable`: The modified DataTable
+
+**Example:**
+
+```go
+dt.SetRowNames([]string{"Row1", "Row2", "Row3"}) // Set row names
+```
+
 ### ChangeColName
 
 Changes the name of a column.
