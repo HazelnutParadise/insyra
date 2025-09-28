@@ -4,6 +4,7 @@ import (
 	"math"
 
 	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/parallel"
 	"gonum.org/v1/gonum/stat/distuv"
 )
 
@@ -97,7 +98,12 @@ type LogarithmicRegressionResult struct {
 // ** Verified using R **
 func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) *LinearRegressionResult {
 	// --- sanity checks ------------------------------------------------------
-	n := dlY.Len()
+	var n int
+	var ys []float64
+	dlY.AtomicDo(func(dly *insyra.DataList) {
+		n = dly.Len()
+		ys = dly.ToF64Slice()
+	})
 	p := len(dlXs)
 
 	if p == 0 {
@@ -105,12 +111,23 @@ func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) *LinearReg
 		return nil
 	}
 
-	for _, dlX := range dlXs {
-		if dlX.Len() != n {
-			insyra.LogWarning("stats", "LinearRegression", "x and y must have the same length")
+	// Convert dlXs to slices and check lengths
+	xSlices := make([][]float64, p)
+	for j, dlX := range dlXs {
+		isFailed := false
+		dlX.AtomicDo(func(l *insyra.DataList) {
+			if l.Len() != n {
+				insyra.LogWarning("stats", "LinearRegression", "x and y must have the same length")
+				isFailed = true
+				return
+			}
+			xSlices[j] = l.ToF64Slice()
+		})
+		if isFailed {
 			return nil
 		}
 	}
+
 	if n <= p+1 {
 		insyra.LogWarning("stats", "LinearRegression", "need at least p+2 observations for p independent variables to compute statistics")
 		return nil
@@ -119,33 +136,31 @@ func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) *LinearReg
 	// --- build design matrix X (n×(p+1)) -----------------------------------
 	// First column is 1s for intercept, remaining columns are the X variables
 	X := make([][]float64, n)
-	ys := dlY.ToF64Slice()
 
 	for i := range n {
 		X[i] = make([]float64, p+1)
 		X[i][0] = 1.0 // intercept column
-		for j, dlX := range dlXs {
-			X[i][j+1] = dlX.ToF64Slice()[i]
+		for j := range p {
+			X[i][j+1] = xSlices[j][i]
 		}
 	}
 
-	// --- compute X^T * X (normal matrix) -----------------------------------
+	// --- compute X^T * X (normal matrix) and X^T * y simultaneously ---------
 	XTX := make([][]float64, p+1)
-	for i := 0; i <= p; i++ {
-		XTX[i] = make([]float64, p+1)
-		for j := 0; j <= p; j++ {
-			for k := range n {
-				XTX[i][j] += X[k][i] * X[k][j]
-			}
-		}
-	}
-
-	// --- compute X^T * y ----------------------------------------------------
 	XTy := make([]float64, p+1)
 	for i := 0; i <= p; i++ {
-		for k := range n {
-			XTy[i] += X[k][i] * ys[k]
-		}
+		parallel.GroupUp(func() {
+			XTX[i] = make([]float64, p+1)
+			for j := 0; j <= p; j++ {
+				for k := range n {
+					XTX[i][j] += X[k][i] * X[k][j]
+				}
+			}
+		}, func() {
+			for k := range n {
+				XTy[i] += X[k][i] * ys[k]
+			}
+		}).Run().AwaitNoResult()
 	}
 
 	// --- solve normal equations β = (X^T*X)^-1 * X^T*y ---------------------
@@ -155,7 +170,7 @@ func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) *LinearReg
 		return nil
 	}
 
-	// --- calculate predicted values and residuals --------------------------
+	// --- calculate predicted values, residuals, and statistics -------------
 	residuals := make([]float64, n)
 	var sse, sst, sumY float64
 
@@ -273,18 +288,29 @@ func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) *LinearReg
 //
 // ** Verified using R **
 func ExponentialRegression(dlY, dlX insyra.IDataList) *ExponentialRegressionResult {
-	if dlX.Len() != dlY.Len() || dlX.Len() == 0 {
-		insyra.LogWarning("stats", "ExponentialRegression", "input lengths mismatch or zero")
+	var xs, ys []float64
+	isFailed := false
+	dlX.AtomicDo(func(dlx *insyra.DataList) {
+		dlY.AtomicDo(func(dly *insyra.DataList) {
+			if dlx.Len() != dly.Len() || dlx.Len() == 0 {
+				insyra.LogWarning("stats", "ExponentialRegression", "input lengths mismatch or zero")
+				isFailed = true
+				return
+			}
+
+			if dlx.Len() <= 2 {
+				insyra.LogWarning("stats", "ExponentialRegression", "need at least 3 observations for exponential regression")
+				isFailed = true
+				return
+			}
+
+			xs = dlx.ToF64Slice()
+			ys = dly.ToF64Slice()
+		})
+	})
+	if isFailed {
 		return nil
 	}
-
-	if dlX.Len() <= 2 {
-		insyra.LogWarning("stats", "ExponentialRegression", "need at least 3 observations for exponential regression")
-		return nil
-	}
-
-	xs := dlX.ToF64Slice()
-	ys := dlY.ToF64Slice()
 
 	n := float64(len(xs))
 
@@ -413,34 +439,54 @@ func ExponentialRegression(dlY, dlX insyra.IDataList) *ExponentialRegressionResu
 //
 // ** Verified using R **
 func LogarithmicRegression(dlY, dlX insyra.IDataList) *LogarithmicRegressionResult {
-	if dlX.Len() != dlY.Len() || dlX.Len() == 0 {
-		insyra.LogWarning("stats", "LogarithmicRegression", "input lengths mismatch or zero")
+	var xs, ys []float64
+	isFailed := false
+	dlX.AtomicDo(func(dlx *insyra.DataList) {
+		dlY.AtomicDo(func(dly *insyra.DataList) {
+			if dlx.Len() != dly.Len() || dlx.Len() == 0 {
+				insyra.LogWarning("stats", "LogarithmicRegression", "input lengths mismatch or zero")
+				isFailed = true
+				return
+			}
+
+			if dlx.Len() <= 2 {
+				insyra.LogWarning("stats", "LogarithmicRegression", "need at least 3 observations for logarithmic regression")
+				isFailed = true
+				return
+			}
+
+			xs = dlx.ToF64Slice()
+			ys = dly.ToF64Slice()
+		})
+	})
+	if isFailed {
 		return nil
 	}
 
-	if dlX.Len() <= 2 {
-		insyra.LogWarning("stats", "LogarithmicRegression", "need at least 3 observations for logarithmic regression")
-		return nil
-	}
-
-	xs := dlX.ToF64Slice()
-	ys := dlY.ToF64Slice()
-
-	var sumLX, sumYLX, sumY, sumLX2 float64
-	for i := range xs {
-		if xs[i] <= 0 {
-			insyra.LogWarning("stats", "LogarithmicRegression", "x must be > 0 for ln computation")
-			return nil
+	// 合併計算總和和meanY，使用平行化
+	var sumLX, sumYLX, sumY, sumLX2, sumMeanY float64
+	parallel.GroupUp(func() {
+		for i := range xs {
+			if xs[i] <= 0 {
+				insyra.LogWarning("stats", "LogarithmicRegression", "x must be > 0 for ln computation")
+				return
+			}
+			lx := math.Log(xs[i])
+			y := ys[i]
+			sumLX += lx
+			sumYLX += y * lx
+			sumLX2 += lx * lx
 		}
-		lx := math.Log(xs[i])
-		y := ys[i]
-		sumLX += lx
-		sumYLX += y * lx
-		sumY += y
-		sumLX2 += lx * lx
-	}
+	}, func() {
+		for _, v := range ys {
+			sumMeanY += v
+		}
+		sumY = sumMeanY
+	}).Run().AwaitNoResult()
 
 	n := float64(dlX.Len())
+	meanY := sumMeanY / n
+
 	denom := n*sumLX2 - sumLX*sumLX
 	if denom == 0 {
 		insyra.LogWarning("stats", "LogarithmicRegression", "denominator zero, cannot compute coefficients")
@@ -453,20 +499,22 @@ func LogarithmicRegression(dlY, dlX insyra.IDataList) *LogarithmicRegressionResu
 	b := (n*sumYLX - sumY*sumLX) / denom // slope coefficient for ln(x)
 	a := (sumY - b*sumLX) / n            // intercept
 
-	// Calculate residuals properly
+	// 合併計算residuals, sse, sst, sxxLX，使用平行化
 	residuals := make([]float64, len(xs))
-	var sse, sst float64
-	var meanY float64
-	for _, v := range ys {
-		meanY += v
-	}
-	meanY /= n
-
+	var sse, sst, sxxLX float64
+	meanLX := sumLX / n
 	for i := range xs {
-		yHat := a + b*math.Log(xs[i])
-		residuals[i] = ys[i] - yHat
-		sse += residuals[i] * residuals[i]
-		sst += (ys[i] - meanY) * (ys[i] - meanY)
+		parallel.GroupUp(func() {
+			lx := math.Log(xs[i])
+			yHat := a + b*lx
+			residuals[i] = ys[i] - yHat
+			sse += residuals[i] * residuals[i]
+			sst += (ys[i] - meanY) * (ys[i] - meanY)
+		}, func() {
+			lx := math.Log(xs[i])
+			diff := lx - meanLX
+			sxxLX += diff * diff
+		}).Run().AwaitNoResult()
 	}
 
 	if sst == 0 {
@@ -479,15 +527,6 @@ func LogarithmicRegression(dlY, dlX insyra.IDataList) *LogarithmicRegressionResu
 	adjR2 := 1.0 - (1.0-r2)*(n-1)/df
 
 	mse := sse / df
-	meanLX := sumLX / n
-
-	// 計算標準誤差 - 修正公式
-	var sxxLX float64 // Σ(ln(x) - mean(ln(x)))²
-	for i := range xs {
-		lx := math.Log(xs[i])
-		diff := lx - meanLX
-		sxxLX += diff * diff
-	}
 
 	seB := math.Sqrt(mse / sxxLX)
 	seA := math.Sqrt(mse * (1.0/n + meanLX*meanLX/sxxLX))
@@ -536,21 +575,34 @@ func LogarithmicRegression(dlY, dlX insyra.IDataList) *LogarithmicRegressionResu
 //
 // ** Verified using R **
 func PolynomialRegression(dlY, dlX insyra.IDataList, degree int) *PolynomialRegressionResult {
-	if dlX.Len() != dlY.Len() || dlX.Len() == 0 {
-		insyra.LogWarning("stats", "PolynomialRegression", "input lengths mismatch or zero")
-		return nil
-	}
-	if degree < 1 || degree >= dlX.Len() {
-		insyra.LogWarning("stats", "PolynomialRegression", "invalid degree")
-		return nil
-	}
-	if dlX.Len() <= degree+1 {
-		insyra.LogWarning("stats", "PolynomialRegression", "need at least degree+2 observations for polynomial regression")
+	var xs, ys []float64
+	isFailed := false
+	dlX.AtomicDo(func(dlx *insyra.DataList) {
+		dlY.AtomicDo(func(dly *insyra.DataList) {
+			if dlx.Len() != dly.Len() || dlx.Len() == 0 {
+				insyra.LogWarning("stats", "PolynomialRegression", "input lengths mismatch or zero")
+				isFailed = true
+				return
+			}
+			if degree < 1 || degree >= dlx.Len() {
+				insyra.LogWarning("stats", "PolynomialRegression", "invalid degree")
+				isFailed = true
+				return
+			}
+			if dlx.Len() <= degree+1 {
+				insyra.LogWarning("stats", "PolynomialRegression", "need at least degree+2 observations for polynomial regression")
+				isFailed = true
+				return
+			}
+
+			xs = dlx.ToF64Slice()
+			ys = dly.ToF64Slice()
+		})
+	})
+	if isFailed {
 		return nil
 	}
 
-	xs := dlX.ToF64Slice()
-	ys := dlY.ToF64Slice()
 	n := len(xs)
 
 	// Create design matrix X (Vandermonde matrix)
@@ -564,24 +616,26 @@ func PolynomialRegression(dlY, dlX insyra.IDataList, degree int) *PolynomialRegr
 		}
 	}
 
-	// Compute X^T * X (normal matrix)
 	XTX := make([][]float64, degree+1)
-	for i := range XTX {
-		XTX[i] = make([]float64, degree+1)
-		for j := range XTX[i] {
-			for k := 0; k < n; k++ {
-				XTX[i][j] += X[k][i] * X[k][j]
+	XTy := make([]float64, degree+1)
+	parallel.GroupUp(func() {
+		// Compute X^T * X (normal matrix)
+		for i := range XTX {
+			XTX[i] = make([]float64, degree+1)
+			for j := range XTX[i] {
+				for k := 0; k < n; k++ {
+					XTX[i][j] += X[k][i] * X[k][j]
+				}
 			}
 		}
-	}
-
-	// Compute X^T * y
-	XTy := make([]float64, degree+1)
-	for i := 0; i <= degree; i++ {
-		for j := range n {
-			XTy[i] += X[j][i] * ys[j]
+	}, func() {
+		// Compute X^T * y
+		for i := 0; i <= degree; i++ {
+			for j := range n {
+				XTy[i] += X[j][i] * ys[j]
+			}
 		}
-	}
+	}).Run().AwaitNoResult()
 
 	// Solve XTX * coeffs = XTy using Gaussian elimination
 	coeffs := gaussianElimination(XTX, XTy)
