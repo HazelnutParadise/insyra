@@ -315,7 +315,7 @@ func downloadFile(filepath string, url string) error {
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	defer func() { _ = out.Close() }()
 
 	_, err = io.Copy(out, resp.Body)
 	return err
@@ -333,7 +333,7 @@ func untar(src string, dest string) error {
 	if err != nil {
 		return err
 	}
-	defer uncompressedStream.Close()
+	defer func() { _ = uncompressedStream.Close() }()
 
 	tarReader := tar.NewReader(uncompressedStream)
 
@@ -360,7 +360,7 @@ func untar(src string, dest string) error {
 			if _, err := io.Copy(outFile, tarReader); err != nil {
 				return err
 			}
-			outFile.Close()
+			_ = outFile.Close()
 		}
 	}
 
@@ -373,7 +373,7 @@ func unzip(src string, dest string) error {
 	if err != nil {
 		return err
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	for _, f := range r.File {
 		fpath := filepath.Join(dest, f.Name)
@@ -398,8 +398,8 @@ func unzip(src string, dest string) error {
 
 			_, err = io.Copy(outFile, rc)
 
-			outFile.Close()
-			rc.Close()
+			_ = outFile.Close()
+			_ = rc.Close()
 
 			if err != nil {
 				return err

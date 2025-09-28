@@ -1385,7 +1385,7 @@ func (dl *DataList) Var() float64 {
 				// Already logged, skip this element
 				continue
 			}
-			numerator += math.Pow(xi-mean, 2)
+			numerator += (xi - mean) * (xi - mean)
 		}
 
 		denominator := float64(count - 1)
@@ -1435,7 +1435,7 @@ func (dl *DataList) VarP() float64 {
 				// Already logged, skip this element
 				continue
 			}
-			numerator += math.Pow(xi-mean, 2)
+			numerator += (xi - mean) * (xi - mean)
 		}
 
 		result = numerator / float64(count) // Population variance divides by N

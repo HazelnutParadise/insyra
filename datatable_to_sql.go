@@ -84,12 +84,12 @@ func saveDataMapToDB(db *gorm.DB, tableName string, data []map[string]interface{
 	} else {
 		// 自動推斷型別
 		for k, v := range data[0] {
-			columnTypes[k] = inferSQLType(reflect.TypeOf(v), db.Dialector.Name())
+			columnTypes[k] = inferSQLType(reflect.TypeOf(v), db.Name())
 		}
 	}
 	// 處理表格已存在的情況
 	var tableExists bool
-	dialect := db.Dialector.Name()
+	dialect := db.Name()
 
 	// 根據數據庫類型選擇檢查表格是否存在的查詢
 	var result *gorm.DB
@@ -163,7 +163,7 @@ func saveDataMapToDB(db *gorm.DB, tableName string, data []map[string]interface{
 			columnsQuery = fmt.Sprintf("PRAGMA table_info(%s);", tableName)
 			rows, err := db.Raw(columnsQuery).Rows()
 			if err == nil {
-				defer rows.Close()
+				defer func() { _ = rows.Close() }()
 				for rows.Next() {
 					var cid int
 					var name string
@@ -181,7 +181,7 @@ func saveDataMapToDB(db *gorm.DB, tableName string, data []map[string]interface{
 			columnsQuery = fmt.Sprintf("PRAGMA table_info(%s);", tableName)
 			rows, err := db.Raw(columnsQuery).Rows()
 			if err == nil {
-				defer rows.Close()
+				defer func() { _ = rows.Close() }()
 				for rows.Next() {
 					var cid int
 					var name string
@@ -200,7 +200,7 @@ func saveDataMapToDB(db *gorm.DB, tableName string, data []map[string]interface{
 		if dialect == "mysql" || dialect == "postgres" {
 			rows, err := db.Raw(columnsQuery, args...).Rows()
 			if err == nil {
-				defer rows.Close()
+				defer func() { _ = rows.Close() }()
 				for rows.Next() {
 					var name string
 					if err := rows.Scan(&name); err == nil {

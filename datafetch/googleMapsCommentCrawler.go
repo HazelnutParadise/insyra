@@ -9,9 +9,10 @@ import (
 	"strings"
 	"time"
 
+	"math/rand/v2"
+
 	"github.com/HazelnutParadise/insyra"
 	json "github.com/goccy/go-json"
-	"golang.org/x/exp/rand"
 )
 
 // GoogleMapsStoreReview is a struct for Google Maps store reviews.
@@ -70,7 +71,7 @@ func GoogleMapsStores() *googleMapsStoreCrawler {
 		insyra.LogWarning("datafetch", "GoogleMapsStores", "Failed to fetch GoogleMapsStoreReviewCrawler config. Error: %v. Returning nil.", err)
 		return nil
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 
 	config := struct {
 		Headers        map[string]string `json:"headers"`
@@ -110,7 +111,7 @@ func (c *googleMapsStoreCrawler) Search(storeName string) []GoogleMapsStoreData 
 		insyra.LogWarning("datafetch", "GoogleMapsStores.Search", "Failed to send request. Error: %v. Returning nil.", err)
 		return nil
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 
 	resTxt, err := io.ReadAll(res.Body)
 	if err != nil {
@@ -210,7 +211,7 @@ func (c *googleMapsStoreCrawler) GetReviews(storeId string, pageCount int, optio
 			insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "Failed to send request. Error: %v. Returning nil.", err)
 			return nil
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		// 確保回應狀態碼為 200 OK
 		if resp.StatusCode != http.StatusOK {
@@ -330,7 +331,7 @@ func (c *googleMapsStoreCrawler) getStoreName(storeId string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("cannot get store data, HTTP status code: %d", res.StatusCode)
 	}

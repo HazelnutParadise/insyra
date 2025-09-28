@@ -38,7 +38,7 @@ func ParseLingoModel_txt(filePath string) *LPModel {
 
 	// 用於累積多行表達式
 	var currentExpr strings.Builder
-	var isFirstLine bool = true
+	var isFirstLine = true
 
 	// 逐行讀取文件
 	scanner := bufio.NewScanner(file)
@@ -136,7 +136,7 @@ func ParseLingoModel_str(modelStr string) *LPModel {
 
 	// 用於累積多行表達式
 	var currentExpr strings.Builder
-	var isFirstLine bool = true
+	var isFirstLine = true
 
 	// 將字串分割成行
 	scanner := bufio.NewScanner(strings.NewReader(modelStr))

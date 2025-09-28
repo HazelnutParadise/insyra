@@ -73,7 +73,7 @@ func OneWayANOVA(groups ...insyra.IDataList) *OneWayANOVAResult {
 				groupMean = gdl.Mean()
 				groupLen = gdl.Len()
 			})
-			SSB += float64(groupLen) * math.Pow(groupMean-totalMean, 2)
+			SSB += float64(groupLen) * (groupMean - totalMean) * (groupMean - totalMean)
 		}
 	}, func() {
 		for i, g := range groups {

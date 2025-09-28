@@ -82,7 +82,7 @@ func (dt *DataTable) GetColNameByIndex(index string) string {
 }
 
 func (dt *DataTable) GetColNumberByName(name string) int {
-	var result int = -1
+	var result = -1
 	dt.AtomicDo(func(dt *DataTable) {
 		for i, col := range dt.columns {
 			if col.name == name {

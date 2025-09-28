@@ -16,7 +16,7 @@ func ReadCSV(filePath string, setFirstColToRowNames bool, setFirstRowToColNames 
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	reader := csv.NewReader(file)
 	rows, err := reader.ReadAll()

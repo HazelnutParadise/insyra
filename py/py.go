@@ -139,7 +139,7 @@ func PipUninstall(dep string) {
 
 func generateDefaultPyCode() string {
 	imports := ""
-	for imps, _ := range pyDependencies {
+	for imps := range pyDependencies {
 		if imps != "" {
 			imports += fmt.Sprintf("%s\n", imps)
 		}

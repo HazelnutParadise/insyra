@@ -16,7 +16,7 @@ var (
 // 啟動 HTTP 伺服器來接收 Python 回傳的複雜資料結構
 func startServer() {
 	http.HandleFunc("/pyresult", func(w http.ResponseWriter, r *http.Request) {
-		defer r.Body.Close()
+		defer func() { _ = r.Body.Close() }()
 
 		// 使用 sync.Pool 來緩存 map
 		var result map[string]any

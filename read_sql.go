@@ -45,7 +45,7 @@ func ReadSQL(db *gorm.DB, tableName string, options ...ReadSQLOptions) (*DataTab
 		query = opts.Query
 	} else {
 		// 檢查表格是否存在
-		dialect := db.Dialector.Name()
+		dialect := db.Name()
 		var result *gorm.DB
 		var count int
 
@@ -126,7 +126,7 @@ func ReadSQL(db *gorm.DB, tableName string, options ...ReadSQLOptions) (*DataTab
 
 	// 用來保存行名稱，之後再設置
 	rowNames := make(map[int]string)
-	var rowIndex int = 0
+	var rowIndex = 0
 
 	for rows.Next() {
 		// 讀取數據
