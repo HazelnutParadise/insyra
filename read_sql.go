@@ -91,7 +91,7 @@ func ReadSQL(db *gorm.DB, tableName string, options ...ReadSQLOptions) (*DataTab
 	if err != nil {
 		return nil, fmt.Errorf("執行查詢時發生錯誤: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	// 獲取列名
 	columnNames, err := rows.Columns()

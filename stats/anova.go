@@ -273,7 +273,7 @@ func RepeatedMeasuresANOVA(subjects ...insyra.IDataList) *RepeatedMeasuresANOVAR
 	parallel.GroupUp(func() {
 		for i := range data {
 			for j := range data[i] {
-				ssTotal += math.Pow(data[i][j]-grandMean, 2)
+				ssTotal += (data[i][j] - grandMean) * (data[i][j] - grandMean)
 			}
 		}
 	}, func() {
@@ -283,7 +283,7 @@ func RepeatedMeasuresANOVA(subjects ...insyra.IDataList) *RepeatedMeasuresANOVAR
 				conditionMean += data[i][j]
 			}
 			conditionMean /= float64(len(subjects))
-			ssBetween += float64(len(subjects)) * math.Pow(conditionMean-grandMean, 2)
+			ssBetween += float64(len(subjects)) * (conditionMean - grandMean) * (conditionMean - grandMean)
 		}
 	}, func() {
 		for j := range subjects {
@@ -292,7 +292,7 @@ func RepeatedMeasuresANOVA(subjects ...insyra.IDataList) *RepeatedMeasuresANOVAR
 				subjectMean += data[i][j]
 			}
 			subjectMean /= float64(conditionCount)
-			ssSubjects += float64(conditionCount) * math.Pow(subjectMean-grandMean, 2)
+			ssSubjects += float64(conditionCount) * (subjectMean - grandMean) * (subjectMean - grandMean)
 		}
 	}).Run().AwaitResult()
 

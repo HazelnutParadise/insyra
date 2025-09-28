@@ -126,12 +126,12 @@ func initializeOnWindows() {
 
 	// 設置 GLPK_PATH 環境變數
 	glpkDir := filepath.Dir(glpsolPath)
-	os.Setenv("GLPK_PATH", glpkDir)
+	_ = os.Setenv("GLPK_PATH", glpkDir)
 
 	// 將 GLPK 目錄添加到 PATH 環境變數
 	currentPath := os.Getenv("PATH")
 	newPath := glpkDir + string(os.PathListSeparator) + currentPath
-	os.Setenv("PATH", newPath)
+	_ = os.Setenv("PATH", newPath)
 
 	insyra.LogDebug("lp", "init", "GLPK environment variables set. GLPK_PATH=%s", glpkDir)
 }
@@ -335,7 +335,7 @@ func untar(src string, dest string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	uncompressedStream, err := gzip.NewReader(file)
 	if err != nil {

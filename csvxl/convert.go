@@ -203,7 +203,7 @@ func addCsvSheet(f *excelize.File, sheetName, csvFile string, encoding string) e
 	if err != nil {
 		return fmt.Errorf("failed to open CSV file %s: %v", csvFile, err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	var records [][]string
 
