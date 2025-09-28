@@ -1,7 +1,6 @@
 package stats
 
 import (
-	"math"
 	"sort"
 
 	"github.com/HazelnutParadise/Go-Utils/conv"
@@ -21,7 +20,7 @@ func calculateChiSquare(observed, expected []float64, df int) (*ChiSquareTestRes
 		if expected[i] == 0 {
 			return nil, "Expected values must not be zero"
 		}
-		chiSquare += math.Pow(observed[i]-expected[i], 2) / expected[i]
+		chiSquare += (observed[i] - expected[i]) * (observed[i] - expected[i]) / expected[i]
 	}
 
 	chiDist := distuv.ChiSquared{K: float64(df)}

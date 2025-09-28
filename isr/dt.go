@@ -181,9 +181,9 @@ func (t *dt) At(row any, col any) any {
 	case string:
 		switch r := row.(type) {
 		case int:
-			return t.DataTable.GetElement(r, v)
+			return t.GetElement(r, v)
 		case name:
-			rowDt := t.DataTable.FilterByRowNameEqualTo(r.value)
+			rowDt := t.FilterByRowNameEqualTo(r.value)
 			return rowDt.GetElement(0, v)
 		default:
 			insyra.LogWarning("DT", "At", "got unexpected type %T. Returning nil.", row)
@@ -191,10 +191,10 @@ func (t *dt) At(row any, col any) any {
 	case name:
 		switch r := row.(type) {
 		case int:
-			colDt := t.DataTable.FilterByColNameEqualTo(v.value)
+			colDt := t.FilterByColNameEqualTo(v.value)
 			return colDt.GetElementByNumberIndex(r, 0)
 		case name:
-			rowDt := t.DataTable.FilterByRowNameEqualTo(r.value)
+			rowDt := t.FilterByRowNameEqualTo(r.value)
 			colDt := rowDt.FilterByColNameEqualTo(v.value)
 			return colDt.GetElementByNumberIndex(0, 0)
 		default:
@@ -209,9 +209,9 @@ func (t *dt) At(row any, col any) any {
 func (t *dt) Push(data any) *dt {
 	switch val := data.(type) {
 	case *insyra.DataList:
-		t.DataTable.AppendCols(val)
+		t.AppendCols(val)
 	case *dl:
-		t.DataTable.AppendCols(val.DataList)
+		t.AppendCols(val.DataList)
 	case []*insyra.DataList:
 		t.AtomicDo(func(dt *insyra.DataTable) {
 			for _, l := range val {
@@ -220,7 +220,7 @@ func (t *dt) Push(data any) *dt {
 		})
 	case []dl:
 		for _, l := range val {
-			t.DataTable.AppendCols(l.DataList)
+			t.AppendCols(l.DataList)
 		}
 	case DLs:
 		t.AtomicDo(func(dt *insyra.DataTable) {
