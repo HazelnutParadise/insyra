@@ -1,0 +1,385 @@
+package insyra
+
+import (
+	"encoding/csv"
+	"fmt"
+	"os"
+	"strconv"
+	"strings"
+
+	json "github.com/goccy/go-json"
+	"gorm.io/gorm"
+)
+
+// ----- csv -----
+
+// ReadCSV loads a CSV file into a DataTable, with options to set the first column as row names
+// and the first row as column names.
+func ReadCSV(filePath string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error) {
+	dt := NewDataTable()
+
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = file.Close() }()
+
+	reader := csv.NewReader(file)
+	rows, err := reader.ReadAll()
+	if err != nil {
+		return nil, err
+	}
+
+	dt.columns = []*DataList{}
+	dt.columnIndex = make(map[string]int)
+	dt.rowNames = make(map[string]int)
+
+	if len(rows) == 0 {
+		return dt, nil // 空的CSV
+	}
+
+	// 處理第一行是否為欄名
+	startRow := 0
+	if setFirstRowToColNames {
+		for i, colName := range rows[0] {
+			if setFirstColToRowNames && i == 0 {
+				// 第一欄是行名，不作為列名處理
+				continue
+			}
+			column := &DataList{name: safeColName(dt, colName)}
+			dt.columns = append(dt.columns, column)
+			dt.columnIndex[generateColIndex(len(dt.columns)-1)] = len(dt.columns) - 1
+		}
+		startRow = 1
+	} else {
+		// 如果沒有指定第一行作為列名，則動態生成列名
+		for i := range rows[0] {
+			if setFirstColToRowNames && i == 0 {
+				continue
+			}
+			column := &DataList{}
+			dt.columns = append(dt.columns, column)
+			dt.columnIndex[generateColIndex(len(dt.columns)-1)] = len(dt.columns) - 1
+		}
+	}
+
+	// 處理資料行和是否將第一欄作為行名
+	for rowIndex, row := range rows[startRow:] {
+		if setFirstColToRowNames {
+			rowName := row[0]
+			dt.rowNames[safeRowName(dt, rowName)] = rowIndex
+			row = row[1:] // 移除第一欄作為行名
+		}
+
+		for colIndex, cell := range row {
+			if colIndex >= len(dt.columns) {
+				continue
+			}
+			column := dt.columns[colIndex]
+			if num, err := strconv.ParseFloat(cell, 64); err == nil {
+				column.data = append(column.data, num)
+			} else {
+				column.data = append(column.data, cell)
+			}
+		}
+	}
+
+	return dt, nil
+}
+
+func ReadCSV_String(csvString string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error) {
+	dt := NewDataTable()
+
+	reader := csv.NewReader(strings.NewReader(csvString))
+	rows, err := reader.ReadAll()
+	if err != nil {
+		return nil, err
+	}
+
+	dt.columns = []*DataList{}
+	dt.columnIndex = make(map[string]int)
+	dt.rowNames = make(map[string]int)
+
+	if len(rows) == 0 {
+		return dt, nil // 空的CSV
+	}
+
+	// 處理第一行是否為欄名
+	startRow := 0
+	if setFirstRowToColNames {
+		for i, colName := range rows[0] {
+			if setFirstColToRowNames && i == 0 {
+				continue
+			}
+			column := &DataList{name: safeColName(dt, colName)}
+			dt.columns = append(dt.columns, column)
+			dt.columnIndex[generateColIndex(len(dt.columns)-1)] = len(dt.columns) - 1
+		}
+		startRow = 1
+	} else {
+		for i := range rows[0] {
+			if setFirstColToRowNames && i == 0 {
+				continue
+			}
+			column := &DataList{}
+			dt.columns = append(dt.columns, column)
+			dt.columnIndex[generateColIndex(len(dt.columns)-1)] = len(dt.columns) - 1
+		}
+	}
+
+	for rowIndex, row := range rows[startRow:] {
+		if setFirstColToRowNames {
+			rowName := row[0]
+			dt.rowNames[safeRowName(dt, rowName)] = rowIndex
+			row = row[1:] // 移除第一欄作為行名
+		}
+
+		for colIndex, cell := range row {
+			if colIndex >= len(dt.columns) {
+				continue
+			}
+			column := dt.columns[colIndex]
+			if num, err := strconv.ParseFloat(cell, 64); err == nil {
+				column.data = append(column.data, num)
+			} else {
+				column.data = append(column.data, cell)
+			}
+		}
+	}
+
+	return dt, nil
+}
+
+// ----- json -----
+
+// ReadJSON reads a JSON file and loads the data into a DataTable and returns it.
+func ReadJSON(filePath string) (*DataTable, error) {
+	dt := NewDataTable()
+
+	// 讀取檔案
+	buf, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file %s: %w", filePath, err)
+	}
+
+	// 解析 JSON
+	var rows []map[string]any
+	err = json.Unmarshal(buf, &rows)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
+	}
+
+	// 將資料加入 DataTable
+	for _, row := range rows {
+		dt.AppendRowsByColName(row)
+	}
+
+	return dt, nil
+}
+
+func ReadJSON_Bytes(data []byte) (*DataTable, error) {
+	dt := NewDataTable()
+
+	// 解析 JSON
+	var rows []map[string]any
+	err := json.Unmarshal(data, &rows)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
+	}
+
+	// 將資料加入 DataTable
+	for _, row := range rows {
+		dt.AppendRowsByColName(row)
+	}
+
+	return dt, nil
+}
+
+// ----- sql -----
+
+type ReadSQLOptions struct {
+	RowNameColumn string // Specifies which column to use as row names, default is "row_name"
+	Query         string // Custom SQL query, if provided, other options will be ignored
+	Limit         int    // Limit the number of rows to read
+	Offset        int    // Starting position for reading rows
+	WhereClause   string // WHERE clause
+	OrderBy       string // ORDER BY clause
+}
+
+// ReadSQL reads table data from the database and converts it into a DataTable object.
+// If a custom Query is provided in options, it will use the custom query.
+// Otherwise, it uses tableName and other options to construct the SQL query.
+func ReadSQL(db *gorm.DB, tableName string, options ...ReadSQLOptions) (*DataTable, error) {
+	if db == nil {
+		return nil, fmt.Errorf("db 參數不能為空")
+	}
+
+	// 設定默認選項
+	var opts ReadSQLOptions
+	if len(options) > 0 {
+		opts = options[0]
+	} else {
+		opts = ReadSQLOptions{
+			RowNameColumn: "row_name",
+			Limit:         0, // 0 表示不限制
+			Offset:        0,
+		}
+	}
+
+	// 確定使用的查詢語句
+	var query string
+	var params []interface{}
+
+	if opts.Query != "" {
+		// 使用自訂查詢
+		query = opts.Query
+	} else {
+		// 檢查表格是否存在
+		dialect := db.Name()
+		var result *gorm.DB
+		var count int
+
+		switch dialect {
+		case "mysql":
+			result = db.Raw("SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ? AND table_schema = (SELECT DATABASE())", tableName)
+		case "postgres":
+			result = db.Raw("SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ? AND table_schema = current_schema()", tableName)
+		case "sqlite":
+			// SQLite 特有的查詢方式
+			result = db.Raw("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?", tableName)
+		default:
+			// 未知數據庫，使用一般性方法
+			result = db.Raw("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?", tableName)
+		}
+
+		if err := result.Scan(&count).Error; err != nil {
+			return nil, fmt.Errorf("檢查表格 %s 存在時發生錯誤: %w", tableName, err)
+		}
+
+		if count == 0 {
+			return nil, fmt.Errorf("表格 %s 不存在", tableName)
+		}
+
+		// 構建 SQL 查詢
+		query = fmt.Sprintf("SELECT * FROM %s", tableName)
+		if opts.WhereClause != "" {
+			query += " WHERE " + opts.WhereClause
+		}
+		if opts.OrderBy != "" {
+			query += " ORDER BY " + opts.OrderBy
+		}
+		if opts.Limit > 0 {
+			query += fmt.Sprintf(" LIMIT %d", opts.Limit)
+		}
+		if opts.Offset > 0 {
+			query += fmt.Sprintf(" OFFSET %d", opts.Offset)
+		}
+	}
+	// 執行查詢
+	LogDebug("core", "ReadSQL", "執行SQL查詢: %s", query)
+	rows, err := db.Raw(query, params...).Rows()
+	if err != nil {
+		return nil, fmt.Errorf("執行查詢時發生錯誤: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	// 獲取列名
+	columnNames, err := rows.Columns()
+	if err != nil {
+		return nil, fmt.Errorf("獲取列名時發生錯誤: %w", err)
+	}
+
+	// 確定行名列的索引（如果有）
+	rowNameColIndex := -1
+	for i, colName := range columnNames {
+		if strings.EqualFold(colName, opts.RowNameColumn) {
+			rowNameColIndex = i
+			break
+		}
+	}
+
+	// 為每一列創建 DataList
+	dataLists := make([]*DataList, len(columnNames))
+	for i, colName := range columnNames {
+		if i != rowNameColIndex || rowNameColIndex == -1 {
+			dl := NewDataList()
+			dl.SetName(colName) // 明確設置列名為資料庫中的列名
+			dataLists[i] = dl
+		}
+	}
+	// 處理行
+	rowValues := make([]interface{}, len(columnNames))
+	scanArgs := make([]interface{}, len(columnNames))
+	for i := range rowValues {
+		scanArgs[i] = &rowValues[i]
+	}
+
+	// 用來保存行名稱，之後再設置
+	rowNames := make(map[int]string)
+	var rowIndex = 0
+
+	for rows.Next() {
+		// 讀取數據
+		if err := rows.Scan(scanArgs...); err != nil {
+			return nil, fmt.Errorf("讀取行數據時發生錯誤: %w", err)
+		}
+
+		// 保存行名（如果有）
+		if rowNameColIndex >= 0 {
+			if rowValues[rowNameColIndex] != nil {
+				rowName := fmt.Sprintf("%v", rowValues[rowNameColIndex])
+				rowNames[rowIndex] = rowName
+			}
+		}
+
+		// 將數據添加到相應的列
+		for i, val := range rowValues {
+			// 跳過行名列，因為它已經被處理了
+			if i != rowNameColIndex || rowNameColIndex == -1 {
+				if dataLists[i] != nil {
+					// 對 SQL NULL 值的處理
+					if val == nil {
+						dataLists[i].Append(nil)
+					} else {
+						// 處理不同類型的數據
+						switch v := val.(type) {
+						case []byte:
+							// 將 []byte 轉換為字符串
+							dataLists[i].Append(string(v))
+						default:
+							dataLists[i].Append(v)
+						}
+					}
+				}
+			}
+		}
+		rowIndex++
+	} // 檢查是否有任何迭代錯誤
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("迭代行時發生錯誤: %w", err)
+	}
+
+	// 將列添加到 DataTable 中
+	// 確保列顯示順序與資料庫表格相同
+	dt := NewDataTable()
+	validColumns := make([]*DataList, 0, len(dataLists))
+	for i, dl := range dataLists {
+		if i != rowNameColIndex || rowNameColIndex == -1 {
+			if dl != nil && len(dl.data) > 0 {
+				validColumns = append(validColumns, dl)
+			}
+		}
+	}
+	if len(validColumns) > 0 {
+		dt.AppendCols(validColumns...)
+
+		// 在這裡設置行名
+		if rowNameColIndex >= 0 {
+			for i, name := range rowNames {
+				dt.SetRowNameByIndex(i, name)
+			}
+		}
+	}
+
+	return dt, nil
+}

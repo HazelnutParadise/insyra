@@ -237,16 +237,26 @@ if err != nil {
 
 ### ReadSQL
 
-Loads data from SQL query results.
+Loads data from a database table or custom SQL query into a DataTable.
 
 ```go
-func ReadSQL(db *sql.DB, query string) (*DataTable, error)
+func ReadSQL(db *gorm.DB, tableName string, options ...ReadSQLOptions) (*DataTable, error)
 ```
 
 **Parameters:**
 
-- `db`: Database connection
-- `query`: SQL query statement
+- `db`: GORM database connection
+- `tableName`: Name of the database table to read from
+- `options`: Optional configuration for reading data (ReadSQLOptions struct)
+
+**ReadSQLOptions:**
+
+- `RowNameColumn`: Column name to use as row names (default: "row_name")
+- `Query`: Custom SQL query string (if provided, other options are ignored)
+- `Limit`: Maximum number of rows to read (0 means no limit)
+- `Offset`: Starting row offset
+- `WhereClause`: WHERE clause for filtering
+- `OrderBy`: ORDER BY clause for sorting
 
 **Returns:**
 
@@ -256,11 +266,12 @@ func ReadSQL(db *sql.DB, query string) (*DataTable, error)
 **Example:**
 
 ```go
-db, _ := sql.Open("mysql", "connection_string")
-dt, err := insyra.ReadSQL(db, "SELECT * FROM users")
-if err != nil {
-    log.Fatal(err)
-}
+// Using table name with options
+db, _ := gorm.Open(mysql.Open("connection_string"), &gorm.Config{})
+dt, err := insyra.ReadSQL(db, "users", insyra.ReadSQLOptions{Limit: 100, OrderBy: "id DESC"})
+
+// Using custom query
+dt, err := insyra.ReadSQL(db, "", insyra.ReadSQLOptions{Query: "SELECT * FROM users WHERE active = 1"})
 ```
 
 ## Data Saving

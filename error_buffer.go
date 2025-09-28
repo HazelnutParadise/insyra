@@ -32,8 +32,8 @@ func init() {
 	// Initialize the error channel
 	go func() {
 		for err := range errorChan {
-			if Config.defaultErrHandlingFunc != nil {
-				go Config.defaultErrHandlingFunc(err.errType, err.packageName, err.fnName, err.message)
+			if errHandlingFunc := Config.GetDefaultErrHandlingFunc(); errHandlingFunc != nil {
+				go errHandlingFunc(err.errType, err.packageName, err.fnName, err.message)
 			}
 			errorMutex.Lock()
 			errorSlice = append(errorSlice, err)
