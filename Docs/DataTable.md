@@ -1496,6 +1496,36 @@ timestamp := dt.GetLastModifiedTimestamp()
 fmt.Printf("Last modified at: %d\n", timestamp)
 ```
 
+### SimpleRandomSample
+
+Performs simple random sampling on the DataTable.
+
+```go
+func (dt *DataTable) SimpleRandomSample(sampleSize int) *DataTable
+```
+
+**Parameters:**
+
+- `sampleSize`: Number of rows to sample. If `sampleSize <= 0`, returns an empty DataTable. If `sampleSize >= number of rows`, returns a copy of the original DataTable.
+
+**Returns:**
+
+- `*DataTable`: A new DataTable containing the sampled rows
+
+**Example:**
+
+```go
+// Sample 10 rows from the DataTable
+sampled := dt.SimpleRandomSample(10)
+```
+
+**Notes:**
+
+- Uses random permutation to ensure unbiased sampling
+- Returns a new DataTable, leaving the original unchanged
+- If sample size is greater than or equal to the number of rows, returns a full copy
+- If sample size is less than or equal to 0, returns an empty DataTable
+
 ## Column Calculation
 
 ### AddColUsingCCL

@@ -81,6 +81,7 @@ type IDataTable interface {
 	// Operations
 	Transpose() *DataTable
 	Clone() *DataTable
+	SimpleRandomSample(sampleSize int) *DataTable
 	Map(mapFunc func(rowIndex int, colIndex string, element any) any) *DataTable
 	SortBy(configs ...DataTableSortConfig) *DataTable
 
