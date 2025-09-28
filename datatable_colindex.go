@@ -2,7 +2,7 @@ package insyra
 
 // GetColIndexByName returns the column index (A, B, C, ...) by its name.
 func (dt *DataTable) GetColIndexByName(name string) string {
-	var result string = ""
+	var result = ""
 	dt.AtomicDo(func(dt *DataTable) {
 		colNumber := dt.GetColNumberByName(name)
 		if colNumber != -1 {
@@ -17,7 +17,7 @@ func (dt *DataTable) GetColIndexByName(name string) string {
 
 // GetColIndexByNumber returns the column index (A, B, C, ...) by its number (0, 1, 2, ...).
 func (dt *DataTable) GetColIndexByNumber(number int) string {
-	var result string = ""
+	var result = ""
 	dt.AtomicDo(func(dt *DataTable) {
 		if number < 0 {
 			number += len(dt.columns)

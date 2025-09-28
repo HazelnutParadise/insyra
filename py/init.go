@@ -52,8 +52,8 @@ func pyEnvInit() {
 				pyPath = filepath.Join(absInstallDir, "python", "python.exe")
 				pythonHome := filepath.Join(absInstallDir, "python")
 				pythonLib := filepath.Join(absInstallDir, "Lib")
-				os.Setenv("PYTHONHOME", pythonHome)
-				os.Setenv("PYTHONPATH", pythonLib)
+				_ = os.Setenv("PYTHONHOME", pythonHome)
+				_ = os.Setenv("PYTHONPATH", pythonLib)
 			}
 
 			// 不再每次都安裝依賴
@@ -184,13 +184,13 @@ func downloadFile(filepath string, url string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	out, err := os.Create(filepath)
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	defer func() { _ = out.Close() }()
 
 	_, err = io.Copy(out, resp.Body)
 	return err
@@ -256,8 +256,8 @@ func compilePythonSourceWindows(sourceDir string, installDir string) error {
 		pyPath = filepath.Join(absInstallDir, "python", "python.exe")
 		pythonHome := filepath.Join(absInstallDir, "python")
 		pythonLib := filepath.Join(absInstallDir, "Lib")
-		os.Setenv("PYTHONHOME", pythonHome)
-		os.Setenv("PYTHONPATH", pythonLib)
+		_ = os.Setenv("PYTHONHOME", pythonHome)
+		_ = os.Setenv("PYTHONPATH", pythonLib)
 	}
 
 	return nil
@@ -305,7 +305,7 @@ func showProgress(completed, total int) {
 	fmt.Printf("] %d%% (%d/%d prepared)", percentage, completed, total)
 
 	// 強制刷新輸出
-	os.Stdout.Sync()
+	_ = os.Stdout.Sync()
 }
 
 func installDependencies() error {

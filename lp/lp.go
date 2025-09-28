@@ -133,7 +133,7 @@ func SolveModel(model *lpgen.LPModel, timeoutSeconds ...int) (*insyra.DataTable,
 		insyra.LogFatal("lp", "SolveModel", "Failed to create temporary file for solution: %v", err)
 		return nil, nil
 	}
-	defer os.Remove(tmpFile.Name()) // 確保在解決完成後刪除臨時文件
+	defer func() { _ = os.Remove(tmpFile.Name()) }() // 確保在解決完成後刪除臨時文件
 
 	// 使用 GLPK 直接從標準輸入解 LP 問題，並將結果輸出到臨時文件
 	cmd := exec.CommandContext(ctx, "glpsol", "--lp", "/dev/stdin", "--output", tmpFile.Name())

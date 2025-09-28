@@ -35,7 +35,7 @@ func SaveHTML(chart Renderable, path string, animation ...bool) {
 	if err != nil {
 		insyra.LogFatal("plot", "SaveHTML", "failed to create file %s: %v", path, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	// 渲染圖表到指定文件
 	if err := chart.Render(f); err != nil {
@@ -114,7 +114,7 @@ useOnlineService:
 			insyra.LogFatal("plot", "SavePNG", "failed to use online service: %v", err)
 			return
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		// 讀取備援服務返回的圖片數據
 		body, err := io.ReadAll(resp.Body)

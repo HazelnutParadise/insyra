@@ -50,7 +50,7 @@ func (dt *DataTable) ToJSON(filePath string, useColNames bool) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	_, err = file.Write(jsonData)
 	if err != nil {

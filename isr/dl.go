@@ -23,7 +23,7 @@ func PtrDL[T *insyra.DataList | dl](l T) *dl {
 
 // From is equivalent to insyra.NewDataList(data...).
 // nolint:govet
-func (_ dl) From(data ...any) *dl {
+func (d dl) From(data ...any) *dl {
 	newDL := dl{}
 	newDL.DataList = insyra.NewDataList(data)
 	return &newDL
@@ -36,6 +36,6 @@ func (l *dl) At(index int) any {
 
 // Push is equivalent to dl.DataList.Append(data...).
 func (l *dl) Push(data ...any) *dl {
-	l.DataList.Append(data...)
+	l.Append(data...)
 	return l
 }

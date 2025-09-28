@@ -140,15 +140,15 @@ func addLineSeries(plt *plot.Plot, seriesName string, values []float64, xAxis []
 	case 1:
 		// 長虛線
 		line.LineStyle = plotter.DefaultLineStyle
-		line.LineStyle.Dashes = []vg.Length{vg.Points(8), vg.Points(4)}
+		line.Dashes = []vg.Length{vg.Points(8), vg.Points(4)}
 	case 2:
 		// 點線
 		line.LineStyle = plotter.DefaultLineStyle
-		line.LineStyle.Dashes = []vg.Length{vg.Points(2), vg.Points(2)}
+		line.Dashes = []vg.Length{vg.Points(2), vg.Points(2)}
 	case 3:
 		// 短虛線
 		line.LineStyle = plotter.DefaultLineStyle
-		line.LineStyle.Dashes = []vg.Length{vg.Points(4), vg.Points(2)}
+		line.Dashes = []vg.Length{vg.Points(4), vg.Points(2)}
 	case 4:
 		// 交替虛線和實線
 		line.LineStyle = plotter.DefaultLineStyle

@@ -39,7 +39,7 @@ func PtrDT[T *insyra.DataTable | dt](t T) *dt {
 
 // From converts a DataList, DL, Row, Col, []DL, []Row, []Col, CSV, map[string]any, or map[int]any to a DataTable.
 // nolint:govet
-func (_ dt) From(item any) *dt {
+func (d dt) From(item any) *dt {
 	t := dt{}
 	switch val := item.(type) {
 	case *insyra.DataList:
@@ -49,12 +49,12 @@ func (_ dt) From(item any) *dt {
 	case []*insyra.DataList:
 		t.DataTable = insyra.NewDataTable()
 		for _, l := range val {
-			t.DataTable.AppendCols(l)
+			t.AppendCols(l)
 		}
 	case []dl:
 		t.DataTable = insyra.NewDataTable()
 		for _, l := range val {
-			t.DataTable.AppendCols(l.DataList)
+			t.AppendCols(l.DataList)
 		}
 	case DLs:
 		t.DataTable = insyra.NewDataTable()
@@ -63,7 +63,7 @@ func (_ dt) From(item any) *dt {
 			if l.GetName() != "" {
 				newdl.SetName(l.GetName())
 			}
-			t.DataTable.AppendCols(newdl)
+			t.AppendCols(newdl)
 		}
 	case Row:
 		t.DataTable = insyra.NewDataTable()
