@@ -62,6 +62,17 @@ func TestSliceToF64(t *testing.T) {
 	}
 }
 
+func TestProcessData(t *testing.T) {
+	dl := insyra.NewDataList(1, 2, 3)
+	s, len := insyra.ProcessData(dl)
+	if len != 3 {
+		t.Errorf("ProcessData() did not return the correct length")
+	}
+	if s == nil {
+		t.Errorf("ProcessData() did not return the correct slice")
+	}
+}
+
 func TestSortTimes(t *testing.T) {
 	tests := []struct {
 		input    []time.Time
