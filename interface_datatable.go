@@ -32,6 +32,9 @@ type IDataTable interface {
 	ColNamesToFirstRow() *DataTable
 	DropColNames() *DataTable
 	ColNames() []string
+	Headers() []string
+	SetColNames(colNames []string) *DataTable
+	SetHeaders(headers []string) *DataTable
 	FindRowsIfContains(value any) []int
 	FindRowsIfContainsAll(values ...any) []int
 	FindRowsIfAnyElementContainsSubstring(substring string) []int
@@ -62,6 +65,7 @@ type IDataTable interface {
 	RowNamesToFirstCol() *DataTable
 	DropRowNames() *DataTable
 	RowNames() []string
+	SetRowNames(rowNames []string) *DataTable
 	GetCreationTimestamp() int64
 	GetLastModifiedTimestamp() int64
 	getRowNameByIndex(index int) (string, bool)
@@ -81,6 +85,7 @@ type IDataTable interface {
 	// Operations
 	Transpose() *DataTable
 	Clone() *DataTable
+	SimpleRandomSample(sampleSize int) *DataTable
 	Map(mapFunc func(rowIndex int, colIndex string, element any) any) *DataTable
 	SortBy(configs ...DataTableSortConfig) *DataTable
 

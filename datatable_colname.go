@@ -145,3 +145,36 @@ func (dt *DataTable) ColNames() []string {
 	})
 	return result
 }
+
+// Headers is an alias for ColNames, returning the column names of the DataTable.
+func (dt *DataTable) Headers() []string {
+	return dt.ColNames()
+}
+
+func (dt *DataTable) SetColNames(colNames []string) *DataTable {
+	var result *DataTable
+	dt.AtomicDo(func(dt *DataTable) {
+		for i, colName := range colNames {
+			if i < len(dt.columns) {
+				dt.columns[i].SetName(safeColName(dt, colName))
+			} else {
+				// Add new column
+				newCol := NewDataList()
+				newCol.SetName(safeColName(dt, colName))
+				dt.AppendCols(newCol)
+			}
+		}
+		// Set excess columns to empty name
+		for i := len(colNames); i < len(dt.columns); i++ {
+			dt.columns[i].SetName("")
+		}
+		go dt.updateTimestamp()
+		result = dt
+	})
+	return result
+}
+
+// SetHeaders is an alias for SetColNames, setting the column names of the DataTable.
+func (dt *DataTable) SetHeaders(headers []string) *DataTable {
+	return dt.SetColNames(headers)
+}

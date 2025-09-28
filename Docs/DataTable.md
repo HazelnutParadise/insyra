@@ -879,6 +879,28 @@ for i, name := range names {
 }
 ```
 
+### SetRowNames
+
+Sets the row names of the DataTable using a slice of strings. Only sets names for existing rows; excess names are ignored.
+
+```go
+func (dt *DataTable) SetRowNames(rowNames []string) *DataTable
+```
+
+**Parameters:**
+
+- `rowNames`: Slice of strings representing the new row names
+
+**Returns:**
+
+- `*DataTable`: The modified DataTable
+
+**Example:**
+
+```go
+dt.SetRowNames([]string{"Row1", "Row2", "Row3"}) // Set row names
+```
+
 ### ChangeColName
 
 Changes the name of a column.
@@ -1071,6 +1093,50 @@ func (dt *DataTable) SetColNameByIndex(index string, name string) *DataTable
 dt.SetColNameByIndex("A", "Identifier") // Set the name of column A to "Identifier"
 ```
 
+### SetColNames
+
+Sets the column names of the DataTable using a slice of strings. If the slice has more elements than existing columns, new columns will be added. If the slice has fewer elements, excess columns will be set to empty names.
+
+```go
+func (dt *DataTable) SetColNames(colNames []string) *DataTable
+```
+
+**Parameters:**
+
+- `colNames`: Slice of strings representing the new column names
+
+**Returns:**
+
+- `*DataTable`: The modified DataTable
+
+**Example:**
+
+```go
+dt.SetColNames([]string{"Name", "Age", "Role"}) // Set column names
+```
+
+### SetHeaders
+
+Alias for SetColNames, sets the column names of the DataTable.
+
+```go
+func (dt *DataTable) SetHeaders(headers []string) *DataTable
+```
+
+**Parameters:**
+
+- `headers`: Slice of strings representing the new column names
+
+**Returns:**
+
+- `*DataTable`: The modified DataTable
+
+**Example:**
+
+```go
+dt.SetHeaders([]string{"Name", "Age", "Role"}) // Set column names
+```
+
 ### ColNamesToFirstRow
 
 Moves all column names to the first row of data and then clears the column names.
@@ -1137,6 +1203,24 @@ for i, name := range names {
         fmt.Printf("Column %d: (unnamed)\n", i)
     }
 }
+```
+
+### Headers
+
+Alias for ColNames, returns a slice containing all column names in order.
+
+```go
+func (dt *DataTable) Headers() []string
+```
+
+**Returns:**
+
+- `[]string`: Slice of column names
+
+**Example:**
+
+```go
+headers := dt.Headers() // Same as dt.ColNames()
 ```
 
 ### DropRowsByName
@@ -1495,6 +1579,36 @@ func (dt *DataTable) GetLastModifiedTimestamp() int64
 timestamp := dt.GetLastModifiedTimestamp()
 fmt.Printf("Last modified at: %d\n", timestamp)
 ```
+
+### SimpleRandomSample
+
+Performs simple random sampling on the DataTable.
+
+```go
+func (dt *DataTable) SimpleRandomSample(sampleSize int) *DataTable
+```
+
+**Parameters:**
+
+- `sampleSize`: Number of rows to sample. If `sampleSize <= 0`, returns an empty DataTable. If `sampleSize >= number of rows`, returns a copy of the original DataTable.
+
+**Returns:**
+
+- `*DataTable`: A new DataTable containing the sampled rows
+
+**Example:**
+
+```go
+// Sample 10 rows from the DataTable
+sampled := dt.SimpleRandomSample(10)
+```
+
+**Notes:**
+
+- Uses random permutation to ensure unbiased sampling
+- Returns a new DataTable, leaving the original unchanged
+- If sample size is greater than or equal to the number of rows, returns a full copy
+- If sample size is less than or equal to 0, returns an empty DataTable
 
 ## Column Calculation
 
