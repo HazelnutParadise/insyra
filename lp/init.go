@@ -57,12 +57,16 @@ findGLPK:
 		insyra.LogInfo("lp", "init", "GLPK already installed at: %s", glpsolPath)
 		// 設置 GLPK_PATH 環境變數
 		glpkDir := filepath.Dir(glpsolPath)
-		os.Setenv("GLPK_PATH", glpkDir)
+		if err := os.Setenv("GLPK_PATH", glpkDir); err != nil {
+			insyra.LogWarning("lp", "init", "Failed to set GLPK_PATH: %v", err)
+		}
 
 		// 將 GLPK 目錄添加到 PATH 環境變數
 		currentPath := os.Getenv("PATH")
 		newPath := glpkDir + string(os.PathListSeparator) + currentPath
-		os.Setenv("PATH", newPath)
+		if err := os.Setenv("PATH", newPath); err != nil {
+			insyra.LogWarning("lp", "init", "Failed to set PATH: %v", err)
+		}
 
 		return
 	}
@@ -90,12 +94,16 @@ findGLPK:
 		insyra.LogInfo("lp", "init", "GLPK already installed at: %s", glpsolPath)
 		// 設置 GLPK_PATH 環境變數
 		glpkDir := filepath.Dir(glpsolPath)
-		os.Setenv("GLPK_PATH", glpkDir)
+		if err := os.Setenv("GLPK_PATH", glpkDir); err != nil {
+			insyra.LogWarning("lp", "init", "Failed to set GLPK_PATH: %v", err)
+		}
 
 		// 將 GLPK 目錄添加到 PATH 環境變數
 		currentPath := os.Getenv("PATH")
 		newPath := glpkDir + string(os.PathListSeparator) + currentPath
-		os.Setenv("PATH", newPath)
+		if err := os.Setenv("PATH", newPath); err != nil {
+			insyra.LogWarning("lp", "init", "Failed to set PATH: %v", err)
+		}
 
 		insyra.LogDebug("lp", "init", "GLPK environment variables set. GLPK_PATH=%s", glpkDir)
 		return
@@ -305,7 +313,7 @@ func downloadFile(filepath string, url string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("bad status: %s", resp.Status)

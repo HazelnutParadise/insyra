@@ -138,11 +138,11 @@ func (t *dt) Col(col any) *dl {
 	var l dl
 	switch v := col.(type) {
 	case int:
-		l.DataList = t.DataTable.GetColByNumber(v)
+		l.DataList = t.GetColByNumber(v)
 	case string:
-		l.DataList = t.DataTable.GetCol(v)
+		l.DataList = t.GetCol(v)
 	case name:
-		colDt := t.DataTable.FilterByColNameEqualTo(v.value)
+		colDt := t.FilterByColNameEqualTo(v.value)
 		l.DataList = colDt.GetColByNumber(0)
 	default:
 		insyra.LogFatal("DT", "Col", "got unexpected type %T", col)
