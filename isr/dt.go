@@ -155,9 +155,9 @@ func (t *dt) Row(row any) *dl {
 	var l dl
 	switch v := row.(type) {
 	case int:
-		l.DataList = t.DataTable.GetRow(v)
+		l.DataList = t.GetRow(v)
 	case name:
-		rowDt := t.DataTable.FilterByRowNameEqualTo(v.value)
+		rowDt := t.FilterByRowNameEqualTo(v.value)
 		l.DataList = rowDt.GetRow(0)
 	default:
 		insyra.LogFatal("DT", "Row", "got unexpected type %T", row)
@@ -171,9 +171,9 @@ func (t *dt) At(row any, col any) any {
 	case int:
 		switch r := row.(type) {
 		case int:
-			return t.DataTable.GetElementByNumberIndex(r, v)
+			return t.GetElementByNumberIndex(r, v)
 		case name:
-			rowDt := t.DataTable.FilterByRowNameEqualTo(r.value)
+			rowDt := t.FilterByRowNameEqualTo(r.value)
 			return rowDt.GetElementByNumberIndex(0, v)
 		default:
 			insyra.LogWarning("DT", "At", "got unexpected type %T. Returning nil.", row)

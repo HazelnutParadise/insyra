@@ -176,7 +176,7 @@ func parseGLPKOutputFromFile(filePath string) *insyra.DataTable {
 		insyra.LogWarning("lp", "parseGLPKOutputFromFile", "Failed to open solution file: %v", err)
 		return nil
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Scan through each line and extract variable values
 	scanner := bufio.NewScanner(file)
