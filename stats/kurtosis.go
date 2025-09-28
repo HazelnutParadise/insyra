@@ -65,7 +65,7 @@ func calculateKurtType1(dl insyra.IDataList) float64 {
 	}
 
 	// g2 = m4 / m2^2 - 3
-	return m4/math.Pow(m2, 2) - 3
+	return m4/(m2*m2) - 3
 }
 
 func calculateKurtType2(dl insyra.IDataList) float64 {
@@ -109,6 +109,6 @@ func calculateKurtType3(dl insyra.IDataList) float64 {
 	kurt := g2 + 3 // convert to raw kurtosis
 
 	// bias-adjusted version
-	adjustment := math.Pow((1 - 1/n), 2)
+	adjustment := (1 - 1/n) * (1 - 1/n)
 	return kurt*adjustment - 3
 }
