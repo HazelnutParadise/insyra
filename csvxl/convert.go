@@ -177,7 +177,7 @@ func saveSheetAsCsv(f *excelize.File, sheet string, outputCsv string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create CSV file %s: %v", outputCsv, err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	writer := csv.NewWriter(file)
 	defer writer.Flush()

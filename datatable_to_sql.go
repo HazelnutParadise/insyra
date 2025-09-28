@@ -249,7 +249,7 @@ func saveDataMapToDB(db *gorm.DB, tableName string, data []map[string]interface{
 			case "mysql":
 				rows, err := db.Raw("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = ? AND TABLE_SCHEMA = (SELECT DATABASE());", tableName).Rows()
 				if err == nil {
-					defer rows.Close()
+					defer func() { _ = rows.Close() }()
 					for rows.Next() {
 						var name string
 						if err := rows.Scan(&name); err == nil {
@@ -260,7 +260,7 @@ func saveDataMapToDB(db *gorm.DB, tableName string, data []map[string]interface{
 			case "postgres":
 				rows, err := db.Raw("SELECT column_name FROM information_schema.columns WHERE table_name = ? AND table_schema = current_schema();", tableName).Rows()
 				if err == nil {
-					defer rows.Close()
+					defer func() { _ = rows.Close() }()
 					for rows.Next() {
 						var name string
 						if err := rows.Scan(&name); err == nil {
@@ -271,7 +271,7 @@ func saveDataMapToDB(db *gorm.DB, tableName string, data []map[string]interface{
 			default: // sqlite
 				rows, err := db.Raw(fmt.Sprintf("PRAGMA table_info(%s);", tableName)).Rows()
 				if err == nil {
-					defer rows.Close()
+					defer func() { _ = rows.Close() }()
 					for rows.Next() {
 						var cid int
 						var name string

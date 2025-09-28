@@ -152,7 +152,7 @@ func addLineSeries(plt *plot.Plot, seriesName string, values []float64, xAxis []
 	case 4:
 		// 交替虛線和實線
 		line.LineStyle = plotter.DefaultLineStyle
-		line.LineStyle.Dashes = []vg.Length{vg.Points(6), vg.Points(2), vg.Points(1), vg.Points(2)}
+		line.Dashes = []vg.Length{vg.Points(6), vg.Points(2), vg.Points(1), vg.Points(2)}
 	}
 
 	// Add the line plot to the chart

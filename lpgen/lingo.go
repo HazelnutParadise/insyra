@@ -19,7 +19,7 @@ func ParseLingoModel_txt(filePath string) *LPModel {
 		insyra.LogWarning("lpgen", "ParseLingoModel_txt", "%s", err.Error())
 		return nil
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// 初始化 LPModel
 	model := &LPModel{

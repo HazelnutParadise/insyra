@@ -89,7 +89,7 @@ func OneWayANOVA(groups ...insyra.IDataList) *OneWayANOVAResult {
 					insyra.LogWarning("stats", "OneWayANOVA", "Invalid data at group %d index %d", i, j)
 					return
 				}
-				SSW += math.Pow(x-groupMean, 2)
+				SSW += (x - groupMean) * (x - groupMean)
 			}
 		}
 	}).Run().AwaitResult()
@@ -203,10 +203,10 @@ func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) *T
 		for j := range factorBLevels {
 			idx := i*factorBLevels + j
 			exp := aMeans[i] + bMeans[j] - totalMean
-			SSAB += float64(cellCounts[idx]) * math.Pow(cellMeans[idx]-exp, 2)
+			SSAB += float64(cellCounts[idx]) * (cellMeans[idx] - exp) * (cellMeans[idx] - exp)
 			for _, v := range cells[idx].Data() {
 				x, _ := insyra.ToFloat64Safe(v)
-				SSW += math.Pow(x-cellMeans[idx], 2)
+				SSW += (x - cellMeans[idx]) * (x - cellMeans[idx])
 			}
 		}
 	}
