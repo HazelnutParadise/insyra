@@ -32,6 +32,9 @@ type IDataTable interface {
 	ColNamesToFirstRow() *DataTable
 	DropColNames() *DataTable
 	ColNames() []string
+	Headers() []string
+	SetColNames(colNames []string) *DataTable
+	SetHeaders(headers []string) *DataTable
 	FindRowsIfContains(value any) []int
 	FindRowsIfContainsAll(values ...any) []int
 	FindRowsIfAnyElementContainsSubstring(substring string) []int
