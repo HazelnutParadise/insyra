@@ -4,5 +4,5 @@ package insyra
 func init() {
 	SetDefaultConfig()
 	initCCLFunctions()
-	LogInfo("", "", "Welcome to Insyra %s(v%s)!!\nOfficial website: https://insyra.hazelnut-paradise.com\n\n", VersionName, Version)
+	go LogInfo("", "", "Welcome to Insyra %s(v%s)!!\nOfficial website: https://insyra.hazelnut-paradise.com\n\n", VersionName, Version)
 }
