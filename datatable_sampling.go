@@ -4,6 +4,9 @@ import (
 	"math/rand/v2"
 )
 
+// SimpleRandomSample returns a new DataTable containing a simple random sample of the specified size.
+// If sampleSize is greater than the number of rows in the DataTable, it returns a copy of the original DataTable.
+// If sampleSize is less than or equal to 0, it returns an empty DataTable.
 func (dt *DataTable) SimpleRandomSample(sampleSize int) *DataTable {
 	if sampleSize <= 0 {
 		LogWarning("DataTable", "SimpleRandomSample", "Sample size is less than or equal to 0. Returning an empty DataTable.")
