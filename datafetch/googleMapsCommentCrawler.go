@@ -287,7 +287,7 @@ func (c *googleMapsStoreCrawler) GetReviews(storeId string, pageCount int, optio
 		}
 
 		// 隨機等待時間，防止被 Google 封鎖
-		waitTime := rand.Intn(int(fetchingOptions.MaxWaitingInterval_Milliseconds)-1000) + 1000
+		waitTime := rand.IntN(int(fetchingOptions.MaxWaitingInterval_Milliseconds)-1000) + 1000
 		fmt.Printf("Waiting %.1fs before fetching the next page...\n", float64(waitTime)/1000)
 		time.Sleep(time.Duration(waitTime) * time.Millisecond)
 
