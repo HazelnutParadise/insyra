@@ -213,7 +213,7 @@ func oneWayANOVA(values []float64, labels []int, k int) *FTestResult {
 	ssb := 0.0
 	for i := range k {
 		mean := groupSums[i] / float64(groupCounts[i])
-		ssb += float64(groupCounts[i]) * math.Pow(mean-totalMean, 2)
+		ssb += float64(groupCounts[i]) * (mean - totalMean) * (mean - totalMean)
 	}
 
 	// 計算組內平方和（SSW）
@@ -221,7 +221,7 @@ func oneWayANOVA(values []float64, labels []int, k int) *FTestResult {
 	for i, v := range values {
 		group := labels[i]
 		mean := groupSums[group] / float64(groupCounts[group])
-		ssw += math.Pow(v-mean, 2)
+		ssw += (v - mean) * (v - mean)
 	}
 
 	df1 := float64(k - 1)
