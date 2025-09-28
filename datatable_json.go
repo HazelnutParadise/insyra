@@ -3,10 +3,8 @@ package insyra
 import (
 	"os"
 
-	jsoniter "github.com/json-iterator/go"
+	json "github.com/goccy/go-json"
 )
-
-var json = jsoniter.ConfigFastest
 
 // ToJSON converts the DataTable to JSON format and writes it to the provided file path.
 // The function accepts two parameters:

@@ -1,10 +1,12 @@
 module github.com/HazelnutParadise/insyra
 
-go 1.23.0
+go 1.24.0
+
+toolchain go1.24.1
 
 require (
-	github.com/HazelnutParadise/Go-Utils v0.7.10
-	golang.org/x/text v0.23.0
+	github.com/HazelnutParadise/Go-Utils v0.8.2
+	golang.org/x/text v0.29.0
 )
 
 require (
@@ -35,13 +37,13 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/richardlehane/mscfb v1.0.4 // indirect
 	github.com/richardlehane/msoleps v1.0.4 // indirect
-	github.com/rivo/uniseg v0.2.0 // indirect
+	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/xuri/efp v0.0.0-20241211021726-c4e992084aa6 // indirect
 	github.com/xuri/nfp v0.0.0-20240318013403-ab9948c2c4a7 // indirect
 	golang.org/x/crypto v0.36.0 // indirect
 	golang.org/x/image v0.23.0 // indirect
 	golang.org/x/net v0.38.0 // indirect
-	golang.org/x/sys v0.33.0 // indirect
+	golang.org/x/sys v0.36.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
@@ -51,12 +53,12 @@ require (
 	github.com/go-echarts/snapshot-chromedp v0.0.5
 	github.com/goccy/go-json v0.10.5
 	github.com/json-iterator/go v1.1.12
-	github.com/mattn/go-runewidth v0.0.16
+	github.com/mattn/go-runewidth v0.0.17
 	github.com/stretchr/testify v1.9.0
 	github.com/xuri/excelize/v2 v2.9.0
-	golang.org/x/exp v0.0.0-20241217172543-b2144cdd0a67
-	golang.org/x/term v0.32.0
+	golang.org/x/exp v0.0.0-20250911091902-df9299821621
+	golang.org/x/term v0.35.0
 	gonum.org/v1/gonum v0.15.1
 	gonum.org/v1/plot v0.15.0
-	gorm.io/gorm v1.26.1
+	gorm.io/gorm v1.31.0
 )

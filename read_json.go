@@ -3,6 +3,8 @@ package insyra
 import (
 	"fmt"
 	"os"
+
+	json "github.com/goccy/go-json"
 )
 
 // ReadJSON reads a JSON file and loads the data into a DataTable and returns it.

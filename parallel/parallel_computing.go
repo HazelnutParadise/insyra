@@ -27,11 +27,13 @@ func (pg *ParallelGroup) Run() *ParallelGroup {
 			defer pg.wg.Done()
 			fnValue := reflect.ValueOf(fn)
 			resultValues := fnValue.Call(nil)
-			results := make([]any, len(resultValues))
-			for j, v := range resultValues {
-				results[j] = v.Interface()
+			if len(resultValues) > 0 {
+				results := make([]any, len(resultValues))
+				for j, v := range resultValues {
+					results[j] = v.Interface()
+				}
+				pg.results[i] = results
 			}
-			pg.results[i] = results
 		}(i, fn)
 	}
 	return pg
@@ -41,4 +43,10 @@ func (pg *ParallelGroup) Run() *ParallelGroup {
 func (pg *ParallelGroup) AwaitResult() [][]any {
 	pg.wg.Wait()
 	return pg.results
+}
+
+// AwaitNoResult waits for all functions to complete without returning results.
+// This is optimized for functions that do not return values, avoiding result collection overhead.
+func (pg *ParallelGroup) AwaitNoResult() {
+	pg.wg.Wait()
 }
