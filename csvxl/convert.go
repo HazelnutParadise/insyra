@@ -3,12 +3,14 @@ package csvxl
 import (
 	"encoding/csv"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/HazelnutParadise/Go-Utils/sliceutil"
 	"github.com/HazelnutParadise/insyra"
+	"github.com/saintfish/chardet"
 
 	"github.com/xuri/excelize/v2"
 	"golang.org/x/text/encoding/traditionalchinese"
@@ -19,12 +21,14 @@ import (
 const (
 	UTF8 = "utf-8"
 	Big5 = "big5"
+	Auto = "auto"
 )
 
 // Convert multiple CSV files to an Excel file, supporting custom sheet names.
 // If the sheet name is not specified, the file name of the CSV file will be used.
+// If csvEncoding is not specified, auto-detection will be used.
 func CsvToExcel(csvFiles []string, sheetNames []string, output string, csvEncoding ...string) {
-	encoding := "utf-8"
+	encoding := Auto // Default to auto-detection
 	if len(csvEncoding) == 1 {
 		encoding = csvEncoding[0]
 	} else if len(csvEncoding) > 1 {
@@ -77,8 +81,9 @@ func CsvToExcel(csvFiles []string, sheetNames []string, output string, csvEncodi
 // Append CSV files to an existing Excel file, supporting custom sheet names.
 // If the sheet name is not specified, the file name of the CSV file will be used.
 // If the sheet is exists, it will be overwritten.
+// If csvEncoding is not specified, auto-detection will be used.
 func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile string, csvEncoding ...string) {
-	encoding := "utf-8"
+	encoding := Auto // Default to auto-detection
 	if len(csvEncoding) == 1 {
 		encoding = csvEncoding[0]
 	} else if len(csvEncoding) > 1 {
@@ -171,6 +176,48 @@ func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyConta
 
 // ===============================
 
+// DetectEncoding automatically detects the encoding of a CSV file
+// Returns the detected encoding as a string, or an error if detection fails
+func DetectEncoding(csvFile string) (string, error) {
+	file, err := os.Open(csvFile)
+	if err != nil {
+		return "", fmt.Errorf("failed to open CSV file %s: %v", csvFile, err)
+	}
+	defer func() { _ = file.Close() }()
+
+	// Read a sample of the file for detection (first 1024 bytes should be sufficient)
+	buffer := make([]byte, 1024)
+	n, err := file.Read(buffer)
+	if err != nil && err != io.EOF {
+		return "", fmt.Errorf("failed to read CSV file %s: %v", csvFile, err)
+	}
+
+	// Use chardet to detect encoding
+	detector := chardet.NewTextDetector()
+	result, err := detector.DetectBest(buffer[:n])
+	if err != nil {
+		return "", fmt.Errorf("failed to detect encoding for file %s: %v", csvFile, err)
+	}
+
+	// Map chardet results to our encoding constants
+	switch strings.ToLower(result.Charset) {
+	case "utf-8", "ascii":
+		return UTF8, nil
+	case "big5":
+		return Big5, nil
+	case "gb18030", "gbk", "gb2312":
+		// Chinese encodings that we might encounter but don't fully support yet
+		insyra.LogWarning("csvxl", "DetectEncoding", "Detected Chinese encoding %s for file %s, falling back to UTF-8", result.Charset, csvFile)
+		return UTF8, nil
+	default:
+		// For unknown encodings, log a warning and fall back to UTF-8
+		insyra.LogWarning("csvxl", "DetectEncoding", "Unknown encoding %s detected for file %s (confidence: %d), falling back to UTF-8", result.Charset, csvFile, result.Confidence)
+		return UTF8, nil
+	}
+}
+
+// ===============================
+
 // saveSheetAsCsv saves a specific sheet in an Excel file as a CSV file.
 func saveSheetAsCsv(f *excelize.File, sheet string, outputCsv string) error {
 	file, err := os.Create(outputCsv)
@@ -207,8 +254,20 @@ func addCsvSheet(f *excelize.File, sheetName, csvFile string, encoding string) e
 
 	var records [][]string
 
+	// Auto-detect encoding if specified
+	if encoding == Auto {
+		detectedEncoding, err := DetectEncoding(csvFile)
+		if err != nil {
+			insyra.LogWarning("csvxl", "addCsvSheet", "Failed to auto-detect encoding for %s: %v, using UTF-8", csvFile, err)
+			encoding = UTF8
+		} else {
+			encoding = detectedEncoding
+			insyra.LogInfo("csvxl", "addCsvSheet", "Auto-detected encoding %s for file %s", encoding, csvFile)
+		}
+	}
+
 	switch encoding {
-	case "big5":
+	case Big5:
 		reader := transform.NewReader(file, traditionalchinese.Big5.NewDecoder())
 		csvReader := csv.NewReader(reader)
 		records, err = csvReader.ReadAll()
