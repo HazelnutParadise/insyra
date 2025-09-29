@@ -32,6 +32,7 @@ func (dt *DataTable) ToCSV(filePath string, setRowNamesToFirstCol bool, setColNa
 	var columns []*DataList
 	var columnNames []string
 
+	var err2 *error
 	dt.AtomicDo(func(dt *DataTable) {
 		maxLength = dt.getMaxColLength()
 		columns = make([]*DataList, len(dt.columns))
@@ -40,43 +41,47 @@ func (dt *DataTable) ToCSV(filePath string, setRowNamesToFirstCol bool, setColNa
 		for i, column := range dt.columns {
 			columnNames[i] = column.name
 		}
-	})
 
-	// Write column names as the first row if setColNamesToFirstRow is true
-	if setColNamesToFirstRow {
-		var header []string
-		if setRowNamesToFirstCol {
-			header = append(header, "") // Leave the first cell empty for row names
-		}
-		header = append(header, columnNames...)
-		if err := writer.Write(header); err != nil {
-			return err
-		}
-	}
-
-	// Write the data rows
-	for rowIndex := 0; rowIndex < maxLength; rowIndex++ {
-		var record []string
-		if setRowNamesToFirstCol {
-			rowName := dt.GetRowNameByIndex(rowIndex)
-			record = append(record, rowName)
-		}
-		for _, column := range columns {
-			if rowIndex < len(column.data) {
-				value := column.data[rowIndex]
-				if value == nil {
-					record = append(record, "")
-				} else {
-					record = append(record, fmt.Sprintf("%v", value))
-				}
-			} else {
-				record = append(record, "")
+		// Write column names as the first row if setColNamesToFirstRow is true
+		if setColNamesToFirstRow {
+			var header []string
+			if setRowNamesToFirstCol {
+				header = append(header, "") // Leave the first cell empty for row names
+			}
+			header = append(header, columnNames...)
+			if err := writer.Write(header); err != nil {
+				err2 = &err
+				return
 			}
 		}
-		if err := writer.Write(record); err != nil {
-			return err
-		}
-	}
 
+		// Write the data rows
+		for rowIndex := 0; rowIndex < maxLength; rowIndex++ {
+			var record []string
+			if setRowNamesToFirstCol {
+				rowName := dt.GetRowNameByIndex(rowIndex)
+				record = append(record, rowName)
+			}
+			for _, column := range columns {
+				if rowIndex < len(column.data) {
+					value := column.data[rowIndex]
+					if value == nil {
+						record = append(record, "")
+					} else {
+						record = append(record, fmt.Sprintf("%v", value))
+					}
+				} else {
+					record = append(record, "")
+				}
+			}
+			if err := writer.Write(record); err != nil {
+				err2 = &err
+				return
+			}
+		}
+	})
+	if err2 != nil {
+		return *err2
+	}
 	return nil
 }

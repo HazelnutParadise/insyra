@@ -40,25 +40,27 @@ func (dt *DataTable) ToSQL(db *gorm.DB, tableName string, options ...ToSQLOption
 		}
 	}
 	var dataMap []map[string]any
-	numRow, numCol := dt.Size()
-	for i := range numRow {
-		row := dt.GetRow(i)
-		rowMap := make(map[string]any)
+	dt.AtomicDo(func(dt *DataTable) {
+		numRow, numCol := dt.Size()
+		for i := range numRow {
+			row := dt.GetRow(i)
+			rowMap := make(map[string]any)
 
-		// 如果啟用行名稱，則將其添加到資料中
-		if opts.RowNames {
-			rowName := dt.GetRowNameByIndex(i)
-			if rowName != "" {
-				rowMap["row_name"] = rowName
+			// 如果啟用行名稱，則將其添加到資料中
+			if opts.RowNames {
+				rowName := dt.GetRowNameByIndex(i)
+				if rowName != "" {
+					rowMap["row_name"] = rowName
+				}
 			}
-		}
 
-		for j := 0; j < numCol; j++ {
-			colName := dt.columns[j].GetName()
-			rowMap[colName] = row.Get(j)
+			for j := range numCol {
+				colName := dt.columns[j].GetName()
+				rowMap[colName] = row.Get(j)
+			}
+			dataMap = append(dataMap, rowMap)
 		}
-		dataMap = append(dataMap, rowMap)
-	}
+	})
 	if len(dataMap) == 0 {
 		return fmt.Errorf("data is empty")
 	}
@@ -70,7 +72,7 @@ func (dt *DataTable) ToSQL(db *gorm.DB, tableName string, options ...ToSQLOption
 	return nil
 }
 
-func saveDataMapToDB(db *gorm.DB, tableName string, data []map[string]interface{}, opts ToSQLOptions) error {
+func saveDataMapToDB(db *gorm.DB, tableName string, data []map[string]any, opts ToSQLOptions) error {
 	if len(data) == 0 {
 		return fmt.Errorf("data is empty")
 	}
@@ -150,15 +152,15 @@ func saveDataMapToDB(db *gorm.DB, tableName string, data []map[string]interface{
 
 		// 根據數據庫方言選擇正確的查詢方式
 		var columnsQuery string
-		var args []interface{}
+		var args []any
 
 		switch dialect {
 		case "mysql":
 			columnsQuery = "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = ? AND TABLE_SCHEMA = (SELECT DATABASE());"
-			args = []interface{}{tableName}
+			args = []any{tableName}
 		case "postgres":
 			columnsQuery = "SELECT column_name FROM information_schema.columns WHERE table_name = ? AND table_schema = current_schema();"
-			args = []interface{}{tableName}
+			args = []any{tableName}
 		case "sqlite":
 			columnsQuery = fmt.Sprintf("PRAGMA table_info(%s);", tableName)
 			rows, err := db.Raw(columnsQuery).Rows()

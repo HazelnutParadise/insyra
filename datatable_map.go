@@ -18,7 +18,7 @@ func (dt *DataTable) Map(mapFunc func(rowIndex int, colIndex string, element any
 		newDt = NewDataTable()
 
 		// 直接按順序處理每個列
-		for colPos := 0; colPos < numCols; colPos++ {
+		for colPos := range numCols {
 			originalCol := dt.columns[colPos]
 			// 生成列索引（A, B, C...）
 			colIndex := generateColIndex(colPos)
@@ -26,7 +26,7 @@ func (dt *DataTable) Map(mapFunc func(rowIndex int, colIndex string, element any
 			newCol := NewDataList()
 			newCol.SetName(originalCol.GetName()) // 保持原來的列名
 
-			for rowIndex := 0; rowIndex < numRows; rowIndex++ {
+			for rowIndex := range numRows {
 				func() {
 					defer func() {
 						if r := recover(); r != nil {
@@ -56,7 +56,7 @@ func (dt *DataTable) Map(mapFunc func(rowIndex int, colIndex string, element any
 		}
 
 		// 直接複製行名稱以避免死鎖
-		for rowIndex := 0; rowIndex < numRows; rowIndex++ {
+		for rowIndex := range numRows {
 			if rowName, exists := dt.getRowNameByIndex(rowIndex); exists {
 				newDt.SetRowNameByIndex(rowIndex, rowName)
 			}

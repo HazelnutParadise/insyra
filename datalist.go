@@ -511,7 +511,7 @@ func (dl *DataList) ClearStrings() *DataList {
 		// 構建任務切片
 		var tasks []asyncutil.Task
 
-		for i := 0; i < numGoroutines; i++ {
+		for i := range numGoroutines {
 			start := i * chunkSize
 			end := start + chunkSize
 			if end > length {
@@ -598,24 +598,25 @@ func (dl *DataList) ClearOutliers(stdDevs float64) *DataList {
 		}
 		go dl.updateTimestamp()
 	}()
+	dl.AtomicDo(func(dl *DataList) {
+		mean := dl.Mean()
+		stddev := dl.Stdev()
+		threshold := stdDevs * stddev
 
-	mean := dl.Mean()
-	stddev := dl.Stdev()
-	threshold := stdDevs * stddev
+		// 打印調試信息，確保計算值與 R 相同
+		LogDebug("DataList", "ClearOutliers", "Mean: %f", mean)
+		LogDebug("DataList", "ClearOutliers", "Standard Deviation: %f", stddev)
+		LogDebug("DataList", "ClearOutliers", "Threshold: %f", threshold)
 
-	// 打印調試信息，確保計算值與 R 相同
-	LogDebug("DataList", "ClearOutliers", "Mean: %f", mean)
-	LogDebug("DataList", "ClearOutliers", "Standard Deviation: %f", stddev)
-	LogDebug("DataList", "ClearOutliers", "Threshold: %f", threshold)
-
-	for i := dl.Len() - 1; i >= 0; i-- {
-		val := conv.ParseF64(dl.Data()[i])
-		LogDebug("DataList", "ClearOutliers", "Checking value: %f", val) // 打印每個檢查的值
-		if math.Abs(val-mean) > threshold {
-			LogDebug("DataList", "ClearOutliers", "Removing outlier: %f", val) // 打印要移除的異常值
-			dl.Drop(i)
+		for i := dl.Len() - 1; i >= 0; i-- {
+			val := conv.ParseF64(dl.Data()[i])
+			LogDebug("DataList", "ClearOutliers", "Checking value: %f", val) // 打印每個檢查的值
+			if math.Abs(val-mean) > threshold {
+				LogDebug("DataList", "ClearOutliers", "Removing outlier: %f", val) // 打印要移除的異常值
+				dl.Drop(i)
+			}
 		}
-	}
+	})
 	return dl
 }
 
@@ -630,15 +631,22 @@ func (dl *DataList) Normalize() *DataList {
 
 		go dl.updateTimestamp()
 	}()
-	min, max := dl.Min(), dl.Max()
-	if math.IsNaN(min) || math.IsNaN(max) {
-		LogWarning("DataList", "Normalize", "Cannot normalize due to invalid Min/Max values")
-		return nil
-	}
+	isFailed := false
+	dl.AtomicDo(func(dl *DataList) {
+		min, max := dl.Min(), dl.Max()
+		if math.IsNaN(min) || math.IsNaN(max) {
+			LogWarning("DataList", "Normalize", "Cannot normalize due to invalid Min/Max values")
+			isFailed = true
+			return
+		}
 
-	for i, v := range dl.Data() {
-		vfloat := conv.ParseF64(v)
-		dl.data[i] = (vfloat - min) / (max - min)
+		for i, v := range dl.Data() {
+			vfloat := conv.ParseF64(v)
+			dl.data[i] = (vfloat - min) / (max - min)
+		}
+	})
+	if isFailed {
+		return nil
 	}
 	return dl
 }
@@ -693,17 +701,25 @@ func (dl *DataList) FillNaNWithMean() *DataList {
 // MovingAverage calculates the moving average of the DataList using a specified window size.
 // Returns a new DataList containing the moving average values.
 func (dl *DataList) MovingAverage(windowSize int) *DataList {
-	if windowSize <= 0 || windowSize > dl.Len() {
-		LogWarning("DataList", "MovingAverage", "Invalid window size")
-		return nil
-	}
-	movingAverageData := make([]float64, dl.Len()-windowSize+1)
-	for i := range movingAverageData {
-		windowSum := 0.0
-		for j := range windowSize {
-			windowSum += dl.Data()[i+j].(float64)
+	var movingAverageData []float64
+	isFailed := false
+	dl.AtomicDo(func(dl *DataList) {
+		if windowSize <= 0 || windowSize > dl.Len() {
+			LogWarning("DataList", "MovingAverage", "Invalid window size")
+			isFailed = true
+			return
 		}
-		movingAverageData[i] = windowSum / float64(windowSize)
+		movingAverageData = make([]float64, dl.Len()-windowSize+1)
+		for i := range movingAverageData {
+			windowSum := 0.0
+			for j := range windowSize {
+				windowSum += dl.Data()[i+j].(float64)
+			}
+			movingAverageData[i] = windowSum / float64(windowSize)
+		}
+	})
+	if isFailed {
+		return nil
 	}
 	return NewDataList(movingAverageData)
 }
@@ -713,25 +729,33 @@ func (dl *DataList) MovingAverage(windowSize int) *DataList {
 // Returns a new DataList containing the weighted moving average values.
 func (dl *DataList) WeightedMovingAverage(windowSize int, weights any) *DataList {
 	weightsSlice, sliceLen := ProcessData(weights)
-	if windowSize <= 0 || windowSize > dl.Len() || sliceLen != windowSize {
-		LogWarning("DataList", "WeightedMovingAverage", "Invalid window size or weights length")
-		return nil
-	}
-
-	// 計算權重總和，避免直接除以 windowSize
-	weightsSum := 0.0
-	for _, w := range weightsSlice {
-		weightsSum += w.(float64)
-	}
-
-	movingAvgData := make([]float64, dl.Len()-windowSize+1)
-	for i := 0; i < len(movingAvgData); i++ {
-		window := dl.Data()[i : i+windowSize]
-		sum := 0.0
-		for j := 0; j < windowSize; j++ {
-			sum += window[j].(float64) * weightsSlice[j].(float64)
+	var movingAvgData []float64
+	isFailed := false
+	dl.AtomicDo(func(dl *DataList) {
+		if windowSize <= 0 || windowSize > dl.Len() || sliceLen != windowSize {
+			LogWarning("DataList", "WeightedMovingAverage", "Invalid window size or weights length")
+			isFailed = true
+			return
 		}
-		movingAvgData[i] = sum / weightsSum // 使用權重總和
+
+		// 計算權重總和，避免直接除以 windowSize
+		weightsSum := 0.0
+		for _, w := range weightsSlice {
+			weightsSum += w.(float64)
+		}
+
+		movingAvgData = make([]float64, dl.Len()-windowSize+1)
+		for i := 0; i < len(movingAvgData); i++ {
+			window := dl.Data()[i : i+windowSize]
+			sum := 0.0
+			for j := 0; j < windowSize; j++ {
+				sum += window[j].(float64) * weightsSlice[j].(float64)
+			}
+			movingAvgData[i] = sum / weightsSum // 使用權重總和
+		}
+	})
+	if isFailed {
+		return nil
 	}
 	return NewDataList(movingAvgData)
 }
@@ -745,11 +769,15 @@ func (dl *DataList) ExponentialSmoothing(alpha float64) *DataList {
 		return nil
 	}
 
-	smoothedData := make([]float64, dl.Len())
-	smoothedData[0] = dl.Data()[0].(float64) // 使用初始值作為第一個平滑值
-	for i := 1; i < dl.Len(); i++ {
-		smoothedData[i] = alpha*dl.Data()[i].(float64) + (1-alpha)*smoothedData[i-1]
-	}
+	var smoothedData []float64
+	dl.AtomicDo(func(dl *DataList) {
+		floatData := dl.ToF64Slice()
+		smoothedData = make([]float64, dl.Len())
+		smoothedData[0] = floatData[0] // 使用初始值作為第一個平滑值
+		for i := 1; i < dl.Len(); i++ {
+			smoothedData[i] = alpha*floatData[i] + (1-alpha)*smoothedData[i-1]
+		}
+	})
 	return NewDataList(smoothedData)
 }
 
@@ -761,31 +789,42 @@ func (dl *DataList) DoubleExponentialSmoothing(alpha, beta float64) *DataList {
 		LogWarning("DataList", "DoubleExponentialSmoothing", "Invalid alpha or beta value")
 		return nil
 	}
+	var smoothedData []float64
+	dl.AtomicDo(func(dl *DataList) {
+		floatData := dl.ToF64Slice()
+		smoothedData = make([]float64, dl.Len())
+		trend := 0.0
+		level := floatData[0]
 
-	smoothedData := make([]float64, dl.Len())
-	trend := 0.0
-	level := dl.Data()[0].(float64)
-
-	smoothedData[0] = level
-	for i := 1; i < dl.Len(); i++ {
-		prevLevel := level
-		level = alpha*dl.Data()[i].(float64) + (1-alpha)*(level+trend)
-		trend = beta*(level-prevLevel) + (1-beta)*trend
-		smoothedData[i] = level + trend
-	}
+		smoothedData[0] = level
+		for i := 1; i < dl.Len(); i++ {
+			prevLevel := level
+			level = alpha*floatData[i] + (1-alpha)*(level+trend)
+			trend = beta*(level-prevLevel) + (1-beta)*trend
+			smoothedData[i] = level + trend
+		}
+	})
 	return NewDataList(smoothedData)
 }
 
 // MovingStdDev calculates the moving standard deviation for the DataList using a specified window size.
 func (dl *DataList) MovingStdev(windowSize int) *DataList {
-	if windowSize <= 0 || windowSize > dl.Len() {
-		LogWarning("DataList", "MovingStdev", "Invalid window size")
+	var movingStdDevData []float64
+	isFailed := false
+	dl.AtomicDo(func(dl *DataList) {
+		if windowSize <= 0 || windowSize > dl.Len() {
+			LogWarning("DataList", "MovingStdev", "Invalid window size")
+			isFailed = true
+			return
+		}
+		movingStdDevData = make([]float64, dl.Len()-windowSize+1)
+		for i := range movingStdDevData {
+			window := NewDataList(dl.Data()[i : i+windowSize])
+			movingStdDevData[i] = window.Stdev()
+		}
+	})
+	if isFailed {
 		return nil
-	}
-	movingStdDevData := make([]float64, dl.Len()-windowSize+1)
-	for i := 0; i < len(movingStdDevData); i++ {
-		window := NewDataList(dl.Data()[i : i+windowSize])
-		movingStdDevData[i] = window.Stdev()
 	}
 	return NewDataList(movingStdDevData)
 }
@@ -1068,7 +1107,6 @@ func (dl *DataList) Mean() float64 {
 func (dl *DataList) WeightedMean(weights any) float64 {
 	var result float64
 	dl.AtomicDo(func(dl *DataList) {
-
 		if dl.Len() == 0 {
 			LogWarning("DataList", "WeightedMean", "DataList is empty")
 			result = math.NaN()
@@ -1265,29 +1303,39 @@ func (dl *DataList) Mode() []float64 {
 // MAD calculates the mean absolute deviation of the DataList.
 // Returns math.NaN() if the DataList is empty or if no valid elements can be used.
 func (dl *DataList) MAD() float64 {
-	if dl.Len() == 0 {
-		LogWarning("DataList", "MAD", "DataList is empty")
-		return math.NaN()
-	}
-
-	// Calculate the median using the modified Median function
-	median := dl.Median()
-	if math.IsNaN(median) {
-		LogWarning("DataList", "MAD", "Median calculation failed")
-		return math.NaN()
-	}
-
-	// Calculate the mean absolute deviation
-	var sum float64
-	var count int
-	for _, v := range dl.Data() {
-		val, ok := ToFloat64Safe(v)
-		if !ok {
-			LogWarning("DataList", "MAD", "Element %v is not a numeric type, skipping", v)
-			continue
+	var sum = 0.0
+	var count = 0
+	var earlyResult *float64
+	dl.AtomicDo(func(dl *DataList) {
+		if dl.Len() == 0 {
+			LogWarning("DataList", "MAD", "DataList is empty")
+			earlyResult = new(float64)
+			*earlyResult = math.NaN()
+			return
 		}
-		sum += math.Abs(val - median)
-		count++
+
+		// Calculate the median using the modified Median function
+		median := dl.Median()
+		if math.IsNaN(median) {
+			LogWarning("DataList", "MAD", "Median calculation failed")
+			earlyResult = new(float64)
+			*earlyResult = math.NaN()
+			return
+		}
+
+		// Calculate the mean absolute deviation
+		for _, v := range dl.Data() {
+			val, ok := ToFloat64Safe(v)
+			if !ok {
+				LogWarning("DataList", "MAD", "Element %v is not a numeric type, skipping", v)
+				continue
+			}
+			sum += math.Abs(val - median)
+			count++
+		}
+	})
+	if earlyResult != nil {
+		return *earlyResult
 	}
 
 	if count == 0 {
@@ -1560,13 +1608,22 @@ func (dl *DataList) Quartile(q int) float64 {
 // Returns math.NaN() if the DataList is empty or if Q1 or Q3 cannot be calculated.
 // Returns the interquartile range (Q3 - Q1) as a float64.
 func (dl *DataList) IQR() float64 {
-	if dl.Len() == 0 {
-		LogWarning("DataList", "IQR", "DataList is empty")
-		return math.NaN()
-	}
+	var q1, q3 float64
+	var earlyResult *float64
+	dl.AtomicDo(func(dl *DataList) {
+		if dl.Len() == 0 {
+			LogWarning("DataList", "IQR", "DataList is empty")
+			earlyResult = new(float64)
+			*earlyResult = math.NaN()
+			return
+		}
 
-	q1 := dl.Quartile(1)
-	q3 := dl.Quartile(3)
+		q1 = dl.Quartile(1)
+		q3 = dl.Quartile(3)
+	})
+	if earlyResult != nil {
+		return *earlyResult
+	}
 
 	if math.IsNaN(q1) || math.IsNaN(q3) {
 		LogWarning("DataList", "IQR", "Q1 or Q3 calculation failed")
@@ -1752,7 +1809,6 @@ func (dl *DataList) IsTheSameAs(anotherDl *DataList) bool {
 // If parsing fails, the element is left unchanged.
 func (dl *DataList) ParseNumbers() *DataList {
 	dl.AtomicDo(func(dl *DataList) {
-
 		for i, v := range dl.data {
 			func() {
 				defer func() {
@@ -1848,11 +1904,7 @@ func (dl *DataList) GetCreationTimestamp() int64 {
 
 // GetLastModifiedTimestamp returns the last updated time of the DataList in Unix timestamp.
 func (dl *DataList) GetLastModifiedTimestamp() int64 {
-	var ts int64
-	dl.AtomicDo(func(dl *DataList) {
-		ts = dl.lastModifiedTimestamp.Load()
-	})
-	return ts
+	return dl.lastModifiedTimestamp.Load()
 }
 
 // updateTimestamp updates the lastModifiedTimestamp to the current Unix time.

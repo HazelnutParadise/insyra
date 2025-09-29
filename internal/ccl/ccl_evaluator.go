@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
 
 	"github.com/HazelnutParadise/insyra/internal/utils"
 )
@@ -145,20 +146,41 @@ func applyOperator(op string, left, right any) (any, error) {
 		}
 	}
 
-	// 對於布林運算，特別處理
-	if op == "==" || op == "!=" {
-		// 如果是布林值，直接比較
-		lb, lokBool := left.(bool)
-		rb, rokBool := right.(bool)
-		if lokBool && rokBool {
-			if op == "==" {
-				return lb == rb, nil
-			} else {
-				return lb != rb, nil
-			}
+	// 對於比較運算，嘗試將值轉換為數字進行比較
+	lf, lok := toFloat64(left)
+	rf, rok := toFloat64(right)
+	if lok && rok {
+		// 兩者都能轉換為數字，使用數字比較
+		switch op {
+		case "+":
+			return lf + rf, nil
+		case "-":
+			return lf - rf, nil
+		case "*":
+			return lf * rf, nil
+		case "/":
+			return lf / rf, nil
+		case "^":
+			return math.Pow(lf, rf), nil
+		case ">":
+			return lf > rf, nil
+		case "<":
+			return lf < rf, nil
+		case ">=":
+			return lf >= rf, nil
+		case "<=":
+			return lf <= rf, nil
+		case "==":
+			return lf == rf, nil
+		case "!=":
+			return lf != rf, nil
+		default:
+			return nil, fmt.Errorf("unsupported operator: %s", op)
 		}
+	}
 
-		// 如果是字串比較
+	// 如果不能都轉換為數字，對於==和!=，檢查是否都是字串
+	if op == "==" || op == "!=" {
 		ls, lokStr := left.(string)
 		rs, rokStr := right.(string)
 		if lokStr && rokStr {
@@ -166,6 +188,17 @@ func applyOperator(op string, left, right any) (any, error) {
 				return ls == rs, nil
 			} else {
 				return ls != rs, nil
+			}
+		}
+
+		// 如果是布林值比較
+		lb, lokBool := left.(bool)
+		rb, rokBool := right.(bool)
+		if lokBool && rokBool {
+			if op == "==" {
+				return lb == rb, nil
+			} else {
+				return lb != rb, nil
 			}
 		}
 
@@ -177,43 +210,12 @@ func applyOperator(op string, left, right any) (any, error) {
 		}
 	}
 
-	// 其他情況處理數值比較
-	lf, lok := toFloat64(left)
-	rf, rok := toFloat64(right)
-	if !lok || !rok {
-		// 不同數據類型間的大小比較，直接返回false
-		if op == ">" || op == "<" || op == ">=" || op == "<=" {
-			return false, nil
-		}
-		return nil, fmt.Errorf("invalid operands for %s: %v, %v", op, left, right)
+	// 對於大小比較，如果不能轉換為數字，返回false
+	if op == ">" || op == "<" || op == ">=" || op == "<=" {
+		return false, nil
 	}
 
-	switch op {
-	case "+":
-		return lf + rf, nil
-	case "-":
-		return lf - rf, nil
-	case "*":
-		return lf * rf, nil
-	case "/":
-		return lf / rf, nil
-	case "^":
-		return math.Pow(lf, rf), nil
-	case ">":
-		return lf > rf, nil
-	case "<":
-		return lf < rf, nil
-	case ">=":
-		return lf >= rf, nil
-	case "<=":
-		return lf <= rf, nil
-	case "==":
-		return lf == rf, nil
-	case "!=":
-		return lf != rf, nil
-	default:
-		return nil, fmt.Errorf("unsupported operator: %s", op)
-	}
+	return nil, fmt.Errorf("invalid operands for %s: %v, %v", op, left, right)
 }
 
 func toFloat64(val any) (float64, bool) {
@@ -228,7 +230,8 @@ func toFloat64(val any) (float64, bool) {
 		}
 		return 0.0, true
 	case string:
-		f, err := strconv.ParseFloat(v, 64)
+		trimmed := strings.TrimSpace(v)
+		f, err := strconv.ParseFloat(trimmed, 64)
 		return f, err == nil
 	case nil:
 		return 0.0, true

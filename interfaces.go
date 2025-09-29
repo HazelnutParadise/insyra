@@ -213,6 +213,8 @@ type IDataTable interface {
 
 	ToSQL(db *gorm.DB, tableName string, options ...ToSQLOptions) error
 
+	AddColUsingCCL(newColName, ccl string) *DataTable
+
 	sortColsByIndex()
 	regenerateColIndex()
 }
