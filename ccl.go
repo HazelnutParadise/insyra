@@ -38,7 +38,7 @@ func applyCCLOnDataTable(table *DataTable, formula string) ([]any, error) {
 	table.AtomicDo(func(table *DataTable) {
 		numRow, numCol := table.getMaxColLength(), len(table.columns)
 		result = make([]any, numRow)
-		for i := 0; i < numRow; i++ {
+		for i := range numRow {
 			// 建構第 i 行的資料
 			row := make([]any, numCol)
 			for j := range numCol {

@@ -459,36 +459,39 @@ func (dt *DataTable) UpdateRow(index int, dl *DataList) {
 // SetColToRowNames sets the row names to the values of the specified column and drops the column.
 func (dt *DataTable) SetColToRowNames(columnIndex string) *DataTable {
 	columnIndex = strings.ToUpper(columnIndex)
-	column := dt.GetCol(columnIndex)
-	for i, value := range column.data {
-		if value != nil {
-			rowName := safeRowName(dt, conv.ToString(value))
-			dt.rowNames[rowName] = i
+	dt.AtomicDo(func(dt *DataTable) {
+		column := dt.GetCol(columnIndex)
+		for i, value := range column.data {
+			if value != nil {
+				rowName := safeRowName(dt, conv.ToString(value))
+				dt.rowNames[rowName] = i
+			}
 		}
-	}
 
-	dt.DropColsByIndex(columnIndex)
+		dt.DropColsByIndex(columnIndex)
 
-	dt.regenerateColIndex()
+		dt.regenerateColIndex()
 
-	go dt.updateTimestamp()
+		go dt.updateTimestamp()
+	})
 	return dt
 }
 
 // SetRowToColNames sets the column names to the values of the specified row and drops the row.
 func (dt *DataTable) SetRowToColNames(rowIndex int) *DataTable {
-	row := dt.GetRow(rowIndex)
 	dt.AtomicDo(func(dt *DataTable) {
+		row := dt.GetRow(rowIndex)
 		for i, value := range row.data {
 			if value != nil {
 				columnName := safeColName(dt, conv.ToString(value))
 				dt.columns[i].name = columnName
 			}
 		}
-	})
-	dt.DropRowsByIndex(rowIndex)
 
-	go dt.updateTimestamp()
+		dt.DropRowsByIndex(rowIndex)
+
+		go dt.updateTimestamp()
+	})
 	return dt
 }
 
@@ -1086,10 +1089,13 @@ func (dt *DataTable) Data(useNamesAsKeys ...bool) map[string][]any {
 
 // Count returns the number of occurrences of the given value in the DataTable.
 func (dt *DataTable) Count(value any) int {
-	result := asyncutil.ParallelForEach(dt.columns, func(i int, column any) int {
-		return dt.columns[i].Count(value)
+	var count float64
+	dt.AtomicDo(func(dt *DataTable) {
+		result := asyncutil.ParallelForEach(dt.columns, func(i int, column any) int {
+			return dt.columns[i].Count(value)
+		})
+		count = NewDataList(result).Sum()
 	})
-	count := NewDataList(result).Sum()
 	return conv.ParseInt(count)
 }
 

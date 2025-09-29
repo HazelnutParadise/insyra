@@ -10,101 +10,104 @@ import (
 
 // Summary displays a comprehensive statistical summary of the DataList directly to the console.
 func (dl *DataList) Summary() {
-	// 無鎖操作，避免與 Mean/Median 等方法重入鎖時造成死鎖
+	dl.AtomicDo(func(dl *DataList) {
+		dlName := dl.GetName()
+		dlLen := dl.Len()
+		dlData := dl.Data()
 
-	// Get terminal window width
-	width := getDataListTerminalWidth()
+		// Get terminal window width
+		width := getDataListTerminalWidth()
 
-	// Generate data title
-	dataTitle := "DataList Statistical Summary"
-	if dl.name != "" {
-		dataTitle += ": " + dl.name
-	}
-	// Calculate all statistics first, then display them at once
-	// Basic statistical data structure
-	type StatisticsData struct {
-		// Basic information
-		totalCount     int
-		numericCount   int
-		numericPercent float64
+		// Generate data title
+		dataTitle := "DataList Statistical Summary"
+		if dlName != "" {
+			dataTitle += ": " + dlName
+		}
+		// Calculate all statistics first, then display them at once
+		// Basic statistical data structure
+		type StatisticsData struct {
+			// Basic information
+			totalCount     int
+			numericCount   int
+			numericPercent float64
 
-		// Central tendency
-		mean       float64
-		median     float64
-		modeValues []float64
+			// Central tendency
+			mean       float64
+			median     float64
+			modeValues []float64
 
-		// Dispersion
-		min      float64
-		max      float64
-		rangeVal float64
-		stdev    float64
-		variance float64
+			// Dispersion
+			min      float64
+			max      float64
+			rangeVal float64
+			stdev    float64
+			variance float64
 
-		// Quantiles
-		q1  float64
-		q3  float64
-		iqr float64
-	}
-	// Check if DataList is empty
-	totalCount := len(dl.data)
-	if totalCount == 0 {
-		// Display header - using yellow as DataList primary color
+			// Quantiles
+			q1  float64
+			q3  float64
+			iqr float64
+		}
+		// Check if DataList is empty
+		if dlLen == 0 {
+			// Display header - using yellow as DataList primary color
+			fmt.Println(utils.ColorText("1;33", dataTitle))
+			fmt.Println(strings.Repeat("=", min(width, 80)))
+			fmt.Println(utils.ColorText("3;33", "Empty dataset"))
+			return
+		}
+
+		// Count numeric values
+		numericCount := 0
+		for _, v := range dlData {
+			if IsNumeric(v) {
+				numericCount++
+			}
+		}
+
+		// Start displaying results
+		// Display header - using green as DataList primary color
 		fmt.Println(utils.ColorText("1;33", dataTitle))
 		fmt.Println(strings.Repeat("=", min(width, 80)))
-		fmt.Println(utils.ColorText("3;33", "Empty dataset"))
-		return
-	}
 
-	// Count numeric values
-	numericCount := 0
-	for _, v := range dl.data {
-		if IsNumeric(v) {
-			numericCount++
+		// Initialize statistics
+		stats := StatisticsData{
+			totalCount:     dlLen,
+			numericCount:   numericCount,
+			numericPercent: float64(numericCount) / float64(dlLen) * 100,
 		}
-	}
 
-	// Start displaying results
-	// Display header - using green as DataList primary color
-	fmt.Println(utils.ColorText("1;33", dataTitle))
-	fmt.Println(strings.Repeat("=", min(width, 80)))
+		// Display basic info
+		fmt.Printf("Total items: %s\n", utils.ColorText("1;33", fmt.Sprintf("%d", stats.totalCount)))
+		fmt.Printf("Numeric items: %s\n", utils.ColorText("1;33", fmt.Sprintf("%d (%.1f%%)", stats.numericCount, stats.numericPercent)))
+		fmt.Println()
 
-	// Initialize statistics
-	stats := StatisticsData{
-		totalCount:     totalCount,
-		numericCount:   numericCount,
-		numericPercent: float64(numericCount) / float64(totalCount) * 100,
-	}
+		// Calculate statistics only if we have numeric values
+		if numericCount > 0 {
+			// Calculate all statistical indicators
+			stats.mean = dl.Mean()
+			stats.median = dl.Median()
+			stats.min = dl.Min()
+			stats.max = dl.Max()
+			stats.rangeVal = dl.Range()
+			stats.stdev = dl.Stdev()
+			stats.variance = dl.Var()
+			stats.q1 = dl.Quartile(1)
+			stats.q3 = dl.Quartile(3)
+			stats.iqr = dl.IQR()
+			stats.modeValues = dl.Mode()
+		} // Calculate statistics only if we have numeric values
+		if numericCount == 0 {
+			fmt.Println(utils.ColorText("3;33", "No numeric data available for statistical analysis"))
+			return
+		}
 
-	// Display basic info
-	fmt.Printf("Total items: %s\n", utils.ColorText("1;33", fmt.Sprintf("%d", stats.totalCount)))
-	fmt.Printf("Numeric items: %s\n", utils.ColorText("1;33", fmt.Sprintf("%d (%.1f%%)", stats.numericCount, stats.numericPercent)))
-	fmt.Println()
+		// Create a nice table with borders for statistics
+		fmt.Println(utils.ColorText("1;33", "Statistical Summary"))
 
-	// Calculate statistics only if we have numeric values
-	if numericCount > 0 {
-		// Calculate all statistical indicators
-		stats.mean = dl.Mean()
-		stats.median = dl.Median()
-		stats.min = dl.Min()
-		stats.max = dl.Max()
-		stats.rangeVal = dl.Range()
-		stats.stdev = dl.Stdev()
-		stats.variance = dl.Var()
-		stats.q1 = dl.Quartile(1)
-		stats.q3 = dl.Quartile(3)
-		stats.iqr = dl.IQR()
-		stats.modeValues = dl.Mode()
-	} // Calculate statistics only if we have numeric values
-	if numericCount == 0 {
-		fmt.Println(utils.ColorText("3;33", "No numeric data available for statistical analysis"))
-		return
-	}
-
-	// Create a nice table with borders for statistics
-	fmt.Println(utils.ColorText("1;33", "Statistical Summary"))
-
-	// 使用新的自適應表格顯示邏輯
-	displayDataListSummaryTable(stats, width)
+		// 使用新的自適應表格顯示邏輯
+		displayDataListSummaryTable(stats, width)
+	})
 }
 
 // formatFloat 用於格式化浮點數，處理 NaN 值
