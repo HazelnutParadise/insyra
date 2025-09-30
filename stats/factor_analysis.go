@@ -2,6 +2,7 @@ package stats
 
 import (
 	"errors"
+	"fmt"
 	"math"
 
 	"github.com/HazelnutParadise/insyra"
@@ -174,6 +175,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	var rowNum, colNum int
 	var data *mat.Dense
 	var means, sds []float64
+	var colNames []string
 
 	// Step 1: Preprocess data
 	dt.AtomicDo(func(table *insyra.DataTable) {
@@ -182,6 +184,15 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		// Check for empty data
 		if rowNum == 0 || colNum == 0 {
 			return
+		}
+
+		// Get column names
+		colNames = make([]string, colNum)
+		for j := 0; j < colNum; j++ {
+			colNames[j] = table.GetColNameByNumber(j)
+			if colNames[j] == "" {
+				colNames[j] = fmt.Sprintf("Var%d", j+1)
+			}
 		}
 
 		// Convert DataTable to matrix
@@ -406,8 +417,14 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	}
 
 	// Convert results to DataTables
+	// Generate factor column names
+	factorColNames := make([]string, numFactors)
+	for i := 0; i < numFactors; i++ {
+		factorColNames[i] = fmt.Sprintf("Factor%d", i+1)
+	}
+
 	result := FactorAnalysisResult{
-		Loadings:             matrixToDataTable(rotatedLoadings, "Factor Loadings"),
+		Loadings:             matrixToDataTableWithNames(rotatedLoadings, "Factor Loadings", factorColNames, colNames),
 		Uniquenesses:         vectorToDataList(uniquenesses, "Uniqueness"),
 		Communalities:        vectorToDataList(communalities, "Communality"),
 		Phi:                  nil,
@@ -423,13 +440,13 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	}
 
 	if rotationMatrix != nil {
-		result.RotationMatrix = matrixToDataTable(rotationMatrix, "Rotation")
+		result.RotationMatrix = matrixToDataTableWithNames(rotationMatrix, "Rotation", factorColNames, factorColNames)
 	}
 	if phi != nil {
-		result.Phi = matrixToDataTable(phi, "Phi")
+		result.Phi = matrixToDataTableWithNames(phi, "Phi", factorColNames, factorColNames)
 	}
 	if scores != nil {
-		result.Scores = matrixToDataTable(scores, "Scores")
+		result.Scores = matrixToDataTableWithNames(scores, "Scores", factorColNames, nil)
 	}
 
 	return &FactorModel{
@@ -912,6 +929,36 @@ func matrixToDataTable(m *mat.Dense, baseName string) insyra.IDataTable {
 	return dt.SetName(baseName)
 }
 
+// matrixToDataTableWithNames converts a gonum matrix to a DataTable with specified column and row names
+func matrixToDataTableWithNames(m *mat.Dense, baseName string, colNames []string, rowNames []string) insyra.IDataTable {
+	if m == nil {
+		return nil
+	}
+
+	r, c := m.Dims()
+	dt := insyra.NewDataTable()
+
+	for j := range c {
+		col := insyra.NewDataList()
+		for i := range r {
+			col.Append(m.At(i, j))
+		}
+		dt.AppendCols(col)
+	}
+
+	// Set column names
+	for j := 0; j < c && j < len(colNames); j++ {
+		dt.SetColNameByNumber(j, colNames[j])
+	}
+
+	// Set row names
+	for i := 0; i < r && i < len(rowNames); i++ {
+		dt.SetRowNameByIndex(i, rowNames[i])
+	}
+
+	return dt.SetName(baseName)
+}
+
 // vectorToDataList converts a float slice to a single-column DataList
 func vectorToDataList(v []float64, name string) insyra.IDataList {
 	return insyra.NewDataList(v).SetName(name)
@@ -983,7 +1030,15 @@ func (m *FactorModel) FactorScoresDT(dt insyra.IDataTable, method *FactorScoreMe
 	}
 
 	scores := computeFactorScores(data, loadings, uniquenesses, chosen)
-	return matrixToDataTable(scores, "Scores"), nil
+
+	// Generate factor column names
+	_, numFactors := loadings.Dims()
+	factorColNames := make([]string, numFactors)
+	for i := 0; i < numFactors; i++ {
+		factorColNames[i] = fmt.Sprintf("Factor%d", i+1)
+	}
+
+	return matrixToDataTableWithNames(scores, "Scores", factorColNames, nil), nil
 }
 
 // ScreeDataDT returns scree plot data (eigenvalues and cumulative proportion)

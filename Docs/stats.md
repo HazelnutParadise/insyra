@@ -1057,13 +1057,13 @@ const (
 ```go
 type FactorAnalysisResult struct {
     Loadings             insyra.IDataTable // Loading matrix (variables × factors)
-    Uniquenesses         insyra.IDataTable // Uniqueness vector (p × 1)
-    Communalities        insyra.IDataTable // Communality vector (p × 1)
+    Uniquenesses         insyra.IDataList  // Uniqueness vector (p × 1)
+    Communalities        insyra.IDataList  // Communality vector (p × 1)
     Phi                  insyra.IDataTable // Factor correlation matrix (m × m), nil for orthogonal
     RotationMatrix       insyra.IDataTable // Rotation matrix (m × m), nil if no rotation
-    Eigenvalues          insyra.IDataTable // Eigenvalues vector (p × 1)
-    ExplainedProportion  insyra.IDataTable // Proportion explained by each factor (m × 1)
-    CumulativeProportion insyra.IDataTable // Cumulative proportion explained (m × 1)
+    Eigenvalues          insyra.IDataList  // Eigenvalues vector (p × 1)
+    ExplainedProportion  insyra.IDataList  // Proportion explained by each factor (m × 1)
+    CumulativeProportion insyra.IDataList  // Cumulative proportion explained (m × 1)
     Scores               insyra.IDataTable // Factor scores (n × m), nil if not computed
 
     Converged  bool
@@ -1092,9 +1092,9 @@ type FactorModel struct {
 
 ```go
 // Perform factor analysis with default options
-model, err := stats.FactorAnalysis(dataTable, stats.DefaultFactorAnalysisOptions())
-if err != nil {
-    log.Fatal(err)
+model := stats.FactorAnalysis(dataTable, stats.DefaultFactorAnalysisOptions())
+if model == nil {
+    log.Fatal("Factor analysis failed")
 }
 
 // Display results
@@ -1131,36 +1131,6 @@ if err != nil {
 }
 scores.Show()
 scores.ToCSV("factor_scores.csv", true, true, true)
-```
-
-### ScreeDataDT
-
-```go
-func ScreeDataDT(dt insyra.IDataTable, standardize bool) (insyra.IDataTable, insyra.IDataTable, error)
-```
-
-**Purpose**: Generate data for scree plot to help determine the number of factors.
-
-**Parameters**:
-
-- `dt`: Input data table
-- `standardize`: Whether to standardize variables before analysis
-
-**Returns**:
-
-- Eigenvalues DataTable
-- Cumulative proportion DataTable
-
-**Example**:
-
-```go
-// Generate scree plot data
-eigenvalues, cumProp, err := stats.ScreeDataDT(dataTable, true)
-if err != nil {
-    log.Fatal(err)
-}
-eigenvalues.Show()
-cumProp.Show()
 ```
 
 ### DefaultFactorAnalysisOptions
