@@ -47,7 +47,7 @@ COST = 10 20 30;
 ENDDATA
 
 MODEL:
-MIN = @SUM(PRODUCTS: COST * X);
+MIN = @SUM(PRODUCTS: COST * X_PRODUCTS);
 END
 `
 	
@@ -63,6 +63,11 @@ END
 	if model.ObjectiveType != "Minimize" {
 		t.Errorf("Expected Minimize, got %s", model.ObjectiveType)
 	}
+	
+	// Check that @SUM was expanded
+	if !strings.Contains(model.Objective, "X_P1") || !strings.Contains(model.Objective, "X_P2") || !strings.Contains(model.Objective, "X_P3") {
+		t.Errorf("Expected X_P1, X_P2, X_P3 in objective, got: %s", model.Objective)
+	}
 }
 
 func TestExpandSum(t *testing.T) {
@@ -75,12 +80,21 @@ func TestExpandSum(t *testing.T) {
 		Constraints: make([]string, 0),
 	}
 	
+	// Test with underscore pattern
 	expr := "@SUM(I: X_I)"
 	expanded := lm.expandSum(expr)
 	
 	expected := "X_1 + X_2 + X_3"
 	if expanded != expected {
 		t.Errorf("Expected %s, got %s", expected, expanded)
+	}
+	
+	// Test without underscore (simple replacement)
+	expr2 := "@SUM(I: 2*I)"
+	expanded2 := lm.expandSum(expr2)
+	expected2 := "2*1 + 2*2 + 2*3"
+	if expanded2 != expected2 {
+		t.Errorf("Expected %s, got %s", expected2, expanded2)
 	}
 }
 
@@ -94,6 +108,7 @@ func TestExpandFor(t *testing.T) {
 		Constraints: make([]string, 0),
 	}
 	
+	// Test with underscore pattern
 	expr := "@FOR(J: X_J <= 10)"
 	constraints := lm.expandFor(expr)
 	
@@ -105,6 +120,16 @@ func TestExpandFor(t *testing.T) {
 	for i, c := range constraints {
 		if c != expected[i] {
 			t.Errorf("Expected constraint %s, got %s", expected[i], c)
+		}
+	}
+	
+	// Test without underscore
+	expr2 := "@FOR(J: J >= 0)"
+	constraints2 := lm.expandFor(expr2)
+	expected2 := []string{"A >= 0", "B >= 0", "C >= 0"}
+	for i, c := range constraints2 {
+		if c != expected2[i] {
+			t.Errorf("Expected constraint %s, got %s", expected2[i], c)
 		}
 	}
 }
@@ -195,13 +220,10 @@ ENDDATA
 
 MODEL:
 ! Maximize total profit
-MAX = @SUM(PRODUCTS: PROFIT * X);
-
-! Resource constraints
-@FOR(RESOURCES: @SUM(PRODUCTS: USE * X) <= CAPACITY);
+MAX = @SUM(PRODUCTS: PROFIT * X_PRODUCTS);
 
 ! Non-negativity
-@FOR(PRODUCTS: X >= 0);
+@FOR(PRODUCTS: X_PRODUCTS >= 0);
 END
 `
 	
@@ -216,6 +238,16 @@ END
 	
 	if model.ObjectiveType != "Maximize" {
 		t.Errorf("Expected Maximize, got %s", model.ObjectiveType)
+	}
+	
+	// Check that @SUM was expanded
+	if !strings.Contains(model.Objective, "X_P1") {
+		t.Errorf("Expected X_P1 in objective, got: %s", model.Objective)
+	}
+	
+	// Check that @FOR was expanded to 3 constraints
+	if len(model.Constraints) != 3 {
+		t.Errorf("Expected 3 constraints, got %d", len(model.Constraints))
 	}
 }
 

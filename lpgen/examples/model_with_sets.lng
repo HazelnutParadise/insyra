@@ -12,8 +12,8 @@ ENDDATA
 
 MODEL:
 ! Maximize total profit
-MAX = @SUM(PRODUCTS: PROFIT * X);
+MAX = @SUM(PRODUCTS: PROFIT * X_PRODUCTS);
 
-! Resource constraints (simplified for demonstration)
-@FOR(PRODUCTS: X >= 0);
+! Non-negativity constraints
+@FOR(PRODUCTS: X_PRODUCTS >= 0);
 END

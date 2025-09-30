@@ -295,8 +295,18 @@ func (lm *LingoModel) expandSum(expr string) string {
 		// Expand the sum
 		terms := make([]string, 0)
 		for _, elem := range elements {
-			// Replace set index with actual element
-			term := strings.ReplaceAll(innerExpr, setName, elem)
+			// Replace set index with actual element - handle both direct replacement
+			// and patterns like X_SETNAME becoming X_elem
+			term := innerExpr
+			
+			// Replace variable patterns: VAR_SETNAME -> VAR_elem
+			varPattern := regexp.MustCompile(`\b(\w+)_` + setName + `\b`)
+			term = varPattern.ReplaceAllString(term, `${1}_`+elem)
+			
+			// Also replace standalone SETNAME with elem
+			standalonePattern := regexp.MustCompile(`\b` + setName + `\b`)
+			term = standalonePattern.ReplaceAllString(term, elem)
+			
 			terms = append(terms, term)
 		}
 		
@@ -331,7 +341,16 @@ func (lm *LingoModel) expandFor(expr string) []string {
 	
 	// Expand for each element
 	for _, elem := range elements {
-		constraint := strings.ReplaceAll(innerExpr, setName, elem)
+		constraint := innerExpr
+		
+		// Replace variable patterns: VAR_SETNAME -> VAR_elem
+		varPattern := regexp.MustCompile(`\b(\w+)_` + setName + `\b`)
+		constraint = varPattern.ReplaceAllString(constraint, `${1}_`+elem)
+		
+		// Also replace standalone SETNAME with elem
+		standalonePattern := regexp.MustCompile(`\b` + setName + `\b`)
+		constraint = standalonePattern.ReplaceAllString(constraint, elem)
+		
 		constraints = append(constraints, constraint)
 	}
 	
