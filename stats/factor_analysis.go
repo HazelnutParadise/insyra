@@ -714,26 +714,46 @@ func extractPCA(eigenvalues []float64, eigenvectors *mat.Dense, numFactors int) 
 	return loadings, true, 0, nil
 }
 
+// initialCommunalitiesSMC computes initial communalities using Squared Multiple Correlation
+func initialCommunalitiesSMC(corr *mat.Dense) []float64 {
+	p, _ := corr.Dims()
+	// Use SMC (Squared Multiple Correlation) for more accurate initialization
+	sym := denseToSym(corr)
+	var inv mat.Dense
+	if err := inv.Inverse(sym); err != nil {
+		// Fallback: use conservative initialization if matrix is singular
+		h2 := make([]float64, p)
+		for i := 0; i < p; i++ {
+			h2[i] = 0.7
+		}
+		return h2
+	}
+	h2 := make([]float64, p)
+	for i := 0; i < p; i++ {
+		// SMC_i = 1 - 1 / R^{-1}_{ii}
+		rii := inv.At(i, i)
+		if rii <= 0 {
+			h2[i] = 0.7
+			continue
+		}
+		v := 1.0 - 1.0/rii
+		if v < 0 {
+			v = 0
+		}
+		if v > 1 {
+			v = 1
+		}
+		h2[i] = v
+	}
+	return h2
+}
+
 // extractPAF extracts factors using Principal Axis Factoring
 func extractPAF(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64) (*mat.Dense, bool, int, error) {
 	p := corrMatrix.RawMatrix().Rows
 
-	// Initialize communalities with squared multiple correlations
-	communalities := make([]float64, p)
-	for i := 0; i < p; i++ {
-		// Simple initialization: use correlation with other variables
-		sum := 0.0
-		for j := 0; j < p; j++ {
-			if i != j {
-				val := corrMatrix.At(i, j)
-				sum += val * val
-			}
-		}
-		communalities[i] = sum / float64(p-1)
-		if communalities[i] > 1.0 {
-			communalities[i] = 1.0
-		}
-	}
+	// Initialize communalities with SMC (Squared Multiple Correlation)
+	communalities := initialCommunalitiesSMC(corrMatrix)
 
 	var loadings *mat.Dense
 	converged := false
@@ -1038,6 +1058,30 @@ func denseToSym(m *mat.Dense) *mat.SymDense {
 	return sym
 }
 
+// normalizeToCorrelation normalizes a matrix to have diagonal elements equal to 1
+// This converts a covariance-like matrix to a correlation matrix
+func normalizeToCorrelation(m *mat.Dense) *mat.Dense {
+	r, c := m.Dims()
+	if r != c {
+		return m
+	}
+	d := make([]float64, r)
+	for i := 0; i < r; i++ {
+		v := m.At(i, i)
+		if v <= 0 {
+			v = 1 // Avoid NaN, use 1 as fallback
+		}
+		d[i] = math.Sqrt(v)
+	}
+	out := mat.NewDense(r, r, nil)
+	for i := 0; i < r; i++ {
+		for j := 0; j < r; j++ {
+			out.Set(i, j, m.At(i, j)/(d[i]*d[j]))
+		}
+	}
+	return out
+}
+
 // rotateFactors rotates the factor loadings according to the provided options.
 // It returns the rotated loadings, the transformation matrix, and the factor correlation matrix (phi) when available.
 func rotateFactors(loadings *mat.Dense, opt FactorRotationOptions) (*mat.Dense, *mat.Dense, *mat.Dense) {
@@ -1269,7 +1313,10 @@ func rotatePromax(loadings *mat.Dense, kappa float64, maxIter int, tol float64, 
 	var phi mat.Dense
 	phi.Mul(&transInv, &transInvT)
 
-	return &rotated, &combined, &phi, nil
+	// Normalize Phi to have diagonal elements equal to 1 (correlation matrix)
+	phiNorm := normalizeToCorrelation(&phi)
+
+	return &rotated, &combined, phiNorm, nil
 }
 
 func rotateOblimin(loadings *mat.Dense, delta float64, maxIter int, tol float64, forceOblique bool) (*mat.Dense, *mat.Dense, *mat.Dense, error) {
@@ -1365,7 +1412,10 @@ func rotateOblimin(loadings *mat.Dense, delta float64, maxIter int, tol float64,
 	var phi mat.Dense
 	phi.Mul(&transInv, &transInvT)
 
-	return rotated, trans, &phi, nil
+	// Normalize Phi to have diagonal elements equal to 1 (correlation matrix)
+	phiNorm := normalizeToCorrelation(&phi)
+
+	return rotated, trans, phiNorm, nil
 }
 
 func invertWithFallback(dst *mat.Dense, src mat.Matrix) error {
@@ -1380,6 +1430,23 @@ func invertWithFallback(dst *mat.Dense, src mat.Matrix) error {
 		return nil
 	}
 	return pseudoInverse(dst, &dense)
+}
+
+// safeInvert inverts a matrix with optional regularization for numerical stability
+func safeInvert(dst *mat.Dense, src mat.Matrix, ridge float64) error {
+	var a mat.Dense
+	a.CloneFrom(src)
+	r, c := a.Dims()
+	if r == c && ridge > 0 {
+		for i := 0; i < r; i++ {
+			a.Set(i, i, a.At(i, i)+ridge)
+		}
+	}
+	if err := dst.Inverse(&a); err != nil {
+		// Still failed, try pseudo-inverse
+		return pseudoInverse(dst, &a)
+	}
+	return nil
 }
 
 func pseudoInverse(dst *mat.Dense, src mat.Matrix) error {
@@ -1466,7 +1533,7 @@ func computeFactorScores(data, loadings *mat.Dense, uniquenesses []float64, meth
 		prod.Mul(&loadingsTrans, loadings)
 
 		var inv mat.Dense
-		if err := inv.Inverse(&prod); err != nil {
+		if err := safeInvert(&inv, &prod, 1e-6); err != nil {
 			// If inversion fails, use pseudo-inverse or fallback
 			return scores
 		}
@@ -1499,7 +1566,7 @@ func computeFactorScores(data, loadings *mat.Dense, uniquenesses []float64, meth
 		temp2.Mul(&loadingsTrans, &temp1)
 
 		var inv mat.Dense
-		if err := inv.Inverse(&temp2); err != nil {
+		if err := safeInvert(&inv, &temp2, 1e-6); err != nil {
 			// Fallback to regression method
 			return computeFactorScores(data, loadings, uniquenesses, FactorScoreRegression)
 		}
@@ -1519,7 +1586,7 @@ func computeFactorScores(data, loadings *mat.Dense, uniquenesses []float64, meth
 		prod.Mul(&loadingsTrans, loadings)
 
 		var inv mat.Dense
-		if err := inv.Inverse(&prod); err != nil {
+		if err := safeInvert(&inv, &prod, 1e-6); err != nil {
 			return scores
 		}
 
