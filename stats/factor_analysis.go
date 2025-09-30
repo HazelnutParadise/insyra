@@ -175,7 +175,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	var rowNum, colNum int
 	var data *mat.Dense
 	var means, sds []float64
-	var colNames []string
+	var colNames, rowNames []string
 
 	// Step 1: Preprocess data
 	dt.AtomicDo(func(table *insyra.DataTable) {
@@ -187,13 +187,10 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		}
 
 		// Get column names
-		colNames = make([]string, colNum)
-		for j := 0; j < colNum; j++ {
-			colNames[j] = table.GetColNameByNumber(j)
-			if colNames[j] == "" {
-				colNames[j] = fmt.Sprintf("Var%d", j+1)
-			}
-		}
+		colNames = dt.ColNames()
+
+		// Get row names
+		rowNames = dt.RowNames()
 
 		// Convert DataTable to matrix
 		data = mat.NewDense(rowNum, colNum, nil)
@@ -259,6 +256,13 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 			}
 			data = newData
 			rowNum = len(validRows)
+
+			// Update row names for valid rows
+			newRowNames := make([]string, len(validRows))
+			for i, rowIdx := range validRows {
+				newRowNames[i] = rowNames[rowIdx]
+			}
+			rowNames = newRowNames
 		} else {
 			// For simplicity, use listwise deletion for now
 			insyra.LogWarning("stats", "FactorAnalysis", "only listwise deletion is currently supported for missing values")
@@ -446,7 +450,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		result.Phi = matrixToDataTableWithNames(phi, "Phi", factorColNames, factorColNames)
 	}
 	if scores != nil {
-		result.Scores = matrixToDataTableWithNames(scores, "Scores", factorColNames, nil)
+		result.Scores = matrixToDataTableWithNames(scores, "Scores", factorColNames, rowNames)
 	}
 
 	return &FactorModel{
@@ -987,10 +991,18 @@ func (m *FactorModel) FactorScoresDT(dt insyra.IDataTable, method *FactorScoreMe
 	// Convert DataTable to matrix and standardize using saved means and sds
 	var rowNum, colNum int
 	var data *mat.Dense
+	var rowNames []string
 
 	dt.AtomicDo(func(table *insyra.DataTable) {
 		rowNum, colNum = table.Size()
 		data = mat.NewDense(rowNum, colNum, nil)
+
+		// Get row names
+		rowNames = make([]string, rowNum)
+		for i := 0; i < rowNum; i++ {
+			rowNames[i] = table.GetRowNameByIndex(i)
+		}
+
 		for i := 0; i < rowNum; i++ {
 			row := table.GetRow(i)
 			for j := 0; j < colNum; j++ {
@@ -1048,7 +1060,7 @@ func (m *FactorModel) FactorScoresDT(dt insyra.IDataTable, method *FactorScoreMe
 		factorColNames[i] = fmt.Sprintf("Factor%d", i+1)
 	}
 
-	return matrixToDataTableWithNames(scores, "Scores", factorColNames, nil), nil
+	return matrixToDataTableWithNames(scores, "Scores", factorColNames, rowNames), nil
 }
 
 // ScreeDataDT returns scree plot data (eigenvalues and cumulative proportion)
