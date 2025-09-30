@@ -441,7 +441,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	// Generate factor column names
 	factorColNames := make([]string, numFactors)
 	for i := 0; i < numFactors; i++ {
-		factorColNames[i] = fmt.Sprintf("Factor%d", i+1)
+		factorColNames[i] = fmt.Sprintf("Factor_%d", i+1)
 	}
 
 	messages := []string{
@@ -1667,7 +1667,7 @@ func (m *FactorModel) FactorScores(dt insyra.IDataTable, method *FactorScoreMeth
 	_, numFactors := loadings.Dims()
 	factorColNames := make([]string, numFactors)
 	for i := 0; i < numFactors; i++ {
-		factorColNames[i] = fmt.Sprintf("Factor%d", i+1)
+		factorColNames[i] = fmt.Sprintf("Factor_%d", i+1)
 	}
 
 	return matrixToDataTableWithNames(scores, "Scores", factorColNames, rowNames), nil
@@ -1761,7 +1761,7 @@ func ScreePlotData(dt insyra.IDataTable, standardize bool) (eigenDT insyra.IData
 	// Generate factor names for rows
 	factorNames := make([]string, len(sortedEigenvalues))
 	for i := 0; i < len(sortedEigenvalues); i++ {
-		factorNames[i] = fmt.Sprintf("Factor%d", i+1)
+		factorNames[i] = fmt.Sprintf("Factor_%d", i+1)
 	}
 
 	eigenDT = vectorToDataTableWithNames(sortedEigenvalues, "Eigenvalue", "Eigenvalue", factorNames)
