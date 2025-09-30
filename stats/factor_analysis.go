@@ -787,10 +787,16 @@ func extractPAF(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64)
 	// Initialize communalities with SMC (Squared Multiple Correlation)
 	communalities := initialCommunalitiesSMC(corrMatrix)
 	
-	// Log initial communalities for debugging
+	// Log initial communalities and diagonal for debugging
 	if p >= 4 {
+		diag0 := corrMatrix.At(0, 0)
+		diag1 := corrMatrix.At(1, 1)
+		diag2 := corrMatrix.At(2, 2)
+		diag3 := corrMatrix.At(3, 3)
 		insyra.LogInfo("stats", "PAF", "init h2 (first 4) = %.3f, %.3f, %.3f, %.3f",
 			communalities[0], communalities[1], communalities[2], communalities[3])
+		insyra.LogInfo("stats", "PAF", "corr diagonal (first 4) = %.3f, %.3f, %.3f, %.3f",
+			diag0, diag1, diag2, diag3)
 	}
 
 	var loadings *mat.Dense
@@ -929,6 +935,12 @@ func extractML(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64) 
 			return nil, false, 0, fmt.Errorf("ml: unable to build initial loadings: %w", err)
 		}
 	}
+	
+	// Log initial loadings for debugging
+	if p >= 4 {
+		insyra.LogInfo("stats", "ML", "initial loadings[0,0:2] = %.3f, %.3f",
+			initial.At(0, 0), initial.At(0, min(1, numFactors-1)))
+	}
 
 	loadings := mat.Dense{}
 	loadings.CloneFrom(initial)
@@ -1002,13 +1014,21 @@ func extractML(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64) 
 		}
 
 		loadings.CloneFrom(&newLoadings)
+		
+		// Log convergence progress
+		if iter < 5 || iter == maxIter-1 {
+			insyra.LogDebug("stats", "ML", "iter %d: maxChange=%.6f, loadings[0,0]=%.4f", 
+				iter+1, maxChange, loadings.At(0, 0))
+		}
 
 		if maxChange < tol {
 			converged = true
+			insyra.LogInfo("stats", "ML", "converged in %d iterations", iter+1)
 			return &loadings, converged, iter + 1, nil
 		}
 	}
 
+	insyra.LogWarning("stats", "ML", "did not converge after %d iterations", maxIter)
 	return &loadings, converged, maxIter, nil
 }
 
@@ -1909,4 +1929,12 @@ func ScreePlotData(dt insyra.IDataTable, standardize bool) (eigenDT insyra.IData
 	cumDT = vectorToDataTableWithNames(cumulativeProp, "Cumulative", "Cumulative", factorNames)
 
 	return eigenDT, cumDT, nil
+}
+
+// min returns the minimum of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
