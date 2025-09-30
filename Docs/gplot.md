@@ -75,6 +75,62 @@ Creates a line chart based on the provided configuration.
 
 ![line_example](./img/gplot_line_example.png)
 
+### Scatter Plot
+
+#### `ScatterPlotConfig`
+
+- `Title`: The title of the chart.
+- `Data`: The data for the scatter plot. Supported types:
+  - `map[string][][]float64`: A map where keys are series names, and values are two-dimensional data (X, Y pairs).
+  - `[]*insyra.DataList`: A slice of DataList pointers, where each DataList contains alternating X and Y values.
+  - `[]insyra.IDataList`: A slice of IDataList interfaces, where each contains alternating X and Y values.
+- `XAxisName`: Optional: Name for the X-axis.
+- `YAxisName`: Optional: Name for the Y-axis.
+
+#### `CreateScatterPlot(config ScatterPlotConfig) *plot.Plot`
+
+Creates a scatter plot based on the provided configuration. Each series is displayed with different colors and shapes to distinguish them.
+
+#### Example
+
+```go
+package main
+
+import (
+	"github.com/HazelnutParadise/insyra/gplot"
+)
+
+func main() {
+	// Create scatter plot data
+	data := map[string][][]float64{
+		"Series A": {
+			{1.0, 2.0},
+			{2.0, 4.0},
+			{3.0, 6.0},
+			{4.0, 8.0},
+			{5.0, 10.0},
+		},
+		"Series B": {
+			{1.0, 1.0},
+			{2.0, 3.0},
+			{3.0, 5.0},
+			{4.0, 7.0},
+			{5.0, 9.0},
+		},
+	}
+
+	config := gplot.ScatterPlotConfig{
+		Title:     "Sample Scatter Plot",
+		Data:      data,
+		XAxisName: "X Axis",
+		YAxisName: "Y Axis",
+	}
+
+	plt := gplot.CreateScatterPlot(config)
+	gplot.SaveChart(plt, "scatter_plot.png")
+}
+```
+
 ### Function Plot
 
 #### `FunctionPlotConfig`
