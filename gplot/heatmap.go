@@ -11,19 +11,19 @@ import (
 
 // HeatmapChartConfig defines the configuration for a heatmap chart.
 type HeatmapChartConfig struct {
-	Title     string      // Title of the chart.
-	XAxisName string      // Optional: X-axis name.
-	YAxisName string      // Optional: Y-axis name.
-	Data      any         // Accepts [][]float64 or *insyra.DataTable
-	XAxis     []float64   // Optional: X-axis coordinates. If not provided, will use indices.
-	YAxis     []float64   // Optional: Y-axis coordinates. If not provided, will use indices.
-	Colors    int         // Optional: Number of colors in the palette. Default is 20.
-	Alpha     float64     // Optional: Alpha (transparency) for colors. Default is 1.0.
+	Title     string    // Title of the chart.
+	XAxisName string    // Optional: X-axis name.
+	YAxisName string    // Optional: Y-axis name.
+	Data      any       // Accepts [][]float64 or *insyra.DataTable
+	XAxis     []float64 // Optional: X-axis coordinates. If not provided, will use indices.
+	YAxis     []float64 // Optional: Y-axis coordinates. If not provided, will use indices.
+	Colors    int       // Optional: Number of colors in the palette. Default is 20.
+	Alpha     float64   // Optional: Alpha (transparency) for colors. Default is 1.0.
 }
 
 // gridData implements the plotter.GridXYZ interface for heatmap data.
 type gridData struct {
-	data [][]float64
+	data  [][]float64
 	xAxis []float64
 	yAxis []float64
 }
@@ -121,76 +121,91 @@ func CreateHeatmapChart(config HeatmapChartConfig) *plot.Plot {
 
 // convertDataTableToGrid converts a DataTable to [][]float64 for heatmap use.
 func convertDataTableToGrid(dt *insyra.DataTable) [][]float64 {
-	rows, cols := dt.Size()
-	
-	if rows == 0 || cols == 0 {
-		return nil
-	}
+	var data [][]float64
+	isFailed := false
+	dt.AtomicDo(func(dt *insyra.DataTable) {
+		rows, cols := dt.Size()
 
-	data := make([][]float64, rows)
-	for i := 0; i < rows; i++ {
-		data[i] = make([]float64, cols)
-		for j := 0; j < cols; j++ {
-			val := dt.GetElementByNumberIndex(i, j)
-			if val != nil {
-				switch v := val.(type) {
-				case float64:
-					data[i][j] = v
-				case float32:
-					data[i][j] = float64(v)
-				case int:
-					data[i][j] = float64(v)
-				case int32:
-					data[i][j] = float64(v)
-				case int64:
-					data[i][j] = float64(v)
-				default:
-					// For non-numeric values, use 0
+		if rows == 0 || cols == 0 {
+			isFailed = true
+			return
+		}
+
+		data = make([][]float64, rows)
+		for i := range rows {
+			data[i] = make([]float64, cols)
+			for j := 0; j < cols; j++ {
+				val := dt.GetElementByNumberIndex(i, j)
+				if val != nil {
+					switch v := val.(type) {
+					case float64:
+						data[i][j] = v
+					case float32:
+						data[i][j] = float64(v)
+					case int:
+						data[i][j] = float64(v)
+					case int32:
+						data[i][j] = float64(v)
+					case int64:
+						data[i][j] = float64(v)
+					default:
+						// For non-numeric values, use 0
+						data[i][j] = 0.0
+					}
+				} else {
 					data[i][j] = 0.0
 				}
-			} else {
-				data[i][j] = 0.0
 			}
 		}
+	})
+	if isFailed {
+		return nil
 	}
-	
 	return data
 }
 
 // convertIDataTableToGrid converts an IDataTable to [][]float64 for heatmap use.
 func convertIDataTableToGrid(dt insyra.IDataTable) [][]float64 {
-	rows, cols := dt.Size()
-	
-	if rows == 0 || cols == 0 {
+	var data [][]float64
+	isFailed := false
+	dt.AtomicDo(func(dt *insyra.DataTable) {
+		rows, cols := dt.Size()
+
+		if rows == 0 || cols == 0 {
+			isFailed = true
+			return
+		}
+
+		data = make([][]float64, rows)
+		for i := 0; i < rows; i++ {
+			data[i] = make([]float64, cols)
+			for j := 0; j < cols; j++ {
+				val := dt.GetElementByNumberIndex(i, j)
+				if val != nil {
+					switch v := val.(type) {
+					case float64:
+						data[i][j] = v
+					case float32:
+						data[i][j] = float64(v)
+					case int:
+						data[i][j] = float64(v)
+					case int32:
+						data[i][j] = float64(v)
+					case int64:
+						data[i][j] = float64(v)
+					default:
+						// For non-numeric values, use 0
+						data[i][j] = 0.0
+					}
+				} else {
+					data[i][j] = 0.0
+				}
+			}
+		}
+	})
+	if isFailed {
 		return nil
 	}
 
-	data := make([][]float64, rows)
-	for i := 0; i < rows; i++ {
-		data[i] = make([]float64, cols)
-		for j := 0; j < cols; j++ {
-			val := dt.GetElementByNumberIndex(i, j)
-			if val != nil {
-				switch v := val.(type) {
-				case float64:
-					data[i][j] = v
-				case float32:
-					data[i][j] = float64(v)
-				case int:
-					data[i][j] = float64(v)
-				case int32:
-					data[i][j] = float64(v)
-				case int64:
-					data[i][j] = float64(v)
-				default:
-					// For non-numeric values, use 0
-					data[i][j] = 0.0
-				}
-			} else {
-				data[i][j] = 0.0
-			}
-		}
-	}
-	
 	return data
 }
