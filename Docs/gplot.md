@@ -98,13 +98,37 @@ The `Func` field is a function that takes a float64 value as input and returns a
 
 ```go
 func(x float64) float64 {
-	return x * x
+ return x * x
 }
 ```
 
 #### Example
 
 ![function_example](./img/gplot_function_example.png)
+
+### Heatmap
+
+#### `HeatmapChartConfig`
+
+- `Title`: The title of the chart.
+- `XAxisName`: Optional: Name for the X-axis.
+- `YAxisName`: Optional: Name for the Y-axis.
+- `Data`: The data for the heatmap. Supported types:
+  - `[][]float64`
+  - `*insyra.DataTable`
+  - `insyra.IDataTable`
+- `XAxis`: Optional: X-axis coordinates. If not provided, will use indices.
+- `YAxis`: Optional: Y-axis coordinates. If not provided, will use indices.
+- `Colors`: Optional: Number of colors in the palette. Default is 20.
+- `Alpha`: Optional: Alpha (transparency) for colors. Default is 1.0.
+
+#### `CreateHeatmapChart(config HeatmapChartConfig) *plot.Plot`
+
+Creates a heatmap based on the provided configuration.
+
+#### Heatmap Example
+
+![heatmap_example](./img/gplot_heatmap_example.png)
 
 ### Saving Charts
 

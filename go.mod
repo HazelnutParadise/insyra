@@ -36,7 +36,6 @@ require (
 	github.com/richardlehane/mscfb v1.0.4 // indirect
 	github.com/richardlehane/msoleps v1.0.4 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
-	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d // indirect
 	github.com/xuri/efp v0.0.0-20241211021726-c4e992084aa6 // indirect
 	github.com/xuri/nfp v0.0.0-20240318013403-ab9948c2c4a7 // indirect
 	golang.org/x/crypto v0.36.0 // indirect
@@ -52,6 +51,7 @@ require (
 	github.com/go-echarts/snapshot-chromedp v0.0.5
 	github.com/goccy/go-json v0.10.5
 	github.com/mattn/go-runewidth v0.0.17
+	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d
 	github.com/stretchr/testify v1.9.0
 	github.com/xuri/excelize/v2 v2.9.0
 	golang.org/x/exp v0.0.0-20250911091902-df9299821621

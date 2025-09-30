@@ -205,8 +205,8 @@ func DetectEncoding(csvFile string) (string, error) {
 		return UTF8, nil
 	case "big5":
 		return Big5, nil
-	case "gb18030", "gbk", "gb2312":
-		// Chinese encodings that we might encounter but don't fully support yet
+	case "gb-18030", "gbk", "gb-2312":
+		// todo: Chinese encodings that we might encounter but don't fully support yet
 		insyra.LogWarning("csvxl", "DetectEncoding", "Detected Chinese encoding %s for file %s, falling back to UTF-8", result.Charset, csvFile)
 		return UTF8, nil
 	default:

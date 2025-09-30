@@ -26,11 +26,7 @@ func TestFactorAnalysisBasic(t *testing.T) {
 	opt.Count.Method = stats.CountFixed
 	opt.Count.FixedK = 2
 
-	model, err := stats.FactorAnalysis(dt, opt)
-	if err != nil {
-		t.Fatalf("FactorAnalysis failed: %v", err)
-	}
-
+	model := stats.FactorAnalysis(dt, opt)
 	if model == nil {
 		t.Fatal("Expected non-nil model")
 	}
@@ -98,7 +94,7 @@ func TestFactorAnalysisBasic(t *testing.T) {
 	if model.Result.Eigenvalues != nil {
 		model.Result.Eigenvalues.AtomicDo(func(table *insyra.DataTable) {
 			rows, _ := table.Size()
-			var prevEigen float64 = math.Inf(1)
+			var prevEigen = math.Inf(1)
 			for i := 0; i < rows; i++ {
 				row := table.GetRow(i)
 				val, ok := row.Get(0).(float64)
@@ -130,11 +126,7 @@ func TestFactorAnalysisKaiserCriterion(t *testing.T) {
 	opt.Count.Method = stats.CountKaiser
 	opt.Count.EigenThreshold = 1.0
 
-	model, err := stats.FactorAnalysis(dt, opt)
-	if err != nil {
-		t.Fatalf("FactorAnalysis failed: %v", err)
-	}
-
+	model := stats.FactorAnalysis(dt, opt)
 	if model == nil {
 		t.Fatal("Expected non-nil model")
 	}
@@ -160,11 +152,7 @@ func TestFactorAnalysisPAF(t *testing.T) {
 	opt.MaxIter = 50
 	opt.Tol = 1e-4
 
-	model, err := stats.FactorAnalysis(dt, opt)
-	if err != nil {
-		t.Fatalf("FactorAnalysis with PAF failed: %v", err)
-	}
-
+	model := stats.FactorAnalysis(dt, opt)
 	if model == nil {
 		t.Fatal("Expected non-nil model")
 	}
@@ -192,10 +180,7 @@ func TestFactorAnalysisNoRotation(t *testing.T) {
 	opt.Count.Method = stats.CountFixed
 	opt.Count.FixedK = 1
 
-	model, err := stats.FactorAnalysis(dt, opt)
-	if err != nil {
-		t.Fatalf("FactorAnalysis without rotation failed: %v", err)
-	}
+	model := stats.FactorAnalysis(dt, opt)
 
 	// Rotation matrix should be nil when no rotation is applied
 	if model.Result.RotationMatrix != nil {
@@ -225,10 +210,7 @@ func TestFactorAnalysisVarimaxRotation(t *testing.T) {
 	opt.Count.Method = stats.CountFixed
 	opt.Count.FixedK = 2
 
-	model, err := stats.FactorAnalysis(dt, opt)
-	if err != nil {
-		t.Fatalf("FactorAnalysis with Varimax failed: %v", err)
-	}
+	model := stats.FactorAnalysis(dt, opt)
 
 	// Rotation matrix should exist for Varimax
 	if model.Result.RotationMatrix == nil {
@@ -261,10 +243,7 @@ func TestFactorScoring(t *testing.T) {
 			opt.Count.Method = stats.CountFixed
 			opt.Count.FixedK = 1
 
-			model, err := stats.FactorAnalysis(dt, opt)
-			if err != nil {
-				t.Fatalf("FactorAnalysis with %s scoring failed: %v", method, err)
-			}
+			model := stats.FactorAnalysis(dt, opt)
 
 			if model.Result.Scores == nil {
 				t.Errorf("Expected non-nil scores for %s method", method)
@@ -296,10 +275,7 @@ func TestFactorScoresDT(t *testing.T) {
 	opt.Count.Method = stats.CountFixed
 	opt.Count.FixedK = 1
 
-	model, err := stats.FactorAnalysis(dt, opt)
-	if err != nil {
-		t.Fatalf("FactorAnalysis failed: %v", err)
-	}
+	model := stats.FactorAnalysis(dt, opt)
 
 	// New data
 	newDt := insyra.NewDataTable()
@@ -372,8 +348,8 @@ func TestScreeDataDT(t *testing.T) {
 		}
 
 		// Check that cumulative proportions are monotonically increasing
-		var prev float64 = -1.0
-		for i := 0; i < rows; i++ {
+		var prev = -1.0
+		for i := range rows {
 			row := table.GetRow(i)
 			val, ok := row.Get(0).(float64)
 			if ok {
@@ -399,9 +375,9 @@ func TestScreeDataDT(t *testing.T) {
 // TestFactorAnalysisNilInput tests error handling for nil input
 func TestFactorAnalysisNilInput(t *testing.T) {
 	opt := stats.DefaultFactorAnalysisOptions()
-	_, err := stats.FactorAnalysis(nil, opt)
-	if err == nil {
-		t.Error("Expected error for nil DataTable input")
+	model := stats.FactorAnalysis(nil, opt)
+	if model != nil {
+		t.Error("Expected nil model for nil DataTable input")
 	}
 }
 
@@ -409,9 +385,9 @@ func TestFactorAnalysisNilInput(t *testing.T) {
 func TestFactorAnalysisEmptyData(t *testing.T) {
 	dt := insyra.NewDataTable()
 	opt := stats.DefaultFactorAnalysisOptions()
-	_, err := stats.FactorAnalysis(dt, opt)
-	if err == nil {
-		t.Error("Expected error for empty DataTable")
+	model := stats.FactorAnalysis(dt, opt)
+	if model != nil {
+		t.Error("Expected nil model for empty DataTable")
 	}
 }
 
@@ -424,11 +400,7 @@ func TestFactorAnalysisSingleVariable(t *testing.T) {
 	opt.Count.Method = stats.CountFixed
 	opt.Count.FixedK = 1
 
-	model, err := stats.FactorAnalysis(dt, opt)
-	if err != nil {
-		t.Fatalf("FactorAnalysis with single variable failed: %v", err)
-	}
-
+	model := stats.FactorAnalysis(dt, opt)
 	if model == nil {
 		t.Fatal("Expected non-nil model")
 	}
@@ -485,10 +457,7 @@ func TestFactorAnalysisWithStandardizedData(t *testing.T) {
 	opt.Count.Method = stats.CountFixed
 	opt.Count.FixedK = 2
 
-	model, err := stats.FactorAnalysis(dt, opt)
-	if err != nil {
-		t.Fatalf("FactorAnalysis failed: %v", err)
-	}
+	model := stats.FactorAnalysis(dt, opt)
 
 	// Sum of communalities should be reasonable (between 0 and number of variables)
 	var sumComm float64
