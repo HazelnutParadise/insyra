@@ -721,7 +721,7 @@ func rotateVarimax(loadings *mat.Dense, maxIter int, tol float64) (*mat.Dense, *
 				for k := 0; k < p; k++ {
 					A += u[k]
 					B += v[k]
-					C += u[k] * u[k] - v[k] * v[k]
+					C += u[k]*u[k] - v[k]*v[k]
 					D += 2 * u[k] * v[k]
 				}
 

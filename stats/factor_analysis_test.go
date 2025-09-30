@@ -477,7 +477,7 @@ func TestFactorAnalysisWithStandardizedData(t *testing.T) {
 	// Create correlated data
 	dt := insyra.NewDataTable()
 	dt.AppendCols(insyra.NewDataList(10.0, 20.0, 30.0, 40.0, 50.0))
-	dt.AppendCols(insyra.NewDataList(15.0, 30.0, 45.0, 60.0, 75.0)) // Highly correlated with first
+	dt.AppendCols(insyra.NewDataList(15.0, 30.0, 45.0, 60.0, 75.0))  // Highly correlated with first
 	dt.AppendCols(insyra.NewDataList(100.0, 90.0, 80.0, 70.0, 60.0)) // Different scale and pattern
 
 	opt := stats.DefaultFactorAnalysisOptions()
