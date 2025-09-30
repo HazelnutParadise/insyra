@@ -48,10 +48,10 @@ const (
 type FactorCountMethod string
 
 const (
-	CountFixed            FactorCountMethod = "fixed"
-	CountKaiser           FactorCountMethod = "kaiser"
-	CountScree            FactorCountMethod = "scree"
-	CountParallelAnalysis FactorCountMethod = "parallel-analysis"
+	FactorCountFixed            FactorCountMethod = "fixed"
+	FactorCountKaiser           FactorCountMethod = "kaiser"
+	FactorCountScree            FactorCountMethod = "scree"
+	FactorCountParallelAnalysis FactorCountMethod = "parallel-analysis"
 )
 
 // -------------------------
@@ -101,13 +101,13 @@ type FactorAnalysisOptions struct {
 // FactorAnalysisResult contains the output of factor analysis
 type FactorAnalysisResult struct {
 	Loadings             insyra.IDataTable // Loading matrix (variables × factors)
-	Uniquenesses         insyra.IDataTable // Uniqueness vector (p × 1)
-	Communalities        insyra.IDataTable // Communality vector (p × 1)
+	Uniquenesses         insyra.IDataList  // Uniqueness vector (p × 1)
+	Communalities        insyra.IDataList  // Communality vector (p × 1)
 	Phi                  insyra.IDataTable // Factor correlation matrix (m × m), nil for orthogonal
 	RotationMatrix       insyra.IDataTable // Rotation matrix (m × m), nil if no rotation
-	Eigenvalues          insyra.IDataTable // Eigenvalues vector (p × 1)
-	ExplainedProportion  insyra.IDataTable // Proportion explained by each factor (m × 1)
-	CumulativeProportion insyra.IDataTable // Cumulative proportion explained (m × 1)
+	Eigenvalues          insyra.IDataList  // Eigenvalues vector (p × 1)
+	ExplainedProportion  insyra.IDataList  // Proportion explained by each factor (m × 1)
+	CumulativeProportion insyra.IDataList  // Cumulative proportion explained (m × 1)
 	Scores               insyra.IDataTable // Factor scores (n × m), nil if not computed
 
 	Converged  bool
@@ -140,7 +140,7 @@ func DefaultFactorAnalysisOptions() FactorAnalysisOptions {
 			Missing:     "listwise",
 		},
 		Count: FactorCountSpec{
-			Method:               CountKaiser,
+			Method:               FactorCountKaiser,
 			EigenThreshold:       1.0,
 			MaxFactors:           0, // 0 means no limit
 			ParallelReplications: 100,
@@ -407,14 +407,14 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 
 	// Convert results to DataTables
 	result := FactorAnalysisResult{
-		Loadings:             matrixToDataTable(rotatedLoadings, "Loadings"),
-		Uniquenesses:         vectorToDataTable(uniquenesses, "Uniqueness"),
-		Communalities:        vectorToDataTable(communalities, "Communality"),
+		Loadings:             matrixToDataTable(rotatedLoadings, "Factor Loadings"),
+		Uniquenesses:         vectorToDataList(uniquenesses, "Uniqueness"),
+		Communalities:        vectorToDataList(communalities, "Communality"),
 		Phi:                  nil,
 		RotationMatrix:       nil,
-		Eigenvalues:          vectorToDataTable(sortedEigenvalues, "Eigenvalue"),
-		ExplainedProportion:  vectorToDataTable(explainedProp, "Proportion"),
-		CumulativeProportion: vectorToDataTable(cumulativeProp, "Cumulative"),
+		Eigenvalues:          vectorToDataList(sortedEigenvalues, "Eigenvalue"),
+		ExplainedProportion:  vectorToDataList(explainedProp, "Explained Proportion"),
+		CumulativeProportion: vectorToDataList(cumulativeProp, "Cumulative Proportion"),
 		Scores:               nil,
 		Converged:            converged,
 		Iterations:           iterations,
@@ -449,13 +449,13 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 // decideNumFactors determines the number of factors to extract
 func decideNumFactors(eigenvalues []float64, spec FactorCountSpec, maxPossible int) int {
 	switch spec.Method {
-	case CountFixed:
+	case FactorCountFixed:
 		if spec.FixedK > 0 && spec.FixedK <= maxPossible {
 			return spec.FixedK
 		}
 		return maxPossible
 
-	case CountKaiser:
+	case FactorCountKaiser:
 		threshold := spec.EigenThreshold
 		if threshold == 0 {
 			threshold = 1.0
@@ -471,7 +471,7 @@ func decideNumFactors(eigenvalues []float64, spec FactorCountSpec, maxPossible i
 		}
 		return count
 
-	case CountScree:
+	case FactorCountScree:
 		// Simple scree test: find elbow point
 		if len(eigenvalues) < 3 {
 			return 1
@@ -494,7 +494,7 @@ func decideNumFactors(eigenvalues []float64, spec FactorCountSpec, maxPossible i
 		}
 		return count
 
-	case CountParallelAnalysis:
+	case FactorCountParallelAnalysis:
 		// Simplified parallel analysis - not fully implemented
 		// For now, use Kaiser criterion
 		count := 0
@@ -901,32 +901,20 @@ func matrixToDataTable(m *mat.Dense, baseName string) insyra.IDataTable {
 	r, c := m.Dims()
 	dt := insyra.NewDataTable()
 
-	for j := 0; j < c; j++ {
+	for j := range c {
 		col := insyra.NewDataList()
-		for i := 0; i < r; i++ {
+		for i := range r {
 			col.Append(m.At(i, j))
 		}
 		dt.AppendCols(col)
 	}
 
-	return dt
+	return dt.SetName(baseName)
 }
 
-// vectorToDataTable converts a float slice to a single-column DataTable
-func vectorToDataTable(v []float64, name string) insyra.IDataTable {
-	if v == nil {
-		return nil
-	}
-
-	dt := insyra.NewDataTable()
-	col := insyra.NewDataList()
-	for _, val := range v {
-		col.Append(val)
-	}
-	col.SetName(name)
-	dt.AppendCols(col)
-
-	return dt
+// vectorToDataList converts a float slice to a single-column DataList
+func vectorToDataList(v []float64, name string) insyra.IDataList {
+	return insyra.NewDataList(v).SetName(name)
 }
 
 // FactorScoresDT computes factor scores for new data
@@ -982,12 +970,11 @@ func (m *FactorModel) FactorScoresDT(dt insyra.IDataTable, method *FactorScoreMe
 	// Extract uniquenesses
 	var uniquenesses []float64
 	if m.Result.Uniquenesses != nil {
-		m.Result.Uniquenesses.AtomicDo(func(table *insyra.DataTable) {
-			ur, _ := table.Size()
+		m.Result.Uniquenesses.AtomicDo(func(list *insyra.DataList) {
+			ur := list.Len()
 			uniquenesses = make([]float64, ur)
 			for i := range ur {
-				row := table.GetRow(i)
-				value, ok := row.Get(0).(float64)
+				value, ok := list.Get(i).(float64)
 				if ok {
 					uniquenesses[i] = value
 				}
@@ -1000,7 +987,7 @@ func (m *FactorModel) FactorScoresDT(dt insyra.IDataTable, method *FactorScoreMe
 }
 
 // ScreeDataDT returns scree plot data (eigenvalues and cumulative proportion)
-func ScreeDataDT(dt insyra.IDataTable, standardize bool) (insyra.IDataTable, insyra.IDataTable, error) {
+func ScreeDataDT(dt insyra.IDataTable, standardize bool) (insyra.IDataList, insyra.IDataList, error) {
 	if dt == nil {
 		return nil, nil, errors.New("nil DataTable")
 	}
@@ -1084,8 +1071,8 @@ func ScreeDataDT(dt insyra.IDataTable, standardize bool) (insyra.IDataTable, ins
 		}
 	}
 
-	eigenDT := vectorToDataTable(sortedEigenvalues, "Eigenvalue")
-	cumDT := vectorToDataTable(cumulativeProp, "Cumulative")
+	eigenDT := vectorToDataList(sortedEigenvalues, "Eigenvalue")
+	cumDT := vectorToDataList(cumulativeProp, "Cumulative")
 
 	return eigenDT, cumDT, nil
 }

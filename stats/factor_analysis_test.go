@@ -23,7 +23,7 @@ func TestFactorAnalysisBasic(t *testing.T) {
 	dt.AppendCols(insyra.NewDataList(3.0, 6.0, 9.0, 12.0, 15.0, 18.0, 21.0, 24.0, 27.0, 30.0))
 
 	opt := stats.DefaultFactorAnalysisOptions()
-	opt.Count.Method = stats.CountFixed
+	opt.Count.Method = stats.FactorCountFixed
 	opt.Count.FixedK = 2
 
 	model := stats.FactorAnalysis(dt, opt)
@@ -56,11 +56,10 @@ func TestFactorAnalysisBasic(t *testing.T) {
 
 	// Check communalities are between 0 and 1
 	if model.Result.Communalities != nil {
-		model.Result.Communalities.AtomicDo(func(table *insyra.DataTable) {
-			rows, _ := table.Size()
+		model.Result.Communalities.AtomicDo(func(list *insyra.DataList) {
+			rows := list.Len()
 			for i := 0; i < rows; i++ {
-				row := table.GetRow(i)
-				val, ok := row.Get(0).(float64)
+				val, ok := list.Get(i).(float64)
 				if !ok {
 					t.Errorf("Expected float64 communality at row %d", i)
 					continue
@@ -74,11 +73,10 @@ func TestFactorAnalysisBasic(t *testing.T) {
 
 	// Check uniquenesses are between 0 and 1
 	if model.Result.Uniquenesses != nil {
-		model.Result.Uniquenesses.AtomicDo(func(table *insyra.DataTable) {
-			rows, _ := table.Size()
+		model.Result.Uniquenesses.AtomicDo(func(list *insyra.DataList) {
+			rows := list.Len()
 			for i := 0; i < rows; i++ {
-				row := table.GetRow(i)
-				val, ok := row.Get(0).(float64)
+				val, ok := list.Get(i).(float64)
 				if !ok {
 					t.Errorf("Expected float64 uniqueness at row %d", i)
 					continue
@@ -92,12 +90,11 @@ func TestFactorAnalysisBasic(t *testing.T) {
 
 	// Check eigenvalues are in descending order
 	if model.Result.Eigenvalues != nil {
-		model.Result.Eigenvalues.AtomicDo(func(table *insyra.DataTable) {
-			rows, _ := table.Size()
+		model.Result.Eigenvalues.AtomicDo(func(list *insyra.DataList) {
+			rows := list.Len()
 			var prevEigen = math.Inf(1)
 			for i := 0; i < rows; i++ {
-				row := table.GetRow(i)
-				val, ok := row.Get(0).(float64)
+				val, ok := list.Get(i).(float64)
 				if !ok {
 					continue
 				}
@@ -123,7 +120,7 @@ func TestFactorAnalysisKaiserCriterion(t *testing.T) {
 	}
 
 	opt := stats.DefaultFactorAnalysisOptions()
-	opt.Count.Method = stats.CountKaiser
+	opt.Count.Method = stats.FactorCountKaiser
 	opt.Count.EigenThreshold = 1.0
 
 	model := stats.FactorAnalysis(dt, opt)
@@ -147,7 +144,7 @@ func TestFactorAnalysisPAF(t *testing.T) {
 
 	opt := stats.DefaultFactorAnalysisOptions()
 	opt.Extraction = stats.FactorExtractionPAF
-	opt.Count.Method = stats.CountFixed
+	opt.Count.Method = stats.FactorCountFixed
 	opt.Count.FixedK = 1
 	opt.MaxIter = 50
 	opt.Tol = 1e-4
@@ -177,7 +174,7 @@ func TestFactorAnalysisNoRotation(t *testing.T) {
 
 	opt := stats.DefaultFactorAnalysisOptions()
 	opt.Rotation.Method = stats.FactorRotationNone
-	opt.Count.Method = stats.CountFixed
+	opt.Count.Method = stats.FactorCountFixed
 	opt.Count.FixedK = 1
 
 	model := stats.FactorAnalysis(dt, opt)
@@ -207,7 +204,7 @@ func TestFactorAnalysisVarimaxRotation(t *testing.T) {
 
 	opt := stats.DefaultFactorAnalysisOptions()
 	opt.Rotation.Method = stats.FactorRotationVarimax
-	opt.Count.Method = stats.CountFixed
+	opt.Count.Method = stats.FactorCountFixed
 	opt.Count.FixedK = 2
 
 	model := stats.FactorAnalysis(dt, opt)
@@ -240,7 +237,7 @@ func TestFactorScoring(t *testing.T) {
 		t.Run(string(method), func(t *testing.T) {
 			opt := stats.DefaultFactorAnalysisOptions()
 			opt.Scoring = method
-			opt.Count.Method = stats.CountFixed
+			opt.Count.Method = stats.FactorCountFixed
 			opt.Count.FixedK = 1
 
 			model := stats.FactorAnalysis(dt, opt)
@@ -272,7 +269,7 @@ func TestFactorScoresDT(t *testing.T) {
 	dt.AppendCols(insyra.NewDataList(1.5, 3.0, 4.5, 6.0, 7.5))
 
 	opt := stats.DefaultFactorAnalysisOptions()
-	opt.Count.Method = stats.CountFixed
+	opt.Count.Method = stats.FactorCountFixed
 	opt.Count.FixedK = 1
 
 	model := stats.FactorAnalysis(dt, opt)
@@ -328,30 +325,23 @@ func TestScreeDataDT(t *testing.T) {
 	}
 
 	// Check dimensions
-	eigenDT.AtomicDo(func(table *insyra.DataTable) {
-		rows, cols := table.Size()
+	eigenDT.AtomicDo(func(list *insyra.DataList) {
+		rows := list.Len()
 		if rows != 4 {
 			t.Errorf("Expected 4 eigenvalues, got %d", rows)
 		}
-		if cols != 1 {
-			t.Errorf("Expected 1 column, got %d", cols)
-		}
 	})
 
-	cumDT.AtomicDo(func(table *insyra.DataTable) {
-		rows, cols := table.Size()
+	cumDT.AtomicDo(func(list *insyra.DataList) {
+		rows := list.Len()
 		if rows != 4 {
 			t.Errorf("Expected 4 cumulative values, got %d", rows)
-		}
-		if cols != 1 {
-			t.Errorf("Expected 1 column, got %d", cols)
 		}
 
 		// Check that cumulative proportions are monotonically increasing
 		var prev = -1.0
 		for i := range rows {
-			row := table.GetRow(i)
-			val, ok := row.Get(0).(float64)
+			val, ok := list.Get(i).(float64)
 			if ok {
 				if val < prev {
 					t.Errorf("Cumulative proportions not monotonically increasing at position %d", i)
@@ -364,8 +354,7 @@ func TestScreeDataDT(t *testing.T) {
 		}
 
 		// Last cumulative proportion should be close to 1.0
-		lastRow := table.GetRow(rows - 1)
-		lastVal, ok := lastRow.Get(0).(float64)
+		lastVal, ok := list.Get(rows - 1).(float64)
 		if ok && !approxEqual(lastVal, 1.0, 0.01) {
 			t.Errorf("Last cumulative proportion should be ~1.0, got %f", lastVal)
 		}
@@ -397,7 +386,7 @@ func TestFactorAnalysisSingleVariable(t *testing.T) {
 	dt.AppendCols(insyra.NewDataList(1.0, 2.0, 3.0, 4.0, 5.0))
 
 	opt := stats.DefaultFactorAnalysisOptions()
-	opt.Count.Method = stats.CountFixed
+	opt.Count.Method = stats.FactorCountFixed
 	opt.Count.FixedK = 1
 
 	model := stats.FactorAnalysis(dt, opt)
@@ -419,7 +408,7 @@ func TestDefaultOptions(t *testing.T) {
 		t.Error("Default should standardize data")
 	}
 
-	if opt.Count.Method != stats.CountKaiser {
+	if opt.Count.Method != stats.FactorCountKaiser {
 		t.Error("Default should use Kaiser criterion")
 	}
 
@@ -454,7 +443,7 @@ func TestFactorAnalysisWithStandardizedData(t *testing.T) {
 
 	opt := stats.DefaultFactorAnalysisOptions()
 	opt.Preprocess.Standardize = true
-	opt.Count.Method = stats.CountFixed
+	opt.Count.Method = stats.FactorCountFixed
 	opt.Count.FixedK = 2
 
 	model := stats.FactorAnalysis(dt, opt)
@@ -462,11 +451,10 @@ func TestFactorAnalysisWithStandardizedData(t *testing.T) {
 	// Sum of communalities should be reasonable (between 0 and number of variables)
 	var sumComm float64
 	if model.Result.Communalities != nil {
-		model.Result.Communalities.AtomicDo(func(table *insyra.DataTable) {
-			rows, _ := table.Size()
+		model.Result.Communalities.AtomicDo(func(list *insyra.DataList) {
+			rows := list.Len()
 			for i := 0; i < rows; i++ {
-				row := table.GetRow(i)
-				val, ok := row.Get(0).(float64)
+				val, ok := list.Get(i).(float64)
 				if ok {
 					sumComm += val
 				}
@@ -481,11 +469,10 @@ func TestFactorAnalysisWithStandardizedData(t *testing.T) {
 	// Explained proportions should sum to something reasonable
 	var sumExplained float64
 	if model.Result.ExplainedProportion != nil {
-		model.Result.ExplainedProportion.AtomicDo(func(table *insyra.DataTable) {
-			rows, _ := table.Size()
+		model.Result.ExplainedProportion.AtomicDo(func(list *insyra.DataList) {
+			rows := list.Len()
 			for i := 0; i < rows; i++ {
-				row := table.GetRow(i)
-				val, ok := row.Get(0).(float64)
+				val, ok := list.Get(i).(float64)
 				if ok {
 					sumExplained += val
 				}
