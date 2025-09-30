@@ -11,6 +11,7 @@ import (
 
 // EachCsvToOneExcel converts each CSV file in the given directory to an Excel file.
 // The output Excel file will be saved in the given output path.
+// If encoding is not specified, auto-detection will be used.
 func EachCsvToOneExcel(dir string, output string, encoding ...string) {
 	files, err := filepath.Glob(filepath.Join(dir, "*.csv"))
 	if err != nil {

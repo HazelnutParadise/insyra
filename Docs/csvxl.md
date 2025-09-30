@@ -8,9 +8,10 @@
 - **Append to Excel**: Append CSV files to an existing Excel workbook, with support for custom sheet names and the option to overwrite existing sheets.
 - **Custom sheet names**: You can specify custom sheet names for each CSV file. If no sheet name is provided, the CSV file name is used as the default.
 - **Automatic directory creation**: When splitting an Excel file into multiple CSV files, the target directory is automatically created if it does not exist.
+- **🆕 Automatic encoding detection**: Automatically detects the encoding of CSV files, supporting UTF-8, Big5, and other common encodings.
 
 > [!NOTE]
-> Currently only support `UTF-8` and `Big5` encoding.
+> The package now supports automatic encoding detection by default. When no encoding is explicitly specified, it will automatically detect the encoding of CSV files. Supported encodings include UTF-8, Big5, ASCII, and various others with automatic fallback to UTF-8.
 
 ## Installation
 
@@ -22,7 +23,7 @@ go get github.com/HazelnutParadise/csvxl
 
 ## Usage Examples
 
-### 1. Convert multiple CSV files into a new Excel file
+### 1. Convert multiple CSV files into a new Excel file (with auto-detection)
 
 ```go
 package main
@@ -36,7 +37,34 @@ func main() {
     sheetNames := []string{"Sheet1", "Sheet2", "Sheet3"} // Optional: If not provided, CSV filenames will be used as sheet names
     output := "output.xlsx"
 
+    // Auto-detection (default behavior)
+    csvxl.CsvToExcel(csvFiles, sheetNames, output)
+    
+    // Or explicitly specify auto-detection
+    csvxl.CsvToExcel(csvFiles, sheetNames, output, csvxl.Auto)
+    
+    // Or specify explicit encoding
     csvxl.CsvToExcel(csvFiles, sheetNames, output, csvxl.UTF8)
+}
+```
+
+### 2. Detect encoding of a CSV file
+
+```go
+package main
+
+import (
+    "fmt"
+    "log"
+    "github.com/HazelnutParadise/csvxl"
+)
+
+func main() {
+    encoding, err := csvxl.DetectEncoding("myfile.csv")
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Printf("Detected encoding: %s\n", encoding)
 }
 ```
 
@@ -54,6 +82,7 @@ func main() {
     sheetNames := []string{"NewSheet1", "NewSheet2"} // Optional: You can specify custom sheet names for each CSV file
     existingExcel := "existing.xlsx"
 
+    // Auto-detection (default behavior)
     csvxl.AppendCsvToExcel(csvFiles, sheetNames, existingExcel)
 }
 ```
@@ -83,6 +112,7 @@ func main() {
 const (
 	UTF8 = "utf-8"
 	Big5 = "big5"
+	Auto = "auto"  // 🆕 New: Automatic encoding detection
 )
 ```
 
@@ -99,6 +129,7 @@ func CsvToExcel(csvFiles []string, sheetNames []string, output string, csvEncodi
 - `csvFiles`: A list of CSV file paths.
 - `sheetNames`: Custom sheet names corresponding to each CSV file. If not provided, the CSV filename will be used as the sheet name.
 - `output`: The name of the output Excel file.
+- `csvEncoding`(optional): The encoding of the CSV files. If not provided, automatic detection is used. Supported values: `csvxl.UTF8`, `csvxl.Big5`, `csvxl.Auto`.
 
 ### 2. `AppendCsvToExcel`
 
@@ -111,8 +142,20 @@ func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile strin
 - `csvFiles`: A list of CSV file paths.
 - `sheetNames`: Custom sheet names corresponding to each CSV file. If not provided, the CSV filename will be used as the sheet name.
 - `existingFile`: The name of the existing Excel file.
+- `csvEncoding`(optional): The encoding of the CSV files. If not provided, automatic detection is used. Supported values: `csvxl.UTF8`, `csvxl.Big5`, `csvxl.Auto`.
 
-### 3. `ExcelToCsv`
+### 3. `DetectEncoding` 🆕
+
+```go
+func DetectEncoding(csvFile string) (string, error)
+```
+
+**Description**: Automatically detects the encoding of a CSV file.
+
+- `csvFile`: The path to the CSV file to analyze.
+- Returns: The detected encoding as a string (e.g., "utf-8", "big5") and an error if detection fails.
+
+### 4. `ExcelToCsv`
 
 ```go
 func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyContainSheets ...string)
@@ -128,7 +171,7 @@ func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyConta
 > [!NOTE]
 > The CSV file names will be in the format of "ExcelFileName_SheetName.csv".
 
-### 4. `EachExcelToCsv`
+### 5. `EachExcelToCsv`
 
 ```go
 func EachExcelToCsv(dir string, outputDir string)
@@ -139,7 +182,7 @@ func EachExcelToCsv(dir string, outputDir string)
 - `dir`: The directory containing the input Excel files.
 - `outputDir`: The directory where the split CSV files will be saved.
 
-### 5. `EachCsvToOneExcel`
+### 6. `EachCsvToOneExcel`
 
 ```go
 func EachCsvToOneExcel(dir string, output string, encoding ...string)
@@ -149,16 +192,31 @@ func EachCsvToOneExcel(dir string, output string, encoding ...string)
 
 - `dir`: The directory containing the input CSV files.
 - `output`: The name of the output Excel file.
-- `encoding`(optional): The encoding of the CSV files. If not provided, `UTF-8` encoding is used.
+- `encoding`(optional): The encoding of the CSV files. If not provided, automatic detection is used. Supported values: `csvxl.UTF8`, `csvxl.Big5`, `csvxl.Auto`.
 
 ## Encoding Support
 
 > [!NOTE]
-> Currently only support `UTF-8` and `Big5` encoding.
+> 🆕 **NEW**: Automatic encoding detection is now supported! The package will automatically detect the encoding of CSV files when no explicit encoding is specified.
 
-`csvxl` supports different CSV file encodings when reading(converting CSV to Excel), including UTF-8 and Big5. This ensures that all characters (including non-English ones like Chinese) are correctly written into the Excel file or split into CSV files.
+`csvxl` supports different CSV file encodings when reading (converting CSV to Excel), including:
 
-However, when writing to CSV files(converting Excel to CSV), only `UTF-8` encoding is supported(and default).
+- **UTF-8** (most common, default fallback)
+- **Big5** (Traditional Chinese)
+- **ASCII** (basic Latin characters)
+- **Various other encodings** (automatically detected with fallback to UTF-8)
+
+### Automatic Detection
+When no encoding is explicitly specified, the package uses advanced charset detection algorithms to automatically identify the encoding of your CSV files. This makes the package much easier to use as you don't need to worry about specifying the correct encoding manually.
+
+### Manual Encoding Specification
+You can still explicitly specify an encoding using the constants:
+- `csvxl.Auto` - Automatic detection (default)
+- `csvxl.UTF8` - Force UTF-8 encoding
+- `csvxl.Big5` - Force Big5 encoding
+
+### Output Encoding
+When writing to CSV files (converting Excel to CSV), only `UTF-8` encoding is supported and used by default.
 
 ## Error Handling
 
