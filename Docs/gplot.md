@@ -24,6 +24,7 @@ go get github.com/HazelnutParadise/insyra/gplot
 - `XAxisName`: Optional: Name for the X-axis.
 - `YAxisName`: Optional: Name for the Y-axis.
 - `BarWidth`: Optional: Width of each bar in the chart. Default is 20.
+- `ErrorBars`: Optional: Error bar values for each bar. If provided, must match the length of Data.
 
 #### `CreateBarChart(config BarChartConfig) *plot.Plot`
 
@@ -32,6 +33,37 @@ Creates a bar chart based on the provided configuration.
 #### Example
 
 ![bar_example](./img/gplot_bar_example.png)
+
+#### Example with Error Bars
+
+```go
+package main
+
+import (
+	"github.com/HazelnutParadise/insyra/gplot"
+)
+
+func main() {
+	// Create a bar chart with error bars showing measurement uncertainty
+	measurements := []float64{5.2, 7.8, 6.4, 9.1, 8.5, 7.2}
+	uncertainties := []float64{0.5, 0.8, 0.6, 0.9, 0.7, 0.6}
+	
+	config := gplot.BarChartConfig{
+		Title:     "Experimental Measurements with Error Bars",
+		XAxis:     []string{"Trial 1", "Trial 2", "Trial 3", "Trial 4", "Trial 5", "Trial 6"},
+		Data:      measurements,
+		XAxisName: "Trial Number",
+		YAxisName: "Measured Value (units)",
+		ErrorBars: uncertainties,
+		BarWidth:  30,
+	}
+	
+	plt := gplot.CreateBarChart(config)
+	gplot.SaveChart(plt, "bar_chart_with_errorbars.png")
+}
+```
+
+![bar_errorbars_example](./img/gplot_bar_errorbars_example.png)
 
 ### Histogram
 
