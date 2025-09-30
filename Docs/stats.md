@@ -1057,13 +1057,13 @@ const (
 ```go
 type FactorAnalysisResult struct {
     Loadings             insyra.IDataTable // Loading matrix (variables × factors)
-    Uniquenesses         insyra.IDataList  // Uniqueness vector (p × 1)
-    Communalities        insyra.IDataList  // Communality vector (p × 1)
+    Uniquenesses         insyra.IDataTable // Uniqueness vector (p × 1)
+    Communalities        insyra.IDataTable // Communality vector (p × 1)
     Phi                  insyra.IDataTable // Factor correlation matrix (m × m), nil for orthogonal
     RotationMatrix       insyra.IDataTable // Rotation matrix (m × m), nil if no rotation
-    Eigenvalues          insyra.IDataList  // Eigenvalues vector (p × 1)
-    ExplainedProportion  insyra.IDataList  // Proportion explained by each factor (m × 1)
-    CumulativeProportion insyra.IDataList  // Cumulative proportion explained (m × 1)
+    Eigenvalues          insyra.IDataTable // Eigenvalues vector (p × 1)
+    ExplainedProportion  insyra.IDataTable // Proportion explained by each factor (m × 1)
+    CumulativeProportion insyra.IDataTable // Cumulative proportion explained (m × 1)
     Scores               insyra.IDataTable // Factor scores (n × m), nil if not computed
 
     Converged  bool
@@ -1072,6 +1072,16 @@ type FactorAnalysisResult struct {
     Messages   []string
 }
 ```
+
+**DataTable Naming Convention**:
+
+- **Loadings**: Column names are factor names (Factor1, Factor2, ...), row names are variable names
+- **Uniquenesses**: Single column named "Uniqueness", row names are variable names
+- **Communalities**: Single column named "Communality", row names are variable names
+- **Eigenvalues**: Single column named "Eigenvalue", row names are factor names
+- **ExplainedProportion**: Single column named "Explained Proportion", row names are factor names
+- **CumulativeProportion**: Single column named "Cumulative Proportion", row names are factor names
+- **Scores**: Column names are factor names, row names are observation indices
 
 #### FactorModel
 
@@ -1170,7 +1180,7 @@ All regression functions (Linear, Polynomial, Exponential, and Logarithmic) now 
 
 The confidence intervals are calculated using the t-distribution with appropriate degrees of freedom:
 
-```
+```text
 CI = coefficient ± t_(α/2, df) × standard_error
 ```
 

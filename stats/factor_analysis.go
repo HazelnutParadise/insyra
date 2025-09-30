@@ -102,13 +102,13 @@ type FactorAnalysisOptions struct {
 // FactorAnalysisResult contains the output of factor analysis
 type FactorAnalysisResult struct {
 	Loadings             insyra.IDataTable // Loading matrix (variables × factors)
-	Uniquenesses         insyra.IDataList  // Uniqueness vector (p × 1)
-	Communalities        insyra.IDataList  // Communality vector (p × 1)
+	Uniquenesses         insyra.IDataTable // Uniqueness vector (p × 1)
+	Communalities        insyra.IDataTable // Communality vector (p × 1)
 	Phi                  insyra.IDataTable // Factor correlation matrix (m × m), nil for orthogonal
 	RotationMatrix       insyra.IDataTable // Rotation matrix (m × m), nil if no rotation
-	Eigenvalues          insyra.IDataList  // Eigenvalues vector (p × 1)
-	ExplainedProportion  insyra.IDataList  // Proportion explained by each factor (m × 1)
-	CumulativeProportion insyra.IDataList  // Cumulative proportion explained (m × 1)
+	Eigenvalues          insyra.IDataTable // Eigenvalues vector (p × 1)
+	ExplainedProportion  insyra.IDataTable // Proportion explained by each factor (m × 1)
+	CumulativeProportion insyra.IDataTable // Cumulative proportion explained (m × 1)
 	Scores               insyra.IDataTable // Factor scores (n × m), nil if not computed
 
 	Converged  bool
@@ -425,13 +425,13 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 
 	result := FactorAnalysisResult{
 		Loadings:             matrixToDataTableWithNames(rotatedLoadings, "Factor Loadings", factorColNames, colNames),
-		Uniquenesses:         vectorToDataList(uniquenesses, "Uniqueness"),
-		Communalities:        vectorToDataList(communalities, "Communality"),
+		Uniquenesses:         vectorToDataTableWithNames(uniquenesses, "Uniqueness", "Uniqueness", colNames),
+		Communalities:        vectorToDataTableWithNames(communalities, "Communality", "Communality", colNames),
 		Phi:                  nil,
 		RotationMatrix:       nil,
-		Eigenvalues:          vectorToDataList(sortedEigenvalues, "Eigenvalue"),
-		ExplainedProportion:  vectorToDataList(explainedProp, "Explained Proportion"),
-		CumulativeProportion: vectorToDataList(cumulativeProp, "Cumulative Proportion"),
+		Eigenvalues:          vectorToDataTableWithNames(sortedEigenvalues, "Eigenvalue", "Eigenvalue", factorColNames),
+		ExplainedProportion:  vectorToDataTableWithNames(explainedProp, "Explained Proportion", "Explained Proportion", factorColNames),
+		CumulativeProportion: vectorToDataTableWithNames(cumulativeProp, "Cumulative Proportion", "Cumulative Proportion", factorColNames),
 		Scores:               nil,
 		Converged:            converged,
 		Iterations:           iterations,
@@ -959,9 +959,18 @@ func matrixToDataTableWithNames(m *mat.Dense, baseName string, colNames []string
 	return dt.SetName(baseName)
 }
 
-// vectorToDataList converts a float slice to a single-column DataList
-func vectorToDataList(v []float64, name string) insyra.IDataList {
-	return insyra.NewDataList(v).SetName(name)
+// vectorToDataTableWithNames converts a float slice to a single-column DataTable with names
+func vectorToDataTableWithNames(v []float64, baseName string, colName string, rowNames []string) insyra.IDataTable {
+	dt := insyra.NewDataTable()
+	col := insyra.NewDataList(v)
+	dt.AppendCols(col)
+	dt.SetColNameByNumber(0, colName)
+	for i, rowName := range rowNames {
+		if i < len(v) {
+			dt.SetRowNameByIndex(i, rowName)
+		}
+	}
+	return dt.SetName(baseName)
 }
 
 // FactorScoresDT computes factor scores for new data
@@ -1017,11 +1026,12 @@ func (m *FactorModel) FactorScoresDT(dt insyra.IDataTable, method *FactorScoreMe
 	// Extract uniquenesses
 	var uniquenesses []float64
 	if m.Result.Uniquenesses != nil {
-		m.Result.Uniquenesses.AtomicDo(func(list *insyra.DataList) {
-			ur := list.Len()
+		m.Result.Uniquenesses.AtomicDo(func(table *insyra.DataTable) {
+			ur, _ := table.Size()
 			uniquenesses = make([]float64, ur)
 			for i := range ur {
-				value, ok := list.Get(i).(float64)
+				row := table.GetRow(i)
+				value, ok := row.Get(0).(float64) // First column
 				if ok {
 					uniquenesses[i] = value
 				}
@@ -1042,7 +1052,7 @@ func (m *FactorModel) FactorScoresDT(dt insyra.IDataTable, method *FactorScoreMe
 }
 
 // ScreeDataDT returns scree plot data (eigenvalues and cumulative proportion)
-func ScreeDataDT(dt insyra.IDataTable, standardize bool) (insyra.IDataList, insyra.IDataList, error) {
+func ScreeDataDT(dt insyra.IDataTable, standardize bool) (insyra.IDataTable, insyra.IDataTable, error) {
 	if dt == nil {
 		return nil, nil, errors.New("nil DataTable")
 	}
@@ -1126,8 +1136,14 @@ func ScreeDataDT(dt insyra.IDataTable, standardize bool) (insyra.IDataList, insy
 		}
 	}
 
-	eigenDT := vectorToDataList(sortedEigenvalues, "Eigenvalue")
-	cumDT := vectorToDataList(cumulativeProp, "Cumulative")
+	// Generate factor names for rows
+	factorNames := make([]string, len(sortedEigenvalues))
+	for i := 0; i < len(sortedEigenvalues); i++ {
+		factorNames[i] = fmt.Sprintf("Factor%d", i+1)
+	}
+
+	eigenDT := vectorToDataTableWithNames(sortedEigenvalues, "Eigenvalue", "Eigenvalue", factorNames)
+	cumDT := vectorToDataTableWithNames(cumulativeProp, "Cumulative", "Cumulative", factorNames)
 
 	return eigenDT, cumDT, nil
 }

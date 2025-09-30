@@ -56,10 +56,11 @@ func TestFactorAnalysisBasic(t *testing.T) {
 
 	// Check communalities are between 0 and 1
 	if model.Result.Communalities != nil {
-		model.Result.Communalities.AtomicDo(func(list *insyra.DataList) {
-			rows := list.Len()
-			for i := 0; i < rows; i++ {
-				val, ok := list.Get(i).(float64)
+		model.Result.Communalities.AtomicDo(func(table *insyra.DataTable) {
+			rows, _ := table.Size()
+			for i := range rows {
+				row := table.GetRow(i)
+				val, ok := row.Get(0).(float64)
 				if !ok {
 					t.Errorf("Expected float64 communality at row %d", i)
 					continue
@@ -73,10 +74,11 @@ func TestFactorAnalysisBasic(t *testing.T) {
 
 	// Check uniquenesses are between 0 and 1
 	if model.Result.Uniquenesses != nil {
-		model.Result.Uniquenesses.AtomicDo(func(list *insyra.DataList) {
-			rows := list.Len()
+		model.Result.Uniquenesses.AtomicDo(func(table *insyra.DataTable) {
+			rows, _ := table.Size()
 			for i := 0; i < rows; i++ {
-				val, ok := list.Get(i).(float64)
+				row := table.GetRow(i)
+				val, ok := row.Get(0).(float64)
 				if !ok {
 					t.Errorf("Expected float64 uniqueness at row %d", i)
 					continue
@@ -90,11 +92,12 @@ func TestFactorAnalysisBasic(t *testing.T) {
 
 	// Check eigenvalues are in descending order
 	if model.Result.Eigenvalues != nil {
-		model.Result.Eigenvalues.AtomicDo(func(list *insyra.DataList) {
-			rows := list.Len()
+		model.Result.Eigenvalues.AtomicDo(func(table *insyra.DataTable) {
+			rows, _ := table.Size()
 			var prevEigen = math.Inf(1)
 			for i := 0; i < rows; i++ {
-				val, ok := list.Get(i).(float64)
+				row := table.GetRow(i)
+				val, ok := row.Get(0).(float64)
 				if !ok {
 					continue
 				}
@@ -325,15 +328,15 @@ func TestScreeDataDT(t *testing.T) {
 	}
 
 	// Check dimensions
-	eigenDT.AtomicDo(func(list *insyra.DataList) {
-		rows := list.Len()
+	eigenDT.AtomicDo(func(table *insyra.DataTable) {
+		rows, _ := table.Size()
 		if rows != 4 {
 			t.Errorf("Expected 4 eigenvalues, got %d", rows)
 		}
 	})
 
-	cumDT.AtomicDo(func(list *insyra.DataList) {
-		rows := list.Len()
+	cumDT.AtomicDo(func(table *insyra.DataTable) {
+		rows, _ := table.Size()
 		if rows != 4 {
 			t.Errorf("Expected 4 cumulative values, got %d", rows)
 		}
@@ -341,7 +344,8 @@ func TestScreeDataDT(t *testing.T) {
 		// Check that cumulative proportions are monotonically increasing
 		var prev = -1.0
 		for i := range rows {
-			val, ok := list.Get(i).(float64)
+			row := table.GetRow(i)
+			val, ok := row.Get(0).(float64)
 			if ok {
 				if val < prev {
 					t.Errorf("Cumulative proportions not monotonically increasing at position %d", i)
@@ -354,7 +358,8 @@ func TestScreeDataDT(t *testing.T) {
 		}
 
 		// Last cumulative proportion should be close to 1.0
-		lastVal, ok := list.Get(rows - 1).(float64)
+		lastRow := table.GetRow(rows - 1)
+		lastVal, ok := lastRow.Get(0).(float64)
 		if ok && !approxEqual(lastVal, 1.0, 0.01) {
 			t.Errorf("Last cumulative proportion should be ~1.0, got %f", lastVal)
 		}
@@ -451,10 +456,11 @@ func TestFactorAnalysisWithStandardizedData(t *testing.T) {
 	// Sum of communalities should be reasonable (between 0 and number of variables)
 	var sumComm float64
 	if model.Result.Communalities != nil {
-		model.Result.Communalities.AtomicDo(func(list *insyra.DataList) {
-			rows := list.Len()
+		model.Result.Communalities.AtomicDo(func(table *insyra.DataTable) {
+			rows, _ := table.Size()
 			for i := 0; i < rows; i++ {
-				val, ok := list.Get(i).(float64)
+				row := table.GetRow(i)
+				val, ok := row.Get(0).(float64)
 				if ok {
 					sumComm += val
 				}
@@ -469,10 +475,11 @@ func TestFactorAnalysisWithStandardizedData(t *testing.T) {
 	// Explained proportions should sum to something reasonable
 	var sumExplained float64
 	if model.Result.ExplainedProportion != nil {
-		model.Result.ExplainedProportion.AtomicDo(func(list *insyra.DataList) {
-			rows := list.Len()
+		model.Result.ExplainedProportion.AtomicDo(func(table *insyra.DataTable) {
+			rows, _ := table.Size()
 			for i := 0; i < rows; i++ {
-				val, ok := list.Get(i).(float64)
+				row := table.GetRow(i)
+				val, ok := row.Get(0).(float64)
 				if ok {
 					sumExplained += val
 				}
