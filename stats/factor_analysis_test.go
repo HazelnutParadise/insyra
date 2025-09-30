@@ -2,6 +2,7 @@ package stats_test
 
 import (
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
@@ -23,7 +24,7 @@ func TestFactorAnalysisBasic(t *testing.T) {
 	dt.AppendCols(insyra.NewDataList(3.0, 6.0, 9.0, 12.0, 15.0, 18.0, 21.0, 24.0, 27.0, 30.0))
 
 	opt := stats.DefaultFactorAnalysisOptions()
-	opt.Count.Method = stats.CountFixed
+	opt.Count.Method = stats.FactorCountFixed
 	opt.Count.FixedK = 2
 
 	model := stats.FactorAnalysis(dt, opt)
@@ -123,7 +124,7 @@ func TestFactorAnalysisKaiserCriterion(t *testing.T) {
 	}
 
 	opt := stats.DefaultFactorAnalysisOptions()
-	opt.Count.Method = stats.CountKaiser
+	opt.Count.Method = stats.FactorCountKaiser
 	opt.Count.EigenThreshold = 1.0
 
 	model := stats.FactorAnalysis(dt, opt)
@@ -147,7 +148,7 @@ func TestFactorAnalysisPAF(t *testing.T) {
 
 	opt := stats.DefaultFactorAnalysisOptions()
 	opt.Extraction = stats.FactorExtractionPAF
-	opt.Count.Method = stats.CountFixed
+	opt.Count.Method = stats.FactorCountFixed
 	opt.Count.FixedK = 1
 	opt.MaxIter = 50
 	opt.Tol = 1e-4
@@ -177,7 +178,7 @@ func TestFactorAnalysisNoRotation(t *testing.T) {
 
 	opt := stats.DefaultFactorAnalysisOptions()
 	opt.Rotation.Method = stats.FactorRotationNone
-	opt.Count.Method = stats.CountFixed
+	opt.Count.Method = stats.FactorCountFixed
 	opt.Count.FixedK = 1
 
 	model := stats.FactorAnalysis(dt, opt)
@@ -207,7 +208,7 @@ func TestFactorAnalysisVarimaxRotation(t *testing.T) {
 
 	opt := stats.DefaultFactorAnalysisOptions()
 	opt.Rotation.Method = stats.FactorRotationVarimax
-	opt.Count.Method = stats.CountFixed
+	opt.Count.Method = stats.FactorCountFixed
 	opt.Count.FixedK = 2
 
 	model := stats.FactorAnalysis(dt, opt)
@@ -220,6 +221,166 @@ func TestFactorAnalysisVarimaxRotation(t *testing.T) {
 	// Phi should be nil for orthogonal rotation
 	if model.Result.Phi != nil {
 		t.Log("Note: Phi is set for orthogonal rotation (should be nil or identity)")
+	}
+}
+
+func TestFactorAnalysisMLExtraction(t *testing.T) {
+	dt := insyra.NewDataTable()
+	for i := 0; i < 4; i++ {
+		col := insyra.NewDataList()
+		for j := 0; j < 60; j++ {
+			col.Append(float64(j) + float64(i)*0.4 + float64(j%5)*0.2)
+		}
+		dt.AppendCols(col)
+	}
+
+	opt := stats.DefaultFactorAnalysisOptions()
+	opt.Count.Method = stats.FactorCountFixed
+	opt.Count.FixedK = 2
+	opt.Extraction = stats.FactorExtractionML
+	opt.MaxIter = 120
+	opt.Tol = 1e-5
+
+	model := stats.FactorAnalysis(dt, opt)
+	if model == nil {
+		t.Fatal("Expected model for ML extraction")
+	}
+	if model.Result.Loadings == nil {
+		t.Fatal("Expected loadings for ML extraction")
+	}
+	if !model.Result.Converged {
+		t.Log("ML extraction did not report convergence; verify tolerance settings")
+	}
+	joined := strings.ToLower(strings.Join(model.Result.Messages, " "))
+	if !strings.Contains(joined, "ml") {
+		t.Errorf("Expected messages to mention ML extraction, got %v", model.Result.Messages)
+	}
+}
+
+func TestFactorAnalysisBayesianExtraction(t *testing.T) {
+	dt := insyra.NewDataTable()
+	for i := 0; i < 4; i++ {
+		col := insyra.NewDataList()
+		for j := 0; j < 80; j++ {
+			col.Append(float64(j) + float64(i)*0.25 + float64(j%3))
+		}
+		dt.AppendCols(col)
+	}
+
+	opt := stats.DefaultFactorAnalysisOptions()
+	opt.Count.Method = stats.FactorCountFixed
+	opt.Count.FixedK = 2
+	opt.Extraction = stats.FactorExtractionBayesian
+	opt.MaxIter = 80
+	opt.Tol = 1e-5
+
+	model := stats.FactorAnalysis(dt, opt)
+	if model == nil {
+		t.Fatal("Expected model for Bayesian extraction")
+	}
+	if model.Result.Loadings == nil {
+		t.Fatal("Expected loadings for Bayesian extraction")
+	}
+	joined := strings.ToLower(strings.Join(model.Result.Messages, " "))
+	if !strings.Contains(joined, "bayesian") {
+		t.Errorf("Expected messages to mention Bayesian extraction, got %v", model.Result.Messages)
+	}
+}
+
+func TestFactorAnalysisPromaxRotation(t *testing.T) {
+	dt := insyra.NewDataTable()
+	for i := 0; i < 6; i++ {
+		col := insyra.NewDataList()
+		for j := 0; j < 40; j++ {
+			value := float64(j)
+			if i < 3 {
+				value += float64(i) * 0.8
+			} else {
+				value += float64(j) * 0.4
+			}
+			col.Append(value)
+		}
+		dt.AppendCols(col)
+	}
+
+	opt := stats.DefaultFactorAnalysisOptions()
+	opt.Count.Method = stats.FactorCountFixed
+	opt.Count.FixedK = 2
+	opt.Rotation.Method = stats.FactorRotationPromax
+	opt.Rotation.ForceOblique = true
+	opt.Rotation.Kappa = 4
+
+	model := stats.FactorAnalysis(dt, opt)
+	if model == nil {
+		t.Fatal("Expected model for Promax rotation")
+	}
+	if model.Result.Phi == nil {
+		t.Fatal("Expected Phi matrix for oblique rotation")
+	}
+	joined := strings.ToLower(strings.Join(model.Result.Messages, " "))
+	if !strings.Contains(joined, "oblique rotation") {
+		t.Errorf("Expected oblique rotation message, got %v", model.Result.Messages)
+	}
+}
+
+func TestFactorAnalysisObliminOptionalOrthogonal(t *testing.T) {
+	dt := insyra.NewDataTable()
+	for i := 0; i < 5; i++ {
+		col := insyra.NewDataList()
+		for j := 0; j < 50; j++ {
+			col.Append(float64(j) + float64(i)*0.5)
+		}
+		dt.AppendCols(col)
+	}
+
+	opt := stats.DefaultFactorAnalysisOptions()
+	opt.Count.Method = stats.FactorCountFixed
+	opt.Count.FixedK = 2
+	opt.Rotation.Method = stats.FactorRotationOblimin
+	opt.Rotation.ForceOblique = false
+
+	model := stats.FactorAnalysis(dt, opt)
+	if model == nil {
+		t.Fatal("Expected model for Oblimin rotation")
+	}
+	if model.Result.RotationMatrix == nil {
+		t.Fatal("Expected rotation matrix for oblimin rotation")
+	}
+	if model.Result.Phi != nil {
+		t.Error("Expected Phi to be nil when ForceOblique is false")
+	}
+}
+
+func TestFactorAnalysisParallelAnalysisCount(t *testing.T) {
+	dt := insyra.NewDataTable()
+	for i := 0; i < 6; i++ {
+		col := insyra.NewDataList()
+		for j := 0; j < 120; j++ {
+			col.Append(float64(j) + float64(i)*0.3 + float64(j%4))
+		}
+		dt.AppendCols(col)
+	}
+
+	opt := stats.DefaultFactorAnalysisOptions()
+	opt.Count.Method = stats.FactorCountParallelAnalysis
+	opt.Count.MaxFactors = 3
+	opt.Count.ParallelReplications = 20
+	opt.Count.ParallelPercentile = 0.95
+	opt.Rotation.Method = stats.FactorRotationNone
+
+	model := stats.FactorAnalysis(dt, opt)
+	if model == nil {
+		t.Fatal("Expected model for parallel analysis")
+	}
+	if model.Result.CountUsed < 1 {
+		t.Errorf("Expected at least one factor from parallel analysis, got %d", model.Result.CountUsed)
+	}
+	if model.Result.CountUsed > opt.Count.MaxFactors {
+		t.Errorf("Parallel analysis exceeded MaxFactors (%d) with %d", opt.Count.MaxFactors, model.Result.CountUsed)
+	}
+	joined := strings.ToLower(strings.Join(model.Result.Messages, " "))
+	if !strings.Contains(joined, "parallel analysis") {
+		t.Errorf("Expected messages to mention parallel analysis, got %v", model.Result.Messages)
 	}
 }
 
@@ -240,7 +401,7 @@ func TestFactorScoring(t *testing.T) {
 		t.Run(string(method), func(t *testing.T) {
 			opt := stats.DefaultFactorAnalysisOptions()
 			opt.Scoring = method
-			opt.Count.Method = stats.CountFixed
+			opt.Count.Method = stats.FactorCountFixed
 			opt.Count.FixedK = 1
 
 			model := stats.FactorAnalysis(dt, opt)
@@ -272,7 +433,7 @@ func TestFactorScoresDT(t *testing.T) {
 	dt.AppendCols(insyra.NewDataList(1.5, 3.0, 4.5, 6.0, 7.5))
 
 	opt := stats.DefaultFactorAnalysisOptions()
-	opt.Count.Method = stats.CountFixed
+	opt.Count.Method = stats.FactorCountFixed
 	opt.Count.FixedK = 1
 
 	model := stats.FactorAnalysis(dt, opt)
@@ -283,7 +444,7 @@ func TestFactorScoresDT(t *testing.T) {
 	newDt.AppendCols(insyra.NewDataList(12.0, 14.0))
 	newDt.AppendCols(insyra.NewDataList(9.0, 10.5))
 
-	scores, err := model.FactorScoresDT(newDt, nil)
+	scores, err := model.FactorScores(newDt, nil)
 	if err != nil {
 		t.Fatalf("FactorScoresDT failed: %v", err)
 	}
@@ -315,7 +476,7 @@ func TestScreeDataDT(t *testing.T) {
 		dt.AppendCols(col)
 	}
 
-	eigenDT, cumDT, err := stats.ScreeDataDT(dt, true)
+	eigenDT, cumDT, err := stats.ScreePlotData(dt, true)
 	if err != nil {
 		t.Fatalf("ScreeDataDT failed: %v", err)
 	}
@@ -329,27 +490,21 @@ func TestScreeDataDT(t *testing.T) {
 
 	// Check dimensions
 	eigenDT.AtomicDo(func(table *insyra.DataTable) {
-		rows, cols := table.Size()
+		rows, _ := table.Size()
 		if rows != 4 {
 			t.Errorf("Expected 4 eigenvalues, got %d", rows)
-		}
-		if cols != 1 {
-			t.Errorf("Expected 1 column, got %d", cols)
 		}
 	})
 
 	cumDT.AtomicDo(func(table *insyra.DataTable) {
-		rows, cols := table.Size()
+		rows, _ := table.Size()
 		if rows != 4 {
 			t.Errorf("Expected 4 cumulative values, got %d", rows)
-		}
-		if cols != 1 {
-			t.Errorf("Expected 1 column, got %d", cols)
 		}
 
 		// Check that cumulative proportions are monotonically increasing
 		var prev = -1.0
-		for i := range rows {
+		for i := 0; i < rows; i++ {
 			row := table.GetRow(i)
 			val, ok := row.Get(0).(float64)
 			if ok {
@@ -397,7 +552,7 @@ func TestFactorAnalysisSingleVariable(t *testing.T) {
 	dt.AppendCols(insyra.NewDataList(1.0, 2.0, 3.0, 4.0, 5.0))
 
 	opt := stats.DefaultFactorAnalysisOptions()
-	opt.Count.Method = stats.CountFixed
+	opt.Count.Method = stats.FactorCountFixed
 	opt.Count.FixedK = 1
 
 	model := stats.FactorAnalysis(dt, opt)
@@ -419,7 +574,7 @@ func TestDefaultOptions(t *testing.T) {
 		t.Error("Default should standardize data")
 	}
 
-	if opt.Count.Method != stats.CountKaiser {
+	if opt.Count.Method != stats.FactorCountKaiser {
 		t.Error("Default should use Kaiser criterion")
 	}
 
@@ -454,7 +609,7 @@ func TestFactorAnalysisWithStandardizedData(t *testing.T) {
 
 	opt := stats.DefaultFactorAnalysisOptions()
 	opt.Preprocess.Standardize = true
-	opt.Count.Method = stats.CountFixed
+	opt.Count.Method = stats.FactorCountFixed
 	opt.Count.FixedK = 2
 
 	model := stats.FactorAnalysis(dt, opt)

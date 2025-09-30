@@ -1073,6 +1073,16 @@ type FactorAnalysisResult struct {
 }
 ```
 
+**DataTable Naming Convention**:
+
+- **Loadings**: Column names are factor names (Factor1, Factor2, ...), row names are variable names
+- **Uniquenesses**: Single column named "Uniqueness", row names are variable names
+- **Communalities**: Single column named "Communality", row names are variable names
+- **Eigenvalues**: Single column named "Eigenvalue", row names are factor names
+- **ExplainedProportion**: Single column named "Explained Proportion", row names are factor names
+- **CumulativeProportion**: Single column named "Cumulative Proportion", row names are factor names
+- **Scores**: Column names are factor names, row names are observation indices
+
 #### FactorModel
 
 ```go
@@ -1092,9 +1102,9 @@ type FactorModel struct {
 
 ```go
 // Perform factor analysis with default options
-model, err := stats.FactorAnalysis(dataTable, stats.DefaultFactorAnalysisOptions())
-if err != nil {
-    log.Fatal(err)
+model := stats.FactorAnalysis(dataTable, stats.DefaultFactorAnalysisOptions())
+if model == nil {
+    log.Fatal("Factor analysis failed")
 }
 
 // Display results
@@ -1106,10 +1116,10 @@ model.Result.Eigenvalues.Show()     // Eigenvalues
 model.Result.Loadings.ToCSV("factor_loadings.csv", true, true, true)
 ```
 
-### FactorScoresDT
+### FactorScores
 
 ```go
-func (m *FactorModel) FactorScoresDT(dt insyra.IDataTable, method *FactorScoreMethod) (insyra.IDataTable, error)
+func (m *FactorModel) FactorScores(dt insyra.IDataTable, method *FactorScoreMethod) (insyra.IDataTable, error)
 ```
 
 **Purpose**: Compute factor scores for new data using a fitted factor analysis model.
@@ -1125,7 +1135,7 @@ func (m *FactorModel) FactorScoresDT(dt insyra.IDataTable, method *FactorScoreMe
 
 ```go
 // Compute factor scores for new data
-scores, err := model.FactorScoresDT(newData, nil)
+scores, err := model.FactorScores(newData, nil)
 if err != nil {
     log.Fatal(err)
 }
@@ -1133,13 +1143,13 @@ scores.Show()
 scores.ToCSV("factor_scores.csv", true, true, true)
 ```
 
-### ScreeDataDT
+### ScreePlotData
 
 ```go
-func ScreeDataDT(dt insyra.IDataTable, standardize bool) (insyra.IDataTable, insyra.IDataTable, error)
+func ScreePlotData(dt insyra.IDataTable, standardize bool) (eigenDT insyra.IDataTable, cumDT insyra.IDataTable, err error)
 ```
 
-**Purpose**: Generate data for scree plot to help determine the number of factors.
+**Purpose**: Returns scree plot data (eigenvalues and cumulative proportion) for determining the number of factors to extract.
 
 **Parameters**:
 
@@ -1148,19 +1158,20 @@ func ScreeDataDT(dt insyra.IDataTable, standardize bool) (insyra.IDataTable, ins
 
 **Returns**:
 
-- Eigenvalues DataTable
-- Cumulative proportion DataTable
+- `eigenDT`: DataTable containing eigenvalues in descending order
+- `cumDT`: DataTable containing cumulative proportions of explained variance
+- `err`: Error if analysis fails
 
 **Example**:
 
 ```go
-// Generate scree plot data
-eigenvalues, cumProp, err := stats.ScreeDataDT(dataTable, true)
+// Get scree plot data for factor analysis
+eigenvalues, cumulative, err := stats.ScreePlotData(dataTable, true)
 if err != nil {
     log.Fatal(err)
 }
-eigenvalues.Show()
-cumProp.Show()
+eigenvalues.Show() // Display eigenvalues
+cumulative.Show()  // Display cumulative proportions
 ```
 
 ### DefaultFactorAnalysisOptions
@@ -1200,7 +1211,7 @@ All regression functions (Linear, Polynomial, Exponential, and Logarithmic) now 
 
 The confidence intervals are calculated using the t-distribution with appropriate degrees of freedom:
 
-```
+```text
 CI = coefficient ± t_(α/2, df) × standard_error
 ```
 
