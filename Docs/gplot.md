@@ -75,6 +75,31 @@ Creates a line chart based on the provided configuration.
 
 ![line_example](./img/gplot_line_example.png)
 
+### Step Chart
+
+#### `StepChartConfig`
+
+- `Title`: The title of the chart.
+- `XAxis`: Data for the X-axis (categories).
+- `Data`: The data for the series. Supported types:
+  - `map[string][]float64`
+  - `[]*insyra.DataList`
+  - `[]insyra.IDataList`
+- `XAxisName`: Optional: Name for the X-axis.
+- `YAxisName`: Optional: Name for the Y-axis.
+- `StepStyle`: Optional: Step style. Options: `"pre"`, `"mid"`, `"post"`. Default is `"post"`.
+  - `"pre"`: Vertical line first, then horizontal line (step before the point)
+  - `"mid"`: Horizontal line, vertical line in the middle, then horizontal line
+  - `"post"`: Horizontal line first, then vertical line (step after the point)
+
+#### `CreateStepChart(config StepChartConfig) *plot.Plot`
+
+Creates a step chart based on the provided configuration. Step charts connect data points with horizontal and vertical lines instead of diagonal lines, making them useful for visualizing data that changes at discrete intervals.
+
+#### Example
+
+![step_example](./img/gplot_step_example.png)
+
 ### Function Plot
 
 #### `FunctionPlotConfig`
