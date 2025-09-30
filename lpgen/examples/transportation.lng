@@ -1,0 +1,39 @@
+! Transportation Problem Example
+! This is a classic optimization problem in LINGO
+SETS:
+WAREHOUSES / W1 W2 W3 /;
+CUSTOMERS / C1 C2 C3 C4 /;
+ROUTES(WAREHOUSES, CUSTOMERS);
+ENDSETS
+
+DATA:
+! Supply at each warehouse
+SUPPLY = 100 150 120;
+
+! Demand at each customer
+DEMAND = 80 90 70 100;
+
+! Shipping cost from warehouse to customer (per unit)
+! Rows are warehouses, columns are customers
+COST = 8 6 10 9
+       9 12 13 7
+       14 9 16 5;
+ENDDATA
+
+MODEL:
+! Minimize total transportation cost
+MIN = @SUM(ROUTES: COST * SHIP);
+
+! Supply constraints - cannot ship more than available
+@FOR(WAREHOUSES: 
+  @SUM(CUSTOMERS: SHIP) <= SUPPLY
+);
+
+! Demand constraints - must meet customer demand
+@FOR(CUSTOMERS:
+  @SUM(WAREHOUSES: SHIP) >= DEMAND
+);
+
+! Non-negativity constraints
+@FOR(ROUTES: SHIP >= 0);
+END

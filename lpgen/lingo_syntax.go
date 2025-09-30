@@ -10,6 +10,31 @@ import (
 	"github.com/HazelnutParadise/insyra"
 )
 
+// LINGO Syntax Parser
+//
+// This file provides support for parsing native LINGO syntax, allowing users to
+// convert LINGO models to LP format without needing to generate the model in LINGO first.
+//
+// Supported Features:
+//   - Comments (! to end of line)
+//   - Sections: SETS, DATA, MODEL
+//   - @ Functions: @SUM, @FOR, @BIN, @GIN
+//   - Set definitions with inline elements
+//   - Data value assignments
+//   - Variable naming patterns (e.g., X_SETNAME)
+//
+// Limitations:
+//   - Multi-dimensional sets are parsed but may need manual expansion
+//   - Nested @SUM within @FOR may require careful structuring
+//   - Data arrays are not automatically indexed to variables
+//
+// Future Enhancements:
+//   - Support for @MIN, @MAX functions
+//   - Multi-dimensional set indexing
+//   - More complex data structures
+//   - @IF conditional constraints
+//   - @FREE unbounded variables
+
 // LingoModel represents a LINGO model with sets, data, and constraints
 type LingoModel struct {
 	Sets        map[string][]string // Set definitions (e.g., "PRODUCTS" -> ["P1", "P2"])

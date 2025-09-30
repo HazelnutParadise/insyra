@@ -24,6 +24,14 @@ Shows integer and binary variable declarations:
 - @GIN() for general integer variables
 - Mixed integer linear programming
 
+### 4. transportation.lng
+A classic transportation problem (advanced example):
+- Multi-dimensional sets
+- Nested @FOR and @SUM functions
+- Real-world optimization scenario
+
+**Note**: The transportation example demonstrates advanced LINGO syntax. Some features like nested @SUM within @FOR and multi-dimensional sets may require additional parsing enhancements.
+
 ## Usage
 
 ```go
@@ -48,13 +56,24 @@ func main() {
 
 ## LINGO Syntax Support
 
-The lpgen package supports the following LINGO features:
+The lpgen package currently supports the following LINGO features:
 
+### Fully Supported
 - **Comments**: Lines starting with `!`
 - **Sections**: SETS, DATA, MODEL
-- **@ Functions**: @SUM, @FOR, @BIN, @GIN
+- **@ Functions**: 
+  - `@SUM(set: expression)` - Sum over a set
+  - `@FOR(set: constraint)` - Generate constraints for each element
+  - `@BIN(var)` - Declare binary variables
+  - `@GIN(var)` - Declare general integer variables
 - **Operators**: +, -, *, <=, >=, =
 - **Objective functions**: MAX, MIN
+- **Variable patterns**: Supports `VAR_SET` naming patterns
+
+### Limitations
+- Nested @SUM within @FOR requires each to be on separate levels
+- Multi-dimensional sets (e.g., ROUTES(WAREHOUSES, CUSTOMERS)) are parsed but may need manual expansion
+- Data arrays are parsed but not automatically indexed to variables in expressions
 
 ## Converting to LP Format
 
@@ -66,3 +85,11 @@ go run your_program.go
 ```
 
 The output will be in LP format compatible with solvers like CPLEX, Gurobi, or GLPK.
+
+## Contributing Examples
+
+When adding new examples, please:
+1. Include comments explaining the problem
+2. Use meaningful variable and set names
+3. Test the example to ensure it parses correctly
+4. Document any advanced features used
