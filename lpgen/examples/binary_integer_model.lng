@@ -1,0 +1,16 @@
+! Binary and Integer Programming Example
+MODEL:
+! Maximize objective with binary and integer variables
+MAX = 5*X + 3*Y + 2*Z;
+
+! Constraints
+X + Y <= 10;
+2*Y + Z <= 15;
+
+! Variable type declarations
+@BIN(X);
+@GIN(Y);
+
+! Non-negativity
+Z >= 0;
+END
