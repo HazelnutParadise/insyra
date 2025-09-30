@@ -411,24 +411,28 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		}
 	}
 
-	// Step 9: Compute explained proportions
-	totalVariance := 0.0
-	for _, ev := range sortedEigenvalues {
-		if ev > 0 {
-			totalVariance += ev
+	// Step 9: Compute explained proportions (SS loadings / number of variables)
+	rows, cols := rotatedLoadings.Dims()
+	ssLoad := make([]float64, cols)
+	for j := 0; j < cols; j++ {
+		sum := 0.0
+		for i := 0; i < rows; i++ {
+			v := rotatedLoadings.At(i, j)
+			sum += v * v
 		}
+		ssLoad[j] = sum
 	}
-	explainedProp := make([]float64, numFactors)
-	cumulativeProp := make([]float64, numFactors)
-	cumSum := 0.0
-	for i := 0; i < numFactors; i++ {
-		if i < len(sortedEigenvalues) {
-			explainedProp[i] = sortedEigenvalues[i] / totalVariance
-		} else {
-			explainedProp[i] = 0
+	explainedProp := make([]float64, cols)
+	cumulativeProp := make([]float64, cols)
+	if rows > 0 {
+		cum := 0.0
+		denominator := float64(rows)
+		for j := 0; j < cols; j++ {
+			prop := ssLoad[j] / denominator
+			explainedProp[j] = prop
+			cum += prop
+			cumulativeProp[j] = cum
 		}
-		cumSum += explainedProp[i]
-		cumulativeProp[i] = cumSum
 	}
 
 	// Step 10: Compute factor scores if data is available
