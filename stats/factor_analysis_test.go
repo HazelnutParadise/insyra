@@ -2,6 +2,7 @@ package stats_test
 
 import (
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
@@ -58,7 +59,7 @@ func TestFactorAnalysisBasic(t *testing.T) {
 	if model.Result.Communalities != nil {
 		model.Result.Communalities.AtomicDo(func(table *insyra.DataTable) {
 			rows, _ := table.Size()
-			for i := range rows {
+			for i := 0; i < rows; i++ {
 				row := table.GetRow(i)
 				val, ok := row.Get(0).(float64)
 				if !ok {
@@ -223,6 +224,166 @@ func TestFactorAnalysisVarimaxRotation(t *testing.T) {
 	}
 }
 
+func TestFactorAnalysisMLExtraction(t *testing.T) {
+	dt := insyra.NewDataTable()
+	for i := 0; i < 4; i++ {
+		col := insyra.NewDataList()
+		for j := 0; j < 60; j++ {
+			col.Append(float64(j) + float64(i)*0.4 + float64(j%5)*0.2)
+		}
+		dt.AppendCols(col)
+	}
+
+	opt := stats.DefaultFactorAnalysisOptions()
+	opt.Count.Method = stats.FactorCountFixed
+	opt.Count.FixedK = 2
+	opt.Extraction = stats.FactorExtractionML
+	opt.MaxIter = 120
+	opt.Tol = 1e-5
+
+	model := stats.FactorAnalysis(dt, opt)
+	if model == nil {
+		t.Fatal("Expected model for ML extraction")
+	}
+	if model.Result.Loadings == nil {
+		t.Fatal("Expected loadings for ML extraction")
+	}
+	if !model.Result.Converged {
+		t.Log("ML extraction did not report convergence; verify tolerance settings")
+	}
+	joined := strings.ToLower(strings.Join(model.Result.Messages, " "))
+	if !strings.Contains(joined, "ml") {
+		t.Errorf("Expected messages to mention ML extraction, got %v", model.Result.Messages)
+	}
+}
+
+func TestFactorAnalysisBayesianExtraction(t *testing.T) {
+	dt := insyra.NewDataTable()
+	for i := 0; i < 4; i++ {
+		col := insyra.NewDataList()
+		for j := 0; j < 80; j++ {
+			col.Append(float64(j) + float64(i)*0.25 + float64(j%3))
+		}
+		dt.AppendCols(col)
+	}
+
+	opt := stats.DefaultFactorAnalysisOptions()
+	opt.Count.Method = stats.FactorCountFixed
+	opt.Count.FixedK = 2
+	opt.Extraction = stats.FactorExtractionBayesian
+	opt.MaxIter = 80
+	opt.Tol = 1e-5
+
+	model := stats.FactorAnalysis(dt, opt)
+	if model == nil {
+		t.Fatal("Expected model for Bayesian extraction")
+	}
+	if model.Result.Loadings == nil {
+		t.Fatal("Expected loadings for Bayesian extraction")
+	}
+	joined := strings.ToLower(strings.Join(model.Result.Messages, " "))
+	if !strings.Contains(joined, "bayesian") {
+		t.Errorf("Expected messages to mention Bayesian extraction, got %v", model.Result.Messages)
+	}
+}
+
+func TestFactorAnalysisPromaxRotation(t *testing.T) {
+	dt := insyra.NewDataTable()
+	for i := 0; i < 6; i++ {
+		col := insyra.NewDataList()
+		for j := 0; j < 40; j++ {
+			value := float64(j)
+			if i < 3 {
+				value += float64(i) * 0.8
+			} else {
+				value += float64(j) * 0.4
+			}
+			col.Append(value)
+		}
+		dt.AppendCols(col)
+	}
+
+	opt := stats.DefaultFactorAnalysisOptions()
+	opt.Count.Method = stats.FactorCountFixed
+	opt.Count.FixedK = 2
+	opt.Rotation.Method = stats.FactorRotationPromax
+	opt.Rotation.ForceOblique = true
+	opt.Rotation.Kappa = 4
+
+	model := stats.FactorAnalysis(dt, opt)
+	if model == nil {
+		t.Fatal("Expected model for Promax rotation")
+	}
+	if model.Result.Phi == nil {
+		t.Fatal("Expected Phi matrix for oblique rotation")
+	}
+	joined := strings.ToLower(strings.Join(model.Result.Messages, " "))
+	if !strings.Contains(joined, "oblique rotation") {
+		t.Errorf("Expected oblique rotation message, got %v", model.Result.Messages)
+	}
+}
+
+func TestFactorAnalysisObliminOptionalOrthogonal(t *testing.T) {
+	dt := insyra.NewDataTable()
+	for i := 0; i < 5; i++ {
+		col := insyra.NewDataList()
+		for j := 0; j < 50; j++ {
+			col.Append(float64(j) + float64(i)*0.5)
+		}
+		dt.AppendCols(col)
+	}
+
+	opt := stats.DefaultFactorAnalysisOptions()
+	opt.Count.Method = stats.FactorCountFixed
+	opt.Count.FixedK = 2
+	opt.Rotation.Method = stats.FactorRotationOblimin
+	opt.Rotation.ForceOblique = false
+
+	model := stats.FactorAnalysis(dt, opt)
+	if model == nil {
+		t.Fatal("Expected model for Oblimin rotation")
+	}
+	if model.Result.RotationMatrix == nil {
+		t.Fatal("Expected rotation matrix for oblimin rotation")
+	}
+	if model.Result.Phi != nil {
+		t.Error("Expected Phi to be nil when ForceOblique is false")
+	}
+}
+
+func TestFactorAnalysisParallelAnalysisCount(t *testing.T) {
+	dt := insyra.NewDataTable()
+	for i := 0; i < 6; i++ {
+		col := insyra.NewDataList()
+		for j := 0; j < 120; j++ {
+			col.Append(float64(j) + float64(i)*0.3 + float64(j%4))
+		}
+		dt.AppendCols(col)
+	}
+
+	opt := stats.DefaultFactorAnalysisOptions()
+	opt.Count.Method = stats.FactorCountParallelAnalysis
+	opt.Count.MaxFactors = 3
+	opt.Count.ParallelReplications = 20
+	opt.Count.ParallelPercentile = 0.95
+	opt.Rotation.Method = stats.FactorRotationNone
+
+	model := stats.FactorAnalysis(dt, opt)
+	if model == nil {
+		t.Fatal("Expected model for parallel analysis")
+	}
+	if model.Result.CountUsed < 1 {
+		t.Errorf("Expected at least one factor from parallel analysis, got %d", model.Result.CountUsed)
+	}
+	if model.Result.CountUsed > opt.Count.MaxFactors {
+		t.Errorf("Parallel analysis exceeded MaxFactors (%d) with %d", opt.Count.MaxFactors, model.Result.CountUsed)
+	}
+	joined := strings.ToLower(strings.Join(model.Result.Messages, " "))
+	if !strings.Contains(joined, "parallel analysis") {
+		t.Errorf("Expected messages to mention parallel analysis, got %v", model.Result.Messages)
+	}
+}
+
 // TestFactorScoring tests different factor scoring methods
 func TestFactorScoring(t *testing.T) {
 	dt := insyra.NewDataTable()
@@ -343,7 +504,7 @@ func TestScreeDataDT(t *testing.T) {
 
 		// Check that cumulative proportions are monotonically increasing
 		var prev = -1.0
-		for i := range rows {
+		for i := 0; i < rows; i++ {
 			row := table.GetRow(i)
 			val, ok := row.Get(0).(float64)
 			if ok {
