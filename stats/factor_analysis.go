@@ -1066,13 +1066,37 @@ func normalizeToCorrelation(m *mat.Dense) *mat.Dense {
 		return m
 	}
 	d := make([]float64, r)
+	hasZeroDiag := false
 	for i := 0; i < r; i++ {
 		v := m.At(i, i)
-		if v <= 0 {
-			v = 1 // Avoid NaN, use 1 as fallback
+		if v <= 1e-10 {
+			// Diagonal is essentially zero - this factor is degenerate
+			// Just return identity correlation for this factor
+			d[i] = 1.0
+			hasZeroDiag = true
+		} else {
+			d[i] = math.Sqrt(v)
 		}
-		d[i] = math.Sqrt(v)
 	}
+	
+	// If we have degenerate factors, return a properly formed correlation matrix
+	if hasZeroDiag {
+		out := mat.NewDense(r, r, nil)
+		for i := 0; i < r; i++ {
+			for j := 0; j < r; j++ {
+				if i == j {
+					out.Set(i, j, 1.0)
+				} else if d[i] > 1e-10 && d[j] > 1e-10 {
+					out.Set(i, j, m.At(i, j)/(d[i]*d[j]))
+				} else {
+					out.Set(i, j, 0.0)
+				}
+			}
+		}
+		return out
+	}
+	
+	// Normal case - no degenerate factors
 	out := mat.NewDense(r, r, nil)
 	for i := 0; i < r; i++ {
 		for j := 0; j < r; j++ {
