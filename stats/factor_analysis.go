@@ -787,16 +787,10 @@ func extractPAF(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64)
 	// Initialize communalities with SMC (Squared Multiple Correlation)
 	communalities := initialCommunalitiesSMC(corrMatrix)
 	
-	// Log initial communalities and diagonal for debugging
+	// Log initial communalities for verification (per issue #xxx)
 	if p >= 4 {
-		diag0 := corrMatrix.At(0, 0)
-		diag1 := corrMatrix.At(1, 1)
-		diag2 := corrMatrix.At(2, 2)
-		diag3 := corrMatrix.At(3, 3)
 		insyra.LogInfo("stats", "PAF", "init h2 (first 4) = %.3f, %.3f, %.3f, %.3f",
 			communalities[0], communalities[1], communalities[2], communalities[3])
-		insyra.LogInfo("stats", "PAF", "corr diagonal (first 4) = %.3f, %.3f, %.3f, %.3f",
-			diag0, diag1, diag2, diag3)
 	}
 
 	var loadings *mat.Dense
