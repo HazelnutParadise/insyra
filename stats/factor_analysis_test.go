@@ -283,7 +283,7 @@ func TestFactorScoresDT(t *testing.T) {
 	newDt.AppendCols(insyra.NewDataList(12.0, 14.0))
 	newDt.AppendCols(insyra.NewDataList(9.0, 10.5))
 
-	scores, err := model.FactorScoresDT(newDt, nil)
+	scores, err := model.FactorScores(newDt, nil)
 	if err != nil {
 		t.Fatalf("FactorScoresDT failed: %v", err)
 	}
@@ -315,7 +315,7 @@ func TestScreeDataDT(t *testing.T) {
 		dt.AppendCols(col)
 	}
 
-	eigenDT, cumDT, err := stats.ScreeDataDT(dt, true)
+	eigenDT, cumDT, err := stats.ScreePlotData(dt, true)
 	if err != nil {
 		t.Fatalf("ScreeDataDT failed: %v", err)
 	}

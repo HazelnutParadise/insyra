@@ -913,26 +913,6 @@ func computeFactorScores(data, loadings *mat.Dense, uniquenesses []float64, meth
 	return scores
 }
 
-// matrixToDataTable converts a gonum matrix to a DataTable
-func matrixToDataTable(m *mat.Dense, baseName string) insyra.IDataTable {
-	if m == nil {
-		return nil
-	}
-
-	r, c := m.Dims()
-	dt := insyra.NewDataTable()
-
-	for j := range c {
-		col := insyra.NewDataList()
-		for i := range r {
-			col.Append(m.At(i, j))
-		}
-		dt.AppendCols(col)
-	}
-
-	return dt.SetName(baseName)
-}
-
 // matrixToDataTableWithNames converts a gonum matrix to a DataTable with specified column and row names
 func matrixToDataTableWithNames(m *mat.Dense, baseName string, colNames []string, rowNames []string) insyra.IDataTable {
 	if m == nil {
@@ -977,8 +957,8 @@ func vectorToDataTableWithNames(v []float64, baseName string, colName string, ro
 	return dt.SetName(baseName)
 }
 
-// FactorScoresDT computes factor scores for new data
-func (m *FactorModel) FactorScoresDT(dt insyra.IDataTable, method *FactorScoreMethod) (insyra.IDataTable, error) {
+// FactorScores computes factor scores for new data
+func (m *FactorModel) FactorScores(dt insyra.IDataTable, method *FactorScoreMethod) (insyra.IDataTable, error) {
 	if dt == nil {
 		return nil, errors.New("nil DataTable")
 	}
@@ -1056,15 +1036,15 @@ func (m *FactorModel) FactorScoresDT(dt insyra.IDataTable, method *FactorScoreMe
 	// Generate factor column names
 	_, numFactors := loadings.Dims()
 	factorColNames := make([]string, numFactors)
-	for i := 0; i < numFactors; i++ {
+	for i := range numFactors {
 		factorColNames[i] = fmt.Sprintf("Factor%d", i+1)
 	}
 
 	return matrixToDataTableWithNames(scores, "Scores", factorColNames, rowNames), nil
 }
 
-// ScreeDataDT returns scree plot data (eigenvalues and cumulative proportion)
-func ScreeDataDT(dt insyra.IDataTable, standardize bool) (insyra.IDataTable, insyra.IDataTable, error) {
+// ScreePlotData returns scree plot data (eigenvalues and cumulative proportion)
+func ScreePlotData(dt insyra.IDataTable, standardize bool) (eigenDT insyra.IDataTable, cumDT insyra.IDataTable, err error) {
 	if dt == nil {
 		return nil, nil, errors.New("nil DataTable")
 	}
@@ -1139,7 +1119,7 @@ func ScreeDataDT(dt insyra.IDataTable, standardize bool) (insyra.IDataTable, ins
 
 	cumulativeProp := make([]float64, len(sortedEigenvalues))
 	cumSum := 0.0
-	for i := 0; i < len(sortedEigenvalues); i++ {
+	for i := range sortedEigenvalues {
 		if sortedEigenvalues[i] > 0 {
 			cumSum += sortedEigenvalues[i]
 		}
@@ -1154,8 +1134,8 @@ func ScreeDataDT(dt insyra.IDataTable, standardize bool) (insyra.IDataTable, ins
 		factorNames[i] = fmt.Sprintf("Factor%d", i+1)
 	}
 
-	eigenDT := vectorToDataTableWithNames(sortedEigenvalues, "Eigenvalue", "Eigenvalue", factorNames)
-	cumDT := vectorToDataTableWithNames(cumulativeProp, "Cumulative", "Cumulative", factorNames)
+	eigenDT = vectorToDataTableWithNames(sortedEigenvalues, "Eigenvalue", "Eigenvalue", factorNames)
+	cumDT = vectorToDataTableWithNames(cumulativeProp, "Cumulative", "Cumulative", factorNames)
 
 	return eigenDT, cumDT, nil
 }

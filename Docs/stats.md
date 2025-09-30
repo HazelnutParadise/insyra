@@ -1116,10 +1116,10 @@ model.Result.Eigenvalues.Show()     // Eigenvalues
 model.Result.Loadings.ToCSV("factor_loadings.csv", true, true, true)
 ```
 
-### FactorScoresDT
+### FactorScores
 
 ```go
-func (m *FactorModel) FactorScoresDT(dt insyra.IDataTable, method *FactorScoreMethod) (insyra.IDataTable, error)
+func (m *FactorModel) FactorScores(dt insyra.IDataTable, method *FactorScoreMethod) (insyra.IDataTable, error)
 ```
 
 **Purpose**: Compute factor scores for new data using a fitted factor analysis model.
@@ -1135,12 +1135,43 @@ func (m *FactorModel) FactorScoresDT(dt insyra.IDataTable, method *FactorScoreMe
 
 ```go
 // Compute factor scores for new data
-scores, err := model.FactorScoresDT(newData, nil)
+scores, err := model.FactorScores(newData, nil)
 if err != nil {
     log.Fatal(err)
 }
 scores.Show()
 scores.ToCSV("factor_scores.csv", true, true, true)
+```
+
+### ScreePlotData
+
+```go
+func ScreePlotData(dt insyra.IDataTable, standardize bool) (eigenDT insyra.IDataTable, cumDT insyra.IDataTable, err error)
+```
+
+**Purpose**: Returns scree plot data (eigenvalues and cumulative proportion) for determining the number of factors to extract.
+
+**Parameters**:
+
+- `dt`: Input data table
+- `standardize`: Whether to standardize variables before analysis
+
+**Returns**:
+
+- `eigenDT`: DataTable containing eigenvalues in descending order
+- `cumDT`: DataTable containing cumulative proportions of explained variance
+- `err`: Error if analysis fails
+
+**Example**:
+
+```go
+// Get scree plot data for factor analysis
+eigenvalues, cumulative, err := stats.ScreePlotData(dataTable, true)
+if err != nil {
+    log.Fatal(err)
+}
+eigenvalues.Show() // Display eigenvalues
+cumulative.Show()  // Display cumulative proportions
 ```
 
 ### DefaultFactorAnalysisOptions
