@@ -165,9 +165,10 @@ func DefaultFactorAnalysisOptions() FactorAnalysisOptions {
 // -------------------------
 
 // FactorAnalysis performs factor analysis on a DataTable
-func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorModel, error) {
+func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorModel {
 	if dt == nil {
-		return nil, errors.New("nil DataTable")
+		insyra.LogWarning("stats", "FactorAnalysis", "nil DataTable")
+		return nil
 	}
 
 	var rowNum, colNum int
@@ -201,7 +202,8 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 
 	// Check for empty data after AtomicDo
 	if rowNum == 0 || colNum == 0 {
-		return nil, errors.New("empty DataTable")
+		insyra.LogWarning("stats", "FactorAnalysis", "empty DataTable")
+		return nil
 	}
 
 	// Check for and handle missing values
@@ -235,7 +237,8 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 				}
 			}
 			if len(validRows) == 0 {
-				return nil, errors.New("no valid rows after removing missing values")
+				insyra.LogWarning("stats", "FactorAnalysis", "no valid rows after removing missing values")
+				return nil
 			}
 			newData := mat.NewDense(len(validRows), colNum, nil)
 			for i, rowIdx := range validRows {
@@ -247,7 +250,8 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 			rowNum = len(validRows)
 		} else {
 			// For simplicity, use listwise deletion for now
-			return nil, errors.New("only listwise deletion is currently supported for missing values")
+			insyra.LogWarning("stats", "FactorAnalysis", "only listwise deletion is currently supported for missing values")
+			return nil
 		}
 	}
 
@@ -288,7 +292,8 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 	// Step 4: Eigenvalue decomposition
 	var eig mat.EigenSym
 	if !eig.Factorize(corrMatrix, true) {
-		return nil, errors.New("eigenvalue decomposition failed")
+		insyra.LogWarning("stats", "FactorAnalysis", "eigenvalue decomposition failed")
+		return nil
 	}
 
 	eigenvalues := eig.Values(nil)
@@ -329,7 +334,8 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 	// Step 5: Determine number of factors
 	numFactors := decideNumFactors(sortedEigenvalues, opt.Count, colNum)
 	if numFactors == 0 {
-		return nil, errors.New("no factors retained")
+		insyra.LogWarning("stats", "FactorAnalysis", "no factors retained")
+		return nil
 	}
 
 	// Step 6: Extract factors
@@ -342,7 +348,8 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 	}
 	loadings, converged, iterations, err := extractFactors(data, corrDense, sortedEigenvalues, sortedEigenvectors, numFactors, opt)
 	if err != nil {
-		return nil, err
+		insyra.LogWarning("stats", "FactorAnalysis", "factor extraction failed: %v", err)
+		return nil
 	}
 
 	// Step 7: Rotate factors
@@ -362,7 +369,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 	uniquenesses := make([]float64, colNum)
 	for i := 0; i < colNum; i++ {
 		comm := 0.0
-		for j := 0; j < numFactors; j++ {
+		for j := range numFactors {
 			comm += rotatedLoadings.At(i, j) * rotatedLoadings.At(i, j)
 		}
 		communalities[i] = comm
@@ -382,7 +389,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 	explainedProp := make([]float64, numFactors)
 	cumulativeProp := make([]float64, numFactors)
 	cumSum := 0.0
-	for i := 0; i < numFactors; i++ {
+	for i := range numFactors {
 		if i < len(sortedEigenvalues) {
 			explainedProp[i] = sortedEigenvalues[i] / totalVariance
 		} else {
@@ -432,7 +439,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 		rotation:    opt.Rotation.Method,
 		means:       means,
 		sds:         sds,
-	}, nil
+	}
 }
 
 // -------------------------
@@ -961,7 +968,7 @@ func (m *FactorModel) FactorScoresDT(dt insyra.IDataTable, method *FactorScoreMe
 	m.Result.Loadings.AtomicDo(func(table *insyra.DataTable) {
 		lr, lc := table.Size()
 		loadings = mat.NewDense(lr, lc, nil)
-		for i := 0; i < lr; i++ {
+		for i := range lr {
 			row := table.GetRow(i)
 			for j := 0; j < lc; j++ {
 				value, ok := row.Get(j).(float64)
@@ -978,7 +985,7 @@ func (m *FactorModel) FactorScoresDT(dt insyra.IDataTable, method *FactorScoreMe
 		m.Result.Uniquenesses.AtomicDo(func(table *insyra.DataTable) {
 			ur, _ := table.Size()
 			uniquenesses = make([]float64, ur)
-			for i := 0; i < ur; i++ {
+			for i := range ur {
 				row := table.GetRow(i)
 				value, ok := row.Get(0).(float64)
 				if ok {

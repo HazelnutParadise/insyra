@@ -22,7 +22,8 @@ The stats package provides comprehensive statistical analysis functions:
 - **Analysis of Variance**: One-way, Two-way, Repeated measures ANOVA
 - **Regression Analysis**: Linear, Exponential, Logarithmic, Polynomial regression with confidence intervals
 - **F-Tests**: Variance equality, Levene's test, Bartlett's test, regression F-test, nested models
-- **Dimensionality Reduction**: Principal Component Analysis (PCA)
+- **Dimensionality Reduction**: Principal Component Analysis (PCA), Factor Analysis
+- **Factor Analysis**: Exploratory factor analysis with multiple extraction and rotation methods
 
 ---
 
@@ -73,7 +74,8 @@ func CorrelationAnalysis(dataTable insyra.IDataTable, method CorrelationMethod) 
 - `dataTable`: Input data table with at least 2 columns
 - `method`: Correlation method (see CorrelationMethod below)
 
-**Returns**: 
+**Returns**:
+
 - Correlation coefficient matrix (as DataTable)
 - P-value matrix (as DataTable)
 - Chi-square value (from Bartlett's sphericity test, only for Pearson correlation)
@@ -106,6 +108,7 @@ func CorrelationMatrix(dataTable insyra.IDataTable, method CorrelationMethod) (*
 - `method`: Correlation method (see CorrelationMethod below)
 
 **Returns**: Two DataTables:
+
 - The first contains the correlation coefficients matrix
 - The second contains the p-values matrix
 - Both matrices have row and column names matching the original column names
@@ -183,6 +186,7 @@ func BartlettSphericity(dataTable insyra.IDataTable) (chiSquare float64, pValue 
 - `dataTable`: Input data table with at least 2 columns
 
 **Returns**:
+
 - `chiSquare`: The chi-square statistic
 - `pValue`: The p-value of the test
 - `df`: The degrees of freedom
@@ -932,6 +936,245 @@ if result != nil {
 
 ---
 
+## Factor Analysis
+
+The stats package provides comprehensive factor analysis functionality for dimensionality reduction and latent variable identification. Factor analysis helps identify underlying factors that explain the correlations among observed variables.
+
+### FactorAnalysis
+
+```go
+func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorModel
+```
+
+**Purpose**: Perform factor analysis on a dataset to identify underlying latent factors.
+
+**Parameters**:
+
+- `dt`: Input data table with numeric columns (variables × observations)
+- `opt`: Factor analysis options (see FactorAnalysisOptions below)
+
+**Returns**: `*FactorModel` containing the factor analysis results and model for scoring new data. Returns `nil` if analysis fails, with warnings logged via `LogWarning()`.
+
+#### FactorAnalysisOptions
+
+```go
+type FactorAnalysisOptions struct {
+    Preprocess FactorPreprocessOptions
+    Count      FactorCountSpec
+    Extraction FactorExtractionMethod
+    Rotation   FactorRotationOptions
+    Scoring    FactorScoreMethod
+    MaxIter    int     // Maximum iterations for iterative methods (default: 100)
+    Tol        float64 // Convergence tolerance (default: 1e-6)
+}
+```
+
+#### FactorPreprocessOptions
+
+```go
+type FactorPreprocessOptions struct {
+    Standardize bool    // Whether to standardize variables (default: true)
+    Missing     string  // Missing data handling: "listwise", "pairwise", "mean" (default: "listwise")
+}
+```
+
+#### FactorCountSpec
+
+```go
+type FactorCountSpec struct {
+    Method               FactorCountMethod  // Method to determine number of factors
+    FixedK               int                // Number of factors for CountFixed
+    EigenThreshold       float64            // Eigenvalue threshold for CountKaiser (default: 1.0)
+    MaxFactors           int                // Maximum number of factors to extract
+    ParallelReplications int                // Replications for CountParallelAnalysis (default: 100)
+    ParallelPercentile   float64            // Percentile for CountParallelAnalysis (default: 0.95)
+    EnableAutoScree      bool               // Auto scree test for CountScree
+}
+```
+
+#### FactorCountMethod
+
+```go
+type FactorCountMethod string
+const (
+    CountFixed            FactorCountMethod = "fixed"
+    CountKaiser           FactorCountMethod = "kaiser"
+    CountScree            FactorCountMethod = "scree"
+    CountParallelAnalysis FactorCountMethod = "parallel-analysis"
+)
+```
+
+#### FactorExtractionMethod
+
+```go
+type FactorExtractionMethod string
+const (
+    FactorExtractionPCA      FactorExtractionMethod = "pca"
+    FactorExtractionPAF      FactorExtractionMethod = "paf"
+    FactorExtractionML       FactorExtractionMethod = "ml"
+    FactorExtractionBayesian FactorExtractionMethod = "bayesian"
+)
+```
+
+#### FactorRotationOptions
+
+```go
+type FactorRotationOptions struct {
+    Method       FactorRotationMethod
+    Kappa        float64 // For Equamax (default: p/2)
+    Delta        float64 // For Oblimin (default: 0)
+    ForceOblique bool    // Force oblique rotation
+}
+```
+
+#### FactorRotationMethod
+
+```go
+type FactorRotationMethod string
+const (
+    FactorRotationNone      FactorRotationMethod = "none"
+    FactorRotationVarimax   FactorRotationMethod = "varimax"
+    FactorRotationQuartimax FactorRotationMethod = "quartimax"
+    FactorRotationEquamax   FactorRotationMethod = "equamax"
+    FactorRotationPromax    FactorRotationMethod = "promax"
+    FactorRotationOblimin   FactorRotationMethod = "oblimin"
+)
+```
+
+#### FactorScoreMethod
+
+```go
+type FactorScoreMethod string
+const (
+    FactorScoreRegression    FactorScoreMethod = "regression"
+    FactorScoreBartlett      FactorScoreMethod = "bartlett"
+    FactorScoreAndersonRubin FactorScoreMethod = "anderson-rubin"
+)
+```
+
+#### FactorAnalysisResult
+
+```go
+type FactorAnalysisResult struct {
+    Loadings             insyra.IDataTable // Loading matrix (variables × factors)
+    Uniquenesses         insyra.IDataTable // Uniqueness vector (p × 1)
+    Communalities        insyra.IDataTable // Communality vector (p × 1)
+    Phi                  insyra.IDataTable // Factor correlation matrix (m × m), nil for orthogonal
+    RotationMatrix       insyra.IDataTable // Rotation matrix (m × m), nil if no rotation
+    Eigenvalues          insyra.IDataTable // Eigenvalues vector (p × 1)
+    ExplainedProportion  insyra.IDataTable // Proportion explained by each factor (m × 1)
+    CumulativeProportion insyra.IDataTable // Cumulative proportion explained (m × 1)
+    Scores               insyra.IDataTable // Factor scores (n × m), nil if not computed
+
+    Converged  bool
+    Iterations int
+    CountUsed  int
+    Messages   []string
+}
+```
+
+#### FactorModel
+
+```go
+type FactorModel struct {
+    Result FactorAnalysisResult
+
+    // Internal fields for scoring new data
+    scoreMethod FactorScoreMethod
+    extraction  FactorExtractionMethod
+    rotation    FactorRotationMethod
+    means       []float64
+    sds         []float64
+}
+```
+
+**Example**:
+
+```go
+// Perform factor analysis with default options
+model, err := stats.FactorAnalysis(dataTable, stats.DefaultFactorAnalysisOptions())
+if err != nil {
+    log.Fatal(err)
+}
+
+// Display results
+model.Result.Loadings.Show()        // Factor loadings
+model.Result.Communalities.Show()   // Communalities
+model.Result.Eigenvalues.Show()     // Eigenvalues
+
+// Export results
+model.Result.Loadings.ToCSV("factor_loadings.csv", true, true, true)
+```
+
+### FactorScoresDT
+
+```go
+func (m *FactorModel) FactorScoresDT(dt insyra.IDataTable, method *FactorScoreMethod) (insyra.IDataTable, error)
+```
+
+**Purpose**: Compute factor scores for new data using a fitted factor analysis model.
+
+**Parameters**:
+
+- `dt`: New data table with the same variables as the original analysis
+- `method`: Optional scoring method (uses model's default if nil)
+
+**Returns**: Factor scores as a DataTable (observations × factors).
+
+**Example**:
+
+```go
+// Compute factor scores for new data
+scores, err := model.FactorScoresDT(newData, nil)
+if err != nil {
+    log.Fatal(err)
+}
+scores.Show()
+scores.ToCSV("factor_scores.csv", true, true, true)
+```
+
+### ScreeDataDT
+
+```go
+func ScreeDataDT(dt insyra.IDataTable, standardize bool) (insyra.IDataTable, insyra.IDataTable, error)
+```
+
+**Purpose**: Generate data for scree plot to help determine the number of factors.
+
+**Parameters**:
+
+- `dt`: Input data table
+- `standardize`: Whether to standardize variables before analysis
+
+**Returns**:
+
+- Eigenvalues DataTable
+- Cumulative proportion DataTable
+
+**Example**:
+
+```go
+// Generate scree plot data
+eigenvalues, cumProp, err := stats.ScreeDataDT(dataTable, true)
+if err != nil {
+    log.Fatal(err)
+}
+eigenvalues.Show()
+cumProp.Show()
+```
+
+### DefaultFactorAnalysisOptions
+
+```go
+func DefaultFactorAnalysisOptions() FactorAnalysisOptions
+```
+
+**Purpose**: Returns default factor analysis options.
+
+**Returns**: Default FactorAnalysisOptions with sensible defaults.
+
+---
+
 ## Method Reference
 
 ### Skewness and Kurtosis Methods
@@ -956,11 +1199,13 @@ All regression functions (Linear, Polynomial, Exponential, and Logarithmic) now 
 - **Exponential and Logarithmic Regression**: Returns separate `ConfidenceIntervalIntercept [2]float64` and `ConfidenceIntervalSlope [2]float64` fields.
 
 The confidence intervals are calculated using the t-distribution with appropriate degrees of freedom:
+
 ```
 CI = coefficient ± t_(α/2, df) × standard_error
 ```
 
 Where:
+
 - `t_(α/2, df)` is the critical value from the t-distribution
 - `df` is the degrees of freedom (sample_size - number_of_parameters)
 - `α = 0.05` for 95% confidence intervals
@@ -983,3 +1228,44 @@ Functions return `nil` or `NaN` values when:
 - Invalid parameter combinations are provided
 
 All error conditions are logged via `insyra.LogWarning()` for debugging purposes.
+
+### Factor Analysis Best Practices
+
+#### Data Preparation
+
+- **Standardization**: Standardize variables before factor analysis unless they are already on comparable scales
+- **Missing Data**: Use "listwise" deletion for missing data unless the dataset is small
+- **Sample Size**: Aim for at least 5-10 observations per variable, preferably more
+- **Variable Selection**: Include only variables that are theoretically related to the construct
+
+#### Factor Extraction
+
+- **PCA**: Good default choice, computationally efficient, maximizes explained variance
+- **PAF**: Preferred when communalities are low, provides better factor structure
+- **ML**: Maximum likelihood, requires multivariate normality, provides fit statistics
+
+#### Determining Number of Factors
+
+- **Kaiser Criterion**: Eigenvalues > 1.0 (default, conservative)
+- **Scree Plot**: Look for "elbow" in the plot of eigenvalues
+- **Parallel Analysis**: Compare eigenvalues to random data (most rigorous)
+- **Fixed**: When theory specifies the number of factors
+
+#### Factor Rotation
+
+- **Varimax**: Orthogonal rotation, maximizes variance of squared loadings (default)
+- **Promax**: Oblique rotation, allows correlated factors, more realistic
+- **None**: Keep original unrotated solution for interpretation
+
+#### Interpretation
+
+- **Loadings > 0.3**: Generally considered significant
+- **Loadings > 0.5**: Strong relationship
+- **Communality > 0.5**: Variable well-explained by factors
+- **Cross-loadings**: Variables loading highly on multiple factors may need removal
+
+#### Validation
+
+- **Factor Scores**: Use for further analysis or clustering
+- **Model Fit**: Check convergence and proportion of explained variance
+- **Reproducibility**: Validate on holdout samples when possible
