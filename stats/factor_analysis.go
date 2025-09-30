@@ -61,26 +61,26 @@ const (
 // FactorCountSpec specifies how to determine the number of factors
 type FactorCountSpec struct {
 	Method               FactorCountMethod
-	FixedK               int     // For CountFixed
-	EigenThreshold       float64 // For CountKaiser (default: 1.0)
-	MaxFactors           int     // Maximum number of factors to extract
-	ParallelReplications int     // For CountParallelAnalysis (default: 100)
-	ParallelPercentile   float64 // For CountParallelAnalysis (default: 0.95)
-	EnableAutoScree      bool    // For CountScree
+	FixedK               int     // Optional: used when Method is CountFixed
+	EigenThreshold       float64 // Optional: default 1.0 for CountKaiser
+	MaxFactors           int     // Optional: 0 means no limit
+	ParallelReplications int     // Optional: default 100 for CountParallelAnalysis
+	ParallelPercentile   float64 // Optional: default 0.95 for CountParallelAnalysis
+	EnableAutoScree      bool    // Optional: for CountScree
 }
 
 // FactorRotationOptions specifies rotation parameters
 type FactorRotationOptions struct {
 	Method       FactorRotationMethod
-	Kappa        float64 // For Equamax (default: p/2)
-	Delta        float64 // For Oblimin (default: 0)
-	ForceOblique bool    // Force oblique rotation
+	Kappa        float64 // Optional: default p/2 for Equamax
+	Delta        float64 // Optional: default 0 for Oblimin
+	ForceOblique bool    // Optional
 }
 
 // FactorPreprocessOptions specifies preprocessing parameters
 type FactorPreprocessOptions struct {
-	Standardize bool
-	Missing     string // "listwise", "pairwise", "mean" (default: "listwise")
+	Standardize bool   // Optional
+	Missing     string // Optional: default "listwise"
 }
 
 // FactorAnalysisOptions contains all options for factor analysis
@@ -90,8 +90,8 @@ type FactorAnalysisOptions struct {
 	Extraction FactorExtractionMethod
 	Rotation   FactorRotationOptions
 	Scoring    FactorScoreMethod
-	MaxIter    int     // Maximum iterations for iterative methods (default: 100)
-	Tol        float64 // Convergence tolerance (default: 1e-6)
+	MaxIter    int     // Optional: default 100
+	Tol        float64 // Optional: default 1e-6
 }
 
 // -------------------------
