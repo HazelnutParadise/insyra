@@ -305,6 +305,7 @@ func (dt *DataTable) ShowRange(startEnd ...interface{}) {
 			}
 		}
 	})
+	fmt.Println()
 }
 
 // Print specified range of rows (with color)
@@ -592,6 +593,7 @@ func (dt *DataTable) ShowTypesRange(startEnd ...interface{}) {
 			}
 		}
 	})
+	fmt.Println()
 }
 
 // Print specified range of rows (type information)
@@ -913,6 +915,7 @@ func (dl *DataList) ShowRange(startEnd ...any) {
 				selectedItems, start, end-1)
 		}
 	})
+	fmt.Println()
 }
 
 // ShowTypes displays the data types of each element in the DataList.
@@ -1050,6 +1053,7 @@ func (dl *DataList) ShowTypesRange(startEnd ...any) {
 				totalItems, start, end-1)
 		}
 	})
+	fmt.Println()
 }
 
 // getDataListTerminalWidth gets the terminal window width, specifically for DataList
