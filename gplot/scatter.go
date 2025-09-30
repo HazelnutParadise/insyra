@@ -14,10 +14,10 @@ import (
 
 // ScatterPlotConfig defines the configuration for a multi-series scatter plot.
 type ScatterPlotConfig struct {
-	Title     string    // Title of the chart.
-	Data      any       // Supports map[string][][]float64, []*insyra.DataList, or []insyra.IDataList.
-	XAxisName string    // Optional: X-axis name.
-	YAxisName string    // Optional: Y-axis name.
+	Title     string // Title of the chart.
+	Data      any    // Supports map[string][][]float64, []*insyra.DataList, or []insyra.IDataList.
+	XAxisName string // Optional: X-axis name.
+	YAxisName string // Optional: Y-axis name.
 }
 
 // CreateScatterPlot generates and returns a plot.Plot object based on ScatterPlotConfig.
