@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 	"strings"
+
+	"github.com/HazelnutParadise/insyra/internal/utils"
 )
 
 func LogFatal(packageName, funcName, msg string, args ...any) {
@@ -21,7 +23,7 @@ func LogFatal(packageName, funcName, msg string, args ...any) {
 		log.Printf(fullMsg, args...)
 		return
 	}
-	log.Fatalf(fullMsg, args...)
+	log.Fatalf(utils.ColorText("31", fullMsg), args...)
 }
 
 func LogWarning(packageName, funcName, msg string, args ...any) {
