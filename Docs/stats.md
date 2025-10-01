@@ -982,13 +982,10 @@ type FactorPreprocessOptions struct {
 
 ```go
 type FactorCountSpec struct {
-    Method               FactorCountMethod  // Method to determine number of factors
-    FixedK               int                // Number of factors for CountFixed
-    EigenThreshold       float64            // Eigenvalue threshold for CountKaiser (default: 1.0)
-    MaxFactors           int                // Maximum number of factors to extract
-    ParallelReplications int                // Replications for CountParallelAnalysis (default: 100)
-    ParallelPercentile   float64            // Percentile for CountParallelAnalysis (default: 0.95)
-    EnableAutoScree      bool               // Auto scree test for CountScree
+    Method         FactorCountMethod  // Method to determine number of factors
+    FixedK         int                // Number of factors for CountFixed
+    EigenThreshold float64            // Eigenvalue threshold for CountKaiser (default: 1.0)
+    MaxFactors     int                // Maximum number of factors to extract
 }
 ```
 
@@ -997,10 +994,8 @@ type FactorCountSpec struct {
 ```go
 type FactorCountMethod string
 const (
-    CountFixed            FactorCountMethod = "fixed"
-    CountKaiser           FactorCountMethod = "kaiser"
-    CountScree            FactorCountMethod = "scree"
-    CountParallelAnalysis FactorCountMethod = "parallel-analysis"
+    CountFixed  FactorCountMethod = "fixed"
+    CountKaiser FactorCountMethod = "kaiser"
 )
 ```
 
@@ -1020,10 +1015,9 @@ const (
 
 ```go
 type FactorRotationOptions struct {
-    Method       FactorRotationMethod
-    Kappa        float64 // For Promax (default: 4)
-    Delta        float64 // For Oblimin (default: 0)
-    ForceOblique bool    // Force oblique rotation
+    Method FactorRotationMethod
+    Kappa  float64 // For Promax (default: 4)
+    Delta  float64 // For Oblimin (default: 0)
 }
 ```
 
@@ -1279,8 +1273,7 @@ All error conditions are logged via `insyra.LogWarning()` for debugging purposes
 #### Determining Number of Factors
 
 - **Kaiser Criterion**: Eigenvalues > 1.0 (default, conservative)
-- **Scree Plot**: Look for "elbow" in the plot of eigenvalues
-- **Parallel Analysis**: Compare eigenvalues to random data (most rigorous)
+- **Scree Plot**: Look for "elbow" in the plot of eigenvalues (manual inspection)
 - **Fixed**: When theory specifies the number of factors
 
 #### Factor Rotation

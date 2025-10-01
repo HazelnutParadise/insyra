@@ -4,8 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"math/rand"
-	"sort"
 	"strings"
 
 	"github.com/HazelnutParadise/insyra"
@@ -51,10 +49,8 @@ const (
 type FactorCountMethod string
 
 const (
-	FactorCountFixed            FactorCountMethod = "fixed"
-	FactorCountKaiser           FactorCountMethod = "kaiser"
-	FactorCountScree            FactorCountMethod = "scree"
-	FactorCountParallelAnalysis FactorCountMethod = "parallel-analysis"
+	FactorCountFixed  FactorCountMethod = "fixed"
+	FactorCountKaiser FactorCountMethod = "kaiser"
 )
 
 // -------------------------
@@ -63,21 +59,17 @@ const (
 
 // FactorCountSpec specifies how to determine the number of factors
 type FactorCountSpec struct {
-	Method               FactorCountMethod
-	FixedK               int     // Optional: used when Method is CountFixed
-	EigenThreshold       float64 // Optional: default 1.0 for CountKaiser
-	MaxFactors           int     // Optional: 0 means no limit
-	ParallelReplications int     // Optional: default 100 for CountParallelAnalysis
-	ParallelPercentile   float64 // Optional: default 0.95 for CountParallelAnalysis
-	EnableAutoScree      bool    // Optional: for CountScree
+	Method         FactorCountMethod
+	FixedK         int     // Optional: used when Method is CountFixed
+	EigenThreshold float64 // Optional: default 1.0 for CountKaiser
+	MaxFactors     int     // Optional: 0 means no limit
 }
 
 // FactorRotationOptions specifies rotation parameters
 type FactorRotationOptions struct {
-	Method       FactorRotationMethod
-	Kappa        float64 // Optional: Promax power (default 4)
-	Delta        float64 // Optional: default 0 for Oblimin
-	ForceOblique bool    // Optional
+	Method FactorRotationMethod
+	Kappa  float64 // Optional: Promax power (default 4)
+	Delta  float64 // Optional: default 0 for Oblimin
 }
 
 // FactorPreprocessOptions specifies preprocessing parameters
@@ -162,19 +154,15 @@ func DefaultFactorAnalysisOptions() FactorAnalysisOptions {
 			Missing:     "listwise",
 		},
 		Count: FactorCountSpec{
-			Method:               FactorCountKaiser,
-			EigenThreshold:       1.0,
-			MaxFactors:           0, // 0 means no limit
-			ParallelReplications: 100,
-			ParallelPercentile:   0.95,
-			EnableAutoScree:      false,
+			Method:         FactorCountKaiser,
+			EigenThreshold: 1.0,
+			MaxFactors:     0, // 0 means no limit
 		},
 		Extraction: FactorExtractionMINRES,
 		Rotation: FactorRotationOptions{
-			Method:       FactorRotationVarimax,
-			Kappa:        0, // Will be set to p/2 if needed
-			Delta:        0,
-			ForceOblique: true,
+			Method: FactorRotationVarimax,
+			Kappa:  0, // Will be set to p/2 if needed
+			Delta:  0,
 		},
 		Scoring: FactorScoreRegression,
 		MaxIter: 100,
@@ -556,17 +544,6 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		fmt.Sprintf("Rotation method: %s", opt.Rotation.Method),
 		fmt.Sprintf("Scoring method: %s", opt.Scoring),
 	}
-	if opt.Count.Method == FactorCountParallelAnalysis {
-		rep := opt.Count.ParallelReplications
-		if rep <= 0 {
-			rep = 100
-		}
-		pct := opt.Count.ParallelPercentile
-		if pct <= 0 || pct >= 1 {
-			pct = 0.95
-		}
-		messages = append(messages, fmt.Sprintf("Parallel analysis: %d replications at %.2f percentile", rep, pct))
-	}
 	if iterations > 0 {
 		messages = append(messages, fmt.Sprintf("Extraction iterations: %d (tol %.2g)", iterations, opt.Tol))
 	}
@@ -575,9 +552,6 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	}
 	if phi != nil {
 		messages = append(messages, "Oblique rotation applied; factor correlation matrix provided")
-	}
-	if opt.Rotation.Method == FactorRotationPromax && opt.Rotation.ForceOblique {
-		messages = append(messages, "Oblique Promax with Kaiser-normalized Varimax start")
 	}
 	messages = append(messages, "Factor analysis completed")
 
@@ -638,16 +612,6 @@ func decideNumFactors(eigenvalues []float64, spec FactorCountSpec, maxPossible i
 		}
 		return applyFactorLimits(countByThreshold(eigenvalues, threshold), spec.MaxFactors, maxPossible)
 
-	case FactorCountScree:
-		return applyFactorLimits(screeCount(eigenvalues, spec.EnableAutoScree), spec.MaxFactors, maxPossible)
-
-	case FactorCountParallelAnalysis:
-		count := parallelAnalysisCount(eigenvalues, spec, maxPossible, sampleSize)
-		if count == 0 {
-			count = countByThreshold(eigenvalues, 1.0)
-		}
-		return applyFactorLimits(count, spec.MaxFactors, maxPossible)
-
 	default:
 		return applyFactorLimits(countByThreshold(eigenvalues, 1.0), spec.MaxFactors, maxPossible)
 	}
@@ -670,111 +634,6 @@ func countByThreshold(eigenvalues []float64, threshold float64) int {
 	count := 0
 	for _, ev := range eigenvalues {
 		if ev >= threshold {
-			count++
-		}
-	}
-	return count
-}
-
-func screeCount(eigenvalues []float64, auto bool) int {
-	if len(eigenvalues) == 0 {
-		return 1
-	}
-	if len(eigenvalues) < 3 {
-		return 1
-	}
-	if auto {
-		bestIdx := 0
-		bestScore := math.Inf(1)
-		for i := 1; i < len(eigenvalues)-1; i++ {
-			left := eigenvalues[i-1] - eigenvalues[i]
-			right := eigenvalues[i] - eigenvalues[i+1]
-			score := math.Abs(right - left)
-			if score < bestScore {
-				bestScore = score
-				bestIdx = i
-			}
-		}
-		return bestIdx + 1
-	}
-
-	maxDiff := 0.0
-	elbowIdx := 0
-	for i := 0; i < len(eigenvalues)-1; i++ {
-		diff := eigenvalues[i] - eigenvalues[i+1]
-		if diff > maxDiff {
-			maxDiff = diff
-			elbowIdx = i
-		}
-	}
-	return elbowIdx + 1
-}
-
-func parallelAnalysisCount(eigenvalues []float64, spec FactorCountSpec, variables int, sampleSize int) int {
-	if variables == 0 || sampleSize <= 1 {
-		return 0
-	}
-	reps := spec.ParallelReplications
-	if reps <= 0 {
-		reps = 100
-	}
-	percentile := spec.ParallelPercentile
-	if percentile <= 0 || percentile >= 1 {
-		percentile = 0.95
-	}
-
-	randSrc := rand.New(rand.NewSource(42))
-	simEigen := make([][]float64, reps)
-
-	for r := 0; r < reps; r++ {
-		simData := mat.NewDense(sampleSize, variables, nil)
-		for i := 0; i < sampleSize; i++ {
-			for j := 0; j < variables; j++ {
-				simData.Set(i, j, randSrc.NormFloat64())
-			}
-		}
-
-		corr := mat.NewSymDense(variables, nil)
-		stat.CorrelationMatrix(corr, simData, nil)
-
-		var eig mat.EigenSym
-		if !eig.Factorize(corr, true) {
-			continue
-		}
-
-		vals := eig.Values(nil)
-		sort.Sort(sort.Reverse(sort.Float64Slice(vals)))
-		simEigen[r] = vals
-	}
-
-	thresholds := make([]float64, variables)
-	for j := 0; j < variables; j++ {
-		samples := make([]float64, 0, reps)
-		for r := 0; r < reps; r++ {
-			if len(simEigen[r]) == 0 {
-				continue
-			}
-			samples = append(samples, simEigen[r][j])
-		}
-		if len(samples) == 0 {
-			thresholds[j] = 1.0
-			continue
-		}
-		sort.Float64s(samples)
-		idx := int(math.Ceil(percentile*float64(len(samples)))) - 1
-		if idx < 0 {
-			idx = 0
-		}
-		if idx >= len(samples) {
-			idx = len(samples) - 1
-		}
-		thresholds[j] = samples[idx]
-	}
-
-	limit := min(len(eigenvalues), variables)
-	count := 0
-	for j := 0; j < limit; j++ {
-		if eigenvalues[j] > thresholds[j] {
 			count++
 		}
 	}
@@ -1482,7 +1341,7 @@ func rotateFactors(loadings *mat.Dense, opt FactorRotationOptions) (*mat.Dense, 
 		if kappa == 0 {
 			kappa = 4
 		}
-		rotated, rotMatrix, phi, err := rotatePromax(loadings, kappa, rotMaxIter, rotTol, opt.ForceOblique)
+		rotated, rotMatrix, phi, err := rotatePromax(loadings, kappa, rotMaxIter, rotTol)
 		if err != nil {
 			insyra.LogWarning("stats", "rotateFactors", "promax rotation failed: %v", err)
 			return loadings, nil, nil
@@ -1491,7 +1350,7 @@ func rotateFactors(loadings *mat.Dense, opt FactorRotationOptions) (*mat.Dense, 
 
 	case FactorRotationOblimin:
 		delta := opt.Delta
-		rotated, rotMatrix, phi, err := rotateOblimin(loadings, delta, rotMaxIter, rotTol, opt.ForceOblique)
+		rotated, rotMatrix, phi, err := rotateOblimin(loadings, delta, rotMaxIter, rotTol)
 		if err != nil {
 			insyra.LogWarning("stats", "rotateFactors", "oblimin rotation failed: %v", err)
 			return loadings, nil, nil
@@ -1624,7 +1483,7 @@ func rotateOrthomax(loadings *mat.Dense, gamma float64, maxIter int, tol float64
 	return kaiserDenorm(rotated, w), rotation, nil
 }
 
-func rotatePromax(loadings *mat.Dense, kappa float64, maxIter int, tol float64, forceOblique bool) (*mat.Dense, *mat.Dense, *mat.Dense, error) {
+func rotatePromax(loadings *mat.Dense, kappa float64, maxIter int, tol float64) (*mat.Dense, *mat.Dense, *mat.Dense, error) {
 	orthoLoadings, orthoRot, err := rotateOrthomax(loadings, 1.0, maxIter, tol)
 	if err != nil {
 		return nil, nil, nil, err
@@ -1666,22 +1525,6 @@ func rotatePromax(loadings *mat.Dense, kappa float64, maxIter int, tol float64, 
 
 	var trans mat.Dense
 	trans.Mul(&ftfInv, &ftTarget)
-
-	if !forceOblique {
-		var svd mat.SVD
-		if svd.Factorize(&trans, mat.SVDThin) {
-			var u, vt mat.Dense
-			svd.UTo(&u)
-			svd.VTo(&vt)
-			var ortho mat.Dense
-			ortho.Mul(&u, &vt)
-			var finalRot mat.Dense
-			finalRot.Mul(orthoRot, &ortho)
-			var rotated mat.Dense
-			rotated.Mul(loadings, &finalRot)
-			return &rotated, &finalRot, nil, nil
-		}
-	}
 
 	var rotated mat.Dense
 	rotated.Mul(orthoLoadings, &trans)
@@ -1727,7 +1570,7 @@ func rotatePromax(loadings *mat.Dense, kappa float64, maxIter int, tol float64, 
 	return rotatedScaled, &combined, phiNorm, nil
 }
 
-func rotateOblimin(loadings *mat.Dense, delta float64, maxIter int, tol float64, forceOblique bool) (*mat.Dense, *mat.Dense, *mat.Dense, error) {
+func rotateOblimin(loadings *mat.Dense, delta float64, maxIter int, tol float64) (*mat.Dense, *mat.Dense, *mat.Dense, error) {
 	p, m := loadings.Dims()
 	trans := mat.NewDense(m, m, nil)
 	for i := 0; i < m; i++ {
@@ -1792,20 +1635,6 @@ func rotateOblimin(loadings *mat.Dense, delta float64, maxIter int, tol float64,
 
 		if !improved {
 			break
-		}
-	}
-
-	if !forceOblique {
-		var svd mat.SVD
-		if svd.Factorize(trans, mat.SVDThin) {
-			var u, vt mat.Dense
-			svd.UTo(&u)
-			svd.VTo(&vt)
-			var ortho mat.Dense
-			ortho.Mul(&u, &vt)
-			var rotatedOrtho mat.Dense
-			rotatedOrtho.Mul(loadings, &ortho)
-			return &rotatedOrtho, &ortho, nil, nil
 		}
 	}
 

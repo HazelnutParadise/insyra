@@ -106,7 +106,6 @@ func TestPhiMatrixNormalization(t *testing.T) {
 			opt.Count.Method = stats.FactorCountFixed
 			opt.Count.FixedK = 2
 			opt.Rotation.Method = tc.rotation
-			opt.Rotation.ForceOblique = true
 			if tc.rotation == stats.FactorRotationPromax {
 				opt.Rotation.Kappa = 4
 			}
@@ -251,7 +250,6 @@ func TestMLExtractionWithPromax(t *testing.T) {
 	opt.Count.Method = stats.FactorCountFixed
 	opt.Count.FixedK = 2
 	opt.Rotation.Method = stats.FactorRotationPromax
-	opt.Rotation.ForceOblique = true
 	opt.Rotation.Kappa = 4
 	opt.MaxIter = 100
 

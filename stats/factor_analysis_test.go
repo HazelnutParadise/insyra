@@ -331,7 +331,6 @@ func TestFactorAnalysisPromaxRotation(t *testing.T) {
 	opt.Count.Method = stats.FactorCountFixed
 	opt.Count.FixedK = 2
 	opt.Rotation.Method = stats.FactorRotationPromax
-	opt.Rotation.ForceOblique = true
 	opt.Rotation.Kappa = 4
 
 	model := stats.FactorAnalysis(dt, opt)
@@ -344,67 +343,6 @@ func TestFactorAnalysisPromaxRotation(t *testing.T) {
 	joined := strings.ToLower(strings.Join(model.Messages, " "))
 	if !strings.Contains(joined, "oblique rotation") {
 		t.Errorf("Expected oblique rotation message, got %v", model.Messages)
-	}
-}
-
-func TestFactorAnalysisObliminOptionalOrthogonal(t *testing.T) {
-	dt := insyra.NewDataTable()
-	for i := 0; i < 5; i++ {
-		col := insyra.NewDataList()
-		for j := 0; j < 50; j++ {
-			col.Append(float64(j) + float64(i)*0.5)
-		}
-		dt.AppendCols(col)
-	}
-
-	opt := stats.DefaultFactorAnalysisOptions()
-	opt.Count.Method = stats.FactorCountFixed
-	opt.Count.FixedK = 2
-	opt.Rotation.Method = stats.FactorRotationOblimin
-	opt.Rotation.ForceOblique = false
-
-	model := stats.FactorAnalysis(dt, opt)
-	if model == nil {
-		t.Fatal("Expected model for Oblimin rotation")
-	}
-	if model.RotationMatrix == nil {
-		t.Fatal("Expected rotation matrix for oblimin rotation")
-	}
-	if model.Phi != nil {
-		t.Error("Expected Phi to be nil when ForceOblique is false")
-	}
-}
-
-func TestFactorAnalysisParallelAnalysisCount(t *testing.T) {
-	dt := insyra.NewDataTable()
-	for i := 0; i < 6; i++ {
-		col := insyra.NewDataList()
-		for j := 0; j < 120; j++ {
-			col.Append(float64(j) + float64(i)*0.3 + float64(j%4))
-		}
-		dt.AppendCols(col)
-	}
-
-	opt := stats.DefaultFactorAnalysisOptions()
-	opt.Count.Method = stats.FactorCountParallelAnalysis
-	opt.Count.MaxFactors = 3
-	opt.Count.ParallelReplications = 20
-	opt.Count.ParallelPercentile = 0.95
-	opt.Rotation.Method = stats.FactorRotationNone
-
-	model := stats.FactorAnalysis(dt, opt)
-	if model == nil {
-		t.Fatal("Expected model for parallel analysis")
-	}
-	if model.CountUsed < 1 {
-		t.Errorf("Expected at least one factor from parallel analysis, got %d", model.CountUsed)
-	}
-	if model.CountUsed > opt.Count.MaxFactors {
-		t.Errorf("Parallel analysis exceeded MaxFactors (%d) with %d", opt.Count.MaxFactors, model.CountUsed)
-	}
-	joined := strings.ToLower(strings.Join(model.Messages, " "))
-	if !strings.Contains(joined, "parallel analysis") {
-		t.Errorf("Expected messages to mention parallel analysis, got %v", model.Messages)
 	}
 }
 
