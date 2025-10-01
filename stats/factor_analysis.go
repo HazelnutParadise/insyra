@@ -450,6 +450,18 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		phi = nil
 	}
 
+	// Apply factor reflection to ensure positive loadings (match R's convention)
+	rotatedLoadings = reflectFactorsForPositiveLoadings(rotatedLoadings)
+	if rotationMatrix != nil {
+		rotationMatrix = reflectRotationMatrix(rotationMatrix, rotatedLoadings, loadings)
+	}
+	if phi != nil {
+		phi = reflectPhiMatrix(phi, rotatedLoadings, loadings)
+	}
+
+	// Sort factors by explained variance (sum of squared loadings) in descending order
+	rotatedLoadings, rotationMatrix, phi = sortFactorsByExplainedVariance(rotatedLoadings, rotationMatrix, phi)
+
 	// Step 8: Compute communalities and uniquenesses
 	communalities := make([]float64, colNum)
 	uniquenesses := make([]float64, colNum)
@@ -1926,6 +1938,7 @@ func obliminObjective(loadings *mat.Dense, delta float64) float64 {
 		for j := 0; j < m; j++ {
 			val := loadings.At(i, j)
 			sum += math.Pow(val, 4)
+
 			rowSum += val * val
 		}
 		sum -= 2 * delta / float64(p) * rowSum * rowSum
@@ -2390,6 +2403,179 @@ func ScreePlotData(dt insyra.IDataTable, standardize bool) (eigenDT insyra.IData
 	cumDT = vectorToDataTableWithNames(cumulativeProp, "Cumulative", "Cumulative", factorNames)
 
 	return eigenDT, cumDT, nil
+}
+
+// reflectFactorsForPositiveLoadings reflects factors to ensure the loading with the largest absolute value is positive.
+// This matches the convention used by R's psych package and other statistical software.
+func reflectFactorsForPositiveLoadings(loadings *mat.Dense) *mat.Dense {
+	if loadings == nil {
+		return nil
+	}
+
+	p, m := loadings.Dims()
+	reflected := mat.NewDense(p, m, nil)
+	reflected.Copy(loadings)
+
+	for j := 0; j < m; j++ {
+		// Find the loading with the largest absolute value in this factor
+		maxAbsIdx := 0
+		maxAbs := 0.0
+		for i := 0; i < p; i++ {
+			absVal := math.Abs(loadings.At(i, j))
+			if absVal > maxAbs {
+				maxAbs = absVal
+				maxAbsIdx = i
+			}
+		}
+
+		// If the largest absolute loading is negative, reflect the entire factor
+		if loadings.At(maxAbsIdx, j) < 0 {
+			for i := 0; i < p; i++ {
+				reflected.Set(i, j, -loadings.At(i, j))
+			}
+		}
+	}
+
+	return reflected
+}
+
+// reflectRotationMatrix updates the rotation matrix to account for factor reflections
+func reflectRotationMatrix(rotMatrix, reflectedLoadings, originalLoadings *mat.Dense) *mat.Dense {
+	if rotMatrix == nil || reflectedLoadings == nil || originalLoadings == nil {
+		return rotMatrix
+	}
+
+	_, m := reflectedLoadings.Dims()
+	reflectedRot := mat.NewDense(m, m, nil)
+	reflectedRot.Copy(rotMatrix)
+
+	for j := 0; j < m; j++ {
+		// Check if this factor was reflected
+		reflected := false
+		for i := 0; i < reflectedLoadings.RawMatrix().Rows; i++ {
+			if math.Abs(reflectedLoadings.At(i, j)-(-originalLoadings.At(i, j))) < 1e-10 {
+				reflected = true
+				break
+			}
+		}
+
+		if reflected {
+			for k := 0; k < m; k++ {
+				reflectedRot.Set(k, j, -rotMatrix.At(k, j))
+			}
+		}
+	}
+
+	return reflectedRot
+}
+
+// reflectPhiMatrix updates the phi matrix to account for factor reflections
+func reflectPhiMatrix(phi, reflectedLoadings, originalLoadings *mat.Dense) *mat.Dense {
+	if phi == nil || reflectedLoadings == nil || originalLoadings == nil {
+		return phi
+	}
+
+	m, _ := phi.Dims()
+	reflectedPhi := mat.NewDense(m, m, nil)
+	reflectedPhi.Copy(phi)
+
+	reflectionSigns := make([]float64, m)
+	for j := 0; j < m; j++ {
+		reflectionSigns[j] = 1.0
+		// Check if this factor was reflected
+		for i := 0; i < reflectedLoadings.RawMatrix().Rows; i++ {
+			if math.Abs(reflectedLoadings.At(i, j)-(-originalLoadings.At(i, j))) < 1e-10 {
+				reflectionSigns[j] = -1.0
+				break
+			}
+		}
+	}
+
+	for i := 0; i < m; i++ {
+		for j := 0; j < m; j++ {
+			reflectedPhi.Set(i, j, phi.At(i, j)*reflectionSigns[i]*reflectionSigns[j])
+		}
+	}
+
+	return reflectedPhi
+}
+
+// sortFactorsByExplainedVariance sorts factors by their explained variance (sum of squared loadings) in descending order.
+// This ensures consistent factor ordering across different implementations.
+func sortFactorsByExplainedVariance(loadings, rotMatrix, phi *mat.Dense) (*mat.Dense, *mat.Dense, *mat.Dense) {
+	if loadings == nil {
+		return nil, rotMatrix, phi
+	}
+
+	p, m := loadings.Dims()
+
+	// Sort factors by the absolute loading on the first variable (A1) in descending order
+	// This matches R's convention where factors are ordered by their primary loading pattern
+	type factorPair struct {
+		index   int
+		loading float64
+	}
+	pairs := make([]factorPair, m)
+	for j := 0; j < m; j++ {
+		pairs[j] = factorPair{index: j, loading: math.Abs(loadings.At(0, j))}
+	}
+
+	// Sort in descending order of absolute loading on first variable
+	for i := 0; i < len(pairs)-1; i++ {
+		for k := i + 1; k < len(pairs); k++ {
+			if pairs[i].loading < pairs[k].loading {
+				pairs[i], pairs[k] = pairs[k], pairs[i]
+			}
+		}
+	}
+
+	// Check if already sorted
+	isSorted := true
+	for j := 0; j < m; j++ {
+		if pairs[j].index != j {
+			isSorted = false
+			break
+		}
+	}
+	if isSorted {
+		return loadings, rotMatrix, phi
+	}
+
+	// Reorder loadings
+	sortedLoadings := mat.NewDense(p, m, nil)
+	for j := 0; j < m; j++ {
+		oldIdx := pairs[j].index
+		for i := 0; i < p; i++ {
+			sortedLoadings.Set(i, j, loadings.At(i, oldIdx))
+		}
+	}
+
+	// Reorder rotation matrix
+	var sortedRotMatrix *mat.Dense
+	if rotMatrix != nil {
+		sortedRotMatrix = mat.NewDense(m, m, nil)
+		for j := 0; j < m; j++ {
+			oldIdx := pairs[j].index
+			for k := 0; k < m; k++ {
+				sortedRotMatrix.Set(k, j, rotMatrix.At(k, oldIdx))
+			}
+		}
+	}
+
+	// Reorder phi matrix
+	var sortedPhi *mat.Dense
+	if phi != nil {
+		sortedPhi = mat.NewDense(m, m, nil)
+		for i := 0; i < m; i++ {
+			oldIdxI := pairs[i].index
+			for j := 0; j < m; j++ {
+				oldIdxJ := pairs[j].index
+				sortedPhi.Set(i, j, phi.At(oldIdxI, oldIdxJ))
+			}
+		}
+	}
+
+	return sortedLoadings, sortedRotMatrix, sortedPhi
 }
 
 // min returns the minimum of two integers
