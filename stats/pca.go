@@ -2,7 +2,7 @@ package stats
 
 import (
 	"fmt"
-	"sort"
+	"slices"
 
 	"github.com/HazelnutParadise/insyra"
 	"gonum.org/v1/gonum/mat"
@@ -81,8 +81,14 @@ func PCA(dataTable insyra.IDataTable, nComponents ...int) *PCAResult {
 	for i := range indices {
 		indices[i] = i
 	}
-	sort.Slice(indices, func(i, j int) bool {
-		return eigenvalues[indices[i]] > eigenvalues[indices[j]] // 根據特徵值由大到小排序
+	slices.SortFunc(indices, func(a, b int) int {
+		if eigenvalues[a] > eigenvalues[b] {
+			return -1
+		} else if eigenvalues[a] < eigenvalues[b] {
+			return 1
+		} else {
+			return 0
+		}
 	})
 
 	// 生成 DataTable 並存儲主成分

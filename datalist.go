@@ -1,6 +1,7 @@
 package insyra
 
 import (
+	"cmp"
 	"fmt"
 	"math"
 	"reflect"
@@ -885,8 +886,8 @@ func (dl *DataList) Rank() *DataList {
 	}
 
 	// 根據數據排序，並追蹤索引
-	sort.Slice(indexes, func(i, j int) bool {
-		return data[indexes[i]] < data[indexes[j]]
+	slices.SortFunc(indexes, func(i, j int) int {
+		return cmp.Compare(data[i], data[j])
 	})
 
 	// 分配秩次，處理重複值的情況

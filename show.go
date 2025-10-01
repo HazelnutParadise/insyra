@@ -1,10 +1,12 @@
 ﻿package insyra
 
 import (
+	"cmp"
 	"fmt"
 	"math"
 	"os"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -71,20 +73,17 @@ func (dt *DataTable) ShowRange(startEnd ...interface{}) {
 			colIndices = append(colIndices, colIndex)
 		}
 
-		sort.Slice(colIndices, func(i, j int) bool {
-			s1 := colIndices[i]
-			s2 := colIndices[j]
-
-			prefix1 := s1
-			if idx := strings.Index(s1, "("); idx != -1 {
-				prefix1 = s1[:idx]
+		slices.SortFunc(colIndices, func(a, b string) int {
+			prefixA := a
+			if idx := strings.Index(a, "("); idx != -1 {
+				prefixA = a[:idx]
 			}
 
-			prefix2 := s2
-			if idx := strings.Index(s2, "("); idx != -1 {
-				prefix2 = s2[:idx]
+			prefixB := b
+			if idx := strings.Index(b, "("); idx != -1 {
+				prefixB = b[:idx]
 			}
-			return ParseColIndex(prefix1) < ParseColIndex(prefix2)
+			return cmp.Compare(ParseColIndex(prefixA), ParseColIndex(prefixB))
 		})
 
 		// Get terminal window width
