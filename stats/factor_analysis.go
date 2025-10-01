@@ -720,28 +720,60 @@ func initialCommunalitiesSMC(corr *mat.Dense) []float64 {
 	// Use SMC (Squared Multiple Correlation) for more accurate initialization
 	sym := denseToSym(corr)
 	var inv mat.Dense
-	if err := inv.Inverse(sym); err != nil {
-		// Fallback: use conservative initialization if matrix is singular
-		h2 := make([]float64, p)
+	
+	// First attempt: direct inversion
+	err := inv.Inverse(sym)
+	if err != nil {
+		// Second attempt: add small ridge regularization for numerical stability
+		regularized := mat.NewSymDense(p, nil)
 		for i := 0; i < p; i++ {
-			h2[i] = 0.7
+			for j := i; j < p; j++ {
+				val := sym.At(i, j)
+				if i == j {
+					val += 1e-6 // Add small ridge to diagonal
+				}
+				regularized.SetSym(i, j, val)
+			}
 		}
-		return h2
+		err = inv.Inverse(regularized)
+		if err != nil {
+			// Fallback: use maximum R-squared as approximation
+			h2 := make([]float64, p)
+			for i := 0; i < p; i++ {
+				// Use maximum absolute correlation as rough estimate
+				maxCorr := 0.0
+				for j := 0; j < p; j++ {
+					if i != j {
+						absCorr := math.Abs(corr.At(i, j))
+						if absCorr > maxCorr {
+							maxCorr = absCorr
+						}
+					}
+				}
+				// Square it as rough SMC estimate, capped reasonably
+				h2[i] = math.Min(maxCorr*maxCorr, 0.9)
+				if h2[i] < 0.1 {
+					h2[i] = 0.5 // Conservative default
+				}
+			}
+			return h2
+		}
 	}
+	
 	h2 := make([]float64, p)
 	for i := 0; i < p; i++ {
 		// SMC_i = 1 - 1 / R^{-1}_{ii}
 		rii := inv.At(i, i)
 		if rii <= 0 {
-			h2[i] = 0.7
+			h2[i] = 0.5
 			continue
 		}
 		v := 1.0 - 1.0/rii
 		if v < 0 {
 			v = 0
 		}
-		if v > 1 {
-			v = 1
+		if v > 0.99 {
+			v = 0.99 // Cap at 0.99 to avoid numerical issues
 		}
 		h2[i] = v
 	}
@@ -754,6 +786,12 @@ func extractPAF(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64)
 
 	// Initialize communalities with SMC (Squared Multiple Correlation)
 	communalities := initialCommunalitiesSMC(corrMatrix)
+	
+	// Log initial communalities for verification (per issue #xxx)
+	if p >= 4 {
+		insyra.LogInfo("stats", "PAF", "init h2 (first 4) = %.3f, %.3f, %.3f, %.3f",
+			communalities[0], communalities[1], communalities[2], communalities[3])
+	}
 
 	var loadings *mat.Dense
 	converged := false
@@ -843,13 +881,21 @@ func extractPAF(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64)
 		}
 
 		communalities = newCommunalities
+		
+		// Log convergence progress
+		if iter < 5 || iter == maxIter-1 {
+			insyra.LogDebug("stats", "PAF", "iter %d: maxChange=%.6f, h2[0]=%.4f", 
+				iter+1, maxChange, communalities[0])
+		}
 
 		if maxChange < tol {
 			converged = true
+			insyra.LogInfo("stats", "PAF", "converged in %d iterations", iter+1)
 			return loadings, converged, iter + 1, nil
 		}
 	}
 
+	insyra.LogWarning("stats", "PAF", "did not converge after %d iterations", maxIter)
 	return loadings, converged, maxIter, nil
 }
 
@@ -882,6 +928,12 @@ func extractML(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64) 
 		if err != nil {
 			return nil, false, 0, fmt.Errorf("ml: unable to build initial loadings: %w", err)
 		}
+	}
+	
+	// Log initial loadings for debugging
+	if p >= 4 {
+		insyra.LogInfo("stats", "ML", "initial loadings[0,0:2] = %.3f, %.3f",
+			initial.At(0, 0), initial.At(0, min(1, numFactors-1)))
 	}
 
 	loadings := mat.Dense{}
@@ -956,13 +1008,21 @@ func extractML(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64) 
 		}
 
 		loadings.CloneFrom(&newLoadings)
+		
+		// Log convergence progress
+		if iter < 5 || iter == maxIter-1 {
+			insyra.LogDebug("stats", "ML", "iter %d: maxChange=%.6f, loadings[0,0]=%.4f", 
+				iter+1, maxChange, loadings.At(0, 0))
+		}
 
 		if maxChange < tol {
 			converged = true
+			insyra.LogInfo("stats", "ML", "converged in %d iterations", iter+1)
 			return &loadings, converged, iter + 1, nil
 		}
 	}
 
+	insyra.LogWarning("stats", "ML", "did not converge after %d iterations", maxIter)
 	return &loadings, converged, maxIter, nil
 }
 
@@ -1863,4 +1923,12 @@ func ScreePlotData(dt insyra.IDataTable, standardize bool) (eigenDT insyra.IData
 	cumDT = vectorToDataTableWithNames(cumulativeProp, "Cumulative", "Cumulative", factorNames)
 
 	return eigenDT, cumDT, nil
+}
+
+// min returns the minimum of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
