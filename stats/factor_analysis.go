@@ -23,6 +23,7 @@ const (
 	FactorExtractionPCA      FactorExtractionMethod = "pca"
 	FactorExtractionPAF      FactorExtractionMethod = "paf"
 	FactorExtractionML       FactorExtractionMethod = "ml"
+	FactorExtractionMINRES   FactorExtractionMethod = "minres"
 	FactorExtractionBayesian FactorExtractionMethod = "bayesian"
 )
 
@@ -540,7 +541,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	if iterations > 0 {
 		messages = append(messages, fmt.Sprintf("Extraction iterations: %d (tol %.2g)", iterations, opt.Tol))
 	}
-	if !converged && (opt.Extraction == FactorExtractionPAF || opt.Extraction == FactorExtractionML || opt.Extraction == FactorExtractionBayesian) {
+	if !converged && (opt.Extraction == FactorExtractionPAF || opt.Extraction == FactorExtractionML || opt.Extraction == FactorExtractionMINRES || opt.Extraction == FactorExtractionBayesian) {
 		messages = append(messages, "Warning: extraction did not converge within limits")
 	}
 	if phi != nil {
@@ -759,6 +760,9 @@ func extractFactors(data, corrMatrix *mat.Dense, eigenvalues []float64, eigenvec
 
 	case FactorExtractionML:
 		return extractML(corrMatrix, numFactors, opt.MaxIter, opt.Tol)
+
+	case FactorExtractionMINRES:
+		return extractMINRES(corrMatrix, numFactors, opt.MaxIter, opt.Tol)
 
 	case FactorExtractionBayesian:
 		return extractBayesian(data, corrMatrix, numFactors, opt)
@@ -1028,7 +1032,8 @@ func extractML(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64) 
 	loadings.CloneFrom(initial)
 
 	psMin := 1e-6
-	ridge := 1e-6
+	baseRidge := 1e-5
+	innerRidge := 1e-6
 	converged := false
 
 	for iter := 0; iter < maxIter; iter++ {
@@ -1049,13 +1054,17 @@ func extractML(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64) 
 		var sigma mat.Dense
 		sigma.Mul(&loadings, loadings.T())
 		for i := 0; i < p; i++ {
-			sigma.Set(i, i, sigma.At(i, i)+psi[i]+ridge)
+			val := sigma.At(i, i) + psi[i]
+			if baseRidge > 0 {
+				val += baseRidge
+			}
+			sigma.Set(i, i, val)
 		}
 
 		var invSigma mat.Dense
 		if err := invSigma.Inverse(&sigma); err != nil {
 			for i := 0; i < p; i++ {
-				sigma.Set(i, i, sigma.At(i, i)+psMin+ridge)
+				sigma.Set(i, i, sigma.At(i, i)+psMin+baseRidge)
 			}
 			if err := invSigma.Inverse(&sigma); err != nil {
 				return nil, false, iter, fmt.Errorf("ml: covariance inversion failed: %w", err)
@@ -1071,12 +1080,24 @@ func extractML(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64) 
 		var m mat.Dense
 		m.Mul(&loadingsTrans, &t)
 		for i := 0; i < numFactors; i++ {
-			m.Set(i, i, m.At(i, i)+1.0+ridge)
+			diag := m.At(i, i) + 1.0
+			if innerRidge > 0 {
+				diag += innerRidge
+			}
+			m.Set(i, i, diag)
 		}
 
 		invSqrt, err := inverseSqrtDense(&m)
 		if err != nil {
-			return nil, false, iter, fmt.Errorf("ml: inverse sqrt failed: %w", err)
+			var adjusted mat.Dense
+			adjusted.CloneFrom(&m)
+			for i := 0; i < numFactors; i++ {
+				adjusted.Set(i, i, adjusted.At(i, i)+baseRidge)
+			}
+			invSqrt, err = inverseSqrtDense(&adjusted)
+			if err != nil {
+				return nil, false, iter, fmt.Errorf("ml: inverse sqrt failed: %w", err)
+			}
 		}
 
 		var rt mat.Dense
@@ -1111,6 +1132,125 @@ func extractML(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64) 
 	}
 
 	insyra.LogWarning("stats", "ML", "did not converge after %d iterations", maxIter)
+	return &loadings, converged, maxIter, nil
+}
+
+// extractMINRES extracts factors using the minimum residual approach (akin to ULS)
+func extractMINRES(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64) (*mat.Dense, bool, int, error) {
+	p, _ := corrMatrix.Dims()
+	if numFactors <= 0 || numFactors > p {
+		return nil, false, 0, fmt.Errorf("invalid number of factors: %d", numFactors)
+	}
+
+	if maxIter <= 0 {
+		maxIter = 500
+	}
+	if tol <= 0 {
+		tol = 1e-6
+	}
+
+	initial, _, _, err := extractPAF(corrMatrix, numFactors, min(maxIter, 100), math.Max(tol, 1e-6))
+	if err != nil || initial == nil {
+		// Fall back to PCA loadings if PAF initialization fails
+		var eig mat.EigenSym
+		symCorr := denseToSym(corrMatrix)
+		if !eig.Factorize(symCorr, true) {
+			return nil, false, 0, fmt.Errorf("minres: eigen factorization failed: %w", err)
+		}
+		eigs := eig.Values(nil)
+		var vec mat.Dense
+		eig.VectorsTo(&vec)
+		initial, _, _, err = extractPCA(eigs, &vec, numFactors)
+		if err != nil {
+			return nil, false, 0, fmt.Errorf("minres: unable to build initial loadings: %w", err)
+		}
+	}
+
+	var loadings mat.Dense
+	loadings.CloneFrom(initial)
+	clampLoadingsToDiag(&loadings, corrMatrix)
+
+	if p >= 4 {
+		insyra.LogInfo("stats", "MINRES", "initial loadings[0,0:2] = %.3f, %.3f",
+			loadings.At(0, 0), loadings.At(0, min(1, numFactors-1)))
+	}
+
+	var approx mat.Dense
+	var residual mat.Dense
+	var grad mat.Dense
+	var direction mat.Dense
+	var candidate mat.Dense
+	var candidateApprox mat.Dense
+	var candidateResidual mat.Dense
+	var stepDir mat.Dense
+
+	prevSSE := math.Inf(1)
+	converged := false
+
+	for iter := 0; iter < maxIter; iter++ {
+		approx.Mul(&loadings, loadings.T())
+		residual.Sub(corrMatrix, &approx)
+		zeroDiagonal(&residual)
+
+		currentSSE := offDiagonalSSE(&residual)
+		if currentSSE < tol {
+			converged = true
+			insyra.LogInfo("stats", "MINRES", "converged in %d iterations (SSE=%.6f)", iter+1, currentSSE)
+			return &loadings, converged, iter + 1, nil
+		}
+		if math.Abs(prevSSE-currentSSE) < tol {
+			converged = true
+			insyra.LogInfo("stats", "MINRES", "converged by delta in %d iterations (SSE=%.6f)", iter+1, currentSSE)
+			return &loadings, converged, iter + 1, nil
+		}
+
+		grad.Mul(&residual, &loadings)
+		direction.Scale(-2.0, &grad)
+
+		step := 1.0
+		improved := false
+		candidateSSE := math.Inf(1)
+
+		for trial := 0; trial < 8; trial++ {
+			candidate.CloneFrom(&loadings)
+			stepDir.Scale(step, &direction)
+			candidate.Add(&candidate, &stepDir)
+			clampLoadingsToDiag(&candidate, corrMatrix)
+
+			candidateApprox.Mul(&candidate, candidate.T())
+			candidateResidual.Sub(corrMatrix, &candidateApprox)
+			zeroDiagonal(&candidateResidual)
+			candidateSSE = offDiagonalSSE(&candidateResidual)
+
+			if candidateSSE < currentSSE {
+				loadings.CloneFrom(&candidate)
+				prevSSE = currentSSE
+				currentSSE = candidateSSE
+				improved = true
+				break
+			}
+			step *= 0.5
+		}
+
+		if !improved {
+			prevSSE = currentSSE
+			break
+		}
+
+		if iter < 5 || iter == maxIter-1 {
+			insyra.LogDebug("stats", "MINRES", "iter %d: SSE=%.6f", iter+1, currentSSE)
+		}
+
+		if math.Abs(prevSSE-currentSSE) < tol {
+			converged = true
+			insyra.LogInfo("stats", "MINRES", "converged by delta in %d iterations (SSE=%.6f)", iter+1, currentSSE)
+			return &loadings, converged, iter + 1, nil
+		}
+	}
+
+	if !converged {
+		insyra.LogWarning("stats", "MINRES", "did not converge after %d iterations (SSE=%.6f)", maxIter, prevSSE)
+	}
 	return &loadings, converged, maxIter, nil
 }
 
@@ -1204,6 +1344,54 @@ func denseToSym(m *mat.Dense) *mat.SymDense {
 		}
 	}
 	return sym
+}
+
+func zeroDiagonal(m *mat.Dense) {
+	r, c := m.Dims()
+	limit := min(r, c)
+	for i := 0; i < limit; i++ {
+		m.Set(i, i, 0)
+	}
+}
+
+func offDiagonalSSE(m *mat.Dense) float64 {
+	r, c := m.Dims()
+	if r != c {
+		return 0
+	}
+	sum := 0.0
+	for i := 0; i < r; i++ {
+		for j := i + 1; j < c; j++ {
+			val := m.At(i, j)
+			sum += val * val
+		}
+	}
+	return sum * 2
+}
+
+func clampLoadingsToDiag(loadings *mat.Dense, corrMatrix *mat.Dense) {
+	rows, cols := loadings.Dims()
+	for i := 0; i < rows; i++ {
+		diag := corrMatrix.At(i, i)
+		if diag <= 0 {
+			diag = 1.0
+		}
+		sum := 0.0
+		for j := 0; j < cols; j++ {
+			val := loadings.At(i, j)
+			sum += val * val
+		}
+		limit := diag - 1e-6
+		if limit <= 1e-6 {
+			limit = 1e-6
+		}
+		if sum > limit {
+			scale := math.Sqrt(limit / sum)
+			for j := 0; j < cols; j++ {
+				loadings.Set(i, j, loadings.At(i, j)*scale)
+			}
+		}
+	}
 }
 
 // normalizeToCorrelation normalizes a matrix to have diagonal elements equal to 1
