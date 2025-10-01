@@ -23,10 +23,10 @@ type showable interface {
 // Automatically deals with nil objects.
 func Show(label string, object showable, startEnd ...any) {
 	if object == nil {
-		fmt.Printf("%s: \033[2;37m(nil)\033[0m\n", label)
+		fmt.Printf("%s: \033[2;37m(nil)\033[0m\n\n", label)
 		return
 	}
-	fmt.Printf("\n\033[1;35m--- Showing: %s ---\033[0m\n", label)
+	fmt.Printf("\033[1;35m--- Showing: %s ---\033[0m\n", label)
 	object.ShowRange(startEnd...)
 }
 

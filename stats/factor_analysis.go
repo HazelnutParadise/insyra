@@ -6,6 +6,7 @@ import (
 	"math"
 	"math/rand"
 	"sort"
+	"strings"
 
 	"github.com/HazelnutParadise/insyra"
 	"gonum.org/v1/gonum/mat"
@@ -133,7 +134,7 @@ func (r *FactorAnalysisResult) Show(startEndRange ...any) {
 	fmt.Printf("Converged: %v\n", r.Converged)
 	fmt.Printf("Iterations: %d\n", r.Iterations)
 	fmt.Printf("CountUsed: %d\n", r.CountUsed)
-	fmt.Printf("Messages: %v\n", r.Messages)
+	fmt.Printf("Messages: %s.\n", strings.Join(r.Messages, ", "))
 }
 
 // FactorModel holds the factor analysis model
