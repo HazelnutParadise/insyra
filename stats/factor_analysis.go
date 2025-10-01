@@ -119,9 +119,26 @@ type FactorAnalysisResult struct {
 	Messages   []string
 }
 
+func (r *FactorAnalysisResult) Show(startEndRange ...any) {
+	insyra.Show("Loadings", r.Loadings, startEndRange...)
+	insyra.Show("Structure", r.Structure, startEndRange...)
+	insyra.Show("Uniquenesses", r.Uniquenesses, startEndRange...)
+	insyra.Show("Communalities", r.Communalities, startEndRange...)
+	insyra.Show("Phi", r.Phi, startEndRange...)
+	insyra.Show("RotationMatrix", r.RotationMatrix, startEndRange...)
+	insyra.Show("Eigenvalues", r.Eigenvalues, startEndRange...)
+	insyra.Show("ExplainedProportion", r.ExplainedProportion, startEndRange...)
+	insyra.Show("CumulativeProportion", r.CumulativeProportion, startEndRange...)
+	insyra.Show("Scores", r.Scores, startEndRange...)
+	fmt.Printf("Converged: %v\n", r.Converged)
+	fmt.Printf("Iterations: %d\n", r.Iterations)
+	fmt.Printf("CountUsed: %d\n", r.CountUsed)
+	fmt.Printf("Messages: %v\n", r.Messages)
+}
+
 // FactorModel holds the factor analysis model
 type FactorModel struct {
-	Result FactorAnalysisResult
+	FactorAnalysisResult
 
 	// Internal fields for scoring new data
 	scoreMethod FactorScoreMethod
@@ -578,12 +595,12 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	}
 
 	return &FactorModel{
-		Result:      result,
-		scoreMethod: opt.Scoring,
-		extraction:  opt.Extraction,
-		rotation:    opt.Rotation.Method,
-		means:       means,
-		sds:         sds,
+		FactorAnalysisResult: result,
+		scoreMethod:          opt.Scoring,
+		extraction:           opt.Extraction,
+		rotation:             opt.Rotation.Method,
+		means:                means,
+		sds:                  sds,
 	}
 }
 
@@ -2214,7 +2231,7 @@ func (m *FactorModel) FactorScores(dt insyra.IDataTable, method *FactorScoreMeth
 
 	// Extract loadings matrix
 	var loadings *mat.Dense
-	m.Result.Loadings.AtomicDo(func(table *insyra.DataTable) {
+	m.Loadings.AtomicDo(func(table *insyra.DataTable) {
 		lr, lc := table.Size()
 		loadings = mat.NewDense(lr, lc, nil)
 		for i := 0; i < lr; i++ {
@@ -2230,8 +2247,8 @@ func (m *FactorModel) FactorScores(dt insyra.IDataTable, method *FactorScoreMeth
 
 	// Extract uniquenesses
 	var uniquenesses []float64
-	if m.Result.Uniquenesses != nil {
-		m.Result.Uniquenesses.AtomicDo(func(table *insyra.DataTable) {
+	if m.Uniquenesses != nil {
+		m.Uniquenesses.AtomicDo(func(table *insyra.DataTable) {
 			ur, _ := table.Size()
 			uniquenesses = make([]float64, ur)
 			for i := 0; i < ur; i++ {
@@ -2246,8 +2263,8 @@ func (m *FactorModel) FactorScores(dt insyra.IDataTable, method *FactorScoreMeth
 
 	// Extract phi if available
 	var phiMat *mat.Dense
-	if m.Result.Phi != nil {
-		m.Result.Phi.AtomicDo(func(table *insyra.DataTable) {
+	if m.Phi != nil {
+		m.Phi.AtomicDo(func(table *insyra.DataTable) {
 			pr, pc := table.Size()
 			if pr == 0 || pc == 0 {
 				return

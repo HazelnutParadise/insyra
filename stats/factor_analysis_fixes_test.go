@@ -38,8 +38,8 @@ func TestPAFWithSMCInitialization(t *testing.T) {
 	var sumComm float64
 	var minComm = 1.0
 	var maxComm = 0.0
-	
-	model.Result.Communalities.AtomicDo(func(table *insyra.DataTable) {
+
+	model.Communalities.AtomicDo(func(table *insyra.DataTable) {
 		rows, _ := table.Size()
 		for i := 0; i < rows; i++ {
 			row := table.GetRow(i)
@@ -63,13 +63,13 @@ func TestPAFWithSMCInitialization(t *testing.T) {
 	if maxComm > 1.01 {
 		t.Errorf("Maximum communality %f exceeds 1.0", maxComm)
 	}
-	
+
 	// Average communality should be reasonable
 	avgComm := sumComm / 4.0
 	if avgComm < 0.1 || avgComm > 1.01 {
 		t.Errorf("Average communality %f is outside reasonable range [0.1, 1.0]", avgComm)
 	}
-	
+
 	t.Logf("PAF Communalities - Min: %.4f, Max: %.4f, Avg: %.4f", minComm, maxComm, avgComm)
 }
 
@@ -116,12 +116,12 @@ func TestPhiMatrixNormalization(t *testing.T) {
 				t.Fatal("Expected non-nil model")
 			}
 
-			if model.Result.Phi == nil {
+			if model.Phi == nil {
 				t.Fatal("Expected non-nil Phi matrix for oblique rotation")
 			}
 
 			// Verify Phi diagonal is 1.0 and off-diagonal is reasonable
-			model.Result.Phi.AtomicDo(func(table *insyra.DataTable) {
+			model.Phi.AtomicDo(func(table *insyra.DataTable) {
 				rows, cols := table.Size()
 				if rows != 2 || cols != 2 {
 					t.Errorf("Expected 2x2 Phi matrix, got %dx%d", rows, cols)
@@ -188,7 +188,7 @@ func TestFactorScoresReasonableRange(t *testing.T) {
 				t.Fatal("Expected non-nil model")
 			}
 
-			if model.Result.Scores == nil {
+			if model.Scores == nil {
 				t.Fatal("Expected non-nil scores")
 			}
 
@@ -198,7 +198,7 @@ func TestFactorScoresReasonableRange(t *testing.T) {
 			var sumAbs = 0.0
 			var count = 0
 
-			model.Result.Scores.AtomicDo(func(table *insyra.DataTable) {
+			model.Scores.AtomicDo(func(table *insyra.DataTable) {
 				rows, cols := table.Size()
 				for i := 0; i < rows; i++ {
 					row := table.GetRow(i)
@@ -261,8 +261,8 @@ func TestMLExtractionWithPromax(t *testing.T) {
 	}
 
 	// Check that Phi is normalized
-	if model.Result.Phi != nil {
-		model.Result.Phi.AtomicDo(func(table *insyra.DataTable) {
+	if model.Phi != nil {
+		model.Phi.AtomicDo(func(table *insyra.DataTable) {
 			rows, cols := table.Size()
 			for i := 0; i < rows; i++ {
 				row := table.GetRow(i)
@@ -280,7 +280,7 @@ func TestMLExtractionWithPromax(t *testing.T) {
 
 	// Check communalities are reasonable
 	var avgComm float64
-	model.Result.Communalities.AtomicDo(func(table *insyra.DataTable) {
+	model.Communalities.AtomicDo(func(table *insyra.DataTable) {
 		rows, _ := table.Size()
 		var sum float64
 		for i := 0; i < rows; i++ {

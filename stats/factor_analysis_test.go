@@ -33,13 +33,13 @@ func TestFactorAnalysisBasic(t *testing.T) {
 	}
 
 	// Check that loadings exist
-	if model.Result.Loadings == nil {
+	if model.Loadings == nil {
 		t.Fatal("Expected non-nil loadings")
 	}
 
 	// Check dimensions
 	var loadingsRows, loadingsCols int
-	model.Result.Loadings.AtomicDo(func(table *insyra.DataTable) {
+	model.Loadings.AtomicDo(func(table *insyra.DataTable) {
 		loadingsRows, loadingsCols = table.Size()
 	})
 
@@ -51,13 +51,13 @@ func TestFactorAnalysisBasic(t *testing.T) {
 	}
 
 	// Check that model reports correct number of factors
-	if model.Result.CountUsed != 2 {
-		t.Errorf("Expected 2 factors, got %d", model.Result.CountUsed)
+	if model.CountUsed != 2 {
+		t.Errorf("Expected 2 factors, got %d", model.CountUsed)
 	}
 
 	// Check communalities are between 0 and 1
-	if model.Result.Communalities != nil {
-		model.Result.Communalities.AtomicDo(func(table *insyra.DataTable) {
+	if model.Communalities != nil {
+		model.Communalities.AtomicDo(func(table *insyra.DataTable) {
 			rows, _ := table.Size()
 			for i := 0; i < rows; i++ {
 				row := table.GetRow(i)
@@ -74,8 +74,8 @@ func TestFactorAnalysisBasic(t *testing.T) {
 	}
 
 	// Check uniquenesses are between 0 and 1
-	if model.Result.Uniquenesses != nil {
-		model.Result.Uniquenesses.AtomicDo(func(table *insyra.DataTable) {
+	if model.Uniquenesses != nil {
+		model.Uniquenesses.AtomicDo(func(table *insyra.DataTable) {
 			rows, _ := table.Size()
 			for i := 0; i < rows; i++ {
 				row := table.GetRow(i)
@@ -92,8 +92,8 @@ func TestFactorAnalysisBasic(t *testing.T) {
 	}
 
 	// Check eigenvalues are in descending order
-	if model.Result.Eigenvalues != nil {
-		model.Result.Eigenvalues.AtomicDo(func(table *insyra.DataTable) {
+	if model.Eigenvalues != nil {
+		model.Eigenvalues.AtomicDo(func(table *insyra.DataTable) {
 			rows, _ := table.Size()
 			var prevEigen = math.Inf(1)
 			for i := 0; i < rows; i++ {
@@ -133,8 +133,8 @@ func TestFactorAnalysisKaiserCriterion(t *testing.T) {
 	}
 
 	// At least one factor should be retained with Kaiser criterion
-	if model.Result.CountUsed < 1 {
-		t.Errorf("Expected at least 1 factor with Kaiser criterion, got %d", model.Result.CountUsed)
+	if model.CountUsed < 1 {
+		t.Errorf("Expected at least 1 factor with Kaiser criterion, got %d", model.CountUsed)
 	}
 }
 
@@ -159,12 +159,12 @@ func TestFactorAnalysisPAF(t *testing.T) {
 	}
 
 	// Check loadings exist
-	if model.Result.Loadings == nil {
+	if model.Loadings == nil {
 		t.Fatal("Expected non-nil loadings")
 	}
 
 	// PAF should report convergence status
-	if model.Result.Iterations == 0 && opt.Extraction == stats.FactorExtractionPAF {
+	if model.Iterations == 0 && opt.Extraction == stats.FactorExtractionPAF {
 		t.Log("Warning: PAF reported 0 iterations")
 	}
 }
@@ -184,12 +184,12 @@ func TestFactorAnalysisPCAExtraction(t *testing.T) {
 	if model == nil {
 		t.Fatal("Expected model for PCA extraction")
 	}
-	if model.Result.Loadings == nil {
+	if model.Loadings == nil {
 		t.Fatal("Expected loadings for PCA extraction")
 	}
-	joined := strings.ToLower(strings.Join(model.Result.Messages, " "))
+	joined := strings.ToLower(strings.Join(model.Messages, " "))
 	if !strings.Contains(joined, "pca") {
-		t.Errorf("Expected messages to mention PCA extraction, got %v", model.Result.Messages)
+		t.Errorf("Expected messages to mention PCA extraction, got %v", model.Messages)
 	}
 }
 
@@ -208,7 +208,7 @@ func TestFactorAnalysisNoRotation(t *testing.T) {
 	model := stats.FactorAnalysis(dt, opt)
 
 	// Rotation matrix should be nil when no rotation is applied
-	if model.Result.RotationMatrix != nil {
+	if model.RotationMatrix != nil {
 		t.Error("Expected nil rotation matrix when rotation is disabled")
 	}
 }
@@ -238,12 +238,12 @@ func TestFactorAnalysisVarimaxRotation(t *testing.T) {
 	model := stats.FactorAnalysis(dt, opt)
 
 	// Rotation matrix should exist for Varimax
-	if model.Result.RotationMatrix == nil {
+	if model.RotationMatrix == nil {
 		t.Error("Expected non-nil rotation matrix for Varimax rotation")
 	}
 
 	// Phi should be nil for orthogonal rotation
-	if model.Result.Phi != nil {
+	if model.Phi != nil {
 		t.Log("Note: Phi is set for orthogonal rotation (should be nil or identity)")
 	}
 }
@@ -269,15 +269,15 @@ func TestFactorAnalysisMLExtraction(t *testing.T) {
 	if model == nil {
 		t.Fatal("Expected model for ML extraction")
 	}
-	if model.Result.Loadings == nil {
+	if model.Loadings == nil {
 		t.Fatal("Expected loadings for ML extraction")
 	}
-	if !model.Result.Converged {
+	if !model.Converged {
 		t.Log("ML extraction did not report convergence; verify tolerance settings")
 	}
-	joined := strings.ToLower(strings.Join(model.Result.Messages, " "))
+	joined := strings.ToLower(strings.Join(model.Messages, " "))
 	if !strings.Contains(joined, "ml") {
-		t.Errorf("Expected messages to mention ML extraction, got %v", model.Result.Messages)
+		t.Errorf("Expected messages to mention ML extraction, got %v", model.Messages)
 	}
 }
 
@@ -302,12 +302,12 @@ func TestFactorAnalysisMINRESExtraction(t *testing.T) {
 	if model == nil {
 		t.Fatal("Expected model for MINRES extraction")
 	}
-	if model.Result.Loadings == nil {
+	if model.Loadings == nil {
 		t.Fatal("Expected loadings for MINRES extraction")
 	}
-	joined := strings.ToLower(strings.Join(model.Result.Messages, " "))
+	joined := strings.ToLower(strings.Join(model.Messages, " "))
 	if !strings.Contains(joined, "minres") {
-		t.Errorf("Expected messages to mention MINRES extraction, got %v", model.Result.Messages)
+		t.Errorf("Expected messages to mention MINRES extraction, got %v", model.Messages)
 	}
 }
 
@@ -338,12 +338,12 @@ func TestFactorAnalysisPromaxRotation(t *testing.T) {
 	if model == nil {
 		t.Fatal("Expected model for Promax rotation")
 	}
-	if model.Result.Phi == nil {
+	if model.Phi == nil {
 		t.Fatal("Expected Phi matrix for oblique rotation")
 	}
-	joined := strings.ToLower(strings.Join(model.Result.Messages, " "))
+	joined := strings.ToLower(strings.Join(model.Messages, " "))
 	if !strings.Contains(joined, "oblique rotation") {
-		t.Errorf("Expected oblique rotation message, got %v", model.Result.Messages)
+		t.Errorf("Expected oblique rotation message, got %v", model.Messages)
 	}
 }
 
@@ -367,10 +367,10 @@ func TestFactorAnalysisObliminOptionalOrthogonal(t *testing.T) {
 	if model == nil {
 		t.Fatal("Expected model for Oblimin rotation")
 	}
-	if model.Result.RotationMatrix == nil {
+	if model.RotationMatrix == nil {
 		t.Fatal("Expected rotation matrix for oblimin rotation")
 	}
-	if model.Result.Phi != nil {
+	if model.Phi != nil {
 		t.Error("Expected Phi to be nil when ForceOblique is false")
 	}
 }
@@ -396,15 +396,15 @@ func TestFactorAnalysisParallelAnalysisCount(t *testing.T) {
 	if model == nil {
 		t.Fatal("Expected model for parallel analysis")
 	}
-	if model.Result.CountUsed < 1 {
-		t.Errorf("Expected at least one factor from parallel analysis, got %d", model.Result.CountUsed)
+	if model.CountUsed < 1 {
+		t.Errorf("Expected at least one factor from parallel analysis, got %d", model.CountUsed)
 	}
-	if model.Result.CountUsed > opt.Count.MaxFactors {
-		t.Errorf("Parallel analysis exceeded MaxFactors (%d) with %d", opt.Count.MaxFactors, model.Result.CountUsed)
+	if model.CountUsed > opt.Count.MaxFactors {
+		t.Errorf("Parallel analysis exceeded MaxFactors (%d) with %d", opt.Count.MaxFactors, model.CountUsed)
 	}
-	joined := strings.ToLower(strings.Join(model.Result.Messages, " "))
+	joined := strings.ToLower(strings.Join(model.Messages, " "))
 	if !strings.Contains(joined, "parallel analysis") {
-		t.Errorf("Expected messages to mention parallel analysis, got %v", model.Result.Messages)
+		t.Errorf("Expected messages to mention parallel analysis, got %v", model.Messages)
 	}
 }
 
@@ -430,12 +430,12 @@ func TestFactorScoring(t *testing.T) {
 
 			model := stats.FactorAnalysis(dt, opt)
 
-			if model.Result.Scores == nil {
+			if model.Scores == nil {
 				t.Errorf("Expected non-nil scores for %s method", method)
 			}
 
 			// Check scores dimensions
-			model.Result.Scores.AtomicDo(func(table *insyra.DataTable) {
+			model.Scores.AtomicDo(func(table *insyra.DataTable) {
 				rows, cols := table.Size()
 				if rows != 5 {
 					t.Errorf("Expected 5 rows in scores, got %d", rows)
@@ -585,8 +585,8 @@ func TestFactorAnalysisSingleVariable(t *testing.T) {
 	}
 
 	// Should extract exactly 1 factor
-	if model.Result.CountUsed != 1 {
-		t.Errorf("Expected 1 factor, got %d", model.Result.CountUsed)
+	if model.CountUsed != 1 {
+		t.Errorf("Expected 1 factor, got %d", model.CountUsed)
 	}
 }
 
@@ -640,8 +640,8 @@ func TestFactorAnalysisWithStandardizedData(t *testing.T) {
 
 	// Sum of communalities should be reasonable (between 0 and number of variables)
 	var sumComm float64
-	if model.Result.Communalities != nil {
-		model.Result.Communalities.AtomicDo(func(table *insyra.DataTable) {
+	if model.Communalities != nil {
+		model.Communalities.AtomicDo(func(table *insyra.DataTable) {
 			rows, _ := table.Size()
 			for i := 0; i < rows; i++ {
 				row := table.GetRow(i)
@@ -659,8 +659,8 @@ func TestFactorAnalysisWithStandardizedData(t *testing.T) {
 
 	// Explained proportions should sum to something reasonable
 	var sumExplained float64
-	if model.Result.ExplainedProportion != nil {
-		model.Result.ExplainedProportion.AtomicDo(func(table *insyra.DataTable) {
+	if model.ExplainedProportion != nil {
+		model.ExplainedProportion.AtomicDo(func(table *insyra.DataTable) {
 			rows, _ := table.Size()
 			for i := 0; i < rows; i++ {
 				row := table.GetRow(i)

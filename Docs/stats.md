@@ -1056,6 +1056,7 @@ const (
 ```go
 type FactorAnalysisResult struct {
     Loadings             insyra.IDataTable // Loading matrix (variables × factors)
+    Structure            insyra.IDataTable // Structure matrix (variables × factors)
     Uniquenesses         insyra.IDataTable // Uniqueness vector (p × 1)
     Communalities        insyra.IDataTable // Communality vector (p × 1)
     Phi                  insyra.IDataTable // Factor correlation matrix (m × m), nil for orthogonal
@@ -1075,6 +1076,7 @@ type FactorAnalysisResult struct {
 **DataTable Naming Convention**:
 
 - **Loadings**: Column names are factor names (Factor1, Factor2, ...), row names are variable names
+- **Structure**: Column names are factor names (Factor1, Factor2, ...), row names are variable names
 - **Uniquenesses**: Single column named "Uniqueness", row names are variable names
 - **Communalities**: Single column named "Communality", row names are variable names
 - **Eigenvalues**: Single column named "Eigenvalue", row names are factor names
@@ -1082,11 +1084,30 @@ type FactorAnalysisResult struct {
 - **CumulativeProportion**: Single column named "Cumulative Proportion", row names are factor names
 - **Scores**: Column names are factor names, row names are observation indices
 
+#### Show Method
+
+```go
+func (r *FactorAnalysisResult) Show(startEndRange ...any)
+```
+
+**Purpose**: Display all factor analysis results in a formatted manner.
+
+**Parameters**:
+
+- `startEndRange`: Optional range parameters for displaying DataTables (passed to Show method)
+
+**Example**:
+
+```go
+// Display all factor analysis results
+model.Show()
+```
+
 #### FactorModel
 
 ```go
 type FactorModel struct {
-    Result FactorAnalysisResult
+    FactorAnalysisResult
 
     // Internal fields for scoring new data
     scoreMethod FactorScoreMethod
@@ -1107,12 +1128,12 @@ if model == nil {
 }
 
 // Display results
-model.Result.Loadings.Show()        // Factor loadings
-model.Result.Communalities.Show()   // Communalities
-model.Result.Eigenvalues.Show()     // Eigenvalues
+model.Loadings.Show()        // Factor loadings
+model.Communalities.Show()   // Communalities
+model.Eigenvalues.Show()     // Eigenvalues
 
 // Export results
-model.Result.Loadings.ToCSV("factor_loadings.csv", true, true, true)
+model.Loadings.ToCSV("factor_loadings.csv", true, true, true)
 ```
 
 ### FactorScores
