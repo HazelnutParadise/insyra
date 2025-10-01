@@ -76,7 +76,7 @@ func flattenWithNilSupport(values []any) []any {
 func NewDataList(values ...any) *DataList {
 	// Use custom flatten function that properly handles nil values
 	flatData := flattenWithNilSupport(values)
-	LogDebug("DataList", "NewDataList", "Flattened data: %v", flatData)
+	// LogDebug("DataList", "NewDataList", "Flattened data: %v", flatData)
 
 	continuousMemData := make([]any, len(flatData))
 	copy(continuousMemData, flatData)

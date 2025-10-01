@@ -104,6 +104,7 @@ type FactorAnalysisOptions struct {
 // FactorAnalysisResult contains the output of factor analysis
 type FactorAnalysisResult struct {
 	Loadings             insyra.IDataTable // Loading matrix (variables × factors)
+	Structure            insyra.IDataTable // Structure matrix (variables × factors)
 	Uniquenesses         insyra.IDataTable // Uniqueness vector (p × 1)
 	Communalities        insyra.IDataTable // Communality vector (p × 1)
 	Phi                  insyra.IDataTable // Factor correlation matrix (m × m), nil for orthogonal
@@ -155,7 +156,7 @@ func DefaultFactorAnalysisOptions() FactorAnalysisOptions {
 			Method:       FactorRotationVarimax,
 			Kappa:        0, // Will be set to p/2 if needed
 			Delta:        0,
-			ForceOblique: false,
+			ForceOblique: true,
 		},
 		Scoring: FactorScoreRegression,
 		MaxIter: 100,
@@ -306,6 +307,24 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		stat.CovarianceMatrix(corrMatrix, data, nil)
 	}
 
+	// Sanity check: ensure diagonal elements of correlation matrix are 1 when standardized
+	if opt.Preprocess.Standardize {
+		maxDiagDeviation := 0.0
+		for i := 0; i < colNum; i++ {
+			diag := corrMatrix.At(i, i)
+			delta := math.Abs(diag - 1.0)
+			if delta > maxDiagDeviation {
+				maxDiagDeviation = delta
+			}
+			if delta > 1e-6 {
+				corrMatrix.SetSym(i, i, 1.0)
+			}
+		}
+		if maxDiagDeviation > 1e-8 {
+			insyra.LogDebug("stats", "FactorAnalysis", "correlation diag max deviation = %.6g", maxDiagDeviation)
+		}
+	}
+
 	// Step 4: Eigenvalue decomposition
 	var eig mat.EigenSym
 	if !eig.Factorize(corrMatrix, true) {
@@ -376,6 +395,31 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		return nil
 	}
 
+	// Sanity check: inspect unrotated loadings before any rotation is applied
+	if loadings != nil {
+		pVars, mFactors := loadings.Dims()
+		if pVars > 0 && mFactors > 0 {
+			maxAbs := 0.0
+			for i := 0; i < pVars; i++ {
+				for j := 0; j < mFactors; j++ {
+					val := math.Abs(loadings.At(i, j))
+					if val > maxAbs {
+						maxAbs = val
+					}
+				}
+			}
+			sampleVars := min(2, pVars)
+			sampleFactors := min(2, mFactors)
+			buffer := make([]float64, 0, sampleVars*sampleFactors)
+			for i := 0; i < sampleVars; i++ {
+				for j := 0; j < sampleFactors; j++ {
+					buffer = append(buffer, loadings.At(i, j))
+				}
+			}
+			insyra.LogInfo("stats", "FactorAnalysis", "pre-rotation loadings |max|=%.3f, samples=%v", maxAbs, buffer)
+		}
+	}
+
 	// Step 7: Rotate factors
 	var rotatedLoadings *mat.Dense
 	var rotationMatrix *mat.Dense
@@ -443,8 +487,9 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	for j := 0; j < mFactors; j++ {
 		sum := 0.0
 		for i := 0; i < pVars; i++ {
-			v := S.At(i, j)
-			sum += v * v
+			pattern := rotatedLoadings.At(i, j)
+			structure := S.At(i, j)
+			sum += pattern * structure
 		}
 		ssLoad[j] = sum
 	}
@@ -473,6 +518,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	for i := 0; i < numFactors; i++ {
 		factorColNames[i] = fmt.Sprintf("Factor_%d", i+1)
 	}
+	structureTable := matrixToDataTableWithNames(S, "Factor Structure", factorColNames, colNames)
 
 	messages := []string{
 		fmt.Sprintf("Extraction method: %s", opt.Extraction),
@@ -504,6 +550,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 
 	result := FactorAnalysisResult{
 		Loadings:             matrixToDataTableWithNames(rotatedLoadings, "Factor Loadings", factorColNames, colNames),
+		Structure:            structureTable,
 		Uniquenesses:         vectorToDataTableWithNames(uniquenesses, "Uniqueness", "Uniqueness", colNames),
 		Communalities:        vectorToDataTableWithNames(communalities, "Communality", "Communality", colNames),
 		Phi:                  nil,
@@ -887,12 +934,27 @@ func extractPAF(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64)
 			}
 		}
 
+		if iter == 0 && p >= 4 {
+			insyra.LogInfo("stats", "PAF", "iter %d pre-update loadings[0,0:2]=%.3f, %.3f", iter+1,
+				loadings.At(0, 0), loadings.At(0, min(1, numFactors-1)))
+		}
+
 		// Update communalities
 		newCommunalities := make([]float64, p)
 		for i := 0; i < p; i++ {
 			sum := 0.0
 			for j := 0; j < numFactors; j++ {
 				sum += loadings.At(i, j) * loadings.At(i, j)
+			}
+			diag := corrMatrix.At(i, i)
+			if diag <= 0 {
+				diag = 1.0
+			}
+			if sum < 1e-6 {
+				sum = 1e-6
+			}
+			if sum > diag-1e-9 {
+				sum = diag - 1e-9
 			}
 			newCommunalities[i] = sum
 		}
@@ -966,6 +1028,7 @@ func extractML(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64) 
 	loadings.CloneFrom(initial)
 
 	psMin := 1e-6
+	ridge := 1e-6
 	converged := false
 
 	for iter := 0; iter < maxIter; iter++ {
@@ -986,13 +1049,13 @@ func extractML(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64) 
 		var sigma mat.Dense
 		sigma.Mul(&loadings, loadings.T())
 		for i := 0; i < p; i++ {
-			sigma.Set(i, i, sigma.At(i, i)+psi[i])
+			sigma.Set(i, i, sigma.At(i, i)+psi[i]+ridge)
 		}
 
 		var invSigma mat.Dense
 		if err := invSigma.Inverse(&sigma); err != nil {
 			for i := 0; i < p; i++ {
-				sigma.Set(i, i, sigma.At(i, i)+psMin)
+				sigma.Set(i, i, sigma.At(i, i)+psMin+ridge)
 			}
 			if err := invSigma.Inverse(&sigma); err != nil {
 				return nil, false, iter, fmt.Errorf("ml: covariance inversion failed: %w", err)
@@ -1007,9 +1070,8 @@ func extractML(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64) 
 
 		var m mat.Dense
 		m.Mul(&loadingsTrans, &t)
-
 		for i := 0; i < numFactors; i++ {
-			m.Set(i, i, m.At(i, i)+1.0)
+			m.Set(i, i, m.At(i, i)+1.0+ridge)
 		}
 
 		invSqrt, err := inverseSqrtDense(&m)
@@ -1424,9 +1486,30 @@ func rotatePromax(loadings *mat.Dense, kappa float64, maxIter int, tol float64, 
 	phi.Mul(&transInv, &transInvT)
 
 	// Normalize Phi to have diagonal elements equal to 1 (correlation matrix)
+	diagScales := make([]float64, m)
+	for j := 0; j < m; j++ {
+		diagVal := phi.At(j, j)
+		if diagVal <= 1e-12 {
+			diagScales[j] = 1.0
+		} else {
+			diagScales[j] = math.Sqrt(diagVal)
+		}
+	}
 	phiNorm := normalizeToCorrelation(&phi)
 
-	return &rotated, &combined, phiNorm, nil
+	rotatedScaled := mat.NewDense(p, m, nil)
+	rotatedScaled.Copy(&rotated)
+	for j := 0; j < m; j++ {
+		scale := diagScales[j]
+		if scale == 0 {
+			scale = 1.0
+		}
+		for i := 0; i < p; i++ {
+			rotatedScaled.Set(i, j, rotatedScaled.At(i, j)*scale)
+		}
+	}
+
+	return rotatedScaled, &combined, phiNorm, nil
 }
 
 func rotateOblimin(loadings *mat.Dense, delta float64, maxIter int, tol float64, forceOblique bool) (*mat.Dense, *mat.Dense, *mat.Dense, error) {
@@ -1523,9 +1606,30 @@ func rotateOblimin(loadings *mat.Dense, delta float64, maxIter int, tol float64,
 	phi.Mul(&transInv, &transInvT)
 
 	// Normalize Phi to have diagonal elements equal to 1 (correlation matrix)
+	diagScales := make([]float64, m)
+	for j := 0; j < m; j++ {
+		diagVal := phi.At(j, j)
+		if diagVal <= 1e-12 {
+			diagScales[j] = 1.0
+		} else {
+			diagScales[j] = math.Sqrt(diagVal)
+		}
+	}
 	phiNorm := normalizeToCorrelation(&phi)
 
-	return rotated, trans, phiNorm, nil
+	rotatedScaled := mat.NewDense(p, m, nil)
+	rotatedScaled.Copy(rotated)
+	for j := 0; j < m; j++ {
+		scale := diagScales[j]
+		if scale == 0 {
+			scale = 1.0
+		}
+		for i := 0; i < p; i++ {
+			rotatedScaled.Set(i, j, rotatedScaled.At(i, j)*scale)
+		}
+	}
+
+	return rotatedScaled, trans, phiNorm, nil
 }
 
 func invertWithFallback(dst *mat.Dense, src mat.Matrix) error {

@@ -17,7 +17,7 @@ func inActorLoop() bool {
 }
 
 func (s *DataList) AtomicDo(f func(*DataList)) {
-	LogDebug("DataList", "AtomicDo", "threadSafe: %v", Config.threadSafe)
+	// LogDebug("DataList", "AtomicDo", "threadSafe: %v", Config.threadSafe)
 	if !Config.threadSafe {
 		// 如果全域配置關閉了線程安全，直接執行
 		f(s)
@@ -115,7 +115,7 @@ func inDataTableActorLoop() bool {
 }
 
 func (dt *DataTable) AtomicDo(f func(*DataTable)) {
-	LogDebug("DataTable", "AtomicDo", "threadSafe: %v", Config.threadSafe)
+	// LogDebug("DataTable", "AtomicDo", "threadSafe: %v", Config.threadSafe)
 	if !Config.threadSafe {
 		// 如果全域配置關閉了線程安全，直接執行
 		f(dt)
