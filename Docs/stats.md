@@ -1021,7 +1021,7 @@ const (
 ```go
 type FactorRotationOptions struct {
     Method       FactorRotationMethod
-    Kappa        float64 // For Equamax (default: p/2)
+    Kappa        float64 // For Promax (default: 4)
     Delta        float64 // For Oblimin (default: 0)
     ForceOblique bool    // Force oblique rotation
 }
@@ -1035,7 +1035,6 @@ const (
     FactorRotationNone      FactorRotationMethod = "none"
     FactorRotationVarimax   FactorRotationMethod = "varimax"
     FactorRotationQuartimax FactorRotationMethod = "quartimax"
-    FactorRotationEquamax   FactorRotationMethod = "equamax"
     FactorRotationPromax    FactorRotationMethod = "promax"
     FactorRotationOblimin   FactorRotationMethod = "oblimin"
 )

@@ -33,7 +33,6 @@ const (
 	FactorRotationNone      FactorRotationMethod = "none"
 	FactorRotationVarimax   FactorRotationMethod = "varimax"
 	FactorRotationQuartimax FactorRotationMethod = "quartimax"
-	FactorRotationEquamax   FactorRotationMethod = "equamax"
 	FactorRotationPromax    FactorRotationMethod = "promax"
 	FactorRotationOblimin   FactorRotationMethod = "oblimin"
 )
@@ -75,7 +74,7 @@ type FactorCountSpec struct {
 // FactorRotationOptions specifies rotation parameters
 type FactorRotationOptions struct {
 	Method       FactorRotationMethod
-	Kappa        float64 // Optional: default p/2 for Equamax
+	Kappa        float64 // Optional: Promax power (default 4)
 	Delta        float64 // Optional: default 0 for Oblimin
 	ForceOblique bool    // Optional
 }
@@ -1430,8 +1429,6 @@ func rotateFactors(loadings *mat.Dense, opt FactorRotationOptions) (*mat.Dense, 
 
 	rotMaxIter := 200
 	rotTol := 1e-6
-	p, _ := loadings.Dims()
-
 	switch opt.Method {
 	case FactorRotationVarimax:
 		rotated, rotMatrix, err := rotateOrthomax(loadings, 1.0, rotMaxIter, rotTol)
@@ -1445,18 +1442,6 @@ func rotateFactors(loadings *mat.Dense, opt FactorRotationOptions) (*mat.Dense, 
 		rotated, rotMatrix, err := rotateOrthomax(loadings, 0.0, rotMaxIter, rotTol)
 		if err != nil {
 			insyra.LogWarning("stats", "rotateFactors", "quartimax rotation failed: %v", err)
-			return loadings, nil, nil
-		}
-		return rotated, rotMatrix, nil
-
-	case FactorRotationEquamax:
-		gamma := float64(p) / (2.0 * float64(m))
-		if opt.Kappa != 0 {
-			gamma = opt.Kappa
-		}
-		rotated, rotMatrix, err := rotateOrthomax(loadings, gamma, rotMaxIter, rotTol)
-		if err != nil {
-			insyra.LogWarning("stats", "rotateFactors", "equamax rotation failed: %v", err)
 			return loadings, nil, nil
 		}
 		return rotated, rotMatrix, nil

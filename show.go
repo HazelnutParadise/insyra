@@ -15,6 +15,21 @@ import (
 	"golang.org/x/term"
 )
 
+type showable interface {
+	ShowRange(startEnd ...any)
+}
+
+// Show displays the content of any showable object with a label.
+// Automatically deals with nil objects.
+func Show(label string, object showable, startEnd ...any) {
+	if object == nil {
+		fmt.Printf("%s: \033[2;37m(nil)\033[0m\n", label)
+		return
+	}
+	fmt.Printf("\n\033[1;35m--- Showing: %s ---\033[0m\n", label)
+	object.ShowRange(startEnd...)
+}
+
 // ======================== DataTable ========================
 
 // Show displays the content of the DataTable in a formatted way.

@@ -150,6 +150,21 @@ func main() {
 
 To use the syntactic sugar, import `github.com/HazelnutParadise/insyra/isr`.
 
+### Console Preview with `insyra.Show`
+
+Need a quick labelled look at any showable structure (like `DataTable` or `DataList`)? Use the package-level `Show` helper, which delegates to `ShowRange` under the hood and supports the same range arguments:
+
+```go
+func main() {
+    dt := insyra.NewDataTable(
+        insyra.NewDataList("Alice", "Bob", "Charlie").SetName("Name"),
+        insyra.NewDataList(28, 34, 29).SetName("Age"),
+    ).SetName("Team Members")
+
+    insyra.Show("Preview", dt, 2) // First two rows
+}
+```
+
 ## [DataList](/Docs/DataList.md)
 
 The `DataList` is the core structure in **Insyra**, enabling the storage, management, and analysis of dynamic data collections. It offers various methods for data manipulation and statistical analysis.
