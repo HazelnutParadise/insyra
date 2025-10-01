@@ -9,13 +9,15 @@ import (
 	"github.com/HazelnutParadise/insyra"
 	"gonum.org/v1/gonum/mat"
 	"gonum.org/v1/gonum/stat"
+	"gonum.org/v1/gonum/stat/distuv"
 )
 
 // -------------------------
 // Factor Analysis Types and Constants
 // -------------------------
 
-// FactorExtractionMethod defines the method for extracting factors
+// FactorExtractionMethod defines the method for extracting factors.
+// See Docs/stats.md (Factor Analysis → Extraction Methods) for algorithmic details.
 type FactorExtractionMethod string
 
 const (
@@ -25,7 +27,8 @@ const (
 	FactorExtractionMINRES FactorExtractionMethod = "minres"
 )
 
-// FactorRotationMethod defines the method for rotating factors
+// FactorRotationMethod defines the method for rotating factors.
+// Rotation families and their properties are documented in Docs/stats.md.
 type FactorRotationMethod string
 
 const (
@@ -36,7 +39,8 @@ const (
 	FactorRotationOblimin   FactorRotationMethod = "oblimin"
 )
 
-// FactorScoreMethod defines the method for computing factor scores
+// FactorScoreMethod defines the method for computing factor scores.
+// Scoring equations and trade-offs are outlined in Docs/stats.md.
 type FactorScoreMethod string
 
 const (
@@ -146,7 +150,8 @@ type FactorModel struct {
 // Default Options
 // -------------------------
 
-// DefaultFactorAnalysisOptions returns default options for factor analysis
+// DefaultFactorAnalysisOptions returns default options for factor analysis.
+// Defaults align with the documentation (Docs/stats.md → Convergence Control & Extraction Methods).
 func DefaultFactorAnalysisOptions() FactorAnalysisOptions {
 	return FactorAnalysisOptions{
 		Preprocess: FactorPreprocessOptions{
@@ -395,7 +400,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 			corrDense.Set(i, j, corrMatrix.At(i, j))
 		}
 	}
-	loadings, converged, iterations, err := extractFactors(data, corrDense, sortedEigenvalues, sortedEigenvectors, numFactors, opt)
+	loadings, converged, iterations, err := extractFactors(data, corrDense, sortedEigenvalues, sortedEigenvectors, numFactors, opt, rowNum)
 	if err != nil {
 		insyra.LogWarning("stats", "FactorAnalysis", "factor extraction failed: %v", err)
 		return nil
@@ -647,7 +652,7 @@ func countByThreshold(eigenvalues []float64, threshold float64) int {
 }
 
 // extractFactors extracts factors using the specified method
-func extractFactors(data, corrMatrix *mat.Dense, eigenvalues []float64, eigenvectors *mat.Dense, numFactors int, opt FactorAnalysisOptions) (*mat.Dense, bool, int, error) {
+func extractFactors(data, corrMatrix *mat.Dense, eigenvalues []float64, eigenvectors *mat.Dense, numFactors int, opt FactorAnalysisOptions, sampleSize int) (*mat.Dense, bool, int, error) {
 	switch opt.Extraction {
 	case FactorExtractionPCA:
 		return extractPCA(eigenvalues, eigenvectors, numFactors)
@@ -656,13 +661,13 @@ func extractFactors(data, corrMatrix *mat.Dense, eigenvalues []float64, eigenvec
 		return extractPAF(corrMatrix, numFactors, opt.MaxIter, opt.Tol)
 
 	case FactorExtractionML:
-		return extractML(corrMatrix, numFactors, opt.MaxIter, opt.Tol)
+		return extractML(corrMatrix, numFactors, opt.MaxIter, opt.Tol, sampleSize)
 
 	case FactorExtractionMINRES:
 		return extractMINRES(corrMatrix, numFactors, opt.MaxIter, opt.Tol)
 
 	default:
-		// Default to MINRES to match R psych::fa
+		// Default to MINRES to match R psych::fa and the documented default behavior.
 		return extractMINRES(corrMatrix, numFactors, opt.MaxIter, opt.Tol)
 	}
 }
@@ -902,8 +907,55 @@ func extractPAF(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64)
 	return loadings, converged, maxIter, nil
 }
 
+// mlFitStats computes ML fit statistics: f, chi-square, df, and p-value
+func mlFitStats(R, Sigma mat.Matrix, n, p, m int) (f, chi2, pval float64, df int) {
+	// Compute inv(Sigma) * R
+	var invSigma mat.Dense
+	if err := invSigma.Inverse(Sigma); err != nil {
+		// If inversion fails, return NaN
+		return math.NaN(), math.NaN(), math.NaN(), 0
+	}
+
+	var temp mat.Dense
+	temp.Mul(&invSigma, R)
+
+	// Trace
+	tr := 0.0
+	for i := 0; i < p; i++ {
+		tr += temp.At(i, i)
+	}
+
+	// Log determinant
+	det := mat.Det(&temp)
+	if det <= 0 {
+		return math.NaN(), math.NaN(), math.NaN(), 0
+	}
+	logDet := math.Log(det)
+
+	// f = tr(Sigma^{-1} R) - log|Sigma^{-1} R| - p
+	f = tr - logDet - float64(p)
+
+	// Degrees of freedom
+	df = ((p-m)*(p-m) - (p + m)) / 2
+	if df <= 0 {
+		return f, 0, 1.0, df
+	}
+
+	// Chi-square statistic
+	chi2 = (float64(n-1) - (2*float64(p)+5)/6.0 - (2*float64(m))/3.0) * f
+
+	// p-value
+	if chi2 < 0 {
+		chi2 = 0
+	}
+	chiSqDist := distuv.ChiSquared{K: float64(df)}
+	pval = 1.0 - chiSqDist.CDF(chi2)
+
+	return f, chi2, pval, df
+}
+
 // extractML extracts factors using Maximum Likelihood estimation
-func extractML(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64) (*mat.Dense, bool, int, error) {
+func extractML(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64, sampleSize int) (*mat.Dense, bool, int, error) {
 	p, _ := corrMatrix.Dims()
 	if numFactors <= 0 || numFactors > p {
 		return nil, false, 0, fmt.Errorf("invalid number of factors: %d", numFactors)
@@ -1029,6 +1081,14 @@ func extractML(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64) 
 
 		loadings.CloneFrom(&newLoadings)
 
+		// Compute ML fit statistics
+		if sampleSize > 0 {
+			f, chi2, pval, df := mlFitStats(corrMatrix, &sigma, sampleSize, p, numFactors)
+			if !math.IsNaN(f) && iter < 5 || iter == maxIter-1 {
+				insyra.LogDebug("stats", "ML", "iter %d: f=%.4f, χ²=%.4f (df=%d, p=%.4f)", iter+1, f, chi2, df, pval)
+			}
+		}
+
 		// Log convergence progress
 		if iter < 5 || iter == maxIter-1 {
 			insyra.LogDebug("stats", "ML", "iter %d: maxChange=%.6f, loadings[0,0]=%.4f",
@@ -1037,6 +1097,13 @@ func extractML(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64) 
 
 		if maxChange < tol {
 			converged = true
+			// Report final fit statistics
+			if sampleSize > 0 {
+				f, chi2, pval, df := mlFitStats(corrMatrix, &sigma, sampleSize, p, numFactors)
+				if !math.IsNaN(f) {
+					insyra.LogInfo("stats", "ML", "converged: f=%.4f, χ²=%.4f (df=%d, p=%.4f)", f, chi2, df, pval)
+				}
+			}
 			insyra.LogInfo("stats", "ML", "converged in %d iterations", iter+1)
 			return &loadings, converged, iter + 1, nil
 		}
@@ -1089,16 +1156,11 @@ func extractMINRES(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float
 	var approx mat.Dense
 	var residual mat.Dense
 	var grad mat.Dense
-	var direction mat.Dense
-	var candidate mat.Dense
-	var candidateApprox mat.Dense
-	var candidateResidual mat.Dense
-	var stepDir mat.Dense
-
 	prevSSE := math.Inf(1)
 	converged := false
 
 	for iter := 0; iter < maxIter; iter++ {
+		// Compute approximation: L L^T
 		approx.Mul(&loadings, loadings.T())
 		residual.Sub(corrMatrix, &approx)
 		zeroDiagonal(&residual)
@@ -1115,32 +1177,37 @@ func extractMINRES(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float
 			return &loadings, converged, iter + 1, nil
 		}
 
+		// Compute gradient: -4 * (R - L L^T) * L
 		grad.Mul(&residual, &loadings)
-		direction.Scale(-2.0, &grad)
+		grad.Scale(-4.0, &grad)
 
-		step := 1.0
+		// Line search for optimal step size
+		eta := 1.0
 		improved := false
 		var candidateSSE float64
+		var newLoadings mat.Dense
 
-		for trial := 0; trial < 8; trial++ {
-			candidate.CloneFrom(&loadings)
-			stepDir.Scale(step, &direction)
-			candidate.Add(&candidate, &stepDir)
-			clampLoadingsToDiag(&candidate, corrMatrix)
+		for trial := 0; trial < 10; trial++ {
+			// L_new = L - eta * grad
+			var scaled mat.Dense
+			scaled.Scale(eta, &grad)
+			newLoadings.Sub(&loadings, &scaled)
+			clampLoadingsToDiag(&newLoadings, corrMatrix)
 
-			candidateApprox.Mul(&candidate, candidate.T())
+			var candidateApprox mat.Dense
+			candidateApprox.Mul(&newLoadings, newLoadings.T())
+			var candidateResidual mat.Dense
 			candidateResidual.Sub(corrMatrix, &candidateApprox)
 			zeroDiagonal(&candidateResidual)
 			candidateSSE = offDiagonalSSE(&candidateResidual)
 
 			if candidateSSE < currentSSE {
-				loadings.CloneFrom(&candidate)
+				loadings.CloneFrom(&newLoadings)
 				prevSSE = currentSSE
-				currentSSE = candidateSSE
 				improved = true
 				break
 			}
-			step *= 0.5
+			eta *= 0.5
 		}
 
 		if !improved {
@@ -1149,12 +1216,12 @@ func extractMINRES(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float
 		}
 
 		if iter < 5 || iter == maxIter-1 {
-			insyra.LogDebug("stats", "MINRES", "iter %d: SSE=%.6f", iter+1, currentSSE)
+			insyra.LogDebug("stats", "MINRES", "iter %d: SSE=%.6f, eta=%.4f", iter+1, candidateSSE, eta)
 		}
 
-		if math.Abs(prevSSE-currentSSE) < tol {
+		if math.Abs(prevSSE-candidateSSE) < tol {
 			converged = true
-			insyra.LogInfo("stats", "MINRES", "converged by delta in %d iterations (SSE=%.6f)", iter+1, currentSSE)
+			insyra.LogInfo("stats", "MINRES", "converged by delta in %d iterations (SSE=%.6f)", iter+1, candidateSSE)
 			return &loadings, converged, iter + 1, nil
 		}
 	}

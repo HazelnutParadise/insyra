@@ -940,6 +940,117 @@ if result != nil {
 
 The stats package provides comprehensive factor analysis functionality for dimensionality reduction and latent variable identification. Factor analysis helps identify underlying factors that explain the correlations among observed variables.
 
+### Model Framework
+
+Factor analysis assumes the observed correlation (or covariance) matrix can be decomposed into shared factor structure plus unique variance:
+
+$$
+R \approx F F' + U^2
+$$
+
+Where:
+
+- $R$ — observed correlation matrix (identity on the diagonal when standardized)
+- $F$ — factor loading matrix capturing relationships between variables and common factors
+- $U^2$ — diagonal matrix of uniquenesses (specific variance not explained by common factors)
+
+Communalities are the diagonal elements of $F F'$, representing shared variance for each variable. The goal of extraction algorithms is to find loadings $F$ and uniquenesses $U^2$ that best approximate $R$ under different optimality criteria.
+
+### Extraction Methods
+
+The implementation mirrors key `psych::fa` extraction behaviors while exposing the choice through `FactorAnalysisOptions.Extraction`. The currently selectable values are `pca`, `paf`, `ml`, and `minres`; the remaining subsections document the underlying theory used for compatibility and roadmap planning.
+
+#### Principal Axis Factoring (PAF / `paf`)
+
+- **Initialization**: Communalities start from squared multiple correlations (SMC) or a user-provided constant.
+- **Iteration**:
+    1. Replace the diagonal of $R$ with current communalities.
+    2. Perform an eigen decomposition to obtain updated loadings $F$.
+    3. Update communalities via $\operatorname{diag}(F F')$.
+    4. Repeat until the maximum change in communalities is below `Tol` or `MaxIter` iterations are reached.
+- **Strengths**: Stable and fast; often converges even when ML struggles.
+
+#### Minimum Residual (MINRES / `minres`)
+
+- **Objective**: Minimize the off-diagonal squared residuals between the observed and model-implied correlations:
+
+    $$
+    \min_{F, U^2} \sum_{i<j} \bigl(r_{ij} - \hat{r}_{ij}\bigr)^2,
+    $$
+
+    where $\hat{r}_{ij}$ are elements of $F F' + U^2$.
+- **Optimization**: Uses gradient-based search (mirroring `psych::fa` ≥ 2017 derivatives) with diagonal adjustments to maintain feasible uniquenesses.
+- **Traits**: Default extraction (matches `psych::fa`). Robust when communalities are moderate to high.
+
+#### Maximum Likelihood (ML / `ml`)
+
+- **Objective**: Minimize the Gaussian log-likelihood discrepancy between the model-implied and observed matrices:
+
+    $$
+    f = \log\bigl(\operatorname{trace}((F F' + U^2)^{-1} R)\bigr) - \log\bigl(\lvert (F F' + U^2)^{-1} R \rvert\bigr) - p,
+    $$
+
+    with $p$ as the number of observed variables.
+- **Algorithm**: Newton-style steps iterate on communalities; convergence enables chi-square goodness-of-fit testing:
+
+    $$
+    \chi^2 = (n_{\text{obs}} - 1 - \tfrac{2p + 5}{6} - \tfrac{2f}{3}) \cdot f,
+    $$
+
+    where $f$ is the minimized value and $n_{\text{obs}}$ is the number of observations.
+- **Notes**: Requires positive definite $F F' + U^2$ and benefits from multivariate normal data.
+
+#### Weighted / Generalized Least Squares (WLS & GLS)
+
+- **Weighting**:
+  - WLS weights residuals by $1 / \operatorname{diag}(R^{-1})$.
+  - GLS weights residuals by the full $R^{-1}$.
+- **Effect**: Variables with lower communalities receive higher weight, emphasizing residual reduction for poorly explained variables.
+- **Use Case**: Useful when measurement error varies substantially across variables.
+
+#### Minimum Rank Factor Analysis (MRFA)
+
+- **Goal**: Find the lowest-rank approximation of $R$ that preserves positive semidefiniteness of the residual matrix.
+- **Behavior**: Ensures the resulting residual covariance remains a valid correlation matrix, avoiding negative eigenvalues.
+- **When to Choose**: Specialized method for guaranteeing admissible residual structures.
+
+#### Alpha Factoring (`alpha`)
+
+- **Process**: Adjusts $R$ by subtracting communalities, rescales to the original metric, and extracts factors maximizing Cronbach's alpha.
+- **Origin**: Based on Kaiser & Coffey (1965).
+- **Strength**: Produces factors optimized for reliability of sum scores.
+
+### Rotation Families
+
+Rotation is configured through `FactorAnalysisOptions.Rotation`. Orthogonal methods keep factors uncorrelated ($\Phi = I$), while oblique methods estimate $\Phi$.
+
+- **Orthogonal**: Varimax (default), Quartimax.
+- **Oblique**: Promax (power `Kappa`), Oblimin (parameter `Delta`).
+
+For oblique solutions, the structure matrix $S$ and pattern matrix $P$ obey:
+
+$$
+S = P \Phi,
+$$
+
+linking loadings ($P$) to factor correlations ($\Phi$).
+
+### Convergence Control
+
+- `FactorAnalysisOptions.MaxIter` (default `100`) caps iterations for iterative extractions (PAF, MINRES, ML, MRFA, Alpha).
+- `FactorAnalysisOptions.Tol` (default `1\times 10^{-6}`) sets the absolute convergence threshold on communalities or objective improvements.
+- Diagnostics: Outputs include `FactorAnalysisResult.Converged` and `Iterations` to track termination status.
+
+### Factor Scoring
+
+Factor scores follow Thurstone-style regression by default. Given standardized data matrix $X$ and structure matrix $S$:
+
+$$
+F_s = X W, \quad W = R^{-1} S.
+$$
+
+Alternative weighting schemes (Bartlett, Anderson–Rubin, ten Berge) are accessible via `FactorAnalysisOptions.Scoring`. Scoring reuses preprocessing parameters (standardization, missing policy) captured inside the `FactorModel`.
+
 ### FactorAnalysis
 
 ```go
