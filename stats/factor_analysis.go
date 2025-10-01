@@ -20,11 +20,10 @@ import (
 type FactorExtractionMethod string
 
 const (
-	FactorExtractionPCA      FactorExtractionMethod = "pca"
-	FactorExtractionPAF      FactorExtractionMethod = "paf"
-	FactorExtractionML       FactorExtractionMethod = "ml"
-	FactorExtractionMINRES   FactorExtractionMethod = "minres"
-	FactorExtractionBayesian FactorExtractionMethod = "bayesian"
+	FactorExtractionPCA    FactorExtractionMethod = "pca"
+	FactorExtractionPAF    FactorExtractionMethod = "paf"
+	FactorExtractionML     FactorExtractionMethod = "ml"
+	FactorExtractionMINRES FactorExtractionMethod = "minres"
 )
 
 // FactorRotationMethod defines the method for rotating factors
@@ -152,7 +151,7 @@ func DefaultFactorAnalysisOptions() FactorAnalysisOptions {
 			ParallelPercentile:   0.95,
 			EnableAutoScree:      false,
 		},
-		Extraction: FactorExtractionPCA,
+		Extraction: FactorExtractionMINRES,
 		Rotation: FactorRotationOptions{
 			Method:       FactorRotationVarimax,
 			Kappa:        0, // Will be set to p/2 if needed
@@ -541,7 +540,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	if iterations > 0 {
 		messages = append(messages, fmt.Sprintf("Extraction iterations: %d (tol %.2g)", iterations, opt.Tol))
 	}
-	if !converged && (opt.Extraction == FactorExtractionPAF || opt.Extraction == FactorExtractionML || opt.Extraction == FactorExtractionMINRES || opt.Extraction == FactorExtractionBayesian) {
+	if !converged && (opt.Extraction == FactorExtractionPAF || opt.Extraction == FactorExtractionML || opt.Extraction == FactorExtractionMINRES) {
 		messages = append(messages, "Warning: extraction did not converge within limits")
 	}
 	if phi != nil {
@@ -767,20 +766,26 @@ func extractFactors(data, corrMatrix *mat.Dense, eigenvalues []float64, eigenvec
 	case FactorExtractionMINRES:
 		return extractMINRES(corrMatrix, numFactors, opt.MaxIter, opt.Tol)
 
-	case FactorExtractionBayesian:
-		return extractBayesian(data, corrMatrix, numFactors, opt)
-
 	default:
-		// Default to PCA
-		return extractPCA(eigenvalues, eigenvectors, numFactors)
+		// Default to MINRES to match R psych::fa
+		return extractMINRES(corrMatrix, numFactors, opt.MaxIter, opt.Tol)
 	}
 }
 
-// extractPCA extracts factors using Principal Component Analysis
-func extractPCA(eigenvalues []float64, eigenvectors *mat.Dense, numFactors int) (*mat.Dense, bool, int, error) {
-	p := eigenvectors.RawMatrix().Rows
+// computePCALoadings constructs factor loadings for PCA given eigenvalues/vectors.
+// The logic is shared with PCA extraction and ML fallbacks to avoid duplication.
+func computePCALoadings(eigenvalues []float64, eigenvectors *mat.Dense, numFactors int) (*mat.Dense, error) {
+	if eigenvectors == nil {
+		return nil, fmt.Errorf("computePCALoadings: eigenvectors nil")
+	}
+	p, cols := eigenvectors.Dims()
+	if cols == 0 {
+		return nil, fmt.Errorf("computePCALoadings: zero columns")
+	}
+	if numFactors <= 0 || numFactors > cols {
+		numFactors = cols
+	}
 	loadings := mat.NewDense(p, numFactors, nil)
-
 	for i := 0; i < p; i++ {
 		for j := 0; j < numFactors; j++ {
 			if j < len(eigenvalues) && eigenvalues[j] > 0 {
@@ -790,7 +795,15 @@ func extractPCA(eigenvalues []float64, eigenvectors *mat.Dense, numFactors int) 
 			}
 		}
 	}
+	return loadings, nil
+}
 
+// extractPCA extracts factors using Principal Component Analysis
+func extractPCA(eigenvalues []float64, eigenvectors *mat.Dense, numFactors int) (*mat.Dense, bool, int, error) {
+	loadings, err := computePCALoadings(eigenvalues, eigenvectors, numFactors)
+	if err != nil {
+		return nil, false, 0, err
+	}
 	return loadings, true, 0, nil
 }
 
@@ -1255,48 +1268,6 @@ func extractMINRES(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float
 		insyra.LogWarning("stats", "MINRES", "did not converge after %d iterations (SSE=%.6f)", maxIter, prevSSE)
 	}
 	return &loadings, converged, maxIter, nil
-}
-
-// extractBayesian extracts factors using a simple Bayesian shrinkage approach
-func extractBayesian(data, corrMatrix *mat.Dense, numFactors int, opt FactorAnalysisOptions) (*mat.Dense, bool, int, error) {
-	p, _ := corrMatrix.Dims()
-	if numFactors <= 0 || numFactors > p {
-		return nil, false, 0, fmt.Errorf("invalid number of factors: %d", numFactors)
-	}
-
-	rows := 0
-	if data != nil {
-		rows, _ = data.Dims()
-	}
-
-	alpha := 0.1
-	if rows > 0 {
-		alpha = float64(numFactors) / float64(rows+numFactors)
-		if alpha < 0.05 {
-			alpha = 0.05
-		}
-		if alpha > 0.3 {
-			alpha = 0.3
-		}
-	}
-
-	shrinked := mat.NewDense(p, p, nil)
-	for i := 0; i < p; i++ {
-		for j := 0; j < p; j++ {
-			val := (1 - alpha) * corrMatrix.At(i, j)
-			if i == j {
-				val += alpha
-			}
-			shrinked.Set(i, j, val)
-		}
-	}
-
-	loadings, converged, iters, err := extractML(shrinked, numFactors, opt.MaxIter, opt.Tol)
-	if err != nil {
-		return extractML(corrMatrix, numFactors, opt.MaxIter, opt.Tol)
-	}
-
-	return loadings, converged, iters, nil
 }
 
 func inverseSqrtDense(m *mat.Dense) (*mat.Dense, error) {

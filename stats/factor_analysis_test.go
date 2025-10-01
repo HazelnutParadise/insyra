@@ -14,7 +14,7 @@ func approxEqual(a, b, tolerance float64) bool {
 	return math.Abs(a-b) < tolerance
 }
 
-// TestFactorAnalysisBasic tests basic factor analysis with PCA extraction
+// TestFactorAnalysisBasic tests basic factor analysis with default MINRES extraction
 func TestFactorAnalysisBasic(t *testing.T) {
 	// Create a simple test dataset (4 variables, 10 observations)
 	dt := insyra.NewDataTable()
@@ -169,6 +169,30 @@ func TestFactorAnalysisPAF(t *testing.T) {
 	}
 }
 
+func TestFactorAnalysisPCAExtraction(t *testing.T) {
+	dt := insyra.NewDataTable()
+	dt.AppendCols(insyra.NewDataList(1.0, 2.0, 3.0, 4.0, 5.0))
+	dt.AppendCols(insyra.NewDataList(1.2, 2.4, 3.6, 4.8, 6.0))
+	dt.AppendCols(insyra.NewDataList(0.8, 1.6, 2.4, 3.2, 4.0))
+
+	opt := stats.DefaultFactorAnalysisOptions()
+	opt.Extraction = stats.FactorExtractionPCA
+	opt.Count.Method = stats.FactorCountFixed
+	opt.Count.FixedK = 2
+
+	model := stats.FactorAnalysis(dt, opt)
+	if model == nil {
+		t.Fatal("Expected model for PCA extraction")
+	}
+	if model.Result.Loadings == nil {
+		t.Fatal("Expected loadings for PCA extraction")
+	}
+	joined := strings.ToLower(strings.Join(model.Result.Messages, " "))
+	if !strings.Contains(joined, "pca") {
+		t.Errorf("Expected messages to mention PCA extraction, got %v", model.Result.Messages)
+	}
+}
+
 // TestFactorAnalysisNoRotation tests factor analysis without rotation
 func TestFactorAnalysisNoRotation(t *testing.T) {
 	dt := insyra.NewDataTable()
@@ -257,7 +281,7 @@ func TestFactorAnalysisMLExtraction(t *testing.T) {
 	}
 }
 
-func TestFactorAnalysisBayesianExtraction(t *testing.T) {
+func TestFactorAnalysisMINRESExtraction(t *testing.T) {
 	dt := insyra.NewDataTable()
 	for i := 0; i < 4; i++ {
 		col := insyra.NewDataList()
@@ -270,20 +294,20 @@ func TestFactorAnalysisBayesianExtraction(t *testing.T) {
 	opt := stats.DefaultFactorAnalysisOptions()
 	opt.Count.Method = stats.FactorCountFixed
 	opt.Count.FixedK = 2
-	opt.Extraction = stats.FactorExtractionBayesian
+	opt.Extraction = stats.FactorExtractionMINRES
 	opt.MaxIter = 80
 	opt.Tol = 1e-5
 
 	model := stats.FactorAnalysis(dt, opt)
 	if model == nil {
-		t.Fatal("Expected model for Bayesian extraction")
+		t.Fatal("Expected model for MINRES extraction")
 	}
 	if model.Result.Loadings == nil {
-		t.Fatal("Expected loadings for Bayesian extraction")
+		t.Fatal("Expected loadings for MINRES extraction")
 	}
 	joined := strings.ToLower(strings.Join(model.Result.Messages, " "))
-	if !strings.Contains(joined, "bayesian") {
-		t.Errorf("Expected messages to mention Bayesian extraction, got %v", model.Result.Messages)
+	if !strings.Contains(joined, "minres") {
+		t.Errorf("Expected messages to mention MINRES extraction, got %v", model.Result.Messages)
 	}
 }
 
@@ -578,8 +602,8 @@ func TestDefaultOptions(t *testing.T) {
 		t.Error("Default should use Kaiser criterion")
 	}
 
-	if opt.Extraction != stats.FactorExtractionPCA {
-		t.Error("Default should use PCA extraction")
+	if opt.Extraction != stats.FactorExtractionMINRES {
+		t.Error("Default should use MINRES extraction")
 	}
 
 	if opt.Rotation.Method != stats.FactorRotationVarimax {

@@ -1009,10 +1009,10 @@ const (
 ```go
 type FactorExtractionMethod string
 const (
-    FactorExtractionPCA      FactorExtractionMethod = "pca"
+    FactorExtractionPCA    FactorExtractionMethod = "pca"
     FactorExtractionPAF      FactorExtractionMethod = "paf"
     FactorExtractionML       FactorExtractionMethod = "ml"
-    FactorExtractionBayesian FactorExtractionMethod = "bayesian"
+    FactorExtractionMINRES   FactorExtractionMethod = "minres"
 )
 ```
 
@@ -1251,9 +1251,10 @@ All error conditions are logged via `insyra.LogWarning()` for debugging purposes
 
 #### Factor Extraction
 
-- **PCA**: Good default choice, computationally efficient, maximizes explained variance
-- **PAF**: Preferred when communalities are low, provides better factor structure
+- **MINRES**: Default choice (psych::fa), stable and works well without strict distributional assumptions
+- **PAF**: Preferred when communalities are low, often yields interpretable factor structures
 - **ML**: Maximum likelihood, requires multivariate normality, provides fit statistics
+- **PCA**: Deterministic extraction based on eigen decomposition; useful for exploratory variance explanation
 
 #### Determining Number of Factors
 
