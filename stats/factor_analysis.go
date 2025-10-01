@@ -547,6 +547,9 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	if phi != nil {
 		messages = append(messages, "Oblique rotation applied; factor correlation matrix provided")
 	}
+	if opt.Rotation.Method == FactorRotationPromax && opt.Rotation.ForceOblique {
+		messages = append(messages, "Oblique Promax with Kaiser-normalized Varimax start")
+	}
 	messages = append(messages, "Factor analysis completed")
 
 	result := FactorAnalysisResult{
@@ -1024,7 +1027,7 @@ func extractML(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64) 
 
 	// Log initial loadings for debugging
 	if p >= 4 {
-		insyra.LogInfo("stats", "ML", "initial loadings[0,0:2] = %.3f, %.3f",
+		insyra.LogDebug("stats", "ML", "initial loadings[0,0:2] = %.3f, %.3f",
 			initial.At(0, 0), initial.At(0, min(1, numFactors-1)))
 	}
 
@@ -1513,15 +1516,53 @@ func rotateFactors(loadings *mat.Dense, opt FactorRotationOptions) (*mat.Dense, 
 	}
 }
 
+// kaiserNormalize applies Kaiser normalization to the loading matrix by scaling rows to unit length.
+func kaiserNormalize(L *mat.Dense) (*mat.Dense, *mat.VecDense) {
+	r, c := L.Dims()
+	out := mat.NewDense(r, c, nil)
+	w := mat.NewVecDense(r, nil)
+	for i := 0; i < r; i++ {
+		var s float64
+		for j := 0; j < c; j++ {
+			v := L.At(i, j)
+			s += v * v
+		}
+		if s <= 0 {
+			s = 1e-12
+		}
+		wi := math.Sqrt(s)
+		w.SetVec(i, wi)
+		for j := 0; j < c; j++ {
+			out.Set(i, j, L.At(i, j)/wi)
+		}
+	}
+	return out, w
+}
+
+// kaiserDenorm rescales a Kaiser-normalized loading matrix back to its original scale.
+func kaiserDenorm(Lnorm *mat.Dense, w *mat.VecDense) *mat.Dense {
+	r, c := Lnorm.Dims()
+	out := mat.NewDense(r, c, nil)
+	for i := 0; i < r; i++ {
+		wi := w.AtVec(i)
+		for j := 0; j < c; j++ {
+			out.Set(i, j, Lnorm.At(i, j)*wi)
+		}
+	}
+	return out
+}
+
 func rotateOrthomax(loadings *mat.Dense, gamma float64, maxIter int, tol float64) (*mat.Dense, *mat.Dense, error) {
-	p, m := loadings.Dims()
+	Lnorm, w := kaiserNormalize(loadings)
+
+	p, m := Lnorm.Dims()
 	rotation := mat.NewDense(m, m, nil)
 	for i := 0; i < m; i++ {
 		rotation.Set(i, i, 1)
 	}
 
 	rotated := mat.NewDense(p, m, nil)
-	rotated.Copy(loadings)
+	rotated.Copy(Lnorm)
 
 	prevObj := orthomaxObjective(rotated, gamma)
 
@@ -1530,8 +1571,8 @@ func rotateOrthomax(loadings *mat.Dense, gamma float64, maxIter int, tol float64
 		for i := 0; i < p; i++ {
 			sum := 0.0
 			for j := 0; j < m; j++ {
-				val := rotated.At(i, j)
-				sum += val * val
+				v := rotated.At(i, j)
+				sum += v * v
 			}
 			rowNorms[i] = sum
 		}
@@ -1540,13 +1581,13 @@ func rotateOrthomax(loadings *mat.Dense, gamma float64, maxIter int, tol float64
 		for i := 0; i < p; i++ {
 			rowScale := gamma * rowNorms[i] / float64(p)
 			for j := 0; j < m; j++ {
-				val := rotated.At(i, j)
-				term.Set(i, j, 4*val*(val*val-rowScale))
+				v := rotated.At(i, j)
+				term.Set(i, j, 4*v*(v*v-rowScale))
 			}
 		}
 
 		var grad mat.Dense
-		grad.Mul(loadings.T(), term)
+		grad.Mul(Lnorm.T(), term)
 
 		var gradT mat.Dense
 		gradT.CloneFrom(grad.T())
@@ -1555,9 +1596,8 @@ func rotateOrthomax(loadings *mat.Dense, gamma float64, maxIter int, tol float64
 		skew.Sub(&grad, &gradT)
 		skew.Scale(0.5, &skew)
 
-		norm := frobeniusNormDense(&skew)
-		if norm < tol {
-			return rotated, rotation, nil
+		if frobeniusNormDense(&skew) < tol {
+			return kaiserDenorm(rotated, w), rotation, nil
 		}
 
 		step := 1.0
@@ -1576,7 +1616,7 @@ func rotateOrthomax(loadings *mat.Dense, gamma float64, maxIter int, tol float64
 			qr.QTo(&q)
 
 			var trialRotated mat.Dense
-			trialRotated.Mul(loadings, &q)
+			trialRotated.Mul(Lnorm, &q)
 
 			obj := orthomaxObjective(&trialRotated, gamma)
 			if obj > prevObj+1e-10 {
@@ -1594,7 +1634,7 @@ func rotateOrthomax(loadings *mat.Dense, gamma float64, maxIter int, tol float64
 		}
 	}
 
-	return rotated, rotation, nil
+	return kaiserDenorm(rotated, w), rotation, nil
 }
 
 func rotatePromax(loadings *mat.Dense, kappa float64, maxIter int, tol float64, forceOblique bool) (*mat.Dense, *mat.Dense, *mat.Dense, error) {
