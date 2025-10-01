@@ -120,6 +120,7 @@ type FactorAnalysisResult struct {
 	Messages   []string
 }
 
+// Show prints everything in the FactorAnalysisResult
 func (r *FactorAnalysisResult) Show(startEndRange ...any) {
 	insyra.Show("Loadings", r.Loadings, startEndRange...)
 	insyra.Show("Structure", r.Structure, startEndRange...)
