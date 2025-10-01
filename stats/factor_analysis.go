@@ -439,12 +439,18 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	}
 
 	// Apply factor reflection to ensure positive loadings (match R's convention)
-	rotatedLoadings = reflectFactorsForPositiveLoadings(rotatedLoadings)
-	if rotationMatrix != nil {
-		rotationMatrix = reflectRotationMatrix(rotationMatrix, rotatedLoadings, loadings)
+	var preReflection *mat.Dense
+	if rotatedLoadings != nil {
+		copyLoadings := mat.NewDense(rotatedLoadings.RawMatrix().Rows, rotatedLoadings.RawMatrix().Cols, nil)
+		copyLoadings.Copy(rotatedLoadings)
+		preReflection = copyLoadings
+		rotatedLoadings = reflectFactorsForPositiveLoadings(rotatedLoadings)
 	}
-	if phi != nil {
-		phi = reflectPhiMatrix(phi, rotatedLoadings, loadings)
+	if rotationMatrix != nil && preReflection != nil {
+		rotationMatrix = reflectRotationMatrix(rotationMatrix, rotatedLoadings, preReflection)
+	}
+	if phi != nil && preReflection != nil {
+		phi = reflectPhiMatrix(phi, rotatedLoadings, preReflection)
 	}
 
 	// Sort factors by explained variance (sum of squared loadings) in descending order
@@ -847,9 +853,6 @@ func extractPAF(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64)
 			insyra.LogInfo("stats", "PAF", "iter %d pre-update loadings[0,0:2]=%.3f, %.3f", iter+1,
 				loadings.At(0, 0), loadings.At(0, min(1, numFactors-1)))
 		}
-
-		// Normalize loadings to unit length per factor (match R psych convention)
-		loadings = normalizeLoadingsToUnitLength(loadings)
 
 		// Update communalities
 		newCommunalities := make([]float64, p)
@@ -1492,11 +1495,16 @@ func rotatePromax(loadings *mat.Dense, kappa float64, maxIter int, tol float64) 
 		return nil, nil, nil, err
 	}
 
-	p, m := orthoLoadings.Dims()
+	// Promax is defined on Kaiser-normalized loadings. Re-apply the normalization here so
+	// the target computation matches the reference R implementation before denormalizing
+	// back to the original scale for the returned pattern matrix.
+	workingLoadings, kaiserWeights := kaiserNormalize(orthoLoadings)
+
+	p, m := workingLoadings.Dims()
 	target := mat.NewDense(p, m, nil)
 	for i := 0; i < p; i++ {
 		for j := 0; j < m; j++ {
-			val := orthoLoadings.At(i, j)
+			val := workingLoadings.At(i, j)
 			sign := 1.0
 			if val < 0 {
 				sign = -1.0
@@ -1508,10 +1516,10 @@ func rotatePromax(loadings *mat.Dense, kappa float64, maxIter int, tol float64) 
 	}
 
 	var ft mat.Dense
-	ft.CloneFrom(orthoLoadings.T())
+	ft.CloneFrom(workingLoadings.T())
 
 	var ftf mat.Dense
-	ftf.Mul(&ft, orthoLoadings)
+	ftf.Mul(&ft, workingLoadings)
 
 	var ftfInv mat.Dense
 	if err := ftfInv.Inverse(&ftf); err != nil {
@@ -1531,15 +1539,47 @@ func rotatePromax(loadings *mat.Dense, kappa float64, maxIter int, tol float64) 
 	var trans mat.Dense
 	trans.Mul(&ftfInv, &ftTarget)
 
-	var rotated mat.Dense
-	rotated.Mul(orthoLoadings, &trans)
+	// Match R's promax implementation by normalizing the columns of the
+	// transformation matrix so that cross-product diagonals are 1. This keeps the
+	// oblique rotation comparable to GPArotation::Promax.
+	var transTtrans mat.Dense
+	transTtrans.Mul(trans.T(), &trans)
+	for j := 0; j < m; j++ {
+		diag := transTtrans.At(j, j)
+		if diag <= 1e-12 {
+			continue
+		}
+		scale := math.Sqrt(diag)
+		if scale == 0 {
+			continue
+		}
+		invScale := 1.0 / scale
+		for i := 0; i < m; i++ {
+			trans.Set(i, j, trans.At(i, j)*invScale)
+		}
+	}
+
+	// Ensure a positive determinant so factor ordering/handedness matches R's
+	// convention when possible.
+	if m > 0 {
+		if det := mat.Det(&trans); det < 0 {
+			for i := 0; i < m; i++ {
+				for j := 0; j < m; j++ {
+					trans.Set(i, j, -trans.At(i, j))
+				}
+			}
+		}
+	}
+
+	rotatedNorm := mat.NewDense(p, m, nil)
+	rotatedNorm.Mul(workingLoadings, &trans)
 
 	var combined mat.Dense
 	combined.Mul(orthoRot, &trans)
 
 	var transInv mat.Dense
 	if err := invertWithFallback(&transInv, &trans); err != nil {
-		return &rotated, &combined, nil, fmt.Errorf("promax: transformation not invertible: %w", err)
+		return kaiserDenorm(rotatedNorm, kaiserWeights), &combined, nil, fmt.Errorf("promax: transformation not invertible: %w", err)
 	}
 
 	var transInvT mat.Dense
@@ -1555,20 +1595,9 @@ func rotatePromax(loadings *mat.Dense, kappa float64, maxIter int, tol float64) 
 
 	phiNorm := normalizeToCorrelation(&phi)
 
-	rotatedScaled := mat.NewDense(p, m, nil)
-	rotatedScaled.Copy(&rotated)
-	for j := 0; j < m; j++ {
-		diagVal := phi.At(j, j)
-		scale := 1.0
-		if diagVal > 1e-12 {
-			scale = math.Sqrt(diagVal)
-		}
-		for i := 0; i < p; i++ {
-			rotatedScaled.Set(i, j, rotatedScaled.At(i, j)*scale)
-		}
-	}
+	rotated := kaiserDenorm(rotatedNorm, kaiserWeights)
 
-	return rotatedScaled, &combined, phiNorm, nil
+	return rotated, &combined, phiNorm, nil
 }
 
 func rotateOblimin(loadings *mat.Dense, delta float64, maxIter int, tol float64) (*mat.Dense, *mat.Dense, *mat.Dense, error) {
