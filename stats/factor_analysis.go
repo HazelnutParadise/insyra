@@ -1117,7 +1117,7 @@ func extractMINRES(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float
 
 		step := 1.0
 		improved := false
-		candidateSSE := math.Inf(1)
+		var candidateSSE float64
 
 		for trial := 0; trial < 8; trial++ {
 			candidate.CloneFrom(&loadings)
@@ -1548,6 +1548,11 @@ func rotatePromax(loadings *mat.Dense, kappa float64, maxIter int, tol float64) 
 	var phi mat.Dense
 	phi.Mul(&transInv, &transInvT)
 
+	if p <= 12 && m <= 5 {
+		insyra.LogDebug("stats", "Promax", "trans=%v", matrixToString(&trans))
+		insyra.LogDebug("stats", "Promax", "phiRaw=%v", matrixToString(&phi))
+	}
+
 	phiNorm := normalizeToCorrelation(&phi)
 
 	rotatedScaled := mat.NewDense(p, m, nil)
@@ -1726,6 +1731,27 @@ func pseudoInverse(dst *mat.Dense, src mat.Matrix) error {
 	uT.CloneFrom(u.T())
 	dst.Mul(&temp, &uT)
 	return nil
+}
+
+func matrixToString(m mat.Matrix) string {
+	r, c := m.Dims()
+	var sb strings.Builder
+	sb.WriteString("[")
+	for i := 0; i < r; i++ {
+		if i > 0 {
+			sb.WriteString("; ")
+		}
+		sb.WriteString("[")
+		for j := 0; j < c; j++ {
+			if j > 0 {
+				sb.WriteString(" ")
+			}
+			sb.WriteString(fmt.Sprintf("%.4f", m.At(i, j)))
+		}
+		sb.WriteString("]")
+	}
+	sb.WriteString("]")
+	return sb.String()
 }
 
 func frobeniusNormDense(m *mat.Dense) float64 {
@@ -2446,12 +2472,4 @@ func normalizeLoadingsToUnitLength(loadings *mat.Dense) *mat.Dense {
 	}
 
 	return normalized
-}
-
-// min returns the minimum of two integers
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
