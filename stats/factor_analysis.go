@@ -848,6 +848,9 @@ func extractPAF(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64)
 				loadings.At(0, 0), loadings.At(0, min(1, numFactors-1)))
 		}
 
+		// Normalize loadings to unit length per factor (match R psych convention)
+		loadings = normalizeLoadingsToUnitLength(loadings)
+
 		// Update communalities
 		newCommunalities := make([]float64, p)
 		for i := 0; i < p; i++ {
@@ -1497,6 +1500,8 @@ func rotatePromax(loadings *mat.Dense, kappa float64, maxIter int, tol float64) 
 			sign := 1.0
 			if val < 0 {
 				sign = -1.0
+			} else if val == 0 {
+				sign = 0.0
 			}
 			target.Set(i, j, sign*math.Pow(math.Abs(val), kappa))
 		}
@@ -1543,24 +1548,15 @@ func rotatePromax(loadings *mat.Dense, kappa float64, maxIter int, tol float64) 
 	var phi mat.Dense
 	phi.Mul(&transInv, &transInvT)
 
-	// Normalize Phi to have diagonal elements equal to 1 (correlation matrix)
-	diagScales := make([]float64, m)
-	for j := 0; j < m; j++ {
-		diagVal := phi.At(j, j)
-		if diagVal <= 1e-12 {
-			diagScales[j] = 1.0
-		} else {
-			diagScales[j] = math.Sqrt(diagVal)
-		}
-	}
 	phiNorm := normalizeToCorrelation(&phi)
 
 	rotatedScaled := mat.NewDense(p, m, nil)
 	rotatedScaled.Copy(&rotated)
 	for j := 0; j < m; j++ {
-		scale := diagScales[j]
-		if scale == 0 {
-			scale = 1.0
+		diagVal := phi.At(j, j)
+		scale := 1.0
+		if diagVal > 1e-12 {
+			scale = math.Sqrt(diagVal)
 		}
 		for i := 0; i < p; i++ {
 			rotatedScaled.Set(i, j, rotatedScaled.At(i, j)*scale)
@@ -2338,21 +2334,31 @@ func sortFactorsByExplainedVariance(loadings, rotMatrix, phi *mat.Dense) (*mat.D
 
 	p, m := loadings.Dims()
 
-	// Sort factors by the absolute loading on the first variable (A1) in descending order
-	// This matches R's convention where factors are ordered by their primary loading pattern
+	// Calculate explained variance for each factor (sum of squared loadings)
+	variances := make([]float64, m)
+	for j := 0; j < m; j++ {
+		sum := 0.0
+		for i := 0; i < p; i++ {
+			val := loadings.At(i, j)
+			sum += val * val
+		}
+		variances[j] = sum
+	}
+
+	// Sort factors by explained variance in descending order
 	type factorPair struct {
-		index   int
-		loading float64
+		index    int
+		variance float64
 	}
 	pairs := make([]factorPair, m)
 	for j := 0; j < m; j++ {
-		pairs[j] = factorPair{index: j, loading: math.Abs(loadings.At(0, j))}
+		pairs[j] = factorPair{index: j, variance: variances[j]}
 	}
 
-	// Sort in descending order of absolute loading on first variable
+	// Sort in descending order of explained variance
 	for i := 0; i < len(pairs)-1; i++ {
 		for k := i + 1; k < len(pairs); k++ {
-			if pairs[i].loading < pairs[k].loading {
+			if pairs[i].variance < pairs[k].variance {
 				pairs[i], pairs[k] = pairs[k], pairs[i]
 			}
 		}
@@ -2405,6 +2411,41 @@ func sortFactorsByExplainedVariance(loadings, rotMatrix, phi *mat.Dense) (*mat.D
 	}
 
 	return sortedLoadings, sortedRotMatrix, sortedPhi
+}
+
+// normalizeLoadingsToUnitLength normalizes each factor's loadings to have unit length (sum of squares = 1)
+// This matches the convention used by R's psych package for PAF
+func normalizeLoadingsToUnitLength(loadings *mat.Dense) *mat.Dense {
+	if loadings == nil {
+		return nil
+	}
+
+	p, m := loadings.Dims()
+	normalized := mat.NewDense(p, m, nil)
+
+	for j := 0; j < m; j++ {
+		// Calculate the sum of squares for this factor
+		sumSquares := 0.0
+		for i := 0; i < p; i++ {
+			val := loadings.At(i, j)
+			sumSquares += val * val
+		}
+
+		// Normalize if sum of squares is positive
+		if sumSquares > 0 {
+			scale := 1.0 / math.Sqrt(sumSquares)
+			for i := 0; i < p; i++ {
+				normalized.Set(i, j, loadings.At(i, j)*scale)
+			}
+		} else {
+			// If all loadings are zero, keep as is
+			for i := 0; i < p; i++ {
+				normalized.Set(i, j, loadings.At(i, j))
+			}
+		}
+	}
+
+	return normalized
 }
 
 // min returns the minimum of two integers
