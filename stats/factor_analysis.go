@@ -44,6 +44,7 @@ const (
 type FactorScoreMethod string
 
 const (
+	FactorScoreNone          FactorScoreMethod = "none"
 	FactorScoreRegression    FactorScoreMethod = "regression"
 	FactorScoreBartlett      FactorScoreMethod = "bartlett"
 	FactorScoreAndersonRubin FactorScoreMethod = "anderson-rubin"
@@ -89,8 +90,9 @@ type FactorAnalysisOptions struct {
 	Extraction FactorExtractionMethod
 	Rotation   FactorRotationOptions
 	Scoring    FactorScoreMethod
-	MaxIter    int     // Optional: default 100
-	Tol        float64 // Optional: default 1e-6
+	MaxIter    int     // Optional: default 50
+	Tol        float64 // Optional: default 1e-4
+	MinErr     float64 // Optional: default 0.001 (R's min.err)
 }
 
 // -------------------------
@@ -151,7 +153,7 @@ type FactorModel struct {
 // -------------------------
 
 // DefaultFactorAnalysisOptions returns default options for factor analysis.
-// Defaults align with the documentation (Docs/stats.md → Convergence Control & Extraction Methods).
+// Defaults align with R's psych::fa function defaults.
 func DefaultFactorAnalysisOptions() FactorAnalysisOptions {
 	return FactorAnalysisOptions{
 		Preprocess: FactorPreprocessOptions{
@@ -163,15 +165,16 @@ func DefaultFactorAnalysisOptions() FactorAnalysisOptions {
 			EigenThreshold: 1.0,
 			MaxFactors:     0, // 0 means no limit
 		},
-		Extraction: FactorExtractionMINRES,
+		Extraction: FactorExtractionMINRES, // R default: "minres"
 		Rotation: FactorRotationOptions{
-			Method: FactorRotationVarimax,
-			Kappa:  0, // Will be set to p/2 if needed
+			Method: FactorRotationNone, // R default: "none"
+			Kappa:  4,                  // R default for promax
 			Delta:  0,
 		},
-		Scoring: FactorScoreRegression,
-		MaxIter: 100,
-		Tol:     1e-6,
+		Scoring: FactorScoreNone, // R default: "none"
+		MaxIter: 50,              // R default: 50
+		Tol:     1e-4,            // R default: 1e-4
+		MinErr:  0.001,           // R default: 0.001
 	}
 }
 
@@ -668,7 +671,7 @@ func extractFactors(data, corrMatrix *mat.Dense, eigenvalues []float64, eigenvec
 		return extractPCA(eigenvalues, eigenvectors, numFactors)
 
 	case FactorExtractionPAF:
-		return extractPAF(corrMatrix, numFactors, opt.MaxIter, opt.Tol)
+		return extractPAF(corrMatrix, numFactors, opt.MaxIter, opt.Tol, opt.MinErr)
 
 	case FactorExtractionML:
 		return extractML(corrMatrix, numFactors, opt.MaxIter, opt.Tol, sampleSize)
@@ -718,15 +721,15 @@ func extractPCA(eigenvalues []float64, eigenvectors *mat.Dense, numFactors int) 
 }
 
 // initialCommunalitiesSMC computes initial communalities using Squared Multiple Correlation
-func initialCommunalitiesSMC(corr *mat.Dense) []float64 {
+func initialCommunalitiesSMC(corr *mat.Dense, minErr float64) []float64 {
 	// Compute SMC (Squared Multiple Correlation) estimates
 	// SMC_i = 1 - 1/R_ii^inv where R_ii^inv is diagonal of inverse correlation matrix
-	h2 := computeSMC(corr)
+	h2 := computeSMC(corr, minErr)
 	return h2
 }
 
 // computeSMC computes Squared Multiple Correlation estimates using R's approximation
-func computeSMC(corr *mat.Dense) []float64 {
+func computeSMC(corr *mat.Dense, minErr float64) []float64 {
 	p, _ := corr.Dims()
 	h2 := make([]float64, p)
 
@@ -781,15 +784,20 @@ func computeSMC(corr *mat.Dense) []float64 {
 		} else {
 			h2[i] = 0.0
 		}
+
+		// Apply minimum error constraint (R's min.err parameter)
+		if h2[i] < minErr {
+			h2[i] = minErr
+		}
 	}
 
 	return h2
 } // extractPAF extracts factors using Principal Axis Factoring
-func extractPAF(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64) (*mat.Dense, bool, int, error) {
+func extractPAF(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64, minErr float64) (*mat.Dense, bool, int, error) {
 	p := corrMatrix.RawMatrix().Rows
 
 	// Initialize communalities with SMC (Squared Multiple Correlation)
-	communalities := initialCommunalitiesSMC(corrMatrix)
+	communalities := initialCommunalitiesSMC(corrMatrix, minErr)
 
 	// Log initial communalities for verification (per issue #xxx)
 	if p >= 4 {
@@ -978,7 +986,7 @@ func extractML(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64, 
 		tol = 1e-6
 	}
 
-	initial, _, _, err := extractPAF(corrMatrix, numFactors, min(maxIter, 50), math.Max(tol, 1e-6))
+	initial, _, _, err := extractPAF(corrMatrix, numFactors, min(maxIter, 50), math.Max(tol, 1e-6), 0.001)
 	if err != nil || initial == nil {
 		// Fall back to PCA loadings
 		var eig mat.EigenSym
@@ -1137,7 +1145,7 @@ func extractMINRES(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float
 		tol = 1e-6
 	}
 
-	initial, _, _, err := extractPAF(corrMatrix, numFactors, min(maxIter, 100), math.Max(tol, 1e-6))
+	initial, _, _, err := extractPAF(corrMatrix, numFactors, min(maxIter, 100), math.Max(tol, 1e-6), 0.001)
 	if err != nil || initial == nil {
 		// Fall back to PCA loadings if PAF initialization fails
 		var eig mat.EigenSym
@@ -1922,6 +1930,9 @@ func computeFactorScores(data, loadings, phi *mat.Dense, uniquenesses []float64,
 	scores := mat.NewDense(n, m, nil)
 
 	switch method {
+	case FactorScoreNone:
+		// No scores computed
+		return nil
 	case FactorScoreRegression:
 		if phi != nil {
 			if obliqueScores := computeFactorScoresRegressionOblique(data, loadings, phi, uniquenesses); obliqueScores != nil {
