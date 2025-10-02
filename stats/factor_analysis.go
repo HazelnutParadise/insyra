@@ -1575,94 +1575,21 @@ func rotatePromax(loadings *mat.Dense, kappa float64, maxIter int, tol float64) 
 		kappa = 4
 	}
 
-	// Step 1: Perform varimax rotation (WITHOUT Kaiser normalization here)
-	// We'll use the standard orthomax algorithm
 	p, m := loadings.Dims()
 
-	// Initialize rotation matrix as identity
-	rotation := mat.NewDense(m, m, nil)
-	for i := 0; i < m; i++ {
-		rotation.Set(i, i, 1)
+	// Step 1: Kaiser normalize the loadings and perform varimax on normalized loadings
+	// This is the KEY FIX - R's psych::fa with promax ALWAYS uses Kaiser normalization
+	rotatedNorm, rotation, weights, err := rotateOrthomaxNormalized(loadings, 1.0, maxIter, tol)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("promax: varimax failed: %w", err)
 	}
 
-	rotated := mat.NewDense(p, m, nil)
-	rotated.Copy(loadings)
-
-	// Varimax iteration
-	prevObj := orthomaxObjective(rotated, 1.0)
-	for iter := 0; iter < maxIter; iter++ {
-		rowNorms := make([]float64, p)
-		for i := 0; i < p; i++ {
-			sum := 0.0
-			for j := 0; j < m; j++ {
-				v := rotated.At(i, j)
-				sum += v * v
-			}
-			rowNorms[i] = sum
-		}
-
-		term := mat.NewDense(p, m, nil)
-		for i := 0; i < p; i++ {
-			rowScale := rowNorms[i] / float64(p)
-			for j := 0; j < m; j++ {
-				v := rotated.At(i, j)
-				term.Set(i, j, 4*v*(v*v-rowScale))
-			}
-		}
-
-		var grad mat.Dense
-		grad.Mul(loadings.T(), term)
-
-		var gradT mat.Dense
-		gradT.CloneFrom(grad.T())
-
-		var skew mat.Dense
-		skew.Sub(&grad, &gradT)
-		skew.Scale(0.5, &skew)
-
-		if frobeniusNormDense(&skew) < tol {
-			break
-		}
-
-		step := 1.0
-		improved := false
-		for attempt := 0; attempt < 6; attempt++ {
-			var delta mat.Dense
-			delta.Mul(rotation, &skew)
-			delta.Scale(step, &delta)
-
-			var trial mat.Dense
-			trial.Add(rotation, &delta)
-
-			var qr mat.QR
-			qr.Factorize(&trial)
-			var q mat.Dense
-			qr.QTo(&q)
-
-			var trialRotated mat.Dense
-			trialRotated.Mul(loadings, &q)
-
-			obj := orthomaxObjective(&trialRotated, 1.0)
-			if obj > prevObj+1e-10 {
-				rotation.Copy(&q)
-				rotated.CloneFrom(&trialRotated)
-				prevObj = obj
-				improved = true
-				break
-			}
-			step *= 0.5
-		}
-
-		if !improved {
-			break
-		}
-	}
-
-	// Step 2: Build target matrix Q = sign(L0) * |L0|^kappa
+	// Step 2: Build target matrix Q = sign(L0_norm) * |L0_norm|^kappa
+	// Important: target is computed on NORMALIZED loadings
 	target := mat.NewDense(p, m, nil)
 	for i := 0; i < p; i++ {
 		for j := 0; j < m; j++ {
-			val := rotated.At(i, j)
+			val := rotatedNorm.At(i, j)
 			sign := 1.0
 			if val < 0 {
 				sign = -1.0
@@ -1673,12 +1600,12 @@ func rotatePromax(loadings *mat.Dense, kappa float64, maxIter int, tol float64) 
 		}
 	}
 
-	// Step 3: Solve for transformation T = (L0' L0)^-1 L0' Q
+	// Step 3: Solve for transformation T = (L0_norm' L0_norm)^-1 L0_norm' Q
 	var L0t mat.Dense
-	L0t.CloneFrom(rotated.T())
+	L0t.CloneFrom(rotatedNorm.T())
 
 	var L0tL0 mat.Dense
-	L0tL0.Mul(&L0t, rotated)
+	L0tL0.Mul(&L0t, rotatedNorm)
 
 	var L0tL0Inv mat.Dense
 	if err := safeInvert(&L0tL0Inv, &L0tL0, 1e-6); err != nil {
@@ -1691,8 +1618,21 @@ func rotatePromax(loadings *mat.Dense, kappa float64, maxIter int, tol float64) 
 	var trans mat.Dense
 	trans.Mul(&L0tL0Inv, &L0tQ)
 
-	// Step 4: Normalize T so that diag(T'T) = 1
+	// Step 4: Compute Phi = (T'T)^-1 BEFORE normalizing T
+	// This is critical - Phi must be computed from the unnormalized T
 	var transTtrans mat.Dense
+	transTtrans.Mul(trans.T(), &trans)
+
+	var phi mat.Dense
+	if err := safeInvert(&phi, &transTtrans, 1e-6); err != nil {
+		return nil, nil, nil, fmt.Errorf("promax: unable to compute Phi: %w", err)
+	}
+
+	// Normalize Phi to correlation matrix
+	phiNorm := normalizeToCorrelation(&phi)
+
+	// Step 5: Normalize T so that diag(T'T) = 1
+	// This is done AFTER computing Phi to get normalized pattern loadings
 	transTtrans.Mul(trans.T(), &trans)
 	for j := 0; j < m; j++ {
 		diag := transTtrans.At(j, j)
@@ -1704,26 +1644,19 @@ func rotatePromax(loadings *mat.Dense, kappa float64, maxIter int, tol float64) 
 		}
 	}
 
-	// Step 5: Compute pattern loadings: P = L0 * T
-	var pattern mat.Dense
-	pattern.Mul(rotated, &trans)
+	// Step 6: Compute pattern loadings on NORMALIZED space: P_norm = L0_norm * T
+	var patternNorm mat.Dense
+	patternNorm.Mul(rotatedNorm, &trans)
 
-	// Step 6: Compute combined rotation
+	// Step 7: DENORMALIZE at the very end (this is the KEY step)
+	// Pattern = unnormalize(P_norm) using the Kaiser weights
+	pattern := kaiserDenorm(&patternNorm, weights)
+
+	// Step 8: Compute combined rotation
 	var combined mat.Dense
 	combined.Mul(rotation, &trans)
 
-	// Step 7: Compute Phi = (T'T)^-1
-	transTtrans.Mul(trans.T(), &trans)
-
-	var phi mat.Dense
-	if err := safeInvert(&phi, &transTtrans, 1e-6); err != nil {
-		return &pattern, &combined, nil, fmt.Errorf("promax: unable to compute Phi: %w", err)
-	}
-
-	// Normalize Phi to correlation matrix
-	phiNorm := normalizeToCorrelation(&phi)
-
-	return &pattern, &combined, phiNorm, nil
+	return pattern, &combined, phiNorm, nil
 }
 
 func rotateOblimin(loadings *mat.Dense, delta float64, maxIter int, tol float64) (*mat.Dense, *mat.Dense, *mat.Dense, error) {
