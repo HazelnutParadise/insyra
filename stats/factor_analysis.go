@@ -459,7 +459,8 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	}
 
 	// Sort factors by explained variance (sum of squared loadings) in descending order
-	rotatedLoadings, rotationMatrix, phi = sortFactorsByExplainedVariance(rotatedLoadings, rotationMatrix, phi)
+	// Note: Commented out to match R's default behavior (no automatic sorting)
+	// rotatedLoadings, rotationMatrix, phi = sortFactorsByExplainedVariance(rotatedLoadings, rotationMatrix, phi)
 
 	// Step 8: Compute communalities and uniquenesses
 	communalities := make([]float64, colNum)
@@ -503,36 +504,43 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	}
 
 	// Step 9: Compute explained proportions using structure matrix (SS loadings / number of variables)
+	// Following R's psych package: SS loadings = sum of squared structure loadings
 	pVars, mFactors := rotatedLoadings.Dims()
 	S := mat.NewDense(pVars, mFactors, nil)
 	if phi == nil {
+		// Orthogonal rotation: structure = pattern
 		S.Copy(rotatedLoadings)
 	} else {
+		// Oblique rotation: structure = pattern * phi
 		var tmp mat.Dense
 		tmp.Mul(rotatedLoadings, phi)
 		S.Copy(&tmp)
 	}
+
+	// Calculate SS loadings for each factor using structure squared
 	ssLoad := make([]float64, mFactors)
 	for j := 0; j < mFactors; j++ {
 		sum := 0.0
 		for i := 0; i < pVars; i++ {
-			pattern := rotatedLoadings.At(i, j)
-			structure := S.At(i, j)
-			sum += pattern * structure
+			// For oblique: use structure squared
+			// For orthogonal: structure = loadings, so this is loadings squared
+			val := S.At(i, j)
+			sum += val * val
 		}
 		ssLoad[j] = sum
 	}
+
+	// Proportion of variance explained
+	totalVar := float64(pVars) // Total variance in correlation matrix is p
 	explainedProp := make([]float64, mFactors)
 	cumulativeProp := make([]float64, mFactors)
-	if pVars > 0 {
-		cum := 0.0
-		denominator := float64(pVars)
-		for j := 0; j < mFactors; j++ {
-			prop := ssLoad[j] / denominator
-			explainedProp[j] = prop
-			cum += prop
-			cumulativeProp[j] = cum
-		}
+
+	cumSum := 0.0
+	for j := 0; j < mFactors; j++ {
+		prop := ssLoad[j] / totalVar
+		explainedProp[j] = prop
+		cumSum += prop
+		cumulativeProp[j] = cumSum
 	}
 
 	// Step 10: Compute factor scores if data is available
@@ -710,30 +718,28 @@ func extractPCA(eigenvalues []float64, eigenvectors *mat.Dense, numFactors int) 
 // initialCommunalitiesSMC computes initial communalities using Squared Multiple Correlation
 func initialCommunalitiesSMC(corr *mat.Dense) []float64 {
 	p, _ := corr.Dims()
-	// Use SMC (Squared Multiple Correlation) for more accurate initialization
 	sym := denseToSym(corr)
 	var inv mat.Dense
 
-	// First attempt: direct inversion
+	// Try direct inversion first
 	err := inv.Inverse(sym)
 	if err != nil {
-		// Second attempt: add small ridge regularization for numerical stability
+		// Add minimal ridge (R uses 1e-8 typically)
 		regularized := mat.NewSymDense(p, nil)
 		for i := 0; i < p; i++ {
 			for j := i; j < p; j++ {
 				val := sym.At(i, j)
 				if i == j {
-					val += 1e-6 // Add small ridge to diagonal
+					val += 1e-8
 				}
 				regularized.SetSym(i, j, val)
 			}
 		}
 		err = inv.Inverse(regularized)
 		if err != nil {
-			// Fallback: use maximum R-squared as approximation
+			// Fallback to conservative estimates
 			h2 := make([]float64, p)
 			for i := 0; i < p; i++ {
-				// Use maximum absolute correlation as rough estimate
 				maxCorr := 0.0
 				for j := 0; j < p; j++ {
 					if i != j {
@@ -743,11 +749,7 @@ func initialCommunalitiesSMC(corr *mat.Dense) []float64 {
 						}
 					}
 				}
-				// Square it as rough SMC estimate, capped reasonably
 				h2[i] = math.Min(maxCorr*maxCorr, 0.9)
-				if h2[i] < 0.1 {
-					h2[i] = 0.5 // Conservative default
-				}
 			}
 			return h2
 		}
@@ -755,18 +757,17 @@ func initialCommunalitiesSMC(corr *mat.Dense) []float64 {
 
 	h2 := make([]float64, p)
 	for i := 0; i < p; i++ {
-		// SMC_i = 1 - 1 / R^{-1}_{ii}
 		rii := inv.At(i, i)
 		if rii <= 0 {
 			h2[i] = 0.5
 			continue
 		}
 		v := 1.0 - 1.0/rii
-		if v < 0 {
-			v = 0
+		if v < 0.01 {
+			v = 0.01 // R uses 0.01 as minimum
 		}
 		if v > 0.99 {
-			v = 0.99 // Cap at 0.99 to avoid numerical issues
+			v = 0.99
 		}
 		h2[i] = v
 	}
@@ -1570,25 +1571,98 @@ func rotateOrthomaxNormalized(loadings *mat.Dense, gamma float64, maxIter int, t
 }
 
 func rotatePromax(loadings *mat.Dense, kappa float64, maxIter int, tol float64) (*mat.Dense, *mat.Dense, *mat.Dense, error) {
-	// Default kappa to 4 if not specified
 	if kappa == 0 {
 		kappa = 4
 	}
 
-	// Step 1: Perform varimax on Kaiser-normalized loadings
-	// Use the normalized version to avoid double normalization/denormalization
-	L0norm, orthoRot, kaiserWeights, err := rotateOrthomaxNormalized(loadings, 1.0, maxIter, tol)
-	if err != nil {
-		return nil, nil, nil, err
+	// Step 1: Perform varimax rotation (WITHOUT Kaiser normalization here)
+	// We'll use the standard orthomax algorithm
+	p, m := loadings.Dims()
+
+	// Initialize rotation matrix as identity
+	rotation := mat.NewDense(m, m, nil)
+	for i := 0; i < m; i++ {
+		rotation.Set(i, i, 1)
 	}
 
-	p, m := L0norm.Dims()
+	rotated := mat.NewDense(p, m, nil)
+	rotated.Copy(loadings)
 
-	// Step 2: Build target matrix Q = sign(L0) * |L0|^kappa on the normalized loadings
+	// Varimax iteration
+	prevObj := orthomaxObjective(rotated, 1.0)
+	for iter := 0; iter < maxIter; iter++ {
+		rowNorms := make([]float64, p)
+		for i := 0; i < p; i++ {
+			sum := 0.0
+			for j := 0; j < m; j++ {
+				v := rotated.At(i, j)
+				sum += v * v
+			}
+			rowNorms[i] = sum
+		}
+
+		term := mat.NewDense(p, m, nil)
+		for i := 0; i < p; i++ {
+			rowScale := rowNorms[i] / float64(p)
+			for j := 0; j < m; j++ {
+				v := rotated.At(i, j)
+				term.Set(i, j, 4*v*(v*v-rowScale))
+			}
+		}
+
+		var grad mat.Dense
+		grad.Mul(loadings.T(), term)
+
+		var gradT mat.Dense
+		gradT.CloneFrom(grad.T())
+
+		var skew mat.Dense
+		skew.Sub(&grad, &gradT)
+		skew.Scale(0.5, &skew)
+
+		if frobeniusNormDense(&skew) < tol {
+			break
+		}
+
+		step := 1.0
+		improved := false
+		for attempt := 0; attempt < 6; attempt++ {
+			var delta mat.Dense
+			delta.Mul(rotation, &skew)
+			delta.Scale(step, &delta)
+
+			var trial mat.Dense
+			trial.Add(rotation, &delta)
+
+			var qr mat.QR
+			qr.Factorize(&trial)
+			var q mat.Dense
+			qr.QTo(&q)
+
+			var trialRotated mat.Dense
+			trialRotated.Mul(loadings, &q)
+
+			obj := orthomaxObjective(&trialRotated, 1.0)
+			if obj > prevObj+1e-10 {
+				rotation.Copy(&q)
+				rotated.CloneFrom(&trialRotated)
+				prevObj = obj
+				improved = true
+				break
+			}
+			step *= 0.5
+		}
+
+		if !improved {
+			break
+		}
+	}
+
+	// Step 2: Build target matrix Q = sign(L0) * |L0|^kappa
 	target := mat.NewDense(p, m, nil)
 	for i := 0; i < p; i++ {
 		for j := 0; j < m; j++ {
-			val := L0norm.At(i, j)
+			val := rotated.At(i, j)
 			sign := 1.0
 			if val < 0 {
 				sign = -1.0
@@ -1599,12 +1673,12 @@ func rotatePromax(loadings *mat.Dense, kappa float64, maxIter int, tol float64) 
 		}
 	}
 
-	// Step 3: Solve for transformation matrix T = (L0' L0)^-1 L0' Q
+	// Step 3: Solve for transformation T = (L0' L0)^-1 L0' Q
 	var L0t mat.Dense
-	L0t.CloneFrom(L0norm.T())
+	L0t.CloneFrom(rotated.T())
 
 	var L0tL0 mat.Dense
-	L0tL0.Mul(&L0t, L0norm)
+	L0tL0.Mul(&L0t, rotated)
 
 	var L0tL0Inv mat.Dense
 	if err := safeInvert(&L0tL0Inv, &L0tL0, 1e-6); err != nil {
@@ -1617,7 +1691,7 @@ func rotatePromax(loadings *mat.Dense, kappa float64, maxIter int, tol float64) 
 	var trans mat.Dense
 	trans.Mul(&L0tL0Inv, &L0tQ)
 
-	// Step 4: Normalize T columns so that T'T has diagonal = 1
+	// Step 4: Normalize T so that diag(T'T) = 1
 	var transTtrans mat.Dense
 	transTtrans.Mul(trans.T(), &trans)
 	for j := 0; j < m; j++ {
@@ -1630,50 +1704,26 @@ func rotatePromax(loadings *mat.Dense, kappa float64, maxIter int, tol float64) 
 		}
 	}
 
-	// Step 5: Ensure det(T) > 0 for consistent handedness
-	if m > 0 {
-		if det := mat.Det(&trans); det < 0 {
-			for i := 0; i < m; i++ {
-				for j := 0; j < m; j++ {
-					trans.Set(i, j, -trans.At(i, j))
-				}
-			}
-		}
-	}
+	// Step 5: Compute pattern loadings: P = L0 * T
+	var pattern mat.Dense
+	pattern.Mul(rotated, &trans)
 
-	// Step 6: Compute pattern loadings in normalized space: P_norm = L0 * T
-	var patternNorm mat.Dense
-	patternNorm.Mul(L0norm, &trans)
-
-	// Step 7: Compute combined rotation matrix
+	// Step 6: Compute combined rotation
 	var combined mat.Dense
-	combined.Mul(orthoRot, &trans)
+	combined.Mul(rotation, &trans)
 
-	// Step 8: Compute Phi = T^-1 (T^-1)' and normalize to correlation matrix
-	var transInv mat.Dense
-	if err := invertWithFallback(&transInv, &trans); err != nil {
-		// If T is not invertible, denormalize and return without Phi
-		return kaiserDenorm(&patternNorm, kaiserWeights), &combined, nil, fmt.Errorf("promax: transformation not invertible: %w", err)
-	}
-
-	var transInvT mat.Dense
-	transInvT.CloneFrom(transInv.T())
+	// Step 7: Compute Phi = (T'T)^-1
+	transTtrans.Mul(trans.T(), &trans)
 
 	var phi mat.Dense
-	phi.Mul(&transInv, &transInvT)
-
-	if p <= 12 && m <= 5 {
-		insyra.LogDebug("stats", "Promax", "trans=%v", matrixToString(&trans))
-		insyra.LogDebug("stats", "Promax", "phiRaw=%v", matrixToString(&phi))
+	if err := safeInvert(&phi, &transTtrans, 1e-6); err != nil {
+		return &pattern, &combined, nil, fmt.Errorf("promax: unable to compute Phi: %w", err)
 	}
 
+	// Normalize Phi to correlation matrix
 	phiNorm := normalizeToCorrelation(&phi)
 
-	// Step 9: Final denormalization - convert pattern from normalized space back to original scale
-	// This is the ONLY denormalization step in the entire Promax pipeline
-	pattern := kaiserDenorm(&patternNorm, kaiserWeights)
-
-	return pattern, &combined, phiNorm, nil
+	return &pattern, &combined, phiNorm, nil
 }
 
 func rotateOblimin(loadings *mat.Dense, delta float64, maxIter int, tol float64) (*mat.Dense, *mat.Dense, *mat.Dense, error) {
@@ -2361,8 +2411,6 @@ func ScreePlotData(dt insyra.IDataTable, standardize bool) (eigenDT insyra.IData
 	return eigenDT, cumDT, nil
 }
 
-// reflectFactorsForPositiveLoadings reflects factors to ensure the loading with the largest absolute value is positive.
-// This matches the convention used by R's psych package and other statistical software.
 func reflectFactorsForPositiveLoadings(loadings *mat.Dense) *mat.Dense {
 	if loadings == nil {
 		return nil
@@ -2373,19 +2421,15 @@ func reflectFactorsForPositiveLoadings(loadings *mat.Dense) *mat.Dense {
 	reflected.Copy(loadings)
 
 	for j := 0; j < m; j++ {
-		// Find the loading with the largest absolute value in this factor
-		maxAbsIdx := 0
-		maxAbs := 0.0
+		// Calculate column sum to determine reflection
+		// R's psych package typically reflects to maximize positive sum
+		colSum := 0.0
 		for i := 0; i < p; i++ {
-			absVal := math.Abs(loadings.At(i, j))
-			if absVal > maxAbs {
-				maxAbs = absVal
-				maxAbsIdx = i
-			}
+			colSum += loadings.At(i, j)
 		}
 
-		// If the largest absolute loading is negative, reflect the entire factor
-		if loadings.At(maxAbsIdx, j) < 0 {
+		// If column sum is negative, reflect the entire factor
+		if colSum < 0 {
 			for i := 0; i < p; i++ {
 				reflected.Set(i, j, -loadings.At(i, j))
 			}
