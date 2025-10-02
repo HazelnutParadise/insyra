@@ -737,56 +737,49 @@ func computeSMC(corr *mat.Dense, minErr float64) []float64 {
 	p, _ := corr.Dims()
 	h2 := make([]float64, p)
 
+	// Convert to SymDense for inversion
+	symCorr := mat.NewSymDense(p, nil)
 	for i := 0; i < p; i++ {
-		// Create submatrix by removing row/column i
-		subSize := p - 1
-		subCorr := mat.NewDense(subSize, subSize, nil)
+		for j := i; j < p; j++ {
+			symCorr.SetSym(i, j, corr.At(i, j))
+		}
+	}
 
-		// Copy elements, skipping row/column i
-		rowIdx := 0
-		for r := 0; r < p; r++ {
-			if r == i {
-				continue
+	// Compute inverse of the full correlation matrix
+	var invCorr mat.Dense
+	err := invCorr.Inverse(symCorr)
+	if err != nil {
+		// If inversion fails, add small ridge and try again
+		for i := 0; i < p; i++ {
+			symCorr.SetSym(i, i, symCorr.At(i, i)+1e-6)
+		}
+		err = invCorr.Inverse(symCorr)
+	}
+	if err != nil {
+		// If still fails, use default communalities of 0.5
+		insyra.LogWarning("stats", "computeSMC", "correlation matrix inversion failed, using default h2=0.5")
+		for i := 0; i < p; i++ {
+			h2[i] = 0.5
+		}
+		return h2
+	}
+
+	// SMC_i = 1 - 1/R^{-1}_{ii}
+	for i := 0; i < p; i++ {
+		invDiag := invCorr.At(i, i)
+		if invDiag <= 0 {
+			h2[i] = 0.5 // fallback
+		} else {
+			smc := 1.0 - 1.0/invDiag
+			// SMC can be negative or > 1 in theory, so clamp to reasonable range
+			if smc < minErr {
+				smc = minErr
 			}
-			colIdx := 0
-			for c := 0; c < p; c++ {
-				if c == i {
-					continue
-				}
-				subCorr.Set(rowIdx, colIdx, corr.At(r, c))
-				colIdx++
+			if smc > 1.0 {
+				smc = 1.0
 			}
-			rowIdx++
+			h2[i] = smc
 		}
-
-		// Ensure submatrix is symmetric
-		symSub := mat.NewSymDense(subSize, nil)
-		for r := 0; r < subSize; r++ {
-			for c := r; c < subSize; c++ {
-				symSub.SetSym(r, c, subCorr.At(r, c))
-			}
-		}
-
-		// Compute inverse of submatrix
-		var invSub mat.Dense
-		if err := invSub.Inverse(symSub); err != nil {
-			// If inversion fails, use 1.0
-			h2[i] = 1.0
-			continue
-		}
-
-		// R's approximation: SMC_i = 1 - 1/trace(inverse_submatrix)
-		traceInv := 0.0
-		for r := 0; r < subSize; r++ {
-			traceInv += invSub.At(r, r)
-		}
-
-		// R's SMC: smc[i] = 1 - 1/trace(inverse_submatrix)
-		// Can be negative if traceInv < 1
-		h2[i] = 1.0 - 1.0/traceInv
-
-		// Note: minErr is not applied to initial SMC in R's psych::fa
-		// It is applied after each communality update in PAF
 	}
 
 	return h2
@@ -896,6 +889,11 @@ func extractPAF(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64,
 				sum = diag // Allow communalities to reach diagonal
 			}
 			newCommunalities[i] = sum
+		}
+
+		if iter == 0 && p >= 4 {
+			insyra.LogInfo("stats", "PAF", "iter %d post-loading communalities[0:4]=%.3f, %.3f, %.3f, %.3f", iter+1,
+				newCommunalities[0], newCommunalities[min(1,p-1)], newCommunalities[min(2,p-1)], newCommunalities[min(3,p-1)])
 		}
 
 		// record history (copy slice)
@@ -1041,14 +1039,25 @@ func extractML(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64, 
 	if p >= 4 {
 		insyra.LogDebug("stats", "ML", "initial loadings[0,0:2] = %.3f, %.3f",
 			initial.At(0, 0), initial.At(0, min(1, numFactors-1)))
+		// Compute initial communalities
+		initialComm := make([]float64, min(4, p))
+		for i := 0; i < min(4, p); i++ {
+			sum := 0.0
+			for j := 0; j < numFactors; j++ {
+				sum += initial.At(i, j) * initial.At(i, j)
+			}
+			initialComm[i] = sum
+		}
+		insyra.LogInfo("stats", "ML", "initial communalities[0:4] = %.3f, %.3f, %.3f, %.3f",
+			initialComm[0], initialComm[min(1,len(initialComm)-1)], initialComm[min(2,len(initialComm)-1)], initialComm[min(3,len(initialComm)-1)])
 	}
 
 	loadings := mat.Dense{}
 	loadings.CloneFrom(initial)
 
 	psMin := 1e-6
-	baseRidge := 1e-5
-	innerRidge := 1e-6
+	// baseRidge := 1e-5
+	// innerRidge := 1e-6
 	converged := false
 
 	for iter := 0; iter < maxIter; iter++ {
@@ -1070,16 +1079,18 @@ func extractML(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64, 
 		sigma.Mul(&loadings, loadings.T())
 		for i := 0; i < p; i++ {
 			val := sigma.At(i, i) + psi[i]
-			if baseRidge > 0 {
-				val += baseRidge
-			}
+			// Remove ridge regularization - it biases the results
+			// if baseRidge > 0 {
+			// 	val += baseRidge
+			// }
 			sigma.Set(i, i, val)
 		}
 
 		var invSigma mat.Dense
 		if err := invSigma.Inverse(&sigma); err != nil {
+			// If inversion fails, add minimal ridge
 			for i := 0; i < p; i++ {
-				sigma.Set(i, i, sigma.At(i, i)+psMin+baseRidge)
+				sigma.Set(i, i, sigma.At(i, i)+psMin)
 			}
 			if err := invSigma.Inverse(&sigma); err != nil {
 				return nil, false, iter, fmt.Errorf("ml: covariance inversion failed: %w", err)
@@ -1096,18 +1107,20 @@ func extractML(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64, 
 		m.Mul(&loadingsTrans, &t)
 		for i := 0; i < numFactors; i++ {
 			diag := m.At(i, i) + 1.0
-			if innerRidge > 0 {
-				diag += innerRidge
-			}
+			// Remove inner ridge - it biases the results
+			// if innerRidge > 0 {
+			// 	diag += innerRidge
+			// }
 			m.Set(i, i, diag)
 		}
 
 		invSqrt, err := inverseSqrtDense(&m)
 		if err != nil {
+			// If inverse sqrt fails, add minimal ridge and retry
 			var adjusted mat.Dense
 			adjusted.CloneFrom(&m)
 			for i := 0; i < numFactors; i++ {
-				adjusted.Set(i, i, adjusted.At(i, i)+baseRidge)
+				adjusted.Set(i, i, adjusted.At(i, i)+psMin)
 			}
 			invSqrt, err = inverseSqrtDense(&adjusted)
 			if err != nil {
@@ -1132,6 +1145,20 @@ func extractML(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64, 
 		}
 
 		loadings.CloneFrom(&newLoadings)
+
+		// Compute current communalities for logging
+		if iter < 5 {
+			currComm := make([]float64, min(4, p))
+			for i := 0; i < min(4, p); i++ {
+				sum := 0.0
+				for j := 0; j < numFactors; j++ {
+					sum += loadings.At(i, j) * loadings.At(i, j)
+				}
+				currComm[i] = sum
+			}
+			insyra.LogInfo("stats", "ML", "iter %d: communalities[0:4] = %.3f, %.3f, %.3f, %.3f",
+				iter+1, currComm[0], currComm[min(1,len(currComm)-1)], currComm[min(2,len(currComm)-1)], currComm[min(3,len(currComm)-1)])
+		}
 
 		// Compute ML fit statistics
 		if sampleSize > 0 {
