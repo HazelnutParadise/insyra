@@ -460,7 +460,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 
 	// Sort factors by explained variance (sum of squared loadings) in descending order
 	// Note: Commented out to match R's default behavior (no automatic sorting)
-	// rotatedLoadings, rotationMatrix, phi = sortFactorsByExplainedVariance(rotatedLoadings, rotationMatrix, phi)
+	rotatedLoadings, rotationMatrix, phi = sortFactorsByExplainedVariance(rotatedLoadings, rotationMatrix, phi)
 
 	// Step 8: Compute communalities and uniquenesses
 	communalities := make([]float64, colNum)
@@ -1520,7 +1520,7 @@ func rotateOrthomaxNormalized(loadings *mat.Dense, gamma float64, maxIter int, t
 		}
 
 		var grad mat.Dense
-		grad.Mul(Lnorm.T(), term)
+		grad.Mul(rotated.T(), term)
 
 		var gradT mat.Dense
 		gradT.CloneFrom(grad.T())
@@ -1608,7 +1608,7 @@ func rotatePromax(loadings *mat.Dense, kappa float64, maxIter int, tol float64) 
 	L0tL0.Mul(&L0t, rotatedNorm)
 
 	var L0tL0Inv mat.Dense
-	if err := safeInvert(&L0tL0Inv, &L0tL0, 1e-6); err != nil {
+	if err := safeInvert(&L0tL0Inv, &L0tL0, 1e-10); err != nil {
 		return nil, nil, nil, fmt.Errorf("promax: unable to invert L0'L0: %w", err)
 	}
 
@@ -1618,45 +1618,62 @@ func rotatePromax(loadings *mat.Dense, kappa float64, maxIter int, tol float64) 
 	var trans mat.Dense
 	trans.Mul(&L0tL0Inv, &L0tQ)
 
-	// Step 4: Compute Phi = (T'T)^-1 BEFORE normalizing T
-	// This is critical - Phi must be computed from the unnormalized T
-	var transTtrans mat.Dense
-	transTtrans.Mul(trans.T(), &trans)
-
-	var phi mat.Dense
-	if err := safeInvert(&phi, &transTtrans, 1e-6); err != nil {
-		return nil, nil, nil, fmt.Errorf("promax: unable to compute Phi: %w", err)
-	}
-
-	// Normalize Phi to correlation matrix
-	phiNorm := normalizeToCorrelation(&phi)
-
-	// Step 5: Normalize T so that diag(T'T) = 1
-	// This is done AFTER computing Phi to get normalized pattern loadings
-	transTtrans.Mul(trans.T(), &trans)
-	for j := 0; j < m; j++ {
-		diag := transTtrans.At(j, j)
-		if diag > 1e-12 {
-			scale := 1.0 / math.Sqrt(diag)
-			for i := 0; i < m; i++ {
-				trans.Set(i, j, trans.At(i, j)*scale)
-			}
-		}
-	}
-
-	// Step 6: Compute pattern loadings on NORMALIZED space: P_norm = L0_norm * T
+	// Step 4: Compute pattern loadings on NORMALIZED space FIRST: P_norm = L0_norm * T
+	// Do this BEFORE normalizing T!
 	var patternNorm mat.Dense
 	patternNorm.Mul(rotatedNorm, &trans)
 
-	// Step 7: DENORMALIZE at the very end (this is the KEY step)
+	// Step 5: DENORMALIZE the pattern to get back to original scale
 	// Pattern = unnormalize(P_norm) using the Kaiser weights
 	pattern := kaiserDenorm(&patternNorm, weights)
+
+	// Step 6: Compute Phi from unnormalized T first
+	// Phi = cov2cor( (T' * T)^-1 )
+	var TTt mat.Dense
+	TTt.Mul(trans.T(), &trans)
+
+	var phiInv mat.Dense
+	if err := safeInvert(&phiInv, &TTt, 1e-10); err != nil {
+		return nil, nil, nil, fmt.Errorf("promax: unable to compute Phi: %w", err)
+	}
+
+	// Convert Phi to correlation matrix (cov2cor equivalent)
+	r, c := phiInv.Dims()
+	diagSqrt := make([]float64, r)
+	for i := 0; i < r; i++ {
+		diagSqrt[i] = math.Sqrt(phiInv.At(i, i))
+	}
+	for i := 0; i < r; i++ {
+		for j := 0; j < c; j++ {
+			phiInv.Set(i, j, phiInv.At(i, j)/(diagSqrt[i]*diagSqrt[j]))
+		}
+	}
+
+	// Now normalize T for pattern computation
+	// Calculate scales
+	scales := make([]float64, m)
+	for j := 0; j < m; j++ {
+		diag := TTt.At(j, j)
+		if diag > 1e-12 {
+			scales[j] = 1.0 / math.Sqrt(diag)
+		} else {
+			scales[j] = 1.0
+		}
+	}
+
+	// Apply scales
+	for j := 0; j < m; j++ {
+		scale := scales[j]
+		for i := 0; i < m; i++ {
+			trans.Set(i, j, trans.At(i, j)*scale)
+		}
+	}
 
 	// Step 8: Compute combined rotation
 	var combined mat.Dense
 	combined.Mul(rotation, &trans)
 
-	return pattern, &combined, phiNorm, nil
+	return pattern, &combined, &phiInv, nil
 }
 
 func rotateOblimin(loadings *mat.Dense, delta float64, maxIter int, tol float64) (*mat.Dense, *mat.Dense, *mat.Dense, error) {
