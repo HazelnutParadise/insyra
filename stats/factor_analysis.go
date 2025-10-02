@@ -461,8 +461,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		phi = reflectPhiMatrix(phi, rotatedLoadings, preReflection)
 	}
 
-	// Sort factors by explained variance (sum of squared loadings) in descending order
-	// Note: Commented out to match R's default behavior (no automatic sorting)
+	// Sort factors by explained variance (following R's psych package)
 	rotatedLoadings, rotationMatrix, phi = sortFactorsByExplainedVariance(rotatedLoadings, rotationMatrix, phi)
 
 	// Step 8: Compute communalities and uniquenesses
@@ -720,18 +719,72 @@ func extractPCA(eigenvalues []float64, eigenvectors *mat.Dense, numFactors int) 
 
 // initialCommunalitiesSMC computes initial communalities using Squared Multiple Correlation
 func initialCommunalitiesSMC(corr *mat.Dense) []float64 {
-	p, _ := corr.Dims()
-
-	// Start with communalities = 1.0 (diagonal of correlation matrix)
-	// This is a common starting point for PAF
-	h2 := make([]float64, p)
-	for i := 0; i < p; i++ {
-		h2[i] = 1.0 // Start with perfect communality
-	}
+	// Compute SMC (Squared Multiple Correlation) estimates
+	// SMC_i = 1 - 1/R_ii^inv where R_ii^inv is diagonal of inverse correlation matrix
+	h2 := computeSMC(corr)
 	return h2
 }
 
-// extractPAF extracts factors using Principal Axis Factoring
+// computeSMC computes Squared Multiple Correlation estimates using R's approximation
+func computeSMC(corr *mat.Dense) []float64 {
+	p, _ := corr.Dims()
+	h2 := make([]float64, p)
+
+	for i := 0; i < p; i++ {
+		// Create submatrix by removing row/column i
+		subSize := p - 1
+		subCorr := mat.NewDense(subSize, subSize, nil)
+
+		// Copy elements, skipping row/column i
+		rowIdx := 0
+		for r := 0; r < p; r++ {
+			if r == i {
+				continue
+			}
+			colIdx := 0
+			for c := 0; c < p; c++ {
+				if c == i {
+					continue
+				}
+				subCorr.Set(rowIdx, colIdx, corr.At(r, c))
+				colIdx++
+			}
+			rowIdx++
+		}
+
+		// Ensure submatrix is symmetric
+		symSub := mat.NewSymDense(subSize, nil)
+		for r := 0; r < subSize; r++ {
+			for c := r; c < subSize; c++ {
+				symSub.SetSym(r, c, subCorr.At(r, c))
+			}
+		}
+
+		// Compute inverse of submatrix
+		var invSub mat.Dense
+		if err := invSub.Inverse(symSub); err != nil {
+			// If inversion fails, use 1.0
+			h2[i] = 1.0
+			continue
+		}
+
+		// R's approximation: SMC_i = 1 - 1/sum(inverse_submatrix)
+		sumInv := 0.0
+		for r := 0; r < subSize; r++ {
+			for c := 0; c < subSize; c++ {
+				sumInv += invSub.At(r, c)
+			}
+		}
+
+		if sumInv > 1.0 {
+			h2[i] = 1.0 - 1.0/sumInv
+		} else {
+			h2[i] = 0.0
+		}
+	}
+
+	return h2
+} // extractPAF extracts factors using Principal Axis Factoring
 func extractPAF(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64) (*mat.Dense, bool, int, error) {
 	p := corrMatrix.RawMatrix().Rows
 
@@ -825,13 +878,13 @@ func extractPAF(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64)
 			for j := 0; j < numFactors; j++ {
 				sum += loadings.At(i, j) * loadings.At(i, j)
 			}
-			// Allow communalities to approach diagonal very closely
+			// In R's PAF, communalities can equal the diagonal
 			diag := corrMatrix.At(i, i)
 			if sum < 1e-6 {
 				sum = 1e-6
 			}
-			if sum > diag-1e-10 {
-				sum = diag - 1e-10 // Much closer to diagonal
+			if sum > diag {
+				sum = diag // Allow communalities to reach diagonal
 			}
 			newCommunalities[i] = sum
 		}
@@ -2406,24 +2459,46 @@ func reflectPhiMatrix(phi, reflectedLoadings, originalLoadings *mat.Dense) *mat.
 	return reflectedPhi
 }
 
-// sortFactorsByExplainedVariance sorts factors by their explained variance (sum of squared loadings) in descending order.
-// This ensures consistent factor ordering across different implementations.
+// sortFactorsByExplainedVariance sorts factors by their explained variance following R's psych::fa logic.
+// For orthogonal rotation: uses sum of squared loadings
+// For oblique rotation: uses diag(Phi %*% t(loadings) %*% loadings)
 func sortFactorsByExplainedVariance(loadings, rotMatrix, phi *mat.Dense) (*mat.Dense, *mat.Dense, *mat.Dense) {
 	if loadings == nil {
 		return nil, rotMatrix, phi
 	}
 
 	p, m := loadings.Dims()
+	if m <= 1 {
+		return loadings, rotMatrix, phi
+	}
 
-	// Calculate explained variance for each factor (sum of squared loadings)
+	// Calculate explained variance for each factor
 	variances := make([]float64, m)
-	for j := 0; j < m; j++ {
-		sum := 0.0
-		for i := 0; i < p; i++ {
-			val := loadings.At(i, j)
-			sum += val * val
+	if phi == nil {
+		// Orthogonal rotation: diag(t(loadings) %*% loadings) = sum of squared loadings per factor
+		for j := 0; j < m; j++ {
+			sum := 0.0
+			for i := 0; i < p; i++ {
+				val := loadings.At(i, j)
+				sum += val * val
+			}
+			variances[j] = sum
 		}
-		variances[j] = sum
+	} else {
+		// Oblique rotation: diag(Phi %*% t(loadings) %*% loadings)
+		var loadingsT mat.Dense
+		loadingsT.CloneFrom(loadings.T())
+
+		var phiLoadingsT mat.Dense
+		phiLoadingsT.Mul(phi, &loadingsT)
+
+		var eigenMat mat.Dense
+		eigenMat.Mul(&phiLoadingsT, loadings)
+
+		// Extract diagonal elements
+		for j := 0; j < m; j++ {
+			variances[j] = eigenMat.At(j, j)
+		}
 	}
 
 	// Sort factors by explained variance in descending order
