@@ -391,7 +391,11 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	if opt.MaxIter <= 0 {
 		opt.MaxIter = 100
 	}
-	if opt.Tol <= 0 {
+	// Treat Tol < 0 as unspecified/default and set to 1e-6.
+	// If Tol == 0, respect it as an explicit request to disable tol-based convergence
+	// (i.e. rely solely on MaxIter), which mirrors R's behavior when tol is very small
+	// or when the user wants to force iteration limits.
+	if opt.Tol < 0 {
 		opt.Tol = 1e-6
 	}
 
@@ -771,24 +775,18 @@ func computeSMC(corr *mat.Dense, minErr float64) []float64 {
 			continue
 		}
 
-		// R's approximation: SMC_i = 1 - 1/sum(inverse_submatrix)
-		sumInv := 0.0
+		// R's approximation: SMC_i = 1 - 1/trace(inverse_submatrix)
+		traceInv := 0.0
 		for r := 0; r < subSize; r++ {
-			for c := 0; c < subSize; c++ {
-				sumInv += invSub.At(r, c)
-			}
+			traceInv += invSub.At(r, r)
 		}
 
-		if sumInv > 1.0 {
-			h2[i] = 1.0 - 1.0/sumInv
-		} else {
-			h2[i] = 0.0
-		}
+		// R's SMC: smc[i] = 1 - 1/trace(inverse_submatrix)
+		// Can be negative if traceInv < 1
+		h2[i] = 1.0 - 1.0/traceInv
 
-		// Apply minimum error constraint (R's min.err parameter)
-		if h2[i] < minErr {
-			h2[i] = minErr
-		}
+		// Note: minErr is not applied to initial SMC in R's psych::fa
+		// It is applied after each communality update in PAF
 	}
 
 	return h2
@@ -807,6 +805,9 @@ func extractPAF(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64,
 
 	var loadings *mat.Dense
 	converged := false
+
+	// Keep history of communalities for debugging/comparison with R
+	commHistory := make([][]float64, 0, maxIter)
 
 	for iter := 0; iter < maxIter; iter++ {
 		// Create reduced correlation matrix with communalities on diagonal
@@ -897,6 +898,18 @@ func extractPAF(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64,
 			newCommunalities[i] = sum
 		}
 
+		// record history (copy slice)
+		tmp := make([]float64, p)
+		copy(tmp, newCommunalities)
+		commHistory = append(commHistory, tmp)
+
+		// Apply minimum error constraint (R's min.err parameter)
+		for i := 0; i < p; i++ {
+			if newCommunalities[i] < minErr {
+				newCommunalities[i] = minErr
+			}
+		}
+
 		// Check convergence
 		maxChange := 0.0
 		for i := 0; i < p; i++ {
@@ -921,7 +934,28 @@ func extractPAF(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64,
 		}
 	}
 
-	insyra.LogWarning("stats", "PAF", "did not converge after %d iterations", maxIter)
+	// If we reach here, did not converge within maxIter. Log a concise history
+	insyra.LogWarning("stats", "PAF", "Did not converge after %d iterations", maxIter)
+
+	// Log initial SMC and history summary (first 10 iterations and final)
+	if len(commHistory) > 0 {
+		// initial SMC = first value prior to iteration (communalities passed in initially)
+		insyra.LogInfo("stats", "PAF", "Initial SMC (first 4) = %.3f, %.3f, %.3f, %.3f",
+			commHistory[0][0], commHistory[0][min(1, p-1)], commHistory[0][min(2, p-1)], commHistory[0][min(3, p-1)])
+		maxShow := 10
+		if len(commHistory) < maxShow {
+			maxShow = len(commHistory)
+		}
+		for i := 0; i < maxShow; i++ {
+			// print first 4 entries per iteration for brevity
+			h := commHistory[i]
+			insyra.LogInfo("stats", "PAF", "iter %d h2 (first 4) = %.4f, %.4f, %.4f, %.4f", i+1, h[0], h[min(1, p-1)], h[min(2, p-1)], h[min(3, p-1)])
+		}
+		// print final
+		last := commHistory[len(commHistory)-1]
+		insyra.LogInfo("stats", "PAF", "final h2 (first 4) = %.4f, %.4f, %.4f, %.4f", last[0], last[min(1, p-1)], last[min(2, p-1)], last[min(3, p-1)])
+	}
+
 	return loadings, converged, maxIter, nil
 }
 
