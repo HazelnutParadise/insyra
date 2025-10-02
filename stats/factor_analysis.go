@@ -1018,6 +1018,7 @@ func extractML(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64, 
 		tol = 1e-6
 	}
 
+	// Initialize with PAF
 	initial, _, _, err := extractPAF(corrMatrix, numFactors, min(maxIter, 50), math.Max(tol, 1e-6), 0.001)
 	if err != nil || initial == nil {
 		// Fall back to PCA loadings
