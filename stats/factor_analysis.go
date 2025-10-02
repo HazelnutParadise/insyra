@@ -1471,7 +1471,20 @@ func kaiserDenorm(Lnorm *mat.Dense, w *mat.VecDense) *mat.Dense {
 	return out
 }
 
+// rotateOrthomax performs orthogonal rotation (varimax, quartimax, etc.)
+// Returns the rotated loadings (denormalized) and rotation matrix.
 func rotateOrthomax(loadings *mat.Dense, gamma float64, maxIter int, tol float64) (*mat.Dense, *mat.Dense, error) {
+	rotatedNorm, rotation, weights, err := rotateOrthomaxNormalized(loadings, gamma, maxIter, tol)
+	if err != nil {
+		return nil, nil, err
+	}
+	return kaiserDenorm(rotatedNorm, weights), rotation, nil
+}
+
+// rotateOrthomaxNormalized performs orthogonal rotation on Kaiser-normalized loadings.
+// Returns the rotated normalized loadings, rotation matrix, and Kaiser weights.
+// This is used internally by Promax to avoid double normalization/denormalization.
+func rotateOrthomaxNormalized(loadings *mat.Dense, gamma float64, maxIter int, tol float64) (*mat.Dense, *mat.Dense, *mat.VecDense, error) {
 	Lnorm, w := kaiserNormalize(loadings)
 
 	p, m := Lnorm.Dims()
@@ -1516,7 +1529,7 @@ func rotateOrthomax(loadings *mat.Dense, gamma float64, maxIter int, tol float64
 		skew.Scale(0.5, &skew)
 
 		if frobeniusNormDense(&skew) < tol {
-			return kaiserDenorm(rotated, w), rotation, nil
+			return rotated, rotation, w, nil
 		}
 
 		step := 1.0
@@ -1553,25 +1566,29 @@ func rotateOrthomax(loadings *mat.Dense, gamma float64, maxIter int, tol float64
 		}
 	}
 
-	return kaiserDenorm(rotated, w), rotation, nil
+	return rotated, rotation, w, nil
 }
 
 func rotatePromax(loadings *mat.Dense, kappa float64, maxIter int, tol float64) (*mat.Dense, *mat.Dense, *mat.Dense, error) {
-	orthoLoadings, orthoRot, err := rotateOrthomax(loadings, 1.0, maxIter, tol)
+	// Default kappa to 4 if not specified
+	if kappa == 0 {
+		kappa = 4
+	}
+
+	// Step 1: Perform varimax on Kaiser-normalized loadings
+	// Use the normalized version to avoid double normalization/denormalization
+	L0norm, orthoRot, kaiserWeights, err := rotateOrthomaxNormalized(loadings, 1.0, maxIter, tol)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 
-	// Promax is defined on Kaiser-normalized loadings. Re-apply the normalization here so
-	// the target computation matches the reference R implementation before denormalizing
-	// back to the original scale for the returned pattern matrix.
-	workingLoadings, kaiserWeights := kaiserNormalize(orthoLoadings)
+	p, m := L0norm.Dims()
 
-	p, m := workingLoadings.Dims()
+	// Step 2: Build target matrix Q = sign(L0) * |L0|^kappa on the normalized loadings
 	target := mat.NewDense(p, m, nil)
 	for i := 0; i < p; i++ {
 		for j := 0; j < m; j++ {
-			val := workingLoadings.At(i, j)
+			val := L0norm.At(i, j)
 			sign := 1.0
 			if val < 0 {
 				sign = -1.0
@@ -1582,52 +1599,38 @@ func rotatePromax(loadings *mat.Dense, kappa float64, maxIter int, tol float64) 
 		}
 	}
 
-	var ft mat.Dense
-	ft.CloneFrom(workingLoadings.T())
+	// Step 3: Solve for transformation matrix T = (L0' L0)^-1 L0' Q
+	var L0t mat.Dense
+	L0t.CloneFrom(L0norm.T())
 
-	var ftf mat.Dense
-	ftf.Mul(&ft, workingLoadings)
+	var L0tL0 mat.Dense
+	L0tL0.Mul(&L0t, L0norm)
 
-	var ftfInv mat.Dense
-	if err := ftfInv.Inverse(&ftf); err != nil {
-		ftfRegularized := mat.Dense{}
-		ftfRegularized.CloneFrom(&ftf)
-		for i := 0; i < m; i++ {
-			ftfRegularized.Set(i, i, ftfRegularized.At(i, i)+1e-6)
-		}
-		if err := ftfInv.Inverse(&ftfRegularized); err != nil {
-			return nil, nil, nil, fmt.Errorf("promax: unable to invert matrix: %w", err)
-		}
+	var L0tL0Inv mat.Dense
+	if err := safeInvert(&L0tL0Inv, &L0tL0, 1e-6); err != nil {
+		return nil, nil, nil, fmt.Errorf("promax: unable to invert L0'L0: %w", err)
 	}
 
-	var ftTarget mat.Dense
-	ftTarget.Mul(&ft, target)
+	var L0tQ mat.Dense
+	L0tQ.Mul(&L0t, target)
 
 	var trans mat.Dense
-	trans.Mul(&ftfInv, &ftTarget)
+	trans.Mul(&L0tL0Inv, &L0tQ)
 
-	// Match R's promax implementation by normalizing the columns of the
-	// transformation matrix so that cross-product diagonals are 1. This keeps the
-	// oblique rotation comparable to GPArotation::Promax.
+	// Step 4: Normalize T columns so that T'T has diagonal = 1
 	var transTtrans mat.Dense
 	transTtrans.Mul(trans.T(), &trans)
 	for j := 0; j < m; j++ {
 		diag := transTtrans.At(j, j)
-		if diag <= 1e-12 {
-			continue
-		}
-		scale := math.Sqrt(diag)
-		if scale == 0 {
-			continue
-		}
-		invScale := 1.0 / scale
-		for i := 0; i < m; i++ {
-			trans.Set(i, j, trans.At(i, j)*invScale)
+		if diag > 1e-12 {
+			scale := 1.0 / math.Sqrt(diag)
+			for i := 0; i < m; i++ {
+				trans.Set(i, j, trans.At(i, j)*scale)
+			}
 		}
 	}
 
-	// Ensure a positive determinant so factor ordering/handedness matches R's
-	// convention when possible.
+	// Step 5: Ensure det(T) > 0 for consistent handedness
 	if m > 0 {
 		if det := mat.Det(&trans); det < 0 {
 			for i := 0; i < m; i++ {
@@ -1638,15 +1641,19 @@ func rotatePromax(loadings *mat.Dense, kappa float64, maxIter int, tol float64) 
 		}
 	}
 
-	rotatedNorm := mat.NewDense(p, m, nil)
-	rotatedNorm.Mul(workingLoadings, &trans)
+	// Step 6: Compute pattern loadings in normalized space: P_norm = L0 * T
+	var patternNorm mat.Dense
+	patternNorm.Mul(L0norm, &trans)
 
+	// Step 7: Compute combined rotation matrix
 	var combined mat.Dense
 	combined.Mul(orthoRot, &trans)
 
+	// Step 8: Compute Phi = T^-1 (T^-1)' and normalize to correlation matrix
 	var transInv mat.Dense
 	if err := invertWithFallback(&transInv, &trans); err != nil {
-		return kaiserDenorm(rotatedNorm, kaiserWeights), &combined, nil, fmt.Errorf("promax: transformation not invertible: %w", err)
+		// If T is not invertible, denormalize and return without Phi
+		return kaiserDenorm(&patternNorm, kaiserWeights), &combined, nil, fmt.Errorf("promax: transformation not invertible: %w", err)
 	}
 
 	var transInvT mat.Dense
@@ -1662,9 +1669,11 @@ func rotatePromax(loadings *mat.Dense, kappa float64, maxIter int, tol float64) 
 
 	phiNorm := normalizeToCorrelation(&phi)
 
-	rotated := kaiserDenorm(rotatedNorm, kaiserWeights)
+	// Step 9: Final denormalization - convert pattern from normalized space back to original scale
+	// This is the ONLY denormalization step in the entire Promax pipeline
+	pattern := kaiserDenorm(&patternNorm, kaiserWeights)
 
-	return rotated, &combined, phiNorm, nil
+	return pattern, &combined, phiNorm, nil
 }
 
 func rotateOblimin(loadings *mat.Dense, delta float64, maxIter int, tol float64) (*mat.Dense, *mat.Dense, *mat.Dense, error) {
