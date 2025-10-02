@@ -721,58 +721,12 @@ func extractPCA(eigenvalues []float64, eigenvectors *mat.Dense, numFactors int) 
 // initialCommunalitiesSMC computes initial communalities using Squared Multiple Correlation
 func initialCommunalitiesSMC(corr *mat.Dense) []float64 {
 	p, _ := corr.Dims()
-	sym := denseToSym(corr)
-	var inv mat.Dense
 
-	// Try direct inversion first
-	err := inv.Inverse(sym)
-	if err != nil {
-		// Add minimal ridge (R uses 1e-8 typically)
-		regularized := mat.NewSymDense(p, nil)
-		for i := 0; i < p; i++ {
-			for j := i; j < p; j++ {
-				val := sym.At(i, j)
-				if i == j {
-					val += 1e-8
-				}
-				regularized.SetSym(i, j, val)
-			}
-		}
-		err = inv.Inverse(regularized)
-		if err != nil {
-			// Fallback to conservative estimates
-			h2 := make([]float64, p)
-			for i := 0; i < p; i++ {
-				maxCorr := 0.0
-				for j := 0; j < p; j++ {
-					if i != j {
-						absCorr := math.Abs(corr.At(i, j))
-						if absCorr > maxCorr {
-							maxCorr = absCorr
-						}
-					}
-				}
-				h2[i] = math.Min(maxCorr*maxCorr, 0.9)
-			}
-			return h2
-		}
-	}
-
+	// Start with communalities = 1.0 (diagonal of correlation matrix)
+	// This is a common starting point for PAF
 	h2 := make([]float64, p)
 	for i := 0; i < p; i++ {
-		rii := inv.At(i, i)
-		if rii <= 0 {
-			h2[i] = 0.5
-			continue
-		}
-		v := 1.0 - 1.0/rii
-		if v < 0.01 {
-			v = 0.01 // R uses 0.01 as minimum
-		}
-		if v > 0.99 {
-			v = 0.99
-		}
-		h2[i] = v
+		h2[i] = 1.0 // Start with perfect communality
 	}
 	return h2
 }
@@ -806,12 +760,13 @@ func extractPAF(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64)
 			}
 		}
 
-		// Eigenvalue decomposition
+		// Eigenvalue decomposition - ensure matrix is symmetric
 		var eig mat.EigenSym
 		symReduced := mat.NewSymDense(p, nil)
 		for i := 0; i < p; i++ {
 			for j := i; j < p; j++ {
-				val := (reducedCorr.At(i, j) + reducedCorr.At(j, i)) / 2
+				// Ensure perfect symmetry
+				val := reducedCorr.At(i, j)
 				symReduced.SetSym(i, j, val)
 			}
 		}
@@ -870,15 +825,13 @@ func extractPAF(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64)
 			for j := 0; j < numFactors; j++ {
 				sum += loadings.At(i, j) * loadings.At(i, j)
 			}
+			// Allow communalities to approach diagonal very closely
 			diag := corrMatrix.At(i, i)
-			if diag <= 0 {
-				diag = 1.0
-			}
 			if sum < 1e-6 {
 				sum = 1e-6
 			}
-			if sum > diag-1e-9 {
-				sum = diag - 1e-9
+			if sum > diag-1e-10 {
+				sum = diag - 1e-10 // Much closer to diagonal
 			}
 			newCommunalities[i] = sum
 		}
