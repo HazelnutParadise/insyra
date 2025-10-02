@@ -431,6 +431,9 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		}
 	}
 
+	// Apply initial factor reflection to match R's convention (before rotation)
+	loadings = reflectFactorsForPositiveLoadings(loadings)
+
 	// Step 7: Rotate factors
 	var rotatedLoadings *mat.Dense
 	var rotationMatrix *mat.Dense
