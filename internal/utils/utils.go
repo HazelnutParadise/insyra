@@ -354,7 +354,7 @@ func ParallelSortStableFunc[S ~[]E, E any](x S, cmp func(E, E) int) {
 	}
 
 	// Use sequential sort for small arrays
-	if n < 4900 {
+	if n < 4910 {
 		slices.SortStableFunc(x, cmp)
 		return
 	}
@@ -455,50 +455,34 @@ func mergeStable[S ~[]E, E any](a, b, dst S, cmp func(E, E) int) {
 
 // getOptimalGoroutines returns the optimal number of goroutines for a given data size
 func getOptimalGoroutines(n int) int {
-	// Fine-tuned scaling strategy with 100-unit granularity
-	if n < 5000 {
-		return 2 // 4900-4999 elements
-	} else if n < 6000 {
-		return 3 // 5000-5999 elements
-	} else if n < 8000 {
-		return 4 // 6000-7999 elements
-	} else if n < 10000 {
-		return 5 // 8000-9999 elements
-	} else if n < 15000 {
-		return 6 // 10000-14999 elements
-	} else if n < 20000 {
-		return 7 // 15000-19999 elements
-	} else if n < 25000 {
-		return 8 // 20000-24999 elements
-	} else if n < 35000 {
-		return 9 // 25000-34999 elements
-	} else if n < 45000 {
-		return 10 // 35000-44999 elements
-	} else if n < 55000 {
-		return 11 // 45000-54999 elements
-	} else if n < 70000 {
-		return 12 // 55000-69999 elements
-	} else if n < 90000 {
-		return 13 // 70000-89999 elements
-	} else if n < 120000 {
-		return 14 // 90000-119999 elements
-	} else if n < 160000 {
-		return 15 // 120000-159999 elements
+	// Adaptive growth strategy: slow growth for small datasets, faster growth for large datasets
+	if n < 10000 {
+		// For small datasets: use logarithmic-like growth
+		if n < 5500 {
+			return 2
+		} else if n < 6500 {
+			return 3
+		} else if n < 7500 {
+			return 4
+		} else if n < 8500 {
+			return 5
+		} else {
+			return 6
+		}
+	} else if n < 50000 {
+		// For medium datasets: moderate linear growth
+		return 6 + (n-10000)/5000 // Increases by 1 every 5000 elements
 	} else if n < 200000 {
-		return 16 // 160000-199999 elements
-	} else if n < 250000 {
-		return 18 // 200000-249999 elements
-	} else if n < 350000 {
-		return 20 // 250000-349999 elements
-	} else if n < 500000 {
-		return 22 // 350000-499999 elements
+		// For large datasets: accelerated growth
+		return 12 + (n-50000)/15000 // Increases by 1 every 15000 elements
 	} else {
-		goroutines := n / 25000 // More aggressive scaling for very large datasets
+		// For very large datasets: use square root scaling
+		goroutines := int(math.Sqrt(float64(n)) / 50) // sqrt(n)/50 gives good scaling
 		if goroutines > runtime.NumCPU() {
 			goroutines = runtime.NumCPU()
 		}
-		if goroutines < 1 {
-			goroutines = 1
+		if goroutines < 16 {
+			goroutines = 16 // Minimum for very large datasets
 		}
 		return goroutines
 	}
