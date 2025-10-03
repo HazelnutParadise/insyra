@@ -170,12 +170,12 @@ func DefaultFactorAnalysisOptions() FactorAnalysisOptions {
 		},
 		Extraction: FactorExtractionMINRES, // R default: "minres"
 		Rotation: FactorRotationOptions{
-			Method: FactorRotationNone, // R default: "none"
-			Kappa:  4,                  // R default for promax
-			Delta:  0,
+			Method: FactorRotationOblimin, // R default: "oblimin"
+			Kappa:  4,                     // R default for promax
+			Delta:  0,                     // R default for oblimin
 		},
-		Scoring: FactorScoreNone, // R default: "none"
-		MaxIter: 50,              // R default: 50
+		Scoring: FactorScoreRegression, // R default: "regression"
+		MaxIter: 50,                    // R default: 50
 		// Tol: deprecated; see package docs. Use internal defaults instead.
 		MinErr: 0.001, // R default: 0.001
 	}
