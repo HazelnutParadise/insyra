@@ -819,14 +819,7 @@ func extractPAF(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64,
 
 		// Eigenvalue decomposition - ensure matrix is symmetric
 		var eig mat.EigenSym
-		symReduced := mat.NewSymDense(p, nil)
-		for i := 0; i < p; i++ {
-			for j := i; j < p; j++ {
-				// Ensure perfect symmetry
-				val := reducedCorr.At(i, j)
-				symReduced.SetSym(i, j, val)
-			}
-		}
+		symReduced := denseToSym(reducedCorr)
 
 		if !eig.Factorize(symReduced, true) {
 			return nil, false, iter, errors.New("eigenvalue decomposition failed in PAF")
