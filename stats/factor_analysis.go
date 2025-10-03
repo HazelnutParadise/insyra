@@ -1292,19 +1292,18 @@ func extractMINRES(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float
 	h2 := computeSMC(corrMatrix, 0.001)
 
 	// Step 2: Set starting values for uniquenesses (Psi)
-	// R code: start <- diag(S) - S.smc
+	// R code: start <- diag(S) - S.smc; upper <- max(S.smc, 1)
 	start := make([]float64, p)
-	upper := minresPsiUpperBound // R: upper = max(1.0, max(h2))
+	maxH2 := 0.0 // Find max(h2)
 	for i := 0; i < p; i++ {
 		diag := corrMatrix.At(i, i)
 		start[i] = diag - h2[i]
-		if h2[i] > upper {
-			upper = h2[i]
+		if h2[i] > maxH2 {
+			maxH2 = h2[i]
 		}
 	}
-	if upper < minresPsiUpperBound {
-		upper = minresPsiUpperBound
-	}
+	// R: upper <- max(S.smc, 1)
+	upper := math.Max(maxH2, minresPsiUpperBound)
 
 	// Step 3: Define objective function matching R's fit.residuals for MINRES
 	// R code computes: residual <- (S - model); residual <- residual[lower.tri(residual)]; sum(residual^2)
@@ -1354,16 +1353,23 @@ func extractMINRES(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float
 			}
 		}
 
-		// Extract loadings
+		// R: Adjust small eigenvalues before using them
+		// eigens$values[eigens$values < .Machine$double.eps] <- 100 * .Machine$double.eps
+		adjustedEigenvalues := make([]float64, len(pairs))
+		for i := range pairs {
+			if pairs[i].value < machineEpsilon {
+				adjustedEigenvalues[i] = eigenvalueMinThreshold // 100 * machineEpsilon
+			} else {
+				adjustedEigenvalues[i] = pairs[i].value
+			}
+		}
+
+		// Extract loadings using adjusted eigenvalues
+		// R: if (nf > 1) { loadings <- eigens$vectors[, 1:nf] %*% diag(sqrt(eigens$values[1:nf])) }
 		loadings := mat.NewDense(p, numFactors, nil)
 		for i := 0; i < p; i++ {
 			for j := 0; j < numFactors; j++ {
-				// R: eigens$values[eigens$values < .Machine$double.eps] <- 100 * .Machine$double.eps
-				if pairs[j].value > eigenvalueMinThreshold {
-					loadings.Set(i, j, pairs[j].vector[i]*math.Sqrt(pairs[j].value))
-				} else {
-					loadings.Set(i, j, 0)
-				}
+				loadings.Set(i, j, pairs[j].vector[i]*math.Sqrt(adjustedEigenvalues[j]))
 			}
 		}
 
@@ -1436,16 +1442,14 @@ func extractMINRES(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float
 			}
 		}
 
-		// Extract loadings
+		// Extract loadings using pmax(eigenvalues, 0)
+		// R: load <- L %*% diag(sqrt(pmax(E$values[1:nf], 0)), nf)
 		loadings := mat.NewDense(p, numFactors, nil)
 		for i := 0; i < p; i++ {
 			for j := 0; j < numFactors; j++ {
-				// R: eigens$values[eigens$values < .Machine$double.eps] <- 100 * .Machine$double.eps
-				if pairs[j].value > eigenvalueMinThreshold {
-					loadings.Set(i, j, pairs[j].vector[i]*math.Sqrt(math.Max(pairs[j].value, eigenvalueMinThreshold)))
-				} else {
-					loadings.Set(i, j, 0)
-				}
+				// Use pmax(eigenvalue, 0) as in R
+				ev := math.Max(pairs[j].value, 0)
+				loadings.Set(i, j, pairs[j].vector[i]*math.Sqrt(ev))
 			}
 		}
 
