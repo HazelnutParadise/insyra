@@ -2,7 +2,7 @@ package plot
 
 import (
 	"fmt"
-	"sort"
+	"slices"
 
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
@@ -45,8 +45,14 @@ func CreateLiquidChart(config LiquidChartConfig) *charts.Liquid {
 		entries = append(entries, seriesEntry{Name: name, Value: value})
 	}
 
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].Value > entries[j].Value
+	slices.SortFunc(entries, func(a, b seriesEntry) int {
+		if a.Value > b.Value {
+			return -1
+		} else if a.Value < b.Value {
+			return 1
+		} else {
+			return 0
+		}
 	})
 
 	// Track the highest value

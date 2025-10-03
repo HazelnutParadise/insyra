@@ -4,6 +4,7 @@ package lp
 import (
 	"archive/tar"
 	"archive/zip"
+	"cmp"
 	"compress/gzip"
 	"fmt"
 	"io"
@@ -13,7 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"sort"
+	"slices"
 	"strconv"
 
 	"github.com/HazelnutParadise/insyra"
@@ -237,8 +238,8 @@ func locateOrInstallGLPK_Win() (string, error) {
 		matches, err := filepath.Glob(pathPattern)
 		if err == nil && len(matches) > 0 {
 			// 如果找到多個匹配，使用最新的版本
-			sort.Slice(matches, func(i, j int) bool {
-				return matches[i] > matches[j]
+			slices.SortFunc(matches, func(a, b string) int {
+				return cmp.Compare(b, a)
 			})
 			insyra.LogInfo("lp", "init", "GLPK found at: %s", matches[0])
 			return matches[0], nil

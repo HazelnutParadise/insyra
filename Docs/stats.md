@@ -940,6 +940,116 @@ if result != nil {
 
 The stats package provides comprehensive factor analysis functionality for dimensionality reduction and latent variable identification. Factor analysis helps identify underlying factors that explain the correlations among observed variables.
 
+### Model Framework
+
+Factor analysis assumes the observed correlation (or covariance) matrix can be decomposed into shared factor structure plus unique variance:
+
+$$
+R \approx F F' + U^2
+$$
+
+Where:
+
+- $R$ — observed correlation matrix (identity on the diagonal when standardized)
+- $F$ — factor loading matrix capturing relationships between variables and common factors
+- $U^2$ — diagonal matrix of uniquenesses (specific variance not explained by common factors)
+
+Communalities are the diagonal elements of $F F'$, representing shared variance for each variable. The goal of extraction algorithms is to find loadings $F$ and uniquenesses $U^2$ that best approximate $R$ under different optimality criteria.
+
+### Extraction Methods
+
+The implementation mirrors key `psych::fa` extraction behaviors while exposing the choice through `FactorAnalysisOptions.Extraction`. The currently selectable values are `pca`, `paf`, `ml`, and `minres`; the remaining subsections document the underlying theory used for compatibility and roadmap planning.
+
+#### Principal Axis Factoring (PAF / `paf`)
+
+- **Initialization**: Communalities start from squared multiple correlations (SMC) or a user-provided constant.
+- **Iteration**:
+    1. Replace the diagonal of $R$ with current communalities.
+    2. Perform an eigen decomposition to obtain updated loadings $F$.
+    3. Update communalities via $\operatorname{diag}(F F')$.
+    4. Repeat until the maximum change in communalities is below `Tol` or `MaxIter` iterations are reached.
+- **Strengths**: Stable and fast; often converges even when ML struggles.
+
+#### Minimum Residual (MINRES / `minres`)
+
+- **Objective**: Minimize the off-diagonal squared residuals between the observed and model-implied correlations:
+
+    $$
+    \min_{F, U^2} \sum_{i<j} \bigl(r_{ij} - \hat{r}_{ij}\bigr)^2,
+    $$
+
+    where $\hat{r}_{ij}$ are elements of $F F' + U^2$.
+- **Optimization**: Uses gradient-based search (mirroring `psych::fa` ≥ 2017 derivatives) with diagonal adjustments to maintain feasible uniquenesses.
+- **Traits**: Default extraction (matches `psych::fa`). Robust when communalities are moderate to high.
+
+#### Maximum Likelihood (ML / `ml`)
+
+- **Objective**: Minimize the Gaussian log-likelihood discrepancy between the model-implied and observed matrices:
+
+    $$
+    f = \log\bigl(\operatorname{trace}((F F' + U^2)^{-1} R)\bigr) - \log\bigl(\lvert (F F' + U^2)^{-1} R \rvert\bigr) - p,
+    $$
+
+    with $p$ as the number of observed variables.
+- **Algorithm**: Newton-style steps iterate on communalities; convergence enables chi-square goodness-of-fit testing:
+
+    $$
+    \chi^2 = (n_{\text{obs}} - 1 - \tfrac{2p + 5}{6} - \tfrac{2f}{3}) \cdot f,
+    $$
+
+    where $f$ is the minimized value and $n_{\text{obs}}$ is the number of observations.
+- **Notes**: Requires positive definite $F F' + U^2$ and benefits from multivariate normal data.
+
+#### Weighted / Generalized Least Squares (WLS & GLS)
+
+- **Weighting**:
+  - WLS weights residuals by $1 / \operatorname{diag}(R^{-1})$.
+  - GLS weights residuals by the full $R^{-1}$.
+- **Effect**: Variables with lower communalities receive higher weight, emphasizing residual reduction for poorly explained variables.
+- **Use Case**: Useful when measurement error varies substantially across variables.
+
+#### Minimum Rank Factor Analysis (MRFA)
+
+- **Goal**: Find the lowest-rank approximation of $R$ that preserves positive semidefiniteness of the residual matrix.
+- **Behavior**: Ensures the resulting residual covariance remains a valid correlation matrix, avoiding negative eigenvalues.
+- **When to Choose**: Specialized method for guaranteeing admissible residual structures.
+
+#### Alpha Factoring (`alpha`)
+
+- **Process**: Adjusts $R$ by subtracting communalities, rescales to the original metric, and extracts factors maximizing Cronbach's alpha.
+- **Origin**: Based on Kaiser & Coffey (1965).
+- **Strength**: Produces factors optimized for reliability of sum scores.
+
+### Rotation Families
+
+Rotation is configured through `FactorAnalysisOptions.Rotation`. Orthogonal methods keep factors uncorrelated ($\Phi = I$), while oblique methods estimate $\Phi$.
+
+- **Orthogonal**: Varimax (default), Quartimax.
+- **Oblique**: Promax (power `Kappa`), Oblimin (parameter `Delta`).
+
+For oblique solutions, the structure matrix $S$ and pattern matrix $P$ obey:
+
+$$
+S = P \Phi,
+$$
+
+linking loadings ($P$) to factor correlations ($\Phi$).
+
+### Convergence Control
+
+- `FactorAnalysisOptions.MaxIter` (default `100`) caps iterations for iterative extractions (PAF, MINRES, ML, MRFA, Alpha).
+- Diagnostics: Outputs include `FactorAnalysisResult.Converged` and `Iterations` to track termination status.
+
+### Factor Scoring
+
+Factor scores follow Thurstone-style regression by default. Given standardized data matrix $X$ and structure matrix $S$:
+
+$$
+F_s = X W, \quad W = R^{-1} S.
+$$
+
+Alternative weighting schemes (Bartlett, Anderson–Rubin, ten Berge) are accessible via `FactorAnalysisOptions.Scoring`. Scoring reuses preprocessing parameters (standardization, missing policy) captured inside the `FactorModel`.
+
 ### FactorAnalysis
 
 ```go
@@ -982,13 +1092,10 @@ type FactorPreprocessOptions struct {
 
 ```go
 type FactorCountSpec struct {
-    Method               FactorCountMethod  // Method to determine number of factors
-    FixedK               int                // Number of factors for CountFixed
-    EigenThreshold       float64            // Eigenvalue threshold for CountKaiser (default: 1.0)
-    MaxFactors           int                // Maximum number of factors to extract
-    ParallelReplications int                // Replications for CountParallelAnalysis (default: 100)
-    ParallelPercentile   float64            // Percentile for CountParallelAnalysis (default: 0.95)
-    EnableAutoScree      bool               // Auto scree test for CountScree
+    Method         FactorCountMethod  // Method to determine number of factors
+    FixedK         int                // Number of factors for CountFixed
+    EigenThreshold float64            // Eigenvalue threshold for CountKaiser (default: 1.0)
+    MaxFactors     int                // Maximum number of factors to extract
 }
 ```
 
@@ -997,10 +1104,8 @@ type FactorCountSpec struct {
 ```go
 type FactorCountMethod string
 const (
-    CountFixed            FactorCountMethod = "fixed"
-    CountKaiser           FactorCountMethod = "kaiser"
-    CountScree            FactorCountMethod = "scree"
-    CountParallelAnalysis FactorCountMethod = "parallel-analysis"
+    CountFixed  FactorCountMethod = "fixed"
+    CountKaiser FactorCountMethod = "kaiser"
 )
 ```
 
@@ -1009,10 +1114,10 @@ const (
 ```go
 type FactorExtractionMethod string
 const (
-    FactorExtractionPCA      FactorExtractionMethod = "pca"
+    FactorExtractionPCA    FactorExtractionMethod = "pca"
     FactorExtractionPAF      FactorExtractionMethod = "paf"
     FactorExtractionML       FactorExtractionMethod = "ml"
-    FactorExtractionBayesian FactorExtractionMethod = "bayesian"
+    FactorExtractionMINRES   FactorExtractionMethod = "minres"
 )
 ```
 
@@ -1020,10 +1125,9 @@ const (
 
 ```go
 type FactorRotationOptions struct {
-    Method       FactorRotationMethod
-    Kappa        float64 // For Equamax (default: p/2)
-    Delta        float64 // For Oblimin (default: 0)
-    ForceOblique bool    // Force oblique rotation
+    Method FactorRotationMethod
+    Kappa  float64 // For Promax (default: 4)
+    Delta  float64 // For Oblimin (default: 0)
 }
 ```
 
@@ -1035,7 +1139,6 @@ const (
     FactorRotationNone      FactorRotationMethod = "none"
     FactorRotationVarimax   FactorRotationMethod = "varimax"
     FactorRotationQuartimax FactorRotationMethod = "quartimax"
-    FactorRotationEquamax   FactorRotationMethod = "equamax"
     FactorRotationPromax    FactorRotationMethod = "promax"
     FactorRotationOblimin   FactorRotationMethod = "oblimin"
 )
@@ -1057,6 +1160,7 @@ const (
 ```go
 type FactorAnalysisResult struct {
     Loadings             insyra.IDataTable // Loading matrix (variables × factors)
+    Structure            insyra.IDataTable // Structure matrix (variables × factors)
     Uniquenesses         insyra.IDataTable // Uniqueness vector (p × 1)
     Communalities        insyra.IDataTable // Communality vector (p × 1)
     Phi                  insyra.IDataTable // Factor correlation matrix (m × m), nil for orthogonal
@@ -1076,6 +1180,7 @@ type FactorAnalysisResult struct {
 **DataTable Naming Convention**:
 
 - **Loadings**: Column names are factor names (Factor1, Factor2, ...), row names are variable names
+- **Structure**: Column names are factor names (Factor1, Factor2, ...), row names are variable names
 - **Uniquenesses**: Single column named "Uniqueness", row names are variable names
 - **Communalities**: Single column named "Communality", row names are variable names
 - **Eigenvalues**: Single column named "Eigenvalue", row names are factor names
@@ -1083,11 +1188,30 @@ type FactorAnalysisResult struct {
 - **CumulativeProportion**: Single column named "Cumulative Proportion", row names are factor names
 - **Scores**: Column names are factor names, row names are observation indices
 
+#### Show Method
+
+```go
+func (r *FactorAnalysisResult) Show(startEndRange ...any)
+```
+
+**Purpose**: Display all factor analysis results in a formatted manner.
+
+**Parameters**:
+
+- `startEndRange`: Optional range parameters for displaying DataTables (passed to Show method)
+
+**Example**:
+
+```go
+// Display all factor analysis results
+model.Show()
+```
+
 #### FactorModel
 
 ```go
 type FactorModel struct {
-    Result FactorAnalysisResult
+    FactorAnalysisResult
 
     // Internal fields for scoring new data
     scoreMethod FactorScoreMethod
@@ -1108,12 +1232,12 @@ if model == nil {
 }
 
 // Display results
-model.Result.Loadings.Show()        // Factor loadings
-model.Result.Communalities.Show()   // Communalities
-model.Result.Eigenvalues.Show()     // Eigenvalues
+model.Loadings.Show()        // Factor loadings
+model.Communalities.Show()   // Communalities
+model.Eigenvalues.Show()     // Eigenvalues
 
 // Export results
-model.Result.Loadings.ToCSV("factor_loadings.csv", true, true, true)
+model.Loadings.ToCSV("factor_loadings.csv", true, true, true)
 ```
 
 ### FactorScores
@@ -1251,15 +1375,15 @@ All error conditions are logged via `insyra.LogWarning()` for debugging purposes
 
 #### Factor Extraction
 
-- **PCA**: Good default choice, computationally efficient, maximizes explained variance
-- **PAF**: Preferred when communalities are low, provides better factor structure
+- **MINRES**: Default choice (psych::fa), stable and works well without strict distributional assumptions
+- **PAF**: Preferred when communalities are low, often yields interpretable factor structures
 - **ML**: Maximum likelihood, requires multivariate normality, provides fit statistics
+- **PCA**: Deterministic extraction based on eigen decomposition; useful for exploratory variance explanation
 
 #### Determining Number of Factors
 
 - **Kaiser Criterion**: Eigenvalues > 1.0 (default, conservative)
-- **Scree Plot**: Look for "elbow" in the plot of eigenvalues
-- **Parallel Analysis**: Compare eigenvalues to random data (most rigorous)
+- **Scree Plot**: Look for "elbow" in the plot of eigenvalues (manual inspection)
 - **Fixed**: When theory specifies the number of factors
 
 #### Factor Rotation

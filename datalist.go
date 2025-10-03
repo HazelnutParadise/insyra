@@ -1,6 +1,7 @@
 package insyra
 
 import (
+	"cmp"
 	"fmt"
 	"math"
 	"reflect"
@@ -76,7 +77,7 @@ func flattenWithNilSupport(values []any) []any {
 func NewDataList(values ...any) *DataList {
 	// Use custom flatten function that properly handles nil values
 	flatData := flattenWithNilSupport(values)
-	LogDebug("DataList", "NewDataList", "Flattened data: %v", flatData)
+	// LogDebug("DataList", "NewDataList", "Flattened data: %v", flatData)
 
 	continuousMemData := make([]any, len(flatData))
 	copy(continuousMemData, flatData)
@@ -885,8 +886,8 @@ func (dl *DataList) Rank() *DataList {
 	}
 
 	// 根據數據排序，並追蹤索引
-	sort.Slice(indexes, func(i, j int) bool {
-		return data[indexes[i]] < data[indexes[j]]
+	slices.SortFunc(indexes, func(i, j int) int {
+		return cmp.Compare(data[i], data[j])
 	})
 
 	// 分配秩次，處理重複值的情況
