@@ -354,7 +354,7 @@ func ParallelSortStableFunc[S ~[]E, E any](x S, cmp func(E, E) int) {
 	}
 
 	// Use sequential sort for small arrays
-	if n < 10000 {
+	if n < 5000 {
 		slices.SortStableFunc(x, cmp)
 		return
 	}
@@ -455,19 +455,21 @@ func mergeStable[S ~[]E, E any](a, b, dst S, cmp func(E, E) int) {
 
 // getOptimalGoroutines returns the optimal number of goroutines for a given data size
 func getOptimalGoroutines(n int) int {
-	// Use a more aggressive scaling strategy
-	if n < 25000 {
+	// Optimized scaling strategy for better small dataset performance
+	if n < 10000 {
+		return 2 // Use only 2 goroutines for 5K-10K elements
+	} else if n < 25000 {
 		return 4
 	} else if n < 50000 {
-		return 8
+		return 6 // Reduced from 8 to 6
 	} else if n < 100000 {
-		return 12
+		return 8 // Reduced from 12 to 8
 	} else if n < 250000 {
-		return 16
+		return 12 // Reduced from 16 to 12
 	} else if n < 500000 {
-		return 20
+		return 16 // Reduced from 20 to 16
 	} else {
-		goroutines := n / 15000
+		goroutines := n / 20000 // Increased divisor from 15000 to 20000
 		if goroutines > runtime.NumCPU() {
 			goroutines = runtime.NumCPU()
 		}
