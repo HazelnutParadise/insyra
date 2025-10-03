@@ -2,9 +2,9 @@ package stats
 
 import (
 	"fmt"
-	"slices"
 
 	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/internal/utils"
 	"gonum.org/v1/gonum/mat"
 	"gonum.org/v1/gonum/stat"
 )
@@ -81,7 +81,7 @@ func PCA(dataTable insyra.IDataTable, nComponents ...int) *PCAResult {
 	for i := range indices {
 		indices[i] = i
 	}
-	slices.SortFunc(indices, func(a, b int) int {
+	utils.ParallelSortStableFunc(indices, func(a, b int) int {
 		if eigenvalues[a] > eigenvalues[b] {
 			return -1
 		} else if eigenvalues[a] < eigenvalues[b] {

@@ -2,8 +2,8 @@ package plot
 
 import (
 	"fmt"
-	"slices"
 
+	"github.com/HazelnutParadise/insyra/internal/utils"
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
 )
@@ -45,7 +45,7 @@ func CreateLiquidChart(config LiquidChartConfig) *charts.Liquid {
 		entries = append(entries, seriesEntry{Name: name, Value: value})
 	}
 
-	slices.SortFunc(entries, func(a, b seriesEntry) int {
+	utils.ParallelSortStableFunc(entries, func(a, b seriesEntry) int {
 		if a.Value > b.Value {
 			return -1
 		} else if a.Value < b.Value {
@@ -53,9 +53,7 @@ func CreateLiquidChart(config LiquidChartConfig) *charts.Liquid {
 		} else {
 			return 0
 		}
-	})
-
-	// Track the highest value
+	}) // Track the highest value
 	var maxValue float32
 
 	// Process sorted Data

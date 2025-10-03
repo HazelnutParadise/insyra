@@ -6,7 +6,6 @@ import (
 	"math"
 	"os"
 	"reflect"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -73,7 +72,7 @@ func (dt *DataTable) ShowRange(startEnd ...interface{}) {
 			colIndices = append(colIndices, colIndex)
 		}
 
-		slices.SortFunc(colIndices, func(a, b string) int {
+		utils.ParallelSortStableFunc(colIndices, func(a, b string) int {
 			prefixA := a
 			if idx := strings.Index(a, "("); idx != -1 {
 				prefixA = a[:idx]

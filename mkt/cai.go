@@ -1,7 +1,6 @@
 package mkt
 
 import (
-	"slices"
 	"time"
 
 	"github.com/HazelnutParadise/Go-Utils/conv"
@@ -101,7 +100,7 @@ func CustomerActivityIndex(dt insyra.IDataTable, caiConfig CAIConfig) insyra.IDa
 		}
 		allLastTimes = append(allLastTimes, times[lenTimes-1])
 	}
-	slices.SortFunc(allLastTimes, func(a, b time.Time) int {
+	utils.ParallelSortStableFunc(allLastTimes, func(a, b time.Time) int {
 		return a.Compare(b)
 	})
 	latestTime := allLastTimes[len(allLastTimes)-1]

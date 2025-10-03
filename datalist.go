@@ -6,7 +6,6 @@ import (
 	"math"
 	"reflect"
 	"runtime"
-	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -865,7 +864,7 @@ func (dl *DataList) Sort(ascending ...bool) *DataList {
 		if !ascendingOrder {
 			order = -1
 		}
-		slices.SortStableFunc(dl.data, func(a, b any) int {
+		utils.ParallelSortStableFunc(dl.data, func(a, b any) int {
 			return utils.CompareAny(a, b) * order
 		})
 
@@ -886,7 +885,7 @@ func (dl *DataList) Rank() *DataList {
 	}
 
 	// 根據數據排序，並追蹤索引
-	slices.SortFunc(indexes, func(i, j int) int {
+	utils.ParallelSortStableFunc(indexes, func(i, j int) int {
 		return cmp.Compare(data[i], data[j])
 	})
 

@@ -8,7 +8,6 @@ import (
 
 	"github.com/HazelnutParadise/Go-Utils/conv"
 	"github.com/HazelnutParadise/insyra/internal/utils"
-	"golang.org/x/exp/slices"
 )
 
 type F64orRat = utils.F64orRat
@@ -230,7 +229,7 @@ func ParseColIndex(colName string) int {
 // SortTimes sorts a slice of time.Time in ascending order.
 // It sorts the times directly in the provided slice.
 func SortTimes(times []time.Time) {
-	slices.SortFunc(times, func(a, b time.Time) int {
+	utils.ParallelSortStableFunc(times, func(a, b time.Time) int {
 		if a.Before(b) {
 			return -1
 		} else if a.After(b) {

@@ -14,10 +14,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strconv"
 
 	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/internal/utils"
 )
 
 // 用於allpkgs安裝
@@ -238,7 +238,7 @@ func locateOrInstallGLPK_Win() (string, error) {
 		matches, err := filepath.Glob(pathPattern)
 		if err == nil && len(matches) > 0 {
 			// 如果找到多個匹配，使用最新的版本
-			slices.SortFunc(matches, func(a, b string) int {
+			utils.ParallelSortStableFunc(matches, func(a, b string) int {
 				return cmp.Compare(b, a)
 			})
 			insyra.LogInfo("lp", "init", "GLPK found at: %s", matches[0])
