@@ -2108,34 +2108,52 @@ func rotatePromax(loadings *mat.Dense, kappa float64, maxIter int, tol float64) 
 	var pattern mat.Dense
 	pattern.Mul(rotated, &trans)
 
-	// Step 5: Compute Phi = solve(t(Ti) * Ti)
+	// Step 5: Compute raw Phi = solve(t(Ti) * Ti)
 	var Tt mat.Dense
 	Tt.CloneFrom(trans.T())
 
 	var TtT mat.Dense
 	TtT.Mul(&Tt, &trans)
 
-	var TtTInv mat.Dense
-	if err := safeInvert(&TtTInv, &TtT, epsilonSmall); err != nil {
+	var phiRaw mat.Dense
+	if err := safeInvert(&phiRaw, &TtT, epsilonSmall); err != nil {
 		return nil, nil, nil, fmt.Errorf("promax: unable to compute Phi: %w", err)
 	}
 
-	var phi mat.Dense
-	phi.CloneFrom(&TtTInv)
-
-	// Convert Phi to correlation matrix (normalize diagonal to 1)
-	r, c := phi.Dims()
-	diagSqrt := make([]float64, r)
-	for i := 0; i < r; i++ {
-		diagSqrt[i] = math.Sqrt(phi.At(i, i))
-	}
-	for i := 0; i < r; i++ {
-		for j := 0; j < c; j++ {
-			phi.Set(i, j, phi.At(i, j)/(diagSqrt[i]*diagSqrt[j]))
+	// Scale transformation columns so that Phi has unit diagonal (matching R's convention)
+	transRows, transCols := trans.Dims()
+	scales := make([]float64, transCols)
+	for j := 0; j < transCols; j++ {
+		diagVal := phiRaw.At(j, j)
+		if diagVal <= epsilonTiny {
+			scales[j] = 1.0
+		} else {
+			scales[j] = math.Sqrt(diagVal)
+		}
+		for i := 0; i < transRows; i++ {
+			trans.Set(i, j, trans.At(i, j)*scales[j])
 		}
 	}
 
-	return &pattern, &trans, &phi, nil
+	// Recompute pattern with the scaled transformation
+	var patternScaled mat.Dense
+	patternScaled.Mul(rotated, &trans)
+
+	// Recompute Phi from the scaled transformation and normalize to a correlation matrix
+	var scaledTt mat.Dense
+	scaledTt.CloneFrom(trans.T())
+
+	var scaledTtT mat.Dense
+	scaledTtT.Mul(&scaledTt, &trans)
+
+	var phiScaled mat.Dense
+	if err := safeInvert(&phiScaled, &scaledTtT, epsilonSmall); err != nil {
+		return nil, nil, nil, fmt.Errorf("promax: unable to compute Phi after scaling: %w", err)
+	}
+
+	phiNorm := normalizeToCorrelation(&phiScaled)
+
+	return &patternScaled, &trans, phiNorm, nil
 }
 
 func rotateOblimin(loadings *mat.Dense, delta float64, maxIter int, tol float64) (*mat.Dense, *mat.Dense, *mat.Dense, error) {
