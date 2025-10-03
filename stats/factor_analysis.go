@@ -149,6 +149,7 @@ type FactorModel struct {
 	rotation    FactorRotationMethod
 	means       []float64
 	sds         []float64
+	sigma       *mat.Dense
 }
 
 // -------------------------
@@ -381,6 +382,13 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		}
 	}
 
+	sigmaForScores := mat.NewDense(colNum, colNum, nil)
+	for i := 0; i < colNum; i++ {
+		for j := 0; j < colNum; j++ {
+			sigmaForScores.Set(i, j, corrMatrix.At(i, j))
+		}
+	}
+
 	// Step 4: Eigenvalue decomposition
 	var eig mat.EigenSym
 	if !eig.Factorize(corrMatrix, true) {
@@ -582,7 +590,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	// Step 10: Compute factor scores if data is available
 	var scores *mat.Dense
 	if rowNum > 0 {
-		scores = computeFactorScores(data, rotatedLoadings, phi, uniquenesses, opt.Scoring)
+		scores = computeFactorScores(data, rotatedLoadings, phi, uniquenesses, sigmaForScores, opt.Scoring)
 	}
 
 	// Convert results to DataTables
@@ -644,6 +652,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		rotation:             opt.Rotation.Method,
 		means:                means,
 		sds:                  sds,
+		sigma:                sigmaForScores,
 	}
 }
 
@@ -1997,6 +2006,7 @@ func rotateOrthomaxNormalized(loadings *mat.Dense, gamma float64, maxIter int, t
 
 	colNorms := make([]float64, m)
 	prevD := 0.0
+	const minIter = 5
 
 	for iter := 0; iter < maxIter; iter++ {
 		if rotationDebugEnabled() {
@@ -2052,7 +2062,7 @@ func rotateOrthomaxNormalized(loadings *mat.Dense, gamma float64, maxIter int, t
 			if rotationDebugEnabled() {
 				insyra.LogDebug("stats", "Varimax", "Iter %d: singular sum ratio=%.8f", iter, ratio)
 			}
-			if ratio < 1.0+tol {
+			if iter >= minIter && math.Abs(ratio-1.0) < tol {
 				break
 			}
 		}
@@ -2556,7 +2566,7 @@ func computeOrthomaxGradient(loadings *mat.Dense, gamma float64) *mat.Dense {
 }
 
 // computeFactorScores computes factor scores
-func computeFactorScores(data, loadings, phi *mat.Dense, uniquenesses []float64, method FactorScoreMethod) *mat.Dense {
+func computeFactorScores(data, loadings, phi *mat.Dense, uniquenesses []float64, sigma mat.Matrix, method FactorScoreMethod) *mat.Dense {
 	if loadings == nil {
 		return nil
 	}
@@ -2570,7 +2580,7 @@ func computeFactorScores(data, loadings, phi *mat.Dense, uniquenesses []float64,
 		// No scores computed
 		return nil
 	case FactorScoreRegression:
-		if regressionScores := computeFactorScoresRegressionGeneral(data, loadings, phi, uniquenesses); regressionScores != nil {
+		if regressionScores := computeFactorScoresRegressionGeneral(data, loadings, phi, sigma); regressionScores != nil {
 			return regressionScores
 		}
 		insyra.LogWarning("stats", "FactorScores", "regression scoring general weights unavailable, fallback to simplified orthogonal weights")
@@ -2617,7 +2627,7 @@ func computeFactorScores(data, loadings, phi *mat.Dense, uniquenesses []float64,
 		var inv mat.Dense
 		if err := safeInvert(&inv, &temp2, ridgeRegularization); err != nil {
 			// Fallback to regression method
-			return computeFactorScores(data, loadings, phi, uniquenesses, FactorScoreRegression)
+			return computeFactorScores(data, loadings, phi, uniquenesses, sigma, FactorScoreRegression)
 		}
 
 		var temp3 mat.Dense
@@ -2657,13 +2667,13 @@ func computeFactorScores(data, loadings, phi *mat.Dense, uniquenesses []float64,
 
 	default:
 		// Default to regression method
-		return computeFactorScores(data, loadings, phi, uniquenesses, FactorScoreRegression)
+		return computeFactorScores(data, loadings, phi, uniquenesses, sigma, FactorScoreRegression)
 	}
 
 	return scores
 }
 
-func computeFactorScoresRegressionGeneral(data, loadings, phi *mat.Dense, uniquenesses []float64) *mat.Dense {
+func computeFactorScoresRegressionGeneral(data, loadings, phi *mat.Dense, sigma mat.Matrix) *mat.Dense {
 	if loadings == nil {
 		return nil
 	}
@@ -2674,6 +2684,14 @@ func computeFactorScoresRegressionGeneral(data, loadings, phi *mat.Dense, unique
 		return nil
 	}
 	m := loadCols
+	if sigma == nil {
+		insyra.LogWarning("stats", "FactorScores", "sigma matrix nil, cannot compute regression scores")
+		return nil
+	}
+	if r, c := sigma.Dims(); r != p || c != p {
+		insyra.LogWarning("stats", "FactorScores", "sigma dimension mismatch: expected %dx%d, got %dx%d", p, p, r, c)
+		return nil
+	}
 
 	var phiUsed mat.Dense
 	if phi != nil {
@@ -2697,38 +2715,17 @@ func computeFactorScoresRegressionGeneral(data, loadings, phi *mat.Dense, unique
 	}
 	insyra.LogDebug("stats", "FactorScores", "regression scoring dims: loadings %dx%d, phi %dx%d, data %dx%d", loadRows, loadCols, m, m, n, p)
 
-	psiVals := make([]float64, p)
-	for i := 0; i < p; i++ {
-		if i < len(uniquenesses) && uniquenesses[i] > uniquenessLowerBound {
-			psiVals[i] = uniquenesses[i]
-		} else {
-			sum := 0.0
-			for j := 0; j < m; j++ {
-				val := loadings.At(i, j)
-				sum += val * val
-			}
-			candidate := 1.0 - sum
-			if candidate < uniquenessLowerBound {
-				candidate = uniquenessLowerBound
-			}
-			psiVals[i] = candidate
-		}
+	var sigmaDense mat.Dense
+	sigmaDense.CloneFrom(sigma)
+
+	var sigmaInv mat.Dense
+	if err := safeInvert(&sigmaInv, &sigmaDense, 0); err != nil {
+		insyra.LogWarning("stats", "FactorScores", "sigma inversion failed: %v", err)
+		return nil
 	}
 
 	var lambdaPhi mat.Dense
 	lambdaPhi.Mul(loadings, &phiUsed)
-
-	var sigma mat.Dense
-	sigma.Mul(&lambdaPhi, loadings.T())
-	for i := 0; i < p; i++ {
-		sigma.Set(i, i, sigma.At(i, i)+psiVals[i])
-	}
-
-	var sigmaInv mat.Dense
-	if err := safeInvert(&sigmaInv, &sigma, ridgeRegularization); err != nil {
-		insyra.LogWarning("stats", "FactorScores", "sigma inversion failed: %v", err)
-		return nil
-	}
 
 	var sigmaInvLambdaPhi mat.Dense
 	sigmaInvLambdaPhi.Mul(&sigmaInv, &lambdaPhi)
@@ -2737,7 +2734,7 @@ func computeFactorScoresRegressionGeneral(data, loadings, phi *mat.Dense, unique
 	ltSigInvL.Mul(loadings.T(), &sigmaInvLambdaPhi)
 
 	var b mat.Dense
-	if err := safeInvert(&b, &ltSigInvL, ridgeRegularization); err != nil {
+	if err := safeInvert(&b, &ltSigInvL, 0); err != nil {
 		insyra.LogWarning("stats", "FactorScores", "weight inversion failed: %v", err)
 		return nil
 	}
@@ -2889,7 +2886,7 @@ func (m *FactorModel) FactorScores(dt insyra.IDataTable, method *FactorScoreMeth
 		})
 	}
 
-	scores := computeFactorScores(data, loadings, phiMat, uniquenesses, chosen)
+	scores := computeFactorScores(data, loadings, phiMat, uniquenesses, m.sigma, chosen)
 
 	// Generate factor column names
 	_, numFactors := loadings.Dims()
