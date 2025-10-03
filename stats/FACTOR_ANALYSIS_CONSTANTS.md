@@ -69,12 +69,46 @@ optim(..., method = "L-BFGS-B", lower = 0.005, upper = 1)
 ridgeRegularization = 1e-6  // 矩陣求逆的數值穩定性
 ```
 
-**用途**: safeInvert() 函數中用於改善矩陣條件數
+**用途**: safeInvert() 函數中用於改善矩陣條件數  
 **R 對應**: R 在因子分數計算時也使用類似的正規化策略
 
-## 修改摘要
+### 相關矩陣對角線檢查
 
-### 1. 旋轉演算法 (Rotation Algorithms)
+```go
+corrDiagTolerance    = 1e-6  // 對角線偏離 1.0 的容差
+corrDiagLogThreshold = 1e-8  // 記錄對角線偏離的閾值
+uniquenessLowerBound = 1e-9  // uniqueness 值下界
+```
+
+### 機器精度與 Eigenvalue 閾值
+
+```go
+machineEpsilon         = 2.220446e-16  // R's .Machine$double.eps
+eigenvalueMinThreshold = 2.220446e-14  // 100 * .Machine$double.eps
+```
+
+**R 對應**:
+
+```r
+eigens$values[eigens$values < .Machine$double.eps] <- 100 * .Machine$double.eps
+```
+
+**用途**: 防止非常小的 eigenvalue 導致數值不穩定
+
+### 優化控制參數
+
+```go
+optimFnScale  = 1.0   // R: fnscale = 1
+optimParScale = 0.01  // R: parscale = rep(0.01, ...)
+```
+
+**R 對應**:
+
+```r
+optim(..., control = c(list(fnscale = 1, parscale = rep(0.01, length(start)))))
+```
+
+## 修改摘要### 1. 旋轉演算法 (Rotation Algorithms)
 
 - **Varimax, Quartimax, Promax, Oblimin**
   - 最大迭代次數: 200 → **1000**
@@ -82,6 +116,10 @@ ridgeRegularization = 1e-6  // 矩陣求逆的數值穩定性
   - 目標函數改善閾值: 1e-10 → **epsilonSmall (1e-10)**
 
 ### 2. 因子提取 (Factor Extraction)
+
+- **所有方法 (PCA, PAF, ML, MINRES)**
+  - Eigenvalue 閾值: 0 → **eigenvalueMinThreshold (2.22e-14)**
+  - 對應 R: `eigens$values[eigens$values < .Machine$double.eps] <- 100 * .Machine$double.eps`
 
 - **PAF (Principal Axis Factoring)**
   - Communality 下界: 1e-6 → **epsilonMedium (1e-6)**
@@ -93,6 +131,7 @@ ridgeRegularization = 1e-6  // 矩陣求逆的數值穩定性
 - **MINRES (Minimum Residual)**
   - Psi 下界: 0.005 → **minresPsiLowerBound (0.005)**
   - 初始化 PAF 容差: 使用 extractionTolerance
+  - Eigenvalue 下界: 也使用 eigenvalueMinThreshold
 
 ### 3. 矩陣操作 (Matrix Operations)
 

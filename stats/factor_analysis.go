@@ -188,9 +188,9 @@ const (
 	extractionTolerance = 1e-6 // General convergence tolerance for factor extraction
 
 	// Rotation constants (aligned with R's GPArotation package defaults)
-	rotationMaxIter      = 1000 // GPArotation default: maxit=1000
-	rotationTolerance    = 1e-5 // GPArotation default: eps=1e-5
-	rotationGradientStep = 0.01 // Step size for rotation gradient descent
+	rotationMaxIter   = 1000 // GPArotation default: maxit=1000
+	rotationTolerance = 1e-5 // GPArotation default: eps=1e-5
+	// Note: rotationGradientStep not needed - we use adaptive line search
 
 	// Numerical stability constants
 	epsilonSmall  = 1e-10 // For matrix inversion and singularity checks
@@ -208,6 +208,16 @@ const (
 	corrDiagTolerance    = 1e-6 // Tolerance for diagonal deviation from 1.0
 	corrDiagLogThreshold = 1e-8 // Threshold for logging diagonal deviations
 	uniquenessLowerBound = 1e-9 // Lower bound for uniqueness values
+
+	// Machine epsilon and eigenvalue thresholds (aligned with R's .Machine$double.eps)
+	machineEpsilon         = 2.220446e-16         // R's .Machine$double.eps
+	eigenvalueMinThreshold = 100 * machineEpsilon // R: 100 * .Machine$double.eps (2.22e-14)
+
+	// Optimization control parameters (for reference - not currently used)
+	// R uses these in optim(control = list(fnscale = 1, parscale = rep(0.01, ...)))
+	// gonum's optimize package uses different control mechanisms
+	// optimFnScale  = 1.0
+	// optimParScale = 0.01
 )
 
 // -------------------------
@@ -734,7 +744,8 @@ func computePCALoadings(eigenvalues []float64, eigenvectors *mat.Dense, numFacto
 	loadings := mat.NewDense(p, numFactors, nil)
 	for i := 0; i < p; i++ {
 		for j := 0; j < numFactors; j++ {
-			if j < len(eigenvalues) && eigenvalues[j] > 0 {
+			// R: eigens$values[eigens$values < .Machine$double.eps] <- 100 * .Machine$double.eps
+			if j < len(eigenvalues) && eigenvalues[j] > eigenvalueMinThreshold {
 				loadings.Set(i, j, eigenvectors.At(i, j)*math.Sqrt(eigenvalues[j]))
 			} else {
 				loadings.Set(i, j, 0)
@@ -927,7 +938,8 @@ func extractPAF(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64,
 		loadings = mat.NewDense(p, numFactors, nil)
 		for i := 0; i < p; i++ {
 			for j := 0; j < numFactors; j++ {
-				if pairs[j].value > 0 {
+				// R: eigens$values[eigens$values < .Machine$double.eps] <- 100 * .Machine$double.eps
+				if pairs[j].value > eigenvalueMinThreshold {
 					loadings.Set(i, j, pairs[j].vector[i]*math.Sqrt(pairs[j].value))
 				} else {
 					loadings.Set(i, j, 0)
@@ -1346,7 +1358,8 @@ func extractMINRES(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float
 		loadings := mat.NewDense(p, numFactors, nil)
 		for i := 0; i < p; i++ {
 			for j := 0; j < numFactors; j++ {
-				if pairs[j].value > 0 {
+				// R: eigens$values[eigens$values < .Machine$double.eps] <- 100 * .Machine$double.eps
+				if pairs[j].value > eigenvalueMinThreshold {
 					loadings.Set(i, j, pairs[j].vector[i]*math.Sqrt(pairs[j].value))
 				} else {
 					loadings.Set(i, j, 0)
@@ -1427,8 +1440,9 @@ func extractMINRES(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float
 		loadings := mat.NewDense(p, numFactors, nil)
 		for i := 0; i < p; i++ {
 			for j := 0; j < numFactors; j++ {
-				if pairs[j].value > 0 {
-					loadings.Set(i, j, pairs[j].vector[i]*math.Sqrt(math.Max(pairs[j].value, 0)))
+				// R: eigens$values[eigens$values < .Machine$double.eps] <- 100 * .Machine$double.eps
+				if pairs[j].value > eigenvalueMinThreshold {
+					loadings.Set(i, j, pairs[j].vector[i]*math.Sqrt(math.Max(pairs[j].value, eigenvalueMinThreshold)))
 				} else {
 					loadings.Set(i, j, 0)
 				}
@@ -1566,7 +1580,8 @@ func extractMINRES(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float
 	loadings := mat.NewDense(p, numFactors, nil)
 	for i := 0; i < p; i++ {
 		for j := 0; j < numFactors; j++ {
-			if pairs[j].value > 0 {
+			// R: eigens$values[eigens$values < .Machine$double.eps] <- 100 * .Machine$double.eps
+			if pairs[j].value > eigenvalueMinThreshold {
 				loadings.Set(i, j, pairs[j].vector[i]*math.Sqrt(pairs[j].value))
 			} else {
 				loadings.Set(i, j, 0)
