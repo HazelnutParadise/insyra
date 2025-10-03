@@ -14,6 +14,13 @@ import (
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/isr"
 	"github.com/HazelnutParadise/insyra/stats"
+	"gonum.org/v1/gonum/mat"
+	"gonum.org/v1/gonum/stat"
+)
+
+const (
+	uniquenessLowerBoundTest = 1e-9
+	epsilonSmallTest         = 1e-10
 )
 
 func TestVarimaxRotationMatchesRReference(t *testing.T) {
@@ -111,6 +118,27 @@ func TestVarimaxRotationMatchesRReference(t *testing.T) {
 		if math.Abs(goCommunalities[i]-expectedCommunalities[i]) > 1e-3 {
 			t.Fatalf("communalities[%d] mismatch: got %.6f want %.6f", i, goCommunalities[i], expectedCommunalities[i])
 		}
+	}
+
+	if model.Scores == nil {
+		t.Fatal("model scores are nil")
+	}
+	goScores, err := dataTableToMatrix(model.Scores)
+	if err != nil {
+		t.Fatalf("convert go scores: %v", err)
+	}
+	if len(goScores) == 0 {
+		t.Fatal("go scores matrix empty")
+	}
+
+	expectedScores := computeExpectedRegressionScores(t, data, expectedLoadings, expectedCommunalities)
+	if len(expectedScores) != len(goScores) {
+		t.Fatalf("scores row mismatch: expected %d got %d", len(expectedScores), len(goScores))
+	}
+
+	maxScoreDiff := maxAbsDiff(goScores, expectedScores, bestPerm, bestSign)
+	if maxScoreDiff > 5e-3 {
+		t.Fatalf("factor scores mismatch: max abs diff %.6f exceeds tolerance", maxScoreDiff)
 	}
 }
 
@@ -218,6 +246,142 @@ func readVectorCSV(path string) ([]float64, error) {
 		vector[i-1] = val
 	}
 	return vector, nil
+}
+
+func computeExpectedRegressionScores(t *testing.T, data insyra.IDataTable, loadings [][]float64, communalities []float64) [][]float64 {
+	t.Helper()
+	rawData, err := dataTableToMatrix(data)
+	if err != nil {
+		t.Fatalf("convert raw data: %v", err)
+	}
+	if len(rawData) == 0 || len(rawData[0]) == 0 {
+		t.Fatal("raw data matrix is empty")
+	}
+	n := len(rawData)
+	p := len(rawData[0])
+
+	standardized := mat.NewDense(n, p, nil)
+	col := make([]float64, n)
+	for j := 0; j < p; j++ {
+		for i := 0; i < n; i++ {
+			col[i] = rawData[i][j]
+		}
+		mean, std := stat.MeanStdDev(col, nil)
+		if std == 0 {
+			std = 1
+		}
+		for i := 0; i < n; i++ {
+			standardized.Set(i, j, (rawData[i][j]-mean)/std)
+		}
+	}
+
+	if len(loadings) != p {
+		t.Fatalf("loadings row mismatch for score check: expected %d got %d", p, len(loadings))
+	}
+	m := len(loadings[0])
+	lambda := mat.NewDense(p, m, nil)
+	for i := 0; i < p; i++ {
+		for j := 0; j < m; j++ {
+			lambda.Set(i, j, loadings[i][j])
+		}
+	}
+
+	phi := mat.NewDense(m, m, nil)
+	for i := 0; i < m; i++ {
+		phi.Set(i, i, 1)
+	}
+
+	var lambdaPhi mat.Dense
+	lambdaPhi.Mul(lambda, phi)
+
+	psiVals := make([]float64, p)
+	for i := 0; i < p; i++ {
+		uniq := 1.0
+		if i < len(communalities) {
+			uniq = 1.0 - communalities[i]
+		}
+		if uniq < uniquenessLowerBoundTest {
+			uniq = uniquenessLowerBoundTest
+		}
+		psiVals[i] = uniq
+	}
+
+	sigma := mat.NewDense(p, p, nil)
+	sigma.Mul(&lambdaPhi, lambda.T())
+	for i := 0; i < p; i++ {
+		sigma.Set(i, i, sigma.At(i, i)+psiVals[i])
+	}
+
+	var sigmaInv mat.Dense
+	if err := safeInvertTest(&sigmaInv, sigma, 1e-6); err != nil {
+		t.Fatalf("invert sigma: %v", err)
+	}
+
+	var sigmaInvLambdaPhi mat.Dense
+	sigmaInvLambdaPhi.Mul(&sigmaInv, &lambdaPhi)
+
+	var ltSigInvL mat.Dense
+	ltSigInvL.Mul(lambda.T(), &sigmaInvLambdaPhi)
+
+	var weightsInnerInv mat.Dense
+	if err := safeInvertTest(&weightsInnerInv, &ltSigInvL, 1e-6); err != nil {
+		t.Fatalf("invert weights inner: %v", err)
+	}
+
+	var weights mat.Dense
+	weights.Mul(&sigmaInvLambdaPhi, &weightsInnerInv)
+
+	var expectedDense mat.Dense
+	expectedDense.Mul(standardized, &weights)
+
+	expected := make([][]float64, n)
+	for i := 0; i < n; i++ {
+		expected[i] = make([]float64, m)
+		for j := 0; j < m; j++ {
+			expected[i][j] = expectedDense.At(i, j)
+		}
+	}
+	return expected
+}
+
+func safeInvertTest(dst *mat.Dense, src mat.Matrix, ridge float64) error {
+	var a mat.Dense
+	a.CloneFrom(src)
+	r, c := a.Dims()
+	if r == c && ridge > 0 {
+		for i := 0; i < r; i++ {
+			a.Set(i, i, a.At(i, i)+ridge)
+		}
+	}
+	if err := dst.Inverse(&a); err != nil {
+		return pseudoInverseTest(dst, &a)
+	}
+	return nil
+}
+
+func pseudoInverseTest(dst *mat.Dense, src mat.Matrix) error {
+	var svd mat.SVD
+	if !svd.Factorize(src, mat.SVDThin) {
+		return fmt.Errorf("pseudo-inverse failed")
+	}
+	vals := svd.Values(nil)
+	var u, vt mat.Dense
+	svd.UTo(&u)
+	svd.VTo(&vt)
+	diag := mat.NewDense(len(vals), len(vals), nil)
+	for i, val := range vals {
+		if val > epsilonSmallTest {
+			diag.Set(i, i, 1/val)
+		}
+	}
+	var v mat.Dense
+	v.CloneFrom(vt.T())
+	var temp mat.Dense
+	temp.Mul(&v, diag)
+	var uT mat.Dense
+	uT.CloneFrom(u.T())
+	dst.Mul(&temp, &uT)
+	return nil
 }
 
 func permutations(n int) [][]int {

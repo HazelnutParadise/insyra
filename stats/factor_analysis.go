@@ -2570,13 +2570,12 @@ func computeFactorScores(data, loadings, phi *mat.Dense, uniquenesses []float64,
 		// No scores computed
 		return nil
 	case FactorScoreRegression:
-		if phi != nil {
-			if obliqueScores := computeFactorScoresRegressionOblique(data, loadings, phi, uniquenesses); obliqueScores != nil {
-				return obliqueScores
-			}
-			insyra.LogWarning("stats", "FactorScores", "regression scoring oblique fallback to orthogonal weights")
+		if regressionScores := computeFactorScoresRegressionGeneral(data, loadings, phi, uniquenesses); regressionScores != nil {
+			return regressionScores
 		}
-		// Regression method (orthogonal): Scores = X * Loadings * (Loadings' * Loadings)^-1
+		insyra.LogWarning("stats", "FactorScores", "regression scoring general weights unavailable, fallback to simplified orthogonal weights")
+
+		// Simplified orthogonal regression fallback: Scores = X * Loadings * (Loadings' * Loadings)^-1
 		var loadingsTrans mat.Dense
 		loadingsTrans.CloneFrom(loadings.T())
 
@@ -2585,7 +2584,6 @@ func computeFactorScores(data, loadings, phi *mat.Dense, uniquenesses []float64,
 
 		var inv mat.Dense
 		if err := safeInvert(&inv, &prod, ridgeRegularization); err != nil {
-			// If inversion fails, return zero scores
 			return scores
 		}
 
@@ -2665,107 +2663,90 @@ func computeFactorScores(data, loadings, phi *mat.Dense, uniquenesses []float64,
 	return scores
 }
 
-func computeFactorScoresRegressionOblique(data, loadings, phi *mat.Dense, uniquenesses []float64) *mat.Dense {
-	if loadings == nil || phi == nil {
+func computeFactorScoresRegressionGeneral(data, loadings, phi *mat.Dense, uniquenesses []float64) *mat.Dense {
+	if loadings == nil {
 		return nil
 	}
 	n, p := data.Dims()
 	loadRows, loadCols := loadings.Dims()
-	m := loadCols
-	phiRows, phiCols := phi.Dims()
-	insyra.LogInfo("stats", "FactorScores", "oblique scoring dims: loadings %dx%d, phi %dx%d, data %dx%d", loadRows, loadCols, phiRows, phiCols, n, p)
-	if phiRows != m || phiCols != m {
-		insyra.LogWarning("stats", "FactorScores", "phi dimension mismatch: expected %dx%d, got %dx%d", m, m, phiRows, phiCols)
+	if loadRows != p {
+		insyra.LogWarning("stats", "FactorScores", "loadings row mismatch: expected %d got %d", p, loadRows)
 		return nil
 	}
+	m := loadCols
+
+	var phiUsed mat.Dense
+	if phi != nil {
+		phiRows, phiCols := phi.Dims()
+		if phiRows != m || phiCols != m {
+			insyra.LogWarning("stats", "FactorScores", "phi dimension mismatch: expected %dx%d, got %dx%d", m, m, phiRows, phiCols)
+			return nil
+		}
+		phiUsed.CloneFrom(phi)
+	} else {
+		phiUsed.ReuseAs(m, m)
+		for i := 0; i < m; i++ {
+			for j := 0; j < m; j++ {
+				if i == j {
+					phiUsed.Set(i, j, 1)
+				} else {
+					phiUsed.Set(i, j, 0)
+				}
+			}
+		}
+	}
+	insyra.LogDebug("stats", "FactorScores", "regression scoring dims: loadings %dx%d, phi %dx%d, data %dx%d", loadRows, loadCols, m, m, n, p)
 
 	psiVals := make([]float64, p)
 	for i := 0; i < p; i++ {
-		if i < len(uniquenesses) && uniquenesses[i] > 0 {
+		if i < len(uniquenesses) && uniquenesses[i] > uniquenessLowerBound {
 			psiVals[i] = uniquenesses[i]
 		} else {
-			psiVals[i] = 1.0
-		}
-	}
-	lambdaPhi := mat.NewDense(p, m, nil)
-	for i := 0; i < p; i++ {
-		for j := 0; j < m; j++ {
 			sum := 0.0
-			for k := 0; k < m; k++ {
-				sum += loadings.At(i, k) * phi.At(k, j)
+			for j := 0; j < m; j++ {
+				val := loadings.At(i, j)
+				sum += val * val
 			}
-			lambdaPhi.Set(i, j, sum)
-		}
-	}
-	common := mat.NewDense(p, p, nil)
-	for i := 0; i < p; i++ {
-		for j := 0; j < p; j++ {
-			sum := 0.0
-			for k := 0; k < m; k++ {
-				sum += lambdaPhi.At(i, k) * loadings.At(j, k)
+			candidate := 1.0 - sum
+			if candidate < uniquenessLowerBound {
+				candidate = uniquenessLowerBound
 			}
-			common.Set(i, j, sum)
+			psiVals[i] = candidate
 		}
 	}
 
-	sigma := mat.NewDense(p, p, nil)
+	var lambdaPhi mat.Dense
+	lambdaPhi.Mul(loadings, &phiUsed)
+
+	var sigma mat.Dense
+	sigma.Mul(&lambdaPhi, loadings.T())
 	for i := 0; i < p; i++ {
-		for j := 0; j < p; j++ {
-			val := common.At(i, j)
-			if i == j {
-				val += psiVals[i]
-			}
-			sigma.Set(i, j, val)
-		}
+		sigma.Set(i, i, sigma.At(i, i)+psiVals[i])
 	}
 
 	var sigmaInv mat.Dense
-	if err := safeInvert(&sigmaInv, sigma, ridgeRegularization); err != nil {
+	if err := safeInvert(&sigmaInv, &sigma, ridgeRegularization); err != nil {
 		insyra.LogWarning("stats", "FactorScores", "sigma inversion failed: %v", err)
 		return nil
 	}
 
-	sigmaInvLambdaPhi := mat.NewDense(p, m, nil)
-	for i := 0; i < p; i++ {
-		for j := 0; j < m; j++ {
-			sum := 0.0
-			for k := 0; k < p; k++ {
-				sum += sigmaInv.At(i, k) * lambdaPhi.At(k, j)
-			}
-			sigmaInvLambdaPhi.Set(i, j, sum)
-		}
-	}
+	var sigmaInvLambdaPhi mat.Dense
+	sigmaInvLambdaPhi.Mul(&sigmaInv, &lambdaPhi)
 
-	ltSigInvL := mat.NewDense(m, m, nil)
-	for i := 0; i < m; i++ {
-		for j := 0; j < m; j++ {
-			sum := 0.0
-			for k := 0; k < p; k++ {
-				sum += loadings.At(k, i) * sigmaInvLambdaPhi.At(k, j)
-			}
-			ltSigInvL.Set(i, j, sum)
-		}
-	}
+	var ltSigInvL mat.Dense
+	ltSigInvL.Mul(loadings.T(), &sigmaInvLambdaPhi)
 
 	var b mat.Dense
-	if err := safeInvert(&b, ltSigInvL, ridgeRegularization); err != nil {
+	if err := safeInvert(&b, &ltSigInvL, ridgeRegularization); err != nil {
 		insyra.LogWarning("stats", "FactorScores", "weight inversion failed: %v", err)
 		return nil
 	}
 
-	w := mat.NewDense(p, m, nil)
-	for i := 0; i < p; i++ {
-		for j := 0; j < m; j++ {
-			sum := 0.0
-			for k := 0; k < m; k++ {
-				sum += sigmaInvLambdaPhi.At(i, k) * b.At(k, j)
-			}
-			w.Set(i, j, sum)
-		}
-	}
+	var weights mat.Dense
+	weights.Mul(&sigmaInvLambdaPhi, &b)
 
 	scores := mat.NewDense(n, m, nil)
-	scores.Mul(data, w)
+	scores.Mul(data, &weights)
 
 	return scores
 }
