@@ -1829,6 +1829,67 @@ func rotateFactors(loadings *mat.Dense, opt FactorRotationOptions) (*mat.Dense, 
 	}
 }
 
+// rotationDebugEnabled reports whether detailed rotation diagnostics should be emitted.
+func rotationDebugEnabled() bool {
+	return insyra.Config.GetLogLevel() <= insyra.LogLevelDebug
+}
+
+// logDenseSample prints a compact slice of a dense matrix for debugging purposes.
+func logDenseSample(funcName, label string, m mat.Matrix, maxRows, maxCols int) {
+	if !rotationDebugEnabled() {
+		return
+	}
+	r, c := m.Dims()
+	rows := minInt(r, maxRows)
+	cols := minInt(c, maxCols)
+	var builder strings.Builder
+	builder.WriteString(label)
+	builder.WriteString(fmt.Sprintf(" [%dx%d] ->", r, c))
+	for i := 0; i < rows; i++ {
+		builder.WriteString(" [")
+		for j := 0; j < cols; j++ {
+			builder.WriteString(fmt.Sprintf(" %.6f", m.At(i, j)))
+		}
+		if cols < c {
+			builder.WriteString(" …")
+		}
+		builder.WriteString("]")
+	}
+	if rows < r {
+		builder.WriteString(" …")
+	}
+	insyra.LogDebug("stats", funcName, builder.String())
+}
+
+// logVecSample prints a compact slice of a vector for debugging purposes.
+func logVecSample(funcName, label string, v *mat.VecDense, maxLen int) {
+	if !rotationDebugEnabled() || v == nil {
+		return
+	}
+	length := minInt(v.Len(), maxLen)
+	var builder strings.Builder
+	builder.WriteString(label)
+	builder.WriteString(fmt.Sprintf(" [%d] -> [", v.Len()))
+	for i := 0; i < length; i++ {
+		if i > 0 {
+			builder.WriteString(" ")
+		}
+		builder.WriteString(fmt.Sprintf("%.6f", v.AtVec(i)))
+	}
+	if length < v.Len() {
+		builder.WriteString(" …")
+	}
+	builder.WriteString("]")
+	insyra.LogDebug("stats", funcName, builder.String())
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 // kaiserNormalize applies Kaiser normalization to the loading matrix by scaling rows to unit length.
 func kaiserNormalize(L *mat.Dense) (*mat.Dense, *mat.VecDense) {
 	r, c := L.Dims()
@@ -1873,6 +1934,10 @@ func rotateOrthomax(loadings *mat.Dense, gamma float64, maxIter int, tol float64
 		return nil, nil, err
 	}
 	rotated := kaiserDenorm(rotatedNorm, weights)
+	if rotationDebugEnabled() {
+		logDenseSample("Varimax", "orthomax rotated (pre-sign)", rotated, 6, 6)
+		logDenseSample("Varimax", "orthomax rotation matrix (pre-sign)", rotation, 6, 6)
+	}
 
 	// Apply sign standardization to match R's convention
 	// Reflect each column so that its first non-zero element is positive
@@ -1891,6 +1956,9 @@ func rotateOrthomax(loadings *mat.Dense, gamma float64, maxIter int, tol float64
 		}
 		// If first non-zero element is negative, flip the entire column
 		if firstNonZero < 0 {
+			if rotationDebugEnabled() {
+				insyra.LogDebug("stats", "Varimax", "Reflecting column %d to enforce positive leading element (value %.6f)", j, firstNonZero)
+			}
 			for i := 0; i < p; i++ {
 				rotated.Set(i, j, -rotated.At(i, j))
 			}
@@ -1899,6 +1967,10 @@ func rotateOrthomax(loadings *mat.Dense, gamma float64, maxIter int, tol float64
 				rotation.Set(i, j, -rotation.At(i, j))
 			}
 		}
+	}
+	if rotationDebugEnabled() {
+		logDenseSample("Varimax", "orthomax rotated (post-sign)", rotated, 6, 6)
+		logDenseSample("Varimax", "orthomax rotation matrix (post-sign)", rotation, 6, 6)
 	}
 
 	return rotated, rotation, nil
@@ -1910,6 +1982,10 @@ func rotateOrthomax(loadings *mat.Dense, gamma float64, maxIter int, tol float64
 // Aligned with R's GPArotation::GPForth
 func rotateOrthomaxNormalized(loadings *mat.Dense, gamma float64, maxIter int, tol float64) (*mat.Dense, *mat.Dense, *mat.VecDense, error) {
 	Lnorm, w := kaiserNormalize(loadings)
+	if rotationDebugEnabled() {
+		logDenseSample("Varimax", "kaiser-normalized loadings", Lnorm, 6, 6)
+		logVecSample("Varimax", "kaiser weights", w, 10)
+	}
 
 	p, m := Lnorm.Dims()
 
@@ -1918,20 +1994,35 @@ func rotateOrthomaxNormalized(loadings *mat.Dense, gamma float64, maxIter int, t
 	for i := 0; i < m; i++ {
 		rotation.Set(i, i, 1)
 	}
+	if rotationDebugEnabled() {
+		logDenseSample("Varimax", "initial rotation (identity)", rotation, 6, 6)
+	}
 
 	// Compute initial rotated loadings: L = A %*% Tmat
 	rotated := mat.NewDense(p, m, nil)
 	rotated.Mul(Lnorm, rotation)
+	if rotationDebugEnabled() {
+		logDenseSample("Varimax", "initial rotated loadings", rotated, 6, 6)
+	}
 
 	// Initialize step length (R: al <- 1)
 	al := 1.0
 
 	// Compute initial objective function
 	f := orthomaxObjective(rotated, gamma)
+	if rotationDebugEnabled() {
+		insyra.LogDebug("stats", "Varimax", "Initial objective=%.10f", f)
+	}
 
 	for iter := 0; iter < maxIter; iter++ {
+		if rotationDebugEnabled() {
+			insyra.LogDebug("stats", "Varimax", "Iter %d: objective=%.10f step=%.6f", iter, f, al)
+		}
 		// Compute gradient (R: vgQ.quartimax or vgQ.varimax)
 		grad := computeOrthomaxGradient(rotated, gamma)
+		if rotationDebugEnabled() {
+			logDenseSample("Varimax", fmt.Sprintf("grad iter %d", iter), grad, 6, 6)
+		}
 
 		// Compute G = -t(t(L) %*% VgQ$Gq %*% Tmat)
 		var G mat.Dense
@@ -1939,6 +2030,9 @@ func rotateOrthomaxNormalized(loadings *mat.Dense, gamma float64, maxIter int, t
 		temp.Mul(rotated.T(), grad)
 		temp.Mul(&temp, rotation)
 		G.Scale(-1.0, temp.T())
+		if rotationDebugEnabled() {
+			logDenseSample("Varimax", fmt.Sprintf("Gp raw iter %d", iter), &G, 6, 6)
+		}
 
 		// Compute gradient projection (R: Gp <- G - Tmat %*% diag(...))
 		Gp := mat.NewDense(m, m, nil)
@@ -1958,6 +2052,9 @@ func rotateOrthomaxNormalized(loadings *mat.Dense, gamma float64, maxIter int, t
 				Gp.Set(i, j, Gp.At(i, j)-rotation.At(i, j)*diagVals[j])
 			}
 		}
+		if rotationDebugEnabled() {
+			logDenseSample("Varimax", fmt.Sprintf("Gp iter %d", iter), Gp, 6, 6)
+		}
 
 		// Compute gradient norm (R: s <- sqrt(sum(diag(crossprod(Gp)))))
 		s := 0.0
@@ -1967,9 +2064,15 @@ func rotateOrthomaxNormalized(loadings *mat.Dense, gamma float64, maxIter int, t
 			}
 		}
 		s = math.Sqrt(s)
+		if rotationDebugEnabled() {
+			insyra.LogDebug("stats", "Varimax", "Iter %d: gradient norm=%.10f", iter, s)
+		}
 
 		// Check convergence
 		if s < tol {
+			if rotationDebugEnabled() {
+				insyra.LogDebug("stats", "Varimax", "Iter %d: gradient norm %.10f < tol %.10f, stopping", iter, s, tol)
+			}
 			break
 		}
 
@@ -1986,6 +2089,9 @@ func rotateOrthomaxNormalized(loadings *mat.Dense, gamma float64, maxIter int, t
 					X.Set(i, j, rotation.At(i, j)-al*Gp.At(i, j))
 				}
 			}
+			if rotationDebugEnabled() {
+				logDenseSample("Varimax", fmt.Sprintf("X candidate iter %d.%d", iter, innerIter), X, 6, 6)
+			}
 
 			// R: Orthogonalize via QR decomposition with improved stability
 			// Tmatt <- qr.Q(qr(X))
@@ -1994,6 +2100,9 @@ func rotateOrthomaxNormalized(loadings *mat.Dense, gamma float64, maxIter int, t
 
 			var Tmatt mat.Dense
 			qr.QTo(&Tmatt)
+			if rotationDebugEnabled() {
+				logDenseSample("Varimax", fmt.Sprintf("Tmatt iter %d.%d", iter, innerIter), &Tmatt, 6, 6)
+			}
 
 			// Ensure proper orthogonality (numerical stability improvement)
 			// Re-orthogonalize if needed
@@ -2010,6 +2119,9 @@ func rotateOrthomaxNormalized(loadings *mat.Dense, gamma float64, maxIter int, t
 				}
 				// If orthogonality degraded, apply SVD-based correction
 				if maxOffDiag > 1e-10 {
+					if rotationDebugEnabled() {
+						insyra.LogDebug("stats", "Varimax", "Iter %d.%d: max off-diagonal %.10f, applying SVD correction", iter, innerIter, maxOffDiag)
+					}
 					var svd mat.SVD
 					if svd.Factorize(&Tmatt, mat.SVDFull) {
 						var U, V mat.Dense
@@ -2023,6 +2135,9 @@ func rotateOrthomaxNormalized(loadings *mat.Dense, gamma float64, maxIter int, t
 			// R: L <- A %*% Tmatt
 			var trialRotated mat.Dense
 			trialRotated.Mul(Lnorm, &Tmatt)
+			if rotationDebugEnabled() {
+				logDenseSample("Varimax", fmt.Sprintf("trial rotated iter %d.%d", iter, innerIter), &trialRotated, 6, 6)
+			}
 
 			// Compute new objective
 			trialF := orthomaxObjective(&trialRotated, gamma)
@@ -2030,6 +2145,9 @@ func rotateOrthomaxNormalized(loadings *mat.Dense, gamma float64, maxIter int, t
 			// R: improvement <- f - VgQt$f
 			// R: if (improvement > 0.5 * s^2 * al) break
 			improvement := f - trialF
+			if rotationDebugEnabled() {
+				insyra.LogDebug("stats", "Varimax", "Iter %d.%d: trial objective=%.10f improvement=%.10f threshold=%.10f", iter, innerIter, trialF, improvement, 0.5*s*s*al)
+			}
 
 			if improvement > 0.5*s*s*al {
 				// Accept the step
@@ -2037,16 +2155,30 @@ func rotateOrthomaxNormalized(loadings *mat.Dense, gamma float64, maxIter int, t
 				rotated.Copy(&trialRotated)
 				f = trialF
 				improved = true
+				if rotationDebugEnabled() {
+					insyra.LogDebug("stats", "Varimax", "Iter %d.%d: accepted step with al=%.10f new objective=%.10f", iter, innerIter, al, f)
+				}
 				break
 			}
 
 			// R: al <- al/2
 			al = al / 2.0
+			if rotationDebugEnabled() {
+				insyra.LogDebug("stats", "Varimax", "Iter %d.%d: reducing step size to %.10f", iter, innerIter, al)
+			}
 		}
 
 		if !improved {
+			if rotationDebugEnabled() {
+				insyra.LogDebug("stats", "Varimax", "Iter %d: no improvement achieved, terminating", iter)
+			}
 			break
 		}
+	}
+	if rotationDebugEnabled() {
+		insyra.LogDebug("stats", "Varimax", "Final objective=%.10f", f)
+		logDenseSample("Varimax", "final rotation matrix", rotation, 6, 6)
+		logDenseSample("Varimax", "final rotated loadings", rotated, 6, 6)
 	}
 
 	return rotated, rotation, w, nil
