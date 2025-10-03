@@ -181,8 +181,34 @@ func DefaultFactorAnalysisOptions() FactorAnalysisOptions {
 	}
 }
 
-// internal default tolerance used when Tol is unspecified (Tol < 0)
-const internalTolDefault = 1e-6
+// Internal constants aligned with R's psych::fa and GPArotation package
+const (
+	// Convergence tolerance for extraction methods (PAF, ML, MINRES)
+	// R psych uses different tolerances for different contexts
+	extractionTolerance = 1e-6 // General convergence tolerance for factor extraction
+
+	// Rotation constants (aligned with R's GPArotation package defaults)
+	rotationMaxIter      = 1000 // GPArotation default: maxit=1000
+	rotationTolerance    = 1e-5 // GPArotation default: eps=1e-5
+	rotationGradientStep = 0.01 // Step size for rotation gradient descent
+
+	// Numerical stability constants
+	epsilonSmall  = 1e-10 // For matrix inversion and singularity checks
+	epsilonTiny   = 1e-12 // For near-zero checks (e.g., row norm)
+	epsilonMedium = 1e-6  // For communality lower bound and sum checks
+
+	// MINRES optimization constants (aligned with R's optim L-BFGS-B)
+	minresPsiLowerBound = 0.005 // R: lower = 0.005 in optim()
+	minresPsiUpperBound = 1.0   // R: upper = 1 in optim()
+
+	// Ridge regularization for matrix inversion
+	ridgeRegularization = 1e-6 // Small ridge for numerical stability
+
+	// Correlation matrix diagonal checks
+	corrDiagTolerance    = 1e-6 // Tolerance for diagonal deviation from 1.0
+	corrDiagLogThreshold = 1e-8 // Threshold for logging diagonal deviations
+	uniquenessLowerBound = 1e-9 // Lower bound for uniqueness values
+)
 
 // -------------------------
 // Main Function
@@ -336,11 +362,11 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 			if delta > maxDiagDeviation {
 				maxDiagDeviation = delta
 			}
-			if delta > 1e-6 {
+			if delta > corrDiagTolerance {
 				corrMatrix.SetSym(i, i, 1.0)
 			}
 		}
-		if maxDiagDeviation > 1e-8 {
+		if maxDiagDeviation > corrDiagLogThreshold {
 			insyra.LogDebug("stats", "FactorAnalysis", "correlation diag max deviation = %.6g", maxDiagDeviation)
 		}
 	}
@@ -400,7 +426,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	// Use internal tolerance by default. Users who previously used the
 	// (now-removed) Tol field can emulate disabling tolerance by setting
 	// MaxIter explicitly.
-	tolVal := internalTolDefault
+	tolVal := extractionTolerance
 
 	// Step 6: Extract factors
 	// Convert SymDense to Dense for extraction functions
@@ -509,8 +535,8 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		}
 		communalities[i] = hi2
 		uniq := diag - hi2
-		if uniq < 1e-9 {
-			uniq = 1e-9
+		if uniq < uniquenessLowerBound {
+			uniq = uniquenessLowerBound
 		}
 		uniquenesses[i] = uniq
 	}
@@ -837,7 +863,7 @@ func extractPAF(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64,
 		maxIter = 100
 	}
 	if tol <= 0 {
-		tol = internalTolDefault
+		tol = extractionTolerance
 	}
 
 	// Initialize communalities with SMC (Squared Multiple Correlation)
@@ -923,8 +949,8 @@ func extractPAF(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64,
 			}
 			// In R's PAF, communalities can equal the diagonal
 			diag := corrMatrix.At(i, i)
-			if sum < 1e-6 {
-				sum = 1e-6
+			if sum < epsilonMedium {
+				sum = epsilonMedium
 			}
 			if sum > diag {
 				sum = diag // Allow communalities to reach diagonal
@@ -1058,11 +1084,11 @@ func extractML(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64, 
 		maxIter = 100
 	}
 	if tol <= 0 {
-		tol = internalTolDefault
+		tol = extractionTolerance
 	}
 
 	// Initialize with PAF
-	initial, _, _, err := extractPAF(corrMatrix, numFactors, min(maxIter, 50), math.Max(tol, internalTolDefault), 0.001)
+	initial, _, _, err := extractPAF(corrMatrix, numFactors, min(maxIter, 50), math.Max(tol, extractionTolerance), 0.001)
 	if err != nil || initial == nil {
 		// Fall back to PCA loadings
 		var eig mat.EigenSym
@@ -1099,7 +1125,7 @@ func extractML(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64, 
 	loadings := mat.Dense{}
 	loadings.CloneFrom(initial)
 
-	psMin := 1e-6
+	psMin := epsilonMedium // Aligned with R psych constant
 	// baseRidge := 1e-5
 	// innerRidge := 1e-6
 	converged := false
@@ -1246,7 +1272,7 @@ func extractMINRES(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float
 	}
 
 	if tol <= 0 {
-		tol = internalTolDefault
+		tol = extractionTolerance
 	}
 
 	// Step 1: Compute SMC (Squared Multiple Correlation) for initial communalities
@@ -1440,9 +1466,10 @@ func extractMINRES(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float
 	// Use LBFGS (gonum doesn't have box constraints built-in, but we'll use a penalty approach)
 	method := &optimize.LBFGS{}
 
-	// Apply box constraints via transformation: psi_i must be in [0.005, upper]
+	// Apply box constraints via transformation: psi_i must be in [minresPsiLowerBound, upper]
+	// R uses: optim(..., method = "L-BFGS-B", lower = 0.005, upper = upper)
 	// We'll use a barrier/penalty approach
-	lower := 0.005
+	lower := minresPsiLowerBound // R: lower = 0.005 in optim()
 	transformedStart := make([]float64, p)
 	for i := 0; i < p; i++ {
 		if start[i] < lower {
@@ -1644,9 +1671,9 @@ func clampLoadingsToDiag(loadings *mat.Dense, corrMatrix *mat.Dense) {
 			val := loadings.At(i, j)
 			sum += val * val
 		}
-		limit := diag - 1e-6
-		if limit <= 1e-6 {
-			limit = 1e-6
+		limit := diag - epsilonMedium
+		if limit <= epsilonMedium {
+			limit = epsilonMedium
 		}
 		if sum > limit {
 			scale := math.Sqrt(limit / sum)
@@ -1668,7 +1695,7 @@ func normalizeToCorrelation(m *mat.Dense) *mat.Dense {
 	hasZeroDiag := false
 	for i := 0; i < r; i++ {
 		v := m.At(i, i)
-		if v <= 1e-10 {
+		if v <= epsilonSmall {
 			// Diagonal is essentially zero - this factor is degenerate
 			// Just return identity correlation for this factor
 			d[i] = 1.0
@@ -1685,7 +1712,7 @@ func normalizeToCorrelation(m *mat.Dense) *mat.Dense {
 			for j := 0; j < r; j++ {
 				if i == j {
 					out.Set(i, j, 1.0)
-				} else if d[i] > 1e-10 && d[j] > 1e-10 {
+				} else if d[i] > epsilonSmall && d[j] > epsilonSmall {
 					out.Set(i, j, m.At(i, j)/(d[i]*d[j]))
 				} else {
 					out.Set(i, j, 0.0)
@@ -1717,8 +1744,11 @@ func rotateFactors(loadings *mat.Dense, opt FactorRotationOptions) (*mat.Dense, 
 		return loadings, nil, nil
 	}
 
-	rotMaxIter := 200
-	rotTol := 1e-6
+	// Rotation parameters aligned with R's GPArotation package defaults:
+	// maxit = 1000, eps = 1e-5
+	rotMaxIter := rotationMaxIter
+	rotTol := rotationTolerance
+
 	switch opt.Method {
 	case FactorRotationVarimax:
 		rotated, rotMatrix, err := rotateOrthomax(loadings, 1.0, rotMaxIter, rotTol)
@@ -1774,7 +1804,7 @@ func kaiserNormalize(L *mat.Dense) (*mat.Dense, *mat.VecDense) {
 			s += v * v
 		}
 		if s <= 0 {
-			s = 1e-12
+			s = epsilonTiny // Use defined constant instead of hardcoded value
 		}
 		wi := math.Sqrt(s)
 		w.SetVec(i, wi)
@@ -1878,7 +1908,7 @@ func rotateOrthomaxNormalized(loadings *mat.Dense, gamma float64, maxIter int, t
 			trialRotated.Mul(Lnorm, &q)
 
 			obj := orthomaxObjective(&trialRotated, gamma)
-			if obj > prevObj+1e-10 {
+			if obj > prevObj+epsilonSmall {
 				rotation.Copy(&q)
 				rotated.CloneFrom(&trialRotated)
 				prevObj = obj
@@ -1934,7 +1964,7 @@ func rotatePromax(loadings *mat.Dense, kappa float64, maxIter int, tol float64) 
 	L0tL0.Mul(&L0t, rotatedNorm)
 
 	var L0tL0Inv mat.Dense
-	if err := safeInvert(&L0tL0Inv, &L0tL0, 1e-10); err != nil {
+	if err := safeInvert(&L0tL0Inv, &L0tL0, epsilonSmall); err != nil {
 		return nil, nil, nil, fmt.Errorf("promax: unable to invert L0'L0: %w", err)
 	}
 
@@ -1959,7 +1989,7 @@ func rotatePromax(loadings *mat.Dense, kappa float64, maxIter int, tol float64) 
 	TTt.Mul(trans.T(), &trans)
 
 	var phiInv mat.Dense
-	if err := safeInvert(&phiInv, &TTt, 1e-10); err != nil {
+	if err := safeInvert(&phiInv, &TTt, epsilonSmall); err != nil {
 		return nil, nil, nil, fmt.Errorf("promax: unable to compute Phi: %w", err)
 	}
 
@@ -1980,7 +2010,7 @@ func rotatePromax(loadings *mat.Dense, kappa float64, maxIter int, tol float64) 
 	scales := make([]float64, m)
 	for j := 0; j < m; j++ {
 		diag := TTt.At(j, j)
-		if diag > 1e-12 {
+		if diag > epsilonTiny {
 			scales[j] = 1.0 / math.Sqrt(diag)
 		} else {
 			scales[j] = 1.0
@@ -2055,7 +2085,7 @@ func rotateOblimin(loadings *mat.Dense, delta float64, maxIter int, tol float64)
 			trialRot.Mul(loadings, &trial)
 
 			obj := obliminObjective(&trialRot, delta)
-			if obj > prevObj+1e-10 {
+			if obj > prevObj+epsilonSmall {
 				trans.CloneFrom(&trial)
 				rotated.CloneFrom(&trialRot)
 				prevObj = obj
@@ -2085,7 +2115,7 @@ func rotateOblimin(loadings *mat.Dense, delta float64, maxIter int, tol float64)
 	diagScales := make([]float64, m)
 	for j := 0; j < m; j++ {
 		diagVal := phi.At(j, j)
-		if diagVal <= 1e-12 {
+		if diagVal <= epsilonTiny {
 			diagScales[j] = 1.0
 		} else {
 			diagScales[j] = math.Sqrt(diagVal)
@@ -2150,7 +2180,7 @@ func pseudoInverse(dst *mat.Dense, src mat.Matrix) error {
 	svd.VTo(&vt)
 	diag := mat.NewDense(len(vals), len(vals), nil)
 	for i, val := range vals {
-		if val > 1e-10 {
+		if val > epsilonSmall {
 			diag.Set(i, i, 1/val)
 		}
 	}
@@ -2257,7 +2287,7 @@ func computeFactorScores(data, loadings, phi *mat.Dense, uniquenesses []float64,
 		prod.Mul(&loadingsTrans, loadings)
 
 		var inv mat.Dense
-		if err := safeInvert(&inv, &prod, 1e-6); err != nil {
+		if err := safeInvert(&inv, &prod, ridgeRegularization); err != nil {
 			// If inversion fails, return zero scores
 			return scores
 		}
@@ -2290,7 +2320,7 @@ func computeFactorScores(data, loadings, phi *mat.Dense, uniquenesses []float64,
 		temp2.Mul(&loadingsTrans, &temp1)
 
 		var inv mat.Dense
-		if err := safeInvert(&inv, &temp2, 1e-6); err != nil {
+		if err := safeInvert(&inv, &temp2, ridgeRegularization); err != nil {
 			// Fallback to regression method
 			return computeFactorScores(data, loadings, phi, uniquenesses, FactorScoreRegression)
 		}
@@ -2310,7 +2340,7 @@ func computeFactorScores(data, loadings, phi *mat.Dense, uniquenesses []float64,
 		prod.Mul(&loadingsTrans, loadings)
 
 		var inv mat.Dense
-		if err := safeInvert(&inv, &prod, 1e-6); err != nil {
+		if err := safeInvert(&inv, &prod, ridgeRegularization); err != nil {
 			return scores
 		}
 
@@ -2393,7 +2423,7 @@ func computeFactorScoresRegressionOblique(data, loadings, phi *mat.Dense, unique
 	}
 
 	var sigmaInv mat.Dense
-	if err := safeInvert(&sigmaInv, sigma, 1e-6); err != nil {
+	if err := safeInvert(&sigmaInv, sigma, ridgeRegularization); err != nil {
 		insyra.LogWarning("stats", "FactorScores", "sigma inversion failed: %v", err)
 		return nil
 	}
@@ -2421,7 +2451,7 @@ func computeFactorScoresRegressionOblique(data, loadings, phi *mat.Dense, unique
 	}
 
 	var b mat.Dense
-	if err := safeInvert(&b, ltSigInvL, 1e-6); err != nil {
+	if err := safeInvert(&b, ltSigInvL, ridgeRegularization); err != nil {
 		insyra.LogWarning("stats", "FactorScores", "weight inversion failed: %v", err)
 		return nil
 	}
@@ -2732,7 +2762,7 @@ func reflectRotationMatrix(rotMatrix, reflectedLoadings, originalLoadings *mat.D
 		// Check if this factor was reflected
 		reflected := false
 		for i := 0; i < reflectedLoadings.RawMatrix().Rows; i++ {
-			if math.Abs(reflectedLoadings.At(i, j)-(-originalLoadings.At(i, j))) < 1e-10 {
+			if math.Abs(reflectedLoadings.At(i, j)-(-originalLoadings.At(i, j))) < epsilonSmall {
 				reflected = true
 				break
 			}
@@ -2763,7 +2793,7 @@ func reflectPhiMatrix(phi, reflectedLoadings, originalLoadings *mat.Dense) *mat.
 		reflectionSigns[j] = 1.0
 		// Check if this factor was reflected
 		for i := 0; i < reflectedLoadings.RawMatrix().Rows; i++ {
-			if math.Abs(reflectedLoadings.At(i, j)-(-originalLoadings.At(i, j))) < 1e-10 {
+			if math.Abs(reflectedLoadings.At(i, j)-(-originalLoadings.At(i, j))) < epsilonSmall {
 				reflectionSigns[j] = -1.0
 				break
 			}
