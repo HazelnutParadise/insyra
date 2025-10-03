@@ -199,7 +199,7 @@ const (
 
 	// MINRES optimization constants (aligned with R's optim L-BFGS-B)
 	minresPsiLowerBound = 0.005 // R: lower = 0.005 in optim()
-	minresPsiUpperBound = 1.0   // R: upper = 1 in optim()
+	minresPsiUpperBound = 1.0   // R: default minimum for upper bound, actual upper = max(1.0, max(h2))
 
 	// Ridge regularization for matrix inversion
 	ridgeRegularization = 1e-6 // Small ridge for numerical stability
@@ -1294,7 +1294,7 @@ func extractMINRES(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float
 	// Step 2: Set starting values for uniquenesses (Psi)
 	// R code: start <- diag(S) - S.smc
 	start := make([]float64, p)
-	upper := 1.0
+	upper := minresPsiUpperBound // R: upper = max(1.0, max(h2))
 	for i := 0; i < p; i++ {
 		diag := corrMatrix.At(i, i)
 		start[i] = diag - h2[i]
@@ -1302,8 +1302,8 @@ func extractMINRES(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float
 			upper = h2[i]
 		}
 	}
-	if upper < 1.0 {
-		upper = 1.0
+	if upper < minresPsiUpperBound {
+		upper = minresPsiUpperBound
 	}
 
 	// Step 3: Define objective function matching R's fit.residuals for MINRES
