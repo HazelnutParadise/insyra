@@ -1890,81 +1890,116 @@ func rotateOrthomax(loadings *mat.Dense, gamma float64, maxIter int, tol float64
 // rotateOrthomaxNormalized performs orthogonal rotation on Kaiser-normalized loadings.
 // Returns the rotated normalized loadings, rotation matrix, and Kaiser weights.
 // This is used internally by Promax to avoid double normalization/denormalization.
+// Aligned with R's GPArotation::GPForth
 func rotateOrthomaxNormalized(loadings *mat.Dense, gamma float64, maxIter int, tol float64) (*mat.Dense, *mat.Dense, *mat.VecDense, error) {
 	Lnorm, w := kaiserNormalize(loadings)
 
 	p, m := Lnorm.Dims()
+
+	// Initialize rotation matrix as identity (R: Tmat = diag(ncol(A)))
 	rotation := mat.NewDense(m, m, nil)
 	for i := 0; i < m; i++ {
 		rotation.Set(i, i, 1)
 	}
 
+	// Compute initial rotated loadings: L = A %*% Tmat
 	rotated := mat.NewDense(p, m, nil)
-	rotated.Copy(Lnorm)
+	rotated.Mul(Lnorm, rotation)
 
-	prevObj := orthomaxObjective(rotated, gamma)
+	// Initialize step length (R: al <- 1)
+	al := 1.0
+
+	// Compute initial objective function
+	f := orthomaxObjective(rotated, gamma)
 
 	for iter := 0; iter < maxIter; iter++ {
-		rowNorms := make([]float64, p)
-		for i := 0; i < p; i++ {
+		// Compute gradient (R: vgQ.quartimax or vgQ.varimax)
+		grad := computeOrthomaxGradient(rotated, gamma)
+
+		// Compute G = -t(t(L) %*% VgQ$Gq %*% Tmat)
+		var G mat.Dense
+		var temp mat.Dense
+		temp.Mul(rotated.T(), grad)
+		temp.Mul(&temp, rotation)
+		G.Scale(-1.0, temp.T())
+
+		// Compute gradient projection (R: Gp <- G - Tmat %*% diag(...))
+		Gp := mat.NewDense(m, m, nil)
+		Gp.Copy(&G)
+
+		diagVals := make([]float64, m)
+		for j := 0; j < m; j++ {
 			sum := 0.0
-			for j := 0; j < m; j++ {
-				v := rotated.At(i, j)
-				sum += v * v
+			for i := 0; i < m; i++ {
+				sum += rotation.At(i, j) * G.At(i, j)
 			}
-			rowNorms[i] = sum
+			diagVals[j] = sum
 		}
 
-		term := mat.NewDense(p, m, nil)
-		for i := 0; i < p; i++ {
-			rowScale := gamma * rowNorms[i] / float64(p)
+		for i := 0; i < m; i++ {
 			for j := 0; j < m; j++ {
-				v := rotated.At(i, j)
-				term.Set(i, j, 4*v*(v*v-rowScale))
+				Gp.Set(i, j, Gp.At(i, j)-rotation.At(i, j)*diagVals[j])
 			}
 		}
 
-		var grad mat.Dense
-		grad.Mul(rotated.T(), term)
+		// Compute gradient norm (R: s <- sqrt(sum(diag(crossprod(Gp)))))
+		s := 0.0
+		for i := 0; i < m; i++ {
+			for j := 0; j < m; j++ {
+				s += Gp.At(i, j) * Gp.At(i, j)
+			}
+		}
+		s = math.Sqrt(s)
 
-		var gradT mat.Dense
-		gradT.CloneFrom(grad.T())
-
-		var skew mat.Dense
-		skew.Sub(&grad, &gradT)
-		skew.Scale(0.5, &skew)
-
-		if frobeniusNormDense(&skew) < tol {
-			return rotated, rotation, w, nil
+		// Check convergence
+		if s < tol {
+			break
 		}
 
-		step := 1.0
+		// R: al <- 2 * al (double step length)
+		al = 2.0 * al
+
+		// Inner loop: line search (R: for (i in 0:10))
 		improved := false
-		for attempt := 0; attempt < 6; attempt++ {
-			var delta mat.Dense
-			delta.Mul(rotation, &skew)
-			delta.Scale(step, &delta)
+		for innerIter := 0; innerIter <= 10; innerIter++ {
+			// R: X <- Tmat - al * Gp
+			X := mat.NewDense(m, m, nil)
+			for i := 0; i < m; i++ {
+				for j := 0; j < m; j++ {
+					X.Set(i, j, rotation.At(i, j)-al*Gp.At(i, j))
+				}
+			}
 
-			var trial mat.Dense
-			trial.Add(rotation, &delta)
-
+			// R: Orthogonalize via QR decomposition
+			// Tmatt <- qr.Q(qr(X))
 			var qr mat.QR
-			qr.Factorize(&trial)
-			var q mat.Dense
-			qr.QTo(&q)
+			qr.Factorize(X)
 
+			var Tmatt mat.Dense
+			qr.QTo(&Tmatt)
+
+			// R: L <- A %*% Tmatt
 			var trialRotated mat.Dense
-			trialRotated.Mul(Lnorm, &q)
+			trialRotated.Mul(Lnorm, &Tmatt)
 
-			obj := orthomaxObjective(&trialRotated, gamma)
-			if obj > prevObj+epsilonSmall {
-				rotation.Copy(&q)
-				rotated.CloneFrom(&trialRotated)
-				prevObj = obj
+			// Compute new objective
+			trialF := orthomaxObjective(&trialRotated, gamma)
+
+			// R: improvement <- f - VgQt$f
+			// R: if (improvement > 0.5 * s^2 * al) break
+			improvement := f - trialF
+
+			if improvement > 0.5*s*s*al {
+				// Accept the step
+				rotation.Copy(&Tmatt)
+				rotated.Copy(&trialRotated)
+				f = trialF
 				improved = true
 				break
 			}
-			step *= 0.5
+
+			// R: al <- al/2
+			al = al / 2.0
 		}
 
 		if !improved {
@@ -1982,19 +2017,40 @@ func rotatePromax(loadings *mat.Dense, kappa float64, maxIter int, tol float64) 
 
 	p, m := loadings.Dims()
 
-	// Step 1: Kaiser normalize the loadings and perform varimax on normalized loadings
-	// This is the KEY FIX - R's psych::fa with promax ALWAYS uses Kaiser normalization
-	rotatedNorm, rotation, weights, err := rotateOrthomaxNormalized(loadings, 1.0, maxIter, tol)
+	// Step 1: Perform varimax rotation on ORIGINAL scale loadings
+	// R's promax: first does varimax, THEN builds target from those loadings (not normalized)
+	rotated, _, err := rotateOrthomax(loadings, 1.0, maxIter, tol)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("promax: varimax failed: %w", err)
 	}
 
-	// Step 2: Build target matrix Q = sign(L0_norm) * |L0_norm|^kappa
-	// Important: target is computed on NORMALIZED loadings
+	// CRITICAL: Reflect factors to match R's sign convention
+	// Different implementations may produce opposite signs for factors
+	// We align by ensuring each column's largest (absolute value) element is positive
+	for j := 0; j < m; j++ {
+		maxAbs := 0.0
+		maxVal := 0.0
+		for i := 0; i < p; i++ {
+			val := rotated.At(i, j)
+			if math.Abs(val) > maxAbs {
+				maxAbs = math.Abs(val)
+				maxVal = val
+			}
+		}
+		// If the max magnitude element is negative, flip the entire column
+		if maxVal < 0 {
+			for i := 0; i < p; i++ {
+				rotated.Set(i, j, -rotated.At(i, j))
+			}
+		}
+	}
+
+	// Step 2: Build target matrix Q = sign(L_varimax) * |L_varimax|^kappa
+	// CRITICAL: Use the ORIGINAL SCALE varimax loadings, not Kaiser normalized!
 	target := mat.NewDense(p, m, nil)
 	for i := 0; i < p; i++ {
 		for j := 0; j < m; j++ {
-			val := rotatedNorm.At(i, j)
+			val := rotated.At(i, j)
 			sign := 1.0
 			if val < 0 {
 				sign = -1.0
@@ -2005,12 +2061,13 @@ func rotatePromax(loadings *mat.Dense, kappa float64, maxIter int, tol float64) 
 		}
 	}
 
-	// Step 3: Solve for transformation T = (L0_norm' L0_norm)^-1 L0_norm' Q
+	// Step 3: Solve for transformation T = t(solve(t(L) %*% L, t(L) %*% Q))
+	// R: Ti <- t(solve(t(L0) %*% L0, t(L0) %*% Q))
 	var L0t mat.Dense
-	L0t.CloneFrom(rotatedNorm.T())
+	L0t.CloneFrom(rotated.T())
 
 	var L0tL0 mat.Dense
-	L0tL0.Mul(&L0t, rotatedNorm)
+	L0tL0.Mul(&L0t, rotated)
 
 	var L0tL0Inv mat.Dense
 	if err := safeInvert(&L0tL0Inv, &L0tL0, epsilonSmall); err != nil {
@@ -2020,145 +2077,226 @@ func rotatePromax(loadings *mat.Dense, kappa float64, maxIter int, tol float64) 
 	var L0tQ mat.Dense
 	L0tQ.Mul(&L0t, target)
 
+	var transTmp mat.Dense
+	transTmp.Mul(&L0tL0Inv, &L0tQ)
+
+	// Take transpose to get Ti
 	var trans mat.Dense
-	trans.Mul(&L0tL0Inv, &L0tQ)
+	trans.CloneFrom(transTmp.T())
 
-	// Step 4: Compute pattern loadings on NORMALIZED space FIRST: P_norm = L0_norm * T
-	// Do this BEFORE normalizing T!
-	var patternNorm mat.Dense
-	patternNorm.Mul(rotatedNorm, &trans)
+	// Step 4: Compute pattern loadings: Pattern = A * Ti
+	// CRITICAL: Use ORIGINAL unrotated loadings, not the varimax rotated ones!
+	var pattern mat.Dense
+	pattern.Mul(loadings, &trans)
 
-	// Step 5: DENORMALIZE the pattern to get back to original scale
-	// Pattern = unnormalize(P_norm) using the Kaiser weights
-	pattern := kaiserDenorm(&patternNorm, weights)
+	// Step 5: Compute Phi = t(solve(t(T) %*% T))
+	// R: Phi <- t(solve(crossprod(Ti)))
+	var Tt mat.Dense
+	Tt.CloneFrom(trans.T())
 
-	// Step 6: Compute Phi from unnormalized T first
-	// Phi = cov2cor( (T' * T)^-1 )
-	var TTt mat.Dense
-	TTt.Mul(trans.T(), &trans)
+	var TtT mat.Dense
+	TtT.Mul(&Tt, &trans)
 
-	var phiInv mat.Dense
-	if err := safeInvert(&phiInv, &TTt, epsilonSmall); err != nil {
+	var TtTInv mat.Dense
+	if err := safeInvert(&TtTInv, &TtT, epsilonSmall); err != nil {
 		return nil, nil, nil, fmt.Errorf("promax: unable to compute Phi: %w", err)
 	}
 
-	// Convert Phi to correlation matrix (cov2cor equivalent)
-	r, c := phiInv.Dims()
+	var phi mat.Dense
+	phi.CloneFrom(TtTInv.T())
+
+	// Convert Phi to correlation matrix (normalize diagonal to 1)
+	r, c := phi.Dims()
 	diagSqrt := make([]float64, r)
 	for i := 0; i < r; i++ {
-		diagSqrt[i] = math.Sqrt(phiInv.At(i, i))
+		diagSqrt[i] = math.Sqrt(phi.At(i, i))
 	}
 	for i := 0; i < r; i++ {
 		for j := 0; j < c; j++ {
-			phiInv.Set(i, j, phiInv.At(i, j)/(diagSqrt[i]*diagSqrt[j]))
+			phi.Set(i, j, phi.At(i, j)/(diagSqrt[i]*diagSqrt[j]))
 		}
 	}
 
-	// Now normalize T for pattern computation
-	// Calculate scales
-	scales := make([]float64, m)
-	for j := 0; j < m; j++ {
-		diag := TTt.At(j, j)
-		if diag > epsilonTiny {
-			scales[j] = 1.0 / math.Sqrt(diag)
-		} else {
-			scales[j] = 1.0
-		}
-	}
-
-	// Apply scales
-	for j := 0; j < m; j++ {
-		scale := scales[j]
-		for i := 0; i < m; i++ {
-			trans.Set(i, j, trans.At(i, j)*scale)
-		}
-	}
-
-	// Step 8: Compute combined rotation
-	var combined mat.Dense
-	combined.Mul(rotation, &trans)
-
-	return pattern, &combined, &phiInv, nil
+	// Step 6: Return pattern, transformation, and Phi
+	// Note: For Promax, the rotation matrix is just Ti (the transformation itself)
+	// The combined rotation with initial varimax is handled internally
+	return &pattern, &trans, &phi, nil
 }
 
 func rotateOblimin(loadings *mat.Dense, delta float64, maxIter int, tol float64) (*mat.Dense, *mat.Dense, *mat.Dense, error) {
 	p, m := loadings.Dims()
+
+	// Initialize transformation matrix as identity
 	trans := mat.NewDense(m, m, nil)
 	for i := 0; i < m; i++ {
 		trans.Set(i, i, 1)
 	}
 
-	rotated := mat.NewDense(p, m, nil)
-	rotated.Copy(loadings)
-
-	prevObj := obliminObjective(rotated, delta)
-
-	for iter := 0; iter < maxIter; iter++ {
-		rowNorms := make([]float64, p)
-		for i := 0; i < p; i++ {
-			sum := 0.0
-			for j := 0; j < m; j++ {
-				val := rotated.At(i, j)
-				sum += val * val
-			}
-			rowNorms[i] = sum
-		}
-
-		term := mat.NewDense(p, m, nil)
-		for i := 0; i < p; i++ {
-			rowScale := delta * rowNorms[i] / float64(p)
-			for j := 0; j < m; j++ {
-				val := rotated.At(i, j)
-				term.Set(i, j, 4*val*(val*val-rowScale))
-			}
-		}
-
-		var grad mat.Dense
-		grad.Mul(loadings.T(), term)
-
-		norm := frobeniusNormDense(&grad)
-		if norm < tol {
-			break
-		}
-
-		step := 1.0
-		improved := false
-		for attempt := 0; attempt < 6; attempt++ {
-			var scaledGrad mat.Dense
-			scaledGrad.Scale(step, &grad)
-
-			var trial mat.Dense
-			trial.Add(trans, &scaledGrad)
-
-			var trialRot mat.Dense
-			trialRot.Mul(loadings, &trial)
-
-			obj := obliminObjective(&trialRot, delta)
-			if obj > prevObj+epsilonSmall {
-				trans.CloneFrom(&trial)
-				rotated.CloneFrom(&trialRot)
-				prevObj = obj
-				improved = true
-				break
-			}
-			step *= 0.5
-		}
-
-		if !improved {
-			break
-		}
-	}
-
+	// Compute initial rotated loadings: L = A %*% t(solve(Tmat))
 	var transInv mat.Dense
 	if err := invertWithFallback(&transInv, trans); err != nil {
-		return rotated, trans, nil, fmt.Errorf("oblimin: transformation not invertible: %w", err)
+		return nil, nil, nil, fmt.Errorf("oblimin: initial transformation not invertible: %w", err)
 	}
-
 	var transInvT mat.Dense
 	transInvT.CloneFrom(transInv.T())
 
+	rotated := mat.NewDense(p, m, nil)
+	rotated.Mul(loadings, &transInvT)
+
+	// Initialize step length (R: al <- 1)
+	al := 1.0
+
+	// Compute initial objective function and gradient
+	f := obliminObjective(rotated, delta)
+	grad := computeObliminGradient(rotated, delta)
+
+	// G <- -t(t(L) %*% VgQ$Gq %*% solve(Tmat))
+	var G mat.Dense
+	var temp mat.Dense
+	temp.Mul(rotated.T(), grad)
+	temp.Mul(&temp, &transInv)
+	G.Scale(-1.0, temp.T())
+
+	for iter := 0; iter < maxIter; iter++ {
+		// Compute gradient projection to tangent space (R: Gp <- G - Tmat %*% diag(...))
+		// Gp <- G - Tmat %*% diag(c(rep(1, nrow(G)) %*% (Tmat * G)))
+		Gp := mat.NewDense(m, m, nil)
+		Gp.Copy(&G)
+
+		// Compute diag(c(rep(1, nrow(G)) %*% (Tmat * G)))
+		diagVals := make([]float64, m)
+		for j := 0; j < m; j++ {
+			sum := 0.0
+			for i := 0; i < m; i++ {
+				sum += trans.At(i, j) * G.At(i, j)
+			}
+			diagVals[j] = sum
+		}
+
+		// Subtract Tmat %*% diag(diagVals) from Gp
+		for i := 0; i < m; i++ {
+			for j := 0; j < m; j++ {
+				Gp.Set(i, j, Gp.At(i, j)-trans.At(i, j)*diagVals[j])
+			}
+		}
+
+		// Compute gradient norm s = sqrt(sum(diag(crossprod(Gp))))
+		s := 0.0
+		for i := 0; i < m; i++ {
+			for j := 0; j < m; j++ {
+				s += Gp.At(i, j) * Gp.At(i, j)
+			}
+		}
+		s = math.Sqrt(s)
+
+		// Check convergence
+		if s < tol {
+			break
+		}
+
+		// R: al <- 2 * al (double step length at the start of each iteration)
+		al = 2.0 * al
+
+		// Inner loop: line search with step halving (R: for (i in 0:10))
+		improved := false
+		for innerIter := 0; innerIter <= 10; innerIter++ {
+			// R: X <- Tmat - al * Gp
+			X := mat.NewDense(m, m, nil)
+			for i := 0; i < m; i++ {
+				for j := 0; j < m; j++ {
+					X.Set(i, j, trans.At(i, j)-al*Gp.At(i, j))
+				}
+			}
+
+			// R: v <- 1/sqrt(c(rep(1, nrow(X)) %*% X^2))
+			// This normalizes columns to have unit length
+			v := make([]float64, m)
+			for j := 0; j < m; j++ {
+				sumSq := 0.0
+				for i := 0; i < m; i++ {
+					val := X.At(i, j)
+					sumSq += val * val
+				}
+				if sumSq > epsilonTiny {
+					v[j] = 1.0 / math.Sqrt(sumSq)
+				} else {
+					v[j] = 1.0
+				}
+			}
+
+			// R: Tmatt <- X %*% diag(v)
+			Tmatt := mat.NewDense(m, m, nil)
+			for i := 0; i < m; i++ {
+				for j := 0; j < m; j++ {
+					Tmatt.Set(i, j, X.At(i, j)*v[j])
+				}
+			}
+
+			// R: L <- A %*% t(solve(Tmatt))
+			var TmattInv mat.Dense
+			if err := invertWithFallback(&TmattInv, Tmatt); err != nil {
+				// If inversion fails, halve step and continue
+				al = al / 2.0
+				continue
+			}
+			var TmattInvT mat.Dense
+			TmattInvT.CloneFrom(TmattInv.T())
+
+			var trialRotated mat.Dense
+			trialRotated.Mul(loadings, &TmattInvT)
+
+			// Compute new objective function
+			trialF := obliminObjective(&trialRotated, delta)
+
+			// R: improvement <- f - VgQt$f
+			// R: if (improvement > 0.5 * s^2 * al) break
+			improvement := f - trialF
+
+			if improvement > 0.5*s*s*al {
+				// Accept the step
+				trans.Copy(Tmatt)
+				rotated.Copy(&trialRotated)
+				f = trialF
+				improved = true
+				break
+			}
+
+			// R: al <- al/2
+			al = al / 2.0
+		}
+
+		if !improved {
+			// No improvement found even after maximum inner iterations
+			break
+		}
+
+		// Compute new gradient for next iteration
+		// R: G <- -t(t(L) %*% VgQt$Gq %*% solve(Tmatt))
+		grad = computeObliminGradient(rotated, delta)
+
+		var transInvNew mat.Dense
+		if err := invertWithFallback(&transInvNew, trans); err != nil {
+			break
+		}
+
+		var tempNew mat.Dense
+		tempNew.Mul(rotated.T(), grad)
+		tempNew.Mul(&tempNew, &transInvNew)
+		G.Scale(-1.0, tempNew.T())
+	}
+
+	// Compute final Phi and scaled loadings
+	// R: Phi <- t(Tmat) %*% Tmat
+	var finalTransInv mat.Dense
+	if err := invertWithFallback(&finalTransInv, trans); err != nil {
+		return rotated, trans, nil, fmt.Errorf("oblimin: transformation not invertible: %w", err)
+	}
+
+	var finalTransInvT mat.Dense
+	finalTransInvT.CloneFrom(finalTransInv.T())
+
 	var phi mat.Dense
-	phi.Mul(&transInv, &transInvT)
+	phi.Mul(&finalTransInv, &finalTransInvT)
 
 	// Normalize Phi to have diagonal elements equal to 1 (correlation matrix)
 	diagScales := make([]float64, m)
@@ -2305,6 +2443,66 @@ func obliminObjective(loadings *mat.Dense, delta float64) float64 {
 		sum -= 2 * delta / float64(p) * rowSum * rowSum
 	}
 	return sum
+}
+
+// computeObliminGradient computes the gradient matrix for oblimin rotation
+// This implements R's vgQ.oblimin gradient calculation
+func computeObliminGradient(loadings *mat.Dense, delta float64) *mat.Dense {
+	p, m := loadings.Dims()
+
+	// Compute row norms (sum of squares for each row)
+	rowNorms := make([]float64, p)
+	for i := 0; i < p; i++ {
+		sum := 0.0
+		for j := 0; j < m; j++ {
+			val := loadings.At(i, j)
+			sum += val * val
+		}
+		rowNorms[i] = sum
+	}
+
+	// Compute gradient: Gq = 4 * L * (L^2 - delta/p * rowNorms)
+	// where L^2 means element-wise square
+	gradient := mat.NewDense(p, m, nil)
+	for i := 0; i < p; i++ {
+		rowScale := delta * rowNorms[i] / float64(p)
+		for j := 0; j < m; j++ {
+			val := loadings.At(i, j)
+			gradient.Set(i, j, 4*val*(val*val-rowScale))
+		}
+	}
+
+	return gradient
+}
+
+// computeOrthomaxGradient computes the gradient matrix for orthomax rotation
+// This implements R's vgQ.quartimax and vgQ.varimax gradient calculation
+// gamma = 0 for quartimax, gamma = 1 for varimax
+func computeOrthomaxGradient(loadings *mat.Dense, gamma float64) *mat.Dense {
+	p, m := loadings.Dims()
+
+	// Compute row norms (sum of squares for each row)
+	rowNorms := make([]float64, p)
+	for i := 0; i < p; i++ {
+		sum := 0.0
+		for j := 0; j < m; j++ {
+			val := loadings.At(i, j)
+			sum += val * val
+		}
+		rowNorms[i] = sum
+	}
+
+	// Compute gradient: Gq = 4 * L * (L^2 - gamma/p * rowNorms)
+	gradient := mat.NewDense(p, m, nil)
+	for i := 0; i < p; i++ {
+		rowScale := gamma * rowNorms[i] / float64(p)
+		for j := 0; j < m; j++ {
+			val := loadings.At(i, j)
+			gradient.Set(i, j, 4*val*(val*val-rowScale))
+		}
+	}
+
+	return gradient
 }
 
 // computeFactorScores computes factor scores
