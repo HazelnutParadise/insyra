@@ -1988,195 +1988,78 @@ func rotateOrthomaxNormalized(loadings *mat.Dense, gamma float64, maxIter int, t
 	}
 
 	p, m := Lnorm.Dims()
-
-	// Initialize rotation matrix as identity (R: Tmat = diag(ncol(A)))
 	rotation := mat.NewDense(m, m, nil)
 	for i := 0; i < m; i++ {
 		rotation.Set(i, i, 1)
 	}
-	if rotationDebugEnabled() {
-		logDenseSample("Varimax", "initial rotation (identity)", rotation, 6, 6)
-	}
-
-	// Compute initial rotated loadings: L = A %*% Tmat
 	rotated := mat.NewDense(p, m, nil)
 	rotated.Mul(Lnorm, rotation)
-	if rotationDebugEnabled() {
-		logDenseSample("Varimax", "initial rotated loadings", rotated, 6, 6)
-	}
 
-	// Initialize step length (R: al <- 1)
-	al := 1.0
-
-	// Compute initial objective function
-	f := orthomaxObjective(rotated, gamma)
-	if rotationDebugEnabled() {
-		insyra.LogDebug("stats", "Varimax", "Initial objective=%.10f", f)
-	}
+	colNorms := make([]float64, m)
+	prevD := 0.0
 
 	for iter := 0; iter < maxIter; iter++ {
 		if rotationDebugEnabled() {
-			insyra.LogDebug("stats", "Varimax", "Iter %d: objective=%.10f step=%.6f", iter, f, al)
-		}
-		// Compute gradient (R: vgQ.quartimax or vgQ.varimax)
-		grad := computeOrthomaxGradient(rotated, gamma)
-		if rotationDebugEnabled() {
-			logDenseSample("Varimax", fmt.Sprintf("grad iter %d", iter), grad, 6, 6)
+			insyra.LogDebug("stats", "Varimax", "Iter %d", iter)
+			logDenseSample("Varimax", fmt.Sprintf("rotated iter %d", iter), rotated, 6, 6)
 		}
 
-		// Compute G = -t(t(L) %*% VgQ$Gq %*% Tmat)
-		var G mat.Dense
-		var temp mat.Dense
-		temp.Mul(rotated.T(), grad)
-		temp.Mul(&temp, rotation)
-		G.Scale(-1.0, temp.T())
-		if rotationDebugEnabled() {
-			logDenseSample("Varimax", fmt.Sprintf("Gp raw iter %d", iter), &G, 6, 6)
-		}
-
-		// Compute gradient projection (R: Gp <- G - Tmat %*% diag(...))
-		Gp := mat.NewDense(m, m, nil)
-		Gp.Copy(&G)
-
-		diagVals := make([]float64, m)
 		for j := 0; j < m; j++ {
 			sum := 0.0
-			for i := 0; i < m; i++ {
-				sum += rotation.At(i, j) * G.At(i, j)
+			for i := 0; i < p; i++ {
+				val := rotated.At(i, j)
+				sum += val * val
 			}
-			diagVals[j] = sum
+			colNorms[j] = sum
 		}
 
-		for i := 0; i < m; i++ {
+		inner := mat.NewDense(p, m, nil)
+		for i := 0; i < p; i++ {
 			for j := 0; j < m; j++ {
-				Gp.Set(i, j, Gp.At(i, j)-rotation.At(i, j)*diagVals[j])
+				val := rotated.At(i, j)
+				inner.Set(i, j, val*val*val-(gamma/float64(p))*val*colNorms[j])
 			}
 		}
 		if rotationDebugEnabled() {
-			logDenseSample("Varimax", fmt.Sprintf("Gp iter %d", iter), Gp, 6, 6)
+			logDenseSample("Varimax", fmt.Sprintf("inner iter %d", iter), inner, 6, 6)
 		}
 
-		// Compute gradient norm (R: s <- sqrt(sum(diag(crossprod(Gp)))))
-		s := 0.0
-		for i := 0; i < m; i++ {
-			for j := 0; j < m; j++ {
-				s += Gp.At(i, j) * Gp.At(i, j)
-			}
-		}
-		s = math.Sqrt(s)
-		if rotationDebugEnabled() {
-			insyra.LogDebug("stats", "Varimax", "Iter %d: gradient norm=%.10f", iter, s)
+		var B mat.Dense
+		B.Mul(Lnorm.T(), inner)
+
+		var svd mat.SVD
+		if ok := svd.Factorize(&B, mat.SVDFull); !ok {
+			return nil, nil, nil, fmt.Errorf("varimax svd failed at iter %d", iter)
 		}
 
-		// Check convergence
-		if s < tol {
-			if rotationDebugEnabled() {
-				insyra.LogDebug("stats", "Varimax", "Iter %d: gradient norm %.10f < tol %.10f, stopping", iter, s, tol)
-			}
-			break
+		singulars := svd.Values(nil)
+		currD := 0.0
+		for _, s := range singulars {
+			currD += s
 		}
 
-		// R: al <- 2 * al (double step length)
-		al = 2.0 * al
+		var U, V mat.Dense
+		svd.UTo(&U)
+		svd.VTo(&V)
+		var newRotation mat.Dense
+		newRotation.Mul(&U, V.T())
+		rotation.Copy(&newRotation)
 
-		// Inner loop: line search (R: for (i in 0:10))
-		improved := false
-		for innerIter := 0; innerIter <= 10; innerIter++ {
-			// R: X <- Tmat - al * Gp
-			X := mat.NewDense(m, m, nil)
-			for i := 0; i < m; i++ {
-				for j := 0; j < m; j++ {
-					X.Set(i, j, rotation.At(i, j)-al*Gp.At(i, j))
-				}
-			}
+		rotated.Mul(Lnorm, rotation)
+
+		if prevD != 0 {
+			ratio := currD / prevD
 			if rotationDebugEnabled() {
-				logDenseSample("Varimax", fmt.Sprintf("X candidate iter %d.%d", iter, innerIter), X, 6, 6)
+				insyra.LogDebug("stats", "Varimax", "Iter %d: singular sum ratio=%.8f", iter, ratio)
 			}
-
-			// R: Orthogonalize via QR decomposition with improved stability
-			// Tmatt <- qr.Q(qr(X))
-			var qr mat.QR
-			qr.Factorize(X)
-
-			var Tmatt mat.Dense
-			qr.QTo(&Tmatt)
-			if rotationDebugEnabled() {
-				logDenseSample("Varimax", fmt.Sprintf("Tmatt iter %d.%d", iter, innerIter), &Tmatt, 6, 6)
-			}
-
-			// Ensure proper orthogonality (numerical stability improvement)
-			// Re-orthogonalize if needed
-			if innerIter == 0 {
-				var check mat.Dense
-				check.Mul(Tmatt.T(), &Tmatt)
-				maxOffDiag := 0.0
-				for i := 0; i < m; i++ {
-					for j := 0; j < m; j++ {
-						if i != j {
-							maxOffDiag = math.Max(maxOffDiag, math.Abs(check.At(i, j)))
-						}
-					}
-				}
-				// If orthogonality degraded, apply SVD-based correction
-				if maxOffDiag > 1e-10 {
-					if rotationDebugEnabled() {
-						insyra.LogDebug("stats", "Varimax", "Iter %d.%d: max off-diagonal %.10f, applying SVD correction", iter, innerIter, maxOffDiag)
-					}
-					var svd mat.SVD
-					if svd.Factorize(&Tmatt, mat.SVDFull) {
-						var U, V mat.Dense
-						svd.UTo(&U)
-						svd.VTo(&V)
-						Tmatt.Mul(&U, V.T())
-					}
-				}
-			}
-
-			// R: L <- A %*% Tmatt
-			var trialRotated mat.Dense
-			trialRotated.Mul(Lnorm, &Tmatt)
-			if rotationDebugEnabled() {
-				logDenseSample("Varimax", fmt.Sprintf("trial rotated iter %d.%d", iter, innerIter), &trialRotated, 6, 6)
-			}
-
-			// Compute new objective
-			trialF := orthomaxObjective(&trialRotated, gamma)
-
-			// R: improvement <- f - VgQt$f
-			// R: if (improvement > 0.5 * s^2 * al) break
-			improvement := f - trialF
-			if rotationDebugEnabled() {
-				insyra.LogDebug("stats", "Varimax", "Iter %d.%d: trial objective=%.10f improvement=%.10f threshold=%.10f", iter, innerIter, trialF, improvement, 0.5*s*s*al)
-			}
-
-			if improvement > 0.5*s*s*al {
-				// Accept the step
-				rotation.Copy(&Tmatt)
-				rotated.Copy(&trialRotated)
-				f = trialF
-				improved = true
-				if rotationDebugEnabled() {
-					insyra.LogDebug("stats", "Varimax", "Iter %d.%d: accepted step with al=%.10f new objective=%.10f", iter, innerIter, al, f)
-				}
+			if ratio < 1.0+tol {
 				break
 			}
-
-			// R: al <- al/2
-			al = al / 2.0
-			if rotationDebugEnabled() {
-				insyra.LogDebug("stats", "Varimax", "Iter %d.%d: reducing step size to %.10f", iter, innerIter, al)
-			}
 		}
-
-		if !improved {
-			if rotationDebugEnabled() {
-				insyra.LogDebug("stats", "Varimax", "Iter %d: no improvement achieved, terminating", iter)
-			}
-			break
-		}
+		prevD = currD
 	}
+
 	if rotationDebugEnabled() {
-		insyra.LogDebug("stats", "Varimax", "Final objective=%.10f", f)
 		logDenseSample("Varimax", "final rotation matrix", rotation, 6, 6)
 		logDenseSample("Varimax", "final rotated loadings", rotated, 6, 6)
 	}
@@ -2581,17 +2464,19 @@ func frobeniusNormDense(m *mat.Dense) float64 {
 
 func orthomaxObjective(loadings *mat.Dense, gamma float64) float64 {
 	p, m := loadings.Dims()
-	sum := 0.0
-	for i := 0; i < p; i++ {
-		rowSum := 0.0
-		for j := 0; j < m; j++ {
+	objective := 0.0
+	for j := 0; j < m; j++ {
+		colSumSq := 0.0
+		colSumFourth := 0.0
+		for i := 0; i < p; i++ {
 			val := loadings.At(i, j)
-			sum += math.Pow(val, 4)
-			rowSum += val * val
+			sq := val * val
+			colSumSq += sq
+			colSumFourth += sq * sq
 		}
-		sum -= gamma / float64(p) * rowSum * rowSum
+		objective += colSumFourth - gamma/float64(p)*colSumSq*colSumSq
 	}
-	return sum
+	return objective
 }
 
 func obliminObjective(loadings *mat.Dense, delta float64) float64 {
@@ -2646,24 +2531,24 @@ func computeObliminGradient(loadings *mat.Dense, delta float64) *mat.Dense {
 func computeOrthomaxGradient(loadings *mat.Dense, gamma float64) *mat.Dense {
 	p, m := loadings.Dims()
 
-	// Compute row norms (sum of squares for each row)
-	rowNorms := make([]float64, p)
-	for i := 0; i < p; i++ {
+	// Compute column norms (sum of squares for each column)
+	colNorms := make([]float64, m)
+	for j := 0; j < m; j++ {
 		sum := 0.0
-		for j := 0; j < m; j++ {
+		for i := 0; i < p; i++ {
 			val := loadings.At(i, j)
 			sum += val * val
 		}
-		rowNorms[i] = sum
+		colNorms[j] = sum
 	}
 
-	// Compute gradient: Gq = 4 * L * (L^2 - gamma/p * rowNorms)
+	// Compute gradient: Gq = 4 * L * (L^2 - gamma/p * colNorms_j)
 	gradient := mat.NewDense(p, m, nil)
-	for i := 0; i < p; i++ {
-		rowScale := gamma * rowNorms[i] / float64(p)
-		for j := 0; j < m; j++ {
+	for j := 0; j < m; j++ {
+		colScale := gamma * colNorms[j] / float64(p)
+		for i := 0; i < p; i++ {
 			val := loadings.At(i, j)
-			gradient.Set(i, j, 4*val*(val*val-rowScale))
+			gradient.Set(i, j, 4*val*(val*val-colScale))
 		}
 	}
 
