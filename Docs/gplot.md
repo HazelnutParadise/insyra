@@ -40,26 +40,26 @@ Creates a bar chart based on the provided configuration.
 package main
 
 import (
-	"github.com/HazelnutParadise/insyra/gplot"
+ "github.com/HazelnutParadise/insyra/gplot"
 )
 
 func main() {
-	// Create a bar chart with error bars showing measurement uncertainty
-	measurements := []float64{5.2, 7.8, 6.4, 9.1, 8.5, 7.2}
-	uncertainties := []float64{0.5, 0.8, 0.6, 0.9, 0.7, 0.6}
-	
-	config := gplot.BarChartConfig{
-		Title:     "Experimental Measurements with Error Bars",
-		XAxis:     []string{"Trial 1", "Trial 2", "Trial 3", "Trial 4", "Trial 5", "Trial 6"},
-		Data:      measurements,
-		XAxisName: "Trial Number",
-		YAxisName: "Measured Value (units)",
-		ErrorBars: uncertainties,
-		BarWidth:  30,
-	}
-	
-	plt := gplot.CreateBarChart(config)
-	gplot.SaveChart(plt, "bar_chart_with_errorbars.png")
+ // Create a bar chart with error bars showing measurement uncertainty
+ measurements := []float64{5.2, 7.8, 6.4, 9.1, 8.5, 7.2}
+ uncertainties := []float64{0.5, 0.8, 0.6, 0.9, 0.7, 0.6}
+ 
+ config := gplot.BarChartConfig{
+  Title:     "Experimental Measurements with Error Bars",
+  XAxis:     []string{"Trial 1", "Trial 2", "Trial 3", "Trial 4", "Trial 5", "Trial 6"},
+  Data:      measurements,
+  XAxisName: "Trial Number",
+  YAxisName: "Measured Value (units)",
+  ErrorBars: uncertainties,
+  BarWidth:  30,
+ }
+ 
+ plt := gplot.CreateBarChart(config)
+ gplot.SaveChart(plt, "bar_chart_with_errorbars.png")
 }
 ```
 
@@ -129,39 +129,40 @@ Creates a scatter plot based on the provided configuration. Each series is displ
 package main
 
 import (
-	"github.com/HazelnutParadise/insyra/gplot"
+ "github.com/HazelnutParadise/insyra/gplot"
 )
 
 func main() {
-	// Create scatter plot data
-	data := map[string][][]float64{
-		"Series A": {
-			{1.0, 2.0},
-			{2.0, 4.0},
-			{3.0, 6.0},
-			{4.0, 8.0},
-			{5.0, 10.0},
-		},
-		"Series B": {
-			{1.0, 1.0},
-			{2.0, 3.0},
-			{3.0, 5.0},
-			{4.0, 7.0},
-			{5.0, 9.0},
-		},
-	}
+ // Create scatter plot data
+ data := map[string][][]float64{
+  "Series A": {
+   {1.0, 2.0},
+   {2.0, 4.0},
+   {3.0, 6.0},
+   {4.0, 8.0},
+   {5.0, 10.0},
+  },
+  "Series B": {
+   {1.0, 1.0},
+   {2.0, 3.0},
+   {3.0, 5.0},
+   {4.0, 7.0},
+   {5.0, 9.0},
+  },
+ }
 
-	config := gplot.ScatterPlotConfig{
-		Title:     "Sample Scatter Plot",
-		Data:      data,
-		XAxisName: "X Axis",
-		YAxisName: "Y Axis",
-	}
+ config := gplot.ScatterPlotConfig{
+  Title:     "Sample Scatter Plot",
+  Data:      data,
+  XAxisName: "X Axis",
+  YAxisName: "Y Axis",
+ }
 
-	plt := gplot.CreateScatterPlot(config)
-	gplot.SaveChart(plt, "scatter_plot.png")
+ plt := gplot.CreateScatterPlot(config)
+ gplot.SaveChart(plt, "scatter_plot.png")
 }
 ```
+
 ### Step Chart
 
 #### `StepChartConfig`
