@@ -1037,7 +1037,7 @@ linking loadings ($P$) to factor correlations ($\Phi$).
 
 ### Convergence Control
 
-- `FactorAnalysisOptions.MaxIter` (default `100`) caps iterations for iterative extractions (PAF, MINRES, ML, MRFA, Alpha).
+- `FactorAnalysisOptions.MaxIter` (default `50`, matching R's psych::fa) caps iterations for iterative extractions (PAF, MINRES, ML, MRFA, Alpha).
 - Diagnostics: Outputs include `FactorAnalysisResult.Converged` and `Iterations` to track termination status.
 
 ### Factor Scoring
@@ -1074,8 +1074,8 @@ type FactorAnalysisOptions struct {
     Extraction FactorExtractionMethod
     Rotation   FactorRotationOptions
     Scoring    FactorScoreMethod
-    MaxIter    int     // Maximum iterations for iterative methods (default: 100)
-    Tol        float64 // Convergence tolerance (default: 1e-6)
+    MaxIter    int     // Maximum iterations for iterative methods (default: 50)
+    MinErr     float64 // Min error for convergence (default: 0.001)
 }
 ```
 
@@ -1149,6 +1149,7 @@ const (
 ```go
 type FactorScoreMethod string
 const (
+    FactorScoreNone          FactorScoreMethod = "none"
     FactorScoreRegression    FactorScoreMethod = "regression"
     FactorScoreBartlett      FactorScoreMethod = "bartlett"
     FactorScoreAndersonRubin FactorScoreMethod = "anderson-rubin"
@@ -1304,9 +1305,16 @@ cumulative.Show()  // Display cumulative proportions
 func DefaultFactorAnalysisOptions() FactorAnalysisOptions
 ```
 
-**Purpose**: Returns default factor analysis options.
+**Purpose**: Returns default factor analysis options aligned with R's `psych::fa` defaults.
 
-**Returns**: Default FactorAnalysisOptions with sensible defaults.
+**Returns**: Default FactorAnalysisOptions with the following defaults:
+- **Extraction**: `minres` (Minimum Residual)
+- **Rotation**: `oblimin` (Oblique rotation with delta=0)
+- **Scoring**: `regression` (Regression-based factor scores)
+- **Preprocessing**: Standardize=true, Missing="listwise"
+- **Factor Count**: Kaiser criterion (eigenvalues > 1.0)
+- **MaxIter**: 50
+- **MinErr**: 0.001
 
 ---
 
