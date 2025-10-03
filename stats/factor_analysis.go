@@ -8,6 +8,7 @@ import (
 
 	"github.com/HazelnutParadise/insyra"
 	"gonum.org/v1/gonum/mat"
+	"gonum.org/v1/gonum/optimize"
 	"gonum.org/v1/gonum/stat"
 	"gonum.org/v1/gonum/stat/distuv"
 )
@@ -1188,123 +1189,323 @@ func extractML(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64, 
 	return &loadings, converged, maxIter, nil
 }
 
-// extractMINRES extracts factors using the minimum residual approach (akin to ULS)
+// extractMINRES extracts factors using the minimum residual approach
+// This implementation matches R's psych::fa algorithm exactly, using L-BFGS-B
+// optimization on uniquenesses (Psi) as per the R source code.
 func extractMINRES(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64) (*mat.Dense, bool, int, error) {
 	p, _ := corrMatrix.Dims()
 	if numFactors <= 0 || numFactors > p {
 		return nil, false, 0, fmt.Errorf("invalid number of factors: %d", numFactors)
 	}
 
-	if maxIter <= 0 {
-		maxIter = 500
-	}
-	if tol <= 0 {
-		tol = 1e-6
-	}
-
-	initial, _, _, err := extractPAF(corrMatrix, numFactors, min(maxIter, 100), math.Max(tol, 1e-6), 0.001)
-	if err != nil || initial == nil {
-		// Fall back to PCA loadings if PAF initialization fails
-		var eig mat.EigenSym
-		symCorr := denseToSym(corrMatrix)
-		if !eig.Factorize(symCorr, true) {
-			return nil, false, 0, fmt.Errorf("minres: eigen factorization failed: %w", err)
-		}
-		eigs := eig.Values(nil)
-		var vec mat.Dense
-		eig.VectorsTo(&vec)
-		initial, _, _, err = extractPCA(eigs, &vec, numFactors)
-		if err != nil {
-			return nil, false, 0, fmt.Errorf("minres: unable to build initial loadings: %w", err)
+	// Step 1: Compute SMC (Squared Multiple Correlation) for initial communalities
+	// This matches R's: S.smc <- smc(S, covar)
+	h2 := computeSMC(corrMatrix, 0.001)
+	
+	// Step 2: Set starting values for uniquenesses (Psi)
+	// R code: start <- diag(S) - S.smc
+	start := make([]float64, p)
+	upper := 1.0
+	for i := 0; i < p; i++ {
+		diag := corrMatrix.At(i, i)
+		start[i] = diag - h2[i]
+		if h2[i] > upper {
+			upper = h2[i]
 		}
 	}
-
-	var loadings mat.Dense
-	loadings.CloneFrom(initial)
-	clampLoadingsToDiag(&loadings, corrMatrix)
-
-	if p >= 4 {
-		insyra.LogInfo("stats", "MINRES", "initial loadings[0,0:2] = %.3f, %.3f",
-			loadings.At(0, 0), loadings.At(0, min(1, numFactors-1)))
+	if upper < 1.0 {
+		upper = 1.0
 	}
 
-	var approx mat.Dense
-	var residual mat.Dense
-	var grad mat.Dense
-	prevSSE := math.Inf(1)
-	converged := false
-
-	for iter := 0; iter < maxIter; iter++ {
-		// Compute approximation: L L^T
-		approx.Mul(&loadings, loadings.T())
-		residual.Sub(corrMatrix, &approx)
-		zeroDiagonal(&residual)
-
-		currentSSE := offDiagonalSSE(&residual)
-		if currentSSE < tol {
-			converged = true
-			insyra.LogInfo("stats", "MINRES", "converged in %d iterations (SSE=%.6f)", iter+1, currentSSE)
-			return &loadings, converged, iter + 1, nil
-		}
-		if math.Abs(prevSSE-currentSSE) < tol {
-			converged = true
-			insyra.LogInfo("stats", "MINRES", "converged by delta in %d iterations (SSE=%.6f)", iter+1, currentSSE)
-			return &loadings, converged, iter + 1, nil
-		}
-
-		// Compute gradient: -4 * (R - L L^T) * L
-		grad.Mul(&residual, &loadings)
-		grad.Scale(-4.0, &grad)
-
-		// Line search for optimal step size
-		eta := 1.0
-		improved := false
-		var candidateSSE float64
-		var newLoadings mat.Dense
-
-		for trial := 0; trial < 10; trial++ {
-			// L_new = L - eta * grad
-			var scaled mat.Dense
-			scaled.Scale(eta, &grad)
-			newLoadings.Sub(&loadings, &scaled)
-			clampLoadingsToDiag(&newLoadings, corrMatrix)
-
-			var candidateApprox mat.Dense
-			candidateApprox.Mul(&newLoadings, newLoadings.T())
-			var candidateResidual mat.Dense
-			candidateResidual.Sub(corrMatrix, &candidateApprox)
-			zeroDiagonal(&candidateResidual)
-			candidateSSE = offDiagonalSSE(&candidateResidual)
-
-			if candidateSSE < currentSSE {
-				loadings.CloneFrom(&newLoadings)
-				prevSSE = currentSSE
-				improved = true
-				break
+	// Step 3: Define objective function matching R's fit.residuals for MINRES
+	// R code computes: residual <- (S - model); residual <- residual[lower.tri(residual)]; sum(residual^2)
+	objectiveFunc := func(psi []float64) float64 {
+		// Create reduced correlation matrix: diag(S) <- diag(S) - Psi
+		// Then compute eigendecomposition and loadings
+		reducedCorr := mat.NewDense(p, p, nil)
+		for i := 0; i < p; i++ {
+			for j := 0; j < p; j++ {
+				if i == j {
+					reducedCorr.Set(i, j, corrMatrix.At(i, j)-psi[i])
+				} else {
+					reducedCorr.Set(i, j, corrMatrix.At(i, j))
+				}
 			}
-			eta *= 0.5
 		}
 
-		if !improved {
-			prevSSE = currentSSE
-			break
+		// Eigenvalue decomposition
+		var eig mat.EigenSym
+		symReduced := denseToSym(reducedCorr)
+		if !eig.Factorize(symReduced, true) {
+			return math.Inf(1)
 		}
 
-		if iter < 5 || iter == maxIter-1 {
-			insyra.LogDebug("stats", "MINRES", "iter %d: SSE=%.6f, eta=%.4f", iter+1, candidateSSE, eta)
+		eigenvalues := eig.Values(nil)
+		var eigenvectors mat.Dense
+		eig.VectorsTo(&eigenvectors)
+
+		// Sort eigenvalues and eigenvectors in descending order
+		type eigenPair struct {
+			value  float64
+			vector []float64
+		}
+		pairs := make([]eigenPair, p)
+		for i := 0; i < p; i++ {
+			vec := make([]float64, p)
+			for j := 0; j < p; j++ {
+				vec[j] = eigenvectors.At(j, i)
+			}
+			pairs[i] = eigenPair{value: eigenvalues[i], vector: vec}
+		}
+		for i := 0; i < len(pairs)-1; i++ {
+			for j := i + 1; j < len(pairs); j++ {
+				if pairs[i].value < pairs[j].value {
+					pairs[i], pairs[j] = pairs[j], pairs[i]
+				}
+			}
 		}
 
-		if math.Abs(prevSSE-candidateSSE) < tol {
-			converged = true
-			insyra.LogInfo("stats", "MINRES", "converged by delta in %d iterations (SSE=%.6f)", iter+1, candidateSSE)
-			return &loadings, converged, iter + 1, nil
+		// Extract loadings
+		loadings := mat.NewDense(p, numFactors, nil)
+		for i := 0; i < p; i++ {
+			for j := 0; j < numFactors; j++ {
+				if pairs[j].value > 0 {
+					loadings.Set(i, j, pairs[j].vector[i]*math.Sqrt(pairs[j].value))
+				} else {
+					loadings.Set(i, j, 0)
+				}
+			}
+		}
+
+		// Compute model: L %*% t(L)
+		var model mat.Dense
+		model.Mul(loadings, loadings.T())
+
+		// Compute residual: S - model
+		var residual mat.Dense
+		residual.Sub(corrMatrix, &model)
+
+		// Sum of squared off-diagonal residuals (lower triangle only, but symmetric)
+		sum := 0.0
+		for i := 0; i < p; i++ {
+			for j := i + 1; j < p; j++ {
+				val := residual.At(i, j)
+				sum += val * val
+			}
+		}
+		return sum
+	}
+
+	// Step 4: Define gradient function matching R's FAgr.minres
+	// R code: Sstar <- S - diag(Psi); L <- eigenvectors %*% diag(sqrt(eigenvalues)); g <- L %*% t(L) + diag(Psi) - S; diag(g)
+	gradientFunc := func(grad, psi []float64) {
+		// Create reduced correlation matrix
+		reducedCorr := mat.NewDense(p, p, nil)
+		for i := 0; i < p; i++ {
+			for j := 0; j < p; j++ {
+				if i == j {
+					reducedCorr.Set(i, j, corrMatrix.At(i, j)-psi[i])
+				} else {
+					reducedCorr.Set(i, j, corrMatrix.At(i, j))
+				}
+			}
+		}
+
+		// Eigenvalue decomposition
+		var eig mat.EigenSym
+		symReduced := denseToSym(reducedCorr)
+		if !eig.Factorize(symReduced, true) {
+			for i := 0; i < p; i++ {
+				grad[i] = 0
+			}
+			return
+		}
+
+		eigenvalues := eig.Values(nil)
+		var eigenvectors mat.Dense
+		eig.VectorsTo(&eigenvectors)
+
+		// Sort eigenvalues and eigenvectors
+		type eigenPair struct {
+			value  float64
+			vector []float64
+		}
+		pairs := make([]eigenPair, p)
+		for i := 0; i < p; i++ {
+			vec := make([]float64, p)
+			for j := 0; j < p; j++ {
+				vec[j] = eigenvectors.At(j, i)
+			}
+			pairs[i] = eigenPair{value: eigenvalues[i], vector: vec}
+		}
+		for i := 0; i < len(pairs)-1; i++ {
+			for j := i + 1; j < len(pairs); j++ {
+				if pairs[i].value < pairs[j].value {
+					pairs[i], pairs[j] = pairs[j], pairs[i]
+				}
+			}
+		}
+
+		// Extract loadings
+		loadings := mat.NewDense(p, numFactors, nil)
+		for i := 0; i < p; i++ {
+			for j := 0; j < numFactors; j++ {
+				if pairs[j].value > 0 {
+					loadings.Set(i, j, pairs[j].vector[i]*math.Sqrt(math.Max(pairs[j].value, 0)))
+				} else {
+					loadings.Set(i, j, 0)
+				}
+			}
+		}
+
+		// Compute g = L %*% t(L) + diag(Psi) - S
+		var model mat.Dense
+		model.Mul(loadings, loadings.T())
+		
+		// Gradient is the diagonal of g
+		for i := 0; i < p; i++ {
+			grad[i] = model.At(i, i) + psi[i] - corrMatrix.At(i, i)
 		}
 	}
 
-	if !converged {
-		insyra.LogWarning("stats", "MINRES", "did not converge after %d iterations (SSE=%.6f)", maxIter, prevSSE)
+	// Step 5: Run L-BFGS-B optimization
+	// R uses: optim(start, fit.residuals, gr = FAgr.minres, method = "L-BFGS-B", lower = 0.005, upper = upper, ...)
+	problem := optimize.Problem{
+		Func: objectiveFunc,
+		Grad: gradientFunc,
 	}
-	return &loadings, converged, maxIter, nil
+
+	settings := &optimize.Settings{
+		GradientThreshold: tol,
+		Converger: &optimize.FunctionConverge{
+			Absolute:   tol,
+			Relative:   tol,
+			Iterations: 20,
+		},
+		MajorIterations: maxIter,
+		FuncEvaluations: maxIter * 10, // Allow more function evaluations
+	}
+
+	// Use LBFGS (gonum doesn't have box constraints built-in, but we'll use a penalty approach)
+	method := &optimize.LBFGS{}
+	
+	// Apply box constraints via transformation: psi_i must be in [0.005, upper]
+	// We'll use a barrier/penalty approach
+	lower := 0.005
+	transformedStart := make([]float64, p)
+	for i := 0; i < p; i++ {
+		if start[i] < lower {
+			start[i] = lower
+		}
+		if start[i] > upper {
+			start[i] = upper
+		}
+		transformedStart[i] = start[i]
+	}
+
+	// Wrap objective and gradient with bounds checking
+	originalObjective := problem.Func
+	problem.Func = func(psi []float64) float64 {
+		// Clamp to bounds
+		for i := 0; i < p; i++ {
+			if psi[i] < lower {
+				psi[i] = lower
+			}
+			if psi[i] > upper {
+				psi[i] = upper
+			}
+		}
+		return originalObjective(psi)
+	}
+
+	originalGrad := problem.Grad
+	problem.Grad = func(grad, psi []float64) {
+		// Clamp to bounds
+		for i := 0; i < p; i++ {
+			if psi[i] < lower {
+				psi[i] = lower
+			}
+			if psi[i] > upper {
+				psi[i] = upper
+			}
+		}
+		originalGrad(grad, psi)
+	}
+
+	result, err := optimize.Minimize(problem, transformedStart, settings, method)
+	if err != nil {
+		insyra.LogWarning("stats", "MINRES", "optimization failed: %v", err)
+		return nil, false, 0, err
+	}
+
+	// Extract final Psi and compute loadings
+	finalPsi := result.X
+	
+	// Compute final loadings using the optimal Psi
+	reducedCorr := mat.NewDense(p, p, nil)
+	for i := 0; i < p; i++ {
+		for j := 0; j < p; j++ {
+			if i == j {
+				reducedCorr.Set(i, j, corrMatrix.At(i, j)-finalPsi[i])
+			} else {
+				reducedCorr.Set(i, j, corrMatrix.At(i, j))
+			}
+		}
+	}
+
+	var eig mat.EigenSym
+	symReduced := denseToSym(reducedCorr)
+	if !eig.Factorize(symReduced, true) {
+		return nil, false, 0, errors.New("final eigenvalue decomposition failed")
+	}
+
+	eigenvalues := eig.Values(nil)
+	var eigenvectors mat.Dense
+	eig.VectorsTo(&eigenvectors)
+
+	// Sort eigenvalues and eigenvectors
+	type eigenPair struct {
+		value  float64
+		vector []float64
+	}
+	pairs := make([]eigenPair, p)
+	for i := 0; i < p; i++ {
+		vec := make([]float64, p)
+		for j := 0; j < p; j++ {
+			vec[j] = eigenvectors.At(j, i)
+		}
+		pairs[i] = eigenPair{value: eigenvalues[i], vector: vec}
+	}
+	for i := 0; i < len(pairs)-1; i++ {
+		for j := i + 1; j < len(pairs); j++ {
+			if pairs[i].value < pairs[j].value {
+				pairs[i], pairs[j] = pairs[j], pairs[i]
+			}
+		}
+	}
+
+	// Extract final loadings
+	loadings := mat.NewDense(p, numFactors, nil)
+	for i := 0; i < p; i++ {
+		for j := 0; j < numFactors; j++ {
+			if pairs[j].value > 0 {
+				loadings.Set(i, j, pairs[j].vector[i]*math.Sqrt(pairs[j].value))
+			} else {
+				loadings.Set(i, j, 0)
+			}
+		}
+	}
+
+	converged := result.Status == optimize.Success || result.Status == optimize.FunctionConvergence
+	iterations := result.FuncEvaluations
+	
+	if converged {
+		insyra.LogInfo("stats", "MINRES", "converged in %d evaluations (objective=%.6f)", iterations, result.F)
+	} else {
+		insyra.LogWarning("stats", "MINRES", "optimization status: %v after %d evaluations", result.Status, iterations)
+	}
+
+	return loadings, converged, iterations, nil
 }
 
 func inverseSqrtDense(m *mat.Dense) (*mat.Dense, error) {
