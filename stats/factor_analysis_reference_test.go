@@ -10,17 +10,125 @@ import (
 	"github.com/HazelnutParadise/insyra/stats"
 )
 
+// TestPAFAlgorithmicProperties verifies that PAF implementation satisfies
+// key mathematical properties of Principal Axis Factoring
+func TestPAFAlgorithmicProperties(t *testing.T) {
+	// Create synthetic data with known factor structure
+	dt := insyra.NewDataTable()
+	// 20 observations, 6 variables
+	// Variables 1-3 load on factor 1, variables 4-6 load on factor 2
+	data := [][]float64{
+		{0.8, 0.7, 0.6, 0.2, 0.3, 0.1},
+		{0.9, 0.8, 0.7, 0.1, 0.2, 0.2},
+		{0.7, 0.9, 0.8, 0.3, 0.1, 0.1},
+		{0.6, 0.7, 0.9, 0.2, 0.2, 0.3},
+		{0.8, 0.6, 0.7, 0.1, 0.3, 0.2},
+		{0.2, 0.3, 0.1, 0.9, 0.8, 0.7},
+		{0.1, 0.2, 0.2, 0.8, 0.9, 0.8},
+		{0.3, 0.1, 0.1, 0.7, 0.8, 0.9},
+		{0.2, 0.2, 0.3, 0.8, 0.7, 0.8},
+		{0.1, 0.3, 0.2, 0.9, 0.8, 0.7},
+		{0.7, 0.8, 0.6, 0.2, 0.1, 0.3},
+		{0.8, 0.7, 0.9, 0.3, 0.2, 0.1},
+		{0.9, 0.6, 0.7, 0.1, 0.3, 0.2},
+		{0.6, 0.9, 0.8, 0.2, 0.1, 0.3},
+		{0.3, 0.2, 0.1, 0.8, 0.9, 0.7},
+		{0.2, 0.1, 0.3, 0.7, 0.8, 0.9},
+		{0.1, 0.3, 0.2, 0.9, 0.7, 0.8},
+		{0.2, 0.2, 0.1, 0.8, 0.8, 0.9},
+		{0.8, 0.9, 0.7, 0.1, 0.2, 0.2},
+		{0.7, 0.8, 0.9, 0.2, 0.1, 0.3},
+	}
+	
+	// Create columns for each variable
+	for colIdx := 0; colIdx < 6; colIdx++ {
+		colData := make([]float64, 20)
+		for rowIdx := 0; rowIdx < 20; rowIdx++ {
+			colData[rowIdx] = data[rowIdx][colIdx]
+		}
+		dl := insyra.NewDataList(colData)
+		dt.AppendCols(dl)
+	}
+	
+	opt := stats.DefaultFactorAnalysisOptions()
+	opt.Extraction = stats.FactorExtractionPAF
+	opt.Count.Method = stats.FactorCountFixed
+	opt.Count.FixedK = 2
+	opt.Rotation.Method = stats.FactorRotationNone  // No rotation for this test
+	opt.MaxIter = 100
+	
+	model := stats.FactorAnalysis(dt, opt)
+	if model == nil {
+		t.Fatal("Expected non-nil model")
+	}
+	
+	// Property 1: Communalities should be between 0 and 1
+	model.Communalities.AtomicDo(func(table *insyra.DataTable) {
+		rows, _ := table.Size()
+		for i := 0; i < rows; i++ {
+			comm, ok := table.GetRow(i).Get(0).(float64)
+			if !ok || math.IsNaN(comm) || math.IsInf(comm, 0) {
+				t.Errorf("Invalid communality at row %d", i)
+				continue
+			}
+			if comm < 0 || comm > 1.01 {  // Allow small numerical error
+				t.Errorf("Communality %d = %.4f is outside [0, 1]", i, comm)
+			}
+		}
+	})
+	
+	// Property 2: Sum of squared loadings for each variable should equal communality
+	model.Loadings.AtomicDo(func(loadings *insyra.DataTable) {
+		lRows, lCols := loadings.Size()
+		model.Communalities.AtomicDo(func(comms *insyra.DataTable) {
+			for i := 0; i < lRows; i++ {
+				sumSqLoadings := 0.0
+				loadRow := loadings.GetRow(i)
+				for j := 0; j < lCols; j++ {
+					loading, _ := loadRow.Get(j).(float64)
+					sumSqLoadings += loading * loading
+				}
+				
+				comm, _ := comms.GetRow(i).Get(0).(float64)
+				if math.Abs(sumSqLoadings-comm) > 0.01 {
+					t.Errorf("Variable %d: sum of squared loadings (%.4f) != communality (%.4f)",
+						i, sumSqLoadings, comm)
+				}
+			}
+		})
+	})
+	
+	// Property 3: Loadings should be real numbers (not NaN or Inf)
+	model.Loadings.AtomicDo(func(table *insyra.DataTable) {
+		rows, cols := table.Size()
+		for i := 0; i < rows; i++ {
+			row := table.GetRow(i)
+			for j := 0; j < cols; j++ {
+				loading, ok := row.Get(j).(float64)
+				if !ok || math.IsNaN(loading) || math.IsInf(loading, 0) {
+					t.Errorf("Invalid loading at [%d, %d]", i, j)
+				}
+			}
+		}
+	})
+	
+	t.Logf("PAF algorithmic properties test passed")
+}
+
 // TestFactorAnalysisPAFPromaxMatchesR validates that PAF with Promax rotation
-// produces consistent results. The expected values are based on running this
-// implementation on the test dataset (fa_test_dataset.csv).
+// produces consistent results on a test dataset.
 //
-// To validate against R's psych::fa package specifically, you would need to:
-// 1. Run the same data through R's psych::fa with fm="pa", rotate="promax"
-// 2. Update the expected values below to match R's output
-// 3. Ensure the test dataset is available in the local/ directory
+// IMPORTANT: The expected values below are from this Go implementation, NOT from R.
+// To truly validate against R's psych::fa package, you would need to:
+// 1. Create or obtain a test dataset (fa_test_dataset.csv)
+// 2. Run it through R's psych::fa with fm="pa", rotate="promax", kappa=4
+// 3. Update the expected values below to match R's output exactly
 //
-// Note: The local/ directory is in .gitignore, so test datasets must be
-// generated or provided separately.
+// The current test ensures algorithmic consistency of the PAF implementation
+// but does not guarantee exact numerical agreement with R until validated with
+// R-generated expected values.
+//
+// Note: The local/ directory is in .gitignore, so test datasets are not committed.
 func TestFactorAnalysisPAFPromaxMatchesR(t *testing.T) {
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {
