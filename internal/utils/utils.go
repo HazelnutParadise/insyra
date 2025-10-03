@@ -7,7 +7,9 @@ import (
 	"os"
 	"reflect"
 	"runtime"
+	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mattn/go-runewidth"
@@ -339,4 +341,140 @@ func CompareAny(a, b any) int {
 		cmp = strings.Compare(fmt.Sprint(a), fmt.Sprint(b))
 	}
 	return cmp
+}
+
+// ParallelSortStableFunc sorts the slice x in ascending order as determined by the cmp function.
+// It is a parallelized version of slices.SortStableFunc, using goroutines to improve performance on large datasets.
+// The function maintains stability: equal elements preserve their original order.
+// threshold is the minimum size for parallel sorting; smaller slices use sequential sorting.
+// numGoroutines specifies the number of goroutines to use; if <= 0, uses runtime.NumCPU().
+func ParallelSortStableFunc[S ~[]E, E any](x S, cmp func(E, E) int, threshold int, numGoroutines int) {
+	n := len(x)
+	if n <= 1 {
+		return
+	}
+
+	if n < threshold {
+		slices.SortStableFunc(x, cmp)
+		return
+	}
+
+	if numGoroutines <= 0 {
+		numGoroutines = runtime.NumCPU()
+	}
+	if numGoroutines > n {
+		numGoroutines = n
+	}
+
+	chunkSize := n / numGoroutines
+	if chunkSize == 0 {
+		chunkSize = 1
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < numGoroutines; i++ {
+		start := i * chunkSize
+		end := start + chunkSize
+		if i == numGoroutines-1 {
+			end = n
+		}
+
+		wg.Add(1)
+		go func(start, end int) {
+			defer wg.Done()
+			slices.SortStableFunc(x[start:end], cmp)
+		}(start, end)
+	}
+
+	wg.Wait()
+
+	// Merge the sorted chunks
+	ParallelMergeStable(x, cmp, numGoroutines)
+}
+
+// ParallelMergeStable merges the sorted chunks in the slice x.
+// It assumes x is divided into numChunks sorted sub-slices.
+func ParallelMergeStable[S ~[]E, E any](x S, cmp func(E, E) int, numChunks int) {
+	n := len(x)
+	if numChunks <= 1 {
+		return
+	}
+
+	chunkSize := n / numChunks
+	temp := make(S, n)
+	copy(temp, x)
+
+	// Merge pairs of chunks
+	for size := 1; size < numChunks; size *= 2 {
+		for left := 0; left < numChunks-size; left += 2 * size {
+			mid := left + size
+			right := left + 2*size
+			if right > numChunks {
+				right = numChunks
+			}
+
+			leftStart := left * chunkSize
+			midStart := mid * chunkSize
+			rightEnd := right * chunkSize
+			if right == numChunks {
+				rightEnd = n
+			}
+
+			mergeStable(temp[leftStart:midStart], temp[midStart:rightEnd], x[leftStart:rightEnd], cmp)
+		}
+		copy(temp, x)
+	}
+}
+
+// mergeStable merges two sorted slices a and b into dst, maintaining stability.
+func mergeStable[S ~[]E, E any](a, b, dst S, cmp func(E, E) int) {
+	i, j, k := 0, 0, 0
+	for i < len(a) && j < len(b) {
+		if cmp(a[i], b[j]) <= 0 {
+			dst[k] = a[i]
+			i++
+		} else {
+			dst[k] = b[j]
+			j++
+		}
+		k++
+	}
+	for i < len(a) {
+		dst[k] = a[i]
+		i++
+		k++
+	}
+	for j < len(b) {
+		dst[k] = b[j]
+		j++
+		k++
+	}
+}
+
+// ParallelSortStableFuncDefault is a convenience function that uses a default threshold of 10000.
+// Based on benchmarks, this threshold provides optimal performance:
+// - For datasets < 10000 elements: sequential sorting is faster
+// - For datasets >= 10000 elements: parallel sorting provides significant speedup
+// The number of goroutines is automatically determined based on data size:
+// - size < 10000: 1 goroutine (sequential)
+// - 10000 <= size < 50000: 8 goroutines
+// - 50000 <= size < 100000: 16 goroutines
+// - size >= 100000: min(24, size/20000) goroutines
+func ParallelSortStableFuncDefault[S ~[]E, E any](x S, cmp func(E, E) int) {
+	n := len(x)
+	var numGoroutines int
+	if n < 10000 {
+		slices.SortStableFunc(x, cmp)
+		return
+	} else if n < 50000 {
+		numGoroutines = 8
+	} else if n < 100000 {
+		numGoroutines = 16
+	} else {
+		numGoroutines = min(24, n/20000)
+		if numGoroutines < 1 {
+			numGoroutines = 1
+		}
+	}
+	ParallelSortStableFunc(x, cmp, 10000, numGoroutines)
 }
