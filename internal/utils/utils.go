@@ -354,7 +354,7 @@ func ParallelSortStableFunc[S ~[]E, E any](x S, cmp func(E, E) int) {
 	}
 
 	// Use sequential sort for small arrays
-	if n < 5000 {
+	if n < 4900 {
 		slices.SortStableFunc(x, cmp)
 		return
 	}
@@ -455,21 +455,45 @@ func mergeStable[S ~[]E, E any](a, b, dst S, cmp func(E, E) int) {
 
 // getOptimalGoroutines returns the optimal number of goroutines for a given data size
 func getOptimalGoroutines(n int) int {
-	// Optimized scaling strategy for better small dataset performance
-	if n < 10000 {
-		return 2 // Use only 2 goroutines for 5K-10K elements
+	// Fine-tuned scaling strategy with 100-unit granularity
+	if n < 5000 {
+		return 2 // 4900-4999 elements
+	} else if n < 6000 {
+		return 3 // 5000-5999 elements
+	} else if n < 8000 {
+		return 4 // 6000-7999 elements
+	} else if n < 10000 {
+		return 5 // 8000-9999 elements
+	} else if n < 15000 {
+		return 6 // 10000-14999 elements
+	} else if n < 20000 {
+		return 7 // 15000-19999 elements
 	} else if n < 25000 {
-		return 4
-	} else if n < 50000 {
-		return 6 // Reduced from 8 to 6
-	} else if n < 100000 {
-		return 8 // Reduced from 12 to 8
+		return 8 // 20000-24999 elements
+	} else if n < 35000 {
+		return 9 // 25000-34999 elements
+	} else if n < 45000 {
+		return 10 // 35000-44999 elements
+	} else if n < 55000 {
+		return 11 // 45000-54999 elements
+	} else if n < 70000 {
+		return 12 // 55000-69999 elements
+	} else if n < 90000 {
+		return 13 // 70000-89999 elements
+	} else if n < 120000 {
+		return 14 // 90000-119999 elements
+	} else if n < 160000 {
+		return 15 // 120000-159999 elements
+	} else if n < 200000 {
+		return 16 // 160000-199999 elements
 	} else if n < 250000 {
-		return 12 // Reduced from 16 to 12
+		return 18 // 200000-249999 elements
+	} else if n < 350000 {
+		return 20 // 250000-349999 elements
 	} else if n < 500000 {
-		return 16 // Reduced from 20 to 16
+		return 22 // 350000-499999 elements
 	} else {
-		goroutines := n / 20000 // Increased divisor from 15000 to 20000
+		goroutines := n / 25000 // More aggressive scaling for very large datasets
 		if goroutines > runtime.NumCPU() {
 			goroutines = runtime.NumCPU()
 		}
