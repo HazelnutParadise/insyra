@@ -110,6 +110,7 @@ func TestVarimaxRotationMatchesRReference(t *testing.T) {
 		}
 		t.Fatalf("loadings mismatch: best max abs diff %.6f exceeds tolerance\nperm=%v sign=%v\n%s", bestDiff, bestPerm, bestSign, builder.String())
 	}
+	t.Logf("max abs diff (loadings after alignment): %.6f", bestDiff)
 
 	if len(goCommunalities) != len(expectedCommunalities) {
 		t.Fatalf("communalities length mismatch: expected %d got %d", len(expectedCommunalities), len(goCommunalities))
@@ -119,6 +120,7 @@ func TestVarimaxRotationMatchesRReference(t *testing.T) {
 			t.Fatalf("communalities[%d] mismatch: got %.6f want %.6f", i, goCommunalities[i], expectedCommunalities[i])
 		}
 	}
+	t.Logf("max abs diff (communalities): %.6f", maxAbsDiffVectors(goCommunalities, expectedCommunalities))
 
 	if model.Scores == nil {
 		t.Fatal("model scores are nil")
@@ -137,6 +139,7 @@ func TestVarimaxRotationMatchesRReference(t *testing.T) {
 	}
 
 	maxScoreDiff := maxAbsDiff(goScores, expectedScores, bestPerm, bestSign)
+	t.Logf("max abs diff (scores after alignment): %.6f", maxScoreDiff)
 	if maxScoreDiff > 5e-3 {
 		t.Fatalf("factor scores mismatch: max abs diff %.6f exceeds tolerance", maxScoreDiff)
 	}
@@ -436,6 +439,17 @@ func maxAbsDiff(goMatrix, expectedMatrix [][]float64, perm []int, sign []float64
 			if diff > maxDiff {
 				maxDiff = diff
 			}
+		}
+	}
+	return maxDiff
+}
+
+func maxAbsDiffVectors(a, b []float64) float64 {
+	maxDiff := 0.0
+	for i := range a {
+		diff := math.Abs(a[i] - b[i])
+		if diff > maxDiff {
+			maxDiff = diff
 		}
 	}
 	return maxDiff
