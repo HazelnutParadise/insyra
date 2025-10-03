@@ -837,7 +837,7 @@ func extractPAF(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64,
 		maxIter = 100
 	}
 	if tol <= 0 {
-		tol = 1e-6
+		tol = internalTolDefault
 	}
 
 	// Initialize communalities with SMC (Squared Multiple Correlation)
@@ -1058,11 +1058,11 @@ func extractML(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64, 
 		maxIter = 100
 	}
 	if tol <= 0 {
-		tol = 1e-6
+		tol = internalTolDefault
 	}
 
 	// Initialize with PAF
-	initial, _, _, err := extractPAF(corrMatrix, numFactors, min(maxIter, 50), math.Max(tol, 1e-6), 0.001)
+	initial, _, _, err := extractPAF(corrMatrix, numFactors, min(maxIter, 50), math.Max(tol, internalTolDefault), 0.001)
 	if err != nil || initial == nil {
 		// Fall back to PCA loadings
 		var eig mat.EigenSym
@@ -1243,6 +1243,10 @@ func extractMINRES(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float
 	p, _ := corrMatrix.Dims()
 	if numFactors <= 0 || numFactors > p {
 		return nil, false, 0, fmt.Errorf("invalid number of factors: %d", numFactors)
+	}
+
+	if tol <= 0 {
+		tol = internalTolDefault
 	}
 
 	// Step 1: Compute SMC (Squared Multiple Correlation) for initial communalities
