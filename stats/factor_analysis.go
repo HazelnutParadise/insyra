@@ -486,25 +486,13 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	var phi *mat.Dense
 	if opt.Rotation.Method != FactorRotationNone {
 		rotatedLoadings, rotationMatrix, phi = rotateFactors(loadings, opt.Rotation)
+		// Note: rotateFactors now handles sign standardization internally
 	} else {
 		rotatedLoadings = loadings
 		rotationMatrix = nil
 		phi = nil
-	}
-
-	// Apply factor reflection to ensure positive loadings (match R's convention)
-	var preReflection *mat.Dense
-	if rotatedLoadings != nil {
-		copyLoadings := mat.NewDense(rotatedLoadings.RawMatrix().Rows, rotatedLoadings.RawMatrix().Cols, nil)
-		copyLoadings.Copy(rotatedLoadings)
-		preReflection = copyLoadings
+		// Apply factor reflection for unrotated factors
 		rotatedLoadings = reflectFactorsForPositiveLoadings(rotatedLoadings)
-	}
-	if rotationMatrix != nil && preReflection != nil {
-		rotationMatrix = reflectRotationMatrix(rotationMatrix, rotatedLoadings, preReflection)
-	}
-	if phi != nil && preReflection != nil {
-		phi = reflectPhiMatrix(phi, rotatedLoadings, preReflection)
 	}
 
 	// Sort factors by explained variance (following R's psych package)
@@ -1884,7 +1872,36 @@ func rotateOrthomax(loadings *mat.Dense, gamma float64, maxIter int, tol float64
 	if err != nil {
 		return nil, nil, err
 	}
-	return kaiserDenorm(rotatedNorm, weights), rotation, nil
+	rotated := kaiserDenorm(rotatedNorm, weights)
+
+	// Apply sign standardization to match R's convention
+	// Reflect each column so that its first non-zero element is positive
+	// This is a common convention in factor analysis to ensure consistent signs
+	p, m := rotated.Dims()
+	insyra.LogInfo("stats", "Varimax", "Before sign standardization: A1 = [%.6f, %.6f]", rotated.At(0, 0), rotated.At(0, 1))
+	for j := 0; j < m; j++ {
+		// Find first non-zero element in this column
+		firstNonZero := 0.0
+		for i := 0; i < p; i++ {
+			val := rotated.At(i, j)
+			if math.Abs(val) > 1e-10 {
+				firstNonZero = val
+				break
+			}
+		}
+		// If first non-zero element is negative, flip the entire column
+		if firstNonZero < 0 {
+			for i := 0; i < p; i++ {
+				rotated.Set(i, j, -rotated.At(i, j))
+			}
+			// Also flip the corresponding column in rotation matrix
+			for i := 0; i < m; i++ {
+				rotation.Set(i, j, -rotation.At(i, j))
+			}
+		}
+	}
+
+	return rotated, rotation, nil
 }
 
 // rotateOrthomaxNormalized performs orthogonal rotation on Kaiser-normalized loadings.
@@ -1970,13 +1987,38 @@ func rotateOrthomaxNormalized(loadings *mat.Dense, gamma float64, maxIter int, t
 				}
 			}
 
-			// R: Orthogonalize via QR decomposition
+			// R: Orthogonalize via QR decomposition with improved stability
 			// Tmatt <- qr.Q(qr(X))
 			var qr mat.QR
 			qr.Factorize(X)
 
 			var Tmatt mat.Dense
 			qr.QTo(&Tmatt)
+
+			// Ensure proper orthogonality (numerical stability improvement)
+			// Re-orthogonalize if needed
+			if innerIter == 0 {
+				var check mat.Dense
+				check.Mul(Tmatt.T(), &Tmatt)
+				maxOffDiag := 0.0
+				for i := 0; i < m; i++ {
+					for j := 0; j < m; j++ {
+						if i != j {
+							maxOffDiag = math.Max(maxOffDiag, math.Abs(check.At(i, j)))
+						}
+					}
+				}
+				// If orthogonality degraded, apply SVD-based correction
+				if maxOffDiag > 1e-10 {
+					var svd mat.SVD
+					if svd.Factorize(&Tmatt, mat.SVDFull) {
+						var U, V mat.Dense
+						svd.UTo(&U)
+						svd.VTo(&V)
+						Tmatt.Mul(&U, V.T())
+					}
+				}
+			}
 
 			// R: L <- A %*% Tmatt
 			var trialRotated mat.Dense
@@ -2017,36 +2059,19 @@ func rotatePromax(loadings *mat.Dense, kappa float64, maxIter int, tol float64) 
 
 	p, m := loadings.Dims()
 
-	// Step 1: Perform varimax rotation on ORIGINAL scale loadings
-	// R's promax: first does varimax, THEN builds target from those loadings (not normalized)
+	// Standard Promax algorithm (Kaiser 1958):
+	// 1. Varimax rotation on original scale loadings
+	// 2. Build target Q from varimax loadings
+	// 3. Compute transformation Ti
+	// 4. Apply Ti to varimax loadings
+
+	// Step 1: Perform Varimax rotation
 	rotated, _, err := rotateOrthomax(loadings, 1.0, maxIter, tol)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("promax: varimax failed: %w", err)
 	}
 
-	// CRITICAL: Reflect factors to match R's sign convention
-	// Different implementations may produce opposite signs for factors
-	// We align by ensuring each column's largest (absolute value) element is positive
-	for j := 0; j < m; j++ {
-		maxAbs := 0.0
-		maxVal := 0.0
-		for i := 0; i < p; i++ {
-			val := rotated.At(i, j)
-			if math.Abs(val) > maxAbs {
-				maxAbs = math.Abs(val)
-				maxVal = val
-			}
-		}
-		// If the max magnitude element is negative, flip the entire column
-		if maxVal < 0 {
-			for i := 0; i < p; i++ {
-				rotated.Set(i, j, -rotated.At(i, j))
-			}
-		}
-	}
-
-	// Step 2: Build target matrix Q = sign(L_varimax) * |L_varimax|^kappa
-	// CRITICAL: Use the ORIGINAL SCALE varimax loadings, not Kaiser normalized!
+	// Step 2: Build target matrix Q = sign(L) * |L|^kappa
 	target := mat.NewDense(p, m, nil)
 	for i := 0; i < p; i++ {
 		for j := 0; j < m; j++ {
@@ -2061,36 +2086,29 @@ func rotatePromax(loadings *mat.Dense, kappa float64, maxIter int, tol float64) 
 		}
 	}
 
-	// Step 3: Solve for transformation T = t(solve(t(L) %*% L, t(L) %*% Q))
-	// R: Ti <- t(solve(t(L0) %*% L0, t(L0) %*% Q))
-	var L0t mat.Dense
-	L0t.CloneFrom(rotated.T())
+	// Step 3: Compute transformation Ti = solve(t(L) * L) * t(L) * Q
+	var Lt mat.Dense
+	Lt.CloneFrom(rotated.T())
 
-	var L0tL0 mat.Dense
-	L0tL0.Mul(&L0t, rotated)
+	var LtL mat.Dense
+	LtL.Mul(&Lt, rotated)
 
-	var L0tL0Inv mat.Dense
-	if err := safeInvert(&L0tL0Inv, &L0tL0, epsilonSmall); err != nil {
-		return nil, nil, nil, fmt.Errorf("promax: unable to invert L0'L0: %w", err)
+	var LtLInv mat.Dense
+	if err := safeInvert(&LtLInv, &LtL, epsilonSmall); err != nil {
+		return nil, nil, nil, fmt.Errorf("promax: unable to invert L'L: %w", err)
 	}
 
-	var L0tQ mat.Dense
-	L0tQ.Mul(&L0t, target)
+	var LtQ mat.Dense
+	LtQ.Mul(&Lt, target)
 
-	var transTmp mat.Dense
-	transTmp.Mul(&L0tL0Inv, &L0tQ)
-
-	// Take transpose to get Ti
 	var trans mat.Dense
-	trans.CloneFrom(transTmp.T())
+	trans.Mul(&LtLInv, &LtQ)
 
-	// Step 4: Compute pattern loadings: Pattern = A * Ti
-	// CRITICAL: Use ORIGINAL unrotated loadings, not the varimax rotated ones!
+	// Step 4: Apply Ti to varimax loadings: Pattern = L * Ti
 	var pattern mat.Dense
-	pattern.Mul(loadings, &trans)
+	pattern.Mul(rotated, &trans)
 
-	// Step 5: Compute Phi = t(solve(t(T) %*% T))
-	// R: Phi <- t(solve(crossprod(Ti)))
+	// Step 5: Compute Phi = solve(t(Ti) * Ti)
 	var Tt mat.Dense
 	Tt.CloneFrom(trans.T())
 
@@ -2103,7 +2121,7 @@ func rotatePromax(loadings *mat.Dense, kappa float64, maxIter int, tol float64) 
 	}
 
 	var phi mat.Dense
-	phi.CloneFrom(TtTInv.T())
+	phi.CloneFrom(&TtTInv)
 
 	// Convert Phi to correlation matrix (normalize diagonal to 1)
 	r, c := phi.Dims()
@@ -2117,9 +2135,6 @@ func rotatePromax(loadings *mat.Dense, kappa float64, maxIter int, tol float64) 
 		}
 	}
 
-	// Step 6: Return pattern, transformation, and Phi
-	// Note: For Promax, the rotation matrix is just Ti (the transformation itself)
-	// The combined rotation with initial varimax is handled internally
 	return &pattern, &trans, &phi, nil
 }
 
