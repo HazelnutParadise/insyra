@@ -544,16 +544,16 @@ func TestDefaultOptions(t *testing.T) {
 		t.Error("Default should use MINRES extraction")
 	}
 
-	if opt.Rotation.Method != stats.FactorRotationVarimax {
-		t.Error("Default should use Varimax rotation")
+	if opt.Rotation.Method != stats.FactorRotationOblimin {
+		t.Error("Default should use Oblimin rotation (R psych::fa default)")
 	}
 
 	if opt.Scoring != stats.FactorScoreRegression {
 		t.Error("Default should use regression scoring")
 	}
 
-	if opt.MaxIter != 100 {
-		t.Error("Default MaxIter should be 100")
+	if opt.MaxIter != 50 {
+		t.Error("Default MaxIter should be 50 (R psych::fa default)")
 	}
 
 	// Tol removed from API; default tolerance is internal and not exposed.
@@ -571,6 +571,9 @@ func TestFactorAnalysisWithStandardizedData(t *testing.T) {
 	opt.Preprocess.Standardize = true
 	opt.Count.Method = stats.FactorCountFixed
 	opt.Count.FixedK = 2
+	// Use no rotation for this test - we're testing standardization, not rotation
+	// Oblimin rotation can be unstable with very small datasets (n=5)
+	opt.Rotation.Method = stats.FactorRotationNone
 
 	model := stats.FactorAnalysis(dt, opt)
 
