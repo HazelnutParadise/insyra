@@ -741,12 +741,23 @@ func computePCALoadings(eigenvalues []float64, eigenvectors *mat.Dense, numFacto
 	if numFactors <= 0 || numFactors > cols {
 		numFactors = cols
 	}
+
+	// R: Adjust small eigenvalues before using them
+	// eigens$values[eigens$values < .Machine$double.eps] <- 100 * .Machine$double.eps
+	adjustedEigenvalues := make([]float64, len(eigenvalues))
+	for i := range eigenvalues {
+		if eigenvalues[i] < machineEpsilon {
+			adjustedEigenvalues[i] = eigenvalueMinThreshold
+		} else {
+			adjustedEigenvalues[i] = eigenvalues[i]
+		}
+	}
+
 	loadings := mat.NewDense(p, numFactors, nil)
 	for i := 0; i < p; i++ {
 		for j := 0; j < numFactors; j++ {
-			// R: eigens$values[eigens$values < .Machine$double.eps] <- 100 * .Machine$double.eps
-			if j < len(eigenvalues) && eigenvalues[j] > eigenvalueMinThreshold {
-				loadings.Set(i, j, eigenvectors.At(i, j)*math.Sqrt(eigenvalues[j]))
+			if j < len(adjustedEigenvalues) {
+				loadings.Set(i, j, eigenvectors.At(i, j)*math.Sqrt(adjustedEigenvalues[j]))
 			} else {
 				loadings.Set(i, j, 0)
 			}
@@ -790,9 +801,15 @@ func computeSMC(corr *mat.Dense, minErr float64) []float64 {
 				h2[i] = minErr
 			} else {
 				smc := 1.0 - 1.0/invDiagVal
+				// R: if (min(smc, na.rm = TRUE) < 0) { smc[smc < 0] <- 0 }
+				if smc < 0 {
+					smc = 0.0
+				}
+				// Apply minErr floor after zero check
 				if smc < minErr {
 					smc = minErr
 				}
+				// R: if (max(smc, na.rm = TRUE) > 1) { smc[smc > 1] <- 1 }
 				if smc > 1.0 {
 					smc = 1.0
 				}
@@ -850,9 +867,15 @@ func computeSMC(corr *mat.Dense, minErr float64) []float64 {
 			h2[i] = minErr
 		} else {
 			smc := 1.0 - 1.0/invDiag
+			// R: if (min(smc, na.rm = TRUE) < 0) { smc[smc < 0] <- 0 }
+			if smc < 0 {
+				smc = 0.0
+			}
+			// Apply minErr floor after zero check
 			if smc < minErr {
 				smc = minErr
 			}
+			// R: if (max(smc, na.rm = TRUE) > 1) { smc[smc > 1] <- 1 }
 			if smc > 1.0 {
 				smc = 1.0
 			}
@@ -934,16 +957,23 @@ func extractPAF(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64,
 			}
 		}
 
-		// Extract loadings
+		// R: Adjust small eigenvalues before using them
+		// eigens$values[eigens$values < .Machine$double.eps] <- 100 * .Machine$double.eps
+		adjustedEigenvalues := make([]float64, len(pairs))
+		for i := range pairs {
+			if pairs[i].value < machineEpsilon {
+				adjustedEigenvalues[i] = eigenvalueMinThreshold
+			} else {
+				adjustedEigenvalues[i] = pairs[i].value
+			}
+		}
+
+		// Extract loadings using adjusted eigenvalues
+		// R: if (nf > 1) { loadings <- eigens$vectors[, 1:nf] %*% diag(sqrt(eigens$values[1:nf])) }
 		loadings = mat.NewDense(p, numFactors, nil)
 		for i := 0; i < p; i++ {
 			for j := 0; j < numFactors; j++ {
-				// R: eigens$values[eigens$values < .Machine$double.eps] <- 100 * .Machine$double.eps
-				if pairs[j].value > eigenvalueMinThreshold {
-					loadings.Set(i, j, pairs[j].vector[i]*math.Sqrt(pairs[j].value))
-				} else {
-					loadings.Set(i, j, 0)
-				}
+				loadings.Set(i, j, pairs[j].vector[i]*math.Sqrt(adjustedEigenvalues[j]))
 			}
 		}
 
@@ -2748,16 +2778,25 @@ func reflectFactorsForPositiveLoadings(loadings *mat.Dense) *mat.Dense {
 	reflected := mat.NewDense(p, m, nil)
 	reflected.Copy(loadings)
 
+	// R: signed <- sign(colSums(loadings))
+	//    signed[signed == 0] <- 1
+	//    loadings <- loadings %*% diag(signed)
 	for j := 0; j < m; j++ {
 		// Calculate column sum to determine reflection
-		// R's psych package typically reflects to maximize positive sum
 		colSum := 0.0
 		for i := 0; i < p; i++ {
 			colSum += loadings.At(i, j)
 		}
 
-		// If column sum is negative, reflect the entire factor
+		// Compute sign, treating 0 as 1 (R's convention)
+		sign := 1.0
 		if colSum < 0 {
+			sign = -1.0
+		}
+		// Note: if colSum == 0, sign remains 1 (R: signed[signed == 0] <- 1)
+
+		// Apply sign to the entire factor
+		if sign < 0 {
 			for i := 0; i < p; i++ {
 				reflected.Set(i, j, -loadings.At(i, j))
 			}
