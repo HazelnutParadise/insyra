@@ -346,36 +346,45 @@ func CompareAny(a, b any) int {
 // ParallelSortStableFunc sorts the slice x in ascending order as determined by the cmp function.
 // It is a parallelized version of slices.SortStableFunc, using goroutines to improve performance on large datasets.
 // The function maintains stability: equal elements preserve their original order.
-// threshold is the minimum size for parallel sorting; smaller slices use sequential sorting.
-// numGoroutines specifies the number of goroutines to use; if <= 0, uses runtime.NumCPU().
-func ParallelSortStableFunc[S ~[]E, E any](x S, cmp func(E, E) int, threshold int, numGoroutines int) {
+// This optimized version uses adaptive goroutines scaling and improved chunking strategy.
+func ParallelSortStableFunc[S ~[]E, E any](x S, cmp func(E, E) int) {
 	n := len(x)
 	if n <= 1 {
 		return
 	}
 
-	if n < threshold {
+	// Use sequential sort for small arrays
+	if n < 10000 {
 		slices.SortStableFunc(x, cmp)
 		return
 	}
 
-	if numGoroutines <= 0 {
+	// Determine optimal number of goroutines based on data size
+	numGoroutines := getOptimalGoroutines(n)
+	if numGoroutines > runtime.NumCPU() {
 		numGoroutines = runtime.NumCPU()
 	}
-	if numGoroutines > n {
-		numGoroutines = n
-	}
 
-	chunkSize := n / numGoroutines
+	// Sort chunks in parallel using the same logic as the default version
+	sortChunksOptimized(x, cmp, numGoroutines)
+
+	// Merge chunks using the original stable merge
+	ParallelMergeStable(x, cmp, numGoroutines)
+}
+
+// sortChunksOptimized sorts data chunks in parallel with consistent chunking
+func sortChunksOptimized[S ~[]E, E any](x S, cmp func(E, E) int, numChunks int) {
+	n := len(x)
+	chunkSize := n / numChunks
 	if chunkSize == 0 {
 		chunkSize = 1
 	}
 
 	var wg sync.WaitGroup
-	for i := 0; i < numGoroutines; i++ {
+	for i := 0; i < numChunks; i++ {
 		start := i * chunkSize
 		end := start + chunkSize
-		if i == numGoroutines-1 {
+		if i == numChunks-1 {
 			end = n
 		}
 
@@ -385,11 +394,7 @@ func ParallelSortStableFunc[S ~[]E, E any](x S, cmp func(E, E) int, threshold in
 			slices.SortStableFunc(x[start:end], cmp)
 		}(start, end)
 	}
-
 	wg.Wait()
-
-	// Merge the sorted chunks
-	ParallelMergeStable(x, cmp, numGoroutines)
 }
 
 // ParallelMergeStable merges the sorted chunks in the slice x.
@@ -451,30 +456,27 @@ func mergeStable[S ~[]E, E any](a, b, dst S, cmp func(E, E) int) {
 	}
 }
 
-// ParallelSortStableFuncDefault is a convenience function that uses a default threshold of 10000.
-// Based on benchmarks, this threshold provides optimal performance:
-// - For datasets < 10000 elements: sequential sorting is faster
-// - For datasets >= 10000 elements: parallel sorting provides significant speedup
-// The number of goroutines is automatically determined based on data size:
-// - size < 10000: 1 goroutine (sequential)
-// - 10000 <= size < 50000: 8 goroutines
-// - 50000 <= size < 100000: 16 goroutines
-// - size >= 100000: min(24, size/20000) goroutines
-func ParallelSortStableFuncDefault[S ~[]E, E any](x S, cmp func(E, E) int) {
-	n := len(x)
-	var numGoroutines int
-	if n < 10000 {
-		slices.SortStableFunc(x, cmp)
-		return
+// getOptimalGoroutines returns the optimal number of goroutines for a given data size
+func getOptimalGoroutines(n int) int {
+	// Use a more aggressive scaling strategy
+	if n < 25000 {
+		return 4
 	} else if n < 50000 {
-		numGoroutines = 8
+		return 8
 	} else if n < 100000 {
-		numGoroutines = 16
+		return 12
+	} else if n < 250000 {
+		return 16
+	} else if n < 500000 {
+		return 20
 	} else {
-		numGoroutines = min(24, n/20000)
-		if numGoroutines < 1 {
-			numGoroutines = 1
+		goroutines := n / 15000
+		if goroutines > runtime.NumCPU() {
+			goroutines = runtime.NumCPU()
 		}
+		if goroutines < 1 {
+			goroutines = 1
+		}
+		return goroutines
 	}
-	ParallelSortStableFunc(x, cmp, 10000, numGoroutines)
 }
