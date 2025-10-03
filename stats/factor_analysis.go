@@ -740,41 +740,79 @@ func computeSMC(corr *mat.Dense, minErr float64) []float64 {
 	p, _ := corr.Dims()
 	h2 := make([]float64, p)
 
-	// Convert to SymDense for inversion
-	symCorr := mat.NewSymDense(p, nil)
-	for i := 0; i < p; i++ {
-		for j := i; j < p; j++ {
-			symCorr.SetSym(i, j, corr.At(i, j))
-		}
-	}
-
-	// Compute inverse of the full correlation matrix
-	var invCorr mat.Dense
-	err := invCorr.Inverse(symCorr)
-	if err != nil {
-		// If inversion fails, add small ridge and try again
+	// Fast path: try invert full matrix
+	var dense mat.Dense
+	dense.CloneFrom(corr)
+	var invFull mat.Dense
+	if err := invFull.Inverse(&dense); err == nil {
+		invDiagSlice := Diag(&invFull, 0, 0, false)
+		invDiag := invDiagSlice.([]float64)
 		for i := 0; i < p; i++ {
-			symCorr.SetSym(i, i, symCorr.At(i, i)+1e-6)
-		}
-		err = invCorr.Inverse(symCorr)
-	}
-	if err != nil {
-		// If still fails, use default communalities of 0.5
-		insyra.LogWarning("stats", "computeSMC", "correlation matrix inversion failed, using default h2=0.5")
-		for i := 0; i < p; i++ {
-			h2[i] = 0.5
+			invDiagVal := invDiag[i]
+			if invDiagVal <= 0 || math.IsNaN(invDiagVal) {
+				h2[i] = minErr
+			} else {
+				smc := 1.0 - 1.0/invDiagVal
+				if smc < minErr {
+					smc = minErr
+				}
+				if smc > 1.0 {
+					smc = 1.0
+				}
+				h2[i] = smc
+			}
 		}
 		return h2
 	}
 
-	// SMC_i = 1 - 1/R^{-1}_{ii}
+	// Fallback: per-variable submatrix (handles NaNs / singularity)
+	insyra.LogWarning("stats", "computeSMC", "full correlation inversion failed, falling back to per-variable pseudo-inverse")
+	isNaN := func(v float64) bool { return math.IsNaN(v) }
+
 	for i := 0; i < p; i++ {
-		invDiag := invCorr.At(i, i)
-		if invDiag <= 0 {
-			h2[i] = 0.5 // fallback
+		// collect indices with non-NaN correlations with variable i (excluding i)
+		idx := make([]int, 0, p)
+		for j := 0; j < p; j++ {
+			if j == i {
+				continue
+			}
+			if !isNaN(corr.At(j, i)) {
+				idx = append(idx, j)
+			}
+		}
+
+		if len(idx) == 0 {
+			h2[i] = minErr
+			continue
+		}
+
+		subN := len(idx) + 1
+		sub := mat.NewDense(subN, subN, nil)
+		// place variable i at position 0
+		sub.Set(0, 0, corr.At(i, i))
+		for a, j := range idx {
+			r := a + 1
+			sub.Set(0, r, corr.At(i, j))
+			sub.Set(r, 0, corr.At(j, i))
+			for b, k := range idx {
+				c := b + 1
+				sub.Set(r, c, corr.At(j, k))
+			}
+		}
+
+		var subInv mat.Dense
+		if err := subInv.Inverse(sub); err != nil {
+			if err2 := pseudoInverse(&subInv, sub); err2 != nil {
+				h2[i] = minErr
+				continue
+			}
+		}
+
+		invDiag := subInv.At(0, 0)
+		if invDiag <= 0 || math.IsNaN(invDiag) {
+			h2[i] = minErr
 		} else {
 			smc := 1.0 - 1.0/invDiag
-			// SMC can be negative or > 1 in theory, so clamp to reasonable range
 			if smc < minErr {
 				smc = minErr
 			}
@@ -786,27 +824,34 @@ func computeSMC(corr *mat.Dense, minErr float64) []float64 {
 	}
 
 	return h2
-} // extractPAF extracts factors using Principal Axis Factoring
+}
+
+// extractPAF extracts factors using Principal Axis Factoring
 func extractPAF(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64, minErr float64) (*mat.Dense, bool, int, error) {
-	p := corrMatrix.RawMatrix().Rows
+	p, _ := corrMatrix.Dims()
+	if numFactors <= 0 || numFactors > p {
+		return nil, false, 0, fmt.Errorf("invalid number of factors: %d", numFactors)
+	}
+
+	if maxIter <= 0 {
+		maxIter = 100
+	}
+	if tol <= 0 {
+		tol = 1e-6
+	}
 
 	// Initialize communalities with SMC (Squared Multiple Correlation)
 	communalities := initialCommunalitiesSMC(corrMatrix, minErr)
 
-	// Log initial communalities for verification (per issue #xxx)
-	if p >= 4 {
-		insyra.LogInfo("stats", "PAF", "init h2 (first 4) = %.3f, %.3f, %.3f, %.3f",
-			communalities[0], communalities[1], communalities[2], communalities[3])
-	}
-
-	var loadings *mat.Dense
-	converged := false
-
-	// Keep history of communalities for debugging/comparison with R
+	// Keep history
 	commHistory := make([][]float64, 0, maxIter)
+	converged := false
+	var loadings *mat.Dense
 
+	// main iterative loop
 	for iter := 0; iter < maxIter; iter++ {
-		// Create reduced correlation matrix with communalities on diagonal
+		// build reduced correlation matrix with communalities on diagonal
+		p, _ := corrMatrix.Dims()
 		reducedCorr := mat.NewDense(p, p, nil)
 		for i := 0; i < p; i++ {
 			for j := 0; j < p; j++ {
@@ -818,7 +863,7 @@ func extractPAF(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64,
 			}
 		}
 
-		// Eigenvalue decomposition - ensure matrix is symmetric
+		// eigen decomposition of reducedCorr
 		var eig mat.EigenSym
 		symReduced := denseToSym(reducedCorr)
 
@@ -966,9 +1011,11 @@ func mlFitStats(R, Sigma mat.Matrix, n, p, m int) (f, chi2, pval float64, df int
 	temp.Mul(&invSigma, R)
 
 	// Trace
+	diag := Diag(&temp, 0, 0, false)
+	diagSlice := diag.([]float64)
 	tr := 0.0
-	for i := 0; i < p; i++ {
-		tr += temp.At(i, i)
+	for _, v := range diagSlice {
+		tr += v
 	}
 
 	// Log determinant
@@ -1201,7 +1248,7 @@ func extractMINRES(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float
 	// Step 1: Compute SMC (Squared Multiple Correlation) for initial communalities
 	// This matches R's: S.smc <- smc(S, covar)
 	h2 := computeSMC(corrMatrix, 0.001)
-	
+
 	// Step 2: Set starting values for uniquenesses (Psi)
 	// R code: start <- diag(S) - S.smc
 	start := make([]float64, p)
@@ -1361,7 +1408,7 @@ func extractMINRES(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float
 		// Compute g = L %*% t(L) + diag(Psi) - S
 		var model mat.Dense
 		model.Mul(loadings, loadings.T())
-		
+
 		// Gradient is the diagonal of g
 		for i := 0; i < p; i++ {
 			grad[i] = model.At(i, i) + psi[i] - corrMatrix.At(i, i)
@@ -1388,7 +1435,7 @@ func extractMINRES(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float
 
 	// Use LBFGS (gonum doesn't have box constraints built-in, but we'll use a penalty approach)
 	method := &optimize.LBFGS{}
-	
+
 	// Apply box constraints via transformation: psi_i must be in [0.005, upper]
 	// We'll use a barrier/penalty approach
 	lower := 0.005
@@ -1440,7 +1487,7 @@ func extractMINRES(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float
 
 	// Extract final Psi and compute loadings
 	finalPsi := result.X
-	
+
 	// Compute final loadings using the optimal Psi
 	reducedCorr := mat.NewDense(p, p, nil)
 	for i := 0; i < p; i++ {
@@ -1498,7 +1545,7 @@ func extractMINRES(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float
 
 	converged := result.Status == optimize.Success || result.Status == optimize.FunctionConvergence
 	iterations := result.FuncEvaluations
-	
+
 	if converged {
 		insyra.LogInfo("stats", "MINRES", "converged in %d evaluations (objective=%.6f)", iterations, result.F)
 	} else {
