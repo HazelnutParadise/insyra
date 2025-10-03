@@ -381,7 +381,7 @@ func sortChunksOptimized[S ~[]E, E any](x S, cmp func(E, E) int, numChunks int) 
 	}
 
 	var wg sync.WaitGroup
-	for i := 0; i < numChunks; i++ {
+	for i := range numChunks {
 		start := i * chunkSize
 		end := start + chunkSize
 		if i == numChunks-1 {
@@ -413,10 +413,7 @@ func ParallelMergeStable[S ~[]E, E any](x S, cmp func(E, E) int, numChunks int) 
 	for size := 1; size < numChunks; size *= 2 {
 		for left := 0; left < numChunks-size; left += 2 * size {
 			mid := left + size
-			right := left + 2*size
-			if right > numChunks {
-				right = numChunks
-			}
+			right := min(left+2*size, numChunks)
 
 			leftStart := left * chunkSize
 			midStart := mid * chunkSize
