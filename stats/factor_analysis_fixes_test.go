@@ -27,7 +27,7 @@ func TestPAFWithSMCInitialization(t *testing.T) {
 	opt.Count.Method = stats.FactorCountFixed
 	opt.Count.FixedK = 2
 	opt.MaxIter = 100
-	opt.Tol = 1e-6
+	// Tol removed from API; rely on internal tolerance and MaxIter
 
 	model := stats.FactorAnalysis(dt, opt)
 	if model == nil {

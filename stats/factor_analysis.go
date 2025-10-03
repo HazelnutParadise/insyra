@@ -90,9 +90,11 @@ type FactorAnalysisOptions struct {
 	Extraction FactorExtractionMethod
 	Rotation   FactorRotationOptions
 	Scoring    FactorScoreMethod
-	MaxIter    int     // Optional: default 50
-	Tol        float64 // Optional: default 1e-4
-	MinErr     float64 // Optional: default 0.001 (R's min.err)
+	MaxIter    int // Optional: default 50
+	// (Tol removed) convergence tolerance was previously exposed here; the
+	// package now uses an internal tolerance value and does not expose it in
+	// the public API.
+	MinErr float64 // Optional: default 0.001 (R's min.err)
 }
 
 // -------------------------
@@ -173,10 +175,13 @@ func DefaultFactorAnalysisOptions() FactorAnalysisOptions {
 		},
 		Scoring: FactorScoreNone, // R default: "none"
 		MaxIter: 50,              // R default: 50
-		Tol:     1e-4,            // R default: 1e-4
-		MinErr:  0.001,           // R default: 0.001
+		// Tol: deprecated; see package docs. Use internal defaults instead.
+		MinErr: 0.001, // R default: 0.001
 	}
 }
+
+// internal default tolerance used when Tol is unspecified (Tol < 0)
+const internalTolDefault = 1e-6
 
 // -------------------------
 // Main Function
@@ -391,13 +396,10 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	if opt.MaxIter <= 0 {
 		opt.MaxIter = 100
 	}
-	// Treat Tol < 0 as unspecified/default and set to 1e-6.
-	// If Tol == 0, respect it as an explicit request to disable tol-based convergence
-	// (i.e. rely solely on MaxIter), which mirrors R's behavior when tol is very small
-	// or when the user wants to force iteration limits.
-	if opt.Tol < 0 {
-		opt.Tol = 1e-6
-	}
+	// Use internal tolerance by default. Users who previously used the
+	// (now-removed) Tol field can emulate disabling tolerance by setting
+	// MaxIter explicitly.
+	tolVal := internalTolDefault
 
 	// Step 6: Extract factors
 	// Convert SymDense to Dense for extraction functions
@@ -407,7 +409,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 			corrDense.Set(i, j, corrMatrix.At(i, j))
 		}
 	}
-	loadings, converged, iterations, err := extractFactors(data, corrDense, sortedEigenvalues, sortedEigenvectors, numFactors, opt, rowNum)
+	loadings, converged, iterations, err := extractFactors(data, corrDense, sortedEigenvalues, sortedEigenvectors, numFactors, opt, rowNum, tolVal)
 	if err != nil {
 		insyra.LogWarning("stats", "FactorAnalysis", "factor extraction failed: %v", err)
 		return nil
@@ -573,7 +575,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		fmt.Sprintf("Scoring method: %s", opt.Scoring),
 	}
 	if iterations > 0 {
-		messages = append(messages, fmt.Sprintf("Extraction iterations: %d (tol %.2g)", iterations, opt.Tol))
+		messages = append(messages, fmt.Sprintf("Extraction iterations: %d", iterations))
 	}
 	if !converged && (opt.Extraction == FactorExtractionPAF || opt.Extraction == FactorExtractionML || opt.Extraction == FactorExtractionMINRES) {
 		messages = append(messages, "Warning: extraction did not converge within limits")
@@ -669,23 +671,23 @@ func countByThreshold(eigenvalues []float64, threshold float64) int {
 }
 
 // extractFactors extracts factors using the specified method
-func extractFactors(data, corrMatrix *mat.Dense, eigenvalues []float64, eigenvectors *mat.Dense, numFactors int, opt FactorAnalysisOptions, sampleSize int) (*mat.Dense, bool, int, error) {
+func extractFactors(data, corrMatrix *mat.Dense, eigenvalues []float64, eigenvectors *mat.Dense, numFactors int, opt FactorAnalysisOptions, sampleSize int, tol float64) (*mat.Dense, bool, int, error) {
 	switch opt.Extraction {
 	case FactorExtractionPCA:
 		return extractPCA(eigenvalues, eigenvectors, numFactors)
 
 	case FactorExtractionPAF:
-		return extractPAF(corrMatrix, numFactors, opt.MaxIter, opt.Tol, opt.MinErr)
+		return extractPAF(corrMatrix, numFactors, opt.MaxIter, tol, opt.MinErr)
 
 	case FactorExtractionML:
-		return extractML(corrMatrix, numFactors, opt.MaxIter, opt.Tol, sampleSize)
+		return extractML(corrMatrix, numFactors, opt.MaxIter, tol, sampleSize)
 
 	case FactorExtractionMINRES:
-		return extractMINRES(corrMatrix, numFactors, opt.MaxIter, opt.Tol)
+		return extractMINRES(corrMatrix, numFactors, opt.MaxIter, tol)
 
 	default:
 		// Default to MINRES to match R psych::fa and the documented default behavior.
-		return extractMINRES(corrMatrix, numFactors, opt.MaxIter, opt.Tol)
+		return extractMINRES(corrMatrix, numFactors, opt.MaxIter, tol)
 	}
 }
 
@@ -893,7 +895,7 @@ func extractPAF(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64,
 
 		if iter == 0 && p >= 4 {
 			insyra.LogInfo("stats", "PAF", "iter %d post-loading communalities[0:4]=%.3f, %.3f, %.3f, %.3f", iter+1,
-				newCommunalities[0], newCommunalities[min(1,p-1)], newCommunalities[min(2,p-1)], newCommunalities[min(3,p-1)])
+				newCommunalities[0], newCommunalities[min(1, p-1)], newCommunalities[min(2, p-1)], newCommunalities[min(3, p-1)])
 		}
 
 		// record history (copy slice)
@@ -1050,7 +1052,7 @@ func extractML(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64, 
 			initialComm[i] = sum
 		}
 		insyra.LogInfo("stats", "ML", "initial communalities[0:4] = %.3f, %.3f, %.3f, %.3f",
-			initialComm[0], initialComm[min(1,len(initialComm)-1)], initialComm[min(2,len(initialComm)-1)], initialComm[min(3,len(initialComm)-1)])
+			initialComm[0], initialComm[min(1, len(initialComm)-1)], initialComm[min(2, len(initialComm)-1)], initialComm[min(3, len(initialComm)-1)])
 	}
 
 	loadings := mat.Dense{}
@@ -1158,7 +1160,7 @@ func extractML(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64, 
 				currComm[i] = sum
 			}
 			insyra.LogInfo("stats", "ML", "iter %d: communalities[0:4] = %.3f, %.3f, %.3f, %.3f",
-				iter+1, currComm[0], currComm[min(1,len(currComm)-1)], currComm[min(2,len(currComm)-1)], currComm[min(3,len(currComm)-1)])
+				iter+1, currComm[0], currComm[min(1, len(currComm)-1)], currComm[min(2, len(currComm)-1)], currComm[min(3, len(currComm)-1)])
 		}
 
 		// Compute ML fit statistics

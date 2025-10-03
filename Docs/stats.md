@@ -1038,7 +1038,6 @@ linking loadings ($P$) to factor correlations ($\Phi$).
 ### Convergence Control
 
 - `FactorAnalysisOptions.MaxIter` (default `100`) caps iterations for iterative extractions (PAF, MINRES, ML, MRFA, Alpha).
-- `FactorAnalysisOptions.Tol` (default `1\times 10^{-6}`) sets the absolute convergence threshold on communalities or objective improvements.
 - Diagnostics: Outputs include `FactorAnalysisResult.Converged` and `Iterations` to track termination status.
 
 ### Factor Scoring

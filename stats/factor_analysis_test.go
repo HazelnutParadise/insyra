@@ -151,7 +151,7 @@ func TestFactorAnalysisPAF(t *testing.T) {
 	opt.Count.Method = stats.FactorCountFixed
 	opt.Count.FixedK = 1
 	opt.MaxIter = 50
-	opt.Tol = 1e-4
+	// Tol removed from API; rely on internal tolerance and MaxIter
 
 	model := stats.FactorAnalysis(dt, opt)
 	if model == nil {
@@ -263,7 +263,7 @@ func TestFactorAnalysisMLExtraction(t *testing.T) {
 	opt.Count.FixedK = 2
 	opt.Extraction = stats.FactorExtractionML
 	opt.MaxIter = 120
-	opt.Tol = 1e-5
+	// Tol removed from API; rely on internal tolerance and MaxIter
 
 	model := stats.FactorAnalysis(dt, opt)
 	if model == nil {
@@ -296,7 +296,7 @@ func TestFactorAnalysisMINRESExtraction(t *testing.T) {
 	opt.Count.FixedK = 2
 	opt.Extraction = stats.FactorExtractionMINRES
 	opt.MaxIter = 80
-	opt.Tol = 1e-5
+	// Tol removed from API; rely on internal tolerance and MaxIter
 
 	model := stats.FactorAnalysis(dt, opt)
 	if model == nil {
@@ -556,9 +556,7 @@ func TestDefaultOptions(t *testing.T) {
 		t.Error("Default MaxIter should be 100")
 	}
 
-	if opt.Tol != 1e-6 {
-		t.Error("Default tolerance should be 1e-6")
-	}
+	// Tol removed from API; default tolerance is internal and not exposed.
 }
 
 // TestFactorAnalysisWithStandardizedData tests that results are reasonable
