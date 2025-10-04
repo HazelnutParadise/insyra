@@ -5,11 +5,11 @@ import (
 	"gonum.org/v1/gonum/mat"
 )
 
-// vgQBiGeomin computes the objective and gradient for bi-geomin rotation.
+// VgQBiGeomin computes the objective and gradient for bi-geomin rotation.
 // Mirrors GPArotation::vgQ.bigeomin(L, delta = 0.01)
 //
 // Returns: Gq (gradient), f (objective), method
-func vgQBiGeomin(L *mat.Dense, delta float64) (Gq *mat.Dense, f float64, method string) {
+func VgQBiGeomin(L *mat.Dense, delta float64) (Gq *mat.Dense, f float64, method string) {
 	p, k := L.Dims()
 
 	// Lg = L[, -1]
@@ -20,8 +20,8 @@ func vgQBiGeomin(L *mat.Dense, delta float64) (Gq *mat.Dense, f float64, method 
 		}
 	}
 
-	// out = vgQGeomin(Lg, delta)
-	outGq, outF, _ := vgQGeomin(Lg, delta)
+	// out = VgQGeomin(Lg, delta)
+	outGq, outF, _ := VgQGeomin(Lg, delta)
 
 	// Gq = cbind(0, out$Gq)
 	Gq = mat.NewDense(p, k, nil)

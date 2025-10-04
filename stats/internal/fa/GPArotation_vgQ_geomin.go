@@ -7,7 +7,7 @@ import (
 	"gonum.org/v1/gonum/mat"
 )
 
-// vgQGeomin computes the objective and gradient for geomin rotation.
+// VgQGeomin computes the objective and gradient for geomin rotation.
 // Mirrors GPArotation::vgQ.geomin(L, delta = 0.01)
 //
 // L2 <- L^2 + delta
@@ -16,7 +16,7 @@ import (
 // f <- sum(pro)
 //
 // Returns: Gq (gradient), f (objective), method
-func vgQGeomin(L *mat.Dense, delta float64) (Gq *mat.Dense, f float64, method string) {
+func VgQGeomin(L *mat.Dense, delta float64) (Gq *mat.Dense, f float64, method string) {
 	p, k := L.Dims()
 
 	// L2 = L^2 + delta
