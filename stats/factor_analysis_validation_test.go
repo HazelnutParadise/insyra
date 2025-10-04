@@ -38,15 +38,26 @@ func TestFactorAnalysisValidation(t *testing.T) {
 
 	// Prepare test configurations
 	configs := []testConfig{
+		// MINRES extraction with various rotations
 		{extraction: stats.FactorExtractionMINRES, rotation: stats.FactorRotationNone, pythonMethod: "minres", pythonRotation: "none"},
 		{extraction: stats.FactorExtractionMINRES, rotation: stats.FactorRotationVarimax, pythonMethod: "minres", pythonRotation: "varimax"},
 		{extraction: stats.FactorExtractionMINRES, rotation: stats.FactorRotationOblimin, pythonMethod: "minres", pythonRotation: "oblimin"},
 		{extraction: stats.FactorExtractionMINRES, rotation: stats.FactorRotationQuartimax, pythonMethod: "minres", pythonRotation: "quartimax"},
+		// PCA extraction with various rotations
 		{extraction: stats.FactorExtractionPCA, rotation: stats.FactorRotationNone, pythonMethod: "principal", pythonRotation: "none"},
 		{extraction: stats.FactorExtractionPCA, rotation: stats.FactorRotationVarimax, pythonMethod: "principal", pythonRotation: "varimax"},
 		{extraction: stats.FactorExtractionPCA, rotation: stats.FactorRotationPromax, pythonMethod: "principal", pythonRotation: "promax"},
 		{extraction: stats.FactorExtractionPCA, rotation: stats.FactorRotationOblimin, pythonMethod: "principal", pythonRotation: "oblimin"},
 		{extraction: stats.FactorExtractionPCA, rotation: stats.FactorRotationQuartimax, pythonMethod: "principal", pythonRotation: "quartimax"},
+		// Additional Go-only rotations (no Python comparison but test they work)
+		{extraction: stats.FactorExtractionPCA, rotation: stats.FactorRotationQuartimin, pythonMethod: "", pythonRotation: ""},
+		{extraction: stats.FactorExtractionPCA, rotation: stats.FactorRotationGeominT, pythonMethod: "", pythonRotation: ""},
+		{extraction: stats.FactorExtractionPCA, rotation: stats.FactorRotationGeominQ, pythonMethod: "", pythonRotation: ""},
+		{extraction: stats.FactorExtractionPCA, rotation: stats.FactorRotationBentlerT, pythonMethod: "", pythonRotation: ""},
+		{extraction: stats.FactorExtractionPCA, rotation: stats.FactorRotationBentlerQ, pythonMethod: "", pythonRotation: ""},
+		{extraction: stats.FactorExtractionPCA, rotation: stats.FactorRotationSimplimax, pythonMethod: "", pythonRotation: ""},
+		// PAF extraction
+		{extraction: stats.FactorExtractionPAF, rotation: stats.FactorRotationVarimax, pythonMethod: "", pythonRotation: ""},
 	}
 
 	// Create comparison table
@@ -90,6 +101,31 @@ func TestFactorAnalysisValidation(t *testing.T) {
 			// Find matching Python result
 			pythonResult := findPythonResult(pythonResults, config.pythonMethod, config.pythonRotation)
 			if pythonResult == nil {
+				// No Python comparison available (Go-only rotation methods)
+				if config.pythonMethod == "" {
+					t.Logf("Go-only rotation method %s/%s - no Python comparison, checking it runs successfully",
+						config.extraction, config.rotation)
+					
+					// Just verify it produced valid results
+					if model.Loadings == nil {
+						t.Errorf("Loadings is nil")
+					}
+					if model.Communalities == nil {
+						t.Errorf("Communalities is nil")
+					}
+					if model.Uniquenesses == nil {
+						t.Errorf("Uniquenesses is nil")
+					}
+					if model.Eigenvalues == nil {
+						t.Errorf("Eigenvalues is nil")
+					}
+					
+					comparisonTable = append(comparisonTable, []string{
+						string(config.extraction), string(config.rotation), "N/A (Go-only)", "N/A", "N/A", "N/A", "N/A", "OK (Go-only)",
+					})
+					return
+				}
+				
 				t.Logf("No matching Python result for %s/%s", config.pythonMethod, config.pythonRotation)
 				return
 			}
