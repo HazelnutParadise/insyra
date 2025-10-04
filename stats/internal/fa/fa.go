@@ -31,7 +31,7 @@ func Rotate(loadings *mat.Dense, method string, opts *RotOpts) (*mat.Dense, *mat
 	// Create correlation matrix (identity for now, as we don't have it)
 	_, nf := loadings.Dims()
 	r := mat.NewDense(nf, nf, nil)
-	for i := 0; i < nf; i++ {
+	for i := range nf {
 		r.Set(i, i, 1.0)
 	}
 
@@ -50,9 +50,9 @@ func Rotate(loadings *mat.Dense, method string, opts *RotOpts) (*mat.Dense, *mat
 	result := FaRotations(loadings, r, method, opts.Gamma, opts.MaxIter)
 
 	// Extract results
-	rotatedLoadings := result.(map[string]interface{})["loadings"].(*mat.Dense)
-	rotMat := result.(map[string]interface{})["rotmat"].(*mat.Dense)
-	phi := result.(map[string]interface{})["phi"]
+	rotatedLoadings := result.(map[string]any)["loadings"].(*mat.Dense)
+	rotMat := result.(map[string]any)["rotmat"].(*mat.Dense)
+	phi := result.(map[string]any)["Phi"]
 
 	var phiMat *mat.Dense
 	if phi != nil {
