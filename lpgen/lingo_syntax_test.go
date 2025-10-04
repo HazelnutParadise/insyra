@@ -84,7 +84,7 @@ func TestExpandSum(t *testing.T) {
 	expr := "@SUM(I: X_I)"
 	expanded := lm.expandSum(expr)
 	
-	expected := "X_1 + X_2 + X_3"
+	expected := "(X_1 + X_2 + X_3)"
 	if expanded != expected {
 		t.Errorf("Expected %s, got %s", expected, expanded)
 	}
@@ -92,7 +92,7 @@ func TestExpandSum(t *testing.T) {
 	// Test without underscore (simple replacement)
 	expr2 := "@SUM(I: 2*I)"
 	expanded2 := lm.expandSum(expr2)
-	expected2 := "2*1 + 2*2 + 2*3"
+	expected2 := "(2*1 + 2*2 + 2*3)"
 	if expanded2 != expected2 {
 		t.Errorf("Expected %s, got %s", expected2, expanded2)
 	}
