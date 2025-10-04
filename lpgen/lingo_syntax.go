@@ -294,8 +294,7 @@ func (lm *LingoModel) parseModelLine(line string) error {
 	// Check if it's a data assignment (variable = expression, but not starting with @FOR or containing comparison operators)
 	if strings.Contains(line, "=") && !strings.HasPrefix(upper, "@FOR") {
 		// Check if it contains comparison operators that would make it a constraint
-		if strings.Contains(line, "<=") || strings.Contains(line, ">=") || 
-		   strings.Contains(line, "<") || strings.Contains(line, ">") {
+		if strings.Contains(line, "<=") || strings.Contains(line, ">=") {
 			// It's a constraint
 			lm.Constraints = append(lm.Constraints, line)
 		} else {
@@ -312,8 +311,13 @@ func (lm *LingoModel) parseModelLine(line string) error {
 				lm.Constraints = append(lm.Constraints, line)
 			}
 		}
+	} else if strings.HasPrefix(upper, "@FOR") {
+		// @FOR expression - treat as constraint
+		lm.Constraints = append(lm.Constraints, line)
 	} else {
-		// No equals sign, or starts with @FOR - it's a constraint
+		// Expression without operators - could be incomplete
+		// Log warning but still add as constraint for now
+		insyra.LogWarning("lpgen", "parseModelLine", "Expression without constraint operator may be incomplete: %s", line)
 		lm.Constraints = append(lm.Constraints, line)
 	}
 	
