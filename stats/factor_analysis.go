@@ -98,11 +98,8 @@ type FactorAnalysisOptions struct {
 	Extraction FactorExtractionMethod
 	Rotation   FactorRotationOptions
 	Scoring    FactorScoreMethod
-	MaxIter    int // Optional: default 50
-	// (Tol removed) convergence tolerance was previously exposed here; the
-	// package now uses an internal tolerance value and does not expose it in
-	// the public API.
-	MinErr float64 // Optional: default 0.001 (R's min.err)
+	MaxIter    int     // Optional: default 50
+	MinErr     float64 // Optional: default 0.001 (R's min.err)
 }
 
 // -------------------------
