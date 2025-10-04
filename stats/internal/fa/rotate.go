@@ -395,15 +395,28 @@ func varimaxObjGrad(L *mat.Dense) (float64, *mat.Dense) {
 }
 
 // quartimax：最大化 sum_{ij} l_ij^4；梯度（無常數因子影響） g_ij = l_ij^3
+// quartimax：最小化 sum_j (sum_i l_ij^2)^2 / 4；梯度 g_ij = l_ij * sum_i l_ij^2
 func quartimaxObjGrad(L *mat.Dense) (float64, *mat.Dense) {
 	p, q := L.Dims()
-	f := 0.0
-	Gq := mat.NewDense(p, q, nil)
+	colSS := make([]float64, q) // sum_i l_ij^2 for each column j
 	for j := 0; j < q; j++ {
 		for i := 0; i < p; i++ {
 			lij := L.At(i, j)
-			f += lij * lij * lij * lij
-			Gq.Set(i, j, lij*lij*lij)
+			colSS[j] += lij * lij
+		}
+	}
+	f := 0.0
+	for j := 0; j < q; j++ {
+		f += colSS[j] * colSS[j]
+	}
+	f = -f / 4.0 // GPArotation minimizes this
+
+	Gq := mat.NewDense(p, q, nil)
+	for j := 0; j < q; j++ {
+		sj := colSS[j]
+		for i := 0; i < p; i++ {
+			lij := L.At(i, j)
+			Gq.Set(i, j, -lij*sj) // negative because we minimize
 		}
 	}
 	return f, Gq
@@ -547,28 +560,28 @@ func geominObjGrad(eps float64) ObjGrad {
 		eps = 1e-6
 	}
 	return func(L *mat.Dense) (float64, *mat.Dense) {
-		p, q := L.Dims()
+		p, k := L.Dims() // p = variables, k = factors
 		f := 0.0
-		Gq := mat.NewDense(p, q, nil)
+		Gq := mat.NewDense(p, k, nil)
 
-		// per-column stats
-		colExp := make([]float64, q) // f_j
-		for j := 0; j < q; j++ {
+		// per-row (variable) stats - geometric mean across factors
+		rowPro := make([]float64, p) // pro_i
+		for i := 0; i < p; i++ {
 			sumLog := 0.0
-			for i := 0; i < p; i++ {
+			for j := 0; j < k; j++ {
 				l := L.At(i, j)
 				sumLog += math.Log(l*l + eps)
 			}
-			colExp[j] = math.Exp(sumLog / float64(p))
-			f += colExp[j]
+			rowPro[i] = math.Exp(sumLog / float64(k))
+			f += rowPro[i]
 		}
 
-		// gradient
-		for j := 0; j < q; j++ {
-			fj := colExp[j]
-			for i := 0; i < p; i++ {
+		// gradient: Gq[i,j] = (2/k) * (L[i,j] / (L[i,j]^2 + eps)) * pro[i]
+		for i := 0; i < p; i++ {
+			pro := rowPro[i]
+			for j := 0; j < k; j++ {
 				l := L.At(i, j)
-				Gq.Set(i, j, fj*(1.0/float64(p))*(2.0*l/(l*l+eps)))
+				Gq.Set(i, j, (2.0/float64(k))*(l/(l*l+eps))*pro)
 			}
 		}
 		return f, Gq
