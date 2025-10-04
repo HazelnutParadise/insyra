@@ -9,26 +9,21 @@ import (
 )
 
 // GPForth performs orthogonal rotation using GPA.
-// Mirrors GPArotation::GPForth
-// Simplified implementation
+// Mirrors GPArotation::GPForth exactly
 func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit int, method string) map[string]interface{} {
 	nf, _ := A.Dims()
 	if nf <= 1 {
 		panic("rotation does not make sense for single factor models.")
 	}
 
-	// Simplified: assume no normalization
+	var W *mat.VecDense
 	if normalize {
-		// Normalize by communalities (simplified)
+		W = NormalizingWeight(A, normalize)
+		normalize = true
+		A = mat.DenseCopyOf(A)
 		for i := 0; i < A.RawMatrix().Rows; i++ {
-			sum := 0.0
 			for j := 0; j < A.RawMatrix().Cols; j++ {
-				sum += A.At(i, j) * A.At(i, j)
-			}
-			if sum > 0 {
-				for j := 0; j < A.RawMatrix().Cols; j++ {
-					A.Set(i, j, A.At(i, j)/math.Sqrt(sum))
-				}
+				A.Set(i, j, A.At(i, j)/W.AtVec(i))
 			}
 		}
 	}
@@ -37,41 +32,77 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 	L := mat.NewDense(A.RawMatrix().Rows, A.RawMatrix().Cols, nil)
 	L.Mul(A, Tmat)
 
-	// Call vgQ method
-	var Gq *mat.Dense
-	var f float64
+	// Method <- paste("vgQ", method, sep = ".")
+	// VgQ <- do.call(Method, append(list(L), methodArgs))
+	var VgQ map[string]interface{}
 	switch method {
 	case "varimax":
-		Gq, f, _ = vgQVarimax(L)
+		Gq, f, _ := vgQVarimax(L)
+		VgQ = map[string]interface{}{
+			"Gq":     Gq,
+			"f":      f,
+			"Method": "varimax",
+		}
 	default:
-		Gq, f, _ = vgQVarimax(L)
+		Gq, f, _ := vgQVarimax(L)
+		VgQ = map[string]interface{}{
+			"Gq":     Gq,
+			"f":      f,
+			"Method": "varimax",
+		}
 	}
 
-	G := mat.NewDense(A.RawMatrix().Cols, Gq.RawMatrix().Cols, nil)
-	G.Mul(A.T(), Gq)
+	// G <- crossprod(A, VgQ$Gq)
+	G := mat.NewDense(A.RawMatrix().Cols, VgQ["Gq"].(*mat.Dense).RawMatrix().Cols, nil)
+	G.Mul(A.T(), VgQ["Gq"].(*mat.Dense))
 
+	f := VgQ["f"].(float64)
 	var Table [][]float64
 
-	convergence := false
-	s := eps + 1 // Initialize s > eps
+	// VgQt <- do.call(Method, append(list(L), methodArgs))
+	var VgQt map[string]interface{}
+	switch method {
+	case "varimax":
+		Gq2, f2, _ := vgQVarimax(L)
+		VgQt = map[string]interface{}{
+			"Gq": Gq2,
+			"f":  f2,
+		}
+	default:
+		Gq2, f2, _ := vgQVarimax(L)
+		VgQt = map[string]interface{}{
+			"Gq": Gq2,
+			"f":  f2,
+		}
+	}
 
-	for iter := 0; iter <= maxit; iter++ {
+	var convergence bool
+	var s float64
+	var iter int
+
+	for iter = 0; iter <= maxit; iter++ {
+		// M <- crossprod(Tmat, G)
 		M := mat.NewDense(Tmat.RawMatrix().Cols, G.RawMatrix().Cols, nil)
 		M.Mul(Tmat.T(), G)
 
+		// S <- (M + t(M))/2
 		S := mat.NewDense(M.RawMatrix().Rows, M.RawMatrix().Cols, nil)
-		S.Add(M, M.T())
+		var Mt mat.Dense
+		Mt.CloneFrom(M)
+		Mt.T()
+		S.Add(M, &Mt)
 		S.Scale(0.5, S)
 
+		// Gp <- G - Tmat %*% S
 		Gp := mat.NewDense(G.RawMatrix().Rows, G.RawMatrix().Cols, nil)
-		temp := mat.NewDense(Tmat.RawMatrix().Rows, S.RawMatrix().Cols, nil)
-		temp.Mul(Tmat, S)
-		Gp.Sub(G, temp)
+		var TS mat.Dense
+		TS.Mul(Tmat, S)
+		Gp.Sub(G, &TS)
 
-		// Calculate s = sqrt(sum(diag(Gp' * Gp)))
-		GpTGp := mat.NewDense(Gp.RawMatrix().Cols, Gp.RawMatrix().Cols, nil)
+		// s <- sqrt(sum(diag(crossprod(Gp))))
+		var GpTGp mat.Dense
 		GpTGp.Mul(Gp.T(), Gp)
-		s = 0
+		s := 0.0
 		for i := 0; i < GpTGp.RawMatrix().Rows; i++ {
 			s += GpTGp.At(i, i)
 		}
@@ -80,23 +111,20 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 		Table = append(Table, []float64{float64(iter), f, math.Log10(s), al})
 
 		if s < eps {
-			convergence = true
 			break
 		}
 
 		al *= 2
-		Tmatt := mat.NewDense(Tmat.RawMatrix().Rows, Tmat.RawMatrix().Cols, nil)
-		Tmatt.CloneFrom(Tmat)
-		var GqNew *mat.Dense
-		var fNew float64
-
+		var Tmatt *mat.Dense
 		for i := 0; i <= 10; i++ {
+			// X <- Tmat - al * Gp
 			X := mat.NewDense(Tmat.RawMatrix().Rows, Tmat.RawMatrix().Cols, nil)
-			tempGp := mat.NewDense(Gp.RawMatrix().Rows, Gp.RawMatrix().Cols, nil)
-			tempGp.Scale(al, Gp)
-			X.Sub(Tmat, tempGp)
+			X.CloneFrom(Tmat)
+			var alGp mat.Dense
+			alGp.Scale(al, Gp)
+			X.Sub(Tmat, &alGp)
 
-			// SVD
+			// UDV <- svd(X)
 			var svd mat.SVD
 			ok := svd.Factorize(X, mat.SVDThin)
 			if !ok {
@@ -107,36 +135,65 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			svd.UTo(&U)
 			svd.VTo(&V)
 
-			Tmatt.Mul(&U, V.T())
+			// Tmatt <- UDV$u %*% t(UDV$v)
+			Tmatt = mat.NewDense(U.RawMatrix().Rows, V.RawMatrix().Cols, nil)
+			var Vt mat.Dense
+			Vt.CloneFrom(&V)
+			Vt.T()
+			Tmatt.Mul(&U, &Vt)
 
+			// L <- A %*% Tmatt
 			L.Mul(A, Tmatt)
 
-			// Call vgQ again
-			GqNew, fNew, _ = vgQVarimax(L)
-			if fNew < (f - 0.5*s*s*al) {
+			// VgQt <- do.call(Method, append(list(L), methodArgs))
+			switch method {
+			case "varimax":
+				GqNew, fNew, _ := vgQVarimax(L)
+				VgQt = map[string]interface{}{
+					"Gq": GqNew,
+					"f":  fNew,
+				}
+			default:
+				GqNew, fNew, _ := vgQVarimax(L)
+				VgQt = map[string]interface{}{
+					"Gq": GqNew,
+					"f":  fNew,
+				}
+			}
+
+			// if (VgQt$f < (f - 0.5 * s^2 * al)) break
+			if VgQt["f"].(float64) < (f - 0.5*s*s*al) {
 				break
 			}
 			al /= 2
 		}
 
 		Tmat = Tmatt
-		f = fNew
-		G.Mul(A.T(), GqNew)
+		f = VgQt["f"].(float64)
+		// G <- crossprod(A, VgQt$Gq)
+		G.Mul(A.T(), VgQt["Gq"].(*mat.Dense))
 	}
 
-	if !convergence {
+	convergence = (s < eps)
+	if iter == maxit && !convergence {
 		fmt.Printf("convergence not obtained in GPForth. %d iterations used.\n", maxit)
 	}
 
-	// Simplified: no denormalization
+	if normalize {
+		for i := 0; i < L.RawMatrix().Rows; i++ {
+			for j := 0; j < L.RawMatrix().Cols; j++ {
+				L.Set(i, j, L.At(i, j)*W.AtVec(i))
+			}
+		}
+	}
 
 	return map[string]interface{}{
 		"loadings":    L,
 		"Th":          Tmat,
 		"Table":       Table,
-		"method":      method,
+		"method":      VgQ["Method"],
 		"orthogonal":  true,
 		"convergence": convergence,
-		"Gq":          Gq,
+		"Gq":          VgQt["Gq"],
 	}
 }
