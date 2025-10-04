@@ -981,7 +981,7 @@ func extractPAF(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64,
 	// If we reach here, did not converge within maxIter
 	// Log initial SMC and history summary (first 10 iterations and final)
 	if len(commHistory) > 0 {
-		// initial SMC = first value prior to iteration (communalities passed in initially)
+		// initial SMC = first  value prior to iteration (communalities passed in initially)
 		insyra.LogInfo("stats", "PAF", "Initial SMC (first 4) = %.3f, %.3f, %.3f, %.3f",
 			commHistory[0][0], commHistory[0][min(1, p-1)], commHistory[0][min(2, p-1)], commHistory[0][min(3, p-1)])
 		maxShow := 10
@@ -1312,6 +1312,7 @@ func extractMINRES(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float
 			}
 			pairs[i] = eigenPair{value: eigenvalues[i], vector: vec}
 		}
+		// Sort in descending order
 		for i := 0; i < len(pairs)-1; i++ {
 			for j := i + 1; j < len(pairs); j++ {
 				if pairs[i].value < pairs[j].value {
@@ -1770,8 +1771,8 @@ func logDenseSample(funcName, label string, m mat.Matrix, maxRows, maxCols int) 
 		return
 	}
 	r, c := m.Dims()
-	rows := minInt(r, maxRows)
-	cols := minInt(c, maxCols)
+	rows := min(r, maxRows)
+	cols := min(c, maxCols)
 	var builder strings.Builder
 	builder.WriteString(label)
 	builder.WriteString(fmt.Sprintf(" [%dx%d] ->", r, c))
@@ -1796,7 +1797,7 @@ func logVecSample(funcName, label string, v *mat.VecDense, maxLen int) {
 	if !rotationDebugEnabled() || v == nil {
 		return
 	}
-	length := minInt(v.Len(), maxLen)
+	length := min(v.Len(), maxLen)
 	var builder strings.Builder
 	builder.WriteString(label)
 	builder.WriteString(fmt.Sprintf(" [%d] -> [", v.Len()))
@@ -1811,13 +1812,6 @@ func logVecSample(funcName, label string, v *mat.VecDense, maxLen int) {
 	}
 	builder.WriteString("]")
 	insyra.LogDebug("stats", funcName, builder.String())
-}
-
-func minInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 // kaiserNormalize applies Kaiser normalization to the loading matrix by scaling rows to unit length.
@@ -2336,7 +2330,9 @@ func safeInvert(dst *mat.Dense, src mat.Matrix, ridge float64) error {
 }
 
 func pseudoInverse(dst *mat.Dense, src mat.Matrix) error {
-	pinv := fa.Pinv(src, math.Sqrt(math.SmallestNonzeroFloat64))
+	var dense mat.Dense
+	dense.CloneFrom(src)
+	pinv := fa.Pinv(&dense)
 	if pinv == nil {
 		return fmt.Errorf("pseudo-inverse failed")
 	}

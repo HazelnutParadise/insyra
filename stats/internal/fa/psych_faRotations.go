@@ -2,74 +2,34 @@
 package fa
 
 import (
-	"math"
-
 	"gonum.org/v1/gonum/mat"
 )
 
 // Varimax performs varimax rotation.
 // Mirrors GPArotation::Varimax
 func Varimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map[string]interface{} {
-	nf, p := loadings.Dims()
+	_, nf := loadings.Dims() // loadings is p x nf (variables x factors)
+	if nf <= 1 {
+		// No rotation needed for single factor
+		return map[string]interface{}{
+			"loadings": mat.DenseCopyOf(loadings),
+			"rotmat":   mat.NewDense(nf, nf, nil), // identity matrix
+		}
+	}
 
-	// Initial rotation matrix: identity
-	T := mat.NewDense(nf, nf, nil)
+	// Initialize rotation matrix as identity
+	Tmat := mat.NewDense(nf, nf, nil)
 	for i := 0; i < nf; i++ {
-		T.Set(i, i, 1.0)
+		Tmat.Set(i, i, 1.0)
 	}
 
-	// Normalize loadings if requested
-	var A *mat.Dense
-	if normalize {
-		A = mat.DenseCopyOf(loadings)
-		for j := 0; j < p; j++ {
-			colNorm := 0.0
-			for i := 0; i < nf; i++ {
-				colNorm += loadings.At(i, j) * loadings.At(i, j)
-			}
-			colNorm = math.Sqrt(colNorm)
-			if colNorm > 0 {
-				for i := 0; i < nf; i++ {
-					A.Set(i, j, loadings.At(i, j)/colNorm)
-				}
-			}
-		}
-	} else {
-		A = mat.DenseCopyOf(loadings)
-	}
+	// Use GPForth for proper varimax rotation
+	result := GPForth(loadings, Tmat, normalize, eps, maxIter, "varimax")
 
-	// Optimization loop
-	for iter := 0; iter < maxIter; iter++ {
-		// Compute gradient and objective
-		Gq, f, _ := vgQVarimax(A)
-
-		// Update T using simple gradient descent (simplified)
-		learningRate := 0.01
-		for i := 0; i < nf; i++ {
-			for j := 0; j < nf; j++ {
-				T.Set(i, j, T.At(i, j)-learningRate*Gq.At(i, j))
-			}
-		}
-
-		// Apply rotation
-		var rotated mat.Dense
-		rotated.Mul(T, A)
-		A = &rotated
-
-		// Check convergence
-		if math.Abs(f) < eps {
-			break
-		}
-	}
-
-	// Denormalize if normalized
-	if normalize {
-		// Simplified, assume no denormalization for now
-	}
-
+	// Return with correct key names expected by FaRotations
 	return map[string]interface{}{
-		"loadings": A,
-		"rotmat":   T,
+		"loadings": result["loadings"],
+		"rotmat":   result["Th"],
 	}
 }
 
@@ -103,8 +63,9 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 	if phi != nil {
 		result["Phi"] = phi
 	}
-	result["complexity"] = mat.NewVecDense(0, nil)   // placeholder
-	result["uniquenesses"] = mat.NewVecDense(0, nil) // placeholder
+	// Remove zero-length vectors that cause issues
+	// result["complexity"] = mat.NewVecDense(0, nil)   // placeholder
+	// result["uniquenesses"] = mat.NewVecDense(0, nil) // placeholder
 
 	return result
 }

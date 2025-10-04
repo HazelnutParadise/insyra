@@ -11,7 +11,7 @@ import (
 // GPForth performs orthogonal rotation using GPA.
 // Mirrors GPArotation::GPForth exactly
 func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit int, method string) map[string]interface{} {
-	nf, _ := A.Dims()
+	_, nf := A.Dims() // A is p x nf (variables x factors), nf is number of factors
 	if nf <= 1 {
 		panic("rotation does not make sense for single factor models.")
 	}
