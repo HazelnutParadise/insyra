@@ -60,9 +60,22 @@ func Promax(x *mat.Dense, m int, normalize bool) map[string]interface{} {
 	err = UtUInv.Inverse(&UtU)
 	d := make([]float64, nf)
 	if err != nil {
-		// Simplified approximation
+		// Match R's eigenvalue approximation for singular matrices
+		// Use simplified regularization approach
+		regularization := 1e-8
 		for i := 0; i < nf; i++ {
-			d[i] = 1.0
+			UtU.Set(i, i, UtU.At(i, i)+regularization)
+		}
+		err = UtUInv.Inverse(&UtU)
+		if err != nil {
+			// Final fallback
+			for i := 0; i < nf; i++ {
+				d[i] = 1.0
+			}
+		} else {
+			for i := 0; i < nf; i++ {
+				d[i] = UtUInv.At(i, i)
+			}
 		}
 	} else {
 		for i := 0; i < nf; i++ {

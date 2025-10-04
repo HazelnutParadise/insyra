@@ -41,6 +41,8 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 	}
 
 	var W *mat.VecDense
+	// Match R logic: if ((!is.logical(normalize)) || normalize)
+	// In Go, since normalize is bool, this simplifies to: if normalize
 	if normalize {
 		W = NormalizingWeight(A, normalize)
 		normalize = true
@@ -65,18 +67,18 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 	var VgQ map[string]interface{}
 	switch method {
 	case "quartimin":
-		Gq, f, _ := vgQQuartimin(L)
+		Gq, f, methodName := vgQQuartimin(L)
 		VgQ = map[string]interface{}{
 			"Gq":     Gq,
 			"f":      f,
-			"Method": "quartimin",
+			"Method": methodName,
 		}
 	default:
-		Gq, f, _ := vgQQuartimin(L)
+		Gq, f, methodName := vgQQuartimin(L)
 		VgQ = map[string]interface{}{
 			"Gq":     Gq,
 			"f":      f,
-			"Method": "quartimin",
+			"Method": methodName,
 		}
 	}
 
@@ -110,7 +112,8 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 	convergence := false
 	s := eps + 1
 
-	for iter := 0; iter <= maxit; iter++ {
+	iter := 0
+	for iter = 0; iter <= maxit; iter++ {
 		// Gp <- G - Tmat %*% diag(c(rep(1, nrow(G)) %*% (Tmat * G)))
 		nrowG, _ := G.Dims()
 		diagVec := make([]float64, nrowG)
@@ -213,7 +216,8 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 		G.Scale(-1, temp2.T())
 	}
 
-	if !convergence {
+	convergence = (s < eps)
+	if (iter == maxit) && !convergence {
 		fmt.Printf("convergence not obtained in GPFoblq. %d iterations used.\n", maxit)
 	}
 

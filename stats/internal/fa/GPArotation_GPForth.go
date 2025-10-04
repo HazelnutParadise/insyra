@@ -17,6 +17,8 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 	}
 
 	var W *mat.VecDense
+	// Match R logic: if ((!is.logical(normalize)) || normalize)
+	// In Go, since normalize is bool, this simplifies to: if normalize
 	if normalize {
 		W = NormalizingWeight(A, normalize)
 		normalize = true
@@ -41,14 +43,14 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 		VgQ = map[string]interface{}{
 			"Gq":     Gq,
 			"f":      f,
-			"Method": "varimax",
+			"Method": "vgQ." + method,
 		}
 	default:
 		Gq, f, _ := vgQVarimax(L)
 		VgQ = map[string]interface{}{
 			"Gq":     Gq,
 			"f":      f,
-			"Method": "varimax",
+			"Method": "vgQ." + method,
 		}
 	}
 
