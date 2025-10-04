@@ -1,0 +1,106 @@
+# psych::smc  (namespace: psych)
+# dumped at 2025-10-04 13:16:30.673494
+smc <- 
+function (R, covar = FALSE) 
+{
+    failed = FALSE
+    wcc <- maxr <- NULL
+    p <- dim(R)[2]
+    if (is.null(colnames(R))) 
+        colnames(R) <- paste0("V", 1:p)
+    smc.all <- rep(NA, p)
+    names(smc.all) <- colnames(R)
+    if (dim(R)[1] != p) {
+        if (covar) {
+            C <- cov(R, use = "pairwise")
+            vari <- diag(C)
+            R <- cov2cor(C)
+        }
+        else {
+            R <- cor(R, use = "pairwise")
+        }
+    }
+    else {
+        vari <- diag(R)
+        if (!is.matrix(R)) 
+            R <- as.matrix(R)
+        R <- cov2cor(R)
+    }
+    tempR <- NULL
+    if (any(is.na(R))) {
+        bad <- TRUE
+        tempR <- R
+        vr <- diag(tempR)
+        diag(tempR) <- 0
+        maxr <- apply(tempR, 2, function(x) max(abs(x), na.rm = TRUE))
+        diag(tempR) <- vr
+        wcl <- NULL
+        while (bad) {
+            wc <- table(which(is.na(tempR), arr.ind = TRUE))
+            wcl <- c(wcl, as.numeric(names(which(wc == max(wc)))))
+            tempR <- R[-wcl, -wcl]
+            if (any(is.na(tempR))) {
+                bad <- TRUE
+            }
+            else {
+                bad <- FALSE
+            }
+        }
+        warning("Missing values (NAs) in the correlation matrix do not allow for SMC's to be found for all variables.  \nI will try to estimate SMCs for those variables by their non-NA  correlations.")
+        cat("\nSMC(s) for variables ", colnames(R)[wcl], "were replaced (if possible) with smcs based upon their  (its) non-NA correlations\n")
+        wc <- (which(is.na(R[, wcl]), arr.ind = TRUE))
+        if (is.null(dim(wc))) {
+            wcc <- as.numeric(names(table(wc)))
+        }
+        else {
+            wcc <- as.numeric(names(table(wc[, 1])))
+        }
+        tempR <- R[-wcc, -wcc]
+        R <- R[-wcl, -wcl]
+    }
+    R.inv <- Pinv(R)
+    smc <- 1 - 1/diag(R.inv)
+    names(smc) <- colnames(R)
+    if (!is.null(tempR)) {
+        if (prod(dim(tempR)) > 0) {
+            R.na.inv <- Pinv(tempR)
+            smc.na <- smc.na <- 1 - 1/diag(R.na.inv)
+        }
+        else {
+            smc.na <- 1
+        }
+    }
+    else {
+        smc.na <- smc
+    }
+    if (all(is.na(smc))) {
+        message("Something is seriously wrong the correlation matrix.\nIn smc, smcs were set to 1.0")
+        smc[is.na(smc)] <- 1
+    }
+    if (max(smc, na.rm = TRUE) > 1) {
+        message("In smc, smcs > 1 were set to 1.0")
+        smc[smc > 1] <- 1
+    }
+    if (min(smc, na.rm = TRUE) < 0) {
+        message("In smc, smcs < 0 were set to .0")
+        smc[smc < 0] <- 0
+    }
+    smc.all[names(smc.all) %in% names(smc)] <- smc
+    if (!is.null(wcc)) {
+        smc.all[wcl] <- smc.na[names(smc.all[wcl])]
+    }
+    smc <- smc.all
+    if (!is.null(maxr)) {
+        if (any(is.na(smc))) {
+            warning("The SMCs with NA values were replaced by their maximum correlation.")
+            cat("\nSMC(s) for variables ", names(smc)[is.na(smc)], 
+                "were replaced with their maximum correlation \n")
+        }
+        smc[is.na(smc)] <- maxr[is.na(smc)]
+    }
+    if (covar) {
+        smc <- smc * vari
+    }
+    return(smc)
+}
+
