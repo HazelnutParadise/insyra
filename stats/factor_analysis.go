@@ -716,7 +716,7 @@ func countByThreshold(eigenvalues []float64, threshold float64) int {
 	return count
 }
 
-// extractFactors extracts factors using the specified method
+// extractFactors wraps the internal extraction functions
 func extractFactors(data, corrMatrix *mat.Dense, eigenvalues []float64, eigenvectors *mat.Dense, numFactors int, opt FactorAnalysisOptions, sampleSize int, tol float64) (*mat.Dense, bool, int, error) {
 	switch opt.Extraction {
 	case FactorExtractionPCA:
