@@ -333,6 +333,9 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 			col := mat.Col(nil, j, data)
 			means[j] = stat.Mean(col, nil)
 			sds[j] = 1.0
+			for i := 0; i < rowNum; i++ {
+				data.Set(i, j, data.At(i, j)-means[j])
+			}
 		}
 	}
 
@@ -598,6 +601,11 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		fmt.Sprintf("Factor count method: %s (retained %d)", opt.Count.Method, numFactors),
 		fmt.Sprintf("Rotation method: %s", opt.Rotation.Method),
 		fmt.Sprintf("Scoring method: %s", opt.Scoring),
+	}
+	if opt.Scoring == FactorScoreNone {
+		messages = append(messages, "Factor scores not computed (scoring disabled)")
+	} else if scores == nil {
+		messages = append(messages, "Factor scores unavailable for selected scoring method")
 	}
 	if iterations > 0 {
 		messages = append(messages, fmt.Sprintf("Extraction iterations: %d", iterations))
@@ -1278,16 +1286,14 @@ func extractMINRES(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float
 	}
 
 	if maxIter <= 0 {
-		maxIter = 100
+		maxIter = 200
 	}
 	if tol <= 0 {
 		tol = extractionTolerance
 	}
 
-	// Start with PCA loadings as initial estimate
-	initial, _, _, err := extractPAF(corrMatrix, numFactors, min(maxIter, 50), math.Max(tol, extractionTolerance), 0.001)
+	initial, _, _, err := extractPAF(corrMatrix, numFactors, min(maxIter, 100), math.Max(tol, extractionTolerance), 0.001)
 	if err != nil || initial == nil {
-		// Fall back to PCA loadings
 		var eig mat.EigenSym
 		symCorr := denseToSym(corrMatrix)
 		if !eig.Factorize(symCorr, true) {
@@ -1296,22 +1302,80 @@ func extractMINRES(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float
 		eigenvalues := eig.Values(nil)
 		var eigenvectors mat.Dense
 		eig.VectorsTo(&eigenvectors)
-
 		initial, err = computePCALoadings(eigenvalues, &eigenvectors, numFactors)
 		if err != nil {
 			return nil, false, 0, fmt.Errorf("PCA fallback failed: %v", err)
 		}
 	}
 
-	// For MINRES, we can use the initial loadings directly
-	// MINRES is essentially a simplified version that doesn't require iterative optimization
-	loadings := initial
+	var loadings mat.Dense
+	loadings.CloneFrom(initial)
 
-	// Ensure convergence (MINRES typically converges in fewer iterations)
-	converged := true
-	iterations := 0
+	prevSSE := math.Inf(1)
+	stepSize := 1.0
 
-	return loadings, converged, iterations, nil
+	for iter := 0; iter < maxIter; iter++ {
+		var reproduced mat.Dense
+		reproduced.Mul(&loadings, loadings.T())
+
+		var residual mat.Dense
+		residual.CloneFrom(corrMatrix)
+		residual.Sub(&residual, &reproduced)
+		zeroDiagonal(&residual)
+
+		currentSSE := offDiagonalSSE(&residual)
+		if currentSSE <= tol {
+			return &loadings, true, iter + 1, nil
+		}
+		if iter > 0 && math.Abs(currentSSE-prevSSE) < tol {
+			return &loadings, true, iter + 1, nil
+		}
+
+		var grad mat.Dense
+		grad.Mul(&residual, &loadings)
+		grad.Scale(-4.0, &grad)
+		if mat.Norm(&grad, 2) < tol {
+			return &loadings, true, iter + 1, nil
+		}
+
+		success := false
+		trialStep := stepSize
+		candidate := mat.NewDense(p, numFactors, nil)
+		oldSSE := currentSSE
+
+		for attempt := 0; attempt < 20; attempt++ {
+			for i := 0; i < p; i++ {
+				for j := 0; j < numFactors; j++ {
+					update := loadings.At(i, j) - trialStep*grad.At(i, j)
+					candidate.Set(i, j, update)
+				}
+			}
+
+			var candReproduced mat.Dense
+			candReproduced.Mul(candidate, candidate.T())
+			var candResidual mat.Dense
+			candResidual.CloneFrom(corrMatrix)
+			candResidual.Sub(&candResidual, &candReproduced)
+			zeroDiagonal(&candResidual)
+			candSSE := offDiagonalSSE(&candResidual)
+
+			if candSSE < oldSSE {
+				loadings.CloneFrom(candidate)
+				prevSSE = oldSSE
+				stepSize = math.Min(trialStep*1.5, 5.0)
+				success = true
+				break
+			}
+
+			trialStep *= 0.5
+		}
+
+		if !success {
+			return &loadings, false, iter + 1, nil
+		}
+	}
+
+	return &loadings, false, maxIter, nil
 }
 
 // rotateFactors performs factor rotation using the specified method
@@ -1512,75 +1576,120 @@ func computeFactorScores(data, loadings, phi *mat.Dense, uniquenesses []float64,
 	n, p := data.Dims()
 	_, m := loadings.Dims()
 
-	// Create uniqueness matrix
-	psi := mat.NewDiagDense(p, uniquenesses)
-
-	// Compute R = loadings * phi * loadings^T + psi (if phi exists)
-	var R *mat.Dense
-	if phi != nil {
-		// loadings * phi
-		temp := mat.NewDense(p, m, nil)
-		temp.Mul(loadings, phi)
-		// temp * loadings^T
-		R = mat.NewDense(p, p, nil)
-		R.Mul(temp, loadings.T())
-	} else {
-		// loadings * loadings^T
-		R = mat.NewDense(p, p, nil)
-		R.Mul(loadings, loadings.T())
-	}
-	// Add uniquenesses
-	R.Add(R, psi)
-
-	// Compute inverse of R
-	var Rinv mat.Dense
-	err := Rinv.Inverse(R)
-	if err != nil {
-		return nil, fmt.Errorf("failed to invert R matrix: %v", err)
+	if method == FactorScoreNone {
+		return nil, nil
 	}
 
-	// Compute factor scores based on method
-	var scores *mat.Dense
+	if len(uniquenesses) != p {
+		return nil, fmt.Errorf("uniqueness length %d does not match variables %d", len(uniquenesses), p)
+	}
+
+	// Build Psi and Psi^{-1}
+	psiDiag := make([]float64, p)
+	psiInvDiag := make([]float64, p)
+	for i, u := range uniquenesses {
+		if u <= 0 {
+			return nil, fmt.Errorf("uniqueness at index %d is non-positive", i)
+		}
+		psiDiag[i] = u
+		psiInvDiag[i] = 1.0 / u
+	}
+	psi := mat.NewDiagDense(p, psiDiag)
+	psiInv := mat.NewDiagDense(p, psiInvDiag)
+
+	// Observed covariance/correlation matrix for scoring weights
+	var sigmaInv mat.Dense
+	useObserved := false
+	if sigmaForScores != nil {
+		sigmaInv.CloneFrom(sigmaForScores)
+		if err := sigmaInv.Inverse(&sigmaInv); err == nil {
+			useObserved = true
+		} else {
+			insyra.LogDebug("stats", "FactorAnalysis", "factor scores fallback to model covariance: %v", err)
+		}
+	}
+	if !useObserved {
+		// Fallback to model-implied covariance if observed matrix unavailable
+		var reproduced mat.Dense
+		if phi != nil {
+			var tmp mat.Dense
+			tmp.Mul(loadings, phi)
+			reproduced.Mul(&tmp, loadings.T())
+		} else {
+			reproduced.Mul(loadings, loadings.T())
+		}
+		reproduced.Add(&reproduced, psi)
+		sigmaInv.CloneFrom(&reproduced)
+		if err := sigmaInv.Inverse(&sigmaInv); err != nil {
+			return nil, fmt.Errorf("failed to invert model-implied covariance: %v", err)
+		}
+	}
 
 	switch method {
 	case FactorScoreRegression:
-		// scores = data * Rinv * loadings * phi (if phi exists)
-		temp1 := mat.NewDense(n, p, nil)
-		temp1.Mul(data, &Rinv)
+		// Thurstone regression method: B = Σ^{-1} Λ Φ
+		var weights mat.Dense
+		weights.Mul(&sigmaInv, loadings)
 		if phi != nil {
-			temp2 := mat.NewDense(n, m, nil)
-			temp2.Mul(temp1, loadings)
-			scores = mat.NewDense(n, m, nil)
-			scores.Mul(temp2, phi)
-		} else {
-			scores = mat.NewDense(n, m, nil)
-			scores.Mul(temp1, loadings)
+			var tmp mat.Dense
+			tmp.Mul(&weights, phi)
+			weights.Copy(&tmp)
 		}
+		scores := mat.NewDense(n, m, nil)
+		scores.Mul(data, &weights)
+		return scores, nil
 
 	case FactorScoreBartlett:
-		// scores = data * Rinv * loadings * solve(phi) (if phi exists)
-		temp1 := mat.NewDense(n, p, nil)
-		temp1.Mul(data, &Rinv)
-		if phi != nil {
-			var phiInv mat.Dense
-			err := phiInv.Inverse(phi)
-			if err != nil {
-				return nil, fmt.Errorf("failed to invert phi matrix: %v", err)
-			}
-			temp2 := mat.NewDense(n, m, nil)
-			temp2.Mul(temp1, loadings)
-			scores = mat.NewDense(n, m, nil)
-			scores.Mul(temp2, &phiInv)
-		} else {
-			scores = mat.NewDense(n, m, nil)
-			scores.Mul(temp1, loadings)
+		// Bartlett weighted least squares: B = Ψ^{-1} Λ (Λᵀ Ψ^{-1} Λ)^{-1} Φ (if Φ exists)
+		psiInvLoadings := mat.NewDense(p, m, nil)
+		psiInvLoadings.Mul(psiInv, loadings)
+
+		var middle mat.Dense
+		middle.Mul(loadings.T(), psiInvLoadings)
+		var middleInv mat.Dense
+		if err := middleInv.Inverse(&middle); err != nil {
+			return nil, fmt.Errorf("bartlett weights: failed to invert Λᵀ Ψ^{-1} Λ: %v", err)
 		}
+
+		weights := mat.NewDense(p, m, nil)
+		weights.Mul(psiInvLoadings, &middleInv)
+		if phi != nil {
+			var tmp mat.Dense
+			tmp.Mul(weights, phi)
+			weights.Copy(&tmp)
+		}
+
+		scores := mat.NewDense(n, m, nil)
+		scores.Mul(data, weights)
+		return scores, nil
+
+	case FactorScoreAndersonRubin:
+		if phi != nil {
+			// Anderson-Rubin requires orthogonal factors (Φ = I)
+			return nil, fmt.Errorf("anderson-rubin scoring requires orthogonal factors")
+		}
+
+		// Anderson-Rubin: B = Σ^{-1} Λ (Λᵀ Σ^{-1} Λ)^{-1/2}
+		var sigmaInvLoadings mat.Dense
+		sigmaInvLoadings.Mul(&sigmaInv, loadings)
+
+		var inner mat.Dense
+		inner.Mul(loadings.T(), &sigmaInvLoadings)
+		invSqrt, err := inverseSqrtDense(&inner)
+		if err != nil {
+			return nil, fmt.Errorf("anderson-rubin weights: %v", err)
+		}
+
+		var weights mat.Dense
+		weights.Mul(&sigmaInvLoadings, invSqrt)
+
+		scores := mat.NewDense(n, m, nil)
+		scores.Mul(data, &weights)
+		return scores, nil
 
 	default:
 		return nil, fmt.Errorf("unsupported scoring method: %v", method)
 	}
-
-	return scores, nil
 }
 
 // matrixToDataTableWithNames converts a matrix to DataTable with row and column names
