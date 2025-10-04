@@ -180,8 +180,7 @@ func DefaultFactorAnalysisOptions() FactorAnalysisOptions {
 		},
 		Scoring: FactorScoreRegression, // R default: "regression"
 		MaxIter: 50,                    // R default: 50
-		// Tol: deprecated; see package docs. Use internal defaults instead.
-		MinErr: 0.001, // R default: 0.001
+		MinErr:  0.001,                 // R default: 0.001
 	}
 }
 
@@ -192,16 +191,7 @@ const (
 	extractionTolerance = 1e-6 // General convergence tolerance for factor extraction
 
 	// Numerical stability constants
-	epsilonSmall  = 1e-10 // For matrix inversion and singularity checks
-	epsilonTiny   = 1e-12 // For near-zero checks (e.g., row norm)
-	epsilonMedium = 1e-6  // For communality lower bound and sum checks
-
-	// MINRES optimization constants (aligned with R's optim L-BFGS-B)
-	minresPsiLowerBound = 0.005 // R: lower = 0.005 in optim()
-	minresPsiUpperBound = 1.0   // R: default minimum for upper bound, actual upper = max(1.0, max(h2))
-
-	// Ridge regularization for matrix inversion
-	ridgeRegularization = 1e-6 // Small ridge for numerical stability
+	epsilonMedium = 1e-6 // For communality lower bound and sum checks
 
 	// Correlation matrix diagonal checks
 	corrDiagTolerance    = 1e-6 // Tolerance for diagonal deviation from 1.0
@@ -211,12 +201,6 @@ const (
 	// Machine epsilon and eigenvalue thresholds (aligned with R's .Machine$double.eps)
 	machineEpsilon         = 2.220446e-16         // R's .Machine$double.eps
 	eigenvalueMinThreshold = 100 * machineEpsilon // R: 100 * .Machine$double.eps (2.22e-14)
-
-	// Optimization control parameters (for reference - not currently used)
-	// R uses these in optim(control = list(fnscale = 1, parscale = rep(0.01, ...)))
-	// gonum's optimize package uses different control mechanisms
-	// optimFnScale  = 1.0
-	// optimParScale = 0.01
 )
 
 // -------------------------
@@ -1061,7 +1045,7 @@ func mlFitStats(R, Sigma mat.Matrix, n, p, m int) (f, chi2, pval float64, df int
 	temp.Mul(&invSigma, R)
 
 	// Trace
-	diag := Diag(&temp, 0, 0, false)
+	diag := Diag(&temp)
 	diagSlice := diag.([]float64)
 	tr := 0.0
 	for _, v := range diagSlice {

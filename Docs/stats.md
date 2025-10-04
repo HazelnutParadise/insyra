@@ -24,6 +24,7 @@ The stats package provides comprehensive statistical analysis functions:
 - **F-Tests**: Variance equality, Levene's test, Bartlett's test, regression F-test, nested models
 - **Dimensionality Reduction**: Principal Component Analysis (PCA), Factor Analysis
 - **Factor Analysis**: Exploratory factor analysis with multiple extraction and rotation methods
+- **Matrix Operations**: Diagonal matrix creation and extraction (Diag function)
 
 ---
 
@@ -1104,8 +1105,8 @@ type FactorCountSpec struct {
 ```go
 type FactorCountMethod string
 const (
-    CountFixed  FactorCountMethod = "fixed"
-    CountKaiser FactorCountMethod = "kaiser"
+    FactorCountFixed  FactorCountMethod = "fixed"
+    FactorCountKaiser FactorCountMethod = "kaiser"
 )
 ```
 
@@ -1139,8 +1140,14 @@ const (
     FactorRotationNone      FactorRotationMethod = "none"
     FactorRotationVarimax   FactorRotationMethod = "varimax"
     FactorRotationQuartimax FactorRotationMethod = "quartimax"
-    FactorRotationPromax    FactorRotationMethod = "promax"
+    FactorRotationQuartimin FactorRotationMethod = "quartimin"
     FactorRotationOblimin   FactorRotationMethod = "oblimin"
+    FactorRotationGeominT   FactorRotationMethod = "geominT"
+    FactorRotationBentlerT  FactorRotationMethod = "bentlerT"
+    FactorRotationSimplimax FactorRotationMethod = "simplimax"
+    FactorRotationGeominQ   FactorRotationMethod = "geominQ"
+    FactorRotationBentlerQ  FactorRotationMethod = "bentlerQ"
+    FactorRotationPromax    FactorRotationMethod = "promax"
 )
 ```
 
@@ -1308,6 +1315,7 @@ func DefaultFactorAnalysisOptions() FactorAnalysisOptions
 **Purpose**: Returns default factor analysis options aligned with R's `psych::fa` defaults.
 
 **Returns**: Default FactorAnalysisOptions with the following defaults:
+
 - **Extraction**: `minres` (Minimum Residual)
 - **Rotation**: `oblimin` (Oblique rotation with delta=0)
 - **Scoring**: `regression` (Regression-based factor scores)
@@ -1315,6 +1323,51 @@ func DefaultFactorAnalysisOptions() FactorAnalysisOptions
 - **Factor Count**: Kaiser criterion (eigenvalues > 1.0)
 - **MaxIter**: 50
 - **MinErr**: 0.001
+
+---
+
+## Matrix Operations
+
+### Diag
+
+```go
+func Diag(x any, dims ...int) any
+```
+
+**Purpose**: Create diagonal matrices or extract diagonal elements from matrices, mimicking R's `diag()` function.
+
+**Parameters**:
+
+- `x`: Input value of various types:
+  - `*mat.Dense`: Extract diagonal elements as `[]float64`
+  - `[]float64`: Create diagonal matrix from slice
+  - `int` or `float64`: Create identity matrix of specified size
+  - `nil`: Create identity matrix (default 1x1)
+- `dims`: Optional dimensions (0, 1, or 2 values):
+  - No dims: Use default sizing based on input
+  - 1 dim: Set nrow = ncol = dim[0]
+  - 2 dims: Set nrow = dim[0], ncol = dim[1]
+
+**Returns**:
+
+- When extracting: `[]float64` containing diagonal elements
+- When creating: `*mat.Dense` diagonal or identity matrix**Examples**:
+
+```go
+// Extract diagonal from matrix
+matrix := mat.NewDense(3, 3, []float64{1, 2, 3, 4, 5, 6, 7, 8, 9})
+diagonal := Diag(matrix) // Returns []float64{1, 5, 9}
+
+// Create diagonal matrix from slice
+values := []float64{1, 2, 3}
+diagMatrix := Diag(values) // Returns 3x3 diagonal matrix
+
+// Create identity matrix
+identity := Diag(3) // Returns 3x3 identity matrix
+
+// Create rectangular identity matrix
+rectIdentity := Diag(nil, 2, 3) // Returns 2x3 matrix with diagonal 1s
+```
 
 ---
 

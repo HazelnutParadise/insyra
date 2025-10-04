@@ -1,6 +1,7 @@
 package stats
 
 import (
+	"github.com/HazelnutParadise/insyra"
 	"gonum.org/v1/gonum/mat"
 )
 
@@ -10,19 +11,39 @@ import (
 // If x is a slice of float64, it creates a diagonal matrix with those elements.
 // If x is an int, it creates an identity matrix of that size.
 //
-// For creating diagonal matrices, nrow and ncol can be specified to control the size.
+// For creating diagonal matrices, nrow and ncol can be optionally specified to control the size.
 // If not specified, it uses the length of the slice or the value of x.
-// names is currently not used, reserved for future use.
+//
+// Usage:
+//
+//	Diag(x)              // Use default sizing
+//	Diag(x, nrow)         // Specify nrow, ncol = nrow
+//	Diag(x, nrow, ncol)   // Specify both nrow and ncol
 //
 // This function mimics the behavior of R's diag function.
-func Diag(x interface{}, nrow, ncol int, names bool) interface{} {
+func Diag(x any, dims ...int) any {
+	// Parse optional dimensions
+	var nrow, ncol int
+	switch len(dims) {
+	case 0:
+		// No dimensions specified
+	case 1:
+		nrow = dims[0]
+		ncol = dims[0]
+	case 2:
+		nrow = dims[0]
+		ncol = dims[1]
+	default:
+		panic("too many dimensions specified")
+	}
+
 	switch v := x.(type) {
 	case *mat.Dense:
 		// Extract diagonal
 		r, c := v.Dims()
 		size := min(r, c)
 		diag := make([]float64, size)
-		for i := 0; i < size; i++ {
+		for i := range size {
 			diag[i] = v.At(i, i)
 		}
 		return diag
@@ -95,6 +116,7 @@ func Diag(x interface{}, nrow, ncol int, names bool) interface{} {
 		}
 		return matrix
 	default:
-		panic("unsupported type for Diag")
+		insyra.LogWarning("stats", "Diag", "Unsupported type for Diag function, returning nil")
+		return nil
 	}
 }
