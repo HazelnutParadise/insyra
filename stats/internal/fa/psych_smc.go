@@ -11,11 +11,9 @@ func Smc(r *mat.Dense) *mat.VecDense {
 	p, _ := r.Dims()
 
 	// Assume r is correlation matrix, no NAs
-	var rInv mat.Dense
-	err := rInv.Inverse(r)
-	if err != nil {
-		// If not invertible, use pseudo-inverse approximation
-		// For now, set to 1
+	rInv := Pinv(r)
+	if rInv == nil {
+		// If not invertible, set to 1
 		smc := mat.NewVecDense(p, nil)
 		for i := 0; i < p; i++ {
 			smc.SetVec(i, 1.0)
