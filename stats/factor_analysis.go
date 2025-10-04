@@ -111,7 +111,7 @@ type FactorAnalysisResult struct {
 	Loadings             insyra.IDataTable // Loading matrix (variables × factors)
 	Structure            insyra.IDataTable // Structure matrix (variables × factors)
 	Uniquenesses         insyra.IDataTable // Uniqueness vector (p × 1)
-	Communalities        insyra.IDataTable // Communality table (p × 2: Initial, Extraction)
+	Communalities        insyra.IDataTable // Communality table (p × 1: Extraction)
 	Phi                  insyra.IDataTable // Factor correlation matrix (m × m), nil for orthogonal
 	RotationMatrix       insyra.IDataTable // Rotation matrix (m × m), nil if no rotation
 	Eigenvalues          insyra.IDataTable // Eigenvalues vector (p × 1)
@@ -581,12 +581,11 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		uniquenesses[i] = uniq
 	}
 
-	commMatrix := mat.NewDense(colNum, 2, nil)
+	commMatrix := mat.NewDense(colNum, 1, nil)
 	for i := 0; i < colNum; i++ {
-		commMatrix.Set(i, 0, initialCommunalities[i])
-		commMatrix.Set(i, 1, extractionCommunalities[i])
+		commMatrix.Set(i, 0, extractionCommunalities[i])
 	}
-	communalitiesTable := matrixToDataTableWithNames(commMatrix, tableNameCommunalities, []string{"Initial", "Extraction"}, colNames)
+	communalitiesTable := matrixToDataTableWithNames(commMatrix, tableNameCommunalities, []string{"Extraction"}, colNames)
 
 	// Step 9: Compute explained proportions using structure matrix (SS loadings / number of variables)
 	// Following R's psych package: SS loadings = sum of squared structure loadings
@@ -642,7 +641,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	// Generate factor column names
 	factorColNames := make([]string, numFactors)
 	for i := 0; i < numFactors; i++ {
-		factorColNames[i] = fmt.Sprintf("Factor %d", i+1)
+		factorColNames[i] = fmt.Sprintf("Factor_%d", i+1)
 	}
 	structureTable := matrixToDataTableWithNames(S, tableNameFactorStructure, factorColNames, colNames)
 
@@ -1754,14 +1753,12 @@ func matrixToDataTableWithNames(matrix *mat.Dense, tableName string, colNames, r
 	dt := insyra.NewDataTable()
 	dt.SetName(formatNameSnakePascal(tableName))
 
-	formattedColNames := formatNameSliceSnakePascal(colNames)
-
 	// Add columns
 	for j := 0; j < c; j++ {
 		col := insyra.NewDataList()
 		colName := ""
-		if formattedColNames != nil && j < len(formattedColNames) {
-			colName = formattedColNames[j]
+		if colNames != nil && j < len(colNames) {
+			colName = colNames[j]
 		}
 		if colName == "" {
 			colName = formatNameSnakePascal(fmt.Sprintf("Col %d", j+1))
@@ -1775,9 +1772,8 @@ func matrixToDataTableWithNames(matrix *mat.Dense, tableName string, colNames, r
 	}
 
 	// Set row names if provided
-	formattedRowNames := formatNameSliceSnakePascal(rowNames)
-	if formattedRowNames != nil && len(formattedRowNames) == r {
-		for i, name := range formattedRowNames {
+	if rowNames != nil && len(rowNames) == r {
+		for i, name := range rowNames {
 			dt.SetRowNameByIndex(i, name)
 		}
 	}
@@ -1811,9 +1807,8 @@ func vectorToDataTableWithNames(vector []float64, tableName string, colName stri
 	dt.AppendCols(col)
 
 	// Set row names if provided
-	formattedRowNames := formatNameSliceSnakePascal(rowNames)
-	if formattedRowNames != nil && len(formattedRowNames) == r {
-		for i, name := range formattedRowNames {
+	if rowNames != nil && len(rowNames) == r {
+		for i, name := range rowNames {
 			dt.SetRowNameByIndex(i, name)
 		}
 	}
@@ -1877,17 +1872,6 @@ func formatNameSnakePascal(name string) string {
 		formatted[i] = formatSegmentTitle(segment)
 	}
 	return strings.Join(formatted, "_")
-}
-
-func formatNameSliceSnakePascal(names []string) []string {
-	if len(names) == 0 {
-		return nil
-	}
-	formatted := make([]string, len(names))
-	for i, name := range names {
-		formatted[i] = formatNameSnakePascal(name)
-	}
-	return formatted
 }
 
 func splitIdentifier(name string) []string {

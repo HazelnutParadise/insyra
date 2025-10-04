@@ -1170,7 +1170,7 @@ type FactorAnalysisResult struct {
     Loadings             insyra.IDataTable // Loading matrix (variables × factors)
     Structure            insyra.IDataTable // Structure matrix (variables × factors)
     Uniquenesses         insyra.IDataTable // Uniqueness vector (p × 1)
-    Communalities        insyra.IDataTable // Communality vector (p × 1)
+    Communalities        insyra.IDataTable // Communality table (p × 1: Extraction)
     Phi                  insyra.IDataTable // Factor correlation matrix (m × m), nil for orthogonal
     RotationMatrix       insyra.IDataTable // Rotation matrix (m × m), nil if no rotation
     Eigenvalues          insyra.IDataTable // Eigenvalues vector (p × 1)
@@ -1190,7 +1190,7 @@ type FactorAnalysisResult struct {
 - **Loadings**: Column names are factor names (Factor1, Factor2, ...), row names are variable names
 - **Structure**: Column names are factor names (Factor1, Factor2, ...), row names are variable names
 - **Uniquenesses**: Single column named "Uniqueness", row names are variable names
-- **Communalities**: Single column named "Communality", row names are variable names
+- **Communalities**: Single column named "Extraction", row names are variable names
 - **Eigenvalues**: Single column named "Eigenvalue", row names are factor names
 - **ExplainedProportion**: Single column named "Explained Proportion", row names are factor names
 - **CumulativeProportion**: Single column named "Cumulative Proportion", row names are factor names
