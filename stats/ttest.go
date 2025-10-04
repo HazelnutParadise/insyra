@@ -48,7 +48,7 @@ func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...flo
 	standardError := stddev / math.Sqrt(float64(n))
 	tValue := (mean - mu) / standardError
 	df := float64(n - 1)
-	pValue := calculatePValue(tValue, df)
+	pValue := calculateTPValue(tValue, df)
 
 	// Handle optional confidence level parameter
 	var cl float64
@@ -182,7 +182,7 @@ func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenc
 		df = num / den
 	}
 	tValue := meanDiff / standardError
-	pValue := calculatePValue(tValue, df)
+	pValue := calculateTPValue(tValue, df)
 
 	// Handle optional confidence level parameter
 	var cl float64
@@ -330,7 +330,7 @@ func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel ...float64) *TTe
 	standardError := stddevDiff / math.Sqrt(nFloat)
 	tValue := meanDiff / standardError
 	df := nFloat - 1
-	pValue := calculatePValue(tValue, df)
+	pValue := calculateTPValue(tValue, df)
 
 	// Handle optional confidence level parameter
 	var cl float64
@@ -368,7 +368,7 @@ func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel ...float64) *TTe
 	}
 }
 
-func calculatePValue(tValue float64, df float64) float64 {
+func calculateTPValue(tValue float64, df float64) float64 {
 	if df <= 0 {
 		return 1.0
 	}
