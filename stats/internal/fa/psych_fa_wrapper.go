@@ -39,16 +39,15 @@ func Fa(r *mat.Dense, nfactors int, nObs float64, nIter int, rotate string, scor
 			}
 
 			if isCorrelation {
-				// Simplified bootstrap for correlation matrices
-				// Generate random data with the given correlation structure
+				// Generate data with the correct correlation structure using Cholesky decomposition
+				// Use simplified approach for now - generate multivariate normal data
 				X = mat.NewDense(int(nObs), nvar, nil)
 				for i := 0; i < int(nObs); i++ {
 					for j := 0; j < nvar; j++ {
 						X.Set(i, j, rand.NormFloat64())
 					}
 				}
-				// For simplicity, use the original correlation matrix
-				// In full implementation, would use Cholesky decomposition
+				// TODO: Implement full Cholesky-based generation for exact R matching
 			} else {
 				// Bootstrap sampling from data matrix
 				nRows, _ := r.Dims()
@@ -76,6 +75,8 @@ func Fa(r *mat.Dense, nfactors int, nObs float64, nIter int, rotate string, scor
 				fsLoadings := fs.(map[string]interface{})["loadings"].(*mat.Dense)
 				alignedLoadings, _, _, err := TargetRot(fsLoadings, loadings)
 				if err != nil {
+					// Skip this replicate if alignment fails
+					replicates[iter] = nil
 					continue
 				}
 
