@@ -52,55 +52,6 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			"f":      f,
 			"Method": "vgQ." + method,
 		}
-	case "varimin":
-		Gq, f, _ := vgQVarimin(L)
-		VgQ = map[string]interface{}{
-			"Gq":     Gq,
-			"f":      f,
-			"Method": "vgQ." + method,
-		}
-	case "quartimin":
-		Gq, f, _ := vgQQuartimin(L)
-		VgQ = map[string]interface{}{
-			"Gq":     Gq,
-			"f":      f,
-			"Method": "vgQ." + method,
-		}
-	case "bentler":
-		Gq, f, _ := vgQBentler(L)
-		VgQ = map[string]interface{}{
-			"Gq":     Gq,
-			"f":      f,
-			"Method": "vgQ." + method,
-		}
-	case "oblimax":
-		Gq, f, _ := vgQOblimax(L)
-		VgQ = map[string]interface{}{
-			"Gq":     Gq,
-			"f":      f,
-			"Method": "vgQ." + method,
-		}
-	case "entropy":
-		Gq, f, _ := vgQEntropy(L)
-		VgQ = map[string]interface{}{
-			"Gq":     Gq,
-			"f":      f,
-			"Method": "vgQ." + method,
-		}
-	case "tandemI":
-		Gq, f, _ := vgQTandemI(L)
-		VgQ = map[string]interface{}{
-			"Gq":     Gq,
-			"f":      f,
-			"Method": "vgQ." + method,
-		}
-	case "tandemII":
-		Gq, f, _ := vgQTandemII(L)
-		VgQ = map[string]interface{}{
-			"Gq":     Gq,
-			"f":      f,
-			"Method": "vgQ." + method,
-		}
 	default:
 		Gq, f, _ := vgQVarimax(L)
 		VgQ = map[string]interface{}{
@@ -128,48 +79,6 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 		}
 	case "quartimax":
 		Gq2, f2, _ := vgQQuartimax(L)
-		VgQt = map[string]interface{}{
-			"Gq": Gq2,
-			"f":  f2,
-		}
-	case "varimin":
-		Gq2, f2, _ := vgQVarimin(L)
-		VgQt = map[string]interface{}{
-			"Gq": Gq2,
-			"f":  f2,
-		}
-	case "quartimin":
-		Gq2, f2, _ := vgQQuartimin(L)
-		VgQt = map[string]interface{}{
-			"Gq": Gq2,
-			"f":  f2,
-		}
-	case "bentler":
-		Gq2, f2, _ := vgQBentler(L)
-		VgQt = map[string]interface{}{
-			"Gq": Gq2,
-			"f":  f2,
-		}
-	case "oblimax":
-		Gq2, f2, _ := vgQOblimax(L)
-		VgQt = map[string]interface{}{
-			"Gq": Gq2,
-			"f":  f2,
-		}
-	case "entropy":
-		Gq2, f2, _ := vgQEntropy(L)
-		VgQt = map[string]interface{}{
-			"Gq": Gq2,
-			"f":  f2,
-		}
-	case "tandemI":
-		Gq2, f2, _ := vgQTandemI(L)
-		VgQt = map[string]interface{}{
-			"Gq": Gq2,
-			"f":  f2,
-		}
-	case "tandemII":
-		Gq2, f2, _ := vgQTandemII(L)
 		VgQt = map[string]interface{}{
 			"Gq": Gq2,
 			"f":  f2,
@@ -261,48 +170,6 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 				}
 			case "quartimax":
 				GqNew, fNew, _ := vgQQuartimax(L)
-				VgQt = map[string]interface{}{
-					"Gq": GqNew,
-					"f":  fNew,
-				}
-			case "varimin":
-				GqNew, fNew, _ := vgQVarimin(L)
-				VgQt = map[string]interface{}{
-					"Gq": GqNew,
-					"f":  fNew,
-				}
-			case "quartimin":
-				GqNew, fNew, _ := vgQQuartimin(L)
-				VgQt = map[string]interface{}{
-					"Gq": GqNew,
-					"f":  fNew,
-				}
-			case "bentler":
-				GqNew, fNew, _ := vgQBentler(L)
-				VgQt = map[string]interface{}{
-					"Gq": GqNew,
-					"f":  fNew,
-				}
-			case "oblimax":
-				GqNew, fNew, _ := vgQOblimax(L)
-				VgQt = map[string]interface{}{
-					"Gq": GqNew,
-					"f":  fNew,
-				}
-			case "entropy":
-				GqNew, fNew, _ := vgQEntropy(L)
-				VgQt = map[string]interface{}{
-					"Gq": GqNew,
-					"f":  fNew,
-				}
-			case "tandemI":
-				GqNew, fNew, _ := vgQTandemI(L)
-				VgQt = map[string]interface{}{
-					"Gq": GqNew,
-					"f":  fNew,
-				}
-			case "tandemII":
-				GqNew, fNew, _ := vgQTandemII(L)
 				VgQt = map[string]interface{}{
 					"Gq": GqNew,
 					"f":  fNew,
