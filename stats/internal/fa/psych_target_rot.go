@@ -9,7 +9,7 @@ import (
 )
 
 // TargetRot performs target rotation on an unrotated loading matrix x.
-// Simplified implementation mirroring psych::target.rot
+// Mirrors psych::target.rot exactly
 func TargetRot(x *mat.Dense, keys *mat.Dense) (loadings, rotmat, Phi *mat.Dense, err error) {
 	p, q := x.Dims()
 	if q < 2 {
@@ -18,11 +18,7 @@ func TargetRot(x *mat.Dense, keys *mat.Dense) (loadings, rotmat, Phi *mat.Dense,
 
 	var Q *mat.Dense
 	if keys == nil {
-		// Simplified: assume identity or simple cluster structure
-		Q = mat.NewDense(p, q, nil)
-		for i := 0; i < p && i < q; i++ {
-			Q.Set(i, i, 1.0)
-		}
+		Q = Factor2Cluster(x)
 	} else {
 		Q = mat.DenseCopyOf(keys)
 	}
