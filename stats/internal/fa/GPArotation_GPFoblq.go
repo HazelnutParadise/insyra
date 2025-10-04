@@ -73,6 +73,17 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			"f":      f,
 			"Method": methodName,
 		}
+	case "oblimin":
+		Gq, f, err := vgQOblimin(L, 0.0) // gam = 0 for standard oblimin
+		if err != nil {
+			panic(fmt.Sprintf("vgQOblimin failed: %v", err))
+		}
+		methodName := "Oblimin Quartimin"
+		VgQ = map[string]interface{}{
+			"Gq":     Gq,
+			"f":      f,
+			"Method": methodName,
+		}
 	default:
 		Gq, f, methodName := vgQQuartimin(L)
 		VgQ = map[string]interface{}{
@@ -186,6 +197,15 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			switch method {
 			case "quartimin":
 				GqNew, fNew, _ := vgQQuartimin(L)
+				VgQt = map[string]interface{}{
+					"Gq": GqNew,
+					"f":  fNew,
+				}
+			case "oblimin":
+				GqNew, fNew, err := vgQOblimin(L, 0.0)
+				if err != nil {
+					panic(fmt.Sprintf("vgQOblimin failed: %v", err))
+				}
 				VgQt = map[string]interface{}{
 					"Gq": GqNew,
 					"f":  fNew,
