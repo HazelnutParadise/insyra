@@ -1,6 +1,3 @@
-# psych::faRotations  (namespace: psych)
-# dumped at 2025-10-04 13:16:30.678203
-faRotations <- 
 function (loadings, r = NULL, rotate = "oblimin", hyper = 0.15, 
     n.rotations = 10, ...) 
 {
@@ -291,4 +288,5 @@ function (loadings, r = NULL, rotate = "oblimin", hyper = 0.15,
     class(result) <- c("psych", "fa")
     return(result)
 }
-
+<bytecode: 0x0000022a12478e50>
+<environment: namespace:psych>

@@ -1,6 +1,3 @@
-# psych::smc  (namespace: psych)
-# dumped at 2025-10-04 13:16:30.673494
-smc <- 
 function (R, covar = FALSE) 
 {
     failed = FALSE
@@ -103,4 +100,5 @@ function (R, covar = FALSE)
     }
     return(smc)
 }
-
+<bytecode: 0x0000022a122ff148>
+<environment: namespace:psych>

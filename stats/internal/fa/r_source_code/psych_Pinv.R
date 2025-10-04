@@ -1,6 +1,3 @@
-# psych::Pinv  (namespace: psych)
-# dumped at 2025-10-04 13:16:30.675935
-Pinv <- 
 function (X, tol = sqrt(.Machine$double.eps)) 
 {
     svdX <- svd(X)
@@ -14,4 +11,5 @@ function (X, tol = sqrt(.Machine$double.eps))
     }
     return(Pinv)
 }
-
+<bytecode: 0x0000022a124ca718>
+<environment: namespace:psych>

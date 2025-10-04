@@ -1,6 +1,3 @@
-# psych::Promax  (namespace: psych)
-# dumped at 2025-10-04 13:16:30.680537
-Promax <- 
 function (x, m = 4, normalize = FALSE, pro.m = 4) 
 {
     if (missing(m)) 
@@ -40,4 +37,5 @@ function (x, m = 4, normalize = FALSE, pro.m = 4)
     class(result) <- c("psych", "fa")
     return(result)
 }
-
+<bytecode: 0x0000022a12426a08>
+<environment: namespace:psych>
