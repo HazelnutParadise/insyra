@@ -10,7 +10,7 @@ import (
 // Promax performs Promax rotation.
 // Mirrors psych::Promax exactly
 func Promax(x *mat.Dense, m int, normalize bool) map[string]interface{} {
-	nf, p := x.Dims()
+	p, nf := x.Dims()
 	if nf < 2 {
 		return map[string]interface{}{
 			"loadings": x,
@@ -28,9 +28,9 @@ func Promax(x *mat.Dense, m int, normalize bool) map[string]interface{} {
 	x = xx
 
 	// Q <- x * abs(x)^(m - 1)
-	Q := mat.NewDense(nf, p, nil)
-	for i := 0; i < nf; i++ {
-		for j := 0; j < p; j++ {
+	Q := mat.NewDense(p, nf, nil)
+	for i := 0; i < p; i++ {
+		for j := 0; j < nf; j++ {
 			val := x.At(i, j)
 			Q.Set(i, j, val*math.Pow(math.Abs(val), float64(m-1)))
 		}

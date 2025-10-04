@@ -84,6 +84,29 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			"f":      f,
 			"Method": methodName,
 		}
+	case "simplimax":
+		Gq, f, methodName := vgQSimplimax(L, A.RawMatrix().Rows)
+		VgQ = map[string]interface{}{
+			"Gq":     Gq,
+			"f":      f,
+			"Method": methodName,
+		}
+	case "geominQ":
+		Gq, f, methodName := vgQGeomin(L, 0.01)
+		VgQ = map[string]interface{}{
+			"Gq":     Gq,
+			"f":      f,
+			"Method": methodName,
+		}
+	case "bentlerQ":
+		Gq, f, methodName := vgQBentler(L)
+		VgQ = map[string]interface{}{
+			"Gq":     Gq,
+			"f":      f,
+			"Method": methodName,
+		}
+	case "targetQ":
+		panic("targetQ requires Target matrix parameter")
 	default:
 		Gq, f, methodName := vgQQuartimin(L)
 		VgQ = map[string]interface{}{
@@ -112,6 +135,35 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			"Gq": Gq,
 			"f":  f2,
 		}
+	case "oblimin":
+		Gq, f2, err := vgQOblimin(L, 0.0)
+		if err != nil {
+			panic(fmt.Sprintf("vgQOblimin failed: %v", err))
+		}
+		VgQt = map[string]interface{}{
+			"Gq": Gq,
+			"f":  f2,
+		}
+	case "simplimax":
+		Gq, f2, _ := vgQSimplimax(L, A.RawMatrix().Rows)
+		VgQt = map[string]interface{}{
+			"Gq": Gq,
+			"f":  f2,
+		}
+	case "geominQ":
+		Gq, f2, _ := vgQGeomin(L, 0.01)
+		VgQt = map[string]interface{}{
+			"Gq": Gq,
+			"f":  f2,
+		}
+	case "bentlerQ":
+		Gq, f2, _ := vgQBentler(L)
+		VgQt = map[string]interface{}{
+			"Gq": Gq,
+			"f":  f2,
+		}
+	case "targetQ":
+		panic("targetQ requires Target matrix parameter")
 	default:
 		Gq, f2, _ := vgQQuartimin(L)
 		VgQt = map[string]interface{}{
@@ -210,6 +262,26 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 					"Gq": GqNew,
 					"f":  fNew,
 				}
+			case "simplimax":
+				GqNew, fNew, _ := vgQSimplimax(L, A.RawMatrix().Rows)
+				VgQt = map[string]interface{}{
+					"Gq": GqNew,
+					"f":  fNew,
+				}
+			case "geominQ":
+				GqNew, fNew, _ := vgQGeomin(L, 0.01)
+				VgQt = map[string]interface{}{
+					"Gq": GqNew,
+					"f":  fNew,
+				}
+			case "bentlerQ":
+				GqNew, fNew, _ := vgQBentler(L)
+				VgQt = map[string]interface{}{
+					"Gq": GqNew,
+					"f":  fNew,
+				}
+			case "targetQ":
+				panic("targetQ requires Target matrix parameter")
 			default:
 				GqNew, fNew, _ := vgQQuartimin(L)
 				VgQt = map[string]interface{}{

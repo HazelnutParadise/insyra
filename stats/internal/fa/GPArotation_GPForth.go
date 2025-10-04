@@ -52,6 +52,24 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			"f":      f,
 			"Method": "vgQ." + method,
 		}
+	case "geominT":
+		Gq, f, _ := vgQGeomin(L, 0.01)
+		VgQ = map[string]interface{}{
+			"Gq":     Gq,
+			"f":      f,
+			"Method": "vgQ." + method,
+		}
+	case "bentlerT":
+		Gq, f, _ := vgQBentler(L)
+		VgQ = map[string]interface{}{
+			"Gq":     Gq,
+			"f":      f,
+			"Method": "vgQ." + method,
+		}
+	case "targetT":
+		// For target rotation, we need a Target matrix, but for now use nil
+		// This would need to be passed as parameter
+		panic("targetT requires Target matrix parameter")
 	default:
 		Gq, f, _ := vgQVarimax(L)
 		VgQ = map[string]interface{}{
@@ -83,6 +101,20 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			"Gq": Gq2,
 			"f":  f2,
 		}
+	case "geominT":
+		Gq2, f2, _ := vgQGeomin(L, 0.01)
+		VgQt = map[string]interface{}{
+			"Gq": Gq2,
+			"f":  f2,
+		}
+	case "bentlerT":
+		Gq2, f2, _ := vgQBentler(L)
+		VgQt = map[string]interface{}{
+			"Gq": Gq2,
+			"f":  f2,
+		}
+	case "targetT":
+		panic("targetT requires Target matrix parameter")
 	default:
 		Gq2, f2, _ := vgQVarimax(L)
 		VgQt = map[string]interface{}{
