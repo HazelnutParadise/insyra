@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/stats/internal/fa"
 	"gonum.org/v1/gonum/mat"
 	"gonum.org/v1/gonum/optimize"
 	"gonum.org/v1/gonum/stat"
@@ -493,7 +494,13 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	var rotationMatrix *mat.Dense
 	var phi *mat.Dense
 	if opt.Rotation.Method != FactorRotationNone {
-		rotatedLoadings, rotationMatrix, phi = rotateFactors(loadings, opt.Rotation)
+		rotatedLoadings, rotationMatrix, phi, err = rotateFactors(loadings, opt.Rotation)
+		if err != nil {
+			insyra.LogWarning("stats", "FactorAnalysis", "rotation failed: %v", err)
+			rotatedLoadings = loadings
+			rotationMatrix = nil
+			phi = nil
+		}
 		// Note: rotateFactors now handles sign standardization internally
 	} else {
 		rotatedLoadings = loadings
@@ -590,7 +597,11 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	// Step 10: Compute factor scores if data is available
 	var scores *mat.Dense
 	if rowNum > 0 {
-		scores = computeFactorScores(data, rotatedLoadings, phi, uniquenesses, sigmaForScores, opt.Scoring)
+		var err error
+		scores, err = computeFactorScores(data, rotatedLoadings, phi, uniquenesses, sigmaForScores, opt.Scoring)
+		if err != nil {
+			insyra.LogWarning("stats", "FactorAnalysis", "failed to compute factor scores: %v", err)
+		}
 	}
 
 	// Convert results to DataTables
@@ -773,114 +784,40 @@ func extractPCA(eigenvalues []float64, eigenvectors *mat.Dense, numFactors int) 
 }
 
 // initialCommunalitiesSMC computes initial communalities using Squared Multiple Correlation
-func initialCommunalitiesSMC(corr *mat.Dense, minErr float64) []float64 {
+func initialCommunalitiesSMC(corr *mat.Dense, minErr float64) ([]float64, error) {
 	// Compute SMC (Squared Multiple Correlation) estimates
 	// SMC_i = 1 - 1/R_ii^inv where R_ii^inv is diagonal of inverse correlation matrix
-	h2 := computeSMC(corr, minErr)
-	return h2
+	h2, err := computeSMC(corr, minErr)
+	if err != nil {
+		return nil, err
+	}
+	return h2, nil
 }
 
-// computeSMC computes Squared Multiple Correlation estimates using R's approximation
-func computeSMC(corr *mat.Dense, minErr float64) []float64 {
-	p, _ := corr.Dims()
+// computeSMC computes Squared Multiple Correlation estimates using internal/fa package
+func computeSMC(corr *mat.Dense, minErr float64) ([]float64, error) {
+	smcVec, err := fa.SMC(corr, false) // false for correlation matrix
+	if err != nil {
+		return nil, fmt.Errorf("SMC computation failed: %w", err)
+	}
+
+	p := smcVec.Len()
 	h2 := make([]float64, p)
-
-	// Fast path: try invert full matrix
-	var dense mat.Dense
-	dense.CloneFrom(corr)
-	var invFull mat.Dense
-	if err := invFull.Inverse(&dense); err == nil {
-		invDiagSlice := Diag(&invFull, 0, 0, false)
-		invDiag := invDiagSlice.([]float64)
-		for i := 0; i < p; i++ {
-			invDiagVal := invDiag[i]
-			if invDiagVal <= 0 || math.IsNaN(invDiagVal) {
-				h2[i] = minErr
-			} else {
-				smc := 1.0 - 1.0/invDiagVal
-				// R: if (min(smc, na.rm = TRUE) < 0) { smc[smc < 0] <- 0 }
-				if smc < 0 {
-					smc = 0.0
-				}
-				// Apply minErr floor after zero check
-				if smc < minErr {
-					smc = minErr
-				}
-				// R: if (max(smc, na.rm = TRUE) > 1) { smc[smc > 1] <- 1 }
-				if smc > 1.0 {
-					smc = 1.0
-				}
-				h2[i] = smc
-			}
-		}
-		return h2
-	}
-
-	// Fallback: per-variable submatrix (handles NaNs / singularity)
-	insyra.LogWarning("stats", "computeSMC", "full correlation inversion failed, falling back to per-variable pseudo-inverse")
-	isNaN := func(v float64) bool { return math.IsNaN(v) }
-
 	for i := 0; i < p; i++ {
-		// collect indices with non-NaN correlations with variable i (excluding i)
-		idx := make([]int, 0, p)
-		for j := 0; j < p; j++ {
-			if j == i {
-				continue
-			}
-			if !isNaN(corr.At(j, i)) {
-				idx = append(idx, j)
-			}
+		smc := smcVec.AtVec(i)
+		// Apply bounds as in original implementation
+		if smc < 0 {
+			smc = 0.0
 		}
-
-		if len(idx) == 0 {
-			h2[i] = minErr
-			continue
+		if smc < minErr {
+			smc = minErr
 		}
-
-		subN := len(idx) + 1
-		sub := mat.NewDense(subN, subN, nil)
-		// place variable i at position 0
-		sub.Set(0, 0, corr.At(i, i))
-		for a, j := range idx {
-			r := a + 1
-			sub.Set(0, r, corr.At(i, j))
-			sub.Set(r, 0, corr.At(j, i))
-			for b, k := range idx {
-				c := b + 1
-				sub.Set(r, c, corr.At(j, k))
-			}
+		if smc > 1.0 {
+			smc = 1.0
 		}
-
-		var subInv mat.Dense
-		if err := subInv.Inverse(sub); err != nil {
-			if err2 := pseudoInverse(&subInv, sub); err2 != nil {
-				h2[i] = minErr
-				continue
-			}
-		}
-
-		invDiag := subInv.At(0, 0)
-		if invDiag <= 0 || math.IsNaN(invDiag) {
-			h2[i] = minErr
-		} else {
-			smc := 1.0 - 1.0/invDiag
-			// R: if (min(smc, na.rm = TRUE) < 0) { smc[smc < 0] <- 0 }
-			if smc < 0 {
-				smc = 0.0
-			}
-			// Apply minErr floor after zero check
-			if smc < minErr {
-				smc = minErr
-			}
-			// R: if (max(smc, na.rm = TRUE) > 1) { smc[smc > 1] <- 1 }
-			if smc > 1.0 {
-				smc = 1.0
-			}
-			h2[i] = smc
-		}
+		h2[i] = smc
 	}
-
-	return h2
+	return h2, nil
 }
 
 // extractPAF extracts factors using Principal Axis Factoring
@@ -898,7 +835,10 @@ func extractPAF(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64,
 	}
 
 	// Initialize communalities with SMC (Squared Multiple Correlation)
-	communalities := initialCommunalitiesSMC(corrMatrix, minErr)
+	communalities, err := initialCommunalitiesSMC(corrMatrix, minErr)
+	if err != nil {
+		return nil, false, 0, fmt.Errorf("failed to compute initial communalities: %w", err)
+	}
 
 	// Keep history
 	commHistory := make([][]float64, 0, maxIter)
@@ -1038,9 +978,7 @@ func extractPAF(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64,
 		}
 	}
 
-	// If we reach here, did not converge within maxIter. Log a concise history
-	insyra.LogWarning("stats", "PAF", "Did not converge after %d iterations", maxIter)
-
+	// If we reach here, did not converge within maxIter
 	// Log initial SMC and history summary (first 10 iterations and final)
 	if len(commHistory) > 0 {
 		// initial SMC = first value prior to iteration (communalities passed in initially)
@@ -1297,7 +1235,6 @@ func extractML(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64, 
 		}
 	}
 
-	insyra.LogWarning("stats", "ML", "did not converge after %d iterations", maxIter)
 	return &loadings, converged, maxIter, nil
 }
 
@@ -1316,7 +1253,10 @@ func extractMINRES(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float
 
 	// Step 1: Compute SMC (Squared Multiple Correlation) for initial communalities
 	// This matches R's: S.smc <- smc(S, covar)
-	h2 := computeSMC(corrMatrix, 0.001)
+	h2, err := computeSMC(corrMatrix, 0.001)
+	if err != nil {
+		return nil, false, 0, fmt.Errorf("failed to compute SMC for MINRES: %w", err)
+	}
 
 	// Step 2: Set starting values for uniquenesses (Psi)
 	// R code: start <- diag(S) - S.smc; upper <- max(S.smc, 1)
@@ -1557,7 +1497,6 @@ func extractMINRES(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float
 
 	result, err := optimize.Minimize(problem, transformedStart, settings, method)
 	if err != nil {
-		insyra.LogWarning("stats", "MINRES", "optimization failed: %v", err)
 		return nil, false, 0, err
 	}
 
@@ -1625,8 +1564,6 @@ func extractMINRES(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float
 
 	if converged {
 		insyra.LogInfo("stats", "MINRES", "converged in %d evaluations (objective=%.6f)", iterations, result.F)
-	} else {
-		insyra.LogWarning("stats", "MINRES", "optimization status: %v after %d evaluations", result.Status, iterations)
 	}
 
 	return loadings, converged, iterations, nil
@@ -1780,62 +1717,46 @@ func normalizeToCorrelation(m *mat.Dense) *mat.Dense {
 
 // rotateFactors rotates the factor loadings according to the provided options.
 // It returns the rotated loadings, the transformation matrix, and the factor correlation matrix (phi) when available.
-func rotateFactors(loadings *mat.Dense, opt FactorRotationOptions) (*mat.Dense, *mat.Dense, *mat.Dense) {
+func rotateFactors(loadings *mat.Dense, opt FactorRotationOptions) (*mat.Dense, *mat.Dense, *mat.Dense, error) {
 	if loadings == nil {
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 
 	_, m := loadings.Dims()
 	if m <= 1 || opt.Method == FactorRotationNone {
-		return loadings, nil, nil
+		return loadings, nil, nil, nil
 	}
 
-	// Rotation parameters aligned with R's GPArotation package defaults:
-	// maxit = 1000, eps = 1e-5
-	rotMaxIter := rotationMaxIter
-	rotTol := rotationTolerance
-
+	// Map FactorRotationMethod to fa.Rotate method string
+	var method string
 	switch opt.Method {
 	case FactorRotationVarimax:
-		rotated, rotMatrix, err := rotateOrthomax(loadings, 1.0, rotMaxIter, rotTol)
-		if err != nil {
-			insyra.LogWarning("stats", "rotateFactors", "varimax rotation failed: %v", err)
-			return loadings, nil, nil
-		}
-		return rotated, rotMatrix, nil
-
+		method = "varimax"
 	case FactorRotationQuartimax:
-		rotated, rotMatrix, err := rotateOrthomax(loadings, 0.0, rotMaxIter, rotTol)
-		if err != nil {
-			insyra.LogWarning("stats", "rotateFactors", "quartimax rotation failed: %v", err)
-			return loadings, nil, nil
-		}
-		return rotated, rotMatrix, nil
-
+		method = "quartimax"
 	case FactorRotationPromax:
-		kappa := opt.Kappa
-		if kappa == 0 {
-			kappa = 4
-		}
-		rotated, rotMatrix, phi, err := rotatePromax(loadings, kappa, rotMaxIter, rotTol)
-		if err != nil {
-			insyra.LogWarning("stats", "rotateFactors", "promax rotation failed: %v", err)
-			return loadings, nil, nil
-		}
-		return rotated, rotMatrix, phi
-
+		method = "promax"
 	case FactorRotationOblimin:
-		delta := opt.Delta
-		rotated, rotMatrix, phi, err := rotateOblimin(loadings, delta, rotMaxIter, rotTol)
-		if err != nil {
-			insyra.LogWarning("stats", "rotateFactors", "oblimin rotation failed: %v", err)
-			return loadings, nil, nil
-		}
-		return rotated, rotMatrix, phi
-
+		method = "oblimin"
 	default:
-		return loadings, nil, nil
+		return loadings, nil, nil, nil
 	}
+
+	// Create RotOpts for fa.Rotate
+	opts := &fa.RotOpts{
+		Eps:         rotationTolerance,
+		MaxIter:     rotationMaxIter,
+		Alpha0:      1.0,
+		Gamma:       opt.Delta, // for oblimin
+		PromaxPower: int(opt.Kappa),
+	}
+
+	rotated, rotMatrix, phi, err := fa.Rotate(loadings, method, opts)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("rotation failed: %w", err)
+	}
+
+	return rotated, rotMatrix, phi, nil
 }
 
 // rotationDebugEnabled reports whether detailed rotation diagnostics should be emitted.
@@ -2415,27 +2336,11 @@ func safeInvert(dst *mat.Dense, src mat.Matrix, ridge float64) error {
 }
 
 func pseudoInverse(dst *mat.Dense, src mat.Matrix) error {
-	var svd mat.SVD
-	if !svd.Factorize(src, mat.SVDThin) {
+	pinv := fa.Pinv(src, math.Sqrt(math.SmallestNonzeroFloat64))
+	if pinv == nil {
 		return fmt.Errorf("pseudo-inverse failed")
 	}
-	vals := svd.Values(nil)
-	var u, vt mat.Dense
-	svd.UTo(&u)
-	svd.VTo(&vt)
-	diag := mat.NewDense(len(vals), len(vals), nil)
-	for i, val := range vals {
-		if val > epsilonSmall {
-			diag.Set(i, i, 1/val)
-		}
-	}
-	var v mat.Dense
-	v.CloneFrom(vt.T())
-	var temp mat.Dense
-	temp.Mul(&v, diag)
-	var uT mat.Dense
-	uT.CloneFrom(u.T())
-	dst.Mul(&temp, &uT)
+	dst.Copy(pinv)
 	return nil
 }
 
@@ -2566,9 +2471,9 @@ func computeOrthomaxGradient(loadings *mat.Dense, gamma float64) *mat.Dense {
 }
 
 // computeFactorScores computes factor scores
-func computeFactorScores(data, loadings, phi *mat.Dense, uniquenesses []float64, sigma mat.Matrix, method FactorScoreMethod) *mat.Dense {
+func computeFactorScores(data, loadings, phi *mat.Dense, uniquenesses []float64, sigma mat.Matrix, method FactorScoreMethod) (*mat.Dense, error) {
 	if loadings == nil {
-		return nil
+		return nil, nil
 	}
 	n, p := data.Dims()
 	_, m := loadings.Dims()
@@ -2578,13 +2483,13 @@ func computeFactorScores(data, loadings, phi *mat.Dense, uniquenesses []float64,
 	switch method {
 	case FactorScoreNone:
 		// No scores computed
-		return nil
+		return nil, nil
 	case FactorScoreRegression:
-		if regressionScores := computeFactorScoresRegressionGeneral(data, loadings, phi, sigma); regressionScores != nil {
-			return regressionScores
+		if regressionScores, err := computeFactorScoresRegressionGeneral(data, loadings, phi, sigma); err != nil {
+			return nil, fmt.Errorf("regression scoring failed: %w", err)
+		} else if regressionScores != nil {
+			return regressionScores, nil
 		}
-		insyra.LogWarning("stats", "FactorScores", "regression scoring general weights unavailable, fallback to simplified orthogonal weights")
-
 		// Simplified orthogonal regression fallback: Scores = X * Loadings * (Loadings' * Loadings)^-1
 		var loadingsTrans mat.Dense
 		loadingsTrans.CloneFrom(loadings.T())
@@ -2594,7 +2499,7 @@ func computeFactorScores(data, loadings, phi *mat.Dense, uniquenesses []float64,
 
 		var inv mat.Dense
 		if err := safeInvert(&inv, &prod, ridgeRegularization); err != nil {
-			return scores
+			return nil, fmt.Errorf("failed to invert loadings product for orthogonal regression: %w", err)
 		}
 
 		var temp mat.Dense
@@ -2646,7 +2551,7 @@ func computeFactorScores(data, loadings, phi *mat.Dense, uniquenesses []float64,
 
 		var inv mat.Dense
 		if err := safeInvert(&inv, &prod, ridgeRegularization); err != nil {
-			return scores
+			return nil, fmt.Errorf("failed to invert loadings product for orthogonal regression: %w", err)
 		}
 
 		var temp mat.Dense
@@ -2670,35 +2575,31 @@ func computeFactorScores(data, loadings, phi *mat.Dense, uniquenesses []float64,
 		return computeFactorScores(data, loadings, phi, uniquenesses, sigma, FactorScoreRegression)
 	}
 
-	return scores
+	return scores, nil
 }
 
-func computeFactorScoresRegressionGeneral(data, loadings, phi *mat.Dense, sigma mat.Matrix) *mat.Dense {
+func computeFactorScoresRegressionGeneral(data, loadings, phi *mat.Dense, sigma mat.Matrix) (*mat.Dense, error) {
 	if loadings == nil {
-		return nil
+		return nil, nil
 	}
 	n, p := data.Dims()
 	loadRows, loadCols := loadings.Dims()
 	if loadRows != p {
-		insyra.LogWarning("stats", "FactorScores", "loadings row mismatch: expected %d got %d", p, loadRows)
-		return nil
+		return nil, fmt.Errorf("loadings row mismatch: expected %d got %d", p, loadRows)
 	}
 	m := loadCols
 	if sigma == nil {
-		insyra.LogWarning("stats", "FactorScores", "sigma matrix nil, cannot compute regression scores")
-		return nil
+		return nil, fmt.Errorf("sigma matrix nil, cannot compute regression scores")
 	}
 	if r, c := sigma.Dims(); r != p || c != p {
-		insyra.LogWarning("stats", "FactorScores", "sigma dimension mismatch: expected %dx%d, got %dx%d", p, p, r, c)
-		return nil
+		return nil, fmt.Errorf("sigma dimension mismatch: expected %dx%d, got %dx%d", p, p, r, c)
 	}
 
 	var phiUsed mat.Dense
 	if phi != nil {
 		phiRows, phiCols := phi.Dims()
 		if phiRows != m || phiCols != m {
-			insyra.LogWarning("stats", "FactorScores", "phi dimension mismatch: expected %dx%d, got %dx%d", m, m, phiRows, phiCols)
-			return nil
+			return nil, fmt.Errorf("phi dimension mismatch: expected %dx%d, got %dx%d", m, m, phiRows, phiCols)
 		}
 		phiUsed.CloneFrom(phi)
 	} else {
@@ -2720,8 +2621,7 @@ func computeFactorScoresRegressionGeneral(data, loadings, phi *mat.Dense, sigma 
 
 	var sigmaInv mat.Dense
 	if err := safeInvert(&sigmaInv, &sigmaDense, 0); err != nil {
-		insyra.LogWarning("stats", "FactorScores", "sigma inversion failed: %v", err)
-		return nil
+		return nil, fmt.Errorf("sigma inversion failed: %w", err)
 	}
 
 	var lambdaPhi mat.Dense
@@ -2735,8 +2635,7 @@ func computeFactorScoresRegressionGeneral(data, loadings, phi *mat.Dense, sigma 
 
 	var b mat.Dense
 	if err := safeInvert(&b, &ltSigInvL, 0); err != nil {
-		insyra.LogWarning("stats", "FactorScores", "weight inversion failed: %v", err)
-		return nil
+		return nil, fmt.Errorf("weight inversion failed: %w", err)
 	}
 
 	var weights mat.Dense
@@ -2745,7 +2644,7 @@ func computeFactorScoresRegressionGeneral(data, loadings, phi *mat.Dense, sigma 
 	scores := mat.NewDense(n, m, nil)
 	scores.Mul(data, &weights)
 
-	return scores
+	return scores, nil
 }
 
 // matrixToDataTableWithNames converts a gonum matrix to a DataTable with specified column and row names
@@ -2886,7 +2785,10 @@ func (m *FactorModel) FactorScores(dt insyra.IDataTable, method *FactorScoreMeth
 		})
 	}
 
-	scores := computeFactorScores(data, loadings, phiMat, uniquenesses, m.sigma, chosen)
+	scores, err := computeFactorScores(data, loadings, phiMat, uniquenesses, m.sigma, chosen)
+	if err != nil {
+		return nil, fmt.Errorf("failed to compute factor scores: %w", err)
+	}
 
 	// Generate factor column names
 	_, numFactors := loadings.Dims()

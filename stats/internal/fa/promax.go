@@ -81,7 +81,7 @@ func Promax(A *mat.Dense, m int, normalize bool) (L, R, Phi *mat.Dense, err erro
 	var Rinv mat.Dense
 	Rinv.Inverse(R)
 	Phi = mat.NewDense(q, q, nil)
-	Phi.Mul(Rinv.T(), &Rinv) // R^{-T} * R^{-1} == (R^{-1} R^{-T})^T, symmetric
+	Phi.Mul(R.T(), R) // For oblique rotation, factor correlations Phi = R^T * R
 
 	return L, R, Phi, nil
 }
@@ -89,7 +89,13 @@ func Promax(A *mat.Dense, m int, normalize bool) (L, R, Phi *mat.Dense, err erro
 // signedPow computes dst = sign(src) * |src|^k  (elementwise).
 func signedPow(dst, src *mat.Dense, k float64) {
 	r, c := src.Dims()
-	dst.ReuseAs(r, c)
+	if dst.IsEmpty() {
+		dst.ReuseAs(r, c)
+	} else {
+		// Reset the matrix if it has existing data
+		dst.Reset()
+		dst.ReuseAs(r, c)
+	}
 	for i := 0; i < r; i++ {
 		for j := 0; j < c; j++ {
 			v := src.At(i, j)
