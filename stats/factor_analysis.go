@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"unicode"
 
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/stats/internal/fa"
@@ -110,7 +111,7 @@ type FactorAnalysisResult struct {
 	Loadings             insyra.IDataTable // Loading matrix (variables × factors)
 	Structure            insyra.IDataTable // Structure matrix (variables × factors)
 	Uniquenesses         insyra.IDataTable // Uniqueness vector (p × 1)
-	Communalities        insyra.IDataTable // Communality vector (p × 1)
+	Communalities        insyra.IDataTable // Communality table (p × 2: Initial, Extraction)
 	Phi                  insyra.IDataTable // Factor correlation matrix (m × m), nil for orthogonal
 	RotationMatrix       insyra.IDataTable // Rotation matrix (m × m), nil if no rotation
 	Eigenvalues          insyra.IDataTable // Eigenvalues vector (p × 1)
@@ -124,18 +125,31 @@ type FactorAnalysisResult struct {
 	Messages   []string
 }
 
+const (
+	tableNameFactorLoadings       = "FactorLoadings"
+	tableNameFactorStructure      = "FactorStructure"
+	tableNameUniqueness           = "Uniqueness"
+	tableNameCommunalities        = "Communalities"
+	tableNamePhiMatrix            = "PhiMatrix"
+	tableNameRotationMatrix       = "RotationMatrix"
+	tableNameEigenvalues          = "Eigenvalues"
+	tableNameExplainedProportion  = "ExplainedProportion"
+	tableNameCumulativeProportion = "CumulativeProportion"
+	tableNameFactorScores         = "FactorScores"
+)
+
 // Show prints everything in the FactorAnalysisResult
 func (r *FactorAnalysisResult) Show(startEndRange ...any) {
-	insyra.Show("Loadings", r.Loadings, startEndRange...)
-	insyra.Show("Structure", r.Structure, startEndRange...)
-	insyra.Show("Uniquenesses", r.Uniquenesses, startEndRange...)
-	insyra.Show("Communalities", r.Communalities, startEndRange...)
-	insyra.Show("Phi", r.Phi, startEndRange...)
-	insyra.Show("RotationMatrix", r.RotationMatrix, startEndRange...)
-	insyra.Show("Eigenvalues", r.Eigenvalues, startEndRange...)
-	insyra.Show("ExplainedProportion", r.ExplainedProportion, startEndRange...)
-	insyra.Show("CumulativeProportion", r.CumulativeProportion, startEndRange...)
-	insyra.Show("Scores", r.Scores, startEndRange...)
+	insyra.Show(formatLabelPascalWithSpaces(tableNameFactorLoadings), r.Loadings, startEndRange...)
+	insyra.Show(formatLabelPascalWithSpaces(tableNameFactorStructure), r.Structure, startEndRange...)
+	insyra.Show(formatLabelPascalWithSpaces(tableNameUniqueness), r.Uniquenesses, startEndRange...)
+	insyra.Show(formatLabelPascalWithSpaces(tableNameCommunalities), r.Communalities, startEndRange...)
+	insyra.Show(formatLabelPascalWithSpaces(tableNamePhiMatrix), r.Phi, startEndRange...)
+	insyra.Show(formatLabelPascalWithSpaces(tableNameRotationMatrix), r.RotationMatrix, startEndRange...)
+	insyra.Show(formatLabelPascalWithSpaces(tableNameEigenvalues), r.Eigenvalues, startEndRange...)
+	insyra.Show(formatLabelPascalWithSpaces(tableNameExplainedProportion), r.ExplainedProportion, startEndRange...)
+	insyra.Show(formatLabelPascalWithSpaces(tableNameCumulativeProportion), r.CumulativeProportion, startEndRange...)
+	insyra.Show(formatLabelPascalWithSpaces(tableNameFactorScores), r.Scores, startEndRange...)
 	fmt.Printf("Converged: %v\n", r.Converged)
 	fmt.Printf("Iterations: %d\n", r.Iterations)
 	fmt.Printf("CountUsed: %d\n", r.CountUsed)
@@ -445,6 +459,35 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		return nil
 	}
 
+	initialCommunalities := make([]float64, colNum)
+	switch opt.Extraction {
+	case FactorExtractionPCA:
+		for i := 0; i < colNum; i++ {
+			val := corrDense.At(i, i)
+			if val < 0 {
+				val = 0
+			}
+			initialCommunalities[i] = val
+		}
+	default:
+		minErr := opt.MinErr
+		if minErr <= 0 {
+			minErr = epsilonMedium
+		}
+		if initComm, commErr := initialCommunalitiesSMC(corrDense, minErr); commErr != nil {
+			insyra.LogWarning("stats", "FactorAnalysis", "failed to compute initial communalities (SMC): %v", commErr)
+			for i := 0; i < colNum; i++ {
+				val := corrDense.At(i, i)
+				if val < 0 {
+					val = 0
+				}
+				initialCommunalities[i] = val
+			}
+		} else {
+			copy(initialCommunalities, initComm)
+		}
+	}
+
 	// Sanity check: inspect unrotated loadings before any rotation is applied
 	if loadings != nil {
 		pVars, mFactors := loadings.Dims()
@@ -498,7 +541,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	rotatedLoadings, rotationMatrix, phi = sortFactorsByExplainedVariance(rotatedLoadings, rotationMatrix, phi)
 
 	// Step 8: Compute communalities and uniquenesses
-	communalities := make([]float64, colNum)
+	extractionCommunalities := make([]float64, colNum)
 	uniquenesses := make([]float64, colNum)
 	var phiMat *mat.Dense
 	if phi != nil {
@@ -530,13 +573,20 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		if hi2 < 0 {
 			hi2 = 0
 		}
-		communalities[i] = hi2
+		extractionCommunalities[i] = hi2
 		uniq := diag - hi2
 		if uniq < uniquenessLowerBound {
 			uniq = uniquenessLowerBound
 		}
 		uniquenesses[i] = uniq
 	}
+
+	commMatrix := mat.NewDense(colNum, 2, nil)
+	for i := 0; i < colNum; i++ {
+		commMatrix.Set(i, 0, initialCommunalities[i])
+		commMatrix.Set(i, 1, extractionCommunalities[i])
+	}
+	communalitiesTable := matrixToDataTableWithNames(commMatrix, tableNameCommunalities, []string{"Initial", "Extraction"}, colNames)
 
 	// Step 9: Compute explained proportions using structure matrix (SS loadings / number of variables)
 	// Following R's psych package: SS loadings = sum of squared structure loadings
@@ -592,9 +642,9 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	// Generate factor column names
 	factorColNames := make([]string, numFactors)
 	for i := 0; i < numFactors; i++ {
-		factorColNames[i] = fmt.Sprintf("Factor_%d", i+1)
+		factorColNames[i] = fmt.Sprintf("Factor %d", i+1)
 	}
-	structureTable := matrixToDataTableWithNames(S, "Factor Structure", factorColNames, colNames)
+	structureTable := matrixToDataTableWithNames(S, tableNameFactorStructure, factorColNames, colNames)
 
 	messages := []string{
 		fmt.Sprintf("Extraction method: %s", opt.Extraction),
@@ -619,15 +669,15 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	messages = append(messages, "Factor analysis completed")
 
 	result := FactorAnalysisResult{
-		Loadings:             matrixToDataTableWithNames(rotatedLoadings, "Factor Loadings", factorColNames, colNames),
+		Loadings:             matrixToDataTableWithNames(rotatedLoadings, tableNameFactorLoadings, factorColNames, colNames),
 		Structure:            structureTable,
-		Uniquenesses:         vectorToDataTableWithNames(uniquenesses, "Uniqueness", "Uniqueness", colNames),
-		Communalities:        vectorToDataTableWithNames(communalities, "Communalities", "Communality", colNames),
+		Uniquenesses:         vectorToDataTableWithNames(uniquenesses, tableNameUniqueness, "Uniqueness", colNames),
+		Communalities:        communalitiesTable,
 		Phi:                  nil,
 		RotationMatrix:       nil,
-		Eigenvalues:          vectorToDataTableWithNames(sortedEigenvalues, "Eigenvalues", "Eigenvalue", factorColNames),
-		ExplainedProportion:  vectorToDataTableWithNames(explainedProp, "Explained Proportion", "Explained Proportion", factorColNames),
-		CumulativeProportion: vectorToDataTableWithNames(cumulativeProp, "Cumulative Proportion", "Cumulative Proportion", factorColNames),
+		Eigenvalues:          vectorToDataTableWithNames(sortedEigenvalues, tableNameEigenvalues, "Eigenvalue", factorColNames),
+		ExplainedProportion:  vectorToDataTableWithNames(explainedProp, tableNameExplainedProportion, "Explained Proportion", factorColNames),
+		CumulativeProportion: vectorToDataTableWithNames(cumulativeProp, tableNameCumulativeProportion, "Cumulative Proportion", factorColNames),
 		Scores:               nil,
 		Converged:            converged,
 		Iterations:           iterations,
@@ -636,13 +686,13 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	}
 
 	if rotationMatrix != nil {
-		result.RotationMatrix = matrixToDataTableWithNames(rotationMatrix, "Rotation", factorColNames, factorColNames)
+		result.RotationMatrix = matrixToDataTableWithNames(rotationMatrix, tableNameRotationMatrix, factorColNames, factorColNames)
 	}
 	if phi != nil {
-		result.Phi = matrixToDataTableWithNames(phi, "Phi", factorColNames, factorColNames)
+		result.Phi = matrixToDataTableWithNames(phi, tableNamePhiMatrix, factorColNames, factorColNames)
 	}
 	if scores != nil {
-		result.Scores = matrixToDataTableWithNames(scores, "Scores", factorColNames, rowNames)
+		result.Scores = matrixToDataTableWithNames(scores, tableNameFactorScores, factorColNames, rowNames)
 	}
 
 	return &FactorModel{
@@ -1702,16 +1752,19 @@ func matrixToDataTableWithNames(matrix *mat.Dense, tableName string, colNames, r
 
 	// Create DataTable
 	dt := insyra.NewDataTable()
-	dt.SetName(tableName)
+	dt.SetName(formatNameSnakePascal(tableName))
+
+	formattedColNames := formatNameSliceSnakePascal(colNames)
 
 	// Add columns
 	for j := 0; j < c; j++ {
 		col := insyra.NewDataList()
 		colName := ""
-		if colNames != nil && j < len(colNames) {
-			colName = colNames[j]
-		} else {
-			colName = fmt.Sprintf("Col_%d", j+1)
+		if formattedColNames != nil && j < len(formattedColNames) {
+			colName = formattedColNames[j]
+		}
+		if colName == "" {
+			colName = formatNameSnakePascal(fmt.Sprintf("Col %d", j+1))
 		}
 		col.SetName(colName)
 
@@ -1722,8 +1775,9 @@ func matrixToDataTableWithNames(matrix *mat.Dense, tableName string, colNames, r
 	}
 
 	// Set row names if provided
-	if rowNames != nil && len(rowNames) == r {
-		for i, name := range rowNames {
+	formattedRowNames := formatNameSliceSnakePascal(rowNames)
+	if formattedRowNames != nil && len(formattedRowNames) == r {
+		for i, name := range formattedRowNames {
 			dt.SetRowNameByIndex(i, name)
 		}
 	}
@@ -1741,11 +1795,15 @@ func vectorToDataTableWithNames(vector []float64, tableName string, colName stri
 
 	// Create DataTable
 	dt := insyra.NewDataTable()
-	dt.SetName(tableName)
+	dt.SetName(formatNameSnakePascal(tableName))
 
 	// Add single column
 	col := insyra.NewDataList()
-	col.SetName(colName)
+	formattedColName := formatNameSnakePascal(colName)
+	if formattedColName == "" {
+		formattedColName = formatNameSnakePascal("Value")
+	}
+	col.SetName(formattedColName)
 
 	for i := 0; i < r; i++ {
 		col.Append(vector[i])
@@ -1753,8 +1811,9 @@ func vectorToDataTableWithNames(vector []float64, tableName string, colName stri
 	dt.AppendCols(col)
 
 	// Set row names if provided
-	if rowNames != nil && len(rowNames) == r {
-		for i, name := range rowNames {
+	formattedRowNames := formatNameSliceSnakePascal(rowNames)
+	if formattedRowNames != nil && len(formattedRowNames) == r {
+		for i, name := range formattedRowNames {
 			dt.SetRowNameByIndex(i, name)
 		}
 	}
@@ -1795,4 +1854,135 @@ func reflectFactorsForPositiveLoadings(loadings *mat.Dense) *mat.Dense {
 	}
 
 	return result
+}
+
+func formatLabelPascalWithSpaces(name string) string {
+	segments := splitIdentifier(name)
+	if len(segments) == 0 {
+		return ""
+	}
+	for i, segment := range segments {
+		segments[i] = formatSegmentTitle(segment)
+	}
+	return strings.Join(segments, " ")
+}
+
+func formatNameSnakePascal(name string) string {
+	segments := splitIdentifier(name)
+	if len(segments) == 0 {
+		return ""
+	}
+	formatted := make([]string, len(segments))
+	for i, segment := range segments {
+		formatted[i] = formatSegmentTitle(segment)
+	}
+	return strings.Join(formatted, "_")
+}
+
+func formatNameSliceSnakePascal(names []string) []string {
+	if len(names) == 0 {
+		return nil
+	}
+	formatted := make([]string, len(names))
+	for i, name := range names {
+		formatted[i] = formatNameSnakePascal(name)
+	}
+	return formatted
+}
+
+func splitIdentifier(name string) []string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil
+	}
+	runes := []rune(name)
+	segments := make([]string, 0, len(runes))
+	current := make([]rune, 0, len(runes))
+	prevClass := 0
+	flush := func() {
+		if len(current) > 0 {
+			segments = append(segments, string(current))
+			current = current[:0]
+		}
+	}
+	for i, r := range runes {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+			flush()
+			prevClass = 0
+			continue
+		}
+		class := charClass(r)
+		if len(current) == 0 {
+			current = append(current, r)
+			prevClass = class
+			continue
+		}
+		split := false
+		switch class {
+		case 1: // uppercase
+			if prevClass == 2 || prevClass == 3 {
+				split = true
+			} else if prevClass == 1 {
+				if i+1 < len(runes) {
+					next := runes[i+1]
+					if unicode.IsLower(next) {
+						split = true
+					}
+				}
+			}
+		case 2: // lowercase
+			if prevClass == 3 {
+				split = true
+			}
+		case 3: // digit
+			if prevClass != 3 {
+				split = true
+			}
+		}
+		if split {
+			flush()
+		}
+		current = append(current, r)
+		prevClass = class
+	}
+	flush()
+	return segments
+}
+
+func charClass(r rune) int {
+	switch {
+	case unicode.IsDigit(r):
+		return 3
+	case unicode.IsUpper(r):
+		return 1
+	case unicode.IsLower(r):
+		return 2
+	default:
+		return 0
+	}
+}
+
+func formatSegmentTitle(segment string) string {
+	if segment == "" {
+		return ""
+	}
+	if isAllDigits(segment) {
+		return segment
+	}
+	lower := strings.ToLower(segment)
+	runes := []rune(lower)
+	runes[0] = unicode.ToUpper(runes[0])
+	return string(runes)
+}
+
+func isAllDigits(segment string) bool {
+	if segment == "" {
+		return false
+	}
+	for _, r := range segment {
+		if !unicode.IsDigit(r) {
+			return false
+		}
+	}
+	return true
 }
