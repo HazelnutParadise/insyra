@@ -2,6 +2,10 @@
 package fa
 
 import (
+	"math"
+	"math/rand"
+	"strings"
+
 	"gonum.org/v1/gonum/mat"
 )
 
@@ -38,6 +42,7 @@ func Varimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map[
 	return map[string]interface{}{
 		"loadings": result["loadings"],
 		"rotmat":   rotMatDense,
+		"f":        result["f"],
 	}
 }
 
@@ -74,6 +79,7 @@ func Quartimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int) ma
 	return map[string]interface{}{
 		"loadings": result["loadings"],
 		"rotmat":   rotMatDense,
+		"f":        result["f"],
 	}
 }
 
@@ -97,7 +103,7 @@ func Quartimin(loadings *mat.Dense, normalize bool, eps float64, maxIter int) ma
 	}
 
 	// Use GPFoblq for proper quartimin rotation
-	result := GPFoblq(loadings, Tmat, normalize, eps, maxIter, "quartimin")
+	result := GPFoblq(loadings, Tmat, normalize, eps, maxIter, "quartimin", 0.0)
 
 	// Calculate rotation matrix as t(solve(Th)) like in R
 	Th := result["Th"].(*mat.Dense)
@@ -111,6 +117,7 @@ func Quartimin(loadings *mat.Dense, normalize bool, eps float64, maxIter int) ma
 		"loadings": result["loadings"],
 		"rotmat":   rotMatDense,
 		"phi":      result["Phi"],
+		"f":        result["f"],
 	}
 }
 
@@ -134,7 +141,7 @@ func Oblimin(loadings *mat.Dense, normalize bool, eps float64, maxIter int, gamm
 	}
 
 	// Use GPFoblq for proper oblimin rotation
-	result := GPFoblq(loadings, Tmat, normalize, eps, maxIter, "oblimin")
+	result := GPFoblq(loadings, Tmat, normalize, eps, maxIter, "oblimin", gamma)
 
 	// Calculate rotation matrix as t(solve(Th)) like in R
 	Th := result["Th"].(*mat.Dense)
@@ -148,6 +155,7 @@ func Oblimin(loadings *mat.Dense, normalize bool, eps float64, maxIter int, gamm
 		"loadings": result["loadings"],
 		"rotmat":   rotMatDense,
 		"phi":      result["Phi"],
+		"f":        result["f"],
 	}
 }
 
@@ -184,6 +192,7 @@ func GeominT(loadings *mat.Dense, normalize bool, eps float64, maxIter int, delt
 	return map[string]interface{}{
 		"loadings": result["loadings"],
 		"rotmat":   rotMatDense,
+		"f":        result["f"],
 	}
 }
 
@@ -220,6 +229,7 @@ func BentlerT(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map
 	return map[string]interface{}{
 		"loadings": result["loadings"],
 		"rotmat":   rotMatDense,
+		"f":        result["f"],
 	}
 }
 
@@ -243,7 +253,7 @@ func Simplimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int, k 
 	}
 
 	// Use GPFoblq for proper simplimax rotation
-	result := GPFoblq(loadings, Tmat, normalize, eps, maxIter, "simplimax")
+	result := GPFoblq(loadings, Tmat, normalize, eps, maxIter, "simplimax", 0.0)
 
 	// Calculate rotation matrix as t(solve(Th)) like in R
 	Th := result["Th"].(*mat.Dense)
@@ -257,6 +267,7 @@ func Simplimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int, k 
 		"loadings": result["loadings"],
 		"rotmat":   rotMatDense,
 		"phi":      result["Phi"],
+		"f":        result["f"],
 	}
 }
 
@@ -280,7 +291,7 @@ func GeominQ(loadings *mat.Dense, normalize bool, eps float64, maxIter int, delt
 	}
 
 	// Use GPFoblq for proper geominQ rotation
-	result := GPFoblq(loadings, Tmat, normalize, eps, maxIter, "geominQ")
+	result := GPFoblq(loadings, Tmat, normalize, eps, maxIter, "geominQ", 0.0)
 
 	// Calculate rotation matrix as t(solve(Th)) like in R
 	Th := result["Th"].(*mat.Dense)
@@ -294,116 +305,11 @@ func GeominQ(loadings *mat.Dense, normalize bool, eps float64, maxIter int, delt
 		"loadings": result["loadings"],
 		"rotmat":   rotMatDense,
 		"phi":      result["Phi"],
+		"f":        result["f"],
 	}
 }
 
 // BentlerQ performs Bentler's criterion rotation (oblique).
-
-// FaRotations performs various rotations on factor loadings.
-// Mirrors psych::faRotations
-func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64, nRotations int) interface{} {
-	var rotatedLoadings *mat.Dense
-	var rotMat *mat.Dense
-	var phi *mat.Dense
-
-	switch rotate {
-	case "varimax", "Varimax":
-		result := Varimax(loadings, true, 1e-5, 1000)
-		rotatedLoadings = result["loadings"].(*mat.Dense)
-		rotMat = result["rotmat"].(*mat.Dense)
-		phi = nil
-	case "quartimax":
-		result := Quartimax(loadings, true, 1e-5, 1000)
-		rotatedLoadings = result["loadings"].(*mat.Dense)
-		rotMat = result["rotmat"].(*mat.Dense)
-		phi = nil
-	case "quartimin":
-		result := Quartimin(loadings, true, 1e-5, 1000)
-		rotatedLoadings = result["loadings"].(*mat.Dense)
-		rotMat = result["rotmat"].(*mat.Dense)
-		if result["phi"] != nil {
-			phi = result["phi"].(*mat.Dense)
-		} else {
-			phi = nil
-		}
-	case "oblimin":
-		result := Oblimin(loadings, true, 1e-5, 1000, hyper)
-		rotatedLoadings = result["loadings"].(*mat.Dense)
-		rotMat = result["rotmat"].(*mat.Dense)
-		if result["phi"] != nil {
-			phi = result["phi"].(*mat.Dense)
-		} else {
-			phi = nil
-		}
-	case "geominT":
-		result := GeominT(loadings, true, 1e-5, 1000, 0.01)
-		rotatedLoadings = result["loadings"].(*mat.Dense)
-		rotMat = result["rotmat"].(*mat.Dense)
-		phi = nil
-	case "bentlerT":
-		result := BentlerT(loadings, true, 1e-5, 1000)
-		rotatedLoadings = result["loadings"].(*mat.Dense)
-		rotMat = result["rotmat"].(*mat.Dense)
-		phi = nil
-	case "simplimax":
-		result := Simplimax(loadings, true, 1e-5, 1000, loadings.RawMatrix().Rows)
-		rotatedLoadings = result["loadings"].(*mat.Dense)
-		rotMat = result["rotmat"].(*mat.Dense)
-		if result["phi"] != nil {
-			phi = result["phi"].(*mat.Dense)
-		} else {
-			phi = nil
-		}
-	case "geominQ":
-		result := GeominQ(loadings, true, 1e-5, 1000, 0.01)
-		rotatedLoadings = result["loadings"].(*mat.Dense)
-		rotMat = result["rotmat"].(*mat.Dense)
-		if result["phi"] != nil {
-			phi = result["phi"].(*mat.Dense)
-		} else {
-			phi = nil
-		}
-	case "bentlerQ":
-		result := BentlerQ(loadings, true, 1e-5, 1000)
-		rotatedLoadings = result["loadings"].(*mat.Dense)
-		rotMat = result["rotmat"].(*mat.Dense)
-		if result["phi"] != nil {
-			phi = result["phi"].(*mat.Dense)
-		} else {
-			phi = nil
-		}
-	case "promax", "Promax":
-		result := Promax(loadings, 4, true)
-		rotatedLoadings = result["loadings"].(*mat.Dense)
-		rotMat = result["rotmat"].(*mat.Dense)
-		if result["Phi"] != nil {
-			phi = result["Phi"].(*mat.Dense)
-		} else {
-			phi = nil
-		}
-	default:
-		// No rotation
-		rotatedLoadings = mat.DenseCopyOf(loadings)
-		nf, _ := loadings.Dims()
-		rotMat = mat.NewDense(nf, nf, nil)
-		for i := 0; i < nf; i++ {
-			rotMat.Set(i, i, 1.0)
-		}
-		phi = nil
-	}
-
-	result := make(map[string]interface{})
-	result["loadings"] = rotatedLoadings
-	result["rotmat"] = rotMat
-	if phi != nil {
-		result["Phi"] = phi
-	}
-	// Remove zero-length vectors that cause issues
-	// result["complexity"] = mat.NewVecDense(0, nil)   // placeholder
-	// result["uniquenesses"] = mat.NewVecDense(0, nil) // placeholder
-
-	return result
-}
 
 // BentlerQ performs Bentler's criterion rotation (oblique).
 // Mirrors GPArotation::bentlerQ
@@ -425,7 +331,7 @@ func BentlerQ(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map
 	}
 
 	// Use GPFoblq for proper bentlerQ rotation
-	result := GPFoblq(loadings, Tmat, normalize, eps, maxIter, "bentlerQ")
+	result := GPFoblq(loadings, Tmat, normalize, eps, maxIter, "bentlerQ", 0.0)
 
 	// Calculate rotation matrix as t(solve(Th)) like in R
 	Th := result["Th"].(*mat.Dense)
@@ -439,5 +345,254 @@ func BentlerQ(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map
 		"loadings": result["loadings"],
 		"rotmat":   rotMatDense,
 		"phi":      result["Phi"],
+		"f":        result["f"],
 	}
+}
+
+// FaRotations performs rotation selection with optional random restarts.
+func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64, nRotations int) interface{} {
+	_, nf := loadings.Dims()
+	if nf == 0 {
+		return map[string]interface{}{}
+	}
+
+	rotateLower := strings.ToLower(rotate)
+	supportsRestarts := map[string]bool{
+		"varimax":   true,
+		"quartimax": true,
+		"quartimin": true,
+		"oblimin":   true,
+		"geomint":   true,
+		"geominq":   true,
+		"bentlert":  true,
+		"bentlerq":  true,
+		"simplimax": true,
+	}
+
+	restarts := nRotations
+	if restarts <= 0 {
+		restarts = 1
+	}
+	if !supportsRestarts[rotateLower] {
+		restarts = 1
+	}
+
+	useKaiser := rotateLower == "oblimin"
+	var normalizedLoadings *mat.Dense
+	var kaiserWeights []float64
+	if useKaiser {
+		normalizedLoadings, kaiserWeights = kaiserNormalize(loadings)
+	}
+
+	starts := make([]*mat.Dense, restarts)
+	starts[0] = identityMatrix(nf)
+	if restarts > 1 {
+		seed := seedFromMatrix(loadings)
+		rnd := rand.New(rand.NewSource(seed))
+		for i := 1; i < restarts; i++ {
+			starts[i] = randomOrthonormalMatrix(nf, rnd)
+		}
+	}
+
+	bestScore := math.Inf(1)
+	var best map[string]interface{}
+
+	var baseLoadings *mat.Dense
+	if useKaiser {
+		baseLoadings = normalizedLoadings
+	} else {
+		baseLoadings = loadings
+	}
+
+	for idx, start := range starts {
+		pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
+		pre.Mul(baseLoadings, start)
+
+		var result map[string]interface{}
+		switch rotateLower {
+		case "varimax":
+			result = Varimax(pre, true, 1e-6, 1000)
+		case "quartimax":
+			result = Quartimax(pre, true, 1e-6, 1000)
+		case "quartimin":
+			result = Quartimin(pre, true, 1e-6, 1000)
+		case "oblimin":
+			if useKaiser {
+				gpf := GPFoblq(pre, identityMatrix(nf), false, 1e-6, 1000, "oblimin", hyper)
+				result = finalizeGpfResult(gpf, nf)
+				// Denormalize loadings after rotation
+				if rotLoad, ok := result["loadings"].(*mat.Dense); ok && rotLoad != nil {
+					for i := 0; i < rotLoad.RawMatrix().Rows; i++ {
+						for j := 0; j < rotLoad.RawMatrix().Cols; j++ {
+							rotLoad.Set(i, j, rotLoad.At(i, j)/kaiserWeights[i])
+						}
+					}
+				}
+			} else {
+				result = Oblimin(pre, true, 1e-6, 1000, hyper)
+			}
+		case "geomint":
+			result = GeominT(pre, true, 1e-6, 1000, 0.01)
+		case "geominq":
+			result = GeominQ(pre, true, 1e-6, 1000, 0.01)
+		case "bentlert":
+			result = BentlerT(pre, true, 1e-6, 1000)
+		case "bentlerq":
+			result = BentlerQ(pre, true, 1e-6, 1000)
+		case "simplimax":
+			result = Simplimax(pre, true, 1e-6, 1000, pre.RawMatrix().Rows)
+		case "promax":
+			res := Promax(pre, 4, true)
+			result = map[string]interface{}{
+				"loadings": res["loadings"],
+				"rotmat":   res["rotmat"],
+				"Phi":      res["Phi"],
+			}
+		default:
+			result = map[string]interface{}{
+				"loadings": mat.DenseCopyOf(pre),
+				"rotmat":   identityMatrix(nf),
+			}
+		}
+
+		rotLoad, ok := result["loadings"].(*mat.Dense)
+		if !ok {
+			continue
+		}
+
+		var finalLoadings *mat.Dense
+		if useKaiser {
+			rows, cols := rotLoad.Dims()
+			finalLoadings = mat.NewDense(rows, cols, nil)
+			for i := 0; i < rows; i++ {
+				scale := 1.0
+				if i < len(kaiserWeights) && kaiserWeights[i] != 0 {
+					scale = 1.0 / kaiserWeights[i]
+				}
+				for j := 0; j < cols; j++ {
+					finalLoadings.Set(i, j, rotLoad.At(i, j)*scale)
+				}
+			}
+		} else {
+			finalLoadings = mat.DenseCopyOf(rotLoad)
+		}
+
+		var partialRot *mat.Dense
+		if rm, ok := result["rotmat"].(*mat.Dense); ok && rm != nil {
+			partialRot = rm
+		} else {
+			partialRot = identityMatrix(nf)
+		}
+		finalRot := mat.NewDense(start.RawMatrix().Rows, partialRot.RawMatrix().Cols, nil)
+		finalRot.Mul(start, partialRot)
+
+		candidate := map[string]interface{}{
+			"loadings": finalLoadings,
+			"rotmat":   finalRot,
+		}
+		if phiVal, ok := result["phi"].(*mat.Dense); ok && phiVal != nil {
+			candidate["Phi"] = phiVal
+		} else if phiVal, ok := result["Phi"].(*mat.Dense); ok && phiVal != nil {
+			candidate["Phi"] = phiVal
+		}
+
+		score := math.Inf(1)
+		if fVal, ok := result["f"].(float64); ok {
+			score = fVal
+			candidate["f"] = fVal
+		} else if idx == 0 {
+			score = 0
+		}
+
+		if best == nil || score < bestScore || (math.IsNaN(bestScore) && !math.IsNaN(score)) {
+			best = candidate
+			bestScore = score
+		}
+	}
+
+	if best == nil {
+		rotatedLoadings := mat.DenseCopyOf(loadings)
+		rotMat := identityMatrix(nf)
+		best = map[string]interface{}{
+			"loadings": rotatedLoadings,
+			"rotmat":   rotMat,
+		}
+	}
+
+	return best
+}
+
+func identityMatrix(n int) *mat.Dense {
+	matIdentity := mat.NewDense(n, n, nil)
+	for i := 0; i < n; i++ {
+		matIdentity.Set(i, i, 1.0)
+	}
+	return matIdentity
+}
+
+func randomOrthonormalMatrix(n int, rnd *rand.Rand) *mat.Dense {
+	data := make([]float64, n*n)
+	for i := range data {
+		data[i] = rnd.NormFloat64()
+	}
+	base := mat.NewDense(n, n, data)
+	var qr mat.QR
+	qr.Factorize(base)
+	var q mat.Dense
+	qr.QTo(&q)
+	return mat.DenseCopyOf(&q)
+}
+
+func seedFromMatrix(m *mat.Dense) int64 {
+	data := m.RawMatrix().Data
+	var seed uint64 = uint64(len(data)) + 1
+	for _, v := range data {
+		bits := math.Float64bits(v)
+		seed ^= bits + 0x9e3779b97f4a7c15 + (seed << 6) + (seed >> 2)
+	}
+	if seed == 0 {
+		seed = 0x9e3779b97f4a7c15
+	}
+	return int64(seed)
+}
+
+func kaiserNormalize(loadings *mat.Dense) (*mat.Dense, []float64) {
+	rows, cols := loadings.Dims()
+	weights := make([]float64, rows)
+	normalized := mat.NewDense(rows, cols, nil)
+	for i := 0; i < rows; i++ {
+		sum := 0.0
+		for j := 0; j < cols; j++ {
+			val := loadings.At(i, j)
+			sum += val * val
+		}
+		if sum <= 0 {
+			weights[i] = 1.0
+		} else {
+			weights[i] = 1.0 / math.Sqrt(sum)
+		}
+		for j := 0; j < cols; j++ {
+			normalized.Set(i, j, loadings.At(i, j)*weights[i])
+		}
+	}
+	return normalized, weights
+}
+
+func finalizeGpfResult(gpf map[string]interface{}, nf int) map[string]interface{} {
+	Th, ok := gpf["Th"].(*mat.Dense)
+	if !ok || Th == nil {
+		return gpf
+	}
+	rotSolve := mat.NewDense(nf, nf, nil)
+	rotSolve.Inverse(Th)
+	rotMat := mat.DenseCopyOf(rotSolve.T())
+	res := map[string]interface{}{
+		"loadings": gpf["loadings"],
+		"rotmat":   rotMat,
+		"f":        gpf["f"],
+	}
+	if phi, ok := gpf["Phi"]; ok && phi != nil {
+		res["Phi"] = phi
+	}
+	return res
 }

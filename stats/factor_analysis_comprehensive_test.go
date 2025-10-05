@@ -62,6 +62,12 @@ func TestFactorAnalysisAllScoringMethods(t *testing.T) {
 				if model.Scores != nil {
 					t.Logf("Note: Scores is not nil for FactorScoreNone (may be acceptable)")
 				}
+				if model.ScoreCoefficients != nil {
+					t.Errorf("ScoreCoefficients should be nil when scoring is disabled")
+				}
+				if model.ScoreCovariance != nil {
+					t.Errorf("ScoreCovariance should be nil when scoring is disabled")
+				}
 			} else {
 				if model.Scores == nil {
 					// Some methods may not be fully implemented yet
@@ -74,6 +80,32 @@ func TestFactorAnalysisAllScoringMethods(t *testing.T) {
 					if rows != 5 || cols != 2 {
 						t.Errorf("Expected scores dimensions 5x2, got %dx%d for method %s",
 							rows, cols, scoringMethod)
+					}
+				}
+
+				if model.ScoreCoefficients == nil {
+					t.Errorf("ScoreCoefficients is nil for scoring method %s", scoringMethod)
+				} else {
+					var coeffRows, coeffCols int
+					model.ScoreCoefficients.AtomicDo(func(table *insyra.DataTable) {
+						coeffRows, coeffCols = table.Size()
+					})
+					if coeffRows != 4 || coeffCols != 2 {
+						t.Errorf("Expected score coefficients dimensions 4x2, got %dx%d for method %s",
+							coeffRows, coeffCols, scoringMethod)
+					}
+				}
+
+				if model.ScoreCovariance == nil {
+					t.Errorf("ScoreCovariance is nil for scoring method %s", scoringMethod)
+				} else {
+					var covRows, covCols int
+					model.ScoreCovariance.AtomicDo(func(table *insyra.DataTable) {
+						covRows, covCols = table.Size()
+					})
+					if covRows != 2 || covCols != 2 {
+						t.Errorf("Expected score covariance dimensions 2x2, got %dx%d for method %s",
+							covRows, covCols, scoringMethod)
 					}
 				}
 			}
@@ -211,6 +243,16 @@ func TestFactorAnalysisAllExtractionMethods(t *testing.T) {
 			}
 			if model.Communalities == nil {
 				t.Errorf("Communalities is nil for extraction method %s", method)
+			}
+			if model.Communalities != nil {
+				var commRows, commCols int
+				model.Communalities.AtomicDo(func(table *insyra.DataTable) {
+					commRows, commCols = table.Size()
+				})
+				if commRows != 4 || commCols != 2 {
+					t.Errorf("Expected communalities dimensions 4x2, got %dx%d for method %s",
+						commRows, commCols, method)
+				}
 			}
 			if model.Eigenvalues == nil {
 				t.Errorf("Eigenvalues is nil for extraction method %s", method)

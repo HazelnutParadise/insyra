@@ -34,7 +34,7 @@ func NormalizingWeight(A *mat.Dense, normalize bool) *mat.VecDense {
 
 // GPFoblq performs oblique rotation using GPA.
 // Mirrors GPArotation::GPFoblq exactly
-func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit int, method string) map[string]interface{} {
+func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit int, method string, gamma float64) map[string]interface{} {
 	nf, _ := A.Dims()
 	if nf <= 1 {
 		panic("rotation does not make sense for single factor models.")
@@ -74,7 +74,7 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			"Method": methodName,
 		}
 	case "oblimin":
-		Gq, f, err := vgQOblimin(L, 0.0) // gam = 0 for standard oblimin
+		Gq, f, err := vgQOblimin(L, gamma) // gam = delta for oblimin family
 		if err != nil {
 			panic(fmt.Sprintf("vgQOblimin failed: %v", err))
 		}
@@ -136,7 +136,7 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			"f":  f2,
 		}
 	case "oblimin":
-		Gq, f2, err := vgQOblimin(L, 0.0)
+		Gq, f2, err := vgQOblimin(L, gamma)
 		if err != nil {
 			panic(fmt.Sprintf("vgQOblimin failed: %v", err))
 		}
@@ -254,7 +254,7 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 					"f":  fNew,
 				}
 			case "oblimin":
-				GqNew, fNew, err := vgQOblimin(L, 0.0)
+				GqNew, fNew, err := vgQOblimin(L, gamma)
 				if err != nil {
 					panic(fmt.Sprintf("vgQOblimin failed: %v", err))
 				}
@@ -321,20 +321,21 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 		}
 	}
 
-	Phi := mat.NewDense(Tmat.RawMatrix().Cols, Tmat.RawMatrix().Cols, nil)
 	var TmatT mat.Dense
 	TmatT.CloneFrom(Tmat)
 	TmatT.T()
+	var Phi mat.Dense
 	Phi.Mul(&TmatT, Tmat)
 
 	return map[string]interface{}{
 		"loadings":    L,
-		"Phi":         Phi,
+		"Phi":         &Phi,
 		"Th":          Tmat,
 		"Table":       Table,
 		"method":      VgQ["Method"],
 		"orthogonal":  false,
 		"convergence": convergence,
 		"Gq":          VgQt["Gq"],
+		"f":           f,
 	}
 }

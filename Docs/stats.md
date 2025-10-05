@@ -1036,6 +1036,17 @@ $$
 
 linking loadings ($P$) to factor correlations ($\Phi$).
 
+`FactorAnalysisResult.Loadings` stores the pattern matrix (with column reflections chosen for positive simple structure), while `Structure` captures $S$. `Phi` displays the oblique factor correlations and `RotationMatrix` contains the orthonormal/oblique transformation applied to the initial extraction.
+
+### Diagnostics Outputs
+
+Each analysis reports suitability diagnostics aligned with SPSS:
+
+- **Kaiser–Meyer–Olkin (KMO)**: Overall sampling adequacy plus per-variable Measure of Sampling Adequacy (MSA) in `SamplingAdequacy`.
+- **Bartlett's Test of Sphericity**: χ² statistic, degrees of freedom, and p-value in `BartlettTest` for testing whether the correlation matrix differs from identity.
+
+Low KMO/MSA or a non-significant Bartlett test warns that factor analysis may be inappropriate.
+
 ### Convergence Control
 
 - `FactorAnalysisOptions.MaxIter` (default `50`, matching R's psych::fa) caps iterations for iterative extractions (PAF, MINRES, ML, MRFA, Alpha).
@@ -1050,6 +1061,8 @@ F_s = X W, \quad W = R^{-1} S.
 $$
 
 Alternative weighting schemes (Bartlett, Anderson–Rubin, ten Berge) are accessible via `FactorAnalysisOptions.Scoring`. Scoring reuses preprocessing parameters (standardization, missing policy) captured inside the `FactorModel`.
+
+`FactorAnalysisResult.ScoreCoefficients` exposes the weight matrix $W$ for reproducibility, while `ScoreCovariance` lists the model-implied covariance / correlation among the computed scores. When the scoring method is not `none`, `Scores` stores the observation-level scores using those coefficients.
 
 ### FactorAnalysis
 
@@ -1170,13 +1183,17 @@ type FactorAnalysisResult struct {
     Loadings             insyra.IDataTable // Loading matrix (variables × factors)
     Structure            insyra.IDataTable // Structure matrix (variables × factors)
     Uniquenesses         insyra.IDataTable // Uniqueness vector (p × 1)
-    Communalities        insyra.IDataTable // Communality table (p × 1: Extraction)
+    Communalities        insyra.IDataTable // Communality table with Initial & Extraction columns
+    SamplingAdequacy     insyra.IDataTable // KMO overall index and per-variable MSA values
+    BartlettTest         insyra.IDataTable // Bartlett's test of sphericity summary
     Phi                  insyra.IDataTable // Factor correlation matrix (m × m), nil for orthogonal
     RotationMatrix       insyra.IDataTable // Rotation matrix (m × m), nil if no rotation
     Eigenvalues          insyra.IDataTable // Eigenvalues vector (p × 1)
     ExplainedProportion  insyra.IDataTable // Proportion explained by each factor (m × 1)
     CumulativeProportion insyra.IDataTable // Cumulative proportion explained (m × 1)
     Scores               insyra.IDataTable // Factor scores (n × m), nil if not computed
+    ScoreCoefficients    insyra.IDataTable // Factor score coefficient matrix (variables × factors)
+    ScoreCovariance      insyra.IDataTable // Factor score covariance matrix (factors × factors)
 
     Converged  bool
     Iterations int
@@ -1188,13 +1205,17 @@ type FactorAnalysisResult struct {
 **DataTable Naming Convention**:
 
 - **Loadings**: Column names are factor names (Factor1, Factor2, ...), row names are variable names
-- **Structure**: Column names are factor names (Factor1, Factor2, ...), row names are variable names
+- **Structure**: Column names are factor names (Factor1, Factor2, ...), row names are variable names; equals `Loadings * Phi`
 - **Uniquenesses**: Single column named "Uniqueness", row names are variable names
-- **Communalities**: Single column named "Extraction", row names are variable names
+- **Communalities**: Two columns named "Initial" and "Extraction", row names are variable names
+- **SamplingAdequacy**: Column "KMO" for the overall index plus one column per variable with MSA values
+- **BartlettTest**: Columns summarizing degrees of freedom, χ² statistic, and p-value
 - **Eigenvalues**: Single column named "Eigenvalue", row names are factor names
 - **ExplainedProportion**: Single column named "Explained Proportion", row names are factor names
 - **CumulativeProportion**: Single column named "Cumulative Proportion", row names are factor names
 - **Scores**: Column names are factor names, row names are observation indices
+- **ScoreCoefficients**: Column names are factor names, row names are variable names (score weights)
+- **ScoreCovariance**: Square matrix with factor names showing score covariance / correlation
 
 #### Show Method
 

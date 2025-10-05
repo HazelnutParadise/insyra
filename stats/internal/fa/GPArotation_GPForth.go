@@ -248,5 +248,6 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 		"orthogonal":  true,
 		"convergence": convergence,
 		"Gq":          VgQt["Gq"],
+		"f":           f,
 	}
 }

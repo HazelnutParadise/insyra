@@ -77,3 +77,94 @@ func TestFactorAnalysisRotation(t *testing.T) {
 		})
 	}
 }
+
+func TestFactorAnalysisDiagnosticsOutputs(t *testing.T) {
+	data := []*insyra.DataList{
+		insyra.NewDataList(1.0, 2.2, 3.1, 4.5, 5.3, 6.2).SetName("A1"),
+		insyra.NewDataList(1.5, 2.4, 3.6, 4.0, 5.7, 6.5).SetName("A2"),
+		insyra.NewDataList(2.1, 3.0, 3.8, 4.9, 5.8, 6.9).SetName("A3"),
+		insyra.NewDataList(0.9, 1.8, 2.9, 4.2, 5.0, 5.8).SetName("A4"),
+	}
+
+	dt := insyra.NewDataTable(data...)
+
+	opt := FactorAnalysisOptions{
+		Preprocess: FactorPreprocessOptions{
+			Standardize: true,
+		},
+		Count: FactorCountSpec{
+			Method: FactorCountFixed,
+			FixedK: 2,
+		},
+		Extraction: FactorExtractionMINRES,
+		Rotation: FactorRotationOptions{
+			Method: FactorRotationOblimin,
+		},
+		Scoring: FactorScoreRegression,
+	}
+
+	model := FactorAnalysis(dt, opt)
+	if model == nil {
+		t.Fatal("FactorAnalysis returned nil model")
+	}
+
+	if model.SamplingAdequacy == nil {
+		t.Fatal("SamplingAdequacy should not be nil")
+	} else {
+		var rows, cols int
+		model.SamplingAdequacy.AtomicDo(func(table *insyra.DataTable) {
+			rows, cols = table.Size()
+		})
+		if rows != 5 || cols != 1 {
+			t.Errorf("Expected sampling adequacy dimensions 5x1, got %dx%d", rows, cols)
+		}
+	}
+
+	if model.BartlettTest == nil {
+		t.Fatal("BartlettTest should not be nil")
+	} else {
+		var rows, cols int
+		model.BartlettTest.AtomicDo(func(table *insyra.DataTable) {
+			rows, cols = table.Size()
+		})
+		if rows != 1 || cols < 3 {
+			t.Errorf("Expected Bartlett test to have 1 row and at least 3 columns, got %dx%d", rows, cols)
+		}
+	}
+
+	if model.Phi == nil {
+		t.Fatal("Phi matrix should not be nil for oblimin rotation")
+	} else {
+		var rows, cols int
+		model.Phi.AtomicDo(func(table *insyra.DataTable) {
+			rows, cols = table.Size()
+		})
+		if rows != 2 || cols != 2 {
+			t.Errorf("Expected phi matrix dimensions 2x2, got %dx%d", rows, cols)
+		}
+	}
+
+	if model.ScoreCoefficients == nil {
+		t.Fatal("ScoreCoefficients should not be nil")
+	} else {
+		var rows, cols int
+		model.ScoreCoefficients.AtomicDo(func(table *insyra.DataTable) {
+			rows, cols = table.Size()
+		})
+		if rows != 4 || cols != 2 {
+			t.Errorf("Expected score coefficients dimensions 4x2, got %dx%d", rows, cols)
+		}
+	}
+
+	if model.ScoreCovariance == nil {
+		t.Fatal("ScoreCovariance should not be nil")
+	} else {
+		var rows, cols int
+		model.ScoreCovariance.AtomicDo(func(table *insyra.DataTable) {
+			rows, cols = table.Size()
+		})
+		if rows != 2 || cols != 2 {
+			t.Errorf("Expected score covariance dimensions 2x2, got %dx%d", rows, cols)
+		}
+	}
+}
