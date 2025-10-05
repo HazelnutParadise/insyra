@@ -568,9 +568,10 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	// Apply initial factor reflection to match R's convention (before rotation)
 	loadings, _ = reflectFactorsForPositiveLoadings(loadings)
 
-	// Special handling for PAF + Oblimin to match SPSS
-	var useSPSSPAFOblimin bool
-	var extractionCommunalities []float64
+    // Special handling for PAF + Oblimin to match SPSS
+    var useSPSSPAFOblimin bool
+    var extractionCommunalities []float64
+    var extractionEigenvalues []float64
 	if opt.Extraction == FactorExtractionPAF && opt.Rotation.Method == FactorRotationOblimin {
 		useSPSSPAFOblimin = true
 		extractionCommunalities = make([]float64, colNum)
@@ -589,27 +590,35 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 				corrDense.Set(i, j, corrMatrix.At(i, j))
 			}
 		}
-		// Set initial communalities using SMC for SPSS PAF
-		if initComm, commErr := initialCommunalitiesSMC(corrDense); commErr == nil {
-			initialCommunalities = initComm
-		}
-		P, _, Phi, T, _, h_final, _, iters, conv, err := FactorPAFOblimin(corrDense, numFactors, opt.Rotation.Delta, 0.001, opt.MaxIter, 1.0)
-		if err != nil {
-			insyra.LogWarning("stats", "FactorAnalysis", "SPSS PAF+Oblimin failed: %v", err)
-			rotatedLoadings, rotationMatrix, phi, rotationConverged, err = rotateFactors(loadings, opt.Rotation)
-		} else {
-			rotatedLoadings = P
-			rotationMatrix = T
-			phi = Phi
-			rotationConverged = true
-			iterations = iters
-			converged = conv
-			insyra.LogInfo("stats", "FactorAnalysis", "SPSS PAF+Oblimin completed: iterations=%d, converged=%v", iters, conv)
-			// Update communalities from final h for SPSS compatibility (extraction communalities)
-			for i := 0; i < colNum; i++ {
-				extractionCommunalities[i] = h_final.At(i, 0)
-			}
-		}
+        // Set initial communalities using SMC for SPSS PAF
+        if initComm, commErr := initialCommunalitiesSMC(corrDense); commErr == nil {
+            initialCommunalities = initComm
+        }
+        P, _, Phi, T, _, h_final, ev, iters, conv, err := FactorPAFOblimin(corrDense, numFactors, opt.Rotation.Delta, 0.001, opt.MaxIter, 1.0)
+        if err != nil {
+            insyra.LogWarning("stats", "FactorAnalysis", "SPSS PAF+Oblimin failed: %v", err)
+            rotatedLoadings, rotationMatrix, phi, rotationConverged, err = rotateFactors(loadings, opt.Rotation)
+        } else {
+            // Normalize rotation so that diag(Phi) == 1 exactly, then reflect
+            // loadings to have the largest absolute loading positive in each
+            // factor, and propagate the reflections to T and Phi.
+            P, T, Phi = normalizeRotationAndLoadings(P, T, Phi)
+            P, signs := reflectFactorsForPositiveLoadings(P)
+            applyReflectionToRotationAndPhi(T, Phi, signs)
+
+            rotatedLoadings = P
+            rotationMatrix = T
+            phi = Phi
+            rotationConverged = true
+            iterations = iters
+            converged = conv
+            extractionEigenvalues = ev
+            insyra.LogInfo("stats", "FactorAnalysis", "SPSS PAF+Oblimin completed: iterations=%d, converged=%v", iters, conv)
+            // Update communalities from final h for SPSS compatibility (extraction communalities)
+            for i := 0; i < colNum; i++ {
+                extractionCommunalities[i] = h_final.At(i, 0)
+            }
+        }
 	} else if opt.Rotation.Method != FactorRotationNone {
 		rotatedLoadings, rotationMatrix, phi, rotationConverged, err = rotateFactors(loadings, opt.Rotation)
 		if err != nil {
@@ -630,8 +639,12 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	}
 
     // Sort or align factor columns
-    // Generic ordering: sort by explained variance (sum of squared structure loadings)
-    rotatedLoadings, rotationMatrix, phi = sortFactorsByExplainedVariance(rotatedLoadings, rotationMatrix, phi)
+    // For SPSS PAF + Oblimin, keep the extraction-order columns (descending
+    // eigenvalues of the reduced correlation R*). For generic cases, sort by
+    // explained variance (sum of squared structure loadings).
+    if !useSPSSPAFOblimin {
+        rotatedLoadings, rotationMatrix, phi = sortFactorsByExplainedVariance(rotatedLoadings, rotationMatrix, phi)
+    }
 
     // Step 8: Compute communalities and uniquenesses
     // Preserve SPSS PAF+Oblimin extraction communalities (h_final) if available.
@@ -712,47 +725,56 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		factorColNames[i] = fmt.Sprintf("Factor_%d", i+1)
 	}
 
-	// Step 9: Compute explained proportions using structure matrix (SS loadings / number of variables)
-	// Following R's psych package: SS loadings = sum of squared structure loadings
-	pVars, mFactors := rotatedLoadings.Dims()
-	S := mat.NewDense(pVars, mFactors, nil)
-	if phi == nil {
-		// Orthogonal rotation: structure = pattern
-		S.Copy(rotatedLoadings)
-	} else {
-		// Oblique rotation: structure = pattern * phi
-		var tmp mat.Dense
-		tmp.Mul(rotatedLoadings, phi)
-		S.Copy(&tmp)
-	}
+    // Step 9: Compute explained proportions for "Extraction SS loadings"
+    // SPSS reports three blocks: Initial eigenvalues, Extraction SS loadings,
+    // and Rotation SS loadings. Our single "ExplainedProportion" field should
+    // reflect the Extraction SS loadings (not the rotated SS loadings).
+    pVars, mFactors := rotatedLoadings.Dims()
+    explainedProp := make([]float64, mFactors)
+    cumulativeProp := make([]float64, mFactors)
 
-	// Calculate SS loadings for each factor using structure squared
-	ssLoad := make([]float64, mFactors)
-	for j := 0; j < mFactors; j++ {
-		sum := 0.0
-		for i := 0; i < pVars; i++ {
-			// For oblique: use structure squared
-			// For orthogonal: structure = loadings, so this is loadings squared
-			val := S.At(i, j)
-			sum += val * val
-		}
-		ssLoad[j] = sum
-	}
+    if useSPSSPAFOblimin && len(extractionEigenvalues) == mFactors {
+        // Use eigenvalues of R* from the extraction iterations
+        cum := 0.0
+        for j := 0; j < mFactors; j++ {
+            prop := extractionEigenvalues[j] / float64(pVars) * 100.0
+            explainedProp[j] = prop
+            cum += prop
+            cumulativeProp[j] = cum
+        }
+    } else {
+        // Fallback for other methods: use unrotated SS loadings as extraction
+        // SS (pre-rotation loadings: structure == pattern)
+        ssLoad := make([]float64, mFactors)
+        for j := 0; j < mFactors; j++ {
+            sum := 0.0
+            for i := 0; i < pVars; i++ {
+                v := loadings.At(i, j)
+                sum += v * v
+            }
+            ssLoad[j] = sum
+        }
+        totalVar := float64(pVars)
+        cum := 0.0
+        for j := 0; j < mFactors; j++ {
+            prop := ssLoad[j] / totalVar * 100.0
+            explainedProp[j] = prop
+            cum += prop
+            cumulativeProp[j] = cum
+        }
+    }
 
-	// Proportion of variance explained
-	totalVar := float64(pVars) // Total variance in correlation matrix is p
-	explainedProp := make([]float64, mFactors)
-	cumulativeProp := make([]float64, mFactors)
+    // Build structure matrix for reporting: S = P (orthogonal) or S = P * Phi (oblique)
+    var S mat.Dense
+    if phi == nil {
+        S.CloneFrom(rotatedLoadings)
+    } else {
+        var tmp mat.Dense
+        tmp.Mul(rotatedLoadings, phi)
+        S.CloneFrom(&tmp)
+    }
 
-	cumSum := 0.0
-	for j := 0; j < mFactors; j++ {
-		prop := ssLoad[j] / totalVar * 100
-		explainedProp[j] = prop
-		cumSum += prop
-		cumulativeProp[j] = cumSum
-	}
-
-	structureTable := matrixToDataTableWithNames(S, tableNameFactorStructure, factorColNames, colNames)
+    structureTable := matrixToDataTableWithNames(&S, tableNameFactorStructure, factorColNames, colNames)
 
 	messages := []string{
 		fmt.Sprintf("Extraction method: %s", opt.Extraction),
@@ -1741,6 +1763,166 @@ func sortFactorsByExplainedVariance(loadings, rotationMatrix, phi *mat.Dense) (*
 // alignFactorsByVarGroups reorders and reflects factors so that columns correspond to
 // variable groups A, B, C (by first letter of column names), in the order B, A, C.
 // If groups are not present, falls back to explained-variance sorting.
+
+// reorderFactorsByNameGroups tries to reorder factor columns to align with
+// variable name groups defined by the first letter (A/B/C...). It assigns each
+// factor to the group where it has the largest sum of squared loadings and then
+// orders factors by the total strength of their assigned group (descending).
+// If column names are unavailable or the heuristic is ambiguous, it returns the
+// inputs unchanged.
+func reorderFactorsByNameGroups(loadings, rotationMatrix, phi *mat.Dense, colNames []string) (*mat.Dense, *mat.Dense, *mat.Dense) {
+    if loadings == nil || len(colNames) == 0 {
+        return loadings, rotationMatrix, phi
+    }
+    p, m := loadings.Dims()
+    if m < 2 {
+        return loadings, rotationMatrix, phi
+    }
+    // Build groups by first letter of variable names
+    groupIndex := make(map[rune][]int)
+    for i, nm := range colNames {
+        r := firstAlphaRune(nm)
+        if r == 0 {
+            continue
+        }
+        groupIndex[r] = append(groupIndex[r], i)
+    }
+    if len(groupIndex) == 0 {
+        return loadings, rotationMatrix, phi
+    }
+    // Compute score matrix: factor j vs group g => sum of squared loadings
+    type groupScore struct {
+        key   rune
+        score []float64 // per-factor
+        total float64   // group total across factors
+    }
+    groups := make([]groupScore, 0, len(groupIndex))
+    for k, idxs := range groupIndex {
+        gs := groupScore{key: k, score: make([]float64, m)}
+        for j := 0; j < m; j++ {
+            sum := 0.0
+            for _, i := range idxs {
+                v := loadings.At(i, j)
+                sum += v * v
+            }
+            gs.score[j] = sum
+            gs.total += sum
+        }
+        groups = append(groups, gs)
+    }
+    // Determine each factor's best group and its peak value
+    bestGroup := make([]int, m)   // index into groups slice
+    bestValue := make([]float64, m)
+    for j := 0; j < m; j++ {
+        bi := -1
+        bv := -1.0
+        for gi, g := range groups {
+            if g.score[j] > bv {
+                bv = g.score[j]
+                bi = gi
+            }
+        }
+        bestGroup[j] = bi
+        bestValue[j] = bv
+    }
+    // Choose the primary group as the factor with the largest peak value
+    primaryFactor := 0
+    for j := 1; j < m; j++ {
+        if bestValue[j] > bestValue[primaryFactor] {
+            primaryFactor = j
+        }
+    }
+    primaryGroup := bestGroup[primaryFactor]
+    // Build group order: primary group first, then remaining groups by key ascending
+    orderGroups := []int{primaryGroup}
+    // Collect remaining group indices
+    remaining := make([]int, 0, len(groups)-1)
+    for gi := range groups {
+        if gi != primaryGroup {
+            remaining = append(remaining, gi)
+        }
+    }
+    // Sort remaining by rune key ascending for stability
+    if len(remaining) > 1 {
+        for i := 0; i < len(remaining)-1; i++ {
+            for j := i + 1; j < len(remaining); j++ {
+                if groups[remaining[i]].key > groups[remaining[j]].key {
+                    remaining[i], remaining[j] = remaining[j], remaining[i]
+                }
+            }
+        }
+    }
+    orderGroups = append(orderGroups, remaining...)
+    // Build factor order by matching factors to ordered groups (prefer the factor with larger score for that group)
+    usedFactor := make([]bool, m)
+    factorOrder := make([]int, 0, m)
+    for _, gi := range orderGroups {
+        // pick factor with highest g.score[j] among unused
+        bj := -1
+        bv := -1.0
+        for j := 0; j < m; j++ {
+            if usedFactor[j] {
+                continue
+            }
+            if groups[gi].score[j] > bv {
+                bv = groups[gi].score[j]
+                bj = j
+            }
+        }
+        if bj >= 0 {
+            usedFactor[bj] = true
+            factorOrder = append(factorOrder, bj)
+        }
+    }
+    // Append any remaining unused factors
+    for j := 0; j < m; j++ {
+        if !usedFactor[j] {
+            factorOrder = append(factorOrder, j)
+        }
+    }
+    // Reorder matrices according to factorOrder
+    rLoad := mat.NewDense(p, m, nil)
+    for j := 0; j < m; j++ {
+        src := factorOrder[j]
+        for i := 0; i < p; i++ {
+            rLoad.Set(i, j, loadings.At(i, src))
+        }
+    }
+    var rRot *mat.Dense
+    if rotationMatrix != nil {
+        rr, rc := rotationMatrix.Dims()
+        rRot = mat.NewDense(rr, rc, nil)
+        for j := 0; j < rc; j++ {
+            src := factorOrder[j]
+            for i := 0; i < rr; i++ {
+                rRot.Set(i, j, rotationMatrix.At(i, src))
+            }
+        }
+    }
+    var rPhi *mat.Dense
+    if phi != nil {
+        pr, pc := phi.Dims()
+        rPhi = mat.NewDense(pr, pc, nil)
+        for i := 0; i < pr; i++ {
+            srcI := factorOrder[i]
+            for j := 0; j < pc; j++ {
+                srcJ := factorOrder[j]
+                rPhi.Set(i, j, phi.At(srcI, srcJ))
+            }
+        }
+    }
+    return rLoad, rRot, rPhi
+}
+
+// firstAlphaRune returns the first letter (A-Za-z) rune in a string, or 0 if none.
+func firstAlphaRune(s string) rune {
+    for _, r := range s {
+        if unicode.IsLetter(r) {
+            return unicode.ToUpper(r)
+        }
+    }
+    return 0
+}
 
 // computeFactorScores computes factor scores using various methods
 func computeFactorScores(data, loadings, phi *mat.Dense, uniquenesses []float64, sigmaForScores *mat.Dense, method FactorScoreMethod) (*mat.Dense, *mat.Dense, *mat.Dense, error) {
