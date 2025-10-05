@@ -52,12 +52,12 @@ func TargetRot(x *mat.Dense, keys *mat.Dense) (loadings, rotmat, Phi *mat.Dense,
 		d[i] = UtUInv.At(i, i)
 	}
 
-	for j := 0; j < q; j++ {
-		sqrtD := math.Sqrt(d[j])
-		for i := 0; i < p; i++ {
-			U.Set(i, j, U.At(i, j)*sqrtD)
-		}
-	}
+    for j := 0; j < q; j++ {
+        sqrtD := math.Sqrt(d[j])
+        for i := 0; i < q; i++ { // U is q x q
+            U.Set(i, j, U.At(i, j)*sqrtD)
+        }
+    }
 
 	// z = x %*% U
 	loadings = mat.NewDense(p, q, nil)

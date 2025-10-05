@@ -178,23 +178,23 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 	iter := 0
 	for iter = 0; iter <= maxit; iter++ {
 		// Gp <- G - Tmat %*% diag(c(rep(1, nrow(G)) %*% (Tmat * G)))
-		nrowG, _ := G.Dims()
-		diagVec := make([]float64, nrowG)
-		for i := 0; i < nrowG; i++ {
-			sum := 0.0
-			for j := 0; j < Tmat.RawMatrix().Cols; j++ {
-				sum += Tmat.At(i, j) * G.At(j, i)
-			}
-			diagVec[i] = sum
-		}
+    nrowG, ncolG := G.Dims()
+    diagVec := make([]float64, ncolG)
+    // diagVec[j] = sum_i Tmat(i,j) * G(i,j)
+    for j := 0; j < ncolG; j++ {
+        sum := 0.0
+        for i := 0; i < nrowG; i++ {
+            sum += Tmat.At(i, j) * G.At(i, j)
+        }
+        diagVec[j] = sum
+    }
 
-		Gp := mat.NewDense(G.RawMatrix().Rows, G.RawMatrix().Cols, nil)
-		Gp.CloneFrom(G)
-		for i := 0; i < nrowG; i++ {
-			for j := 0; j < G.RawMatrix().Cols; j++ {
-				Gp.Set(j, i, G.At(j, i)-Tmat.At(i, j)*diagVec[i])
-			}
-		}
+    Gp := mat.NewDense(nrowG, ncolG, nil)
+    for i := 0; i < nrowG; i++ {
+        for j := 0; j < ncolG; j++ {
+            Gp.Set(i, j, G.At(i, j)-Tmat.At(i, j)*diagVec[j])
+        }
+    }
 
 		// s <- sqrt(sum(diag(crossprod(Gp))))
 		var GpTGp mat.Dense
@@ -224,22 +224,23 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			}
 
 			// v <- 1/sqrt(c(rep(1, nrow(X)) %*% X^2))
-			nrowX, _ := X.Dims()
-			v := make([]float64, nrowX)
-			for k := 0; k < nrowX; k++ {
-				sum := 0.0
-				for l := 0; l < X.RawMatrix().Cols; l++ {
-					sum += X.At(k, l) * X.At(k, l)
-				}
-				v[k] = 1.0 / math.Sqrt(sum)
-			}
+        nrowX, ncolX := X.Dims()
+        v := make([]float64, ncolX)
+        // v[j] = 1/sqrt(sum_i X(i,j)^2)
+        for j := 0; j < ncolX; j++ {
+            sum := 0.0
+            for i := 0; i < nrowX; i++ {
+                sum += X.At(i, j) * X.At(i, j)
+            }
+            v[j] = 1.0 / math.Sqrt(sum)
+        }
 
-			Tmatt = mat.NewDense(X.RawMatrix().Rows, X.RawMatrix().Cols, nil)
-			for k := 0; k < nrowX; k++ {
-				for l := 0; l < X.RawMatrix().Cols; l++ {
-					Tmatt.Set(k, l, X.At(k, l)*v[k])
-				}
-			}
+        Tmatt = mat.NewDense(nrowX, ncolX, nil)
+        for i := 0; i < nrowX; i++ {
+            for j := 0; j < ncolX; j++ {
+                Tmatt.Set(i, j, X.At(i, j)*v[j])
+            }
+        }
 
 			var TmattInv mat.Dense
 			TmattInv.Inverse(Tmatt)

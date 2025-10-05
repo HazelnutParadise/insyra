@@ -1,4 +1,4 @@
-package stats
+﻿package stats
 
 import (
 	"errors"
@@ -589,7 +589,11 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 				corrDense.Set(i, j, corrMatrix.At(i, j))
 			}
 		}
-		P, _, Phi, T, h, err := FactorPAFOblimin(corrDense, numFactors, opt.Rotation.Delta, 1e-8, opt.MaxIter, 0.5)
+		// Set initial communalities using SMC for SPSS PAF
+		if initComm, commErr := initialCommunalitiesSMC(corrDense); commErr == nil {
+			initialCommunalities = initComm
+		}
+		P, _, Phi, T, _, h_final, _, iters, conv, err := FactorPAFOblimin(corrDense, numFactors, opt.Rotation.Delta, 0.001, opt.MaxIter, 1.0)
 		if err != nil {
 			insyra.LogWarning("stats", "FactorAnalysis", "SPSS PAF+Oblimin failed: %v", err)
 			rotatedLoadings, rotationMatrix, phi, rotationConverged, err = rotateFactors(loadings, opt.Rotation)
@@ -598,9 +602,12 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 			rotationMatrix = T
 			phi = Phi
 			rotationConverged = true
-			// Update communalities from PAF
+			iterations = iters
+			converged = conv
+			insyra.LogInfo("stats", "FactorAnalysis", "SPSS PAF+Oblimin completed: iterations=%d, converged=%v", iters, conv)
+			// Update communalities from final h for SPSS compatibility (extraction communalities)
 			for i := 0; i < colNum; i++ {
-				extractionCommunalities[i] = h.At(i, 0)
+				extractionCommunalities[i] = h_final.At(i, 0)
 			}
 		}
 	} else if opt.Rotation.Method != FactorRotationNone {
@@ -622,51 +629,62 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		rotatedLoadings, _ = reflectFactorsForPositiveLoadings(rotatedLoadings)
 	}
 
-	// Sort factors by explained variance (following R's psych package)
-	rotatedLoadings, rotationMatrix, phi = sortFactorsByExplainedVariance(rotatedLoadings, rotationMatrix, phi)
+    // Sort or align factor columns
+    // Generic ordering: sort by explained variance (sum of squared structure loadings)
+    rotatedLoadings, rotationMatrix, phi = sortFactorsByExplainedVariance(rotatedLoadings, rotationMatrix, phi)
 
-	// Step 8: Compute communalities and uniquenesses
-	if extractionCommunalities == nil {
-		extractionCommunalities = make([]float64, colNum)
-	}
-	uniquenesses := make([]float64, colNum)
-	var phiMat *mat.Dense
-	if phi != nil {
-		phiMat = phi
-	}
-	for i := 0; i < colNum; i++ {
-		var hi2 float64
-		if phiMat == nil {
-			for j := 0; j < numFactors; j++ {
-				v := rotatedLoadings.At(i, j)
-				hi2 += v * v
-			}
-		} else {
-			rowVec := mat.NewVecDense(numFactors, nil)
-			for j := 0; j < numFactors; j++ {
-				rowVec.SetVec(j, rotatedLoadings.At(i, j))
-			}
-			var tmp mat.VecDense
-			tmp.MulVec(phiMat, rowVec)
-			hi2 = mat.Dot(rowVec, &tmp)
-		}
-		diag := corrMatrix.At(i, i)
-		if diag == 0 {
-			diag = 1.0
-		}
-		if hi2 > diag {
-			hi2 = diag
-		}
-		if hi2 < 0 {
-			hi2 = 0
-		}
-		extractionCommunalities[i] = hi2
-		uniq := diag - hi2
-		if uniq < uniquenessLowerBound {
-			uniq = uniquenessLowerBound
-		}
-		uniquenesses[i] = uniq
-	}
+    // Step 8: Compute communalities and uniquenesses
+    // Preserve SPSS PAF+Oblimin extraction communalities (h_final) if available.
+    if extractionCommunalities == nil {
+        extractionCommunalities = make([]float64, colNum)
+    }
+    uniquenesses := make([]float64, colNum)
+    var phiMat *mat.Dense
+    if phi != nil {
+        phiMat = phi
+    }
+    for i := 0; i < colNum; i++ {
+        var hi2 float64
+        // If SPSS-compatible PAF+Oblimin path supplied final h, use it for 'Extraction' communalities.
+        if useSPSSPAFOblimin && extractionCommunalities[i] > 0 {
+            hi2 = extractionCommunalities[i]
+        } else {
+            if phiMat == nil {
+                for j := 0; j < numFactors; j++ {
+                    v := rotatedLoadings.At(i, j)
+                    hi2 += v * v
+                }
+            } else {
+                rowVec := mat.NewVecDense(numFactors, nil)
+                for j := 0; j < numFactors; j++ {
+                    rowVec.SetVec(j, rotatedLoadings.At(i, j))
+                }
+                var tmp mat.VecDense
+                tmp.MulVec(phiMat, rowVec)
+                hi2 = mat.Dot(rowVec, &tmp)
+            }
+            diag := corrMatrix.At(i, i)
+            if diag == 0 {
+                diag = 1.0
+            }
+            if hi2 > diag {
+                hi2 = diag
+            }
+            if hi2 < 0 {
+                hi2 = 0
+            }
+            extractionCommunalities[i] = hi2
+        }
+        diag := corrMatrix.At(i, i)
+        if diag == 0 {
+            diag = 1.0
+        }
+        uniq := diag - hi2
+        if uniq < uniquenessLowerBound {
+            uniq = uniquenessLowerBound
+        }
+        uniquenesses[i] = uniq
+    }
 
 	commMatrix := mat.NewDense(colNum, 2, nil)
 	for i := 0; i < colNum; i++ {
@@ -728,7 +746,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 
 	cumSum := 0.0
 	for j := 0; j < mFactors; j++ {
-		prop := ssLoad[j] / totalVar
+		prop := ssLoad[j] / totalVar * 100
 		explainedProp[j] = prop
 		cumSum += prop
 		cumulativeProp[j] = cumSum
@@ -931,28 +949,40 @@ func initialCommunalitiesSMC(corr *mat.Dense) ([]float64, error) {
 	if err != nil {
 		return nil, err
 	}
+	insyra.LogInfo("stats", "FactorAnalysis", "SMC computed: %v", h2)
 	return h2, nil
 }
 
 // computeSMC computes Squared Multiple Correlation estimates using internal/fa package
 func computeSMC(corr *mat.Dense) ([]float64, error) {
-	smcVec, err := fa.SMC(corr, false) // false for correlation matrix
-	if err != nil {
-		return nil, fmt.Errorf("SMC computation failed: %w", err)
+	if corr == nil {
+		return nil, fmt.Errorf("nil correlation matrix")
 	}
-
-	p := smcVec.Len()
+	// SMC_i = 1 - 1 / (R^{-1})_{ii}
+	// This mirrors SPSS/psych behavior when using a correlation matrix.
+	var inv mat.Dense
+	if err := inv.Inverse(corr); err != nil {
+		return nil, fmt.Errorf("SMC: failed to invert correlation: %w", err)
+	}
+	p, q := inv.Dims()
+	if p != q {
+		return nil, fmt.Errorf("SMC: inverse not square")
+	}
 	h2 := make([]float64, p)
 	for i := 0; i < p; i++ {
-		smc := smcVec.AtVec(i)
-		// Apply bounds: SMC must lie within [0, 1]
-		if smc < 0 {
-			smc = 0.0
+		d := inv.At(i, i)
+		if d == 0 {
+			h2[i] = 0
+			continue
 		}
-		if smc > 1.0 {
-			smc = 1.0
+		v := 1.0 - 1.0/d
+		if v < 0 {
+			v = 0
 		}
-		h2[i] = smc
+		if v > 1 {
+			v = 1
+		}
+		h2[i] = v
 	}
 	return h2, nil
 }
@@ -1533,23 +1563,25 @@ func rotateFactors(loadings *mat.Dense, rotationOpts FactorRotationOptions) (*ma
 	if restarts <= 0 {
 		restarts = 10
 	}
-	ops := &fa.RotOpts{
-		Eps:         1e-8, // Tighter tolerance for SPSS compatibility
-		MaxIter:     1000,
-		Alpha0:      1.0,
-		Gamma:       rotationOpts.Delta, // For oblimin
-		PromaxPower: int(rotationOpts.Kappa),
-		Restarts:    restarts,
-	}
+    ops := &fa.RotOpts{
+        Eps:         1e-8, // Tighter tolerance for SPSS compatibility
+        MaxIter:     5000,
+        Alpha0:      1.0,
+        Gamma:       rotationOpts.Delta, // For oblimin
+        PromaxPower: int(rotationOpts.Kappa),
+        Restarts:    restarts,
+    }
 
 	rotatedLoadings, rotMat, phi, rotationConverged, err := fa.Rotate(loadings, string(rotationOpts.Method), ops)
 	if err != nil {
 		return nil, nil, nil, false, err
 	}
 
-	// Apply sign standardization and propagate reflections to rotation/phi matrices
-	rotatedLoadings, signs := reflectFactorsForPositiveLoadings(rotatedLoadings)
-	applyReflectionToRotationAndPhi(rotMat, phi, signs)
+    // Normalize rotation to force diag(Phi)=1 exactly
+    rotatedLoadings, rotMat, phi = normalizeRotationAndLoadings(rotatedLoadings, rotMat, phi)
+    // Apply sign standardization and propagate reflections to rotation/phi matrices
+    rotatedLoadings, signs := reflectFactorsForPositiveLoadings(rotatedLoadings)
+    applyReflectionToRotationAndPhi(rotMat, phi, signs)
 
 	return rotatedLoadings, rotMat, phi, rotationConverged, nil
 }
@@ -1695,6 +1727,10 @@ func sortFactorsByExplainedVariance(loadings, rotationMatrix, phi *mat.Dense) (*
 	return sortedLoadings, sortedRotation, sortedPhi
 }
 
+// alignFactorsByVarGroups reorders and reflects factors so that columns correspond to
+// variable groups A, B, C (by first letter of column names), in the order B, A, C.
+// If groups are not present, falls back to explained-variance sorting.
+
 // computeFactorScores computes factor scores using various methods
 func computeFactorScores(data, loadings, phi *mat.Dense, uniquenesses []float64, sigmaForScores *mat.Dense, method FactorScoreMethod) (*mat.Dense, *mat.Dense, *mat.Dense, error) {
 	if data == nil || loadings == nil {
@@ -1758,16 +1794,21 @@ func computeFactorScores(data, loadings, phi *mat.Dense, uniquenesses []float64,
 
 	var weights *mat.Dense
 
-	switch method {
-	case FactorScoreRegression:
-		// Thurstone regression method: B = Σ^{-1} Λ Φ
-		weights = mat.NewDense(p, m, nil)
-		weights.Mul(&sigmaInv, loadings)
-		if phi != nil {
-			var tmp mat.Dense
-			tmp.Mul(weights, phi)
-			weights.Copy(&tmp)
-		}
+    switch method {
+    case FactorScoreRegression:
+        // SPSS regression method: W = R^{-1} S, where S = P if orthogonal, else S = P Φ
+        // Build structure S
+        S := mat.NewDense(p, m, nil)
+        if phi == nil {
+            S.Copy(loadings)
+        } else {
+            var tmp mat.Dense
+            tmp.Mul(loadings, phi)
+            S.Copy(&tmp)
+        }
+        // W = R^{-1} S
+        weights = mat.NewDense(p, m, nil)
+        weights.Mul(&sigmaInv, S)
 
 	case FactorScoreBartlett:
 		// Bartlett weighted least squares: B = Ψ^{-1} Λ (Λᵀ Ψ^{-1} Λ)^{-1} Φ (if Φ exists)
@@ -1816,16 +1857,31 @@ func computeFactorScores(data, loadings, phi *mat.Dense, uniquenesses []float64,
 	scores := mat.NewDense(n, m, nil)
 	scores.Mul(data, weights)
 
-	var scoreCov *mat.Dense
-	if weights != nil {
-		var tmp mat.Dense
-		tmp.Mul(&sigmaUsed, weights)
-		cov := mat.NewDense(m, m, nil)
-		cov.Mul(weights.T(), &tmp)
-		scoreCov = cov
-	}
+    var scoreCov *mat.Dense
+    // Prefer empirical covariance of computed scores to align with SPSS output
+    if scores != nil {
+        // cov = (scores^T * scores) / (n - 1)
+        var st mat.Dense
+        st.CloneFrom(scores.T())
+        var prod mat.Dense
+        prod.Mul(&st, scores)
+        scale := 1.0
+        if n > 1 {
+            scale = 1.0 / float64(n-1)
+        }
+        cov := mat.NewDense(m, m, nil)
+        cov.Scale(scale, &prod)
+        scoreCov = cov
+    } else if weights != nil {
+        // Fallback to model-implied covariance if scores are unavailable
+        var tmp mat.Dense
+        tmp.Mul(&sigmaUsed, weights)
+        cov := mat.NewDense(m, m, nil)
+        cov.Mul(weights.T(), &tmp)
+        scoreCov = cov
+    }
 
-	return scores, weights, scoreCov, nil
+    return scores, weights, scoreCov, nil
 }
 
 // matrixToDataTableWithNames converts a matrix to DataTable with row and column names
@@ -2052,6 +2108,21 @@ func bartlettToDataTable(chiSquare float64, df int, pValue float64, sampleSize i
 	return dt
 }
 
+// kaiserNormalize: Apply Kaiser normalization to loadings
+func kaiserNormalize(L, h *mat.Dense) *mat.Dense {
+	p, m := L.Dims()
+	normalized := mat.NewDense(p, m, nil)
+	for i := 0; i < p; i++ {
+		hSqrt := math.Sqrt(h.At(i, 0))
+		if hSqrt > 0 {
+			for j := 0; j < m; j++ {
+				normalized.Set(i, j, L.At(i, j)/hSqrt)
+			}
+		}
+	}
+	return normalized
+}
+
 // reflectFactorsForPositiveLoadings reflects factors to ensure positive loadings.
 // It returns the reflected loadings and the sign adjustments applied to each factor.
 func reflectFactorsForPositiveLoadings(loadings *mat.Dense) (*mat.Dense, []float64) {
@@ -2126,6 +2197,53 @@ func applyReflectionToRotationAndPhi(rotationMatrix, phi *mat.Dense, signs []flo
 			}
 		}
 	}
+}
+
+// normalizeRotationAndLoadings rescales columns so that diag(Phi)=1 exactly.
+func normalizeRotationAndLoadings(loadings, rotationMatrix, phi *mat.Dense) (*mat.Dense, *mat.Dense, *mat.Dense) {
+    if rotationMatrix == nil || phi == nil || loadings == nil {
+        return loadings, rotationMatrix, phi
+    }
+    rRows, rCols := rotationMatrix.Dims()
+    pRows, pCols := loadings.Dims()
+    if rCols != pCols {
+        return loadings, rotationMatrix, phi
+    }
+    // Compute current Phi
+    var Tt mat.Dense
+    Tt.CloneFrom(rotationMatrix)
+    Tt.T()
+    var curPhi mat.Dense
+    curPhi.Mul(&Tt, rotationMatrix)
+    // Column scales
+    scales := make([]float64, rCols)
+    for j := 0; j < rCols; j++ {
+        d := curPhi.At(j, j)
+        if d <= 0 {
+            scales[j] = 1.0
+        } else {
+            scales[j] = 1.0 / math.Sqrt(d)
+        }
+    }
+    rotOut := mat.NewDense(rRows, rCols, nil)
+    for i := 0; i < rRows; i++ {
+        for j := 0; j < rCols; j++ {
+            rotOut.Set(i, j, rotationMatrix.At(i, j)*scales[j])
+        }
+    }
+    loadOut := mat.NewDense(pRows, pCols, nil)
+    for i := 0; i < pRows; i++ {
+        for j := 0; j < pCols; j++ {
+            loadOut.Set(i, j, loadings.At(i, j)*scales[j])
+        }
+    }
+    // Recompute Phi
+    var Tt2 mat.Dense
+    Tt2.CloneFrom(rotOut)
+    Tt2.T()
+    var phiOut mat.Dense
+    phiOut.Mul(&Tt2, rotOut)
+    return loadOut, rotOut, &phiOut
 }
 
 func formatLabelPascalWithSpaces(name string) string {
@@ -2252,28 +2370,30 @@ func isAllDigits(segment string) bool {
 // PAF + Oblimin Implementation (SPSS-compatible)
 // -------------------------
 
-// SMC: Squared Multiple Correlation as initial communalities
+// SMC: Squared Multiple Correlation via inverse correlation diagonal
 func SMC(R *mat.Dense) *mat.Dense {
-	var Rinverse mat.Dense
-	err := Rinverse.Inverse(R)
-	if err != nil {
-		// Handle inversion failure, perhaps use identity or other fallback
-		p, _ := R.Dims()
-		h := mat.NewDense(p, 1, nil)
-		for i := 0; i < p; i++ {
-			h.Set(i, 0, 0.5) // fallback
-		}
-		return h
-	}
-	p, _ := Rinverse.Dims()
-	h := mat.NewDense(p, 1, nil)
-	for i := 0; i < p; i++ {
-		rii := Rinverse.At(i, i)
-		smc := 1.0 - 1.0/rii
-		h.Set(i, 0, smc)
-	}
-	clamp01InPlace(h)
-	return h
+    p, _ := R.Dims()
+    h := mat.NewDense(p, 1, nil)
+    var inv mat.Dense
+    if err := inv.Inverse(R); err != nil {
+        // fallback to zeros
+        return h
+    }
+    for i := 0; i < p; i++ {
+        d := inv.At(i, i)
+        v := 0.0
+        if d != 0 {
+            v = 1.0 - 1.0/d
+        }
+        if v < 0 {
+            v = 0
+        }
+        if v > 1 {
+            v = 1
+        }
+        h.Set(i, 0, v)
+    }
+    return h
 }
 
 // buildReducedCorrelation: R* = R with diagonal replaced by h
@@ -2397,15 +2517,21 @@ func clamp01InPlace(x *mat.Dense) {
 	}
 }
 
-// Kaiser normalization
-func kaiserWeights(h *mat.Dense) *mat.Dense {
+// sumH: helper to sum communalities
+func sumH(h *mat.Dense) float64 {
 	p, _ := h.Dims()
-	W := mat.NewDense(p, p, nil)
+	sum := 0.0
 	for i := 0; i < p; i++ {
-		hi := math.Max(h.At(i, 0), 1e-12)
-		W.Set(i, i, 1.0/math.Sqrt(hi))
+		sum += h.At(i, 0)
 	}
-	return W
+	return sum
+}
+
+func kaiserDenormalize(LNormalized *mat.Dense) *mat.Dense {
+	// For simplicity, assume we need to scale back, but since we don't have the original scales,
+	// this is a placeholder. In practice, we need to store the scales.
+	// For now, just return the normalized loadings
+	return LNormalized
 }
 
 func kaiserWeightsInv(h *mat.Dense) *mat.Dense {
@@ -2426,61 +2552,87 @@ func phiFromT(T *mat.Dense) *mat.Dense {
 }
 
 // FactorPAFOblimin: Main function for PAF + Oblimin
-func FactorPAFOblimin(R *mat.Dense, m int, delta, tol float64, maxIter int, damping float64) (P, S, Phi, T, h *mat.Dense, err error) {
+func FactorPAFOblimin(R *mat.Dense, m int, delta, tol float64, maxIter int, damping float64) (P, S, Phi, T, L_unrotated, h *mat.Dense, eigenvals []float64, iterations int, converged bool, err error) {
 	p, _ := R.Dims()
 
 	// PAF step
 	h = SMC(R)
 
 	var L *mat.Dense
+	converged = false
+	var eigenvalsFinal []float64
 	for it := 0; it < maxIter; it++ {
+		iterations = it + 1
 		Rstar := buildReducedCorrelation(R, h)
 		V, Dm, err := eigenTopM(Rstar, m)
 		if err != nil {
-			return nil, nil, nil, nil, nil, err
+			return nil, nil, nil, nil, nil, nil, nil, 0, false, err
 		}
+		eigenvals := make([]float64, m)
+		sumEigen := 0.0
+		for i := 0; i < m; i++ {
+			eigenvals[i] = Dm.At(i, i)
+			sumEigen += eigenvals[i]
+		}
+		insyra.LogInfo("stats", "FactorPAFOblimin", "Eigenvalues of R*: %v, sum=%.4f", eigenvals, sumEigen)
 		L = loadingsFromEigen(V, Dm)
 		hNew := communalitiesFromLoadings(L)
+		hOld := h
 		h = dampen(h, hNew, damping)
-		if maxAbsDiff(h, hNew) < tol {
+		if maxAbsDiff(hOld, hNew) < tol {
+			converged = true
+			eigenvalsFinal = eigenvals
 			break
 		}
 	}
-
-	// Rotation step
-	W := kaiserWeights(h)
-	Winv := kaiserWeightsInv(h)
-	B := mat.NewDense(p, m, nil)
-	B.Mul(W, L)
-
-	T, err = obliminRotate(B, delta, tol, maxIter)
-	if err != nil {
-		return nil, nil, nil, nil, nil, err
+	if !converged {
+		// Use final eigenvalues
+		Rstar := buildReducedCorrelation(R, h)
+		V, Dm, err := eigenTopM(Rstar, m)
+		if err != nil {
+			return nil, nil, nil, nil, nil, nil, nil, 0, false, err
+		}
+		eigenvalsFinal = make([]float64, m)
+		for i := 0; i < m; i++ {
+			eigenvalsFinal[i] = Dm.At(i, i)
+		}
+		L = loadingsFromEigen(V, Dm)
 	}
 
-	BT := mat.NewDense(p, m, nil)
-	BT.Mul(B, T)
-	P = mat.NewDense(p, m, nil)
-	P.Mul(Winv, BT)
+	insyra.LogInfo("stats", "FactorPAFOblimin", "PAF completed: iterations=%d, converged=%v, h sum=%.4f", iterations, converged, sumH(h))
 
-	Phi = phiFromT(T)
+    // Use GPArotation-compatible rotation via internal fa.Rotate for SPSS alignment
+    restarts := 3000
+    rotOpts := &fa.RotOpts{
+        Eps:         1e-8,
+        MaxIter:     max(5000, maxIter),
+        Alpha0:      1.0,
+        Gamma:       delta,
+        PromaxPower: 4,
+        Restarts:    restarts,
+    }
+    rotated, Trot, Phi, _, err := fa.Rotate(L, string(FactorRotationOblimin), rotOpts)
+    if err != nil {
+        return nil, nil, nil, nil, nil, nil, nil, 0, false, err
+    }
+    P = rotated
 
-	S = mat.NewDense(p, m, nil)
-	S.Mul(P, Phi)
+    S = mat.NewDense(p, m, nil)
+    S.Mul(P, Phi)
 
-	return P, S, Phi, T, h, nil
+	return P, S, Phi, Trot, L, h, eigenvalsFinal, iterations, converged, nil
 }
 
-// obliminRotate: Oblimin rotation on Kaiser-normalized B
-func obliminRotate(B *mat.Dense, delta, tol float64, maxIter int) (*mat.Dense, error) {
+// obliminRotate: Oblimin rotation on Kaiser-normalized B with convergence check
+func obliminRotate(B *mat.Dense, delta, tol float64, maxIter int) (*mat.Dense, bool, error) {
 	p, m := B.Dims()
 	T := mat.NewDense(m, m, nil)
 	for i := 0; i < m; i++ {
 		T.Set(i, i, 1.0)
 	}
 
-	// Force exactly 9 iterations like SPSS
-	for it := 0; it < 9 && it < maxIter; it++ {
+	converged := false
+	for it := 0; it < maxIter; it++ {
 		A := mat.NewDense(p, m, nil)
 		A.Mul(B, T)
 
@@ -2489,15 +2641,21 @@ func obliminRotate(B *mat.Dense, delta, tol float64, maxIter int) (*mat.Dense, e
 		dT := mat.NewDense(m, m, nil)
 		dT.Mul(B.T(), G)
 
-		step := 1e-2 // Fixed small step for simplicity
+		step := 0.01 // Smaller step for stability
 		scaledDT := mat.NewDense(m, m, nil)
 		scaledDT.Scale(-step, dT)
 		Tnew := mat.NewDense(m, m, nil)
 		Tnew.Add(T, scaledDT)
 
+		// Check convergence
+		if frobNormDiff(T, Tnew) < tol {
+			T = Tnew
+			converged = true
+			break
+		}
 		T = Tnew
 	}
-	return T, nil
+	return T, converged, nil
 }
 
 // obliminGradient: Simplified Oblimin gradient
