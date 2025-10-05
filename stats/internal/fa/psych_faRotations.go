@@ -1,4 +1,4 @@
-﻿// fa/psych_faRotations.go
+// fa/psych_faRotations.go
 package fa
 
 import (
@@ -71,7 +71,7 @@ func Quartimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int) ma
 	Th := result["Th"].(*mat.Dense)
 	rotMat := mat.NewDense(nf, nf, nil)
 	rotMat.Inverse(Th)
-	// Transpose the inverse matrix
+	// Transpose inverse
 	rotMatT := rotMat.T()
 	rotMatDense := mat.DenseCopyOf(rotMatT)
 
@@ -217,13 +217,9 @@ func BentlerT(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map
 	// Use GPForth for proper bentlerT rotation
 	result := GPForth(loadings, Tmat, normalize, eps, maxIter, "bentlerT")
 
-	// Calculate rotation matrix as t(solve(Th)) like in R
+	// Use Th (T matrix) directly for oblique reporting
 	Th := result["Th"].(*mat.Dense)
-	rotMat := mat.NewDense(nf, nf, nil)
-	rotMat.Inverse(Th)
-	// Transpose the inverse matrix
-	rotMatT := rotMat.T()
-	rotMatDense := mat.DenseCopyOf(rotMatT)
+	rotMatDense := mat.DenseCopyOf(Th)
 
 	// Return with correct key names expected by FaRotations
 	return map[string]interface{}{
@@ -255,11 +251,11 @@ func Simplimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int, k 
 	// Use GPFoblq for proper simplimax rotation
 	result := GPFoblq(loadings, Tmat, normalize, eps, maxIter, "simplimax", 0.0)
 
-	// Calculate rotation matrix as t(solve(Th)) like in R
+	// Calculate rotation matrix as t(solve(Th)) to match other oblique handlers
 	Th := result["Th"].(*mat.Dense)
-	rotMat := mat.NewDense(nf, nf, nil)
-	rotMat.Inverse(Th)
-	rotMatT := rotMat.T()
+	rotSolve := mat.NewDense(nf, nf, nil)
+	rotSolve.Inverse(Th)
+	rotMatT := rotSolve.T()
 	rotMatDense := mat.DenseCopyOf(rotMatT)
 
 	// Return with correct key names expected by FaRotations
@@ -377,51 +373,53 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 		restarts = 1
 	}
 
-    // For oblimin, let GPFoblq handle Kaiser normalization internally
-    useKaiser := false
-    var normalizedLoadings *mat.Dense
+	// For oblimin, let GPFoblq handle Kaiser normalization internally
+	useKaiser := false
+	var normalizedLoadings *mat.Dense
 
-    bestScore := math.Inf(1)
-    var best map[string]interface{}
+	bestScore := math.Inf(1)
+	var best map[string]interface{}
 
-    var baseLoadings *mat.Dense
-    if useKaiser {
-        baseLoadings = normalizedLoadings
-    } else {
-        baseLoadings = loadings
-    }
+	var baseLoadings *mat.Dense
+	if useKaiser {
+		baseLoadings = normalizedLoadings
+	} else {
+		baseLoadings = loadings
+	}
 
-    // Build starting rotation matrices: identity, Varimax start, then random orthonormal
-    starts := make([]*mat.Dense, 0, restarts)
-    starts = append(starts, identityMatrix(nf))
-    if nf > 1 {
-        // Varimax start
-        vm := Varimax(baseLoadings, true, 1e-05, 1000)
-        if rot, ok := vm["rotmat"].(*mat.Dense); ok && rot != nil {
-            starts = append(starts, mat.DenseCopyOf(rot))
-        }
-        // Promax start
-        pm := Promax(baseLoadings, 4, true)
-        if rot, ok := pm["rotmat"].(*mat.Dense); ok && rot != nil {
-            starts = append(starts, mat.DenseCopyOf(rot))
-        }
-        // Target (cluster) start
-        if loadings != nil {
-            if trgLoad, trgRot, _, err := TargetRot(baseLoadings, nil); err == nil {
-                _ = trgLoad
-                if trgRot != nil {
-                    starts = append(starts, mat.DenseCopyOf(trgRot))
-                }
-            }
-        }
-    }
-    if restarts > len(starts) {
-        seed := seedFromMatrix(baseLoadings)
-        rnd := rand.New(rand.NewSource(seed))
-        for i := len(starts); i < restarts; i++ {
-            starts = append(starts, randomOrthonormalMatrix(nf, rnd))
-        }
-    }
+	// Build starting rotation matrices
+	// To emulate SPSS Direct Oblimin behavior deterministically, when
+	// restarts <= 1, use only identity start. For larger restarts, include
+	// additional heuristics (Varimax/Promax/Target) and random starts up to
+	// the requested count.
+	starts := make([]*mat.Dense, 0, max(1, restarts))
+	starts = append(starts, identityMatrix(nf))
+	if restarts > 1 && nf > 1 {
+		// Heuristic starts
+		vm := Varimax(baseLoadings, true, 1e-08, 5000)
+		if rot, ok := vm["rotmat"].(*mat.Dense); ok && rot != nil {
+			starts = append(starts, mat.DenseCopyOf(rot))
+		}
+		pm := Promax(baseLoadings, 4, true)
+		if rot, ok := pm["rotmat"].(*mat.Dense); ok && rot != nil {
+			starts = append(starts, mat.DenseCopyOf(rot))
+		}
+		if loadings != nil {
+			if _, trgRot, _, err := TargetRot(baseLoadings, nil); err == nil {
+				if trgRot != nil {
+					starts = append(starts, mat.DenseCopyOf(trgRot))
+				}
+			}
+		}
+		// Add random orthonormal starts if budget remains
+		if restarts > len(starts) {
+			seed := seedFromMatrix(baseLoadings)
+			rnd := rand.New(rand.NewSource(seed))
+			for i := len(starts); i < restarts; i++ {
+				starts = append(starts, randomOrthonormalMatrix(nf, rnd))
+			}
+		}
+	}
 
 	for idx, start := range starts {
 		pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
@@ -430,25 +428,25 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 		var result map[string]interface{}
 		switch rotateLower {
 		case "varimax":
-			result = Varimax(pre, true, 1e-05, 1000)
+			result = Varimax(pre, true, 1e-08, 5000)
 		case "quartimax":
-			result = Quartimax(pre, true, 1e-05, 1000)
+			result = Quartimax(pre, true, 1e-08, 5000)
 		case "quartimin":
-			result = Quartimin(pre, true, 1e-05, 1000)
-        case "oblimin":
-            // Let GPFoblq do Kaiser normalization (normalize=true) on original scale
-            gpf := GPFoblq(pre, identityMatrix(nf), true, 1e-05, 1000, "oblimin", hyper)
-            result = finalizeGpfResult(gpf, nf)
+			result = Quartimin(pre, true, 1e-08, 5000)
+		case "oblimin":
+			// Let GPFoblq do Kaiser normalization (normalize=true) on original scale
+			gpf := GPFoblq(pre, identityMatrix(nf), true, 1e-08, 5000, "oblimin", hyper)
+			result = finalizeGpfResult(gpf, nf)
 		case "geomint":
-			result = GeominT(pre, true, 1e-05, 1000, 0.01)
+			result = GeominT(pre, true, 1e-08, 5000, 0.01)
 		case "geominq":
-			result = GeominQ(pre, true, 1e-05, 1000, 0.01)
+			result = GeominQ(pre, true, 1e-08, 5000, 0.01)
 		case "bentlert":
-			result = BentlerT(pre, true, 1e-05, 1000)
+			result = BentlerT(pre, true, 1e-08, 5000)
 		case "bentlerq":
-			result = BentlerQ(pre, true, 1e-05, 1000)
+			result = BentlerQ(pre, true, 1e-08, 5000)
 		case "simplimax":
-			result = Simplimax(pre, true, 1e-05, 1000, pre.RawMatrix().Rows)
+			result = Simplimax(pre, true, 1e-08, 5000, pre.RawMatrix().Rows)
 		case "promax":
 			res := Promax(pre, 4, true)
 			result = map[string]interface{}{
@@ -468,7 +466,7 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 			continue
 		}
 
-        finalLoadings := mat.DenseCopyOf(rotLoad)
+		finalLoadings := mat.DenseCopyOf(rotLoad)
 
 		var partialRot *mat.Dense
 		if rm, ok := result["rotmat"].(*mat.Dense); ok && rm != nil {
@@ -576,6 +574,7 @@ func finalizeGpfResult(gpf map[string]interface{}, nf int) map[string]interface{
 	if !ok || Th == nil {
 		return gpf
 	}
+	// rotmat = t(solve(Th)) to be consistent with composition rules
 	rotSolve := mat.NewDense(nf, nf, nil)
 	rotSolve.Inverse(Th)
 	rotMat := mat.DenseCopyOf(rotSolve.T())

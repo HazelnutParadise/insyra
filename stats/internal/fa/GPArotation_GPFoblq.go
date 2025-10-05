@@ -4,6 +4,7 @@ package fa
 import (
 	"fmt"
 	"math"
+	"strings"
 
 	"gonum.org/v1/gonum/mat"
 )
@@ -35,168 +36,52 @@ func NormalizingWeight(A *mat.Dense, normalize bool) *mat.VecDense {
 // GPFoblq performs oblique rotation using GPA.
 // Mirrors GPArotation::GPFoblq exactly
 func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit int, method string, gamma float64) map[string]interface{} {
-	nf, _ := A.Dims()
-	if nf <= 1 {
+	rows, cols := A.Dims()
+	if cols <= 1 {
 		panic("rotation does not make sense for single factor models.")
 	}
 
-	var W *mat.VecDense
-	// Match R logic: if ((!is.logical(normalize)) || normalize)
-	// In Go, since normalize is bool, this simplifies to: if normalize
+	Awork := mat.DenseCopyOf(A)
+	var weights *mat.VecDense
 	if normalize {
-		W = NormalizingWeight(A, normalize)
-		normalize = true
-		A = mat.DenseCopyOf(A)
-		for i := 0; i < A.RawMatrix().Rows; i++ {
-			for j := 0; j < A.RawMatrix().Cols; j++ {
-				A.Set(i, j, A.At(i, j)/W.AtVec(i))
+		weights = NormalizingWeight(A, true)
+		for i := 0; i < rows; i++ {
+			w := weights.AtVec(i)
+			if w == 0 {
+				continue
+			}
+			for j := 0; j < cols; j++ {
+				Awork.Set(i, j, Awork.At(i, j)/w)
 			}
 		}
 	}
 
 	al := 1.0
-	var TmatInv mat.Dense
-	err := TmatInv.Inverse(Tmat)
-	if err != nil {
-		panic("Tmat is singular")
+	Tcurrent := mat.DenseCopyOf(Tmat)
+
+	var Tinv mat.Dense
+	if err := Tinv.Inverse(Tcurrent); err != nil {
+		panic(fmt.Sprintf("Tmat inversion failed: %v", err))
 	}
-	L := mat.NewDense(A.RawMatrix().Rows, A.RawMatrix().Cols, nil)
-	L.Mul(A, TmatInv.T())
+	var TinvT mat.Dense
+	TinvT.CloneFrom(&Tinv)
+	TinvT.T()
 
-	// Call vgQ method
-	var VgQ map[string]interface{}
-	switch method {
-	case "quartimin":
-		Gq, f, methodName := vgQQuartimin(L)
-		VgQ = map[string]interface{}{
-			"Gq":     Gq,
-			"f":      f,
-			"Method": methodName,
-		}
-	case "oblimin":
-		Gq, f, err := vgQOblimin(L, gamma) // gam = delta for oblimin family
-		if err != nil {
-			panic(fmt.Sprintf("vgQOblimin failed: %v", err))
-		}
-		methodName := "Oblimin Quartimin"
-		VgQ = map[string]interface{}{
-			"Gq":     Gq,
-			"f":      f,
-			"Method": methodName,
-		}
-	case "simplimax":
-		Gq, f, methodName := vgQSimplimax(L, A.RawMatrix().Rows)
-		VgQ = map[string]interface{}{
-			"Gq":     Gq,
-			"f":      f,
-			"Method": methodName,
-		}
-	case "geominQ":
-		Gq, f, methodName := vgQGeomin(L, 0.01)
-		VgQ = map[string]interface{}{
-			"Gq":     Gq,
-			"f":      f,
-			"Method": methodName,
-		}
-	case "bentlerQ":
-		Gq, f, methodName := vgQBentler(L)
-		VgQ = map[string]interface{}{
-			"Gq":     Gq,
-			"f":      f,
-			"Method": methodName,
-		}
-	case "targetQ":
-		panic("targetQ requires Target matrix parameter")
-	default:
-		Gq, f, methodName := vgQQuartimin(L)
-		VgQ = map[string]interface{}{
-			"Gq":     Gq,
-			"f":      f,
-			"Method": methodName,
-		}
-	}
+	Lcurrent := mat.NewDense(rows, cols, nil)
+	Lcurrent.Mul(Awork, &TinvT)
 
-	var TmatInv2 mat.Dense
-	TmatInv2.Inverse(Tmat)
-	var temp mat.Dense
-	temp.Mul(L.T(), VgQ["Gq"].(*mat.Dense))
-	temp.Mul(&temp, &TmatInv2)
-	G := mat.NewDense(temp.RawMatrix().Cols, temp.RawMatrix().Rows, nil)
-	G.Scale(-1, temp.T())
+	gqCurrent, fCurrent, methodName := obliqueCriterion(method, Lcurrent, gamma)
+	fmt.Printf("GPFoblq initial f=%.6f, ||Gq||=%.6f\n", fCurrent, mat.Norm(gqCurrent, 2))
+	G := computeObliqueGradient(Lcurrent, gqCurrent, Tcurrent)
 
-	f := VgQ["f"].(float64)
-	var Table [][]float64
-
-	var VgQt map[string]interface{}
-	switch method {
-	case "quartimin":
-		Gq, f2, _ := vgQQuartimin(L)
-		VgQt = map[string]interface{}{
-			"Gq": Gq,
-			"f":  f2,
-		}
-	case "oblimin":
-		Gq, f2, err := vgQOblimin(L, gamma)
-		if err != nil {
-			panic(fmt.Sprintf("vgQOblimin failed: %v", err))
-		}
-		VgQt = map[string]interface{}{
-			"Gq": Gq,
-			"f":  f2,
-		}
-	case "simplimax":
-		Gq, f2, _ := vgQSimplimax(L, A.RawMatrix().Rows)
-		VgQt = map[string]interface{}{
-			"Gq": Gq,
-			"f":  f2,
-		}
-	case "geominQ":
-		Gq, f2, _ := vgQGeomin(L, 0.01)
-		VgQt = map[string]interface{}{
-			"Gq": Gq,
-			"f":  f2,
-		}
-	case "bentlerQ":
-		Gq, f2, _ := vgQBentler(L)
-		VgQt = map[string]interface{}{
-			"Gq": Gq,
-			"f":  f2,
-		}
-	case "targetQ":
-		panic("targetQ requires Target matrix parameter")
-	default:
-		Gq, f2, _ := vgQQuartimin(L)
-		VgQt = map[string]interface{}{
-			"Gq": Gq,
-			"f":  f2,
-		}
-	}
-
+	table := make([][]float64, 0, maxit+1)
 	convergence := false
-	s := eps + 1
+	var s float64
 
-	iter := 0
-	for iter = 0; iter <= maxit; iter++ {
-		// Gp <- G - Tmat %*% diag(c(rep(1, nrow(G)) %*% (Tmat * G)))
-    nrowG, ncolG := G.Dims()
-    diagVec := make([]float64, ncolG)
-    // diagVec[j] = sum_i Tmat(i,j) * G(i,j)
-    for j := 0; j < ncolG; j++ {
-        sum := 0.0
-        for i := 0; i < nrowG; i++ {
-            sum += Tmat.At(i, j) * G.At(i, j)
-        }
-        diagVec[j] = sum
-    }
+	for iter := 0; iter <= maxit; iter++ {
+		currentAlpha := al
+		Gp := computeGp(G, Tcurrent)
 
-    Gp := mat.NewDense(nrowG, ncolG, nil)
-    for i := 0; i < nrowG; i++ {
-        for j := 0; j < ncolG; j++ {
-            Gp.Set(i, j, G.At(i, j)-Tmat.At(i, j)*diagVec[j])
-        }
-    }
-
-		// s <- sqrt(sum(diag(crossprod(Gp))))
 		var GpTGp mat.Dense
 		GpTGp.Mul(Gp.T(), Gp)
 		s = 0
@@ -204,8 +89,8 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			s += GpTGp.At(i, i)
 		}
 		s = math.Sqrt(s)
-
-		Table = append(Table, []float64{float64(iter), f, math.Log10(s), al})
+		fmt.Printf("GPFoblq iter=%d, s=%.6e, f=%.6f, alpha=%.6f\n", iter, s, fCurrent, currentAlpha)
+		table = append(table, []float64{float64(iter), fCurrent, math.Log10(s), currentAlpha})
 
 		if s < eps {
 			convergence = true
@@ -213,130 +98,155 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 		}
 
 		al *= 2
-		var Tmatt *mat.Dense
-		for i := 0; i <= 10; i++ {
-			X := mat.NewDense(Tmat.RawMatrix().Rows, Tmat.RawMatrix().Cols, nil)
-			X.CloneFrom(Tmat)
-			for k := 0; k < X.RawMatrix().Rows; k++ {
-				for l := 0; l < X.RawMatrix().Cols; l++ {
-					X.Set(k, l, Tmat.At(k, l)-al*Gp.At(l, k))
+
+		var Tnext *mat.Dense
+		var Lnext *mat.Dense
+		var gqNext *mat.Dense
+		var fNext float64
+
+		for inner := 0; inner <= 10; inner++ {
+			X := mat.NewDense(Tcurrent.RawMatrix().Rows, Tcurrent.RawMatrix().Cols, nil)
+			X.CloneFrom(Tcurrent)
+
+			var scaledGp mat.Dense
+			scaledGp.Scale(al, Gp)
+			X.Sub(Tcurrent, &scaledGp)
+
+			rowsT, colsT := X.Dims()
+			v := make([]float64, colsT)
+			for j := 0; j < colsT; j++ {
+				sumsq := 0.0
+				for i := 0; i < rowsT; i++ {
+					val := X.At(i, j)
+					sumsq += val * val
+				}
+				if sumsq <= 0 {
+					v[j] = 1.0
+				} else {
+					v[j] = 1.0 / math.Sqrt(sumsq)
 				}
 			}
 
-			// v <- 1/sqrt(c(rep(1, nrow(X)) %*% X^2))
-        nrowX, ncolX := X.Dims()
-        v := make([]float64, ncolX)
-        // v[j] = 1/sqrt(sum_i X(i,j)^2)
-        for j := 0; j < ncolX; j++ {
-            sum := 0.0
-            for i := 0; i < nrowX; i++ {
-                sum += X.At(i, j) * X.At(i, j)
-            }
-            v[j] = 1.0 / math.Sqrt(sum)
-        }
-
-        Tmatt = mat.NewDense(nrowX, ncolX, nil)
-        for i := 0; i < nrowX; i++ {
-            for j := 0; j < ncolX; j++ {
-                Tmatt.Set(i, j, X.At(i, j)*v[j])
-            }
-        }
+			Tmatt := mat.NewDense(rowsT, colsT, nil)
+			for i := 0; i < rowsT; i++ {
+				for j := 0; j < colsT; j++ {
+					Tmatt.Set(i, j, X.At(i, j)*v[j])
+				}
+			}
 
 			var TmattInv mat.Dense
-			TmattInv.Inverse(Tmatt)
-			L.Mul(A, TmattInv.T())
-
-			// Call vgQ again
-			switch method {
-			case "quartimin":
-				GqNew, fNew, _ := vgQQuartimin(L)
-				VgQt = map[string]interface{}{
-					"Gq": GqNew,
-					"f":  fNew,
-				}
-			case "oblimin":
-				GqNew, fNew, err := vgQOblimin(L, gamma)
-				if err != nil {
-					panic(fmt.Sprintf("vgQOblimin failed: %v", err))
-				}
-				VgQt = map[string]interface{}{
-					"Gq": GqNew,
-					"f":  fNew,
-				}
-			case "simplimax":
-				GqNew, fNew, _ := vgQSimplimax(L, A.RawMatrix().Rows)
-				VgQt = map[string]interface{}{
-					"Gq": GqNew,
-					"f":  fNew,
-				}
-			case "geominQ":
-				GqNew, fNew, _ := vgQGeomin(L, 0.01)
-				VgQt = map[string]interface{}{
-					"Gq": GqNew,
-					"f":  fNew,
-				}
-			case "bentlerQ":
-				GqNew, fNew, _ := vgQBentler(L)
-				VgQt = map[string]interface{}{
-					"Gq": GqNew,
-					"f":  fNew,
-				}
-			case "targetQ":
-				panic("targetQ requires Target matrix parameter")
-			default:
-				GqNew, fNew, _ := vgQQuartimin(L)
-				VgQt = map[string]interface{}{
-					"Gq": GqNew,
-					"f":  fNew,
-				}
+			if err := TmattInv.Inverse(Tmatt); err != nil {
+				panic(fmt.Sprintf("Tmatt inversion failed: %v", err))
 			}
+			var TmattInvT mat.Dense
+			TmattInvT.CloneFrom(&TmattInv)
+			TmattInvT.T()
 
-			improvement := f - VgQt["f"].(float64)
+			Lcandidate := mat.NewDense(rows, cols, nil)
+			Lcandidate.Mul(Awork, &TmattInvT)
+
+			gqCandidate, fCandidate, _ := obliqueCriterion(method, Lcandidate, gamma)
+			improvement := fCurrent - fCandidate
+			fmt.Printf("GPFoblq inner iter=%d improvement=%.6e threshold=%.6e alpha=%.6e\n", inner, improvement, 0.5*s*s*al, al)
+
+			Tnext = Tmatt
+			Lnext = Lcandidate
+			gqNext = gqCandidate
+			fNext = fCandidate
 			if improvement > 0.5*s*s*al {
 				break
 			}
 			al /= 2
 		}
 
-		Tmat = Tmatt
-		f = VgQt["f"].(float64)
+		if Tnext == nil || Lnext == nil {
+			Tnext = Tcurrent
+			Lnext = Lcurrent
+			gqNext = gqCurrent
+			fNext = fCurrent
+		}
 
-		var TmattInv mat.Dense
-		TmattInv.Inverse(Tmat)
-		var temp2 mat.Dense
-		temp2.Mul(L.T(), VgQt["Gq"].(*mat.Dense))
-		temp2.Mul(&temp2, &TmattInv)
-		G.Scale(-1, temp2.T())
+		Tcurrent = Tnext
+		Lcurrent = Lnext
+		gqCurrent = gqNext
+		fCurrent = fNext
+		G = computeObliqueGradient(Lcurrent, gqCurrent, Tcurrent)
+		fmt.Printf("GPFoblq iter=%d gradient norm=%.6e\n", iter, mat.Norm(G, 2))
 	}
 
-	convergence = (s < eps)
-	if (iter == maxit) && !convergence {
-		fmt.Printf("convergence not obtained in GPFoblq. %d iterations used.\n", maxit)
-	}
-
-	if normalize {
-		for i := 0; i < L.RawMatrix().Rows; i++ {
-			for j := 0; j < L.RawMatrix().Cols; j++ {
-				L.Set(i, j, L.At(i, j)*W.AtVec(i))
+	if normalize && weights != nil {
+		for i := 0; i < rows; i++ {
+			w := weights.AtVec(i)
+			for j := 0; j < cols; j++ {
+				Lcurrent.Set(i, j, Lcurrent.At(i, j)*w)
 			}
 		}
 	}
 
-	var TmatT mat.Dense
-	TmatT.CloneFrom(Tmat)
-	TmatT.T()
+	var Tt mat.Dense
+	Tt.CloneFrom(Tcurrent)
+	Tt.T()
 	var Phi mat.Dense
-	Phi.Mul(&TmatT, Tmat)
+	Phi.Mul(&Tt, Tcurrent)
 
 	return map[string]interface{}{
-		"loadings":    L,
+		"loadings":    Lcurrent,
 		"Phi":         &Phi,
-		"Th":          Tmat,
-		"Table":       Table,
-		"method":      VgQ["Method"],
+		"Th":          Tcurrent,
+		"Table":       table,
+		"method":      methodName,
 		"orthogonal":  false,
 		"convergence": convergence,
-		"Gq":          VgQt["Gq"],
-		"f":           f,
+		"Gq":          gqCurrent,
+		"f":           fCurrent,
 	}
+}
+
+func obliqueCriterion(method string, L *mat.Dense, gamma float64) (*mat.Dense, float64, string) {
+	switch strings.ToLower(method) {
+	case "quartimin":
+		return vgQQuartimin(L)
+	case "oblimin":
+		Gq, f, err := vgQOblimin(L, gamma)
+		if err != nil {
+			panic(fmt.Sprintf("vgQOblimin failed: %v", err))
+		}
+		return Gq, f, "vgQ.oblimin"
+	case "simplimax":
+		return vgQSimplimax(L, L.RawMatrix().Rows)
+	case "geominq":
+		return vgQGeomin(L, 0.01)
+	case "bentlerq":
+		return vgQBentler(L)
+	default:
+		return vgQQuartimin(L)
+	}
+}
+
+func computeObliqueGradient(L *mat.Dense, Gq *mat.Dense, T *mat.Dense) *mat.Dense {
+	var Tinv mat.Dense
+	if err := Tinv.Inverse(T); err != nil {
+		panic(fmt.Sprintf("rotation gradient inversion failed: %v", err))
+	}
+	var temp mat.Dense
+	temp.Mul(L.T(), Gq)
+	temp.Mul(&temp, &Tinv)
+	grad := mat.NewDense(temp.RawMatrix().Cols, temp.RawMatrix().Rows, nil)
+	grad.Scale(-1, temp.T())
+	return grad
+}
+
+func computeGp(G *mat.Dense, T *mat.Dense) *mat.Dense {
+	rows, cols := G.Dims()
+	Gp := mat.NewDense(rows, cols, nil)
+	for j := 0; j < cols; j++ {
+		sum := 0.0
+		for i := 0; i < rows; i++ {
+			sum += T.At(i, j) * G.At(i, j)
+		}
+		for i := 0; i < rows; i++ {
+			Gp.Set(i, j, G.At(i, j)-T.At(i, j)*sum)
+		}
+	}
+	return Gp
 }
