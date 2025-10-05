@@ -1664,24 +1664,35 @@ func offDiagonalSSE(m *mat.Dense) float64 {
 // sortFactorsByExplainedVariance sorts factors by explained variance (sum of squared loadings)
 // Returns sorted loadings, rotation matrix, and phi matrix
 func sortFactorsByExplainedVariance(loadings, rotationMatrix, phi *mat.Dense) (*mat.Dense, *mat.Dense, *mat.Dense) {
-	if loadings == nil {
-		return nil, rotationMatrix, phi
-	}
+    if loadings == nil {
+        return nil, rotationMatrix, phi
+    }
 
-	r, c := loadings.Dims()
-	variances := make([]float64, c)
-	indices := make([]int, c)
+    r, c := loadings.Dims()
+    variances := make([]float64, c)
+    indices := make([]int, c)
 
-	// Calculate explained variance for each factor (sum of squared loadings)
-	for j := 0; j < c; j++ {
-		sum := 0.0
-		for i := 0; i < r; i++ {
-			val := loadings.At(i, j)
-			sum += val * val
-		}
-		variances[j] = sum
-		indices[j] = j
-	}
+    // For oblique rotation, follow SPSS/psych convention: use structure matrix
+    // S = P * Phi; for orthogonal, S = P
+    var S mat.Dense
+    if phi != nil {
+        var tmp mat.Dense
+        tmp.Mul(loadings, phi)
+        S.CloneFrom(&tmp)
+    } else {
+        S.CloneFrom(loadings)
+    }
+
+    // Calculate explained variance proxy per factor: SS of structure loadings
+    for j := 0; j < c; j++ {
+        sum := 0.0
+        for i := 0; i < r; i++ {
+            val := S.At(i, j)
+            sum += val * val
+        }
+        variances[j] = sum
+        indices[j] = j
+    }
 
 	// Sort indices by variance in descending order
 	for i := 0; i < c-1; i++ {
