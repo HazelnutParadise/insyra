@@ -156,7 +156,7 @@ func CustomerActivityIndex(dt insyra.IDataTable, caiConfig CAIConfig) insyra.IDa
 	)
 	for customerID, mle := range customerMLEs {
 		wmle := customerWMLEs[customerID]
-		cai := (mle - wmle) / mle
+		cai := (mle - wmle) / mle * 100 // 百分比表示
 		resultDT.AppendRowsByColName(map[string]any{
 			"CustomerID": customerID,
 			"MLE":        mle,
