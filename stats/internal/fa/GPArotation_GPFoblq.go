@@ -10,7 +10,6 @@ import (
 )
 
 const debugGPFoblq = false
-const minLineSearchAlpha = 1e-6
 
 // NormalizingWeight computes normalizing weights for GPA rotation.
 // Mirrors GPArotation::NormalizingWeight for Kaiser normalization.
@@ -178,7 +177,6 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 		Gq = GqNext
 		f = fNext
 		G = computeGMatrix(L, Gq, T)
-		alpha = math.Max(1.0, alpha)
 	}
 
 	if normalize && weights != nil {

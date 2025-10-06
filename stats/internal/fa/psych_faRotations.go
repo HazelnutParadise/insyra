@@ -2,12 +2,15 @@
 package fa
 
 import (
-	"math"
-	"math/rand"
-	"strings"
+    "fmt"
+    "math"
+    "math/rand"
+    "strings"
 
 	"gonum.org/v1/gonum/mat"
 )
+
+const debugOblimin = true
 
 // Varimax performs varimax rotation.
 // Mirrors GPArotation::Varimax
@@ -437,24 +440,24 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
 			pre.Mul(baseLoadings, start)
 			result = Quartimin(pre, true, 1e-08, 5000)
-		case "oblimin":
-			startCopy := mat.DenseCopyOf(start)
-			var invStart mat.Dense
-			if err := invStart.Inverse(startCopy); err != nil {
-				continue
-			}
-			startCopy = mat.DenseCopyOf(start)
-			var gpf map[string]interface{}
-			var ok bool
-			func() {
-				defer func() {
-					if r := recover(); r != nil {
-						ok = false
-					}
-				}()
-				gpf = GPFoblq(baseLoadings, startCopy, true, 1e-08, 5000, "oblimin", hyper)
-				ok = true
-			}()
+        case "oblimin":
+            startCopy := mat.DenseCopyOf(start)
+            var invStart mat.Dense
+            if err := invStart.Inverse(startCopy); err != nil {
+                continue
+            }
+            startCopy = mat.DenseCopyOf(start)
+            var gpf map[string]interface{}
+            var ok bool
+            func() {
+                defer func() {
+                    if r := recover(); r != nil {
+                        ok = false
+                    }
+                }()
+                gpf = GPFoblq(baseLoadings, startCopy, false, 1e-08, 5000, "oblimin", hyper)
+                ok = true
+            }()
 			if !ok {
 				continue
 			}
@@ -520,15 +523,24 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 			}
 		}
 
-		candidate := map[string]interface{}{
-			"loadings": finalLoadings,
-			"rotmat":   finalRot,
-		}
-		if phiVal, ok := result["phi"].(*mat.Dense); ok && phiVal != nil {
-			candidate["Phi"] = phiVal
-		} else if phiVal, ok := result["Phi"].(*mat.Dense); ok && phiVal != nil {
-			candidate["Phi"] = phiVal
-		}
+        candidate := map[string]interface{}{
+            "loadings": finalLoadings,
+            "rotmat":   finalRot,
+        }
+        if phiVal, ok := result["phi"].(*mat.Dense); ok && phiVal != nil {
+            candidate["Phi"] = phiVal
+        } else if phiVal, ok := result["Phi"].(*mat.Dense); ok && phiVal != nil {
+            candidate["Phi"] = phiVal
+        }
+        if debugOblimin && rotateLower == "oblimin" {
+            fmt.Printf("oblimin start %d loadings:\n", idx)
+            for i := 0; i < finalLoadings.RawMatrix().Rows; i++ {
+                for j := 0; j < finalLoadings.RawMatrix().Cols; j++ {
+                    fmt.Printf(" % .6f", finalLoadings.At(i, j))
+                }
+                fmt.Printf("\n")
+            }
+        }
 
 		score := math.Inf(1)
 		if fVal, ok := result["f"].(float64); ok {
@@ -538,22 +550,28 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 			score = 0
 		}
 
-		if best == nil || score < bestScore || (math.IsNaN(bestScore) && !math.IsNaN(score)) {
-			best = candidate
-			bestScore = score
-		}
-	}
+        if best == nil || score < bestScore || (math.IsNaN(bestScore) && !math.IsNaN(score)) {
+            best = candidate
+            bestScore = score
+        }
+        if debugOblimin && rotateLower == "oblimin" {
+            fmt.Printf("oblimin start %d score=%.9f\n", idx, score)
+        }
+    }
 
-	if best == nil {
-		rotatedLoadings := mat.DenseCopyOf(loadings)
-		rotMat := identityMatrix(nf)
-		best = map[string]interface{}{
-			"loadings": rotatedLoadings,
-			"rotmat":   rotMat,
-		}
-	}
+    if best == nil {
+        rotatedLoadings := mat.DenseCopyOf(loadings)
+        rotMat := identityMatrix(nf)
+        best = map[string]interface{}{
+            "loadings": rotatedLoadings,
+            "rotmat":   rotMat,
+        }
+    }
+    if debugOblimin && rotateLower == "oblimin" {
+        fmt.Printf("oblimin best score=%.9f\n", bestScore)
+    }
 
-	return best
+    return best
 }
 
 func identityMatrix(n int) *mat.Dense {
@@ -613,14 +631,25 @@ func kaiserNormalize(loadings *mat.Dense) (*mat.Dense, []float64) {
 }
 
 func finalizeGpfResult(gpf map[string]interface{}, nf int) map[string]interface{} {
-	Th, ok := gpf["Th"].(*mat.Dense)
-	if !ok || Th == nil {
-		return gpf
-	}
-	// rotmat = t(solve(Th)) to be consistent with composition rules
-	rotSolve := mat.NewDense(nf, nf, nil)
-	rotSolve.Inverse(Th)
-	rotMat := mat.DenseCopyOf(rotSolve.T())
+    Th, ok := gpf["Th"].(*mat.Dense)
+    if !ok || Th == nil {
+        return gpf
+    }
+    if debugOblimin {
+        if rawPhi, ok := gpf["Phi"].(*mat.Dense); ok && rawPhi != nil {
+            fmt.Printf("GPFoblq raw Phi:\n")
+            for i := 0; i < rawPhi.RawMatrix().Rows; i++ {
+                for j := 0; j < rawPhi.RawMatrix().Cols; j++ {
+                    fmt.Printf(" % .6f", rawPhi.At(i, j))
+                }
+                fmt.Printf("\n")
+            }
+        }
+    }
+    // rotmat = t(solve(Th)) to be consistent with composition rules
+    rotSolve := mat.NewDense(nf, nf, nil)
+    rotSolve.Inverse(Th)
+    rotMat := mat.DenseCopyOf(rotSolve.T())
 	res := map[string]interface{}{
 		"loadings": gpf["loadings"],
 		"rotmat":   rotMat,
