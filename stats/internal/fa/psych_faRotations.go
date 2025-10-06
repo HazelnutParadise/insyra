@@ -422,32 +422,66 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 	}
 
 	for idx, start := range starts {
-		pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
-		pre.Mul(baseLoadings, start)
 
 		var result map[string]interface{}
 		switch rotateLower {
 		case "varimax":
+			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
+			pre.Mul(baseLoadings, start)
 			result = Varimax(pre, true, 1e-08, 5000)
 		case "quartimax":
+			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
+			pre.Mul(baseLoadings, start)
 			result = Quartimax(pre, true, 1e-08, 5000)
 		case "quartimin":
+			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
+			pre.Mul(baseLoadings, start)
 			result = Quartimin(pre, true, 1e-08, 5000)
 		case "oblimin":
-			// Let GPFoblq do Kaiser normalization (normalize=true) on original scale
-			gpf := GPFoblq(pre, identityMatrix(nf), true, 1e-08, 5000, "oblimin", hyper)
+			startCopy := mat.DenseCopyOf(start)
+			var invStart mat.Dense
+			if err := invStart.Inverse(startCopy); err != nil {
+				continue
+			}
+			startCopy = mat.DenseCopyOf(start)
+			var gpf map[string]interface{}
+			var ok bool
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						ok = false
+					}
+				}()
+				gpf = GPFoblq(baseLoadings, startCopy, true, 1e-08, 5000, "oblimin", hyper)
+				ok = true
+			}()
+			if !ok {
+				continue
+			}
 			result = finalizeGpfResult(gpf, nf)
 		case "geomint":
+			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
+			pre.Mul(baseLoadings, start)
 			result = GeominT(pre, true, 1e-08, 5000, 0.01)
 		case "geominq":
+			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
+			pre.Mul(baseLoadings, start)
 			result = GeominQ(pre, true, 1e-08, 5000, 0.01)
 		case "bentlert":
+			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
+			pre.Mul(baseLoadings, start)
 			result = BentlerT(pre, true, 1e-08, 5000)
 		case "bentlerq":
+			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
+			pre.Mul(baseLoadings, start)
 			result = BentlerQ(pre, true, 1e-08, 5000)
 		case "simplimax":
+			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
+			pre.Mul(baseLoadings, start)
 			result = Simplimax(pre, true, 1e-08, 5000, pre.RawMatrix().Rows)
 		case "promax":
+			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
+			pre.Mul(baseLoadings, start)
 			res := Promax(pre, 4, true)
 			result = map[string]interface{}{
 				"loadings": res["loadings"],
@@ -455,6 +489,8 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 				"Phi":      res["Phi"],
 			}
 		default:
+			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
+			pre.Mul(baseLoadings, start)
 			result = map[string]interface{}{
 				"loadings": mat.DenseCopyOf(pre),
 				"rotmat":   identityMatrix(nf),
@@ -468,14 +504,21 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 
 		finalLoadings := mat.DenseCopyOf(rotLoad)
 
-		var partialRot *mat.Dense
+		var finalRot *mat.Dense
 		if rm, ok := result["rotmat"].(*mat.Dense); ok && rm != nil {
-			partialRot = rm
+			if rotateLower == "oblimin" {
+				finalRot = mat.DenseCopyOf(rm)
+			} else {
+				finalRot = mat.NewDense(start.RawMatrix().Rows, rm.RawMatrix().Cols, nil)
+				finalRot.Mul(start, rm)
+			}
 		} else {
-			partialRot = identityMatrix(nf)
+			if rotateLower == "oblimin" {
+				finalRot = identityMatrix(nf)
+			} else {
+				finalRot = mat.DenseCopyOf(start)
+			}
 		}
-		finalRot := mat.NewDense(start.RawMatrix().Rows, partialRot.RawMatrix().Cols, nil)
-		finalRot.Mul(start, partialRot)
 
 		candidate := map[string]interface{}{
 			"loadings": finalLoadings,
@@ -585,6 +628,9 @@ func finalizeGpfResult(gpf map[string]interface{}, nf int) map[string]interface{
 	}
 	if phi, ok := gpf["Phi"]; ok && phi != nil {
 		res["Phi"] = phi
+	}
+	if conv, ok := gpf["convergence"]; ok {
+		res["convergence"] = conv
 	}
 	return res
 }

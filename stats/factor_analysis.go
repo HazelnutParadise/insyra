@@ -2835,7 +2835,7 @@ func FactorPAFOblimin(R *mat.Dense, m int, delta, tol float64, maxIter int, damp
 	}
 
 	// Use GPArotation-compatible rotation via internal fa.Rotate for SPSS alignment
-	restarts := 1
+	restarts := 20
 	rotOpts := &fa.RotOpts{
 		Eps:         1e-8,
 		MaxIter:     max(1000, maxIter),
