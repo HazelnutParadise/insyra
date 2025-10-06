@@ -111,19 +111,128 @@ This example defines a simple linear programming model with two variables and co
 
 #### LINGO Support
 
-The `lpgen` package also supports **LINGO**, which is a popular optimization software.
+The `lpgen` package supports **LINGO**, a popular optimization software, in two ways:
 
-1. **`ParseLingoModel_txt`**
+##### 1. Parse Generated LINGO Models
+
+These functions parse the model output from LINGO (via `LINGO > Generate > Display Model`):
+
+**`ParseLingoModel_txt`**
    Parse LINGO model from txt file. It turns LINGO model to standard lp model.
    Go to `LINGO > Generate > Display Model` in LINGO to get the model.
    ```go
    func ParseLingoModel_txt(filePath string) *LPModel
    ```
 
-2. **`ParseLingoModel_str`**
+**`ParseLingoModel_str`**
    Parse LINGO model from string. It turns LINGO model to standard lp model.
    Go to `LINGO > Generate > Display Model` in LINGO to get the model.
    ```go
    func ParseLingoModel_str(modelStr string) *LPModel
    ```
 
+##### 2. Parse Native LINGO Syntax
+
+These functions parse LINGO source code directly, including support for LINGO @ functions:
+
+**`ParseLingoSyntax`**
+   Parse LINGO source code with @ functions like @SUM, @FOR, @BIN, @GIN.
+   ```go
+   func ParseLingoSyntax(source string) (*LPModel, error)
+   ```
+
+**`ParseLingoFile`**
+   Read and parse a LINGO file with native syntax.
+   ```go
+   func ParseLingoFile(filePath string) (*LPModel, error)
+   ```
+
+##### Supported LINGO Features
+
+- **@ Functions**:
+  - `@SUM(set: expression)` - Expands to sum of terms
+  - `@FOR(set: constraint)` - Generates multiple constraints
+  - `@BIN(var)` - Declares binary variables
+  - `@GIN(var)` - Declares general integer variables
+
+- **Sections**:
+  - `SETS:` ... `ENDSETS` - Define sets of elements
+  - `DATA:` ... `ENDDATA` - Define data values
+  - `MODEL:` ... `END` - Define the optimization model
+
+- **Comments**: Lines starting with `!` are treated as comments
+
+##### Example: Simple LINGO Model
+
+```lingo
+! Simple Production Planning Model
+MODEL:
+MAX = 3*X1 + 4*X2;
+
+! Resource constraints
+2*X1 + 3*X2 <= 12;
+4*X1 + 2*X2 <= 16;
+
+! Non-negativity constraints
+X1 >= 0;
+X2 >= 0;
+END
+```
+
+```go
+model, err := lpgen.ParseLingoFile("model.lng")
+if err != nil {
+    log.Fatal(err)
+}
+model.GenerateLPFile("output.lp")
+```
+
+##### Example: LINGO with Sets and @ Functions
+
+```lingo
+! Production Planning with Sets
+SETS:
+PRODUCTS / P1 P2 P3 /;
+ENDSETS
+
+DATA:
+PROFIT = 10 15 20;
+ENDDATA
+
+MODEL:
+MAX = @SUM(PRODUCTS: PROFIT * X);
+@FOR(PRODUCTS: X >= 0);
+END
+```
+
+```go
+model, err := lpgen.ParseLingoSyntax(lingoSource)
+if err != nil {
+    log.Fatal(err)
+}
+model.GenerateLPFile("output.lp")
+```
+
+##### Example: Binary and Integer Variables
+
+```lingo
+MODEL:
+MAX = 5*X + 3*Y + 2*Z;
+X + Y <= 10;
+
+@BIN(X);
+@GIN(Y);
+
+Z >= 0;
+END
+```
+
+```go
+model, err := lpgen.ParseLingoSyntax(lingoSource)
+if err != nil {
+    log.Fatal(err)
+}
+// model.BinaryVars will contain ["X"]
+// model.IntegerVars will contain ["Y"]
+model.GenerateLPFile("output.lp")
+```

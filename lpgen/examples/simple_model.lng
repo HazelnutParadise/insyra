@@ -1,0 +1,13 @@
+! Simple Production Planning Model
+! Maximize profit from producing two products
+MODEL:
+MAX = 3*X1 + 4*X2;
+
+! Resource constraints
+2*X1 + 3*X2 <= 12;
+4*X1 + 2*X2 <= 16;
+
+! Non-negativity constraints
+X1 >= 0;
+X2 >= 0;
+END
