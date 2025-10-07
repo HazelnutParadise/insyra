@@ -19,3 +19,4 @@ lingo.txt
 *.csv
 /.insyra_py25a
 /local
+/cmd
