@@ -10,7 +10,7 @@ import (
 	"gonum.org/v1/gonum/mat"
 )
 
-const debugOblimin = false
+const debugOblimin = true
 
 // Varimax performs varimax rotation.
 // Mirrors GPArotation::Varimax
@@ -441,12 +441,11 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 			pre.Mul(baseLoadings, start)
 			result = Quartimin(pre, true, 1e-08, 5000)
 		case "oblimin":
-			startCopy := mat.DenseCopyOf(start)
-			var invStart mat.Dense
-			if err := invStart.Inverse(startCopy); err != nil {
-				continue
+			// Use identity matrix as starting point, like R's psych package
+			startIdentity := mat.NewDense(nf, nf, nil)
+			for i := 0; i < nf; i++ {
+				startIdentity.Set(i, i, 1.0)
 			}
-			startCopy = mat.DenseCopyOf(start)
 			var gpf map[string]interface{}
 			var ok bool
 			func() {
@@ -455,7 +454,7 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 						ok = false
 					}
 				}()
-				gpf = GPFoblq(baseLoadings, startCopy, true, 1e-08, 5000, "oblimin", hyper)
+				gpf = GPFoblq(baseLoadings, startIdentity, false, 1e-05, 5000, "oblimin", hyper)
 				ok = true
 			}()
 			if !ok {

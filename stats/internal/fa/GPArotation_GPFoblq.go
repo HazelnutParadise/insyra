@@ -9,7 +9,7 @@ import (
 	"gonum.org/v1/gonum/mat"
 )
 
-const debugGPFoblq = false
+const debugGPFoblq = true
 
 // NormalizingWeight computes normalizing weights for GPA rotation.
 // Mirrors GPArotation::NormalizingWeight for Kaiser normalization.
@@ -82,7 +82,8 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 	table := make([][]float64, 0, max(1, maxit+1))
 	convergence := false
 
-	for iter := 0; iter <= maxit; iter++ {
+	iter := 0
+	for iter <= maxit {
 		Gp := computeGp(G, T)
 		s := frobNorm(Gp)
 		logTerm := math.Inf(-1)
@@ -99,24 +100,15 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			break
 		}
 
-		alpha *= 2
-
-		var Tnext *mat.Dense
-		var Lnext *mat.Dense
-		var GqNext *mat.Dense
-		var fNext float64
-
-		var lastT *mat.Dense
-		var lastL *mat.Dense
-		var lastGq *mat.Dense
-		var lastF float64
-
-		for inner := 0; inner <= 10; inner++ {
+		// Step size selection
+		alpha := 1.0
+		for {
 			X := mat.DenseCopyOf(T)
 			var scaledGp mat.Dense
 			scaledGp.Scale(alpha, Gp)
 			X.Sub(X, &scaledGp)
 
+			// Normalize columns of X
 			colsX := X.RawMatrix().Cols
 			scaleVals := make([]float64, colsX)
 			for j := 0; j < colsX; j++ {
@@ -132,51 +124,35 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 				}
 			}
 			diagScale := mat.NewDiagDense(colsX, scaleVals)
-			Tmatt := mat.NewDense(X.RawMatrix().Rows, colsX, nil)
-			Tmatt.Mul(X, diagScale)
+			Tnew := mat.NewDense(X.RawMatrix().Rows, colsX, nil)
+			Tnew.Mul(X, diagScale)
 
-			Lcandidate := computeL(Tmatt)
-			GqCandidate, fCandidate, _ := obliqueCriterion(method, Lcandidate, gamma)
+			Lnew := computeL(Tnew)
+			GqNew, fNew, _ := obliqueCriterion(method, Lnew, gamma)
 
-			improvement := f - fCandidate
-			if debugGPFoblq && iter <= 1 && inner <= 5 {
-				fmt.Printf("GPFoblq inner=%d alpha=%.6e improve=%.6e threshold=%.6e f=%.9f fCand=%.9f\n", inner, alpha, improvement, 0.5*s*s*alpha, f, fCandidate)
-			}
-
-			lastT = Tmatt
-			lastL = Lcandidate
-			lastGq = GqCandidate
-			lastF = fCandidate
-
-			if improvement > 0.5*s*s*alpha {
-				Tnext = Tmatt
-				Lnext = Lcandidate
-				GqNext = GqCandidate
-				fNext = fCandidate
+			if fNew < f {
+				// Accept the step
+				T = Tnew
+				L = Lnew
+				Gq = GqNew
+				f = fNew
+				G = computeGMatrix(L, Gq, T)
 				break
+			} else {
+				alpha /= 2
+				if alpha < 1e-10 {
+					// No improvement found, use the last attempt anyway
+					T = Tnew
+					L = Lnew
+					Gq = GqNew
+					f = fNew
+					G = computeGMatrix(L, Gq, T)
+					break
+				}
 			}
-
-			alpha /= 2
 		}
 
-		if Tnext == nil {
-			// Fall back to the last candidate to mimic R behaviour.
-			Tnext = lastT
-			Lnext = lastL
-			GqNext = lastGq
-			fNext = lastF
-		}
-
-		if Tnext == nil || Lnext == nil {
-			// Numerical failure: abort to avoid nil dereference.
-			break
-		}
-
-		T = Tnext
-		L = Lnext
-		Gq = GqNext
-		f = fNext
-		G = computeGMatrix(L, Gq, T)
+		iter++
 	}
 
 	if normalize && weights != nil {
@@ -220,29 +196,40 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 func computeGMatrix(L *mat.Dense, Gq *mat.Dense, T *mat.Dense) *mat.Dense {
 	var ltGq mat.Dense
 	ltGq.Mul(L.T(), Gq)
-	var solved mat.Dense
-	var temp mat.Dense
-	temp.CloneFrom(ltGq.T())
-	if err := solved.Solve(T.T(), &temp); err != nil {
-		panic(fmt.Sprintf("GPFoblq: rotation gradient solve failed: %v", err))
+	var invT mat.Dense
+	if err := invT.Inverse(T); err != nil {
+		panic(fmt.Sprintf("GPFoblq: T inversion failed in computeGMatrix: %v", err))
 	}
-	G := mat.DenseCopyOf(solved.T())
-	G.Scale(-1, G)
-	return G
+	var solved mat.Dense
+	solved.Mul(&ltGq, &invT)
+	var G mat.Dense
+	G.CloneFrom(solved.T())
+	G.Scale(-1, &G)
+	return &G
 }
 
 func computeGp(G *mat.Dense, T *mat.Dense) *mat.Dense {
 	rows, cols := G.Dims()
-	Gp := mat.NewDense(rows, cols, nil)
+	// Compute colSums(T * G) element-wise
+	colSums := make([]float64, cols)
 	for j := 0; j < cols; j++ {
 		sum := 0.0
 		for i := 0; i < rows; i++ {
 			sum += T.At(i, j) * G.At(i, j)
 		}
-		for i := 0; i < rows; i++ {
-			Gp.Set(i, j, G.At(i, j)-T.At(i, j)*sum)
-		}
+		colSums[j] = sum
 	}
+
+	// Create diag(colSums)
+	diagMat := mat.NewDiagDense(cols, colSums)
+
+	// Compute T %*% diag(colSums)
+	var Tdiag mat.Dense
+	Tdiag.Mul(T, diagMat)
+
+	// Compute G - Tdiag
+	Gp := mat.NewDense(rows, cols, nil)
+	Gp.Sub(G, &Tdiag)
 	return Gp
 }
 
