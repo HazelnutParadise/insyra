@@ -198,6 +198,66 @@ func FormatValue(value any) string {
 	}
 }
 
+// convertToDateString 將日期值或時間戳轉換為指定格式的字串（使用Go時間格式）
+func ConvertToDateString(value any, goDateFormat string) string {
+	switch v := value.(type) {
+	case time.Time:
+		return v.Format(goDateFormat)
+	case int:
+		int64value := int64(v)
+		return convertTimestampToString(int64value, goDateFormat)
+	case int32:
+		int64value := int64(v)
+		return convertTimestampToString(int64value, goDateFormat)
+	case int64:
+		return convertTimestampToString(v, goDateFormat)
+	case float64:
+		if v > 0 && v < 100000 {
+			// Excel date serial number (with time fraction)
+			days := int(v)
+			frac := v - float64(days)
+			base := time.Date(1899, 12, 30, 0, 0, 0, 0, time.UTC)
+			t := base.AddDate(0, 0, days)
+			totalSeconds := frac * 86400
+			hours := int(totalSeconds / 3600)
+			minutes := int((totalSeconds - float64(hours)*3600) / 60)
+			seconds := int(totalSeconds - float64(hours)*3600 - float64(minutes)*60)
+			t = time.Date(t.Year(), t.Month(), t.Day(), hours, minutes, seconds, 0, time.UTC)
+			return t.Format(goDateFormat)
+		} else {
+			// Not supported, convert to string
+			return fmt.Sprintf("%v", v)
+		}
+	case string:
+		return v
+	default:
+		// 嘗試轉為字串
+		return fmt.Sprintf("%v", v)
+	}
+}
+
+// convertTimestampToString converts various timestamp formats to date string
+func convertTimestampToString(ts int64, goDateFormat string) string {
+	if ts > 0 && ts < 100000 {
+		// Excel date serial number
+		base := time.Date(1899, 12, 30, 0, 0, 0, 0, time.UTC)
+		t := base.AddDate(0, 0, int(ts))
+		return t.Format(goDateFormat)
+	} else if ts >= 1000000000000 && ts < 100000000000000 { // 13 digits, milliseconds
+		// Unix timestamp in milliseconds
+		t := time.Unix(0, ts*int64(time.Millisecond)).UTC()
+		return t.Format(goDateFormat)
+	} else if ts >= 1000000000000000000 { // 19 digits, nanoseconds
+		// Unix timestamp in nanoseconds
+		t := time.Unix(0, ts).UTC()
+		return t.Format(goDateFormat)
+	} else {
+		// Unix timestamp in seconds
+		t := time.Unix(ts, 0).UTC()
+		return t.Format(goDateFormat)
+	}
+}
+
 // ColorText 根據環境支持自動決定是否添加顏色到文本
 // code 是 ANSI 顏色代碼，text 是要設置顏色的文本
 func ColorText(code string, text interface{}) string {

@@ -1,7 +1,6 @@
 package mkt
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/HazelnutParadise/Go-Utils/conv"
@@ -84,7 +83,8 @@ func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable {
 		// 找出每個客戶的最後交易日
 		numRows, _ := dt.Size()
 		for i := range numRows {
-			lastTradingDayStr := conv.ToString(dt.GetElement(i, tradingDayColIndex))
+			dateValue := dt.GetElement(i, tradingDayColIndex)
+			lastTradingDayStr := utils.ConvertToDateString(dateValue, goDateFormat)
 			customerID := conv.ToString(dt.GetElement(i, customerIDColIndex))
 			amount := conv.ParseF64(dt.GetElement(i, amountColIndex))
 
@@ -191,7 +191,7 @@ func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable {
 		mScore := calculateScore(mValue, mThresholds, true)
 
 		// RFM組合分數
-		rfmScore := fmt.Sprintf("%d%d%d", rScore, fScore, mScore)
+		rfmScore := rScore + fScore + mScore
 
 		// 添加到表中
 		rowData := map[string]any{
