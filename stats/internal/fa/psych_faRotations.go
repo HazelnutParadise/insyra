@@ -662,3 +662,56 @@ func finalizeGpfResult(gpf map[string]interface{}, nf int) map[string]interface{
 	}
 	return res
 }
+
+// ParseRotationResult accepts the opaque result value returned by
+// FaRotations (or individual rotation functions) and returns typed
+// pointers to the rotated loadings, rotation matrix (rotmat), Phi
+// (may be nil for orthogonal rotations), the objective f and a bool
+// indicating success. This helper centralizes key extraction so callers
+// can programmatically compare matrices (e.g. against SPSS reference).
+func ParseRotationResult(res interface{}) (loadings, rotmat, phi *mat.Dense, f float64, ok bool) {
+	ok = false
+	if res == nil {
+		return
+	}
+	// Many rotation functions return map[string]interface{}
+	var m map[string]interface{}
+	switch v := res.(type) {
+	case map[string]interface{}:
+		m = v
+	default:
+		return
+	}
+
+	if lv, found := m["loadings"]; found {
+		if ld, cast := lv.(*mat.Dense); cast {
+			loadings = mat.DenseCopyOf(ld)
+		}
+	}
+	if rv, found := m["rotmat"]; found {
+		if rd, cast := rv.(*mat.Dense); cast {
+			rotmat = mat.DenseCopyOf(rd)
+		}
+	}
+	// Accept either "Phi" or "phi" keys used in code
+	if pv, found := m["Phi"]; found {
+		if pd, cast := pv.(*mat.Dense); cast {
+			phi = mat.DenseCopyOf(pd)
+		}
+	} else if pv, found := m["phi"]; found {
+		if pd, cast := pv.(*mat.Dense); cast {
+			phi = mat.DenseCopyOf(pd)
+		}
+	}
+	if fv, found := m["f"]; found {
+		if ff, cast := fv.(float64); cast {
+			f = ff
+		}
+	}
+
+	// success if at least loadings and rotmat present
+	if loadings != nil && rotmat != nil {
+		ok = true
+	}
+	return
+}
