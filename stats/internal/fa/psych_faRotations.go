@@ -454,7 +454,7 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 						ok = false
 					}
 				}()
-				gpf = GPFoblq(baseLoadings, startIdentity, false, 1e-05, 5000, "oblimin", hyper)
+				gpf = GPFoblq(baseLoadings, startIdentity, true, 1e-08, 1000, "oblimin", hyper)
 				ok = true
 			}()
 			if !ok {

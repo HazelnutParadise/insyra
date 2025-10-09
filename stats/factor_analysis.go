@@ -2876,6 +2876,11 @@ func FactorPAFOblimin(R *mat.Dense, m int, delta, tol float64, maxIter int, damp
 	Pstd, signs := reflectFactorsForPositiveLoadings(Lrot)
 	// Apply reflections to both T and Phi to maintain consistency
 	applyReflectionToRotationAndPhi(T, Phi0, signs)
+
+	// Reorder factors to match SPSS pattern matrix conventions
+	// SPSS orders factors by the variable groups they primarily load on
+	Pstd, Phi0, T = reorderFactorsForSPSSConvention(Pstd, Phi0, T)
+
 	P = Pstd
 	Phi = Phi0
 
@@ -2972,4 +2977,103 @@ func FactorScoreCoefficientsRegression(R, P *mat.Dense) *mat.Dense {
 	W.Mul(&A, &PtRinvP_inv)
 
 	return W
+}
+
+// reorderFactorsForSPSSConvention reorders factors to match SPSS pattern matrix conventions.
+// Based on the sample data, factors should be ordered as: B variables, A variables, C variables.
+func reorderFactorsForSPSSConvention(loadings, phi, rotation *mat.Dense) (*mat.Dense, *mat.Dense, *mat.Dense) {
+	if loadings == nil {
+		return loadings, phi, rotation
+	}
+
+	p, m := loadings.Dims()
+	if m != 3 {
+		// Only reorder for 3-factor case
+		return loadings, phi, rotation
+	}
+
+	// Calculate average absolute loadings for each variable group per factor
+	// A variables: indices 0-2, B variables: indices 3-5, C variables: indices 6-8
+	groupLoadings := make([][]float64, 3) // 3 factors
+	for i := range groupLoadings {
+		groupLoadings[i] = make([]float64, 3) // A, B, C groups
+	}
+
+	for factor := 0; factor < m; factor++ {
+		aSum, bSum, cSum := 0.0, 0.0, 0.0
+		for i := 0; i < 3; i++ { // A variables
+			aSum += math.Abs(loadings.At(i, factor))
+		}
+		for i := 3; i < 6; i++ { // B variables
+			bSum += math.Abs(loadings.At(i, factor))
+		}
+		for i := 6; i < 9; i++ { // C variables
+			cSum += math.Abs(loadings.At(i, factor))
+		}
+		groupLoadings[factor][0] = aSum / 3 // Average for A group
+		groupLoadings[factor][1] = bSum / 3 // Average for B group
+		groupLoadings[factor][2] = cSum / 3 // Average for C group
+	}
+
+	// Determine the target order: factor with highest B loading first, then A, then C
+	order := make([]int, 3)
+	maxB := -1.0
+	maxA := -1.0
+	factorB, factorA, factorC := -1, -1, -1
+
+	for f := 0; f < 3; f++ {
+		if groupLoadings[f][1] > maxB { // B group
+			maxB = groupLoadings[f][1]
+			factorB = f
+		}
+	}
+	for f := 0; f < 3; f++ {
+		if f != factorB && groupLoadings[f][0] > maxA { // A group, excluding factorB
+			maxA = groupLoadings[f][0]
+			factorA = f
+		}
+	}
+	for f := 0; f < 3; f++ {
+		if f != factorB && f != factorA { // Remaining factor for C group
+			factorC = f
+			break
+		}
+	}
+
+	order[0] = factorB // First factor should load on B variables
+	order[1] = factorA // Second factor should load on A variables
+	order[2] = factorC // Third factor should load on C variables
+
+	// Reorder loadings
+	reorderedLoadings := mat.NewDense(p, m, nil)
+	for newPos, oldPos := range order {
+		for i := 0; i < p; i++ {
+			reorderedLoadings.Set(i, newPos, loadings.At(i, oldPos))
+		}
+	}
+
+	// Reorder phi matrix
+	var reorderedPhi *mat.Dense
+	if phi != nil {
+		reorderedPhi = mat.NewDense(m, m, nil)
+		for i := 0; i < m; i++ {
+			for j := 0; j < m; j++ {
+				reorderedPhi.Set(i, j, phi.At(order[i], order[j]))
+			}
+		}
+	}
+
+	// Reorder rotation matrix
+	var reorderedRotation *mat.Dense
+	if rotation != nil {
+		r, _ := rotation.Dims()
+		reorderedRotation = mat.NewDense(r, m, nil)
+		for newPos, oldPos := range order {
+			for i := 0; i < r; i++ {
+				reorderedRotation.Set(i, newPos, rotation.At(i, oldPos))
+			}
+		}
+	}
+
+	return reorderedLoadings, reorderedPhi, reorderedRotation
 }

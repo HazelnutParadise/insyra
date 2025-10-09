@@ -100,9 +100,9 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			break
 		}
 
-		// Step size selection
-		alpha := 1.0
-		for {
+		// Step size selection - match R's logic
+		alpha *= 2 // Double alpha each iteration like R's al <- 2 * al
+		for i := 0; i <= 10; i++ {
 			X := mat.DenseCopyOf(T)
 			var scaledGp mat.Dense
 			scaledGp.Scale(alpha, Gp)
@@ -130,7 +130,13 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			Lnew := computeL(Tnew)
 			GqNew, fNew, _ := obliqueCriterion(method, Lnew, gamma)
 
-			if fNew < f {
+			improvement := f - fNew
+			threshold := 0.5 * s * s * alpha
+			if debugGPFoblq && iter <= 1 && i <= 5 {
+				fmt.Printf("GPFoblq inner=%d alpha=%.6e improve=%.6e threshold=%.6e f=%.9f fCand=%.9f\n", i, alpha, improvement, threshold, f, fNew)
+			}
+
+			if improvement > threshold {
 				// Accept the step
 				T = Tnew
 				L = Lnew
@@ -194,36 +200,37 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 }
 
 func computeGMatrix(L *mat.Dense, Gq *mat.Dense, T *mat.Dense) *mat.Dense {
-	var ltGq mat.Dense
-	ltGq.Mul(L.T(), Gq)
+	// G <- - solve(T) %*% (t(L) %*% Gq) - match R's GPArotation::GPFoblq
+	var tL mat.Dense
+	tL.CloneFrom(L.T()) // t(L) is q x p
+	var tLGq mat.Dense
+	tLGq.Mul(&tL, Gq) // t(L) %*% Gq is q x p * p x q = q x q
 	var invT mat.Dense
 	if err := invT.Inverse(T); err != nil {
 		panic(fmt.Sprintf("GPFoblq: T inversion failed in computeGMatrix: %v", err))
 	}
-	var solved mat.Dense
-	solved.Mul(&ltGq, &invT)
 	var G mat.Dense
-	G.CloneFrom(solved.T())
-	G.Scale(-1, &G)
+	G.Mul(&invT, &tLGq) // solve(T) %*% (t(L) %*% Gq) is q x q
+	G.Scale(-1, &G)     // Negative sign
 	return &G
 }
 
 func computeGp(G *mat.Dense, T *mat.Dense) *mat.Dense {
 	rows, cols := G.Dims()
-	// Compute colSums(T * G) element-wise
-	colSums := make([]float64, cols)
-	for j := 0; j < cols; j++ {
+	// Compute rowSums(T * G) element-wise - match R's c(rep(1, nrow(G)) %*% (Tmat * G))
+	rowSums := make([]float64, rows)
+	for i := 0; i < rows; i++ {
 		sum := 0.0
-		for i := 0; i < rows; i++ {
+		for j := 0; j < cols; j++ {
 			sum += T.At(i, j) * G.At(i, j)
 		}
-		colSums[j] = sum
+		rowSums[i] = sum
 	}
 
-	// Create diag(colSums)
-	diagMat := mat.NewDiagDense(cols, colSums)
+	// Create diag(rowSums)
+	diagMat := mat.NewDiagDense(rows, rowSums)
 
-	// Compute T %*% diag(colSums)
+	// Compute T %*% diag(rowSums)
 	var Tdiag mat.Dense
 	Tdiag.Mul(T, diagMat)
 
