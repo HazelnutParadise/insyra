@@ -38,10 +38,12 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/xuri/efp v0.0.0-20241211021726-c4e992084aa6 // indirect
 	github.com/xuri/nfp v0.0.0-20240318013403-ab9948c2c4a7 // indirect
-	golang.org/x/crypto v0.36.0 // indirect
+	golang.org/x/crypto v0.42.0 // indirect
+	golang.org/x/exp v0.0.0-20250911091902-df9299821621 // indirect
 	golang.org/x/image v0.23.0 // indirect
-	golang.org/x/net v0.38.0 // indirect
+	golang.org/x/net v0.44.0 // indirect
 	golang.org/x/sys v0.36.0 // indirect
+	golang.org/x/tools v0.37.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
@@ -54,7 +56,6 @@ require (
 	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d
 	github.com/stretchr/testify v1.9.0
 	github.com/xuri/excelize/v2 v2.9.0
-	golang.org/x/exp v0.0.0-20250911091902-df9299821621
 	golang.org/x/term v0.35.0
 	gonum.org/v1/gonum v0.15.1
 	gonum.org/v1/plot v0.15.0

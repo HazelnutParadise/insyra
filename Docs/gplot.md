@@ -24,6 +24,7 @@ go get github.com/HazelnutParadise/insyra/gplot
 - `XAxisName`: Optional: Name for the X-axis.
 - `YAxisName`: Optional: Name for the Y-axis.
 - `BarWidth`: Optional: Width of each bar in the chart. Default is 20.
+- `ErrorBars`: Optional: Error bar values for each bar. If provided, must match the length of Data.
 
 #### `CreateBarChart(config BarChartConfig) *plot.Plot`
 
@@ -32,6 +33,37 @@ Creates a bar chart based on the provided configuration.
 #### Example
 
 ![bar_example](./img/gplot_bar_example.png)
+
+#### Example with Error Bars
+
+```go
+package main
+
+import (
+ "github.com/HazelnutParadise/insyra/gplot"
+)
+
+func main() {
+ // Create a bar chart with error bars showing measurement uncertainty
+ measurements := []float64{5.2, 7.8, 6.4, 9.1, 8.5, 7.2}
+ uncertainties := []float64{0.5, 0.8, 0.6, 0.9, 0.7, 0.6}
+ 
+ config := gplot.BarChartConfig{
+  Title:     "Experimental Measurements with Error Bars",
+  XAxis:     []string{"Trial 1", "Trial 2", "Trial 3", "Trial 4", "Trial 5", "Trial 6"},
+  Data:      measurements,
+  XAxisName: "Trial Number",
+  YAxisName: "Measured Value (units)",
+  ErrorBars: uncertainties,
+  BarWidth:  30,
+ }
+ 
+ plt := gplot.CreateBarChart(config)
+ gplot.SaveChart(plt, "bar_chart_with_errorbars.png")
+}
+```
+
+![bar_errorbars_example](./img/gplot_bar_errorbars_example.png)
 
 ### Histogram
 
@@ -74,6 +106,87 @@ Creates a line chart based on the provided configuration.
 #### Example
 
 ![line_example](./img/gplot_line_example.png)
+
+### Scatter Plot
+
+#### `ScatterPlotConfig`
+
+- `Title`: The title of the chart.
+- `Data`: The data for the scatter plot. Supported types:
+  - `map[string][][]float64`: A map where keys are series names, and values are two-dimensional data (X, Y pairs).
+  - `[]*insyra.DataList`: A slice of DataList pointers, where each DataList contains alternating X and Y values.
+  - `[]insyra.IDataList`: A slice of IDataList interfaces, where each contains alternating X and Y values.
+- `XAxisName`: Optional: Name for the X-axis.
+- `YAxisName`: Optional: Name for the Y-axis.
+
+#### `CreateScatterPlot(config ScatterPlotConfig) *plot.Plot`
+
+Creates a scatter plot based on the provided configuration. Each series is displayed with different colors and shapes to distinguish them.
+
+#### Example
+
+```go
+package main
+
+import (
+ "github.com/HazelnutParadise/insyra/gplot"
+)
+
+func main() {
+ // Create scatter plot data
+ data := map[string][][]float64{
+  "Series A": {
+   {1.0, 2.0},
+   {2.0, 4.0},
+   {3.0, 6.0},
+   {4.0, 8.0},
+   {5.0, 10.0},
+  },
+  "Series B": {
+   {1.0, 1.0},
+   {2.0, 3.0},
+   {3.0, 5.0},
+   {4.0, 7.0},
+   {5.0, 9.0},
+  },
+ }
+
+ config := gplot.ScatterPlotConfig{
+  Title:     "Sample Scatter Plot",
+  Data:      data,
+  XAxisName: "X Axis",
+  YAxisName: "Y Axis",
+ }
+
+ plt := gplot.CreateScatterPlot(config)
+ gplot.SaveChart(plt, "scatter_plot.png")
+}
+```
+
+### Step Chart
+
+#### `StepChartConfig`
+
+- `Title`: The title of the chart.
+- `XAxis`: Data for the X-axis (categories).
+- `Data`: The data for the series. Supported types:
+  - `map[string][]float64`
+  - `[]*insyra.DataList`
+  - `[]insyra.IDataList`
+- `XAxisName`: Optional: Name for the X-axis.
+- `YAxisName`: Optional: Name for the Y-axis.
+- `StepStyle`: Optional: Step style. Options: `"pre"`, `"mid"`, `"post"`. Default is `"post"`.
+  - `"pre"`: Vertical line first, then horizontal line (step before the point)
+  - `"mid"`: Horizontal line, vertical line in the middle, then horizontal line
+  - `"post"`: Horizontal line first, then vertical line (step after the point)
+
+#### `CreateStepChart(config StepChartConfig) *plot.Plot`
+
+Creates a step chart based on the provided configuration. Step charts connect data points with horizontal and vertical lines instead of diagonal lines, making them useful for visualizing data that changes at discrete intervals.
+
+#### Example
+
+![step_example](./img/gplot_step_example.png)
 
 ### Function Plot
 

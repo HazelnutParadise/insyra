@@ -47,6 +47,10 @@ type DataList struct {
 - `lastModifiedTimestamp`: Unix timestamp when the DataList was last modified
 - `initOnce`, `cmdCh`, `closed`: Internal fields enabling `AtomicDo` actor-style, serialized execution for thread-safety without external locks
 
+### Naming Conventions
+
+- **List Names**: Use snake-style Pascal case (e.g., `Factor_Loadings`, `Communalities`) to avoid spelling errors caused by spaces.
+
 ## AtomicDo
 
 `AtomicDo` provides safe, serialized access to a DataList using an internal actor goroutine. It ensures all mutations and reads inside the function run in order and without races, even across multiple goroutines.
@@ -1673,13 +1677,13 @@ func (dl *DataList) GetName() string
 
 ```go
 dl := insyra.NewDataList(1, 2, 3)
-dl.SetName("MyData")
-name := dl.GetName() // "MyData"
+dl.SetName("My_Data")
+name := dl.GetName() // "My_Data"
 ```
 
 ### SetName
 
-Assigns a name to the DataList.
+Assigns a name to the DataList. Use snake-style Pascal case (e.g., `Factor_Loadings`) to avoid spelling errors caused by spaces.
 
 ```go
 func (dl *DataList) SetName(name string) *DataList
@@ -1687,7 +1691,7 @@ func (dl *DataList) SetName(name string) *DataList
 
 **Parameters:**
 
-- `name`: Name to assign to the DataList
+- `name`: Name to assign to the DataList (recommended: snake-style Pascal case)
 
 **Returns:**
 
@@ -1697,7 +1701,7 @@ func (dl *DataList) SetName(name string) *DataList
 
 ```go
 dl := insyra.NewDataList(1, 2, 3)
-dl.SetName("Temperature Data")
+dl.SetName("Factor_Loadings")
 ```
 
 ### GetCreationTimestamp
@@ -1946,7 +1950,7 @@ Most DataList operations handle errors gracefully by:
 
 ### Best Practices
 
-1. **Naming**: Use descriptive names with `SetName()` for better data organization
+1. **Naming**: Use descriptive names with `SetName()` in snake-style Pascal case (e.g., `Factor_Loadings`) to avoid spelling errors caused by spaces
 2. **Type Consistency**: While DataList supports mixed types, keeping similar data types together improves performance
 3. **Memory**: For large datasets, prefer operations that modify in-place over creating new DataLists
 4. **Interpolation**: Ensure your data is suitable for the chosen interpolation method

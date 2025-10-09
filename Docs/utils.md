@@ -28,7 +28,7 @@ Computes the power of a `*big.Rat` number raised to a given exponent. This is us
 
 Converts long data to wide data.
 
-#### Parameters
+#### Parameters (Show)
 
 - **data**: `IDataList` type, representing the dependent variable (observations).
 - **factor**: `IDataList` type, representing the factor (typically a categorical variable).
@@ -39,7 +39,7 @@ Converts long data to wide data.
 
 - Returns an `IDataTable` type containing the wide-format data.
 
-#### Example Usage
+#### Example Usage (Show)
 
 ```go
 package main
@@ -75,6 +75,37 @@ Checks if a value is of a numeric type. It supports standard numeric types and a
 ### 10. `SortTimes(times []time.Time)`
 
 Sorts a slice of `time.Time` in ascending order.
+
+### 11. `Show(label string, object showable, startEnd ...any)`
+
+Displays any Insyra structure that supports ranged output (such as `*insyra.DataTable` and `*insyra.DataList`) with a prefixed label. Internally it delegates to the object's `ShowRange` implementation, so the optional `startEnd` arguments behave exactly the same as calling `ShowRange` directly.
+
+#### Parameters
+
+- **label**: A short string shown before the rendered data. Useful when printing multiple tables or lists.
+- **object**: Any value implementing the internal `showable` interface—that is, a type that provides `ShowRange`, including `DataTable`, `DataList`, and other compatible structures.
+- **startEnd**: Optional range arguments forwarded to `ShowRange`. Pass nothing to show all rows, a single positive or negative integer to show the first or last _N_ rows, or `[start, end]` pairs (with optional `nil` end) to specify an explicit slice.
+
+#### Example Usage
+
+```go
+package main
+
+import (
+    "github.com/HazelnutParadise/insyra"
+)
+
+func main() {
+    dt := insyra.NewDataTable(
+        insyra.NewDataList("Alice", "Bob", "Charlie").SetName("Name"),
+        insyra.NewDataList(28, 34, 29).SetName("Age"),
+    ).SetName("Team Members")
+
+    insyra.Show("Preview", dt, 2)      // Show first 2 rows
+    insyra.Show("Latest", dt, -1)      // Show the most recent row
+    insyra.Show("Full Table", dt)      // Show entire table
+}
+```
 
 ## Installation
 

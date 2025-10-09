@@ -67,7 +67,7 @@ func (dt *DataTable) AppendCols(columns ...*DataList) *DataTable {
 			if len(column.data) < maxLength {
 				column.data = append(column.data, make([]any, maxLength-len(column.data))...)
 			}
-			LogDebug("DataTable", "AppendCols", "Added column %s at index %d", columnName, dt.columnIndex[columnName])
+			// LogDebug("DataTable", "AppendCols", "Added column %s at index %d", columnName, dt.columnIndex[columnName])
 		}
 
 		for _, col := range dt.columns {

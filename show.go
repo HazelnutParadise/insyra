@@ -1,6 +1,7 @@
 ﻿package insyra
 
 import (
+	"cmp"
 	"fmt"
 	"math"
 	"os"
@@ -14,6 +15,21 @@ import (
 	"github.com/mattn/go-runewidth"
 	"golang.org/x/term"
 )
+
+type showable interface {
+	ShowRange(startEnd ...any)
+}
+
+// Show displays the content of any showable object with a label.
+// Automatically deals with nil objects.
+func Show(label string, object showable, startEnd ...any) {
+	if object == nil {
+		fmt.Printf("%s: \033[2;37m(nil)\033[0m\n\n", label)
+		return
+	}
+	fmt.Printf("\033[1;35m--- Showing: %s ---\033[0m\n", label)
+	object.ShowRange(startEnd...)
+}
 
 // ======================== DataTable ========================
 
@@ -37,7 +53,7 @@ func (dt *DataTable) Show() {
 // Example: dt.ShowRange(-5) - shows the last 5 rows
 // Example: dt.ShowRange(2, 10) - shows rows with indices 2 to 9 (not including 10)
 // Example: dt.ShowRange(2, nil) - shows rows from index 2 to the end of the table
-func (dt *DataTable) ShowRange(startEnd ...interface{}) {
+func (dt *DataTable) ShowRange(startEnd ...any) {
 	dt.AtomicDo(func(dt *DataTable) {
 
 		// Build data map without using Data() method to avoid deadlock
@@ -56,20 +72,17 @@ func (dt *DataTable) ShowRange(startEnd ...interface{}) {
 			colIndices = append(colIndices, colIndex)
 		}
 
-		sort.Slice(colIndices, func(i, j int) bool {
-			s1 := colIndices[i]
-			s2 := colIndices[j]
-
-			prefix1 := s1
-			if idx := strings.Index(s1, "("); idx != -1 {
-				prefix1 = s1[:idx]
+		utils.ParallelSortStableFunc(colIndices, func(a, b string) int {
+			prefixA := a
+			if idx := strings.Index(a, "("); idx != -1 {
+				prefixA = a[:idx]
 			}
 
-			prefix2 := s2
-			if idx := strings.Index(s2, "("); idx != -1 {
-				prefix2 = s2[:idx]
+			prefixB := b
+			if idx := strings.Index(b, "("); idx != -1 {
+				prefixB = b[:idx]
 			}
-			return ParseColIndex(prefix1) < ParseColIndex(prefix2)
+			return cmp.Compare(ParseColIndex(prefixA), ParseColIndex(prefixB))
 		})
 
 		// Get terminal window width
@@ -411,7 +424,7 @@ func (dt *DataTable) ShowTypes() {
 // Example: dt.ShowTypesRange(-5) - shows the last 5 rows
 // Example: dt.ShowTypesRange(2, 10) - shows rows with indices 2 to 9 (not including 10)
 // Example: dt.ShowTypesRange(2, nil) - shows rows from index 2 to the end of the table
-func (dt *DataTable) ShowTypesRange(startEnd ...interface{}) {
+func (dt *DataTable) ShowTypesRange(startEnd ...any) {
 	dt.AtomicDo(func(dt *DataTable) {
 
 		// Build data map without using Data() method to avoid deadlock

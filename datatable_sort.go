@@ -1,8 +1,6 @@
 package insyra
 
 import (
-	"slices"
-
 	"github.com/HazelnutParadise/insyra/internal/utils"
 )
 
@@ -50,7 +48,7 @@ func (dt *DataTable) SortBy(configs ...DataTableSortConfig) *DataTable {
 			for i := range indices {
 				indices[i] = i
 			}
-			slices.SortStableFunc(indices, func(a, b int) int {
+			utils.ParallelSortStableFunc(indices, func(a, b int) int {
 				cmp := utils.CompareAny(column.Data()[a], column.Data()[b])
 				if config.Descending {
 					return -cmp

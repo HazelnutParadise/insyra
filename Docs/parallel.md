@@ -79,7 +79,7 @@ func main() {
 
 2. **Run:** This method starts the execution of all functions in parallel. For performance optimization, it only collects results for functions that actually return values.
 
-3. **AwaitResult:** This method waits for all functions to complete and then returns their results in a `[][]interface{}` format. For functions with no return values, the corresponding result will be `nil`.
+3. **AwaitResult:** This method waits for all functions to complete and then returns their results in a `[][]any` format. For functions with no return values, the corresponding result will be `nil`.
 
 4. **AwaitNoResult:** This method waits for all functions to complete without returning any results. It is optimized for scenarios where you only need to ensure completion, avoiding the overhead of result collection.
 
@@ -103,6 +103,6 @@ func main() {
 
 ### Limitations
 
-- The package expects functions to return arbitrary values, which are stored as `[]interface{}`. You may need to manage type assertions accordingly.
+- The package expects functions to return arbitrary values, which are stored as `[]any`. You may need to manage type assertions accordingly.
 - Type safety is managed through runtime checks, which may cause editor warnings.
 - When using `AwaitResult` with functions that have no return values, the corresponding results will be `nil`.

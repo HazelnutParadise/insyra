@@ -47,6 +47,12 @@ type DataTable struct {
 - `lastModifiedTimestamp`: Unix timestamp when the table was last modified
 - `cmdCh`, `initOnce`, `closed`: Internal fields enabling `AtomicDo` actor-style, serialized execution for thread-safety without external locks
 
+### Naming Conventions
+
+- **Table Names**: Use snake-style Pascal case (e.g., `Factor_Loadings`, `Communalities`) to avoid spelling errors caused by spaces.
+- **Column Names**: Follow snake-style Pascal case for consistency.
+- **Row Names**: Follow snake-style Pascal case for consistency.
+
 ## AtomicDo
 
 `AtomicDo` provides safe, serialized access to a DataTable via an internal actor goroutine. All operations inside the function run in order and without races, allowing concurrent callers to compose multi-step updates safely.
@@ -2285,7 +2291,7 @@ dt.Show() // Display table content in console
 Displays the DataTable with a specified range of rows.
 
 ```go
-func (dt *DataTable) ShowRange(startEnd ...interface{})
+func (dt *DataTable) ShowRange(startEnd ...any)
 ```
 
 **Parameters:**
@@ -2326,7 +2332,7 @@ dt.ShowTypes() // Display column type information
 Displays the data types of columns within a specified range.
 
 ```go
-func (dt *DataTable) ShowTypesRange(startEnd ...interface{})
+func (dt *DataTable) ShowTypesRange(startEnd ...any)
 ```
 
 **Parameters:**
@@ -2362,7 +2368,7 @@ fmt.Printf("Table name: %s\n", name)
 
 ### SetName
 
-Sets the DataTable name.
+Sets the DataTable name. Use snake-style Pascal case (e.g., `Factor_Loadings`) to avoid spelling errors caused by spaces.
 
 ```go
 func (dt *DataTable) SetName(name string) *DataTable
@@ -2370,7 +2376,7 @@ func (dt *DataTable) SetName(name string) *DataTable
 
 **Parameters:**
 
-- `name`: New name
+- `name`: New name (recommended: snake-style Pascal case)
 
 **Returns:**
 
@@ -2379,7 +2385,7 @@ func (dt *DataTable) SetName(name string) *DataTable
 **Example:**
 
 ```go
-dt.SetName("updated_data")
+dt.SetName("Factor_Loadings")
 ```
 
 ### Map
@@ -2576,3 +2582,5 @@ fmt.Println(cloned.columns[0].data[0]) // Output: 1
 7. **Column Indexing**: Columns can be accessed by both alphabetical indices (A, B, C...) and numeric indices (0, 1, 2...).
 
 8. **Method Chaining**: Many methods return `*DataTable` to support method chaining for fluent API usage.
+
+9. **Naming Conventions**: Table names, column names, and row names should use snake-style Pascal case (e.g., `Factor_Loadings`) to avoid spelling errors caused by spaces.

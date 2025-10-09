@@ -148,6 +148,21 @@ func main() {
 
 若要使用語法糖，請引用 `github.com/HazelnutParadise/insyra/isr`。
 
+### 使用 `insyra.Show` 快速預覽
+
+需要在終端機上快速、帶標籤地預覽 `DataTable` 或 `DataList` 嗎？使用套件層級的 `Show` 函式即可，它底層會呼叫 `ShowRange`，因此也支援相同的範圍參數：
+
+```go
+func main() {
+    dt := insyra.NewDataTable(
+        insyra.NewDataList("Alice", "Bob", "Charlie").SetName("Name"),
+        insyra.NewDataList(28, 34, 29).SetName("Age"),
+    ).SetName("Team Members")
+
+    insyra.Show("Preview", dt, 2) // 顯示前兩列
+}
+```
+
 ## [DataList](/Docs/DataList.md)
 
 `DataList` 是 **Insyra** 的核心結構，能夠存儲、管理和分析動態數據集合。它提供了各種用於數據操作和統計分析的方法。

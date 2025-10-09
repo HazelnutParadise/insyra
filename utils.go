@@ -8,7 +8,6 @@ import (
 
 	"github.com/HazelnutParadise/Go-Utils/conv"
 	"github.com/HazelnutParadise/insyra/internal/utils"
-	"golang.org/x/exp/slices"
 )
 
 type F64orRat = utils.F64orRat
@@ -17,7 +16,7 @@ var ToFloat64 = utils.ToFloat64
 var ToFloat64Safe = utils.ToFloat64Safe
 
 // SliceToF64 converts a []any to a []float64.
-func SliceToF64(input []interface{}) []float64 {
+func SliceToF64(input []any) []float64 {
 	var out []float64
 	for _, v := range input {
 		switch val := v.(type) {
@@ -127,7 +126,7 @@ func ConvertLongDataToWide(data, factor IDataList, independents []IDataList, agg
 	wideTable := NewDataTable()
 
 	// 建立一個 map 儲存每個因子對應的觀測值及自變數
-	factorMap := make(map[interface{}][][]float64)
+	factorMap := make(map[any][][]float64)
 
 	// 迭代資料，根據因子將觀測值和自變數分組
 	for i := range factor.Len() {
@@ -230,7 +229,7 @@ func ParseColIndex(colName string) int {
 // SortTimes sorts a slice of time.Time in ascending order.
 // It sorts the times directly in the provided slice.
 func SortTimes(times []time.Time) {
-	slices.SortFunc(times, func(a, b time.Time) int {
+	utils.ParallelSortStableFunc(times, func(a, b time.Time) int {
 		if a.Before(b) {
 			return -1
 		} else if a.After(b) {
