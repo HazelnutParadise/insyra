@@ -9,10 +9,10 @@ import (
 
 // Promax performs Promax rotation.
 // Mirrors psych::Promax exactly
-func Promax(x *mat.Dense, m int, normalize bool) map[string]interface{} {
+func Promax(x *mat.Dense, m int, normalize bool) map[string]any {
 	p, nf := x.Dims()
 	if nf < 2 {
-		return map[string]interface{}{
+		return map[string]any{
 			"loadings": x,
 			"rotmat":   identityMatrix(nf),
 			"Phi":      identityMatrix(nf),
@@ -46,7 +46,7 @@ func Promax(x *mat.Dense, m int, normalize bool) map[string]interface{} {
 	err := U.Solve(&XtX, &XtQ)
 	if err != nil {
 		// Handle singular matrix - use approximation like R
-		return map[string]interface{}{
+		return map[string]any{
 			"loadings": xx,
 			"rotmat":   rotmatVarimax,
 			"Phi":      identityMatrix(nf),
@@ -110,7 +110,7 @@ func Promax(x *mat.Dense, m int, normalize bool) map[string]interface{} {
 	var Phi mat.Dense
 	Phi.Mul(&ui, ui.T())
 
-	return map[string]interface{}{
+	return map[string]any{
 		"loadings": &z,
 		"rotmat":   &rotmat,
 		"Phi":      &Phi,

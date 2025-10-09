@@ -16,7 +16,7 @@ var ToFloat64 = utils.ToFloat64
 var ToFloat64Safe = utils.ToFloat64Safe
 
 // SliceToF64 converts a []any to a []float64.
-func SliceToF64(input []interface{}) []float64 {
+func SliceToF64(input []any) []float64 {
 	var out []float64
 	for _, v := range input {
 		switch val := v.(type) {
@@ -126,7 +126,7 @@ func ConvertLongDataToWide(data, factor IDataList, independents []IDataList, agg
 	wideTable := NewDataTable()
 
 	// 建立一個 map 儲存每個因子對應的觀測值及自變數
-	factorMap := make(map[interface{}][][]float64)
+	factorMap := make(map[any][][]float64)
 
 	// 迭代資料，根據因子將觀測值和自變數分組
 	for i := range factor.Len() {

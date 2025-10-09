@@ -53,7 +53,7 @@ func (dt *DataTable) Show() {
 // Example: dt.ShowRange(-5) - shows the last 5 rows
 // Example: dt.ShowRange(2, 10) - shows rows with indices 2 to 9 (not including 10)
 // Example: dt.ShowRange(2, nil) - shows rows from index 2 to the end of the table
-func (dt *DataTable) ShowRange(startEnd ...interface{}) {
+func (dt *DataTable) ShowRange(startEnd ...any) {
 	dt.AtomicDo(func(dt *DataTable) {
 
 		// Build data map without using Data() method to avoid deadlock
@@ -424,7 +424,7 @@ func (dt *DataTable) ShowTypes() {
 // Example: dt.ShowTypesRange(-5) - shows the last 5 rows
 // Example: dt.ShowTypesRange(2, 10) - shows rows with indices 2 to 9 (not including 10)
 // Example: dt.ShowTypesRange(2, nil) - shows rows from index 2 to the end of the table
-func (dt *DataTable) ShowTypesRange(startEnd ...interface{}) {
+func (dt *DataTable) ShowTypesRange(startEnd ...any) {
 	dt.AtomicDo(func(dt *DataTable) {
 
 		// Build data map without using Data() method to avoid deadlock

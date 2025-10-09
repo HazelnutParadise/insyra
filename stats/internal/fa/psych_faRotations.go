@@ -14,11 +14,11 @@ const debugOblimin = false
 
 // Varimax performs varimax rotation.
 // Mirrors GPArotation::Varimax
-func Varimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map[string]interface{} {
+func Varimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map[string]any {
 	_, nf := loadings.Dims() // loadings is p x nf (variables x factors)
 	if nf <= 1 {
 		// No rotation needed for single factor
-		return map[string]interface{}{
+		return map[string]any{
 			"loadings": mat.DenseCopyOf(loadings),
 			"rotmat":   identityMatrix(nf), // identity matrix
 		}
@@ -38,7 +38,7 @@ func Varimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map[
 	rotMatDense := rotMatFromTh(Th, nf)
 
 	// Return with correct key names expected by FaRotations
-	return map[string]interface{}{
+	return map[string]any{
 		"loadings": result["loadings"],
 		"rotmat":   rotMatDense,
 		"f":        result["f"],
@@ -47,11 +47,11 @@ func Varimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map[
 
 // Quartimax performs quartimax rotation.
 // Mirrors GPArotation::quartimax
-func Quartimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map[string]interface{} {
+func Quartimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map[string]any {
 	_, nf := loadings.Dims() // loadings is p x nf (variables x factors)
 	if nf <= 1 {
 		// No rotation needed for single factor
-		return map[string]interface{}{
+		return map[string]any{
 			"loadings": mat.DenseCopyOf(loadings),
 			"rotmat":   identityMatrix(nf), // identity matrix
 		}
@@ -71,7 +71,7 @@ func Quartimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int) ma
 	rotMatDense := rotMatFromTh(Th, nf)
 
 	// Return with correct key names expected by FaRotations
-	return map[string]interface{}{
+	return map[string]any{
 		"loadings": result["loadings"],
 		"rotmat":   rotMatDense,
 		"f":        result["f"],
@@ -80,11 +80,11 @@ func Quartimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int) ma
 
 // Quartimin performs quartimin rotation.
 // Mirrors GPArotation::quartimin
-func Quartimin(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map[string]interface{} {
+func Quartimin(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map[string]any {
 	_, nf := loadings.Dims() // loadings is p x nf (variables x factors)
 	if nf <= 1 {
 		// No rotation needed for single factor
-		return map[string]interface{}{
+		return map[string]any{
 			"loadings": mat.DenseCopyOf(loadings),
 			"rotmat":   identityMatrix(nf), // identity matrix
 			"phi":      nil,
@@ -105,7 +105,7 @@ func Quartimin(loadings *mat.Dense, normalize bool, eps float64, maxIter int) ma
 	rotMatDense := rotMatFromTh(Th, nf)
 
 	// Return with correct key names expected by FaRotations
-	return map[string]interface{}{
+	return map[string]any{
 		"loadings": result["loadings"],
 		"rotmat":   rotMatDense,
 		"phi":      result["Phi"],
@@ -115,11 +115,11 @@ func Quartimin(loadings *mat.Dense, normalize bool, eps float64, maxIter int) ma
 
 // Oblimin performs oblimin rotation.
 // Mirrors GPArotation::oblimin
-func Oblimin(loadings *mat.Dense, normalize bool, eps float64, maxIter int, gamma float64) map[string]interface{} {
+func Oblimin(loadings *mat.Dense, normalize bool, eps float64, maxIter int, gamma float64) map[string]any {
 	_, nf := loadings.Dims() // loadings is p x nf (variables x factors)
 	if nf <= 1 {
 		// No rotation needed for single factor
-		return map[string]interface{}{
+		return map[string]any{
 			"loadings": mat.DenseCopyOf(loadings),
 			"rotmat":   identityMatrix(nf), // identity matrix
 			"phi":      nil,
@@ -140,7 +140,7 @@ func Oblimin(loadings *mat.Dense, normalize bool, eps float64, maxIter int, gamm
 	rotMatDense := rotMatFromTh(Th, nf)
 
 	// Return with correct key names expected by FaRotations
-	return map[string]interface{}{
+	return map[string]any{
 		"loadings": result["loadings"],
 		"rotmat":   rotMatDense,
 		"phi":      result["Phi"],
@@ -150,11 +150,11 @@ func Oblimin(loadings *mat.Dense, normalize bool, eps float64, maxIter int, gamm
 
 // GeominT performs geomin rotation.
 // Mirrors GPArotation::geominT
-func GeominT(loadings *mat.Dense, normalize bool, eps float64, maxIter int, delta float64) map[string]interface{} {
+func GeominT(loadings *mat.Dense, normalize bool, eps float64, maxIter int, delta float64) map[string]any {
 	_, nf := loadings.Dims() // loadings is p x nf (variables x factors)
 	if nf <= 1 {
 		// No rotation needed for single factor
-		return map[string]interface{}{
+		return map[string]any{
 			"loadings": mat.DenseCopyOf(loadings),
 			"rotmat":   identityMatrix(nf), // identity matrix
 		}
@@ -174,7 +174,7 @@ func GeominT(loadings *mat.Dense, normalize bool, eps float64, maxIter int, delt
 	rotMatDense := rotMatFromTh(Th, nf)
 
 	// Return with correct key names expected by FaRotations
-	return map[string]interface{}{
+	return map[string]any{
 		"loadings": result["loadings"],
 		"rotmat":   rotMatDense,
 		"f":        result["f"],
@@ -183,11 +183,11 @@ func GeominT(loadings *mat.Dense, normalize bool, eps float64, maxIter int, delt
 
 // BentlerT performs Bentler's criterion rotation.
 // Mirrors GPArotation::bentlerT
-func BentlerT(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map[string]interface{} {
+func BentlerT(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map[string]any {
 	_, nf := loadings.Dims() // loadings is p x nf (variables x factors)
 	if nf <= 1 {
 		// No rotation needed for single factor
-		return map[string]interface{}{
+		return map[string]any{
 			"loadings": mat.DenseCopyOf(loadings),
 			"rotmat":   identityMatrix(nf), // identity matrix
 		}
@@ -207,7 +207,7 @@ func BentlerT(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map
 	rotMatDense := mat.DenseCopyOf(Th)
 
 	// Return with correct key names expected by FaRotations
-	return map[string]interface{}{
+	return map[string]any{
 		"loadings": result["loadings"],
 		"rotmat":   rotMatDense,
 		"f":        result["f"],
@@ -216,11 +216,11 @@ func BentlerT(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map
 
 // Simplimax performs simplimax rotation.
 // Mirrors GPArotation::simplimax
-func Simplimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int, k int) map[string]interface{} {
+func Simplimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int, k int) map[string]any {
 	_, nf := loadings.Dims() // loadings is p x nf (variables x factors)
 	if nf <= 1 {
 		// No rotation needed for single factor
-		return map[string]interface{}{
+		return map[string]any{
 			"loadings": mat.DenseCopyOf(loadings),
 			"rotmat":   identityMatrix(nf), // identity matrix
 			"phi":      nil,
@@ -241,7 +241,7 @@ func Simplimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int, k 
 	rotMatDense := rotMatFromTh(Th, nf)
 
 	// Return with correct key names expected by FaRotations
-	return map[string]interface{}{
+	return map[string]any{
 		"loadings": result["loadings"],
 		"rotmat":   rotMatDense,
 		"phi":      result["Phi"],
@@ -251,11 +251,11 @@ func Simplimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int, k 
 
 // GeominQ performs geomin rotation (oblique).
 // Mirrors GPArotation::geominQ
-func GeominQ(loadings *mat.Dense, normalize bool, eps float64, maxIter int, delta float64) map[string]interface{} {
+func GeominQ(loadings *mat.Dense, normalize bool, eps float64, maxIter int, delta float64) map[string]any {
 	_, nf := loadings.Dims() // loadings is p x nf (variables x factors)
 	if nf <= 1 {
 		// No rotation needed for single factor
-		return map[string]interface{}{
+		return map[string]any{
 			"loadings": mat.DenseCopyOf(loadings),
 			"rotmat":   identityMatrix(nf), // identity matrix
 			"phi":      nil,
@@ -276,7 +276,7 @@ func GeominQ(loadings *mat.Dense, normalize bool, eps float64, maxIter int, delt
 	rotMatDense := rotMatFromTh(Th, nf)
 
 	// Return with correct key names expected by FaRotations
-	return map[string]interface{}{
+	return map[string]any{
 		"loadings": result["loadings"],
 		"rotmat":   rotMatDense,
 		"phi":      result["Phi"],
@@ -288,11 +288,11 @@ func GeominQ(loadings *mat.Dense, normalize bool, eps float64, maxIter int, delt
 
 // BentlerQ performs Bentler's criterion rotation (oblique).
 // Mirrors GPArotation::bentlerQ
-func BentlerQ(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map[string]interface{} {
+func BentlerQ(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map[string]any {
 	_, nf := loadings.Dims() // loadings is p x nf (variables x factors)
 	if nf <= 1 {
 		// No rotation needed for single factor
-		return map[string]interface{}{
+		return map[string]any{
 			"loadings": mat.DenseCopyOf(loadings),
 			"rotmat":   identityMatrix(nf), // identity matrix
 			"phi":      nil,
@@ -313,7 +313,7 @@ func BentlerQ(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map
 	rotMatDense := rotMatFromTh(Th, nf)
 
 	// Return with correct key names expected by FaRotations
-	return map[string]interface{}{
+	return map[string]any{
 		"loadings": result["loadings"],
 		"rotmat":   rotMatDense,
 		"phi":      result["Phi"],
@@ -322,10 +322,10 @@ func BentlerQ(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map
 }
 
 // FaRotations performs rotation selection with optional random restarts.
-func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64, nRotations int) interface{} {
+func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64, nRotations int) any {
 	_, nf := loadings.Dims()
 	if nf == 0 {
-		return map[string]interface{}{}
+		return map[string]any{}
 	}
 
 	rotateLower := strings.ToLower(rotate)
@@ -354,7 +354,7 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 	var normalizedLoadings *mat.Dense
 
 	bestScore := math.Inf(1)
-	var best map[string]interface{}
+	var best map[string]any
 
 	var baseLoadings *mat.Dense
 	if useKaiser {
@@ -399,7 +399,7 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 
 	for idx, start := range starts {
 
-		var result map[string]interface{}
+		var result map[string]any
 		switch rotateLower {
 		case "varimax":
 			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
@@ -419,7 +419,7 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 			for i := 0; i < nf; i++ {
 				startIdentity.Set(i, i, 1.0)
 			}
-			var gpf map[string]interface{}
+			var gpf map[string]any
 			var ok bool
 			func() {
 				defer func() {
@@ -458,7 +458,7 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
 			pre.Mul(baseLoadings, start)
 			res := Promax(pre, 4, true)
-			result = map[string]interface{}{
+			result = map[string]any{
 				"loadings": res["loadings"],
 				"rotmat":   res["rotmat"],
 				"Phi":      res["Phi"],
@@ -466,7 +466,7 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 		default:
 			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
 			pre.Mul(baseLoadings, start)
-			result = map[string]interface{}{
+			result = map[string]any{
 				"loadings": mat.DenseCopyOf(pre),
 				"rotmat":   identityMatrix(nf),
 			}
@@ -495,7 +495,7 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 			}
 		}
 
-		candidate := map[string]interface{}{
+		candidate := map[string]any{
 			"loadings": finalLoadings,
 			"rotmat":   finalRot,
 		}
@@ -534,7 +534,7 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 	if best == nil {
 		rotatedLoadings := mat.DenseCopyOf(loadings)
 		rotMat := identityMatrix(nf)
-		best = map[string]interface{}{
+		best = map[string]any{
 			"loadings": rotatedLoadings,
 			"rotmat":   rotMat,
 		}
@@ -602,7 +602,7 @@ func kaiserNormalize(loadings *mat.Dense) (*mat.Dense, []float64) {
 	return normalized, weights
 }
 
-func finalizeGpfResult(gpf map[string]interface{}, nf int) map[string]interface{} {
+func finalizeGpfResult(gpf map[string]any, nf int) map[string]any {
 	Th, ok := gpf["Th"].(*mat.Dense)
 	if !ok || Th == nil {
 		return gpf
@@ -620,7 +620,7 @@ func finalizeGpfResult(gpf map[string]interface{}, nf int) map[string]interface{
 	}
 	// rotmat = t(solve(Th)) to be consistent with composition rules
 	rotMat := rotMatFromTh(Th, nf)
-	res := map[string]interface{}{
+	res := map[string]any{
 		"loadings": gpf["loadings"],
 		"rotmat":   rotMat,
 		"f":        gpf["f"],
@@ -670,15 +670,15 @@ func inverseOrIdentity(M *mat.Dense, n int) *mat.Dense {
 // (may be nil for orthogonal rotations), the objective f and a bool
 // indicating success. This helper centralizes key extraction so callers
 // can programmatically compare matrices (e.g. against SPSS reference).
-func ParseRotationResult(res interface{}) (loadings, rotmat, phi *mat.Dense, f float64, ok bool) {
+func ParseRotationResult(res any) (loadings, rotmat, phi *mat.Dense, f float64, ok bool) {
 	ok = false
 	if res == nil {
 		return
 	}
-	// Many rotation functions return map[string]interface{}
-	var m map[string]interface{}
+	// Many rotation functions return map[string]any
+	var m map[string]any
 	switch v := res.(type) {
-	case map[string]interface{}:
+	case map[string]any:
 		m = v
 	default:
 		return

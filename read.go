@@ -228,7 +228,7 @@ func ReadSQL(db *gorm.DB, tableName string, options ...ReadSQLOptions) (*DataTab
 
 	// 確定使用的查詢語句
 	var query string
-	var params []interface{}
+	var params []any
 
 	if opts.Query != "" {
 		// 使用自訂查詢
@@ -308,8 +308,8 @@ func ReadSQL(db *gorm.DB, tableName string, options ...ReadSQLOptions) (*DataTab
 		}
 	}
 	// 處理行
-	rowValues := make([]interface{}, len(columnNames))
-	scanArgs := make([]interface{}, len(columnNames))
+	rowValues := make([]any, len(columnNames))
+	scanArgs := make([]any, len(columnNames))
 	for i := range rowValues {
 		scanArgs[i] = &rowValues[i]
 	}

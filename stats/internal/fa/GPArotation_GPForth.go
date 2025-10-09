@@ -10,7 +10,7 @@ import (
 
 // GPForth performs orthogonal rotation using GPA.
 // Mirrors GPArotation::GPForth exactly
-func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit int, method string) map[string]interface{} {
+func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit int, method string) map[string]any {
 	_, nf := A.Dims() // A is p x nf (variables x factors), nf is number of factors
 	if nf <= 1 {
 		panic("rotation does not make sense for single factor models.")
@@ -36,32 +36,32 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 
 	// Method <- paste("vgQ", method, sep = ".")
 	// VgQ <- do.call(Method, append(list(L), methodArgs))
-	var VgQ map[string]interface{}
+	var VgQ map[string]any
 	switch method {
 	case "varimax":
 		Gq, f, _ := vgQVarimax(L)
-		VgQ = map[string]interface{}{
+		VgQ = map[string]any{
 			"Gq":     Gq,
 			"f":      f,
 			"Method": "vgQ." + method,
 		}
 	case "quartimax":
 		Gq, f, _ := vgQQuartimax(L)
-		VgQ = map[string]interface{}{
+		VgQ = map[string]any{
 			"Gq":     Gq,
 			"f":      f,
 			"Method": "vgQ." + method,
 		}
 	case "geominT":
 		Gq, f, _ := vgQGeomin(L, 0.01)
-		VgQ = map[string]interface{}{
+		VgQ = map[string]any{
 			"Gq":     Gq,
 			"f":      f,
 			"Method": "vgQ." + method,
 		}
 	case "bentlerT":
 		Gq, f, _ := vgQBentler(L)
-		VgQ = map[string]interface{}{
+		VgQ = map[string]any{
 			"Gq":     Gq,
 			"f":      f,
 			"Method": "vgQ." + method,
@@ -72,7 +72,7 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 		panic("targetT requires Target matrix parameter")
 	default:
 		Gq, f, _ := vgQVarimax(L)
-		VgQ = map[string]interface{}{
+		VgQ = map[string]any{
 			"Gq":     Gq,
 			"f":      f,
 			"Method": "vgQ." + method,
@@ -87,29 +87,29 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 	var Table [][]float64
 
 	// VgQt <- do.call(Method, append(list(L), methodArgs))
-	var VgQt map[string]interface{}
+	var VgQt map[string]any
 	switch method {
 	case "varimax":
 		Gq2, f2, _ := vgQVarimax(L)
-		VgQt = map[string]interface{}{
+		VgQt = map[string]any{
 			"Gq": Gq2,
 			"f":  f2,
 		}
 	case "quartimax":
 		Gq2, f2, _ := vgQQuartimax(L)
-		VgQt = map[string]interface{}{
+		VgQt = map[string]any{
 			"Gq": Gq2,
 			"f":  f2,
 		}
 	case "geominT":
 		Gq2, f2, _ := vgQGeomin(L, 0.01)
-		VgQt = map[string]interface{}{
+		VgQt = map[string]any{
 			"Gq": Gq2,
 			"f":  f2,
 		}
 	case "bentlerT":
 		Gq2, f2, _ := vgQBentler(L)
-		VgQt = map[string]interface{}{
+		VgQt = map[string]any{
 			"Gq": Gq2,
 			"f":  f2,
 		}
@@ -117,7 +117,7 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 		panic("targetT requires Target matrix parameter")
 	default:
 		Gq2, f2, _ := vgQVarimax(L)
-		VgQt = map[string]interface{}{
+		VgQt = map[string]any{
 			"Gq": Gq2,
 			"f":  f2,
 		}
@@ -196,19 +196,19 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			switch method {
 			case "varimax":
 				GqNew, fNew, _ := vgQVarimax(L)
-				VgQt = map[string]interface{}{
+				VgQt = map[string]any{
 					"Gq": GqNew,
 					"f":  fNew,
 				}
 			case "quartimax":
 				GqNew, fNew, _ := vgQQuartimax(L)
-				VgQt = map[string]interface{}{
+				VgQt = map[string]any{
 					"Gq": GqNew,
 					"f":  fNew,
 				}
 			default:
 				GqNew, fNew, _ := vgQVarimax(L)
-				VgQt = map[string]interface{}{
+				VgQt = map[string]any{
 					"Gq": GqNew,
 					"f":  fNew,
 				}
@@ -240,7 +240,7 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 		}
 	}
 
-	return map[string]interface{}{
+	return map[string]any{
 		"loadings":    L,
 		"Th":          Tmat,
 		"Table":       Table,

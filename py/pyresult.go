@@ -21,7 +21,7 @@ func startServer() {
 		// 使用 sync.Pool 來緩存 map
 		var result map[string]any
 		pool := sync.Pool{
-			New: func() interface{} {
+			New: func() any {
 				return make(map[string]any)
 			},
 		}

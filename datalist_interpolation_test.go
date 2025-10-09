@@ -6,7 +6,7 @@ import (
 )
 
 func TestDataList_LinearInterpolation(t *testing.T) {
-	dl := NewDataList([]interface{}{1.0, 2.0, 3.0, 4.0})
+	dl := NewDataList([]any{1.0, 2.0, 3.0, 4.0})
 
 	// Test normal interpolation
 	result := dl.LinearInterpolation(1.5)
@@ -29,7 +29,7 @@ func TestDataList_LinearInterpolation(t *testing.T) {
 	}
 
 	// Test not enough data points
-	dlShort := NewDataList([]interface{}{1.0})
+	dlShort := NewDataList([]any{1.0})
 	result = dlShort.LinearInterpolation(1.5)
 	if !math.IsNaN(result) {
 		t.Errorf("LinearInterpolation with insufficient data = %v, expected NaN", result)
@@ -65,7 +65,7 @@ func TestDataList_QuadraticInterpolation(t *testing.T) {
 	}
 
 	// Test not enough data points
-	dlShort := NewDataList([]interface{}{1.0, 2.0})
+	dlShort := NewDataList([]any{1.0, 2.0})
 	result = dlShort.QuadraticInterpolation(1.5)
 	if !math.IsNaN(result) {
 		t.Errorf("QuadraticInterpolation with insufficient data = %v, expected NaN", result)
@@ -73,7 +73,7 @@ func TestDataList_QuadraticInterpolation(t *testing.T) {
 }
 
 func TestDataList_LagrangeInterpolation(t *testing.T) {
-	dl := NewDataList([]interface{}{1.0, 4.0, 9.0})
+	dl := NewDataList([]any{1.0, 4.0, 9.0})
 
 	// Test interpolation at x=1 (should be 4.0)
 	result := dl.LagrangeInterpolation(1.0)
@@ -95,7 +95,7 @@ func TestDataList_LagrangeInterpolation(t *testing.T) {
 	}
 
 	// Test not enough data points
-	dlShort := NewDataList([]interface{}{1.0})
+	dlShort := NewDataList([]any{1.0})
 	result = dlShort.LagrangeInterpolation(1.5)
 	if !math.IsNaN(result) {
 		t.Errorf("LagrangeInterpolation with insufficient data = %v, expected NaN", result)
@@ -103,7 +103,7 @@ func TestDataList_LagrangeInterpolation(t *testing.T) {
 }
 
 func TestDataList_NearestNeighborInterpolation(t *testing.T) {
-	dl := NewDataList([]interface{}{1.0, 4.0, 9.0, 16.0})
+	dl := NewDataList([]any{1.0, 4.0, 9.0, 16.0})
 
 	// Test nearest neighbor
 	result := dl.NearestNeighborInterpolation(1.3)
@@ -128,7 +128,7 @@ func TestDataList_NearestNeighborInterpolation(t *testing.T) {
 }
 
 func TestDataList_NewtonInterpolation(t *testing.T) {
-	dl := NewDataList([]interface{}{1.0, 4.0, 9.0})
+	dl := NewDataList([]any{1.0, 4.0, 9.0})
 
 	// Test Newton interpolation at x=1.5
 	result := dl.NewtonInterpolation(1.5)
@@ -139,7 +139,7 @@ func TestDataList_NewtonInterpolation(t *testing.T) {
 	}
 
 	// Test not enough data points
-	dlShort := NewDataList([]interface{}{1.0})
+	dlShort := NewDataList([]any{1.0})
 	result = dlShort.NewtonInterpolation(1.5)
 	if !math.IsNaN(result) {
 		t.Errorf("NewtonInterpolation with insufficient data = %v, expected NaN", result)
@@ -147,7 +147,7 @@ func TestDataList_NewtonInterpolation(t *testing.T) {
 }
 
 func TestDataList_HermiteInterpolation(t *testing.T) {
-	dl := NewDataList([]interface{}{1.0, 4.0, 9.0})
+	dl := NewDataList([]any{1.0, 4.0, 9.0})
 	derivatives := []float64{2.0, 6.0, 12.0}
 
 	// Test Hermite interpolation
@@ -165,7 +165,7 @@ func TestDataList_HermiteInterpolation(t *testing.T) {
 	}
 
 	// Test not enough data points
-	dlShort := NewDataList([]interface{}{1.0})
+	dlShort := NewDataList([]any{1.0})
 	result = dlShort.HermiteInterpolation(1.5, []float64{2.0})
 	if !math.IsNaN(result) {
 		t.Errorf("HermiteInterpolation with insufficient data = %v, expected NaN", result)

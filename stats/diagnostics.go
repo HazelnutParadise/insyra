@@ -40,7 +40,7 @@ func dataTableToDense(dt insyra.IDataTable) *mat.Dense {
 // the rotated loadings ("loadings"), rotation matrix ("rotmat"), and
 // Phi ("Phi") as *mat.Dense so callers can programmatically compare
 // results with external references (e.g., SPSS output).
-func RunPAFObliminForDiagnostics(dt insyra.IDataTable, opts FactorAnalysisOptions) map[string]interface{} {
+func RunPAFObliminForDiagnostics(dt insyra.IDataTable, opts FactorAnalysisOptions) map[string]any {
 	if dt == nil {
 		return nil
 	}
@@ -49,7 +49,7 @@ func RunPAFObliminForDiagnostics(dt insyra.IDataTable, opts FactorAnalysisOption
 		return nil
 	}
 
-	res := make(map[string]interface{})
+	res := make(map[string]any)
 
 	// Loadings (FactorLoadings)
 	if fm.Loadings != nil {

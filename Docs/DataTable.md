@@ -2291,7 +2291,7 @@ dt.Show() // Display table content in console
 Displays the DataTable with a specified range of rows.
 
 ```go
-func (dt *DataTable) ShowRange(startEnd ...interface{})
+func (dt *DataTable) ShowRange(startEnd ...any)
 ```
 
 **Parameters:**
@@ -2332,7 +2332,7 @@ dt.ShowTypes() // Display column type information
 Displays the data types of columns within a specified range.
 
 ```go
-func (dt *DataTable) ShowTypesRange(startEnd ...interface{})
+func (dt *DataTable) ShowTypesRange(startEnd ...any)
 ```
 
 **Parameters:**

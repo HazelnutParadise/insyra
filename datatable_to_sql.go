@@ -323,7 +323,7 @@ func saveDataMapToDB(db *gorm.DB, tableName string, data []map[string]any, opts 
 		// 只包含表格中存在的列
 		builder := sq.Insert(tableName).PlaceholderFormat(sq.Question)
 		cols := []string{}
-		vals := []interface{}{}
+		vals := []any{}
 		for col, val := range row {
 			cols = append(cols, col)
 			vals = append(vals, val)

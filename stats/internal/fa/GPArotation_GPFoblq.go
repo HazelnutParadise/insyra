@@ -38,7 +38,7 @@ func NormalizingWeight(A *mat.Dense, normalize bool) *mat.VecDense {
 // debugGPFoblq controls verbose outputs for this algorithm; set to true during development.
 var debugGPFoblq = false
 
-func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit int, method string, gamma float64) map[string]interface{} {
+func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit int, method string, gamma float64) map[string]any {
 	rows, cols := A.Dims()
 	if cols <= 1 {
 		panic("rotation does not make sense for single factor models")
@@ -185,7 +185,7 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 		fmt.Printf("GPFoblq final grad=%.6e, iterations=%d\n", frobNorm(computeGp(G, T)), len(table)-1)
 	}
 
-	return map[string]interface{}{
+	return map[string]any{
 		"loadings":    L,
 		"Phi":         &Phi,
 		"Th":          T,

@@ -8,4 +8,4 @@ package stats
 
 // Debug controls verbose internal diagnostic prints. Set to true for developer debug.
 var Debug = false
-var RunExportRotation func() interface{}
+var RunExportRotation func() any
