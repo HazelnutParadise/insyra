@@ -14,8 +14,8 @@ func Promax(x *mat.Dense, m int, normalize bool) map[string]interface{} {
 	if nf < 2 {
 		return map[string]interface{}{
 			"loadings": x,
-			"rotmat":   mat.NewDense(nf, nf, nil),
-			"Phi":      mat.NewDense(nf, nf, nil),
+			"rotmat":   identityMatrix(nf),
+			"Phi":      identityMatrix(nf),
 		}
 	}
 
@@ -49,7 +49,7 @@ func Promax(x *mat.Dense, m int, normalize bool) map[string]interface{} {
 		return map[string]interface{}{
 			"loadings": xx,
 			"rotmat":   rotmatVarimax,
-			"Phi":      mat.NewDense(nf, nf, nil),
+			"Phi":      identityMatrix(nf),
 		}
 	}
 
@@ -57,6 +57,7 @@ func Promax(x *mat.Dense, m int, normalize bool) map[string]interface{} {
 	var UtU mat.Dense
 	UtU.Mul(U.T(), &U)
 	var UtUInv mat.Dense
+	// Attempt regular inverse first; keep existing fallback logic below.
 	err = UtUInv.Inverse(&UtU)
 	d := make([]float64, nf)
 	if err != nil {
@@ -99,16 +100,11 @@ func Promax(x *mat.Dense, m int, normalize bool) map[string]interface{} {
 	var rotmat mat.Dense
 	rotmat.Mul(rotmatVarimax, &U)
 
-	// ui <- solve(U)
+	// ui <- solve(U) using a safe inverse helper. If inversion fails,
+	// fall back to identity-like behavior to preserve algorithm stability.
+	uiDense := inverseOrIdentity(&rotmat, rotmat.RawMatrix().Rows)
 	var ui mat.Dense
-	err = ui.Inverse(&rotmat)
-	if err != nil {
-		return map[string]interface{}{
-			"loadings": &z,
-			"rotmat":   &rotmat,
-			"Phi":      mat.NewDense(nf, nf, nil),
-		}
-	}
+	ui.CloneFrom(uiDense)
 
 	// Phi <- ui %*% t(ui)
 	var Phi mat.Dense

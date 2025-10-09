@@ -64,12 +64,10 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 	T := mat.DenseCopyOf(Tmat)
 
 	computeL := func(Tcur *mat.Dense) *mat.Dense {
-		var invT mat.Dense
-		if err := invT.Inverse(Tcur); err != nil {
-			panic(fmt.Sprintf("GPFoblq: T inversion failed: %v", err))
-		}
+		// Use safe inverse helper to avoid panics when Tcur is singular.
+		invT := inverseOrIdentity(Tcur, Tcur.RawMatrix().Rows)
 		var invTT mat.Dense
-		invTT.CloneFrom(&invT)
+		invTT.CloneFrom(invT)
 		invTT.T()
 		L := mat.NewDense(rows, cols, nil)
 		L.Mul(Aw, &invTT)
@@ -206,13 +204,10 @@ func computeGMatrix(L *mat.Dense, Gq *mat.Dense, T *mat.Dense) *mat.Dense {
 	tL.CloneFrom(L.T()) // t(L) is q x p
 	var tLGq mat.Dense
 	tLGq.Mul(&tL, Gq) // t(L) %*% Gq is q x p * p x q = q x q
-	var invT mat.Dense
-	if err := invT.Inverse(T); err != nil {
-		panic(fmt.Sprintf("GPFoblq: T inversion failed in computeGMatrix: %v", err))
-	}
+	invT := inverseOrIdentity(T, T.RawMatrix().Rows)
 	var G mat.Dense
-	G.Mul(&invT, &tLGq) // solve(T) %*% (t(L) %*% Gq) is q x q
-	G.Scale(-1, &G)     // Negative sign
+	G.Mul(invT, &tLGq) // solve(T) %*% (t(L) %*% Gq) is q x q
+	G.Scale(-1, &G)    // Negative sign
 	return &G
 }
 

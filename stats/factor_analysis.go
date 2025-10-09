@@ -1621,7 +1621,37 @@ func rotateFactors(loadings *mat.Dense, rotationOpts FactorRotationOptions) (*ma
 		TT.T()
 		var phiComputed mat.Dense
 		phiComputed.Mul(&TT, rotOut)
-		phi = &phiComputed
+		// If computed Phi is effectively identity (within numerical tolerance),
+		// treat the rotation as orthogonal by setting phi to nil. This allows
+		// scoring methods like Anderson-Rubin to detect orthogonality correctly.
+		r, c := phiComputed.Dims()
+		isIdentity := true
+		tol := 1e-8
+		if r != c {
+			isIdentity = false
+		} else {
+			for i := 0; i < r && isIdentity; i++ {
+				for j := 0; j < c; j++ {
+					val := phiComputed.At(i, j)
+					if i == j {
+						if math.Abs(val-1.0) > tol {
+							isIdentity = false
+							break
+						}
+					} else {
+						if math.Abs(val) > tol {
+							isIdentity = false
+							break
+						}
+					}
+				}
+			}
+		}
+		if isIdentity {
+			phi = nil
+		} else {
+			phi = &phiComputed
+		}
 	}
 
 	// Apply sign standardization and propagate reflections to rotation/phi matrices

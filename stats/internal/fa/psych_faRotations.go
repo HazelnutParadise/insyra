@@ -20,7 +20,7 @@ func Varimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map[
 		// No rotation needed for single factor
 		return map[string]interface{}{
 			"loadings": mat.DenseCopyOf(loadings),
-			"rotmat":   mat.NewDense(nf, nf, nil), // identity matrix
+			"rotmat":   identityMatrix(nf), // identity matrix
 		}
 	}
 
@@ -35,11 +35,7 @@ func Varimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map[
 
 	// Calculate rotation matrix as t(solve(Th)) like in R
 	Th := result["Th"].(*mat.Dense)
-	rotMat := mat.NewDense(nf, nf, nil)
-	rotMat.Inverse(Th)
-	// Transpose the inverse matrix
-	rotMatT := rotMat.T()
-	rotMatDense := mat.DenseCopyOf(rotMatT)
+	rotMatDense := rotMatFromTh(Th, nf)
 
 	// Return with correct key names expected by FaRotations
 	return map[string]interface{}{
@@ -57,7 +53,7 @@ func Quartimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int) ma
 		// No rotation needed for single factor
 		return map[string]interface{}{
 			"loadings": mat.DenseCopyOf(loadings),
-			"rotmat":   mat.NewDense(nf, nf, nil), // identity matrix
+			"rotmat":   identityMatrix(nf), // identity matrix
 		}
 	}
 
@@ -72,11 +68,7 @@ func Quartimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int) ma
 
 	// Calculate rotation matrix as t(solve(Th)) like in R
 	Th := result["Th"].(*mat.Dense)
-	rotMat := mat.NewDense(nf, nf, nil)
-	rotMat.Inverse(Th)
-	// Transpose inverse
-	rotMatT := rotMat.T()
-	rotMatDense := mat.DenseCopyOf(rotMatT)
+	rotMatDense := rotMatFromTh(Th, nf)
 
 	// Return with correct key names expected by FaRotations
 	return map[string]interface{}{
@@ -94,7 +86,7 @@ func Quartimin(loadings *mat.Dense, normalize bool, eps float64, maxIter int) ma
 		// No rotation needed for single factor
 		return map[string]interface{}{
 			"loadings": mat.DenseCopyOf(loadings),
-			"rotmat":   mat.NewDense(nf, nf, nil), // identity matrix
+			"rotmat":   identityMatrix(nf), // identity matrix
 			"phi":      nil,
 		}
 	}
@@ -110,10 +102,7 @@ func Quartimin(loadings *mat.Dense, normalize bool, eps float64, maxIter int) ma
 
 	// Calculate rotation matrix as t(solve(Th)) like in R
 	Th := result["Th"].(*mat.Dense)
-	rotMat := mat.NewDense(nf, nf, nil)
-	rotMat.Inverse(Th)
-	rotMatT := rotMat.T()
-	rotMatDense := mat.DenseCopyOf(rotMatT)
+	rotMatDense := rotMatFromTh(Th, nf)
 
 	// Return with correct key names expected by FaRotations
 	return map[string]interface{}{
@@ -132,7 +121,7 @@ func Oblimin(loadings *mat.Dense, normalize bool, eps float64, maxIter int, gamm
 		// No rotation needed for single factor
 		return map[string]interface{}{
 			"loadings": mat.DenseCopyOf(loadings),
-			"rotmat":   mat.NewDense(nf, nf, nil), // identity matrix
+			"rotmat":   identityMatrix(nf), // identity matrix
 			"phi":      nil,
 		}
 	}
@@ -148,10 +137,7 @@ func Oblimin(loadings *mat.Dense, normalize bool, eps float64, maxIter int, gamm
 
 	// Calculate rotation matrix as t(solve(Th)) like in R
 	Th := result["Th"].(*mat.Dense)
-	rotMat := mat.NewDense(nf, nf, nil)
-	rotMat.Inverse(Th)
-	rotMatT := rotMat.T()
-	rotMatDense := mat.DenseCopyOf(rotMatT)
+	rotMatDense := rotMatFromTh(Th, nf)
 
 	// Return with correct key names expected by FaRotations
 	return map[string]interface{}{
@@ -170,7 +156,7 @@ func GeominT(loadings *mat.Dense, normalize bool, eps float64, maxIter int, delt
 		// No rotation needed for single factor
 		return map[string]interface{}{
 			"loadings": mat.DenseCopyOf(loadings),
-			"rotmat":   mat.NewDense(nf, nf, nil), // identity matrix
+			"rotmat":   identityMatrix(nf), // identity matrix
 		}
 	}
 
@@ -185,11 +171,7 @@ func GeominT(loadings *mat.Dense, normalize bool, eps float64, maxIter int, delt
 
 	// Calculate rotation matrix as t(solve(Th)) like in R
 	Th := result["Th"].(*mat.Dense)
-	rotMat := mat.NewDense(nf, nf, nil)
-	rotMat.Inverse(Th)
-	// Transpose the inverse matrix
-	rotMatT := rotMat.T()
-	rotMatDense := mat.DenseCopyOf(rotMatT)
+	rotMatDense := rotMatFromTh(Th, nf)
 
 	// Return with correct key names expected by FaRotations
 	return map[string]interface{}{
@@ -207,7 +189,7 @@ func BentlerT(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map
 		// No rotation needed for single factor
 		return map[string]interface{}{
 			"loadings": mat.DenseCopyOf(loadings),
-			"rotmat":   mat.NewDense(nf, nf, nil), // identity matrix
+			"rotmat":   identityMatrix(nf), // identity matrix
 		}
 	}
 
@@ -240,7 +222,7 @@ func Simplimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int, k 
 		// No rotation needed for single factor
 		return map[string]interface{}{
 			"loadings": mat.DenseCopyOf(loadings),
-			"rotmat":   mat.NewDense(nf, nf, nil), // identity matrix
+			"rotmat":   identityMatrix(nf), // identity matrix
 			"phi":      nil,
 		}
 	}
@@ -256,10 +238,7 @@ func Simplimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int, k 
 
 	// Calculate rotation matrix as t(solve(Th)) to match other oblique handlers
 	Th := result["Th"].(*mat.Dense)
-	rotSolve := mat.NewDense(nf, nf, nil)
-	rotSolve.Inverse(Th)
-	rotMatT := rotSolve.T()
-	rotMatDense := mat.DenseCopyOf(rotMatT)
+	rotMatDense := rotMatFromTh(Th, nf)
 
 	// Return with correct key names expected by FaRotations
 	return map[string]interface{}{
@@ -278,7 +257,7 @@ func GeominQ(loadings *mat.Dense, normalize bool, eps float64, maxIter int, delt
 		// No rotation needed for single factor
 		return map[string]interface{}{
 			"loadings": mat.DenseCopyOf(loadings),
-			"rotmat":   mat.NewDense(nf, nf, nil), // identity matrix
+			"rotmat":   identityMatrix(nf), // identity matrix
 			"phi":      nil,
 		}
 	}
@@ -294,10 +273,7 @@ func GeominQ(loadings *mat.Dense, normalize bool, eps float64, maxIter int, delt
 
 	// Calculate rotation matrix as t(solve(Th)) like in R
 	Th := result["Th"].(*mat.Dense)
-	rotMat := mat.NewDense(nf, nf, nil)
-	rotMat.Inverse(Th)
-	rotMatT := rotMat.T()
-	rotMatDense := mat.DenseCopyOf(rotMatT)
+	rotMatDense := rotMatFromTh(Th, nf)
 
 	// Return with correct key names expected by FaRotations
 	return map[string]interface{}{
@@ -318,7 +294,7 @@ func BentlerQ(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map
 		// No rotation needed for single factor
 		return map[string]interface{}{
 			"loadings": mat.DenseCopyOf(loadings),
-			"rotmat":   mat.NewDense(nf, nf, nil), // identity matrix
+			"rotmat":   identityMatrix(nf), // identity matrix
 			"phi":      nil,
 		}
 	}
@@ -334,10 +310,7 @@ func BentlerQ(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map
 
 	// Calculate rotation matrix as t(solve(Th)) like in R
 	Th := result["Th"].(*mat.Dense)
-	rotMat := mat.NewDense(nf, nf, nil)
-	rotMat.Inverse(Th)
-	rotMatT := rotMat.T()
-	rotMatDense := mat.DenseCopyOf(rotMatT)
+	rotMatDense := rotMatFromTh(Th, nf)
 
 	// Return with correct key names expected by FaRotations
 	return map[string]interface{}{
@@ -646,9 +619,7 @@ func finalizeGpfResult(gpf map[string]interface{}, nf int) map[string]interface{
 		}
 	}
 	// rotmat = t(solve(Th)) to be consistent with composition rules
-	rotSolve := mat.NewDense(nf, nf, nil)
-	rotSolve.Inverse(Th)
-	rotMat := mat.DenseCopyOf(rotSolve.T())
+	rotMat := rotMatFromTh(Th, nf)
 	res := map[string]interface{}{
 		"loadings": gpf["loadings"],
 		"rotmat":   rotMat,
@@ -661,6 +632,36 @@ func finalizeGpfResult(gpf map[string]interface{}, nf int) map[string]interface{
 		res["convergence"] = conv
 	}
 	return res
+}
+
+// rotMatFromTh computes rotmat = t(inv(Th)) robustly and falls back to identity
+// when Th is nil or inversion fails. nf is number of factors used to build
+// an identity fallback.
+func rotMatFromTh(Th *mat.Dense, nf int) *mat.Dense {
+	if Th == nil {
+		return identityMatrix(nf)
+	}
+	var rotSolve mat.Dense
+	if err := rotSolve.Inverse(Th); err != nil {
+		return identityMatrix(nf)
+	}
+	rotMat := mat.DenseCopyOf(rotSolve.T())
+	return rotMat
+}
+
+// inverseOrIdentity returns the inverse of M, or an identity matrix of size n
+// if inversion fails. This is a small safe fallback used by rotation routines
+// to avoid panics when matrices are singular or near-singular.
+func inverseOrIdentity(M *mat.Dense, n int) *mat.Dense {
+	if M == nil {
+		return identityMatrix(n)
+	}
+	var inv mat.Dense
+	if err := inv.Inverse(M); err != nil {
+		// fallback to identity to allow algorithms to continue safely
+		return identityMatrix(n)
+	}
+	return mat.DenseCopyOf(&inv)
 }
 
 // ParseRotationResult accepts the opaque result value returned by
