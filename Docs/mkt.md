@@ -129,7 +129,7 @@ The function calculates percentile-based scores for each metric and assigns cust
 - `R_Score`: Recency score (1 to NumGroups, higher is better)
 - `F_Score`: Frequency score (1 to NumGroups, higher is better)
 - `M_Score`: Monetary score (1 to NumGroups, higher is better)
-- `RFM_Score`: Combined RFM score (e.g., "555", "123")
+- `RFM_Score`: The score calculated by R_Score, F_Score, and M_Score (default: sum of R, F, M scores).
 
 ### CAI
 
