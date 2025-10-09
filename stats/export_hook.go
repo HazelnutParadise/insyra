@@ -6,4 +6,6 @@ package stats
 // default. This file intentionally contains only the hook declaration so
 // tests and local tools can be added without changing existing behavior.
 
+// Debug controls verbose internal diagnostic prints. Set to true for developer debug.
+var Debug = false
 var RunExportRotation func() interface{}

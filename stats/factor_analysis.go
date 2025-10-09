@@ -1009,25 +1009,37 @@ func extractPAF(corrMatrix *mat.Dense, numFactors int, maxIter int, tol float64,
 		return nil, false, 0, fmt.Errorf("invalid number of factors: %d", numFactors)
 	}
 
-	// Initialize communalities using Kaiser normalization approach
+	// Initialize communalities using SMC (squared multiple correlations) when possible.
+	// This aligns better with common PAF initializations (and SPSS behavior).
 	communalities := make([]float64, p)
-	// Calculate average absolute correlation as initial communality estimate
-	avgCorr := 0.0
-	count := 0
-	for i := 0; i < p; i++ {
-		for j := 0; j < p; j++ {
-			if i != j {
-				avgCorr += math.Abs(corrMatrix.At(i, j))
-				count++
+	if smc, err := initialCommunalitiesSMC(corrMatrix); err == nil && smc != nil {
+		// smc is a []float64 returned by initialCommunalitiesSMC
+		for i := 0; i < p; i++ {
+			if i < len(smc) {
+				communalities[i] = smc[i]
+			} else {
+				communalities[i] = 0.5
 			}
 		}
-	}
-	if count > 0 {
-		avgCorr /= float64(count)
-	}
-	initialComm := math.Min(0.7, math.Max(0.3, avgCorr*2)) // Scale and bound
-	for i := 0; i < p; i++ {
-		communalities[i] = initialComm
+	} else {
+		// Fallback: small heuristic based on average absolute off-diagonal correlation
+		avgCorr := 0.0
+		count := 0
+		for i := 0; i < p; i++ {
+			for j := 0; j < p; j++ {
+				if i != j {
+					avgCorr += math.Abs(corrMatrix.At(i, j))
+					count++
+				}
+			}
+		}
+		if count > 0 {
+			avgCorr /= float64(count)
+		}
+		initialComm := math.Min(0.7, math.Max(0.3, avgCorr*2)) // Scale and bound
+		for i := 0; i < p; i++ {
+			communalities[i] = initialComm
+		}
 	}
 
 	// Iterative PAF algorithm (SPSS style)
@@ -1615,6 +1627,9 @@ func rotateFactors(loadings *mat.Dense, rotationOpts FactorRotationOptions) (*ma
 	// Apply sign standardization and propagate reflections to rotation/phi matrices
 	rotatedLoadings, signs := reflectFactorsForPositiveLoadings(rotatedLoadings)
 	applyReflectionToRotationAndPhi(rotOut, phi, signs)
+
+	// Normalize rotation and loadings so that diag(Phi) == 1 for oblique rotations
+	rotatedLoadings, rotOut, phi = normalizeRotationAndLoadings(rotatedLoadings, rotOut, phi)
 
 	return rotatedLoadings, rotOut, phi, rotationConverged, nil
 }

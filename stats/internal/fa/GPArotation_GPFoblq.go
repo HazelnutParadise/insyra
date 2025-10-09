@@ -9,8 +9,6 @@ import (
 	"gonum.org/v1/gonum/mat"
 )
 
-const debugGPFoblq = true
-
 // NormalizingWeight computes normalizing weights for GPA rotation.
 // Mirrors GPArotation::NormalizingWeight for Kaiser normalization.
 func NormalizingWeight(A *mat.Dense, normalize bool) *mat.VecDense {
@@ -37,6 +35,9 @@ func NormalizingWeight(A *mat.Dense, normalize bool) *mat.VecDense {
 
 // GPFoblq performs oblique GPA rotation.
 // Transliteration of GPArotation::GPFoblq from R.
+// debugGPFoblq controls verbose outputs for this algorithm; set to true during development.
+var debugGPFoblq = false
+
 func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit int, method string, gamma float64) map[string]interface{} {
 	rows, cols := A.Dims()
 	if cols <= 1 {

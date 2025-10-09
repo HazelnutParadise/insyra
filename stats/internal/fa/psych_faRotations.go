@@ -10,7 +10,7 @@ import (
 	"gonum.org/v1/gonum/mat"
 )
 
-const debugOblimin = true
+const debugOblimin = false
 
 // Varimax performs varimax rotation.
 // Mirrors GPArotation::Varimax
