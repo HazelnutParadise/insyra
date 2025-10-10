@@ -56,5 +56,3 @@
 - 若你同意，我可以：
   1) 從 `local/r_source_code_fa` 使用 R 產生上述 fixtures（CSV/JSON），
   2) 把 fixtures 放入 `tests/fa/fixtures/target/`，並新增 minimal Go 測試 harness 以比對元素差（允許小容差）。
-
-- 我現在會依你的回覆繼續處理下一個檔案（建議順序：`GPArotation_GPForth.差異報告.md` -> `GPArotation_GPFoblq.差異報告.md` -> `psych_pinv.差異報告.md` -> `psych_smc.差異報告.md` -> `psych_faRotations.差異報告.md` -> `psych_Promax.差異報告.md`）。

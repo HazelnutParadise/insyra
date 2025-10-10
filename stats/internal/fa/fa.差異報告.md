@@ -1,54 +1,39 @@
-檔案: fa.go
-對應 R 檔案: psych_fa.R (wrapper/高階呼叫)，psych_faRotations.R (rotation wrapper)
-檔案: `fa.go`
+# fa.go — 差異報告
 
-對應 R 檔案: `psych_fa.R`（外層 wrapper / 控制流程）、`psych_faRotations.R`（旋轉相關邏輯）
+檔案: fa.go
+對應 R 檔案: psych_fa.R (wrapper)、psych_faRotations.R (rotation wrapper)
 
 ## 摘要（高階差異）
 
-- 目的：說明 `fa.go` 暴露的 API（`SMC`、`Rotate`）與 R 的 `psych::fa`/`psych::faRotations` 在功能與實作細節上的差異。
-- 高階結論：Go 實作在核心演算法上（呼叫 `Smc`、`FaRotations`）與 R 對應功能相符，但在輸入驗證、缺值（NA）處理、錯誤處理與預設參數上有可見差異，會導致在極端或有缺值的情境下結果不一致或行為不同（panic vs warning/fallback）。
+- 目的：說明 `fa.go` 在 API（SMC、Rotate）層面的行為與 R 的 `psych::fa` / `psych::faRotations` 在功能與邏輯上可能的差異，特別是在缺值處理、錯誤處理與參數預設方面。
+- 結論：Go 在核心演算法呼叫（Smc、FaRotations）上與 R 大致一致；但在缺值（NA）處理、錯誤處理（panic vs warning/fallback）與預設參數上存在差異，建議優先統一 NA 處理與降低 panic。
 
-## 逐段重點差異
+## 逐段差異（重點）
 
 1. `SMC`（與 `Smc` 關聯）
 
-- R 層面：`psych::smc` 支援傳入相關矩陣或原始資料矩陣，並在存在 NA 時執行複雜的替代/回填策略（建立 `tempR`、剔除特定變數、用非 NA 的相關估計 SMC、以 `maxr` 補值等）。同時支援 `covar` 選項以回傳變異尺度下的 SMC。
+- R：`psych::smc` 支援以 correlation matrix 或原始資料輸入，並在存在 NA 時提供複雜替代 / 回填策略（如 tempR、maxr 等），也支援 covar 選項以回填對角變異。
+- Go：`SMC` 為 `Smc` 的 wrapper；若輸入非 correlation matrix，會以簡化方式計算 correlation matrix。`Smc` 在子矩陣不可逆時可能以預設值回應（如設為 1），未提供完整 pairwise/NA 處理。
 
-- Go 層面：`SMC` 為 `Smc` 的 wrapper；若輸入非相關矩陣，會以簡化的 `CorrelationMatrix` 計算相關矩陣。`Smc` 在子矩陣不可逆時將 SMC 直接設定為 1；`CorrelationMatrix` 未實作 pairwise/NA 的完整處理。
+1. `Rotate`（對應 `faRotations`）
 
-- 影響：在含 NA 或需要 pairwise 的場合，Go 版可能輸出與 R 顯著不同結果。
+- R：`faRotations` 在選擇 rotation method 時會檢查外部套件（如 GPArotation）是否可用，並在失敗時採取 fallback 或發出 warning，且回傳豐富的診斷資訊（fit、complexity 等）。
+- Go：`Rotate` 會直接呼叫內部 FaRotations/GPArotation 實作並回傳 loadings、rotmat、Phi 等，但在方法失敗或數值問題時容易以 panic 結束流程。
 
-2. `Rotate`（對應 `faRotations`）
+1. 錯誤處理與回傳結構
 
-- R 層面：`faRotations` 在選擇旋轉方法時會檢查外部套件（例如 `GPArotation`）是否可用，並在方法失敗時提供 warning 與 fallback（例如使用 `Promax`），同時回傳豐富的統計資訊（hyperplane, fit, complexity, indetermin, Table 等）。
+- 建議 Go 在 library 層避免直接 panic，改為回傳 error，並補充回傳結構以包含 diagnostics（如 `converged`、`iterations`、`fit`、`complexity`）。
 
-- Go 層面：`Rotate` 會以 identity r 作為預設，直接呼叫內部 `FaRotations`/GPArotation 的 Go 實作並回傳 `loadings, rotmat, Phi, convergence`。Go 實作多數情況回傳欄位相容，但在方法失敗或數值問題上多以 panic 終止。
+## 相容性風險與建議
 
-- 影響：若 rotation 演算法在數值上失敗，Go 端易中斷整個程序；R 則會較優雅地退回。
+- 高風險：NA / pairwise 處理（SMC、Rotate）導致的輸出差異。
+- 建議：優先補強 NA 處理、加入 diagnostics、並將 panic 行為改為 error 返回。
 
-## 兼容性風險與建議
+## 測試建議（具體）
 
-- 高風險：NA/pairwise 處理（`Smc`），會直接影響 SMC 與後續因子分析結果。建議優先補上 R 相同的處理流程或至少在 API 文件中明確告知限制。
-
-- 中風險：錯誤處理策略（panic vs error/warning）。建議把 library 層的 panic 改為返回 error，由上層決定是否 fallback。
-
-- 低風險：預設參數差異（例如 `RotOpts` 的預設值）——建議在文件中列出並與 R 的預設對照。
-
-## 建議修正與測試
-
-1. 在 `Smc` 補上 NA / pairwise 的處理：實作 R 的 `tempR`、`wcl`、`wcc` 邏輯，或在文件中明確註明不支援 NA。
-
-2. 將 `Rotate` 及底層函式的 panic 改為 error 返回，並在呼叫端實作 fallback 選項（如改用 Promax 或回傳有意義的錯誤訊息）。
-
-- 大部分數值演算法（Pinv、GPArotation 演算法、vgQ 族函式）在 Go 中有對應且實現細節與 R 相近或等價。主要差異集中在輸入資料的 NA 處理、錯誤處理策略（panic vs warning/fallback）與部分預設參數值。
-
-3. 編寫單元測試：使用 R 的 `psych::smc` 與 `GPArotation` 的輸出作為金標準，對若干代表性矩陣（含 NA、病態矩陣、隨機矩陣）驗證 Go 的輸出（SMC 值、旋轉後 loadings、Phi、convergence）。
-
-## 優先次序（建議）
-
-1. 補 NA/pairwise 處理（高），2. panic->error（高），3. Pinv tol 暴露（中），4. 加入測試集（中）。
+1. 建立整合測試：使用 R 作為金標（psych::smc + psych::faRotations）生成代表性 fixtures（包含 NA、病態矩陣、不同 methods 與 seeds），放在 `tests/fa/fixtures`，並新增 Go harness 進行比較（loadings、Phi、SMC、converged）。
+2. 單元測試：對 SMC、Pinv、GPForth/GPFoblq 等核心函式建立單元測試以驗證穩健性。
 
 ## 下一步
 
-- 在 `tests/fa/fixtures` 中建立代表性矩陣集合（包含 NA, 病態, 隨機 seed），並撰寫對應 Go 單元測試以與 R 的輸出比對。
+- 在 `tests/fa/fixtures` 中建立代表性 fixtures（包含 NA、病態、正常），並新增 minimal Go test harness 用以自動化比較 R 與 Go 的輸出。

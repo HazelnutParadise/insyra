@@ -1,31 +1,36 @@
+# GPArotation_vgQ_quartimin.go — 差異報告
+
 檔案: GPArotation_vgQ_quartimin.go
 對應 R 檔案: GPArotation_vgQ.quartimin.R
 
 ## 摘要（高階差異）
 
-- 目的：將 Go 的 `vgQQuartimin` 與 R 的 `vgQ.quartimin` 逐行比對，確保目標函數 f 與梯度 Gq 的常數因子、矩陣操作順序與數值處理一致。
-- 高階結論：目前 Go 的實作遵循 vgQ 家族的一般模式，但缺少具體數值比對與測試向量，且尚未明確記錄在奇異/接近零值時的 fallback 行為。
+- 目的：比較 Go 的 `vgQQuartimin` 與 R 的 `vgQ.quartimin` 在 f/Gq 的計算、常數因子與中間矩陣運算順序上的一致性。
+- 結論：需驗證 Go 在計算 Gq 與 f 時使用的中間運算（rowSums/crossprod/diag 等）與 R 完全等價，並在數值邊界處使用 stable fallback。
 
-## 逐行重要差異摘錄
+## 逐段差異（重點）
 
-- 輸入前處理：需確認 Go 是否與 R 在 `normalize`、`delta` 參數上的預設行為一致。
-- 目標函數常數：檢查是否存在除法或常數因子差異（例如是否除以 2/k 或其他縮放）。
-- 梯度運算順序：Gq 的計算是否使用與 R 相同的中間矩陣（例如 rowSums/crossprod 的順序）。
+1. 輸入與前置處理
 
-## 相容性風險與建議
+- 確認 Go 是否對 L 做與 R 相同的 normalization/前處理（delta/normalize 參數的應用順序）。
 
-- 若常數因子或縮放不一致，會在迭代中造成步長差異及收斂路徑不同，建議加入小型數值測試以驗證。
-- 建議在處理接近零元素或行/列為零時加入 delta 或 regularization，並改為返回 error 而非 panic。
+1. 目標函數與 Gq 計算
 
-## 測試建議（最小集合）
+- 檢查中間運算（crossprod、diag、rowSums）順序與常數因子是否一致，避免逐元素差異。
 
-1. 小矩陣比對：建立 4x2、8x3 的隨機 loadings，使用固定 seed，將 R 與 Go 的 f、Gq 逐元素比較。
-2. 邊界測試：包含全 0 行/列、接近 0 的元素、NaN/Inf，驗證 Go 行為（是否返回可預期的 error）。
+1. 數值穩健性
 
-## 優先次序
+- 若遇 NaN/Inf 或接近零的元素，建議在 Go 中加入 delta 或 SVD-based fallback，並回傳 diagnostics。
 
-1. 數值驗證（高），2. 錯誤處理（中），3. 文件化（低）。
+## 優先次序（建議）
+
+1. 與 R 的逐元素比對（高）
+2. 補強數值穩健性（高）
+
+## 測試建議（具體）
+
+1. 建立數組包含不同 p/k 與 edge-cases（zero rows、NaN/Inf），比較 R 與 Go 的 f/Gq。
 
 ## 下一步
 
-- 我會以 R 產生 10 組小矩陣（含正常與極端情形），並把對應的數值輸出放在 repo/tests/fa/fixtures 供 Go 單元測試使用（若你同意我可以先建立這些檔案）。
+- 在 `tests/fa/fixtures/quartimin` 放入由 R 產生的範例資料並新增比對測試。
