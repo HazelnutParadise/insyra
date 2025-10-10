@@ -1,4 +1,6 @@
-# GPArotation_GPFoblq.go — 差異報告
+# GPArotation_GPFoblq.go — 差異報告（審閱提案）
+
+注意：此檔為審閱提案，原始 `GPArotation_GPFoblq.差異報告.md` 保持不變。
 
 檔案: GPArotation_GPFoblq.go
 對應 R 檔案: GPArotation::GPFoblq

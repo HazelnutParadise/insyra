@@ -1,4 +1,6 @@
-# GPArotation_vgQ_quartimax.go — 差異報告
+# GPArotation_vgQ_quartimax.go — 差異報告（審閱提案）
+
+注意：此檔為審閱提案，原始 `GPArotation_vgQ_quartimax.差異報告.md` 保持不變。
 
 檔案: GPArotation_vgQ_quartimax.go
 對應 R 檔案: GPArotation_vgQ.quartimax.R

@@ -1,11 +1,11 @@
 # GPArotation_GPForth.go — 差異報告
 
 檔案: GPArotation_GPForth.go
-對應 R 檔案: GPArotation_GPForth.R
+對應 R 檔案: GPArotation::GPForth
 
-## 摘要（高階差異）
+## 摘要
 
-- Go `GPForth` 為 R `GPArotation::GPForth` 的逐行翻譯，實作 orthogonal GPA 旋轉演算法。核心流程包含正規化 (Kaiser)、計算 Gq 與 f（透過 vgQ.* 函式）、迭代計算 M/S/Gp，以及使用 SVD 的內部 line-search 以維持正交性。
+- 目的：檢查 Go GPForth 的迭代規則、梯度計算與收斂判準是否與 R 等效，並處理數值不穩定時的 fallback。
 
 ## 逐段差異（重點）
 
@@ -20,8 +20,8 @@
 
 ## 相容性風險與建議
 
-- 優先：將 panic 改為 error 並設計 fallback 策略（高）。
-- 數值穩健性相關改寫與測試（高）。
+1. 優先：將 panic 改為 error 並設計 fallback 策略（高）。
+1. 數值穩健性相關改寫與測試（高）。
 
 ## 測試建議（具體）
 

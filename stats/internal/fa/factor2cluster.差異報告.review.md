@@ -1,4 +1,6 @@
-# factor2cluster.go — 差異報告
+# factor2cluster.go — 差異報告（審閱提案）
+
+注意：此檔為審閱提案，原始 `factor2cluster.差異報告.md` 保持不變。
 
 檔案: factor2cluster.go
 對應 R 實作：無直接同名函式（可能為 varimax+target.rot pipeline）
