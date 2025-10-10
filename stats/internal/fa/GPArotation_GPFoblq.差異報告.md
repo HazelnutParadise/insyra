@@ -16,3 +16,12 @@
 
 - 與 `GPForth` 相同，建議降低 panic 的使用並提供返回 error 的選項。
 - 建立測試案例以驗證在各種 method（oblimin, quartimin, simplimax, geomin 等）下的數值一致性。
+
+## 優先次序（建議）
+
+1. panic->error（高），2. 數值穩健性與 fallback（高），3. 測試 fixtures（中）。
+
+## 下一步
+
+- 修改 `GPFoblq` 中會呼叫 SVD/solve 的位置：捕捉錯誤並返回 error，必要時嘗試 tiny-regularization 或 alternative SVD 路徑。
+- 在 `tests/fa/fixtures/gp_oblq` 放入 R 產生的代表性 loadings 與期望結果，新增 Go 測試以驗證多種 method 的一致性。

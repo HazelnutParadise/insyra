@@ -14,3 +14,11 @@
 相容性風險與建議
 
 - 若使用者期望 R `cluster` 分群（由複雜的 target.rot 流程產生）與 Go 返回相同結果，可能會不一致。建議明確文件化 `Factor2Cluster` 的行為（最大絕對載荷決定），或在必要時提供一個更接近 R 的替代—例如先執行 Varimax + target.rot 再從結果產生 cluster 矩陣。
+
+## 優先次序（建議）
+
+1. 文件化行為（高），2. 提供可選 pipeline（中），3. 加入測試 fixtures（中）。
+
+## 下一步
+
+- 在 `tests/fa/fixtures/factor2cluster` 放入 5 組 R pipeline（varimax+target.rot）產生的對照資料，並在 Go 中新增選項 `UseRLikePipeline` 以比較差異（我可以幫忙草擬 PR）。

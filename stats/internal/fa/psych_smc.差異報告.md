@@ -37,3 +37,11 @@
 1. 與 R 的金標比較：使用多組資料（含 NA 與無 NA），在 R（psych::smc）與 Go 上執行比較 SMC 值與填補差異。
 2. Pairwise 測試：建立包含 NA 的樣本，檢驗 Go 在 pairwise 處理上的行為與效能。
 3. 奇異矩陣測試：模擬 predictors 為奇異或接近奇異的情況，測試 SVD/pinv fallback 是否正常工作與 error 的可解釋性。
+
+## 優先次序（建議）
+
+1. 補 pairwise/NA 處理（高）、2. SVD/pinv fallback 與 diagnostics（中高）、3. 增加單元測試與 fixtures（中）。
+
+## 下一步
+
+- 產出 6 組測試矩陣（含 NA 與病態矩陣），在 `tests/fa/fixtures/smc` 中加入 R 產生的期望 SMC 與 Go 的測試 harness（我可幫忙建立）。

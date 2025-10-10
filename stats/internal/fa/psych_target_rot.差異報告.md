@@ -44,3 +44,12 @@
 1. 簡單目標：建立一個小型 target matrix（含 NA）；在 R 與 Go 上做對齊並比較對齊後的 loadings 與 residual norm。
 2. Phi 行為：測試 oblique 與 orthogonal 两種情形，驗證 Phi 在 Go 與 R 的一致性。
 3. Mask 邊界：全部 NA 與無 NA 的情況，確認程式行為（error vs no-op）。
+
+## 優先次序（建議）
+
+1. 支援 mask/NA（高），2. 符號/排列對齊策略文件（中），3. 加入 fixtures 與自動化測試（中）。
+
+## 下一步
+
+- 實作或明確文件化 Go 支援的 mask 形式（NaN/Inf），並新增 `tests/fa/fixtures/target` 的三個範例（含 NA/全部 NA/無 NA）。
+- 若你贊成，我將自動從 R 產生期望輸出並把 fixtures 與測試 harness 加入 repo。

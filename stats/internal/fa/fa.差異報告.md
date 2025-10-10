@@ -48,3 +48,7 @@
 ## 優先次序（建議）
 
 1. 補 NA/pairwise 處理（高），2. panic->error（高），3. Pinv tol 暴露（中），4. 加入測試集（中）。
+
+## 下一步
+
+- 在 `tests/fa/fixtures` 中建立代表性矩陣集合（包含 NA, 病態, 隨機 seed），並撰寫對應 Go 單元測試以與 R 的輸出比對。

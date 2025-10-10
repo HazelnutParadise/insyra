@@ -35,20 +35,10 @@
 1. 小矩陣比對：4x2、8x3 等隨機 loadings，比較 R 與 Go 的 f 與 Gq。
 2. 邊界測試：零行/列、NaN/Inf、過大/過小值。
 
+## 優先次序（建議）
+
+1. 與 R 的逐元素 f/Gq 單元測試（高），2. 處理 NaN/Inf 與邊界情況（中），3. 文件化 method 字串（低）。
+
 ## 下一步
 
-- 我已覆寫並新增本報告檔案。接下來我會把 todo 中的 `GPArotation_vgQ_varimax` 標為 completed，並（若你同意）開始產出 `FA_diffs_SUMMARY.md` 以匯總所有差異檔案與優先修正清單。
-檔案: GPArotation_vgQ_varimax.go
-對應 R 檔案: GPArotation_vgQ.varimax.R
-
-摘要（高階差異）
-
-- varimax 的 Go 實作 `vgQVarimax` 預期與 R 的 varimax 等價：計算 Gq 與 f，並用於 `GPForth` 的 orthogonal 迭代。
-
-逐行重要差異摘錄
-
-- 已在其他文件中看到其被呼叫的方式，建議針對 `vgQVarimax` 與 R `varimax` 輸出 (loadings, rotmat) 做一致性測試。
-
-建議
-
-- 以 R 的 `GPArotation::vgQ.varimax` 作為金標準，建立數值測試。
+- 在 `tests/fa/fixtures/varimax` 建立 10 組由 R 生成的小矩陣與期望 f/Gq，並新增 Go 單元測試比較結果（我可以代為建立 fixtures）。

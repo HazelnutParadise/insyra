@@ -32,3 +32,7 @@
 ## 優先次序
 
 1. 數值穩健性（高），2. panic->error（中），3. 測試（中）。
+
+## 下一步
+
+- 在 `tests/fa/fixtures/bentler` 新增由 R 產生的測資，並執行 log-det / SVD-based 與直接 det 解法的數值比較，以決定在 Go 中採用的 fallback。

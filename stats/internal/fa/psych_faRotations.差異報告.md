@@ -36,8 +36,18 @@
 - 中優先：統一 `RotOpts` 的預設值來源（集中初始化），並在文件中明確列出與 R 預設不同之處。
 - 低優先：擴充回傳結構，加入 `converged`、`iterations`、`fit` 等欄位，便於後續分析與比對 R 的結果。
 
+## 優先次序（建議）
+
+1. 將 panic 行為改為 error 回傳或讓上層可捕捉（高）。
+2. 統一 `RotOpts` 的預設值來源並文件化（中）。
+3. 擴充回傳 diagnostics（中）。
+
 ## 測試建議（最小集合）
 
 1. 功能驗證：選取 5 組具有代表性的 loadings 矩陣（不同 p/k、含 sparse 與 dense），在 R 與 Go 上執行相同 method，比對 loadings（逐元素相對誤差）與 fit 指標。
 2. 邊界測試：輸入包含 NaN/Inf、或接近奇異的矩陣，確認 Go 不會 panic，且會以 error 返回或提供可處理的 fallback。
 3. 效能/隨機性：對比多次 restart 行為（若實作 restart 機制），確認隨機種子控制與結果再現性。
+
+## 下一步
+
+- 在 `tests/fa/fixtures/faRotations` 建立 5 組代表性 fixtures（不同 methods 與 seeds），並撰寫 Go 的整合測試來比對 R 的輸出（loadings, Phi, converged）。

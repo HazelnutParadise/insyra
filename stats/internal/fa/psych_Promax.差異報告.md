@@ -38,3 +38,11 @@
 1. 與 R 比對：選取 5 組 loadings（含稀疏與非稀疏），在 R 與 Go 上執行 Promax，保存 `loadings`、`Phi` 與 `rotMat`，做逐元素比較。
 2. 參數敏感度：測試 power=2,3,4 與 normalize=true/false 的組合，觀察差異。
 3. 邊界情況：包含零向量行/列的矩陣，測試是否會導致奇異系統或 panic，並要求 error 返回。
+
+## 優先次序（建議）
+
+1. 確認 `power/normalize` 的預設值與 R 一致（高），2. panic->error（中），3. 增加 diagnostics 回傳（中）。
+
+## 下一步
+
+- 生成 5 組代表性 fixtures 並用 R 與 Go 進行比較；若你同意，我會把 fixtures 放到 `tests/fa/fixtures/promax` 並加入 Go 的單元測試檔案。
