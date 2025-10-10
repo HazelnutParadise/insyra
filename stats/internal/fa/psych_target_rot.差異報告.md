@@ -1,55 +1,60 @@
+# psych_target_rot.go — 差異報告
+
 檔案: psych_target_rot.go
-對應 R 檔案: psych_target_rot.R (以及 target.rot)
-
-摘要（高階差異）
-
-# 檔案: `psych_target_rot.go` — 差異報告
-
-對應 R 檔案: `psych_target_rot.R`（包含 `target.rot` 實作）
+對應 R 檔案: psych_target_rot.R（包含 target.rot 的實作）
 
 ## 摘要（高階差異）
 
-- 目的：比較 Go 與 R 在 target rotation（使用目標矩陣對齊 loadings）的處理細節，包括目標矩陣的缺失值處理、Phi（oblique）補值與 lower-tri/upper-tri 索引慣例。
-- 結論：若 Go 已有對應實作，需確認與 R 在目標矩陣讀寫、mask（哪些元素允許對齊）、以及是否考慮符號不確定性（sign indeterminacy）等方面的一致性；若尚未實作，建議照 R 的接口與 fallback 行為來補齊。
+- 目的：比較 Go 與 R 在 target rotation（以目標矩陣對齊 loadings）上的行為差異，重點在於目標矩陣的 mask/缺值處理、符號/欄位排列不確定性、以及 oblique（Phi）矩陣的更新與回傳。
+- 結論：目前 Go 版需確認或補齊與 R 相同的 mask 機制（R 使用 NA 作為 mask），並在返回值中包含足夠診斷資訊；遇到數值失敗時採取非致命的 fallback（或返回 error）以與 R 的 warning/fallback 行為對齊。
 
-## 逐段重點差異
+## 逐段差異（重點）
 
-1. 目標矩陣（target matrix）輸入與 mask
+1. 目標矩陣輸入與 mask
 
-- R：`target.rot` 支援在目標矩陣中使用 `NA` 來表示不需對齊的元素，僅根據非 NA 部分計算最小二乘對齊。
-- Go：需確認是否支援以 `NaN`/`Inf` 或其他 sentinel 值表示 mask；若未支援，建議加入相同的 mask 機制以達到與 R 的等價行為。
+- R：`target.rot` 允許在目標矩陣中使用 `NA` 表示該位置不參與對齊，計算僅基於非 NA 的元素。
+- 建議（Go）：支援 `NaN`/`Inf` 或明確的 mask 參數，行為應等價於 R（以非缺值元素做最小平方對齊）。
 
-2. 符號與排列不確定性
+1. 符號（sign）與欄位排列（column permutation）不確定性
 
-- R：在對齊時通常會處理 sign / column permutation 的不確定性（視實作而定），並會返回對齊後的 loadings 與 rotation matrix。
-- Go：應驗證是否在返回前標準化列的方向或做 column matching，確保與 R 的輸出可比較。
+- R：實作可能會處理 sign 矯正或 column matching，以便輸出可比較的 loadings。
+- 建議（Go）：在回傳前做 column matching / sign normalization 或在報告中記錄使用者應如何比對結果。
 
-3. Phi（oblique）矩陣的補值與回傳
+1. Oblique（Phi）矩陣的處理
 
-- R：若執行的是 oblique target rotation，會同時處理 Phi（factor correlation）矩陣的更新與回填。
-- Go：應在回傳結果中包含 phi 並確認其計算方式與 R 一致（例如是否強制對稱、是否小幅正則化以避免數值問題）。
+- R：若為 oblique target rotation，會更新並回傳 Phi（factor correlation），通常會確保對稱性並在必要時做小幅正則化。
+- 建議（Go）：回傳 phi 並確保其計算與 R 版本一致（檢查對稱性、偶發的正定性問題與是否套用微量 regularization）。
 
-4. 錯誤處理與 diagnostics
+1. 錯誤處理與診斷資訊
 
-- R：出錯時以 warning 或 stop 回報，並在某些情況下嘗試 fallback。
-- Go：建議返回 error 與 diagnostics（例如 maskApplied、numAligned、residualNorm）以便上層進一步處理。
+- R：遇到數值問題常以 warning 並嘗試 fallback（例如改用其他方法或略過失敗情況），不致中斷整個工作流程。
+- 建議（Go）：回傳 `error`（不直接 panic）並在返回結果中包含 diagnostics 欄位（例如 `maskApplied`、`numAligned`、`residualNorm`、`converged`），以便上層決定 fallback 或警告行為。
 
-## 相容性風險與優先建議
+## 相容性風險與建議
 
-- 高優先：加入 target mask 支援（接受 NA/NaN），以匹配 R 的語意。
-- 中優先：確認符號/排列對齊策略，並在文件中描寫與 R 的差異。
+- 高風險項目：若不支援 mask/NA，Go 與 R 在實務資料（含缺值）上會產生不同結果，可能導致 downstream 不一致。建議優先實作 mask 支援。
+- 中風險項目：符號與欄位匹配策略若未明確，會使元素層級比對困難，建議在文件中說明 matching 策略或提供一致化工具。
 
-## 測試建議（最小集合）
+## 測試建議（具體）
 
-1. 簡單目標：建立一個小型 target matrix（含 NA）；在 R 與 Go 上做對齊並比較對齊後的 loadings 與 residual norm。
-2. Phi 行為：測試 oblique 與 orthogonal 两種情形，驗證 Phi 在 Go 與 R 的一致性。
-3. Mask 邊界：全部 NA 與無 NA 的情況，確認程式行為（error vs no-op）。
+1. 基本案例：一組小型 loadings 與 target（含部分 NA），在 R 與 Go 執行 target rotation，比較對齊後的 loadings、rotation matrix 與 residual norm。將輸出放在 `tests/fa/fixtures/target/basic`。
+2. Phi 行為：測試 orthogonal 與 oblique 兩種情形，檢查 Phi 值是否一致，放在 `tests/fa/fixtures/target/phi`。
+3. Mask 邊界：測試全部 NA、無 NA 與部分 NA 的情形，驗證程式行為（error vs no-op），放在 `tests/fa/fixtures/target/mask-boundary`。
 
 ## 優先次序（建議）
 
-1. 支援 mask/NA（高），2. 符號/排列對齊策略文件（中），3. 加入 fixtures 與自動化測試（中）。
+1. 支援 mask/NA（高）
+2. 返回 diagnostics 並避免 panic（中高）
+3. 加入 fixtures 與自動化測試（中）
 
-## 下一步
+## 下一步（可執行）
 
-- 實作或明確文件化 Go 支援的 mask 形式（NaN/Inf），並新增 `tests/fa/fixtures/target` 的三個範例（含 NA/全部 NA/無 NA）。
-- 若你贊成，我將自動從 R 產生期望輸出並把 fixtures 與測試 harness 加入 repo。
+- 在 `tests/fa/fixtures/target/` 新增至少 3 組範例：
+  - `basic`（小型示範矩陣，含部分 NA）
+  - `phi`（oblique vs orthogonal 比較）
+  - `mask-boundary`（全部 NA / 無 NA / 部分 NA）
+- 若你同意，我可以：
+  1) 從 `local/r_source_code_fa` 使用 R 產生上述 fixtures（CSV/JSON），
+  2) 把 fixtures 放入 `tests/fa/fixtures/target/`，並新增 minimal Go 測試 harness 以比對元素差（允許小容差）。
+
+- 我現在會依你的回覆繼續處理下一個檔案（建議順序：`GPArotation_GPForth.差異報告.md` -> `GPArotation_GPFoblq.差異報告.md` -> `psych_pinv.差異報告.md` -> `psych_smc.差異報告.md` -> `psych_faRotations.差異報告.md` -> `psych_Promax.差異報告.md`）。
