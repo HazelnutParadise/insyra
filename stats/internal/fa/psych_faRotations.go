@@ -31,7 +31,16 @@ func Varimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map[
 	}
 
 	// Use GPForth for proper varimax rotation
-	result := GPForth(loadings, Tmat, normalize, eps, maxIter, "varimax")
+	result, err := GPForth(loadings, Tmat, normalize, eps, maxIter, "varimax")
+	if err != nil {
+		// Return identity rotation on error
+		return map[string]any{
+			"loadings": mat.DenseCopyOf(loadings),
+			"rotmat":   identityMatrix(nf),
+			"f":        0.0,
+			"error":    err.Error(),
+		}
+	}
 
 	// Calculate rotation matrix as t(solve(Th)) like in R
 	Th := result["Th"].(*mat.Dense)
@@ -64,7 +73,16 @@ func Quartimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int) ma
 	}
 
 	// Use GPForth for proper quartimax rotation
-	result := GPForth(loadings, Tmat, normalize, eps, maxIter, "quartimax")
+	result, err := GPForth(loadings, Tmat, normalize, eps, maxIter, "quartimax")
+	if err != nil {
+		// Return identity rotation on error
+		return map[string]any{
+			"loadings": mat.DenseCopyOf(loadings),
+			"rotmat":   identityMatrix(nf),
+			"f":        0.0,
+			"error":    err.Error(),
+		}
+	}
 
 	// Calculate rotation matrix as t(solve(Th)) like in R
 	Th := result["Th"].(*mat.Dense)
@@ -98,7 +116,17 @@ func Quartimin(loadings *mat.Dense, normalize bool, eps float64, maxIter int) ma
 	}
 
 	// Use GPFoblq for proper quartimin rotation
-	result := GPFoblq(loadings, Tmat, normalize, eps, maxIter, "quartimin", 0.0)
+	result, err := GPFoblq(loadings, Tmat, normalize, eps, maxIter, "quartimin", 0.0)
+	if err != nil {
+		// Return identity rotation on error
+		return map[string]any{
+			"loadings": mat.DenseCopyOf(loadings),
+			"rotmat":   identityMatrix(nf),
+			"phi":      nil,
+			"f":        0.0,
+			"error":    err.Error(),
+		}
+	}
 
 	// Calculate rotation matrix as t(solve(Th)) like in R
 	Th := result["Th"].(*mat.Dense)
@@ -133,7 +161,17 @@ func Oblimin(loadings *mat.Dense, normalize bool, eps float64, maxIter int, gamm
 	}
 
 	// Use GPFoblq for proper oblimin rotation
-	result := GPFoblq(loadings, Tmat, normalize, eps, maxIter, "oblimin", gamma)
+	result, err := GPFoblq(loadings, Tmat, normalize, eps, maxIter, "oblimin", gamma)
+	if err != nil {
+		// Return identity rotation on error
+		return map[string]any{
+			"loadings": mat.DenseCopyOf(loadings),
+			"rotmat":   identityMatrix(nf),
+			"phi":      nil,
+			"f":        0.0,
+			"error":    err.Error(),
+		}
+	}
 
 	// Calculate rotation matrix as t(solve(Th)) like in R
 	Th := result["Th"].(*mat.Dense)
@@ -167,7 +205,16 @@ func GeominT(loadings *mat.Dense, normalize bool, eps float64, maxIter int, delt
 	}
 
 	// Use GPForth for proper geominT rotation
-	result := GPForth(loadings, Tmat, normalize, eps, maxIter, "geominT")
+	result, err := GPForth(loadings, Tmat, normalize, eps, maxIter, "geominT")
+	if err != nil {
+		// Return identity rotation on error
+		return map[string]any{
+			"loadings": mat.DenseCopyOf(loadings),
+			"rotmat":   identityMatrix(nf),
+			"f":        0.0,
+			"error":    err.Error(),
+		}
+	}
 
 	// Calculate rotation matrix as t(solve(Th)) like in R
 	Th := result["Th"].(*mat.Dense)
@@ -200,7 +247,16 @@ func BentlerT(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map
 	}
 
 	// Use GPForth for proper bentlerT rotation
-	result := GPForth(loadings, Tmat, normalize, eps, maxIter, "bentlerT")
+	result, err := GPForth(loadings, Tmat, normalize, eps, maxIter, "bentlerT")
+	if err != nil {
+		// Return identity rotation on error
+		return map[string]any{
+			"loadings": mat.DenseCopyOf(loadings),
+			"rotmat":   identityMatrix(nf),
+			"f":        0.0,
+			"error":    err.Error(),
+		}
+	}
 
 	// Use Th (T matrix) directly for oblique reporting
 	Th := result["Th"].(*mat.Dense)
@@ -234,7 +290,17 @@ func Simplimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int, k 
 	}
 
 	// Use GPFoblq for proper simplimax rotation
-	result := GPFoblq(loadings, Tmat, normalize, eps, maxIter, "simplimax", 0.0)
+	result, err := GPFoblq(loadings, Tmat, normalize, eps, maxIter, "simplimax", 0.0)
+	if err != nil {
+		// Return identity rotation on error
+		return map[string]any{
+			"loadings": mat.DenseCopyOf(loadings),
+			"rotmat":   identityMatrix(nf),
+			"phi":      nil,
+			"f":        0.0,
+			"error":    err.Error(),
+		}
+	}
 
 	// Calculate rotation matrix as t(solve(Th)) to match other oblique handlers
 	Th := result["Th"].(*mat.Dense)
@@ -269,7 +335,17 @@ func GeominQ(loadings *mat.Dense, normalize bool, eps float64, maxIter int, delt
 	}
 
 	// Use GPFoblq for proper geominQ rotation
-	result := GPFoblq(loadings, Tmat, normalize, eps, maxIter, "geominQ", 0.0)
+	result, err := GPFoblq(loadings, Tmat, normalize, eps, maxIter, "geominQ", 0.0)
+	if err != nil {
+		// Return identity rotation on error
+		return map[string]any{
+			"loadings": mat.DenseCopyOf(loadings),
+			"rotmat":   identityMatrix(nf),
+			"phi":      nil,
+			"f":        0.0,
+			"error":    err.Error(),
+		}
+	}
 
 	// Calculate rotation matrix as t(solve(Th)) like in R
 	Th := result["Th"].(*mat.Dense)
@@ -306,7 +382,17 @@ func BentlerQ(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map
 	}
 
 	// Use GPFoblq for proper bentlerQ rotation
-	result := GPFoblq(loadings, Tmat, normalize, eps, maxIter, "bentlerQ", 0.0)
+	result, err := GPFoblq(loadings, Tmat, normalize, eps, maxIter, "bentlerQ", 0.0)
+	if err != nil {
+		// Return identity rotation on error
+		return map[string]any{
+			"loadings": mat.DenseCopyOf(loadings),
+			"rotmat":   identityMatrix(nf),
+			"phi":      nil,
+			"f":        0.0,
+			"error":    err.Error(),
+		}
+	}
 
 	// Calculate rotation matrix as t(solve(Th)) like in R
 	Th := result["Th"].(*mat.Dense)
@@ -420,17 +506,8 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 				startIdentity.Set(i, i, 1.0)
 			}
 			var gpf map[string]any
-			var ok bool
-			func() {
-				defer func() {
-					if r := recover(); r != nil {
-						ok = false
-					}
-				}()
-				gpf = GPFoblq(baseLoadings, startIdentity, true, 1e-08, 1000, "oblimin", hyper)
-				ok = true
-			}()
-			if !ok {
+			gpf, err := GPFoblq(baseLoadings, startIdentity, true, 1e-08, 1000, "oblimin", hyper)
+			if err != nil {
 				continue
 			}
 			result = finalizeGpfResult(gpf, nf)

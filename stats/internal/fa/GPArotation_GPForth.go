@@ -10,10 +10,10 @@ import (
 
 // GPForth performs orthogonal rotation using GPA.
 // Mirrors GPArotation::GPForth exactly
-func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit int, method string) map[string]any {
+func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit int, method string) (map[string]any, error) {
 	_, nf := A.Dims() // A is p x nf (variables x factors), nf is number of factors
 	if nf <= 1 {
-		panic("rotation does not make sense for single factor models.")
+		return nil, fmt.Errorf("rotation does not make sense for single factor models")
 	}
 
 	var W *mat.VecDense
@@ -69,7 +69,7 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 	case "targetT":
 		// For target rotation, we need a Target matrix, but for now use nil
 		// This would need to be passed as parameter
-		panic("targetT requires Target matrix parameter")
+		return nil, fmt.Errorf("targetT requires Target matrix parameter")
 	default:
 		Gq, f, _ := vgQVarimax(L)
 		VgQ = map[string]any{
@@ -114,7 +114,7 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			"f":  f2,
 		}
 	case "targetT":
-		panic("targetT requires Target matrix parameter")
+		return nil, fmt.Errorf("targetT requires Target matrix parameter")
 	default:
 		Gq2, f2, _ := vgQVarimax(L)
 		VgQt = map[string]any{
@@ -175,7 +175,7 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			var svd mat.SVD
 			ok := svd.Factorize(X, mat.SVDThin)
 			if !ok {
-				panic("SVD failed")
+				return nil, fmt.Errorf("SVD failed during rotation")
 			}
 			var U mat.Dense
 			var V mat.Dense
@@ -249,5 +249,6 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 		"convergence": convergence,
 		"Gq":          VgQt["Gq"],
 		"f":           f,
-	}
+		"iterations":  iter,
+	}, nil
 }

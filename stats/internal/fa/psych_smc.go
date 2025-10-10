@@ -56,8 +56,8 @@ func Smc(r *mat.Dense) *mat.VecDense {
 		}
 
 		// Compute the inverse of the predictor correlation matrix
-		predictorsInv := Pinv(predictors)
-		if predictorsInv == nil {
+		predictorsInv, err := Pinv(predictors, 0) // Use default tol
+		if err != nil || predictorsInv == nil {
 			// If not invertible, SMC = 1
 			smc.SetVec(i, 1.0)
 			continue

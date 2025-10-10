@@ -16,3 +16,10 @@
 ## 下一步
 
 - 我可以產生 PoC fixtures 並新增 minimal Go 比對測試。
+
+## 修正記錄
+
+- **2025-10-11**: 將函數簽名從 `GPFoblq(...) map[string]any` 改為 `GPFoblq(...) (map[string]any, error)`，避免 panic，返回 error 供上層處理。
+- 補齊 diagnostics 欄位：在返回結果中添加 `"iterations"` 和 `"penalty"` 欄位。
+- 更新所有調用者（psych_faRotations.go 中的 Quartimin、Oblimin、Simplimax、GeominQ、BentlerQ 和 Promax 函數）以處理 error，返回 identity rotation 作為 fallback。
+- 修改 `obliqueCriterion` 函數以返回 error，並在內部處理 `vgQOblimin` 的 error。

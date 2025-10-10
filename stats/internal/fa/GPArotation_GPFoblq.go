@@ -38,10 +38,10 @@ func NormalizingWeight(A *mat.Dense, normalize bool) *mat.VecDense {
 // debugGPFoblq controls verbose outputs for this algorithm; set to true during development.
 var debugGPFoblq = false
 
-func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit int, method string, gamma float64) map[string]any {
+func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit int, method string, gamma float64) (map[string]any, error) {
 	rows, cols := A.Dims()
 	if cols <= 1 {
-		panic("rotation does not make sense for single factor models")
+		return nil, fmt.Errorf("rotation does not make sense for single factor models")
 	}
 
 	// Work on a copy so the original loadings stay untouched.
@@ -75,7 +75,10 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 	}
 
 	L := computeL(T)
-	Gq, f, methodName := obliqueCriterion(method, L, gamma)
+	Gq, f, methodName, err := obliqueCriterion(method, L, gamma)
+	if err != nil {
+		return nil, err
+	}
 	G := computeGMatrix(L, Gq, T)
 
 	table := make([][]float64, 0, max(1, maxit+1))
@@ -127,7 +130,11 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			Tnew.Mul(X, diagScale)
 
 			Lnew := computeL(Tnew)
-			GqNew, fNew, _ := obliqueCriterion(method, Lnew, gamma)
+			GqNew, fNew, _, err := obliqueCriterion(method, Lnew, gamma)
+			if err != nil {
+				// Skip this step if criterion fails
+				continue
+			}
 
 			improvement := f - fNew
 			threshold := 0.5 * s * s * alpha
@@ -195,7 +202,9 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 		"convergence": convergence,
 		"Gq":          Gq,
 		"f":           f,
-	}
+		"iterations":  iter,
+		"penalty":     f,
+	}, nil
 }
 
 func computeGMatrix(L *mat.Dense, Gq *mat.Dense, T *mat.Dense) *mat.Dense {
@@ -247,23 +256,28 @@ func frobNorm(M *mat.Dense) float64 {
 	return math.Sqrt(sum)
 }
 
-func obliqueCriterion(method string, L *mat.Dense, gamma float64) (*mat.Dense, float64, string) {
+func obliqueCriterion(method string, L *mat.Dense, gamma float64) (*mat.Dense, float64, string, error) {
 	switch strings.ToLower(method) {
 	case "quartimin":
-		return vgQQuartimin(L)
+		Gq, f, _ := vgQQuartimin(L)
+		return Gq, f, "vgQ.quartimin", nil
 	case "oblimin":
 		Gq, f, err := vgQOblimin(L, gamma)
 		if err != nil {
-			panic(fmt.Sprintf("vgQOblimin failed: %v", err))
+			return nil, 0, "", fmt.Errorf("vgQOblimin failed: %v", err)
 		}
-		return Gq, f, "vgQ.oblimin"
+		return Gq, f, "vgQ.oblimin", nil
 	case "simplimax":
-		return vgQSimplimax(L, L.RawMatrix().Rows)
+		Gq, f, _ := vgQSimplimax(L, L.RawMatrix().Rows)
+		return Gq, f, "vgQ.simplimax", nil
 	case "geominq":
-		return vgQGeomin(L, 0.01)
+		Gq, f, _ := vgQGeomin(L, 0.01)
+		return Gq, f, "vgQ.geomin", nil
 	case "bentlerq":
-		return vgQBentler(L)
+		Gq, f, _ := vgQBentler(L)
+		return Gq, f, "vgQ.bentler", nil
 	default:
-		return vgQQuartimin(L)
+		Gq, f, _ := vgQQuartimin(L)
+		return Gq, f, "vgQ.quartimin", nil
 	}
 }

@@ -32,3 +32,12 @@
 
 - 在 `GPForth` 的 SVD/solve 呼叫周圍加入錯誤處理機制：捕捉錯誤並回傳 `error`，同時在上層提供嘗試 tiny-regularization（M+epsI）或 alternative rotator 的 fallback。
 - 建立 `tests/fa/fixtures/gpforth` 並放入 R 產生的期望輸出，用於自動化比較。
+
+## 修正記錄
+
+- **2025-10-11**: 將函數簽名從 `GPForth(...) map[string]any` 改為 `GPForth(...) (map[string]any, error)`，避免 panic，返回 error 供上層處理。
+- 當因子數量 <= 1 時返回 error，而不是 panic。
+- 當 method 為 "targetT" 時返回 error，表示需要 Target 矩陣參數。
+- 當 SVD 分解失敗時返回 error，而不是 panic。
+- 補齊 diagnostics 欄位：在返回結果中添加 `"iterations"` 欄位。
+- 更新所有調用者（psych_faRotations.go 中的 Varimax、Quartimax、GeominT、BentlerT 函數）以處理新的 API，返回 identity rotation 作為 fallback。

@@ -32,3 +32,10 @@
 ## 下一步
 
 - 我可以產生 `tests/fa/fixtures/pinv` 的 PoC fixtures 並新增 minimal Go 測試 harness 來驗證 API 與數值行為。
+
+## 修正記錄
+
+- **2025-10-11**: 將函數簽名從 `Pinv(X *mat.Dense) *mat.Dense` 改為 `Pinv(X *mat.Dense, tol float64) (*mat.Dense, error)`，暴露 tol 參數。
+- 當 SVD 分解失敗時返回 error，而不是返回 nil。
+- 當沒有奇異值超過容差時返回 error，表示矩陣過於奇異。
+- 更新調用者 `psych_smc.go` 以處理新的 API，返回 error 時將 SMC 設為 1.0。
