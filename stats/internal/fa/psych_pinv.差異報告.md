@@ -48,3 +48,8 @@ func WithTol(tol float64) PinvOption { ... }
 
 func Pinv(X *mat.Dense, opts ...PinvOption) (*mat.Dense, error) { ... }
 ```
+
+## 下一步
+
+- 將 `Pinv` 的 `tol` 參數暴露為選項並修改回傳型態為 `(*mat.Dense, error)`，補上單元測試以與 R 的 `Pinv` 輸出比對。
+- 建立由 R 生成的至少 10 組 fixtures（正常/接近奇異/奇異），放在 `tests/fa/fixtures/pinv`，以便 Go 測試讀取並自動比對逐元素差異。
