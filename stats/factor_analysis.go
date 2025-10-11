@@ -892,7 +892,7 @@ func extractFactors(data, corrMatrix *mat.Dense, eigenvalues []float64, eigenvec
 		return extractPCA(eigenvalues, eigenvectors, numFactors)
 
 	case FactorExtractionPAF:
-		return extractMINRES(corrMatrix, numFactors, opt.MaxIter, tol)
+		return extractPAF(corrMatrix, numFactors, opt.MaxIter, tol)
 
 	case FactorExtractionML:
 		return extractML(corrMatrix, numFactors, opt.MaxIter, tol, sampleSize)
@@ -954,6 +954,98 @@ func extractPCA(eigenvalues []float64, eigenvectors *mat.Dense, numFactors int) 
 }
 
 // extractMINRES performs MINRES factor extraction (simplified implementation)
+// extractPAF performs Principal Axis Factoring extraction
+func extractPAF(corr *mat.Dense, numFactors int, maxIter int, tol float64) (*mat.Dense, bool, int, error) {
+	if corr == nil {
+		return nil, false, 0, fmt.Errorf("nil correlation matrix")
+	}
+
+	rows, cols := corr.Dims()
+	if rows != cols {
+		return nil, false, 0, fmt.Errorf("correlation matrix must be square")
+	}
+	if numFactors > cols {
+		numFactors = cols
+	}
+
+	// Initialize communalities using squared diagonal elements (R_ii^2)
+	// For PAF, this is a common initialization method
+	var communalities []float64
+	communalities = make([]float64, rows)
+	for i := 0; i < rows; i++ {
+		diag := corr.At(i, i)
+		communalities[i] = diag * diag * 0.8 // Use 80% of squared diagonal as initial estimate
+	}
+
+	var loadings *mat.Dense
+	converged := false
+	iterations := 0
+
+	for iter := 0; iter < maxIter; iter++ {
+		iterations = iter + 1
+
+		// Create reduced correlation matrix R* = R - diag(1 - communalities)
+		reducedCorr := mat.NewDense(rows, cols, nil)
+		reducedCorr.Copy(corr)
+		for i := 0; i < rows; i++ {
+			reducedCorr.Set(i, i, corr.At(i, i)-(1.0-communalities[i]))
+		}
+
+		// Eigenvalue decomposition of reduced correlation matrix
+		var eig mat.Eigen
+		if !eig.Factorize(reducedCorr, mat.EigenRight) {
+			return nil, false, iterations, fmt.Errorf("eigenvalue decomposition failed")
+		}
+
+		// Get eigenvalues and eigenvectors
+		eigenvalues := eig.Values(nil)
+		eigenvectors := mat.NewCDense(rows, cols, nil)
+		eig.VectorsTo(eigenvectors)
+
+		// Extract first numFactors components
+		newLoadings := mat.NewDense(rows, numFactors, nil)
+		for i := 0; i < rows; i++ {
+			for j := 0; j < numFactors; j++ {
+				// loadings = eigenvectors * sqrt(eigenvalues)
+				val := real(eigenvalues[j])
+				if val > 0 {
+					newLoadings.Set(i, j, real(eigenvectors.At(i, j))*math.Sqrt(val))
+				}
+			}
+		}
+
+		// Update communalities: h_i = sum(loadings[i,j]^2 for j in 1..m)
+		newCommunalities := make([]float64, rows)
+		for i := 0; i < rows; i++ {
+			sum := 0.0
+			for j := 0; j < numFactors; j++ {
+				val := newLoadings.At(i, j)
+				sum += val * val
+			}
+			newCommunalities[i] = sum
+		}
+
+		// Check convergence
+		maxDiff := 0.0
+		for i := 0; i < rows; i++ {
+			diff := math.Abs(newCommunalities[i] - communalities[i])
+			if diff > maxDiff {
+				maxDiff = diff
+			}
+		}
+
+		loadings = newLoadings
+		communalities = newCommunalities
+
+		if maxDiff < tol {
+			converged = true
+			break
+		}
+	}
+
+	return loadings, converged, iterations, nil
+}
+
 func extractMINRES(corr *mat.Dense, numFactors int, maxIter int, tol float64) (*mat.Dense, bool, int, error) {
 	// Simplified MINRES implementation
 	// In a real implementation, this would use iterative optimization
