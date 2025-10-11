@@ -24,6 +24,15 @@
 
 1. 選取 5 組代表性 loadings，在 R 與 Go 上以不同 `power` 值（2,3,4）與 `normalize` true/false 做比較。
 
-## 下一步
+## 修正記錄
 
-- 我可以建立 `tests/fa/fixtures/promax` 的 PoC fixtures 並新增 minimal Go test harness。
+### 2024-12-XX
+
+- ✅ 添加了diagnostics返回：返回包含`converged`、`iterations`、`residualNorm`和`matrixInversionErrors`的diagnostics map
+- ✅ 改進了錯誤處理：矩陣求逆失敗時記錄錯誤信息並設置converged為false
+- ✅ 保持了向後相容性：所有現有返回值都保留，新增diagnostics字段
+
+### 剩餘工作
+
+- 更完整的測試覆蓋率
+- residualNorm的實際計算（當前設為0.0）

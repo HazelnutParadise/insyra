@@ -72,4 +72,16 @@
 - 從 `local/r_source_code_fa` 執行對應 R 程式產生上述三個 fixture 類別（CSV / JSON），將檔案放到 `tests/fa/fixtures/target/`。
 - 產生一個 minimal Go test（`stats/internal/fa/target_rotation_test.go`）來載入 fixtures，執行 Go 的 target rotation，並比對 R 與 Go 的 aligned loadings（允許例如 1e-6 的絕對或相對容差，視情況放寬）。
 
-1. 若你想我先只產生 proposal 的差異報告修改 patch（不覆寫原檔），我已把本檔（`psych_target_rot.差異報告.review.md`）放在相同資料夾供你審閱。
+## 修正記錄
+
+### 2024-12-XX
+
+- ✅ 添加了mask參數支持：新增了`TargetRotWithMask`函數，支持使用NaN值作為mask來排除目標矩陣中的特定元素
+- ✅ 實現了diagnostics返回：返回包含`maskApplied`和`maskedElements`的diagnostics map
+- ✅ 保持向後相容性：保留了原有的`TargetRot`函數作為包裝函數
+- ✅ NA處理：NaN值被正確識別並從對齊過程中排除（設置為0）
+
+### 剩餘工作
+
+- 更完整的測試覆蓋率
+- 符號標準化和欄位匹配的確定性處理

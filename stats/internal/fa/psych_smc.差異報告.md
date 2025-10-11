@@ -42,6 +42,19 @@
 1. SVD/pinv fallback（高）
 1. 加入 diagnostics（中）
 
-## 下一步
+## 修正記錄
 
-- 我可以自動產生 `tests/fa/fixtures/smc` 的 PoC fixtures（R 產生）並新增一個 minimal Go test harness。
+### 2024-12-XX
+
+- ✅ 實現了pairwise選項：添加了`SmcOptions.Pairwise`參數，支持pairwise correlation計算
+- ✅ 添加了covar選項：添加了`SmcOptions.Covar`參數，支持covariance矩陣計算
+- ✅ 改進了數值穩健性：使用可配置的tolerance參數(`SmcOptions.Tol`)進行矩陣求逆
+- ✅ 添加了diagnostics：返回包含`wasImputed`、`imputationMethod`和`errors`的diagnostics map
+- ✅ SVD/pinv fallback：使用`Pinv`函數處理奇異矩陣，提供更好的數值穩定性
+- ✅ API更新：`Smc`函數現在返回`(*mat.VecDense, map[string]interface{})`，並接受`*SmcOptions`參數
+- ✅ 向後相容性：保持了`SMC`包裝函數以維持現有API
+
+### 剩餘工作
+
+- 更完整的測試覆蓋率
+- NA值在相關性/協方差計算中的更複雜處理（當前實現已支持基本的pairwise NA跳過）

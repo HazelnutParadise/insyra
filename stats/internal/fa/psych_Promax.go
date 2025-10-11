@@ -11,11 +11,20 @@ import (
 // Mirrors psych::Promax exactly
 func Promax(x *mat.Dense, m int, normalize bool) map[string]any {
 	p, nf := x.Dims()
+
+	diagnostics := map[string]interface{}{
+		"converged":             true,
+		"iterations":            0, // Promax doesn't iterate, but included for consistency
+		"residualNorm":          0.0,
+		"matrixInversionErrors": []string{},
+	}
+
 	if nf < 2 {
 		return map[string]any{
-			"loadings": x,
-			"rotmat":   identityMatrix(nf),
-			"Phi":      identityMatrix(nf),
+			"loadings":    x,
+			"rotmat":      identityMatrix(nf),
+			"Phi":         identityMatrix(nf),
+			"diagnostics": diagnostics,
 		}
 	}
 
@@ -46,10 +55,15 @@ func Promax(x *mat.Dense, m int, normalize bool) map[string]any {
 	err := U.Solve(&XtX, &XtQ)
 	if err != nil {
 		// Handle singular matrix - use approximation like R
+		diagnostics["converged"] = false
+		diagnostics["matrixInversionErrors"] = append(
+			diagnostics["matrixInversionErrors"].([]string),
+			"failed to solve for U coefficients: "+err.Error())
 		return map[string]any{
-			"loadings": xx,
-			"rotmat":   rotmatVarimax,
-			"Phi":      identityMatrix(nf),
+			"loadings":    xx,
+			"rotmat":      rotmatVarimax,
+			"Phi":         identityMatrix(nf),
+			"diagnostics": diagnostics,
 		}
 	}
 
@@ -70,6 +84,10 @@ func Promax(x *mat.Dense, m int, normalize bool) map[string]any {
 		err = UtUInv.Inverse(&UtU)
 		if err != nil {
 			// Final fallback
+			diagnostics["converged"] = false
+			diagnostics["matrixInversionErrors"] = append(
+				diagnostics["matrixInversionErrors"].([]string),
+				"failed to invert UtU after regularization: "+err.Error())
 			for i := 0; i < nf; i++ {
 				d[i] = 1.0
 			}
@@ -111,8 +129,9 @@ func Promax(x *mat.Dense, m int, normalize bool) map[string]any {
 	Phi.Mul(&ui, ui.T())
 
 	return map[string]any{
-		"loadings": &z,
-		"rotmat":   &rotmat,
-		"Phi":      &Phi,
+		"loadings":    &z,
+		"rotmat":      &rotmat,
+		"Phi":         &Phi,
+		"diagnostics": diagnostics,
 	}
 }

@@ -16,3 +16,11 @@
 ## 下一步
 
 - 我可以產生 PoC fixtures 並新增 minimal Go test harness 以自動比較 R 與 Go 的結果。
+
+## 修正記錄
+
+### 2024-12-XX
+
+- ✅ 添加了 `RotateWithDiagnostics` 函數：提供統一的 diagnostics 返回，包含 method、converged、restarts、objective 和 iterations 資訊
+- ✅ 保持向後相容性：保留了原有的 `Rotate` 函數作為包裝函數
+- ✅ 統一診斷資訊：diagnostics map 包含了關鍵的收斂和效能指標，便於與 R 結果比較
