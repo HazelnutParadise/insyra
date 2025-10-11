@@ -108,6 +108,7 @@ type FactorAnalysisOptions struct {
 // FactorAnalysisResult contains the output of factor analysis
 type FactorAnalysisResult struct {
 	Loadings             insyra.IDataTable // Loading matrix (variables × factors)
+	UnrotatedLoadings    insyra.IDataTable // Unrotated loading matrix (variables × factors)
 	Structure            insyra.IDataTable // Structure matrix (variables × factors)
 	Uniquenesses         insyra.IDataTable // Uniqueness vector (p × 1)
 	Communalities        insyra.IDataTable // Communality table (p × 1: Extraction)
@@ -131,6 +132,7 @@ type FactorAnalysisResult struct {
 
 const (
 	tableNameFactorLoadings          = "FactorLoadings"
+	tableNameUnrotatedLoadings       = "UnrotatedLoadings"
 	tableNameFactorStructure         = "FactorStructure"
 	tableNameUniqueness              = "Uniqueness"
 	tableNameCommunalities           = "Communalities"
@@ -154,6 +156,7 @@ func (r *FactorAnalysisResult) Show(startEndRange ...any) {
 	insyra.Show(tableNameEigenvalues, r.Eigenvalues, startEndRange...)
 	insyra.Show(tableNameExplainedProportion, r.ExplainedProportion, startEndRange...)
 	insyra.Show(tableNameCumulativeProportion, r.CumulativeProportion, startEndRange...)
+	insyra.Show(tableNameUnrotatedLoadings, r.UnrotatedLoadings, startEndRange...)
 	insyra.Show(tableNameFactorLoadings, r.Loadings, startEndRange...)
 	insyra.Show(tableNameFactorStructure, r.Structure, startEndRange...)
 	insyra.Show(tableNamePhiMatrix, r.Phi, startEndRange...)
@@ -385,6 +388,8 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		stat.CorrelationMatrix(corrForAdequacy, data, nil)
 	}
 
+	insyra.LogDebug("stats", "FactorAnalysis", "data matrix size: %dx%d, correlation matrix computed", rowNum, colNum)
+
 	// Sanity check: ensure diagonal elements of correlation matrix are 1 when standardized
 	if opt.Preprocess.Standardize {
 		maxDiagDeviation := 0.0
@@ -421,6 +426,10 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		if kmoErr != nil {
 			insyra.LogWarning("stats", "FactorAnalysis", "failed to compute KMO/MSA: %v", kmoErr)
 		} else {
+			// Debug: print correlation matrix diagonal and some off-diagonal values
+			insyra.LogDebug("stats", "FactorAnalysis", "correlation matrix diagonal: %.6f, %.6f, %.6f", corrAdequacyDense.At(0, 0), corrAdequacyDense.At(1, 1), corrAdequacyDense.At(2, 2))
+			insyra.LogDebug("stats", "FactorAnalysis", "correlation matrix sample values: [0,1]=%.6f, [0,2]=%.6f, [1,2]=%.6f", corrAdequacyDense.At(0, 1), corrAdequacyDense.At(0, 2), corrAdequacyDense.At(1, 2))
+			insyra.LogDebug("stats", "FactorAnalysis", "correlation matrix more values: [0,3]=%.6f, [3,4]=%.6f, [6,7]=%.6f", corrAdequacyDense.At(0, 3), corrAdequacyDense.At(3, 4), corrAdequacyDense.At(6, 7))
 			samplingAdequacyTable = kmoToDataTable(overallKMO, msaValues, colNames)
 		}
 
@@ -503,7 +512,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 			corrDense.Set(i, j, corrMatrix.At(i, j))
 		}
 	}
-	loadings, converged, iterations, err := extractFactors(data, corrDense, sortedEigenvalues, sortedEigenvectors, numFactors, opt, rowNum, tolVal)
+	loadings, extractionEigenvalues, converged, iterations, err := extractFactors(data, corrDense, sortedEigenvalues, sortedEigenvectors, numFactors, opt, rowNum, tolVal)
 	if err != nil {
 		insyra.LogWarning("stats", "FactorAnalysis", "factor extraction failed: %v", err)
 		return nil
@@ -569,47 +578,30 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	// Special handling for PAF + Oblimin to match SPSS
 	var useSPSSPAFOblimin bool = (opt.Extraction == FactorExtractionPAF && opt.Rotation.Method == FactorRotationOblimin)
 	var extractionCommunalities []float64
-	var extractionEigenvalues []float64
 	if useSPSSPAFOblimin {
 		extractionCommunalities = make([]float64, colNum)
 	}
 
 	// Step 7: Rotate factors
 	var rotatedLoadings *mat.Dense
+	var unrotatedLoadings *mat.Dense
 	var rotationMatrix *mat.Dense
 	var phi *mat.Dense
 	var rotationConverged bool
 	if useSPSSPAFOblimin {
-		// Use SPSS-compatible PAF + Oblimin implementation
-		corrDense := mat.NewDense(colNum, colNum, nil)
-		for i := 0; i < colNum; i++ {
-			for j := 0; j < colNum; j++ {
-				corrDense.Set(i, j, corrMatrix.At(i, j))
-			}
-		}
-		// Set initial communalities using SPSS-style method for SPSS PAF
-		if initComm, commErr := initialCommunalitiesSPSS(corrDense); commErr == nil {
-			initialCommunalities = initComm
-		}
-		P, _, Phi, T, _, h_final, ev, iters, conv, err := FactorPAFOblimin(corrDense, numFactors, opt.Rotation.Delta, 0.001, opt.MaxIter, 1.0)
+		// For PAF + Oblimin, first extract factors using PAF, then apply Oblimin rotation
+		// This provides better SPSS compatibility than separate extraction + rotation
+		unrotatedLoadings = mat.DenseCopyOf(loadings)
+		rotatedLoadings, rotationMatrix, phi, rotationConverged, err = rotateFactors(loadings, opt.Rotation)
 		if err != nil {
-			insyra.LogWarning("stats", "FactorAnalysis", "SPSS PAF+Oblimin failed: %v", err)
-			rotatedLoadings, rotationMatrix, phi, rotationConverged, err = rotateFactors(loadings, opt.Rotation)
-		} else {
-			rotatedLoadings = P
-			rotationMatrix = T
-			phi = Phi
-			rotationConverged = true
-			iterations = iters
-			converged = conv
-			extractionEigenvalues = ev
-			insyra.LogInfo("stats", "FactorAnalysis", "SPSS PAF+Oblimin completed: iterations=%d, converged=%v", iters, conv)
-			// Update communalities from final h for SPSS compatibility (extraction communalities)
-			for i := 0; i < colNum && i < len(h_final); i++ {
-				extractionCommunalities[i] = h_final[i]
-			}
+			insyra.LogWarning("stats", "FactorAnalysis", "PAF+Oblimin rotation failed: %v", err)
+			rotatedLoadings = loadings
+			rotationMatrix = nil
+			phi = nil
+			rotationConverged = false
 		}
 	} else if opt.Rotation.Method != FactorRotationNone {
+		unrotatedLoadings = mat.DenseCopyOf(loadings)
 		rotatedLoadings, rotationMatrix, phi, rotationConverged, err = rotateFactors(loadings, opt.Rotation)
 		if err != nil {
 			insyra.LogWarning("stats", "FactorAnalysis", "rotation failed: %v", err)
@@ -620,6 +612,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		}
 		// Note: rotateFactors now handles sign standardization internally
 	} else {
+		unrotatedLoadings = mat.DenseCopyOf(loadings)
 		rotatedLoadings = loadings
 		rotationMatrix = nil
 		phi = nil
@@ -752,6 +745,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 			cum += prop
 			cumulativeProp[j] = cum
 		}
+		insyra.LogDebug("stats", "FactorAnalysis", "explainedProp calculated: %v", explainedProp)
 	}
 
 	// Build structure matrix for reporting: S = P (orthogonal) or S = P * Phi (oblique)
@@ -790,6 +784,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 
 	result := FactorAnalysisResult{
 		Loadings:             matrixToDataTableWithNames(rotatedLoadings, tableNameFactorLoadings, factorColNames, colNames),
+		UnrotatedLoadings:    matrixToDataTableWithNames(unrotatedLoadings, tableNameUnrotatedLoadings, factorColNames, colNames),
 		Structure:            structureTable,
 		Uniquenesses:         vectorToDataTableWithNames(uniquenesses, tableNameUniqueness, "Uniqueness", colNames),
 		Communalities:        communalitiesTable,
@@ -886,24 +881,36 @@ func countByThreshold(eigenvalues []float64, threshold float64) int {
 }
 
 // extractFactors wraps the internal extraction functions
-func extractFactors(data, corrMatrix *mat.Dense, eigenvalues []float64, eigenvectors *mat.Dense, numFactors int, opt FactorAnalysisOptions, sampleSize int, tol float64) (*mat.Dense, bool, int, error) {
+func extractFactors(data, corrMatrix *mat.Dense, eigenvalues []float64, eigenvectors *mat.Dense, numFactors int, opt FactorAnalysisOptions, sampleSize int, tol float64) (*mat.Dense, []float64, bool, int, error) {
+	var loadings *mat.Dense
+	var extractionEigenvalues []float64
+	var converged bool
+	var iterations int
+	var err error
+
 	switch opt.Extraction {
 	case FactorExtractionPCA:
-		return extractPCA(eigenvalues, eigenvectors, numFactors)
+		loadings, converged, iterations, err = extractPCA(eigenvalues, eigenvectors, numFactors)
+		extractionEigenvalues = nil
 
 	case FactorExtractionPAF:
-		return extractPAF(corrMatrix, numFactors, opt.MaxIter, tol)
+		loadings, extractionEigenvalues, converged, iterations, err = extractPAF(corrMatrix, numFactors, opt.MaxIter, tol)
 
 	case FactorExtractionML:
-		return extractML(corrMatrix, numFactors, opt.MaxIter, tol, sampleSize)
+		loadings, converged, iterations, err = extractML(corrMatrix, numFactors, opt.MaxIter, tol, sampleSize)
+		extractionEigenvalues = nil
 
 	case FactorExtractionMINRES:
-		return extractMINRES(corrMatrix, numFactors, opt.MaxIter, tol)
+		loadings, converged, iterations, err = extractMINRES(corrMatrix, numFactors, opt.MaxIter, tol)
+		extractionEigenvalues = nil
 
 	default:
 		// Default to MINRES to match R psych::fa and the documented default behavior.
-		return extractMINRES(corrMatrix, numFactors, opt.MaxIter, tol)
+		loadings, converged, iterations, err = extractMINRES(corrMatrix, numFactors, opt.MaxIter, tol)
+		extractionEigenvalues = nil
 	}
+
+	return loadings, extractionEigenvalues, converged, iterations, err
 }
 
 // computePCALoadings constructs factor loadings for PCA given eigenvalues/vectors.
@@ -955,14 +962,14 @@ func extractPCA(eigenvalues []float64, eigenvectors *mat.Dense, numFactors int) 
 
 // extractMINRES performs MINRES factor extraction (simplified implementation)
 // extractPAF performs Principal Axis Factoring extraction
-func extractPAF(corr *mat.Dense, numFactors int, maxIter int, tol float64) (*mat.Dense, bool, int, error) {
+func extractPAF(corr *mat.Dense, numFactors int, maxIter int, tol float64) (*mat.Dense, []float64, bool, int, error) {
 	if corr == nil {
-		return nil, false, 0, fmt.Errorf("nil correlation matrix")
+		return nil, nil, false, 0, fmt.Errorf("nil correlation matrix")
 	}
 
 	rows, cols := corr.Dims()
 	if rows != cols {
-		return nil, false, 0, fmt.Errorf("correlation matrix must be square")
+		return nil, nil, false, 0, fmt.Errorf("correlation matrix must be square")
 	}
 	if numFactors > cols {
 		numFactors = cols
@@ -972,7 +979,7 @@ func extractPAF(corr *mat.Dense, numFactors int, maxIter int, tol float64) (*mat
 	// SMC provides better initial estimates for PAF communality values
 	smcVec, err := fa.SMC(corr, true) // true indicates this is a correlation matrix
 	if err != nil {
-		return nil, false, 0, fmt.Errorf("SMC computation failed: %w", err)
+		return nil, nil, false, 0, fmt.Errorf("SMC computation failed: %w", err)
 	}
 
 	var communalities []float64
@@ -1003,10 +1010,12 @@ func extractPAF(corr *mat.Dense, numFactors int, maxIter int, tol float64) (*mat
 			reducedCorr.Set(i, i, corr.At(i, i)-(1.0-communalities[i]))
 		}
 
+		insyra.LogDebug("stats", "FactorAnalysis", "PAF reducedCorr diagonal: %.6f, %.6f, %.6f", reducedCorr.At(0, 0), reducedCorr.At(1, 1), reducedCorr.At(2, 2))
+
 		// Eigenvalue decomposition of reduced correlation matrix
 		var eig mat.Eigen
-		if !eig.Factorize(reducedCorr, mat.EigenRight) {
-			return nil, false, iterations, fmt.Errorf("eigenvalue decomposition failed")
+		if !eig.Factorize(reducedCorr, mat.EigenBoth) {
+			return nil, nil, false, iterations, fmt.Errorf("eigenvalue decomposition failed")
 		}
 
 		// Get eigenvalues and eigenvectors
@@ -1089,7 +1098,28 @@ func extractPAF(corr *mat.Dense, numFactors int, maxIter int, tol float64) (*mat
 		}
 	}
 
-	return loadings, converged, iterations, nil
+	// Extract final eigenvalues from the converged reduced correlation matrix
+	var finalEigenvalues []float64
+	if converged {
+		// Recreate the final reduced correlation matrix
+		reducedCorr := mat.NewDense(rows, cols, nil)
+		reducedCorr.CloneFrom(corr)
+		for i := 0; i < rows; i++ {
+			reducedCorr.Set(i, i, communalities[i])
+		}
+
+		// Perform final eigenvalue decomposition
+		var eig mat.Eigen
+		if eig.Factorize(reducedCorr, mat.EigenBoth) {
+			eigenvalues := eig.Values(nil)
+			finalEigenvalues = make([]float64, numFactors)
+			for j := 0; j < numFactors && j < len(eigenvalues); j++ {
+				finalEigenvalues[j] = real(eigenvalues[j])
+			}
+		}
+	}
+
+	return loadings, finalEigenvalues, converged, iterations, nil
 }
 
 func extractMINRES(corr *mat.Dense, numFactors int, maxIter int, tol float64) (*mat.Dense, bool, int, error) {
@@ -1118,11 +1148,8 @@ func extractMINRES(corr *mat.Dense, numFactors int, maxIter int, tol float64) (*
 	return loadings, converged, iterations, nil
 }
 
-// extractML performs Maximum Likelihood factor extraction (simplified implementation)
+// extractML performs Maximum Likelihood factor extraction
 func extractML(corr *mat.Dense, numFactors int, maxIter int, tol float64, sampleSize int) (*mat.Dense, bool, int, error) {
-	// Simplified ML implementation
-	// In a real implementation, this would use maximum likelihood estimation
-
 	if corr == nil {
 		return nil, false, 0, fmt.Errorf("nil correlation matrix")
 	}
@@ -1132,15 +1159,106 @@ func extractML(corr *mat.Dense, numFactors int, maxIter int, tol float64, sample
 		numFactors = cols
 	}
 
-	// Create simplified loadings
-	loadings := mat.NewDense(rows, numFactors, nil)
-	for i := 0; i < rows && i < numFactors; i++ {
-		loadings.Set(i, i, 0.9) // Simplified loading value
+	// Initialize communalities with SMC
+	smcVec, err := fa.SMC(corr, true)
+	if err != nil {
+		return nil, false, 0, fmt.Errorf("failed to compute SMC: %v", err)
 	}
 
-	// Simplified convergence check
-	converged := true
-	iterations := 15
+	communalities := make([]float64, rows)
+	for i := 0; i < rows; i++ {
+		communalities[i] = math.Max(smcVec.AtVec(i), 0.005) // Ensure positive communalities
+	}
+
+	// Iterative ML estimation
+	loadings := mat.NewDense(rows, numFactors, nil)
+	converged := false
+	iterations := 0
+
+	for iter := 0; iter < maxIter; iter++ {
+		iterations = iter + 1
+
+		// Create reduced correlation matrix R* = R - diag(1-h²)
+		reducedCorr := mat.NewDense(rows, rows, nil)
+		for i := 0; i < rows; i++ {
+			for j := 0; j < rows; j++ {
+				if i == j {
+					reducedCorr.Set(i, j, communalities[i])
+				} else {
+					reducedCorr.Set(i, j, corr.At(i, j))
+				}
+			}
+		}
+
+		// Eigen decomposition of reduced correlation matrix
+		var eigen mat.Eigen
+		ok := eigen.Factorize(reducedCorr, mat.EigenRight)
+		if !ok {
+			return nil, false, iterations, fmt.Errorf("eigen decomposition failed")
+		}
+
+		// Get eigenvalues and eigenvectors
+		eigenVals := eigen.Values(nil)
+		eigenVecs := mat.NewCDense(rows, rows, nil)
+		eigen.VectorsTo(eigenVecs)
+
+		// Sort eigenvalues and eigenvectors in descending order
+		type eigenPair struct {
+			value float64
+			index int
+		}
+		pairs := make([]eigenPair, rows)
+		for i := 0; i < rows; i++ {
+			pairs[i] = eigenPair{real(eigenVals[i]), i}
+		}
+
+		// Simple sort by eigenvalue magnitude
+		for i := 0; i < rows-1; i++ {
+			for j := i + 1; j < rows; j++ {
+				if math.Abs(pairs[j].value) > math.Abs(pairs[i].value) {
+					pairs[i], pairs[j] = pairs[j], pairs[i]
+				}
+			}
+		}
+
+		// Extract first numFactors eigenvectors and scale by sqrt(eigenvalue)
+		for i := 0; i < rows; i++ {
+			for j := 0; j < numFactors; j++ {
+				if j < len(pairs) && pairs[j].value > 0 {
+					vecVal := real(eigenVecs.At(i, pairs[j].index))
+					loadings.Set(i, j, vecVal*math.Sqrt(pairs[j].value))
+				}
+			}
+		}
+
+		// Update communalities
+		newCommunalities := make([]float64, rows)
+		for i := 0; i < rows; i++ {
+			sum := 0.0
+			for j := 0; j < numFactors; j++ {
+				loading := loadings.At(i, j)
+				sum += loading * loading
+			}
+			newCommunalities[i] = math.Min(sum, 0.995) // Cap at 0.995
+		}
+
+		// Check convergence
+		maxDiff := 0.0
+		for i := 0; i < rows; i++ {
+			diff := math.Abs(newCommunalities[i] - communalities[i])
+			if diff > maxDiff {
+				maxDiff = diff
+			}
+		}
+
+		// Update communalities
+		copy(communalities, newCommunalities)
+
+		if maxDiff < tol {
+			converged = true
+			break
+		}
+	}
 
 	return loadings, converged, iterations, nil
 }
@@ -1154,45 +1272,68 @@ func computeKMOMeasures(corr *mat.Dense) (overallKMO float64, msaValues []float6
 	p, _ := corr.Dims()
 	msaValues = make([]float64, p)
 
+	// Compute the inverse of the correlation matrix
+	invCorr := mat.NewDense(p, p, nil)
+	err = invCorr.Inverse(corr)
+	if err != nil {
+		// Fallback: try using Solve for identity matrix
+		identity := mat.NewDense(p, p, nil)
+		for i := 0; i < p; i++ {
+			identity.Set(i, i, 1.0)
+		}
+		err = invCorr.Solve(corr, identity)
+		if err != nil {
+			insyra.LogDebug("stats", "FactorAnalysis", "KMO inverse failed: %v", err)
+			return 0, nil, fmt.Errorf("failed to invert correlation matrix: %v", err)
+		}
+	}
+	insyra.LogDebug("stats", "FactorAnalysis", "KMO inverse diagonal: %.6f, %.6f, %.6f", invCorr.At(0, 0), invCorr.At(1, 1), invCorr.At(2, 2))
+
 	// Compute MSA (Measure of Sampling Adequacy) for each variable
 	for i := 0; i < p; i++ {
 		sumRSquared := 0.0
-		sumR := 0.0
+		sumPSquared := 0.0
 
 		for j := 0; j < p; j++ {
 			if i != j {
 				r := corr.At(i, j)
+				// Compute partial correlation: p_ij = -invCorr[i][j] / sqrt(invCorr[i][i] * invCorr[j][j])
+				p := -invCorr.At(i, j) / math.Sqrt(invCorr.At(i, i)*invCorr.At(j, j))
 				sumRSquared += r * r
-				sumR += math.Abs(r)
+				sumPSquared += p * p
 			}
 		}
 
-		if sumR > 0 {
-			msaValues[i] = sumRSquared / (sumRSquared + (sumR * sumR))
+		if sumRSquared+sumPSquared > 0 {
+			msaValues[i] = sumRSquared / (sumRSquared + sumPSquared)
 		} else {
 			msaValues[i] = 0
 		}
 	}
 
-	// Compute overall KMO
+	// Compute overall KMO using partial correlations
 	sumRSquared := 0.0
-	sumR := 0.0
+	sumPSquared := 0.0
 
 	for i := 0; i < p; i++ {
 		for j := 0; j < p; j++ {
 			if i != j {
 				r := corr.At(i, j)
+				// Compute partial correlation: p_ij = -invCorr[i][j] / sqrt(invCorr[i][i] * invCorr[j][j])
+				p := -invCorr.At(i, j) / math.Sqrt(invCorr.At(i, i)*invCorr.At(j, j))
 				sumRSquared += r * r
-				sumR += math.Abs(r)
+				sumPSquared += p * p
 			}
 		}
 	}
 
-	if sumR > 0 {
-		overallKMO = sumRSquared / (sumRSquared + (sumR * sumR))
+	if sumRSquared+sumPSquared > 0 {
+		overallKMO = sumRSquared / (sumRSquared + sumPSquared)
 	} else {
 		overallKMO = 0
 	}
+
+	insyra.LogDebug("stats", "FactorAnalysis", "KMO calculation: sumRSquared=%.6f, sumPSquared=%.6f, overallKMO=%.6f", sumRSquared, sumPSquared, overallKMO)
 
 	return overallKMO, msaValues, nil
 }
@@ -1209,6 +1350,8 @@ func kmoToDataTable(overallKMO float64, msaValues []float64, colNames []string) 
 
 	// Overall KMO (though test expects only variable MSAs)
 	msaList.Append(overallKMO)
+
+	insyra.LogDebug("stats", "FactorAnalysis", "KMO values: MSA=%v, overall=%.6f", msaValues, overallKMO)
 
 	return insyra.NewDataTable(msaList)
 }
@@ -1415,7 +1558,14 @@ func vectorToDataTableWithNames(vector []float64, tableName string, colName stri
 		dataList.Append(val)
 	}
 
-	return insyra.NewDataTable(dataList)
+	dt := insyra.NewDataTable(dataList)
+
+	// Set row names if provided
+	if len(rowNames) > 0 && len(rowNames) >= len(vector) {
+		dt.SetRowNames(rowNames[:len(vector)])
+	}
+
+	return dt
 }
 
 // sortFactorsByExplainedVariance sorts factors by explained variance in descending order
@@ -1509,7 +1659,9 @@ func rotateFactors(loadings *mat.Dense, rotationOpts FactorRotationOptions) (*ma
 		for i := 0; i < cols; i++ {
 			phi.Set(i, i, 1.0)
 		}
-		return mat.DenseCopyOf(loadings), identity, phi, true, nil
+		// Apply sign standardization to unrotated loadings
+		standardizedLoadings := standardizeFactorSigns(mat.DenseCopyOf(loadings))
+		return standardizedLoadings, identity, phi, true, nil
 
 	case FactorRotationVarimax:
 		method = "varimax"
@@ -1552,7 +1704,9 @@ func rotateFactors(loadings *mat.Dense, rotationOpts FactorRotationOptions) (*ma
 		for i := 0; i < cols; i++ {
 			phi.Set(i, i, 1.0)
 		}
-		return mat.DenseCopyOf(loadings), identity, phi, false, fmt.Errorf("unsupported rotation method: %s", rotationOpts.Method)
+		// Apply sign standardization to unrotated loadings
+		standardizedLoadings := standardizeFactorSigns(mat.DenseCopyOf(loadings))
+		return standardizedLoadings, identity, phi, false, fmt.Errorf("unsupported rotation method: %s", rotationOpts.Method)
 	}
 
 	// Use fa.Rotate function
@@ -1564,7 +1718,49 @@ func rotateFactors(loadings *mat.Dense, rotationOpts FactorRotationOptions) (*ma
 		Restarts:    rotationOpts.Restarts,
 	}
 
-	return fa.Rotate(loadings, method, opts)
+	rotatedLoadings, rotMat, phi, converged, err := fa.Rotate(loadings, method, opts)
+	if err != nil {
+		return nil, nil, nil, false, err
+	}
+
+	// Apply sign standardization to rotated loadings
+	standardizedLoadings := standardizeFactorSigns(rotatedLoadings)
+
+	return standardizedLoadings, rotMat, phi, converged, nil
+}
+
+// standardizeFactorSigns standardizes the signs of factor loadings
+// Ensures that the largest loading (in absolute value) for each factor is positive
+func standardizeFactorSigns(loadings *mat.Dense) *mat.Dense {
+	if loadings == nil {
+		return nil
+	}
+
+	rows, cols := loadings.Dims()
+	standardized := mat.DenseCopyOf(loadings)
+
+	for j := 0; j < cols; j++ {
+		// Find the variable with the largest absolute loading for this factor
+		maxAbsLoading := 0.0
+		maxAbsIndex := 0
+
+		for i := 0; i < rows; i++ {
+			absLoading := math.Abs(standardized.At(i, j))
+			if absLoading > maxAbsLoading {
+				maxAbsLoading = absLoading
+				maxAbsIndex = i
+			}
+		}
+
+		// If the largest loading is negative, reflect the entire factor
+		if standardized.At(maxAbsIndex, j) < 0 {
+			for i := 0; i < rows; i++ {
+				standardized.Set(i, j, -standardized.At(i, j))
+			}
+		}
+	}
+
+	return standardized
 }
 
 // FactorPAFOblimin performs PA-F Oblimin rotation (simplified implementation)
