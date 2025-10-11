@@ -60,7 +60,10 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			"Method": "vgQ." + method,
 		}
 	case "bentlerT":
-		Gq, f, _ := vgQBentler(L)
+		Gq, f, _, err := vgQBentler(L)
+		if err != nil {
+			return nil, err
+		}
 		VgQ = map[string]any{
 			"Gq":     Gq,
 			"f":      f,
@@ -108,7 +111,10 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			"f":  f2,
 		}
 	case "bentlerT":
-		Gq2, f2, _ := vgQBentler(L)
+		Gq2, f2, _, err := vgQBentler(L)
+		if err != nil {
+			return nil, err
+		}
 		VgQt = map[string]any{
 			"Gq": Gq2,
 			"f":  f2,

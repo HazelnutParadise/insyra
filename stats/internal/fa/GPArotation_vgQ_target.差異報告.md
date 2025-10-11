@@ -11,3 +11,11 @@
 
 - fixtures 路徑：`tests/fa/fixtures/target`
 - 建議建立 multiple target matrices（含 NA/mask）由 R 產生金標，並比對 Go 的 aligned loadings/diagnostics。
+
+## 修正記錄
+
+### 2024-12-XX
+
+- ✅ 修改了`vgQTarget`函數：將panic改為返回error，處理nil Target和維度不匹配情況
+- ✅ 更新了函數簽名：從`(Gq *mat.Dense, f float64, method string)`改為`(Gq *mat.Dense, f float64, method string, err error)`
+- ✅ 添加了fmt import：用於error消息格式化

@@ -2,6 +2,8 @@
 package fa
 
 import (
+	"fmt"
+
 	"gonum.org/v1/gonum/mat"
 )
 
@@ -13,16 +15,16 @@ import (
 // Gq[is.na(Gq)] <- 0
 // f <- sum((L - Target)^2, na.rm = TRUE)
 //
-// Returns: Gq (gradient), f (objective), method
-func vgQTarget(L *mat.Dense, Target *mat.Dense) (Gq *mat.Dense, f float64, method string) {
+// Returns: Gq (gradient), f (objective), method, error
+func vgQTarget(L *mat.Dense, Target *mat.Dense) (Gq *mat.Dense, f float64, method string, err error) {
 	if Target == nil {
-		panic("argument Target must be specified.")
+		return nil, 0, "", fmt.Errorf("argument Target must be specified")
 	}
 
 	p, q := L.Dims()
 	tp, tq := Target.Dims()
 	if p != tp || q != tq {
-		panic("L and Target must have the same dimensions")
+		return nil, 0, "", fmt.Errorf("L and Target must have the same dimensions")
 	}
 
 	// L_minus_Target = L - Target

@@ -16,8 +16,8 @@ import (
 // Gq <- -L * (L2 %*% (solve(M) - solve(D)))
 // f <- -(log(det(M)) - log(det(D)))/4
 //
-// Returns: Gq (gradient), f (objective), method
-func vgQBentler(L *mat.Dense) (Gq *mat.Dense, f float64, method string) {
+// Returns: Gq (gradient), f (objective), method, error
+func vgQBentler(L *mat.Dense) (Gq *mat.Dense, f float64, method string, err error) {
 	p, q := L.Dims()
 
 	// L2 = L^2
@@ -41,16 +41,14 @@ func vgQBentler(L *mat.Dense) (Gq *mat.Dense, f float64, method string) {
 
 	// solve(M)
 	var solveM mat.Dense
-	err := solveM.Inverse(&M)
-	if err != nil {
-		panic("Matrix M is singular")
+	if err = solveM.Inverse(&M); err != nil {
+		return nil, 0, "", err
 	}
 
 	// solve(D)
 	var solveD mat.Dense
-	err = solveD.Inverse(D)
-	if err != nil {
-		panic("Matrix D is singular")
+	if err = solveD.Inverse(D); err != nil {
+		return nil, 0, "", err
 	}
 
 	// solve(M) - solve(D)

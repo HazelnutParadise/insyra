@@ -274,7 +274,10 @@ func obliqueCriterion(method string, L *mat.Dense, gamma float64) (*mat.Dense, f
 		Gq, f, _ := vgQGeomin(L, 0.01)
 		return Gq, f, "vgQ.geomin", nil
 	case "bentlerq":
-		Gq, f, _ := vgQBentler(L)
+		Gq, f, _, err := vgQBentler(L)
+		if err != nil {
+			return nil, 0, "", err
+		}
 		return Gq, f, "vgQ.bentler", nil
 	default:
 		Gq, f, _ := vgQQuartimin(L)
