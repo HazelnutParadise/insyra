@@ -972,24 +972,18 @@ func computeSMC(corr *mat.Dense) ([]float64, error) {
 	if corr == nil {
 		return nil, fmt.Errorf("nil correlation matrix")
 	}
-	// SMC_i = 1 - 1 / (R^{-1})_{ii}
-	// This mirrors SPSS/psych behavior when using a correlation matrix.
-	var inv mat.Dense
-	if err := inv.Inverse(corr); err != nil {
-		return nil, fmt.Errorf("SMC: failed to invert correlation: %w", err)
+
+	// Use the corrected fa.SMC function
+	smcVec, err := fa.SMC(corr, true) // true indicates this is a correlation matrix
+	if err != nil {
+		return nil, fmt.Errorf("SMC computation failed: %w", err)
 	}
-	p, q := inv.Dims()
-	if p != q {
-		return nil, fmt.Errorf("SMC: inverse not square")
-	}
+
+	p, _ := smcVec.Dims()
 	h2 := make([]float64, p)
 	for i := 0; i < p; i++ {
-		d := inv.At(i, i)
-		if d == 0 {
-			h2[i] = 0
-			continue
-		}
-		v := 1.0 - 1.0/d
+		v := smcVec.AtVec(i)
+		// Clamp to [0, 1] as per psych convention
 		if v < 0 {
 			v = 0
 		}
@@ -2649,17 +2643,17 @@ func isAllDigits(segment string) bool {
 func SMC(R *mat.Dense) *mat.Dense {
 	p, _ := R.Dims()
 	h := mat.NewDense(p, 1, nil)
-	var inv mat.Dense
-	if err := inv.Inverse(R); err != nil {
-		// fallback to zeros
+
+	// Use the corrected fa.SMC function
+	smcVec, err := fa.SMC(R, true) // true indicates this is a correlation matrix
+	if err != nil {
+		// fallback to zeros on error
 		return h
 	}
+
 	for i := 0; i < p; i++ {
-		d := inv.At(i, i)
-		v := 0.0
-		if d != 0 {
-			v = 1.0 - 1.0/d
-		}
+		v := smcVec.AtVec(i)
+		// Clamp to [0, 1] as per psych convention
 		if v < 0 {
 			v = 0
 		}
