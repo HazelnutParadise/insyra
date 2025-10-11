@@ -97,7 +97,7 @@ type FactorAnalysisOptions struct {
 	Extraction FactorExtractionMethod
 	Rotation   FactorRotationOptions
 	Scoring    FactorScoreMethod
-	MaxIter    int     // Optional: default 50
+	MaxIter    int     // Optional: default 100
 	MinErr     float64 // Optional: default 0.001 (R's min.err)
 }
 
@@ -207,7 +207,7 @@ func DefaultFactorAnalysisOptions() FactorAnalysisOptions {
 			Restarts: 10,
 		},
 		Scoring: FactorScoreRegression, // R default: "regression"
-		MaxIter: 50,                    // R default: 50
+		MaxIter: 100,                   // R default: 50
 		MinErr:  0.001,                 // R default: 0.001
 	}
 }
@@ -216,7 +216,7 @@ func DefaultFactorAnalysisOptions() FactorAnalysisOptions {
 const (
 	// Convergence tolerance for extraction methods (PAF, ML, MINRES)
 	// R psych uses different tolerances for different contexts
-	extractionTolerance = 1e-6 // General convergence tolerance for factor extraction
+	extractionTolerance = 1e-4 // General convergence tolerance for factor extraction
 
 	// Numerical stability constants
 	epsilonMedium = 1e-6 // For communality lower bound and sum checks
@@ -968,13 +968,25 @@ func extractPAF(corr *mat.Dense, numFactors int, maxIter int, tol float64) (*mat
 		numFactors = cols
 	}
 
-	// Initialize communalities using squared diagonal elements (R_ii^2)
-	// For PAF, this is a common initialization method
+	// Initialize communalities using Squared Multiple Correlations (SMC)
+	// SMC provides better initial estimates for PAF communality values
+	smcVec, err := fa.SMC(corr, true) // true indicates this is a correlation matrix
+	if err != nil {
+		return nil, false, 0, fmt.Errorf("SMC computation failed: %w", err)
+	}
+
 	var communalities []float64
 	communalities = make([]float64, rows)
 	for i := 0; i < rows; i++ {
-		diag := corr.At(i, i)
-		communalities[i] = diag * diag * 0.8 // Use 80% of squared diagonal as initial estimate
+		smc := smcVec.AtVec(i)
+		// Clamp to reasonable bounds
+		if smc < 0.01 {
+			smc = 0.01
+		}
+		if smc > 0.99 {
+			smc = 0.99
+		}
+		communalities[i] = smc
 	}
 
 	var loadings *mat.Dense
@@ -1002,14 +1014,41 @@ func extractPAF(corr *mat.Dense, numFactors int, maxIter int, tol float64) (*mat
 		eigenvectors := mat.NewCDense(rows, cols, nil)
 		eig.VectorsTo(eigenvectors)
 
+		// Sort eigenvalues and eigenvectors in descending order
+		type eigenPair struct {
+			value  complex128
+			vector []complex128
+			index  int
+		}
+		pairs := make([]eigenPair, rows)
+		for i := 0; i < rows; i++ {
+			pairs[i] = eigenPair{
+				value:  eigenvalues[i],
+				vector: make([]complex128, rows),
+				index:  i,
+			}
+			for j := 0; j < rows; j++ {
+				pairs[i].vector[j] = eigenvectors.At(j, i)
+			}
+		}
+
+		// Sort by real part of eigenvalue in descending order
+		for i := 0; i < rows-1; i++ {
+			for j := i + 1; j < rows; j++ {
+				if real(pairs[j].value) > real(pairs[i].value) {
+					pairs[i], pairs[j] = pairs[j], pairs[i]
+				}
+			}
+		}
+
 		// Extract first numFactors components
 		newLoadings := mat.NewDense(rows, numFactors, nil)
 		for i := 0; i < rows; i++ {
 			for j := 0; j < numFactors; j++ {
 				// loadings = eigenvectors * sqrt(eigenvalues)
-				val := real(eigenvalues[j])
+				val := real(pairs[j].value)
 				if val > 0 {
-					newLoadings.Set(i, j, real(eigenvectors.At(i, j))*math.Sqrt(val))
+					newLoadings.Set(i, j, real(pairs[j].vector[i])*math.Sqrt(val))
 				}
 			}
 		}
@@ -1023,6 +1062,13 @@ func extractPAF(corr *mat.Dense, numFactors int, maxIter int, tol float64) (*mat
 				sum += val * val
 			}
 			newCommunalities[i] = sum
+			// Ensure communalities stay within [0,1]
+			if newCommunalities[i] > 1.0 {
+				newCommunalities[i] = 1.0
+			}
+			if newCommunalities[i] < 0.0 {
+				newCommunalities[i] = 0.0
+			}
 		}
 
 		// Check convergence
