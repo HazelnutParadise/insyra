@@ -105,23 +105,31 @@ type FactorAnalysisOptions struct {
 // Result Structs
 // -------------------------
 
+// BartlettTestResult contains the results of Bartlett's test of sphericity
+type BartlettTestResult struct {
+	ChiSquare        float64 // Chi-square statistic
+	DegreesOfFreedom int     // Degrees of freedom
+	PValue           float64 // P-value
+	SampleSize       int     // Sample size
+}
+
 // FactorAnalysisResult contains the output of factor analysis
 type FactorAnalysisResult struct {
-	Loadings             insyra.IDataTable // Loading matrix (variables × factors)
-	UnrotatedLoadings    insyra.IDataTable // Unrotated loading matrix (variables × factors)
-	Structure            insyra.IDataTable // Structure matrix (variables × factors)
-	Uniquenesses         insyra.IDataTable // Uniqueness vector (p × 1)
-	Communalities        insyra.IDataTable // Communality table (p × 1: Extraction)
-	SamplingAdequacy     insyra.IDataTable // KMO overall index and per-variable MSA values
-	BartlettTest         insyra.IDataTable // Bartlett's test of sphericity summary
-	Phi                  insyra.IDataTable // Factor correlation matrix (m × m), nil for orthogonal
-	RotationMatrix       insyra.IDataTable // Rotation matrix (m × m), nil if no rotation
-	Eigenvalues          insyra.IDataTable // Eigenvalues vector (p × 1)
-	ExplainedProportion  insyra.IDataTable // Proportion explained by each factor (m × 1)
-	CumulativeProportion insyra.IDataTable // Cumulative proportion explained (m × 1)
-	Scores               insyra.IDataTable // Factor scores (n × m), nil if not computed
-	ScoreCoefficients    insyra.IDataTable // Factor score coefficient matrix (variables × factors)
-	ScoreCovariance      insyra.IDataTable // Factor score covariance matrix (factors × factors)
+	Loadings             insyra.IDataTable   // Loading matrix (variables × factors)
+	UnrotatedLoadings    insyra.IDataTable   // Unrotated loading matrix (variables × factors)
+	Structure            insyra.IDataTable   // Structure matrix (variables × factors)
+	Uniquenesses         insyra.IDataTable   // Uniqueness vector (p × 1)
+	Communalities        insyra.IDataTable   // Communality table (p × 1: Extraction)
+	SamplingAdequacy     insyra.IDataTable   // KMO overall index and per-variable MSA values
+	BartlettTest         *BartlettTestResult // Bartlett's test of sphericity summary
+	Phi                  insyra.IDataTable   // Factor correlation matrix (m × m), nil for orthogonal
+	RotationMatrix       insyra.IDataTable   // Rotation matrix (m × m), nil if no rotation
+	Eigenvalues          insyra.IDataTable   // Eigenvalues vector (p × 1)
+	ExplainedProportion  insyra.IDataTable   // Proportion explained by each factor (m × 1)
+	CumulativeProportion insyra.IDataTable   // Cumulative proportion explained (m × 1)
+	Scores               insyra.IDataTable   // Factor scores (n × m), nil if not computed
+	ScoreCoefficients    insyra.IDataTable   // Factor score coefficient matrix (variables × factors)
+	ScoreCovariance      insyra.IDataTable   // Factor score covariance matrix (factors × factors)
 
 	Converged         bool
 	RotationConverged bool
@@ -152,7 +160,15 @@ const (
 func (r *FactorAnalysisResult) Show(startEndRange ...any) {
 	insyra.Show("Communalities", r.Communalities, startEndRange...)
 	insyra.Show(tableNameSamplingAdequacy, r.SamplingAdequacy, startEndRange...)
-	insyra.Show(tableNameBartlettTest, r.BartlettTest, startEndRange...)
+	if r.BartlettTest != nil {
+		bartlettTable := insyra.NewDataTable(
+			insyra.NewDataList(r.BartlettTest.ChiSquare).SetName("Chi_Square"),
+			insyra.NewDataList(float64(r.BartlettTest.DegreesOfFreedom)).SetName("Degrees_Of_Freedom"),
+			insyra.NewDataList(r.BartlettTest.PValue).SetName("P_Value"),
+			insyra.NewDataList(float64(r.BartlettTest.SampleSize)).SetName("Sample_Size"),
+		)
+		insyra.Show(tableNameBartlettTest, bartlettTable, startEndRange...)
+	}
 	insyra.Show(tableNameEigenvalues, r.Eigenvalues, startEndRange...)
 	insyra.Show(tableNameExplainedProportion, r.ExplainedProportion, startEndRange...)
 	insyra.Show(tableNameCumulativeProportion, r.CumulativeProportion, startEndRange...)
@@ -419,7 +435,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 
 	// Pre-compute sampling adequacy and Bartlett diagnostics
 	var samplingAdequacyTable *insyra.DataTable
-	var bartlettTable *insyra.DataTable
+	var bartlettResult *BartlettTestResult
 	if corrForAdequacy != nil {
 		corrAdequacyDense := mat.DenseCopyOf(corrForAdequacy)
 		overallKMO, msaValues, kmoErr := computeKMOMeasures(corrAdequacyDense)
@@ -427,16 +443,21 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 			insyra.LogWarning("stats", "FactorAnalysis", "failed to compute KMO/MSA: %v", kmoErr)
 		} else {
 			// Debug: print correlation matrix diagonal and some off-diagonal values
+			rows, cols := corrAdequacyDense.Dims()
+			insyra.LogDebug("stats", "FactorAnalysis", "correlation matrix dimensions: %dx%d", rows, cols)
 			insyra.LogDebug("stats", "FactorAnalysis", "correlation matrix diagonal: %.6f, %.6f, %.6f", corrAdequacyDense.At(0, 0), corrAdequacyDense.At(1, 1), corrAdequacyDense.At(2, 2))
-			insyra.LogDebug("stats", "FactorAnalysis", "correlation matrix sample values: [0,1]=%.6f, [0,2]=%.6f, [1,2]=%.6f", corrAdequacyDense.At(0, 1), corrAdequacyDense.At(0, 2), corrAdequacyDense.At(1, 2))
-			insyra.LogDebug("stats", "FactorAnalysis", "correlation matrix more values: [0,3]=%.6f, [3,4]=%.6f, [6,7]=%.6f", corrAdequacyDense.At(0, 3), corrAdequacyDense.At(3, 4), corrAdequacyDense.At(6, 7))
+			if cols > 3 {
+				insyra.LogDebug("stats", "FactorAnalysis", "correlation matrix sample values: [0,1]=%.6f, [0,2]=%.6f, [1,2]=%.6f, [0,3]=%.6f", corrAdequacyDense.At(0, 1), corrAdequacyDense.At(0, 2), corrAdequacyDense.At(1, 2), corrAdequacyDense.At(0, 3))
+			} else {
+				insyra.LogDebug("stats", "FactorAnalysis", "correlation matrix sample values: [0,1]=%.6f, [0,2]=%.6f, [1,2]=%.6f", corrAdequacyDense.At(0, 1), corrAdequacyDense.At(0, 2), corrAdequacyDense.At(1, 2))
+			}
 			samplingAdequacyTable = kmoToDataTable(overallKMO, msaValues, colNames)
 		}
 
 		if chi, pval, df, bartErr := computeBartlettFromCorrelation(corrAdequacyDense, rowNum); bartErr != nil {
 			insyra.LogWarning("stats", "FactorAnalysis", "failed to compute Bartlett's test: %v", bartErr)
 		} else {
-			bartlettTable = bartlettToDataTable(chi, df, pval, rowNum)
+			bartlettResult = bartlettToDataTable(chi, df, pval, rowNum)
 		}
 	}
 
@@ -785,7 +806,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		Uniquenesses:         vectorToDataTableWithNames(uniquenesses, tableNameUniqueness, "Uniqueness", colNames),
 		Communalities:        communalitiesTable,
 		SamplingAdequacy:     samplingAdequacyTable,
-		BartlettTest:         bartlettTable,
+		BartlettTest:         bartlettResult,
 		Phi:                  nil,
 		RotationMatrix:       nil,
 		Eigenvalues:          vectorToDataTableWithNames(sortedEigenvalues, tableNameEigenvalues, "Eigenvalue", factorColNames),
@@ -1719,15 +1740,14 @@ func computeBartlettFromCorrelation(corr *mat.Dense, n int) (chiSquare float64, 
 	return chiSquare, pValue, df, nil
 }
 
-// bartlettToDataTable converts Bartlett's test results to DataTable
-func bartlettToDataTable(chiSquare float64, df int, pValue float64, n int) *insyra.DataTable {
-	// Create DataLists for horizontal format (1 row, multiple columns)
-	chiSquareList := insyra.NewDataList(chiSquare).SetName("Chi_Square")
-	dfList := insyra.NewDataList(float64(df)).SetName("Degrees_Of_Freedom")
-	pValueList := insyra.NewDataList(pValue).SetName("P_Value")
-	sampleSizeList := insyra.NewDataList(float64(n)).SetName("Sample_Size")
-
-	return insyra.NewDataTable(chiSquareList, dfList, pValueList, sampleSizeList)
+// bartlettToDataTable converts Bartlett's test results to BartlettTestResult struct
+func bartlettToDataTable(chiSquare float64, df int, pValue float64, n int) *BartlettTestResult {
+	return &BartlettTestResult{
+		ChiSquare:        chiSquare,
+		DegreesOfFreedom: df,
+		PValue:           pValue,
+		SampleSize:       n,
+	}
 }
 
 // initialCommunalitiesSMC computes initial communalities using Squared Multiple Correlation

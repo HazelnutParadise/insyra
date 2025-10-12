@@ -123,12 +123,17 @@ func TestFactorAnalysisDiagnosticsOutputs(t *testing.T) {
 	if model.BartlettTest == nil {
 		t.Fatal("BartlettTest should not be nil")
 	} else {
-		var rows, cols int
-		model.BartlettTest.AtomicDo(func(table *insyra.DataTable) {
-			rows, cols = table.Size()
-		})
-		if rows != 1 || cols < 3 {
-			t.Errorf("Expected Bartlett test to have 1 row and at least 3 columns, got %dx%d", rows, cols)
+		if model.BartlettTest.ChiSquare <= 0 {
+			t.Errorf("Expected Bartlett test ChiSquare to be positive, got %f", model.BartlettTest.ChiSquare)
+		}
+		if model.BartlettTest.DegreesOfFreedom <= 0 {
+			t.Errorf("Expected Bartlett test DegreesOfFreedom to be positive, got %d", model.BartlettTest.DegreesOfFreedom)
+		}
+		if model.BartlettTest.PValue < 0 || model.BartlettTest.PValue > 1 {
+			t.Errorf("Expected Bartlett test PValue to be between 0 and 1, got %f", model.BartlettTest.PValue)
+		}
+		if model.BartlettTest.SampleSize <= 0 {
+			t.Errorf("Expected Bartlett test SampleSize to be positive, got %d", model.BartlettTest.SampleSize)
 		}
 	}
 

@@ -1187,6 +1187,17 @@ const (
 )
 ```
 
+#### BartlettTestResult
+
+```go
+type BartlettTestResult struct {
+    ChiSquare        float64 // Chi-square statistic
+    DegreesOfFreedom int     // Degrees of freedom
+    PValue           float64 // P-value
+    SampleSize       int     // Sample size
+}
+```
+
 #### FactorAnalysisResult
 
 ```go
@@ -1196,7 +1207,7 @@ type FactorAnalysisResult struct {
     Uniquenesses         insyra.IDataTable // Uniqueness vector (p × 1)
     Communalities        insyra.IDataTable // Communality table with Initial & Extraction columns
     SamplingAdequacy     insyra.IDataTable // KMO overall index and per-variable MSA values
-    BartlettTest         insyra.IDataTable // Bartlett's test of sphericity summary
+    BartlettTest         *BartlettTestResult // Bartlett's test of sphericity summary
     Phi                  insyra.IDataTable // Factor correlation matrix (m × m), nil for orthogonal
     RotationMatrix       insyra.IDataTable // Rotation matrix (m × m), nil if no rotation
     Eigenvalues          insyra.IDataTable // Eigenvalues vector (p × 1)
@@ -1220,7 +1231,7 @@ type FactorAnalysisResult struct {
 - **Uniquenesses**: Single column named "Uniqueness", row names are variable names
 - **Communalities**: Two columns named "Initial" and "Extraction", row names are variable names
 - **SamplingAdequacy**: Column "KMO" for the overall index plus one column per variable with MSA values
-- **BartlettTest**: Columns summarizing degrees of freedom, χ² statistic, and p-value
+- **BartlettTest**: BartlettTestResult struct containing ChiSquare, DegreesOfFreedom, PValue, and SampleSize fields
 - **Eigenvalues**: Single column named "Eigenvalue", row names are factor names
 - **ExplainedProportion**: Single column named "Explained Proportion", row names are factor names
 - **CumulativeProportion**: Single column named "Cumulative Proportion", row names are factor names
@@ -1305,37 +1316,6 @@ if err != nil {
 }
 scores.Show()
 scores.ToCSV("factor_scores.csv", true, true, true)
-```
-
-### ScreePlotData
-
-```go
-func ScreePlotData(dt insyra.IDataTable, standardize bool) (eigenDT insyra.IDataTable, cumDT insyra.IDataTable, err error)
-```
-
-**Purpose**: Returns scree plot data (eigenvalues and cumulative proportion) for determining the number of factors to extract.
-
-**Parameters**:
-
-- `dt`: Input data table
-- `standardize`: Whether to standardize variables before analysis
-
-**Returns**:
-
-- `eigenDT`: DataTable containing eigenvalues in descending order
-- `cumDT`: DataTable containing cumulative proportions of explained variance
-- `err`: Error if analysis fails
-
-**Example**:
-
-```go
-// Get scree plot data for factor analysis
-eigenvalues, cumulative, err := stats.ScreePlotData(dataTable, true)
-if err != nil {
-    log.Fatal(err)
-}
-eigenvalues.Show() // Display eigenvalues
-cumulative.Show()  // Display cumulative proportions
 ```
 
 ### DefaultFactorAnalysisOptions
