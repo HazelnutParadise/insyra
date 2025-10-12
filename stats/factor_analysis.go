@@ -560,8 +560,8 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		pVars, mFactors := loadings.Dims()
 		if pVars > 0 && mFactors > 0 {
 			maxAbs := 0.0
-			for i := 0; i < pVars; i++ {
-				for j := 0; j < mFactors; j++ {
+			for i := range pVars {
+				for j := range mFactors {
 					val := math.Abs(loadings.At(i, j))
 					if val > maxAbs {
 						maxAbs = val
@@ -571,8 +571,8 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 			sampleVars := min(2, pVars)
 			sampleFactors := min(2, mFactors)
 			buffer := make([]float64, 0, sampleVars*sampleFactors)
-			for i := 0; i < sampleVars; i++ {
-				for j := 0; j < sampleFactors; j++ {
+			for i := range sampleVars {
+				for j := range sampleFactors {
 					buffer = append(buffer, loadings.At(i, j))
 				}
 			}
@@ -666,7 +666,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 				}
 			} else {
 				rowVec := mat.NewVecDense(numFactors, nil)
-				for j := 0; j < numFactors; j++ {
+				for j := range numFactors {
 					rowVec.SetVec(j, rotatedLoadings.At(i, j))
 				}
 				var tmp mat.VecDense
@@ -718,7 +718,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	// Convert results to DataTables
 	// Generate factor column names
 	factorColNames := make([]string, numFactors)
-	for i := 0; i < numFactors; i++ {
+	for i := range numFactors {
 		factorColNames[i] = fmt.Sprintf("Factor_%d", i+1)
 	}
 
@@ -733,7 +733,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	if (useSPSSPAFOblimin || opt.Extraction == FactorExtractionPCA) && len(extractionEigenvalues) == mFactors {
 		// Use eigenvalues for PCA or special PAF+Oblimin case
 		cum := 0.0
-		for j := 0; j < mFactors; j++ {
+		for j := range mFactors {
 			prop := extractionEigenvalues[j] / float64(pVars) * 100.0
 			explainedProp[j] = prop
 			cum += prop
@@ -743,9 +743,9 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		// Fallback for other methods: use unrotated SS loadings as extraction
 		// SS (pre-rotation loadings: structure == pattern)
 		ssLoad := make([]float64, mFactors)
-		for j := 0; j < mFactors; j++ {
+		for j := range mFactors {
 			sum := 0.0
-			for i := 0; i < pVars; i++ {
+			for i := range pVars {
 				v := loadings.At(i, j)
 				sum += v * v
 			}
@@ -753,7 +753,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		}
 		totalVar := float64(pVars)
 		cum := 0.0
-		for j := 0; j < mFactors; j++ {
+		for j := range mFactors {
 			prop := ssLoad[j] / totalVar * 100.0
 			explainedProp[j] = prop
 			cum += prop
@@ -953,7 +953,7 @@ func computePCALoadings(eigenvalues []float64, eigenvectors *mat.Dense, numFacto
 	}
 
 	loadings := mat.NewDense(p, numFactors, nil)
-	for i := 0; i < p; i++ {
+	for i := range p {
 		for j := 0; j < numFactors; j++ {
 			if j < len(adjustedEigenvalues) {
 				loadings.Set(i, j, eigenvectors.At(i, j)*math.Sqrt(adjustedEigenvalues[j]))
@@ -997,13 +997,13 @@ func extractPAF(corr *mat.Dense, numFactors int, maxIter int, tol float64, initi
 	converged := false
 	iterations := 0
 
-	for iter := 0; iter < maxIter; iter++ {
+	for iter := range maxIter {
 		iterations = iter + 1
 
 		// Create reduced correlation matrix R* = R - diag(1 - communalities)
 		reducedCorr := mat.NewDense(rows, cols, nil)
 		reducedCorr.Copy(corr)
-		for i := 0; i < rows; i++ {
+		for i := range rows {
 			reducedCorr.Set(i, i, corr.At(i, i)-(1.0-communalities[i]))
 		}
 
@@ -1011,8 +1011,8 @@ func extractPAF(corr *mat.Dense, numFactors int, maxIter int, tol float64, initi
 
 		// Eigenvalue decomposition of reduced correlation matrix
 		reducedCorrSym := mat.NewSymDense(rows, nil)
-		for i := 0; i < rows; i++ {
-			for j := 0; j < rows; j++ {
+		for i := range rows {
+			for j := range rows {
 				reducedCorrSym.SetSym(i, j, reducedCorr.At(i, j))
 			}
 		}
@@ -1033,13 +1033,13 @@ func extractPAF(corr *mat.Dense, numFactors int, maxIter int, tol float64, initi
 			index  int
 		}
 		pairs := make([]eigenPair, rows)
-		for i := 0; i < rows; i++ {
+		for i := range rows {
 			pairs[i] = eigenPair{
 				value:  eigenvalues[i],
 				vector: make([]float64, rows),
 				index:  i,
 			}
-			for j := 0; j < rows; j++ {
+			for j := range rows {
 				pairs[i].vector[j] = eigenvectors.At(j, i)
 			}
 		}
@@ -1055,7 +1055,7 @@ func extractPAF(corr *mat.Dense, numFactors int, maxIter int, tol float64, initi
 
 		// Extract first numFactors components
 		newLoadings := mat.NewDense(rows, numFactors, nil)
-		for i := 0; i < rows; i++ {
+		for i := range rows {
 			for j := 0; j < numFactors; j++ {
 				// loadings = eigenvectors * sqrt(eigenvalues)
 				val := pairs[j].value
@@ -1067,7 +1067,7 @@ func extractPAF(corr *mat.Dense, numFactors int, maxIter int, tol float64, initi
 
 		// Update communalities: h_i = sum(loadings[i,j]^2 for j in 1..m)
 		newCommunalities := make([]float64, rows)
-		for i := 0; i < rows; i++ {
+		for i := range rows {
 			sum := 0.0
 			for j := 0; j < numFactors; j++ {
 				val := newLoadings.At(i, j)
@@ -1085,7 +1085,7 @@ func extractPAF(corr *mat.Dense, numFactors int, maxIter int, tol float64, initi
 
 		// Check convergence - use SPSS-like convergence criterion
 		maxDiff := 0.0
-		for i := 0; i < rows; i++ {
+		for i := range rows {
 			diff := math.Abs(newCommunalities[i] - communalities[i])
 			if diff > maxDiff {
 				maxDiff = diff
@@ -1108,14 +1108,14 @@ func extractPAF(corr *mat.Dense, numFactors int, maxIter int, tol float64, initi
 		// Recreate the final reduced correlation matrix
 		reducedCorr := mat.NewDense(rows, cols, nil)
 		reducedCorr.CloneFrom(corr)
-		for i := 0; i < rows; i++ {
+		for i := range rows {
 			reducedCorr.Set(i, i, communalities[i])
 		}
 
 		// Perform final eigenvalue decomposition using real symmetric matrix
 		reducedCorrSym := mat.NewSymDense(rows, nil)
-		for i := 0; i < rows; i++ {
-			for j := 0; j < rows; j++ {
+		for i := range rows {
+			for j := range rows {
 				reducedCorrSym.SetSym(i, j, reducedCorr.At(i, j))
 			}
 		}
@@ -1145,7 +1145,7 @@ func extractMINRES(corr *mat.Dense, numFactors int, maxIter int, tol float64) (*
 
 	// Initialize communalities using Kaiser normalization (diagonal squared) - SPSS default for ML
 	communalities := make([]float64, rows)
-	for i := 0; i < rows; i++ {
+	for i := range rows {
 		val := corr.At(i, i)
 		communalities[i] = val * val
 		if communalities[i] > 0.995 {
@@ -1156,20 +1156,20 @@ func extractMINRES(corr *mat.Dense, numFactors int, maxIter int, tol float64) (*
 	converged := false
 	iterations := 0
 
-	for iter := 0; iter < maxIter; iter++ {
+	for iter := range maxIter {
 		iterations = iter + 1
 
 		// Create reduced correlation matrix R* = R - diag(1 - communalities)
 		reducedCorr := mat.NewDense(rows, cols, nil)
 		reducedCorr.Copy(corr)
-		for i := 0; i < rows; i++ {
+		for i := range rows {
 			reducedCorr.Set(i, i, corr.At(i, i)-(1.0-communalities[i]))
 		}
 
 		// Eigenvalue decomposition
 		reducedCorrSym := mat.NewSymDense(rows, nil)
-		for i := 0; i < rows; i++ {
-			for j := 0; j < rows; j++ {
+		for i := range rows {
+			for j := range rows {
 				reducedCorrSym.SetSym(i, j, reducedCorr.At(i, j))
 			}
 		}
@@ -1189,13 +1189,13 @@ func extractMINRES(corr *mat.Dense, numFactors int, maxIter int, tol float64) (*
 			index  int
 		}
 		pairs := make([]eigenPair, rows)
-		for i := 0; i < rows; i++ {
+		for i := range rows {
 			pairs[i] = eigenPair{
 				value:  eigenvalues[i],
 				vector: make([]float64, rows),
 				index:  i,
 			}
-			for j := 0; j < rows; j++ {
+			for j := range rows {
 				pairs[i].vector[j] = eigenvectors.At(j, i)
 			}
 		}
@@ -1210,7 +1210,7 @@ func extractMINRES(corr *mat.Dense, numFactors int, maxIter int, tol float64) (*
 
 		// Extract first numFactors components
 		loadings := mat.NewDense(rows, numFactors, nil)
-		for i := 0; i < rows; i++ {
+		for i := range rows {
 			for j := 0; j < numFactors; j++ {
 				val := pairs[j].value
 				if val > 0 {
@@ -1221,7 +1221,7 @@ func extractMINRES(corr *mat.Dense, numFactors int, maxIter int, tol float64) (*
 
 		// Update communalities: h_i = sum(loadings[i,j]^2 for j in 1..m)
 		newCommunalities := make([]float64, rows)
-		for i := 0; i < rows; i++ {
+		for i := range rows {
 			sumSquares := 0.0
 			for j := 0; j < numFactors; j++ {
 				loading := loadings.At(i, j)
@@ -1238,7 +1238,7 @@ func extractMINRES(corr *mat.Dense, numFactors int, maxIter int, tol float64) (*
 
 		// Check convergence
 		maxCommunalityDiff := 0.0
-		for i := 0; i < rows; i++ {
+		for i := range rows {
 			communalityDiff := math.Abs(newCommunalities[i] - communalities[i])
 			if communalityDiff > maxCommunalityDiff {
 				maxCommunalityDiff = communalityDiff
@@ -1256,13 +1256,13 @@ func extractMINRES(corr *mat.Dense, numFactors int, maxIter int, tol float64) (*
 	// Final extraction using converged communalities
 	reducedCorr := mat.NewDense(rows, cols, nil)
 	reducedCorr.Copy(corr)
-	for i := 0; i < rows; i++ {
+	for i := range rows {
 		reducedCorr.Set(i, i, corr.At(i, i)-(1.0-communalities[i]))
 	}
 
 	reducedCorrSym := mat.NewSymDense(rows, nil)
-	for i := 0; i < rows; i++ {
-		for j := 0; j < rows; j++ {
+	for i := range rows {
+		for j := range rows {
 			reducedCorrSym.SetSym(i, j, reducedCorr.At(i, j))
 		}
 	}
@@ -1282,13 +1282,13 @@ func extractMINRES(corr *mat.Dense, numFactors int, maxIter int, tol float64) (*
 		index  int
 	}
 	pairs := make([]eigenPair, rows)
-	for i := 0; i < rows; i++ {
+	for i := range rows {
 		pairs[i] = eigenPair{
 			value:  eigenvalues[i],
 			vector: make([]float64, rows),
 			index:  i,
 		}
-		for j := 0; j < rows; j++ {
+		for j := range rows {
 			pairs[i].vector[j] = eigenvectors.At(j, i)
 		}
 	}
@@ -1303,7 +1303,7 @@ func extractMINRES(corr *mat.Dense, numFactors int, maxIter int, tol float64) (*
 
 	// Extract final loadings
 	finalLoadings := mat.NewDense(rows, numFactors, nil)
-	for i := 0; i < rows; i++ {
+	for i := range rows {
 		for j := 0; j < numFactors; j++ {
 			val := pairs[j].value
 			if val > 0 {
@@ -1328,7 +1328,7 @@ func extractML(corr *mat.Dense, numFactors int, maxIter int, tol float64, sample
 
 	// Initialize communalities using Kaiser normalization (diagonal squared) - SPSS default for ML
 	communalities := make([]float64, rows)
-	for i := 0; i < rows; i++ {
+	for i := range rows {
 		val := corr.At(i, i)
 		communalities[i] = val * val
 		if communalities[i] > 0.995 {
@@ -1344,7 +1344,7 @@ func extractML(corr *mat.Dense, numFactors int, maxIter int, tol float64, sample
 	// True Maximum Likelihood estimation using optimization
 	// Start with communalities as initial uniquenesses (Psi = 1 - h^2)
 	startPsi := make([]float64, rows)
-	for i := 0; i < rows; i++ {
+	for i := range rows {
 		startPsi[i] = 1.0 - communalities[i]
 		if startPsi[i] < 0.005 {
 			startPsi[i] = 0.005
@@ -1364,7 +1364,7 @@ func extractML(corr *mat.Dense, numFactors int, maxIter int, tol float64, sample
 	learningRate := 0.1 // Increased learning rate
 	maxStepSize := 0.2  // Increased max step size
 
-	for iter := 0; iter < maxIter; iter++ {
+	for iter := range maxIter {
 		iterations = iter + 1
 
 		// Compute current objective function and gradient
@@ -1383,7 +1383,7 @@ func extractML(corr *mat.Dense, numFactors int, maxIter int, tol float64, sample
 		}
 
 		// Update psi using gradient descent with bounds
-		for i := 0; i < rows; i++ {
+		for i := range rows {
 			step := -learningRate * grad[i]
 			if math.Abs(step) > maxStepSize {
 				step = maxStepSize * step / math.Abs(step)
@@ -1417,7 +1417,7 @@ func mlObjectiveAndGradient(S *mat.Dense, psi []float64, nfactors int) (float64,
 	// Create R* = S with diagonal replaced by communalities (1 - psi)
 	Rstar := mat.NewDense(n, n, nil)
 	Rstar.Copy(S)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		Rstar.Set(i, i, 1.0-psi[i])
 	}
 
@@ -1442,7 +1442,7 @@ func mlObjectiveAndGradient(S *mat.Dense, psi []float64, nfactors int) (float64,
 			obj += math.Log(1e-8)
 		}
 	}
-	for i := 0; i < nfactors; i++ {
+	for i := range nfactors {
 		if eigenvalues[i] > 1e-8 {
 			obj -= math.Log(eigenvalues[i])
 		} else {
@@ -1456,7 +1456,7 @@ func mlObjectiveAndGradient(S *mat.Dense, psi []float64, nfactors int) (float64,
 	// For simplicity, use finite differences
 	grad := make([]float64, n)
 	eps := 1e-6
-	for i := 0; i < n; i++ {
+	for i := range n {
 		psiPlus := make([]float64, n)
 		copy(psiPlus, psi)
 		psiPlus[i] += eps
@@ -1475,14 +1475,14 @@ func computeMLObjective(S *mat.Dense, psi []float64, nfactors int) float64 {
 
 	// Create uniqueness matrix Psi (diagonal matrix with psi on diagonal)
 	Psi := mat.NewDense(n, n, nil)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		Psi.Set(i, i, psi[i])
 	}
 
 	// Create R* = S - Psi (reduced correlation matrix)
 	Rstar := mat.NewDense(n, n, nil)
 	Rstar.Copy(S)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		Rstar.Set(i, i, S.At(i, i)-psi[i])
 	}
 
@@ -1499,10 +1499,10 @@ func computeMLObjective(S *mat.Dense, psi []float64, nfactors int) float64 {
 
 	// Extract factor loadings Lambda (first nfactors eigenvectors scaled by sqrt of eigenvalues)
 	Lambda := mat.NewDense(n, nfactors, nil)
-	for i := 0; i < nfactors; i++ {
+	for i := range nfactors {
 		if eigenvalues[i] > 0 {
 			scale := math.Sqrt(eigenvalues[i])
-			for j := 0; j < n; j++ {
+			for j := range n {
 				Lambda.Set(j, i, eigenvectors.At(j, i)*scale)
 			}
 		}
@@ -1529,8 +1529,8 @@ func computeMLObjective(S *mat.Dense, psi []float64, nfactors int) float64 {
 	}
 
 	traceTerm := 0.0
-	for i := 0; i < n; i++ {
-		for j := 0; j < n; j++ {
+	for i := range n {
+		for j := range n {
 			traceTerm += SigmaInv.At(i, j) * S.At(i, j)
 		}
 	}
@@ -1549,7 +1549,7 @@ func mlExtractLoadings(S *mat.Dense, psi []float64, nfactors int) (*mat.Dense, e
 	// Create R* = S with diagonal replaced by communalities (1 - psi)
 	Rstar := mat.NewDense(n, n, nil)
 	Rstar.Copy(S)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		Rstar.Set(i, i, 1.0-psi[i])
 	}
 
@@ -1570,12 +1570,12 @@ func mlExtractLoadings(S *mat.Dense, psi []float64, nfactors int) (*mat.Dense, e
 		vector []float64
 	}
 	pairs := make([]eigenPair, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		pairs[i] = eigenPair{
 			value:  eigenvalues[i],
 			vector: make([]float64, n),
 		}
-		for j := 0; j < n; j++ {
+		for j := range n {
 			pairs[i].vector[j] = eigenvectors.At(j, i)
 		}
 	}
@@ -1590,8 +1590,8 @@ func mlExtractLoadings(S *mat.Dense, psi []float64, nfactors int) (*mat.Dense, e
 
 	// Extract loadings for first nfactors
 	loadings := mat.NewDense(n, nfactors, nil)
-	for i := 0; i < n; i++ {
-		for j := 0; j < nfactors; j++ {
+	for i := range n {
+		for j := range nfactors {
 			if pairs[j].value > 0 {
 				loadings.Set(i, j, pairs[j].vector[i]*math.Sqrt(pairs[j].value))
 			}
@@ -1616,7 +1616,7 @@ func computeKMOMeasures(corr *mat.Dense) (overallKMO float64, msaValues []float6
 	if err != nil {
 		// Fallback: try using Solve for identity matrix
 		identity := mat.NewDense(p, p, nil)
-		for i := 0; i < p; i++ {
+		for i := range p {
 			identity.Set(i, i, 1.0)
 		}
 		err = invCorr.Solve(corr, identity)
@@ -1628,11 +1628,11 @@ func computeKMOMeasures(corr *mat.Dense) (overallKMO float64, msaValues []float6
 	insyra.LogDebug("stats", "FactorAnalysis", "KMO inverse diagonal: %.6f, %.6f, %.6f", invCorr.At(0, 0), invCorr.At(1, 1), invCorr.At(2, 2))
 
 	// Compute MSA (Measure of Sampling Adequacy) for each variable
-	for i := 0; i < p; i++ {
+	for i := range p {
 		sumRSquared := 0.0
 		sumPSquared := 0.0
 
-		for j := 0; j < p; j++ {
+		for j := range p {
 			if i != j {
 				r := corr.At(i, j)
 				// Compute partial correlation: p_ij = -invCorr[i][j] / sqrt(invCorr[i][i] * invCorr[j][j])
@@ -1653,8 +1653,8 @@ func computeKMOMeasures(corr *mat.Dense) (overallKMO float64, msaValues []float6
 	sumRSquared := 0.0
 	sumPSquared := 0.0
 
-	for i := 0; i < p; i++ {
-		for j := 0; j < p; j++ {
+	for i := range p {
+		for j := range p {
 			if i != j {
 				r := corr.At(i, j)
 				// Compute partial correlation: p_ij = -invCorr[i][j] / sqrt(invCorr[i][i] * invCorr[j][j])
@@ -1682,7 +1682,7 @@ func kmoToDataTable(overallKMO float64, msaValues []float64, colNames []string) 
 	msaList := insyra.NewDataList().SetName("MSA")
 
 	// MSA values for each variable
-	for i := 0; i < len(msaValues); i++ {
+	for i := range msaValues {
 		msaList.Append(msaValues[i])
 	}
 
@@ -1705,7 +1705,7 @@ func computeBartlettFromCorrelation(corr *mat.Dense, n int) (chiSquare float64, 
 
 	// Convert correlation matrix to symmetric matrix for eigenvalue decomposition
 	symCorr := mat.NewSymDense(p, nil)
-	for i := 0; i < p; i++ {
+	for i := range p {
 		for j := 0; j <= i; j++ {
 			symCorr.SetSym(i, j, corr.At(i, j))
 		}
@@ -1756,12 +1756,12 @@ func reflectFactorsForPositiveLoadings(loadings *mat.Dense) (*mat.Dense, error) 
 	rows, cols := loadings.Dims()
 	reflectedLoadings := mat.DenseCopyOf(loadings)
 
-	for j := 0; j < cols; j++ { // For each factor
+	for j := range cols { // For each factor
 		positiveCount := 0
 		negativeCount := 0
 
 		// Count positive and negative loadings for this factor
-		for i := 0; i < rows; i++ {
+		for i := range rows {
 			loading := reflectedLoadings.At(i, j)
 			if loading > 0 {
 				positiveCount++
@@ -1772,7 +1772,7 @@ func reflectFactorsForPositiveLoadings(loadings *mat.Dense) (*mat.Dense, error) 
 
 		// If negative loadings are more than positive, reflect the factor
 		if negativeCount > positiveCount {
-			for i := 0; i < rows; i++ {
+			for i := range rows {
 				reflectedLoadings.Set(i, j, -reflectedLoadings.At(i, j))
 			}
 		}
@@ -1791,7 +1791,7 @@ func matrixToDataTableWithNames(matrix mat.Matrix, tableName string, colNames []
 
 	// Create DataLists for each column
 	dataLists := make([]*insyra.DataList, cols)
-	for j := 0; j < cols; j++ {
+	for j := range cols {
 		var colName string
 		if j < len(colNames) {
 			colName = colNames[j]
@@ -1801,7 +1801,7 @@ func matrixToDataTableWithNames(matrix mat.Matrix, tableName string, colNames []
 		dataLists[j] = insyra.NewDataList().SetName(colName)
 
 		// Add row values for this column
-		for i := 0; i < rows; i++ {
+		for i := range rows {
 			dataLists[j].Append(matrix.At(i, j))
 		}
 	}
@@ -1843,9 +1843,9 @@ func sortFactorsByExplainedVariance(loadings *mat.Dense, rotationMatrix *mat.Den
 
 	// Calculate explained variance for each factor (sum of squared loadings)
 	variances := make([]float64, cols)
-	for j := 0; j < cols; j++ {
+	for j := range cols {
 		sum := 0.0
-		for i := 0; i < rows; i++ {
+		for i := range rows {
 			loading := loadings.At(i, j)
 			sum += loading * loading
 		}
@@ -1871,20 +1871,20 @@ func sortFactorsByExplainedVariance(loadings *mat.Dense, rotationMatrix *mat.Den
 	sortedLoadings := mat.NewDense(rows, cols, nil)
 	if rotationMatrix != nil {
 		sortedRotationMatrix := mat.NewDense(cols, cols, nil)
-		for j := 0; j < cols; j++ {
+		for j := range cols {
 			newCol := indices[j]
-			for i := 0; i < rows; i++ {
+			for i := range rows {
 				sortedLoadings.Set(i, j, loadings.At(i, newCol))
 			}
-			for k := 0; k < cols; k++ {
+			for k := range cols {
 				sortedRotationMatrix.Set(k, j, rotationMatrix.At(k, newCol))
 			}
 		}
 		rotationMatrix = sortedRotationMatrix
 	} else {
-		for j := 0; j < cols; j++ {
+		for j := range cols {
 			newCol := indices[j]
-			for i := 0; i < rows; i++ {
+			for i := range rows {
 				sortedLoadings.Set(i, j, loadings.At(i, newCol))
 			}
 		}
@@ -1894,8 +1894,8 @@ func sortFactorsByExplainedVariance(loadings *mat.Dense, rotationMatrix *mat.Den
 	var sortedPhi *mat.Dense
 	if phi != nil {
 		sortedPhi = mat.NewDense(cols, cols, nil)
-		for i := 0; i < cols; i++ {
-			for j := 0; j < cols; j++ {
+		for i := range cols {
+			for j := range cols {
 				sortedPhi.Set(i, j, phi.At(indices[i], indices[j]))
 			}
 		}
@@ -1917,11 +1917,11 @@ func rotateFactors(loadings *mat.Dense, rotationOpts FactorRotationOptions) (*ma
 		// No rotation - return identity matrix
 		_, cols := loadings.Dims()
 		identity := mat.NewDense(cols, cols, nil)
-		for i := 0; i < cols; i++ {
+		for i := range cols {
 			identity.Set(i, i, 1.0)
 		}
 		phi := mat.NewDense(cols, cols, nil)
-		for i := 0; i < cols; i++ {
+		for i := range cols {
 			phi.Set(i, i, 1.0)
 		}
 		// Apply sign standardization to unrotated loadings
@@ -1962,11 +1962,11 @@ func rotateFactors(loadings *mat.Dense, rotationOpts FactorRotationOptions) (*ma
 		// For unsupported methods, return unrotated loadings
 		_, cols := loadings.Dims()
 		identity := mat.NewDense(cols, cols, nil)
-		for i := 0; i < cols; i++ {
+		for i := range cols {
 			identity.Set(i, i, 1.0)
 		}
 		phi := mat.NewDense(cols, cols, nil)
-		for i := 0; i < cols; i++ {
+		for i := range cols {
 			phi.Set(i, i, 1.0)
 		}
 		// Apply sign standardization to unrotated loadings
@@ -2004,12 +2004,12 @@ func standardizeFactorSigns(loadings *mat.Dense) *mat.Dense {
 	rows, cols := loadings.Dims()
 	standardized := mat.DenseCopyOf(loadings)
 
-	for j := 0; j < cols; j++ {
+	for j := range cols {
 		// Find the variable with the largest absolute loading for this factor
 		maxAbsLoading := 0.0
 		maxAbsIndex := 0
 
-		for i := 0; i < rows; i++ {
+		for i := range rows {
 			absLoading := math.Abs(standardized.At(i, j))
 			if absLoading > maxAbsLoading {
 				maxAbsLoading = absLoading
@@ -2019,7 +2019,7 @@ func standardizeFactorSigns(loadings *mat.Dense) *mat.Dense {
 
 		// If the largest loading is negative, reflect the entire factor
 		if standardized.At(maxAbsIndex, j) < 0 {
-			for i := 0; i < rows; i++ {
+			for i := range rows {
 				standardized.Set(i, j, -standardized.At(i, j))
 			}
 		}
@@ -2118,7 +2118,7 @@ func computeRegressionScores(data *mat.Dense, loadings *mat.Dense, phi *mat.Dens
 		// If phi is nil (orthogonal rotation), use identity
 		_, m := loadings.Dims()
 		identity := mat.NewDense(m, m, nil)
-		for i := 0; i < m; i++ {
+		for i := range m {
 			identity.Set(i, i, 1.0)
 		}
 		temp.Mul(loadings, identity)
@@ -2153,7 +2153,7 @@ func computeRegressionScores(data *mat.Dense, loadings *mat.Dense, phi *mat.Dens
 	} else {
 		_, m := loadings.Dims()
 		covariance = mat.NewDense(m, m, nil)
-		for i := 0; i < m; i++ {
+		for i := range m {
 			covariance.Set(i, i, 1.0)
 		}
 	}
@@ -2188,7 +2188,7 @@ func computeAndersonRubinScores(data *mat.Dense, loadings *mat.Dense, phi *mat.D
 	// Simplified implementation - in practice this requires more complex calculations
 	// For now, return zero scores and identity covariance matrix
 	identity := mat.NewDense(m, m, nil)
-	for i := 0; i < m; i++ {
+	for i := range m {
 		identity.Set(i, i, 1.0)
 	}
 	return scores, coefficients, identity, nil
