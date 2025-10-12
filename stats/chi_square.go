@@ -18,6 +18,10 @@ type ChiSquareTestResult struct {
 }
 
 func (r *ChiSquareTestResult) Show() {
+	if r == nil {
+		fmt.Println("Chi-Square Test failed: cannot show results")
+		return
+	}
 	fmt.Printf("Chi-Square Test Statistic: %v\n", r.Statistic)
 	fmt.Printf("Chi-Square Test P-Value: %v\n", r.PValue)
 	fmt.Printf("Chi-Square Test Degrees of Freedom: %v\n", *r.DF)
@@ -128,15 +132,11 @@ func ChiSquareIndependenceTest(rowData, colData insyra.IDataList) *ChiSquareTest
 	colSet := make(map[string]struct{})
 	for _, v := range rowVals {
 		s := strings.TrimSpace(conv.ToString(v))
-		if s != "" && s != "#N/A" && s != "NA" && s != "N/A" {
-			rowSet[s] = struct{}{}
-		}
+		rowSet[s] = struct{}{}
 	}
 	for _, v := range colVals {
 		s := strings.TrimSpace(conv.ToString(v))
-		if s != "" && s != "#N/A" && s != "NA" && s != "N/A" {
-			colSet[s] = struct{}{}
-		}
+		colSet[s] = struct{}{}
 	}
 
 	// 排序分類鍵值，確保順序一致

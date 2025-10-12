@@ -141,11 +141,13 @@ type IDataTable interface {
 	DropColsContainStringElements()
 	DropColsContainNumbers()
 	DropColsContainNil()
+	DropColsContain(value ...any)
 	DropRowsByIndex(rowIndices ...int)
 	DropRowsByName(rowNames ...string)
 	DropRowsContainStringElements()
 	DropRowsContainNumbers()
 	DropRowsContainNil()
+	DropRowsContain(value ...any)
 	Data(useNamesAsKeys ...bool) map[string][]any
 	Show()
 	ShowTypes()

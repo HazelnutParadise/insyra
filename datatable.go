@@ -3,6 +3,7 @@ package insyra
 import (
 	"fmt"
 	"maps"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -852,6 +853,33 @@ func (dt *DataTable) DropColsContainNil() {
 	})
 }
 
+// DropColsContain drops columns that contain the specified value.
+func (dt *DataTable) DropColsContain(value ...any) {
+	dt.AtomicDo(func(dt *DataTable) {
+		columnsToDelete := make([]int, 0)
+		for colIndex, column := range dt.columns {
+			containsValue := false
+			for _, v := range value {
+				if slices.Contains(column.data, v) {
+					containsValue = true
+					break
+				}
+			}
+			if containsValue {
+				columnsToDelete = append(columnsToDelete, colIndex)
+			}
+		}
+
+		for i := len(columnsToDelete) - 1; i >= 0; i-- {
+			colIndex := columnsToDelete[i]
+			dt.columns = append(dt.columns[:colIndex], dt.columns[colIndex+1:]...)
+			delete(dt.columnIndex, generateColIndex(colIndex))
+		}
+		dt.regenerateColIndex()
+		go dt.updateTimestamp()
+	})
+}
+
 // DropRowsByIndex drops rows by their indices.
 func (dt *DataTable) DropRowsByIndex(rowIndices ...int) {
 	dt.AtomicDo(func(dt *DataTable) {
@@ -1013,7 +1041,7 @@ func (dt *DataTable) DropRowsContainNil() {
 		nonNilRowIndices := []int{}
 
 		// 遍歷每一行
-		for rowIndex := 0; rowIndex < maxLength; rowIndex++ {
+		for rowIndex := range maxLength {
 			rowHasNil := false
 
 			// 檢查該行是否包含 nil
@@ -1049,6 +1077,44 @@ func (dt *DataTable) DropRowsContainNil() {
 				dt.rowNames[rowName] = rowIndex
 			}
 		}
+		go dt.updateTimestamp()
+	})
+}
+
+// DropRowsContain drops rows that contain the specified value.
+func (dt *DataTable) DropRowsContain(value ...any) {
+	dt.AtomicDo(func(dt *DataTable) {
+		maxLength := dt.getMaxColLength()
+		rowsToKeep := make([]bool, maxLength)
+		for rowIndex := 0; rowIndex < maxLength; rowIndex++ {
+			keepRow := true
+			for _, column := range dt.columns {
+				if rowIndex < len(column.data) && slices.Contains(value, column.data[rowIndex]) {
+					keepRow = false
+					break
+				}
+			}
+			rowsToKeep[rowIndex] = keepRow
+		}
+		for i := len(rowsToKeep) - 1; i >= 0; i-- {
+			if !rowsToKeep[i] {
+				for _, column := range dt.columns {
+					if i < len(column.data) {
+						column.data = append(column.data[:i], column.data[i+1:]...)
+					}
+				}
+			}
+		}
+		// 更新 rowNames 索引
+		newRowNames := make(map[string]int)
+		newIndex := 0
+		for name, oldIndex := range dt.rowNames {
+			if rowsToKeep[oldIndex] {
+				newRowNames[name] = newIndex
+				newIndex++
+			}
+		}
+		dt.rowNames = newRowNames
 		go dt.updateTimestamp()
 	})
 }
