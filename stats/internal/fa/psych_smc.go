@@ -127,8 +127,8 @@ func CorrelationMatrix(data *mat.Dense) *mat.Dense {
 	n, p := data.Dims()
 	corr := mat.NewDense(p, p, nil)
 
-	for i := 0; i < p; i++ {
-		for j := 0; j < p; j++ {
+	for i := range p {
+		for j := range p {
 			if i == j {
 				corr.Set(i, j, 1.0)
 			} else {
@@ -137,7 +137,7 @@ func CorrelationMatrix(data *mat.Dense) *mat.Dense {
 
 				// Compute correlation (simplified, no NA handling)
 				meanI, meanJ := 0.0, 0.0
-				for k := 0; k < n; k++ {
+				for k := range n {
 					meanI += colI[k]
 					meanJ += colJ[k]
 				}
@@ -145,7 +145,7 @@ func CorrelationMatrix(data *mat.Dense) *mat.Dense {
 				meanJ /= float64(n)
 
 				varI, varJ, cov := 0.0, 0.0, 0.0
-				for k := 0; k < n; k++ {
+				for k := range n {
 					devI := colI[k] - meanI
 					devJ := colJ[k] - meanJ
 					varI += devI * devI
@@ -170,13 +170,13 @@ func CovarianceMatrix(data *mat.Dense) *mat.Dense {
 	n, p := data.Dims()
 	cov := mat.NewDense(p, p, nil)
 
-	for i := 0; i < p; i++ {
-		for j := 0; j < p; j++ {
+	for i := range p {
+		for j := range p {
 			colI := mat.Col(nil, i, data)
 			colJ := mat.Col(nil, j, data)
 
 			meanI, meanJ := 0.0, 0.0
-			for k := 0; k < n; k++ {
+			for k := range n {
 				meanI += colI[k]
 				meanJ += colJ[k]
 			}
@@ -184,7 +184,7 @@ func CovarianceMatrix(data *mat.Dense) *mat.Dense {
 			meanJ /= float64(n)
 
 			covVal := 0.0
-			for k := 0; k < n; k++ {
+			for k := range n {
 				covVal += (colI[k] - meanI) * (colJ[k] - meanJ)
 			}
 			covVal /= float64(n - 1) // Sample covariance
@@ -201,7 +201,7 @@ func CorrelationMatrixPairwise(data *mat.Dense) *mat.Dense {
 	n, p := data.Dims()
 	corr := mat.NewDense(p, p, nil)
 
-	for i := 0; i < p; i++ {
+	for i := range p {
 		for j := 0; j < p; j++ {
 			if i == j {
 				corr.Set(i, j, 1.0)
@@ -215,7 +215,7 @@ func CorrelationMatrixPairwise(data *mat.Dense) *mat.Dense {
 				sumI2, sumJ2 := 0.0, 0.0
 				sumIJ := 0.0
 
-				for k := 0; k < n; k++ {
+				for k := range n {
 					valI, valJ := colI[k], colJ[k]
 					if !math.IsNaN(valI) && !math.IsNaN(valJ) {
 						validPairs++
@@ -255,8 +255,8 @@ func CovarianceMatrixPairwise(data *mat.Dense) *mat.Dense {
 	n, p := data.Dims()
 	cov := mat.NewDense(p, p, nil)
 
-	for i := 0; i < p; i++ {
-		for j := 0; j < p; j++ {
+	for i := range p {
+		for j := range p {
 			colI := mat.Col(nil, i, data)
 			colJ := mat.Col(nil, j, data)
 
@@ -265,7 +265,7 @@ func CovarianceMatrixPairwise(data *mat.Dense) *mat.Dense {
 			sumI, sumJ := 0.0, 0.0
 			sumIJ := 0.0
 
-			for k := 0; k < n; k++ {
+			for k := range n {
 				valI, valJ := colI[k], colJ[k]
 				if !math.IsNaN(valI) && !math.IsNaN(valJ) {
 					validPairs++

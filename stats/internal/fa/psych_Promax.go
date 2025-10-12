@@ -38,7 +38,7 @@ func Promax(x *mat.Dense, m int, normalize bool) map[string]any {
 
 	// Q <- x * abs(x)^(m - 1)
 	Q := mat.NewDense(p, nf, nil)
-	for i := 0; i < p; i++ {
+	for i := range p {
 		for j := 0; j < nf; j++ {
 			val := x.At(i, j)
 			Q.Set(i, j, val*math.Pow(math.Abs(val), float64(m-1)))
@@ -78,7 +78,7 @@ func Promax(x *mat.Dense, m int, normalize bool) map[string]any {
 		// Match R's eigenvalue approximation for singular matrices
 		// Use simplified regularization approach
 		regularization := 1e-8
-		for i := 0; i < nf; i++ {
+		for i := range nf {
 			UtU.Set(i, i, UtU.At(i, i)+regularization)
 		}
 		err = UtUInv.Inverse(&UtU)
@@ -88,24 +88,24 @@ func Promax(x *mat.Dense, m int, normalize bool) map[string]any {
 			diagnostics["matrixInversionErrors"] = append(
 				diagnostics["matrixInversionErrors"].([]string),
 				"failed to invert UtU after regularization: "+err.Error())
-			for i := 0; i < nf; i++ {
+			for i := range nf {
 				d[i] = 1.0
 			}
 		} else {
-			for i := 0; i < nf; i++ {
+			for i := range nf {
 				d[i] = UtUInv.At(i, i)
 			}
 		}
 	} else {
-		for i := 0; i < nf; i++ {
+		for i := range nf {
 			d[i] = UtUInv.At(i, i)
 		}
 	}
 
 	// U <- U %*% diag(sqrt(d))
-	for j := 0; j < nf; j++ {
+	for j := range nf {
 		sqrtD := math.Sqrt(d[j])
-		for i := 0; i < nf; i++ {
+		for i := range nf {
 			U.Set(i, j, U.At(i, j)*sqrtD)
 		}
 	}

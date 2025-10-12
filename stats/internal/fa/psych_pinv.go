@@ -54,7 +54,7 @@ func Pinv(X *mat.Dense, tol float64) (*mat.Dense, error) {
 		// Pinv <- svdX$v %*% (1/svdX$d * t(svdX$u))
 		// Create diagonal matrix with 1/values
 		D := mat.NewDense(len(values), len(values), nil)
-		for i := 0; i < len(values); i++ {
+		for i := range values {
 			D.Set(i, i, 1.0/values[i])
 		}
 
@@ -78,10 +78,10 @@ func Pinv(X *mat.Dense, tol float64) (*mat.Dense, error) {
 		colIdx := 0
 		for i, isP := range p {
 			if isP {
-				for row := 0; row < n; row++ {
+				for row := range n {
 					Vp.Set(row, colIdx, V.At(row, i))
 				}
-				for row := 0; row < m; row++ {
+				for row := range m {
 					Up.Set(row, colIdx, U.At(row, i))
 				}
 				valuesP[colIdx] = values[i]

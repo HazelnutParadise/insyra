@@ -20,7 +20,7 @@ func vgQVarimax(L *mat.Dense) (Gq *mat.Dense, f float64, method string) {
 
 	// L2 = L^2
 	L2 := mat.NewDense(p, q, nil)
-	for i := 0; i < p; i++ {
+	for i := range p {
 		for j := 0; j < q; j++ {
 			l := L.At(i, j)
 			L2.Set(i, j, l*l)
@@ -29,9 +29,9 @@ func vgQVarimax(L *mat.Dense) (Gq *mat.Dense, f float64, method string) {
 
 	// colMeans
 	colMeans := make([]float64, q)
-	for j := 0; j < q; j++ {
+	for j := range q {
 		sum := 0.0
-		for i := 0; i < p; i++ {
+		for i := range p {
 			sum += L2.At(i, j)
 		}
 		colMeans[j] = sum / float64(p)
@@ -39,7 +39,7 @@ func vgQVarimax(L *mat.Dense) (Gq *mat.Dense, f float64, method string) {
 
 	// QL = L2 - colMeans
 	QL := mat.NewDense(p, q, nil)
-	for i := 0; i < p; i++ {
+	for i := range p {
 		for j := 0; j < q; j++ {
 			QL.Set(i, j, L2.At(i, j)-colMeans[j])
 		}
@@ -51,7 +51,7 @@ func vgQVarimax(L *mat.Dense) (Gq *mat.Dense, f float64, method string) {
 
 	// sumDiag = sum(diag(crossprod))
 	sumDiag := 0.0
-	for i := 0; i < q; i++ {
+	for i := range q {
 		sumDiag += crossprod.At(i, i)
 	}
 
@@ -60,8 +60,8 @@ func vgQVarimax(L *mat.Dense) (Gq *mat.Dense, f float64, method string) {
 
 	// Gq = -L * QL
 	Gq = mat.NewDense(p, q, nil)
-	for i := 0; i < p; i++ {
-		for j := 0; j < q; j++ {
+	for i := range p {
+		for j := range q {
 			Gq.Set(i, j, -L.At(i, j)*QL.At(i, j))
 		}
 	}

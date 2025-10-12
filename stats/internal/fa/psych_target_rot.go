@@ -43,8 +43,8 @@ func TargetRotWithMask(x *mat.Dense, keys *mat.Dense, mask *mat.Dense) (loadings
 	if mask != nil {
 		diagnostics["maskApplied"] = true
 		maskedElements := [][]int{}
-		for i := 0; i < p; i++ {
-			for j := 0; j < q; j++ {
+		for i := range p {
+			for j := range q {
 				if math.IsNaN(mask.At(i, j)) {
 					// Set corresponding element in Q to 0 (exclude from alignment)
 					Q.Set(i, j, 0.0)
@@ -79,13 +79,13 @@ func TargetRotWithMask(x *mat.Dense, keys *mat.Dense, mask *mat.Dense) (loadings
 		UtUInv.CloneFrom(inv)
 	}
 	d := make([]float64, q)
-	for i := 0; i < q; i++ {
+	for i := range q {
 		d[i] = UtUInv.At(i, i)
 	}
 
-	for j := 0; j < q; j++ {
+	for j := range q {
 		sqrtD := math.Sqrt(d[j])
-		for i := 0; i < q; i++ { // U is q x q
+		for i := range q { // U is q x q
 			U.Set(i, j, U.At(i, j)*sqrtD)
 		}
 	}

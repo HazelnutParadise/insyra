@@ -1,4 +1,4 @@
-package stats
+package stats_test
 
 import (
 	"encoding/csv"
@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/stats"
 
 	"gonum.org/v1/gonum/mat"
 )
@@ -433,17 +434,17 @@ func TestCompareWithSpssTarget(t *testing.T) {
 	dt := insyra.NewDataTable(data...)
 
 	// Perform factor analysis with PAF + Oblimin to match SPSS case
-	opt := FactorAnalysisOptions{
-		Preprocess: FactorPreprocessOptions{Standardize: true},
-		Count:      FactorCountSpec{Method: FactorCountFixed, FixedK: 3},
-		Extraction: FactorExtractionPAF,
-		Rotation:   FactorRotationOptions{Method: FactorRotationOblimin, Kappa: 4, Delta: 0},
-		Scoring:    FactorScoreNone,
+	opt := stats.FactorAnalysisOptions{
+		Preprocess: stats.FactorPreprocessOptions{Standardize: true},
+		Count:      stats.FactorCountSpec{Method: stats.FactorCountFixed, FixedK: 3},
+		Extraction: stats.FactorExtractionPAF,
+		Rotation:   stats.FactorRotationOptions{Method: stats.FactorRotationOblimin, Kappa: 4, Delta: 0},
+		Scoring:    stats.FactorScoreNone,
 		MaxIter:    1000,
 		MinErr:     1e-9,
 	}
 
-	model := FactorAnalysis(dt, opt)
+	model := stats.FactorAnalysis(dt, opt)
 	if model == nil {
 		t.Fatalf("FactorAnalysis returned nil")
 	}

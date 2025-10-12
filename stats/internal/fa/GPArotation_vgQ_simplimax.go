@@ -20,8 +20,8 @@ func vgQSimplimax(L *mat.Dense, k int) (Gq *mat.Dense, f float64, method string)
 
 	// L2 = L^2
 	L2 := mat.NewDense(p, q, nil)
-	for i := 0; i < p; i++ {
-		for j := 0; j < q; j++ {
+	for i := range p {
+		for j := range q {
 			l := L.At(i, j)
 			L2.Set(i, j, l*l)
 		}
@@ -30,8 +30,8 @@ func vgQSimplimax(L *mat.Dense, k int) (Gq *mat.Dense, f float64, method string)
 	// Flatten L2 to slice for sorting
 	l2Slice := make([]float64, p*q)
 	idx := 0
-	for i := 0; i < p; i++ {
-		for j := 0; j < q; j++ {
+	for i := range p {
+		for j := range q {
 			l2Slice[idx] = L2.At(i, j)
 			idx++
 		}
@@ -45,8 +45,8 @@ func vgQSimplimax(L *mat.Dense, k int) (Gq *mat.Dense, f float64, method string)
 
 	// Imat = sign(L^2 <= threshold)
 	Imat := mat.NewDense(p, q, nil)
-	for i := 0; i < p; i++ {
-		for j := 0; j < q; j++ {
+	for i := range p {
+		for j := range q {
 			if L2.At(i, j) <= threshold {
 				Imat.Set(i, j, 1.0)
 			} else {
@@ -57,16 +57,16 @@ func vgQSimplimax(L *mat.Dense, k int) (Gq *mat.Dense, f float64, method string)
 
 	// Gq = 2 * Imat * L
 	Gq = mat.NewDense(p, q, nil)
-	for i := 0; i < p; i++ {
-		for j := 0; j < q; j++ {
+	for i := range p {
+		for j := range q {
 			Gq.Set(i, j, 2.0*Imat.At(i, j)*L.At(i, j))
 		}
 	}
 
 	// f = sum(Imat * L^2)
 	f = 0.0
-	for i := 0; i < p; i++ {
-		for j := 0; j < q; j++ {
+	for i := range p {
+		for j := range q {
 			f += Imat.At(i, j) * L2.At(i, j)
 		}
 	}

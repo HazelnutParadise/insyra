@@ -14,7 +14,7 @@ func vgQQuartimin(L *mat.Dense) (Gq *mat.Dense, f float64, method string) {
 
 	// L2 = L^2
 	L2 := mat.NewDense(p, k, nil)
-	for i := 0; i < p; i++ {
+	for i := range p {
 		for j := 0; j < k; j++ {
 			l := L.At(i, j)
 			L2.Set(i, j, l*l)
@@ -23,8 +23,8 @@ func vgQQuartimin(L *mat.Dense) (Gq *mat.Dense, f float64, method string) {
 
 	// nonDiag = ones - diag
 	nonDiag := mat.NewDense(k, k, nil)
-	for i := 0; i < k; i++ {
-		for j := 0; j < k; j++ {
+	for i := range k {
+		for j := range k {
 			if i == j {
 				nonDiag.Set(i, j, 0)
 			} else {
@@ -39,16 +39,16 @@ func vgQQuartimin(L *mat.Dense) (Gq *mat.Dense, f float64, method string) {
 
 	// Gq = L * X
 	Gq = mat.NewDense(p, k, nil)
-	for i := 0; i < p; i++ {
-		for j := 0; j < k; j++ {
+	for i := range p {
+		for j := range k {
 			Gq.Set(i, j, L.At(i, j)*X.At(i, j))
 		}
 	}
 
 	// f = sum(L^2 * X) / 4
 	f = 0.0
-	for i := 0; i < p; i++ {
-		for j := 0; j < k; j++ {
+	for i := range p {
+		for j := range k {
 			f += L2.At(i, j) * X.At(i, j)
 		}
 	}

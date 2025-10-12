@@ -41,10 +41,10 @@ func Factor2Cluster(loadings *mat.Dense, opts *Factor2ClusterOptions) *mat.Dense
 
 	// For each variable, find the factor with maximum absolute loading
 	clusters := make([]int, p)
-	for i := 0; i < p; i++ {
+	for i := range p {
 		maxAbs := 0.0
 		maxFactor := 0
-		for j := 0; j < q; j++ {
+		for j := range q {
 			absVal := math.Abs(loadings.At(i, j))
 			if absVal > maxAbs {
 				maxAbs = absVal
@@ -56,7 +56,7 @@ func Factor2Cluster(loadings *mat.Dense, opts *Factor2ClusterOptions) *mat.Dense
 
 	// Create cluster matrix
 	clusterMat := mat.NewDense(p, q, nil)
-	for i := 0; i < p; i++ {
+	for i := range p {
 		clusterMat.Set(i, clusters[i], 1.0)
 	}
 

@@ -26,7 +26,7 @@ func Varimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map[
 
 	// Initialize rotation matrix as identity
 	Tmat := mat.NewDense(nf, nf, nil)
-	for i := 0; i < nf; i++ {
+	for i := range nf {
 		Tmat.Set(i, i, 1.0)
 	}
 
@@ -68,7 +68,7 @@ func Quartimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int) ma
 
 	// Initialize rotation matrix as identity
 	Tmat := mat.NewDense(nf, nf, nil)
-	for i := 0; i < nf; i++ {
+	for i := range nf {
 		Tmat.Set(i, i, 1.0)
 	}
 
@@ -111,7 +111,7 @@ func Quartimin(loadings *mat.Dense, normalize bool, eps float64, maxIter int) ma
 
 	// Initialize rotation matrix as identity
 	Tmat := mat.NewDense(nf, nf, nil)
-	for i := 0; i < nf; i++ {
+	for i := range nf {
 		Tmat.Set(i, i, 1.0)
 	}
 
@@ -156,7 +156,7 @@ func Oblimin(loadings *mat.Dense, normalize bool, eps float64, maxIter int, gamm
 
 	// Initialize rotation matrix as identity
 	Tmat := mat.NewDense(nf, nf, nil)
-	for i := 0; i < nf; i++ {
+	for i := range nf {
 		Tmat.Set(i, i, 1.0)
 	}
 
@@ -200,7 +200,7 @@ func GeominT(loadings *mat.Dense, normalize bool, eps float64, maxIter int, delt
 
 	// Initialize rotation matrix as identity
 	Tmat := mat.NewDense(nf, nf, nil)
-	for i := 0; i < nf; i++ {
+	for i := range nf {
 		Tmat.Set(i, i, 1.0)
 	}
 
@@ -285,7 +285,7 @@ func Simplimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int, k 
 
 	// Initialize rotation matrix as identity
 	Tmat := mat.NewDense(nf, nf, nil)
-	for i := 0; i < nf; i++ {
+	for i := range nf {
 		Tmat.Set(i, i, 1.0)
 	}
 
@@ -377,7 +377,7 @@ func BentlerQ(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map
 
 	// Initialize rotation matrix as identity
 	Tmat := mat.NewDense(nf, nf, nil)
-	for i := 0; i < nf; i++ {
+	for i := range nf {
 		Tmat.Set(i, i, 1.0)
 	}
 
@@ -661,9 +661,9 @@ func kaiserNormalize(loadings *mat.Dense) (*mat.Dense, []float64) {
 	rows, cols := loadings.Dims()
 	weights := make([]float64, rows)
 	normalized := mat.NewDense(rows, cols, nil)
-	for i := 0; i < rows; i++ {
+	for i := range rows {
 		sum := 0.0
-		for j := 0; j < cols; j++ {
+		for j := range cols {
 			val := loadings.At(i, j)
 			sum += val * val
 		}
@@ -672,7 +672,7 @@ func kaiserNormalize(loadings *mat.Dense) (*mat.Dense, []float64) {
 		} else {
 			weights[i] = 1.0 / math.Sqrt(sum)
 		}
-		for j := 0; j < cols; j++ {
+		for j := range cols {
 			normalized.Set(i, j, loadings.At(i, j)*weights[i])
 		}
 	}

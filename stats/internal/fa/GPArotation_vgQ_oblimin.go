@@ -13,16 +13,16 @@ func vgQOblimin(L *mat.Dense, gam float64) (*mat.Dense, float64, error) {
 	// X <- L^2 %*% (!diag(TRUE, ncol(L)))
 	// First compute L^2 (element-wise square)
 	L2 := mat.NewDense(p, q, nil)
-	for i := 0; i < p; i++ {
-		for j := 0; j < q; j++ {
+	for i := range p {
+		for j := range q {
 			L2.Set(i, j, L.At(i, j)*L.At(i, j))
 		}
 	}
 
 	// Create !diag(TRUE, q) which is a matrix of TRUEs except diagonal is FALSE
 	notDiag := mat.NewDense(q, q, nil)
-	for i := 0; i < q; i++ {
-		for j := 0; j < q; j++ {
+	for i := range q {
+		for j := range q {
 			if i != j {
 				notDiag.Set(i, j, 1.0) // TRUE becomes 1.0
 			} else {
@@ -42,15 +42,15 @@ func vgQOblimin(L *mat.Dense, gam float64) (*mat.Dense, float64, error) {
 	if gam != 0.0 {
 		// Create diag(1, p)
 		diag1 := mat.NewDense(p, p, nil)
-		for i := 0; i < p; i++ {
+		for i := range p {
 			diag1.Set(i, i, 1.0)
 		}
 
 		// Create matrix(gam/p, p, p)
 		gamOverP := gam / float64(p)
 		gamMat := mat.NewDense(p, p, nil)
-		for i := 0; i < p; i++ {
-			for j := 0; j < p; j++ {
+		for i := range p {
+			for j := range p {
 				gamMat.Set(i, j, gamOverP)
 			}
 		}
@@ -67,16 +67,16 @@ func vgQOblimin(L *mat.Dense, gam float64) (*mat.Dense, float64, error) {
 
 	// Gq = L * X (element-wise multiplication)
 	Gq := mat.NewDense(p, q, nil)
-	for i := 0; i < p; i++ {
-		for j := 0; j < q; j++ {
+	for i := range p {
+		for j := range q {
 			Gq.Set(i, j, L.At(i, j)*X.At(i, j))
 		}
 	}
 
 	// f = sum(L^2 * X)/4
 	f := 0.0
-	for i := 0; i < p; i++ {
-		for j := 0; j < q; j++ {
+	for i := range p {
+		for j := range q {
 			f += L2.At(i, j) * X.At(i, j)
 		}
 	}

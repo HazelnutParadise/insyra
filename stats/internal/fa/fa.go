@@ -33,7 +33,7 @@ func Rotate(loadings *mat.Dense, method string, opts *RotOpts) (*mat.Dense, *mat
 	// Create correlation matrix (identity for now, as we don't have it)
 	_, nf := loadings.Dims()
 	r := mat.NewDense(nf, nf, nil)
-	for i := 0; i < nf; i++ {
+	for i := range nf {
 		r.Set(i, i, 1.0)
 	}
 
@@ -82,7 +82,7 @@ func RotateWithDiagnostics(loadings *mat.Dense, method string, opts *RotOpts) (*
 	// Create correlation matrix (identity for now, as we don't have it)
 	_, nf := loadings.Dims()
 	r := mat.NewDense(nf, nf, nil)
-	for i := 0; i < nf; i++ {
+	for i := range nf {
 		r.Set(i, i, 1.0)
 	}
 

@@ -23,8 +23,8 @@ func vgQGeomin(L *mat.Dense, delta float64) (Gq *mat.Dense, f float64, method st
 
 	// L2 = L^2 + delta
 	L2 := mat.NewDense(p, k, nil)
-	for i := 0; i < p; i++ {
-		for j := 0; j < k; j++ {
+	for i := range p {
+		for j := range k {
 			l := L.At(i, j)
 			L2.Set(i, j, l*l+delta)
 		}
@@ -32,17 +32,17 @@ func vgQGeomin(L *mat.Dense, delta float64) (Gq *mat.Dense, f float64, method st
 
 	// log(L2)
 	logL2 := mat.NewDense(p, k, nil)
-	for i := 0; i < p; i++ {
-		for j := 0; j < k; j++ {
+	for i := range p {
+		for j := range k {
 			logL2.Set(i, j, math.Log(L2.At(i, j)))
 		}
 	}
 
 	// rowSums(log(L2))
 	rowSums := make([]float64, p)
-	for i := 0; i < p; i++ {
+	for i := range p {
 		sum := 0.0
-		for j := 0; j < k; j++ {
+		for j := range k {
 			sum += logL2.At(i, j)
 		}
 		rowSums[i] = sum
@@ -50,36 +50,36 @@ func vgQGeomin(L *mat.Dense, delta float64) (Gq *mat.Dense, f float64, method st
 
 	// pro = exp(rowSums / k)
 	pro := make([]float64, p)
-	for i := 0; i < p; i++ {
+	for i := range p {
 		pro[i] = math.Exp(rowSums[i] / float64(k))
 	}
 
 	// f = sum(pro)
 	f = 0.0
-	for i := 0; i < p; i++ {
+	for i := range p {
 		f += pro[i]
 	}
 
 	// L_div_L2 = L / L2
 	L_div_L2 := mat.NewDense(p, k, nil)
-	for i := 0; i < p; i++ {
-		for j := 0; j < k; j++ {
+	for i := range p {
+		for j := range k {
 			L_div_L2.Set(i, j, L.At(i, j)/L2.At(i, j))
 		}
 	}
 
 	// matrix(rep(pro, k), p) - create p x k matrix with pro repeated
 	proMat := mat.NewDense(p, k, nil)
-	for i := 0; i < p; i++ {
-		for j := 0; j < k; j++ {
+	for i := range p {
+		for j := range k {
 			proMat.Set(i, j, pro[i])
 		}
 	}
 
 	// Gq = (2/k) * L_div_L2 * proMat
 	Gq = mat.NewDense(p, k, nil)
-	for i := 0; i < p; i++ {
-		for j := 0; j < k; j++ {
+	for i := range p {
+		for j := range k {
 			Gq.Set(i, j, (2.0/float64(k))*L_div_L2.At(i, j)*proMat.At(i, j))
 		}
 	}

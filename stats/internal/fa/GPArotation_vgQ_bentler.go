@@ -22,8 +22,8 @@ func vgQBentler(L *mat.Dense) (Gq *mat.Dense, f float64, method string, err erro
 
 	// L2 = L^2
 	L2 := mat.NewDense(p, q, nil)
-	for i := 0; i < p; i++ {
-		for j := 0; j < q; j++ {
+	for i := range p {
+		for j := range q {
 			l := L.At(i, j)
 			L2.Set(i, j, l*l)
 		}
@@ -35,7 +35,7 @@ func vgQBentler(L *mat.Dense) (Gq *mat.Dense, f float64, method string, err erro
 
 	// D = diag(diag(M))
 	D := mat.NewDense(q, q, nil)
-	for i := 0; i < q; i++ {
+	for i := range q {
 		D.Set(i, i, M.At(i, i))
 	}
 

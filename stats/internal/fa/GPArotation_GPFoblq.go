@@ -16,7 +16,7 @@ func NormalizingWeight(A *mat.Dense, normalize bool) *mat.VecDense {
 	W := mat.NewVecDense(p, nil)
 
 	if normalize {
-		for i := 0; i < p; i++ {
+		for i := range p {
 			sum := 0.0
 			for j := 0; j < q; j++ {
 				val := A.At(i, j)
@@ -49,7 +49,7 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 	var weights *mat.VecDense
 	if normalize {
 		weights = NormalizingWeight(A, true)
-		for i := 0; i < rows; i++ {
+		for i := range rows {
 			w := weights.AtVec(i)
 			if w == 0 {
 				continue
@@ -113,7 +113,7 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			// Normalize columns of X
 			colsX := X.RawMatrix().Cols
 			scaleVals := make([]float64, colsX)
-			for j := 0; j < colsX; j++ {
+			for j := range colsX {
 				sumSq := 0.0
 				for i := 0; i < X.RawMatrix().Rows; i++ {
 					val := X.At(i, j)
@@ -168,7 +168,7 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 	}
 
 	if normalize && weights != nil {
-		for i := 0; i < rows; i++ {
+		for i := range rows {
 			w := weights.AtVec(i)
 			if w == 0 {
 				continue
@@ -224,7 +224,7 @@ func computeGp(G *mat.Dense, T *mat.Dense) *mat.Dense {
 	rows, cols := G.Dims()
 	// Compute rowSums(T * G) element-wise - match R's c(rep(1, nrow(G)) %*% (Tmat * G))
 	rowSums := make([]float64, rows)
-	for i := 0; i < rows; i++ {
+	for i := range rows {
 		sum := 0.0
 		for j := 0; j < cols; j++ {
 			sum += T.At(i, j) * G.At(i, j)

@@ -17,8 +17,8 @@ func vgQQuartimax(L *mat.Dense) (Gq *mat.Dense, f float64, method string) {
 
 	// L2 = L^2
 	L2 := mat.NewDense(p, q, nil)
-	for i := 0; i < p; i++ {
-		for j := 0; j < q; j++ {
+	for i := range p {
+		for j := range q {
 			l := L.At(i, j)
 			L2.Set(i, j, l*l)
 		}
@@ -26,9 +26,9 @@ func vgQQuartimax(L *mat.Dense) (Gq *mat.Dense, f float64, method string) {
 
 	// crossprod = t(L2) %*% L2, but sum(diag(crossprod(L2))) = sum(colSums(L2))
 	sumDiag := 0.0
-	for j := 0; j < q; j++ {
+	for j := range q {
 		colSum := 0.0
-		for i := 0; i < p; i++ {
+		for i := range p {
 			colSum += L2.At(i, j)
 		}
 		sumDiag += colSum
@@ -38,8 +38,8 @@ func vgQQuartimax(L *mat.Dense) (Gq *mat.Dense, f float64, method string) {
 
 	// Gq = -L^3
 	Gq = mat.NewDense(p, q, nil)
-	for i := 0; i < p; i++ {
-		for j := 0; j < q; j++ {
+	for i := range p {
+		for j := range q {
 			l := L.At(i, j)
 			Gq.Set(i, j, -l*l*l)
 		}
