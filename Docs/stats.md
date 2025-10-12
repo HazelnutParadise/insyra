@@ -325,12 +325,12 @@ fmt.Printf("z=%.4f, p=%.4f\n", result.Statistic, result.PValue)
 func ChiSquareGoodnessOfFit(input insyra.IDataList, p []float64, rescaleP bool) *ChiSquareTestResult
 ```
 
-**Purpose**: Test if observed frequencies match expected frequencies.
+**Purpose**: Test if observed categorical data matches expected distribution.
 
 **Parameters**:
 
-- `input`: Observed frequencies
-- `p`: Expected probabilities (nil for equal probabilities)
+- `input`: Categorical data (e.g., ["A", "B", "A"])
+- `p`: Expected probabilities (nil for uniform distribution)
 - `rescaleP`: Whether to rescale probabilities to sum to 1
 
 ### ChiSquareIndependenceTest
@@ -367,10 +367,10 @@ Displays the chi-square test results including the test statistic, p-value, degr
 **Example**:
 
 ```go
-// Goodness of fit test
-observed := insyra.NewDataList(20, 15, 25)
-p := []float64{1.0/3, 1.0/3, 1.0/3}
-result := stats.ChiSquareGoodnessOfFit(observed, p, true)
+// Goodness of fit test with categorical data
+categoricalData := insyra.NewDataList("A", "B", "A", "C", "A", "B")
+p := []float64{0.5, 0.3, 0.2} // Expected probabilities for A, B, C
+result := stats.ChiSquareGoodnessOfFit(categoricalData, p, true)
 result.Show() // Display complete test results
 
 // Independence test

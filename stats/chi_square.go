@@ -54,9 +54,29 @@ func calculateChiSquare(observed, expected []float64, df int) (*ChiSquareTestRes
 
 // ChiSquareGoodnessOfFit performs a one-dimensional chi-square goodness of fit test.
 //
-// input: A DataList containing observed frequencies.
+// input: A DataList containing categorical data (e.g., ["A", "B", "A"]).
+// p: Expected probabilities (e.g., []float64{0.5, 0.5}). If nil, assumes uniform distribution.
+// rescaleP: Whether to rescale p to sum to 1.
 func ChiSquareGoodnessOfFit(input insyra.IDataList, p []float64, rescaleP bool) *ChiSquareTestResult {
-	observed := input.ToF64Slice()
+	// 計算類別頻率
+	data := input.Data()
+	categoryFreq := make(map[string]float64)
+	for _, v := range data {
+		s := strings.TrimSpace(conv.ToString(v))
+		categoryFreq[s]++
+	}
+
+	// 將頻率轉為 observed 切片
+	categoryKeys := make([]string, 0, len(categoryFreq))
+	for k := range categoryFreq {
+		categoryKeys = append(categoryKeys, k)
+	}
+	sort.Strings(categoryKeys) // 確保順序一致
+	observed := make([]float64, 0, len(categoryFreq))
+	for _, k := range categoryKeys {
+		observed = append(observed, categoryFreq[k])
+	}
+
 	var expected []float64
 	var df int
 
@@ -66,7 +86,7 @@ func ChiSquareGoodnessOfFit(input insyra.IDataList, p []float64, rescaleP bool) 
 			p[i] = 1.0 / float64(len(observed))
 		}
 	} else if len(p) != len(observed) {
-		insyra.LogWarning("stats", "ChiSquareGoodnessOfFit", "Length of p does not match observed data length")
+		insyra.LogWarning("stats", "ChiSquareGoodnessOfFit", "Length of p does not match number of categories")
 		return nil
 	}
 
@@ -106,12 +126,12 @@ func ChiSquareGoodnessOfFit(input insyra.IDataList, p []float64, rescaleP bool) 
 	contingencyTable.AppendCols(col)
 	contingencyTable.SetColNameByNumber(0, "Observed_Expected")
 
-	// 設置行名稱為類別索引
-	for i := range observed {
-		contingencyTable.SetRowNameByIndex(i, fmt.Sprintf("Category_%d", i))
+	// 設置行名稱為類別
+	for i, key := range categoryKeys {
+		contingencyTable.SetRowNameByIndex(i, key)
 	}
 
-	result.ContingencyTable = contingencyTable
+	result.ContingencyTable = contingencyTable.SetName("Contingency_Table")
 	return result
 }
 
@@ -171,14 +191,11 @@ func ChiSquareIndependenceTest(rowData, colData insyra.IDataList) *ChiSquareTest
 	for i := range rowVals {
 		rStr := strings.TrimSpace(conv.ToString(rowVals[i]))
 		cStr := strings.TrimSpace(conv.ToString(colVals[i]))
-		if rStr != "" && rStr != "#N/A" && rStr != "NA" && rStr != "N/A" &&
-			cStr != "" && cStr != "#N/A" && cStr != "NA" && cStr != "N/A" {
-			r := rStr
-			c := cStr
-			if _, exists := rowIndices[r]; exists {
-				if _, exists := colIndices[c]; exists {
-					observed[rowIndices[r]*cols+colIndices[c]]++
-				}
+		r := rStr
+		c := cStr
+		if _, exists := rowIndices[r]; exists {
+			if _, exists := colIndices[c]; exists {
+				observed[rowIndices[r]*cols+colIndices[c]]++
 			}
 		}
 	}
@@ -234,6 +251,6 @@ func ChiSquareIndependenceTest(rowData, colData insyra.IDataList) *ChiSquareTest
 		contingencyTable.SetRowNameByIndex(i, rowKey)
 	}
 
-	result.ContingencyTable = contingencyTable
+	result.ContingencyTable = contingencyTable.SetName("Contingency_Table")
 	return result
 }
