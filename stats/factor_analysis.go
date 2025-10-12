@@ -237,9 +237,6 @@ const (
 	// R psych uses different tolerances for different contexts
 	extractionTolerance = 1e-8 // General convergence tolerance for factor extraction
 
-	// Numerical stability constants
-	epsilonMedium = 1e-6 // For communality lower bound and sum checks
-
 	// Correlation matrix diagonal checks
 	corrDiagTolerance    = 1e-6 // Tolerance for diagonal deviation from 1.0
 	corrDiagLogThreshold = 1e-8 // Threshold for logging diagonal deviations
