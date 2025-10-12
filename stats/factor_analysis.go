@@ -1297,32 +1297,6 @@ func minresFit(reducedCorr *mat.Dense, numFactors int) (*mat.Dense, *mat.Dense) 
 	return loadings, residual
 }
 
-// mlObjectiveFunction implements the optimize.Function interface for ML factor analysis
-type mlObjectiveFunction struct {
-	S        *mat.Dense // Correlation matrix
-	nfactors int
-}
-
-// Func evaluates the ML objective function at the given point
-func (f *mlObjectiveFunction) Func(x []float64) float64 {
-	return computeMLObjective(f.S, x, f.nfactors)
-}
-
-// Grad evaluates the gradient of the ML objective function at the given point
-func (f *mlObjectiveFunction) Grad(grad, x []float64) []float64 {
-	// Use finite differences for gradient computation
-	eps := 1e-6
-	obj0 := f.Func(x)
-	for i := range x {
-		xPlus := make([]float64, len(x))
-		copy(xPlus, x)
-		xPlus[i] += eps
-		objPlus := f.Func(xPlus)
-		grad[i] = (objPlus - obj0) / eps
-	}
-	return grad
-}
-
 // extractML performs Maximum Likelihood factor extraction using true ML estimation with BFGS optimization
 func extractML(corr *mat.Dense, numFactors int, maxIter int, tol float64, sampleSize int, initialCommunalities []float64) (*mat.Dense, bool, int, error) {
 	if corr == nil {
@@ -2113,7 +2087,7 @@ func rotateFactors(loadings *mat.Dense, rotationOpts FactorRotationOptions) (*ma
 	opts := &fa.RotOpts{
 		Eps:         1e-5,
 		MaxIter:     1000,                    // Default max iterations
-		Gamma:       rotationOpts.Delta,      // Use Delta as Gamma for oblimin
+		Gamma:       rotationOpts.Kappa,      // Use Kappa as Gamma for oblimin
 		PromaxPower: int(rotationOpts.Kappa), // Use Kappa as PromaxPower
 		Restarts:    rotationOpts.Restarts,
 	}
