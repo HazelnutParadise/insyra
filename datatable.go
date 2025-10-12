@@ -880,6 +880,11 @@ func (dt *DataTable) DropColsContain(value ...any) {
 	})
 }
 
+// DropColsContainExcelNA drops columns that contain Excel NA values ("#N/A").
+func (dt *DataTable) DropColsContainExcelNA() {
+	dt.DropColsContain("#N/A")
+}
+
 // DropRowsByIndex drops rows by their indices.
 func (dt *DataTable) DropRowsByIndex(rowIndices ...int) {
 	dt.AtomicDo(func(dt *DataTable) {
@@ -1117,6 +1122,11 @@ func (dt *DataTable) DropRowsContain(value ...any) {
 		dt.rowNames = newRowNames
 		go dt.updateTimestamp()
 	})
+}
+
+// DropRowsContainExcelNA drops rows that contain Excel NA values ("#N/A").
+func (dt *DataTable) DropRowsContainExcelNA() {
+	dt.DropRowsContain("#N/A")
 }
 
 // ======================== Data ========================
