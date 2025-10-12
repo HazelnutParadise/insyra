@@ -1,12 +1,14 @@
 package csvxl
 
 import (
+	"encoding/csv"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/xuri/excelize/v2"
 )
 
 func TestDetectEncoding(t *testing.T) {
@@ -161,4 +163,64 @@ func TestEncodingConstants(t *testing.T) {
 	assert.Equal(t, "utf-8", UTF8)
 	assert.Equal(t, "big5", Big5)
 	assert.Equal(t, "auto", Auto)
+}
+
+func TestExcelToCsvWithFilteredRows(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// Create an Excel file with some rows
+	excelFile := filepath.Join(tempDir, "test_filtered.xlsx")
+	f := excelize.NewFile()
+	defer func() { _ = f.Close() }()
+
+	// Add data to sheet
+	data := [][]string{
+		{"Name", "Age", "City"},
+		{"Alice", "25", "New York"},
+		{"Bob", "30", "London"},
+		{"Charlie", "35", "Paris"},
+		{"David", "40", "Tokyo"},
+	}
+
+	for rowIdx, row := range data {
+		for colIdx, cell := range row {
+			cellAddr, _ := excelize.CoordinatesToCellName(colIdx+1, rowIdx+1)
+			f.SetCellValue("Sheet1", cellAddr, cell)
+		}
+	}
+
+	// Hide rows 3 and 4 (Bob and Charlie) to simulate filtering
+	f.SetRowVisible("Sheet1", 3, false) // Row 3: Bob
+	f.SetRowVisible("Sheet1", 4, false) // Row 4: Charlie
+
+	// Save the Excel file
+	err := f.SaveAs(excelFile)
+	require.NoError(t, err)
+
+	// Convert to CSV
+	outputDir := filepath.Join(tempDir, "output")
+	ExcelToCsv(excelFile, outputDir, nil)
+
+	// Check the CSV file
+	csvFile := filepath.Join(outputDir, "Sheet1.csv")
+	_, err = os.Stat(csvFile)
+	assert.NoError(t, err, "CSV file should be created")
+
+	// Read the CSV content
+	file, err := os.Open(csvFile)
+	require.NoError(t, err)
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	records, err := reader.ReadAll()
+	require.NoError(t, err)
+
+	// Should only contain header and visible rows (Alice and David)
+	expected := [][]string{
+		{"Name", "Age", "City"},
+		{"Alice", "25", "New York"},
+		{"David", "40", "Tokyo"},
+	}
+
+	assert.Equal(t, expected, records, "CSV should only contain visible rows")
 }
