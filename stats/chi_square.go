@@ -53,6 +53,8 @@ func calculateChiSquare(observed, expected []float64, df int) (*ChiSquareTestRes
 }
 
 // ChiSquareGoodnessOfFit performs a one-dimensional chi-square goodness of fit test.
+//
+// input: A DataList containing observed frequencies.
 func ChiSquareGoodnessOfFit(input insyra.IDataList, p []float64, rescaleP bool) *ChiSquareTestResult {
 	observed := input.ToF64Slice()
 	var expected []float64
