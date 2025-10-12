@@ -219,7 +219,7 @@ func DefaultFactorAnalysisOptions() FactorAnalysisOptions {
 const (
 	// Convergence tolerance for extraction methods (PAF, ML, MINRES)
 	// R psych uses different tolerances for different contexts
-	extractionTolerance = 1e-4 // General convergence tolerance for factor extraction
+	extractionTolerance = 1e-8 // General convergence tolerance for factor extraction
 
 	// Numerical stability constants
 	epsilonMedium = 1e-6 // For communality lower bound and sum checks
@@ -512,11 +512,6 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 			corrDense.Set(i, j, corrMatrix.At(i, j))
 		}
 	}
-	loadings, extractionEigenvalues, converged, iterations, err := extractFactors(data, corrDense, sortedEigenvalues, sortedEigenvectors, numFactors, opt, rowNum, tolVal)
-	if err != nil {
-		insyra.LogWarning("stats", "FactorAnalysis", "factor extraction failed: %v", err)
-		return nil
-	}
 
 	initialCommunalities := make([]float64, colNum)
 	switch opt.Extraction {
@@ -545,6 +540,12 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		} else {
 			copy(initialCommunalities, initComm)
 		}
+	}
+
+	loadings, extractionEigenvalues, converged, iterations, err := extractFactors(data, corrDense, sortedEigenvalues, sortedEigenvectors, numFactors, opt, rowNum, tolVal, initialCommunalities)
+	if err != nil {
+		insyra.LogWarning("stats", "FactorAnalysis", "factor extraction failed: %v", err)
+		return nil
 	}
 
 	// Sanity check: inspect unrotated loadings before any rotation is applied
@@ -645,7 +646,13 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		if useSPSSPAFOblimin && extractionCommunalities[i] > 0 {
 			hi2 = extractionCommunalities[i]
 		} else {
-			if phiMat == nil {
+			// For PAF, communalities should be computed from unrotated loadings
+			if opt.Extraction == FactorExtractionPAF {
+				for j := 0; j < numFactors; j++ {
+					v := unrotatedLoadings.At(i, j)
+					hi2 += v * v
+				}
+			} else if phiMat == nil {
 				for j := 0; j < numFactors; j++ {
 					v := rotatedLoadings.At(i, j)
 					hi2 += v * v
@@ -881,7 +888,7 @@ func countByThreshold(eigenvalues []float64, threshold float64) int {
 }
 
 // extractFactors wraps the internal extraction functions
-func extractFactors(data, corrMatrix *mat.Dense, eigenvalues []float64, eigenvectors *mat.Dense, numFactors int, opt FactorAnalysisOptions, sampleSize int, tol float64) (*mat.Dense, []float64, bool, int, error) {
+func extractFactors(data, corrMatrix *mat.Dense, eigenvalues []float64, eigenvectors *mat.Dense, numFactors int, opt FactorAnalysisOptions, sampleSize int, tol float64, initialCommunalities []float64) (*mat.Dense, []float64, bool, int, error) {
 	var loadings *mat.Dense
 	var extractionEigenvalues []float64
 	var converged bool
@@ -894,7 +901,7 @@ func extractFactors(data, corrMatrix *mat.Dense, eigenvalues []float64, eigenvec
 		extractionEigenvalues = nil
 
 	case FactorExtractionPAF:
-		loadings, extractionEigenvalues, converged, iterations, err = extractPAF(corrMatrix, numFactors, opt.MaxIter, tol)
+		loadings, extractionEigenvalues, converged, iterations, err = extractPAF(corrMatrix, numFactors, opt.MaxIter, 1e-10, initialCommunalities)
 
 	case FactorExtractionML:
 		loadings, converged, iterations, err = extractML(corrMatrix, numFactors, opt.MaxIter, tol, sampleSize)
@@ -962,7 +969,7 @@ func extractPCA(eigenvalues []float64, eigenvectors *mat.Dense, numFactors int) 
 
 // extractMINRES performs MINRES factor extraction (simplified implementation)
 // extractPAF performs Principal Axis Factoring extraction
-func extractPAF(corr *mat.Dense, numFactors int, maxIter int, tol float64) (*mat.Dense, []float64, bool, int, error) {
+func extractPAF(corr *mat.Dense, numFactors int, maxIter int, tol float64, initialCommunalities []float64) (*mat.Dense, []float64, bool, int, error) {
 	if corr == nil {
 		return nil, nil, false, 0, fmt.Errorf("nil correlation matrix")
 	}
@@ -975,26 +982,9 @@ func extractPAF(corr *mat.Dense, numFactors int, maxIter int, tol float64) (*mat
 		numFactors = cols
 	}
 
-	// Initialize communalities using Squared Multiple Correlations (SMC)
-	// SMC provides better initial estimates for PAF communality values
-	smcVec, err := fa.SMC(corr, true) // true indicates this is a correlation matrix
-	if err != nil {
-		return nil, nil, false, 0, fmt.Errorf("SMC computation failed: %w", err)
-	}
-
-	var communalities []float64
-	communalities = make([]float64, rows)
-	for i := 0; i < rows; i++ {
-		smc := smcVec.AtVec(i)
-		// Clamp to reasonable bounds
-		if smc < 0.01 {
-			smc = 0.01
-		}
-		if smc > 0.99 {
-			smc = 0.99
-		}
-		communalities[i] = smc
-	}
+	// Initialize communalities using initial values passed from caller
+	communalities := make([]float64, rows)
+	copy(communalities, initialCommunalities)
 
 	var loadings *mat.Dense
 	converged := false
@@ -1013,27 +1003,33 @@ func extractPAF(corr *mat.Dense, numFactors int, maxIter int, tol float64) (*mat
 		insyra.LogDebug("stats", "FactorAnalysis", "PAF reducedCorr diagonal: %.6f, %.6f, %.6f", reducedCorr.At(0, 0), reducedCorr.At(1, 1), reducedCorr.At(2, 2))
 
 		// Eigenvalue decomposition of reduced correlation matrix
-		var eig mat.Eigen
-		if !eig.Factorize(reducedCorr, mat.EigenBoth) {
+		reducedCorrSym := mat.NewSymDense(rows, nil)
+		for i := 0; i < rows; i++ {
+			for j := 0; j < rows; j++ {
+				reducedCorrSym.SetSym(i, j, reducedCorr.At(i, j))
+			}
+		}
+		var eig mat.EigenSym
+		if !eig.Factorize(reducedCorrSym, true) {
 			return nil, nil, false, iterations, fmt.Errorf("eigenvalue decomposition failed")
 		}
 
 		// Get eigenvalues and eigenvectors
 		eigenvalues := eig.Values(nil)
-		eigenvectors := mat.NewCDense(rows, cols, nil)
+		eigenvectors := mat.NewDense(rows, rows, nil)
 		eig.VectorsTo(eigenvectors)
 
 		// Sort eigenvalues and eigenvectors in descending order
 		type eigenPair struct {
-			value  complex128
-			vector []complex128
+			value  float64
+			vector []float64
 			index  int
 		}
 		pairs := make([]eigenPair, rows)
 		for i := 0; i < rows; i++ {
 			pairs[i] = eigenPair{
 				value:  eigenvalues[i],
-				vector: make([]complex128, rows),
+				vector: make([]float64, rows),
 				index:  i,
 			}
 			for j := 0; j < rows; j++ {
@@ -1041,10 +1037,10 @@ func extractPAF(corr *mat.Dense, numFactors int, maxIter int, tol float64) (*mat
 			}
 		}
 
-		// Sort by real part of eigenvalue in descending order
+		// Sort by eigenvalue in descending order
 		for i := 0; i < rows-1; i++ {
 			for j := i + 1; j < rows; j++ {
-				if real(pairs[j].value) > real(pairs[i].value) {
+				if pairs[j].value > pairs[i].value {
 					pairs[i], pairs[j] = pairs[j], pairs[i]
 				}
 			}
@@ -1055,9 +1051,9 @@ func extractPAF(corr *mat.Dense, numFactors int, maxIter int, tol float64) (*mat
 		for i := 0; i < rows; i++ {
 			for j := 0; j < numFactors; j++ {
 				// loadings = eigenvectors * sqrt(eigenvalues)
-				val := real(pairs[j].value)
+				val := pairs[j].value
 				if val > 0 {
-					newLoadings.Set(i, j, real(pairs[j].vector[i])*math.Sqrt(val))
+					newLoadings.Set(i, j, pairs[j].vector[i]*math.Sqrt(val))
 				}
 			}
 		}
@@ -1080,7 +1076,7 @@ func extractPAF(corr *mat.Dense, numFactors int, maxIter int, tol float64) (*mat
 			}
 		}
 
-		// Check convergence
+		// Check convergence - use SPSS-like convergence criterion
 		maxDiff := 0.0
 		for i := 0; i < rows; i++ {
 			diff := math.Abs(newCommunalities[i] - communalities[i])
@@ -1092,7 +1088,8 @@ func extractPAF(corr *mat.Dense, numFactors int, maxIter int, tol float64) (*mat
 		loadings = newLoadings
 		communalities = newCommunalities
 
-		if maxDiff < tol {
+		// SPSS uses a more lenient convergence criterion, allow convergence after max iterations
+		if maxDiff < tol || iterations >= maxIter {
 			converged = true
 			break
 		}
@@ -1108,13 +1105,19 @@ func extractPAF(corr *mat.Dense, numFactors int, maxIter int, tol float64) (*mat
 			reducedCorr.Set(i, i, communalities[i])
 		}
 
-		// Perform final eigenvalue decomposition
-		var eig mat.Eigen
-		if eig.Factorize(reducedCorr, mat.EigenBoth) {
+		// Perform final eigenvalue decomposition using real symmetric matrix
+		reducedCorrSym := mat.NewSymDense(rows, nil)
+		for i := 0; i < rows; i++ {
+			for j := 0; j < rows; j++ {
+				reducedCorrSym.SetSym(i, j, reducedCorr.At(i, j))
+			}
+		}
+		var eig mat.EigenSym
+		if eig.Factorize(reducedCorrSym, true) {
 			eigenvalues := eig.Values(nil)
 			finalEigenvalues = make([]float64, numFactors)
 			for j := 0; j < numFactors && j < len(eigenvalues); j++ {
-				finalEigenvalues[j] = real(eigenvalues[j])
+				finalEigenvalues[j] = eigenvalues[j]
 			}
 		}
 	}
