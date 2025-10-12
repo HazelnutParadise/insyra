@@ -723,8 +723,8 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	explainedProp := make([]float64, mFactors)
 	cumulativeProp := make([]float64, mFactors)
 
-	if useSPSSPAFOblimin && len(extractionEigenvalues) == mFactors {
-		// Use eigenvalues of R* from the extraction iterations
+	if (useSPSSPAFOblimin || opt.Extraction == FactorExtractionPCA) && len(extractionEigenvalues) == mFactors {
+		// Use eigenvalues for PCA or special PAF+Oblimin case
 		cum := 0.0
 		for j := 0; j < mFactors; j++ {
 			prop := extractionEigenvalues[j] / float64(pVars) * 100.0
@@ -1175,6 +1175,35 @@ func extractML(corr *mat.Dense, numFactors int, maxIter int, tol float64, sample
 
 	// Iterative ML estimation
 	loadings := mat.NewDense(rows, numFactors, nil)
+
+	// Initialize loadings with PCA-like solution for first iteration
+	reducedCorr := mat.NewDense(rows, cols, nil)
+	reducedCorr.Copy(corr)
+	for i := 0; i < rows; i++ {
+		reducedCorr.Set(i, i, communalities[i])
+	}
+	reducedCorrSym := mat.NewSymDense(rows, nil)
+	for i := 0; i < rows; i++ {
+		for j := 0; j < rows; j++ {
+			reducedCorrSym.SetSym(i, j, reducedCorr.At(i, j))
+		}
+	}
+	var eigInit mat.EigenSym
+	if !eigInit.Factorize(reducedCorrSym, true) {
+		return nil, false, 0, fmt.Errorf("initial eigenvalue decomposition failed")
+	}
+	eigenvaluesInit := eigInit.Values(nil)
+	eigenvectorsInit := mat.NewDense(rows, rows, nil)
+	eigInit.VectorsTo(eigenvectorsInit)
+	for i := 0; i < rows; i++ {
+		for j := 0; j < numFactors; j++ {
+			val := eigenvaluesInit[j]
+			if val > 0 {
+				loadings.Set(i, j, eigenvectorsInit.At(i, j)*math.Sqrt(val))
+			}
+		}
+	}
+
 	converged := false
 	iterations := 0
 
@@ -1193,59 +1222,82 @@ func extractML(corr *mat.Dense, numFactors int, maxIter int, tol float64, sample
 			}
 		}
 
-		// Eigen decomposition of reduced correlation matrix
-		var eigen mat.Eigen
-		ok := eigen.Factorize(reducedCorr, mat.EigenRight)
-		if !ok {
-			return nil, false, iterations, fmt.Errorf("eigen decomposition failed")
+		// Eigen decomposition of reduced correlation matrix using real symmetric matrix
+		reducedCorrSym := mat.NewSymDense(rows, nil)
+		for i := 0; i < rows; i++ {
+			for j := 0; j < rows; j++ {
+				reducedCorrSym.SetSym(i, j, reducedCorr.At(i, j))
+			}
+		}
+		var eig mat.EigenSym
+		if !eig.Factorize(reducedCorrSym, true) {
+			return nil, false, iterations, fmt.Errorf("eigenvalue decomposition failed")
 		}
 
 		// Get eigenvalues and eigenvectors
-		eigenVals := eigen.Values(nil)
-		eigenVecs := mat.NewCDense(rows, rows, nil)
-		eigen.VectorsTo(eigenVecs)
+		eigenvalues := eig.Values(nil)
+		eigenvectors := mat.NewDense(rows, rows, nil)
+		eig.VectorsTo(eigenvectors)
 
 		// Sort eigenvalues and eigenvectors in descending order
 		type eigenPair struct {
-			value float64
-			index int
+			value  float64
+			vector []float64
+			index  int
 		}
 		pairs := make([]eigenPair, rows)
 		for i := 0; i < rows; i++ {
-			pairs[i] = eigenPair{real(eigenVals[i]), i}
+			pairs[i] = eigenPair{
+				value:  eigenvalues[i],
+				vector: make([]float64, rows),
+				index:  i,
+			}
+			for j := 0; j < rows; j++ {
+				pairs[i].vector[j] = eigenvectors.At(j, i)
+			}
 		}
 
-		// Simple sort by eigenvalue magnitude
+		// Sort by eigenvalue in descending order
 		for i := 0; i < rows-1; i++ {
 			for j := i + 1; j < rows; j++ {
-				if math.Abs(pairs[j].value) > math.Abs(pairs[i].value) {
+				if pairs[j].value > pairs[i].value {
 					pairs[i], pairs[j] = pairs[j], pairs[i]
 				}
 			}
 		}
 
-		// Extract first numFactors eigenvectors and scale by sqrt(eigenvalue)
+		// Extract first numFactors components
 		for i := 0; i < rows; i++ {
 			for j := 0; j < numFactors; j++ {
-				if j < len(pairs) && pairs[j].value > 0 {
-					vecVal := real(eigenVecs.At(i, pairs[j].index))
-					loadings.Set(i, j, vecVal*math.Sqrt(pairs[j].value))
+				// loadings = eigenvectors * sqrt(eigenvalues)
+				val := pairs[j].value
+				if val > 0 {
+					loadings.Set(i, j, pairs[j].vector[i]*math.Sqrt(val))
 				}
 			}
 		}
 
-		// Update communalities
+		// Update communalities using ML-specific formula
+		// For ML, communality = sum of squared loadings
 		newCommunalities := make([]float64, rows)
 		for i := 0; i < rows; i++ {
-			sum := 0.0
+			sumSquares := 0.0
 			for j := 0; j < numFactors; j++ {
 				loading := loadings.At(i, j)
-				sum += loading * loading
+				sumSquares += loading * loading
 			}
-			newCommunalities[i] = math.Min(sum, 0.995) // Cap at 0.995
+			// ML communality update: communality = sum(loadings^2)
+			newCommunalities[i] = sumSquares
+			// Ensure communality doesn't exceed 1.0 and has minimum value
+			if newCommunalities[i] > 0.995 {
+				newCommunalities[i] = 0.995
+			}
+			if newCommunalities[i] < 0.005 {
+				newCommunalities[i] = 0.005
+			}
 		}
 
-		// Check convergence
+		// Check convergence based on communality changes
 		maxDiff := 0.0
 		for i := 0; i < rows; i++ {
 			diff := math.Abs(newCommunalities[i] - communalities[i])
