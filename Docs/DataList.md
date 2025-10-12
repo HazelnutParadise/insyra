@@ -105,7 +105,7 @@ Guidelines
 
 ### NewDataList
 
-Creates a new DataList instance with variadic parameters, automatically flattening nested slices.
+Creates a new DataList instance with variadic parameters, automatically flattening nested slices but not arrays.
 
 ```go
 func NewDataList(values ...any) *DataList
@@ -119,6 +119,13 @@ func NewDataList(values ...any) *DataList
 
 - `*DataList`: A newly created DataList
 
+**Flattening Behavior:**
+
+- **Slices** are automatically flattened (e.g., `[]int{1, 2}` becomes `1, 2`)
+- **Arrays** are kept as single elements (e.g., `[3]int{1, 2, 3}` remains as one element)
+- Nested slices are recursively flattened
+- Other types are preserved as-is
+
 **Example:**
 
 ```go
@@ -129,7 +136,10 @@ dl := insyra.NewDataList(1, 2, 3, 4, 5)
 dl := insyra.NewDataList("Alice", 25, true, 3.14)
 
 // Create with nested slices (automatically flattened)
-dl := insyra.NewDataList([]int{1, 2}, []string{"a", "b"})
+dl := insyra.NewDataList([]int{1, 2}, []string{"a", "b"}) // Results in: [1, 2, "a", "b"]
+
+// Arrays are not flattened
+dl := insyra.NewDataList([3]int{1, 2, 3}, 4) // Results in: [[1, 2, 3], 4]
 ```
 
 ### From

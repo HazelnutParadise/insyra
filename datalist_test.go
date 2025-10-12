@@ -676,3 +676,35 @@ func TestDataListCount(t *testing.T) {
 		t.Errorf("Expected count 2, got %v", count)
 	}
 }
+
+// 測試展平行為：只展平切片，不展平陣列
+func TestFlattenSlicesNotArrays(t *testing.T) {
+	// 測試切片被展平
+	dl1 := NewDataList([]int{1, 2}, []int{3, 4})
+	expected1 := []any{1, 2, 3, 4}
+	if !reflect.DeepEqual(dl1.Data(), expected1) {
+		t.Errorf("Expected flattened slices %v, got %v", expected1, dl1.Data())
+	}
+
+	// 測試陣列不被展平
+	arr := [3]int{5, 6, 7}
+	dl2 := NewDataList(arr)
+	expected2 := []any{arr}
+	if !reflect.DeepEqual(dl2.Data(), expected2) {
+		t.Errorf("Expected array not flattened %v, got %v", expected2, dl2.Data())
+	}
+
+	// 測試嵌套切片被展平
+	dl3 := NewDataList([]any{[]int{1, 2}, 3})
+	expected3 := []any{1, 2, 3}
+	if !reflect.DeepEqual(dl3.Data(), expected3) {
+		t.Errorf("Expected nested slices flattened %v, got %v", expected3, dl3.Data())
+	}
+
+	// 測試混合：切片展平，陣列不展平
+	dl4 := NewDataList([]int{1, 2}, [2]int{3, 4}, 5)
+	expected4 := []any{1, 2, [2]int{3, 4}, 5}
+	if !reflect.DeepEqual(dl4.Data(), expected4) {
+		t.Errorf("Expected slices flattened but arrays not %v, got %v", expected4, dl4.Data())
+	}
+}

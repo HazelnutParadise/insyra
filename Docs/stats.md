@@ -349,9 +349,20 @@ func ChiSquareIndependenceTest(rowData, colData insyra.IDataList) *ChiSquareTest
 
 ```go
 type ChiSquareTestResult struct {
-    testResultBase // Statistic = chi-square statistic
+    testResultBase           // Statistic = chi-square statistic
+    ContingencyTable *insyra.DataTable // Contingency table with observed and expected values
 }
 ```
+
+The `ContingencyTable` contains the observed frequencies and expected frequencies for each cell in the contingency table. For goodness of fit tests, it shows observed vs expected values for each category. For independence tests, it shows the full contingency table with observed and expected values for each combination of row and column categories.
+
+##### Show Method
+
+```go
+func (r *ChiSquareTestResult) Show()
+```
+
+Displays the chi-square test results including the test statistic, p-value, degrees of freedom, and the contingency table.
 
 **Example**:
 
@@ -360,11 +371,11 @@ type ChiSquareTestResult struct {
 observed := insyra.NewDataList(20, 15, 25)
 p := []float64{1.0/3, 1.0/3, 1.0/3}
 result := stats.ChiSquareGoodnessOfFit(observed, p, true)
-fmt.Printf("Chi-square=%.4f, p=%.4f, df=%.0f\n", result.Statistic, result.PValue, *result.DF)
+result.Show() // Display complete test results
 
 // Independence test
 result := stats.ChiSquareIndependenceTest(rowData, colData)
-fmt.Printf("Chi-square=%.4f, p=%.4f\n", result.Statistic, result.PValue)
+result.Show() // Display complete test results with contingency table
 ```
 
 ---
