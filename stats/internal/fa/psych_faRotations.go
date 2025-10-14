@@ -488,15 +488,16 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 		case "varimax":
 			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
 			pre.Mul(baseLoadings, start)
-			result = Varimax(pre, true, 1e-08, 5000)
+			// Match R's default parameters: eps=1e-05, maxit=1000
+			result = Varimax(pre, true, 1e-05, 1000)
 		case "quartimax":
 			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
 			pre.Mul(baseLoadings, start)
-			result = Quartimax(pre, true, 1e-08, 5000)
+			result = Quartimax(pre, true, 1e-05, 1000)
 		case "quartimin":
 			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
 			pre.Mul(baseLoadings, start)
-			result = Quartimin(pre, true, 1e-08, 5000)
+			result = Quartimin(pre, true, 1e-05, 1000)
 		case "oblimin":
 			// Use identity matrix as starting point
 			// This provides better SPSS compatibility than random starts
@@ -513,11 +514,11 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 		case "geomint":
 			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
 			pre.Mul(baseLoadings, start)
-			result = GeominT(pre, true, 1e-08, 5000, 0.01)
+			result = GeominT(pre, true, 1e-05, 1000, 0.01)
 		case "geominq":
 			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
 			pre.Mul(baseLoadings, start)
-			result = GeominQ(pre, true, 1e-08, 5000, 0.01)
+			result = GeominQ(pre, true, 1e-05, 1000, 0.01)
 		case "bentlert":
 			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
 			pre.Mul(baseLoadings, start)
