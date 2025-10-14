@@ -610,11 +610,10 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 			phi = nil
 			rotationConverged = false
 		}
-		// Log rotation matrix diagonal to check if it's identity
+		// Log rotation matrix to check dimensions
 		if rotationMatrix != nil {
 			rows, cols := rotationMatrix.Dims()
-			insyra.LogInfo("stats", "FactorAnalysis", "Rotation matrix dims: %dx%d, diag=[%.3f, %.3f, %.3f]",
-				rows, cols, rotationMatrix.At(0, 0), rotationMatrix.At(1, 1), rotationMatrix.At(2, 2))
+			insyra.LogInfo("stats", "FactorAnalysis", "Rotation matrix dims: %dx%d", rows, cols)
 		}
 	} else {
 		// No rotation
