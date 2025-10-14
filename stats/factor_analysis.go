@@ -561,9 +561,9 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	// Standardize factor signs after extraction (before rotation)
 	// This ensures consistency: largest absolute loading per factor is positive
 	if loadings != nil {
-		insyra.LogInfo("stats", "FactorAnalysis", "Before standardization: A1 F2 = %.6f", loadings.At(0, 1))
+		insyra.LogInfo("stats", "FactorAnalysis", "Before standardization: A1 F1=%.6f F2=%.6f F3=%.6f", loadings.At(0, 0), loadings.At(0, 1), loadings.At(0, 2))
 		loadings = standardizeFactorSigns(loadings)
-		insyra.LogInfo("stats", "FactorAnalysis", "After standardization: A1 F2 = %.6f", loadings.At(0, 1))
+		insyra.LogInfo("stats", "FactorAnalysis", "After standardization: A1 F1=%.6f F2=%.6f F3=%.6f", loadings.At(0, 0), loadings.At(0, 1), loadings.At(0, 2))
 	}
 
 	// Sanity check: inspect unrotated loadings before any rotation is applied
@@ -1950,6 +1950,9 @@ func vectorToDataTableWithNames(vector []float64, tableName string, colName stri
 }
 
 // sortFactorsByExplainedVariance sorts factors by explained variance in descending order
+// Uses R's method:
+//   - For orthogonal: ev.rotated <- diag(t(loadings) %*% loadings)
+//   - For oblique: ev.rotated <- diag(Phi %*% t(loadings) %*% loadings)
 func sortFactorsByExplainedVariance(loadings *mat.Dense, rotationMatrix *mat.Dense, phi *mat.Dense) (*mat.Dense, *mat.Dense, *mat.Dense) {
 	if loadings == nil {
 		return nil, rotationMatrix, phi
@@ -1957,15 +1960,33 @@ func sortFactorsByExplainedVariance(loadings *mat.Dense, rotationMatrix *mat.Den
 
 	rows, cols := loadings.Dims()
 
-	// Calculate explained variance for each factor (sum of squared loadings)
+	// Calculate explained variance for each factor
 	variances := make([]float64, cols)
-	for j := range cols {
-		sum := 0.0
-		for i := range rows {
-			loading := loadings.At(i, j)
-			sum += loading * loading
+
+	if phi == nil || isIdentityMatrix(phi) {
+		// Orthogonal rotation: ev.rotated <- diag(t(loadings) %*% loadings)
+		for j := range cols {
+			sum := 0.0
+			for i := range rows {
+				loading := loadings.At(i, j)
+				sum += loading * loading
+			}
+			variances[j] = sum
 		}
-		variances[j] = sum
+	} else {
+		// Oblique rotation: ev.rotated <- diag(Phi %*% t(loadings) %*% loadings)
+		// First compute t(loadings) %*% loadings
+		ltl := mat.NewDense(cols, cols, nil)
+		ltl.Product(loadings.T(), loadings)
+
+		// Then compute Phi %*% (t(loadings) %*% loadings)
+		result := mat.NewDense(cols, cols, nil)
+		result.Product(phi, ltl)
+
+		// Extract diagonal
+		for j := range cols {
+			variances[j] = result.At(j, j)
+		}
 	}
 
 	// Create indices for sorting (descending order)
@@ -2104,17 +2125,21 @@ func rotateFactors(loadings *mat.Dense, rotationOpts FactorRotationOptions, minE
 		return nil, nil, nil, false, err
 	}
 
-	// Apply sign standardization to rotated loadings (skip for Oblimin to match SPSS)
-	if method != "oblimin" {
-		standardizedLoadings := standardizeFactorSigns(rotatedLoadings)
-		return standardizedLoadings, rotMat, phi, converged, nil
+	// Apply sign standardization to all rotated loadings (including Oblimin)
+	// This matches R's behavior: loadings <- loadings %*% diag(signed)
+	standardizedLoadings := standardizeFactorSigns(rotatedLoadings)
+
+	// Also apply sign standardization to phi matrix if it exists
+	// R code: if (!is.null(Phi)) { Phi <- diag(signed) %*% Phi %*% diag(signed) }
+	if phi != nil {
+		phi = standardizePhiSigns(phi, rotatedLoadings, standardizedLoadings)
 	}
 
-	return rotatedLoadings, rotMat, phi, converged, nil
+	return standardizedLoadings, rotMat, phi, converged, nil
 }
 
 // standardizeFactorSigns standardizes the signs of factor loadings
-// Ensures that the largest loading (in absolute value) for each factor is positive
+// Uses R's method: sign(colSums(loadings)) to ensure sum of each factor is positive
 func standardizeFactorSigns(loadings *mat.Dense) *mat.Dense {
 	if loadings == nil {
 		return nil
@@ -2124,20 +2149,15 @@ func standardizeFactorSigns(loadings *mat.Dense) *mat.Dense {
 	standardized := mat.DenseCopyOf(loadings)
 
 	for j := range cols {
-		// Find the variable with the largest absolute loading for this factor
-		maxAbsLoading := 0.0
-		maxAbsIndex := 0
-
+		// Calculate sum of loadings for this factor (R method: colSums)
+		sum := 0.0
 		for i := range rows {
-			absLoading := math.Abs(standardized.At(i, j))
-			if absLoading > maxAbsLoading {
-				maxAbsLoading = absLoading
-				maxAbsIndex = i
-			}
+			sum += standardized.At(i, j)
 		}
 
-		// If the largest loading is negative, reflect the entire factor
-		if standardized.At(maxAbsIndex, j) < 0 {
+		// If sum is negative (or zero, default to positive), reflect the entire factor
+		// R code: signed[signed == 0] <- 1
+		if sum < 0 {
 			for i := range rows {
 				standardized.Set(i, j, -standardized.At(i, j))
 			}
@@ -2145,6 +2165,73 @@ func standardizeFactorSigns(loadings *mat.Dense) *mat.Dense {
 	}
 
 	return standardized
+}
+
+// standardizePhiSigns applies sign changes to phi matrix based on loading sign changes
+// R code: if (!is.null(Phi)) { Phi <- diag(signed) %*% Phi %*% diag(signed) }
+func standardizePhiSigns(phi *mat.Dense, originalLoadings, standardizedLoadings *mat.Dense) *mat.Dense {
+	if phi == nil || originalLoadings == nil || standardizedLoadings == nil {
+		return phi
+	}
+
+	_, cols := phi.Dims()
+
+	// Determine which factors had their signs flipped
+	signs := make([]float64, cols)
+	for j := range cols {
+		// Compare first non-zero loading to determine if sign was flipped
+		origSum := 0.0
+		stdSum := 0.0
+		rows, _ := originalLoadings.Dims()
+		for i := range rows {
+			origSum += originalLoadings.At(i, j)
+			stdSum += standardizedLoadings.At(i, j)
+		}
+
+		// If signs are opposite, this factor was flipped
+		if origSum*stdSum < 0 {
+			signs[j] = -1.0
+		} else {
+			signs[j] = 1.0
+		}
+	}
+
+	// Apply: Phi <- diag(signed) %*% Phi %*% diag(signed)
+	standardizedPhi := mat.NewDense(cols, cols, nil)
+	for i := range cols {
+		for j := range cols {
+			standardizedPhi.Set(i, j, signs[i]*phi.At(i, j)*signs[j])
+		}
+	}
+
+	return standardizedPhi
+}
+
+// isIdentityMatrix checks if a matrix is an identity matrix (within tolerance)
+func isIdentityMatrix(m *mat.Dense) bool {
+	if m == nil {
+		return false
+	}
+
+	rows, cols := m.Dims()
+	if rows != cols {
+		return false
+	}
+
+	const tol = 1e-6
+	for i := range rows {
+		for j := range cols {
+			expected := 0.0
+			if i == j {
+				expected = 1.0
+			}
+			if math.Abs(m.At(i, j)-expected) > tol {
+				return false
+			}
+		}
+	}
+
+	return true
 }
 
 // FactorPAFOblimin performs PA-F Oblimin rotation (simplified implementation)
