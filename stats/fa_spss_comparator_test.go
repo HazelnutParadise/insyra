@@ -511,6 +511,10 @@ func TestCompareWithSpssTarget(t *testing.T) {
 	maxAbsR, rmseR := compareMatrices(alignedRot, refRot)
 	maxAbsP, rmseP := compareMatrices(alignedPhi, refPhi)
 
+	t.Logf("Loadings: maxAbs=%.6g rmse=%.6g", maxAbsL, rmseL)
+	t.Logf("Rotmat: maxAbs=%.6g rmse=%.6g", maxAbsR, rmseR)
+	t.Logf("Phi: maxAbs=%.6g rmse=%.6g", maxAbsP, rmseP)
+
 	if maxAbsL > 1e-3 || rmseL > 1e-4 {
 		t.Fatalf("Loadings differ from SPSS reference: maxAbs=%.6g rmse=%.6g", maxAbsL, rmseL)
 	}

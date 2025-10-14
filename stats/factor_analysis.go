@@ -533,20 +533,22 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	}
 
 	initialCommunalities := make([]float64, colNum)
-	switch opt.Extraction {
-	case FactorExtractionPCA:
-		for i := 0; i < colNum; i++ {
-			val := corrDense.At(i, i)
-			if val < 0 {
-				val = 0
+	if opt.Extraction == FactorExtractionPAF {
+		// For PAF, SPSS default is to use squared multiple correlations (SMC) as initial estimates
+		smcVec, _ := fa.Smc(corrDense, nil) // Correctly call fa.Smc
+		if smcVec == nil {
+			insyra.LogWarning("stats", "FactorAnalysis", "SMC calculation failed, falling back to diagonal correlations")
+			// Fallback to simpler method if SMC fails
+			for i := 0; i < colNum; i++ {
+				initialCommunalities[i] = corrDense.At(i, i)
 			}
-			initialCommunalities[i] = val
+		} else {
+			copy(initialCommunalities, smcVec.RawVector().Data) // Correctly copy data from VecDense
 		}
-	default:
-		// Use Kaiser normalization: square of diagonal correlations (SPSS default for PAF)
+	} else {
+		// For other methods like PCA, use the diagonal of the correlation matrix (which is 1.0)
 		for i := 0; i < colNum; i++ {
-			val := corrDense.At(i, i)
-			initialCommunalities[i] = val * val
+			initialCommunalities[i] = corrDense.At(i, i)
 		}
 	}
 
@@ -581,9 +583,6 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		}
 	}
 
-	// Apply initial factor reflection to match R's convention (before rotation)
-	loadings, _ = reflectFactorsForPositiveLoadings(loadings)
-
 	// Special handling for PAF + Oblimin to match SPSS
 	var useSPSSPAFOblimin bool = (opt.Extraction == FactorExtractionPAF && opt.Rotation.Method == FactorRotationOblimin)
 	var extractionCommunalities []float64
@@ -601,7 +600,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		// For PAF + Oblimin, first extract factors using PAF, then apply Oblimin rotation
 		// This provides better SPSS compatibility than separate extraction + rotation
 		unrotatedLoadings = mat.DenseCopyOf(loadings)
-		rotatedLoadings, rotationMatrix, phi, rotationConverged, err = rotateFactors(loadings, opt.Rotation)
+		rotatedLoadings, rotationMatrix, phi, rotationConverged, err = rotateFactors(loadings, opt.Rotation, opt.MinErr, opt.MaxIter)
 		if err != nil {
 			insyra.LogWarning("stats", "FactorAnalysis", "PAF+Oblimin rotation failed: %v", err)
 			rotatedLoadings = loadings
@@ -611,7 +610,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		}
 	} else if opt.Rotation.Method != FactorRotationNone {
 		unrotatedLoadings = mat.DenseCopyOf(loadings)
-		rotatedLoadings, rotationMatrix, phi, rotationConverged, err = rotateFactors(loadings, opt.Rotation)
+		rotatedLoadings, rotationMatrix, phi, rotationConverged, err = rotateFactors(loadings, opt.Rotation, opt.MinErr, opt.MaxIter)
 		if err != nil {
 			insyra.LogWarning("stats", "FactorAnalysis", "rotation failed: %v", err)
 			rotatedLoadings = loadings
@@ -1001,11 +1000,11 @@ func extractPAF(corr *mat.Dense, numFactors int, maxIter int, tol float64, initi
 	for iter := range maxIter {
 		iterations = iter + 1
 
-		// Create reduced correlation matrix R* = R - diag(1 - communalities)
+		// Create reduced correlation matrix R* by replacing the diagonal of R with communalities
 		reducedCorr := mat.NewDense(rows, cols, nil)
 		reducedCorr.Copy(corr)
 		for i := range rows {
-			reducedCorr.Set(i, i, corr.At(i, i)-(1.0-communalities[i]))
+			reducedCorr.Set(i, i, communalities[i])
 		}
 
 		insyra.LogDebug("stats", "FactorAnalysis", "PAF reducedCorr diagonal: %.6f, %.6f, %.6f", reducedCorr.At(0, 0), reducedCorr.At(1, 1), reducedCorr.At(2, 2))
@@ -2014,7 +2013,7 @@ func sortFactorsByExplainedVariance(loadings *mat.Dense, rotationMatrix *mat.Den
 }
 
 // rotateFactors rotates factor loadings based on rotation options
-func rotateFactors(loadings *mat.Dense, rotationOpts FactorRotationOptions) (*mat.Dense, *mat.Dense, *mat.Dense, bool, error) {
+func rotateFactors(loadings *mat.Dense, rotationOpts FactorRotationOptions, minErr float64, maxIter int) (*mat.Dense, *mat.Dense, *mat.Dense, bool, error) {
 	if loadings == nil {
 		return nil, nil, nil, false, fmt.Errorf("nil loadings matrix")
 	}
@@ -2085,8 +2084,8 @@ func rotateFactors(loadings *mat.Dense, rotationOpts FactorRotationOptions) (*ma
 
 	// Use fa.Rotate function
 	opts := &fa.RotOpts{
-		Eps:         1e-5,
-		MaxIter:     1000,                    // Default max iterations
+		Eps:         minErr,                  // Use MinErr from function parameter
+		MaxIter:     maxIter,                 // Use MaxIter from function parameter
 		Gamma:       rotationOpts.Kappa,      // Use Kappa as Gamma for oblimin
 		PromaxPower: int(rotationOpts.Kappa), // Use Kappa as PromaxPower
 		Restarts:    rotationOpts.Restarts,
@@ -2097,10 +2096,13 @@ func rotateFactors(loadings *mat.Dense, rotationOpts FactorRotationOptions) (*ma
 		return nil, nil, nil, false, err
 	}
 
-	// Apply sign standardization to rotated loadings
-	standardizedLoadings := standardizeFactorSigns(rotatedLoadings)
+	// Apply sign standardization to rotated loadings (skip for Oblimin to match SPSS)
+	if method != "oblimin" {
+		standardizedLoadings := standardizeFactorSigns(rotatedLoadings)
+		return standardizedLoadings, rotMat, phi, converged, nil
+	}
 
-	return standardizedLoadings, rotMat, phi, converged, nil
+	return rotatedLoadings, rotMat, phi, converged, nil
 }
 
 // standardizeFactorSigns standardizes the signs of factor loadings

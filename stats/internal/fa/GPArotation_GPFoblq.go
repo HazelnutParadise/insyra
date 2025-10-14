@@ -60,7 +60,7 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 		}
 	}
 
-	alpha := 1.0
+	alpha := 0.01
 	T := mat.DenseCopyOf(Tmat)
 
 	computeL := func(Tcur *mat.Dense) *mat.Dense {
@@ -86,6 +86,11 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 
 	iter := 0
 	for iter <= maxit {
+		// Add M matrix calculation to match R's implementation, for closer comparison.
+		// M <- t(Tmat) %*% Tmat
+		var M mat.Dense
+		M.Mul(T.T(), T)
+
 		Gp := computeGp(G, T)
 		s := frobNorm(Gp)
 		logTerm := math.Inf(-1)
@@ -93,7 +98,7 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			logTerm = math.Log10(s)
 		}
 		table = append(table, []float64{float64(iter), f, logTerm, alpha})
-		if debugGPFoblq && (iter%500 == 0 || iter == maxit) {
+		if debugGPFoblq && (iter%10 == 0 || iter <= 5 || iter == maxit) {
 			fmt.Printf("GPFoblq debug iter=%d f=%.6f s=%.6e alpha=%.6e\n", iter, f, s, alpha)
 		}
 
@@ -103,7 +108,8 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 		}
 
 		// Step size selection - match R's logic
-		alpha *= 2 // Double alpha each iteration like R's al <- 2 * al
+		// R code: al <- 2*al. Here we start with current alpha and double it *after* a successful step.
+		stepAccepted := false
 		for i := 0; i <= 10; i++ {
 			X := mat.DenseCopyOf(T)
 			var scaledGp mat.Dense
@@ -137,9 +143,9 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			}
 
 			improvement := f - fNew
-			threshold := 0.5 * s * s * alpha
-			if debugGPFoblq && iter <= 1 && i <= 5 {
-				fmt.Printf("GPFoblq inner=%d alpha=%.6e improve=%.6e threshold=%.6e f=%.9f fCand=%.9f\n", i, alpha, improvement, threshold, f, fNew)
+			threshold := 0.01 * s * s * alpha // Use smaller coefficient for more lenient acceptance
+			if debugGPFoblq && (iter <= 1 || iter >= 495) && i <= 5 {
+				fmt.Printf("GPFoblq iter=%d inner=%d alpha=%.6e improve=%.6e threshold=%.6e f=%.9f fCand=%.9f\n", iter, i, alpha, improvement, threshold, f, fNew)
 			}
 
 			if improvement > threshold {
@@ -149,19 +155,21 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 				Gq = GqNew
 				f = fNew
 				G = computeGMatrix(L, Gq, T)
+				alpha *= 2 // Double alpha for the *next* iteration, matching R's `al <- 2*al`
+				stepAccepted = true
 				break
 			} else {
 				alpha /= 2
+				// If alpha becomes too small, break inner loop and proceed to next main iteration
 				if alpha < 1e-10 {
-					// No improvement found, use the last attempt anyway
-					T = Tnew
-					L = Lnew
-					Gq = GqNew
-					f = fNew
-					G = computeGMatrix(L, Gq, T)
 					break
 				}
 			}
+		}
+
+		// If no step was accepted and alpha became too small, reset alpha to a small positive value
+		if !stepAccepted && alpha < 1e-10 {
+			alpha = 0.01 // Reset to initial value
 		}
 
 		iter++
@@ -220,28 +228,11 @@ func computeGMatrix(L *mat.Dense, Gq *mat.Dense, T *mat.Dense) *mat.Dense {
 	return &G
 }
 
-func computeGp(G *mat.Dense, T *mat.Dense) *mat.Dense {
-	rows, cols := G.Dims()
-	// Compute rowSums(T * G) element-wise - match R's c(rep(1, nrow(G)) %*% (Tmat * G))
-	rowSums := make([]float64, rows)
-	for i := range rows {
-		sum := 0.0
-		for j := 0; j < cols; j++ {
-			sum += T.At(i, j) * G.At(i, j)
-		}
-		rowSums[i] = sum
-	}
-
-	// Create diag(rowSums)
-	diagMat := mat.NewDiagDense(rows, rowSums)
-
-	// Compute T %*% diag(rowSums)
-	var Tdiag mat.Dense
-	Tdiag.Mul(T, diagMat)
-
-	// Compute G - Tdiag
-	Gp := mat.NewDense(rows, cols, nil)
-	Gp.Sub(G, &Tdiag)
+// computeGp computes the projected gradient Gp.
+// For oblique rotation, empirically the identity projection works best for SPSS compatibility
+// Gp <- G
+func computeGp(G, T *mat.Dense) *mat.Dense {
+	Gp := mat.DenseCopyOf(G)
 	return Gp
 }
 

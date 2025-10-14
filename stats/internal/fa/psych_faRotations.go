@@ -361,8 +361,6 @@ func GeominQ(loadings *mat.Dense, normalize bool, eps float64, maxIter int, delt
 }
 
 // BentlerQ performs Bentler's criterion rotation (oblique).
-
-// BentlerQ performs Bentler's criterion rotation (oblique).
 // Mirrors GPArotation::bentlerQ
 func BentlerQ(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map[string]any {
 	_, nf := loadings.Dims() // loadings is p x nf (variables x factors)
