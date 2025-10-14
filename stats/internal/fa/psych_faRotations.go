@@ -506,7 +506,8 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 				startIdentity.Set(i, i, 1.0)
 			}
 			var gpf map[string]any
-			gpf, err := GPFoblq(baseLoadings, startIdentity, true, 1e-08, 1000, "oblimin", hyper)
+			// Match R's default parameters: eps=1e-05
+			gpf, err := GPFoblq(baseLoadings, startIdentity, true, 1e-05, 1000, "oblimin", hyper)
 			if err != nil {
 				continue
 			}

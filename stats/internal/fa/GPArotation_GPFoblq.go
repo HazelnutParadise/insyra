@@ -101,8 +101,11 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			break
 		}
 
-		// Step size selection - match R's logic
-		// R code: al <- 2*al. Here we start with current alpha and double it *after* a successful step.
+		// Match R's strategy: double alpha at start of each iteration
+		// R code: al <- 2 * al
+		alpha *= 2
+
+		// Step size selection with backtracking
 		stepAccepted := false
 		for i := 0; i <= 10; i++ {
 			X := mat.DenseCopyOf(T)
@@ -137,11 +140,9 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			}
 
 			improvement := f - fNew
-			// Use small threshold with gradient-based scaling
-			// This balances accepting improvements vs ensuring descent direction
-			// Original 1e-8 was too lenient, 0.5 was too strict
-			// Try moderate value: c1=1e-4 (standard Armijo), scaled by gradient norm
-			threshold := 1e-4 * s * s * alpha
+			// Match R's threshold: 0.5 * s^2 * al
+			// R code: if (improvement > 0.5 * s^2 * al) break
+			threshold := 0.5 * s * s * alpha
 
 			if improvement > threshold {
 				// Accept the step
@@ -150,9 +151,9 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 				Gq = GqNew
 				f = fNew
 				G = computeGMatrix(L, Gq, T)
-				// Keep alpha for next iteration instead of doubling
-				// R may use different strategy
-				// alpha *= 2 // Don't double - causes oscillation
+				// Match R: double alpha after successful step
+				// R code: al <- 2 * al (at the start of iteration)
+				// We apply it here after accepting the step
 				stepAccepted = true
 				break
 			} else {

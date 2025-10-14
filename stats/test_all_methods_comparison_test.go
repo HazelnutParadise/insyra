@@ -105,9 +105,9 @@ func TestCompareAllMethods(t *testing.T) {
 		perm, signs, aligned := alignFactorsMatrix(spssLoadingsMat, loadings)
 		maxAbs, rmse := compareMatricesSlice(aligned, tc.spssLoadings)
 
-		// Debug: print alignment details for Varimax
-		if tc.name == "PCA + Varimax" {
-			fmt.Printf("\n=== Varimax 對齊詳情 ===\n")
+		// Debug: print alignment details for Varimax and Oblimin
+		if tc.name == "PCA + Varimax" || tc.name == "PAF + Oblimin" {
+			fmt.Printf("\n=== %s 對齊詳情 ===\n", tc.name)
 			fmt.Printf("對齊前 (original, 所有9行):\n")
 			varNames := []string{"A1", "A2", "A3", "B1", "B2", "B3", "C1", "C2", "C3"}
 			for i := 0; i < len(loadings); i++ {
