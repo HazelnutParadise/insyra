@@ -35,9 +35,6 @@ func NormalizingWeight(A *mat.Dense, normalize bool) *mat.VecDense {
 
 // GPFoblq performs oblique GPA rotation.
 // Transliteration of GPArotation::GPFoblq from R.
-// debugGPFoblq controls verbose outputs for this algorithm; set to true during development.
-var debugGPFoblq = false
-
 func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit int, method string, gamma float64) (map[string]any, error) {
 	rows, cols := A.Dims()
 	if cols <= 1 {
@@ -60,7 +57,7 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 		}
 	}
 
-	alpha := 0.01
+	alpha := 1.0 // Start with larger alpha for better initial progress
 	T := mat.DenseCopyOf(Tmat)
 
 	computeL := func(Tcur *mat.Dense) *mat.Dense {
@@ -98,9 +95,6 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			logTerm = math.Log10(s)
 		}
 		table = append(table, []float64{float64(iter), f, logTerm, alpha})
-		if debugGPFoblq && (iter%10 == 0 || iter <= 5 || iter == maxit) {
-			fmt.Printf("GPFoblq debug iter=%d f=%.6f s=%.6e alpha=%.6e\n", iter, f, s, alpha)
-		}
 
 		if s < eps {
 			convergence = true
@@ -143,10 +137,11 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			}
 
 			improvement := f - fNew
-			threshold := 0.01 * s * s * alpha // Use smaller coefficient for more lenient acceptance
-			if debugGPFoblq && (iter <= 1 || iter >= 495) && i <= 5 {
-				fmt.Printf("GPFoblq iter=%d inner=%d alpha=%.6e improve=%.6e threshold=%.6e f=%.9f fCand=%.9f\n", iter, i, alpha, improvement, threshold, f, fNew)
-			}
+			// Use small threshold with gradient-based scaling
+			// This balances accepting improvements vs ensuring descent direction
+			// Original 1e-8 was too lenient, 0.5 was too strict
+			// Try moderate value: c1=1e-4 (standard Armijo), scaled by gradient norm
+			threshold := 1e-4 * s * s * alpha
 
 			if improvement > threshold {
 				// Accept the step
@@ -155,7 +150,9 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 				Gq = GqNew
 				f = fNew
 				G = computeGMatrix(L, Gq, T)
-				alpha *= 2 // Double alpha for the *next* iteration, matching R's `al <- 2*al`
+				// Keep alpha for next iteration instead of doubling
+				// R may use different strategy
+				// alpha *= 2 // Don't double - causes oscillation
 				stepAccepted = true
 				break
 			} else {
@@ -167,9 +164,9 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			}
 		}
 
-		// If no step was accepted and alpha became too small, reset alpha to a small positive value
+		// If no step was accepted and alpha became too small, reset alpha to a larger value
 		if !stepAccepted && alpha < 1e-10 {
-			alpha = 0.01 // Reset to initial value
+			alpha = 1.0 // Reset to initial value for fresh start
 		}
 
 		iter++
@@ -189,16 +186,6 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 
 	var Phi mat.Dense
 	Phi.Mul(T.T(), T)
-	if debugGPFoblq {
-		fmt.Printf("GPFoblq final Phi:\n")
-		for i := 0; i < Phi.RawMatrix().Rows; i++ {
-			for j := 0; j < Phi.RawMatrix().Cols; j++ {
-				fmt.Printf(" % .6f", Phi.At(i, j))
-			}
-			fmt.Printf("\n")
-		}
-		fmt.Printf("GPFoblq final grad=%.6e, iterations=%d\n", frobNorm(computeGp(G, T)), len(table)-1)
-	}
 
 	return map[string]any{
 		"loadings":    L,
@@ -229,10 +216,33 @@ func computeGMatrix(L *mat.Dense, Gq *mat.Dense, T *mat.Dense) *mat.Dense {
 }
 
 // computeGp computes the projected gradient Gp.
-// For oblique rotation, empirically the identity projection works best for SPSS compatibility
-// Gp <- G
+// For oblique rotation, project G onto the tangent space of the manifold
+// Gp <- G - T %*% diag(diag(t(T) %*% G))
 func computeGp(G, T *mat.Dense) *mat.Dense {
+	// R's GPFoblq uses: Gp <- G - T %*% diag(diag(t(T) %*% G))
+	// This projects G onto the tangent space at T
+	var tTG mat.Dense
+	tTG.Mul(T.T(), G) // t(T) %*% G
+
+	// Extract diagonal: diag(t(T) %*% G)
+	rows, cols := tTG.Dims()
+	minDim := rows
+	if cols < minDim {
+		minDim = cols
+	}
+	diagVals := make([]float64, minDim)
+	for i := 0; i < minDim; i++ {
+		diagVals[i] = tTG.At(i, i)
+	}
+	diagMat := mat.NewDiagDense(minDim, diagVals)
+
+	// T %*% diag(diag(t(T) %*% G))
+	var TDiag mat.Dense
+	TDiag.Mul(T, diagMat)
+
+	// Gp = G - T %*% diag(diag(t(T) %*% G))
 	Gp := mat.DenseCopyOf(G)
+	Gp.Sub(Gp, &TDiag)
 	return Gp
 }
 

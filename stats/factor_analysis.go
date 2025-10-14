@@ -558,6 +558,14 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		return nil
 	}
 
+	// Standardize factor signs after extraction (before rotation)
+	// This ensures consistency: largest absolute loading per factor is positive
+	if loadings != nil {
+		insyra.LogInfo("stats", "FactorAnalysis", "Before standardization: A1 F2 = %.6f", loadings.At(0, 1))
+		loadings = standardizeFactorSigns(loadings)
+		insyra.LogInfo("stats", "FactorAnalysis", "After standardization: A1 F2 = %.6f", loadings.At(0, 1))
+	}
+
 	// Sanity check: inspect unrotated loadings before any rotation is applied
 	if loadings != nil {
 		pVars, mFactors := loadings.Dims()

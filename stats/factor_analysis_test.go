@@ -200,9 +200,13 @@ func TestFactorAnalysis_SPSS_Complete(t *testing.T) {
 		Preprocess: stats.FactorPreprocessOptions{Standardize: true},
 		Count:      stats.FactorCountSpec{Method: stats.FactorCountFixed, FixedK: 3},
 		Extraction: stats.FactorExtractionPAF,
-		Rotation:   stats.FactorRotationOptions{Method: stats.FactorRotationOblimin, Kappa: 0},
-		MinErr:     1e-9,
-		MaxIter:    1000,
+		Rotation: stats.FactorRotationOptions{
+			Method:   stats.FactorRotationOblimin,
+			Delta:    0,
+			Restarts: 10, // Use multiple random starts to avoid local minimum
+		},
+		MinErr:  1e-9,
+		MaxIter: 1000,
 	})
 
 	if result == nil {
