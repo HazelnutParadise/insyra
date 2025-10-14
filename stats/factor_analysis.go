@@ -628,10 +628,10 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	}
 
 	// Sort or align factor columns by explained variance
-	// This matches R's behavior: factors are ordered by variance after rotation
-	insyra.LogInfo("stats", "FactorAnalysis", "Before sorting: A1 F1=%.6f F2=%.6f F3=%.6f", rotatedLoadings.At(0, 0), rotatedLoadings.At(0, 1), rotatedLoadings.At(0, 2))
-	rotatedLoadings, rotationMatrix, phi = sortFactorsByExplainedVariance(rotatedLoadings, rotationMatrix, phi)
-	insyra.LogInfo("stats", "FactorAnalysis", "After sorting: A1 F1=%.6f F2=%.6f F3=%.6f", rotatedLoadings.At(0, 0), rotatedLoadings.At(0, 1), rotatedLoadings.At(0, 2))
+	// NOTE: SPSS does NOT sort factors after rotation - it keeps the rotation order
+	// R's psych::fa() also does not sort after rotation
+	// Sorting is commented out for SPSS/R compatibility
+	// rotatedLoadings, rotationMatrix, phi = sortFactorsByExplainedVariance(rotatedLoadings, rotationMatrix, phi)
 
 	// Step 8: Compute communalities and uniquenesses
 	extractionCommunalities := make([]float64, colNum)

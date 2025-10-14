@@ -719,11 +719,40 @@ func rotMatFromTh(Th *mat.Dense, nf int) *mat.Dense {
 	if Th == nil {
 		return identityMatrix(nf)
 	}
-	// Return transpose of Th
-	return mat.DenseCopyOf(Th.T())
-}
+	// R code: rot.mat <- t(solve(Th))
+	// For orthogonal rotations (like Varimax), Th is orthogonal, so:
+	// solve(Th) = t(Th), thus t(solve(Th)) = t(t(Th)) = Th
+	// For non-orthogonal rotations, we need the full inverse
 
-// inverseOrIdentity returns the inverse of M, or an identity matrix of size n
+	// Check if Th is orthogonal
+	var ThTTh mat.Dense
+	ThTTh.Mul(Th.T(), Th)
+	isOrthogonal := true
+	for i := 0; i < nf && isOrthogonal; i++ {
+		for j := 0; j < nf && isOrthogonal; j++ {
+			expected := 0.0
+			if i == j {
+				expected = 1.0
+			}
+			if math.Abs(ThTTh.At(i, j)-expected) > 1e-6 {
+				isOrthogonal = false
+			}
+		}
+	}
+
+	if isOrthogonal {
+		// For orthogonal matrices: t(solve(Th)) = Th
+		return mat.DenseCopyOf(Th)
+	}
+
+	// For non-orthogonal: compute inverse and transpose
+	var invTh mat.Dense
+	if err := invTh.Inverse(Th); err != nil {
+		// If inverse fails, return identity matrix
+		return identityMatrix(nf)
+	}
+	return mat.DenseCopyOf(invTh.T())
+} // inverseOrIdentity returns the inverse of M, or an identity matrix of size n
 // if inversion fails. This is a small safe fallback used by rotation routines
 // to avoid panics when matrices are singular or near-singular.
 func inverseOrIdentity(M *mat.Dense, n int) *mat.Dense {

@@ -105,6 +105,21 @@ func TestCompareAllMethods(t *testing.T) {
 		perm, signs, aligned := alignFactorsMatrix(spssLoadingsMat, loadings)
 		maxAbs, rmse := compareMatricesSlice(aligned, tc.spssLoadings)
 
+		// Debug: print alignment details for Varimax
+		if tc.name == "PCA + Varimax" {
+			fmt.Printf("\n=== Varimax 對齊詳情 ===\n")
+			fmt.Printf("對齊前 (original, 所有9行):\n")
+			varNames := []string{"A1", "A2", "A3", "B1", "B2", "B3", "C1", "C2", "C3"}
+			for i := 0; i < len(loadings); i++ {
+				fmt.Printf("  %s: %.6f %.6f %.6f\n", varNames[i], loadings[i][0], loadings[i][1], loadings[i][2])
+			}
+			fmt.Printf("SPSS 參考 (所有9行):\n")
+			for i := 0; i < len(tc.spssLoadings); i++ {
+				fmt.Printf("  %s: %.6f %.6f %.6f\n", varNames[i], tc.spssLoadings[i][0], tc.spssLoadings[i][1], tc.spssLoadings[i][2])
+			}
+			fmt.Printf("排列: %v, 符號: %v\n", perm, signs)
+		}
+
 		// 輸出結果
 		fmt.Printf("\n因子排列: %v\n", perm)
 		fmt.Printf("符號調整: %v\n", signs)
