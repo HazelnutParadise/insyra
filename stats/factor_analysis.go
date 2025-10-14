@@ -592,31 +592,15 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	}
 
 	// Special handling for PAF + Oblimin to match SPSS
-	var useSPSSPAFOblimin bool = (opt.Extraction == FactorExtractionPAF && opt.Rotation.Method == FactorRotationOblimin)
-	var extractionCommunalities []float64
-	if useSPSSPAFOblimin {
-		extractionCommunalities = make([]float64, colNum)
-	}
-
 	// Step 7: Rotate factors
 	var rotatedLoadings *mat.Dense
 	var unrotatedLoadings *mat.Dense
 	var rotationMatrix *mat.Dense
 	var phi *mat.Dense
 	var rotationConverged bool
-	if useSPSSPAFOblimin {
-		// For PAF + Oblimin, first extract factors using PAF, then apply Oblimin rotation
-		// This provides better SPSS compatibility than separate extraction + rotation
-		unrotatedLoadings = mat.DenseCopyOf(loadings)
-		rotatedLoadings, rotationMatrix, phi, rotationConverged, err = rotateFactors(loadings, opt.Rotation, opt.MinErr, opt.MaxIter)
-		if err != nil {
-			insyra.LogWarning("stats", "FactorAnalysis", "PAF+Oblimin rotation failed: %v", err)
-			rotatedLoadings = loadings
-			rotationMatrix = nil
-			phi = nil
-			rotationConverged = false
-		}
-	} else if opt.Rotation.Method != FactorRotationNone {
+
+	if opt.Rotation.Method != FactorRotationNone {
+		// Apply rotation
 		unrotatedLoadings = mat.DenseCopyOf(loadings)
 		rotatedLoadings, rotationMatrix, phi, rotationConverged, err = rotateFactors(loadings, opt.Rotation, opt.MinErr, opt.MaxIter)
 		if err != nil {
@@ -624,32 +608,33 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 			rotatedLoadings = loadings
 			rotationMatrix = nil
 			phi = nil
-			rotationConverged = true
+			rotationConverged = false
 		}
-		// Note: rotateFactors now handles sign standardization internally
+		// Log rotation matrix diagonal to check if it's identity
+		if rotationMatrix != nil {
+			rows, cols := rotationMatrix.Dims()
+			insyra.LogInfo("stats", "FactorAnalysis", "Rotation matrix dims: %dx%d, diag=[%.3f, %.3f, %.3f]",
+				rows, cols, rotationMatrix.At(0, 0), rotationMatrix.At(1, 1), rotationMatrix.At(2, 2))
+		}
 	} else {
+		// No rotation
 		unrotatedLoadings = mat.DenseCopyOf(loadings)
 		rotatedLoadings = loadings
 		rotationMatrix = nil
 		phi = nil
 		rotationConverged = true
-		// Apply factor reflection for unrotated factors
-		rotatedLoadings, _ = reflectFactorsForPositiveLoadings(rotatedLoadings)
+		// Apply sign standardization for unrotated factors (using R method)
+		rotatedLoadings = standardizeFactorSigns(rotatedLoadings)
 	}
 
-	// Sort or align factor columns
-	// For SPSS PAF + Oblimin, keep the extraction-order columns (descending
-	// eigenvalues of the reduced correlation R*). For generic cases, sort by
-	// explained variance (sum of squared structure loadings).
-	if !useSPSSPAFOblimin {
-		rotatedLoadings, rotationMatrix, phi = sortFactorsByExplainedVariance(rotatedLoadings, rotationMatrix, phi)
-	}
+	// Sort or align factor columns by explained variance
+	// This matches R's behavior: factors are ordered by variance after rotation
+	insyra.LogInfo("stats", "FactorAnalysis", "Before sorting: A1 F1=%.6f F2=%.6f F3=%.6f", rotatedLoadings.At(0, 0), rotatedLoadings.At(0, 1), rotatedLoadings.At(0, 2))
+	rotatedLoadings, rotationMatrix, phi = sortFactorsByExplainedVariance(rotatedLoadings, rotationMatrix, phi)
+	insyra.LogInfo("stats", "FactorAnalysis", "After sorting: A1 F1=%.6f F2=%.6f F3=%.6f", rotatedLoadings.At(0, 0), rotatedLoadings.At(0, 1), rotatedLoadings.At(0, 2))
 
 	// Step 8: Compute communalities and uniquenesses
-	// Preserve SPSS PAF+Oblimin extraction communalities (h_final) if available.
-	if extractionCommunalities == nil {
-		extractionCommunalities = make([]float64, colNum)
-	}
+	extractionCommunalities := make([]float64, colNum)
 	uniquenesses := make([]float64, colNum)
 	var phiMat *mat.Dense
 	if phi != nil {
@@ -657,46 +642,40 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	}
 	for i := 0; i < colNum; i++ {
 		var hi2 float64
-		// If SPSS-compatible PAF+Oblimin path supplied final h, use it for 'Extraction' communalities.
-		if useSPSSPAFOblimin && extractionCommunalities[i] > 0 {
-			hi2 = extractionCommunalities[i]
+		// For PAF, communalities should be computed from unrotated loadings
+		if opt.Extraction == FactorExtractionPAF {
+			for j := 0; j < numFactors; j++ {
+				v := unrotatedLoadings.At(i, j)
+				hi2 += v * v
+			}
+		} else if phiMat == nil {
+			// Orthogonal rotation: sum of squared loadings
+			for j := 0; j < numFactors; j++ {
+				v := rotatedLoadings.At(i, j)
+				hi2 += v * v
+			}
 		} else {
-			// For PAF, communalities should be computed from unrotated loadings
-			if opt.Extraction == FactorExtractionPAF {
-				for j := 0; j < numFactors; j++ {
-					v := unrotatedLoadings.At(i, j)
-					hi2 += v * v
-				}
-			} else if phiMat == nil {
-				for j := 0; j < numFactors; j++ {
-					v := rotatedLoadings.At(i, j)
-					hi2 += v * v
-				}
-			} else {
-				rowVec := mat.NewVecDense(numFactors, nil)
-				for j := range numFactors {
-					rowVec.SetVec(j, rotatedLoadings.At(i, j))
-				}
-				var tmp mat.VecDense
-				tmp.MulVec(phiMat, rowVec)
-				hi2 = mat.Dot(rowVec, &tmp)
+			// Oblique rotation: rowVec' * Phi * rowVec
+			rowVec := mat.NewVecDense(numFactors, nil)
+			for j := range numFactors {
+				rowVec.SetVec(j, rotatedLoadings.At(i, j))
 			}
-			diag := corrMatrix.At(i, i)
-			if diag == 0 {
-				diag = 1.0
-			}
-			if hi2 > diag {
-				hi2 = diag
-			}
-			if hi2 < 0 {
-				hi2 = 0
-			}
-			extractionCommunalities[i] = hi2
+			var tmp mat.VecDense
+			tmp.MulVec(phiMat, rowVec)
+			hi2 = mat.Dot(rowVec, &tmp)
 		}
 		diag := corrMatrix.At(i, i)
 		if diag == 0 {
 			diag = 1.0
 		}
+		if hi2 > diag {
+			hi2 = diag
+		}
+		if hi2 < 0 {
+			hi2 = 0
+		}
+		extractionCommunalities[i] = hi2
+
 		uniq := diag - hi2
 		if uniq < uniquenessLowerBound {
 			uniq = uniquenessLowerBound
@@ -738,8 +717,17 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	explainedProp := make([]float64, mFactors)
 	cumulativeProp := make([]float64, mFactors)
 
-	if (useSPSSPAFOblimin || opt.Extraction == FactorExtractionPCA) && len(extractionEigenvalues) == mFactors {
-		// Use eigenvalues for PCA or special PAF+Oblimin case
+	if opt.Extraction == FactorExtractionPCA && len(extractionEigenvalues) == mFactors {
+		// Use eigenvalues for PCA
+		cum := 0.0
+		for j := range mFactors {
+			prop := extractionEigenvalues[j] / float64(pVars) * 100.0
+			explainedProp[j] = prop
+			cum += prop
+			cumulativeProp[j] = cum
+		}
+	} else if opt.Extraction == FactorExtractionPAF && len(extractionEigenvalues) == mFactors {
+		// Use eigenvalues for PAF
 		cum := 0.0
 		for j := range mFactors {
 			prop := extractionEigenvalues[j] / float64(pVars) * 100.0
@@ -2125,9 +2113,13 @@ func rotateFactors(loadings *mat.Dense, rotationOpts FactorRotationOptions, minE
 		return nil, nil, nil, false, err
 	}
 
+	insyra.LogInfo("stats", "FactorAnalysis", "After rotation: A1 F1=%.6f F2=%.6f F3=%.6f", rotatedLoadings.At(0, 0), rotatedLoadings.At(0, 1), rotatedLoadings.At(0, 2))
+
 	// Apply sign standardization to all rotated loadings (including Oblimin)
 	// This matches R's behavior: loadings <- loadings %*% diag(signed)
 	standardizedLoadings := standardizeFactorSigns(rotatedLoadings)
+
+	insyra.LogInfo("stats", "FactorAnalysis", "After sign std: A1 F1=%.6f F2=%.6f F3=%.6f", standardizedLoadings.At(0, 0), standardizedLoadings.At(0, 1), standardizedLoadings.At(0, 2))
 
 	// Also apply sign standardization to phi matrix if it exists
 	// R code: if (!is.null(Phi)) { Phi <- diag(signed) %*% Phi %*% diag(signed) }
@@ -2136,9 +2128,7 @@ func rotateFactors(loadings *mat.Dense, rotationOpts FactorRotationOptions, minE
 	}
 
 	return standardizedLoadings, rotMat, phi, converged, nil
-}
-
-// standardizeFactorSigns standardizes the signs of factor loadings
+} // standardizeFactorSigns standardizes the signs of factor loadings
 // Uses R's method: sign(colSums(loadings)) to ensure sum of each factor is positive
 func standardizeFactorSigns(loadings *mat.Dense) *mat.Dense {
 	if loadings == nil {

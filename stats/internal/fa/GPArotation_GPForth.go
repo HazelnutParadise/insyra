@@ -89,49 +89,10 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 	f := VgQ["f"].(float64)
 	var Table [][]float64
 
-	// VgQt <- do.call(Method, append(list(L), methodArgs))
-	var VgQt map[string]any
-	switch method {
-	case "varimax":
-		Gq2, f2, _ := vgQVarimax(L)
-		VgQt = map[string]any{
-			"Gq": Gq2,
-			"f":  f2,
-		}
-	case "quartimax":
-		Gq2, f2, _ := vgQQuartimax(L)
-		VgQt = map[string]any{
-			"Gq": Gq2,
-			"f":  f2,
-		}
-	case "geominT":
-		Gq2, f2, _ := vgQGeomin(L, 0.01)
-		VgQt = map[string]any{
-			"Gq": Gq2,
-			"f":  f2,
-		}
-	case "bentlerT":
-		Gq2, f2, _, err := vgQBentler(L)
-		if err != nil {
-			return nil, err
-		}
-		VgQt = map[string]any{
-			"Gq": Gq2,
-			"f":  f2,
-		}
-	case "targetT":
-		return nil, fmt.Errorf("targetT requires Target matrix parameter")
-	default:
-		Gq2, f2, _ := vgQVarimax(L)
-		VgQt = map[string]any{
-			"Gq": Gq2,
-			"f":  f2,
-		}
-	}
-
 	var convergence bool
 	var s float64
 	var iter int
+	var VgQt map[string]any
 
 	for iter = 0; iter <= maxit; iter++ {
 		// M <- crossprod(Tmat, G)
@@ -140,10 +101,8 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 
 		// S <- (M + t(M))/2
 		S := mat.NewDense(M.RawMatrix().Rows, M.RawMatrix().Cols, nil)
-		var Mt mat.Dense
-		Mt.CloneFrom(M)
-		Mt.T()
-		S.Add(M, &Mt)
+		Mt := M.T() // Get transpose view
+		S.Add(M, Mt)
 		S.Scale(0.5, S)
 
 		// Gp <- G - Tmat %*% S
@@ -155,15 +114,16 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 		// s <- sqrt(sum(diag(crossprod(Gp))))
 		var GpTGp mat.Dense
 		GpTGp.Mul(Gp.T(), Gp)
-		s := 0.0
+		sLocal := 0.0
 		for i := 0; i < GpTGp.RawMatrix().Rows; i++ {
-			s += GpTGp.At(i, i)
+			sLocal += GpTGp.At(i, i)
 		}
-		s = math.Sqrt(s)
+		sLocal = math.Sqrt(sLocal)
+		s = sLocal // Update outer s
 
-		Table = append(Table, []float64{float64(iter), f, math.Log10(s), al})
+		Table = append(Table, []float64{float64(iter), f, math.Log10(sLocal), al})
 
-		if s < eps {
+		if sLocal < eps {
 			break
 		}
 
