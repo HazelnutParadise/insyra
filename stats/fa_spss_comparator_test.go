@@ -504,6 +504,8 @@ func TestCompareWithSpssTarget(t *testing.T) {
 		t.Fatalf("failed to align factors")
 	}
 
+	t.Logf("Factor alignment: perm=%v, signs=%v", perm, signs)
+
 	alignedRot := applyPermSignsToRotmat(rotmatDense, perm, signs)
 	alignedPhi := applyPermSignsToPhi(phiDense, perm, signs)
 

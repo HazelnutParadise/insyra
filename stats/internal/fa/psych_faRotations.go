@@ -709,19 +709,17 @@ func finalizeGpfResult(gpf map[string]any, nf int) map[string]any {
 	return res
 }
 
-// rotMatFromTh computes rotmat = t(inv(Th)) robustly and falls back to identity
-// when Th is nil or inversion fails. nf is number of factors used to build
-// an identity fallback.
+// rotMatFromTh computes the rotation matrix from Th.
+// In GPFoblq, Phi = Th^T * Th
+// SPSS expects rotmat * rotmat^T = Phi
+// Therefore rotmat * rotmat^T = Th^T * Th
+// This means rotmat^T = Th, so rotmat = Th^T
 func rotMatFromTh(Th *mat.Dense, nf int) *mat.Dense {
 	if Th == nil {
 		return identityMatrix(nf)
 	}
-	var rotSolve mat.Dense
-	if err := rotSolve.Inverse(Th); err != nil {
-		return identityMatrix(nf)
-	}
-	rotMat := mat.DenseCopyOf(rotSolve.T())
-	return rotMat
+	// Return transpose of Th
+	return mat.DenseCopyOf(Th.T())
 }
 
 // inverseOrIdentity returns the inverse of M, or an identity matrix of size n
