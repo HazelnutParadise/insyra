@@ -77,12 +77,21 @@ type FactorCountSpec struct {
 	MaxFactors     int     // Optional: 0 means no limit
 }
 
+// VarimaxAlgorithm specifies which Varimax implementation to use
+type VarimaxAlgorithm string
+
+const (
+	VarimaxGPArotation VarimaxAlgorithm = "gparotation" // Gradient-based (matches R GPArotation)
+	VarimaxKaiser      VarimaxAlgorithm = "kaiser"      // Jacobi rotation (matches SPSS)
+)
+
 // FactorRotationOptions specifies rotation parameters
 type FactorRotationOptions struct {
-	Method   FactorRotationMethod
-	Kappa    float64 // Optional: Promax power (default 4)
-	Delta    float64 // Optional: default 0 for Oblimin
-	Restarts int     // Optional: random orthonormal starts for GPA rotations (default 10)
+	Method           FactorRotationMethod
+	Kappa            float64          // Optional: Promax power (default 4)
+	Delta            float64          // Optional: default 0 for Oblimin
+	Restarts         int              // Optional: random orthonormal starts for GPA rotations (default 10)
+	VarimaxAlgorithm VarimaxAlgorithm // Optional: "gparotation" (default) or "kaiser" (SPSS-compatible)
 }
 
 // FactorPreprocessOptions specifies preprocessing parameters
@@ -2550,7 +2559,33 @@ func rotateFactors(loadings *mat.Dense, rotationOpts FactorRotationOptions, minE
 		return standardizedLoadings, identity, phi, true, nil
 
 	case FactorRotationVarimax:
-		method = "varimax"
+		// Check if user wants Kaiser Varimax (SPSS-compatible) or GPArotation (R-compatible)
+		if rotationOpts.VarimaxAlgorithm == VarimaxKaiser {
+			// Use Kaiser Varimax (Jacobi rotation) - matches SPSS
+			rotatedLoadings, rotMat, err := fa.KaiserVarimaxWithRotationMatrix(loadings, true, maxIter, minErr)
+			if err != nil {
+				return nil, nil, nil, false, err
+			}
+
+			// Create phi matrix (identity for orthogonal rotation)
+			_, cols := loadings.Dims()
+			phi := mat.NewDense(cols, cols, nil)
+			for i := range cols {
+				phi.Set(i, i, 1.0)
+			}
+
+			insyra.LogInfo("stats", "FactorAnalysis", "Using Kaiser Varimax (SPSS-compatible)")
+			insyra.LogInfo("stats", "FactorAnalysis", "After Kaiser Varimax: A1 F1=%.6f F2=%.6f F3=%.6f", rotatedLoadings.At(0, 0), rotatedLoadings.At(0, 1), rotatedLoadings.At(0, 2))
+
+			// Apply sign standardization
+			standardizedLoadings := standardizeFactorSigns(rotatedLoadings)
+
+			return standardizedLoadings, rotMat, phi, true, nil
+		} else {
+			// Default: Use GPArotation Varimax - matches R
+			method = "varimax"
+			insyra.LogInfo("stats", "FactorAnalysis", "Using GPArotation Varimax (R-compatible)")
+		}
 
 	case FactorRotationQuartimax:
 		method = "quartimax"
