@@ -1327,25 +1327,34 @@ func extractML_EM(corr *mat.Dense, numFactors int, maxIter int, tol float64, sam
 	// Initialize psi (uniqueness) from SMC, exactly as R does:
 	// start = diag(S) - S.smc = 1 - smc(S)
 	psi := make([]float64, rows)
+	maxSMC := 0.0
 	for i := range rows {
-		psi[i] = 1.0 - communalities[i] // communalities = SMC
-		// Constrain to [0.005, 0.995] as R does
-		if psi[i] < 0.005 {
-			psi[i] = 0.005
+		if communalities[i] > maxSMC {
+			maxSMC = communalities[i]
 		}
-		if psi[i] > 0.995 {
-			psi[i] = 0.995
+		psi[i] = 1.0 - communalities[i] // communalities = SMC
+	}
+
+	// R uses: upper = max(S.smc, 1), NOT a fixed 0.995!
+	upper := math.Max(maxSMC, 1.0)
+	lower := 0.005
+
+	// Apply bounds to initial psi
+	for i := range rows {
+		if psi[i] < lower {
+			psi[i] = lower
+		}
+		if psi[i] > upper {
+			psi[i] = upper
 		}
 	}
 
-	insyra.LogInfo("stats", "FactorAnalysis", "ML: SMC communalities[0]=%.4f, initial psi[0]=%.4f (1-SMC)", communalities[0], psi[0])
+	insyra.LogInfo("stats", "FactorAnalysis", "ML: SMC communalities[0]=%.4f, maxSMC=%.4f, upper=%.4f, initial psi[0]=%.4f (1-SMC)", communalities[0], maxSMC, upper, psi[0])
 
 	// Transform psi to unconstrained space for optimization
 	// Use: psi = lower + (upper - lower) * sigmoid(x)
 	// So: x = logit((psi - lower)/(upper - lower))
 	// Additionally, apply R's parscale=0.01, which scales parameters by dividing by 0.01 (i.e., multiplying by 100)
-	lower := 0.005
-	upper := 0.995
 	parscale := 0.01 // R's parscale parameter
 
 	x0 := make([]float64, rows)
@@ -1419,6 +1428,32 @@ func extractML_EM(corr *mat.Dense, numFactors int, maxIter int, tol float64, sam
 	initialObj := objFunc(x0)
 	insyra.LogInfo("stats", "FactorAnalysis", "ML: Initial objective = %.6f", initialObj)
 
+	// Debug: evaluate objective at different psi[0] values to understand the landscape
+	testPsi := []float64{0.005, 0.05, 0.1, 0.2, 0.25, 0.3, 0.4, 0.5}
+	insyra.LogInfo("stats", "FactorAnalysis", "ML: Objective function landscape test (varying psi[0]):")
+	for _, testVal := range testPsi {
+		testPsiVec := make([]float64, rows)
+		for i := range rows {
+			testPsiVec[i] = psi[i]
+		}
+		testPsiVec[0] = testVal
+		// Transform to x space
+		testX := make([]float64, rows)
+		for i := range rows {
+			ratio := (testPsiVec[i] - lower) / (upper - lower)
+			if ratio <= 0.001 {
+				ratio = 0.001
+			}
+			if ratio >= 0.999 {
+				ratio = 0.999
+			}
+			xi := math.Log(ratio / (1.0 - ratio))
+			testX[i] = xi / parscale
+		}
+		testObj := objFunc(testX)
+		insyra.LogInfo("stats", "FactorAnalysis", "  psi[0]=%.4f → obj=%.6f", testVal, testObj)
+	}
+
 	result, err := optimize.Local(p, x0, settings, method)
 	if err != nil {
 		insyra.LogWarning("stats", "FactorAnalysis", "ML: BFGS optimization failed: %v, falling back to simple EM", err)
@@ -1427,7 +1462,8 @@ func extractML_EM(corr *mat.Dense, numFactors int, maxIter int, tol float64, sam
 
 	// Transform back to psi
 	for i, xi := range result.X {
-		sigmoid := 1.0 / (1.0 + math.Exp(-xi))
+		xVal := xi * parscale // unscale
+		sigmoid := 1.0 / (1.0 + math.Exp(-xVal))
 		psi[i] = lower + (upper-lower)*sigmoid
 	}
 	converged := result.Status == optimize.Success || result.Status == optimize.FunctionConvergence
@@ -1435,6 +1471,17 @@ func extractML_EM(corr *mat.Dense, numFactors int, maxIter int, tol float64, sam
 	finalObj := result.F
 
 	insyra.LogInfo("stats", "FactorAnalysis", "ML: Optimization converged=%v, status=%v, iterations=%d, psi[0]=%.4f, finalObj=%.6f", converged, result.Status, iterations, psi[0], finalObj)
+
+	// Debug: print all final psi values
+	psiStr := "ML: Final psi = ["
+	for i, p := range psi {
+		if i > 0 {
+			psiStr += ", "
+		}
+		psiStr += fmt.Sprintf("%.4f", p)
+	}
+	psiStr += "]"
+	insyra.LogInfo("stats", "FactorAnalysis", psiStr)
 
 	// Extract loadings using final psi
 	loadings, err := mlExtractLoadingsFAout(corr, psi, numFactors)
