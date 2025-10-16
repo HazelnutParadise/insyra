@@ -533,17 +533,44 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	}
 
 	initialCommunalities := make([]float64, colNum)
-	if opt.Extraction == FactorExtractionPAF {
-		// For PAF, SPSS default is to use squared multiple correlations (SMC) as initial estimates
-		smcVec, _ := fa.Smc(corrDense, nil) // Correctly call fa.Smc
-		if smcVec == nil {
-			insyra.LogWarning("stats", "FactorAnalysis", "SMC calculation failed, falling back to diagonal correlations")
-			// Fallback to simpler method if SMC fails
-			for i := 0; i < colNum; i++ {
-				initialCommunalities[i] = corrDense.At(i, i)
+	if opt.Extraction == FactorExtractionPAF || opt.Extraction == FactorExtractionML {
+		// For PAF and ML, SPSS default is to use squared multiple correlations (SMC) as initial estimates
+		// SMC[i] = 1 - 1/R_ii^{-1}, where R^{-1} is inverse of correlation matrix
+		// This is mathematically equivalent to regression R², but more numerically stable
+		insyra.LogInfo("stats", "FactorAnalysis", "Computing SMC using inverse correlation matrix method")
+
+		var corrInv mat.Dense
+		err := corrInv.Inverse(corrDense)
+		if err != nil {
+			insyra.LogWarning("stats", "FactorAnalysis", "Correlation matrix inversion failed, using fallback SMC method")
+			// Fallback to the slower but more robust method
+			smcVec, _ := fa.Smc(corrDense, nil)
+			if smcVec != nil {
+				copy(initialCommunalities, smcVec.RawVector().Data)
+			} else {
+				// Ultimate fallback: use 0.5 as default
+				for i := 0; i < colNum; i++ {
+					initialCommunalities[i] = 0.5
+				}
 			}
 		} else {
-			copy(initialCommunalities, smcVec.RawVector().Data) // Correctly copy data from VecDense
+			// SMC[i] = 1 - 1/R_ii^{-1}
+			for i := 0; i < colNum; i++ {
+				diagInv := corrInv.At(i, i)
+				if diagInv > 0 {
+					initialCommunalities[i] = 1.0 - 1.0/diagInv
+				} else {
+					initialCommunalities[i] = 0.5 // Fallback
+				}
+				// Clamp to valid range [0, 1]
+				if initialCommunalities[i] < 0 {
+					initialCommunalities[i] = 0
+				}
+				if initialCommunalities[i] > 1 {
+					initialCommunalities[i] = 1
+				}
+			}
+			insyra.LogInfo("stats", "FactorAnalysis", "SMC computed: [%.4f, %.4f, %.4f, ...]", initialCommunalities[0], initialCommunalities[1], initialCommunalities[2])
 		}
 	} else {
 		// For other methods like PCA, use the diagonal of the correlation matrix (which is 1.0)
@@ -906,7 +933,8 @@ func extractFactors(data, corrMatrix *mat.Dense, eigenvalues []float64, eigenvec
 		loadings, extractionEigenvalues, converged, iterations, err = extractPAF(corrMatrix, numFactors, opt.MaxIter, 1e-10, initialCommunalities)
 
 	case FactorExtractionML:
-		loadings, converged, iterations, err = extractML(corrMatrix, numFactors, 2000, 1e-6, sampleSize, initialCommunalities)
+		// Use EM algorithm for ML extraction (more stable than BFGS)
+		loadings, converged, iterations, err = extractML_EM(corrMatrix, numFactors, 100, 1e-4, sampleSize, initialCommunalities)
 		extractionEigenvalues = nil
 
 	case FactorExtractionMINRES:
@@ -1291,6 +1319,403 @@ func minresFit(reducedCorr *mat.Dense, numFactors int) (*mat.Dense, *mat.Dense) 
 	return loadings, residual
 }
 
+// extractML_EM performs Maximum Likelihood factor extraction using EM algorithm
+// This is a simpler and more stable alternative to BFGS optimization
+func extractML_EM(corr *mat.Dense, numFactors int, maxIter int, tol float64, sampleSize int, communalities []float64) (*mat.Dense, bool, int, error) {
+	rows, _ := corr.Dims()
+
+	// Initialize psi (uniqueness) from SMC, exactly as R does:
+	// start = diag(S) - S.smc = 1 - smc(S)
+	psi := make([]float64, rows)
+	for i := range rows {
+		psi[i] = 1.0 - communalities[i] // communalities = SMC
+		// Constrain to [0.005, 0.995] as R does
+		if psi[i] < 0.005 {
+			psi[i] = 0.005
+		}
+		if psi[i] > 0.995 {
+			psi[i] = 0.995
+		}
+	}
+
+	insyra.LogInfo("stats", "FactorAnalysis", "ML: SMC communalities[0]=%.4f, initial psi[0]=%.4f (1-SMC)", communalities[0], psi[0])
+
+	// Transform psi to unconstrained space for optimization
+	// Use: psi = lower + (upper - lower) * sigmoid(x)
+	// So: x = logit((psi - lower)/(upper - lower))
+	// Additionally, apply R's parscale=0.01, which scales parameters by dividing by 0.01 (i.e., multiplying by 100)
+	lower := 0.005
+	upper := 0.995
+	parscale := 0.01 // R's parscale parameter
+
+	x0 := make([]float64, rows)
+	for i := range rows {
+		// Transform psi to x
+		ratio := (psi[i] - lower) / (upper - lower)
+		if ratio <= 0.001 {
+			ratio = 0.001
+		}
+		if ratio >= 0.999 {
+			ratio = 0.999
+		}
+		xi := math.Log(ratio / (1.0 - ratio)) // logit
+		// Apply parscale: x_scaled = x / parscale
+		x0[i] = xi / parscale
+	}
+
+	// Objective function in scaled transformed space
+	objFunc := func(xScaled []float64) float64 {
+		// Unscale: x = x_scaled * parscale
+		// Transform x to psi
+		psiTrans := make([]float64, len(xScaled))
+		for i, xScaledI := range xScaled {
+			xi := xScaledI * parscale // unscale
+			sigmoid := 1.0 / (1.0 + math.Exp(-xi))
+			psiTrans[i] = lower + (upper-lower)*sigmoid
+		}
+		obj, _ := mlObjectiveFAfn(corr, psiTrans, numFactors)
+		return obj
+	}
+
+	// Gradient function in scaled transformed space
+	gradFunc := func(grad, xScaled []float64) {
+		// Unscale: x = x_scaled * parscale
+		psiTrans := make([]float64, len(xScaled))
+		sigmoids := make([]float64, len(xScaled))
+		for i, xScaledI := range xScaled {
+			xi := xScaledI * parscale
+			sigmoid := 1.0 / (1.0 + math.Exp(-xi))
+			sigmoids[i] = sigmoid
+			psiTrans[i] = lower + (upper-lower)*sigmoid
+		}
+
+		_, gradPsi := mlObjectiveFAfn(corr, psiTrans, numFactors)
+
+		// Chain rule: d(obj)/d(x_scaled) = d(obj)/d(psi) * d(psi)/d(x) * d(x)/d(x_scaled)
+		// d(psi)/d(x) = (upper-lower) * sigmoid * (1-sigmoid)
+		// d(x)/d(x_scaled) = parscale
+		for i := range grad {
+			dpsi_dx := (upper - lower) * sigmoids[i] * (1.0 - sigmoids[i])
+			dx_dxScaled := parscale
+			grad[i] = gradPsi[i] * dpsi_dx * dx_dxScaled
+		}
+	}
+
+	p := optimize.Problem{
+		Func: objFunc,
+		Grad: gradFunc,
+	}
+
+	// Use BFGS with transformed variables (no bounds needed)
+	method := &optimize.BFGS{}
+	settings := optimize.DefaultSettings()
+	settings.FunctionConverge.Absolute = tol * 0.01 // Stricter
+	settings.GradientThreshold = tol * 0.1          // Stricter
+	settings.FunctionConverge.Iterations = maxIter * 2
+
+	insyra.LogInfo("stats", "FactorAnalysis", "ML: Starting BFGS optimization in transformed space")
+
+	// Evaluate initial objective
+	initialObj := objFunc(x0)
+	insyra.LogInfo("stats", "FactorAnalysis", "ML: Initial objective = %.6f", initialObj)
+
+	result, err := optimize.Local(p, x0, settings, method)
+	if err != nil {
+		insyra.LogWarning("stats", "FactorAnalysis", "ML: BFGS optimization failed: %v, falling back to simple EM", err)
+		return extractML_EM_OLD(corr, numFactors, maxIter, tol, sampleSize, communalities)
+	}
+
+	// Transform back to psi
+	for i, xi := range result.X {
+		sigmoid := 1.0 / (1.0 + math.Exp(-xi))
+		psi[i] = lower + (upper-lower)*sigmoid
+	}
+	converged := result.Status == optimize.Success || result.Status == optimize.FunctionConvergence
+	iterations := result.Stats.FuncEvaluations
+	finalObj := result.F
+
+	insyra.LogInfo("stats", "FactorAnalysis", "ML: Optimization converged=%v, status=%v, iterations=%d, psi[0]=%.4f, finalObj=%.6f", converged, result.Status, iterations, psi[0], finalObj)
+
+	// Extract loadings using final psi
+	loadings, err := mlExtractLoadingsFAout(corr, psi, numFactors)
+	if err != nil {
+		return nil, false, iterations, err
+	}
+
+	return loadings, converged, iterations, nil
+}
+
+// mlObjectiveFAfn implements R's FAfn and FAgr functions for ML factor analysis
+func mlObjectiveFAfn(S *mat.Dense, psi []float64, nfactors int) (float64, []float64) {
+	n := len(psi)
+
+	// Create scaling matrix sc = diag(1/sqrt(Psi))
+	sc := mat.NewDense(n, n, nil)
+	for i := range n {
+		if psi[i] > 0 {
+			sc.Set(i, i, 1.0/math.Sqrt(psi[i]))
+		} else {
+			sc.Set(i, i, 1.0/math.Sqrt(0.001))
+		}
+	}
+
+	// Compute Sstar = sc %*% S %*% sc
+	var temp mat.Dense
+	temp.Mul(sc, S)
+	var Sstar mat.Dense
+	Sstar.Mul(&temp, sc)
+
+	// Eigenvalue decomposition
+	var eig mat.EigenSym
+	SstarSym := mat.NewSymDense(n, Sstar.RawMatrix().Data)
+	if !eig.Factorize(SstarSym, true) {
+		grad := make([]float64, n)
+		return 1e10, grad
+	}
+
+	eigenvalues := eig.Values(nil)
+	eigenvectors := mat.NewDense(n, n, nil)
+	eig.VectorsTo(eigenvectors)
+
+	// IMPORTANT: gonum returns eigenvalues in ASCENDING order,
+	// but R's eigen() returns DESCENDING order
+	// We need to reverse them to match R's behavior
+	// Reverse eigenvalues
+	for i := 0; i < n/2; i++ {
+		eigenvalues[i], eigenvalues[n-1-i] = eigenvalues[n-1-i], eigenvalues[i]
+	}
+	// Reverse eigenvector columns
+	eigenvectorsReversed := mat.NewDense(n, n, nil)
+	for i := range n {
+		for j := range n {
+			eigenvectorsReversed.Set(i, j, eigenvectors.At(i, n-1-j))
+		}
+	}
+	eigenvectors = eigenvectorsReversed
+
+	// Objective: FAfn = sum(log(e) - e) for eigenvalues beyond nfactors
+	// e = E$values[-(1:nf)]
+	obj := 0.0
+	for i := nfactors; i < n; i++ {
+		if eigenvalues[i] > 1e-10 {
+			obj += math.Log(eigenvalues[i]) - eigenvalues[i]
+		} else {
+			// Handle near-zero eigenvalues
+			obj += math.Log(1e-10) - 1e-10
+		}
+	}
+	obj = obj - float64(nfactors) + float64(n)
+	obj = -obj // R returns -e
+
+	// Gradient: FAgr
+	// L = E$vectors[, 1:nf] %*% diag(sqrt(pmax(E$values[1:nf] - 1, 0)))
+	// load = diag(sqrt(Psi)) %*% L
+	// g = load %*% t(load) + diag(Psi) - S
+	// grad = diag(g) / Psi^2
+
+	L := mat.NewDense(n, nfactors, nil)
+	for i := range nfactors {
+		val := eigenvalues[i] - 1.0
+		if val < 0 {
+			val = 0
+		}
+		scale := math.Sqrt(val)
+		for j := range n {
+			L.Set(j, i, eigenvectors.At(j, i)*scale)
+		}
+	}
+
+	// load = diag(sqrt(Psi)) %*% L
+	sqrtPsi := mat.NewDense(n, n, nil)
+	for i := range n {
+		if psi[i] > 0 {
+			sqrtPsi.Set(i, i, math.Sqrt(psi[i]))
+		} else {
+			sqrtPsi.Set(i, i, math.Sqrt(0.001))
+		}
+	}
+
+	var load mat.Dense
+	load.Mul(sqrtPsi, L)
+
+	// g = load %*% t(load) + diag(Psi) - S
+	var g mat.Dense
+	g.Mul(&load, load.T())
+	for i := range n {
+		g.Set(i, i, g.At(i, i)+psi[i])
+	}
+	// g = g - S
+	for i := range n {
+		for j := range n {
+			g.Set(i, j, g.At(i, j)-S.At(i, j))
+		}
+	}
+
+	// grad = diag(g) / Psi^2
+	grad := make([]float64, n)
+	for i := range n {
+		if psi[i] > 0 {
+			grad[i] = g.At(i, i) / (psi[i] * psi[i])
+		}
+	}
+
+	return obj, grad
+}
+
+// mlExtractLoadingsFAout implements R's FAout function to extract loadings from psi
+func mlExtractLoadingsFAout(S *mat.Dense, psi []float64, nfactors int) (*mat.Dense, error) {
+	n := len(psi)
+
+	// Create scaling matrix sc = diag(1/sqrt(Psi))
+	sc := mat.NewDense(n, n, nil)
+	sqrtPsi := mat.NewDense(n, n, nil)
+	for i := range n {
+		if psi[i] > 0 {
+			sc.Set(i, i, 1.0/math.Sqrt(psi[i]))
+			sqrtPsi.Set(i, i, math.Sqrt(psi[i]))
+		} else {
+			sc.Set(i, i, 1.0/math.Sqrt(0.001))
+			sqrtPsi.Set(i, i, math.Sqrt(0.001))
+		}
+	}
+
+	// Compute Sstar = sc %*% S %*% sc
+	var temp mat.Dense
+	temp.Mul(sc, S)
+	var Sstar mat.Dense
+	Sstar.Mul(&temp, sc)
+
+	// Eigenvalue decomposition
+	var eig mat.EigenSym
+	SstarSym := mat.NewSymDense(n, Sstar.RawMatrix().Data)
+	if !eig.Factorize(SstarSym, true) {
+		return nil, fmt.Errorf("eigenvalue decomposition failed")
+	}
+
+	eigenvalues := eig.Values(nil)
+	eigenvectors := mat.NewDense(n, n, nil)
+	eig.VectorsTo(eigenvectors)
+
+	// Reverse eigenvalues and eigenvectors (gonum: ascending, R: descending)
+	for i := 0; i < n/2; i++ {
+		eigenvalues[i], eigenvalues[n-1-i] = eigenvalues[n-1-i], eigenvalues[i]
+	}
+	eigenvectorsReversed := mat.NewDense(n, n, nil)
+	for i := range n {
+		for j := range n {
+			eigenvectorsReversed.Set(i, j, eigenvectors.At(i, n-1-j))
+		}
+	}
+	eigenvectors = eigenvectorsReversed
+
+	// L = E$vectors[, 1:nf] %*% diag(sqrt(pmax(E$values[1:nf] - 1, 0)))
+	L := mat.NewDense(n, nfactors, nil)
+	for i := range nfactors {
+		val := eigenvalues[i] - 1.0
+		if val < 0 {
+			val = 0
+		}
+		scale := math.Sqrt(val)
+		for j := range n {
+			L.Set(j, i, eigenvectors.At(j, i)*scale)
+		}
+	}
+
+	// load = diag(sqrt(Psi)) %*% L
+	var loadings mat.Dense
+	loadings.Mul(sqrtPsi, L)
+
+	return &loadings, nil
+}
+
+// Old EM implementation (keep for reference)
+func extractML_EM_OLD(corr *mat.Dense, numFactors int, maxIter int, tol float64, sampleSize int, communalities []float64) (*mat.Dense, bool, int, error) {
+	rows, _ := corr.Dims()
+
+	// Initialize psi (uniqueness) from communalities
+	psi := make([]float64, rows)
+	for i := range rows {
+		psi[i] = 1.0 - communalities[i]
+		// Ensure psi is in valid range [0.005, 0.995]
+		if psi[i] < 0.005 {
+			psi[i] = 0.005
+		}
+		if psi[i] > 0.995 {
+			psi[i] = 0.995
+		}
+	}
+
+	insyra.LogInfo("stats", "FactorAnalysis", "ML(EM): Starting with %d factors, initial psi[0]=%.4f", numFactors, psi[0])
+
+	// EM algorithm iterations
+	converged := false
+	var loadings *mat.Dense
+	iterations := 0
+
+	for iter := 0; iter < maxIter; iter++ {
+		iterations = iter + 1
+
+		// E-step: Extract loadings given current psi
+		var err error
+		loadings, err = mlExtractLoadings(corr, psi, numFactors)
+		if err != nil {
+			return nil, false, iterations, err
+		}
+
+		// M-step: Update psi to maximize likelihood
+		// For each variable: psi[i] = max(1 - communality[i], 0.005)
+		// where communality[i] = sum_k(loadings[i,k]^2)
+		newPsi := make([]float64, rows)
+		maxChange := 0.0
+
+		for i := range rows {
+			// Compute communality from loadings
+			communality := 0.0
+			for k := 0; k < numFactors; k++ {
+				communality += loadings.At(i, k) * loadings.At(i, k)
+			}
+
+			// Update psi = 1 - communality
+			newPsi[i] = 1.0 - communality
+
+			// Constrain psi to [0.005, 0.995]
+			if newPsi[i] < 0.005 {
+				newPsi[i] = 0.005
+			}
+			if newPsi[i] > 0.995 {
+				newPsi[i] = 0.995
+			}
+
+			// Track maximum change for convergence
+			change := math.Abs(newPsi[i] - psi[i])
+			if change > maxChange {
+				maxChange = change
+			}
+		}
+
+		// Update psi
+		psi = newPsi
+
+		// Log progress
+		if iter < 5 || iter%20 == 0 || maxChange < tol {
+			insyra.LogInfo("stats", "FactorAnalysis", "ML(EM): Iter %d, maxChange=%.6f, psi[0]=%.4f", iter+1, maxChange, psi[0])
+		}
+
+		// Check convergence
+		if maxChange < tol {
+			converged = true
+			insyra.LogInfo("stats", "FactorAnalysis", "ML(EM): Converged at iteration %d", iter+1)
+			break
+		}
+	}
+
+	if !converged {
+		insyra.LogWarning("stats", "FactorAnalysis", "ML(EM): Did not converge after %d iterations", maxIter)
+	}
+
+	return loadings, converged, iterations, nil
+}
+
 // extractML performs Maximum Likelihood factor extraction using true ML estimation with BFGS optimization
 func extractML(corr *mat.Dense, numFactors int, maxIter int, tol float64, sampleSize int, initialCommunalities []float64) (*mat.Dense, bool, int, error) {
 	if corr == nil {
@@ -1319,23 +1744,48 @@ func extractML(corr *mat.Dense, numFactors int, maxIter int, tol float64, sample
 
 	// True Maximum Likelihood estimation using BFGS optimization
 	// Start with communalities as initial uniquenesses (Psi = 1 - h^2)
+	// Use logit transformation to constrain psi in (0, 1)
 	startPsi := make([]float64, rows)
 	for i := range rows {
-		startPsi[i] = 1.0 - communalities[i]
-		if startPsi[i] < 0.005 {
-			startPsi[i] = 0.005
+		psi := 1.0 - communalities[i]
+		if psi < 0.005 {
+			psi = 0.005
 		}
-		if startPsi[i] > 0.995 {
-			startPsi[i] = 0.995
+		if psi > 0.995 {
+			psi = 0.995
 		}
+		// logit(psi) = log(psi / (1 - psi))
+		startPsi[i] = math.Log(psi / (1.0 - psi))
 	}
 
 	// Use BFGS optimization from gonum/optimize
-	objFunc := func(x []float64) float64 {
-		return computeMLObjective(corr, x, numFactors)
+	// Optimize in logit space, then transform back
+	objFunc := func(logitPsi []float64) float64 {
+		// Transform from logit to psi: psi = exp(logit) / (1 + exp(logit))
+		psi := make([]float64, len(logitPsi))
+		for i, lp := range logitPsi {
+			psi[i] = 1.0 / (1.0 + math.Exp(-lp)) // sigmoid function
+		}
+		obj := computeMLObjective(corr, psi, numFactors)
+		// DEBUG: log first few evaluations
+		return obj
+	}
+	gradFunc := func(grad, logitPsi []float64) {
+		// Transform from logit to psi
+		psi := make([]float64, len(logitPsi))
+		for i, lp := range logitPsi {
+			psi[i] = 1.0 / (1.0 + math.Exp(-lp))
+		}
+		_, g := mlObjectiveAndGradient(corr, psi, numFactors)
+		// Chain rule: d(obj)/d(logit) = d(obj)/d(psi) * d(psi)/d(logit)
+		// d(psi)/d(logit) = psi * (1 - psi) (derivative of sigmoid)
+		for i := range grad {
+			grad[i] = g[i] * psi[i] * (1.0 - psi[i])
+		}
 	}
 	p := optimize.Problem{
 		Func: objFunc,
+		Grad: gradFunc,
 	}
 
 	method := &optimize.BFGS{}
@@ -1344,6 +1794,11 @@ func extractML(corr *mat.Dense, numFactors int, maxIter int, tol float64, sample
 	settings.FunctionConverge.Iterations = maxIter
 	settings.GradientThreshold = tol
 
+	insyra.LogInfo("stats", "FactorAnalysis", "ML: Starting BFGS with %d initial logit(psi), first logit=%.4f", len(startPsi), startPsi[0])
+	// Evaluate initial objective
+	initialObj := objFunc(startPsi)
+	insyra.LogInfo("stats", "FactorAnalysis", "ML: Initial objective value = %.6f", initialObj)
+
 	result, err := optimize.Local(p, startPsi, settings, method)
 	if err != nil {
 		// Fallback to simple gradient descent if BFGS fails
@@ -1351,10 +1806,17 @@ func extractML(corr *mat.Dense, numFactors int, maxIter int, tol float64, sample
 		return extractMLFallback(corr, numFactors, maxIter, tol, sampleSize, initialCommunalities)
 	}
 
-	// Extract optimized psi
-	psi := result.X
+	// Extract optimized psi from logit space
+	psi := make([]float64, len(result.X))
+	for i, lp := range result.X {
+		psi[i] = 1.0 / (1.0 + math.Exp(-lp))
+	}
 	converged := result.Status == optimize.Success || result.Status == optimize.FunctionConvergence
 	iterations := result.Stats.FuncEvaluations
+
+	insyra.LogInfo("stats", "FactorAnalysis", "ML: BFGS converged=%v, status=%v, iterations=%d, first psi=%.4f", converged, result.Status, iterations, psi[0])
+	finalObj := result.F
+	insyra.LogInfo("stats", "FactorAnalysis", "ML: Final objective value = %.6f", finalObj)
 
 	// Extract final loadings using the optimized psi
 	loadings, err := mlExtractLoadings(corr, psi, numFactors)
@@ -1450,58 +1912,21 @@ func extractMLFallback(corr *mat.Dense, numFactors int, maxIter int, tol float64
 }
 
 // mlObjectiveAndGradient computes the ML objective function and its gradient
-// This implements the R psych FAfn function logic
+// This uses the same algorithm as computeMLObjective for consistency
 func mlObjectiveAndGradient(S *mat.Dense, psi []float64, nfactors int) (float64, []float64) {
 	n := len(psi)
 
-	// Create R* = S with diagonal replaced by communalities (1 - psi)
-	Rstar := mat.NewDense(n, n, nil)
-	Rstar.Copy(S)
-	for i := range n {
-		Rstar.Set(i, i, 1.0-psi[i])
-	}
+	// Compute objective using computeMLObjective for consistency
+	obj := computeMLObjective(S, psi, nfactors)
 
-	// Eigenvalue decomposition of R*
-	var eig mat.EigenSym
-	RstarSym := mat.NewSymDense(n, Rstar.RawMatrix().Data)
-	if !eig.Factorize(RstarSym, true) {
-		// Return large objective if decomposition fails
-		grad := make([]float64, n)
-		return 1e10, grad
-	}
-
-	eigenvalues := eig.Values(nil)
-
-	// Extract first nfactors eigenvalues for the factor model
-	// Objective = sum(log(eigenvalues[i]) for i > nfactors) - sum(log(eigenvalues[i]) for i <= nfactors) + n - nfactors
-	obj := 0.0
-	for i := nfactors; i < n; i++ {
-		if eigenvalues[i] > 1e-8 {
-			obj += math.Log(eigenvalues[i])
-		} else {
-			obj += math.Log(1e-8)
-		}
-	}
-	for i := range nfactors {
-		if eigenvalues[i] > 1e-8 {
-			obj -= math.Log(eigenvalues[i])
-		} else {
-			obj -= math.Log(1e-8)
-		}
-	}
-	obj += float64(n - nfactors)
-
-	// For gradient, we need d(obj)/d(psi_i)
-	// This is complex and requires computing derivatives of eigenvalues
-	// For simplicity, use finite differences
+	// Compute gradient using finite differences
 	grad := make([]float64, n)
-	eps := 1e-6
+	eps := 1e-7 // Smaller epsilon for better accuracy
 	for i := range n {
 		psiPlus := make([]float64, n)
 		copy(psiPlus, psi)
 		psiPlus[i] += eps
 
-		// Compute objective for psiPlus directly (avoid recursion)
 		objPlus := computeMLObjective(S, psiPlus, nfactors)
 		grad[i] = (objPlus - obj) / eps
 	}
@@ -1512,6 +1937,16 @@ func mlObjectiveAndGradient(S *mat.Dense, psi []float64, nfactors int) (float64,
 // computeMLObjective computes only the ML objective function (helper for gradient computation)
 func computeMLObjective(S *mat.Dense, psi []float64, nfactors int) float64 {
 	n := len(psi)
+
+	// Check if psi is in valid range
+	for _, p := range psi {
+		if p >= 0.9999 {
+			return 1e10 // Penalize psi too close to 1
+		}
+		if p <= 0.0001 {
+			return 1e10 // Also penalize psi too close to 0
+		}
+	}
 
 	// Create uniqueness matrix Psi (diagonal matrix with psi on diagonal)
 	Psi := mat.NewDense(n, n, nil)
@@ -1576,8 +2011,15 @@ func computeMLObjective(S *mat.Dense, psi []float64, nfactors int) float64 {
 	}
 
 	// ML objective function: log|Sigma| + trace(Sigma^{-1} * S) - log|S| - n
-	// But since S is correlation matrix with 1s on diagonal, log|S| = 0
-	obj := logDetSigma + traceTerm - float64(n)
+	// Compute log|S|
+	var luS mat.LU
+	luS.Factorize(S)
+	if luS.Det() <= 0 {
+		return 1e10 // Return large objective if S is not positive definite
+	}
+	logDetS := math.Log(math.Abs(luS.Det()))
+
+	obj := logDetSigma + traceTerm - logDetS - float64(n)
 
 	return obj
 }

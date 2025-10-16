@@ -35,6 +35,19 @@ var spssPCA_Varimax = [][]float64{
 	{0.251, 0.791, 0.141},  // C3
 }
 
+// SPSS 測試 4: ML + Varimax Rotation (spss.md ## 6)
+var spssML_Varimax = [][]float64{
+	{0.137, -0.077, 0.852}, // A1
+	{0.020, 0.225, 0.707},  // A2
+	{0.208, 0.166, 0.684},  // A3
+	{0.795, 0.035, 0.298},  // B1
+	{0.848, 0.243, -0.068}, // B2
+	{0.680, 0.195, 0.195},  // B3
+	{-0.033, 0.814, 0.158}, // C1
+	{0.324, 0.752, 0.001},  // C2
+	{0.252, 0.691, 0.148},  // C3
+}
+
 func TestCompareAllMethods(t *testing.T) {
 	dt := readFactorAnalysisSampleCSV(t)
 
@@ -63,6 +76,13 @@ func TestCompareAllMethods(t *testing.T) {
 			extraction:   stats.FactorExtractionPCA,
 			rotation:     stats.FactorRotationVarimax,
 			spssLoadings: spssPCA_Varimax,
+			expectOrthog: true,
+		},
+		{
+			name:         "ML + Varimax",
+			extraction:   stats.FactorExtractionML,
+			rotation:     stats.FactorRotationVarimax,
+			spssLoadings: spssML_Varimax,
 			expectOrthog: true,
 		},
 		{
@@ -105,8 +125,8 @@ func TestCompareAllMethods(t *testing.T) {
 		perm, signs, aligned := alignFactorsMatrix(spssLoadingsMat, loadings)
 		maxAbs, rmse := compareMatricesSlice(aligned, tc.spssLoadings)
 
-		// Debug: print alignment details for Varimax and Oblimin
-		if tc.name == "PCA + Varimax" || tc.name == "PAF + Oblimin" {
+		// Debug: print alignment details for Varimax methods and Oblimin
+		if tc.name == "PCA + Varimax" || tc.name == "ML + Varimax" || tc.name == "PAF + Oblimin" {
 			fmt.Printf("\n=== %s 對齊詳情 ===\n", tc.name)
 			fmt.Printf("對齊前 (original, 所有9行):\n")
 			varNames := []string{"A1", "A2", "A3", "B1", "B2", "B3", "C1", "C2", "C3"}
