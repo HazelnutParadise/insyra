@@ -1489,6 +1489,14 @@ func extractML_EM(corr *mat.Dense, numFactors int, maxIter int, tol float64, sam
 		return nil, false, iterations, err
 	}
 
+	// Debug: verify communalities
+	rows, cols := loadings.Dims()
+	comm0 := 0.0
+	for j := range cols {
+		comm0 += loadings.At(0, j) * loadings.At(0, j)
+	}
+	insyra.LogInfo("stats", "FactorAnalysis", "ML: Extracted loadings A1 communality=%.4f (should be %.4f)", comm0, 1.0-psi[0])
+
 	return loadings, converged, iterations, nil
 }
 
