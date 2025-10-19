@@ -8,8 +8,8 @@ import (
 )
 
 var (
-	pythonVersion = "3.12.9"
-	installDir    = filepath.Join(".insyra_env", "py25b_"+runtime.GOOS+"_"+runtime.GOARCH)
+	pythonVersion = "3.12.*"
+	installDir    = filepath.Join(".insyra_env", "py25c_"+runtime.GOOS+"_"+runtime.GOARCH)
 	port          = "9955"
 	backupPort    = "9956"
 )
