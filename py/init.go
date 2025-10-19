@@ -4,8 +4,6 @@ package py
 import (
 	"bytes"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,7 +19,7 @@ var isPyEnvInit = false
 var isServerRunning = false
 
 // 主要邏輯
-// todo: 改用uv
+// 使用uv管理Python環境
 func pyEnvInit() {
 	if !isServerRunning {
 		isServerRunning = true
@@ -33,253 +31,160 @@ func pyEnvInit() {
 		return
 	}
 	isPyEnvInit = true
-	if runtime.GOOS == "windows" {
-		pyPath = filepath.Join(absInstallDir, "python", "python.exe")
-	}
-	insyra.LogInfo("py", "init", "Preparing Python environment...")
-	// 如果目錄不存在，自動創建
-	if _, err := os.Stat(installDir); os.IsNotExist(err) {
-		err := os.MkdirAll(installDir, os.ModePerm)
-		if err != nil {
-			insyra.LogFatal("py", "init", "Failed to create directory %s: %v", installDir, err)
-		}
-	} else {
-		// 檢查 Python 執行檔是否已存在
-		if _, err := os.Stat(pyPath); err == nil {
-			insyra.LogDebug("py", "init", "Python installation already exists!")
 
-			if runtime.GOOS == "windows" {
-				pyPath = filepath.Join(absInstallDir, "python", "python.exe")
-				pythonHome := filepath.Join(absInstallDir, "python")
-				pythonLib := filepath.Join(absInstallDir, "Lib")
-				_ = os.Setenv("PYTHONHOME", pythonHome)
-				_ = os.Setenv("PYTHONPATH", pythonLib)
-			}
+	insyra.LogInfo("py", "init", "Preparing Python environment with uv...")
 
-			// 不再每次都安裝依賴
-			// err = installDependencies()
-			// if err != nil {
-			// 	insyra.LogFatal("py.init: Failed to install dependencies: %v", err)
-			// }
-			// insyra.LogInfo("py.init: Dependencies prepared successfully!\n\n")
-			return
-		}
-	}
-
-	// 安裝 Python
-	err := installPython(pythonVersion)
+	// 檢查並安裝uv
+	err := ensureUvInstalled()
 	if err != nil {
-		insyra.LogFatal("py", "init", "Failed to install Python: %v", err)
+		insyra.LogFatal("py", "init", "Failed to ensure uv is installed: %v", err)
 	}
-	insyra.LogInfo("py", "init", "Python installation completed successfully!")
 
-	err = installDependencies()
+	// 確保安裝目錄存在並清空舊文件
+	err = prepareInstallDir()
+	if err != nil {
+		insyra.LogFatal("py", "init", "Failed to prepare install directory: %v", err)
+	}
+
+	// 初始化uv項目和虛擬環境
+	err = setupUvEnvironment()
+	if err != nil {
+		insyra.LogFatal("py", "init", "Failed to setup uv environment: %v", err)
+	}
+
+	// 安裝依賴
+	err = installDependenciesUv(absInstallDir)
 	if err != nil {
 		insyra.LogFatal("py", "init", "Failed to install dependencies: %v", err)
 	}
-	insyra.LogInfo("py", "init", "Dependencies has been prepared successfully!")
+	insyra.LogInfo("py", "init", "Dependencies installed successfully!")
 }
 
-// 下載並安裝 Python 的邏輯
-func installPython(version string) error {
-	if runtime.GOOS == "windows" {
-		return installPythonOnWindows(version)
-	}
-	return installPythonOnUnix(version, absInstallDir)
-}
-
-func installPythonOnWindows(version string) error {
-	// 指定安裝路徑
-	pythonSourceDir := filepath.Join(absInstallDir, "python-source")
-	pythonInstallDir := filepath.Join(absInstallDir, "python")
-
-	// 下載 Python 原始碼
-	err := downloadPythonSource(version, pythonSourceDir)
-	if err != nil {
-		return fmt.Errorf("failed to download Python source: %w", err)
-	}
-
-	// 編譯並安裝 Python
-	err = compilePythonSourceWindows(pythonSourceDir, pythonInstallDir)
-	if err != nil {
-		return fmt.Errorf("failed to compile and install Python: %w", err)
-	}
-
-	// 將 Python 安裝路徑添加到 PATH
-	err = os.Setenv("PATH", fmt.Sprintf("%s;%s", os.Getenv("PATH"), pythonInstallDir))
-	if err != nil {
-		return fmt.Errorf("failed to update PATH environment variable: %w", err)
-	}
-
-	err = moveLibDirectory(pythonSourceDir, pythonInstallDir)
-	if err != nil {
-		return fmt.Errorf("failed to move Lib directory: %w", err)
-	}
-
-	return nil
-}
-
-// Unix-like 平台安裝 (Linux/macOS)
-func installPythonOnUnix(version string, installDir string) error {
-	downloadURL := fmt.Sprintf("https://www.python.org/ftp/python/%s/Python-%s.tgz", version, version)
-	pythonTar := filepath.Join(os.TempDir(), fmt.Sprintf("Python-%s.tgz", version))
-
-	fmt.Println("Downloading Python for Unix-like systems...")
-	err := downloadFile(pythonTar, downloadURL)
-	if err != nil {
-		return fmt.Errorf("failed to download Python: %w", err)
-	}
-
-	fmt.Println("Extracting Python files...")
-	err = extractTar(pythonTar, os.TempDir())
-	if err != nil {
-		return fmt.Errorf("failed to extract Python: %w", err)
-	}
-
-	pythonSrcDir := filepath.Join(os.TempDir(), fmt.Sprintf("Python-%s", version))
-
-	fmt.Println("Configuring and installing Python...")
-	return installPythonFromSource(pythonSrcDir, installDir)
-}
-
-// 確保目錄存在，如果不存在則創建
-func ensureDir(dir string) error {
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		err := os.MkdirAll(dir, os.ModePerm)
+// 準備安裝目錄
+func prepareInstallDir() error {
+	// 確保目錄存在
+	if _, err := os.Stat(absInstallDir); os.IsNotExist(err) {
+		err := os.MkdirAll(absInstallDir, os.ModePerm)
 		if err != nil {
-			return fmt.Errorf("failed to create directory %s: %w", dir, err)
+			return fmt.Errorf("failed to create directory %s: %w", absInstallDir, err)
 		}
 	}
 	return nil
 }
 
-func downloadPythonSource(version string, destDir string) error {
-	// 確保目標目錄存在
-	err := ensureDir(destDir)
-	if err != nil {
-		return fmt.Errorf("failed to ensure destination directory: %w", err)
-	}
-
-	downloadURL := fmt.Sprintf("https://www.python.org/ftp/python/%s/Python-%s.tgz", version, version)
-	pythonTar := filepath.Join(destDir, fmt.Sprintf("Python-%s.tgz", version))
-
-	fmt.Println("Downloading Python source code...")
-	err = downloadFile(pythonTar, downloadURL)
-	if err != nil {
-		return fmt.Errorf("failed to download Python source code: %w", err)
-	}
-
-	fmt.Println("Extracting Python source code...")
-	err = extractTar(pythonTar, destDir)
-	if err != nil {
-		return fmt.Errorf("failed to extract Python source code: %w", err)
-	}
-
-	return nil
-}
-
-// 下載檔案
-func downloadFile(filepath string, url string) error {
-	resp, err := http.Get(url)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	out, err := os.Create(filepath)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = out.Close() }()
-
-	_, err = io.Copy(out, resp.Body)
-	return err
-}
-
-// 解壓縮 .tgz（適用於 Unix-like 系統）
-func extractTar(filepath string, destDir string) error {
-	cmd := exec.Command("tar", "-xvzf", filepath, "-C", destDir)
-	// cmd.Stdout = os.Stdout
-	// cmd.Stderr = os.Stderr
-	return cmd.Run()
-}
-
-// 從原始碼編譯並安裝 Python（適用於 Unix-like 系統）
-func installPythonFromSource(srcDir string, installDir string) error {
-	configureCmd := exec.Command("./configure", fmt.Sprintf("--prefix=%s", installDir))
-	configureCmd.Dir = srcDir
-	// configureCmd.Stdout = os.Stdout
-	// configureCmd.Stderr = os.Stderr
-	if err := configureCmd.Run(); err != nil {
-		return err
-	}
-
-	makeCmd := exec.Command("make")
-	makeCmd.Dir = srcDir
-	// makeCmd.Stdout = os.Stdout
-	// makeCmd.Stderr = os.Stderr
-	if err := makeCmd.Run(); err != nil {
-		return err
-	}
-
-	installCmd := exec.Command("make", "install")
-	installCmd.Dir = srcDir
-	// installCmd.Stdout = os.Stdout
-	// installCmd.Stderr = os.Stderr
-	return installCmd.Run()
-}
-
-func compilePythonSourceWindows(sourceDir string, installDir string) error {
-	// 使用 Windows 特定的構建方式
-	buildCmd := exec.Command(filepath.Join(sourceDir, "Python-"+pythonVersion, "PCbuild", "build.bat"), "-e", "-v")
-	buildCmd.Dir = filepath.Join(sourceDir, "Python-"+pythonVersion, "PCbuild")
-	// buildCmd.Stdout = os.Stdout
-	// buildCmd.Stderr = os.Stderr
-
-	err := buildCmd.Run()
-	if err != nil {
-		return fmt.Errorf("failed to compile Python source code using build.bat: %w", err)
-	}
-
-	// 將編譯後的文件複製到安裝目錄
-	fmt.Println("Installing Python...")
-	installCmd := exec.Command("xcopy", "/E", "/I", filepath.Join(sourceDir, "Python-"+pythonVersion, "PCbuild", "amd64"), installDir)
-	// installCmd.Stdout = os.Stdout
-	// installCmd.Stderr = os.Stderr
-
-	err = installCmd.Run()
-	if err != nil {
-		return fmt.Errorf("failed to install compiled Python: %w", err)
-	}
-
+// 設置uv環境（初始化項目和創建虛擬環境）
+func setupUvEnvironment() error {
+	// 設置pyPath
 	if runtime.GOOS == "windows" {
-		pyPath = filepath.Join(absInstallDir, "python", "python.exe")
-		pythonHome := filepath.Join(absInstallDir, "python")
-		pythonLib := filepath.Join(absInstallDir, "Lib")
-		_ = os.Setenv("PYTHONHOME", pythonHome)
-		_ = os.Setenv("PYTHONPATH", pythonLib)
+		pyPath = filepath.Join(absInstallDir, ".venv", "Scripts", "python.exe")
+	} else {
+		pyPath = filepath.Join(absInstallDir, ".venv", "bin", "python")
+	}
+
+	// 檢查虛擬環境是否存在
+	venvExists := false
+	if _, err := os.Stat(pyPath); err == nil {
+		venvExists = true
+		insyra.LogDebug("py", "init", "Virtual environment already exists!")
+	}
+
+	if venvExists {
+		// 虛擬環境存在，直接返回
+		return nil
+	}
+
+	// 虛擬環境不存在，需要重新安裝
+	insyra.LogInfo("py", "init", "Virtual environment not found, reinstalling...")
+
+	// 清空安裝目錄
+	if err := os.RemoveAll(absInstallDir); err != nil {
+		return fmt.Errorf("failed to remove install directory: %w", err)
+	}
+
+	// 重新創建目錄
+	if err := os.MkdirAll(absInstallDir, os.ModePerm); err != nil {
+		return fmt.Errorf("failed to recreate install directory: %w", err)
+	}
+
+	// 初始化uv項目
+	initCmd := exec.Command("uv", "init", "--bare", "--python", pythonVersion)
+	initCmd.Dir = absInstallDir
+	if err := initCmd.Run(); err != nil {
+		return fmt.Errorf("failed to init uv project: %w", err)
+	}
+
+	// 同步並創建虛擬環境
+	syncCmd := exec.Command("uv", "sync")
+	syncCmd.Dir = absInstallDir
+	if err := syncCmd.Run(); err != nil {
+		return fmt.Errorf("failed to sync uv project: %w", err)
 	}
 
 	return nil
 }
 
-func moveLibDirectory(sourceDir, installDir string) error {
-	// 檢查 sourceDir 中的 'Lib' 目錄是否存在
-	libSourcePath := filepath.Join(sourceDir, "python-"+pythonVersion, "Lib")
-	if _, err := os.Stat(libSourcePath); os.IsNotExist(err) {
-		return fmt.Errorf("lib directory not found in source directory: %s", sourceDir)
+// 檢查並確保uv已安裝
+func ensureUvInstalled() error {
+	// 檢查uv是否已安裝
+	cmd := exec.Command("uv", "--version")
+	err := cmd.Run()
+	if err == nil {
+		insyra.LogDebug("py", "init", "uv is already installed")
+		return nil
 	}
 
-	// 目標路徑
-	libDestPath := filepath.Join(installDir, "Lib")
+	insyra.LogInfo("py", "init", "uv not found, installing uv...")
 
-	// 使用系統命令將 'Lib' 目錄複製到安裝目錄
-	fmt.Println("Moving Lib directory to installation path...")
-	err := exec.Command("xcopy", libSourcePath, libDestPath, "/E", "/I").Run()
-	if err != nil {
-		return fmt.Errorf("failed to move Lib directory: %w", err)
+	// 根據作業系統安裝uv
+	if runtime.GOOS == "windows" {
+		// 使用PowerShell安裝uv
+		installCmd := exec.Command("powershell", "-ExecutionPolicy", "ByPass", "-c", "irm https://astral.sh/uv/install.ps1 | iex")
+		return installCmd.Run()
+	} else {
+		// 優先使用curl，如果失敗則使用wget
+		curlCmd := exec.Command("sh", "-c", "curl -LsSf https://astral.sh/uv/install.sh | sh")
+		err := curlCmd.Run()
+		if err == nil {
+			return nil
+		}
+
+		// 如果curl失敗，使用wget
+		wgetCmd := exec.Command("sh", "-c", "wget -qO- https://astral.sh/uv/install.sh | sh")
+		return wgetCmd.Run()
+	}
+}
+
+// 使用uv安裝依賴
+func installDependenciesUv(projectDir string) error {
+	fmt.Println("Installing dependencies with uv...")
+	totalDeps := len(pyDependencies)
+	completed := 0
+
+	for _, dep := range pyDependencies {
+		if dep == "" {
+			completed++
+			showProgress(completed, totalDeps)
+			continue
+		}
+
+		cmd := exec.Command("uv", "pip", "install", dep, "--python", pyPath)
+		cmd.Dir = projectDir
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+
+		err := cmd.Run()
+		if err != nil {
+			fmt.Printf("Stdout: %s", stdout.String())
+			fmt.Printf("Stderr: %s", stderr.String())
+			return fmt.Errorf("failed to install dependency %s: %w", dep, err)
+		}
+
+		completed++
+		showProgress(completed, totalDeps)
 	}
 
+	fmt.Println()
 	return nil
 }
 
@@ -306,40 +211,4 @@ func showProgress(completed, total int) {
 
 	// 強制刷新輸出
 	_ = os.Stdout.Sync()
-}
-
-func installDependencies() error {
-	fmt.Println("Installing dependencies...")
-	totalDeps := len(pyDependencies)
-	completed := 0
-
-	for _, dep := range pyDependencies {
-		if dep == "" {
-			completed++
-			showProgress(completed, totalDeps)
-			continue
-		}
-
-		cmdSlice := append([]string{pyPath, "-m"}, "pip", "install", dep)
-		cmd := exec.Command(cmdSlice[0], cmdSlice[1:]...)
-		cmd.Dir = absInstallDir
-
-		var stdout, stderr bytes.Buffer
-		cmd.Stdout = &stdout
-		cmd.Stderr = &stderr
-
-		err := cmd.Run()
-		if err != nil {
-			fmt.Printf("Stdout: %s", stdout.String())
-			fmt.Printf("Stderr: %s", stderr.String())
-			return fmt.Errorf("failed to install dependency %s: %w", dep, err)
-		}
-
-		completed++
-		showProgress(completed, totalDeps) // 在主線程中顯示進度條
-	}
-
-	fmt.Println() // 完成後換行
-
-	return nil
 }

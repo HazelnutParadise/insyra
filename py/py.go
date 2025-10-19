@@ -7,12 +7,40 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"strings"
-
-	json "github.com/goccy/go-json"
 
 	"github.com/HazelnutParadise/insyra"
 )
+
+// reinstall the Python environment
+func ReinstallPyEnv() error {
+	insyra.LogInfo("py", "reinstall", "Reinstalling Python environment...")
+
+	// 清空安裝目錄
+	if err := os.RemoveAll(absInstallDir); err != nil {
+		return fmt.Errorf("failed to remove install directory: %w", err)
+	}
+
+	// 重新創建目錄
+	if err := os.MkdirAll(absInstallDir, os.ModePerm); err != nil {
+		return fmt.Errorf("failed to recreate install directory: %w", err)
+	}
+
+	// 重置初始化標誌，強制重新初始化
+	isPyEnvInit = false
+
+	// 重新設置環境
+	if err := setupUvEnvironment(); err != nil {
+		return fmt.Errorf("failed to setup uv environment: %w", err)
+	}
+
+	// 重新安裝依賴
+	if err := installDependenciesUv(absInstallDir); err != nil {
+		return fmt.Errorf("failed to install dependencies: %w", err)
+	}
+
+	insyra.LogInfo("py", "reinstall", "Python environment reinstalled successfully!")
+	return nil
+}
 
 // Run the Python file and return the result.
 func RunFile(filePath string) map[string]any {
@@ -26,7 +54,7 @@ func RunFile(filePath string) map[string]any {
 }
 
 // Run the Python file with the given Golang variables and return the result.
-// The variables should be passed by $v1, $v2, $v3... in the codeTemplate.
+// The codeTemplate should use fmt.Sprintf style formatting (e.g., %q, %d, %v).
 func RunFilef(filePath string, args ...any) map[string]any {
 	pyEnvInit()
 	file, err := os.ReadFile(filePath)
@@ -40,78 +68,69 @@ func RunFilef(filePath string, args ...any) map[string]any {
 // Run the Python code and return the result.
 func RunCode(code string) map[string]any {
 	pyEnvInit()
-	code = generateDefaultPyCode() + code
 
-	// 執行 Python 代碼
-	pythonCmd := exec.Command(pyPath, "-c", code)
-	pythonCmd.Dir = installDir
-	pythonCmd.Stdout = os.Stdout
-	pythonCmd.Stderr = os.Stderr
-	err := pythonCmd.Run()
-	if err != nil {
-		insyra.LogFatal("py", "RunCode", "Failed to run Python code: %v", err)
-	}
+	// 生成執行ID
+	executionID := generateExecutionID()
 
-	// 從 server 接收資料
-	return pyResult
+	code = generateDefaultPyCode(executionID) + code
+
+	// 創建進程結束通知channel
+	processDone := make(chan struct{})
+
+	// 在goroutine中執行Python代碼
+	go func() {
+		defer close(processDone)
+		pythonCmd := exec.Command(pyPath, "-c", code)
+		pythonCmd.Stdout = os.Stdout
+		pythonCmd.Stderr = os.Stderr
+		err := pythonCmd.Run()
+		if err != nil {
+			insyra.LogFatal("py", "RunCode", "Failed to run Python code: %v", err)
+		}
+	}()
+
+	// 等待並接收結果，當進程結束時自動返回空map
+	return waitForResult(executionID, processDone)
 }
 
 // Run the Python code with the given Golang variables and return the result.
-// The variables should be passed by $v1, $v2, $v3... in the codeTemplate.
+// The codeTemplate should use fmt.Sprintf style formatting (e.g., %q, %d, %v).
 func RunCodef(codeTemplate string, args ...any) map[string]any {
 	pyEnvInit()
+
+	// 生成執行ID
+	executionID := generateExecutionID()
+
+	// 使用fmt.Sprintf格式化代碼模板
+	formattedCode := fmt.Sprintf(codeTemplate, args...)
+
 	// 產生包含 insyra_return 函數的預設 Python 代碼
-	codeTemplate = generateDefaultPyCode() + codeTemplate
+	fullCode := generateDefaultPyCode(executionID) + formattedCode
 
-	// 將所有 Go 變數轉換為一個 JSON 字典傳遞給 Python
-	dataMap := make(map[string]any)
-	for i, arg := range args {
-		pythonVarName := fmt.Sprintf("var%d", i+1)
-		dataMap[pythonVarName] = arg
-	}
+	// 創建進程結束通知channel
+	processDone := make(chan struct{})
 
-	// 將字典序列化為 JSON
-	jsonData, err := json.Marshal(dataMap)
-	if err != nil {
-		insyra.LogFatal("py", "RunCodef", "Failed to serialize variables: %v", err)
-	}
+	// 在goroutine中執行Python代碼
+	go func() {
+		defer close(processDone)
+		pythonCmd := exec.Command(pyPath, "-c", fullCode)
+		pythonCmd.Stdout = os.Stdout
+		pythonCmd.Stderr = os.Stderr
+		err := pythonCmd.Run()
+		if err != nil {
+			log.Fatalf("Failed to run Python code: %v", err)
+		}
+	}()
 
-	// 替換 codeTemplate 中的 $v1, $v2... 佔位符為對應的 vars['var1'], vars['var2']...
-	for i := range args {
-		placeholder := fmt.Sprintf("$v%d", i+1)
-		codeTemplate = strings.ReplaceAll(codeTemplate, placeholder, fmt.Sprintf("IN5YRA_變數v['var%d']", i+1))
-	}
-
-	// 在 Python 中生成變數賦值語句
-	pythonVarCode := fmt.Sprintf("IN5YRA_變數v = json.loads('%s')", string(jsonData))
-
-	// 構建完整的 Python 代碼，並確保正確導入 json 模組
-	fullCode := fmt.Sprintf(`
-import json
-%s
-%s
-`, pythonVarCode, codeTemplate)
-
-	// 執行 Python 代碼
-	pythonCmd := exec.Command(pyPath, "-c", fullCode)
-	pythonCmd.Stdout = os.Stdout
-	pythonCmd.Stderr = os.Stderr
-
-	// 執行 Python 命令
-	err = pythonCmd.Run()
-	if err != nil {
-		log.Fatalf("Failed to run Python code: %v", err)
-	}
-
-	// 從 server 接收資料
-	return pyResult
+	// 等待並接收結果，當進程結束時自動返回空map
+	return waitForResult(executionID, processDone)
 }
 
-// Install dependencies using pip
+// Install dependencies using uv pip
 func PipInstall(dep string) {
 	pyEnvInit()
-	pythonCmd := exec.Command(pyPath, "-m", "pip", "install", dep)
-	pythonCmd.Dir = installDir
+	pythonCmd := exec.Command("uv", "pip", "install", dep, "--python", pyPath)
+	pythonCmd.Dir = absInstallDir
 	pythonCmd.Stdout = os.Stdout
 	pythonCmd.Stderr = os.Stderr
 	err := pythonCmd.Run()
@@ -122,11 +141,11 @@ func PipInstall(dep string) {
 	}
 }
 
-// Uninstall dependencies using pip
+// Uninstall dependencies using uv pip
 func PipUninstall(dep string) {
 	pyEnvInit()
-	pythonCmd := exec.Command(pyPath, "-m", "pip", "uninstall", "-y", dep)
-	pythonCmd.Dir = installDir
+	pythonCmd := exec.Command("uv", "pip", "uninstall", dep, "--python", pyPath)
+	pythonCmd.Dir = absInstallDir
 	pythonCmd.Stdout = os.Stdout
 	pythonCmd.Stderr = os.Stderr
 	err := pythonCmd.Run()
@@ -137,7 +156,7 @@ func PipUninstall(dep string) {
 	}
 }
 
-func generateDefaultPyCode() string {
+func generateDefaultPyCode(executionID string) string {
 	imports := ""
 	for imps := range pyDependencies {
 		if imps != "" {
@@ -147,9 +166,10 @@ func generateDefaultPyCode() string {
 	return fmt.Sprintf(`
 %v
 def insyra_return(data, url="http://localhost:%v/pyresult"):
-    response = requests.post(url, json=data)
+    payload = {"execution_id": "%s", "data": data}
+    response = requests.post(url, json=payload)
     if response.status_code != 200:
         print(f"Failed to send result: {response.status_code}")
 
-`, imports, port)
+`, imports, port, executionID)
 }
