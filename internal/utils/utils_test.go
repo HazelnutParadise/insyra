@@ -35,7 +35,7 @@ func TestFormatValueArrays(t *testing.T) {
 	}
 
 	// 測試固定大小陣列
-	var arr [3]int = [3]int{1, 2, 3}
+	var arr = [3]int{1, 2, 3}
 	if result := FormatValue(arr); result != "[1, 2, 3]" {
 		t.Errorf("Expected [1, 2, 3], got %s", result)
 	}

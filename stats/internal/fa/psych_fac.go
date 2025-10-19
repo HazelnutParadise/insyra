@@ -606,9 +606,6 @@ func maximumLikelihoodFactoring(r, rMat *mat.Dense, nfactors int, covar bool, mi
 			upper = v
 		}
 	}
-	if upper > 1.0 {
-		upper = 1.0
-	}
 
 	// Initial parameters
 	start := make([]float64, p)

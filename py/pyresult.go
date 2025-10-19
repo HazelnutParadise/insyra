@@ -18,7 +18,11 @@ var (
 // 生成唯一的執行ID
 func generateExecutionID() string {
 	bytes := make([]byte, 16)
-	rand.Read(bytes)
+	_, err := rand.Read(bytes)
+	if err != nil {
+		// Fallback to timestamp-based ID if crypto rand fails
+		return fmt.Sprintf("%x", time.Now().UnixNano())
+	}
 	return fmt.Sprintf("%x", bytes)
 }
 
