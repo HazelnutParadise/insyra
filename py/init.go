@@ -101,9 +101,6 @@ func setupUvEnvironment() error {
 		return nil
 	}
 
-	// 虛擬環境不存在，需要重新安裝
-	insyra.LogInfo("py", "init", "Virtual environment not found, reinstalling...")
-
 	// 清空安裝目錄
 	if err := os.RemoveAll(absInstallDir); err != nil {
 		return fmt.Errorf("failed to remove install directory: %w", err)
