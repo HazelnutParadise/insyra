@@ -662,20 +662,34 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	// Apply sign standardization AFTER sorting (but always, not just when nfactors > 1)
 	// R: signed <- sign(colSums(loadings)); loadings <- loadings %*% diag(signed)
 	// R code does this for ALL cases (sorted or not sorted)
+	// BUT: when nfactors == 1, R uses different logic: checks if sum < 0, then flips entire column
 	rows, cols := rotatedLoadings.Dims()
 	signs := make([]float64, cols)
-	for j := range cols {
-		// Calculate sum of loadings for this factor (R method: colSums)
-		sum := 0.0
-		for i := range rows {
-			sum += rotatedLoadings.At(i, j)
+
+	if numFactors > 1 {
+		// R: sign.tot <- sign(colSums(loadings))
+		for j := range cols {
+			sum := 0.0
+			for i := range rows {
+				sum += rotatedLoadings.At(i, j)
+			}
+			if sum < 0 {
+				signs[j] = -1.0
+			} else {
+				signs[j] = 1.0
+			}
 		}
-		// If sum is negative, mark this factor for sign flipping
-		// R: signed[signed == 0] <- 1  (default to positive)
-		if sum < 0 {
-			signs[j] = -1.0
+	} else {
+		// R: if (sum(loadings) < 0) { loadings <- -as.matrix(loadings) }
+		// When nfactors == 1, check if total sum is negative
+		totalSum := 0.0
+		for i := range rows {
+			totalSum += rotatedLoadings.At(i, 0)
+		}
+		if totalSum < 0 {
+			signs[0] = -1.0
 		} else {
-			signs[j] = 1.0
+			signs[0] = 1.0
 		}
 	}
 
@@ -788,9 +802,31 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 
 	// Convert results to DataTables
 	// Generate factor column names
+	// Generate factor column names based on extraction method (matching R's naming)
+	// R: switch(fm, alpha = {colnames <- paste("alpha", 1:nfactors)}, ...)
 	factorColNames := make([]string, numFactors)
-	for i := range numFactors {
-		factorColNames[i] = fmt.Sprintf("Factor_%d", i+1)
+	switch opt.Extraction {
+	case FactorExtractionPCA:
+		for i := range numFactors {
+			factorColNames[i] = fmt.Sprintf("PC%d", i+1)
+		}
+	case FactorExtractionPAF:
+		for i := range numFactors {
+			factorColNames[i] = fmt.Sprintf("PA%d", i+1)
+		}
+	case FactorExtractionML:
+		for i := range numFactors {
+			factorColNames[i] = fmt.Sprintf("ML%d", i+1)
+		}
+	case FactorExtractionMINRES:
+		for i := range numFactors {
+			factorColNames[i] = fmt.Sprintf("MR%d", i+1)
+		}
+	default:
+		// Fallback to generic names
+		for i := range numFactors {
+			factorColNames[i] = fmt.Sprintf("Factor_%d", i+1)
+		}
 	}
 
 	// Step 9: Compute explained proportions for "Extraction SS loadings"
