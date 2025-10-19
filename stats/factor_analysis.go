@@ -96,8 +96,7 @@ type FactorRotationOptions struct {
 
 // FactorPreprocessOptions specifies preprocessing parameters
 type FactorPreprocessOptions struct {
-	Standardize bool   // Optional
-	Missing     string // Optional: default "listwise"
+	Standardize bool // Optional
 }
 
 // FactorAnalysisOptions contains all options for factor analysis
@@ -221,7 +220,6 @@ func DefaultFactorAnalysisOptions() FactorAnalysisOptions {
 	return FactorAnalysisOptions{
 		Preprocess: FactorPreprocessOptions{
 			Standardize: true,
-			Missing:     "listwise",
 		},
 		Count: FactorCountSpec{
 			Method:         FactorCountKaiser,
@@ -325,45 +323,39 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	}
 
 	if hasNaN {
-		if opt.Preprocess.Missing == "listwise" {
-			// Remove rows with any NaN
-			validRows := make([]int, 0, rowNum)
-			for i := 0; i < rowNum; i++ {
-				valid := true
-				for j := 0; j < colNum; j++ {
-					if math.IsNaN(data.At(i, j)) {
-						valid = false
-						break
-					}
-				}
-				if valid {
-					validRows = append(validRows, i)
+		// Remove rows with any NaN (listwise deletion)
+		validRows := make([]int, 0, rowNum)
+		for i := 0; i < rowNum; i++ {
+			valid := true
+			for j := 0; j < colNum; j++ {
+				if math.IsNaN(data.At(i, j)) {
+					valid = false
+					break
 				}
 			}
-			if len(validRows) == 0 {
-				insyra.LogWarning("stats", "FactorAnalysis", "no valid rows after removing missing values")
-				return nil
+			if valid {
+				validRows = append(validRows, i)
 			}
-			newData := mat.NewDense(len(validRows), colNum, nil)
-			for i, rowIdx := range validRows {
-				for j := 0; j < colNum; j++ {
-					newData.Set(i, j, data.At(rowIdx, j))
-				}
-			}
-			data = newData
-			rowNum = len(validRows)
-
-			// Update row names for valid rows
-			newRowNames := make([]string, len(validRows))
-			for i, rowIdx := range validRows {
-				newRowNames[i] = rowNames[rowIdx]
-			}
-			rowNames = newRowNames
-		} else {
-			// For simplicity, use listwise deletion for now
-			insyra.LogWarning("stats", "FactorAnalysis", "only listwise deletion is currently supported for missing values")
+		}
+		if len(validRows) == 0 {
+			insyra.LogWarning("stats", "FactorAnalysis", "no valid rows after removing missing values")
 			return nil
 		}
+		newData := mat.NewDense(len(validRows), colNum, nil)
+		for i, rowIdx := range validRows {
+			for j := 0; j < colNum; j++ {
+				newData.Set(i, j, data.At(rowIdx, j))
+			}
+		}
+		data = newData
+		rowNum = len(validRows)
+
+		// Update row names for valid rows
+		newRowNames := make([]string, len(validRows))
+		for i, rowIdx := range validRows {
+			newRowNames[i] = rowNames[rowIdx]
+		}
+		rowNames = newRowNames
 	}
 
 	// Step 2: Standardize if requested
