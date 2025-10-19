@@ -4,11 +4,12 @@ package py
 
 import (
 	"path/filepath"
+	"runtime"
 )
 
-const (
+var (
 	pythonVersion = "3.12.9"
-	installDir    = "insyra_py25b"
+	installDir    = filepath.Join(".insyra_env", "py25b_"+runtime.GOOS+"_"+runtime.GOARCH)
 	port          = "9955"
 	backupPort    = "9956"
 )
