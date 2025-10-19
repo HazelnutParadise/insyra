@@ -1,43 +1,69 @@
 package py
 
 import (
+	"crypto/rand"
+	"fmt"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/HazelnutParadise/insyra"
 	json "github.com/goccy/go-json"
 )
 
 var (
-	pyResult map[string]any
-	mu       sync.Mutex
+	resultStore sync.Map // map[string]map[string]any
 )
+
+// 生成唯一的執行ID
+func generateExecutionID() string {
+	bytes := make([]byte, 16)
+	rand.Read(bytes)
+	return fmt.Sprintf("%x", bytes)
+}
+
+// 等待並獲取指定ID的結果，當Python進程結束時自動返回nil
+func waitForResult(executionID string, processDone <-chan struct{}) map[string]any {
+	for {
+		select {
+		case <-processDone:
+			// Python進程已經結束但沒有調用insyra_return，返回nil
+			resultStore.Delete(executionID)
+			return nil
+		default:
+			// 檢查是否有結果
+			if result, exists := resultStore.Load(executionID); exists {
+				// 找到結果，清理並返回
+				resultStore.Delete(executionID)
+				return result.(map[string]any)
+			}
+			// 短暫等待後重試
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+}
 
 // 啟動 HTTP 伺服器來接收 Python 回傳的複雜資料結構
 func startServer() {
 	http.HandleFunc("/pyresult", func(w http.ResponseWriter, r *http.Request) {
 		defer func() { _ = r.Body.Close() }()
 
-		// 使用 sync.Pool 來緩存 map
-		var result map[string]any
-		pool := sync.Pool{
-			New: func() any {
-				return make(map[string]any)
-			},
+		// 解析請求體
+		var requestData struct {
+			ExecutionID string         `json:"execution_id"`
+			Data        map[string]any `json:"data"`
 		}
 
-		result = pool.Get().(map[string]any)
-		defer pool.Put(result)
-
-		err := json.NewDecoder(r.Body).Decode(&result)
+		err := json.NewDecoder(r.Body).Decode(&requestData)
 		if err != nil {
 			http.Error(w, "Invalid request", http.StatusBadRequest)
 			return
 		}
 
-		mu.Lock()
-		pyResult = result
-		mu.Unlock()
+		// 直接存儲結果到sync.Map
+		resultStore.Store(requestData.ExecutionID, requestData.Data)
+
+		w.WriteHeader(http.StatusOK)
 	})
 
 	insyra.LogInfo("py", "init", "Insyra listening on http://localhost:"+port+".")
@@ -50,13 +76,3 @@ func startServer() {
 		}
 	}
 }
-
-// todo: pop機制與執行id
-// func popPyResult() map[string]any {
-// 	mu.Lock()
-// 	defer mu.Unlock()
-// 	result := pyResult
-// 	pyResult = nil
-
-// 	return result
-// }

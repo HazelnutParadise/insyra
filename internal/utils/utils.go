@@ -176,7 +176,12 @@ func FormatValue(value any) string {
 					rv.Index(1).Interface(),
 					length-2)
 			}
-			return fmt.Sprintf("%v", value)
+			// 對於長度 <= 3 的陣列，使用逗號分隔的格式
+			var elements []string
+			for i := range length {
+				elements = append(elements, fmt.Sprintf("%v", rv.Index(i).Interface()))
+			}
+			return "[" + strings.Join(elements, ", ") + "]"
 		}
 
 		// 檢測是否是 map 類型

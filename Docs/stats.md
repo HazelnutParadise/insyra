@@ -325,12 +325,12 @@ fmt.Printf("z=%.4f, p=%.4f\n", result.Statistic, result.PValue)
 func ChiSquareGoodnessOfFit(input insyra.IDataList, p []float64, rescaleP bool) *ChiSquareTestResult
 ```
 
-**Purpose**: Test if observed frequencies match expected frequencies.
+**Purpose**: Test if observed categorical data matches expected distribution.
 
 **Parameters**:
 
-- `input`: Observed frequencies
-- `p`: Expected probabilities (nil for equal probabilities)
+- `input`: Categorical data (e.g., ["A", "B", "A"])
+- `p`: Expected probabilities (nil for uniform distribution)
 - `rescaleP`: Whether to rescale probabilities to sum to 1
 
 ### ChiSquareIndependenceTest
@@ -349,22 +349,33 @@ func ChiSquareIndependenceTest(rowData, colData insyra.IDataList) *ChiSquareTest
 
 ```go
 type ChiSquareTestResult struct {
-    testResultBase // Statistic = chi-square statistic
+    testResultBase           // Statistic = chi-square statistic
+    ContingencyTable *insyra.DataTable // Contingency table with observed and expected values
 }
 ```
+
+The `ContingencyTable` contains the observed frequencies and expected frequencies for each cell in the contingency table. For goodness of fit tests, it shows observed vs expected values for each category. For independence tests, it shows the full contingency table with observed and expected values for each combination of row and column categories.
+
+##### Show Method
+
+```go
+func (r *ChiSquareTestResult) Show()
+```
+
+Displays the chi-square test results including the test statistic, p-value, degrees of freedom, and the contingency table.
 
 **Example**:
 
 ```go
-// Goodness of fit test
-observed := insyra.NewDataList(20, 15, 25)
-p := []float64{1.0/3, 1.0/3, 1.0/3}
-result := stats.ChiSquareGoodnessOfFit(observed, p, true)
-fmt.Printf("Chi-square=%.4f, p=%.4f, df=%.0f\n", result.Statistic, result.PValue, *result.DF)
+// Goodness of fit test with categorical data
+categoricalData := insyra.NewDataList("A", "B", "A", "C", "A", "B")
+p := []float64{0.5, 0.3, 0.2} // Expected probabilities for A, B, C
+result := stats.ChiSquareGoodnessOfFit(categoricalData, p, true)
+result.Show() // Display complete test results
 
 // Independence test
 result := stats.ChiSquareIndependenceTest(rowData, colData)
-fmt.Printf("Chi-square=%.4f, p=%.4f\n", result.Statistic, result.PValue)
+result.Show() // Display complete test results with contingency table
 ```
 
 ---
@@ -1070,7 +1081,7 @@ Alternative weighting schemes (Bartlett, Anderson–Rubin, ten Berge) are access
 func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorModel
 ```
 
-**Purpose**: Perform factor analysis on a dataset to identify underlying latent factors.
+**Purpose**: Perform factor analysis on a dataset to identify underlying latent factors. The data is automatically standardized before analysis since factor analysis requires standardized variables for proper interpretation of factor loadings.
 
 **Parameters**:
 
@@ -1083,22 +1094,12 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 
 ```go
 type FactorAnalysisOptions struct {
-    Preprocess FactorPreprocessOptions
     Count      FactorCountSpec
     Extraction FactorExtractionMethod
     Rotation   FactorRotationOptions
     Scoring    FactorScoreMethod
     MaxIter    int     // Maximum iterations for iterative methods (default: 50)
     MinErr     float64 // Min error for convergence (default: 0.001)
-}
-```
-
-#### FactorPreprocessOptions
-
-```go
-type FactorPreprocessOptions struct {
-    Standardize bool    // Whether to standardize variables (default: true)
-    Missing     string  // Missing data handling: "listwise", "pairwise", "mean" (default: "listwise")
 }
 ```
 
@@ -1176,6 +1177,17 @@ const (
 )
 ```
 
+#### BartlettTestResult
+
+```go
+type BartlettTestResult struct {
+    ChiSquare        float64 // Chi-square statistic
+    DegreesOfFreedom int     // Degrees of freedom
+    PValue           float64 // P-value
+    SampleSize       int     // Sample size
+}
+```
+
 #### FactorAnalysisResult
 
 ```go
@@ -1185,7 +1197,7 @@ type FactorAnalysisResult struct {
     Uniquenesses         insyra.IDataTable // Uniqueness vector (p × 1)
     Communalities        insyra.IDataTable // Communality table with Initial & Extraction columns
     SamplingAdequacy     insyra.IDataTable // KMO overall index and per-variable MSA values
-    BartlettTest         insyra.IDataTable // Bartlett's test of sphericity summary
+    BartlettTest         *BartlettTestResult // Bartlett's test of sphericity summary
     Phi                  insyra.IDataTable // Factor correlation matrix (m × m), nil for orthogonal
     RotationMatrix       insyra.IDataTable // Rotation matrix (m × m), nil if no rotation
     Eigenvalues          insyra.IDataTable // Eigenvalues vector (p × 1)
@@ -1209,7 +1221,7 @@ type FactorAnalysisResult struct {
 - **Uniquenesses**: Single column named "Uniqueness", row names are variable names
 - **Communalities**: Two columns named "Initial" and "Extraction", row names are variable names
 - **SamplingAdequacy**: Column "KMO" for the overall index plus one column per variable with MSA values
-- **BartlettTest**: Columns summarizing degrees of freedom, χ² statistic, and p-value
+- **BartlettTest**: BartlettTestResult struct containing ChiSquare, DegreesOfFreedom, PValue, and SampleSize fields
 - **Eigenvalues**: Single column named "Eigenvalue", row names are factor names
 - **ExplainedProportion**: Single column named "Explained Proportion", row names are factor names
 - **CumulativeProportion**: Single column named "Cumulative Proportion", row names are factor names
@@ -1296,37 +1308,6 @@ scores.Show()
 scores.ToCSV("factor_scores.csv", true, true, true)
 ```
 
-### ScreePlotData
-
-```go
-func ScreePlotData(dt insyra.IDataTable, standardize bool) (eigenDT insyra.IDataTable, cumDT insyra.IDataTable, err error)
-```
-
-**Purpose**: Returns scree plot data (eigenvalues and cumulative proportion) for determining the number of factors to extract.
-
-**Parameters**:
-
-- `dt`: Input data table
-- `standardize`: Whether to standardize variables before analysis
-
-**Returns**:
-
-- `eigenDT`: DataTable containing eigenvalues in descending order
-- `cumDT`: DataTable containing cumulative proportions of explained variance
-- `err`: Error if analysis fails
-
-**Example**:
-
-```go
-// Get scree plot data for factor analysis
-eigenvalues, cumulative, err := stats.ScreePlotData(dataTable, true)
-if err != nil {
-    log.Fatal(err)
-}
-eigenvalues.Show() // Display eigenvalues
-cumulative.Show()  // Display cumulative proportions
-```
-
 ### DefaultFactorAnalysisOptions
 
 ```go
@@ -1340,7 +1321,6 @@ func DefaultFactorAnalysisOptions() FactorAnalysisOptions
 - **Extraction**: `minres` (Minimum Residual)
 - **Rotation**: `oblimin` (Oblique rotation with delta=0)
 - **Scoring**: `regression` (Regression-based factor scores)
-- **Preprocessing**: Standardize=true, Missing="listwise"
 - **Factor Count**: Kaiser criterion (eigenvalues > 1.0)
 - **MaxIter**: 50
 - **MinErr**: 0.001
@@ -1450,7 +1430,7 @@ All error conditions are logged via `insyra.LogWarning()` for debugging purposes
 
 #### Data Preparation
 
-- **Standardization**: Standardize variables before factor analysis unless they are already on comparable scales
+- **Standardization**: Variables are automatically standardized during factor analysis for proper interpretation of factor loadings
 - **Missing Data**: Use "listwise" deletion for missing data unless the dataset is small
 - **Sample Size**: Aim for at least 5-10 observations per variable, preferably more
 - **Variable Selection**: Include only variables that are theoretically related to the construct

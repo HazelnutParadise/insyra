@@ -10,10 +10,10 @@ import (
 
 // GPForth performs orthogonal rotation using GPA.
 // Mirrors GPArotation::GPForth exactly
-func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit int, method string) map[string]any {
-	_, nf := A.Dims() // A is p x nf (variables x factors), nf is number of factors
-	if nf <= 1 {
-		panic("rotation does not make sense for single factor models.")
+func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit int, method string) (map[string]any, error) {
+	rows, cols := A.Dims() // A is p x nf (variables x factors), nf is number of factors
+	if cols <= 1 {
+		return nil, fmt.Errorf("rotation does not make sense for single factor models")
 	}
 
 	var W *mat.VecDense
@@ -23,15 +23,15 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 		W = NormalizingWeight(A, normalize)
 		normalize = true
 		A = mat.DenseCopyOf(A)
-		for i := 0; i < A.RawMatrix().Rows; i++ {
-			for j := 0; j < A.RawMatrix().Cols; j++ {
+		for i := 0; i < rows; i++ {
+			for j := 0; j < cols; j++ {
 				A.Set(i, j, A.At(i, j)/W.AtVec(i))
 			}
 		}
 	}
 
 	al := 1.0
-	L := mat.NewDense(A.RawMatrix().Rows, A.RawMatrix().Cols, nil)
+	L := mat.NewDense(rows, cols, nil)
 	L.Mul(A, Tmat)
 
 	// Method <- paste("vgQ", method, sep = ".")
@@ -60,7 +60,10 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			"Method": "vgQ." + method,
 		}
 	case "bentlerT":
-		Gq, f, _ := vgQBentler(L)
+		Gq, f, _, err := vgQBentler(L)
+		if err != nil {
+			return nil, err
+		}
 		VgQ = map[string]any{
 			"Gq":     Gq,
 			"f":      f,
@@ -69,7 +72,7 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 	case "targetT":
 		// For target rotation, we need a Target matrix, but for now use nil
 		// This would need to be passed as parameter
-		panic("targetT requires Target matrix parameter")
+		return nil, fmt.Errorf("targetT requires Target matrix parameter")
 	default:
 		Gq, f, _ := vgQVarimax(L)
 		VgQ = map[string]any{
@@ -80,52 +83,16 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 	}
 
 	// G <- crossprod(A, VgQ$Gq)
-	G := mat.NewDense(A.RawMatrix().Cols, VgQ["Gq"].(*mat.Dense).RawMatrix().Cols, nil)
+	G := mat.NewDense(cols, VgQ["Gq"].(*mat.Dense).RawMatrix().Cols, nil)
 	G.Mul(A.T(), VgQ["Gq"].(*mat.Dense))
 
 	f := VgQ["f"].(float64)
 	var Table [][]float64
 
-	// VgQt <- do.call(Method, append(list(L), methodArgs))
-	var VgQt map[string]any
-	switch method {
-	case "varimax":
-		Gq2, f2, _ := vgQVarimax(L)
-		VgQt = map[string]any{
-			"Gq": Gq2,
-			"f":  f2,
-		}
-	case "quartimax":
-		Gq2, f2, _ := vgQQuartimax(L)
-		VgQt = map[string]any{
-			"Gq": Gq2,
-			"f":  f2,
-		}
-	case "geominT":
-		Gq2, f2, _ := vgQGeomin(L, 0.01)
-		VgQt = map[string]any{
-			"Gq": Gq2,
-			"f":  f2,
-		}
-	case "bentlerT":
-		Gq2, f2, _ := vgQBentler(L)
-		VgQt = map[string]any{
-			"Gq": Gq2,
-			"f":  f2,
-		}
-	case "targetT":
-		panic("targetT requires Target matrix parameter")
-	default:
-		Gq2, f2, _ := vgQVarimax(L)
-		VgQt = map[string]any{
-			"Gq": Gq2,
-			"f":  f2,
-		}
-	}
-
 	var convergence bool
 	var s float64
 	var iter int
+	var VgQt map[string]any
 
 	for iter = 0; iter <= maxit; iter++ {
 		// M <- crossprod(Tmat, G)
@@ -134,10 +101,8 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 
 		// S <- (M + t(M))/2
 		S := mat.NewDense(M.RawMatrix().Rows, M.RawMatrix().Cols, nil)
-		var Mt mat.Dense
-		Mt.CloneFrom(M)
-		Mt.T()
-		S.Add(M, &Mt)
+		Mt := M.T() // Get transpose view
+		S.Add(M, Mt)
 		S.Scale(0.5, S)
 
 		// Gp <- G - Tmat %*% S
@@ -149,15 +114,16 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 		// s <- sqrt(sum(diag(crossprod(Gp))))
 		var GpTGp mat.Dense
 		GpTGp.Mul(Gp.T(), Gp)
-		s := 0.0
+		sLocal := 0.0
 		for i := 0; i < GpTGp.RawMatrix().Rows; i++ {
-			s += GpTGp.At(i, i)
+			sLocal += GpTGp.At(i, i)
 		}
-		s = math.Sqrt(s)
+		sLocal = math.Sqrt(sLocal)
+		s = sLocal // Update outer s
 
-		Table = append(Table, []float64{float64(iter), f, math.Log10(s), al})
+		Table = append(Table, []float64{float64(iter), f, math.Log10(sLocal), al})
 
-		if s < eps {
+		if sLocal < eps {
 			break
 		}
 
@@ -175,7 +141,7 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			var svd mat.SVD
 			ok := svd.Factorize(X, mat.SVDThin)
 			if !ok {
-				panic("SVD failed")
+				return nil, fmt.Errorf("SVD failed during rotation")
 			}
 			var U mat.Dense
 			var V mat.Dense
@@ -249,5 +215,6 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 		"convergence": convergence,
 		"Gq":          VgQt["Gq"],
 		"f":           f,
-	}
+		"iterations":  iter,
+	}, nil
 }

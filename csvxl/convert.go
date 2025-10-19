@@ -234,10 +234,17 @@ func saveSheetAsCsv(f *excelize.File, sheet string, outputCsv string) error {
 		return fmt.Errorf("failed to read rows from sheet %s: %v", sheet, err)
 	}
 
-	for _, row := range rows {
-		err := writer.Write(row)
+	for rowIdx, row := range rows {
+		// Check if the row is visible (not filtered out)
+		visible, err := f.GetRowVisible(sheet, rowIdx+1) // rowIdx is 0-based, GetRowVisible is 1-based
 		if err != nil {
-			return fmt.Errorf("failed to write row to CSV file %s: %v", outputCsv, err)
+			return fmt.Errorf("failed to check visibility of row %d in sheet %s: %v", rowIdx+1, sheet, err)
+		}
+		if visible {
+			err := writer.Write(row)
+			if err != nil {
+				return fmt.Errorf("failed to write row to CSV file %s: %v", outputCsv, err)
+			}
 		}
 	}
 

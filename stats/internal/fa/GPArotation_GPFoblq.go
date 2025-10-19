@@ -16,7 +16,7 @@ func NormalizingWeight(A *mat.Dense, normalize bool) *mat.VecDense {
 	W := mat.NewVecDense(p, nil)
 
 	if normalize {
-		for i := 0; i < p; i++ {
+		for i := range p {
 			sum := 0.0
 			for j := 0; j < q; j++ {
 				val := A.At(i, j)
@@ -35,13 +35,10 @@ func NormalizingWeight(A *mat.Dense, normalize bool) *mat.VecDense {
 
 // GPFoblq performs oblique GPA rotation.
 // Transliteration of GPArotation::GPFoblq from R.
-// debugGPFoblq controls verbose outputs for this algorithm; set to true during development.
-var debugGPFoblq = false
-
-func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit int, method string, gamma float64) map[string]any {
+func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit int, method string, gamma float64) (map[string]any, error) {
 	rows, cols := A.Dims()
 	if cols <= 1 {
-		panic("rotation does not make sense for single factor models")
+		return nil, fmt.Errorf("rotation does not make sense for single factor models")
 	}
 
 	// Work on a copy so the original loadings stay untouched.
@@ -60,7 +57,7 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 		}
 	}
 
-	alpha := 1.0
+	alpha := 1.0 // Start with larger alpha for better initial progress
 	T := mat.DenseCopyOf(Tmat)
 
 	computeL := func(Tcur *mat.Dense) *mat.Dense {
@@ -75,7 +72,10 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 	}
 
 	L := computeL(T)
-	Gq, f, methodName := obliqueCriterion(method, L, gamma)
+	Gq, f, methodName, err := obliqueCriterion(method, L, gamma)
+	if err != nil {
+		return nil, err
+	}
 	G := computeGMatrix(L, Gq, T)
 
 	table := make([][]float64, 0, max(1, maxit+1))
@@ -83,6 +83,11 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 
 	iter := 0
 	for iter <= maxit {
+		// Add M matrix calculation to match R's implementation, for closer comparison.
+		// M <- t(Tmat) %*% Tmat
+		var M mat.Dense
+		M.Mul(T.T(), T)
+
 		Gp := computeGp(G, T)
 		s := frobNorm(Gp)
 		logTerm := math.Inf(-1)
@@ -90,17 +95,17 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			logTerm = math.Log10(s)
 		}
 		table = append(table, []float64{float64(iter), f, logTerm, alpha})
-		if debugGPFoblq && (iter%500 == 0 || iter == maxit) {
-			fmt.Printf("GPFoblq debug iter=%d f=%.6f s=%.6e alpha=%.6e\n", iter, f, s, alpha)
-		}
 
 		if s < eps {
 			convergence = true
 			break
 		}
+		// Match R's strategy: double alpha at start of each iteration
+		// R code: al <- 2 * al
+		alpha *= 2
 
-		// Step size selection - match R's logic
-		alpha *= 2 // Double alpha each iteration like R's al <- 2 * al
+		// Step size selection with backtracking
+		stepAccepted := false
 		for i := 0; i <= 10; i++ {
 			X := mat.DenseCopyOf(T)
 			var scaledGp mat.Dense
@@ -127,13 +132,16 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			Tnew.Mul(X, diagScale)
 
 			Lnew := computeL(Tnew)
-			GqNew, fNew, _ := obliqueCriterion(method, Lnew, gamma)
+			GqNew, fNew, _, err := obliqueCriterion(method, Lnew, gamma)
+			if err != nil {
+				// Skip this step if criterion fails
+				continue
+			}
 
 			improvement := f - fNew
+			// Match R's threshold: 0.5 * s^2 * al
+			// R code: if (improvement > 0.5 * s^2 * al) break
 			threshold := 0.5 * s * s * alpha
-			if debugGPFoblq && iter <= 1 && i <= 5 {
-				fmt.Printf("GPFoblq inner=%d alpha=%.6e improve=%.6e threshold=%.6e f=%.9f fCand=%.9f\n", i, alpha, improvement, threshold, f, fNew)
-			}
 
 			if improvement > threshold {
 				// Accept the step
@@ -142,19 +150,23 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 				Gq = GqNew
 				f = fNew
 				G = computeGMatrix(L, Gq, T)
+				// Match R: double alpha after successful step
+				// R code: al <- 2 * al (at the start of iteration)
+				// We apply it here after accepting the step
+				stepAccepted = true
 				break
 			} else {
 				alpha /= 2
+				// If alpha becomes too small, break inner loop and proceed to next main iteration
 				if alpha < 1e-10 {
-					// No improvement found, use the last attempt anyway
-					T = Tnew
-					L = Lnew
-					Gq = GqNew
-					f = fNew
-					G = computeGMatrix(L, Gq, T)
 					break
 				}
 			}
+		}
+
+		// If no step was accepted and alpha became too small, reset alpha to a larger value
+		if !stepAccepted && alpha < 1e-10 {
+			alpha = 1.0 // Reset to initial value for fresh start
 		}
 
 		iter++
@@ -174,16 +186,6 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 
 	var Phi mat.Dense
 	Phi.Mul(T.T(), T)
-	if debugGPFoblq {
-		fmt.Printf("GPFoblq final Phi:\n")
-		for i := 0; i < Phi.RawMatrix().Rows; i++ {
-			for j := 0; j < Phi.RawMatrix().Cols; j++ {
-				fmt.Printf(" % .6f", Phi.At(i, j))
-			}
-			fmt.Printf("\n")
-		}
-		fmt.Printf("GPFoblq final grad=%.6e, iterations=%d\n", frobNorm(computeGp(G, T)), len(table)-1)
-	}
 
 	return map[string]any{
 		"loadings":    L,
@@ -195,75 +197,119 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 		"convergence": convergence,
 		"Gq":          Gq,
 		"f":           f,
-	}
+		"iterations":  iter,
+		"penalty":     f,
+	}, nil
 }
 
 func computeGMatrix(L *mat.Dense, Gq *mat.Dense, T *mat.Dense) *mat.Dense {
 	// G <- - solve(T) %*% (t(L) %*% Gq) - match R's GPArotation::GPFoblq
-	var tL mat.Dense
-	tL.CloneFrom(L.T()) // t(L) is q x p
-	var tLGq mat.Dense
-	tLGq.Mul(&tL, Gq) // t(L) %*% Gq is q x p * p x q = q x q
+	// Compute transpose of L: t(L) is q x p
+	var Lt mat.Dense
+	Lt.CloneFrom(L.T())
+
+	// Compute t(L) %*% Gq: q x p * p x q = q x q
+	var LtGq mat.Dense
+	LtGq.Mul(&Lt, Gq)
+
+	// Compute inverse of T or identity if singular
 	invT := inverseOrIdentity(T, T.RawMatrix().Rows)
+
+	// Compute solve(T) %*% (t(L) %*% Gq): q x q
 	var G mat.Dense
-	G.Mul(invT, &tLGq) // solve(T) %*% (t(L) %*% Gq) is q x q
-	G.Scale(-1, &G)    // Negative sign
+	G.Mul(invT, &LtGq)
+
+	// Apply negative sign: G <- -G
+	G.Scale(-1, &G)
+
 	return &G
 }
 
-func computeGp(G *mat.Dense, T *mat.Dense) *mat.Dense {
-	rows, cols := G.Dims()
-	// Compute rowSums(T * G) element-wise - match R's c(rep(1, nrow(G)) %*% (Tmat * G))
-	rowSums := make([]float64, rows)
-	for i := 0; i < rows; i++ {
-		sum := 0.0
-		for j := 0; j < cols; j++ {
-			sum += T.At(i, j) * G.At(i, j)
-		}
-		rowSums[i] = sum
+// computeGp computes the projected gradient Gp.
+// For oblique rotation, project G onto the tangent space of the manifold
+// Gp <- G - T %*% diag(diag(t(T) %*% G))
+func computeGp(G, T *mat.Dense) *mat.Dense {
+	// R's GPFoblq uses: Gp <- G - T %*% diag(diag(t(T) %*% G))
+	// This projects G onto the tangent space at T
+
+	// Compute t(T) %*% G
+	var TtG mat.Dense
+	TtG.Mul(T.T(), G)
+
+	// Extract diagonal elements: diag(t(T) %*% G)
+	rows, cols := TtG.Dims()
+	minDim := rows
+	if cols < minDim {
+		minDim = cols
+	}
+	diagVals := make([]float64, minDim)
+	for i := 0; i < minDim; i++ {
+		diagVals[i] = TtG.At(i, i)
 	}
 
-	// Create diag(rowSums)
-	diagMat := mat.NewDiagDense(rows, rowSums)
+	// Create diagonal matrix
+	diagMat := mat.NewDiagDense(minDim, diagVals)
 
-	// Compute T %*% diag(rowSums)
-	var Tdiag mat.Dense
-	Tdiag.Mul(T, diagMat)
+	// Compute T %*% diag(diag(t(T) %*% G))
+	var TDiag mat.Dense
+	TDiag.Mul(T, diagMat)
 
-	// Compute G - Tdiag
-	Gp := mat.NewDense(rows, cols, nil)
-	Gp.Sub(G, &Tdiag)
+	// Gp = G - T %*% diag(diag(t(T) %*% G))
+	Gp := mat.DenseCopyOf(G)
+	Gp.Sub(Gp, &TDiag)
+
 	return Gp
 }
 
 func frobNorm(M *mat.Dense) float64 {
-	sum := 0.0
-	for i := 0; i < M.RawMatrix().Rows; i++ {
-		for j := 0; j < M.RawMatrix().Cols; j++ {
+	// Compute Frobenius norm: sqrt(sum of squares of all elements)
+	sumSq := 0.0
+	rows, cols := M.Dims()
+	for i := 0; i < rows; i++ {
+		for j := 0; j < cols; j++ {
 			val := M.At(i, j)
-			sum += val * val
+			sumSq += val * val
 		}
 	}
-	return math.Sqrt(sum)
+	return math.Sqrt(sumSq)
 }
 
-func obliqueCriterion(method string, L *mat.Dense, gamma float64) (*mat.Dense, float64, string) {
+func obliqueCriterion(method string, L *mat.Dense, gamma float64) (*mat.Dense, float64, string, error) {
+	// Select appropriate criterion function based on method
 	switch strings.ToLower(method) {
 	case "quartimin":
-		return vgQQuartimin(L)
+		Gq, f, _ := vgQQuartimin(L)
+		return Gq, f, "vgQ.quartimin", nil
+
 	case "oblimin":
 		Gq, f, err := vgQOblimin(L, gamma)
 		if err != nil {
-			panic(fmt.Sprintf("vgQOblimin failed: %v", err))
+			return nil, 0, "", fmt.Errorf("vgQOblimin failed: %v", err)
 		}
-		return Gq, f, "vgQ.oblimin"
+		return Gq, f, "vgQ.oblimin", nil
+
 	case "simplimax":
-		return vgQSimplimax(L, L.RawMatrix().Rows)
+		// Use number of rows as k parameter for simplimax
+		k := L.RawMatrix().Rows
+		Gq, f, _ := vgQSimplimax(L, k)
+		return Gq, f, "vgQ.simplimax", nil
+
 	case "geominq":
-		return vgQGeomin(L, 0.01)
+		// Use default epsilon = 0.01 for geomin
+		epsilon := 0.01
+		Gq, f, _ := vgQGeomin(L, epsilon)
+		return Gq, f, "vgQ.geomin", nil
+
 	case "bentlerq":
-		return vgQBentler(L)
+		Gq, f, _, err := vgQBentler(L)
+		if err != nil {
+			return nil, 0, "", fmt.Errorf("vgQBentler failed: %v", err)
+		}
+		return Gq, f, "vgQ.bentler", nil
+
 	default:
-		return vgQQuartimin(L)
+		// Default to quartimin if method not recognized
+		Gq, f, _ := vgQQuartimin(L)
+		return Gq, f, "vgQ.quartimin", nil
 	}
 }

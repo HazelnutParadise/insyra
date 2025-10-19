@@ -2,6 +2,7 @@
 package fa
 
 import (
+	"fmt"
 	"math"
 
 	"gonum.org/v1/gonum/mat"
@@ -9,14 +10,14 @@ import (
 
 // Pinv computes the Moore-Penrose pseudo-inverse of a matrix.
 // Mirrors psych::Pinv exactly
-func Pinv(X *mat.Dense) *mat.Dense {
+func Pinv(X *mat.Dense, tol float64) (*mat.Dense, error) {
 	m, n := X.Dims()
 
 	// svdX <- svd(X)
 	var svd mat.SVD
 	ok := svd.Factorize(X, mat.SVDThin)
 	if !ok {
-		return nil
+		return nil, fmt.Errorf("SVD factorization failed")
 	}
 
 	var U mat.Dense
@@ -25,8 +26,10 @@ func Pinv(X *mat.Dense) *mat.Dense {
 	svd.VTo(&V)
 	values := svd.Values(nil)
 
-	// tol = sqrt(.Machine$double.eps)
-	tol := math.Sqrt(2.220446e-16) // .Machine$double.eps in R
+	// If tol is not provided or negative, use default
+	if tol <= 0 {
+		tol = math.Sqrt(2.220446e-16) // .Machine$double.eps in R
+	}
 
 	// p <- svdX$d > max(tol * svdX$d[1], 0)
 	maxTol := tol * values[0]
@@ -43,11 +46,15 @@ func Pinv(X *mat.Dense) *mat.Dense {
 		}
 	}
 
+	if pCount == 0 {
+		return nil, fmt.Errorf("matrix is too singular, no singular values above tolerance")
+	}
+
 	if pCount == len(values) {
 		// Pinv <- svdX$v %*% (1/svdX$d * t(svdX$u))
 		// Create diagonal matrix with 1/values
 		D := mat.NewDense(len(values), len(values), nil)
-		for i := 0; i < len(values); i++ {
+		for i := range values {
 			D.Set(i, i, 1.0/values[i])
 		}
 
@@ -60,7 +67,7 @@ func Pinv(X *mat.Dense) *mat.Dense {
 
 		var Pinv mat.Dense
 		Pinv.Mul(&V, &temp)
-		return &Pinv
+		return &Pinv, nil
 	} else {
 		// Pinv <- svdX$v[, p, drop = FALSE] %*% (1/svdX$d[p] * t(svdX$u[, p, drop = FALSE]))
 		// Extract columns where p is true
@@ -71,10 +78,10 @@ func Pinv(X *mat.Dense) *mat.Dense {
 		colIdx := 0
 		for i, isP := range p {
 			if isP {
-				for row := 0; row < n; row++ {
+				for row := range n {
 					Vp.Set(row, colIdx, V.At(row, i))
 				}
-				for row := 0; row < m; row++ {
+				for row := range m {
 					Up.Set(row, colIdx, U.At(row, i))
 				}
 				valuesP[colIdx] = values[i]
@@ -97,6 +104,6 @@ func Pinv(X *mat.Dense) *mat.Dense {
 
 		var Pinv mat.Dense
 		Pinv.Mul(Vp, &temp)
-		return &Pinv
+		return &Pinv, nil
 	}
 }

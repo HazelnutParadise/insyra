@@ -44,6 +44,7 @@ func (dl *DataList) Data() []any {
 }
 
 // flattenWithNilSupport flattens a slice of any values, properly handling nil values
+// Only flattens slices, not arrays
 func flattenWithNilSupport(values []any) []any {
 	var result []any
 
@@ -53,9 +54,9 @@ func flattenWithNilSupport(values []any) []any {
 			continue
 		}
 
-		// Use reflection to check if the value is a slice
+		// Use reflection to check if the value is a slice (but not array)
 		rv := reflect.ValueOf(value)
-		if rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array {
+		if rv.Kind() == reflect.Slice {
 			// Recursively flatten slice elements
 			sliceLen := rv.Len()
 			subSlice := make([]any, sliceLen)

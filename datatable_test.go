@@ -339,3 +339,102 @@ func TestDataTable_Clone(t *testing.T) {
 		t.Errorf("Clone() did not copy rowNames correctly")
 	}
 }
+
+func TestDataTable_DropRowsContain(t *testing.T) {
+	dt := NewDataTable()
+	dl1 := NewDataList(1, 2, 3, 4)
+	dl2 := NewDataList("a", "b", "c", "d")
+	dl3 := NewDataList(1.1, 2.2, 3.3, 4.4)
+	dt.AppendCols(dl1, dl2, dl3)
+
+	// Original size should be 4 rows
+	numRows, _ := dt.Size()
+	if numRows != 4 {
+		t.Errorf("Expected 4 rows, got %d", numRows)
+	}
+
+	// Drop rows containing 2
+	dt.DropRowsContain(2)
+
+	// After dropping, should have 3 rows
+	numRows, _ = dt.Size()
+	if numRows != 3 {
+		t.Errorf("Expected 3 rows after dropping rows containing 2, got %d", numRows)
+	}
+
+	// Check that the row with 2 is gone
+	found := false
+	for i := 0; i < numRows; i++ {
+		if dt.GetElement(i, "A") == 2 {
+			found = true
+			break
+		}
+	}
+	if found {
+		t.Errorf("Row containing 2 was not dropped")
+	}
+
+	// Test dropping multiple values
+	dt2 := NewDataTable()
+	dl1_2 := NewDataList(1, 2, 3, 4, 5)
+	dl2_2 := NewDataList("x", "y", "z", "w", "v")
+	dt2.AppendCols(dl1_2, dl2_2)
+
+	dt2.DropRowsContain(1, 5)
+
+	numRows2, _ := dt2.Size()
+	if numRows2 != 3 {
+		t.Errorf("Expected 3 rows after dropping rows containing 1 or 5, got %d", numRows2)
+	}
+}
+
+func TestDataTable_DropColsContain(t *testing.T) {
+	dt := NewDataTable()
+	dl1 := NewDataList(1, 2, 3)
+	dl2 := NewDataList("a", "b", "c")
+	dl3 := NewDataList(1.1, 2.2, 3.3)
+	dt.AppendCols(dl1, dl2, dl3)
+
+	// Original size should be 3 columns
+	_, numCols := dt.Size()
+	if numCols != 3 {
+		t.Errorf("Expected 3 columns, got %d", numCols)
+	}
+
+	// Drop columns containing "a"
+	dt.DropColsContain("a")
+
+	// After dropping, should have 2 columns
+	_, numCols = dt.Size()
+	if numCols != 2 {
+		t.Errorf("Expected 2 columns after dropping columns containing 'a', got %d", numCols)
+	}
+
+	// Check that the column with "a" is gone
+	colNames := dt.ColNames()
+	found := false
+	for _, name := range colNames {
+		if name == "B" { // Assuming columns are A, B, C and B contained "a"
+			found = true
+			break
+		}
+	}
+	if found {
+		t.Errorf("Column containing 'a' was not dropped")
+	}
+
+	// Test dropping multiple values
+	dt2 := NewDataTable()
+	dl1_2 := NewDataList(1, 2, 3)
+	dl2_2 := NewDataList("x", "y", "z")
+	dl3_2 := NewDataList(1.1, 2.2, 3.3)
+	dl4_2 := NewDataList(10, 20, 30)
+	dt2.AppendCols(dl1_2, dl2_2, dl3_2, dl4_2)
+
+	dt2.DropColsContain(1, 10)
+
+	_, numCols2 := dt2.Size()
+	if numCols2 != 2 {
+		t.Errorf("Expected 2 columns after dropping columns containing 1 or 10, got %d", numCols2)
+	}
+}

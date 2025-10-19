@@ -1352,6 +1352,48 @@ func (dt *DataTable) DropColsContainNil() *DataTable
 dt.DropColsContainNil()
 ```
 
+### DropColsContain
+
+Drops columns that contain the specified value(s).
+
+```go
+func (dt *DataTable) DropColsContain(value ...any) *DataTable
+```
+
+**Parameters:**
+
+- `value`: The value(s) to check for in columns. Columns containing any of these values will be dropped.
+
+**Returns:**
+
+- `*DataTable`: The modified DataTable
+
+**Example:**
+
+```go
+// Drop columns containing 0 or "N/A"
+dt.DropColsContain(0, "N/A")
+```
+
+### DropColsContainExcelNA
+
+Drops columns that contain Excel NA values ("#N/A").
+
+```go
+func (dt *DataTable) DropColsContainExcelNA() *DataTable
+```
+
+**Returns:**
+
+- `*DataTable`: The modified DataTable
+
+**Example:**
+
+```go
+// Drop columns containing Excel NA values
+dt.DropColsContainExcelNA()
+```
+
 ### DropRowsContainStringElements
 
 Drops rows that contain string elements.
@@ -1404,6 +1446,48 @@ func (dt *DataTable) DropRowsContainNil() *DataTable
 
 ```go
 dt.DropRowsContainNil()
+```
+
+### DropRowsContain
+
+Drops rows that contain the specified value(s).
+
+```go
+func (dt *DataTable) DropRowsContain(value ...any) *DataTable
+```
+
+**Parameters:**
+
+- `value`: The value(s) to check for in rows. Rows containing any of these values will be dropped.
+
+**Returns:**
+
+- `*DataTable`: The modified DataTable
+
+**Example:**
+
+```go
+// Drop rows containing 0 or "N/A"
+dt.DropRowsContain(0, "N/A")
+```
+
+### DropRowsContainExcelNA
+
+Drops rows that contain Excel NA values ("#N/A").
+
+```go
+func (dt *DataTable) DropRowsContainExcelNA() *DataTable
+```
+
+**Returns:**
+
+- `*DataTable`: The modified DataTable
+
+**Example:**
+
+```go
+// Drop rows containing Excel NA values
+dt.DropRowsContainExcelNA()
 ```
 
 ### SwapColsByName

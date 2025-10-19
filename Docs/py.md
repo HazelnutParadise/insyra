@@ -1,19 +1,8 @@
 # [ py ] Package
 
-> [!NOTE]
->
-> - **Windows**: This package only works on Windows 10 and above. Needs Visual Studio C++ Build Tools installed.
-> - **MacOS**: Needs Xcode installed.
-> - **Linux**: Needs following dependencies installed:
->
->  ```sh
->  sudo apt-get update
->  sudo apt-get install build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev libffi-dev liblzma-dev wget tar
->  ```
-
 The `py` package allows Golang programs to execute Python code seamlessly and interactively. It provides functionality to pass Go variables into Python scripts, and execute the Python code. Results from the Python script can be sent back to the Go program automatically.
 
-`py` package automatically installs common Python libraries, you can use them directly in your Python code. Installing your own dependencies is also supported.
+The `py` package automatically installs common Python libraries, allowing you to use them directly in your Python code. You can also install additional dependencies as needed.
 
 ## Functions
 
@@ -31,7 +20,7 @@ This function is used to execute arbitrary Python code. It appends default Pytho
 
 #### Returns
 
-- `map[string]any`: A map representing the result received from the Python server. This map will contain the data returned from Python through the `insyra_return` function.
+- `map[string]any`: A map representing the result received from the Python server. This map will contain the data returned from Python through the `insyra_return` function. Returns `nil` if Python code doesn't call `insyra_return`.
 
 #### Example
 
@@ -51,18 +40,18 @@ fmt.Println(result)
 func RunCodef(codeTemplate string, args ...any) map[string]any
 ```
 
-This function is used to execute Python code with variables passed from Go. The function automatically serializes the Go variables into JSON and makes them available in the Python code through the `vars` dictionary.
+This function is used to execute Python code with variables passed from Go using `$v1`, `$v2`, etc. placeholders. The function replaces these placeholders with the provided arguments.
 
-In the Python code template, use `$v1`, `$v2`, `$v3`, etc., as placeholders for the Go variables. These placeholders are replaced by corresponding variables from Go before execution.
+In the Python code template, use `$v1`, `$v2`, `$v3`, etc. as placeholders for the arguments passed to the function.
 
 #### Parameters
 
-- `codeTemplate` (string): The Python code template where Go variables are passed.
-- `args` (`...any`): A variable-length argument list of Go variables to be passed to Python.
+- `codeTemplate` (string): The Python code template with `$v1`, `$v2`, etc. placeholders.
+- `args` (`...any`): A variable-length argument list of Go variables to be substituted into the template.
 
 #### Returns
 
-- `map[string]any`: A map representing the result received from the Python server. This map will contain the data returned from Python through the `insyra_return` function.
+- `map[string]any`: A map representing the result received from the Python server. This map will contain the data returned from Python through the `insyra_return` function. Returns `nil` if Python code doesn't call `insyra_return`.
 
 #### Example
 
@@ -81,19 +70,19 @@ func main() {
 
  // Submit Code to Python
  py.RunCodef(`
-x = np.array($v1)
-y = np.array($v2)
+x = $v1
+y = $v2
 
 sns.set(style="whitegrid")
 
 sns.scatterplot(x=x, y=y)
 
-plt.title("Scatter Plot from Go DataList")
-plt.xlabel("X Values")
-plt.ylabel("Y Values")
+plt.title($v3)
+plt.xlabel($v4)
+plt.ylabel($v5)
 
 plt.show()
-`, xData.Data(), yData.Data())
+`, xData.Data(), yData.Data(), "Scatter Plot from Go DataList", "X Values", "Y Values")
 }
 
 ```
@@ -108,20 +97,20 @@ Run Python code from a file.
 
 #### Returns
 
-- `map[string]any`: A map representing the result received from the Python server. This map will contain the data returned from Python through the `insyra_return` function.
+- `map[string]any`: A map representing the result received from the Python server. This map will contain the data returned from Python through the `insyra_return` function. Returns `nil` if Python code doesn't call `insyra_return`.
 
 ### `RunFilef`
 
-Run Python code from a file with variables passed from Go.
+Run Python code from a file with variables passed from Go using `$v1`, `$v2`, etc. placeholders.
 
 #### Parameters
 
 - `filepath` (string): The Python file to be executed.
-- `args` (`...any`): A variable-length argument list of Go variables to be passed to Python.
+- `args` (`...any`): A variable-length argument list of Go variables to be substituted into the template.
 
 #### Returns
 
-- `map[string]any`: A map representing the result received from the Python server. This map will contain the data returned from Python through the `insyra_return` function.
+- `map[string]any`: A map representing the result received from the Python server. This map will contain the data returned from Python through the `insyra_return` function. Returns `nil` if Python code doesn't call `insyra_return`.
 
 ### `PipInstall`
 
@@ -129,7 +118,7 @@ Run Python code from a file with variables passed from Go.
 func PipInstall(dep string)
 ```
 
-This function is used to install Python dependencies using pip.
+This function is used to install Python dependencies using uv pip.
 
 #### Parameters
 
@@ -141,11 +130,27 @@ This function is used to install Python dependencies using pip.
 func PipUninstall(dep string)
 ```
 
-This function is used to uninstall Python dependencies using pip.
+This function is used to uninstall Python dependencies using uv pip.
 
 #### Parameters
 
 - `dep` (string): The name of the dependency to be uninstalled.
+
+### `ReinstallPyEnv`
+
+```go
+func ReinstallPyEnv() error
+```
+
+This function reinstalls the Python environment. Useful when you want to reset the Python environment or update dependencies.
+
+#### Returns
+
+- `error`: Returns an error if the reinstallation fails, nil otherwise.
+
+## Concurrency Support
+
+The `py` package now supports concurrent execution of Python code. Multiple goroutines can call `RunCode`, `RunCodef`, `RunFile`, and `RunFilef` simultaneously without interference.
 
 ## Functions for Python Code
 
@@ -175,7 +180,7 @@ insyra_return({
 
 ## Pre-installed Dependencies
 
-- **Python Environment**: Insyra automatically installs Python environment in the `.insyra_py_env` directory in your project root.
+- **Python Environment**: Insyra automatically installs Python environment using `uv` in the `.insyra_py_env` directory in your project root.
 - **Python Libraries**: Insyra automatically installs following Python libraries, you can use them directly in your Python code:
  ``` go
  pyDependencies   = map[string]string{

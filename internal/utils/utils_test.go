@@ -8,6 +8,44 @@ import (
 	"time"
 )
 
+func TestFormatValueArrays(t *testing.T) {
+	// 測試空陣列
+	if result := FormatValue([]int{}); result != "[]" {
+		t.Errorf("Expected [], got %s", result)
+	}
+
+	// 測試長度為1的陣列
+	if result := FormatValue([]int{1}); result != "[1]" {
+		t.Errorf("Expected [1], got %s", result)
+	}
+
+	// 測試長度為2的陣列
+	if result := FormatValue([]int{1, 2}); result != "[1, 2]" {
+		t.Errorf("Expected [1, 2], got %s", result)
+	}
+
+	// 測試長度為3的陣列
+	if result := FormatValue([]int{1, 2, 3}); result != "[1, 2, 3]" {
+		t.Errorf("Expected [1, 2, 3], got %s", result)
+	}
+
+	// 測試長度大於3的陣列
+	if result := FormatValue([]int{1, 2, 3, 4, 5}); result != "[1, 2, ... +3]" {
+		t.Errorf("Expected [1, 2, ... +3], got %s", result)
+	}
+
+	// 測試固定大小陣列
+	var arr [3]int = [3]int{1, 2, 3}
+	if result := FormatValue(arr); result != "[1, 2, 3]" {
+		t.Errorf("Expected [1, 2, 3], got %s", result)
+	}
+
+	// 測試字符串陣列
+	if result := FormatValue([]string{"a", "b"}); result != "[a, b]" {
+		t.Errorf("Expected [a, b], got %s", result)
+	}
+}
+
 func BenchmarkSortFunc(b *testing.B) {
 	sizes := []int{1000, 10000, 100000, 1000000}
 	for _, size := range sizes {

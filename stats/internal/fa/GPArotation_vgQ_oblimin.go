@@ -7,80 +7,76 @@ import (
 
 // vgQOblimin computes the Oblimin criterion for GPA rotation.
 // Mirrors GPArotation::vgQ.oblimin
-func vgQOblimin(L *mat.Dense, gam float64) (*mat.Dense, float64, error) {
-	p, q := L.Dims()
+//
+// Oblimin is a generalization of quartimin with parameter gamma:
+// - gamma = 0: quartimin
+// - gamma > 0: more oblique solutions
+// - gamma < 0: more orthogonal solutions
+func vgQOblimin(L *mat.Dense, gamma float64) (*mat.Dense, float64, error) {
+	rows, cols := L.Dims()
 
-	// X <- L^2 %*% (!diag(TRUE, ncol(L)))
-	// First compute L^2 (element-wise square)
-	L2 := mat.NewDense(p, q, nil)
-	for i := 0; i < p; i++ {
-		for j := 0; j < q; j++ {
-			L2.Set(i, j, L.At(i, j)*L.At(i, j))
+	// Compute L^2 element-wise
+	L2 := mat.NewDense(rows, cols, nil)
+	for i := 0; i < rows; i++ {
+		for j := 0; j < cols; j++ {
+			val := L.At(i, j)
+			L2.Set(i, j, val*val)
 		}
 	}
 
-	// Create !diag(TRUE, q) which is a matrix of TRUEs except diagonal is FALSE
-	notDiag := mat.NewDense(q, q, nil)
-	for i := 0; i < q; i++ {
-		for j := 0; j < q; j++ {
+	// Create off-diagonal matrix (ones except diagonal is zero)
+	offDiag := mat.NewDense(cols, cols, nil)
+	for i := 0; i < cols; i++ {
+		for j := 0; j < cols; j++ {
 			if i != j {
-				notDiag.Set(i, j, 1.0) // TRUE becomes 1.0
+				offDiag.Set(i, j, 1.0)
 			} else {
-				notDiag.Set(i, j, 0.0) // FALSE becomes 0.0
+				offDiag.Set(i, j, 0.0)
 			}
 		}
 	}
 
-	// X <- L^2 %*% (!diag(TRUE, ncol(L)))
-	X := mat.NewDense(p, q, nil)
-	X.Mul(L2, notDiag)
+	// Compute X = L^2 %*% offDiag
+	X := mat.NewDense(rows, cols, nil)
+	X.Mul(L2, offDiag)
 
-	// if (0 != gam) {
-	//     p <- nrow(L)
-	//     X <- (diag(1, p) - matrix(gam/p, p, p)) %*% X
-	// }
-	if gam != 0.0 {
-		// Create diag(1, p)
-		diag1 := mat.NewDense(p, p, nil)
-		for i := 0; i < p; i++ {
-			diag1.Set(i, i, 1.0)
-		}
-
-		// Create matrix(gam/p, p, p)
-		gamOverP := gam / float64(p)
-		gamMat := mat.NewDense(p, p, nil)
-		for i := 0; i < p; i++ {
-			for j := 0; j < p; j++ {
-				gamMat.Set(i, j, gamOverP)
+	// Apply gamma correction if gamma != 0
+	if gamma != 0.0 {
+		gammaOverRows := gamma / float64(rows)
+		for i := 0; i < rows; i++ {
+			// Compute row sum of L2
+			rowSum := 0.0
+			for j := 0; j < cols; j++ {
+				rowSum += L2.At(i, j)
+			}
+			// Apply correction: X = X - (gamma/rows) * (rowSum - L2_ij) for each j
+			for j := 0; j < cols; j++ {
+				correction := gammaOverRows * (rowSum - L2.At(i, j))
+				X.Set(i, j, X.At(i, j)-correction)
 			}
 		}
-
-		// diag(1, p) - matrix(gam/p, p, p)
-		temp := mat.NewDense(p, p, nil)
-		temp.Sub(diag1, gamMat)
-
-		// X <- temp %*% X
-		Xnew := mat.NewDense(p, q, nil)
-		Xnew.Mul(temp, X)
-		X = Xnew
 	}
 
-	// Gq = L * X (element-wise multiplication)
-	Gq := mat.NewDense(p, q, nil)
-	for i := 0; i < p; i++ {
-		for j := 0; j < q; j++ {
+	// Compute gradient: Gq = L * X (element-wise)
+	Gq := mat.NewDense(rows, cols, nil)
+	for i := 0; i < rows; i++ {
+		for j := 0; j < cols; j++ {
 			Gq.Set(i, j, L.At(i, j)*X.At(i, j))
 		}
 	}
 
-	// f = sum(L^2 * X)/4
+	// Compute objective: f = sum(L^2 * X)
 	f := 0.0
-	for i := 0; i < p; i++ {
-		for j := 0; j < q; j++ {
+	for i := 0; i < rows; i++ {
+		for j := 0; j < cols; j++ {
 			f += L2.At(i, j) * X.At(i, j)
 		}
 	}
-	f /= 4.0
 
 	return Gq, f, nil
+}
+
+// VgQOblimin is the exported version for testing
+func VgQOblimin(L *mat.Dense, gamma float64) (*mat.Dense, float64, error) {
+	return vgQOblimin(L, gamma)
 }

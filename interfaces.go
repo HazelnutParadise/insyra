@@ -107,7 +107,7 @@ type IDataTable interface {
 	GetColByNumber(index int) *DataList
 	GetColByName(name string) *DataList
 	GetRow(index int) *DataList
-	GetRowByName(name string) *DataList // Add this line
+	GetRowByName(name string) *DataList
 	UpdateElement(rowIndex int, columnIndex string, value any)
 	UpdateCol(index string, dl *DataList)
 	UpdateColByNumber(index int, dl *DataList)
@@ -141,11 +141,15 @@ type IDataTable interface {
 	DropColsContainStringElements()
 	DropColsContainNumbers()
 	DropColsContainNil()
+	DropColsContain(value ...any)
+	DropColsContainExcelNA()
 	DropRowsByIndex(rowIndices ...int)
 	DropRowsByName(rowNames ...string)
 	DropRowsContainStringElements()
 	DropRowsContainNumbers()
 	DropRowsContainNil()
+	DropRowsContain(value ...any)
+	DropRowsContainExcelNA()
 	Data(useNamesAsKeys ...bool) map[string][]any
 	Show()
 	ShowTypes()
