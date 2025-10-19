@@ -821,7 +821,23 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		result.Scores = matrixToDataTableWithNames(scores, tableNameFactorScores, factorColNames, rowNames)
 	}
 	if scoreWeights != nil {
-		scoreCoeffTable := matrixToDataTableWithNames(scoreWeights, tableNameFactorScoreCoefficients, factorColNames, colNames)
+		// Adjust score coefficients for raw data (not standardized data)
+		// scoreWeights are currently for standardized data: S_std = Z * W
+		// We want coefficients for raw data: S = (X - μ) / σ * W
+		// So: S = X * (W / σ^T) - μ/σ * W
+		// The coefficients are W / σ^T for each variable
+		p, _ := scoreWeights.Dims()
+		adjustedWeights := mat.NewDense(p, numFactors, nil)
+		for i := range p {
+			for j := range numFactors {
+				if i < len(sds) && sds[i] > 0 {
+					adjustedWeights.Set(i, j, scoreWeights.At(i, j)/sds[i])
+				} else {
+					adjustedWeights.Set(i, j, scoreWeights.At(i, j))
+				}
+			}
+		}
+		scoreCoeffTable := matrixToDataTableWithNames(adjustedWeights, tableNameFactorScoreCoefficients, factorColNames, colNames)
 		result.ScoreCoefficients = scoreCoeffTable
 	}
 	if scoreCovariance != nil {
@@ -840,9 +856,31 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	}
 }
 
-// -------------------------
-// Helper Functions
-// -------------------------
+// computeSigma computes the reproduced correlation matrix: Sigma = L * Phi * L^T + U
+func computeSigma(loadings *mat.Dense, phi *mat.Dense, uniquenesses []float64) *mat.Dense {
+	if loadings == nil {
+		return nil
+	}
+
+	// Create diagonal matrix of uniquenesses
+	U := mat.NewDiagDense(len(uniquenesses), uniquenesses)
+
+	// Compute L * Phi * L^T
+	var temp mat.Dense
+	if phi != nil {
+		temp.Mul(loadings, phi)
+	} else {
+		// Orthogonal case
+		temp.CloneFrom(loadings)
+	}
+	var sigma mat.Dense
+	sigma.Mul(&temp, loadings.T())
+
+	// Add uniquenesses: Sigma = L*Phi*L^T + U
+	sigma.Add(&sigma, U)
+
+	return &sigma
+}
 
 // decideNumFactors determines the number of factors to extract
 func decideNumFactors(eigenvalues []float64, spec FactorCountSpec, maxPossible int, sampleSize int) int {
@@ -1462,7 +1500,7 @@ func extractML_EM(corr *mat.Dense, numFactors int, maxIter int, tol float64, sam
 	}
 
 	// Debug: verify communalities
-	rows, cols := loadings.Dims()
+	_, cols := loadings.Dims()
 	comm0 := 0.0
 	for j := range cols {
 		comm0 += loadings.At(0, j) * loadings.At(0, j)
@@ -2780,7 +2818,7 @@ func computeFactorScores(data *mat.Dense, loadings *mat.Dense, phi *mat.Dense, u
 		return scores, nil, nil, nil
 
 	case FactorScoreRegression:
-		return computeRegressionScores(data, loadings, phi, uniquenesses)
+		return computeRegressionScores(data, loadings, phi, uniquenesses, sigmaForScores)
 
 	case FactorScoreBartlett:
 		return computeBartlettScores(data, loadings, phi, uniquenesses)
@@ -2790,36 +2828,42 @@ func computeFactorScores(data *mat.Dense, loadings *mat.Dense, phi *mat.Dense, u
 
 	default:
 		// Default to regression method
-		return computeRegressionScores(data, loadings, phi, uniquenesses)
+		return computeRegressionScores(data, loadings, phi, uniquenesses, sigmaForScores)
 	}
 }
 
 // computeRegressionScores computes factor scores using regression method
-func computeRegressionScores(data *mat.Dense, loadings *mat.Dense, phi *mat.Dense, uniquenesses []float64) (*mat.Dense, *mat.Dense, *mat.Dense, error) {
+func computeRegressionScores(data *mat.Dense, loadings *mat.Dense, phi *mat.Dense, uniquenesses []float64, sigma *mat.Dense) (*mat.Dense, *mat.Dense, *mat.Dense, error) {
 
-	// Create diagonal matrix of uniquenesses
-	U := mat.NewDiagDense(len(uniquenesses), uniquenesses)
-
-	// Compute R = L * Phi * L^T + U (reproduced correlation matrix)
-	var temp mat.Dense
-	if phi != nil {
-		temp.Mul(loadings, phi)
+	// Use provided sigma (reproduced correlation matrix) or compute it
+	var R *mat.Dense
+	if sigma != nil {
+		R = sigma
 	} else {
-		// If phi is nil (orthogonal rotation), use identity
-		_, m := loadings.Dims()
-		identity := mat.NewDense(m, m, nil)
-		for i := range m {
-			identity.Set(i, i, 1.0)
+		// Create diagonal matrix of uniquenesses
+		U := mat.NewDiagDense(len(uniquenesses), uniquenesses)
+
+		// Compute R = L * Phi * L^T + U (reproduced correlation matrix)
+		var temp mat.Dense
+		if phi != nil {
+			temp.Mul(loadings, phi)
+		} else {
+			// If phi is nil (orthogonal rotation), use identity
+			_, m := loadings.Dims()
+			identity := mat.NewDense(m, m, nil)
+			for i := range m {
+				identity.Set(i, i, 1.0)
+			}
+			temp.Mul(loadings, identity)
 		}
-		temp.Mul(loadings, identity)
+		R = &mat.Dense{}
+		R.Mul(&temp, loadings.T())
+		R.Add(R, U)
 	}
-	var R mat.Dense
-	R.Mul(&temp, loadings.T())
-	R.Add(&R, U)
 
 	// Compute inverse of R
 	var Rinv mat.Dense
-	err := Rinv.Inverse(&R)
+	err := Rinv.Inverse(R)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to invert correlation matrix: %v", err)
 	}
@@ -2947,7 +2991,7 @@ func computeAndersonRubinScores(data *mat.Dense, loadings *mat.Dense, phi *mat.D
 	}
 
 	// First compute regression scores
-	regScores, regCoeff, _, err := computeRegressionScores(data, loadings, phi, uniquenesses)
+	regScores, regCoeff, _, err := computeRegressionScores(data, loadings, phi, uniquenesses, nil)
 	if err != nil {
 		return nil, nil, nil, err
 	}
