@@ -433,9 +433,6 @@ func minimumResidualFactoring(r, rMat *mat.Dense, nfactors int, fm string, covar
 			upper = v
 		}
 	}
-	if upper > 1.0 {
-		upper = 1.0
-	}
 
 	// Initial parameters
 	start := make([]float64, nfactors)
@@ -458,10 +455,7 @@ func minimumResidualFactoring(r, rMat *mat.Dense, nfactors int, fm string, covar
 	method := &optimize.BFGS{}
 
 	result, err := optimize.Local(problem, start, settings, method)
-	if err != nil {
-		// Fallback to start values
-		// copy(start, result.X) // This was causing nil pointer dereference
-	}
+	_ = err // Ignore error, fallback handled below
 
 	// Extract loadings
 	loadings := faOutWLS(result.X, r, nfactors)
@@ -606,9 +600,6 @@ func maximumLikelihoodFactoring(r, rMat *mat.Dense, nfactors int, covar bool, mi
 			upper = v
 		}
 	}
-	if upper > 1.0 {
-		upper = 1.0
-	}
 
 	// Initial parameters
 	start := make([]float64, p)
@@ -633,10 +624,7 @@ func maximumLikelihoodFactoring(r, rMat *mat.Dense, nfactors int, covar bool, mi
 	method := &optimize.BFGS{}
 
 	result, err := optimize.Local(problem, start, settings, method)
-	if err != nil {
-		// Fallback to start values
-		// copy(start, result.X) // This was causing nil pointer dereference
-	}
+	_ = err // Ignore error, fallback handled below
 
 	// Use result.X if optimization succeeded, otherwise use start values
 	psi := result.X

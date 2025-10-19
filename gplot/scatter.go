@@ -133,8 +133,8 @@ func addScatterSeries(plt *plot.Plot, seriesName string, xyPairs [][]float64, in
 		draw.CrossGlyph{},
 	}
 
-	scatter.GlyphStyle.Shape = shapes[index%len(shapes)]
-	scatter.GlyphStyle.Radius = vg.Points(4)
+	scatter.Shape = shapes[index%len(shapes)]
+	scatter.Radius = vg.Points(4)
 
 	// Add the scatter plot to the chart
 	plt.Add(scatter)

@@ -1604,7 +1604,7 @@ func extractMINRES(corr *mat.Dense, numFactors int, maxIter int, tol float64) (*
 	}
 
 	converged := result.Status == optimize.Success || result.Status == optimize.FunctionConvergence
-	iterations := result.Stats.FuncEvaluations
+	iterations := result.FuncEvaluations
 
 	// Reshape optimized vector back to loadings matrix
 	optimizedLoadings := mat.NewDense(rows, numFactors, nil)
@@ -1767,7 +1767,7 @@ func extractML_EM(corr *mat.Dense, numFactors int, maxIter int, tol float64, sam
 		psi[i] = lower + (upper-lower)*sigmoid
 	}
 	converged := result.Status == optimize.Success || result.Status == optimize.FunctionConvergence
-	iterations := result.Stats.FuncEvaluations
+	iterations := result.FuncEvaluations
 	finalObj := result.F
 
 	insyra.LogInfo("stats", "FactorAnalysis", "ML: Optimization converged=%v, status=%v, iterations=%d, psi[0]=%.4f, finalObj=%.6f", converged, result.Status, iterations, psi[0], finalObj)
@@ -2167,7 +2167,7 @@ func extractML(corr *mat.Dense, numFactors int, maxIter int, tol float64, sample
 		psi[i] = 1.0 / (1.0 + math.Exp(-lp))
 	}
 	converged := result.Status == optimize.Success || result.Status == optimize.FunctionConvergence
-	iterations := result.Stats.FuncEvaluations
+	iterations := result.FuncEvaluations
 
 	insyra.LogInfo("stats", "FactorAnalysis", "ML: BFGS converged=%v, status=%v, iterations=%d, first psi=%.4f", converged, result.Status, iterations, psi[0])
 	finalObj := result.F

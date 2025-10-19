@@ -185,13 +185,13 @@ func TestExcelToCsvWithFilteredRows(t *testing.T) {
 	for rowIdx, row := range data {
 		for colIdx, cell := range row {
 			cellAddr, _ := excelize.CoordinatesToCellName(colIdx+1, rowIdx+1)
-			f.SetCellValue("Sheet1", cellAddr, cell)
+			_ = f.SetCellValue("Sheet1", cellAddr, cell)
 		}
 	}
 
 	// Hide rows 3 and 4 (Bob and Charlie) to simulate filtering
-	f.SetRowVisible("Sheet1", 3, false) // Row 3: Bob
-	f.SetRowVisible("Sheet1", 4, false) // Row 4: Charlie
+	_ = f.SetRowVisible("Sheet1", 3, false) // Row 3: Bob
+	_ = f.SetRowVisible("Sheet1", 4, false) // Row 4: Charlie
 
 	// Save the Excel file
 	err := f.SaveAs(excelFile)
@@ -209,7 +209,7 @@ func TestExcelToCsvWithFilteredRows(t *testing.T) {
 	// Read the CSV content
 	file, err := os.Open(csvFile)
 	require.NoError(t, err)
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	reader := csv.NewReader(file)
 	records, err := reader.ReadAll()
