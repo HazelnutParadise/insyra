@@ -101,7 +101,6 @@ func TestCompareAllMethods(t *testing.T) {
 		fmt.Println(strings.Repeat("-", 80))
 
 		result := stats.FactorAnalysis(dt, stats.FactorAnalysisOptions{
-			Preprocess: stats.FactorPreprocessOptions{Standardize: true},
 			Count:      stats.FactorCountSpec{Method: stats.FactorCountFixed, FixedK: 3},
 			Extraction: tc.extraction,
 			Rotation: stats.FactorRotationOptions{

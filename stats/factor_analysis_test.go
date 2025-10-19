@@ -430,7 +430,6 @@ func TestFactorAnalysis_SPSS_Complete(t *testing.T) {
 	dt := readFactorAnalysisSampleCSV(t)
 
 	result := stats.FactorAnalysis(dt, stats.FactorAnalysisOptions{
-		Preprocess: stats.FactorPreprocessOptions{Standardize: true},
 		Count:      stats.FactorCountSpec{Method: stats.FactorCountFixed, FixedK: 3},
 		Extraction: stats.FactorExtractionPAF,
 		Rotation: stats.FactorRotationOptions{

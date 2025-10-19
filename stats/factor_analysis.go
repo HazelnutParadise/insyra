@@ -94,14 +94,8 @@ type FactorRotationOptions struct {
 	VarimaxAlgorithm VarimaxAlgorithm // Optional: "gparotation" (default) or "kaiser" (SPSS-compatible)
 }
 
-// FactorPreprocessOptions specifies preprocessing parameters
-type FactorPreprocessOptions struct {
-	Standardize bool // Optional
-}
-
 // FactorAnalysisOptions contains all options for factor analysis
 type FactorAnalysisOptions struct {
-	Preprocess FactorPreprocessOptions
 	Count      FactorCountSpec
 	Extraction FactorExtractionMethod
 	Rotation   FactorRotationOptions
@@ -218,9 +212,6 @@ type FactorModel struct {
 // Defaults align with R's psych::fa function defaults.
 func DefaultFactorAnalysisOptions() FactorAnalysisOptions {
 	return FactorAnalysisOptions{
-		Preprocess: FactorPreprocessOptions{
-			Standardize: true,
-		},
 		Count: FactorCountSpec{
 			Method:         FactorCountKaiser,
 			EigenThreshold: 1.0,
@@ -358,30 +349,19 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		rowNames = newRowNames
 	}
 
-	// Step 2: Standardize if requested
+	// Step 2: Standardize data (always performed for factor analysis)
 	means = make([]float64, colNum)
 	sds = make([]float64, colNum)
-	if opt.Preprocess.Standardize {
-		for j := 0; j < colNum; j++ {
-			col := mat.Col(nil, j, data)
-			mean, std := stat.MeanStdDev(col, nil)
-			means[j] = mean
-			sds[j] = std
-			if std == 0 {
-				std = 1 // Avoid division by zero
-			}
-			for i := 0; i < rowNum; i++ {
-				data.Set(i, j, (data.At(i, j)-mean)/std)
-			}
+	for j := 0; j < colNum; j++ {
+		col := mat.Col(nil, j, data)
+		mean, std := stat.MeanStdDev(col, nil)
+		means[j] = mean
+		sds[j] = std
+		if std == 0 {
+			std = 1 // Avoid division by zero
 		}
-	} else {
-		for j := 0; j < colNum; j++ {
-			col := mat.Col(nil, j, data)
-			means[j] = stat.Mean(col, nil)
-			sds[j] = 1.0
-			for i := 0; i < rowNum; i++ {
-				data.Set(i, j, data.At(i, j)-means[j])
-			}
+		for i := 0; i < rowNum; i++ {
+			data.Set(i, j, (data.At(i, j)-mean)/std)
 		}
 	}
 
@@ -398,22 +378,20 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 
 	insyra.LogDebug("stats", "FactorAnalysis", "data matrix size: %dx%d, correlation matrix computed", rowNum, colNum)
 
-	// Sanity check: ensure diagonal elements of correlation matrix are 1 when standardized
-	if opt.Preprocess.Standardize {
-		maxDiagDeviation := 0.0
-		for i := 0; i < colNum; i++ {
-			diag := corrMatrix.At(i, i)
-			delta := math.Abs(diag - 1.0)
-			if delta > maxDiagDeviation {
-				maxDiagDeviation = delta
-			}
-			if delta > corrDiagTolerance {
-				corrMatrix.SetSym(i, i, 1.0)
-			}
+	// Sanity check: ensure diagonal elements of correlation matrix are 1 (data is standardized)
+	maxDiagDeviation := 0.0
+	for i := 0; i < colNum; i++ {
+		diag := corrMatrix.At(i, i)
+		delta := math.Abs(diag - 1.0)
+		if delta > maxDiagDeviation {
+			maxDiagDeviation = delta
 		}
-		if maxDiagDeviation > corrDiagLogThreshold {
-			insyra.LogDebug("stats", "FactorAnalysis", "correlation diag max deviation = %.6g", maxDiagDeviation)
+		if delta > corrDiagTolerance {
+			corrMatrix.SetSym(i, i, 1.0)
 		}
+	}
+	if maxDiagDeviation > corrDiagLogThreshold {
+		insyra.LogDebug("stats", "FactorAnalysis", "correlation diag max deviation = %.6g", maxDiagDeviation)
 	}
 	// Ensure the diagnostic correlation matrix has unit diagonal
 	if corrForAdequacy != nil {

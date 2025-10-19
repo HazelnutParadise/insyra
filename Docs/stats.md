@@ -1081,7 +1081,7 @@ Alternative weighting schemes (Bartlett, Anderson–Rubin, ten Berge) are access
 func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorModel
 ```
 
-**Purpose**: Perform factor analysis on a dataset to identify underlying latent factors.
+**Purpose**: Perform factor analysis on a dataset to identify underlying latent factors. The data is automatically standardized before analysis since factor analysis requires standardized variables for proper interpretation of factor loadings.
 
 **Parameters**:
 
@@ -1094,22 +1094,12 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 
 ```go
 type FactorAnalysisOptions struct {
-    Preprocess FactorPreprocessOptions
     Count      FactorCountSpec
     Extraction FactorExtractionMethod
     Rotation   FactorRotationOptions
     Scoring    FactorScoreMethod
     MaxIter    int     // Maximum iterations for iterative methods (default: 50)
     MinErr     float64 // Min error for convergence (default: 0.001)
-}
-```
-
-#### FactorPreprocessOptions
-
-```go
-type FactorPreprocessOptions struct {
-    Standardize bool    // Whether to standardize variables (default: true)
-    Missing     string  // Missing data handling: "listwise", "pairwise", "mean" (default: "listwise")
 }
 ```
 
@@ -1331,7 +1321,6 @@ func DefaultFactorAnalysisOptions() FactorAnalysisOptions
 - **Extraction**: `minres` (Minimum Residual)
 - **Rotation**: `oblimin` (Oblique rotation with delta=0)
 - **Scoring**: `regression` (Regression-based factor scores)
-- **Preprocessing**: Standardize=true, Missing="listwise"
 - **Factor Count**: Kaiser criterion (eigenvalues > 1.0)
 - **MaxIter**: 50
 - **MinErr**: 0.001
@@ -1441,7 +1430,7 @@ All error conditions are logged via `insyra.LogWarning()` for debugging purposes
 
 #### Data Preparation
 
-- **Standardization**: Standardize variables before factor analysis unless they are already on comparable scales
+- **Standardization**: Variables are automatically standardized during factor analysis for proper interpretation of factor loadings
 - **Missing Data**: Use "listwise" deletion for missing data unless the dataset is small
 - **Sample Size**: Aim for at least 5-10 observations per variable, preferably more
 - **Variable Selection**: Include only variables that are theoretically related to the construct
