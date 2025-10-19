@@ -624,8 +624,9 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	var phi *mat.Dense
 	var rotationConverged bool
 
-	if opt.Rotation.Method != FactorRotationNone {
-		// Apply rotation
+	if numFactors > 1 && opt.Rotation.Method != FactorRotationNone {
+		// Apply rotation only if more than one factor
+		// R: if (nfactors > 1) { ... rotation logic ... }
 		unrotatedLoadings = mat.DenseCopyOf(loadings)
 		rotatedLoadings, rotationMatrix, phi, rotationConverged, err = rotateFactors(loadings, opt.Rotation, opt.MinErr, opt.MaxIter)
 		if err != nil {
@@ -647,45 +648,65 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		rotationMatrix = nil
 		phi = nil
 		rotationConverged = true
-		// Apply sign standardization for unrotated factors (using R method)
-		rotatedLoadings = standardizeFactorSigns(rotatedLoadings)
+		// Sign standardization will be done later, after sorting (if applicable)
 	}
 
 	// Sort or align factor columns by explained variance
 	// R's psych::fa() sorts factors after rotation by explained variance
 	// This must be done AFTER rotation to match R's behavior
-	rotatedLoadings, rotationMatrix, phi = sortFactorsByExplainedVariance(rotatedLoadings, rotationMatrix, phi)
+	// R: if (nfactors > 1) { ... sorting logic ... }
+	if numFactors > 1 {
+		rotatedLoadings, rotationMatrix, phi = sortFactorsByExplainedVariance(rotatedLoadings, rotationMatrix, phi)
+	}
+
+	// Apply sign standardization AFTER sorting (but always, not just when nfactors > 1)
+	// R: signed <- sign(colSums(loadings)); loadings <- loadings %*% diag(signed)
+	// R code does this for ALL cases (sorted or not sorted)
+	rows, cols := rotatedLoadings.Dims()
+	signs := make([]float64, cols)
+	for j := range cols {
+		// Calculate sum of loadings for this factor (R method: colSums)
+		sum := 0.0
+		for i := range rows {
+			sum += rotatedLoadings.At(i, j)
+		}
+		// If sum is negative, mark this factor for sign flipping
+		// R: signed[signed == 0] <- 1  (default to positive)
+		if sum < 0 {
+			signs[j] = -1.0
+		} else {
+			signs[j] = 1.0
+		}
+	}
+
+	// Apply signs to loadings: loadings <- loadings %*% diag(signed)
+	for i := range rows {
+		for j := range cols {
+			rotatedLoadings.Set(i, j, rotatedLoadings.At(i, j)*signs[j])
+		}
+	}
+
+	// Also apply sign standardization to phi matrix if it exists
+	// R code: if (!is.null(Phi)) { Phi <- diag(signed) %*% Phi %*% diag(signed) }
+	if phi != nil {
+		for i := range cols {
+			for j := range cols {
+				phi.Set(i, j, signs[i]*phi.At(i, j)*signs[j])
+			}
+		}
+	}
 
 	// Step 8: Compute communalities and uniquenesses
 	extractionCommunalities := make([]float64, colNum)
 	uniquenesses := make([]float64, colNum)
-	var phiMat *mat.Dense
-	if phi != nil {
-		phiMat = phi
-	}
 	for i := 0; i < colNum; i++ {
 		var hi2 float64
-		// For PAF, communalities should be computed from unrotated loadings
-		if opt.Extraction == FactorExtractionPAF {
-			for j := 0; j < numFactors; j++ {
-				v := unrotatedLoadings.At(i, j)
-				hi2 += v * v
-			}
-		} else if phiMat == nil {
-			// Orthogonal rotation: sum of squared loadings
-			for j := 0; j < numFactors; j++ {
-				v := rotatedLoadings.At(i, j)
-				hi2 += v * v
-			}
-		} else {
-			// Oblique rotation: rowVec' * Phi * rowVec
-			rowVec := mat.NewVecDense(numFactors, nil)
-			for j := range numFactors {
-				rowVec.SetVec(j, rotatedLoadings.At(i, j))
-			}
-			var tmp mat.VecDense
-			tmp.MulVec(phiMat, rowVec)
-			hi2 = mat.Dot(rowVec, &tmp)
+		// Communalities should always be computed from unrotated loadings
+		// Rotation (whether orthogonal or oblique) does not change communalities
+		// R: model$communalities = rowSums(fit$loadings^2) where fit$loadings is unrotated
+		for j := 0; j < numFactors; j++ {
+			v := unrotatedLoadings.At(i, j)
+			hi2 += v * v
 		}
 		diag := corrMatrix.At(i, i)
 		if diag == 0 {
@@ -712,6 +733,46 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		commMatrix.Set(i, 1, extractionCommunalities[i])
 	}
 	communalitiesTable := matrixToDataTableWithNames(commMatrix, tableNameCommunalities, []string{"Initial", "Extraction"}, colNames)
+
+	// Compute eigenvalues for reporting (R style)
+	// R: S <- r; diag(S) <- diag(model); eigens <- eigen(S)$values
+	// This is the modified correlation matrix with final communalities as diagonal
+	reportedEigenvalues := sortedEigenvalues // Default: use original eigenvalues
+	if opt.Extraction != FactorExtractionPCA {
+		// For non-PCA methods, compute eigenvalues of correlation matrix with final communalities
+		modifiedCorr := mat.NewDense(colNum, colNum, nil)
+		modifiedCorr.CloneFrom(corrMatrix)
+		for i := range colNum {
+			modifiedCorr.Set(i, i, extractionCommunalities[i])
+		}
+
+		// Compute eigenvalues of modified correlation matrix
+		modifiedCorrSym := mat.NewSymDense(colNum, nil)
+		for i := range colNum {
+			for j := range colNum {
+				modifiedCorrSym.SetSym(i, j, modifiedCorr.At(i, j))
+			}
+		}
+		var eig mat.EigenSym
+		if eig.Factorize(modifiedCorrSym, true) {
+			eigenvals := eig.Values(nil)
+			reportedEigenvalues = make([]float64, len(eigenvals))
+			copy(reportedEigenvalues, eigenvals)
+			// Sort in descending order
+			for i := 0; i < len(reportedEigenvalues)-1; i++ {
+				for j := i + 1; j < len(reportedEigenvalues); j++ {
+					if reportedEigenvalues[i] < reportedEigenvalues[j] {
+						reportedEigenvalues[i], reportedEigenvalues[j] = reportedEigenvalues[j], reportedEigenvalues[i]
+					}
+				}
+			}
+		}
+	}
+
+	// Limit reportedEigenvalues to numFactors for output (R reports only numFactors eigenvalues)
+	if len(reportedEigenvalues) > numFactors {
+		reportedEigenvalues = reportedEigenvalues[:numFactors]
+	}
 
 	// Step 10: Compute factor scores if data is available
 	var scores *mat.Dense
@@ -838,7 +899,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		BartlettTest:         bartlettResult,
 		Phi:                  nil,
 		RotationMatrix:       nil,
-		Eigenvalues:          vectorToDataTableWithNames(sortedEigenvalues, tableNameEigenvalues, "Eigenvalue", factorColNames),
+		Eigenvalues:          vectorToDataTableWithNames(reportedEigenvalues, tableNameEigenvalues, "Eigenvalue", factorColNames),
 		ExplainedProportion:  vectorToDataTableWithNames(explainedProp, tableNameExplainedProportion, "Explained Proportion", factorColNames),
 		CumulativeProportion: vectorToDataTableWithNames(cumulativeProp, tableNameCumulativeProportion, "Cumulative Proportion", factorColNames),
 		Scores:               nil,
@@ -2722,9 +2783,8 @@ func rotateFactors(loadings *mat.Dense, rotationOpts FactorRotationOptions, minE
 		for i := range cols {
 			phi.Set(i, i, 1.0)
 		}
-		// Apply sign standardization to unrotated loadings
-		standardizedLoadings := standardizeFactorSigns(mat.DenseCopyOf(loadings))
-		return standardizedLoadings, identity, phi, true, nil
+		// Do NOT apply sign standardization here - it will be done later in main function after sorting
+		return loadings, identity, phi, true, nil
 
 	case FactorRotationVarimax:
 		// Check if user wants Kaiser Varimax (SPSS-compatible) or GPArotation (R-compatible)
@@ -2814,19 +2874,11 @@ func rotateFactors(loadings *mat.Dense, rotationOpts FactorRotationOptions, minE
 
 	insyra.LogInfo("stats", "FactorAnalysis", "After rotation: A1 F1=%.6f F2=%.6f F3=%.6f", rotatedLoadings.At(0, 0), rotatedLoadings.At(0, 1), rotatedLoadings.At(0, 2))
 
-	// Apply sign standardization to all rotated loadings (including Oblimin)
-	// This matches R's behavior: loadings <- loadings %*% diag(signed)
-	standardizedLoadings := standardizeFactorSigns(rotatedLoadings)
+	// Do NOT apply sign standardization here - it will be done AFTER sorting in main function
+	// R: sign standardization happens after sorting, not after rotation
+	// R code: signed <- sign(colSums(loadings)); loadings <- loadings %*% diag(signed)
 
-	insyra.LogInfo("stats", "FactorAnalysis", "After sign std: A1 F1=%.6f F2=%.6f F3=%.6f", standardizedLoadings.At(0, 0), standardizedLoadings.At(0, 1), standardizedLoadings.At(0, 2))
-
-	// Also apply sign standardization to phi matrix if it exists
-	// R code: if (!is.null(Phi)) { Phi <- diag(signed) %*% Phi %*% diag(signed) }
-	if phi != nil {
-		phi = standardizePhiSigns(phi, rotatedLoadings, standardizedLoadings)
-	}
-
-	return standardizedLoadings, rotMat, phi, converged, nil
+	return rotatedLoadings, rotMat, phi, converged, nil
 } // standardizeFactorSigns standardizes the signs of factor loadings
 // Uses R's method: sign(colSums(loadings)) to ensure sum of each factor is positive
 func standardizeFactorSigns(loadings *mat.Dense) *mat.Dense {
