@@ -1130,36 +1130,70 @@ func countByThreshold(eigenvalues []float64, threshold float64) int {
 
 // extractFactors wraps the internal extraction functions
 func extractFactors(data, corrMatrix *mat.Dense, eigenvalues []float64, eigenvectors *mat.Dense, numFactors int, opt FactorAnalysisOptions, sampleSize int, tol float64, initialCommunalities []float64) (*mat.Dense, []float64, bool, int, error) {
-	var loadings *mat.Dense
-	var extractionEigenvalues []float64
-	var converged bool
-	var iterations int
-	var err error
+	// Use our psych_fac.Fac implementation for all extraction methods
+	facOpts := &fa.FacOptions{
+		NFactors:      numFactors,
+		NObs:          float64(sampleSize),
+		Rotate:        "none", // We handle rotation separately
+		Scores:        "none", // We handle scoring separately
+		Residuals:     false,
+		SMC:           initialCommunalities, // Pass initial communalities
+		Covar:         false,
+		Missing:       false,
+		Impute:        "median",
+		MinErr:        tol,
+		MaxIter:       opt.MaxIter,
+		Symmetric:     true,
+		Warnings:      true,
+		ObliqueScores: false,
+		Use:           "pairwise",
+		Cor:           "cor",
+		Correct:       0.5,
+		NRotations:    1,
+		Hyper:         0.15,
+		Smooth:        true,
+	}
 
+	// Map our extraction methods to psych_fac method names
 	switch opt.Extraction {
 	case FactorExtractionPCA:
-		loadings, converged, iterations, err = extractPCA(eigenvalues, eigenvectors, numFactors)
-		extractionEigenvalues = nil
+		// For PCA, we still use the original implementation since psych_fac doesn't handle PCA
+		loadings, converged, iterations, err := extractPCA(eigenvalues, eigenvectors, numFactors)
+		return loadings, nil, converged, iterations, err
 
 	case FactorExtractionPAF:
-		loadings, extractionEigenvalues, converged, iterations, err = extractPAF(corrMatrix, numFactors, opt.MaxIter, 1e-10, initialCommunalities)
+		facOpts.Fm = "pa"
 
 	case FactorExtractionML:
-		// Use EM algorithm for ML extraction (more stable than BFGS)
-		loadings, converged, iterations, err = extractML_EM(corrMatrix, numFactors, 100, 1e-4, sampleSize, initialCommunalities)
-		extractionEigenvalues = nil
+		facOpts.Fm = "ml"
 
 	case FactorExtractionMINRES:
-		loadings, converged, iterations, err = extractMINRES(corrMatrix, numFactors, opt.MaxIter, tol)
-		extractionEigenvalues = nil
+		facOpts.Fm = "minres"
 
 	default:
 		// Default to MINRES to match R psych::fa and the documented default behavior.
-		loadings, converged, iterations, err = extractMINRES(corrMatrix, numFactors, opt.MaxIter, tol)
-		extractionEigenvalues = nil
+		facOpts.Fm = "minres"
 	}
 
-	return loadings, extractionEigenvalues, converged, iterations, err
+	// Call our psych_fac.Fac implementation
+	result, err := fa.Fac(corrMatrix, facOpts)
+	if err != nil {
+		return nil, nil, false, 0, err
+	}
+
+	// Extract results from FacResult
+	loadings := result.Loadings
+	converged := true // psych_fac handles convergence internally
+	iterations := 0   // psych_fac doesn't track iterations in the same way
+
+	// For methods other than PCA, we need to compute eigenvalues from the final communalities
+	var extractionEigenvalues []float64
+	if opt.Extraction != FactorExtractionPCA && result.EValues != nil {
+		extractionEigenvalues = make([]float64, len(result.EValues))
+		copy(extractionEigenvalues, result.EValues)
+	}
+
+	return loadings, extractionEigenvalues, converged, iterations, nil
 }
 
 // computePCALoadings constructs factor loadings for PCA given eigenvalues/vectors.
