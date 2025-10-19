@@ -1165,8 +1165,8 @@ func extractPAF(corr *mat.Dense, numFactors int, maxIter int, tol float64, initi
 	return loadings, finalEigenvalues, converged, iterations, nil
 }
 
+// extractMINRES performs MINRES factor extraction (true minimum residual method)
 func extractMINRES(corr *mat.Dense, numFactors int, maxIter int, tol float64) (*mat.Dense, bool, int, error) {
-	// MINRES (Minimum Residual) factor extraction - minimizes the residual correlation matrix
 	if corr == nil {
 		return nil, false, 0, fmt.Errorf("nil correlation matrix")
 	}
@@ -1177,7 +1177,6 @@ func extractMINRES(corr *mat.Dense, numFactors int, maxIter int, tol float64) (*
 	}
 
 	// Initialize communalities using squared multiple correlations (SMC)
-	// This is more appropriate for MINRES than Kaiser normalization
 	communalities := make([]float64, rows)
 	for i := range rows {
 		sumSqOffDiag := 0.0
@@ -1195,78 +1194,16 @@ func extractMINRES(corr *mat.Dense, numFactors int, maxIter int, tol float64) (*
 		communalities[i] = smc
 	}
 
-	converged := false
-	iterations := 0
-
-	for iter := range maxIter {
-		iterations = iter + 1
-
-		// Create reduced correlation matrix R* = R - diag(1 - communalities)
-		reducedCorr := mat.NewDense(rows, cols, nil)
-		reducedCorr.Copy(corr)
-		for i := range rows {
-			reducedCorr.Set(i, i, corr.At(i, i)*(1.0-communalities[i]))
-		}
-
-		// For MINRES, we use a different approach: minimize the residual
-		// by finding loadings that best reproduce the correlation matrix
-		loadings, residual := minresFit(reducedCorr, numFactors)
-
-		// Update communalities based on the fitted loadings
-		newCommunalities := make([]float64, rows)
-		for i := range rows {
-			sumSquares := 0.0
-			for j := 0; j < numFactors; j++ {
-				loading := loadings.At(i, j)
-				sumSquares += loading * loading
-			}
-			newCommunalities[i] = sumSquares
-			// Ensure communalities don't exceed the SMC estimate
-			if newCommunalities[i] > communalities[i] {
-				newCommunalities[i] = communalities[i]
-			}
-			if newCommunalities[i] > 1.0 {
-				newCommunalities[i] = 1.0
-			}
-			if newCommunalities[i] < 0.0 {
-				newCommunalities[i] = 0.0
-			}
-		}
-
-		// Check convergence based on residual matrix
-		residualNorm := 0.0
-		for i := range rows {
-			for j := range cols {
-				residualNorm += residual.At(i, j) * residual.At(i, j)
-			}
-		}
-		residualNorm = math.Sqrt(residualNorm)
-
-		communalities = newCommunalities
-
-		if residualNorm < tol {
-			converged = true
-			break
-		}
-	}
-
-	// Final extraction using converged communalities
+	// Create reduced correlation matrix R* = R - diag(1 - communalities)
 	reducedCorr := mat.NewDense(rows, cols, nil)
 	reducedCorr.Copy(corr)
 	for i := range rows {
 		reducedCorr.Set(i, i, corr.At(i, i)*(1.0-communalities[i]))
 	}
 
-	finalLoadings, _ := minresFit(reducedCorr, numFactors)
-
-	return finalLoadings, converged, iterations, nil
-}
-
-// minresFit performs the core MINRES fitting for factor extraction
-func minresFit(reducedCorr *mat.Dense, numFactors int) (*mat.Dense, *mat.Dense) {
-	rows, _ := reducedCorr.Dims()
-
-	// Use eigenvalue decomposition of the reduced correlation matrix
+	// Use true MINRES: minimize the sum of squared residuals in lower triangle
+	// Initialize loadings using eigenvalue decomposition as starting point
+	// Use eigenvalue decomposition of the reduced correlation matrix as starting point
 	reducedCorrSym := mat.NewSymDense(rows, nil)
 	for i := range rows {
 		for j := range rows {
@@ -1277,7 +1214,7 @@ func minresFit(reducedCorr *mat.Dense, numFactors int) (*mat.Dense, *mat.Dense) 
 	var eig mat.EigenSym
 	if !eig.Factorize(reducedCorrSym, true) {
 		// Return zero loadings if decomposition fails
-		return mat.NewDense(rows, numFactors, nil), reducedCorr
+		return mat.NewDense(rows, numFactors, nil), false, 0, fmt.Errorf("eigenvalue decomposition failed")
 	}
 
 	eigenvalues := eig.Values(nil)
@@ -1308,7 +1245,7 @@ func minresFit(reducedCorr *mat.Dense, numFactors int) (*mat.Dense, *mat.Dense) 
 		}
 	}
 
-	// Extract loadings for first numFactors
+	// Extract initial loadings for first numFactors
 	loadings := mat.NewDense(rows, numFactors, nil)
 	for i := range rows {
 		for j := 0; j < numFactors; j++ {
@@ -1319,15 +1256,114 @@ func minresFit(reducedCorr *mat.Dense, numFactors int) (*mat.Dense, *mat.Dense) 
 		}
 	}
 
-	// Compute residual: R - L*L^T (where L is the loading matrix)
-	reproduced := mat.NewDense(rows, rows, nil)
-	reproduced.Mul(loadings, loadings.T())
+	// Flatten loadings to vector for optimization
+	loadingsVec := make([]float64, rows*numFactors)
+	for i := range rows {
+		for j := range numFactors {
+			loadingsVec[i*numFactors+j] = loadings.At(i, j)
+		}
+	}
 
-	residual := mat.NewDense(rows, rows, nil)
-	residual.Sub(reducedCorr, reproduced)
+	// Objective function: sum of squared lower triangular residuals
+	objFunc := func(x []float64) float64 {
+		// Reshape x to loadings matrix
+		load := mat.NewDense(rows, numFactors, nil)
+		for i := range rows {
+			for j := range numFactors {
+				load.Set(i, j, x[i*numFactors+j])
+			}
+		}
 
-	return loadings, residual
+		// Compute model = load * load^T
+		var model mat.Dense
+		model.Mul(load, load.T())
+
+		// Compute residual = reducedCorr - model
+		var residual mat.Dense
+		residual.Sub(reducedCorr, &model)
+
+		// Sum of squared lower triangular elements (matching R's minres)
+		sumSq := 0.0
+		for i := 0; i < rows; i++ {
+			for j := 0; j < i; j++ { // lower triangle
+				diff := residual.At(i, j)
+				sumSq += diff * diff
+			}
+		}
+		return sumSq
+	}
+
+	// Gradient function (optional, but helps convergence)
+	gradFunc := func(grad, x []float64) {
+		// Reshape x to loadings matrix
+		load := mat.NewDense(rows, numFactors, nil)
+		for i := range rows {
+			for j := range numFactors {
+				load.Set(i, j, x[i*numFactors+j])
+			}
+		}
+
+		// Compute model = load * load^T
+		var model mat.Dense
+		model.Mul(load, load.T())
+
+		// Compute residual = reducedCorr - model
+		var residual mat.Dense
+		residual.Sub(reducedCorr, &model)
+
+		// Gradient: d(sum(residual^2))/d(load) = -2 * residual * load
+		// For each element in loadings
+		for i := range rows {
+			for k := range numFactors {
+				sum := 0.0
+				for j := 0; j < rows; j++ {
+					if j < i { // lower triangle contribution
+						res := residual.At(i, j)
+						sum += res * load.At(j, k)
+					} else if j > i { // symmetric upper triangle
+						res := residual.At(j, i)
+						sum += res * load.At(j, k)
+					}
+				}
+				grad[i*numFactors+k] = -2.0 * sum
+			}
+		}
+	}
+
+	// Use BFGS optimization
+	p := optimize.Problem{
+		Func: objFunc,
+		Grad: gradFunc,
+	}
+
+	method := &optimize.BFGS{}
+	settings := optimize.DefaultSettings()
+	settings.FunctionConverge.Absolute = tol
+	settings.FunctionConverge.Iterations = maxIter
+	settings.GradientThreshold = tol * 0.1
+
+	result, err := optimize.Local(p, loadingsVec, settings, method)
+	if err != nil {
+		// Fallback to initial loadings
+		insyra.LogWarning("stats", "FactorAnalysis", "MINRES optimization failed, using initial loadings: %v", err)
+		return loadings, false, 0, nil
+	}
+
+	converged := result.Status == optimize.Success || result.Status == optimize.FunctionConvergence
+	iterations := result.Stats.FuncEvaluations
+
+	// Reshape optimized vector back to loadings matrix
+	optimizedLoadings := mat.NewDense(rows, numFactors, nil)
+	for i := range rows {
+		for j := range numFactors {
+			optimizedLoadings.Set(i, j, result.X[i*numFactors+j])
+		}
+	}
+
+	return optimizedLoadings, converged, iterations, nil
 }
+
+// minresFit performs the core MINRES fitting for factor extraction
 
 // extractML_EM performs Maximum Likelihood factor extraction using EM algorithm
 // This is a simpler and more stable alternative to BFGS optimization
