@@ -40,14 +40,14 @@ fmt.Println(result)
 func RunCodef(codeTemplate string, args ...any) map[string]any
 ```
 
-This function is used to execute Python code with variables passed from Go using `fmt.Sprintf` style formatting. The function formats the code template with the provided arguments.
+This function is used to execute Python code with variables passed from Go using `$v1`, `$v2`, etc. placeholders. The function replaces these placeholders with the provided arguments.
 
-In the Python code template, use `fmt.Sprintf` style formatting verbs like `%q`, `%d`, `%v`, etc.
+In the Python code template, use `$v1`, `$v2`, `$v3`, etc. as placeholders for the arguments passed to the function.
 
 #### Parameters
 
-- `codeTemplate` (string): The Python code template with `fmt.Sprintf` style formatting.
-- `args` (`...any`): A variable-length argument list of Go variables to be formatted into the template.
+- `codeTemplate` (string): The Python code template with `$v1`, `$v2`, etc. placeholders.
+- `args` (`...any`): A variable-length argument list of Go variables to be substituted into the template.
 
 #### Returns
 
@@ -70,16 +70,16 @@ func main() {
 
  // Submit Code to Python
  py.RunCodef(`
-x = np.array(%v)
-y = np.array(%v)
+x = $v1
+y = $v2
 
 sns.set(style="whitegrid")
 
 sns.scatterplot(x=x, y=y)
 
-plt.title(%q)
-plt.xlabel(%q)
-plt.ylabel(%q)
+plt.title($v3)
+plt.xlabel($v4)
+plt.ylabel($v5)
 
 plt.show()
 `, xData.Data(), yData.Data(), "Scatter Plot from Go DataList", "X Values", "Y Values")
@@ -101,12 +101,12 @@ Run Python code from a file.
 
 ### `RunFilef`
 
-Run Python code from a file with variables passed from Go using `fmt.Sprintf` style formatting.
+Run Python code from a file with variables passed from Go using `$v1`, `$v2`, etc. placeholders.
 
 #### Parameters
 
 - `filepath` (string): The Python file to be executed.
-- `args` (`...any`): A variable-length argument list of Go variables to be formatted into the template.
+- `args` (`...any`): A variable-length argument list of Go variables to be substituted into the template.
 
 #### Returns
 

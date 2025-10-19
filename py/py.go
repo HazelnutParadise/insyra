@@ -7,6 +7,10 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"strconv"
+	"strings"
+
+	json "github.com/goccy/go-json"
 
 	"github.com/HazelnutParadise/insyra"
 )
@@ -94,15 +98,15 @@ func RunCode(code string) map[string]any {
 }
 
 // Run the Python code with the given Golang variables and return the result.
-// The codeTemplate should use fmt.Sprintf style formatting (e.g., %q, %d, %v).
+// The codeTemplate should use $v1, $v2, etc. placeholders for variable substitution.
 func RunCodef(codeTemplate string, args ...any) map[string]any {
 	pyEnvInit()
 
 	// 生成執行ID
 	executionID := generateExecutionID()
 
-	// 使用fmt.Sprintf格式化代碼模板
-	formattedCode := fmt.Sprintf(codeTemplate, args...)
+	// 使用 $v1, $v2 等佔位符替換變數
+	formattedCode := replacePlaceholders(codeTemplate, args...)
 
 	// 產生包含 insyra_return 函數的預設 Python 代碼
 	fullCode := generateDefaultPyCode(executionID) + formattedCode
@@ -172,4 +176,52 @@ def insyra_return(data, url="http://localhost:%v/pyresult"):
         print(f"Failed to send result: {response.status_code}")
 
 `, imports, port, executionID)
+}
+
+// replacePlaceholders replaces $v1, $v2, etc. placeholders with the corresponding argument values
+func replacePlaceholders(template string, args ...any) string {
+	result := template
+	for i, arg := range args {
+		placeholder := fmt.Sprintf("$v%d", i+1)
+		var replacement string
+
+		// Convert the argument to a string representation suitable for Python
+		switch v := arg.(type) {
+		case string:
+			// For strings, wrap in quotes
+			replacement = fmt.Sprintf("%q", v)
+		case []int:
+			// For int slices, convert to Python list format
+			var elements []string
+			for _, val := range v {
+				elements = append(elements, strconv.Itoa(val))
+			}
+			replacement = fmt.Sprintf("[%s]", strings.Join(elements, ", "))
+		case []float64:
+			// For float64 slices, convert to Python list format
+			var elements []string
+			for _, val := range v {
+				elements = append(elements, strconv.FormatFloat(val, 'f', -1, 64))
+			}
+			replacement = fmt.Sprintf("[%s]", strings.Join(elements, ", "))
+		case []string:
+			// For string slices, convert to Python list format
+			var elements []string
+			for _, val := range v {
+				elements = append(elements, fmt.Sprintf("%q", val))
+			}
+			replacement = fmt.Sprintf("[%s]", strings.Join(elements, ", "))
+		default:
+			// For other types, try to marshal as JSON for complex structures
+			if jsonBytes, err := json.Marshal(v); err == nil {
+				replacement = string(jsonBytes)
+			} else {
+				// Fallback to fmt.Sprintf %v
+				replacement = fmt.Sprintf("%v", v)
+			}
+		}
+
+		result = strings.ReplaceAll(result, placeholder, replacement)
+	}
+	return result
 }
