@@ -507,15 +507,16 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	initialCommunalities := make([]float64, colNum)
 	if opt.Extraction == FactorExtractionPAF || opt.Extraction == FactorExtractionML {
 		// For PAF and ML, SPSS default is to use squared multiple correlations (SMC) as initial estimates
-		// SMC[i] = 1 - 1/R_ii^{-1}, where R^{-1} is inverse of correlation matrix
-		// This is mathematically equivalent to regression R², but more numerically stable
-		insyra.LogInfo("stats", "FactorAnalysis", "Computing SMC using inverse correlation matrix method")
+		// SMC[i] = 1 - 1/R_ii^{-1}, where R^{-1} is pseudoinverse of correlation matrix (matching R's psych::smc)
+		// R's psych::smc uses Pinv (pseudoinverse) via SVD for numerical stability
+		insyra.LogInfo("stats", "FactorAnalysis", "Computing SMC using pseudoinverse correlation matrix method")
 
-		var corrInv mat.Dense
-		err := corrInv.Inverse(corrDense)
-		if err != nil {
-			insyra.LogWarning("stats", "FactorAnalysis", "Correlation matrix inversion failed, using fallback SMC method")
-			// Fallback to the slower but more robust method
+		// Use SVD-based pseudoinverse for numerical stability (matching R's Pinv function)
+		corrInv := computePseudoInverse(corrDense)
+
+		if corrInv == nil {
+			insyra.LogWarning("stats", "FactorAnalysis", "Pseudoinverse computation failed, using fallback SMC method")
+			// Fallback to the fa package's SMC method
 			smcVec, _ := fa.Smc(corrDense, nil)
 			if smcVec != nil {
 				copy(initialCommunalities, smcVec.RawVector().Data)
@@ -626,10 +627,9 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	}
 
 	// Sort or align factor columns by explained variance
-	// NOTE: SPSS does NOT sort factors after rotation - it keeps the rotation order
-	// R's psych::fa() also does not sort after rotation
-	// Sorting is commented out for SPSS/R compatibility
-	// rotatedLoadings, rotationMatrix, phi = sortFactorsByExplainedVariance(rotatedLoadings, rotationMatrix, phi)
+	// R's psych::fa() sorts factors after rotation by explained variance
+	// This must be done AFTER rotation to match R's behavior
+	rotatedLoadings, rotationMatrix, phi = sortFactorsByExplainedVariance(rotatedLoadings, rotationMatrix, phi)
 
 	// Step 8: Compute communalities and uniquenesses
 	extractionCommunalities := make([]float64, colNum)
@@ -882,6 +882,81 @@ func computeSigma(loadings *mat.Dense, phi *mat.Dense, uniquenesses []float64) *
 	return &sigma
 }
 
+// computePseudoInverse computes the Moore-Penrose pseudoinverse using SVD
+// This matches R's psych::Pinv function for numerical stability
+func computePseudoInverse(X *mat.Dense) *mat.Dense {
+	if X == nil {
+		return nil
+	}
+
+	m, n := X.Dims()
+
+	// Perform SVD
+	var svd mat.SVD
+	if !svd.Factorize(X, mat.SVDThin) {
+		insyra.LogWarning("stats", "FactorAnalysis", "SVD factorization failed in pseudoinverse computation")
+		return nil
+	}
+
+	// Get singular values
+	values := svd.Values(nil)
+
+	// Compute tolerance (R uses tol = sqrt(.Machine$double.eps))
+	tol := math.Sqrt(math.Nextafter(1.0, 2.0) - 1.0) // Go equivalent of sqrt(.Machine$double.eps)
+
+	// Find indices of non-small singular values
+	threshold := tol * values[0]
+	p := 0 // Count of non-small values
+	for _, v := range values {
+		if v > threshold {
+			p++
+		}
+	}
+
+	if p == 0 {
+		return nil
+	}
+
+	// Get U and V matrices
+	U := mat.NewDense(m, len(values), nil)
+	V := mat.NewDense(n, len(values), nil)
+	svd.UTo(U)
+	svd.VTo(V)
+
+	// Compute pseudoinverse: Pinv = V[, 1:p] %*% diag(1/d[1:p]) %*% t(U[, 1:p])
+	// Extract U[:, 1:p] and V[:, 1:p]
+	Uphp := mat.NewDense(m, p, nil)
+	Vp := mat.NewDense(n, p, nil)
+	for i := 0; i < m; i++ {
+		for j := 0; j < p; j++ {
+			Uphp.Set(i, j, U.At(i, j))
+		}
+	}
+	for i := 0; i < n; i++ {
+		for j := 0; j < p; j++ {
+			Vp.Set(i, j, V.At(i, j))
+		}
+	}
+
+	// Compute D^{-1} = diag(1/d[1:p])
+	Dinv := mat.NewDense(p, p, nil)
+	for i := 0; i < p; i++ {
+		if values[i] > 0 {
+			Dinv.Set(i, i, 1.0/values[i])
+		}
+	}
+
+	// Compute V %*% D^{-1}
+	var temp mat.Dense
+	temp.Mul(Vp, Dinv)
+
+	// Compute Pinv = temp %*% U^T
+	var Pinv mat.Dense
+	Pinv.Mul(&temp, Uphp.T())
+
+	return &Pinv
+}
+
 // decideNumFactors determines the number of factors to extract
 func decideNumFactors(eigenvalues []float64, spec FactorCountSpec, maxPossible int, sampleSize int) int {
 	switch spec.Method {
@@ -1116,20 +1191,26 @@ func extractPAF(corr *mat.Dense, numFactors int, maxIter int, tol float64, initi
 			}
 		}
 
-		// Check convergence - use SPSS-like convergence criterion
-		maxDiff := 0.0
-		for i := range rows {
-			diff := math.Abs(newCommunalities[i] - communalities[i])
-			if diff > maxDiff {
-				maxDiff = diff
-			}
+		// Check convergence using R's criterion: change in total communality
+		// R: err <- abs(comm - comm1)
+		// comm = sum(diag(r.mat))  (sum of all communalities)
+		// This is more stable than checking max individual change
+		oldCommTotal := 0.0
+		for _, h := range communalities {
+			oldCommTotal += h
 		}
+		newCommTotal := 0.0
+		for _, h := range newCommunalities {
+			newCommTotal += h
+		}
+		commChange := math.Abs(newCommTotal - oldCommTotal)
 
 		loadings = newLoadings
 		communalities = newCommunalities
 
-		// SPSS uses a more lenient convergence criterion, allow convergence after max iterations
-		if maxDiff < tol || iterations >= maxIter {
+		// Use R's convergence criterion: total communality change
+		// R uses: while (err > min.err)
+		if commChange < tol || iterations >= maxIter {
 			converged = true
 			break
 		}
