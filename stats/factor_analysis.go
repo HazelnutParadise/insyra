@@ -385,19 +385,12 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		}
 	}
 
-	// Step 3: Compute correlation or covariance matrix
+	// Step 3: Compute correlation matrix (always use correlation for factor analysis)
 	var corrMatrix *mat.SymDense
 	var corrForAdequacy *mat.SymDense
-	if opt.Preprocess.Standardize {
-		corrMatrix = mat.NewSymDense(colNum, nil)
-		stat.CorrelationMatrix(corrMatrix, data, nil)
-		corrForAdequacy = corrMatrix
-	} else {
-		corrMatrix = mat.NewSymDense(colNum, nil)
-		stat.CovarianceMatrix(corrMatrix, data, nil)
-		corrForAdequacy = mat.NewSymDense(colNum, nil)
-		stat.CorrelationMatrix(corrForAdequacy, data, nil)
-	}
+	corrMatrix = mat.NewSymDense(colNum, nil)
+	stat.CorrelationMatrix(corrMatrix, data, nil)
+	corrForAdequacy = corrMatrix
 	if corrForAdequacy == nil {
 		corrForAdequacy = mat.NewSymDense(colNum, nil)
 		stat.CorrelationMatrix(corrForAdequacy, data, nil)
