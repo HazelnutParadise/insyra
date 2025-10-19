@@ -10,64 +10,65 @@ import (
 // vgQSimplimax computes the objective and gradient for simplimax rotation.
 // Mirrors GPArotation::vgQ.simplimax(L, k = nrow(L))
 //
-// Imat <- sign(L^2 <= sort(L^2)[k])
+// Simplimax minimizes the number of variables with high loadings on each factor.
+// It uses a threshold based on the k-th smallest squared loading.
+//
+// Imat <- sign(L^2 <= sort(L^2)[k])  [indicator matrix for small loadings]
 // Gq <- 2 * Imat * L
 // f <- sum(Imat * L^2)
 //
 // Returns: Gq (gradient), f (objective), method
 func vgQSimplimax(L *mat.Dense, k int) (Gq *mat.Dense, f float64, method string) {
-	p, q := L.Dims()
+	rows, cols := L.Dims()
 
-	// L2 = L^2
-	L2 := mat.NewDense(p, q, nil)
-	for i := range p {
-		for j := range q {
-			l := L.At(i, j)
-			L2.Set(i, j, l*l)
+	// Compute L^2 element-wise
+	L2 := mat.NewDense(rows, cols, nil)
+	for i := 0; i < rows; i++ {
+		for j := 0; j < cols; j++ {
+			val := L.At(i, j)
+			L2.Set(i, j, val*val)
 		}
 	}
 
-	// Flatten L2 to slice for sorting
-	l2Slice := make([]float64, p*q)
+	// Flatten L2 to slice for sorting to find threshold
+	l2Values := make([]float64, rows*cols)
 	idx := 0
-	for i := range p {
-		for j := range q {
-			l2Slice[idx] = L2.At(i, j)
+	for i := 0; i < rows; i++ {
+		for j := 0; j < cols; j++ {
+			l2Values[idx] = L2.At(i, j)
 			idx++
 		}
 	}
 
-	// Sort the slice
-	sort.Float64s(l2Slice)
+	// Sort to find the k-th smallest value (k is 1-indexed)
+	sort.Float64s(l2Values)
+	threshold := l2Values[k-1]
 
-	// threshold = sort(L^2)[k] - the k-th smallest element (0-indexed)
-	threshold := l2Slice[k-1] // k is 1-indexed in R, so k-1 in Go
-
-	// Imat = sign(L^2 <= threshold)
-	Imat := mat.NewDense(p, q, nil)
-	for i := range p {
-		for j := range q {
+	// Create indicator matrix: 1 where L^2 <= threshold, 0 otherwise
+	indicator := mat.NewDense(rows, cols, nil)
+	for i := 0; i < rows; i++ {
+		for j := 0; j < cols; j++ {
 			if L2.At(i, j) <= threshold {
-				Imat.Set(i, j, 1.0)
+				indicator.Set(i, j, 1.0)
 			} else {
-				Imat.Set(i, j, 0.0)
+				indicator.Set(i, j, 0.0)
 			}
 		}
 	}
 
-	// Gq = 2 * Imat * L
-	Gq = mat.NewDense(p, q, nil)
-	for i := range p {
-		for j := range q {
-			Gq.Set(i, j, 2.0*Imat.At(i, j)*L.At(i, j))
+	// Gradient: Gq = 2 * indicator * L (element-wise)
+	Gq = mat.NewDense(rows, cols, nil)
+	for i := 0; i < rows; i++ {
+		for j := 0; j < cols; j++ {
+			Gq.Set(i, j, 2.0*indicator.At(i, j)*L.At(i, j))
 		}
 	}
 
-	// f = sum(Imat * L^2)
+	// Objective: f = sum(indicator * L^2)
 	f = 0.0
-	for i := range p {
-		for j := range q {
-			f += Imat.At(i, j) * L2.At(i, j)
+	for i := 0; i < rows; i++ {
+		for j := 0; j < cols; j++ {
+			f += indicator.At(i, j) * L2.At(i, j)
 		}
 	}
 

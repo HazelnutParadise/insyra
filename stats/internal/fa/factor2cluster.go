@@ -9,23 +9,22 @@ import (
 
 // Factor2ClusterOptions represents options for Factor2Cluster
 type Factor2ClusterOptions struct {
-	UseRLikePipeline bool // If true, use R-like pipeline: varimax -> target.rot -> cluster
+	Cut              float64 // Loading threshold below which variables are not assigned to any cluster
+	UseRLikePipeline bool    // If true, use R-like pipeline: varimax -> target.rot -> cluster
 }
 
 // Factor2Cluster creates a cluster structure from factor loadings.
-// Mirrors GPArotation::factor2cluster
+// Mirrors GPArotation::factor2cluster exactly
 //
-// Tie-break strategy: When multiple factors have the same maximum absolute loading,
-// the factor with the smallest index (0-based) is chosen.
-//
-// If UseRLikePipeline is true, applies varimax rotation followed by target rotation
-// before clustering, similar to R's GPArotation::factor2cluster pipeline.
+// For each variable, assign it to the factor with the highest absolute loading
+// if that loading exceeds the cut threshold. Otherwise, assign to no cluster (0).
 func Factor2Cluster(loadings *mat.Dense, opts *Factor2ClusterOptions) *mat.Dense {
 	p, q := loadings.Dims()
 
 	// Set default options
 	if opts == nil {
 		opts = &Factor2ClusterOptions{
+			Cut:              0.3, // Default cut value from R
 			UseRLikePipeline: false,
 		}
 	}
@@ -41,23 +40,30 @@ func Factor2Cluster(loadings *mat.Dense, opts *Factor2ClusterOptions) *mat.Dense
 
 	// For each variable, find the factor with maximum absolute loading
 	clusters := make([]int, p)
-	for i := range p {
+	for i := 0; i < p; i++ {
 		maxAbs := 0.0
 		maxFactor := 0
-		for j := range q {
+		for j := 0; j < q; j++ {
 			absVal := math.Abs(loadings.At(i, j))
 			if absVal > maxAbs {
 				maxAbs = absVal
-				maxFactor = j
+				maxFactor = j + 1 // R uses 1-based indexing
 			}
 		}
-		clusters[i] = maxFactor
+		// Only assign if max loading exceeds cut threshold
+		if maxAbs <= opts.Cut {
+			clusters[i] = 0 // No cluster assignment
+		} else {
+			clusters[i] = maxFactor
+		}
 	}
 
 	// Create cluster matrix
 	clusterMat := mat.NewDense(p, q, nil)
-	for i := range p {
-		clusterMat.Set(i, clusters[i], 1.0)
+	for i := 0; i < p; i++ {
+		if clusters[i] > 0 {
+			clusterMat.Set(i, clusters[i]-1, 1.0) // Convert back to 0-based indexing
+		}
 	}
 
 	return clusterMat

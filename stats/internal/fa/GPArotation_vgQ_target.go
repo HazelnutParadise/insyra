@@ -10,8 +10,10 @@ import (
 // vgQTarget computes the objective and gradient for target rotation.
 // Mirrors GPArotation::vgQ.target(L, Target = NULL)
 //
-// if (is.null(Target)) stop("argument Target must be specified.")
-// Gq <- 2 * (L - Target)
+// Target rotation minimizes the squared differences between loadings and target values.
+// Missing values (NaN) in the target matrix are ignored.
+//
+// Gq <- 2 * (L - Target)  [with NaN handling]
 // Gq[is.na(Gq)] <- 0
 // f <- sum((L - Target)^2, na.rm = TRUE)
 //
@@ -21,36 +23,36 @@ func vgQTarget(L *mat.Dense, Target *mat.Dense) (Gq *mat.Dense, f float64, metho
 		return nil, 0, "", fmt.Errorf("argument Target must be specified")
 	}
 
-	p, q := L.Dims()
-	tp, tq := Target.Dims()
-	if p != tp || q != tq {
+	rows, cols := L.Dims()
+	targetRows, targetCols := Target.Dims()
+	if rows != targetRows || cols != targetCols {
 		return nil, 0, "", fmt.Errorf("L and Target must have the same dimensions")
 	}
 
-	// L_minus_Target = L - Target
-	L_minus_Target := mat.NewDense(p, q, nil)
-	L_minus_Target.Sub(L, Target)
+	// Compute difference: L - Target
+	diff := mat.NewDense(rows, cols, nil)
+	diff.Sub(L, Target)
 
-	// Gq = 2 * (L - Target)
-	Gq = mat.NewDense(p, q, nil)
-	for i := range p {
-		for j := range q {
-			diff := L_minus_Target.At(i, j)
-			if diff != diff { // NaN check
+	// Compute gradient: Gq = 2 * (L - Target), with NaN handling
+	Gq = mat.NewDense(rows, cols, nil)
+	for i := 0; i < rows; i++ {
+		for j := 0; j < cols; j++ {
+			val := diff.At(i, j)
+			if val != val { // NaN check (NaN != NaN is true)
 				Gq.Set(i, j, 0.0)
 			} else {
-				Gq.Set(i, j, 2.0*diff)
+				Gq.Set(i, j, 2.0*val)
 			}
 		}
 	}
 
-	// f = sum((L - Target)^2, na.rm = TRUE)
+	// Compute objective: f = sum((L - Target)^2), ignoring NaN values
 	f = 0.0
-	for i := range p {
-		for j := range q {
-			diff := L_minus_Target.At(i, j)
-			if diff == diff { // not NaN
-				f += diff * diff
+	for i := 0; i < rows; i++ {
+		for j := 0; j < cols; j++ {
+			val := diff.At(i, j)
+			if val == val { // not NaN (NaN == NaN is false)
+				f += val * val
 			}
 		}
 	}

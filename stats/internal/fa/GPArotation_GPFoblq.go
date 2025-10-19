@@ -46,7 +46,7 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 	var weights *mat.VecDense
 	if normalize {
 		weights = NormalizingWeight(A, true)
-		for i := range rows {
+		for i := 0; i < rows; i++ {
 			w := weights.AtVec(i)
 			if w == 0 {
 				continue
@@ -100,7 +100,6 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			convergence = true
 			break
 		}
-
 		// Match R's strategy: double alpha at start of each iteration
 		// R code: al <- 2 * al
 		alpha *= 2
@@ -116,7 +115,7 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			// Normalize columns of X
 			colsX := X.RawMatrix().Cols
 			scaleVals := make([]float64, colsX)
-			for j := range colsX {
+			for j := 0; j < colsX; j++ {
 				sumSq := 0.0
 				for i := 0; i < X.RawMatrix().Rows; i++ {
 					val := X.At(i, j)
@@ -174,7 +173,7 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 	}
 
 	if normalize && weights != nil {
-		for i := range rows {
+		for i := 0; i < rows; i++ {
 			w := weights.AtVec(i)
 			if w == 0 {
 				continue
@@ -205,14 +204,24 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 
 func computeGMatrix(L *mat.Dense, Gq *mat.Dense, T *mat.Dense) *mat.Dense {
 	// G <- - solve(T) %*% (t(L) %*% Gq) - match R's GPArotation::GPFoblq
-	var tL mat.Dense
-	tL.CloneFrom(L.T()) // t(L) is q x p
-	var tLGq mat.Dense
-	tLGq.Mul(&tL, Gq) // t(L) %*% Gq is q x p * p x q = q x q
+	// Compute transpose of L: t(L) is q x p
+	var Lt mat.Dense
+	Lt.CloneFrom(L.T())
+
+	// Compute t(L) %*% Gq: q x p * p x q = q x q
+	var LtGq mat.Dense
+	LtGq.Mul(&Lt, Gq)
+
+	// Compute inverse of T or identity if singular
 	invT := inverseOrIdentity(T, T.RawMatrix().Rows)
+
+	// Compute solve(T) %*% (t(L) %*% Gq): q x q
 	var G mat.Dense
-	G.Mul(invT, &tLGq) // solve(T) %*% (t(L) %*% Gq) is q x q
-	G.Scale(-1, &G)    // Negative sign
+	G.Mul(invT, &LtGq)
+
+	// Apply negative sign: G <- -G
+	G.Scale(-1, &G)
+
 	return &G
 }
 
@@ -222,66 +231,84 @@ func computeGMatrix(L *mat.Dense, Gq *mat.Dense, T *mat.Dense) *mat.Dense {
 func computeGp(G, T *mat.Dense) *mat.Dense {
 	// R's GPFoblq uses: Gp <- G - T %*% diag(diag(t(T) %*% G))
 	// This projects G onto the tangent space at T
-	var tTG mat.Dense
-	tTG.Mul(T.T(), G) // t(T) %*% G
 
-	// Extract diagonal: diag(t(T) %*% G)
-	rows, cols := tTG.Dims()
+	// Compute t(T) %*% G
+	var TtG mat.Dense
+	TtG.Mul(T.T(), G)
+
+	// Extract diagonal elements: diag(t(T) %*% G)
+	rows, cols := TtG.Dims()
 	minDim := rows
 	if cols < minDim {
 		minDim = cols
 	}
 	diagVals := make([]float64, minDim)
 	for i := 0; i < minDim; i++ {
-		diagVals[i] = tTG.At(i, i)
+		diagVals[i] = TtG.At(i, i)
 	}
+
+	// Create diagonal matrix
 	diagMat := mat.NewDiagDense(minDim, diagVals)
 
-	// T %*% diag(diag(t(T) %*% G))
+	// Compute T %*% diag(diag(t(T) %*% G))
 	var TDiag mat.Dense
 	TDiag.Mul(T, diagMat)
 
 	// Gp = G - T %*% diag(diag(t(T) %*% G))
 	Gp := mat.DenseCopyOf(G)
 	Gp.Sub(Gp, &TDiag)
+
 	return Gp
 }
 
 func frobNorm(M *mat.Dense) float64 {
-	sum := 0.0
-	for i := 0; i < M.RawMatrix().Rows; i++ {
-		for j := 0; j < M.RawMatrix().Cols; j++ {
+	// Compute Frobenius norm: sqrt(sum of squares of all elements)
+	sumSq := 0.0
+	rows, cols := M.Dims()
+	for i := 0; i < rows; i++ {
+		for j := 0; j < cols; j++ {
 			val := M.At(i, j)
-			sum += val * val
+			sumSq += val * val
 		}
 	}
-	return math.Sqrt(sum)
+	return math.Sqrt(sumSq)
 }
 
 func obliqueCriterion(method string, L *mat.Dense, gamma float64) (*mat.Dense, float64, string, error) {
+	// Select appropriate criterion function based on method
 	switch strings.ToLower(method) {
 	case "quartimin":
 		Gq, f, _ := vgQQuartimin(L)
 		return Gq, f, "vgQ.quartimin", nil
+
 	case "oblimin":
 		Gq, f, err := vgQOblimin(L, gamma)
 		if err != nil {
 			return nil, 0, "", fmt.Errorf("vgQOblimin failed: %v", err)
 		}
 		return Gq, f, "vgQ.oblimin", nil
+
 	case "simplimax":
-		Gq, f, _ := vgQSimplimax(L, L.RawMatrix().Rows)
+		// Use number of rows as k parameter for simplimax
+		k := L.RawMatrix().Rows
+		Gq, f, _ := vgQSimplimax(L, k)
 		return Gq, f, "vgQ.simplimax", nil
+
 	case "geominq":
-		Gq, f, _ := vgQGeomin(L, 0.01)
+		// Use default epsilon = 0.01 for geomin
+		epsilon := 0.01
+		Gq, f, _ := vgQGeomin(L, epsilon)
 		return Gq, f, "vgQ.geomin", nil
+
 	case "bentlerq":
 		Gq, f, _, err := vgQBentler(L)
 		if err != nil {
-			return nil, 0, "", err
+			return nil, 0, "", fmt.Errorf("vgQBentler failed: %v", err)
 		}
 		return Gq, f, "vgQ.bentler", nil
+
 	default:
+		// Default to quartimin if method not recognized
 		Gq, f, _ := vgQQuartimin(L)
 		return Gq, f, "vgQ.quartimin", nil
 	}

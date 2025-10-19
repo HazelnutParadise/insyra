@@ -11,8 +11,8 @@ import (
 // GPForth performs orthogonal rotation using GPA.
 // Mirrors GPArotation::GPForth exactly
 func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit int, method string) (map[string]any, error) {
-	_, nf := A.Dims() // A is p x nf (variables x factors), nf is number of factors
-	if nf <= 1 {
+	rows, cols := A.Dims() // A is p x nf (variables x factors), nf is number of factors
+	if cols <= 1 {
 		return nil, fmt.Errorf("rotation does not make sense for single factor models")
 	}
 
@@ -23,15 +23,15 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 		W = NormalizingWeight(A, normalize)
 		normalize = true
 		A = mat.DenseCopyOf(A)
-		for i := 0; i < A.RawMatrix().Rows; i++ {
-			for j := 0; j < A.RawMatrix().Cols; j++ {
+		for i := 0; i < rows; i++ {
+			for j := 0; j < cols; j++ {
 				A.Set(i, j, A.At(i, j)/W.AtVec(i))
 			}
 		}
 	}
 
 	al := 1.0
-	L := mat.NewDense(A.RawMatrix().Rows, A.RawMatrix().Cols, nil)
+	L := mat.NewDense(rows, cols, nil)
 	L.Mul(A, Tmat)
 
 	// Method <- paste("vgQ", method, sep = ".")
@@ -83,7 +83,7 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 	}
 
 	// G <- crossprod(A, VgQ$Gq)
-	G := mat.NewDense(A.RawMatrix().Cols, VgQ["Gq"].(*mat.Dense).RawMatrix().Cols, nil)
+	G := mat.NewDense(cols, VgQ["Gq"].(*mat.Dense).RawMatrix().Cols, nil)
 	G.Mul(A.T(), VgQ["Gq"].(*mat.Dense))
 
 	f := VgQ["f"].(float64)

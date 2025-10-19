@@ -15,20 +15,17 @@ const debugOblimin = false
 // Varimax performs varimax rotation.
 // Mirrors GPArotation::Varimax
 func Varimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map[string]any {
-	_, nf := loadings.Dims() // loadings is p x nf (variables x factors)
-	if nf <= 1 {
+	_, cols := loadings.Dims()
+	if cols <= 1 {
 		// No rotation needed for single factor
 		return map[string]any{
 			"loadings": mat.DenseCopyOf(loadings),
-			"rotmat":   identityMatrix(nf), // identity matrix
+			"rotmat":   identityMatrix(cols),
 		}
 	}
 
 	// Initialize rotation matrix as identity
-	Tmat := mat.NewDense(nf, nf, nil)
-	for i := range nf {
-		Tmat.Set(i, i, 1.0)
-	}
+	Tmat := identityMatrix(cols)
 
 	// Use GPForth for proper varimax rotation
 	result, err := GPForth(loadings, Tmat, normalize, eps, maxIter, "varimax")
@@ -36,7 +33,7 @@ func Varimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map[
 		// Return identity rotation on error
 		return map[string]any{
 			"loadings": mat.DenseCopyOf(loadings),
-			"rotmat":   identityMatrix(nf),
+			"rotmat":   identityMatrix(cols),
 			"f":        0.0,
 			"error":    err.Error(),
 		}
@@ -44,7 +41,7 @@ func Varimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map[
 
 	// Calculate rotation matrix as t(solve(Th)) like in R
 	Th := result["Th"].(*mat.Dense)
-	rotMatDense := rotMatFromTh(Th, nf)
+	rotMatDense := rotMatFromTh(Th, cols)
 
 	// Return with correct key names expected by FaRotations
 	return map[string]any{
@@ -57,20 +54,17 @@ func Varimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map[
 // Quartimax performs quartimax rotation.
 // Mirrors GPArotation::quartimax
 func Quartimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map[string]any {
-	_, nf := loadings.Dims() // loadings is p x nf (variables x factors)
-	if nf <= 1 {
+	_, cols := loadings.Dims()
+	if cols <= 1 {
 		// No rotation needed for single factor
 		return map[string]any{
 			"loadings": mat.DenseCopyOf(loadings),
-			"rotmat":   identityMatrix(nf), // identity matrix
+			"rotmat":   identityMatrix(cols),
 		}
 	}
 
 	// Initialize rotation matrix as identity
-	Tmat := mat.NewDense(nf, nf, nil)
-	for i := range nf {
-		Tmat.Set(i, i, 1.0)
-	}
+	Tmat := identityMatrix(cols)
 
 	// Use GPForth for proper quartimax rotation
 	result, err := GPForth(loadings, Tmat, normalize, eps, maxIter, "quartimax")
@@ -78,7 +72,7 @@ func Quartimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int) ma
 		// Return identity rotation on error
 		return map[string]any{
 			"loadings": mat.DenseCopyOf(loadings),
-			"rotmat":   identityMatrix(nf),
+			"rotmat":   identityMatrix(cols),
 			"f":        0.0,
 			"error":    err.Error(),
 		}
@@ -86,7 +80,7 @@ func Quartimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int) ma
 
 	// Calculate rotation matrix as t(solve(Th)) like in R
 	Th := result["Th"].(*mat.Dense)
-	rotMatDense := rotMatFromTh(Th, nf)
+	rotMatDense := rotMatFromTh(Th, cols)
 
 	// Return with correct key names expected by FaRotations
 	return map[string]any{
@@ -99,21 +93,18 @@ func Quartimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int) ma
 // Quartimin performs quartimin rotation.
 // Mirrors GPArotation::quartimin
 func Quartimin(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map[string]any {
-	_, nf := loadings.Dims() // loadings is p x nf (variables x factors)
-	if nf <= 1 {
+	_, cols := loadings.Dims()
+	if cols <= 1 {
 		// No rotation needed for single factor
 		return map[string]any{
 			"loadings": mat.DenseCopyOf(loadings),
-			"rotmat":   identityMatrix(nf), // identity matrix
+			"rotmat":   identityMatrix(cols),
 			"phi":      nil,
 		}
 	}
 
 	// Initialize rotation matrix as identity
-	Tmat := mat.NewDense(nf, nf, nil)
-	for i := range nf {
-		Tmat.Set(i, i, 1.0)
-	}
+	Tmat := identityMatrix(cols)
 
 	// Use GPFoblq for proper quartimin rotation
 	result, err := GPFoblq(loadings, Tmat, normalize, eps, maxIter, "quartimin", 0.0)
@@ -121,7 +112,7 @@ func Quartimin(loadings *mat.Dense, normalize bool, eps float64, maxIter int) ma
 		// Return identity rotation on error
 		return map[string]any{
 			"loadings": mat.DenseCopyOf(loadings),
-			"rotmat":   identityMatrix(nf),
+			"rotmat":   identityMatrix(cols),
 			"phi":      nil,
 			"f":        0.0,
 			"error":    err.Error(),
@@ -130,7 +121,7 @@ func Quartimin(loadings *mat.Dense, normalize bool, eps float64, maxIter int) ma
 
 	// Calculate rotation matrix as t(solve(Th)) like in R
 	Th := result["Th"].(*mat.Dense)
-	rotMatDense := rotMatFromTh(Th, nf)
+	rotMatDense := rotMatFromTh(Th, cols)
 
 	// Return with correct key names expected by FaRotations
 	return map[string]any{
@@ -144,21 +135,18 @@ func Quartimin(loadings *mat.Dense, normalize bool, eps float64, maxIter int) ma
 // Oblimin performs oblimin rotation.
 // Mirrors GPArotation::oblimin
 func Oblimin(loadings *mat.Dense, normalize bool, eps float64, maxIter int, gamma float64) map[string]any {
-	_, nf := loadings.Dims() // loadings is p x nf (variables x factors)
-	if nf <= 1 {
+	_, cols := loadings.Dims()
+	if cols <= 1 {
 		// No rotation needed for single factor
 		return map[string]any{
 			"loadings": mat.DenseCopyOf(loadings),
-			"rotmat":   identityMatrix(nf), // identity matrix
+			"rotmat":   identityMatrix(cols),
 			"phi":      nil,
 		}
 	}
 
 	// Initialize rotation matrix as identity
-	Tmat := mat.NewDense(nf, nf, nil)
-	for i := range nf {
-		Tmat.Set(i, i, 1.0)
-	}
+	Tmat := identityMatrix(cols)
 
 	// Use GPFoblq for proper oblimin rotation
 	result, err := GPFoblq(loadings, Tmat, normalize, eps, maxIter, "oblimin", gamma)
@@ -166,7 +154,7 @@ func Oblimin(loadings *mat.Dense, normalize bool, eps float64, maxIter int, gamm
 		// Return identity rotation on error
 		return map[string]any{
 			"loadings": mat.DenseCopyOf(loadings),
-			"rotmat":   identityMatrix(nf),
+			"rotmat":   identityMatrix(cols),
 			"phi":      nil,
 			"f":        0.0,
 			"error":    err.Error(),
@@ -175,7 +163,7 @@ func Oblimin(loadings *mat.Dense, normalize bool, eps float64, maxIter int, gamm
 
 	// Calculate rotation matrix as t(solve(Th)) like in R
 	Th := result["Th"].(*mat.Dense)
-	rotMatDense := rotMatFromTh(Th, nf)
+	rotMatDense := rotMatFromTh(Th, cols)
 
 	// Return with correct key names expected by FaRotations
 	return map[string]any{
@@ -189,20 +177,17 @@ func Oblimin(loadings *mat.Dense, normalize bool, eps float64, maxIter int, gamm
 // GeominT performs geomin rotation.
 // Mirrors GPArotation::geominT
 func GeominT(loadings *mat.Dense, normalize bool, eps float64, maxIter int, delta float64) map[string]any {
-	_, nf := loadings.Dims() // loadings is p x nf (variables x factors)
-	if nf <= 1 {
+	_, cols := loadings.Dims()
+	if cols <= 1 {
 		// No rotation needed for single factor
 		return map[string]any{
 			"loadings": mat.DenseCopyOf(loadings),
-			"rotmat":   identityMatrix(nf), // identity matrix
+			"rotmat":   identityMatrix(cols),
 		}
 	}
 
 	// Initialize rotation matrix as identity
-	Tmat := mat.NewDense(nf, nf, nil)
-	for i := range nf {
-		Tmat.Set(i, i, 1.0)
-	}
+	Tmat := identityMatrix(cols)
 
 	// Use GPForth for proper geominT rotation
 	result, err := GPForth(loadings, Tmat, normalize, eps, maxIter, "geominT")
@@ -210,7 +195,7 @@ func GeominT(loadings *mat.Dense, normalize bool, eps float64, maxIter int, delt
 		// Return identity rotation on error
 		return map[string]any{
 			"loadings": mat.DenseCopyOf(loadings),
-			"rotmat":   identityMatrix(nf),
+			"rotmat":   identityMatrix(cols),
 			"f":        0.0,
 			"error":    err.Error(),
 		}
@@ -218,7 +203,7 @@ func GeominT(loadings *mat.Dense, normalize bool, eps float64, maxIter int, delt
 
 	// Calculate rotation matrix as t(solve(Th)) like in R
 	Th := result["Th"].(*mat.Dense)
-	rotMatDense := rotMatFromTh(Th, nf)
+	rotMatDense := rotMatFromTh(Th, cols)
 
 	// Return with correct key names expected by FaRotations
 	return map[string]any{
@@ -231,20 +216,17 @@ func GeominT(loadings *mat.Dense, normalize bool, eps float64, maxIter int, delt
 // BentlerT performs Bentler's criterion rotation.
 // Mirrors GPArotation::bentlerT
 func BentlerT(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map[string]any {
-	_, nf := loadings.Dims() // loadings is p x nf (variables x factors)
-	if nf <= 1 {
+	_, cols := loadings.Dims()
+	if cols <= 1 {
 		// No rotation needed for single factor
 		return map[string]any{
 			"loadings": mat.DenseCopyOf(loadings),
-			"rotmat":   identityMatrix(nf), // identity matrix
+			"rotmat":   identityMatrix(cols),
 		}
 	}
 
 	// Initialize rotation matrix as identity
-	Tmat := mat.NewDense(nf, nf, nil)
-	for i := 0; i < nf; i++ {
-		Tmat.Set(i, i, 1.0)
-	}
+	Tmat := identityMatrix(cols)
 
 	// Use GPForth for proper bentlerT rotation
 	result, err := GPForth(loadings, Tmat, normalize, eps, maxIter, "bentlerT")
@@ -252,13 +234,13 @@ func BentlerT(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map
 		// Return identity rotation on error
 		return map[string]any{
 			"loadings": mat.DenseCopyOf(loadings),
-			"rotmat":   identityMatrix(nf),
+			"rotmat":   identityMatrix(cols),
 			"f":        0.0,
 			"error":    err.Error(),
 		}
 	}
 
-	// Use Th (T matrix) directly for oblique reporting
+	// Use Th (T matrix) directly for orthogonal reporting
 	Th := result["Th"].(*mat.Dense)
 	rotMatDense := mat.DenseCopyOf(Th)
 
@@ -273,21 +255,18 @@ func BentlerT(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map
 // Simplimax performs simplimax rotation.
 // Mirrors GPArotation::simplimax
 func Simplimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int, k int) map[string]any {
-	_, nf := loadings.Dims() // loadings is p x nf (variables x factors)
-	if nf <= 1 {
+	_, cols := loadings.Dims()
+	if cols <= 1 {
 		// No rotation needed for single factor
 		return map[string]any{
 			"loadings": mat.DenseCopyOf(loadings),
-			"rotmat":   identityMatrix(nf), // identity matrix
+			"rotmat":   identityMatrix(cols),
 			"phi":      nil,
 		}
 	}
 
 	// Initialize rotation matrix as identity
-	Tmat := mat.NewDense(nf, nf, nil)
-	for i := range nf {
-		Tmat.Set(i, i, 1.0)
-	}
+	Tmat := identityMatrix(cols)
 
 	// Use GPFoblq for proper simplimax rotation
 	result, err := GPFoblq(loadings, Tmat, normalize, eps, maxIter, "simplimax", 0.0)
@@ -295,7 +274,7 @@ func Simplimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int, k 
 		// Return identity rotation on error
 		return map[string]any{
 			"loadings": mat.DenseCopyOf(loadings),
-			"rotmat":   identityMatrix(nf),
+			"rotmat":   identityMatrix(cols),
 			"phi":      nil,
 			"f":        0.0,
 			"error":    err.Error(),
@@ -304,7 +283,7 @@ func Simplimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int, k 
 
 	// Calculate rotation matrix as t(solve(Th)) to match other oblique handlers
 	Th := result["Th"].(*mat.Dense)
-	rotMatDense := rotMatFromTh(Th, nf)
+	rotMatDense := rotMatFromTh(Th, cols)
 
 	// Return with correct key names expected by FaRotations
 	return map[string]any{
@@ -318,21 +297,18 @@ func Simplimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int, k 
 // GeominQ performs geomin rotation (oblique).
 // Mirrors GPArotation::geominQ
 func GeominQ(loadings *mat.Dense, normalize bool, eps float64, maxIter int, delta float64) map[string]any {
-	_, nf := loadings.Dims() // loadings is p x nf (variables x factors)
-	if nf <= 1 {
+	_, cols := loadings.Dims()
+	if cols <= 1 {
 		// No rotation needed for single factor
 		return map[string]any{
 			"loadings": mat.DenseCopyOf(loadings),
-			"rotmat":   identityMatrix(nf), // identity matrix
+			"rotmat":   identityMatrix(cols),
 			"phi":      nil,
 		}
 	}
 
 	// Initialize rotation matrix as identity
-	Tmat := mat.NewDense(nf, nf, nil)
-	for i := 0; i < nf; i++ {
-		Tmat.Set(i, i, 1.0)
-	}
+	Tmat := identityMatrix(cols)
 
 	// Use GPFoblq for proper geominQ rotation
 	result, err := GPFoblq(loadings, Tmat, normalize, eps, maxIter, "geominQ", 0.0)
@@ -340,7 +316,7 @@ func GeominQ(loadings *mat.Dense, normalize bool, eps float64, maxIter int, delt
 		// Return identity rotation on error
 		return map[string]any{
 			"loadings": mat.DenseCopyOf(loadings),
-			"rotmat":   identityMatrix(nf),
+			"rotmat":   identityMatrix(cols),
 			"phi":      nil,
 			"f":        0.0,
 			"error":    err.Error(),
@@ -349,7 +325,7 @@ func GeominQ(loadings *mat.Dense, normalize bool, eps float64, maxIter int, delt
 
 	// Calculate rotation matrix as t(solve(Th)) like in R
 	Th := result["Th"].(*mat.Dense)
-	rotMatDense := rotMatFromTh(Th, nf)
+	rotMatDense := rotMatFromTh(Th, cols)
 
 	// Return with correct key names expected by FaRotations
 	return map[string]any{
@@ -363,21 +339,18 @@ func GeominQ(loadings *mat.Dense, normalize bool, eps float64, maxIter int, delt
 // BentlerQ performs Bentler's criterion rotation (oblique).
 // Mirrors GPArotation::bentlerQ
 func BentlerQ(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map[string]any {
-	_, nf := loadings.Dims() // loadings is p x nf (variables x factors)
-	if nf <= 1 {
+	_, cols := loadings.Dims()
+	if cols <= 1 {
 		// No rotation needed for single factor
 		return map[string]any{
 			"loadings": mat.DenseCopyOf(loadings),
-			"rotmat":   identityMatrix(nf), // identity matrix
+			"rotmat":   identityMatrix(cols),
 			"phi":      nil,
 		}
 	}
 
 	// Initialize rotation matrix as identity
-	Tmat := mat.NewDense(nf, nf, nil)
-	for i := range nf {
-		Tmat.Set(i, i, 1.0)
-	}
+	Tmat := identityMatrix(cols)
 
 	// Use GPFoblq for proper bentlerQ rotation
 	result, err := GPFoblq(loadings, Tmat, normalize, eps, maxIter, "bentlerQ", 0.0)
@@ -385,7 +358,7 @@ func BentlerQ(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map
 		// Return identity rotation on error
 		return map[string]any{
 			"loadings": mat.DenseCopyOf(loadings),
-			"rotmat":   identityMatrix(nf),
+			"rotmat":   identityMatrix(cols),
 			"phi":      nil,
 			"f":        0.0,
 			"error":    err.Error(),
@@ -394,7 +367,7 @@ func BentlerQ(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map
 
 	// Calculate rotation matrix as t(solve(Th)) like in R
 	Th := result["Th"].(*mat.Dense)
-	rotMatDense := rotMatFromTh(Th, nf)
+	rotMatDense := rotMatFromTh(Th, cols)
 
 	// Return with correct key names expected by FaRotations
 	return map[string]any{

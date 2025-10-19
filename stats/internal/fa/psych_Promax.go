@@ -10,7 +10,7 @@ import (
 // Promax performs Promax rotation.
 // Mirrors psych::Promax exactly
 func Promax(x *mat.Dense, m int, normalize bool) map[string]any {
-	p, nf := x.Dims()
+	rows, cols := x.Dims()
 
 	diagnostics := map[string]interface{}{
 		"converged":             true,
@@ -19,16 +19,16 @@ func Promax(x *mat.Dense, m int, normalize bool) map[string]any {
 		"matrixInversionErrors": []string{},
 	}
 
-	if nf < 2 {
+	if cols < 2 {
 		return map[string]any{
 			"loadings":    x,
-			"rotmat":      identityMatrix(nf),
-			"Phi":         identityMatrix(nf),
+			"rotmat":      identityMatrix(cols),
+			"Phi":         identityMatrix(cols),
 			"diagnostics": diagnostics,
 		}
 	}
 
-	// xx <- stats::varimax(x)
+	// Step 1: Perform varimax rotation
 	varimaxResult := Varimax(x, normalize, 1e-5, 1000)
 	xx := varimaxResult["loadings"].(*mat.Dense)
 	rotmatVarimax := varimaxResult["rotmat"].(*mat.Dense)
@@ -36,16 +36,16 @@ func Promax(x *mat.Dense, m int, normalize bool) map[string]any {
 	// x <- xx$loadings
 	x = xx
 
-	// Q <- x * abs(x)^(m - 1)
-	Q := mat.NewDense(p, nf, nil)
-	for i := range p {
-		for j := 0; j < nf; j++ {
+	// Step 2: Compute Q matrix: Q <- x * abs(x)^(m - 1)
+	Q := mat.NewDense(rows, cols, nil)
+	for i := 0; i < rows; i++ {
+		for j := 0; j < cols; j++ {
 			val := x.At(i, j)
 			Q.Set(i, j, val*math.Pow(math.Abs(val), float64(m-1)))
 		}
 	}
 
-	// U <- lm.fit(x, Q)$coefficients
+	// Step 3: Solve for U: U <- lm.fit(x, Q)$coefficients
 	// This is solve(t(x) %*% x) %*% t(x) %*% Q
 	var XtX mat.Dense
 	XtX.Mul(x.T(), x)
@@ -62,23 +62,24 @@ func Promax(x *mat.Dense, m int, normalize bool) map[string]any {
 		return map[string]any{
 			"loadings":    xx,
 			"rotmat":      rotmatVarimax,
-			"Phi":         identityMatrix(nf),
+			"Phi":         identityMatrix(cols),
 			"diagnostics": diagnostics,
 		}
 	}
 
-	// d <- try(diag(solve(t(U) %*% U)), silent = TRUE)
+	// Step 4: Compute diagonal matrix d <- diag(solve(t(U) %*% U))
 	var UtU mat.Dense
 	UtU.Mul(U.T(), &U)
 	var UtUInv mat.Dense
+
 	// Attempt regular inverse first; keep existing fallback logic below.
 	err = UtUInv.Inverse(&UtU)
-	d := make([]float64, nf)
+	d := make([]float64, cols)
 	if err != nil {
 		// Match R's eigenvalue approximation for singular matrices
 		// Use simplified regularization approach
 		regularization := 1e-8
-		for i := range nf {
+		for i := 0; i < cols; i++ {
 			UtU.Set(i, i, UtU.At(i, i)+regularization)
 		}
 		err = UtUInv.Inverse(&UtU)
@@ -88,43 +89,42 @@ func Promax(x *mat.Dense, m int, normalize bool) map[string]any {
 			diagnostics["matrixInversionErrors"] = append(
 				diagnostics["matrixInversionErrors"].([]string),
 				"failed to invert UtU after regularization: "+err.Error())
-			for i := range nf {
+			for i := 0; i < cols; i++ {
 				d[i] = 1.0
 			}
 		} else {
-			for i := range nf {
+			for i := 0; i < cols; i++ {
 				d[i] = UtUInv.At(i, i)
 			}
 		}
 	} else {
-		for i := range nf {
+		for i := 0; i < cols; i++ {
 			d[i] = UtUInv.At(i, i)
 		}
 	}
 
-	// U <- U %*% diag(sqrt(d))
-	for j := range nf {
+	// Step 5: U <- U %*% diag(sqrt(d))
+	for j := 0; j < cols; j++ {
 		sqrtD := math.Sqrt(d[j])
-		for i := range nf {
+		for i := 0; i < cols; i++ {
 			U.Set(i, j, U.At(i, j)*sqrtD)
 		}
 	}
 
-	// z <- x %*% U
+	// Step 6: z <- x %*% U
 	var z mat.Dense
 	z.Mul(x, &U)
 
-	// U <- xx$rotmat %*% U
+	// Step 7: U <- xx$rotmat %*% U
 	var rotmat mat.Dense
 	rotmat.Mul(rotmatVarimax, &U)
 
-	// ui <- solve(U) using a safe inverse helper. If inversion fails,
-	// fall back to identity-like behavior to preserve algorithm stability.
+	// Step 8: ui <- solve(U) using a safe inverse helper
 	uiDense := inverseOrIdentity(&rotmat, rotmat.RawMatrix().Rows)
 	var ui mat.Dense
 	ui.CloneFrom(uiDense)
 
-	// Phi <- ui %*% t(ui)
+	// Step 9: Phi <- ui %*% t(ui)
 	var Phi mat.Dense
 	Phi.Mul(&ui, ui.T())
 

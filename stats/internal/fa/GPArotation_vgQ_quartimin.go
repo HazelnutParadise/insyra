@@ -8,51 +8,54 @@ import (
 // vgQQuartimin computes the objective and gradient for quartimin rotation.
 // Mirrors GPArotation::vgQ.quartimin(L)
 //
+// Quartimin criterion: f = (1/4) * sum(sum(L^2 * (L^2 %*% (J - I))))
+// where J is all-ones matrix, I is identity matrix
+//
 // Returns: Gq (gradient), f (objective), method
 func vgQQuartimin(L *mat.Dense) (Gq *mat.Dense, f float64, method string) {
-	p, k := L.Dims()
+	rows, cols := L.Dims()
 
-	// L2 = L^2
-	L2 := mat.NewDense(p, k, nil)
-	for i := range p {
-		for j := 0; j < k; j++ {
-			l := L.At(i, j)
-			L2.Set(i, j, l*l)
+	// Compute L^2 element-wise
+	L2 := mat.NewDense(rows, cols, nil)
+	for i := 0; i < rows; i++ {
+		for j := 0; j < cols; j++ {
+			val := L.At(i, j)
+			L2.Set(i, j, val*val)
 		}
 	}
 
-	// nonDiag = ones - diag
-	nonDiag := mat.NewDense(k, k, nil)
-	for i := range k {
-		for j := range k {
+	// Create non-diagonal matrix: J - I (all ones except diagonal is zero)
+	nonDiag := mat.NewDense(cols, cols, nil)
+	for i := 0; i < cols; i++ {
+		for j := 0; j < cols; j++ {
 			if i == j {
-				nonDiag.Set(i, j, 0)
+				nonDiag.Set(i, j, 0) // diagonal elements
 			} else {
-				nonDiag.Set(i, j, 1)
+				nonDiag.Set(i, j, 1) // off-diagonal elements
 			}
 		}
 	}
 
-	// X = L2 %*% nonDiag
-	X := mat.NewDense(p, k, nil)
+	// Compute X = L2 %*% nonDiag
+	X := mat.NewDense(rows, cols, nil)
 	X.Mul(L2, nonDiag)
 
-	// Gq = L * X
-	Gq = mat.NewDense(p, k, nil)
-	for i := range p {
-		for j := range k {
+	// Compute gradient: Gq = L * X (element-wise multiplication)
+	Gq = mat.NewDense(rows, cols, nil)
+	for i := 0; i < rows; i++ {
+		for j := 0; j < cols; j++ {
 			Gq.Set(i, j, L.At(i, j)*X.At(i, j))
 		}
 	}
 
-	// f = sum(L^2 * X) / 4
+	// Compute objective function: f = sum(L^2 * X) / 4
 	f = 0.0
-	for i := range p {
-		for j := range k {
+	for i := 0; i < rows; i++ {
+		for j := 0; j < cols; j++ {
 			f += L2.At(i, j) * X.At(i, j)
 		}
 	}
-	f /= 4
+	f /= 4.0
 
 	method = "Quartimin"
 	return

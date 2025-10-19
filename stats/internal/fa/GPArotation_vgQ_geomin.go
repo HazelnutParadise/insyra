@@ -10,77 +10,80 @@ import (
 // vgQGeomin computes the objective and gradient for geomin rotation.
 // Mirrors GPArotation::vgQ.geomin(L, delta = 0.01)
 //
-// k <- ncol(L)
-// p <- nrow(L)
+// Geomin minimizes the product of squared loadings within each row (variable).
+// It uses a small epsilon (delta) to avoid log(0) problems.
+//
+// k <- ncol(L)  [number of factors]
+// p <- nrow(L)  [number of variables]
 // L2 <- L^2 + delta
-// pro <- exp(rowSums(log(L2))/k)
+// pro <- exp(rowSums(log(L2))/k)  [geometric mean for each variable]
 // Gq <- (2/k) * (L/L2) * matrix(rep(pro, k), p)
 // f <- sum(pro)
 //
 // Returns: Gq (gradient), f (objective), method
 func vgQGeomin(L *mat.Dense, delta float64) (Gq *mat.Dense, f float64, method string) {
-	p, k := L.Dims()
+	rows, cols := L.Dims()
 
-	// L2 = L^2 + delta
-	L2 := mat.NewDense(p, k, nil)
-	for i := range p {
-		for j := range k {
-			l := L.At(i, j)
-			L2.Set(i, j, l*l+delta)
+	// L2 = L^2 + delta (add small epsilon to avoid log(0))
+	L2 := mat.NewDense(rows, cols, nil)
+	for i := 0; i < rows; i++ {
+		for j := 0; j < cols; j++ {
+			val := L.At(i, j)
+			L2.Set(i, j, val*val+delta)
 		}
 	}
 
-	// log(L2)
-	logL2 := mat.NewDense(p, k, nil)
-	for i := range p {
-		for j := range k {
+	// Compute log(L2) element-wise
+	logL2 := mat.NewDense(rows, cols, nil)
+	for i := 0; i < rows; i++ {
+		for j := 0; j < cols; j++ {
 			logL2.Set(i, j, math.Log(L2.At(i, j)))
 		}
 	}
 
-	// rowSums(log(L2))
-	rowSums := make([]float64, p)
-	for i := range p {
+	// Compute row sums of log(L2)
+	rowSumsLog := make([]float64, rows)
+	for i := 0; i < rows; i++ {
 		sum := 0.0
-		for j := range k {
+		for j := 0; j < cols; j++ {
 			sum += logL2.At(i, j)
 		}
-		rowSums[i] = sum
+		rowSumsLog[i] = sum
 	}
 
-	// pro = exp(rowSums / k)
-	pro := make([]float64, p)
-	for i := range p {
-		pro[i] = math.Exp(rowSums[i] / float64(k))
+	// Compute geometric mean for each row: pro = exp(rowSums(log(L2)) / k)
+	geometricMeans := make([]float64, rows)
+	for i := 0; i < rows; i++ {
+		geometricMeans[i] = math.Exp(rowSumsLog[i] / float64(cols))
 	}
 
-	// f = sum(pro)
+	// Objective function: f = sum(pro)
 	f = 0.0
-	for i := range p {
-		f += pro[i]
+	for i := 0; i < rows; i++ {
+		f += geometricMeans[i]
 	}
 
-	// L_div_L2 = L / L2
-	L_div_L2 := mat.NewDense(p, k, nil)
-	for i := range p {
-		for j := range k {
-			L_div_L2.Set(i, j, L.At(i, j)/L2.At(i, j))
+	// Compute L / L2 element-wise
+	L_over_L2 := mat.NewDense(rows, cols, nil)
+	for i := 0; i < rows; i++ {
+		for j := 0; j < cols; j++ {
+			L_over_L2.Set(i, j, L.At(i, j)/L2.At(i, j))
 		}
 	}
 
-	// matrix(rep(pro, k), p) - create p x k matrix with pro repeated
-	proMat := mat.NewDense(p, k, nil)
-	for i := range p {
-		for j := range k {
-			proMat.Set(i, j, pro[i])
+	// Create matrix by repeating geometric means across columns
+	geomMeanMat := mat.NewDense(rows, cols, nil)
+	for i := 0; i < rows; i++ {
+		for j := 0; j < cols; j++ {
+			geomMeanMat.Set(i, j, geometricMeans[i])
 		}
 	}
 
-	// Gq = (2/k) * L_div_L2 * proMat
-	Gq = mat.NewDense(p, k, nil)
-	for i := range p {
-		for j := range k {
-			Gq.Set(i, j, (2.0/float64(k))*L_div_L2.At(i, j)*proMat.At(i, j))
+	// Gradient: Gq = (2/k) * (L/L2) * geomMeanMat (element-wise)
+	Gq = mat.NewDense(rows, cols, nil)
+	for i := 0; i < rows; i++ {
+		for j := 0; j < cols; j++ {
+			Gq.Set(i, j, (2.0/float64(cols))*L_over_L2.At(i, j)*geomMeanMat.At(i, j))
 		}
 	}
 

@@ -2,66 +2,66 @@
 package fa
 
 import (
-	"math"
-
 	"gonum.org/v1/gonum/mat"
 )
 
 // vgQVarimax computes the objective and gradient for varimax rotation.
 // Mirrors GPArotation::vgQ.varimax(L)
 //
-// QL <- sweep(L^2, 2, colMeans(L^2), "-")
-// f <- -sqrt(sum(diag(crossprod(QL))))^2 / 4
+// Varimax criterion maximizes the variance of squared loadings within each factor:
+// QL <- L^2 - colMeans(L^2)  [center each column]
+// f <- -sum(diag(t(QL) %*% QL)) / 4  [negative because GPA minimizes]
 // Gq <- -L * QL
 //
 // Returns: Gq (gradient), f (objective), method
 func vgQVarimax(L *mat.Dense) (Gq *mat.Dense, f float64, method string) {
-	p, q := L.Dims()
+	rows, cols := L.Dims()
 
-	// L2 = L^2
-	L2 := mat.NewDense(p, q, nil)
-	for i := range p {
-		for j := 0; j < q; j++ {
-			l := L.At(i, j)
-			L2.Set(i, j, l*l)
+	// Compute L^2 element-wise
+	L2 := mat.NewDense(rows, cols, nil)
+	for i := 0; i < rows; i++ {
+		for j := 0; j < cols; j++ {
+			val := L.At(i, j)
+			L2.Set(i, j, val*val)
 		}
 	}
 
-	// colMeans
-	colMeans := make([]float64, q)
-	for j := range q {
+	// Compute column means of L2
+	colMeans := make([]float64, cols)
+	for j := 0; j < cols; j++ {
 		sum := 0.0
-		for i := range p {
+		for i := 0; i < rows; i++ {
 			sum += L2.At(i, j)
 		}
-		colMeans[j] = sum / float64(p)
+		colMeans[j] = sum / float64(rows)
 	}
 
-	// QL = L2 - colMeans
-	QL := mat.NewDense(p, q, nil)
-	for i := range p {
-		for j := 0; j < q; j++ {
+	// Center L2 by subtracting column means: QL = L2 - colMeans
+	QL := mat.NewDense(rows, cols, nil)
+	for i := 0; i < rows; i++ {
+		for j := 0; j < cols; j++ {
 			QL.Set(i, j, L2.At(i, j)-colMeans[j])
 		}
 	}
 
-	// crossprod = t(QL) %*% QL
-	var crossprod mat.Dense
-	crossprod.Mul(QL.T(), QL)
+	// Compute cross product: t(QL) %*% QL
+	var crossProd mat.Dense
+	crossProd.Mul(QL.T(), QL)
 
-	// sumDiag = sum(diag(crossprod))
+	// Sum of diagonal elements of cross product
 	sumDiag := 0.0
-	for i := range q {
-		sumDiag += crossprod.At(i, i)
+	for i := 0; i < cols; i++ {
+		sumDiag += crossProd.At(i, i)
 	}
 
-	// f = - (sqrt(sumDiag))^2 / 4
-	f = -math.Pow(math.Sqrt(sumDiag), 2) / 4
+	// Objective function: f = -sum(diag(t(QL)%*%QL)) / 4
+	// (negative because GPA minimizes, but varimax maximizes)
+	f = -sumDiag / 4.0
 
-	// Gq = -L * QL
-	Gq = mat.NewDense(p, q, nil)
-	for i := range p {
-		for j := range q {
+	// Gradient: Gq = -L * QL (element-wise multiplication)
+	Gq = mat.NewDense(rows, cols, nil)
+	for i := 0; i < rows; i++ {
+		for j := 0; j < cols; j++ {
 			Gq.Set(i, j, -L.At(i, j)*QL.At(i, j))
 		}
 	}
