@@ -558,6 +558,21 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		return nil
 	}
 
+	// Replace zero loadings with 1e-15 (matching R's behavior)
+	// R: loadings[loadings == 0] <- 10^-15
+	// This prevents numerical issues in subsequent calculations
+	if loadings != nil {
+		pVars, mFactors := loadings.Dims()
+		for i := range pVars {
+			for j := range mFactors {
+				val := loadings.At(i, j)
+				if val == 0 {
+					loadings.Set(i, j, 1e-15)
+				}
+			}
+		}
+	}
+
 	// Standardize factor signs after extraction (before rotation)
 	// This ensures consistency: largest absolute loading per factor is positive
 	if loadings != nil {
@@ -768,11 +783,24 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 
 	structureTable := matrixToDataTableWithNames(&S, tableNameFactorStructure, factorColNames, colNames)
 
+	// Check for Heywood case (communality > 1)
+	// R: if (max(result$communality > 1) && !covar) warning(...)
+	hasHeywoodCase := false
+	for i := range colNum {
+		if extractionCommunalities[i] > 1.0 {
+			hasHeywoodCase = true
+			break
+		}
+	}
+
 	messages := []string{
 		fmt.Sprintf("Extraction method: %s", opt.Extraction),
 		fmt.Sprintf("Factor count method: %s (retained %d)", opt.Count.Method, numFactors),
 		fmt.Sprintf("Rotation method: %s", opt.Rotation.Method),
 		fmt.Sprintf("Scoring method: %s", opt.Scoring),
+	}
+	if hasHeywoodCase {
+		messages = append(messages, "WARNING: An ultra-Heywood case was detected. Examine the results carefully")
 	}
 	if opt.Scoring == FactorScoreNone {
 		messages = append(messages, "Factor scores not computed (scoring disabled)")
