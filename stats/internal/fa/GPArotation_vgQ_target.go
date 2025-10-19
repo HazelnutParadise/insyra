@@ -26,7 +26,7 @@ func vgQTarget(L *mat.Dense, Target *mat.Dense) (Gq *mat.Dense, f float64, metho
 	rows, cols := L.Dims()
 	targetRows, targetCols := Target.Dims()
 	if rows != targetRows || cols != targetCols {
-		return nil, 0, "", fmt.Errorf("L and Target must have the same dimensions")
+		return nil, 0, "", fmt.Errorf("loadings and target must have the same dimensions")
 	}
 
 	// Compute difference: L - Target

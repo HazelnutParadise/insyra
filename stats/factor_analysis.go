@@ -2167,7 +2167,7 @@ func extractML(corr *mat.Dense, numFactors int, maxIter int, tol float64, sample
 		psi[i] = 1.0 / (1.0 + math.Exp(-lp))
 	}
 	converged := result.Status == optimize.Success || result.Status == optimize.FunctionConvergence
-	iterations := result.Stats.FuncEvaluations
+	iterations := result.FuncEvaluations
 
 	insyra.LogInfo("stats", "FactorAnalysis", "ML: BFGS converged=%v, status=%v, iterations=%d, first psi=%.4f", converged, result.Status, iterations, psi[0])
 	finalObj := result.F

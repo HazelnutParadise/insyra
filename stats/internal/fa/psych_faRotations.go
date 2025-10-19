@@ -620,7 +620,7 @@ func randomOrthonormalMatrix(n int, rnd *rand.Rand) *mat.Dense {
 
 func seedFromMatrix(m *mat.Dense) int64 {
 	data := m.RawMatrix().Data
-	var seed uint64 = uint64(len(data)) + 1
+	var seed = uint64(len(data)) + 1
 	for _, v := range data {
 		bits := math.Float64bits(v)
 		seed ^= bits + 0x9e3779b97f4a7c15 + (seed << 6) + (seed >> 2)
