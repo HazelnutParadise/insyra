@@ -173,8 +173,9 @@ def insyra_return(data, url="http://localhost:%v/pyresult"):
     payload = {"execution_id": "%s", "data": data}
     response = requests.post(url, json=payload)
     if response.status_code != 200:
-        print(f"Failed to send result: {response.status_code}")
-
+        raise Exception(f"Failed to send result: {response.status_code}")
+    import os
+    os._exit(0)
 `, imports, port, executionID)
 }
 
