@@ -506,44 +506,54 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 
 	initialCommunalities := make([]float64, colNum)
 	if opt.Extraction == FactorExtractionPAF || opt.Extraction == FactorExtractionML {
-		// For PAF and ML, SPSS default is to use squared multiple correlations (SMC) as initial estimates
-		// SMC[i] = 1 - 1/R_ii^{-1}, where R^{-1} is pseudoinverse of correlation matrix (matching R's psych::smc)
-		// R's psych::smc uses Pinv (pseudoinverse) via SVD for numerical stability
-		insyra.LogInfo("stats", "FactorAnalysis", "Computing SMC using pseudoinverse correlation matrix method")
-
-		// Use SVD-based pseudoinverse for numerical stability (matching R's Pinv function)
-		corrInv := computePseudoInverse(corrDense)
-
-		if corrInv == nil {
-			insyra.LogWarning("stats", "FactorAnalysis", "Pseudoinverse computation failed, using fallback SMC method")
-			// Fallback to the fa package's SMC method
-			smcVec, _ := fa.Smc(corrDense, nil)
-			if smcVec != nil {
-				copy(initialCommunalities, smcVec.RawVector().Data)
-			} else {
-				// Ultimate fallback: use 0.5 as default
-				for i := 0; i < colNum; i++ {
-					initialCommunalities[i] = 0.5
-				}
+		// R: if (nfactors <= n) { diag(r.mat) <- smc(...) }
+		// else { warning and use 1 instead }
+		if numFactors > colNum {
+			// Too many factors requested: use 1 instead of SMC
+			insyra.LogWarning("stats", "FactorAnalysis", "too many factors requested (%d) for number of variables (%d); using 1s instead of SMC estimates", numFactors, colNum)
+			for i := 0; i < colNum; i++ {
+				initialCommunalities[i] = 1.0
 			}
 		} else {
-			// SMC[i] = 1 - 1/R_ii^{-1}
-			for i := 0; i < colNum; i++ {
-				diagInv := corrInv.At(i, i)
-				if diagInv > 0 {
-					initialCommunalities[i] = 1.0 - 1.0/diagInv
+			// For PAF and ML, SPSS default is to use squared multiple correlations (SMC) as initial estimates
+			// SMC[i] = 1 - 1/R_ii^{-1}, where R^{-1} is pseudoinverse of correlation matrix (matching R's psych::smc)
+			// R's psych::smc uses Pinv (pseudoinverse) via SVD for numerical stability
+			insyra.LogInfo("stats", "FactorAnalysis", "Computing SMC using pseudoinverse correlation matrix method")
+
+			// Use SVD-based pseudoinverse for numerical stability (matching R's Pinv function)
+			corrInv := computePseudoInverse(corrDense)
+
+			if corrInv == nil {
+				insyra.LogWarning("stats", "FactorAnalysis", "Pseudoinverse computation failed, using fallback SMC method")
+				// Fallback to the fa package's SMC method
+				smcVec, _ := fa.Smc(corrDense, nil)
+				if smcVec != nil {
+					copy(initialCommunalities, smcVec.RawVector().Data)
 				} else {
-					initialCommunalities[i] = 0.5 // Fallback
+					// Ultimate fallback: use 0.5 as default
+					for i := 0; i < colNum; i++ {
+						initialCommunalities[i] = 0.5
+					}
 				}
-				// Clamp to valid range [0, 1]
-				if initialCommunalities[i] < 0 {
-					initialCommunalities[i] = 0
+			} else {
+				// SMC[i] = 1 - 1/R_ii^{-1}
+				for i := 0; i < colNum; i++ {
+					diagInv := corrInv.At(i, i)
+					if diagInv > 0 {
+						initialCommunalities[i] = 1.0 - 1.0/diagInv
+					} else {
+						initialCommunalities[i] = 0.5 // Fallback
+					}
+					// Clamp to valid range [0, 1]
+					if initialCommunalities[i] < 0 {
+						initialCommunalities[i] = 0
+					}
+					if initialCommunalities[i] > 1 {
+						initialCommunalities[i] = 1
+					}
 				}
-				if initialCommunalities[i] > 1 {
-					initialCommunalities[i] = 1
-				}
+				insyra.LogInfo("stats", "FactorAnalysis", "SMC computed: [%.4f, %.4f, %.4f, ...]", initialCommunalities[0], initialCommunalities[1], initialCommunalities[2])
 			}
-			insyra.LogInfo("stats", "FactorAnalysis", "SMC computed: [%.4f, %.4f, %.4f, ...]", initialCommunalities[0], initialCommunalities[1], initialCommunalities[2])
 		}
 	} else {
 		// For other methods like PCA, use the diagonal of the correlation matrix (which is 1.0)
@@ -1191,14 +1201,26 @@ func extractPAF(corr *mat.Dense, numFactors int, maxIter int, tol float64, initi
 
 		// Extract first numFactors components
 		newLoadings := mat.NewDense(rows, numFactors, nil)
+		hasImaginaryEigenvalue := false
 		for i := range rows {
 			for j := 0; j < numFactors; j++ {
 				// loadings = eigenvectors * sqrt(eigenvalues)
 				val := pairs[j].value
 				if val > 0 {
 					newLoadings.Set(i, j, pairs[j].vector[i]*math.Sqrt(val))
+				} else if val < 0 {
+					// Negative eigenvalue (imaginary) - this indicates a problem
+					hasImaginaryEigenvalue = true
+					newLoadings.Set(i, j, 0)
 				}
 			}
+		}
+
+		// Check for imaginary eigenvalue condition
+		// R: if (is.na(err)) { warning(...); break }
+		if hasImaginaryEigenvalue {
+			insyra.LogWarning("stats", "FactorAnalysis", "imaginary eigenvalue condition encountered in PAF; try again with lower communality estimates or SMC=FALSE")
+			return nil, nil, false, iterations, fmt.Errorf("imaginary eigenvalue condition in PAF iteration %d", iterations)
 		}
 
 		// Update communalities: h_i = sum(loadings[i,j]^2 for j in 1..m)
