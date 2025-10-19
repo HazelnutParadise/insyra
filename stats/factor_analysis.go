@@ -562,7 +562,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		}
 	}
 
-	loadings, extractionEigenvalues, converged, iterations, err := extractFactors(data, corrDense, sortedEigenvalues, sortedEigenvectors, numFactors, opt, rowNum, tolVal, initialCommunalities)
+	loadings, _, converged, iterations, err := extractFactors(data, corrDense, sortedEigenvalues, sortedEigenvectors, numFactors, opt, rowNum, tolVal, initialCommunalities)
 	if err != nil {
 		insyra.LogWarning("stats", "FactorAnalysis", "factor extraction failed: %v", err)
 		return nil
@@ -581,14 +581,6 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 				}
 			}
 		}
-	}
-
-	// Standardize factor signs after extraction (before rotation)
-	// This ensures consistency: largest absolute loading per factor is positive
-	if loadings != nil {
-		insyra.LogInfo("stats", "FactorAnalysis", "Before standardization: A1 F1=%.6f F2=%.6f F3=%.6f", loadings.At(0, 0), loadings.At(0, 1), loadings.At(0, 2))
-		loadings = standardizeFactorSigns(loadings)
-		insyra.LogInfo("stats", "FactorAnalysis", "After standardization: A1 F1=%.6f F2=%.6f F3=%.6f", loadings.At(0, 0), loadings.At(0, 1), loadings.At(0, 2))
 	}
 
 	// Sanity check: inspect unrotated loadings before any rotation is applied
@@ -652,15 +644,9 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	}
 
 	// Sort or align factor columns by explained variance
-	// R's psych::fa() sorts factors after rotation by explained variance
-	// This must be done AFTER rotation to match R's behavior
-	// R: if (nfactors > 1) { ... sorting logic ... }
-	if numFactors > 1 {
-		rotatedLoadings, rotationMatrix, phi = sortFactorsByExplainedVariance(rotatedLoadings, rotationMatrix, phi)
-	}
-
-	// Apply sign standardization AFTER sorting (but always, not just when nfactors > 1)
-	// R: signed <- sign(colSums(loadings)); loadings <- loadings %*% diag(signed)
+	// R's psych::fa() applies sign standardization BEFORE sorting
+	// R: (after rotation) signed <- sign(colSums(loadings)); loadings <- loadings %*% diag(signed)
+	// Apply sign standardization AFTER rotation but BEFORE sorting
 	// R code does this for ALL cases (sorted or not sorted)
 	// BUT: when nfactors == 1, R uses different logic: checks if sum < 0, then flips entire column
 	rows, cols := rotatedLoadings.Dims()
@@ -708,6 +694,13 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 				phi.Set(i, j, signs[i]*phi.At(i, j)*signs[j])
 			}
 		}
+	}
+
+	// R's psych::fa() sorts factors AFTER sign standardization, by explained variance
+	// This must be done AFTER rotation and sign standardization to match R's behavior
+	// R: if (nfactors > 1) { ... sorting logic ... }
+	if numFactors > 1 {
+		rotatedLoadings, rotationMatrix, phi = sortFactorsByExplainedVariance(rotatedLoadings, rotationMatrix, phi)
 	}
 
 	// Step 8: Compute communalities and uniquenesses
@@ -829,54 +822,53 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		}
 	}
 
-	// Step 9: Compute explained proportions for "Extraction SS loadings"
-	// SPSS reports three blocks: Initial eigenvalues, Extraction SS loadings,
-	// and Rotation SS loadings. Our single "ExplainedProportion" field should
-	// reflect the Extraction SS loadings (not the rotated SS loadings).
+	// Step 9: Compute explained proportions matching R's variance explanation calculation
+	// R: vx = colSums(loadings^2) or diag(Phi %*% t(loadings) %*% loadings)
+	// R: vtotal = sum(communalities + uniquenesses) = sum(diag(r))
+	// R: Proportion Var = vx / vtotal (NOT percentage, NOT per variable)
 	pVars, mFactors := rotatedLoadings.Dims()
 	explainedProp := make([]float64, mFactors)
 	cumulativeProp := make([]float64, mFactors)
 
-	if opt.Extraction == FactorExtractionPCA && len(extractionEigenvalues) == mFactors {
-		// Use eigenvalues for PCA
-		cum := 0.0
-		for j := range mFactors {
-			prop := extractionEigenvalues[j] / float64(pVars) * 100.0
-			explainedProp[j] = prop
-			cum += prop
-			cumulativeProp[j] = cum
-		}
-	} else if opt.Extraction == FactorExtractionPAF && len(extractionEigenvalues) == mFactors {
-		// Use eigenvalues for PAF
-		cum := 0.0
-		for j := range mFactors {
-			prop := extractionEigenvalues[j] / float64(pVars) * 100.0
-			explainedProp[j] = prop
-			cum += prop
-			cumulativeProp[j] = cum
-		}
-	} else {
-		// Fallback for other methods: use unrotated SS loadings as extraction
-		// SS (pre-rotation loadings: structure == pattern)
-		ssLoad := make([]float64, mFactors)
+	// Compute SS loadings for each factor
+	ssLoad := make([]float64, mFactors)
+	if phi == nil {
+		// Orthogonal rotation: vx <- colSums(loadings^2)
 		for j := range mFactors {
 			sum := 0.0
 			for i := range pVars {
-				v := loadings.At(i, j)
+				v := rotatedLoadings.At(i, j)
 				sum += v * v
 			}
 			ssLoad[j] = sum
 		}
-		totalVar := float64(pVars)
-		cum := 0.0
+	} else {
+		// Oblique rotation: vx <- diag(Phi %*% t(loadings) %*% loadings)
+		// Step 1: Compute t(loadings) %*% loadings (m × m matrix)
+		ltl := mat.NewDense(mFactors, mFactors, nil)
+		ltl.Mul(rotatedLoadings.T(), rotatedLoadings)
+		// Step 2: Compute Phi %*% (t(loadings) %*% loadings)
+		philtl := mat.NewDense(mFactors, mFactors, nil)
+		philtl.Mul(phi, ltl)
+		// Step 3: Extract diagonal
 		for j := range mFactors {
-			prop := ssLoad[j] / totalVar * 100.0
-			explainedProp[j] = prop
-			cum += prop
-			cumulativeProp[j] = cum
+			ssLoad[j] = philtl.At(j, j)
 		}
-		insyra.LogDebug("stats", "FactorAnalysis", "explainedProp calculated: %v", explainedProp)
 	}
+
+	// R: vtotal = sum(communalities + uniquenesses) = sum(diag(r)) = sum of 1s = pVars
+	// Since we're using correlation matrix (diag = 1), vtotal = pVars
+	vtotal := float64(pVars)
+
+	// R: Proportion Var = vx / vtotal (simple proportion, not percentage)
+	cum := 0.0
+	for j := range mFactors {
+		prop := ssLoad[j] / vtotal
+		explainedProp[j] = prop
+		cum += prop
+		cumulativeProp[j] = cum
+	}
+	insyra.LogDebug("stats", "FactorAnalysis", "explainedProp (SS/total): %v", explainedProp)
 
 	// Build structure matrix for reporting: S = P (orthogonal) or S = P * Phi (oblique)
 	var S mat.Dense
