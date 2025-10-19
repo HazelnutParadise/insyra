@@ -30,6 +30,21 @@ func pyEnvInit() {
 	if isPyEnvInit {
 		return
 	}
+
+	// 設置pyPath
+	if runtime.GOOS == "windows" {
+		pyPath = filepath.Join(absInstallDir, ".venv", "Scripts", "python.exe")
+	} else {
+		pyPath = filepath.Join(absInstallDir, ".venv", "bin", "python")
+	}
+
+	// 檢查虛擬環境是否存在，如果存在就不初始化
+	if _, err := os.Stat(pyPath); err == nil {
+		isPyEnvInit = true
+		insyra.LogDebug("py", "init", "Virtual environment already exists, skipping initialization!")
+		return
+	}
+
 	isPyEnvInit = true
 
 	insyra.LogInfo("py", "init", "Preparing Python environment with uv...")
@@ -74,13 +89,6 @@ func prepareInstallDir() error {
 
 // 設置uv環境（初始化項目和創建虛擬環境）
 func setupUvEnvironment() error {
-	// 設置pyPath
-	if runtime.GOOS == "windows" {
-		pyPath = filepath.Join(absInstallDir, ".venv", "Scripts", "python.exe")
-	} else {
-		pyPath = filepath.Join(absInstallDir, ".venv", "bin", "python")
-	}
-
 	// 檢查虛擬環境是否存在
 	venvExists := false
 	if _, err := os.Stat(pyPath); err == nil {
