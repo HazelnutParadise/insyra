@@ -16,7 +16,7 @@ This function is used to execute arbitrary Python code and bind the result to th
 
 #### Parameters
 
-- `out` (any): A pointer to a struct to bind the Python result to. You can optionally use `json` tags on struct fields for custom mapping, otherwise field names are matched to Python dictionary keys by default.
+- `out` (any): A pointer to a struct to bind the Python result to. You can optionally use `json` tags on struct fields for custom mapping, otherwise field names are matched to Python dictionary keys by default. If you don't need the Python return result, pass `nil`.
 - `code` (string): The Python code to be executed.
 
 #### Returns
@@ -57,7 +57,7 @@ In the Python code template, use `$v1`, `$v2`, `$v3`, etc. as placeholders for t
 
 #### Parameters
 
-- `out` (any): A pointer to a struct to bind the Python result to. You can optionally use `json` tags on struct fields for custom mapping, otherwise field names are matched to Python dictionary keys by default.
+- `out` (any): A pointer to a struct to bind the Python result to. You can optionally use `json` tags on struct fields for custom mapping, otherwise field names are matched to Python dictionary keys by default. If you don't need the Python return result, pass `nil`.
 - `code` (string): The Python code template with `$v1`, `$v2`, etc. placeholders.
 - `args` (`...any`): A variable-length argument list of Go variables to be substituted into the template.
 
@@ -116,7 +116,7 @@ Run Python code from a file and bind the result to the provided struct pointer.
 
 #### Parameters
 
-- `out` (any): A pointer to a struct to bind the Python result to. You can optionally use `json` tags on struct fields for custom mapping, otherwise field names are matched to Python dictionary keys by default.
+- `out` (any): A pointer to a struct to bind the Python result to. You can optionally use `json` tags on struct fields for custom mapping, otherwise field names are matched to Python dictionary keys by default. If you don't need the Python return result, pass `nil`.
 - `filepath` (string): The Python file to be executed.
 
 #### Returns
@@ -129,7 +129,7 @@ Run Python code from a file with variables passed from Go using `$v1`, `$v2`, et
 
 #### Parameters
 
-- `out` (any): A pointer to a struct to bind the Python result to. You can optionally use `json` tags on struct fields for custom mapping, otherwise field names are matched to Python dictionary keys by default.
+- `out` (any): A pointer to a struct to bind the Python result to. You can optionally use `json` tags on struct fields for custom mapping, otherwise field names are matched to Python dictionary keys by default. If you don't need the Python return result, pass `nil`.
 - `filepath` (string): The Python file to be executed.
 - `args` (`...any`): A variable-length argument list of Go variables to be substituted into the template.
 
