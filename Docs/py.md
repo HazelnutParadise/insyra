@@ -9,7 +9,7 @@ The `py` package automatically installs common Python libraries, allowing you to
 ### `RunCode`
 
 ```go
-func RunCode(code string) map[string]any
+func RunCode(code string) (map[string]any, error)
 ```
 
 This function is used to execute arbitrary Python code. It appends default Python code required for communication and runs the code.
@@ -20,16 +20,23 @@ This function is used to execute arbitrary Python code. It appends default Pytho
 
 #### Returns
 
-- `map[string]any`: A map representing the result received from the Python server. This map will contain the data returned from Python through the `insyra_return` function. Returns `nil` if Python code doesn't call `insyra_return`.
+- `(map[string]any, error)`: A map containing the data returned from Python through the `insyra_return` function, and an error if execution failed.
+  - On success: Returns the result data as a map and `nil` for error
+  - On failure: Returns `nil` and an error message containing either the exception from Python or system execution error
+  - If Python doesn't call `insyra_return`: Returns `nil, nil`
 
 #### Example
 
 ```go
-result := RunCode(`
+result, err := RunCode(`
 print("Hello from Python")
 insyra_return({"message": "Hello from Python", "value": 123})
 `)
-fmt.Println(result)
+if err != nil {
+    fmt.Println("Error:", err)
+} else {
+    fmt.Println(result)
+}
 ```
 
 ---
@@ -37,7 +44,7 @@ fmt.Println(result)
 ### `RunCodef`
 
 ```go
-func RunCodef(codeTemplate string, args ...any) map[string]any
+func RunCodef(codeTemplate string, args ...any) (map[string]any, error)
 ```
 
 This function is used to execute Python code with variables passed from Go using `$v1`, `$v2`, etc. placeholders. The function replaces these placeholders with the provided arguments.
@@ -51,7 +58,10 @@ In the Python code template, use `$v1`, `$v2`, `$v3`, etc. as placeholders for t
 
 #### Returns
 
-- `map[string]any`: A map representing the result received from the Python server. This map will contain the data returned from Python through the `insyra_return` function. Returns `nil` if Python code doesn't call `insyra_return`.
+- `(map[string]any, error)`: A map containing the data returned from Python through the `insyra_return` function, and an error if execution failed.
+  - On success: Returns the result data as a map and `nil` for error
+  - On failure: Returns `nil` and an error message containing either the exception from Python or system execution error
+  - If Python doesn't call `insyra_return`: Returns `nil, nil`
 
 #### Example
 
@@ -69,7 +79,7 @@ func main() {
  yData := insyra.NewDataList(110, 120, 135, 145, 150, 160, 170, 180, 190, 200)
 
  // Submit Code to Python
- py.RunCodef(`
+ result, err := py.RunCodef(`
 x = $v1
 y = $v2
 
@@ -83,6 +93,9 @@ plt.ylabel($v5)
 
 plt.show()
 `, xData.Data(), yData.Data(), "Scatter Plot from Go DataList", "X Values", "Y Values")
+ if err != nil {
+     fmt.Println("Error:", err)
+ }
 }
 
 ```
@@ -97,7 +110,10 @@ Run Python code from a file.
 
 #### Returns
 
-- `map[string]any`: A map representing the result received from the Python server. This map will contain the data returned from Python through the `insyra_return` function. Returns `nil` if Python code doesn't call `insyra_return`.
+- `(map[string]any, error)`: A map containing the data returned from Python through the `insyra_return` function, and an error if execution failed.
+  - On success: Returns the result data as a map and `nil` for error
+  - On failure: Returns `nil` and an error message containing either the exception from Python or system execution error
+  - If Python doesn't call `insyra_return`: Returns `nil, nil`
 
 ### `RunFilef`
 
@@ -110,7 +126,10 @@ Run Python code from a file with variables passed from Go using `$v1`, `$v2`, et
 
 #### Returns
 
-- `map[string]any`: A map representing the result received from the Python server. This map will contain the data returned from Python through the `insyra_return` function. Returns `nil` if Python code doesn't call `insyra_return`.
+- `(map[string]any, error)`: A map containing the data returned from Python through the `insyra_return` function, and an error if execution failed.
+  - On success: Returns the result data as a map and `nil` for error
+  - On failure: Returns `nil` and an error message containing either the exception from Python or system execution error
+  - If Python doesn't call `insyra_return`: Returns `nil, nil`
 
 ### `PipInstall`
 
@@ -118,11 +137,16 @@ Run Python code from a file with variables passed from Go using `$v1`, `$v2`, et
 func PipInstall(dep string)
 ```
 
-This function is used to install Python dependencies using uv pip.
+This function is used to install Python dependencies using uv pip. It logs the result and terminates the program if installation fails.
 
 #### Parameters
 
 - `dep` (string): The name of the dependency to be installed.
+
+#### Notes
+
+- This function does not return an error; instead, it logs fatal errors directly.
+- The program will terminate if the installation fails.
 
 ### `PipUninstall`
 
@@ -130,11 +154,16 @@ This function is used to install Python dependencies using uv pip.
 func PipUninstall(dep string)
 ```
 
-This function is used to uninstall Python dependencies using uv pip.
+This function is used to uninstall Python dependencies using uv pip. It logs the result and terminates the program if uninstallation fails.
 
 #### Parameters
 
 - `dep` (string): The name of the dependency to be uninstalled.
+
+#### Notes
+
+- This function does not return an error; instead, it logs fatal errors directly.
+- The program will terminate if the uninstallation fails.
 
 ### `ReinstallPyEnv`
 
@@ -142,11 +171,31 @@ This function is used to uninstall Python dependencies using uv pip.
 func ReinstallPyEnv() error
 ```
 
-This function reinstalls the Python environment. Useful when you want to reset the Python environment or update dependencies.
+This function completely reinstalls the Python environment by removing the existing virtual environment and reinstalling all dependencies. Useful when you want to reset the Python environment, update dependencies, or fix environment-related issues.
 
 #### Returns
 
-- `error`: Returns an error if the reinstallation fails, nil otherwise.
+- `error`: Returns an error if the reinstallation fails, `nil` otherwise.
+
+#### Example
+
+```go
+package main
+
+import (
+ "fmt"
+ "github.com/HazelnutParadise/insyra/py"
+)
+
+func main() {
+ err := py.ReinstallPyEnv()
+ if err != nil {
+     fmt.Println("Failed to reinstall Python environment:", err)
+ } else {
+     fmt.Println("Python environment reinstalled successfully!")
+ }
+}
+```
 
 ## Concurrency Support
 
@@ -159,14 +208,15 @@ Here are some functions that are useful when writing Python code to be executed 
 ### `insyra_return`
 
 ```python
-insyra_return(data, url)
+insyra_return(result=None, error=None, url)
 ```
 
 This function is used to return data from Python to Go.
 
 #### Parameters
 
-- `data` (dict): The data to be returned to Go.
+- `result` (any): The result data to be returned to Go.
+- `error` (string): The error message if an error occurred, None otherwise.
 - `url` (string): The URL to send the data to. Insyra will automatically set it, you don't need to set it manually.
 
 #### Example
@@ -175,7 +225,7 @@ This function is used to return data from Python to Go.
 insyra_return({
  "message": "Hello from Python",
  "value": 123,
-})
+}, None)
 ```
 
 ## Pre-installed Dependencies

@@ -4,7 +4,6 @@ package py
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"strconv"
@@ -47,11 +46,11 @@ func ReinstallPyEnv() error {
 }
 
 // Run the Python file and return the result.
-func RunFile(filePath string) map[string]any {
+func RunFile(filePath string) (map[string]any, error) {
 	pyEnvInit()
 	file, err := os.ReadFile(filePath)
 	if err != nil {
-		insyra.LogFatal("py", "RunFile", "Failed to read Python file: %v", err)
+		return nil, fmt.Errorf("failed to read Python file: %w", err)
 	}
 	code := string(file)
 	return RunCode(code)
@@ -59,27 +58,42 @@ func RunFile(filePath string) map[string]any {
 
 // Run the Python file with the given Golang variables and return the result.
 // The codeTemplate should use fmt.Sprintf style formatting (e.g., %q, %d, %v).
-func RunFilef(filePath string, args ...any) map[string]any {
+func RunFilef(filePath string, args ...any) (map[string]any, error) {
 	pyEnvInit()
 	file, err := os.ReadFile(filePath)
 	if err != nil {
-		insyra.LogFatal("py", "RunFilef", "Failed to read Python file: %v", err)
+		return nil, fmt.Errorf("failed to read Python file: %w", err)
 	}
 	code := string(file)
 	return RunCodef(code, args...)
 }
 
 // Run the Python code and return the result.
-func RunCode(code string) map[string]any {
+func RunCode(code string) (map[string]any, error) {
 	pyEnvInit()
 
 	// 生成執行ID
 	executionID := generateExecutionID()
 
-	code = generateDefaultPyCode(executionID) + code
+	code = generateDefaultPyCode(executionID) + fmt.Sprintf(`
+try:
+%v
+except Exception as e:
+    import sys
+    sys.stdout.flush()
+    sys.stderr.flush()
+    insyra_return(None, str(e))
+finally:
+    import sys
+    sys.stdout.flush()
+    sys.stderr.flush()
+    if not sent:
+        insyra_return(None, None)
+`, indentCode(code))
 
 	// 創建進程結束通知channel
 	processDone := make(chan struct{})
+	execErr := make(chan error, 1)
 
 	// 在goroutine中執行Python代碼
 	go func() {
@@ -89,17 +103,30 @@ func RunCode(code string) map[string]any {
 		pythonCmd.Stderr = os.Stderr
 		err := pythonCmd.Run()
 		if err != nil {
-			insyra.LogFatal("py", "RunCode", "Failed to run Python code: %v", err)
+			execErr <- err
 		}
 	}()
 
-	// 等待並接收結果，當進程結束時自動返回空map
-	return waitForResult(executionID, processDone)
+	// 等待並接收結果
+	result := waitForResult(executionID, processDone, execErr)
+	// 如果有錯誤（從系統執行或 Python 返回），直接返回
+	if result[1] != nil {
+		return nil, fmt.Errorf("%v", result[1])
+	}
+	// 正常執行且無錯誤
+	if result[0] == nil {
+		return nil, nil
+	}
+	res, ok := result[0].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("result is not a map")
+	}
+	return res, nil
 }
 
 // Run the Python code with the given Golang variables and return the result.
 // The codeTemplate should use $v1, $v2, etc. placeholders for variable substitution.
-func RunCodef(codeTemplate string, args ...any) map[string]any {
+func RunCodef(codeTemplate string, args ...any) (map[string]any, error) {
 	pyEnvInit()
 
 	// 生成執行ID
@@ -109,10 +136,25 @@ func RunCodef(codeTemplate string, args ...any) map[string]any {
 	formattedCode := replacePlaceholders(codeTemplate, args...)
 
 	// 產生包含 insyra_return 函數的預設 Python 代碼
-	fullCode := generateDefaultPyCode(executionID) + formattedCode
+	fullCode := generateDefaultPyCode(executionID) + fmt.Sprintf(`
+try:
+%v
+except Exception as e:
+    import sys
+    sys.stdout.flush()
+    sys.stderr.flush()
+    insyra_return(None, str(e))
+finally:
+    import sys
+    sys.stdout.flush()
+    sys.stderr.flush()
+    if not sent:
+        insyra_return(None, None)
+`, indentCode(formattedCode))
 
 	// 創建進程結束通知channel
 	processDone := make(chan struct{})
+	execErr := make(chan error, 1)
 
 	// 在goroutine中執行Python代碼
 	go func() {
@@ -122,12 +164,25 @@ func RunCodef(codeTemplate string, args ...any) map[string]any {
 		pythonCmd.Stderr = os.Stderr
 		err := pythonCmd.Run()
 		if err != nil {
-			log.Fatalf("Failed to run Python code: %v", err)
+			execErr <- err
 		}
 	}()
 
-	// 等待並接收結果，當進程結束時自動返回空map
-	return waitForResult(executionID, processDone)
+	// 等待並接收結果
+	result := waitForResult(executionID, processDone, execErr)
+	// 如果有錯誤（從系統執行或 Python 返回），直接返回
+	if result[1] != nil {
+		return nil, fmt.Errorf("%v", result[1])
+	}
+	// 正常執行且無錯誤
+	if result[0] == nil {
+		return nil, nil
+	}
+	res, ok := result[0].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("result is not a map")
+	}
+	return res, nil
 }
 
 // Install dependencies using uv pip
@@ -169,11 +224,17 @@ func generateDefaultPyCode(executionID string) string {
 	}
 	return fmt.Sprintf(`
 %v
-def insyra_return(data, url="http://localhost:%v/pyresult"):
-    payload = {"execution_id": "%s", "data": data}
+import sys
+sent = False
+def insyra_return(result=None, error=None, url="http://localhost:%v/pyresult"):
+    global sent
+    sys.stdout.flush()
+    sys.stderr.flush()
+    payload = {"execution_id": "%s", "data": [result, error]}
     response = requests.post(url, json=payload)
     if response.status_code != 200:
         raise Exception(f"Failed to send result: {response.status_code}")
+    sent = True
     import os
     os._exit(0)
 `, imports, port, executionID)
@@ -225,4 +286,14 @@ func replacePlaceholders(template string, args ...any) string {
 		result = strings.ReplaceAll(result, placeholder, replacement)
 	}
 	return result
+}
+
+func indentCode(code string) string {
+	lines := strings.Split(code, "\n")
+	for i, line := range lines {
+		if line != "" {
+			lines[i] = "    " + line
+		}
+	}
+	return strings.Join(lines, "\n")
 }
