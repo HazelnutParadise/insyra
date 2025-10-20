@@ -198,10 +198,12 @@ func replacePlaceholders(template string, args ...any) string {
 		// Convert the argument to a string representation suitable for Python
 		switch v := arg.(type) {
 		case insyra.IDataList:
-			// FIXME: DataList中的布林值
-			// For IDataList, marshal its Data() to JSON
+			// For IDataList, marshal its Data() to JSON and replace booleans
 			if jsonBytes, err := json.Marshal(v.Data()); err == nil {
-				replacement = string(jsonBytes)
+				jsonStr := string(jsonBytes)
+				// Replace JSON booleans with Python booleans, avoiding strings
+				jsonStr = replaceBooleans(jsonStr)
+				replacement = jsonStr
 			} else {
 				replacement = "[]"
 			}
@@ -259,4 +261,42 @@ func indentCode(code string) string {
 		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+// replaceBooleans replaces JSON booleans true/false with Python booleans True/False, avoiding strings
+func replaceBooleans(jsonStr string) string {
+	var result strings.Builder
+	inString := false
+	quoteChar := byte(0)
+	i := 0
+	for i < len(jsonStr) {
+		c := jsonStr[i]
+		if !inString {
+			if c == '"' {
+				inString = true
+				quoteChar = c
+			}
+		} else {
+			if c == quoteChar && (i == 0 || jsonStr[i-1] != '\\') {
+				inString = false
+			}
+		}
+		if !inString {
+			// check for true
+			if i+3 < len(jsonStr) && jsonStr[i:i+4] == "true" {
+				result.WriteString("True")
+				i += 4
+				continue
+			}
+			// check for false
+			if i+4 < len(jsonStr) && jsonStr[i:i+5] == "false" {
+				result.WriteString("False")
+				i += 5
+				continue
+			}
+		}
+		result.WriteByte(c)
+		i++
+	}
+	return result.String()
 }
