@@ -45,31 +45,31 @@ func ReinstallPyEnv() error {
 	return nil
 }
 
-// Run the Python file and return the result.
-func RunFile(filePath string) (map[string]any, error) {
+// Run the Python file and bind the result to the provided struct pointer.
+func RunFile(out any, filePath string) error {
 	pyEnvInit()
 	file, err := os.ReadFile(filePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read Python file: %w", err)
+		return fmt.Errorf("failed to read Python file: %w", err)
 	}
 	code := string(file)
-	return RunCode(code)
+	return RunCode(out, code)
 }
 
-// Run the Python file with the given Golang variables and return the result.
-// The codeTemplate should use fmt.Sprintf style formatting (e.g., %q, %d, %v).
-func RunFilef(filePath string, args ...any) (map[string]any, error) {
+// Run the Python file with the given Golang variables and bind the result to the provided struct pointer.
+// The codeTemplate should use $v1, $v2, etc. placeholders for variable substitution.
+func RunFilef(out any, filePath string, args ...any) error {
 	pyEnvInit()
 	file, err := os.ReadFile(filePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read Python file: %w", err)
+		return fmt.Errorf("failed to read Python file: %w", err)
 	}
 	code := string(file)
-	return RunCodef(code, args...)
+	return RunCodef(out, code, args...)
 }
 
-// Run the Python code and return the result.
-func RunCode(code string) (map[string]any, error) {
+// Run the Python code and bind the result to the provided struct pointer.
+func RunCode(out any, code string) error {
 	pyEnvInit()
 
 	// 生成執行ID
@@ -108,32 +108,39 @@ finally:
 	}()
 
 	// 等待並接收結果
-	result := waitForResult(executionID, processDone, execErr)
+	pyResult := waitForResult(executionID, processDone, execErr)
 	// 如果有錯誤（從系統執行或 Python 返回），直接返回
-	if result[1] != nil {
-		return nil, fmt.Errorf("%v", result[1])
+	if pyResult[1] != nil {
+		return fmt.Errorf("%v", pyResult[1])
 	}
 	// 正常執行且無錯誤
-	if result[0] == nil {
-		return nil, nil
+	if pyResult[0] == nil {
+		return nil
 	}
-	res, ok := result[0].(map[string]interface{})
-	if !ok {
-		return nil, fmt.Errorf("result is not a map")
+
+	// 將結果 bind 到傳入的結構指標
+	if out != nil {
+		jsonData, err := json.Marshal(pyResult[0])
+		if err != nil {
+			return fmt.Errorf("failed to marshal result: %w", err)
+		}
+		if err := json.Unmarshal(jsonData, out); err != nil {
+			return fmt.Errorf("failed to unmarshal result to struct: %w", err)
+		}
 	}
-	return res, nil
+	return nil
 }
 
-// Run the Python code with the given Golang variables and return the result.
+// Run the Python code with the given Golang variables and bind the result to the provided struct pointer.
 // The codeTemplate should use $v1, $v2, etc. placeholders for variable substitution.
-func RunCodef(codeTemplate string, args ...any) (map[string]any, error) {
+func RunCodef(out any, code string, args ...any) error {
 	pyEnvInit()
 
 	// 生成執行ID
 	executionID := generateExecutionID()
 
 	// 使用 $v1, $v2 等佔位符替換變數
-	formattedCode := replacePlaceholders(codeTemplate, args...)
+	formattedCode := replacePlaceholders(code, args...)
 
 	// 產生包含 insyra_return 函數的預設 Python 代碼
 	fullCode := generateDefaultPyCode(executionID) + fmt.Sprintf(`
@@ -169,20 +176,27 @@ finally:
 	}()
 
 	// 等待並接收結果
-	result := waitForResult(executionID, processDone, execErr)
+	pyResult := waitForResult(executionID, processDone, execErr)
 	// 如果有錯誤（從系統執行或 Python 返回），直接返回
-	if result[1] != nil {
-		return nil, fmt.Errorf("%v", result[1])
+	if pyResult[1] != nil {
+		return fmt.Errorf("%v", pyResult[1])
 	}
 	// 正常執行且無錯誤
-	if result[0] == nil {
-		return nil, nil
+	if pyResult[0] == nil {
+		return nil
 	}
-	res, ok := result[0].(map[string]interface{})
-	if !ok {
-		return nil, fmt.Errorf("result is not a map")
+
+	// 將結果 bind 到傳入的結構指標
+	if out != nil {
+		jsonData, err := json.Marshal(pyResult[0])
+		if err != nil {
+			return fmt.Errorf("failed to marshal result: %w", err)
+		}
+		if err := json.Unmarshal(jsonData, out); err != nil {
+			return fmt.Errorf("failed to unmarshal result to struct: %w", err)
+		}
 	}
-	return res, nil
+	return nil
 }
 
 // Install dependencies using uv pip
