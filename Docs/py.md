@@ -276,12 +276,14 @@ insyra.Return({"execution_id": insyra.execution_id, "data": "some data"})
 
 - **Python Environment**: Insyra automatically installs Python environment using `uv` in the `.insyra_py_env` directory in your project root.
 - **Python Libraries**: Insyra automatically installs following Python libraries, you can use them directly in your Python code:
+
  ``` go
  pyDependencies   = map[string]string{
   "import requests":                   "requests",       // HTTP requests
   "import json":                       "",               // JSON data processing (built-in module)
   "import numpy as np":                "numpy",          // Numerical operations
   "import pandas as pd":               "pandas",         // Data analysis and processing
+  "import polars as pl":               "polars",         // Data analysis and processing (faster alternative to pandas)
   "import matplotlib.pyplot as plt":   "matplotlib",     // Data visualization
   "import seaborn as sns":             "seaborn",        // Data visualization
   "import scipy":                      "scipy",          // Scientific computing

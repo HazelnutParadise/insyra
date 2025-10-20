@@ -76,7 +76,10 @@ func RunCode(out any, code string) error {
 // Run the Python code with the given Golang variables and bind the result to the provided struct pointer.
 // The codeTemplate should use $v1, $v2, etc. placeholders for variable substitution.
 func RunCodef(out any, code string, args ...any) error {
-	formattedCode := replacePlaceholders(code, args...)
+	formattedCode, err := replacePlaceholders(code, args...)
+	if err != nil {
+		return fmt.Errorf("failed to format code: %w", err)
+	}
 	return runPythonCode(out, formattedCode)
 }
 
@@ -189,7 +192,7 @@ sent = False
 }
 
 // replacePlaceholders replaces $v1, $v2, etc. placeholders with the corresponding argument values
-func replacePlaceholders(template string, args ...any) string {
+func replacePlaceholders(template string, args ...any) (string, error) {
 	result := template
 	for i, arg := range args {
 		placeholder := fmt.Sprintf("$v%d", i+1)
@@ -198,15 +201,20 @@ func replacePlaceholders(template string, args ...any) string {
 		// Convert the argument to a string representation suitable for Python
 		switch v := arg.(type) {
 		case insyra.IDataList:
-			// For IDataList, marshal its Data() to JSON and replace booleans
-			if jsonBytes, err := json.Marshal(v.Data()); err == nil {
-				jsonStr := string(jsonBytes)
-				// Replace JSON booleans with Python booleans, avoiding strings
-				jsonStr = replaceBooleans(jsonStr)
-				replacement = jsonStr
-			} else {
-				replacement = "[]"
+			// For IDataList, marshal to JSON and format as pd.Series
+			jsonBytes, err := json.Marshal(v.Data())
+			if err != nil {
+				return "", fmt.Errorf("failed to marshal IDataList argument: %w", err)
 			}
+			jsonStr := string(jsonBytes)
+			// Replace JSON booleans with Python booleans, avoiding strings
+			jsonStr = replaceBooleans(jsonStr)
+			replacement = "pd.Series("
+			if name := v.GetName(); name != "" {
+				replacement += "name='" + name + "',"
+			}
+			replacement += "data=" + jsonStr + ")"
+		// case
 		case string:
 			// For strings, wrap in quotes
 			replacement = fmt.Sprintf("%q", v)
@@ -250,7 +258,7 @@ func replacePlaceholders(template string, args ...any) string {
 
 		result = strings.ReplaceAll(result, placeholder, replacement)
 	}
-	return result
+	return result, nil
 }
 
 func indentCode(code string) string {
