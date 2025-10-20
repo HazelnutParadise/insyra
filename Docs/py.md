@@ -100,7 +100,7 @@ plt.xlabel($v4)
 plt.ylabel($v5)
 
 plt.show()
-insyra_return({"success": true, "message": "Plot created"})
+insyra_return({"success": True, "message": "Plot created"})
 `, xData.Data(), yData.Data(), "Scatter Plot from Go DataList", "X Values", "Y Values")
  if err != nil {
      fmt.Println("Error:", err)
