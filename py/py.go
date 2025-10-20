@@ -197,9 +197,24 @@ func replacePlaceholders(template string, args ...any) string {
 
 		// Convert the argument to a string representation suitable for Python
 		switch v := arg.(type) {
+		case insyra.IDataList:
+			// FIXME: DataList中的布林值
+			// For IDataList, marshal its Data() to JSON
+			if jsonBytes, err := json.Marshal(v.Data()); err == nil {
+				replacement = string(jsonBytes)
+			} else {
+				replacement = "[]"
+			}
 		case string:
 			// For strings, wrap in quotes
 			replacement = fmt.Sprintf("%q", v)
+		case bool:
+			// For bool, use Python boolean literals
+			if v {
+				replacement = "True"
+			} else {
+				replacement = "False"
+			}
 		case []int:
 			// For int slices, convert to Python list format
 			var elements []string
