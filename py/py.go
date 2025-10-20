@@ -70,6 +70,18 @@ func RunFilef(out any, filePath string, args ...any) error {
 
 // Run the Python code and bind the result to the provided struct pointer.
 func RunCode(out any, code string) error {
+	return runPythonCode(out, code)
+}
+
+// Run the Python code with the given Golang variables and bind the result to the provided struct pointer.
+// The codeTemplate should use $v1, $v2, etc. placeholders for variable substitution.
+func RunCodef(out any, code string, args ...any) error {
+	formattedCode := replacePlaceholders(code, args...)
+	return runPythonCode(out, formattedCode)
+}
+
+// runPythonCode executes the Python code and binds the result to the provided struct pointer.
+func runPythonCode(out any, code string) error {
 	pyEnvInit()
 
 	// 生成執行ID
@@ -99,74 +111,6 @@ finally:
 	go func() {
 		defer close(processDone)
 		pythonCmd := exec.Command(pyPath, "-c", code)
-		pythonCmd.Stdout = os.Stdout
-		pythonCmd.Stderr = os.Stderr
-		err := pythonCmd.Run()
-		if err != nil {
-			execErr <- err
-		}
-	}()
-
-	// 等待並接收結果
-	pyResult := waitForResult(executionID, processDone, execErr)
-	// 如果有錯誤（從系統執行或 Python 返回），直接返回
-	if pyResult[1] != nil {
-		return fmt.Errorf("%v", pyResult[1])
-	}
-	// 正常執行且無錯誤
-	if pyResult[0] == nil {
-		return nil
-	}
-
-	// 將結果 bind 到傳入的結構指標
-	if out != nil {
-		jsonData, err := json.Marshal(pyResult[0])
-		if err != nil {
-			return fmt.Errorf("failed to marshal result: %w", err)
-		}
-		if err := json.Unmarshal(jsonData, out); err != nil {
-			return fmt.Errorf("failed to unmarshal result to struct: %w", err)
-		}
-	}
-	return nil
-}
-
-// Run the Python code with the given Golang variables and bind the result to the provided struct pointer.
-// The codeTemplate should use $v1, $v2, etc. placeholders for variable substitution.
-func RunCodef(out any, code string, args ...any) error {
-	pyEnvInit()
-
-	// 生成執行ID
-	executionID := generateExecutionID()
-
-	// 使用 $v1, $v2 等佔位符替換變數
-	formattedCode := replacePlaceholders(code, args...)
-
-	// 產生包含 insyra_return 函數的預設 Python 代碼
-	fullCode := generateDefaultPyCode(executionID) + fmt.Sprintf(`
-try:
-%v
-except Exception as e:
-    import sys
-    sys.stdout.flush()
-    sys.stderr.flush()
-    insyra_return(None, str(e))
-finally:
-    import sys
-    sys.stdout.flush()
-    sys.stderr.flush()
-    if not sent:
-        insyra_return(None, None)
-`, indentCode(formattedCode))
-
-	// 創建進程結束通知channel
-	processDone := make(chan struct{})
-	execErr := make(chan error, 1)
-
-	// 在goroutine中執行Python代碼
-	go func() {
-		defer close(processDone)
-		pythonCmd := exec.Command(pyPath, "-c", fullCode)
 		pythonCmd.Stdout = os.Stdout
 		pythonCmd.Stderr = os.Stderr
 		err := pythonCmd.Run()
@@ -240,18 +184,8 @@ func generateDefaultPyCode(executionID string) string {
 %v
 import sys
 sent = False
-def insyra_return(result=None, error=None, url="http://localhost:%v/pyresult"):
-    global sent
-    sys.stdout.flush()
-    sys.stderr.flush()
-    payload = {"execution_id": "%s", "data": [result, error]}
-    response = requests.post(url, json=payload)
-    if response.status_code != 200:
-        raise Exception(f"Failed to send result: {response.status_code}")
-    sent = True
-    import os
-    os._exit(0)
-`, imports, port, executionID)
+%v
+`, imports, builtInFunc(port, executionID))
 }
 
 // replacePlaceholders replaces $v1, $v2, etc. placeholders with the corresponding argument values

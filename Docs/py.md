@@ -34,7 +34,7 @@ type ResultData struct {
 var result ResultData
 err := RunCode(&result, `
 print("Hello from Python")
-insyra_return({"message": "Hello from Python", "value": 123})
+insyra.Return({"message": "Hello from Python", "value": 123})
 `)
 if err != nil {
     fmt.Println("Error:", err)
@@ -100,7 +100,7 @@ plt.xlabel($v4)
 plt.ylabel($v5)
 
 plt.show()
-insyra_return({"success": True, "message": "Plot created"})
+insyra.Return({"success": True, "message": "Plot created"})
 `, xData.Data(), yData.Data(), "Scatter Plot from Go DataList", "X Values", "Y Values")
  if err != nil {
      fmt.Println("Error:", err)
@@ -211,13 +211,36 @@ The `py` package supports concurrent execution of Python code. Multiple goroutin
 
 Here are some functions that are useful when writing Python code to be executed with `RunCode` or `RunCodef`.
 
+### `insyra.Return`
+
+```python
+insyra.Return(result=None, error=None, url)
+```
+
+This function is used to return data from Python to Go.
+
+#### Parameters
+
+- `result` (any): The result data to be returned to Go.
+- `error` (string): The error message if an error occurred, None otherwise. The Insyra framework will automatically deal with errors, you don't need to set it manually.
+- `url` (string): The URL to send the data to. Insyra will automatically set it, you don't need to set it manually.
+
+#### Example
+
+```python
+insyra.Return({
+ "message": "Hello from Python",
+ "value": 123,
+})
+```
+
 ### `insyra_return`
 
 ```python
 insyra_return(result=None, error=None, url)
 ```
 
-This function is used to return data from Python to Go.
+This is an alias for `insyra.Return` for convenience. It provides the same functionality as `insyra.Return`.
 
 #### Parameters
 
@@ -232,6 +255,21 @@ insyra_return({
  "message": "Hello from Python",
  "value": 123,
 })
+```
+
+### `insyra.execution_id`
+
+```python
+insyra.execution_id
+```
+
+This variable contains the unique execution ID for the current Python code run. It can be used for logging, debugging, or tracking purposes.
+
+#### Example
+
+```python
+print(f"Current execution ID: {insyra.execution_id}")
+insyra.Return({"execution_id": insyra.execution_id, "data": "some data"})
 ```
 
 ## Pre-installed Dependencies
