@@ -216,7 +216,7 @@ This function is used to return data from Python to Go.
 #### Parameters
 
 - `result` (any): The result data to be returned to Go.
-- `error` (string): The error message if an error occurred, None otherwise.
+- `error` (string): The error message if an error occurred, None otherwise. The Insyra framework will automatically deal with errors, you don't need to set it manually.
 - `url` (string): The URL to send the data to. Insyra will automatically set it, you don't need to set it manually.
 
 #### Example
@@ -225,7 +225,7 @@ This function is used to return data from Python to Go.
 insyra_return({
  "message": "Hello from Python",
  "value": 123,
-}, None)
+})
 ```
 
 ## Pre-installed Dependencies
