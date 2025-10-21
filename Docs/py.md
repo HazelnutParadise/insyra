@@ -207,6 +207,15 @@ func main() {
 
 The `py` package supports concurrent execution of Python code. Multiple goroutines can call `RunCode`, `RunCodef`, `RunFile`, and `RunFilef` simultaneously without interference. Each execution gets a unique ID and processes independently.
 
+## Automatic Type Conversion
+
+When passing Go variables to Python code using `RunCodef` or `RunFilef`, certain Insyra types are automatically converted to their Python equivalents:
+
+- **DataTable** (`insyra.IDataTable`): Automatically converted to a `pandas.DataFrame`. The DataFrame will include column names and row names if they are set in the original DataTable.
+- **DataList** (`insyra.IDataList`): Automatically converted to a `pandas.Series`. The Series will include the name if it is set in the original DataList.
+
+This conversion allows seamless integration between Go's Insyra data structures and Python's data analysis libraries.
+
 ## Functions for Python Code
 
 Here are some functions that are useful when writing Python code to be executed with `RunCode` or `RunCodef`.
