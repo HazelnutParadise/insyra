@@ -207,8 +207,8 @@ func replacePlaceholders(template string, args ...any) (string, error) {
 				return "", fmt.Errorf("failed to marshal IDataList argument: %w", err)
 			}
 			jsonStr := string(jsonBytes)
-			// Replace JSON booleans with Python booleans, avoiding strings
-			jsonStr = replaceBooleans(jsonStr)
+			// Replace JSON literals with Python literals, avoiding strings
+			jsonStr = replaceJsonLiterals(jsonStr)
 			replacement = "pd.Series("
 			if name := v.GetName(); name != "" {
 				replacement += "name='" + name + "',"
@@ -222,8 +222,8 @@ func replacePlaceholders(template string, args ...any) (string, error) {
 				return "", fmt.Errorf("failed to marshal IDataTable argument: %w", err)
 			}
 			jsonStr := string(jsonBytes)
-			// Replace JSON booleans with Python booleans, avoiding strings
-			jsonStr = replaceBooleans(jsonStr)
+			// Replace JSON literals with Python literals, avoiding strings
+			jsonStr = replaceJsonLiterals(jsonStr)
 			replacement = "pd.DataFrame("
 			if colnames := v.ColNames(); len(colnames) > 0 {
 				var allempty = true
@@ -235,7 +235,7 @@ func replacePlaceholders(template string, args ...any) (string, error) {
 				}
 				if !allempty {
 					colsJson, _ := json.Marshal(colnames)
-					replacement += "columns=" + string(colsJson) + ","
+					replacement += "columns=" + replaceJsonLiterals(string(colsJson)) + ","
 				}
 			}
 			if rownames := v.RowNames(); len(rownames) > 0 {
@@ -248,7 +248,7 @@ func replacePlaceholders(template string, args ...any) (string, error) {
 				}
 				if !allempty {
 					rownamesJson, _ := json.Marshal(rownames)
-					replacement += "index=" + string(rownamesJson) + ","
+					replacement += "index=" + replaceJsonLiterals(string(rownamesJson)) + ","
 				}
 			}
 			replacement += "data=" + jsonStr + ")"
@@ -286,7 +286,7 @@ func replacePlaceholders(template string, args ...any) (string, error) {
 		default:
 			// For other types, try to marshal as JSON for complex structures
 			if jsonBytes, err := json.Marshal(v); err == nil {
-				replacement = string(jsonBytes)
+				replacement = replaceJsonLiterals(string(jsonBytes))
 			} else {
 				// Fallback to fmt.Sprintf %v
 				replacement = fmt.Sprintf("%v", v)
@@ -308,8 +308,8 @@ func indentCode(code string) string {
 	return strings.Join(lines, "\n")
 }
 
-// replaceBooleans replaces JSON booleans true/false with Python booleans True/False, avoiding strings
-func replaceBooleans(jsonStr string) string {
+// replaceJsonLiterals replaces JSON literals true/false/null with Python literals True/False/None, avoiding strings
+func replaceJsonLiterals(jsonStr string) string {
 	var result strings.Builder
 	inString := false
 	quoteChar := byte(0)
@@ -337,6 +337,12 @@ func replaceBooleans(jsonStr string) string {
 			if i+4 < len(jsonStr) && jsonStr[i:i+5] == "false" {
 				result.WriteString("False")
 				i += 5
+				continue
+			}
+			// check for null
+			if i+3 < len(jsonStr) && jsonStr[i:i+4] == "null" {
+				result.WriteString("None")
+				i += 4
 				continue
 			}
 		}
