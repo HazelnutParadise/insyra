@@ -214,7 +214,44 @@ func replacePlaceholders(template string, args ...any) (string, error) {
 				replacement += "name='" + name + "',"
 			}
 			replacement += "data=" + jsonStr + ")"
-		// case
+		case insyra.IDataTable:
+			data := v.To2DSlice()
+			// For IDataTable, marshal to JSON and format as pd.DataFrame
+			jsonBytes, err := json.Marshal(data)
+			if err != nil {
+				return "", fmt.Errorf("failed to marshal IDataTable argument: %w", err)
+			}
+			jsonStr := string(jsonBytes)
+			// Replace JSON booleans with Python booleans, avoiding strings
+			jsonStr = replaceBooleans(jsonStr)
+			replacement = "pd.DataFrame("
+			if colnames := v.ColNames(); len(colnames) > 0 {
+				var allempty = true
+				for _, name := range colnames {
+					if name != "" {
+						allempty = false
+						break
+					}
+				}
+				if !allempty {
+					colsJson, _ := json.Marshal(colnames)
+					replacement += "columns=" + string(colsJson) + ","
+				}
+			}
+			if rownames := v.RowNames(); len(rownames) > 0 {
+				var allempty = true
+				for _, name := range rownames {
+					if name != "" {
+						allempty = false
+						break
+					}
+				}
+				if !allempty {
+					rownamesJson, _ := json.Marshal(rownames)
+					replacement += "index=" + string(rownamesJson) + ","
+				}
+			}
+			replacement += "data=" + jsonStr + ")"
 		case string:
 			// For strings, wrap in quotes
 			replacement = fmt.Sprintf("%q", v)
