@@ -241,6 +241,123 @@ if err != nil {
 }
 ```
 
+### Slice2DToDataTable
+
+Converts a 2D slice of any type into a DataTable. Supports various 2D array types including `[][]any`, `[][]int`, `[][]int64`, `[][]float32`, `[][]float64`, `[][]string`, and more.
+
+```go
+func Slice2DToDataTable(data any) (*DataTable, error)
+```
+
+**Parameters:**
+
+- `data`: A 2D slice/array of any type (e.g., `[][]any`, `[][]int64`, `[][]float64`, `[][]string`)
+
+**Returns:**
+
+- `*DataTable`: New DataTable with converted data (nil if error occurs)
+- `error`: Error information, returns nil if successful
+
+**Error Cases:**
+
+The function returns an error for:
+
+- `nil` input data
+- Empty 2D slice
+- Input is not a 2D slice (e.g., 1D slice or non-slice type)
+- First row is empty
+- Any row is not a slice or array
+
+**Supported Types:**
+
+The function uses reflection to support any 2D array type:
+
+- `[][]any` - Mixed types
+- `[][]int`, `[][]int32`, `[][]int64` - Integer types
+- `[][]float32`, `[][]float64` - Floating-point types
+- `[][]string` - String type
+- `[][]bool` - Boolean type
+- Any other type convertible to `interface{}`
+
+**Features:**
+
+- **Type Conversion**: Automatically converts various types to `interface{}` for storage
+- **Inconsistent Row Lengths**: Uses the number of columns from the first row; missing columns are filled with `nil`
+- **Comprehensive Error Handling**: Returns descriptive error messages for invalid input
+
+**Examples:**
+
+```go
+// Example 1: Convert [][]any
+data1 := [][]any{
+    {1, "Alice", 3.5},
+    {2, "Bob", 4.0},
+    {3, "Charlie", 2.8},
+}
+dt1, err := insyra.Slice2DToDataTable(data1)
+if err != nil {
+    log.Fatal(err)
+}
+
+// Example 2: Convert [][]int64
+data2 := [][]int64{
+    {1, 2, 3},
+    {4, 5, 6},
+    {7, 8, 9},
+}
+dt2, err := insyra.Slice2DToDataTable(data2)
+if err != nil {
+    log.Fatal(err)
+}
+
+// Example 3: Convert [][]float64
+data3 := [][]float64{
+    {1.1, 2.2, 3.3},
+    {4.4, 5.5, 6.6},
+    {7.7, 8.8, 9.9},
+}
+dt3, err := insyra.Slice2DToDataTable(data3)
+if err != nil {
+    log.Fatal(err)
+}
+
+// Example 4: Convert [][]string
+data4 := [][]string{
+    {"Alice", "Bob", "Charlie"},
+    {"Denver", "New York", "San Francisco"},
+    {"Engineer", "Manager", "Developer"},
+}
+dt4, err := insyra.Slice2DToDataTable(data4)
+if err != nil {
+    log.Fatal(err)
+}
+
+// Example 5: Handling inconsistent row lengths
+data5 := [][]any{
+    {1, "Alice", 3.5},
+    {2, "Bob"},              // Missing third column
+    {3, "Charlie", 2.8, "Extra"}, // Extra column
+}
+dt5, err := insyra.Slice2DToDataTable(data5)
+if err != nil {
+    log.Fatal(err)
+}
+// Columns based on first row (3 columns)
+// Second row: {2, "Bob", nil}
+// Third row: {3, "Charlie", 2.8}
+
+// Example 6: Error handling
+_, err := insyra.Slice2DToDataTable(nil)
+if err != nil {
+    fmt.Println(err) // Output: input data cannot be nil
+}
+
+_, err = insyra.Slice2DToDataTable([][]any{})
+if err != nil {
+    fmt.Println(err) // Output: input data cannot be empty
+}
+```
+
 ### ReadSQL
 
 Loads data from a database table or custom SQL query into a DataTable.
@@ -2647,6 +2764,53 @@ original.columns[0].data[0] = 999
 // cloned still has original name and data
 fmt.Println(cloned.GetName()) // Output: Original Table
 fmt.Println(cloned.columns[0].data[0]) // Output: 1
+```
+
+### To2DSlice
+
+Converts the DataTable to a 2D slice of any type.
+
+```go
+func (dt *DataTable) To2DSlice() [][]any
+```
+
+**Returns:**
+
+- `[][]any`: A 2D slice where each inner slice represents a row and contains the column values for that row
+
+**Description:**
+
+The To2DSlice method converts the DataTable into a standard Go 2D slice format. Each row in the DataTable becomes an inner slice in the returned 2D slice, and each column's value at that row position becomes an element in the inner slice.
+
+- If a column is shorter than the maximum row count, `nil` values are used to fill the missing positions
+- The returned slice is a deep copy of the data, so modifications to the slice won't affect the original DataTable
+- This method is useful for interfacing with other Go libraries that expect 2D slice data structures
+
+**Example:**
+
+```go
+// Create a DataTable with some data
+dt := NewDataTable()
+dt.AppendCols(
+    NewDataList(1, 2, 3),        // Column A
+    NewDataList("a", "b"),        // Column B (shorter)
+    NewDataList("x", "y", "z", "w") // Column C (longer)
+)
+
+// Convert to 2D slice
+slice := dt.To2DSlice()
+
+// The result will be:
+// [
+//   [1, "a", "x"],
+//   [2, "b", "y"],
+//   [3, nil, "z"],
+//   [nil, nil, "w"]
+// ]
+
+fmt.Printf("Number of rows: %d\n", len(slice))
+fmt.Printf("Number of columns: %d\n", len(slice[0]))
+fmt.Printf("Value at [0][0]: %v\n", slice[0][0])
 ```
 
 ## Notes

@@ -4,12 +4,76 @@ import (
 	"encoding/csv"
 	"fmt"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 
 	json "github.com/goccy/go-json"
 	"gorm.io/gorm"
 )
+
+// Slice2DToDataTable converts a 2D slice of any type into a DataTable.
+// It supports various 2D array types such as [][]any, [][]int, [][]float64, [][]string, etc.
+func Slice2DToDataTable(data any) (*DataTable, error) {
+	if data == nil {
+		return nil, fmt.Errorf("input data cannot be nil")
+	}
+
+	rv := reflect.ValueOf(data)
+
+	// 驗證輸入是否為切片
+	if rv.Kind() != reflect.Slice {
+		return nil, fmt.Errorf("input data must be a 2D slice, got %s", rv.Kind())
+	}
+
+	// 如果是空切片
+	if rv.Len() == 0 {
+		return nil, fmt.Errorf("input data cannot be empty")
+	}
+
+	// 檢查第一個元素是否為切片（確保是二維陣列）
+	firstRow := rv.Index(0)
+	if firstRow.Kind() != reflect.Slice && firstRow.Kind() != reflect.Array {
+		return nil, fmt.Errorf("input data must be a 2D slice, first element is %s", firstRow.Kind())
+	}
+
+	numCols := firstRow.Len()
+	if numCols == 0 {
+		return nil, fmt.Errorf("first row cannot be empty")
+	}
+
+	dls := make([]*DataList, numCols)
+	// 初始化列
+	for i := range dls {
+		dls[i] = NewDataList()
+	}
+
+	// 遍歷所有行
+	for rowIdx := 0; rowIdx < rv.Len(); rowIdx++ {
+		row := rv.Index(rowIdx)
+
+		// 處理行作為切片或陣列
+		if row.Kind() != reflect.Slice && row.Kind() != reflect.Array {
+			return nil, fmt.Errorf("row %d is not a slice or array, got %s", rowIdx, row.Kind())
+		}
+
+		rowLen := row.Len()
+
+		// 遍歷所有列
+		for colIdx := range numCols {
+			if colIdx < rowLen {
+				// 將值轉換為 interface{}
+				dls[colIdx].Append(row.Index(colIdx).Interface())
+			} else {
+				// 不足的列填 nil
+				dls[colIdx].Append(nil)
+			}
+		}
+	}
+
+	dt := NewDataTable(dls...)
+	return dt, nil
+}
 
 // ----- csv -----
 

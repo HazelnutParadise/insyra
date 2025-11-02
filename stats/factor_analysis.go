@@ -251,6 +251,8 @@ const (
 // -------------------------
 
 // FactorAnalysis performs factor analysis on a DataTable
+//
+// FIXME: the result is not yet stable, don't use.
 func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorModel {
 	if dt == nil {
 		insyra.LogWarning("stats", "FactorAnalysis", "nil DataTable")

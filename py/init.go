@@ -112,7 +112,7 @@ func setupUvEnvironment() error {
 	}
 
 	// 初始化uv項目
-	initCmd := exec.Command("uv", "init", "--bare", "--python", pythonVersion)
+	initCmd := exec.Command("uv", "init", "-p", "=="+pythonVersion, "--bare")
 	initCmd.Dir = absInstallDir
 	if err := initCmd.Run(); err != nil {
 		return fmt.Errorf("failed to init uv project: %w", err)

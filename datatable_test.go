@@ -438,3 +438,35 @@ func TestDataTable_DropColsContain(t *testing.T) {
 		t.Errorf("Expected 2 columns after dropping columns containing 1 or 10, got %d", numCols2)
 	}
 }
+
+func TestDataTable_To2DSlice(t *testing.T) {
+	dt := NewDataTable()
+	dl1 := NewDataList(1, 2, 3)
+	dl2 := NewDataList(4, 5)
+	dl3 := NewDataList(6, 7, 8, 9)
+	dt.AppendCols(dl1, dl2, dl3)
+
+	slice := dt.To2DSlice()
+
+	// Check dimensions
+	if len(slice) != 4 { // max length is 4
+		t.Errorf("Expected 4 rows, got %d", len(slice))
+	}
+	if len(slice[0]) != 3 { // 3 columns
+		t.Errorf("Expected 3 columns, got %d", len(slice[0]))
+	}
+
+	// Check values
+	if slice[0][0] != 1 || slice[0][1] != 4 || slice[0][2] != 6 {
+		t.Errorf("Row 0 values incorrect: %v", slice[0])
+	}
+	if slice[1][0] != 2 || slice[1][1] != 5 || slice[1][2] != 7 {
+		t.Errorf("Row 1 values incorrect: %v", slice[1])
+	}
+	if slice[2][0] != 3 || slice[2][1] != nil || slice[2][2] != 8 {
+		t.Errorf("Row 2 values incorrect: %v", slice[2])
+	}
+	if slice[3][0] != nil || slice[3][1] != nil || slice[3][2] != 9 {
+		t.Errorf("Row 3 values incorrect: %v", slice[3])
+	}
+}

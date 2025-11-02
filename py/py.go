@@ -4,7 +4,6 @@ package py
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"strconv"
@@ -46,40 +45,70 @@ func ReinstallPyEnv() error {
 	return nil
 }
 
-// Run the Python file and return the result.
-func RunFile(filePath string) map[string]any {
+// Run the Python file and bind the result to the provided struct pointer.
+func RunFile(out any, filePath string) error {
 	pyEnvInit()
 	file, err := os.ReadFile(filePath)
 	if err != nil {
-		insyra.LogFatal("py", "RunFile", "Failed to read Python file: %v", err)
+		return fmt.Errorf("failed to read Python file: %w", err)
 	}
 	code := string(file)
-	return RunCode(code)
+	return RunCode(out, code)
 }
 
-// Run the Python file with the given Golang variables and return the result.
-// The codeTemplate should use fmt.Sprintf style formatting (e.g., %q, %d, %v).
-func RunFilef(filePath string, args ...any) map[string]any {
+// Run the Python file with the given Golang variables and bind the result to the provided struct pointer.
+// The codeTemplate should use $v1, $v2, etc. placeholders for variable substitution.
+func RunFilef(out any, filePath string, args ...any) error {
 	pyEnvInit()
 	file, err := os.ReadFile(filePath)
 	if err != nil {
-		insyra.LogFatal("py", "RunFilef", "Failed to read Python file: %v", err)
+		return fmt.Errorf("failed to read Python file: %w", err)
 	}
 	code := string(file)
-	return RunCodef(code, args...)
+	return RunCodef(out, code, args...)
 }
 
-// Run the Python code and return the result.
-func RunCode(code string) map[string]any {
+// Run the Python code and bind the result to the provided struct pointer.
+func RunCode(out any, code string) error {
+	return runPythonCode(out, code)
+}
+
+// Run the Python code with the given Golang variables and bind the result to the provided struct pointer.
+// The codeTemplate should use $v1, $v2, etc. placeholders for variable substitution.
+func RunCodef(out any, code string, args ...any) error {
+	formattedCode, err := replacePlaceholders(code, args...)
+	if err != nil {
+		return fmt.Errorf("failed to format code: %w", err)
+	}
+	return runPythonCode(out, formattedCode)
+}
+
+// runPythonCode executes the Python code and binds the result to the provided struct pointer.
+func runPythonCode(out any, code string) error {
 	pyEnvInit()
 
 	// 生成執行ID
 	executionID := generateExecutionID()
 
-	code = generateDefaultPyCode(executionID) + code
+	code = generateDefaultPyCode(executionID) + fmt.Sprintf(`
+try:
+%v
+except Exception as e:
+    import sys
+    sys.stdout.flush()
+    sys.stderr.flush()
+    insyra_return(None, str(e))
+finally:
+    import sys
+    sys.stdout.flush()
+    sys.stderr.flush()
+    if not sent:
+        insyra_return(None, None)
+`, indentCode(code))
 
 	// 創建進程結束通知channel
 	processDone := make(chan struct{})
+	execErr := make(chan error, 1)
 
 	// 在goroutine中執行Python代碼
 	go func() {
@@ -89,45 +118,32 @@ func RunCode(code string) map[string]any {
 		pythonCmd.Stderr = os.Stderr
 		err := pythonCmd.Run()
 		if err != nil {
-			insyra.LogFatal("py", "RunCode", "Failed to run Python code: %v", err)
+			execErr <- err
 		}
 	}()
 
-	// 等待並接收結果，當進程結束時自動返回空map
-	return waitForResult(executionID, processDone)
-}
+	// 等待並接收結果
+	pyResult := waitForResult(executionID, processDone, execErr)
+	// 如果有錯誤（從系統執行或 Python 返回），直接返回
+	if pyResult[1] != nil {
+		return fmt.Errorf("%v", pyResult[1])
+	}
+	// 正常執行且無錯誤
+	if pyResult[0] == nil {
+		return nil
+	}
 
-// Run the Python code with the given Golang variables and return the result.
-// The codeTemplate should use $v1, $v2, etc. placeholders for variable substitution.
-func RunCodef(codeTemplate string, args ...any) map[string]any {
-	pyEnvInit()
-
-	// 生成執行ID
-	executionID := generateExecutionID()
-
-	// 使用 $v1, $v2 等佔位符替換變數
-	formattedCode := replacePlaceholders(codeTemplate, args...)
-
-	// 產生包含 insyra_return 函數的預設 Python 代碼
-	fullCode := generateDefaultPyCode(executionID) + formattedCode
-
-	// 創建進程結束通知channel
-	processDone := make(chan struct{})
-
-	// 在goroutine中執行Python代碼
-	go func() {
-		defer close(processDone)
-		pythonCmd := exec.Command(pyPath, "-c", fullCode)
-		pythonCmd.Stdout = os.Stdout
-		pythonCmd.Stderr = os.Stderr
-		err := pythonCmd.Run()
+	// 將結果 bind 到傳入的結構指標
+	if out != nil {
+		jsonData, err := json.Marshal(pyResult[0])
 		if err != nil {
-			log.Fatalf("Failed to run Python code: %v", err)
+			return fmt.Errorf("failed to marshal result: %w", err)
 		}
-	}()
-
-	// 等待並接收結果，當進程結束時自動返回空map
-	return waitForResult(executionID, processDone)
+		if err := json.Unmarshal(jsonData, out); err != nil {
+			return fmt.Errorf("failed to unmarshal result to struct: %w", err)
+		}
+	}
+	return nil
 }
 
 // Install dependencies using uv pip
@@ -169,17 +185,14 @@ func generateDefaultPyCode(executionID string) string {
 	}
 	return fmt.Sprintf(`
 %v
-def insyra_return(data, url="http://localhost:%v/pyresult"):
-    payload = {"execution_id": "%s", "data": data}
-    response = requests.post(url, json=payload)
-    if response.status_code != 200:
-        print(f"Failed to send result: {response.status_code}")
-
-`, imports, port, executionID)
+import sys
+sent = False
+%v
+`, imports, builtInFunc(port, executionID))
 }
 
 // replacePlaceholders replaces $v1, $v2, etc. placeholders with the corresponding argument values
-func replacePlaceholders(template string, args ...any) string {
+func replacePlaceholders(template string, args ...any) (string, error) {
 	result := template
 	for i, arg := range args {
 		placeholder := fmt.Sprintf("$v%d", i+1)
@@ -187,9 +200,68 @@ func replacePlaceholders(template string, args ...any) string {
 
 		// Convert the argument to a string representation suitable for Python
 		switch v := arg.(type) {
+		case insyra.IDataList:
+			// For IDataList, marshal to JSON and format as pd.Series
+			jsonBytes, err := json.Marshal(v.Data())
+			if err != nil {
+				return "", fmt.Errorf("failed to marshal IDataList argument: %w", err)
+			}
+			jsonStr := string(jsonBytes)
+			// Replace JSON literals with Python literals, avoiding strings
+			jsonStr = replaceJsonLiterals(jsonStr)
+			replacement = "pd.Series("
+			if name := v.GetName(); name != "" {
+				replacement += "name='" + name + "',"
+			}
+			replacement += "data=" + jsonStr + ")"
+		case insyra.IDataTable:
+			data := v.To2DSlice()
+			// For IDataTable, marshal to JSON and format as pd.DataFrame
+			jsonBytes, err := json.Marshal(data)
+			if err != nil {
+				return "", fmt.Errorf("failed to marshal IDataTable argument: %w", err)
+			}
+			jsonStr := string(jsonBytes)
+			// Replace JSON literals with Python literals, avoiding strings
+			jsonStr = replaceJsonLiterals(jsonStr)
+			replacement = "pd.DataFrame("
+			if colnames := v.ColNames(); len(colnames) > 0 {
+				var allempty = true
+				for _, name := range colnames {
+					if name != "" {
+						allempty = false
+						break
+					}
+				}
+				if !allempty {
+					colsJson, _ := json.Marshal(colnames)
+					replacement += "columns=" + replaceJsonLiterals(string(colsJson)) + ","
+				}
+			}
+			if rownames := v.RowNames(); len(rownames) > 0 {
+				var allempty = true
+				for _, name := range rownames {
+					if name != "" {
+						allempty = false
+						break
+					}
+				}
+				if !allempty {
+					rownamesJson, _ := json.Marshal(rownames)
+					replacement += "index=" + replaceJsonLiterals(string(rownamesJson)) + ","
+				}
+			}
+			replacement += "data=" + jsonStr + ")"
 		case string:
 			// For strings, wrap in quotes
 			replacement = fmt.Sprintf("%q", v)
+		case bool:
+			// For bool, use Python boolean literals
+			if v {
+				replacement = "True"
+			} else {
+				replacement = "False"
+			}
 		case []int:
 			// For int slices, convert to Python list format
 			var elements []string
@@ -214,7 +286,7 @@ func replacePlaceholders(template string, args ...any) string {
 		default:
 			// For other types, try to marshal as JSON for complex structures
 			if jsonBytes, err := json.Marshal(v); err == nil {
-				replacement = string(jsonBytes)
+				replacement = replaceJsonLiterals(string(jsonBytes))
 			} else {
 				// Fallback to fmt.Sprintf %v
 				replacement = fmt.Sprintf("%v", v)
@@ -223,5 +295,59 @@ func replacePlaceholders(template string, args ...any) string {
 
 		result = strings.ReplaceAll(result, placeholder, replacement)
 	}
-	return result
+	return result, nil
+}
+
+func indentCode(code string) string {
+	lines := strings.Split(code, "\n")
+	for i, line := range lines {
+		if line != "" {
+			lines[i] = "    " + line
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+// replaceJsonLiterals replaces JSON literals true/false/null with Python literals True/False/None, avoiding strings
+func replaceJsonLiterals(jsonStr string) string {
+	var result strings.Builder
+	inString := false
+	quoteChar := byte(0)
+	i := 0
+	for i < len(jsonStr) {
+		c := jsonStr[i]
+		if !inString {
+			if c == '"' {
+				inString = true
+				quoteChar = c
+			}
+		} else {
+			if c == quoteChar && (i == 0 || jsonStr[i-1] != '\\') {
+				inString = false
+			}
+		}
+		if !inString {
+			// check for true
+			if i+3 < len(jsonStr) && jsonStr[i:i+4] == "true" {
+				result.WriteString("True")
+				i += 4
+				continue
+			}
+			// check for false
+			if i+4 < len(jsonStr) && jsonStr[i:i+5] == "false" {
+				result.WriteString("False")
+				i += 5
+				continue
+			}
+			// check for null
+			if i+3 < len(jsonStr) && jsonStr[i:i+4] == "null" {
+				result.WriteString("None")
+				i += 4
+				continue
+			}
+		}
+		result.WriteByte(c)
+		i++
+	}
+	return result.String()
 }

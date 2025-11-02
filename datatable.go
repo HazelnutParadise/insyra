@@ -15,6 +15,20 @@ import (
 	"github.com/HazelnutParadise/insyra/parallel"
 )
 
+// DataTable is the core data structure of Insyra for handling structured data.
+// It provides rich data manipulation functionality including reading, writing,
+// filtering, statistical analysis, and transformation operations.
+//
+// DataTable uses a columnar storage format where each column is represented
+// by a DataList. It supports both alphabetical column indexing (A, B, C...)
+// and named columns, as well as row naming capabilities.
+//
+// Key features:
+// - Thread-safe operations via AtomicDo
+// - Flexible data types using interface{}
+// - Column and row indexing/naming
+// - Comprehensive data manipulation methods
+// - CSV/JSON/SQL import/export capabilities
 type DataTable struct {
 	columns               []*DataList
 	columnIndex           map[string]int // 儲存字母索引與切片中的索引對應
@@ -1256,6 +1270,66 @@ func (dt *DataTable) Transpose() *DataTable {
 	return result
 }
 
+// Clone creates a deep copy of the DataTable.
+// It copies all columns, column indices, row names, and metadata,
+// ensuring that modifications to the original DataTable do not affect the clone.
+// The cloned DataTable has a new creation timestamp and is fully independent.
+func (dt *DataTable) Clone() *DataTable {
+	var newDT *DataTable
+	now := time.Now().Unix()
+	dt.AtomicDo(func(dt *DataTable) {
+		clonedColumns := make([]*DataList, len(dt.columns))
+		clonedColumnIndex := make(map[string]int)
+		clonedRowNames := make(map[string]int)
+		parallel.GroupUp(func() {
+			// Clone columns
+			for i, col := range dt.columns {
+				clonedColumns[i] = col.Clone()
+			}
+		}, func() {
+			// Clone columnIndex map
+			maps.Copy(clonedColumnIndex, dt.columnIndex)
+		}, func() {
+			// Clone rowNames map
+			maps.Copy(clonedRowNames, dt.rowNames)
+		}).Run().AwaitResult()
+
+		// Create new DataTable with cloned data
+		newDT = &DataTable{
+			columns:           clonedColumns,
+			columnIndex:       clonedColumnIndex,
+			rowNames:          clonedRowNames,
+			name:              dt.name,
+			creationTimestamp: now,
+		}
+	})
+	newDT.lastModifiedTimestamp.Store(now)
+	return newDT
+}
+
+// To2DSlice converts the DataTable to a 2D slice of any.
+// Each row in the DataTable becomes a slice in the outer slice,
+// and each column's element at that row becomes an element in the inner slice.
+// If a column is shorter than the maximum row count, nil values are used to fill.
+func (dt *DataTable) To2DSlice() [][]any {
+	var result [][]any
+	dt.AtomicDo(func(dt *DataTable) {
+		maxRows := dt.getMaxColLength()
+		result = make([][]any, maxRows)
+		for i := range maxRows {
+			result[i] = make([]any, len(dt.columns))
+			for j, col := range dt.columns {
+				if i < len(col.data) {
+					result[i][j] = col.data[i]
+				} else {
+					result[i][j] = nil
+				}
+			}
+		}
+	})
+	return result
+}
+
 // ======================== Utilities ========================
 
 func (dt *DataTable) getRowNameByIndex(index int) (string, bool) {
@@ -1397,41 +1471,4 @@ func (dt *DataTable) GetCreationTimestamp() int64 {
 
 func (dt *DataTable) GetLastModifiedTimestamp() int64 {
 	return dt.lastModifiedTimestamp.Load()
-}
-
-// Clone creates a deep copy of the DataTable.
-// It copies all columns, column indices, row names, and metadata,
-// ensuring that modifications to the original DataTable do not affect the clone.
-// The cloned DataTable has a new creation timestamp and is fully independent.
-func (dt *DataTable) Clone() *DataTable {
-	var newDT *DataTable
-	now := time.Now().Unix()
-	dt.AtomicDo(func(dt *DataTable) {
-		clonedColumns := make([]*DataList, len(dt.columns))
-		clonedColumnIndex := make(map[string]int)
-		clonedRowNames := make(map[string]int)
-		parallel.GroupUp(func() {
-			// Clone columns
-			for i, col := range dt.columns {
-				clonedColumns[i] = col.Clone()
-			}
-		}, func() {
-			// Clone columnIndex map
-			maps.Copy(clonedColumnIndex, dt.columnIndex)
-		}, func() {
-			// Clone rowNames map
-			maps.Copy(clonedRowNames, dt.rowNames)
-		}).Run().AwaitResult()
-
-		// Create new DataTable with cloned data
-		newDT = &DataTable{
-			columns:           clonedColumns,
-			columnIndex:       clonedColumnIndex,
-			rowNames:          clonedRowNames,
-			name:              dt.name,
-			creationTimestamp: now,
-		}
-	})
-	newDT.lastModifiedTimestamp.Store(now)
-	return newDT
 }
