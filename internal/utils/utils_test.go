@@ -8,6 +8,20 @@ import (
 	"time"
 )
 
+func TestConvertDateFormat(t *testing.T) {
+	formatStr := "YYYY-MM-DD"
+	goFormat := ConvertDateFormat(formatStr)
+	if goFormat != "2006-01-02" {
+		t.Errorf("Expected 2006-01-02, got %s", goFormat)
+	}
+
+	formatStr = "YYYY-MM-DD HH:mm:ss"
+	goFormat = ConvertDateFormat(formatStr)
+	if goFormat != "2006-01-02 15:04:05" {
+		t.Errorf("Expected 2006-01-02 15:04:05, got %s", goFormat)
+	}
+}
+
 func TestFormatValueArrays(t *testing.T) {
 	// 測試空陣列
 	if result := FormatValue([]int{}); result != "[]" {
