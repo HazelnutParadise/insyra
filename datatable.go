@@ -1175,6 +1175,12 @@ func (dt *DataTable) Data(useNamesAsKeys ...bool) map[string][]any {
 	return result
 }
 
+// ToMap is the alias for Data().
+// It returns a map[string][]any representation of the DataTable.
+func (dt *DataTable) ToMap(useNamesAsKeys ...bool) map[string][]any {
+	return dt.Data(useNamesAsKeys...)
+}
+
 // ======================== Statistics ========================
 
 // Count returns the number of occurrences of the given value in the DataTable.

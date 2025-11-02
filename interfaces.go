@@ -151,6 +151,13 @@ type IDataTable interface {
 	DropRowsContain(value ...any)
 	DropRowsContainExcelNA()
 	Data(useNamesAsKeys ...bool) map[string][]any
+	// ToMap is the alias for Data().
+	// It returns a map[string][]any representation of the DataTable.
+	// Parameters:
+	// - useNamesAsKeys: Whether to use column names as keys in the returned map
+	// Returns:
+	// - map[string][]any: DataTable represented as a map of columns
+	ToMap(useNamesAsKeys ...bool) map[string][]any
 	Show()
 	ShowTypes()
 	ShowRange(startEnd ...any)
@@ -213,8 +220,25 @@ type IDataTable interface {
 	// CSV
 	ToCSV(filePath string, setRowNamesToFirstCol bool, setColNamesToFirstRow bool, includeBOM bool) error
 	// JSON
-	ToJSON(filePath string, useColName bool) error
-	ToJSON_Bytes(useColName bool) []byte
+	// ToJSON saves the DataTable as a JSON file.
+	// Parameters:
+	// - filePath: Output JSON file path
+	// - useColNames: Whether to use column names as keys in JSON objects
+	// Returns:
+	// - error: Error information, returns nil if successful
+	ToJSON(filePath string, useColNames bool) error
+	// ToJSON_Bytes converts the DataTable to JSON format and returns it as a byte slice.
+	// Parameters:
+	// - useColNames: Whether to use column names as keys in JSON objects
+	// Returns:
+	// - []byte: JSON data as byte slice
+	ToJSON_Bytes(useColNames bool) []byte
+	// ToJSON_String converts the DataTable to JSON format and returns it as a string.
+	// Parameters:
+	// - useColNames: Whether to use column names as keys in JSON objects
+	// Returns:
+	// - string: JSON data as a string
+	ToJSON_String(useColNames bool) string
 
 	ToSQL(db *gorm.DB, tableName string, options ...ToSQLOptions) error
 
