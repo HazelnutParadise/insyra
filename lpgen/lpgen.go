@@ -3,6 +3,7 @@ package lpgen
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/HazelnutParadise/insyra"
 )
@@ -107,12 +108,19 @@ func (lp *LPModel) GenerateLPFile(filename string) {
 		insyra.LogWarning("lpgen", "GenerateLPFile", "Failed to write subject to: %v, returning", err)
 		return
 	}
-	for i, constr := range lp.Constraints {
-		_, err = file.WriteString("  " + fmt.Sprintf("c%d: %s\n", i+1, constr))
+	constraintNum := 1
+	for _, constr := range lp.Constraints {
+		// Validate constraint has a comparison operator
+		if !isValidConstraint(constr) {
+			insyra.LogWarning("lpgen", "GenerateLPFile", "Skipping invalid constraint (missing operator): %s", constr)
+			continue
+		}
+		_, err = file.WriteString("  " + fmt.Sprintf("c%d: %s\n", constraintNum, constr))
 		if err != nil {
 			insyra.LogWarning("lpgen", "GenerateLPFile", "Failed to write constraint: %v, returning", err)
 			return
 		}
+		constraintNum++
 	}
 
 	// 添加變數邊界
@@ -169,4 +177,30 @@ func (lp *LPModel) GenerateLPFile(filename string) {
 		insyra.LogWarning("lpgen", "GenerateLPFile", "Failed to write end: %v, returning", err)
 		return
 	}
+}
+
+// isValidConstraint checks if a constraint has a comparison operator
+func isValidConstraint(constr string) bool {
+	// A valid constraint must contain at least one of: <=, >=, =
+	// Check for <= and >= first (more specific)
+	if strings.Contains(constr, "<=") || strings.Contains(constr, ">=") {
+		return true
+	}
+	// Check for = (but not part of <= or >=)
+	// Simple approach: if it has = and doesn't have < or >, it's likely valid
+	if strings.Contains(constr, "=") {
+		// Make sure it's not part of <= or >=
+		hasEqual := false
+		for i, c := range constr {
+			if c == '=' {
+				// Check it's not preceded by < or >
+				if i == 0 || (constr[i-1] != '<' && constr[i-1] != '>') {
+					hasEqual = true
+					break
+				}
+			}
+		}
+		return hasEqual
+	}
+	return false
 }
