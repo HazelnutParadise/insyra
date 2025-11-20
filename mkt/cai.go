@@ -32,6 +32,7 @@ var CAI = CustomerActivityIndex
 // CAI (Customer Activity Index) is a metric used to evaluate customer activity based on their transaction history.
 // It tells the change in customer activity level over time.
 // A positive CAI indicates a customer whose activity is increasing, while a negative CAI indicates a customer whose activity is decreasing.
+// TODO: 四個點以上才能算
 func CustomerActivityIndex(dt insyra.IDataTable, caiConfig CAIConfig) insyra.IDataTable {
 	customerTransactionsTime := make(map[string][]time.Time)
 	customerTransactionsIntervals := make(map[string][]int64)
