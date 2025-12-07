@@ -242,6 +242,23 @@ result := isr.DL.From(1, 2, 3).Push(4, 5).At(3) // Returns 4
 
 ### Creating DataTables
 
+#### From 2D Slices
+
+```go
+// Create DataTable from 2D slice
+dataTable := isr.DT.From([][]any{
+    {"Name", "Age", "City"},
+    {"John", 30, "NYC"},
+    {"Jane", 25, "LA"},
+})
+
+// Supports various slice types
+dataTable := isr.DT.From([][]string{
+    {"A", "B"},
+    {"C", "D"},
+})
+```
+
 #### Empty DataTable
 
 ```go
@@ -446,11 +463,23 @@ dataTable.Push(isr.Col{
 
 // Add DataLists as columns
 dataTable.Push(isr.DL.From("Sales", "Marketing", "Engineering"))
+
+// Add multiple DataLists
+dataTable.Push([]*insyra.DataList{
+    insyra.NewDataList("A", "B"),
+    insyra.NewDataList(1, 2),
+})
+
+// Add DLs (slice of DataLists)
+dataTable.Push(isr.DLs{
+    isr.DL.From("X", "Y"),
+    isr.DL.From(10, 20),
+})
 ```
 
 **Method**: `Push(data) *dt`
 
-- **Input**: `Row`, `[]Row`, `Col`, `[]Col`, `*dl`, `*insyra.DataList`, or slices thereof
+- **Input**: `Row`, `[]Row`, `Col`, `[]Col`, `*dl`, `*insyra.DataList`, `[]*insyra.DataList`, `[]dl`, or `DLs`
 - **Output**: Self (for method chaining)
 - **Purpose**: Append data to existing DataTable
 
@@ -517,7 +546,7 @@ All methods use `insyra.LogFatal()` for error handling. Invalid operations will 
 
 ## Quick Reference
 
-### DataList Operations
+### DataList Quick Reference
 
 ```go
 // Create and manipulate DataList
@@ -527,7 +556,7 @@ value := dl.At(0)                    // Get element
 chained := isr.DL.From(1).Push(2).At(1) // Method chaining
 ```
 
-### DataTable Operations
+### DataTable Quick Reference
 
 ```go
 // Create DataTable
