@@ -32,6 +32,8 @@ var CAI = CustomerActivityIndex
 // CAI (Customer Activity Index) is a metric used to evaluate customer activity based on their transaction history.
 // It tells the change in customer activity level over time.
 // A positive CAI indicates a customer whose activity is increasing, while a negative CAI indicates a customer whose activity is decreasing.
+//
+// **Only customers with at least 4 transactions are considered for CAI calculation.**
 func CustomerActivityIndex(dt insyra.IDataTable, caiConfig CAIConfig) insyra.IDataTable {
 	customerTransactionsTime := make(map[string][]time.Time)
 	customerTransactionsIntervals := make(map[string][]int64)
@@ -95,7 +97,8 @@ func CustomerActivityIndex(dt insyra.IDataTable, caiConfig CAIConfig) insyra.IDa
 	allLastTimes := []time.Time{}
 	for _, times := range customerTransactionsTime {
 		lenTimes := len(times)
-		if lenTimes == 0 {
+		// 加了最晚時間前，至少需三點
+		if lenTimes < 3 {
 			continue
 		}
 		allLastTimes = append(allLastTimes, times[lenTimes-1])
@@ -112,8 +115,8 @@ func CustomerActivityIndex(dt insyra.IDataTable, caiConfig CAIConfig) insyra.IDa
 	// 根據 timeScale 計算每個客戶的交易間隔
 	// 同一單位尺度下的多次交易不算入間隔計算
 	for customerID, times := range customerTransactionsTime {
-		if len(times) < 2 {
-			continue // 少於兩次交易無法計算間隔
+		if len(times) < 4 {
+			continue // 少於4次交易無法計算CAI
 		}
 		// 先排序交易時間
 		insyra.SortTimes(times)

@@ -102,3 +102,13 @@ func (dt *DataTable) ToJSON_Bytes(useColNames bool) []byte {
 
 	return jsonData
 }
+
+// ToJSON_String converts the DataTable to JSON format and returns it as a string.
+// The function accepts one parameter:
+// - useColName: if true, the column names will be used as keys in the JSON object, otherwise the column index(A, B, C...) will be used.
+// Every row will be a JSON object with the column names as keys and the row values as values.
+// The function returns the JSON data as a string.
+func (dt *DataTable) ToJSON_String(useColNames bool) string {
+	jsonBytes := dt.ToJSON_Bytes(useColNames)
+	return string(jsonBytes)
+}

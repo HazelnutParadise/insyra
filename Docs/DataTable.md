@@ -476,6 +476,54 @@ jsonData := dt.ToJSON_Bytes(true)
 fmt.Println(string(jsonData))
 ```
 
+### ToJSON_String
+
+Converts the DataTable to JSON format and returns it as a string.
+
+```go
+func (dt *DataTable) ToJSON_String(useColNames bool) string
+```
+
+**Parameters:**
+
+- `useColNames`: Whether to use column names as keys in JSON objects
+
+**Returns:**
+
+- `string`: JSON data as a string
+
+**Example:**
+
+```go
+jsonStr := dt.ToJSON_String(true)
+fmt.Println(jsonStr)
+```
+
+### ToMap
+
+Alias for `Data()`. Returns the table as a map from column index/name to the column data slice.
+
+```go
+func (dt *DataTable) ToMap(useNamesAsKeys ...bool) map[string][]any
+```
+
+**Parameters:**
+
+- `useNamesAsKeys` (optional): When true, use column names as keys in the returned map; otherwise use generated column indices (A, B, ...). Default is false.
+
+**Returns:**
+
+- `map[string][]any`: A map where each key is a column index or name and the value is the column data slice.
+
+**Example:**
+
+```go
+m := dt.ToMap(true) // use column names as keys when available
+for k, col := range m {
+    fmt.Println("Column:", k, "Length:", len(col))
+}
+```
+
 ### ToSQL
 
 Writes the DataTable to a SQL database.

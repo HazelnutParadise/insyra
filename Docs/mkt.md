@@ -143,6 +143,9 @@ var CAI = CustomerActivityIndex
 
 Calculates the Customer Activity Index (CAI) for each customer based on their transaction history.
 
+> [!NOTE]
+> Only customers with at least 4 transactions are considered for CAI calculation.
+
 ```go
 func CustomerActivityIndex(dt insyra.IDataTable, caiConfig CAIConfig) insyra.IDataTable
 ```
