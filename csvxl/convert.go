@@ -138,31 +138,41 @@ func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyConta
 		return
 	}
 
-	sheets := f.GetSheetList()
-	nameIdx := 0
-	for _, sheet := range sheets {
-		if len(onlyContainSheets) > 0 && !sliceutil.Contains(onlyContainSheets, sheet) {
-			continue
+	// Check if output directory exists, if not create it
+	// todo: 移到後面
+	if _, err := os.Stat(outputDir); os.IsNotExist(err) {
+		err := os.MkdirAll(outputDir, os.ModePerm)
+		if err != nil {
+			insyra.LogWarning("csvxl", "ExcelToCsv", "Failed to create directory %s: %v", outputDir, err)
+			return
 		}
+	}
 
+	sheetsInXlsx := f.GetSheetList()
+	// Determine the sheets to process. If `onlyContainSheets` is provided,
+	// filter it against `sheetsInXlsx` to only process existing sheets.
+	var sheetsToProcess []string
+	if len(onlyContainSheets) > 0 {
+		for _, s := range onlyContainSheets {
+			if sliceutil.Contains(sheetsInXlsx, s) {
+				sheetsToProcess = append(sheetsToProcess, s)
+			}
+		}
+	} else {
+		sheetsToProcess = sheetsInXlsx
+	}
+
+	numSheets := len(sheetsToProcess)
+	for idx, sheet := range sheetsToProcess {
 		csvName := sheet + ".csv"
-		if len(csvNames) > nameIdx && csvNames[nameIdx] != "" {
-			if strings.HasSuffix(csvNames[nameIdx], ".csv") {
-				csvName = csvNames[nameIdx]
+		if len(csvNames) > idx && csvNames[idx] != "" {
+			if strings.HasSuffix(csvNames[idx], ".csv") {
+				csvName = csvNames[idx]
 			} else {
-				csvName = csvNames[nameIdx] + ".csv"
+				csvName = csvNames[idx] + ".csv"
 			}
-			nameIdx++
 		}
 
-		// Check if output directory exists, if not create it
-		if _, err := os.Stat(outputDir); os.IsNotExist(err) {
-			err := os.MkdirAll(outputDir, os.ModePerm)
-			if err != nil {
-				insyra.LogWarning("csvxl", "ExcelToCsv", "Failed to create directory %s: %v", outputDir, err)
-				return
-			}
-		}
 		outputCsv := filepath.Join(outputDir, csvName)
 		err := saveSheetAsCsv(f, sheet, outputCsv)
 		if err != nil {
@@ -171,7 +181,7 @@ func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyConta
 		}
 	}
 
-	insyra.LogInfo("csvxl", "ExcelToCsv", "Successfully converted %d sheets to CSV files in %s.", len(sheets), outputDir)
+	insyra.LogInfo("csvxl", "ExcelToCsv", "Successfully converted %d sheets to CSV files in %s.", numSheets, outputDir)
 }
 
 // ===============================
@@ -219,31 +229,31 @@ func DetectEncoding(csvFile string) (string, error) {
 // ===============================
 
 // saveSheetAsCsv saves a specific sheet in an Excel file as a CSV file.
-func saveSheetAsCsv(f *excelize.File, sheet string, outputCsv string) error {
-	file, err := os.Create(outputCsv)
+func saveSheetAsCsv(f *excelize.File, sheetName string, outputCsvName string) error {
+	file, err := os.Create(outputCsvName)
 	if err != nil {
-		return fmt.Errorf("failed to create CSV file %s: %v", outputCsv, err)
+		return fmt.Errorf("failed to create CSV file %s: %v", outputCsvName, err)
 	}
 	defer func() { _ = file.Close() }()
 
 	writer := csv.NewWriter(file)
 	defer writer.Flush()
 
-	rows, err := f.GetRows(sheet)
+	rows, err := f.GetRows(sheetName)
 	if err != nil {
-		return fmt.Errorf("failed to read rows from sheet %s: %v", sheet, err)
+		return fmt.Errorf("failed to read rows from sheet %s: %v", sheetName, err)
 	}
 
 	for rowIdx, row := range rows {
 		// Check if the row is visible (not filtered out)
-		visible, err := f.GetRowVisible(sheet, rowIdx+1) // rowIdx is 0-based, GetRowVisible is 1-based
+		visible, err := f.GetRowVisible(sheetName, rowIdx+1) // rowIdx is 0-based, GetRowVisible is 1-based
 		if err != nil {
-			return fmt.Errorf("failed to check visibility of row %d in sheet %s: %v", rowIdx+1, sheet, err)
+			return fmt.Errorf("failed to check visibility of row %d in sheet %s: %v", rowIdx+1, sheetName, err)
 		}
 		if visible {
 			err := writer.Write(row)
 			if err != nil {
-				return fmt.Errorf("failed to write row to CSV file %s: %v", outputCsv, err)
+				return fmt.Errorf("failed to write row to CSV file %s: %v", outputCsvName, err)
 			}
 		}
 	}
