@@ -86,7 +86,7 @@ func (dt *DataTable) ShowRange(startEnd ...any) {
 		})
 
 		// Get terminal window width
-		width := getTerminalWidth()
+		width := utils.GetTerminalWidth()
 		// Generate table title
 		tableTitle := "DataTable"
 		if dt.name != "" {
@@ -370,19 +370,6 @@ func printRowsColored(dataMap map[string][]any, start, end int, rowNames []strin
 	}
 }
 
-// Get terminal window width
-func getTerminalWidth() int {
-	width := 80 // Default width
-
-	// Try to get terminal window size
-	fd := int(os.Stdout.Fd())
-	if w, _, err := term.GetSize(fd); err == nil && w > 0 {
-		width = w
-	}
-
-	return width
-}
-
 // Determine the number of columns to display based on terminal width
 func determineColumnsToShow(colIndices []string, colWidths map[string]int, rowNameWidth, terminalWidth int) int {
 	availableWidth := terminalWidth - rowNameWidth - 2 // Subtract RowNames column and margins
@@ -449,7 +436,7 @@ func (dt *DataTable) ShowTypesRange(startEnd ...any) {
 		sort.Strings(colIndices)
 
 		// Get terminal window width
-		width := getTerminalWidth()
+		width := utils.GetTerminalWidth()
 
 		// Generate table title
 		tableTitle := "DataTable Type Info"

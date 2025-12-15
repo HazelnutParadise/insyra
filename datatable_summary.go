@@ -3,6 +3,8 @@ package insyra
 import (
 	"fmt"
 	"strings"
+
+	"github.com/HazelnutParadise/insyra/internal/utils"
 )
 
 // Summary displays a comprehensive statistical summary of the DataTable directly to the console.
@@ -23,7 +25,7 @@ func (dt *DataTable) Summary() {
 	})
 
 	// Get terminal width
-	width := getTerminalWidth()
+	width := utils.GetTerminalWidth()
 
 	// Generate table title
 	tableTitle := "DataTable Statistical Summary" // Check DataTable name, not using GetName()

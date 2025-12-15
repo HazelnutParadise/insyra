@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/mattn/go-runewidth"
+	"golang.org/x/term"
 )
 
 type F64orRat interface {
@@ -549,4 +550,17 @@ func getOptimalGoroutines(n int) int {
 		}
 		return goroutines
 	}
+}
+
+// Get terminal window width
+func GetTerminalWidth() int {
+	width := 80 // Default width
+
+	// Try to get terminal window size
+	fd := int(os.Stdout.Fd())
+	if w, _, err := term.GetSize(fd); err == nil && w > 0 {
+		width = w
+	}
+
+	return width
 }
