@@ -238,3 +238,12 @@ func SortTimes(times []time.Time) {
 		return 0
 	})
 }
+
+// colorText 根據環境支持自動決定是否添加顏色到文本
+// code 是 ANSI 顏色代碼，text 是要設置顏色的文本
+func colorText(code string, text any) string {
+	if Config.coloredOutput && utils.IsColorSupported() {
+		return fmt.Sprintf("\033[%sm%v\033[0m", code, text)
+	}
+	return fmt.Sprintf("%v", text)
+}

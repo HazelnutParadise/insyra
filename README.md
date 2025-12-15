@@ -184,6 +184,18 @@ insyra.Config.SetLogLevel(insyra.LogLevelFatal)    // Only fatal errors
 level := insyra.Config.GetLogLevel()
 ```
 
+#### Colored Output
+
+Control whether terminal output is colored:
+
+```go
+// Enable / disable colored output
+insyra.Config.SetUseColoredOutput(true)
+
+// Check colored output status
+usesColor := insyra.Config.GetDoesUseColoredOutput()
+```
+
 #### Error Handling
 
 Configure how errors are handled:
@@ -202,7 +214,8 @@ insyra.Config.SetDefaultErrHandlingFunc(func(errType insyra.LogLevel, packageNam
     // packageName: The package where the error occurred
     // funcName: The function where the error occurred
     // errMsg: The error message
-    fmt.Printf("[%s] %s.%s: %s\n", errType, packageName, funcName, errMsg)
+    // Use %v to print LogLevel values reliably
+    fmt.Printf("[%v] %s.%s: %s\n", errType, packageName, funcName, errMsg)
 })
 
 // Get the current error handling function
@@ -218,6 +231,11 @@ Fine-tune performance for your use case:
 // Use ONLY when you are sure there are no concurrent accesses
 // Data consistency is NOT guaranteed when this is disabled!
 insyra.Config.Dangerously_TurnOffThreadSafety()
+
+// If you need to reset all configs back to library defaults, call:
+// Note: defaults are usually set on initialization, but this can be
+// useful during tests or when switching configurations at runtime.
+insyra.SetDefaultConfig()
 ```
 
 #### Complete Example

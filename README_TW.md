@@ -182,6 +182,18 @@ insyra.Config.SetLogLevel(insyra.LogLevelFatal)    // 僅致命錯誤
 level := insyra.Config.GetLogLevel()
 ```
 
+#### 彩色輸出
+
+控制終端輸出的是否使用彩色標記：
+
+```go
+// 啟用 / 停用彩色輸出
+insyra.Config.SetUseColoredOutput(true)
+
+// 檢查彩色輸出狀態
+usesColor := insyra.Config.GetDoesUseColoredOutput()
+```
+
 #### 錯誤處理
 
 配置如何處理錯誤：
@@ -200,7 +212,8 @@ insyra.Config.SetDefaultErrHandlingFunc(func(errType insyra.LogLevel, packageNam
     // packageName: 發生錯誤的套件名稱
     // funcName: 發生錯誤的函數名稱
     // errMsg: 錯誤訊息
-    fmt.Printf("[%s] %s.%s: %s\n", errType, packageName, funcName, errMsg)
+    // 使用 %%v 以正確輸出 LogLevel 數值或實作的字串
+    fmt.Printf("[%v] %s.%s: %s\n", errType, packageName, funcName, errMsg)
 })
 
 // 獲取當前錯誤處理函數
@@ -216,6 +229,10 @@ handler := insyra.Config.GetDefaultErrHandlingFunc()
 // 僅在您確定沒有並發存取時使用
 // 禁用此選項時，數據一致性無法保證！
 insyra.Config.Dangerously_TurnOffThreadSafety()
+
+// 若需將所有配置重置為庫預設值，可呼叫：
+// 注意：初始化時通常會自動設定預設值，但在測試或動態切換配置時，此函數可協助回復初始狀態。
+insyra.SetDefaultConfig()
 ```
 
 #### 完整範例
