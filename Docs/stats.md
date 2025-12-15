@@ -22,7 +22,7 @@ The stats package provides comprehensive statistical analysis functions:
 - **Analysis of Variance**: One-way, Two-way, Repeated measures ANOVA
 - **Regression Analysis**: Linear, Exponential, Logarithmic, Polynomial regression with confidence intervals
 - **F-Tests**: Variance equality, Levene's test, Bartlett's test, regression F-test, nested models
-- **Dimensionality Reduction**: Principal Component Analysis (PCA), Factor Analysis
+- **Dimensionality Reduction**: Principal Component Analysis (PCA)
 - **Matrix Operations**: Diagonal matrix creation and extraction (Diag function)
 
 ---
@@ -198,7 +198,7 @@ func BartlettSphericity(dataTable insyra.IDataTable) (chiSquare float64, pValue 
 chiSquare, pValue, df := stats.BartlettSphericity(dataTable)
 fmt.Printf("Bartlett's test: χ²=%.4f, p=%.4f, df=%d\n", chiSquare, pValue, df)
 // A p-value < 0.05 generally indicates that the correlation matrix is significantly 
-// different from an identity matrix, making it suitable for factor analysis or PCA
+// different from an identity matrix, making it suitable for factor analysis
 ```
 
 ---
@@ -1045,44 +1045,3 @@ Functions return `nil` or `NaN` values when:
 - Invalid parameter combinations are provided
 
 All error conditions are logged via `insyra.LogWarning()` for debugging purposes.
-
-### Factor Analysis Best Practices
-
-#### Data Preparation
-
-- **Standardization**: Variables are automatically standardized during factor analysis for proper interpretation of factor loadings
-- **Missing Data**: Use "listwise" deletion for missing data unless the dataset is small
-- **Sample Size**: Aim for at least 5-10 observations per variable, preferably more
-- **Variable Selection**: Include only variables that are theoretically related to the construct
-
-#### Factor Extraction
-
-- **MINRES**: Default choice (psych::fa), stable and works well without strict distributional assumptions
-- **PAF**: Preferred when communalities are low, often yields interpretable factor structures
-- **ML**: Maximum likelihood, requires multivariate normality, provides fit statistics
-- **PCA**: Deterministic extraction based on eigen decomposition; useful for exploratory variance explanation
-
-#### Determining Number of Factors
-
-- **Kaiser Criterion**: Eigenvalues > 1.0 (default, conservative)
-- **Scree Plot**: Look for "elbow" in the plot of eigenvalues (manual inspection)
-- **Fixed**: When theory specifies the number of factors
-
-#### Factor Rotation
-
-- **Varimax**: Orthogonal rotation, maximizes variance of squared loadings (default)
-- **Promax**: Oblique rotation, allows correlated factors, more realistic
-- **None**: Keep original unrotated solution for interpretation
-
-#### Interpretation
-
-- **Loadings > 0.3**: Generally considered significant
-- **Loadings > 0.5**: Strong relationship
-- **Communality > 0.5**: Variable well-explained by factors
-- **Cross-loadings**: Variables loading highly on multiple factors may need removal
-
-#### Validation
-
-- **Factor Scores**: Use for further analysis or clustering
-- **Model Fit**: Check convergence and proportion of explained variance
-- **Reproducibility**: Validate on holdout samples when possible

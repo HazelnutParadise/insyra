@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"math"
 	"strings"
-
-	"github.com/HazelnutParadise/insyra/internal/utils"
 )
 
 // Summary displays a comprehensive statistical summary of the DataList directly to the console.
@@ -51,9 +49,9 @@ func (dl *DataList) Summary() {
 		// Check if DataList is empty
 		if dlLen == 0 {
 			// Display header - using yellow as DataList primary color
-			fmt.Println(utils.ColorText("1;33", dataTitle))
+			fmt.Println(colorText("1;33", dataTitle))
 			fmt.Println(strings.Repeat("=", min(width, 80)))
-			fmt.Println(utils.ColorText("3;33", "Empty dataset"))
+			fmt.Println(colorText("3;33", "Empty dataset"))
 			return
 		}
 
@@ -67,7 +65,7 @@ func (dl *DataList) Summary() {
 
 		// Start displaying results
 		// Display header - using green as DataList primary color
-		fmt.Println(utils.ColorText("1;33", dataTitle))
+		fmt.Println(colorText("1;33", dataTitle))
 		fmt.Println(strings.Repeat("=", min(width, 80)))
 
 		// Initialize statistics
@@ -78,8 +76,8 @@ func (dl *DataList) Summary() {
 		}
 
 		// Display basic info
-		fmt.Printf("Total items: %s\n", utils.ColorText("1;33", fmt.Sprintf("%d", stats.totalCount)))
-		fmt.Printf("Numeric items: %s\n", utils.ColorText("1;33", fmt.Sprintf("%d (%.1f%%)", stats.numericCount, stats.numericPercent)))
+		fmt.Printf("Total items: %s\n", colorText("1;33", fmt.Sprintf("%d", stats.totalCount)))
+		fmt.Printf("Numeric items: %s\n", colorText("1;33", fmt.Sprintf("%d (%.1f%%)", stats.numericCount, stats.numericPercent)))
 		fmt.Println()
 
 		// Calculate statistics only if we have numeric values
@@ -98,12 +96,12 @@ func (dl *DataList) Summary() {
 			stats.modeValues = dl.Mode()
 		} // Calculate statistics only if we have numeric values
 		if numericCount == 0 {
-			fmt.Println(utils.ColorText("3;33", "No numeric data available for statistical analysis"))
+			fmt.Println(colorText("3;33", "No numeric data available for statistical analysis"))
 			return
 		}
 
 		// Create a nice table with borders for statistics
-		fmt.Println(utils.ColorText("1;33", "Statistical Summary"))
+		fmt.Println(colorText("1;33", "Statistical Summary"))
 
 		// 使用新的自適應表格顯示邏輯
 		displayDataListSummaryTable(stats, width)
@@ -162,7 +160,7 @@ func displayDataListSummaryTable(stats struct {
 
 	// Central Tendency section
 	fmt.Println(topLine)
-	fmt.Printf(utils.ColorText("1;32", headerFmt), "Central Tendency", "Value")
+	fmt.Printf(colorText("1;32", headerFmt), "Central Tendency", "Value")
 	fmt.Println(dividerLine)
 	fmt.Printf(headerFmt, "Mean", formatFloat(stats.mean))
 	fmt.Printf(headerFmt, "Median", formatFloat(stats.median))
@@ -195,7 +193,7 @@ func displayDataListSummaryTable(stats struct {
 	fmt.Println(dividerLine)
 
 	// Dispersion section
-	fmt.Printf(utils.ColorText("1;32", headerFmt), "Dispersion", "Value")
+	fmt.Printf(colorText("1;32", headerFmt), "Dispersion", "Value")
 	fmt.Println(dividerLine)
 	fmt.Printf(headerFmt, "Minimum", formatFloat(stats.min))
 	fmt.Printf(headerFmt, "Maximum", formatFloat(stats.max))
@@ -205,7 +203,7 @@ func displayDataListSummaryTable(stats struct {
 	fmt.Println(dividerLine)
 
 	// Quantiles section
-	fmt.Printf(utils.ColorText("1;32", headerFmt), "Quantiles", "Value")
+	fmt.Printf(colorText("1;32", headerFmt), "Quantiles", "Value")
 	fmt.Println(dividerLine)
 	fmt.Printf(headerFmt, "Q1 (25%)", formatFloat(stats.q1))
 	fmt.Printf(headerFmt, "Q2 (50%)", formatFloat(stats.median))

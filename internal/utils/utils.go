@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/mattn/go-runewidth"
+	"golang.org/x/term"
 )
 
 type F64orRat interface {
@@ -263,17 +264,8 @@ func convertTimestampToString(ts int64, goDateFormat string) string {
 	}
 }
 
-// ColorText 根據環境支持自動決定是否添加顏色到文本
-// code 是 ANSI 顏色代碼，text 是要設置顏色的文本
-func ColorText(code string, text any) string {
-	if isColorSupported() {
-		return fmt.Sprintf("\033[%sm%v\033[0m", code, text)
-	}
-	return fmt.Sprintf("%v", text)
-}
-
-// isColorSupported 檢測當前終端是否支持 ANSI 顏色代碼
-func isColorSupported() bool {
+// IsColorSupported 檢測當前終端是否支持 ANSI 顏色代碼
+func IsColorSupported() bool {
 	// 檢測 NO_COLOR 環境變量
 	if os.Getenv("NO_COLOR") != "" {
 		return false
@@ -435,10 +427,7 @@ func ParallelSortStableFunc[S ~[]E, E any](x S, cmp func(E, E) int) {
 	}
 
 	// Determine optimal number of goroutines based on data size
-	numGoroutines := getOptimalGoroutines(n)
-	if numGoroutines > runtime.NumCPU() {
-		numGoroutines = runtime.NumCPU()
-	}
+	numGoroutines := min(getOptimalGoroutines(n), runtime.NumCPU())
 
 	// Sort chunks in parallel using the same logic as the default version
 	sortChunksOptimized(x, cmp, numGoroutines)
@@ -561,4 +550,17 @@ func getOptimalGoroutines(n int) int {
 		}
 		return goroutines
 	}
+}
+
+// Get terminal window width
+func GetTerminalWidth() int {
+	width := 80 // Default width
+
+	// Try to get terminal window size
+	fd := int(os.Stdout.Fd())
+	if w, _, err := term.GetSize(fd); err == nil && w > 0 {
+		width = w
+	}
+
+	return width
 }

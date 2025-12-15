@@ -4,6 +4,7 @@ package insyra
 
 type configStruct struct {
 	logLevel               LogLevel
+	coloredOutput          bool
 	dontPanic              bool
 	defaultErrHandlingFunc func(errType LogLevel, packageName string, funcName string, errMsg string)
 	threadSafe             bool
@@ -30,6 +31,14 @@ func (c *configStruct) SetLogLevel(level LogLevel) {
 
 func (c *configStruct) GetLogLevel() LogLevel {
 	return LogLevel(c.logLevel)
+}
+
+func (c *configStruct) SetUseColoredOutput(colored bool) {
+	c.coloredOutput = colored
+}
+
+func (c *configStruct) GetDoesUseColoredOutput() bool {
+	return c.coloredOutput
 }
 
 func (c *configStruct) SetDontPanic(dontPanic bool) {
@@ -62,6 +71,7 @@ func (c *configStruct) Dangerously_TurnOffThreadSafety() {
 // DefaultConfig returns a Config with default values.
 func SetDefaultConfig() {
 	Config.logLevel = LogLevelInfo
+	Config.coloredOutput = true
 	Config.dontPanic = false
 	Config.defaultErrHandlingFunc = nil
 	Config.threadSafe = true
