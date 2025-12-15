@@ -197,20 +197,20 @@ type IDataTable interface {
 	Filter(filterFunc func(rowIndex int, columnIndex string, value any) bool) *DataTable
 	FilterByCustomElement(f func(value any) bool) *DataTable
 	FilterRows(filterFunc func(colIndex, colName string, x any) bool) *DataTable
-	FilterByColIndexGreaterThan(threshold string) *DataTable
-	FilterByColIndexGreaterThanOrEqualTo(threshold string) *DataTable
-	FilterByColIndexLessThan(threshold string) *DataTable
-	FilterByColIndexLessThanOrEqualTo(threshold string) *DataTable
-	FilterByColIndexEqualTo(index string) *DataTable
-	FilterByColNameEqualTo(name string) *DataTable
-	FilterByColNameContains(substring string) *DataTable
-	FilterByRowNameEqualTo(name string) *DataTable
-	FilterByRowNameContains(substring string) *DataTable
-	FilterByRowIndexGreaterThan(threshold int) *DataTable
-	FilterByRowIndexGreaterThanOrEqualTo(threshold int) *DataTable
-	FilterByRowIndexLessThan(threshold int) *DataTable
-	FilterByRowIndexLessThanOrEqualTo(threshold int) *DataTable
-	FilterByRowIndexEqualTo(index int) *DataTable
+	FilterColsByColIndexGreaterThan(threshold string) *DataTable
+	FilterColsByColIndexGreaterThanOrEqualTo(threshold string) *DataTable
+	FilterColsByColIndexLessThan(threshold string) *DataTable
+	FilterColsByColIndexLessThanOrEqualTo(threshold string) *DataTable
+	FilterColsByColIndexEqualTo(index string) *DataTable
+	FilterColsByColNameEqualTo(name string) *DataTable
+	FilterColsByColNameContains(substring string) *DataTable
+	FilterRowsByRowNameEqualTo(name string) *DataTable
+	FilterRowsByRowNameContains(substring string) *DataTable
+	FilterRowsByRowIndexGreaterThan(threshold int) *DataTable
+	FilterRowsByRowIndexGreaterThanOrEqualTo(threshold int) *DataTable
+	FilterRowsByRowIndexLessThan(threshold int) *DataTable
+	FilterRowsByRowIndexLessThanOrEqualTo(threshold int) *DataTable
+	FilterRowsByRowIndexEqualTo(index int) *DataTable
 
 	// Swap
 	SwapColsByName(columnName1 string, columnName2 string) *DataTable

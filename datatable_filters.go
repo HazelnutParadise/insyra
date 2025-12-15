@@ -7,8 +7,8 @@ import (
 
 // ==================== Col Index ====================
 
-// FilterByColIndexGreaterThan filters columns with index greater than the specified column.
-func (dt *DataTable) FilterByColIndexGreaterThan(columnIndexLetter string) *DataTable {
+// FilterColsByColIndexGreaterThan filters columns with index greater than the specified column.
+func (dt *DataTable) FilterColsByColIndexGreaterThan(columnIndexLetter string) *DataTable {
 	var newDt *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
 		columnIndexLetter = strings.ToUpper(columnIndexLetter)
@@ -32,8 +32,8 @@ func (dt *DataTable) FilterByColIndexGreaterThan(columnIndexLetter string) *Data
 	return newDt
 }
 
-// FilterByColIndexGreaterThanOrEqualTo filters columns with index greater than or equal to the specified column.
-func (dt *DataTable) FilterByColIndexGreaterThanOrEqualTo(columnIndexLetter string) *DataTable {
+// FilterColsByColIndexGreaterThanOrEqualTo filters columns with index greater than or equal to the specified column.
+func (dt *DataTable) FilterColsByColIndexGreaterThanOrEqualTo(columnIndexLetter string) *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
 		columnIndexLetter = strings.ToUpper(columnIndexLetter)
@@ -58,8 +58,8 @@ func (dt *DataTable) FilterByColIndexGreaterThanOrEqualTo(columnIndexLetter stri
 	return result
 }
 
-// FilterByColIndexEqualTo filters to only keep the column with the specified index.
-func (dt *DataTable) FilterByColIndexEqualTo(columnIndexLetter string) *DataTable {
+// FilterColsByColIndexEqualTo filters to only keep the column with the specified index.
+func (dt *DataTable) FilterColsByColIndexEqualTo(columnIndexLetter string) *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
 		columnIndexLetter = strings.ToUpper(columnIndexLetter)
@@ -84,8 +84,8 @@ func (dt *DataTable) FilterByColIndexEqualTo(columnIndexLetter string) *DataTabl
 	return result
 }
 
-// FilterByColIndexLessThan filters columns with index less than the specified column.
-func (dt *DataTable) FilterByColIndexLessThan(columnIndexLetter string) *DataTable {
+// FilterColsByColIndexLessThan filters columns with index less than the specified column.
+func (dt *DataTable) FilterColsByColIndexLessThan(columnIndexLetter string) *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
 		columnIndexLetter = strings.ToUpper(columnIndexLetter)
@@ -110,8 +110,8 @@ func (dt *DataTable) FilterByColIndexLessThan(columnIndexLetter string) *DataTab
 	return result
 }
 
-// FilterByColIndexLessThanOrEqualTo filters columns with index less than or equal to the specified column.
-func (dt *DataTable) FilterByColIndexLessThanOrEqualTo(columnIndexLetter string) *DataTable {
+// FilterColsByColIndexLessThanOrEqualTo filters columns with index less than or equal to the specified column.
+func (dt *DataTable) FilterColsByColIndexLessThanOrEqualTo(columnIndexLetter string) *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
 		columnIndexLetter = strings.ToUpper(columnIndexLetter)
@@ -138,8 +138,8 @@ func (dt *DataTable) FilterByColIndexLessThanOrEqualTo(columnIndexLetter string)
 
 // ==================== Col Name ====================
 
-// FilterByColNameEqualTo filters to only keep the column with the specified name.
-func (dt *DataTable) FilterByColNameEqualTo(columnName string) *DataTable {
+// FilterColsByColNameEqualTo filters to only keep the column with the specified name.
+func (dt *DataTable) FilterColsByColNameEqualTo(columnName string) *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
 		colIdx := -1
@@ -169,8 +169,8 @@ func (dt *DataTable) FilterByColNameEqualTo(columnName string) *DataTable {
 	return result
 }
 
-// FilterByColNameContains filters columns whose name contains the specified substring.
-func (dt *DataTable) FilterByColNameContains(substring string) *DataTable {
+// FilterColsByColNameContains filters columns whose name contains the specified substring.
+func (dt *DataTable) FilterColsByColNameContains(substring string) *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
 		var filteredCols []*DataList
@@ -195,36 +195,36 @@ func (dt *DataTable) FilterByColNameContains(substring string) *DataTable {
 
 // ==================== Row Index ====================
 
-// FilterByRowIndexGreaterThan filters rows with index greater than the specified threshold.
-func (dt *DataTable) FilterByRowIndexGreaterThan(threshold int) *DataTable {
+// FilterRowsByRowIndexGreaterThan filters rows with index greater than the specified threshold.
+func (dt *DataTable) FilterRowsByRowIndexGreaterThan(threshold int) *DataTable {
 	return dt.Filter(func(rowIndex int, columnIndex string, value any) bool {
 		return rowIndex > threshold
 	})
 }
 
-// FilterByRowIndexGreaterThanOrEqualTo filters rows with index greater than or equal to the specified threshold.
-func (dt *DataTable) FilterByRowIndexGreaterThanOrEqualTo(threshold int) *DataTable {
+// FilterRowsByRowIndexGreaterThanOrEqualTo filters rows with index greater than or equal to the specified threshold.
+func (dt *DataTable) FilterRowsByRowIndexGreaterThanOrEqualTo(threshold int) *DataTable {
 	return dt.Filter(func(rowIndex int, columnIndex string, value any) bool {
 		return rowIndex >= threshold
 	})
 }
 
-// FilterByRowIndexEqualTo filters to only keep the row with the specified index.
-func (dt *DataTable) FilterByRowIndexEqualTo(index int) *DataTable {
+// FilterRowsByRowIndexEqualTo filters to only keep the row with the specified index.
+func (dt *DataTable) FilterRowsByRowIndexEqualTo(index int) *DataTable {
 	return dt.Filter(func(rowIndex int, columnIndex string, value any) bool {
 		return rowIndex == index
 	})
 }
 
-// FilterByRowIndexLessThan filters rows with index less than the specified threshold.
-func (dt *DataTable) FilterByRowIndexLessThan(threshold int) *DataTable {
+// FilterRowsByRowIndexLessThan filters rows with index less than the specified threshold.
+func (dt *DataTable) FilterRowsByRowIndexLessThan(threshold int) *DataTable {
 	return dt.Filter(func(rowIndex int, columnIndex string, value any) bool {
 		return rowIndex < threshold
 	})
 }
 
-// FilterByRowIndexLessThanOrEqualTo filters rows with index less than or equal to the specified threshold.
-func (dt *DataTable) FilterByRowIndexLessThanOrEqualTo(threshold int) *DataTable {
+// FilterRowsByRowIndexLessThanOrEqualTo filters rows with index less than or equal to the specified threshold.
+func (dt *DataTable) FilterRowsByRowIndexLessThanOrEqualTo(threshold int) *DataTable {
 	return dt.Filter(func(rowIndex int, columnIndex string, value any) bool {
 		return rowIndex <= threshold
 	})
@@ -232,19 +232,19 @@ func (dt *DataTable) FilterByRowIndexLessThanOrEqualTo(threshold int) *DataTable
 
 // ==================== Row Name ====================
 
-// FilterByRowNameEqualTo filters to only keep the row with the specified name.
-func (dt *DataTable) FilterByRowNameEqualTo(rowName string) *DataTable {
-	newdt := dt.FilterByRowNameContains(rowName)
+// FilterRowsByRowNameEqualTo filters to only keep the row with the specified name.
+func (dt *DataTable) FilterRowsByRowNameEqualTo(rowName string) *DataTable {
+	newdt := dt.FilterRowsByRowNameContains(rowName)
 	for name, index := range newdt.rowNames {
 		if name == rowName {
-			return newdt.FilterByRowIndexEqualTo(index)
+			return newdt.FilterRowsByRowIndexEqualTo(index)
 		}
 	}
 	return &DataTable{}
 }
 
-// FilterByRowNameContains filters rows whose name contains the specified substring.
-func (dt *DataTable) FilterByRowNameContains(substring string) *DataTable {
+// FilterRowsByRowNameContains filters rows whose name contains the specified substring.
+func (dt *DataTable) FilterRowsByRowNameContains(substring string) *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
 		// 找出符合條件的行索引
