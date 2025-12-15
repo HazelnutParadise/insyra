@@ -316,11 +316,8 @@ func (dt *DataTable) FilterByCustomElement(filterFunc func(value any) bool) *Dat
 
 // ==================== Custom Filter ====================
 
-// FilterFunc is a custom filter function that takes the row index, column name, and value as input and returns a boolean.
-type FilterFunc func(rowIndex int, columnIndex string, value any) bool
-
 // Filter applies a custom filter function to the DataTable and returns the filtered DataTable.
-func (dt *DataTable) Filter(filterFunc FilterFunc) *DataTable {
+func (dt *DataTable) Filter(filterFunc func(rowIndex int, columnIndex string, value any) bool) *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
 		filteredCols := make([]*DataList, len(dt.columns))
@@ -349,6 +346,69 @@ func (dt *DataTable) Filter(filterFunc FilterFunc) *DataTable {
 			if !keepRow {
 				for _, col := range filteredCols {
 					col.data = col.data[:len(col.data)-1]
+				}
+			}
+		}
+
+		newDt := &DataTable{
+			columns:           filteredCols,
+			columnIndex:       dt.columnIndex,
+			rowNames:          dt.rowNames,
+			creationTimestamp: dt.creationTimestamp,
+		}
+
+		newDt.lastModifiedTimestamp.Store(dt.lastModifiedTimestamp.Load())
+		result = newDt
+	})
+	return result
+}
+
+// ==================== Filter Rows ====================
+
+// FilterRows applies a custom filter function to each cell in the DataTable and keeps only rows
+// where the filter function returns true for at least one cell.
+// The filter function receives: colindex (column letter), colname (column name), and x (cell value).
+func (dt *DataTable) FilterRows(filterFunc func(colIndex, colName string, x any) bool) *DataTable {
+	var result *DataTable
+	dt.AtomicDo(func(dt *DataTable) {
+		filteredCols := make([]*DataList, len(dt.columns))
+		for i := range dt.columns {
+			filteredCols[i] = NewDataList()
+		}
+
+		// Build reverse index: column index to letter
+		colIndexToLetter := make(map[int]string)
+		for letter, idx := range dt.columnIndex {
+			colIndexToLetter[idx] = letter
+		}
+
+		numRows := 0
+		if len(dt.columns) > 0 {
+			numRows = len(dt.columns[0].data)
+		}
+
+		for rowIdx := 0; rowIdx < numRows; rowIdx++ {
+			keepRow := false
+			rowData := make([]any, len(dt.columns))
+
+			for colIdx, col := range dt.columns {
+				value := col.data[rowIdx]
+				colLetter := colIndexToLetter[colIdx]
+				colName := col.name
+
+				rowData[colIdx] = value
+
+				// Apply filter function
+				if filterFunc(colLetter, colName, value) {
+					keepRow = true
+				}
+			}
+
+			// Add the row if it passed the filter
+			if keepRow {
+				for colIdx, value := range rowData {
+					filteredCols[colIdx].data = append(filteredCols[colIdx].data, value)
+					filteredCols[colIdx].name = dt.columns[colIdx].name
 				}
 			}
 		}

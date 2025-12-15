@@ -194,8 +194,9 @@ type IDataTable interface {
 	SortBy(configs ...DataTableSortConfig) *DataTable
 
 	// Filters
-	Filter(filterFunc FilterFunc) *DataTable
+	Filter(filterFunc func(rowIndex int, columnIndex string, value any) bool) *DataTable
 	FilterByCustomElement(f func(value any) bool) *DataTable
+	FilterRows(filterFunc func(colIndex, colName string, x any) bool) *DataTable
 	FilterByColIndexGreaterThan(threshold string) *DataTable
 	FilterByColIndexGreaterThanOrEqualTo(threshold string) *DataTable
 	FilterByColIndexLessThan(threshold string) *DataTable

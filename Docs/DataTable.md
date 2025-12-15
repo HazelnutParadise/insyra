@@ -2156,6 +2156,39 @@ filtered := dt.FilterByCustomElement(func(value any) bool {
 })
 ```
 
+### FilterRows
+
+Filters rows based on a custom function that checks each cell. Keeps only rows where the filter function returns true for at least one cell.
+
+```go
+func (dt *DataTable) FilterRows(filterFunc func(colIndex, colName string, x any) bool) *DataTable
+```
+
+**Parameters:**
+
+- `filterFunc`: Custom filter function that receives:
+  - `colIndex`: Column letter index (A, B, C...)
+  - `colName`: Column name
+  - `x`: Cell value
+
+**Returns:**
+
+- `*DataTable`: New filtered DataTable containing rows that match the filter condition
+
+**Example:**
+
+```go
+// Keep rows where column A value is greater than 25
+filtered := dt.FilterRows(func(colIndex, colName, x any) bool {
+    return (colIndex == "A") && (x.(int) > 25)
+})
+
+// Keep rows where column named "age" value is greater than 25
+filtered := dt.FilterRows(func(colIndex, colName, x any) bool {
+    return (colName == "age") && (x.(int) > 25)
+})
+```
+
 ### FilterByColNameEqualTo
 
 Filters columns by exact name match.
