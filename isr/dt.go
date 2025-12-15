@@ -148,7 +148,7 @@ func (t *dt) Col(col any) *dl {
 	case string:
 		l.DataList = t.GetCol(v)
 	case name:
-		colDt := t.FilterByColNameEqualTo(v.value)
+		colDt := t.FilterColsByColNameEqualTo(v.value)
 		l.DataList = colDt.GetColByNumber(0)
 	default:
 		insyra.LogFatal("DT", "Col", "got unexpected type %T", col)
@@ -163,7 +163,7 @@ func (t *dt) Row(row any) *dl {
 	case int:
 		l.DataList = t.GetRow(v)
 	case name:
-		rowDt := t.FilterByRowNameEqualTo(v.value)
+		rowDt := t.FilterRowsByRowNameEqualTo(v.value)
 		l.DataList = rowDt.GetRow(0)
 	default:
 		insyra.LogFatal("DT", "Row", "got unexpected type %T", row)
@@ -179,7 +179,7 @@ func (t *dt) At(row any, col any) any {
 		case int:
 			return t.GetElementByNumberIndex(r, v)
 		case name:
-			rowDt := t.FilterByRowNameEqualTo(r.value)
+			rowDt := t.FilterRowsByRowNameEqualTo(r.value)
 			return rowDt.GetElementByNumberIndex(0, v)
 		default:
 			insyra.LogWarning("DT", "At", "got unexpected type %T. Returning nil.", row)
@@ -189,7 +189,7 @@ func (t *dt) At(row any, col any) any {
 		case int:
 			return t.GetElement(r, v)
 		case name:
-			rowDt := t.FilterByRowNameEqualTo(r.value)
+			rowDt := t.FilterRowsByRowNameEqualTo(r.value)
 			return rowDt.GetElement(0, v)
 		default:
 			insyra.LogWarning("DT", "At", "got unexpected type %T. Returning nil.", row)
@@ -197,11 +197,11 @@ func (t *dt) At(row any, col any) any {
 	case name:
 		switch r := row.(type) {
 		case int:
-			colDt := t.FilterByColNameEqualTo(v.value)
+			colDt := t.FilterColsByColNameEqualTo(v.value)
 			return colDt.GetElementByNumberIndex(r, 0)
 		case name:
-			rowDt := t.FilterByRowNameEqualTo(r.value)
-			colDt := rowDt.FilterByColNameEqualTo(v.value)
+			rowDt := t.FilterRowsByRowNameEqualTo(r.value)
+			colDt := rowDt.FilterColsByColNameEqualTo(v.value)
 			return colDt.GetElementByNumberIndex(0, 0)
 		default:
 			insyra.LogWarning("DT", "At", "got unexpected type %T. Returning nil.", row)
