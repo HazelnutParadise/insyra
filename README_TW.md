@@ -163,6 +163,89 @@ func main() {
 }
 ```
 
+### 配置
+
+**Insyra** 提供全局 `Config` 物件來管理庫的行為。您可以自訂日誌級別、錯誤處理和效能設置：
+
+#### 日誌級別管理
+
+控制要記錄的訊息級別：
+
+```go
+// 設置日誌級別 - 僅記錄此級別或更高級別的訊息
+insyra.Config.SetLogLevel(insyra.LogLevelDebug)    // 最詳細
+insyra.Config.SetLogLevel(insyra.LogLevelInfo)     // 預設
+insyra.Config.SetLogLevel(insyra.LogLevelWarning)  // 僅警告和錯誤
+insyra.Config.SetLogLevel(insyra.LogLevelFatal)    // 僅致命錯誤
+
+// 獲取當前日誌級別
+level := insyra.Config.GetLogLevel()
+```
+
+#### 錯誤處理
+
+配置如何處理錯誤：
+
+```go
+// 防止 panic，改為優雅地處理錯誤
+insyra.Config.SetDontPanic(true)
+
+// 檢查防 panic 狀態
+isPanicPrevented := insyra.Config.GetDontPanicStatus()
+
+// 為所有錯誤設置自定義錯誤處理函數
+insyra.Config.SetDefaultErrHandlingFunc(func(errType insyra.LogLevel, packageName, funcName, errMsg string) {
+    // 您的自定義錯誤處理邏輯
+    // errType: 錯誤的嚴重級別
+    // packageName: 發生錯誤的套件名稱
+    // funcName: 發生錯誤的函數名稱
+    // errMsg: 錯誤訊息
+    fmt.Printf("[%s] %s.%s: %s\n", errType, packageName, funcName, errMsg)
+})
+
+// 獲取當前錯誤處理函數
+handler := insyra.Config.GetDefaultErrHandlingFunc()
+```
+
+#### 效能配置
+
+根據使用情況微調效能：
+
+```go
+// ⚠️ 危險：關閉線程安全以獲得極致性能
+// 僅在您確定沒有並發存取時使用
+// 禁用此選項時，數據一致性無法保證！
+insyra.Config.Dangerously_TurnOffThreadSafety()
+```
+
+#### 完整範例
+
+```go
+package main
+
+import (
+    "fmt"
+    "github.com/HazelnutParadise/insyra"
+)
+
+func main() {
+    // 使用自定義配置初始化
+    insyra.Config.SetLogLevel(insyra.LogLevelDebug)
+    insyra.Config.SetDontPanic(true)
+    
+    // 自定義錯誤處理函數
+    insyra.Config.SetDefaultErrHandlingFunc(func(errType insyra.LogLevel, pkg, fn, msg string) {
+        fmt.Printf("錯誤發生於 %s.%s: %s\n", pkg, fn, msg)
+    })
+    
+    // 現在使用 Insyra 的這些設置
+    dl := insyra.DataList{}.From(1, 2, 3, 4, 5)
+    fmt.Println(dl.Mean())
+}
+```
+
+實現詳情請參閱 [config.go](config.go) 原始檔案。
+
 ## [DataList](/Docs/DataList.md)
 
 `DataList` 是 **Insyra** 的核心結構，能夠存儲、管理和分析動態數據集合。它提供了各種用於數據操作和統計分析的方法。
