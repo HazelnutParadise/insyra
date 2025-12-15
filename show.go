@@ -1,4 +1,4 @@
-package insyra
+﻿package insyra
 
 import (
 	"cmp"
@@ -29,13 +29,6 @@ func Show(label string, object showable, startEnd ...any) {
 	}
 	fmt.Printf("%s\n", colorText("1;35", fmt.Sprintf("--- Showing: %s ---", label)))
 	object.ShowRange(startEnd...)
-}
-
-func colorize(code string, text any) string {
-	if code == "" {
-		return fmt.Sprintf("%v", text)
-	}
-	return colorText(code, text)
 }
 
 // ======================== DataTable ========================
