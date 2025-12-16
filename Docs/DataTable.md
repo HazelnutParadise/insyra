@@ -2240,6 +2240,46 @@ filtered := dt.FilterRows(func(colIndex, colName, x any) bool {
 })
 ```
 
+### FilterCols
+
+Filters columns based on a custom function applied to each cell. Keeps only columns where the filter function returns true for at least one cell in that column.
+
+```go
+func (dt *DataTable) FilterCols(filterFunc func(rowIndex int, rowName string, x any) bool) *DataTable
+```
+
+**Parameters:**
+
+- `filterFunc`: Custom filter function that receives:
+  - `rowIndex`: index of the row (0-based)
+  - `rowName`: row name (empty string if none)
+  - `x`: cell value
+
+**Returns:**
+
+- `*DataTable`: New filtered DataTable containing columns that match the filter condition
+
+**Examples:**
+
+```go
+// Keep columns that contain the value 4 in any row
+filtered := dt.FilterCols(func(rowIndex int, rowName string, x any) bool {
+    return x == 4
+})
+
+// Keep columns where the first row equals 1
+filtered := dt.FilterCols(func(rowIndex int, rowName string, x any) bool {
+    return (rowIndex == 0) && (x == 1)
+})
+
+// Keep columns where the row named "John" equals 4
+// (requires setting row names first)
+dt.SetRowNames([]string{"John", "Mary", "Bob"})
+filtered := dt.FilterCols(func(rowIndex int, rowName string, x any) bool {
+    return (rowName == "John") && (x == 4)
+})
+```
+
 ### FilterColsByColNameEqualTo
 
 Filters columns by exact name match.

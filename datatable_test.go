@@ -415,6 +415,57 @@ func TestDataTable_Clone(t *testing.T) {
 	}
 }
 
+func TestDataTable_FilterCols(t *testing.T) {
+	// Setup DataTable with 3 columns
+	dt := NewDataTable()
+	d1 := NewDataList(1, 2, 3)
+	d2 := NewDataList(4, 5, 6)
+	d3 := NewDataList(7, 8, 9)
+	dt.AppendCols(d1, d2, d3)
+
+	// Keep columns that contain the value 4 in any row
+	filtered := dt.FilterCols(func(rowIndex int, rowName string, x any) bool {
+		return x == 4
+	})
+	if r, c := filtered.Size(); c != 1 || r != 3 {
+		t.Errorf("FilterCols failed, expected 1 column with 3 rows, got %d cols %d rows", c, r)
+	}
+	if filtered.columns[0].Data()[0] != 4 {
+		t.Errorf("Filtered column value mismatch, expected 4, got %v", filtered.columns[0].Data()[0])
+	}
+
+	// Filter columns where the first row contains the element 1
+	firstRowFiltered := dt.FilterCols(func(rowIndex int, rowName string, x any) bool {
+		return rowIndex == 0 && x == 1
+	})
+	if r, c := firstRowFiltered.Size(); c != 1 || r != 3 {
+		t.Errorf("FilterCols by first row failed, expected 1 column with 3 rows, got %d cols %d rows", c, r)
+	}
+	if firstRowFiltered.columns[0].Data()[0] != 1 {
+		t.Errorf("Filtered first-row column value mismatch, expected 1, got %v", firstRowFiltered.columns[0].Data()[0])
+	}
+
+	// Filter columns where the row named "John" contains the element 4
+	dt.SetRowNames([]string{"John", "Mary", "Bob"})
+	johnFiltered := dt.FilterCols(func(rowIndex int, rowName string, x any) bool {
+		return rowName == "John" && x == 4
+	})
+	if r, c := johnFiltered.Size(); c != 1 || r != 3 {
+		t.Errorf("FilterCols by John row failed, expected 1 column with 3 rows, got %d cols %d rows", c, r)
+	}
+	if johnFiltered.columns[0].Data()[0] != 4 {
+		t.Errorf("Filtered John-row column value mismatch, expected 4, got %v", johnFiltered.columns[0].Data()[0])
+	}
+
+	// No column matches -> expect empty DataTable
+	empty := dt.FilterCols(func(rowIndex int, rowName string, x any) bool {
+		return x == 999
+	})
+	if r, c := empty.Size(); r != 0 || c != 0 {
+		t.Errorf("Expected empty DataTable when no columns match, got %d rows %d cols", r, c)
+	}
+}
+
 func TestDataTable_DropRowsContain(t *testing.T) {
 	dt := NewDataTable()
 	dl1 := NewDataList(1, 2, 3, 4)

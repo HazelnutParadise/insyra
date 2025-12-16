@@ -363,6 +363,76 @@ func (dt *DataTable) Filter(filterFunc func(rowIndex int, columnIndex string, va
 	return result
 }
 
+// ==================== Filter Cols ====================
+
+// FilterCols applies a custom filter function to each cell in every column and returns a
+// new DataTable that only contains columns where the filter function returns true for at least
+// one cell in that column.
+//
+// The filter function receives:
+// - rowIndex: index of the row
+// - rowName: name of the row (empty if none)
+// - x: the cell value
+func (dt *DataTable) FilterCols(filterFunc func(rowIndex int, rowName string, x any) bool) *DataTable {
+	var result *DataTable
+	dt.AtomicDo(func(dt *DataTable) {
+		if len(dt.columns) == 0 {
+			result = &DataTable{}
+			return
+		}
+
+		numRows := 0
+		if len(dt.columns) > 0 {
+			numRows = len(dt.columns[0].data)
+		}
+
+		filteredCols := make([]*DataList, 0)
+
+		for _, col := range dt.columns {
+			keep := false
+			for rowIdx := 0; rowIdx < numRows; rowIdx++ {
+				var x any
+				if rowIdx < len(col.data) {
+					x = col.data[rowIdx]
+				} else {
+					x = nil
+				}
+				rowName, _ := dt.getRowNameByIndex(rowIdx)
+				if filterFunc(rowIdx, rowName, x) {
+					keep = true
+					break
+				}
+			}
+			if keep {
+				newCol := &DataList{
+					data:              make([]any, len(col.data)),
+					name:              col.name,
+					creationTimestamp: col.creationTimestamp,
+				}
+				copy(newCol.data, col.data)
+				newCol.lastModifiedTimestamp.Store(col.lastModifiedTimestamp.Load())
+				filteredCols = append(filteredCols, newCol)
+			}
+		}
+
+		if len(filteredCols) == 0 {
+			result = &DataTable{}
+			return
+		}
+
+		newDt := &DataTable{
+			columns:           filteredCols,
+			columnIndex:       dt.columnIndex,
+			rowNames:          dt.rowNames,
+			creationTimestamp: dt.creationTimestamp,
+		}
+
+		newDt.lastModifiedTimestamp.Store(dt.lastModifiedTimestamp.Load())
+		result = newDt
+	})
+	return result
+}
+
 // ==================== Filter Rows ====================
 
 // FilterRows applies a custom filter function to each cell in the DataTable and keeps only rows
