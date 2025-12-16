@@ -21,6 +21,10 @@ type cclToken struct {
 	value string
 }
 
+// CCLNode is the exported type alias for compiled CCL AST nodes.
+// This allows external packages to store and reuse compiled formulas.
+type CCLNode = cclNode
+
 type cclNode any
 type cclNumberNode struct{ value float64 }
 type cclStringNode struct{ value string }

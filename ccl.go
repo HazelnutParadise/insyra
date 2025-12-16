@@ -18,39 +18,45 @@ func resetCCLFuncCallDepth() {
 	ccl.ResetFuncCallDepth()
 }
 
-// evaluateFormula evaluates a formula string on a single row of data.
-// colNameMap is optional - pass nil if not using ['colName'] syntax.
-func evaluateCCLFormula(row []any, formula string, colNameMap map[string]int) (any, error) {
+// compileCCLFormula compiles a formula string into an AST for reuse.
+// This avoids repeated tokenization and parsing for each row.
+func compileCCLFormula(formula string) (ccl.CCLNode, error) {
 	tokens, err := ccl.Tokenize(formula)
 	if err != nil {
 		return nil, err
 	}
-	ast, err := ccl.Parse(tokens)
-	if err != nil {
-		return nil, err
-	}
-	return ccl.Evaluate(ast, row, colNameMap)
+	return ccl.Parse(tokens)
 }
 
 // applyCCLOnDataTable evaluates the formula on each row of a DataTable.
+// Optimized: compiles formula once and reuses AST for all rows.
 func applyCCLOnDataTable(table *DataTable, formula string) ([]any, error) {
 	var result []any
 	var err error
+
+	// 預先編譯公式（只做一次 tokenize + parse）
+	ast, err := compileCCLFormula(formula)
+	if err != nil {
+		return nil, err
+	}
+
 	table.AtomicDo(func(table *DataTable) {
 		numRow, numCol := table.getMaxColLength(), len(table.columns)
 		result = make([]any, numRow)
 
 		// 建立欄位名稱到索引的映射（支援 ['colName'] 語法）
-		colNameMap := make(map[string]int)
+		colNameMap := make(map[string]int, numCol)
 		for j := range numCol {
 			if table.columns[j].name != "" {
 				colNameMap[table.columns[j].name] = j
 			}
 		}
 
+		// 預分配 row slice，避免每行都重新分配
+		row := make([]any, numCol)
+
 		for i := range numRow {
-			// 建構第 i 行的資料
-			row := make([]any, numCol)
+			// 填充第 i 行的資料（重用 row slice）
 			for j := range numCol {
 				if i < len(table.columns[j].data) {
 					row[j] = table.columns[j].data[i]
@@ -58,7 +64,8 @@ func applyCCLOnDataTable(table *DataTable, formula string) ([]any, error) {
 					row[j] = nil
 				}
 			}
-			val, err2 := evaluateCCLFormula(row, formula, colNameMap)
+			// 直接使用預編譯的 AST
+			val, err2 := ccl.Evaluate(ast, row, colNameMap)
 			if err2 != nil {
 				err = err2
 				return

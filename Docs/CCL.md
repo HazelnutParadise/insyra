@@ -13,6 +13,7 @@ CCL (Column Calculation Language) is a specialized expression language in Insyra
 - [Chained Comparisons](#chained-comparisons)
 - [Examples](#examples)
 - [Best Practices](#best-practices)
+- [Performance](#performance)
 - [Troubleshooting](#troubleshooting)
 
 ## Basic Syntax
@@ -313,6 +314,28 @@ dt.AddColUsingCCL("ascending", "IF(A <= B <= C, 'Ascending', 'Not Ascending')")
 3. **Mind Data Types**: Ensure you compare values of compatible types; check for null values or strings in columns
 
 4. **Use Chained Comparisons**: For range checks, use chained comparisons to make expressions more concise
+
+## Performance
+
+CCL is optimized for high-performance batch processing. The formula is compiled (tokenized and parsed) only once, and the resulting AST (Abstract Syntax Tree) is reused for all rows.
+
+### Benchmark Results
+
+Test environment: 100,000 rows × 3 columns
+
+| Formula Type | Example | Time | Per Row |
+|--------------|---------|------|---------|
+| Simple arithmetic | `A + B + C` | ~32ms | ~0.32μs |
+| Bracket syntax | `[A] + ['colName'] + [C]` | ~43ms | ~0.43μs |
+| With function | `IF(A > 50000, 1, 0)` | ~59ms | ~0.59μs |
+| Complex expression | `IF(AND(A > 10000, B < 150000), A * 2 + B, C)` | ~103ms | ~1.03μs |
+
+### Performance Tips
+
+1. **Prefer simple expressions**: Arithmetic operations are faster than function calls
+2. **Minimize function nesting**: Each function call adds overhead
+3. **Use bracket syntax when needed**: `[A]` and `['name']` have minimal overhead compared to direct references
+4. **Batch operations**: Process all rows at once using `AddColUsingCCL` rather than row-by-row operations
 
 ## Troubleshooting
 

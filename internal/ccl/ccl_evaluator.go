@@ -30,23 +30,13 @@ func Evaluate(n cclNode, row []any, colNameMap ...map[string]int) (any, error) {
 }
 
 func evaluateWithContext(n cclNode, row []any, colNameMap map[string]int) (any, error) {
-	// 檢查遞迴深度並添加除錯日誌
+	// 檢查遞迴深度（移除 debug 輸出以提升效能）
 	evalDepth++
-
-	// 每10層輸出一次當前深度
-	if evalDepth%10 == 0 {
-		fmt.Printf("CCL evaluation depth: %d\n", evalDepth)
-	}
-
 	if evalDepth > maxEvalDepth {
 		evalDepth = 0
 		return nil, fmt.Errorf("evaluate: maximum recursion depth exceeded (%d), possibly infinite recursion", maxEvalDepth)
 	}
-
-	// 使用 defer 確保退出前減少深度計數
-	defer func() {
-		evalDepth--
-	}()
+	defer func() { evalDepth-- }()
 
 	switch t := n.(type) {
 	case *cclNumberNode:
