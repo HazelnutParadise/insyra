@@ -18,7 +18,18 @@ func ResetEvalDepth() {
 	evalDepth = 0
 }
 
-func Evaluate(n cclNode, row []any) (any, error) {
+// Evaluate evaluates a CCL node with the given row data.
+// colNameMap is optional - pass nil if not using ['colName'] syntax.
+// colNameMap maps column names to their indices (0-based).
+func Evaluate(n cclNode, row []any, colNameMap ...map[string]int) (any, error) {
+	var nameMap map[string]int
+	if len(colNameMap) > 0 && colNameMap[0] != nil {
+		nameMap = colNameMap[0]
+	}
+	return evaluateWithContext(n, row, nameMap)
+}
+
+func evaluateWithContext(n cclNode, row []any, colNameMap map[string]int) (any, error) {
 	// 檢查遞迴深度並添加除錯日誌
 	evalDepth++
 
@@ -50,10 +61,30 @@ func Evaluate(n cclNode, row []any) (any, error) {
 			return nil, fmt.Errorf("column %s out of range", t.name)
 		}
 		return row[idx], nil
+	case *cclColIndexNode:
+		// [A] 形式的欄位索引引用
+		idx := utils.ParseColIndex(t.index)
+		if idx >= len(row) {
+			return nil, fmt.Errorf("column [%s] out of range", t.index)
+		}
+		return row[idx], nil
+	case *cclColNameNode:
+		// ['colName'] 形式的欄位名稱引用
+		if colNameMap == nil {
+			return nil, fmt.Errorf("column name reference ['%s'] used but no column name mapping provided", t.name)
+		}
+		idx, ok := colNameMap[t.name]
+		if !ok {
+			return nil, fmt.Errorf("column name '%s' not found", t.name)
+		}
+		if idx >= len(row) {
+			return nil, fmt.Errorf("column ['%s'] (index %d) out of range", t.name, idx)
+		}
+		return row[idx], nil
 	case *funcCallNode:
 		args := []any{}
 		for _, arg := range t.args {
-			val, err := Evaluate(arg, row)
+			val, err := evaluateWithContext(arg, row, colNameMap)
 			if err != nil {
 				return nil, err
 			}
@@ -61,11 +92,11 @@ func Evaluate(n cclNode, row []any) (any, error) {
 		}
 		return callFunction(t.name, args)
 	case *cclBinaryOpNode:
-		left, err := Evaluate(t.left, row)
+		left, err := evaluateWithContext(t.left, row, colNameMap)
 		if err != nil {
 			return nil, err
 		}
-		right, err := Evaluate(t.right, row)
+		right, err := evaluateWithContext(t.right, row, colNameMap)
 		if err != nil {
 			return nil, err
 		}
@@ -79,7 +110,7 @@ func Evaluate(n cclNode, row []any) (any, error) {
 		// 評估所有值
 		values := make([]any, len(t.values))
 		for i, valNode := range t.values {
-			val, err := Evaluate(valNode, row)
+			val, err := evaluateWithContext(valNode, row, colNameMap)
 			if err != nil {
 				return nil, err
 			}

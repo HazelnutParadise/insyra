@@ -24,6 +24,7 @@ NewColumn = CCLExpression
 ```
 
 Basic operation examples:
+
 ```
 "A + B"         // Add column A and column B
 "A * 2"         // Multiply each value in column A by 2
@@ -35,18 +36,21 @@ Basic operation examples:
 CCL supports the following data types:
 
 1. **Numbers** - Integers and floating-point numbers
+
    ```
    "42"    // Integer
    "3.14"  // Floating-point number
    ```
 
 2. **Strings** - Enclosed in single quotes
+
    ```
    "'Hello, World!'"   // String
    "'123'"             // Numeric string
    ```
 
 3. **Boolean Values** - `true` or `false`
+
    ```
    "true"              // Boolean true
    "false"             // Boolean false
@@ -88,12 +92,66 @@ CCL supports the following data types:
 
 ## Column References
 
-CCL uses Excel-like column references, designating columns with letters: A, B, C, etc.
+CCL provides three ways to reference columns in your expressions:
+
+### 1. Direct Column Index (Excel-style)
+
+The basic way to reference columns uses Excel-style letter identifiers:
 
 ```
 "A"          // Reference to the first column
 "B"          // Reference to the second column
 "C"          // Reference to the third column
+```
+
+### 2. Bracket Column Index `[colIndex]`
+
+Use brackets with column letters to explicitly reference columns by their index. This is useful when column letters might conflict with function names or reserved words:
+
+```
+"[A]"        // Explicit reference to the first column
+"[B]"        // Explicit reference to the second column
+"[AA]"       // Reference to the 27th column
+```
+
+Example - avoiding conflicts:
+
+```go
+// If "A" might be confused with a function name, use [A] instead
+dt.AddColUsingCCL("result", "[A] + [B] * 2")
+```
+
+### 3. Bracket Column Name `['colName']`
+
+Use brackets with single-quoted strings to reference columns by their name. This is particularly useful when you have named columns:
+
+```
+"['Sales']"          // Reference to column named "Sales"
+"['Product Name']"   // Reference to column named "Product Name"
+"['price']"          // Reference to column named "price" (case-sensitive)
+```
+
+Example with named columns:
+
+```go
+dt := NewDataTable()
+dt.AppendCols(NewDataList(100, 200, 300), NewDataList(10, 20, 30))
+dt.SetColNames([]string{"revenue", "cost"})
+
+// Calculate profit using column names
+dt.AddColUsingCCL("profit", "['revenue'] - ['cost']")
+```
+
+### Mixed Syntax
+
+You can mix different reference styles in the same expression:
+
+```go
+// Using both column index and column name references
+dt.AddColUsingCCL("mixed", "[A] * 2 + ['cost']")
+
+// Using direct reference with bracket syntax
+dt.AddColUsingCCL("calc", "A + [B] + ['total']")
 ```
 
 ## Functions
@@ -105,6 +163,7 @@ CCL uses Excel-like column references, designating columns with letters: A, B, C
 ```
 
 Example:
+
 ```
 "IF(A > 10, 'High', 'Low')"  
 // Returns 'High' if the value in column A is greater than 10, otherwise returns 'Low'
@@ -118,6 +177,7 @@ Example:
 ```
 
 Examples:
+
 ```
 "IF(AND(A > 0, B < 100), 'Valid', 'Invalid')"  
 // Returns 'Valid' if A > 0 and B < 100, otherwise returns 'Invalid'
@@ -133,6 +193,7 @@ Examples:
 ```
 
 Example:
+
 ```
 "CONCAT(A, '-', B)"  
 // Concatenates the value in column A, a hyphen, and the value in column B
@@ -145,6 +206,7 @@ Example:
 ```
 
 Example:
+
 ```
 "CASE(A > 90, 'A', A > 80, 'B', A > 70, 'C', 'F')"  
 // Returns 'A' if A > 90, 'B' if A > 80, 'C' if A > 70, otherwise returns 'F'
@@ -171,6 +233,7 @@ CCL supports chained comparison operations, allowing concise syntax for range ch
 ```
 
 This syntax is equivalent to using the AND operator:
+
 ```
 "AND(1 < A, A < 10)"     // Equivalent to "1 < A < 10"
 "AND(0 <= A, A <= 100)"  // Equivalent to "0 <= A <= 100"
@@ -179,6 +242,7 @@ This syntax is equivalent to using the AND operator:
 ## Examples
 
 ### Conditional Calculations
+
 ```go
 // Age classification
 dt.AddColUsingCCL("age_group", "IF(A < 18, 'Minor', IF(A < 65, 'Adult', 'Senior'))")
@@ -191,6 +255,7 @@ dt.AddColUsingCCL("status", "IF(AND(A >= 0, B <= 100), 'Valid', 'Invalid')")
 ```
 
 ### Mathematical Operations
+
 ```go
 // Basic arithmetic
 dt.AddColUsingCCL("total", "A + B + C")
@@ -202,6 +267,7 @@ dt.AddColUsingCCL("cube", "A ^ 3")
 ```
 
 ### String Operations
+
 ```go
 // String concatenation
 dt.AddColUsingCCL("full_name", "CONCAT(A, ' ', B)")
@@ -211,6 +277,7 @@ dt.AddColUsingCCL("label", "CONCAT('ID-', A, ': ', IF(B > 50, 'Pass', 'Fail'))")
 ```
 
 ### Range Checks
+
 ```go
 // Simple range
 dt.AddColUsingCCL("in_range", "IF(10 <= A <= 20, 'Yes', 'No')")
@@ -222,6 +289,7 @@ dt.AddColUsingCCL("ascending", "IF(A <= B <= C, 'Ascending', 'Not Ascending')")
 ## Best Practices
 
 1. **Improve Readability**: Break complex expressions into multiple simple column calculations
+
    ```go
    // Better practice:
    dt.AddColUsingCCL("temp1", "A + B")
@@ -233,6 +301,7 @@ dt.AddColUsingCCL("ascending", "IF(A <= B <= C, 'Ascending', 'Not Ascending')")
    ```
 
 2. **Avoid Deep Nesting**: Deeply nested IF conditions are hard to maintain; consider using the CASE function
+
    ```go
    // Better practice:
    dt.AddColUsingCCL("grade", "CASE(A >= 90, 'A', A >= 80, 'B', A >= 70, 'C', A >= 60, 'D', 'F')")

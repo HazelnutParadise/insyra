@@ -19,7 +19,8 @@ func resetCCLFuncCallDepth() {
 }
 
 // evaluateFormula evaluates a formula string on a single row of data.
-func evaluateCCLFormula(row []any, formula string) (any, error) {
+// colNameMap is optional - pass nil if not using ['colName'] syntax.
+func evaluateCCLFormula(row []any, formula string, colNameMap map[string]int) (any, error) {
 	tokens, err := ccl.Tokenize(formula)
 	if err != nil {
 		return nil, err
@@ -28,7 +29,7 @@ func evaluateCCLFormula(row []any, formula string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return ccl.Evaluate(ast, row)
+	return ccl.Evaluate(ast, row, colNameMap)
 }
 
 // applyCCLOnDataTable evaluates the formula on each row of a DataTable.
@@ -38,6 +39,15 @@ func applyCCLOnDataTable(table *DataTable, formula string) ([]any, error) {
 	table.AtomicDo(func(table *DataTable) {
 		numRow, numCol := table.getMaxColLength(), len(table.columns)
 		result = make([]any, numRow)
+
+		// 建立欄位名稱到索引的映射（支援 ['colName'] 語法）
+		colNameMap := make(map[string]int)
+		for j := range numCol {
+			if table.columns[j].name != "" {
+				colNameMap[table.columns[j].name] = j
+			}
+		}
+
 		for i := range numRow {
 			// 建構第 i 行的資料
 			row := make([]any, numCol)
@@ -48,7 +58,7 @@ func applyCCLOnDataTable(table *DataTable, formula string) ([]any, error) {
 					row[j] = nil
 				}
 			}
-			val, err2 := evaluateCCLFormula(row, formula)
+			val, err2 := evaluateCCLFormula(row, formula, colNameMap)
 			if err2 != nil {
 				err = err2
 				return

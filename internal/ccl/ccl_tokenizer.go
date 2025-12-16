@@ -54,6 +54,46 @@ func Tokenize(input string) ([]cclToken, error) {
 		case ch == ',':
 			tokens = append(tokens, cclToken{typ: tCOMMA, value: ","})
 			i++
+		case ch == '[':
+			// 處理 [colIndex] 或 ['colName'] 語法
+			i++ // 跳過 '['
+			if i >= len(input) {
+				return nil, fmt.Errorf("unclosed bracket at end of input")
+			}
+
+			// 檢查是否為 ['colName'] 形式（帶引號的欄位名稱）
+			if input[i] == '\'' || input[i] == '"' {
+				quoteChar := input[i]
+				i++ // 跳過引號
+				start := i
+				for i < len(input) && input[i] != quoteChar {
+					i++
+				}
+				if i >= len(input) {
+					return nil, fmt.Errorf("unclosed string in bracket column reference")
+				}
+				colName := input[start:i]
+				i++ // 跳過結束引號
+
+				// 期望 ']'
+				if i >= len(input) || input[i] != ']' {
+					return nil, fmt.Errorf("expected ']' after column name reference")
+				}
+				i++ // 跳過 ']'
+				tokens = append(tokens, cclToken{typ: tCOL_NAME, value: colName})
+			} else {
+				// [colIndex] 形式（不帶引號的欄位索引）
+				start := i
+				for i < len(input) && input[i] != ']' && !unicode.IsSpace(rune(input[i])) {
+					i++
+				}
+				if i >= len(input) || input[i] != ']' {
+					return nil, fmt.Errorf("expected ']' after column index reference")
+				}
+				colIndex := input[start:i]
+				i++ // 跳過 ']'
+				tokens = append(tokens, cclToken{typ: tCOL_INDEX, value: colIndex})
+			}
 		default:
 			start := i
 			for i < len(input) && isOperatorChar(input[i]) {
