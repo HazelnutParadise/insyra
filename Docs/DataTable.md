@@ -249,6 +249,21 @@ Converts a 2D slice of any type into a DataTable. Supports various 2D array type
 func Slice2DToDataTable(data any) (*DataTable, error)
 ```
 
+**Alias:** `ReadSlice2D` — provided as a convenience alias for `Slice2DToDataTable`.
+
+**Quick example using the alias:**
+
+```go
+// Using the alias
+dt, err := insyra.ReadSlice2D([][]any{
+    {1, "Alice", 3.5},
+    {2, "Bob", 4.0},
+})
+if err != nil {
+    log.Fatal(err)
+}
+```
+
 **Parameters:**
 
 - `data`: A 2D slice/array of any type (e.g., `[][]any`, `[][]int64`, `[][]float64`, `[][]string`)

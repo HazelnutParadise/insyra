@@ -12,6 +12,11 @@ import (
 	"gorm.io/gorm"
 )
 
+// Alias for Slice2DToDataTable
+// Converts a 2D slice into a DataTable.
+// Supports various types like [][]any, [][]int, [][]float64, [][]string, etc.
+var ReadSlice2D = Slice2DToDataTable
+
 // Slice2DToDataTable converts a 2D slice of any type into a DataTable.
 // It supports various 2D array types such as [][]any, [][]int, [][]float64, [][]string, etc.
 func Slice2DToDataTable(data any) (*DataTable, error) {
