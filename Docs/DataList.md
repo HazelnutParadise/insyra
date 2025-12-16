@@ -258,10 +258,10 @@ dl.Append(4, 5, 6)
 
 ### Update
 
-Updates an element at a specific index.
+Updates an element at a specific index. Returns the DataList to support chaining calls.
 
 ```go
-func (dl *DataList) Update(index int, value any)
+func (dl *DataList) Update(index int, value any) *DataList
 ```
 
 **Parameters:**
@@ -272,17 +272,21 @@ func (dl *DataList) Update(index int, value any)
 **Example:**
 
 ```go
+// single call
 dl := insyra.NewDataList(1, 2, 3)
 dl.Update(1, 99)
 // dl now contains: [1, 99, 3]
+
+// chaining example
+dl.Update(1, 99).InsertAt(2, 100)
 ```
 
 ### InsertAt
 
-Inserts a new element at a specific index, shifting existing elements to the right.
+Inserts a new element at a specific index, shifting existing elements to the right. Returns the DataList to support chaining calls.
 
 ```go
-func (dl *DataList) InsertAt(index int, value any)
+func (dl *DataList) InsertAt(index int, value any) *DataList
 ```
 
 **Parameters:**
@@ -293,9 +297,13 @@ func (dl *DataList) InsertAt(index int, value any)
 **Example:**
 
 ```go
+// single call
 dl := insyra.NewDataList(1, 3, 4)
 dl.InsertAt(1, 2)
 // dl now contains: [1, 2, 3, 4]
+
+// chaining example
+dl.InsertAt(1, 2).Update(2, 99)
 ```
 
 ### Pop

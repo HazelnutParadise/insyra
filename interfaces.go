@@ -16,8 +16,8 @@ type IDataList interface {
 	Clone() *DataList
 	Count(value any) int
 	Counter() map[any]int
-	Update(index int, value any)
-	InsertAt(index int, value any)
+	Update(index int, value any) *DataList
+	InsertAt(index int, value any) *DataList
 	FindFirst(any) any
 	FindLast(any) any
 	FindAll(any) []int
