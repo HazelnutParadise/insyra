@@ -131,12 +131,12 @@ dt := insyra.NewDataTable(col1, col2)
 
 ## Data Loading
 
-### ReadCSV
+### ReadCSV_File
 
 Reads a CSV file and loads the data into a new DataTable.
 
 ```go
-func ReadCSV(filePath string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error)
+func ReadCSV_File(filePath string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error)
 ```
 
 **Parameters:**
@@ -153,7 +153,7 @@ func ReadCSV(filePath string, setFirstColToRowNames bool, setFirstRowToColNames 
 **Example:**
 
 ```go
-dt, err := insyra.ReadCSV("data.csv", false, true)
+dt, err := insyra.ReadCSV_File("data.csv", false, true)
 if err != nil {
     log.Fatal(err)
 }
@@ -188,12 +188,12 @@ if err != nil {
 }
 ```
 
-### ReadJSON
+### ReadJSON_File
 
 Reads a JSON file and loads the data into a new DataTable.
 
 ```go
-func ReadJSON(filePath string) (*DataTable, error)
+func ReadJSON_File(filePath string) (*DataTable, error)
 ```
 
 **Parameters:**
@@ -208,23 +208,23 @@ func ReadJSON(filePath string) (*DataTable, error)
 **Example:**
 
 ```go
-dt, err := insyra.ReadJSON("data.json")
+dt, err := insyra.ReadJSON_File("data.json")
 if err != nil {
     log.Fatal(err)
 }
 ```
 
-### ReadJSON_Bytes
+### ReadJSON
 
-Reads JSON byte data and loads it into a new DataTable.
+Reads JSON data (supports bytes, string, slice, map, or any JSON-compatible value) and loads it into a new DataTable.
 
 ```go
-func ReadJSON_Bytes(data []byte) (*DataTable, error)
+func ReadJSON(data any) (*DataTable, error)
 ```
 
 **Parameters:**
 
-- `data`: JSON data as byte slice
+- `data`: JSON input (e.g., []byte, string, []map[string]any, map[string]any, etc.)
 
 **Returns:**
 
@@ -235,7 +235,7 @@ func ReadJSON_Bytes(data []byte) (*DataTable, error)
 
 ```go
 jsonData := []byte(`[{"name":"John","age":30},{"name":"Jane","age":25}]`)
-dt, err := insyra.ReadJSON_Bytes(jsonData)
+dt, err := insyra.ReadJSON(jsonData)
 if err != nil {
     log.Fatal(err)
 }

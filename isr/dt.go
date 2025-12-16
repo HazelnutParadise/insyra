@@ -105,7 +105,7 @@ func (d dt) From(item any) *dt {
 		t.DataTable = insyra.NewDataTable()
 		var err error
 		if val.FilePath != "" {
-			t.DataTable, err = insyra.ReadCSV(val.FilePath, val.InputOpts.FirstCol2RowNames, val.InputOpts.FirstRow2ColNames)
+			t.DataTable, err = insyra.ReadCSV_File(val.FilePath, val.InputOpts.FirstCol2RowNames, val.InputOpts.FirstRow2ColNames)
 		} else {
 			t.DataTable, err = insyra.ReadCSV_String(val.String, val.InputOpts.FirstCol2RowNames, val.InputOpts.FirstRow2ColNames)
 		}
@@ -116,9 +116,9 @@ func (d dt) From(item any) *dt {
 		t.DataTable = insyra.NewDataTable()
 		var err error
 		if val.FilePath != "" {
-			t.DataTable, err = insyra.ReadJSON(val.FilePath)
+			t.DataTable, err = insyra.ReadJSON_File(val.FilePath)
 		} else {
-			t.DataTable, err = insyra.ReadJSON_Bytes(val.Bytes)
+			t.DataTable, err = insyra.ReadJSON(val.Bytes)
 		}
 		if err != nil {
 			insyra.LogFatal("DT", "From", "%v", err)

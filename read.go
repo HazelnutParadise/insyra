@@ -77,9 +77,9 @@ func Slice2DToDataTable(data any) (*DataTable, error) {
 
 // ----- csv -----
 
-// ReadCSV loads a CSV file into a DataTable, with options to set the first column as row names
+// ReadCSV_File loads a CSV file into a DataTable, with options to set the first column as row names
 // and the first row as column names.
-func ReadCSV(filePath string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error) {
+func ReadCSV_File(filePath string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error) {
 	dt := NewDataTable()
 
 	file, err := os.Open(filePath)
@@ -216,8 +216,8 @@ func ReadCSV_String(csvString string, setFirstColToRowNames bool, setFirstRowToC
 
 // ----- json -----
 
-// ReadJSON reads a JSON file and loads the data into a DataTable and returns it.
-func ReadJSON(filePath string) (*DataTable, error) {
+// ReadJSON_File reads a JSON file and loads the data into a DataTable and returns it.
+func ReadJSON_File(filePath string) (*DataTable, error) {
 	dt := NewDataTable()
 
 	// 讀取檔案
@@ -241,14 +241,69 @@ func ReadJSON(filePath string) (*DataTable, error) {
 	return dt, nil
 }
 
-func ReadJSON_Bytes(data []byte) (*DataTable, error) {
+func ReadJSON(data any) (*DataTable, error) {
 	dt := NewDataTable()
 
-	// 解析 JSON
+	if data == nil {
+		return nil, fmt.Errorf("input data cannot be nil")
+	}
+
 	var rows []map[string]any
-	err := json.Unmarshal(data, &rows)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
+
+	switch v := data.(type) {
+	case []map[string]any:
+		rows = v
+	case map[string]any:
+		rows = append(rows, v)
+	case []byte:
+		if err := json.Unmarshal(v, &rows); err != nil {
+			// try single object
+			var single map[string]any
+			if err2 := json.Unmarshal(v, &single); err2 == nil {
+				rows = append(rows, single)
+			} else {
+				return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
+			}
+		}
+	case string:
+		b := []byte(v)
+		if err := json.Unmarshal(b, &rows); err != nil {
+			var single map[string]any
+			if err2 := json.Unmarshal(b, &single); err2 == nil {
+				rows = append(rows, single)
+			} else {
+				return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
+			}
+		}
+	case []any:
+		for _, item := range v {
+			if m, ok := item.(map[string]any); ok {
+				rows = append(rows, m)
+				continue
+			}
+			b, err := json.Marshal(item)
+			if err != nil {
+				return nil, fmt.Errorf("failed to marshal array element: %w", err)
+			}
+			var m map[string]any
+			if err := json.Unmarshal(b, &m); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal array element: %w", err)
+			}
+			rows = append(rows, m)
+		}
+	default:
+		b, err := json.Marshal(v)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal input: %w", err)
+		}
+		if err := json.Unmarshal(b, &rows); err != nil {
+			var single map[string]any
+			if err2 := json.Unmarshal(b, &single); err2 == nil {
+				rows = append(rows, single)
+			} else {
+				return nil, fmt.Errorf("failed to marshal/unmarshal input as JSON: %w", err)
+			}
+		}
 	}
 
 	// 將資料加入 DataTable
