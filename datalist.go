@@ -153,7 +153,8 @@ func (dl *DataList) Counter() map[any]int {
 }
 
 // Update replaces the value at the specified index with the new value.
-func (dl *DataList) Update(index int, newValue any) {
+// Returns the DataList to support chaining calls.
+func (dl *DataList) Update(index int, newValue any) *DataList {
 	dl.AtomicDo(func(dl *DataList) {
 		if index < 0 {
 			index += len(dl.data)
@@ -164,11 +165,13 @@ func (dl *DataList) Update(index int, newValue any) {
 		dl.data[index] = newValue
 		go dl.updateTimestamp()
 	})
+	return dl
 }
 
 // InsertAt inserts a value at the specified index in the DataList.
 // If the index is out of bounds, the value is appended to the end of the list.
-func (dl *DataList) InsertAt(index int, value any) {
+// Returns the DataList to support chaining calls.
+func (dl *DataList) InsertAt(index int, value any) *DataList {
 	dl.AtomicDo(func(dl *DataList) {
 		// Handle negative index
 		if index < 0 {
@@ -190,6 +193,7 @@ func (dl *DataList) InsertAt(index int, value any) {
 
 		go dl.updateTimestamp()
 	})
+	return dl
 }
 
 // FindFirst returns the index of the first occurrence of the specified value in the DataList.

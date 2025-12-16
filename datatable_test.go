@@ -54,6 +54,81 @@ func TestDataTable_AddColUsingCCL(t *testing.T) {
 	}
 }
 
+func TestDataTable_AddColUsingCCL_BracketColIndex(t *testing.T) {
+	dt := NewDataTable()
+	dlA := NewDataList(1, 2, 3)
+	dlB := NewDataList(2, 3, 4)
+	dlC := NewDataList(3, 4, 5)
+	dt.AppendCols(dlA, dlB, dlC)
+
+	// Test [colIndex] syntax - uses Excel-style column index (A, B, C...)
+	dt.AddColUsingCCL("sum_bracket", "[A] + [B] + [C]")
+	if len(dt.columns) != 4 {
+		t.Errorf("AddColUsingCCL() with [colIndex] syntax did not add the column correctly")
+	}
+	if dt.GetCol("D").Data()[0] != 6.0 {
+		t.Errorf("AddColUsingCCL() with [colIndex] syntax did not compute correctly, expected 6.0, got %v", dt.GetCol("D").Data()[0])
+	}
+
+	// Test mixed syntax - [colIndex] can be used to avoid conflicts with function names
+	dt.AddColUsingCCL("mixed", "[A] * 2 + [B]")
+	if dt.GetCol("E").Data()[0] != 4.0 {
+		t.Errorf("AddColUsingCCL() with mixed [colIndex] syntax failed, expected 4.0, got %v", dt.GetCol("E").Data()[0])
+	}
+}
+
+func TestDataTable_AddColUsingCCL_BracketColName(t *testing.T) {
+	dt := NewDataTable()
+	dlA := NewDataList(1, 2, 3)
+	dlB := NewDataList(2, 3, 4)
+	dlC := NewDataList(3, 4, 5)
+	dt.AppendCols(dlA, dlB, dlC)
+
+	// Set column names
+	dt.SetColNames([]string{"ColA", "ColB", "ColC"})
+
+	// Test ['colName'] syntax - uses column name to reference
+	dt.AddColUsingCCL("sum_by_name", "['ColA'] + ['ColB'] + ['ColC']")
+	if len(dt.columns) != 4 {
+		t.Errorf("AddColUsingCCL() with ['colName'] syntax did not add the column correctly")
+	}
+	if dt.GetCol("D").Data()[0] != 6.0 {
+		t.Errorf("AddColUsingCCL() with ['colName'] syntax did not compute correctly, expected 6.0, got %v", dt.GetCol("D").Data()[0])
+	}
+
+	// Test mixed: column name and column index
+	dt.AddColUsingCCL("mixed_name", "['ColA'] * [B] + ['ColC']")
+	if dt.GetCol("E").Data()[0] != 5.0 {
+		t.Errorf("AddColUsingCCL() with mixed syntax failed, expected 5.0 (1*2+3), got %v", dt.GetCol("E").Data()[0])
+	}
+}
+
+func TestDataTable_AddColUsingCCL_BracketWithFunctions(t *testing.T) {
+	dt := NewDataTable()
+	dlA := NewDataList(4, 9, 16)
+	dlB := NewDataList(2, 3, 4)
+	dt.AppendCols(dlA, dlB)
+	dt.SetColNames([]string{"values", "divisor"})
+
+	// Test [colIndex] with IF function
+	dt.AddColUsingCCL("if_result", "IF([A] > 5, 1, 0)")
+	if dt.GetCol("C").Data()[0] != 0.0 { // 4 > 5 is false, so 0
+		t.Errorf("IF([A] > 5, 1, 0) failed, expected 0.0, got %v", dt.GetCol("C").Data()[0])
+	}
+
+	// Test ['colName'] with IF function
+	dt.AddColUsingCCL("cond_result", "IF(['values'] > ['divisor'], 1, 0)")
+	if dt.GetCol("D").Data()[0] != 1.0 { // 4 > 2 is true, so 1
+		t.Errorf("IF(['values'] > ['divisor'], 1, 0) failed, expected 1.0, got %v", dt.GetCol("D").Data()[0])
+	}
+
+	// Test complex expression with bracket syntax and arithmetic
+	dt.AddColUsingCCL("complex", "[A] * 2 + ['divisor']")
+	if dt.GetCol("E").Data()[0] != 10.0 { // 4*2+2 = 10
+		t.Errorf("Complex bracket expression failed, expected 10.0 (4*2+2), got %v", dt.GetCol("E").Data()[0])
+	}
+}
+
 func TestDataTable_AppendRowsFromDataList(t *testing.T) {
 	dt := NewDataTable()
 	dl := NewDataList(1, 2, 3)
@@ -337,6 +412,57 @@ func TestDataTable_Clone(t *testing.T) {
 	// Check if rowNames is copied
 	if len(clonedDT.rowNames) != len(dt.rowNames) {
 		t.Errorf("Clone() did not copy rowNames correctly")
+	}
+}
+
+func TestDataTable_FilterCols(t *testing.T) {
+	// Setup DataTable with 3 columns
+	dt := NewDataTable()
+	d1 := NewDataList(1, 2, 3)
+	d2 := NewDataList(4, 5, 6)
+	d3 := NewDataList(7, 8, 9)
+	dt.AppendCols(d1, d2, d3)
+
+	// Keep columns that contain the value 4 in any row
+	filtered := dt.FilterCols(func(rowIndex int, rowName string, x any) bool {
+		return x == 4
+	})
+	if r, c := filtered.Size(); c != 1 || r != 3 {
+		t.Errorf("FilterCols failed, expected 1 column with 3 rows, got %d cols %d rows", c, r)
+	}
+	if filtered.columns[0].Data()[0] != 4 {
+		t.Errorf("Filtered column value mismatch, expected 4, got %v", filtered.columns[0].Data()[0])
+	}
+
+	// Filter columns where the first row contains the element 1
+	firstRowFiltered := dt.FilterCols(func(rowIndex int, rowName string, x any) bool {
+		return rowIndex == 0 && x == 1
+	})
+	if r, c := firstRowFiltered.Size(); c != 1 || r != 3 {
+		t.Errorf("FilterCols by first row failed, expected 1 column with 3 rows, got %d cols %d rows", c, r)
+	}
+	if firstRowFiltered.columns[0].Data()[0] != 1 {
+		t.Errorf("Filtered first-row column value mismatch, expected 1, got %v", firstRowFiltered.columns[0].Data()[0])
+	}
+
+	// Filter columns where the row named "John" contains the element 4
+	dt.SetRowNames([]string{"John", "Mary", "Bob"})
+	johnFiltered := dt.FilterCols(func(rowIndex int, rowName string, x any) bool {
+		return rowName == "John" && x == 4
+	})
+	if r, c := johnFiltered.Size(); c != 1 || r != 3 {
+		t.Errorf("FilterCols by John row failed, expected 1 column with 3 rows, got %d cols %d rows", c, r)
+	}
+	if johnFiltered.columns[0].Data()[0] != 4 {
+		t.Errorf("Filtered John-row column value mismatch, expected 4, got %v", johnFiltered.columns[0].Data()[0])
+	}
+
+	// No column matches -> expect empty DataTable
+	empty := dt.FilterCols(func(rowIndex int, rowName string, x any) bool {
+		return x == 999
+	})
+	if r, c := empty.Size(); r != 0 || c != 0 {
+		t.Errorf("Expected empty DataTable when no columns match, got %d rows %d cols", r, c)
 	}
 }
 

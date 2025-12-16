@@ -16,8 +16,8 @@ type IDataList interface {
 	Clone() *DataList
 	Count(value any) int
 	Counter() map[any]int
-	Update(index int, value any)
-	InsertAt(index int, value any)
+	Update(index int, value any) *DataList
+	InsertAt(index int, value any) *DataList
 	FindFirst(any) any
 	FindLast(any) any
 	FindAll(any) []int
@@ -108,10 +108,10 @@ type IDataTable interface {
 	GetColByName(name string) *DataList
 	GetRow(index int) *DataList
 	GetRowByName(name string) *DataList
-	UpdateElement(rowIndex int, columnIndex string, value any)
-	UpdateCol(index string, dl *DataList)
-	UpdateColByNumber(index int, dl *DataList)
-	UpdateRow(index int, dl *DataList)
+	UpdateElement(rowIndex int, columnIndex string, value any) *DataTable
+	UpdateCol(index string, dl *DataList) *DataTable
+	UpdateColByNumber(index int, dl *DataList) *DataTable
+	UpdateRow(index int, dl *DataList) *DataTable
 	SetColToRowNames(columnIndex string) *DataTable
 	SetRowToColNames(rowIndex int) *DataTable
 	ChangeColName(oldName, newName string) *DataTable
@@ -194,22 +194,24 @@ type IDataTable interface {
 	SortBy(configs ...DataTableSortConfig) *DataTable
 
 	// Filters
-	Filter(filterFunc FilterFunc) *DataTable
+	Filter(filterFunc func(rowIndex int, columnIndex string, value any) bool) *DataTable
 	FilterByCustomElement(f func(value any) bool) *DataTable
-	FilterByColIndexGreaterThan(threshold string) *DataTable
-	FilterByColIndexGreaterThanOrEqualTo(threshold string) *DataTable
-	FilterByColIndexLessThan(threshold string) *DataTable
-	FilterByColIndexLessThanOrEqualTo(threshold string) *DataTable
-	FilterByColIndexEqualTo(index string) *DataTable
-	FilterByColNameEqualTo(name string) *DataTable
-	FilterByColNameContains(substring string) *DataTable
-	FilterByRowNameEqualTo(name string) *DataTable
-	FilterByRowNameContains(substring string) *DataTable
-	FilterByRowIndexGreaterThan(threshold int) *DataTable
-	FilterByRowIndexGreaterThanOrEqualTo(threshold int) *DataTable
-	FilterByRowIndexLessThan(threshold int) *DataTable
-	FilterByRowIndexLessThanOrEqualTo(threshold int) *DataTable
-	FilterByRowIndexEqualTo(index int) *DataTable
+	FilterRows(filterFunc func(colIndex, colName string, x any) bool) *DataTable
+	FilterCols(filterFunc func(rowIndex int, rowName string, x any) bool) *DataTable
+	FilterColsByColIndexGreaterThan(threshold string) *DataTable
+	FilterColsByColIndexGreaterThanOrEqualTo(threshold string) *DataTable
+	FilterColsByColIndexLessThan(threshold string) *DataTable
+	FilterColsByColIndexLessThanOrEqualTo(threshold string) *DataTable
+	FilterColsByColIndexEqualTo(index string) *DataTable
+	FilterColsByColNameEqualTo(name string) *DataTable
+	FilterColsByColNameContains(substring string) *DataTable
+	FilterRowsByRowNameEqualTo(name string) *DataTable
+	FilterRowsByRowNameContains(substring string) *DataTable
+	FilterRowsByRowIndexGreaterThan(threshold int) *DataTable
+	FilterRowsByRowIndexGreaterThanOrEqualTo(threshold int) *DataTable
+	FilterRowsByRowIndexLessThan(threshold int) *DataTable
+	FilterRowsByRowIndexLessThanOrEqualTo(threshold int) *DataTable
+	FilterRowsByRowIndexEqualTo(index int) *DataTable
 
 	// Swap
 	SwapColsByName(columnName1 string, columnName2 string) *DataTable

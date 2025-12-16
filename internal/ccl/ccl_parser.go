@@ -131,6 +131,14 @@ func (p *parser) parsePrimary() (cclNode, error) {
 			return &funcCallNode{name: name, args: args}, nil
 		}
 		return &cclIdentifierNode{name: name}, nil
+	case tCOL_INDEX:
+		// [A] 形式的欄位索引引用
+		p.advance()
+		return &cclColIndexNode{index: tok.value}, nil
+	case tCOL_NAME:
+		// ['colName'] 形式的欄位名稱引用
+		p.advance()
+		return &cclColNameNode{name: tok.value}, nil
 	case tLPAREN:
 		p.advance()
 		expr, err := p.parseExpression(0)

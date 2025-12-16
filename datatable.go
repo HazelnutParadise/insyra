@@ -381,7 +381,7 @@ func (dt *DataTable) GetRowByName(name string) *DataList {
 // ======================== Update ========================
 
 // UpdateElement updates the element at the given row and column index.
-func (dt *DataTable) UpdateElement(rowIndex int, columnIndex string, value any) {
+func (dt *DataTable) UpdateElement(rowIndex int, columnIndex string, value any) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		dt.regenerateColIndex()
 
@@ -400,10 +400,11 @@ func (dt *DataTable) UpdateElement(rowIndex int, columnIndex string, value any) 
 		}
 		go dt.updateTimestamp()
 	})
+	return dt
 }
 
 // UpdateCol updates the column with the given index.
-func (dt *DataTable) UpdateCol(index string, dl *DataList) {
+func (dt *DataTable) UpdateCol(index string, dl *DataList) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		dt.regenerateColIndex()
 
@@ -415,10 +416,11 @@ func (dt *DataTable) UpdateCol(index string, dl *DataList) {
 		}
 		go dt.updateTimestamp()
 	})
+	return dt
 }
 
 // UpdateColByNumber updates the column at the given index.
-func (dt *DataTable) UpdateColByNumber(index int, dl *DataList) {
+func (dt *DataTable) UpdateColByNumber(index int, dl *DataList) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		if index < 0 {
 			index = len(dt.columns) + index
@@ -433,10 +435,11 @@ func (dt *DataTable) UpdateColByNumber(index int, dl *DataList) {
 		dt.columnIndex[generateColIndex(index)] = index
 		go dt.updateTimestamp()
 	})
+	return dt
 }
 
 // UpdateRow updates the row at the given index.
-func (dt *DataTable) UpdateRow(index int, dl *DataList) {
+func (dt *DataTable) UpdateRow(index int, dl *DataList) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		if index < 0 || index >= dt.getMaxColLength() {
 			LogWarning("DataTable", "UpdateRow", "Index out of bounds")
@@ -467,6 +470,7 @@ func (dt *DataTable) UpdateRow(index int, dl *DataList) {
 
 		go dt.updateTimestamp()
 	})
+	return dt
 }
 
 // ======================== Set ========================

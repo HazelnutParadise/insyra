@@ -239,7 +239,7 @@ func TestReadCSV_String(t *testing.T) {
 
 }
 
-func TestReadJSON_Bytes(t *testing.T) {
+func TestReadJSON(t *testing.T) {
 	jsonData := `[
 		{"name": "John", "age": 30, "city": "NYC"},
 		{"name": "Jane", "age": 25, "city": "LA"}
@@ -248,23 +248,23 @@ func TestReadJSON_Bytes(t *testing.T) {
 		Bytes: []byte(jsonData),
 	})
 	if dtt == nil {
-		t.Errorf("ReadJSON_Bytes() returned nil")
+		t.Errorf("ReadJSON() returned nil")
 		return
 	}
 	if len(dtt.ColNames()) != 3 {
-		t.Errorf("ReadJSON_Bytes() did not parse the correct number of columns")
+		t.Errorf("ReadJSON() did not parse the correct number of columns")
 		return
 	}
 	if dtt.GetColByName("name").Data()[0] != "John" {
-		t.Errorf("ReadJSON_Bytes() did not parse the correct data, expected 'John', got '%s'", dtt.GetColByName("name").Data()[0])
+		t.Errorf("ReadJSON() did not parse the correct data, expected 'John', got '%s'", dtt.GetColByName("name").Data()[0])
 		return
 	}
 	if dtt.GetColByName("age").Data()[1] != 25.0 {
-		t.Errorf("ReadJSON_Bytes() did not parse the correct data, expected 25, got %v", dtt.GetColByName("age").Data()[1])
+		t.Errorf("ReadJSON() did not parse the correct data, expected 25, got %v", dtt.GetColByName("age").Data()[1])
 		return
 	}
 	if dtt.GetColByName("city").Data()[0] != "NYC" {
-		t.Errorf("ReadJSON_Bytes() did not parse the correct data, expected 'NYC', got '%s'", dtt.GetColByName("city").Data()[0])
+		t.Errorf("ReadJSON() did not parse the correct data, expected 'NYC', got '%s'", dtt.GetColByName("city").Data()[0])
 		return
 	}
 }

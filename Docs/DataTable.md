@@ -131,12 +131,12 @@ dt := insyra.NewDataTable(col1, col2)
 
 ## Data Loading
 
-### ReadCSV
+### ReadCSV_File
 
 Reads a CSV file and loads the data into a new DataTable.
 
 ```go
-func ReadCSV(filePath string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error)
+func ReadCSV_File(filePath string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error)
 ```
 
 **Parameters:**
@@ -153,7 +153,7 @@ func ReadCSV(filePath string, setFirstColToRowNames bool, setFirstRowToColNames 
 **Example:**
 
 ```go
-dt, err := insyra.ReadCSV("data.csv", false, true)
+dt, err := insyra.ReadCSV_File("data.csv", false, true)
 if err != nil {
     log.Fatal(err)
 }
@@ -188,12 +188,12 @@ if err != nil {
 }
 ```
 
-### ReadJSON
+### ReadJSON_File
 
 Reads a JSON file and loads the data into a new DataTable.
 
 ```go
-func ReadJSON(filePath string) (*DataTable, error)
+func ReadJSON_File(filePath string) (*DataTable, error)
 ```
 
 **Parameters:**
@@ -208,23 +208,23 @@ func ReadJSON(filePath string) (*DataTable, error)
 **Example:**
 
 ```go
-dt, err := insyra.ReadJSON("data.json")
+dt, err := insyra.ReadJSON_File("data.json")
 if err != nil {
     log.Fatal(err)
 }
 ```
 
-### ReadJSON_Bytes
+### ReadJSON
 
-Reads JSON byte data and loads it into a new DataTable.
+Reads JSON data (supports bytes, string, slice, map, or any JSON-compatible value) and loads it into a new DataTable.
 
 ```go
-func ReadJSON_Bytes(data []byte) (*DataTable, error)
+func ReadJSON(data any) (*DataTable, error)
 ```
 
 **Parameters:**
 
-- `data`: JSON data as byte slice
+- `data`: JSON input (e.g., []byte, string, []map[string]any, map[string]any, etc.)
 
 **Returns:**
 
@@ -235,7 +235,7 @@ func ReadJSON_Bytes(data []byte) (*DataTable, error)
 
 ```go
 jsonData := []byte(`[{"name":"John","age":30},{"name":"Jane","age":25}]`)
-dt, err := insyra.ReadJSON_Bytes(jsonData)
+dt, err := insyra.ReadJSON(jsonData)
 if err != nil {
     log.Fatal(err)
 }
@@ -247,6 +247,21 @@ Converts a 2D slice of any type into a DataTable. Supports various 2D array type
 
 ```go
 func Slice2DToDataTable(data any) (*DataTable, error)
+```
+
+**Alias:** `ReadSlice2D` — provided as a convenience alias for `Slice2DToDataTable`.
+
+**Quick example using the alias:**
+
+```go
+// Using the alias
+dt, err := insyra.ReadSlice2D([][]any{
+    {1, "Alice", 3.5},
+    {2, "Bob", 4.0},
+})
+if err != nil {
+    log.Fatal(err)
+}
 ```
 
 **Parameters:**
@@ -788,10 +803,10 @@ row := dt.GetRowByName("row_name")
 
 ### UpdateElement
 
-Updates the value at a specific position.
+Updates the value at a specific position. Returns the table to support chaining calls.
 
 ```go
-func (dt *DataTable) UpdateElement(rowIndex int, columnIndex string, value any)
+func (dt *DataTable) UpdateElement(rowIndex int, columnIndex string, value any) *DataTable
 ```
 
 **Parameters:**
@@ -803,15 +818,20 @@ func (dt *DataTable) UpdateElement(rowIndex int, columnIndex string, value any)
 **Example:**
 
 ```go
+// single call
 dt.UpdateElement(0, "A", "Jane")
+
+// chaining example
+newCol := insyra.NewDataList(1, 2, 3, 4)
+dt.UpdateElement(0, "A", "Jane").UpdateCol("B", newCol)
 ```
 
 ### UpdateCol
 
-Updates an entire column with new data.
+Updates an entire column with new data. Returns the table to support chaining calls.
 
 ```go
-func (dt *DataTable) UpdateCol(index string, dl *DataList)
+func (dt *DataTable) UpdateCol(index string, dl *DataList) *DataTable
 ```
 
 **Parameters:**
@@ -823,15 +843,20 @@ func (dt *DataTable) UpdateCol(index string, dl *DataList)
 
 ```go
 newCol := insyra.NewDataList(1, 2, 3, 4)
+// single call
 dt.UpdateCol("A", newCol)
+
+// chaining example
+newRow := insyra.NewDataList("Jane", 28, "Manager")
+dt.UpdateCol("A", newCol).UpdateRow(0, newRow)
 ```
 
 ### UpdateColByNumber
 
-Updates an entire column by its numeric index.
+Updates an entire column by its numeric index. Returns the table to support chaining calls.
 
 ```go
-func (dt *DataTable) UpdateColByNumber(index int, dl *DataList)
+func (dt *DataTable) UpdateColByNumber(index int, dl *DataList) *DataTable
 ```
 
 **Parameters:**
@@ -843,15 +868,20 @@ func (dt *DataTable) UpdateColByNumber(index int, dl *DataList)
 
 ```go
 newCol := insyra.NewDataList(1, 2, 3, 4)
+// single call
 dt.UpdateColByNumber(0, newCol)
+
+// chaining example
+newRow := insyra.NewDataList("Jane", 28, "Manager")
+dt.UpdateColByNumber(0, newCol).UpdateRow(0, newRow)
 ```
 
 ### UpdateRow
 
-Updates an entire row with new data.
+Updates an entire row with new data. Returns the table to support chaining calls.
 
 ```go
-func (dt *DataTable) UpdateRow(index int, dl *DataList)
+func (dt *DataTable) UpdateRow(index int, dl *DataList) *DataTable
 ```
 
 **Parameters:**
@@ -863,7 +893,12 @@ func (dt *DataTable) UpdateRow(index int, dl *DataList)
 
 ```go
 newRow := insyra.NewDataList("Jane", 28, "Manager")
+// single call
 dt.UpdateRow(0, newRow)
+
+// chaining example
+newCol := insyra.NewDataList(1, 2, 3, 4)
+dt.UpdateRow(0, newRow).UpdateCol("A", newCol)
 ```
 
 ### GetElementByNumberIndex
@@ -2106,15 +2141,20 @@ colIndices := dt.FindColsIfAllElementsContainSubstring("data")
 
 ### Filter
 
-Filters the DataTable using a custom filter function.
+Filters the DataTable using a custom filter function. Keeps only rows where the filter function returns true for at least one cell.
 
 ```go
-func (dt *DataTable) Filter(filterFunc FilterFunc) *DataTable
+func (dt *DataTable) Filter(filterFunc func(rowIndex int, columnIndex string, value any) bool) *DataTable
 ```
 
 **Parameters:**
 
-- `filterFunc`: Custom filter function
+- `filterFunc`: Custom filter function that receives:
+  - `rowIndex`: Row index (0-based)
+  - `columnIndex`: Column name
+  - `value`: Cell value
+  
+  Returns `true` to keep the cell/row, `false` to discard
 
 **Returns:**
 
@@ -2123,8 +2163,19 @@ func (dt *DataTable) Filter(filterFunc FilterFunc) *DataTable
 **Example:**
 
 ```go
+// Keep rows with non-nil values
 filtered := dt.Filter(func(rowIndex int, columnIndex string, value any) bool {
     return value != nil
+})
+
+// Keep rows where column "age" has values greater than 30
+filtered := dt.Filter(func(rowIndex int, columnIndex string, value any) bool {
+    if columnIndex == "age" {
+        if num, ok := value.(int); ok {
+            return num > 30
+        }
+    }
+    return false
 })
 ```
 
@@ -2156,12 +2207,90 @@ filtered := dt.FilterByCustomElement(func(value any) bool {
 })
 ```
 
-### FilterByColNameEqualTo
+### FilterRows
+
+Filters rows based on a custom function that checks each cell. Keeps only rows where the filter function returns true for at least one cell.
+
+```go
+func (dt *DataTable) FilterRows(filterFunc func(colIndex, colName string, x any) bool) *DataTable
+```
+
+**Parameters:**
+
+- `filterFunc`: Custom filter function that receives:
+  - `colIndex`: Column letter index (A, B, C...)
+  - `colName`: Column name
+  - `x`: Cell value
+
+**Returns:**
+
+- `*DataTable`: New filtered DataTable containing rows that match the filter condition
+
+**Example:**
+
+```go
+// Keep rows that contain the value 100 in any column
+filtered := dt.FilterRows(func(colIndex, colName string, x any) bool {
+    return x == 100
+})
+
+// Keep rows where column A value is greater than 25
+filtered := dt.FilterRows(func(colIndex, colName, x any) bool {
+    return (colIndex == "A") && (x.(int) > 25)
+})
+
+// Keep rows where column named "age" value is greater than 25
+filtered := dt.FilterRows(func(colIndex, colName, x any) bool {
+    return (colName == "age") && (x.(int) > 25)
+})
+```
+
+### FilterCols
+
+Filters columns based on a custom function applied to each cell. Keeps only columns where the filter function returns true for at least one cell in that column.
+
+```go
+func (dt *DataTable) FilterCols(filterFunc func(rowIndex int, rowName string, x any) bool) *DataTable
+```
+
+**Parameters:**
+
+- `filterFunc`: Custom filter function that receives:
+  - `rowIndex`: index of the row (0-based)
+  - `rowName`: row name (empty string if none)
+  - `x`: cell value
+
+**Returns:**
+
+- `*DataTable`: New filtered DataTable containing columns that match the filter condition
+
+**Examples:**
+
+```go
+// Keep columns that contain the value 4 in any row
+filtered := dt.FilterCols(func(rowIndex int, rowName string, x any) bool {
+    return x == 4
+})
+
+// Keep columns where the first row equals 1
+filtered := dt.FilterCols(func(rowIndex int, rowName string, x any) bool {
+    return (rowIndex == 0) && (x == 1)
+})
+
+// Keep columns where the row named "John" equals 4
+// (requires setting row names first)
+dt.SetRowNames([]string{"John", "Mary", "Bob"})
+filtered := dt.FilterCols(func(rowIndex int, rowName string, x any) bool {
+    return (rowName == "John") && (x == 4)
+})
+```
+
+### FilterColsByColNameEqualTo
 
 Filters columns by exact name match.
 
 ```go
-func (dt *DataTable) FilterByColNameEqualTo(columnName string) *DataTable
+func (dt *DataTable) FilterColsByColNameEqualTo(columnName string) *DataTable
 ```
 
 **Parameters:**
@@ -2175,15 +2304,15 @@ func (dt *DataTable) FilterByColNameEqualTo(columnName string) *DataTable
 **Example:**
 
 ```go
-filtered := dt.FilterByColNameEqualTo("age")
+filtered := dt.FilterColsByColNameEqualTo("age")
 ```
 
-### FilterByColIndexGreaterThan
+### FilterColsByColIndexGreaterThan
 
 Filters columns by index greater than the specified threshold.
 
 ```go
-func (dt *DataTable) FilterByColIndexGreaterThan(threshold string) *DataTable
+func (dt *DataTable) FilterColsByColIndexGreaterThan(threshold string) *DataTable
 ```
 
 **Parameters:**
@@ -2197,15 +2326,15 @@ func (dt *DataTable) FilterByColIndexGreaterThan(threshold string) *DataTable
 **Example:**
 
 ```go
-filtered := dt.FilterByColIndexGreaterThan("B") // Columns C, D, E...
+filtered := dt.FilterColsByColIndexGreaterThan("B") // Columns C, D, E...
 ```
 
-### FilterByColIndexGreaterThanOrEqualTo
+### FilterColsByColIndexGreaterThanOrEqualTo
 
 Filters columns by index greater than or equal to the specified threshold.
 
 ```go
-func (dt *DataTable) FilterByColIndexGreaterThanOrEqualTo(threshold string) *DataTable
+func (dt *DataTable) FilterColsByColIndexGreaterThanOrEqualTo(threshold string) *DataTable
 ```
 
 **Parameters:**
@@ -2219,15 +2348,15 @@ func (dt *DataTable) FilterByColIndexGreaterThanOrEqualTo(threshold string) *Dat
 **Example:**
 
 ```go
-filtered := dt.FilterByColIndexGreaterThanOrEqualTo("B") // Columns B, C, D...
+filtered := dt.FilterColsByColIndexGreaterThanOrEqualTo("B") // Columns B, C, D...
 ```
 
-### FilterByColIndexLessThan
+### FilterColsByColIndexLessThan
 
 Filters columns by index less than the specified threshold.
 
 ```go
-func (dt *DataTable) FilterByColIndexLessThan(threshold string) *DataTable
+func (dt *DataTable) FilterColsByColIndexLessThan(threshold string) *DataTable
 ```
 
 **Parameters:**
@@ -2241,15 +2370,15 @@ func (dt *DataTable) FilterByColIndexLessThan(threshold string) *DataTable
 **Example:**
 
 ```go
-filtered := dt.FilterByColIndexLessThan("C") // Columns A, B
+filtered := dt.FilterColsByColIndexLessThan("C") // Columns A, B
 ```
 
-### FilterByColIndexLessThanOrEqualTo
+### FilterColsByColIndexLessThanOrEqualTo
 
 Filters columns by index less than or equal to the specified threshold.
 
 ```go
-func (dt *DataTable) FilterByColIndexLessThanOrEqualTo(threshold string) *DataTable
+func (dt *DataTable) FilterColsByColIndexLessThanOrEqualTo(threshold string) *DataTable
 ```
 
 **Parameters:**
@@ -2263,15 +2392,15 @@ func (dt *DataTable) FilterByColIndexLessThanOrEqualTo(threshold string) *DataTa
 **Example:**
 
 ```go
-filtered := dt.FilterByColIndexLessThanOrEqualTo("C") // Columns A, B, C
+filtered := dt.FilterColsByColIndexLessThanOrEqualTo("C") // Columns A, B, C
 ```
 
-### FilterByColIndexEqualTo
+### FilterColsByColIndexEqualTo
 
 Filters columns by exact index match.
 
 ```go
-func (dt *DataTable) FilterByColIndexEqualTo(index string) *DataTable
+func (dt *DataTable) FilterColsByColIndexEqualTo(index string) *DataTable
 ```
 
 **Parameters:**
@@ -2285,15 +2414,15 @@ func (dt *DataTable) FilterByColIndexEqualTo(index string) *DataTable
 **Example:**
 
 ```go
-filtered := dt.FilterByColIndexEqualTo("B") // Only column B
+filtered := dt.FilterColsByColIndexEqualTo("B") // Only column B
 ```
 
-### FilterByColNameContains
+### FilterColsByColNameContains
 
 Filters columns whose name contains the specified substring.
 
 ```go
-func (dt *DataTable) FilterByColNameContains(substring string) *DataTable
+func (dt *DataTable) FilterColsByColNameContains(substring string) *DataTable
 ```
 
 **Parameters:**
@@ -2307,15 +2436,15 @@ func (dt *DataTable) FilterByColNameContains(substring string) *DataTable
 **Example:**
 
 ```go
-filtered := dt.FilterByColNameContains("age") // Columns with "age" in name
+filtered := dt.FilterColsByColNameContains("age") // Columns with "age" in name
 ```
 
-### FilterByRowNameEqualTo
+### FilterRowsByRowNameEqualTo
 
 Filters rows by exact name match.
 
 ```go
-func (dt *DataTable) FilterByRowNameEqualTo(name string) *DataTable
+func (dt *DataTable) FilterRowsByRowNameEqualTo(name string) *DataTable
 ```
 
 **Parameters:**
@@ -2329,15 +2458,15 @@ func (dt *DataTable) FilterByRowNameEqualTo(name string) *DataTable
 **Example:**
 
 ```go
-filtered := dt.FilterByRowNameEqualTo("John")
+filtered := dt.FilterRowsByRowNameEqualTo("John")
 ```
 
-### FilterByRowNameContains
+### FilterRowsByRowNameContains
 
 Filters rows whose name contains the specified substring.
 
 ```go
-func (dt *DataTable) FilterByRowNameContains(substring string) *DataTable
+func (dt *DataTable) FilterRowsByRowNameContains(substring string) *DataTable
 ```
 
 **Parameters:**
@@ -2351,15 +2480,15 @@ func (dt *DataTable) FilterByRowNameContains(substring string) *DataTable
 **Example:**
 
 ```go
-filtered := dt.FilterByRowNameContains("John") // Rows with "John" in name
+filtered := dt.FilterRowsByRowNameContains("John") // Rows with "John" in name
 ```
 
-### FilterByRowIndexGreaterThan
+### FilterRowsByRowIndexGreaterThan
 
 Filters rows by index greater than the specified threshold.
 
 ```go
-func (dt *DataTable) FilterByRowIndexGreaterThan(threshold int) *DataTable
+func (dt *DataTable) FilterRowsByRowIndexGreaterThan(threshold int) *DataTable
 ```
 
 **Parameters:**
@@ -2373,15 +2502,15 @@ func (dt *DataTable) FilterByRowIndexGreaterThan(threshold int) *DataTable
 **Example:**
 
 ```go
-filtered := dt.FilterByRowIndexGreaterThan(5) // Rows 6, 7, 8...
+filtered := dt.FilterRowsByRowIndexGreaterThan(5) // Rows 6, 7, 8...
 ```
 
-### FilterByRowIndexGreaterThanOrEqualTo
+### FilterRowsByRowIndexGreaterThanOrEqualTo
 
 Filters rows by index greater than or equal to the specified threshold.
 
 ```go
-func (dt *DataTable) FilterByRowIndexGreaterThanOrEqualTo(threshold int) *DataTable
+func (dt *DataTable) FilterRowsByRowIndexGreaterThanOrEqualTo(threshold int) *DataTable
 ```
 
 **Parameters:**
@@ -2395,15 +2524,15 @@ func (dt *DataTable) FilterByRowIndexGreaterThanOrEqualTo(threshold int) *DataTa
 **Example:**
 
 ```go
-filtered := dt.FilterByRowIndexGreaterThanOrEqualTo(5) // Rows 5, 6, 7...
+filtered := dt.FilterRowsByRowIndexGreaterThanOrEqualTo(5) // Rows 5, 6, 7...
 ```
 
-### FilterByRowIndexLessThan
+### FilterRowsByRowIndexLessThan
 
 Filters rows by index less than the specified threshold.
 
 ```go
-func (dt *DataTable) FilterByRowIndexLessThan(threshold int) *DataTable
+func (dt *DataTable) FilterRowsByRowIndexLessThan(threshold int) *DataTable
 ```
 
 **Parameters:**
@@ -2417,15 +2546,15 @@ func (dt *DataTable) FilterByRowIndexLessThan(threshold int) *DataTable
 **Example:**
 
 ```go
-filtered := dt.FilterByRowIndexLessThan(5) // Rows 0, 1, 2, 3, 4
+filtered := dt.FilterRowsByRowIndexLessThan(5) // Rows 0, 1, 2, 3, 4
 ```
 
-### FilterByRowIndexLessThanOrEqualTo
+### FilterRowsByRowIndexLessThanOrEqualTo
 
 Filters rows by index less than or equal to the specified threshold.
 
 ```go
-func (dt *DataTable) FilterByRowIndexLessThanOrEqualTo(threshold int) *DataTable
+func (dt *DataTable) FilterRowsByRowIndexLessThanOrEqualTo(threshold int) *DataTable
 ```
 
 **Parameters:**
@@ -2439,15 +2568,15 @@ func (dt *DataTable) FilterByRowIndexLessThanOrEqualTo(threshold int) *DataTable
 **Example:**
 
 ```go
-filtered := dt.FilterByRowIndexLessThanOrEqualTo(5) // Rows 0, 1, 2, 3, 4, 5
+filtered := dt.FilterRowsByRowIndexLessThanOrEqualTo(5) // Rows 0, 1, 2, 3, 4, 5
 ```
 
-### FilterByRowIndexEqualTo
+### FilterRowsByRowIndexEqualTo
 
 Filters rows by exact index match.
 
 ```go
-func (dt *DataTable) FilterByRowIndexEqualTo(index int) *DataTable
+func (dt *DataTable) FilterRowsByRowIndexEqualTo(index int) *DataTable
 ```
 
 **Parameters:**
@@ -2461,7 +2590,7 @@ func (dt *DataTable) FilterByRowIndexEqualTo(index int) *DataTable
 **Example:**
 
 ```go
-filtered := dt.FilterByRowIndexEqualTo(3) // Only row 3
+filtered := dt.FilterRowsByRowIndexEqualTo(3) // Only row 3
 ```
 
 ## Statistical Analysis
