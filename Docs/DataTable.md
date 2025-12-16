@@ -788,10 +788,10 @@ row := dt.GetRowByName("row_name")
 
 ### UpdateElement
 
-Updates the value at a specific position.
+Updates the value at a specific position. Returns the table to support chaining calls.
 
 ```go
-func (dt *DataTable) UpdateElement(rowIndex int, columnIndex string, value any)
+func (dt *DataTable) UpdateElement(rowIndex int, columnIndex string, value any) *DataTable
 ```
 
 **Parameters:**
@@ -803,15 +803,20 @@ func (dt *DataTable) UpdateElement(rowIndex int, columnIndex string, value any)
 **Example:**
 
 ```go
+// single call
 dt.UpdateElement(0, "A", "Jane")
+
+// chaining example
+newCol := insyra.NewDataList(1, 2, 3, 4)
+dt.UpdateElement(0, "A", "Jane").UpdateCol("B", newCol)
 ```
 
 ### UpdateCol
 
-Updates an entire column with new data.
+Updates an entire column with new data. Returns the table to support chaining calls.
 
 ```go
-func (dt *DataTable) UpdateCol(index string, dl *DataList)
+func (dt *DataTable) UpdateCol(index string, dl *DataList) *DataTable
 ```
 
 **Parameters:**
@@ -823,15 +828,20 @@ func (dt *DataTable) UpdateCol(index string, dl *DataList)
 
 ```go
 newCol := insyra.NewDataList(1, 2, 3, 4)
+// single call
 dt.UpdateCol("A", newCol)
+
+// chaining example
+newRow := insyra.NewDataList("Jane", 28, "Manager")
+dt.UpdateCol("A", newCol).UpdateRow(0, newRow)
 ```
 
 ### UpdateColByNumber
 
-Updates an entire column by its numeric index.
+Updates an entire column by its numeric index. Returns the table to support chaining calls.
 
 ```go
-func (dt *DataTable) UpdateColByNumber(index int, dl *DataList)
+func (dt *DataTable) UpdateColByNumber(index int, dl *DataList) *DataTable
 ```
 
 **Parameters:**
@@ -843,15 +853,20 @@ func (dt *DataTable) UpdateColByNumber(index int, dl *DataList)
 
 ```go
 newCol := insyra.NewDataList(1, 2, 3, 4)
+// single call
 dt.UpdateColByNumber(0, newCol)
+
+// chaining example
+newRow := insyra.NewDataList("Jane", 28, "Manager")
+dt.UpdateColByNumber(0, newCol).UpdateRow(0, newRow)
 ```
 
 ### UpdateRow
 
-Updates an entire row with new data.
+Updates an entire row with new data. Returns the table to support chaining calls.
 
 ```go
-func (dt *DataTable) UpdateRow(index int, dl *DataList)
+func (dt *DataTable) UpdateRow(index int, dl *DataList) *DataTable
 ```
 
 **Parameters:**
@@ -863,7 +878,12 @@ func (dt *DataTable) UpdateRow(index int, dl *DataList)
 
 ```go
 newRow := insyra.NewDataList("Jane", 28, "Manager")
+// single call
 dt.UpdateRow(0, newRow)
+
+// chaining example
+newCol := insyra.NewDataList(1, 2, 3, 4)
+dt.UpdateRow(0, newRow).UpdateCol("A", newCol)
 ```
 
 ### GetElementByNumberIndex

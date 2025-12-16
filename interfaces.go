@@ -108,10 +108,10 @@ type IDataTable interface {
 	GetColByName(name string) *DataList
 	GetRow(index int) *DataList
 	GetRowByName(name string) *DataList
-	UpdateElement(rowIndex int, columnIndex string, value any)
-	UpdateCol(index string, dl *DataList)
-	UpdateColByNumber(index int, dl *DataList)
-	UpdateRow(index int, dl *DataList)
+	UpdateElement(rowIndex int, columnIndex string, value any) *DataTable
+	UpdateCol(index string, dl *DataList) *DataTable
+	UpdateColByNumber(index int, dl *DataList) *DataTable
+	UpdateRow(index int, dl *DataList) *DataTable
 	SetColToRowNames(columnIndex string) *DataTable
 	SetRowToColNames(rowIndex int) *DataTable
 	ChangeColName(oldName, newName string) *DataTable
