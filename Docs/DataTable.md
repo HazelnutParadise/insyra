@@ -2229,6 +2229,11 @@ func (dt *DataTable) FilterRows(filterFunc func(colIndex, colName string, x any)
 **Example:**
 
 ```go
+// Keep rows that contain the value 100 in any column
+filtered := dt.FilterRows(func(colIndex, colName string, x any) bool {
+    return x == 100
+})
+
 // Keep rows where column A value is greater than 25
 filtered := dt.FilterRows(func(colIndex, colName, x any) bool {
     return (colIndex == "A") && (x.(int) > 25)
