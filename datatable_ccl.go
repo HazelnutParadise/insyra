@@ -215,7 +215,7 @@ func executeCCLNode(dt *DataTable, node ccl.CCLNode, numRow int, colNameMap map[
 // executeAssignment executes an assignment CCL statement
 func executeAssignment(dt *DataTable, node ccl.CCLNode, target string, numRow int, colNameMap map[string]int) error {
 	// 確定目標列索引
-	targetColIdx := -1
+	var targetColIdx int
 
 	if strings.HasPrefix(target, "'") && strings.HasSuffix(target, "'") {
 		// 欄位名稱形式 'colName'

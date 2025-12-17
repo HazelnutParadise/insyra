@@ -34,11 +34,12 @@ func (p *parser) parseStatement() (cclNode, error) {
 		// Look ahead for assignment operator
 		if p.pos+1 < len(p.tokens) && p.tokens[p.pos+1].typ == tASSIGN {
 			var target string
-			if tok.typ == tIDENT {
+			switch tok.typ {
+			case tIDENT:
 				target = tok.value
-			} else if tok.typ == tCOL_NAME {
+			case tCOL_NAME:
 				target = "'" + tok.value + "'" // Mark it as column name
-			} else {
+			case tCOL_INDEX:
 				target = tok.value // Column index like A, B, C
 			}
 			p.advance() // Skip target
