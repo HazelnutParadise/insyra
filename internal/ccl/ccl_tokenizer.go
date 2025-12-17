@@ -54,6 +54,15 @@ func Tokenize(input string) ([]cclToken, error) {
 		case ch == ',':
 			tokens = append(tokens, cclToken{typ: tCOMMA, value: ","})
 			i++
+		case ch == '=':
+			// Check if it's == (comparison) or = (assignment)
+			if i+1 < len(input) && input[i+1] == '=' {
+				tokens = append(tokens, cclToken{typ: tOPERATOR, value: "=="})
+				i += 2
+			} else {
+				tokens = append(tokens, cclToken{typ: tASSIGN, value: "="})
+				i++
+			}
 		case ch == '[':
 			// 處理 [colIndex] 或 ['colName'] 語法
 			i++ // 跳過 '['
@@ -106,8 +115,8 @@ func Tokenize(input string) ([]cclToken, error) {
 	return tokens, nil
 }
 
-func isLetter(ch byte) bool { return unicode.IsLetter(rune(ch)) }
+func isLetter(ch byte) bool { return unicode.IsLetter(rune(ch)) || ch == '_' }
 func isDigit(ch byte) bool  { return unicode.IsDigit(rune(ch)) }
 func isOperatorChar(ch byte) bool {
-	return strings.ContainsRune("+-*/%^=<>!", rune(ch))
+	return strings.ContainsRune("+-*/%^<>!", rune(ch))
 }
