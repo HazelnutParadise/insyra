@@ -42,6 +42,94 @@ func (dt *DataTable) AddColUsingCCL(newColName, cclFormula string) *DataTable {
 	return <-resultDtChan
 }
 
+// EditColByIndexUsingCCL modifies an existing column at the specified index using a CCL expression.
+// The column index uses Excel-style letters (A, B, C, ..., AA, AB, etc.) where A = first column.
+// Returns the modified DataTable.
+func (dt *DataTable) EditColByIndexUsingCCL(colIndex, cclFormula string) *DataTable {
+	defer func() {
+		if r := recover(); r != nil {
+			LogWarning("DataTable", "EditColByIndexUsingCCL", "Panic recovered: %v", r)
+		}
+	}()
+
+	resetCCLEvalDepth()
+	resetCCLFuncCallDepth()
+
+	resultDtChan := make(chan *DataTable, 1)
+
+	dt.AtomicDo(func(dt *DataTable) {
+		startTime := time.Now()
+		LogDebug("DataTable", "EditColByIndexUsingCCL", "Starting CCL evaluation for column %s: %s", colIndex, cclFormula)
+
+		// 解析欄位索引
+		targetColIdx := utils.ParseColIndex(colIndex)
+		if targetColIdx < 0 || targetColIdx >= len(dt.columns) {
+			LogWarning("DataTable", "EditColByIndexUsingCCL", "Column index '%s' out of range", colIndex)
+			resultDtChan <- dt
+			return
+		}
+
+		result, err := applyCCLOnDataTable(dt, cclFormula)
+		if err != nil {
+			elapsed := time.Since(startTime)
+			LogWarning("DataTable", "EditColByIndexUsingCCL", "Failed to apply CCL on DataTable after %v: %v", elapsed, err)
+		} else {
+			elapsed := time.Since(startTime)
+			LogDebug("DataTable", "EditColByIndexUsingCCL", "CCL evaluation completed in %v", elapsed)
+			dt.columns[targetColIdx].data = result
+		}
+		resultDtChan <- dt
+	})
+	return <-resultDtChan
+}
+
+// EditColByNameUsingCCL modifies an existing column with the specified name using a CCL expression.
+// Returns the modified DataTable. If the column name is not found, a warning is logged.
+func (dt *DataTable) EditColByNameUsingCCL(colName, cclFormula string) *DataTable {
+	defer func() {
+		if r := recover(); r != nil {
+			LogWarning("DataTable", "EditColByNameUsingCCL", "Panic recovered: %v", r)
+		}
+	}()
+
+	resetCCLEvalDepth()
+	resetCCLFuncCallDepth()
+
+	resultDtChan := make(chan *DataTable, 1)
+
+	dt.AtomicDo(func(dt *DataTable) {
+		startTime := time.Now()
+		LogDebug("DataTable", "EditColByNameUsingCCL", "Starting CCL evaluation for column '%s': %s", colName, cclFormula)
+
+		// 查找欄位索引
+		targetColIdx := -1
+		for i, col := range dt.columns {
+			if col.name == colName {
+				targetColIdx = i
+				break
+			}
+		}
+
+		if targetColIdx < 0 {
+			LogWarning("DataTable", "EditColByNameUsingCCL", "Column '%s' not found", colName)
+			resultDtChan <- dt
+			return
+		}
+
+		result, err := applyCCLOnDataTable(dt, cclFormula)
+		if err != nil {
+			elapsed := time.Since(startTime)
+			LogWarning("DataTable", "EditColByNameUsingCCL", "Failed to apply CCL on DataTable after %v: %v", elapsed, err)
+		} else {
+			elapsed := time.Since(startTime)
+			LogDebug("DataTable", "EditColByNameUsingCCL", "CCL evaluation completed in %v", elapsed)
+			dt.columns[targetColIdx].data = result
+		}
+		resultDtChan <- dt
+	})
+	return <-resultDtChan
+}
+
 // ExecuteCCL executes multi-line CCL statements on the DataTable.
 // It supports assignment syntax (e.g., A=B+C) and NEW('colName', expr) for creating new columns.
 // Multiple statements can be separated by ; or newline.

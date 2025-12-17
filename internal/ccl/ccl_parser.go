@@ -255,3 +255,24 @@ func getPrecedence(op string) int {
 		return 0
 	}
 }
+
+// CheckExpressionMode checks if tokens contain assignment syntax or NEW function.
+// Expression mode (AddColUsingCCL, EditColByIndexUsingCCL, EditColByNameUsingCCL)
+// does not allow assignment syntax or NEW function.
+// Returns an error if such syntax is found.
+func CheckExpressionMode(tokens []cclToken) error {
+	for i, tok := range tokens {
+		// 檢查賦值運算符
+		if tok.typ == tASSIGN {
+			return fmt.Errorf("CCL expression mode does not support assignment syntax (=). Use ExecuteCCL for statements with assignment")
+		}
+		// 檢查 NEW 函數
+		if tok.typ == tIDENT && strings.ToUpper(tok.value) == "NEW" {
+			// 確認後面是括號（確實是 NEW 函數調用）
+			if i+1 < len(tokens) && tokens[i+1].typ == tLPAREN {
+				return fmt.Errorf("CCL expression mode does not support NEW function. Use ExecuteCCL for creating new columns")
+			}
+		}
+	}
+	return nil
+}

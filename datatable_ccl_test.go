@@ -177,3 +177,223 @@ func TestDataTable_ExecuteCCL_NonExistentColumnError(t *testing.T) {
 		t.Errorf("Expected 1 column, got %d", len(dt.columns))
 	}
 }
+
+func TestDataTable_EditColByIndexUsingCCL(t *testing.T) {
+	// 創建測試 DataTable
+	dt := NewDataTable(
+		NewDataList(1, 2, 3, 4).SetName("X"),
+		NewDataList(10, 20, 30, 40).SetName("Y"),
+		NewDataList(100, 200, 300, 400).SetName("Z"),
+	)
+
+	// 使用 CCL 編輯第一欄 (A)
+	dt.EditColByIndexUsingCCL("A", "A * 10")
+
+	// 驗證結果
+	expected := []any{float64(10), float64(20), float64(30), float64(40)}
+	colA := dt.GetColByNumber(0)
+	if colA == nil {
+		t.Fatal("Column A (index 0) not found")
+	}
+	for i, v := range colA.Data() {
+		if v != expected[i] {
+			t.Errorf("Row %d: expected %v, got %v", i, expected[i], v)
+		}
+	}
+}
+
+func TestDataTable_EditColByIndexUsingCCL_WithOtherCols(t *testing.T) {
+	// 創建測試 DataTable
+	dt := NewDataTable(
+		NewDataList(1, 2, 3).SetName("A"),
+		NewDataList(10, 20, 30).SetName("B"),
+		NewDataList(100, 200, 300).SetName("C"),
+	)
+
+	// 使用其他欄位的值編輯第二欄 (B)
+	dt.EditColByIndexUsingCCL("B", "A + ['C']")
+
+	// 驗證結果 B = A + C
+	expected := []any{float64(101), float64(202), float64(303)}
+	colB := dt.GetColByNumber(1)
+	for i, v := range colB.Data() {
+		if v != expected[i] {
+			t.Errorf("Row %d: expected %v, got %v", i, expected[i], v)
+		}
+	}
+}
+
+func TestDataTable_EditColByNameUsingCCL(t *testing.T) {
+	// 創建測試 DataTable
+	dt := NewDataTable(
+		NewDataList(5, 10, 15, 20).SetName("price"),
+		NewDataList(2, 3, 4, 5).SetName("quantity"),
+	)
+
+	// 使用 CCL 編輯 price 欄
+	dt.EditColByNameUsingCCL("price", "['price'] * 2")
+
+	// 驗證結果
+	expected := []any{float64(10), float64(20), float64(30), float64(40)}
+	colPrice := dt.GetColByName("price")
+	if colPrice == nil {
+		t.Fatal("Column 'price' not found")
+	}
+	for i, v := range colPrice.Data() {
+		if v != expected[i] {
+			t.Errorf("Row %d: expected %v, got %v", i, expected[i], v)
+		}
+	}
+}
+
+func TestDataTable_EditColByNameUsingCCL_WithCondition(t *testing.T) {
+	// 創建測試 DataTable
+	dt := NewDataTable(
+		NewDataList(10, 20, 30, 40).SetName("value"),
+		NewDataList(5, 25, 15, 35).SetName("threshold"),
+	)
+
+	// 使用條件表達式編輯欄位
+	dt.EditColByNameUsingCCL("value", "IF(['value'] > ['threshold'], ['value'] * 2, ['value'])")
+
+	// 驗證結果: value > threshold 時 value * 2, 否則保持原值
+	// Row 0: 10 > 5 -> 20
+	// Row 1: 20 > 25 -> 20 (不變)
+	// Row 2: 30 > 15 -> 60
+	// Row 3: 40 > 35 -> 80
+	expected := []float64{20, 20, 60, 80}
+	colValue := dt.GetColByName("value")
+	for i, v := range colValue.Data() {
+		var got float64
+		switch val := v.(type) {
+		case float64:
+			got = val
+		case int:
+			got = float64(val)
+		default:
+			t.Errorf("Row %d: unexpected type %T", i, v)
+			continue
+		}
+		if got != expected[i] {
+			t.Errorf("Row %d: expected %v, got %v", i, expected[i], got)
+		}
+	}
+}
+
+func TestDataTable_EditColByNameUsingCCL_NonExistent(t *testing.T) {
+	// 創建測試 DataTable
+	dt := NewDataTable(
+		NewDataList(1, 2, 3).SetName("A"),
+	)
+
+	// 嘗試編輯不存在的欄位（應該記錄警告但不會 panic）
+	dt.EditColByNameUsingCCL("NonExistent", "A + 1")
+
+	// 確保 DataTable 保持不變
+	if len(dt.columns) != 1 {
+		t.Errorf("Expected 1 column, got %d", len(dt.columns))
+	}
+}
+
+func TestDataTable_EditColByIndexUsingCCL_OutOfRange(t *testing.T) {
+	// 創建測試 DataTable
+	dt := NewDataTable(
+		NewDataList(1, 2, 3).SetName("A"),
+	)
+
+	// 嘗試編輯超出範圍的欄位索引（應該記錄警告但不會 panic）
+	dt.EditColByIndexUsingCCL("ZZ", "A + 1")
+
+	// 確保 DataTable 保持不變
+	if len(dt.columns) != 1 {
+		t.Errorf("Expected 1 column, got %d", len(dt.columns))
+	}
+}
+
+func TestDataTable_EditColByNameUsingCCL_StringConcat(t *testing.T) {
+	// 創建測試 DataTable
+	dt := NewDataTable(
+		NewDataList("Hello", "World", "Test").SetName("greeting"),
+		NewDataList("Foo", "Bar", "Baz").SetName("suffix"),
+	)
+
+	// 使用字串連接運算符
+	dt.EditColByNameUsingCCL("greeting", "['greeting'] & '-' & ['suffix']")
+
+	// 驗證結果
+	expected := []any{"Hello-Foo", "World-Bar", "Test-Baz"}
+	colGreeting := dt.GetColByName("greeting")
+	for i, v := range colGreeting.Data() {
+		if v != expected[i] {
+			t.Errorf("Row %d: expected %v, got %v", i, expected[i], v)
+		}
+	}
+}
+
+// ==== 表達式模式拒絕賦值語法測試 ====
+
+func TestDataTable_AddColUsingCCL_RejectsAssignment(t *testing.T) {
+	dt := NewDataTable(
+		NewDataList(1, 2, 3).SetName("A"),
+	)
+
+	// AddColUsingCCL 不應該接受賦值語法（在公式中使用 =）
+	dt.AddColUsingCCL("NewCol", "B = A + 1")
+
+	// 應該保持原始欄位數量（賦值語法被拒絕，不會新增欄位）
+	if len(dt.columns) != 1 {
+		t.Errorf("Expected 1 column (assignment syntax should be rejected), got %d", len(dt.columns))
+	}
+}
+
+func TestDataTable_AddColUsingCCL_RejectsNEW(t *testing.T) {
+	dt := NewDataTable(
+		NewDataList(1, 2, 3).SetName("A"),
+	)
+
+	// AddColUsingCCL 不應該接受 NEW 函數
+	dt.AddColUsingCCL("NewCol", "NEW('test')")
+
+	// 應該保持原始欄位數量（NEW 函數被拒絕，不會新增欄位）
+	if len(dt.columns) != 1 {
+		t.Errorf("Expected 1 column (NEW function should be rejected), got %d", len(dt.columns))
+	}
+}
+
+func TestDataTable_EditColByIndexUsingCCL_RejectsAssignment(t *testing.T) {
+	dt := NewDataTable(
+		NewDataList(1, 2, 3).SetName("A"),
+	)
+
+	originalData := dt.GetColByNumber(0).Data()
+
+	// EditColByIndexUsingCCL 不應該接受賦值語法
+	dt.EditColByIndexUsingCCL("A", "B = A + 1")
+
+	// 原始資料應保持不變
+	newData := dt.GetColByNumber(0).Data()
+	for i, v := range originalData {
+		if newData[i] != v {
+			t.Errorf("Row %d: expected %v (unchanged), got %v", i, v, newData[i])
+		}
+	}
+}
+
+func TestDataTable_EditColByNameUsingCCL_RejectsAssignment(t *testing.T) {
+	dt := NewDataTable(
+		NewDataList(1, 2, 3).SetName("A"),
+	)
+
+	originalData := dt.GetColByName("A").Data()
+
+	// EditColByNameUsingCCL 不應該接受賦值語法
+	dt.EditColByNameUsingCCL("A", "A = A + 1")
+
+	// 原始資料應保持不變
+	newData := dt.GetColByName("A").Data()
+	for i, v := range originalData {
+		if newData[i] != v {
+			t.Errorf("Row %d: expected %v (unchanged), got %v", i, v, newData[i])
+		}
+	}
+}

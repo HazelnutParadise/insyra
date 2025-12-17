@@ -20,11 +20,18 @@ func resetCCLFuncCallDepth() {
 
 // compileCCLExpression compiles a CCL expression string into an AST for reuse.
 // This avoids repeated tokenization and parsing for each row.
+// Returns an error if assignment syntax (=) or NEW function is detected.
 func compileCCLExpression(expression string) (ccl.CCLNode, error) {
 	tokens, err := ccl.Tokenize(expression)
 	if err != nil {
 		return nil, err
 	}
+
+	// 檢查是否包含賦值語法或 NEW 函數（表達式模式不允許）
+	if err := ccl.CheckExpressionMode(tokens); err != nil {
+		return nil, err
+	}
+
 	return ccl.ParseExpression(tokens)
 }
 

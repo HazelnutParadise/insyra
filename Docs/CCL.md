@@ -23,13 +23,49 @@ CCL (Column Calculation Language) is a specialized expression language in Insyra
 
 CCL supports two execution modes:
 
-### 1. Expression Mode (`AddColUsingCCL`)
+### 1. Expression Mode
 
-Evaluates an expression and adds the result as a new column. This mode only supports expressions (no assignment).
+Expression mode evaluates a CCL expression and applies the result to a column. This mode **only supports pure expressions** (no assignment syntax or NEW function).
+
+> **Note:** If you attempt to use assignment syntax (`=`) or the `NEW()` function in Expression Mode, the operation will be rejected and an error will be logged. Use `ExecuteCCL` (Statement Mode) for these features.
+
+#### `AddColUsingCCL` - Add New Column
+
+Evaluates an expression and adds the result as a new column.
 
 ```go
 // Evaluate expression and add result as new column "result"
 dt.AddColUsingCCL("result", "A + B * C")
+
+// ❌ This will be rejected (assignment syntax not allowed):
+dt.AddColUsingCCL("result", "B = A + 1")  // Error: assignment syntax not supported
+
+// ❌ This will be rejected (NEW function not allowed):
+dt.AddColUsingCCL("result", "NEW('col')")  // Error: NEW function not supported
+```
+
+#### `EditColByIndexUsingCCL` - Edit Column by Index
+
+Evaluates an expression and replaces the content of an existing column by its index (Excel-style: A, B, C, ..., AA, AB, ...).
+
+```go
+dt.EditColByIndexUsingCCL("A", "A * 10")      // Multiply first column by 10
+dt.EditColByIndexUsingCCL("B", "A + ['C']")   // Set second column to A + C
+
+// ❌ This will be rejected:
+dt.EditColByIndexUsingCCL("A", "B = A + 1")  // Error: assignment syntax not supported
+```
+
+#### `EditColByNameUsingCCL` - Edit Column by Name
+
+Evaluates an expression and replaces the content of an existing column by its name.
+
+```go
+dt.EditColByNameUsingCCL("price", "['price'] * 1.1")        // Increase price by 10%
+dt.EditColByNameUsingCCL("total", "['quantity'] * ['price']")
+
+// ❌ This will be rejected:
+dt.EditColByNameUsingCCL("price", "price = ['price'] * 1.1")  // Error: assignment syntax not supported
 ```
 
 ### 2. Statement Mode (`ExecuteCCL`)
@@ -528,11 +564,17 @@ Test environment: 100,000 rows × 3 columns
    - Ensure function syntax is correct (e.g., IF requires three parameters)
    - For `NEW()`, ensure the syntax is `NEW('name') = expression`
 
+6. **Edit Column Not Found**
+   - `EditColByNameUsingCCL`: Ensure the column name exists and is spelled correctly (case-sensitive)
+   - `EditColByIndexUsingCCL`: Ensure the column index is within range (A, B, C, ... for columns 1, 2, 3, ...)
+
 ### Mode Selection Guide
 
 | Scenario | Recommended Method |
 |----------|-------------------|
 | Add single calculated column | `AddColUsingCCL` |
-| Modify existing column | `ExecuteCCL` with assignment |
+| Modify single column by index | `EditColByIndexUsingCCL` |
+| Modify single column by name | `EditColByNameUsingCCL` |
+| Modify existing column (statement style) | `ExecuteCCL` with assignment |
 | Create multiple columns | `ExecuteCCL` with multiple `NEW()` |
 | Complex multi-step calculation | `ExecuteCCL` with multiple statements |
