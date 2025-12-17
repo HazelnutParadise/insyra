@@ -294,6 +294,11 @@ func (t *dt) Push(data any) *dt {
 	return t
 }
 
+// CCL executes CCL statements on the DataTable and returns the updated DataTable.
+func (t *dt) CCL(cclStatements string) *dt {
+	return UseDT(t.ExecuteCCL(cclStatements))
+}
+
 func fromRowToDT(t *dt, val map[any]any) error {
 	strMap := make(map[string]any)
 	if isIntKey(val) || isStrKey(val) {

@@ -513,6 +513,41 @@ dataTable.Push(isr.DLs{
 - **Output**: Self (for method chaining)
 - **Purpose**: Append data to existing DataTable
 
+#### Executing CCL Statements
+
+```go
+// Execute CCL statements on DataTable
+dataTable.CCL("A = A * 2")
+
+// Create new column using CCL
+dataTable.CCL("NEW('total') = A + B + C")
+
+// Multiple CCL statements
+dataTable.CCL(`
+    A = A * 10
+    B = B + 5
+    NEW('sum') = A + B
+`)
+
+// Or use semicolons for multiple statements
+dataTable.CCL("A = A + 1; NEW('doubled') = A * 2")
+
+// Method chaining with CCL
+result := isr.DT.From(isr.Rows{
+    {"A": 1, "B": 2},
+    {"A": 3, "B": 4},
+}).CCL("NEW('newCol') = [A] + [B]").Col(isr.Name("newCol"))
+```
+
+**Method**: `CCL(cclStatements string) *dt`
+
+- **Input**: CCL statement string (supports assignment syntax and NEW function)
+- **Output**: Self (for method chaining)
+- **Purpose**: Execute CCL statements to modify or create columns
+- **Equivalent**: `insyra.DataTable.ExecuteCCL()`
+
+> **Note**: For detailed CCL syntax and features, see the [CCL Documentation](CCL.md).
+
 ## Advanced Features
 
 ### Named Elements
