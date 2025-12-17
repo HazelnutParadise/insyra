@@ -118,7 +118,7 @@ import (
 )
 
 func main() {
-    dl := insyra.DataList{}.From(1, 2, 3, 4, 5)
+    dl := insyra.NewDataList(1, 2, 3, 4, 5)
     dl.Append(6)
     fmt.Println("DataList:", dl.Data())
     fmt.Println("Mean:", dl.Mean())
@@ -256,7 +256,7 @@ func main() {
     })
     
     // 現在使用 Insyra 的這些設置
-    dl := insyra.DataList{}.From(1, 2, 3, 4, 5)
+    dl := insyra.NewDataList(1, 2, 3, 4, 5)
     fmt.Println(dl.Mean())
 }
 ```

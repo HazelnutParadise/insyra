@@ -162,7 +162,7 @@ func (_ DataList) From(values ...any) *DataList
 
 ```go
 // Recommended modern syntax
-dl := insyra.DataList{}.From(1, 2, 3, 4, 5)
+dl := insyra.NewDataList(1, 2, 3, 4, 5)
 
 // Using syntax sugar
 import "github.com/HazelnutParadise/insyra/isr"
