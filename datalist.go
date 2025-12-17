@@ -34,11 +34,13 @@ type DataList struct {
 	closed   atomic.Bool
 }
 
-// Data returns the data stored in the DataList.
+// Data returns a copy of the data stored in the DataList.
+// This prevents external modification of the internal data (Copy-on-Read).
 func (dl *DataList) Data() []any {
 	var result []any
 	dl.AtomicDo(func(dl *DataList) {
-		result = dl.data
+		result = make([]any, len(dl.data))
+		copy(result, dl.data)
 	})
 	return result
 }
@@ -146,9 +148,11 @@ func (dl *DataList) Count(value any) int {
 // Counter returns a map of the number of occurrences of each value in the DataList.
 func (dl *DataList) Counter() map[any]int {
 	counter := make(map[any]int)
-	for _, value := range dl.Data() {
-		counter[value]++
-	}
+	dl.AtomicDo(func(dl *DataList) {
+		for _, value := range dl.data {
+			counter[value]++
+		}
+	})
 	return counter
 }
 
@@ -323,7 +327,7 @@ func (dl *DataList) ReplaceOutliers(stdDevs float64, replacement float64) *DataL
 		stddev := dl.Stdev()
 		threshold := stdDevs * stddev
 
-		for i, v := range dl.Data() {
+		for i, v := range dl.data {
 			val := conv.ParseF64(v)
 			if math.Abs(val-mean) > threshold {
 				dl.data[i] = replacement
@@ -584,9 +588,9 @@ func (dl *DataList) ClearNaNs() *DataList {
 		go dl.updateTimestamp()
 	}()
 	dl.AtomicDo(func(dl *DataList) {
-		for i, v := range dl.Data() {
-			if math.IsNaN(v.(float64)) {
-				dl.Drop(i)
+		for i := len(dl.data) - 1; i >= 0; i-- {
+			if v, ok := dl.data[i].(float64); ok && math.IsNaN(v) {
+				dl.data = append(dl.data[:i], dl.data[i+1:]...)
 			}
 		}
 	})
@@ -613,12 +617,12 @@ func (dl *DataList) ClearOutliers(stdDevs float64) *DataList {
 		LogDebug("DataList", "ClearOutliers", "Standard Deviation: %f", stddev)
 		LogDebug("DataList", "ClearOutliers", "Threshold: %f", threshold)
 
-		for i := dl.Len() - 1; i >= 0; i-- {
-			val := conv.ParseF64(dl.Data()[i])
+		for i := len(dl.data) - 1; i >= 0; i-- {
+			val := conv.ParseF64(dl.data[i])
 			LogDebug("DataList", "ClearOutliers", "Checking value: %f", val) // 打印每個檢查的值
 			if math.Abs(val-mean) > threshold {
 				LogDebug("DataList", "ClearOutliers", "Removing outlier: %f", val) // 打印要移除的異常值
-				dl.Drop(i)
+				dl.data = append(dl.data[:i], dl.data[i+1:]...)
 			}
 		}
 	})
@@ -645,7 +649,7 @@ func (dl *DataList) Normalize() *DataList {
 			return
 		}
 
-		for i, v := range dl.Data() {
+		for i, v := range dl.data {
 			vfloat := conv.ParseF64(v)
 			dl.data[i] = (vfloat - min) / (max - min)
 		}
@@ -714,11 +718,11 @@ func (dl *DataList) MovingAverage(windowSize int) *DataList {
 			isFailed = true
 			return
 		}
-		movingAverageData = make([]float64, dl.Len()-windowSize+1)
+		movingAverageData = make([]float64, len(dl.data)-windowSize+1)
 		for i := range movingAverageData {
 			windowSum := 0.0
 			for j := range windowSize {
-				windowSum += dl.Data()[i+j].(float64)
+				windowSum += dl.data[i+j].(float64)
 			}
 			movingAverageData[i] = windowSum / float64(windowSize)
 		}
@@ -749,9 +753,9 @@ func (dl *DataList) WeightedMovingAverage(windowSize int, weights any) *DataList
 			weightsSum += w.(float64)
 		}
 
-		movingAvgData = make([]float64, dl.Len()-windowSize+1)
+		movingAvgData = make([]float64, len(dl.data)-windowSize+1)
 		for i := 0; i < len(movingAvgData); i++ {
-			window := dl.Data()[i : i+windowSize]
+			window := dl.data[i : i+windowSize]
 			sum := 0.0
 			for j := 0; j < windowSize; j++ {
 				sum += window[j].(float64) * weightsSlice[j].(float64)
@@ -822,9 +826,9 @@ func (dl *DataList) MovingStdev(windowSize int) *DataList {
 			isFailed = true
 			return
 		}
-		movingStdDevData = make([]float64, dl.Len()-windowSize+1)
+		movingStdDevData = make([]float64, len(dl.data)-windowSize+1)
 		for i := range movingStdDevData {
-			window := NewDataList(dl.Data()[i : i+windowSize])
+			window := NewDataList(dl.data[i : i+windowSize]...)
 			movingStdDevData[i] = window.Stdev()
 		}
 	})
@@ -1329,7 +1333,7 @@ func (dl *DataList) MAD() float64 {
 		}
 
 		// Calculate the mean absolute deviation
-		for _, v := range dl.Data() {
+		for _, v := range dl.data {
 			val, ok := ToFloat64Safe(v)
 			if !ok {
 				LogWarning("DataList", "MAD", "Element %v is not a numeric type, skipping", v)
