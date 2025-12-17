@@ -18,24 +18,58 @@ func resetCCLFuncCallDepth() {
 	ccl.ResetFuncCallDepth()
 }
 
-// compileCCLFormula compiles a formula string into an AST for reuse.
+// compileCCLExpression compiles a CCL expression string into an AST for reuse.
 // This avoids repeated tokenization and parsing for each row.
-func compileCCLFormula(formula string) (ccl.CCLNode, error) {
-	tokens, err := ccl.Tokenize(formula)
+// Returns an error if assignment syntax (=) or NEW function is detected.
+func compileCCLExpression(expression string) (ccl.CCLNode, error) {
+	tokens, err := ccl.Tokenize(expression)
 	if err != nil {
 		return nil, err
 	}
-	return ccl.Parse(tokens)
+
+	// 檢查是否包含賦值語法或 NEW 函數（表達式模式不允許）
+	if err := ccl.CheckExpressionMode(tokens); err != nil {
+		return nil, err
+	}
+
+	return ccl.ParseExpression(tokens)
 }
 
-// applyCCLOnDataTable evaluates the formula on each row of a DataTable.
-// Optimized: compiles formula once and reuses AST for all rows.
-func applyCCLOnDataTable(table *DataTable, formula string) ([]any, error) {
+// compileMultilineCCL compiles multi-line CCL statements separated by ; or newline into ASTs.
+// This supports assignment syntax (e.g., A=B+C) and NEW function.
+func compileMultilineCCL(cclStatements string) ([]ccl.CCLNode, error) {
+	// 按 ; 或換行分割語句
+	lines := strings.FieldsFunc(cclStatements, func(r rune) bool {
+		return r == ';' || r == '\n'
+	})
+
+	nodes := make([]ccl.CCLNode, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		tokens, err := ccl.Tokenize(line)
+		if err != nil {
+			return nil, err
+		}
+		node, err := ccl.ParseStatement(tokens)
+		if err != nil {
+			return nil, err
+		}
+		nodes = append(nodes, node)
+	}
+	return nodes, nil
+}
+
+// applyCCLOnDataTable evaluates the expression on each row of a DataTable.
+// Optimized: compiles expression once and reuses AST for all rows.
+func applyCCLOnDataTable(table *DataTable, expression string) ([]any, error) {
 	var result []any
 	var err error
 
-	// 預先編譯公式（只做一次 tokenize + parse）
-	ast, err := compileCCLFormula(formula)
+	// 預先編譯表達式（只做一次 tokenize + parse）
+	ast, err := compileCCLExpression(expression)
 	if err != nil {
 		return nil, err
 	}

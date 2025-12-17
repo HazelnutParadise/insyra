@@ -3,6 +3,7 @@ package ccl
 import (
 	"fmt"
 	"strconv"
+	"strings"
 )
 
 type parser struct {
@@ -10,9 +11,89 @@ type parser struct {
 	pos    int
 }
 
-func Parse(tokens []cclToken) (cclNode, error) {
+// ParseExpression parses a CCL expression (no assignment).
+// For expressions like: A + B * C, IF(A > 0, 1, 0)
+func ParseExpression(tokens []cclToken) (cclNode, error) {
 	p := &parser{tokens: tokens}
 	return p.parseExpression(0)
+}
+
+// ParseStatement parses a single statement that may include assignment
+// Returns the parsed node which can be either an expression or an assignment
+func ParseStatement(tokens []cclToken) (cclNode, error) {
+	p := &parser{tokens: tokens}
+	return p.parseStatement()
+}
+
+// parseStatement handles both assignments and expressions
+func (p *parser) parseStatement() (cclNode, error) {
+	tok := p.current()
+
+	// Check for assignment: IDENT = expr or ['colName'] = expr or [colIndex] = expr
+	if tok.typ == tIDENT || tok.typ == tCOL_NAME || tok.typ == tCOL_INDEX {
+		// Look ahead for assignment operator
+		if p.pos+1 < len(p.tokens) && p.tokens[p.pos+1].typ == tASSIGN {
+			var target string
+			if tok.typ == tIDENT {
+				target = tok.value
+			} else if tok.typ == tCOL_NAME {
+				target = "'" + tok.value + "'" // Mark it as column name
+			} else {
+				target = tok.value // Column index like A, B, C
+			}
+			p.advance() // Skip target
+			p.advance() // Skip '='
+			expr, err := p.parseExpression(0)
+			if err != nil {
+				return nil, err
+			}
+			return &cclAssignmentNode{target: target, expr: expr}, nil
+		}
+	}
+
+	// Check for NEW function: NEW('colName') = expr
+	if tok.typ == tIDENT && strings.ToUpper(tok.value) == "NEW" {
+		return p.parseNewFunction()
+	}
+
+	// Otherwise, parse as expression
+	return p.parseExpression(0)
+}
+
+// parseNewFunction parses NEW('colName') = expr syntax
+func (p *parser) parseNewFunction() (cclNode, error) {
+	p.advance() // Skip NEW
+	if p.current().typ != tLPAREN {
+		return nil, fmt.Errorf("expected '(' after NEW")
+	}
+	p.advance() // Skip '('
+
+	// Parse column name (must be a string)
+	if p.current().typ != tSTRING {
+		return nil, fmt.Errorf("NEW requires a string literal for column name")
+	}
+	colName := p.current().value
+	p.advance()
+
+	// Expect closing parenthesis
+	if p.current().typ != tRPAREN {
+		return nil, fmt.Errorf("expected ')' after column name in NEW")
+	}
+	p.advance()
+
+	// Expect assignment operator
+	if p.current().typ != tASSIGN {
+		return nil, fmt.Errorf("expected '=' after NEW('colName')")
+	}
+	p.advance()
+
+	// Parse expression
+	expr, err := p.parseExpression(0)
+	if err != nil {
+		return nil, err
+	}
+
+	return &cclNewColNode{colName: colName, expr: expr}, nil
 }
 
 func (p *parser) current() cclToken {
@@ -156,15 +237,42 @@ func (p *parser) parsePrimary() (cclNode, error) {
 
 func getPrecedence(op string) int {
 	switch op {
-	case "=", "==", "!=", ">", "<", ">=", "<=":
+	case "||": // 邏輯或優先級最低
 		return 1
-	case "+", "-":
+	case "&&": // 邏輯與優先級次低
 		return 2
-	case "*", "/", "%":
+	case "=", "==", "!=", ">", "<", ">=", "<=":
 		return 3
-	case "^":
+	case "&": // 字串連接，與加減同級
 		return 4
+	case "+", "-":
+		return 4
+	case "*", "/", "%":
+		return 5
+	case "^":
+		return 6
 	default:
 		return 0
 	}
+}
+
+// CheckExpressionMode checks if tokens contain assignment syntax or NEW function.
+// Expression mode (AddColUsingCCL, EditColByIndexUsingCCL, EditColByNameUsingCCL)
+// does not allow assignment syntax or NEW function.
+// Returns an error if such syntax is found.
+func CheckExpressionMode(tokens []cclToken) error {
+	for i, tok := range tokens {
+		// 檢查賦值運算符
+		if tok.typ == tASSIGN {
+			return fmt.Errorf("CCL expression mode does not support assignment syntax (=). Use ExecuteCCL for statements with assignment")
+		}
+		// 檢查 NEW 函數
+		if tok.typ == tIDENT && strings.ToUpper(tok.value) == "NEW" {
+			// 確認後面是括號（確實是 NEW 函數調用）
+			if i+1 < len(tokens) && tokens[i+1].typ == tLPAREN {
+				return fmt.Errorf("CCL expression mode does not support NEW function. Use ExecuteCCL for creating new columns")
+			}
+		}
+	}
+	return nil
 }

@@ -18,6 +18,15 @@ func ResetEvalDepth() {
 	evalDepth = 0
 }
 
+// EvaluationResult represents the result of evaluating a CCL statement
+type EvaluationResult struct {
+	Value        any    // The computed value (for expressions)
+	IsAssignment bool   // Whether this was an assignment
+	Target       string // Assignment target column (if IsAssignment)
+	IsNewCol     bool   // Whether this creates a new column
+	NewColName   string // New column name (if IsNewCol)
+}
+
 // Evaluate evaluates a CCL node with the given row data.
 // colNameMap is optional - pass nil if not using ['colName'] syntax.
 // colNameMap maps column names to their indices (0-based).
@@ -27,6 +36,69 @@ func Evaluate(n cclNode, row []any, colNameMap ...map[string]int) (any, error) {
 		nameMap = colNameMap[0]
 	}
 	return evaluateWithContext(n, row, nameMap)
+}
+
+// EvaluateStatement evaluates a CCL statement and returns detailed result
+func EvaluateStatement(n cclNode, row []any, colNameMap map[string]int) (*EvaluationResult, error) {
+	switch t := n.(type) {
+	case *cclAssignmentNode:
+		// Evaluate the expression
+		val, err := evaluateWithContext(t.expr, row, colNameMap)
+		if err != nil {
+			return nil, err
+		}
+		return &EvaluationResult{
+			Value:        val,
+			IsAssignment: true,
+			Target:       t.target,
+		}, nil
+	case *cclNewColNode:
+		// Evaluate the expression for new column
+		val, err := evaluateWithContext(t.expr, row, colNameMap)
+		if err != nil {
+			return nil, err
+		}
+		return &EvaluationResult{
+			Value:      val,
+			IsNewCol:   true,
+			NewColName: t.colName,
+		}, nil
+	default:
+		// Regular expression
+		val, err := evaluateWithContext(n, row, colNameMap)
+		if err != nil {
+			return nil, err
+		}
+		return &EvaluationResult{Value: val}, nil
+	}
+}
+
+// GetAssignmentTarget returns the target column name/index if the node is an assignment
+func GetAssignmentTarget(n cclNode) (string, bool) {
+	if assign, ok := n.(*cclAssignmentNode); ok {
+		return assign.target, true
+	}
+	return "", false
+}
+
+// GetNewColInfo returns the new column info if the node is a NEW function
+func GetNewColInfo(n cclNode) (string, cclNode, bool) {
+	if newCol, ok := n.(*cclNewColNode); ok {
+		return newCol.colName, newCol.expr, true
+	}
+	return "", nil, false
+}
+
+// IsAssignmentNode checks if the node is an assignment
+func IsAssignmentNode(n cclNode) bool {
+	_, ok := n.(*cclAssignmentNode)
+	return ok
+}
+
+// IsNewColNode checks if the node is a NEW column creation
+func IsNewColNode(n cclNode) bool {
+	_, ok := n.(*cclNewColNode)
+	return ok
 }
 
 func evaluateWithContext(n cclNode, row []any, colNameMap map[string]int) (any, error) {
@@ -167,6 +239,33 @@ func applyOperator(op string, left, right any) (any, error) {
 		}
 	}
 
+	// 處理 & 運算符（字串連接，等同於 CONCAT）
+	if op == "&" {
+		leftStr := fmt.Sprintf("%v", left)
+		rightStr := fmt.Sprintf("%v", right)
+		return leftStr + rightStr, nil
+	}
+
+	// 處理 && 運算符（邏輯與，等同於 AND）
+	if op == "&&" {
+		lb, lok := toBool(left)
+		rb, rok := toBool(right)
+		if !lok || !rok {
+			return nil, fmt.Errorf("invalid operands for &&: %v, %v (both must be boolean)", left, right)
+		}
+		return lb && rb, nil
+	}
+
+	// 處理 || 運算符（邏輯或，等同於 OR）
+	if op == "||" {
+		lb, lok := toBool(left)
+		rb, rok := toBool(right)
+		if !lok || !rok {
+			return nil, fmt.Errorf("invalid operands for ||: %v, %v (both must be boolean)", left, right)
+		}
+		return lb || rb, nil
+	}
+
 	// 對於比較運算，嘗試將值轉換為數字進行比較
 	lf, lok := toFloat64(left)
 	rf, rok := toFloat64(right)
@@ -258,5 +357,30 @@ func toFloat64(val any) (float64, bool) {
 		return 0.0, true
 	default:
 		return 0, false
+	}
+}
+
+// toBool converts a value to boolean
+func toBool(val any) (bool, bool) {
+	switch v := val.(type) {
+	case bool:
+		return v, true
+	case float64:
+		return v != 0, true
+	case int:
+		return v != 0, true
+	case string:
+		lower := strings.ToLower(strings.TrimSpace(v))
+		if lower == "true" {
+			return true, true
+		}
+		if lower == "false" {
+			return false, true
+		}
+		return false, false
+	case nil:
+		return false, true
+	default:
+		return false, false
 	}
 }

@@ -14,6 +14,8 @@ const (
 	tBOOLEAN   // 布林值標記類型
 	tCOL_INDEX // [A] 形式的欄位索引引用
 	tCOL_NAME  // ['colName'] 形式的欄位名稱引用
+	tSEMICOLON // ; 分號，用於分隔多條 CCL 語句
+	tASSIGN    // = 賦值運算符
 )
 
 type cclToken struct {
@@ -46,4 +48,16 @@ type cclChainedComparisonNode struct {
 type funcCallNode struct {
 	name string
 	args []cclNode
+}
+
+// cclAssignmentNode 賦值語句節點
+type cclAssignmentNode struct {
+	target string  // 賦值目標（欄位名稱或索引）
+	expr   cclNode // 賦值表達式
+}
+
+// cclNewColNode 創建新欄位節點
+type cclNewColNode struct {
+	colName string  // 新欄位名稱
+	expr    cclNode // 計算表達式
 }

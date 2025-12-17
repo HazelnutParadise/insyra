@@ -120,7 +120,7 @@ import (
 )
 
 func main() {
-    dl := insyra.DataList{}.From(1, 2, 3, 4, 5)
+    dl := insyra.NewDataList(1, 2, 3, 4, 5)
     dl.Append(6)
     fmt.Println("DataList:", dl.Data())
     fmt.Println("Mean:", dl.Mean())
@@ -259,7 +259,7 @@ func main() {
     })
     
     // Now use Insyra with these settings
-    dl := insyra.DataList{}.From(1, 2, 3, 4, 5)
+    dl := insyra.NewDataList(1, 2, 3, 4, 5)
     fmt.Println(dl.Mean())
 }
 ```
