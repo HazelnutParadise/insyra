@@ -179,6 +179,19 @@ dataList := isr.DL.From("A", "B", "C", 1, 2, 3, 4, 5, 6)
 - **Output**: Pointer to DataList wrapper (*dl)
 - **Equivalent**: `insyra.NewDataList()`
 
+#### Creating DataLists with Of (Alias)
+
+```go
+// Create DataList with values using Of (alias for From)
+dataList := isr.DL.Of("A", "B", "C", 1, 2, 3, 4, 5, 6)
+```
+
+**Method**: `isr.DL.Of(...values) *dl`
+
+- **Input**: Any number of values of any type
+- **Output**: Pointer to DataList wrapper (*dl)
+- **Purpose**: Alias for `From()` providing a shorter method name
+
 #### Converting Existing DataList
 
 ```go
@@ -272,6 +285,23 @@ dataTable := isr.DT.From(nil)
 - **Output**: Pointer to empty DataTable wrapper (*dt)
 - **Purpose**: Creates an empty DataTable that can be populated later
 - **Equivalent**: `insyra.NewDataTable()`
+
+#### Creating DataTables with Of (Alias)
+
+```go
+// Create DataTable using Of (alias for From)
+dataTable := isr.DT.Of(nil)
+
+// Create from various sources
+dataTable := isr.DT.Of(isr.Row{"Name": "John", "Age": 30})
+dataTable := isr.DT.Of(isr.DL.From("A", "B", "C"))
+```
+
+**Method**: `isr.DT.Of(item) *dt`
+
+- **Input**: Same as `From()` - DataList, Row, Col, Rows, Cols, DLs, CSV, JSON, 2D slice, map, or nil
+- **Output**: Pointer to DataTable wrapper (*dt)
+- **Purpose**: Alias for `From()` providing a shorter method name
 
 #### Basic Creation from DataList
 

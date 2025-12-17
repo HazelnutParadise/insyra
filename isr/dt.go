@@ -139,6 +139,12 @@ func (d dt) From(item any) *dt {
 	return &t
 }
 
+// Of is an alias for From.
+// It converts a DataList, DL, Row, Col, []DL, []Row, []Col, CSV, map[string]any, or map[int]any to a DataTable.
+func (d dt) Of(item any) *dt {
+	return d.From(item)
+}
+
 // Col returns a DL that contains the column at the specified index.
 func (t *dt) Col(col any) *dl {
 	var l dl
