@@ -237,14 +237,20 @@ func (p *parser) parsePrimary() (cclNode, error) {
 
 func getPrecedence(op string) int {
 	switch op {
-	case "=", "==", "!=", ">", "<", ">=", "<=":
+	case "||": // 邏輯或優先級最低
 		return 1
-	case "+", "-":
+	case "&&": // 邏輯與優先級次低
 		return 2
-	case "*", "/", "%":
+	case "=", "==", "!=", ">", "<", ">=", "<=":
 		return 3
-	case "^":
+	case "&": // 字串連接，與加減同級
 		return 4
+	case "+", "-":
+		return 4
+	case "*", "/", "%":
+		return 5
+	case "^":
+		return 6
 	default:
 		return 0
 	}

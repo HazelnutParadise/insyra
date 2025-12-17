@@ -72,6 +72,23 @@ func Tokenize(input string) ([]cclToken, error) {
 				i++
 			}
 			tokens = append(tokens, cclToken{typ: tOPERATOR, value: input[start:i]})
+		case ch == '&':
+			// 處理 & (字串連接) 和 && (邏輯與)
+			if i+1 < len(input) && input[i+1] == '&' {
+				tokens = append(tokens, cclToken{typ: tOPERATOR, value: "&&"})
+				i += 2
+			} else {
+				tokens = append(tokens, cclToken{typ: tOPERATOR, value: "&"})
+				i++
+			}
+		case ch == '|':
+			// 處理 || (邏輯或)
+			if i+1 < len(input) && input[i+1] == '|' {
+				tokens = append(tokens, cclToken{typ: tOPERATOR, value: "||"})
+				i += 2
+			} else {
+				return nil, fmt.Errorf("invalid operator: single '|' is not supported, use '||' for logical OR")
+			}
 		case ch == '[':
 			// 處理 [colIndex] 或 ['colName'] 語法
 			i++ // 跳過 '['

@@ -179,6 +179,27 @@ CCL supports the following data types:
 "A != B"     // Whether values in column A are not equal to those in column B
 ```
 
+### Logical Operators
+
+- `&&` : Logical AND (equivalent to `AND()` function)
+- `||` : Logical OR (equivalent to `OR()` function)
+
+```
+"A > 10 && B < 20"   // true if A > 10 AND B < 20
+"A > 10 || B > 10"   // true if A > 10 OR B > 10
+"(A > 0 && B > 0) || C"  // Combined logical operations
+```
+
+### String Concatenation Operator
+
+- `&` : String concatenation (equivalent to `CONCAT()` function)
+
+```
+"A & B"          // Concatenate A and B (e.g., "Hello" & "World" = "HelloWorld")
+"A & '-' & B"    // Concatenate with separator (e.g., "Hello-World")
+"A & B & C"      // Chain multiple concatenations
+```
+
 ## Column References
 
 CCL provides three ways to reference columns in your expressions:

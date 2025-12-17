@@ -239,6 +239,33 @@ func applyOperator(op string, left, right any) (any, error) {
 		}
 	}
 
+	// 處理 & 運算符（字串連接，等同於 CONCAT）
+	if op == "&" {
+		leftStr := fmt.Sprintf("%v", left)
+		rightStr := fmt.Sprintf("%v", right)
+		return leftStr + rightStr, nil
+	}
+
+	// 處理 && 運算符（邏輯與，等同於 AND）
+	if op == "&&" {
+		lb, lok := toBool(left)
+		rb, rok := toBool(right)
+		if !lok || !rok {
+			return nil, fmt.Errorf("invalid operands for &&: %v, %v (both must be boolean)", left, right)
+		}
+		return lb && rb, nil
+	}
+
+	// 處理 || 運算符（邏輯或，等同於 OR）
+	if op == "||" {
+		lb, lok := toBool(left)
+		rb, rok := toBool(right)
+		if !lok || !rok {
+			return nil, fmt.Errorf("invalid operands for ||: %v, %v (both must be boolean)", left, right)
+		}
+		return lb || rb, nil
+	}
+
 	// 對於比較運算，嘗試將值轉換為數字進行比較
 	lf, lok := toFloat64(left)
 	rf, rok := toFloat64(right)
@@ -330,5 +357,30 @@ func toFloat64(val any) (float64, bool) {
 		return 0.0, true
 	default:
 		return 0, false
+	}
+}
+
+// toBool converts a value to boolean
+func toBool(val any) (bool, bool) {
+	switch v := val.(type) {
+	case bool:
+		return v, true
+	case float64:
+		return v != 0, true
+	case int:
+		return v != 0, true
+	case string:
+		lower := strings.ToLower(strings.TrimSpace(v))
+		if lower == "true" {
+			return true, true
+		}
+		if lower == "false" {
+			return false, true
+		}
+		return false, false
+	case nil:
+		return false, true
+	default:
+		return false, false
 	}
 }
