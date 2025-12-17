@@ -313,7 +313,9 @@ Conditional expressions are used in functions like IF, AND, OR, and CASE, return
 
 ## Chained Comparisons
 
-CCL supports chained comparison operations, allowing concise syntax for range checks:
+CCL supports chained comparison operations, allowing concise syntax for range checks and multi-value comparisons. You can mix different comparison operators in a single chain.
+
+### Basic Range Checks
 
 ```
 "1 < A < 10"     // Whether A is greater than 1 and less than 10
@@ -321,11 +323,26 @@ CCL supports chained comparison operations, allowing concise syntax for range ch
 "A <= B <= C"    // Check if three columns are in ascending order
 ```
 
-This syntax is equivalent to using the AND operator:
+### Mixed Operator Chains
+
+You can combine different comparison operators (`<`, `>`, `<=`, `>=`, `==`, `!=`) in the same chain:
 
 ```
-"AND(1 < A, A < 10)"     // Equivalent to "1 < A < 10"
-"AND(0 <= A, A <= 100)"  // Equivalent to "0 <= A <= 100"
+"A == B > C"         // A equals B AND B is greater than C
+"A != B < C"         // A is not equal to B AND B is less than C
+"A == B > C < D"     // A equals B AND B > C AND C < D
+"A < B <= C < D"     // A < B AND B <= C AND C < D
+"C >= B >= A"        // C >= B AND B >= A (descending order check)
+```
+
+### Equivalence
+
+Chained comparisons are equivalent to using the AND operator:
+
+```
+"1 < A < 10"         // Equivalent to: AND(1 < A, A < 10)
+"A == B > C"         // Equivalent to: AND(A == B, B > C)
+"A < B <= C < D"     // Equivalent to: AND(A < B, B <= C, C < D)
 ```
 
 ## Examples
