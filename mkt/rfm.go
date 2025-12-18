@@ -75,9 +75,10 @@ func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable {
 	// 轉換為 Go 語言的日期格式
 	goDateFormat := utils.ConvertDateFormat(dateFormat)
 
-	customerLastTradingDayMap := make(map[string]int64)  // map[customerID]lastTradingDay
-	customerTradingFrequencyMap := make(map[string]uint) // map[customerID]tradingFrequency
-	customerTotalAmountMap := make(map[string]float64)   // map[customerID]totalAmount
+	customerLastTradingDayMap := make(map[string]int64)           // map[customerID]lastTradingDay
+	customerTradingFrequencyMap := make(map[string]uint)          // map[customerID]tradingFrequency
+	customerTotalAmountMap := make(map[string]float64)            // map[customerID]totalAmount
+	customerTradingPeriodsMap := make(map[string]map[string]bool) // map[customerID]map[formattedPeriod]bool
 
 	dt.AtomicDo(func(dt *insyra.DataTable) {
 		// 找出每個客戶的最後交易日
@@ -93,12 +94,6 @@ func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable {
 				continue
 			}
 
-			// 計算交易頻率
-			if _, exists := customerTradingFrequencyMap[customerID]; !exists {
-				customerTradingFrequencyMap[customerID] = 0
-			}
-			customerTradingFrequencyMap[customerID]++
-
 			// 解析日期字串，並轉換為 UTC 以避免時區問題
 			lastTradingDay, err := time.Parse(goDateFormat, lastTradingDayStr)
 			if err != nil {
@@ -107,6 +102,23 @@ func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable {
 			}
 			lastTradingDayUTC := lastTradingDay.UTC()
 			lastTradingDayUnix := lastTradingDayUTC.Unix()
+
+			// 根據 TimeScale 格式化交易時間，用於計算不重複的交易頻率
+			formattedPeriod := formatTradingPeriod(lastTradingDayUTC, timeScale)
+
+			// 初始化該客戶的交易時間記錄
+			if _, exists := customerTradingPeriodsMap[customerID]; !exists {
+				customerTradingPeriodsMap[customerID] = make(map[string]bool)
+			}
+
+			// 如果該交易時間段尚未記錄，才累加交易頻率
+			if !customerTradingPeriodsMap[customerID][formattedPeriod] {
+				customerTradingPeriodsMap[customerID][formattedPeriod] = true
+				if _, exists := customerTradingFrequencyMap[customerID]; !exists {
+					customerTradingFrequencyMap[customerID] = 0
+				}
+				customerTradingFrequencyMap[customerID]++
+			}
 
 			// 計算最後交易日
 			if existingLastTradingDay, exists := customerLastTradingDayMap[customerID]; !exists || lastTradingDayUnix > existingLastTradingDay {
@@ -227,4 +239,32 @@ func calculateScore(value float64, thresholds []float64, ascending bool) int {
 		}
 	}
 	return score
+}
+
+// formatTradingPeriod 根據 TimeScale 格式化交易時間，用於計算不重複的交易頻率
+func formatTradingPeriod(t time.Time, timeScale TimeScale) string {
+	switch timeScale {
+	case TimeScaleHourly:
+		return t.Format("2006-01-02-15") // 按小時
+	case TimeScaleDaily:
+		return t.Format("2006-01-02") // 按天
+	case TimeScaleWeekly:
+		year, week := t.ISOWeek()
+		return t.Format("2006") + "-W" + padInt(week, 2) + "-" + padInt(year, 4) // 按週
+	case TimeScaleMonthly:
+		return t.Format("2006-01") // 按月
+	case TimeScaleYearly:
+		return t.Format("2006") // 按年
+	default:
+		return t.Format("2006-01-02") // 預設按天
+	}
+}
+
+// padInt 將整數轉換為固定長度的字串
+func padInt(n int, width int) string {
+	s := conv.ToString(n)
+	for len(s) < width {
+		s = "0" + s
+	}
+	return s
 }
