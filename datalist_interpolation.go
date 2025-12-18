@@ -12,11 +12,11 @@ func (dl *DataList) LinearInterpolation(x float64) float64 {
 			*earlyResult = math.NaN()
 			return
 		}
-		for i := 0; i < l.Len()-1; i++ {
+		for i := 0; i < len(l.data)-1; i++ {
 			x0 := float64(i)
 			x1 := float64(i + 1)
-			y0 := l.Data()[i].(float64)
-			y1 := l.Data()[i+1].(float64)
+			y0 := l.data[i].(float64)
+			y1 := l.data[i+1].(float64)
 
 			if x >= x0 && x <= x1 {
 				earlyResult = new(float64)
@@ -42,13 +42,13 @@ func (dl *DataList) QuadraticInterpolation(x float64) float64 {
 			*earlyResult = math.NaN()
 			return
 		}
-		for i := 0; i < l.Len()-2; i++ {
+		for i := 0; i < len(l.data)-2; i++ {
 			x0 := float64(i)
 			x1 := float64(i + 1)
 			x2 := float64(i + 2)
-			y0 := l.Data()[i].(float64)
-			y1 := l.Data()[i+1].(float64)
-			y2 := l.Data()[i+2].(float64)
+			y0 := l.data[i].(float64)
+			y1 := l.data[i+1].(float64)
+			y2 := l.data[i+2].(float64)
 
 			if x >= x0 && x <= x2 {
 				l0 := (x - x1) * (x - x2) / ((x0 - x1) * (x0 - x2))

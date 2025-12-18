@@ -29,6 +29,12 @@ func (d dl) From(data ...any) *dl {
 	return &newDL
 }
 
+// Of is an alias for From.
+// It creates a new DataList from a slice or multiple elements of any type.
+func (d dl) Of(data ...any) *dl {
+	return d.From(data...)
+}
+
 // At is equivalent to dl.Get(index).
 func (l *dl) At(index int) any {
 	return l.Get(index)

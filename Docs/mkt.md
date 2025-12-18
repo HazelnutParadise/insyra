@@ -118,10 +118,10 @@ func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable
 RFM analysis segments customers based on three key metrics:
 
 - **Recency (R)**: Time since last purchase in the specified time scale (lower values = higher scores)
-- **Frequency (F)**: Number of purchases (higher values = higher scores)
+- **Frequency (F)**: Number of unique transaction periods based on TimeScale (higher values = higher scores). For example, if TimeScale is `daily`, multiple transactions on the same day count as one; if `weekly`, multiple transactions in the same week count as one.
 - **Monetary (M)**: Total purchase amount (higher values = higher scores)
 
-The function calculates percentile-based scores for each metric and assigns customers to groups. The TimeScale parameter determines how recency is calculated (hours, days, weeks, months, or years).
+The function calculates percentile-based scores for each metric and assigns customers to groups. The TimeScale parameter determines how recency is calculated (hours, days, weeks, months, or years) and also affects how Frequency is counted (transactions within the same time period are counted as one).
 
 **Output Table Structure:**
 

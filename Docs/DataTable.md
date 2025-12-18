@@ -1034,6 +1034,41 @@ rowName := dt.GetRowNameByIndex(0)
 fmt.Printf("Name of the first row: %s\\n", rowName)
 ```
 
+### GetRowIndexByName
+
+> [!NOTE]
+> Due to Insyra's Get methods usually support -1 as index, make sure to check the returned index before use when the row name might not exist.
+
+Gets the index of a row by its name. This is the inverse lookup of `GetRowNameByIndex`.
+
+```go
+func (dt *DataTable) GetRowIndexByName(name string) int
+```
+
+**Parameters:**
+
+- `name`: The name of the row.
+
+**Returns:**
+
+- `int`: The index of the row if found. Returns `-1` if the row name does not exist.
+
+**Notes:**
+
+- Since `-1` is the error indicator for missing row names, ensure that your row indices are within the valid range (0 to row count - 1).
+- A log warning will be emitted if the row name is not found.
+
+**Example:**
+
+```go
+index := dt.GetRowIndexByName("FirstRow")
+if index != -1 {
+    fmt.Printf("Row 'FirstRow' is at index: %d\\n", index)
+} else {
+    fmt.Println("Row 'FirstRow' not found")
+}
+```
+
 ### RowNamesToFirstCol
 
 Moves all row names to the first column of the DataTable and clears the row names mapping.

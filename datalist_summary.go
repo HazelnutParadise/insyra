@@ -10,8 +10,8 @@ import (
 func (dl *DataList) Summary() {
 	dl.AtomicDo(func(dl *DataList) {
 		dlName := dl.GetName()
-		dlLen := dl.Len()
-		dlData := dl.Data()
+		dlLen := len(dl.data)
+		dlData := dl.data
 
 		// Get terminal window width
 		width := getDataListTerminalWidth()
