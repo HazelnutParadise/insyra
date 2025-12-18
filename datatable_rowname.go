@@ -16,6 +16,35 @@ func (dt *DataTable) SetRowNameByIndex(index int, name string) {
 	})
 }
 
+// GetRowNameByIndex returns the name of the row at the given index.
+func (dt *DataTable) GetRowNameByIndex(index int) string {
+	var result string
+	dt.AtomicDo(func(dt *DataTable) {
+		if rowName, exists := dt.getRowNameByIndex(index); exists {
+			result = rowName
+		} else {
+			result = ""
+		}
+	})
+	return result
+}
+
+// GetRowIndexByName returns the index of the row with the given name.
+// If the row name does not exist, it returns -1.
+//
+// Due to Insyra's Get methods usually support -1 as index, make sure to check the returned index before use when the row name might not exist.
+func (dt *DataTable) GetRowIndexByName(name string) int {
+	var index = -1
+	var exists bool
+	dt.AtomicDo(func(dt *DataTable) {
+		index, exists = dt.rowNames[name]
+	})
+	if !exists {
+		LogWarning("DataTable", "GetRowIndexByName", "Row name not found: %s, returning -1", name)
+	}
+	return index
+}
+
 func (dt *DataTable) ChangeRowName(oldName, newName string) *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
@@ -28,19 +57,6 @@ func (dt *DataTable) ChangeRowName(oldName, newName string) *DataTable {
 		}
 		dt.updateTimestamp()
 		result = dt
-	})
-	return result
-}
-
-// GetRowNameByIndex returns the name of the row at the given index.
-func (dt *DataTable) GetRowNameByIndex(index int) string {
-	var result string
-	dt.AtomicDo(func(dt *DataTable) {
-		if rowName, exists := dt.getRowNameByIndex(index); exists {
-			result = rowName
-		} else {
-			result = ""
-		}
 	})
 	return result
 }
