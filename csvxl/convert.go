@@ -10,10 +10,11 @@ import (
 
 	"github.com/HazelnutParadise/Go-Utils/sliceutil"
 	"github.com/HazelnutParadise/insyra"
-	"github.com/saintfish/chardet"
 
 	"github.com/xuri/excelize/v2"
+	"golang.org/x/text/encoding/simplifiedchinese"
 	"golang.org/x/text/encoding/traditionalchinese"
+	"golang.org/x/text/encoding/unicode"
 	"golang.org/x/text/transform"
 )
 
@@ -184,46 +185,6 @@ func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyConta
 
 // ===============================
 
-// DetectEncoding automatically detects the encoding of a CSV file
-// Returns the detected encoding as a string, or an error if detection fails
-func DetectEncoding(csvFile string) (string, error) {
-	file, err := os.Open(csvFile)
-	if err != nil {
-		return "", fmt.Errorf("failed to open CSV file %s: %v", csvFile, err)
-	}
-	defer func() { _ = file.Close() }()
-
-	// Read a sample of the file for detection (first 1024 bytes should be sufficient)
-	buffer := make([]byte, 1024)
-	n, err := file.Read(buffer)
-	if err != nil && err != io.EOF {
-		return "", fmt.Errorf("failed to read CSV file %s: %v", csvFile, err)
-	}
-
-	// Use chardet to detect encoding
-	detector := chardet.NewTextDetector()
-	result, err := detector.DetectBest(buffer[:n])
-	if err != nil {
-		return "", fmt.Errorf("failed to detect encoding for file %s: %v", csvFile, err)
-	}
-
-	// Map chardet results to our encoding constants
-	switch strings.ToLower(result.Charset) {
-	case "utf-8", "ascii":
-		return UTF8, nil
-	case "big5":
-		return Big5, nil
-	case "gb-18030", "gbk", "gb-2312":
-		// For Chinese encodings, fall back to UTF-8 and return a warning error
-		return UTF8, fmt.Errorf("detected Chinese encoding %s for file %s, falling back to UTF-8", result.Charset, csvFile)
-	default:
-		// For unknown encodings, return an error so callers can decide how to handle it
-		return "", fmt.Errorf("unknown encoding %s detected for file %s (confidence: %d)", result.Charset, csvFile, result.Confidence)
-	}
-}
-
-// ===============================
-
 // saveSheetAsCsv saves a specific sheet in an Excel file as a CSV file.
 func saveSheetAsCsv(f *excelize.File, sheetName string, outputCsvName string) error {
 	file, err := os.Create(outputCsvName)
@@ -269,29 +230,41 @@ func addCsvSheet(f *excelize.File, sheetName, csvFile string, encoding string) e
 
 	// Auto-detect encoding if specified
 	if encoding == Auto {
-		detectedEncoding, err := DetectEncoding(csvFile)
+		detectedEncoding, err := insyra.DetectEncoding(csvFile)
 		if err != nil {
 			// Propagate the detection error instead of silently falling back
 			return fmt.Errorf("failed to auto-detect encoding for %s: %v", csvFile, err)
 		}
-		encoding = detectedEncoding
+		encoding = strings.ToLower(detectedEncoding)
 		insyra.LogInfo("csvxl", "addCsvSheet", "Auto-detected encoding %s for file %s", encoding, csvFile)
 	}
 
-	switch encoding {
-	case Big5:
-		reader := transform.NewReader(file, traditionalchinese.Big5.NewDecoder())
-		csvReader := csv.NewReader(reader)
-		records, err = csvReader.ReadAll()
-		if err != nil {
-			return fmt.Errorf("failed to read CSV file %s: %v", csvFile, err)
-		}
+	// Ensure we start reading from the beginning of the file
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("failed to seek file %s: %v", csvFile, err)
+	}
+
+	var reader io.Reader
+	switch {
+	case strings.Contains(encoding, "big5"):
+		reader = transform.NewReader(file, traditionalchinese.Big5.NewDecoder())
+	case strings.Contains(encoding, "gb") || strings.Contains(encoding, "gb-"):
+		reader = transform.NewReader(file, simplifiedchinese.GB18030.NewDecoder())
+	case strings.Contains(encoding, "utf-16") || strings.Contains(encoding, "utf16"):
+		reader = transform.NewReader(file, unicode.UTF16(unicode.LittleEndian, unicode.UseBOM).NewDecoder())
 	default:
-		reader := csv.NewReader(file)
-		records, err = reader.ReadAll()
-		if err != nil {
-			return fmt.Errorf("failed to read CSV file %s: %v", csvFile, err)
-		}
+		reader = file
+	}
+
+	csvReader := csv.NewReader(reader)
+	records, err = csvReader.ReadAll()
+	if err != nil {
+		return fmt.Errorf("failed to read CSV file %s: %v", csvFile, err)
+	}
+
+	// Trim UTF-8 BOM if present
+	if len(records) > 0 && len(records[0]) > 0 {
+		records[0][0] = strings.TrimPrefix(records[0][0], "\uFEFF")
 	}
 
 	for rowIdx, record := range records {

@@ -34,7 +34,7 @@
 //	}
 //
 //	// Detect encoding of a specific file
-//	encoding, err := csvxl.DetectEncoding("myfile.csv")
+//	encoding, err := insyra.DetectEncoding("myfile.csv")
 //	if err != nil {
 //		// Unknown encoding or detection error; handle appropriately
 //	}

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/HazelnutParadise/insyra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/xuri/excelize/v2"
@@ -21,7 +22,7 @@ func TestDetectEncoding(t *testing.T) {
 	err := os.WriteFile(utf8File, []byte(utf8Content), 0644)
 	require.NoError(t, err)
 
-	encoding, err := DetectEncoding(utf8File)
+	encoding, err := insyra.DetectEncoding(utf8File)
 	if err != nil {
 		// Unknown detection is valid and should return an error with empty encoding
 		assert.Equal(t, "", encoding)
@@ -36,7 +37,7 @@ func TestDetectEncoding(t *testing.T) {
 	err = os.WriteFile(utf8ChineseFile, []byte(utf8ChineseContent), 0644)
 	require.NoError(t, err)
 
-	encoding, err = DetectEncoding(utf8ChineseFile)
+	encoding, err = insyra.DetectEncoding(utf8ChineseFile)
 	// Chinese content may be detected as UTF-8; for some encodings we return a fallback with an error
 	if err != nil {
 		assert.Equal(t, UTF8, encoding)
@@ -50,7 +51,7 @@ func TestDetectEncoding(t *testing.T) {
 	err = os.WriteFile(emptyFile, []byte(""), 0644)
 	require.NoError(t, err)
 
-	encoding, err = DetectEncoding(emptyFile)
+	encoding, err = insyra.DetectEncoding(emptyFile)
 	if err != nil {
 		assert.Equal(t, "", encoding)
 		assert.Error(t, err)
@@ -59,7 +60,7 @@ func TestDetectEncoding(t *testing.T) {
 	}
 
 	// Test non-existent file
-	_, err = DetectEncoding(filepath.Join(tempDir, "nonexistent.csv"))
+	_, err = insyra.DetectEncoding(filepath.Join(tempDir, "nonexistent.csv"))
 	assert.Error(t, err)
 }
 

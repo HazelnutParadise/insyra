@@ -67,7 +67,7 @@ import (
 )
 
 func main() {
-    encoding, err := csvxl.DetectEncoding("myfile.csv")
+    encoding, err := insyra.DetectEncoding("myfile.csv")
     if err != nil {
         log.Fatal(err)
     }
@@ -158,10 +158,10 @@ func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile strin
 - `existingFile`: The name of the existing Excel file.
 - `csvEncoding`(optional): The encoding of the CSV files. If not provided, automatic detection is used. Supported values: `csvxl.UTF8`, `csvxl.Big5`, `csvxl.Auto`.
 
-### 3. `DetectEncoding` 🆕
+### 3. `insyra.DetectEncoding` 🆕
 
 ```go
-func DetectEncoding(csvFile string) (string, error)
+func insyra.DetectEncoding(csvFile string) (string, error)
 ```
 
 **Description**: Automatically detects the encoding of a CSV file.
@@ -242,7 +242,7 @@ All public functions now return an `error` value to indicate failures.
 
 - Batch operations (`CsvToExcel`, `AppendCsvToExcel`) will attempt to process all provided files; if some files fail, the functions will return a non-nil error summarizing the number of failed files (e.g. `"2 files failed to convert"`). Successful conversions will still produce output files when possible.
 - Operations that work on a single input or per-file basis (`ExcelToCsv`, `EachExcelToCsv`, `EachCsvToOneExcel`) will return an error immediately when a fatal failure occurs (e.g. cannot open file or cannot save a sheet).
-- `DetectEncoding(csvFile)` returns `(string, error)`. It returns the detected encoding and an error if detection failed. For certain Chinese encodings (e.g., GBK/GB18030) it may return `UTF-8` and a non-nil error indicating a fallback; for unknown or unrecognized encodings it returns an error and an empty encoding — callers should treat this as a failure and handle it (e.g., by specifying `csvxl.UTF8` or skipping the file).
+- `insyra.DetectEncoding(csvFile)` returns `(string, error)`. It returns the detected encoding and an error if detection failed. For certain Chinese encodings (e.g., GBK/GB18030) it may return `UTF-8` and a non-nil error indicating a fallback; for unknown or unrecognized encodings it returns an error and an empty encoding — callers should treat this as a failure and handle it (e.g., by specifying `csvxl.UTF8` or skipping the file).
 
 Please update your callers to check and handle returned errors (for example: `if err := csvxl.CsvToExcel(...); err != nil { // handle }`).
 
