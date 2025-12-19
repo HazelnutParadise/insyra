@@ -107,6 +107,51 @@ func main() {
 }
 ```
 
+### 12. `DetectEncoding(filePath string) (string, error)`
+
+**Purpose:** Detect the character encoding of a text file. Supports common encodings such as UTF-8, Big5, GB18030/GBK, and UTF-16 (with BOM).
+
+**Behavior:**
+
+- Reads a sample from the beginning of the file (currently 8192 bytes) to increase detection accuracy.
+- Checks for common BOM signatures first:
+  - `0xEF 0xBB 0xBF` → `utf-8`
+  - `0xFF 0xFE` → `utf-16le`
+  - `0xFE 0xFF` → `utf-16be`
+- If the sample is valid UTF-8 (`utf8.Valid`), returns `utf-8`.
+- Otherwise uses `chardet` to detect encoding and returns the charset in lowercase (e.g., `"big5"`, `"gb-18030"`).
+- Returns an error on empty files or when detection fails.
+
+**Return values:**
+
+- (string) detected encoding in lowercase (empty if detection failed)
+- (error) non-nil when file open/read or detection fails
+
+**Example usage:**
+
+```go
+enc, err := insyra.DetectEncoding("data.csv")
+if err != nil {
+    // handle detection error or use a fallback (e.g., "utf-8")
+}
+enc = strings.ToLower(enc)
+switch {
+case strings.Contains(enc, "big5"):
+    // use Big5 decoder
+case strings.Contains(enc, "gb"):
+    // use GB18030 decoder
+case strings.Contains(enc, "utf-16"):
+    // use UTF-16 decoder with BOM handling
+default:
+    // treat as UTF-8
+}
+```
+
+**Notes:**
+
+- This function is intended for text files; behavior on binary files is undefined and may return incorrect results.
+- If you need deterministic behavior, allow callers to force a specific encoding instead of relying on detection.
+
 ## Installation
 
 To install **Insyra**, use the following command:

@@ -1,13 +1,19 @@
 package insyra
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"math/big"
+	"os"
 	"reflect"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/HazelnutParadise/Go-Utils/conv"
 	"github.com/HazelnutParadise/insyra/internal/utils"
+	"github.com/saintfish/chardet"
 )
 
 type F64orRat = utils.F64orRat
@@ -246,4 +252,53 @@ func colorText(code string, text any) string {
 		return fmt.Sprintf("\033[%sm%v\033[0m", code, text)
 	}
 	return fmt.Sprintf("%v", text)
+}
+
+// DetectEncoding detects the character encoding of a text file.
+// It reads a sample of the file and returns the detected charset in lower case
+// (e.g. "utf-8", "big5", "gb-18030", "utf-16le").
+// For empty files it returns an error.
+func DetectEncoding(filePath string) (string, error) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to open file %s: %w", filePath, err)
+	}
+	defer func() { _ = f.Close() }()
+
+	// Read a reasonably large sample to improve detection accuracy
+	buf := make([]byte, 8192)
+	n, err := f.Read(buf)
+	if err != nil && err != io.EOF {
+		return "", fmt.Errorf("failed to read file %s: %w", filePath, err)
+	}
+	if n == 0 {
+		return "", fmt.Errorf("empty file %s", filePath)
+	}
+	sample := buf[:n]
+
+	// BOM checks
+	if bytes.HasPrefix(sample, []byte{0xEF, 0xBB, 0xBF}) {
+		return "utf-8", nil
+	}
+	if bytes.HasPrefix(sample, []byte{0xFF, 0xFE}) {
+		return "utf-16le", nil
+	}
+	if bytes.HasPrefix(sample, []byte{0xFE, 0xFF}) {
+		return "utf-16be", nil
+	}
+
+	// Quick UTF-8 heuristic
+	if utf8.Valid(sample) {
+		return "utf-8", nil
+	}
+
+	// Fallback to chardet
+	detector := chardet.NewTextDetector()
+	res, err := detector.DetectBest(sample)
+	if err != nil {
+		return "", fmt.Errorf("failed to detect encoding for file %s: %w", filePath, err)
+	}
+
+	charset := strings.ToLower(res.Charset)
+	return charset, nil
 }
