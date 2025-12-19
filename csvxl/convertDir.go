@@ -1,6 +1,7 @@
 package csvxl
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,35 +13,32 @@ import (
 // EachCsvToOneExcel converts each CSV file in the given directory to an Excel file.
 // The output Excel file will be saved in the given output path.
 // If encoding is not specified, auto-detection will be used.
-func EachCsvToOneExcel(dir string, output string, encoding ...string) {
+func EachCsvToOneExcel(dir string, output string, encoding ...string) error {
 	files, err := filepath.Glob(filepath.Join(dir, "*.csv"))
 	if err != nil {
-		insyra.LogWarning("csvxl", "EachCsvToOneExcel", "%s", err)
-		return
+		return fmt.Errorf("failed to list CSV files in %s: %v", dir, err)
 	}
 
 	var csvFiles []string
 	csvFiles = append(csvFiles, files...)
 
-	CsvToExcel(csvFiles, nil, output, encoding...)
+	return CsvToExcel(csvFiles, nil, output, encoding...)
 }
 
 // EachExcelToCsv converts each Excel file in the given directory to CSV files.
 // The output CSV files will be saved in the given output directory.
 // The CSV files will be named as the Excel file name plus the sheet name plus ".csv",
 // for example, "ExcelFileName_SheetName.csv".
-func EachExcelToCsv(dir string, outputDir string) {
+func EachExcelToCsv(dir string, outputDir string) error {
 	files, err := filepath.Glob(filepath.Join(dir, "*.xlsx"))
 	if err != nil {
-		insyra.LogWarning("csvxl", "EachCsvToOneExcel", "%s", err)
-		return
+		return fmt.Errorf("failed to list Excel files in %s: %v", dir, err)
 	}
 
-	xlsx2Csv := func(excelFile string, outputDir string) {
+	for _, excelFile := range files {
 		f, err := excelize.OpenFile(excelFile)
 		if err != nil {
-			insyra.LogWarning("csvxl", "EachCsvToOneExcel", "Failed to open Excel file %s: %v", excelFile, err)
-			return
+			return fmt.Errorf("failed to open Excel file %s: %v", excelFile, err)
 		}
 
 		excelFileName := filepath.Base(excelFile)
@@ -48,29 +46,23 @@ func EachExcelToCsv(dir string, outputDir string) {
 
 		sheets := f.GetSheetList()
 		for _, sheet := range sheets {
-
 			csvName := excelFileName + "_" + sheet + ".csv"
 
 			// Check if output directory exists, if not create it
 			if _, err := os.Stat(outputDir); os.IsNotExist(err) {
 				err := os.MkdirAll(outputDir, os.ModePerm)
 				if err != nil {
-					insyra.LogWarning("csvxl", "EachCsvToOneExcel", "Failed to create directory %s: %v", outputDir, err)
-					return
+					return fmt.Errorf("failed to create directory %s: %v", outputDir, err)
 				}
 			}
 			outputCsv := filepath.Join(outputDir, csvName)
-			err := saveSheetAsCsv(f, sheet, outputCsv)
-			if err != nil {
-				insyra.LogWarning("csvxl", "EachCsvToOneExcel", "Failed to save sheet %s as CSV: %v", sheet, err)
-				return
+			if err := saveSheetAsCsv(f, sheet, outputCsv); err != nil {
+				return fmt.Errorf("failed to save sheet %s as CSV: %v", sheet, err)
 			}
 		}
 
 		insyra.LogInfo("csvxl", "EachCsvToOneExcel", "Successfully converted %d sheets to CSV files in %s.", len(sheets), outputDir)
 	}
 
-	for _, file := range files {
-		xlsx2Csv(file, outputDir)
-	}
+	return nil
 }
