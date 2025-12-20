@@ -76,7 +76,7 @@ func SavePNG(chart Renderable, pngPath string) {
 		if err != nil {
 			insyra.LogFatal("plot", "SavePNG", "failed to send HTTP request: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			insyra.LogFatal("plot", "SavePNG", "online service returned non-OK status: %s", resp.Status)
