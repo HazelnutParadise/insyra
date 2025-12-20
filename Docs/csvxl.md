@@ -10,6 +10,19 @@
 - **Automatic directory creation**: When splitting an Excel file into multiple CSV files, the target directory is automatically created if it does not exist.
 - **🆕 Automatic encoding detection**: Automatically detects the encoding of CSV files, supporting UTF-8, Big5, and other common encodings.
 
+## Excel Format Support
+
+The `csvxl` package uses [excelize](https://github.com/qax-os/excelize) library for reading and writing Excel files. The following Excel formats are supported:
+
+- **XLAM** - Excel Add-in File (macro-enabled)
+- **XLSM** - Excel Macro-Enabled Workbook
+- **XLSX** - Excel Workbook (most common)
+- **XLTM** - Excel Macro-Enabled Template
+- **XLTX** - Excel Template
+
+> [!NOTE]
+> The `excelize` library provides comprehensive support for Excel file manipulation, allowing seamless reading and writing of all modern Excel formats.
+
 > [!NOTE]
 > The package now supports automatic encoding detection by default. When no encoding is explicitly specified, it will automatically detect the encoding of CSV files. Supported encodings include UTF-8, Big5, ASCII, and others. Note: for certain Chinese encodings the detector may fall back to UTF-8 and return a warning-like error indicating the fallback; for unknown or unrecognized encodings `DetectEncoding` will return an error and callers should handle it (for example by specifying an explicit encoding).
 
