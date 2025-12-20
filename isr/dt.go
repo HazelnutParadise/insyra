@@ -105,7 +105,11 @@ func (d dt) From(item any) *dt {
 		t.DataTable = insyra.NewDataTable()
 		var err error
 		if val.FilePath != "" {
-			t.DataTable, err = insyra.ReadCSV_File(val.FilePath, val.InputOpts.FirstCol2RowNames, val.InputOpts.FirstRow2ColNames)
+			var encoding = val.InputOpts.Encoding
+			if encoding == "" {
+				encoding = "auto"
+			}
+			t.DataTable, err = insyra.ReadCSV_File(val.FilePath, val.InputOpts.FirstCol2RowNames, val.InputOpts.FirstRow2ColNames, encoding)
 		} else {
 			t.DataTable, err = insyra.ReadCSV_String(val.String, val.InputOpts.FirstCol2RowNames, val.InputOpts.FirstRow2ColNames)
 		}

@@ -51,6 +51,13 @@ type CSV struct {
     OutputOpts CSV_outOpts // Options for writing CSV
 }
 
+// CSV_inOpts structure
+type CSV_inOpts struct {
+    FirstCol2RowNames bool   // Treat the first column as row names
+    FirstRow2ColNames bool   // Treat the first row as column names
+    Encoding          string // Specify input file encoding (e.g., "big5", "utf-8"), Only for FilePath input
+}
+
 // Examples:
 csvFromFile := isr.CSV{FilePath: "data.csv"}
 csvFromString := isr.CSV{String: "name,age\nJohn,30\nJane,25"}
@@ -141,6 +148,7 @@ csvFromFile := isr.CSV{
     InputOpts: isr.CSV_inOpts{
         FirstCol2RowNames: true,
         FirstRow2ColNames: true,
+        Encoding:          "big5", // Specify file encoding
     },
     OutputOpts: isr.CSV_outOpts{
         RowNames2FirstCol: true,

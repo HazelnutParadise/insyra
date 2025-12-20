@@ -10,6 +10,7 @@ type CSV struct {
 type CSV_inOpts struct {
 	FirstCol2RowNames bool
 	FirstRow2ColNames bool
+	Encoding          string // optional, default is "auto", only for FilePath input
 }
 
 type CSV_outOpts struct {
