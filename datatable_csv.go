@@ -59,7 +59,7 @@ func (dt *DataTable) ToCSV(filePath string, setRowNamesToFirstCol bool, setColNa
 		for rowIndex := 0; rowIndex < maxLength; rowIndex++ {
 			var record []string
 			if setRowNamesToFirstCol {
-				rowName := dt.GetRowNameByIndex(rowIndex)
+				rowName, _ := dt.GetRowNameByIndex(rowIndex)
 				record = append(record, rowName)
 			}
 			for _, column := range columns {

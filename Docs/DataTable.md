@@ -1045,54 +1045,62 @@ dt.SetRowNameByIndex(0, "FirstRow") // Set the name of the first row to "FirstRo
 Gets the name of a row by its index.
 
 ```go
-func (dt *DataTable) GetRowNameByIndex(index int) string
+func (dt *DataTable) GetRowNameByIndex(index int) (string, bool)
 ```
 
 **Parameters:**
 
-- `index`: The numeric index of the row (0-based).
+- `index`: The numeric index of the row (0-based). Negative indices are not supported for row names.
 
 **Returns:**
 
-- `string`: The name of the row. Returns an empty string if the row does not exist or has no name.
+- `string`: The name of the row. Returns an empty string if no name is set for this row.
+- `bool`: `true` if a row name exists for this index, `false` otherwise.
 
 **Example:**
 
 ```go
-rowName := dt.GetRowNameByIndex(0)
-fmt.Printf("Name of the first row: %s\\n", rowName)
+name, exists := dt.GetRowNameByIndex(0)
+if exists {
+    fmt.Printf("Name of the first row: %s\\n", name)
+} else {
+    fmt.Println("First row has no name")
+}
 ```
 
 ### GetRowIndexByName
 
 > [!NOTE]
-> Due to Insyra's Get methods usually support -1 as index, make sure to check the returned index before use when the row name might not exist.
+> Since Insyra's Get methods usually support -1 as an index (representing the last element), always check the boolean return value to distinguish between "name not found" and "last row".
 
 Gets the index of a row by its name. This is the inverse lookup of `GetRowNameByIndex`.
 
 ```go
-func (dt *DataTable) GetRowIndexByName(name string) int
+func (dt *DataTable) GetRowIndexByName(name string) (int, bool)
 ```
 
 **Parameters:**
 
-- `name`: The name of the row.
+- `name`: The name of the row to find.
 
 **Returns:**
 
-- `int`: The index of the row if found. Returns `-1` if the row name does not exist.
+- `int`: The row index (0-based). Returns `-1` if the row name does not exist.
+- `bool`: `true` if the row name exists, `false` otherwise.
 
 **Notes:**
 
-- Since `-1` is the error indicator for missing row names, ensure that your row indices are within the valid range (0 to row count - 1).
+- Always check the boolean return value to confirm that the row name exists, especially since `-1` can also represent the last row in some Insyra methods.
 - A log warning will be emitted if the row name is not found.
 
 **Example:**
 
 ```go
-index := dt.GetRowIndexByName("FirstRow")
-if index != -1 {
+index, exists := dt.GetRowIndexByName("FirstRow")
+if exists {
     fmt.Printf("Row 'FirstRow' is at index: %d\\n", index)
+    row := dt.GetRow(index)
+    // Use the row...
 } else {
     fmt.Println("Row 'FirstRow' not found")
 }

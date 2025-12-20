@@ -350,7 +350,7 @@ func (dt *DataTable) GetRow(index int) *DataList {
 				dl.data[i] = column.data[index]
 			}
 		}
-		dl.name = dt.GetRowNameByIndex(index)
+		dl.name, _ = dt.GetRowNameByIndex(index)
 		result = dl
 	})
 	return result

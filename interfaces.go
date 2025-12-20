@@ -169,8 +169,14 @@ type IDataTable interface {
 	ShowTypes()
 	ShowRange(startEnd ...any)
 	ShowTypesRange(startEnd ...any)
-	GetRowIndexByName(name string) int
-	GetRowNameByIndex(index int) string
+	// GetRowIndexByName returns the index of a row by its name.
+	// Returns -1 and false if the row name does not exist.
+	// Always check the boolean return value to distinguish between "name not found" and "last row",
+	// since -1 typically represents the last element in Insyra's Get methods.
+	GetRowIndexByName(name string) (int, bool)
+	// GetRowNameByIndex returns the name of a row at the given index.
+	// Returns empty string and false if no name is set for the row.
+	GetRowNameByIndex(index int) (string, bool)
 	SetRowNameByIndex(index int, name string)
 	ChangeRowName(oldName, newName string) *DataTable
 	RowNamesToFirstCol() *DataTable

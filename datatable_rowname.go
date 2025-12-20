@@ -17,32 +17,61 @@ func (dt *DataTable) SetRowNameByIndex(index int, name string) {
 }
 
 // GetRowNameByIndex returns the name of the row at the given index.
-func (dt *DataTable) GetRowNameByIndex(index int) string {
+// Parameters:
+//   - index: The row index (0-based). Negative indices are not supported for row names.
+//
+// Returns:
+//   - string: The name of the row. Returns empty string if no name is set for this row.
+//   - bool: true if a row name exists for this index, false otherwise.
+//
+// Example:
+//
+//	name, exists := dt.GetRowNameByIndex(0)
+//	if exists {
+//	    fmt.Println("Row name:", name)
+//	}
+func (dt *DataTable) GetRowNameByIndex(index int) (string, bool) {
 	var result string
+	var exists bool
 	dt.AtomicDo(func(dt *DataTable) {
-		if rowName, exists := dt.getRowNameByIndex(index); exists {
-			result = rowName
-		} else {
-			result = ""
-		}
+		result, exists = dt.getRowNameByIndex(index)
 	})
-	return result
+	return result, exists
 }
 
 // GetRowIndexByName returns the index of the row with the given name.
-// If the row name does not exist, it returns -1.
+// Parameters:
+//   - name: The name of the row to find.
 //
-// Due to Insyra's Get methods usually support -1 as index, make sure to check the returned index before use when the row name might not exist.
-func (dt *DataTable) GetRowIndexByName(name string) int {
+// Returns:
+//   - int: The row index (0-based). Returns -1 if the row name does not exist.
+//   - bool: true if the row name exists, false otherwise.
+//
+// Note:
+//
+//	Since Insyra's Get methods usually support -1 as an index (representing the last element),
+//	always check the boolean return value to distinguish between "name not found" and "last row".
+//
+// Example:
+//
+//	index, exists := dt.GetRowIndexByName("MyRow")
+//	if exists {
+//	    row := dt.GetRow(index)
+//	}
+func (dt *DataTable) GetRowIndexByName(name string) (int, bool) {
 	var index = -1
 	var exists bool
 	dt.AtomicDo(func(dt *DataTable) {
-		index, exists = dt.rowNames[name]
+		var idx int
+		idx, exists = dt.rowNames[name]
+		if exists {
+			index = idx
+		}
 	})
 	if !exists {
 		LogWarning("DataTable", "GetRowIndexByName", "Row name not found: %s, returning -1", name)
 	}
-	return index
+	return index, exists
 }
 
 func (dt *DataTable) ChangeRowName(oldName, newName string) *DataTable {
