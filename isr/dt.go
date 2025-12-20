@@ -101,6 +101,16 @@ func (d dt) From(item any) *dt {
 			}
 		}
 		t.Transpose()
+	case Excel:
+		t.DataTable = insyra.NewDataTable()
+		var err error
+		if val.FilePath == "" {
+			insyra.LogFatal("DT", "From", "Excel FilePath cannot be empty")
+		}
+		t.DataTable, err = insyra.ReadExcelSheet(val.FilePath, val.SheetName, val.InputOpts.FirstCol2RowNames, val.InputOpts.FirstRow2ColNames)
+		if err != nil {
+			insyra.LogFatal("DT", "From", "%v", err)
+		}
 	case CSV:
 		t.DataTable = insyra.NewDataTable()
 		var err error
