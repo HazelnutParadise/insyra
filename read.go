@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	csvInternal "github.com/HazelnutParadise/insyra/internal/csv"
 	json "github.com/goccy/go-json"
 	"gorm.io/gorm"
 )
@@ -84,7 +85,7 @@ func Slice2DToDataTable(data any) (*DataTable, error) {
 
 // ReadCSV_File loads a CSV file into a DataTable, with options to set the first column as row names
 // and the first row as column names.
-func ReadCSV_File(filePath string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error) {
+func ReadCSV_File(filePath string, setFirstColToRowNames bool, setFirstRowToColNames bool, encoding ...string) (*DataTable, error) {
 	dt := NewDataTable()
 
 	file, err := os.Open(filePath)
@@ -93,7 +94,26 @@ func ReadCSV_File(filePath string, setFirstColToRowNames bool, setFirstRowToColN
 	}
 	defer func() { _ = file.Close() }()
 
-	reader := csv.NewReader(file)
+	if len(encoding) == 0 {
+		encoding = []string{"auto"}
+	}
+	useEncoding := strings.ToLower(encoding[0])
+	if useEncoding == "auto" {
+		detected, err := DetectEncoding(filePath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to auto-detect encoding for %s: %v", filePath, err)
+		}
+		useEncoding = detected
+		LogInfo("csvxl", "ReadCSV_File", "Auto-detected encoding %s for file %s", useEncoding, filePath)
+	}
+
+	// Use internal CSV reader with encoding support
+	csvString, err := csvInternal.ReadCSVWithEncoding(file, useEncoding)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read CSV file %s: %w", filePath, err)
+	}
+
+	reader := csv.NewReader(strings.NewReader(csvString))
 	rows, err := reader.ReadAll()
 	if err != nil {
 		return nil, err
