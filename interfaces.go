@@ -169,6 +169,7 @@ type IDataTable interface {
 	ShowTypes()
 	ShowRange(startEnd ...any)
 	ShowTypesRange(startEnd ...any)
+	GetRowIndexByName(name string) int
 	GetRowNameByIndex(index int) string
 	SetRowNameByIndex(index int, name string)
 	ChangeRowName(oldName, newName string) *DataTable
