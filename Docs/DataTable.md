@@ -412,6 +412,35 @@ dt, err := insyra.ReadSQL(db, "users", insyra.ReadSQLOptions{Limit: 100, OrderBy
 dt, err := insyra.ReadSQL(db, "", insyra.ReadSQLOptions{Query: "SELECT * FROM users WHERE active = 1"})
 ```
 
+### ReadExcelSheet
+
+Reads a specific sheet from an Excel file and loads the data into a new DataTable.
+
+```go
+func ReadExcelSheet(filePath string, sheetName string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error)
+```
+
+**Parameters:**
+
+- `filePath`: The path to the Excel file.
+- `sheetName`: The name of the sheet to read.
+- `setFirstColToRowNames`: If `true`, the first column of the sheet will be used as the row names for the DataTable.
+- `setFirstRowToColNames`: If `true`, the first row of the sheet will be used as the column names for the DataTable.
+
+**Returns:**
+
+- `*DataTable`: A new DataTable containing the data from the Excel sheet.
+- `error`: An error if the file cannot be opened, the sheet doesn't exist, or the data cannot be processed.
+
+**Example:**
+
+```go
+dt, err := insyra.ReadExcelSheet("data.xlsx", "Sheet1", true, true)
+if err != nil {
+    log.Fatal(err)
+}
+```
+
 ## Data Saving
 
 ### ToCSV

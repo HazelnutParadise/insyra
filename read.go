@@ -10,6 +10,7 @@ import (
 
 	csvInternal "github.com/HazelnutParadise/insyra/internal/csv"
 	json "github.com/goccy/go-json"
+	"github.com/xuri/excelize/v2"
 	"gorm.io/gorm"
 )
 
@@ -236,6 +237,32 @@ func ReadCSV_String(csvString string, setFirstColToRowNames bool, setFirstRowToC
 		}
 	}
 
+	return dt, nil
+}
+
+// ----- excel -----
+
+// ReadExcelSheet reads a specific sheet from an Excel file and loads it into a DataTable.
+func ReadExcelSheet(filePath string, sheetName string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error) {
+	f, err := excelize.OpenFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open Excel file %s: %v", filePath, err)
+	}
+	defer func() { _ = f.Close() }()
+	rows, err := f.GetRows(sheetName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get rows from sheet %s: %v", sheetName, err)
+	}
+	dt, err := ReadSlice2D(rows)
+	if err != nil {
+		return nil, fmt.Errorf("failed when converting sheet %s to DataTable: %v", sheetName, err)
+	}
+	if setFirstColToRowNames {
+		dt.SetColToRowNames("A")
+	}
+	if setFirstRowToColNames {
+		dt.SetRowToColNames(0)
+	}
 	return dt, nil
 }
 
