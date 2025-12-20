@@ -266,7 +266,7 @@ func main() {
 
 For implementation details, see the [config.go](config.go) source file.
 
-#### Thread Safety and Defensive Copies
+## Thread Safety and Defensive Copies
 
 - **Defensive copies:** Insyra returns defensive copies for all public data accessors. Any method that exposes internal slices, maps, or other mutable structures returns a copy so callers cannot mutate internal state unintentionally.
 - **Atomic operations:** For safe concurrent multi-step operations, use the helper `AtomicDo`. `AtomicDo` serializes all operations for an instance via a dedicated actor goroutine and a command channel (see [atomic.go](atomic.go)), avoiding mutexes.
