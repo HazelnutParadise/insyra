@@ -34,7 +34,12 @@ type IDataList interface {
 	ClearStrings() *DataList
 	ClearNumbers() *DataList
 	ClearNaNs() *DataList
+	ClearNils() *DataList
+	ClearNilsAndNaNs() *DataList
 	ClearOutliers(float64) *DataList
+	ReplaceNaNsWith(any) *DataList
+	ReplaceNilsWith(any) *DataList
+	ReplaceNaNsAndNilsWith(any) *DataList
 	Normalize() *DataList
 	Standardize() *DataList
 	FillNaNWithMean() *DataList

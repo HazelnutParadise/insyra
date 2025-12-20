@@ -321,6 +321,10 @@ func (dl *DataList) ReplaceAll(oldValue, newValue any) {
 }
 
 // ReplaceOutliers replaces outliers in the DataList with the specified replacement value (e.g., mean, median).
+//
+// Parameters:
+// - stdDevs: Number of standard deviations to use as threshold (e.g., 2.0 means values beyond ±2σ from the mean will be replaced)
+// - replacement: Value to replace outliers with
 func (dl *DataList) ReplaceOutliers(stdDevs float64, replacement float64) *DataList {
 	dl.AtomicDo(func(dl *DataList) {
 		mean := dl.Mean()
@@ -331,6 +335,53 @@ func (dl *DataList) ReplaceOutliers(stdDevs float64, replacement float64) *DataL
 			val := conv.ParseF64(v)
 			if math.Abs(val-mean) > threshold {
 				dl.data[i] = replacement
+			}
+		}
+	})
+	return dl
+}
+
+// ReplaceNaNsWith replaces all NaN values in the DataList with the specified value.
+func (dl *DataList) ReplaceNaNsWith(value any) *DataList {
+	defer func() {
+		go dl.updateTimestamp()
+	}()
+	dl.AtomicDo(func(dl *DataList) {
+		for i, v := range dl.data {
+			if val, ok := v.(float64); ok && math.IsNaN(val) {
+				dl.data[i] = value
+			}
+		}
+	})
+	return dl
+}
+
+// ReplaceNilsWith replaces all nil values in the DataList with the specified value.
+func (dl *DataList) ReplaceNilsWith(value any) *DataList {
+	defer func() {
+		go dl.updateTimestamp()
+	}()
+	dl.AtomicDo(func(dl *DataList) {
+		for i, v := range dl.data {
+			if v == nil {
+				dl.data[i] = value
+			}
+		}
+	})
+	return dl
+}
+
+// ReplaceNaNsAndNilsWith replaces all NaN and nil values in the DataList with the specified value.
+func (dl *DataList) ReplaceNaNsAndNilsWith(value any) *DataList {
+	defer func() {
+		go dl.updateTimestamp()
+	}()
+	dl.AtomicDo(func(dl *DataList) {
+		for i, v := range dl.data {
+			if v == nil {
+				dl.data[i] = value
+			} else if val, ok := v.(float64); ok && math.IsNaN(val) {
+				dl.data[i] = value
 			}
 		}
 	})
@@ -593,6 +644,32 @@ func (dl *DataList) ClearNaNs() *DataList {
 				dl.data = append(dl.data[:i], dl.data[i+1:]...)
 			}
 		}
+	})
+	return dl
+}
+
+// ClearNils removes all nil values from the DataList and updates the timestamp.
+func (dl *DataList) ClearNils() *DataList {
+	defer func() {
+		go dl.updateTimestamp()
+	}()
+	dl.AtomicDo(func(dl *DataList) {
+		for i := len(dl.data) - 1; i >= 0; i-- {
+			if dl.data[i] == nil {
+				dl.data = append(dl.data[:i], dl.data[i+1:]...)
+			}
+		}
+	})
+	return dl
+}
+
+// ClearNilsAndNaNs removes all nil and NaN values from the DataList and updates the timestamp.
+func (dl *DataList) ClearNilsAndNaNs() *DataList {
+	defer func() {
+		go dl.updateTimestamp()
+	}()
+	dl.AtomicDo(func(dl *DataList) {
+		dl.ClearNaNs().ClearNils()
 	})
 	return dl
 }
