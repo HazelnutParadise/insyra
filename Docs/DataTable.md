@@ -1504,6 +1504,50 @@ func (dt *DataTable) Headers() []string
 headers := dt.Headers() // Same as dt.ColNames()
 ```
 
+### DropColsByName
+
+Drops columns by their names.
+
+```go
+func (dt *DataTable) DropColsByName(columnNames ...string) *DataTable
+```
+
+**Parameters:**
+
+- `columnNames`: Names of columns to drop
+
+**Returns:**
+
+- `*DataTable`: The modified DataTable
+
+**Example:**
+
+```go
+dt.DropColsByName("Age", "Address")
+```
+
+### DropRowsByIndex
+
+Drops rows by their numeric indices (0-based).
+
+```go
+func (dt *DataTable) DropRowsByIndex(rowIndices ...int) *DataTable
+```
+
+**Parameters:**
+
+- `rowIndices`: Numeric row indices (0-based) to drop
+
+**Returns:**
+
+- `*DataTable`: The modified DataTable
+
+**Example:**
+
+```go
+dt.DropRowsByIndex(0, 2, 5) // Drops rows at indices 0, 2, and 5
+```
+
 ### DropRowsByName
 
 Drops rows by their names.
@@ -1528,15 +1572,19 @@ dt.DropRowsByName("row1", "row2")
 
 ### DropColsByIndex
 
-Drops columns by their indices.
+Drops columns by their letter indices (e.g., "A", "B", "C").
 
 ```go
-func (dt *DataTable) DropColsByIndex(columnIndices ...string)
+func (dt *DataTable) DropColsByIndex(columnIndices ...string) *DataTable
 ```
 
 **Parameters:**
 
-- `columnIndices`: Column indices (A, B, C...) to drop
+- `columnIndices`: Column letter indices (A, B, C...) to drop
+
+**Returns:**
+
+- `*DataTable`: The modified DataTable
 
 **Example:**
 
@@ -1546,28 +1594,32 @@ dt.DropColsByIndex("A", "C") // Drops columns A and C
 
 ### DropColsByNumber
 
-Drops columns by their numeric indices.
+Drops columns by their numeric indices (0-based).
 
 ```go
-func (dt *DataTable) DropColsByNumber(columnIndices ...int)
+func (dt *DataTable) DropColsByNumber(columnIndices ...int) *DataTable
 ```
 
 **Parameters:**
 
 - `columnIndices`: Numeric column indices (0-based) to drop
 
+**Returns:**
+
+- `*DataTable`: The modified DataTable
+
 **Example:**
 
 ```go
-dt.DropColsByNumber(0, 2) // Drops first and third columns
+dt.DropColsByNumber(0, 2) // Drops first and third columns (columns at index 0 and 2)
 ```
 
-### DropColsContainStringElements
+### DropColsContainString
 
-Drops columns that contain string elements.
+Drops columns that contain any string elements.
 
 ```go
-func (dt *DataTable) DropColsContainStringElements() *DataTable
+func (dt *DataTable) DropColsContainString() *DataTable
 ```
 
 **Returns:**
@@ -1577,15 +1629,15 @@ func (dt *DataTable) DropColsContainStringElements() *DataTable
 **Example:**
 
 ```go
-dt.DropColsContainStringElements()
+dt.DropColsContainString() // Drops all columns that have at least one string element
 ```
 
-### DropColsContainNumbers
+### DropColsContainNumber
 
-Drops columns that contain numeric elements.
+Drops columns that contain any numeric elements.
 
 ```go
-func (dt *DataTable) DropColsContainNumbers() *DataTable
+func (dt *DataTable) DropColsContainNumber() *DataTable
 ```
 
 **Returns:**
@@ -1595,12 +1647,12 @@ func (dt *DataTable) DropColsContainNumbers() *DataTable
 **Example:**
 
 ```go
-dt.DropColsContainNumbers()
+dt.DropColsContainNumber() // Drops all columns that have at least one numeric element
 ```
 
 ### DropColsContainNil
 
-Drops columns that contain nil elements.
+Drops columns that contain any nil (null) elements.
 
 ```go
 func (dt *DataTable) DropColsContainNil() *DataTable
@@ -1613,7 +1665,7 @@ func (dt *DataTable) DropColsContainNil() *DataTable
 **Example:**
 
 ```go
-dt.DropColsContainNil()
+dt.DropColsContainNil() // Drops all columns that have at least one nil element
 ```
 
 ### DropColsContain
@@ -1658,12 +1710,12 @@ func (dt *DataTable) DropColsContainExcelNA() *DataTable
 dt.DropColsContainExcelNA()
 ```
 
-### DropRowsContainStringElements
+### DropRowsContainString
 
-Drops rows that contain string elements.
+Drops rows that contain any string elements.
 
 ```go
-func (dt *DataTable) DropRowsContainStringElements() *DataTable
+func (dt *DataTable) DropRowsContainString() *DataTable
 ```
 
 **Returns:**
@@ -1673,15 +1725,15 @@ func (dt *DataTable) DropRowsContainStringElements() *DataTable
 **Example:**
 
 ```go
-dt.DropRowsContainStringElements()
+dt.DropRowsContainString() // Drops all rows that have at least one string element
 ```
 
-### DropRowsContainNumbers
+### DropRowsContainNumber
 
-Drops rows that contain numeric elements.
+Drops rows that contain any numeric elements.
 
 ```go
-func (dt *DataTable) DropRowsContainNumbers() *DataTable
+func (dt *DataTable) DropRowsContainNumber() *DataTable
 ```
 
 **Returns:**
@@ -1691,12 +1743,12 @@ func (dt *DataTable) DropRowsContainNumbers() *DataTable
 **Example:**
 
 ```go
-dt.DropRowsContainNumbers()
+dt.DropRowsContainNumber() // Drops all rows that have at least one numeric element
 ```
 
 ### DropRowsContainNil
 
-Drops rows that contain nil elements.
+Drops rows that contain any nil (null) elements.
 
 ```go
 func (dt *DataTable) DropRowsContainNil() *DataTable
@@ -1709,7 +1761,7 @@ func (dt *DataTable) DropRowsContainNil() *DataTable
 **Example:**
 
 ```go
-dt.DropRowsContainNil()
+dt.DropRowsContainNil() // Drops all rows that have at least one nil element
 ```
 
 ### DropRowsContain

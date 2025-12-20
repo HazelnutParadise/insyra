@@ -140,21 +140,21 @@ type IDataTable interface {
 	FindColsIfContainsAll(values ...any) []string
 	FindColsIfAnyElementContainsSubstring(substring string) []string
 	FindColsIfAllElementsContainSubstring(substring string) []string
-	DropColsByName(columnNames ...string)
-	DropColsByIndex(columnIndices ...string)
-	DropColsByNumber(columnIndices ...int)
-	DropColsContainStringElements()
-	DropColsContainNumbers()
-	DropColsContainNil()
-	DropColsContain(value ...any)
-	DropColsContainExcelNA()
-	DropRowsByIndex(rowIndices ...int)
-	DropRowsByName(rowNames ...string)
-	DropRowsContainStringElements()
-	DropRowsContainNumbers()
-	DropRowsContainNil()
-	DropRowsContain(value ...any)
-	DropRowsContainExcelNA()
+	DropColsByName(columnNames ...string) *DataTable
+	DropColsByIndex(columnIndices ...string) *DataTable
+	DropColsByNumber(columnIndices ...int) *DataTable
+	DropColsContainString() *DataTable
+	DropColsContainNumber() *DataTable
+	DropColsContainNil() *DataTable
+	DropColsContain(value ...any) *DataTable
+	DropColsContainExcelNA() *DataTable
+	DropRowsByIndex(rowIndices ...int) *DataTable
+	DropRowsByName(rowNames ...string) *DataTable
+	DropRowsContainString() *DataTable
+	DropRowsContainNumber() *DataTable
+	DropRowsContainNil() *DataTable
+	DropRowsContain(value ...any) *DataTable
+	DropRowsContainExcelNA() *DataTable
 	Data(useNamesAsKeys ...bool) map[string][]any
 	// ToMap is the alias for Data().
 	// It returns a map[string][]any representation of the DataTable.

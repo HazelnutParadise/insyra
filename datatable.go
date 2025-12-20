@@ -707,7 +707,7 @@ func (dt *DataTable) FindColsIfAllElementsContainSubstring(substring string) []s
 // ======================== Drop ========================
 
 // DropColsByName drops columns by their names.
-func (dt *DataTable) DropColsByName(columnNames ...string) {
+func (dt *DataTable) DropColsByName(columnNames ...string) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		for _, name := range columnNames {
 			for colName, colPos := range dt.columnIndex {
@@ -727,10 +727,11 @@ func (dt *DataTable) DropColsByName(columnNames ...string) {
 		dt.regenerateColIndex()
 		go dt.updateTimestamp()
 	})
+	return dt
 }
 
 // DropColsByIndex drops columns by their index names.
-func (dt *DataTable) DropColsByIndex(columnIndices ...string) {
+func (dt *DataTable) DropColsByIndex(columnIndices ...string) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		for _, index := range columnIndices {
 			index = strings.ToUpper(index)
@@ -750,10 +751,11 @@ func (dt *DataTable) DropColsByIndex(columnIndices ...string) {
 		dt.regenerateColIndex()
 		go dt.updateTimestamp()
 	})
+	return dt
 }
 
 // DropColsByNumber drops columns by their number.
-func (dt *DataTable) DropColsByNumber(columnIndices ...int) {
+func (dt *DataTable) DropColsByNumber(columnIndices ...int) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		// 從大到小排序，防止刪除後索引變動
 		sort.Sort(sort.Reverse(sort.IntSlice(columnIndices)))
@@ -768,10 +770,11 @@ func (dt *DataTable) DropColsByNumber(columnIndices ...int) {
 		dt.regenerateColIndex()
 		go dt.updateTimestamp()
 	})
+	return dt
 }
 
-// DropColsContainStringElements drops columns that contain string elements.
-func (dt *DataTable) DropColsContainStringElements() {
+// DropColsContainString drops columns that contain string elements.
+func (dt *DataTable) DropColsContainString() *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		columnsToDelete := make([]int, 0)
 
@@ -802,10 +805,11 @@ func (dt *DataTable) DropColsContainStringElements() {
 
 		go dt.updateTimestamp()
 	})
+	return dt
 }
 
-// DropColsContainNumbers drops columns that contain number elements.
-func (dt *DataTable) DropColsContainNumbers() {
+// DropColsContainNumber drops columns that contain number elements.
+func (dt *DataTable) DropColsContainNumber() *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		columnsToDelete := make([]int, 0)
 
@@ -837,10 +841,11 @@ func (dt *DataTable) DropColsContainNumbers() {
 
 		go dt.updateTimestamp()
 	})
+	return dt
 }
 
 // DropColsContainNil drops columns that contain nil elements.
-func (dt *DataTable) DropColsContainNil() {
+func (dt *DataTable) DropColsContainNil() *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		columnsToDelete := make([]int, 0)
 
@@ -869,10 +874,11 @@ func (dt *DataTable) DropColsContainNil() {
 
 		go dt.updateTimestamp()
 	})
+	return dt
 }
 
 // DropColsContain drops columns that contain the specified value.
-func (dt *DataTable) DropColsContain(value ...any) {
+func (dt *DataTable) DropColsContain(value ...any) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		columnsToDelete := make([]int, 0)
 		for colIndex, column := range dt.columns {
@@ -896,15 +902,17 @@ func (dt *DataTable) DropColsContain(value ...any) {
 		dt.regenerateColIndex()
 		go dt.updateTimestamp()
 	})
+	return dt
 }
 
 // DropColsContainExcelNA drops columns that contain Excel NA values ("#N/A").
-func (dt *DataTable) DropColsContainExcelNA() {
+func (dt *DataTable) DropColsContainExcelNA() *DataTable {
 	dt.DropColsContain("#N/A")
+	return dt
 }
 
 // DropRowsByIndex drops rows by their indices.
-func (dt *DataTable) DropRowsByIndex(rowIndices ...int) {
+func (dt *DataTable) DropRowsByIndex(rowIndices ...int) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		sort.Ints(rowIndices) // 確保從最小索引開始刪除
 
@@ -929,10 +937,11 @@ func (dt *DataTable) DropRowsByIndex(rowIndices ...int) {
 		}
 		go dt.updateTimestamp()
 	})
+	return dt
 }
 
 // DropRowsByName drops rows by their names.
-func (dt *DataTable) DropRowsByName(rowNames ...string) {
+func (dt *DataTable) DropRowsByName(rowNames ...string) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		for _, rowName := range rowNames {
 			rowIndex, exists := dt.rowNames[rowName]
@@ -961,10 +970,11 @@ func (dt *DataTable) DropRowsByName(rowNames ...string) {
 
 		go dt.updateTimestamp()
 	})
+	return dt
 }
 
-// DropRowsContainStringElements drops rows that contain string elements.
-func (dt *DataTable) DropRowsContainStringElements() {
+// DropRowsContainString drops rows that contain string elements.
+func (dt *DataTable) DropRowsContainString() *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		rowsToDelete := make([]int, 0)
 
@@ -1006,10 +1016,11 @@ func (dt *DataTable) DropRowsContainStringElements() {
 		}
 		go dt.updateTimestamp()
 	})
+	return dt
 }
 
-// DropRowsContainNumbers drops rows that contain number elements.
-func (dt *DataTable) DropRowsContainNumbers() {
+// DropRowsContainNumber drops rows that contain number elements.
+func (dt *DataTable) DropRowsContainNumber() *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		maxLength := dt.getMaxColLength()
 		rowsToKeep := make([]bool, maxLength)
@@ -1053,10 +1064,11 @@ func (dt *DataTable) DropRowsContainNumbers() {
 
 		go dt.updateTimestamp()
 	})
+	return dt
 }
 
 // DropRowsContainNil drops rows that contain nil elements.
-func (dt *DataTable) DropRowsContainNil() {
+func (dt *DataTable) DropRowsContainNil() *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		maxLength := dt.getMaxColLength()
 
@@ -1102,10 +1114,11 @@ func (dt *DataTable) DropRowsContainNil() {
 		}
 		go dt.updateTimestamp()
 	})
+	return dt
 }
 
 // DropRowsContain drops rows that contain the specified value.
-func (dt *DataTable) DropRowsContain(value ...any) {
+func (dt *DataTable) DropRowsContain(value ...any) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		maxLength := dt.getMaxColLength()
 		rowsToKeep := make([]bool, maxLength)
@@ -1140,11 +1153,13 @@ func (dt *DataTable) DropRowsContain(value ...any) {
 		dt.rowNames = newRowNames
 		go dt.updateTimestamp()
 	})
+	return dt
 }
 
 // DropRowsContainExcelNA drops rows that contain Excel NA values ("#N/A").
-func (dt *DataTable) DropRowsContainExcelNA() {
+func (dt *DataTable) DropRowsContainExcelNA() *DataTable {
 	dt.DropRowsContain("#N/A")
+	return dt
 }
 
 // ======================== Data ========================
