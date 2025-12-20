@@ -10,6 +10,19 @@
 - **Automatic directory creation**: When splitting an Excel file into multiple CSV files, the target directory is automatically created if it does not exist.
 - **🆕 Automatic encoding detection**: Automatically detects the encoding of CSV files, supporting UTF-8, Big5, and other common encodings.
 
+## Excel Format Support
+
+The `csvxl` package uses [excelize](https://github.com/qax-os/excelize) library for reading and writing Excel files. The following Excel formats are supported:
+
+- **XLAM** - Excel Add-in File (macro-enabled)
+- **XLSM** - Excel Macro-Enabled Workbook
+- **XLSX** - Excel Workbook (most common)
+- **XLTM** - Excel Macro-Enabled Template
+- **XLTX** - Excel Template
+
+> [!NOTE]
+> The `excelize` library provides comprehensive support for Excel file manipulation, allowing seamless reading and writing of all modern Excel formats.
+
 > [!NOTE]
 > The package now supports automatic encoding detection by default. When no encoding is explicitly specified, it will automatically detect the encoding of CSV files. Supported encodings include UTF-8, Big5, ASCII, and others. Note: for certain Chinese encodings the detector may fall back to UTF-8 and return a warning-like error indicating the fallback; for unknown or unrecognized encodings `DetectEncoding` will return an error and callers should handle it (for example by specifying an explicit encoding).
 
@@ -158,7 +171,7 @@ func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile strin
 - `existingFile`: The name of the existing Excel file.
 - `csvEncoding`(optional): The encoding of the CSV files. If not provided, automatic detection is used. Supported values: `csvxl.UTF8`, `csvxl.Big5`, `csvxl.Auto`.
 
-### 3. `insyra.DetectEncoding` 🆕
+### 3. `insyra.DetectEncoding`
 
 ```go
 func insyra.DetectEncoding(csvFile string) (string, error)
@@ -169,7 +182,47 @@ func insyra.DetectEncoding(csvFile string) (string, error)
 - `csvFile`: The path to the CSV file to analyze.
 - Returns: The detected encoding as a string (e.g., "utf-8", "big5") and an error if detection fails.
 
-### 4. `ExcelToCsv`
+### 4. `ReadCsvToString`
+
+```go
+func ReadCsvToString(filePath string, encoding ...string) (string, error)
+```
+
+**Description**: Reads a CSV file and returns its contents as a UTF-8 encoded string.
+
+- `filePath`: The path to the CSV file to read.
+- `encoding`(optional): The encoding of the CSV file. If not provided, automatic detection is used. Supported values: `csvxl.UTF8`, `csvxl.Big5`, `csvxl.Auto`.
+- Returns: The CSV content as a UTF-8 string and an error if reading or conversion fails.
+
+**Usage Example**:
+
+```go
+package main
+
+import (
+    "fmt"
+    "log"
+    "github.com/HazelnutParadise/csvxl"
+)
+
+func main() {
+    // Read with auto-detection
+    csvStr, err := csvxl.ReadCsvToString("input.csv")
+    if err != nil {
+        log.Fatalf("ReadCsvToString failed: %v", err)
+    }
+    fmt.Println(csvStr)
+
+    // Or specify explicit encoding
+    csvStr, err = csvxl.ReadCsvToString("input.csv", csvxl.Big5)
+    if err != nil {
+        log.Fatalf("ReadCsvToString failed: %v", err)
+    }
+    fmt.Println(csvStr)
+}
+```
+
+### 5. `ExcelToCsv`
 
 ```go
 func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyContainSheets ...string) error
@@ -185,7 +238,7 @@ func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyConta
 > [!NOTE]
 > The CSV file names will be in the format of "ExcelFileName_SheetName.csv".
 
-### 5. `EachExcelToCsv`
+### 6. `EachExcelToCsv`
 
 ```go
 func EachExcelToCsv(dir string, outputDir string) error
@@ -196,7 +249,7 @@ func EachExcelToCsv(dir string, outputDir string) error
 - `dir`: The directory containing the input Excel files.
 - `outputDir`: The directory where the split CSV files will be saved.
 
-### 6. `EachCsvToOneExcel`
+### 7. `EachCsvToOneExcel`
 
 ```go
 func EachCsvToOneExcel(dir string, output string, encoding ...string) error

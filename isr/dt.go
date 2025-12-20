@@ -101,11 +101,25 @@ func (d dt) From(item any) *dt {
 			}
 		}
 		t.Transpose()
+	case Excel:
+		t.DataTable = insyra.NewDataTable()
+		var err error
+		if val.FilePath == "" {
+			insyra.LogFatal("DT", "From", "Excel FilePath cannot be empty")
+		}
+		t.DataTable, err = insyra.ReadExcelSheet(val.FilePath, val.SheetName, val.InputOpts.FirstCol2RowNames, val.InputOpts.FirstRow2ColNames)
+		if err != nil {
+			insyra.LogFatal("DT", "From", "%v", err)
+		}
 	case CSV:
 		t.DataTable = insyra.NewDataTable()
 		var err error
 		if val.FilePath != "" {
-			t.DataTable, err = insyra.ReadCSV_File(val.FilePath, val.InputOpts.FirstCol2RowNames, val.InputOpts.FirstRow2ColNames)
+			var encoding = val.InputOpts.Encoding
+			if encoding == "" {
+				encoding = "auto"
+			}
+			t.DataTable, err = insyra.ReadCSV_File(val.FilePath, val.InputOpts.FirstCol2RowNames, val.InputOpts.FirstRow2ColNames, encoding)
 		} else {
 			t.DataTable, err = insyra.ReadCSV_String(val.String, val.InputOpts.FirstCol2RowNames, val.InputOpts.FirstRow2ColNames)
 		}

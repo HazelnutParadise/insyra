@@ -8,7 +8,9 @@ import (
 	"strconv"
 	"strings"
 
+	csvInternal "github.com/HazelnutParadise/insyra/internal/csv"
 	json "github.com/goccy/go-json"
+	"github.com/xuri/excelize/v2"
 	"gorm.io/gorm"
 )
 
@@ -84,7 +86,7 @@ func Slice2DToDataTable(data any) (*DataTable, error) {
 
 // ReadCSV_File loads a CSV file into a DataTable, with options to set the first column as row names
 // and the first row as column names.
-func ReadCSV_File(filePath string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error) {
+func ReadCSV_File(filePath string, setFirstColToRowNames bool, setFirstRowToColNames bool, encoding ...string) (*DataTable, error) {
 	dt := NewDataTable()
 
 	file, err := os.Open(filePath)
@@ -93,7 +95,26 @@ func ReadCSV_File(filePath string, setFirstColToRowNames bool, setFirstRowToColN
 	}
 	defer func() { _ = file.Close() }()
 
-	reader := csv.NewReader(file)
+	if len(encoding) == 0 {
+		encoding = []string{"auto"}
+	}
+	useEncoding := strings.ToLower(encoding[0])
+	if useEncoding == "auto" {
+		detected, err := DetectEncoding(filePath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to auto-detect encoding for %s: %v", filePath, err)
+		}
+		useEncoding = detected
+		LogInfo("csvxl", "ReadCSV_File", "Auto-detected encoding %s for file %s", useEncoding, filePath)
+	}
+
+	// Use internal CSV reader with encoding support
+	csvString, err := csvInternal.ReadCSVWithEncoding(file, useEncoding)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read CSV file %s: %w", filePath, err)
+	}
+
+	reader := csv.NewReader(strings.NewReader(csvString))
 	rows, err := reader.ReadAll()
 	if err != nil {
 		return nil, err
@@ -216,6 +237,32 @@ func ReadCSV_String(csvString string, setFirstColToRowNames bool, setFirstRowToC
 		}
 	}
 
+	return dt, nil
+}
+
+// ----- excel -----
+
+// ReadExcelSheet reads a specific sheet from an Excel file and loads it into a DataTable.
+func ReadExcelSheet(filePath string, sheetName string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error) {
+	f, err := excelize.OpenFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open Excel file %s: %v", filePath, err)
+	}
+	defer func() { _ = f.Close() }()
+	rows, err := f.GetRows(sheetName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get rows from sheet %s: %v", sheetName, err)
+	}
+	dt, err := ReadSlice2D(rows)
+	if err != nil {
+		return nil, fmt.Errorf("failed when converting sheet %s to DataTable: %v", sheetName, err)
+	}
+	if setFirstColToRowNames {
+		dt.SetColToRowNames("A")
+	}
+	if setFirstRowToColNames {
+		dt.SetRowToColNames(0)
+	}
 	return dt, nil
 }
 

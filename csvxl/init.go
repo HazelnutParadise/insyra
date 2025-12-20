@@ -33,6 +33,12 @@
 //	    panic(err)
 //	}
 //
+//	// Read CSV file to string with auto-detection
+//	csvString, err := csvxl.ReadCsvToString("myfile.csv")
+//	if err != nil {
+//		// Handle error
+//	}
+//
 //	// Detect encoding of a specific file
 //	encoding, err := insyra.DetectEncoding("myfile.csv")
 //	if err != nil {

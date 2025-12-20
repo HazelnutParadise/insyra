@@ -36,6 +36,7 @@ import "github.com/HazelnutParadise/insyra/isr"
 - `isr.DLs` - `[]insyra.IDataList` slice of DataLists
 - `isr.CSV` - CSV file or string configuration with input/output options
 - `isr.JSON` - JSON file/data configuration (supports both file path and byte data)
+- `isr.Excel` - Excel file configuration with input options (supports XLAM/XLSM/XLSX/XLTM/XLTX)
 - `isr.Name` - Function to create named references for rows/columns
 
 ### Type Alias Details
@@ -51,6 +52,13 @@ type CSV struct {
     OutputOpts CSV_outOpts // Options for writing CSV
 }
 
+// CSV_inOpts structure
+type CSV_inOpts struct {
+    FirstCol2RowNames bool   // Treat the first column as row names
+    FirstRow2ColNames bool   // Treat the first row as column names
+    Encoding          string // Specify input file encoding (e.g., "big5", "utf-8"), Only for FilePath input
+}
+
 // Examples:
 csvFromFile := isr.CSV{FilePath: "data.csv"}
 csvFromString := isr.CSV{String: "name,age\nJohn,30\nJane,25"}
@@ -63,6 +71,33 @@ csvFromString := isr.CSV{String: "name,age\nJohn,30\nJane,25"}
 type JSON struct {
     FilePath string // Path to JSON file (use this OR Bytes, not both)
     Bytes    []byte // JSON data as byte slice (use this OR FilePath, not both)
+}
+```
+
+#### Excel Structure
+
+```go
+// Excel struct for specifying Excel file and sheet
+type Excel struct {
+    FilePath  string
+    SheetName string
+    InputOpts Excel_inOpts
+}
+
+// Excel_inOpts structure for reading Excel files
+type Excel_inOpts struct {
+    FirstCol2RowNames bool // Treat the first column as row names
+    FirstRow2ColNames bool // Treat the first row as column names
+}
+
+// Example:
+excelFile := isr.Excel{
+    FilePath:  "data.xlsx",
+    SheetName: "Sheet1",
+    InputOpts: isr.Excel_inOpts{
+        FirstCol2RowNames: true,
+        FirstRow2ColNames: true,
+    },
 }
 ```
 
@@ -141,6 +176,7 @@ csvFromFile := isr.CSV{
     InputOpts: isr.CSV_inOpts{
         FirstCol2RowNames: true,
         FirstRow2ColNames: true,
+        Encoding:          "big5", // Specify file encoding
     },
     OutputOpts: isr.CSV_outOpts{
         RowNames2FirstCol: true,
@@ -384,6 +420,16 @@ jsonData := []byte(`[{"name":"John","age":30},{"name":"Jane","age":25}]`)
 dataTable := isr.DT.From(isr.JSON{
     Bytes: jsonData,
 })
+
+// From Excel file
+dataTable := isr.DT.From(isr.Excel{
+    FilePath:  "data.xlsx",
+    SheetName: "Sheet1",
+    InputOpts: isr.Excel_inOpts{
+        FirstCol2RowNames: true,
+        FirstRow2ColNames: true,
+    },
+})
 ```
 
 #### From Maps
@@ -588,6 +634,7 @@ processed := isr.DL.From(1, 2, 3).Push(4, 5).At(4) // Returns 5
 - `DLs` - `[]insyra.IDataList` for multiple DataLists
 - `CSV` - Struct for CSV file or string loading with input/output options
 - `JSON` - Struct for JSON file/data loading (supports both file path and byte data)
+- `Excel` - Struct for Excel file loading with input options
 
 ### Key Functions
 
