@@ -6,10 +6,7 @@ import (
 	"bytes"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/HazelnutParadise/insyra"
 	"github.com/go-echarts/go-echarts/v2/charts"
@@ -17,9 +14,12 @@ import (
 	"github.com/go-echarts/snapshot-chromedp/render"
 )
 
-// Renderable 定義了可以被渲染的圖表接口
+// Renderer
+// Any kinds of charts have their render implementation, and
+// you can define your own render logic easily.
 type Renderable interface {
 	Render(w io.Writer) error
+	RenderContent() []byte
 }
 
 // SaveHTML 將圖表渲染並保存為 HTML 文件
@@ -41,96 +41,61 @@ func SaveHTML(chart Renderable, path string, animation ...bool) {
 	if err := chart.Render(f); err != nil {
 		insyra.LogFatal("plot", "SaveHTML", "failed to render chart: %v", err)
 	}
-	insyra.LogInfo("plot", "SaveHTML", "successfully saved HTML file.")
+	insyra.LogInfo("plot", "SaveHTML", "successfully saved HTML file in %s.", path)
 }
 
 // SavePNG 將圖表渲染為 PNG 文件，使用 snapshot-chromedp
 func SavePNG(chart Renderable, pngPath string) {
-
-	dir := filepath.Dir(pngPath)
-	baseName := strings.TrimSuffix(pngPath, filepath.Ext(pngPath)) // 分離主檔名和副檔名
-	tempBaseName := "temp_" + baseName + "_temp"
-
 	disableAnimation(chart)
 	setBackgroundToWhite(chart)
 
-	// 先將 Renderable 渲染為 HTML
-	var buf bytes.Buffer
-	if err := chart.Render(&buf); err != nil {
-		insyra.LogFatal("plot", "SavePNG", "failed to render chart to HTML: %v", err)
-		return
-	}
+	chartContentBytes := chart.RenderContent()
 
-	// 使用 snapshot-chromedp 將 HTML 渲染為 PNG，並設置高品質
-	config := &render.SnapshotConfig{
-		RenderContent: buf.Bytes(),
-		Path:          dir,
-		Suffix:        "png",
-		FileName:      tempBaseName,
-		HtmlPath:      dir,
-		KeepHtml:      false,
-		Quality:       3, // 將圖片質量設置為 3，這裡可以根據需求進行調整
-	}
-
-	if config.KeepHtml {
-		config.FileName = baseName
-	}
-
-	// 使用自定義配置進行渲染
-	err := render.MakeSnapshot(config)
+	useOnlineService := false
+	err := render.MakeChartSnapshot(chartContentBytes, pngPath)
 	if err != nil {
-		insyra.LogWarning("plot", "SavePNG", "failed to save PNG: %v", err)
-		goto useOnlineService
+		insyra.LogWarning("plot", "SavePNG", "failed to render chart to PNG: %v, trying to use HazelnutParadise online service...", err)
+		useOnlineService = true
 	}
 
-	if !config.KeepHtml {
-		err := os.Rename(tempBaseName+".png", baseName+".png")
+	if useOnlineService {
+		// 使用 http.NewRequest 並設定 Accept 標頭為 image/png
+		req, err := http.NewRequest(
+			"POST",
+			"https://server3.hazelnut-paradise.com/api/v1/go-echarts-render-image",
+			bytes.NewReader(chartContentBytes),
+		)
 		if err != nil {
-			insyra.LogWarning("plot", "SavePNG", "failed to rename PNG file: %v", err)
-			return
+			insyra.LogFatal("plot", "SavePNG", "failed to create HTTP request: %v", err)
+		}
+		req.Header.Set("Content-Type", "application/octet-stream")
+		req.Header.Set("Accept", "image/png") // 指定接收 PNG 格式
+
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			insyra.LogFatal("plot", "SavePNG", "failed to send HTTP request: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			insyra.LogFatal("plot", "SavePNG", "online service returned non-OK status: %s", resp.Status)
+		}
+		insyra.LogInfo("plot", "SavePNG", "successfully received PNG response from HazelnutParadise online service.")
+		// 將響應的 PNG 數據寫入文件
+		outFile, err := os.Create(pngPath)
+		if err != nil {
+			insyra.LogFatal("plot", "SavePNG", "failed to create PNG file: %v", err)
+		}
+		defer func() { _ = outFile.Close() }()
+
+		_, err = io.Copy(outFile, resp.Body)
+		if err != nil {
+			insyra.LogFatal("plot", "SavePNG", "failed to save PNG file: %v", err)
 		}
 	}
 
-	insyra.LogInfo("plot", "SavePNG", "successfully saved PNG file.")
-	return
-
-useOnlineService:
-	func() {
-		insyra.LogWarning("plot", "SavePNG", "failed to render chart locally. Trying to use HazelnutParadise online service.\nWaiting for the result...")
-
-		// 將 Renderable 渲染成 HTML
-		var buf bytes.Buffer
-		if err := chart.Render(&buf); err != nil {
-			insyra.LogFatal("plot", "SavePNG", "failed to render chart to HTML: %v", err)
-			return
-		}
-
-		// 將渲染的 HTML 放入表單數據
-		formData := "html=" + url.QueryEscape(buf.String())
-
-		// 使用備援服務發送請求
-		resp, err := http.Post("https://server3.hazelnut-paradise.com/htmltoimage", "application/x-www-form-urlencoded", strings.NewReader(formData))
-		if err != nil {
-			insyra.LogFatal("plot", "SavePNG", "failed to use online service: %v", err)
-			return
-		}
-		defer func() { _ = resp.Body.Close() }()
-
-		// 讀取備援服務返回的圖片數據
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			insyra.LogFatal("plot", "SavePNG", "failed to read response from online service: %v", err)
-			return
-		}
-
-		// 將接收到的圖片數據寫入本地 PNG 文件
-		if err := os.WriteFile(pngPath, body, 0644); err != nil {
-			insyra.LogFatal("plot", "SavePNG", "failed to save PNG file from online service: %v", err)
-			return
-		}
-
-		insyra.LogInfo("plot", "SavePNG", "successfully saved PNG file from hazelnut-paradise.com.")
-	}()
+	insyra.LogInfo("plot", "SavePNG", "successfully saved PNG file in %s.", pngPath)
 }
 
 func disableAnimation(chart Renderable) {
