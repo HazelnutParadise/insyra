@@ -45,6 +45,7 @@ func SaveHTML(chart Renderable, path string, animation ...bool) {
 }
 
 // SavePNG 將圖表渲染為 PNG 文件，使用 snapshot-chromedp
+// FIXME: 已失效
 func SavePNG(chart Renderable, pngPath string) {
 
 	dir := filepath.Dir(pngPath)

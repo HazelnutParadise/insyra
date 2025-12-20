@@ -26,6 +26,7 @@ type BarChartConfig struct {
 }
 
 // CreateBarChart generates and returns a *charts.Bar object based on BarChartConfig.
+// FIXME: 簡化 Data 支援的類型處理邏輯
 func CreateBarChart(config BarChartConfig) *charts.Bar {
 	bar := charts.NewBar()
 
