@@ -1,8 +1,6 @@
 module github.com/HazelnutParadise/insyra
 
-go 1.24.0
-
-toolchain go1.24.1
+go 1.25
 
 require (
 	github.com/HazelnutParadise/Go-Utils v0.8.2
@@ -36,20 +34,20 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/richardlehane/mscfb v1.0.4 // indirect
 	github.com/richardlehane/msoleps v1.0.4 // indirect
-	github.com/tiendc/go-deepcopy v1.7.1 // indirect
+	github.com/tiendc/go-deepcopy v1.7.2 // indirect
 	github.com/xuri/efp v0.0.1 // indirect
 	github.com/xuri/nfp v0.0.2-0.20250530014748-2ddeb826f9a9 // indirect
-	golang.org/x/crypto v0.43.0 // indirect
+	golang.org/x/crypto v0.46.0 // indirect
 	golang.org/x/exp v0.0.0-20250911091902-df9299821621 // indirect
 	golang.org/x/image v0.25.0 // indirect
-	golang.org/x/net v0.46.0 // indirect
+	golang.org/x/net v0.48.0 // indirect
 	golang.org/x/sys v0.39.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
 require (
 	github.com/Masterminds/squirrel v1.5.4
-	github.com/go-echarts/go-echarts/v2 v2.4.6
+	github.com/go-echarts/go-echarts/v2 v2.6.7
 	github.com/go-echarts/snapshot-chromedp v0.0.5
 	github.com/goccy/go-json v0.10.5
 	github.com/mattn/go-runewidth v0.0.19
