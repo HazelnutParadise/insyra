@@ -3,6 +3,7 @@ package insyra
 import (
 	"fmt"
 	"maps"
+	"math"
 	"slices"
 	"sort"
 	"strings"
@@ -877,6 +878,39 @@ func (dt *DataTable) DropColsContainNil() *DataTable {
 	return dt
 }
 
+// DropColsContainNaN drops columns that contain NaN (Not a Number) elements.
+func (dt *DataTable) DropColsContainNaN() *DataTable {
+	dt.AtomicDo(func(dt *DataTable) {
+		columnsToDelete := make([]int, 0)
+
+		for colIndex, column := range dt.columns {
+			containsNaN := false
+
+			for _, value := range column.data {
+				if v, ok := value.(float64); ok && math.IsNaN(v) {
+					containsNaN = true
+					break
+				}
+			}
+
+			if containsNaN {
+				columnsToDelete = append(columnsToDelete, colIndex)
+			}
+		}
+
+		for i := len(columnsToDelete) - 1; i >= 0; i-- {
+			colIndex := columnsToDelete[i]
+			dt.columns = append(dt.columns[:colIndex], dt.columns[colIndex+1:]...)
+			delete(dt.columnIndex, generateColIndex(colIndex))
+		}
+
+		dt.regenerateColIndex()
+
+		go dt.updateTimestamp()
+	})
+	return dt
+}
+
 // DropColsContain drops columns that contain the specified value.
 func (dt *DataTable) DropColsContain(value ...any) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
@@ -1107,6 +1141,58 @@ func (dt *DataTable) DropRowsContainNil() *DataTable {
 		// 更新 rowNames 映射，以移除被刪除的行
 		for rowName, rowIndex := range dt.rowNames {
 			if rowIndex >= len(nonNilRowIndices) || rowIndex != nonNilRowIndices[rowIndex] {
+				delete(dt.rowNames, rowName)
+			} else {
+				dt.rowNames[rowName] = rowIndex
+			}
+		}
+		go dt.updateTimestamp()
+	})
+	return dt
+}
+
+// DropRowsContainNaN drops rows that contain NaN (Not a Number) elements.
+func (dt *DataTable) DropRowsContainNaN() *DataTable {
+	dt.AtomicDo(func(dt *DataTable) {
+		maxLength := dt.getMaxColLength()
+
+		// 這個切片將存儲所有不含NaN的行的索引
+		nonNaNRowIndices := []int{}
+
+		// 遍歷每一行
+		for rowIndex := range maxLength {
+			rowHasNaN := false
+
+			// 檢查該行是否包含 NaN
+			for _, column := range dt.columns {
+				if rowIndex < len(column.data) {
+					if v, ok := column.data[rowIndex].(float64); ok && math.IsNaN(v) {
+						rowHasNaN = true
+						break
+					}
+				}
+			}
+
+			// 如果該行不包含 NaN，將其索引加入到 nonNaNRowIndices 中
+			if !rowHasNaN {
+				nonNaNRowIndices = append(nonNaNRowIndices, rowIndex)
+			}
+		}
+
+		// 建立新的列資料，僅保留不含NaN的行
+		for _, column := range dt.columns {
+			newData := []any{}
+			for _, rowIndex := range nonNaNRowIndices {
+				if rowIndex < len(column.data) {
+					newData = append(newData, column.data[rowIndex])
+				}
+			}
+			column.data = newData
+		}
+
+		// 更新 rowNames 映射，以移除被刪除的行
+		for rowName, rowIndex := range dt.rowNames {
+			if rowIndex >= len(nonNaNRowIndices) || rowIndex != nonNaNRowIndices[rowIndex] {
 				delete(dt.rowNames, rowName)
 			} else {
 				dt.rowNames[rowName] = rowIndex

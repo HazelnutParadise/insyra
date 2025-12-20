@@ -1668,6 +1668,24 @@ func (dt *DataTable) DropColsContainNil() *DataTable
 dt.DropColsContainNil() // Drops all columns that have at least one nil element
 ```
 
+### DropColsContainNaN
+
+Drops columns that contain any NaN (Not a Number) elements.
+
+```go
+func (dt *DataTable) DropColsContainNaN() *DataTable
+```
+
+**Returns:**
+
+- `*DataTable`: The modified DataTable
+
+**Example:**
+
+```go
+dt.DropColsContainNaN() // Drops all columns that have at least one NaN element
+```
+
 ### DropColsContain
 
 Drops columns that contain the specified value(s).
@@ -1762,6 +1780,24 @@ func (dt *DataTable) DropRowsContainNil() *DataTable
 
 ```go
 dt.DropRowsContainNil() // Drops all rows that have at least one nil element
+```
+
+### DropRowsContainNaN
+
+Drops rows that contain any NaN (Not a Number) elements.
+
+```go
+func (dt *DataTable) DropRowsContainNaN() *DataTable
+```
+
+**Returns:**
+
+- `*DataTable`: The modified DataTable
+
+**Example:**
+
+```go
+dt.DropRowsContainNaN() // Drops all rows that have at least one NaN element
 ```
 
 ### DropRowsContain

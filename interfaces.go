@@ -146,6 +146,7 @@ type IDataTable interface {
 	DropColsContainString() *DataTable
 	DropColsContainNumber() *DataTable
 	DropColsContainNil() *DataTable
+	DropColsContainNaN() *DataTable
 	DropColsContain(value ...any) *DataTable
 	DropColsContainExcelNA() *DataTable
 	DropRowsByIndex(rowIndices ...int) *DataTable
@@ -153,6 +154,7 @@ type IDataTable interface {
 	DropRowsContainString() *DataTable
 	DropRowsContainNumber() *DataTable
 	DropRowsContainNil() *DataTable
+	DropRowsContainNaN() *DataTable
 	DropRowsContain(value ...any) *DataTable
 	DropRowsContainExcelNA() *DataTable
 	Data(useNamesAsKeys ...bool) map[string][]any
