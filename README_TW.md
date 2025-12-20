@@ -139,9 +139,9 @@ import (
 )
 
 func main() {
- dl := isr.DL.From(1, 2, 3, 4, 5)
+ dl := isr.DL.Of(1, 2, 3, 4, 5)
  dl.Append(6)
- fmt.Println("DataList:", dl.Data())
+ dl.Show()
  fmt.Println("Mean:", dl.Mean())
 }
 ```
@@ -262,6 +262,11 @@ func main() {
 ```
 
 實現詳情請參閱 [config.go](config.go) 原始檔案。
+
+#### 執行緒安全與防禦性複製
+
+- **防禦性複製：** Insyra 對所有公開資料存取器回傳防禦性複製（defensive copies）。任何會暴露內部 `slice`、`map` 或其他可變結構的方法，會回傳該結構的複製，避免呼叫端無意間修改內部狀態。
+- **原子操作：** 若需在並發環境中執行多步驟操作，請使用 `AtomicDo`。`AtomicDo` 透過每個實例的專用 actor goroutine 與命令 channel 序列化執行，避免使用互斥鎖（mutex）。參考實作： [atomic.go](atomic.go)。
 
 ## [DataList](/Docs/DataList.md)
 
