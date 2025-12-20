@@ -174,7 +174,7 @@ func CreateLineChart(config LineChartConfig) *charts.Line {
 	if config.FillArea {
 		line.SetSeriesOptions(
 			charts.WithAreaStyleOpts(opts.AreaStyle{
-				Opacity: 0.5, // 設置填充區域的透明度
+				Opacity: float32(0.5), // 設置填充區域的透明度
 			}),
 		)
 	}
