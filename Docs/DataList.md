@@ -606,6 +606,46 @@ dl.ClearNaNs()
 // dl now contains: [1.0, 2.0, 3.0]
 ```
 
+### ClearNils
+
+Removes all nil (null) elements from the DataList.
+
+```go
+func (dl *DataList) ClearNils() *DataList
+```
+
+**Returns:**
+
+- `*DataList`: Reference to the modified DataList
+
+**Example:**
+
+```go
+dl := insyra.NewDataList(1, nil, 2, nil, 3)
+dl.ClearNils()
+// dl now contains: [1, 2, 3]
+```
+
+### ClearNilsAndNaNs
+
+Removes all nil and NaN (Not a Number) elements from the DataList.
+
+```go
+func (dl *DataList) ClearNilsAndNaNs() *DataList
+```
+
+**Returns:**
+
+- `*DataList`: Reference to the modified DataList
+
+**Example:**
+
+```go
+dl := insyra.NewDataList(1.0, nil, math.NaN(), 2.0, nil, 3.0)
+dl.ClearNilsAndNaNs()
+// dl now contains: [1.0, 2.0, 3.0]
+```
+
 ### ClearOutliers
 
 Removes values outside a specified number of standard deviations from the mean.
@@ -694,15 +734,15 @@ dl.FillNaNWithMean()
 
 ### ReplaceOutliers
 
-Replaces outliers beyond specified standard deviations with a replacement value.
+Replaces outliers beyond specified standard deviations with a replacement value. Values whose distance from the mean exceeds the threshold (stdDevs × standard deviation) will be replaced.
 
 ```go
-func (dl *DataList) ReplaceOutliers(stdDev float64, replacement float64) *DataList
+func (dl *DataList) ReplaceOutliers(stdDevs float64, replacement float64) *DataList
 ```
 
 **Parameters:**
 
-- `stdDev`: Number of standard deviations to use as threshold
+- `stdDevs`: Number of standard deviations to use as threshold (e.g., 2.0 means values beyond ±2σ from the mean will be replaced)
 - `replacement`: Value to replace outliers with
 
 **Returns:**
@@ -714,6 +754,78 @@ func (dl *DataList) ReplaceOutliers(stdDev float64, replacement float64) *DataLi
 ```go
 dl := insyra.NewDataList(1, 2, 3, 4, 5, 100)
 dl.ReplaceOutliers(2.0, 6.0) // Replace outliers with 6.0
+```
+
+### ReplaceNaNsWith
+
+Replaces all NaN (Not a Number) values in the DataList with the specified value.
+
+```go
+func (dl *DataList) ReplaceNaNsWith(value any) *DataList
+```
+
+**Parameters:**
+
+- `value`: The value to replace NaN values with
+
+**Returns:**
+
+- `*DataList`: Reference to the modified DataList
+
+**Example:**
+
+```go
+dl := insyra.NewDataList(1.0, math.NaN(), 3.0, math.NaN(), 5.0)
+dl.ReplaceNaNsWith(0.0)
+// dl now contains: [1.0, 0.0, 3.0, 0.0, 5.0]
+```
+
+### ReplaceNilsWith
+
+Replaces all nil (null) values in the DataList with the specified value.
+
+```go
+func (dl *DataList) ReplaceNilsWith(value any) *DataList
+```
+
+**Parameters:**
+
+- `value`: The value to replace nil values with
+
+**Returns:**
+
+- `*DataList`: Reference to the modified DataList
+
+**Example:**
+
+```go
+dl := insyra.NewDataList(1, nil, 3, nil, 5)
+dl.ReplaceNilsWith(0)
+// dl now contains: [1, 0, 3, 0, 5]
+```
+
+### ReplaceNaNsAndNilsWith
+
+Replaces all NaN and nil values in the DataList with the specified value.
+
+```go
+func (dl *DataList) ReplaceNaNsAndNilsWith(value any) *DataList
+```
+
+**Parameters:**
+
+- `value`: The value to replace NaN and nil values with
+
+**Returns:**
+
+- `*DataList`: Reference to the modified DataList
+
+**Example:**
+
+```go
+dl := insyra.NewDataList(1.0, nil, math.NaN(), 2.0, nil, 3.0)
+dl.ReplaceNaNsAndNilsWith(0.0)
+// dl now contains: [1.0, 0.0, 0.0, 2.0, 0.0, 3.0]
 ```
 
 ## Statistical Analysis

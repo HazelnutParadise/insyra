@@ -34,7 +34,12 @@ type IDataList interface {
 	ClearStrings() *DataList
 	ClearNumbers() *DataList
 	ClearNaNs() *DataList
+	ClearNils() *DataList
+	ClearNilsAndNaNs() *DataList
 	ClearOutliers(float64) *DataList
+	ReplaceNaNsWith(any) *DataList
+	ReplaceNilsWith(any) *DataList
+	ReplaceNaNsAndNilsWith(any) *DataList
 	Normalize() *DataList
 	Standardize() *DataList
 	FillNaNWithMean() *DataList
@@ -135,21 +140,23 @@ type IDataTable interface {
 	FindColsIfContainsAll(values ...any) []string
 	FindColsIfAnyElementContainsSubstring(substring string) []string
 	FindColsIfAllElementsContainSubstring(substring string) []string
-	DropColsByName(columnNames ...string)
-	DropColsByIndex(columnIndices ...string)
-	DropColsByNumber(columnIndices ...int)
-	DropColsContainStringElements()
-	DropColsContainNumbers()
-	DropColsContainNil()
-	DropColsContain(value ...any)
-	DropColsContainExcelNA()
-	DropRowsByIndex(rowIndices ...int)
-	DropRowsByName(rowNames ...string)
-	DropRowsContainStringElements()
-	DropRowsContainNumbers()
-	DropRowsContainNil()
-	DropRowsContain(value ...any)
-	DropRowsContainExcelNA()
+	DropColsByName(columnNames ...string) *DataTable
+	DropColsByIndex(columnIndices ...string) *DataTable
+	DropColsByNumber(columnIndices ...int) *DataTable
+	DropColsContainString() *DataTable
+	DropColsContainNumber() *DataTable
+	DropColsContainNil() *DataTable
+	DropColsContainNaN() *DataTable
+	DropColsContain(value ...any) *DataTable
+	DropColsContainExcelNA() *DataTable
+	DropRowsByIndex(rowIndices ...int) *DataTable
+	DropRowsByName(rowNames ...string) *DataTable
+	DropRowsContainString() *DataTable
+	DropRowsContainNumber() *DataTable
+	DropRowsContainNil() *DataTable
+	DropRowsContainNaN() *DataTable
+	DropRowsContain(value ...any) *DataTable
+	DropRowsContainExcelNA() *DataTable
 	Data(useNamesAsKeys ...bool) map[string][]any
 	// ToMap is the alias for Data().
 	// It returns a map[string][]any representation of the DataTable.
@@ -162,7 +169,14 @@ type IDataTable interface {
 	ShowTypes()
 	ShowRange(startEnd ...any)
 	ShowTypesRange(startEnd ...any)
-	GetRowNameByIndex(index int) string
+	// GetRowIndexByName returns the index of a row by its name.
+	// Returns -1 and false if the row name does not exist.
+	// Always check the boolean return value to distinguish between "name not found" and "last row",
+	// since -1 typically represents the last element in Insyra's Get methods.
+	GetRowIndexByName(name string) (int, bool)
+	// GetRowNameByIndex returns the name of a row at the given index.
+	// Returns empty string and false if no name is set for the row.
+	GetRowNameByIndex(index int) (string, bool)
 	SetRowNameByIndex(index int, name string)
 	ChangeRowName(oldName, newName string) *DataTable
 	RowNamesToFirstCol() *DataTable

@@ -48,8 +48,8 @@ func (dt *DataTable) ToSQL(db *gorm.DB, tableName string, options ...ToSQLOption
 
 			// 如果啟用行名稱，則將其添加到資料中
 			if opts.RowNames {
-				rowName := dt.GetRowNameByIndex(i)
-				if rowName != "" {
+				rowName, ok := dt.GetRowNameByIndex(i)
+				if ok && rowName != "" {
 					rowMap["row_name"] = rowName
 				}
 			}

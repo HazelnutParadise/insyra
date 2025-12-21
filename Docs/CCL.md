@@ -236,6 +236,128 @@ CCL supports the following data types:
 "A & B & C"      // Chain multiple concatenations
 ```
 
+## Type Coercion and Comparison Behavior
+
+CCL uses dynamic typing and performs automatic type coercion to handle operations between different data types. Understanding these behaviors is crucial for writing correct CCL expressions.
+
+### Numeric Comparison and Arithmetic
+
+When performing arithmetic operations or comparisons, CCL attempts to convert operands to numbers:
+
+```go
+// These are equivalent after type coercion
+"123" == 123        // true (string "123" is converted to number 123)
+"45.5" > 40         // true (string "45.5" is converted to number 45.5)
+"100" + 50          // 150 (string "100" is converted to number 100)
+```
+
+**Important Notes:**
+
+- If both operands can be converted to numbers, numeric comparison is used
+- String-to-number conversion follows standard parsing rules
+- Non-numeric strings cannot be used in arithmetic or numeric comparisons and will result in an error
+
+```go
+// These will cause errors
+"abc" + 10          // Error: cannot convert "abc" to number
+"hello" > 5         // Error: cannot convert "hello" to number
+```
+
+### String Concatenation
+
+The `&` operator always performs string concatenation by converting all operands to strings:
+
+```go
+"Hello" & " " & "World"     // "Hello World"
+"Price: " & 123             // "Price: 123" (number converted to string)
+"Value: " & 45.67           // "Value: 45.67"
+```
+
+### Handling `nil` Values
+
+CCL has specific rules for handling `nil` values in different operations:
+
+#### Equality and Inequality
+
+```go
+nil == nil          // true (both are nil)
+nil == 0            // false (nil is not equal to 0)
+nil == ""           // false (nil is not equal to empty string)
+nil != 123          // true (nil is not equal to any non-nil value)
+```
+
+#### Comparison Operations
+
+```go
+nil > 10            // false (nil cannot be compared with numbers)
+nil < 5             // false
+nil >= 0            // false
+nil <= 100          // false
+```
+
+**Rule:** `nil` with any value in size comparison (`>`, `<`, `>=`, `<=`) always returns `false`.
+
+#### Arithmetic Operations
+
+```go
+nil + 10            // 10 (nil is treated as 0)
+5 - nil             // 5 (nil is treated as 0)
+nil * 3             // 0 (nil is treated as 0)
+10 / nil            // Error: division by zero (nil is treated as 0)
+```
+
+**Rule:** In arithmetic operations, `nil` is treated as `0`.
+
+#### String Concatenation with `nil`
+
+```go
+"Hello" & nil       // "Hello<nil>" (nil is converted to string "<nil>")
+nil & " World"      // "<nil> World"
+```
+
+### Boolean Operations
+
+Logical operators require boolean operands:
+
+```go
+true && false       // false
+true || false       // true
+(A > 10) && (B < 20)    // Evaluate both conditions
+
+// These will cause errors
+"yes" && true       // Error: "yes" is not a boolean
+1 && 0              // Error: numbers are not booleans
+```
+
+### Type Coercion Summary
+
+| Operation | Left Type | Right Type | Behavior |
+|-----------|-----------|------------|----------|
+| `+`, `-`, `*`, `/`, `^` | Number/String | Number/String | Convert both to numbers, then calculate |
+| `>`, `<`, `>=`, `<=` | Number/String | Number/String | Convert both to numbers, then compare |
+| `==`, `!=` | Number/String | Number/String | Convert both to numbers if possible, then compare |
+| `==`, `!=` | nil | any | Special nil handling (see above) |
+| `&` | any | any | Convert both to strings, then concatenate |
+| `&&`, `\|\|` | Boolean | Boolean | Must be boolean, no coercion |
+
+### Best Practices for Type Safety
+
+1. **Be explicit with types**: When dealing with mixed types, consider using conversion functions (if available) to make your intent clear.
+
+2. **Handle nil values carefully**: Always consider how `nil` values might affect your calculations:
+
+   ```go
+   // Good: Handle nil explicitly
+   "IF(A == nil, 0, A) + B"
+   
+   // Risky: Relies on automatic nil-to-zero conversion
+   "A + B"  // What if A is nil?
+   ```
+
+3. **Avoid mixing types unnecessarily**: While CCL supports type coercion, it's clearer to work with consistent types when possible.
+
+4. **Test edge cases**: Test your CCL expressions with various input types, including `nil`, to ensure they behave as expected.
+
 ## Column References
 
 CCL provides three ways to reference columns in your expressions:

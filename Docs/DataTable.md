@@ -1045,54 +1045,62 @@ dt.SetRowNameByIndex(0, "FirstRow") // Set the name of the first row to "FirstRo
 Gets the name of a row by its index.
 
 ```go
-func (dt *DataTable) GetRowNameByIndex(index int) string
+func (dt *DataTable) GetRowNameByIndex(index int) (string, bool)
 ```
 
 **Parameters:**
 
-- `index`: The numeric index of the row (0-based).
+- `index`: The numeric index of the row (0-based). Negative indices are not supported for row names.
 
 **Returns:**
 
-- `string`: The name of the row. Returns an empty string if the row does not exist or has no name.
+- `string`: The name of the row. Returns an empty string if no name is set for this row.
+- `bool`: `true` if a row name exists for this index, `false` otherwise.
 
 **Example:**
 
 ```go
-rowName := dt.GetRowNameByIndex(0)
-fmt.Printf("Name of the first row: %s\\n", rowName)
+name, exists := dt.GetRowNameByIndex(0)
+if exists {
+    fmt.Printf("Name of the first row: %s\\n", name)
+} else {
+    fmt.Println("First row has no name")
+}
 ```
 
 ### GetRowIndexByName
 
 > [!NOTE]
-> Due to Insyra's Get methods usually support -1 as index, make sure to check the returned index before use when the row name might not exist.
+> Since Insyra's Get methods usually support -1 as an index (representing the last element), always check the boolean return value to distinguish between "name not found" and "last row".
 
 Gets the index of a row by its name. This is the inverse lookup of `GetRowNameByIndex`.
 
 ```go
-func (dt *DataTable) GetRowIndexByName(name string) int
+func (dt *DataTable) GetRowIndexByName(name string) (int, bool)
 ```
 
 **Parameters:**
 
-- `name`: The name of the row.
+- `name`: The name of the row to find.
 
 **Returns:**
 
-- `int`: The index of the row if found. Returns `-1` if the row name does not exist.
+- `int`: The row index (0-based). Returns `-1` if the row name does not exist.
+- `bool`: `true` if the row name exists, `false` otherwise.
 
 **Notes:**
 
-- Since `-1` is the error indicator for missing row names, ensure that your row indices are within the valid range (0 to row count - 1).
+- Always check the boolean return value to confirm that the row name exists, especially since `-1` can also represent the last row in some Insyra methods.
 - A log warning will be emitted if the row name is not found.
 
 **Example:**
 
 ```go
-index := dt.GetRowIndexByName("FirstRow")
-if index != -1 {
+index, exists := dt.GetRowIndexByName("FirstRow")
+if exists {
     fmt.Printf("Row 'FirstRow' is at index: %d\\n", index)
+    row := dt.GetRow(index)
+    // Use the row...
 } else {
     fmt.Println("Row 'FirstRow' not found")
 }
@@ -1504,6 +1512,50 @@ func (dt *DataTable) Headers() []string
 headers := dt.Headers() // Same as dt.ColNames()
 ```
 
+### DropColsByName
+
+Drops columns by their names.
+
+```go
+func (dt *DataTable) DropColsByName(columnNames ...string) *DataTable
+```
+
+**Parameters:**
+
+- `columnNames`: Names of columns to drop
+
+**Returns:**
+
+- `*DataTable`: The modified DataTable
+
+**Example:**
+
+```go
+dt.DropColsByName("Age", "Address")
+```
+
+### DropRowsByIndex
+
+Drops rows by their numeric indices (0-based).
+
+```go
+func (dt *DataTable) DropRowsByIndex(rowIndices ...int) *DataTable
+```
+
+**Parameters:**
+
+- `rowIndices`: Numeric row indices (0-based) to drop
+
+**Returns:**
+
+- `*DataTable`: The modified DataTable
+
+**Example:**
+
+```go
+dt.DropRowsByIndex(0, 2, 5) // Drops rows at indices 0, 2, and 5
+```
+
 ### DropRowsByName
 
 Drops rows by their names.
@@ -1528,15 +1580,19 @@ dt.DropRowsByName("row1", "row2")
 
 ### DropColsByIndex
 
-Drops columns by their indices.
+Drops columns by their letter indices (e.g., "A", "B", "C").
 
 ```go
-func (dt *DataTable) DropColsByIndex(columnIndices ...string)
+func (dt *DataTable) DropColsByIndex(columnIndices ...string) *DataTable
 ```
 
 **Parameters:**
 
-- `columnIndices`: Column indices (A, B, C...) to drop
+- `columnIndices`: Column letter indices (A, B, C...) to drop
+
+**Returns:**
+
+- `*DataTable`: The modified DataTable
 
 **Example:**
 
@@ -1546,28 +1602,32 @@ dt.DropColsByIndex("A", "C") // Drops columns A and C
 
 ### DropColsByNumber
 
-Drops columns by their numeric indices.
+Drops columns by their numeric indices (0-based).
 
 ```go
-func (dt *DataTable) DropColsByNumber(columnIndices ...int)
+func (dt *DataTable) DropColsByNumber(columnIndices ...int) *DataTable
 ```
 
 **Parameters:**
 
 - `columnIndices`: Numeric column indices (0-based) to drop
 
+**Returns:**
+
+- `*DataTable`: The modified DataTable
+
 **Example:**
 
 ```go
-dt.DropColsByNumber(0, 2) // Drops first and third columns
+dt.DropColsByNumber(0, 2) // Drops first and third columns (columns at index 0 and 2)
 ```
 
-### DropColsContainStringElements
+### DropColsContainString
 
-Drops columns that contain string elements.
+Drops columns that contain any string elements.
 
 ```go
-func (dt *DataTable) DropColsContainStringElements() *DataTable
+func (dt *DataTable) DropColsContainString() *DataTable
 ```
 
 **Returns:**
@@ -1577,15 +1637,15 @@ func (dt *DataTable) DropColsContainStringElements() *DataTable
 **Example:**
 
 ```go
-dt.DropColsContainStringElements()
+dt.DropColsContainString() // Drops all columns that have at least one string element
 ```
 
-### DropColsContainNumbers
+### DropColsContainNumber
 
-Drops columns that contain numeric elements.
+Drops columns that contain any numeric elements.
 
 ```go
-func (dt *DataTable) DropColsContainNumbers() *DataTable
+func (dt *DataTable) DropColsContainNumber() *DataTable
 ```
 
 **Returns:**
@@ -1595,12 +1655,12 @@ func (dt *DataTable) DropColsContainNumbers() *DataTable
 **Example:**
 
 ```go
-dt.DropColsContainNumbers()
+dt.DropColsContainNumber() // Drops all columns that have at least one numeric element
 ```
 
 ### DropColsContainNil
 
-Drops columns that contain nil elements.
+Drops columns that contain any nil (null) elements.
 
 ```go
 func (dt *DataTable) DropColsContainNil() *DataTable
@@ -1613,7 +1673,25 @@ func (dt *DataTable) DropColsContainNil() *DataTable
 **Example:**
 
 ```go
-dt.DropColsContainNil()
+dt.DropColsContainNil() // Drops all columns that have at least one nil element
+```
+
+### DropColsContainNaN
+
+Drops columns that contain any NaN (Not a Number) elements.
+
+```go
+func (dt *DataTable) DropColsContainNaN() *DataTable
+```
+
+**Returns:**
+
+- `*DataTable`: The modified DataTable
+
+**Example:**
+
+```go
+dt.DropColsContainNaN() // Drops all columns that have at least one NaN element
 ```
 
 ### DropColsContain
@@ -1658,12 +1736,12 @@ func (dt *DataTable) DropColsContainExcelNA() *DataTable
 dt.DropColsContainExcelNA()
 ```
 
-### DropRowsContainStringElements
+### DropRowsContainString
 
-Drops rows that contain string elements.
+Drops rows that contain any string elements.
 
 ```go
-func (dt *DataTable) DropRowsContainStringElements() *DataTable
+func (dt *DataTable) DropRowsContainString() *DataTable
 ```
 
 **Returns:**
@@ -1673,15 +1751,15 @@ func (dt *DataTable) DropRowsContainStringElements() *DataTable
 **Example:**
 
 ```go
-dt.DropRowsContainStringElements()
+dt.DropRowsContainString() // Drops all rows that have at least one string element
 ```
 
-### DropRowsContainNumbers
+### DropRowsContainNumber
 
-Drops rows that contain numeric elements.
+Drops rows that contain any numeric elements.
 
 ```go
-func (dt *DataTable) DropRowsContainNumbers() *DataTable
+func (dt *DataTable) DropRowsContainNumber() *DataTable
 ```
 
 **Returns:**
@@ -1691,12 +1769,12 @@ func (dt *DataTable) DropRowsContainNumbers() *DataTable
 **Example:**
 
 ```go
-dt.DropRowsContainNumbers()
+dt.DropRowsContainNumber() // Drops all rows that have at least one numeric element
 ```
 
 ### DropRowsContainNil
 
-Drops rows that contain nil elements.
+Drops rows that contain any nil (null) elements.
 
 ```go
 func (dt *DataTable) DropRowsContainNil() *DataTable
@@ -1709,7 +1787,25 @@ func (dt *DataTable) DropRowsContainNil() *DataTable
 **Example:**
 
 ```go
-dt.DropRowsContainNil()
+dt.DropRowsContainNil() // Drops all rows that have at least one nil element
+```
+
+### DropRowsContainNaN
+
+Drops rows that contain any NaN (Not a Number) elements.
+
+```go
+func (dt *DataTable) DropRowsContainNaN() *DataTable
+```
+
+**Returns:**
+
+- `*DataTable`: The modified DataTable
+
+**Example:**
+
+```go
+dt.DropRowsContainNaN() // Drops all rows that have at least one NaN element
 ```
 
 ### DropRowsContain
