@@ -272,7 +272,7 @@ func (dl *DataList) Filter(filterFunc func(any) bool) *DataList {
 }
 
 // ReplaceFirst replaces the first occurrence of oldValue with newValue.
-func (dl *DataList) ReplaceFirst(oldValue, newValue any) {
+func (dl *DataList) ReplaceFirst(oldValue, newValue any) *DataList {
 	dl.AtomicDo(func(dl *DataList) {
 		for i, v := range dl.data {
 			if v == oldValue {
@@ -283,10 +283,11 @@ func (dl *DataList) ReplaceFirst(oldValue, newValue any) {
 		}
 		LogWarning("DataList", "ReplaceFirst", "value not found.")
 	})
+	return dl
 }
 
 // ReplaceLast replaces the last occurrence of oldValue with newValue.
-func (dl *DataList) ReplaceLast(oldValue, newValue any) {
+func (dl *DataList) ReplaceLast(oldValue, newValue any) *DataList {
 	dl.AtomicDo(func(dl *DataList) {
 		for i := len(dl.data) - 1; i >= 0; i-- {
 			if dl.data[i] == oldValue {
@@ -297,27 +298,16 @@ func (dl *DataList) ReplaceLast(oldValue, newValue any) {
 		}
 		LogWarning("DataList", "ReplaceLast", "value not found.")
 	})
+	return dl
 }
 
 // ReplaceAll replaces all occurrences of oldValue with newValue in the DataList.
 // If oldValue is not found, no changes are made.
-func (dl *DataList) ReplaceAll(oldValue, newValue any) {
+func (dl *DataList) ReplaceAll(oldValue, newValue any) *DataList {
 	dl.AtomicDo(func(dl *DataList) {
-		length := len(dl.data)
-		if length == 0 {
-			LogWarning("DataList", "ReplaceAll", "DataList is empty, no replacements made.")
-			return
-		}
-
-		// 單線程處理資料替換
-		for i, v := range dl.data {
-			if v == oldValue {
-				dl.data[i] = newValue
-			}
-		}
-
-		go dl.updateTimestamp()
+		dl = dl.replaceAll_notAtomic(oldValue, newValue)
 	})
+	return dl
 }
 
 // ReplaceOutliers replaces outliers in the DataList with the specified replacement value (e.g., mean, median).

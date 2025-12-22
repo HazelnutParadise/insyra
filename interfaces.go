@@ -22,9 +22,9 @@ type IDataList interface {
 	FindLast(any) any
 	FindAll(any) []int
 	Filter(func(any) bool) *DataList
-	ReplaceFirst(any, any)
-	ReplaceLast(any, any)
-	ReplaceAll(any, any)
+	ReplaceFirst(any, any) *DataList
+	ReplaceLast(any, any) *DataList
+	ReplaceAll(any, any) *DataList
 	ReplaceOutliers(float64, float64) *DataList
 	Pop() any
 	Drop(index int) *DataList

@@ -1992,13 +1992,17 @@ indices := dl.FindAll(2) // [1, 3, 5]
 Replaces the first occurrence of a value with a new value.
 
 ```go
-func (dl *DataList) ReplaceFirst(oldValue, newValue any)
+func (dl *DataList) ReplaceFirst(oldValue, newValue any) *DataList
 ```
 
 **Parameters:**
 
 - `oldValue`: Value to search for
 - `newValue`: Value to replace with
+
+**Returns:**
+
+- `*DataList`: The DataList itself (for method chaining)
 
 **Example:**
 
@@ -2013,13 +2017,17 @@ dl.ReplaceFirst(2, 99)
 Replaces the last occurrence of a value with a new value.
 
 ```go
-func (dl *DataList) ReplaceLast(oldValue, newValue any)
+func (dl *DataList) ReplaceLast(oldValue, newValue any) *DataList
 ```
 
 **Parameters:**
 
 - `oldValue`: Value to search for
 - `newValue`: Value to replace with
+
+**Returns:**
+
+- `*DataList`: The DataList itself (for method chaining)
 
 **Example:**
 
@@ -2034,13 +2042,17 @@ dl.ReplaceLast(2, 99)
 Replaces all occurrences of a value with a new value.
 
 ```go
-func (dl *DataList) ReplaceAll(oldValue, newValue any)
+func (dl *DataList) ReplaceAll(oldValue, newValue any) *DataList
 ```
 
 **Parameters:**
 
 - `oldValue`: Value to search for
 - `newValue`: Value to replace with
+
+**Returns:**
+
+- `*DataList`: The DataList itself (for method chaining)
 
 **Example:**
 
