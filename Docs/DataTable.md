@@ -2262,8 +2262,10 @@ dt.ExecuteCCL("NEW('first_row') = @.0")
 
 // Aggregate functions (SUM, AVG, COUNT, MAX, MIN)
 dt.AddColUsingCCL("total_sum", "SUM(A)")
-dt.AddColUsingCCL("row_sum", "SUM(@.0)")
+dt.AddColUsingCCL("row_sum", "SUM(@.#)") // Row-wise sum
+dt.AddColUsingCCL("table_sum", "SUM(@)") // Total table sum
 dt.AddColUsingCCL("avg_val", "AVG(A + B)")
+dt.AddColUsingCCL("count_val", "COUNT(@)") // Count non-nil cells
 ```
 
 **Notes:**
@@ -2272,6 +2274,34 @@ dt.AddColUsingCCL("avg_val", "AVG(A + B)")
 - Column references use Excel-style notation (A, B, C...) for simplicity
 - Supports mathematical operations, logical operations, conditionals and more
 - See [CCL Documentation](CCL.md) for a comprehensive guide to CCL syntax and functions
+
+### ExecuteCCL
+
+Executes one or more CCL statements on the DataTable. Statements are separated by newlines and executed sequentially. Each statement sees the results of previous statements.
+
+```go
+func (dt *DataTable) ExecuteCCL(ccl string) *DataTable
+```
+
+**Parameters:**
+
+- `ccl`: One or more CCL statements separated by newlines
+
+**Returns:**
+
+- `*DataTable`: The modified DataTable
+
+**Example:**
+
+```go
+// Sequential execution: col3 can use col1 and col2
+dt.ExecuteCCL(`
+    NEW('col1') = A * 2
+    NEW('col2') = B + 10
+    NEW('col3') = col1 + col2
+    NEW('total') = SUM(@)
+`)
+```
 
 ## Searching
 

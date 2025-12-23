@@ -92,7 +92,8 @@ func applyCCLOnDataTable(table *DataTable, expression string) ([]any, error) {
 		// 準備 tableData 和 rowNameMap 以支援 . 運算符
 		tableData := make([][]any, numCol)
 		for j := range numCol {
-			tableData[j] = table.columns[j].data
+			tableData[j] = make([]any, len(table.columns[j].data))
+			copy(tableData[j], table.columns[j].data)
 		}
 		rowNameMap := table.rowNames
 
@@ -300,18 +301,38 @@ func initCCLFunctions() {
 		return val, nil
 	})
 
+	// forEachValue is a helper to iterate over all values in aggregate function arguments,
+	// handling nested slices (e.g., from @ operator).
+	forEachValue := func(args [][]any, fn func(val any)) {
+		var walk func(v any)
+		walk = func(v any) {
+			if slice, ok := v.([]any); ok {
+				for _, item := range slice {
+					walk(item)
+				}
+			} else if v != nil {
+				fn(v)
+			}
+		}
+		for _, col := range args {
+			for _, val := range col {
+				// Special case: if the value is a row from @ operator, it will be []any.
+				// We want to iterate over its elements.
+				walk(val)
+			}
+		}
+	}
+
 	ccl.RegisterAggregateFunction("SUM", func(args ...[]any) (any, error) {
 		if len(args) == 0 {
 			return 0.0, nil
 		}
 		var sum float64
-		for _, col := range args {
-			for _, val := range col {
-				if f, ok := toFloat64(val); ok {
-					sum += f
-				}
+		forEachValue(args, func(val any) {
+			if f, ok := toFloat64(val); ok {
+				sum += f
 			}
-		}
+		})
 		return sum, nil
 	})
 	ccl.RegisterAggregateFunction("AVG", func(args ...[]any) (any, error) {
@@ -320,14 +341,12 @@ func initCCLFunctions() {
 		}
 		var sum float64
 		var count int
-		for _, col := range args {
-			for _, val := range col {
-				if f, ok := toFloat64(val); ok {
-					sum += f
-					count++
-				}
+		forEachValue(args, func(val any) {
+			if f, ok := toFloat64(val); ok {
+				sum += f
+				count++
 			}
-		}
+		})
 		if count == 0 {
 			return 0.0, nil
 		}
@@ -335,9 +354,11 @@ func initCCLFunctions() {
 	})
 	ccl.RegisterAggregateFunction("COUNT", func(args ...[]any) (any, error) {
 		var count int
-		for _, col := range args {
-			count += len(col)
-		}
+		forEachValue(args, func(val any) {
+			if val != nil {
+				count++
+			}
+		})
 		return float64(count), nil
 	})
 	ccl.RegisterAggregateFunction("MAX", func(args ...[]any) (any, error) {
@@ -346,16 +367,14 @@ func initCCLFunctions() {
 		}
 		maxVal := -math.MaxFloat64
 		found := false
-		for _, col := range args {
-			for _, val := range col {
-				if f, ok := toFloat64(val); ok {
-					if f > maxVal {
-						maxVal = f
-					}
-					found = true
+		forEachValue(args, func(val any) {
+			if f, ok := toFloat64(val); ok {
+				if f > maxVal {
+					maxVal = f
 				}
+				found = true
 			}
-		}
+		})
 		if !found {
 			return nil, nil
 		}
@@ -367,16 +386,14 @@ func initCCLFunctions() {
 		}
 		minVal := math.MaxFloat64
 		found := false
-		for _, col := range args {
-			for _, val := range col {
-				if f, ok := toFloat64(val); ok {
-					if f < minVal {
-						minVal = f
-					}
-					found = true
+		forEachValue(args, func(val any) {
+			if f, ok := toFloat64(val); ok {
+				if f < minVal {
+					minVal = f
 				}
+				found = true
 			}
-		}
+		})
 		if !found {
 			return nil, nil
 		}

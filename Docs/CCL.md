@@ -76,23 +76,19 @@ Executes CCL statements that can modify existing columns or create new ones. Sup
 - NEW function for creating columns (`NEW('colName') = expression`)
 - Multiple statements separated by `;` or newline
 
+#### Sequential Execution and Data Consistency
+
+When executing multiple statements in a single `ExecuteCCL` call, statements are executed **sequentially**. Each statement sees the results of the previous statements.
+
 ```go
-// Modify existing column
-dt.ExecuteCCL("A = A * 2")
-
-// Create new column
-dt.ExecuteCCL("NEW('total') = A + B + C")
-
-// Multiple statements
 dt.ExecuteCCL(`
-    A = A * 10
-    B = B + 5
-    NEW('sum') = A + B
+    NEW('A_plus_1') = A + 1
+    NEW('TotalSum') = SUM(@) // This SUM will include the newly created 'A_plus_1'
 `)
-
-// Or use semicolons
-dt.ExecuteCCL("A = A + 1; NEW('doubled') = A * 2")
 ```
+
+**Data Snapshotting:**
+To ensure consistency during the evaluation of a *single* statement, CCL uses a data snapshot. For example, in `NEW('B') = SUM(@)`, the `SUM(@)` calculation will not be affected by the values being written into `B` as it is being generated.
 
 ## Basic Syntax
 
@@ -473,6 +469,15 @@ The `@` symbol represents all columns in the current row. It is typically used w
 
 When used in `NEW()` or assignment, `@.n` can be used to copy an entire row into a new column or modify an existing one.
 
+#### Total Table Reference
+
+When `@` is used as an argument to an **Aggregate Function** (like `SUM`, `AVG`, etc.), it represents **all numeric values in the entire table**.
+
+```
+"SUM(@)"             // Sum of all numeric values in the entire table
+"COUNT(@)"           // Count of all non-nil cells in the entire table
+```
+
 > **Performance Note:** Expressions like `A.0` or `@.0` are "row-independent" (they don't change based on the current row being evaluated). CCL optimizes these by evaluating them only once per execution.
 
 ## Functions
@@ -565,6 +570,8 @@ Example:
 
 Aggregate functions perform calculations on a set of values (a column, a row, or an expression) and return a single value. This value is then "broadcasted" to all rows in the resulting column (unless in row-wise mode).
 
+**Important Note on `nil` values:** All aggregate functions **automatically ignore `nil` values**. For example, `AVG` only divides the sum by the number of non-nil elements.
+
 ### SUM
 
 Calculates the sum of all numeric values in the input.
@@ -576,6 +583,7 @@ Calculates the sum of all numeric values in the input.
 "SUM(A + B)"         // Sum of (A + B) for all rows
 "SUM(A.0, B.1, 10)"  // Sum of specific values and constants
 "SUM(@.#)"           // Sum of all columns in the current row (Row Sum)
+"SUM(@)"             // Sum of all numeric values in the entire table (Total Sum)
 ```
 
 ### AVG
@@ -586,15 +594,17 @@ Calculates the average (mean) of all numeric values in the input.
 "AVG(A)"             // Average of column A
 "AVG(A + B)"         // Average of (A + B)
 "AVG(@.#)"           // Average of all columns in the current row (Row Average)
+"AVG(@)"             // Average of all numeric values in the entire table (Total Average)
 ```
 
 ### COUNT
 
-Counts the number of elements in the input.
+Counts the number of non-nil elements in the input.
 
 ```
-"COUNT(A)"           // Number of rows in column A
-"COUNT(@.0)"         // Number of columns in the first row
+"COUNT(A)"           // Number of non-nil rows in column A
+"COUNT(@.0)"         // Number of non-nil columns in the first row
+"COUNT(@)"           // Number of non-nil cells in the entire table
 ```
 
 ### MAX
@@ -603,7 +613,8 @@ Returns the maximum numeric value in the input.
 
 ```
 "MAX(A)"             // Maximum value in column A
-"MAX(@.0)"           // Maximum value in the first row
+"MAX(@.#)"           // Maximum value in the current row
+"MAX(@)"             // Maximum value in the entire table
 ```
 
 ### MIN
@@ -612,7 +623,8 @@ Returns the minimum numeric value in the input.
 
 ```
 "MIN(A)"             // Minimum value in column A
-"MIN(@.0)"           // Minimum value in the first row
+"MIN(@.#)"           // Minimum value in the current row
+"MIN(@)"             // Minimum value in the entire table
 ```
 
 ## Row-wise Aggregation

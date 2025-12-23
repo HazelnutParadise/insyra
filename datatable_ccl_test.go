@@ -397,3 +397,113 @@ func TestDataTable_EditColByNameUsingCCL_RejectsAssignment(t *testing.T) {
 		}
 	}
 }
+
+func TestDataTable_ExecuteCCL_AggregateTotal(t *testing.T) {
+	createDT := func() *DataTable {
+		dt := NewDataTable()
+		dt.AppendCols(
+			NewDataList(1.0, 2.0, 3.0).SetName("A"),
+			NewDataList(4.0, 5.0, 6.0).SetName("B"),
+		)
+		return dt
+	}
+
+	// SUM(@) should sum all numeric values in the table: 1+2+3+4+5+6 = 21
+	t.Run("SUM", func(t *testing.T) {
+		dt := createDT()
+		dt.ExecuteCCL("NEW('total_sum') = SUM(@)")
+		colTotalSum := dt.GetColByName("total_sum")
+		if colTotalSum == nil {
+			t.Fatal("Column total_sum not found")
+		}
+		for i := 0; i < 3; i++ {
+			if colTotalSum.Get(i) != 21.0 {
+				t.Errorf("Expected 21.0 at row %d, got %v", i, colTotalSum.Get(i))
+			}
+		}
+	})
+
+	// COUNT(@) should count all cells: 3 rows * 2 columns = 6
+	t.Run("COUNT", func(t *testing.T) {
+		dt := createDT()
+		dt.ExecuteCCL("NEW('total_count') = COUNT(@)")
+		colTotalCount := dt.GetColByName("total_count")
+		if colTotalCount == nil {
+			t.Fatal("Column total_count not found")
+		}
+		for i := 0; i < 3; i++ {
+			if colTotalCount.Get(i) != 6.0 {
+				t.Errorf("Expected 6.0 at row %d, got %v", i, colTotalCount.Get(i))
+			}
+		}
+	})
+
+	// AVG(@) should be 21/6 = 3.5
+	t.Run("AVG", func(t *testing.T) {
+		dt := createDT()
+		dt.ExecuteCCL("NEW('total_avg') = AVG(@)")
+		colTotalAvg := dt.GetColByName("total_avg")
+		if colTotalAvg == nil {
+			t.Fatal("Column total_avg not found")
+		}
+		for i := 0; i < 3; i++ {
+			if colTotalAvg.Get(i) != 3.5 {
+				t.Errorf("Expected 3.5 at row %d, got %v", i, colTotalAvg.Get(i))
+			}
+		}
+	})
+
+	// MAX(@) should be 6.0
+	t.Run("MAX", func(t *testing.T) {
+		dt := createDT()
+		dt.ExecuteCCL("NEW('total_max') = MAX(@)")
+		colTotalMax := dt.GetColByName("total_max")
+		if colTotalMax == nil {
+			t.Fatal("Column total_max not found")
+		}
+		for i := 0; i < 3; i++ {
+			if colTotalMax.Get(i) != 6.0 {
+				t.Errorf("Expected 6.0 at row %d, got %v", i, colTotalMax.Get(i))
+			}
+		}
+	})
+
+	// MIN(@) should be 1.0
+	t.Run("MIN", func(t *testing.T) {
+		dt := createDT()
+		dt.ExecuteCCL("NEW('total_min') = MIN(@)")
+		colTotalMin := dt.GetColByName("total_min")
+		if colTotalMin == nil {
+			t.Fatal("Column total_min not found")
+		}
+		for i := 0; i < 3; i++ {
+			if colTotalMin.Get(i) != 1.0 {
+				t.Errorf("Expected 1.0 at row %d, got %v", i, colTotalMin.Get(i))
+			}
+		}
+	})
+
+	// Test multiple aggregates in one ExecuteCCL call
+	t.Run("MultipleAggregates", func(t *testing.T) {
+		dt := createDT()
+		// In one call, NEW('S') = SUM(@) and NEW('C') = COUNT(@)
+		// Both should see only A and B because of snapshotting.
+		dt.ExecuteCCL("NEW('S') = SUM(@); NEW('C') = COUNT(@)")
+
+		colS := dt.GetColByName("S")
+		colC := dt.GetColByName("C")
+
+		if colS == nil || colC == nil {
+			t.Fatal("Columns S or C not found")
+		}
+
+		for i := 0; i < 3; i++ {
+			if colS.Get(i) != 21.0 {
+				t.Errorf("Expected S=21.0 at row %d, got %v", i, colS.Get(i))
+			}
+			if colC.Get(i) != 6.0 {
+				t.Errorf("Expected C=6.0 at row %d, got %v", i, colC.Get(i))
+			}
+		}
+	})
+}

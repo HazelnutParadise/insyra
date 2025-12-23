@@ -189,9 +189,18 @@ func (dt *DataTable) ExecuteCCL(cclStatements string) *DataTable {
 			}
 		}
 
+		// 準備 tableData 和 rowNameMap 以支援 . 運算符和聚合函數
+		// 在 ExecuteCCL 開始時做一次 snapshot，確保所有語句看到一致的資料
+		tableData := make([][]any, len(dt.columns))
+		for j := range len(dt.columns) {
+			tableData[j] = make([]any, len(dt.columns[j].data))
+			copy(tableData[j], dt.columns[j].data)
+		}
+		rowNameMap := dt.rowNames
+
 		// 執行每個 CCL 語句
 		for _, node := range nodes {
-			if err := executeCCLNode(dt, node, numRow, colNameMap); err != nil {
+			if err := executeCCLNode(dt, node, numRow, colNameMap, tableData, rowNameMap); err != nil {
 				LogWarning("DataTable", "ExecuteCCL", "Failed to execute CCL statement: %v", err)
 				resultDtChan <- dt
 				return
@@ -203,6 +212,13 @@ func (dt *DataTable) ExecuteCCL(cclStatements string) *DataTable {
 					colNameMap[dt.columns[j].name] = j
 				}
 			}
+			// 更新 tableData 和 rowNameMap，確保後續語句能看到最新的資料
+			tableData = make([][]any, len(dt.columns))
+			for j := range len(dt.columns) {
+				tableData[j] = make([]any, len(dt.columns[j].data))
+				copy(tableData[j], dt.columns[j].data)
+			}
+			rowNameMap = dt.rowNames
 		}
 
 		elapsed := time.Since(startTime)
@@ -213,17 +229,17 @@ func (dt *DataTable) ExecuteCCL(cclStatements string) *DataTable {
 }
 
 // executeCCLNode executes a single CCL node on the DataTable
-func executeCCLNode(dt *DataTable, node ccl.CCLNode, numRow int, colNameMap map[string]int) error {
+func executeCCLNode(dt *DataTable, node ccl.CCLNode, numRow int, colNameMap map[string]int, tableData [][]any, rowNameMap map[string]int) error {
 	// 檢查是否為賦值語句
 	if ccl.IsAssignmentNode(node) {
 		target, _ := ccl.GetAssignmentTarget(node)
-		return executeAssignment(dt, node, target, numRow, colNameMap)
+		return executeAssignment(dt, node, target, numRow, colNameMap, tableData, rowNameMap)
 	}
 
 	// 檢查是否為 NEW 函數
 	if ccl.IsNewColNode(node) {
 		newColName, _, _ := ccl.GetNewColInfo(node)
-		return executeNewColumn(dt, node, newColName, numRow, colNameMap)
+		return executeNewColumn(dt, node, newColName, numRow, colNameMap, tableData, rowNameMap)
 	}
 
 	// 普通表達式，不做任何操作（只有在 slice 模式下才有意義）
@@ -231,7 +247,7 @@ func executeCCLNode(dt *DataTable, node ccl.CCLNode, numRow int, colNameMap map[
 }
 
 // executeAssignment executes an assignment CCL statement
-func executeAssignment(dt *DataTable, node ccl.CCLNode, target string, numRow int, colNameMap map[string]int) error {
+func executeAssignment(dt *DataTable, node ccl.CCLNode, target string, numRow int, colNameMap map[string]int, tableData [][]any, rowNameMap map[string]int) error {
 	// 確定目標列索引
 	var targetColIdx int
 
@@ -261,13 +277,6 @@ func executeAssignment(dt *DataTable, node ccl.CCLNode, target string, numRow in
 
 	// 預分配 row slice
 	row := make([]any, len(dt.columns))
-
-	// 準備 tableData 和 rowNameMap 以支援 . 運算符
-	tableData := make([][]any, len(dt.columns))
-	for j := range len(dt.columns) {
-		tableData[j] = dt.columns[j].data
-	}
-	rowNameMap := dt.rowNames
 
 	// 計算結果
 	var results []any
@@ -329,16 +338,9 @@ func executeAssignment(dt *DataTable, node ccl.CCLNode, target string, numRow in
 }
 
 // executeNewColumn executes a NEW column creation CCL statement
-func executeNewColumn(dt *DataTable, node ccl.CCLNode, newColName string, numRow int, colNameMap map[string]int) error {
+func executeNewColumn(dt *DataTable, node ccl.CCLNode, newColName string, numRow int, colNameMap map[string]int, tableData [][]any, rowNameMap map[string]int) error {
 	// 預分配 row slice
 	row := make([]any, len(dt.columns))
-
-	// 準備 tableData 和 rowNameMap 以支援 . 運算符
-	tableData := make([][]any, len(dt.columns))
-	for j := range len(dt.columns) {
-		tableData[j] = dt.columns[j].data
-	}
-	rowNameMap := dt.rowNames
 
 	// 計算結果
 	var results []any

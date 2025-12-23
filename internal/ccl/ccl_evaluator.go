@@ -514,6 +514,27 @@ func toBool(val any) (bool, bool) {
 func evaluateToColumn(n cclNode, tableData [][]any, rowNameMap map[string]int, colNameMap map[string]int, rowIndex int) ([]any, error) {
 	// 1. 針對直接欄位引用的優化
 	switch t := n.(type) {
+	case *cclAtNode:
+		// Special case for @ in aggregate functions: return all rows
+		// We only include columns that were present when the evaluation started.
+		numCols := len(tableData)
+		numRows := 0
+		if numCols > 0 {
+			numRows = len(tableData[0])
+		}
+		res := make([]any, numRows)
+		for i := 0; i < numRows; i++ {
+			row := make([]any, numCols)
+			for j := 0; j < numCols; j++ {
+				if i < len(tableData[j]) {
+					row[j] = tableData[j][i]
+				} else {
+					row[j] = nil
+				}
+			}
+			res[i] = row
+		}
+		return res, nil
 	case *cclIdentifierNode:
 		idx := utils.ParseColIndex(t.name)
 		if idx < 0 || idx >= len(tableData) {
@@ -524,17 +545,24 @@ func evaluateToColumn(n cclNode, tableData [][]any, rowNameMap map[string]int, c
 			}
 		}
 		if idx >= 0 && idx < len(tableData) {
-			return tableData[idx], nil
+			// Return a copy to avoid external modification
+			res := make([]any, len(tableData[idx]))
+			copy(res, tableData[idx])
+			return res, nil
 		}
 	case *cclColIndexNode:
 		idx := utils.ParseColIndex(t.index)
 		if idx >= 0 && idx < len(tableData) {
-			return tableData[idx], nil
+			res := make([]any, len(tableData[idx]))
+			copy(res, tableData[idx])
+			return res, nil
 		}
 	case *cclColNameNode:
 		if colNameMap != nil {
 			if idx, ok := colNameMap[t.name]; ok && idx >= 0 && idx < len(tableData) {
-				return tableData[idx], nil
+				res := make([]any, len(tableData[idx]))
+				copy(res, tableData[idx])
+				return res, nil
 			}
 		}
 	}
