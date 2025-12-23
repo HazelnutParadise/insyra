@@ -295,6 +295,7 @@ With CCL, you can:
 - Perform mathematical operations and string manipulations
 - Execute chained comparisons like `1 < A <= 10` for range checks
 - Access specific rows using the `.` operator (e.g., `A.0`) and reference all columns with `@`
+- Use aggregate functions like `SUM`, `AVG`, `COUNT`, `MAX`, and `MIN`
 
 ```go
 // Add a column that classifies data based on values in column A
@@ -302,7 +303,10 @@ dt.AddColUsingCCL("category", "IF(A > 90, 'Excellent', IF(A > 70, 'Good', 'Avera
 
 // Perform calculations just like in Excel
 dt.AddColUsingCCL("total", "A + B + C")
-dt.AddColUsingCCL("average", "(A + B + C) / 3")
+dt.AddColUsingCCL("average", "AVG(A + B + C)")
+
+// Use aggregate functions on rows or columns
+dt.AddColUsingCCL("row_sum", "SUM(@.0)")
 
 // Use range checks with chained comparisons (try this in Excel!)
 dt.AddColUsingCCL("in_range", "IF(10 <= A <= 20, 'Yes', 'No')")

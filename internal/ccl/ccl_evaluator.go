@@ -133,6 +133,10 @@ func IsRowDependent(n cclNode) bool {
 		}
 		return false
 	case *funcCallNode:
+		// 如果是聚合函數，它通常是行無關的（結果對整欄都一樣）
+		if _, isAgg := aggregateFunctions[strings.ToUpper(t.name)]; isAgg {
+			return false
+		}
 		for _, arg := range t.args {
 			if IsRowDependent(arg) {
 				return true
@@ -195,6 +199,20 @@ func evaluateWithContext(n cclNode, row []any, tableData [][]any, rowNameMap map
 		}
 		return row[idx], nil
 	case *funcCallNode:
+		// 檢查是否為聚合函數
+		if _, isAgg := aggregateFunctions[strings.ToUpper(t.name)]; isAgg {
+			aggArgs := make([][]any, len(t.args))
+			for i, arg := range t.args {
+				// 聚合函數的參數必須是欄位引用或能產生整欄資料的表達式
+				colData, err := evaluateToColumn(arg, tableData, rowNameMap, colNameMap)
+				if err != nil {
+					return nil, fmt.Errorf("aggregate function %s: %v", t.name, err)
+				}
+				aggArgs[i] = colData
+			}
+			return callAggregateFunction(t.name, aggArgs)
+		}
+
 		args := []any{}
 		for _, arg := range t.args {
 			val, err := evaluateWithContext(arg, row, tableData, rowNameMap, colNameMap)
@@ -437,6 +455,84 @@ func toBool(val any) (bool, bool) {
 	default:
 		return false, false
 	}
+}
+
+func evaluateToColumn(n cclNode, tableData [][]any, rowNameMap map[string]int, colNameMap map[string]int) ([]any, error) {
+	// 1. 針對直接欄位引用的優化
+	switch t := n.(type) {
+	case *cclIdentifierNode:
+		idx := utils.ParseColIndex(t.name)
+		if idx < 0 || idx >= len(tableData) {
+			if colNameMap != nil {
+				if cIdx, ok := colNameMap[t.name]; ok {
+					idx = cIdx
+				}
+			}
+		}
+		if idx >= 0 && idx < len(tableData) {
+			return tableData[idx], nil
+		}
+	case *cclColIndexNode:
+		idx := utils.ParseColIndex(t.index)
+		if idx >= 0 && idx < len(tableData) {
+			return tableData[idx], nil
+		}
+	case *cclColNameNode:
+		if colNameMap != nil {
+			if idx, ok := colNameMap[t.name]; ok && idx >= 0 && idx < len(tableData) {
+				return tableData[idx], nil
+			}
+		}
+	}
+
+	// 2. 檢查是否為行無關表達式（如 A.0, @.0, 1+2）
+	if !IsRowDependent(n) {
+		// 使用第一行作為上下文進行評估
+		var firstRow []any
+		if len(tableData) > 0 {
+			firstRow = make([]any, len(tableData))
+			for j := range tableData {
+				if len(tableData[j]) > 0 {
+					firstRow[j] = tableData[j][0]
+				} else {
+					firstRow[j] = nil
+				}
+			}
+		}
+		val, err := evaluateWithContext(n, firstRow, tableData, rowNameMap, colNameMap)
+		if err != nil {
+			return nil, err
+		}
+		// 如果結果已經是 slice（如 @.0），直接返回
+		if slice, ok := val.([]any); ok {
+			return slice, nil
+		}
+		// 否則包裝成單個元素的 slice
+		return []any{val}, nil
+	}
+
+	// 3. 行相關表達式（如 A+B, IF(A>0, B, C)）：對每一行進行評估
+	numRows := 0
+	if len(tableData) > 0 {
+		numRows = len(tableData[0])
+	}
+	results := make([]any, numRows)
+	row := make([]any, len(tableData))
+	for i := 0; i < numRows; i++ {
+		for j := range tableData {
+			if i < len(tableData[j]) {
+				row[j] = tableData[j][i]
+			} else {
+				row[j] = nil
+			}
+		}
+		val, err := evaluateWithContext(n, row, tableData, rowNameMap, colNameMap)
+		if err != nil {
+			return nil, err
+		}
+		results[i] = val
+	}
+	return results, nil
 }
 
 func evaluateRowAccess(left, right cclNode, currentRow []any, tableData [][]any, rowNameMap map[string]int, colNameMap map[string]int) (any, error) {

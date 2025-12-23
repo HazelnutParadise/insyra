@@ -2259,6 +2259,11 @@ dt.AddColUsingCCL("base_value", "A.0")
 
 // All columns reference (@.0 gets all columns of the first row)
 dt.ExecuteCCL("NEW('first_row') = @.0")
+
+// Aggregate functions (SUM, AVG, COUNT, MAX, MIN)
+dt.AddColUsingCCL("total_sum", "SUM(A)")
+dt.AddColUsingCCL("row_sum", "SUM(@.0)")
+dt.AddColUsingCCL("avg_val", "AVG(A + B)")
 ```
 
 **Notes:**

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"strconv"
 	"strings"
 
 	"github.com/HazelnutParadise/Go-Utils/conv"
@@ -298,4 +299,110 @@ func initCCLFunctions() {
 		}
 		return val, nil
 	})
+
+	ccl.RegisterAggregateFunction("SUM", func(args ...[]any) (any, error) {
+		if len(args) == 0 {
+			return 0.0, nil
+		}
+		var sum float64
+		for _, col := range args {
+			for _, val := range col {
+				if f, ok := toFloat64(val); ok {
+					sum += f
+				}
+			}
+		}
+		return sum, nil
+	})
+	ccl.RegisterAggregateFunction("AVG", func(args ...[]any) (any, error) {
+		if len(args) == 0 {
+			return 0.0, nil
+		}
+		var sum float64
+		var count int
+		for _, col := range args {
+			for _, val := range col {
+				if f, ok := toFloat64(val); ok {
+					sum += f
+					count++
+				}
+			}
+		}
+		if count == 0 {
+			return 0.0, nil
+		}
+		return sum / float64(count), nil
+	})
+	ccl.RegisterAggregateFunction("COUNT", func(args ...[]any) (any, error) {
+		var count int
+		for _, col := range args {
+			count += len(col)
+		}
+		return float64(count), nil
+	})
+	ccl.RegisterAggregateFunction("MAX", func(args ...[]any) (any, error) {
+		if len(args) == 0 {
+			return nil, nil
+		}
+		maxVal := -math.MaxFloat64
+		found := false
+		for _, col := range args {
+			for _, val := range col {
+				if f, ok := toFloat64(val); ok {
+					if f > maxVal {
+						maxVal = f
+					}
+					found = true
+				}
+			}
+		}
+		if !found {
+			return nil, nil
+		}
+		return maxVal, nil
+	})
+	ccl.RegisterAggregateFunction("MIN", func(args ...[]any) (any, error) {
+		if len(args) == 0 {
+			return nil, nil
+		}
+		minVal := math.MaxFloat64
+		found := false
+		for _, col := range args {
+			for _, val := range col {
+				if f, ok := toFloat64(val); ok {
+					if f < minVal {
+						minVal = f
+					}
+					found = true
+				}
+			}
+		}
+		if !found {
+			return nil, nil
+		}
+		return minVal, nil
+	})
+}
+
+// toFloat64 is a helper to convert any to float64, copied from evaluator for use in functions
+func toFloat64(val any) (float64, bool) {
+	switch v := val.(type) {
+	case float64:
+		return v, true
+	case int:
+		return float64(v), true
+	case int32:
+		return float64(v), true
+	case int64:
+		return float64(v), true
+	case float32:
+		return float64(v), true
+	case string:
+		f, err := strconv.ParseFloat(v, 64)
+		return f, err == nil
+	case nil:
+		return 0, true
+	default:
+		return 0, false
+	}
 }

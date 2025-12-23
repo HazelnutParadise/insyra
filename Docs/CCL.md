@@ -558,6 +558,106 @@ Example:
 // Returns 'A' if A > 90, 'B' if A > 80, 'C' if A > 70, otherwise returns 'F'
 ```
 
+## Aggregate Functions
+
+Aggregate functions perform calculations on a set of values (a column, a row, or an expression) and return a single value. This value is then "broadcasted" to all rows in the resulting column.
+
+### SUM
+
+Calculates the sum of all numeric values in the input.
+
+```
+"SUM(A)"             // Sum of all values in column A
+"SUM(@.0)"           // Sum of all values in the first row
+"SUM(A + B)"         // Sum of (A + B) for all rows
+"SUM(A.0, B.1, 10)"  // Sum of specific values and constants
+```
+
+### AVG
+
+Calculates the average (mean) of all numeric values in the input.
+
+```
+"AVG(A)"             // Average of column A
+"AVG(A + B)"         // Average of (A + B)
+```
+
+### COUNT
+
+Counts the number of elements in the input.
+
+```
+"COUNT(A)"           // Number of rows in column A
+"COUNT(@.0)"         // Number of columns in the first row
+```
+
+### MAX
+
+Returns the maximum numeric value in the input.
+
+```
+"MAX(A)"             // Maximum value in column A
+"MAX(@.0)"           // Maximum value in the first row
+```
+
+### MIN
+
+Returns the minimum numeric value in the input.
+
+```
+"MIN(A)"             // Minimum value in column A
+"MIN(@.0)"           // Minimum value in the first row
+```
+
+> **Note:** Aggregate functions are row-independent. They are evaluated once per execution, and the result is applied to every row.
+>
+### Aggregate Functions
+
+Aggregate functions operate on entire columns rather than single row values. They return a single value that is then broadcasted to all rows (unless combined with row-dependent expressions).
+
+#### `SUM(col1, col2, ...)`
+
+Calculates the sum of all numeric values in the specified columns.
+
+```
+"SUM(A)"             // Sum of all values in column A
+"SUM(A, B)"          // Sum of all values in columns A and B
+```
+
+#### `AVG(col1, col2, ...)`
+
+Calculates the average of all numeric values in the specified columns.
+
+```
+"AVG(A)"             // Average of column A
+```
+
+#### `COUNT(col1, col2, ...)`
+
+Counts the total number of elements in the specified columns.
+
+```
+"COUNT(A)"           // Number of rows in column A
+```
+
+#### `MAX(col1, col2, ...)`
+
+Finds the maximum numeric value in the specified columns.
+
+```
+"MAX(A)"             // Maximum value in column A
+```
+
+#### `MIN(col1, col2, ...)`
+
+Finds the minimum numeric value in the specified columns.
+
+```
+"MIN(A)"             // Minimum value in column A
+```
+
+> **Note:** Aggregate functions are row-independent. For example, `SUM(A)` will have the same value for every row. However, you can combine them with row-dependent expressions: `A - AVG(A)` (subtract the column average from each row's value).
+
 ## Conditional Expressions
 
 Conditional expressions are used in functions like IF, AND, OR, and CASE, returning boolean values (true or false).
