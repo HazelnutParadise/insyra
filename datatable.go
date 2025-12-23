@@ -922,6 +922,14 @@ func (dt *DataTable) DropColsContain(value ...any) *DataTable {
 					containsValue = true
 					break
 				}
+				if vFloat, ok := v.(float64); ok {
+					for _, dataValue := range column.data {
+						if dataFloat, ok := dataValue.(float64); ok && math.IsNaN(vFloat) && math.IsNaN(dataFloat) {
+							containsValue = true
+							break
+						}
+					}
+				}
 			}
 			if containsValue {
 				columnsToDelete = append(columnsToDelete, colIndex)
@@ -1208,12 +1216,29 @@ func (dt *DataTable) DropRowsContain(value ...any) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		maxLength := dt.getMaxColLength()
 		rowsToKeep := make([]bool, maxLength)
-		for rowIndex := 0; rowIndex < maxLength; rowIndex++ {
+
+		hasNaNInValue := false
+		for _, v := range value {
+			if f, ok := v.(float64); ok && math.IsNaN(f) {
+				hasNaNInValue = true
+				break
+			}
+		}
+
+		for rowIndex := range maxLength {
 			keepRow := true
 			for _, column := range dt.columns {
 				if rowIndex < len(column.data) && slices.Contains(value, column.data[rowIndex]) {
 					keepRow = false
 					break
+				}
+				if hasNaNInValue {
+					if rowIndex < len(column.data) {
+						if dataFloat, ok := column.data[rowIndex].(float64); ok && math.IsNaN(dataFloat) {
+							keepRow = false
+							break
+						}
+					}
 				}
 			}
 			rowsToKeep[rowIndex] = keepRow

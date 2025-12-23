@@ -29,7 +29,7 @@ type IDataList interface {
 	Pop() any
 	Drop(index int) *DataList
 	DropAll(...any) *DataList
-	DropIfContains(any) *DataList
+	DropIfContains(string) *DataList
 	Clear() *DataList
 	ClearStrings() *DataList
 	ClearNumbers() *DataList
@@ -259,6 +259,20 @@ type IDataTable interface {
 	ToSQL(db *gorm.DB, tableName string, options ...ToSQLOptions) error
 
 	AddColUsingCCL(newColName, ccl string) *DataTable
+
+	// Replace
+	Replace(oldValue, newValue any) *DataTable
+	ReplaceNaNsWith(newValue any) *DataTable
+	ReplaceNilsWith(newValue any) *DataTable
+	ReplaceNaNsAndNilsWith(newValue any) *DataTable
+	ReplaceInRow(rowIndex int, oldValue, newValue any, mode ...int) *DataTable
+	ReplaceNaNsInRow(rowIndex int, newValue any, mode ...int) *DataTable
+	ReplaceNilsInRow(rowIndex int, newValue any, mode ...int) *DataTable
+	ReplaceNaNsAndNilsInRow(rowIndex int, newValue any, mode ...int) *DataTable
+	ReplaceInCol(colIndex string, oldValue, newValue any, mode ...int) *DataTable
+	ReplaceNaNsInCol(colIndex string, newValue any, mode ...int) *DataTable
+	ReplaceNilsInCol(colIndex string, newValue any, mode ...int) *DataTable
+	ReplaceNaNsAndNilsInCol(colIndex string, newValue any, mode ...int) *DataTable
 
 	sortColsByIndex()
 	regenerateColIndex()

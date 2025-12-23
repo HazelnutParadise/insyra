@@ -2,6 +2,7 @@ package insyra
 
 import (
 	"fmt"
+	"math"
 	"reflect"
 	"slices"
 	"sort"
@@ -216,11 +217,28 @@ func TestDataListDrop(t *testing.T) {
 }
 
 func TestDataListDropAll(t *testing.T) {
-	// TODO
+	dl := NewDataList(1, 2, 3, 2, 4)
+	dl.DropAll(2)
+	expected := []any{1, 3, 4}
+	if !reflect.DeepEqual(dl.Data(), expected) {
+		t.Errorf("Expected %v, got %v", expected, dl.Data())
+	}
+
+	dl = NewDataList(1.0, math.NaN(), 2.0, math.NaN(), 3.0)
+	dl.DropAll(math.NaN())
+	expected = []any{1.0, 2.0, 3.0}
+	if !reflect.DeepEqual(dl.Data(), expected) {
+		t.Errorf("Expected %v, got %v", expected, dl.Data())
+	}
 }
 
 func TestDataListDropIfContains(t *testing.T) {
-	// TODO
+	dl := NewDataList("apple", "banana", "cherry")
+	dl.DropIfContains("an")
+	expected := []any{"apple", "cherry"}
+	if !reflect.DeepEqual(dl.Data(), expected) {
+		t.Errorf("Expected %v, got %v", expected, dl.Data())
+	}
 }
 
 // 測試 Clear 函數

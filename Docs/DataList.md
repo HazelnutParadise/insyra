@@ -352,7 +352,7 @@ dl.Drop(2) // removes element at index 2
 
 ### DropAll
 
-Removes all occurrences of specified values from the DataList.
+Removes all occurrences of specified values from the DataList. Supports `math.NaN()`.
 
 ```go
 func (dl *DataList) DropAll(values ...any) *DataList
@@ -369,17 +369,17 @@ func (dl *DataList) DropAll(values ...any) *DataList
 **Example:**
 
 ```go
-dl := insyra.NewDataList(1, 2, 3, 2, 4, 2, 5)
-dl.DropAll(2, 4)
+dl := insyra.NewDataList(1, 2, 3, 2, 4, 2, 5, math.NaN())
+dl.DropAll(2, 4, math.NaN())
 // dl now contains: [1, 3, 5]
 ```
 
 ### DropIfContains
 
-Removes all elements that contain a specified substring (for string elements).
+Removes all string elements that contain a specified substring. Non-string elements are kept.
 
 ```go
-func (dl *DataList) DropIfContains(substring any) *DataList
+func (dl *DataList) DropIfContains(substring string) *DataList
 ```
 
 **Parameters:**
@@ -393,9 +393,9 @@ func (dl *DataList) DropIfContains(substring any) *DataList
 **Example:**
 
 ```go
-dl := insyra.NewDataList("apple", "banana", "grape", "orange")
+dl := insyra.NewDataList("apple", "banana", "grape", "orange", 123)
 dl.DropIfContains("an")
-// dl now contains: ["apple", "grape"]
+// dl now contains: ["apple", "grape", 123]
 ```
 
 ### Clear

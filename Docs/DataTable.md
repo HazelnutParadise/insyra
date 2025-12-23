@@ -9,6 +9,7 @@ DataTable is the core data structure of Insyra for handling structured data. It 
 - [Data Loading](#data-loading)
 - [Data Saving](#data-saving)
 - [Data Operations](#data-operations)
+- [Data Replacement](#data-replacement)
 - [Column Calculation](#column-calculation)
 - [Searching](#searching)
 - [Filtering](#filtering)
@@ -2070,6 +2071,98 @@ sampled := dt.SimpleRandomSample(10)
 - Returns a new DataTable, leaving the original unchanged
 - If sample size is greater than or equal to the number of rows, returns a full copy
 - If sample size is less than or equal to 0, returns an empty DataTable
+
+## Data Replacement
+
+DataTable provides several methods to replace values within the entire table, a specific row, or a specific column.
+
+### Replace
+
+Replaces all occurrences of `oldValue` with `newValue` in the entire DataTable.
+
+```go
+func (dt *DataTable) Replace(oldValue, newValue any) *DataTable
+```
+
+### ReplaceNaNsWith
+
+Replaces all occurrences of `NaN` with `newValue` in the entire DataTable.
+
+```go
+func (dt *DataTable) ReplaceNaNsWith(newValue any) *DataTable
+```
+
+### ReplaceNilsWith
+
+Replaces all occurrences of `nil` with `newValue` in the entire DataTable.
+
+```go
+func (dt *DataTable) ReplaceNilsWith(newValue any) *DataTable
+```
+
+### ReplaceNaNsAndNilsWith
+
+Replaces all occurrences of both `NaN` and `nil` with `newValue` in the entire DataTable.
+
+```go
+func (dt *DataTable) ReplaceNaNsAndNilsWith(newValue any) *DataTable
+```
+
+### ReplaceInRow
+
+Replaces occurrences of `oldValue` with `newValue` in a specific row.
+
+```go
+func (dt *DataTable) ReplaceInRow(rowIndex int, oldValue, newValue any, mode ...int) *DataTable
+```
+
+**Parameters:**
+
+- `rowIndex`: The index of the row.
+- `oldValue`: The value to be replaced.
+- `newValue`: The value to replace with.
+- `mode` (optional):
+  - `0` (default): Replace all occurrences.
+  - `1`: Replace only the first occurrence.
+  - `-1`: Replace only the last occurrence.
+
+### ReplaceNaNsInRow / ReplaceNilsInRow / ReplaceNaNsAndNilsInRow
+
+Similar to `ReplaceInRow`, but specifically for `NaN`, `nil`, or both.
+
+```go
+func (dt *DataTable) ReplaceNaNsInRow(rowIndex int, newValue any, mode ...int) *DataTable
+func (dt *DataTable) ReplaceNilsInRow(rowIndex int, newValue any, mode ...int) *DataTable
+func (dt *DataTable) ReplaceNaNsAndNilsInRow(rowIndex int, newValue any, mode ...int) *DataTable
+```
+
+### ReplaceInCol
+
+Replaces occurrences of `oldValue` with `newValue` in a specific column.
+
+```go
+func (dt *DataTable) ReplaceInCol(colIndex string, oldValue, newValue any, mode ...int) *DataTable
+```
+
+**Parameters:**
+
+- `colIndex`: The index or name of the column.
+- `oldValue`: The value to be replaced.
+- `newValue`: The value to replace with.
+- `mode` (optional):
+  - `0` (default): Replace all occurrences.
+  - `1`: Replace only the first occurrence.
+  - `-1`: Replace only the last occurrence.
+
+### ReplaceNaNsInCol / ReplaceNilsInCol / ReplaceNaNsAndNilsInCol
+
+Similar to `ReplaceInCol`, but specifically for `NaN`, `nil`, or both.
+
+```go
+func (dt *DataTable) ReplaceNaNsInCol(colIndex string, newValue any, mode ...int) *DataTable
+func (dt *DataTable) ReplaceNilsInCol(colIndex string, newValue any, mode ...int) *DataTable
+func (dt *DataTable) ReplaceNaNsAndNilsInCol(colIndex string, newValue any, mode ...int) *DataTable
+```
 
 ## Column Calculation
 
