@@ -481,6 +481,21 @@ Example:
 // Concatenates the value in column A, a hyphen, and the value in column B
 ```
 
+### ISNA Missing Value Check Function
+
+```
+"ISNA(value)"
+```
+
+Example:
+
+```
+"IF(ISNA(A), 0, A)"  
+// Returns 0 if the value in column A is a numeric NaN or the string "#N/A", otherwise returns the value in column A
+```
+
+> **Note:** `ISNA` handles numeric `NaN` and the string `"#N/A"`. It does **not** return true for `nil` values.
+
 ### CASE Multiple Condition Function
 
 ```

@@ -2,6 +2,7 @@ package insyra
 
 import (
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/HazelnutParadise/Go-Utils/conv"
@@ -226,5 +227,20 @@ func initCCLFunctions() {
 
 		// 如果沒有條件符合，返回最後一個參數作為預設值
 		return args[len(args)-1], nil
+	})
+	ccl.RegisterFunction("ISNA", func(args ...any) (any, error) {
+		if len(args) != 1 {
+			return nil, fmt.Errorf("ISNA requires 1 argument")
+		}
+		val := args[0]
+		switch v := val.(type) {
+		case float64:
+			return math.IsNaN(v), nil
+		case float32:
+			return math.IsNaN(float64(v)), nil
+		case string:
+			return v == "#N/A", nil
+		}
+		return false, nil
 	})
 }
