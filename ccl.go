@@ -243,4 +243,24 @@ func initCCLFunctions() {
 		}
 		return false, nil
 	})
+	ccl.RegisterFunction("IFNA", func(args ...any) (any, error) {
+		if len(args) != 2 {
+			return nil, fmt.Errorf("IFNA requires 2 arguments")
+		}
+		val := args[0]
+		isNA := false
+		switch v := val.(type) {
+		case float64:
+			isNA = math.IsNaN(v)
+		case float32:
+			isNA = math.IsNaN(float64(v))
+		case string:
+			isNA = v == "#N/A"
+		}
+
+		if isNA {
+			return args[1], nil
+		}
+		return val, nil
+	})
 }

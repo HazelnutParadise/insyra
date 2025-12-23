@@ -496,6 +496,19 @@ Example:
 
 > **Note:** `ISNA` handles numeric `NaN` and the string `"#N/A"`. It does **not** return true for `nil` values.
 
+### IFNA Function
+
+```
+"IFNA(value, valueIfNA)"
+```
+
+Example:
+
+```
+"IFNA(A, 0)"  
+// Returns 0 if the value in column A is NaN or "#N/A", otherwise returns the value in column A
+```
+
 ### CASE Multiple Condition Function
 
 ```
