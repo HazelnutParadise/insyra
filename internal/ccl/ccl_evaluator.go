@@ -30,20 +30,20 @@ type EvaluationResult struct {
 // Evaluate evaluates a CCL node with the given row data.
 // colNameMap is optional - pass nil if not using ['colName'] syntax.
 // colNameMap maps column names to their indices (0-based).
-func Evaluate(n cclNode, row []any, tableData [][]any, rowNameMap map[string]int, colNameMap ...map[string]int) (any, error) {
+func Evaluate(n cclNode, row []any, tableData [][]any, rowNameMap map[string]int, rowIndex int, colNameMap ...map[string]int) (any, error) {
 	var nameMap map[string]int
 	if len(colNameMap) > 0 && colNameMap[0] != nil {
 		nameMap = colNameMap[0]
 	}
-	return evaluateWithContext(n, row, tableData, rowNameMap, nameMap)
+	return evaluateWithContext(n, row, tableData, rowNameMap, nameMap, rowIndex)
 }
 
 // EvaluateStatement evaluates a CCL statement and returns detailed result
-func EvaluateStatement(n cclNode, row []any, tableData [][]any, rowNameMap map[string]int, colNameMap map[string]int) (*EvaluationResult, error) {
+func EvaluateStatement(n cclNode, row []any, tableData [][]any, rowNameMap map[string]int, colNameMap map[string]int, rowIndex int) (*EvaluationResult, error) {
 	switch t := n.(type) {
 	case *cclAssignmentNode:
 		// Evaluate the expression
-		val, err := evaluateWithContext(t.expr, row, tableData, rowNameMap, colNameMap)
+		val, err := evaluateWithContext(t.expr, row, tableData, rowNameMap, colNameMap, rowIndex)
 		if err != nil {
 			return nil, err
 		}
@@ -54,7 +54,7 @@ func EvaluateStatement(n cclNode, row []any, tableData [][]any, rowNameMap map[s
 		}, nil
 	case *cclNewColNode:
 		// Evaluate the expression for new column
-		val, err := evaluateWithContext(t.expr, row, tableData, rowNameMap, colNameMap)
+		val, err := evaluateWithContext(t.expr, row, tableData, rowNameMap, colNameMap, rowIndex)
 		if err != nil {
 			return nil, err
 		}
@@ -65,7 +65,7 @@ func EvaluateStatement(n cclNode, row []any, tableData [][]any, rowNameMap map[s
 		}, nil
 	default:
 		// Regular expression
-		val, err := evaluateWithContext(n, row, tableData, rowNameMap, colNameMap)
+		val, err := evaluateWithContext(n, row, tableData, rowNameMap, colNameMap, rowIndex)
 		if err != nil {
 			return nil, err
 		}
@@ -118,7 +118,7 @@ func IsRowDependent(n cclNode) bool {
 	switch t := n.(type) {
 	case *cclNumberNode, *cclStringNode, *cclBooleanNode, *cclNilNode:
 		return false
-	case *cclIdentifierNode, *cclColIndexNode, *cclColNameNode, *cclAtNode:
+	case *cclIdentifierNode, *cclColIndexNode, *cclColNameNode, *cclAtNode, *cclRowIndexNode:
 		return true
 	case *cclBinaryOpNode:
 		if t.op == "." {
@@ -133,9 +133,9 @@ func IsRowDependent(n cclNode) bool {
 		}
 		return false
 	case *funcCallNode:
-		// 如果是聚合函數，它通常是行無關的（結果對整欄都一樣）
+		// 如果是聚合函數，通常是行無關的，除非參數中包含 #
 		if _, isAgg := aggregateFunctions[strings.ToUpper(t.name)]; isAgg {
-			return false
+			return containsRowIndex(t)
 		}
 		for _, arg := range t.args {
 			if IsRowDependent(arg) {
@@ -152,7 +152,37 @@ func IsRowDependent(n cclNode) bool {
 	}
 }
 
-func evaluateWithContext(n cclNode, row []any, tableData [][]any, rowNameMap map[string]int, colNameMap map[string]int) (any, error) {
+// containsRowIndex 檢查表達式是否包含 # 運算符
+func containsRowIndex(n cclNode) bool {
+	switch t := n.(type) {
+	case *cclRowIndexNode:
+		return true
+	case *cclBinaryOpNode:
+		return containsRowIndex(t.left) || containsRowIndex(t.right)
+	case *cclChainedComparisonNode:
+		for _, v := range t.values {
+			if containsRowIndex(v) {
+				return true
+			}
+		}
+		return false
+	case *funcCallNode:
+		for _, arg := range t.args {
+			if containsRowIndex(arg) {
+				return true
+			}
+		}
+		return false
+	case *cclAssignmentNode:
+		return containsRowIndex(t.expr)
+	case *cclNewColNode:
+		return containsRowIndex(t.expr)
+	default:
+		return false
+	}
+}
+
+func evaluateWithContext(n cclNode, row []any, tableData [][]any, rowNameMap map[string]int, colNameMap map[string]int, rowIndex int) (any, error) {
 	// 檢查遞迴深度（移除 debug 輸出以提升效能）
 	evalDepth++
 	if evalDepth > maxEvalDepth {
@@ -172,6 +202,8 @@ func evaluateWithContext(n cclNode, row []any, tableData [][]any, rowNameMap map
 		return nil, nil
 	case *cclAtNode:
 		return row, nil
+	case *cclRowIndexNode:
+		return float64(rowIndex), nil
 	case *cclIdentifierNode:
 		idx := utils.ParseColIndex(t.name)
 		if idx >= len(row) {
@@ -201,10 +233,32 @@ func evaluateWithContext(n cclNode, row []any, tableData [][]any, rowNameMap map
 	case *funcCallNode:
 		// 檢查是否為聚合函數
 		if _, isAgg := aggregateFunctions[strings.ToUpper(t.name)]; isAgg {
+			// 如果是行相關的（包含 #），則將其視為普通函數評估（逐行聚合）
+			if containsRowIndex(t) {
+				args := []any{}
+				for _, arg := range t.args {
+					val, err := evaluateWithContext(arg, row, tableData, rowNameMap, colNameMap, rowIndex)
+					if err != nil {
+						return nil, err
+					}
+					args = append(args, val)
+				}
+				// 呼叫聚合函數，但傳遞的是單行資料（包裝成 []any）
+				aggArgs := make([][]any, len(args))
+				for i, arg := range args {
+					if slice, ok := arg.([]any); ok {
+						aggArgs[i] = slice
+					} else {
+						aggArgs[i] = []any{arg}
+					}
+				}
+				return callAggregateFunction(t.name, aggArgs)
+			}
+
 			aggArgs := make([][]any, len(t.args))
 			for i, arg := range t.args {
 				// 聚合函數的參數必須是欄位引用或能產生整欄資料的表達式
-				colData, err := evaluateToColumn(arg, tableData, rowNameMap, colNameMap)
+				colData, err := evaluateToColumn(arg, tableData, rowNameMap, colNameMap, rowIndex)
 				if err != nil {
 					return nil, fmt.Errorf("aggregate function %s: %v", t.name, err)
 				}
@@ -215,7 +269,7 @@ func evaluateWithContext(n cclNode, row []any, tableData [][]any, rowNameMap map
 
 		args := []any{}
 		for _, arg := range t.args {
-			val, err := evaluateWithContext(arg, row, tableData, rowNameMap, colNameMap)
+			val, err := evaluateWithContext(arg, row, tableData, rowNameMap, colNameMap, rowIndex)
 			if err != nil {
 				return nil, err
 			}
@@ -224,13 +278,13 @@ func evaluateWithContext(n cclNode, row []any, tableData [][]any, rowNameMap map
 		return callFunction(t.name, args)
 	case *cclBinaryOpNode:
 		if t.op == "." {
-			return evaluateRowAccess(t.left, t.right, row, tableData, rowNameMap, colNameMap)
+			return evaluateRowAccess(t.left, t.right, row, tableData, rowNameMap, colNameMap, rowIndex)
 		}
-		left, err := evaluateWithContext(t.left, row, tableData, rowNameMap, colNameMap)
+		left, err := evaluateWithContext(t.left, row, tableData, rowNameMap, colNameMap, rowIndex)
 		if err != nil {
 			return nil, err
 		}
-		right, err := evaluateWithContext(t.right, row, tableData, rowNameMap, colNameMap)
+		right, err := evaluateWithContext(t.right, row, tableData, rowNameMap, colNameMap, rowIndex)
 		if err != nil {
 			return nil, err
 		}
@@ -244,7 +298,7 @@ func evaluateWithContext(n cclNode, row []any, tableData [][]any, rowNameMap map
 		// 評估所有值
 		values := make([]any, len(t.values))
 		for i, valNode := range t.values {
-			val, err := evaluateWithContext(valNode, row, tableData, rowNameMap, colNameMap)
+			val, err := evaluateWithContext(valNode, row, tableData, rowNameMap, colNameMap, rowIndex)
 			if err != nil {
 				return nil, err
 			}
@@ -457,7 +511,7 @@ func toBool(val any) (bool, bool) {
 	}
 }
 
-func evaluateToColumn(n cclNode, tableData [][]any, rowNameMap map[string]int, colNameMap map[string]int) ([]any, error) {
+func evaluateToColumn(n cclNode, tableData [][]any, rowNameMap map[string]int, colNameMap map[string]int, rowIndex int) ([]any, error) {
 	// 1. 針對直接欄位引用的優化
 	switch t := n.(type) {
 	case *cclIdentifierNode:
@@ -499,7 +553,7 @@ func evaluateToColumn(n cclNode, tableData [][]any, rowNameMap map[string]int, c
 				}
 			}
 		}
-		val, err := evaluateWithContext(n, firstRow, tableData, rowNameMap, colNameMap)
+		val, err := evaluateWithContext(n, firstRow, tableData, rowNameMap, colNameMap, 0)
 		if err != nil {
 			return nil, err
 		}
@@ -526,7 +580,7 @@ func evaluateToColumn(n cclNode, tableData [][]any, rowNameMap map[string]int, c
 				row[j] = nil
 			}
 		}
-		val, err := evaluateWithContext(n, row, tableData, rowNameMap, colNameMap)
+		val, err := evaluateWithContext(n, row, tableData, rowNameMap, colNameMap, i)
 		if err != nil {
 			return nil, err
 		}
@@ -535,13 +589,13 @@ func evaluateToColumn(n cclNode, tableData [][]any, rowNameMap map[string]int, c
 	return results, nil
 }
 
-func evaluateRowAccess(left, right cclNode, currentRow []any, tableData [][]any, rowNameMap map[string]int, colNameMap map[string]int) (any, error) {
+func evaluateRowAccess(left, right cclNode, currentRow []any, tableData [][]any, rowNameMap map[string]int, colNameMap map[string]int, rowIndex int) (any, error) {
 	if tableData == nil {
 		return nil, fmt.Errorf("row access operator '.' used but no table data provided")
 	}
 
 	// 1. Determine row index from right
-	rowVal, err := evaluateWithContext(right, currentRow, tableData, rowNameMap, colNameMap)
+	rowVal, err := evaluateWithContext(right, currentRow, tableData, rowNameMap, colNameMap, rowIndex)
 	if err != nil {
 		return nil, err
 	}

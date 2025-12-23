@@ -284,7 +284,7 @@ func executeAssignment(dt *DataTable, node ccl.CCLNode, target string, numRow in
 			}
 
 			// 評估表達式
-			evalResult, err := ccl.EvaluateStatement(node, row, tableData, rowNameMap, colNameMap)
+			evalResult, err := ccl.EvaluateStatement(node, row, tableData, rowNameMap, colNameMap, i)
 			if err != nil {
 				return err
 			}
@@ -300,7 +300,7 @@ func executeAssignment(dt *DataTable, node ccl.CCLNode, target string, numRow in
 				row[j] = nil
 			}
 		}
-		evalResult, err := ccl.EvaluateStatement(node, row, tableData, rowNameMap, colNameMap)
+		evalResult, err := ccl.EvaluateStatement(node, row, tableData, rowNameMap, colNameMap, 0)
 		if err != nil {
 			return err
 		}
@@ -355,7 +355,7 @@ func executeNewColumn(dt *DataTable, node ccl.CCLNode, newColName string, numRow
 			}
 
 			// 評估表達式
-			evalResult, err := ccl.EvaluateStatement(node, row, tableData, rowNameMap, colNameMap)
+			evalResult, err := ccl.EvaluateStatement(node, row, tableData, rowNameMap, colNameMap, i)
 			if err != nil {
 				return err
 			}
@@ -370,7 +370,7 @@ func executeNewColumn(dt *DataTable, node ccl.CCLNode, newColName string, numRow
 				row[j] = nil
 			}
 		}
-		evalResult, err := ccl.EvaluateStatement(node, row, tableData, rowNameMap, colNameMap)
+		evalResult, err := ccl.EvaluateStatement(node, row, tableData, rowNameMap, colNameMap, 0)
 		if err != nil {
 			return err
 		}

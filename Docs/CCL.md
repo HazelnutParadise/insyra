@@ -198,6 +198,7 @@ CCL supports the following data types:
 - `/` : Division
 - `^` : Exponentiation
 - `.` : Row access (e.g., `A.0`, `['Sales'].10`)
+- `#` : Current row index (0-based)
 
 ```
 "A + B"     // Add column A and column B
@@ -207,6 +208,8 @@ CCL supports the following data types:
 "A ^ 2"     // Square the values in column A
 "A.0"       // Get the value of column A at the first row (index 0)
 "A.B"       // Get the value of column A at the row index specified by column B
+"A.#"       // Get the value of column A at the current row (same as just "A")
+"SUM(@.#)"  // Sum of all columns in the current row (Row Sum)
 ```
 
 ### Comparison Operators
@@ -560,7 +563,7 @@ Example:
 
 ## Aggregate Functions
 
-Aggregate functions perform calculations on a set of values (a column, a row, or an expression) and return a single value. This value is then "broadcasted" to all rows in the resulting column.
+Aggregate functions perform calculations on a set of values (a column, a row, or an expression) and return a single value. This value is then "broadcasted" to all rows in the resulting column (unless in row-wise mode).
 
 ### SUM
 
@@ -568,9 +571,11 @@ Calculates the sum of all numeric values in the input.
 
 ```
 "SUM(A)"             // Sum of all values in column A
+"SUM(A, B)"          // Sum of all values in columns A and B
 "SUM(@.0)"           // Sum of all values in the first row
 "SUM(A + B)"         // Sum of (A + B) for all rows
 "SUM(A.0, B.1, 10)"  // Sum of specific values and constants
+"SUM(@.#)"           // Sum of all columns in the current row (Row Sum)
 ```
 
 ### AVG
@@ -580,6 +585,7 @@ Calculates the average (mean) of all numeric values in the input.
 ```
 "AVG(A)"             // Average of column A
 "AVG(A + B)"         // Average of (A + B)
+"AVG(@.#)"           // Average of all columns in the current row (Row Average)
 ```
 
 ### COUNT
@@ -609,54 +615,29 @@ Returns the minimum numeric value in the input.
 "MIN(@.0)"           // Minimum value in the first row
 ```
 
-> **Note:** Aggregate functions are row-independent. They are evaluated once per execution, and the result is applied to every row.
->
-### Aggregate Functions
+## Row-wise Aggregation
 
-Aggregate functions operate on entire columns rather than single row values. They return a single value that is then broadcasted to all rows (unless combined with row-dependent expressions).
+By default, aggregate functions calculate a single value for the entire table (or row/expression) and broadcast it to all rows. However, if you use the `#` (current row index) operator within the aggregate function's arguments, the function will switch to **row-wise mode**.
 
-#### `SUM(col1, col2, ...)`
+In row-wise mode, the aggregate function is evaluated for each row independently.
 
-Calculates the sum of all numeric values in the specified columns.
+### Row Sum Example
 
-```
-"SUM(A)"             // Sum of all values in column A
-"SUM(A, B)"          // Sum of all values in columns A and B
-```
-
-#### `AVG(col1, col2, ...)`
-
-Calculates the average of all numeric values in the specified columns.
+To calculate the sum of all columns for each row:
 
 ```
-"AVG(A)"             // Average of column A
+"NEW('row_total') = SUM(@.#)"
 ```
 
-#### `COUNT(col1, col2, ...)`
+This is equivalent to manually adding all columns: `A + B + C + ...`.
 
-Counts the total number of elements in the specified columns.
+### Row Average Example
 
-```
-"COUNT(A)"           // Number of rows in column A
-```
-
-#### `MAX(col1, col2, ...)`
-
-Finds the maximum numeric value in the specified columns.
+To calculate the average of all columns for each row:
 
 ```
-"MAX(A)"             // Maximum value in column A
+"NEW('row_avg') = AVG(@.#)"
 ```
-
-#### `MIN(col1, col2, ...)`
-
-Finds the minimum numeric value in the specified columns.
-
-```
-"MIN(A)"             // Minimum value in column A
-```
-
-> **Note:** Aggregate functions are row-independent. For example, `SUM(A)` will have the same value for every row. However, you can combine them with row-dependent expressions: `A - AVG(A)` (subtract the column average from each row's value).
 
 ## Conditional Expressions
 

@@ -32,6 +32,9 @@ func Tokenize(input string) ([]cclToken, error) {
 		case ch == '@':
 			tokens = append(tokens, cclToken{typ: tAT, value: "@"})
 			i++
+		case ch == '#':
+			tokens = append(tokens, cclToken{typ: tROW_INDEX, value: "#"})
+			i++
 		case isDigit(ch):
 			start := i
 			for i < len(input) && isDigit(input[i]) {

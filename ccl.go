@@ -110,7 +110,7 @@ func applyCCLOnDataTable(table *DataTable, expression string) ([]any, error) {
 					}
 				}
 				// 直接使用預編譯的 AST
-				val, err2 := ccl.Evaluate(ast, row, tableData, rowNameMap, colNameMap)
+				val, err2 := ccl.Evaluate(ast, row, tableData, rowNameMap, i, colNameMap)
 				if err2 != nil {
 					err = err2
 					return
@@ -126,7 +126,7 @@ func applyCCLOnDataTable(table *DataTable, expression string) ([]any, error) {
 					row[j] = nil
 				}
 			}
-			val, err2 := ccl.Evaluate(ast, row, tableData, rowNameMap, colNameMap)
+			val, err2 := ccl.Evaluate(ast, row, tableData, rowNameMap, 0, colNameMap)
 			if err2 != nil {
 				err = err2
 				return

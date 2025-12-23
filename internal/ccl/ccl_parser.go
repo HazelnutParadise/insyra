@@ -197,6 +197,9 @@ func (p *parser) parsePrimary() (cclNode, error) {
 	case tAT:
 		p.advance()
 		return &cclAtNode{}, nil
+	case tROW_INDEX:
+		p.advance()
+		return &cclRowIndexNode{}, nil
 	case tIDENT:
 		name := tok.value
 		p.advance()
