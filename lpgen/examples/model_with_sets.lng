@@ -1,0 +1,19 @@
+! Production Planning with Sets
+! Uses @SUM and @FOR functions
+SETS:
+PRODUCTS / P1 P2 P3 /;
+RESOURCES / R1 R2 /;
+ENDSETS
+
+DATA:
+PROFIT = 10 15 20;
+CAPACITY = 100 80;
+ENDDATA
+
+MODEL:
+! Maximize total profit
+MAX = @SUM(PRODUCTS: PROFIT * X_PRODUCTS);
+
+! Non-negativity constraints
+@FOR(PRODUCTS: X_PRODUCTS >= 0);
+END
