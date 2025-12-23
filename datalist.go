@@ -106,6 +106,29 @@ func (dl *DataList) Append(values ...any) {
 	})
 }
 
+// Concat creates a new DataList by concatenating another DataList to the current DataList.
+func (dl *DataList) Concat(other IDataList) *DataList {
+	result := NewDataList()
+	dl.AtomicDo(func(dl *DataList) {
+		other.AtomicDo(func(other *DataList) {
+			result.data = append(result.data, dl.data...)
+			result.data = append(result.data, other.data...)
+		})
+	})
+	return result
+}
+
+// AppendDataList appends another DataList to the current DataList.
+func (dl *DataList) AppendDataList(other IDataList) *DataList {
+	dl.AtomicDo(func(dl *DataList) {
+		other.AtomicDo(func(other *DataList) {
+			dl.data = append(dl.data, other.data...)
+		})
+		go dl.updateTimestamp()
+	})
+	return dl
+}
+
 // Get retrieves the value at the specified index in the DataList.
 // Supports negative indexing.
 // Returns nil if the index is out of bounds.

@@ -12,6 +12,8 @@ type IDataList interface {
 	SetName(string) *DataList
 	Data() []any
 	Append(values ...any)
+	Concat(other IDataList) *DataList
+	AppendDataList(other IDataList) *DataList
 	Get(index int) any
 	Clone() *DataList
 	Count(value any) int

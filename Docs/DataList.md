@@ -256,6 +256,49 @@ dl.Append(4, 5, 6)
 // dl now contains: [1, 2, 3, 4, 5, 6]
 ```
 
+### Concat
+
+Creates a new DataList by appending another DataList to the current DataList.
+
+```go
+func (dl *DataList) Concat(other IDataList) *DataList
+```
+
+**Parameters:**
+
+- `other`: Another DataList to concatenate
+
+**Example:**
+
+```go
+dl1 := insyra.NewDataList(1, 2, 3)
+dl2 := insyra.NewDataList(4, 5, 6)
+newDL := dl1.Concat(dl2)
+// newDL contains: [1, 2, 3, 4, 5, 6]
+// dl1 and dl2 remain unchanged
+```
+
+### AppendDataList
+
+Appends another DataList to the current DataList. Returns the DataList to support chaining calls.
+
+```go
+func (dl *DataList) AppendDataList(other IDataList) *DataList
+```
+
+**Parameters:**
+
+- `other`: Another DataList to append
+
+**Example:**
+
+```go
+dl1 := insyra.NewDataList(1, 2, 3)
+dl2 := insyra.NewDataList(4, 5, 6)
+dl1.AppendDataList(dl2)
+// dl1 now contains: [1, 2, 3, 4, 5, 6]
+```
+
 ### Update
 
 Updates an element at a specific index. Returns the DataList to support chaining calls.
