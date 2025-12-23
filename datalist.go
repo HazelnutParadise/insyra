@@ -206,8 +206,17 @@ func (dl *DataList) InsertAt(index int, value any) *DataList {
 func (dl *DataList) FindFirst(value any) any {
 	var result any
 	dl.AtomicDo(func(dl *DataList) {
+		isValNaN := false
+		if f, ok := value.(float64); ok && math.IsNaN(f) {
+			isValNaN = true
+		}
 		for i, v := range dl.data {
-			if v == value {
+			if isValNaN {
+				if f, ok := v.(float64); ok && math.IsNaN(f) {
+					result = i
+					return
+				}
+			} else if v == value {
 				result = i
 				return
 			}
@@ -223,8 +232,17 @@ func (dl *DataList) FindFirst(value any) any {
 func (dl *DataList) FindLast(value any) any {
 	var result any
 	dl.AtomicDo(func(dl *DataList) {
+		isValNaN := false
+		if f, ok := value.(float64); ok && math.IsNaN(f) {
+			isValNaN = true
+		}
 		for i := len(dl.data) - 1; i >= 0; i-- {
-			if dl.data[i] == value {
+			if isValNaN {
+				if f, ok := dl.data[i].(float64); ok && math.IsNaN(f) {
+					result = i
+					return
+				}
+			} else if dl.data[i] == value {
 				result = i
 				return
 			}
@@ -235,7 +253,7 @@ func (dl *DataList) FindLast(value any) any {
 	return result
 }
 
-// FindAll returns a slice of all the indices where the specified value is found in the DataList using parallel processing.
+// FindAll returns a slice of all the indices where the specified value is found in the DataList.
 // If the value is not found, it returns an empty slice.
 func (dl *DataList) FindAll(value any) []int {
 	var indices []int
@@ -247,8 +265,17 @@ func (dl *DataList) FindAll(value any) []int {
 			return
 		}
 
+		isValNaN := false
+		if f, ok := value.(float64); ok && math.IsNaN(f) {
+			isValNaN = true
+		}
+
 		for i, v := range dl.data {
-			if v == value {
+			if isValNaN {
+				if f, ok := v.(float64); ok && math.IsNaN(f) {
+					indices = append(indices, i)
+				}
+			} else if v == value {
 				indices = append(indices, i)
 			}
 		}

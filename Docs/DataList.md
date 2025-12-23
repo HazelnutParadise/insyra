@@ -1877,7 +1877,7 @@ timestamp := dl.GetLastModifiedTimestamp()
 
 ### Count
 
-Returns the number of occurrences of a specified value.
+Returns the number of occurrences of a specified value. Supports `math.NaN()`.
 
 ```go
 func (dl *DataList) Count(value any) int
@@ -1894,8 +1894,9 @@ func (dl *DataList) Count(value any) int
 **Example:**
 
 ```go
-dl := insyra.NewDataList(1, 2, 2, 3, 2, 4)
+dl := insyra.NewDataList(1, 2, 2, 3, 2, 4, math.NaN())
 count := dl.Count(2) // 3
+countNaN := dl.Count(math.NaN()) // 1
 ```
 
 ### Counter
@@ -1920,7 +1921,7 @@ counter := dl.Counter()
 
 ### FindFirst
 
-Finds the first occurrence of a value and returns its index.
+Finds the first occurrence of a value and returns its index. Supports `math.NaN()`.
 
 ```go
 func (dl *DataList) FindFirst(value any) any
@@ -1937,13 +1938,14 @@ func (dl *DataList) FindFirst(value any) any
 **Example:**
 
 ```go
-dl := insyra.NewDataList(1, 2, 3, 2, 4)
-index := dl.FindFirst(2) // 1 (first occurrence at index 1)
+dl := insyra.NewDataList(1, 2, 3, 2, 4, math.NaN())
+index := dl.FindFirst(2) // 1
+indexNaN := dl.FindFirst(math.NaN()) // 5
 ```
 
 ### FindLast
 
-Finds the last occurrence of a value and returns its index.
+Finds the last occurrence of a value and returns its index. Supports `math.NaN()`.
 
 ```go
 func (dl *DataList) FindLast(value any) any
@@ -1960,13 +1962,14 @@ func (dl *DataList) FindLast(value any) any
 **Example:**
 
 ```go
-dl := insyra.NewDataList(1, 2, 3, 2, 4)
-index := dl.FindLast(2) // 3 (last occurrence at index 3)
+dl := insyra.NewDataList(1, 2, 3, 2, 4, math.NaN())
+index := dl.FindLast(2) // 3
+indexNaN := dl.FindLast(math.NaN()) // 5
 ```
 
 ### FindAll
 
-Finds all occurrences of a value and returns their indices.
+Finds all occurrences of a value and returns their indices. Supports `math.NaN()`.
 
 ```go
 func (dl *DataList) FindAll(value any) []int
@@ -1983,8 +1986,9 @@ func (dl *DataList) FindAll(value any) []int
 **Example:**
 
 ```go
-dl := insyra.NewDataList(1, 2, 3, 2, 4, 2)
+dl := insyra.NewDataList(1, 2, 3, 2, 4, 2, math.NaN())
 indices := dl.FindAll(2) // [1, 3, 5]
+indicesNaN := dl.FindAll(math.NaN()) // [6]
 ```
 
 ### ReplaceFirst
