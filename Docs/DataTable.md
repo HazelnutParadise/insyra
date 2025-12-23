@@ -9,6 +9,7 @@ DataTable is the core data structure of Insyra for handling structured data. It 
 - [Data Loading](#data-loading)
 - [Data Saving](#data-saving)
 - [Data Operations](#data-operations)
+  - [Merge](#merge)
 - [Data Replacement](#data-replacement)
 - [Column Calculation](#column-calculation)
 - [Searching](#searching)
@@ -598,6 +599,55 @@ if err != nil {
 ```
 
 ## Data Operations
+
+### Merge
+
+Merges two DataTables based on a key column or row name.
+
+```go
+func (dt *DataTable) Merge(other *DataTable, direction MergeDirection, mode MergeMode, on ...string) (*DataTable, error)
+```
+
+**Parameters:**
+
+- `other`: The other DataTable to merge with.
+- `direction`: The direction of the merge.
+  - `insyra.MergeDirectionHorizontal`: Join columns side-by-side (like a SQL JOIN).
+  - `insyra.MergeDirectionVertical`: Join rows top-to-bottom (matching columns by name).
+- `mode`: The merge mode.
+  - `insyra.MergeModeInner`: Only keep matches.
+  - `insyra.MergeModeOuter`: Keep all data, filling missing parts with `nil`.
+- `on`: (Optional) The name of the column to join on (for horizontal merge).
+  - If `on` is omitted or an empty string (`""`) in a horizontal merge, the tables will be joined based on their **row names**.
+  - For vertical merge, this parameter is ignored.
+
+**Returns:**
+
+- `*DataTable`: A new DataTable containing the merged data.
+- `error`: An error if the key is not found or the mode/direction is invalid.
+
+**Example (Horizontal Merge):**
+
+```go
+dt1 := insyra.NewDataTable(
+    insyra.NewDataList("A", "B", "C").SetName("ID"),
+    insyra.NewDataList(1, 2, 3).SetName("Val1"),
+)
+dt2 := insyra.NewDataTable(
+    insyra.NewDataList("B", "C", "D").SetName("ID"),
+    insyra.NewDataList(10, 20, 30).SetName("Val2"),
+)
+
+// Inner Join on ID
+res, _ := dt1.Merge(dt2, insyra.MergeDirectionHorizontal, insyra.MergeModeInner, "ID")
+// Result:
+// ID, Val1, Val2
+// B, 2, 10
+// C, 3, 20
+
+// Join by Row Names (on is omitted)
+res, _ = dt1.Merge(dt2, insyra.MergeDirectionHorizontal, insyra.MergeModeInner)
+```
 
 ### AppendCols
 

@@ -177,7 +177,7 @@ type IDataTable interface {
 	// GetRowNameByIndex returns the name of a row at the given index.
 	// Returns empty string and false if no name is set for the row.
 	GetRowNameByIndex(index int) (string, bool)
-	SetRowNameByIndex(index int, name string)
+	SetRowNameByIndex(index int, name string) *DataTable
 	ChangeRowName(oldName, newName string) *DataTable
 	RowNamesToFirstCol() *DataTable
 	DropRowNames() *DataTable
@@ -257,6 +257,8 @@ type IDataTable interface {
 	ToJSON_String(useColNames bool) string
 
 	ToSQL(db *gorm.DB, tableName string, options ...ToSQLOptions) error
+
+	Merge(other IDataTable, direction MergeDirection, mode MergeMode, on ...string) (*DataTable, error)
 
 	AddColUsingCCL(newColName, ccl string) *DataTable
 

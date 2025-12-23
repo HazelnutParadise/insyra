@@ -3,13 +3,11 @@ package insyra
 // GetColIndexByName returns the column index (A, B, C, ...) by its name.
 func (dt *DataTable) GetColIndexByName(name string) string {
 	var result = ""
+	var ok bool
 	dt.AtomicDo(func(dt *DataTable) {
-		colNumber := dt.GetColNumberByName(name)
-		if colNumber != -1 {
-			result = dt.GetColIndexByNumber(colNumber)
-		}
+		result, ok = dt.getColIndexByName_notAtomic(name)
 	})
-	if result == "" {
+	if !ok {
 		LogWarning("DataTable", "GetColIndexByName", "Column name not found: %s, returning empty string", name)
 	}
 	return result
@@ -33,4 +31,19 @@ func (dt *DataTable) GetColIndexByNumber(number int) string {
 		LogWarning("DataTable", "GetColIndexByNumber", "Column number not found: %d, returning empty string", number)
 	}
 	return result
+}
+
+// ----------------------- not atomic below ----------------------
+
+func (dt *DataTable) getColIndexByName_notAtomic(name string) (string, bool) {
+	num, ok := dt.getColNumberByName_notAtomic(name)
+	if !ok {
+		return "", false
+	}
+	for k, v := range dt.columnIndex {
+		if v == num {
+			return k, true
+		}
+	}
+	return "", false
 }

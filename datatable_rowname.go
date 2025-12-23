@@ -1,6 +1,17 @@
 package insyra
 
-func (dt *DataTable) SetRowNameByIndex(index int, name string) {
+// SetRowNameByIndex sets the name of the row at the given index.
+// Parameters:
+//   - index: The row index (0-based). Supports negative indices (e.g., -1 for the last row).
+//   - name: The name to set for the row. If empty, the row name is removed.
+//
+// Returns:
+//   - *DataTable: The DataTable instance for chaining.
+//
+// Example:
+//
+//	dt.SetRowNameByIndex(0, "FirstRow")
+func (dt *DataTable) SetRowNameByIndex(index int, name string) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		originalIndex := index
 		if index < 0 {
@@ -10,15 +21,30 @@ func (dt *DataTable) SetRowNameByIndex(index int, name string) {
 			LogWarning("DataTable", "SetRowNameByIndex", "Row index %d is out of range, returning", originalIndex)
 			return
 		}
+
+		// Remove existing name for this index if any
+		for n, i := range dt.rowNames {
+			if i == index {
+				delete(dt.rowNames, n)
+				break
+			}
+		}
+
+		if name == "" {
+			go dt.updateTimestamp()
+			return
+		}
+
 		srn := safeRowName(dt, name)
 		dt.rowNames[srn] = index
 		go dt.updateTimestamp()
 	})
+	return dt
 }
 
 // GetRowNameByIndex returns the name of the row at the given index.
 // Parameters:
-//   - index: The row index (0-based). Negative indices are not supported for row names.
+//   - index: The row index (0-based). Supports negative indices (e.g., -1 for the last row).
 //
 // Returns:
 //   - string: The name of the row. Returns empty string if no name is set for this row.
@@ -34,6 +60,9 @@ func (dt *DataTable) GetRowNameByIndex(index int) (string, bool) {
 	var result string
 	var exists bool
 	dt.AtomicDo(func(dt *DataTable) {
+		if index < 0 {
+			index = dt.getMaxColLength() + index
+		}
 		result, exists = dt.getRowNameByIndex(index)
 	})
 	return result, exists
@@ -74,6 +103,13 @@ func (dt *DataTable) GetRowIndexByName(name string) (int, bool) {
 	return index, exists
 }
 
+// ChangeRowName changes the name of a row from oldName to newName.
+// Parameters:
+//   - oldName: The current name of the row.
+//   - newName: The new name to set for the row.
+//
+// Returns:
+//   - *DataTable: The DataTable instance for chaining.
 func (dt *DataTable) ChangeRowName(oldName, newName string) *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
@@ -91,6 +127,9 @@ func (dt *DataTable) ChangeRowName(oldName, newName string) *DataTable {
 }
 
 // RowNamesToFirstCol moves the row names to the first column of the DataTable.
+// This will clear the row names map and insert a new column at the beginning.
+// Returns:
+//   - *DataTable: The DataTable instance for chaining.
 func (dt *DataTable) RowNamesToFirstCol() *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		rowNames := NewDataList()
@@ -111,6 +150,9 @@ func (dt *DataTable) RowNamesToFirstCol() *DataTable {
 	return dt
 }
 
+// DropRowNames removes all row names from the DataTable.
+// Returns:
+//   - *DataTable: The DataTable instance for chaining.
 func (dt *DataTable) DropRowNames() *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		if len(dt.rowNames) == 0 {
@@ -124,6 +166,10 @@ func (dt *DataTable) DropRowNames() *DataTable {
 	return dt
 }
 
+// RowNames returns a slice of all row names in the DataTable.
+// Rows without names will have an empty string.
+// Returns:
+//   - []string: A slice containing the names of all rows.
 func (dt *DataTable) RowNames() []string {
 	var rowNames []string
 	dt.AtomicDo(func(dt *DataTable) {
