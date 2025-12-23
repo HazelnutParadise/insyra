@@ -568,6 +568,10 @@ dataTable.CCL("A = A * 2")
 // Create new column using CCL
 dataTable.CCL("NEW('total') = A + B + C")
 
+// Row access and all-column reference
+dataTable.CCL("NEW('first_row') = @.0")
+dataTable.CCL("NEW('base_val') = A.0")
+
 // Multiple CCL statements
 dataTable.CCL(`
     A = A * 10

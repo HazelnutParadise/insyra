@@ -3,6 +3,7 @@ package insyra
 import (
 	"fmt"
 	"math"
+	"reflect"
 	"strings"
 
 	"github.com/HazelnutParadise/Go-Utils/conv"
@@ -87,25 +88,59 @@ func applyCCLOnDataTable(table *DataTable, expression string) ([]any, error) {
 			}
 		}
 
+		// 準備 tableData 和 rowNameMap 以支援 . 運算符
+		tableData := make([][]any, numCol)
+		for j := range numCol {
+			tableData[j] = table.columns[j].data
+		}
+		rowNameMap := table.rowNames
+
 		// 預分配 row slice，避免每行都重新分配
 		row := make([]any, numCol)
 
-		for i := range numRow {
-			// 填充第 i 行的資料（重用 row slice）
+		if ccl.IsRowDependent(ccl.GetExpressionNode(ast)) {
+			for i := range numRow {
+				// 填充第 i 行的資料（重用 row slice）
+				for j := range numCol {
+					if i < len(table.columns[j].data) {
+						row[j] = table.columns[j].data[i]
+					} else {
+						row[j] = nil
+					}
+				}
+				// 直接使用預編譯的 AST
+				val, err2 := ccl.Evaluate(ast, row, tableData, rowNameMap, colNameMap)
+				if err2 != nil {
+					err = err2
+					return
+				}
+				result[i] = val
+			}
+		} else {
+			// 非行依賴表達式，只需計算一次
 			for j := range numCol {
-				if i < len(table.columns[j].data) {
-					row[j] = table.columns[j].data[i]
+				if len(table.columns[j].data) > 0 {
+					row[j] = table.columns[j].data[0]
 				} else {
 					row[j] = nil
 				}
 			}
-			// 直接使用預編譯的 AST
-			val, err2 := ccl.Evaluate(ast, row, colNameMap)
+			val, err2 := ccl.Evaluate(ast, row, tableData, rowNameMap, colNameMap)
 			if err2 != nil {
 				err = err2
 				return
 			}
-			result[i] = val
+
+			if rv := reflect.ValueOf(val); val != nil && rv.Kind() == reflect.Slice {
+				result = make([]any, rv.Len())
+				for i := 0; i < rv.Len(); i++ {
+					result[i] = rv.Index(i).Interface()
+				}
+			} else {
+				for i := range numRow {
+					result[i] = val
+				}
+			}
 		}
 	})
 	return result, err

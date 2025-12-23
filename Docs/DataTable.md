@@ -2253,6 +2253,12 @@ dt.AddColUsingCCL("status", "CASE(A > 90, 'A', A > 80, 'B', A > 70, 'C', 'F')")
 
 // Using range comparisons
 dt.AddColUsingCCL("in_range", "IF(10 < A <= 20, 'In range', 'Out of range')")
+
+// Row access (A.0 gets the first row of column A)
+dt.AddColUsingCCL("base_value", "A.0")
+
+// All columns reference (@.0 gets all columns of the first row)
+dt.ExecuteCCL("NEW('first_row') = @.0")
 ```
 
 **Notes:**

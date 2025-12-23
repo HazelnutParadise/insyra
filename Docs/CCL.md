@@ -197,6 +197,7 @@ CCL supports the following data types:
 - `*` : Multiplication
 - `/` : Division
 - `^` : Exponentiation
+- `.` : Row access (e.g., `A.0`, `['Sales'].10`)
 
 ```
 "A + B"     // Add column A and column B
@@ -204,6 +205,8 @@ CCL supports the following data types:
 "A * B"     // Multiply column A by column B
 "A / B"     // Divide column A by column B
 "A ^ 2"     // Square the values in column A
+"A.0"       // Get the value of column A at the first row (index 0)
+"A.B"       // Get the value of column A at the row index specified by column B
 ```
 
 ### Comparison Operators
@@ -436,6 +439,39 @@ dt.AddColUsingCCL("mixed", "[A] * 2 + ['cost']")
 dt.AddColUsingCCL("calc", "A + [B] + ['total']")
 ```
 
+## Row Access and All-Column Reference
+
+CCL supports accessing specific rows and referencing all columns in a row.
+
+### Row Access Operator `.`
+
+The `.` operator allows you to access a specific row of a column. The left side is a column reference, and the right side is a row index (number) or a row name (string).
+
+```
+"A.0"                // Value of column A at the first row
+"['Sales'].10"       // Value of column "Sales" at the 11th row
+"B.'Jack'"           // Value of column B at the row named "Jack"
+```
+
+You can also use another column as the row index:
+
+```
+"A.B"                // Value of column A at the row index specified by the value in column B
+```
+
+### All-Column Reference `@`
+
+The `@` symbol represents all columns in the current row. It is typically used with the row access operator to retrieve an entire row of data.
+
+```
+"@.0"                // All columns at the first row (returns a slice)
+"@.['Jack']"         // All columns at the row named "Jack"
+```
+
+When used in `NEW()` or assignment, `@.n` can be used to copy an entire row into a new column or modify an existing one.
+
+> **Performance Note:** Expressions like `A.0` or `@.0` are "row-independent" (they don't change based on the current row being evaluated). CCL optimizes these by evaluating them only once per execution.
+
 ## Functions
 
 ### IF Conditional Function
@@ -628,6 +664,15 @@ dt.ExecuteCCL(`
     NEW('tax') = ['revenue'] * 0.1
     NEW('total') = ['revenue'] + ['tax']
 `)
+
+// Copy the first row of data to a new column
+dt.ExecuteCCL("NEW('FirstRowData') = @.0")
+
+// Access a specific row's value
+dt.ExecuteCCL("NEW('BaseValue') = A.0")
+
+// Use row names for access
+dt.ExecuteCCL("NEW('JackScore') = ['Score'].'Jack'")
 
 // Modify existing columns and create new ones
 dt.ExecuteCCL(`

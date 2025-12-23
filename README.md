@@ -294,6 +294,7 @@ With CCL, you can:
 - Use conditional logic with `IF`, `AND`, `OR`, and `CASE` functions
 - Perform mathematical operations and string manipulations
 - Execute chained comparisons like `1 < A <= 10` for range checks
+- Access specific rows using the `.` operator (e.g., `A.0`) and reference all columns with `@`
 
 ```go
 // Add a column that classifies data based on values in column A

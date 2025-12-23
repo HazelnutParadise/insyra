@@ -2,6 +2,7 @@ package insyra
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -35,7 +36,24 @@ func (dt *DataTable) AddColUsingCCL(newColName, cclFormula string) *DataTable {
 		} else {
 			elapsed := time.Since(startTime)
 			LogDebug("DataTable", "AddColUsingCCL", "CCL evaluation completed in %v", elapsed)
-			dt.AppendCols(NewDataList(result...).SetName(newColName))
+			// 使用 NewDataList(result...) 會展開 slice，如果 result 本身就是我們想要的資料，
+			// 且我們不希望它被進一步展開（例如 result 已經是 []any），
+			// 我們應該直接將其包裝在一個 slice 中傳遞給 NewDataList，
+			// 或者直接手動創建 DataList。
+			// 這裡我們選擇將 result 作為單個參數傳遞，以避免 NewDataList 展開它。
+			// 但 applyCCLOnDataTable 返回的是 []any，代表整欄的資料。
+			// 如果我們直接傳遞 result...，NewDataList 會展開它。
+			// 如果 result 裡面包含 slice，NewDataList 會遞迴展開。
+
+			// 解決方案：直接手動創建 DataList 並設置數據，繞過 NewDataList 的自動展開邏輯。
+			newCol := &DataList{
+				data: result,
+				name: newColName,
+			}
+			timestamp := time.Now().Unix()
+			newCol.creationTimestamp = timestamp
+			newCol.lastModifiedTimestamp.Store(timestamp)
+			dt.AppendCols(newCol)
 		}
 		resultDtChan <- dt
 	})
@@ -244,24 +262,64 @@ func executeAssignment(dt *DataTable, node ccl.CCLNode, target string, numRow in
 	// 預分配 row slice
 	row := make([]any, len(dt.columns))
 
-	// 計算每一行的結果
-	results := make([]any, numRow)
-	for i := range numRow {
-		// 填充第 i 行的資料
+	// 準備 tableData 和 rowNameMap 以支援 . 運算符
+	tableData := make([][]any, len(dt.columns))
+	for j := range len(dt.columns) {
+		tableData[j] = dt.columns[j].data
+	}
+	rowNameMap := dt.rowNames
+
+	// 計算結果
+	var results []any
+	if ccl.IsRowDependent(ccl.GetExpressionNode(node)) {
+		results = make([]any, numRow)
+		for i := range numRow {
+			// 填充第 i 行的資料
+			for j := range len(dt.columns) {
+				if i < len(dt.columns[j].data) {
+					row[j] = dt.columns[j].data[i]
+				} else {
+					row[j] = nil
+				}
+			}
+
+			// 評估表達式
+			evalResult, err := ccl.EvaluateStatement(node, row, tableData, rowNameMap, colNameMap)
+			if err != nil {
+				return err
+			}
+			results[i] = evalResult.Value
+		}
+	} else {
+		// 非行依賴表達式，只需計算一次
+		// 使用第一行的資料作為上下文（雖然不應該依賴它）
 		for j := range len(dt.columns) {
-			if i < len(dt.columns[j].data) {
-				row[j] = dt.columns[j].data[i]
+			if len(dt.columns[j].data) > 0 {
+				row[j] = dt.columns[j].data[0]
 			} else {
 				row[j] = nil
 			}
 		}
-
-		// 評估表達式
-		evalResult, err := ccl.EvaluateStatement(node, row, colNameMap)
+		evalResult, err := ccl.EvaluateStatement(node, row, tableData, rowNameMap, colNameMap)
 		if err != nil {
 			return err
 		}
-		results[i] = evalResult.Value
+		val := evalResult.Value
+
+		// 檢查結果是否為 slice
+		if rv := reflect.ValueOf(val); val != nil && rv.Kind() == reflect.Slice {
+			// 如果是 slice，直接將其作為整欄資料
+			results = make([]any, rv.Len())
+			for i := 0; i < rv.Len(); i++ {
+				results[i] = rv.Index(i).Interface()
+			}
+		} else {
+			// 如果是純量，則重複填充整欄
+			results = make([]any, numRow)
+			for i := range numRow {
+				results[i] = val
+			}
+		}
 	}
 
 	// 更新目標列的資料
@@ -275,28 +333,70 @@ func executeNewColumn(dt *DataTable, node ccl.CCLNode, newColName string, numRow
 	// 預分配 row slice
 	row := make([]any, len(dt.columns))
 
-	// 計算每一行的結果
-	results := make([]any, numRow)
-	for i := range numRow {
-		// 填充第 i 行的資料
+	// 準備 tableData 和 rowNameMap 以支援 . 運算符
+	tableData := make([][]any, len(dt.columns))
+	for j := range len(dt.columns) {
+		tableData[j] = dt.columns[j].data
+	}
+	rowNameMap := dt.rowNames
+
+	// 計算結果
+	var results []any
+	if ccl.IsRowDependent(ccl.GetExpressionNode(node)) {
+		results = make([]any, numRow)
+		for i := range numRow {
+			// 填充第 i 行的資料
+			for j := range len(dt.columns) {
+				if i < len(dt.columns[j].data) {
+					row[j] = dt.columns[j].data[i]
+				} else {
+					row[j] = nil
+				}
+			}
+
+			// 評估表達式
+			evalResult, err := ccl.EvaluateStatement(node, row, tableData, rowNameMap, colNameMap)
+			if err != nil {
+				return err
+			}
+			results[i] = evalResult.Value
+		}
+	} else {
+		// 非行依賴表達式，只需計算一次
 		for j := range len(dt.columns) {
-			if i < len(dt.columns[j].data) {
-				row[j] = dt.columns[j].data[i]
+			if len(dt.columns[j].data) > 0 {
+				row[j] = dt.columns[j].data[0]
 			} else {
 				row[j] = nil
 			}
 		}
-
-		// 評估表達式
-		evalResult, err := ccl.EvaluateStatement(node, row, colNameMap)
+		evalResult, err := ccl.EvaluateStatement(node, row, tableData, rowNameMap, colNameMap)
 		if err != nil {
 			return err
 		}
-		results[i] = evalResult.Value
+		val := evalResult.Value
+
+		if rv := reflect.ValueOf(val); val != nil && rv.Kind() == reflect.Slice {
+			results = make([]any, rv.Len())
+			for i := 0; i < rv.Len(); i++ {
+				results[i] = rv.Index(i).Interface()
+			}
+		} else {
+			results = make([]any, numRow)
+			for i := range numRow {
+				results[i] = val
+			}
+		}
 	}
 
 	// 創建新列並添加到 DataTable
-	newCol := NewDataList(results...).SetName(newColName)
+	newCol := &DataList{
+		data: results,
+		name: newColName,
+	}
+	timestamp := time.Now().Unix()
+	newCol.creationTimestamp = timestamp
+	newCol.lastModifiedTimestamp.Store(timestamp)
 	dt.AppendCols(newCol)
 
 	return nil

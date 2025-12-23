@@ -17,6 +17,8 @@ const (
 	tCOL_NAME  // ['colName'] 形式的欄位名稱引用
 	tSEMICOLON // ; 分號，用於分隔多條 CCL 語句
 	tASSIGN    // = 賦值運算符
+	tDOT       // . 運算符，用於指定列
+	tAT        // @ 運算符，用於表示所有欄
 )
 
 type cclToken struct {
@@ -32,6 +34,7 @@ type cclNode any
 type cclNumberNode struct{ value float64 }
 type cclStringNode struct{ value string }
 type cclIdentifierNode struct{ name string }
+type cclAtNode struct{}                     // @ 形式的節點
 type cclBooleanNode struct{ value bool }    // 布林值節點
 type cclNilNode struct{}                    // nil 節點
 type cclColIndexNode struct{ index string } // [A] 形式的欄位索引引用節點
