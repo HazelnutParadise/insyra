@@ -12,6 +12,7 @@ const (
 	tCOMMA
 	tOPERATOR
 	tBOOLEAN   // 布林值標記類型
+	tNIL       // nil 標記類型
 	tCOL_INDEX // [A] 形式的欄位索引引用
 	tCOL_NAME  // ['colName'] 形式的欄位名稱引用
 	tSEMICOLON // ; 分號，用於分隔多條 CCL 語句
@@ -32,6 +33,7 @@ type cclNumberNode struct{ value float64 }
 type cclStringNode struct{ value string }
 type cclIdentifierNode struct{ name string }
 type cclBooleanNode struct{ value bool }    // 布林值節點
+type cclNilNode struct{}                    // nil 節點
 type cclColIndexNode struct{ index string } // [A] 形式的欄位索引引用節點
 type cclColNameNode struct{ name string }   // ['colName'] 形式的欄位名稱引用節點
 type cclBinaryOpNode struct {

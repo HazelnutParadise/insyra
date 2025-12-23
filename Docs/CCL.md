@@ -181,6 +181,13 @@ CCL supports the following data types:
    "false"             // Boolean false
    ```
 
+4. **Nil/Null** - `nil` or `null`
+
+   ```
+   "nil"               // Nil value
+   "null"              // Alias for nil
+   ```
+
 ## Operators
 
 ### Arithmetic Operators
@@ -213,7 +220,14 @@ CCL supports the following data types:
 "A < 10"     // Whether values in column A are less than 10
 "A == B"     // Whether values in column A are equal to those in column B
 "A != B"     // Whether values in column A are not equal to those in column B
+"A == nil"   // Check if column A is nil
 ```
+
+> **Note on Nil/Null:**
+>
+> - `== nil` or `== null` can be used to check for missing values.
+> - In arithmetic operations, `nil` is treated as `0`.
+> - In logical operations, `nil` is treated as `false`.
 
 ### Logical Operators
 

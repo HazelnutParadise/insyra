@@ -117,6 +117,8 @@ func evaluateWithContext(n cclNode, row []any, colNameMap map[string]int) (any, 
 		return t.value, nil
 	case *cclBooleanNode:
 		return t.value, nil
+	case *cclNilNode:
+		return nil, nil
 	case *cclIdentifierNode:
 		idx := utils.ParseColIndex(t.name)
 		if idx >= len(row) {

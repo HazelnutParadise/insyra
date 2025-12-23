@@ -191,6 +191,9 @@ func (p *parser) parsePrimary() (cclNode, error) {
 		p.advance()
 		val := tok.value == "true"
 		return &cclBooleanNode{value: val}, nil
+	case tNIL:
+		p.advance()
+		return &cclNilNode{}, nil
 	case tIDENT:
 		name := tok.value
 		p.advance()

@@ -21,9 +21,11 @@ func Tokenize(input string) ([]cclToken, error) {
 			}
 			word := input[start:i]
 
-			// 檢查是否為布林關鍵字
+			// 檢查是否為布林關鍵字或 nil
 			if word == "true" || word == "false" {
 				tokens = append(tokens, cclToken{typ: tBOOLEAN, value: word})
+			} else if word == "nil" || word == "null" {
+				tokens = append(tokens, cclToken{typ: tNIL, value: word})
 			} else {
 				tokens = append(tokens, cclToken{typ: tIDENT, value: word})
 			}
