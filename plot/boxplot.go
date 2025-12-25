@@ -11,8 +11,8 @@ import (
 	"github.com/go-echarts/go-echarts/v2/opts"
 )
 
-// BoxPlotConfig defines the configuration for a box plot chart.
-type BoxSeries struct {
+// BoxPlotSeries defines a single series in a box plot.
+type BoxPlotSeries struct {
 	Name  string
 	Data  []insyra.IDataList
 	Color string // Optional: per-series color
@@ -32,10 +32,10 @@ type BoxPlotConfig struct {
 	LegendPos       Position // Optional: Use const PositionXXX.
 
 	// Preferred series representation (ordered)
-	Series    []BoxSeries // Ordered series with optional per-series metadata
-	XAxis     []string    // X-axis data.
-	XAxisName string      // Optional: X-axis name.
-	YAxisName string      // Optional: Y-axis name.
+	Series    []BoxPlotSeries // Ordered series with optional per-series metadata
+	XAxis     []string        // X-axis data.
+	XAxisName string          // Optional: X-axis name.
+	YAxisName string          // Optional: Y-axis name.
 }
 
 // CreateBoxPlot generates and returns a *charts.BoxPlot object
