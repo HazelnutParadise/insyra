@@ -10,7 +10,6 @@ import (
 
 	"github.com/HazelnutParadise/insyra"
 	"github.com/go-echarts/go-echarts/v2/charts"
-	"github.com/go-echarts/go-echarts/v2/opts"
 	"github.com/go-echarts/snapshot-chromedp/render"
 )
 
@@ -47,7 +46,6 @@ func SaveHTML(chart Renderable, path string, animation ...bool) {
 // SavePNG 將圖表渲染為 PNG 文件，使用 snapshot-chromedp
 func SavePNG(chart Renderable, pngPath string) {
 	disableAnimation(chart)
-	setBackgroundToWhite(chart)
 
 	chartContentBytes := chart.RenderContent()
 
@@ -167,41 +165,5 @@ func enableAnimation(chart Renderable) {
 		sankeyChart.SetGlobalOptions(charts.WithAnimation(true)) // 開啟動畫
 	} else {
 		insyra.LogFatal("plot", "SavePNG", "unsupported chart type. Using default animation settings.")
-	}
-}
-
-func setBackgroundToWhite(chart Renderable) {
-	if barChart, ok := chart.(*charts.Bar); ok {
-		barChart.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
-	} else if lineChart, ok := chart.(*charts.Line); ok {
-		lineChart.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
-	} else if pieChart, ok := chart.(*charts.Pie); ok {
-		pieChart.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
-	} else if scatterChart, ok := chart.(*charts.Scatter); ok {
-		scatterChart.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
-	} else if heatMap, ok := chart.(*charts.HeatMap); ok {
-		heatMap.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
-	} else if mapChart, ok := chart.(*charts.Map); ok {
-		mapChart.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
-	} else if radarChart, ok := chart.(*charts.Radar); ok {
-		radarChart.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
-	} else if funnelChart, ok := chart.(*charts.Funnel); ok {
-		funnelChart.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
-	} else if liquidChart, ok := chart.(*charts.Liquid); ok {
-		liquidChart.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
-	} else if wordCloudChart, ok := chart.(*charts.WordCloud); ok {
-		wordCloudChart.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
-	} else if boxPlot, ok := chart.(*charts.BoxPlot); ok {
-		boxPlot.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
-	} else if kline, ok := chart.(*charts.Kline); ok {
-		kline.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
-	} else if gauge, ok := chart.(*charts.Gauge); ok {
-		gauge.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
-	} else if themeRiverChart, ok := chart.(*charts.ThemeRiver); ok {
-		themeRiverChart.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
-	} else if sankeyChart, ok := chart.(*charts.Sankey); ok {
-		sankeyChart.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
-	} else {
-		insyra.LogFatal("plot", "SavePNG", "unsupported chart type. Using default background color.")
 	}
 }

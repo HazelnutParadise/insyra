@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/plot/internal"
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
 )
@@ -14,8 +15,9 @@ import (
 type LineChartConfig struct {
 	Title        string   // Title of the chart.
 	Subtitle     string   // Subtitle of the chart.
+	HideLegend   bool     // Optional: Whether to hide the legend.
 	XAxis        []string // X-axis data.
-	Data         any      // Accepts map[string][]float64, []*insyra.DataList, or []insyra.IDataList.
+	Data         []insyra.IDataList
 	XAxisName    string   // Optional: X-axis name.
 	YAxisName    string   // Optional: Y-axis name.
 	YAxisNameGap int      // Optional: Gap between Y-axis name and subtitle.
@@ -39,12 +41,11 @@ func CreateLineChart(config LineChartConfig) *charts.Line {
 	)
 
 	// Set title and subtitle
-	line.SetGlobalOptions(
-		charts.WithTitleOpts(opts.Title{
-			Title:    config.Title,
-			Subtitle: config.Subtitle,
-		}),
-	)
+	internal.SetRectChartGlobalOptions(&line.RectChart, internal.BaseChartConfig{
+		Title:      config.Title,
+		Subtitle:   config.Subtitle,
+		HideLegend: config.HideLegend,
+	})
 
 	// 設置 X 軸名稱（如果提供）
 	if config.XAxisName != "" {
@@ -87,32 +88,18 @@ func CreateLineChart(config LineChartConfig) *charts.Line {
 		)
 	}
 
+	data := config.Data
+
 	if len(config.XAxis) == 0 {
 		// 如果 X 軸沒有提供，則根據數據長度生成默認標籤
 		var maxDataLength int
-		switch data := config.Data.(type) {
-		case map[string][]float64:
-			for _, vals := range data {
-				if len(vals) > maxDataLength {
-					maxDataLength = len(vals)
+
+		for _, dataList := range data {
+			dataList.AtomicDo(func(dl *insyra.DataList) {
+				if dl.Len() > maxDataLength {
+					maxDataLength = len(dl.ToF64Slice())
 				}
-			}
-		case []*insyra.DataList:
-			for _, dataList := range data {
-				dataList.AtomicDo(func(dl *insyra.DataList) {
-					if dl.Len() > maxDataLength {
-						maxDataLength = len(dl.ToF64Slice())
-					}
-				})
-			}
-		case []insyra.IDataList:
-			for _, dataList := range data {
-				dataList.AtomicDo(func(dl *insyra.DataList) {
-					if dl.Len() > maxDataLength {
-						maxDataLength = len(dl.ToF64Slice())
-					}
-				})
-			}
+			})
 		}
 
 		// 生成 1, 2, 3, ... n 的 X 軸標籤
@@ -125,27 +112,11 @@ func CreateLineChart(config LineChartConfig) *charts.Line {
 	// 設置 X 軸標籤
 	line.SetXAxis(config.XAxis)
 
-	// 添加系列數據，根據 Data 的類型進行處理
-	switch data := config.Data.(type) {
-	case map[string][]float64:
-		for name, vals := range data {
-			line.AddSeries(name, convertToLineDataFloat(vals))
-		}
-	case []*insyra.DataList:
-		for _, dataList := range data {
-			dataList.AtomicDo(func(dl *insyra.DataList) {
-				line.AddSeries(dl.GetName(), convertToLineDataFloat(dl.ToF64Slice()))
-			})
-		}
-	case []insyra.IDataList:
-		for _, dataList := range data {
-			dataList.AtomicDo(func(dl *insyra.DataList) {
-				line.AddSeries(dl.GetName(), convertToLineDataFloat(dl.ToF64Slice()))
-			})
-		}
-	default:
-		insyra.LogWarning("plot", "CreateLineChart", "unsupported Data type: %T", config.Data)
-		return nil
+	// 添加系列數據
+	for _, dataList := range data {
+		dataList.AtomicDo(func(dl *insyra.DataList) {
+			line.AddSeries(dl.GetName(), convertToLineDataFloat(dl.ToF64Slice()))
+		})
 	}
 
 	// 顯示標籤（如果啟用）

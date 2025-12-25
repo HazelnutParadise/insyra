@@ -26,30 +26,30 @@ This example shows how to create a bar chart using `map[string][]float64` as the
 package main
 
 import (
-	"github.com/HazelnutParadise/insyra/plot"
+ "github.com/HazelnutParadise/insyra/plot"
 )
 
 func main() {
-	config := plot.BarChartConfig{
-		Title:      "Sales Data",
-		Subtitle:   "Monthly Sales",
-		XAxis:      []string{"January", "February", "March"},
-		Data: map[string][]float64{
-			"Product A": {120, 200, 150},
-			"Product B": {80, 160, 90},
-		},
-		ShowLabels: true,
-		Colors:     []string{"#5470C6", "#91CC75"},
-	}
+ config := plot.BarChartConfig{
+  Title:      "Sales Data",
+  Subtitle:   "Monthly Sales",
+  XAxis:      []string{"January", "February", "March"},
+  Data: map[string][]float64{
+   "Product A": {120, 200, 150},
+   "Product B": {80, 160, 90},
+  },
+  ShowLabels: true,
+  Colors:     []string{"#5470C6", "#91CC75"},
+ }
 
-	// Create a bar chart
-	barChart := plot.CreateBarChart(config)
+ // Create a bar chart
+ barChart := plot.CreateBarChart(config)
 
-	// Save the chart as an HTML file
-	plot.SaveHTML(barChart, "sales_data_map.html")
+ // Save the chart as an HTML file
+ plot.SaveHTML(barChart, "sales_data_map.html")
 
-	// Save the chart as a PNG file
-	plot.SavePNG(barChart, "sales_data_map.png")
+ // Save the chart as a PNG file
+ plot.SavePNG(barChart, "sales_data_map.png")
 }
 ```
 
@@ -61,33 +61,33 @@ This example demonstrates how to create a bar chart using `[]*insyra.DataList` a
 package main
 
 import (
-	"github.com/HazelnutParadise/insyra"
-	"github.com/HazelnutParadise/insyra/plot"
+ "github.com/HazelnutParadise/insyra"
+ "github.com/HazelnutParadise/insyra/plot"
 )
 
 func main() {
-	// Create DataList objects for different products
-	dataListA := insyra.NewDataList(120, 200, 150).SetName("Product A")
+ // Create DataList objects for different products
+ dataListA := insyra.NewDataList(120, 200, 150).SetName("Product A")
 
-	dataListB := insyra.NewDataList(80, 160, 90).SetName("Product B")
+ dataListB := insyra.NewDataList(80, 160, 90).SetName("Product B")
 
-	config := plot.BarChartConfig{
-		Title:      "Sales Data",
-		Subtitle:   "Monthly Sales",
-		XAxis:      []string{"January", "February", "March"},
-		Data: []*insyra.DataList{dataListA, dataListB},
-		ShowLabels: true,
-		Colors:     []string{"#5470C6", "#91CC75"},
-	}
+ config := plot.BarChartConfig{
+  Title:      "Sales Data",
+  Subtitle:   "Monthly Sales",
+  XAxis:      []string{"January", "February", "March"},
+  Data: []*insyra.DataList{dataListA, dataListB},
+  ShowLabels: true,
+  Colors:     []string{"#5470C6", "#91CC75"},
+ }
 
-	// Create a bar chart
-	barChart := plot.CreateBarChart(config)
+ // Create a bar chart
+ barChart := plot.CreateBarChart(config)
 
-	// Save the chart as an HTML file
-	plot.SaveHTML(barChart, "sales_data_datalist.html")
+ // Save the chart as an HTML file
+ plot.SaveHTML(barChart, "sales_data_datalist.html")
 
-	// Save the chart as a PNG file
-	plot.SavePNG(barChart, "sales_data_datalist.png")
+ // Save the chart as a PNG file
+ plot.SavePNG(barChart, "sales_data_datalist.png")
 }
 ```
 
@@ -121,6 +121,7 @@ func main() {
 Creates a bar chart based on the provided `BarChartConfig` and returns a `*charts.Bar` object, which can be customized further using `go-echarts` options.
 
 #### Example
+
 ![bar_example](./img/plot_bar_example.png)
 
 ### Line Chart
@@ -151,6 +152,7 @@ Creates a bar chart based on the provided `BarChartConfig` and returns a `*chart
 Creates a line chart based on the provided `LineChartConfig` and returns a `*charts.Line` object, which can be customized further using `go-echarts` options.
 
 #### Example
+
 ![line_example](./img/plot_line_example.png)
 
 ### Pie Chart
@@ -179,6 +181,7 @@ Creates a line chart based on the provided `LineChartConfig` and returns a `*cha
 Creates a pie chart based on the provided `PieChartConfig` and returns a `*charts.Pie` object, which can be customized further using `go-echarts` options.
 
 #### Example
+
 ![pie_example](./img/plot_pie_example.png)
 
 ### Scatter Chart
@@ -206,6 +209,7 @@ Creates a pie chart based on the provided `PieChartConfig` and returns a `*chart
 Creates a scatter chart based on the provided `ScatterChartConfig` and returns a `*charts.Scatter` object, which can be further customized with `go-echarts` options.
 
 #### Example
+
 ![scatter_example](./img/plot_scatter_example.png)
 
 ### Heatmap Chart
@@ -229,6 +233,7 @@ Creates a scatter chart based on the provided `ScatterChartConfig` and returns a
 Creates a heatmap chart based on the provided `HeatmapChartConfig` and returns a `*charts.HeatMap` object, which can be further customized with `go-echarts` options.
 
 #### Example
+
 ![heatmap_example](./img/plot_heatmap_example.png)
 
 ### Liquid Chart
@@ -250,6 +255,7 @@ Creates a heatmap chart based on the provided `HeatmapChartConfig` and returns a
 Creates a liquid chart based on the provided `LiquidChartConfig` and returns a `*charts.Liquid` object, which can be further customized with `go-echarts` options.
 
 #### Example
+
 ![liquid_example](./img/plot_liquid_example.png)
 
 ### Word Cloud
@@ -270,6 +276,7 @@ Creates a liquid chart based on the provided `LiquidChartConfig` and returns a `
 Creates a word cloud based on the provided `WordCloudConfig` and returns a `*charts.WordCloud` object, which can be further customized with `go-echarts` options.
 
 #### Example
+
 ![wordcloud_example](./img/plot_wordcloud_example.png)
 
 ### Radar Chart
@@ -290,6 +297,7 @@ Creates a word cloud based on the provided `WordCloudConfig` and returns a `*cha
 Creates a radar chart based on the provided `RadarChartConfig` and returns a `*charts.Radar` object, which can be further customized with `go-echarts` options.
 
 #### Example
+
 ![radar_example](./img/plot_radar_example.png)
 
 ### Box Plot
@@ -298,10 +306,11 @@ Creates a radar chart based on the provided `RadarChartConfig` and returns a `*c
 
 - `Title`: The title of the box plot.
 - `Subtitle`: The subtitle of the box plot.
-- `Data`: The data for the box plot. Supported types:
-  - `map[string][][]float64`: A map where keys are series names, and values are two-dimensional float64 slices.
-  - `map[string][]*insyra.DataList`: A map where keys are series names, and values are `DataList` structures.
-  - `map[string][]insyra.IDataList`: A map where keys are series names, and values are `IDataList` interface implementations.
+- `Series`: The ordered series for the box plot. Each element is a `BoxSeries` with fields:
+  - `Name` (string): Series name (shown in legend).
+  - `Data` ([]insyra.IDataList): Each `IDataList` represents a category and will be converted to five-number summary `[min, Q1, median, Q3, max]`.
+  - `Color` (string, optional): Per-series color.
+  - `Fill` (bool, optional): Per-series fill (default false; set to `true` to fill).
 - `XAxis` (optional): The data for the X-axis (categories). Automatically generated if not provided.
 - `GridTop` (optional): Space between the top of the chart and the title. Default is `"80"`.
 
@@ -312,6 +321,7 @@ Creates a radar chart based on the provided `RadarChartConfig` and returns a `*c
 Creates a box plot chart based on the provided `BoxPlotConfig` and returns a `*charts.BoxPlot` object, which can be further customized with `go-echarts` options.
 
 #### Example
+
 ![boxplot_example](./img/plot_boxplot_example.png)
 
 ### K-Line Chart
@@ -333,6 +343,7 @@ Creates a box plot chart based on the provided `BoxPlotConfig` and returns a `*c
 Creates a K-line chart based on the provided `KlineChartConfig` and returns a `*charts.Kline` object, which can be further customized with `go-echarts` options.
 
 #### Example
+
 ![kline_example](./img/plot_kline_example.png)
 
 ### Gauge Chart
@@ -351,6 +362,7 @@ Creates a K-line chart based on the provided `KlineChartConfig` and returns a `*
 Creates a gauge chart based on the provided `GaugeChartConfig` and returns a `*charts.Gauge` object, which can be further customized with `go-echarts` options.
 
 #### Example
+
 ![gauge_example](./img/plot_gauge_example.png)
 
 ### Funnel Chart
@@ -372,6 +384,7 @@ Creates a gauge chart based on the provided `GaugeChartConfig` and returns a `*c
 Creates a funnel chart based on the provided `FunnelChartConfig` and returns a `*charts.Funnel` object, which can be further customized with `go-echarts` options.
 
 #### Example
+
 ![funnel_example](./img/plot_funnel_example.png)
 
 ### ThemeRiver Chart
@@ -396,6 +409,7 @@ Creates a funnel chart based on the provided `FunnelChartConfig` and returns a `
 Creates a ThemeRiver chart based on the provided `ThemeRiverChartConfig` and returns a `*charts.ThemeRiver` object, which can be further customized with `go-echarts` options.
 
 #### Example
+
 ![themeriver_example](./img/plot_themeriver_example.png)
 
 ### Sankey Chart
@@ -429,6 +443,7 @@ Creates a Sankey chart based on the provided `SankeyChartConfig` and returns a `
 Loads the Sankey chart node and link data from a JSON file.
 
 #### Example
+
 ![sankey_example](./img/plot_sankey_example.png)
 
 ## Saving Charts
@@ -458,13 +473,13 @@ For instance, after creating a bar chart using `CreateBarChart`, users can call 
 
 ```go
 barChart.SetGlobalOptions(
-	charts.WithTitleOpts(opts.Title{
-		Title:    "Custom Title",
-		Subtitle: "Custom Subtitle",
-	}),
-	charts.WithXAxisOpts(opts.XAxis{
-		Name: "Custom X-Axis Name",
-	}),
+ charts.WithTitleOpts(opts.Title{
+  Title:    "Custom Title",
+  Subtitle: "Custom Subtitle",
+ }),
+ charts.WithXAxisOpts(opts.XAxis{
+  Name: "Custom X-Axis Name",
+ }),
 )
 ```
 
