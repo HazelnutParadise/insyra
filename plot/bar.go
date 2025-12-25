@@ -37,7 +37,7 @@ func CreateBarChart(config BarChartConfig) *charts.Bar {
 	bar := charts.NewBar()
 
 	// Set title and subtitle
-	internal.SetRectChartGlobalOptions(bar, internal.BaseChartConfig{
+	internal.SetBaseChartGlobalOptions(bar, internal.BaseChartConfig{
 		Width:           config.Width,
 		Height:          config.Height,
 		BackgroundColor: config.BackgroundColor,

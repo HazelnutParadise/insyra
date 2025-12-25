@@ -42,7 +42,7 @@ type BoxPlotConfig struct {
 func CreateBoxPlot(config BoxPlotConfig) *charts.BoxPlot {
 	boxPlot := charts.NewBoxPlot()
 
-	internal.SetRectChartGlobalOptions(boxPlot, internal.BaseChartConfig{
+	internal.SetBaseChartGlobalOptions(boxPlot, internal.BaseChartConfig{
 		Width:           config.Width,
 		Height:          config.Height,
 		BackgroundColor: config.BackgroundColor,

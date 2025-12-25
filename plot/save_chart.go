@@ -7,10 +7,12 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 
 	"github.com/HazelnutParadise/insyra"
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/snapshot-chromedp/render"
+	"github.com/google/uuid"
 )
 
 // Renderer
@@ -50,7 +52,20 @@ func SavePNG(chart Renderable, pngPath string) {
 	chartContentBytes := chart.RenderContent()
 
 	useOnlineService := false
-	err := render.MakeChartSnapshot(chartContentBytes, pngPath)
+	uuid := uuid.New().String()
+	tempDir := os.TempDir()
+	snapshotConfig := render.NewSnapshotConfig(chartContentBytes, pngPath)
+	snapshotConfig.Quality = 2
+	// Use a temp directory (not a filename) for HTML assets to avoid incorrect path joins on Windows.
+	snapshotConfig.HtmlPath = filepath.Join(tempDir, uuid+"_temp")
+	// Ensure the temp directory exists so snapshotter can write files into it.
+	if mkerr := os.MkdirAll(snapshotConfig.HtmlPath, 0700); mkerr != nil {
+		insyra.LogWarning("plot", "SavePNG", "failed to create temp html dir %s: %v", snapshotConfig.HtmlPath, mkerr)
+	}
+	// Ensure temp directory is removed when done (safe even if MakeSnapshot cleans up already).
+	defer func() { _ = os.RemoveAll(snapshotConfig.HtmlPath) }()
+
+	err := render.MakeSnapshot(snapshotConfig)
 	if err != nil {
 		insyra.LogWarning("plot", "SavePNG", "failed to render chart to PNG: %v, trying to use HazelnutParadise online service...", err)
 		useOnlineService = true

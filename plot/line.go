@@ -41,7 +41,7 @@ func CreateLineChart(config LineChartConfig) *charts.Line {
 	)
 
 	// Set title and subtitle
-	internal.SetRectChartGlobalOptions(&line.RectChart, internal.BaseChartConfig{
+	internal.SetBaseChartGlobalOptions(&line.RectChart, internal.BaseChartConfig{
 		Title:      config.Title,
 		Subtitle:   config.Subtitle,
 		HideLegend: config.HideLegend,

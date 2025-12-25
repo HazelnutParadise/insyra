@@ -17,7 +17,7 @@ type BaseChartConfig struct {
 	LegendPos       string // Legend position: "top" or "bottom".
 }
 
-func SetRectChartGlobalOptions[T any](chart Chart[T], config BaseChartConfig) {
+func SetBaseChartGlobalOptions[T any](chart Chart[T], config BaseChartConfig) {
 	legendOpts := opts.Legend{
 		Show: opts.Bool(!config.HideLegend),
 	}
