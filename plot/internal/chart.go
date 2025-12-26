@@ -8,6 +8,7 @@ import (
 
 type Chart[T any] interface {
 	SetGlobalOptions(...charts.GlobalOpts) T
+	SetSeriesOptions(...charts.SeriesOpts)
 	Render(w io.Writer) error
 	RenderContent() []byte
 }

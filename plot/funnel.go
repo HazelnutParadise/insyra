@@ -54,12 +54,12 @@ func CreateFunnelChart(config FunnelChartConfig, data map[string]float64) *chart
 	series := funnel.AddSeries("", funnelData)
 
 	// 設置標籤顯示選項
-	series.SetSeriesOptions(charts.WithLabelOpts(
-		opts.Label{
-			Show:     opts.Bool(config.ShowLabels),
-			Position: string(config.LabelPos), // 標籤位置
-		},
-	))
+	internal.SetShowLabels(
+		series,
+		config.ShowLabels,
+		string(config.LabelPos),
+		string(LabelPositionInside),
+	)
 
 	return funnel
 }

@@ -87,16 +87,11 @@ func CreateBarChart(config BarChartConfig, data ...insyra.IDataList) *charts.Bar
 	}
 
 	// 顯示標籤（如果啟用）
-	if config.ShowLabels {
-		if config.LabelPos == "" {
-			config.LabelPos = "top"
-		}
-	}
-	bar.SetSeriesOptions(
-		charts.WithLabelOpts(opts.Label{
-			Show:     opts.Bool(config.ShowLabels),
-			Position: string(config.LabelPos),
-		}),
+	internal.SetShowLabels(
+		bar,
+		config.ShowLabels,
+		string(config.LabelPos),
+		string(LabelPositionTop),
 	)
 
 	return bar
