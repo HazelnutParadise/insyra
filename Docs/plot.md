@@ -236,6 +236,83 @@ Creates a heatmap chart based on the provided `HeatmapChartConfig` and returns a
 
 ![heatmap_example](./img/plot_heatmap_example.png)
 
+##### Grid heatmap (labels)
+
+```go
+package main
+
+import (
+ "github.com/HazelnutParadise/insyra/plot"
+)
+
+func main() {
+ cfg := plot.HeatMapConfigLabels{
+  Width: "800px",
+  Height: "400px",
+  Title: "Grid Heatmap 範例",
+  XAxis: []string{"A", "B", "C", "D"},
+  YAxis: []string{"W", "X", "Y", "Z"},
+ }
+
+ hm := plot.CreateHeatMap(cfg,
+  plot.HeatMapPoint("A", "W", 1.2),
+  plot.HeatMapPoint("B", "W", 3.4),
+  plot.HeatMapMissingPoint("C", "W"),
+ )
+ plot.SaveHTML(hm, "heatmap_grid.html")
+}
+```
+
+##### Index-based heatmap (ints)
+
+```go
+package main
+
+import "github.com/HazelnutParadise/insyra/plot"
+
+func main() {
+ cfg := plot.HeatMapConfigIndices{Title: "Index-based Heatmap"}
+
+ hm := plot.CreateHeatMap(cfg,
+  plot.HeatMapPoint(0, 0, 0.2),
+  plot.HeatMapPoint(1, 0, 1.8),
+  plot.HeatMapPoint(2, 1, 2.4),
+ )
+ plot.SaveHTML(hm, "heatmap_index.html")
+}
+```
+
+##### Calendar heatmap (time.Time)
+
+```go
+package main
+
+import (
+ "time"
+
+ "github.com/HazelnutParadise/insyra/plot"
+ "github.com/go-echarts/go-echarts/v2/opts"
+)
+
+func main() {
+ cfg := plot.HeatMapConfigCalendar{
+  Title:       "Calendar Heatmap 範例",
+  UseCalendar: true,
+  CalendarOpts: &opts.Calendar{
+   Range:    "2025",
+   CellSize: []int{20, 20},
+  },
+ }
+
+ hm := plot.CreateHeatMap(cfg,
+  plot.HeatMapPoint(time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC), "", 2.0),
+  plot.HeatMapPoint(time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), "", 5.5),
+  plot.HeatMapMissingPoint(time.Date(2025, 1, 10, 0, 0, 0, 0, time.UTC), ""),
+ )
+ plot.SaveHTML(hm, "heatmap_calendar.html")
+}
+```
+
 ### Liquid Chart
 
 #### `LiquidChartConfig`
