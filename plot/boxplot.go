@@ -31,15 +31,13 @@ type BoxPlotConfig struct {
 	HideLegend      bool     // Whether to hide the legend.
 	LegendPos       Position // Optional: Use const PositionXXX.
 
-	// Preferred series representation (ordered)
-	Series    []BoxPlotSeries // Ordered series with optional per-series metadata
-	XAxis     []string        // X-axis data.
-	XAxisName string          // Optional: X-axis name.
-	YAxisName string          // Optional: Y-axis name.
+	XAxis     []string // X-axis data.
+	XAxisName string   // Optional: X-axis name.
+	YAxisName string   // Optional: Y-axis name.
 }
 
 // CreateBoxPlot generates and returns a *charts.BoxPlot object
-func CreateBoxPlot(config BoxPlotConfig) *charts.BoxPlot {
+func CreateBoxPlot(config BoxPlotConfig, series ...BoxPlotSeries) *charts.BoxPlot {
 	boxPlot := charts.NewBoxPlot()
 
 	internal.SetBaseChartGlobalOptions(boxPlot, internal.BaseChartConfig{
@@ -54,9 +52,7 @@ func CreateBoxPlot(config BoxPlotConfig) *charts.BoxPlot {
 		LegendPos:       string(config.LegendPos),
 	})
 
-	// Use provided ordered Series (no backwards compatibility for map-based Data)
-	seriesList := config.Series
-	if len(seriesList) == 0 {
+	if len(series) == 0 {
 		insyra.LogWarning("plot.boxplot", "CreateBoxPlot", "no series provided in BoxPlotConfig.Series; returning empty chart")
 		return boxPlot
 	}
@@ -65,8 +61,8 @@ func CreateBoxPlot(config BoxPlotConfig) *charts.BoxPlot {
 	numCats := 0
 	if len(config.XAxis) > 0 {
 		numCats = len(config.XAxis)
-	} else if len(seriesList) > 0 {
-		numCats = len(seriesList[0].Data)
+	} else if len(series) > 0 {
+		numCats = len(series[0].Data)
 	}
 
 	// If XAxis not provided, create default labels
@@ -79,7 +75,7 @@ func CreateBoxPlot(config BoxPlotConfig) *charts.BoxPlot {
 
 	// Set X axis and add each series (support per-series color/fill)
 	boxPlot.SetXAxis(config.XAxis)
-	for _, s := range seriesList {
+	for _, s := range series {
 		if numCats == 0 {
 			continue
 		}

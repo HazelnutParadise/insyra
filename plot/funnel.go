@@ -20,13 +20,13 @@ type FunnelChartConfig struct {
 	HideLegend      bool     // Whether to hide the legend.
 	LegendPos       Position // Optional: Use const PositionXXX.
 
-	Data       map[string]float64 // data points (dimension name -> value)
-	ShowLabels bool               // whether to show labels
-	LabelPos   LabelPosition      // Optional: Use const LabelPositionXXX.
+	ShowLabels bool          // whether to show labels
+	LabelPos   LabelPosition // Optional: Use const LabelPositionXXX.
 }
 
 // CreateFunnelChart generates a funnel chart based on the provided configuration.
-func CreateFunnelChart(config FunnelChartConfig) *charts.Funnel {
+// The data parameter is a map where keys are category names and values are their corresponding values.
+func CreateFunnelChart(config FunnelChartConfig, data map[string]float64) *charts.Funnel {
 	funnel := charts.NewFunnel()
 
 	internal.SetBaseChartGlobalOptions(funnel, internal.BaseChartConfig{
@@ -43,7 +43,7 @@ func CreateFunnelChart(config FunnelChartConfig) *charts.Funnel {
 
 	// 構建數據點
 	funnelData := make([]opts.FunnelData, 0)
-	for name, value := range config.Data {
+	for name, value := range data {
 		funnelData = append(funnelData, opts.FunnelData{
 			Name:  name,
 			Value: value,

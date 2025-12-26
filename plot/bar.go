@@ -23,7 +23,6 @@ type BarChartConfig struct {
 	HideLegend      bool     // Optional: Whether to hide the legend.
 	LegendPos       Position // Optional: Use const PositionXXX.
 
-	Data       []insyra.IDataList
 	XAxis      []string      // X-axis data.
 	XAxisName  string        // Optional: X-axis name.
 	YAxisName  string        // Optional: Y-axis name.
@@ -33,7 +32,7 @@ type BarChartConfig struct {
 }
 
 // CreateBarChart generates and returns a *charts.Bar object based on BarChartConfig.
-func CreateBarChart(config BarChartConfig) *charts.Bar {
+func CreateBarChart(config BarChartConfig, data ...insyra.IDataList) *charts.Bar {
 	bar := charts.NewBar()
 
 	// Set title and subtitle
@@ -59,8 +58,6 @@ func CreateBarChart(config BarChartConfig) *charts.Bar {
 		}),
 		charts.WithColorsOpts(opts.Colors(config.Colors)),
 	)
-
-	data := config.Data
 
 	if len(config.XAxis) == 0 {
 		// 如果 X 軸沒有提供，則根據數據長度生成默認標籤

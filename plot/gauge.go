@@ -20,12 +20,11 @@ type GaugeChartConfig struct {
 	HideLegend      bool     // Whether to hide the legend.
 	LegendPos       Position // Optional: Use const PositionXXX.
 
-	SeriesName string  // series name
-	Value      float64 // value to display
+	SeriesName string // series name
 }
 
 // CreateGaugeChart generates and returns a *charts.Gauge object
-func CreateGaugeChart(config GaugeChartConfig) *charts.Gauge {
+func CreateGaugeChart(config GaugeChartConfig, value float64) *charts.Gauge {
 	gauge := charts.NewGauge()
 
 	internal.SetBaseChartGlobalOptions(gauge, internal.BaseChartConfig{
@@ -42,7 +41,7 @@ func CreateGaugeChart(config GaugeChartConfig) *charts.Gauge {
 
 	// 添加系列數據
 	gauge.AddSeries(config.SeriesName, []opts.GaugeData{
-		{Name: config.SeriesName, Value: config.Value},
+		{Name: config.SeriesName, Value: value},
 	})
 
 	return gauge
