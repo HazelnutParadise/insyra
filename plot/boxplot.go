@@ -34,6 +34,11 @@ type BoxPlotConfig struct {
 	XAxis     []string // X-axis data.
 	XAxisName string   // Optional: X-axis name.
 	YAxisName string   // Optional: Y-axis name.
+	// Y axis customization (numeric-only: min/max/split/formatter)
+	YAxisMin         *float64 // Optional: minimum value of Y axis.
+	YAxisMax         *float64 // Optional: maximum value of Y axis.
+	YAxisSplitNumber *int     // Optional: split number for Y axis.
+	YAxisFormatter   string   // Optional: label formatter for Y axis, e.g. "{value}°C".
 }
 
 // CreateBoxPlot generates and returns a *charts.BoxPlot object
@@ -121,13 +126,19 @@ func CreateBoxPlot(config BoxPlotConfig, series ...BoxPlotSeries) *charts.BoxPlo
 		}
 	}
 
-	// Set X, Y axis names
+	// Apply Y axis settings via internal helper (flatten series data for detection)
+	allData := make([]insyra.IDataList, 0)
+	for _, s := range series {
+		for _, dl := range s.Data {
+			allData = append(allData, dl)
+		}
+	}
+	// Apply shared Y axis logic (numeric-only for boxplot)
+	internal.ApplyYAxis(boxPlot, config.YAxisName, nil, config.YAxisMin, config.YAxisMax, config.YAxisSplitNumber, config.YAxisFormatter, allData...)
+
 	boxPlot.SetGlobalOptions(
 		charts.WithXAxisOpts(opts.XAxis{
 			Name: config.XAxisName,
-		}),
-		charts.WithYAxisOpts(opts.YAxis{
-			Name: config.YAxisName,
 		}),
 	)
 

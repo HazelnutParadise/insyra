@@ -23,12 +23,17 @@ type BarChartConfig struct {
 	HideLegend      bool     // Optional: Whether to hide the legend.
 	LegendPos       Position // Optional: Use const PositionXXX.
 
-	XAxis      []string      // X-axis data.
-	XAxisName  string        // Optional: X-axis name.
-	YAxisName  string        // Optional: Y-axis name.
-	Colors     []string      // Optional: Colors for the bars, for example: ["green", "orange"].
-	ShowLabels bool          // Optional: Show labels on the bars.
-	LabelPos   LabelPosition // Optional: Use const LabelPositionXXX.
+	XAxis     []string // X-axis data.
+	XAxisName string   // Optional: X-axis name.
+	YAxisName string   // Optional: Y-axis name.
+	// Y axis customization
+	YAxisMin         *float64      // Optional: minimum value of Y axis.
+	YAxisMax         *float64      // Optional: maximum value of Y axis.
+	YAxisSplitNumber *int          // Optional: split number for Y axis.
+	YAxisFormatter   string        // Optional: label formatter for Y axis, e.g. "{value}°C".
+	Colors           []string      // Optional: Colors for the bars, for example: ["green", "orange"].
+	ShowLabels       bool          // Optional: Show labels on the bars.
+	LabelPos         LabelPosition // Optional: Use const LabelPositionXXX.
 }
 
 // CreateBarChart generates and returns a *charts.Bar object based on BarChartConfig.
@@ -48,13 +53,12 @@ func CreateBarChart(config BarChartConfig, data ...insyra.IDataList) *charts.Bar
 		LegendPos:       string(config.LegendPos),
 	})
 
-	// 設置 X 軸名稱（如果提供）
+	// Apply Y axis settings via internal helper (numeric-only; labels removed from BarChartConfig)
+	_, _, _, toF64 := internal.ApplyYAxis(bar, config.YAxisName, nil, config.YAxisMin, config.YAxisMax, config.YAxisSplitNumber, config.YAxisFormatter, data...)
+
 	bar.SetGlobalOptions(
 		charts.WithXAxisOpts(opts.XAxis{
 			Name: config.XAxisName,
-		}),
-		charts.WithYAxisOpts(opts.YAxis{
-			Name: config.YAxisName,
 		}),
 		charts.WithColorsOpts(opts.Colors(config.Colors)),
 	)
@@ -82,7 +86,7 @@ func CreateBarChart(config BarChartConfig, data ...insyra.IDataList) *charts.Bar
 	// 添加系列數據
 	for _, dataList := range data {
 		dataList.AtomicDo(func(dl *insyra.DataList) {
-			bar.AddSeries(dl.GetName(), convertToBarDataFloat(dl.ToF64Slice()))
+			bar.AddSeries(dl.GetName(), convertToBarDataFloat(toF64(dl)))
 		})
 	}
 

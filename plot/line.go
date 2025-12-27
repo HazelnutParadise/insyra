@@ -13,25 +13,49 @@ import (
 
 // LineChartConfig defines the configuration for a line chart.
 type LineChartConfig struct {
-	Title        string   // Title of the chart.
-	Subtitle     string   // Subtitle of the chart.
-	HideLegend   bool     // Optional: Whether to hide the legend.
-	XAxis        []string // X-axis data.
-	Data         []insyra.IDataList
-	XAxisName    string   // Optional: X-axis name.
-	YAxisName    string   // Optional: Y-axis name.
-	YAxisNameGap int      // Optional: Gap between Y-axis name and subtitle.
-	Colors       []string // Optional: Colors for the lines, for example: ["blue", "red"].
-	ShowLabels   bool     // Optional: Show labels on the lines.
-	LabelPos     string   // Optional: "top" | "bottom" | "left" | "right", default: "top".
-	Smooth       bool     // Optional: Make the lines smooth.
-	FillArea     bool     // Optional: Fill the area under the lines.
-	GridTop      string   // Optional, default: "80".
+	Width           string   // Width of the chart (default "900px").
+	Height          string   // Height of the chart (default "500px").
+	BackgroundColor string   // Background color of the chart (default "white").
+	Theme           Theme    // Theme of the chart.
+	Title           string   // Title of the chart.
+	Subtitle        string   // Subtitle of the chart.
+	TitlePos        Position // Optional: Use const PositionXXX.
+	HideLegend      bool     // Optional: Whether to hide the legend.
+	LegendPos       Position // Optional: Use const PositionXXX.
+
+	XAxis     []string // X-axis data.
+	XAxisName string   // Optional: X-axis name.
+
+	// Y axis customization
+	YAxisName        string   // Optional: Y-axis name.
+	YAxis            []string // Optional: Y-axis category labels (if provided treated as category).
+	YAxisMin         *float64 // Optional: minimum value of Y axis.
+	YAxisMax         *float64 // Optional: maximum value of Y axis.
+	YAxisSplitNumber *int     // Optional: split number for Y axis.
+	YAxisFormatter   string   // Optional: label formatter for Y axis, e.g. "{value}°C".
+
+	Colors     []string // Optional: Colors for the lines, for example: ["blue", "red"].
+	ShowLabels bool     // Optional: Show labels on the lines.
+	LabelPos   string   // Optional: "top" | "bottom" | "left" | "right", default: "top".
+	Smooth     bool     // Optional: Make the lines smooth.
+	FillArea   bool     // Optional: Fill the area under the lines.
 }
 
 // CreateLineChart generates and returns a *charts.Line object based on LineChartConfig.
-func CreateLineChart(config LineChartConfig) *charts.Line {
+func CreateLineChart(config LineChartConfig, data ...insyra.IDataList) *charts.Line {
 	line := charts.NewLine()
+
+	internal.SetBaseChartGlobalOptions(line, internal.BaseChartConfig{
+		Width:           config.Width,
+		Height:          config.Height,
+		BackgroundColor: config.BackgroundColor,
+		Theme:           string(config.Theme),
+		Title:           config.Title,
+		Subtitle:        config.Subtitle,
+		TitlePos:        string(config.TitlePos),
+		HideLegend:      config.HideLegend,
+		LegendPos:       string(config.LegendPos),
+	})
 
 	line.SetGlobalOptions(
 		charts.WithLegendOpts(opts.Legend{
@@ -39,13 +63,6 @@ func CreateLineChart(config LineChartConfig) *charts.Line {
 			Bottom: "0%",
 		}),
 	)
-
-	// Set title and subtitle
-	internal.SetBaseChartGlobalOptions(&line.RectChart, internal.BaseChartConfig{
-		Title:      config.Title,
-		Subtitle:   config.Subtitle,
-		HideLegend: config.HideLegend,
-	})
 
 	// 設置 X 軸名稱（如果提供）
 	if config.XAxisName != "" {
@@ -56,15 +73,10 @@ func CreateLineChart(config LineChartConfig) *charts.Line {
 		)
 	}
 
-	// 設置 Y 軸名稱和 NameGap（增加間距）
-	if config.YAxisName != "" {
-		line.SetGlobalOptions(
-			charts.WithYAxisOpts(opts.YAxis{
-				Name:    config.YAxisName,
-				NameGap: config.YAxisNameGap, // 使用配置中的 NameGap
-			}),
-		)
-	}
+	// Use internal helper to build Y axis and get converters; it updates config.YAxis if derived
+	_, _, toLineData, _ := internal.ApplyYAxis(line, config.YAxisName, &config.YAxis, config.YAxisMin, config.YAxisMax, config.YAxisSplitNumber, config.YAxisFormatter, data...)
+
+	// Y axis already applied by internal.ApplyYAxis; nothing more to do here.
 
 	// 設置系列顏色（如果提供）
 	if len(config.Colors) > 0 {
@@ -72,23 +84,6 @@ func CreateLineChart(config LineChartConfig) *charts.Line {
 			charts.WithColorsOpts(opts.Colors(config.Colors)),
 		)
 	}
-
-	// 設置 GridTop 以增加副標題下的空間
-	if config.GridTop != "" {
-		line.SetGlobalOptions(
-			charts.WithGridOpts(opts.Grid{
-				Top: config.GridTop,
-			}),
-		)
-	} else {
-		line.SetGlobalOptions(
-			charts.WithGridOpts(opts.Grid{
-				Top: "80",
-			}),
-		)
-	}
-
-	data := config.Data
 
 	if len(config.XAxis) == 0 {
 		// 如果 X 軸沒有提供，則根據數據長度生成默認標籤
@@ -115,22 +110,12 @@ func CreateLineChart(config LineChartConfig) *charts.Line {
 	// 添加系列數據
 	for _, dataList := range data {
 		dataList.AtomicDo(func(dl *insyra.DataList) {
-			line.AddSeries(dl.GetName(), convertToLineDataFloat(dl.ToF64Slice()))
+			line.AddSeries(dl.GetName(), toLineData(dl))
 		})
 	}
 
-	// 顯示標籤（如果啟用）
-	if config.ShowLabels {
-		if config.LabelPos == "" {
-			config.LabelPos = "top"
-		}
-	}
-	line.SetSeriesOptions(
-		charts.WithLabelOpts(opts.Label{
-			Show:     opts.Bool(config.ShowLabels),
-			Position: config.LabelPos,
-		}),
-	)
+	// 顯示標籤
+	internal.SetShowLabels(line, config.ShowLabels, config.LabelPos, string(LabelPositionTop))
 
 	// 平滑線條（如果啟用）
 	if config.Smooth {
