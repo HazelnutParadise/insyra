@@ -324,6 +324,7 @@ func main() {
 - `ShowLabels` (optional): Display labels on the liquid chart.
 - `IsWaveAnimation` (optional): Enable/Disable wave animation.
 - `Shape` (optional): Shape of the liquid chart (e.g., "diamond", "pin", "arrow", "triangle").
+- `IsShowOutline` (optional): Show the shape outline (`true` to show, `false` to hide). If omitted, the outline is shown when multiple values are present.
 
 #### `CreateLiquidChart`
 
