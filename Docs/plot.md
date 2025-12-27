@@ -411,7 +411,17 @@ Creates a box plot chart based on the provided `BoxPlotConfig` and returns a `*c
   - `map[string][4]float32`: A map where keys are dates, and values are arrays of [open, close, high, low] float values.
   - `[]*insyra.DataList`: A list of `DataList` structures, each containing the open, close, highest, and lowest values, and the date as the name.
   - `[]insyra.IDataList`: A list of `IDataList` interface implementations.
+- `DateFormat` (optional): The Go time format string used to display dates on the x-axis. Default: `"2006-01-02 15:04:05"`. You can also pass common patterns like `"YYYY-MM-DD"` (they will be converted using `internal.ConvertDateFormat`). Example Go format values: `"2006-01-02"`, `"2006/01/02 15:04"`.
 - `DataZoom` (optional): Enable/Disable data zoom.
+
+**Usage example:**
+
+```go
+cfg := plot.KlineChartConfig{
+ Title:      "範例 K 線圖",
+ DateFormat: "2006-01-02", // 只顯示日期
+}
+```
 
 #### `CreateKlineChart`
 

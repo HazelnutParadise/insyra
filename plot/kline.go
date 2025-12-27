@@ -5,46 +5,68 @@ package plot
 import (
 	"sort"
 
-	"github.com/HazelnutParadise/insyra"
+	"time"
+
+	"github.com/HazelnutParadise/insyra/internal/utils"
+	"github.com/HazelnutParadise/insyra/plot/internal"
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
 )
 
+type KlinePoint struct {
+	Date  time.Time `json:"date"` // Timestamp of the data point
+	Open  float64   `json:"open"`
+	High  float64   `json:"high"`
+	Low   float64   `json:"low"`
+	Close float64   `json:"close"`
+}
+
 // KlineChartConfig defines the configuration for a K-line chart.
 type KlineChartConfig struct {
-	Title    string
-	Subtitle string
-	Data     any  // Accepts map[string][4]float32 or []*insyra.DataList
-	DataZoom bool // Turn on/off data zoom
+	Width           string   // Width of the chart (default "900px").
+	Height          string   // Height of the chart (default "500px").
+	BackgroundColor string   // Background color of the chart (default "white").
+	Theme           Theme    // Theme of the chart.
+	Title           string   // Title of the chart.
+	Subtitle        string   // Subtitle of the chart.
+	TitlePos        Position // Optional: Use const PositionXXX.
+
+	// DateFormat controls how dates are displayed on the X axis. Use Go time format strings or
+	// common patterns like "YYYY-MM-DD HH:mm:ss" which will be converted automatically.
+	DateFormat string
+	DataZoom   bool // Turn on/off data zoom
 }
 
 // CreateKlineChart generates and returns a *charts.Kline object.
-func CreateKlineChart(config KlineChartConfig) *charts.Kline {
-	kline := charts.NewKLine()
+func CreateKlineChart(config KlineChartConfig, klinePoints ...KlinePoint) *charts.Kline {
+	klineChart := charts.NewKLine()
 
 	// Set title and subtitle
-	kline.SetGlobalOptions(
-		charts.WithTitleOpts(opts.Title{
-			Title:    config.Title,
-			Subtitle: config.Subtitle,
-		}),
+	internal.SetBaseChartGlobalOptions(klineChart, internal.BaseChartConfig{
+		Width:           config.Width,
+		Height:          config.Height,
+		BackgroundColor: config.BackgroundColor,
+		Theme:           string(config.Theme),
+		Title:           config.Title,
+		Subtitle:        config.Subtitle,
+		TitlePos:        string(config.TitlePos),
+		HideLegend:      true,
+		LegendPos:       "",
+	})
+
+	// Set title and subtitle
+	klineChart.SetGlobalOptions(
 		charts.WithXAxisOpts(opts.XAxis{
 			SplitNumber: 20,
 		}),
 		charts.WithYAxisOpts(opts.YAxis{
 			Scale: opts.Bool(true),
 		}),
-		charts.WithLegendOpts(opts.Legend{
-			Show: opts.Bool(false),
-		}),
-		charts.WithGridOpts(opts.Grid{
-			Top: "80",
-		}),
 	)
 
 	// Enable data zoom if needed
 	if config.DataZoom {
-		kline.SetGlobalOptions(
+		klineChart.SetGlobalOptions(
 			charts.WithDataZoomOpts(opts.DataZoom{
 				Start:      50,
 				End:        100,
@@ -56,77 +78,43 @@ func CreateKlineChart(config KlineChartConfig) *charts.Kline {
 	var xAxis []string
 	var series []opts.KlineData
 
-	// Handle Data for both map[string][4]float32 and []*insyra.DataList
-	switch data := config.Data.(type) {
-	case map[string][4]float32:
-		// Prepare the K-line chart data with sorted dates
-		xAxis = make([]string, 0, len(data))
-		for date := range data {
-			xAxis = append(xAxis, date)
-		}
-		sort.Strings(xAxis)
-
-		// Add sorted data to the series
-		series = make([]opts.KlineData, len(xAxis))
-		for i, date := range xAxis {
-			series[i] = opts.KlineData{Value: data[date]}
-		}
-
-	case []*insyra.DataList:
-		// Prepare the K-line chart data using DataList
-		xAxis = make([]string, 0, len(data))
-		series = make([]opts.KlineData, 0, len(data))
-
-		for _, dataList := range data {
-			dataList.AtomicDo(func(dl *insyra.DataList) {
-				if dl.Len() == 4 { // Ensure that we have the open, close, lowest, highest values
-					xAxis = append(xAxis, dl.GetName())
-					values := dl.ToF64Slice()
-					series = append(series, opts.KlineData{
-						Value: [4]float32{
-							float32(values[0]), // Open
-							float32(values[1]), // Close
-							float32(values[2]), // Lowest
-							float32(values[3]), // Highest
-						},
-					})
-				}
-			})
-		}
-
-		// Sort the dates
-		sort.Strings(xAxis)
-	case []insyra.IDataList:
-		// Prepare the K-line chart data using DataList
-		xAxis = make([]string, 0, len(data))
-		series = make([]opts.KlineData, 0, len(data))
-
-		for _, dataList := range data {
-			dataList.AtomicDo(func(dl *insyra.DataList) {
-				if dl.Len() == 4 { // Ensure that we have the open, close, lowest, highest values
-					xAxis = append(xAxis, dl.GetName())
-					values := dl.ToF64Slice()
-					series = append(series, opts.KlineData{
-						Value: [4]float32{
-							float32(values[0]), // Open
-							float32(values[1]), // Close
-							float32(values[2]), // Lowest
-							float32(values[3]), // Highest
-						},
-					})
-				}
-			})
-		}
-
-		// Sort the dates
-		sort.Strings(xAxis)
-	default:
-		// Log a warning or handle unsupported data type
+	// Use ordered slice of KlinePoint
+	if len(klinePoints) == 0 {
 		return nil
 	}
 
-	// Set X axis and add series data
-	kline.SetXAxis(xAxis).AddSeries("Kline", series)
+	// Sort by date ascending
+	sort.Slice(klinePoints, func(i, j int) bool {
+		return klinePoints[i].Date.Before(klinePoints[j].Date)
+	})
 
-	return kline
+	// Determine date format (fall back to default if empty). Accepts Go format or common
+	// patterns (e.g. "YYYY-MM-DD") which are converted using internal utils.ConvertDateFormat.
+	df := config.DateFormat
+	if df == "" {
+		df = "2006-01-02 15:04:05"
+	} else {
+		// Convert common patterns like YYYY-MM-DD to Go time formats
+		df = utils.ConvertDateFormat(df)
+	}
+
+	// Build x axis and series
+	xAxis = make([]string, 0, len(klinePoints))
+	series = make([]opts.KlineData, 0, len(klinePoints))
+	for _, pt := range klinePoints {
+		xAxis = append(xAxis, pt.Date.Format(df))
+		series = append(series, opts.KlineData{
+			Value: [4]float32{
+				float32(pt.Open),  // Open
+				float32(pt.Close), // Close
+				float32(pt.Low),   // Lowest
+				float32(pt.High),  // Highest
+			},
+		})
+	}
+
+	// Set X axis and add series data
+	klineChart.SetXAxis(xAxis).AddSeries("Kline", series)
+
+	return klineChart
 }
