@@ -370,7 +370,7 @@ Creates a word cloud based on the provided `WordCloudConfig` and returns a `*cha
 
 #### `CreateRadarChart`
 
-`func CreateRadarChart(config RadarChartConfig) *charts.Radar`
+`func CreateRadarChart(config RadarChartConfig, series []RadarSeries) *charts.Radar`
 
 Creates a radar chart based on the provided `RadarChartConfig` and returns a `*charts.Radar` object, which can be further customized with `go-echarts` options.
 
