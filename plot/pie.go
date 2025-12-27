@@ -27,11 +27,11 @@ type PieChartConfig struct {
 
 	Colors      []string // Optional: Colors for the slices, for example: ["green", "orange"].
 	ShowLabels  bool     // Optional: Show labels on the slices.
-	LabelPos    string   // Optional: "inside" | "outside", default: "outside".
+	ShowPercent bool     // Optional: Show percentage on labels.
+	LabelPos    LabelPosition
 	RoseType    string   // Optional: "radius" or "area" for rose charts.
 	Radius      []string // Optional: Radius configuration. First value is inner radius, second is outer radius, for example: ["40%", "75%"].
 	Center      []string // Optional: Center position, for example: ["50%", "50%"].
-	ShowPercent bool     // Optional: Show percentage on labels.
 }
 
 // CreatePieChart generates and returns a *charts.Pie object based on PieChartConfig.
@@ -70,7 +70,7 @@ func CreatePieChart(config PieChartConfig, data ...PieItem) *charts.Pie {
 	// 設置標籤和其他選項
 	labelFormatter := "{b}: {c}" // 預設顯示名稱和值
 	if config.ShowPercent && config.ShowLabels {
-		labelFormatter = "{b}: {c} ({d}%)" // 增加百分比顯示
+		labelFormatter = "{b}: {c}\n({d}%)" // 增加百分比顯示
 	} else if config.ShowPercent {
 		labelFormatter = "{d}%"
 	}
@@ -85,7 +85,7 @@ func CreatePieChart(config PieChartConfig, data ...PieItem) *charts.Pie {
 	pie.SetSeriesOptions(
 		charts.WithLabelOpts(opts.Label{
 			Show:      opts.Bool(config.ShowLabels || config.ShowPercent),
-			Position:  config.LabelPos,
+			Position:  string(config.LabelPos),
 			Formatter: labelFormatter,
 		}),
 		charts.WithPieChartOpts(opts.PieChart{
