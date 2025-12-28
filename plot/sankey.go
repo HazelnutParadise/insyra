@@ -3,9 +3,6 @@
 package plot
 
 import (
-	"encoding/json"
-	"os"
-
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/plot/internal"
 	"github.com/go-echarts/go-echarts/v2/charts"
@@ -84,26 +81,4 @@ func CreateSankeyChart(config SankeyChartConfig, links ...SankeyLink) *charts.Sa
 		)
 
 	return sankey
-}
-
-// LoadSankeyDataFromFile reads the Sankey chart node and link data from a JSON file.
-func LoadSankeyDataFromFile(filePath string) ([]string, []SankeyLink) {
-	file, err := os.ReadFile(filePath)
-	if err != nil {
-		insyra.LogWarning("plot", "LoadSankeyDataFromFile", "Failed to read file: %v, return nil.", err)
-		return nil, nil
-	}
-
-	type SankeyData struct {
-		Nodes []string     `json:"nodes"`
-		Links []SankeyLink `json:"links"`
-	}
-
-	var data SankeyData
-	if err := json.Unmarshal(file, &data); err != nil {
-		insyra.LogWarning("plot", "LoadSankeyDataFromFile", "Failed to unmarshal JSON: %v, return nil.", err)
-		return nil, nil
-	}
-
-	return data.Nodes, data.Links
 }
