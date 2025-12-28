@@ -6,7 +6,7 @@ import (
 	"unicode"
 )
 
-func Tokenize(input string) ([]cclToken, error) {
+func tokenize(input string) ([]cclToken, error) {
 	tokens := []cclToken{}
 	i := 0
 	for i < len(input) {

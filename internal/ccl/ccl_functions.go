@@ -17,11 +17,11 @@ func ResetFuncCallDepth() {
 	funcCallDepth = 0
 }
 
-func RegisterFunction(name string, fn Func) {
+func registerFunction(name string, fn Func) {
 	defaultFunctions[strings.ToUpper(name)] = fn
 }
 
-func RegisterAggregateFunction(name string, fn AggFunc) {
+func registerAggregateFunction(name string, fn AggFunc) {
 	aggregateFunctions[strings.ToUpper(name)] = fn
 }
 

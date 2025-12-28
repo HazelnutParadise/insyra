@@ -3,7 +3,6 @@ package ccl
 import (
 	"fmt"
 	"math"
-	"strconv"
 	"strings"
 
 	"github.com/HazelnutParadise/insyra/internal/utils"
@@ -442,53 +441,6 @@ func applyOperator(op string, left, right any) (any, error) {
 	}
 
 	return nil, fmt.Errorf("invalid operands for %s: %v, %v", op, left, right)
-}
-
-func toFloat64(val any) (float64, bool) {
-	switch v := val.(type) {
-	case float64:
-		return v, true
-	case int:
-		return float64(v), true
-	case bool:
-		if v {
-			return 1.0, true
-		}
-		return 0.0, true
-	case string:
-		trimmed := strings.TrimSpace(v)
-		f, err := strconv.ParseFloat(trimmed, 64)
-		return f, err == nil
-	case nil:
-		return 0.0, true
-	default:
-		return 0, false
-	}
-}
-
-// toBool converts a value to boolean
-func toBool(val any) (bool, bool) {
-	switch v := val.(type) {
-	case bool:
-		return v, true
-	case float64:
-		return v != 0, true
-	case int:
-		return v != 0, true
-	case string:
-		lower := strings.ToLower(strings.TrimSpace(v))
-		if lower == "true" {
-			return true, true
-		}
-		if lower == "false" {
-			return false, true
-		}
-		return false, false
-	case nil:
-		return false, true
-	default:
-		return false, false
-	}
 }
 
 func evaluateToColumn(n cclNode, ctx Context) ([]any, error) {

@@ -172,7 +172,7 @@ func (dt *DataTable) ExecuteCCL(cclStatements string) *DataTable {
 		LogDebug("DataTable", "ExecuteCCL", "Starting CCL execution: %s", cclStatements)
 
 		// 編譯多行 CCL 語句
-		nodes, err := compileMultilineCCL(cclStatements)
+		nodes, err := ccl.CompileMultiline(cclStatements)
 		if err != nil {
 			LogWarning("DataTable", "ExecuteCCL", "Failed to parse CCL statements: %v", err)
 			resultDtChan <- dt

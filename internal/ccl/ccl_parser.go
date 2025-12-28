@@ -11,16 +11,16 @@ type parser struct {
 	pos    int
 }
 
-// ParseExpression parses a CCL expression (no assignment).
+// parseExpression parses a CCL expression (no assignment).
 // For expressions like: A + B * C, IF(A > 0, 1, 0)
-func ParseExpression(tokens []cclToken) (cclNode, error) {
+func parseExpression(tokens []cclToken) (cclNode, error) {
 	p := &parser{tokens: tokens}
 	return p.parseExpression(0)
 }
 
-// ParseStatement parses a single statement that may include assignment
+// parseStatement parses a single statement that may include assignment
 // Returns the parsed node which can be either an expression or an assignment
-func ParseStatement(tokens []cclToken) (cclNode, error) {
+func parseStatement(tokens []cclToken) (cclNode, error) {
 	p := &parser{tokens: tokens}
 	return p.parseStatement()
 }
@@ -268,11 +268,11 @@ func getPrecedence(op string) int {
 	}
 }
 
-// CheckExpressionMode checks if tokens contain assignment syntax or NEW function.
+// checkExpressionMode checks if tokens contain assignment syntax or NEW function.
 // Expression mode (AddColUsingCCL, EditColByIndexUsingCCL, EditColByNameUsingCCL)
 // does not allow assignment syntax or NEW function.
 // Returns an error if such syntax is found.
-func CheckExpressionMode(tokens []cclToken) error {
+func checkExpressionMode(tokens []cclToken) error {
 	for i, tok := range tokens {
 		// 檢查賦值運算符
 		if tok.typ == tASSIGN {
