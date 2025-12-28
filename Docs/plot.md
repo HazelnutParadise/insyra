@@ -212,6 +212,33 @@ Creates a scatter chart based on the provided `ScatterChartConfig` and returns a
 
 ![scatter_example](./img/plot_scatter_example.png)
 
+```go
+package main
+
+import (
+  "github.com/HazelnutParadise/insyra/plot"
+)
+
+func main() {
+  data := map[string][]plot.Point{
+    "Series A": {{1,2}, {2,3}, {3,5}},
+    "Series B": {{1,5}, {2,4}, {3,1}},
+  }
+
+  cfg := plot.ScatterChartConfig{
+    Width: "800px",
+    Height: "400px",
+    Title: "Scatter 範例（Point 輸入）",
+    XAxisName: "X",
+    YAxisName: "Y",
+    ShowLabels: true,
+  }
+
+  chart := plot.CreateScatterChart(cfg, data)
+  plot.SaveHTML(chart, "scatter_points.html")
+}
+```
+
 ### Heatmap Chart
 
 #### `HeatmapChartConfig`
