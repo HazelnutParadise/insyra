@@ -624,11 +624,7 @@ Calculates the minimum value among all numeric values in the input.
 "MIN(A)"             // Minimum value in column A
 "MIN(A, B)"          // Minimum value in columns A and B
 "MIN(@.#)"           // Minimum value in the current row
-"MIN(@)"             // Minimum value in the entire table
-```
-
-"MIN(@)"             // Minimum value in the entire table
-
+"MIN(@)"             // Minimum value in the entire tableW
 ```
 
 ## Row-wise Aggregation
@@ -642,9 +638,7 @@ In row-wise mode, the aggregate function is evaluated for each row independently
 To calculate the sum of all columns for each row:
 
 ```
-
 "NEW('row_total') = SUM(@.#)"
-
 ```
 
 This is equivalent to manually adding all columns: `A + B + C + ...`.
@@ -654,9 +648,7 @@ This is equivalent to manually adding all columns: `A + B + C + ...`.
 To calculate the average of all columns for each row:
 
 ```
-
 "NEW('row_avg') = AVG(@.#)"
-
 ```
 
 ### Row Count Example
@@ -664,9 +656,7 @@ To calculate the average of all columns for each row:
 To count non-nil values in each row:
 
 ```
-
 "NEW('row_count') = COUNT(@.#)"
-
 ```
 
 ## Conditional Expressions
@@ -674,11 +664,9 @@ To count non-nil values in each row:
 Conditional expressions are used in functions like IF, AND, OR, and CASE, returning boolean values (true or false).
 
 ```
-
 "A > B"          // Whether values in column A are greater than those in column B
 "A == 10"        // Whether values in column A are equal to 10
 "A != B"         // Whether values in column A are not equal to those in column B
-
 ```
 
 ## Chained Comparisons
@@ -688,11 +676,9 @@ CCL supports chained comparison operations, allowing concise syntax for range ch
 ### Basic Range Checks
 
 ```
-
 "1 < A < 10"     // Whether A is greater than 1 and less than 10
 "0 <= A <= 100"  // Whether A is between 0 and 100 (inclusive)
 "A <= B <= C"    // Check if three columns are in ascending order
-
 ```
 
 ### Mixed Operator Chains
@@ -700,13 +686,11 @@ CCL supports chained comparison operations, allowing concise syntax for range ch
 You can combine different comparison operators (`<`, `>`, `<=`, `>=`, `==`, `!=`) in the same chain:
 
 ```
-
 "A == B > C"         // A equals B AND B is greater than C
 "A != B < C"         // A is not equal to B AND B is less than C
 "A == B > C < D"     // A equals B AND B > C AND C < D
 "A < B <= C < D"     // A < B AND B <= C AND C < D
 "C >= B >= A"        // C >= B AND B >= A (descending order check)
-
 ```
 
 ### Equivalence
@@ -714,11 +698,9 @@ You can combine different comparison operators (`<`, `>`, `<=`, `>=`, `==`, `!=`
 Chained comparisons are equivalent to using the AND operator:
 
 ```
-
 "1 < A < 10"         // Equivalent to: AND(1 < A, A < 10)
 "A == B > C"         // Equivalent to: AND(A == B, B > C)
 "A < B <= C < D"     // Equivalent to: AND(A < B, B <= C, C < D)
-
 ```
 
 ## Examples
