@@ -69,10 +69,9 @@ func HeatMapMissingPoint[X heapMapAxisValue, Y heapMapAxisValue](x X, y Y) heatM
 // CreateHeatMap generates and returns a *charts.HeatMap object based on HeatmapConfig.
 // It accepts optional variadic heatMapPoint arguments which will be appended to `config.Data`.
 func CreateHeatMap[X heapMapAxisValue, Y heapMapAxisValue](config HeatMapConfig, points ...heatMapPoint[X, Y]) *charts.HeatMap {
-	// Append any provided variadic points to the config data before computing ranges and rendering.
-	if len(points) < 1 {
-		insyra.LogWarning("plot.heatmap", "CreateHeatMap", "no data points provided; returning empty chart")
-		return charts.NewHeatMap()
+	if len(points) == 0 {
+		insyra.LogWarning("plot.heatmap", "CreateHeatMap", "no data points provided; returning nil")
+		return nil
 	}
 	hm := charts.NewHeatMap()
 

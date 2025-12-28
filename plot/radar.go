@@ -36,6 +36,10 @@ type RadarSeries struct {
 
 // CreateRadarChart 使用 `RadarChartConfig`（包含 `Indicators` 與 `MaxValues`）及一或多個 `RadarSeries` 生成並返回 *charts.Radar 對象
 func CreateRadarChart(config RadarChartConfig, series []RadarSeries) *charts.Radar {
+	if len(series) == 0 {
+		insyra.LogWarning("plot", "CreateRadarChart", "No series data available for radar chart. Returning nil.")
+		return nil
+	}
 	radar := charts.NewRadar()
 
 	internal.SetBaseChartGlobalOptions(radar, internal.BaseChartConfig{

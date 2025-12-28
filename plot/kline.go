@@ -7,6 +7,7 @@ import (
 
 	"time"
 
+	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/internal/utils"
 	"github.com/HazelnutParadise/insyra/plot/internal"
 	"github.com/go-echarts/go-echarts/v2/charts"
@@ -39,6 +40,10 @@ type KlineChartConfig struct {
 
 // CreateKlineChart generates and returns a *charts.Kline object.
 func CreateKlineChart(config KlineChartConfig, klinePoints ...KlinePoint) *charts.Kline {
+	if len(klinePoints) == 0 {
+		insyra.LogWarning("plot", "CreateKlineChart", "No data available for kline chart. Returning nil.")
+		return nil
+	}
 	klineChart := charts.NewKLine()
 
 	// Set title and subtitle
@@ -77,11 +82,6 @@ func CreateKlineChart(config KlineChartConfig, klinePoints ...KlinePoint) *chart
 
 	var xAxis []string
 	var series []opts.KlineData
-
-	// Use ordered slice of KlinePoint
-	if len(klinePoints) == 0 {
-		return nil
-	}
 
 	// Sort by date ascending
 	sort.Slice(klinePoints, func(i, j int) bool {

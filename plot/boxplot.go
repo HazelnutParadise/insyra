@@ -43,6 +43,10 @@ type BoxPlotConfig struct {
 
 // CreateBoxPlot generates and returns a *charts.BoxPlot object
 func CreateBoxPlot(config BoxPlotConfig, series ...BoxPlotSeries) *charts.BoxPlot {
+	if len(series) == 0 {
+		insyra.LogWarning("plot", "CreateBoxPlot", "no series provided in BoxPlotConfig.Series; returning nil")
+		return nil
+	}
 	boxPlot := charts.NewBoxPlot()
 
 	internal.SetBaseChartGlobalOptions(boxPlot, internal.BaseChartConfig{
@@ -56,11 +60,6 @@ func CreateBoxPlot(config BoxPlotConfig, series ...BoxPlotSeries) *charts.BoxPlo
 		HideLegend:      config.HideLegend,
 		LegendPos:       string(config.LegendPos),
 	})
-
-	if len(series) == 0 {
-		insyra.LogWarning("plot.boxplot", "CreateBoxPlot", "no series provided in BoxPlotConfig.Series; returning empty chart")
-		return boxPlot
-	}
 
 	// Determine number of categories
 	numCats := 0
@@ -91,7 +90,7 @@ func CreateBoxPlot(config BoxPlotConfig, series ...BoxPlotSeries) *charts.BoxPlo
 		}
 		if len(items) < numCats {
 			// fallback: truncate numCats to len(items) to avoid empty items
-			insyra.LogWarning("plot.boxplot", "CreateBoxPlot", "series %s has %d categories but expected %d; truncating to %d", s.Name, len(items), numCats, len(items))
+			insyra.LogWarning("plot", "CreateBoxPlot", "series %s has %d categories but expected %d; truncating to %d", s.Name, len(items), numCats, len(items))
 			numCats = len(items)
 			if len(config.XAxis) > numCats {
 				config.XAxis = config.XAxis[:numCats]

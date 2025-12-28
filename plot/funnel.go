@@ -3,6 +3,7 @@
 package plot
 
 import (
+	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/plot/internal"
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
@@ -27,6 +28,10 @@ type FunnelChartConfig struct {
 // CreateFunnelChart generates a funnel chart based on the provided configuration.
 // The data parameter is a map where keys are category names and values are their corresponding values.
 func CreateFunnelChart(config FunnelChartConfig, data map[string]float64) *charts.Funnel {
+	if len(data) == 0 {
+		insyra.LogWarning("plot", "CreateFunnelChart", "No data available for funnel chart. Returning nil.")
+		return nil
+	}
 	funnel := charts.NewFunnel()
 
 	internal.SetBaseChartGlobalOptions(funnel, internal.BaseChartConfig{

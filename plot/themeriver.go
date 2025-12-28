@@ -3,6 +3,7 @@
 package plot
 
 import (
+	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/plot/internal"
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
@@ -49,6 +50,10 @@ type ThemeRiverChartConfig struct {
 
 // CreateThemeRiverChart create and return *charts.ThemeRiver object
 func CreateThemeRiverChart(config ThemeRiverChartConfig, data ...ThemeRiverData) *charts.ThemeRiver {
+	if len(data) == 0 {
+		insyra.LogWarning("plot", "CreateThemeRiverChart", "No data available for theme river chart. Returning nil.")
+		return nil
+	}
 	themeRiver := charts.NewThemeRiver()
 
 	internal.SetBaseChartGlobalOptions(themeRiver, internal.BaseChartConfig{

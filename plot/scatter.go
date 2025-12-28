@@ -1,6 +1,7 @@
 package plot
 
 import (
+	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/plot/internal"
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
@@ -46,6 +47,10 @@ type ScatterChartConfig struct {
 
 // CreateScatterChart generates and returns a *charts.Scatter object based on ScatterChartConfig.
 func CreateScatterChart(config ScatterChartConfig, data map[string][]ScatterPoint) *charts.Scatter {
+	if len(data) == 0 {
+		insyra.LogWarning("plot", "CreateScatterChart", "No data available for scatter chart. Returning nil.")
+		return nil
+	}
 	scatter := charts.NewScatter()
 
 	internal.SetBaseChartGlobalOptions(scatter, internal.BaseChartConfig{

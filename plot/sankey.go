@@ -37,6 +37,10 @@ type SankeyChartConfig struct {
 
 // CreateSankeyChart generates and returns a *charts.Sankey object based on SankeyChartConfig.
 func CreateSankeyChart(config SankeyChartConfig, links ...SankeyLink) *charts.Sankey {
+	if len(links) == 0 {
+		insyra.LogWarning("plot", "CreateSankeyChart", "No link data available for sankey chart. Returning nil.")
+		return nil
+	}
 	sankey := charts.NewSankey()
 
 	internal.SetBaseChartGlobalOptions(sankey, internal.BaseChartConfig{

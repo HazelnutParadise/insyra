@@ -43,6 +43,10 @@ type LineChartConfig struct {
 
 // CreateLineChart generates and returns a *charts.Line object based on LineChartConfig.
 func CreateLineChart(config LineChartConfig, data ...insyra.IDataList) *charts.Line {
+	if len(data) == 0 {
+		insyra.LogWarning("plot", "CreateLineChart", "No data available for line chart. Returning nil.")
+		return nil
+	}
 	line := charts.NewLine()
 
 	internal.SetBaseChartGlobalOptions(line, internal.BaseChartConfig{

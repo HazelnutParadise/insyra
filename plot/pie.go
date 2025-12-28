@@ -36,6 +36,11 @@ type PieChartConfig struct {
 
 // CreatePieChart generates and returns a *charts.Pie object based on PieChartConfig.
 func CreatePieChart(config PieChartConfig, data ...PieItem) *charts.Pie {
+	// 檢查數據是否為空
+	if len(data) == 0 {
+		insyra.LogWarning("plot", "CreatePieChart", "Data is empty, cannot create pie chart. Returning nil.")
+		return nil
+	}
 	pie := charts.NewPie()
 
 	internal.SetBaseChartGlobalOptions(pie, internal.BaseChartConfig{
@@ -55,12 +60,6 @@ func CreatePieChart(config PieChartConfig, data ...PieItem) *charts.Pie {
 		pie.SetGlobalOptions(
 			charts.WithColorsOpts(opts.Colors(config.Colors)),
 		)
-	}
-
-	// 檢查數據是否為空
-	if len(data) == 0 {
-		insyra.LogWarning("plot", "CreatePieChart", "Data is empty")
-		return nil
 	}
 
 	// 轉換數據為 pie 數據
