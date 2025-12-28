@@ -240,6 +240,27 @@ func (p *parser) parsePrimary() (cclNode, error) {
 			p.advance()
 		}
 		return expr, nil
+	case tOPERATOR:
+		// Handle unary operators
+		if tok.value == "-" {
+			p.advance()
+			node, err := p.parsePrimary()
+			if err != nil {
+				return nil, err
+			}
+			// Optimization: if node is a number literal, negate it directly
+			if numNode, ok := node.(*cclNumberNode); ok {
+				numNode.value = -numNode.value
+				return numNode, nil
+			}
+			// Otherwise, treat as 0 - node
+			return &cclBinaryOpNode{op: "-", left: &cclNumberNode{value: 0}, right: node}, nil
+		}
+		if tok.value == "+" {
+			p.advance()
+			return p.parsePrimary()
+		}
+		return nil, fmt.Errorf("unexpected operator in primary expression: %s", tok.value)
 	default:
 		return nil, fmt.Errorf("unexpected token: %v", tok)
 	}

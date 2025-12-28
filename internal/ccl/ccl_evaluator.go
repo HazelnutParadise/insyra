@@ -527,6 +527,12 @@ func evaluateRowAccess(left, right cclNode, ctx Context) (any, error) {
 		return nil, fmt.Errorf("invalid row index type: %T", rowVal)
 	}
 
+	// Handle negative row index (e.g. -1 for last row)
+	if rowIdx < 0 {
+		rowCount := ctx.GetRowCount()
+		rowIdx = rowCount + rowIdx
+	}
+
 	// 2. Determine column(s) from left
 	switch l := left.(type) {
 	case *cclAtNode:

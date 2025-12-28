@@ -193,19 +193,21 @@ CCL supports the following data types:
 - `*` : Multiplication
 - `/` : Division
 - `^` : Exponentiation
-- `.` : Row access (e.g., `A.0`, `['Sales'].10`)
+- `.` : Row access (e.g., `A.0`, `['Sales'].10`, `A.-1` for last row)
 - `#` : Current row index (0-based)
 
 ```
-"A + B"     // Add column A and column B
-"A - B"     // Subtract column B from column A
-"A * B"     // Multiply column A by column B
-"A / B"     // Divide column A by column B
-"A ^ 2"     // Square the values in column A
-"A.0"       // Get the value of column A at the first row (index 0)
-"A.B"       // Get the value of column A at the row index specified by column B
-"A.#"       // Get the value of column A at the current row (same as just "A")
-"SUM(@.#)"  // Sum of all columns in the current row (Row Sum)
+"A + B"         // Add column A and column B
+"A - B"         // Subtract column B from column A
+"A * B"         // Multiply column A by column B
+"A / B"         // Divide column A by column B
+"A ^ 2"         // Square the values in column A
+"A.0"           // Get the value of column A at the first row (index 0)
+"A.-1"          // Get the value of column A at the last row
+"A.-2"          // Get the value of column A at the second to last row
+"A.B"           // Get the value of column A at the row index specified by column B
+"A.#"           // Get the value of column A at the current row (same as just "A")
+"SUM(@.#)"      // Sum of all columns in the current row (Row Sum)
 ```
 
 ### Comparison Operators
@@ -586,45 +588,41 @@ Calculates the sum of all numeric values in the input.
 "SUM(@)"             // Sum of all numeric values in the entire table (Total Sum)
 ```
 
-### AVG
-
-Calculates the average (mean) of all numeric values in the input.
-
-```
-"AVG(A)"             // Average of column A
-"AVG(A + B)"         // Average of (A + B)
-"AVG(@.#)"           // Average of all columns in the current row (Row Average)
-"AVG(@)"             // Average of all numeric values in the entire table (Total Average)
-```
-
 ### COUNT
 
-Counts the number of non-nil elements in the input.
+Calculates the count of non-nil (non-empty) values in the input.
 
 ```
-"COUNT(A)"           // Number of non-nil rows in column A
-"COUNT(@.0)"         // Number of non-nil columns in the first row
-"COUNT(@)"           // Number of non-nil cells in the entire table
+"COUNT(A)"           // Count of non-nil values in column A
+"COUNT(A, B)"        // Count of non-nil values in columns A and B
+"COUNT(@.#)"         // Count of non-nil values in the current row
+"COUNT(@)"           // Count of all non-nil values in the entire table
 ```
 
 ### MAX
 
-Returns the maximum numeric value in the input.
+Calculates the maximum value among all numeric values in the input.
 
 ```
 "MAX(A)"             // Maximum value in column A
+"MAX(A, B)"          // Maximum value in columns A and B
 "MAX(@.#)"           // Maximum value in the current row
 "MAX(@)"             // Maximum value in the entire table
 ```
 
 ### MIN
 
-Returns the minimum numeric value in the input.
+Calculates the minimum value among all numeric values in the input.
 
 ```
 "MIN(A)"             // Minimum value in column A
+"MIN(A, B)"          // Minimum value in columns A and B
 "MIN(@.#)"           // Minimum value in the current row
 "MIN(@)"             // Minimum value in the entire table
+```
+
+"MIN(@)"             // Minimum value in the entire table
+
 ```
 
 ## Row-wise Aggregation
@@ -638,7 +636,9 @@ In row-wise mode, the aggregate function is evaluated for each row independently
 To calculate the sum of all columns for each row:
 
 ```
+
 "NEW('row_total') = SUM(@.#)"
+
 ```
 
 This is equivalent to manually adding all columns: `A + B + C + ...`.
@@ -648,7 +648,19 @@ This is equivalent to manually adding all columns: `A + B + C + ...`.
 To calculate the average of all columns for each row:
 
 ```
+
 "NEW('row_avg') = AVG(@.#)"
+
+```
+
+### Row Count Example
+
+To count non-nil values in each row:
+
+```
+
+"NEW('row_count') = COUNT(@.#)"
+
 ```
 
 ## Conditional Expressions
@@ -656,9 +668,11 @@ To calculate the average of all columns for each row:
 Conditional expressions are used in functions like IF, AND, OR, and CASE, returning boolean values (true or false).
 
 ```
+
 "A > B"          // Whether values in column A are greater than those in column B
 "A == 10"        // Whether values in column A are equal to 10
 "A != B"         // Whether values in column A are not equal to those in column B
+
 ```
 
 ## Chained Comparisons
@@ -668,9 +682,11 @@ CCL supports chained comparison operations, allowing concise syntax for range ch
 ### Basic Range Checks
 
 ```
+
 "1 < A < 10"     // Whether A is greater than 1 and less than 10
 "0 <= A <= 100"  // Whether A is between 0 and 100 (inclusive)
 "A <= B <= C"    // Check if three columns are in ascending order
+
 ```
 
 ### Mixed Operator Chains
@@ -678,11 +694,13 @@ CCL supports chained comparison operations, allowing concise syntax for range ch
 You can combine different comparison operators (`<`, `>`, `<=`, `>=`, `==`, `!=`) in the same chain:
 
 ```
+
 "A == B > C"         // A equals B AND B is greater than C
 "A != B < C"         // A is not equal to B AND B is less than C
 "A == B > C < D"     // A equals B AND B > C AND C < D
 "A < B <= C < D"     // A < B AND B <= C AND C < D
 "C >= B >= A"        // C >= B AND B >= A (descending order check)
+
 ```
 
 ### Equivalence
@@ -690,9 +708,11 @@ You can combine different comparison operators (`<`, `>`, `<=`, `>=`, `==`, `!=`
 Chained comparisons are equivalent to using the AND operator:
 
 ```
+
 "1 < A < 10"         // Equivalent to: AND(1 < A, A < 10)
 "A == B > C"         // Equivalent to: AND(A == B, B > C)
 "A < B <= C < D"     // Equivalent to: AND(A < B, B <= C, C < D)
+
 ```
 
 ## Examples
