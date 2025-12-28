@@ -43,6 +43,9 @@ type Context interface {
 	// GetColIndexByName returns the index of the column with the given name.
 	GetColIndexByName(colName string) (int, error)
 
+	// GetColCount returns the total number of columns in the context.
+	GetColCount() int
+
 	// GetRowCount returns the total number of rows in the context.
 	GetRowCount() int
 

@@ -114,6 +114,10 @@ func (c *dataTableContext) GetColIndexByName(colName string) (int, error) {
 	return idx, nil
 }
 
+func (c *dataTableContext) GetColCount() int {
+	return len(c.tableData)
+}
+
 func (c *dataTableContext) GetColData(index int) ([]any, error) {
 	if index < 0 || index >= len(c.tableData) {
 		return nil, fmt.Errorf("column index %d out of range", index)

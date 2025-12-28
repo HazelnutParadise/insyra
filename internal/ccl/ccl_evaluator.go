@@ -117,6 +117,12 @@ func IsRowDependent(n cclNode) bool {
 		if t.op == "." {
 			return IsRowDependent(t.right)
 		}
+		if t.op == ":" {
+			// 範圍運算符特殊處理：如果兩邊都是靜態欄位引用，則視為行無關
+			if isStaticColumnNode(t.left) && isStaticColumnNode(t.right) {
+				return false
+			}
+		}
 		return IsRowDependent(t.left) || IsRowDependent(t.right)
 	case *cclChainedComparisonNode:
 		for _, v := range t.values {
@@ -142,6 +148,15 @@ func IsRowDependent(n cclNode) bool {
 		return IsRowDependent(t.expr)
 	default:
 		return true // Default to dependent for safety
+	}
+}
+
+func isStaticColumnNode(n cclNode) bool {
+	switch n.(type) {
+	case *cclIdentifierNode, *cclColIndexNode, *cclColNameNode, *cclResolvedColNode:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -506,6 +521,24 @@ func evaluateToColumn(n cclNode, ctx Context) ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
+
+		// Expand ranges
+		if cr, ok := val.(ColumnRange); ok {
+			var allData []any
+			for i := cr.Start; i <= cr.End; i++ {
+				col, err := ctx.GetColData(i)
+				if err != nil {
+					return nil, err
+				}
+				allData = append(allData, col...)
+			}
+			return allData, nil
+		}
+
+		if _, ok := val.(RowRange); ok {
+			return nil, fmt.Errorf("raw row range cannot be used as a data source; use @.start:end instead")
+		}
+
 		// Return as single element slice? Or repeat?
 		// Aggregates usually ignore single values or treat as constant column?
 		// If we return []any{val}, SUM will be val.
@@ -531,20 +564,28 @@ func evaluateToColumn(n cclNode, ctx Context) ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
-		results[i] = val
+
+		// Expand ranges if returned
+		if cr, ok := val.(ColumnRange); ok {
+			var allData []any
+			for j := cr.Start; j <= cr.End; j++ {
+				col, err := ctx.GetColData(j)
+				if err != nil {
+					return nil, err
+				}
+				allData = append(allData, col...)
+			}
+			results[i] = allData
+		} else if _, ok := val.(RowRange); ok {
+			return nil, fmt.Errorf("raw row range cannot be used as a data source; use @.start:end instead")
+		} else {
+			results[i] = val
+		}
 	}
 	return results, nil
 }
 
 func evaluateRowAccess(left, right cclNode, ctx Context) (any, error) {
-	// Determine limit for negative indices (RowCount for tables/columns, ColCount for rows/@)
-	limit := ctx.GetRowCount()
-	if _, ok := left.(*cclAtNode); ok {
-		if row, ok := ctx.GetCurrentRow().([]any); ok {
-			limit = len(row)
-		}
-	}
-
 	// 1. Determine row index/indices from right
 	rowVal, err := evaluateWithContext(right, ctx)
 	if err != nil {
@@ -558,13 +599,6 @@ func evaluateRowAccess(left, right cclNode, ctx Context) (any, error) {
 	case RowRange:
 		isRowRange = true
 		start, end := v.Start, v.End
-		// Handle negative indices
-		if start < 0 {
-			start += limit
-		}
-		if end < 0 {
-			end += limit
-		}
 		// Generate indices
 		if start <= end {
 			for i := start; i <= end; i++ {
@@ -583,15 +617,6 @@ func evaluateRowAccess(left, right cclNode, ctx Context) (any, error) {
 		rowIndices = []int{idx}
 	default:
 		return nil, fmt.Errorf("invalid row index type: %T", rowVal)
-	}
-
-	// Handle negative indices for single values (RowRange already handled)
-	if !isRowRange {
-		for i, idx := range rowIndices {
-			if idx < 0 {
-				rowIndices[i] = limit + idx
-			}
-		}
 	}
 
 	// 2. Prepare to fetch data from left
@@ -714,6 +739,15 @@ func evaluateRange(left, right cclNode, ctx Context) (any, error) {
 			return nil, fmt.Errorf("column not found: %v", right)
 		}
 
+		// Check bounds
+		colCount := ctx.GetColCount()
+		if lIdx < 0 || lIdx >= colCount {
+			return nil, fmt.Errorf("column index %d out of range (total columns: %d)", lIdx, colCount)
+		}
+		if rIdx < 0 || rIdx >= colCount {
+			return nil, fmt.Errorf("column index %d out of range (total columns: %d)", rIdx, colCount)
+		}
+
 		if lIdx > rIdx {
 			return nil, fmt.Errorf("invalid column range: start index %d > end index %d", lIdx, rIdx)
 		}
@@ -735,7 +769,16 @@ func evaluateRange(left, right cclNode, ctx Context) (any, error) {
 	rf, rok := toFloat64(rVal)
 
 	if lok && rok {
-		return RowRange{Start: int(lf), End: int(rf)}, nil
+		lRowIdx := int(lf)
+		rRowIdx := int(rf)
+		rowCount := ctx.GetRowCount()
+		if lRowIdx < 0 || lRowIdx >= rowCount {
+			return nil, fmt.Errorf("row index %d out of range (total rows: %d)", lRowIdx, rowCount)
+		}
+		if rRowIdx < 0 || rRowIdx >= rowCount {
+			return nil, fmt.Errorf("row index %d out of range (total rows: %d)", rRowIdx, rowCount)
+		}
+		return RowRange{Start: lRowIdx, End: rRowIdx}, nil
 	}
 
 	// 3. 嘗試解析為行名稱或混合範圍 (Row Name/Index Range)
@@ -754,6 +797,13 @@ func evaluateRange(left, right cclNode, ctx Context) (any, error) {
 	rRowIdx, rErr := resolveRowIdx(rVal)
 
 	if lErr == nil && rErr == nil {
+		rowCount := ctx.GetRowCount()
+		if lRowIdx < 0 || lRowIdx >= rowCount {
+			return nil, fmt.Errorf("row index %d out of range (total rows: %d)", lRowIdx, rowCount)
+		}
+		if rRowIdx < 0 || rRowIdx >= rowCount {
+			return nil, fmt.Errorf("row index %d out of range (total rows: %d)", rRowIdx, rowCount)
+		}
 		return RowRange{Start: lRowIdx, End: rRowIdx}, nil
 	}
 

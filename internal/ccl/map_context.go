@@ -145,6 +145,18 @@ func (c *MapContext) GetColDataByName(name string) ([]any, error) {
 	return col, nil
 }
 
+func (c *MapContext) GetColIndexByName(colName string) (int, error) {
+	idx, ok := c.ColNameMap[colName]
+	if !ok {
+		return -1, fmt.Errorf("column name '%s' not found", colName)
+	}
+	return idx, nil
+}
+
+func (c *MapContext) GetColCount() int {
+	return len(c.ColNames)
+}
+
 func (c *MapContext) GetRowCount() int {
 	return c.Rows
 }

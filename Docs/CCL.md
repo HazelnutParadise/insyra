@@ -193,7 +193,7 @@ CCL supports the following data types:
 - `*` : Multiplication
 - `/` : Division
 - `^` : Exponentiation
-- `.` : Row access (e.g., `A.0`, `['Sales'].10`, `A.-1` for last row)
+- `.` : Row access (e.g., `A.0`, `['Sales'].10`)
 - `:` : Range operator (e.g., `A:C` for column range, `1:5` for row range)
 - `#` : Current row index (0-based)
 
@@ -204,8 +204,6 @@ CCL supports the following data types:
 "A / B"         // Divide column A by column B
 "A ^ 2"         // Square the values in column A
 "A.0"           // Get the value of column A at the first row (index 0)
-"A.-1"          // Get the value of column A at the last row
-"A.-2"          // Get the value of column A at the second to last row
 "A.B"           // Get the value of column A at the row index specified by column B
 "A.#"           // Get the value of column A at the current row (same as just "A")
 "SUM(@.#)"      // Sum of all columns in the current row (Row Sum)
@@ -215,6 +213,19 @@ CCL supports the following data types:
 "A.(1:5)"       // Get values of column A from row 1 to 5 (returns a slice)
 "A.('Row1':'Row5')" // Get values of column A from row named 'Row1' to 'Row5'
 ```
+
+> **Note on Bounds Checking:**
+> Both the row access operator (`.`) and the range operator (`:`) perform strict bounds checking. If an index is out of range (e.g., `A.100` when there are only 10 rows, or `A:Z` when there are only 3 columns), CCL will throw an error. Negative indices are not supported.
+
+### Range Expansion in Aggregate Functions
+
+When a range (column range or row range) is used inside an aggregate function (like `SUM`, `AVG`, `MIN`, `MAX`), it is automatically expanded into a flat list of values.
+
+- `SUM(A:C)`: Sums all values in columns A, B, and C.
+- `SUM(@.0:5)`: Sums all values in rows 0 through 5 across all columns.
+- `AVG(A.(0:10))`: Averages the first 11 values of column A.
+
+> **Note:** Raw row ranges like `SUM(0:5)` are not supported for data access. You must explicitly specify the target using the row access operator (e.g., `@.0:5` or `A.0:5`).
 
 ### Comparison Operators
 
