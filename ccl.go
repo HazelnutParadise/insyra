@@ -21,21 +21,166 @@ func resetCCLFuncCallDepth() {
 	ccl.ResetFuncCallDepth()
 }
 
+// dataTableContext implements ccl.Context for DataTable
+type dataTableContext struct {
+	row        []any
+	tableData  [][]any
+	rowNameMap map[string]int
+	colNameMap map[string]int
+	rowIndex   int
+}
+
+func (c *dataTableContext) GetCol(index int) any {
+	if index >= len(c.row) {
+		return nil
+	}
+	return c.row[index]
+}
+
+func (c *dataTableContext) GetColByName(name string) (any, error) {
+	if c.colNameMap == nil {
+		return nil, fmt.Errorf("column name reference ['%s'] used but no column name mapping provided", name)
+	}
+	idx, ok := c.colNameMap[name]
+	if !ok {
+		return nil, fmt.Errorf("column name '%s' not found", name)
+	}
+	if idx >= len(c.row) {
+		return nil, fmt.Errorf("column ['%s'] (index %d) out of range", name, idx)
+	}
+	return c.row[idx], nil
+}
+
+func (c *dataTableContext) GetRowIndex() int {
+	return c.rowIndex
+}
+
+func (c *dataTableContext) GetCurrentRow() any {
+	return c.row
+}
+
+func (c *dataTableContext) GetCell(colIndex, rowIndex int) (any, error) {
+	if colIndex < 0 || colIndex >= len(c.tableData) {
+		return nil, fmt.Errorf("column index %d out of range", colIndex)
+	}
+	if rowIndex < 0 || rowIndex >= len(c.tableData[colIndex]) {
+		return nil, fmt.Errorf("row index %d out of range for column %d", rowIndex, colIndex)
+	}
+	return c.tableData[colIndex][rowIndex], nil
+}
+
+func (c *dataTableContext) GetCellByName(colName string, rowIndex int) (any, error) {
+	if c.colNameMap == nil {
+		return nil, fmt.Errorf("column name reference used but no column name mapping provided")
+	}
+	idx, ok := c.colNameMap[colName]
+	if !ok {
+		return nil, fmt.Errorf("column name '%s' not found", colName)
+	}
+	return c.GetCell(idx, rowIndex)
+}
+
+func (c *dataTableContext) GetRowAt(rowIndex int) (any, error) {
+	if rowIndex < 0 {
+		return nil, fmt.Errorf("row index %d out of range", rowIndex)
+	}
+	// Construct row from tableData
+	row := make([]any, len(c.tableData))
+	for i := range c.tableData {
+		if rowIndex < len(c.tableData[i]) {
+			row[i] = c.tableData[i][rowIndex]
+		} else {
+			row[i] = nil
+		}
+	}
+	return row, nil
+}
+
+func (c *dataTableContext) GetRowIndexByName(rowName string) (int, error) {
+	if c.rowNameMap == nil {
+		return -1, fmt.Errorf("row name '%s' used but no row name mapping provided", rowName)
+	}
+	idx, ok := c.rowNameMap[rowName]
+	if !ok {
+		return -1, fmt.Errorf("row name '%s' not found", rowName)
+	}
+	return idx, nil
+}
+
+func (c *dataTableContext) GetColData(index int) ([]any, error) {
+	if index < 0 || index >= len(c.tableData) {
+		return nil, fmt.Errorf("column index %d out of range", index)
+	}
+	// Return a copy to avoid external modification?
+	// Or just return the slice. ccl_evaluator used to copy.
+	// Let's return a copy to be safe and consistent with previous behavior.
+	res := make([]any, len(c.tableData[index]))
+	copy(res, c.tableData[index])
+	return res, nil
+}
+
+func (c *dataTableContext) GetColDataByName(name string) ([]any, error) {
+	if c.colNameMap == nil {
+		return nil, fmt.Errorf("column name reference used but no column name mapping provided")
+	}
+	idx, ok := c.colNameMap[name]
+	if !ok {
+		return nil, fmt.Errorf("column name '%s' not found", name)
+	}
+	return c.GetColData(idx)
+}
+
+func (c *dataTableContext) GetRowCount() int {
+	if len(c.tableData) == 0 {
+		return 0
+	}
+	return len(c.tableData[0])
+}
+
+func (c *dataTableContext) SetRowIndex(index int) error {
+	if index < 0 {
+		return fmt.Errorf("row index cannot be negative")
+	}
+	// We don't strictly check upper bound here to allow setting index for next iteration check?
+	// But usually we should check.
+	// Let's check against max row count if possible, but tableData might be jagged?
+	// Assuming rectangular for now based on GetRowCount.
+	if len(c.tableData) > 0 && index >= len(c.tableData[0]) {
+		return fmt.Errorf("row index %d out of range", index)
+	}
+
+	c.rowIndex = index
+	// Also update the row slice cache
+	for j := range len(c.tableData) {
+		if index < len(c.tableData[j]) {
+			c.row[j] = c.tableData[j][index]
+		} else {
+			c.row[j] = nil
+		}
+	}
+	return nil
+}
+
+func (c *dataTableContext) GetAllData() ([]any, error) {
+	var allData []any
+	// Estimate capacity to avoid frequent reallocations
+	totalSize := 0
+	if len(c.tableData) > 0 {
+		totalSize = len(c.tableData) * len(c.tableData[0])
+	}
+	allData = make([]any, 0, totalSize)
+
+	for _, col := range c.tableData {
+		allData = append(allData, col...)
+	}
+	return allData, nil
+}
+
 // compileCCLExpression compiles a CCL expression string into an AST for reuse.
 // This avoids repeated tokenization and parsing for each row.
 // Returns an error if assignment syntax (=) or NEW function is detected.
 func compileCCLExpression(expression string) (ccl.CCLNode, error) {
-	tokens, err := ccl.Tokenize(expression)
-	if err != nil {
-		return nil, err
-	}
-
-	// 檢查是否包含賦值語法或 NEW 函數（表達式模式不允許）
-	if err := ccl.CheckExpressionMode(tokens); err != nil {
-		return nil, err
-	}
-
-	return ccl.ParseExpression(tokens)
+	return ccl.CompileExpression(expression)
 }
 
 // compileMultilineCCL compiles multi-line CCL statements separated by ; or newline into ASTs.
@@ -52,11 +197,7 @@ func compileMultilineCCL(cclStatements string) ([]ccl.CCLNode, error) {
 		if line == "" {
 			continue
 		}
-		tokens, err := ccl.Tokenize(line)
-		if err != nil {
-			return nil, err
-		}
-		node, err := ccl.ParseStatement(tokens)
+		node, err := ccl.CompileStatement(line)
 		if err != nil {
 			return nil, err
 		}
@@ -89,6 +230,13 @@ func applyCCLOnDataTable(table *DataTable, expression string) ([]any, error) {
 			}
 		}
 
+		// Bind AST to table columns to resolve indices at compile time
+		boundAST, err2 := ccl.Bind(ast, colNameMap)
+		if err2 != nil {
+			err = err2
+			return
+		}
+
 		// 準備 tableData 和 rowNameMap 以支援 . 運算符
 		tableData := make([][]any, numCol)
 		for j := range numCol {
@@ -100,7 +248,15 @@ func applyCCLOnDataTable(table *DataTable, expression string) ([]any, error) {
 		// 預分配 row slice，避免每行都重新分配
 		row := make([]any, numCol)
 
-		if ccl.IsRowDependent(ccl.GetExpressionNode(ast)) {
+		// Create context
+		ctx := &dataTableContext{
+			row:        row,
+			tableData:  tableData,
+			rowNameMap: rowNameMap,
+			colNameMap: colNameMap,
+		}
+
+		if ccl.IsRowDependent(ccl.GetExpressionNode(boundAST)) {
 			for i := range numRow {
 				// 填充第 i 行的資料（重用 row slice）
 				for j := range numCol {
@@ -110,8 +266,11 @@ func applyCCLOnDataTable(table *DataTable, expression string) ([]any, error) {
 						row[j] = nil
 					}
 				}
-				// 直接使用預編譯的 AST
-				val, err2 := ccl.Evaluate(ast, row, tableData, rowNameMap, i, colNameMap)
+				// Update context
+				ctx.rowIndex = i
+
+				// 直接使用預編譯且綁定的 AST
+				val, err2 := ccl.Evaluate(boundAST, ctx)
 				if err2 != nil {
 					err = err2
 					return
@@ -127,7 +286,8 @@ func applyCCLOnDataTable(table *DataTable, expression string) ([]any, error) {
 					row[j] = nil
 				}
 			}
-			val, err2 := ccl.Evaluate(ast, row, tableData, rowNameMap, 0, colNameMap)
+			ctx.rowIndex = 0
+			val, err2 := ccl.Evaluate(boundAST, ctx)
 			if err2 != nil {
 				err = err2
 				return

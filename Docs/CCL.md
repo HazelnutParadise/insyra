@@ -464,7 +464,7 @@ The `@` symbol represents all columns in the current row. It is typically used w
 
 ```
 "@.0"                // All columns at the first row (returns a slice)
-"@.['Jack']"         // All columns at the row named "Jack"
+"@.'Jack'"           // All columns at the row named "Jack"
 ```
 
 When used in `NEW()` or assignment, `@.n` can be used to copy an entire row into a new column or modify an existing one.

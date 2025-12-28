@@ -41,6 +41,10 @@ type cclBooleanNode struct{ value bool }    // 布林值節點
 type cclNilNode struct{}                    // nil 節點
 type cclColIndexNode struct{ index string } // [A] 形式的欄位索引引用節點
 type cclColNameNode struct{ name string }   // ['colName'] 形式的欄位名稱引用節點
+type cclResolvedColNode struct {
+	index int
+	name  string // Optional: original name for fallback or error messages
+}
 type cclBinaryOpNode struct {
 	op    string
 	left  cclNode

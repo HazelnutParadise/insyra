@@ -275,12 +275,25 @@ func executeAssignment(dt *DataTable, node ccl.CCLNode, target string, numRow in
 		}
 	}
 
+	// Bind the node first
+	boundNode, err := ccl.Bind(node, colNameMap)
+	if err != nil {
+		return err
+	}
+
 	// 預分配 row slice
 	row := make([]any, len(dt.columns))
 
+	ctx := &dataTableContext{
+		row:        row,
+		tableData:  tableData,
+		rowNameMap: rowNameMap,
+		colNameMap: colNameMap,
+	}
+
 	// 計算結果
 	var results []any
-	if ccl.IsRowDependent(ccl.GetExpressionNode(node)) {
+	if ccl.IsRowDependent(ccl.GetExpressionNode(boundNode)) {
 		results = make([]any, numRow)
 		for i := range numRow {
 			// 填充第 i 行的資料
@@ -291,9 +304,10 @@ func executeAssignment(dt *DataTable, node ccl.CCLNode, target string, numRow in
 					row[j] = nil
 				}
 			}
+			ctx.rowIndex = i
 
 			// 評估表達式
-			evalResult, err := ccl.EvaluateStatement(node, row, tableData, rowNameMap, colNameMap, i)
+			evalResult, err := ccl.EvaluateStatement(boundNode, ctx)
 			if err != nil {
 				return err
 			}
@@ -309,7 +323,8 @@ func executeAssignment(dt *DataTable, node ccl.CCLNode, target string, numRow in
 				row[j] = nil
 			}
 		}
-		evalResult, err := ccl.EvaluateStatement(node, row, tableData, rowNameMap, colNameMap, 0)
+		ctx.rowIndex = 0
+		evalResult, err := ccl.EvaluateStatement(boundNode, ctx)
 		if err != nil {
 			return err
 		}
@@ -339,12 +354,25 @@ func executeAssignment(dt *DataTable, node ccl.CCLNode, target string, numRow in
 
 // executeNewColumn executes a NEW column creation CCL statement
 func executeNewColumn(dt *DataTable, node ccl.CCLNode, newColName string, numRow int, colNameMap map[string]int, tableData [][]any, rowNameMap map[string]int) error {
+	// Bind the node first
+	boundNode, err := ccl.Bind(node, colNameMap)
+	if err != nil {
+		return err
+	}
+
 	// 預分配 row slice
 	row := make([]any, len(dt.columns))
 
+	ctx := &dataTableContext{
+		row:        row,
+		tableData:  tableData,
+		rowNameMap: rowNameMap,
+		colNameMap: colNameMap,
+	}
+
 	// 計算結果
 	var results []any
-	if ccl.IsRowDependent(ccl.GetExpressionNode(node)) {
+	if ccl.IsRowDependent(ccl.GetExpressionNode(boundNode)) {
 		results = make([]any, numRow)
 		for i := range numRow {
 			// 填充第 i 行的資料
@@ -355,9 +383,10 @@ func executeNewColumn(dt *DataTable, node ccl.CCLNode, newColName string, numRow
 					row[j] = nil
 				}
 			}
+			ctx.rowIndex = i
 
 			// 評估表達式
-			evalResult, err := ccl.EvaluateStatement(node, row, tableData, rowNameMap, colNameMap, i)
+			evalResult, err := ccl.EvaluateStatement(boundNode, ctx)
 			if err != nil {
 				return err
 			}
@@ -372,7 +401,8 @@ func executeNewColumn(dt *DataTable, node ccl.CCLNode, newColName string, numRow
 				row[j] = nil
 			}
 		}
-		evalResult, err := ccl.EvaluateStatement(node, row, tableData, rowNameMap, colNameMap, 0)
+		ctx.rowIndex = 0
+		evalResult, err := ccl.EvaluateStatement(boundNode, ctx)
 		if err != nil {
 			return err
 		}
