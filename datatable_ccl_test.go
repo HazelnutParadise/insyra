@@ -507,3 +507,50 @@ func TestDataTable_ExecuteCCL_AggregateTotal(t *testing.T) {
 		}
 	})
 }
+
+func TestDataTable_ExecuteCCL_Transposition(t *testing.T) {
+	// Create a table with 3 rows and 4 columns
+	// Row 0: 1, 2, 3, 4
+	// Row 1: 5, 6, 7, 8
+	// Row 2: 9, 10, 11, 12
+	dt := NewDataTable(
+		NewDataList(1, 5, 9).SetName("A"),
+		NewDataList(2, 6, 10).SetName("B"),
+		NewDataList(3, 7, 11).SetName("C"),
+		NewDataList(4, 8, 12).SetName("D"),
+	)
+
+	// Transpose Row 0 into new column 'n'
+	// Row 0 is [1, 2, 3, 4]
+	// Column 'n' should be [1, 2, 3, 4]
+	dt.ExecuteCCL("NEW('n') = @.0")
+
+	// Check column 'n'
+	colN := dt.GetColByName("n")
+	if colN == nil {
+		t.Fatal("Column 'n' not found")
+	}
+
+	data := colN.Data()
+	if len(data) != 4 {
+		t.Errorf("Expected column 'n' length 4, got %d", len(data))
+	}
+
+	expected := []any{1, 2, 3, 4}
+	for i, v := range expected {
+		if i < len(data) {
+			if data[i] != v {
+				t.Errorf("Row %d: expected %v, got %v", i, v, data[i])
+			}
+		}
+	}
+
+	// Check if other columns are padded
+	colA := dt.GetColByName("A")
+	if len(colA.Data()) != 4 {
+		t.Errorf("Expected column 'A' length 4 (padded), got %d", len(colA.Data()))
+	}
+	if colA.Data()[3] != nil {
+		t.Errorf("Expected column 'A' row 3 to be nil, got %v", colA.Data()[3])
+	}
+}

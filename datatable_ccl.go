@@ -36,6 +36,7 @@ func (dt *DataTable) AddColUsingCCL(newColName, cclFormula string) *DataTable {
 		} else {
 			elapsed := time.Since(startTime)
 			LogDebug("DataTable", "AddColUsingCCL", "CCL evaluation completed in %v", elapsed)
+			// fmt.Printf("DEBUG: AddColUsingCCL result[0]: %v (type %T)\n", result[0], result[0])
 			// 使用 NewDataList(result...) 會展開 slice，如果 result 本身就是我們想要的資料，
 			// 且我們不希望它被進一步展開（例如 result 已經是 []any），
 			// 我們應該直接將其包裝在一個 slice 中傳遞給 NewDataList，
@@ -409,11 +410,13 @@ func executeNewColumn(dt *DataTable, node ccl.CCLNode, newColName string, numRow
 		val := evalResult.Value
 
 		if rv := reflect.ValueOf(val); val != nil && rv.Kind() == reflect.Slice {
+			// LogDebug("DataTable", "executeNewColumn", "Unwrapping slice of length %d matching numRow %d", rv.Len(), numRow)
 			results = make([]any, rv.Len())
 			for i := 0; i < rv.Len(); i++ {
 				results[i] = rv.Index(i).Interface()
 			}
 		} else {
+			// LogDebug("DataTable", "executeNewColumn", "Treating value as scalar (val type: %T, numRow: %d)", val, numRow)
 			results = make([]any, numRow)
 			for i := range numRow {
 				results[i] = val

@@ -89,10 +89,19 @@ func Bind(n cclNode, colNameMap map[string]int) (cclNode, error) {
 	switch t := n.(type) {
 	case *cclIdentifierNode:
 		idx := utils.ParseColIndex(t.name)
-		return &cclResolvedColNode{index: idx, name: t.name}, nil
+		if idx != -1 {
+			return &cclResolvedColNode{index: idx, name: t.name}, nil
+		}
+		if idx, ok := colNameMap[t.name]; ok {
+			return &cclResolvedColNode{index: idx, name: t.name}, nil
+		}
+		return t, nil
 	case *cclColIndexNode:
 		idx := utils.ParseColIndex(t.index)
-		return &cclResolvedColNode{index: idx, name: t.index}, nil
+		if idx != -1 {
+			return &cclResolvedColNode{index: idx, name: t.index}, nil
+		}
+		return t, nil
 	case *cclColNameNode:
 		if idx, ok := colNameMap[t.name]; ok {
 			return &cclResolvedColNode{index: idx, name: t.name}, nil

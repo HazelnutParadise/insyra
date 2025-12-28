@@ -259,6 +259,10 @@ func evaluateWithContext(n cclNode, ctx Context) (any, error) {
 		if t.op == "." {
 			return evaluateRowAccess(t.left, t.right, ctx)
 		}
+		// 特殊處理 : 運算符，因為它可能涉及欄位索引的解析，而不是值的評估
+		if t.op == ":" {
+			return evaluateRange(t.left, t.right, ctx)
+		}
 		left, err := evaluateWithContext(t.left, ctx)
 		if err != nil {
 			return nil, err
@@ -440,6 +444,34 @@ func applyOperator(op string, left, right any) (any, error) {
 		return false, nil
 	}
 
+	// 處理範圍運算符 :
+	if op == ":" {
+		// 1. 數字範圍 (Row Range)
+		lf, lok := toFloat64(left)
+		rf, rok := toFloat64(right)
+		if lok && rok {
+			start := int(lf)
+			end := int(rf)
+			// 支援負數索引
+			// 但這裡我們不知道總行數，所以無法在這裡處理負數索引轉換
+			// 負數索引轉換應該在 evaluateRowAccess 中處理
+			// 這裡只返回原始範圍
+			return []int{start, end}, nil
+		}
+
+		// 2. 欄位範圍 (Column Range)
+		// 這裡我們假設 left 和 right 已經被解析為欄位索引或名稱
+		// 但 evaluateWithContext 對於 Identifier 會返回欄位值
+		// 如果我們想要欄位範圍，我們需要在 evaluateToColumn 或 evaluateRowAccess 中特殊處理
+		// 或者在這裡返回一個特殊的 ColumnRange 對象
+		// 但 left 和 right 已經是值了
+		// 如果是 A:C，A 會被評估為 A 欄的值（如果行相關）或 A 欄第一列的值（如果行無關）
+		// 這不是我們想要的。
+		// 我們想要的是 A 和 C 的索引。
+		// 這意味著 : 運算符不能像普通運算符那樣先評估左右運算元。
+		// 它需要在 evaluateWithContext 中特殊處理 BinaryOpNode{op: ":"}
+	}
+
 	return nil, fmt.Errorf("invalid operands for %s: %v, %v", op, left, right)
 }
 
@@ -505,56 +537,255 @@ func evaluateToColumn(n cclNode, ctx Context) ([]any, error) {
 }
 
 func evaluateRowAccess(left, right cclNode, ctx Context) (any, error) {
-	// 1. Determine row index from right
+	// Determine limit for negative indices (RowCount for tables/columns, ColCount for rows/@)
+	limit := ctx.GetRowCount()
+	if _, ok := left.(*cclAtNode); ok {
+		if row, ok := ctx.GetCurrentRow().([]any); ok {
+			limit = len(row)
+		}
+	}
+
+	// 1. Determine row index/indices from right
 	rowVal, err := evaluateWithContext(right, ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	var rowIdx int
+	var rowIndices []int
+	var isRowRange bool
+
 	switch v := rowVal.(type) {
+	case RowRange:
+		isRowRange = true
+		start, end := v.Start, v.End
+		// Handle negative indices
+		if start < 0 {
+			start += limit
+		}
+		if end < 0 {
+			end += limit
+		}
+		// Generate indices
+		if start <= end {
+			for i := start; i <= end; i++ {
+				rowIndices = append(rowIndices, i)
+			}
+		}
 	case float64:
-		rowIdx = int(v)
+		rowIndices = []int{int(v)}
 	case int:
-		rowIdx = v
+		rowIndices = []int{v}
 	case string:
 		idx, err := ctx.GetRowIndexByName(v)
 		if err != nil {
 			return nil, err
 		}
-		rowIdx = idx
+		rowIndices = []int{idx}
 	default:
 		return nil, fmt.Errorf("invalid row index type: %T", rowVal)
 	}
 
-	// Handle negative row index (e.g. -1 for last row)
-	if rowIdx < 0 {
-		rowCount := ctx.GetRowCount()
-		rowIdx = rowCount + rowIdx
+	// Handle negative indices for single values (RowRange already handled)
+	if !isRowRange {
+		for i, idx := range rowIndices {
+			if idx < 0 {
+				rowIndices[i] = limit + idx
+			}
+		}
 	}
 
-	// 2. Determine column(s) from left
-	switch l := left.(type) {
-	case *cclAtNode:
-		// Return all columns at rowIdx
-		return ctx.GetRowAt(rowIdx)
-	case *cclResolvedColNode:
-		return ctx.GetCell(l.index, rowIdx)
-	case *cclIdentifierNode:
-		idx := utils.ParseColIndex(l.name)
-		// Try as index first
-		val, err := ctx.GetCell(idx, rowIdx)
-		if err == nil {
-			return val, nil
-		}
-		// Fallback to name
-		return ctx.GetCellByName(l.name, rowIdx)
-	case *cclColIndexNode:
-		idx := utils.ParseColIndex(l.index)
-		return ctx.GetCell(idx, rowIdx)
-	case *cclColNameNode:
-		return ctx.GetCellByName(l.name, rowIdx)
+	// 2. Prepare to fetch data from left
+	var colRange *ColumnRange
+	var leftSimple = false
+
+	switch left.(type) {
+	case *cclAtNode, *cclResolvedColNode, *cclIdentifierNode, *cclColIndexNode, *cclColNameNode:
+		leftSimple = true
 	default:
-		return nil, fmt.Errorf("invalid left operand for row access: %T", left)
+		// Evaluate left once to see if it's a ColumnRange or other value
+		lVal, err := evaluateWithContext(left, ctx)
+		if err != nil {
+			return nil, err
+		}
+		if cr, ok := lVal.(ColumnRange); ok {
+			colRange = &cr
+		} else {
+			// If it's not a ColumnRange, it might be an error or unsupported type for row access
+			// But wait, if left is (1+2), we can't do (1+2).1
+			// Row access is typically on columns.
+			return nil, fmt.Errorf("invalid left operand for row access: %T", lVal)
+		}
 	}
+
+	results := make([]any, 0, len(rowIndices))
+
+	for _, rIdx := range rowIndices {
+		var val any
+		var err error
+
+		if colRange != nil {
+			// Return list of values for this row
+			rowRes := make([]any, 0, colRange.End-colRange.Start+1)
+			for c := colRange.Start; c <= colRange.End; c++ {
+				v, err := ctx.GetCell(c, rIdx)
+				if err != nil {
+					return nil, err
+				}
+				rowRes = append(rowRes, v)
+			}
+			val = rowRes
+		} else if leftSimple {
+			switch l := left.(type) {
+			case *cclAtNode:
+				val, err = ctx.GetRowAt(rIdx)
+			case *cclResolvedColNode:
+				if l.index != -1 {
+					val, err = ctx.GetCell(l.index, rIdx)
+				} else {
+					val, err = ctx.GetCellByName(l.name, rIdx)
+				}
+			case *cclIdentifierNode:
+				idx := utils.ParseColIndex(l.name)
+				// Try as index first
+				if idx != -1 {
+					val, err = ctx.GetCell(idx, rIdx)
+				} else {
+					err = fmt.Errorf("invalid column index")
+				}
+
+				if err != nil {
+					// Fallback to name
+					val, err = ctx.GetCellByName(l.name, rIdx)
+				}
+			case *cclColIndexNode:
+				idx := utils.ParseColIndex(l.index)
+				if idx != -1 {
+					val, err = ctx.GetCell(idx, rIdx)
+				} else {
+					err = fmt.Errorf("invalid column index")
+				}
+
+				if err != nil {
+					val, err = ctx.GetCellByName(l.index, rIdx)
+				}
+			case *cclColNameNode:
+				val, err = ctx.GetCellByName(l.name, rIdx)
+			}
+		}
+
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, val)
+	}
+
+	// If it was a single row access (not a range), return the single value
+	if !isRowRange && len(results) == 1 {
+		return results[0], nil
+	}
+
+	return results, nil
+}
+
+// ColumnRange represents a range of column indices [Start, End]
+type ColumnRange struct {
+	Start int
+	End   int
+}
+
+// RowRange represents a range of row indices [Start, End]
+type RowRange struct {
+	Start int
+	End   int
+}
+
+func evaluateRange(left, right cclNode, ctx Context) (any, error) {
+	// 1. 嘗試解析為欄位範圍 (Column Range)
+	// 檢查左右是否為欄位引用
+	lIdx, lIsCol := resolveColumnIndex(left, ctx)
+	rIdx, rIsCol := resolveColumnIndex(right, ctx)
+
+	if lIsCol && rIsCol {
+		// Check for invalid indices (-1) which resolveColumnIndex might return if not found but "looks like" a column
+		if lIdx == -1 {
+			return nil, fmt.Errorf("column not found: %v", left)
+		}
+		if rIdx == -1 {
+			return nil, fmt.Errorf("column not found: %v", right)
+		}
+
+		if lIdx > rIdx {
+			return nil, fmt.Errorf("invalid column range: start index %d > end index %d", lIdx, rIdx)
+		}
+		return ColumnRange{Start: lIdx, End: rIdx}, nil
+	}
+
+	// 2. 嘗試解析為數字範圍 (Row Range)
+	// 這裡我們需要評估表達式，因為可能是 1+1 : 5
+	lVal, err := evaluateWithContext(left, ctx)
+	if err != nil {
+		return nil, err
+	}
+	rVal, err := evaluateWithContext(right, ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	lf, lok := toFloat64(lVal)
+	rf, rok := toFloat64(rVal)
+
+	if lok && rok {
+		return RowRange{Start: int(lf), End: int(rf)}, nil
+	}
+
+	// 3. 嘗試解析為行名稱或混合範圍 (Row Name/Index Range)
+	// Helper to resolve row index from value (int/float or string)
+	resolveRowIdx := func(val any) (int, error) {
+		if f, ok := toFloat64(val); ok {
+			return int(f), nil
+		}
+		if s, ok := val.(string); ok {
+			return ctx.GetRowIndexByName(s)
+		}
+		return 0, fmt.Errorf("invalid row reference: %v", val)
+	}
+
+	lRowIdx, lErr := resolveRowIdx(lVal)
+	rRowIdx, rErr := resolveRowIdx(rVal)
+
+	if lErr == nil && rErr == nil {
+		return RowRange{Start: lRowIdx, End: rRowIdx}, nil
+	}
+
+	return nil, fmt.Errorf("invalid range operands: %v : %v", left, right)
+}
+
+func resolveColumnIndex(n cclNode, ctx Context) (int, bool) {
+	switch t := n.(type) {
+	case *cclIdentifierNode:
+		idx := utils.ParseColIndex(t.name)
+		if idx != -1 {
+			return idx, true
+		}
+		// Try to resolve by name
+		if idx, err := ctx.GetColIndexByName(t.name); err == nil {
+			return idx, true
+		}
+		// If not found, return -1 but indicate it WAS an identifier/name attempt
+		// This allows the caller to decide if -1 is an error or just "not a column"
+		// But wait, if we return true, the caller thinks it IS a column index.
+		// If we return -1, the caller might use it as an index.
+		// We should return false if it's not a valid column.
+		return -1, false
+	case *cclColIndexNode:
+		return utils.ParseColIndex(t.index), true
+	case *cclResolvedColNode:
+		return t.index, true
+	case *cclColNameNode:
+		if idx, err := ctx.GetColIndexByName(t.name); err == nil {
+			return idx, true
+		}
+		return -1, false
+	}
+	return -1, false
 }

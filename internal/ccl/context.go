@@ -40,6 +40,9 @@ type Context interface {
 	// Used for aggregate functions.
 	GetColDataByName(name string) ([]any, error)
 
+	// GetColIndexByName returns the index of the column with the given name.
+	GetColIndexByName(colName string) (int, error)
+
 	// GetRowCount returns the total number of rows in the context.
 	GetRowCount() int
 

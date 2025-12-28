@@ -151,7 +151,7 @@ func (p *parser) parseExpression(precedence int) (cclNode, error) {
 		// 常規的二元運算表達式處理
 		for {
 			tok := p.current()
-			if (tok.typ != tOPERATOR && tok.typ != tDOT) || getPrecedence(tok.value) < precedence {
+			if (tok.typ != tOPERATOR && tok.typ != tDOT && tok.typ != tCOLON) || getPrecedence(tok.value) < precedence {
 				break
 			}
 			op := tok.value
@@ -284,6 +284,8 @@ func getPrecedence(op string) int {
 		return 6
 	case ".":
 		return 7
+	case ":":
+		return 8
 	default:
 		return 0
 	}

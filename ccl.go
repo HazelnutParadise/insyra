@@ -103,6 +103,17 @@ func (c *dataTableContext) GetRowIndexByName(rowName string) (int, error) {
 	return idx, nil
 }
 
+func (c *dataTableContext) GetColIndexByName(colName string) (int, error) {
+	if c.colNameMap == nil {
+		return -1, fmt.Errorf("column name reference used but no column name mapping provided")
+	}
+	idx, ok := c.colNameMap[colName]
+	if !ok {
+		return -1, fmt.Errorf("column name '%s' not found", colName)
+	}
+	return idx, nil
+}
+
 func (c *dataTableContext) GetColData(index int) ([]any, error) {
 	if index < 0 || index >= len(c.tableData) {
 		return nil, fmt.Errorf("column index %d out of range", index)
@@ -259,7 +270,7 @@ func applyCCLOnDataTable(table *DataTable, expression string) ([]any, error) {
 				return
 			}
 
-			if rv := reflect.ValueOf(val); val != nil && rv.Kind() == reflect.Slice {
+			if rv := reflect.ValueOf(val); val != nil && rv.Kind() == reflect.Slice && rv.Len() == numRow {
 				result = make([]any, rv.Len())
 				for i := 0; i < rv.Len(); i++ {
 					result[i] = rv.Index(i).Interface()

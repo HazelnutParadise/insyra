@@ -70,6 +70,11 @@ func NewDataTable(columns ...*DataList) *DataTable {
 func (dt *DataTable) AppendCols(columns ...*DataList) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		maxLength := dt.getMaxColLength()
+		for _, col := range columns {
+			if len(col.data) > maxLength {
+				maxLength = len(col.data)
+			}
+		}
 
 		for _, col := range columns {
 			column := NewDataList()

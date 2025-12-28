@@ -35,6 +35,9 @@ func tokenize(input string) ([]cclToken, error) {
 		case ch == '#':
 			tokens = append(tokens, cclToken{typ: tROW_INDEX, value: "#"})
 			i++
+		case ch == ':':
+			tokens = append(tokens, cclToken{typ: tCOLON, value: ":"})
+			i++
 		case isDigit(ch):
 			start := i
 			for i < len(input) && isDigit(input[i]) {

@@ -154,8 +154,14 @@ func (dl *DataList) Get(index int) any {
 func (dl *DataList) Clone() *DataList {
 	var newDL *DataList
 	dl.AtomicDo(func(dl *DataList) {
-		newDL = NewDataList(dl.data)
-		newDL.SetName(dl.name)
+		newData := make([]any, len(dl.data))
+		copy(newData, dl.data)
+		newDL = &DataList{
+			data:              newData,
+			name:              dl.name,
+			creationTimestamp: time.Now().Unix(),
+		}
+		newDL.lastModifiedTimestamp.Store(newDL.creationTimestamp)
 	})
 	return newDL
 }

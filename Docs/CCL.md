@@ -194,6 +194,7 @@ CCL supports the following data types:
 - `/` : Division
 - `^` : Exponentiation
 - `.` : Row access (e.g., `A.0`, `['Sales'].10`, `A.-1` for last row)
+- `:` : Range operator (e.g., `A:C` for column range, `1:5` for row range)
 - `#` : Current row index (0-based)
 
 ```
@@ -208,6 +209,11 @@ CCL supports the following data types:
 "A.B"           // Get the value of column A at the row index specified by column B
 "A.#"           // Get the value of column A at the current row (same as just "A")
 "SUM(@.#)"      // Sum of all columns in the current row (Row Sum)
+"SUM(A:C)"      // Sum of columns A, B, and C
+"SUM([A]:[C])"  // Sum of columns A to C (explicit index syntax)
+"SUM(['Start']:['End'])" // Sum of columns from 'Start' to 'End'
+"A.(1:5)"       // Get values of column A from row 1 to 5 (returns a slice)
+"A.('Row1':'Row5')" // Get values of column A from row named 'Row1' to 'Row5'
 ```
 
 ### Comparison Operators

@@ -20,6 +20,7 @@ const (
 	tDOT       // . 運算符，用於指定列
 	tAT        // @ 運算符，用於表示所有欄
 	tROW_INDEX // # 運算符，用於表示當前行索引
+	tCOLON     // : 運算符，用於表示範圍
 )
 
 type cclToken struct {
