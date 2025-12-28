@@ -1,4 +1,4 @@
-﻿package insyra
+package insyra
 
 import (
 	"cmp"
