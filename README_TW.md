@@ -309,6 +309,19 @@ dt.AddColUsingCCL("row_sum", "SUM(@.0)")
 dt.AddColUsingCCL("in_range", "IF(10 <= A <= 20, 'Yes', 'No')")
 ```
 
+#### Parquet 整合
+
+CCL 可以**直接在 Parquet 檔案讀取時應用**，在資料源頭進行篩選：
+
+```go
+// 讀取時即時篩選資料列 - 僅將符合條件的資料載入記憶體
+dt, err := parquet.FilterWithCCL(ctx, "sales_data.parquet", "(['amount'] > 1000) && (['status'] = 'Active')")
+
+// 直接在 parquet 檔案上套用 CCL 轉換（串流模式）
+err := parquet.ApplyCCL(ctx, "data.parquet", "NEW('total') = A + B + C")
+```
+
+這種方式透過批次處理資料，可減少處理大型資料集時的記憶體使用量。
 關於 CCL 語法和功能的完整指南，請參閱 **[CCL 文檔](/Docs/CCL.md)**。
 
 有關 DataTable 方法和功能的完整列表，請參閱 **[DataTable 文檔](https://github.com/HazelnutParadise/insyra/tree/main/Docs/DataTable.md)**。

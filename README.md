@@ -312,6 +312,20 @@ dt.AddColUsingCCL("row_sum", "SUM(@.0)")
 dt.AddColUsingCCL("in_range", "IF(10 <= A <= 20, 'Yes', 'No')")
 ```
 
+#### Parquet Integration
+
+CCL can be applied **directly during Parquet file reading** to filter data at the source:
+
+```go
+// Filter rows while reading - only matching rows are loaded into memory
+dt, err := parquet.FilterWithCCL(ctx, "sales_data.parquet", "(['amount'] > 1000) && (['status'] = 'Active')")
+
+// Apply CCL transformations directly on parquet files (streaming mode)
+err := parquet.ApplyCCL(ctx, "data.parquet", "NEW('total') = A + B + C")
+```
+
+This approach reduces memory usage when working with large datasets by processing data in batches.
+
 For a complete guide to CCL syntax and features, see the **[CCL Documentation](/Docs/CCL.md)**.
 
 For a complete list of DataTable methods and features, please refer to the **[DataTable Documentation](/Docs/DataTable.md)**.
