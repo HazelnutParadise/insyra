@@ -19,7 +19,7 @@ jobs:
 
       - name: Generate docs (sidebar + index)
         run: |
-          go run tools/gendocs/gendocs.go --dir ./docs --output ./docs/_sidebar.md --repo "${{ github.repository }}"
+          go run tools/gendocs/gendocs.go --dir ./Docs --output ./Docs/_sidebar.md --repo "${{ github.repository }}"
 
       - name: Deploy to gh-pages
         uses: peaceiris/actions-gh-pages@v3
