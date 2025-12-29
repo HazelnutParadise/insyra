@@ -158,7 +158,7 @@ func (dt *DataTable) ShowRange(startEnd ...any) {
 			return
 		}
 		// Compute table layout (column widths, row names, and max row name width)
-		colWidths, rowNames, maxRowNameWidth := prepareTableLayout(dt, dataMap, colIndices)
+		colWidths, rowNames, maxRowNameWidth := prepareTableLayout(dt, dataMap, colIndices, width)
 
 		// Try to display some basic statistics for the visible range
 		if end-start > 0 && colCount > 0 {
@@ -236,26 +236,21 @@ func (dt *DataTable) ShowRange(startEnd ...any) {
 		}
 
 		// Dynamically adjust the number of columns to display based on current window width
-		totalColsToShow := determineColumnsToShow(colIndices, colWidths, maxRowNameWidth, width)
-
-		// If columns exceed display range, paginate display
-		pageSize := totalColsToShow
-		if pageSize <= 0 {
-			pageSize = 1 // Display at least one column
+		// We'll calculate pages adaptively
+		var pages [][]string
+		currentStart := 0
+		for currentStart < len(colIndices) {
+			colsInPage := determineColumnsToShow(colIndices[currentStart:], colWidths, maxRowNameWidth, width)
+			if colsInPage <= 0 {
+				colsInPage = 1
+			}
+			pages = append(pages, colIndices[currentStart:currentStart+colsInPage])
+			currentStart += colsInPage
 		}
 
-		// Calculate how many pages are needed
-		totalPages := (len(colIndices) + pageSize - 1) / pageSize
+		totalPages := len(pages)
 
-		for page := 0; page < totalPages; page++ {
-			pageStart := page * pageSize
-			pageEnd := (page + 1) * pageSize
-			if pageEnd > len(colIndices) {
-				pageEnd = len(colIndices)
-			}
-
-			currentPageCols := colIndices[pageStart:pageEnd]
-
+		for page, currentPageCols := range pages {
 			if page > 0 {
 				fmt.Println("\n" + colorText("1;35", "--- Continue Display ---"))
 			}
@@ -359,7 +354,27 @@ func printRowsColored(dataMap map[string][]any, start, end int, rowNames []strin
 			}
 
 			// Print cell with proper alignment using runewidth
-			cellText := runewidth.FillRight(utils.TruncateString(value, colWidths[colIndex]), colWidths[colIndex]+1)
+			truncated := utils.TruncateString(value, colWidths[colIndex])
+			isNumeric := false
+			if rawValue != nil {
+				switch rawValue.(type) {
+				case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+					isNumeric = true
+				}
+			}
+
+			var cellText string
+			if isNumeric {
+				sw := runewidth.StringWidth(truncated)
+				padding := colWidths[colIndex] - sw
+				if padding < 0 {
+					padding = 0
+				}
+				cellText = strings.Repeat(" ", padding) + truncated + " "
+			} else {
+				cellText = runewidth.FillRight(truncated, colWidths[colIndex]+1)
+			}
+
 			if valueColorCode != "" {
 				fmt.Print(" " + colorText(valueColorCode, cellText))
 			} else {
@@ -510,29 +525,24 @@ func (dt *DataTable) ShowTypesRange(startEnd ...any) {
 		}
 
 		// Compute layout for type display (column widths, row names, and max row name width)
-		colWidths, rowNames, maxRowNameWidth := prepareTableLayoutTypes(dt, dataMap, colIndices)
+		colWidths, rowNames, maxRowNameWidth := prepareTableLayoutTypes(dt, dataMap, colIndices, width)
 
 		// Dynamically adjust the number of columns to display based on current window width
-		totalColsToShow := determineColumnsToShow(colIndices, colWidths, maxRowNameWidth, width)
-
-		// If columns exceed display range, paginate display
-		pageSize := totalColsToShow
-		if pageSize <= 0 {
-			pageSize = 1 // Display at least one column
+		// We'll calculate pages adaptively
+		var pages [][]string
+		currentStart := 0
+		for currentStart < len(colIndices) {
+			colsInPage := determineColumnsToShow(colIndices[currentStart:], colWidths, maxRowNameWidth, width)
+			if colsInPage <= 0 {
+				colsInPage = 1
+			}
+			pages = append(pages, colIndices[currentStart:currentStart+colsInPage])
+			currentStart += colsInPage
 		}
 
-		// Calculate how many pages are needed
-		totalPages := (len(colIndices) + pageSize - 1) / pageSize
+		totalPages := len(pages)
 
-		for page := 0; page < totalPages; page++ {
-			pageStart := page * pageSize
-			pageEnd := (page + 1) * pageSize
-			if pageEnd > len(colIndices) {
-				pageEnd = len(colIndices)
-			}
-
-			currentPageCols := colIndices[pageStart:pageEnd]
-
+		for page, currentPageCols := range pages {
 			if page > 0 {
 				fmt.Println("\n" + colorText("1;35", "--- Continue Type Display ---"))
 			}
@@ -845,9 +855,6 @@ func (dl *DataList) ShowRange(startEnd ...any) {
 			}
 		}
 
-		// Always show in linear format regardless of terminal width
-		fmt.Printf("%s  %s\n", colorText("1;32", "Index"), colorText("1;32", "Value"))
-		fmt.Println(strings.Repeat("-", min(width, 80)))
 		// Calculate how many items to display in the range
 		selectedItems := end - start
 		maxDisplay := 25
@@ -859,6 +866,35 @@ func (dl *DataList) ShowRange(startEnd ...any) {
 		// 1. The selected range is small (less than maxDisplay), or
 		// 2. The user explicitly specified a range (even if it's large)
 		showAll := selectedItems <= maxDisplay || explicitRangeSpecified
+
+		// Calculate max value width for alignment
+		maxValueW := runewidth.StringWidth("Value")
+		checkIndices := []int{}
+		if showAll {
+			for i := start; i < end; i++ {
+				checkIndices = append(checkIndices, i)
+			}
+		} else {
+			for i := start; i < start+20; i++ {
+				checkIndices = append(checkIndices, i)
+			}
+			for i := end - 5; i < end; i++ {
+				checkIndices = append(checkIndices, i)
+			}
+		}
+		for _, i := range checkIndices {
+			strV := utils.FormatValue(dl.data[i])
+			if w := runewidth.StringWidth(strV); w > maxValueW {
+				maxValueW = w
+			}
+		}
+		if maxValueW > 50 {
+			maxValueW = 50
+		}
+
+		// Always show in linear format regardless of terminal width
+		fmt.Printf("%s  %s\n", colorText("1;32", "Index"), colorText("1;32", runewidth.FillRight("Value", maxValueW)))
+		fmt.Println(strings.Repeat("-", min(width, 80)))
 
 		// Display items
 		displayCount := selectedItems
@@ -875,12 +911,14 @@ func (dl *DataList) ShowRange(startEnd ...any) {
 
 				// Determine color based on value type
 				var valueColorCode string
+				isNumeric := false
 				if value == nil {
 					valueColorCode = "2;37"
 				} else {
 					switch value.(type) {
 					case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
 						valueColorCode = "0;34"
+						isNumeric = true
 					case string:
 						valueColorCode = "0;32"
 					case bool:
@@ -889,9 +927,22 @@ func (dl *DataList) ShowRange(startEnd ...any) {
 				}
 
 				indexText := colorText("1;37", fmt.Sprintf("%-6d", itemIndex))
-				valueText := strValue
+
+				var valueText string
+				truncated := utils.TruncateString(strValue, maxValueW)
+				if isNumeric {
+					sw := runewidth.StringWidth(truncated)
+					padding := maxValueW - sw
+					if padding < 0 {
+						padding = 0
+					}
+					valueText = strings.Repeat(" ", padding) + truncated
+				} else {
+					valueText = runewidth.FillRight(truncated, maxValueW)
+				}
+
 				if valueColorCode != "" {
-					valueText = colorText(valueColorCode, strValue)
+					valueText = colorText(valueColorCode, valueText)
 				}
 				fmt.Printf("%s %s\n", indexText, valueText)
 			}
@@ -899,7 +950,7 @@ func (dl *DataList) ShowRange(startEnd ...any) {
 
 		// If there are too many items in the range, show ellipsis and the last few items
 		if !showAll {
-			fmt.Println(colorText("1;33", "...    ..."))
+			fmt.Printf("%s %s\n", colorText("1;33", fmt.Sprintf("%-6s", "...")), colorText("1;33", "..."))
 
 			// Show last 5 items from the range
 			for i := end - 5; i < end; i++ {
@@ -908,12 +959,14 @@ func (dl *DataList) ShowRange(startEnd ...any) {
 
 				// Color based on value type
 				var valueColorCode string
+				isNumeric := false
 				if value == nil {
 					valueColorCode = "2;37"
 				} else {
 					switch value.(type) {
 					case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
 						valueColorCode = "0;34"
+						isNumeric = true
 					case string:
 						valueColorCode = "0;32"
 					case bool:
@@ -922,9 +975,22 @@ func (dl *DataList) ShowRange(startEnd ...any) {
 				}
 
 				indexText := colorText("1;37", fmt.Sprintf("%-6d", i))
-				valueText := strValue
+
+				var valueText string
+				truncated := utils.TruncateString(strValue, maxValueW)
+				if isNumeric {
+					sw := runewidth.StringWidth(truncated)
+					padding := maxValueW - sw
+					if padding < 0 {
+						padding = 0
+					}
+					valueText = strings.Repeat(" ", padding) + truncated
+				} else {
+					valueText = runewidth.FillRight(truncated, maxValueW)
+				}
+
 				if valueColorCode != "" {
-					valueText = colorText(valueColorCode, strValue)
+					valueText = colorText(valueColorCode, valueText)
 				}
 				fmt.Printf("%s %s\n", indexText, valueText)
 			}
@@ -1105,23 +1171,7 @@ func max(a, b int) int {
 }
 
 // prepareTableLayout 计算每个列的宽度、行名列表及最大行名宽度
-func prepareTableLayout(dt *DataTable, dataMap map[string][]any, colIndices []string) (map[string]int, []string, int) {
-	// 计算每个列的最大宽度
-	colWidths := make(map[string]int, len(colIndices))
-	for _, idx := range colIndices {
-		width := runewidth.StringWidth(idx)
-		for _, v := range dataMap[idx] {
-			s := utils.FormatValue(v)
-			if w := runewidth.StringWidth(s); w > width {
-				width = w
-			}
-		}
-		// 限制列宽不超过30
-		if width > 30 {
-			width = 30
-		}
-		colWidths[idx] = width
-	}
+func prepareTableLayout(dt *DataTable, dataMap map[string][]any, colIndices []string, terminalWidth int) (map[string]int, []string, int) {
 	// 计算行名及最大行名宽度
 	totalRows := dt.getMaxColLength()
 	rowNames := make([]string, totalRows)
@@ -1138,13 +1188,57 @@ func prepareTableLayout(dt *DataTable, dataMap map[string][]any, colIndices []st
 	if maxRowName > 25 {
 		maxRowName = 25
 	}
+
+	// 计算每个列的最大宽度
+	colWidths := make(map[string]int, len(colIndices))
+	maxColWidthAllowed := terminalWidth - maxRowName - 5
+	if maxColWidthAllowed < 20 {
+		maxColWidthAllowed = 20
+	}
+
+	for _, idx := range colIndices {
+		width := runewidth.StringWidth(idx)
+		for _, v := range dataMap[idx] {
+			s := utils.FormatValue(v)
+			if w := runewidth.StringWidth(s); w > width {
+				width = w
+			}
+		}
+		// 限制列宽不超过允许的最大宽度
+		if width > maxColWidthAllowed {
+			width = maxColWidthAllowed
+		}
+		colWidths[idx] = width
+	}
+
 	return colWidths, rowNames, maxRowName
 }
 
 // prepareTableLayoutTypes 计算 ShowTypesRange 使用的列宽、行名列表及最大行名宽度
-func prepareTableLayoutTypes(dt *DataTable, dataMap map[string][]any, colIndices []string) (map[string]int, []string, int) {
+func prepareTableLayoutTypes(dt *DataTable, dataMap map[string][]any, colIndices []string, terminalWidth int) (map[string]int, []string, int) {
+	// 计算行名及最大行名宽度
+	total := dt.getMaxColLength()
+	rowNames := make([]string, total)
+	maxName := runewidth.StringWidth("RowNames")
+	for i := 0; i < total; i++ {
+		name, _ := dt.getRowNameByIndex(i)
+		label := fmt.Sprintf("%d: %s", i, name)
+		rowNames[i] = label
+		if w := runewidth.StringWidth(label); w > maxName {
+			maxName = w
+		}
+	}
+	if maxName > 25 {
+		maxName = 25
+	}
+
 	// 计算每个列的最大宽度（以类型字符串宽度为根据）
 	colWidths := make(map[string]int, len(colIndices))
+	maxColWidthAllowed := terminalWidth - maxName - 5
+	if maxColWidthAllowed < 20 {
+		maxColWidthAllowed = 20
+	}
+
 	for _, idx := range colIndices {
 		// 初始宽度为列名宽度
 		width := runewidth.StringWidth(idx)
@@ -1172,26 +1266,12 @@ func prepareTableLayoutTypes(dt *DataTable, dataMap map[string][]any, colIndices
 				width = w
 			}
 		}
-		// 限制列宽不超过25
-		if width > 25 {
-			width = 25
+		// 限制列宽不超过允许的最大宽度
+		if width > maxColWidthAllowed {
+			width = maxColWidthAllowed
 		}
 		colWidths[idx] = width
 	}
-	// 计算行名及最大行名宽度
-	total := dt.getMaxColLength()
-	rowNames := make([]string, total)
-	maxName := runewidth.StringWidth("RowNames")
-	for i := 0; i < total; i++ {
-		name, _ := dt.getRowNameByIndex(i)
-		label := fmt.Sprintf("%d: %s", i, name)
-		rowNames[i] = label
-		if w := runewidth.StringWidth(label); w > maxName {
-			maxName = w
-		}
-	}
-	if maxName > 25 {
-		maxName = 25
-	}
+
 	return colWidths, rowNames, maxName
 }
