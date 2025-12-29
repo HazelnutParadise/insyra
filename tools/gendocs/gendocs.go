@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"unicode"
@@ -201,16 +202,24 @@ func writeIndex(dir, repoFlag string) error {
 	return os.WriteFile(path, []byte(content), 0644)
 }
 
-// detectSiteURL tries to build a GitHub Pages URL from the repo flag or environment.
+// detectSiteURL tries to find an official site URL from DOCS_SITE, README, --repo, or GitHub repo
 func detectSiteURL(repoFlag string) string {
-	// allow explicit site override
+	// explicit override via env
 	if s := os.Getenv("DOCS_SITE"); s != "" {
 		return s
 	}
 
+	// Try reading README.md for a line containing a URL (e.g., "Official Website: https://...")
+	if data, err := os.ReadFile("README.md"); err == nil {
+		re := regexp.MustCompile(`https?://[^\s)]+`)
+		if m := re.FindString(string(data)); m != "" {
+			return m
+		}
+	}
+
+	// then try --repo or GITHUB_REPOSITORY to construct GitHub Pages URL
 	repo := ""
 	if repoFlag != "" {
-		// accept either https://github.com/owner/repo or owner/repo
 		repo = strings.TrimPrefix(repoFlag, "https://github.com/")
 		repo = strings.TrimPrefix(repo, "http://github.com/")
 	} else if r := os.Getenv("GITHUB_REPOSITORY"); r != "" {
@@ -241,34 +250,47 @@ func writeNavbar(dir, siteURL string) error {
 	return os.WriteFile(path, []byte(content), 0644)
 }
 
-// writeThemeCSS writes a small CSS file to give the site a deep navy theme.
+// writeThemeCSS writes a CSS file to use a light content background with a deep-navy sidebar.
 func writeThemeCSS(dir string) error {
-	css := `/* Deep navy theme overrides for Docsify */
+	css := `/* Deep navy sidebar with light content theme for Docsify */
 :root {
   --theme-color: #05386b;
-  --text-color: #e6eef8;
+  --text-color: #0f1720;
   --sidebar-bg: #022235;
-  --content-bg: #071428;
+  --content-bg: #f8fafc;
+  --content-card-bg: #ffffff;
+  --link-color: #0b69ff;
 }
 body {
-  background: linear-gradient(180deg, #071428, #021221);
+  background: var(--content-bg);
   color: var(--text-color);
 }
 .sidebar {
   background: var(--sidebar-bg) !important;
+  color: var(--text-color) !important;
 }
 .sidebar .sidebar-nav a {
-  color: var(--text-color) !important;
+  color: #e6eef8 !important;
 }
 .navbar, .app-name, .toolbar {
   background: linear-gradient(180deg, #032a45, #012034);
-  color: var(--text-color) !important;
+  color: #e6eef8 !important;
 }
 a {
-  color: #7ec8ff;
+  color: var(--link-color);
 }
 .markdown-section {
-  background: transparent !important;
+  background: var(--content-card-bg) !important;
+  color: var(--text-color) !important;
+  box-shadow: 0 1px 3px rgba(16,24,40,0.05);
+  border-radius: 6px;
+  padding: 1rem;
+}
+pre, code {
+  background: #0f1720;
+  color: #f1f5f9;
+  border-radius: 4px;
+  padding: 0.4rem;
 }
 `
 	path := filepath.Join(dir, "docs.css")
