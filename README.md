@@ -324,10 +324,6 @@ For a complete list of DataTable methods and features, please refer to the **[Da
 
 Provides **Syntactic Sugar** for **Insyra**. It is designed to simplify the usage of **Insyra** and make it more intuitive.
 
-### **[datafetch](/Docs/datafetch.md)**
-
-Allows you to fetch data easily. It currently supports fetching comments from stores on Google Maps.
-
 ### **[stats](/Docs/stats.md)**
 
 Provides statistical functions for data analysis, including skewness, kurtosis, and moment calculations.
@@ -344,9 +340,25 @@ Provides a wrapper around the powerful [github.com/go-echarts/go-echarts](https:
 
 A visualization package based on [github.com/gonum/plot](https://github.com/gonum/plot). Fast and no need for Chrome. Even supports function plot.
 
+### **[csvxl](/Docs/csvxl.md)**
+
+Work with Excel and CSV files. Such as convert CSV to Excel.
+
+### **[parquet](/Docs/parquet.md)**
+
+Provides read and write support for the Apache Parquet file format, deeply integrated with Insyra's `DataTable` and `DataList`. Supports streaming, column-level reading, and CCL filtering.
+
 ### **[mkt](/Docs/mkt.md)**
 
 Provides marketing-related data analysis functions, such as RFM analysis. No need to worry about how to calculate, one function does it all!
+
+### **[py](/Docs/py.md)**
+
+Execute Python code in Go without manually installing Python environment and dependencies. Allows passing variables between Go and Python.
+
+### **[datafetch](/Docs/datafetch.md)**
+
+Allows you to fetch data easily. It currently supports fetching comments from stores on Google Maps.
 
 ### **[lpgen](/Docs/lpgen.md)**
 
@@ -355,14 +367,6 @@ Provides a **super simple** and intuitive way to generate linear programming (LP
 ### **[lp](/Docs/lp.md)**
 
 Fully automatic linear programming (LP) solver using [GLPK](https://www.gnu.org/software/glpk/).
-
-### **[csvxl](/Docs/csvxl.md)**
-
-Work with Excel and CSV files. Such as convert CSV to Excel.
-
-### **[py](/Docs/py.md)**
-
-Execute Python code in Go without manually installing Python environment and dependencies. Allows passing variables between Go and Python.
 
 ## Advanced Usage
 
