@@ -2973,6 +2973,44 @@ rows, cols := dt.Size()
 fmt.Printf("Table has %d rows and %d columns\n", rows, cols)
 ```
 
+### NumRows
+
+Returns the number of rows in the DataTable.
+
+```go
+func (dt *DataTable) NumRows() int
+```
+
+**Returns:**
+
+- `int`: Number of rows
+
+**Example:**
+
+```go
+rows := dt.NumRows()
+fmt.Printf("Table has %d rows\n", rows)
+```
+
+### NumCols
+
+Returns the number of columns in the DataTable.
+
+```go
+func (dt *DataTable) NumCols() int
+```
+
+**Returns:**
+
+- `int`: Number of columns
+
+**Example:**
+
+```go
+cols := dt.NumCols()
+fmt.Printf("Table has %d columns\n", cols)
+```
+
 ### Mean
 
 Calculates the mean of all numeric values in the DataTable.

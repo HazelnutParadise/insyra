@@ -197,6 +197,8 @@ type IDataTable interface {
 
 	// Statistics
 	Size() (numRows int, numCols int)
+	NumRows() int
+	NumCols() int
 	Count(value any) int
 	Mean() any
 	Summary()

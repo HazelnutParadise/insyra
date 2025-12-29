@@ -1355,6 +1355,22 @@ func (dt *DataTable) Size() (numRows int, numCols int) {
 	return rows, cols
 }
 
+func (dt *DataTable) NumRows() int {
+	var numRows int
+	dt.AtomicDo(func(dt *DataTable) {
+		numRows = dt.getMaxColLength()
+	})
+	return numRows
+}
+
+func (dt *DataTable) NumCols() int {
+	var numCols int
+	dt.AtomicDo(func(dt *DataTable) {
+		numCols = len(dt.columns)
+	})
+	return numCols
+}
+
 // Mean returns the mean of the DataTable.
 func (dt *DataTable) Mean() any {
 	var result any
