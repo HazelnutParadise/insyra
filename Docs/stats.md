@@ -1,4 +1,4 @@
-# stats Package Documentation
+# [ stats ] Package
 
 This document describes all public APIs in the `stats` package, designed for AI/automated applications to directly understand each function, type, parameter, and return value.
 
