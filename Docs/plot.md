@@ -112,7 +112,7 @@ func SavePNG(chart Renderable, pngPath string, useOnlineServiceOnFail ...bool) e
 
 ### 1. Bar Chart
 
-![Bar Chart Example](./img/plot_bar_example.png)
+![Bar Chart Example](./img/plot/bar_example.png)
 
 #### Configuration
 
@@ -152,7 +152,7 @@ func CreateBarChart(config BarChartConfig, data ...insyra.IDataList) *charts.Bar
 
 ### 2. Line Chart
 
-![Line Chart Example](./img/plot_line_example.png)
+![Line Chart Example](./img/plot/line_example.png)
 
 #### Configuration
 
@@ -194,7 +194,7 @@ func CreateLineChart(config LineChartConfig, data ...insyra.IDataList) *charts.L
 
 ### 3. Scatter Chart
 
-![Scatter Chart Example](./img/plot_scatter_example.png)
+![Scatter Chart Example](./img/plot/scatter_example.png)
 
 #### Configuration
 
@@ -244,7 +244,7 @@ func CreateScatterChart(config ScatterChartConfig, data map[string][]ScatterPoin
 
 ### 4. Pie Chart
 
-![Pie Chart Example](./img/plot_pie_example.png)
+![Pie Chart Example](./img/plot/pie_example.png)
 
 #### Configuration
 
@@ -283,7 +283,7 @@ func CreatePieChart(config PieChartConfig, data ...PieItem) *charts.Pie
 
 ### 5. HeatMap
 
-![HeatMap Example](./img/plot_heatmap_example.png)
+![HeatMap Example](./img/plot/heatmap_example.png)
 
 #### Configuration
 
@@ -323,7 +323,7 @@ Helper functions:
 
 ### 6. Radar Chart
 
-![Radar Chart Example](./img/plot_radar_example.png)
+![Radar Chart Example](./img/plot/radar_example.png)
 
 #### Configuration
 
@@ -358,7 +358,7 @@ func CreateRadarChart(config RadarChartConfig, series []RadarSeries) *charts.Rad
 
 ### 7. Funnel Chart
 
-![Funnel Chart Example](./img/plot_funnel_example.png)
+![Funnel Chart Example](./img/plot/funnel_example.png)
 
 #### Configuration
 
@@ -387,7 +387,7 @@ func CreateFunnelChart(config FunnelChartConfig, data map[string]float64) *chart
 
 ### 8. Gauge Chart
 
-![Gauge Chart Example](./img/plot_gauge_example.png)
+![Gauge Chart Example](./img/plot/gauge_example.png)
 
 #### Configuration
 
@@ -415,7 +415,7 @@ func CreateGaugeChart(config GaugeChartConfig, value float64) *charts.Gauge
 
 ### 9. WordCloud
 
-![WordCloud Example](./img/plot_wordcloud_example.png)
+![WordCloud Example](./img/plot/wordcloud_example.png)
 
 #### Configuration
 
@@ -454,7 +454,7 @@ func CreateWordCloud(config WordCloudConfig, data insyra.IDataList) *charts.Word
 
 ### 10. Sankey Chart
 
-![Sankey Chart Example](./img/plot_sankey_example.png)
+![Sankey Chart Example](./img/plot/sankey_example.png)
 
 #### Configuration
 
@@ -489,7 +489,7 @@ func CreateSankeyChart(config SankeyChartConfig, links ...SankeyLink) *charts.Sa
 
 ### 11. BoxPlot
 
-![BoxPlot Example](./img/plot_boxplot_example.png)
+![BoxPlot Example](./img/plot/boxplot_example.png)
 
 #### Configuration
 
@@ -530,7 +530,7 @@ func CreateBoxPlot(config BoxPlotConfig, series ...BoxPlotSeries) *charts.BoxPlo
 
 ### 12. K-Line Chart
 
-![K-Line Chart Example](./img/plot_kline_example.png)
+![K-Line Chart Example](./img/plot/kline_example.png)
 
 #### Configuration
 
@@ -565,7 +565,7 @@ func CreateKlineChart(config KlineChartConfig, klinePoints ...KlinePoint) *chart
 
 ### 13. ThemeRiver Chart
 
-![ThemeRiver Chart Example](./img/plot_themeriver_example.png)
+![ThemeRiver Chart Example](./img/plot/themeriver_example.png)
 
 #### Configuration
 
