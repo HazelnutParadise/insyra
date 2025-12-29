@@ -12,6 +12,8 @@ Go 語言次世代資料分析庫。支援 **平行處理**、**資料視覺化*
 
 **官方網站: <https://insyra.hazelnut-paradise.com>**
 
+**說明文件: <https://hazelnutparadise.github.io/insyra/>**
+
 > [!NOTE]
 > 本專案正在快速迭代中，請為此專案加星並關注，以便隨時了解最新變化！
 
