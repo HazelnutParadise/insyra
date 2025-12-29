@@ -291,6 +291,8 @@ func main() {
 - 使用 `IF`、`AND`、`OR` 和 `CASE` 等函數實現條件邏輯
 - 執行數學運算和字串操作
 - 執行連鎖比較，如 `1 < A <= 10`，用於範圍檢查
+- 使用 `.` 運算符存取特定列 (例如 `A.0`)，並使用 `@` 引用所有欄位
+- 使用聚合函數，如 `SUM`、`AVG`、`COUNT`、`MAX` 和 `MIN`
 
 ```go
 // 根據 A 欄位的值分類資料
@@ -298,7 +300,10 @@ dt.AddColUsingCCL("category", "IF(A > 90, 'Excellent', IF(A > 70, 'Good', 'Avera
 
 // 像在 Excel 中一樣執行計算
 dt.AddColUsingCCL("total", "A + B + C")
-dt.AddColUsingCCL("average", "(A + B + C) / 3")
+dt.AddColUsingCCL("average", "AVG(A + B + C)")
+
+// 對列或欄位使用聚合函數
+dt.AddColUsingCCL("row_sum", "SUM(@.0)")
 
 // 使用連鎖比較進行範圍檢查 (在 Excel 中也可使用！)
 dt.AddColUsingCCL("in_range", "IF(10 <= A <= 20, 'Yes', 'No')")

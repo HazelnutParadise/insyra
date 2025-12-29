@@ -2,6 +2,7 @@ package insyra
 
 import (
 	"fmt"
+	"math"
 	"reflect"
 	"slices"
 	"sort"
@@ -114,6 +115,12 @@ func TestDataListFindFirst(t *testing.T) {
 	if index != 1 {
 		t.Errorf("Expected first index 1, got %v", index)
 	}
+
+	dl = NewDataList(1.0, math.NaN(), 2.0, math.NaN())
+	index = dl.FindFirst(math.NaN())
+	if index != 1 {
+		t.Errorf("Expected first index 1 for NaN, got %v", index)
+	}
 }
 
 // 測試 FindLast 函數
@@ -124,15 +131,29 @@ func TestDataListFindLast(t *testing.T) {
 	if index != 3 {
 		t.Errorf("Expected last index 3, got %v", index)
 	}
+
+	dl = NewDataList(1.0, math.NaN(), 2.0, math.NaN())
+	index = dl.FindLast(math.NaN())
+	if index != 3 {
+		t.Errorf("Expected last index 3 for NaN, got %v", index)
+	}
 }
 
-func TestDataListFinalAll(t *testing.T) {
+func TestDataListFindAll(t *testing.T) {
 	dl := NewDataList(1, 2, 3, 2, 2, 1)
 	expected := []int{1, 3, 4}
 	indexList := dl.FindAll(2)
 	sort.Ints(indexList)
 	if !slices.Equal(expected, indexList) {
 		t.Errorf("Expected %v, got %v", expected, indexList)
+	}
+
+	dl = NewDataList(1.0, math.NaN(), 2.0, math.NaN())
+	expected = []int{1, 3}
+	indexList = dl.FindAll(math.NaN())
+	sort.Ints(indexList)
+	if !slices.Equal(expected, indexList) {
+		t.Errorf("Expected %v for NaN, got %v", expected, indexList)
 	}
 }
 
@@ -216,11 +237,28 @@ func TestDataListDrop(t *testing.T) {
 }
 
 func TestDataListDropAll(t *testing.T) {
-	// TODO
+	dl := NewDataList(1, 2, 3, 2, 4)
+	dl.DropAll(2)
+	expected := []any{1, 3, 4}
+	if !reflect.DeepEqual(dl.Data(), expected) {
+		t.Errorf("Expected %v, got %v", expected, dl.Data())
+	}
+
+	dl = NewDataList(1.0, math.NaN(), 2.0, math.NaN(), 3.0)
+	dl.DropAll(math.NaN())
+	expected = []any{1.0, 2.0, 3.0}
+	if !reflect.DeepEqual(dl.Data(), expected) {
+		t.Errorf("Expected %v, got %v", expected, dl.Data())
+	}
 }
 
 func TestDataListDropIfContains(t *testing.T) {
-	// TODO
+	dl := NewDataList("apple", "banana", "cherry")
+	dl.DropIfContains("an")
+	expected := []any{"apple", "cherry"}
+	if !reflect.DeepEqual(dl.Data(), expected) {
+		t.Errorf("Expected %v, got %v", expected, dl.Data())
+	}
 }
 
 // 測試 Clear 函數
@@ -674,6 +712,12 @@ func TestDataListCount(t *testing.T) {
 
 	if count != 2 {
 		t.Errorf("Expected count 2, got %v", count)
+	}
+
+	dl = NewDataList(1.0, math.NaN(), 2.0, math.NaN())
+	count = dl.Count(math.NaN())
+	if count != 2 {
+		t.Errorf("Expected count 2 for NaN, got %v", count)
 	}
 }
 

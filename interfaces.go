@@ -12,6 +12,8 @@ type IDataList interface {
 	SetName(string) *DataList
 	Data() []any
 	Append(values ...any)
+	Concat(other IDataList) *DataList
+	AppendDataList(other IDataList) *DataList
 	Get(index int) any
 	Clone() *DataList
 	Count(value any) int
@@ -22,19 +24,24 @@ type IDataList interface {
 	FindLast(any) any
 	FindAll(any) []int
 	Filter(func(any) bool) *DataList
-	ReplaceFirst(any, any)
-	ReplaceLast(any, any)
-	ReplaceAll(any, any)
+	ReplaceFirst(any, any) *DataList
+	ReplaceLast(any, any) *DataList
+	ReplaceAll(any, any) *DataList
 	ReplaceOutliers(float64, float64) *DataList
 	Pop() any
 	Drop(index int) *DataList
 	DropAll(...any) *DataList
-	DropIfContains(any) *DataList
+	DropIfContains(string) *DataList
 	Clear() *DataList
 	ClearStrings() *DataList
 	ClearNumbers() *DataList
 	ClearNaNs() *DataList
+	ClearNils() *DataList
+	ClearNilsAndNaNs() *DataList
 	ClearOutliers(float64) *DataList
+	ReplaceNaNsWith(any) *DataList
+	ReplaceNilsWith(any) *DataList
+	ReplaceNaNsAndNilsWith(any) *DataList
 	Normalize() *DataList
 	Standardize() *DataList
 	FillNaNWithMean() *DataList
@@ -135,21 +142,23 @@ type IDataTable interface {
 	FindColsIfContainsAll(values ...any) []string
 	FindColsIfAnyElementContainsSubstring(substring string) []string
 	FindColsIfAllElementsContainSubstring(substring string) []string
-	DropColsByName(columnNames ...string)
-	DropColsByIndex(columnIndices ...string)
-	DropColsByNumber(columnIndices ...int)
-	DropColsContainStringElements()
-	DropColsContainNumbers()
-	DropColsContainNil()
-	DropColsContain(value ...any)
-	DropColsContainExcelNA()
-	DropRowsByIndex(rowIndices ...int)
-	DropRowsByName(rowNames ...string)
-	DropRowsContainStringElements()
-	DropRowsContainNumbers()
-	DropRowsContainNil()
-	DropRowsContain(value ...any)
-	DropRowsContainExcelNA()
+	DropColsByName(columnNames ...string) *DataTable
+	DropColsByIndex(columnIndices ...string) *DataTable
+	DropColsByNumber(columnIndices ...int) *DataTable
+	DropColsContainString() *DataTable
+	DropColsContainNumber() *DataTable
+	DropColsContainNil() *DataTable
+	DropColsContainNaN() *DataTable
+	DropColsContain(value ...any) *DataTable
+	DropColsContainExcelNA() *DataTable
+	DropRowsByIndex(rowIndices ...int) *DataTable
+	DropRowsByName(rowNames ...string) *DataTable
+	DropRowsContainString() *DataTable
+	DropRowsContainNumber() *DataTable
+	DropRowsContainNil() *DataTable
+	DropRowsContainNaN() *DataTable
+	DropRowsContain(value ...any) *DataTable
+	DropRowsContainExcelNA() *DataTable
 	Data(useNamesAsKeys ...bool) map[string][]any
 	// ToMap is the alias for Data().
 	// It returns a map[string][]any representation of the DataTable.
@@ -162,8 +171,15 @@ type IDataTable interface {
 	ShowTypes()
 	ShowRange(startEnd ...any)
 	ShowTypesRange(startEnd ...any)
-	GetRowNameByIndex(index int) string
-	SetRowNameByIndex(index int, name string)
+	// GetRowIndexByName returns the index of a row by its name.
+	// Returns -1 and false if the row name does not exist.
+	// Always check the boolean return value to distinguish between "name not found" and "last row",
+	// since -1 typically represents the last element in Insyra's Get methods.
+	GetRowIndexByName(name string) (int, bool)
+	// GetRowNameByIndex returns the name of a row at the given index.
+	// Returns empty string and false if no name is set for the row.
+	GetRowNameByIndex(index int) (string, bool)
+	SetRowNameByIndex(index int, name string) *DataTable
 	ChangeRowName(oldName, newName string) *DataTable
 	RowNamesToFirstCol() *DataTable
 	DropRowNames() *DataTable
@@ -244,7 +260,23 @@ type IDataTable interface {
 
 	ToSQL(db *gorm.DB, tableName string, options ...ToSQLOptions) error
 
+	Merge(other IDataTable, direction MergeDirection, mode MergeMode, on ...string) (*DataTable, error)
+
 	AddColUsingCCL(newColName, ccl string) *DataTable
+
+	// Replace
+	Replace(oldValue, newValue any) *DataTable
+	ReplaceNaNsWith(newValue any) *DataTable
+	ReplaceNilsWith(newValue any) *DataTable
+	ReplaceNaNsAndNilsWith(newValue any) *DataTable
+	ReplaceInRow(rowIndex int, oldValue, newValue any, mode ...int) *DataTable
+	ReplaceNaNsInRow(rowIndex int, newValue any, mode ...int) *DataTable
+	ReplaceNilsInRow(rowIndex int, newValue any, mode ...int) *DataTable
+	ReplaceNaNsAndNilsInRow(rowIndex int, newValue any, mode ...int) *DataTable
+	ReplaceInCol(colIndex string, oldValue, newValue any, mode ...int) *DataTable
+	ReplaceNaNsInCol(colIndex string, newValue any, mode ...int) *DataTable
+	ReplaceNilsInCol(colIndex string, newValue any, mode ...int) *DataTable
+	ReplaceNaNsAndNilsInCol(colIndex string, newValue any, mode ...int) *DataTable
 
 	sortColsByIndex()
 	regenerateColIndex()

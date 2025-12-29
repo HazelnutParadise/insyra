@@ -3,66 +3,96 @@
 package plot
 
 import (
+	"sort"
+
+	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/plot/internal"
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
 )
 
 // RadarChartConfig 定義雷達圖的配置
 type RadarChartConfig struct {
-	Title      string
-	Subtitle   string
+	Width           string   // Width of the chart (default "900px").
+	Height          string   // Height of the chart (default "500px").
+	BackgroundColor string   // Background color of the chart (default "white").
+	Theme           Theme    // Theme of the chart.
+	Title           string   // Title of the chart.
+	Subtitle        string   // Subtitle of the chart.
+	TitlePos        Position // Optional: Use const PositionXXX.
+	HideLegend      bool     // Optional: Whether to hide the legend.
+	LegendPos       Position // Optional: Use const PositionXXX.
+
 	Indicators []string           // Optional: Automatically generated if not provided.
 	MaxValues  map[string]float32 // Optional: Automatically generated if not provided.
-	Data       map[string]map[string]float32
 }
 
-// CreateRadarChart 生成並返回 *charts.Radar 對象
-func CreateRadarChart(config RadarChartConfig) *charts.Radar {
+// RadarSeries 是單一系列資料
+type RadarSeries struct {
+	Name   string
+	Values []float32 // 與 RadarDataset.Indicators 順序對齊
+	Color  string    // optional
+}
+
+// CreateRadarChart 使用 `RadarChartConfig`（包含 `Indicators` 與 `MaxValues`）及一或多個 `RadarSeries` 生成並返回 *charts.Radar 對象
+func CreateRadarChart(config RadarChartConfig, series []RadarSeries) *charts.Radar {
+	if len(series) == 0 {
+		insyra.LogWarning("plot", "CreateRadarChart", "No series data available for radar chart. Returning nil.")
+		return nil
+	}
 	radar := charts.NewRadar()
 
-	// 設置標題和副標題
-	radar.SetGlobalOptions(
-		charts.WithTitleOpts(opts.Title{
-			Title:    config.Title,
-			Subtitle: config.Subtitle,
-		}),
-		charts.WithLegendOpts(opts.Legend{
-			Show:   opts.Bool(true),
-			Bottom: "0%",
-		}),
-	)
+	internal.SetBaseChartGlobalOptions(radar, internal.BaseChartConfig{
+		Width:           config.Width,
+		Height:          config.Height,
+		BackgroundColor: config.BackgroundColor,
+		Theme:           string(config.Theme),
+		Title:           config.Title,
+		Subtitle:        config.Subtitle,
+		TitlePos:        string(config.TitlePos),
+		HideLegend:      config.HideLegend,
+		LegendPos:       string(config.LegendPos),
+	})
 
-	if config.Indicators == nil {
-		indicatorSet := make(map[string]struct{})
-
-		// 從所有城市中提取所有指標
-		for _, indicators := range config.Data {
-			for key := range indicators {
-				indicatorSet[key] = struct{}{}
+	// 指標順序來源：優先使用 config.Indicators；若未提供，則從 config.MaxValues 的 key 推斷
+	indicators := config.Indicators
+	if len(indicators) == 0 {
+		if len(config.MaxValues) > 0 {
+			indicators = make([]string, 0, len(config.MaxValues))
+			for k := range config.MaxValues {
+				indicators = append(indicators, k)
 			}
-		}
-
-		// 將 map 中的 keys 轉換為 slice
-		config.Indicators = make([]string, 0, len(indicatorSet))
-		for key := range indicatorSet {
-			config.Indicators = append(config.Indicators, key)
+			sort.Strings(indicators) // 保證穩定順序
+		} else {
+			insyra.LogFatal("plot", "CreateRadarChart", "Indicators must be provided in RadarChartConfig when passing series directly")
 		}
 	}
 
-	// 計算缺失的最大值
+	// 準備 MaxValues
 	if config.MaxValues == nil {
 		config.MaxValues = make(map[string]float32)
 	}
-	for _, indicator := range config.Indicators {
+	for i, indicator := range indicators {
 		if _, exists := config.MaxValues[indicator]; !exists {
-			config.MaxValues[indicator] = calculateMaxValue(config.Data, indicator)
+			config.MaxValues[indicator] = calculateMaxValueFromSeries(series, i)
+		}
+	}
+
+	// 檢查 MaxValues 是否包含不在 Indicators 中的 key，並記錄警告
+	indicatorSet := make(map[string]struct{}, len(indicators))
+	for _, ind := range indicators {
+		indicatorSet[ind] = struct{}{}
+	}
+	for k := range config.MaxValues {
+		if _, ok := indicatorSet[k]; !ok {
+			insyra.LogWarning("plot", "CreateRadarChart", "MaxValues contains key %s not present in Indicators; ignoring", k)
 		}
 	}
 
 	// 生成指標信息
-	indicators := make([]*opts.Indicator, 0)
-	for _, indicator := range config.Indicators {
-		indicators = append(indicators, &opts.Indicator{
+	optsIndicators := make([]*opts.Indicator, 0, len(indicators))
+	for _, indicator := range indicators {
+		optsIndicators = append(optsIndicators, &opts.Indicator{
 			Name: indicator,
 			Max:  config.MaxValues[indicator],
 		})
@@ -71,36 +101,36 @@ func CreateRadarChart(config RadarChartConfig) *charts.Radar {
 	// 設置雷達圖的指標
 	radar.SetGlobalOptions(
 		charts.WithRadarComponentOpts(opts.RadarComponent{
-			Indicator: indicators,
+			Indicator: optsIndicators,
 		}),
 	)
 
-	for city, indicatorData := range config.Data {
-		values := make([]float32, len(config.Indicators))
-		for i, indicator := range config.Indicators {
-			value, ok := indicatorData[indicator]
-			if ok {
-				values[i] = value
+	for _, s := range series {
+		// 確保長度一致，若不足則補 0
+		values := make([]float32, len(indicators))
+		for i := range indicators {
+			if i < len(s.Values) {
+				values[i] = s.Values[i]
 			} else {
-				values[i] = 0 // 默認值
+				values[i] = 0
 			}
 		}
-
-		// 使用指定顏色創建數據系列
-		radar.AddSeries(city, []opts.RadarData{{Value: values, Name: city}})
+		radar.AddSeries(s.Name, []opts.RadarData{{Value: values, Name: s.Name}})
 	}
 
 	return radar
 }
 
-// calculateMaxValue 計算指標的最大值
-func calculateMaxValue(Data map[string]map[string]float32, indicator string) float32 {
+// calculateMaxValueFromSeries 計算指標（由 index 指定）在多個 RadarSeries 中的最大值，用於不使用 RadarDataset 的情況
+func calculateMaxValueFromSeries(series []RadarSeries, idx int) float32 {
+	if idx < 0 {
+		return 0
+	}
 	var maxValue float32
-	for _, data := range Data {
-		if value, ok := data[indicator]; ok && value > maxValue {
-			maxValue = value
+	for _, s := range series {
+		if idx < len(s.Values) && s.Values[idx] > maxValue {
+			maxValue = s.Values[idx]
 		}
 	}
-	// 增加一些冗餘，防止最大值過於貼近數據
 	return maxValue * 1.1
 }

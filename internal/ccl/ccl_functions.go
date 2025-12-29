@@ -6,8 +6,10 @@ import (
 )
 
 type Func = func(args ...any) (any, error)
+type AggFunc = func(args ...[]any) (any, error)
 
 var defaultFunctions = map[string]Func{}
+var aggregateFunctions = map[string]AggFunc{}
 var funcCallDepth int = 0
 var maxFuncCallDepth int = 20 // 合理的函數調用深度上限
 
@@ -15,8 +17,12 @@ func ResetFuncCallDepth() {
 	funcCallDepth = 0
 }
 
-func RegisterFunction(name string, fn Func) {
+func registerFunction(name string, fn Func) {
 	defaultFunctions[strings.ToUpper(name)] = fn
+}
+
+func registerAggregateFunction(name string, fn AggFunc) {
+	aggregateFunctions[strings.ToUpper(name)] = fn
 }
 
 func callFunction(name string, args []any) (any, error) {
@@ -43,6 +49,15 @@ func callFunction(name string, args []any) (any, error) {
 			fmt.Printf("函數呼叫錯誤: %v\n", r)
 		}
 	}()
+
+	return fn(args...)
+}
+
+func callAggregateFunction(name string, args [][]any) (any, error) {
+	fn, ok := aggregateFunctions[strings.ToUpper(name)]
+	if !ok {
+		return nil, fmt.Errorf("undefined aggregate function: %s", name)
+	}
 
 	return fn(args...)
 }

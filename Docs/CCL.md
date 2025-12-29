@@ -76,23 +76,19 @@ Executes CCL statements that can modify existing columns or create new ones. Sup
 - NEW function for creating columns (`NEW('colName') = expression`)
 - Multiple statements separated by `;` or newline
 
+#### Sequential Execution and Data Consistency
+
+When executing multiple statements in a single `ExecuteCCL` call, statements are executed **sequentially**. Each statement sees the results of the previous statements.
+
 ```go
-// Modify existing column
-dt.ExecuteCCL("A = A * 2")
-
-// Create new column
-dt.ExecuteCCL("NEW('total') = A + B + C")
-
-// Multiple statements
 dt.ExecuteCCL(`
-    A = A * 10
-    B = B + 5
-    NEW('sum') = A + B
+    NEW('A_plus_1') = A + 1
+    NEW('TotalSum') = SUM(@) // This SUM will include the newly created 'A_plus_1'
 `)
-
-// Or use semicolons
-dt.ExecuteCCL("A = A + 1; NEW('doubled') = A * 2")
 ```
+
+**Data Snapshotting:**
+To ensure consistency during the evaluation of a *single* statement, CCL uses a data snapshot. For example, in `NEW('B') = SUM(@)`, the `SUM(@)` calculation will not be affected by the values being written into `B` as it is being generated.
 
 ## Basic Syntax
 
@@ -181,6 +177,13 @@ CCL supports the following data types:
    "false"             // Boolean false
    ```
 
+4. **Nil/Null** - `nil` or `null`
+
+   ```
+   "nil"               // Nil value
+   "null"              // Alias for nil
+   ```
+
 ## Operators
 
 ### Arithmetic Operators
@@ -190,14 +193,39 @@ CCL supports the following data types:
 - `*` : Multiplication
 - `/` : Division
 - `^` : Exponentiation
+- `.` : Row access (e.g., `A.0`, `['Sales'].10`)
+- `:` : Range operator (e.g., `A:C` for column range, `1:5` for row range)
+- `#` : Current row index (0-based)
 
 ```
-"A + B"     // Add column A and column B
-"A - B"     // Subtract column B from column A
-"A * B"     // Multiply column A by column B
-"A / B"     // Divide column A by column B
-"A ^ 2"     // Square the values in column A
+"A + B"         // Add column A and column B
+"A - B"         // Subtract column B from column A
+"A * B"         // Multiply column A by column B
+"A / B"         // Divide column A by column B
+"A ^ 2"         // Square the values in column A
+"A.0"           // Get the value of column A at the first row (index 0)
+"A.B"           // Get the value of column A at the row index specified by column B
+"A.#"           // Get the value of column A at the current row (same as just "A")
+"SUM(@.#)"      // Sum of all columns in the current row (Row Sum)
+"SUM(A:C)"      // Sum of columns A, B, and C
+"SUM([A]:[C])"  // Sum of columns A to C (explicit index syntax)
+"SUM(['Start']:['End'])" // Sum of columns from 'Start' to 'End'
+"A.(1:5)"       // Get values of column A from row 1 to 5 (returns a slice)
+"A.('Row1':'Row5')" // Get values of column A from row named 'Row1' to 'Row5'
 ```
+
+> **Note on Bounds Checking:**
+> Both the row access operator (`.`) and the range operator (`:`) perform strict bounds checking. If an index is out of range (e.g., `A.100` when there are only 10 rows, or `A:Z` when there are only 3 columns), CCL will throw an error. Negative indices are not supported.
+
+### Range Expansion in Aggregate Functions
+
+When a range (column range or row range) is used inside an aggregate function (like `SUM`, `AVG`, `MIN`, `MAX`), it is automatically expanded into a flat list of values.
+
+- `SUM(A:C)`: Sums all values in columns A, B, and C.
+- `SUM(@.0:5)`: Sums all values in rows 0 through 5 across all columns.
+- `AVG(A.(0:10))`: Averages the first 11 values of column A.
+
+> **Note:** Raw row ranges like `SUM(0:5)` are not supported for data access. You must explicitly specify the target using the row access operator (e.g., `@.0:5` or `A.0:5`).
 
 ### Comparison Operators
 
@@ -213,7 +241,14 @@ CCL supports the following data types:
 "A < 10"     // Whether values in column A are less than 10
 "A == B"     // Whether values in column A are equal to those in column B
 "A != B"     // Whether values in column A are not equal to those in column B
+"A == nil"   // Check if column A is nil
 ```
+
+> **Note on Nil/Null:**
+>
+> - `== nil` or `== null` can be used to check for missing values.
+> - In arithmetic operations, `nil` is treated as `0`.
+> - In logical operations, `nil` is treated as `false`.
 
 ### Logical Operators
 
@@ -235,6 +270,128 @@ CCL supports the following data types:
 "A & '-' & B"    // Concatenate with separator (e.g., "Hello-World")
 "A & B & C"      // Chain multiple concatenations
 ```
+
+## Type Coercion and Comparison Behavior
+
+CCL uses dynamic typing and performs automatic type coercion to handle operations between different data types. Understanding these behaviors is crucial for writing correct CCL expressions.
+
+### Numeric Comparison and Arithmetic
+
+When performing arithmetic operations or comparisons, CCL attempts to convert operands to numbers:
+
+```go
+// These are equivalent after type coercion
+"123" == 123        // true (string "123" is converted to number 123)
+"45.5" > 40         // true (string "45.5" is converted to number 45.5)
+"100" + 50          // 150 (string "100" is converted to number 100)
+```
+
+**Important Notes:**
+
+- If both operands can be converted to numbers, numeric comparison is used
+- String-to-number conversion follows standard parsing rules
+- Non-numeric strings cannot be used in arithmetic or numeric comparisons and will result in an error
+
+```go
+// These will cause errors
+"abc" + 10          // Error: cannot convert "abc" to number
+"hello" > 5         // Error: cannot convert "hello" to number
+```
+
+### String Concatenation
+
+The `&` operator always performs string concatenation by converting all operands to strings:
+
+```go
+"Hello" & " " & "World"     // "Hello World"
+"Price: " & 123             // "Price: 123" (number converted to string)
+"Value: " & 45.67           // "Value: 45.67"
+```
+
+### Handling `nil` Values
+
+CCL has specific rules for handling `nil` values in different operations:
+
+#### Equality and Inequality
+
+```go
+nil == nil          // true (both are nil)
+nil == 0            // false (nil is not equal to 0)
+nil == ""           // false (nil is not equal to empty string)
+nil != 123          // true (nil is not equal to any non-nil value)
+```
+
+#### Comparison Operations
+
+```go
+nil > 10            // false (nil cannot be compared with numbers)
+nil < 5             // false
+nil >= 0            // false
+nil <= 100          // false
+```
+
+**Rule:** `nil` with any value in size comparison (`>`, `<`, `>=`, `<=`) always returns `false`.
+
+#### Arithmetic Operations
+
+```go
+nil + 10            // 10 (nil is treated as 0)
+5 - nil             // 5 (nil is treated as 0)
+nil * 3             // 0 (nil is treated as 0)
+10 / nil            // Error: division by zero (nil is treated as 0)
+```
+
+**Rule:** In arithmetic operations, `nil` is treated as `0`.
+
+#### String Concatenation with `nil`
+
+```go
+"Hello" & nil       // "Hello<nil>" (nil is converted to string "<nil>")
+nil & " World"      // "<nil> World"
+```
+
+### Boolean Operations
+
+Logical operators require boolean operands:
+
+```go
+true && false       // false
+true || false       // true
+(A > 10) && (B < 20)    // Evaluate both conditions
+
+// These will cause errors
+"yes" && true       // Error: "yes" is not a boolean
+1 && 0              // Error: numbers are not booleans
+```
+
+### Type Coercion Summary
+
+| Operation | Left Type | Right Type | Behavior |
+|-----------|-----------|------------|----------|
+| `+`, `-`, `*`, `/`, `^` | Number/String | Number/String | Convert both to numbers, then calculate |
+| `>`, `<`, `>=`, `<=` | Number/String | Number/String | Convert both to numbers, then compare |
+| `==`, `!=` | Number/String | Number/String | Convert both to numbers if possible, then compare |
+| `==`, `!=` | nil | any | Special nil handling (see above) |
+| `&` | any | any | Convert both to strings, then concatenate |
+| `&&`, `\|\|` | Boolean | Boolean | Must be boolean, no coercion |
+
+### Best Practices for Type Safety
+
+1. **Be explicit with types**: When dealing with mixed types, consider using conversion functions (if available) to make your intent clear.
+
+2. **Handle nil values carefully**: Always consider how `nil` values might affect your calculations:
+
+   ```go
+   // Good: Handle nil explicitly
+   "IF(A == nil, 0, A) + B"
+   
+   // Risky: Relies on automatic nil-to-zero conversion
+   "A + B"  // What if A is nil?
+   ```
+
+3. **Avoid mixing types unnecessarily**: While CCL supports type coercion, it's clearer to work with consistent types when possible.
+
+4. **Test edge cases**: Test your CCL expressions with various input types, including `nil`, to ensure they behave as expected.
 
 ## Column References
 
@@ -300,6 +457,48 @@ dt.AddColUsingCCL("mixed", "[A] * 2 + ['cost']")
 dt.AddColUsingCCL("calc", "A + [B] + ['total']")
 ```
 
+## Row Access and All-Column Reference
+
+CCL supports accessing specific rows and referencing all columns in a row.
+
+### Row Access Operator `.`
+
+The `.` operator allows you to access a specific row of a column. The left side is a column reference, and the right side is a row index (number) or a row name (string).
+
+```
+"A.0"                // Value of column A at the first row
+"['Sales'].10"       // Value of column "Sales" at the 11th row
+"B.'Jack'"           // Value of column B at the row named "Jack"
+```
+
+You can also use another column as the row index:
+
+```
+"A.B"                // Value of column A at the row index specified by the value in column B
+```
+
+### All-Column Reference `@`
+
+The `@` symbol represents all columns in the current row. It is typically used with the row access operator to retrieve an entire row of data.
+
+```
+"@.0"                // All columns at the first row (returns a slice)
+"@.'Jack'"           // All columns at the row named "Jack"
+```
+
+When used in `NEW()` or assignment, `@.n` can be used to copy an entire row into a new column or modify an existing one.
+
+#### Total Table Reference
+
+When `@` is used as an argument to an **Aggregate Function** (like `SUM`, `AVG`, etc.), it represents **all numeric values in the entire table**.
+
+```
+"SUM(@)"             // Sum of all numeric values in the entire table
+"COUNT(@)"           // Count of all non-nil cells in the entire table
+```
+
+> **Performance Note:** Expressions like `A.0` or `@.0` are "row-independent" (they don't change based on the current row being evaluated). CCL optimizes these by evaluating them only once per execution.
+
 ## Functions
 
 ### IF Conditional Function
@@ -345,6 +544,34 @@ Example:
 // Concatenates the value in column A, a hyphen, and the value in column B
 ```
 
+### ISNA Missing Value Check Function
+
+```
+"ISNA(value)"
+```
+
+Example:
+
+```
+"IF(ISNA(A), 0, A)"  
+// Returns 0 if the value in column A is a numeric NaN or the string "#N/A", otherwise returns the value in column A
+```
+
+> **Note:** `ISNA` handles numeric `NaN` and the string `"#N/A"`. It does **not** return true for `nil` values.
+
+### IFNA Function
+
+```
+"IFNA(value, valueIfNA)"
+```
+
+Example:
+
+```
+"IFNA(A, 0)"  
+// Returns 0 if the value in column A is NaN or "#N/A", otherwise returns the value in column A
+```
+
 ### CASE Multiple Condition Function
 
 ```
@@ -356,6 +583,91 @@ Example:
 ```
 "CASE(A > 90, 'A', A > 80, 'B', A > 70, 'C', 'F')"  
 // Returns 'A' if A > 90, 'B' if A > 80, 'C' if A > 70, otherwise returns 'F'
+```
+
+## Aggregate Functions
+
+Aggregate functions perform calculations on a set of values (a column, a row, or an expression) and return a single value. This value is then "broadcasted" to all rows in the resulting column (unless in row-wise mode).
+
+**Important Note on `nil` values:** All aggregate functions **automatically ignore `nil` values**. For example, `AVG` only divides the sum by the number of non-nil elements.
+
+### SUM
+
+Calculates the sum of all numeric values in the input.
+
+```
+"SUM(A)"             // Sum of all values in column A
+"SUM(A, B)"          // Sum of all values in columns A and B
+"SUM(@.0)"           // Sum of all values in the first row
+"SUM(A + B)"         // Sum of (A + B) for all rows
+"SUM(A.0, B.1, 10)"  // Sum of specific values and constants
+"SUM(@.#)"           // Sum of all columns in the current row (Row Sum)
+"SUM(@)"             // Sum of all numeric values in the entire table (Total Sum)
+```
+
+### COUNT
+
+Calculates the count of non-nil (non-empty) values in the input.
+
+```
+"COUNT(A)"           // Count of non-nil values in column A
+"COUNT(A, B)"        // Count of non-nil values in columns A and B
+"COUNT(@.#)"         // Count of non-nil values in the current row
+"COUNT(@)"           // Count of all non-nil values in the entire table
+```
+
+### MAX
+
+Calculates the maximum value among all numeric values in the input.
+
+```
+"MAX(A)"             // Maximum value in column A
+"MAX(A, B)"          // Maximum value in columns A and B
+"MAX(@.#)"           // Maximum value in the current row
+"MAX(@)"             // Maximum value in the entire table
+```
+
+### MIN
+
+Calculates the minimum value among all numeric values in the input.
+
+```
+"MIN(A)"             // Minimum value in column A
+"MIN(A, B)"          // Minimum value in columns A and B
+"MIN(@.#)"           // Minimum value in the current row
+"MIN(@)"             // Minimum value in the entire tableW
+```
+
+## Row-wise Aggregation
+
+By default, aggregate functions calculate a single value for the entire table (or row/expression) and broadcast it to all rows. However, if you use the `#` (current row index) operator within the aggregate function's arguments, the function will switch to **row-wise mode**.
+
+In row-wise mode, the aggregate function is evaluated for each row independently.
+
+### Row Sum Example
+
+To calculate the sum of all columns for each row:
+
+```
+"NEW('row_total') = SUM(@.#)"
+```
+
+This is equivalent to manually adding all columns: `A + B + C + ...`.
+
+### Row Average Example
+
+To calculate the average of all columns for each row:
+
+```
+"NEW('row_avg') = AVG(@.#)"
+```
+
+### Row Count Example
+
+To count non-nil values in each row:
+
+```
+"NEW('row_count') = COUNT(@.#)"
 ```
 
 ## Conditional Expressions
@@ -464,6 +776,15 @@ dt.ExecuteCCL(`
     NEW('tax') = ['revenue'] * 0.1
     NEW('total') = ['revenue'] + ['tax']
 `)
+
+// Copy the first row of data to a new column
+dt.ExecuteCCL("NEW('FirstRowData') = @.0")
+
+// Access a specific row's value
+dt.ExecuteCCL("NEW('BaseValue') = A.0")
+
+// Use row names for access
+dt.ExecuteCCL("NEW('JackScore') = ['Score'].'Jack'")
 
 // Modify existing columns and create new ones
 dt.ExecuteCCL(`

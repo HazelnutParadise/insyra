@@ -4,14 +4,16 @@ package plot
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 
 	"github.com/HazelnutParadise/insyra"
 	"github.com/go-echarts/go-echarts/v2/charts"
-	"github.com/go-echarts/go-echarts/v2/opts"
 	"github.com/go-echarts/snapshot-chromedp/render"
+	"github.com/google/uuid"
 )
 
 // Renderer
@@ -23,7 +25,7 @@ type Renderable interface {
 }
 
 // SaveHTML 將圖表渲染並保存為 HTML 文件
-func SaveHTML(chart Renderable, path string, animation ...bool) {
+func SaveHTML(chart Renderable, path string, animation ...bool) error {
 	if len(animation) > 0 && !animation[0] {
 		disableAnimation(chart)
 	} else {
@@ -33,27 +35,53 @@ func SaveHTML(chart Renderable, path string, animation ...bool) {
 	// 創建輸出文件
 	f, err := os.Create(path)
 	if err != nil {
-		insyra.LogFatal("plot", "SaveHTML", "failed to create file %s: %v", path, err)
+		return fmt.Errorf("failed to create file %s: %w", path, err)
 	}
 	defer func() { _ = f.Close() }()
 
 	// 渲染圖表到指定文件
 	if err := chart.Render(f); err != nil {
-		insyra.LogFatal("plot", "SaveHTML", "failed to render chart: %v", err)
+		return fmt.Errorf("failed to render chart: %w", err)
 	}
 	insyra.LogInfo("plot", "SaveHTML", "successfully saved HTML file in %s.", path)
+	return nil
 }
 
-// SavePNG 將圖表渲染為 PNG 文件，使用 snapshot-chromedp
-func SavePNG(chart Renderable, pngPath string) {
+// SavePNG render chart and save as PNG file using local Chrome or HazelnutParadise online service
+func SavePNG(chart Renderable, pngPath string, useOnlineServiceOnFail ...bool) error {
+	if len(useOnlineServiceOnFail) > 1 {
+		return fmt.Errorf("invalid number of arguments for useOnlineServiceOnFail; expected at most 1")
+	}
+
+	doesUseOnlineServiceOnFail := true
+
+	if len(useOnlineServiceOnFail) == 1 && !useOnlineServiceOnFail[0] {
+		doesUseOnlineServiceOnFail = false
+	}
+
 	disableAnimation(chart)
-	setBackgroundToWhite(chart)
 
 	chartContentBytes := chart.RenderContent()
 
 	useOnlineService := false
-	err := render.MakeChartSnapshot(chartContentBytes, pngPath)
+	uuid := uuid.New().String()
+	tempDir := os.TempDir()
+	snapshotConfig := render.NewSnapshotConfig(chartContentBytes, pngPath)
+	snapshotConfig.Quality = 2
+	// Use a temp directory (not a filename) for HTML assets to avoid incorrect path joins on Windows.
+	snapshotConfig.HtmlPath = filepath.Join(tempDir, uuid+"_temp")
+	// Ensure the temp directory exists so snapshotter can write files into it.
+	if mkerr := os.MkdirAll(snapshotConfig.HtmlPath, 0700); mkerr != nil {
+		return fmt.Errorf("failed to create temp html dir %s: %w", snapshotConfig.HtmlPath, mkerr)
+	}
+	// Ensure temp directory is removed when done (safe even if MakeSnapshot cleans up already).
+	defer func() { _ = os.RemoveAll(snapshotConfig.HtmlPath) }()
+
+	err := render.MakeSnapshot(snapshotConfig)
 	if err != nil {
+		if !doesUseOnlineServiceOnFail {
+			return fmt.Errorf("failed to render chart to PNG: %w", err)
+		}
 		insyra.LogWarning("plot", "SavePNG", "failed to render chart to PNG: %v, trying to use HazelnutParadise online service...", err)
 		useOnlineService = true
 	}
@@ -66,7 +94,7 @@ func SavePNG(chart Renderable, pngPath string) {
 			bytes.NewReader(chartContentBytes),
 		)
 		if err != nil {
-			insyra.LogFatal("plot", "SavePNG", "failed to create HTTP request: %v", err)
+			return fmt.Errorf("failed to create HTTP request: %w", err)
 		}
 		req.Header.Set("Content-Type", "application/octet-stream")
 		req.Header.Set("Accept", "image/png") // 指定接收 PNG 格式
@@ -74,28 +102,29 @@ func SavePNG(chart Renderable, pngPath string) {
 		client := &http.Client{}
 		resp, err := client.Do(req)
 		if err != nil {
-			insyra.LogFatal("plot", "SavePNG", "failed to send HTTP request: %v", err)
+			return fmt.Errorf("failed to send HTTP request: %w", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
-			insyra.LogFatal("plot", "SavePNG", "online service returned non-OK status: %s", resp.Status)
+			return fmt.Errorf("online service returned non-OK status: %s", resp.Status)
 		}
 		insyra.LogInfo("plot", "SavePNG", "successfully received PNG response from HazelnutParadise online service.")
 		// 將響應的 PNG 數據寫入文件
 		outFile, err := os.Create(pngPath)
 		if err != nil {
-			insyra.LogFatal("plot", "SavePNG", "failed to create PNG file: %v", err)
+			return fmt.Errorf("failed to create PNG file: %w", err)
 		}
 		defer func() { _ = outFile.Close() }()
 
 		_, err = io.Copy(outFile, resp.Body)
 		if err != nil {
-			insyra.LogFatal("plot", "SavePNG", "failed to save PNG file: %v", err)
+			return fmt.Errorf("failed to save PNG file: %w", err)
 		}
 	}
 
 	insyra.LogInfo("plot", "SavePNG", "successfully saved PNG file in %s.", pngPath)
+	return nil
 }
 
 func disableAnimation(chart Renderable) {
@@ -130,7 +159,7 @@ func disableAnimation(chart Renderable) {
 	} else if sankeyChart, ok := chart.(*charts.Sankey); ok {
 		sankeyChart.SetGlobalOptions(charts.WithAnimation(false)) // 關閉動畫
 	} else {
-		insyra.LogFatal("plot", "SavePNG", "unsupported chart type. Using default animation settings.")
+		insyra.LogWarning("plot", "SavePNG", "unsupported chart type. Using default animation settings.")
 	}
 }
 
@@ -166,42 +195,6 @@ func enableAnimation(chart Renderable) {
 	} else if sankeyChart, ok := chart.(*charts.Sankey); ok {
 		sankeyChart.SetGlobalOptions(charts.WithAnimation(true)) // 開啟動畫
 	} else {
-		insyra.LogFatal("plot", "SavePNG", "unsupported chart type. Using default animation settings.")
-	}
-}
-
-func setBackgroundToWhite(chart Renderable) {
-	if barChart, ok := chart.(*charts.Bar); ok {
-		barChart.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
-	} else if lineChart, ok := chart.(*charts.Line); ok {
-		lineChart.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
-	} else if pieChart, ok := chart.(*charts.Pie); ok {
-		pieChart.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
-	} else if scatterChart, ok := chart.(*charts.Scatter); ok {
-		scatterChart.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
-	} else if heatMap, ok := chart.(*charts.HeatMap); ok {
-		heatMap.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
-	} else if mapChart, ok := chart.(*charts.Map); ok {
-		mapChart.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
-	} else if radarChart, ok := chart.(*charts.Radar); ok {
-		radarChart.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
-	} else if funnelChart, ok := chart.(*charts.Funnel); ok {
-		funnelChart.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
-	} else if liquidChart, ok := chart.(*charts.Liquid); ok {
-		liquidChart.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
-	} else if wordCloudChart, ok := chart.(*charts.WordCloud); ok {
-		wordCloudChart.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
-	} else if boxPlot, ok := chart.(*charts.BoxPlot); ok {
-		boxPlot.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
-	} else if kline, ok := chart.(*charts.Kline); ok {
-		kline.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
-	} else if gauge, ok := chart.(*charts.Gauge); ok {
-		gauge.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
-	} else if themeRiverChart, ok := chart.(*charts.ThemeRiver); ok {
-		themeRiverChart.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
-	} else if sankeyChart, ok := chart.(*charts.Sankey); ok {
-		sankeyChart.SetGlobalOptions(charts.WithInitializationOpts(opts.Initialization{BackgroundColor: "#FFFFFF"}))
-	} else {
-		insyra.LogFatal("plot", "SavePNG", "unsupported chart type. Using default background color.")
+		insyra.LogWarning("plot", "SavePNG", "unsupported chart type. Using default animation settings.")
 	}
 }
