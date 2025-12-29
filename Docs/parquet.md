@@ -127,19 +127,19 @@ func main() {
 package main
 
 import (
-    "github.com/HazelnutParadise/insyra"
-    "github.com/HazelnutParadise/insyra/parquet"
+ "github.com/HazelnutParadise/insyra/isr"
+ "github.com/HazelnutParadise/insyra/parquet"
 )
 
 func main() {
-    dt := isr.DT.Of(
+    dt := isr.DT.Of(isr.DLs{
         isr.DL.Of(1, 2, 3).SetName("ID"),
         isr.DL.Of("A", "B", "C").SetName("Name"),
-    )
+    })
 
     err := parquet.Write(dt, "output.parquet")
     if err != nil {
-        panic(err)
+     panic(err)
     }
 }
 ```
