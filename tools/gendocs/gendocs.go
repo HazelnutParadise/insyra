@@ -8,20 +8,34 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"unicode"
 )
 
 var (
-	dirFlag    = flag.String("dir", "docs", "docs directory to scan")
-	outputFlag = flag.String("output", "docs/_sidebar.md", "output _sidebar.md path")
-	repoFlag   = flag.String("repo", "", "repo url to set in docs index (overrides GITHUB_REPOSITORY env)")
-)
+	dirFlag    = flag.String("dir", "", "docs directory to scan (required)")
+	outputFlag = flag.String("output", "", "output _sidebar.md path (required)")
+	repoFlag   = flag.String("repo", "", "repo url to set in docs index (required)")
+}
 
 func main() {
 	flag.Parse()
+
+	// Required flags — fail fast if any are missing
+	if *dirFlag == "" {
+		fmt.Fprintln(os.Stderr, "ERROR: --dir is required")
+		os.Exit(1)
+	}
+	if *outputFlag == "" {
+		fmt.Fprintln(os.Stderr, "ERROR: --output is required")
+		os.Exit(1)
+	}
+	if *repoFlag == "" {
+		fmt.Fprintln(os.Stderr, "ERROR: --repo is required")
+		os.Exit(1)
+	}
+
 	entries := map[string][]string{}
 	err := filepath.WalkDir(*dirFlag, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -138,7 +152,7 @@ func main() {
 	fmt.Fprintf(os.Stderr, "generated %s\n", filepath.Join(*dirFlag, "index.html"))
 
 	// Generate a navbar with an "Official site" link and a theme CSS with deep-blue colors
-	siteURL := detectSiteURL(*repoFlag)
+	siteURL := detectSiteURL(*dirFlag, *repoFlag)
 	if err := writeNavbar(*dirFlag, siteURL); err != nil {
 		fmt.Fprintf(os.Stderr, "generate navbar error: %v\n", err)
 		os.Exit(1)
@@ -202,39 +216,14 @@ func writeIndex(dir, repoFlag string) error {
 	return os.WriteFile(path, []byte(content), 0644)
 }
 
-// detectSiteURL tries to find an official site URL from DOCS_SITE, README, --repo, or GitHub repo
-func detectSiteURL(repoFlag string) string {
-	// explicit override via env
-	if s := os.Getenv("DOCS_SITE"); s != "" {
+// detectSiteURL tries to find the official website URL from a docs config, OFFICIAL_SITE env, README, or repo
+func detectSiteURL(dir, repoFlag string) string {
+	// OFFICIAL_SITE must be set in the deployment workflow. No fallbacks allowed — fail fast if missing.
+	if s := os.Getenv("OFFICIAL_SITE"); s != "" {
 		return s
 	}
-
-	// Try reading README.md for a line containing a URL (e.g., "Official Website: https://...")
-	if data, err := os.ReadFile("README.md"); err == nil {
-		re := regexp.MustCompile(`https?://[^\s)]+`)
-		if m := re.FindString(string(data)); m != "" {
-			return m
-		}
-	}
-
-	// then try --repo or GITHUB_REPOSITORY to construct GitHub Pages URL
-	repo := ""
-	if repoFlag != "" {
-		repo = strings.TrimPrefix(repoFlag, "https://github.com/")
-		repo = strings.TrimPrefix(repo, "http://github.com/")
-	} else if r := os.Getenv("GITHUB_REPOSITORY"); r != "" {
-		repo = r
-	}
-
-	if repo == "" {
-		return ""
-	}
-	parts := strings.Split(repo, "/")
-	if len(parts) >= 2 {
-		owner := parts[0]
-		repoName := parts[1]
-		return fmt.Sprintf("https://%s.github.io/%s/", owner, repoName)
-	}
+	fmt.Fprintln(os.Stderr, "ERROR: OFFICIAL_SITE environment variable is required. Set it in your deploy workflow job as OFFICIAL_SITE: 'https://example.com'")
+	os.Exit(1)
 	return ""
 }
 
@@ -242,7 +231,7 @@ func detectSiteURL(repoFlag string) string {
 func writeNavbar(dir, siteURL string) error {
 	var content string
 	if siteURL != "" {
-		content = fmt.Sprintf("[Home](README.md) | [Official site](%s)\n", siteURL)
+		content = fmt.Sprintf("[Home](README.md) • [Official Website](%s)\n", siteURL)
 	} else {
 		content = "[Home](README.md)\n"
 	}
