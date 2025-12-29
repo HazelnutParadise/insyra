@@ -12,8 +12,6 @@ A next-generation data analysis library for Golang. Supports **parallel processi
 
 **Official Website: <https://insyra.hazelnut-paradise.com>**
 
-**Documentation site:** Docs are served by **Docsify** from the `docs/` folder and automatically deployed to the `gh-pages` branch via GitHub Actions on pushes to `main`/`master` (see `.github/workflows/deploy-docs.yml`). After the first successful run, your site will be available at `https://<GITHUB_USER>.github.io/insyra` (replace `<GITHUB_USER>` with the owner/org name).
-
 > [!NOTE]
 > This project is evolving rapidly—please star and watch the repository to stay up to date with the latest changes!
 
