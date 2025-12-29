@@ -106,7 +106,8 @@ func ReadColumn(ctx context.Context, path string, column string, opt ReadColumnO
 
 The `parquet` package provides CCL (Column Calculation Language) support for direct manipulation of Parquet files without loading the entire dataset into memory.
 
->[!NOTE] **⚠️ Important Note on Type Constraints:**
+> [!NOTE]
+> **⚠️ Important Note on Type Constraints:**
 >
 > Due to the nature of Parquet format, **each column must have a consistent data type**. This means CCL operations in Parquet may behave differently from DataTable operations in the following ways:
 >
