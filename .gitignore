@@ -22,3 +22,10 @@ lingo.txt
 /cmd
 /insyra_py25b
 .insyra_env/
+
+# generated docs: keep sidebar out of repo
+/docs/_sidebar.md
+/docs/_*.md
+
+# generated index: do not track
+/docs/index.html
