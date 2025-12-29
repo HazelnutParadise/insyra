@@ -3378,13 +3378,13 @@ fmt.Printf("Value at [0][0]: %v\n", slice[0][0])
 
 2. **Memory Management**: For large datasets, consider using streaming or batch processing to avoid memory overflow.
 
-3. **Error Handling**: Most methods return errors. Please handle these errors appropriately to ensure program stability.
+3. **Error Handling**: Some methods return `error` (e.g., file I/O, SQL operations). Many manipulation methods return `*DataTable` for chaining — check the specific function signatures and handle errors where applicable.
 
-4. **Concurrency**: DataTable has built-in mutex protection for concurrent access, but complex operations may still require additional synchronization.
+4. **Concurrency**: DataTable uses actor-style serialized execution via `AtomicDo` (internal command channel and goroutine) for thread-safety rather than a global mutex. Use `AtomicDo` for sequences that must observe consistent state and avoid long-blocking work inside it.
 
 5. **Filter Operations**: Filter operations create new DataTable instances; original data is not modified.
 
-6. **SQL Operations**: When using SQL-related functionality, ensure proper database connection configuration and permissions. The ToSQL method uses GORM, while ReadSQL uses standard database/sql.
+6. **SQL Operations**: When using SQL-related functionality, ensure proper database connection configuration and permissions.
 
 7. **Column Indexing**: Columns can be accessed by both alphabetical indices (A, B, C...) and numeric indices (0, 1, 2...).
 
