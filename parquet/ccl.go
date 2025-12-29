@@ -618,8 +618,9 @@ func ApplyCCL(ctx context.Context, path string, cclScript string) error {
 				}
 
 				// Close output file before moving
-				outFile.Close()
-
+				if err := outFile.Close(); err != nil {
+					return fmt.Errorf("failed to close output file: %w", err)
+				}
 				// Move temporary file to original path
 				if err := os.Rename(tmpPath, path); err != nil {
 					return fmt.Errorf("failed to replace original file: %w", err)
@@ -644,7 +645,9 @@ func ApplyCCL(ctx context.Context, path string, cclScript string) error {
 			if err != nil {
 				rec.Release()
 				if writer != nil {
-					writer.Close()
+					if cerr := writer.Close(); cerr != nil {
+						log.Printf("parquet: failed to close writer: %v", cerr)
+					}
 				}
 				return fmt.Errorf("failed to apply CCL: %w", err)
 			}
@@ -671,7 +674,9 @@ func ApplyCCL(ctx context.Context, path string, cclScript string) error {
 			transformedRec.Release()
 
 			if err != nil {
-				writer.Close()
+				if cerr := writer.Close(); cerr != nil {
+					log.Printf("parquet: failed to close writer: %v", cerr)
+				}
 				return fmt.Errorf("failed to write batch: %w", err)
 			}
 		}

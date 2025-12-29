@@ -127,7 +127,11 @@ func Write(dt insyra.IDataTable, path string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			log.Printf("parquet: failed to close file %s: %v", path, err)
+		}
+	}()
 
 	arrowTable, err := dataTableToArrowTable(dt)
 	if err != nil {
