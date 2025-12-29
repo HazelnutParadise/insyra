@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
+	"github.com/HazelnutParadise/Go-Utils/conv"
 	"github.com/HazelnutParadise/insyra"
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/array"
@@ -197,4 +199,93 @@ func recordToDataTable(rec arrow.Record) *insyra.DataTable {
 		dataTable.AppendCols(insyra.NewDataList(data).SetName(colName))
 	}
 	return dataTable
+}
+
+func dataTableToArrowTable(dt insyra.IDataTable) (arrow.Table, error) {
+	mem := memory.DefaultAllocator
+	numRows, numCols := dt.Size()
+
+	fields := make([]arrow.Field, numCols)
+	columns := make([]arrow.Column, numCols)
+
+	for i := range numCols {
+		col := dt.GetColByNumber(i)
+		colName := dt.GetColNameByNumber(i)
+		data := col.Data()
+
+		// Infer type from data
+		arrowType := inferArrowType(data)
+		fields[i] = arrow.Field{Name: colName, Type: arrowType, Nullable: true}
+
+		builder := array.NewBuilder(mem, arrowType)
+
+		for _, v := range data {
+			if v == nil {
+				builder.AppendNull()
+				continue
+			}
+			appendValue(builder, v)
+		}
+
+		arr := builder.NewArray()
+
+		chunked := arrow.NewChunked(arrowType, []arrow.Array{arr})
+		columns[i] = *arrow.NewColumn(fields[i], chunked)
+
+		// Release temporary objects
+		arr.Release()
+		chunked.Release()
+		builder.Release()
+	}
+
+	schema := arrow.NewSchema(fields, nil)
+	table := array.NewTable(schema, columns, int64(numRows))
+
+	for i := range columns {
+		columns[i].Release()
+	}
+
+	return table, nil
+}
+
+func inferArrowType(data []any) arrow.DataType {
+	for _, v := range data {
+		if v == nil {
+			continue
+		}
+		switch v.(type) {
+		case int, int64, int32, int16, int8, uint, uint64, uint32, uint16, uint8:
+			return arrow.PrimitiveTypes.Int64
+		case float64, float32:
+			return arrow.PrimitiveTypes.Float64
+		case string:
+			return arrow.BinaryTypes.String
+		case bool:
+			return arrow.FixedWidthTypes.Boolean
+		case time.Time:
+			return arrow.FixedWidthTypes.Timestamp_ns
+		}
+	}
+	return arrow.BinaryTypes.String // Default to string if all nil or unknown
+}
+
+func appendValue(b array.Builder, v any) {
+	switch builder := b.(type) {
+	case *array.Int64Builder:
+		builder.Append(int64(conv.ParseInt(v)))
+	case *array.Float64Builder:
+		builder.Append(conv.ParseF64(v))
+	case *array.StringBuilder:
+		builder.Append(conv.ToString(v))
+	case *array.BooleanBuilder:
+		builder.Append(conv.ParseBool(v))
+	case *array.TimestampBuilder:
+		if t, ok := v.(time.Time); ok {
+			builder.Append(arrow.Timestamp(t.UnixNano()))
+		} else {
+			builder.AppendNull()
+		}
+	default:
+		builder.AppendNull()
+	}
 }

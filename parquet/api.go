@@ -8,6 +8,7 @@ import (
 	"github.com/HazelnutParadise/insyra"
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/memory"
+	"github.com/apache/arrow/go/v17/parquet"
 	"github.com/apache/arrow/go/v17/parquet/file"
 	"github.com/apache/arrow/go/v17/parquet/pqarrow"
 )
@@ -109,6 +110,31 @@ func Inspect(path string) (FileInfo, error) {
 	}
 
 	return info, nil
+}
+
+// Write: write insyra.DataTable to parquet file
+func Write(dt insyra.IDataTable, path string) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	arrowTable, err := dataTableToArrowTable(dt)
+	if err != nil {
+		return err
+	}
+	defer arrowTable.Release()
+
+	createdBy := fmt.Sprintf("go-insyra v%s", insyra.Version)
+
+	writer, err := pqarrow.NewFileWriter(arrowTable.Schema(), f, parquet.NewWriterProperties(parquet.WithCreatedBy(createdBy)), pqarrow.DefaultWriterProps())
+	if err != nil {
+		return err
+	}
+	defer writer.Close()
+
+	return writer.WriteTable(arrowTable, 1024*1024) // chunk size
 }
 
 // Read: read parquet file into insyra.DataTable at once
