@@ -11,16 +11,16 @@ type parser struct {
 	pos    int
 }
 
-// ParseExpression parses a CCL expression (no assignment).
+// parseExpression parses a CCL expression (no assignment).
 // For expressions like: A + B * C, IF(A > 0, 1, 0)
-func ParseExpression(tokens []cclToken) (cclNode, error) {
+func parseExpression(tokens []cclToken) (cclNode, error) {
 	p := &parser{tokens: tokens}
 	return p.parseExpression(0)
 }
 
-// ParseStatement parses a single statement that may include assignment
+// parseStatement parses a single statement that may include assignment
 // Returns the parsed node which can be either an expression or an assignment
-func ParseStatement(tokens []cclToken) (cclNode, error) {
+func parseStatement(tokens []cclToken) (cclNode, error) {
 	p := &parser{tokens: tokens}
 	return p.parseStatement()
 }
@@ -151,7 +151,7 @@ func (p *parser) parseExpression(precedence int) (cclNode, error) {
 		// 常規的二元運算表達式處理
 		for {
 			tok := p.current()
-			if tok.typ != tOPERATOR || getPrecedence(tok.value) < precedence {
+			if (tok.typ != tOPERATOR && tok.typ != tDOT && tok.typ != tCOLON) || getPrecedence(tok.value) < precedence {
 				break
 			}
 			op := tok.value
@@ -191,6 +191,15 @@ func (p *parser) parsePrimary() (cclNode, error) {
 		p.advance()
 		val := tok.value == "true"
 		return &cclBooleanNode{value: val}, nil
+	case tNIL:
+		p.advance()
+		return &cclNilNode{}, nil
+	case tAT:
+		p.advance()
+		return &cclAtNode{}, nil
+	case tROW_INDEX:
+		p.advance()
+		return &cclRowIndexNode{}, nil
 	case tIDENT:
 		name := tok.value
 		p.advance()
@@ -231,6 +240,27 @@ func (p *parser) parsePrimary() (cclNode, error) {
 			p.advance()
 		}
 		return expr, nil
+	case tOPERATOR:
+		// Handle unary operators
+		if tok.value == "-" {
+			p.advance()
+			node, err := p.parsePrimary()
+			if err != nil {
+				return nil, err
+			}
+			// Optimization: if node is a number literal, negate it directly
+			if numNode, ok := node.(*cclNumberNode); ok {
+				numNode.value = -numNode.value
+				return numNode, nil
+			}
+			// Otherwise, treat as 0 - node
+			return &cclBinaryOpNode{op: "-", left: &cclNumberNode{value: 0}, right: node}, nil
+		}
+		if tok.value == "+" {
+			p.advance()
+			return p.parsePrimary()
+		}
+		return nil, fmt.Errorf("unexpected operator in primary expression: %s", tok.value)
 	default:
 		return nil, fmt.Errorf("unexpected token: %v", tok)
 	}
@@ -252,16 +282,20 @@ func getPrecedence(op string) int {
 		return 5
 	case "^":
 		return 6
+	case ".":
+		return 7
+	case ":":
+		return 8
 	default:
 		return 0
 	}
 }
 
-// CheckExpressionMode checks if tokens contain assignment syntax or NEW function.
+// checkExpressionMode checks if tokens contain assignment syntax or NEW function.
 // Expression mode (AddColUsingCCL, EditColByIndexUsingCCL, EditColByNameUsingCCL)
 // does not allow assignment syntax or NEW function.
 // Returns an error if such syntax is found.
-func CheckExpressionMode(tokens []cclToken) error {
+func checkExpressionMode(tokens []cclToken) error {
 	for i, tok := range tokens {
 		// 檢查賦值運算符
 		if tok.typ == tASSIGN {

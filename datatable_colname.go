@@ -82,17 +82,13 @@ func (dt *DataTable) GetColNameByIndex(index string) string {
 }
 
 func (dt *DataTable) GetColNumberByName(name string) int {
-	var result = -1
+	var ok bool
+	var result int
 	dt.AtomicDo(func(dt *DataTable) {
-		for i, col := range dt.columns {
-			if col.name == name {
-				result = i
-				return
-			}
-		}
+		result, ok = dt.getColNumberByName_notAtomic(name)
 	})
-	if result == -1 {
-		LogWarning("DataTable", "GetColIndexByName", "Column name not found: %s, returning -1", name)
+	if !ok {
+		LogWarning("DataTable", "GetColNumberByName", "Column name not found: %s, returning -1", name)
 	}
 	return result
 }
@@ -177,4 +173,15 @@ func (dt *DataTable) SetColNames(colNames []string) *DataTable {
 // SetHeaders is an alias for SetColNames, setting the column names of the DataTable.
 func (dt *DataTable) SetHeaders(headers []string) *DataTable {
 	return dt.SetColNames(headers)
+}
+
+// ---------------------- not atomic below ----------------------
+
+func (dt *DataTable) getColNumberByName_notAtomic(name string) (int, bool) {
+	for i, col := range dt.columns {
+		if col.name == name {
+			return i, true
+		}
+	}
+	return -1, false
 }

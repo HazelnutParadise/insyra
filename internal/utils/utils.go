@@ -65,6 +65,9 @@ func ToFloat64Safe(v any) (float64, bool) {
 func ParseColIndex(colIndex string) int {
 	result := 0
 	for _, char := range colIndex {
+		if char < 'A' || char > 'Z' {
+			return -1
+		}
 		result = result*26 + int(char-'A') + 1
 	}
 	return result - 1
@@ -148,9 +151,9 @@ func FormatValue(value any) string {
 		// 如果是多行字符串，只顯示第一行
 		if strings.Contains(v, "\n") {
 			lines := strings.Split(v, "\n")
-			return lines[0] + "..."
+			return "'" + lines[0] + "...'"
 		}
-		return v
+		return "'" + v + "'"
 
 	case []byte:
 		if len(v) > 20 {

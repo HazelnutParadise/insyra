@@ -397,3 +397,161 @@ func TestDataTable_EditColByNameUsingCCL_RejectsAssignment(t *testing.T) {
 		}
 	}
 }
+
+func TestDataTable_ExecuteCCL_AggregateTotal(t *testing.T) {
+	createDT := func() *DataTable {
+		dt := NewDataTable()
+		dt.AppendCols(
+			NewDataList(1.0, 2.0, 3.0).SetName("A"),
+			NewDataList(4.0, 5.0, 6.0).SetName("B"),
+		)
+		return dt
+	}
+
+	// SUM(@) should sum all numeric values in the table: 1+2+3+4+5+6 = 21
+	t.Run("SUM", func(t *testing.T) {
+		dt := createDT()
+		dt.ExecuteCCL("NEW('total_sum') = SUM(@)")
+		colTotalSum := dt.GetColByName("total_sum")
+		if colTotalSum == nil {
+			t.Fatal("Column total_sum not found")
+		}
+		for i := 0; i < 3; i++ {
+			if colTotalSum.Get(i) != 21.0 {
+				t.Errorf("Expected 21.0 at row %d, got %v", i, colTotalSum.Get(i))
+			}
+		}
+	})
+
+	// COUNT(@) should count all cells: 3 rows * 2 columns = 6
+	t.Run("COUNT", func(t *testing.T) {
+		dt := createDT()
+		dt.ExecuteCCL("NEW('total_count') = COUNT(@)")
+		colTotalCount := dt.GetColByName("total_count")
+		if colTotalCount == nil {
+			t.Fatal("Column total_count not found")
+		}
+		for i := 0; i < 3; i++ {
+			if colTotalCount.Get(i) != 6.0 {
+				t.Errorf("Expected 6.0 at row %d, got %v", i, colTotalCount.Get(i))
+			}
+		}
+	})
+
+	// AVG(@) should be 21/6 = 3.5
+	t.Run("AVG", func(t *testing.T) {
+		dt := createDT()
+		dt.ExecuteCCL("NEW('total_avg') = AVG(@)")
+		colTotalAvg := dt.GetColByName("total_avg")
+		if colTotalAvg == nil {
+			t.Fatal("Column total_avg not found")
+		}
+		for i := 0; i < 3; i++ {
+			if colTotalAvg.Get(i) != 3.5 {
+				t.Errorf("Expected 3.5 at row %d, got %v", i, colTotalAvg.Get(i))
+			}
+		}
+	})
+
+	// MAX(@) should be 6.0
+	t.Run("MAX", func(t *testing.T) {
+		dt := createDT()
+		dt.ExecuteCCL("NEW('total_max') = MAX(@)")
+		colTotalMax := dt.GetColByName("total_max")
+		if colTotalMax == nil {
+			t.Fatal("Column total_max not found")
+		}
+		for i := 0; i < 3; i++ {
+			if colTotalMax.Get(i) != 6.0 {
+				t.Errorf("Expected 6.0 at row %d, got %v", i, colTotalMax.Get(i))
+			}
+		}
+	})
+
+	// MIN(@) should be 1.0
+	t.Run("MIN", func(t *testing.T) {
+		dt := createDT()
+		dt.ExecuteCCL("NEW('total_min') = MIN(@)")
+		colTotalMin := dt.GetColByName("total_min")
+		if colTotalMin == nil {
+			t.Fatal("Column total_min not found")
+		}
+		for i := 0; i < 3; i++ {
+			if colTotalMin.Get(i) != 1.0 {
+				t.Errorf("Expected 1.0 at row %d, got %v", i, colTotalMin.Get(i))
+			}
+		}
+	})
+
+	// Test multiple aggregates in one ExecuteCCL call
+	t.Run("MultipleAggregates", func(t *testing.T) {
+		dt := createDT()
+		// In one call, NEW('S') = SUM(@) and NEW('C') = COUNT(@)
+		// Statements are executed sequentially; the second statement sees the S column added by the first.
+		dt.ExecuteCCL("NEW('S') = SUM(@); NEW('C') = COUNT(@)")
+
+		colS := dt.GetColByName("S")
+		colC := dt.GetColByName("C")
+
+		if colS == nil || colC == nil {
+			t.Fatal("Columns S or C not found")
+		}
+
+		for i := 0; i < 3; i++ {
+			if colS.Get(i) != 21.0 {
+				t.Errorf("Expected S=21.0 at row %d, got %v", i, colS.Get(i))
+			}
+			// Because S has been added, COUNT(@) counts 3 rows * 3 cols = 9
+			if colC.Get(i) != 9.0 {
+				t.Errorf("Expected C=9.0 at row %d, got %v", i, colC.Get(i))
+			}
+		}
+	})
+}
+
+func TestDataTable_ExecuteCCL_Transposition(t *testing.T) {
+	// Create a table with 3 rows and 4 columns
+	// Row 0: 1, 2, 3, 4
+	// Row 1: 5, 6, 7, 8
+	// Row 2: 9, 10, 11, 12
+	dt := NewDataTable(
+		NewDataList(1, 5, 9).SetName("A"),
+		NewDataList(2, 6, 10).SetName("B"),
+		NewDataList(3, 7, 11).SetName("C"),
+		NewDataList(4, 8, 12).SetName("D"),
+	)
+
+	// Transpose Row 0 into new column 'n'
+	// Row 0 is [1, 2, 3, 4]
+	// Column 'n' should be [1, 2, 3, 4]
+	dt.ExecuteCCL("NEW('n') = @.0")
+
+	// Check column 'n'
+	colN := dt.GetColByName("n")
+	if colN == nil {
+		t.Fatal("Column 'n' not found")
+	}
+
+	data := colN.Data()
+	if len(data) != 4 {
+		t.Errorf("Expected column 'n' length 4, got %d", len(data))
+	}
+
+	expected := []any{1, 2, 3, 4}
+	for i, v := range expected {
+		if i < len(data) {
+			if data[i] != v {
+				t.Errorf("Row %d: expected %v, got %v", i, v, data[i])
+			}
+		}
+	}
+
+	// Check if other columns are padded
+	colA := dt.GetColByName("A")
+	if len(colA.Data()) != 4 {
+		t.Errorf("Expected column 'A' length 4 (padded), got %d", len(colA.Data()))
+	}
+	if colA.Data()[3] != nil {
+		t.Errorf("Expected column 'A' row 3 to be nil, got %v", colA.Data()[3])
+	}
+}

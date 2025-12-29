@@ -12,6 +12,8 @@ type IDataList interface {
 	SetName(string) *DataList
 	Data() []any
 	Append(values ...any)
+	Concat(other IDataList) *DataList
+	AppendDataList(other IDataList) *DataList
 	Get(index int) any
 	Clone() *DataList
 	Count(value any) int
@@ -22,14 +24,14 @@ type IDataList interface {
 	FindLast(any) any
 	FindAll(any) []int
 	Filter(func(any) bool) *DataList
-	ReplaceFirst(any, any)
-	ReplaceLast(any, any)
-	ReplaceAll(any, any)
+	ReplaceFirst(any, any) *DataList
+	ReplaceLast(any, any) *DataList
+	ReplaceAll(any, any) *DataList
 	ReplaceOutliers(float64, float64) *DataList
 	Pop() any
 	Drop(index int) *DataList
 	DropAll(...any) *DataList
-	DropIfContains(any) *DataList
+	DropIfContains(string) *DataList
 	Clear() *DataList
 	ClearStrings() *DataList
 	ClearNumbers() *DataList
@@ -177,7 +179,7 @@ type IDataTable interface {
 	// GetRowNameByIndex returns the name of a row at the given index.
 	// Returns empty string and false if no name is set for the row.
 	GetRowNameByIndex(index int) (string, bool)
-	SetRowNameByIndex(index int, name string)
+	SetRowNameByIndex(index int, name string) *DataTable
 	ChangeRowName(oldName, newName string) *DataTable
 	RowNamesToFirstCol() *DataTable
 	DropRowNames() *DataTable
@@ -195,6 +197,8 @@ type IDataTable interface {
 
 	// Statistics
 	Size() (numRows int, numCols int)
+	NumRows() int
+	NumCols() int
 	Count(value any) int
 	Mean() any
 	Summary()
@@ -258,7 +262,23 @@ type IDataTable interface {
 
 	ToSQL(db *gorm.DB, tableName string, options ...ToSQLOptions) error
 
+	Merge(other IDataTable, direction MergeDirection, mode MergeMode, on ...string) (*DataTable, error)
+
 	AddColUsingCCL(newColName, ccl string) *DataTable
+
+	// Replace
+	Replace(oldValue, newValue any) *DataTable
+	ReplaceNaNsWith(newValue any) *DataTable
+	ReplaceNilsWith(newValue any) *DataTable
+	ReplaceNaNsAndNilsWith(newValue any) *DataTable
+	ReplaceInRow(rowIndex int, oldValue, newValue any, mode ...int) *DataTable
+	ReplaceNaNsInRow(rowIndex int, newValue any, mode ...int) *DataTable
+	ReplaceNilsInRow(rowIndex int, newValue any, mode ...int) *DataTable
+	ReplaceNaNsAndNilsInRow(rowIndex int, newValue any, mode ...int) *DataTable
+	ReplaceInCol(colIndex string, oldValue, newValue any, mode ...int) *DataTable
+	ReplaceNaNsInCol(colIndex string, newValue any, mode ...int) *DataTable
+	ReplaceNilsInCol(colIndex string, newValue any, mode ...int) *DataTable
+	ReplaceNaNsAndNilsInCol(colIndex string, newValue any, mode ...int) *DataTable
 
 	sortColsByIndex()
 	regenerateColIndex()

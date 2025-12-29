@@ -294,6 +294,8 @@ With CCL, you can:
 - Use conditional logic with `IF`, `AND`, `OR`, and `CASE` functions
 - Perform mathematical operations and string manipulations
 - Execute chained comparisons like `1 < A <= 10` for range checks
+- Access specific rows using the `.` operator (e.g., `A.0`) and reference all columns with `@`
+- Use aggregate functions like `SUM`, `AVG`, `COUNT`, `MAX`, and `MIN`
 
 ```go
 // Add a column that classifies data based on values in column A
@@ -301,11 +303,28 @@ dt.AddColUsingCCL("category", "IF(A > 90, 'Excellent', IF(A > 70, 'Good', 'Avera
 
 // Perform calculations just like in Excel
 dt.AddColUsingCCL("total", "A + B + C")
-dt.AddColUsingCCL("average", "(A + B + C) / 3")
+dt.AddColUsingCCL("average", "AVG(A + B + C)")
+
+// Use aggregate functions on rows or columns
+dt.AddColUsingCCL("row_sum", "SUM(@.0)")
 
 // Use range checks with chained comparisons (try this in Excel!)
 dt.AddColUsingCCL("in_range", "IF(10 <= A <= 20, 'Yes', 'No')")
 ```
+
+#### Parquet Integration
+
+CCL can be applied **directly during Parquet file reading** to filter data at the source:
+
+```go
+// Filter rows while reading - only matching rows are loaded into memory
+dt, err := parquet.FilterWithCCL(ctx, "sales_data.parquet", "(['amount'] > 1000) && (['status'] = 'Active')")
+
+// Apply CCL transformations directly on parquet files (streaming mode)
+err := parquet.ApplyCCL(ctx, "data.parquet", "NEW('total') = A + B + C")
+```
+
+This approach reduces memory usage when working with large datasets by processing data in batches.
 
 For a complete guide to CCL syntax and features, see the **[CCL Documentation](/Docs/CCL.md)**.
 
@@ -318,10 +337,6 @@ For a complete list of DataTable methods and features, please refer to the **[Da
 ### **[isr](/Docs/isr.md)**
 
 Provides **Syntactic Sugar** for **Insyra**. It is designed to simplify the usage of **Insyra** and make it more intuitive.
-
-### **[datafetch](/Docs/datafetch.md)**
-
-Allows you to fetch data easily. It currently supports fetching comments from stores on Google Maps.
 
 ### **[stats](/Docs/stats.md)**
 
@@ -339,9 +354,25 @@ Provides a wrapper around the powerful [github.com/go-echarts/go-echarts](https:
 
 A visualization package based on [github.com/gonum/plot](https://github.com/gonum/plot). Fast and no need for Chrome. Even supports function plot.
 
+### **[csvxl](/Docs/csvxl.md)**
+
+Work with Excel and CSV files. Such as convert CSV to Excel.
+
+### **[parquet](/Docs/parquet.md)**
+
+Provides read and write support for the Apache Parquet file format, deeply integrated with Insyra's `DataTable` and `DataList`. Supports streaming, column-level reading, and CCL filtering.
+
 ### **[mkt](/Docs/mkt.md)**
 
 Provides marketing-related data analysis functions, such as RFM analysis. No need to worry about how to calculate, one function does it all!
+
+### **[py](/Docs/py.md)**
+
+Execute Python code in Go without manually installing Python environment and dependencies. Allows passing variables between Go and Python.
+
+### **[datafetch](/Docs/datafetch.md)**
+
+Allows you to fetch data easily. It currently supports fetching comments from stores on Google Maps.
 
 ### **[lpgen](/Docs/lpgen.md)**
 
@@ -350,14 +381,6 @@ Provides a **super simple** and intuitive way to generate linear programming (LP
 ### **[lp](/Docs/lp.md)**
 
 Fully automatic linear programming (LP) solver using [GLPK](https://www.gnu.org/software/glpk/).
-
-### **[csvxl](/Docs/csvxl.md)**
-
-Work with Excel and CSV files. Such as convert CSV to Excel.
-
-### **[py](/Docs/py.md)**
-
-Execute Python code in Go without manually installing Python environment and dependencies. Allows passing variables between Go and Python.
 
 ## Advanced Usage
 

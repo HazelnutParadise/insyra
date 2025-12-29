@@ -9,6 +9,8 @@ DataTable is the core data structure of Insyra for handling structured data. It 
 - [Data Loading](#data-loading)
 - [Data Saving](#data-saving)
 - [Data Operations](#data-operations)
+  - [Merge](#merge)
+- [Data Replacement](#data-replacement)
 - [Column Calculation](#column-calculation)
 - [Searching](#searching)
 - [Filtering](#filtering)
@@ -597,6 +599,55 @@ if err != nil {
 ```
 
 ## Data Operations
+
+### Merge
+
+Merges two DataTables based on a key column or row name.
+
+```go
+func (dt *DataTable) Merge(other *DataTable, direction MergeDirection, mode MergeMode, on ...string) (*DataTable, error)
+```
+
+**Parameters:**
+
+- `other`: The other DataTable to merge with.
+- `direction`: The direction of the merge.
+  - `insyra.MergeDirectionHorizontal`: Join columns side-by-side (like a SQL JOIN).
+  - `insyra.MergeDirectionVertical`: Join rows top-to-bottom (matching columns by name).
+- `mode`: The merge mode.
+  - `insyra.MergeModeInner`: Only keep matches.
+  - `insyra.MergeModeOuter`: Keep all data, filling missing parts with `nil`.
+- `on`: (Optional) The name of the column to join on (for horizontal merge).
+  - If `on` is omitted or an empty string (`""`) in a horizontal merge, the tables will be joined based on their **row names**.
+  - For vertical merge, this parameter is ignored.
+
+**Returns:**
+
+- `*DataTable`: A new DataTable containing the merged data.
+- `error`: An error if the key is not found or the mode/direction is invalid.
+
+**Example (Horizontal Merge):**
+
+```go
+dt1 := insyra.NewDataTable(
+    insyra.NewDataList("A", "B", "C").SetName("ID"),
+    insyra.NewDataList(1, 2, 3).SetName("Val1"),
+)
+dt2 := insyra.NewDataTable(
+    insyra.NewDataList("B", "C", "D").SetName("ID"),
+    insyra.NewDataList(10, 20, 30).SetName("Val2"),
+)
+
+// Inner Join on ID
+res, _ := dt1.Merge(dt2, insyra.MergeDirectionHorizontal, insyra.MergeModeInner, "ID")
+// Result:
+// ID, Val1, Val2
+// B, 2, 10
+// C, 3, 20
+
+// Join by Row Names (on is omitted)
+res, _ = dt1.Merge(dt2, insyra.MergeDirectionHorizontal, insyra.MergeModeInner)
+```
 
 ### AppendCols
 
@@ -2071,6 +2122,98 @@ sampled := dt.SimpleRandomSample(10)
 - If sample size is greater than or equal to the number of rows, returns a full copy
 - If sample size is less than or equal to 0, returns an empty DataTable
 
+## Data Replacement
+
+DataTable provides several methods to replace values within the entire table, a specific row, or a specific column.
+
+### Replace
+
+Replaces all occurrences of `oldValue` with `newValue` in the entire DataTable.
+
+```go
+func (dt *DataTable) Replace(oldValue, newValue any) *DataTable
+```
+
+### ReplaceNaNsWith
+
+Replaces all occurrences of `NaN` with `newValue` in the entire DataTable.
+
+```go
+func (dt *DataTable) ReplaceNaNsWith(newValue any) *DataTable
+```
+
+### ReplaceNilsWith
+
+Replaces all occurrences of `nil` with `newValue` in the entire DataTable.
+
+```go
+func (dt *DataTable) ReplaceNilsWith(newValue any) *DataTable
+```
+
+### ReplaceNaNsAndNilsWith
+
+Replaces all occurrences of both `NaN` and `nil` with `newValue` in the entire DataTable.
+
+```go
+func (dt *DataTable) ReplaceNaNsAndNilsWith(newValue any) *DataTable
+```
+
+### ReplaceInRow
+
+Replaces occurrences of `oldValue` with `newValue` in a specific row.
+
+```go
+func (dt *DataTable) ReplaceInRow(rowIndex int, oldValue, newValue any, mode ...int) *DataTable
+```
+
+**Parameters:**
+
+- `rowIndex`: The index of the row.
+- `oldValue`: The value to be replaced.
+- `newValue`: The value to replace with.
+- `mode` (optional):
+  - `0` (default): Replace all occurrences.
+  - `1`: Replace only the first occurrence.
+  - `-1`: Replace only the last occurrence.
+
+### ReplaceNaNsInRow / ReplaceNilsInRow / ReplaceNaNsAndNilsInRow
+
+Similar to `ReplaceInRow`, but specifically for `NaN`, `nil`, or both.
+
+```go
+func (dt *DataTable) ReplaceNaNsInRow(rowIndex int, newValue any, mode ...int) *DataTable
+func (dt *DataTable) ReplaceNilsInRow(rowIndex int, newValue any, mode ...int) *DataTable
+func (dt *DataTable) ReplaceNaNsAndNilsInRow(rowIndex int, newValue any, mode ...int) *DataTable
+```
+
+### ReplaceInCol
+
+Replaces occurrences of `oldValue` with `newValue` in a specific column.
+
+```go
+func (dt *DataTable) ReplaceInCol(colIndex string, oldValue, newValue any, mode ...int) *DataTable
+```
+
+**Parameters:**
+
+- `colIndex`: The index or name of the column.
+- `oldValue`: The value to be replaced.
+- `newValue`: The value to replace with.
+- `mode` (optional):
+  - `0` (default): Replace all occurrences.
+  - `1`: Replace only the first occurrence.
+  - `-1`: Replace only the last occurrence.
+
+### ReplaceNaNsInCol / ReplaceNilsInCol / ReplaceNaNsAndNilsInCol
+
+Similar to `ReplaceInCol`, but specifically for `NaN`, `nil`, or both.
+
+```go
+func (dt *DataTable) ReplaceNaNsInCol(colIndex string, newValue any, mode ...int) *DataTable
+func (dt *DataTable) ReplaceNilsInCol(colIndex string, newValue any, mode ...int) *DataTable
+func (dt *DataTable) ReplaceNaNsAndNilsInCol(colIndex string, newValue any, mode ...int) *DataTable
+```
+
 ## Column Calculation
 
 ### AddColUsingCCL
@@ -2110,6 +2253,19 @@ dt.AddColUsingCCL("status", "CASE(A > 90, 'A', A > 80, 'B', A > 70, 'C', 'F')")
 
 // Using range comparisons
 dt.AddColUsingCCL("in_range", "IF(10 < A <= 20, 'In range', 'Out of range')")
+
+// Row access (A.0 gets the first row of column A)
+dt.AddColUsingCCL("base_value", "A.0")
+
+// All columns reference (@.0 gets all columns of the first row)
+dt.ExecuteCCL("NEW('first_row') = @.0")
+
+// Aggregate functions (SUM, AVG, COUNT, MAX, MIN)
+dt.AddColUsingCCL("total_sum", "SUM(A)")
+dt.AddColUsingCCL("row_sum", "SUM(@.#)") // Row-wise sum
+dt.AddColUsingCCL("table_sum", "SUM(@)") // Total table sum
+dt.AddColUsingCCL("avg_val", "AVG(A + B)")
+dt.AddColUsingCCL("count_val", "COUNT(@)") // Count non-nil cells
 ```
 
 **Notes:**
@@ -2118,6 +2274,34 @@ dt.AddColUsingCCL("in_range", "IF(10 < A <= 20, 'In range', 'Out of range')")
 - Column references use Excel-style notation (A, B, C...) for simplicity
 - Supports mathematical operations, logical operations, conditionals and more
 - See [CCL Documentation](CCL.md) for a comprehensive guide to CCL syntax and functions
+
+### ExecuteCCL
+
+Executes one or more CCL statements on the DataTable. Statements are separated by newlines and executed sequentially. Each statement sees the results of previous statements.
+
+```go
+func (dt *DataTable) ExecuteCCL(ccl string) *DataTable
+```
+
+**Parameters:**
+
+- `ccl`: One or more CCL statements separated by newlines
+
+**Returns:**
+
+- `*DataTable`: The modified DataTable
+
+**Example:**
+
+```go
+// Sequential execution: col3 can use col1 and col2
+dt.ExecuteCCL(`
+    NEW('col1') = A * 2
+    NEW('col2') = B + 10
+    NEW('col3') = col1 + col2
+    NEW('total') = SUM(@)
+`)
+```
 
 ## Searching
 
@@ -2787,6 +2971,44 @@ func (dt *DataTable) Size() (numRows int, numCols int)
 ```go
 rows, cols := dt.Size()
 fmt.Printf("Table has %d rows and %d columns\n", rows, cols)
+```
+
+### NumRows
+
+Returns the number of rows in the DataTable.
+
+```go
+func (dt *DataTable) NumRows() int
+```
+
+**Returns:**
+
+- `int`: Number of rows
+
+**Example:**
+
+```go
+rows := dt.NumRows()
+fmt.Printf("Table has %d rows\n", rows)
+```
+
+### NumCols
+
+Returns the number of columns in the DataTable.
+
+```go
+func (dt *DataTable) NumCols() int
+```
+
+**Returns:**
+
+- `int`: Number of columns
+
+**Example:**
+
+```go
+cols := dt.NumCols()
+fmt.Printf("Table has %d columns\n", cols)
 ```
 
 ### Mean

@@ -6,6 +6,7 @@ import (
 	"math"
 	"reflect"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -105,6 +106,29 @@ func (dl *DataList) Append(values ...any) {
 	})
 }
 
+// Concat creates a new DataList by concatenating another DataList to the current DataList.
+func (dl *DataList) Concat(other IDataList) *DataList {
+	result := NewDataList()
+	dl.AtomicDo(func(dl *DataList) {
+		other.AtomicDo(func(other *DataList) {
+			result.data = append(result.data, dl.data...)
+			result.data = append(result.data, other.data...)
+		})
+	})
+	return result
+}
+
+// AppendDataList appends another DataList to the current DataList.
+func (dl *DataList) AppendDataList(other IDataList) *DataList {
+	dl.AtomicDo(func(dl *DataList) {
+		other.AtomicDo(func(other *DataList) {
+			dl.data = append(dl.data, other.data...)
+		})
+		go dl.updateTimestamp()
+	})
+	return dl
+}
+
 // Get retrieves the value at the specified index in the DataList.
 // Supports negative indexing.
 // Returns nil if the index is out of bounds.
@@ -130,8 +154,14 @@ func (dl *DataList) Get(index int) any {
 func (dl *DataList) Clone() *DataList {
 	var newDL *DataList
 	dl.AtomicDo(func(dl *DataList) {
-		newDL = NewDataList(dl.data)
-		newDL.SetName(dl.name)
+		newData := make([]any, len(dl.data))
+		copy(newData, dl.data)
+		newDL = &DataList{
+			data:              newData,
+			name:              dl.name,
+			creationTimestamp: time.Now().Unix(),
+		}
+		newDL.lastModifiedTimestamp.Store(newDL.creationTimestamp)
 	})
 	return newDL
 }
@@ -205,8 +235,17 @@ func (dl *DataList) InsertAt(index int, value any) *DataList {
 func (dl *DataList) FindFirst(value any) any {
 	var result any
 	dl.AtomicDo(func(dl *DataList) {
+		isValNaN := false
+		if f, ok := value.(float64); ok && math.IsNaN(f) {
+			isValNaN = true
+		}
 		for i, v := range dl.data {
-			if v == value {
+			if isValNaN {
+				if f, ok := v.(float64); ok && math.IsNaN(f) {
+					result = i
+					return
+				}
+			} else if v == value {
 				result = i
 				return
 			}
@@ -222,8 +261,17 @@ func (dl *DataList) FindFirst(value any) any {
 func (dl *DataList) FindLast(value any) any {
 	var result any
 	dl.AtomicDo(func(dl *DataList) {
+		isValNaN := false
+		if f, ok := value.(float64); ok && math.IsNaN(f) {
+			isValNaN = true
+		}
 		for i := len(dl.data) - 1; i >= 0; i-- {
-			if dl.data[i] == value {
+			if isValNaN {
+				if f, ok := dl.data[i].(float64); ok && math.IsNaN(f) {
+					result = i
+					return
+				}
+			} else if dl.data[i] == value {
 				result = i
 				return
 			}
@@ -234,7 +282,7 @@ func (dl *DataList) FindLast(value any) any {
 	return result
 }
 
-// FindAll returns a slice of all the indices where the specified value is found in the DataList using parallel processing.
+// FindAll returns a slice of all the indices where the specified value is found in the DataList.
 // If the value is not found, it returns an empty slice.
 func (dl *DataList) FindAll(value any) []int {
 	var indices []int
@@ -246,8 +294,17 @@ func (dl *DataList) FindAll(value any) []int {
 			return
 		}
 
+		isValNaN := false
+		if f, ok := value.(float64); ok && math.IsNaN(f) {
+			isValNaN = true
+		}
+
 		for i, v := range dl.data {
-			if v == value {
+			if isValNaN {
+				if f, ok := v.(float64); ok && math.IsNaN(f) {
+					indices = append(indices, i)
+				}
+			} else if v == value {
 				indices = append(indices, i)
 			}
 		}
@@ -272,52 +329,42 @@ func (dl *DataList) Filter(filterFunc func(any) bool) *DataList {
 }
 
 // ReplaceFirst replaces the first occurrence of oldValue with newValue.
-func (dl *DataList) ReplaceFirst(oldValue, newValue any) {
+func (dl *DataList) ReplaceFirst(oldValue, newValue any) *DataList {
 	dl.AtomicDo(func(dl *DataList) {
-		for i, v := range dl.data {
-			if v == oldValue {
-				dl.data[i] = newValue
-				go dl.updateTimestamp()
-				return
-			}
-		}
-		LogWarning("DataList", "ReplaceFirst", "value not found.")
+		dl.replaceFirst_notAtomic(oldValue, newValue)
 	})
+	return dl
 }
 
 // ReplaceLast replaces the last occurrence of oldValue with newValue.
-func (dl *DataList) ReplaceLast(oldValue, newValue any) {
+func (dl *DataList) ReplaceLast(oldValue, newValue any) *DataList {
+	isOldValueNaN := false
+	if val, ok := oldValue.(float64); ok && math.IsNaN(val) {
+		isOldValueNaN = true
+	}
 	dl.AtomicDo(func(dl *DataList) {
 		for i := len(dl.data) - 1; i >= 0; i-- {
-			if dl.data[i] == oldValue {
+			if !isOldValueNaN && dl.data[i] == oldValue {
+				dl.data[i] = newValue
+				go dl.updateTimestamp()
+				return
+			} else if val, ok := dl.data[i].(float64); ok && math.IsNaN(val) {
 				dl.data[i] = newValue
 				go dl.updateTimestamp()
 				return
 			}
 		}
-		LogWarning("DataList", "ReplaceLast", "value not found.")
 	})
+	return dl
 }
 
 // ReplaceAll replaces all occurrences of oldValue with newValue in the DataList.
 // If oldValue is not found, no changes are made.
-func (dl *DataList) ReplaceAll(oldValue, newValue any) {
+func (dl *DataList) ReplaceAll(oldValue, newValue any) *DataList {
 	dl.AtomicDo(func(dl *DataList) {
-		length := len(dl.data)
-		if length == 0 {
-			LogWarning("DataList", "ReplaceAll", "DataList is empty, no replacements made.")
-			return
-		}
-
-		// 單線程處理資料替換
-		for i, v := range dl.data {
-			if v == oldValue {
-				dl.data[i] = newValue
-			}
-		}
-
-		go dl.updateTimestamp()
+		dl.replaceAll_notAtomic(oldValue, newValue)
 	})
+	return dl
 }
 
 // ReplaceOutliers replaces outliers in the DataList with the specified replacement value (e.g., mean, median).
@@ -343,15 +390,8 @@ func (dl *DataList) ReplaceOutliers(stdDevs float64, replacement float64) *DataL
 
 // ReplaceNaNsWith replaces all NaN values in the DataList with the specified value.
 func (dl *DataList) ReplaceNaNsWith(value any) *DataList {
-	defer func() {
-		go dl.updateTimestamp()
-	}()
 	dl.AtomicDo(func(dl *DataList) {
-		for i, v := range dl.data {
-			if val, ok := v.(float64); ok && math.IsNaN(val) {
-				dl.data[i] = value
-			}
-		}
+		dl.replaceAll_notAtomic(math.NaN(), value)
 	})
 	return dl
 }
@@ -373,17 +413,8 @@ func (dl *DataList) ReplaceNilsWith(value any) *DataList {
 
 // ReplaceNaNsAndNilsWith replaces all NaN and nil values in the DataList with the specified value.
 func (dl *DataList) ReplaceNaNsAndNilsWith(value any) *DataList {
-	defer func() {
-		go dl.updateTimestamp()
-	}()
 	dl.AtomicDo(func(dl *DataList) {
-		for i, v := range dl.data {
-			if v == nil {
-				dl.data[i] = value
-			} else if val, ok := v.(float64); ok && math.IsNaN(val) {
-				dl.data[i] = value
-			}
-		}
+		dl.replaceNaNsAndNilsWith_notAtomic(value)
 	})
 	return dl
 }
@@ -444,6 +475,15 @@ func (dl *DataList) DropAll(toDrop ...any) *DataList {
 		chunkSize := length / numGoroutines
 		remainder := length % numGoroutines
 
+		// 預先檢查 toDrop 中是否包含 NaN
+		hasNaNInToDrop := false
+		for _, td := range toDrop {
+			if f, ok := td.(float64); ok && math.IsNaN(f) {
+				hasNaNInToDrop = true
+				break
+			}
+		}
+
 		// 儲存所有的 Awaitable
 		var awaitables []*asyncutil.Awaitable
 
@@ -469,11 +509,10 @@ func (dl *DataList) DropAll(toDrop ...any) *DataList {
 					var result []any
 					for _, v := range dataChunk {
 						shouldDrop := false
-						for _, drop := range toDrop {
-							if v == drop {
-								shouldDrop = true
-								break
-							}
+						if f, ok := v.(float64); ok && math.IsNaN(f) {
+							shouldDrop = hasNaNInToDrop
+						} else {
+							shouldDrop = slices.Contains(toDrop, v)
 						}
 						if !shouldDrop {
 							result = append(result, v)
@@ -509,20 +548,21 @@ func (dl *DataList) DropAll(toDrop ...any) *DataList {
 	return dl
 }
 
-// DropIfContains removes all elements from the DataList that contain the specified value.
-func (dl *DataList) DropIfContains(value any) *DataList {
+// DropIfContains removes all elements from the DataList that contain the specified substring.
+// This method only affects string elements. Non-string elements are kept.
+func (dl *DataList) DropIfContains(substring string) *DataList {
 	dl.AtomicDo(func(dl *DataList) {
 		// 創建一個臨時切片存放保留的元素
 		var newData []any
 
 		for _, v := range dl.data {
 			if str, ok := v.(string); ok {
-				// 如果當前元素不包含指定的值，將其添加到 newData 中
-				if !strings.Contains(str, value.(string)) {
+				// 如果當前元素不包含指定的子字串，將其添加到 newData 中
+				if !strings.Contains(str, substring) {
 					newData = append(newData, v)
 				}
 			} else {
-				// 如果元素不是字符串類型，也將其保留
+				// 如果元素不是字串類型，將其保留
 				newData = append(newData, v)
 			}
 		}

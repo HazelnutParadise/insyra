@@ -70,6 +70,11 @@ func NewDataTable(columns ...*DataList) *DataTable {
 func (dt *DataTable) AppendCols(columns ...*DataList) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		maxLength := dt.getMaxColLength()
+		for _, col := range columns {
+			if len(col.data) > maxLength {
+				maxLength = len(col.data)
+			}
+		}
 
 		for _, col := range columns {
 			column := NewDataList()
@@ -922,6 +927,14 @@ func (dt *DataTable) DropColsContain(value ...any) *DataTable {
 					containsValue = true
 					break
 				}
+				if vFloat, ok := v.(float64); ok {
+					for _, dataValue := range column.data {
+						if dataFloat, ok := dataValue.(float64); ok && math.IsNaN(vFloat) && math.IsNaN(dataFloat) {
+							containsValue = true
+							break
+						}
+					}
+				}
 			}
 			if containsValue {
 				columnsToDelete = append(columnsToDelete, colIndex)
@@ -1208,12 +1221,29 @@ func (dt *DataTable) DropRowsContain(value ...any) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		maxLength := dt.getMaxColLength()
 		rowsToKeep := make([]bool, maxLength)
-		for rowIndex := 0; rowIndex < maxLength; rowIndex++ {
+
+		hasNaNInValue := false
+		for _, v := range value {
+			if f, ok := v.(float64); ok && math.IsNaN(f) {
+				hasNaNInValue = true
+				break
+			}
+		}
+
+		for rowIndex := range maxLength {
 			keepRow := true
 			for _, column := range dt.columns {
 				if rowIndex < len(column.data) && slices.Contains(value, column.data[rowIndex]) {
 					keepRow = false
 					break
+				}
+				if hasNaNInValue {
+					if rowIndex < len(column.data) {
+						if dataFloat, ok := column.data[rowIndex].(float64); ok && math.IsNaN(dataFloat) {
+							keepRow = false
+							break
+						}
+					}
 				}
 			}
 			rowsToKeep[rowIndex] = keepRow
@@ -1323,6 +1353,22 @@ func (dt *DataTable) Size() (numRows int, numCols int) {
 		cols = len(dt.columns)
 	})
 	return rows, cols
+}
+
+func (dt *DataTable) NumRows() int {
+	var numRows int
+	dt.AtomicDo(func(dt *DataTable) {
+		numRows = dt.getMaxColLength()
+	})
+	return numRows
+}
+
+func (dt *DataTable) NumCols() int {
+	var numCols int
+	dt.AtomicDo(func(dt *DataTable) {
+		numCols = len(dt.columns)
+	})
+	return numCols
 }
 
 // Mean returns the mean of the DataTable.

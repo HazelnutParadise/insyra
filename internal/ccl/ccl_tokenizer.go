@@ -6,7 +6,7 @@ import (
 	"unicode"
 )
 
-func Tokenize(input string) ([]cclToken, error) {
+func tokenize(input string) ([]cclToken, error) {
 	tokens := []cclToken{}
 	i := 0
 	for i < len(input) {
@@ -21,18 +21,84 @@ func Tokenize(input string) ([]cclToken, error) {
 			}
 			word := input[start:i]
 
-			// 檢查是否為布林關鍵字
-			if word == "true" || word == "false" {
+			// 檢查是否為布林關鍵字或 nil
+			switch word {
+			case "true", "false":
 				tokens = append(tokens, cclToken{typ: tBOOLEAN, value: word})
-			} else {
+			case "nil", "null":
+				tokens = append(tokens, cclToken{typ: tNIL, value: word})
+			default:
 				tokens = append(tokens, cclToken{typ: tIDENT, value: word})
 			}
-		case isDigit(ch) || ch == '.':
+		case ch == '@':
+			tokens = append(tokens, cclToken{typ: tAT, value: "@"})
+			i++
+		case ch == '#':
+			tokens = append(tokens, cclToken{typ: tROW_INDEX, value: "#"})
+			i++
+		case ch == ':':
+			tokens = append(tokens, cclToken{typ: tCOLON, value: ":"})
+			i++
+		case isDigit(ch):
 			start := i
-			for i < len(input) && (isDigit(input[i]) || input[i] == '.') {
+			for i < len(input) && isDigit(input[i]) {
 				i++
 			}
-			tokens = append(tokens, cclToken{typ: tNUMBER, value: input[start:i]})
+			if i < len(input) && input[i] == '.' {
+				// 檢查是否為小數點或 . 運算符
+				// 如果後面跟著數字，且前一個 token 不是標識符等，則視為小數點
+				isDecimal := false
+				if i+1 < len(input) && isDigit(input[i+1]) {
+					if len(tokens) > 0 {
+						lastTok := tokens[len(tokens)-1]
+						if lastTok.typ == tIDENT || lastTok.typ == tCOL_INDEX || lastTok.typ == tCOL_NAME || lastTok.typ == tAT || lastTok.typ == tRPAREN {
+							isDecimal = false
+						} else {
+							isDecimal = true
+						}
+					} else {
+						isDecimal = true
+					}
+				}
+
+				if isDecimal {
+					i++
+					for i < len(input) && isDigit(input[i]) {
+						i++
+					}
+					tokens = append(tokens, cclToken{typ: tNUMBER, value: input[start:i]})
+				} else {
+					tokens = append(tokens, cclToken{typ: tNUMBER, value: input[start:i]})
+					// 不前進 i，讓下一個 case 處理 '.'
+				}
+			} else {
+				tokens = append(tokens, cclToken{typ: tNUMBER, value: input[start:i]})
+			}
+		case ch == '.':
+			// 檢查是否為數字開頭的小數（如 .5）
+			if i+1 < len(input) && isDigit(input[i+1]) {
+				isDecimal := true
+				if len(tokens) > 0 {
+					lastTok := tokens[len(tokens)-1]
+					if lastTok.typ == tIDENT || lastTok.typ == tCOL_INDEX || lastTok.typ == tCOL_NAME || lastTok.typ == tAT || lastTok.typ == tRPAREN {
+						isDecimal = false
+					}
+				}
+				if isDecimal {
+					start := i
+					i++
+					for i < len(input) && isDigit(input[i]) {
+						i++
+					}
+					tokens = append(tokens, cclToken{typ: tNUMBER, value: input[start:i]})
+				} else {
+					tokens = append(tokens, cclToken{typ: tDOT, value: "."})
+					i++
+				}
+			} else {
+				tokens = append(tokens, cclToken{typ: tDOT, value: "."})
+				i++
+			}
 		case ch == '"' || ch == '\'':
 			quoteChar := ch // 保存當前引號字符
 			i++

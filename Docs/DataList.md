@@ -256,6 +256,49 @@ dl.Append(4, 5, 6)
 // dl now contains: [1, 2, 3, 4, 5, 6]
 ```
 
+### Concat
+
+Creates a new DataList by appending another DataList to the current DataList.
+
+```go
+func (dl *DataList) Concat(other IDataList) *DataList
+```
+
+**Parameters:**
+
+- `other`: Another DataList to concatenate
+
+**Example:**
+
+```go
+dl1 := insyra.NewDataList(1, 2, 3)
+dl2 := insyra.NewDataList(4, 5, 6)
+newDL := dl1.Concat(dl2)
+// newDL contains: [1, 2, 3, 4, 5, 6]
+// dl1 and dl2 remain unchanged
+```
+
+### AppendDataList
+
+Appends another DataList to the current DataList. Returns the DataList to support chaining calls.
+
+```go
+func (dl *DataList) AppendDataList(other IDataList) *DataList
+```
+
+**Parameters:**
+
+- `other`: Another DataList to append
+
+**Example:**
+
+```go
+dl1 := insyra.NewDataList(1, 2, 3)
+dl2 := insyra.NewDataList(4, 5, 6)
+dl1.AppendDataList(dl2)
+// dl1 now contains: [1, 2, 3, 4, 5, 6]
+```
+
 ### Update
 
 Updates an element at a specific index. Returns the DataList to support chaining calls.
@@ -352,7 +395,7 @@ dl.Drop(2) // removes element at index 2
 
 ### DropAll
 
-Removes all occurrences of specified values from the DataList.
+Removes all occurrences of specified values from the DataList. Supports `math.NaN()`.
 
 ```go
 func (dl *DataList) DropAll(values ...any) *DataList
@@ -369,17 +412,17 @@ func (dl *DataList) DropAll(values ...any) *DataList
 **Example:**
 
 ```go
-dl := insyra.NewDataList(1, 2, 3, 2, 4, 2, 5)
-dl.DropAll(2, 4)
+dl := insyra.NewDataList(1, 2, 3, 2, 4, 2, 5, math.NaN())
+dl.DropAll(2, 4, math.NaN())
 // dl now contains: [1, 3, 5]
 ```
 
 ### DropIfContains
 
-Removes all elements that contain a specified substring (for string elements).
+Removes all string elements that contain a specified substring. Non-string elements are kept.
 
 ```go
-func (dl *DataList) DropIfContains(substring any) *DataList
+func (dl *DataList) DropIfContains(substring string) *DataList
 ```
 
 **Parameters:**
@@ -393,9 +436,9 @@ func (dl *DataList) DropIfContains(substring any) *DataList
 **Example:**
 
 ```go
-dl := insyra.NewDataList("apple", "banana", "grape", "orange")
+dl := insyra.NewDataList("apple", "banana", "grape", "orange", 123)
 dl.DropIfContains("an")
-// dl now contains: ["apple", "grape"]
+// dl now contains: ["apple", "grape", 123]
 ```
 
 ### Clear
@@ -1877,7 +1920,7 @@ timestamp := dl.GetLastModifiedTimestamp()
 
 ### Count
 
-Returns the number of occurrences of a specified value.
+Returns the number of occurrences of a specified value. Supports `math.NaN()`.
 
 ```go
 func (dl *DataList) Count(value any) int
@@ -1894,8 +1937,9 @@ func (dl *DataList) Count(value any) int
 **Example:**
 
 ```go
-dl := insyra.NewDataList(1, 2, 2, 3, 2, 4)
+dl := insyra.NewDataList(1, 2, 2, 3, 2, 4, math.NaN())
 count := dl.Count(2) // 3
+countNaN := dl.Count(math.NaN()) // 1
 ```
 
 ### Counter
@@ -1920,7 +1964,7 @@ counter := dl.Counter()
 
 ### FindFirst
 
-Finds the first occurrence of a value and returns its index.
+Finds the first occurrence of a value and returns its index. Supports `math.NaN()`.
 
 ```go
 func (dl *DataList) FindFirst(value any) any
@@ -1937,13 +1981,14 @@ func (dl *DataList) FindFirst(value any) any
 **Example:**
 
 ```go
-dl := insyra.NewDataList(1, 2, 3, 2, 4)
-index := dl.FindFirst(2) // 1 (first occurrence at index 1)
+dl := insyra.NewDataList(1, 2, 3, 2, 4, math.NaN())
+index := dl.FindFirst(2) // 1
+indexNaN := dl.FindFirst(math.NaN()) // 5
 ```
 
 ### FindLast
 
-Finds the last occurrence of a value and returns its index.
+Finds the last occurrence of a value and returns its index. Supports `math.NaN()`.
 
 ```go
 func (dl *DataList) FindLast(value any) any
@@ -1960,13 +2005,14 @@ func (dl *DataList) FindLast(value any) any
 **Example:**
 
 ```go
-dl := insyra.NewDataList(1, 2, 3, 2, 4)
-index := dl.FindLast(2) // 3 (last occurrence at index 3)
+dl := insyra.NewDataList(1, 2, 3, 2, 4, math.NaN())
+index := dl.FindLast(2) // 3
+indexNaN := dl.FindLast(math.NaN()) // 5
 ```
 
 ### FindAll
 
-Finds all occurrences of a value and returns their indices.
+Finds all occurrences of a value and returns their indices. Supports `math.NaN()`.
 
 ```go
 func (dl *DataList) FindAll(value any) []int
@@ -1983,8 +2029,9 @@ func (dl *DataList) FindAll(value any) []int
 **Example:**
 
 ```go
-dl := insyra.NewDataList(1, 2, 3, 2, 4, 2)
+dl := insyra.NewDataList(1, 2, 3, 2, 4, 2, math.NaN())
 indices := dl.FindAll(2) // [1, 3, 5]
+indicesNaN := dl.FindAll(math.NaN()) // [6]
 ```
 
 ### ReplaceFirst
@@ -1992,13 +2039,17 @@ indices := dl.FindAll(2) // [1, 3, 5]
 Replaces the first occurrence of a value with a new value.
 
 ```go
-func (dl *DataList) ReplaceFirst(oldValue, newValue any)
+func (dl *DataList) ReplaceFirst(oldValue, newValue any) *DataList
 ```
 
 **Parameters:**
 
 - `oldValue`: Value to search for
 - `newValue`: Value to replace with
+
+**Returns:**
+
+- `*DataList`: The DataList itself (for method chaining)
 
 **Example:**
 
@@ -2013,13 +2064,17 @@ dl.ReplaceFirst(2, 99)
 Replaces the last occurrence of a value with a new value.
 
 ```go
-func (dl *DataList) ReplaceLast(oldValue, newValue any)
+func (dl *DataList) ReplaceLast(oldValue, newValue any) *DataList
 ```
 
 **Parameters:**
 
 - `oldValue`: Value to search for
 - `newValue`: Value to replace with
+
+**Returns:**
+
+- `*DataList`: The DataList itself (for method chaining)
 
 **Example:**
 
@@ -2034,13 +2089,17 @@ dl.ReplaceLast(2, 99)
 Replaces all occurrences of a value with a new value.
 
 ```go
-func (dl *DataList) ReplaceAll(oldValue, newValue any)
+func (dl *DataList) ReplaceAll(oldValue, newValue any) *DataList
 ```
 
 **Parameters:**
 
 - `oldValue`: Value to search for
 - `newValue`: Value to replace with
+
+**Returns:**
+
+- `*DataList`: The DataList itself (for method chaining)
 
 **Example:**
 

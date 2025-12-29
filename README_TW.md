@@ -291,6 +291,8 @@ func main() {
 - 使用 `IF`、`AND`、`OR` 和 `CASE` 等函數實現條件邏輯
 - 執行數學運算和字串操作
 - 執行連鎖比較，如 `1 < A <= 10`，用於範圍檢查
+- 使用 `.` 運算符存取特定列 (例如 `A.0`)，並使用 `@` 引用所有欄位
+- 使用聚合函數，如 `SUM`、`AVG`、`COUNT`、`MAX` 和 `MIN`
 
 ```go
 // 根據 A 欄位的值分類資料
@@ -298,12 +300,28 @@ dt.AddColUsingCCL("category", "IF(A > 90, 'Excellent', IF(A > 70, 'Good', 'Avera
 
 // 像在 Excel 中一樣執行計算
 dt.AddColUsingCCL("total", "A + B + C")
-dt.AddColUsingCCL("average", "(A + B + C) / 3")
+dt.AddColUsingCCL("average", "AVG(A + B + C)")
+
+// 對列或欄位使用聚合函數
+dt.AddColUsingCCL("row_sum", "SUM(@.0)")
 
 // 使用連鎖比較進行範圍檢查 (在 Excel 中也可使用！)
 dt.AddColUsingCCL("in_range", "IF(10 <= A <= 20, 'Yes', 'No')")
 ```
 
+#### Parquet 整合
+
+CCL 可以**直接在 Parquet 檔案讀取時應用**，在資料源頭進行篩選：
+
+```go
+// 讀取時即時篩選資料列 - 僅將符合條件的資料載入記憶體
+dt, err := parquet.FilterWithCCL(ctx, "sales_data.parquet", "(['amount'] > 1000) && (['status'] = 'Active')")
+
+// 直接在 parquet 檔案上套用 CCL 轉換（串流模式）
+err := parquet.ApplyCCL(ctx, "data.parquet", "NEW('total') = A + B + C")
+```
+
+這種方式透過批次處理資料，可減少處理大型資料集時的記憶體使用量。
 關於 CCL 語法和功能的完整指南，請參閱 **[CCL 文檔](/Docs/CCL.md)**。
 
 有關 DataTable 方法和功能的完整列表，請參閱 **[DataTable 文檔](https://github.com/HazelnutParadise/insyra/tree/main/Docs/DataTable.md)**。
@@ -315,10 +333,6 @@ dt.AddColUsingCCL("in_range", "IF(10 <= A <= 20, 'Yes', 'No')")
 ### **[isr](/Docs/isr.md)**
 
 提供 **語法糖**，使 Insyra 更易於使用。使用 `isr` 套件，您可以更快地編寫代碼，並更容易地理解和維護程式碼。
-
-### **[datafetch](/Docs/datafetch.md)**
-
-讓您輕鬆取得網路上的數據。目前支援從 Google Maps 取得商家評論資料。
 
 ### **[stats](/Docs/stats.md)**
 
@@ -336,9 +350,25 @@ dt.AddColUsingCCL("in_range", "IF(10 <= A <= 20, 'Yes', 'No')")
 
 基於 [github.com/gonum/plot](https://github.com/gonum/plot) 的視覺化套件。快速且不需要 Chrome。甚至支援函數繪圖。
 
+### **[csvxl](/Docs/csvxl.md)**
+
+處理 Excel 和 CSV 文件。例如將 CSV 轉換為 Excel。
+
+### **[parquet](/Docs/parquet.md)**
+
+提供 Apache Parquet 檔案格式的讀寫支援，與 Insyra 的 `DataTable` 和 `DataList` 深度整合。支援串流讀取、欄位級讀取以及 CCL 篩選。
+
 ### **[mkt](/Docs/mkt.md)**
 
 提供與行銷相關的數據分析功能，例如 RFM 分析。不必煩惱如何計算，一個函數搞定！
+
+### **[py](/Docs/py.md)**
+
+在 Go 中執行 Python 程式碼，無需手動安裝 Python 環境和依賴庫。允許在 Go 和 Python 之間傳遞變數。
+
+### **[datafetch](/Docs/datafetch.md)**
+
+讓您輕鬆取得網路上的數據。目前支援從 Google Maps 取得商家評論資料。
 
 ### **[lpgen](/Docs/lpgen.md)**
 
@@ -347,14 +377,6 @@ dt.AddColUsingCCL("in_range", "IF(10 <= A <= 20, 'Yes', 'No')")
 ### **[lp](/Docs/lp.md)**
 
 使用 [GLPK](https://www.gnu.org/software/glpk/) 的全自動線性規劃（LP）包。
-
-### **[csvxl](/Docs/csvxl.md)**
-
-處理 Excel 和 CSV 文件。例如將 CSV 轉換為 Excel。
-
-### **[py](/Docs/py.md)**
-
-在 Go 中執行 Python 程式碼，無需手動安裝 Python 環境和依賴庫。允許在 Go 和 Python 之間傳遞變數。
 
 ## 進階使用
 
