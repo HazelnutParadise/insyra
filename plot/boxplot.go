@@ -128,9 +128,7 @@ func CreateBoxPlot(config BoxPlotConfig, series ...BoxPlotSeries) *charts.BoxPlo
 	// Apply Y axis settings via internal helper (flatten series data for detection)
 	allData := make([]insyra.IDataList, 0)
 	for _, s := range series {
-		for _, dl := range s.Data {
-			allData = append(allData, dl)
-		}
+		allData = append(allData, s.Data...)
 	}
 	// Apply shared Y axis logic (numeric-only for boxplot)
 	internal.ApplyYAxis(boxPlot, config.YAxisName, nil, config.YAxisMin, config.YAxisMax, config.YAxisSplitNumber, config.YAxisFormatter, allData...)

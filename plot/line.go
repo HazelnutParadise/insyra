@@ -141,12 +141,3 @@ func CreateLineChart(config LineChartConfig, data ...insyra.IDataList) *charts.L
 
 	return line
 }
-
-// convertToLineDataFloat 將 []float64 轉換為 []opts.LineData
-func convertToLineDataFloat(data []float64) []opts.LineData {
-	lineData := make([]opts.LineData, len(data))
-	for i, v := range data {
-		lineData[i] = opts.LineData{Value: v}
-	}
-	return lineData
-}

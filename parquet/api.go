@@ -3,6 +3,7 @@ package parquet
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/HazelnutParadise/insyra"
@@ -54,13 +55,21 @@ func Inspect(path string) (FileInfo, error) {
 	if err != nil {
 		return FileInfo{}, err
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			log.Printf("parquet: failed to close file %s: %v", path, err)
+		}
+	}()
 
 	r, err := file.NewParquetReader(f)
 	if err != nil {
 		return FileInfo{}, err
 	}
-	defer r.Close()
+	defer func() {
+		if err := r.Close(); err != nil {
+			log.Printf("parquet: failed to close reader for %s: %v", path, err)
+		}
+	}()
 
 	metadata := r.MetaData()
 	schema := metadata.Schema
@@ -132,7 +141,11 @@ func Write(dt insyra.IDataTable, path string) error {
 	if err != nil {
 		return err
 	}
-	defer writer.Close()
+	defer func() {
+		if err := writer.Close(); err != nil {
+			log.Printf("parquet: failed to close writer for %s: %v", path, err)
+		}
+	}()
 
 	return writer.WriteTable(arrowTable, 1024*1024) // chunk size
 }
@@ -143,13 +156,21 @@ func Read(ctx context.Context, path string, opt ReadOptions) (*insyra.DataTable,
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			log.Printf("parquet: failed to close file %s: %v", path, err)
+		}
+	}()
 
 	r, err := file.NewParquetReader(f)
 	if err != nil {
 		return nil, err
 	}
-	defer r.Close()
+	defer func() {
+		if err := r.Close(); err != nil {
+			log.Printf("parquet: failed to close reader for %s: %v", path, err)
+		}
+	}()
 
 	fr, err := pqarrow.NewFileReader(r, pqarrow.ArrowReadProperties{Parallel: true}, memory.DefaultAllocator)
 	if err != nil {

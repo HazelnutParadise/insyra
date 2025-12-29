@@ -53,11 +53,7 @@ func SavePNG(chart Renderable, pngPath string, useOnlineServiceOnFail ...bool) e
 		return fmt.Errorf("invalid number of arguments for useOnlineServiceOnFail; expected at most 1")
 	}
 
-	doesUseOnlineServiceOnFail := true
-
-	if len(useOnlineServiceOnFail) == 1 && !useOnlineServiceOnFail[0] {
-		doesUseOnlineServiceOnFail = false
-	}
+	doesUseOnlineServiceOnFail := len(useOnlineServiceOnFail) == 0 || useOnlineServiceOnFail[0]
 
 	disableAnimation(chart)
 

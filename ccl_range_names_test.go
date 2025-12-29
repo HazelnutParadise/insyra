@@ -63,7 +63,7 @@ func TestCCLRangeWithNames(t *testing.T) {
 			t.Errorf("RangeRowNames type mismatch: got %T", val2)
 		}
 	} else {
-		// t.Errorf("RangeRowNames column not created")
+		t.Errorf("RangeRowNames column not created")
 	}
 
 	// Test 3: Mixed Column Range A:['ColC']

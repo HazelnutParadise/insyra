@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"time"
 
@@ -31,14 +32,22 @@ func streamAsArrowRecord(ctx context.Context, path string, opt ReadOptions, batc
 			errChan <- err
 			return
 		}
-		defer f.Close()
+		defer func() {
+			if err := f.Close(); err != nil {
+				log.Printf("parquet: failed to close file %s: %v", path, err)
+			}
+		}()
 
 		r, err := file.NewParquetReader(f)
 		if err != nil {
 			errChan <- err
 			return
 		}
-		defer r.Close()
+		defer func() {
+			if err := r.Close(); err != nil {
+				log.Printf("parquet: failed to close reader for %s: %v", path, err)
+			}
+		}()
 
 		fr, err := pqarrow.NewFileReader(r, pqarrow.ArrowReadProperties{Parallel: true, BatchSize: int64(batchSize)}, memory.DefaultAllocator)
 		if err != nil {

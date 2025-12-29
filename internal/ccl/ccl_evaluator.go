@@ -2,6 +2,7 @@ package ccl
 
 import (
 	"fmt"
+	"log"
 	"math"
 	"strings"
 
@@ -554,7 +555,11 @@ func evaluateToColumn(n cclNode, ctx Context) ([]any, error) {
 
 	// Save current row index to restore later
 	originalRowIdx := ctx.GetRowIndex()
-	defer ctx.SetRowIndex(originalRowIdx)
+	defer func() {
+		if err := ctx.SetRowIndex(originalRowIdx); err != nil {
+			log.Printf("ccl: failed to restore row index: %v", err)
+		}
+	}()
 
 	for i := 0; i < rowCount; i++ {
 		if err := ctx.SetRowIndex(i); err != nil {

@@ -3,6 +3,7 @@ package parquet
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/HazelnutParadise/Go-Utils/conv"
@@ -26,10 +27,6 @@ type parquetContext struct {
 	// Current row info
 	rowIndex   int
 	currentRow []any
-
-	// For accessing entire columns (used in aggregate functions)
-	allRecords []arrow.Record // Cache all records for full data access
-	totalRows  int64
 }
 
 func newParquetContext(record arrow.Record, colNames []string) *parquetContext {
@@ -256,7 +253,9 @@ func applyBatchCCL(rec arrow.Record, pqCtx *parquetContext, colNames []string, c
 			// Create new column
 			newColData := make([]any, numRows)
 			for rowIdx := 0; rowIdx < numRows; rowIdx++ {
-				pqCtx.SetRowIndex(rowIdx)
+				if err := pqCtx.SetRowIndex(rowIdx); err != nil {
+					return nil, fmt.Errorf("failed to set row index %d: %w", rowIdx, err)
+				}
 				val, err := ccl.Evaluate(expr, pqCtx)
 				if err != nil {
 					return nil, fmt.Errorf("error evaluating NEW column '%s' at row %d: %w", newColName, rowIdx, err)
@@ -276,7 +275,9 @@ func applyBatchCCL(rec arrow.Record, pqCtx *parquetContext, colNames []string, c
 				// Evaluate per row
 				updatedCol := make([]any, numRows)
 				for rowIdx := 0; rowIdx < numRows; rowIdx++ {
-					pqCtx.SetRowIndex(rowIdx)
+					if err := pqCtx.SetRowIndex(rowIdx); err != nil {
+						return nil, fmt.Errorf("failed to set row index %d: %w", rowIdx, err)
+					}
 					val, err := ccl.Evaluate(expr, pqCtx)
 					if err != nil {
 						return nil, fmt.Errorf("error evaluating assignment to '%s' at row %d: %w", target, rowIdx, err)
@@ -286,7 +287,9 @@ func applyBatchCCL(rec arrow.Record, pqCtx *parquetContext, colNames []string, c
 				resultCols[target] = updatedCol
 			} else {
 				// Constant expression - evaluate once
-				pqCtx.SetRowIndex(0)
+				if err := pqCtx.SetRowIndex(0); err != nil {
+					return nil, fmt.Errorf("failed to set row index to 0: %w", err)
+				}
 				val, err := ccl.Evaluate(expr, pqCtx)
 				if err != nil {
 					return nil, fmt.Errorf("error evaluating assignment to '%s': %w", target, err)
@@ -463,7 +466,10 @@ func FilterWithCCL(ctx context.Context, path string, filterExpr string) (*insyra
 			}
 
 			for rowIdx := 0; rowIdx < int(rec.NumRows()); rowIdx++ {
-				pqCtx.SetRowIndex(rowIdx)
+				if err := pqCtx.SetRowIndex(rowIdx); err != nil {
+					rec.Release()
+					return nil, fmt.Errorf("failed to set row index %d: %w", rowIdx, err)
+				}
 
 				// Evaluate filter expression
 				val, err := ccl.Evaluate(compiledExpr, pqCtx)
@@ -549,9 +555,12 @@ func ApplyCCL(ctx context.Context, path string, cclScript string) error {
 		return fmt.Errorf("failed to create temporary output file: %w", err)
 	}
 	defer func() {
-		outFile.Close()
-		// Clean up temporary file if it still exists (error case)
-		os.Remove(tmpPath)
+		if err := outFile.Close(); err != nil {
+			log.Printf("parquet: failed to close temporary file %s: %v", tmpPath, err)
+		}
+		if err := os.Remove(tmpPath); err != nil && !os.IsNotExist(err) {
+			log.Printf("parquet: failed to remove temporary file %s: %v", tmpPath, err)
+		}
 	}()
 
 	var writer *pqarrow.FileWriter
@@ -566,12 +575,16 @@ func ApplyCCL(ctx context.Context, path string, cclScript string) error {
 		select {
 		case <-ctx.Done():
 			if writer != nil {
-				writer.Close()
+				if err := writer.Close(); err != nil {
+					log.Printf("parquet: failed to close writer on context done: %v", err)
+				}
 			}
 			return ctx.Err()
 		case err := <-errChan:
 			if writer != nil {
-				writer.Close()
+				if err := writer.Close(); err != nil {
+					log.Printf("parquet: failed to close writer: %v", err)
+				}
 			}
 			if err != nil {
 				return err
@@ -584,7 +597,9 @@ func ApplyCCL(ctx context.Context, path string, cclScript string) error {
 			}
 
 			// Close output file before moving
-			outFile.Close()
+			if err := outFile.Close(); err != nil {
+				return fmt.Errorf("failed to close output file: %w", err)
+			}
 
 			// Move temporary file to original path
 			if err := os.Rename(tmpPath, path); err != nil {
