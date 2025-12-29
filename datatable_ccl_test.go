@@ -487,7 +487,7 @@ func TestDataTable_ExecuteCCL_AggregateTotal(t *testing.T) {
 	t.Run("MultipleAggregates", func(t *testing.T) {
 		dt := createDT()
 		// In one call, NEW('S') = SUM(@) and NEW('C') = COUNT(@)
-		// Both should see only A and B because of snapshotting.
+		// Statements are executed sequentially; the second statement sees the S column added by the first.
 		dt.ExecuteCCL("NEW('S') = SUM(@); NEW('C') = COUNT(@)")
 
 		colS := dt.GetColByName("S")
@@ -501,8 +501,9 @@ func TestDataTable_ExecuteCCL_AggregateTotal(t *testing.T) {
 			if colS.Get(i) != 21.0 {
 				t.Errorf("Expected S=21.0 at row %d, got %v", i, colS.Get(i))
 			}
-			if colC.Get(i) != 6.0 {
-				t.Errorf("Expected C=6.0 at row %d, got %v", i, colC.Get(i))
+			// Because S has been added, COUNT(@) counts 3 rows * 3 cols = 9
+			if colC.Get(i) != 9.0 {
+				t.Errorf("Expected C=9.0 at row %d, got %v", i, colC.Get(i))
 			}
 		}
 	})
