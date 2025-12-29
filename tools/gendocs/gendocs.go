@@ -17,7 +17,7 @@ var (
 	dirFlag    = flag.String("dir", "", "docs directory to scan (required)")
 	outputFlag = flag.String("output", "", "output _sidebar.md path (required)")
 	repoFlag   = flag.String("repo", "", "repo url to set in docs index (required)")
-}
+)
 
 func main() {
 	flag.Parse()
