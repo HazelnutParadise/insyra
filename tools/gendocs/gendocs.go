@@ -54,15 +54,26 @@ func main() {
 		fmt.Fprintf(os.Stderr, "create output error: %v\n", err)
 		os.Exit(1)
 	}
-	defer out.Close()
+	defer func() {
+		if err := out.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "close output error: %v\n", err)
+		}
+	}()
 
 	w := bufio.NewWriter(out)
-	defer w.Flush()
+	defer func() {
+		if err := w.Flush(); err != nil {
+			fmt.Fprintf(os.Stderr, "flush error: %v\n", err)
+		}
+	}()
 
 	// Homepage link to README.md if present
 	rootReadme := filepath.Join(*dirFlag, "README.md")
 	if _, err := os.Stat(rootReadme); err == nil {
-		fmt.Fprintln(w, "* [Home](README.md)")
+		if _, err := fmt.Fprintln(w, "* [Home](README.md)"); err != nil {
+			fmt.Fprintf(os.Stderr, "write error: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
 	// Get sorted list of directories (root first)
@@ -91,19 +102,28 @@ func main() {
 					continue
 				}
 				title := titleFromFile(filepath.Join(*dirFlag, f))
-				fmt.Fprintf(w, "* [%s](%s)\n", title, f)
+				if _, err := fmt.Fprintf(w, "* [%s](%s)\n", title, f); err != nil {
+					fmt.Fprintf(os.Stderr, "write error: %v\n", err)
+					os.Exit(1)
+				}
 			}
 			continue
 		}
 
 		// Directory header
 		dirName := filepath.Base(d)
-		fmt.Fprintf(w, "* %s\n", dirName)
+		if _, err := fmt.Fprintf(w, "* %s\n", dirName); err != nil {
+			fmt.Fprintf(os.Stderr, "write error: %v\n", err)
+			os.Exit(1)
+		}
 		// list files under it with indentation
 		for _, f := range files {
 			rel := f
 			title := titleFromFile(filepath.Join(*dirFlag, f))
-			fmt.Fprintf(w, "  * [%s](%s)\n", title, rel)
+			if _, err := fmt.Fprintf(w, "  * [%s](%s)\n", title, rel); err != nil {
+				fmt.Fprintf(os.Stderr, "write error: %v\n", err)
+				os.Exit(1)
+			}
 		}
 	}
 
@@ -279,7 +299,11 @@ func titleFromFile(path string) string {
 	if err != nil {
 		return nameToTitle(filepath.Base(path))
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "close file error: %v\n", err)
+		}
+	}()
 	r := bufio.NewReader(f)
 	for {
 		line, err := r.ReadString('\n')
