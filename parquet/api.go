@@ -113,8 +113,8 @@ func Inspect(path string) (FileInfo, error) {
 }
 
 // Read：一次把「options 指定的範圍」讀完（可選欄、可選包）
-// 回傳 arrow.Table（之後你要轉 DataTable 很方便）
-func Read(ctx context.Context, path string, opt ReadOptions) (arrow.Table, error) {
+// 回傳 insyra.DataTable
+func Read(ctx context.Context, path string, opt ReadOptions) (*insyra.DataTable, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -142,22 +142,41 @@ func Read(ctx context.Context, path string, opt ReadOptions) (arrow.Table, error
 			}
 			colIndices = append(colIndices, idx)
 		}
+	} else {
+		// 如果未指定 Columns，預設讀取所有欄位
+		schema := r.MetaData().Schema
+		colIndices = make([]int, schema.NumColumns())
+		for i := 0; i < schema.NumColumns(); i++ {
+			colIndices[i] = i
+		}
 	}
 
 	rowGroups := opt.RowGroups
 	if len(rowGroups) == 0 {
+		// 如果未指定 RowGroups，預設讀取所有 RowGroups
 		numRG := r.NumRowGroups()
 		rowGroups = make([]int, numRG)
-		for i := range numRG {
+		for i := range rowGroups {
 			rowGroups[i] = i
 		}
 	}
 
-	if len(opt.Columns) > 0 || len(opt.RowGroups) > 0 {
-		return fr.ReadRowGroups(ctx, colIndices, rowGroups)
+	var arrowTable arrow.Table
+	arrowTable, err = fr.ReadRowGroups(ctx, colIndices, rowGroups)
+	if err != nil {
+		return nil, err
+	}
+	defer arrowTable.Release()
+
+	// 手動將 arrow.Table 轉換為 insyra.DataTable
+	dataTable := insyra.NewDataTable()
+	for i := 0; i < int(arrowTable.NumCols()); i++ {
+		col := arrowTable.Column(i)
+		data := chunkedToSlice(col.Data())
+		dataTable.AppendCols(insyra.NewDataList(data).SetName(col.Name()))
 	}
 
-	return fr.ReadTable(ctx)
+	return dataTable, nil
 }
 
 // Stream：串流讀（可選欄、可選包），一批一批吐出 arrow.Record
@@ -244,18 +263,7 @@ func ReadColumn(ctx context.Context, path string, column string, opt ReadColumnO
 	if err != nil {
 		return nil, err
 	}
-	defer table.Release()
-
-	if opt.MaxValues > 0 && table.NumRows() > opt.MaxValues {
-		return nil, fmt.Errorf("too many values: %d > %d", table.NumRows(), opt.MaxValues)
-	}
-
-	if table.NumCols() == 0 {
-		return nil, fmt.Errorf("column %s not found", column)
-	}
-
-	chunked := table.Column(0).Data()
-	return insyra.NewDataList(chunkedToSlice(chunked)), nil
+	return table.GetCol("A"), nil
 }
 
 func chunkedToSlice(chunked *arrow.Chunked) any {
