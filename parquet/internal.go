@@ -2,7 +2,9 @@ package parquet
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
@@ -84,7 +86,7 @@ func streamAsArrowRecord(ctx context.Context, path string, opt ReadOptions, batc
 			case recChan <- rec:
 			}
 		}
-		if rr.Err() != nil {
+		if rr.Err() != nil && !errors.Is(rr.Err(), io.EOF) {
 			errChan <- rr.Err()
 		}
 	}()
