@@ -207,6 +207,7 @@ func writeIndex(dir, repoFlag string) error {
 
     <script src="//unpkg.com/docsify/lib/docsify.min.js"></script>
 	<script src="//unpkg.com/docsify-copy-code"></script>
+	<script src="//cdn.jsdelivr.net/npm/prismjs@1.22/components/prism-go.min.js"></script>
   </body>
 </html>
 `
