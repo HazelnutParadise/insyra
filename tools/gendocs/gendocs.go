@@ -14,13 +14,28 @@ import (
 )
 
 var (
-	dirFlag    = flag.String("dir", "docs", "docs directory to scan")
-	outputFlag = flag.String("output", "docs/_sidebar.md", "output _sidebar.md path")
-	repoFlag   = flag.String("repo", "", "repo url to set in docs index (overrides GITHUB_REPOSITORY env)")
-)
+	dirFlag    = flag.String("dir", "", "docs directory to scan (required)")
+	outputFlag = flag.String("output", "", "output _sidebar.md path (required)")
+	repoFlag   = flag.String("repo", "", "repo url to set in docs index (required)")
+}
 
 func main() {
 	flag.Parse()
+
+	// Required flags — fail fast if any are missing
+	if *dirFlag == "" {
+		fmt.Fprintln(os.Stderr, "ERROR: --dir is required")
+		os.Exit(1)
+	}
+	if *outputFlag == "" {
+		fmt.Fprintln(os.Stderr, "ERROR: --output is required")
+		os.Exit(1)
+	}
+	if *repoFlag == "" {
+		fmt.Fprintln(os.Stderr, "ERROR: --repo is required")
+		os.Exit(1)
+	}
+
 	entries := map[string][]string{}
 	err := filepath.WalkDir(*dirFlag, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -137,7 +152,7 @@ func main() {
 	fmt.Fprintf(os.Stderr, "generated %s\n", filepath.Join(*dirFlag, "index.html"))
 
 	// Generate a navbar with an "Official site" link and a theme CSS with deep-blue colors
-	siteURL := detectSiteURL(*repoFlag)
+	siteURL := detectSiteURL(*dirFlag, *repoFlag)
 	if err := writeNavbar(*dirFlag, siteURL); err != nil {
 		fmt.Fprintf(os.Stderr, "generate navbar error: %v\n", err)
 		os.Exit(1)
@@ -201,31 +216,14 @@ func writeIndex(dir, repoFlag string) error {
 	return os.WriteFile(path, []byte(content), 0644)
 }
 
-// detectSiteURL tries to build a GitHub Pages URL from the repo flag or environment.
-func detectSiteURL(repoFlag string) string {
-	// allow explicit site override
-	if s := os.Getenv("DOCS_SITE"); s != "" {
+// detectSiteURL tries to find the official website URL from a docs config, OFFICIAL_SITE env, README, or repo
+func detectSiteURL(dir, repoFlag string) string {
+	// OFFICIAL_SITE must be set in the deployment workflow. No fallbacks allowed — fail fast if missing.
+	if s := os.Getenv("OFFICIAL_SITE"); s != "" {
 		return s
 	}
-
-	repo := ""
-	if repoFlag != "" {
-		// accept either https://github.com/owner/repo or owner/repo
-		repo = strings.TrimPrefix(repoFlag, "https://github.com/")
-		repo = strings.TrimPrefix(repo, "http://github.com/")
-	} else if r := os.Getenv("GITHUB_REPOSITORY"); r != "" {
-		repo = r
-	}
-
-	if repo == "" {
-		return ""
-	}
-	parts := strings.Split(repo, "/")
-	if len(parts) >= 2 {
-		owner := parts[0]
-		repoName := parts[1]
-		return fmt.Sprintf("https://%s.github.io/%s/", owner, repoName)
-	}
+	fmt.Fprintln(os.Stderr, "ERROR: OFFICIAL_SITE environment variable is required. Set it in your deploy workflow job as OFFICIAL_SITE: 'https://example.com'")
+	os.Exit(1)
 	return ""
 }
 
@@ -233,7 +231,7 @@ func detectSiteURL(repoFlag string) string {
 func writeNavbar(dir, siteURL string) error {
 	var content string
 	if siteURL != "" {
-		content = fmt.Sprintf("[Home](README.md) | [Official site](%s)\n", siteURL)
+		content = fmt.Sprintf("[Home](README.md) • [Official Website](%s)\n", siteURL)
 	} else {
 		content = "[Home](README.md)\n"
 	}
@@ -241,34 +239,47 @@ func writeNavbar(dir, siteURL string) error {
 	return os.WriteFile(path, []byte(content), 0644)
 }
 
-// writeThemeCSS writes a small CSS file to give the site a deep navy theme.
+// writeThemeCSS writes a CSS file to use a light content background with a deep-navy sidebar.
 func writeThemeCSS(dir string) error {
-	css := `/* Deep navy theme overrides for Docsify */
+	css := `/* Deep navy sidebar with light content theme for Docsify */
 :root {
   --theme-color: #05386b;
-  --text-color: #e6eef8;
+  --text-color: #0f1720;
   --sidebar-bg: #022235;
-  --content-bg: #071428;
+  --content-bg: #f8fafc;
+  --content-card-bg: #ffffff;
+  --link-color: #0b69ff;
 }
 body {
-  background: linear-gradient(180deg, #071428, #021221);
+  background: var(--content-bg);
   color: var(--text-color);
 }
 .sidebar {
   background: var(--sidebar-bg) !important;
+  color: var(--text-color) !important;
 }
 .sidebar .sidebar-nav a {
-  color: var(--text-color) !important;
+  color: #e6eef8 !important;
 }
 .navbar, .app-name, .toolbar {
   background: linear-gradient(180deg, #032a45, #012034);
-  color: var(--text-color) !important;
+  color: #e6eef8 !important;
 }
 a {
-  color: #7ec8ff;
+  color: var(--link-color);
 }
 .markdown-section {
-  background: transparent !important;
+  background: var(--content-card-bg) !important;
+  color: var(--text-color) !important;
+  box-shadow: 0 1px 3px rgba(16,24,40,0.05);
+  border-radius: 6px;
+  padding: 1rem;
+}
+pre, code {
+  background: #0f1720;
+  color: #f1f5f9;
+  border-radius: 4px;
+  padding: 0.4rem;
 }
 `
 	path := filepath.Join(dir, "docs.css")
