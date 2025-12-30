@@ -186,6 +186,7 @@ func writeIndex(dir, repoFlag string) error {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+	<link rel="icon" type="image/x-icon" href="https://insyra.hazelnut-paradise.com/favicon">
     <title>Insyra Docs</title>
     <meta name="description" content="Insyra documentation powered by Docsify" />
     <link rel="stylesheet" href="//unpkg.com/docsify/lib/themes/vue.css" />
