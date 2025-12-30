@@ -230,8 +230,8 @@ func main() {
 package main
 
 import (
- "github.com/HazelnutParadise/insyra/isr"
- "github.com/HazelnutParadise/insyra/parquet"
+    "github.com/HazelnutParadise/insyra/isr"
+    "github.com/HazelnutParadise/insyra/parquet"
 )
 
 func main() {
