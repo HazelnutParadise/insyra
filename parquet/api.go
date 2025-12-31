@@ -2,6 +2,7 @@ package parquet
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -57,6 +58,11 @@ func Inspect(path string) (FileInfo, error) {
 	}
 	defer func() {
 		if err := f.Close(); err != nil {
+			// Sometimes the underlying writer/reader already closed the file.
+			// Ignore "file already closed" as it's harmless; log others.
+			if errors.Is(err, os.ErrClosed) {
+				return
+			}
 			log.Printf("parquet: failed to close file %s: %v", path, err)
 		}
 	}()
@@ -129,6 +135,10 @@ func Write(dt insyra.IDataTable, path string) error {
 	}
 	defer func() {
 		if err := f.Close(); err != nil {
+			// NewFileWriter.Writer.Close() may already close the underlying file.
+			if errors.Is(err, os.ErrClosed) {
+				return
+			}
 			log.Printf("parquet: failed to close file %s: %v", path, err)
 		}
 	}()
@@ -162,6 +172,10 @@ func Read(ctx context.Context, path string, opt ReadOptions) (*insyra.DataTable,
 	}
 	defer func() {
 		if err := f.Close(); err != nil {
+			// Reader.Close() may already close the underlying file.
+			if errors.Is(err, os.ErrClosed) {
+				return
+			}
 			log.Printf("parquet: failed to close file %s: %v", path, err)
 		}
 	}()
