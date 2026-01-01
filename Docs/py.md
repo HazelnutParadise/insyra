@@ -233,6 +233,10 @@ When `out` is a `DataTable` or `DataList` pointer, `insyra.Return` recognizes co
   - `Series.name` becomes `DataList.Name` (converted to string).
 - **polars.Series** -> `*insyra.DataList`
   - `Series.name` becomes `DataList.Name` (converted to string).
+- **1D list/tuple** -> `*insyra.DataList`
+- **2D list** -> `*insyra.DataTable`
+- **dict** -> `*insyra.DataTable` (single row, keys become column names)
+- **list of dict** -> `*insyra.DataTable` (multiple rows, keys become column names)
 
 Plain JSON return values still work (e.g., list of dicts, 2D arrays, or maps) and will be bound as before.
 
