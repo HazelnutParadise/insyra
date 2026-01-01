@@ -135,12 +135,8 @@ finally:
 
 	// 將結果 bind 到傳入的結構指標
 	if out != nil {
-		jsonData, err := json.Marshal(pyResult[0])
-		if err != nil {
-			return fmt.Errorf("failed to marshal result: %w", err)
-		}
-		if err := json.Unmarshal(jsonData, out); err != nil {
-			return fmt.Errorf("failed to unmarshal result to struct: %w", err)
+		if err := bindPyResult(out, pyResult[0]); err != nil {
+			return err
 		}
 	}
 	return nil

@@ -76,10 +76,10 @@ func startServer() {
 	})
 
 	insyra.LogInfo("py", "init", "Insyra listening on http://localhost:"+port+".")
-	err := http.ListenAndServe("127.0.0.1:"+port, nil)
+	err := http.ListenAndServe("localhost:"+port, nil)
 	if err != nil {
 		insyra.LogWarning("py", "init", "Failed to start server on port %s, trying backup port %s...", port, backupPort)
-		err = http.ListenAndServe("127.0.0.1:"+backupPort, nil)
+		err = http.ListenAndServe("localhost:"+backupPort, nil)
 		if err != nil {
 			insyra.LogFatal("py", "init", "Failed to start backup server on port %s: %v", backupPort, err)
 		}
