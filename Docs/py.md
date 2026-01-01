@@ -216,6 +216,48 @@ When passing Go variables to Python code using `RunCodef` or `RunFilef`, certain
 
 This conversion allows seamless integration between Go's Insyra data structures and Python's data analysis libraries.
 
+## Return Type Binding (Python -> Go)
+
+When `out` is a `DataTable` or `DataList` pointer, `insyra.Return` recognizes common pandas/polars structures and binds them back to Insyra types automatically.
+
+### Supported Return Mappings
+
+- **pandas.DataFrame** -> `*insyra.DataTable`
+  - Columns become `ColNames`.
+  - Index becomes `RowNames` (converted to strings).
+  - `DataFrame.name` (if set) becomes `DataTable.Name`.
+- **polars.DataFrame** -> `*insyra.DataTable`
+  - Columns become `ColNames`.
+  - Polars has no index; row names are not set.
+- **pandas.Series** -> `*insyra.DataList`
+  - `Series.name` becomes `DataList.Name` (converted to string).
+- **polars.Series** -> `*insyra.DataList`
+  - `Series.name` becomes `DataList.Name` (converted to string).
+
+Plain JSON return values still work (e.g., list of dicts, 2D arrays, or maps) and will be bound as before.
+
+### Example: DataFrame -> DataTable
+
+```go
+var dt *insyra.DataTable
+err := py.RunCode(&dt, `
+import pandas as pd
+df = pd.DataFrame({"a": [1, 2], "b": [3, 4]}, index=["r1", "r2"])
+insyra.Return(df)
+`)
+```
+
+### Example: Series -> DataList
+
+```go
+var dl *insyra.DataList
+err := py.RunCode(&dl, `
+import polars as pl
+s = pl.Series("s1", [10, 20])
+insyra.Return(s)
+`)
+```
+
 ## Functions for Python Code
 
 Here are some functions that are useful when writing Python code to be executed with `RunCode` or `RunCodef`.
@@ -227,6 +269,8 @@ insyra.Return(result=None, error=None, url)
 ```
 
 This function is used to return data from Python to Go.
+
+If `result` is a pandas/polars DataFrame or Series, it will be normalized and returned as a typed payload so that Go can bind it directly into `DataTable` or `DataList`.
 
 #### Parameters
 
@@ -286,20 +330,20 @@ insyra.Return({"execution_id": insyra.execution_id, "data": "some data"})
 - **Python Environment**: Insyra automatically installs Python environment using `uv` in the `.insyra_py_env` directory in your project root.
 - **Python Libraries**: Insyra automatically installs following Python libraries, you can use them directly in your Python code:
 
- ``` go
- pyDependencies   = map[string]string{
-  "import requests":                   "requests",       // HTTP requests
-  "import json":                       "",               // JSON data processing (built-in module)
-  "import numpy as np":                "numpy",          // Numerical operations
-  "import pandas as pd":               "pandas",         // Data analysis and processing
-  "import polars as pl":               "polars",         // Data analysis and processing (faster alternative to pandas)
-  "import matplotlib.pyplot as plt":   "matplotlib",     // Data visualization
-  "import seaborn as sns":             "seaborn",        // Data visualization
-  "import scipy":                      "scipy",          // Scientific computing
-  "import sklearn":                    "scikit-learn",   // Machine learning
-  "import statsmodels.api as sm":      "statsmodels",    // Statistical modeling
-  "import plotly.graph_objects as go": "plotly",         // Interactive data visualization
-  "import spacy":                      "spacy",          // Efficient natural language processing
-  "import bs4":                        "beautifulsoup4", // Web scraping
- }
- ```
+```go
+pyDependencies   = map[string]string{
+ "import requests":                   "requests",       // HTTP requests
+ "import json":                       "",               // JSON data processing (built-in module)
+ "import numpy as np":                "numpy",          // Numerical operations
+ "import pandas as pd":               "pandas",         // Data analysis and processing
+ "import polars as pl":               "polars",         // Data analysis and processing (faster alternative to pandas)
+ "import matplotlib.pyplot as plt":   "matplotlib",     // Data visualization
+ "import seaborn as sns":             "seaborn",        // Data visualization
+ "import scipy":                      "scipy",          // Scientific computing
+ "import sklearn":                    "scikit-learn",   // Machine learning
+ "import statsmodels.api as sm":      "statsmodels",    // Statistical modeling
+ "import plotly.graph_objects as go": "plotly",         // Interactive data visualization
+ "import spacy":                      "spacy",          // Efficient natural language processing
+ "import bs4":                        "beautifulsoup4", // Web scraping
+}
+```
