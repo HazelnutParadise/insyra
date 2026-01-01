@@ -26,7 +26,7 @@ import (
 //
 // Key features:
 // - Thread-safe operations via AtomicDo
-// - Flexible data types using interface{}
+// - Flexible data types using any
 // - Column and row indexing/naming
 // - Comprehensive data manipulation methods
 // - CSV/JSON/SQL import/export capabilities
