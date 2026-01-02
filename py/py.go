@@ -3,6 +3,7 @@
 package py
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -143,7 +144,7 @@ finally:
 }
 
 // Install dependencies using uv pip
-func PipInstall(dep string) {
+func PipInstall(dep string) error {
 	pyEnvInit()
 	pythonCmd := exec.Command("uv", "pip", "install", dep, "--python", pyPath)
 	pythonCmd.Dir = absInstallDir
@@ -151,14 +152,14 @@ func PipInstall(dep string) {
 	pythonCmd.Stderr = os.Stderr
 	err := pythonCmd.Run()
 	if err != nil {
-		insyra.LogFatal("py", "PipInstall", "Failed to install dependency: %v", err)
-	} else {
-		insyra.LogInfo("py", "PipInstall", "Installed dependency: %s", dep)
+		return fmt.Errorf("failed to install dependency %s: %w", dep, err)
 	}
+	insyra.LogInfo("py", "PipInstall", "Installed dependency: %s", dep)
+	return nil
 }
 
 // Uninstall dependencies using uv pip
-func PipUninstall(dep string) {
+func PipUninstall(dep string) error {
 	pyEnvInit()
 	pythonCmd := exec.Command("uv", "pip", "uninstall", dep, "--python", pyPath)
 	pythonCmd.Dir = absInstallDir
@@ -166,10 +167,70 @@ func PipUninstall(dep string) {
 	pythonCmd.Stderr = os.Stderr
 	err := pythonCmd.Run()
 	if err != nil {
-		insyra.LogFatal("py", "PipUninstall", "Failed to uninstall dependency: %v", err)
-	} else {
-		insyra.LogInfo("py", "PipUninstall", "Uninstalled dependency: %s", dep)
+		return fmt.Errorf("failed to uninstall dependency %s: %w", dep, err)
 	}
+	insyra.LogInfo("py", "PipUninstall", "Uninstalled dependency: %s", dep)
+	return nil
+}
+
+// PipList returns a map of installed package names to their versions for the Python environment managed by uv.
+// It runs `uv pip list --format=json --python <pyPath>` and parses the JSON output.
+func PipList() (map[string]string, error) {
+	pyEnvInit()
+
+	cmd := exec.Command("uv", "pip", "list", "--format=json", "--python", pyPath)
+	cmd.Dir = absInstallDir
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		insyra.LogInfo("py", "PipList", "Failed to list installed packages. Stdout: %s Stderr: %s Error: %v", stdout.String(), stderr.String(), err)
+		return nil, fmt.Errorf("failed to list installed packages: %w", err)
+	}
+
+	type pipPkg struct {
+		Name    string `json:"name"`
+		Version string `json:"version"`
+	}
+	var pkgs []pipPkg
+	if err := json.Unmarshal(stdout.Bytes(), &pkgs); err != nil {
+		insyra.LogInfo("py", "PipList", "Failed to parse pip list JSON: %v", err)
+		return nil, fmt.Errorf("failed to parse pip list output: %w", err)
+	}
+
+	result := make(map[string]string, len(pkgs))
+	for _, p := range pkgs {
+		result[p.Name] = p.Version
+	}
+
+	insyra.LogInfo("py", "PipList", "Found %d installed packages", len(pkgs))
+	return result, nil
+}
+
+// PipFreeze returns the lines produced by `uv pip freeze --python <pyPath>` (one line per package, e.g. package==version).
+func PipFreeze() ([]string, error) {
+	pyEnvInit()
+
+	cmd := exec.Command("uv", "pip", "freeze", "--python", pyPath)
+	cmd.Dir = absInstallDir
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		insyra.LogInfo("py", "PipFreeze", "Failed to run pip freeze. Stdout: %s Stderr: %s Error: %v", stdout.String(), stderr.String(), err)
+		return nil, fmt.Errorf("failed to freeze installed packages: %w", err)
+	}
+
+	outStr := strings.TrimSpace(stdout.String())
+	if outStr == "" {
+		return []string{}, nil
+	}
+	lines := strings.Split(outStr, "\n")
+	return lines, nil
 }
 
 func generateDefaultPyCode(executionID string) string {

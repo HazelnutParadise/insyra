@@ -140,36 +140,86 @@ Run Python code from a file with variables passed from Go using `$v1`, `$v2`, et
 ### `PipInstall`
 
 ```go
-func PipInstall(dep string)
+func PipInstall(dep string) error
 ```
 
-This function is used to install Python dependencies using uv pip. It logs the result and terminates the program if installation fails.
+This function installs Python dependencies using uv pip. It executes the install command and returns an `error` if the installation fails. It does not terminate the program; callers should handle the error.
 
 #### Parameters
 
 - `dep` (string): The name of the dependency to be installed.
 
-#### Notes
+#### Returns
 
-- This function does not return an error; instead, it logs fatal errors directly.
-- The program will terminate if the installation fails.
+- `error`: Non-nil if installation failed; nil otherwise.
 
 ### `PipUninstall`
 
 ```go
-func PipUninstall(dep string)
+func PipUninstall(dep string) error
 ```
 
-This function is used to uninstall Python dependencies using uv pip. It logs the result and terminates the program if uninstallation fails.
+This function uninstalls Python dependencies using uv pip. It returns an `error` if the uninstallation fails; callers should handle the error. It does not terminate the program.
 
 #### Parameters
 
 - `dep` (string): The name of the dependency to be uninstalled.
 
-#### Notes
+#### Returns
 
-- This function does not return an error; instead, it logs fatal errors directly.
-- The program will terminate if the uninstallation fails.
+- `error`: Non-nil if uninstallation failed; nil otherwise.
+
+### `PipList`
+
+```go
+func PipList() (map[string]string, error)
+```
+
+This function lists currently installed Python packages in the uv-managed environment. It returns a map of package name to version (e.g., `{"requests":"2.31.0"}`) and an error if the listing fails.
+
+#### Returns
+
+- `map[string]string`: Map of package name -> version.
+- `error`: Non-nil if listing failed.
+
+#### Example
+
+```go
+pkgs, err := py.PipList()
+if err != nil {
+    fmt.Println("Failed to list packages:", err)
+} else {
+    for name, ver := range pkgs {
+        fmt.Printf("%s==%s\n", name, ver)
+    }
+}
+```
+
+### `PipFreeze`
+
+```go
+func PipFreeze() ([]string, error)
+```
+
+This function returns the lines from `pip freeze` (suitable for a `requirements.txt`), one line per package (e.g., `requests==2.31.0`). It returns an error if the command fails.
+
+#### Returns
+
+- `[]string`: Each element is usually of the form `package==version` or an editable/VCS entry.
+- `error`: Non-nil if the command failed.
+
+#### Example
+
+```go
+lines, err := py.PipFreeze()
+if err != nil {
+    fmt.Println("Failed to run pip freeze:", err)
+} else {
+    for _, l := range lines {
+        fmt.Println(l)
+    }
+}
+```
 
 ### `ReinstallPyEnv`
 
