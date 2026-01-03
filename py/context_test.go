@@ -85,7 +85,8 @@ with open(%q, "w") as f:
     f.write("OK")
 `, fname)
 
-	err := RunCodeWithTimeout(5*time.Second, nil, code)
+	// Increase timeout to be CI-friendly: some CI environments are slower to start Python.
+	err := RunCodeWithTimeout(15*time.Second, nil, code)
 	if err != nil {
 		t.Fatalf("expected RunCodeWithTimeout to succeed, got error: %v", err)
 	}
