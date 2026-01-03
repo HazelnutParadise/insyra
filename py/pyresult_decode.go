@@ -23,14 +23,11 @@ func bindPyResult(out any, result any) error {
 		*target = dt
 		return nil
 	case *insyra.DataTable:
-		dt, err := decodeDataTable(result)
-		if err != nil {
-			return err
-		}
-		if dt != nil {
-			*target = *dt
-		}
-		return nil
+		// Binding into a value `*insyra.DataTable` would copy internal lock-like fields
+		// (e.g. sync/atomic.Int64 -> sync/atomic.noCopy) which is unsafe and flagged by govet.
+		// Require callers to pass a pointer-to-pointer (**insyra.DataTable) or an interface
+		// (*insyra.IDataTable) instead so we don't copy lock-containing structs.
+		return fmt.Errorf("binding to *insyra.DataTable (value target) is not supported; pass a **insyra.DataTable or *insyra.IDataTable instead")
 	case *insyra.IDataTable:
 		dt, err := decodeDataTable(result)
 		if err != nil {
@@ -52,14 +49,11 @@ func bindPyResult(out any, result any) error {
 		*target = dl
 		return nil
 	case *insyra.DataList:
-		dl, err := decodeDataList(result)
-		if err != nil {
-			return err
-		}
-		if dl != nil {
-			*target = *dl
-		}
-		return nil
+		// Binding into a value `*insyra.DataList` would copy internal lock-like fields
+		// (e.g. sync/atomic.Int64 -> sync/atomic.noCopy) which is unsafe and flagged by govet.
+		// Require callers to pass a pointer-to-pointer (**insyra.DataList) or an interface
+		// (*insyra.IDataList) instead so we don't copy lock-containing structs.
+		return fmt.Errorf("binding to *insyra.DataList (value target) is not supported; pass a **insyra.DataList or *insyra.IDataList instead")
 	case *insyra.IDataList:
 		dl, err := decodeDataList(result)
 		if err != nil {

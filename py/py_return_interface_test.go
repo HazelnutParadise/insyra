@@ -105,7 +105,6 @@ insyra.Return(s)
 
 func TestRunCodeIntoIsrDL_PassPointerToPointer(t *testing.T) {
 	dl := isr.UseDL(insyra.NewDataList())
-	dl = nil
 	err := RunCode(&dl, `
 import pandas as pd
 s = pd.Series([5, 6, 7], name="s2")
@@ -145,7 +144,6 @@ insyra.Return(df)
 
 func TestRunCodeIntoIsrDT_PassPointerToPointer(t *testing.T) {
 	dt := isr.UseDT(insyra.NewDataTable())
-	dt = nil
 	err := RunCode(&dt, `
 import pandas as pd
 df = pd.DataFrame({"A": [5, 6], "B": [7, 8]})
