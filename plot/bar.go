@@ -60,6 +60,11 @@ func CreateBarChart(config BarChartConfig, data ...insyra.IDataList) *charts.Bar
 	// Apply Y axis settings via internal helper (numeric-only; labels removed from BarChartConfig)
 	_, _, _, toF64 := internal.ApplyYAxis(bar, config.YAxisName, nil, config.YAxisMin, config.YAxisMax, config.YAxisSplitNumber, config.YAxisFormatter, data...)
 
+	// 設置系列顏色（如果未提供則使用默認配色）
+	if len(config.Colors) == 0 {
+		config.Colors = internal.GetColors(len(data))
+	}
+
 	bar.SetGlobalOptions(
 		charts.WithXAxisOpts(opts.XAxis{
 			Name: config.XAxisName,

@@ -79,6 +79,16 @@ func CreateBoxPlot(config BoxPlotConfig, series ...BoxPlotSeries) *charts.BoxPlo
 
 	// Set X axis and add each series (support per-series color/fill)
 	boxPlot.SetXAxis(config.XAxis)
+
+	// Apply default colors to series that don't have colors specified
+	colorIndex := 0
+	for i := range series {
+		if series[i].Color == "" {
+			series[i].Color = internal.GetColor(colorIndex)
+			colorIndex++
+		}
+	}
+
 	for _, s := range series {
 		if numCats == 0 {
 			continue

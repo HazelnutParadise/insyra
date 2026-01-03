@@ -87,8 +87,9 @@ func CreateHeatMap[X heapMapAxisValue, Y heapMapAxisValue](config HeatMapConfig,
 		LegendPos:       "",
 	})
 
+	// Use beautiful default heatmap gradient colors if not specified
 	if config.Colors == nil {
-		config.Colors = []string{"#50a3ba", "#eac736", "#d94e5d"}
+		config.Colors = []string{"#E74C3C", "#F39C12", "#50C878", "#4A90E2"}
 	}
 
 	// Compute Min/Max if not provided

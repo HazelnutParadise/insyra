@@ -55,12 +55,13 @@ func CreatePieChart(config PieChartConfig, data ...PieItem) *charts.Pie {
 		LegendPos:       string(config.LegendPos),
 	})
 
-	// 設置系列顏色（如果提供）
-	if len(config.Colors) > 0 {
-		pie.SetGlobalOptions(
-			charts.WithColorsOpts(opts.Colors(config.Colors)),
-		)
+	// 設置系列顏色（如果未提供則使用默認配色）
+	if len(config.Colors) == 0 {
+		config.Colors = internal.GetColors(len(data))
 	}
+	pie.SetGlobalOptions(
+		charts.WithColorsOpts(opts.Colors(config.Colors)),
+	)
 
 	// 轉換數據為 pie 數據
 	convertedData := convertToPieData(data)

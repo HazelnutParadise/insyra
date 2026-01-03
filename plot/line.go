@@ -82,12 +82,13 @@ func CreateLineChart(config LineChartConfig, data ...insyra.IDataList) *charts.L
 
 	// Y axis already applied by internal.ApplyYAxis; nothing more to do here.
 
-	// 設置系列顏色（如果提供）
-	if len(config.Colors) > 0 {
-		line.SetGlobalOptions(
-			charts.WithColorsOpts(opts.Colors(config.Colors)),
-		)
+	// 設置系列顏色（如果未提供則使用默認配色）
+	if len(config.Colors) == 0 {
+		config.Colors = internal.GetColors(len(data))
 	}
+	line.SetGlobalOptions(
+		charts.WithColorsOpts(opts.Colors(config.Colors)),
+	)
 
 	if len(config.XAxis) == 0 {
 		// 如果 X 軸沒有提供，則根據數據長度生成默認標籤

@@ -117,12 +117,13 @@ func CreateScatterChart(config ScatterChartConfig, data map[string][]ScatterPoin
 		charts.WithYAxisOpts(yAxis),
 	)
 
-	// 設置系列顏色（如果提供）
-	if len(config.Colors) > 0 {
-		scatter.SetGlobalOptions(
-			charts.WithColorsOpts(opts.Colors(config.Colors)),
-		)
+	// 設置系列顏色（如果未提供則使用默認配色）
+	if len(config.Colors) == 0 {
+		config.Colors = internal.GetColors(len(data))
 	}
+	scatter.SetGlobalOptions(
+		charts.WithColorsOpts(opts.Colors(config.Colors)),
+	)
 
 	// 處理多個系列的點資料
 	symbolIndex := 0
