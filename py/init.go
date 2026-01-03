@@ -20,7 +20,7 @@ var isServerRunning = false
 
 // 主要邏輯
 // 使用uv管理Python環境
-func pyEnvInit() {
+func pyEnvInit() error {
 	if !isServerRunning {
 		isServerRunning = true
 		go func() {
@@ -28,7 +28,7 @@ func pyEnvInit() {
 		}()
 	}
 	if isPyEnvInit {
-		return
+		return nil
 	}
 
 	// 設置pyPath
@@ -42,7 +42,7 @@ func pyEnvInit() {
 	if _, err := os.Stat(pyPath); err == nil {
 		isPyEnvInit = true
 		insyra.LogDebug("py", "init", "Virtual environment already exists, skipping initialization!")
-		return
+		return nil
 	}
 
 	isPyEnvInit = true
@@ -50,29 +50,26 @@ func pyEnvInit() {
 	insyra.LogInfo("py", "init", "Preparing Python environment with uv...")
 
 	// 檢查並安裝uv
-	err := ensureUvInstalled()
-	if err != nil {
-		insyra.LogFatal("py", "init", "Failed to ensure uv is installed: %v", err)
+	if err := ensureUvInstalled(); err != nil {
+		return fmt.Errorf("failed to ensure uv is installed: %w", err)
 	}
 
 	// 確保安裝目錄存在並清空舊文件
-	err = prepareInstallDir()
-	if err != nil {
-		insyra.LogFatal("py", "init", "Failed to prepare install directory: %v", err)
+	if err := prepareInstallDir(); err != nil {
+		return fmt.Errorf("failed to prepare install directory: %w", err)
 	}
 
 	// 初始化uv項目和虛擬環境
-	err = setupUvEnvironment()
-	if err != nil {
-		insyra.LogFatal("py", "init", "Failed to setup uv environment: %v", err)
+	if err := setupUvEnvironment(); err != nil {
+		return fmt.Errorf("failed to setup uv environment: %w", err)
 	}
 
 	// 安裝依賴
-	err = installDependenciesUv(absInstallDir)
-	if err != nil {
-		insyra.LogFatal("py", "init", "Failed to install dependencies: %v", err)
+	if err := installDependenciesUv(absInstallDir); err != nil {
+		return fmt.Errorf("failed to install dependencies: %w", err)
 	}
 	insyra.LogInfo("py", "init", "Dependencies installed successfully!")
+	return nil
 }
 
 // 準備安裝目錄

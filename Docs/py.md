@@ -205,6 +205,8 @@ if errors.Is(err, context.Canceled) {
 #### Notes
 
 - The context-aware functions use `exec.CommandContext` under the hood. When the context is done, the underlying Python process is killed and the function returns `ctx.Err()`.
+
+- Note: initialization errors are now propagated to callers. The Python environment initializer `pyEnvInit()` no longer calls fatal logging to terminate the process; instead it returns an `error` when initialization fails (for example: failing to ensure `uv` is installed, failing to prepare the install directory, failing to set up the uv environment, or failing to install dependencies). Callers of py functions (e.g., `RunCode`, `RunFile`, `RunCodeContext`, `PipInstall`, `PipList`, `PipFreeze`, etc.) will return that initialization `error` — be sure to check and handle the returned `error` in your code.
 - For platform-specific process group / child-process cleanup semantics, consider the platform behavior; if you need robust group termination, let us know and we can add process-group management to the runner.
 
 ### `PipInstall`

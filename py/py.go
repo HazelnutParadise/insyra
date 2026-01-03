@@ -50,7 +50,9 @@ func ReinstallPyEnv() error {
 
 // Run the Python file and bind the result to the provided struct pointer.
 func RunFile(out any, filePath string) error {
-	pyEnvInit()
+	if err := pyEnvInit(); err != nil {
+		return err
+	}
 	file, err := os.ReadFile(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to read Python file: %w", err)
@@ -62,7 +64,9 @@ func RunFile(out any, filePath string) error {
 // Run the Python file with the given Golang variables and bind the result to the provided struct pointer.
 // The codeTemplate should use $v1, $v2, etc. placeholders for variable substitution.
 func RunFilef(out any, filePath string, args ...any) error {
-	pyEnvInit()
+	if err := pyEnvInit(); err != nil {
+		return err
+	}
 	file, err := os.ReadFile(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to read Python file: %w", err)
@@ -88,7 +92,9 @@ func RunCodef(out any, code string, args ...any) error {
 
 // runPythonCode executes the Python code and binds the result to the provided struct pointer.
 func runPythonCode(out any, code string) error {
-	pyEnvInit()
+	if err := pyEnvInit(); err != nil {
+		return err
+	}
 
 	// 生成執行ID
 	executionID := generateExecutionID()
@@ -165,7 +171,9 @@ func RunCodefContext(ctx context.Context, out any, code string, args ...any) err
 
 // Run the Python file and bind the result to the provided struct pointer, with context.
 func RunFileContext(ctx context.Context, out any, filePath string) error {
-	pyEnvInit()
+	if err := pyEnvInit(); err != nil {
+		return err
+	}
 	file, err := os.ReadFile(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to read Python file: %w", err)
@@ -176,7 +184,9 @@ func RunFileContext(ctx context.Context, out any, filePath string) error {
 
 // Run the Python file with the given Golang variables and bind the result to the provided struct pointer, with context.
 func RunFilefContext(ctx context.Context, out any, filePath string, args ...any) error {
-	pyEnvInit()
+	if err := pyEnvInit(); err != nil {
+		return err
+	}
 	file, err := os.ReadFile(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to read Python file: %w", err)
@@ -201,7 +211,9 @@ func RunCodeWithTimeout(timeout time.Duration, out any, code string) error {
 // runPythonCodeContext executes the Python code and binds the result to the provided struct pointer.
 // It behaves like runPythonCode but uses the provided Context so callers can cancel the execution.
 func runPythonCodeContext(ctx context.Context, out any, code string) error {
-	pyEnvInit()
+	if err := pyEnvInit(); err != nil {
+		return err
+	}
 
 	// 生成執行ID
 	executionID := generateExecutionID()
@@ -264,7 +276,9 @@ finally:
 
 // Install dependencies using uv pip
 func PipInstall(dep string) error {
-	pyEnvInit()
+	if err := pyEnvInit(); err != nil {
+		return err
+	}
 	pythonCmd := exec.Command("uv", "pip", "install", dep, "--python", pyPath)
 	pythonCmd.Dir = absInstallDir
 	pythonCmd.Stdout = os.Stdout
@@ -279,7 +293,9 @@ func PipInstall(dep string) error {
 
 // Uninstall dependencies using uv pip
 func PipUninstall(dep string) error {
-	pyEnvInit()
+	if err := pyEnvInit(); err != nil {
+		return err
+	}
 	pythonCmd := exec.Command("uv", "pip", "uninstall", dep, "--python", pyPath)
 	pythonCmd.Dir = absInstallDir
 	pythonCmd.Stdout = os.Stdout
@@ -295,7 +311,9 @@ func PipUninstall(dep string) error {
 // PipList returns a map of installed package names to their versions for the Python environment managed by uv.
 // It runs `uv pip list --format=json --python <pyPath>` and parses the JSON output.
 func PipList() (map[string]string, error) {
-	pyEnvInit()
+	if err := pyEnvInit(); err != nil {
+		return nil, err
+	}
 
 	cmd := exec.Command("uv", "pip", "list", "--format=json", "--python", pyPath)
 	cmd.Dir = absInstallDir
@@ -330,7 +348,9 @@ func PipList() (map[string]string, error) {
 
 // PipFreeze returns the lines produced by `uv pip freeze --python <pyPath>` (one line per package, e.g. package==version).
 func PipFreeze() ([]string, error) {
-	pyEnvInit()
+	if err := pyEnvInit(); err != nil {
+		return nil, err
+	}
 
 	cmd := exec.Command("uv", "pip", "freeze", "--python", pyPath)
 	cmd.Dir = absInstallDir

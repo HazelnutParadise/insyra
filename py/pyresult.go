@@ -75,6 +75,7 @@ func startServer() {
 		w.WriteHeader(http.StatusOK)
 	})
 
+	// The server listens on localhost only (default port is configured by `port`, backup by `backupPort`).
 	insyra.LogInfo("py", "init", "Insyra listening on http://localhost:"+port+".")
 	err := http.ListenAndServe("localhost:"+port, nil)
 	if err != nil {
