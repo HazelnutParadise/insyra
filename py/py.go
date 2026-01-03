@@ -3,11 +3,14 @@
 package py
 
 import (
+	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 
 	json "github.com/goccy/go-json"
 
@@ -47,7 +50,9 @@ func ReinstallPyEnv() error {
 
 // Run the Python file and bind the result to the provided struct pointer.
 func RunFile(out any, filePath string) error {
-	pyEnvInit()
+	if err := pyEnvInit(); err != nil {
+		return err
+	}
 	file, err := os.ReadFile(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to read Python file: %w", err)
@@ -59,7 +64,9 @@ func RunFile(out any, filePath string) error {
 // Run the Python file with the given Golang variables and bind the result to the provided struct pointer.
 // The codeTemplate should use $v1, $v2, etc. placeholders for variable substitution.
 func RunFilef(out any, filePath string, args ...any) error {
-	pyEnvInit()
+	if err := pyEnvInit(); err != nil {
+		return err
+	}
 	file, err := os.ReadFile(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to read Python file: %w", err)
@@ -85,7 +92,9 @@ func RunCodef(out any, code string, args ...any) error {
 
 // runPythonCode executes the Python code and binds the result to the provided struct pointer.
 func runPythonCode(out any, code string) error {
-	pyEnvInit()
+	if err := pyEnvInit(); err != nil {
+		return err
+	}
 
 	// 生成執行ID
 	executionID := generateExecutionID()
@@ -128,52 +137,249 @@ finally:
 	if pyResult[1] != nil {
 		return fmt.Errorf("%v", pyResult[1])
 	}
-	// 正常執行且無錯誤
+	// 正常執行且無錯誤；即使回傳值為 nil 也要呼叫 bindPyResult 以便把 nil 綁定到 out（例如清空 interface 變數）
 	if pyResult[0] == nil {
+		if out != nil {
+			if err := bindPyResult(out, nil); err != nil {
+				return err
+			}
+		}
 		return nil
 	}
 
 	// 將結果 bind 到傳入的結構指標
 	if out != nil {
-		jsonData, err := json.Marshal(pyResult[0])
-		if err != nil {
-			return fmt.Errorf("failed to marshal result: %w", err)
+		if err := bindPyResult(out, pyResult[0]); err != nil {
+			return err
 		}
-		if err := json.Unmarshal(jsonData, out); err != nil {
-			return fmt.Errorf("failed to unmarshal result to struct: %w", err)
+	}
+	return nil
+}
+
+// Run the Python code using the provided context. If the context is canceled
+// the underlying Python process will be killed and the function will return
+// the context error (e.g., context.Canceled or context.DeadlineExceeded).
+func RunCodeContext(ctx context.Context, out any, code string) error {
+	// Delegate to a context-aware runner
+	return runPythonCodeContext(ctx, out, code)
+}
+
+// Run the Python code with the given Golang variables and a Context.
+// The codeTemplate should use $v1, $v2, etc. placeholders for variable substitution.
+func RunCodefContext(ctx context.Context, out any, code string, args ...any) error {
+	formattedCode, err := replacePlaceholders(code, args...)
+	if err != nil {
+		return fmt.Errorf("failed to format code: %w", err)
+	}
+	return runPythonCodeContext(ctx, out, formattedCode)
+}
+
+// Run the Python file and bind the result to the provided struct pointer, with context.
+func RunFileContext(ctx context.Context, out any, filePath string) error {
+	if err := pyEnvInit(); err != nil {
+		return err
+	}
+	file, err := os.ReadFile(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to read Python file: %w", err)
+	}
+	code := string(file)
+	return runPythonCodeContext(ctx, out, code)
+}
+
+// Run the Python file with the given Golang variables and bind the result to the provided struct pointer, with context.
+func RunFilefContext(ctx context.Context, out any, filePath string, args ...any) error {
+	if err := pyEnvInit(); err != nil {
+		return err
+	}
+	file, err := os.ReadFile(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to read Python file: %w", err)
+	}
+	code := string(file)
+	formattedCode, err := replacePlaceholders(code, args...)
+	if err != nil {
+		return fmt.Errorf("failed to format code: %w", err)
+	}
+	return runPythonCodeContext(ctx, out, formattedCode)
+}
+
+// Run the Python code with a timeout. This is a convenience wrapper that creates
+// a context with timeout and runs the code. If the timeout occurs it returns
+// context.DeadlineExceeded (i.e., ctx.Err()).
+func RunCodeWithTimeout(timeout time.Duration, out any, code string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	return runPythonCodeContext(ctx, out, code)
+}
+
+// runPythonCodeContext executes the Python code and binds the result to the provided struct pointer.
+// It behaves like runPythonCode but uses the provided Context so callers can cancel the execution.
+func runPythonCodeContext(ctx context.Context, out any, code string) error {
+	if err := pyEnvInit(); err != nil {
+		return err
+	}
+
+	// 生成執行ID
+	executionID := generateExecutionID()
+
+	code = generateDefaultPyCode(executionID) + fmt.Sprintf(`
+try:
+%v
+except Exception as e:
+    import sys
+    sys.stdout.flush()
+    sys.stderr.flush()
+    insyra_return(None, str(e))
+finally:
+    import sys
+    sys.stdout.flush()
+    sys.stderr.flush()
+    if not sent:
+        insyra_return(None, None)
+`, indentCode(code))
+
+	// 創建進程結束通知channel
+	processDone := make(chan struct{})
+	execErr := make(chan error, 1)
+
+	// 在goroutine中執行Python代碼
+	go func() {
+		defer close(processDone)
+		pythonCmd := exec.CommandContext(ctx, pyPath, "-c", code)
+		pythonCmd.Stdout = os.Stdout
+		pythonCmd.Stderr = os.Stderr
+		err := pythonCmd.Run()
+		if err != nil {
+			execErr <- err
+		}
+	}()
+
+	// 等待並接收結果
+	pyResult := waitForResult(executionID, processDone, execErr)
+	// 如果有錯誤（從系統執行或 Python 返回），直接返回；
+	// 若原因是 context 取消/截止，優先回傳 ctx.Err()（例如 context.Canceled / context.DeadlineExceeded）
+	if pyResult[1] != nil {
+		if ctx != nil && ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return fmt.Errorf("%v", pyResult[1])
+	}
+	// 正常執行且無錯誤；即使回傳值為 nil 也要呼叫 bindPyResult 以便把 nil 綁定到 out（例如清空 interface 變數）
+	if pyResult[0] == nil {
+		if out != nil {
+			if err := bindPyResult(out, nil); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	// 將結果 bind 到傳入的結構指標
+	if out != nil {
+		if err := bindPyResult(out, pyResult[0]); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
 // Install dependencies using uv pip
-func PipInstall(dep string) {
-	pyEnvInit()
+func PipInstall(dep string) error {
+	if err := pyEnvInit(); err != nil {
+		return err
+	}
 	pythonCmd := exec.Command("uv", "pip", "install", dep, "--python", pyPath)
 	pythonCmd.Dir = absInstallDir
 	pythonCmd.Stdout = os.Stdout
 	pythonCmd.Stderr = os.Stderr
 	err := pythonCmd.Run()
 	if err != nil {
-		insyra.LogFatal("py", "PipInstall", "Failed to install dependency: %v", err)
-	} else {
-		insyra.LogInfo("py", "PipInstall", "Installed dependency: %s", dep)
+		return fmt.Errorf("failed to install dependency %s: %w", dep, err)
 	}
+	insyra.LogInfo("py", "PipInstall", "Installed dependency: %s", dep)
+	return nil
 }
 
 // Uninstall dependencies using uv pip
-func PipUninstall(dep string) {
-	pyEnvInit()
+func PipUninstall(dep string) error {
+	if err := pyEnvInit(); err != nil {
+		return err
+	}
 	pythonCmd := exec.Command("uv", "pip", "uninstall", dep, "--python", pyPath)
 	pythonCmd.Dir = absInstallDir
 	pythonCmd.Stdout = os.Stdout
 	pythonCmd.Stderr = os.Stderr
 	err := pythonCmd.Run()
 	if err != nil {
-		insyra.LogFatal("py", "PipUninstall", "Failed to uninstall dependency: %v", err)
-	} else {
-		insyra.LogInfo("py", "PipUninstall", "Uninstalled dependency: %s", dep)
+		return fmt.Errorf("failed to uninstall dependency %s: %w", dep, err)
 	}
+	insyra.LogInfo("py", "PipUninstall", "Uninstalled dependency: %s", dep)
+	return nil
+}
+
+// PipList returns a map of installed package names to their versions for the Python environment managed by uv.
+// It runs `uv pip list --format=json --python <pyPath>` and parses the JSON output.
+func PipList() (map[string]string, error) {
+	if err := pyEnvInit(); err != nil {
+		return nil, err
+	}
+
+	cmd := exec.Command("uv", "pip", "list", "--format=json", "--python", pyPath)
+	cmd.Dir = absInstallDir
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		insyra.LogInfo("py", "PipList", "Failed to list installed packages. Stdout: %s Stderr: %s Error: %v", stdout.String(), stderr.String(), err)
+		return nil, fmt.Errorf("failed to list installed packages: %w", err)
+	}
+
+	type pipPkg struct {
+		Name    string `json:"name"`
+		Version string `json:"version"`
+	}
+	var pkgs []pipPkg
+	if err := json.Unmarshal(stdout.Bytes(), &pkgs); err != nil {
+		insyra.LogInfo("py", "PipList", "Failed to parse pip list JSON: %v", err)
+		return nil, fmt.Errorf("failed to parse pip list output: %w", err)
+	}
+
+	result := make(map[string]string, len(pkgs))
+	for _, p := range pkgs {
+		result[p.Name] = p.Version
+	}
+
+	insyra.LogInfo("py", "PipList", "Found %d installed packages", len(pkgs))
+	return result, nil
+}
+
+// PipFreeze returns the lines produced by `uv pip freeze --python <pyPath>` (one line per package, e.g. package==version).
+func PipFreeze() ([]string, error) {
+	if err := pyEnvInit(); err != nil {
+		return nil, err
+	}
+
+	cmd := exec.Command("uv", "pip", "freeze", "--python", pyPath)
+	cmd.Dir = absInstallDir
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		insyra.LogInfo("py", "PipFreeze", "Failed to run pip freeze. Stdout: %s Stderr: %s Error: %v", stdout.String(), stderr.String(), err)
+		return nil, fmt.Errorf("failed to freeze installed packages: %w", err)
+	}
+
+	outStr := strings.TrimSpace(stdout.String())
+	if outStr == "" {
+		return []string{}, nil
+	}
+	lines := strings.Split(outStr, "\n")
+	return lines, nil
 }
 
 func generateDefaultPyCode(executionID string) string {

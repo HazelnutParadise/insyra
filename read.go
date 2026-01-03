@@ -69,7 +69,7 @@ func Slice2DToDataTable(data any) (*DataTable, error) {
 		// 遍歷所有列
 		for colIdx := range numCols {
 			if colIdx < rowLen {
-				// 將值轉換為 interface{}
+				// 將值轉換為 any
 				dls[colIdx].Append(row.Index(colIdx).Interface())
 			} else {
 				// 不足的列填 nil

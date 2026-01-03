@@ -12,7 +12,7 @@ import (
 )
 
 var (
-	resultStore sync.Map // map[string][2]interface{}
+	resultStore sync.Map // map[string][2]any
 )
 
 // 生成唯一的執行ID
@@ -27,13 +27,13 @@ func generateExecutionID() string {
 }
 
 // 等待並獲取指定ID的結果，當Python進程結束時自動返回nil
-func waitForResult(executionID string, processDone <-chan struct{}, execErr <-chan error) [2]interface{} {
+func waitForResult(executionID string, processDone <-chan struct{}, execErr <-chan error) [2]any {
 	for {
 		select {
 		case err := <-execErr:
 			// Python執行失敗（非正常退出），使用系統執行錯誤
 			resultStore.Delete(executionID)
-			return [2]interface{}{nil, err.Error()}
+			return [2]any{nil, err.Error()}
 		case <-processDone:
 			// Python進程已經正常結束，檢查是否有結果
 			resultStore.Delete(executionID)
@@ -44,7 +44,7 @@ func waitForResult(executionID string, processDone <-chan struct{}, execErr <-ch
 			if result, exists := resultStore.Load(executionID); exists {
 				// 找到結果，清理並返回
 				resultStore.Delete(executionID)
-				return result.([2]interface{})
+				return result.([2]any)
 			}
 			// 短暫等待後重試
 			time.Sleep(10 * time.Millisecond)
@@ -59,8 +59,8 @@ func startServer() {
 
 		// 解析請求體
 		var requestData struct {
-			ExecutionID string         `json:"execution_id"`
-			Data        [2]interface{} `json:"data"`
+			ExecutionID string `json:"execution_id"`
+			Data        [2]any `json:"data"`
 		}
 
 		err := json.NewDecoder(r.Body).Decode(&requestData)
@@ -75,11 +75,12 @@ func startServer() {
 		w.WriteHeader(http.StatusOK)
 	})
 
+	// The server listens on localhost only (default port is configured by `port`, backup by `backupPort`).
 	insyra.LogInfo("py", "init", "Insyra listening on http://localhost:"+port+".")
-	err := http.ListenAndServe(":"+port, nil)
+	err := http.ListenAndServe("localhost:"+port, nil)
 	if err != nil {
 		insyra.LogWarning("py", "init", "Failed to start server on port %s, trying backup port %s...", port, backupPort)
-		err = http.ListenAndServe(":"+backupPort, nil)
+		err = http.ListenAndServe("localhost:"+backupPort, nil)
 		if err != nil {
 			insyra.LogFatal("py", "init", "Failed to start backup server on port %s: %v", backupPort, err)
 		}

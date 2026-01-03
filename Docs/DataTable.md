@@ -294,11 +294,11 @@ The function uses reflection to support any 2D array type:
 - `[][]float32`, `[][]float64` - Floating-point types
 - `[][]string` - String type
 - `[][]bool` - Boolean type
-- Any other type convertible to `interface{}`
+- Any other type convertible to `any`
 
 **Features:**
 
-- **Type Conversion**: Automatically converts various types to `interface{}` for storage
+- **Type Conversion**: Automatically converts various types to `any` for storage
 - **Inconsistent Row Lengths**: Uses the number of columns from the first row; missing columns are filled with `nil`
 - **Comprehensive Error Handling**: Returns descriptive error messages for invalid input
 
@@ -2497,7 +2497,7 @@ func (dt *DataTable) Filter(filterFunc func(rowIndex int, columnIndex string, va
   - `rowIndex`: Row index (0-based)
   - `columnIndex`: Column name
   - `value`: Cell value
-  
+
   Returns `true` to keep the cell/row, `false` to discard
 
 **Returns:**
