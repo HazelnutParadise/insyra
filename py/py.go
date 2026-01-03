@@ -119,17 +119,22 @@ finally:
 	processDone := make(chan struct{})
 	execErr := make(chan error, 1)
 
+	scriptPath, cleanup, err := createTempPythonScript(code)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
 	// 在goroutine中執行Python代碼
-	go func() {
+	go func(path string) {
 		defer close(processDone)
-		pythonCmd := exec.Command(pyPath, "-c", code)
+		pythonCmd := exec.Command(pyPath, path)
 		pythonCmd.Stdout = os.Stdout
 		pythonCmd.Stderr = os.Stderr
-		err := pythonCmd.Run()
-		if err != nil {
+		if err := pythonCmd.Run(); err != nil {
 			execErr <- err
 		}
-	}()
+	}(scriptPath)
 
 	// 等待並接收結果
 	pyResult := waitForResult(executionID, processDone, execErr)
@@ -243,17 +248,22 @@ finally:
 	processDone := make(chan struct{})
 	execErr := make(chan error, 1)
 
+	scriptPath, cleanup, err := createTempPythonScript(code)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
 	// 在goroutine中執行Python代碼
-	go func() {
+	go func(path string) {
 		defer close(processDone)
-		pythonCmd := exec.CommandContext(ctx, pyPath, "-c", code)
+		pythonCmd := exec.CommandContext(ctx, pyPath, path)
 		pythonCmd.Stdout = os.Stdout
 		pythonCmd.Stderr = os.Stderr
-		err := pythonCmd.Run()
-		if err != nil {
+		if err := pythonCmd.Run(); err != nil {
 			execErr <- err
 		}
-	}()
+	}(scriptPath)
 
 	// 等待並接收結果
 	pyResult := waitForResult(executionID, processDone, execErr)
@@ -380,6 +390,32 @@ func PipFreeze() ([]string, error) {
 	}
 	lines := strings.Split(outStr, "\n")
 	return lines, nil
+}
+
+func createTempPythonScript(code string) (string, func(), error) {
+	tmpFile, err := os.CreateTemp("", "insyra-*.py")
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to create temp python file: %w", err)
+	}
+
+	scriptPath := tmpFile.Name()
+
+	if _, err := tmpFile.WriteString(code); err != nil {
+		tmpFile.Close()
+		os.Remove(scriptPath)
+		return "", nil, fmt.Errorf("failed to write temp python file: %w", err)
+	}
+
+	if err := tmpFile.Close(); err != nil {
+		os.Remove(scriptPath)
+		return "", nil, fmt.Errorf("failed to close temp python file: %w", err)
+	}
+
+	cleanup := func() {
+		_ = os.Remove(scriptPath)
+	}
+
+	return scriptPath, cleanup, nil
 }
 
 func generateDefaultPyCode(executionID string) string {
