@@ -4,11 +4,13 @@ package py
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 
 	json "github.com/goccy/go-json"
 
@@ -127,6 +129,123 @@ finally:
 	pyResult := waitForResult(executionID, processDone, execErr)
 	// 如果有錯誤（從系統執行或 Python 返回），直接返回
 	if pyResult[1] != nil {
+		return fmt.Errorf("%v", pyResult[1])
+	}
+	// 正常執行且無錯誤
+	if pyResult[0] == nil {
+		return nil
+	}
+
+	// 將結果 bind 到傳入的結構指標
+	if out != nil {
+		if err := bindPyResult(out, pyResult[0]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Run the Python code using the provided context. If the context is canceled
+// the underlying Python process will be killed and the function will return
+// the context error (e.g., context.Canceled or context.DeadlineExceeded).
+func RunCodeContext(ctx context.Context, out any, code string) error {
+	// Delegate to a context-aware runner
+	return runPythonCodeContext(ctx, out, code)
+}
+
+// Run the Python code with the given Golang variables and a Context.
+// The codeTemplate should use $v1, $v2, etc. placeholders for variable substitution.
+func RunCodefContext(ctx context.Context, out any, code string, args ...any) error {
+	formattedCode, err := replacePlaceholders(code, args...)
+	if err != nil {
+		return fmt.Errorf("failed to format code: %w", err)
+	}
+	return runPythonCodeContext(ctx, out, formattedCode)
+}
+
+// Run the Python file and bind the result to the provided struct pointer, with context.
+func RunFileContext(ctx context.Context, out any, filePath string) error {
+	pyEnvInit()
+	file, err := os.ReadFile(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to read Python file: %w", err)
+	}
+	code := string(file)
+	return runPythonCodeContext(ctx, out, code)
+}
+
+// Run the Python file with the given Golang variables and bind the result to the provided struct pointer, with context.
+func RunFilefContext(ctx context.Context, out any, filePath string, args ...any) error {
+	pyEnvInit()
+	file, err := os.ReadFile(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to read Python file: %w", err)
+	}
+	code := string(file)
+	formattedCode, err := replacePlaceholders(code, args...)
+	if err != nil {
+		return fmt.Errorf("failed to format code: %w", err)
+	}
+	return runPythonCodeContext(ctx, out, formattedCode)
+}
+
+// Run the Python code with a timeout. This is a convenience wrapper that creates
+// a context with timeout and runs the code. If the timeout occurs it returns
+// context.DeadlineExceeded (i.e., ctx.Err()).
+func RunCodeWithTimeout(timeout time.Duration, out any, code string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	return runPythonCodeContext(ctx, out, code)
+}
+
+// runPythonCodeContext executes the Python code and binds the result to the provided struct pointer.
+// It behaves like runPythonCode but uses the provided Context so callers can cancel the execution.
+func runPythonCodeContext(ctx context.Context, out any, code string) error {
+	pyEnvInit()
+
+	// 生成執行ID
+	executionID := generateExecutionID()
+
+	code = generateDefaultPyCode(executionID) + fmt.Sprintf(`
+try:
+%v
+except Exception as e:
+    import sys
+    sys.stdout.flush()
+    sys.stderr.flush()
+    insyra_return(None, str(e))
+finally:
+    import sys
+    sys.stdout.flush()
+    sys.stderr.flush()
+    if not sent:
+        insyra_return(None, None)
+`, indentCode(code))
+
+	// 創建進程結束通知channel
+	processDone := make(chan struct{})
+	execErr := make(chan error, 1)
+
+	// 在goroutine中執行Python代碼
+	go func() {
+		defer close(processDone)
+		pythonCmd := exec.CommandContext(ctx, pyPath, "-c", code)
+		pythonCmd.Stdout = os.Stdout
+		pythonCmd.Stderr = os.Stderr
+		err := pythonCmd.Run()
+		if err != nil {
+			execErr <- err
+		}
+	}()
+
+	// 等待並接收結果
+	pyResult := waitForResult(executionID, processDone, execErr)
+	// 如果有錯誤（從系統執行或 Python 返回），直接返回；
+	// 若原因是 context 取消/截止，優先回傳 ctx.Err()（例如 context.Canceled / context.DeadlineExceeded）
+	if pyResult[1] != nil {
+		if ctx != nil && ctx.Err() != nil {
+			return ctx.Err()
+		}
 		return fmt.Errorf("%v", pyResult[1])
 	}
 	// 正常執行且無錯誤

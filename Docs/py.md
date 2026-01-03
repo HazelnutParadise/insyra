@@ -137,6 +137,76 @@ Run Python code from a file with variables passed from Go using `$v1`, `$v2`, et
 
 - `error`: Returns an error if execution failed or result binding failed, `nil` otherwise.
 
+---
+
+### Context-aware `RunCode` / `RunFile`
+
+The `py` package provides context-aware variants that accept a `context.Context` so the Python execution can be canceled from Go. When cancellation happens, these functions return the context error (i.e., `ctx.Err()`), so callers can use `errors.Is(err, context.DeadlineExceeded)` or `errors.Is(err, context.Canceled)` to check the cancellation reason.
+
+#### Functions
+
+```go
+func RunCodeContext(ctx context.Context, out any, code string) error
+func RunCodefContext(ctx context.Context, out any, code string, args ...any) error
+func RunFileContext(ctx context.Context, out any, filepath string) error
+func RunFilefContext(ctx context.Context, out any, filepath string, args ...any) error
+
+// Convenience helper:
+func RunCodeWithTimeout(timeout time.Duration, out any, code string) error
+```
+
+#### Parameters
+
+- `ctx` (`context.Context`): The context used to control cancellation and deadlines for the Python execution.
+- Other parameters are the same as their non-context counterparts (`out`, `code`, `filepath`, `args`).
+
+#### Returns
+
+- `error`: Non-nil when execution failed; if execution was canceled via the provided `ctx`, the function returns `ctx.Err()` (typically `context.Canceled` for manual cancellation or `context.DeadlineExceeded` for timeouts). Use `errors.Is` to check for these.
+
+#### Examples
+
+Timeout (convenience):
+
+```go
+err := py.RunCodeWithTimeout(1*time.Second, nil, `
+import time
+time.sleep(10)
+insyra.Return({"ok": True})
+`)
+if errors.Is(err, context.DeadlineExceeded) {
+    fmt.Println("python run timed out")
+} else if err != nil {
+    fmt.Println("python failed:", err)
+}
+```
+
+Manual cancel (WithCancel):
+
+```go
+ctx, cancel := context.WithCancel(context.Background())
+go func() {
+    time.Sleep(500 * time.Millisecond)
+    cancel()
+}()
+
+err := py.RunCodeContext(ctx, nil, `
+import time
+time.sleep(5)
+insyra.Return({"ok": True})
+`)
+if errors.Is(err, context.Canceled) {
+    fmt.Println("python run canceled")
+} else if err != nil {
+    fmt.Println("python failed:", err)
+}
+```
+
+#### Notes
+
+- The context-aware functions use `exec.CommandContext` under the hood. When the context is done, the underlying Python process is killed and the function returns `ctx.Err()`.
+- For platform-specific process group / child-process cleanup semantics, consider the platform behavior; if you need robust group termination, let us know and we can add process-group management to the runner.
+
 ### `PipInstall`
 
 ```go
