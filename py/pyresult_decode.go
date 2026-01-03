@@ -2,6 +2,7 @@ package py
 
 import (
 	"fmt"
+	"reflect"
 
 	"github.com/HazelnutParadise/Go-Utils/conv"
 	"github.com/HazelnutParadise/insyra"
@@ -35,7 +36,11 @@ func bindPyResult(out any, result any) error {
 		if err != nil {
 			return err
 		}
-		if dt != nil {
+		// If decode returns nil, explicitly set the interface to an untyped nil
+		// so callers see a true nil value (not a typed nil pointer in the interface).
+		if dt == nil {
+			*target = nil
+		} else {
 			*target = dt
 		}
 		return nil
@@ -60,9 +65,71 @@ func bindPyResult(out any, result any) error {
 		if err != nil {
 			return err
 		}
-		if dl != nil {
+		// If decode returns nil, explicitly set the interface to an untyped nil
+		// so callers see a true nil value (not a typed nil pointer in the interface).
+		if dl == nil {
+			*target = nil
+		} else {
 			*target = dl
 		}
+		return nil
+	}
+
+	// Try binding into isr wrapper types (dl / dt) by reflection so we don't need to
+	// refer to their unexported type names. The wrappers embed an exported field
+	// named "DataList" or "DataTable", which we can set via reflection.
+	if func() bool {
+		// Try DataList
+		if dl, err := decodeDataList(result); err == nil {
+			rv := reflect.ValueOf(out)
+			for depth := 0; depth < 3 && rv.IsValid(); depth++ {
+				if rv.Kind() != reflect.Ptr {
+					break
+				}
+				// If we have a pointer-to-pointer and the inner pointer is nil, allocate it
+				if rv.Elem().Kind() == reflect.Ptr && rv.Elem().IsNil() {
+					rv.Elem().Set(reflect.New(rv.Elem().Type().Elem()))
+				}
+				if rv.Elem().Kind() == reflect.Struct {
+					fld := rv.Elem().FieldByName("DataList")
+					if fld.IsValid() && fld.CanSet() && fld.Type() == reflect.TypeOf((*insyra.DataList)(nil)) {
+						if dl == nil {
+							fld.Set(reflect.Zero(fld.Type()))
+						} else {
+							fld.Set(reflect.ValueOf(dl))
+						}
+						return true
+					}
+				}
+				rv = rv.Elem()
+			}
+		}
+		// Try DataTable
+		if dt, err := decodeDataTable(result); err == nil {
+			rv := reflect.ValueOf(out)
+			for depth := 0; depth < 3 && rv.IsValid(); depth++ {
+				if rv.Kind() != reflect.Ptr {
+					break
+				}
+				if rv.Elem().Kind() == reflect.Ptr && rv.Elem().IsNil() {
+					rv.Elem().Set(reflect.New(rv.Elem().Type().Elem()))
+				}
+				if rv.Elem().Kind() == reflect.Struct {
+					fld := rv.Elem().FieldByName("DataTable")
+					if fld.IsValid() && fld.CanSet() && fld.Type() == reflect.TypeOf((*insyra.DataTable)(nil)) {
+						if dt == nil {
+							fld.Set(reflect.Zero(fld.Type()))
+						} else {
+							fld.Set(reflect.ValueOf(dt))
+						}
+						return true
+					}
+				}
+				rv = rv.Elem()
+			}
+		}
+		return false
+	}() {
 		return nil
 	}
 

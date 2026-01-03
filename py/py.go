@@ -137,8 +137,13 @@ finally:
 	if pyResult[1] != nil {
 		return fmt.Errorf("%v", pyResult[1])
 	}
-	// 正常執行且無錯誤
+	// 正常執行且無錯誤；即使回傳值為 nil 也要呼叫 bindPyResult 以便把 nil 綁定到 out（例如清空 interface 變數）
 	if pyResult[0] == nil {
+		if out != nil {
+			if err := bindPyResult(out, nil); err != nil {
+				return err
+			}
+		}
 		return nil
 	}
 
@@ -260,8 +265,13 @@ finally:
 		}
 		return fmt.Errorf("%v", pyResult[1])
 	}
-	// 正常執行且無錯誤
+	// 正常執行且無錯誤；即使回傳值為 nil 也要呼叫 bindPyResult 以便把 nil 綁定到 out（例如清空 interface 變數）
 	if pyResult[0] == nil {
+		if out != nil {
+			if err := bindPyResult(out, nil); err != nil {
+				return err
+			}
+		}
 		return nil
 	}
 
