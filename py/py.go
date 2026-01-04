@@ -428,12 +428,14 @@ func generateDefaultPyCode(executionID string) string {
 			imports += fmt.Sprintf("%s\n", imps)
 		}
 	}
+	// Get IPC address (waits for server if needed)
+	addr := getIPCAddress()
 	return fmt.Sprintf(`
 %v
 import sys
 sent = False
 %v
-`, imports, builtInFunc(port, executionID))
+`, imports, builtInFunc(addr, executionID))
 }
 
 // replacePlaceholders replaces $v1, $v2, etc. placeholders with the corresponding argument values

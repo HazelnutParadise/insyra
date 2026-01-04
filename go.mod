@@ -66,6 +66,7 @@ require (
 
 require (
 	github.com/Masterminds/squirrel v1.5.4
+	github.com/Microsoft/go-winio v0.6.2
 	github.com/apache/arrow/go/v17 v17.0.0
 	github.com/go-echarts/go-echarts/v2 v2.6.7
 	github.com/go-echarts/snapshot-chromedp v0.0.5
