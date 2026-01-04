@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/internal/utils"
 	"github.com/HazelnutParadise/insyra/lpgen"
 )
 
@@ -42,6 +43,7 @@ func SolveFromFile(lpFile string, timeoutSeconds ...int) (*insyra.DataTable, *in
 
 	// Use GLPK command-line tool to solve LP problem and output to a file
 	cmd := exec.CommandContext(ctx, "glpsol", "--lp", lpFile, "--output", tmpFile)
+	utils.ApplyHideWindow(cmd)
 	start := time.Now()
 	output, err := cmd.CombinedOutput()
 	executionTime := time.Since(start).Seconds()
@@ -137,6 +139,7 @@ func SolveModel(model *lpgen.LPModel, timeoutSeconds ...int) (*insyra.DataTable,
 
 	// 使用 GLPK 直接從標準輸入解 LP 問題，並將結果輸出到臨時文件
 	cmd := exec.CommandContext(ctx, "glpsol", "--lp", "/dev/stdin", "--output", tmpFile.Name())
+	utils.ApplyHideWindow(cmd)
 	cmd.Stdin = &lpBuffer // 將 LPModel 的內容傳給標準輸入
 	var outputBuffer bytes.Buffer
 	cmd.Stdout = &outputBuffer

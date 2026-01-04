@@ -10,10 +10,13 @@ import (
 	"runtime"
 
 	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/internal/utils"
 )
 
 // 用於allpkgs安裝
 func init() {}
+
+// applyHideWindow moved to internal utils; use utils.ApplyHideWindow(cmd) instead.
 
 var isPyEnvInit = false
 var isServerRunning = false
@@ -111,6 +114,7 @@ func setupUvEnvironment() error {
 	// 初始化uv項目
 	initCmd := exec.Command("uv", "init", "-p", "=="+pythonVersion, "--bare")
 	initCmd.Dir = absInstallDir
+	utils.ApplyHideWindow(initCmd)
 	if err := initCmd.Run(); err != nil {
 		return fmt.Errorf("failed to init uv project: %w", err)
 	}
@@ -118,6 +122,7 @@ func setupUvEnvironment() error {
 	// 同步並創建虛擬環境
 	syncCmd := exec.Command("uv", "sync")
 	syncCmd.Dir = absInstallDir
+	utils.ApplyHideWindow(syncCmd)
 	if err := syncCmd.Run(); err != nil {
 		return fmt.Errorf("failed to sync uv project: %w", err)
 	}
@@ -129,6 +134,7 @@ func setupUvEnvironment() error {
 func ensureUvInstalled() error {
 	// 檢查uv是否已安裝
 	cmd := exec.Command("uv", "--version")
+	utils.ApplyHideWindow(cmd)
 	err := cmd.Run()
 	if err == nil {
 		insyra.LogDebug("py", "init", "uv is already installed")
@@ -141,10 +147,12 @@ func ensureUvInstalled() error {
 	if runtime.GOOS == "windows" {
 		// 使用PowerShell安裝uv
 		installCmd := exec.Command("powershell", "-ExecutionPolicy", "ByPass", "-c", "irm https://astral.sh/uv/install.ps1 | iex")
+		utils.ApplyHideWindow(installCmd)
 		return installCmd.Run()
 	} else {
 		// 優先使用curl，如果失敗則使用wget
 		curlCmd := exec.Command("sh", "-c", "curl -LsSf https://astral.sh/uv/install.sh | sh")
+		utils.ApplyHideWindow(curlCmd)
 		err := curlCmd.Run()
 		if err == nil {
 			return nil
@@ -152,6 +160,7 @@ func ensureUvInstalled() error {
 
 		// 如果curl失敗，使用wget
 		wgetCmd := exec.Command("sh", "-c", "wget -qO- https://astral.sh/uv/install.sh | sh")
+		utils.ApplyHideWindow(wgetCmd)
 		return wgetCmd.Run()
 	}
 }
@@ -175,6 +184,7 @@ func installDependenciesUv(projectDir string) error {
 		cmd.Stdout = &stdout
 		cmd.Stderr = &stderr
 
+		utils.ApplyHideWindow(cmd)
 		err := cmd.Run()
 		if err != nil {
 			fmt.Printf("Stdout: %s", stdout.String())

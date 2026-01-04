@@ -15,6 +15,7 @@ import (
 	json "github.com/goccy/go-json"
 
 	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/internal/utils"
 )
 
 // reinstall the Python environment
@@ -131,6 +132,7 @@ finally:
 		pythonCmd := exec.Command(pyPath, path)
 		pythonCmd.Stdout = os.Stdout
 		pythonCmd.Stderr = os.Stderr
+		utils.ApplyHideWindow(pythonCmd)
 		if err := pythonCmd.Run(); err != nil {
 			execErr <- err
 		}
@@ -260,6 +262,7 @@ finally:
 		pythonCmd := exec.CommandContext(ctx, pyPath, path)
 		pythonCmd.Stdout = os.Stdout
 		pythonCmd.Stderr = os.Stderr
+		utils.ApplyHideWindow(pythonCmd)
 		if err := pythonCmd.Run(); err != nil {
 			execErr <- err
 		}
