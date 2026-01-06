@@ -17,6 +17,7 @@ DataTable is the core data structure of Insyra for handling structured data. It 
 - [Statistical Analysis](#statistical-analysis)
 - [Utility Methods](#utility-methods)
 - [AtomicDo](#atomicdo)
+- [Error Handling](#error-handling)
 - [Notes](#notes)
 
 ## Data Structure
@@ -3372,13 +3373,156 @@ fmt.Printf("Number of columns: %d\n", len(slice[0]))
 fmt.Printf("Value at [0][0]: %v\n", slice[0][0])
 ```
 
+## Error Handling
+
+Insyra provides a comprehensive error handling system that supports both global error buffering and instance-level error tracking, designed to work seamlessly with method chaining.
+
+### Error Handling Mechanisms
+
+Insyra offers two complementary error handling approaches:
+
+1. **Global Error Buffer**: A centralized error collection system that captures all warnings and errors across the application.
+2. **Instance-Level Error Tracking**: Each DataTable (and DataList) instance maintains its own `lastError` field, allowing you to check errors after chained operations.
+
+### Instance-Level Error Checking
+
+After performing chained operations, you can check if any errors occurred using the `Err()` method:
+
+```go
+// Perform chained operations
+dt.Replace(oldVal, newVal).ReplaceInRow(999, "a", "b").SortBy(config)
+
+// Check for errors after the chain
+if err := dt.Err(); err != nil {
+    fmt.Printf("Error occurred: %s\n", err.Error())
+    // Handle the error
+}
+
+// Clear the error for future operations
+dt.ClearErr()
+```
+
+#### Available Methods
+
+| Method | Description |
+|--------|-------------|
+| `Err() *ErrorInfo` | Returns the last error that occurred during a chained operation, or `nil` if no error occurred. |
+| `ClearErr() *DataTable` | Clears the last error and returns the DataTable for continued chaining. |
+
+### Global Error Buffer
+
+The global error buffer collects all errors across the application. This is useful for monitoring and logging purposes.
+
+#### Checking for Errors
+
+```go
+// Check if any errors exist
+if insyra.HasError() {
+    fmt.Println("Errors detected!")
+}
+
+// Check if any errors at or above a specific level exist
+if insyra.HasErrorAboveLevel(insyra.LogLevelWarning) {
+    fmt.Println("Warnings or higher severity errors detected!")
+}
+
+// Get the count of errors
+count := insyra.GetErrorCount()
+```
+
+#### Retrieving Errors (Non-Destructive)
+
+```go
+// Peek at the first/last error without removing it
+err := insyra.PeekError(insyra.ErrPoppingModeFIFO)
+if err != nil {
+    fmt.Printf("First error: %s\n", err.Error())
+}
+
+// Get all errors without removing them
+allErrors := insyra.GetAllErrors()
+for _, e := range allErrors {
+    fmt.Printf("[%s] %s.%s: %s\n", e.Level, e.PackageName, e.FuncName, e.Message)
+}
+
+// Get errors filtered by level
+warnings := insyra.GetErrorsByLevel(insyra.LogLevelWarning)
+
+// Get errors filtered by package
+dtErrors := insyra.GetErrorsByPackage("DataTable")
+```
+
+#### Retrieving and Removing Errors
+
+```go
+// Pop a single error (removes it from the buffer)
+err := insyra.PopErrorInfo(insyra.ErrPoppingModeFIFO)
+
+// Pop all errors (clears the buffer)
+allErrors := insyra.PopAllErrors()
+
+// Clear all errors
+insyra.ClearErrors()
+```
+
+### ErrorInfo Structure
+
+The `ErrorInfo` struct provides detailed error information:
+
+```go
+type ErrorInfo struct {
+    Level       LogLevel    // Error severity level
+    PackageName string      // Package where the error occurred
+    FuncName    string      // Function where the error occurred
+    Message     string      // Error message
+    Timestamp   time.Time   // When the error occurred
+}
+
+// ErrorInfo implements the error interface
+func (e ErrorInfo) Error() string
+```
+
+### Log Levels
+
+```go
+const (
+    LogLevelDebug   LogLevel = iota  // Debug messages
+    LogLevelInfo                     // Informational messages
+    LogLevelWarning                  // Warning messages
+    LogLevelFatal                    // Fatal errors
+)
+```
+
+### Custom Error Handling Function
+
+You can set a custom function to handle errors as they occur:
+
+```go
+insyra.Config.SetDefaultErrHandlingFunc(func(errType insyra.LogLevel, packageName, funcName, errMsg string) {
+    // Custom error handling logic
+    if errType >= insyra.LogLevelWarning {
+        log.Printf("Custom handler: [%s] %s.%s: %s", errType, packageName, funcName, errMsg)
+    }
+})
+```
+
+### Best Practices
+
+1. **Use Instance-Level Errors for Chained Operations**: When performing multiple chained operations, use `Err()` to check for errors at the end of the chain.
+
+2. **Clear Errors After Handling**: Call `ClearErr()` after handling an error to prevent confusion in subsequent operations.
+
+3. **Use Global Buffer for Monitoring**: The global error buffer is ideal for logging and monitoring across the application.
+
+4. **Check Specific Error Levels**: Use `HasErrorAboveLevel()` to filter for errors that require immediate attention.
+
 ## Notes
 
 1. **Type Safety**: DataTable uses the `any` type to store data. Please ensure proper type conversion when operating on the data.
 
 2. **Memory Management**: For large datasets, consider using streaming or batch processing to avoid memory overflow.
 
-3. **Error Handling**: Some methods return `error` (e.g., file I/O, SQL operations). Many manipulation methods return `*DataTable` for chaining — check the specific function signatures and handle errors where applicable.
+3. **Error Handling**: Some methods return `error` (e.g., file I/O, SQL operations). Many manipulation methods return `*DataTable` for chaining — check the specific function signatures and handle errors where applicable. Additionally, you can use the instance-level `Err()` method to check for errors after chained operations.
 
 4. **Concurrency**: DataTable uses actor-style serialized execution via `AtomicDo` (internal command channel and goroutine) for thread-safety rather than a global mutex. Use `AtomicDo` for sequences that must observe consistent state and avoid long-blocking work inside it.
 

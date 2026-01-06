@@ -42,6 +42,9 @@ type DataTable struct {
 	cmdCh    chan func()
 	initOnce sync.Once
 	closed   atomic.Bool
+
+	// Instance-level error tracking for chained operations
+	lastError *ErrorInfo
 }
 
 func NewDataTable(columns ...*DataList) *DataTable {
@@ -254,7 +257,7 @@ func (dt *DataTable) GetElement(rowIndex int, columnIndex string) any {
 				rowIndex = len(dt.columns[colPos].data) + rowIndex
 			}
 			if rowIndex < 0 || rowIndex >= len(dt.columns[colPos].data) {
-				LogWarning("DataTable", "GetElement", "Row index is out of range, returning nil")
+				dt.warn("GetElement", "Row index is out of range, returning nil")
 				result = nil
 				return
 			}
@@ -273,7 +276,7 @@ func (dt *DataTable) GetElementByNumberIndex(rowIndex int, columnIndex int) any 
 			rowIndex = len(dt.columns[columnIndex].data) + rowIndex
 		}
 		if rowIndex < 0 || rowIndex >= len(dt.columns[columnIndex].data) {
-			LogWarning("DataTable", "GetElementByNumberIndex", "Row index is out of range, returning nil")
+			dt.warn("GetElementByNumberIndex", "Row index is out of range, returning nil")
 			result = nil
 			return
 		}
@@ -292,7 +295,7 @@ func (dt *DataTable) GetCol(index string) *DataList {
 			result = dt.columns[colPos].Clone()
 			return
 		}
-		LogWarning("DataTable", "GetCol", "Column '%s' not found, returning nil", index)
+		dt.warn("GetCol", "Column '%s' not found, returning nil", index)
 		result = nil
 	})
 	return result
@@ -306,7 +309,7 @@ func (dt *DataTable) GetColByNumber(index int) *DataList {
 		}
 
 		if index < 0 || index >= len(dt.columns) {
-			LogWarning("DataTable", "GetColByNumber", "Col index is out of range, returning nil")
+			dt.warn("GetColByNumber", "Col index is out of range, returning nil")
 			result = nil
 			return
 		}
@@ -326,7 +329,7 @@ func (dt *DataTable) GetColByName(name string) *DataList {
 				return
 			}
 		}
-		LogWarning("DataTable", "GetColByName", "Column '%s' not found, returning nil", name)
+		dt.warn("GetColByName", "Column '%s' not found, returning nil", name)
 		result = nil
 	})
 	return result
@@ -340,7 +343,7 @@ func (dt *DataTable) GetRow(index int) *DataList {
 			index = dt.getMaxColLength() + index
 		}
 		if index < 0 || index >= dt.getMaxColLength() {
-			LogWarning("DataTable", "GetRow", "Row index is out of range, returning nil")
+			dt.warn("GetRow", "Row index is out of range, returning nil")
 			result = nil
 			return
 		}
@@ -378,7 +381,7 @@ func (dt *DataTable) GetRowByName(name string) *DataList {
 			result = dl
 			return
 		}
-		LogWarning("DataTable", "GetRowByName", "Row name '%s' not found, returning nil", name)
+		dt.warn("GetRowByName", "Row name '%s' not found, returning nil", name)
 		result = nil
 	})
 	return result
@@ -397,12 +400,12 @@ func (dt *DataTable) UpdateElement(rowIndex int, columnIndex string, value any) 
 				rowIndex = len(dt.columns[colPos].data) + rowIndex
 			}
 			if rowIndex < 0 || rowIndex >= len(dt.columns[colPos].data) {
-				LogWarning("DataTable", "UpdateElement", "Row index is out of range, returning")
+				dt.warn("UpdateElement", "Row index is out of range, returning")
 				return
 			}
 			dt.columns[colPos].data[rowIndex] = value
 		} else {
-			LogWarning("DataTable", "UpdateElement", "Col index does not exist, returning")
+			dt.warn("UpdateElement", "Col index does not exist, returning")
 		}
 		go dt.updateTimestamp()
 	})
@@ -418,7 +421,7 @@ func (dt *DataTable) UpdateCol(index string, dl *DataList) *DataTable {
 		if colPos, exists := dt.columnIndex[index]; exists {
 			dt.columns[colPos] = dl
 		} else {
-			LogWarning("DataTable", "UpdateCol", "Col index does not exist, returning")
+			dt.warn("UpdateCol", "Col index does not exist, returning")
 		}
 		go dt.updateTimestamp()
 	})
@@ -433,7 +436,7 @@ func (dt *DataTable) UpdateColByNumber(index int, dl *DataList) *DataTable {
 		}
 
 		if index < 0 || index >= len(dt.columns) {
-			LogWarning("DataTable", "UpdateColByNumber", "Index out of bounds")
+			dt.warn("UpdateColByNumber", "Index out of bounds")
 			return
 		}
 
@@ -448,12 +451,12 @@ func (dt *DataTable) UpdateColByNumber(index int, dl *DataList) *DataTable {
 func (dt *DataTable) UpdateRow(index int, dl *DataList) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		if index < 0 || index >= dt.getMaxColLength() {
-			LogWarning("DataTable", "UpdateRow", "Index out of bounds")
+			dt.warn("UpdateRow", "Index out of bounds")
 			return
 		}
 
 		if len(dl.data) > len(dt.columns) {
-			LogWarning("DataTable", "UpdateRow", "DataList has more elements than DataTable columns, returning")
+			dt.warn("UpdateRow", "DataList has more elements than DataTable columns, returning")
 			return
 		}
 
@@ -993,7 +996,7 @@ func (dt *DataTable) DropRowsByName(rowNames ...string) *DataTable {
 		for _, rowName := range rowNames {
 			rowIndex, exists := dt.rowNames[rowName]
 			if !exists {
-				LogWarning("DataTable", "DropRowsByName", "Row name '%s' does not exist", rowName)
+				dt.warn("DropRowsByName", "Row name '%s' does not exist", rowName)
 				continue
 			}
 
@@ -1290,7 +1293,7 @@ func (dt *DataTable) Data(useNamesAsKeys ...bool) map[string][]any {
 			useNamesAsKeysBool = useNamesAsKeys[0]
 		}
 		if len(useNamesAsKeys) > 1 {
-			LogWarning("DataTable", "Data", "Too many arguments, returning empty map")
+			dt.warn("Data", "Too many arguments, returning empty map")
 			result = dataMap
 			return
 		}
@@ -1628,4 +1631,44 @@ func (dt *DataTable) GetCreationTimestamp() int64 {
 
 func (dt *DataTable) GetLastModifiedTimestamp() int64 {
 	return dt.lastModifiedTimestamp.Load()
+}
+
+// Err returns the last error that occurred during a chained operation.
+// Returns nil if no error occurred.
+// This method allows for error checking after chained calls without breaking the chain.
+//
+// Example usage:
+//
+//	dt.Replace(old, new).ReplaceNaNsWith(0).SortBy(config)
+//	if err := dt.Err(); err != nil {
+//	    // handle error
+//	}
+func (dt *DataTable) Err() *ErrorInfo {
+	return dt.lastError
+}
+
+// ClearErr clears the last error stored in the DataTable.
+// Returns the DataTable to support chaining.
+func (dt *DataTable) ClearErr() *DataTable {
+	dt.lastError = nil
+	return dt
+}
+
+// setError is an internal method to record an error on the DataTable instance.
+func (dt *DataTable) setError(level LogLevel, packageName, funcName, message string) {
+	dt.lastError = &ErrorInfo{
+		Level:       level,
+		PackageName: packageName,
+		FuncName:    funcName,
+		Message:     message,
+		Timestamp:   time.Now(),
+	}
+}
+
+// warn logs a warning and sets the error on the DataTable instance.
+// This is a convenience method that combines LogWarning and setError.
+func (dt *DataTable) warn(funcName, msg string, args ...any) {
+	fullMsg := fmt.Sprintf(msg, args...)
+	LogWarning("DataTable", funcName, "%s", fullMsg)
+	dt.setError(LogLevelWarning, "DataTable", funcName, fullMsg)
 }

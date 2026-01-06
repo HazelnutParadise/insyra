@@ -7,7 +7,7 @@ func (dt *DataTable) SetColNameByIndex(index string, name string) *DataTable {
 		name = safeColName(dt, name)
 
 		if nIndex < 0 || nIndex >= len(dt.columns) {
-			LogWarning("DataTable", "SetColNameByIndex", "Index out of bounds")
+			dt.warn("SetColNameByIndex", "Index out of bounds")
 			result = dt
 			return
 		}
@@ -27,7 +27,7 @@ func (dt *DataTable) SetColNameByNumber(numberIndex int, name string) *DataTable
 		}
 
 		if numberIndex < 0 || numberIndex >= len(dt.columns) {
-			LogWarning("DataTable", "SetColNameByNumber", "Index out of bounds")
+			dt.warn("SetColNameByNumber", "Index out of bounds")
 			result = dt
 			return
 		}
@@ -62,7 +62,7 @@ func (dt *DataTable) GetColNameByNumber(index int) string {
 			index += len(dt.columns)
 		}
 		if index < 0 || index >= len(dt.columns) {
-			LogWarning("DataTable", "GetColNameByNumber", "index out of range")
+			dt.warn("GetColNameByNumber", "index out of range")
 			result = ""
 			return
 		}
@@ -88,7 +88,7 @@ func (dt *DataTable) GetColNumberByName(name string) int {
 		result, ok = dt.getColNumberByName_notAtomic(name)
 	})
 	if !ok {
-		LogWarning("DataTable", "GetColNumberByName", "Column name not found: %s, returning -1", name)
+		dt.warn("GetColNumberByName", "Column name not found: %s, returning -1", name)
 	}
 	return result
 }
@@ -97,7 +97,7 @@ func (dt *DataTable) ColNamesToFirstRow() *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
 		if len(dt.columns) == 0 {
-			LogWarning("DataTable", "ColNamesToFirstRow", "No columns to set names")
+			dt.warn("ColNamesToFirstRow", "No columns to set names")
 			result = dt
 			return
 		}
@@ -116,7 +116,7 @@ func (dt *DataTable) DropColNames() *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
 		if len(dt.columns) == 0 {
-			LogWarning("DataTable", "DropColNames", "No columns to drop names")
+			dt.warn("DropColNames", "No columns to drop names")
 			result = dt
 			return
 		}

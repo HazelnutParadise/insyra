@@ -18,7 +18,7 @@ func (dt *DataTable) SetRowNameByIndex(index int, name string) *DataTable {
 			index = dt.getMaxColLength() + index
 		}
 		if index < 0 || index >= dt.getMaxColLength() {
-			LogWarning("DataTable", "SetRowNameByIndex", "Row index %d is out of range, returning", originalIndex)
+			dt.warn("SetRowNameByIndex", "Row index %d is out of range, returning", originalIndex)
 			return
 		}
 
@@ -98,7 +98,7 @@ func (dt *DataTable) GetRowIndexByName(name string) (int, bool) {
 		}
 	})
 	if !exists {
-		LogWarning("DataTable", "GetRowIndexByName", "Row name not found: %s, returning -1", name)
+		dt.warn("GetRowIndexByName", "Row name not found: %s, returning -1", name)
 	}
 	return index, exists
 }
@@ -156,7 +156,7 @@ func (dt *DataTable) RowNamesToFirstCol() *DataTable {
 func (dt *DataTable) DropRowNames() *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		if len(dt.rowNames) == 0 {
-			LogWarning("DataTable", "DropRowNames", "No row names to drop")
+			dt.warn("DropRowNames", "No row names to drop")
 			return
 		}
 

@@ -53,7 +53,7 @@ func (dt *DataTable) ReplaceInRow(rowIndex int, oldValue, newValue any, mode ...
 		err = dt.replaceInRow_notAtomic(rowIndex, oldValue, newValue, mode...)
 	})
 	if err != nil {
-		LogWarning("DataTable", "ReplaceInRow", "Error: %s", err.Error())
+		dt.warn("ReplaceInRow", "Error: %s", err.Error())
 	}
 	return dt
 }
@@ -73,7 +73,7 @@ func (dt *DataTable) ReplaceNaNsInRow(rowIndex int, newValue any, mode ...int) *
 		err = dt.replaceInRow_notAtomic(rowIndex, math.NaN(), newValue, mode...)
 	})
 	if err != nil {
-		LogWarning("DataTable", "ReplaceNaNsInRow", "Error: %s", err.Error())
+		dt.warn("ReplaceNaNsInRow", "Error: %s", err.Error())
 	}
 	return dt
 }
@@ -93,7 +93,7 @@ func (dt *DataTable) ReplaceNilsInRow(rowIndex int, newValue any, mode ...int) *
 		err = dt.replaceInRow_notAtomic(rowIndex, nil, newValue, mode...)
 	})
 	if err != nil {
-		LogWarning("DataTable", "ReplaceNilsInRow", "Error: %s", err.Error())
+		dt.warn("ReplaceNilsInRow", "Error: %s", err.Error())
 	}
 	return dt
 }
@@ -113,7 +113,7 @@ func (dt *DataTable) ReplaceNaNsAndNilsInRow(rowIndex int, newValue any, mode ..
 		err = dt.replaceNaNsAndNilsInRow_notAtomic(rowIndex, newValue, mode...)
 	})
 	if err != nil {
-		LogWarning("DataTable", "ReplaceNaNsAndNilsInRow", "Error: %s", err.Error())
+		dt.warn("ReplaceNaNsAndNilsInRow", "Error: %s", err.Error())
 	}
 	return dt
 }
@@ -134,7 +134,7 @@ func (dt *DataTable) ReplaceInCol(colIndex string, oldValue, newValue any, mode 
 		err = dt.replaceInCol_notAtomic(colIndex, oldValue, newValue, mode...)
 	})
 	if err != nil {
-		LogWarning("DataTable", "ReplaceInCol", "Error: %s", err.Error())
+		dt.warn("ReplaceInCol", "Error: %s", err.Error())
 	}
 	return dt
 }
@@ -154,7 +154,7 @@ func (dt *DataTable) ReplaceNaNsInCol(colIndex string, newValue any, mode ...int
 		err = dt.replaceInCol_notAtomic(colIndex, math.NaN(), newValue, mode...)
 	})
 	if err != nil {
-		LogWarning("DataTable", "ReplaceNaNsInCol", "Error: %s", err.Error())
+		dt.warn("ReplaceNaNsInCol", "Error: %s", err.Error())
 	}
 	return dt
 }
@@ -174,7 +174,7 @@ func (dt *DataTable) ReplaceNilsInCol(colIndex string, newValue any, mode ...int
 		err = dt.replaceInCol_notAtomic(colIndex, nil, newValue, mode...)
 	})
 	if err != nil {
-		LogWarning("DataTable", "ReplaceNilsInCol", "Error: %s", err.Error())
+		dt.warn("ReplaceNilsInCol", "Error: %s", err.Error())
 	}
 	return dt
 }
@@ -194,7 +194,7 @@ func (dt *DataTable) ReplaceNaNsAndNilsInCol(colIndex string, newValue any, mode
 		err = dt.replaceNaNsAndNilsInCol_notAtomic(colIndex, newValue, mode...)
 	})
 	if err != nil {
-		LogWarning("DataTable", "ReplaceNaNsAndNilsInCol", "Error: %s", err.Error())
+		dt.warn("ReplaceNaNsAndNilsInCol", "Error: %s", err.Error())
 	}
 	return dt
 }

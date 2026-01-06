@@ -14,7 +14,7 @@ func (dt *DataTable) AddColUsingCCL(newColName, cclFormula string) *DataTable {
 	// 添加 recover 以防止程序崩潰
 	defer func() {
 		if r := recover(); r != nil {
-			LogWarning("DataTable", "AddColUsingCCL", "Panic recovered: %v", r)
+			dt.warn("AddColUsingCCL", "Panic recovered: %v", r)
 		}
 	}()
 
@@ -32,7 +32,7 @@ func (dt *DataTable) AddColUsingCCL(newColName, cclFormula string) *DataTable {
 		result, err := applyCCLOnDataTable(dt, cclFormula)
 		if err != nil {
 			elapsed := time.Since(startTime)
-			LogWarning("DataTable", "AddColUsingCCL", "Failed to apply CCL on DataTable after %v: %v", elapsed, err)
+			dt.warn("AddColUsingCCL", "Failed to apply CCL on DataTable after %v: %v", elapsed, err)
 		} else {
 			elapsed := time.Since(startTime)
 			LogDebug("DataTable", "AddColUsingCCL", "CCL evaluation completed in %v", elapsed)
@@ -67,7 +67,7 @@ func (dt *DataTable) AddColUsingCCL(newColName, cclFormula string) *DataTable {
 func (dt *DataTable) EditColByIndexUsingCCL(colIndex, cclFormula string) *DataTable {
 	defer func() {
 		if r := recover(); r != nil {
-			LogWarning("DataTable", "EditColByIndexUsingCCL", "Panic recovered: %v", r)
+			dt.warn("EditColByIndexUsingCCL", "Panic recovered: %v", r)
 		}
 	}()
 
@@ -83,7 +83,7 @@ func (dt *DataTable) EditColByIndexUsingCCL(colIndex, cclFormula string) *DataTa
 		// 解析欄位索引
 		targetColIdx := utils.ParseColIndex(colIndex)
 		if targetColIdx < 0 || targetColIdx >= len(dt.columns) {
-			LogWarning("DataTable", "EditColByIndexUsingCCL", "Column index '%s' out of range", colIndex)
+			dt.warn("EditColByIndexUsingCCL", "Column index '%s' out of range", colIndex)
 			resultDtChan <- dt
 			return
 		}
@@ -91,7 +91,7 @@ func (dt *DataTable) EditColByIndexUsingCCL(colIndex, cclFormula string) *DataTa
 		result, err := applyCCLOnDataTable(dt, cclFormula)
 		if err != nil {
 			elapsed := time.Since(startTime)
-			LogWarning("DataTable", "EditColByIndexUsingCCL", "Failed to apply CCL on DataTable after %v: %v", elapsed, err)
+			dt.warn("EditColByIndexUsingCCL", "Failed to apply CCL on DataTable after %v: %v", elapsed, err)
 		} else {
 			elapsed := time.Since(startTime)
 			LogDebug("DataTable", "EditColByIndexUsingCCL", "CCL evaluation completed in %v", elapsed)
@@ -107,7 +107,7 @@ func (dt *DataTable) EditColByIndexUsingCCL(colIndex, cclFormula string) *DataTa
 func (dt *DataTable) EditColByNameUsingCCL(colName, cclFormula string) *DataTable {
 	defer func() {
 		if r := recover(); r != nil {
-			LogWarning("DataTable", "EditColByNameUsingCCL", "Panic recovered: %v", r)
+			dt.warn("EditColByNameUsingCCL", "Panic recovered: %v", r)
 		}
 	}()
 
@@ -130,7 +130,7 @@ func (dt *DataTable) EditColByNameUsingCCL(colName, cclFormula string) *DataTabl
 		}
 
 		if targetColIdx < 0 {
-			LogWarning("DataTable", "EditColByNameUsingCCL", "Column '%s' not found", colName)
+			dt.warn("EditColByNameUsingCCL", "Column '%s' not found", colName)
 			resultDtChan <- dt
 			return
 		}
@@ -138,7 +138,7 @@ func (dt *DataTable) EditColByNameUsingCCL(colName, cclFormula string) *DataTabl
 		result, err := applyCCLOnDataTable(dt, cclFormula)
 		if err != nil {
 			elapsed := time.Since(startTime)
-			LogWarning("DataTable", "EditColByNameUsingCCL", "Failed to apply CCL on DataTable after %v: %v", elapsed, err)
+			dt.warn("EditColByNameUsingCCL", "Failed to apply CCL on DataTable after %v: %v", elapsed, err)
 		} else {
 			elapsed := time.Since(startTime)
 			LogDebug("DataTable", "EditColByNameUsingCCL", "CCL evaluation completed in %v", elapsed)
@@ -158,7 +158,7 @@ func (dt *DataTable) ExecuteCCL(cclStatements string) *DataTable {
 	// 添加 recover 以防止程序崩潰
 	defer func() {
 		if r := recover(); r != nil {
-			LogWarning("DataTable", "ExecuteCCL", "Panic recovered: %v", r)
+			dt.warn("ExecuteCCL", "Panic recovered: %v", r)
 		}
 	}()
 
@@ -175,7 +175,7 @@ func (dt *DataTable) ExecuteCCL(cclStatements string) *DataTable {
 		// 編譯多行 CCL 語句
 		nodes, err := ccl.CompileMultiline(cclStatements)
 		if err != nil {
-			LogWarning("DataTable", "ExecuteCCL", "Failed to parse CCL statements: %v", err)
+			dt.warn("ExecuteCCL", "Failed to parse CCL statements: %v", err)
 			resultDtChan <- dt
 			return
 		}
@@ -202,7 +202,7 @@ func (dt *DataTable) ExecuteCCL(cclStatements string) *DataTable {
 		// 執行每個 CCL 語句
 		for _, node := range nodes {
 			if err := executeCCLNode(dt, node, numRow, colNameMap, tableData, rowNameMap); err != nil {
-				LogWarning("DataTable", "ExecuteCCL", "Failed to execute CCL statement: %v", err)
+				dt.warn("ExecuteCCL", "Failed to execute CCL statement: %v", err)
 				resultDtChan <- dt
 				return
 			}

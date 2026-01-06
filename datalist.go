@@ -33,6 +33,9 @@ type DataList struct {
 	initOnce sync.Once
 	cmdCh    chan func()
 	closed   atomic.Bool
+
+	// Instance-level error tracking for chained operations
+	lastError *ErrorInfo
 }
 
 // Data returns a copy of the data stored in the DataList.
@@ -98,12 +101,13 @@ func NewDataList(values ...any) *DataList {
 // Append adds a new values to the DataList.
 // The value can be of any type.
 // The value is appended to the end of the DataList.
-func (dl *DataList) Append(values ...any) {
+func (dl *DataList) Append(values ...any) *DataList {
 	dl.AtomicDo(func(dl *DataList) {
 		// Append data and update timestamp
 		dl.data = append(dl.data, values...)
 		go dl.updateTimestamp()
 	})
+	return dl
 }
 
 // Concat creates a new DataList by concatenating another DataList to the current DataList.
@@ -141,7 +145,7 @@ func (dl *DataList) Get(index int) any {
 			index += len(dl.data)
 		}
 		if index < 0 || index >= len(dl.data) {
-			LogWarning("DataList", "Get", "Index out of bounds, returning nil.")
+			dl.warn("Get", "Index out of bounds, returning nil.")
 			result = nil
 			return
 		}
@@ -194,7 +198,7 @@ func (dl *DataList) Update(index int, newValue any) *DataList {
 			index += len(dl.data)
 		}
 		if index < 0 || index >= len(dl.data) {
-			LogWarning("DataList", "ReplaceAtIndex", "Index %d out of bounds", index)
+			dl.warn("ReplaceAtIndex", "Index %d out of bounds", index)
 		}
 		dl.data[index] = newValue
 		go dl.updateTimestamp()
@@ -214,13 +218,13 @@ func (dl *DataList) InsertAt(index int, value any) *DataList {
 
 		// If index is out of bounds, append the value to the end
 		if index < 0 || index > len(dl.data) {
-			LogWarning("DataList", "InsertAt", "Index out of bounds, appending value to the end.")
+			dl.warn("InsertAt", "Index out of bounds, appending value to the end.")
 			dl.data = append(dl.data, value)
 		} else {
 			var err error
 			dl.data, err = sliceutil.InsertAt(dl.data, index, value)
 			if err != nil {
-				LogWarning("DataList", "InsertAt", "Failed to insert value at index: %v", err)
+				dl.warn("InsertAt", "Failed to insert value at index: %v", err)
 				return
 			}
 		}
@@ -250,7 +254,7 @@ func (dl *DataList) FindFirst(value any) any {
 				return
 			}
 		}
-		LogWarning("DataList", "FindFirst", "Value not found, returning nil.")
+		dl.warn("FindFirst", "Value not found, returning nil.")
 		result = nil
 	})
 	return result
@@ -276,7 +280,7 @@ func (dl *DataList) FindLast(value any) any {
 				return
 			}
 		}
-		LogWarning("DataList", "FindLast", "Value not found, returning nil.")
+		dl.warn("FindLast", "Value not found, returning nil.")
 		result = nil
 	})
 	return result
@@ -289,7 +293,7 @@ func (dl *DataList) FindAll(value any) []int {
 	dl.AtomicDo(func(dl *DataList) {
 		length := len(dl.data)
 		if length == 0 {
-			LogWarning("DataList", "FindAll", "DataList is empty, returning an empty slice.")
+			dl.warn("FindAll", "DataList is empty, returning an empty slice.")
 			indices = []int{}
 			return
 		}
@@ -427,7 +431,7 @@ func (dl *DataList) Pop() any {
 	dl.AtomicDo(func(dl *DataList) {
 		n, err := sliceutil.Drt_PopFrom(&dl.data)
 		if err != nil {
-			LogWarning("DataList", "Pop", "DataList is empty, returning nil.")
+			dl.warn("Pop", "DataList is empty, returning nil.")
 			result = nil
 			return
 		}
@@ -445,7 +449,7 @@ func (dl *DataList) Drop(index int) *DataList {
 			index += len(dl.data)
 		}
 		if index >= len(dl.data) {
-			LogWarning("DataList", "Drop", "Index out of bounds, returning")
+			dl.warn("Drop", "Index out of bounds, returning")
 			return
 		}
 		dl.data = append(dl.data[:index], dl.data[index+1:]...)
@@ -532,7 +536,7 @@ func (dl *DataList) DropAll(toDrop ...any) *DataList {
 		for _, awaitable := range awaitables {
 			results, err := awaitable.Await()
 			if err != nil {
-				LogWarning("DataList", "DropAll", "Error in async task: %v", err)
+				dl.warn("DropAll", "Error in async task: %v", err)
 				continue
 			}
 
@@ -720,7 +724,7 @@ func (dl *DataList) ClearOutliers(stdDevs float64) *DataList {
 	defer func() {
 		r := recover()
 		if r != nil {
-			LogWarning("DataList", "ClearOutliers", "Data types cannot be compared")
+			dl.warn("ClearOutliers", "Data types cannot be compared")
 		}
 		go dl.updateTimestamp()
 	}()
@@ -752,7 +756,7 @@ func (dl *DataList) Normalize() *DataList {
 	defer func() {
 		r := recover()
 		if r != nil {
-			LogWarning("DataList", "Normalize", "Data types cannot be compared, returning nil")
+			dl.warn("Normalize", "Data types cannot be compared, returning nil")
 		}
 
 		go dl.updateTimestamp()
@@ -761,7 +765,7 @@ func (dl *DataList) Normalize() *DataList {
 	dl.AtomicDo(func(dl *DataList) {
 		min, max := dl.Min(), dl.Max()
 		if math.IsNaN(min) || math.IsNaN(max) {
-			LogWarning("DataList", "Normalize", "Cannot normalize due to invalid Min/Max values")
+			dl.warn("Normalize", "Cannot normalize due to invalid Min/Max values")
 			isFailed = true
 			return
 		}
@@ -783,7 +787,7 @@ func (dl *DataList) Standardize() *DataList {
 	defer func() {
 		r := recover()
 		if r != nil {
-			LogWarning("DataList", "Standardize", "Data types cannot be compared, returning nil")
+			dl.warn("Standardize", "Data types cannot be compared, returning nil")
 		}
 	}()
 	dl.AtomicDo(func(dl *DataList) {
@@ -804,7 +808,7 @@ func (dl *DataList) FillNaNWithMean() *DataList {
 	defer func() {
 		r := recover()
 		if r != nil {
-			LogWarning("DataList", "FillNaNWithMean", "Data types cannot be compared, returning nil")
+			dl.warn("FillNaNWithMean", "Data types cannot be compared, returning nil")
 		}
 	}()
 	dl.AtomicDo(func(dl *DataList) {
@@ -831,7 +835,7 @@ func (dl *DataList) MovingAverage(windowSize int) *DataList {
 	isFailed := false
 	dl.AtomicDo(func(dl *DataList) {
 		if windowSize <= 0 || windowSize > dl.Len() {
-			LogWarning("DataList", "MovingAverage", "Invalid window size")
+			dl.warn("MovingAverage", "Invalid window size")
 			isFailed = true
 			return
 		}
@@ -859,7 +863,7 @@ func (dl *DataList) WeightedMovingAverage(windowSize int, weights any) *DataList
 	isFailed := false
 	dl.AtomicDo(func(dl *DataList) {
 		if windowSize <= 0 || windowSize > dl.Len() || sliceLen != windowSize {
-			LogWarning("DataList", "WeightedMovingAverage", "Invalid window size or weights length")
+			dl.warn("WeightedMovingAverage", "Invalid window size or weights length")
 			isFailed = true
 			return
 		}
@@ -891,7 +895,7 @@ func (dl *DataList) WeightedMovingAverage(windowSize int, weights any) *DataList
 // Returns a new DataList containing the smoothed values.
 func (dl *DataList) ExponentialSmoothing(alpha float64) *DataList {
 	if alpha < 0 || alpha > 1 {
-		LogWarning("DataList", "ExponentialSmoothing", "Invalid alpha value")
+		dl.warn("ExponentialSmoothing", "Invalid alpha value")
 		return nil
 	}
 
@@ -912,7 +916,7 @@ func (dl *DataList) ExponentialSmoothing(alpha float64) *DataList {
 // Returns a new DataList containing the smoothed values.
 func (dl *DataList) DoubleExponentialSmoothing(alpha, beta float64) *DataList {
 	if alpha < 0 || alpha > 1 || beta < 0 || beta > 1 {
-		LogWarning("DataList", "DoubleExponentialSmoothing", "Invalid alpha or beta value")
+		dl.warn("DoubleExponentialSmoothing", "Invalid alpha or beta value")
 		return nil
 	}
 	var smoothedData []float64
@@ -939,7 +943,7 @@ func (dl *DataList) MovingStdev(windowSize int) *DataList {
 	isFailed := false
 	dl.AtomicDo(func(dl *DataList) {
 		if windowSize <= 0 || windowSize > dl.Len() {
-			LogWarning("DataList", "MovingStdev", "Invalid window size")
+			dl.warn("MovingStdev", "Invalid window size")
 			isFailed = true
 			return
 		}
@@ -961,7 +965,7 @@ func (dl *DataList) MovingStdev(windowSize int) *DataList {
 func (dl *DataList) Sort(ascending ...bool) *DataList {
 	dl.AtomicDo(func(dl *DataList) {
 		if len(dl.data) == 0 {
-			LogWarning("DataList", "Sort", "DataList is empty, returning")
+			dl.warn("Sort", "DataList is empty, returning")
 			return
 		}
 
@@ -971,7 +975,7 @@ func (dl *DataList) Sort(ascending ...bool) *DataList {
 
 		defer func() {
 			if r := recover(); r != nil {
-				LogWarning("DataList", "Sort", "Sorting failed, restoring original order: %v", r)
+				dl.warn("Sort", "Sorting failed, restoring original order: %v", r)
 				dl.data = originalData
 			}
 		}()
@@ -981,7 +985,7 @@ func (dl *DataList) Sort(ascending ...bool) *DataList {
 			ascendingOrder = ascending[0]
 		}
 		if len(ascending) > 1 {
-			LogWarning("DataList", "Sort", "Too many arguments, returning")
+			dl.warn("Sort", "Too many arguments, returning")
 			return
 		}
 
@@ -1091,7 +1095,7 @@ func (dl *DataList) Sum() float64 {
 	var count int
 	dl.AtomicDo(func(dl *DataList) {
 		if len(dl.data) == 0 {
-			LogWarning("DataList", "Sum", "DataList is empty")
+			dl.warn("Sum", "DataList is empty")
 			sum = math.NaN()
 			return
 		}
@@ -1101,7 +1105,7 @@ func (dl *DataList) Sum() float64 {
 		for _, v := range dl.data {
 			vfloat, ok := ToFloat64Safe(v)
 			if !ok {
-				LogWarning("DataList", "Sum", "Element %v cannot be converted to float64, skipping.", v)
+				dl.warn("Sum", "Element %v cannot be converted to float64, skipping.", v)
 				continue
 			}
 			sum += vfloat
@@ -1109,7 +1113,7 @@ func (dl *DataList) Sum() float64 {
 		}
 
 		if count == 0 {
-			LogWarning("DataList", "Sum", "No valid elements to compute sum")
+			dl.warn("Sum", "No valid elements to compute sum")
 			sum = math.NaN()
 		}
 	})
@@ -1123,7 +1127,7 @@ func (dl *DataList) Max() float64 {
 	var foundValid bool
 	dl.AtomicDo(func(dl *DataList) {
 		if len(dl.data) == 0 {
-			LogWarning("DataList", "Max", "DataList is empty")
+			dl.warn("Max", "DataList is empty")
 			max = math.NaN()
 			return
 		}
@@ -1134,7 +1138,7 @@ func (dl *DataList) Max() float64 {
 		for _, v := range dl.data {
 			vfloat, ok := ToFloat64Safe(v)
 			if !ok {
-				LogWarning("DataList", "Max", "Element %v is not a numeric type, skipping.", v)
+				dl.warn("Max", "Element %v is not a numeric type, skipping.", v)
 				continue
 			}
 			if !foundValid {
@@ -1148,7 +1152,7 @@ func (dl *DataList) Max() float64 {
 		}
 
 		if !foundValid {
-			LogWarning("DataList", "Max", "No valid elements to compute maximum")
+			dl.warn("Max", "No valid elements to compute maximum")
 			max = math.NaN()
 		}
 	})
@@ -1162,7 +1166,7 @@ func (dl *DataList) Min() float64 {
 	var foundValid bool
 	dl.AtomicDo(func(dl *DataList) {
 		if len(dl.data) == 0 {
-			LogWarning("DataList", "Min", "DataList is empty")
+			dl.warn("Min", "DataList is empty")
 			min = math.NaN()
 			return
 		}
@@ -1173,7 +1177,7 @@ func (dl *DataList) Min() float64 {
 		for _, v := range dl.data {
 			vfloat, ok := ToFloat64Safe(v)
 			if !ok {
-				LogWarning("DataList", "Min", "Element %v is not a numeric type, skipping.", v)
+				dl.warn("Min", "Element %v is not a numeric type, skipping.", v)
 				continue
 			}
 			if !foundValid {
@@ -1187,7 +1191,7 @@ func (dl *DataList) Min() float64 {
 		}
 
 		if !foundValid {
-			LogWarning("DataList", "Min", "No valid elements to compute minimum")
+			dl.warn("Min", "No valid elements to compute minimum")
 			min = math.NaN()
 		}
 	})
@@ -1201,7 +1205,7 @@ func (dl *DataList) Mean() float64 {
 	dl.AtomicDo(func(dl *DataList) {
 		mean = math.NaN()
 		if len(dl.data) == 0 {
-			LogWarning("DataList", "Mean", "DataList is empty")
+			dl.warn("Mean", "DataList is empty")
 			return
 		}
 
@@ -1212,13 +1216,13 @@ func (dl *DataList) Mean() float64 {
 				sum += val
 				count++
 			} else {
-				LogWarning("DataList", "Mean", "Element %v is not a numeric type, skipping.", v)
+				dl.warn("Mean", "Element %v is not a numeric type, skipping.", v)
 				continue
 			}
 		}
 
 		if count == 0 {
-			LogWarning("DataList", "Mean", "No elements could be converted to float64")
+			dl.warn("Mean", "No elements could be converted to float64")
 			return
 		}
 
@@ -1234,13 +1238,13 @@ func (dl *DataList) WeightedMean(weights any) float64 {
 	var result float64
 	dl.AtomicDo(func(dl *DataList) {
 		if dl.Len() == 0 {
-			LogWarning("DataList", "WeightedMean", "DataList is empty")
+			dl.warn("WeightedMean", "DataList is empty")
 			result = math.NaN()
 			return
 		}
 		weightsSlice, sliceLen := ProcessData(weights)
 		if sliceLen != len(dl.data) {
-			LogWarning("DataList", "WeightedMean", "Weights length does not match data length")
+			dl.warn("WeightedMean", "Weights length does not match data length")
 			result = math.NaN()
 			return
 		}
@@ -1253,11 +1257,11 @@ func (dl *DataList) WeightedMean(weights any) float64 {
 			vfloat, ok1 := ToFloat64Safe(v)
 			wfloat, ok2 := ToFloat64Safe(weightsSlice[i])
 			if !ok1 {
-				LogWarning("DataList", "WeightedMean", "Data element at index %d cannot be converted to float64, skipping", i)
+				dl.warn("WeightedMean", "Data element at index %d cannot be converted to float64, skipping", i)
 				continue
 			}
 			if !ok2 {
-				LogWarning("DataList", "WeightedMean", "Weight at index %d cannot be converted to float64, skipping", i)
+				dl.warn("WeightedMean", "Weight at index %d cannot be converted to float64, skipping", i)
 				continue
 			}
 			weightedSum += vfloat * wfloat
@@ -1266,12 +1270,12 @@ func (dl *DataList) WeightedMean(weights any) float64 {
 		}
 
 		if validElements == 0 {
-			LogWarning("DataList", "WeightedMean", "No valid elements to compute weighted mean")
+			dl.warn("WeightedMean", "No valid elements to compute weighted mean")
 			result = math.NaN()
 			return
 		}
 		if totalWeight == 0 {
-			LogWarning("DataList", "WeightedMean", "Total weight is zero, returning NaN")
+			dl.warn("WeightedMean", "Total weight is zero, returning NaN")
 			result = math.NaN()
 			return
 		}
@@ -1289,7 +1293,7 @@ func (dl *DataList) GMean() float64 {
 	dl.AtomicDo(func(dl *DataList) {
 		result = math.NaN()
 		if len(dl.data) == 0 {
-			LogWarning("DataList", "GMean", "DataList is empty")
+			dl.warn("GMean", "DataList is empty")
 			return
 		}
 
@@ -1298,19 +1302,19 @@ func (dl *DataList) GMean() float64 {
 		for _, v := range dl.data {
 			if val, ok := ToFloat64Safe(v); ok {
 				if val <= 0 {
-					LogWarning("DataList", "GMean", "Non-positive value encountered, skipping")
+					dl.warn("GMean", "Non-positive value encountered, skipping")
 					continue
 				}
 				product *= val
 				count++
 			} else {
-				LogWarning("DataList", "GMean", "Element %v is not a numeric type, skipping", v)
+				dl.warn("GMean", "Element %v is not a numeric type, skipping", v)
 				continue
 			}
 		}
 
 		if count == 0 {
-			LogWarning("DataList", "GMean", "No valid elements to compute geometric mean")
+			dl.warn("GMean", "No valid elements to compute geometric mean")
 			return
 		}
 
@@ -1325,7 +1329,7 @@ func (dl *DataList) Median() float64 {
 	var result float64
 	dl.AtomicDo(func(dl *DataList) {
 		if len(dl.data) == 0 {
-			LogWarning("DataList", "Median", "DataList is empty")
+			dl.warn("Median", "DataList is empty")
 			result = math.NaN()
 			return
 		}
@@ -1335,14 +1339,14 @@ func (dl *DataList) Median() float64 {
 		for _, v := range dl.data {
 			vfloat, ok := ToFloat64Safe(v)
 			if !ok {
-				LogWarning("DataList", "Median", "Element %v is not a numeric type, skipping", v)
+				dl.warn("Median", "Element %v is not a numeric type, skipping", v)
 				continue
 			}
 			validData = append(validData, vfloat)
 		}
 
 		if len(validData) == 0 {
-			LogWarning("DataList", "Median", "No valid elements to compute median")
+			dl.warn("Median", "No valid elements to compute median")
 			result = math.NaN()
 			return
 		}
@@ -1373,7 +1377,7 @@ func (dl *DataList) Mode() []float64 {
 	var result []float64
 	dl.AtomicDo(func(dl *DataList) {
 		if len(dl.data) == 0 {
-			LogWarning("DataList", "Mode", "DataList is empty, returning nil")
+			dl.warn("Mode", "DataList is empty, returning nil")
 			result = nil
 			return
 		}
@@ -1388,7 +1392,7 @@ func (dl *DataList) Mode() []float64 {
 		}
 
 		if len(freqMap) == 0 {
-			LogWarning("DataList", "Mode", "No valid elements to compute mode, returning nil")
+			dl.warn("Mode", "No valid elements to compute mode, returning nil")
 			result = nil
 			return
 		}
@@ -1411,7 +1415,7 @@ func (dl *DataList) Mode() []float64 {
 		}
 
 		if allSameFrequency {
-			LogWarning("DataList", "Mode", "All elements have the same frequency. No mode exists, returning nil")
+			dl.warn("Mode", "All elements have the same frequency. No mode exists, returning nil")
 			result = nil
 			return
 		}
@@ -1434,7 +1438,7 @@ func (dl *DataList) MAD() float64 {
 	var earlyResult *float64
 	dl.AtomicDo(func(dl *DataList) {
 		if dl.Len() == 0 {
-			LogWarning("DataList", "MAD", "DataList is empty")
+			dl.warn("MAD", "DataList is empty")
 			earlyResult = new(float64)
 			*earlyResult = math.NaN()
 			return
@@ -1443,7 +1447,7 @@ func (dl *DataList) MAD() float64 {
 		// Calculate the median using the modified Median function
 		median := dl.Median()
 		if math.IsNaN(median) {
-			LogWarning("DataList", "MAD", "Median calculation failed")
+			dl.warn("MAD", "Median calculation failed")
 			earlyResult = new(float64)
 			*earlyResult = math.NaN()
 			return
@@ -1453,7 +1457,7 @@ func (dl *DataList) MAD() float64 {
 		for _, v := range dl.data {
 			val, ok := ToFloat64Safe(v)
 			if !ok {
-				LogWarning("DataList", "MAD", "Element %v is not a numeric type, skipping", v)
+				dl.warn("MAD", "Element %v is not a numeric type, skipping", v)
 				continue
 			}
 			sum += math.Abs(val - median)
@@ -1465,7 +1469,7 @@ func (dl *DataList) MAD() float64 {
 	}
 
 	if count == 0 {
-		LogWarning("DataList", "MAD", "No valid elements to compute MAD")
+		dl.warn("MAD", "No valid elements to compute MAD")
 		return math.NaN()
 	}
 
@@ -1478,14 +1482,14 @@ func (dl *DataList) Stdev() float64 {
 	var result float64
 	dl.AtomicDo(func(dl *DataList) {
 		if len(dl.data) == 0 {
-			LogWarning("DataList", "Stdev", "DataList is empty")
+			dl.warn("Stdev", "DataList is empty")
 			result = math.NaN()
 			return
 		}
 
 		variance := dl.Var()
 		if math.IsNaN(variance) {
-			LogWarning("DataList", "Stdev", "Variance calculation failed")
+			dl.warn("Stdev", "Variance calculation failed")
 			result = math.NaN()
 			return
 		}
@@ -1501,14 +1505,14 @@ func (dl *DataList) StdevP() float64 {
 	var result float64
 	dl.AtomicDo(func(dl *DataList) {
 		if len(dl.data) == 0 {
-			LogWarning("DataList", "StdevP", "DataList is empty")
+			dl.warn("StdevP", "DataList is empty")
 			result = math.NaN()
 			return
 		}
 
 		varianceP := dl.VarP()
 		if math.IsNaN(varianceP) {
-			LogWarning("DataList", "StdevP", "Variance calculation failed")
+			dl.warn("StdevP", "Variance calculation failed")
 			result = math.NaN()
 			return
 		}
@@ -1524,7 +1528,7 @@ func (dl *DataList) Var() float64 {
 	var result float64
 	dl.AtomicDo(func(dl *DataList) {
 		if len(dl.data) == 0 {
-			LogWarning("DataList", "Var", "DataList is empty")
+			dl.warn("Var", "DataList is empty")
 			result = math.NaN()
 			return
 		}
@@ -1536,7 +1540,7 @@ func (dl *DataList) Var() float64 {
 		for _, v := range dl.data {
 			xi, ok := ToFloat64Safe(v)
 			if !ok {
-				LogWarning("DataList", "Var", "Element %v is not a numeric type, skipping", v)
+				dl.warn("Var", "Element %v is not a numeric type, skipping", v)
 				continue
 			}
 			sum += xi
@@ -1544,7 +1548,7 @@ func (dl *DataList) Var() float64 {
 		}
 
 		if count < 2 {
-			LogWarning("DataList", "Var", "Not enough valid elements to compute variance")
+			dl.warn("Var", "Not enough valid elements to compute variance")
 			result = math.NaN()
 			return
 		}
@@ -1574,7 +1578,7 @@ func (dl *DataList) VarP() float64 {
 	var result float64
 	dl.AtomicDo(func(dl *DataList) {
 		if len(dl.data) == 0 {
-			LogWarning("DataList", "VarP", "DataList is empty")
+			dl.warn("VarP", "DataList is empty")
 			result = math.NaN()
 			return
 		}
@@ -1586,7 +1590,7 @@ func (dl *DataList) VarP() float64 {
 		for _, v := range dl.data {
 			xi, ok := ToFloat64Safe(v)
 			if !ok {
-				LogWarning("DataList", "VarP", "Element %v is not a numeric type, skipping", v)
+				dl.warn("VarP", "Element %v is not a numeric type, skipping", v)
 				continue
 			}
 			sum += xi
@@ -1594,7 +1598,7 @@ func (dl *DataList) VarP() float64 {
 		}
 
 		if count == 0 {
-			LogWarning("DataList", "VarP", "No valid elements to compute variance")
+			dl.warn("VarP", "No valid elements to compute variance")
 			result = math.NaN()
 			return
 		}
@@ -1623,7 +1627,7 @@ func (dl *DataList) Range() float64 {
 	var result float64
 	dl.AtomicDo(func(dl *DataList) {
 		if len(dl.data) == 0 {
-			LogWarning("DataList", "Range", "DataList is empty")
+			dl.warn("Range", "DataList is empty")
 			result = math.NaN()
 			return
 		}
@@ -1632,7 +1636,7 @@ func (dl *DataList) Range() float64 {
 		min := dl.Min()
 
 		if math.IsNaN(max) || math.IsNaN(min) {
-			LogWarning("DataList", "Range", "Max or Min calculation failed")
+			dl.warn("Range", "Max or Min calculation failed")
 			result = math.NaN()
 			return
 		}
@@ -1649,12 +1653,12 @@ func (dl *DataList) Quartile(q int) float64 {
 	var result float64
 	dl.AtomicDo(func(dl *DataList) {
 		if len(dl.data) == 0 {
-			LogWarning("DataList", "Quartile", "DataList is empty")
+			dl.warn("Quartile", "DataList is empty")
 			result = math.NaN()
 			return
 		}
 		if q < 1 || q > 3 {
-			LogWarning("DataList", "Quartile", "Invalid quartile value")
+			dl.warn("Quartile", "Invalid quartile value")
 			result = math.NaN()
 			return
 		}
@@ -1664,14 +1668,14 @@ func (dl *DataList) Quartile(q int) float64 {
 		for _, v := range dl.data {
 			vfloat, ok := ToFloat64Safe(v)
 			if !ok {
-				LogWarning("DataList", "Quartile", "Element %v is not a numeric type, skipping", v)
+				dl.warn("Quartile", "Element %v is not a numeric type, skipping", v)
 				continue
 			}
 			numericData = append(numericData, vfloat)
 		}
 
 		if len(numericData) == 0 {
-			LogWarning("DataList", "Quartile", "No valid elements to compute quartile")
+			dl.warn("Quartile", "No valid elements to compute quartile")
 			result = math.NaN()
 			return
 		}
@@ -1738,7 +1742,7 @@ func (dl *DataList) IQR() float64 {
 	var earlyResult *float64
 	dl.AtomicDo(func(dl *DataList) {
 		if dl.Len() == 0 {
-			LogWarning("DataList", "IQR", "DataList is empty")
+			dl.warn("IQR", "DataList is empty")
 			earlyResult = new(float64)
 			*earlyResult = math.NaN()
 			return
@@ -1752,7 +1756,7 @@ func (dl *DataList) IQR() float64 {
 	}
 
 	if math.IsNaN(q1) || math.IsNaN(q3) {
-		LogWarning("DataList", "IQR", "Q1 or Q3 calculation failed")
+		dl.warn("IQR", "Q1 or Q3 calculation failed")
 		return math.NaN()
 	}
 
@@ -1764,12 +1768,12 @@ func (dl *DataList) Percentile(p float64) float64 {
 	var result float64
 	dl.AtomicDo(func(dl *DataList) {
 		if len(dl.data) == 0 {
-			LogWarning("DataList", "Percentile", "DataList is empty")
+			dl.warn("Percentile", "DataList is empty")
 			result = math.NaN()
 			return
 		}
 		if p < 0 || p > 100 {
-			LogWarning("DataList", "Percentile", "Invalid percentile value")
+			dl.warn("Percentile", "Invalid percentile value")
 			result = math.NaN()
 			return
 		}
@@ -1779,14 +1783,14 @@ func (dl *DataList) Percentile(p float64) float64 {
 		for _, v := range dl.data {
 			vfloat, ok := ToFloat64Safe(v)
 			if !ok {
-				LogWarning("DataList", "Percentile", "Element %v cannot be converted to float64, skipping", v)
+				dl.warn("Percentile", "Element %v cannot be converted to float64, skipping", v)
 				continue
 			}
 			numericData = append(numericData, vfloat)
 		}
 
 		if len(numericData) == 0 {
-			LogWarning("DataList", "Percentile", "No valid elements to compute percentile")
+			dl.warn("Percentile", "No valid elements to compute percentile")
 			result = math.NaN()
 			return
 		}
@@ -1839,12 +1843,12 @@ func (dl *DataList) Difference() *DataList {
 	dl.AtomicDo(func(dl *DataList) {
 		defer func() {
 			if r := recover(); r != nil {
-				LogWarning("DataList", "Difference", "Data types cannot be compared")
+				dl.warn("Difference", "Data types cannot be compared")
 			}
 		}()
 
 		if len(dl.data) < 2 {
-			LogWarning("DataList", "Difference", "DataList is too short to calculate differences, returning nil")
+			dl.warn("Difference", "DataList is too short to calculate differences, returning nil")
 			result = nil
 			return
 		}
@@ -1896,7 +1900,7 @@ func (dl *DataList) IsTheSameAs(anotherDl *DataList) bool {
 			}
 
 			if anotherDl == nil {
-				LogWarning("DataList", "IsTheSameAs", "Another DataList is nil, returning false")
+				dl.warn("IsTheSameAs", "Another DataList is nil, returning false")
 				result = false
 				return
 			}
@@ -1939,7 +1943,7 @@ func (dl *DataList) ParseNumbers() *DataList {
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
-						LogWarning("DataList", "ParseNumbers", "Failed to parse %v to float64: %v, the element left unchanged", v, r)
+						dl.warn("ParseNumbers", "Failed to parse %v to float64: %v, the element left unchanged", v, r)
 					}
 				}()
 
@@ -1959,7 +1963,7 @@ func (dl *DataList) ParseStrings() *DataList {
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
-						LogWarning("DataList", "ParseStrings", "Failed to convert %v to string: %v, the element left unchanged", v, r)
+						dl.warn("ParseStrings", "Failed to convert %v to string: %v, the element left unchanged", v, r)
 					}
 				}()
 
@@ -1980,7 +1984,7 @@ func (dl *DataList) ToF64Slice() []float64 {
 	var result []float64
 	dl.AtomicDo(func(dl *DataList) {
 		if len(dl.data) == 0 {
-			LogWarning("DataList", "ToF64Slice", "DataList is empty, returning nil")
+			dl.warn("ToF64Slice", "DataList is empty, returning nil")
 			result = nil
 			return
 		}
@@ -2002,7 +2006,7 @@ func (dl *DataList) ToStringSlice() []string {
 	var result []string
 	dl.AtomicDo(func(dl *DataList) {
 		if len(dl.data) == 0 {
-			LogWarning("DataList", "ToStringSlice", "DataList is empty, returning nil")
+			dl.warn("ToStringSlice", "DataList is empty, returning nil")
 			result = nil
 			return
 		}
@@ -2061,4 +2065,44 @@ func (dl *DataList) SetName(newName string) *DataList {
 		go dl.updateTimestamp()
 	})
 	return dl
+}
+
+// Err returns the last error that occurred during a chained operation.
+// Returns nil if no error occurred.
+// This method allows for error checking after chained calls without breaking the chain.
+//
+// Example usage:
+//
+//	dl.Append(1, 2, 3).Sort().Reverse()
+//	if err := dl.Err(); err != nil {
+//	    // handle error
+//	}
+func (dl *DataList) Err() *ErrorInfo {
+	return dl.lastError
+}
+
+// ClearErr clears the last error stored in the DataList.
+// Returns the DataList to support chaining.
+func (dl *DataList) ClearErr() *DataList {
+	dl.lastError = nil
+	return dl
+}
+
+// setError is an internal method to record an error on the DataList instance.
+func (dl *DataList) setError(level LogLevel, packageName, funcName, message string) {
+	dl.lastError = &ErrorInfo{
+		Level:       level,
+		PackageName: packageName,
+		FuncName:    funcName,
+		Message:     message,
+		Timestamp:   time.Now(),
+	}
+}
+
+// warn logs a warning and sets the error on the DataList instance.
+// This is a convenience method that combines LogWarning and setError.
+func (dl *DataList) warn(funcName, msg string, args ...any) {
+	fullMsg := fmt.Sprintf(msg, args...)
+	LogWarning("DataList", funcName, "%s", fullMsg)
+	dl.setError(LogLevelWarning, "DataList", funcName, fullMsg)
 }

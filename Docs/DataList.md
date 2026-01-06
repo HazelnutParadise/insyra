@@ -19,6 +19,7 @@ DataList is a fundamental data structure in Insyra that provides a dynamic, gene
 - [Metadata Management](#metadata-management)
 - [Utility Methods](#utility-methods)
 - [AtomicDo](#atomicdo)
+- [Error Handling](#error-handling)
 - [Notes](#notes)
 
 ## Data Structure
@@ -2109,6 +2110,37 @@ dl.ReplaceAll(2, 99)
 // dl now contains: [1, 99, 3, 99, 4, 99]
 ```
 
+## Error Handling
+
+Insyra provides both a global error buffer and instance-level error tracking for `DataList`. For fluent/chained operations, use the instance-level `Err()` method to check for errors after a chain and `ClearErr()` to clear them before continuing.
+
+### Instance-Level Error Checking
+
+After performing chained operations, you can check if any errors occurred using the `Err()` method:
+
+```go
+// Perform chained operations
+dl.Append(1,2,3).Sort().Reverse()
+
+// Check for errors after the chain
+if err := dl.Err(); err != nil {
+    fmt.Printf("Error occurred: %s\n", err.Message)
+    // Handle the error
+}
+
+// Clear the error for future operations and continue chaining
+dl.ClearErr()
+```
+
+#### Available Methods
+
+| Method | Description |
+|--------|-------------|
+| `Err() *ErrorInfo` | Returns the last error that occurred during a chained operation, or `nil` if no error occurred. |
+| `ClearErr() *DataList` | Clears the last error and returns the DataList for continued chaining. |
+
+> **Note:** `setError` is an internal helper used by methods to record the last error on the instance. Most chainable methods will call it when an operation fails.
+
 ## Notes
 
 ### Thread Safety
@@ -2131,7 +2163,7 @@ DataList is designed to handle mixed data types gracefully. Statistical operatio
 
 ### Error Handling
 
-Most DataList operations handle errors gracefully by:
+Refer to the [Error Handling](#error-handling) section above for full details. In short, `DataList` supports instance-level error tracking via `Err()` and `ClearErr()`; most operations also handle errors gracefully by:
 
 - Skipping invalid data types for type-specific operations
 - Preserving original values when transformations fail

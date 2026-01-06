@@ -23,12 +23,12 @@ func (dt *DataTable) SwapColsByName(columnName1 string, columnName2 string) *Dat
 		}
 
 		if index1 == -1 {
-			LogWarning("DataTable", "SwapColsByName", "Column '%s' not found", columnName1)
+			dt.warn("SwapColsByName", "Column '%s' not found", columnName1)
 			result = dt
 			return
 		}
 		if index2 == -1 {
-			LogWarning("DataTable", "SwapColsByName", "Column '%s' not found", columnName2)
+			dt.warn("SwapColsByName", "Column '%s' not found", columnName2)
 			result = dt
 			return
 		}
@@ -45,13 +45,13 @@ func (dt *DataTable) SwapColsByIndex(columnIndex1 string, columnIndex2 string) *
 	dt.AtomicDo(func(dt *DataTable) {
 		idx1, ok1 := dt.columnIndex[strings.ToUpper(columnIndex1)]
 		if !ok1 {
-			LogWarning("DataTable", "SwapColsByIndex", "Column index '%s' not found", columnIndex1)
+			dt.warn("SwapColsByIndex", "Column index '%s' not found", columnIndex1)
 			result = dt
 			return
 		}
 		idx2, ok2 := dt.columnIndex[strings.ToUpper(columnIndex2)]
 		if !ok2 {
-			LogWarning("DataTable", "SwapColsByIndex", "Column index '%s' not found", columnIndex2)
+			dt.warn("SwapColsByIndex", "Column index '%s' not found", columnIndex2)
 			result = dt
 			return
 		}
@@ -74,12 +74,12 @@ func (dt *DataTable) SwapColsByNumber(columnNumber1 int, columnNumber2 int) *Dat
 		}
 
 		if columnNumber1 < 0 || columnNumber1 >= len(dt.columns) {
-			LogWarning("DataTable", "SwapColsByNumber", "Column number %d is out of range", columnNumber1)
+			dt.warn("SwapColsByNumber", "Column number %d is out of range", columnNumber1)
 			result = dt
 			return
 		}
 		if columnNumber2 < 0 || columnNumber2 >= len(dt.columns) {
-			LogWarning("DataTable", "SwapColsByNumber", "Column number %d is out of range", columnNumber2)
+			dt.warn("SwapColsByNumber", "Column number %d is out of range", columnNumber2)
 			result = dt
 			return
 		}
@@ -123,12 +123,12 @@ func (dt *DataTable) SwapRowsByIndex(rowIndex1 int, rowIndex2 int) *DataTable {
 		}
 
 		if rowIndex1 < 0 || rowIndex1 >= maxColLen {
-			LogWarning("DataTable", "SwapRowsByIndex", "Row index %d is out of range", rowIndex1)
+			dt.warn("SwapRowsByIndex", "Row index %d is out of range", rowIndex1)
 			result = dt
 			return
 		}
 		if rowIndex2 < 0 || rowIndex2 >= maxColLen {
-			LogWarning("DataTable", "SwapRowsByIndex", "Row index %d is out of range", rowIndex2)
+			dt.warn("SwapRowsByIndex", "Row index %d is out of range", rowIndex2)
 			result = dt
 			return
 		}
@@ -147,13 +147,13 @@ func (dt *DataTable) SwapRowsByName(rowName1 string, rowName2 string) *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
 		index1, ok1 := dt.rowNames[rowName1]
 		if !ok1 {
-			LogWarning("DataTable", "SwapRowsByName", "Row name '%s' not found", rowName1)
+			dt.warn("SwapRowsByName", "Row name '%s' not found", rowName1)
 			result = dt
 			return
 		}
 		index2, ok2 := dt.rowNames[rowName2]
 		if !ok2 {
-			LogWarning("DataTable", "SwapRowsByName", "Row name '%s' not found", rowName2)
+			dt.warn("SwapRowsByName", "Row name '%s' not found", rowName2)
 			result = dt
 			return
 		}
