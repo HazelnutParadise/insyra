@@ -30,7 +30,7 @@ func main() {
 ## Supported Chart Types
 
 | Chart Type | Function | Use Case |
-|------------|----------|----------|
+| ---------- | -------- | -------- |
 | Bar Chart | `CreateBarChart` | Comparing categories |
 | Histogram | `CreateHistogram` | Distribution analysis |
 | Line Chart | `CreateLineChart` | Trends over time |
@@ -45,7 +45,16 @@ func main() {
 func SaveChart(plt *plot.Plot, filename string)
 ```
 
-Saves the chart to a file. The format is determined by the file extension.
+**Description:** Saves the chart to a file. The format is determined by the file extension.
+
+**Parameters:**
+
+- `plt`: Input value for `plt`. Type: `*plot.Plot`.
+- `filename`: File path to use. Type: `string`.
+
+**Returns:**
+
+- None.
 
 **Supported formats:** `.png`, `.jpg`, `.jpeg`, `.pdf`, `.svg`, `.tex`, `.tif`, `.tiff`
 

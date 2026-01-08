@@ -43,16 +43,22 @@ func main() {
 
 ### GoogleMapsStores
 
-Creates a new Google Maps store crawler instance.
-
 ```go
 func GoogleMapsStores() *googleMapsStoreCrawler
 ```
 
+**Description:** Creates a new Google Maps store crawler instance.
+
+**Parameters:**
+
+- None.
+
 **Returns:**
+
 - A crawler instance (unexported type), or `nil` if initialization fails
 
 **Example:**
+
 ```go
 crawler := datafetch.GoogleMapsStores()
 if crawler == nil {
@@ -62,19 +68,22 @@ if crawler == nil {
 
 ### Search
 
-Searches for stores by name or keyword.
-
 ```go
 func (c *googleMapsStoreCrawler) Search(query string) []GoogleMapsStoreData
 ```
 
+**Description:** Searches for stores by name or keyword.
+
 **Parameters:**
+
 - `query`: Search keyword (store name, type, or location)
 
 **Returns:**
+
 - `[]GoogleMapsStoreData`: List of matching stores
 
 **Example:**
+
 ```go
 stores := crawler.Search("Starbucks Tokyo")
 for _, store := range stores {
@@ -84,21 +93,24 @@ for _, store := range stores {
 
 ### GetReviews
 
-Fetches reviews for a specific store.
-
 ```go
 func (c *googleMapsStoreCrawler) GetReviews(storeID string, pageCount int, options ...GoogleMapsStoreReviewsFetchingOptions) GoogleMapsStoreReviews
 ```
 
+**Description:** Fetches reviews for a specific store.
+
 **Parameters:**
+
 - `storeID`: The store's Google Maps ID (obtained from Search)
 - `pageCount`: Number of review pages to fetch (`0` fetches all available pages)
 - `options`: Optional fetching configuration
 
 **Returns:**
+
 - `GoogleMapsStoreReviews`: Collection of reviews (can be converted to DataTable)
 
 **Example:**
+
 ```go
 // Basic usage (fetch one page)
 reviews := crawler.GetReviews(store.ID, 1)
@@ -113,13 +125,18 @@ reviews := crawler.GetReviews(store.ID, 20, options)
 
 ### ToDataTable
 
-Converts reviews to an Insyra DataTable for analysis.
-
 ```go
 func (r GoogleMapsStoreReviews) ToDataTable() *insyra.DataTable
 ```
 
+**Description:** Converts reviews to an Insyra DataTable for analysis.
+
+**Parameters:**
+
+- None.
+
 **Returns:**
+
 - `*insyra.DataTable`: Table containing review data with columns:
   - `Reviewer`: Reviewer's display name
   - `ReviewerID`: Unique reviewer identifier
@@ -131,6 +148,7 @@ func (r GoogleMapsStoreReviews) ToDataTable() *insyra.DataTable
   - `Rating`: Star rating (1-5)
 
 **Example:**
+
 ```go
 dt := reviews.ToDataTable()
 dt.Show()
@@ -179,6 +197,7 @@ type GoogleMapsStoreReviewsFetchingOptions struct {
 ```
 
 **Fields:**
+
 - `SortBy`: How to sort reviews (default: by relevance)
 - `MaxWaitingInterval_Milliseconds`: Maximum wait time between requests (helps avoid rate limiting)
 
@@ -271,4 +290,3 @@ dt := datafetch.GoogleMapsStores().
     ).
     ToDataTable()
 ```
-

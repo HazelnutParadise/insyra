@@ -58,11 +58,19 @@ type DataTable struct {
 
 ## AtomicDo
 
-`AtomicDo` provides safe, serialized access to a DataTable via an internal actor goroutine. All operations inside the function run in order and without races, allowing concurrent callers to compose multi-step updates safely.
-
 ```go
 func (dt *DataTable) AtomicDo(f func(*DataTable))
 ```
+
+**Description:** `AtomicDo` provides safe, serialized access to a DataTable via an internal actor goroutine. All operations inside the function run in order and without races, allowing concurrent callers to compose multi-step updates safely.
+
+**Parameters:**
+
+- `f`: Input value for `f`. Type: `func(*DataTable)`.
+
+**Returns:**
+
+- None.
 
 - Single-threaded execution: `AtomicDo` tasks run one at a time.
 - Reentrant: Calls made within `AtomicDo` run immediately (no deadlock).
@@ -107,11 +115,11 @@ Guidelines
 
 ### NewDataTable
 
-Creates a new empty DataTable.
-
 ```go
 func NewDataTable(columns ...*DataList) *DataTable
 ```
+
+**Description:** Creates a new empty DataTable.
 
 **Parameters:**
 
@@ -136,11 +144,11 @@ dt := insyra.NewDataTable(col1, col2)
 
 ### ReadCSV_File
 
-Reads a CSV file and loads the data into a new DataTable.
-
 ```go
 func ReadCSV_File(filePath string, setFirstColToRowNames bool, setFirstRowToColNames bool, encoding ...string) (*DataTable, error)
 ```
+
+**Description:** Reads a CSV file and loads the data into a new DataTable.
 
 **Parameters:**
 
@@ -165,11 +173,11 @@ if err != nil {
 
 ### ReadCSV_String
 
-Reads CSV data from a string and loads it into a new DataTable.
-
 ```go
 func ReadCSV_String(csvString string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error)
 ```
+
+**Description:** Reads CSV data from a string and loads it into a new DataTable.
 
 **Parameters:**
 
@@ -194,11 +202,11 @@ if err != nil {
 
 ### ReadJSON_File
 
-Reads a JSON file and loads the data into a new DataTable.
-
 ```go
 func ReadJSON_File(filePath string) (*DataTable, error)
 ```
+
+**Description:** Reads a JSON file and loads the data into a new DataTable.
 
 **Parameters:**
 
@@ -220,11 +228,11 @@ if err != nil {
 
 ### ReadJSON
 
-Reads JSON data (supports bytes, string, slice, map, or any JSON-compatible value) and loads it into a new DataTable.
-
 ```go
 func ReadJSON(data any) (*DataTable, error)
 ```
+
+**Description:** Reads JSON data (supports bytes, string, slice, map, or any JSON-compatible value) and loads it into a new DataTable.
 
 **Parameters:**
 
@@ -247,11 +255,20 @@ if err != nil {
 
 ### Slice2DToDataTable
 
-Converts a 2D slice of any type into a DataTable. Supports various 2D array types including `[][]any`, `[][]int`, `[][]int64`, `[][]float32`, `[][]float64`, `[][]string`, and more.
-
 ```go
 func Slice2DToDataTable(data any) (*DataTable, error)
 ```
+
+**Description:** Converts a 2D slice of any type into a DataTable. Supports various 2D array types including `[][]any`, `[][]int`, `[][]int64`, `[][]float32`, `[][]float64`, `[][]string`, and more.
+
+**Parameters:**
+
+- `data`: A 2D slice/array of any type (e.g., `[][]any`, `[][]int64`, `[][]float64`, `[][]string`)
+
+**Returns:**
+
+- `*DataTable`: New DataTable with converted data (nil if error occurs)
+- `error`: Error information, returns nil if successful
 
 **Alias:** `ReadSlice2D` — provided as a convenience alias for `Slice2DToDataTable`.
 
@@ -267,15 +284,6 @@ if err != nil {
     log.Fatal(err)
 }
 ```
-
-**Parameters:**
-
-- `data`: A 2D slice/array of any type (e.g., `[][]any`, `[][]int64`, `[][]float64`, `[][]string`)
-
-**Returns:**
-
-- `*DataTable`: New DataTable with converted data (nil if error occurs)
-- `error`: Error information, returns nil if successful
 
 **Error Cases:**
 
@@ -379,17 +387,22 @@ if err != nil {
 
 ### ReadSQL
 
-Loads data from a database table or custom SQL query into a DataTable.
-
 ```go
 func ReadSQL(db *gorm.DB, tableName string, options ...ReadSQLOptions) (*DataTable, error)
 ```
+
+**Description:** Loads data from a database table or custom SQL query into a DataTable.
 
 **Parameters:**
 
 - `db`: GORM database connection
 - `tableName`: Name of the database table to read from
 - `options`: Optional configuration for reading data (ReadSQLOptions struct)
+
+**Returns:**
+
+- `*DataTable`: DataTable loaded with data
+- `error`: Error information, returns nil if successful
 
 **ReadSQLOptions:**
 
@@ -399,11 +412,6 @@ func ReadSQL(db *gorm.DB, tableName string, options ...ReadSQLOptions) (*DataTab
 - `Offset`: Starting row offset
 - `WhereClause`: WHERE clause for filtering
 - `OrderBy`: ORDER BY clause for sorting
-
-**Returns:**
-
-- `*DataTable`: DataTable loaded with data
-- `error`: Error information, returns nil if successful
 
 **Example:**
 
@@ -418,11 +426,11 @@ dt, err := insyra.ReadSQL(db, "", insyra.ReadSQLOptions{Query: "SELECT * FROM us
 
 ### ReadExcelSheet
 
-Reads a specific sheet from an Excel file and loads the data into a new DataTable.
-
 ```go
 func ReadExcelSheet(filePath string, sheetName string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error)
 ```
+
+**Description:** Reads a specific sheet from an Excel file and loads the data into a new DataTable.
 
 **Parameters:**
 
@@ -449,11 +457,11 @@ if err != nil {
 
 ### ToCSV
 
-Saves the DataTable as a CSV file.
-
 ```go
 func (dt *DataTable) ToCSV(filePath string, setRowNamesToFirstCol bool, setColNamesToFirstRow bool, includeBOM bool) error
 ```
+
+**Description:** Saves the DataTable as a CSV file.
 
 **Parameters:**
 
@@ -477,11 +485,11 @@ if err != nil {
 
 ### ToJSON
 
-Saves the DataTable as a JSON file.
-
 ```go
 func (dt *DataTable) ToJSON(filePath string, useColNames bool) error
 ```
+
+**Description:** Saves the DataTable as a JSON file.
 
 **Parameters:**
 
@@ -503,11 +511,11 @@ if err != nil {
 
 ### ToJSON_Bytes
 
-Converts the DataTable to JSON format and returns as bytes.
-
 ```go
 func (dt *DataTable) ToJSON_Bytes(useColNames bool) []byte
 ```
+
+**Description:** Converts the DataTable to JSON format and returns as bytes.
 
 **Parameters:**
 
@@ -526,11 +534,11 @@ fmt.Println(string(jsonData))
 
 ### ToJSON_String
 
-Converts the DataTable to JSON format and returns it as a string.
-
 ```go
 func (dt *DataTable) ToJSON_String(useColNames bool) string
 ```
+
+**Description:** Converts the DataTable to JSON format and returns it as a string.
 
 **Parameters:**
 
@@ -549,11 +557,11 @@ fmt.Println(jsonStr)
 
 ### ToMap
 
-Alias for `Data()`. Returns the table as a map from column index/name to the column data slice.
-
 ```go
 func (dt *DataTable) ToMap(useNamesAsKeys ...bool) map[string][]any
 ```
+
+**Description:** Alias for `Data()`. Returns the table as a map from column index/name to the column data slice.
 
 **Parameters:**
 
@@ -574,11 +582,11 @@ for k, col := range m {
 
 ### ToSQL
 
-Writes the DataTable to a SQL database.
-
 ```go
 func (dt *DataTable) ToSQL(db *gorm.DB, tableName string, options ...ToSQLOptions) error
 ```
+
+**Description:** Writes the DataTable to a SQL database.
 
 **Parameters:**
 
@@ -604,11 +612,11 @@ if err != nil {
 
 ### Merge
 
-Merges two DataTables based on a key column or row name.
-
 ```go
 func (dt *DataTable) Merge(other *DataTable, direction MergeDirection, mode MergeMode, on ...string) (*DataTable, error)
 ```
+
+**Description:** Merges two DataTables based on a key column or row name.
 
 **Parameters:**
 
@@ -653,11 +661,11 @@ res, _ = dt1.Merge(dt2, insyra.MergeDirectionHorizontal, insyra.MergeModeInner)
 
 ### AppendCols
 
-Appends columns to the DataTable.
-
 ```go
 func (dt *DataTable) AppendCols(columns ...*DataList) *DataTable
 ```
+
+**Description:** Appends columns to the DataTable.
 
 **Parameters:**
 
@@ -676,11 +684,11 @@ dt.AppendCols(col)
 
 ### AppendRowsByColIndex
 
-Appends rows using column indices.
-
 ```go
 func (dt *DataTable) AppendRowsByColIndex(rowsData ...map[string]any) *DataTable
 ```
+
+**Description:** Appends rows using column indices.
 
 **Parameters:**
 
@@ -702,11 +710,11 @@ dt.AppendRowsByColIndex(map[string]any{
 
 ### AppendRowsByColName
 
-Appends rows using column names.
-
 ```go
 func (dt *DataTable) AppendRowsByColName(rowsData ...map[string]any) *DataTable
 ```
+
+**Description:** Appends rows using column names.
 
 **Parameters:**
 
@@ -728,11 +736,11 @@ dt.AppendRowsByColName(map[string]any{
 
 ### AppendRowsFromDataList
 
-Appends rows to the DataTable, with each row represented by a DataList.
-
 ```go
 func (dt *DataTable) AppendRowsFromDataList(rowsData ...*DataList) *DataTable
 ```
+
+**Description:** Appends rows to the DataTable, with each row represented by a DataList.
 
 **Parameters:**
 
@@ -751,11 +759,11 @@ dt.AppendRowsFromDataList(row)
 
 ### GetElement
 
-Gets the value at a specific row and column.
-
 ```go
 func (dt *DataTable) GetElement(rowIndex int, columnIndex string) any
 ```
+
+**Description:** Gets the value at a specific row and column.
 
 **Parameters:**
 
@@ -775,11 +783,11 @@ fmt.Println(value)
 
 ### GetCol
 
-Gets a column by its index.
-
 ```go
 func (dt *DataTable) GetCol(index string) *DataList
 ```
+
+**Description:** Gets a column by its index.
 
 **Parameters:**
 
@@ -797,11 +805,11 @@ column := dt.GetCol("A")
 
 ### GetColByNumber
 
-Gets a column by its numeric index.
-
 ```go
 func (dt *DataTable) GetColByNumber(index int) *DataList
 ```
+
+**Description:** Gets a column by its numeric index.
 
 **Parameters:**
 
@@ -819,11 +827,11 @@ column := dt.GetColByNumber(0)
 
 ### GetColByName
 
-Gets a column by its name.
-
 ```go
 func (dt *DataTable) GetColByName(name string) *DataList
 ```
+
+**Description:** Gets a column by its name.
 
 **Parameters:**
 
@@ -841,11 +849,11 @@ column := dt.GetColByName("column_name")
 
 ### GetRow
 
-Gets a row by its index.
-
 ```go
 func (dt *DataTable) GetRow(index int) *DataList
 ```
+
+**Description:** Gets a row by its index.
 
 **Parameters:**
 
@@ -863,11 +871,11 @@ row := dt.GetRow(0)
 
 ### GetRowByName
 
-Gets a row by its name.
-
 ```go
 func (dt *DataTable) GetRowByName(name string) *DataList
 ```
+
+**Description:** Gets a row by its name.
 
 **Parameters:**
 
@@ -885,17 +893,21 @@ row := dt.GetRowByName("row_name")
 
 ### UpdateElement
 
-Updates the value at a specific position. Returns the table to support chaining calls.
-
 ```go
 func (dt *DataTable) UpdateElement(rowIndex int, columnIndex string, value any) *DataTable
 ```
+
+**Description:** Updates the value at a specific position. Returns the table to support chaining calls.
 
 **Parameters:**
 
 - `rowIndex`: Row index (0-based)
 - `columnIndex`: Column index (A, B, C...)
 - `value`: New value
+
+**Returns:**
+
+- `*DataTable`: Return value.
 
 **Example:**
 
@@ -910,16 +922,20 @@ dt.UpdateElement(0, "A", "Jane").UpdateCol("B", newCol)
 
 ### UpdateCol
 
-Updates an entire column with new data. Returns the table to support chaining calls.
-
 ```go
 func (dt *DataTable) UpdateCol(index string, dl *DataList) *DataTable
 ```
+
+**Description:** Updates an entire column with new data. Returns the table to support chaining calls.
 
 **Parameters:**
 
 - `index`: Column index (A, B, C...)
 - `dl`: New DataList to replace the column
+
+**Returns:**
+
+- `*DataTable`: Return value.
 
 **Example:**
 
@@ -935,16 +951,20 @@ dt.UpdateCol("A", newCol).UpdateRow(0, newRow)
 
 ### UpdateColByNumber
 
-Updates an entire column by its numeric index. Returns the table to support chaining calls.
-
 ```go
 func (dt *DataTable) UpdateColByNumber(index int, dl *DataList) *DataTable
 ```
+
+**Description:** Updates an entire column by its numeric index. Returns the table to support chaining calls.
 
 **Parameters:**
 
 - `index`: Numeric column index (0-based)
 - `dl`: New DataList to replace the column
+
+**Returns:**
+
+- `*DataTable`: Return value.
 
 **Example:**
 
@@ -960,16 +980,20 @@ dt.UpdateColByNumber(0, newCol).UpdateRow(0, newRow)
 
 ### UpdateRow
 
-Updates an entire row with new data. Returns the table to support chaining calls.
-
 ```go
 func (dt *DataTable) UpdateRow(index int, dl *DataList) *DataTable
 ```
+
+**Description:** Updates an entire row with new data. Returns the table to support chaining calls.
 
 **Parameters:**
 
 - `index`: Row index (0-based)
 - `dl`: New DataList to replace the row
+
+**Returns:**
+
+- `*DataTable`: Return value.
 
 **Example:**
 
@@ -985,11 +1009,11 @@ dt.UpdateRow(0, newRow).UpdateCol("A", newCol)
 
 ### GetElementByNumberIndex
 
-Gets the value at a specific row and column using numeric indices.
-
 ```go
 func (dt *DataTable) GetElementByNumberIndex(rowIndex int, columnIndex int) any
 ```
+
+**Description:** Gets the value at a specific row and column using numeric indices.
 
 **Parameters:**
 
@@ -1009,11 +1033,11 @@ fmt.Println(value)
 
 ### SetColToRowNames
 
-Sets the row names to the values of the specified column and drops the column.
-
 ```go
 func (dt *DataTable) SetColToRowNames(columnIndex string) *DataTable
 ```
+
+**Description:** Sets the row names to the values of the specified column and drops the column.
 
 **Parameters:**
 
@@ -1031,11 +1055,11 @@ dt.SetColToRowNames("A") // Use column A values as row names
 
 ### SetRowToColNames
 
-Sets the column names to the values of the specified row and drops the row.
-
 ```go
 func (dt *DataTable) SetRowToColNames(rowIndex int) *DataTable
 ```
+
+**Description:** Sets the column names to the values of the specified row and drops the row.
 
 **Parameters:**
 
@@ -1053,11 +1077,11 @@ dt.SetRowToColNames(0) // Use first row values as column names
 
 ### ChangeRowName
 
-Changes the name of a row.
-
 ```go
 func (dt *DataTable) ChangeRowName(oldName, newName string) *DataTable
 ```
+
+**Description:** Changes the name of a row.
 
 **Parameters:**
 
@@ -1076,16 +1100,20 @@ dt.ChangeRowName("old_row_name", "new_row_name")
 
 ### SetRowNameByIndex
 
-Sets the name of a row by its index.
-
 ```go
 func (dt *DataTable) SetRowNameByIndex(index int, name string)
 ```
+
+**Description:** Sets the name of a row by its index.
 
 **Parameters:**
 
 - `index`: Row index (0-based)
 - `name`: New row name
+
+**Returns:**
+
+- None.
 
 **Example:**
 
@@ -1095,11 +1123,11 @@ dt.SetRowNameByIndex(0, "FirstRow") // Set the name of the first row to "FirstRo
 
 ### GetRowNameByIndex
 
-Gets the name of a row by its index.
-
 ```go
 func (dt *DataTable) GetRowNameByIndex(index int) (string, bool)
 ```
+
+**Description:** Gets the name of a row by its index.
 
 **Parameters:**
 
@@ -1123,14 +1151,11 @@ if exists {
 
 ### GetRowIndexByName
 
-> [!NOTE]
-> Since Insyra's Get methods usually support -1 as an index (representing the last element), always check the boolean return value to distinguish between "name not found" and "last row".
-
-Gets the index of a row by its name. This is the inverse lookup of `GetRowNameByIndex`.
-
 ```go
 func (dt *DataTable) GetRowIndexByName(name string) (int, bool)
 ```
+
+**Description:** Gets the index of a row by its name. This is the inverse lookup of `GetRowNameByIndex`.
 
 **Parameters:**
 
@@ -1140,6 +1165,9 @@ func (dt *DataTable) GetRowIndexByName(name string) (int, bool)
 
 - `int`: The row index (0-based). Returns `-1` if the row name does not exist.
 - `bool`: `true` if the row name exists, `false` otherwise.
+
+> [!NOTE]
+> Since Insyra's Get methods usually support -1 as an index (representing the last element), always check the boolean return value to distinguish between "name not found" and "last row".
 
 **Notes:**
 
@@ -1161,11 +1189,15 @@ if exists {
 
 ### RowNamesToFirstCol
 
-Moves all row names to the first column of the DataTable and clears the row names mapping.
-
 ```go
 func (dt *DataTable) RowNamesToFirstCol() *DataTable
 ```
+
+**Description:** Moves all row names to the first column of the DataTable and clears the row names mapping.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -1181,11 +1213,15 @@ dt.RowNamesToFirstCol()
 
 ### DropRowNames
 
-Removes all row names from the DataTable.
-
 ```go
 func (dt *DataTable) DropRowNames() *DataTable
 ```
+
+**Description:** Removes all row names from the DataTable.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -1200,11 +1236,15 @@ dt.DropRowNames()
 
 ### RowNames
 
-Returns a slice containing all row names in order. Returns empty strings for rows without names.
-
 ```go
 func (dt *DataTable) RowNames() []string
 ```
+
+**Description:** Returns a slice containing all row names in order. Returns empty strings for rows without names.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -1223,11 +1263,11 @@ for i, name := range names {
 
 ### SetRowNames
 
-Sets the row names of the DataTable using a slice of strings. Only sets names for existing rows; excess names are ignored.
-
 ```go
 func (dt *DataTable) SetRowNames(rowNames []string) *DataTable
 ```
+
+**Description:** Sets the row names of the DataTable using a slice of strings. Only sets names for existing rows; excess names are ignored.
 
 **Parameters:**
 
@@ -1245,11 +1285,11 @@ dt.SetRowNames([]string{"Row1", "Row2", "Row3"}) // Set row names
 
 ### ChangeColName
 
-Changes the name of a column.
-
 ```go
 func (dt *DataTable) ChangeColName(oldName, newName string) *DataTable
 ```
+
+**Description:** Changes the name of a column.
 
 **Parameters:**
 
@@ -1268,11 +1308,11 @@ dt.ChangeColName("old_column_name", "new_column_name")
 
 ### GetColNameByNumber
 
-Gets the name of a column by its numeric index.
-
 ```go
 func (dt *DataTable) GetColNameByNumber(index int) string
 ```
+
+**Description:** Gets the name of a column by its numeric index.
 
 **Parameters:**
 
@@ -1291,11 +1331,11 @@ fmt.Printf("Name of the first column: %s\\n", columnName)
 
 ### GetColNameByIndex
 
-Gets the name of a column by its Excel-style index (A, B, C, ..., Z, AA, AB, ...).
-
 ```go
 func (dt *DataTable) GetColNameByIndex(index string) string
 ```
+
+**Description:** Gets the name of a column by its Excel-style index (A, B, C, ..., Z, AA, AB, ...).
 
 **Parameters:**
 
@@ -1314,11 +1354,11 @@ fmt.Printf("Name of column A: %s\\n", columnName)
 
 ### GetColNumberByName
 
-Gets the numeric index of a column by its name.
-
 ```go
 func (dt *DataTable) GetColNumberByName(name string) int
 ```
+
+**Description:** Gets the numeric index of a column by its name.
 
 **Parameters:**
 
@@ -1341,11 +1381,11 @@ if index != -1 {
 
 ### GetColIndexByName
 
-Gets the column index (A, B, C, ...) by its name.
-
 ```go
 func (dt *DataTable) GetColIndexByName(name string) string
 ```
+
+**Description:** Gets the column index (A, B, C, ...) by its name.
 
 **Parameters:**
 
@@ -1364,11 +1404,11 @@ fmt.Printf("Column index: %s\\n", index)
 
 ### GetColIndexByNumber
 
-Gets the column index (A, B, C, ...) by its numeric index (0, 1, 2, ...).
-
 ```go
 func (dt *DataTable) GetColIndexByNumber(number int) string
 ```
+
+**Description:** Gets the column index (A, B, C, ...) by its numeric index (0, 1, 2, ...).
 
 **Parameters:**
 
@@ -1391,11 +1431,11 @@ fmt.Printf("Last column index: %s\\n", lastIndex)
 
 ### SetColNameByNumber
 
-Sets the name of a column by its numeric index.
-
 ```go
 func (dt *DataTable) SetColNameByNumber(numberIndex int, name string) *DataTable
 ```
+
+**Description:** Sets the name of a column by its numeric index.
 
 **Parameters:**
 
@@ -1414,11 +1454,11 @@ dt.SetColNameByNumber(0, "ID") // Set the name of the first column to "ID"
 
 ### SetColNameByIndex
 
-Sets the name of a column by its alphabetical index.
-
 ```go
 func (dt *DataTable) SetColNameByIndex(index string, name string) *DataTable
 ```
+
+**Description:** Sets the name of a column by its alphabetical index.
 
 **Parameters:**
 
@@ -1437,11 +1477,11 @@ dt.SetColNameByIndex("A", "Identifier") // Set the name of column A to "Identifi
 
 ### SetColNames
 
-Sets the column names of the DataTable using a slice of strings. If the slice has more elements than existing columns, new columns will be added. If the slice has fewer elements, excess columns will be set to empty names.
-
 ```go
 func (dt *DataTable) SetColNames(colNames []string) *DataTable
 ```
+
+**Description:** Sets the column names of the DataTable using a slice of strings. If the slice has more elements than existing columns, new columns will be added. If the slice has fewer elements, excess columns will be set to empty names.
 
 **Parameters:**
 
@@ -1459,11 +1499,11 @@ dt.SetColNames([]string{"Name", "Age", "Role"}) // Set column names
 
 ### SetHeaders
 
-Alias for SetColNames, sets the column names of the DataTable.
-
 ```go
 func (dt *DataTable) SetHeaders(headers []string) *DataTable
 ```
+
+**Description:** Alias for SetColNames, sets the column names of the DataTable.
 
 **Parameters:**
 
@@ -1481,11 +1521,15 @@ dt.SetHeaders([]string{"Name", "Age", "Role"}) // Set column names
 
 ### ColNamesToFirstRow
 
-Moves all column names to the first row of data and then clears the column names.
-
 ```go
 func (dt *DataTable) ColNamesToFirstRow() *DataTable
 ```
+
+**Description:** Moves all column names to the first row of data and then clears the column names.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -1502,11 +1546,15 @@ dt.ColNamesToFirstRow()
 
 ### DropColNames
 
-Removes all column names, setting them to empty strings.
-
 ```go
 func (dt *DataTable) DropColNames() *DataTable
 ```
+
+**Description:** Removes all column names, setting them to empty strings.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -1524,11 +1572,15 @@ dt.ColNamesToFirstRow().DropColNames().Show()
 
 ### ColNames
 
-Returns a slice containing all column names in order.
-
 ```go
 func (dt *DataTable) ColNames() []string
 ```
+
+**Description:** Returns a slice containing all column names in order.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -1549,11 +1601,15 @@ for i, name := range names {
 
 ### Headers
 
-Alias for ColNames, returns a slice containing all column names in order.
-
 ```go
 func (dt *DataTable) Headers() []string
 ```
+
+**Description:** Alias for ColNames, returns a slice containing all column names in order.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -1567,11 +1623,11 @@ headers := dt.Headers() // Same as dt.ColNames()
 
 ### DropColsByName
 
-Drops columns by their names.
-
 ```go
 func (dt *DataTable) DropColsByName(columnNames ...string) *DataTable
 ```
+
+**Description:** Drops columns by their names.
 
 **Parameters:**
 
@@ -1589,11 +1645,11 @@ dt.DropColsByName("Age", "Address")
 
 ### DropRowsByIndex
 
-Drops rows by their numeric indices (0-based).
-
 ```go
 func (dt *DataTable) DropRowsByIndex(rowIndices ...int) *DataTable
 ```
+
+**Description:** Drops rows by their numeric indices (0-based).
 
 **Parameters:**
 
@@ -1611,11 +1667,11 @@ dt.DropRowsByIndex(0, 2, 5) // Drops rows at indices 0, 2, and 5
 
 ### DropRowsByName
 
-Drops rows by their names.
-
 ```go
 func (dt *DataTable) DropRowsByName(rowNames ...string) *DataTable
 ```
+
+**Description:** Drops rows by their names.
 
 **Parameters:**
 
@@ -1633,11 +1689,11 @@ dt.DropRowsByName("row1", "row2")
 
 ### DropColsByIndex
 
-Drops columns by their letter indices (e.g., "A", "B", "C").
-
 ```go
 func (dt *DataTable) DropColsByIndex(columnIndices ...string) *DataTable
 ```
+
+**Description:** Drops columns by their letter indices (e.g., "A", "B", "C").
 
 **Parameters:**
 
@@ -1655,11 +1711,11 @@ dt.DropColsByIndex("A", "C") // Drops columns A and C
 
 ### DropColsByNumber
 
-Drops columns by their numeric indices (0-based).
-
 ```go
 func (dt *DataTable) DropColsByNumber(columnIndices ...int) *DataTable
 ```
+
+**Description:** Drops columns by their numeric indices (0-based).
 
 **Parameters:**
 
@@ -1677,11 +1733,15 @@ dt.DropColsByNumber(0, 2) // Drops first and third columns (columns at index 0 a
 
 ### DropColsContainString
 
-Drops columns that contain any string elements.
-
 ```go
 func (dt *DataTable) DropColsContainString() *DataTable
 ```
+
+**Description:** Drops columns that contain any string elements.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -1695,11 +1755,15 @@ dt.DropColsContainString() // Drops all columns that have at least one string el
 
 ### DropColsContainNumber
 
-Drops columns that contain any numeric elements.
-
 ```go
 func (dt *DataTable) DropColsContainNumber() *DataTable
 ```
+
+**Description:** Drops columns that contain any numeric elements.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -1713,11 +1777,15 @@ dt.DropColsContainNumber() // Drops all columns that have at least one numeric e
 
 ### DropColsContainNil
 
-Drops columns that contain any nil (null) elements.
-
 ```go
 func (dt *DataTable) DropColsContainNil() *DataTable
 ```
+
+**Description:** Drops columns that contain any nil (null) elements.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -1731,11 +1799,15 @@ dt.DropColsContainNil() // Drops all columns that have at least one nil element
 
 ### DropColsContainNaN
 
-Drops columns that contain any NaN (Not a Number) elements.
-
 ```go
 func (dt *DataTable) DropColsContainNaN() *DataTable
 ```
+
+**Description:** Drops columns that contain any NaN (Not a Number) elements.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -1749,11 +1821,11 @@ dt.DropColsContainNaN() // Drops all columns that have at least one NaN element
 
 ### DropColsContain
 
-Drops columns that contain the specified value(s).
-
 ```go
 func (dt *DataTable) DropColsContain(value ...any) *DataTable
 ```
+
+**Description:** Drops columns that contain the specified value(s).
 
 **Parameters:**
 
@@ -1772,11 +1844,15 @@ dt.DropColsContain(0, "N/A")
 
 ### DropColsContainExcelNA
 
-Drops columns that contain Excel NA values ("#N/A").
-
 ```go
 func (dt *DataTable) DropColsContainExcelNA() *DataTable
 ```
+
+**Description:** Drops columns that contain Excel NA values ("#N/A").
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -1791,11 +1867,15 @@ dt.DropColsContainExcelNA()
 
 ### DropRowsContainString
 
-Drops rows that contain any string elements.
-
 ```go
 func (dt *DataTable) DropRowsContainString() *DataTable
 ```
+
+**Description:** Drops rows that contain any string elements.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -1809,11 +1889,15 @@ dt.DropRowsContainString() // Drops all rows that have at least one string eleme
 
 ### DropRowsContainNumber
 
-Drops rows that contain any numeric elements.
-
 ```go
 func (dt *DataTable) DropRowsContainNumber() *DataTable
 ```
+
+**Description:** Drops rows that contain any numeric elements.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -1827,11 +1911,15 @@ dt.DropRowsContainNumber() // Drops all rows that have at least one numeric elem
 
 ### DropRowsContainNil
 
-Drops rows that contain any nil (null) elements.
-
 ```go
 func (dt *DataTable) DropRowsContainNil() *DataTable
 ```
+
+**Description:** Drops rows that contain any nil (null) elements.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -1845,11 +1933,15 @@ dt.DropRowsContainNil() // Drops all rows that have at least one nil element
 
 ### DropRowsContainNaN
 
-Drops rows that contain any NaN (Not a Number) elements.
-
 ```go
 func (dt *DataTable) DropRowsContainNaN() *DataTable
 ```
+
+**Description:** Drops rows that contain any NaN (Not a Number) elements.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -1863,11 +1955,11 @@ dt.DropRowsContainNaN() // Drops all rows that have at least one NaN element
 
 ### DropRowsContain
 
-Drops rows that contain the specified value(s).
-
 ```go
 func (dt *DataTable) DropRowsContain(value ...any) *DataTable
 ```
+
+**Description:** Drops rows that contain the specified value(s).
 
 **Parameters:**
 
@@ -1886,11 +1978,15 @@ dt.DropRowsContain(0, "N/A")
 
 ### DropRowsContainExcelNA
 
-Drops rows that contain Excel NA values ("#N/A").
-
 ```go
 func (dt *DataTable) DropRowsContainExcelNA() *DataTable
 ```
+
+**Description:** Drops rows that contain Excel NA values ("#N/A").
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -1905,11 +2001,11 @@ dt.DropRowsContainExcelNA()
 
 ### SwapColsByName
 
-Swaps two columns by their names.
-
 ```go
 func (dt *DataTable) SwapColsByName(columnName1 string, columnName2 string) *DataTable
 ```
+
+**Description:** Swaps two columns by their names.
 
 **Parameters:**
 
@@ -1928,11 +2024,11 @@ dt.SwapColsByName("ColumnA", "ColumnB")
 
 ### SwapColsByIndex
 
-Swaps two columns by their letter indices (e.g., "A", "B").
-
 ```go
 func (dt *DataTable) SwapColsByIndex(columnIndex1 string, columnIndex2 string) *DataTable
 ```
+
+**Description:** Swaps two columns by their letter indices (e.g., "A", "B").
 
 **Parameters:**
 
@@ -1951,11 +2047,11 @@ dt.SwapColsByIndex("A", "C")
 
 ### SwapColsByNumber
 
-Swaps two columns by their numerical indices (0-based).
-
 ```go
 func (dt *DataTable) SwapColsByNumber(columnNumber1 int, columnNumber2 int) *DataTable
 ```
+
+**Description:** Swaps two columns by their numerical indices (0-based).
 
 **Parameters:**
 
@@ -1974,11 +2070,11 @@ dt.SwapColsByNumber(0, 2)
 
 ### SwapRowsByIndex
 
-Swaps two rows by their numerical indices (0-based).
-
 ```go
 func (dt *DataTable) SwapRowsByIndex(rowIndex1 int, rowIndex2 int) *DataTable
 ```
+
+**Description:** Swaps two rows by their numerical indices (0-based).
 
 **Parameters:**
 
@@ -1997,11 +2093,11 @@ dt.SwapRowsByIndex(0, 1)
 
 ### SwapRowsByName
 
-Swaps two rows by their names.
-
 ```go
 func (dt *DataTable) SwapRowsByName(rowName1 string, rowName2 string) *DataTable
 ```
+
+**Description:** Swaps two rows by their names.
 
 **Parameters:**
 
@@ -2020,11 +2116,15 @@ dt.SwapRowsByName("RowX", "RowY")
 
 ### Count
 
-Returns the number of rows in the DataTable.
-
 ```go
 func (dt *DataTable) Count() int
 ```
+
+**Description:** Returns the number of rows in the DataTable.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -2039,11 +2139,15 @@ fmt.Printf("Table has %d rows\n", count)
 
 ### Counter
 
-Returns the number of occurrences of each value in the DataTable.
-
 ```go
 func (dt *DataTable) Counter() map[any]int
 ```
+
+**Description:** Returns the number of occurrences of each value in the DataTable.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -2058,11 +2162,15 @@ fmt.Printf("Value counts: %v\n", counts)
 
 ### GetCreationTimestamp
 
-Gets the creation timestamp of the DataTable.
-
 ```go
 func (dt *DataTable) GetCreationTimestamp() int64
 ```
+
+**Description:** Gets the creation timestamp of the DataTable.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -2077,11 +2185,15 @@ fmt.Printf("Created at: %d\n", timestamp)
 
 ### GetLastModifiedTimestamp
 
-Gets the last modified timestamp of the DataTable.
-
 ```go
 func (dt *DataTable) GetLastModifiedTimestamp() int64
 ```
+
+**Description:** Gets the last modified timestamp of the DataTable.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -2096,11 +2208,11 @@ fmt.Printf("Last modified at: %d\n", timestamp)
 
 ### SimpleRandomSample
 
-Performs simple random sampling on the DataTable.
-
 ```go
 func (dt *DataTable) SimpleRandomSample(sampleSize int) *DataTable
 ```
+
+**Description:** Performs simple random sampling on the DataTable.
 
 **Parameters:**
 
@@ -2130,43 +2242,76 @@ DataTable provides several methods to replace values within the entire table, a 
 
 ### Replace
 
-Replaces all occurrences of `oldValue` with `newValue` in the entire DataTable.
-
 ```go
 func (dt *DataTable) Replace(oldValue, newValue any) *DataTable
 ```
 
-### ReplaceNaNsWith
+**Description:** Replaces all occurrences of `oldValue` with `newValue` in the entire DataTable.
 
-Replaces all occurrences of `NaN` with `newValue` in the entire DataTable.
+**Parameters:**
+
+- `oldValue`: Input value for `oldValue`. Type: `any`.
+- `newValue`: Input value for `newValue`. Type: `any`.
+
+**Returns:**
+
+- `*DataTable`: Return value.
+
+### ReplaceNaNsWith
 
 ```go
 func (dt *DataTable) ReplaceNaNsWith(newValue any) *DataTable
 ```
 
-### ReplaceNilsWith
+**Description:** Replaces all occurrences of `NaN` with `newValue` in the entire DataTable.
 
-Replaces all occurrences of `nil` with `newValue` in the entire DataTable.
+**Parameters:**
+
+- `newValue`: Input value for `newValue`. Type: `any`.
+
+**Returns:**
+
+- `*DataTable`: Return value.
+
+### ReplaceNilsWith
 
 ```go
 func (dt *DataTable) ReplaceNilsWith(newValue any) *DataTable
 ```
 
-### ReplaceNaNsAndNilsWith
+**Description:** Replaces all occurrences of `nil` with `newValue` in the entire DataTable.
 
-Replaces all occurrences of both `NaN` and `nil` with `newValue` in the entire DataTable.
+**Parameters:**
+
+- `newValue`: Input value for `newValue`. Type: `any`.
+
+**Returns:**
+
+- `*DataTable`: Return value.
+
+### ReplaceNaNsAndNilsWith
 
 ```go
 func (dt *DataTable) ReplaceNaNsAndNilsWith(newValue any) *DataTable
 ```
 
-### ReplaceInRow
+**Description:** Replaces all occurrences of both `NaN` and `nil` with `newValue` in the entire DataTable.
 
-Replaces occurrences of `oldValue` with `newValue` in a specific row.
+**Parameters:**
+
+- `newValue`: Input value for `newValue`. Type: `any`.
+
+**Returns:**
+
+- `*DataTable`: Return value.
+
+### ReplaceInRow
 
 ```go
 func (dt *DataTable) ReplaceInRow(rowIndex int, oldValue, newValue any, mode ...int) *DataTable
 ```
+
+**Description:** Replaces occurrences of `oldValue` with `newValue` in a specific row.
 
 **Parameters:**
 
@@ -2177,6 +2322,10 @@ func (dt *DataTable) ReplaceInRow(rowIndex int, oldValue, newValue any, mode ...
   - `0` (default): Replace all occurrences.
   - `1`: Replace only the first occurrence.
   - `-1`: Replace only the last occurrence.
+
+**Returns:**
+
+- `*DataTable`: Return value.
 
 ### ReplaceNaNsInRow / ReplaceNilsInRow / ReplaceNaNsAndNilsInRow
 
@@ -2190,11 +2339,11 @@ func (dt *DataTable) ReplaceNaNsAndNilsInRow(rowIndex int, newValue any, mode ..
 
 ### ReplaceInCol
 
-Replaces occurrences of `oldValue` with `newValue` in a specific column.
-
 ```go
 func (dt *DataTable) ReplaceInCol(colIndex string, oldValue, newValue any, mode ...int) *DataTable
 ```
+
+**Description:** Replaces occurrences of `oldValue` with `newValue` in a specific column.
 
 **Parameters:**
 
@@ -2205,6 +2354,10 @@ func (dt *DataTable) ReplaceInCol(colIndex string, oldValue, newValue any, mode 
   - `0` (default): Replace all occurrences.
   - `1`: Replace only the first occurrence.
   - `-1`: Replace only the last occurrence.
+
+**Returns:**
+
+- `*DataTable`: Return value.
 
 ### ReplaceNaNsInCol / ReplaceNilsInCol / ReplaceNaNsAndNilsInCol
 
@@ -2220,11 +2373,11 @@ func (dt *DataTable) ReplaceNaNsAndNilsInCol(colIndex string, newValue any, mode
 
 ### AddColUsingCCL
 
-Adds a new column to the DataTable by evaluating a Column Calculation Language (CCL) expression on each row.
-
 ```go
 func (dt *DataTable) AddColUsingCCL(newColName, ccl string) *DataTable
 ```
+
+**Description:** Adds a new column to the DataTable by evaluating a Column Calculation Language (CCL) expression on each row.
 
 **Parameters:**
 
@@ -2279,11 +2432,11 @@ dt.AddColUsingCCL("count_val", "COUNT(@)") // Count non-nil cells
 
 ### ExecuteCCL
 
-Executes one or more CCL statements on the DataTable. Statements are separated by newlines and executed sequentially. Each statement sees the results of previous statements.
-
 ```go
 func (dt *DataTable) ExecuteCCL(ccl string) *DataTable
 ```
+
+**Description:** Executes one or more CCL statements on the DataTable. Statements are separated by newlines and executed sequentially. Each statement sees the results of previous statements.
 
 **Parameters:**
 
@@ -2309,11 +2462,11 @@ dt.ExecuteCCL(`
 
 ### FindRowsIfContains
 
-Returns the indices of rows that contain the given element.
-
 ```go
 func (dt *DataTable) FindRowsIfContains(value any) []int
 ```
+
+**Description:** Returns the indices of rows that contain the given element.
 
 **Parameters:**
 
@@ -2331,11 +2484,11 @@ rowIndices := dt.FindRowsIfContains("John")
 
 ### FindRowsIfContainsAll
 
-Returns the indices of rows that contain all the given elements.
-
 ```go
 func (dt *DataTable) FindRowsIfContainsAll(values ...any) []int
 ```
+
+**Description:** Returns the indices of rows that contain all the given elements.
 
 **Parameters:**
 
@@ -2353,11 +2506,11 @@ rowIndices := dt.FindRowsIfContainsAll("John", 25)
 
 ### FindColsIfContains
 
-Returns the indices of columns that contain the given element.
-
 ```go
 func (dt *DataTable) FindColsIfContains(value any) []string
 ```
+
+**Description:** Returns the indices of columns that contain the given element.
 
 **Parameters:**
 
@@ -2375,11 +2528,11 @@ colIndices := dt.FindColsIfContains("Engineer")
 
 ### FindColsIfContainsAll
 
-Returns the indices of columns that contain all the given elements.
-
 ```go
 func (dt *DataTable) FindColsIfContainsAll(values ...any) []string
 ```
+
+**Description:** Returns the indices of columns that contain all the given elements.
 
 **Parameters:**
 
@@ -2397,11 +2550,11 @@ colIndices := dt.FindColsIfContainsAll("Engineer", 25)
 
 ### FindRowsIfAnyElementContainsSubstring
 
-Returns the indices of rows where at least one element contains the given substring.
-
 ```go
 func (dt *DataTable) FindRowsIfAnyElementContainsSubstring(substring string) []int
 ```
+
+**Description:** Returns the indices of rows where at least one element contains the given substring.
 
 **Parameters:**
 
@@ -2419,11 +2572,11 @@ rowIndices := dt.FindRowsIfAnyElementContainsSubstring("John")
 
 ### FindRowsIfAllElementsContainSubstring
 
-Returns the indices of rows where all elements contain the given substring.
-
 ```go
 func (dt *DataTable) FindRowsIfAllElementsContainSubstring(substring string) []int
 ```
+
+**Description:** Returns the indices of rows where all elements contain the given substring.
 
 **Parameters:**
 
@@ -2441,11 +2594,11 @@ rowIndices := dt.FindRowsIfAllElementsContainSubstring("data")
 
 ### FindColsIfAnyElementContainsSubstring
 
-Returns the indices of columns where at least one element contains the given substring.
-
 ```go
 func (dt *DataTable) FindColsIfAnyElementContainsSubstring(substring string) []string
 ```
+
+**Description:** Returns the indices of columns where at least one element contains the given substring.
 
 **Parameters:**
 
@@ -2463,11 +2616,11 @@ colIndices := dt.FindColsIfAnyElementContainsSubstring("Engineer")
 
 ### FindColsIfAllElementsContainSubstring
 
-Returns the indices of columns where all elements contain the given substring.
-
 ```go
 func (dt *DataTable) FindColsIfAllElementsContainSubstring(substring string) []string
 ```
+
+**Description:** Returns the indices of columns where all elements contain the given substring.
 
 **Parameters:**
 
@@ -2487,11 +2640,11 @@ colIndices := dt.FindColsIfAllElementsContainSubstring("data")
 
 ### Filter
 
-Filters the DataTable using a custom filter function. Keeps only rows where the filter function returns true for at least one cell.
-
 ```go
 func (dt *DataTable) Filter(filterFunc func(rowIndex int, columnIndex string, value any) bool) *DataTable
 ```
+
+**Description:** Filters the DataTable using a custom filter function. Keeps only rows where the filter function returns true for at least one cell.
 
 **Parameters:**
 
@@ -2527,11 +2680,11 @@ filtered := dt.Filter(func(rowIndex int, columnIndex string, value any) bool {
 
 ### FilterByCustomElement
 
-Filters the DataTable based on a custom function applied to each element.
-
 ```go
 func (dt *DataTable) FilterByCustomElement(f func(value any) bool) *DataTable
 ```
+
+**Description:** Filters the DataTable based on a custom function applied to each element.
 
 **Parameters:**
 
@@ -2555,11 +2708,11 @@ filtered := dt.FilterByCustomElement(func(value any) bool {
 
 ### FilterRows
 
-Filters rows based on a custom function that checks each cell. Keeps only rows where the filter function returns true for at least one cell.
-
 ```go
 func (dt *DataTable) FilterRows(filterFunc func(colIndex, colName string, x any) bool) *DataTable
 ```
+
+**Description:** Filters rows based on a custom function that checks each cell. Keeps only rows where the filter function returns true for at least one cell.
 
 **Parameters:**
 
@@ -2593,11 +2746,11 @@ filtered := dt.FilterRows(func(colIndex, colName, x any) bool {
 
 ### FilterCols
 
-Filters columns based on a custom function applied to each cell. Keeps only columns where the filter function returns true for at least one cell in that column.
-
 ```go
 func (dt *DataTable) FilterCols(filterFunc func(rowIndex int, rowName string, x any) bool) *DataTable
 ```
+
+**Description:** Filters columns based on a custom function applied to each cell. Keeps only columns where the filter function returns true for at least one cell in that column.
 
 **Parameters:**
 
@@ -2633,11 +2786,11 @@ filtered := dt.FilterCols(func(rowIndex int, rowName string, x any) bool {
 
 ### FilterColsByColNameEqualTo
 
-Filters columns by exact name match.
-
 ```go
 func (dt *DataTable) FilterColsByColNameEqualTo(columnName string) *DataTable
 ```
+
+**Description:** Filters columns by exact name match.
 
 **Parameters:**
 
@@ -2655,11 +2808,11 @@ filtered := dt.FilterColsByColNameEqualTo("age")
 
 ### FilterColsByColIndexGreaterThan
 
-Filters columns by index greater than the specified threshold.
-
 ```go
 func (dt *DataTable) FilterColsByColIndexGreaterThan(threshold string) *DataTable
 ```
+
+**Description:** Filters columns by index greater than the specified threshold.
 
 **Parameters:**
 
@@ -2677,11 +2830,11 @@ filtered := dt.FilterColsByColIndexGreaterThan("B") // Columns C, D, E...
 
 ### FilterColsByColIndexGreaterThanOrEqualTo
 
-Filters columns by index greater than or equal to the specified threshold.
-
 ```go
 func (dt *DataTable) FilterColsByColIndexGreaterThanOrEqualTo(threshold string) *DataTable
 ```
+
+**Description:** Filters columns by index greater than or equal to the specified threshold.
 
 **Parameters:**
 
@@ -2699,11 +2852,11 @@ filtered := dt.FilterColsByColIndexGreaterThanOrEqualTo("B") // Columns B, C, D.
 
 ### FilterColsByColIndexLessThan
 
-Filters columns by index less than the specified threshold.
-
 ```go
 func (dt *DataTable) FilterColsByColIndexLessThan(threshold string) *DataTable
 ```
+
+**Description:** Filters columns by index less than the specified threshold.
 
 **Parameters:**
 
@@ -2721,11 +2874,11 @@ filtered := dt.FilterColsByColIndexLessThan("C") // Columns A, B
 
 ### FilterColsByColIndexLessThanOrEqualTo
 
-Filters columns by index less than or equal to the specified threshold.
-
 ```go
 func (dt *DataTable) FilterColsByColIndexLessThanOrEqualTo(threshold string) *DataTable
 ```
+
+**Description:** Filters columns by index less than or equal to the specified threshold.
 
 **Parameters:**
 
@@ -2743,11 +2896,11 @@ filtered := dt.FilterColsByColIndexLessThanOrEqualTo("C") // Columns A, B, C
 
 ### FilterColsByColIndexEqualTo
 
-Filters columns by exact index match.
-
 ```go
 func (dt *DataTable) FilterColsByColIndexEqualTo(index string) *DataTable
 ```
+
+**Description:** Filters columns by exact index match.
 
 **Parameters:**
 
@@ -2765,11 +2918,11 @@ filtered := dt.FilterColsByColIndexEqualTo("B") // Only column B
 
 ### FilterColsByColNameContains
 
-Filters columns whose name contains the specified substring.
-
 ```go
 func (dt *DataTable) FilterColsByColNameContains(substring string) *DataTable
 ```
+
+**Description:** Filters columns whose name contains the specified substring.
 
 **Parameters:**
 
@@ -2787,11 +2940,11 @@ filtered := dt.FilterColsByColNameContains("age") // Columns with "age" in name
 
 ### FilterRowsByRowNameEqualTo
 
-Filters rows by exact name match.
-
 ```go
 func (dt *DataTable) FilterRowsByRowNameEqualTo(name string) *DataTable
 ```
+
+**Description:** Filters rows by exact name match.
 
 **Parameters:**
 
@@ -2809,11 +2962,11 @@ filtered := dt.FilterRowsByRowNameEqualTo("John")
 
 ### FilterRowsByRowNameContains
 
-Filters rows whose name contains the specified substring.
-
 ```go
 func (dt *DataTable) FilterRowsByRowNameContains(substring string) *DataTable
 ```
+
+**Description:** Filters rows whose name contains the specified substring.
 
 **Parameters:**
 
@@ -2831,11 +2984,11 @@ filtered := dt.FilterRowsByRowNameContains("John") // Rows with "John" in name
 
 ### FilterRowsByRowIndexGreaterThan
 
-Filters rows by index greater than the specified threshold.
-
 ```go
 func (dt *DataTable) FilterRowsByRowIndexGreaterThan(threshold int) *DataTable
 ```
+
+**Description:** Filters rows by index greater than the specified threshold.
 
 **Parameters:**
 
@@ -2853,11 +3006,11 @@ filtered := dt.FilterRowsByRowIndexGreaterThan(5) // Rows 6, 7, 8...
 
 ### FilterRowsByRowIndexGreaterThanOrEqualTo
 
-Filters rows by index greater than or equal to the specified threshold.
-
 ```go
 func (dt *DataTable) FilterRowsByRowIndexGreaterThanOrEqualTo(threshold int) *DataTable
 ```
+
+**Description:** Filters rows by index greater than or equal to the specified threshold.
 
 **Parameters:**
 
@@ -2875,11 +3028,11 @@ filtered := dt.FilterRowsByRowIndexGreaterThanOrEqualTo(5) // Rows 5, 6, 7...
 
 ### FilterRowsByRowIndexLessThan
 
-Filters rows by index less than the specified threshold.
-
 ```go
 func (dt *DataTable) FilterRowsByRowIndexLessThan(threshold int) *DataTable
 ```
+
+**Description:** Filters rows by index less than the specified threshold.
 
 **Parameters:**
 
@@ -2897,11 +3050,11 @@ filtered := dt.FilterRowsByRowIndexLessThan(5) // Rows 0, 1, 2, 3, 4
 
 ### FilterRowsByRowIndexLessThanOrEqualTo
 
-Filters rows by index less than or equal to the specified threshold.
-
 ```go
 func (dt *DataTable) FilterRowsByRowIndexLessThanOrEqualTo(threshold int) *DataTable
 ```
+
+**Description:** Filters rows by index less than or equal to the specified threshold.
 
 **Parameters:**
 
@@ -2919,11 +3072,11 @@ filtered := dt.FilterRowsByRowIndexLessThanOrEqualTo(5) // Rows 0, 1, 2, 3, 4, 5
 
 ### FilterRowsByRowIndexEqualTo
 
-Filters rows by exact index match.
-
 ```go
 func (dt *DataTable) FilterRowsByRowIndexEqualTo(index int) *DataTable
 ```
+
+**Description:** Filters rows by exact index match.
 
 **Parameters:**
 
@@ -2943,11 +3096,19 @@ filtered := dt.FilterRowsByRowIndexEqualTo(3) // Only row 3
 
 ### Summary
 
-Displays a comprehensive statistical summary of the DataTable.
-
 ```go
 func (dt *DataTable) Summary()
 ```
+
+**Description:** Displays a comprehensive statistical summary of the DataTable.
+
+**Parameters:**
+
+- None.
+
+**Returns:**
+
+- None.
 
 **Example:**
 
@@ -2957,11 +3118,15 @@ dt.Summary() // Displays summary to console
 
 ### Size
 
-Returns the dimensions of the DataTable.
-
 ```go
 func (dt *DataTable) Size() (numRows int, numCols int)
 ```
+
+**Description:** Returns the dimensions of the DataTable.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -2977,11 +3142,15 @@ fmt.Printf("Table has %d rows and %d columns\n", rows, cols)
 
 ### NumRows
 
-Returns the number of rows in the DataTable.
-
 ```go
 func (dt *DataTable) NumRows() int
 ```
+
+**Description:** Returns the number of rows in the DataTable.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -2996,11 +3165,15 @@ fmt.Printf("Table has %d rows\n", rows)
 
 ### NumCols
 
-Returns the number of columns in the DataTable.
-
 ```go
 func (dt *DataTable) NumCols() int
 ```
+
+**Description:** Returns the number of columns in the DataTable.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -3015,11 +3188,15 @@ fmt.Printf("Table has %d columns\n", cols)
 
 ### Mean
 
-Calculates the mean of all numeric values in the DataTable.
-
 ```go
 func (dt *DataTable) Mean() any
 ```
+
+**Description:** Calculates the mean of all numeric values in the DataTable.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -3036,11 +3213,19 @@ fmt.Printf("Overall mean: %v\n", mean)
 
 ### Show
 
-Displays the DataTable content in the console.
-
 ```go
 func (dt *DataTable) Show()
 ```
+
+**Description:** Displays the DataTable content in the console.
+
+**Parameters:**
+
+- None.
+
+**Returns:**
+
+- None.
 
 **Example:**
 
@@ -3050,11 +3235,11 @@ dt.Show() // Display table content in console
 
 ### ShowRange
 
-Displays the DataTable with a specified range of rows.
-
 ```go
 func (dt *DataTable) ShowRange(startEnd ...any)
 ```
+
+**Description:** Displays the DataTable with a specified range of rows.
 
 **Parameters:**
 
@@ -3064,6 +3249,10 @@ func (dt *DataTable) ShowRange(startEnd ...any)
   - One negative value: shows last N rows (e.g., ShowRange(-5) shows last 5 rows)
   - Two values [start, end]: shows rows from index start (inclusive) to index end (exclusive)
   - If end is nil: shows rows from index start to the end of the table
+
+**Returns:**
+
+- None.
 
 **Example:**
 
@@ -3077,11 +3266,19 @@ dt.ShowRange(2, nil) // Show rows from index 2 to end
 
 ### ShowTypes
 
-Displays the data types of each column.
-
 ```go
 func (dt *DataTable) ShowTypes()
 ```
+
+**Description:** Displays the data types of each column.
+
+**Parameters:**
+
+- None.
+
+**Returns:**
+
+- None.
 
 **Example:**
 
@@ -3091,15 +3288,19 @@ dt.ShowTypes() // Display column type information
 
 ### ShowTypesRange
 
-Displays the data types of columns within a specified range.
-
 ```go
 func (dt *DataTable) ShowTypesRange(startEnd ...any)
 ```
 
+**Description:** Displays the data types of columns within a specified range.
+
 **Parameters:**
 
 - `startEnd`: Optional parameters to specify the range of rows to display type information for
+
+**Returns:**
+
+- None.
 
 **Example:**
 
@@ -3111,11 +3312,15 @@ dt.ShowTypesRange(2, 10) // Show types for rows 2-9
 
 ### GetName
 
-Gets the DataTable name.
-
 ```go
 func (dt *DataTable) GetName() string
 ```
+
+**Description:** Gets the DataTable name.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -3130,11 +3335,11 @@ fmt.Printf("Table name: %s\n", name)
 
 ### SetName
 
-Sets the DataTable name. Use snake-style Pascal case (e.g., `Factor_Loadings`) to avoid spelling errors caused by spaces.
-
 ```go
 func (dt *DataTable) SetName(name string) *DataTable
 ```
+
+**Description:** Sets the DataTable name. Use snake-style Pascal case (e.g., `Factor_Loadings`) to avoid spelling errors caused by spaces.
 
 **Parameters:**
 
@@ -3152,11 +3357,11 @@ dt.SetName("Factor_Loadings")
 
 ### Map
 
-Applies a transformation function to all elements in the DataTable and returns a new DataTable with the transformed results. The function provides access to row index, column index, and element value for context-aware transformations.
-
 ```go
 func (dt *DataTable) Map(mapFunc func(rowIndex int, colIndex string, element any) any) *DataTable
 ```
+
+**Description:** Applies a transformation function to all elements in the DataTable and returns a new DataTable with the transformed results. The function provides access to row index, column index, and element value for context-aware transformations.
 
 **Parameters:**
 
@@ -3219,11 +3424,15 @@ transformedDt := dt.Map(func(rowIndex int, colIndex string, element any) any {
 
 ### Transpose
 
-Transposes the DataTable (rows become columns and vice versa).
-
 ```go
 func (dt *DataTable) Transpose() *DataTable
 ```
+
+**Description:** Transposes the DataTable (rows become columns and vice versa).
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -3237,15 +3446,26 @@ transposed := dt.Transpose()
 
 ### SortBy
 
-Sorts the DataTable rows based on one or more column configurations. Supports multi-level sorting with stable sort.
-
 ```go
 func (dt *DataTable) SortBy(configs ...DataTableSortConfig) *DataTable
 ```
 
+**Description:**
+
+- Supports sorting by column index, number, or name
+- Multi-level sorting: sorts by the first config, then by subsequent configs for ties
+- Uses stable sort to maintain relative order of equal elements
+- At least one of ColumnIndex, ColumnNumber, or ColumnName must be specified
+
 **Parameters:**
 
 - `configs`: Variable number of DataTableSortConfig structs specifying sort criteria
+
+**Returns:**
+
+- `*DataTable`: The sorted DataTable (modified in-place)
+
+Sorts the DataTable rows based on one or more column configurations. Supports multi-level sorting with stable sort.
 
 **DataTableSortConfig:**
 
@@ -3257,17 +3477,6 @@ type DataTableSortConfig struct {
     Descending   bool   // Sort in descending order
 }
 ```
-
-**Returns:**
-
-- `*DataTable`: The sorted DataTable (modified in-place)
-
-**Description:**
-
-- Supports sorting by column index, number, or name
-- Multi-level sorting: sorts by the first config, then by subsequent configs for ties
-- Uses stable sort to maintain relative order of equal elements
-- At least one of ColumnIndex, ColumnNumber, or ColumnName must be specified
 
 **Example:**
 
@@ -3284,15 +3493,9 @@ dt.SortBy(
 
 ### Clone
 
-Creates a deep copy of the DataTable.
-
 ```go
 func (dt *DataTable) Clone() *DataTable
 ```
-
-**Returns:**
-
-- `*DataTable`: A new DataTable instance that is a deep copy of the original
 
 **Description:**
 
@@ -3306,6 +3509,16 @@ The Clone method creates a complete deep copy of the DataTable, including:
 - Last modified timestamp (reset to current time)
 
 The cloned DataTable is completely independent of the original, so modifications to one will not affect the other.
+
+**Parameters:**
+
+- None.
+
+**Returns:**
+
+- `*DataTable`: A new DataTable instance that is a deep copy of the original
+
+Creates a deep copy of the DataTable.
 
 **Example:**
 
@@ -3329,15 +3542,9 @@ fmt.Println(cloned.columns[0].data[0]) // Output: 1
 
 ### To2DSlice
 
-Converts the DataTable to a 2D slice of any type.
-
 ```go
 func (dt *DataTable) To2DSlice() [][]any
 ```
-
-**Returns:**
-
-- `[][]any`: A 2D slice where each inner slice represents a row and contains the column values for that row
 
 **Description:**
 
@@ -3346,6 +3553,16 @@ The To2DSlice method converts the DataTable into a standard Go 2D slice format. 
 - If a column is shorter than the maximum row count, `nil` values are used to fill the missing positions
 - The returned slice is a deep copy of the data, so modifications to the slice won't affect the original DataTable
 - This method is useful for interfacing with other Go libraries that expect 2D slice data structures
+
+**Parameters:**
+
+- None.
+
+**Returns:**
+
+- `[][]any`: A 2D slice where each inner slice represents a row and contains the column values for that row
+
+Converts the DataTable to a 2D slice of any type.
 
 **Example:**
 

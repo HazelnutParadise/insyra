@@ -45,21 +45,21 @@ func main() {
 
 ## Supported Chart Types
 
-| Chart | Function | Use Case |
-|-------|----------|----------|
-| Bar | `CreateBarChart` | Category comparison |
-| Line | `CreateLineChart` | Trends over time |
-| Scatter | `CreateScatterChart` | Correlation analysis |
-| Pie | `CreatePieChart` | Part-to-whole relationships |
-| HeatMap | `CreateHeatMap` | Matrix visualization |
-| Radar | `CreateRadarChart` | Multi-dimensional comparison |
-| Funnel | `CreateFunnelChart` | Stage-based processes |
-| Gauge | `CreateGaugeChart` | Single value display |
-| WordCloud | `CreateWordCloud` | Text frequency |
-| Sankey | `CreateSankeyChart` | Flow visualization |
-| BoxPlot | `CreateBoxPlot` | Distribution comparison |
-| K-Line | `CreateKlineChart` | Stock data |
-| ThemeRiver | `CreateThemeRiverChart` | Temporal flow data |
+| Chart      | Function                | Use Case                     |
+| ---------- | ----------------------- | ---------------------------- |
+| Bar        | `CreateBarChart`        | Category comparison          |
+| Line       | `CreateLineChart`       | Trends over time             |
+| Scatter    | `CreateScatterChart`    | Correlation analysis         |
+| Pie        | `CreatePieChart`        | Part-to-whole relationships  |
+| HeatMap    | `CreateHeatMap`         | Matrix visualization         |
+| Radar      | `CreateRadarChart`      | Multi-dimensional comparison |
+| Funnel     | `CreateFunnelChart`     | Stage-based processes        |
+| Gauge      | `CreateGaugeChart`      | Single value display         |
+| WordCloud  | `CreateWordCloud`       | Text frequency               |
+| Sankey     | `CreateSankeyChart`     | Flow visualization           |
+| BoxPlot    | `CreateBoxPlot`         | Distribution comparison      |
+| K-Line     | `CreateKlineChart`      | Stock data                   |
+| ThemeRiver | `CreateThemeRiverChart` | Temporal flow data           |
 
 ## Common Types
 
@@ -129,31 +129,41 @@ const (
 
 ## Saving Charts
 
-### SaveHTML
-
-Renders the chart to an HTML file.
+### Save HTML
 
 ```go
 func SaveHTML(chart Renderable, path string, animation ...bool) error
 ```
 
-- `chart`: The chart object created by any `Create...Chart` function.
-- `path`: The file path to save the HTML.
+**Description:** Renders the chart to an HTML file.
+
+**Parameters:**
+
+- `chart`: The chart object. Type: `Renderable`.
+- `path`: The file path to save the HTML. Type: `string`.
 - `animation`: Optional boolean to enable/disable animation (default: enabled).
-- **Returns**: An error if the file creation or rendering fails.
 
-### SavePNG
+**Returns:**
 
-Renders the chart to a PNG image. Requires Chrome/Chromium installed or uses an online fallback service.
+- `error`: Error when the operation fails.
+
+### Save PNG
 
 ```go
 func SavePNG(chart Renderable, pngPath string, useOnlineServiceOnFail ...bool) error
 ```
 
-- `chart`: The chart object.
-- `pngPath`: The file path to save the PNG.
+**Description:** Renders the chart to a PNG image. Requires Chrome/Chromium installed or uses an online fallback service.
+
+**Parameters:**
+
+- `chart`: The chart object. Type: `Renderable`.
+- `pngPath`: The file path to save the PNG. Type: `string`.
 - `useOnlineServiceOnFail`: Optional boolean. If true (default), it tries to use an online rendering service if local rendering fails.
-- **Returns**: An error if rendering or saving fails.
+
+**Returns:**
+
+- `error`: Error when the operation fails.
 
 ---
 
@@ -180,13 +190,13 @@ type BarChartConfig struct {
     XAxis     []string // X-axis labels
     XAxisName string
     YAxisName string
-    
+
     // Y-axis customization
     YAxisMin         *float64
     YAxisMax         *float64
     YAxisSplitNumber *int
     YAxisFormatter   string   // e.g. "{value}°C"
-    
+
     Colors     []string
     ShowLabels bool
     LabelPos   LabelPosition
@@ -198,6 +208,17 @@ type BarChartConfig struct {
 ```go
 func CreateBarChart(config BarChartConfig, data ...insyra.IDataList) *charts.Bar
 ```
+
+**Description:** Use when you need this function.
+
+**Parameters:**
+
+- `config`: Configuration options. Type: `BarChartConfig`.
+- `data`: Variadic `insyra.IDataList` values.
+
+**Returns:**
+
+- `*charts.Bar`: Return value.
 
 ### 2. Line Chart
 
@@ -241,6 +262,17 @@ type LineChartConfig struct {
 func CreateLineChart(config LineChartConfig, data ...insyra.IDataList) *charts.Line
 ```
 
+**Description:** Use when you need this function.
+
+**Parameters:**
+
+- `config`: Configuration options. Type: `LineChartConfig`.
+- `data`: Variadic `insyra.IDataList` values.
+
+**Returns:**
+
+- `*charts.Line`: Return value.
+
 ### 3. Scatter Chart
 
 ![Scatter Chart Example](./img/plot/scatter_example.png)
@@ -275,7 +307,7 @@ type ScatterChartConfig struct {
     YAxisMax         *float64
     YAxisSplitNumber *int
     YAxisFormatter   string
-    
+
     Colors     []string
     ShowLabels bool
     LabelPos   LabelPosition
@@ -290,6 +322,17 @@ type ScatterChartConfig struct {
 ```go
 func CreateScatterChart(config ScatterChartConfig, data map[string][]ScatterPoint) *charts.Scatter
 ```
+
+**Description:** Use when you need this function.
+
+**Parameters:**
+
+- `config`: Configuration options. Type: `ScatterChartConfig`.
+- `data`: Input data values. Type: `map[string][]ScatterPoint`.
+
+**Returns:**
+
+- `*charts.Scatter`: Return value.
 
 ### 4. Pie Chart
 
@@ -330,6 +373,17 @@ type PieChartConfig struct {
 func CreatePieChart(config PieChartConfig, data ...PieItem) *charts.Pie
 ```
 
+**Description:** Use when you need this function.
+
+**Parameters:**
+
+- `config`: Configuration options. Type: `PieChartConfig`.
+- `data`: Variadic `PieItem` values.
+
+**Returns:**
+
+- `*charts.Pie`: Return value.
+
 ### 5. HeatMap
 
 ![HeatMap Example](./img/plot/heatmap_example.png)
@@ -345,14 +399,14 @@ type HeatMapConfig struct {
     Title           string
     Subtitle        string
     TitlePos        Position
-    
+
     XAxis []string
     YAxis []string
-    
+
     Colors []string
     Min    *float64
     Max    *float64
-    
+
     UseCalendar  bool
     CalendarOpts *opts.Calendar
 }
@@ -405,6 +459,17 @@ type RadarSeries struct {
 func CreateRadarChart(config RadarChartConfig, series []RadarSeries) *charts.Radar
 ```
 
+**Description:** Use when you need this function.
+
+**Parameters:**
+
+- `config`: Configuration options. Type: `RadarChartConfig`.
+- `series`: Input value for `series`. Type: `[]RadarSeries`.
+
+**Returns:**
+
+- `*charts.Radar`: Return value.
+
 ### 7. Funnel Chart
 
 ![Funnel Chart Example](./img/plot/funnel_example.png)
@@ -434,6 +499,17 @@ type FunnelChartConfig struct {
 func CreateFunnelChart(config FunnelChartConfig, data map[string]float64) *charts.Funnel
 ```
 
+**Description:** Use when you need this function.
+
+**Parameters:**
+
+- `config`: Configuration options. Type: `FunnelChartConfig`.
+- `data`: Input data values. Type: `map[string]float64`.
+
+**Returns:**
+
+- `*charts.Funnel`: Return value.
+
 ### 8. Gauge Chart
 
 ![Gauge Chart Example](./img/plot/gauge_example.png)
@@ -461,6 +537,17 @@ type GaugeChartConfig struct {
 ```go
 func CreateGaugeChart(config GaugeChartConfig, value float64) *charts.Gauge
 ```
+
+**Description:** Use when you need this function.
+
+**Parameters:**
+
+- `config`: Configuration options. Type: `GaugeChartConfig`.
+- `value`: Input value for `value`. Type: `float64`.
+
+**Returns:**
+
+- `*charts.Gauge`: Return value.
 
 ### 9. WordCloud
 
@@ -501,6 +588,17 @@ type WordCloudConfig struct {
 func CreateWordCloud(config WordCloudConfig, data insyra.IDataList) *charts.WordCloud
 ```
 
+**Description:** Use when you need this function.
+
+**Parameters:**
+
+- `config`: Configuration options. Type: `WordCloudConfig`.
+- `data`: Input data values. Type: `insyra.IDataList`.
+
+**Returns:**
+
+- `*charts.WordCloud`: Return value.
+
 ### 10. Sankey Chart
 
 ![Sankey Chart Example](./img/plot/sankey_example.png)
@@ -535,6 +633,17 @@ type SankeyChartConfig struct {
 ```go
 func CreateSankeyChart(config SankeyChartConfig, links ...SankeyLink) *charts.Sankey
 ```
+
+**Description:** Use when you need this function.
+
+**Parameters:**
+
+- `config`: Configuration options. Type: `SankeyChartConfig`.
+- `links`: Variadic `SankeyLink` values.
+
+**Returns:**
+
+- `*charts.Sankey`: Return value.
 
 ### 11. BoxPlot
 
@@ -577,6 +686,17 @@ type BoxPlotConfig struct {
 func CreateBoxPlot(config BoxPlotConfig, series ...BoxPlotSeries) *charts.BoxPlot
 ```
 
+**Description:** Use when you need this function.
+
+**Parameters:**
+
+- `config`: Configuration options. Type: `BoxPlotConfig`.
+- `series`: Variadic `BoxPlotSeries` values.
+
+**Returns:**
+
+- `*charts.BoxPlot`: Return value.
+
 ### 12. K-Line Chart
 
 ![K-Line Chart Example](./img/plot/kline_example.png)
@@ -611,6 +731,17 @@ type KlineChartConfig struct {
 ```go
 func CreateKlineChart(config KlineChartConfig, klinePoints ...KlinePoint) *charts.Kline
 ```
+
+**Description:** Use when you need this function.
+
+**Parameters:**
+
+- `config`: Configuration options. Type: `KlineChartConfig`.
+- `klinePoints`: Variadic `KlinePoint` values.
+
+**Returns:**
+
+- `*charts.Kline`: Return value.
 
 ### 13. ThemeRiver Chart
 
@@ -654,3 +785,14 @@ type ThemeRiverChartConfig struct {
 ```go
 func CreateThemeRiverChart(config ThemeRiverChartConfig, data ...ThemeRiverData) *charts.ThemeRiver
 ```
+
+**Description:** Use when you need this function.
+
+**Parameters:**
+
+- `config`: Configuration options. Type: `ThemeRiverChartConfig`.
+- `data`: Variadic `ThemeRiverData` values.
+
+**Returns:**
+
+- `*charts.ThemeRiver`: Return value.

@@ -54,16 +54,25 @@ type DataList struct {
 
 ## AtomicDo
 
-`AtomicDo` provides safe, serialized access to a DataList using an internal actor goroutine. It ensures all mutations and reads inside the function run in order and without races, even across multiple goroutines.
-
 ```go
 func (dl *DataList) AtomicDo(f func(*DataList))
 ```
 
+**Description:** `AtomicDo` provides safe, serialized access to a DataList using an internal actor goroutine. It ensures all mutations and reads inside the function run in order and without races, even across multiple goroutines.
+
+**Parameters:**
+
+- `f`: Input value for `f`. Type: `func(*DataList)`.
+
+**Returns:**
+
+- None.
+
+**Behavior:**
+
 - Single-threaded execution: Functions passed to `AtomicDo` are processed one at a time.
 - Reentrant: If called from within `AtomicDo`, the function runs immediately (no deadlock).
-- Cross-list nesting: Calling `anotherDl.AtomicDo` inside `dl.AtomicDo` is supported; nested calls execute inline to avoid deadlocks.
-- Closed behavior: After `dl.Close()`, `AtomicDo` executes the function inline without scheduling.
+- Cross-list nesting: Calling `anotherDl.AtomicDo` inside `dl.AtomicDo` is supported.
 
 Examples
 
@@ -106,11 +115,11 @@ Guidelines
 
 ### NewDataList
 
-Creates a new DataList instance with variadic parameters, automatically flattening nested slices but not arrays.
-
 ```go
 func NewDataList(values ...any) *DataList
 ```
+
+**Description:** Creates a new DataList instance with variadic parameters, automatically flattening nested slices but not arrays.
 
 **Parameters:**
 
@@ -143,42 +152,15 @@ dl := insyra.NewDataList([]int{1, 2}, []string{"a", "b"}) // Results in: [1, 2, 
 dl := insyra.NewDataList([3]int{1, 2, 3}, 4) // Results in: [[1, 2, 3], 4]
 ```
 
-### From
-
-Factory method for creating a DataList with a more modern syntax.
-
-```go
-func (_ DataList) From(values ...any) *DataList
-```
-
-**Parameters:**
-
-- `values`: Variadic list of elements to initialize the DataList with
-
-**Returns:**
-
-- `*DataList`: A newly created DataList
-
-**Example:**
-
-```go
-// Recommended modern syntax
-dl := insyra.NewDataList(1, 2, 3, 4, 5)
-
-// Using syntax sugar
-import "github.com/HazelnutParadise/insyra/isr"
-dl := isr.DL{}.From(1, 2, 3, 4, 5)
-```
-
 ## Data Access
 
 ### Get
 
-Retrieves an element at a specific index with support for negative indexing.
-
 ```go
 func (dl *DataList) Get(index int) any
 ```
+
+**Description:** Retrieves an element at a specific index with support for negative indexing.
 
 **Parameters:**
 
@@ -199,11 +181,15 @@ fmt.Println(dl.Get(-2)) // 40 (second to last)
 
 ### Data
 
-Returns the underlying data slice.
-
 ```go
 func (dl *DataList) Data() []any
 ```
+
+**Description:** Returns the underlying data slice.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -218,11 +204,15 @@ data := dl.Data() // []any{1, 2, 3}
 
 ### Len
 
-Returns the number of elements in the DataList.
-
 ```go
 func (dl *DataList) Len() int
 ```
+
+**Description:** Returns the number of elements in the DataList.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -239,15 +229,19 @@ fmt.Println(dl.Len()) // 5
 
 ### Append
 
-Adds new elements to the end of the DataList.
-
 ```go
-func (dl *DataList) Append(values ...any)
+func (dl *DataList) Append(values ...any) *DataList
 ```
+
+**Description:** Adds new elements to the end of the DataList. Returns the DataList to support chaining calls.
 
 **Parameters:**
 
 - `values`: Variadic list of elements to append
+
+**Returns:**
+
+- `*DataList`: Reference to the modified DataList
 
 **Example:**
 
@@ -255,19 +249,26 @@ func (dl *DataList) Append(values ...any)
 dl := insyra.NewDataList(1, 2, 3)
 dl.Append(4, 5, 6)
 // dl now contains: [1, 2, 3, 4, 5, 6]
+
+// Method chaining example
+dl.Append(7, 8).Sort().Reverse()
 ```
 
 ### Concat
-
-Creates a new DataList by appending another DataList to the current DataList.
 
 ```go
 func (dl *DataList) Concat(other IDataList) *DataList
 ```
 
+**Description:** Creates a new DataList by appending another DataList to the current DataList.
+
 **Parameters:**
 
 - `other`: Another DataList to concatenate
+
+**Returns:**
+
+- `*DataList`: Return value.
 
 **Example:**
 
@@ -281,15 +282,19 @@ newDL := dl1.Concat(dl2)
 
 ### AppendDataList
 
-Appends another DataList to the current DataList. Returns the DataList to support chaining calls.
-
 ```go
 func (dl *DataList) AppendDataList(other IDataList) *DataList
 ```
 
+**Description:** Appends another DataList to the current DataList. Returns the DataList to support chaining calls.
+
 **Parameters:**
 
 - `other`: Another DataList to append
+
+**Returns:**
+
+- `*DataList`: Return value.
 
 **Example:**
 
@@ -302,16 +307,20 @@ dl1.AppendDataList(dl2)
 
 ### Update
 
-Updates an element at a specific index. Returns the DataList to support chaining calls.
-
 ```go
 func (dl *DataList) Update(index int, value any) *DataList
 ```
+
+**Description:** Updates an element at a specific index. Returns the DataList to support chaining calls.
 
 **Parameters:**
 
 - `index`: Zero-based index position
 - `value`: New value to set at the index
+
+**Returns:**
+
+- `*DataList`: Return value.
 
 **Example:**
 
@@ -327,16 +336,20 @@ dl.Update(1, 99).InsertAt(2, 100)
 
 ### InsertAt
 
-Inserts a new element at a specific index, shifting existing elements to the right. Returns the DataList to support chaining calls.
-
 ```go
 func (dl *DataList) InsertAt(index int, value any) *DataList
 ```
+
+**Description:** Inserts a new element at a specific index, shifting existing elements to the right. Returns the DataList to support chaining calls.
 
 **Parameters:**
 
 - `index`: Zero-based index position for insertion
 - `value`: Value to insert
+
+**Returns:**
+
+- `*DataList`: Return value.
 
 **Example:**
 
@@ -352,11 +365,15 @@ dl.InsertAt(1, 2).Update(2, 99)
 
 ### Pop
 
-Removes and returns the last element from the DataList.
-
 ```go
 func (dl *DataList) Pop() any
 ```
+
+**Description:** Removes and returns the last element from the DataList.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -372,11 +389,11 @@ lastElement := dl.Pop() // returns 5
 
 ### Drop
 
-Removes an element at a specific index.
-
 ```go
 func (dl *DataList) Drop(index int) *DataList
 ```
+
+**Description:** Removes an element at a specific index.
 
 **Parameters:**
 
@@ -396,11 +413,11 @@ dl.Drop(2) // removes element at index 2
 
 ### DropAll
 
-Removes all occurrences of specified values from the DataList. Supports `math.NaN()`.
-
 ```go
 func (dl *DataList) DropAll(values ...any) *DataList
 ```
+
+**Description:** Removes all occurrences of specified values from the DataList. Supports `math.NaN()`.
 
 **Parameters:**
 
@@ -420,11 +437,11 @@ dl.DropAll(2, 4, math.NaN())
 
 ### DropIfContains
 
-Removes all string elements that contain a specified substring. Non-string elements are kept.
-
 ```go
 func (dl *DataList) DropIfContains(substring string) *DataList
 ```
+
+**Description:** Removes all string elements that contain a specified substring. Non-string elements are kept.
 
 **Parameters:**
 
@@ -444,11 +461,15 @@ dl.DropIfContains("an")
 
 ### Clear
 
-Removes all elements from the DataList.
-
 ```go
 func (dl *DataList) Clear() *DataList
 ```
+
+**Description:** Removes all elements from the DataList.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -464,11 +485,11 @@ dl.Clear()
 
 ### Sort
 
-Sorts the elements in the DataList using mixed sorting logic for different data types.
-
 ```go
 func (dl *DataList) Sort(ascending ...bool) *DataList
 ```
+
+**Description:** Sorts the elements in the DataList using mixed sorting logic for different data types.
 
 **Parameters:**
 
@@ -507,11 +528,15 @@ dl2.Sort()
 
 ### Reverse
 
-Reverses the order of elements in the DataList.
-
 ```go
 func (dl *DataList) Reverse() *DataList
 ```
+
+**Description:** Reverses the order of elements in the DataList.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -527,11 +552,11 @@ dl.Reverse()
 
 ### Map
 
-Applies a transformation function to all elements with index-aware processing.
-
 ```go
 func (dl *DataList) Map(mapFunc func(int, any) any) *DataList
 ```
+
+**Description:** Applies a transformation function to all elements with index-aware processing.
 
 **Parameters:**
 
@@ -566,11 +591,11 @@ result := numbers.Map(func(index int, value any) any {
 
 ### Filter
 
-Filters elements based on a predicate function.
-
 ```go
 func (dl *DataList) Filter(predicate func(any) bool) *DataList
 ```
+
+**Description:** Filters elements based on a predicate function.
 
 **Parameters:**
 
@@ -592,11 +617,15 @@ evens := dl.Filter(func(value any) bool {
 
 ### ClearStrings
 
-Removes all string elements from the DataList.
-
 ```go
 func (dl *DataList) ClearStrings() *DataList
 ```
+
+**Description:** Removes all string elements from the DataList.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -612,11 +641,15 @@ dl.ClearStrings()
 
 ### ClearNumbers
 
-Removes all numeric elements from the DataList.
-
 ```go
 func (dl *DataList) ClearNumbers() *DataList
 ```
+
+**Description:** Removes all numeric elements from the DataList.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -632,11 +665,15 @@ dl.ClearNumbers()
 
 ### ClearNaNs
 
-Removes all NaN (Not a Number) elements from the DataList.
-
 ```go
 func (dl *DataList) ClearNaNs() *DataList
 ```
+
+**Description:** Removes all NaN (Not a Number) elements from the DataList.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -652,11 +689,15 @@ dl.ClearNaNs()
 
 ### ClearNils
 
-Removes all nil (null) elements from the DataList.
-
 ```go
 func (dl *DataList) ClearNils() *DataList
 ```
+
+**Description:** Removes all nil (null) elements from the DataList.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -672,11 +713,15 @@ dl.ClearNils()
 
 ### ClearNilsAndNaNs
 
-Removes all nil and NaN (Not a Number) elements from the DataList.
-
 ```go
 func (dl *DataList) ClearNilsAndNaNs() *DataList
 ```
+
+**Description:** Removes all nil and NaN (Not a Number) elements from the DataList.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -692,11 +737,11 @@ dl.ClearNilsAndNaNs()
 
 ### ClearOutliers
 
-Removes values outside a specified number of standard deviations from the mean.
-
 ```go
 func (dl *DataList) ClearOutliers(stdDev float64) *DataList
 ```
+
+**Description:** Removes values outside a specified number of standard deviations from the mean.
 
 **Parameters:**
 
@@ -718,11 +763,15 @@ dl.ClearOutliers(2.0) // Remove values beyond 2 standard deviations
 
 ### Normalize
 
-Normalizes DataList elements to a specified range (default: 0 to 1).
-
 ```go
 func (dl *DataList) Normalize() *DataList
 ```
+
+**Description:** Normalizes DataList elements to a specified range (default: 0 to 1).
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -738,11 +787,15 @@ dl.Normalize()
 
 ### Standardize
 
-Standardizes DataList elements using z-score normalization (mean=0, std=1).
-
 ```go
 func (dl *DataList) Standardize() *DataList
 ```
+
+**Description:** Standardizes DataList elements using z-score normalization (mean=0, std=1).
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -758,11 +811,15 @@ dl.Standardize()
 
 ### FillNaNWithMean
 
-Replaces all NaN values with the mean value of numeric elements.
-
 ```go
 func (dl *DataList) FillNaNWithMean() *DataList
 ```
+
+**Description:** Replaces all NaN values with the mean value of numeric elements.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -778,11 +835,11 @@ dl.FillNaNWithMean()
 
 ### ReplaceOutliers
 
-Replaces outliers beyond specified standard deviations with a replacement value. Values whose distance from the mean exceeds the threshold (stdDevs × standard deviation) will be replaced.
-
 ```go
 func (dl *DataList) ReplaceOutliers(stdDevs float64, replacement float64) *DataList
 ```
+
+**Description:** Replaces outliers beyond specified standard deviations with a replacement value. Values whose distance from the mean exceeds the threshold (stdDevs × standard deviation) will be replaced.
 
 **Parameters:**
 
@@ -802,11 +859,11 @@ dl.ReplaceOutliers(2.0, 6.0) // Replace outliers with 6.0
 
 ### ReplaceNaNsWith
 
-Replaces all NaN (Not a Number) values in the DataList with the specified value.
-
 ```go
 func (dl *DataList) ReplaceNaNsWith(value any) *DataList
 ```
+
+**Description:** Replaces all NaN (Not a Number) values in the DataList with the specified value.
 
 **Parameters:**
 
@@ -826,11 +883,11 @@ dl.ReplaceNaNsWith(0.0)
 
 ### ReplaceNilsWith
 
-Replaces all nil (null) values in the DataList with the specified value.
-
 ```go
 func (dl *DataList) ReplaceNilsWith(value any) *DataList
 ```
+
+**Description:** Replaces all nil (null) values in the DataList with the specified value.
 
 **Parameters:**
 
@@ -850,11 +907,11 @@ dl.ReplaceNilsWith(0)
 
 ### ReplaceNaNsAndNilsWith
 
-Replaces all NaN and nil values in the DataList with the specified value.
-
 ```go
 func (dl *DataList) ReplaceNaNsAndNilsWith(value any) *DataList
 ```
+
+**Description:** Replaces all NaN and nil values in the DataList with the specified value.
 
 **Parameters:**
 
@@ -876,11 +933,15 @@ dl.ReplaceNaNsAndNilsWith(0.0)
 
 ### Sum
 
-Calculates the sum of numeric elements in the DataList.
-
 ```go
 func (dl *DataList) Sum() float64
 ```
+
+**Description:** Calculates the sum of numeric elements in the DataList.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -895,11 +956,15 @@ sum := dl.Sum() // 15.0
 
 ### Max
 
-Returns the maximum value among numeric elements.
-
 ```go
 func (dl *DataList) Max() float64
 ```
+
+**Description:** Returns the maximum value among numeric elements.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -914,11 +979,15 @@ max := dl.Max() // 9.0
 
 ### Min
 
-Returns the minimum value among numeric elements.
-
 ```go
 func (dl *DataList) Min() float64
 ```
+
+**Description:** Returns the minimum value among numeric elements.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -933,11 +1002,15 @@ min := dl.Min() // 1.0
 
 ### Mean
 
-Calculates the arithmetic mean of numeric elements.
-
 ```go
 func (dl *DataList) Mean() float64
 ```
+
+**Description:** Calculates the arithmetic mean of numeric elements.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -952,11 +1025,11 @@ mean := dl.Mean() // 3.0
 
 ### WeightedMean
 
-Calculates the weighted mean using provided weights.
-
 ```go
 func (dl *DataList) WeightedMean(weights any) float64
 ```
+
+**Description:** Calculates the weighted mean using provided weights.
 
 **Parameters:**
 
@@ -976,11 +1049,15 @@ wmean := dl.WeightedMean(weights)
 
 ### GMean
 
-Calculates the geometric mean of numeric elements.
-
 ```go
 func (dl *DataList) GMean() float64
 ```
+
+**Description:** Calculates the geometric mean of numeric elements.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -995,11 +1072,15 @@ gmean := dl.GMean() // 2.83 (approximately)
 
 ### Median
 
-Returns the median value after sorting elements.
-
 ```go
 func (dl *DataList) Median() float64
 ```
+
+**Description:** Returns the median value after sorting elements.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -1014,11 +1095,15 @@ median := dl.Median() // 3.0
 
 ### Mode
 
-Returns the most frequent value(s) in the DataList.
-
 ```go
 func (dl *DataList) Mode() []float64
 ```
+
+**Description:** Returns the most frequent value(s) in the DataList.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -1033,11 +1118,15 @@ modes := dl.Mode() // [3.0]
 
 ### Stdev
 
-Calculates the sample standard deviation.
-
 ```go
 func (dl *DataList) Stdev() float64
 ```
+
+**Description:** Calculates the sample standard deviation.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -1052,11 +1141,15 @@ stdev := dl.Stdev()
 
 ### StdevP
 
-Calculates the population standard deviation.
-
 ```go
 func (dl *DataList) StdevP() float64
 ```
+
+**Description:** Calculates the population standard deviation.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -1071,11 +1164,15 @@ stdevp := dl.StdevP()
 
 ### Var
 
-Calculates the sample variance.
-
 ```go
 func (dl *DataList) Var() float64
 ```
+
+**Description:** Calculates the sample variance.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -1090,11 +1187,15 @@ variance := dl.Var()
 
 ### VarP
 
-Calculates the population variance.
-
 ```go
 func (dl *DataList) VarP() float64
 ```
+
+**Description:** Calculates the population variance.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -1109,11 +1210,15 @@ variancep := dl.VarP()
 
 ### Range
 
-Returns the difference between maximum and minimum values.
-
 ```go
 func (dl *DataList) Range() float64
 ```
+
+**Description:** Returns the difference between maximum and minimum values.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -1128,11 +1233,11 @@ range := dl.Range() // 8.0 (9 - 1)
 
 ### Quartile
 
-Calculates quartile values (Q1, Q2, Q3).
-
 ```go
 func (dl *DataList) Quartile(q int) float64
 ```
+
+**Description:** Calculates quartile values (Q1, Q2, Q3).
 
 **Parameters:**
 
@@ -1153,11 +1258,15 @@ q3 := dl.Quartile(3) // Third quartile
 
 ### IQR
 
-Calculates the interquartile range (Q3 - Q1).
-
 ```go
 func (dl *DataList) IQR() float64
 ```
+
+**Description:** Calculates the interquartile range (Q3 - Q1).
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -1172,11 +1281,11 @@ iqr := dl.IQR()
 
 ### Percentile
 
-Calculates the value below which a given percentage of observations fall.
-
 ```go
 func (dl *DataList) Percentile(percentile float64) float64
 ```
+
+**Description:** Calculates the value below which a given percentage of observations fall.
 
 **Parameters:**
 
@@ -1195,11 +1304,15 @@ p75 := dl.Percentile(75) // 75th percentile
 
 ### MAD
 
-Calculates the median absolute deviation.
-
 ```go
 func (dl *DataList) MAD() float64
 ```
+
+**Description:** Calculates the median absolute deviation.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -1214,11 +1327,15 @@ mad := dl.MAD()
 
 ### Rank
 
-Assigns ranks to elements based on their values.
-
 ```go
 func (dl *DataList) Rank() *DataList
 ```
+
+**Description:** Assigns ranks to elements based on their values.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -1234,11 +1351,15 @@ ranks := dl.Rank()
 
 ### Difference
 
-Calculates differences between consecutive elements.
-
 ```go
 func (dl *DataList) Difference() *DataList
 ```
+
+**Description:** Calculates differences between consecutive elements.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -1254,11 +1375,11 @@ diff := dl.Difference()
 
 ### MovingAverage
 
-Calculates moving average with specified window size.
-
 ```go
 func (dl *DataList) MovingAverage(windowSize int) *DataList
 ```
+
+**Description:** Calculates moving average with specified window size.
 
 **Parameters:**
 
@@ -1277,11 +1398,11 @@ ma := dl.MovingAverage(3) // 3-period moving average
 
 ### WeightedMovingAverage
 
-Calculates weighted moving average with specified window size and weights.
-
 ```go
 func (dl *DataList) WeightedMovingAverage(windowSize int, weights any) *DataList
 ```
+
+**Description:** Calculates weighted moving average with specified window size and weights.
 
 **Parameters:**
 
@@ -1302,11 +1423,11 @@ wma := dl.WeightedMovingAverage(3, weights)
 
 ### ExponentialSmoothing
 
-Calculates exponential smoothing with specified smoothing factor.
-
 ```go
 func (dl *DataList) ExponentialSmoothing(alpha float64) *DataList
 ```
+
+**Description:** Calculates exponential smoothing with specified smoothing factor.
 
 **Parameters:**
 
@@ -1325,11 +1446,11 @@ smoothed := dl.ExponentialSmoothing(0.3)
 
 ### DoubleExponentialSmoothing
 
-Calculates double exponential smoothing with alpha and beta parameters.
-
 ```go
 func (dl *DataList) DoubleExponentialSmoothing(alpha, beta float64) *DataList
 ```
+
+**Description:** Calculates double exponential smoothing with alpha and beta parameters.
 
 **Parameters:**
 
@@ -1349,11 +1470,11 @@ smoothed := dl.DoubleExponentialSmoothing(0.3, 0.2)
 
 ### MovingStdev
 
-Calculates moving standard deviation with specified window size.
-
 ```go
 func (dl *DataList) MovingStdev(windowSize int) *DataList
 ```
+
+**Description:** Calculates moving standard deviation with specified window size.
 
 **Parameters:**
 
@@ -1372,11 +1493,19 @@ mstdev := dl.MovingStdev(3)
 
 ### Summary
 
-Displays comprehensive statistical summary to the console.
-
 ```go
 func (dl *DataList) Summary()
 ```
+
+**Description:** Displays comprehensive statistical summary to the console.
+
+**Parameters:**
+
+- None.
+
+**Returns:**
+
+- None.
 
 **Example:**
 
@@ -1390,11 +1519,15 @@ dl.Summary()
 
 ### Upper
 
-Converts all string elements to uppercase.
-
 ```go
 func (dl *DataList) Upper() *DataList
 ```
+
+**Description:** Converts all string elements to uppercase.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -1410,11 +1543,15 @@ dl.Upper()
 
 ### Lower
 
-Converts all string elements to lowercase.
-
 ```go
 func (dl *DataList) Lower() *DataList
 ```
+
+**Description:** Converts all string elements to lowercase.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -1430,11 +1567,15 @@ dl.Lower()
 
 ### Capitalize
 
-Capitalizes the first letter of each string element.
-
 ```go
 func (dl *DataList) Capitalize() *DataList
 ```
+
+**Description:** Capitalizes the first letter of each string element.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -1452,11 +1593,11 @@ dl.Capitalize()
 
 ### LinearInterpolation
 
-Performs linear interpolation for a given x value.
-
 ```go
 func (dl *DataList) LinearInterpolation(x float64) float64
 ```
+
+**Description:** Performs linear interpolation for a given x value.
 
 **Parameters:**
 
@@ -1475,11 +1616,11 @@ interpolated := dl.LinearInterpolation(2.5) // Interpolate at x=2.5
 
 ### QuadraticInterpolation
 
-Performs quadratic interpolation for a given x value.
-
 ```go
 func (dl *DataList) QuadraticInterpolation(x float64) float64
 ```
+
+**Description:** Performs quadratic interpolation for a given x value.
 
 **Parameters:**
 
@@ -1498,11 +1639,11 @@ interpolated := dl.QuadraticInterpolation(2.5)
 
 ### LagrangeInterpolation
 
-Performs Lagrange interpolation for a given x value.
-
 ```go
 func (dl *DataList) LagrangeInterpolation(x float64) float64
 ```
+
+**Description:** Performs Lagrange interpolation for a given x value.
 
 **Parameters:**
 
@@ -1521,11 +1662,11 @@ interpolated := dl.LagrangeInterpolation(2.5)
 
 ### NearestNeighborInterpolation
 
-Performs nearest neighbor interpolation for a given x value.
-
 ```go
 func (dl *DataList) NearestNeighborInterpolation(x float64) float64
 ```
+
+**Description:** Performs nearest neighbor interpolation for a given x value.
 
 **Parameters:**
 
@@ -1544,11 +1685,11 @@ interpolated := dl.NearestNeighborInterpolation(2.3) // Returns nearest value
 
 ### NewtonInterpolation
 
-Performs Newton interpolation for a given x value.
-
 ```go
 func (dl *DataList) NewtonInterpolation(x float64) float64
 ```
+
+**Description:** Performs Newton interpolation for a given x value.
 
 **Parameters:**
 
@@ -1567,11 +1708,11 @@ interpolated := dl.NewtonInterpolation(2.5)
 
 ### HermiteInterpolation
 
-Performs Hermite interpolation with derivatives for a given x value.
-
 ```go
 func (dl *DataList) HermiteInterpolation(x float64, derivatives []float64) float64
 ```
+
+**Description:** Performs Hermite interpolation with derivatives for a given x value.
 
 **Parameters:**
 
@@ -1594,11 +1735,19 @@ interpolated := dl.HermiteInterpolation(2.5, derivatives)
 
 ### Show
 
-Displays DataList content in a clean, colored linear format.
-
 ```go
 func (dl *DataList) Show()
 ```
+
+**Description:** Displays DataList content in a clean, colored linear format.
+
+**Parameters:**
+
+- None.
+
+**Returns:**
+
+- None.
 
 **Example:**
 
@@ -1610,11 +1759,11 @@ dl.Show()
 
 ### ShowRange
 
-Displays DataList content within a specified range.
-
 ```go
 func (dl *DataList) ShowRange(startEnd ...any)
 ```
+
+**Description:** Displays DataList content within a specified range.
 
 **Parameters:**
 
@@ -1624,6 +1773,10 @@ func (dl *DataList) ShowRange(startEnd ...any)
   - Single negative integer (-n): shows last n items
   - Two parameters (start, end): shows items from start to end (exclusive)
   - Two parameters (start, nil): shows items from start to end
+
+**Returns:**
+
+- None.
 
 **Example:**
 
@@ -1637,11 +1790,19 @@ dl.ShowRange(5, nil) // Show items from index 5 to end
 
 ### ShowTypes
 
-Displays the data types of each element in the DataList.
-
 ```go
 func (dl *DataList) ShowTypes()
 ```
+
+**Description:** Displays the data types of each element in the DataList.
+
+**Parameters:**
+
+- None.
+
+**Returns:**
+
+- None.
 
 **Example:**
 
@@ -1658,11 +1819,11 @@ dl.ShowTypes()
 
 ### ShowTypesRange
 
-Displays the data types of DataList elements within a specified range.
-
 ```go
 func (dl *DataList) ShowTypesRange(startEnd ...any)
 ```
+
+**Description:** Displays the data types of DataList elements within a specified range.
 
 **Parameters:**
 
@@ -1672,6 +1833,10 @@ func (dl *DataList) ShowTypesRange(startEnd ...any)
   - Single negative integer (-n): shows last n items
   - Two parameters (start, end): shows items from start to end (exclusive)
   - Two parameters (start, nil): shows items from start to end
+
+**Returns:**
+
+- None.
 
 **Example:**
 
@@ -1687,11 +1852,11 @@ dl.ShowTypesRange(2, nil) // Show types from index 2 to end
 
 ### IsEqualTo
 
-Checks if the data content is equal to another DataList.
-
 ```go
 func (dl *DataList) IsEqualTo(other *DataList) bool
 ```
+
+**Description:** Checks if the data content is equal to another DataList.
 
 **Parameters:**
 
@@ -1711,11 +1876,11 @@ isEqual := dl1.IsEqualTo(dl2) // true
 
 ### IsTheSameAs
 
-Checks if the DataList is identical to another (including metadata).
-
 ```go
 func (dl *DataList) IsTheSameAs(other *DataList) bool
 ```
+
+**Description:** Checks if the DataList is identical to another (including metadata).
 
 **Parameters:**
 
@@ -1737,11 +1902,15 @@ isSame := dl1.IsTheSameAs(dl2) // true
 
 ### ParseNumbers
 
-Converts all elements to numeric values where possible.
-
 ```go
 func (dl *DataList) ParseNumbers() *DataList
 ```
+
+**Description:** Converts all elements to numeric values where possible.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -1757,11 +1926,15 @@ dl.ParseNumbers()
 
 ### ParseStrings
 
-Converts all elements to string values.
-
 ```go
 func (dl *DataList) ParseStrings() *DataList
 ```
+
+**Description:** Converts all elements to string values.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -1777,11 +1950,15 @@ dl.ParseStrings()
 
 ### ToF64Slice
 
-Converts DataList to a slice of float64 values.
-
 ```go
 func (dl *DataList) ToF64Slice() []float64
 ```
+
+**Description:** Converts DataList to a slice of float64 values.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -1796,11 +1973,15 @@ floatSlice := dl.ToF64Slice() // [1.0, 2.5, 0.0, 4.0]
 
 ### ToStringSlice
 
-Converts DataList to a slice of string values.
-
 ```go
 func (dl *DataList) ToStringSlice() []string
 ```
+
+**Description:** Converts DataList to a slice of string values.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -1815,11 +1996,15 @@ stringSlice := dl.ToStringSlice() // ["1", "2.5", "true", "hello"]
 
 ### Clone
 
-Creates a deep copy of the DataList.
-
 ```go
 func (dl *DataList) Clone() *DataList
 ```
+
+**Description:** Creates a deep copy of the DataList.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -1837,11 +2022,15 @@ dl2 := dl1.Clone()
 
 ### GetName
 
-Retrieves the name assigned to the DataList.
-
 ```go
 func (dl *DataList) GetName() string
 ```
+
+**Description:** Retrieves the name assigned to the DataList.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -1857,11 +2046,11 @@ name := dl.GetName() // "My_Data"
 
 ### SetName
 
-Assigns a name to the DataList. Use snake-style Pascal case (e.g., `Factor_Loadings`) to avoid spelling errors caused by spaces.
-
 ```go
 func (dl *DataList) SetName(name string) *DataList
 ```
+
+**Description:** Assigns a name to the DataList. Use snake-style Pascal case (e.g., `Factor_Loadings`) to avoid spelling errors caused by spaces.
 
 **Parameters:**
 
@@ -1880,11 +2069,15 @@ dl.SetName("Factor_Loadings")
 
 ### GetCreationTimestamp
 
-Returns the creation timestamp in Unix format.
-
 ```go
 func (dl *DataList) GetCreationTimestamp() int64
 ```
+
+**Description:** Returns the creation timestamp in Unix format.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -1899,11 +2092,15 @@ timestamp := dl.GetCreationTimestamp()
 
 ### GetLastModifiedTimestamp
 
-Returns the last modification timestamp in Unix format.
-
 ```go
 func (dl *DataList) GetLastModifiedTimestamp() int64
 ```
+
+**Description:** Returns the last modification timestamp in Unix format.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -1921,11 +2118,11 @@ timestamp := dl.GetLastModifiedTimestamp()
 
 ### Count
 
-Returns the number of occurrences of a specified value. Supports `math.NaN()`.
-
 ```go
 func (dl *DataList) Count(value any) int
 ```
+
+**Description:** Returns the number of occurrences of a specified value. Supports `math.NaN()`.
 
 **Parameters:**
 
@@ -1945,11 +2142,15 @@ countNaN := dl.Count(math.NaN()) // 1
 
 ### Counter
 
-Returns a map showing the count of each unique value.
-
 ```go
 func (dl *DataList) Counter() map[any]int
 ```
+
+**Description:** Returns a map showing the count of each unique value.
+
+**Parameters:**
+
+- None.
 
 **Returns:**
 
@@ -1965,11 +2166,11 @@ counter := dl.Counter()
 
 ### FindFirst
 
-Finds the first occurrence of a value and returns its index. Supports `math.NaN()`.
-
 ```go
 func (dl *DataList) FindFirst(value any) any
 ```
+
+**Description:** Finds the first occurrence of a value and returns its index. Supports `math.NaN()`.
 
 **Parameters:**
 
@@ -1989,11 +2190,11 @@ indexNaN := dl.FindFirst(math.NaN()) // 5
 
 ### FindLast
 
-Finds the last occurrence of a value and returns its index. Supports `math.NaN()`.
-
 ```go
 func (dl *DataList) FindLast(value any) any
 ```
+
+**Description:** Finds the last occurrence of a value and returns its index. Supports `math.NaN()`.
 
 **Parameters:**
 
@@ -2013,11 +2214,11 @@ indexNaN := dl.FindLast(math.NaN()) // 5
 
 ### FindAll
 
-Finds all occurrences of a value and returns their indices. Supports `math.NaN()`.
-
 ```go
 func (dl *DataList) FindAll(value any) []int
 ```
+
+**Description:** Finds all occurrences of a value and returns their indices. Supports `math.NaN()`.
 
 **Parameters:**
 
@@ -2037,11 +2238,11 @@ indicesNaN := dl.FindAll(math.NaN()) // [6]
 
 ### ReplaceFirst
 
-Replaces the first occurrence of a value with a new value.
-
 ```go
 func (dl *DataList) ReplaceFirst(oldValue, newValue any) *DataList
 ```
+
+**Description:** Replaces the first occurrence of a value with a new value.
 
 **Parameters:**
 
@@ -2062,11 +2263,11 @@ dl.ReplaceFirst(2, 99)
 
 ### ReplaceLast
 
-Replaces the last occurrence of a value with a new value.
-
 ```go
 func (dl *DataList) ReplaceLast(oldValue, newValue any) *DataList
 ```
+
+**Description:** Replaces the last occurrence of a value with a new value.
 
 **Parameters:**
 
@@ -2087,11 +2288,11 @@ dl.ReplaceLast(2, 99)
 
 ### ReplaceAll
 
-Replaces all occurrences of a value with a new value.
-
 ```go
 func (dl *DataList) ReplaceAll(oldValue, newValue any) *DataList
 ```
+
+**Description:** Replaces all occurrences of a value with a new value.
 
 **Parameters:**
 

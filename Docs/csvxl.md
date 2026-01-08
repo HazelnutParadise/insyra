@@ -54,7 +54,18 @@ const (
 func CsvToExcel(csvFiles []string, sheetNames []string, output string, csvEncoding ...string) error
 ```
 
-Converts multiple CSV files into a new Excel workbook. If `sheetNames` is empty, filenames are used.
+**Description:** Converts multiple CSV files into a new Excel workbook. If `sheetNames` is empty, filenames are used.
+
+**Parameters:**
+
+- `csvFiles`: File path to use. Type: `[]string`.
+- `sheetNames`: Sheet name or list of sheet names. Type: `[]string`.
+- `output`: Output location or file name. Type: `string`.
+- `csvEncoding`: Variadic `string` values.
+
+**Returns:**
+
+- `error`: Error when the operation fails.
 
 ### `AppendCsvToExcel`
 
@@ -62,7 +73,18 @@ Converts multiple CSV files into a new Excel workbook. If `sheetNames` is empty,
 func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile string, csvEncoding ...string) error
 ```
 
-Appends CSV files as new sheets. Existing sheets with the same name are overwritten.
+**Description:** Appends CSV files as new sheets. Existing sheets with the same name are overwritten.
+
+**Parameters:**
+
+- `csvFiles`: File path to use. Type: `[]string`.
+- `sheetNames`: Sheet name or list of sheet names. Type: `[]string`.
+- `existingFile`: File path to use. Type: `string`.
+- `csvEncoding`: Variadic `string` values.
+
+**Returns:**
+
+- `error`: Error when the operation fails.
 
 ### `ExcelToCsv`
 
@@ -70,7 +92,18 @@ Appends CSV files as new sheets. Existing sheets with the same name are overwrit
 func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyContainSheets ...string) error
 ```
 
-Splits an Excel workbook into CSV files. Use `onlyContainSheets` to export selected sheets.
+**Description:** Splits an Excel workbook into CSV files. Use `onlyContainSheets` to export selected sheets.
+
+**Parameters:**
+
+- `excelFile`: File path to use. Type: `string`.
+- `outputDir`: Directory path to use. Type: `string`.
+- `csvNames`: CSV file path or CSV-related value. Type: `[]string`.
+- `onlyContainSheets`: Variadic `string` values.
+
+**Returns:**
+
+- `error`: Error when the operation fails.
 
 ### `EachCsvToOneExcel`
 
@@ -78,7 +111,17 @@ Splits an Excel workbook into CSV files. Use `onlyContainSheets` to export selec
 func EachCsvToOneExcel(dir string, output string, encoding ...string) error
 ```
 
-Converts all CSV files in a directory into a single Excel workbook.
+**Description:** Converts all CSV files in a directory into a single Excel workbook.
+
+**Parameters:**
+
+- `dir`: Directory path to use. Type: `string`.
+- `output`: Output location or file name. Type: `string`.
+- `encoding`: Variadic `string` values.
+
+**Returns:**
+
+- `error`: Error when the operation fails.
 
 ### `EachExcelToCsv`
 
@@ -86,7 +129,16 @@ Converts all CSV files in a directory into a single Excel workbook.
 func EachExcelToCsv(dir string, outputDir string) error
 ```
 
-Converts all `.xlsx` files in a directory into CSV files.
+**Description:** Converts all `.xlsx` files in a directory into CSV files.
+
+**Parameters:**
+
+- `dir`: Directory path to use. Type: `string`.
+- `outputDir`: Directory path to use. Type: `string`.
+
+**Returns:**
+
+- `error`: Error when the operation fails.
 
 ### `ReadCsvToString`
 
@@ -94,7 +146,17 @@ Converts all `.xlsx` files in a directory into CSV files.
 func ReadCsvToString(filePath string, encoding ...string) (string, error)
 ```
 
-Reads a CSV file and returns UTF-8 content.
+**Description:** Reads a CSV file and returns UTF-8 content.
+
+**Parameters:**
+
+- `filePath`: File path to use. Type: `string`.
+- `encoding`: Variadic `string` values.
+
+**Returns:**
+
+- `string`: Return value.
+- `error`: Error when the operation fails.
 
 ### `insyra.DetectEncoding`
 
@@ -102,4 +164,13 @@ Reads a CSV file and returns UTF-8 content.
 func insyra.DetectEncoding(csvFile string) (string, error)
 ```
 
-Detects file encoding using BOM checks, UTF-8 validation, and `chardet` fallback.
+**Description:** Detects file encoding using BOM checks, UTF-8 validation, and `chardet` fallback.
+
+**Parameters:**
+
+- `csvFile`: File path to use. Type: `string`.
+
+**Returns:**
+
+- `string`: Return value.
+- `error`: Error when the operation fails.
