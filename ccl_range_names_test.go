@@ -47,7 +47,7 @@ func TestCCLRangeWithNames(t *testing.T) {
 	// Test 2: Row Range with Names "Row1":"Row3"
 	// Should return rows 0, 1, 2 for ColA -> [10, 20, 30]
 	// Note: Row1 is index 0, Row3 is index 2.
-	dt.AddColUsingCCL("RangeRowNames", "ColA.\"Row1\":\"Row3\"")
+	dt.AddColUsingCCL("RangeRowNames", "['ColA'].\"Row1\":\"Row3\"")
 	col2 := dt.GetColByName("RangeRowNames")
 	if col2 != nil {
 		val2 := col2.Data()[0]
@@ -87,7 +87,7 @@ func TestCCLRangeWithNames(t *testing.T) {
 
 	// Test 4: Mixed Row Range "Row1":2
 	// Should return rows 0, 1, 2 for ColA -> [10, 20, 30]
-	dt.AddColUsingCCL("RangeRowMixed", "ColA.\"Row1\":2")
+	dt.AddColUsingCCL("RangeRowMixed", "['ColA'].\"Row1\":2")
 	col4 := dt.GetColByName("RangeRowMixed")
 	if col4 != nil {
 		val4 := col4.Data()[0]
@@ -117,7 +117,11 @@ func TestCCLRangeWithNames(t *testing.T) {
 	// We can't easily set value via CCL without row index.
 	// Let's just read it. It should be 0.
 	dt.AddColUsingCCL("TestAB", "[AB].0")
-	valAB := dt.GetColByName("TestAB").Data()[0]
+	colAB := dt.GetColByName("TestAB")
+	if colAB == nil {
+		t.Fatal("TestAB column not created")
+	}
+	valAB := colAB.Data()[0]
 	if toFloat(valAB) != 0.0 {
 		t.Errorf("TestAB value mismatch: got %v, want 0", valAB)
 	}
