@@ -410,7 +410,7 @@ func TestDataTable_Clone(t *testing.T) {
 	}
 
 	// Check if rowNames is copied
-	if len(clonedDT.rowNames) != len(dt.rowNames) {
+	if clonedDT.rowNames.Len() != dt.rowNames.Len() {
 		t.Errorf("Clone() did not copy rowNames correctly")
 	}
 }

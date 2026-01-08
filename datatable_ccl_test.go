@@ -77,20 +77,20 @@ func TestDataTable_ExecuteCCL_NewColumn(t *testing.T) {
 func TestDataTable_ExecuteCCL_MultilineStatements(t *testing.T) {
 	// 創建測試 DataTable
 	dt := NewDataTable(
-		NewDataList(1, 2, 3, 4).SetName("A"),
+		NewDataList(1, 2, 3, 4).SetName("Ai"),
 		NewDataList(10, 20, 30, 40).SetName("B"),
 		NewDataList(100, 200, 300, 400).SetName("C"),
 	)
 
 	// 執行多行 CCL
 	dt.ExecuteCCL(`
-		A = A * 10
+		A = ['Ai'] * 10
 		NEW('D') = A + B + C
 	`)
 
 	// 驗證 A 列被修改
 	expectedA := []any{float64(10), float64(20), float64(30), float64(40)}
-	colA := dt.GetColByName("A")
+	colA := dt.GetColByName("Ai")
 	for i, v := range colA.Data() {
 		if v != expectedA[i] {
 			t.Errorf("Column A, Row %d: expected %v, got %v", i, expectedA[i], v)

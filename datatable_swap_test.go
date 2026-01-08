@@ -208,11 +208,11 @@ func TestDataTable_SwapRowsByName(t *testing.T) {
 	expectedRowAIndex_1 := 1 // After swap, RowA should be at index 1
 	expectedRowBIndex_1 := 0 // After swap, RowB should be at index 0
 
-	if dt1.rowNames["RowA"] != expectedRowAIndex_1 {
-		t.Errorf("TestSwapRowsByName Case 1 Failed: Expected RowA to be at index %d, got %d", expectedRowAIndex_1, dt1.rowNames["RowA"])
+	if idx, ok := dt1.GetRowIndexByName("RowA"); !ok || idx != expectedRowAIndex_1 {
+		t.Errorf("TestSwapRowsByName Case 1 Failed: Expected RowA to be at index %d, got %d (exists: %t)", expectedRowAIndex_1, idx, ok)
 	}
-	if dt1.rowNames["RowB"] != expectedRowBIndex_1 {
-		t.Errorf("TestSwapRowsByName Case 1 Failed: Expected RowB to be at index %d, got %d", expectedRowBIndex_1, dt1.rowNames["RowB"])
+	if idx, ok := dt1.GetRowIndexByName("RowB"); !ok || idx != expectedRowBIndex_1 {
+		t.Errorf("TestSwapRowsByName Case 1 Failed: Expected RowB to be at index %d, got %d (exists: %t)", expectedRowBIndex_1, idx, ok)
 	}
 	if dt1.columns[0].data[0] != "a" { // Data of original RowB, Col1 (index 1)
 		t.Errorf("TestSwapRowsByName Case 1 Failed: Expected data at [0,0] to be \"a\", got %v", dt1.columns[0].data[0])
@@ -223,9 +223,9 @@ func TestDataTable_SwapRowsByName(t *testing.T) {
 		NewDataList(10).SetName("ColX"),
 	)
 	dt2.SetRowNameByIndex(0, "RAlpha")
-	dt2.SwapRowsByName("RAlpha", "RBeta") // RBeta does not exist
-	if dt2.rowNames["RAlpha"] != 0 {      // Should not change
-		t.Errorf("TestSwapRowsByName Case 2 Failed: Expected RAlpha to remain at index 0, got %d", dt2.rowNames["RAlpha"])
+	dt2.SwapRowsByName("RAlpha", "RBeta")                            // RBeta does not exist
+	if idx, ok := dt2.GetRowIndexByName("RAlpha"); !ok || idx != 0 { // Should not change
+		t.Errorf("TestSwapRowsByName Case 2 Failed: Expected RAlpha to remain at index 0, got %d (exists: %t)", idx, ok)
 	}
 
 	// Test case 3: Swap same row name
@@ -235,7 +235,7 @@ func TestDataTable_SwapRowsByName(t *testing.T) {
 	dt3.SetRowNameByIndex(0, "TFirst")
 	dt3.SetRowNameByIndex(1, "TSecond")
 	dt3.SwapRowsByName("TFirst", "TFirst")
-	if dt3.rowNames["TFirst"] != 0 || dt3.columns[0].data[0] != 100 {
-		t.Errorf("TestSwapRowsByName Case 3 Failed: Expected TFirst to remain unchanged.")
+	if idx, ok := dt3.GetRowIndexByName("TFirst"); !ok || idx != 0 || dt3.columns[0].data[0] != 100 {
+		t.Errorf("TestSwapRowsByName Case 3 Failed: Expected TFirst to remain unchanged (idx: %d, exists: %t, value: %v).", idx, ok, dt3.columns[0].data[0])
 	}
 }

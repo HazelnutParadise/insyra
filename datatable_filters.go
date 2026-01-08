@@ -3,6 +3,8 @@ package insyra
 import (
 	"strings"
 	"time"
+
+	"github.com/HazelnutParadise/insyra/internal/core"
 )
 
 // ==================== Col Index ====================
@@ -235,9 +237,15 @@ func (dt *DataTable) FilterRowsByRowIndexLessThanOrEqualTo(threshold int) *DataT
 // FilterRowsByRowNameEqualTo filters to only keep the row with the specified name.
 func (dt *DataTable) FilterRowsByRowNameEqualTo(rowName string) *DataTable {
 	newdt := dt.FilterRowsByRowNameContains(rowName)
-	for name, index := range newdt.rowNames {
-		if name == rowName {
-			return newdt.FilterRowsByRowIndexEqualTo(index)
+	if newdt.rowNames != nil {
+		for _, id := range newdt.rowNames.IDs() {
+			name, ok := newdt.rowNames.Get(id)
+			if !ok {
+				continue
+			}
+			if name == rowName {
+				return newdt.FilterRowsByRowIndexEqualTo(id)
+			}
 		}
 	}
 	return &DataTable{}
@@ -249,9 +257,15 @@ func (dt *DataTable) FilterRowsByRowNameContains(substring string) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		// 找出符合條件的行索引
 		var filteredRowIndices []int
-		for name, rowIndex := range dt.rowNames {
-			if strings.Contains(name, substring) {
-				filteredRowIndices = append(filteredRowIndices, rowIndex)
+		if dt.rowNames != nil {
+			for _, id := range dt.rowNames.IDs() {
+				name, ok := dt.rowNames.Get(id)
+				if !ok || name == "" {
+					continue
+				}
+				if strings.Contains(name, substring) {
+					filteredRowIndices = append(filteredRowIndices, id)
+				}
 			}
 		}
 
@@ -292,17 +306,26 @@ func (dt *DataTable) FilterRowsByRowNameContains(substring string) *DataTable {
 	return result
 }
 
-// filterRowNames creates a new map of row names with updated indices after filtering.
-func filterRowNames(originalRowNames map[string]int, filteredIndices []int) map[string]int {
-	newRowNames := make(map[string]int)
-	for name, originalIndex := range originalRowNames {
-		for newIndex, filteredIndex := range filteredIndices {
-			if originalIndex == filteredIndex {
-				newRowNames[name] = newIndex
+// filterRowNames remaps row names to match filtered row indices.
+func filterRowNames(originalRowNames *core.BiIndex, filteredIndices []int) *core.BiIndex {
+	if originalRowNames == nil || originalRowNames.Len() == 0 {
+		return core.NewBiIndex(0)
+	}
+	indexMap := make(map[int]int, len(filteredIndices))
+	for newIndex, filteredIndex := range filteredIndices {
+		indexMap[filteredIndex] = newIndex
+	}
+	remapped := core.NewBiIndex(originalRowNames.Len())
+	for _, id := range originalRowNames.IDs() {
+		if target, exists := indexMap[id]; exists {
+			name, ok := originalRowNames.Get(id)
+			if !ok || name == "" {
+				continue
 			}
+			_, _ = remapped.Set(target, name)
 		}
 	}
-	return newRowNames
+	return remapped
 }
 
 // ==================== Custom Element ====================

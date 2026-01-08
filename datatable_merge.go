@@ -2,6 +2,8 @@ package insyra
 
 import (
 	"fmt"
+
+	"github.com/HazelnutParadise/insyra/internal/core"
 )
 
 type MergeMode int
@@ -168,23 +170,21 @@ func (dt *DataTable) mergeHorizontal(other IDataTable, on string, mode MergeMode
 			}
 
 			// Collect row names
-			resultRowNames := make(map[string]int)
+			resultRowNames := core.NewBiIndex(0)
 			currentRowIdx := 0
 
-			// Helper to ensure unique row names in the result map
-			safeMapName := func(m map[string]int, name string) string {
+			// Helper to ensure unique row names in the result set
+			ensureUniqueName := func(name string) string {
 				if name == "" {
 					return ""
 				}
 				originalName := name
 				counter := 1
-				for {
-					if _, exists := m[name]; !exists {
-						return name
-					}
+				for resultRowNames.Has(name) {
 					name = fmt.Sprintf("%s_%d", originalName, counter)
 					counter++
 				}
+				return name
 			}
 
 			// Fill data
@@ -208,7 +208,8 @@ func (dt *DataTable) mergeHorizontal(other IDataTable, on string, mode MergeMode
 							}
 
 							if rowName != "" {
-								resultRowNames[safeMapName(resultRowNames, rowName)] = currentRowIdx
+								uniqueName := ensureUniqueName(rowName)
+								_, _ = resultRowNames.Set(currentRowIdx, uniqueName)
 							}
 
 							colOffset := 0
@@ -238,7 +239,8 @@ func (dt *DataTable) mergeHorizontal(other IDataTable, on string, mode MergeMode
 						}
 
 						if rowName != "" {
-							resultRowNames[safeMapName(resultRowNames, rowName)] = currentRowIdx
+							uniqueName := ensureUniqueName(rowName)
+							_, _ = resultRowNames.Set(currentRowIdx, uniqueName)
 						}
 
 						colOffset := 0
@@ -267,7 +269,8 @@ func (dt *DataTable) mergeHorizontal(other IDataTable, on string, mode MergeMode
 						}
 
 						if rowName != "" {
-							resultRowNames[safeMapName(resultRowNames, rowName)] = currentRowIdx
+							uniqueName := ensureUniqueName(rowName)
+							_, _ = resultRowNames.Set(currentRowIdx, uniqueName)
 						}
 
 						colOffset := 0
@@ -405,7 +408,9 @@ func (dt *DataTable) mergeVertical(other IDataTable, mode MergeMode) (*DataTable
 					result.columns[j].data = append(result.columns[j].data, val)
 				}
 				if name, ok := d.getRowNameByIndex(i); ok {
-					result.rowNames[safeRowName(result, name)] = i
+					if unique := safeRowName(result, name); unique != "" {
+						_, _ = result.rowNames.Set(i, unique)
+					}
 				}
 			}
 
@@ -422,7 +427,9 @@ func (dt *DataTable) mergeVertical(other IDataTable, mode MergeMode) (*DataTable
 					result.columns[j].data = append(result.columns[j].data, val)
 				}
 				if name, ok := o.getRowNameByIndex(i); ok {
-					result.rowNames[safeRowName(result, name)] = currentRows + i
+					if unique := safeRowName(result, name); unique != "" {
+						_, _ = result.rowNames.Set(currentRows+i, unique)
+					}
 				}
 			}
 		})

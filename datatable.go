@@ -13,6 +13,7 @@ import (
 
 	"github.com/HazelnutParadise/Go-Utils/asyncutil"
 	"github.com/HazelnutParadise/Go-Utils/conv"
+	"github.com/HazelnutParadise/insyra/internal/core"
 	"github.com/HazelnutParadise/insyra/parallel"
 )
 
@@ -33,7 +34,7 @@ import (
 type DataTable struct {
 	columns               []*DataList
 	columnIndex           map[string]int // 儲存字母索引與切片中的索引對應
-	rowNames              map[string]int
+	rowNames              *core.BiIndex
 	name                  string
 	creationTimestamp     int64
 	lastModifiedTimestamp atomic.Int64
@@ -52,7 +53,7 @@ func NewDataTable(columns ...*DataList) *DataTable {
 	newTable := &DataTable{
 		columns:           []*DataList{},
 		columnIndex:       make(map[string]int),
-		rowNames:          make(map[string]int),
+		rowNames:          core.NewBiIndex(0),
 		creationTimestamp: now,
 	}
 
@@ -114,7 +115,7 @@ func (dt *DataTable) AppendRowsFromDataList(rowsData ...*DataList) *DataTable {
 
 			if rowData.name != "" {
 				srn := safeRowName(dt, rowData.name)
-				dt.rowNames[srn] = maxLength
+				_, _ = dt.rowNames.Set(maxLength, srn)
 			}
 
 			if len(rowData.data) > len(dt.columns) {
@@ -367,7 +368,7 @@ func (dt *DataTable) GetRow(index int) *DataList {
 func (dt *DataTable) GetRowByName(name string) *DataList {
 	var result *DataList
 	dt.AtomicDo(func(dt *DataTable) {
-		if index, exists := dt.rowNames[name]; exists {
+		if index, exists := dt.rowNames.Index(name); exists {
 			// 初始化新的 DataList 並分配 data 切片的大小
 			dl := NewDataList()
 			// 拷貝數據到新的 DataList
@@ -467,14 +468,8 @@ func (dt *DataTable) UpdateRow(index int, dl *DataList) *DataTable {
 
 		// 更新行名
 		if dl.name != "" {
-			for rowName, rowIndex := range dt.rowNames {
-				if rowIndex == index {
-					delete(dt.rowNames, rowName)
-					break
-				}
-			}
 			srn := safeRowName(dt, dl.name)
-			dt.rowNames[srn] = index
+			_, _ = dt.rowNames.Set(index, srn)
 		}
 
 		go dt.updateTimestamp()
@@ -492,7 +487,7 @@ func (dt *DataTable) SetColToRowNames(columnIndex string) *DataTable {
 		for i, value := range column.data {
 			if value != nil {
 				rowName := safeRowName(dt, conv.ToString(value))
-				dt.rowNames[rowName] = i
+				_, _ = dt.rowNames.Set(i, rowName)
 			}
 		}
 
@@ -971,19 +966,16 @@ func (dt *DataTable) DropRowsByIndex(rowIndices ...int) *DataTable {
 				rowIndex = dt.getMaxColLength() + rowIndex
 			}
 			adjustedIndex := rowIndex - i // 因為每刪除一行，後續的行索引會變動
+			if adjustedIndex < 0 || adjustedIndex >= dt.getMaxColLength() {
+				continue
+			}
 			for _, column := range dt.columns {
 				if adjustedIndex >= 0 && adjustedIndex < len(column.data) {
 					column.data = append(column.data[:adjustedIndex], column.data[adjustedIndex+1:]...)
 				}
 			}
 
-			// 如果該行有名稱，也從 rowNames 中刪除
-			for rowName, index := range dt.rowNames {
-				if index == rowIndex {
-					delete(dt.rowNames, rowName)
-					break
-				}
-			}
+			dt.reindexRowNamesAfterRemoval(adjustedIndex)
 		}
 		go dt.updateTimestamp()
 	})
@@ -994,7 +986,7 @@ func (dt *DataTable) DropRowsByIndex(rowIndices ...int) *DataTable {
 func (dt *DataTable) DropRowsByName(rowNames ...string) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		for _, rowName := range rowNames {
-			rowIndex, exists := dt.rowNames[rowName]
+			rowIndex, exists := dt.rowNames.Index(rowName)
 			if !exists {
 				dt.warn("DropRowsByName", "Row name '%s' does not exist", rowName)
 				continue
@@ -1007,15 +999,7 @@ func (dt *DataTable) DropRowsByName(rowNames ...string) *DataTable {
 				}
 			}
 
-			// 移除行名索引
-			delete(dt.rowNames, rowName)
-
-			// 更新所有行名索引，以反映行被刪除後的變化
-			for name, idx := range dt.rowNames {
-				if idx > rowIndex {
-					dt.rowNames[name] = idx - 1
-				}
-			}
+			dt.reindexRowNamesAfterRemoval(rowIndex)
 		}
 
 		go dt.updateTimestamp()
@@ -1055,14 +1039,7 @@ func (dt *DataTable) DropRowsContainString() *DataTable {
 				}
 			}
 
-			// 刪除行名對應
-			for rowName, idx := range dt.rowNames {
-				if idx == rowIndex {
-					delete(dt.rowNames, rowName)
-				} else if idx > rowIndex {
-					dt.rowNames[rowName] = idx - 1
-				}
-			}
+			dt.reindexRowNamesAfterRemoval(rowIndex)
 		}
 		go dt.updateTimestamp()
 	})
@@ -1101,16 +1078,7 @@ func (dt *DataTable) DropRowsContainNumber() *DataTable {
 			}
 		}
 
-		// 更新 rowNames 索引
-		newRowNames := make(map[string]int)
-		newIndex := 0
-		for name, oldIndex := range dt.rowNames {
-			if rowsToKeep[oldIndex] {
-				newRowNames[name] = newIndex
-				newIndex++
-			}
-		}
-		dt.rowNames = newRowNames
+		dt.remapRowNames(rowsToKeep)
 
 		go dt.updateTimestamp()
 	})
@@ -1155,13 +1123,7 @@ func (dt *DataTable) DropRowsContainNil() *DataTable {
 		}
 
 		// 更新 rowNames 映射，以移除被刪除的行
-		for rowName, rowIndex := range dt.rowNames {
-			if rowIndex >= len(nonNilRowIndices) || rowIndex != nonNilRowIndices[rowIndex] {
-				delete(dt.rowNames, rowName)
-			} else {
-				dt.rowNames[rowName] = rowIndex
-			}
-		}
+		dt.remapRowNamesByIndices(nonNilRowIndices)
 		go dt.updateTimestamp()
 	})
 	return dt
@@ -1207,13 +1169,7 @@ func (dt *DataTable) DropRowsContainNaN() *DataTable {
 		}
 
 		// 更新 rowNames 映射，以移除被刪除的行
-		for rowName, rowIndex := range dt.rowNames {
-			if rowIndex >= len(nonNaNRowIndices) || rowIndex != nonNaNRowIndices[rowIndex] {
-				delete(dt.rowNames, rowName)
-			} else {
-				dt.rowNames[rowName] = rowIndex
-			}
-		}
+		dt.remapRowNamesByIndices(nonNaNRowIndices)
 		go dt.updateTimestamp()
 	})
 	return dt
@@ -1260,16 +1216,7 @@ func (dt *DataTable) DropRowsContain(value ...any) *DataTable {
 				}
 			}
 		}
-		// 更新 rowNames 索引
-		newRowNames := make(map[string]int)
-		newIndex := 0
-		for name, oldIndex := range dt.rowNames {
-			if rowsToKeep[oldIndex] {
-				newRowNames[name] = newIndex
-				newIndex++
-			}
-		}
-		dt.rowNames = newRowNames
+		dt.remapRowNames(rowsToKeep)
 		go dt.updateTimestamp()
 	})
 	return dt
@@ -1398,11 +1345,18 @@ func (dt *DataTable) Transpose() *DataTable {
 		dls := make([]*DataList, 0)
 		dls = append(dls, dt.columns...)
 
-		oldRowNames := dt.rowNames
-		dt.rowNames = make(map[string]int)
+		oldRowNames := dt.rowNames.Clone()
+		dt.rowNames = core.NewBiIndex(0)
+		nameByIndex := make(map[int]string)
+		for _, rowIndex := range oldRowNames.IDs() {
+			if name, ok := oldRowNames.Get(rowIndex); ok && name != "" {
+				nameByIndex[rowIndex] = name
+			}
+		}
+
 		newDt := &DataTable{
 			columns:           make([]*DataList, 0),
-			rowNames:          make(map[string]int),
+			rowNames:          core.NewBiIndex(0),
 			columnIndex:       make(map[string]int),
 			creationTimestamp: dt.GetCreationTimestamp(),
 		}
@@ -1410,13 +1364,10 @@ func (dt *DataTable) Transpose() *DataTable {
 		newDt.lastModifiedTimestamp.Store(dt.GetLastModifiedTimestamp())
 
 		for i, col := range dls {
-
 			newDt.AppendRowsFromDataList(col)
-			for rowName, rowIndex := range oldRowNames {
-				if rowIndex == i {
-					newDt.columns[i].name = rowName
-					newDt.columnIndex[generateColIndex(i)] = i
-				}
+			if name, ok := nameByIndex[i]; ok {
+				newDt.columns[i].name = name
+				newDt.columnIndex[generateColIndex(i)] = i
 			}
 		}
 
@@ -1440,7 +1391,7 @@ func (dt *DataTable) Clone() *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		clonedColumns := make([]*DataList, len(dt.columns))
 		clonedColumnIndex := make(map[string]int)
-		clonedRowNames := make(map[string]int)
+		var clonedRowNames *core.BiIndex
 		parallel.GroupUp(func() {
 			// Clone columns
 			for i, col := range dt.columns {
@@ -1451,7 +1402,7 @@ func (dt *DataTable) Clone() *DataTable {
 			maps.Copy(clonedColumnIndex, dt.columnIndex)
 		}, func() {
 			// Clone rowNames map
-			maps.Copy(clonedRowNames, dt.rowNames)
+			clonedRowNames = dt.rowNames.Clone()
 		}).Run().AwaitResult()
 
 		// Create new DataTable with cloned data
@@ -1493,12 +1444,10 @@ func (dt *DataTable) To2DSlice() [][]any {
 // ======================== Utilities ========================
 
 func (dt *DataTable) getRowNameByIndex(index int) (string, bool) {
-	for rowName, rowIndex := range dt.rowNames {
-		if rowIndex == index {
-			return rowName, true
-		}
+	if dt.rowNames == nil {
+		return "", false
 	}
-	return "", false
+	return dt.rowNames.Get(index)
 }
 
 func (dt *DataTable) getMaxColLength() int {
@@ -1569,18 +1518,78 @@ func safeRowName(dt *DataTable, name string) string {
 	originalName := name
 	counter := 1
 
-	for {
-		// 檢查是否已經存在該行名
-		if _, exists := dt.rowNames[name]; !exists {
-			break // 如果行名不存在，跳出循環
-		}
+	if dt.rowNames == nil {
+		dt.rowNames = core.NewBiIndex(0)
+	}
 
-		// 如果行名存在，則生成新的行名並繼續檢查
+	for dt.rowNames.Has(name) {
 		name = fmt.Sprintf("%s_%d", originalName, counter)
 		counter++
 	}
 
 	return name
+}
+
+func (dt *DataTable) reindexRowNamesAfterRemoval(removedIndex int) {
+	if dt.rowNames == nil || dt.rowNames.Len() == 0 {
+		return
+	}
+	_, _, _ = dt.rowNames.DeleteAndShift(removedIndex)
+}
+
+func (dt *DataTable) remapRowNames(rowsToKeep []bool) {
+	if dt.rowNames == nil || dt.rowNames.Len() == 0 {
+		dt.rowNames = core.NewBiIndex(0)
+		return
+	}
+	indexMap := make([]int, len(rowsToKeep))
+	newPos := 0
+	for i, keep := range rowsToKeep {
+		if keep {
+			indexMap[i] = newPos
+			newPos++
+		} else {
+			indexMap[i] = -1
+		}
+	}
+	remapped := core.NewBiIndex(dt.rowNames.Len())
+	for _, id := range dt.rowNames.IDs() {
+		if id < 0 || id >= len(indexMap) {
+			continue
+		}
+		target := indexMap[id]
+		if target < 0 {
+			continue
+		}
+		name, ok := dt.rowNames.Get(id)
+		if !ok || name == "" {
+			continue
+		}
+		_, _ = remapped.Set(target, name)
+	}
+	dt.rowNames = remapped
+}
+
+func (dt *DataTable) remapRowNamesByIndices(keptIndices []int) {
+	if dt.rowNames == nil || dt.rowNames.Len() == 0 {
+		dt.rowNames = core.NewBiIndex(0)
+		return
+	}
+	indexMap := make(map[int]int, len(keptIndices))
+	for newIdx, oldIdx := range keptIndices {
+		indexMap[oldIdx] = newIdx
+	}
+	remapped := core.NewBiIndex(dt.rowNames.Len())
+	for _, id := range dt.rowNames.IDs() {
+		name, ok := dt.rowNames.Get(id)
+		if !ok || name == "" {
+			continue
+		}
+		if target, exists := indexMap[id]; exists {
+			_, _ = remapped.Set(target, name)
+		}
+	}
+	dt.rowNames = remapped
 }
 
 func safeColName(dt *DataTable, name string) string {

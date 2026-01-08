@@ -145,13 +145,13 @@ func (dt *DataTable) SwapRowsByIndex(rowIndex1 int, rowIndex2 int) *DataTable {
 func (dt *DataTable) SwapRowsByName(rowName1 string, rowName2 string) *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
-		index1, ok1 := dt.rowNames[rowName1]
+		index1, ok1 := dt.rowNames.Index(rowName1)
 		if !ok1 {
 			dt.warn("SwapRowsByName", "Row name '%s' not found", rowName1)
 			result = dt
 			return
 		}
-		index2, ok2 := dt.rowNames[rowName2]
+		index2, ok2 := dt.rowNames.Index(rowName2)
 		if !ok2 {
 			dt.warn("SwapRowsByName", "Row name '%s' not found", rowName2)
 			result = dt
@@ -170,7 +170,15 @@ func (dt *DataTable) swapRowsByIndex_NoLock(rowIndex1 int, rowIndex2 int) *DataT
 	}
 	newRowName1, _ := dt.getRowNameByIndex(rowIndex2)
 	newRowName2, _ := dt.getRowNameByIndex(rowIndex1)
-	dt.rowNames[newRowName1] = rowIndex1
-	dt.rowNames[newRowName2] = rowIndex2
+	if newRowName1 == "" {
+		_, _ = dt.rowNames.DeleteByID(rowIndex1)
+	} else {
+		_, _ = dt.rowNames.Set(rowIndex1, newRowName1)
+	}
+	if newRowName2 == "" {
+		_, _ = dt.rowNames.DeleteByID(rowIndex2)
+	} else {
+		_, _ = dt.rowNames.Set(rowIndex2, newRowName2)
+	}
 	return dt
 }

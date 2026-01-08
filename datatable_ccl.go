@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/HazelnutParadise/insyra/internal/ccl"
+	"github.com/HazelnutParadise/insyra/internal/core"
 )
 
 func (dt *DataTable) AddColUsingCCL(newColName, cclFormula string) *DataTable {
@@ -229,7 +230,7 @@ func (dt *DataTable) ExecuteCCL(cclStatements string) *DataTable {
 }
 
 // executeCCLNode executes a single CCL node on the DataTable
-func executeCCLNode(dt *DataTable, node ccl.CCLNode, numRow int, colNameMap map[string]int, tableData [][]any, rowNameMap map[string]int) error {
+func executeCCLNode(dt *DataTable, node ccl.CCLNode, numRow int, colNameMap map[string]int, tableData [][]any, rowNameMap *core.BiIndex) error {
 	// 檢查是否為賦值語句
 	if ccl.IsAssignmentNode(node) {
 		target, _ := ccl.GetAssignmentTarget(node)
@@ -247,7 +248,7 @@ func executeCCLNode(dt *DataTable, node ccl.CCLNode, numRow int, colNameMap map[
 }
 
 // executeAssignment executes an assignment CCL statement
-func executeAssignment(dt *DataTable, node ccl.CCLNode, target string, numRow int, colNameMap map[string]int, tableData [][]any, rowNameMap map[string]int) error {
+func executeAssignment(dt *DataTable, node ccl.CCLNode, target string, numRow int, colNameMap map[string]int, tableData [][]any, rowNameMap *core.BiIndex) error {
 	// 確定目標列索引
 	var targetColIdx int
 
@@ -353,7 +354,7 @@ func executeAssignment(dt *DataTable, node ccl.CCLNode, target string, numRow in
 }
 
 // executeNewColumn executes a NEW column creation CCL statement
-func executeNewColumn(dt *DataTable, node ccl.CCLNode, newColName string, numRow int, colNameMap map[string]int, tableData [][]any, rowNameMap map[string]int) error {
+func executeNewColumn(dt *DataTable, node ccl.CCLNode, newColName string, numRow int, colNameMap map[string]int, tableData [][]any, rowNameMap *core.BiIndex) error {
 	// Bind the node first
 	boundNode, err := ccl.Bind(node, colNameMap)
 	if err != nil {

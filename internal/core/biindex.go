@@ -197,6 +197,27 @@ func (s *BiIndex) IDs() []int {
 	return ids
 }
 
+// Clone creates a deep copy of the BiIndex including reuse metadata.
+func (s *BiIndex) Clone() *BiIndex {
+	if s == nil {
+		return NewBiIndex(0)
+	}
+	clone := &BiIndex{
+		idToString: make(map[int]string, len(s.idToString)),
+		stringToID: make(map[string]int, len(s.stringToID)),
+		freed:      make([]int, len(s.freed)),
+		nextID:     s.nextID,
+	}
+	for id, name := range s.idToString {
+		clone.idToString[id] = name
+	}
+	for name, id := range s.stringToID {
+		clone.stringToID[name] = id
+	}
+	copy(clone.freed, s.freed)
+	return clone
+}
+
 // Clear removes all mappings and resets free list and counters.
 func (s *BiIndex) Clear() {
 	for k := range s.stringToID {
