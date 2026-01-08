@@ -55,6 +55,7 @@ func TestPeekError(t *testing.T) {
 	err := PeekError(ErrPoppingModeFIFO)
 	if err == nil {
 		t.Error("PeekError should return non-nil after pushing an error")
+		return // Prevents nil dereference
 	}
 
 	if err.PackageName != "TestPackage" {
