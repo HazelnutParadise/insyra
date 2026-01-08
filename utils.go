@@ -228,8 +228,8 @@ func IsNumeric(v any) bool {
 }
 
 // ParseColIndex converts an Excel-like column name (e.g., "A", "Z", "AA") to its 0-based integer index.
-func ParseColIndex(colName string) (colNumber int, ok bool) {
-	return utils.ParseColIndex(colName)
+func ParseColIndex(colIndex string) (colNumber int, ok bool) {
+	return utils.ParseColIndex(colIndex)
 }
 
 // SortTimes sorts a slice of time.Time in ascending order.

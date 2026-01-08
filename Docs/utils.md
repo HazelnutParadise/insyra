@@ -133,16 +133,15 @@ wide.Show()
 ### ParseColIndex
 
 ```go
-func ParseColIndex(colName string) (int, bool)
+func ParseColIndex(colIndex string) (int, bool)
 ```
 
-**Description:** Converts Excel-style column names (e.g., `A`, `Z`, `AA`) into a 0-based index. The second return value is a boolean `ok` indicating whether parsing succeeded (false for invalid column names).
+**Description:** Converts Excel-style column index (e.g., `A`, `Z`, `AA`) into a 0-based index. The second return value is a boolean `ok` indicating whether parsing succeeded (false for invalid column index).
 
 **Parameters:**
 
-- `colName`: Name value to use. Type: `string`.
-
-**Returns:**
+- `colIndex`: Index value to use. Type: `string`.
+  **Returns:**
 
 - `int`: Computed value (0-based index). Type: `int`.
 - `bool`: Success flag (`ok`) indicating whether parsing succeeded. Type: `bool`.

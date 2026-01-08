@@ -64,6 +64,7 @@ func ToFloat64Safe(v any) (float64, bool) {
 
 func ParseColIndex(colIndex string) (colNumber int, ok bool) {
 	result := 0
+	colIndex = strings.ToUpper(colIndex)
 	for _, char := range colIndex {
 		if char < 'A' || char > 'Z' {
 			return -1, false
