@@ -24,7 +24,11 @@ func TestListenAndDial(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}
-	defer ln.Close()
+	defer func() {
+		if cerr := ln.Close(); cerr != nil {
+			t.Errorf("ln.Close error: %v", cerr)
+		}
+	}()
 
 	// server
 	go func() {
@@ -32,16 +36,30 @@ func TestListenAndDial(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer c.Close()
+		defer func() {
+			if cerr := c.Close(); cerr != nil {
+				t.Logf("c.Close error: %v", cerr)
+			}
+		}()
 		b, err := ReadMessage(c)
 		if err != nil {
 			return
 		}
 		// echo back a JSON object
 		var obj map[string]interface{}
-		json.Unmarshal(b, &obj)
-		resp, _ := json.Marshal(map[string]string{"status": "ok"})
-		WriteMessage(c, resp)
+		if err := json.Unmarshal(b, &obj); err != nil {
+			t.Logf("json.Unmarshal error: %v", err)
+			return
+		}
+		resp, merr := json.Marshal(map[string]string{"status": "ok"})
+		if merr != nil {
+			t.Logf("json.Marshal error: %v", merr)
+			return
+		}
+		if werr := WriteMessage(c, resp); werr != nil {
+			t.Logf("WriteMessage error: %v", werr)
+			return
+		}
 	}()
 
 	// client
@@ -51,7 +69,11 @@ func TestListenAndDial(t *testing.T) {
 		t.Fatalf("Dial failed: %v", err)
 	}
 	conn = connRaw
-	defer conn.Close()
+	defer func() {
+		if cerr := conn.Close(); cerr != nil {
+			t.Errorf("conn.Close error: %v", cerr)
+		}
+	}()
 
 	msg, _ := json.Marshal(map[string]string{"hello": "world"})
 	if err := WriteMessage(conn, msg); err != nil {

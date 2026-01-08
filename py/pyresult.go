@@ -66,15 +66,21 @@ func startServer() {
 		if runtime.GOOS == "windows" {
 			// Use a random suffix for the pipe name
 			randBytes := make([]byte, 8)
-			rand.Read(randBytes)
+			if _, err := rand.Read(randBytes); err != nil {
+				insyra.LogWarning("py", "startServer", "rand.Read failed: %v", err)
+			}
 			ipcAddress = fmt.Sprintf(`\\.\pipe\insyra_ipc_%x`, randBytes)
 		} else {
 			// Use a temp file for unix socket
 			randBytes := make([]byte, 8)
-			rand.Read(randBytes)
+			if _, err := rand.Read(randBytes); err != nil {
+				insyra.LogWarning("py", "startServer", "rand.Read failed: %v", err)
+			}
 			ipcAddress = filepath.Join(os.TempDir(), fmt.Sprintf("insyra_ipc_%x.sock", randBytes))
 			// Ensure it doesn't exist
-			os.Remove(ipcAddress)
+			if rerr := os.Remove(ipcAddress); rerr != nil && !os.IsNotExist(rerr) {
+				insyra.LogWarning("py", "startServer", "failed to remove leftover ipc socket: %v", rerr)
+			}
 		}
 
 		ln, err := ipc.Listen(ipcAddress)
@@ -99,7 +105,11 @@ func startServer() {
 }
 
 func handleIPCConnection(conn net.Conn) {
-	defer conn.Close()
+	defer func() {
+		if cerr := conn.Close(); cerr != nil {
+			insyra.LogWarning("py", "server", "conn.Close error: %v", cerr)
+		}
+	}()
 
 	// Read message
 	msg, err := ipc.ReadMessage(conn)
@@ -122,8 +132,14 @@ func handleIPCConnection(conn net.Conn) {
 	resultStore.Store(requestData.ExecutionID, requestData.Data)
 
 	// Send response
-	resp, _ := json.Marshal(map[string]string{"status": "ok"})
-	ipc.WriteMessage(conn, resp)
+	resp, merr := json.Marshal(map[string]string{"status": "ok"})
+	if merr != nil {
+		insyra.LogWarning("py", "server", "json marshal response failed: %v", merr)
+		return
+	}
+	if werr := ipc.WriteMessage(conn, resp); werr != nil {
+		insyra.LogWarning("py", "server", "WriteMessage error: %v", werr)
+	}
 }
 
 // getIPCAddress returns the IPC address, waiting for the server to start if necessary.

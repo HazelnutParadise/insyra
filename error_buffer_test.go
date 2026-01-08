@@ -177,6 +177,7 @@ func TestPopErrorInfo(t *testing.T) {
 	err := PopErrorInfo(ErrPoppingModeFIFO)
 	if err == nil {
 		t.Error("PopErrorInfo should return non-nil")
+		return
 	}
 
 	if err.PackageName != "TestPkg" {
@@ -261,6 +262,7 @@ func TestDataTableErr(t *testing.T) {
 	err := dt.Err()
 	if err == nil {
 		t.Error("Err() should return the set error")
+		return
 	}
 
 	if err.Message != "Test error" {
@@ -288,6 +290,7 @@ func TestDataListErr(t *testing.T) {
 	err := dl.Err()
 	if err == nil {
 		t.Error("Err() should return the set error")
+		return
 	}
 
 	if err.Message != "Test error" {

@@ -404,18 +404,26 @@ func createTempPythonScript(code string) (string, func(), error) {
 	scriptPath := tmpFile.Name()
 
 	if _, err := tmpFile.WriteString(code); err != nil {
-		tmpFile.Close()
-		os.Remove(scriptPath)
+		if cerr := tmpFile.Close(); cerr != nil {
+			insyra.LogWarning("py", "createTempPythonScript", "failed to close tmp file: %v", cerr)
+		}
+		if rerr := os.Remove(scriptPath); rerr != nil && !os.IsNotExist(rerr) {
+			insyra.LogWarning("py", "createTempPythonScript", "failed to remove temp file: %v", rerr)
+		}
 		return "", nil, fmt.Errorf("failed to write temp python file: %w", err)
 	}
 
 	if err := tmpFile.Close(); err != nil {
-		os.Remove(scriptPath)
+		if rerr := os.Remove(scriptPath); rerr != nil && !os.IsNotExist(rerr) {
+			insyra.LogWarning("py", "createTempPythonScript", "failed to remove temp file: %v", rerr)
+		}
 		return "", nil, fmt.Errorf("failed to close temp python file: %w", err)
 	}
 
 	cleanup := func() {
-		_ = os.Remove(scriptPath)
+		if rerr := os.Remove(scriptPath); rerr != nil && !os.IsNotExist(rerr) {
+			insyra.LogWarning("py", "createTempPythonScript", "failed to remove temp file: %v", rerr)
+		}
 	}
 
 	return scriptPath, cleanup, nil
