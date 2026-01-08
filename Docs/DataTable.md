@@ -16,8 +16,8 @@ DataTable is the core data structure of Insyra for handling structured data. It 
 - [Filtering](#filtering)
 - [Statistical Analysis](#statistical-analysis)
 - [Utility Methods](#utility-methods)
-- [AtomicDo](#atomicdo)
 - [Error Handling](#error-handling)
+- [AtomicDo](#atomicdo)
 - [Notes](#notes)
 
 ## Data Structure
@@ -55,61 +55,6 @@ type DataTable struct {
 - **Table Names**: Use snake-style Pascal case (e.g., `Factor_Loadings`, `Communalities`) to avoid spelling errors caused by spaces.
 - **Column Names**: Follow snake-style Pascal case for consistency.
 - **Row Names**: Follow snake-style Pascal case for consistency.
-
-## AtomicDo
-
-```go
-func (dt *DataTable) AtomicDo(f func(*DataTable))
-```
-
-**Description:** `AtomicDo` provides safe, serialized access to a DataTable via an internal actor goroutine. All operations inside the function run in order and without races, allowing concurrent callers to compose multi-step updates safely.
-
-**Parameters:**
-
-- `f`: Input value for `f`. Type: `func(*DataTable)`.
-
-**Returns:**
-
-- None.
-
-- Single-threaded execution: `AtomicDo` tasks run one at a time.
-- Reentrant: Calls made within `AtomicDo` run immediately (no deadlock).
-- Cross-object nesting: Calling `dl.AtomicDo` from within `dt.AtomicDo` (and vice versa) is supported by inline execution to avoid deadlocks.
-- Closed behavior: After `dt.Close()`, `AtomicDo` executes the function inline without scheduling.
-
-Examples
-
-- Append rows and update indices atomically:
-
-```go
-dt.AtomicDo(func(dt *insyra.DataTable) {
-    dt.AppendRowsByColName(map[string]any{"name": "Alice", "age": 25})
-    // Accessing and updating structures here is serialized
-    _ = dt.Size()
-})
-```
-
-- Concurrent writers without locks:
-
-```go
-wg := sync.WaitGroup{}
-for i := 0; i < 10; i++ {
-    wg.Add(1)
-    go func(idx int) {
-        defer wg.Done()
-        dt.AtomicDo(func(dt *insyra.DataTable) {
-            dt.UpdateElement(idx, "A", idx)
-        })
-    }(i)
-}
-wg.Wait()
-```
-
-Guidelines
-
-- Keep the function body short; avoid blocking I/O or long CPU work inside `AtomicDo`.
-- Prepare data outside; perform minimal mutations inside `AtomicDo`.
-- Use `AtomicDo` for sequences that must observe consistent state across columns/rows.
 
 ## Creating DataTable
 
@@ -2649,6 +2594,7 @@ func (dt *DataTable) Filter(filterFunc func(rowIndex int, columnIndex string, va
 **Parameters:**
 
 - `filterFunc`: Custom filter function that receives:
+
   - `rowIndex`: Row index (0-based)
   - `columnIndex`: Column name
   - `value`: Cell value
@@ -3622,10 +3568,10 @@ dt.ClearErr()
 
 #### Available Methods
 
-| Method | Description |
-|--------|-------------|
-| `Err() *ErrorInfo` | Returns the last error that occurred during a chained operation, or `nil` if no error occurred. |
-| `ClearErr() *DataTable` | Clears the last error and returns the DataTable for continued chaining. |
+| Method                  | Description                                                                                     |
+| ----------------------- | ----------------------------------------------------------------------------------------------- |
+| `Err() *ErrorInfo`      | Returns the last error that occurred during a chained operation, or `nil` if no error occurred. |
+| `ClearErr() *DataTable` | Clears the last error and returns the DataTable for continued chaining.                         |
 
 ### Global Error Buffer
 
@@ -3733,6 +3679,63 @@ insyra.Config.SetDefaultErrHandlingFunc(func(errType insyra.LogLevel, packageNam
 3. **Use Global Buffer for Monitoring**: The global error buffer is ideal for logging and monitoring across the application.
 
 4. **Check Specific Error Levels**: Use `HasErrorAboveLevel()` to filter for errors that require immediate attention.
+
+## AtomicDo
+
+```go
+func (dt *DataTable) AtomicDo(f func(*DataTable))
+```
+
+**Description:** `AtomicDo` provides safe, serialized access to a DataTable via an internal actor goroutine. All operations inside the function run in order and without races, allowing concurrent callers to compose multi-step updates safely.
+
+**Parameters:**
+
+- `f`: Input value for `f`. Type: `func(*DataTable)`.
+
+**Returns:**
+
+- None.
+
+**Behavior:**
+
+- Single-threaded execution: `AtomicDo` tasks run one at a time.
+- Reentrant: Calls made within `AtomicDo` run immediately (no deadlock).
+- Cross-object nesting: Calling `dl.AtomicDo` from within `dt.AtomicDo` (and vice versa) is supported by inline execution to avoid deadlocks.
+- Closed behavior: After `dt.Close()`, `AtomicDo` executes the function inline without scheduling.
+
+Examples
+
+- Append rows and update indices atomically:
+
+```go
+dt.AtomicDo(func(dt *insyra.DataTable) {
+    dt.AppendRowsByColName(map[string]any{"name": "Alice", "age": 25})
+    // Accessing and updating structures here is serialized
+    _ = dt.Size()
+})
+```
+
+- Concurrent writers without locks:
+
+```go
+wg := sync.WaitGroup{}
+for i := 0; i < 10; i++ {
+    wg.Add(1)
+    go func(idx int) {
+        defer wg.Done()
+        dt.AtomicDo(func(dt *insyra.DataTable) {
+            dt.UpdateElement(idx, "A", idx)
+        })
+    }(i)
+}
+wg.Wait()
+```
+
+Guidelines
+
+- Keep the function body short; avoid blocking I/O or long CPU work inside `AtomicDo`.
+- Prepare data outside; perform minimal mutations inside `AtomicDo`.
+- Use `AtomicDo` for sequences that must observe consistent state across columns/rows.
 
 ## Notes
 
