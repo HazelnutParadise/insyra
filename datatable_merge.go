@@ -11,6 +11,8 @@ type MergeMode int
 const (
 	MergeModeInner MergeMode = iota
 	MergeModeOuter
+	MergeModeLeft
+	MergeModeRight
 )
 
 type MergeDirection int
@@ -22,7 +24,7 @@ const (
 
 // Merge merges two DataTables based on a key column or row name.
 // direction: MergeDirectionHorizontal (join columns) or MergeDirectionVertical (join rows)
-// mode: MergeModeInner or MergeModeOuter
+// mode: MergeModeInner, MergeModeOuter, MergeModeLeft, or MergeModeRight
 // on: (Optional) the name of the column to join on (for horizontal). If empty or omitted, uses row names.
 func (dt *DataTable) Merge(other IDataTable, direction MergeDirection, mode MergeMode, on ...string) (*DataTable, error) {
 	onStr := ""
@@ -143,6 +145,14 @@ func (dt *DataTable) mergeHorizontal(other IDataTable, on string, mode MergeMode
 				for s := range allKeys {
 					keys = append(keys, s)
 				}
+			case MergeModeLeft:
+				for s := range map1 {
+					keys = append(keys, s)
+				}
+			case MergeModeRight:
+				for s := range map2 {
+					keys = append(keys, s)
+				}
 			default:
 				err = fmt.Errorf("invalid mode: %v", mode)
 				return
@@ -227,7 +237,7 @@ func (dt *DataTable) mergeHorizontal(other IDataTable, on string, mode MergeMode
 							currentRowIdx++
 						}
 					}
-				} else if len(indices1) > 0 && mode == MergeModeOuter {
+				} else if len(indices1) > 0 && (mode == MergeModeOuter || mode == MergeModeLeft) {
 					for _, idx1 := range indices1 {
 						var rowName string
 						if on != "" {
@@ -257,7 +267,7 @@ func (dt *DataTable) mergeHorizontal(other IDataTable, on string, mode MergeMode
 						}
 						currentRowIdx++
 					}
-				} else if len(indices2) > 0 && mode == MergeModeOuter {
+				} else if len(indices2) > 0 && (mode == MergeModeOuter || mode == MergeModeRight) {
 					for _, idx2 := range indices2 {
 						var rowName string
 						if on != "" {
@@ -294,37 +304,41 @@ func (dt *DataTable) mergeHorizontal(other IDataTable, on string, mode MergeMode
 				}
 			}
 
-			// Add nameless rows if joining by row names in Outer mode
-			if mode == MergeModeOuter && on == "" {
-				for _, idx1 := range nameless1 {
-					colOffset := 0
-					for _, col := range d.columns {
-						newCols[colOffset].Append(col.data[idx1])
-						colOffset++
-					}
-					for i := range o.columns {
-						if i == colIdx2 {
-							continue
+			// Add nameless rows (joining by row names)
+			if on == "" {
+				if mode == MergeModeOuter || mode == MergeModeLeft {
+					for _, idx1 := range nameless1 {
+						colOffset := 0
+						for _, col := range d.columns {
+							newCols[colOffset].Append(col.data[idx1])
+							colOffset++
 						}
-						newCols[colOffset].Append(nil)
-						colOffset++
+						for i := range o.columns {
+							if i == colIdx2 {
+								continue
+							}
+							newCols[colOffset].Append(nil)
+							colOffset++
+						}
+						currentRowIdx++
 					}
-					currentRowIdx++
 				}
-				for _, idx2 := range nameless2 {
-					colOffset := 0
-					for range d.columns {
-						newCols[colOffset].Append(nil)
-						colOffset++
-					}
-					for i, col := range o.columns {
-						if i == colIdx2 {
-							continue
+				if mode == MergeModeOuter || mode == MergeModeRight {
+					for _, idx2 := range nameless2 {
+						colOffset := 0
+						for range d.columns {
+							newCols[colOffset].Append(nil)
+							colOffset++
 						}
-						newCols[colOffset].Append(col.data[idx2])
-						colOffset++
+						for i, col := range o.columns {
+							if i == colIdx2 {
+								continue
+							}
+							newCols[colOffset].Append(col.data[idx2])
+							colOffset++
+						}
+						currentRowIdx++
 					}
-					currentRowIdx++
 				}
 			}
 

@@ -571,7 +571,9 @@ func (dt *DataTable) Merge(other *DataTable, direction MergeDirection, mode Merg
   - `insyra.MergeDirectionVertical`: Join rows top-to-bottom (matching columns by name).
 - `mode`: The merge mode.
   - `insyra.MergeModeInner`: Only keep matches.
-  - `insyra.MergeModeOuter`: Keep all data, filling missing parts with `nil`.
+    - `insyra.MergeModeOuter`: Keep all data, filling missing parts with `nil`.
+    - `insyra.MergeModeLeft`: Keep all rows/keys from the first (left) table and attach matching rows from the second table; non-matching fields from the second table will be `nil`.
+    - `insyra.MergeModeRight`: Keep all rows/keys from the second (right) table and attach matching rows from the first table; non-matching fields from the first table will be `nil`.
 - `on`: (Optional) The name of the column to join on (for horizontal merge).
   - If `on` is omitted or an empty string (`""`) in a horizontal merge, the tables will be joined based on their **row names**.
   - For vertical merge, this parameter is ignored.
@@ -602,6 +604,22 @@ res, _ := dt1.Merge(dt2, insyra.MergeDirectionHorizontal, insyra.MergeModeInner,
 
 // Join by Row Names (on is omitted)
 res, _ = dt1.Merge(dt2, insyra.MergeDirectionHorizontal, insyra.MergeModeInner)
+
+// Left Join (keep all rows from dt1)
+resLeft, _ := dt1.Merge(dt2, insyra.MergeDirectionHorizontal, insyra.MergeModeLeft, "ID")
+// Result (left join):
+// ID, Val1, Val2
+// A, 1, <nil>
+// B, 2, 10
+// C, 3, 20
+
+// Right Join (keep all rows from dt2)
+resRight, _ := dt1.Merge(dt2, insyra.MergeDirectionHorizontal, insyra.MergeModeRight, "ID")
+// Result (right join):
+// ID, Val1, Val2
+// B, 2, 10
+// C, 3, 20
+// D, <nil>, 30
 ```
 
 ### AppendCols
