@@ -34,7 +34,7 @@ type DataTable struct {
 	columns               []*DataList
 	columnIndex           map[string]int // 儲存字母索引與切片中的索引對應
 	rowNames              map[string]int
-	name                  string // 新增 name 欄位
+	name                  string
 	creationTimestamp     int64
 	lastModifiedTimestamp atomic.Int64
 

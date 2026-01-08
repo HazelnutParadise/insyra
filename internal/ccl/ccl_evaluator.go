@@ -214,11 +214,17 @@ func evaluateWithContext(n cclNode, ctx Context) (any, error) {
 	case *cclRowIndexNode:
 		return float64(ctx.GetRowIndex()), nil
 	case *cclIdentifierNode:
-		idx := utils.ParseColIndex(t.name)
+		idx, ok := utils.ParseColIndex(t.name)
+		if !ok {
+			return nil, fmt.Errorf("invalid column index: %s", t.name)
+		}
 		return ctx.GetCol(idx), nil
 	case *cclColIndexNode:
 		// [A] 形式的欄位索引引用
-		idx := utils.ParseColIndex(t.index)
+		idx, ok := utils.ParseColIndex(t.index)
+		if !ok {
+			return nil, fmt.Errorf("invalid column index: %s", t.index)
+		}
 		return ctx.GetCol(idx), nil
 	case *cclColNameNode:
 		// ['colName'] 形式的欄位名稱引用
@@ -498,7 +504,10 @@ func evaluateToColumn(n cclNode, ctx Context) ([]any, error) {
 		// Special case for @ in aggregate functions: return all data in the context
 		return ctx.GetAllData()
 	case *cclIdentifierNode:
-		idx := utils.ParseColIndex(t.name)
+		idx, ok := utils.ParseColIndex(t.name)
+		if !ok {
+			return nil, fmt.Errorf("invalid column index: %s", t.name)
+		}
 		// Try index
 		col, err := ctx.GetColData(idx)
 		if err == nil {
@@ -507,7 +516,10 @@ func evaluateToColumn(n cclNode, ctx Context) ([]any, error) {
 		// Try name
 		return ctx.GetColDataByName(t.name)
 	case *cclColIndexNode:
-		idx := utils.ParseColIndex(t.index)
+		idx, ok := utils.ParseColIndex(t.index)
+		if !ok {
+			return nil, fmt.Errorf("invalid column index: %s", t.index)
+		}
 		return ctx.GetColData(idx)
 	case *cclColNameNode:
 		return ctx.GetColDataByName(t.name)
@@ -675,9 +687,9 @@ func evaluateRowAccess(left, right cclNode, ctx Context) (any, error) {
 					val, err = ctx.GetCellByName(l.name, rIdx)
 				}
 			case *cclIdentifierNode:
-				idx := utils.ParseColIndex(l.name)
+				idx, ok := utils.ParseColIndex(l.name)
 				// Try as index first
-				if idx != -1 {
+				if ok {
 					val, err = ctx.GetCell(idx, rIdx)
 				} else {
 					err = fmt.Errorf("invalid column index")
@@ -688,8 +700,8 @@ func evaluateRowAccess(left, right cclNode, ctx Context) (any, error) {
 					val, err = ctx.GetCellByName(l.name, rIdx)
 				}
 			case *cclColIndexNode:
-				idx := utils.ParseColIndex(l.index)
-				if idx != -1 {
+				idx, ok := utils.ParseColIndex(l.index)
+				if ok {
 					val, err = ctx.GetCell(idx, rIdx)
 				} else {
 					err = fmt.Errorf("invalid column index")
@@ -818,8 +830,8 @@ func evaluateRange(left, right cclNode, ctx Context) (any, error) {
 func resolveColumnIndex(n cclNode, ctx Context) (int, bool) {
 	switch t := n.(type) {
 	case *cclIdentifierNode:
-		idx := utils.ParseColIndex(t.name)
-		if idx != -1 {
+		idx, ok := utils.ParseColIndex(t.name)
+		if ok {
 			return idx, true
 		}
 		// Try to resolve by name
@@ -833,7 +845,11 @@ func resolveColumnIndex(n cclNode, ctx Context) (int, bool) {
 		// We should return false if it's not a valid column.
 		return -1, false
 	case *cclColIndexNode:
-		return utils.ParseColIndex(t.index), true
+		idx, ok := utils.ParseColIndex(t.index)
+		if !ok {
+			return -1, false
+		}
+		return idx, true
 	case *cclResolvedColNode:
 		return t.index, true
 	case *cclColNameNode:

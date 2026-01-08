@@ -88,8 +88,8 @@ func CompileMultiline(script string) ([]CCLNode, error) {
 func Bind(n cclNode, colNameMap map[string]int) (cclNode, error) {
 	switch t := n.(type) {
 	case *cclIdentifierNode:
-		idx := utils.ParseColIndex(t.name)
-		if idx != -1 {
+		idx, ok := utils.ParseColIndex(t.name)
+		if ok {
 			return &cclResolvedColNode{index: idx, name: t.name}, nil
 		}
 		if idx, ok := colNameMap[t.name]; ok {
@@ -97,8 +97,8 @@ func Bind(n cclNode, colNameMap map[string]int) (cclNode, error) {
 		}
 		return t, nil
 	case *cclColIndexNode:
-		idx := utils.ParseColIndex(t.index)
-		if idx != -1 {
+		idx, ok := utils.ParseColIndex(t.index)
+		if ok {
 			return &cclResolvedColNode{index: idx, name: t.index}, nil
 		}
 		return t, nil
