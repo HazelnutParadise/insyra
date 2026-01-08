@@ -3,7 +3,12 @@ package insyra
 func (dt *DataTable) SetColNameByIndex(index string, name string) *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
-		nIndex := ParseColIndex(index)
+		nIndex, ok := ParseColIndex(index)
+		if !ok {
+			dt.warn("SetColNameByIndex", "invalid column index: %s", index)
+			result = dt
+			return
+		}
 		name = safeColName(dt, name)
 
 		if nIndex < 0 || nIndex >= len(dt.columns) {
@@ -75,7 +80,12 @@ func (dt *DataTable) GetColNameByNumber(index int) string {
 func (dt *DataTable) GetColNameByIndex(index string) string {
 	var result string
 	dt.AtomicDo(func(dt *DataTable) {
-		nIndex := ParseColIndex(index)
+		nIndex, ok := ParseColIndex(index)
+		if !ok {
+			dt.warn("GetColNameByIndex", "invalid column index: %s", index)
+			result = ""
+			return
+		}
 		result = dt.GetColNameByNumber(nIndex)
 	})
 	return result

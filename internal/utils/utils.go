@@ -62,15 +62,15 @@ func ToFloat64Safe(v any) (float64, bool) {
 	}
 }
 
-func ParseColIndex(colIndex string) int {
+func ParseColIndex(colIndex string) (colNumber int, ok bool) {
 	result := 0
 	for _, char := range colIndex {
 		if char < 'A' || char > 'Z' {
-			return -1
+			return -1, false
 		}
 		result = result*26 + int(char-'A') + 1
 	}
-	return result - 1
+	return result - 1, true
 }
 
 // TruncateString 截斷字符串到指定寬度，太長的字符串末尾加上省略號，使用 runewidth 計算字元寬度

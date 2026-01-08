@@ -228,7 +228,7 @@ func IsNumeric(v any) bool {
 }
 
 // ParseColIndex converts an Excel-like column name (e.g., "A", "Z", "AA") to its 0-based integer index.
-func ParseColIndex(colName string) int {
+func ParseColIndex(colName string) (colNumber int, ok bool) {
 	return utils.ParseColIndex(colName)
 }
 

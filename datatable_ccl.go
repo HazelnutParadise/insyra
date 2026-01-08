@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/HazelnutParadise/insyra/internal/ccl"
-	"github.com/HazelnutParadise/insyra/internal/utils"
 )
 
 func (dt *DataTable) AddColUsingCCL(newColName, cclFormula string) *DataTable {
@@ -81,8 +80,8 @@ func (dt *DataTable) EditColByIndexUsingCCL(colIndex, cclFormula string) *DataTa
 		LogDebug("DataTable", "EditColByIndexUsingCCL", "Starting CCL evaluation for column %s: %s", colIndex, cclFormula)
 
 		// 解析欄位索引
-		targetColIdx := utils.ParseColIndex(colIndex)
-		if targetColIdx < 0 || targetColIdx >= len(dt.columns) {
+		targetColIdx, ok := ParseColIndex(colIndex)
+		if !ok || targetColIdx < 0 || targetColIdx >= len(dt.columns) {
 			dt.warn("EditColByIndexUsingCCL", "Column index '%s' out of range", colIndex)
 			resultDtChan <- dt
 			return
@@ -263,8 +262,8 @@ func executeAssignment(dt *DataTable, node ccl.CCLNode, target string, numRow in
 	} else {
 		// 欄位索引形式 A, B, C 或直接是欄位名稱
 		// 先嘗試作為索引解析
-		idx := utils.ParseColIndex(target)
-		if idx >= 0 && idx < len(dt.columns) {
+		idx, ok := ParseColIndex(target)
+		if ok && idx >= 0 && idx < len(dt.columns) {
 			targetColIdx = idx
 		} else {
 			// 嘗試作為欄位名稱

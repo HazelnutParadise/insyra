@@ -82,7 +82,16 @@ func (dt *DataTable) ShowRange(startEnd ...any) {
 			if idx := strings.Index(b, "("); idx != -1 {
 				prefixB = b[:idx]
 			}
-			return cmp.Compare(ParseColIndex(prefixA), ParseColIndex(prefixB))
+			indexA, okA := ParseColIndex(prefixA)
+			indexB, okB := ParseColIndex(prefixB)
+			if !okA && !okB {
+				return 0
+			} else if !okA {
+				return -1
+			} else if !okB {
+				return 1
+			}
+			return cmp.Compare(indexA, indexB)
 		})
 
 		// Get terminal window width
