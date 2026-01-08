@@ -27,56 +27,61 @@ const (
 // mode: MergeModeInner, MergeModeOuter, MergeModeLeft, or MergeModeRight
 // on: (Optional) the name of the column to join on (for horizontal). If empty or omitted, uses row names.
 func (dt *DataTable) Merge(other IDataTable, direction MergeDirection, mode MergeMode, on ...string) (*DataTable, error) {
-	onStr := ""
-	if len(on) > 1 {
-		return nil, fmt.Errorf("only one 'on' parameter is allowed")
+	var onLeft, onRight string
+	if len(on) > 2 {
+		return nil, fmt.Errorf("at most two 'on' parameters are allowed")
 	}
 	if len(on) == 1 {
-		onStr = on[0]
+		onLeft = on[0]
+		onRight = on[0]
+	}
+	if len(on) == 2 {
+		onLeft = on[0]
+		onRight = on[1]
 	}
 	switch direction {
 	case MergeDirectionHorizontal:
-		return dt.mergeHorizontal(other, onStr, mode, "column")
+		return dt.mergeHorizontal(other, onLeft, onRight, mode, "column")
 	case MergeDirectionVertical:
 		return dt.mergeVertical(other, mode)
 	}
 	return nil, fmt.Errorf("invalid direction: %v", direction)
 }
 
-func (dt *DataTable) mergeHorizontal(other IDataTable, on string, mode MergeMode, keyType string) (*DataTable, error) {
+func (dt *DataTable) mergeHorizontal(other IDataTable, onLeft, onRight string, mode MergeMode, keyType string) (*DataTable, error) {
 	var result *DataTable
 	var err error
 
 	dt.AtomicDo(func(d *DataTable) {
 		other.AtomicDo(func(o *DataTable) {
 			colIdx1 := -1
-			if on == "" {
+			if onLeft == "" && onRight == "" {
 				// Use row names, no column index needed
 			} else {
 				for i, col := range d.columns {
-					if col.name == on {
+					if col.name == onLeft {
 						colIdx1 = i
 						break
 					}
 				}
 				if colIdx1 == -1 {
-					err = fmt.Errorf("%s %s not found in first table", keyType, on)
+					err = fmt.Errorf("%s %s not found in first table", keyType, onLeft)
 					return
 				}
 			}
 
 			colIdx2 := -1
-			if on == "" {
+			if onLeft == "" && onRight == "" {
 				// Use row names
 			} else {
 				for i, col := range o.columns {
-					if col.name == on {
+					if col.name == onRight {
 						colIdx2 = i
 						break
 					}
 				}
 				if colIdx2 == -1 {
-					err = fmt.Errorf("%s %s not found in second table", keyType, on)
+					err = fmt.Errorf("%s %s not found in second table", keyType, onRight)
 					return
 				}
 			}
@@ -86,7 +91,7 @@ func (dt *DataTable) mergeHorizontal(other IDataTable, on string, mode MergeMode
 			map1 := make(map[string][]int)
 			valMap1 := make(map[string]any)
 			var nameless1 []int
-			if on == "" {
+			if onLeft == "" && onRight == "" {
 				// Use row names
 				for i := 0; i < d.getMaxColLength(); i++ {
 					if name, ok := d.getRowNameByIndex(i); ok {
@@ -107,7 +112,7 @@ func (dt *DataTable) mergeHorizontal(other IDataTable, on string, mode MergeMode
 			map2 := make(map[string][]int)
 			valMap2 := make(map[string]any)
 			var nameless2 []int
-			if on == "" {
+			if onLeft == "" && onRight == "" {
 				// Use row names
 				for i := 0; i < o.getMaxColLength(); i++ {
 					if name, ok := o.getRowNameByIndex(i); ok {
@@ -207,7 +212,7 @@ func (dt *DataTable) mergeHorizontal(other IDataTable, on string, mode MergeMode
 						for _, idx2 := range indices2 {
 							// Preserve row name
 							var rowName string
-							if on != "" {
+							if onLeft != "" || onRight != "" {
 								if name, ok := d.getRowNameByIndex(idx1); ok {
 									rowName = name
 								} else if name, ok := o.getRowNameByIndex(idx2); ok {
@@ -240,7 +245,7 @@ func (dt *DataTable) mergeHorizontal(other IDataTable, on string, mode MergeMode
 				} else if len(indices1) > 0 && (mode == MergeModeOuter || mode == MergeModeLeft) {
 					for _, idx1 := range indices1 {
 						var rowName string
-						if on != "" {
+						if onLeft != "" || onRight != "" {
 							if name, ok := d.getRowNameByIndex(idx1); ok {
 								rowName = name
 							}
@@ -270,7 +275,7 @@ func (dt *DataTable) mergeHorizontal(other IDataTable, on string, mode MergeMode
 				} else if len(indices2) > 0 && (mode == MergeModeOuter || mode == MergeModeRight) {
 					for _, idx2 := range indices2 {
 						var rowName string
-						if on != "" {
+						if onLeft != "" || onRight != "" {
 							if name, ok := o.getRowNameByIndex(idx2); ok {
 								rowName = name
 							}
@@ -305,7 +310,7 @@ func (dt *DataTable) mergeHorizontal(other IDataTable, on string, mode MergeMode
 			}
 
 			// Add nameless rows (joining by row names)
-			if on == "" {
+			if onLeft == "" && onRight == "" {
 				if mode == MergeModeOuter || mode == MergeModeLeft {
 					for _, idx1 := range nameless1 {
 						colOffset := 0

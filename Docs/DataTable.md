@@ -574,7 +574,9 @@ func (dt *DataTable) Merge(other *DataTable, direction MergeDirection, mode Merg
     - `insyra.MergeModeOuter`: Keep all data, filling missing parts with `nil`.
     - `insyra.MergeModeLeft`: Keep all rows/keys from the first (left) table and attach matching rows from the second table; non-matching fields from the second table will be `nil`.
     - `insyra.MergeModeRight`: Keep all rows/keys from the second (right) table and attach matching rows from the first table; non-matching fields from the first table will be `nil`.
-- `on`: (Optional) The name of the column to join on (for horizontal merge).
+- `on`: (Optional) One or two column names to join on (for horizontal merge).
+  - If one name is provided, it is used for both tables (e.g. `"ID"`).
+  - If two names are provided, the first is the key column in the left table and the second is the key column in the right table (e.g. `"left_id", "right_id"`).
   - If `on` is omitted or an empty string (`""`) in a horizontal merge, the tables will be joined based on their **row names**.
   - For vertical merge, this parameter is ignored.
 
