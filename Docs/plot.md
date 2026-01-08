@@ -1,8 +1,12 @@
 # [ plot ] Package
 
-The `plot` package is a wrapper around the powerful [github.com/go-echarts/go-echarts](https://github.com/go-echarts/go-echarts) library, designed to simplify data visualization in Go. It provides an easy-to-use interface for generating common chart types while allowing flexibility for advanced customizations.
+The `plot` package creates interactive web-based charts using [go-echarts](https://github.com/go-echarts/go-echarts). Charts can be saved as HTML files for web viewing or exported as PNG images.
 
----
+**PNG export notes:**
+
+- `SavePNG` renders via Chrome/Chromium when available.
+- If local rendering fails and `useOnlineServiceOnFail` is `true` (default), it sends the chart to HazelnutParadise's online renderer.
+- Disable the online fallback by passing `false` to `SavePNG`.
 
 ## Installation
 
@@ -10,7 +14,52 @@ The `plot` package is a wrapper around the powerful [github.com/go-echarts/go-ec
 go get github.com/HazelnutParadise/insyra/plot
 ```
 
----
+## Quick Start
+
+```go
+package main
+
+import (
+    "github.com/HazelnutParadise/insyra"
+    "github.com/HazelnutParadise/insyra/plot"
+)
+
+func main() {
+    // Create data
+    sales := insyra.NewDataList(100, 150, 120, 180).SetName("Sales")
+
+    // Create chart configuration
+    config := plot.BarChartConfig{
+        Title: "Monthly Sales",
+        XAxis: []string{"Jan", "Feb", "Mar", "Apr"},
+    }
+
+    // Create and save chart
+    chart := plot.CreateBarChart(config, sales)
+    plot.SaveHTML(chart, "sales.html")
+
+    // Or save as PNG (requires Chrome/Chromium)
+    plot.SavePNG(chart, "sales.png")
+}
+```
+
+## Supported Chart Types
+
+| Chart | Function | Use Case |
+|-------|----------|----------|
+| Bar | `CreateBarChart` | Category comparison |
+| Line | `CreateLineChart` | Trends over time |
+| Scatter | `CreateScatterChart` | Correlation analysis |
+| Pie | `CreatePieChart` | Part-to-whole relationships |
+| HeatMap | `CreateHeatMap` | Matrix visualization |
+| Radar | `CreateRadarChart` | Multi-dimensional comparison |
+| Funnel | `CreateFunnelChart` | Stage-based processes |
+| Gauge | `CreateGaugeChart` | Single value display |
+| WordCloud | `CreateWordCloud` | Text frequency |
+| Sankey | `CreateSankeyChart` | Flow visualization |
+| BoxPlot | `CreateBoxPlot` | Distribution comparison |
+| K-Line | `CreateKlineChart` | Stock data |
+| ThemeRiver | `CreateThemeRiverChart` | Temporal flow data |
 
 ## Common Types
 

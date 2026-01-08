@@ -1,251 +1,379 @@
 # [ gplot ] Package
 
-The `gplot` package is designed to create and save various types of charts using the Gonum library. It provides a simple interface to generate and export charts in different formats such as PNG, PDF, JPEG, and SVG.
+The `gplot` package creates static charts using the Gonum plotting library. It's ideal for generating publication-quality charts that can be saved as PNG, PDF, SVG, or other image formats.
 
 ## Installation
-
-To install the `gplot` package, use the following command:
 
 ```bash
 go get github.com/HazelnutParadise/insyra/gplot
 ```
 
-## Features
-
-### Bar Chart
-
-#### `BarChartConfig`
-
-- `Title`: The title of the chart.
-- `XAxis`: Data for the X-axis (categories).
-- `Data`: The data for the series. Supported types:
-  - `[]float64`
-  - `*insyra.DataList`
-- `XAxisName`: Optional: Name for the X-axis.
-- `YAxisName`: Optional: Name for the Y-axis.
-- `BarWidth`: Optional: Width of each bar in the chart. Default is 20.
-- `ErrorBars`: Optional: Error bar values for each bar. If provided, must match the length of Data.
-
-#### `CreateBarChart(config BarChartConfig) *plot.Plot`
-
-Creates a bar chart based on the provided configuration.
-
-#### Example
-
-![bar_example](./img/gplot_bar_example.png)
-
-#### Example with Error Bars
+## Quick Start
 
 ```go
 package main
 
-import (
- "github.com/HazelnutParadise/insyra/gplot"
-)
+import "github.com/HazelnutParadise/insyra/gplot"
 
 func main() {
- // Create a bar chart with error bars showing measurement uncertainty
- measurements := []float64{5.2, 7.8, 6.4, 9.1, 8.5, 7.2}
- uncertainties := []float64{0.5, 0.8, 0.6, 0.9, 0.7, 0.6}
- 
- config := gplot.BarChartConfig{
-  Title:     "Experimental Measurements with Error Bars",
-  XAxis:     []string{"Trial 1", "Trial 2", "Trial 3", "Trial 4", "Trial 5", "Trial 6"},
-  Data:      measurements,
-  XAxisName: "Trial Number",
-  YAxisName: "Measured Value (units)",
-  ErrorBars: uncertainties,
-  BarWidth:  30,
- }
- 
- plt := gplot.CreateBarChart(config)
- gplot.SaveChart(plt, "bar_chart_with_errorbars.png")
+    // Create a simple bar chart
+    config := gplot.BarChartConfig{
+        Title: "Monthly Sales",
+        XAxis: []string{"Jan", "Feb", "Mar", "Apr"},
+        Data:  []float64{100, 150, 120, 180},
+    }
+    plt := gplot.CreateBarChart(config)
+    gplot.SaveChart(plt, "sales.png")
 }
+```
+
+## Supported Chart Types
+
+| Chart Type | Function | Use Case |
+|------------|----------|----------|
+| Bar Chart | `CreateBarChart` | Comparing categories |
+| Histogram | `CreateHistogram` | Distribution analysis |
+| Line Chart | `CreateLineChart` | Trends over time |
+| Scatter Plot | `CreateScatterPlot` | Correlation analysis |
+| Step Chart | `CreateStepChart` | Discrete changes |
+| Function Plot | `CreateFunctionPlot` | Mathematical functions |
+| Heatmap | `CreateHeatmapChart` | Matrix visualization |
+
+## Saving Charts
+
+```go
+func SaveChart(plt *plot.Plot, filename string)
+```
+
+Saves the chart to a file. The format is determined by the file extension.
+
+**Supported formats:** `.png`, `.jpg`, `.jpeg`, `.pdf`, `.svg`, `.tex`, `.tif`, `.tiff`
+
+```go
+gplot.SaveChart(plt, "chart.png")  // PNG format
+gplot.SaveChart(plt, "chart.pdf")  // PDF format
+gplot.SaveChart(plt, "chart.svg")  // SVG format
+```
+
+## Chart Types
+
+### Bar Chart
+
+Creates a bar chart for comparing values across categories.
+
+```go
+type BarChartConfig struct {
+    Title     string      // Chart title
+    XAxis     []string    // Category labels
+    Data      any         // []float64 or *insyra.DataList
+    XAxisName string      // Optional: X-axis label
+    YAxisName string      // Optional: Y-axis label
+    BarWidth  float64     // Optional: Bar width (default: 20)
+    ErrorBars []float64   // Optional: Error bar values
+}
+```
+
+**Example:**
+
+```go
+config := gplot.BarChartConfig{
+    Title:     "Quarterly Revenue",
+    XAxis:     []string{"Q1", "Q2", "Q3", "Q4"},
+    Data:      []float64{250, 300, 280, 350},
+    XAxisName: "Quarter",
+    YAxisName: "Revenue ($K)",
+    BarWidth:  25,
+}
+plt := gplot.CreateBarChart(config)
+gplot.SaveChart(plt, "revenue.png")
+```
+
+![bar_example](./img/gplot_bar_example.png)
+
+**With Error Bars:**
+
+```go
+config := gplot.BarChartConfig{
+    Title:     "Experimental Results",
+    XAxis:     []string{"A", "B", "C", "D"},
+    Data:      []float64{5.2, 7.8, 6.4, 9.1},
+    ErrorBars: []float64{0.5, 0.8, 0.6, 0.9},
+}
+plt := gplot.CreateBarChart(config)
+gplot.SaveChart(plt, "experiment.png")
 ```
 
 ![bar_errorbars_example](./img/gplot_bar_errorbars_example.png)
 
 ### Histogram
 
-#### `HistogramConfig`
+Creates a histogram to visualize data distribution.
 
-- `Title`: The title of the chart.
-- `Data`: The data for the histogram. Supported types:
-  - `[]float64`
-  - `*insyra.DataList`
-  - `insyra.IDataList`
-- `XAxisName`: Optional: Name for the X-axis.
-- `YAxisName`: Optional: Name for the Y-axis.
-- `Bins`: Number of bins for the histogram.
+```go
+type HistogramConfig struct {
+    Title     string // Chart title
+    Data      any    // []float64, *insyra.DataList, or insyra.IDataList
+    XAxisName string // Optional: X-axis label
+    YAxisName string // Optional: Y-axis label
+    Bins      int    // Number of bins
+}
+```
 
-#### `CreateHistogram(config HistogramConfig) *plot.Plot`
+**Example:**
 
-Creates a histogram based on the provided configuration.
+```go
+import "math/rand"
 
-#### Example
+// Generate sample data
+data := make([]float64, 1000)
+for i := range data {
+    data[i] = rand.NormFloat64()*15 + 100 // Normal distribution
+}
+
+config := gplot.HistogramConfig{
+    Title:     "Score Distribution",
+    Data:      data,
+    XAxisName: "Score",
+    YAxisName: "Frequency",
+    Bins:      20,
+}
+plt := gplot.CreateHistogram(config)
+gplot.SaveChart(plt, "distribution.png")
+```
 
 ![histogram_example](./img/gplot_histogram_example.png)
 
 ### Line Chart
 
-#### `LineChartConfig`
+Creates a line chart for visualizing trends.
 
-- `Title`: The title of the chart.
-- `XAxis`: Data for the X-axis (categories).
-- `Data`: The data for the series. Supported types:
-  - `map[string][]float64`
-  - `[]*insyra.DataList`
-  - `[]insyra.IDataList`
-- `XAxisName`: Optional: Name for the X-axis.
-- `YAxisName`: Optional: Name for the Y-axis.
+```go
+type LineChartConfig struct {
+    Title     string   // Chart title
+    XAxis     []string // X-axis labels
+    Data      any      // map[string][]float64, []*insyra.DataList, or []insyra.IDataList
+    XAxisName string   // Optional: X-axis label
+    YAxisName string   // Optional: Y-axis label
+}
+```
 
-#### `CreateLineChart(config LineChartConfig) *plot.Plot`
+**Example:**
 
-Creates a line chart based on the provided configuration.
-
-#### Example
+```go
+config := gplot.LineChartConfig{
+    Title: "Temperature Trends",
+    XAxis: []string{"Mon", "Tue", "Wed", "Thu", "Fri"},
+    Data: map[string][]float64{
+        "City A": {22, 24, 23, 25, 26},
+        "City B": {18, 19, 20, 21, 22},
+    },
+    XAxisName: "Day",
+    YAxisName: "Temperature (C)",
+}
+plt := gplot.CreateLineChart(config)
+gplot.SaveChart(plt, "temperature.png")
+```
 
 ![line_example](./img/gplot_line_example.png)
 
 ### Scatter Plot
 
-#### `ScatterPlotConfig`
-
-- `Title`: The title of the chart.
-- `Data`: The data for the scatter plot. Supported types:
-  - `map[string][][]float64`: A map where keys are series names, and values are two-dimensional data (X, Y pairs).
-  - `[]*insyra.DataList`: A slice of DataList pointers, where each DataList contains alternating X and Y values.
-  - `[]insyra.IDataList`: A slice of IDataList interfaces, where each contains alternating X and Y values.
-- `XAxisName`: Optional: Name for the X-axis.
-- `YAxisName`: Optional: Name for the Y-axis.
-
-#### `CreateScatterPlot(config ScatterPlotConfig) *plot.Plot`
-
-Creates a scatter plot based on the provided configuration. Each series is displayed with different colors and shapes to distinguish them.
-
-#### Example
+Creates a scatter plot for correlation analysis.
 
 ```go
-package main
-
-import (
- "github.com/HazelnutParadise/insyra/gplot"
-)
-
-func main() {
- // Create scatter plot data
- data := map[string][][]float64{
-  "Series A": {
-   {1.0, 2.0},
-   {2.0, 4.0},
-   {3.0, 6.0},
-   {4.0, 8.0},
-   {5.0, 10.0},
-  },
-  "Series B": {
-   {1.0, 1.0},
-   {2.0, 3.0},
-   {3.0, 5.0},
-   {4.0, 7.0},
-   {5.0, 9.0},
-  },
- }
-
- config := gplot.ScatterPlotConfig{
-  Title:     "Sample Scatter Plot",
-  Data:      data,
-  XAxisName: "X Axis",
-  YAxisName: "Y Axis",
- }
-
- plt := gplot.CreateScatterPlot(config)
- gplot.SaveChart(plt, "scatter_plot.png")
+type ScatterPlotConfig struct {
+    Title     string // Chart title
+    Data      any    // map[string][][]float64, []*insyra.DataList, or []insyra.IDataList
+    XAxisName string // Optional: X-axis label
+    YAxisName string // Optional: Y-axis label
 }
+```
+
+**Data format:** For `map[string][][]float64`, each series is a slice of `[x, y]` coordinate pairs.
+
+**Example:**
+
+```go
+config := gplot.ScatterPlotConfig{
+    Title: "Height vs Weight",
+    Data: map[string][][]float64{
+        "Male": {
+            {170, 70}, {175, 75}, {180, 80}, {168, 68}, {185, 85},
+        },
+        "Female": {
+            {160, 55}, {165, 60}, {158, 52}, {170, 65}, {163, 58},
+        },
+    },
+    XAxisName: "Height (cm)",
+    YAxisName: "Weight (kg)",
+}
+plt := gplot.CreateScatterPlot(config)
+gplot.SaveChart(plt, "height_weight.png")
 ```
 
 ### Step Chart
 
-#### `StepChartConfig`
+Creates a step chart for data that changes at discrete intervals.
 
-- `Title`: The title of the chart.
-- `XAxis`: Data for the X-axis (categories).
-- `Data`: The data for the series. Supported types:
-  - `map[string][]float64`
-  - `[]*insyra.DataList`
-  - `[]insyra.IDataList`
-- `XAxisName`: Optional: Name for the X-axis.
-- `YAxisName`: Optional: Name for the Y-axis.
-- `StepStyle`: Optional: Step style. Options: `"pre"`, `"mid"`, `"post"`. Default is `"post"`.
-  - `"pre"`: Vertical line first, then horizontal line (step before the point)
-  - `"mid"`: Horizontal line, vertical line in the middle, then horizontal line
-  - `"post"`: Horizontal line first, then vertical line (step after the point)
+```go
+type StepChartConfig struct {
+    Title     string   // Chart title
+    XAxis     []string // X-axis labels
+    Data      any      // map[string][]float64, []*insyra.DataList, or []insyra.IDataList
+    XAxisName string   // Optional: X-axis label
+    YAxisName string   // Optional: Y-axis label
+    StepStyle string   // Optional: "pre", "mid", or "post" (default: "post")
+}
+```
 
-#### `CreateStepChart(config StepChartConfig) *plot.Plot`
+**Step Styles:**
 
-Creates a step chart based on the provided configuration. Step charts connect data points with horizontal and vertical lines instead of diagonal lines, making them useful for visualizing data that changes at discrete intervals.
+- `"pre"`: Step before the point (vertical then horizontal)
+- `"mid"`: Step at midpoint
+- `"post"`: Step after the point (horizontal then vertical)
 
-#### Example
+**Example:**
+
+```go
+config := gplot.StepChartConfig{
+    Title: "Stock Price Changes",
+    XAxis: []string{"9:00", "10:00", "11:00", "12:00", "13:00"},
+    Data: map[string][]float64{
+        "Stock A": {100, 102, 101, 105, 103},
+    },
+    XAxisName: "Time",
+    YAxisName: "Price ($)",
+    StepStyle: "post",
+}
+plt := gplot.CreateStepChart(config)
+gplot.SaveChart(plt, "stock.png")
+```
 
 ![step_example](./img/gplot_step_example.png)
 
 ### Function Plot
 
-#### `FunctionPlotConfig`
-
-- `Title`: The title of the chart.
-- `XAxis`: Label for the X-axis.
-- `YAxis`: Label for the Y-axis.
-- `Func`: The mathematical function to plot.
-- `XMin`: Minimum value of X (optional).
-- `XMax`: Maximum value of X (optional).
-- `YMin`: Minimum value of Y (optional).
-- `YMax`: Maximum value of Y (optional).
-
-#### `CreateFunctionPlot(config FunctionPlotConfig) *plot.Plot`
-
-Creates a function plot based on the provided configuration.
-
-#### Usage of `FunctionPlotConfig.Func`
-
-The `Func` field is a function that takes a float64 value as input and returns a float64 value as output. This function is used to generate the data points for the plot.
+Plots mathematical functions.
 
 ```go
-func(x float64) float64 {
- return x * x
+type FunctionPlotConfig struct {
+    Title string             // Chart title
+    XAxis string             // X-axis label
+    YAxis string             // Y-axis label
+    Func  func(float64) float64 // Mathematical function
+    XMin  float64            // Optional: Minimum X value
+    XMax  float64            // Optional: Maximum X value
+    YMin  float64            // Optional: Minimum Y value
+    YMax  float64            // Optional: Maximum Y value
 }
 ```
 
-#### Example
+**Example:**
+
+```go
+import "math"
+
+config := gplot.FunctionPlotConfig{
+    Title: "Sine Wave",
+    XAxis: "x",
+    YAxis: "sin(x)",
+    Func:  math.Sin,
+    XMin:  -2 * math.Pi,
+    XMax:  2 * math.Pi,
+}
+plt := gplot.CreateFunctionPlot(config)
+gplot.SaveChart(plt, "sine.png")
+
+// Custom function
+config2 := gplot.FunctionPlotConfig{
+    Title: "Quadratic Function",
+    XAxis: "x",
+    YAxis: "y",
+    Func: func(x float64) float64 {
+        return x*x - 4*x + 3
+    },
+    XMin: -2,
+    XMax: 6,
+}
+plt2 := gplot.CreateFunctionPlot(config2)
+gplot.SaveChart(plt2, "quadratic.png")
+```
 
 ![function_example](./img/gplot_function_example.png)
 
 ### Heatmap
 
-#### `HeatmapChartConfig`
+Creates a heatmap for matrix visualization.
 
-- `Title`: The title of the chart.
-- `XAxisName`: Optional: Name for the X-axis.
-- `YAxisName`: Optional: Name for the Y-axis.
-- `Data`: The data for the heatmap. Supported types:
-  - `[][]float64`
-  - `*insyra.DataTable`
-  - `insyra.IDataTable`
-- `XAxis`: Optional: X-axis coordinates. If not provided, will use indices.
-- `YAxis`: Optional: Y-axis coordinates. If not provided, will use indices.
-- `Colors`: Optional: Number of colors in the palette. Default is 20.
-- `Alpha`: Optional: Alpha (transparency) for colors. Default is 1.0.
+```go
+type HeatmapChartConfig struct {
+    Title     string   // Chart title
+    Data      any      // [][]float64, *insyra.DataTable, or insyra.IDataTable
+    XAxis     []string // Optional: X-axis labels
+    YAxis     []string // Optional: Y-axis labels
+    XAxisName string   // Optional: X-axis label
+    YAxisName string   // Optional: Y-axis label
+    Colors    int      // Optional: Number of colors (default: 20)
+    Alpha     float64  // Optional: Transparency (default: 1.0)
+}
+```
 
-#### `CreateHeatmapChart(config HeatmapChartConfig) *plot.Plot`
+**Example:**
 
-Creates a heatmap based on the provided configuration.
+```go
+// Create correlation matrix data
+data := [][]float64{
+    {1.0, 0.8, 0.3},
+    {0.8, 1.0, 0.5},
+    {0.3, 0.5, 1.0},
+}
 
-#### Heatmap Example
+config := gplot.HeatmapChartConfig{
+    Title:  "Correlation Matrix",
+    Data:   data,
+    XAxis:  []string{"A", "B", "C"},
+    YAxis:  []string{"A", "B", "C"},
+    Colors: 20,
+}
+plt := gplot.CreateHeatmapChart(config)
+gplot.SaveChart(plt, "correlation.png")
+```
 
 ![heatmap_example](./img/gplot_heatmap_example.png)
 
-### Saving Charts
+## Using with DataList and DataTable
 
-`func SaveChart(plt *plot.Plot, filename string)`
+All chart types support Insyra data structures:
 
-Saves the plot to a file. Supported file formats: `.jpg`, `.jpeg`, `.pdf`, `.png`, `.svg`, `.tex`, `.tif`, `.tiff`
-Automatically determine the file extension based on the filename.
+```go
+import (
+    "github.com/HazelnutParadise/insyra"
+    "github.com/HazelnutParadise/insyra/gplot"
+)
+
+// Using DataList for bar chart
+dl := insyra.NewDataList(100, 150, 120, 180)
+config := gplot.BarChartConfig{
+    Title: "Sales Data",
+    XAxis: []string{"Q1", "Q2", "Q3", "Q4"},
+    Data:  dl,
+}
+
+// Using DataTable for heatmap
+dt := insyra.NewDataTable(
+    insyra.NewDataList(1.0, 0.8, 0.3),
+    insyra.NewDataList(0.8, 1.0, 0.5),
+    insyra.NewDataList(0.3, 0.5, 1.0),
+)
+heatConfig := gplot.HeatmapChartConfig{
+    Title: "Correlation Matrix",
+    Data:  dt,
+}
+```
+
+## Tips
+
+- Use meaningful titles and axis labels for better readability
+- Choose appropriate bin counts for histograms (typically 10-30)
+- For publication, prefer SVG formats for vector graphics
+- Error bars should have the same length as the data

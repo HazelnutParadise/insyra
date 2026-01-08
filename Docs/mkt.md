@@ -66,7 +66,7 @@ type RFMConfig struct {
 - `AmountColIndex`: Column index for transaction amount
 - `AmountColName`: Column name for transaction amount (column index takes precedence if both are provided)
 - `NumGroups`: Number of RFM score groups (typically 3-5)
-- `DateFormat`: Date format string (defaults to "YYYY-MM-DD" if empty)
+- `DateFormat`: Date format string using `YYYY`, `MM`, `DD` tokens (defaults to "YYYY-MM-DD" if empty)
 - `TimeScale`: Time scale for recency calculation (defaults to "daily" if empty)
 
 ### CAIConfig
@@ -90,7 +90,7 @@ type CAIConfig struct {
 - `CustomerIDColName`: Column name for customer ID (column index takes precedence if both are provided)
 - `TradingDayColIndex`: Column index for transaction date
 - `TradingDayColName`: Column name for transaction date (column index takes precedence if both are provided)
-- `DateFormat`: Date format string (defaults to "YYYY-MM-DD" if empty)
+- `DateFormat`: Date format string using `YYYY`, `MM`, `DD` tokens (defaults to "YYYY-MM-DD" if empty)
 - `TimeScale`: Time scale for analysis (defaults to "daily" if empty)
 
 ---

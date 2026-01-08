@@ -139,7 +139,7 @@ dt := insyra.NewDataTable(col1, col2)
 Reads a CSV file and loads the data into a new DataTable.
 
 ```go
-func ReadCSV_File(filePath string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error)
+func ReadCSV_File(filePath string, setFirstColToRowNames bool, setFirstRowToColNames bool, encoding ...string) (*DataTable, error)
 ```
 
 **Parameters:**
@@ -147,6 +147,7 @@ func ReadCSV_File(filePath string, setFirstColToRowNames bool, setFirstRowToColN
 - `filePath`: CSV file path
 - `setFirstColToRowNames`: Whether to use the first column as row names
 - `setFirstRowToColNames`: Whether to use the first row as column names
+- `encoding`: Optional encoding (`"auto"` by default); pass `"utf-8"`, `"big5"`, etc.
 
 **Returns:**
 

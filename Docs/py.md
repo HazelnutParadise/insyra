@@ -1,8 +1,21 @@
 # [ py ] Package
 
-The `py` package allows Golang programs to execute Python code seamlessly and interactively. It provides functionality to pass Go variables into Python scripts, and execute the Python code. Results from the Python script can be sent back to the Go program automatically.
+The `py` package allows Go programs to execute Python code and exchange variables/results. It spins up a managed Python environment using `uv` and a local IPC server.
 
-The `py` package automatically installs common Python libraries, allowing you to use them directly in your Python code. You can also install additional dependencies as needed.
+On first use it:
+
+- Installs `uv` if missing
+- Creates a virtual environment under `.insyra_env/py<version_code>_<os>_<arch>`
+- Installs a preset dependency list (e.g., `numpy`, `pandas`, `polars`, `matplotlib`, `seaborn`, `scikit-learn`)
+
+This setup requires network access and may take a while the first time.
+
+### Environment Utilities
+
+```go
+// Reinstall the managed Python environment
+func ReinstallPyEnv() error
+```
 
 ## Functions
 
@@ -451,8 +464,8 @@ insyra.Return({"execution_id": insyra.execution_id, "data": "some data"})
 
 ## Pre-installed Dependencies
 
-- **Python Environment**: Insyra automatically installs Python environment using `uv` in the `.insyra_py_env` directory in your project root.
-- **Python Libraries**: Insyra automatically installs following Python libraries, you can use them directly in your Python code:
+- **Python Environment**: Insyra installs a managed environment under `.insyra_env/py<version_code>_<os>_<arch>` (project root).
+- **Python Libraries**: Insyra installs and imports the following libraries by default:
 
 ```go
 pyDependencies   = map[string]string{

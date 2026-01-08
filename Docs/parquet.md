@@ -88,7 +88,7 @@ func Write(dt insyra.IDataTable, path string) error
 
 ### Stream
 
-Streams a Parquet file, returning a channel that receives `*insyra.DataTable` batches.
+Streams a Parquet file, returning a channel that receives `*insyra.DataTable` batches. Always read from the error channel to detect stream failures.
 
 ```go
 func Stream(ctx context.Context, path string, opt ReadOptions, batchSize int) (<-chan *insyra.DataTable, <-chan error)
@@ -162,8 +162,8 @@ func ApplyCCL(ctx context.Context, path string, cclScript string) error
 
 **Important:**
 
-- The input file **will be overwritten** with the transformed data
-- Processing is done in batches to handle large files efficiently
+- The input file **will be overwritten** with the transformed data (via a temporary file).
+- Processing is done in batches to handle large files efficiently.
 - Supports creating new columns with `NEW()`, but modifying existing columns may not work.
 
 **Example:**

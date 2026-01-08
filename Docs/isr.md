@@ -10,6 +10,15 @@ The `isr` package provides a simplified, method-chaining syntax for the `insyra`
 
 **Key Feature**: Full method chaining support
 
+## Quick Start
+
+```go
+import "github.com/HazelnutParadise/insyra/isr"
+
+dl := isr.DL.Of(1, 2, 3, 4).Append(5)
+dl.Show()
+```
+
 ## Installation
 
 ```bash
@@ -49,7 +58,7 @@ type CSV struct {
     FilePath   string      // Path to CSV file (use this OR String, not both)
     String     string      // CSV data as string (use this OR FilePath, not both)
     InputOpts  CSV_inOpts  // Options for reading CSV
-    OutputOpts CSV_outOpts // Options for writing CSV
+    OutputOpts CSV_outOpts // Reserved for output (not used by DT.From)
 }
 
 // CSV_inOpts structure

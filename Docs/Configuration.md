@@ -2,6 +2,13 @@
 
 Insyra provides a global `Config` object for managing library behavior. You can customize logging, error handling, and performance settings.
 
+**Default values (after `SetDefaultConfig`)**:
+
+- Log level: `LogLevelInfo`
+- Colored output: `true`
+- Panic protection: `false`
+- Thread safety: `true`
+
 ## Log Level Management
 
 Control what level of messages are logged:
@@ -62,9 +69,9 @@ handler := insyra.Config.GetDefaultErrHandlingFunc()
 Fine-tune performance for your use case:
 
 ```go
-// ⚠️ DANGER: Turn off thread safety for extreme performance
-// Use ONLY when you are sure there are no concurrent accesses
-// Data consistency is NOT guaranteed when this is disabled!
+// DANGER: Turn off thread safety for extreme performance
+// Use ONLY when you are sure there are no concurrent accesses.
+// Data consistency is NOT guaranteed when this is disabled.
 insyra.Config.Dangerously_TurnOffThreadSafety()
 
 // If you need to reset all configs back to library defaults, call:

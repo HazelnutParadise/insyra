@@ -2145,21 +2145,21 @@ dl.ClearErr()
 
 ### Thread Safety
 
-DataList operations are thread-safe thanks to internal mutex synchronization. Multiple goroutines can safely access and modify DataList instances concurrently.
+DataList operations are serialized through `AtomicDo` when thread safety is enabled (default). You can disable this with `Config.Dangerously_TurnOffThreadSafety()` if you are sure there is no concurrent access.
 
 ### Memory Management
 
-DataList includes automatic memory reorganization features that optimize memory usage during operations. The system performs background memory cleanup to maintain efficient memory allocation.
+DataList relies on Go's garbage collector. Large lists may increase memory pressure, so prefer in-place operations when possible.
 
 ### Data Type Handling
 
-DataList is designed to handle mixed data types gracefully. Statistical operations automatically filter out non-numeric data, while string operations work only on string elements. This allows for flexible data manipulation without type conflicts.
+DataList allows mixed data types. Numeric statistics use `ToFloat64Safe` and skip values that cannot be converted; some methods may treat unsupported values as `0`.
 
 ### Performance Considerations
 
-- Large DataLists benefit from the internal memory optimization system
-- Statistical operations are optimized for numeric data processing
-- Interpolation methods assume equally spaced data points for best results
+- Keep data types consistent when running numeric methods
+- Do heavy computation outside `AtomicDo` and only mutate inside
+- Interpolation methods assume evenly spaced data points for best results
 
 ### Error Handling
 

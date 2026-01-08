@@ -25,6 +25,8 @@ The stats package provides comprehensive statistical analysis functions:
 - **Dimensionality Reduction**: Principal Component Analysis (PCA)
 - **Matrix Operations**: Diagonal matrix creation and extraction (Diag function)
 
+Most functions expect numeric data in `DataList`/`DataTable`. Non-numeric values are skipped using `ToFloat64Safe`, and a warning may be logged.
+
 ---
 
 ## Core Types

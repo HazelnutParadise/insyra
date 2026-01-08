@@ -3,9 +3,9 @@
 The `lp` package provides functionality to solve Linear Programming (LP) problems using the GLPK library. It allows you to define and solve LP models, and provides tools to handle the results.
 
 > [!NOTE]
-> - This package will automatically install GLPK on your system if it is not already installed.
-> - If you use Linux, you must have C Compiler(make) installed.
-> - If you use MacOS, you must have Xcode installed.
+> - This package will automatically install GLPK on your system if it is not already installed (requires network access).
+> - Linux/macOS require build tools (`make`, compiler, or Xcode) for source builds.
+> - You can set `GLPK_PATH` to point to an existing `glpsol` binary.
 
 ## Installation
 
@@ -34,13 +34,13 @@ Solves an LP file using GLPK and returns the result as two DataTable. First Data
 #### Example
 
 ```go
-result, info := lp.SolveLPWithGLPK("model.lp", 10)
+result, info := lp.SolveFromFile("model.lp", 10)
 result.Show()
 info.Show()
 
 // convert to csv
-result.ToCSV("solution.csv", false, false)
-info.ToCSV("info.csv", true, true)
+result.ToCSV("solution.csv", false, false, false)
+info.ToCSV("info.csv", true, true, false)
 ```
 
 > [!TIP]
@@ -79,6 +79,6 @@ model.AddBinaryVar("x1")
 model.AddBinaryVar("x2")
 
 result, info := lp.SolveModel(model, 10)
-result.ToCSV("solution.csv", false, false)
-info.ToCSV("info.csv", true, true)
+result.ToCSV("solution.csv", false, false, false)
+info.ToCSV("info.csv", true, true, false)
 ```
