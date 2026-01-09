@@ -187,13 +187,16 @@ func findSubDirWithConfigure(baseDir string) (string, error) {
 // 編譯並安裝 GLPK
 func buildAndInstallGLPK(configurePath string) {
 	// 設置 configure 文件的執行權限
-	if err := exec.Command("chmod", "+x", filepath.Join(configurePath, "configure")).Run(); err != nil {
+	chmodCmd := exec.Command("chmod", "+x", filepath.Join(configurePath, "configure"))
+	utils.ApplyHideWindow(chmodCmd)
+	if err := chmodCmd.Run(); err != nil {
 		insyra.LogFatal("lp", "init", "Failed to set configure executable permission: %v", err)
 	}
 
 	// 執行 configure
 	configureCmd := exec.Command("./configure", "--prefix="+filepath.Join(os.Getenv("HOME"), "local"))
 	configureCmd.Dir = configurePath
+	utils.ApplyHideWindow(configureCmd)
 	if output, err := configureCmd.CombinedOutput(); err != nil {
 		insyra.LogFatal("lp", "init", "Failed to configure GLPK: %v, output: %s", err, string(output))
 	}
@@ -201,6 +204,7 @@ func buildAndInstallGLPK(configurePath string) {
 	// 執行 make
 	makeCmd := exec.Command("make", "-j"+strconv.Itoa(runtime.NumCPU()))
 	makeCmd.Dir = configurePath
+	utils.ApplyHideWindow(makeCmd)
 	if output, err := makeCmd.CombinedOutput(); err != nil {
 		insyra.LogFatal("lp", "init", "Failed to make GLPK: %v, output: %s", err, string(output))
 	}
@@ -208,6 +212,7 @@ func buildAndInstallGLPK(configurePath string) {
 	// 執行 make install，將 GLPK 安裝到用戶目錄
 	makeInstallCmd := exec.Command("make", "install")
 	makeInstallCmd.Dir = configurePath
+	utils.ApplyHideWindow(makeInstallCmd)
 	if output, err := makeInstallCmd.CombinedOutput(); err != nil {
 		insyra.LogFatal("lp", "init", "Failed to install GLPK: %v, output: %s", err, string(output))
 	}

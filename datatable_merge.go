@@ -2,6 +2,8 @@ package insyra
 
 import (
 	"fmt"
+
+	"github.com/HazelnutParadise/insyra/internal/core"
 )
 
 type MergeMode int
@@ -9,6 +11,8 @@ type MergeMode int
 const (
 	MergeModeInner MergeMode = iota
 	MergeModeOuter
+	MergeModeLeft
+	MergeModeRight
 )
 
 type MergeDirection int
@@ -20,59 +24,64 @@ const (
 
 // Merge merges two DataTables based on a key column or row name.
 // direction: MergeDirectionHorizontal (join columns) or MergeDirectionVertical (join rows)
-// mode: MergeModeInner or MergeModeOuter
+// mode: MergeModeInner, MergeModeOuter, MergeModeLeft, or MergeModeRight
 // on: (Optional) the name of the column to join on (for horizontal). If empty or omitted, uses row names.
 func (dt *DataTable) Merge(other IDataTable, direction MergeDirection, mode MergeMode, on ...string) (*DataTable, error) {
-	onStr := ""
-	if len(on) > 1 {
-		return nil, fmt.Errorf("only one 'on' parameter is allowed")
+	var onLeft, onRight string
+	if len(on) > 2 {
+		return nil, fmt.Errorf("at most two 'on' parameters are allowed")
 	}
 	if len(on) == 1 {
-		onStr = on[0]
+		onLeft = on[0]
+		onRight = on[0]
+	}
+	if len(on) == 2 {
+		onLeft = on[0]
+		onRight = on[1]
 	}
 	switch direction {
 	case MergeDirectionHorizontal:
-		return dt.mergeHorizontal(other, onStr, mode, "column")
+		return dt.mergeHorizontal(other, onLeft, onRight, mode, "column")
 	case MergeDirectionVertical:
 		return dt.mergeVertical(other, mode)
 	}
 	return nil, fmt.Errorf("invalid direction: %v", direction)
 }
 
-func (dt *DataTable) mergeHorizontal(other IDataTable, on string, mode MergeMode, keyType string) (*DataTable, error) {
+func (dt *DataTable) mergeHorizontal(other IDataTable, onLeft, onRight string, mode MergeMode, keyType string) (*DataTable, error) {
 	var result *DataTable
 	var err error
 
 	dt.AtomicDo(func(d *DataTable) {
 		other.AtomicDo(func(o *DataTable) {
 			colIdx1 := -1
-			if on == "" {
+			if onLeft == "" && onRight == "" {
 				// Use row names, no column index needed
 			} else {
 				for i, col := range d.columns {
-					if col.name == on {
+					if col.name == onLeft {
 						colIdx1 = i
 						break
 					}
 				}
 				if colIdx1 == -1 {
-					err = fmt.Errorf("%s %s not found in first table", keyType, on)
+					err = fmt.Errorf("%s %s not found in first table", keyType, onLeft)
 					return
 				}
 			}
 
 			colIdx2 := -1
-			if on == "" {
+			if onLeft == "" && onRight == "" {
 				// Use row names
 			} else {
 				for i, col := range o.columns {
-					if col.name == on {
+					if col.name == onRight {
 						colIdx2 = i
 						break
 					}
 				}
 				if colIdx2 == -1 {
-					err = fmt.Errorf("%s %s not found in second table", keyType, on)
+					err = fmt.Errorf("%s %s not found in second table", keyType, onRight)
 					return
 				}
 			}
@@ -82,7 +91,7 @@ func (dt *DataTable) mergeHorizontal(other IDataTable, on string, mode MergeMode
 			map1 := make(map[string][]int)
 			valMap1 := make(map[string]any)
 			var nameless1 []int
-			if on == "" {
+			if onLeft == "" && onRight == "" {
 				// Use row names
 				for i := 0; i < d.getMaxColLength(); i++ {
 					if name, ok := d.getRowNameByIndex(i); ok {
@@ -103,7 +112,7 @@ func (dt *DataTable) mergeHorizontal(other IDataTable, on string, mode MergeMode
 			map2 := make(map[string][]int)
 			valMap2 := make(map[string]any)
 			var nameless2 []int
-			if on == "" {
+			if onLeft == "" && onRight == "" {
 				// Use row names
 				for i := 0; i < o.getMaxColLength(); i++ {
 					if name, ok := o.getRowNameByIndex(i); ok {
@@ -141,6 +150,14 @@ func (dt *DataTable) mergeHorizontal(other IDataTable, on string, mode MergeMode
 				for s := range allKeys {
 					keys = append(keys, s)
 				}
+			case MergeModeLeft:
+				for s := range map1 {
+					keys = append(keys, s)
+				}
+			case MergeModeRight:
+				for s := range map2 {
+					keys = append(keys, s)
+				}
 			default:
 				err = fmt.Errorf("invalid mode: %v", mode)
 				return
@@ -168,23 +185,21 @@ func (dt *DataTable) mergeHorizontal(other IDataTable, on string, mode MergeMode
 			}
 
 			// Collect row names
-			resultRowNames := make(map[string]int)
+			resultRowNames := core.NewBiIndex(0)
 			currentRowIdx := 0
 
-			// Helper to ensure unique row names in the result map
-			safeMapName := func(m map[string]int, name string) string {
+			// Helper to ensure unique row names in the result set
+			ensureUniqueName := func(name string) string {
 				if name == "" {
 					return ""
 				}
 				originalName := name
 				counter := 1
-				for {
-					if _, exists := m[name]; !exists {
-						return name
-					}
+				for resultRowNames.Has(name) {
 					name = fmt.Sprintf("%s_%d", originalName, counter)
 					counter++
 				}
+				return name
 			}
 
 			// Fill data
@@ -197,7 +212,7 @@ func (dt *DataTable) mergeHorizontal(other IDataTable, on string, mode MergeMode
 						for _, idx2 := range indices2 {
 							// Preserve row name
 							var rowName string
-							if on != "" {
+							if onLeft != "" || onRight != "" {
 								if name, ok := d.getRowNameByIndex(idx1); ok {
 									rowName = name
 								} else if name, ok := o.getRowNameByIndex(idx2); ok {
@@ -208,7 +223,8 @@ func (dt *DataTable) mergeHorizontal(other IDataTable, on string, mode MergeMode
 							}
 
 							if rowName != "" {
-								resultRowNames[safeMapName(resultRowNames, rowName)] = currentRowIdx
+								uniqueName := ensureUniqueName(rowName)
+								_, _ = resultRowNames.Set(currentRowIdx, uniqueName)
 							}
 
 							colOffset := 0
@@ -226,10 +242,10 @@ func (dt *DataTable) mergeHorizontal(other IDataTable, on string, mode MergeMode
 							currentRowIdx++
 						}
 					}
-				} else if len(indices1) > 0 && mode == MergeModeOuter {
+				} else if len(indices1) > 0 && (mode == MergeModeOuter || mode == MergeModeLeft) {
 					for _, idx1 := range indices1 {
 						var rowName string
-						if on != "" {
+						if onLeft != "" || onRight != "" {
 							if name, ok := d.getRowNameByIndex(idx1); ok {
 								rowName = name
 							}
@@ -238,7 +254,8 @@ func (dt *DataTable) mergeHorizontal(other IDataTable, on string, mode MergeMode
 						}
 
 						if rowName != "" {
-							resultRowNames[safeMapName(resultRowNames, rowName)] = currentRowIdx
+							uniqueName := ensureUniqueName(rowName)
+							_, _ = resultRowNames.Set(currentRowIdx, uniqueName)
 						}
 
 						colOffset := 0
@@ -255,10 +272,10 @@ func (dt *DataTable) mergeHorizontal(other IDataTable, on string, mode MergeMode
 						}
 						currentRowIdx++
 					}
-				} else if len(indices2) > 0 && mode == MergeModeOuter {
+				} else if len(indices2) > 0 && (mode == MergeModeOuter || mode == MergeModeRight) {
 					for _, idx2 := range indices2 {
 						var rowName string
-						if on != "" {
+						if onLeft != "" || onRight != "" {
 							if name, ok := o.getRowNameByIndex(idx2); ok {
 								rowName = name
 							}
@@ -267,7 +284,8 @@ func (dt *DataTable) mergeHorizontal(other IDataTable, on string, mode MergeMode
 						}
 
 						if rowName != "" {
-							resultRowNames[safeMapName(resultRowNames, rowName)] = currentRowIdx
+							uniqueName := ensureUniqueName(rowName)
+							_, _ = resultRowNames.Set(currentRowIdx, uniqueName)
 						}
 
 						colOffset := 0
@@ -291,37 +309,41 @@ func (dt *DataTable) mergeHorizontal(other IDataTable, on string, mode MergeMode
 				}
 			}
 
-			// Add nameless rows if joining by row names in Outer mode
-			if mode == MergeModeOuter && on == "" {
-				for _, idx1 := range nameless1 {
-					colOffset := 0
-					for _, col := range d.columns {
-						newCols[colOffset].Append(col.data[idx1])
-						colOffset++
-					}
-					for i := range o.columns {
-						if i == colIdx2 {
-							continue
+			// Add nameless rows (joining by row names)
+			if onLeft == "" && onRight == "" {
+				if mode == MergeModeOuter || mode == MergeModeLeft {
+					for _, idx1 := range nameless1 {
+						colOffset := 0
+						for _, col := range d.columns {
+							newCols[colOffset].Append(col.data[idx1])
+							colOffset++
 						}
-						newCols[colOffset].Append(nil)
-						colOffset++
+						for i := range o.columns {
+							if i == colIdx2 {
+								continue
+							}
+							newCols[colOffset].Append(nil)
+							colOffset++
+						}
+						currentRowIdx++
 					}
-					currentRowIdx++
 				}
-				for _, idx2 := range nameless2 {
-					colOffset := 0
-					for range d.columns {
-						newCols[colOffset].Append(nil)
-						colOffset++
-					}
-					for i, col := range o.columns {
-						if i == colIdx2 {
-							continue
+				if mode == MergeModeOuter || mode == MergeModeRight {
+					for _, idx2 := range nameless2 {
+						colOffset := 0
+						for range d.columns {
+							newCols[colOffset].Append(nil)
+							colOffset++
 						}
-						newCols[colOffset].Append(col.data[idx2])
-						colOffset++
+						for i, col := range o.columns {
+							if i == colIdx2 {
+								continue
+							}
+							newCols[colOffset].Append(col.data[idx2])
+							colOffset++
+						}
+						currentRowIdx++
 					}
-					currentRowIdx++
 				}
 			}
 
@@ -405,7 +427,9 @@ func (dt *DataTable) mergeVertical(other IDataTable, mode MergeMode) (*DataTable
 					result.columns[j].data = append(result.columns[j].data, val)
 				}
 				if name, ok := d.getRowNameByIndex(i); ok {
-					result.rowNames[safeRowName(result, name)] = i
+					if unique := safeRowName(result, name); unique != "" {
+						_, _ = result.rowNames.Set(i, unique)
+					}
 				}
 			}
 
@@ -422,7 +446,9 @@ func (dt *DataTable) mergeVertical(other IDataTable, mode MergeMode) (*DataTable
 					result.columns[j].data = append(result.columns[j].data, val)
 				}
 				if name, ok := o.getRowNameByIndex(i); ok {
-					result.rowNames[safeRowName(result, name)] = currentRows + i
+					if unique := safeRowName(result, name); unique != "" {
+						_, _ = result.rowNames.Set(currentRows+i, unique)
+					}
 				}
 			}
 		})

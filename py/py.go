@@ -15,6 +15,7 @@ import (
 	json "github.com/goccy/go-json"
 
 	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/internal/utils"
 )
 
 // reinstall the Python environment
@@ -119,17 +120,23 @@ finally:
 	processDone := make(chan struct{})
 	execErr := make(chan error, 1)
 
+	scriptPath, cleanup, err := createTempPythonScript(code)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
 	// 在goroutine中執行Python代碼
-	go func() {
+	go func(path string) {
 		defer close(processDone)
-		pythonCmd := exec.Command(pyPath, "-c", code)
+		pythonCmd := exec.Command(pyPath, path)
 		pythonCmd.Stdout = os.Stdout
 		pythonCmd.Stderr = os.Stderr
-		err := pythonCmd.Run()
-		if err != nil {
+		utils.ApplyHideWindow(pythonCmd)
+		if err := pythonCmd.Run(); err != nil {
 			execErr <- err
 		}
-	}()
+	}(scriptPath)
 
 	// 等待並接收結果
 	pyResult := waitForResult(executionID, processDone, execErr)
@@ -243,17 +250,23 @@ finally:
 	processDone := make(chan struct{})
 	execErr := make(chan error, 1)
 
+	scriptPath, cleanup, err := createTempPythonScript(code)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
 	// 在goroutine中執行Python代碼
-	go func() {
+	go func(path string) {
 		defer close(processDone)
-		pythonCmd := exec.CommandContext(ctx, pyPath, "-c", code)
+		pythonCmd := exec.CommandContext(ctx, pyPath, path)
 		pythonCmd.Stdout = os.Stdout
 		pythonCmd.Stderr = os.Stderr
-		err := pythonCmd.Run()
-		if err != nil {
+		utils.ApplyHideWindow(pythonCmd)
+		if err := pythonCmd.Run(); err != nil {
 			execErr <- err
 		}
-	}()
+	}(scriptPath)
 
 	// 等待並接收結果
 	pyResult := waitForResult(executionID, processDone, execErr)
@@ -382,6 +395,40 @@ func PipFreeze() ([]string, error) {
 	return lines, nil
 }
 
+func createTempPythonScript(code string) (string, func(), error) {
+	tmpFile, err := os.CreateTemp("", "insyra-*.py")
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to create temp python file: %w", err)
+	}
+
+	scriptPath := tmpFile.Name()
+
+	if _, err := tmpFile.WriteString(code); err != nil {
+		if cerr := tmpFile.Close(); cerr != nil {
+			insyra.LogWarning("py", "createTempPythonScript", "failed to close tmp file: %v", cerr)
+		}
+		if rerr := os.Remove(scriptPath); rerr != nil && !os.IsNotExist(rerr) {
+			insyra.LogWarning("py", "createTempPythonScript", "failed to remove temp file: %v", rerr)
+		}
+		return "", nil, fmt.Errorf("failed to write temp python file: %w", err)
+	}
+
+	if err := tmpFile.Close(); err != nil {
+		if rerr := os.Remove(scriptPath); rerr != nil && !os.IsNotExist(rerr) {
+			insyra.LogWarning("py", "createTempPythonScript", "failed to remove temp file: %v", rerr)
+		}
+		return "", nil, fmt.Errorf("failed to close temp python file: %w", err)
+	}
+
+	cleanup := func() {
+		if rerr := os.Remove(scriptPath); rerr != nil && !os.IsNotExist(rerr) {
+			insyra.LogWarning("py", "createTempPythonScript", "failed to remove temp file: %v", rerr)
+		}
+	}
+
+	return scriptPath, cleanup, nil
+}
+
 func generateDefaultPyCode(executionID string) string {
 	imports := ""
 	for imps := range pyDependencies {
@@ -389,12 +436,14 @@ func generateDefaultPyCode(executionID string) string {
 			imports += fmt.Sprintf("%s\n", imps)
 		}
 	}
+	// Get IPC address (waits for server if needed)
+	addr := getIPCAddress()
 	return fmt.Sprintf(`
 %v
 import sys
 sent = False
 %v
-`, imports, builtInFunc(port, executionID))
+`, imports, builtInFunc(addr, executionID))
 }
 
 // replacePlaceholders replaces $v1, $v2, etc. placeholders with the corresponding argument values

@@ -6,9 +6,18 @@ The `isr` package provides a simplified, method-chaining syntax for the `insyra`
 
 **Package Name**: `isr` (stands for "insyra" - first letters of three syllables)
 
-**Purpose**: Syntax sugar and fluent API for insyra data structures
+**Description:** Syntax sugar and fluent API for insyra data structures
 
 **Key Feature**: Full method chaining support
+
+## Quick Start
+
+```go
+import "github.com/HazelnutParadise/insyra/isr"
+
+dl := isr.DL.Of(1, 2, 3, 4).Append(5)
+dl.Show()
+```
 
 ## Installation
 
@@ -49,7 +58,7 @@ type CSV struct {
     FilePath   string      // Path to CSV file (use this OR String, not both)
     String     string      // CSV data as string (use this OR FilePath, not both)
     InputOpts  CSV_inOpts  // Options for reading CSV
-    OutputOpts CSV_outOpts // Options for writing CSV
+    OutputOpts CSV_outOpts // Reserved for output (not used by DT.From)
 }
 
 // CSV_inOpts structure
@@ -209,11 +218,23 @@ dataTable2 := isr.DT.From(csvFromString)
 dataList := isr.DL.From("A", "B", "C", 1, 2, 3, 4, 5, 6)
 ```
 
-**Method**: `isr.DL.From(...values) *dl`
+**Method:**
 
-- **Input**: Any number of values of any type
-- **Output**: Pointer to DataList wrapper (*dl)
-- **Equivalent**: `insyra.NewDataList()`
+```go
+isr.DL.From(...values) *dl
+```
+
+**Description:** Use when you need this method.
+
+**Parameters:**
+
+- Any number of values of any type
+
+**Returns:**
+
+- Pointer to DataList wrapper (*dl)
+
+**Equivalent:** `insyra.NewDataList()`
 
 #### Creating DataLists with Of (Alias)
 
@@ -222,11 +243,21 @@ dataList := isr.DL.From("A", "B", "C", 1, 2, 3, 4, 5, 6)
 dataList := isr.DL.Of("A", "B", "C", 1, 2, 3, 4, 5, 6)
 ```
 
-**Method**: `isr.DL.Of(...values) *dl`
+**Method:**
 
-- **Input**: Any number of values of any type
-- **Output**: Pointer to DataList wrapper (*dl)
-- **Purpose**: Alias for `From()` providing a shorter method name
+```go
+isr.DL.Of(...values) *dl
+```
+
+**Description:** Alias for `From()` providing a shorter method name
+
+**Parameters:**
+
+- Any number of values of any type
+
+**Returns:**
+
+- Pointer to DataList wrapper (*dl)
 
 #### Converting Existing DataList
 
@@ -239,17 +270,37 @@ isrList := isr.UseDL(originalList)
 isrList := isr.PtrDL(originalList)
 ```
 
-**Function**: `isr.UseDL[T](t T) *dl`
+**Function:**
 
-- **Input**: `*insyra.DataList` or `dl`
-- **Output**: `*dl`
-- **Purpose**: Convert between insyra and isr types (recommended)
+```go
+isr.UseDL[T *insyra.DataList | dl](l T) *dl
+```
 
-**Function**: `isr.PtrDL[T](t T) *dl` (deprecated)
+**Description:** Convert between insyra and isr types (recommended)
 
-- **Input**: `*insyra.DataList` or `dl`
-- **Output**: `*dl`
-- **Purpose**: Convert between insyra and isr types (use `UseDL` instead)
+**Parameters:**
+
+- `*insyra.DataList` or `dl`
+
+**Returns:**
+
+- `*dl`
+
+**Old Function**:
+
+```go
+isr.PtrDL[T](t T) *dl
+```
+
+**Description:** Convert between insyra and isr types (use `UseDL` instead)
+
+**Parameters:**
+
+- `*insyra.DataList` or `dl`
+
+**Returns:**
+
+- `*dl`
 
 ### DataList Methods
 
@@ -261,11 +312,23 @@ value := dataList.At(0)        // First element
 value := dataList.At(1, 2)     // Multiple indices
 ```
 
-**Method**: `At(...indices) any`
+**Method:**
 
-- **Input**: Variable number of integer indices
-- **Output**: Element value at specified index
-- **Equivalent**: `insyra.DataList.Get()`
+```go
+At(index int) any
+```
+
+**Description:** Use when you need this method.
+
+**Parameters:**
+
+- Integer index
+
+**Returns:**
+
+- Element value at specified index
+
+**Equivalent:** `insyra.DataList.Get()`
 
 #### Adding Elements
 
@@ -274,11 +337,23 @@ value := dataList.At(1, 2)     // Multiple indices
 dataList.Push(7, 8, 9)
 ```
 
-**Method**: `Push(...values) *dl`
+**Method:**
 
-- **Input**: Variable number of values
-- **Output**: Self (for method chaining)
-- **Equivalent**: `insyra.DataList.Append()`
+```go
+Push(...values) *dl
+```
+
+**Description:** Use when you need this method.
+
+**Parameters:**
+
+- Variable number of values
+
+**Returns:**
+
+- Self (for method chaining)
+
+**Equivalent:** `insyra.DataList.Append()`
 
 #### Method Chaining Example
 
@@ -315,12 +390,23 @@ dataTable := isr.DT.From([][]string{
 dataTable := isr.DT.From(nil)
 ```
 
-**Method**: `isr.DT.From(nil) *dt`
+**Method:**
 
-- **Input**: `nil` value
-- **Output**: Pointer to empty DataTable wrapper (*dt)
-- **Purpose**: Creates an empty DataTable that can be populated later
-- **Equivalent**: `insyra.NewDataTable()`
+```go
+isr.DT.From(nil) *dt
+```
+
+**Description:** Creates an empty DataTable that can be populated later
+
+**Parameters:**
+
+- `nil` value
+
+**Returns:**
+
+- Pointer to empty DataTable wrapper (*dt)
+
+**Equivalent:** `insyra.NewDataTable()`
 
 #### Creating DataTables with Of (Alias)
 
@@ -333,11 +419,21 @@ dataTable := isr.DT.Of(isr.Row{"Name": "John", "Age": 30})
 dataTable := isr.DT.Of(isr.DL.From("A", "B", "C"))
 ```
 
-**Method**: `isr.DT.Of(item) *dt`
+**Method:**
 
-- **Input**: Same as `From()` - DataList, Row, Col, Rows, Cols, DLs, CSV, JSON, 2D slice, map, or nil
-- **Output**: Pointer to DataTable wrapper (*dt)
-- **Purpose**: Alias for `From()` providing a shorter method name
+```go
+isr.DT.Of(item) *dt
+```
+
+**Description:** Alias for `From()` providing a shorter method name
+
+**Parameters:**
+
+- Same as `From()` - DataList, Row, Col, Rows, Cols, DLs, CSV, JSON, 2D slice, map, or nil
+
+**Returns:**
+
+- Pointer to DataTable wrapper (*dt)
 
 #### Basic Creation from DataList
 
@@ -459,17 +555,37 @@ isrTable := isr.UseDT(originalTable)
 isrTable := isr.PtrDT(originalTable)
 ```
 
-**Function**: `isr.UseDT[T](t T) *dt`
+**Function:**
 
-- **Input**: `*insyra.DataTable` or `dt`
-- **Output**: `*dt`
-- **Purpose**: Convert between insyra and isr types (recommended)
+```go
+isr.UseDT[T *insyra.DataTable | dt](t T) *dt
+```
 
-**Function**: `isr.PtrDT[T](t T) *dt` (deprecated)
+**Description:** Convert between insyra and isr types (recommended)
 
-- **Input**: `*insyra.DataTable` or `dt`
-- **Output**: `*dt`
-- **Purpose**: Convert between insyra and isr types (use `UseDT` instead)
+**Parameters:**
+
+- `*insyra.DataTable` or `dt`
+
+**Returns:**
+
+- `*dt`
+
+**Old Function**:
+
+```go
+isr.PtrDT[T](t T) *dt
+```
+
+**Description:** Convert between insyra and isr types (use `UseDT` instead)
+
+**Parameters:**
+
+- `*insyra.DataTable` or `dt`
+
+**Returns:**
+
+- `*dt`
 
 ### DataTable Methods
 
@@ -481,11 +597,23 @@ row := dataTable.Row(0)              // First row (returns *dl)
 row := dataTable.Row(isr.Name("ID")) // Row by name
 ```
 
-**Method**: `Row(index) *dl`
+**Method:**
 
-- **Input**: `int` (row number) or `isr.Name` (row name)
-- **Output**: DataList containing row data
-- **Equivalent**: `insyra.DataTable.GetRow()`
+```go
+Row(row any) *dl
+```
+
+**Description:** Use when you need this method.
+
+**Parameters:**
+
+- `int` (row number) or `isr.Name` (row name)
+
+**Returns:**
+
+- DataList containing row data
+
+**Equivalent:** `insyra.DataTable.GetRow()`
 
 #### Accessing Columns
 
@@ -496,11 +624,23 @@ col := dataTable.Col("Name")         // Column by string name
 col := dataTable.Col(isr.Name("ID")) // Column by Name type
 ```
 
-**Method**: `Col(index) *dl`
+**Method:**
 
-- **Input**: `int`, `string`, or `isr.Name`
-- **Output**: DataList containing column data
-- **Equivalent**: `insyra.DataTable.GetCol()`
+```go
+Col(col any) *dl
+```
+
+**Description:** Use when you need this method.
+
+**Parameters:**
+
+- `int`, `string`, or `isr.Name`
+
+**Returns:**
+
+- DataList containing column data
+
+**Equivalent:** `insyra.DataTable.GetCol()`
 
 #### Accessing Individual Elements
 
@@ -511,11 +651,23 @@ value := dataTable.At(0, "Name")               // Row 0, Column "Name"
 value := dataTable.At(isr.Name("ID"), "Name")  // Named row and column
 ```
 
-**Method**: `At(row, col) any`
+**Method:**
 
-- **Input**: Row index (`int` or `isr.Name`) and column index (`int`, `string`, or `isr.Name`)
-- **Output**: Element value
-- **Equivalent**: `insyra.DataTable.GetElement()`
+```go
+At(row any, col any) any
+```
+
+**Description:** Use when you need this method.
+
+**Parameters:**
+
+- Row index (`int` or `isr.Name`) and column index (`int`, `string`, or `isr.Name`)
+
+**Returns:**
+
+- Element value
+
+**Equivalent:** `insyra.DataTable.GetElement()`
 
 #### Adding Data
 
@@ -553,11 +705,21 @@ dataTable.Push(isr.DLs{
 })
 ```
 
-**Method**: `Push(data) *dt`
+**Method:**
 
-- **Input**: `Row`, `[]Row`, `Col`, `[]Col`, `*dl`, `*insyra.DataList`, `[]*insyra.DataList`, `[]dl`, or `DLs`
-- **Output**: Self (for method chaining)
-- **Purpose**: Append data to existing DataTable
+```go
+Push(data any) *dt
+```
+
+**Description:** Append data to existing DataTable
+
+**Parameters:**
+
+- `Row`, `[]Row`, `Col`, `[]Col`, `*dl`, `*insyra.DataList`, `[]*insyra.DataList`, `[]dl`, or `DLs`
+
+**Returns:**
+
+- Self (for method chaining)
 
 #### Executing CCL Statements
 
@@ -589,12 +751,23 @@ result := isr.DT.From(isr.Rows{
 }).CCL("NEW('newCol') = [A] + [B]").Col(isr.Name("newCol"))
 ```
 
-**Method**: `CCL(cclStatements string) *dt`
+**Method:**
 
-- **Input**: CCL statement string (supports assignment syntax and NEW function)
-- **Output**: Self (for method chaining)
-- **Purpose**: Execute CCL statements to modify or create columns
-- **Equivalent**: `insyra.DataTable.ExecuteCCL()`
+```go
+CCL(cclStatements string) *dt
+```
+
+**Description:** Execute CCL statements to modify or create columns
+
+**Parameters:**
+
+- CCL statement string (supports assignment syntax and NEW function)
+
+**Returns:**
+
+- Self (for method chaining)
+
+**Equivalent:** `insyra.DataTable.ExecuteCCL()`
 
 > **Note**: For detailed CCL syntax and features, see the [CCL Documentation](CCL.md).
 

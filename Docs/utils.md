@@ -1,168 +1,264 @@
 # Utilities
 
-### 1. `ToFloat64(v any) float64`
+This page covers utility helpers in the main `insyra` package.
 
-This utility converts various numeric types (e.g., `int`, `float32`, `uint`) to `float64`. If the input type is unsupported, it returns `0`.
-
-### 2. `ToFloat64Safe(v any) (float64, bool)`
-
-This function attempts to safely convert a numeric value to `float64`. It returns the converted value and a boolean indicating success or failure.
-
-### 3. `SliceToF64(data []any) []float64`
-
-Converts a slice of `any` values to a slice of `float64`. If conversion fails for any element, a warning is logged, and the function continues processing.
-
-### 4. `ProcessData(input any) ([]any, int)`
-
-Processes input data and returns a slice of `any` and the length of the data. This function supports slices and custom types that implement the `IDataList` interface. For unsupported data types, it returns `nil` and `0`.
-
-### 5. `SqrtRat(x *big.Rat) *big.Rat`
-
-Calculates the square root of a `*big.Rat` (rational number) and returns the result as another `*big.Rat`.
-
-### 6. `PowRat(base *big.Rat, exponent int) *big.Rat`
-
-Computes the power of a `*big.Rat` number raised to a given exponent. This is useful for large or arbitrary precision calculations.
-
-### 7. `ConvertLongDataToWide(data, factor IDataList, independents []IDataList, aggFunc func([]float64) float64) IDataTable`
-
-Converts long data to wide data.
-
-#### Parameters (Show)
-
-- **data**: `IDataList` type, representing the dependent variable (observations).
-- **factor**: `IDataList` type, representing the factor (typically a categorical variable).
-- **independents**: `[]IDataList` type, representing multiple independent variables.
-- **aggFunc**: `func([]float64) float64` type, a custom aggregation function to handle multiple repeated data entries. If `nil`, the function defaults to returning the first entry.
-
-#### Returns
-
-- Returns an `IDataTable` type containing the wide-format data.
-
-#### Example Usage (Show)
+### ToFloat64
 
 ```go
-package main
-
-import (
- "fmt"
- "github.com/HazelnutParadise/insyra"
-)
-
-func main() {
- // Example data
- data := insyra.NewDataList(5, 15, 25, 35)
- factor := insyra.NewDataList("A", "B", "C", "A").SetName("Factor")
- independent1 := insyra.NewDataList(1, 2, 1, 2).SetName("Independent1")
- independent2 := insyra.NewDataList(10, 20, 10, 20).SetName("Independent2")
-
- // Convert long data to wide
- wideTable := insyra.ConvertLongDataToWide(data, factor, []insyra.IDataList{independent1, independent2}, nil)
- wideTable.Show()
-}
+func ToFloat64(v any) float64
 ```
 
-This example shows how to convert long-format data to wide-format, including how to handle factors, dependent variables, and multiple independent variables.
+**Description:** Converts common numeric types to `float64`. Unsupported types return `0`.
 
-### 8. `ParseColIndex(colName string) int`
+**Parameters:**
 
-Converts an Excel-style column name (e.g., "A", "Z", "AA") to its 0-based integer index.
+- `v`: Input value for `v`. Type: `any`.
 
-### 9. `IsNumeric(v any) bool`
+**Returns:**
 
-Checks if a value is of a numeric type. It supports standard numeric types and also uses reflection to check the underlying kind of an interface value.
+- `float64`: Computed value. Type: `float64`.
 
-### 10. `SortTimes(times []time.Time)`
-
-Sorts a slice of `time.Time` in ascending order.
-
-### 11. `Show(label string, object showable, startEnd ...any)`
-
-Displays any Insyra structure that supports ranged output (such as `*insyra.DataTable` and `*insyra.DataList`) with a prefixed label. Internally it delegates to the object's `ShowRange` implementation, so the optional `startEnd` arguments behave exactly the same as calling `ShowRange` directly.
-
-#### Parameters
-
-- **label**: A short string shown before the rendered data. Useful when printing multiple tables or lists.
-- **object**: Any value implementing the internal `showable` interface—that is, a type that provides `ShowRange`, including `DataTable`, `DataList`, and other compatible structures.
-- **startEnd**: Optional range arguments forwarded to `ShowRange`. Pass nothing to show all rows, a single positive or negative integer to show the first or last _N_ rows, or `[start, end]` pairs (with optional `nil` end) to specify an explicit slice.
-
-#### Example Usage
+### ToFloat64Safe
 
 ```go
-package main
-
-import (
-    "github.com/HazelnutParadise/insyra"
-)
-
-func main() {
-    dt := insyra.NewDataTable(
-        insyra.NewDataList("Alice", "Bob", "Charlie").SetName("Name"),
-        insyra.NewDataList(28, 34, 29).SetName("Age"),
-    ).SetName("Team Members")
-
-    insyra.Show("Preview", dt, 2)      // Show first 2 rows
-    insyra.Show("Latest", dt, -1)      // Show the most recent row
-    insyra.Show("Full Table", dt)      // Show entire table
-}
+func ToFloat64Safe(v any) (float64, bool)
 ```
 
-### 12. `DetectEncoding(filePath string) (string, error)`
+**Description:** Converts numeric values to `float64` and returns a success flag.
 
-**Purpose:** Detect the character encoding of a text file. Supports common encodings such as UTF-8, Big5, GB18030/GBK, and UTF-16 (with BOM).
+**Parameters:**
 
-**Behavior:**
+- `v`: Input value for `v`. Type: `any`.
 
-- Reads a sample from the beginning of the file (currently 8192 bytes) to increase detection accuracy.
-- Checks for common BOM signatures first:
-  - `0xEF 0xBB 0xBF` → `utf-8`
-  - `0xFF 0xFE` → `utf-16le`
-  - `0xFE 0xFF` → `utf-16be`
-- If the sample is valid UTF-8 (`utf8.Valid`), returns `utf-8`.
-- Otherwise uses `chardet` to detect encoding and returns the charset in lowercase (e.g., `"big5"`, `"gb-18030"`).
-- Returns an error on empty files or when detection fails.
+**Returns:**
 
-**Return values:**
+- `float64`: Computed value. Type: `float64`.
+- `bool`: Computed value. Type: `bool`.
 
-- (string) detected encoding in lowercase (empty if detection failed)
-- (error) non-nil when file open/read or detection fails
+### SliceToF64
 
-**Example usage:**
+```go
+func SliceToF64(data []any) []float64
+```
+
+**Description:** Converts a slice of `any` values to a slice of `float64`. Currently only `float64` and `int` are converted; other types become `0`.
+
+**Parameters:**
+
+- `data`: Input data values. Type: `[]any`.
+
+**Returns:**
+
+- `[]float64`: Result slice. Type: `[]float64`.
+
+### ProcessData
+
+```go
+func ProcessData(input any) ([]any, int)
+```
+
+**Description:** Normalizes input into a `[]any` and returns its length. Supports slices/arrays, `IDataList`, and pointers to those types. Unsupported types return `nil, 0`.
+
+**Parameters:**
+
+- `input`: Input value for `input`. Type: `any`.
+
+**Returns:**
+
+- `[]any`: Result slice. Type: `[]any`.
+- `int`: Computed value. Type: `int`.
+
+### SqrtRat
+
+```go
+func SqrtRat(x *big.Rat) *big.Rat
+```
+
+**Description:** Calculates the square root of a `*big.Rat` and returns the result as another `*big.Rat`.
+
+**Parameters:**
+
+- `x`: Numeric parameter value. Type: `*big.Rat`.
+
+**Returns:**
+
+- `*big.Rat`: Return value. Type: `*big.Rat`.
+
+### PowRat
+
+```go
+func PowRat(base *big.Rat, exponent int) *big.Rat
+```
+
+**Description:** Computes `base^exponent` for `*big.Rat` values.
+
+**Parameters:**
+
+- `base`: Input value for `base`. Type: `*big.Rat`.
+- `exponent`: Input value for `exponent`. Type: `int`.
+
+**Returns:**
+
+- `*big.Rat`: Return value. Type: `*big.Rat`.
+
+### ConvertLongDataToWide
+
+```go
+func ConvertLongDataToWide(data, factor IDataList, independents []IDataList, aggFunc func([]float64) float64) IDataTable
+```
+
+**Description:** Converts long data into a wide table. When `aggFunc` is nil, the first value is used for duplicates.
+
+**Parameters:**
+
+- `data`: Input data values. Type: `IDataList`.
+- `factor`: Input value for `factor`. Type: `IDataList`.
+- `independents`: Input value for `independents`. Type: `[]IDataList`.
+- `aggFunc`: Input value for `aggFunc`. Type: `func([]float64) float64`.
+
+**Returns:**
+
+- `IDataTable`: Resulting data table. Type: `IDataTable`.
+
+```go
+data := insyra.NewDataList(5, 15, 25, 35).SetName("Value")
+factor := insyra.NewDataList("A", "B", "C", "A").SetName("Factor")
+ind1 := insyra.NewDataList(1, 2, 1, 2).SetName("Independent1")
+ind2 := insyra.NewDataList(10, 20, 10, 20).SetName("Independent2")
+
+wide := insyra.ConvertLongDataToWide(data, factor, []insyra.IDataList{ind1, ind2}, nil)
+wide.Show()
+```
+
+### ParseColIndex
+
+```go
+func ParseColIndex(colIndex string) (int, bool)
+```
+
+**Description:** Converts Excel-style column index (e.g., `A`, `Z`, `AA`) into a 0-based index. The second return value is a boolean `ok` indicating whether parsing succeeded (false for invalid column index).
+
+**Parameters:**
+
+- `colIndex`: Index value to use. Type: `string`.
+
+  **Returns:**
+
+- `int`: Computed value (0-based index). Type: `int`.
+- `bool`: Success flag (`ok`) indicating whether parsing succeeded. Type: `bool`.
+
+### CalcColIndex
+
+```go
+func CalcColIndex(index int) (string, bool)
+```
+
+**Description:** Converts a 0-based column index into an Excel-style column index (e.g., `A`, `Z`, `AA`). The second return value is a boolean `ok` indicating whether conversion succeeded (false for negative indices).
+**Parameters:**
+
+- `index`: 0-based index value to use. Type: `int`.
+
+  **Returns:**
+
+- `string`: Computed value (Excel-style column index). Type: `string`.
+- `bool`: Success flag (`ok`) indicating whether conversion succeeded. Type: `bool`.
+
+### IsNumeric
+
+```go
+func IsNumeric(v any) bool
+```
+
+**Description:** Returns `true` when `v` is one of Go's standard numeric types.
+
+**Parameters:**
+
+- `v`: Input value for `v`. Type: `any`.
+
+**Returns:**
+
+- `bool`: Computed value. Type: `bool`.
+
+### SortTimes
+
+```go
+func SortTimes(times []time.Time)
+```
+
+**Description:** Sorts a slice of `time.Time` in ascending order.
+
+**Parameters:**
+
+- `times`: Input value for `times`. Type: `[]time.Time`.
+
+**Returns:**
+
+- None.
+
+### Show
+
+```go
+func Show(label string, object showable, startEnd ...any)
+```
+
+**Description:** Displays a labeled preview of any structure that implements `ShowRange` (e.g., `DataTable` or `DataList`). The `startEnd` arguments behave the same as `ShowRange`.
+
+**Parameters:**
+
+- `label`: Input value for `label`. Type: `string`.
+- `object`: Input value for `object`. Type: `showable`.
+- `startEnd`: Input value for `startEnd`. Type: `...any`.
+
+**Returns:**
+
+- None.
+
+```go
+dt := insyra.NewDataTable(
+    insyra.NewDataList("Alice", "Bob").SetName("Name"),
+    insyra.NewDataList(28, 34).SetName("Age"),
+)
+
+insyra.Show("Preview", dt, 1)
+```
+
+### DetectEncoding
+
+```go
+func DetectEncoding(filePath string) (string, error)
+```
+
+**Description:** Detects the character encoding of a text file. Behavior:
+
+**Parameters:**
+
+- `filePath`: File path to use. Type: `string`.
+
+**Returns:**
+
+- `string`: Computed value. Type: `string`.
+- `error`: Error when the operation fails. Type: `error`.
+
+- Reads a 8192-byte sample for detection.
+- Checks BOM markers (`utf-8`, `utf-16le`, `utf-16be`).
+- Returns `utf-8` if the sample is valid UTF-8.
+- Falls back to `chardet` for other encodings.
+- Returns an error for empty files or failed detection.
 
 ```go
 enc, err := insyra.DetectEncoding("data.csv")
 if err != nil {
-    // handle detection error or use a fallback (e.g., "utf-8")
-}
-enc = strings.ToLower(enc)
-switch {
-case strings.Contains(enc, "big5"):
-    // use Big5 decoder
-case strings.Contains(enc, "gb"):
-    // use GB18030 decoder
-case strings.Contains(enc, "utf-16"):
-    // use UTF-16 decoder with BOM handling
-default:
-    // treat as UTF-8
+    // handle detection error
 }
 ```
 
-**Notes:**
-
-- This function is intended for text files; behavior on binary files is undefined and may return incorrect results.
-- If you need deterministic behavior, allow callers to force a specific encoding instead of relying on detection.
-
 ## Installation
-
-To install **Insyra**, use the following command:
 
 ```bash
 go get github.com/HazelnutParadise/insyra
 ```
 
 ## Usage
-
-Here is a basic example of how to use Insyra utilities:
 
 ```go
 package main
@@ -175,12 +271,10 @@ import (
 )
 
 func main() {
-    // Convert an int to float64
     num := 42
     f := insyra.ToFloat64(num)
     fmt.Println("Converted:", f)
 
-    // Calculate the square root of a big.Rat
     rat := big.NewRat(16, 1)
     sqrtRat := insyra.SqrtRat(rat)
     fmt.Println("Square root:", sqrtRat)

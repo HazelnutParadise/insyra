@@ -16,7 +16,7 @@ type DataTableSortConfig struct {
 // For multi-column sorting, the order of configs determines the priority (first config has highest priority).
 func (dt *DataTable) SortBy(configs ...DataTableSortConfig) *DataTable {
 	if len(configs) == 0 {
-		LogWarning("datatable", "SortBy", "No sorting configuration provided, returning original DataTable.")
+		dt.warn("SortBy", "No sorting configuration provided, returning original DataTable.")
 		return dt
 	}
 	dt.AtomicDo(func(t *DataTable) {
@@ -27,7 +27,7 @@ func (dt *DataTable) SortBy(configs ...DataTableSortConfig) *DataTable {
 		}
 		for _, config := range reversedConfigs {
 			if config.ColumnIndex == "" && config.ColumnName == "" && config.ColumnNumber < 0 {
-				LogWarning("datatable", "SortBy", "Invalid sorting configuration: %+v, skipping this configuration.", config)
+				dt.warn("SortBy", "Invalid sorting configuration: %+v, skipping this configuration.", config)
 				continue
 			}
 			var column *DataList
@@ -39,7 +39,7 @@ func (dt *DataTable) SortBy(configs ...DataTableSortConfig) *DataTable {
 				column = t.GetColByNumber(config.ColumnNumber)
 			}
 			if column == nil {
-				LogWarning("datatable", "SortBy", "Column not found for config: %+v, skipping.", config)
+				LogWarning("DataTable", "SortBy", "Column not found for config: %+v, skipping.", config)
 				continue
 			}
 

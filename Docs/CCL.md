@@ -88,7 +88,7 @@ dt.ExecuteCCL(`
 ```
 
 **Data Snapshotting:**
-To ensure consistency during the evaluation of a *single* statement, CCL uses a data snapshot. For example, in `NEW('B') = SUM(@)`, the `SUM(@)` calculation will not be affected by the values being written into `B` as it is being generated.
+To ensure consistency during the evaluation of a _single_ statement, CCL uses a data snapshot. For example, in `NEW('B') = SUM(@)`, the `SUM(@)` calculation will not be affected by the values being written into `B` as it is being generated.
 
 ## Basic Syntax
 
@@ -366,14 +366,14 @@ true || false       // true
 
 ### Type Coercion Summary
 
-| Operation | Left Type | Right Type | Behavior |
-|-----------|-----------|------------|----------|
-| `+`, `-`, `*`, `/`, `^` | Number/String | Number/String | Convert both to numbers, then calculate |
-| `>`, `<`, `>=`, `<=` | Number/String | Number/String | Convert both to numbers, then compare |
-| `==`, `!=` | Number/String | Number/String | Convert both to numbers if possible, then compare |
-| `==`, `!=` | nil | any | Special nil handling (see above) |
-| `&` | any | any | Convert both to strings, then concatenate |
-| `&&`, `\|\|` | Boolean | Boolean | Must be boolean, no coercion |
+| Operation               | Left Type     | Right Type    | Behavior                                          |
+| ----------------------- | ------------- | ------------- | ------------------------------------------------- |
+| `+`, `-`, `*`, `/`, `^` | Number/String | Number/String | Convert both to numbers, then calculate           |
+| `>`, `<`, `>=`, `<=`    | Number/String | Number/String | Convert both to numbers, then compare             |
+| `==`, `!=`              | Number/String | Number/String | Convert both to numbers if possible, then compare |
+| `==`, `!=`              | nil           | any           | Special nil handling (see above)                  |
+| `&`                     | any           | any           | Convert both to strings, then concatenate         |
+| `&&`, `\|\|`            | Boolean       | Boolean       | Must be boolean, no coercion                      |
 
 ### Best Practices for Type Safety
 
@@ -384,7 +384,7 @@ true || false       // true
    ```go
    // Good: Handle nil explicitly
    "IF(A == nil, 0, A) + B"
-   
+
    // Risky: Relies on automatic nil-to-zero conversion
    "A + B"  // What if A is nil?
    ```
@@ -510,7 +510,7 @@ When `@` is used as an argument to an **Aggregate Function** (like `SUM`, `AVG`,
 Example:
 
 ```
-"IF(A > 10, 'High', 'Low')"  
+"IF(A > 10, 'High', 'Low')"
 // Returns 'High' if the value in column A is greater than 10, otherwise returns 'Low'
 ```
 
@@ -524,10 +524,10 @@ Example:
 Examples:
 
 ```
-"IF(AND(A > 0, B < 100), 'Valid', 'Invalid')"  
+"IF(AND(A > 0, B < 100), 'Valid', 'Invalid')"
 // Returns 'Valid' if A > 0 and B < 100, otherwise returns 'Invalid'
 
-"IF(OR(A > 90, B > 90), 'Excellent', 'Good')"  
+"IF(OR(A > 90, B > 90), 'Excellent', 'Good')"
 // Returns 'Excellent' if A > 90 or B > 90, otherwise returns 'Good'
 ```
 
@@ -540,7 +540,7 @@ Examples:
 Example:
 
 ```
-"CONCAT(A, '-', B)"  
+"CONCAT(A, '-', B)"
 // Concatenates the value in column A, a hyphen, and the value in column B
 ```
 
@@ -553,7 +553,7 @@ Example:
 Example:
 
 ```
-"IF(ISNA(A), 0, A)"  
+"IF(ISNA(A), 0, A)"
 // Returns 0 if the value in column A is a numeric NaN or the string "#N/A", otherwise returns the value in column A
 ```
 
@@ -568,7 +568,7 @@ Example:
 Example:
 
 ```
-"IFNA(A, 0)"  
+"IFNA(A, 0)"
 // Returns 0 if the value in column A is NaN or "#N/A", otherwise returns the value in column A
 ```
 
@@ -581,7 +581,7 @@ Example:
 Example:
 
 ```
-"CASE(A > 90, 'A', A > 80, 'B', A > 70, 'C', 'F')"  
+"CASE(A > 90, 'A', A > 80, 'B', A > 70, 'C', 'F')"
 // Returns 'A' if A > 90, 'B' if A > 80, 'C' if A > 70, otherwise returns 'F'
 ```
 
@@ -590,6 +590,33 @@ Example:
 Aggregate functions perform calculations on a set of values (a column, a row, or an expression) and return a single value. This value is then "broadcasted" to all rows in the resulting column (unless in row-wise mode).
 
 **Important Note on `nil` values:** All aggregate functions **automatically ignore `nil` values**. For example, `AVG` only divides the sum by the number of non-nil elements.
+
+## Duration & Time Functions
+
+CCL supports basic date and duration arithmetic and comparison. Key points:
+
+- Date strings (e.g., `"2006-01-02"`, RFC3339) are automatically parsed as `time.Time` when possible; parsed values are treated as date/time values.
+- `date - date` returns a `time.Duration` representing the difference between the two dates. Use `DAY(...)`, `HOUR(...)`, `MINUTE(...)`, or `SECOND(...)` to convert the result to numeric values.
+- `date - number` or `date + number` treats the number as days and returns a `time.Time` (date shifted by the specified number of days).
+- Date comparisons (`>`, `<`, `>=`, `<=`, `==`, `!=`) work on date/time values.
+- If a string cannot be parsed as a date (or the operands are other unsupported types), operations fall back to their original behavior (numeric/string comparison or an error).
+
+### DAY / HOUR / MINUTE / SECOND
+
+- `DAY(x)`: accepts a `time.Duration`, a duration string (e.g., `"24h"`), or a numeric value (interpreted as seconds); returns days as `float64`.
+- `HOUR(x)`: returns hours as `float64`.
+- `MINUTE(x)`: returns minutes as `float64`.
+- `SECOND(x)`: returns seconds as `float64`.
+
+Examples:
+
+```go
+// Given A and B are date/time columns
+// Calculate difference and express it in days/hours/minutes/seconds
+dt.AddColUsingCCL("diff", "A - B")                     // -> time.Duration
+dt.AddColUsingCCL("diff_days", "DAY(A - B)")           // -> float64 days
+dt.AddColUsingCCL("diff_hours", "HOUR(A - B)")         // -> float64 hours
+```
 
 ### SUM
 
@@ -741,6 +768,16 @@ dt.AddColUsingCCL("square", "A ^ 2")
 dt.AddColUsingCCL("cube", "A ^ 3")
 ```
 
+### Date & Duration Examples
+
+```go
+// Date difference returns time.Duration; use DAY/HOUR/MINUTE/SECOND to convert
+// A and B are date/time columns
+dt.AddColUsingCCL("diff", "A - B")                     // -> time.Duration
+dt.AddColUsingCCL("diff_days", "DAY(A - B)")           // -> float64 days
+dt.AddColUsingCCL("prev_diff", "IF(#>0, A.(#-1) - A, NULL)") // uses IF short-circuiting to avoid row -1
+```
+
 ### String Operations
 
 ```go
@@ -796,6 +833,7 @@ dt.ExecuteCCL(`
 ## Best Practices
 
 1. **Choose the Right Mode**:
+
    - Use `AddColUsingCCL` for simple calculations that add a single new column
    - Use `ExecuteCCL` when you need to modify existing columns or perform multiple operations
 
@@ -808,7 +846,7 @@ dt.ExecuteCCL(`
        NEW('tax') = ['subtotal'] * 0.1
        NEW('total') = ['subtotal'] + ['tax']
    `)
-   
+
    // Rather than one complex expression:
    dt.AddColUsingCCL("total", "['quantity'] * ['price'] * 1.1")
    ```
@@ -818,7 +856,7 @@ dt.ExecuteCCL(`
    ```go
    // Better practice:
    dt.AddColUsingCCL("grade", "CASE(A >= 90, 'A', A >= 80, 'B', A >= 70, 'C', A >= 60, 'D', 'F')")
-   
+
    // Rather than:
    dt.AddColUsingCCL("grade", "IF(A >= 90, 'A', IF(A >= 80, 'B', IF(A >= 70, 'C', IF(A >= 60, 'D', 'F'))))")
    ```
@@ -832,7 +870,7 @@ dt.ExecuteCCL(`
    ```go
    // More readable:
    dt.ExecuteCCL("NEW('profit') = ['revenue'] - ['cost']")
-   
+
    // Less readable:
    dt.ExecuteCCL("NEW('profit') = A - B")
    ```
@@ -845,11 +883,11 @@ CCL is optimized for high-performance batch processing. The formula is compiled 
 
 Test environment: 100,000 rows × 3 columns
 
-| Formula Type | Example | Time | Per Row |
-|--------------|---------|------|---------|
-| Simple arithmetic | `A + B + C` | ~32ms | ~0.32μs |
-| Bracket syntax | `[A] + ['colName'] + [C]` | ~43ms | ~0.43μs |
-| With function | `IF(A > 50000, 1, 0)` | ~59ms | ~0.59μs |
+| Formula Type       | Example                                        | Time   | Per Row |
+| ------------------ | ---------------------------------------------- | ------ | ------- |
+| Simple arithmetic  | `A + B + C`                                    | ~32ms  | ~0.32μs |
+| Bracket syntax     | `[A] + ['colName'] + [C]`                      | ~43ms  | ~0.43μs |
+| With function      | `IF(A > 50000, 1, 0)`                          | ~59ms  | ~0.59μs |
 | Complex expression | `IF(AND(A > 10000, B < 150000), A * 2 + B, C)` | ~103ms | ~1.03μs |
 
 ### Performance Tips
@@ -864,23 +902,28 @@ Test environment: 100,000 rows × 3 columns
 ### Common Issues
 
 1. **Assignment to Non-Existent Column**
+
    - Error: `assignment target column 'X' does not exist`
    - Solution: Use `NEW('X') = expression` to create new columns, not assignment syntax
 
 2. **Expression Evaluation Timeout**
+
    - Simplify complex expressions
    - Check if you have a very large dataset
 
 3. **Type Errors**
+
    - Ensure all columns involved in operations have compatible data types
    - Use conditional conversions for columns that may contain different types of data
 
 4. **Column Reference Errors**
+
    - Verify that column references are correct (A, B, C...)
    - For named columns, ensure the name is spelled correctly (case-sensitive)
    - Check if referenced columns exist in the DataTable
 
 5. **Invalid Expressions**
+
    - Check for matching parentheses
    - Ensure function syntax is correct (e.g., IF requires three parameters)
    - For `NEW()`, ensure the syntax is `NEW('name') = expression`
@@ -891,11 +934,11 @@ Test environment: 100,000 rows × 3 columns
 
 ### Mode Selection Guide
 
-| Scenario | Recommended Method |
-|----------|-------------------|
-| Add single calculated column | `AddColUsingCCL` |
-| Modify single column by index | `EditColByIndexUsingCCL` |
-| Modify single column by name | `EditColByNameUsingCCL` |
-| Modify existing column (statement style) | `ExecuteCCL` with assignment |
-| Create multiple columns | `ExecuteCCL` with multiple `NEW()` |
-| Complex multi-step calculation | `ExecuteCCL` with multiple statements |
+| Scenario                                 | Recommended Method                    |
+| ---------------------------------------- | ------------------------------------- |
+| Add single calculated column             | `AddColUsingCCL`                      |
+| Modify single column by index            | `EditColByIndexUsingCCL`              |
+| Modify single column by name             | `EditColByNameUsingCCL`               |
+| Modify existing column (statement style) | `ExecuteCCL` with assignment          |
+| Create multiple columns                  | `ExecuteCCL` with multiple `NEW()`    |
+| Complex multi-step calculation           | `ExecuteCCL` with multiple statements |

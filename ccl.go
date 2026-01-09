@@ -5,6 +5,7 @@ import (
 	"reflect"
 
 	"github.com/HazelnutParadise/insyra/internal/ccl"
+	"github.com/HazelnutParadise/insyra/internal/core"
 )
 
 func resetCCLEvalDepth() {
@@ -21,7 +22,7 @@ func resetCCLFuncCallDepth() {
 type dataTableContext struct {
 	row        []any
 	tableData  [][]any
-	rowNameMap map[string]int
+	rowNameMap *core.BiIndex
 	colNameMap map[string]int
 	rowIndex   int
 }
@@ -96,7 +97,7 @@ func (c *dataTableContext) GetRowIndexByName(rowName string) (int, error) {
 	if c.rowNameMap == nil {
 		return -1, fmt.Errorf("row name '%s' used but no row name mapping provided", rowName)
 	}
-	idx, ok := c.rowNameMap[rowName]
+	idx, ok := c.rowNameMap.Index(rowName)
 	if !ok {
 		return -1, fmt.Errorf("row name '%s' not found", rowName)
 	}

@@ -25,6 +25,8 @@ The stats package provides comprehensive statistical analysis functions:
 - **Dimensionality Reduction**: Principal Component Analysis (PCA)
 - **Matrix Operations**: Diagonal matrix creation and extraction (Diag function)
 
+Most functions expect numeric data in `DataList`/`DataTable`. Non-numeric values are skipped using `ToFloat64Safe`, and a warning may be logged.
+
 ---
 
 ## Core Types
@@ -61,20 +63,20 @@ const (
 
 ## Correlation Analysis
 
-### CorrelationAnalysis
+### Correlation Analysis
 
 ```go
 func CorrelationAnalysis(dataTable insyra.IDataTable, method CorrelationMethod) (*insyra.DataTable, *insyra.DataTable, float64, float64, int)
 ```
 
-**Purpose**: Provides a comprehensive correlation analysis including correlation coefficient matrix, p-value matrix, and overall test (Bartlett's sphericity test).
+**Description:** Provides a comprehensive correlation analysis including correlation coefficient matrix, p-value matrix, and overall test (Bartlett's sphericity test).
 
-**Parameters**:
+**Parameters:**
 
 - `dataTable`: Input data table with at least 2 columns
 - `method`: Correlation method (see CorrelationMethod below)
 
-**Returns**:
+**Returns:**
 
 - Correlation coefficient matrix (as DataTable)
 - P-value matrix (as DataTable)
@@ -94,20 +96,21 @@ corrMatrix.ToCSV("correlation_matrix.csv", true, true, true) // Export to CSV
 pMatrix.ToCSV("correlation_matrix_p.csv", true, true, true)  // Export p-values to CSV
 ```
 
-### CorrelationMatrix
+### Correlation Matrix
 
 ```go
 func CorrelationMatrix(dataTable insyra.IDataTable, method CorrelationMethod) (*insyra.DataTable, *insyra.DataTable)
 ```
 
-**Purpose**: Calculate correlation matrix and corresponding p-value matrix for all columns in a DataTable.
+**Description:** Calculate correlation matrix and corresponding p-value matrix for all columns in a DataTable.
 
-**Parameters**:
+**Parameters:**
 
 - `dataTable`: Input data table with at least 2 columns
 - `method`: Correlation method (see CorrelationMethod below)
 
-**Returns**: Two DataTables:
+**Returns:**
+Two DataTables:
 
 - The first contains the correlation coefficients matrix
 - The second contains the p-values matrix
@@ -130,16 +133,18 @@ pMatrix.ToCSV("correlation_matrix_p.csv", true, true, true)  // Export p-values 
 func Correlation(dlX, dlY insyra.IDataList, method CorrelationMethod) *CorrelationResult
 ```
 
-**Purpose**: Calculate correlation coefficient between two datasets.
+**Description:** Calculate correlation coefficient between two datasets.
 
-**Parameters**:
+**Parameters:**
 
 - `dlX, dlY`: Input data lists (must have same length, minimum 2 elements)
 - `method`: Correlation method (see CorrelationMethod below)
 
-**Returns**: `*CorrelationResult` containing correlation coefficient and statistical significance.
+**Returns:**
 
-#### CorrelationMethod
+- `*CorrelationResult`: Return value.
+
+#### Correlation Method
 
 ```go
 type CorrelationMethod int
@@ -150,7 +155,7 @@ const (
 )
 ```
 
-#### CorrelationResult
+#### Correlation Result
 
 ```go
 type CorrelationResult struct {
@@ -171,21 +176,30 @@ fmt.Printf("Correlation: %.4f, P-value: %.4f\n", result.Statistic, result.PValue
 func Covariance(dlX, dlY insyra.IDataList) float64
 ```
 
-**Purpose**: Calculate sample covariance between two datasets.
+**Description:** Calculate sample covariance between two datasets.
 
-### BartlettSphericity
+**Parameters:**
+
+- `dlX`: Input value for `dlX`. Type: `insyra.IDataList`.
+- `dlY`: Input value for `dlY`. Type: `insyra.IDataList`.
+
+**Returns:**
+
+- `float64`: Return value.
+
+### Bartlett Sphericity
 
 ```go
 func BartlettSphericity(dataTable insyra.IDataTable) (chiSquare float64, pValue float64, df int)
 ```
 
-**Purpose**: Performs Bartlett's test of sphericity to assess whether the correlation matrix is significantly different from an identity matrix.
+**Description:** Performs Bartlett's test of sphericity to assess whether the correlation matrix is significantly different from an identity matrix.
 
-**Parameters**:
+**Parameters:**
 
 - `dataTable`: Input data table with at least 2 columns
 
-**Returns**:
+**Returns:**
 
 - `chiSquare`: The chi-square statistic
 - `pValue`: The p-value of the test
@@ -197,7 +211,7 @@ func BartlettSphericity(dataTable insyra.IDataTable) (chiSquare float64, pValue 
 // Perform Bartlett's test of sphericity
 chiSquare, pValue, df := stats.BartlettSphericity(dataTable)
 fmt.Printf("Bartlett's test: χ²=%.4f, p=%.4f, df=%d\n", chiSquare, pValue, df)
-// A p-value < 0.05 generally indicates that the correlation matrix is significantly 
+// A p-value < 0.05 generally indicates that the correlation matrix is significantly
 // different from an identity matrix, making it suitable for factor analysis
 ```
 
@@ -205,48 +219,60 @@ fmt.Printf("Bartlett's test: χ²=%.4f, p=%.4f, df=%d\n", chiSquare, pValue, df)
 
 ## T-Tests
 
-### SingleSampleTTest
+### Single Sample T-Test
 
 ```go
 func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel float64) *TTestResult
 ```
 
-**Purpose**: Test if sample mean differs from hypothesized population mean.
+**Description:** Test if sample mean differs from hypothesized population mean.
 
-**Parameters**:
+**Parameters:**
 
 - `data`: Sample data (minimum 2 elements)
 - `mu`: Hypothesized population mean
 - `confidenceLevel`: Confidence level (0 < confidenceLevel < 1, default 0.95)
 
-### TwoSampleTTest
+**Returns:**
+
+- `*TTestResult`: Return value.
+
+### Two Sample T-Test
 
 ```go
 func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenceLevel ...float64) *TTestResult
 ```
 
-**Purpose**: Compare means of two independent samples.
+**Description:** Compare means of two independent samples.
 
-**Parameters**:
+**Parameters:**
 
 - `data1, data2`: Two independent samples
 - `equalVariance`: true for pooled variance, false for Welch's t-test
 - `confidenceLevel`: Optional confidence level (default 0.95)
 
-### PairedTTest
+**Returns:**
+
+- `*TTestResult`: Return value.
+
+### Paired T-Test
 
 ```go
 func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel ...float64) *TTestResult
 ```
 
-**Purpose**: Compare means of paired/dependent samples.
+**Description:** Compare means of paired/dependent samples.
 
-**Parameters**:
+**Parameters:**
 
 - `data1, data2`: Paired samples (must have same length)
 - `confidenceLevel`: Optional confidence level (default 0.95)
 
-#### TTestResult
+**Returns:**
+
+- `*TTestResult`: Return value.
+
+#### T-Test Result
 
 ```go
 type TTestResult struct {
@@ -279,15 +305,15 @@ fmt.Printf("t=%.4f, p=%.4f, mean diff=%.4f\n", result.Statistic, result.PValue, 
 
 ## Z-Tests
 
-### SingleSampleZTest
+### Single Sample Z-Test
 
 ```go
 func SingleSampleZTest(data insyra.IDataList, mu float64, sigma float64, alternative AlternativeHypothesis, confidenceLevel float64) *ZTestResult
 ```
 
-**Purpose**: Test sample mean against population mean when population standard deviation is known.
+**Description:** Test sample mean against population mean when population standard deviation is known.
 
-**Parameters**:
+**Parameters:**
 
 - `data`: Sample data
 - `mu`: Hypothesized population mean
@@ -295,7 +321,11 @@ func SingleSampleZTest(data insyra.IDataList, mu float64, sigma float64, alterna
 - `alternative`: Type of alternative hypothesis
 - `confidenceLevel`: Confidence level (0 < confidenceLevel < 1)
 
-#### ZTestResult
+**Returns:**
+
+- `*ZTestResult`: Return value.
+
+#### Z-Test Result
 
 ```go
 type ZTestResult struct {
@@ -318,33 +348,41 @@ fmt.Printf("z=%.4f, p=%.4f\n", result.Statistic, result.PValue)
 
 ## Chi-Square Tests
 
-### ChiSquareGoodnessOfFit
+### Chi-Square Goodness of Fit
 
 ```go
 func ChiSquareGoodnessOfFit(input insyra.IDataList, p []float64, rescaleP bool) *ChiSquareTestResult
 ```
 
-**Purpose**: Test if observed categorical data matches expected distribution.
+**Description:** Test if observed categorical data matches expected distribution.
 
-**Parameters**:
+**Parameters:**
 
 - `input`: Categorical data (e.g., ["A", "B", "A"])
 - `p`: Expected probabilities (nil for uniform distribution)
 - `rescaleP`: Whether to rescale probabilities to sum to 1
 
-### ChiSquareIndependenceTest
+**Returns:**
+
+- `*ChiSquareTestResult`: Return value.
+
+### Chi-Square Independence Test
 
 ```go
 func ChiSquareIndependenceTest(rowData, colData insyra.IDataList) *ChiSquareTestResult
 ```
 
-**Purpose**: Test independence between two categorical variables.
+**Description:** Test independence between two categorical variables.
 
-**Parameters**:
+**Parameters:**
 
 - `rowData, colData`: Categorical data lists
 
-#### ChiSquareTestResult
+**Returns:**
+
+- `*ChiSquareTestResult`: Return value.
+
+#### Chi-Square Test Result
 
 ```go
 type ChiSquareTestResult struct {
@@ -361,7 +399,15 @@ The `ContingencyTable` contains the observed frequencies and expected frequencie
 func (r *ChiSquareTestResult) Show()
 ```
 
-Displays the chi-square test results including the test statistic, p-value, degrees of freedom, and the contingency table.
+**Description:** Displays the chi-square test results including the test statistic, p-value, degrees of freedom, and the contingency table.
+
+**Parameters:**
+
+- None.
+
+**Returns:**
+
+- None.
 
 **Example**:
 
@@ -387,12 +433,16 @@ result.Show() // Display complete test results with contingency table
 func Skewness(sample any, method ...SkewnessMethod) float64
 ```
 
-**Purpose**: Calculate skewness (asymmetry) of a distribution.
+**Description:** Calculate skewness (asymmetry) of a distribution.
 
-**Parameters**:
+**Parameters:**
 
 - `sample`: Data (any type convertible to float64 slice)
 - `method`: Optional skewness calculation method (default: SkewnessG1)
+
+**Returns:**
+
+- `float64`: Return value.
 
 #### SkewnessMethod
 
@@ -413,14 +463,18 @@ const (
 func Kurtosis(data any, method ...KurtosisMethod) float64
 ```
 
-**Purpose**: Calculate kurtosis (tail heaviness) of a distribution.
+**Description:** Calculate kurtosis (tail heaviness) of a distribution.
 
-**Parameters**:
+**Parameters:**
 
 - `data`: Data (any type convertible to float64 slice)
 - `method`: Optional kurtosis calculation method (default: KurtosisG2)
 
-#### KurtosisMethod
+**Returns:**
+
+- `float64`: Return value.
+
+#### Kurtosis Method
 
 ```go
 type KurtosisMethod int
@@ -433,21 +487,23 @@ const (
 
 **Returns**: Kurtosis value (float64). NaN if data is invalid.
 
-### CalculateMoment
+### Calculate Moment
 
 ```go
 func CalculateMoment(dl insyra.IDataList, n int, central bool) float64
 ```
 
-**Purpose**: Calculate n-th moment of a dataset.
+**Description:** Calculate n-th moment of a dataset.
 
-**Parameters**:
+**Parameters:**
 
 - `dl`: Input data list
 - `n`: Moment order (positive integer)
 - `central`: true for central moments, false for raw moments
 
-**Returns**: n-th moment value (float64). NaN if calculation fails.
+**Returns:**
+
+- `float64`: Return value.
 
 **Example**:
 
@@ -469,30 +525,38 @@ fmt.Printf("3rd central moment: %.4f\n", moment3)
 
 ## Analysis of Variance (ANOVA)
 
-### OneWayANOVA
+### One Way ANOVA
 
 ```go
 func OneWayANOVA(groups ...insyra.IDataList) *OneWayANOVAResult
 ```
 
-**Purpose**: Compare means across multiple independent groups.
+**Description:** Compare means across multiple independent groups.
 
-**Parameters**:
+**Parameters:**
 
 - `groups`: Variable number of data groups (minimum 2 groups)
 
-### TwoWayANOVA
+**Returns:**
+
+- `*OneWayANOVAResult`: Return value.
+
+### Two Way ANOVA
 
 ```go
 func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) *TwoWayANOVAResult
 ```
 
-**Purpose**: Analyze effects of two factors and their interaction.
+**Description:** Analyze effects of two factors and their interaction.
 
-**Parameters**:
+**Parameters:**
 
 - `factorALevels, factorBLevels`: Number of levels for each factor
 - `cells`: Data for each factor combination
+
+**Returns:**
+
+- `*TwoWayANOVAResult`: Return value.
 
 #### ANOVA Result Types
 
@@ -545,58 +609,91 @@ fmt.Printf("Factor A F=%.4f, p=%.4f\n", result.FactorA.F, result.FactorA.P)
 
 ## F-Tests
 
-### FTestForVarianceEquality
+### F-Test For Variance Equality
 
 ```go
 func FTestForVarianceEquality(data1, data2 insyra.IDataList) *FTestResult
 ```
 
-**Purpose**: Test equality of variances between two groups.
+**Description:** Test equality of variances between two groups.
 
-### LeveneTest
+**Parameters:**
+
+- `data1`: Input value for `data1`. Type: `insyra.IDataList`.
+- `data2`: Input value for `data2`. Type: `insyra.IDataList`.
+
+**Returns:**
+
+- `*FTestResult`: Return value.
+
+### Levene Test
 
 ```go
 func LeveneTest(groups []insyra.IDataList) *FTestResult
 ```
 
-**Purpose**: Test equality of variances across multiple groups (robust).
+**Description:** Test equality of variances across multiple groups (robust).
 
-### BartlettTest
+**Parameters:**
+
+- `groups`: Input value for `groups`. Type: `[]insyra.IDataList`.
+
+**Returns:**
+
+- `*FTestResult`: Return value.
+
+### Bartlett Test
 
 ```go
 func BartlettTest(groups []insyra.IDataList) *FTestResult
 ```
 
-**Purpose**: Test equality of variances across multiple groups (assumes normality).
+**Description:** Test equality of variances across multiple groups (assumes normality).
 
-### FTestForRegression
+**Parameters:**
+
+- `groups`: Input value for `groups`. Type: `[]insyra.IDataList`.
+
+**Returns:**
+
+- `*FTestResult`: Return value.
+
+### F-Test For Regression
 
 ```go
 func FTestForRegression(ssr, sse float64, df1, df2 int) *FTestResult
 ```
 
-**Purpose**: Test overall significance of regression model.
+**Description:** Test overall significance of regression model.
 
-**Parameters**:
+**Parameters:**
 
 - `ssr`: Regression sum of squares
 - `sse`: Error sum of squares
 - `df1, df2`: Degrees of freedom
 
-### FTestForNestedModels
+**Returns:**
+
+- `*FTestResult`: Return value.
+
+### F-Test For Nested Models
 
 ```go
 func FTestForNestedModels(rssReduced, rssFull float64, dfReduced, dfFull int) *FTestResult
 ```
 
-**Purpose**: Compare nested regression models.
+**Description:** Compare nested regression models.
 
-**Parameters**:
+**Parameters:**
 
 - `rssReduced, rssFull`: Residual sum of squares for each model
 - `dfReduced, dfFull`: Degrees of freedom for each model
 
-#### FTestResult
+**Returns:**
+
+- `*FTestResult`: Return value.
+
+#### F-Test Result
 
 ```go
 type FTestResult struct {
@@ -632,16 +729,18 @@ fmt.Printf("Regression F=%.4f, p=%.4f\n", result.Statistic, result.PValue)
 func PCA(dataTable insyra.IDataTable, nComponents ...int) *PCAResult
 ```
 
-**Purpose**: Perform principal component analysis to reduce dimensionality of data.
+**Description:** Perform principal component analysis to reduce dimensionality of data.
 
-**Parameters**:
+**Parameters:**
 
 - `dataTable`: Input data table with observations in rows and variables in columns
 - `nComponents`: Optional number of components to extract (default: all components)
 
-**Returns**: A `PCAResult` structure containing the principal components, eigenvalues, and explained variance.
+**Returns:**
 
-#### PCAResult
+- `*PCAResult`: Return value.
+
+#### PCA Result
 
 ```go
 type PCAResult struct {
@@ -664,22 +763,24 @@ fmt.Printf("Explained variance: %.2f%%\n", result.ExplainedVariance[0])
 
 ## Regression Analysis
 
-### LinearRegression
+### Linear Regression
 
 ```go
 func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) *LinearRegressionResult
 ```
 
-**Purpose**: Performs ordinary least-squares linear regression. Supports both simple (one X) and multiple (multiple X) linear regression.
+**Description:** Performs ordinary least-squares linear regression. Supports both simple (one X) and multiple (multiple X) linear regression.
 
-**Parameters**:
+**Parameters:**
 
 - `dlY`: Dependent variable (IDataList).
 - `dlXs`: Independent variable(s) (variadic IDataList). At least one independent variable must be provided. All IDataList inputs must have the same length, and the number of observations must be greater than the number of independent variables.
 
-**Returns**: `*LinearRegressionResult` containing the regression analysis results. Returns `nil` if inputs are invalid (e.g., length mismatch, insufficient observations, singular matrix).
+**Returns:**
 
-#### LinearRegressionResult
+- `*LinearRegressionResult`: Return value.
+
+#### Linear Regression Result
 
 ```go
 type LinearRegressionResult struct {
@@ -695,7 +796,7 @@ type LinearRegressionResult struct {
     // Legacy confidence intervals for simple regression compatibility
     ConfidenceIntervalIntercept [2]float64 // 95% confidence interval for intercept [lower, upper]
     ConfidenceIntervalSlope     [2]float64 // 95% confidence interval for slope [lower, upper]
-    
+
     // Extended fields for multiple regression (and also populated for simple regression)
     Coefficients   []float64 // Slice of coefficients: [β₀, β₁, ..., βₚ] (intercept followed by slopes)
     StandardErrors []float64 // Slice of standard errors for each coefficient
@@ -715,19 +816,21 @@ type LinearRegressionResult struct {
 **Fields in LinearRegressionResult**:
 
 - **Legacy Fields (for simple regression, where `len(dlXs) == 1`)**:
+
   - `Slope`: The slope of the regression line (β₁).
   - `Intercept`: The y-intercept of the regression line (β₀).
   - `StandardError`: The standard error of the slope coefficient.
   - `StandardErrorIntercept`: The standard error of the intercept coefficient.
-  - `TValue`: The t-statistic for the slope, used to test its significance.  - `TValueIntercept`: The t-statistic for the intercept, used to test its significance.
+  - `TValue`: The t-statistic for the slope, used to test its significance. - `TValueIntercept`: The t-statistic for the intercept, used to test its significance.
   - `PValue`: The p-value associated with the t-statistic for the slope.
   - `PValueIntercept`: The p-value associated with the t-statistic for the intercept.
   - `ConfidenceIntervalIntercept`: The 95% confidence interval for the intercept `[lower_bound, upper_bound]`.
   - `ConfidenceIntervalSlope`: The 95% confidence interval for the slope `[lower_bound, upper_bound]`.
 
 - **Extended Fields (for multiple regression, also available for simple regression)**:
+
   - `Coefficients`: A slice containing all model coefficients. The first element (`Coefficients[0]`) is the intercept (β₀), and subsequent elements (`Coefficients[1:]`) are the coefficients for the independent variables (β₁, β₂, ..., βₚ).
-  - `StandardErrors`: A slice of standard errors corresponding to each coefficient in `Coefficients`.  - `TValues`: A slice of t-statistics corresponding to each coefficient.
+  - `StandardErrors`: A slice of standard errors corresponding to each coefficient in `Coefficients`. - `TValues`: A slice of t-statistics corresponding to each coefficient.
   - `PValues`: A slice of p-values corresponding to each t-statistic.
   - `ConfidenceIntervals`: A slice of 95% confidence intervals for each coefficient. Each element is a `[2]float64` array containing `[lower_bound, upper_bound]`.
 
@@ -749,17 +852,17 @@ if result != nil {
     fmt.Printf("  Slope (β₁ for x1): %.4f (p=%.4f)\n", result.Slope, result.PValue)
     fmt.Printf("  R-squared: %.4f\n", result.RSquared)
     fmt.Printf("  Adjusted R-squared: %.4f\n", result.AdjustedRSquared)
-    
+
     // Display 95% confidence intervals using clear field names
-    fmt.Printf("  95%% CI for Intercept: [%.4f, %.4f]\n", 
+    fmt.Printf("  95%% CI for Intercept: [%.4f, %.4f]\n",
         result.ConfidenceIntervalIntercept[0], result.ConfidenceIntervalIntercept[1])
-    fmt.Printf("  95%% CI for Slope: [%.4f, %.4f]\n", 
+    fmt.Printf("  95%% CI for Slope: [%.4f, %.4f]\n",
         result.ConfidenceIntervalSlope[0], result.ConfidenceIntervalSlope[1])
-    
+
     // Alternative: using array format (useful for multiple regression)
-    // fmt.Printf("  95%% CI for Intercept: [%.4f, %.4f]\n", 
+    // fmt.Printf("  95%% CI for Intercept: [%.4f, %.4f]\n",
     //     result.ConfidenceIntervals[0][0], result.ConfidenceIntervals[0][1])
-    // fmt.Printf("  95%% CI for Slope: [%.4f, %.4f]\n", 
+    // fmt.Printf("  95%% CI for Slope: [%.4f, %.4f]\n",
     //     result.ConfidenceIntervals[1][0], result.ConfidenceIntervals[1][1])
 }
 ```
@@ -780,10 +883,10 @@ if result != nil {
     }
     fmt.Printf("  R-squared: %.4f\n", result.RSquared)
     fmt.Printf("  Adjusted R-squared: %.4f\n", result.AdjustedRSquared)
-    
+
     // Display 95% confidence intervals for all coefficients
     fmt.Printf("  95%% Confidence Intervals:\n")
-    fmt.Printf("    Intercept: [%.4f, %.4f]\n", 
+    fmt.Printf("    Intercept: [%.4f, %.4f]\n",
         result.ConfidenceIntervals[0][0], result.ConfidenceIntervals[0][1])
     for i := 1; i < len(result.ConfidenceIntervals); i++ {
         fmt.Printf("    β%d: [%.4f, %.4f]\n", i,
@@ -792,23 +895,25 @@ if result != nil {
 }
 ```
 
-### PolynomialRegression
+### Polynomial Regression
 
 ```go
 func PolynomialRegression(dlY insyra.IDataList, dlX insyra.IDataList, degree int) *PolynomialRegressionResult
 ```
 
-**Purpose**: Perform polynomial regression analysis (y = a₀ + a₁x + a₂x² + ... + aₙxⁿ).
+**Description:** Perform polynomial regression analysis (y = a₀ + a₁x + a₂x² + ... + aₙxⁿ).
 
-**Parameters**:
+**Parameters:**
 
 - `dlY`: Dependent variable data
 - `dlX`: Independent variable data
 - `degree`: Degree of the polynomial (≥ 1)
 
-**Returns**: Result containing polynomial coefficients and model evaluation metrics.
+**Returns:**
 
-#### PolynomialRegressionResult
+- `*PolynomialRegressionResult`: Return value.
+
+#### Polynomial Regression Result
 
 ```go
 type PolynomialRegressionResult struct {
@@ -820,7 +925,7 @@ type PolynomialRegressionResult struct {
     StandardErrors   []float64 // Standard errors for each coefficient
     TValues          []float64 // t statistics for each coefficient
     PValues          []float64 // p-values for each coefficient
-    
+
     // Confidence intervals for coefficients (95% by default)
     ConfidenceIntervals [][2]float64 // 95% confidence intervals for each coefficient [lower, upper]
 }
@@ -837,22 +942,24 @@ fmt.Printf("Equation: y = %.4f + %.4f·x + %.4f·x² + %.4f·x³\\n", \r
 fmt.Printf("R² = %.4f\\n", result.RSquared)
 ```
 
-### ExponentialRegression
+### Exponential Regression
 
 ```go
 func ExponentialRegression(dlY insyra.IDataList, dlX insyra.IDataList) *ExponentialRegressionResult
 ```
 
-**Purpose**: Perform exponential regression analysis (y = a·e^(b·x)).
+**Description:** Perform exponential regression analysis (y = a·e^(b·x)).
 
-**Parameters**:
+**Parameters:**
 
 - `dlY`: Dependent variable data (must contain positive values)
 - `dlX`: Independent variable data
 
-**Returns**: Result containing coefficients (a, b) and model evaluation metrics.
+**Returns:**
 
-#### ExponentialRegressionResult
+- `*ExponentialRegressionResult`: Return value.
+
+#### Exponential Regression Result
 
 ```go
 type ExponentialRegressionResult struct {
@@ -867,7 +974,7 @@ type ExponentialRegressionResult struct {
     TValueSlope            float64   // t statistic for coefficient b
     PValueIntercept        float64   // p-value for coefficient a
     PValueSlope            float64   // p-value for coefficient b
-    
+
     // Confidence intervals for coefficients (95% by default)
     ConfidenceIntervalIntercept [2]float64 // 95% confidence interval for intercept [lower, upper]
     ConfidenceIntervalSlope     [2]float64 // 95% confidence interval for slope [lower, upper]
@@ -882,31 +989,33 @@ result := stats.ExponentialRegression(yData, xData) // Corrected parameter order
 if result != nil {
     fmt.Printf("Equation: y = %.4f · e^(%.4f·x)\n", result.Intercept, result.Slope)
     fmt.Printf("R² = %.4f\n", result.RSquared)
-    
+
     // Display 95% confidence intervals
-    fmt.Printf("95%% CI for Intercept (a): [%.4f, %.4f]\n", 
+    fmt.Printf("95%% CI for Intercept (a): [%.4f, %.4f]\n",
         result.ConfidenceIntervalIntercept[0], result.ConfidenceIntervalIntercept[1])
-    fmt.Printf("95%% CI for Slope (b): [%.4f, %.4f]\n", 
+    fmt.Printf("95%% CI for Slope (b): [%.4f, %.4f]\n",
         result.ConfidenceIntervalSlope[0], result.ConfidenceIntervalSlope[1])
 }
 ```
 
-### LogarithmicRegression
+### Logarithmic Regression
 
 ```go
 func LogarithmicRegression(dlY insyra.IDataList, dlX insyra.IDataList) *LogarithmicRegressionResult
 ```
 
-**Purpose**: Perform logarithmic regression analysis (y = a + b·ln(x)).
+**Description:** Perform logarithmic regression analysis (y = a + b·ln(x)).
 
-**Parameters**:
+**Parameters:**
 
 - `dlY`: Dependent variable data
 - `dlX`: Independent variable data (must contain positive values)
 
-**Returns**: Result containing coefficients (a, b) and model evaluation metrics.
+**Returns:**
 
-#### LogarithmicRegressionResult
+- `*LogarithmicRegressionResult`: Return value.
+
+#### Logarithmic Regression Result
 
 ```go
 type LogarithmicRegressionResult struct {
@@ -921,7 +1030,7 @@ type LogarithmicRegressionResult struct {
     TValueSlope            float64   // t statistic for coefficient b
     PValueIntercept        float64   // p-value for coefficient a
     PValueSlope            float64   // p-value for coefficient b
-    
+
     // Confidence intervals for coefficients (95% by default)
     ConfidenceIntervalIntercept [2]float64 // 95% confidence interval for intercept [lower, upper]
     ConfidenceIntervalSlope     [2]float64 // 95% confidence interval for slope [lower, upper]
@@ -936,11 +1045,11 @@ result := stats.LogarithmicRegression(yData, xData) // Corrected parameter order
 if result != nil {
     fmt.Printf("Equation: y = %.4f + %.4f·ln(x)\n", result.Intercept, result.Slope)
     fmt.Printf("R² = %.4f\n", result.RSquared)
-    
+
     // Display 95% confidence intervals
-    fmt.Printf("95%% CI for Intercept (a): [%.4f, %.4f]\n", 
+    fmt.Printf("95%% CI for Intercept (a): [%.4f, %.4f]\n",
         result.ConfidenceIntervalIntercept[0], result.ConfidenceIntervalIntercept[1])
-    fmt.Printf("95%% CI for Slope (b): [%.4f, %.4f]\n", 
+    fmt.Printf("95%% CI for Slope (b): [%.4f, %.4f]\n",
         result.ConfidenceIntervalSlope[0], result.ConfidenceIntervalSlope[1])
 }
 ```
@@ -955,9 +1064,9 @@ if result != nil {
 func Diag(x any, dims ...int) any
 ```
 
-**Purpose**: Create diagonal matrices or extract diagonal elements from matrices, mimicking R's `diag()` function.
+**Description:** Create diagonal matrices or extract diagonal elements from matrices, mimicking R's `diag()` function.
 
-**Parameters**:
+**Parameters:**
 
 - `x`: Input value of various types:
   - `*mat.Dense`: Extract diagonal elements as `[]float64`
@@ -969,7 +1078,7 @@ func Diag(x any, dims ...int) any
   - 1 dim: Set nrow = ncol = dim[0]
   - 2 dims: Set nrow = dim[0], ncol = dim[1]
 
-**Returns**:
+**Returns:**
 
 - When extracting: `[]float64` containing diagonal elements
 - When creating: `*mat.Dense` diagonal or identity matrix**Examples**:
@@ -999,7 +1108,7 @@ rectIdentity := Diag(nil, 2, 3) // Returns 2x3 matrix with diagonal 1s
 The methods available for skewness and kurtosis calculations correspond directly to the `type` options in the R package `e1071`:
 
 - **Type 1** (G1/g2): Default methods using sample moments
-- **Type 2** (Adjusted): Adjusted Fisher-Pearson estimators  
+- **Type 2** (Adjusted): Adjusted Fisher-Pearson estimators
 - **Type 3** (Bias-adjusted): Bias-corrected versions
 
 For detailed mathematical formulas, refer to the [e1071 documentation](https://cran.r-project.org/web/packages/e1071/e1071.pdf).

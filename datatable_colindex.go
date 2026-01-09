@@ -1,5 +1,7 @@
 package insyra
 
+import "github.com/HazelnutParadise/insyra/internal/utils"
+
 // GetColIndexByName returns the column index (A, B, C, ...) by its name.
 func (dt *DataTable) GetColIndexByName(name string) string {
 	var result = ""
@@ -8,7 +10,7 @@ func (dt *DataTable) GetColIndexByName(name string) string {
 		result, ok = dt.getColIndexByName_notAtomic(name)
 	})
 	if !ok {
-		LogWarning("DataTable", "GetColIndexByName", "Column name not found: %s, returning empty string", name)
+		dt.warn("GetColIndexByName", "Column name not found: %s, returning empty string", name)
 	}
 	return result
 }
@@ -20,15 +22,12 @@ func (dt *DataTable) GetColIndexByNumber(number int) string {
 		if number < 0 {
 			number += len(dt.columns)
 		}
-		for i, num := range dt.columnIndex {
-			if num == number {
-				result = i
-				return
-			}
+		if number >= 0 && number < len(dt.columns) {
+			result, _ = utils.CalcColIndex(number)
 		}
 	})
 	if result == "" {
-		LogWarning("DataTable", "GetColIndexByNumber", "Column number not found: %d, returning empty string", number)
+		dt.warn("GetColIndexByNumber", "Column number not found: %d, returning empty string", number)
 	}
 	return result
 }
@@ -40,10 +39,8 @@ func (dt *DataTable) getColIndexByName_notAtomic(name string) (string, bool) {
 	if !ok {
 		return "", false
 	}
-	for k, v := range dt.columnIndex {
-		if v == num {
-			return k, true
-		}
+	if num >= 0 && num < len(dt.columns) {
+		return utils.CalcColIndex(num)
 	}
 	return "", false
 }

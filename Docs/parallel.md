@@ -14,7 +14,7 @@ go get github.com/HazelnutParadise/insyra/parallel
 
 ## Usage
 
-The `parallel` package is easy to use and integrate into your projects. Below is an example demonstrating how to store functions in variables and run them in parallel.
+The `parallel` package is easy to use and integrate into your projects. All functions passed in must be **zero-argument functions**; capture inputs via closures.
 
 ### Example
 
@@ -106,3 +106,4 @@ func main() {
 - The package expects functions to return arbitrary values, which are stored as `[]any`. You may need to manage type assertions accordingly.
 - Type safety is managed through runtime checks, which may cause editor warnings.
 - When using `AwaitResult` with functions that have no return values, the corresponding results will be `nil`.
+- Functions must not require parameters; wrap inputs in closures (e.g., `func() { do(x) }`).

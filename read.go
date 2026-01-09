@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/HazelnutParadise/insyra/internal/core"
 	csvInternal "github.com/HazelnutParadise/insyra/internal/csv"
 	json "github.com/goccy/go-json"
 	"github.com/xuri/excelize/v2"
@@ -121,8 +122,7 @@ func ReadCSV_File(filePath string, setFirstColToRowNames bool, setFirstRowToColN
 	}
 
 	dt.columns = []*DataList{}
-	dt.columnIndex = make(map[string]int)
-	dt.rowNames = make(map[string]int)
+	dt.rowNames = core.NewBiIndex(0)
 
 	if len(rows) == 0 {
 		return dt, nil // 空的CSV
@@ -138,7 +138,6 @@ func ReadCSV_File(filePath string, setFirstColToRowNames bool, setFirstRowToColN
 			}
 			column := &DataList{name: safeColName(dt, colName)}
 			dt.columns = append(dt.columns, column)
-			dt.columnIndex[generateColIndex(len(dt.columns)-1)] = len(dt.columns) - 1
 		}
 		startRow = 1
 	} else {
@@ -149,7 +148,6 @@ func ReadCSV_File(filePath string, setFirstColToRowNames bool, setFirstRowToColN
 			}
 			column := &DataList{}
 			dt.columns = append(dt.columns, column)
-			dt.columnIndex[generateColIndex(len(dt.columns)-1)] = len(dt.columns) - 1
 		}
 	}
 
@@ -157,7 +155,7 @@ func ReadCSV_File(filePath string, setFirstColToRowNames bool, setFirstRowToColN
 	for rowIndex, row := range rows[startRow:] {
 		if setFirstColToRowNames {
 			rowName := row[0]
-			dt.rowNames[safeRowName(dt, rowName)] = rowIndex
+			_, _ = dt.rowNames.Set(rowIndex, safeRowName(dt, rowName))
 			row = row[1:] // 移除第一欄作為行名
 		}
 
@@ -187,8 +185,7 @@ func ReadCSV_String(csvString string, setFirstColToRowNames bool, setFirstRowToC
 	}
 
 	dt.columns = []*DataList{}
-	dt.columnIndex = make(map[string]int)
-	dt.rowNames = make(map[string]int)
+	dt.rowNames = core.NewBiIndex(0)
 
 	if len(rows) == 0 {
 		return dt, nil // 空的CSV
@@ -203,7 +200,6 @@ func ReadCSV_String(csvString string, setFirstColToRowNames bool, setFirstRowToC
 			}
 			column := &DataList{name: safeColName(dt, colName)}
 			dt.columns = append(dt.columns, column)
-			dt.columnIndex[generateColIndex(len(dt.columns)-1)] = len(dt.columns) - 1
 		}
 		startRow = 1
 	} else {
@@ -213,14 +209,13 @@ func ReadCSV_String(csvString string, setFirstColToRowNames bool, setFirstRowToC
 			}
 			column := &DataList{}
 			dt.columns = append(dt.columns, column)
-			dt.columnIndex[generateColIndex(len(dt.columns)-1)] = len(dt.columns) - 1
 		}
 	}
 
 	for rowIndex, row := range rows[startRow:] {
 		if setFirstColToRowNames {
 			rowName := row[0]
-			dt.rowNames[safeRowName(dt, rowName)] = rowIndex
+			_, _ = dt.rowNames.Set(rowIndex, safeRowName(dt, rowName))
 			row = row[1:] // 移除第一欄作為行名
 		}
 

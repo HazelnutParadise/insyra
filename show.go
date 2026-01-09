@@ -59,7 +59,7 @@ func (dt *DataTable) ShowRange(startEnd ...any) {
 		// Build data map without using Data() method to avoid deadlock
 		dataMap := make(map[string][]any)
 		for i, col := range dt.columns {
-			key := generateColIndex(i)
+			key, _ := utils.CalcColIndex(i)
 			if col.name != "" {
 				key += fmt.Sprintf("(%s)", col.name)
 			}
@@ -82,7 +82,16 @@ func (dt *DataTable) ShowRange(startEnd ...any) {
 			if idx := strings.Index(b, "("); idx != -1 {
 				prefixB = b[:idx]
 			}
-			return cmp.Compare(ParseColIndex(prefixA), ParseColIndex(prefixB))
+			indexA, okA := utils.ParseColIndex(prefixA)
+			indexB, okB := utils.ParseColIndex(prefixB)
+			if !okA && !okB {
+				return 0
+			} else if !okA {
+				return -1
+			} else if !okB {
+				return 1
+			}
+			return cmp.Compare(indexA, indexB)
 		})
 
 		// Get terminal window width
@@ -436,7 +445,7 @@ func (dt *DataTable) ShowTypesRange(startEnd ...any) {
 		// Build data map without using Data() method to avoid deadlock
 		dataMap := make(map[string][]any)
 		for i, col := range dt.columns {
-			key := generateColIndex(i)
+			key, _ := utils.CalcColIndex(i)
 			if col.name != "" {
 				key += fmt.Sprintf("(%s)", col.name)
 			}

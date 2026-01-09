@@ -36,7 +36,7 @@ If you then still feel the need to ask a question and need clarification, we rec
 
 - Open an [Issue](https://github.com/HazelnutParadise/insyra/issues/new).
 - Provide as much context as you can about what you're running into.
-- Provide project and platform versions (nodejs, npm, etc), depending on what seems relevant.
+- Provide project and platform versions (Go version, OS, architecture, and module version).
 
 We will then take care of the issue as soon as possible.
 
@@ -69,7 +69,7 @@ A good bug report shouldn't leave others needing to chase you up for more inform
 
 - Make sure that you are using the latest version.
 - Determine if your bug is really a bug and not an error on your side e.g. using incompatible environment components/versions (Make sure that you have read the [documentation](https://github.com/HazelnutParadise/insyra/tree/main/Docs). If you are looking for support, you might want to check [this section](#i-have-a-question)).
-- To see if other users have experienced (and potentially already solved) the same issue you are having, check if there is not already a bug report existing for your bug or error in the [bug tracker](https://github.com/HazelnutParadise/insyraissues?q=label%3Abug).
+- To see if other users have experienced (and potentially already solved) the same issue you are having, check if there is not already a bug report existing for your bug or error in the [bug tracker](https://github.com/HazelnutParadise/insyra/issues?q=label%3Abug).
 - Also make sure to search the internet (including Stack Overflow) to see if users outside of the GitHub community have discussed the issue.
 - Collect information about the bug:
 - Stack trace (Traceback)
@@ -81,7 +81,7 @@ A good bug report shouldn't leave others needing to chase you up for more inform
 <!-- omit in toc -->
 #### How Do I Submit a Good Bug Report?
 
-> You must never report security related issues, vulnerabilities or bugs including sensitive information to the issue tracker, or elsewhere in public. Instead sensitive bugs must be sent by email to <>.
+> You must never report security related issues, vulnerabilities or bugs including sensitive information to the issue tracker, or elsewhere in public. Please use GitHub's Security Advisories (Security tab) instead.
 <!-- You may add a PGP key to allow the messages to be sent encrypted as well. -->
 
 We use GitHub issues to track bugs and errors. If you run into an issue with the project:
@@ -126,25 +126,25 @@ Enhancement suggestions are tracked as [GitHub issues](https://github.com/Hazeln
 <!-- You might want to create an issue template for enhancement suggestions that can be used as a guide and that defines the structure of the information to be included. If you do so, reference it here in the description. -->
 
 ### Your First Code Contribution
-<!-- TODO
-include Setup of env, IDE and typical getting started instructions?
 
--->
+1. Fork the repo and create a feature branch.
+2. Make focused changes and keep them scoped to the issue.
+3. Run `go test ./...` locally if you changed code.
+4. Open a PR with a short summary and any relevant context.
 
 ### Improving The Documentation
-<!-- TODO
-Updating, improving and correcting the documentation
 
--->
+Docs live in `README.md`, `README_TW.md`, and the `Docs/` directory. Keep examples aligned with actual APIs and include the Go version or any external dependency requirements when relevant.
 
 ## Styleguides
 ### Commit Messages
-<!-- TODO
 
--->
+- Use short, descriptive subjects (e.g., `docs: clarify csvxl encoding`).
+- Keep commits focused; avoid bundling unrelated changes.
 
 ## Join The Project Team
-<!-- TODO -->
+
+If you are a consistent contributor, open a discussion or reach out in the community to ask about longer-term collaboration.
 
 <!-- omit in toc -->
 ## Attribution

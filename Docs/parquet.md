@@ -64,43 +64,96 @@ type FileInfo struct {
 
 ### Inspect
 
-Inspects the metadata of a Parquet file.
-
 ```go
 func Inspect(path string) (FileInfo, error)
 ```
 
-### Read
+**Description:** Inspects the metadata of a Parquet file.
 
-Reads a Parquet file into an `insyra.DataTable` all at once.
+**Parameters:**
+
+- `path`: File path to use. Type: `string`.
+
+**Returns:**
+
+- `FileInfo`: Return value.
+- `error`: Error when the operation fails.
+
+### Read
 
 ```go
 func Read(ctx context.Context, path string, opt ReadOptions) (*insyra.DataTable, error)
 ```
 
-### Write
+**Description:** Reads a Parquet file into an `insyra.DataTable` all at once.
 
-Writes an `insyra.IDataTable` to a Parquet file.
+**Parameters:**
+
+- `ctx`: Context for cancellation or timeouts. Type: `context.Context`.
+- `path`: File path to use. Type: `string`.
+- `opt`: Input value for `opt`. Type: `ReadOptions`.
+
+**Returns:**
+
+- `*insyra.DataTable`: Return value.
+- `error`: Error when the operation fails.
+
+### Write
 
 ```go
 func Write(dt insyra.IDataTable, path string) error
 ```
 
-### Stream
+**Description:** Writes an `insyra.IDataTable` to a Parquet file.
 
-Streams a Parquet file, returning a channel that receives `*insyra.DataTable` batches.
+**Parameters:**
+
+- `dt`: Input value for `dt`. Type: `insyra.IDataTable`.
+- `path`: File path to use. Type: `string`.
+
+**Returns:**
+
+- `error`: Error when the operation fails.
+
+### Stream
 
 ```go
 func Stream(ctx context.Context, path string, opt ReadOptions, batchSize int) (<-chan *insyra.DataTable, <-chan error)
 ```
 
-### ReadColumn
+**Description:** Streams a Parquet file, returning a channel that receives `*insyra.DataTable` batches. Always read from the error channel to detect stream failures.
 
-Reads data from a single column in a Parquet file, returning an `insyra.DataList`.
+**Parameters:**
+
+- `ctx`: Context for cancellation or timeouts. Type: `context.Context`.
+- `path`: File path to use. Type: `string`.
+- `opt`: Input value for `opt`. Type: `ReadOptions`.
+- `batchSize`: Input value for `batchSize`. Type: `int`.
+
+**Returns:**
+
+- `<-chan *insyra.DataTable`: Return value.
+- `<-chan error`: Return value.
+
+### ReadColumn
 
 ```go
 func ReadColumn(ctx context.Context, path string, column string, opt ReadColumnOptions) (*insyra.DataList, error)
 ```
+
+**Description:** Reads data from a single column in a Parquet file, returning an `insyra.DataList`.
+
+**Parameters:**
+
+- `ctx`: Context for cancellation or timeouts. Type: `context.Context`.
+- `path`: File path to use. Type: `string`.
+- `column`: Input value for `column`. Type: `string`.
+- `opt`: Input value for `opt`. Type: `ReadColumnOptions`.
+
+**Returns:**
+
+- `*insyra.DataList`: Return value.
+- `error`: Error when the operation fails.
 
 ## CCL Support
 
@@ -118,11 +171,11 @@ The `parquet` package provides CCL (Column Calculation Language) support for dir
 
 ### FilterWithCCL
 
-Applies a CCL filter expression to a Parquet file and returns filtered results as a `DataTable`. The filter expression should evaluate to a boolean value for each row.
-
 ```go
 func FilterWithCCL(ctx context.Context, path string, filterExpr string) (*insyra.DataTable, error)
 ```
+
+**Description:** Applies a CCL filter expression to a Parquet file and returns filtered results as a `DataTable`. The filter expression should evaluate to a boolean value for each row.
 
 **Parameters:**
 
@@ -148,11 +201,11 @@ filtered.Show()
 
 ### ApplyCCL
 
-Applies CCL expressions directly to a Parquet file in streaming mode, processing data batch by batch to minimize memory usage. The CCL script can contain multiple statements separated by semicolons.
-
 ```go
 func ApplyCCL(ctx context.Context, path string, cclScript string) error
 ```
+
+**Description:** Applies CCL expressions directly to a Parquet file in streaming mode, processing data batch by batch to minimize memory usage. The CCL script can contain multiple statements separated by semicolons.
 
 **Parameters:**
 
@@ -160,10 +213,14 @@ func ApplyCCL(ctx context.Context, path string, cclScript string) error
 - `path`: Path to the Parquet file (will be modified in-place)
 - `cclScript`: CCL script containing one or more statements separated by `;` or newlines
 
+**Returns:**
+
+- `error`: Error when the operation fails.
+
 **Important:**
 
-- The input file **will be overwritten** with the transformed data
-- Processing is done in batches to handle large files efficiently
+- The input file **will be overwritten** with the transformed data (via a temporary file).
+- Processing is done in batches to handle large files efficiently.
 - Supports creating new columns with `NEW()`, but modifying existing columns may not work.
 
 **Example:**
@@ -187,6 +244,7 @@ When using CCL with Parquet files, be aware of these type-related considerations
 2. **Type Inference**: When creating new columns with `NEW()`, the type is determined from the first batch of data processed.
 
 3. **Type Coercion**: Operations may automatically coerce types to maintain consistency. For example:
+
    - Numeric operations on integer columns may produce float results
    - String concatenation with numbers will convert numbers to strings
 
@@ -293,7 +351,7 @@ import (
 
 func main() {
     ctx := context.Background()
-    
+
     // Filter products with price > 100 and in_stock == true
     filtered, err := parquet.FilterWithCCL(
         ctx,
@@ -303,7 +361,7 @@ func main() {
     if err != nil {
         panic(err)
     }
-    
+
     filtered.Show()
 }
 ```
@@ -320,7 +378,7 @@ import (
 
 func main() {
     ctx := context.Background()
-    
+
     // Apply multiple CCL transformations:
     // 1. Create a new column 'total' as price * quantity
     // 2. Apply 10% discount to all prices
@@ -333,7 +391,7 @@ func main() {
     if err != nil {
         panic(err)
     }
-    
+
     fmt.Println("Transformations applied successfully!")
 }
 ```

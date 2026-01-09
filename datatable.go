@@ -2,7 +2,6 @@ package insyra
 
 import (
 	"fmt"
-	"maps"
 	"math"
 	"slices"
 	"sort"
@@ -13,6 +12,8 @@ import (
 
 	"github.com/HazelnutParadise/Go-Utils/asyncutil"
 	"github.com/HazelnutParadise/Go-Utils/conv"
+	"github.com/HazelnutParadise/insyra/internal/core"
+	"github.com/HazelnutParadise/insyra/internal/utils"
 	"github.com/HazelnutParadise/insyra/parallel"
 )
 
@@ -32,9 +33,8 @@ import (
 // - CSV/JSON/SQL import/export capabilities
 type DataTable struct {
 	columns               []*DataList
-	columnIndex           map[string]int // 儲存字母索引與切片中的索引對應
-	rowNames              map[string]int
-	name                  string // 新增 name 欄位
+	rowNames              *core.BiIndex
+	name                  string
 	creationTimestamp     int64
 	lastModifiedTimestamp atomic.Int64
 
@@ -42,14 +42,16 @@ type DataTable struct {
 	cmdCh    chan func()
 	initOnce sync.Once
 	closed   atomic.Bool
+
+	// Instance-level error tracking for chained operations
+	lastError *ErrorInfo
 }
 
 func NewDataTable(columns ...*DataList) *DataTable {
 	now := time.Now().Unix()
 	newTable := &DataTable{
 		columns:           []*DataList{},
-		columnIndex:       make(map[string]int),
-		rowNames:          make(map[string]int),
+		rowNames:          core.NewBiIndex(0),
 		creationTimestamp: now,
 	}
 
@@ -80,15 +82,12 @@ func (dt *DataTable) AppendCols(columns ...*DataList) *DataTable {
 			column := NewDataList()
 			column.data = col.data
 			column.name = col.name
-			columnName := generateColIndex(len(dt.columns)) // 修改這行確保按順序生成列名
 			column.name = safeColName(dt, column.name)
 
 			dt.columns = append(dt.columns, column)
-			dt.columnIndex[columnName] = len(dt.columns) - 1
 			if len(column.data) < maxLength {
 				column.data = append(column.data, make([]any, maxLength-len(column.data))...)
 			}
-			// LogDebug("DataTable", "AppendCols", "Added column %s at index %d", columnName, dt.columnIndex[columnName])
 		}
 
 		for _, col := range dt.columns {
@@ -111,15 +110,13 @@ func (dt *DataTable) AppendRowsFromDataList(rowsData ...*DataList) *DataTable {
 
 			if rowData.name != "" {
 				srn := safeRowName(dt, rowData.name)
-				dt.rowNames[srn] = maxLength
+				_, _ = dt.rowNames.Set(maxLength, srn)
 			}
 
 			if len(rowData.data) > len(dt.columns) {
 				for i := len(dt.columns); i < len(rowData.data); i++ {
 					newCol := newEmptyDataList(maxLength)
-					columnName := generateColIndex(i)
 					dt.columns = append(dt.columns, newCol)
-					dt.columnIndex[columnName] = len(dt.columns) - 1
 				}
 			}
 
@@ -172,21 +169,20 @@ func (dt *DataTable) AppendRowsByColIndex(rowsData ...map[string]any) *DataTable
 			// 按照排序順序處理每個欄位
 			for _, colIndex := range allCols {
 				value := rowData[colIndex]
-				_, exists := dt.columnIndex[colIndex]
-				LogDebug("DataTable", "AppendRowsByColIndex", "Handling column %s, exists: %t", colIndex, exists)
+				colPos, ok := utils.ParseColIndex(colIndex)
+				LogDebug("DataTable", "AppendRowsByColIndex", "Handling column %s, colPos: %d, ok: %t", colIndex, colPos, ok)
 
-				if !exists {
-					// 如果該欄位不存在，新增該欄位並插入字母順序位置
+				if !ok || colPos < 0 || colPos >= len(dt.columns) {
+					// 如果該欄位不存在，新增該欄位
 					newCol := newEmptyDataList(maxLength)
 					dt.columns = append(dt.columns, newCol)
-					dt.columnIndex[colIndex] = len(dt.columns) - 1
-					LogDebug("DataTable", "AppendRowsByColIndex", "Added new column %s at index %d", colIndex, dt.columnIndex[colIndex])
-
-					// 重新排序欄位以符合字母順序
-					dt.sortColsByIndex()
+					LogDebug("DataTable", "AppendRowsByColIndex", "Added new column %s at index %d", colIndex, len(dt.columns)-1)
 				}
 
-				dt.columns[dt.columnIndex[colIndex]].data = append(dt.columns[dt.columnIndex[colIndex]].data, value)
+				colPos, _ = utils.ParseColIndex(colIndex)
+				if colPos >= 0 && colPos < len(dt.columns) {
+					dt.columns[colPos].data = append(dt.columns[colPos].data, value)
+				}
 			}
 
 			// 確保所有欄位的長度一致
@@ -224,7 +220,6 @@ func (dt *DataTable) AppendRowsByColName(rowsData ...map[string]any) *DataTable 
 					newCol.name = colName
 					newCol.data = append(newCol.data, value)
 					dt.columns = append(dt.columns, newCol)
-					dt.columnIndex[generateColIndex(len(dt.columns)-1)] = len(dt.columns) - 1 // 更新 columnIndex
 					LogDebug("DataTable", "AppendRowsByColName", "Added new column %s at index %d", colName, len(dt.columns)-1)
 				}
 			}
@@ -235,8 +230,6 @@ func (dt *DataTable) AppendRowsByColName(rowsData ...map[string]any) *DataTable 
 				}
 			}
 		}
-
-		dt.regenerateColIndex()
 		go dt.updateTimestamp()
 	})
 	return dt
@@ -249,12 +242,13 @@ func (dt *DataTable) GetElement(rowIndex int, columnIndex string) any {
 	var result any
 	dt.AtomicDo(func(dt *DataTable) {
 		columnIndex = strings.ToUpper(columnIndex)
-		if colPos, exists := dt.columnIndex[columnIndex]; exists {
+		colPos, ok := utils.ParseColIndex(columnIndex)
+		if ok && colPos >= 0 && colPos < len(dt.columns) {
 			if rowIndex < 0 {
 				rowIndex = len(dt.columns[colPos].data) + rowIndex
 			}
 			if rowIndex < 0 || rowIndex >= len(dt.columns[colPos].data) {
-				LogWarning("DataTable", "GetElement", "Row index is out of range, returning nil")
+				dt.warn("GetElement", "Row index is out of range, returning nil")
 				result = nil
 				return
 			}
@@ -273,7 +267,7 @@ func (dt *DataTable) GetElementByNumberIndex(rowIndex int, columnIndex int) any 
 			rowIndex = len(dt.columns[columnIndex].data) + rowIndex
 		}
 		if rowIndex < 0 || rowIndex >= len(dt.columns[columnIndex].data) {
-			LogWarning("DataTable", "GetElementByNumberIndex", "Row index is out of range, returning nil")
+			dt.warn("GetElementByNumberIndex", "Row index is out of range, returning nil")
 			result = nil
 			return
 		}
@@ -287,12 +281,12 @@ func (dt *DataTable) GetCol(index string) *DataList {
 	var result *DataList
 	dt.AtomicDo(func(dt *DataTable) {
 		index = strings.ToUpper(index)
-		if colPos, exists := dt.columnIndex[index]; exists {
-			// 初始化新的 DataList 並分配 data 切片的大小
+		colPos, ok := utils.ParseColIndex(index)
+		if ok && colPos >= 0 && colPos < len(dt.columns) {
 			result = dt.columns[colPos].Clone()
 			return
 		}
-		LogWarning("DataTable", "GetCol", "Column '%s' not found, returning nil", index)
+		dt.warn("GetCol", "Column '%s' not found, returning nil", index)
 		result = nil
 	})
 	return result
@@ -306,7 +300,7 @@ func (dt *DataTable) GetColByNumber(index int) *DataList {
 		}
 
 		if index < 0 || index >= len(dt.columns) {
-			LogWarning("DataTable", "GetColByNumber", "Col index is out of range, returning nil")
+			dt.warn("GetColByNumber", "Col index is out of range, returning nil")
 			result = nil
 			return
 		}
@@ -326,7 +320,7 @@ func (dt *DataTable) GetColByName(name string) *DataList {
 				return
 			}
 		}
-		LogWarning("DataTable", "GetColByName", "Column '%s' not found, returning nil", name)
+		dt.warn("GetColByName", "Column '%s' not found, returning nil", name)
 		result = nil
 	})
 	return result
@@ -340,7 +334,7 @@ func (dt *DataTable) GetRow(index int) *DataList {
 			index = dt.getMaxColLength() + index
 		}
 		if index < 0 || index >= dt.getMaxColLength() {
-			LogWarning("DataTable", "GetRow", "Row index is out of range, returning nil")
+			dt.warn("GetRow", "Row index is out of range, returning nil")
 			result = nil
 			return
 		}
@@ -364,7 +358,7 @@ func (dt *DataTable) GetRow(index int) *DataList {
 func (dt *DataTable) GetRowByName(name string) *DataList {
 	var result *DataList
 	dt.AtomicDo(func(dt *DataTable) {
-		if index, exists := dt.rowNames[name]; exists {
+		if index, exists := dt.rowNames.Index(name); exists {
 			// 初始化新的 DataList 並分配 data 切片的大小
 			dl := NewDataList()
 			// 拷貝數據到新的 DataList
@@ -378,7 +372,7 @@ func (dt *DataTable) GetRowByName(name string) *DataList {
 			result = dl
 			return
 		}
-		LogWarning("DataTable", "GetRowByName", "Row name '%s' not found, returning nil", name)
+		dt.warn("GetRowByName", "Row name '%s' not found, returning nil", name)
 		result = nil
 	})
 	return result
@@ -389,20 +383,19 @@ func (dt *DataTable) GetRowByName(name string) *DataList {
 // UpdateElement updates the element at the given row and column index.
 func (dt *DataTable) UpdateElement(rowIndex int, columnIndex string, value any) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
-		dt.regenerateColIndex()
-
 		columnIndex = strings.ToUpper(columnIndex)
-		if colPos, exists := dt.columnIndex[columnIndex]; exists {
+		colPos, ok := utils.ParseColIndex(columnIndex)
+		if ok && colPos >= 0 && colPos < len(dt.columns) {
 			if rowIndex < 0 {
 				rowIndex = len(dt.columns[colPos].data) + rowIndex
 			}
 			if rowIndex < 0 || rowIndex >= len(dt.columns[colPos].data) {
-				LogWarning("DataTable", "UpdateElement", "Row index is out of range, returning")
+				dt.warn("UpdateElement", "Row index is out of range, returning")
 				return
 			}
 			dt.columns[colPos].data[rowIndex] = value
 		} else {
-			LogWarning("DataTable", "UpdateElement", "Col index does not exist, returning")
+			dt.warn("UpdateElement", "Col index does not exist, returning")
 		}
 		go dt.updateTimestamp()
 	})
@@ -412,13 +405,12 @@ func (dt *DataTable) UpdateElement(rowIndex int, columnIndex string, value any) 
 // UpdateCol updates the column with the given index.
 func (dt *DataTable) UpdateCol(index string, dl *DataList) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
-		dt.regenerateColIndex()
-
 		index = strings.ToUpper(index)
-		if colPos, exists := dt.columnIndex[index]; exists {
+		colPos, ok := utils.ParseColIndex(index)
+		if ok && colPos >= 0 && colPos < len(dt.columns) {
 			dt.columns[colPos] = dl
 		} else {
-			LogWarning("DataTable", "UpdateCol", "Col index does not exist, returning")
+			dt.warn("UpdateCol", "Col index does not exist, returning")
 		}
 		go dt.updateTimestamp()
 	})
@@ -433,12 +425,11 @@ func (dt *DataTable) UpdateColByNumber(index int, dl *DataList) *DataTable {
 		}
 
 		if index < 0 || index >= len(dt.columns) {
-			LogWarning("DataTable", "UpdateColByNumber", "Index out of bounds")
+			dt.warn("UpdateColByNumber", "Index out of bounds")
 			return
 		}
 
 		dt.columns[index] = dl
-		dt.columnIndex[generateColIndex(index)] = index
 		go dt.updateTimestamp()
 	})
 	return dt
@@ -448,12 +439,12 @@ func (dt *DataTable) UpdateColByNumber(index int, dl *DataList) *DataTable {
 func (dt *DataTable) UpdateRow(index int, dl *DataList) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		if index < 0 || index >= dt.getMaxColLength() {
-			LogWarning("DataTable", "UpdateRow", "Index out of bounds")
+			dt.warn("UpdateRow", "Index out of bounds")
 			return
 		}
 
 		if len(dl.data) > len(dt.columns) {
-			LogWarning("DataTable", "UpdateRow", "DataList has more elements than DataTable columns, returning")
+			dt.warn("UpdateRow", "DataList has more elements than DataTable columns, returning")
 			return
 		}
 
@@ -464,14 +455,8 @@ func (dt *DataTable) UpdateRow(index int, dl *DataList) *DataTable {
 
 		// 更新行名
 		if dl.name != "" {
-			for rowName, rowIndex := range dt.rowNames {
-				if rowIndex == index {
-					delete(dt.rowNames, rowName)
-					break
-				}
-			}
 			srn := safeRowName(dt, dl.name)
-			dt.rowNames[srn] = index
+			_, _ = dt.rowNames.Set(index, srn)
 		}
 
 		go dt.updateTimestamp()
@@ -489,13 +474,11 @@ func (dt *DataTable) SetColToRowNames(columnIndex string) *DataTable {
 		for i, value := range column.data {
 			if value != nil {
 				rowName := safeRowName(dt, conv.ToString(value))
-				dt.rowNames[rowName] = i
+				_, _ = dt.rowNames.Set(i, rowName)
 			}
 		}
 
 		dt.DropColsByIndex(columnIndex)
-
-		dt.regenerateColIndex()
 
 		go dt.updateTimestamp()
 	})
@@ -631,9 +614,11 @@ func (dt *DataTable) FindRowsIfAllElementsContainSubstring(substring string) []i
 func (dt *DataTable) FindColsIfContains(value any) []string {
 	var result []string
 	dt.AtomicDo(func(dt *DataTable) {
-		for colName, colPos := range dt.columnIndex {
-			if dt.columns[colPos].FindFirst(value) != nil {
-				result = append(result, colName)
+		for i := range dt.columns {
+			if dt.columns[i].FindFirst(value) != nil {
+				if colName, ok := utils.CalcColIndex(i); ok {
+					result = append(result, colName)
+				}
 			}
 		}
 	})
@@ -644,18 +629,20 @@ func (dt *DataTable) FindColsIfContains(value any) []string {
 func (dt *DataTable) FindColsIfContainsAll(values ...any) []string {
 	var result []string
 	dt.AtomicDo(func(dt *DataTable) {
-		for colName, colPos := range dt.columnIndex {
+		for i := range dt.columns {
 			foundAll := true
 
 			for _, value := range values {
-				if dt.columns[colPos].FindFirst(value) == nil {
+				if dt.columns[i].FindFirst(value) == nil {
 					foundAll = false
 					break
 				}
 			}
 
 			if foundAll {
-				result = append(result, colName)
+				if colName, ok := utils.CalcColIndex(i); ok {
+					result = append(result, colName)
+				}
 			}
 		}
 	})
@@ -666,10 +653,10 @@ func (dt *DataTable) FindColsIfContainsAll(values ...any) []string {
 func (dt *DataTable) FindColsIfAnyElementContainsSubstring(substring string) []string {
 	var result []string
 	dt.AtomicDo(func(dt *DataTable) {
-		for colName, colPos := range dt.columnIndex {
+		for i := range dt.columns {
 			found := false
 
-			for _, value := range dt.columns[colPos].data {
+			for _, value := range dt.columns[i].data {
 				if value != nil {
 					if str, ok := value.(string); ok && containsSubstring(str, substring) {
 						found = true
@@ -679,7 +666,9 @@ func (dt *DataTable) FindColsIfAnyElementContainsSubstring(substring string) []s
 			}
 
 			if found {
-				result = append(result, colName)
+				if colName, ok := utils.CalcColIndex(i); ok {
+					result = append(result, colName)
+				}
 			}
 		}
 	})
@@ -690,10 +679,10 @@ func (dt *DataTable) FindColsIfAnyElementContainsSubstring(substring string) []s
 func (dt *DataTable) FindColsIfAllElementsContainSubstring(substring string) []string {
 	var result []string
 	dt.AtomicDo(func(dt *DataTable) {
-		for colName, colPos := range dt.columnIndex {
+		for i := range dt.columns {
 			foundAll := true
 
-			for _, value := range dt.columns[colPos].data {
+			for _, value := range dt.columns[i].data {
 				if value != nil {
 					if str, ok := value.(string); ok && !containsSubstring(str, substring) {
 						foundAll = false
@@ -703,7 +692,9 @@ func (dt *DataTable) FindColsIfAllElementsContainSubstring(substring string) []s
 			}
 
 			if foundAll {
-				result = append(result, colName)
+				if colName, ok := utils.CalcColIndex(i); ok {
+					result = append(result, colName)
+				}
 			}
 		}
 	})
@@ -716,21 +707,13 @@ func (dt *DataTable) FindColsIfAllElementsContainSubstring(substring string) []s
 func (dt *DataTable) DropColsByName(columnNames ...string) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		for _, name := range columnNames {
-			for colName, colPos := range dt.columnIndex {
-				if dt.columns[colPos].name == name {
-					// 刪除對應的列
-					dt.columns = append(dt.columns[:colPos], dt.columns[colPos+1:]...)
-					delete(dt.columnIndex, colName)
-					// 更新剩餘列的索引
-					for i := colPos; i < len(dt.columns); i++ {
-						newColName := generateColIndex(i)
-						dt.columnIndex[newColName] = i
-					}
+			for i, col := range dt.columns {
+				if col.name == name {
+					dt.columns = append(dt.columns[:i], dt.columns[i+1:]...)
 					break
 				}
 			}
 		}
-		dt.regenerateColIndex()
 		go dt.updateTimestamp()
 	})
 	return dt
@@ -739,22 +722,17 @@ func (dt *DataTable) DropColsByName(columnNames ...string) *DataTable {
 // DropColsByIndex drops columns by their index names.
 func (dt *DataTable) DropColsByIndex(columnIndices ...string) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
+		colsToDelete := make([]int, 0)
 		for _, index := range columnIndices {
 			index = strings.ToUpper(index)
-			colPos, exists := dt.columnIndex[index]
-			if exists {
-				// 刪除對應的列
-				dt.columns = append(dt.columns[:colPos], dt.columns[colPos+1:]...)
-				delete(dt.columnIndex, index)
-				// 更新剩餘列的索引
-				for i := colPos; i < len(dt.columns); i++ {
-					newColIndex := generateColIndex(i)
-					dt.columnIndex[newColIndex] = i
-				}
+			if colPos, ok := utils.ParseColIndex(index); ok && colPos >= 0 && colPos < len(dt.columns) {
+				colsToDelete = append(colsToDelete, colPos)
 			}
 		}
-
-		dt.regenerateColIndex()
+		sort.Sort(sort.Reverse(sort.IntSlice(colsToDelete)))
+		for _, colPos := range colsToDelete {
+			dt.columns = append(dt.columns[:colPos], dt.columns[colPos+1:]...)
+		}
 		go dt.updateTimestamp()
 	})
 	return dt
@@ -763,17 +741,14 @@ func (dt *DataTable) DropColsByIndex(columnIndices ...string) *DataTable {
 // DropColsByNumber drops columns by their number.
 func (dt *DataTable) DropColsByNumber(columnIndices ...int) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
-		// 從大到小排序，防止刪除後索引變動
 		sort.Sort(sort.Reverse(sort.IntSlice(columnIndices)))
 
 		for _, index := range columnIndices {
 			if index >= 0 && index < len(dt.columns) {
 				dt.columns = append(dt.columns[:index], dt.columns[index+1:]...)
-				delete(dt.columnIndex, generateColIndex(index))
 			}
 		}
 
-		dt.regenerateColIndex()
 		go dt.updateTimestamp()
 	})
 	return dt
@@ -784,7 +759,6 @@ func (dt *DataTable) DropColsContainString() *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		columnsToDelete := make([]int, 0)
 
-		// 找出包含字串元素的列索引
 		for colIndex, column := range dt.columns {
 			containsString := false
 
@@ -800,14 +774,10 @@ func (dt *DataTable) DropColsContainString() *DataTable {
 			}
 		}
 
-		// 反向刪除列，以避免索引錯誤
 		for i := len(columnsToDelete) - 1; i >= 0; i-- {
 			colIndex := columnsToDelete[i]
 			dt.columns = append(dt.columns[:colIndex], dt.columns[colIndex+1:]...)
-			delete(dt.columnIndex, generateColIndex(colIndex))
 		}
-
-		dt.regenerateColIndex()
 
 		go dt.updateTimestamp()
 	})
@@ -840,10 +810,7 @@ func (dt *DataTable) DropColsContainNumber() *DataTable {
 		for i := len(columnsToDelete) - 1; i >= 0; i-- {
 			colIndex := columnsToDelete[i]
 			dt.columns = append(dt.columns[:colIndex], dt.columns[colIndex+1:]...)
-			delete(dt.columnIndex, generateColIndex(colIndex))
 		}
-
-		dt.regenerateColIndex()
 
 		go dt.updateTimestamp()
 	})
@@ -873,10 +840,7 @@ func (dt *DataTable) DropColsContainNil() *DataTable {
 		for i := len(columnsToDelete) - 1; i >= 0; i-- {
 			colIndex := columnsToDelete[i]
 			dt.columns = append(dt.columns[:colIndex], dt.columns[colIndex+1:]...)
-			delete(dt.columnIndex, generateColIndex(colIndex))
 		}
-
-		dt.regenerateColIndex()
 
 		go dt.updateTimestamp()
 	})
@@ -906,10 +870,7 @@ func (dt *DataTable) DropColsContainNaN() *DataTable {
 		for i := len(columnsToDelete) - 1; i >= 0; i-- {
 			colIndex := columnsToDelete[i]
 			dt.columns = append(dt.columns[:colIndex], dt.columns[colIndex+1:]...)
-			delete(dt.columnIndex, generateColIndex(colIndex))
 		}
-
-		dt.regenerateColIndex()
 
 		go dt.updateTimestamp()
 	})
@@ -944,9 +905,7 @@ func (dt *DataTable) DropColsContain(value ...any) *DataTable {
 		for i := len(columnsToDelete) - 1; i >= 0; i-- {
 			colIndex := columnsToDelete[i]
 			dt.columns = append(dt.columns[:colIndex], dt.columns[colIndex+1:]...)
-			delete(dt.columnIndex, generateColIndex(colIndex))
 		}
-		dt.regenerateColIndex()
 		go dt.updateTimestamp()
 	})
 	return dt
@@ -968,19 +927,16 @@ func (dt *DataTable) DropRowsByIndex(rowIndices ...int) *DataTable {
 				rowIndex = dt.getMaxColLength() + rowIndex
 			}
 			adjustedIndex := rowIndex - i // 因為每刪除一行，後續的行索引會變動
+			if adjustedIndex < 0 || adjustedIndex >= dt.getMaxColLength() {
+				continue
+			}
 			for _, column := range dt.columns {
 				if adjustedIndex >= 0 && adjustedIndex < len(column.data) {
 					column.data = append(column.data[:adjustedIndex], column.data[adjustedIndex+1:]...)
 				}
 			}
 
-			// 如果該行有名稱，也從 rowNames 中刪除
-			for rowName, index := range dt.rowNames {
-				if index == rowIndex {
-					delete(dt.rowNames, rowName)
-					break
-				}
-			}
+			dt.reindexRowNamesAfterRemoval(adjustedIndex)
 		}
 		go dt.updateTimestamp()
 	})
@@ -991,9 +947,9 @@ func (dt *DataTable) DropRowsByIndex(rowIndices ...int) *DataTable {
 func (dt *DataTable) DropRowsByName(rowNames ...string) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		for _, rowName := range rowNames {
-			rowIndex, exists := dt.rowNames[rowName]
+			rowIndex, exists := dt.rowNames.Index(rowName)
 			if !exists {
-				LogWarning("DataTable", "DropRowsByName", "Row name '%s' does not exist", rowName)
+				dt.warn("DropRowsByName", "Row name '%s' does not exist", rowName)
 				continue
 			}
 
@@ -1004,15 +960,7 @@ func (dt *DataTable) DropRowsByName(rowNames ...string) *DataTable {
 				}
 			}
 
-			// 移除行名索引
-			delete(dt.rowNames, rowName)
-
-			// 更新所有行名索引，以反映行被刪除後的變化
-			for name, idx := range dt.rowNames {
-				if idx > rowIndex {
-					dt.rowNames[name] = idx - 1
-				}
-			}
+			dt.reindexRowNamesAfterRemoval(rowIndex)
 		}
 
 		go dt.updateTimestamp()
@@ -1052,14 +1000,7 @@ func (dt *DataTable) DropRowsContainString() *DataTable {
 				}
 			}
 
-			// 刪除行名對應
-			for rowName, idx := range dt.rowNames {
-				if idx == rowIndex {
-					delete(dt.rowNames, rowName)
-				} else if idx > rowIndex {
-					dt.rowNames[rowName] = idx - 1
-				}
-			}
+			dt.reindexRowNamesAfterRemoval(rowIndex)
 		}
 		go dt.updateTimestamp()
 	})
@@ -1098,16 +1039,7 @@ func (dt *DataTable) DropRowsContainNumber() *DataTable {
 			}
 		}
 
-		// 更新 rowNames 索引
-		newRowNames := make(map[string]int)
-		newIndex := 0
-		for name, oldIndex := range dt.rowNames {
-			if rowsToKeep[oldIndex] {
-				newRowNames[name] = newIndex
-				newIndex++
-			}
-		}
-		dt.rowNames = newRowNames
+		dt.remapRowNames(rowsToKeep)
 
 		go dt.updateTimestamp()
 	})
@@ -1152,13 +1084,7 @@ func (dt *DataTable) DropRowsContainNil() *DataTable {
 		}
 
 		// 更新 rowNames 映射，以移除被刪除的行
-		for rowName, rowIndex := range dt.rowNames {
-			if rowIndex >= len(nonNilRowIndices) || rowIndex != nonNilRowIndices[rowIndex] {
-				delete(dt.rowNames, rowName)
-			} else {
-				dt.rowNames[rowName] = rowIndex
-			}
-		}
+		dt.remapRowNamesByIndices(nonNilRowIndices)
 		go dt.updateTimestamp()
 	})
 	return dt
@@ -1204,13 +1130,7 @@ func (dt *DataTable) DropRowsContainNaN() *DataTable {
 		}
 
 		// 更新 rowNames 映射，以移除被刪除的行
-		for rowName, rowIndex := range dt.rowNames {
-			if rowIndex >= len(nonNaNRowIndices) || rowIndex != nonNaNRowIndices[rowIndex] {
-				delete(dt.rowNames, rowName)
-			} else {
-				dt.rowNames[rowName] = rowIndex
-			}
-		}
+		dt.remapRowNamesByIndices(nonNaNRowIndices)
 		go dt.updateTimestamp()
 	})
 	return dt
@@ -1257,16 +1177,7 @@ func (dt *DataTable) DropRowsContain(value ...any) *DataTable {
 				}
 			}
 		}
-		// 更新 rowNames 索引
-		newRowNames := make(map[string]int)
-		newIndex := 0
-		for name, oldIndex := range dt.rowNames {
-			if rowsToKeep[oldIndex] {
-				newRowNames[name] = newIndex
-				newIndex++
-			}
-		}
-		dt.rowNames = newRowNames
+		dt.remapRowNames(rowsToKeep)
 		go dt.updateTimestamp()
 	})
 	return dt
@@ -1290,7 +1201,7 @@ func (dt *DataTable) Data(useNamesAsKeys ...bool) map[string][]any {
 			useNamesAsKeysBool = useNamesAsKeys[0]
 		}
 		if len(useNamesAsKeys) > 1 {
-			LogWarning("DataTable", "Data", "Too many arguments, returning empty map")
+			dt.warn("Data", "Too many arguments, returning empty map")
 			result = dataMap
 			return
 		}
@@ -1300,7 +1211,7 @@ func (dt *DataTable) Data(useNamesAsKeys ...bool) map[string][]any {
 			if useNamesAsKeysBool && col.name != "" {
 				key = col.name
 			} else {
-				key = generateColIndex(i)
+				key, _ = utils.CalcColIndex(i)
 			}
 			dataMap[key] = col.data
 		}
@@ -1395,31 +1306,32 @@ func (dt *DataTable) Transpose() *DataTable {
 		dls := make([]*DataList, 0)
 		dls = append(dls, dt.columns...)
 
-		oldRowNames := dt.rowNames
-		dt.rowNames = make(map[string]int)
+		oldRowNames := dt.rowNames.Clone()
+		dt.rowNames = core.NewBiIndex(0)
+		nameByIndex := make(map[int]string)
+		for _, rowIndex := range oldRowNames.IDs() {
+			if name, ok := oldRowNames.Get(rowIndex); ok && name != "" {
+				nameByIndex[rowIndex] = name
+			}
+		}
+
 		newDt := &DataTable{
 			columns:           make([]*DataList, 0),
-			rowNames:          make(map[string]int),
-			columnIndex:       make(map[string]int),
+			rowNames:          core.NewBiIndex(0),
 			creationTimestamp: dt.GetCreationTimestamp(),
 		}
 
 		newDt.lastModifiedTimestamp.Store(dt.GetLastModifiedTimestamp())
 
 		for i, col := range dls {
-
 			newDt.AppendRowsFromDataList(col)
-			for rowName, rowIndex := range oldRowNames {
-				if rowIndex == i {
-					newDt.columns[i].name = rowName
-					newDt.columnIndex[generateColIndex(i)] = i
-				}
+			if name, ok := nameByIndex[i]; ok {
+				newDt.columns[i].name = name
 			}
 		}
 
 		dt.columns = newDt.columns
 		dt.rowNames = newDt.rowNames
-		dt.columnIndex = newDt.columnIndex
 
 		go dt.updateTimestamp()
 		result = dt
@@ -1436,25 +1348,17 @@ func (dt *DataTable) Clone() *DataTable {
 	now := time.Now().Unix()
 	dt.AtomicDo(func(dt *DataTable) {
 		clonedColumns := make([]*DataList, len(dt.columns))
-		clonedColumnIndex := make(map[string]int)
-		clonedRowNames := make(map[string]int)
+		var clonedRowNames *core.BiIndex
 		parallel.GroupUp(func() {
-			// Clone columns
 			for i, col := range dt.columns {
 				clonedColumns[i] = col.Clone()
 			}
 		}, func() {
-			// Clone columnIndex map
-			maps.Copy(clonedColumnIndex, dt.columnIndex)
-		}, func() {
-			// Clone rowNames map
-			maps.Copy(clonedRowNames, dt.rowNames)
+			clonedRowNames = dt.rowNames.Clone()
 		}).Run().AwaitResult()
 
-		// Create new DataTable with cloned data
 		newDT = &DataTable{
 			columns:           clonedColumns,
-			columnIndex:       clonedColumnIndex,
 			rowNames:          clonedRowNames,
 			name:              dt.name,
 			creationTimestamp: now,
@@ -1490,12 +1394,10 @@ func (dt *DataTable) To2DSlice() [][]any {
 // ======================== Utilities ========================
 
 func (dt *DataTable) getRowNameByIndex(index int) (string, bool) {
-	for rowName, rowIndex := range dt.rowNames {
-		if rowIndex == index {
-			return rowName, true
-		}
+	if dt.rowNames == nil {
+		return "", false
 	}
-	return "", false
+	return dt.rowNames.Get(index)
 }
 
 func (dt *DataTable) getMaxColLength() int {
@@ -1506,40 +1408,6 @@ func (dt *DataTable) getMaxColLength() int {
 		}
 	}
 	return maxLength
-}
-
-func (dt *DataTable) regenerateColIndex() {
-	dt.columnIndex = make(map[string]int)
-	for i := range dt.columns {
-		dt.columnIndex[generateColIndex(i)] = i
-	}
-}
-
-// 新增一個方法來根據字母順序重新排序 columns 及更新 columnIndex
-func (dt *DataTable) sortColsByIndex() {
-	// 取得所有欄位名稱並排序
-	keys := make([]string, 0, len(dt.columnIndex))
-	for key := range dt.columnIndex {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-
-	// 根據排序的欄位名稱重建 columns 和 columnIndex
-	newCols := make([]*DataList, len(keys))
-	for i, key := range keys {
-		newCols[i] = dt.columns[dt.columnIndex[key]]
-		dt.columnIndex[key] = i // 更新對應的 index
-	}
-	dt.columns = newCols
-}
-
-func generateColIndex(index int) string {
-	name := ""
-	for index >= 0 {
-		name = fmt.Sprintf("%c%s", 'A'+(index%26), name)
-		index = index/26 - 1
-	}
-	return name
 }
 
 func newEmptyDataList(rowCount int) *DataList {
@@ -1566,18 +1434,78 @@ func safeRowName(dt *DataTable, name string) string {
 	originalName := name
 	counter := 1
 
-	for {
-		// 檢查是否已經存在該行名
-		if _, exists := dt.rowNames[name]; !exists {
-			break // 如果行名不存在，跳出循環
-		}
+	if dt.rowNames == nil {
+		dt.rowNames = core.NewBiIndex(0)
+	}
 
-		// 如果行名存在，則生成新的行名並繼續檢查
+	for dt.rowNames.Has(name) {
 		name = fmt.Sprintf("%s_%d", originalName, counter)
 		counter++
 	}
 
 	return name
+}
+
+func (dt *DataTable) reindexRowNamesAfterRemoval(removedIndex int) {
+	if dt.rowNames == nil || dt.rowNames.Len() == 0 {
+		return
+	}
+	_, _, _ = dt.rowNames.DeleteAndShift(removedIndex)
+}
+
+func (dt *DataTable) remapRowNames(rowsToKeep []bool) {
+	if dt.rowNames == nil || dt.rowNames.Len() == 0 {
+		dt.rowNames = core.NewBiIndex(0)
+		return
+	}
+	indexMap := make([]int, len(rowsToKeep))
+	newPos := 0
+	for i, keep := range rowsToKeep {
+		if keep {
+			indexMap[i] = newPos
+			newPos++
+		} else {
+			indexMap[i] = -1
+		}
+	}
+	remapped := core.NewBiIndex(dt.rowNames.Len())
+	for _, id := range dt.rowNames.IDs() {
+		if id < 0 || id >= len(indexMap) {
+			continue
+		}
+		target := indexMap[id]
+		if target < 0 {
+			continue
+		}
+		name, ok := dt.rowNames.Get(id)
+		if !ok || name == "" {
+			continue
+		}
+		_, _ = remapped.Set(target, name)
+	}
+	dt.rowNames = remapped
+}
+
+func (dt *DataTable) remapRowNamesByIndices(keptIndices []int) {
+	if dt.rowNames == nil || dt.rowNames.Len() == 0 {
+		dt.rowNames = core.NewBiIndex(0)
+		return
+	}
+	indexMap := make(map[int]int, len(keptIndices))
+	for newIdx, oldIdx := range keptIndices {
+		indexMap[oldIdx] = newIdx
+	}
+	remapped := core.NewBiIndex(dt.rowNames.Len())
+	for _, id := range dt.rowNames.IDs() {
+		name, ok := dt.rowNames.Get(id)
+		if !ok || name == "" {
+			continue
+		}
+		if target, exists := indexMap[id]; exists {
+			_, _ = remapped.Set(target, name)
+		}
+	}
+	dt.rowNames = remapped
 }
 
 func safeColName(dt *DataTable, name string) string {
@@ -1628,4 +1556,44 @@ func (dt *DataTable) GetCreationTimestamp() int64 {
 
 func (dt *DataTable) GetLastModifiedTimestamp() int64 {
 	return dt.lastModifiedTimestamp.Load()
+}
+
+// Err returns the last error that occurred during a chained operation.
+// Returns nil if no error occurred.
+// This method allows for error checking after chained calls without breaking the chain.
+//
+// Example usage:
+//
+//	dt.Replace(old, new).ReplaceNaNsWith(0).SortBy(config)
+//	if err := dt.Err(); err != nil {
+//	    // handle error
+//	}
+func (dt *DataTable) Err() *ErrorInfo {
+	return dt.lastError
+}
+
+// ClearErr clears the last error stored in the DataTable.
+// Returns the DataTable to support chaining.
+func (dt *DataTable) ClearErr() *DataTable {
+	dt.lastError = nil
+	return dt
+}
+
+// setError is an internal method to record an error on the DataTable instance.
+func (dt *DataTable) setError(level LogLevel, packageName, funcName, message string) {
+	dt.lastError = &ErrorInfo{
+		Level:       level,
+		PackageName: packageName,
+		FuncName:    funcName,
+		Message:     message,
+		Timestamp:   time.Now(),
+	}
+}
+
+// warn logs a warning and sets the error on the DataTable instance.
+// This is a convenience method that combines LogWarning and setError.
+func (dt *DataTable) warn(funcName, msg string, args ...any) {
+	fullMsg := fmt.Sprintf(msg, args...)
+	LogWarning("DataTable", funcName, "%s", fullMsg)
+	dt.setError(LogLevelWarning, "DataTable", funcName, fullMsg)
 }

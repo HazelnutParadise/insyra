@@ -246,7 +246,7 @@ func displayColumnOverviewTable(columns []*DataList, width int) {
 
 	// 為每一列顯示基本信息
 	for i, col := range columns {
-		colIndex := generateColIndex(i)
+		colIndex, _ := utils.CalcColIndex(i)
 		colName := col.name
 		if colName != "" {
 			colIndex = fmt.Sprintf("%s (%s)", colIndex, colName)

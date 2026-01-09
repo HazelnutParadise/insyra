@@ -3,6 +3,8 @@ package insyra
 import (
 	"fmt"
 	"math"
+
+	"github.com/HazelnutParadise/insyra/internal/utils"
 )
 
 // Replace all occurrences of oldValue with newValue in the DataTable.
@@ -53,7 +55,7 @@ func (dt *DataTable) ReplaceInRow(rowIndex int, oldValue, newValue any, mode ...
 		err = dt.replaceInRow_notAtomic(rowIndex, oldValue, newValue, mode...)
 	})
 	if err != nil {
-		LogWarning("DataTable", "ReplaceInRow", "Error: %s", err.Error())
+		dt.warn("ReplaceInRow", "Error: %s", err.Error())
 	}
 	return dt
 }
@@ -73,7 +75,7 @@ func (dt *DataTable) ReplaceNaNsInRow(rowIndex int, newValue any, mode ...int) *
 		err = dt.replaceInRow_notAtomic(rowIndex, math.NaN(), newValue, mode...)
 	})
 	if err != nil {
-		LogWarning("DataTable", "ReplaceNaNsInRow", "Error: %s", err.Error())
+		dt.warn("ReplaceNaNsInRow", "Error: %s", err.Error())
 	}
 	return dt
 }
@@ -93,7 +95,7 @@ func (dt *DataTable) ReplaceNilsInRow(rowIndex int, newValue any, mode ...int) *
 		err = dt.replaceInRow_notAtomic(rowIndex, nil, newValue, mode...)
 	})
 	if err != nil {
-		LogWarning("DataTable", "ReplaceNilsInRow", "Error: %s", err.Error())
+		dt.warn("ReplaceNilsInRow", "Error: %s", err.Error())
 	}
 	return dt
 }
@@ -113,7 +115,7 @@ func (dt *DataTable) ReplaceNaNsAndNilsInRow(rowIndex int, newValue any, mode ..
 		err = dt.replaceNaNsAndNilsInRow_notAtomic(rowIndex, newValue, mode...)
 	})
 	if err != nil {
-		LogWarning("DataTable", "ReplaceNaNsAndNilsInRow", "Error: %s", err.Error())
+		dt.warn("ReplaceNaNsAndNilsInRow", "Error: %s", err.Error())
 	}
 	return dt
 }
@@ -134,7 +136,7 @@ func (dt *DataTable) ReplaceInCol(colIndex string, oldValue, newValue any, mode 
 		err = dt.replaceInCol_notAtomic(colIndex, oldValue, newValue, mode...)
 	})
 	if err != nil {
-		LogWarning("DataTable", "ReplaceInCol", "Error: %s", err.Error())
+		dt.warn("ReplaceInCol", "Error: %s", err.Error())
 	}
 	return dt
 }
@@ -154,7 +156,7 @@ func (dt *DataTable) ReplaceNaNsInCol(colIndex string, newValue any, mode ...int
 		err = dt.replaceInCol_notAtomic(colIndex, math.NaN(), newValue, mode...)
 	})
 	if err != nil {
-		LogWarning("DataTable", "ReplaceNaNsInCol", "Error: %s", err.Error())
+		dt.warn("ReplaceNaNsInCol", "Error: %s", err.Error())
 	}
 	return dt
 }
@@ -174,7 +176,7 @@ func (dt *DataTable) ReplaceNilsInCol(colIndex string, newValue any, mode ...int
 		err = dt.replaceInCol_notAtomic(colIndex, nil, newValue, mode...)
 	})
 	if err != nil {
-		LogWarning("DataTable", "ReplaceNilsInCol", "Error: %s", err.Error())
+		dt.warn("ReplaceNilsInCol", "Error: %s", err.Error())
 	}
 	return dt
 }
@@ -194,7 +196,7 @@ func (dt *DataTable) ReplaceNaNsAndNilsInCol(colIndex string, newValue any, mode
 		err = dt.replaceNaNsAndNilsInCol_notAtomic(colIndex, newValue, mode...)
 	})
 	if err != nil {
-		LogWarning("DataTable", "ReplaceNaNsAndNilsInCol", "Error: %s", err.Error())
+		dt.warn("ReplaceNaNsAndNilsInCol", "Error: %s", err.Error())
 	}
 	return dt
 }
@@ -382,7 +384,7 @@ func (dt *DataTable) replaceInCol_notAtomic(colIndex string, oldValue, newValue 
 	if len(mode) == 1 {
 		modeFlag = mode[0]
 	}
-	if colNo, exists := dt.columnIndex[colIndex]; exists {
+	if colNo, ok := utils.ParseColIndex(colIndex); ok && colNo >= 0 && colNo < len(dt.columns) {
 		switch modeFlag {
 		case 1:
 			// 取代第一個
@@ -408,7 +410,7 @@ func (dt *DataTable) replaceNaNsAndNilsInCol_notAtomic(colIndex string, newValue
 	if len(mode) == 1 {
 		modeFlag = mode[0]
 	}
-	if colNo, exists := dt.columnIndex[colIndex]; exists {
+	if colNo, ok := utils.ParseColIndex(colIndex); ok && colNo >= 0 && colNo < len(dt.columns) {
 		switch modeFlag {
 		case 1:
 			// 取代第一個

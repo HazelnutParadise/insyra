@@ -11,7 +11,7 @@ type IDataList interface {
 	GetName() string
 	SetName(string) *DataList
 	Data() []any
-	Append(values ...any)
+	Append(values ...any) *DataList
 	Concat(other IDataList) *DataList
 	AppendDataList(other IDataList) *DataList
 	Get(index int) any
@@ -77,6 +77,10 @@ type IDataList interface {
 	Percentile(float64) float64
 	Difference() *DataList
 	Summary()
+
+	// Error handling (instance-level)
+	Err() *ErrorInfo
+	ClearErr() *DataList
 
 	// comparison
 	IsEqualTo(*DataList) bool
@@ -203,6 +207,10 @@ type IDataTable interface {
 	Mean() any
 	Summary()
 
+	// Error handling (instance-level)
+	Err() *ErrorInfo
+	ClearErr() *DataTable
+
 	// Operations
 	Transpose() *DataTable
 	Clone() *DataTable
@@ -279,7 +287,4 @@ type IDataTable interface {
 	ReplaceNaNsInCol(colIndex string, newValue any, mode ...int) *DataTable
 	ReplaceNilsInCol(colIndex string, newValue any, mode ...int) *DataTable
 	ReplaceNaNsAndNilsInCol(colIndex string, newValue any, mode ...int) *DataTable
-
-	sortColsByIndex()
-	regenerateColIndex()
 }

@@ -33,8 +33,7 @@ Go 語言次世代資料分析庫。支援 **平行處理**、**資料視覺化*
 > [!NOTE]
 > 如果文檔中的某些功能無法使用，可能是該功能還未包含在最新發布的版本中。請至 **[Releases](https://github.com/HazelnutParadise/insyra/releases)** 查看對應版本源碼中的文檔。
 
-> [!IMPORTANT]
-> **對於 Insyra 文檔中未明確列出的任何函數或方法，表示該功能仍在積極開發中。這些實驗性功能可能會提供不穩定的結果。**<br/>
+> [!IMPORTANT] > **對於 Insyra 文檔中未明確列出的任何函數或方法，表示該功能仍在積極開發中。這些實驗性功能可能會提供不穩定的結果。**<br/>
 > 請參閱我們 **[文檔](https://github.com/HazelnutParadise/insyra/tree/main/Docs)** 資料夾中的最新更新以獲取更多詳細資訊。
 
 ## [Idensyra](https://github.com/HazelnutParadise/idensyra)
@@ -58,56 +57,56 @@ Go 語言次世代資料分析庫。支援 **平行處理**、**資料視覺化*
 
 4. 使用以下命令建立新專案：
 
-    ```sh
-    go mod init your_project_name
-    ```
+   ```sh
+   go mod init your_project_name
+   ```
 
 5. 在您的專案中安裝 **Insyra**：
 
-    ```sh
-    go get github.com/HazelnutParadise/insyra/allpkgs
-    ```
+   ```sh
+   go get github.com/HazelnutParadise/insyra/allpkgs
+   ```
 
 6. 建立一個新文件，例如 `main.go`，並寫入以下代碼：
 
-    ```go
-    package main
+   ```go
+   package main
 
-    import (
-        "fmt"
-        "github.com/HazelnutParadise/insyra"
-    )
+   import (
+       "fmt"
+       "github.com/HazelnutParadise/insyra"
+   )
 
-    func main() {
-        // 將您的代碼寫在這裡
-    }
-    ```
+   func main() {
+       // 將您的代碼寫在這裡
+   }
+   ```
 
 7. 運行您的專案：
 
-    ```sh
-    go run main.go
-    ```
+   ```sh
+   go run main.go
+   ```
 
 ### 安裝
 
 - 要開始使用 **Insyra**，請使用以下命令進行安裝：
 
-    ```sh
-    go get github.com/HazelnutParadise/insyra/allpkgs
-    ```
+  ```sh
+  go get github.com/HazelnutParadise/insyra/allpkgs
+  ```
 
 - 更新 **Insyra** 到最新版本：
 
-    ```sh
-    go get -u github.com/HazelnutParadise/insyra/allpkgs
-    ```
+  ```sh
+  go get -u github.com/HazelnutParadise/insyra/allpkgs
+  ```
 
-    或者
+  或者
 
-    ```sh
-    go get github.com/HazelnutParadise/insyra/allpkgs@latest
-    ```
+  ```sh
+  go get github.com/HazelnutParadise/insyra/allpkgs@latest
+  ```
 
 ### 快速範例
 
@@ -167,103 +166,7 @@ func main() {
 
 ### 配置
 
-**Insyra** 提供全局 `Config` 物件來管理庫的行為。您可以自訂日誌級別、錯誤處理和效能設置：
-
-#### 日誌級別管理
-
-控制要記錄的訊息級別：
-
-```go
-// 設置日誌級別 - 僅記錄此級別或更高級別的訊息
-insyra.Config.SetLogLevel(insyra.LogLevelDebug)    // 最詳細
-insyra.Config.SetLogLevel(insyra.LogLevelInfo)     // 預設
-insyra.Config.SetLogLevel(insyra.LogLevelWarning)  // 僅警告和錯誤
-insyra.Config.SetLogLevel(insyra.LogLevelFatal)    // 僅致命錯誤
-
-// 獲取當前日誌級別
-level := insyra.Config.GetLogLevel()
-```
-
-#### 彩色輸出
-
-控制終端輸出的是否使用彩色標記：
-
-```go
-// 啟用 / 停用彩色輸出
-insyra.Config.SetUseColoredOutput(true)
-
-// 檢查彩色輸出狀態
-usesColor := insyra.Config.GetDoesUseColoredOutput()
-```
-
-#### 錯誤處理
-
-配置如何處理錯誤：
-
-```go
-// 防止 panic，改為優雅地處理錯誤
-insyra.Config.SetDontPanic(true)
-
-// 檢查防 panic 狀態
-isPanicPrevented := insyra.Config.GetDontPanicStatus()
-
-// 為所有錯誤設置自定義錯誤處理函數
-insyra.Config.SetDefaultErrHandlingFunc(func(errType insyra.LogLevel, packageName, funcName, errMsg string) {
-    // 您的自定義錯誤處理邏輯
-    // errType: 錯誤的嚴重級別
-    // packageName: 發生錯誤的套件名稱
-    // funcName: 發生錯誤的函數名稱
-    // errMsg: 錯誤訊息
-    // 使用 %%v 以正確輸出 LogLevel 數值或實作的字串
-    fmt.Printf("[%v] %s.%s: %s\n", errType, packageName, funcName, errMsg)
-})
-
-// 獲取當前錯誤處理函數
-handler := insyra.Config.GetDefaultErrHandlingFunc()
-```
-
-#### 效能配置
-
-根據使用情況微調效能：
-
-```go
-// ⚠️ 危險：關閉線程安全以獲得極致性能
-// 僅在您確定沒有並發存取時使用
-// 禁用此選項時，數據一致性無法保證！
-insyra.Config.Dangerously_TurnOffThreadSafety()
-
-// 若需將所有配置重置為庫預設值，可呼叫：
-// 注意：初始化時通常會自動設定預設值，但在測試或動態切換配置時，此函數可協助回復初始狀態。
-insyra.SetDefaultConfig()
-```
-
-#### 完整範例
-
-```go
-package main
-
-import (
-    "fmt"
-    "github.com/HazelnutParadise/insyra"
-)
-
-func main() {
-    // 使用自定義配置初始化
-    insyra.Config.SetLogLevel(insyra.LogLevelDebug)
-    insyra.Config.SetDontPanic(true)
-    
-    // 自定義錯誤處理函數
-    insyra.Config.SetDefaultErrHandlingFunc(func(errType insyra.LogLevel, pkg, fn, msg string) {
-        fmt.Printf("錯誤發生於 %s.%s: %s\n", pkg, fn, msg)
-    })
-    
-    // 現在使用 Insyra 的這些設置
-    dl := insyra.NewDataList(1, 2, 3, 4, 5)
-    fmt.Println(dl.Mean())
-}
-```
-
-實現詳情請參閱 [config.go](config.go) 原始檔案。
+有關配置的詳細資訊請見 **[Docs/Configuration.md](Docs/Configuration_TW.md)**。
 
 ## 執行緒安全與防禦性複製
 
@@ -281,6 +184,30 @@ func main() {
 `DataTable` 結構提供了表格數據的表示方式，允許以結構化格式存儲和操作數據。它提供了數據過濾、排序和聚合的方法，使其成為數據分析的強大工具。
 
 **您還可以僅用一行代碼在 DataTables 和 CSV 文件之間進行轉換，實現與外部數據源的無縫整合。**
+
+## 錯誤處理（實例級）
+
+`DataList` 與 `DataTable` 均支援用於鏈式操作的實例級錯誤追蹤。使用 `Err()` 可取得該實例最後發生的錯誤（回傳 `*ErrorInfo` 或 `nil`），使用 `ClearErr()` 可清除該錯誤。
+
+範例：
+
+```go
+// DataList 範例
+dl := insyra.NewDataList(1,2,3).Sort().Reverse()
+if err := dl.Err(); err != nil {
+    fmt.Println("Error:", err.Message)
+    dl.ClearErr()
+}
+
+// DataTable 範例（簡示參數）
+dt := insyra.NewDataTable(insyra.NewDataList(1), insyra.NewDataList(2)).SortBy(/*config*/)
+if err := dt.Err(); err != nil {
+    fmt.Println("Error:", err.Message)
+    dt.ClearErr()
+}
+```
+
+更多細節請參閱 **[DataList 文檔](/Docs/DataList.md)** 與 **[DataTable 文檔](/Docs/DataTable.md)**。
 
 ### [Column Calculation Language (CCL)](/Docs/CCL.md)
 
@@ -370,7 +297,7 @@ err := parquet.ApplyCCL(ctx, "data.parquet", "NEW('total') = A + B + C")
 
 ### **[datafetch](/Docs/datafetch.md)**
 
-讓您輕鬆取得網路上的數據。目前支援從 Google Maps 取得商家評論資料。
+讓您輕鬆取得網路上的數據。目前包含 Google Maps 商家評論爬蟲與 Yahoo Finance 包裝器（使用 [go-yfinance](https://github.com/wnjoon/go-yfinance) 支援）。遠端抓取需要網路連線，部分功能依賴第三方後端，可能會變動。
 
 ### **[lpgen](/Docs/lpgen.md)**
 

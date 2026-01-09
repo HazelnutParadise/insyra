@@ -6,7 +6,7 @@ func (dl *DataList) Map(mapFunc func(int, any) any) *DataList {
 	var result *DataList
 	dl.AtomicDo(func(dl *DataList) {
 		if len(dl.data) == 0 {
-			LogWarning("DataList", "Map", "DataList is empty, returning empty DataList")
+			dl.warn("Map", "DataList is empty, returning empty DataList")
 			result = NewDataList()
 			return
 		}
@@ -17,7 +17,7 @@ func (dl *DataList) Map(mapFunc func(int, any) any) *DataList {
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
-						LogWarning("DataList", "Map", "Error applying function to element at index %d: %v, keeping original value", i, r)
+						dl.warn("Map", "Error applying function to element at index %d: %v, keeping original value", i, r)
 						mappedData[i] = v // 保留原始值
 					}
 				}()

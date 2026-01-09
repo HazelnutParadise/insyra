@@ -66,7 +66,7 @@ type RFMConfig struct {
 - `AmountColIndex`: Column index for transaction amount
 - `AmountColName`: Column name for transaction amount (column index takes precedence if both are provided)
 - `NumGroups`: Number of RFM score groups (typically 3-5)
-- `DateFormat`: Date format string (defaults to "YYYY-MM-DD" if empty)
+- `DateFormat`: Date format string using `YYYY`, `MM`, `DD` tokens (defaults to "YYYY-MM-DD" if empty)
 - `TimeScale`: Time scale for recency calculation (defaults to "daily" if empty)
 
 ### CAIConfig
@@ -90,7 +90,7 @@ type CAIConfig struct {
 - `CustomerIDColName`: Column name for customer ID (column index takes precedence if both are provided)
 - `TradingDayColIndex`: Column index for transaction date
 - `TradingDayColName`: Column name for transaction date (column index takes precedence if both are provided)
-- `DateFormat`: Date format string (defaults to "YYYY-MM-DD" if empty)
+- `DateFormat`: Date format string using `YYYY`, `MM`, `DD` tokens (defaults to "YYYY-MM-DD" if empty)
 - `TimeScale`: Time scale for analysis (defaults to "daily" if empty)
 
 ---
@@ -99,11 +99,20 @@ type CAIConfig struct {
 
 ### RFM
 
-Performs RFM (Recency, Frequency, Monetary) analysis on customer transaction data.
+RFM analysis segments customers based on three key metrics:
+
+- **Recency (R)**: Time since last purchase in the specified time scale (lower values = higher scores)
+- **Frequency (F)**: Number of unique transaction periods based on TimeScale (higher values = higher scores). For example, if TimeScale is `daily`, multiple transactions on the same day count as one; if `weekly`, multiple transactions in the same week count as one.
+- **Monetary (M)**: Total purchase amount (higher values = higher scores)
 
 ```go
 func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable
 ```
+
+**Description:**
+Performs RFM (Recency, Frequency, Monetary) analysis on customer transaction data.
+
+The function calculates percentile-based scores for each metric and assigns customers to groups. The TimeScale parameter determines how recency is calculated (hours, days, weeks, months, or years) and also affects how Frequency is counted (transactions within the same time period are counted as one).
 
 **Parameters:**
 
@@ -113,15 +122,6 @@ func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable
 **Returns:**
 
 - `insyra.IDataTable`: Result table with RFM scores, or `nil` if an error occurs
-
-**Description:**
-RFM analysis segments customers based on three key metrics:
-
-- **Recency (R)**: Time since last purchase in the specified time scale (lower values = higher scores)
-- **Frequency (F)**: Number of unique transaction periods based on TimeScale (higher values = higher scores). For example, if TimeScale is `daily`, multiple transactions on the same day count as one; if `weekly`, multiple transactions in the same week count as one.
-- **Monetary (M)**: Total purchase amount (higher values = higher scores)
-
-The function calculates percentile-based scores for each metric and assigns customers to groups. The TimeScale parameter determines how recency is calculated (hours, days, weeks, months, or years) and also affects how Frequency is counted (transactions within the same time period are counted as one).
 
 **Output Table Structure:**
 
@@ -139,16 +139,23 @@ Alias for CustomerActivityIndex function.
 var CAI = CustomerActivityIndex
 ```
 
-### CustomerActivityIndex
+### Customer Activity Index
 
-Calculates the Customer Activity Index (CAI) for each customer based on their transaction history.
+CAI (Customer Activity Index) is a metric used to evaluate customer activity based on their transaction history. It indicates the change in customer activity level over time. A positive CAI indicates a customer whose activity is increasing, while a negative CAI indicates a customer whose activity is decreasing.
 
-> [!NOTE]
-> Only customers with at least 4 transactions are considered for CAI calculation.
+The calculation involves:
+
+- **MLE (Mean Lifetime Expectancy)**: Average time interval between transactions
+- **WMLE (Weighted Mean Lifetime Expectancy)**: Weighted average where recent intervals have higher weights
+- **CAI**: Calculated as (MLE - WMLE) / MLE
 
 ```go
 func CustomerActivityIndex(dt insyra.IDataTable, caiConfig CAIConfig) insyra.IDataTable
 ```
+
+**Description:**
+
+Calculates the Customer Activity Index (CAI) for each customer based on their transaction history.
 
 **Parameters:**
 
@@ -159,14 +166,8 @@ func CustomerActivityIndex(dt insyra.IDataTable, caiConfig CAIConfig) insyra.IDa
 
 - `insyra.IDataTable`: Result table with CustomerID, MLE, WMLE, and CAI for each customer, or `nil` if an error occurs
 
-**Description:**
-CAI (Customer Activity Index) is a metric used to evaluate customer activity based on their transaction history. It indicates the change in customer activity level over time. A positive CAI indicates a customer whose activity is increasing, while a negative CAI indicates a customer whose activity is decreasing.
-
-The calculation involves:
-
-- **MLE (Mean Lifetime Expectancy)**: Average time interval between transactions
-- **WMLE (Weighted Mean Lifetime Expectancy)**: Weighted average where recent intervals have higher weights
-- **CAI**: Calculated as (MLE - WMLE) / MLE
+> [!NOTE]
+> Only customers with at least 4 transactions are considered for CAI calculation.
 
 **Output Table Structure:**
 
@@ -438,29 +439,35 @@ The function logs warnings for specific issues:
 ## Best Practices
 
 1. **Data Preparation**:
+
    - Ensure dates are in consistent format
    - Remove invalid or incomplete records
    - Verify customer IDs are unique per transaction
 
 2. **Column Specification**:
+
    - Use column names for better readability (e.g., "CustomerID" vs "A")
    - Column indices take precedence if both name and index are provided
    - Ensure specified columns exist in the data table
 
 3. **Group Selection**:
+
    - Use 3-5 groups for most analyses
    - Higher group counts provide more granularity but may over-segment
 
 4. **Date Format**:
+
    - Use Go time format strings (e.g., "2006-01-02" for YYYY-MM-DD)
    - Test with sample data first
 
 5. **Time Scale Selection**:
+
    - Choose TimeScale based on business context (daily for retail, weekly for B2B)
    - Default is daily if TimeScale is not specified
    - Recency calculation truncates times to the start of the time unit
 
 6. **Performance**:
+
    - Function processes data in parallel for large datasets
    - Consider data size for very large transaction tables
 

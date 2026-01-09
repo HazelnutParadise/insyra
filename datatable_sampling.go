@@ -9,7 +9,7 @@ import (
 // If sampleSize is less than or equal to 0, it returns an empty DataTable.
 func (dt *DataTable) SimpleRandomSample(sampleSize int) *DataTable {
 	if sampleSize <= 0 {
-		LogWarning("DataTable", "SimpleRandomSample", "Sample size is less than or equal to 0. Returning an empty DataTable.")
+		dt.warn("SimpleRandomSample", "Sample size is less than or equal to 0. Returning an empty DataTable.")
 		return NewDataTable()
 	}
 	var colNames []string
@@ -19,7 +19,7 @@ func (dt *DataTable) SimpleRandomSample(sampleSize int) *DataTable {
 	dt.AtomicDo(func(table *DataTable) {
 		numRows, _ := table.Size()
 		if sampleSize >= numRows {
-			LogWarning("DataTable", "SimpleRandomSample", "Sample size is greater than or equal to the number of rows. Returning a copy of the original DataTable.")
+			dt.warn("SimpleRandomSample", "Sample size is greater than or equal to the number of rows. Returning a copy of the original DataTable.")
 			earlyResult = table.Clone()
 			return
 		}

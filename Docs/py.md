@@ -1,25 +1,38 @@
 # [ py ] Package
 
-The `py` package allows Golang programs to execute Python code seamlessly and interactively. It provides functionality to pass Go variables into Python scripts, and execute the Python code. Results from the Python script can be sent back to the Go program automatically.
+The `py` package allows Go programs to execute Python code and exchange variables/results. It spins up a managed Python environment using `uv` and a local IPC server.
 
-The `py` package automatically installs common Python libraries, allowing you to use them directly in your Python code. You can also install additional dependencies as needed.
+On first use it:
+
+- Installs `uv` if missing
+- Creates a virtual environment under `.insyra_env/py<version_code>_<os>_<arch>`
+- Installs a preset dependency list (e.g., `numpy`, `pandas`, `polars`, `matplotlib`, `seaborn`, `scikit-learn`)
+
+This setup requires network access and may take a while the first time.
+
+### Environment Utilities
+
+```go
+// Reinstall the managed Python environment
+func ReinstallPyEnv() error
+```
 
 ## Functions
 
-### `RunCode`
+### Run Code
 
 ```go
 func RunCode(out any, code string) error
 ```
 
-This function is used to execute arbitrary Python code and bind the result to the provided struct pointer. It appends default Python code required for communication and runs the code.
+**Description:** This function is used to execute arbitrary Python code and bind the result to the provided struct pointer. It appends default Python code required for communication and runs the code.
 
-#### Parameters
+**Parameters:**
 
 - `out` (any): A pointer to a struct to bind the Python result to. You can optionally use `json` tags on struct fields for custom mapping, otherwise field names are matched to Python dictionary keys by default. If you don't need the Python return result, pass `nil`.
 - `code` (string): The Python code to be executed.
 
-#### Returns
+**Returns:**
 
 - `error`: Returns an error if execution failed or result binding failed, `nil` otherwise.
 
@@ -33,8 +46,8 @@ type ResultData struct {
 
 var result ResultData
 err := RunCode(&result, `
-print("Hello from Python")
-insyra.Return({"message": "Hello from Python", "value": 123})
+    print("Hello from Python")
+    insyra.Return({"message": "Hello from Python", "value": 123})
 `)
 if err != nil {
     fmt.Println("Error:", err)
@@ -45,25 +58,25 @@ if err != nil {
 
 ---
 
-### `RunCodef`
+### Run Code With Parameters
 
 ```go
 func RunCodef(out any, code string, args ...any) error
 ```
 
-This function is used to execute Python code with variables passed from Go using `$v1`, `$v2`, etc. placeholders and bind the result to the provided struct pointer. The function replaces these placeholders with the provided arguments.
+**Description:** This function is used to execute Python code with variables passed from Go using `$v1`, `$v2`, etc. placeholders and bind the result to the provided struct pointer. The function replaces these placeholders with the provided arguments.
 
-In the Python code template, use `$v1`, `$v2`, `$v3`, etc. as placeholders for the arguments passed to the function.
-
-#### Parameters
+**Parameters:**
 
 - `out` (any): A pointer to a struct to bind the Python result to. You can optionally use `json` tags on struct fields for custom mapping, otherwise field names are matched to Python dictionary keys by default. If you don't need the Python return result, pass `nil`.
 - `code` (string): The Python code template with `$v1`, `$v2`, etc. placeholders.
 - `args` (`...any`): A variable-length argument list of Go variables to be substituted into the template.
 
-#### Returns
+**Returns:**
 
 - `error`: Returns an error if execution failed or result binding failed, `nil` otherwise.
+
+In the Python code template, use `$v1`, `$v2`, `$v3`, etc. as placeholders for the arguments passed to the function.
 
 #### Example
 
@@ -110,30 +123,30 @@ insyra.Return({"success": True, "message": "Plot created"})
 }
 ```
 
-### `RunFile`
+### Run Python File
 
 Run Python code from a file and bind the result to the provided struct pointer.
 
-#### Parameters
+**Parameters:**
 
 - `out` (any): A pointer to a struct to bind the Python result to. You can optionally use `json` tags on struct fields for custom mapping, otherwise field names are matched to Python dictionary keys by default. If you don't need the Python return result, pass `nil`.
 - `filepath` (string): The Python file to be executed.
 
-#### Returns
+**Returns:**
 
 - `error`: Returns an error if execution failed or result binding failed, `nil` otherwise.
 
-### `RunFilef`
+### Run Python File With Parameters
 
 Run Python code from a file with variables passed from Go using `$v1`, `$v2`, etc. placeholders and bind the result to the provided struct pointer.
 
-#### Parameters
+**Parameters:**
 
 - `out` (any): A pointer to a struct to bind the Python result to. You can optionally use `json` tags on struct fields for custom mapping, otherwise field names are matched to Python dictionary keys by default. If you don't need the Python return result, pass `nil`.
 - `filepath` (string): The Python file to be executed.
 - `args` (`...any`): A variable-length argument list of Go variables to be substituted into the template.
 
-#### Returns
+**Returns:**
 
 - `error`: Returns an error if execution failed or result binding failed, `nil` otherwise.
 
@@ -155,12 +168,12 @@ func RunFilefContext(ctx context.Context, out any, filepath string, args ...any)
 func RunCodeWithTimeout(timeout time.Duration, out any, code string) error
 ```
 
-#### Parameters
+**Parameters:**
 
 - `ctx` (`context.Context`): The context used to control cancellation and deadlines for the Python execution.
 - Other parameters are the same as their non-context counterparts (`out`, `code`, `filepath`, `args`).
 
-#### Returns
+**Returns:**
 
 - `error`: Non-nil when execution failed; if execution was canceled via the provided `ctx`, the function returns `ctx.Err()` (typically `context.Canceled` for manual cancellation or `context.DeadlineExceeded` for timeouts). Use `errors.Is` to check for these.
 
@@ -209,47 +222,51 @@ if errors.Is(err, context.Canceled) {
 - Note: initialization errors are now propagated to callers. The Python environment initializer `pyEnvInit()` no longer calls fatal logging to terminate the process; instead it returns an `error` when initialization fails (for example: failing to ensure `uv` is installed, failing to prepare the install directory, failing to set up the uv environment, or failing to install dependencies). Callers of py functions (e.g., `RunCode`, `RunFile`, `RunCodeContext`, `PipInstall`, `PipList`, `PipFreeze`, etc.) will return that initialization `error` — be sure to check and handle the returned `error` in your code.
 - For platform-specific process group / child-process cleanup semantics, consider the platform behavior; if you need robust group termination, let us know and we can add process-group management to the runner.
 
-### `PipInstall`
+### Install Python Dependency
 
 ```go
 func PipInstall(dep string) error
 ```
 
-This function installs Python dependencies using uv pip. It executes the install command and returns an `error` if the installation fails. It does not terminate the program; callers should handle the error.
+**Description:** This function installs Python dependencies using uv pip. It executes the install command and returns an `error` if the installation fails. It does not terminate the program; callers should handle the error.
 
-#### Parameters
+**Parameters:**
 
 - `dep` (string): The name of the dependency to be installed.
 
-#### Returns
+**Returns:**
 
 - `error`: Non-nil if installation failed; nil otherwise.
 
-### `PipUninstall`
+### Uninstall Python Dependency
 
 ```go
 func PipUninstall(dep string) error
 ```
 
-This function uninstalls Python dependencies using uv pip. It returns an `error` if the uninstallation fails; callers should handle the error. It does not terminate the program.
+**Description:** This function uninstalls Python dependencies using uv pip. It returns an `error` if the uninstallation fails; callers should handle the error. It does not terminate the program.
 
-#### Parameters
+**Parameters:**
 
 - `dep` (string): The name of the dependency to be uninstalled.
 
-#### Returns
+**Returns:**
 
 - `error`: Non-nil if uninstallation failed; nil otherwise.
 
-### `PipList`
+### List Installed Python Packages
 
 ```go
 func PipList() (map[string]string, error)
 ```
 
-This function lists currently installed Python packages in the uv-managed environment. It returns a map of package name to version (e.g., `{"requests":"2.31.0"}`) and an error if the listing fails.
+**Description:** This function lists currently installed Python packages in the uv-managed environment. It returns a map of package name to version (e.g., `{"requests":"2.31.0"}`) and an error if the listing fails.
 
-#### Returns
+**Parameters:**
+
+- None.
+
+**Returns:**
 
 - `map[string]string`: Map of package name -> version.
 - `error`: Non-nil if listing failed.
@@ -267,15 +284,19 @@ if err != nil {
 }
 ```
 
-### `PipFreeze`
+### Pip Freeze
 
 ```go
 func PipFreeze() ([]string, error)
 ```
 
-This function returns the lines from `pip freeze` (suitable for a `requirements.txt`), one line per package (e.g., `requests==2.31.0`). It returns an error if the command fails.
+**Description:** This function returns the lines from `pip freeze` (suitable for a `requirements.txt`), one line per package (e.g., `requests==2.31.0`). It returns an error if the command fails.
 
-#### Returns
+**Parameters:**
+
+- None.
+
+**Returns:**
 
 - `[]string`: Each element is usually of the form `package==version` or an editable/VCS entry.
 - `error`: Non-nil if the command failed.
@@ -293,15 +314,19 @@ if err != nil {
 }
 ```
 
-### `ReinstallPyEnv`
+### Reinstall Python Environment
 
 ```go
 func ReinstallPyEnv() error
 ```
 
-This function completely reinstalls the Python environment by removing the existing virtual environment and reinstalling all dependencies. Useful when you want to reset the Python environment, update dependencies, or fix environment-related issues.
+**Description:** This function completely reinstalls the Python environment by removing the existing virtual environment and reinstalling all dependencies. Useful when you want to reset the Python environment, update dependencies, or fix environment-related issues.
 
-#### Returns
+**Parameters:**
+
+- None.
+
+**Returns:**
 
 - `error`: Returns an error if the reinstallation fails, `nil` otherwise.
 
@@ -396,7 +421,7 @@ This function is used to return data from Python to Go.
 
 If `result` is a pandas/polars DataFrame or Series, it will be normalized and returned as a typed payload so that Go can bind it directly into `DataTable` or `DataList`.
 
-#### Parameters
+**Parameters:**
 
 - `result` (any): The result data to be returned to Go.
 - `error` (string): The error message if an error occurred, None otherwise. The Insyra framework will automatically deal with errors, you don't need to set it manually.
@@ -419,7 +444,7 @@ insyra_return(result=None, error=None, url)
 
 This is an alias for `insyra.Return` for convenience. It provides the same functionality as `insyra.Return`.
 
-#### Parameters
+**Parameters:**
 
 - `result` (any): The result data to be returned to Go.
 - `error` (string): The error message if an error occurred, None otherwise. The Insyra framework will automatically deal with errors, you don't need to set it manually.
@@ -451,8 +476,8 @@ insyra.Return({"execution_id": insyra.execution_id, "data": "some data"})
 
 ## Pre-installed Dependencies
 
-- **Python Environment**: Insyra automatically installs Python environment using `uv` in the `.insyra_py_env` directory in your project root.
-- **Python Libraries**: Insyra automatically installs following Python libraries, you can use them directly in your Python code:
+- **Python Environment**: Insyra installs a managed environment under `.insyra_env/py<version_code>_<os>_<arch>` (project root).
+- **Python Libraries**: Insyra installs and imports the following libraries by default:
 
 ```go
 pyDependencies   = map[string]string{

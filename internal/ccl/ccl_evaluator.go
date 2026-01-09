@@ -5,6 +5,7 @@ import (
 	"log"
 	"math"
 	"strings"
+	"time"
 
 	"github.com/HazelnutParadise/insyra/internal/utils"
 )
@@ -214,11 +215,17 @@ func evaluateWithContext(n cclNode, ctx Context) (any, error) {
 	case *cclRowIndexNode:
 		return float64(ctx.GetRowIndex()), nil
 	case *cclIdentifierNode:
-		idx := utils.ParseColIndex(t.name)
+		idx, ok := utils.ParseColIndex(t.name)
+		if !ok {
+			return nil, fmt.Errorf("invalid column index: %s", t.name)
+		}
 		return ctx.GetCol(idx), nil
 	case *cclColIndexNode:
 		// [A] 形式的欄位索引引用
-		idx := utils.ParseColIndex(t.index)
+		idx, ok := utils.ParseColIndex(t.index)
+		if !ok {
+			return nil, fmt.Errorf("invalid column index: %s", t.index)
+		}
 		return ctx.GetCol(idx), nil
 	case *cclColNameNode:
 		// ['colName'] 形式的欄位名稱引用
@@ -226,8 +233,55 @@ func evaluateWithContext(n cclNode, ctx Context) (any, error) {
 	case *cclResolvedColNode:
 		return ctx.GetCol(t.index), nil
 	case *funcCallNode:
+		// Short-circuit special-casing for logical/conditional functions to avoid evaluating
+		// arguments that could cause out-of-range access (e.g., IF(#>0, A.(#-1), NULL)).
+		upper := strings.ToUpper(t.name)
+		if upper == "IF" {
+			if len(t.args) != 3 {
+				return nil, fmt.Errorf("IF requires 3 arguments")
+			}
+			condVal, err := evaluateWithContext(t.args[0], ctx)
+			if err != nil {
+				return nil, err
+			}
+			cond, ok := toBool(condVal)
+			if !ok {
+				return nil, fmt.Errorf("first argument to IF cannot be converted to boolean: %T", condVal)
+			}
+			if cond {
+				return evaluateWithContext(t.args[1], ctx)
+			}
+			return evaluateWithContext(t.args[2], ctx)
+		}
+
+		if upper == "AND" {
+			for _, arg := range t.args {
+				val, err := evaluateWithContext(arg, ctx)
+				if err != nil {
+					return nil, err
+				}
+				if b, ok := toBool(val); !ok || !b {
+					return false, nil
+				}
+			}
+			return true, nil
+		}
+
+		if upper == "OR" {
+			for _, arg := range t.args {
+				val, err := evaluateWithContext(arg, ctx)
+				if err != nil {
+					return nil, err
+				}
+				if b, ok := toBool(val); ok && b {
+					return true, nil
+				}
+			}
+			return false, nil
+		}
+
 		// 檢查是否為聚合函數
-		if _, isAgg := aggregateFunctions[strings.ToUpper(t.name)]; isAgg {
+		if _, isAgg := aggregateFunctions[upper]; isAgg {
 			// 如果是行相關的（包含 #），則將其視為普通函數評估（逐行聚合）
 			if containsRowIndex(t) {
 				args := []any{}
@@ -262,6 +316,7 @@ func evaluateWithContext(n cclNode, ctx Context) (any, error) {
 			return callAggregateFunction(t.name, aggArgs)
 		}
 
+		// Default: evaluate all args then call function
 		args := []any{}
 		for _, arg := range t.args {
 			val, err := evaluateWithContext(arg, ctx)
@@ -329,6 +384,72 @@ func evaluateWithContext(n cclNode, ctx Context) (any, error) {
 }
 
 func applyOperator(op string, left, right any) (any, error) {
+	// Try to interpret date-like operands first (time.Time or parseable date strings)
+	parseTimeLike := func(v any) (time.Time, bool) {
+		switch x := v.(type) {
+		case time.Time:
+			return x, true
+		case string:
+			formats := []string{time.RFC3339, time.RFC3339Nano, "2006-01-02", "2006-01-02T15:04:05Z07:00"}
+			for _, f := range formats {
+				if t, err := time.Parse(f, x); err == nil {
+					return t, true
+				}
+			}
+		}
+		return time.Time{}, false
+	}
+
+	// Special-case: date/time arithmetic and comparisons
+	if lt, lok := parseTimeLike(left); lok {
+		if rt, rok := parseTimeLike(right); rok {
+			// both are times
+			switch op {
+			case "-":
+				// return difference as time.Duration (left - right)
+				return lt.Sub(rt), nil
+			case ">":
+				return lt.After(rt), nil
+			case "<":
+				return lt.Before(rt), nil
+			case ">=":
+				return !lt.Before(rt), nil
+			case "<=":
+				return !lt.After(rt), nil
+			case "==":
+				return lt.Equal(rt), nil
+			case "!=":
+				return !lt.Equal(rt), nil
+			case "+":
+				return nil, fmt.Errorf("operator + not supported between two dates")
+			case "*", "/", "^":
+				return nil, fmt.Errorf("operator %s not supported between dates", op)
+			}
+		}
+		// right is not time; if it's numeric, allow time +/- number (days)
+		if rf, ok := toFloat64(right); ok {
+			switch op {
+			case "+":
+				return lt.Add(time.Duration(rf*24.0) * time.Hour), nil
+			case "-":
+				return lt.Add(-time.Duration(rf*24.0) * time.Hour), nil
+			}
+		}
+	}
+
+	// symmetric: left is not time but right might be (e.g., number + date)
+	if rt, rok := parseTimeLike(right); rok {
+		if lf, ok := toFloat64(left); ok {
+			switch op {
+			case "+":
+				return rt.Add(time.Duration(lf*24.0) * time.Hour), nil
+			case "-":
+				// number - date doesn't make sense
+				return nil, fmt.Errorf("invalid operands for -: %v, %v", left, right)
+			}
+		}
+	}
+
 	// 特殊情況處理：其中一方為nil
 	if left == nil || right == nil {
 		switch op {
@@ -370,7 +491,6 @@ func applyOperator(op string, left, right any) (any, error) {
 		rightStr := fmt.Sprintf("%v", right)
 		return leftStr + rightStr, nil
 	}
-
 	// 處理 && 運算符（邏輯與，等同於 AND）
 	if op == "&&" {
 		lb, lok := toBool(left)
@@ -498,7 +618,10 @@ func evaluateToColumn(n cclNode, ctx Context) ([]any, error) {
 		// Special case for @ in aggregate functions: return all data in the context
 		return ctx.GetAllData()
 	case *cclIdentifierNode:
-		idx := utils.ParseColIndex(t.name)
+		idx, ok := utils.ParseColIndex(t.name)
+		if !ok {
+			return nil, fmt.Errorf("invalid column index: %s", t.name)
+		}
 		// Try index
 		col, err := ctx.GetColData(idx)
 		if err == nil {
@@ -507,7 +630,10 @@ func evaluateToColumn(n cclNode, ctx Context) ([]any, error) {
 		// Try name
 		return ctx.GetColDataByName(t.name)
 	case *cclColIndexNode:
-		idx := utils.ParseColIndex(t.index)
+		idx, ok := utils.ParseColIndex(t.index)
+		if !ok {
+			return nil, fmt.Errorf("invalid column index: %s", t.index)
+		}
 		return ctx.GetColData(idx)
 	case *cclColNameNode:
 		return ctx.GetColDataByName(t.name)
@@ -675,9 +801,9 @@ func evaluateRowAccess(left, right cclNode, ctx Context) (any, error) {
 					val, err = ctx.GetCellByName(l.name, rIdx)
 				}
 			case *cclIdentifierNode:
-				idx := utils.ParseColIndex(l.name)
+				idx, ok := utils.ParseColIndex(l.name)
 				// Try as index first
-				if idx != -1 {
+				if ok {
 					val, err = ctx.GetCell(idx, rIdx)
 				} else {
 					err = fmt.Errorf("invalid column index")
@@ -688,8 +814,8 @@ func evaluateRowAccess(left, right cclNode, ctx Context) (any, error) {
 					val, err = ctx.GetCellByName(l.name, rIdx)
 				}
 			case *cclColIndexNode:
-				idx := utils.ParseColIndex(l.index)
-				if idx != -1 {
+				idx, ok := utils.ParseColIndex(l.index)
+				if ok {
 					val, err = ctx.GetCell(idx, rIdx)
 				} else {
 					err = fmt.Errorf("invalid column index")
@@ -818,8 +944,8 @@ func evaluateRange(left, right cclNode, ctx Context) (any, error) {
 func resolveColumnIndex(n cclNode, ctx Context) (int, bool) {
 	switch t := n.(type) {
 	case *cclIdentifierNode:
-		idx := utils.ParseColIndex(t.name)
-		if idx != -1 {
+		idx, ok := utils.ParseColIndex(t.name)
+		if ok {
 			return idx, true
 		}
 		// Try to resolve by name
@@ -833,7 +959,11 @@ func resolveColumnIndex(n cclNode, ctx Context) (int, bool) {
 		// We should return false if it's not a valid column.
 		return -1, false
 	case *cclColIndexNode:
-		return utils.ParseColIndex(t.index), true
+		idx, ok := utils.ParseColIndex(t.index)
+		if !ok {
+			return -1, false
+		}
+		return idx, true
 	case *cclResolvedColNode:
 		return t.index, true
 	case *cclColNameNode:

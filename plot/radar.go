@@ -105,6 +105,15 @@ func CreateRadarChart(config RadarChartConfig, series []RadarSeries) *charts.Rad
 		}),
 	)
 
+	// Apply default colors to series that don't have colors specified
+	colorIndex := 0
+	for i := range series {
+		if series[i].Color == "" {
+			series[i].Color = internal.GetColor(colorIndex)
+			colorIndex++
+		}
+	}
+
 	for _, s := range series {
 		// 確保長度一致，若不足則補 0
 		values := make([]float32, len(indicators))
@@ -115,7 +124,16 @@ func CreateRadarChart(config RadarChartConfig, series []RadarSeries) *charts.Rad
 				values[i] = 0
 			}
 		}
-		radar.AddSeries(s.Name, []opts.RadarData{{Value: values, Name: s.Name}})
+
+		// Apply series with color if specified
+		radarData := []opts.RadarData{{Value: values, Name: s.Name}}
+		if s.Color != "" {
+			radar.AddSeries(s.Name, radarData, charts.WithItemStyleOpts(opts.ItemStyle{
+				Color: s.Color,
+			}))
+		} else {
+			radar.AddSeries(s.Name, radarData)
+		}
 	}
 
 	return radar
