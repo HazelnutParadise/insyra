@@ -158,6 +158,41 @@ func (y *yahooFinance) sleepBackoff(attempt int) {
 	time.Sleep(y.cfg.RetryBackoff * time.Duration(attempt+1))
 }
 
+// tryParseTime attempts common date/time formats and returns the parsed time and true on success.
+// It covers RFC3339/RFC3339Nano and common date-only formats returned by various APIs.
+func tryParseTime(str string) (time.Time, bool) {
+	formats := []string{
+		time.RFC3339,
+		time.RFC3339Nano,
+		"2006-01-02",
+		"2006-01-02 15:04:05 -0700 MST",
+		"2006-01-02T15:04:05Z07:00",
+	}
+	for _, f := range formats {
+		if t, err := time.Parse(f, str); err == nil {
+			return t, true
+		}
+	}
+	return time.Time{}, false
+}
+
+// normalizeDateColumns converts any string columns whose name suggests a date/time into time.Time
+// with time truncated to date-only (midnight in original location).
+func normalizeDateColumns(dt *insyra.DataTable) *insyra.DataTable {
+	return dt.Map(func(rowIndex int, colIndex string, element any) any {
+		name := dt.GetColNameByIndex(colIndex)
+		lname := strings.ToLower(name)
+		if strings.Contains(lname, "date") || strings.Contains(lname, "time") || strings.Contains(lname, "expire") || strings.Contains(lname, "expiry") {
+			if str, ok := element.(string); ok {
+				if parsed, ok := tryParseTime(str); ok {
+					return time.Date(parsed.Year(), parsed.Month(), parsed.Day(), 0, 0, 0, 0, parsed.Location())
+				}
+			}
+		}
+		return element
+	})
+}
+
 // public fetch methods
 // QuoteRaw fetches quote data for a symbol and returns the library's native quote struct.
 // (Use this as your stable base; you can convert it to DataTable later.)
@@ -211,6 +246,7 @@ func (t *ticker) History(params YFHistoryParams) (*insyra.DataTable, error) {
 			if err != nil {
 				return nil, err
 			}
+			dt = normalizeDateColumns(dt)
 			dt.SetName(fmt.Sprintf("%s.History", strings.ToUpper(t.symbol)))
 			return dt, nil
 		}
@@ -252,6 +288,7 @@ func (t *ticker) Quote() (*insyra.DataTable, error) {
 			if err != nil {
 				return nil, err
 			}
+			dt = normalizeDateColumns(dt)
 			dt.SetName(fmt.Sprintf("%s.Quote", strings.ToUpper(t.symbol)))
 			return dt, nil
 		}
@@ -289,6 +326,7 @@ func (t *ticker) Info() (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
+	dt = normalizeDateColumns(dt)
 	dt.SetName(fmt.Sprintf("%s.Info", strings.ToUpper(t.symbol)))
 	return dt, nil
 }
@@ -315,6 +353,7 @@ func (t *ticker) Dividends() (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
+	dt = normalizeDateColumns(dt)
 	dt.SetName(fmt.Sprintf("%s.Dividends", strings.ToUpper(t.symbol)))
 	return dt, nil
 }
@@ -341,6 +380,7 @@ func (t *ticker) Splits() (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
+	dt = normalizeDateColumns(dt)
 	dt.SetName(fmt.Sprintf("%s.Splits", strings.ToUpper(t.symbol)))
 	return dt, nil
 }
@@ -367,6 +407,7 @@ func (t *ticker) Actions() (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
+	dt = normalizeDateColumns(dt)
 	dt.SetName(fmt.Sprintf("%s.Actions", strings.ToUpper(t.symbol)))
 	return dt, nil
 }
@@ -393,6 +434,7 @@ func (t *ticker) Options() (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
+	dt = normalizeDateColumns(dt)
 	dt.SetName(fmt.Sprintf("%s.Options", strings.ToUpper(t.symbol)))
 	return dt, nil
 }
@@ -419,6 +461,7 @@ func (t *ticker) OptionChain(date string) (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
+	dt = normalizeDateColumns(dt)
 	dt.SetName(fmt.Sprintf("%s.OptionChain(%s)", strings.ToUpper(t.symbol), date))
 	return dt, nil
 }
@@ -445,6 +488,7 @@ func (t *ticker) News(count int, tab models.NewsTab) (*insyra.DataTable, error) 
 	if err != nil {
 		return nil, err
 	}
+	dt = normalizeDateColumns(dt)
 	dt.SetName(fmt.Sprintf("%s.News", strings.ToUpper(t.symbol)))
 	return dt, nil
 }
@@ -471,11 +515,13 @@ func (t *ticker) Calendar() (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
+	dt = normalizeDateColumns(dt)
 	dt.SetName(fmt.Sprintf("%s.Calendar", strings.ToUpper(t.symbol)))
 	return dt, nil
 }
 
 // Financials: IncomeStatement / BalanceSheet / CashFlow
+// FIXME: the return needs new structure
 func (t *ticker) IncomeStatement(freq YFPeriod) (*insyra.DataTable, error) {
 	if t == nil || t.yf == nil {
 		return nil, errors.New("yfinance: ticker is nil")
@@ -497,10 +543,12 @@ func (t *ticker) IncomeStatement(freq YFPeriod) (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
+	dt = normalizeDateColumns(dt)
 	dt.SetName(fmt.Sprintf("%s.IncomeStatement(%s)", strings.ToUpper(t.symbol), string(freq)))
 	return dt, nil
 }
 
+// FIXME: the return needs new structure
 func (t *ticker) BalanceSheet(freq YFPeriod) (*insyra.DataTable, error) {
 	if t == nil || t.yf == nil {
 		return nil, errors.New("yfinance: ticker is nil")
@@ -522,10 +570,12 @@ func (t *ticker) BalanceSheet(freq YFPeriod) (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
+	dt = normalizeDateColumns(dt)
 	dt.SetName(fmt.Sprintf("%s.BalanceSheet(%s)", strings.ToUpper(t.symbol), string(freq)))
 	return dt, nil
 }
 
+// FIXME: the return needs new structure
 func (t *ticker) CashFlow(freq YFPeriod) (*insyra.DataTable, error) {
 	if t == nil || t.yf == nil {
 		return nil, errors.New("yfinance: ticker is nil")
@@ -547,6 +597,7 @@ func (t *ticker) CashFlow(freq YFPeriod) (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
+	dt = normalizeDateColumns(dt)
 	dt.SetName(fmt.Sprintf("%s.CashFlow(%s)", strings.ToUpper(t.symbol), string(freq)))
 	return dt, nil
 }
@@ -573,6 +624,7 @@ func (t *ticker) MajorHolders() (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
+	dt = normalizeDateColumns(dt)
 	dt.SetName(fmt.Sprintf("%s.MajorHolders", strings.ToUpper(t.symbol)))
 	return dt, nil
 }
@@ -598,6 +650,7 @@ func (t *ticker) InstitutionalHolders() (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
+	dt = normalizeDateColumns(dt)
 	dt.SetName(fmt.Sprintf("%s.InstitutionalHolders", strings.ToUpper(t.symbol)))
 	return dt, nil
 }
@@ -623,6 +676,7 @@ func (t *ticker) MutualFundHolders() (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
+	dt = normalizeDateColumns(dt)
 	dt.SetName(fmt.Sprintf("%s.MutualFundHolders", strings.ToUpper(t.symbol)))
 	return dt, nil
 }
@@ -648,6 +702,7 @@ func (t *ticker) InsiderTransactions() (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
+	dt = normalizeDateColumns(dt)
 	dt.SetName(fmt.Sprintf("%s.InsiderTransactions", strings.ToUpper(t.symbol)))
 	return dt, nil
 }
@@ -674,6 +729,7 @@ func (t *ticker) FastInfo() (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
+	dt = normalizeDateColumns(dt)
 	dt.SetName(fmt.Sprintf("%s.FastInfo", strings.ToUpper(t.symbol)))
 	return dt, nil
 }
@@ -706,6 +762,7 @@ func (t *ticker) EarningsEstimate() (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
+	dt = normalizeDateColumns(dt)
 	dt.SetName(fmt.Sprintf("%s.EarningsEstimate", strings.ToUpper(t.symbol)))
 	return dt, nil
 }
@@ -732,6 +789,7 @@ func (t *ticker) EarningsHistory() (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
+	dt = normalizeDateColumns(dt)
 	dt.SetName(fmt.Sprintf("%s.EarningsHistory", strings.ToUpper(t.symbol)))
 	return dt, nil
 }
@@ -758,6 +816,7 @@ func (t *ticker) EPSTrend() (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
+	dt = normalizeDateColumns(dt)
 	dt.SetName(fmt.Sprintf("%s.EPSTrend", strings.ToUpper(t.symbol)))
 	return dt, nil
 }
