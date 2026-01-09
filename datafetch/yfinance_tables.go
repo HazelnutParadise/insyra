@@ -86,14 +86,14 @@ func buildOptionChainTables(symbol, date string, chain *models.OptionChain) (*YF
 		return nil, err
 	}
 	callsDT = normalizeUnixSecondsColumns(callsDT, "expiration", "lastTradeDate")
-	callsDT.SetName(fmt.Sprintf("%s.OptionChainCalls(%s)", symbol, label))
+	callsDT.SetName(fmt.Sprintf("%s.OptionChain_Calls(%s)", symbol, label))
 
 	putsDT, err := insyra.ReadJSON(chain.Puts)
 	if err != nil {
 		return nil, err
 	}
 	putsDT = normalizeUnixSecondsColumns(putsDT, "expiration", "lastTradeDate")
-	putsDT.SetName(fmt.Sprintf("%s.OptionChainPuts(%s)", symbol, label))
+	putsDT.SetName(fmt.Sprintf("%s.OptionChain_Puts(%s)", symbol, label))
 
 	var underlyingDT *insyra.DataTable
 	if chain.Underlying != nil {
@@ -102,7 +102,7 @@ func buildOptionChainTables(symbol, date string, chain *models.OptionChain) (*YF
 			return nil, err
 		}
 		underlyingDT = normalizeUnixSecondsColumns(underlyingDT, "regularMarketTime")
-		underlyingDT.SetName(fmt.Sprintf("%s.OptionChainUnderlying(%s)", symbol, label))
+		underlyingDT.SetName(fmt.Sprintf("%s.OptionChain_Underlying(%s)", symbol, label))
 	}
 
 	return &YFOptionChainTables{
@@ -164,7 +164,7 @@ func buildFinancialStatementTables(symbol, statement string, freq YFPeriod, stmt
 
 		valuesDT.AppendCols(cols...)
 	}
-	valuesDT.SetName(fmt.Sprintf("%s.%sValues(%s)", symbol, statement, freqLabel))
+	valuesDT.SetName(fmt.Sprintf("%s.%s_Values(%s)", symbol, statement, freqLabel))
 
 	itemsDT := insyra.NewDataTable()
 	fieldCol := insyra.NewDataList()
@@ -192,7 +192,7 @@ func buildFinancialStatementTables(symbol, statement string, freq YFPeriod, stmt
 			formattedCol.Append(item.Formatted)
 		}
 	}
-	itemsDT.SetName(fmt.Sprintf("%s.%sItems(%s)", symbol, statement, freqLabel))
+	itemsDT.SetName(fmt.Sprintf("%s.%s_Items(%s)", symbol, statement, freqLabel))
 
 	metaDT := insyra.NewDataTable()
 	metaDT.AppendRowsByColName(map[string]any{
@@ -201,7 +201,7 @@ func buildFinancialStatementTables(symbol, statement string, freq YFPeriod, stmt
 		"Frequency": freqLabel,
 		"Currency":  stmt.Currency,
 	})
-	metaDT.SetName(fmt.Sprintf("%s.%sMeta(%s)", symbol, statement, freqLabel))
+	metaDT.SetName(fmt.Sprintf("%s.%s_Meta(%s)", symbol, statement, freqLabel))
 
 	return &YFFinancialStatementTables{
 		Values: valuesDT,
