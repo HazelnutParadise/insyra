@@ -279,106 +279,123 @@ func main() {
 
 ## Yahoo Finance (yfinance)
 
-A lightweight, Python-like wrapper for Yahoo Finance data. The wrapper adapts the public API to return `*insyra.DataTable` so results are ready for analysis.
+The `datafetch` package provides a lightweight, Python-like wrapper for Yahoo Finance data. It adapts the public API to return `*insyra.DataTable`, making results ready for immediate analysis and visualization.
 
-**Backend implementation:** this package uses [github.com/wnjoon/go-yfinance](https://github.com/wnjoon/go-yfinance) as the underlying implementation. When the backend does not expose a Python-equivalent feature, the corresponding method is deliberately implemented as a stub that returns a clear "not supported by the installed go-yfinance backend" error.
-
-### Quick example
+### Quick Start
 
 ```go
-// Create a fetcher with defaults
-yf, err := datafetch.YFinance(datafetch.YFinanceConfig{})
-if err != nil {
-    panic(err)
+package main
+
+import (
+    "time"
+    "github.com/HazelnutParadise/insyra/datafetch"
+)
+
+func main() {
+    // 1. Initialize the fetcher
+    yf, _ := datafetch.YFinance(datafetch.YFinanceConfig{
+        Timeout: 10 * time.Second,
+    })
+
+    // 2. Get a Ticker object
+    t, _ := yf.Ticker("AAPL")
+
+    // 3. Fetch historical data (as DataTable)
+    history, _ := t.History(datafetch.YFHistoryParams{
+        Period:   "1mo",
+        Interval: "1d",
+    })
+    history.Show()
 }
-
-// Single ticker history
-t, _ := yf.Ticker("AAPL")
-dt, err := t.History(datafetch.YFHistoryParams{Period: "1mo", Interval: "1d"})
-if err != nil {
-    panic(err)
-}
-dt.Show()
-
-// To fetch multiple symbols, create tickers and fetch each one (optionally in parallel).
-// Example (sequential):
-// tA, _ := yf.Ticker("AAPL")
-// dtA, _ := tA.History(datafetch.YFHistoryParams{Period: "1mo"})
-// tG, _ := yf.Ticker("GOOG")
-// dtG, _ := tG.History(datafetch.YFHistoryParams{Period: "1mo"})
-
-// If you need parallel multi-symbol fetches, implement your own worker pool that calls
-// `y.Ticker(sym)` and `ticker.History(...)` for each symbol. A `Tickers` helper may be
-// added to the package in the future.
 ```
-
-### API highlights
-
-- `YFinance(cfg YFinanceConfig) (*yahooFinance, error)` — create a stateful fetcher. Resources are automatically cleaned up (the fetcher uses a finalizer to close the underlying client when it is garbage-collected). Note: finalizer timing is non-deterministic; if you need deterministic shutdown consider managing your own client lifecycle or request an exported shutdown API.
-- `(*yahooFinance).Ticker(symbol string) (*ticker, error)` — returns a `ticker` with many Python-like methods.
-- To fetch single-symbol history use `Ticker(...).History(...)`. For multi-symbol parallel fetches, create per-symbol tickers and run `History` in your own worker pool. (A `Tickers` helper may be added in the future.)
-- `ticker` methods return `*insyra.DataTable` for: `History`, `Quote`, `Info`, `Dividends`, `Splits`, `Actions`, `Options`, `News`, `Calendar`, `MajorHolders`, `InstitutionalHolders`, `MutualFundHolders`, `InsiderTransactions`, `FastInfo`, `EarningsEstimate`, `EarningsHistory`, `EPSTrend`, `EPSRevisions`, `Recommendations`, `AnalystPriceTargets`, `RevenueEstimate`, `GrowthEstimates`.
-- `OptionChain` returns `*datafetch.YFOptionChainTables` with `Calls`, `Puts`, `Underlying`, and `Expiration`.
-- `IncomeStatement`, `BalanceSheet`, `CashFlow` return `*datafetch.YFFinancialStatementTables` with `Values`, `Items`, and `Meta`.
-
-### Configuration (YFinanceConfig)
-
-- `Timeout time.Duration` — per-request timeout. **Converted to seconds** when passed to the underlying client. Default: `15s`.
-- `Interval time.Duration` — spacing between requests for rate-limiting. `0` disables interval limiting.
-- `UserAgent string` — HTTP user agent header. Defaults to a common browser UA.
-- `Retries int` — number of retry attempts on retryable errors. `0` = no retries.
-- `RetryBackoff time.Duration` — base backoff between retries. Default: `300ms`.
-- `Concurrency int` — maximum concurrent workers for multi-symbol fetches (if you implement a Tickers helper). Default: `6`.
-
-### Financial statement frequency enum (YFPeriod)
-
-Use the `YFPeriod` enum for statement frequency parameters (`IncomeStatement`, `BalanceSheet`, `CashFlow`). Accepted values:
-
-- `datafetch.YFPeriodAnnual` (or `"annual"`) — default
-- `datafetch.YFPeriodYearly` ("yearly") — accepted by backend
-- `datafetch.YFPeriodQuarterly` ("quarterly")
-
-Example:
-
-```go
-// annual (default)
-tables, _ := t.CashFlow(datafetch.YFPeriodAnnual)
-tables.Values.Show()
-tables.Items.Show()
-tables.Meta.Show()
-
-// quarterly
-tables2, _ := t.IncomeStatement(datafetch.YFPeriodQuarterly)
-tables2.Values.Show()
-```
-
-### Partial results & errors
-
-- `Download` with multiple symbols returns a `DataTable` of successful results. If at least one symbol succeeds but others fail, `Download` returns `(DataTable, error)` where `error` describes the first failure; callers can still inspect the returned `DataTable` for partial results.
-
-### Unsupported / stubbed methods
-
-The following methods are exposed in the API shape to match Python yfinance but are currently unimplemented in the vendored backend and therefore return an explicit error indicating lack of backend support:
-
-- `Earnings()` (full earnings reports)
-- `FundsData()`
-- `TopHoldings()`
-- `Sustainability()`
-
-Contributions to add these features are welcome: either upstream the implementation to `github.com/wnjoon/go-yfinance` or add a backend implementation here (open a PR/issue).
 
 ---
 
-## Method Chaining
+### Initialization & Configuration
 
-For concise code, you can chain method calls:
+#### YFinance
 
 ```go
-// One-liner to get reviews as DataTable
-dt := datafetch.GoogleMapsStores().
-    GetReviews(
-        datafetch.GoogleMapsStores().Search("Starbucks")[0].ID,
-        1,
-    ).
-    ToDataTable()
+func YFinance(cfg YFinanceConfig) (*yahooFinance, error)
 ```
+
+Creates a stateful fetcher instance.
+
+**YFinanceConfig Fields:**
+
+| Field          | Type            | Description                                                                  | Default              |
+| :------------- | :-------------- | :--------------------------------------------------------------------------- | :------------------- |
+| `Timeout`      | `time.Duration` | Per-request timeout limit.                                                   | `15s`                |
+| `Interval`     | `time.Duration` | Minimum spacing between requests (for rate limiting). Set to `0` to disable. | `0`                  |
+| `UserAgent`    | `string`        | HTTP User-Agent header.                                                      | (Default browser UA) |
+| `Retries`      | `int`           | Number of retry attempts on failure.                                         | `0`                  |
+| `RetryBackoff` | `time.Duration` | Base backoff duration between retries.                                       | `300ms`              |
+
+---
+
+### Ticker Methods
+
+After obtaining a ticker object via `yf.Ticker(symbol)`, the following methods are available. Most methods return `*insyra.DataTable`.
+
+#### 1. History & Quotes
+
+- `History(params YFHistoryParams)`: Fetches historical OHLCV bars.
+  - **Key `YFHistoryParams` fields**:
+    - `Period`: Time range (e.g., `"1d", "5d", "1mo", "1y", "max"`).
+    - `Interval`: Data granularity (e.g., `"1m", "5m", "1d", "1wk"`).
+    - `Start`, `End`: Specific date range (format `YYYY-MM-DD`).
+- `Quote()`: Fetches current quote summary.
+- `FastInfo()`: Returns quick statistics (Market Cap, Price, etc.).
+- `Info()`: Returns comprehensive company/security metadata.
+
+#### 2. Corporate Actions & Dividends
+
+- `Dividends()`: Historical dividend payments.
+- `Splits()`: Historical stock split records.
+- `Actions()`: Combined dividends and splits history.
+
+#### 3. Financial Statements
+
+These methods return a `*datafetch.YFFinancialStatementTables` structure containing three DataTables: `Values`, `Items`, and `Meta`.
+
+- `IncomeStatement(freq YFPeriod)`: Income statement data.
+- `BalanceSheet(freq YFPeriod)`: Balance sheet data.
+- `CashFlow(freq YFPeriod)`: Cash flow statement data.
+
+**YFPeriod Options:**
+
+- `datafetch.YFPeriodAnnual` (Default)
+- `datafetch.YFPeriodQuarterly`
+
+#### 4. Options & Derivatives
+
+- `Options()`: Returns a list of available expiration dates.
+- `OptionChain(date string)`: Fetches the option chain for a specific date.
+  - Returns `*datafetch.YFOptionChainTables` containing: `Calls`, `Puts`, `Underlying` (as DataTables) and `Expiration` (as time.Time).
+
+#### 5. Holders & Insider Trading
+
+- `MajorHolders()`: Major holders percentages.
+- `InstitutionalHolders()`: Detailed list of institutional holders.
+- `MutualFundHolders()`: Detailed list of mutual fund holders.
+- `InsiderTransactions()`: Records of insider trading activities.
+
+#### 6. Analyst Estimates & Recommendations
+
+- `Recommendations()`: Analyst rating suggestions.
+- `AnalystPriceTargets()`: Analyst price targets.
+- `EarningsEstimate()`: Earnings per share estimates.
+- `RevenueEstimate()`: Revenue estimates.
+- `GrowthEstimates()`: Growth projections.
+- `EPSTrend() / EPSRevisions()`: Trends and revisions in EPS.
+
+---
+
+### Notes & Limitations
+
+1. **Rate Limiting**: Frequent requests may lead to temporary IP blocks by Yahoo Finance. Use the `Interval` setting in `YFinanceConfig` to mitigate this.
+2. **Automatic Date Conversion**: `datafetch` automatically attempts to convert columns named `Date`, `Time`, `Expiry`, etc., into Go `time.Time` objects for easier filtering and plotting.
+3. **Unsupported Methods**: Due to underlying backend library limitations, the following methods return a "not supported" error:
+   - `Earnings()` (Full earnings reports)
+   - `Sustainability()` (ESG scores)
+   - `FundsData()`, `TopHoldings()` (Fund-specific data)
