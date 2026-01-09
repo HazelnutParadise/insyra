@@ -141,10 +141,27 @@ func ParseColIndex(colIndex string) (int, bool)
 **Parameters:**
 
 - `colIndex`: Index value to use. Type: `string`.
+
   **Returns:**
 
 - `int`: Computed value (0-based index). Type: `int`.
 - `bool`: Success flag (`ok`) indicating whether parsing succeeded. Type: `bool`.
+
+### CalcColIndex
+
+```go
+func CalcColIndex(index int) (string, bool)
+```
+
+**Description:** Converts a 0-based column index into an Excel-style column index (e.g., `A`, `Z`, `AA`). The second return value is a boolean `ok` indicating whether conversion succeeded (false for negative indices).
+**Parameters:**
+
+- `index`: 0-based index value to use. Type: `int`.
+
+  **Returns:**
+
+- `string`: Computed value (Excel-style column index). Type: `string`.
+- `bool`: Success flag (`ok`) indicating whether conversion succeeded. Type: `bool`.
 
 ### IsNumeric
 
