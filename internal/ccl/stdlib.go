@@ -5,7 +5,26 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"time"
 )
+
+// tryParseTime attempts to parse common date/time string formats and returns
+// the parsed time and true on success. Implemented locally to avoid cross-package
+// dependency on other helpers.
+func tryParseTime(str string) (time.Time, bool) {
+	formats := []string{
+		time.RFC3339,
+		time.RFC3339Nano,
+		"2006-01-02",
+		"2006-01-02T15:04:05Z07:00",
+	}
+	for _, f := range formats {
+		if t, err := time.Parse(f, str); err == nil {
+			return t, true
+		}
+	}
+	return time.Time{}, false
+}
 
 // RegisterStandardFunctions registers the standard library of CCL functions.
 // This includes logical functions (IF, AND, OR), string functions (CONCAT),
@@ -201,6 +220,116 @@ func RegisterStandardFunctions() {
 			return nil, nil
 		}
 		return minVal, nil
+	})
+
+	// Duration helpers: convert time.Duration (or parsable duration string / numeric seconds) to units
+	registerFunction("DAY", func(args ...any) (any, error) {
+		if len(args) != 1 {
+			return nil, fmt.Errorf("DAY requires 1 argument")
+		}
+		val := args[0]
+		var d time.Duration
+		switch x := val.(type) {
+		case time.Duration:
+			d = x
+		case string:
+			if pd, err := time.ParseDuration(x); err == nil {
+				d = pd
+			} else if t, ok := tryParseTime(x); ok {
+				d = time.Duration(t.Sub(time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())))
+			} else {
+				return nil, fmt.Errorf("cannot parse duration or date from string: %s", x)
+			}
+		default:
+			if f, ok := toFloat64(val); ok {
+				// treat numeric as seconds
+				d = time.Duration(f * float64(time.Second))
+			} else {
+				return nil, fmt.Errorf("unsupported type for DAY: %T", val)
+			}
+		}
+		return d.Hours() / 24.0, nil
+	})
+
+	registerFunction("HOUR", func(args ...any) (any, error) {
+		if len(args) != 1 {
+			return nil, fmt.Errorf("HOUR requires 1 argument")
+		}
+		val := args[0]
+		var d time.Duration
+		switch x := val.(type) {
+		case time.Duration:
+			d = x
+		case string:
+			if pd, err := time.ParseDuration(x); err == nil {
+				d = pd
+			} else if t, ok := tryParseTime(x); ok {
+				d = time.Duration(t.Sub(time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())))
+			} else {
+				return nil, fmt.Errorf("cannot parse duration or date from string: %s", x)
+			}
+		default:
+			if f, ok := toFloat64(val); ok {
+				d = time.Duration(f * float64(time.Second))
+			} else {
+				return nil, fmt.Errorf("unsupported type for HOUR: %T", val)
+			}
+		}
+		return d.Hours(), nil
+	})
+
+	registerFunction("MINUTE", func(args ...any) (any, error) {
+		if len(args) != 1 {
+			return nil, fmt.Errorf("MINUTE requires 1 argument")
+		}
+		val := args[0]
+		var d time.Duration
+		switch x := val.(type) {
+		case time.Duration:
+			d = x
+		case string:
+			if pd, err := time.ParseDuration(x); err == nil {
+				d = pd
+			} else if t, ok := tryParseTime(x); ok {
+				d = time.Duration(t.Sub(time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())))
+			} else {
+				return nil, fmt.Errorf("cannot parse duration or date from string: %s", x)
+			}
+		default:
+			if f, ok := toFloat64(val); ok {
+				d = time.Duration(f * float64(time.Second))
+			} else {
+				return nil, fmt.Errorf("unsupported type for MINUTE: %T", val)
+			}
+		}
+		return d.Minutes(), nil
+	})
+
+	registerFunction("SECOND", func(args ...any) (any, error) {
+		if len(args) != 1 {
+			return nil, fmt.Errorf("SECOND requires 1 argument")
+		}
+		val := args[0]
+		var d time.Duration
+		switch x := val.(type) {
+		case time.Duration:
+			d = x
+		case string:
+			if pd, err := time.ParseDuration(x); err == nil {
+				d = pd
+			} else if t, ok := tryParseTime(x); ok {
+				d = time.Duration(t.Sub(time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())))
+			} else {
+				return nil, fmt.Errorf("cannot parse duration or date from string: %s", x)
+			}
+		default:
+			if f, ok := toFloat64(val); ok {
+				d = time.Duration(f * float64(time.Second))
+			} else {
+				return nil, fmt.Errorf("unsupported type for SECOND: %T", val)
+			}
+		}
+		return d.Seconds(), nil
 	})
 }
 

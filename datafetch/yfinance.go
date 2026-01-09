@@ -181,8 +181,24 @@ func tryParseTime(str string) (time.Time, bool) {
 func normalizeDateColumns(dt *insyra.DataTable) *insyra.DataTable {
 	return dt.Map(func(rowIndex int, colIndex string, element any) any {
 		name := dt.GetColNameByIndex(colIndex)
-		lname := strings.ToLower(name)
-		if strings.Contains(lname, "date") || strings.Contains(lname, "time") || strings.Contains(lname, "expire") || strings.Contains(lname, "expiry") {
+		// Heuristics: match common date/time column names only when they are clearly meant to be dates.
+		// Match cases:
+		// - exact 'date' / 'time' (case-insensitive)
+		// - CamelCase suffix like '...Date' or '...Time' (e.g., 'expiryDate', 'publishTime')
+		// - snake_case suffix like '..._date' or '..._time'
+		convert := false
+		if strings.EqualFold(name, "date") || strings.EqualFold(name, "time") {
+			convert = true
+		} else if strings.HasSuffix(name, "Date") || strings.HasSuffix(name, "Time") || strings.HasSuffix(name, "Expiry") || strings.HasSuffix(name, "Expire") {
+			convert = true
+		} else if strings.Contains(name, "_") {
+			parts := strings.Split(name, "_")
+			last := strings.ToLower(parts[len(parts)-1])
+			if last == "date" || last == "time" || last == "expiry" || last == "expire" {
+				convert = true
+			}
+		}
+		if convert {
 			if str, ok := element.(string); ok {
 				if parsed, ok := tryParseTime(str); ok {
 					return time.Date(parsed.Year(), parsed.Month(), parsed.Day(), 0, 0, 0, 0, parsed.Location())

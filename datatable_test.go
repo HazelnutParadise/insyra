@@ -129,6 +129,100 @@ func TestDataTable_AddColUsingCCL_BracketWithFunctions(t *testing.T) {
 	}
 }
 
+func TestDataTable_AddColUsingCCL_PreviousRowAccess(t *testing.T) {
+	dt := NewDataTable()
+	dl := NewDataList(10, 20)
+	dl.SetName("A")
+	dt.AppendCols(dl)
+
+	// Should not error for first row (IF short-circuits) and should compute for second row
+	dt.AddColUsingCCL("n", "IF(#>0, A.(#-1) - A, NULL)")
+	if len(dt.columns) != 2 {
+		t.Fatalf("expected 2 columns, got %d", len(dt.columns))
+	}
+	col := dt.GetCol("B")
+	v0 := col.Get(0)
+	if v0 != nil {
+		t.Fatalf("expected nil at row 0, got %v", v0)
+	}
+	v1 := col.Get(1)
+	f, ok := v1.(float64)
+	if !ok {
+		t.Fatalf("expected float64 at row 1, got %T", v1)
+	}
+	if f != -10.0 {
+		t.Fatalf("expected -10.0 at row1, got %v", f)
+	}
+}
+
+func TestDataTable_AddColUsingCCL_PreviousRowAccess_WithDates(t *testing.T) {
+	dt := NewDataTable()
+	c := NewDataList("2025-12-10", "2025-12-09")
+	c.SetName("A")
+	dt.AppendCols(c)
+
+	// previous - current => 2025-12-10 prev? actually (#>0, A.(#-1) - A, NULL) -> for row1: prev(0) - current(1) = 2025-12-10? Wait we construct so row0=2025-12-10 row1=2025-12-09
+	// For row1: prev = row0 = 2025-12-10, current = 2025-12-09 => prev - current = 1 day
+	dt.AddColUsingCCL("n", "IF(#>0, A.(#-1) - A, NULL)")
+	if len(dt.columns) != 2 {
+		t.Fatalf("expected 2 columns, got %d", len(dt.columns))
+	}
+	col := dt.GetCol("B")
+	v0 := col.Get(0)
+	if v0 != nil {
+		t.Fatalf("expected nil at row 0, got %v", v0)
+	}
+	v1 := col.Get(1)
+	d, ok := v1.(time.Duration)
+	if !ok {
+		t.Fatalf("expected time.Duration at row 1, got %T", v1)
+	}
+	if d != 24*time.Hour {
+		t.Fatalf("expected 24h at row1, got %v", d)
+	}
+
+	// test DAY/HOUR/MINUTE/SECOND helpers
+	dt.AddColUsingCCL("days2", "IF(#>0, DAY(A.(#-1) - A), NULL)")
+	v := dt.GetCol("C").Get(1)
+	f, ok := v.(float64)
+	if !ok {
+		t.Fatalf("expected float64 (days) at row 1, got %T", v)
+	}
+	if f != 1.0 {
+		t.Fatalf("expected 1.0 days at row1, got %v", f)
+	}
+
+	dt.AddColUsingCCL("hours2", "IF(#>0, HOUR(A.(#-1) - A), NULL)")
+	vh := dt.GetCol("D").Get(1)
+	fh, ok := vh.(float64)
+	if !ok {
+		t.Fatalf("expected float64 (hours) at row 1, got %T", vh)
+	}
+	if fh != 24.0 {
+		t.Fatalf("expected 24.0 hours at row1, got %v", fh)
+	}
+
+	dt.AddColUsingCCL("mins2", "IF(#>0, MINUTE(A.(#-1) - A), NULL)")
+	vm := dt.GetCol("E").Get(1)
+	fm, ok := vm.(float64)
+	if !ok {
+		t.Fatalf("expected float64 (minutes) at row 1, got %T", vm)
+	}
+	if fm != 1440.0 {
+		t.Fatalf("expected 1440.0 minutes at row1, got %v", fm)
+	}
+
+	dt.AddColUsingCCL("secs2", "IF(#>0, SECOND(A.(#-1) - A), NULL)")
+	vs := dt.GetCol("F").Get(1)
+	fs, ok := vs.(float64)
+	if !ok {
+		t.Fatalf("expected float64 (seconds) at row 1, got %T", vs)
+	}
+	if fs != 86400.0 {
+		t.Fatalf("expected 86400.0 seconds at row1, got %v", fs)
+	}
+}
+
 func TestDataTable_AppendRowsFromDataList(t *testing.T) {
 	dt := NewDataTable()
 	dl := NewDataList(1, 2, 3)
