@@ -118,12 +118,8 @@ func (y *yahooFinance) Close() {
 }
 
 // helpers
-func (y *yahooFinance) newTicker(symbol string) (*yfticker.Ticker, error) {
-	if y == nil || y.client == nil {
-		return nil, errors.New("yfinance: client is nil")
-	}
-	return yfticker.New(symbol, yfticker.WithClient(y.client))
-}
+// NOTE: previously there was a helper newTicker; calls are inlined below
+// to avoid an extra indirection and keep client checks local.
 
 func (y *yahooFinance) beforeRequest() error {
 	return y.limiter.Wait(context.Background())
@@ -142,127 +138,335 @@ func (y *yahooFinance) sleepBackoff(attempt int) {
 // (Use this as your stable base; you can convert it to DataTable later.)
 // Quote fetches quote data for a symbol and returns the library's native quote struct.
 // Uses instance timeout and retries; callers don't need to pass a context.
-func (y *yahooFinance) Quote(symbol string) (*insyra.DataTable, error) {
-	t, err := y.newTicker(symbol)
-	if err != nil {
-		return nil, err
-	}
-	defer t.Close()
+// Note: low-level convenience methods like Quote/History/MultiHistory
+// were removed from `yahooFinance` to keep a smaller surface API.
+// Use `y.Ticker(symbol)` and the returned `ticker` methods instead.
 
-	var lastErr error
-	for attempt := 0; attempt <= y.cfg.Retries; attempt++ {
-		if err := y.beforeRequest(); err != nil {
-			return nil, err
-		}
+// High-level Python-like API
 
-		q, err := t.Quote()
-		if err == nil {
-			dt, err := insyra.ReadJSON(q)
-			if err != nil {
-				return nil, err
-			}
-			return dt, nil
-		}
-
-		lastErr = classifyError(err)
-		if !retryable(lastErr) {
-			return nil, lastErr
-		}
-		if attempt < y.cfg.Retries {
-			y.sleepBackoff(attempt)
-		}
-	}
-
-	return nil, fmt.Errorf("yfinance: quote failed: %w", lastErr)
+// ticker wraps a symbol and provides methods similar to python yfinance's Ticker.
+type ticker struct {
+	yf     *yahooFinance
+	symbol string
 }
 
-// HistoryBars fetches historical OHLCV bars for a symbol (native models.Bar slice).
-// History fetches historical OHLCV bars for a symbol (native models.Bar slice).
-func (y *yahooFinance) History(symbol string, params models.HistoryParams) ([]models.Bar, error) {
-	t, err := y.newTicker(symbol)
+// Ticker returns a ticker bound to this yahooFinance instance.
+// Caller should call Close() when done to release resources.
+func (y *yahooFinance) Ticker(symbol string) (*ticker, error) {
+	if y == nil {
+		return nil, errors.New("yfinance: yahooFinance is nil")
+	}
+	return &ticker{yf: y, symbol: symbol}, nil
+}
+
+// Close closes underlying resources used by the ticker.
+func (t *ticker) Close() {
+	if t == nil || t.yf == nil {
+		return
+	}
+	t.yf.Close()
+	t.yf = nil
+}
+
+// History returns historical OHLCV bars as an insyra.DataTable.
+func (t *ticker) History(params YFHistoryParams) (*insyra.DataTable, error) {
+	if t == nil || t.yf == nil {
+		return nil, errors.New("yfinance: ticker is nil")
+	}
+	if t.yf.client == nil {
+		return nil, errors.New("yfinance: client is nil")
+	}
+	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
 	if err != nil {
 		return nil, err
 	}
-	defer t.Close()
+	defer tk.Close()
 
 	var lastErr error
-	for attempt := 0; attempt <= y.cfg.Retries; attempt++ {
-		if err := y.beforeRequest(); err != nil {
+	for attempt := 0; attempt <= t.yf.cfg.Retries; attempt++ {
+		if err := t.yf.beforeRequest(); err != nil {
 			return nil, err
 		}
 
-		bars, err := t.History(params)
+		bars, err := tk.History(models.HistoryParams(params))
 		if err == nil {
-			return bars, nil
+			return insyra.ReadJSON(bars)
 		}
 
 		lastErr = classifyError(err)
 		if !retryable(lastErr) {
 			return nil, lastErr
 		}
-		if attempt < y.cfg.Retries {
-			y.sleepBackoff(attempt)
+		if attempt < t.yf.cfg.Retries {
+			t.yf.sleepBackoff(attempt)
 		}
 	}
 
 	return nil, fmt.Errorf("yfinance: history failed: %w", lastErr)
 }
 
-// MultiHistoryBars fetches histories for multiple symbols.
-// IMPORTANT: interval limiting is per instance, so even concurrent workers will still be spaced.
-// MultiHistory fetches histories for multiple symbols concurrently.
-func (y *yahooFinance) MultiHistory(symbols []string, params models.HistoryParams) (map[string][]models.Bar, error) {
-	if len(symbols) == 0 {
-		return map[string][]models.Bar{}, nil
+// Quote returns quote information for the ticker as an insyra.DataTable.
+func (t *ticker) Quote() (*insyra.DataTable, error) {
+	if t == nil || t.yf == nil {
+		return nil, errors.New("yfinance: ticker is nil")
 	}
-
-	conc := y.cfg.Concurrency
-	if conc <= 0 {
-		conc = 1
+	if t.yf.client == nil {
+		return nil, errors.New("yfinance: client is nil")
 	}
-
-	type result struct {
-		symbol string
-		bars   []models.Bar
-		err    error
+	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
+	if err != nil {
+		return nil, err
 	}
+	defer tk.Close()
 
-	jobs := make(chan string)
-	results := make(chan result, len(symbols))
+	var lastErr error
+	for attempt := 0; attempt <= t.yf.cfg.Retries; attempt++ {
+		if err := t.yf.beforeRequest(); err != nil {
+			return nil, err
+		}
 
-	var wg sync.WaitGroup
-	worker := func() {
-		defer wg.Done()
-		for sym := range jobs {
-			bars, err := y.History(sym, params)
-			results <- result{symbol: sym, bars: bars, err: err}
+		q, err := tk.Quote()
+		if err == nil {
+			return insyra.ReadJSON(q)
+		}
+
+		lastErr = classifyError(err)
+		if !retryable(lastErr) {
+			return nil, lastErr
+		}
+		if attempt < t.yf.cfg.Retries {
+			t.yf.sleepBackoff(attempt)
 		}
 	}
 
-	wg.Add(conc)
-	for i := 0; i < conc; i++ {
-		go worker()
+	return nil, fmt.Errorf("yfinance: quote failed: %w", lastErr)
+}
+
+// Info returns metadata for the ticker as a DataTable.
+func (t *ticker) Info() (*insyra.DataTable, error) {
+	if t == nil || t.yf == nil {
+		return nil, errors.New("yfinance: ticker is nil")
 	}
-
-	for _, sym := range symbols {
-		jobs <- sym
+	if t.yf.client == nil {
+		return nil, errors.New("yfinance: client is nil")
 	}
-	close(jobs)
+	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
+	if err != nil {
+		return nil, err
+	}
+	defer tk.Close()
 
-	wg.Wait()
-	close(results)
+	info, err := tk.Info()
+	if err != nil {
+		return nil, err
+	}
+	return insyra.ReadJSON(info)
+}
 
-	out := make(map[string][]models.Bar, len(symbols))
-	var firstErr error
+// Dividends returns dividends history for the ticker as a DataTable.
+func (t *ticker) Dividends() (*insyra.DataTable, error) {
+	if t == nil || t.yf == nil {
+		return nil, errors.New("yfinance: ticker is nil")
+	}
+	if t.yf.client == nil {
+		return nil, errors.New("yfinance: client is nil")
+	}
+	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
+	if err != nil {
+		return nil, err
+	}
+	defer tk.Close()
 
-	for r := range results {
-		if r.err != nil && firstErr == nil {
-			firstErr = fmt.Errorf("yfinance: multi history failed (first error at %s): %w", r.symbol, r.err)
+	divs, err := tk.Dividends()
+	if err != nil {
+		return nil, err
+	}
+	return insyra.ReadJSON(divs)
+}
+
+// Splits returns stock splits history for the ticker as a DataTable.
+func (t *ticker) Splits() (*insyra.DataTable, error) {
+	if t == nil || t.yf == nil {
+		return nil, errors.New("yfinance: ticker is nil")
+	}
+	if t.yf.client == nil {
+		return nil, errors.New("yfinance: client is nil")
+	}
+	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
+	if err != nil {
+		return nil, err
+	}
+	defer tk.Close()
+
+	splits, err := tk.Splits()
+	if err != nil {
+		return nil, err
+	}
+	return insyra.ReadJSON(splits)
+}
+
+// Actions returns corporate actions (dividends + splits) as a DataTable.
+func (t *ticker) Actions() (*insyra.DataTable, error) {
+	if t == nil || t.yf == nil {
+		return nil, errors.New("yfinance: ticker is nil")
+	}
+	if t.yf.client == nil {
+		return nil, errors.New("yfinance: client is nil")
+	}
+	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
+	if err != nil {
+		return nil, err
+	}
+	defer tk.Close()
+
+	acts, err := tk.Actions()
+	if err != nil {
+		return nil, err
+	}
+	return insyra.ReadJSON(acts)
+}
+
+// Download fetches historical data for a symbol or multiple symbols and
+// returns an insyra.DataTable. `symbols` can be a single string or []string.
+func Download(symbols any, params models.HistoryParams) (*insyra.DataTable, error) {
+	switch v := symbols.(type) {
+	case string:
+		yf, err := YFinance(YFinanceConfig{})
+		if err != nil {
+			return nil, err
 		}
-		if r.err == nil {
-			out[r.symbol] = r.bars
-		}
-	}
+		defer yf.Close()
 
-	return out, firstErr
+		// use underlying ticker client with retry/limiting
+		if yf.client == nil {
+			return nil, errors.New("yfinance: client is nil")
+		}
+		tk, err := yfticker.New(v, yfticker.WithClient(yf.client))
+		if err != nil {
+			return nil, err
+		}
+		defer tk.Close()
+
+		var lastErr error
+		for attempt := 0; attempt <= yf.cfg.Retries; attempt++ {
+			if err := yf.beforeRequest(); err != nil {
+				return nil, err
+			}
+
+			bars, err := tk.History(params)
+			if err == nil {
+				return insyra.ReadJSON(bars)
+			}
+
+			lastErr = classifyError(err)
+			if !retryable(lastErr) {
+				return nil, lastErr
+			}
+			if attempt < yf.cfg.Retries {
+				yf.sleepBackoff(attempt)
+			}
+		}
+		return nil, fmt.Errorf("yfinance: history failed: %w", lastErr)
+	case []string:
+		yf, err := YFinance(YFinanceConfig{})
+		if err != nil {
+			return nil, err
+		}
+		defer yf.Close()
+
+		if len(v) == 0 {
+			return insyra.ReadJSON(map[string][]models.Bar{})
+		}
+
+		conc := yf.cfg.Concurrency
+		if conc <= 0 {
+			conc = 1
+		}
+
+		type result struct {
+			symbol string
+			bars   []models.Bar
+			err    error
+		}
+
+		jobs := make(chan string)
+		results := make(chan result, len(v))
+
+		var wg sync.WaitGroup
+		worker := func() {
+			defer wg.Done()
+			for sym := range jobs {
+				// per-job request using underlying ticker and retries
+				var lastErr error
+				var bars []models.Bar
+				if yf.client == nil {
+					results <- result{symbol: sym, bars: nil, err: errors.New("yfinance: client is nil")}
+					continue
+				}
+				tk, err := yfticker.New(sym, yfticker.WithClient(yf.client))
+				if err != nil {
+					results <- result{symbol: sym, bars: nil, err: err}
+					continue
+				}
+				// close explicitly after use to avoid stacking defers inside loop
+
+				for attempt := 0; attempt <= yf.cfg.Retries; attempt++ {
+					if err := yf.beforeRequest(); err != nil {
+						lastErr = err
+						break
+					}
+					bars, err = tk.History(params)
+					if err == nil {
+						break
+					}
+					lastErr = classifyError(err)
+					if !retryable(lastErr) {
+						break
+					}
+					if attempt < yf.cfg.Retries {
+						yf.sleepBackoff(attempt)
+					}
+				}
+				// close ticker for this job
+				tk.Close()
+				results <- result{symbol: sym, bars: bars, err: lastErr}
+			}
+		}
+
+		wg.Add(conc)
+		for i := 0; i < conc; i++ {
+			go worker()
+		}
+
+		for _, sym := range v {
+			jobs <- sym
+		}
+		close(jobs)
+
+		wg.Wait()
+		close(results)
+
+		out := make(map[string][]models.Bar, len(v))
+		var firstErr error
+		for r := range results {
+			if r.err != nil && firstErr == nil {
+				firstErr = fmt.Errorf("yfinance: multi history failed (first error at %s): %w", r.symbol, r.err)
+			}
+			if r.err == nil {
+				out[r.symbol] = r.bars
+			}
+		}
+
+		if firstErr != nil && len(out) == 0 {
+			return nil, firstErr
+		}
+		// return available data as DataTable (may be partial)
+		dt, derr := insyra.ReadJSON(out)
+		if derr != nil {
+			return nil, derr
+		}
+		return dt, firstErr
+	default:
+		return nil, errors.New("yfinance: Download symbols must be string or []string")
+	}
 }
