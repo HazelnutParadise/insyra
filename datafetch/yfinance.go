@@ -564,6 +564,198 @@ func (t *ticker) FastInfo() (*insyra.DataTable, error) {
 	return insyra.ReadJSON(fi)
 }
 
+// Earnings returns earnings report data for the ticker.
+// Note: not implemented because underlying go-yfinance version does not expose this method.
+func (t *ticker) Earnings() (*insyra.DataTable, error) {
+	return nil, errors.New("yfinance: Earnings not supported by the go-yfinance backend")
+}
+
+// EarningsEstimate returns earnings estimates as a DataTable.
+func (t *ticker) EarningsEstimate() (*insyra.DataTable, error) {
+	if t == nil || t.yf == nil {
+		return nil, errors.New("yfinance: ticker is nil")
+	}
+	if t.yf.client == nil {
+		return nil, errors.New("yfinance: client is nil")
+	}
+	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
+	if err != nil {
+		return nil, err
+	}
+	defer tk.Close()
+
+	est, err := tk.EarningsEstimate()
+	if err != nil {
+		return nil, err
+	}
+	return insyra.ReadJSON(est)
+}
+
+// EarningsHistory returns historical earnings data as a DataTable.
+func (t *ticker) EarningsHistory() (*insyra.DataTable, error) {
+	if t == nil || t.yf == nil {
+		return nil, errors.New("yfinance: ticker is nil")
+	}
+	if t.yf.client == nil {
+		return nil, errors.New("yfinance: client is nil")
+	}
+	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
+	if err != nil {
+		return nil, err
+	}
+	defer tk.Close()
+
+	hs, err := tk.EarningsHistory()
+	if err != nil {
+		return nil, err
+	}
+	return insyra.ReadJSON(hs)
+}
+
+// EPSTrend returns EPS trend data as a DataTable.
+func (t *ticker) EPSTrend() (*insyra.DataTable, error) {
+	if t == nil || t.yf == nil {
+		return nil, errors.New("yfinance: ticker is nil")
+	}
+	if t.yf.client == nil {
+		return nil, errors.New("yfinance: client is nil")
+	}
+	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
+	if err != nil {
+		return nil, err
+	}
+	defer tk.Close()
+
+	et, err := tk.EPSTrend()
+	if err != nil {
+		return nil, err
+	}
+	return insyra.ReadJSON(et)
+}
+
+// EPSRevisions returns EPS revisions data as a DataTable.
+func (t *ticker) EPSRevisions() (*insyra.DataTable, error) {
+	if t == nil || t.yf == nil {
+		return nil, errors.New("yfinance: ticker is nil")
+	}
+	if t.yf.client == nil {
+		return nil, errors.New("yfinance: client is nil")
+	}
+	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
+	if err != nil {
+		return nil, err
+	}
+	defer tk.Close()
+
+	rev, err := tk.EPSRevisions()
+	if err != nil {
+		return nil, err
+	}
+	return insyra.ReadJSON(rev)
+}
+
+// Recommendations returns analyst recommendations as a DataTable.
+func (t *ticker) Recommendations() (*insyra.DataTable, error) {
+	if t == nil || t.yf == nil {
+		return nil, errors.New("yfinance: ticker is nil")
+	}
+	if t.yf.client == nil {
+		return nil, errors.New("yfinance: client is nil")
+	}
+	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
+	if err != nil {
+		return nil, err
+	}
+	defer tk.Close()
+
+	recs, err := tk.Recommendations()
+	if err != nil {
+		return nil, err
+	}
+	return insyra.ReadJSON(recs)
+}
+
+// AnalystPriceTargets returns analyst price targets as a DataTable.
+func (t *ticker) AnalystPriceTargets() (*insyra.DataTable, error) {
+	if t == nil || t.yf == nil {
+		return nil, errors.New("yfinance: ticker is nil")
+	}
+	if t.yf.client == nil {
+		return nil, errors.New("yfinance: client is nil")
+	}
+	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
+	if err != nil {
+		return nil, err
+	}
+	defer tk.Close()
+
+	apt, err := tk.AnalystPriceTargets()
+	if err != nil {
+		return nil, err
+	}
+	return insyra.ReadJSON(apt)
+}
+
+// RevenueEstimate returns revenue estimates as a DataTable.
+func (t *ticker) RevenueEstimate() (*insyra.DataTable, error) {
+	if t == nil || t.yf == nil {
+		return nil, errors.New("yfinance: ticker is nil")
+	}
+	if t.yf.client == nil {
+		return nil, errors.New("yfinance: client is nil")
+	}
+	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
+	if err != nil {
+		return nil, err
+	}
+	defer tk.Close()
+
+	rev, err := tk.RevenueEstimate()
+	if err != nil {
+		return nil, err
+	}
+	return insyra.ReadJSON(rev)
+}
+
+// Sustainability returns sustainability data as a DataTable.
+// Note: not implemented because underlying go-yfinance version does not expose this method.
+func (t *ticker) Sustainability() (*insyra.DataTable, error) {
+	return nil, errors.New("yfinance: Sustainability not supported by the installed go-yfinance backend")
+}
+
+// GrowthEstimates returns growth estimates as a DataTable.
+func (t *ticker) GrowthEstimates() (*insyra.DataTable, error) {
+	if t == nil || t.yf == nil {
+		return nil, errors.New("yfinance: ticker is nil")
+	}
+	if t.yf.client == nil {
+		return nil, errors.New("yfinance: client is nil")
+	}
+	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
+	if err != nil {
+		return nil, err
+	}
+	defer tk.Close()
+
+	g, err := tk.GrowthEstimates()
+	if err != nil {
+		return nil, err
+	}
+	return insyra.ReadJSON(g)
+}
+
+// FundsData returns fund-related data for ETFs/mutual funds.
+// Note: not implemented because underlying go-yfinance version does not expose this method.
+func (t *ticker) FundsData() (*insyra.DataTable, error) {
+	return nil, errors.New("yfinance: FundsData not supported by the installed go-yfinance backend")
+}
+
+// TopHoldings returns top holdings for a fund as a DataTable.
+// Note: not implemented because underlying go-yfinance version does not expose this method.
+func (t *ticker) TopHoldings() (*insyra.DataTable, error) {
+	return nil, errors.New("yfinance: TopHoldings not supported by the installed go-yfinance backend")
+}
+
 // Download fetches historical data for a symbol or multiple symbols and
 // returns an insyra.DataTable. `symbols` can be a single string or []string.
 func (y *yahooFinance) Download(symbols any, params models.HistoryParams) (*insyra.DataTable, error) {
