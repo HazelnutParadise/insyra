@@ -1,6 +1,6 @@
 # [ datafetch ] Package
 
-The `datafetch` package provides tools for retrieving data from external sources and converting them into Insyra data structures. Currently supports fetching store reviews from Google Maps (requires network access).
+The `datafetch` package provides utilities for retrieving data from external sources and converting them into Insyra data structures (for example, `*insyra.DataTable`). It currently includes a Google Maps store review crawler and a Yahoo Finance wrapper (returns `*insyra.DataTable`). Network access is required for remote fetchers and some features depend on third-party backends which may change.
 
 ## Installation
 

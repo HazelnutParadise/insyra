@@ -22,57 +22,66 @@ dt.Show()
 ### Documentation Structure
 
 #### Core Data Structures
-| Document | Description |
-|----------|-------------|
-| [DataList](DataList.md) | One-dimensional data container with statistical methods |
-| [DataTable](DataTable.md) | Two-dimensional table structure with row/column operations |
+
+| Document                          | Description                                                  |
+| --------------------------------- | ------------------------------------------------------------ |
+| [DataList](DataList.md)           | One-dimensional data container with statistical methods      |
+| [DataTable](DataTable.md)         | Two-dimensional table structure with row/column operations   |
 | [Configuration](Configuration.md) | Global settings for logging, error handling, and performance |
 
 #### Data Processing Languages
-| Document | Description |
-|----------|-------------|
+
+| Document      | Description                                                 |
+| ------------- | ----------------------------------------------------------- |
 | [CCL](CCL.md) | Column Calculation Language for DataTable column operations |
-| [isr](isr.md) | Syntax sugar for fluent, readable code |
+| [isr](isr.md) | Syntax sugar for fluent, readable code                      |
 
 #### File I/O
-| Document | Description |
-|----------|-------------|
-| [csvxl](csvxl.md) | CSV and Excel file reading/writing with encoding detection |
-| [parquet](parquet.md) | Apache Parquet file support with streaming |
+
+| Document              | Description                                                |
+| --------------------- | ---------------------------------------------------------- |
+| [csvxl](csvxl.md)     | CSV and Excel file reading/writing with encoding detection |
+| [parquet](parquet.md) | Apache Parquet file support with streaming                 |
 
 #### Data Acquisition
-| Document | Description |
-|----------|-------------|
-| [datafetch](datafetch.md) | Google Maps store review crawler (network required) |
+
+| Document                  | Description                                                                                       |
+| ------------------------- | ------------------------------------------------------------------------------------------------- |
+| [datafetch](datafetch.md) | Google Maps store review crawler and Yahoo Finance wrapper (network required for remote fetchers) |
 
 #### Statistical Analysis
-| Document | Description |
-|----------|-------------|
+
+| Document          | Description                                             |
+| ----------------- | ------------------------------------------------------- |
 | [stats](stats.md) | Correlation, hypothesis testing, regression, ANOVA, PCA |
 
 #### Visualization
-| Document | Description |
-|----------|-------------|
-| [gplot](gplot.md) | Static charts using Gonum (bar, line, scatter, histogram) |
-| [plot](plot.md) | Interactive charts using ECharts (web-based visualization) |
+
+| Document          | Description                                                |
+| ----------------- | ---------------------------------------------------------- |
+| [gplot](gplot.md) | Static charts using Gonum (bar, line, scatter, histogram)  |
+| [plot](plot.md)   | Interactive charts using ECharts (web-based visualization) |
 
 #### Optimization
-| Document | Description |
-|----------|-------------|
-| [lp](lp.md) | Linear programming solver using GLPK |
+
+| Document          | Description                           |
+| ----------------- | ------------------------------------- |
+| [lp](lp.md)       | Linear programming solver using GLPK  |
 | [lpgen](lpgen.md) | LP model generator with LINGO support |
 
 #### Marketing Analytics
-| Document | Description |
-|----------|-------------|
+
+| Document      | Description                              |
+| ------------- | ---------------------------------------- |
 | [mkt](mkt.md) | RFM analysis and Customer Activity Index |
 
 #### Integration & Utilities
-| Document | Description |
-|----------|-------------|
-| [py](py.md) | Execute Python code from Go with an auto-managed Python env |
-| [parallel](parallel.md) | Simple parallel execution of functions |
-| [utils](utils.md) | Helper functions for type conversion and data processing |
+
+| Document                | Description                                                 |
+| ----------------------- | ----------------------------------------------------------- |
+| [py](py.md)             | Execute Python code from Go with an auto-managed Python env |
+| [parallel](parallel.md) | Simple parallel execution of functions                      |
+| [utils](utils.md)       | Helper functions for type conversion and data processing    |
 
 ### Installation
 
@@ -96,19 +105,19 @@ go get github.com/HazelnutParadise/insyra/plot
 
 ### Choosing the Right Tool
 
-| If you need to... | Use |
-|-------------------|-----|
-| Store and analyze a single column of data | [DataList](DataList.md) |
-| Work with tabular data (rows and columns) | [DataTable](DataTable.md) |
-| Calculate new columns from existing data | [CCL](CCL.md) |
-| Read/write CSV or Excel files | [csvxl](csvxl.md) |
-| Perform statistical tests | [stats](stats.md) |
-| Create static charts for reports | [gplot](gplot.md) |
-| Create interactive web charts | [plot](plot.md) |
-| Solve optimization problems | [lp](lp.md) + [lpgen](lpgen.md) |
-| Analyze customer behavior | [mkt](mkt.md) |
-| Use Python libraries from Go | [py](py.md) |
-| Run functions in parallel | [parallel](parallel.md) |
+| If you need to...                         | Use                             |
+| ----------------------------------------- | ------------------------------- |
+| Store and analyze a single column of data | [DataList](DataList.md)         |
+| Work with tabular data (rows and columns) | [DataTable](DataTable.md)       |
+| Calculate new columns from existing data  | [CCL](CCL.md)                   |
+| Read/write CSV or Excel files             | [csvxl](csvxl.md)               |
+| Perform statistical tests                 | [stats](stats.md)               |
+| Create static charts for reports          | [gplot](gplot.md)               |
+| Create interactive web charts             | [plot](plot.md)                 |
+| Solve optimization problems               | [lp](lp.md) + [lpgen](lpgen.md) |
+| Analyze customer behavior                 | [mkt](mkt.md)                   |
+| Use Python libraries from Go              | [py](py.md)                     |
+| Run functions in parallel                 | [parallel](parallel.md)         |
 
 ### Requirements & Notes
 

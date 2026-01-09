@@ -33,8 +33,7 @@ Go 語言次世代資料分析庫。支援 **平行處理**、**資料視覺化*
 > [!NOTE]
 > 如果文檔中的某些功能無法使用，可能是該功能還未包含在最新發布的版本中。請至 **[Releases](https://github.com/HazelnutParadise/insyra/releases)** 查看對應版本源碼中的文檔。
 
-> [!IMPORTANT]
-> **對於 Insyra 文檔中未明確列出的任何函數或方法，表示該功能仍在積極開發中。這些實驗性功能可能會提供不穩定的結果。**<br/>
+> [!IMPORTANT] > **對於 Insyra 文檔中未明確列出的任何函數或方法，表示該功能仍在積極開發中。這些實驗性功能可能會提供不穩定的結果。**<br/>
 > 請參閱我們 **[文檔](https://github.com/HazelnutParadise/insyra/tree/main/Docs)** 資料夾中的最新更新以獲取更多詳細資訊。
 
 ## [Idensyra](https://github.com/HazelnutParadise/idensyra)
@@ -58,56 +57,56 @@ Go 語言次世代資料分析庫。支援 **平行處理**、**資料視覺化*
 
 4. 使用以下命令建立新專案：
 
-    ```sh
-    go mod init your_project_name
-    ```
+   ```sh
+   go mod init your_project_name
+   ```
 
 5. 在您的專案中安裝 **Insyra**：
 
-    ```sh
-    go get github.com/HazelnutParadise/insyra/allpkgs
-    ```
+   ```sh
+   go get github.com/HazelnutParadise/insyra/allpkgs
+   ```
 
 6. 建立一個新文件，例如 `main.go`，並寫入以下代碼：
 
-    ```go
-    package main
+   ```go
+   package main
 
-    import (
-        "fmt"
-        "github.com/HazelnutParadise/insyra"
-    )
+   import (
+       "fmt"
+       "github.com/HazelnutParadise/insyra"
+   )
 
-    func main() {
-        // 將您的代碼寫在這裡
-    }
-    ```
+   func main() {
+       // 將您的代碼寫在這裡
+   }
+   ```
 
 7. 運行您的專案：
 
-    ```sh
-    go run main.go
-    ```
+   ```sh
+   go run main.go
+   ```
 
 ### 安裝
 
 - 要開始使用 **Insyra**，請使用以下命令進行安裝：
 
-    ```sh
-    go get github.com/HazelnutParadise/insyra/allpkgs
-    ```
+  ```sh
+  go get github.com/HazelnutParadise/insyra/allpkgs
+  ```
 
 - 更新 **Insyra** 到最新版本：
 
-    ```sh
-    go get -u github.com/HazelnutParadise/insyra/allpkgs
-    ```
+  ```sh
+  go get -u github.com/HazelnutParadise/insyra/allpkgs
+  ```
 
-    或者
+  或者
 
-    ```sh
-    go get github.com/HazelnutParadise/insyra/allpkgs@latest
-    ```
+  ```sh
+  go get github.com/HazelnutParadise/insyra/allpkgs@latest
+  ```
 
 ### 快速範例
 
@@ -298,7 +297,7 @@ err := parquet.ApplyCCL(ctx, "data.parquet", "NEW('total') = A + B + C")
 
 ### **[datafetch](/Docs/datafetch.md)**
 
-讓您輕鬆取得網路上的數據。目前支援從 Google Maps 取得商家評論資料。
+讓您輕鬆取得網路上的數據。目前包含 Google Maps 商家評論爬蟲與 Yahoo Finance 包裝器（使用 [go-yfinance](https://github.com/wnjoon/go-yfinance) 支援）。遠端抓取需要網路連線，部分功能依賴第三方後端，可能會變動。
 
 ### **[lpgen](/Docs/lpgen.md)**
 

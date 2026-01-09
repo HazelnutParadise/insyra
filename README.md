@@ -35,8 +35,7 @@ The **Insyra** library is a dynamic and versatile tool designed for managing and
 > [!NOTE]
 > If some functions or methods in the documentation are not working, it may be because the feature is not yet included in the latest release. Please refer to the documentation in the source code of the corresponding version in **[Releases](https://github.com/HazelnutParadise/insyra/releases)**.
 
-> [!IMPORTANT]
-> **For any functions or methods not explicitly listed in Insyra documents, it indicates that the feature is still under active development. These experimental features might provide unstable results.** <br/>
+> [!IMPORTANT] > **For any functions or methods not explicitly listed in Insyra documents, it indicates that the feature is still under active development. These experimental features might provide unstable results.** <br/>
 > Please refer to our latest updates in **[Docs](/Docs)** folder for more details.
 
 ## [Idensyra](https://github.com/HazelnutParadise/idensyra)
@@ -60,56 +59,56 @@ We provide a mini Go IDE, `Idensyra`, which aims to make data analysis even more
 
 4. Create a new project by running the following command:
 
-    ```sh
-    go mod init your_project_name
-    ```
+   ```sh
+   go mod init your_project_name
+   ```
 
 5. Install **Insyra**:
 
-    ```sh
-    go get github.com/HazelnutParadise/insyra/allpkgs
-    ```
+   ```sh
+   go get github.com/HazelnutParadise/insyra/allpkgs
+   ```
 
 6. Create a new file, e.g., `main.go`, and write the following code:
 
-    ```go
-    package main
+   ```go
+   package main
 
-    import (
-        "fmt"
-        "github.com/HazelnutParadise/insyra"
-    )
+   import (
+       "fmt"
+       "github.com/HazelnutParadise/insyra"
+   )
 
-    func main() {
-        // Your code here
-    }
-    ```
+   func main() {
+       // Your code here
+   }
+   ```
 
 7. Run your project:
 
-    ```sh
-    go run main.go
-    ```
+   ```sh
+   go run main.go
+   ```
 
 ### Installation
 
 - To start using **Insyra**, install it with the following command:
 
-    ```sh
-    go get github.com/HazelnutParadise/insyra/allpkgs
-    ```
+  ```sh
+  go get github.com/HazelnutParadise/insyra/allpkgs
+  ```
 
 - Update **Insyra** to the latest version:
 
-    ```sh
-    go get -u github.com/HazelnutParadise/insyra/allpkgs
-    ```
+  ```sh
+  go get -u github.com/HazelnutParadise/insyra/allpkgs
+  ```
 
-    or
+  or
 
-    ```sh
-    go get -u github.com/HazelnutParadise/insyra/allpkgs@latest
-    ```
+  ```sh
+  go get -u github.com/HazelnutParadise/insyra/allpkgs@latest
+  ```
 
 ### Quick Example
 
@@ -301,7 +300,7 @@ Execute Python code in Go without manually installing Python environment and dep
 
 ### **[datafetch](/Docs/datafetch.md)**
 
-Allows you to fetch data easily. It currently supports fetching comments from stores on Google Maps.
+Allows you to fetch data easily. It currently includes a Google Maps store review crawler and a Yahoo Finance wrapper (powered by [go-yfinance](https://github.com/wnjoon/go-yfinance)). Network access is required for remote fetchers and some features depend on third-party backends which may change.
 
 ### **[lpgen](/Docs/lpgen.md)**
 
