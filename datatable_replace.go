@@ -3,6 +3,8 @@ package insyra
 import (
 	"fmt"
 	"math"
+
+	"github.com/HazelnutParadise/insyra/internal/utils"
 )
 
 // Replace all occurrences of oldValue with newValue in the DataTable.
@@ -382,7 +384,7 @@ func (dt *DataTable) replaceInCol_notAtomic(colIndex string, oldValue, newValue 
 	if len(mode) == 1 {
 		modeFlag = mode[0]
 	}
-	if colNo, exists := dt.columnIndex[colIndex]; exists {
+	if colNo, ok := utils.ParseColIndex(colIndex); ok && colNo >= 0 && colNo < len(dt.columns) {
 		switch modeFlag {
 		case 1:
 			// 取代第一個
@@ -408,7 +410,7 @@ func (dt *DataTable) replaceNaNsAndNilsInCol_notAtomic(colIndex string, newValue
 	if len(mode) == 1 {
 		modeFlag = mode[0]
 	}
-	if colNo, exists := dt.columnIndex[colIndex]; exists {
+	if colNo, ok := utils.ParseColIndex(colIndex); ok && colNo >= 0 && colNo < len(dt.columns) {
 		switch modeFlag {
 		case 1:
 			// 取代第一個

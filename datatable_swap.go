@@ -1,6 +1,10 @@
 package insyra
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/HazelnutParadise/insyra/internal/utils"
+)
 
 // ================ Swap Columns ================
 
@@ -43,14 +47,14 @@ func (dt *DataTable) SwapColsByName(columnName1 string, columnName2 string) *Dat
 func (dt *DataTable) SwapColsByIndex(columnIndex1 string, columnIndex2 string) *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
-		idx1, ok1 := dt.columnIndex[strings.ToUpper(columnIndex1)]
-		if !ok1 {
+		idx1, ok1 := utils.ParseColIndex(strings.ToUpper(columnIndex1))
+		if !ok1 || idx1 < 0 || idx1 >= len(dt.columns) {
 			dt.warn("SwapColsByIndex", "Column index '%s' not found", columnIndex1)
 			result = dt
 			return
 		}
-		idx2, ok2 := dt.columnIndex[strings.ToUpper(columnIndex2)]
-		if !ok2 {
+		idx2, ok2 := utils.ParseColIndex(strings.ToUpper(columnIndex2))
+		if !ok2 || idx2 < 0 || idx2 >= len(dt.columns) {
 			dt.warn("SwapColsByIndex", "Column index '%s' not found", columnIndex2)
 			result = dt
 			return
@@ -97,12 +101,6 @@ func (dt *DataTable) swapColsByNumber_NoLock(columnNumber1 int, columnNumber2 in
 
 	// Swap columns
 	dt.columns[columnNumber1], dt.columns[columnNumber2] = dt.columns[columnNumber2], dt.columns[columnNumber1]
-
-	// Update columnIndex map
-	// We need to find the letter indices corresponding to the original numerical indices
-	// and then update them to point to the new numerical indices.
-	// A simpler way is to regenerate the column index.
-	dt.regenerateColIndex()
 
 	return dt
 }

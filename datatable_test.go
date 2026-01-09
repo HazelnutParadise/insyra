@@ -498,11 +498,6 @@ func TestDataTable_Clone(t *testing.T) {
 		t.Errorf("Clone() did not create deep copy: clone was affected by original modification")
 	}
 
-	// Check if columnIndex is copied
-	if len(clonedDT.columnIndex) != len(dt.columnIndex) {
-		t.Errorf("Clone() did not copy columnIndex correctly")
-	}
-
 	// Check if rowNames is copied
 	if clonedDT.rowNames.Len() != dt.rowNames.Len() {
 		t.Errorf("Clone() did not copy rowNames correctly")

@@ -1,12 +1,13 @@
 package insyra
 
+import "github.com/HazelnutParadise/insyra/internal/utils"
+
 // Map applies a function to all elements in the DataTable and returns a new DataTable with the results.
 // The mapFunc should take three parameters: row index (int), column index (string), and element (any),
 // then return a transformed value of any type.
 func (dt *DataTable) Map(mapFunc func(rowIndex int, colIndex string, element any) any) *DataTable {
 	var newDt *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
-		// 直接計算大小以避免死鎖
 		numRows := dt.getMaxColLength()
 		numCols := len(dt.columns)
 		if numRows == 0 || numCols == 0 {
@@ -14,17 +15,14 @@ func (dt *DataTable) Map(mapFunc func(rowIndex int, colIndex string, element any
 			newDt = NewDataTable()
 			return
 		}
-		// 創建新的 DataTable
 		newDt = NewDataTable()
 
-		// 直接按順序處理每個列
 		for colPos := range numCols {
 			originalCol := dt.columns[colPos]
-			// 生成列索引（A, B, C...）
-			colIndex := generateColIndex(colPos)
+			colIndex, _ := utils.CalcColIndex(colPos)
 
 			newCol := NewDataList()
-			newCol.SetName(originalCol.GetName()) // 保持原來的列名
+			newCol.SetName(originalCol.GetName())
 
 			for rowIndex := range numRows {
 				func() {

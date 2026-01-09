@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/HazelnutParadise/insyra/internal/core"
+	"github.com/HazelnutParadise/insyra/internal/utils"
 )
 
 // ==================== Col Index ====================
@@ -14,8 +15,8 @@ func (dt *DataTable) FilterColsByColIndexGreaterThan(columnIndexLetter string) *
 	var newDt *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
 		columnIndexLetter = strings.ToUpper(columnIndexLetter)
-		colIdx, exists := dt.columnIndex[columnIndexLetter]
-		if !exists {
+		colIdx, ok := utils.ParseColIndex(columnIndexLetter)
+		if !ok || colIdx < 0 || colIdx >= len(dt.columns)-1 {
 			newDt = &DataTable{}
 			return
 		}
@@ -24,7 +25,6 @@ func (dt *DataTable) FilterColsByColIndexGreaterThan(columnIndexLetter string) *
 
 		newDt = &DataTable{
 			columns:           filteredCols,
-			columnIndex:       dt.columnIndex,
 			rowNames:          dt.rowNames,
 			creationTimestamp: dt.creationTimestamp,
 		}
@@ -39,8 +39,8 @@ func (dt *DataTable) FilterColsByColIndexGreaterThanOrEqualTo(columnIndexLetter 
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
 		columnIndexLetter = strings.ToUpper(columnIndexLetter)
-		colIdx, exists := dt.columnIndex[columnIndexLetter]
-		if !exists {
+		colIdx, ok := utils.ParseColIndex(columnIndexLetter)
+		if !ok || colIdx < 0 || colIdx >= len(dt.columns) {
 			result = &DataTable{}
 			return
 		}
@@ -49,7 +49,6 @@ func (dt *DataTable) FilterColsByColIndexGreaterThanOrEqualTo(columnIndexLetter 
 
 		newDt := &DataTable{
 			columns:           filteredCols,
-			columnIndex:       dt.columnIndex,
 			rowNames:          dt.rowNames,
 			creationTimestamp: dt.creationTimestamp,
 		}
@@ -65,8 +64,8 @@ func (dt *DataTable) FilterColsByColIndexEqualTo(columnIndexLetter string) *Data
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
 		columnIndexLetter = strings.ToUpper(columnIndexLetter)
-		colIdx, exists := dt.columnIndex[columnIndexLetter]
-		if !exists {
+		colIdx, ok := utils.ParseColIndex(columnIndexLetter)
+		if !ok || colIdx < 0 || colIdx >= len(dt.columns) {
 			result = &DataTable{}
 			return
 		}
@@ -75,7 +74,6 @@ func (dt *DataTable) FilterColsByColIndexEqualTo(columnIndexLetter string) *Data
 
 		newDt := &DataTable{
 			columns:           filteredCols,
-			columnIndex:       dt.columnIndex,
 			rowNames:          dt.rowNames,
 			creationTimestamp: dt.creationTimestamp,
 		}
@@ -91,8 +89,8 @@ func (dt *DataTable) FilterColsByColIndexLessThan(columnIndexLetter string) *Dat
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
 		columnIndexLetter = strings.ToUpper(columnIndexLetter)
-		colIdx, exists := dt.columnIndex[columnIndexLetter]
-		if !exists {
+		colIdx, ok := utils.ParseColIndex(columnIndexLetter)
+		if !ok || colIdx <= 0 {
 			result = &DataTable{}
 			return
 		}
@@ -101,7 +99,6 @@ func (dt *DataTable) FilterColsByColIndexLessThan(columnIndexLetter string) *Dat
 
 		newDt := &DataTable{
 			columns:           filteredCols,
-			columnIndex:       dt.columnIndex,
 			rowNames:          dt.rowNames,
 			creationTimestamp: dt.creationTimestamp,
 		}
@@ -117,8 +114,8 @@ func (dt *DataTable) FilterColsByColIndexLessThanOrEqualTo(columnIndexLetter str
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
 		columnIndexLetter = strings.ToUpper(columnIndexLetter)
-		colIdx, exists := dt.columnIndex[columnIndexLetter]
-		if !exists {
+		colIdx, ok := utils.ParseColIndex(columnIndexLetter)
+		if !ok || colIdx < 0 {
 			result = &DataTable{}
 			return
 		}
@@ -127,7 +124,6 @@ func (dt *DataTable) FilterColsByColIndexLessThanOrEqualTo(columnIndexLetter str
 
 		newDt := &DataTable{
 			columns:           filteredCols,
-			columnIndex:       dt.columnIndex,
 			rowNames:          dt.rowNames,
 			creationTimestamp: dt.creationTimestamp,
 		}
@@ -160,7 +156,6 @@ func (dt *DataTable) FilterColsByColNameEqualTo(columnName string) *DataTable {
 
 		newDt := &DataTable{
 			columns:           filteredCols,
-			columnIndex:       dt.columnIndex,
 			rowNames:          dt.rowNames,
 			creationTimestamp: dt.creationTimestamp,
 		}
@@ -184,7 +179,6 @@ func (dt *DataTable) FilterColsByColNameContains(substring string) *DataTable {
 
 		newDt := &DataTable{
 			columns:           filteredCols,
-			columnIndex:       dt.columnIndex,
 			rowNames:          dt.rowNames,
 			creationTimestamp: dt.creationTimestamp,
 		}
@@ -295,8 +289,7 @@ func (dt *DataTable) FilterRowsByRowNameContains(substring string) *DataTable {
 
 		newDt := &DataTable{
 			columns:           filteredCols,
-			columnIndex:       dt.columnIndex,
-			rowNames:          filterRowNames(dt.rowNames, filteredRowIndices),
+			rowNames:          dt.rowNames,
 			creationTimestamp: dt.creationTimestamp,
 		}
 
@@ -352,13 +345,7 @@ func (dt *DataTable) Filter(filterFunc func(rowIndex int, columnIndex string, va
 			keepRow := false
 			for colIdx, col := range dt.columns {
 				value := col.data[rowIdx]
-				colName := ""
-				for name, idx := range dt.columnIndex {
-					if idx == colIdx {
-						colName = name
-						break
-					}
-				}
+				colName, _ := utils.CalcColIndex(colIdx)
 				if filterFunc(rowIdx, colName, value) {
 					keepRow = true
 					filteredCols[colIdx].data = append(filteredCols[colIdx].data, value)
@@ -375,7 +362,6 @@ func (dt *DataTable) Filter(filterFunc func(rowIndex int, columnIndex string, va
 
 		newDt := &DataTable{
 			columns:           filteredCols,
-			columnIndex:       dt.columnIndex,
 			rowNames:          dt.rowNames,
 			creationTimestamp: dt.creationTimestamp,
 		}
@@ -445,7 +431,6 @@ func (dt *DataTable) FilterCols(filterFunc func(rowIndex int, rowName string, x 
 
 		newDt := &DataTable{
 			columns:           filteredCols,
-			columnIndex:       dt.columnIndex,
 			rowNames:          dt.rowNames,
 			creationTimestamp: dt.creationTimestamp,
 		}
@@ -469,12 +454,6 @@ func (dt *DataTable) FilterRows(filterFunc func(colIndex, colName string, x any)
 			filteredCols[i] = NewDataList()
 		}
 
-		// Build reverse index: column index to letter
-		colIndexToLetter := make(map[int]string)
-		for letter, idx := range dt.columnIndex {
-			colIndexToLetter[idx] = letter
-		}
-
 		numRows := 0
 		if len(dt.columns) > 0 {
 			numRows = len(dt.columns[0].data)
@@ -486,18 +465,16 @@ func (dt *DataTable) FilterRows(filterFunc func(colIndex, colName string, x any)
 
 			for colIdx, col := range dt.columns {
 				value := col.data[rowIdx]
-				colLetter := colIndexToLetter[colIdx]
+				colLetter, _ := utils.CalcColIndex(colIdx)
 				colName := col.name
 
 				rowData[colIdx] = value
 
-				// Apply filter function
 				if filterFunc(colLetter, colName, value) {
 					keepRow = true
 				}
 			}
 
-			// Add the row if it passed the filter
 			if keepRow {
 				for colIdx, value := range rowData {
 					filteredCols[colIdx].data = append(filteredCols[colIdx].data, value)
@@ -508,7 +485,6 @@ func (dt *DataTable) FilterRows(filterFunc func(colIndex, colName string, x any)
 
 		newDt := &DataTable{
 			columns:           filteredCols,
-			columnIndex:       dt.columnIndex,
 			rowNames:          dt.rowNames,
 			creationTimestamp: dt.creationTimestamp,
 		}

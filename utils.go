@@ -232,6 +232,11 @@ func ParseColIndex(colIndex string) (colNumber int, ok bool) {
 	return utils.ParseColIndex(colIndex)
 }
 
+// CalcColIndex converts a 0-based column number to its Excel-style index (A, B, C, ..., Z, AA, AB, ...).
+func CalcColIndex(colNumber int) (colIndex string, ok bool) {
+	return utils.CalcColIndex(colNumber)
+}
+
 // SortTimes sorts a slice of time.Time in ascending order.
 // It sorts the times directly in the provided slice.
 func SortTimes(times []time.Time) {

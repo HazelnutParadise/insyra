@@ -285,7 +285,7 @@ A lightweight, Python-like wrapper for Yahoo Finance data. The wrapper adapts th
 
 ### Quick example
 
-````go
+```go
 // Create a fetcher with defaults
 yf, err := datafetch.YFinance(datafetch.YFinanceConfig{})
 if err != nil {
@@ -309,14 +309,17 @@ dt.Show()
 
 // If you need parallel multi-symbol fetches, implement your own worker pool that calls
 // `y.Ticker(sym)` and `ticker.History(...)` for each symbol. A `Tickers` helper may be
-// added to the package in the future.```
+// added to the package in the future.
+```
 
 ### API highlights
 
 - `YFinance(cfg YFinanceConfig) (*yahooFinance, error)` — create a stateful fetcher. Resources are automatically cleaned up (the fetcher uses a finalizer to close the underlying client when it is garbage-collected). Note: finalizer timing is non-deterministic; if you need deterministic shutdown consider managing your own client lifecycle or request an exported shutdown API.
 - `(*yahooFinance).Ticker(symbol string) (*ticker, error)` — returns a `ticker` with many Python-like methods.
 - To fetch single-symbol history use `Ticker(...).History(...)`. For multi-symbol parallel fetches, create per-symbol tickers and run `History` in your own worker pool. (A `Tickers` helper may be added in the future.)
-- `ticker` methods return `*insyra.DataTable` for: `History`, `Quote`, `Info`, `Dividends`, `Splits`, `Actions`, `Options`, `OptionChain`, `News`, `Calendar`, `IncomeStatement`, `BalanceSheet`, `CashFlow`, `MajorHolders`, `InstitutionalHolders`, `MutualFundHolders`, `InsiderTransactions`, `FastInfo`, `EarningsEstimate`, `EarningsHistory`, `EPSTrend`, `EPSRevisions`, `Recommendations`, `AnalystPriceTargets`, `RevenueEstimate`, `GrowthEstimates`.
+- `ticker` methods return `*insyra.DataTable` for: `History`, `Quote`, `Info`, `Dividends`, `Splits`, `Actions`, `Options`, `News`, `Calendar`, `MajorHolders`, `InstitutionalHolders`, `MutualFundHolders`, `InsiderTransactions`, `FastInfo`, `EarningsEstimate`, `EarningsHistory`, `EPSTrend`, `EPSRevisions`, `Recommendations`, `AnalystPriceTargets`, `RevenueEstimate`, `GrowthEstimates`.
+- `OptionChain` returns `*datafetch.YFOptionChainTables` with `Calls`, `Puts`, `Underlying`, and `Expiration`.
+- `IncomeStatement`, `BalanceSheet`, `CashFlow` return `*datafetch.YFFinancialStatementTables` with `Values`, `Items`, and `Meta`.
 
 ### Configuration (YFinanceConfig)
 
@@ -339,10 +342,14 @@ Example:
 
 ```go
 // annual (default)
-dt, _ := t.CashFlow(datafetch.YFPeriodAnnual)
+tables, _ := t.CashFlow(datafetch.YFPeriodAnnual)
+tables.Values.Show()
+tables.Items.Show()
+tables.Meta.Show()
 
 // quarterly
-dt2, _ := t.IncomeStatement(datafetch.YFPeriodQuarterly)
+tables2, _ := t.IncomeStatement(datafetch.YFPeriodQuarterly)
+tables2.Values.Show()
 ```
 
 ### Partial results & errors
@@ -374,4 +381,4 @@ dt := datafetch.GoogleMapsStores().
         1,
     ).
     ToDataTable()
-````
+```

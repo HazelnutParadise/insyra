@@ -460,8 +460,8 @@ func (t *ticker) Options() (*insyra.DataTable, error) {
 	return dt, nil
 }
 
-// OptionChain returns option chain data for a given expiration date.
-func (t *ticker) OptionChain(date string) (*insyra.DataTable, error) {
+// OptionChain returns option chain data split into calls/puts/underlying tables.
+func (t *ticker) OptionChain(date string) (*YFOptionChainTables, error) {
 	if t == nil || t.yf == nil {
 		return nil, errors.New("yfinance: ticker is nil")
 	}
@@ -478,13 +478,7 @@ func (t *ticker) OptionChain(date string) (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
-	dt, err := insyra.ReadJSON(chain)
-	if err != nil {
-		return nil, err
-	}
-	dt = normalizeDateColumns(dt)
-	dt.SetName(fmt.Sprintf("%s.OptionChain(%s)", strings.ToUpper(t.symbol), date))
-	return dt, nil
+	return buildOptionChainTables(t.symbol, date, chain)
 }
 
 // News fetches news articles for this ticker.
@@ -542,8 +536,8 @@ func (t *ticker) Calendar() (*insyra.DataTable, error) {
 }
 
 // Financials: IncomeStatement / BalanceSheet / CashFlow
-// FIXME: the return needs new structure
-func (t *ticker) IncomeStatement(freq YFPeriod) (*insyra.DataTable, error) {
+// IncomeStatement returns multi-table statements (values/items/meta).
+func (t *ticker) IncomeStatement(freq YFPeriod) (*YFFinancialStatementTables, error) {
 	if t == nil || t.yf == nil {
 		return nil, errors.New("yfinance: ticker is nil")
 	}
@@ -560,17 +554,11 @@ func (t *ticker) IncomeStatement(freq YFPeriod) (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
-	dt, err := insyra.ReadJSON(stmt)
-	if err != nil {
-		return nil, err
-	}
-	dt = normalizeDateColumns(dt)
-	dt.SetName(fmt.Sprintf("%s.IncomeStatement(%s)", strings.ToUpper(t.symbol), string(freq)))
-	return dt, nil
+	return buildFinancialStatementTables(t.symbol, "IncomeStatement", freq, stmt)
 }
 
-// FIXME: the return needs new structure
-func (t *ticker) BalanceSheet(freq YFPeriod) (*insyra.DataTable, error) {
+// BalanceSheet returns multi-table statements (values/items/meta).
+func (t *ticker) BalanceSheet(freq YFPeriod) (*YFFinancialStatementTables, error) {
 	if t == nil || t.yf == nil {
 		return nil, errors.New("yfinance: ticker is nil")
 	}
@@ -587,17 +575,11 @@ func (t *ticker) BalanceSheet(freq YFPeriod) (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
-	dt, err := insyra.ReadJSON(stmt)
-	if err != nil {
-		return nil, err
-	}
-	dt = normalizeDateColumns(dt)
-	dt.SetName(fmt.Sprintf("%s.BalanceSheet(%s)", strings.ToUpper(t.symbol), string(freq)))
-	return dt, nil
+	return buildFinancialStatementTables(t.symbol, "BalanceSheet", freq, stmt)
 }
 
-// FIXME: the return needs new structure
-func (t *ticker) CashFlow(freq YFPeriod) (*insyra.DataTable, error) {
+// CashFlow returns multi-table statements (values/items/meta).
+func (t *ticker) CashFlow(freq YFPeriod) (*YFFinancialStatementTables, error) {
 	if t == nil || t.yf == nil {
 		return nil, errors.New("yfinance: ticker is nil")
 	}
@@ -614,13 +596,7 @@ func (t *ticker) CashFlow(freq YFPeriod) (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
-	dt, err := insyra.ReadJSON(stmt)
-	if err != nil {
-		return nil, err
-	}
-	dt = normalizeDateColumns(dt)
-	dt.SetName(fmt.Sprintf("%s.CashFlow(%s)", strings.ToUpper(t.symbol), string(freq)))
-	return dt, nil
+	return buildFinancialStatementTables(t.symbol, "CashFlow", freq, stmt)
 }
 
 // Holders

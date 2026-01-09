@@ -59,20 +59,24 @@ func TestDataTable_SwapColsByIndex(t *testing.T) {
 	expectedColC_Name1 := "Col1"
 	expectedColC_Data1 := []any{1, 2}
 
-	if dt1.columns[dt1.columnIndex["A"]].name != expectedColA_Name1 || !reflect.DeepEqual(dt1.columns[dt1.columnIndex["A"]].data, expectedColA_Data1) {
-		t.Errorf("TestSwapColsByIndex Case 1 Failed: Expected col A to be %s %v, got %s %v", expectedColA_Name1, expectedColA_Data1, dt1.columns[dt1.columnIndex["A"]].name, dt1.columns[dt1.columnIndex["A"]].data)
+	idxA, _ := ParseColIndex("A")
+	idxC, _ := ParseColIndex("C")
+
+	if dt1.columns[idxA].name != expectedColA_Name1 || !reflect.DeepEqual(dt1.columns[idxA].data, expectedColA_Data1) {
+		t.Errorf("TestSwapColsByIndex Case 1 Failed: Expected col A to be %s %v, got %s %v", expectedColA_Name1, expectedColA_Data1, dt1.columns[idxA].name, dt1.columns[idxA].data)
 	}
-	if dt1.columns[dt1.columnIndex["C"]].name != expectedColC_Name1 || !reflect.DeepEqual(dt1.columns[dt1.columnIndex["C"]].data, expectedColC_Data1) {
-		t.Errorf("TestSwapColsByIndex Case 1 Failed: Expected col C to be %s %v, got %s %v", expectedColC_Name1, expectedColC_Data1, dt1.columns[dt1.columnIndex["C"]].name, dt1.columns[dt1.columnIndex["C"]].data)
+	if dt1.columns[idxC].name != expectedColC_Name1 || !reflect.DeepEqual(dt1.columns[idxC].data, expectedColC_Data1) {
+		t.Errorf("TestSwapColsByIndex Case 1 Failed: Expected col C to be %s %v, got %s %v", expectedColC_Name1, expectedColC_Data1, dt1.columns[idxC].name, dt1.columns[idxC].data)
 	}
 
 	// Test case 2: Swap with non-existent index
 	dt2 := NewDataTable(
 		NewDataList(1).SetName("ColX"),
 	)
-	dt2.SwapColsByIndex("A", "B")                         // Index B does not exist for a single column table
-	if dt2.columns[dt2.columnIndex["A"]].name != "ColX" { // Should not change
-		t.Errorf("TestSwapColsByIndex Case 2 Failed: Expected ColX to remain, got %s", dt2.columns[dt2.columnIndex["A"]].name)
+	dt2.SwapColsByIndex("A", "B") // Index B does not exist for a single column table
+	idxA2, _ := ParseColIndex("A")
+	if dt2.columns[idxA2].name != "ColX" { // Should not change
+		t.Errorf("TestSwapColsByIndex Case 2 Failed: Expected ColX to remain, got %s", dt2.columns[idxA2].name)
 	}
 
 	// Test case 3: Swap same index
@@ -81,7 +85,8 @@ func TestDataTable_SwapColsByIndex(t *testing.T) {
 		NewDataList([]any{200}).SetName("Q"),
 	)
 	dt3.SwapColsByIndex("A", "A")
-	if dt3.columns[dt3.columnIndex["A"]].name != "P" || !reflect.DeepEqual(dt3.columns[dt3.columnIndex["A"]].data, []any{100}) {
+	idxA3, _ := ParseColIndex("A")
+	if dt3.columns[idxA3].name != "P" || !reflect.DeepEqual(dt3.columns[idxA3].data, []any{100}) {
 		t.Errorf("TestSwapColsByIndex Case 3 Failed: Expected column P at index A to remain unchanged.")
 	}
 }

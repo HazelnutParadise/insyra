@@ -287,7 +287,4 @@ type IDataTable interface {
 	ReplaceNaNsInCol(colIndex string, newValue any, mode ...int) *DataTable
 	ReplaceNilsInCol(colIndex string, newValue any, mode ...int) *DataTable
 	ReplaceNaNsAndNilsInCol(colIndex string, newValue any, mode ...int) *DataTable
-
-	sortColsByIndex()
-	regenerateColIndex()
 }

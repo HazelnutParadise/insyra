@@ -122,7 +122,6 @@ func ReadCSV_File(filePath string, setFirstColToRowNames bool, setFirstRowToColN
 	}
 
 	dt.columns = []*DataList{}
-	dt.columnIndex = make(map[string]int)
 	dt.rowNames = core.NewBiIndex(0)
 
 	if len(rows) == 0 {
@@ -139,7 +138,6 @@ func ReadCSV_File(filePath string, setFirstColToRowNames bool, setFirstRowToColN
 			}
 			column := &DataList{name: safeColName(dt, colName)}
 			dt.columns = append(dt.columns, column)
-			dt.columnIndex[generateColIndex(len(dt.columns)-1)] = len(dt.columns) - 1
 		}
 		startRow = 1
 	} else {
@@ -150,7 +148,6 @@ func ReadCSV_File(filePath string, setFirstColToRowNames bool, setFirstRowToColN
 			}
 			column := &DataList{}
 			dt.columns = append(dt.columns, column)
-			dt.columnIndex[generateColIndex(len(dt.columns)-1)] = len(dt.columns) - 1
 		}
 	}
 
@@ -188,7 +185,6 @@ func ReadCSV_String(csvString string, setFirstColToRowNames bool, setFirstRowToC
 	}
 
 	dt.columns = []*DataList{}
-	dt.columnIndex = make(map[string]int)
 	dt.rowNames = core.NewBiIndex(0)
 
 	if len(rows) == 0 {
@@ -204,7 +200,6 @@ func ReadCSV_String(csvString string, setFirstColToRowNames bool, setFirstRowToC
 			}
 			column := &DataList{name: safeColName(dt, colName)}
 			dt.columns = append(dt.columns, column)
-			dt.columnIndex[generateColIndex(len(dt.columns)-1)] = len(dt.columns) - 1
 		}
 		startRow = 1
 	} else {
@@ -214,7 +209,6 @@ func ReadCSV_String(csvString string, setFirstColToRowNames bool, setFirstRowToC
 			}
 			column := &DataList{}
 			dt.columns = append(dt.columns, column)
-			dt.columnIndex[generateColIndex(len(dt.columns)-1)] = len(dt.columns) - 1
 		}
 	}
 
