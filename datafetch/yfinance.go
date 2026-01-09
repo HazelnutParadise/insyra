@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/datafetch/internal/limiter"
@@ -181,22 +182,43 @@ func tryParseTime(str string) (time.Time, bool) {
 func normalizeDateColumns(dt *insyra.DataTable) *insyra.DataTable {
 	return dt.Map(func(rowIndex int, colIndex string, element any) any {
 		name := dt.GetColNameByIndex(colIndex)
-		// Heuristics: match common date/time column names only when they are clearly meant to be dates.
-		// Match cases:
-		// - exact 'date' / 'time' (case-insensitive)
-		// - CamelCase suffix like '...Date' or '...Time' (e.g., 'expiryDate', 'publishTime')
-		// - snake_case suffix like '..._date' or '..._time'
+		// Heuristics: conservatively detect date/time columns by extracting the last semantic
+		// token from the column name (handles snake_case and camelCase) and matching it
+		// against a small whitelist. This avoids accidental matches like "notadate".
 		convert := false
-		if strings.EqualFold(name, "date") || strings.EqualFold(name, "time") {
-			convert = true
-		} else if strings.HasSuffix(name, "Date") || strings.HasSuffix(name, "Time") || strings.HasSuffix(name, "Expiry") || strings.HasSuffix(name, "Expire") {
-			convert = true
-		} else if strings.Contains(name, "_") {
-			parts := strings.Split(name, "_")
-			last := strings.ToLower(parts[len(parts)-1])
-			if last == "date" || last == "time" || last == "expiry" || last == "expire" {
-				convert = true
+
+		getLastToken := func(s string) string {
+			if s == "" {
+				return ""
 			}
+			// snake_case: prefer splitting on '_'
+			if strings.Contains(s, "_") {
+				parts := strings.Split(s, "_")
+				return strings.ToLower(parts[len(parts)-1])
+			}
+			// camelCase / PascalCase: split on uppercase transitions
+			var parts []string
+			var cur []rune
+			for i, r := range s {
+				if i > 0 && unicode.IsUpper(r) {
+					parts = append(parts, strings.ToLower(string(cur)))
+					cur = []rune{r}
+				} else {
+					cur = append(cur, r)
+				}
+			}
+			if len(cur) > 0 {
+				parts = append(parts, strings.ToLower(string(cur)))
+			}
+			if len(parts) == 0 {
+				return strings.ToLower(s)
+			}
+			return parts[len(parts)-1]
+		}
+
+		last := getLastToken(name)
+		if last == "date" || last == "time" || last == "expiry" || last == "expire" || strings.EqualFold(name, "date") || strings.EqualFold(name, "time") {
+			convert = true
 		}
 		if convert {
 			if str, ok := element.(string); ok {

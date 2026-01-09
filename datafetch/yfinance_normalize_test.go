@@ -36,6 +36,28 @@ func TestNormalizeDateColumns_AllTypes(t *testing.T) {
 		t.Fatalf("expected time.Time for Date, got %T", v)
 	}
 
+	// additional tokenization checks
+	dt3 := insyra.NewDataTable()
+	d1 := insyra.NewDataList()
+	d1.SetName("notadate")
+	d1.Append("2025-12-01T00:00:00+00:00")
+	d2 := insyra.NewDataList()
+	d2.SetName("start_date")
+	d2.Append("2025-12-02")
+	d3 := insyra.NewDataList()
+	d3.SetName("publishDate")
+	d3.Append("2025-12-03T08:00:00Z")
+	dt3.AppendCols(d1, d2, d3)
+	dt3n := normalizeDateColumns(dt3)
+	if _, ok := dt3n.GetColByNumber(0).Get(0).(time.Time); ok {
+		t.Fatalf("expected 'notadate' to remain string, but got time.Time")
+	}
+	if _, ok := dt3n.GetColByNumber(1).Get(0).(time.Time); !ok {
+		t.Fatalf("expected 'start_date' to be converted to time.Time")
+	}
+	if _, ok := dt3n.GetColByNumber(2).Get(0).(time.Time); !ok {
+		t.Fatalf("expected 'publishDate' to be converted to time.Time")
+	}
 	// publishTime -> time.Time
 	v2 := dt2.GetColByNumber(1).Get(0)
 	if _, ok := v2.(time.Time); !ok {
