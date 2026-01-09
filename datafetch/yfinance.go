@@ -151,21 +151,12 @@ type ticker struct {
 }
 
 // Ticker returns a ticker bound to this yahooFinance instance.
-// Caller should call Close() when done to release resources.
+// The ticker does not manage the lifecycle of the underlying client; call `y.Close()` to release resources when done.
 func (y *yahooFinance) Ticker(symbol string) (*ticker, error) {
 	if y == nil {
 		return nil, errors.New("yfinance: yahooFinance is nil")
 	}
 	return &ticker{yf: y, symbol: symbol}, nil
-}
-
-// Close closes underlying resources used by the ticker.
-func (t *ticker) Close() {
-	if t == nil || t.yf == nil {
-		return
-	}
-	t.yf.Close()
-	t.yf = nil
 }
 
 // History returns historical OHLCV bars as an insyra.DataTable.
@@ -326,30 +317,274 @@ func (t *ticker) Actions() (*insyra.DataTable, error) {
 	return insyra.ReadJSON(acts)
 }
 
+// Options returns the list of option expiration dates (like `Ticker.options`).
+func (t *ticker) Options() (*insyra.DataTable, error) {
+	if t == nil || t.yf == nil {
+		return nil, errors.New("yfinance: ticker is nil")
+	}
+	if t.yf.client == nil {
+		return nil, errors.New("yfinance: client is nil")
+	}
+	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
+	if err != nil {
+		return nil, err
+	}
+	defer tk.Close()
+
+	exps, err := tk.Options()
+	if err != nil {
+		return nil, err
+	}
+	return insyra.ReadJSON(exps)
+}
+
+// OptionChain returns option chain data for a given expiration date.
+func (t *ticker) OptionChain(date string) (*insyra.DataTable, error) {
+	if t == nil || t.yf == nil {
+		return nil, errors.New("yfinance: ticker is nil")
+	}
+	if t.yf.client == nil {
+		return nil, errors.New("yfinance: client is nil")
+	}
+	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
+	if err != nil {
+		return nil, err
+	}
+	defer tk.Close()
+
+	chain, err := tk.OptionChain(date)
+	if err != nil {
+		return nil, err
+	}
+	return insyra.ReadJSON(chain)
+}
+
+// News fetches news articles for this ticker.
+func (t *ticker) News(count int, tab models.NewsTab) (*insyra.DataTable, error) {
+	if t == nil || t.yf == nil {
+		return nil, errors.New("yfinance: ticker is nil")
+	}
+	if t.yf.client == nil {
+		return nil, errors.New("yfinance: client is nil")
+	}
+	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
+	if err != nil {
+		return nil, err
+	}
+	defer tk.Close()
+
+	articles, err := tk.News(count, tab)
+	if err != nil {
+		return nil, err
+	}
+	return insyra.ReadJSON(articles)
+}
+
+// Calendar returns upcoming calendar events (earnings, dividends) for the ticker.
+func (t *ticker) Calendar() (*insyra.DataTable, error) {
+	if t == nil || t.yf == nil {
+		return nil, errors.New("yfinance: ticker is nil")
+	}
+	if t.yf.client == nil {
+		return nil, errors.New("yfinance: client is nil")
+	}
+	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
+	if err != nil {
+		return nil, err
+	}
+	defer tk.Close()
+
+	cal, err := tk.Calendar()
+	if err != nil {
+		return nil, err
+	}
+	return insyra.ReadJSON(cal)
+}
+
+// Financials: IncomeStatement / BalanceSheet / CashFlow
+func (t *ticker) IncomeStatement(freq string) (*insyra.DataTable, error) {
+	if t == nil || t.yf == nil {
+		return nil, errors.New("yfinance: ticker is nil")
+	}
+	if t.yf.client == nil {
+		return nil, errors.New("yfinance: client is nil")
+	}
+	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
+	if err != nil {
+		return nil, err
+	}
+	defer tk.Close()
+
+	stmt, err := tk.IncomeStatement(freq)
+	if err != nil {
+		return nil, err
+	}
+	return insyra.ReadJSON(stmt)
+}
+
+func (t *ticker) BalanceSheet(freq string) (*insyra.DataTable, error) {
+	if t == nil || t.yf == nil {
+		return nil, errors.New("yfinance: ticker is nil")
+	}
+	if t.yf.client == nil {
+		return nil, errors.New("yfinance: client is nil")
+	}
+	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
+	if err != nil {
+		return nil, err
+	}
+	defer tk.Close()
+
+	stmt, err := tk.BalanceSheet(freq)
+	if err != nil {
+		return nil, err
+	}
+	return insyra.ReadJSON(stmt)
+}
+
+func (t *ticker) CashFlow(freq string) (*insyra.DataTable, error) {
+	if t == nil || t.yf == nil {
+		return nil, errors.New("yfinance: ticker is nil")
+	}
+	if t.yf.client == nil {
+		return nil, errors.New("yfinance: client is nil")
+	}
+	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
+	if err != nil {
+		return nil, err
+	}
+	defer tk.Close()
+
+	stmt, err := tk.CashFlow(freq)
+	if err != nil {
+		return nil, err
+	}
+	return insyra.ReadJSON(stmt)
+}
+
+// Holders
+func (t *ticker) MajorHolders() (*insyra.DataTable, error) {
+	if t == nil || t.yf == nil {
+		return nil, errors.New("yfinance: ticker is nil")
+	}
+	if t.yf.client == nil {
+		return nil, errors.New("yfinance: client is nil")
+	}
+	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
+	if err != nil {
+		return nil, err
+	}
+	defer tk.Close()
+
+	h, err := tk.MajorHolders()
+	if err != nil {
+		return nil, err
+	}
+	return insyra.ReadJSON(h)
+}
+
+func (t *ticker) InstitutionalHolders() (*insyra.DataTable, error) {
+	if t == nil || t.yf == nil {
+		return nil, errors.New("yfinance: ticker is nil")
+	}
+	if t.yf.client == nil {
+		return nil, errors.New("yfinance: client is nil")
+	}
+	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
+	if err != nil {
+		return nil, err
+	}
+	defer tk.Close()
+
+	h, err := tk.InstitutionalHolders()
+	if err != nil {
+		return nil, err
+	}
+	return insyra.ReadJSON(h)
+}
+
+func (t *ticker) MutualFundHolders() (*insyra.DataTable, error) {
+	if t == nil || t.yf == nil {
+		return nil, errors.New("yfinance: ticker is nil")
+	}
+	if t.yf.client == nil {
+		return nil, errors.New("yfinance: client is nil")
+	}
+	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
+	if err != nil {
+		return nil, err
+	}
+	defer tk.Close()
+
+	h, err := tk.MutualFundHolders()
+	if err != nil {
+		return nil, err
+	}
+	return insyra.ReadJSON(h)
+}
+
+func (t *ticker) InsiderTransactions() (*insyra.DataTable, error) {
+	if t == nil || t.yf == nil {
+		return nil, errors.New("yfinance: ticker is nil")
+	}
+	if t.yf.client == nil {
+		return nil, errors.New("yfinance: client is nil")
+	}
+	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
+	if err != nil {
+		return nil, err
+	}
+	defer tk.Close()
+
+	tx, err := tk.InsiderTransactions()
+	if err != nil {
+		return nil, err
+	}
+	return insyra.ReadJSON(tx)
+}
+
+// FastInfo returns a quick summary as DataTable.
+func (t *ticker) FastInfo() (*insyra.DataTable, error) {
+	if t == nil || t.yf == nil {
+		return nil, errors.New("yfinance: ticker is nil")
+	}
+	if t.yf.client == nil {
+		return nil, errors.New("yfinance: client is nil")
+	}
+	tk, err := yfticker.New(t.symbol, yfticker.WithClient(t.yf.client))
+	if err != nil {
+		return nil, err
+	}
+	defer tk.Close()
+
+	fi, err := tk.FastInfo()
+	if err != nil {
+		return nil, err
+	}
+	return insyra.ReadJSON(fi)
+}
+
 // Download fetches historical data for a symbol or multiple symbols and
 // returns an insyra.DataTable. `symbols` can be a single string or []string.
-func Download(symbols any, params models.HistoryParams) (*insyra.DataTable, error) {
+func (y *yahooFinance) Download(symbols any, params models.HistoryParams) (*insyra.DataTable, error) {
+	if y == nil {
+		return nil, errors.New("yfinance: yahooFinance is nil")
+	}
 	switch v := symbols.(type) {
 	case string:
-		yf, err := YFinance(YFinanceConfig{})
-		if err != nil {
-			return nil, err
-		}
-		defer yf.Close()
-
 		// use underlying ticker client with retry/limiting
-		if yf.client == nil {
+		if y.client == nil {
 			return nil, errors.New("yfinance: client is nil")
 		}
-		tk, err := yfticker.New(v, yfticker.WithClient(yf.client))
+		tk, err := yfticker.New(v, yfticker.WithClient(y.client))
 		if err != nil {
 			return nil, err
 		}
 		defer tk.Close()
 
 		var lastErr error
-		for attempt := 0; attempt <= yf.cfg.Retries; attempt++ {
-			if err := yf.beforeRequest(); err != nil {
+		for attempt := 0; attempt <= y.cfg.Retries; attempt++ {
+			if err := y.beforeRequest(); err != nil {
 				return nil, err
 			}
 
@@ -362,23 +597,17 @@ func Download(symbols any, params models.HistoryParams) (*insyra.DataTable, erro
 			if !retryable(lastErr) {
 				return nil, lastErr
 			}
-			if attempt < yf.cfg.Retries {
-				yf.sleepBackoff(attempt)
+			if attempt < y.cfg.Retries {
+				y.sleepBackoff(attempt)
 			}
 		}
 		return nil, fmt.Errorf("yfinance: history failed: %w", lastErr)
 	case []string:
-		yf, err := YFinance(YFinanceConfig{})
-		if err != nil {
-			return nil, err
-		}
-		defer yf.Close()
-
 		if len(v) == 0 {
 			return insyra.ReadJSON(map[string][]models.Bar{})
 		}
 
-		conc := yf.cfg.Concurrency
+		conc := y.cfg.Concurrency
 		if conc <= 0 {
 			conc = 1
 		}
@@ -399,19 +628,19 @@ func Download(symbols any, params models.HistoryParams) (*insyra.DataTable, erro
 				// per-job request using underlying ticker and retries
 				var lastErr error
 				var bars []models.Bar
-				if yf.client == nil {
+				if y.client == nil {
 					results <- result{symbol: sym, bars: nil, err: errors.New("yfinance: client is nil")}
 					continue
 				}
-				tk, err := yfticker.New(sym, yfticker.WithClient(yf.client))
+				tk, err := yfticker.New(sym, yfticker.WithClient(y.client))
 				if err != nil {
 					results <- result{symbol: sym, bars: nil, err: err}
 					continue
 				}
 				// close explicitly after use to avoid stacking defers inside loop
 
-				for attempt := 0; attempt <= yf.cfg.Retries; attempt++ {
-					if err := yf.beforeRequest(); err != nil {
+				for attempt := 0; attempt <= y.cfg.Retries; attempt++ {
+					if err := y.beforeRequest(); err != nil {
 						lastErr = err
 						break
 					}
@@ -423,8 +652,8 @@ func Download(symbols any, params models.HistoryParams) (*insyra.DataTable, erro
 					if !retryable(lastErr) {
 						break
 					}
-					if attempt < yf.cfg.Retries {
-						yf.sleepBackoff(attempt)
+					if attempt < y.cfg.Retries {
+						y.sleepBackoff(attempt)
 					}
 				}
 				// close ticker for this job
