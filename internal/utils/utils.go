@@ -63,15 +63,53 @@ func ToFloat64Safe(v any) (float64, bool) {
 }
 
 func ParseColIndex(colIndex string) (colNumber int, ok bool) {
+	// Reject empty input
+	if len(colIndex) == 0 {
+		return -1, false
+	}
 	result := 0
-	colIndex = strings.ToUpper(colIndex)
-	for _, char := range colIndex {
-		if char < 'A' || char > 'Z' {
+	// Process bytes directly to avoid allocation from strings.ToUpper
+	for i := 0; i < len(colIndex); i++ {
+		c := colIndex[i]
+		var v int
+		if c >= 'A' && c <= 'Z' {
+			v = int(c - 'A' + 1)
+		} else if c >= 'a' && c <= 'z' {
+			v = int(c - 'a' + 1)
+		} else {
 			return -1, false
 		}
-		result = result*26 + int(char-'A') + 1
+		// Overflow check: ensure result*26 + v fits into int
+		maxInt := int(^uint(0) >> 1)
+		if result > (maxInt-v)/26 {
+			return -1, false
+		}
+		result = result*26 + v
 	}
 	return result - 1, true
+}
+
+func CalcColIndex(colNumber int) (colIndex string, ok bool) {
+	if colNumber < 0 {
+		return "", false
+	}
+
+	// 使用單次迴圈與固定大小暫存陣列（最多 20 字元，足以容納 64-bit int）
+	var tmpBuf [20]byte
+	i := 0
+	for colNumber >= 0 {
+		remainder := colNumber % 26
+		tmpBuf[i] = byte(remainder) + 'A'
+		i++
+		colNumber = (colNumber / 26) - 1
+	}
+
+	// 反向複製到結果切片（避免多次分配與 rune 轉換）
+	res := make([]byte, i)
+	for j := 0; j < i; j++ {
+		res[j] = tmpBuf[i-1-j]
+	}
+	return string(res), true
 }
 
 // TruncateString 截斷字符串到指定寬度，太長的字符串末尾加上省略號，使用 runewidth 計算字元寬度

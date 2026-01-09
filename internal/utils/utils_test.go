@@ -183,3 +183,71 @@ func TestFinalPerformanceSummary(t *testing.T) {
 	t.Log("3. 自適應 goroutines 策略根據資料大小自動優化")
 	t.Log("4. 小資料集 (< 10K) 使用順序排序避免平行開銷")
 }
+
+func TestCalcParseColIndexRoundtrip(t *testing.T) {
+	cases := []int{0, 1, 25, 26, 27, 51, 52, 701, 702, 16383, 16384, 100000}
+	for _, n := range cases {
+		s, ok := CalcColIndex(n)
+		if !ok {
+			t.Fatalf("CalcColIndex(%d) returned not ok", n)
+		}
+		m, ok2 := ParseColIndex(s)
+		if !ok2 || m != n {
+			t.Errorf("roundtrip failed for %d -> %s -> %d (ok2=%v)", n, s, m, ok2)
+		}
+	}
+
+	// negative case
+	s, ok := CalcColIndex(-1)
+	if ok || s != "" {
+		t.Errorf("expected invalid for -1, got %v %v", s, ok)
+	}
+}
+
+func BenchmarkCalcColIndex(b *testing.B) {
+	b.ReportAllocs()
+	ns := []int{0, 1, 25, 26, 701, 702, 1000, 10000, 100000}
+	for _, n := range ns {
+		b.Run(fmt.Sprintf("n_%d", n), func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_, _ = CalcColIndex(n)
+			}
+		})
+	}
+}
+
+func TestParseColIndex(t *testing.T) {
+	cases := []struct {
+		s    string
+		want int
+		ok   bool
+	}{
+		{"A", 0, true},
+		{"Z", 25, true},
+		{"AA", 26, true},
+		{"ZZ", 701, true},
+		{"a", 0, true},
+		{"zz", 701, true},
+		{"", -1, false},
+		{"A1", -1, false},
+		{"@", -1, false},
+	}
+	for _, c := range cases {
+		got, ok := ParseColIndex(c.s)
+		if ok != c.ok || (ok && got != c.want) {
+			t.Errorf("ParseColIndex(%q) = %d, %v; want %d, %v", c.s, got, ok, c.want, c.ok)
+		}
+	}
+}
+
+func BenchmarkParseColIndex(b *testing.B) {
+	ns := []string{"A", "Z", "AA", "ZZ", "AAA", "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "ZZZZZZ"}
+	b.ReportAllocs()
+	for _, s := range ns {
+		b.Run(s, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_, _ = ParseColIndex(s)
+			}
+		})
+	}
+}
