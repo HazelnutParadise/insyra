@@ -46,6 +46,17 @@ type YFinanceConfig struct {
 
 type YFHistoryParams = models.HistoryParams
 
+// YFPeriod represents frequency values used for financial statements.
+// Accepted values: YFPeriodAnnual, YFPeriodYearly, YFPeriodQuarterly.
+// When empty or unrecognized, it defaults to YFPeriodAnnual.
+type YFPeriod string
+
+const (
+	YFPeriodAnnual    YFPeriod = "annual"
+	YFPeriodYearly    YFPeriod = "yearly"
+	YFPeriodQuarterly YFPeriod = "quarterly"
+)
+
 func (cfg YFinanceConfig) normalize() (YFinanceConfig, error) {
 	out := cfg
 
@@ -465,7 +476,7 @@ func (t *ticker) Calendar() (*insyra.DataTable, error) {
 }
 
 // Financials: IncomeStatement / BalanceSheet / CashFlow
-func (t *ticker) IncomeStatement(freq string) (*insyra.DataTable, error) {
+func (t *ticker) IncomeStatement(freq YFPeriod) (*insyra.DataTable, error) {
 	if t == nil || t.yf == nil {
 		return nil, errors.New("yfinance: ticker is nil")
 	}
@@ -478,7 +489,7 @@ func (t *ticker) IncomeStatement(freq string) (*insyra.DataTable, error) {
 	}
 	defer tk.Close()
 
-	stmt, err := tk.IncomeStatement(freq)
+	stmt, err := tk.IncomeStatement(string(freq))
 	if err != nil {
 		return nil, err
 	}
@@ -486,11 +497,11 @@ func (t *ticker) IncomeStatement(freq string) (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
-	dt.SetName(fmt.Sprintf("%s.IncomeStatement(%s)", strings.ToUpper(t.symbol), freq))
+	dt.SetName(fmt.Sprintf("%s.IncomeStatement(%s)", strings.ToUpper(t.symbol), string(freq)))
 	return dt, nil
 }
 
-func (t *ticker) BalanceSheet(freq string) (*insyra.DataTable, error) {
+func (t *ticker) BalanceSheet(freq YFPeriod) (*insyra.DataTable, error) {
 	if t == nil || t.yf == nil {
 		return nil, errors.New("yfinance: ticker is nil")
 	}
@@ -503,7 +514,7 @@ func (t *ticker) BalanceSheet(freq string) (*insyra.DataTable, error) {
 	}
 	defer tk.Close()
 
-	stmt, err := tk.BalanceSheet(freq)
+	stmt, err := tk.BalanceSheet(string(freq))
 	if err != nil {
 		return nil, err
 	}
@@ -511,11 +522,11 @@ func (t *ticker) BalanceSheet(freq string) (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
-	dt.SetName(fmt.Sprintf("%s.BalanceSheet(%s)", strings.ToUpper(t.symbol), freq))
+	dt.SetName(fmt.Sprintf("%s.BalanceSheet(%s)", strings.ToUpper(t.symbol), string(freq)))
 	return dt, nil
 }
 
-func (t *ticker) CashFlow(freq string) (*insyra.DataTable, error) {
+func (t *ticker) CashFlow(freq YFPeriod) (*insyra.DataTable, error) {
 	if t == nil || t.yf == nil {
 		return nil, errors.New("yfinance: ticker is nil")
 	}
@@ -528,7 +539,7 @@ func (t *ticker) CashFlow(freq string) (*insyra.DataTable, error) {
 	}
 	defer tk.Close()
 
-	stmt, err := tk.CashFlow(freq)
+	stmt, err := tk.CashFlow(string(freq))
 	if err != nil {
 		return nil, err
 	}
@@ -536,7 +547,7 @@ func (t *ticker) CashFlow(freq string) (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
-	dt.SetName(fmt.Sprintf("%s.CashFlow(%s)", strings.ToUpper(t.symbol), freq))
+	dt.SetName(fmt.Sprintf("%s.CashFlow(%s)", strings.ToUpper(t.symbol), string(freq)))
 	return dt, nil
 }
 

@@ -325,7 +325,25 @@ dt.Show()
 - `UserAgent string` — HTTP user agent header. Defaults to a common browser UA.
 - `Retries int` — number of retry attempts on retryable errors. `0` = no retries.
 - `RetryBackoff time.Duration` — base backoff between retries. Default: `300ms`.
-- `Concurrency int` — maximum concurrent workers for multi-symbol `Download`. Default: `6`.
+- `Concurrency int` — maximum concurrent workers for multi-symbol fetches (if you implement a Tickers helper). Default: `6`.
+
+### Financial statement frequency enum (YFPeriod)
+
+Use the `YFPeriod` enum for statement frequency parameters (`IncomeStatement`, `BalanceSheet`, `CashFlow`). Accepted values:
+
+- `datafetch.YFPeriodAnnual` (or `"annual"`) — default
+- `datafetch.YFPeriodYearly` ("yearly") — accepted by backend
+- `datafetch.YFPeriodQuarterly` ("quarterly")
+
+Example:
+
+```go
+// annual (default)
+dt, _ := t.CashFlow(datafetch.YFPeriodAnnual)
+
+// quarterly
+dt2, _ := t.IncomeStatement(datafetch.YFPeriodQuarterly)
+```
 
 ### Partial results & errors
 
