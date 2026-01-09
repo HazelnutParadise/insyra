@@ -23,7 +23,8 @@ func TestYFinanceTimeoutSeconds(t *testing.T) {
 			if err != nil {
 				t.Fatalf("YFinance returned error: %v", err)
 			}
-			defer y.Close()
+			// Close is unexported; call internal close for immediate cleanup in tests.
+			defer y.close()
 
 			if y.timeoutSeconds != tc.want {
 				t.Fatalf("timeoutSeconds = %d; want %d", y.timeoutSeconds, tc.want)

@@ -4,7 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
+	"runtime"
+	"strings"
 	"time"
 
 	"github.com/HazelnutParadise/insyra"
@@ -107,16 +108,23 @@ func YFinance(cfg YFinanceConfig) (*yahooFinance, error) {
 		return nil, err
 	}
 
-	return &yahooFinance{
+	yf := &yahooFinance{
 		cfg:            normalized,
 		client:         c,
 		limiter:        limiter.NewIntervalLimiter(normalized.Interval),
 		timeoutSeconds: secs,
-	}, nil
+	}
+
+	// ensure resources are cleaned up automatically when yf is garbage-collected
+	runtime.SetFinalizer(yf, func(y *yahooFinance) { y.close() })
+
+	return yf, nil
 }
 
-// lifecycle
-func (y *yahooFinance) Close() {
+// lifecycle (internal)
+// close closes underlying resources. It is unexported because resources are
+// managed automatically; callers do not need to call this directly.
+func (y *yahooFinance) close() {
 	if y == nil || y.client == nil {
 		return
 	}
@@ -157,7 +165,8 @@ type ticker struct {
 }
 
 // Ticker returns a ticker bound to this yahooFinance instance.
-// The ticker does not manage the lifecycle of the underlying client; call `y.Close()` to release resources when done.
+// The ticker does not manage the lifecycle of the underlying client; resources
+// are automatically cleaned up when the fetcher is no longer referenced.
 func (y *yahooFinance) Ticker(symbol string) (*ticker, error) {
 	if y == nil {
 		return nil, errors.New("yfinance: yahooFinance is nil")
@@ -187,9 +196,13 @@ func (t *ticker) History(params YFHistoryParams) (*insyra.DataTable, error) {
 
 		bars, err := tk.History(models.HistoryParams(params))
 		if err == nil {
-			return insyra.ReadJSON(bars)
+			dt, err := insyra.ReadJSON(bars)
+			if err != nil {
+				return nil, err
+			}
+			dt.SetName(fmt.Sprintf("%s.History", strings.ToUpper(t.symbol)))
+			return dt, nil
 		}
-
 		lastErr = classifyError(err)
 		if !retryable(lastErr) {
 			return nil, lastErr
@@ -224,9 +237,13 @@ func (t *ticker) Quote() (*insyra.DataTable, error) {
 
 		q, err := tk.Quote()
 		if err == nil {
-			return insyra.ReadJSON(q)
+			dt, err := insyra.ReadJSON(q)
+			if err != nil {
+				return nil, err
+			}
+			dt.SetName(fmt.Sprintf("%s.Quote", strings.ToUpper(t.symbol)))
+			return dt, nil
 		}
-
 		lastErr = classifyError(err)
 		if !retryable(lastErr) {
 			return nil, lastErr
@@ -257,7 +274,12 @@ func (t *ticker) Info() (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
-	return insyra.ReadJSON(info)
+	dt, err := insyra.ReadJSON(info)
+	if err != nil {
+		return nil, err
+	}
+	dt.SetName(fmt.Sprintf("%s.Info", strings.ToUpper(t.symbol)))
+	return dt, nil
 }
 
 // Dividends returns dividends history for the ticker as a DataTable.
@@ -278,7 +300,12 @@ func (t *ticker) Dividends() (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
-	return insyra.ReadJSON(divs)
+	dt, err := insyra.ReadJSON(divs)
+	if err != nil {
+		return nil, err
+	}
+	dt.SetName(fmt.Sprintf("%s.Dividends", strings.ToUpper(t.symbol)))
+	return dt, nil
 }
 
 // Splits returns stock splits history for the ticker as a DataTable.
@@ -299,7 +326,12 @@ func (t *ticker) Splits() (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
-	return insyra.ReadJSON(splits)
+	dt, err := insyra.ReadJSON(splits)
+	if err != nil {
+		return nil, err
+	}
+	dt.SetName(fmt.Sprintf("%s.Splits", strings.ToUpper(t.symbol)))
+	return dt, nil
 }
 
 // Actions returns corporate actions (dividends + splits) as a DataTable.
@@ -320,7 +352,12 @@ func (t *ticker) Actions() (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
-	return insyra.ReadJSON(acts)
+	dt, err := insyra.ReadJSON(acts)
+	if err != nil {
+		return nil, err
+	}
+	dt.SetName(fmt.Sprintf("%s.Actions", strings.ToUpper(t.symbol)))
+	return dt, nil
 }
 
 // Options returns the list of option expiration dates (like `Ticker.options`).
@@ -341,7 +378,12 @@ func (t *ticker) Options() (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
-	return insyra.ReadJSON(exps)
+	dt, err := insyra.ReadJSON(exps)
+	if err != nil {
+		return nil, err
+	}
+	dt.SetName(fmt.Sprintf("%s.Options", strings.ToUpper(t.symbol)))
+	return dt, nil
 }
 
 // OptionChain returns option chain data for a given expiration date.
@@ -362,7 +404,12 @@ func (t *ticker) OptionChain(date string) (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
-	return insyra.ReadJSON(chain)
+	dt, err := insyra.ReadJSON(chain)
+	if err != nil {
+		return nil, err
+	}
+	dt.SetName(fmt.Sprintf("%s.OptionChain(%s)", strings.ToUpper(t.symbol), date))
+	return dt, nil
 }
 
 // News fetches news articles for this ticker.
@@ -383,7 +430,12 @@ func (t *ticker) News(count int, tab models.NewsTab) (*insyra.DataTable, error) 
 	if err != nil {
 		return nil, err
 	}
-	return insyra.ReadJSON(articles)
+	dt, err := insyra.ReadJSON(articles)
+	if err != nil {
+		return nil, err
+	}
+	dt.SetName(fmt.Sprintf("%s.News", strings.ToUpper(t.symbol)))
+	return dt, nil
 }
 
 // Calendar returns upcoming calendar events (earnings, dividends) for the ticker.
@@ -404,7 +456,12 @@ func (t *ticker) Calendar() (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
-	return insyra.ReadJSON(cal)
+	dt, err := insyra.ReadJSON(cal)
+	if err != nil {
+		return nil, err
+	}
+	dt.SetName(fmt.Sprintf("%s.Calendar", strings.ToUpper(t.symbol)))
+	return dt, nil
 }
 
 // Financials: IncomeStatement / BalanceSheet / CashFlow
@@ -425,7 +482,12 @@ func (t *ticker) IncomeStatement(freq string) (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
-	return insyra.ReadJSON(stmt)
+	dt, err := insyra.ReadJSON(stmt)
+	if err != nil {
+		return nil, err
+	}
+	dt.SetName(fmt.Sprintf("%s.IncomeStatement(%s)", strings.ToUpper(t.symbol), freq))
+	return dt, nil
 }
 
 func (t *ticker) BalanceSheet(freq string) (*insyra.DataTable, error) {
@@ -445,7 +507,12 @@ func (t *ticker) BalanceSheet(freq string) (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
-	return insyra.ReadJSON(stmt)
+	dt, err := insyra.ReadJSON(stmt)
+	if err != nil {
+		return nil, err
+	}
+	dt.SetName(fmt.Sprintf("%s.BalanceSheet(%s)", strings.ToUpper(t.symbol), freq))
+	return dt, nil
 }
 
 func (t *ticker) CashFlow(freq string) (*insyra.DataTable, error) {
@@ -465,7 +532,12 @@ func (t *ticker) CashFlow(freq string) (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
-	return insyra.ReadJSON(stmt)
+	dt, err := insyra.ReadJSON(stmt)
+	if err != nil {
+		return nil, err
+	}
+	dt.SetName(fmt.Sprintf("%s.CashFlow(%s)", strings.ToUpper(t.symbol), freq))
+	return dt, nil
 }
 
 // Holders
@@ -486,7 +558,12 @@ func (t *ticker) MajorHolders() (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
-	return insyra.ReadJSON(h)
+	dt, err := insyra.ReadJSON(h)
+	if err != nil {
+		return nil, err
+	}
+	dt.SetName(fmt.Sprintf("%s.MajorHolders", strings.ToUpper(t.symbol)))
+	return dt, nil
 }
 
 func (t *ticker) InstitutionalHolders() (*insyra.DataTable, error) {
@@ -506,7 +583,12 @@ func (t *ticker) InstitutionalHolders() (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
-	return insyra.ReadJSON(h)
+	dt, err := insyra.ReadJSON(h)
+	if err != nil {
+		return nil, err
+	}
+	dt.SetName(fmt.Sprintf("%s.InstitutionalHolders", strings.ToUpper(t.symbol)))
+	return dt, nil
 }
 
 func (t *ticker) MutualFundHolders() (*insyra.DataTable, error) {
@@ -526,7 +608,12 @@ func (t *ticker) MutualFundHolders() (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
-	return insyra.ReadJSON(h)
+	dt, err := insyra.ReadJSON(h)
+	if err != nil {
+		return nil, err
+	}
+	dt.SetName(fmt.Sprintf("%s.MutualFundHolders", strings.ToUpper(t.symbol)))
+	return dt, nil
 }
 
 func (t *ticker) InsiderTransactions() (*insyra.DataTable, error) {
@@ -546,7 +633,12 @@ func (t *ticker) InsiderTransactions() (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
-	return insyra.ReadJSON(tx)
+	dt, err := insyra.ReadJSON(tx)
+	if err != nil {
+		return nil, err
+	}
+	dt.SetName(fmt.Sprintf("%s.InsiderTransactions", strings.ToUpper(t.symbol)))
+	return dt, nil
 }
 
 // FastInfo returns a quick summary as DataTable.
@@ -567,7 +659,12 @@ func (t *ticker) FastInfo() (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
-	return insyra.ReadJSON(fi)
+	dt, err := insyra.ReadJSON(fi)
+	if err != nil {
+		return nil, err
+	}
+	dt.SetName(fmt.Sprintf("%s.FastInfo", strings.ToUpper(t.symbol)))
+	return dt, nil
 }
 
 // Earnings returns earnings report data for the ticker.
@@ -594,7 +691,12 @@ func (t *ticker) EarningsEstimate() (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
-	return insyra.ReadJSON(est)
+	dt, err := insyra.ReadJSON(est)
+	if err != nil {
+		return nil, err
+	}
+	dt.SetName(fmt.Sprintf("%s.EarningsEstimate", strings.ToUpper(t.symbol)))
+	return dt, nil
 }
 
 // EarningsHistory returns historical earnings data as a DataTable.
@@ -615,7 +717,12 @@ func (t *ticker) EarningsHistory() (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
-	return insyra.ReadJSON(hs)
+	dt, err := insyra.ReadJSON(hs)
+	if err != nil {
+		return nil, err
+	}
+	dt.SetName(fmt.Sprintf("%s.EarningsHistory", strings.ToUpper(t.symbol)))
+	return dt, nil
 }
 
 // EPSTrend returns EPS trend data as a DataTable.
@@ -636,7 +743,12 @@ func (t *ticker) EPSTrend() (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
-	return insyra.ReadJSON(et)
+	dt, err := insyra.ReadJSON(et)
+	if err != nil {
+		return nil, err
+	}
+	dt.SetName(fmt.Sprintf("%s.EPSTrend", strings.ToUpper(t.symbol)))
+	return dt, nil
 }
 
 // EPSRevisions returns EPS revisions data as a DataTable.
@@ -657,7 +769,12 @@ func (t *ticker) EPSRevisions() (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
-	return insyra.ReadJSON(rev)
+	dt, err := insyra.ReadJSON(rev)
+	if err != nil {
+		return nil, err
+	}
+	dt.SetName(fmt.Sprintf("%s.EPSRevisions", strings.ToUpper(t.symbol)))
+	return dt, nil
 }
 
 // Recommendations returns analyst recommendations as a DataTable.
@@ -678,7 +795,12 @@ func (t *ticker) Recommendations() (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
-	return insyra.ReadJSON(recs)
+	dt, err := insyra.ReadJSON(recs)
+	if err != nil {
+		return nil, err
+	}
+	dt.SetName(fmt.Sprintf("%s.Recommendations", strings.ToUpper(t.symbol)))
+	return dt, nil
 }
 
 // AnalystPriceTargets returns analyst price targets as a DataTable.
@@ -699,7 +821,12 @@ func (t *ticker) AnalystPriceTargets() (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
-	return insyra.ReadJSON(apt)
+	dt, err := insyra.ReadJSON(apt)
+	if err != nil {
+		return nil, err
+	}
+	dt.SetName(fmt.Sprintf("%s.AnalystPriceTargets", strings.ToUpper(t.symbol)))
+	return dt, nil
 }
 
 // RevenueEstimate returns revenue estimates as a DataTable.
@@ -720,7 +847,12 @@ func (t *ticker) RevenueEstimate() (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
-	return insyra.ReadJSON(rev)
+	dt, err := insyra.ReadJSON(rev)
+	if err != nil {
+		return nil, err
+	}
+	dt.SetName(fmt.Sprintf("%s.RevenueEstimate", strings.ToUpper(t.symbol)))
+	return dt, nil
 }
 
 // Sustainability returns sustainability data as a DataTable.
@@ -747,7 +879,12 @@ func (t *ticker) GrowthEstimates() (*insyra.DataTable, error) {
 	if err != nil {
 		return nil, err
 	}
-	return insyra.ReadJSON(g)
+	dt, err := insyra.ReadJSON(g)
+	if err != nil {
+		return nil, err
+	}
+	dt.SetName(fmt.Sprintf("%s.GrowthEstimates", strings.ToUpper(t.symbol)))
+	return dt, nil
 }
 
 // FundsData returns fund-related data for ETFs/mutual funds.
@@ -760,140 +897,4 @@ func (t *ticker) FundsData() (*insyra.DataTable, error) {
 // Note: not implemented because underlying go-yfinance version does not expose this method.
 func (t *ticker) TopHoldings() (*insyra.DataTable, error) {
 	return nil, errors.New("yfinance: TopHoldings not supported by the installed go-yfinance backend")
-}
-
-// Download fetches historical data for a symbol or multiple symbols and
-// returns an insyra.DataTable. `symbols` can be a single string or []string.
-func (y *yahooFinance) Download(symbols any, params models.HistoryParams) (*insyra.DataTable, error) {
-	if y == nil {
-		return nil, errors.New("yfinance: yahooFinance is nil")
-	}
-	switch v := symbols.(type) {
-	case string:
-		// use underlying ticker client with retry/limiting
-		if y.client == nil {
-			return nil, errors.New("yfinance: client is nil")
-		}
-		tk, err := yfticker.New(v, yfticker.WithClient(y.client))
-		if err != nil {
-			return nil, err
-		}
-		defer tk.Close()
-
-		var lastErr error
-		for attempt := 0; attempt <= y.cfg.Retries; attempt++ {
-			if err := y.beforeRequest(); err != nil {
-				return nil, err
-			}
-
-			bars, err := tk.History(params)
-			if err == nil {
-				return insyra.ReadJSON(bars)
-			}
-
-			lastErr = classifyError(err)
-			if !retryable(lastErr) {
-				return nil, lastErr
-			}
-			if attempt < y.cfg.Retries {
-				y.sleepBackoff(attempt)
-			}
-		}
-		return nil, fmt.Errorf("yfinance: history failed: %w", lastErr)
-	case []string:
-		if len(v) == 0 {
-			return insyra.ReadJSON(map[string][]models.Bar{})
-		}
-
-		conc := y.cfg.Concurrency
-		if conc <= 0 {
-			conc = 1
-		}
-
-		type result struct {
-			symbol string
-			bars   []models.Bar
-			err    error
-		}
-
-		jobs := make(chan string)
-		results := make(chan result, len(v))
-
-		var wg sync.WaitGroup
-		worker := func() {
-			defer wg.Done()
-			for sym := range jobs {
-				// per-job request using underlying ticker and retries
-				var lastErr error
-				var bars []models.Bar
-				if y.client == nil {
-					results <- result{symbol: sym, bars: nil, err: errors.New("yfinance: client is nil")}
-					continue
-				}
-				tk, err := yfticker.New(sym, yfticker.WithClient(y.client))
-				if err != nil {
-					results <- result{symbol: sym, bars: nil, err: err}
-					continue
-				}
-				// close explicitly after use to avoid stacking defers inside loop
-
-				for attempt := 0; attempt <= y.cfg.Retries; attempt++ {
-					if err := y.beforeRequest(); err != nil {
-						lastErr = err
-						break
-					}
-					bars, err = tk.History(params)
-					if err == nil {
-						break
-					}
-					lastErr = classifyError(err)
-					if !retryable(lastErr) {
-						break
-					}
-					if attempt < y.cfg.Retries {
-						y.sleepBackoff(attempt)
-					}
-				}
-				// close ticker for this job
-				tk.Close()
-				results <- result{symbol: sym, bars: bars, err: lastErr}
-			}
-		}
-
-		wg.Add(conc)
-		for i := 0; i < conc; i++ {
-			go worker()
-		}
-
-		for _, sym := range v {
-			jobs <- sym
-		}
-		close(jobs)
-
-		wg.Wait()
-		close(results)
-
-		out := make(map[string][]models.Bar, len(v))
-		var firstErr error
-		for r := range results {
-			if r.err != nil && firstErr == nil {
-				firstErr = fmt.Errorf("yfinance: multi history failed (first error at %s): %w", r.symbol, r.err)
-			}
-			if r.err == nil {
-				out[r.symbol] = r.bars
-			}
-		}
-
-		if firstErr != nil && len(out) == 0 {
-			return nil, firstErr
-		}
-		// return available data as DataTable (may be partial)
-		dt, derr := insyra.ReadJSON(out)
-		if derr != nil {
-			return nil, derr
-		}
-		return dt, firstErr
-	default:
-		return nil, errors.New("yfinance: Download symbols must be string or []string")
-	}
 }

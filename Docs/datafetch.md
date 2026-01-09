@@ -277,6 +277,73 @@ func main() {
 }
 ```
 
+## Yahoo Finance (yfinance)
+
+A lightweight, Python-like wrapper for Yahoo Finance data. The wrapper adapts the public API to return `*insyra.DataTable` so results are ready for analysis.
+
+**Backend implementation:** this package uses [github.com/wnjoon/go-yfinance](https://github.com/wnjoon/go-yfinance) as the underlying implementation. When the backend does not expose a Python-equivalent feature, the corresponding method is deliberately implemented as a stub that returns a clear "not supported by the installed go-yfinance backend" error.
+
+### Quick example
+
+````go
+// Create a fetcher with defaults
+yf, err := datafetch.YFinance(datafetch.YFinanceConfig{})
+if err != nil {
+    panic(err)
+}
+
+// Single ticker history
+t, _ := yf.Ticker("AAPL")
+dt, err := t.History(datafetch.YFHistoryParams{Period: "1mo", Interval: "1d"})
+if err != nil {
+    panic(err)
+}
+dt.Show()
+
+// To fetch multiple symbols, create tickers and fetch each one (optionally in parallel).
+// Example (sequential):
+// tA, _ := yf.Ticker("AAPL")
+// dtA, _ := tA.History(datafetch.YFHistoryParams{Period: "1mo"})
+// tG, _ := yf.Ticker("GOOG")
+// dtG, _ := tG.History(datafetch.YFHistoryParams{Period: "1mo"})
+
+// If you need parallel multi-symbol fetches, implement your own worker pool that calls
+// `y.Ticker(sym)` and `ticker.History(...)` for each symbol. A `Tickers` helper may be
+// added to the package in the future.```
+
+### API highlights
+
+- `YFinance(cfg YFinanceConfig) (*yahooFinance, error)` — create a stateful fetcher. Resources are automatically cleaned up (the fetcher uses a finalizer to close the underlying client when it is garbage-collected). Note: finalizer timing is non-deterministic; if you need deterministic shutdown consider managing your own client lifecycle or request an exported shutdown API.
+- `(*yahooFinance).Ticker(symbol string) (*ticker, error)` — returns a `ticker` with many Python-like methods.
+- To fetch single-symbol history use `Ticker(...).History(...)`. For multi-symbol parallel fetches, create per-symbol tickers and run `History` in your own worker pool. (A `Tickers` helper may be added in the future.)
+- `ticker` methods return `*insyra.DataTable` for: `History`, `Quote`, `Info`, `Dividends`, `Splits`, `Actions`, `Options`, `OptionChain`, `News`, `Calendar`, `IncomeStatement`, `BalanceSheet`, `CashFlow`, `MajorHolders`, `InstitutionalHolders`, `MutualFundHolders`, `InsiderTransactions`, `FastInfo`, `EarningsEstimate`, `EarningsHistory`, `EPSTrend`, `EPSRevisions`, `Recommendations`, `AnalystPriceTargets`, `RevenueEstimate`, `GrowthEstimates`.
+
+### Configuration (YFinanceConfig)
+
+- `Timeout time.Duration` — per-request timeout. **Converted to seconds** when passed to the underlying client. Default: `15s`.
+- `Interval time.Duration` — spacing between requests for rate-limiting. `0` disables interval limiting.
+- `UserAgent string` — HTTP user agent header. Defaults to a common browser UA.
+- `Retries int` — number of retry attempts on retryable errors. `0` = no retries.
+- `RetryBackoff time.Duration` — base backoff between retries. Default: `300ms`.
+- `Concurrency int` — maximum concurrent workers for multi-symbol `Download`. Default: `6`.
+
+### Partial results & errors
+
+- `Download` with multiple symbols returns a `DataTable` of successful results. If at least one symbol succeeds but others fail, `Download` returns `(DataTable, error)` where `error` describes the first failure; callers can still inspect the returned `DataTable` for partial results.
+
+### Unsupported / stubbed methods
+
+The following methods are exposed in the API shape to match Python yfinance but are currently unimplemented in the vendored backend and therefore return an explicit error indicating lack of backend support:
+
+- `Earnings()` (full earnings reports)
+- `FundsData()`
+- `TopHoldings()`
+- `Sustainability()`
+
+Contributions to add these features are welcome: either upstream the implementation to `github.com/wnjoon/go-yfinance` or add a backend implementation here (open a PR/issue).
+
+---
+
 ## Method Chaining
 
 For concise code, you can chain method calls:
@@ -289,4 +356,4 @@ dt := datafetch.GoogleMapsStores().
         1,
     ).
     ToDataTable()
-```
+````
