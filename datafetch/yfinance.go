@@ -85,6 +85,9 @@ type yahooFinance struct {
 	cfg     YFinanceConfig
 	client  *yfclient.Client
 	limiter *limiter.IntervalLimiter
+	// timeoutSeconds holds the timeout value passed to the underlying client in seconds.
+	// This allows tests to verify the unit conversion from time.Duration.
+	timeoutSeconds int
 }
 
 // YFinance creates a YahooFinance fetcher using a config struct (no WithXxx in public API).
@@ -94,8 +97,10 @@ func YFinance(cfg YFinanceConfig) (*yahooFinance, error) {
 		return nil, err
 	}
 
+	secs := int(normalized.Timeout / time.Second)
 	c, err := yfclient.New(
-		yfclient.WithTimeout(int(normalized.Timeout)),
+		// WithTimeout expects an integer timeout value in seconds.
+		yfclient.WithTimeout(secs),
 		yfclient.WithUserAgent(normalized.UserAgent),
 	)
 	if err != nil {
@@ -103,9 +108,10 @@ func YFinance(cfg YFinanceConfig) (*yahooFinance, error) {
 	}
 
 	return &yahooFinance{
-		cfg:     normalized,
-		client:  c,
-		limiter: limiter.NewIntervalLimiter(normalized.Interval),
+		cfg:            normalized,
+		client:         c,
+		limiter:        limiter.NewIntervalLimiter(normalized.Interval),
+		timeoutSeconds: secs,
 	}, nil
 }
 
