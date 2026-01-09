@@ -78,7 +78,8 @@ func TestNormalizeDateColumns_AllTypes(t *testing.T) {
 
 	// Also check that date-only truncation applied (hour==0)
 	tm := dt2.GetColByNumber(0).Get(0).(time.Time)
-	if !(tm.Hour() == 0 && tm.Minute() == 0 && tm.Second() == 0) {
+	// Instead of negating the conjunction, use De Morgan's equivalent
+	if tm.Hour() != 0 || tm.Minute() != 0 || tm.Second() != 0 {
 		t.Fatalf("expected truncated date-only time, got %v", tm)
 	}
 }

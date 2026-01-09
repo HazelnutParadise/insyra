@@ -6,25 +6,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
-)
 
-// tryParseTime attempts to parse common date/time string formats and returns
-// the parsed time and true on success. Implemented locally to avoid cross-package
-// dependency on other helpers.
-func tryParseTime(str string) (time.Time, bool) {
-	formats := []string{
-		time.RFC3339,
-		time.RFC3339Nano,
-		"2006-01-02",
-		"2006-01-02T15:04:05Z07:00",
-	}
-	for _, f := range formats {
-		if t, err := time.Parse(f, str); err == nil {
-			return t, true
-		}
-	}
-	return time.Time{}, false
-}
+	"github.com/HazelnutParadise/insyra/internal/utils"
+)
 
 // RegisterStandardFunctions registers the standard library of CCL functions.
 // This includes logical functions (IF, AND, OR), string functions (CONCAT),
@@ -235,7 +219,7 @@ func RegisterStandardFunctions() {
 		case string:
 			if pd, err := time.ParseDuration(x); err == nil {
 				d = pd
-			} else if t, ok := tryParseTime(x); ok {
+			} else if t, ok := utils.TryParseTime(x); ok {
 				d = time.Duration(t.Sub(time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())))
 			} else {
 				return nil, fmt.Errorf("cannot parse duration or date from string: %s", x)
@@ -263,7 +247,7 @@ func RegisterStandardFunctions() {
 		case string:
 			if pd, err := time.ParseDuration(x); err == nil {
 				d = pd
-			} else if t, ok := tryParseTime(x); ok {
+			} else if t, ok := utils.TryParseTime(x); ok {
 				d = time.Duration(t.Sub(time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())))
 			} else {
 				return nil, fmt.Errorf("cannot parse duration or date from string: %s", x)
@@ -290,7 +274,7 @@ func RegisterStandardFunctions() {
 		case string:
 			if pd, err := time.ParseDuration(x); err == nil {
 				d = pd
-			} else if t, ok := tryParseTime(x); ok {
+			} else if t, ok := utils.TryParseTime(x); ok {
 				d = time.Duration(t.Sub(time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())))
 			} else {
 				return nil, fmt.Errorf("cannot parse duration or date from string: %s", x)
@@ -317,7 +301,7 @@ func RegisterStandardFunctions() {
 		case string:
 			if pd, err := time.ParseDuration(x); err == nil {
 				d = pd
-			} else if t, ok := tryParseTime(x); ok {
+			} else if t, ok := utils.TryParseTime(x); ok {
 				d = time.Duration(t.Sub(time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())))
 			} else {
 				return nil, fmt.Errorf("cannot parse duration or date from string: %s", x)

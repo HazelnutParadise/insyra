@@ -11,6 +11,7 @@ import (
 
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/datafetch/internal/limiter"
+	"github.com/HazelnutParadise/insyra/internal/utils"
 	yfclient "github.com/wnjoon/go-yfinance/pkg/client"
 	"github.com/wnjoon/go-yfinance/pkg/models"
 	yfticker "github.com/wnjoon/go-yfinance/pkg/ticker"
@@ -159,24 +160,6 @@ func (y *yahooFinance) sleepBackoff(attempt int) {
 	time.Sleep(y.cfg.RetryBackoff * time.Duration(attempt+1))
 }
 
-// tryParseTime attempts common date/time formats and returns the parsed time and true on success.
-// It covers RFC3339/RFC3339Nano and common date-only formats returned by various APIs.
-func tryParseTime(str string) (time.Time, bool) {
-	formats := []string{
-		time.RFC3339,
-		time.RFC3339Nano,
-		"2006-01-02",
-		"2006-01-02 15:04:05 -0700 MST",
-		"2006-01-02T15:04:05Z07:00",
-	}
-	for _, f := range formats {
-		if t, err := time.Parse(f, str); err == nil {
-			return t, true
-		}
-	}
-	return time.Time{}, false
-}
-
 // normalizeDateColumns converts any string columns whose name suggests a date/time into time.Time
 // with time truncated to date-only (midnight in original location).
 func normalizeDateColumns(dt *insyra.DataTable) *insyra.DataTable {
@@ -222,7 +205,7 @@ func normalizeDateColumns(dt *insyra.DataTable) *insyra.DataTable {
 		}
 		if convert {
 			if str, ok := element.(string); ok {
-				if parsed, ok := tryParseTime(str); ok {
+				if parsed, ok := utils.TryParseTime(str); ok {
 					return time.Date(parsed.Year(), parsed.Month(), parsed.Day(), 0, 0, 0, 0, parsed.Location())
 				}
 			}

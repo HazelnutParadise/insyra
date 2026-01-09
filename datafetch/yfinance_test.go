@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/internal/utils"
 )
 
 func TestTryParseTime(t *testing.T) {
@@ -14,7 +15,7 @@ func TestTryParseTime(t *testing.T) {
 		"2025-09-30",
 	}
 	for _, c := range cases {
-		if _, ok := tryParseTime(c); !ok {
+		if _, ok := utils.TryParseTime(c); !ok {
 			t.Fatalf("tryParseTime failed to parse %s", c)
 		}
 	}
@@ -33,7 +34,7 @@ func TestMapDateTruncate(t *testing.T) {
 	dt2 := dt.Map(func(rowIndex int, colIndex string, element any) any {
 		if dt.GetColNameByIndex(colIndex) == "dateReported" {
 			if str, ok := element.(string); ok {
-				if parsed, ok := tryParseTime(str); ok {
+				if parsed, ok := utils.TryParseTime(str); ok {
 					dateOnly := time.Date(parsed.Year(), parsed.Month(), parsed.Day(), 0, 0, 0, 0, parsed.Location())
 					return dateOnly
 				}
@@ -48,7 +49,8 @@ func TestMapDateTruncate(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected time.Time, got %T", v0)
 	}
-	if !(t0.Year() == 2025 && t0.Month() == time.September && t0.Day() == 30) {
+	// Use De Morgan's law instead of negating the conjunction
+	if t0.Year() != 2025 || t0.Month() != time.September || t0.Day() != 30 {
 		t.Fatalf("unexpected date: %v", t0)
 	}
 }

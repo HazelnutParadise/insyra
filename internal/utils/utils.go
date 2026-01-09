@@ -268,6 +268,24 @@ func convertTimestampToString(ts int64, goDateFormat string) string {
 	}
 }
 
+// TryParseTime attempts to parse common date/time string formats and returns
+// the parsed time and true on success. Exported so other packages can reuse it.
+func TryParseTime(str string) (time.Time, bool) {
+	formats := []string{
+		time.RFC3339,
+		time.RFC3339Nano,
+		"2006-01-02",
+		"2006-01-02T15:04:05Z07:00",
+		"2006-01-02 15:04:05 -0700 MST",
+	}
+	for _, f := range formats {
+		if t, err := time.Parse(f, str); err == nil {
+			return t, true
+		}
+	}
+	return time.Time{}, false
+}
+
 // IsColorSupported 檢測當前終端是否支持 ANSI 顏色代碼
 func IsColorSupported() bool {
 	// 檢測 NO_COLOR 環境變量
