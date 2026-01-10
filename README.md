@@ -27,7 +27,8 @@ Welcome to join [**Side Project Taiwan**(Discord Server)](https://discord.com/ch
 
 The **Insyra** library is a dynamic and versatile tool designed for managing and analyzing data in Go. It offers a rich set of features for data manipulation, statistical calculations, data visualization, and more, making it an essential toolkit for developers handling complex data structures.
 
-> [!TIP] > `isr` package provides **Sytax Sugar**!<br/>
+> [!TIP] 
+> `isr` package provides **Sytax Sugar**!<br/>
 > Any new project is recommended to use `isr` package instead of calling `insyra` main package directly.<br/>
 > For more details, please refer to the **[Documentation](/Docs/isr.md)**.
 
