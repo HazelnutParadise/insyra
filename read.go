@@ -377,7 +377,7 @@ type ReadSQLOptions struct {
 // Otherwise, it uses tableName and other options to construct the SQL query.
 func ReadSQL(db *gorm.DB, tableName string, options ...ReadSQLOptions) (*DataTable, error) {
 	if db == nil {
-		return nil, fmt.Errorf("db 參數不能為空")
+		return nil, fmt.Errorf("db cannot be nil")
 	}
 
 	// 設定默認選項
@@ -419,11 +419,11 @@ func ReadSQL(db *gorm.DB, tableName string, options ...ReadSQLOptions) (*DataTab
 		}
 
 		if err := result.Scan(&count).Error; err != nil {
-			return nil, fmt.Errorf("檢查表格 %s 存在時發生錯誤: %w", tableName, err)
+			return nil, fmt.Errorf("error checking existence of table %s: %w", tableName, err)
 		}
 
 		if count == 0 {
-			return nil, fmt.Errorf("表格 %s 不存在", tableName)
+			return nil, fmt.Errorf("table %s does not exist", tableName)
 		}
 
 		// 構建 SQL 查詢
@@ -441,18 +441,18 @@ func ReadSQL(db *gorm.DB, tableName string, options ...ReadSQLOptions) (*DataTab
 			query += fmt.Sprintf(" OFFSET %d", opts.Offset)
 		}
 	}
-	// 執行查詢
-	LogDebug("core", "ReadSQL", "執行SQL查詢: %s", query)
+	// Execute query
+	LogDebug("core", "ReadSQL", "Executing SQL query: %s", query)
 	rows, err := db.Raw(query, params...).Rows()
 	if err != nil {
-		return nil, fmt.Errorf("執行查詢時發生錯誤: %w", err)
+		return nil, fmt.Errorf("error executing query: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
-	// 獲取列名
+	// Get column names
 	columnNames, err := rows.Columns()
 	if err != nil {
-		return nil, fmt.Errorf("獲取列名時發生錯誤: %w", err)
+		return nil, fmt.Errorf("error getting column names: %w", err)
 	}
 
 	// 確定行名列的索引（如果有）
@@ -485,9 +485,9 @@ func ReadSQL(db *gorm.DB, tableName string, options ...ReadSQLOptions) (*DataTab
 	var rowIndex = 0
 
 	for rows.Next() {
-		// 讀取數據
+		// Read data
 		if err := rows.Scan(scanArgs...); err != nil {
-			return nil, fmt.Errorf("讀取行數據時發生錯誤: %w", err)
+			return nil, fmt.Errorf("error scanning row data: %w", err)
 		}
 
 		// 保存行名（如果有）
@@ -520,9 +520,10 @@ func ReadSQL(db *gorm.DB, tableName string, options ...ReadSQLOptions) (*DataTab
 			}
 		}
 		rowIndex++
-	} // 檢查是否有任何迭代錯誤
+	}
+	// Check for any iteration errors
 	if err = rows.Err(); err != nil {
-		return nil, fmt.Errorf("迭代行時發生錯誤: %w", err)
+		return nil, fmt.Errorf("error iterating over rows: %w", err)
 	}
 
 	// 將列添加到 DataTable 中
