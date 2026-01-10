@@ -1,3 +1,5 @@
+// FIXME: this crawler doesn't work anymore because Google has changed their API.
+
 package datafetch
 
 import (
