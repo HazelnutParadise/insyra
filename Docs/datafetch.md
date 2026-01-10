@@ -297,11 +297,8 @@ func main() {
         Timeout: 10 * time.Second,
     })
 
-    // 2. Get a Ticker object
-    t, _ := yf.Ticker("AAPL")
-
-    // 3. Fetch historical data (as DataTable)
-    history, _ := t.History(datafetch.YFHistoryParams{
+    // 2. Fetch historical data (as DataTable) using chained calls
+    history, _ := yf.Ticker("AAPL").History(datafetch.YFHistoryParams{
         Period:   "1mo",
         Interval: "1d",
     })
@@ -330,6 +327,14 @@ Creates a stateful fetcher instance.
 | `UserAgent`    | `string`        | HTTP User-Agent header.                                                      | (Default browser UA) |
 | `Retries`      | `int`           | Number of retry attempts on failure.                                         | `0`                  |
 | `RetryBackoff` | `time.Duration` | Base backoff duration between retries.                                       | `300ms`              |
+
+#### Ticker
+
+```go
+func (y *yahooFinance) Ticker(symbol string) *ticker
+```
+
+Returns a ticker object bound to the fetcher instance. This method is designed to support chained calls (e.g., `yf.Ticker("AAPL").History(...)`). Any errors encountered during initialization or method calls are returned by the subsequent action methods.
 
 ---
 
