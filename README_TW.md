@@ -33,7 +33,8 @@ Go 語言次世代資料分析庫。支援 **平行處理**、**資料視覺化*
 > [!NOTE]
 > 如果文檔中的某些功能無法使用，可能是該功能還未包含在最新發布的版本中。請至 **[Releases](https://github.com/HazelnutParadise/insyra/releases)** 查看對應版本源碼中的文檔。
 
-> [!IMPORTANT] > **對於 Insyra 文檔中未明確列出的任何函數或方法，表示該功能仍在積極開發中。這些實驗性功能可能會提供不穩定的結果。**<br/>
+> [!IMPORTANT] 
+> **對於 Insyra 文檔中未明確列出的任何函數或方法，表示該功能仍在積極開發中。這些實驗性功能可能會提供不穩定的結果。**<br/>
 > 請參閱我們 **[文檔](https://github.com/HazelnutParadise/insyra/tree/main/Docs)** 資料夾中的最新更新以獲取更多詳細資訊。
 
 ## [Idensyra](https://github.com/HazelnutParadise/idensyra)
