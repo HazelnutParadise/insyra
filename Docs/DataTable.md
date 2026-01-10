@@ -533,21 +533,34 @@ func (dt *DataTable) ToSQL(db *gorm.DB, tableName string, options ...ToSQLOption
 
 **Description:** Writes the DataTable to a SQL database.
 
+**Behavior:**
+
+- All database operations performed by `ToSQL` (CREATE TABLE, ALTER TABLE, INSERT, etc.) are executed inside a single database transaction. If any step fails, the transaction is rolled back and no partial changes are committed. ✅
+- When `IfExists` is set to append mode, `ToSQL` will add missing columns to the existing table to accommodate new data.
+- You can provide `ColumnTypes` to override inferred column types.
+
 **Parameters:**
 
 - `db`: GORM database connection
 - `tableName`: Target table name
 - `options`: Optional SQL options
+  - `IfExists` (type `SQLActionIfTableExists`): Controls behavior when the target table already exists:
+    - `SQLActionIfTableExistsFail` — return an error if the table exists (default)
+    - `SQLActionIfTableExistsReplace` — drop and recreate the table
+    - `SQLActionIfTableExistsAppend` — keep the table and append rows, adding missing columns if needed
+  - `RowNames` (bool): If true, include row names as a `row_name` column (type `TEXT` by default)
+  - `ColumnTypes` (map[string]string): Optional explicit SQL column types to use instead of type inference
 
 **Returns:**
 
-- `error`: Error information, returns nil if successful
+- `error`: Error information, returns nil if successful; if any DDL/DML step fails, an error is returned and the entire operation is rolled back.
 
 **Example:**
 
 ```go
 db, _ := gorm.Open(mysql.Open("connection_string"))
-err := dt.ToSQL(db, "users")
+// Replace existing table if present
+err := dt.ToSQL(db, "users", ToSQLOptions{IfExists: SQLActionIfTableExistsReplace})
 if err != nil {
     log.Fatal(err)
 }
