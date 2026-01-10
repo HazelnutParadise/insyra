@@ -95,6 +95,7 @@ func (dt *DataTable) AppendCols(columns ...*DataList) *DataTable {
 				col.data = append(col.data, make([]any, maxLength-len(col.data))...)
 			}
 		}
+
 		go dt.updateTimestamp()
 	})
 	return dt
@@ -222,6 +223,7 @@ func (dt *DataTable) AppendRowsByColName(rowsData ...map[string]any) *DataTable 
 					dt.columns = append(dt.columns, newCol)
 					LogDebug("DataTable", "AppendRowsByColName", "Added new column %s at index %d", colName, len(dt.columns)-1)
 				}
+
 			}
 
 			for _, column := range dt.columns {
@@ -286,6 +288,13 @@ func (dt *DataTable) GetCol(index string) *DataList {
 			result = dt.columns[colPos].Clone()
 			return
 		}
+
+		// Try name-based lookup using cache-aware GetColByName
+		if res := dt.GetColByName(index); res != nil {
+			result = res
+			return
+		}
+
 		dt.warn("GetCol", "Column '%s' not found, returning nil", index)
 		result = nil
 	})
@@ -313,15 +322,16 @@ func (dt *DataTable) GetColByNumber(index int) *DataList {
 func (dt *DataTable) GetColByName(name string) *DataList {
 	var result *DataList
 	dt.AtomicDo(func(dt *DataTable) {
+		// Linear scan for column by name
 		for _, column := range dt.columns {
 			if column.name == name {
-				// 初始化新的 DataList 並分配 data 切片的大小
 				result = column.Clone()
 				return
 			}
 		}
 		dt.warn("GetColByName", "Column '%s' not found, returning nil", name)
 		result = nil
+
 	})
 	return result
 }
