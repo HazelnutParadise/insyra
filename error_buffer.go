@@ -70,7 +70,6 @@ var (
 
 // helper methods for ring
 func (r *errorRing) len() int              { return r.size }
-func (r *errorRing) cap() int              { return len(r.buf) }
 func (r *errorRing) get(i int) errorStruct { return r.buf[(r.head+i)%len(r.buf)] }
 
 func (r *errorRing) toSlice() []errorStruct {
