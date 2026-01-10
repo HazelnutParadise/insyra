@@ -38,6 +38,9 @@ type DataTable struct {
 	creationTimestamp     int64
 	lastModifiedTimestamp atomic.Int64
 
+	// Cached column name -> index map for O(1) name lookup (lazy built, invalidated on changes)
+	colIndexMap map[string]int
+
 	// AtomicDo support
 	cmdCh    chan func()
 	initOnce sync.Once
@@ -53,6 +56,7 @@ func NewDataTable(columns ...*DataList) *DataTable {
 		columns:           []*DataList{},
 		rowNames:          core.NewBiIndex(0),
 		creationTimestamp: now,
+		colIndexMap:       nil,
 	}
 
 	newTable.lastModifiedTimestamp.Store(now)
@@ -95,6 +99,10 @@ func (dt *DataTable) AppendCols(columns ...*DataList) *DataTable {
 				col.data = append(col.data, make([]any, maxLength-len(col.data))...)
 			}
 		}
+
+		// Invalidate column cache because schema changed
+		dt.colIndexMap = nil
+
 		go dt.updateTimestamp()
 	})
 	return dt
@@ -221,7 +229,10 @@ func (dt *DataTable) AppendRowsByColName(rowsData ...map[string]any) *DataTable 
 					newCol.data = append(newCol.data, value)
 					dt.columns = append(dt.columns, newCol)
 					LogDebug("DataTable", "AppendRowsByColName", "Added new column %s at index %d", colName, len(dt.columns)-1)
+					// Invalidate column cache due to schema change
+					dt.colIndexMap = nil
 				}
+
 			}
 
 			for _, column := range dt.columns {
@@ -286,6 +297,13 @@ func (dt *DataTable) GetCol(index string) *DataList {
 			result = dt.columns[colPos].Clone()
 			return
 		}
+
+		// Try name-based lookup using cache-aware GetColByName
+		if res := dt.GetColByName(index); res != nil {
+			result = res
+			return
+		}
+
 		dt.warn("GetCol", "Column '%s' not found, returning nil", index)
 		result = nil
 	})
@@ -313,15 +331,29 @@ func (dt *DataTable) GetColByNumber(index int) *DataList {
 func (dt *DataTable) GetColByName(name string) *DataList {
 	var result *DataList
 	dt.AtomicDo(func(dt *DataTable) {
-		for _, column := range dt.columns {
+		// Try cache first
+		if dt.colIndexMap != nil {
+			if pos, ok := dt.colIndexMap[name]; ok && pos >= 0 && pos < len(dt.columns) {
+				result = dt.columns[pos].Clone()
+				return
+			}
+		}
+
+		// Fallback to linear scan and populate cache lazily
+		for i, column := range dt.columns {
 			if column.name == name {
-				// 初始化新的 DataList 並分配 data 切片的大小
+				// initialize cache if nil
+				if dt.colIndexMap == nil {
+					dt.colIndexMap = make(map[string]int, len(dt.columns))
+				}
+				dt.colIndexMap[column.name] = i
 				result = column.Clone()
 				return
 			}
 		}
 		dt.warn("GetColByName", "Column '%s' not found, returning nil", name)
 		result = nil
+
 	})
 	return result
 }
