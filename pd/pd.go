@@ -128,9 +128,9 @@ func (t *DataFrame) ToDataTable() (*insyra.DataTable, error) {
 		return nil, fmt.Errorf("nil Table or DataFrame")
 	}
 
-	cols := make([]*insyra.DataList, 0, len(t.DataFrame.ColumnOrder))
-	for _, name := range t.DataFrame.ColumnOrder {
-		series, ok := t.DataFrame.Columns[name]
+	cols := make([]*insyra.DataList, 0, len(t.ColumnOrder))
+	for _, name := range t.ColumnOrder {
+		series, ok := t.Columns[name]
 		if !ok {
 			return nil, fmt.Errorf("missing column %s", name)
 		}
@@ -142,8 +142,8 @@ func (t *DataFrame) ToDataTable() (*insyra.DataTable, error) {
 
 	dt := insyra.NewDataTable(cols...)
 	// set row names if DataFrame has an index
-	if len(t.DataFrame.Index) > 0 {
-		dt.SetRowNames(t.DataFrame.Index)
+	if len(t.Index) > 0 {
+		dt.SetRowNames(t.Index)
 	}
 	return dt, nil
 }
