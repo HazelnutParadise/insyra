@@ -314,6 +314,10 @@ err := parquet.ApplyCCL(ctx, "data.parquet", "NEW('total') = A + B + C")
 
 使用 [GLPK](https://www.gnu.org/software/glpk/) 的全自動線性規劃（LP）包。
 
+### **[engine](/engine/README.md)**
+
+`engine` 包導出了部分 Insyra 內部實現，供開發者自由運用在任何專案。
+
 ## 進階使用
 
 除了基本用法外，**Insyra** 還提供了處理不同數據類型和執行複雜統計操作的強大功能。請在 **[詳細文檔](https://github.com/HazelnutParadise/insyra/tree/main/Docs)** 中探索更多內容。
