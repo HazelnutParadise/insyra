@@ -298,6 +298,10 @@ err := parquet.ApplyCCL(ctx, "data.parquet", "NEW('total') = A + B + C")
 
 在 Go 中執行 Python 程式碼，無需手動安裝 Python 環境和依賴庫。允許在 Go 和 Python 之間傳遞變數。
 
+### **[pd](/Docs/pd.md)**
+
+基於 `gpandas` 的 Pandas 風格 `DataFrame` 工具。提供 `DataTable` 與 `gpandas.DataFrame` 之間的轉換，以及類似 pandas 的 API。參考 `gpandas` 文件: https://gpandas.apoplexi.com/docs/
+
 ### **[datafetch](/Docs/datafetch.md)**
 
 讓您輕鬆取得網路上的數據。目前包含 Google Maps 商家評論爬蟲與 Yahoo Finance 包裝器（使用 [go-yfinance](https://github.com/wnjoon/go-yfinance) 支援）。遠端抓取需要網路連線，部分功能依賴第三方後端，可能會變動。

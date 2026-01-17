@@ -301,6 +301,10 @@ Provides marketing-related data analysis functions, such as RFM analysis. No nee
 
 Execute Python code in Go without manually installing Python environment and dependencies. Allows passing variables between Go and Python.
 
+### **[pd](/Docs/pd.md)**
+
+Pandas-like DataFrame helpers built on top of `gpandas`. Provides conversion helpers between Insyra's `DataTable` and `gpandas.DataFrame`, and exposes a pandas-like API in Go. See the package docs at `/Docs/pd.md` and the upstream `gpandas` documentation: https://gpandas.apoplexi.com/docs/
+
 ### **[datafetch](/Docs/datafetch.md)**
 
 Allows you to fetch data easily. It currently includes a Google Maps store review crawler and a Yahoo Finance wrapper (powered by [go-yfinance](https://github.com/wnjoon/go-yfinance)). Network access is required for remote fetchers and some features depend on third-party backends which may change.

@@ -82,6 +82,7 @@ dt.Show()
 | [py](py.md)             | Execute Python code from Go with an auto-managed Python env |
 | [parallel](parallel.md) | Simple parallel execution of functions                      |
 | [utils](utils.md)       | Helper functions for type conversion and data processing    |
+| [pd](pd.md)             | Pandas-like DataFrame helpers and conversions               |
 
 ### Installation
 
