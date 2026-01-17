@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/HazelnutParadise/Go-Utils/conv"
+	"github.com/HazelnutParadise/insyra/internal/algorithms"
 	"github.com/HazelnutParadise/insyra/internal/utils"
 	"github.com/saintfish/chardet"
 )
@@ -240,7 +241,7 @@ func CalcColIndex(colNumber int) (colIndex string, ok bool) {
 // SortTimes sorts a slice of time.Time in ascending order.
 // It sorts the times directly in the provided slice.
 func SortTimes(times []time.Time) {
-	utils.ParallelSortStableFunc(times, func(a, b time.Time) int {
+	algorithms.ParallelSortStableFunc(times, func(a, b time.Time) int {
 		if a.Before(b) {
 			return -1
 		} else if a.After(b) {

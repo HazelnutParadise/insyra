@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/HazelnutParadise/insyra/internal/algorithms"
 	"github.com/HazelnutParadise/insyra/internal/utils"
 	"github.com/mattn/go-runewidth"
 	"golang.org/x/term"
@@ -72,7 +73,7 @@ func (dt *DataTable) ShowRange(startEnd ...any) {
 			colIndices = append(colIndices, colIndex)
 		}
 
-		utils.ParallelSortStableFunc(colIndices, func(a, b string) int {
+		algorithms.ParallelSortStableFunc(colIndices, func(a, b string) int {
 			prefixA := a
 			if idx := strings.Index(a, "("); idx != -1 {
 				prefixA = a[:idx]

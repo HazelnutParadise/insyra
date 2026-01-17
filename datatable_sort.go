@@ -1,7 +1,7 @@
 package insyra
 
 import (
-	"github.com/HazelnutParadise/insyra/internal/utils"
+	"github.com/HazelnutParadise/insyra/internal/algorithms"
 )
 
 type DataTableSortConfig struct {
@@ -48,8 +48,8 @@ func (dt *DataTable) SortBy(configs ...DataTableSortConfig) *DataTable {
 			for i := range indices {
 				indices[i] = i
 			}
-			utils.ParallelSortStableFunc(indices, func(a, b int) int {
-				cmp := utils.CompareAny(column.Data()[a], column.Data()[b])
+			algorithms.ParallelSortStableFunc(indices, func(a, b int) int {
+				cmp := algorithms.CompareAny(column.Data()[a], column.Data()[b])
 				if config.Descending {
 					return -cmp
 				}
