@@ -304,11 +304,12 @@ func PipInstall(dep string) error {
 	}
 	pythonCmd := exec.Command("uv", "pip", "install", dep, "--python", pyPath)
 	pythonCmd.Dir = absInstallDir
-	pythonCmd.Stdout = os.Stdout
-	pythonCmd.Stderr = os.Stderr
-	err := pythonCmd.Run()
-	if err != nil {
-		return fmt.Errorf("failed to install dependency %s: %w", dep, err)
+	var stdout, stderr bytes.Buffer
+	pythonCmd.Stdout = &stdout
+	pythonCmd.Stderr = &stderr
+	utils.ApplyHideWindow(pythonCmd)
+	if err := pythonCmd.Run(); err != nil {
+		return fmt.Errorf("failed to install dependency %s: %w. stderr: %s", dep, err, stderr.String())
 	}
 	insyra.LogInfo("py", "PipInstall", "Installed dependency: %s", dep)
 	return nil
@@ -321,11 +322,12 @@ func PipUninstall(dep string) error {
 	}
 	pythonCmd := exec.Command("uv", "pip", "uninstall", dep, "--python", pyPath)
 	pythonCmd.Dir = absInstallDir
-	pythonCmd.Stdout = os.Stdout
-	pythonCmd.Stderr = os.Stderr
-	err := pythonCmd.Run()
-	if err != nil {
-		return fmt.Errorf("failed to uninstall dependency %s: %w", dep, err)
+	var stdout, stderr bytes.Buffer
+	pythonCmd.Stdout = &stdout
+	pythonCmd.Stderr = &stderr
+	utils.ApplyHideWindow(pythonCmd)
+	if err := pythonCmd.Run(); err != nil {
+		return fmt.Errorf("failed to uninstall dependency %s: %w. stderr: %s", dep, err, stderr.String())
 	}
 	insyra.LogInfo("py", "PipUninstall", "Uninstalled dependency: %s", dep)
 	return nil
@@ -344,9 +346,9 @@ func PipList() (map[string]string, error) {
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+	utils.ApplyHideWindow(cmd)
 
 	if err := cmd.Run(); err != nil {
-		insyra.LogInfo("py", "PipList", "Failed to list installed packages. Stdout: %s Stderr: %s Error: %v", stdout.String(), stderr.String(), err)
 		return nil, fmt.Errorf("failed to list installed packages: %w", err)
 	}
 
@@ -356,7 +358,6 @@ func PipList() (map[string]string, error) {
 	}
 	var pkgs []pipPkg
 	if err := json.Unmarshal(stdout.Bytes(), &pkgs); err != nil {
-		insyra.LogInfo("py", "PipList", "Failed to parse pip list JSON: %v", err)
 		return nil, fmt.Errorf("failed to parse pip list output: %w", err)
 	}
 
@@ -381,9 +382,9 @@ func PipFreeze() ([]string, error) {
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+	utils.ApplyHideWindow(cmd)
 
 	if err := cmd.Run(); err != nil {
-		insyra.LogInfo("py", "PipFreeze", "Failed to run pip freeze. Stdout: %s Stderr: %s Error: %v", stdout.String(), stderr.String(), err)
 		return nil, fmt.Errorf("failed to freeze installed packages: %w", err)
 	}
 
@@ -404,19 +405,15 @@ func createTempPythonScript(code string) (string, func(), error) {
 	scriptPath := tmpFile.Name()
 
 	if _, err := tmpFile.WriteString(code); err != nil {
-		if cerr := tmpFile.Close(); cerr != nil {
-			insyra.LogWarning("py", "createTempPythonScript", "failed to close tmp file: %v", cerr)
-		}
-		if rerr := os.Remove(scriptPath); rerr != nil && !os.IsNotExist(rerr) {
-			insyra.LogWarning("py", "createTempPythonScript", "failed to remove temp file: %v", rerr)
-		}
+		// attempt best-effort cleanup without logging (caller expects an error)
+		_ = tmpFile.Close()
+		_ = os.Remove(scriptPath)
 		return "", nil, fmt.Errorf("failed to write temp python file: %w", err)
 	}
 
 	if err := tmpFile.Close(); err != nil {
-		if rerr := os.Remove(scriptPath); rerr != nil && !os.IsNotExist(rerr) {
-			insyra.LogWarning("py", "createTempPythonScript", "failed to remove temp file: %v", rerr)
-		}
+		// attempt best-effort cleanup without logging (caller expects an error)
+		_ = os.Remove(scriptPath)
 		return "", nil, fmt.Errorf("failed to close temp python file: %w", err)
 	}
 

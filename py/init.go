@@ -187,9 +187,8 @@ func installDependenciesUv(projectDir string) error {
 		utils.ApplyHideWindow(cmd)
 		err := cmd.Run()
 		if err != nil {
-			fmt.Printf("Stdout: %s", stdout.String())
-			fmt.Printf("Stderr: %s", stderr.String())
-			return fmt.Errorf("failed to install dependency %s: %w", dep, err)
+			// return error including stdout/stderr but do not log/print here
+			return fmt.Errorf("failed to install dependency %s: %w. stdout: %s stderr: %s", dep, err, stdout.String(), stderr.String())
 		}
 
 		completed++
