@@ -10,7 +10,6 @@ The `engine` package re-exports some of Insyra's core data structures and algori
   - [Ring](#ring)
   - [CCL](#ccl)
   - [Sorting & Comparison Utilities](#sorting--comparison-utilities)
-- [Examples](#examples)
 - [Notes](#notes)
 - [Related Links](#related-links)
 
@@ -18,13 +17,15 @@ The `engine` package re-exports some of Insyra's core data structures and algori
 
 ## Overview
 
-`engine` aims to expose a small set of highly useful internals from `internal/core` and `internal/algorithms` with a clean API. Typical use cases include a stable id↔name index (`BiIndex`), mixed-type comparison utilities (`CompareAny` / `GetTypeSortingRank`), and a stable parallel sorter for large slices (`ParallelSortStableFunc`).
+`engine` aims to expose a small set of highly useful internals from `internal/core` and `internal/algorithms` with a clean API. The package now hosts focused subpackages (e.g., `engine/biindex`, `engine/ring`, `engine/algorithms`, `engine/ccl`) — import those directly instead of using top-level re-exports. Typical use cases include a stable id↔name index (`BiIndex`), mixed-type comparison utilities (`CompareAny` / `GetTypeSortingRank`), and a stable parallel sorter for large slices (`ParallelSortStableFunc`).
 
 ## Exports
 
 ### BiIndex
 
 `BiIndex` is a bidirectional index (id ↔ name) that guarantees stable ids and supports reusing deleted ids via a free list. It is deliberately implemented as non-concurrent; callers should provide synchronization when used from multiple goroutines.
+
+**Package:** `engine/biindex`.
 
 ```go
 // type alias
@@ -47,12 +48,22 @@ Key methods (see `internal/core/biindex.go` for full details):
 Example:
 
 ```go
-b := NewBiIndex(16)
-idA, _ := b.Assign("Alice")
-idB, _ := b.Assign("Bob")
-name, ok := b.Get(idA) // "Alice", true
-b.DeleteByName("Bob")
-// idB will be added to free list and may be reused by subsequent Assign calls
+package main
+
+import (
+    "fmt"
+    "github.com/HazelnutParadise/insyra/engine/biindex"
+)
+
+func main() {
+    b := biindex.NewBiIndex(16)
+    idA, _ := b.Assign("Alice")
+    idB, _ := b.Assign("Bob")
+    name, ok := b.Get(idA) // "Alice", true
+    fmt.Println(name, ok)
+    b.DeleteByName("Bob")
+    // idB will be added to free list and may be reused by subsequent Assign calls
+}
 ```
 
 #### Performance Characteristics ⚡
@@ -80,6 +91,8 @@ Space complexity: O(n) additional space for the two maps and the free-list where
 
 `Ring` is a non-thread-safe circular buffer with dynamic growth. It is suitable for building higher-level queues or error rings.
 
+**Package:** `engine/ring`.
+
 ```go
 // type alias
 type Ring[T any] = core.Ring[T]
@@ -100,6 +113,26 @@ Key methods (see `internal/core/ring.go` for full details):
 - `DeleteAt(idx int) (T, bool)` — remove the element at logical index `idx`.
 
 **Concurrency note:** `Ring` is NOT concurrent-safe; provide external synchronization when used across goroutines.
+
+Example:
+
+```go
+package main
+
+import (
+    "fmt"
+    "github.com/HazelnutParadise/insyra/engine/ring"
+)
+
+func main() {
+    r := ring.NewRing[int](8)
+    r.Push(1)
+    r.Push(2)
+    fmt.Println(r.Len()) // 2
+    if v, ok := r.PopFront(); ok { fmt.Println(v) } // 1
+    fmt.Println(r.ToSlice()) // [2]
+}
+```
 
 ### CCL
 
@@ -132,7 +165,46 @@ Key notes (see `internal/ccl` and `Docs/CCL.md` for full details):
 - Call `ccl.RegisterStandardFunctions()` (from the `engine/ccl` subpackage) once to register built-in scalar and aggregate functions (e.g., `IF`, `SUM`, `AVG`, `CONCAT`). Registration is package-global (stored in `internal/ccl`'s function maps), so once registered all implementations of the `ccl.Context` interface can use these functions. It is recommended to call this at startup (e.g., in `main` or `init`) and protect with `sync.Once` if there is any chance of concurrent registration.
 - `MapContext` (see `internal/ccl/map_context.go`) implements `Context` for a `map[string][]any` and is useful for tests and quick experiments.
 
+Examples:
+
+```go
+package main
+
+import (
+    "fmt"
+    "github.com/HazelnutParadise/insyra/engine/ccl"
+)
+
+func exampleEvaluatePerRow() {
+    data := map[string][]any{
+        "A": {1.0, 2.0},
+        "B": {3.0, 4.0},
+    }
+    ctx, _ := ccl.NewMapContext(data)
+    node, _ := ccl.CompileExpression("A + B")
+    for i := 0; i < ctx.GetRowCount(); i++ {
+        ctx.SetRowIndex(i)
+        v, _ := ccl.Evaluate(node, ctx)
+        fmt.Println(v) // 4, 6
+    }
+}
+```
+
+Register standard functions (call once during startup):
+
+```go
+package main
+
+import "github.com/HazelnutParadise/insyra/engine/ccl"
+
+func init() {
+    ccl.RegisterStandardFunctions()
+}
+```
+
 ### Sorting & Comparison Utilities
+
+**Package:** `engine/algorithms`.
 
 ```go
 func GetTypeSortingRank(v any) int
@@ -148,8 +220,10 @@ Sorting example:
 
 ```go
 // sort []int
+import "github.com/HazelnutParadise/insyra/engine/algorithms"
+
 ints := []int{5, 3, 1, 4, 2}
-ParallelSortStableFunc(ints, func(a, b int) int {
+algorithms.ParallelSortStableFunc(ints, func(a, b int) int {
     if a < b { return -1 }
     if a > b { return 1 }
     return 0
@@ -157,83 +231,15 @@ ParallelSortStableFunc(ints, func(a, b int) int {
 
 // sort []any (mixed types) using CompareAny
 vals := []any{3, "abc", nil, 1.2, true}
-ParallelSortStableFunc(vals, func(a, b any) int { return CompareAny(a, b) })
+algorithms.ParallelSortStableFunc(vals, func(a, b any) int { return algorithms.CompareAny(a, b) })
 ```
 
-## Examples
-
-- Create and use `BiIndex`:
-
-```go
-b := NewBiIndex(0)
-if id, ok := b.Assign("col_A"); ok {
-    fmt.Println("assigned id", id)
-}
-if id, ok := b.Index("col_A"); ok {
-    fmt.Println("index of col_A =", id)
-}
-```
-
-- Use a `Ring`:
-
-```go
-r := NewRing[int](8)
-r.Push(1)
-r.Push(2)
-fmt.Println(r.Len()) // 2
-if v, ok := r.PopFront(); ok { fmt.Println(v) } // 1
-fmt.Println(r.ToSlice()) // [2]
-```
-
-- Use CCL to evaluate an expression per-row:
-
-> Note: Any structure that implements the `ccl.Context` interface (in the `engine/ccl` subpackage) can be used to evaluate CCL expressions; `NewMapContext` is a convenient implementation for tests and quick experiments.
-
-```go
-import "github.com/HazelnutParadise/insyra/engine/ccl"
-
-data := map[string][]any{
-    "A": {1.0, 2.0},
-    "B": {3.0, 4.0},
-}
-ctx, _ := ccl.NewMapContext(data)
-node, _ := ccl.CompileExpression("A + B")
-for i := 0; i < ctx.GetRowCount(); i++ {
-    ctx.SetRowIndex(i)
-    v, _ := ccl.Evaluate(node, ctx)
-    fmt.Println(v) // 4, 6
-}
-```
-
-- Register standard CCL functions for evaluation (call once via `engine`):
-
-```go
-engine.RegisterStandardFunctions()
-```
-
-- Compare two values with `CompareAny`: 
-
-
-```go
-cmp := CompareAny(10, "10") // type-ranking first; numeric values are ranked differently than strings
-```
-
-- Use stable parallel sort on large datasets:
-
-```go
-records := make([]Record, 100000)
-// populate records...
-ParallelSortStableFunc(records, func(a, b Record) int {
-    // return -1, 0, 1 according to comparison
-})
-```
-
-## Notes ⚠️
+## Notes
 
 - See `internal/algorithms/sort.go` for the exact behavior and trade-offs of `CompareAny` and `GetTypeSortingRank`.
 - `ParallelSortStableFunc` offers benefits on large slices; for small slices it falls back to a single-threaded stable sort.
 
-## Related Links 🔗
+## Related Links
 
 - Internal implementation: `internal/core` (`BiIndex`)
 - Algorithms implementation: `internal/algorithms` (sorting / comparison)
