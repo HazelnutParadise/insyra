@@ -7,6 +7,7 @@ The `engine` package re-exports some of Insyra's core data structures and algori
 - [Overview](#overview)
 - [Exports](#exports)
   - [BiIndex](#biindex)
+  - [Ring](#ring)
   - [Sorting & Comparison Utilities](#sorting--comparison-utilities)
 - [Examples](#examples)
 - [Notes](#notes)
@@ -74,6 +75,31 @@ Space complexity: O(n) additional space for the two maps and the free-list where
 
 **Concurrency note:** `BiIndex` is NOT concurrent-safe; provide external synchronization (e.g., `sync.Mutex`) when using across goroutines.
 
+### Ring
+
+`Ring` is a non-thread-safe circular buffer with dynamic growth. It is suitable for building higher-level queues or error rings.
+
+```go
+// type alias
+type Ring[T any] = core.Ring[T]
+
+// Constructor
+func NewRing[T any](capacity int) *Ring[T]
+```
+
+Key methods (see `internal/core/ring.go` for full details):
+
+- `Len() int` — number of elements currently in the ring.
+- `Get(i int) (T, bool)` — return element at logical index `i` (0..Len-1).
+- `ToSlice() []T` — return a copy of the ring contents in logical order.
+- `Clear()` — remove all elements while keeping capacity.
+- `Push(v T)` — add an element to the back of the ring.
+- `PopFront() (T, bool)` — remove and return the front element.
+- `PopBack() (T, bool)` — remove and return the last element.
+- `DeleteAt(idx int) (T, bool)` — remove the element at logical index `idx`.
+
+**Concurrency note:** `Ring` is NOT concurrent-safe; provide external synchronization when used across goroutines.
+
 ### Sorting & Comparison Utilities
 
 ```go
@@ -116,7 +142,19 @@ if id, ok := b.Index("col_A"); ok {
 }
 ```
 
+- Use a `Ring`:
+
+```go
+r := NewRing[int](8)
+r.Push(1)
+r.Push(2)
+fmt.Println(r.Len()) // 2
+if v, ok := r.PopFront(); ok { fmt.Println(v) } // 1
+fmt.Println(r.ToSlice()) // [2]
+```
+
 - Compare two values with `CompareAny`:
+
 
 ```go
 cmp := CompareAny(10, "10") // type-ranking first; numeric values are ranked differently than strings
