@@ -1,180 +1,140 @@
 package insyra
 
-import "math"
+import (
+	"errors"
+	"math"
+
+	"github.com/HazelnutParadise/insyra/internal/algorithms"
+)
 
 // LinearInterpolation performs linear interpolation for the given x value using the DataList.
 func (dl *DataList) LinearInterpolation(x float64) float64 {
-	var earlyResult *float64
+	var data []float64
 	dl.AtomicDo(func(l *DataList) {
-		if l.Len() < 2 {
-			dl.warn("LinearInterpolation", "Not enough data points")
-			earlyResult = new(float64)
-			*earlyResult = math.NaN()
+		if len(l.data) < 2 {
 			return
 		}
-		for i := 0; i < len(l.data)-1; i++ {
-			x0 := float64(i)
-			x1 := float64(i + 1)
-			y0 := l.data[i].(float64)
-			y1 := l.data[i+1].(float64)
-
-			if x >= x0 && x <= x1 {
-				earlyResult = new(float64)
-				*earlyResult = y0 + (y1-y0)*(x-x0)/(x1-x0)
-				return
-			}
+		data = make([]float64, len(l.data))
+		for i, v := range l.data {
+			data[i] = v.(float64)
 		}
 	})
-	if earlyResult != nil {
-		return *earlyResult
+	if len(data) < 2 {
+		dl.warn("LinearInterpolation", "Not enough data points")
+		return math.NaN()
 	}
-	dl.warn("LinearInterpolation", "X value out of bounds")
-	return math.NaN()
+
+	result, err := algorithms.LinearInterpolation(data, x)
+	if err != nil {
+		if errors.Is(err, algorithms.ErrOutOfBounds) {
+			dl.warn("LinearInterpolation", "X value out of bounds")
+		} else {
+			dl.warn("LinearInterpolation", "Interpolation failed: %v", err)
+		}
+		return math.NaN()
+	}
+	return result
 }
 
 // QuadraticInterpolation performs quadratic interpolation for the given x value using the DataList.
 func (dl *DataList) QuadraticInterpolation(x float64) float64 {
-	var earlyResult *float64
+	var data []float64
 	dl.AtomicDo(func(l *DataList) {
-		if l.Len() < 3 {
-			dl.warn("QuadraticInterpolation", "Not enough data points")
-			earlyResult = new(float64)
-			*earlyResult = math.NaN()
+		if len(l.data) < 3 {
 			return
 		}
-		for i := 0; i < len(l.data)-2; i++ {
-			x0 := float64(i)
-			x1 := float64(i + 1)
-			x2 := float64(i + 2)
-			y0 := l.data[i].(float64)
-			y1 := l.data[i+1].(float64)
-			y2 := l.data[i+2].(float64)
-
-			if x >= x0 && x <= x2 {
-				l0 := (x - x1) * (x - x2) / ((x0 - x1) * (x0 - x2))
-				l1 := (x - x0) * (x - x2) / ((x1 - x0) * (x1 - x2))
-				l2 := (x - x0) * (x - x1) / ((x2 - x0) * (x2 - x1))
-				earlyResult = new(float64)
-				*earlyResult = y0*l0 + y1*l1 + y2*l2
-				return
-			}
+		data = make([]float64, len(l.data))
+		for i, v := range l.data {
+			data[i] = v.(float64)
 		}
 	})
-	if earlyResult != nil {
-		return *earlyResult
+	if len(data) < 3 {
+		dl.warn("QuadraticInterpolation", "Not enough data points")
+		return math.NaN()
 	}
-	dl.warn("QuadraticInterpolation", "X value out of bounds")
-	return math.NaN()
+
+	result, err := algorithms.QuadraticInterpolation(data, x)
+	if err != nil {
+		if errors.Is(err, algorithms.ErrOutOfBounds) {
+			dl.warn("QuadraticInterpolation", "X value out of bounds")
+		} else {
+			dl.warn("QuadraticInterpolation", "Interpolation failed: %v", err)
+		}
+		return math.NaN()
+	}
+	return result
 }
 
 // LagrangeInterpolation performs Lagrange interpolation for the given x value using the DataList.
 func (dl *DataList) LagrangeInterpolation(x float64) float64 {
-	var n int
 	var floatData []float64
 	dl.AtomicDo(func(l *DataList) {
-		n = l.Len()
 		floatData = l.ToF64Slice()
 	})
-	if n < 2 {
-		dl.warn("LagrangeInterpolation", "Not enough data points")
-		return math.NaN()
-	}
-	result := 0.0
-	for i := 0; i < n; i++ {
-		term := floatData[i]
-		for j := 0; j < n; j++ {
-			if i != j {
-				term *= (x - float64(j)) / (float64(i) - float64(j))
-			}
+	result, err := algorithms.LagrangeInterpolation(floatData, x)
+	if err != nil {
+		if errors.Is(err, algorithms.ErrNotEnoughData) {
+			dl.warn("LagrangeInterpolation", "Not enough data points")
+		} else {
+			dl.warn("LagrangeInterpolation", "Interpolation failed: %v", err)
 		}
-		result += term
+		return math.NaN()
 	}
 	return result
 }
 
 // NearestNeighborInterpolation performs nearest-neighbor interpolation for the given x value using the DataList.
 func (dl *DataList) NearestNeighborInterpolation(x float64) float64 {
-	closestIndex := 0
-	minDiff := math.Abs(x - 0) // 初始化差異
-
-	var dataLen int
 	var floatData []float64
 	dl.AtomicDo(func(l *DataList) {
-		dataLen = l.Len()
 		floatData = l.ToF64Slice()
 	})
-
-	for i := 1; i < dataLen; i++ {
-		diff := math.Abs(x - float64(i))
-		if diff < minDiff {
-			closestIndex = i
-			minDiff = diff
+	result, err := algorithms.NearestNeighborInterpolation(floatData, x)
+	if err != nil {
+		if errors.Is(err, algorithms.ErrOutOfBounds) {
+			dl.warn("NearestNeighborInterpolation", "X value out of bounds")
+		} else {
+			dl.warn("NearestNeighborInterpolation", "Interpolation failed: %v", err)
 		}
-	}
-
-	if closestIndex < 0 || closestIndex >= dl.Len() {
-		dl.warn("NearestNeighborInterpolation", "X value out of bounds")
 		return math.NaN()
 	}
-	return floatData[closestIndex]
+	return result
 }
 
 // NewtonInterpolation performs Newton's interpolation for the given x value using the DataList.
 func (dl *DataList) NewtonInterpolation(x float64) float64 {
-	var dataLen int
 	var floatData []float64
 	dl.AtomicDo(func(l *DataList) {
-		dataLen = l.Len()
 		floatData = l.ToF64Slice()
 	})
-	n := dataLen
-	if n < 2 {
-		dl.warn("NewtonInterpolation", "Not enough data points")
-		return math.NaN()
-	}
-	// 計算差分
-	dividedDiff := make([]float64, n)
-	copy(dividedDiff, floatData)
-	for i := 1; i < n; i++ {
-		for j := n - 1; j >= i; j-- {
-			dividedDiff[j] = (dividedDiff[j] - dividedDiff[j-1]) / (float64(j) - float64(j-i))
+	result, err := algorithms.NewtonInterpolation(floatData, x)
+	if err != nil {
+		if errors.Is(err, algorithms.ErrNotEnoughData) {
+			dl.warn("NewtonInterpolation", "Not enough data points")
+		} else {
+			dl.warn("NewtonInterpolation", "Interpolation failed: %v", err)
 		}
-	}
-
-	// 使用差分進行插值
-	result := dividedDiff[n-1]
-	for i := n - 2; i >= 0; i-- {
-		result = result*(x-float64(i)) + dividedDiff[i]
+		return math.NaN()
 	}
 	return result
 }
 
 // HermiteInterpolation performs Hermite interpolation for the given x value using the DataList.
 func (dl *DataList) HermiteInterpolation(x float64, derivatives []float64) float64 {
-	var n int
 	var floatData []float64
 	dl.AtomicDo(func(l *DataList) {
-		n = l.Len()
 		floatData = l.ToF64Slice()
 	})
-	if n != len(derivatives) {
-		dl.warn("HermiteInterpolation", "Data and derivatives length mismatch")
-		return math.NaN()
-	}
-	if n < 2 {
-		dl.warn("HermiteInterpolation", "Not enough data points")
-		return math.NaN()
-	}
-
-	result := 0.0
-	for i := 0; i < n; i++ {
-		h := 1.0
-		for j := 0; j < n; j++ {
-			if i != j {
-				h *= (x - float64(j)) / (float64(i) - float64(j))
-			}
+	result, err := algorithms.HermiteInterpolation(floatData, derivatives, x)
+	if err != nil {
+		if errors.Is(err, algorithms.ErrLengthMismatch) {
+			dl.warn("HermiteInterpolation", "Data and derivatives length mismatch")
+		} else if errors.Is(err, algorithms.ErrNotEnoughData) {
+			dl.warn("HermiteInterpolation", "Not enough data points")
+		} else {
+			dl.warn("HermiteInterpolation", "Interpolation failed: %v", err)
 		}
-		result += floatData[i]*h + derivatives[i]*h*(x-float64(i))
+		return math.NaN()
 	}
 	return result
 }

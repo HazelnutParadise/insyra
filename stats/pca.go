@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/HazelnutParadise/insyra"
-	"github.com/HazelnutParadise/insyra/internal/utils"
+	"github.com/HazelnutParadise/insyra/internal/algorithms"
 	"gonum.org/v1/gonum/mat"
 	"gonum.org/v1/gonum/stat"
 )
@@ -81,7 +81,7 @@ func PCA(dataTable insyra.IDataTable, nComponents ...int) *PCAResult {
 	for i := range indices {
 		indices[i] = i
 	}
-	utils.ParallelSortStableFunc(indices, func(a, b int) int {
+	algorithms.ParallelSortStableFunc(indices, func(a, b int) int {
 		if eigenvalues[a] > eigenvalues[b] {
 			return -1
 		} else if eigenvalues[a] < eigenvalues[b] {

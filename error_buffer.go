@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/HazelnutParadise/insyra/internal/core"
 )
 
 type ErrPoppingMode int
@@ -55,102 +57,11 @@ type errorStruct struct {
 	timestamp   time.Time
 }
 
-// ring buffer to store errors efficiently (FIFO pops O(1))
-type errorRing struct {
-	buf  []errorStruct
-	head int
-	size int
-}
-
 var (
-	errRing    = &errorRing{buf: make([]errorStruct, 1536), head: 0, size: 0}
+	errRing    = core.NewRing[errorStruct](1536)
 	errorChan  = make(chan errorStruct, 1024)
 	errorMutex = sync.Mutex{}
 )
-
-// helper methods for ring
-func (r *errorRing) len() int              { return r.size }
-func (r *errorRing) get(i int) errorStruct { return r.buf[(r.head+i)%len(r.buf)] }
-
-func (r *errorRing) toSlice() []errorStruct {
-	out := make([]errorStruct, r.size)
-	for i := 0; i < r.size; i++ {
-		out[i] = r.get(i)
-	}
-	return out
-}
-
-func (r *errorRing) clear() {
-	// keep same capacity
-	r.buf = make([]errorStruct, 1536)
-	r.head = 0
-	r.size = 0
-}
-
-func (r *errorRing) grow() {
-	newCap := 1
-	if len(r.buf) > 0 {
-		newCap = len(r.buf) * 2
-	}
-	newBuf := make([]errorStruct, newCap)
-	for i := 0; i < r.size; i++ {
-		newBuf[i] = r.get(i)
-	}
-	r.buf = newBuf
-	r.head = 0
-}
-
-func (r *errorRing) push(e errorStruct) {
-	if r.size == len(r.buf) {
-		r.grow()
-	}
-	idx := (r.head + r.size) % len(r.buf)
-	r.buf[idx] = e
-	r.size++
-}
-
-func (r *errorRing) popFront() (errorStruct, bool) {
-	if r.size == 0 {
-		return errorStruct{}, false
-	}
-	e := r.get(0)
-	r.head = (r.head + 1) % len(r.buf)
-	r.size--
-	return e, true
-}
-
-func (r *errorRing) popBack() (errorStruct, bool) {
-	if r.size == 0 {
-		return errorStruct{}, false
-	}
-	backIdx := (r.head + r.size - 1) % len(r.buf)
-	e := r.buf[backIdx]
-	r.size--
-	return e, true
-}
-
-func (r *errorRing) deleteAt(idx int) (errorStruct, bool) {
-	// idx is logical index (0..size-1)
-	if idx < 0 || idx >= r.size {
-		return errorStruct{}, false
-	}
-	// copy into new buffer without that element
-	newBuf := make([]errorStruct, len(r.buf))
-	n := 0
-	var removed errorStruct
-	for i := 0; i < r.size; i++ {
-		if i == idx {
-			removed = r.get(i)
-			continue
-		}
-		newBuf[n] = r.get(i)
-		n++
-	}
-	r.buf = newBuf
-	r.head = 0
-	r.size = n
-	return removed, true
-}
 
 func init() {
 	// Initialize the error channel
@@ -160,7 +71,7 @@ func init() {
 				go errHandlingFunc(err.errType, err.packageName, err.fnName, err.message)
 			}
 			errorMutex.Lock()
-			errRing.push(err)
+			errRing.Push(err)
 			errorMutex.Unlock()
 		}
 	}()
@@ -183,15 +94,15 @@ func PopError(mode ErrPoppingMode) (LogLevel, string) {
 	errorMutex.Lock()
 	defer errorMutex.Unlock()
 
-	if errRing.len() == 0 {
+	if errRing.Len() == 0 {
 		return LogLevelInfo, ""
 	}
 	var err errorStruct
 	switch mode {
 	case ErrPoppingModeFIFO:
-		err, _ = errRing.popFront()
+		err, _ = errRing.PopFront()
 	case ErrPoppingModeLIFO:
-		err, _ = errRing.popBack()
+		err, _ = errRing.PopBack()
 	}
 	return err.errType, err.message
 }
@@ -200,7 +111,7 @@ func PopErrorByPackageName(packageName string, mode ErrPoppingMode) (LogLevel, s
 	errorMutex.Lock()
 	defer errorMutex.Unlock()
 
-	if errRing.len() == 0 {
+	if errRing.Len() == 0 {
 		return LogLevelInfo, ""
 	}
 
@@ -209,16 +120,18 @@ func PopErrorByPackageName(packageName string, mode ErrPoppingMode) (LogLevel, s
 	switch mode {
 	case ErrPoppingModeFIFO:
 		// Find the first occurrence
-		for i := 0; i < errRing.len(); i++ {
-			if errRing.get(i).packageName == packageName {
+		for i := 0; i < errRing.Len(); i++ {
+			entry, ok := errRing.Get(i)
+			if ok && entry.packageName == packageName {
 				idxToPop = i
 				break
 			}
 		}
 	case ErrPoppingModeLIFO:
 		// Find the last occurrence
-		for i := errRing.len() - 1; i >= 0; i-- {
-			if errRing.get(i).packageName == packageName {
+		for i := errRing.Len() - 1; i >= 0; i-- {
+			entry, ok := errRing.Get(i)
+			if ok && entry.packageName == packageName {
 				idxToPop = i
 				break
 			}
@@ -226,7 +139,7 @@ func PopErrorByPackageName(packageName string, mode ErrPoppingMode) (LogLevel, s
 	}
 
 	if idxToPop != -1 {
-		err, _ := errRing.deleteAt(idxToPop)
+		err, _ := errRing.DeleteAt(idxToPop)
 		return err.errType, err.message
 	}
 
@@ -237,7 +150,7 @@ func PopErrorByFuncName(packageName, funcName string, mode ErrPoppingMode) (LogL
 	errorMutex.Lock()
 	defer errorMutex.Unlock()
 
-	if errRing.len() == 0 {
+	if errRing.Len() == 0 {
 		return LogLevelInfo, ""
 	}
 
@@ -246,16 +159,18 @@ func PopErrorByFuncName(packageName, funcName string, mode ErrPoppingMode) (LogL
 	switch mode {
 	case ErrPoppingModeFIFO:
 		// Find the first occurrence
-		for i := 0; i < errRing.len(); i++ {
-			if errRing.get(i).packageName == packageName && errRing.get(i).fnName == funcName {
+		for i := 0; i < errRing.Len(); i++ {
+			entry, ok := errRing.Get(i)
+			if ok && entry.packageName == packageName && entry.fnName == funcName {
 				idxToPop = i
 				break
 			}
 		}
 	case ErrPoppingModeLIFO:
 		// Find the last occurrence
-		for i := errRing.len() - 1; i >= 0; i-- {
-			if errRing.get(i).packageName == packageName && errRing.get(i).fnName == funcName {
+		for i := errRing.Len() - 1; i >= 0; i-- {
+			entry, ok := errRing.Get(i)
+			if ok && entry.packageName == packageName && entry.fnName == funcName {
 				idxToPop = i
 				break
 			}
@@ -263,7 +178,7 @@ func PopErrorByFuncName(packageName, funcName string, mode ErrPoppingMode) (LogL
 	}
 
 	if idxToPop != -1 {
-		err, _ := errRing.deleteAt(idxToPop)
+		err, _ := errRing.DeleteAt(idxToPop)
 		return err.errType, err.message
 	}
 
@@ -274,15 +189,15 @@ func PopErrorAndCallback(mode ErrPoppingMode, callback func(errType LogLevel, pa
 	errorMutex.Lock()
 	defer errorMutex.Unlock()
 
-	if errRing.len() == 0 {
+	if errRing.Len() == 0 {
 		return
 	}
 	var err errorStruct
 	switch mode {
 	case ErrPoppingModeFIFO:
-		err, _ = errRing.popFront()
+		err, _ = errRing.PopFront()
 	case ErrPoppingModeLIFO:
-		err, _ = errRing.popBack()
+		err, _ = errRing.PopBack()
 	}
 	callback(err.errType, err.packageName, err.fnName, err.message)
 }
@@ -291,14 +206,14 @@ func ClearErrors() {
 	errorMutex.Lock()
 	defer errorMutex.Unlock()
 
-	errRing.clear()
+	errRing.Clear()
 }
 
 func GetErrorCount() int {
 	errorMutex.Lock()
 	defer errorMutex.Unlock()
 
-	return errRing.len()
+	return errRing.Len()
 }
 
 // HasError returns true if there are any errors in the buffer.
@@ -307,7 +222,7 @@ func HasError() bool {
 	errorMutex.Lock()
 	defer errorMutex.Unlock()
 
-	return errRing.len() > 0
+	return errRing.Len() > 0
 }
 
 // HasErrorAboveLevel returns true if there are any errors at or above the specified level.
@@ -316,8 +231,9 @@ func HasErrorAboveLevel(level LogLevel) bool {
 	errorMutex.Lock()
 	defer errorMutex.Unlock()
 
-	for i := 0; i < errRing.len(); i++ {
-		if errRing.get(i).errType >= level {
+	for i := 0; i < errRing.Len(); i++ {
+		entry, ok := errRing.Get(i)
+		if ok && entry.errType >= level {
 			return true
 		}
 	}
@@ -331,16 +247,16 @@ func PeekError(mode ErrPoppingMode) *ErrorInfo {
 	errorMutex.Lock()
 	defer errorMutex.Unlock()
 
-	if errRing.len() == 0 {
+	if errRing.Len() == 0 {
 		return nil
 	}
 
 	var e errorStruct
 	switch mode {
 	case ErrPoppingModeFIFO:
-		e = errRing.get(0)
+		e, _ = errRing.Get(0)
 	case ErrPoppingModeLIFO:
-		e = errRing.get(errRing.len() - 1)
+		e, _ = errRing.Get(errRing.Len() - 1)
 	}
 
 	return &ErrorInfo{
@@ -358,7 +274,7 @@ func GetAllErrors() []ErrorInfo {
 	errorMutex.Lock()
 	defer errorMutex.Unlock()
 
-	errSlice := errRing.toSlice()
+	errSlice := errRing.ToSlice()
 	result := make([]ErrorInfo, len(errSlice))
 	for i, err := range errSlice {
 		result[i] = ErrorInfo{
@@ -378,15 +294,15 @@ func GetErrorsByLevel(level LogLevel) []ErrorInfo {
 	defer errorMutex.Unlock()
 
 	var result []ErrorInfo
-	for i := 0; i < errRing.len(); i++ {
-		err := errRing.get(i)
-		if err.errType == level {
+	for i := 0; i < errRing.Len(); i++ {
+		entry, ok := errRing.Get(i)
+		if ok && entry.errType == level {
 			result = append(result, ErrorInfo{
-				Level:       err.errType,
-				PackageName: err.packageName,
-				FuncName:    err.fnName,
-				Message:     err.message,
-				Timestamp:   err.timestamp,
+				Level:       entry.errType,
+				PackageName: entry.packageName,
+				FuncName:    entry.fnName,
+				Message:     entry.message,
+				Timestamp:   entry.timestamp,
 			})
 		}
 	}
@@ -399,15 +315,15 @@ func GetErrorsByPackage(packageName string) []ErrorInfo {
 	defer errorMutex.Unlock()
 
 	var result []ErrorInfo
-	for i := 0; i < errRing.len(); i++ {
-		err := errRing.get(i)
-		if err.packageName == packageName {
+	for i := 0; i < errRing.Len(); i++ {
+		entry, ok := errRing.Get(i)
+		if ok && entry.packageName == packageName {
 			result = append(result, ErrorInfo{
-				Level:       err.errType,
-				PackageName: err.packageName,
-				FuncName:    err.fnName,
-				Message:     err.message,
-				Timestamp:   err.timestamp,
+				Level:       entry.errType,
+				PackageName: entry.packageName,
+				FuncName:    entry.fnName,
+				Message:     entry.message,
+				Timestamp:   entry.timestamp,
 			})
 		}
 	}
@@ -420,7 +336,7 @@ func PopAllErrors() []ErrorInfo {
 	errorMutex.Lock()
 	defer errorMutex.Unlock()
 
-	errSlice := errRing.toSlice()
+	errSlice := errRing.ToSlice()
 	result := make([]ErrorInfo, len(errSlice))
 	for i, err := range errSlice {
 		result[i] = ErrorInfo{
@@ -431,7 +347,7 @@ func PopAllErrors() []ErrorInfo {
 			Timestamp:   err.timestamp,
 		}
 	}
-	errRing.clear()
+	errRing.Clear()
 	return result
 }
 
@@ -441,16 +357,16 @@ func PopErrorInfo(mode ErrPoppingMode) *ErrorInfo {
 	errorMutex.Lock()
 	defer errorMutex.Unlock()
 
-	if errRing.len() == 0 {
+	if errRing.Len() == 0 {
 		return nil
 	}
 
 	var e errorStruct
 	switch mode {
 	case ErrPoppingModeFIFO:
-		e, _ = errRing.popFront()
+		e, _ = errRing.PopFront()
 	case ErrPoppingModeLIFO:
-		e, _ = errRing.popBack()
+		e, _ = errRing.PopBack()
 	}
 
 	return &ErrorInfo{
