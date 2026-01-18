@@ -241,6 +241,6 @@ algorithms.ParallelSortStableFunc(vals, func(a, b any) int { return algorithms.C
 
 ## Related Links
 
-- Internal implementation: `internal/core` (`BiIndex`)
-- Algorithms implementation: `internal/algorithms` (sorting / comparison)
-- Related usage examples: `Docs/DataTable.md`
+- Internal implementation: [internal/core](../internal/core) (`BiIndex`)
+- Algorithms implementation: [internal/algorithms](../internal/algorithms) (sorting / comparison)
+- Related usage examples: [Docs/DataTable.md](../Docs/DataTable.md)
