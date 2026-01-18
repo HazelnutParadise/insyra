@@ -8,6 +8,7 @@ The `engine` package re-exports some of Insyra's core data structures and algori
 - [Exports](#exports)
   - [BiIndex](#biindex)
   - [Ring](#ring)
+  - [CCL](#ccl)
   - [Sorting & Comparison Utilities](#sorting--comparison-utilities)
 - [Examples](#examples)
 - [Notes](#notes)
@@ -100,6 +101,37 @@ Key methods (see `internal/core/ring.go` for full details):
 
 **Concurrency note:** `Ring` is NOT concurrent-safe; provide external synchronization when used across goroutines.
 
+### CCL
+
+CCL (Column Calculation Language) is Insyra's expression language for column calculations and statement-based transforms. The `internal/ccl` package provides compilation and evaluation helpers which are useful for building tools that analyze or test CCL expressions. Any structure that implements the `engine.Context` (an alias of `ccl.Context`) interface can be used with CCL (for example, DataTable's internal context and `MapContext` implement this interface).
+
+```go
+// type alias
+type CCLNode = ccl.CCLNode
+
+// Compilation / Evaluation helpers
+func CompileExpression(expression string) (CCLNode, error)
+func CompileMultiline(script string) ([]CCLNode, error)
+func Evaluate(node CCLNode, ctx Context) (any, error)
+func EvaluateStatement(node CCLNode, ctx Context) (*EvaluationResult, error)
+
+// Function registration
+func RegisterFunction(name string, fn func(...any) (any, error))
+func RegisterAggregateFunction(name string, fn func(...[]any) (any, error))
+func RegisterStandardFunctions()
+
+// MapContext for quick testing
+func NewMapContext(data map[string][]any) (*MapContext, error)
+```
+
+Key notes (see `internal/ccl` and `Docs/CCL.md` for full details):
+
+- `CompileExpression` / `CompileMultiline` compile CCL text into AST nodes (`CCLNode`).
+- `Evaluate` evaluates an expression node for the current row in a `ccl.Context`.
+- `EvaluateStatement` returns an `EvaluationResult` (assignment / new column metadata) but does **not** apply changes to higher-level data structures — DataTable applies assignments at a higher level.
+- Call `ccl.RegisterStandardFunctions()` (from the `engine/ccl` subpackage) once to register built-in scalar and aggregate functions (e.g., `IF`, `SUM`, `AVG`, `CONCAT`). Registration is package-global (stored in `internal/ccl`'s function maps), so once registered all implementations of the `ccl.Context` interface can use these functions. It is recommended to call this at startup (e.g., in `main` or `init`) and protect with `sync.Once` if there is any chance of concurrent registration.
+- `MapContext` (see `internal/ccl/map_context.go`) implements `Context` for a `map[string][]any` and is useful for tests and quick experiments.
+
 ### Sorting & Comparison Utilities
 
 ```go
@@ -153,7 +185,33 @@ if v, ok := r.PopFront(); ok { fmt.Println(v) } // 1
 fmt.Println(r.ToSlice()) // [2]
 ```
 
-- Compare two values with `CompareAny`:
+- Use CCL to evaluate an expression per-row:
+
+> Note: Any structure that implements the `ccl.Context` interface (in the `engine/ccl` subpackage) can be used to evaluate CCL expressions; `NewMapContext` is a convenient implementation for tests and quick experiments.
+
+```go
+import "github.com/HazelnutParadise/insyra/engine/ccl"
+
+data := map[string][]any{
+    "A": {1.0, 2.0},
+    "B": {3.0, 4.0},
+}
+ctx, _ := ccl.NewMapContext(data)
+node, _ := ccl.CompileExpression("A + B")
+for i := 0; i < ctx.GetRowCount(); i++ {
+    ctx.SetRowIndex(i)
+    v, _ := ccl.Evaluate(node, ctx)
+    fmt.Println(v) // 4, 6
+}
+```
+
+- Register standard CCL functions for evaluation (call once via `engine`):
+
+```go
+engine.RegisterStandardFunctions()
+```
+
+- Compare two values with `CompareAny`: 
 
 
 ```go

@@ -17,6 +17,16 @@ func ResetFuncCallDepth() {
 	funcCallDepth = 0
 }
 
+// RegisterFunction registers a custom scalar function for CCL evaluation.
+func RegisterFunction(name string, fn Func) {
+	registerFunction(name, fn)
+}
+
+// RegisterAggregateFunction registers a custom aggregate function for CCL evaluation.
+func RegisterAggregateFunction(name string, fn AggFunc) {
+	registerAggregateFunction(name, fn)
+}
+
 func registerFunction(name string, fn Func) {
 	defaultFunctions[strings.ToUpper(name)] = fn
 }
