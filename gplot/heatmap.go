@@ -14,7 +14,6 @@ type HeatmapChartConfig struct {
 	Title     string    // Title of the chart.
 	XAxisName string    // Optional: X-axis name.
 	YAxisName string    // Optional: Y-axis name.
-	Data      any       // Accepts [][]float64 or *insyra.DataTable
 	XAxis     []float64 // Optional: X-axis coordinates. If not provided, will use indices.
 	YAxis     []float64 // Optional: Y-axis coordinates. If not provided, will use indices.
 	Colors    int       // Optional: Number of colors in the palette. Default is 20.
@@ -58,7 +57,8 @@ func (g *gridData) Y(r int) float64 {
 }
 
 // CreateHeatmapChart generates and returns a plot.Plot object based on HeatmapChartConfig.
-func CreateHeatmapChart(config HeatmapChartConfig) *plot.Plot {
+// The Data field can be of type [][]float64, *insyra.DataTable, or insyra.IDataTable.
+func CreateHeatmapChart(config HeatmapChartConfig, data any) *plot.Plot {
 	// Create a new plot.
 	plt := plot.New()
 
@@ -67,32 +67,32 @@ func CreateHeatmapChart(config HeatmapChartConfig) *plot.Plot {
 	plt.X.Label.Text = config.XAxisName
 	plt.Y.Label.Text = config.YAxisName
 
-	var data [][]float64
+	var dataSlice [][]float64
 
 	// Determine the type of Data and handle it accordingly
-	switch d := config.Data.(type) {
+	switch d := data.(type) {
 	case [][]float64:
-		data = d
+		dataSlice = d
 	case *insyra.DataTable:
 		// Convert DataTable to [][]float64
-		data = convertDataTableToGrid(d)
+		dataSlice = convertDataTableToGrid(d)
 	case insyra.IDataTable:
 		// Convert IDataTable to [][]float64
-		data = convertIDataTableToGrid(d)
+		dataSlice = convertIDataTableToGrid(d)
 	default:
-		insyra.LogWarning("gplot", "CreateHeatmapChart", "Unsupported Data type: %T\n", config.Data)
+		insyra.LogWarning("gplot", "CreateHeatmapChart", "Unsupported Data type: %T\n", data)
 		return nil
 	}
 
 	// Validate data
-	if len(data) == 0 || len(data[0]) == 0 {
+	if len(dataSlice) == 0 || len(dataSlice[0]) == 0 {
 		insyra.LogWarning("gplot", "CreateHeatmapChart", "Empty data provided")
 		return nil
 	}
 
 	// Create grid data
 	grid := &gridData{
-		data:  data,
+		data:  dataSlice,
 		xAxis: config.XAxis,
 		yAxis: config.YAxis,
 	}

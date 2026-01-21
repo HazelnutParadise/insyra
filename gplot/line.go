@@ -15,13 +15,13 @@ import (
 type LineChartConfig struct {
 	Title     string    // Title of the chart.
 	XAxis     []float64 // X-axis data.
-	Data      any       // Supports map[string][]float64 or []*insyra.DataList.
 	XAxisName string    // Optional: X-axis name.
 	YAxisName string    // Optional: Y-axis name.
 }
 
 // CreateLineChart generates and returns a plot.Plot object based on LineChartConfig.
-func CreateLineChart(config LineChartConfig) *plot.Plot {
+// The Data field can be of type map[string][]float64, []*insyra.DataList, or []insyra.IDataList.
+func CreateLineChart(config LineChartConfig, data any) *plot.Plot {
 	// Create a new plot.
 	plt := plot.New()
 
@@ -31,7 +31,7 @@ func CreateLineChart(config LineChartConfig) *plot.Plot {
 	plt.Y.Label.Text = config.YAxisName
 
 	// Handle different types of Data
-	switch data := config.Data.(type) {
+	switch data := data.(type) {
 	case map[string][]float64:
 		if config.XAxis == nil {
 			config.XAxis = autoGenerateXAxis(data)
@@ -58,7 +58,7 @@ func CreateLineChart(config LineChartConfig) *plot.Plot {
 			addLineSeries(plt, dataList.GetName(), dataList.ToF64Slice(), config.XAxis, nil, i)
 		}
 	default:
-		insyra.LogWarning("gplot", "CreateLineChart", "Unsupported Data type: %T\n", config.Data)
+		insyra.LogWarning("gplot", "CreateLineChart", "Unsupported Data type: %T\n", data)
 		return nil
 	}
 

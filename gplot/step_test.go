@@ -17,13 +17,12 @@ func TestCreateStepChart(t *testing.T) {
 
 	config := StepChartConfig{
 		Title:     "Test Step Chart",
-		Data:      data,
 		XAxisName: "X Axis",
 		YAxisName: "Y Axis",
 		StepStyle: "post",
 	}
 
-	plt := CreateStepChart(config)
+	plt := CreateStepChart(config, data)
 	if plt == nil {
 		t.Error("Expected non-nil plot for map[string][]float64 data")
 	}
@@ -36,13 +35,12 @@ func TestCreateStepChartWithDataList(t *testing.T) {
 
 	config := StepChartConfig{
 		Title:     "Test Step Chart with DataList",
-		Data:      []*insyra.DataList{dl1, dl2},
 		XAxisName: "X Axis",
 		YAxisName: "Y Axis",
 		StepStyle: "mid",
 	}
 
-	plt := CreateStepChart(config)
+	plt := CreateStepChart(config, []*insyra.DataList{dl1, dl2})
 	if plt == nil {
 		t.Error("Expected non-nil plot for []*insyra.DataList data")
 	}
@@ -57,14 +55,13 @@ func TestCreateStepChartWithCustomXAxis(t *testing.T) {
 
 	config := StepChartConfig{
 		Title:     "Test Step Chart with Custom X Axis",
-		Data:      data,
 		XAxis:     xAxis,
 		XAxisName: "X Axis",
 		YAxisName: "Y Axis",
 		StepStyle: "pre",
 	}
 
-	plt := CreateStepChart(config)
+	plt := CreateStepChart(config, data)
 	if plt == nil {
 		t.Error("Expected non-nil plot with custom X axis")
 	}
@@ -77,11 +74,10 @@ func TestCreateStepChartWithInvalidStepStyle(t *testing.T) {
 
 	config := StepChartConfig{
 		Title:     "Test Step Chart with Invalid Step Style",
-		Data:      data,
 		StepStyle: "invalid",
 	}
 
-	plt := CreateStepChart(config)
+	plt := CreateStepChart(config, data)
 	if plt == nil {
 		t.Error("Expected non-nil plot even with invalid step style (should default to post)")
 	}
@@ -90,10 +86,9 @@ func TestCreateStepChartWithInvalidStepStyle(t *testing.T) {
 func TestCreateStepChartWithUnsupportedDataType(t *testing.T) {
 	config := StepChartConfig{
 		Title: "Test Step Chart with Unsupported Data",
-		Data:  "unsupported",
 	}
 
-	plt := CreateStepChart(config)
+	plt := CreateStepChart(config, "unsupported")
 	if plt != nil {
 		t.Error("Expected nil plot for unsupported data type")
 	}

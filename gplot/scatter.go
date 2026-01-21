@@ -15,13 +15,13 @@ import (
 // ScatterPlotConfig defines the configuration for a multi-series scatter plot.
 type ScatterPlotConfig struct {
 	Title     string // Title of the chart.
-	Data      any    // Supports map[string][][]float64, []*insyra.DataList, or []insyra.IDataList.
 	XAxisName string // Optional: X-axis name.
 	YAxisName string // Optional: Y-axis name.
 }
 
 // CreateScatterPlot generates and returns a plot.Plot object based on ScatterPlotConfig.
-func CreateScatterPlot(config ScatterPlotConfig) *plot.Plot {
+// The Data field can be of type map[string][]float64, []*insyra.DataList, or []insyra.IDataList.
+func CreateScatterPlot(config ScatterPlotConfig, data any) *plot.Plot {
 	// Create a new plot.
 	plt := plot.New()
 
@@ -31,7 +31,7 @@ func CreateScatterPlot(config ScatterPlotConfig) *plot.Plot {
 	plt.Y.Label.Text = config.YAxisName
 
 	// Handle different types of Data
-	switch data := config.Data.(type) {
+	switch data := data.(type) {
 	case map[string][][]float64:
 		// If Data is map[string][][]float64
 		i := 0
@@ -53,7 +53,7 @@ func CreateScatterPlot(config ScatterPlotConfig) *plot.Plot {
 			addScatterSeries(plt, dataList.GetName(), xyPairs, i)
 		}
 	default:
-		insyra.LogWarning("gplot", "CreateScatterPlot", "Unsupported Data type: %T\n", config.Data)
+		insyra.LogWarning("gplot", "CreateScatterPlot", "Unsupported Data type: %T\n", data)
 		return nil
 	}
 

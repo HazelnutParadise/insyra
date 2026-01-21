@@ -9,14 +9,14 @@ import (
 // HistogramConfig defines the configuration for a single series histogram.
 type HistogramConfig struct {
 	Title     string // Title of the chart.
-	Data      any    // Accepts []float64 or *insyra.DataList or insyra.IDataList.
 	XAxisName string // Optional: X-axis name.
 	YAxisName string // Optional: Y-axis name.
 	Bins      int    // Number of bins for the histogram.
 }
 
 // CreateHistogram generates and returns a plot.Plot object based on HistogramConfig.
-func CreateHistogram(config HistogramConfig) *plot.Plot {
+// The Data field can be of type []float64, *insyra.DataList, or insyra.IDataList.
+func CreateHistogram(config HistogramConfig, data any) *plot.Plot {
 	// Create a new plot.
 	plt := plot.New()
 
@@ -28,7 +28,7 @@ func CreateHistogram(config HistogramConfig) *plot.Plot {
 	var values []float64
 
 	// Determine the type of Data and handle it accordingly
-	switch data := config.Data.(type) {
+	switch data := data.(type) {
 	case []float64:
 		values = data
 	case *insyra.DataList:
@@ -36,7 +36,7 @@ func CreateHistogram(config HistogramConfig) *plot.Plot {
 	case insyra.IDataList:
 		values = data.ToF64Slice()
 	default:
-		insyra.LogWarning("gplot", "CreateHistogram", "Unsupported Data type: %T\n", config.Data)
+		insyra.LogWarning("gplot", "CreateHistogram", "Unsupported Data type: %T\n", data)
 		return nil
 	}
 

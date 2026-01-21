@@ -20,9 +20,9 @@ func main() {
     config := gplot.BarChartConfig{
         Title: "Monthly Sales",
         XAxis: []string{"Jan", "Feb", "Mar", "Apr"},
-        Data:  []float64{100, 150, 120, 180},
     }
-    plt := gplot.CreateBarChart(config)
+    data := []float64{100, 150, 120, 180}
+    plt := gplot.CreateBarChart(config, data)
     gplot.SaveChart(plt, "sales.png")
 }
 ```
@@ -72,13 +72,12 @@ Creates a bar chart for comparing values across categories.
 
 ```go
 type BarChartConfig struct {
-    Title     string      // Chart title
-    XAxis     []string    // Category labels
-    Data      any         // []float64 or *insyra.DataList
-    XAxisName string      // Optional: X-axis label
-    YAxisName string      // Optional: Y-axis label
-    BarWidth  float64     // Optional: Bar width (default: 20)
-    ErrorBars []float64   // Optional: Error bar values
+    Title     string    // Chart title
+    XAxis     []string  // Category labels
+    XAxisName string    // Optional: X-axis label
+    YAxisName string    // Optional: Y-axis label
+    BarWidth  float64   // Optional: Bar width (default: 20)
+    ErrorBars []float64 // Optional: Error bar values (if provided, must match data length)
 }
 ```
 
@@ -88,12 +87,12 @@ type BarChartConfig struct {
 config := gplot.BarChartConfig{
     Title:     "Quarterly Revenue",
     XAxis:     []string{"Q1", "Q2", "Q3", "Q4"},
-    Data:      []float64{250, 300, 280, 350},
     XAxisName: "Quarter",
     YAxisName: "Revenue ($K)",
     BarWidth:  25,
 }
-plt := gplot.CreateBarChart(config)
+data := []float64{250, 300, 280, 350}
+plt := gplot.CreateBarChart(config, data)
 gplot.SaveChart(plt, "revenue.png")
 ```
 
@@ -105,10 +104,10 @@ gplot.SaveChart(plt, "revenue.png")
 config := gplot.BarChartConfig{
     Title:     "Experimental Results",
     XAxis:     []string{"A", "B", "C", "D"},
-    Data:      []float64{5.2, 7.8, 6.4, 9.1},
     ErrorBars: []float64{0.5, 0.8, 0.6, 0.9},
 }
-plt := gplot.CreateBarChart(config)
+data := []float64{5.2, 7.8, 6.4, 9.1}
+plt := gplot.CreateBarChart(config, data)
 gplot.SaveChart(plt, "experiment.png")
 ```
 
@@ -121,7 +120,6 @@ Creates a histogram to visualize data distribution.
 ```go
 type HistogramConfig struct {
     Title     string // Chart title
-    Data      any    // []float64, *insyra.DataList, or insyra.IDataList
     XAxisName string // Optional: X-axis label
     YAxisName string // Optional: Y-axis label
     Bins      int    // Number of bins
@@ -141,12 +139,11 @@ for i := range data {
 
 config := gplot.HistogramConfig{
     Title:     "Score Distribution",
-    Data:      data,
     XAxisName: "Score",
     YAxisName: "Frequency",
     Bins:      20,
 }
-plt := gplot.CreateHistogram(config)
+plt := gplot.CreateHistogram(config, data)
 gplot.SaveChart(plt, "distribution.png")
 ```
 
@@ -158,11 +155,10 @@ Creates a line chart for visualizing trends.
 
 ```go
 type LineChartConfig struct {
-    Title     string   // Chart title
-    XAxis     []string // X-axis labels
-    Data      any      // map[string][]float64, []*insyra.DataList, or []insyra.IDataList
-    XAxisName string   // Optional: X-axis label
-    YAxisName string   // Optional: Y-axis label
+    Title     string    // Chart title
+    XAxis     []float64 // X-axis data
+    XAxisName string    // Optional: X-axis label
+    YAxisName string    // Optional: Y-axis label
 }
 ```
 
@@ -170,16 +166,15 @@ type LineChartConfig struct {
 
 ```go
 config := gplot.LineChartConfig{
-    Title: "Temperature Trends",
-    XAxis: []string{"Mon", "Tue", "Wed", "Thu", "Fri"},
-    Data: map[string][]float64{
-        "City A": {22, 24, 23, 25, 26},
-        "City B": {18, 19, 20, 21, 22},
-    },
+    Title:     "Temperature Trends",
     XAxisName: "Day",
     YAxisName: "Temperature (C)",
 }
-plt := gplot.CreateLineChart(config)
+data := map[string][]float64{
+    "City A": {22, 24, 23, 25, 26},
+    "City B": {18, 19, 20, 21, 22},
+}
+plt := gplot.CreateLineChart(config, data)
 gplot.SaveChart(plt, "temperature.png")
 ```
 
@@ -192,7 +187,6 @@ Creates a scatter plot for correlation analysis.
 ```go
 type ScatterPlotConfig struct {
     Title     string // Chart title
-    Data      any    // map[string][][]float64, []*insyra.DataList, or []insyra.IDataList
     XAxisName string // Optional: X-axis label
     YAxisName string // Optional: Y-axis label
 }
@@ -205,18 +199,18 @@ type ScatterPlotConfig struct {
 ```go
 config := gplot.ScatterPlotConfig{
     Title: "Height vs Weight",
-    Data: map[string][][]float64{
-        "Male": {
-            {170, 70}, {175, 75}, {180, 80}, {168, 68}, {185, 85},
-        },
-        "Female": {
-            {160, 55}, {165, 60}, {158, 52}, {170, 65}, {163, 58},
-        },
-    },
     XAxisName: "Height (cm)",
     YAxisName: "Weight (kg)",
 }
-plt := gplot.CreateScatterPlot(config)
+data := map[string][][]float64{
+    "Male": {
+        {170, 70}, {175, 75}, {180, 80}, {168, 68}, {185, 85},
+    },
+    "Female": {
+        {160, 55}, {165, 60}, {158, 52}, {170, 65}, {163, 58},
+    },
+}
+plt := gplot.CreateScatterPlot(config, data)
 gplot.SaveChart(plt, "height_weight.png")
 ```
 
@@ -226,12 +220,11 @@ Creates a step chart for data that changes at discrete intervals.
 
 ```go
 type StepChartConfig struct {
-    Title     string   // Chart title
-    XAxis     []string // X-axis labels
-    Data      any      // map[string][]float64, []*insyra.DataList, or []insyra.IDataList
-    XAxisName string   // Optional: X-axis label
-    YAxisName string   // Optional: Y-axis label
-    StepStyle string   // Optional: "pre", "mid", or "post" (default: "post")
+    Title     string    // Chart title
+    XAxis     []float64 // X-axis data
+    XAxisName string    // Optional: X-axis label
+    YAxisName string    // Optional: Y-axis label
+    StepStyle string    // Optional: "pre", "mid", or "post" (default: "post")
 }
 ```
 
@@ -246,15 +239,15 @@ type StepChartConfig struct {
 ```go
 config := gplot.StepChartConfig{
     Title: "Stock Price Changes",
-    XAxis: []string{"9:00", "10:00", "11:00", "12:00", "13:00"},
-    Data: map[string][]float64{
-        "Stock A": {100, 102, 101, 105, 103},
-    },
+    XAxis: []float64{9, 10, 11, 12, 13}, // numeric X values
     XAxisName: "Time",
     YAxisName: "Price ($)",
     StepStyle: "post",
 }
-plt := gplot.CreateStepChart(config)
+data := map[string][]float64{
+    "Stock A": {100, 102, 101, 105, 103},
+}
+plt := gplot.CreateStepChart(config, data)
 gplot.SaveChart(plt, "stock.png")
 ```
 
@@ -266,14 +259,13 @@ Plots mathematical functions.
 
 ```go
 type FunctionPlotConfig struct {
-    Title string             // Chart title
-    XAxis string             // X-axis label
-    YAxis string             // Y-axis label
-    Func  func(float64) float64 // Mathematical function
-    XMin  float64            // Optional: Minimum X value
-    XMax  float64            // Optional: Maximum X value
-    YMin  float64            // Optional: Minimum Y value
-    YMax  float64            // Optional: Maximum Y value
+    Title     string  // Chart title
+    XAxisName string  // X-axis label
+    YAxisName string  // Y-axis label
+    XMin      float64 // Optional: Minimum X value
+    XMax      float64 // Optional: Maximum X value
+    YMin      float64 // Optional: Minimum Y value
+    YMax      float64 // Optional: Maximum Y value
 }
 ```
 
@@ -284,13 +276,12 @@ import "math"
 
 config := gplot.FunctionPlotConfig{
     Title: "Sine Wave",
-    XAxis: "x",
-    YAxis: "sin(x)",
-    Func:  math.Sin,
+    XAxisName: "x",
+    YAxisName: "sin(x)",
     XMin:  -2 * math.Pi,
     XMax:  2 * math.Pi,
 }
-plt := gplot.CreateFunctionPlot(config)
+plt := gplot.CreateFunctionPlot(config, math.Sin)
 gplot.SaveChart(plt, "sine.png")
 
 // Custom function
@@ -316,14 +307,13 @@ Creates a heatmap for matrix visualization.
 
 ```go
 type HeatmapChartConfig struct {
-    Title     string   // Chart title
-    Data      any      // [][]float64, *insyra.DataTable, or insyra.IDataTable
-    XAxis     []string // Optional: X-axis labels
-    YAxis     []string // Optional: Y-axis labels
-    XAxisName string   // Optional: X-axis label
-    YAxisName string   // Optional: Y-axis label
-    Colors    int      // Optional: Number of colors (default: 20)
-    Alpha     float64  // Optional: Transparency (default: 1.0)
+    Title     string    // Chart title
+    XAxis     []float64 // Optional: X-axis coordinates
+    YAxis     []float64 // Optional: Y-axis coordinates
+    XAxisName string    // Optional: X-axis label
+    YAxisName string    // Optional: Y-axis label
+    Colors    int       // Optional: Number of colors (default: 20)
+    Alpha     float64   // Optional: Transparency (default: 1.0)
 }
 ```
 
@@ -339,12 +329,11 @@ data := [][]float64{
 
 config := gplot.HeatmapChartConfig{
     Title:  "Correlation Matrix",
-    Data:   data,
-    XAxis:  []string{"A", "B", "C"},
-    YAxis:  []string{"A", "B", "C"},
+    XAxis:  []float64{0, 1, 2},
+    YAxis:  []float64{0, 1, 2},
     Colors: 20,
 }
-plt := gplot.CreateHeatmapChart(config)
+plt := gplot.CreateHeatmapChart(config, data)
 gplot.SaveChart(plt, "correlation.png")
 ```
 
@@ -365,8 +354,8 @@ dl := insyra.NewDataList(100, 150, 120, 180)
 config := gplot.BarChartConfig{
     Title: "Sales Data",
     XAxis: []string{"Q1", "Q2", "Q3", "Q4"},
-    Data:  dl,
 }
+plt := gplot.CreateBarChart(config, dl)
 
 // Using DataTable for heatmap
 dt := insyra.NewDataTable(
@@ -376,8 +365,8 @@ dt := insyra.NewDataTable(
 )
 heatConfig := gplot.HeatmapChartConfig{
     Title: "Correlation Matrix",
-    Data:  dt,
 }
+plt2 := gplot.CreateHeatmapChart(heatConfig, dt)
 ```
 
 ## Tips
