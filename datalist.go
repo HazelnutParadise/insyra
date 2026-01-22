@@ -9,7 +9,6 @@ import (
 	"slices"
 	"sort"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -17,6 +16,7 @@ import (
 	"github.com/HazelnutParadise/Go-Utils/conv"
 	"github.com/HazelnutParadise/Go-Utils/sliceutil"
 	"github.com/HazelnutParadise/insyra/internal/algorithms"
+	"github.com/HazelnutParadise/insyra/internal/core"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
@@ -30,9 +30,7 @@ type DataList struct {
 	// mu                    sync.Mutex
 
 	// AtomicDo support
-	initOnce sync.Once
-	cmdCh    chan func()
-	closed   atomic.Bool
+	atomicActor core.AtomicActor
 
 	// Instance-level error tracking for chained operations
 	lastError *ErrorInfo

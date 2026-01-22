@@ -34,9 +34,7 @@ type DataList struct {
     lastModifiedTimestamp atomic.Int64
 
     // AtomicDo support (actor-style serialization)
-    initOnce sync.Once
-    cmdCh    chan func()
-    closed   atomic.Bool
+    atomicActor core.AtomicActor
 }
 ```
 
@@ -46,7 +44,7 @@ type DataList struct {
 - `name`: Optional name for the DataList
 - `creationTimestamp`: Unix timestamp when the DataList was created
 - `lastModifiedTimestamp`: Unix timestamp when the DataList was last modified
-- `initOnce`, `cmdCh`, `closed`: Internal fields enabling `AtomicDo` actor-style, serialized execution for thread-safety without external locks
+- `atomicActor`: Internal actor used by `AtomicDo` to provide serialized execution without external locks
 
 ### Naming Conventions
 

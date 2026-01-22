@@ -8,6 +8,7 @@ The `engine` package re-exports some of Insyra's core data structures and algori
 - [Exports](#exports)
   - [BiIndex](#biindex)
   - [Ring](#ring)
+  - [AtomicDo](#atomicdo)
   - [CCL](#ccl)
   - [Sorting & Comparison Utilities](#sorting--comparison-utilities)
 - [Notes](#notes)
@@ -131,6 +132,64 @@ func main() {
     fmt.Println(r.Len()) // 2
     if v, ok := r.PopFront(); ok { fmt.Println(v) } // 1
     fmt.Println(r.ToSlice()) // [2]
+}
+```
+
+### AtomicDo
+
+`AtomicDo` provides actor-style serialized execution for any struct. You can embed or store an `atomic.Actor` and call `AtomicDo` to run critical sections in order without external locks.
+
+**Package:** `engine/atomic`.
+
+```go
+type Group = atomic.Group
+type Actor = atomic.Actor
+
+func NewGroup() *Group
+func DefaultGroup() *Group
+func NewActor(group *Group) *Actor
+func AtomicDo[T any](actor *Actor, owner *T, f func(*T))
+func AtomicDoWithInit[T any](actor *Actor, owner *T, f func(*T), initHook func())
+```
+
+What each item does:
+
+- `Group`: Reentrancy scope. If a goroutine is already inside any actor of the same group, nested `AtomicDo` calls run inline to avoid deadlocks.
+- `Actor`: The per-structure executor. Each actor has its own queue and goroutine; serialization is per actor, not per group.
+- `NewGroup()`: Create a new reentrancy group (use when multiple structures should be considered “same group”).
+- `DefaultGroup()`: Shared default group used when you don’t care about cross-structure reentrancy.
+- `NewActor(group)`: Create an actor bound to a group. Use the same group for related structures if you want nested calls to run inline.
+- `AtomicDo(...)`: Run `f` in the actor’s serialized context. If called from inside the same group, it runs inline (no scheduling).
+- `AtomicDoWithInit(...)`: Same as `AtomicDo` but runs `initHook` once on first initialization (useful for finalizers or one-time setup).
+- `Actor.Close()` / `Actor.IsClosed()`: Manually close the actor and check status. Engine does not auto-close actors.
+
+Example:
+
+```go
+package main
+
+import (
+    "fmt"
+    "github.com/HazelnutParadise/insyra/engine/atomic"
+)
+
+type Counter struct {
+    actor *atomic.Actor
+    n     int
+}
+
+func (c *Counter) AtomicDo(f func(*Counter)) {
+    atomic.AtomicDo(c.actor, c, f)
+}
+
+func main() {
+    group := atomic.NewGroup()
+    actor := atomic.NewActor(group)
+    c := &Counter{actor: actor}
+    c.AtomicDo(func(c *Counter) {
+        c.n++
+    })
+    fmt.Println(c.n) // 1
 }
 ```
 
