@@ -163,6 +163,11 @@ What each item does:
 - `AtomicDoWithInit(...)`: Same as `AtomicDo` but runs `initHook` once on first initialization (useful for finalizers or one-time setup).
 - `Actor.Close()` / `Actor.IsClosed()`: Manually close the actor and check status. Engine does not auto-close actors.
 
+Important behavior notes:
+
+- Serialization is **per actor**, not per group. Different actors can run in parallel even if they share the same group.
+- If a goroutine is already inside any actor of the same group, nested `AtomicDo` runs **inline**. This avoids deadlocks but **bypasses the target actor’s queue**, so cross-structure “atomicity” is not guaranteed in that case.
+
 Example:
 
 ```go
