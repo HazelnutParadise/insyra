@@ -35,6 +35,18 @@ When both a **column range** and a **row range** appear together, prefer explici
 This is especially useful in nested expressions and aggregate calls (e.g., `SUM((A:B).(1:5))`).
 
 
+### Names vs indexes (quoting rule of thumb)
+- **Names** use quotes (typically single quotes):
+  - Column name: `['Price']`
+  - Row name: `.'Peter'` or `.(0:'Peter')` / `.('Row1':'Row5')`
+- **Indexes** do **not** use quotes:
+  - Column index: `A`, `[A]`, `A:C`, `[A]:[C]`
+  - Row index: `.0`, `.(0:5)`, `@.0:5`
+
+You can **mix** name + index in the same expression. For readability, parenthesize when ranges are involved:
+
+- Example (mixed column range + mixed row range): `([A]:['Price']).(0:'Peter')`
+
 ## Comparison operators
 
 | Operator | Meaning | Examples |
