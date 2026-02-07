@@ -248,6 +248,9 @@ Use `engine` when you are building higher-level tooling (agent tools, MCP server
 
 Note: not every structure in `engine` is concurrent-safe by itself (e.g., `BiIndex`/`Ring`); follow the per-module notes in `engine/README.md`.
 
+## References (quick lookup)
+- `references/ccl-operators.md` - CCL operators, ranges, row access, quoting rules, and edge-case notes.
+
 ## Insyra docs via MCP (recommended for agents)
 If you want up-to-date Insyra documentation inside an MCP-capable client, prefer these:
 
