@@ -1,0 +1,40 @@
+/* Deep navy sidebar with light content theme for Docsify */
+:root {
+  --theme-color: #05386b;
+  --text-color: #0f1720;
+  --sidebar-bg: #022235;
+  --content-bg: #f8fafc;
+  --content-card-bg: #ffffff;
+  --link-color: #0b69ff;
+}
+body {
+  background: var(--content-bg);
+  color: var(--text-color);
+}
+.sidebar {
+  background: var(--sidebar-bg) !important;
+  color: var(--text-color) !important;
+}
+.sidebar .sidebar-nav a {
+  color: #e6eef8 !important;
+}
+.navbar, .app-name, .toolbar {
+  background: linear-gradient(180deg, #032a45, #012034);
+  color: #e6eef8 !important;
+}
+a {
+  color: var(--link-color);
+}
+.markdown-section {
+  background: var(--content-card-bg) !important;
+  color: var(--text-color) !important;
+  box-shadow: 0 1px 3px rgba(16,24,40,0.05);
+  border-radius: 6px;
+  padding: 1rem;
+}
+pre, code {
+  background: #0f1720;
+  color: #f1f5f9;
+  border-radius: 4px;
+  padding: 0.4rem;
+}

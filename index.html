@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+	<link rel="icon" type="image/x-icon" href="https://insyra.hazelnut-paradise.com/favicon">
+    <title>Insyra Docs</title>
+    <meta name="description" content="Insyra documentation powered by Docsify" />
+    <link rel="stylesheet" href="//unpkg.com/docsify/lib/themes/vue.css" />
+    <!-- Custom theme overrides -->
+    <link rel="stylesheet" href="docs.css" />
+  </head>
+  <body>
+    <div id="app"></div>
+
+    <script>
+      window.$docsify = {
+        name: 'Insyra',
+        repo: 'HazelnutParadise/insyra',
+        loadSidebar: true,
+        loadNavbar: true,
+        logo: 'logo.webp'
+      };
+    </script>
+
+    <script src="//unpkg.com/docsify/lib/docsify.min.js"></script>
+	<script src="//unpkg.com/docsify-copy-code"></script>
+	<script src="//cdn.jsdelivr.net/npm/prismjs@1.22/components/prism-go.min.js"></script>
+  </body>
+</html>
