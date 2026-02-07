@@ -138,6 +138,65 @@ if err != nil {
 }
 ```
 
+### 3b) CCL cookbook (Expression mode vs Statement mode)
+These examples are intentionally small and are meant to be **copied and adapted**. If anything fails, verify against `Docs/CCL.md` for your target version.
+
+See also: `references/ccl-operators.md` (operator + range + row-access definitions).
+
+**Expression mode (no assignments / no `NEW()`):**
+
+```go
+// Add a derived column (expression only)
+dt.AddColUsingCCL("result", "A + B * C")
+
+// Edit an existing column by Excel-style index (A, B, C...)
+dt.EditColByIndexUsingCCL("A", "A * 10")
+dt.EditColByIndexUsingCCL("B", "A + ['C']")
+
+// Edit an existing column by name
+dt.EditColByNameUsingCCL("price", "['price'] * 1.1")
+dt.EditColByNameUsingCCL("total", "['quantity'] * ['price']")
+
+// The following will be rejected in expression mode:
+// dt.AddColUsingCCL("bad", "B = A + 1")
+// dt.AddColUsingCCL("bad", "NEW('col')")
+```
+
+**Statement mode (`ExecuteCCL`) supports assignments + `NEW()` and runs sequentially:**
+
+```go
+// Create new columns and reuse them in later statements
+dt.ExecuteCCL(`
+    NEW('A_plus_1') = A + 1
+    NEW('TotalSum') = SUM(@) // includes newly created columns
+`)
+
+// Modify existing columns (by index or by name)
+dt.ExecuteCCL("A = A * 2")
+dt.ExecuteCCL("['price'] = ['price'] * 1.1")
+```
+
+**Common reference patterns:**
+
+```go
+// Column references
+// A, B, C ...        : Excel-style column index
+// [A], [B] ...       : bracketed column index
+// ['colName']        : column name (case-sensitive)
+
+dt.AddColUsingCCL("profit", "['revenue'] - ['cost']")
+dt.AddColUsingCCL("mixed", "[A] * 2 + ['cost']")
+
+// Row access and all-column reference
+// A.0        : first row value of column A
+// ['Sales'].10 : 11th row value of column Sales
+// @.#        : all columns in the current row
+
+dt.AddColUsingCCL("row_total", "SUM(@.#)")
+dt.ExecuteCCL("NEW('FirstRowData') = @.0")
+```
+
+
 ### 4) Export a DataTable to CSV
 
 ```go
