@@ -9,18 +9,17 @@ import (
 
 // FunctionPlotConfig defines the configuration for a function plot.
 type FunctionPlotConfig struct {
-	Title     string                  // Title of the chart.
-	XAxisName string                  // Label for the X-axis.
-	YAxisName string                  // Label for the Y-axis.
-	Func      func(x float64) float64 // The mathematical function to plot.
-	XMin      float64                 // Minimum value of X (optional).
-	XMax      float64                 // Maximum value of X (optional).
-	YMin      float64                 // Minimum value of Y (optional).
-	YMax      float64                 // Maximum value of Y (optional).
+	Title     string  // Title of the chart.
+	XAxisName string  // Label for the X-axis.
+	YAxisName string  // Label for the Y-axis.
+	XMin      float64 // Minimum value of X (optional).
+	XMax      float64 // Maximum value of X (optional).
+	YMin      float64 // Minimum value of Y (optional).
+	YMax      float64 // Maximum value of Y (optional).
 }
 
 // CreateFunctionPlot generates and returns a plot.Plot object based on FunctionPlotConfig.
-func CreateFunctionPlot(config FunctionPlotConfig) *plot.Plot {
+func CreateFunctionPlot(config FunctionPlotConfig, function func(x float64) float64) *plot.Plot {
 	// 如果沒有設置 X 軸範圍，則默認使用 [-10, 10]
 	if config.XMin == 0 && config.XMax == 0 {
 		config.XMin = -10
@@ -43,7 +42,7 @@ func CreateFunctionPlot(config FunctionPlotConfig) *plot.Plot {
 	plt.Y.Label.Text = config.YAxisName
 
 	// Create the function plot using plotter.NewFunction
-	functionPlot := plotter.NewFunction(config.Func)
+	functionPlot := plotter.NewFunction(function)
 
 	// Set X-axis range for the function
 	functionPlot.XMin = config.XMin
@@ -54,7 +53,7 @@ func CreateFunctionPlot(config FunctionPlotConfig) *plot.Plot {
 
 	// 動態設置 Y 軸範圍
 	if config.YMin == 0 && config.YMax == 0 {
-		yMin, yMax := calculateYRange(config.Func, config.XMin, config.XMax, functionPlot.Samples)
+		yMin, yMax := calculateYRange(function, config.XMin, config.XMax, functionPlot.Samples)
 		config.YMin = yMin
 		config.YMax = yMax
 	}

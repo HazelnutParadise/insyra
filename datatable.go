@@ -6,7 +6,6 @@ import (
 	"slices"
 	"sort"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -39,9 +38,7 @@ type DataTable struct {
 	lastModifiedTimestamp atomic.Int64
 
 	// AtomicDo support
-	cmdCh    chan func()
-	initOnce sync.Once
-	closed   atomic.Bool
+	atomicActor core.AtomicActor
 
 	// Instance-level error tracking for chained operations
 	lastError *ErrorInfo

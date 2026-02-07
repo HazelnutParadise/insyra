@@ -9,14 +9,14 @@ import (
 	"slices"
 	"sort"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/HazelnutParadise/Go-Utils/asyncutil"
 	"github.com/HazelnutParadise/Go-Utils/conv"
 	"github.com/HazelnutParadise/Go-Utils/sliceutil"
-	"github.com/HazelnutParadise/insyra/internal/utils"
+	"github.com/HazelnutParadise/insyra/internal/algorithms"
+	"github.com/HazelnutParadise/insyra/internal/core"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
@@ -30,9 +30,7 @@ type DataList struct {
 	// mu                    sync.Mutex
 
 	// AtomicDo support
-	initOnce sync.Once
-	cmdCh    chan func()
-	closed   atomic.Bool
+	atomicActor core.AtomicActor
 
 	// Instance-level error tracking for chained operations
 	lastError *ErrorInfo
@@ -994,8 +992,8 @@ func (dl *DataList) Sort(ascending ...bool) *DataList {
 		if !ascendingOrder {
 			order = -1
 		}
-		utils.ParallelSortStableFunc(dl.data, func(a, b any) int {
-			return utils.CompareAny(a, b) * order
+		algorithms.ParallelSortStableFunc(dl.data, func(a, b any) int {
+			return algorithms.CompareAny(a, b) * order
 		})
 
 		go dl.updateTimestamp()
@@ -1015,7 +1013,7 @@ func (dl *DataList) Rank() *DataList {
 	}
 
 	// 根據數據排序，並追蹤索引
-	utils.ParallelSortStableFunc(indexes, func(i, j int) int {
+	algorithms.ParallelSortStableFunc(indexes, func(i, j int) int {
 		return cmp.Compare(data[i], data[j])
 	})
 

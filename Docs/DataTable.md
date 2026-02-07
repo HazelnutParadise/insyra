@@ -34,9 +34,7 @@ type DataTable struct {
     lastModifiedTimestamp atomic.Int64           // Last modified timestamp
 
     // AtomicDo support (actor-style serialization)
-    cmdCh    chan func()
-    initOnce sync.Once
-    closed   atomic.Bool
+    atomicActor core.AtomicActor
 }
 ```
 
@@ -48,7 +46,7 @@ type DataTable struct {
 - `name`: Name of the DataTable
 - `creationTimestamp`: Unix timestamp when the table was created
 - `lastModifiedTimestamp`: Unix timestamp when the table was last modified
-- `cmdCh`, `initOnce`, `closed`: Internal fields enabling `AtomicDo` actor-style, serialized execution for thread-safety without external locks
+- `atomicActor`: Internal actor used by `AtomicDo` to provide serialized execution without external locks
 
 ### Naming Conventions
 

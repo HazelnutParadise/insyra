@@ -16,7 +16,7 @@ type DataFrame struct {
 
 // FromDataTable converts an insyra.DataTable into a gpandas DataFrame and wraps it.
 // Types are inferred per-column (int64/float64/bool/string) and fallback to Any when mixed.
-func FromDataTable(dt *insyra.DataTable) (*DataFrame, error) {
+func FromDataTable(dt insyra.IDataTable) (*DataFrame, error) {
 	if dt == nil {
 		return nil, fmt.Errorf("nil DataTable")
 	}

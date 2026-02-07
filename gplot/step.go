@@ -15,14 +15,14 @@ import (
 type StepChartConfig struct {
 	Title     string    // Title of the chart.
 	XAxis     []float64 // X-axis data.
-	Data      any       // Supports map[string][]float64 or []*insyra.DataList.
 	XAxisName string    // Optional: X-axis name.
 	YAxisName string    // Optional: Y-axis name.
 	StepStyle string    // Optional: Step style - "pre", "mid", "post". Default is "post".
 }
 
 // CreateStepChart generates and returns a plot.Plot object based on StepChartConfig.
-func CreateStepChart(config StepChartConfig) *plot.Plot {
+// The Data field can be of type map[string][]float64, []*insyra.DataList, or []insyra.IDataList.
+func CreateStepChart(config StepChartConfig, data any) *plot.Plot {
 	// Create a new plot.
 	plt := plot.New()
 
@@ -46,7 +46,7 @@ func CreateStepChart(config StepChartConfig) *plot.Plot {
 	}
 
 	// Handle different types of Data
-	switch data := config.Data.(type) {
+	switch data := data.(type) {
 	case map[string][]float64:
 		if config.XAxis == nil {
 			config.XAxis = autoGenerateXAxis(data)
@@ -73,7 +73,7 @@ func CreateStepChart(config StepChartConfig) *plot.Plot {
 			addStepSeries(plt, dataList.GetName(), dataList.ToF64Slice(), config.XAxis, nil, i, stepKind)
 		}
 	default:
-		insyra.LogWarning("gplot", "CreateStepChart", "Unsupported Data type: %T\n", config.Data)
+		insyra.LogWarning("gplot", "CreateStepChart", "Unsupported Data type: %T\n", data)
 		return nil
 	}
 

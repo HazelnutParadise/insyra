@@ -5,6 +5,7 @@ import (
 
 	"github.com/HazelnutParadise/Go-Utils/conv"
 	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/internal/algorithms"
 	"github.com/HazelnutParadise/insyra/internal/utils"
 )
 
@@ -103,7 +104,7 @@ func CustomerActivityIndex(dt insyra.IDataTable, caiConfig CAIConfig) insyra.IDa
 		}
 		allLastTimes = append(allLastTimes, times[lenTimes-1])
 	}
-	utils.ParallelSortStableFunc(allLastTimes, func(a, b time.Time) int {
+	algorithms.ParallelSortStableFunc(allLastTimes, func(a, b time.Time) int {
 		return a.Compare(b)
 	})
 	latestTime := allLastTimes[len(allLastTimes)-1]

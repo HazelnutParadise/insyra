@@ -13,7 +13,6 @@ import (
 type BarChartConfig struct {
 	Title     string    // Title of the chart.
 	XAxis     []string  // X-axis data (categories).
-	Data      any       // Accepts []float64 or *insyra.DataList
 	XAxisName string    // Optional: X-axis name.
 	YAxisName string    // Optional: Y-axis name.
 	BarWidth  float64   // Optional: Bar width for each bar in the chart. Default is 20.
@@ -21,7 +20,8 @@ type BarChartConfig struct {
 }
 
 // CreateBarChart generates and returns a plot.Plot object based on BarChartConfig.
-func CreateBarChart(config BarChartConfig) *plot.Plot {
+// The Data field can be of type []float64, *insyra.DataList, or insyra.IDataList.
+func CreateBarChart(config BarChartConfig, data any) *plot.Plot {
 	// Create a new plot.
 	plt := plot.New()
 
@@ -33,7 +33,7 @@ func CreateBarChart(config BarChartConfig) *plot.Plot {
 	var values []float64
 
 	// Determine the type of Data and handle it accordingly
-	switch data := config.Data.(type) {
+	switch data := data.(type) {
 	case []float64:
 		values = data
 	case *insyra.DataList:
@@ -41,7 +41,7 @@ func CreateBarChart(config BarChartConfig) *plot.Plot {
 	case insyra.IDataList:
 		values = data.ToF64Slice()
 	default:
-		insyra.LogWarning("gplot", "CreateBarChart", "Unsupported Data type: %T\n", config.Data)
+		insyra.LogWarning("gplot", "CreateBarChart", "Unsupported Data type: %T\n", data)
 		return nil
 	}
 
