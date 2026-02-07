@@ -16,6 +16,16 @@ A next-generation data analysis library for Golang. Supports **parallel processi
 
 **Go.dev Package: <https://pkg.go.dev/github.com/HazelnutParadise/insyra>**
 
+
+## AI / Agent Skill (OpenClaw)
+
+This repository includes an **OpenClaw skill** at [`skills/insyra`](skills/insyra) to help AI agents use Insyra effectively (DataList/DataTable workflows, CCL formulas, and common file I/O helpers).
+
+Example prompts:
+
+- "Use insyra to read data.csv, add a derived column with CCL, and export to output.csv."
+- "Use insyra DataList to compute mean/std and show a quick preview."
+
 > [!NOTE]
 > This project is evolving rapidly—please star and watch the repository to stay up to date with the latest changes!
 
