@@ -43,6 +43,7 @@ Use Insyra when you need any of these in Go:
 
 ## Core mental model
 - DataList: a column/series-like container (stats, sort, transform).
+- Concurrency: DataList is designed to be safe under concurrent access when thread safety is enabled (default) because operations are serialized via AtomicDo. This also makes it usable as a lightweight shared buffer (e.g., append/pop in one AtomicDo block). Keep AtomicDo blocks short and do heavy work outside.
 - DataTable: multiple named DataList columns as a table.
 - isr syntactic sugar: preferred entrypoint for new codebases.
 - CCL (Column Calculation Language): Excel-like formulas for derived columns.
@@ -142,6 +143,17 @@ func main() {
     )
 }
 ```
+
+## Engine package (advanced primitives)
+The repo includes an `engine` package that re-exports well-tested internal primitives (see [`engine/`](../../engine) and `engine/README.md).
+
+Use `engine` when you are building higher-level tooling (agent tools, MCP servers, pipelines) and want reusable building blocks:
+
+- `engine/atomic`: actor-style `AtomicDo` helpers for serialized critical sections.
+- `engine/ccl`: compile/evaluate helpers for CCL (useful for testing/analysis tooling).
+- `engine/biindex`, `engine/ring`, `engine/algorithms`: practical data structures and sorting utilities.
+
+Note: not every structure in `engine` is concurrent-safe by itself (e.g., `BiIndex`/`Ring`); follow the per-module notes in `engine/README.md`.
 
 ## Insyra docs via MCP (recommended for agents)
 If you want up-to-date Insyra documentation inside an MCP-capable client, prefer these:
