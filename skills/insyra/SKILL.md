@@ -182,7 +182,7 @@ dt.ExecuteCCL("['price'] = ['price'] * 1.1")
 // Column references
 // A, B, C ...        : Excel-style column index
 // [A], [B] ...       : bracketed column index
-// ['colName']        : column name (case-sensitive)
+// ['colName']        : column name (case-sensitive; names use quotes)
 
 dt.AddColUsingCCL("profit", "['revenue'] - ['cost']")
 dt.AddColUsingCCL("mixed", "[A] * 2 + ['cost']")
@@ -190,6 +190,7 @@ dt.AddColUsingCCL("mixed", "[A] * 2 + ['cost']")
 // Row access and all-column reference
 // A.0        : first row value of column A
 // ['Sales'].10 : 11th row value of column Sales
+// Row names use quotes:  B.'Peter', ['Score'].'Jack'
 // @.#        : all columns in the current row
 
 dt.AddColUsingCCL("row_total", "SUM(@.#)")
