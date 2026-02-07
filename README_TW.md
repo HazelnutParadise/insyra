@@ -16,6 +16,18 @@ Go 語言次世代資料分析庫。支援 **平行處理**、**資料視覺化*
 
 **Go.dev Package: <https://pkg.go.dev/github.com/HazelnutParadise/insyra>**
 
+
+## AI / Agent Skill
+
+這個 repo 內含一份 **agent skill**：[`skills/insyra`](skills/insyra)，用來協助 AI agent 更有效率地使用 Insyra（DataList / DataTable 工作流、CCL 公式、常見檔案 I/O）。
+
+這份 skill **不綁特定平台**，可用於 OpenClaw、Claude Code、opencode，或任何支援載入 skills 的 agent runtime。
+
+範例提示詞：
+
+- 「用 insyra 讀取 data.csv，用 CCL 新增衍生欄位，然後輸出成 output.csv。」
+- 「用 insyra 的 DataList 計算 mean/std，並快速 preview。」
+
 > [!NOTE]
 > 本專案正在快速迭代中，請為此專案加星並關注，以便隨時了解最新變化！
 
