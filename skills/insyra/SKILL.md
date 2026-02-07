@@ -49,6 +49,39 @@ Use Insyra when you need any of these in Go:
 - CCL (Column Calculation Language): Excel-like formulas for derived columns.
 - Instance error tracking: chain fluent ops, then check Err() / ClearErr().
 
+### Pattern: DataList as a concurrent buffer (AtomicDo)
+Use this when you need a simple shared buffer (e.g., producer/consumer) and want **check + pop** to be atomic.
+
+```go
+package main
+
+import (
+    "github.com/HazelnutParadise/insyra"
+)
+
+func main() {
+    buf := insyra.NewDataList().SetName("buf")
+
+    // Producer: safe to call concurrently (thread safety is on by default)
+    buf.Append("job-1")
+
+    // Consumer: do multi-step read/modify atomically
+    var item any
+    buf.AtomicDo(func(dl *insyra.DataList) {
+        if dl.Len() == 0 {
+            return
+        }
+        item = dl.Pop()
+    })
+
+    _ = item
+}
+```
+
+Notes:
+- Keep `AtomicDo` blocks short; do heavy computation outside.
+- If you turned off thread safety via `Config.Dangerously_TurnOffThreadSafety()`, this pattern is no longer safe under concurrency.
+
 ## Basic examples
 
 ### 1) DataList + simple stats
