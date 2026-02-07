@@ -1,29 +1,52 @@
 ---
 name: insyra
-description: Use when working in Go and you need DataList/DataTable-style data wrangling, quick previews, parallel transforms, file I/O (CSV/Excel/Parquet), Excel-like column formulas (CCL), or charts—especially to turn messy external data into structured tables for automation, reporting, or agent tools.
+description: Use when working in Go and you need DataList/DataTable-style data wrangling, quick previews, parallel transforms, file I/O (CSV/Excel/Parquet), Excel-like column formulas (CCL), or charts - especially to turn messy external data into structured tables for automation, reporting, or agent tools.
 ---
 
 # Insyra (Go)
 
 ## Overview
-**Insyra** is a Go library for dataframe-like workflows: ingest → clean/transform → summarize → visualize/export.
-It’s useful even when the end goal isn’t “data analysis” (e.g., automation, scraping, QA, reporting).
+**Insyra** is a Go library for dataframe-like workflows: ingest -> clean/transform -> summarize -> visualize/export.
+It is useful even when the end goal is not **"data analysis"** (e.g., automation, scraping, QA, reporting).
+
+## Verification-first guardrails (do this before using any API or CCL)
+Agents must NOT hallucinate method names, function signatures, or **CCL** syntax.
+Before proposing code that calls an **Insyra** function/method (or writes a CCL formula), first verify it exists in the target version.
+
+Checklist:
+- Confirm the target version/context (go.mod version, release tag, or docs site version).
+- Verify the symbol exists:
+  - Source of truth order: repository source code -> release-tag docs -> pkg.go.dev -> generated docs site.
+  - Find the exact name and signature (inputs/outputs) before writing code.
+- For **CCL** specifically:
+  - Verify supported functions/operators in Docs/CCL.md and/or parser tests.
+  - If unsure, propose a tiny "probe" formula first and explain expected behavior.
+- If you cannot verify:
+  - Say so explicitly, ask for the version or a link to the relevant docs, and offer a fallback plan.
+
+Prompting pattern (copy/paste):
+"""
+Before writing code, do a verification pass.
+1) What exact Insyra version are we targeting?
+2) Where was the API/**CCL** syntax verified (file path or URL)?
+3) Only then write code. If not verified, ask for the missing info instead of guessing.
+"""
 
 ## When to Use
 Use Insyra when you need any of these in Go:
 
-- **ETL / data cleaning:** normalize columns, filter/sort, derive new columns.
-- **Quick inspection / debugging:** get a fast console preview of a table/list.
-- **Parallel data transforms:** speed up map/filter-style workloads.
-- **File chores:** read/write CSV, convert CSV↔Excel, Parquet read/write.
-- **Excel-like formulas:** compute derived columns with **CCL**.
+- ETL / data cleaning: normalize columns, filter/sort, derive new columns.
+- Quick inspection / debugging: get a fast console preview of a table/list.
+- Parallel data transforms: speed up map/filter-style workloads.
+- File chores: read/write CSV, convert CSV <-> Excel, Parquet read/write.
+- Excel-like formulas: compute derived columns with CCL.
 
 ## Core mental model
-- **`DataList`**: a column/series-like container (stats, sort, transform).
-- **`DataTable`**: multiple named `DataList` columns as a table.
-- **`isr` syntactic sugar**: preferred entrypoint for new codebases.
-- **CCL (Column Calculation Language)**: Excel-like formulas for derived columns.
-- **Instance error tracking**: chain fluent ops, then check `Err()` / `ClearErr()`.
+- DataList: a column/series-like container (stats, sort, transform).
+- DataTable: multiple named DataList columns as a table.
+- isr syntactic sugar: preferred entrypoint for new codebases.
+- CCL (Column Calculation Language): Excel-like formulas for derived columns.
+- Instance error tracking: chain fluent ops, then check Err() / ClearErr().
 
 ## Basic examples
 
@@ -89,7 +112,7 @@ if err := dt.ToCSV("output.csv", false, true, false); err != nil {
 }
 ```
 
-### 5) Prefer `isr` syntactic sugar for new code
+### 5) Prefer isr syntactic sugar for new code
 
 ```go
 package main
@@ -104,7 +127,7 @@ func main() {
 }
 ```
 
-### 6) Convert multiple CSV files to one Excel workbook (`csvxl`)
+### 6) Convert multiple CSV files to one Excel workbook (csvxl)
 
 ```go
 package main
@@ -121,7 +144,7 @@ func main() {
 ```
 
 ## Insyra docs via MCP (recommended for agents)
-If you want **up-to-date Insyra documentation inside an MCP-capable client**, prefer these:
+If you want up-to-date Insyra documentation inside an MCP-capable client, prefer these:
 
 - Insyra docs MCP server (GitMCP): https://gitmcp.io/HazelnutParadise/insyra
 - Context7 (docs MCP server / alternative):
