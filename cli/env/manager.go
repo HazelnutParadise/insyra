@@ -136,6 +136,23 @@ func Delete(name string) error {
 	return os.RemoveAll(envPath)
 }
 
+func Clear(name string) error {
+	envPath, err := ResolveEnvPath(name)
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat(envPath); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("environment does not exist: %s", name)
+		}
+		return err
+	}
+	if err := SaveState(name, map[string]any{}); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(envPath, "history.txt"), []byte(""), 0o644)
+}
+
 func Rename(oldName, newName string) error {
 	oldPath, err := ResolveEnvPath(oldName)
 	if err != nil {

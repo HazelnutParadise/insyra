@@ -11,7 +11,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "env",
-		Usage:       "env <create|list|open|delete|rename|info> [args]",
+		Usage:       "env <create|list|open|clear|delete|rename|info> [args]",
 		Description: "Environment management",
 		Run:         runEnvCommand,
 	})
@@ -19,7 +19,7 @@ func init() {
 
 func runEnvCommand(ctx *ExecContext, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: env <create|list|open|delete|rename|info> [args]")
+		return fmt.Errorf("usage: env <create|list|open|clear|delete|rename|info> [args]")
 	}
 	sub := strings.ToLower(args[0])
 	switch sub {
@@ -71,6 +71,22 @@ func runEnvCommand(ctx *ExecContext, args []string) error {
 		if !ctx.InREPL && ctx.OpenREPL != nil {
 			return ctx.OpenREPL(ctx)
 		}
+		return nil
+	case "clear":
+		name := ctx.EnvName
+		if len(args) >= 2 {
+			name = args[1]
+		}
+		if name == "" {
+			name = "default"
+		}
+		if err := env.Clear(name); err != nil {
+			return err
+		}
+		if name == ctx.EnvName {
+			ctx.Vars = map[string]any{}
+		}
+		_, _ = fmt.Fprintf(ctx.Output, "cleared environment: %s\n", name)
 		return nil
 	case "delete":
 		if len(args) < 2 {

@@ -183,6 +183,51 @@ func main() {
 
 有關配置的詳細資訊請見 **[Docs/Configuration.md](Docs/Configuration_TW.md)**。
 
+### CLI 快速範例
+
+安裝 CLI（建議）：
+
+```sh
+go install github.com/HazelnutParadise/insyra/cmd/insyra@latest
+```
+
+安裝後可執行檔預設在 `$GOBIN`（未設定時為 `$GOPATH/bin`）。
+
+> [!TIP]
+> Windows 使用者若找不到 `insyra` 指令，請確認將 `%USERPROFILE%\\go\\bin`（或你的 `%GOBIN%`）加入 PATH，重新開啟終端機後再執行。
+
+進入 REPL：
+
+```sh
+insyra
+```
+
+批次執行（非 REPL）：
+
+```sh
+insyra newdl 1 2 3 4 5 as x
+insyra mean x
+```
+
+進階命令範例：
+
+```sh
+# Regression
+insyra regression linear y x1 x2 as reg
+
+# Hypothesis test
+insyra ttest two group_a group_b equal
+
+# Plot
+insyra plot line sales save sales.html
+
+# Fetch (Yahoo Finance)
+insyra fetch yahoo AAPL quote as q
+```
+
+> [!TIP]
+> 可搭配 `--env <name>` 管理多個分析環境，例如：`insyra --env exp1`。
+
 ## 執行緒安全與防禦性複製
 
 - **防禦性複製：** Insyra 對所有公開資料存取器回傳防禦性複製（defensive copies）。任何會暴露內部 `slice`、`map` 或其他可變結構的方法，會回傳該結構的複製，避免呼叫端無意間修改內部狀態。
