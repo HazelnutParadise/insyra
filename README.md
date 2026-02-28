@@ -185,6 +185,51 @@ func main() {
 
 See **[Docs/Configuration.md](Docs/Configuration.md)**.
 
+### CLI Quick Examples
+
+Install the CLI (recommended):
+
+```sh
+go install github.com/HazelnutParadise/insyra/cmd/insyra@latest
+```
+
+The binary is installed to `$GOBIN` (or `$GOPATH/bin` if `$GOBIN` is not set).
+
+> [!TIP]
+> On Windows, if `insyra` is not found, add `%USERPROFILE%\\go\\bin` (or your `%GOBIN%`) to PATH, then reopen your terminal.
+
+Start REPL:
+
+```sh
+insyra
+```
+
+Run commands directly (non-REPL):
+
+```sh
+insyra newdl 1 2 3 4 5 as x
+insyra mean x
+```
+
+Advanced command examples:
+
+```sh
+# Regression
+insyra regression linear y x1 x2 as reg
+
+# Hypothesis test
+insyra ttest two group_a group_b equal
+
+# Plot
+insyra plot line sales save sales.html
+
+# Fetch (Yahoo Finance)
+insyra fetch yahoo AAPL quote as q
+```
+
+> [!TIP]
+> Use `--env <name>` to isolate analysis contexts, e.g. `insyra --env exp1`.
+
 ## Thread Safety and Defensive Copies
 
 - **Defensive copies:** Insyra returns defensive copies for all public data accessors. Any method that exposes internal slices, maps, or other mutable structures returns a copy so callers cannot mutate internal state unintentionally.
