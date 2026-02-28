@@ -1,6 +1,7 @@
 package env
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -20,6 +21,15 @@ type EnvironmentInfo struct {
 	Path          string
 	LastAccess    time.Time
 	VariableCount int
+}
+
+type ExportPayload struct {
+	SchemaVersion int             `json:"schemaVersion"`
+	ExportedAt    string          `json:"exportedAt"`
+	Environment   string          `json:"environment"`
+	State         *State          `json:"state"`
+	History       []string        `json:"history"`
+	Config        json.RawMessage `json:"config"`
 }
 
 func BasePath() (string, error) {
@@ -225,6 +235,57 @@ func Info(name string) (EnvironmentInfo, error) {
 		}
 	}
 	return info, nil
+}
+
+func Export(name, outputPath string) error {
+	envPath, err := ResolveEnvPath(name)
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat(envPath); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("environment does not exist: %s", name)
+		}
+		return err
+	}
+
+	state, err := LoadState(name)
+	if err != nil {
+		state = &State{Variables: map[string]SerializedVariable{}, LastAccess: ""}
+	}
+
+	history, err := ReadHistory(name)
+	if err != nil {
+		history = []string{}
+	}
+
+	configBytes, err := os.ReadFile(filepath.Join(envPath, "config.json"))
+	if err != nil {
+		configBytes = []byte("{}")
+	}
+
+	payload := ExportPayload{
+		SchemaVersion: 1,
+		ExportedAt:    time.Now().UTC().Format(time.RFC3339),
+		Environment:   name,
+		State:         state,
+		History:       history,
+		Config:        json.RawMessage(configBytes),
+	}
+
+	bytes, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	parent := filepath.Dir(outputPath)
+	if parent != "" && parent != "." {
+		if err := os.MkdirAll(parent, 0o755); err != nil {
+			return err
+		}
+	}
+
+	return os.WriteFile(outputPath, bytes, 0o644)
 }
 
 func writeDefaultFiles(envPath string) error {

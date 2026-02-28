@@ -1,6 +1,7 @@
 package env
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -183,5 +184,45 @@ func TestClearEnvironmentKeepHistory(t *testing.T) {
 	}
 	if len(history) != 1 || history[0] != "show t1" {
 		t.Fatalf("expected history to be preserved, got %v", history)
+	}
+}
+
+func TestExportEnvironmentIncludesStateAndHistory(t *testing.T) {
+	setupTempHome(t)
+
+	if err := Create("exportable"); err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	if err := SaveState("exportable", map[string]any{"a": 1, "b": "x"}); err != nil {
+		t.Fatalf("save state failed: %v", err)
+	}
+	if err := AppendHistory("exportable", "newdl 1 2 3 as x"); err != nil {
+		t.Fatalf("append history failed: %v", err)
+	}
+
+	outputPath := filepath.Join(t.TempDir(), "exportable-env.json")
+	if err := Export("exportable", outputPath); err != nil {
+		t.Fatalf("export failed: %v", err)
+	}
+
+	bytes, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("failed to read export file: %v", err)
+	}
+
+	var payload ExportPayload
+	if err := json.Unmarshal(bytes, &payload); err != nil {
+		t.Fatalf("failed to parse export file: %v", err)
+	}
+
+	if payload.Environment != "exportable" {
+		t.Fatalf("unexpected environment in payload: %s", payload.Environment)
+	}
+	if payload.State == nil || len(payload.State.Variables) != 2 {
+		t.Fatalf("expected 2 variables in exported state")
+	}
+	if len(payload.History) != 1 || payload.History[0] != "newdl 1 2 3 as x" {
+		t.Fatalf("unexpected exported history: %v", payload.History)
 	}
 }
