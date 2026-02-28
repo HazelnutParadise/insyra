@@ -16,6 +16,26 @@ Go 語言次世代資料分析庫。支援 **平行處理**、**資料視覺化*
 
 **Go.dev Package: <https://pkg.go.dev/github.com/HazelnutParadise/insyra>**
 
+> [!NOTE]
+> 本專案正在快速迭代中，請為此專案加星並關注，以便隨時了解最新變化！
+
+![logo](logo/logo.webp)
+
+## 太快、太美、太簡單
+
+**Insyra** 庫是一個動態且多功能的 Go 語言資料分析工具。提供了豐富的功能集，可用於數據操作、統計計算、資料視覺化等，對於處理複雜數據結構的開發者來說，是一個必不可少的工具包。
+
+> [!TIP]
+> `isr` 套件提供 **語法糖**！<br/>
+> 建議任何新專案使用 `isr` 套件取代直接呼叫 `insyra` 主套件包的寫法。<br/>
+> 更多詳細資訊，請參閱 **[說明文件](/Docs/isr.md)**。
+
+> [!NOTE]
+> 如果文檔中的某些功能無法使用，可能是該功能還未包含在最新發布的版本中。請至 **[Releases](https://github.com/HazelnutParadise/insyra/releases)** 查看對應版本源碼中的文檔。
+
+> [!IMPORTANT] 
+> **對於 Insyra 文檔中未明確列出的任何函數或方法，表示該功能仍在積極開發中。這些實驗性功能可能會提供不穩定的結果。**<br/>
+> 請參閱我們 **[文檔](https://github.com/HazelnutParadise/insyra/tree/main/Docs)** 資料夾中的最新更新以獲取更多詳細資訊。
 
 ## AI / Agent Skills
 
@@ -36,29 +56,6 @@ Go 語言次世代資料分析庫。支援 **平行處理**、**資料視覺化*
 
 - 「用 insyra 讀取 data.csv，用 CCL 新增衍生欄位，然後輸出成 output.csv。」
 - 「用 insyra 的 DataList 計算 mean/std，並快速 preview。」
-
-> [!NOTE]
-> 本專案正在快速迭代中，請為此專案加星並關注，以便隨時了解最新變化！
-
-![logo](logo/logo.webp)
-
-歡迎加入 [**Side Project Taiwan**(Discord 社群)](https://discord.com/channels/1205906503073140776/1280539658551558368) 與我們一起討論。
-
-## 太快、太美、太簡單
-
-**Insyra** 庫是一個動態且多功能的 Go 語言資料分析工具。提供了豐富的功能集，可用於數據操作、統計計算、資料視覺化等，對於處理複雜數據結構的開發者來說，是一個必不可少的工具包。
-
-> [!TIP]
-> `isr` 套件提供 **語法糖**！<br/>
-> 建議任何新專案使用 `isr` 套件取代直接呼叫 `insyra` 主套件包的寫法。<br/>
-> 更多詳細資訊，請參閱 **[說明文件](/Docs/isr.md)**。
-
-> [!NOTE]
-> 如果文檔中的某些功能無法使用，可能是該功能還未包含在最新發布的版本中。請至 **[Releases](https://github.com/HazelnutParadise/insyra/releases)** 查看對應版本源碼中的文檔。
-
-> [!IMPORTANT] 
-> **對於 Insyra 文檔中未明確列出的任何函數或方法，表示該功能仍在積極開發中。這些實驗性功能可能會提供不穩定的結果。**<br/>
-> 請參閱我們 **[文檔](https://github.com/HazelnutParadise/insyra/tree/main/Docs)** 資料夾中的最新更新以獲取更多詳細資訊。
 
 ## [Idensyra](https://github.com/HazelnutParadise/idensyra)
 

@@ -16,6 +16,28 @@ A next-generation data analysis library for Golang. Supports **parallel processi
 
 **Go.dev Package: <https://pkg.go.dev/github.com/HazelnutParadise/insyra>**
 
+> [!NOTE]
+> This project is evolving rapidly—please star and watch the repository to stay up to date with the latest changes!
+
+![logo](logo/logo_transparent.png)
+
+**[繁體中文版 README](README_TW.md)**
+
+## Fast, Lovely, Easy To Use
+
+The **Insyra** library is a dynamic and versatile tool designed for managing and analyzing data in Go. It offers a rich set of features for data manipulation, statistical calculations, data visualization, and more, making it an essential toolkit for developers handling complex data structures.
+
+> [!TIP] 
+> `isr` package provides **Sytax Sugar**!<br/>
+> Any new project is recommended to use `isr` package instead of calling `insyra` main package directly.<br/>
+> For more details, please refer to the **[Documentation](/Docs/isr.md)**.
+
+> [!NOTE]
+> If some functions or methods in the documentation are not working, it may be because the feature is not yet included in the latest release. Please refer to the documentation in the source code of the corresponding version in **[Releases](https://github.com/HazelnutParadise/insyra/releases)**.
+
+> [!IMPORTANT] 
+> **For any functions or methods not explicitly listed in Insyra documents, it indicates that the feature is still under active development. These experimental features might provide unstable results.** <br/>
+> Please refer to our latest updates in **[Docs](/Docs)** folder for more details.
 
 ## AI / Agent Skills
 
@@ -36,31 +58,6 @@ Example prompts:
 
 - "Use insyra to read data.csv, add a derived column with CCL, and export to output.csv."
 - "Use insyra DataList to compute mean/std and show a quick preview."
-
-> [!NOTE]
-> This project is evolving rapidly—please star and watch the repository to stay up to date with the latest changes!
-
-![logo](logo/logo_transparent.png)
-
-**[繁體中文版 README](README_TW.md)**
-
-Welcome to join [**Side Project Taiwan**(Discord Server)](https://discord.com/channels/1205906503073140776/1280539658551558368) for further discussions.
-
-## Fast, Lovely, Easy To Use
-
-The **Insyra** library is a dynamic and versatile tool designed for managing and analyzing data in Go. It offers a rich set of features for data manipulation, statistical calculations, data visualization, and more, making it an essential toolkit for developers handling complex data structures.
-
-> [!TIP] 
-> `isr` package provides **Sytax Sugar**!<br/>
-> Any new project is recommended to use `isr` package instead of calling `insyra` main package directly.<br/>
-> For more details, please refer to the **[Documentation](/Docs/isr.md)**.
-
-> [!NOTE]
-> If some functions or methods in the documentation are not working, it may be because the feature is not yet included in the latest release. Please refer to the documentation in the source code of the corresponding version in **[Releases](https://github.com/HazelnutParadise/insyra/releases)**.
-
-> [!IMPORTANT] 
-> **For any functions or methods not explicitly listed in Insyra documents, it indicates that the feature is still under active development. These experimental features might provide unstable results.** <br/>
-> Please refer to our latest updates in **[Docs](/Docs)** folder for more details.
 
 ## [Idensyra](https://github.com/HazelnutParadise/idensyra)
 
