@@ -288,6 +288,131 @@ func Export(name, outputPath string) error {
 	return os.WriteFile(outputPath, bytes, 0o644)
 }
 
+func Import(inputPath, targetName string, force bool) (string, error) {
+	bytes, err := os.ReadFile(inputPath)
+	if err != nil {
+		return "", err
+	}
+
+	var payload ExportPayload
+	if err := json.Unmarshal(bytes, &payload); err != nil {
+		return "", fmt.Errorf("invalid export payload: %w", err)
+	}
+
+	name := strings.TrimSpace(targetName)
+	if name == "" {
+		name = strings.TrimSpace(payload.Environment)
+	}
+	if name == "" {
+		return "", errors.New("environment name is required")
+	}
+
+	if err := EnsureBaseStructure(); err != nil {
+		return "", err
+	}
+
+	envPath, err := ResolveEnvPath(name)
+	if err != nil {
+		return "", err
+	}
+
+	if !Exists(name) {
+		if err := Create(name); err != nil {
+			return "", err
+		}
+	} else if !force {
+		empty, err := isEnvironmentEmpty(name)
+		if err != nil {
+			return "", err
+		}
+		if !empty {
+			return "", fmt.Errorf("target environment is not empty: %s (use --force to overwrite)", name)
+		}
+	}
+
+	state := payload.State
+	if state == nil {
+		state = &State{Variables: map[string]SerializedVariable{}, LastAccess: ""}
+	}
+	if state.Variables == nil {
+		state.Variables = map[string]SerializedVariable{}
+	}
+	if state.LastAccess == "" {
+		state.LastAccess = time.Now().UTC().Format(time.RFC3339)
+	}
+
+	stateBytes, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(filepath.Join(envPath, "state.json"), stateBytes, 0o644); err != nil {
+		return "", err
+	}
+
+	historyBytes := []byte("")
+	if len(payload.History) > 0 {
+		historyText := strings.Join(payload.History, "\n") + "\n"
+		historyBytes = []byte(historyText)
+	}
+	if err := os.WriteFile(filepath.Join(envPath, "history.txt"), historyBytes, 0o644); err != nil {
+		return "", err
+	}
+
+	configBytes := []byte("{}\n")
+	if len(payload.Config) > 0 {
+		if json.Valid(payload.Config) {
+			configBytes = payload.Config
+		} else {
+			return "", errors.New("invalid config payload in export file")
+		}
+	}
+	if err := os.WriteFile(filepath.Join(envPath, "config.json"), configBytes, 0o644); err != nil {
+		return "", err
+	}
+
+	return name, nil
+}
+
+func isEnvironmentEmpty(name string) (bool, error) {
+	state, err := LoadState(name)
+	if err == nil && state != nil && len(state.Variables) > 0 {
+		return false, nil
+	}
+
+	history, err := ReadHistory(name)
+	if err == nil && len(history) > 0 {
+		return false, nil
+	}
+
+	envPath, err := ResolveEnvPath(name)
+	if err != nil {
+		return false, err
+	}
+	configBytes, err := os.ReadFile(filepath.Join(envPath, "config.json"))
+	if err != nil {
+		return true, nil
+	}
+
+	trimmed := strings.TrimSpace(string(configBytes))
+	if trimmed == "" || trimmed == "{}" {
+		return true, nil
+	}
+
+	var configPayload any
+	if err := json.Unmarshal(configBytes, &configPayload); err != nil {
+		return false, fmt.Errorf("invalid existing config.json in environment %s: %w", name, err)
+	}
+
+	switch typed := configPayload.(type) {
+	case map[string]any:
+		return len(typed) == 0, nil
+	case nil:
+		return true, nil
+	default:
+		return false, nil
+	}
+}
+
 func writeDefaultFiles(envPath string) error {
 	if err := os.WriteFile(filepath.Join(envPath, "history.txt"), []byte(""), 0o644); err != nil {
 		return err

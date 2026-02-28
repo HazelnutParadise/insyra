@@ -11,7 +11,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:               "env",
-		Usage:              "env <create|list|open|clear|export|delete|rename|info> [args]",
+		Usage:              "env <create|list|open|clear|export|import|delete|rename|info> [args]",
 		Description:        "Environment management",
 		DisableFlagParsing: false,
 		Run:                runEnvCommand,
@@ -20,7 +20,7 @@ func init() {
 
 func runEnvCommand(ctx *ExecContext, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: env <create|list|open|clear|export|delete|rename|info> [args]")
+		return fmt.Errorf("usage: env <create|list|open|clear|export|import|delete|rename|info> [args]")
 	}
 	sub := strings.ToLower(args[0])
 	switch sub {
@@ -99,6 +99,23 @@ func runEnvCommand(ctx *ExecContext, args []string) error {
 			return err
 		}
 		_, _ = fmt.Fprintf(ctx.Output, "exported environment %s -> %s\n", name, out)
+		return nil
+	case "import":
+		in, target, force, err := parseEnvImportArgs(args[1:])
+		if err != nil {
+			return err
+		}
+		name, err := env.Import(in, target, force)
+		if err != nil {
+			return err
+		}
+		if name == ctx.EnvName {
+			vars, restoreErr := env.RestoreVariables(name)
+			if restoreErr == nil {
+				ctx.Vars = vars
+			}
+		}
+		_, _ = fmt.Fprintf(ctx.Output, "imported environment from %s -> %s\n", in, name)
 		return nil
 	case "delete":
 		if len(args) < 2 {
@@ -195,4 +212,33 @@ func parseEnvExportArgs(ctx *ExecContext, args []string) (string, string, error)
 	}
 
 	return "", "", fmt.Errorf("usage: env export [name] <file>")
+}
+
+func parseEnvImportArgs(args []string) (string, string, bool, error) {
+	if len(args) == 0 {
+		return "", "", false, fmt.Errorf("usage: env import <file> [name] [--force]")
+	}
+
+	input := args[0]
+	target := ""
+	force := false
+	remain := args[1:]
+
+	for i := 0; i < len(remain); i++ {
+		arg := remain[i]
+		switch arg {
+		case "--force":
+			force = true
+		default:
+			if strings.HasPrefix(arg, "--") {
+				return "", "", false, fmt.Errorf("unknown flag for env import: %s", arg)
+			}
+			if target != "" {
+				return "", "", false, fmt.Errorf("usage: env import <file> [name] [--force]")
+			}
+			target = arg
+		}
+	}
+
+	return input, target, force, nil
 }
