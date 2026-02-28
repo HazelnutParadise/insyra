@@ -11,7 +11,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:               "env",
-		Usage:              "env <create|list|open|clear|delete|rename|info> [args]",
+		Usage:              "env <create|list|open|clear|export|delete|rename|info> [args]",
 		Description:        "Environment management",
 		DisableFlagParsing: false,
 		Run:                runEnvCommand,
@@ -20,7 +20,7 @@ func init() {
 
 func runEnvCommand(ctx *ExecContext, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: env <create|list|open|clear|delete|rename|info> [args]")
+		return fmt.Errorf("usage: env <create|list|open|clear|export|delete|rename|info> [args]")
 	}
 	sub := strings.ToLower(args[0])
 	switch sub {
@@ -89,6 +89,16 @@ func runEnvCommand(ctx *ExecContext, args []string) error {
 		} else {
 			_, _ = fmt.Fprintf(ctx.Output, "cleared environment: %s\n", name)
 		}
+		return nil
+	case "export":
+		name, out, err := parseEnvExportArgs(ctx, args[1:])
+		if err != nil {
+			return err
+		}
+		if err := env.Export(name, out); err != nil {
+			return err
+		}
+		_, _ = fmt.Fprintf(ctx.Output, "exported environment %s -> %s\n", name, out)
 		return nil
 	case "delete":
 		if len(args) < 2 {
@@ -165,4 +175,24 @@ func parseEnvClearArgs(ctx *ExecContext, args []string) (string, bool, error) {
 	}
 
 	return name, keepHistory, nil
+}
+
+func parseEnvExportArgs(ctx *ExecContext, args []string) (string, string, error) {
+	if len(args) == 0 {
+		return "", "", fmt.Errorf("usage: env export [name] <file>")
+	}
+
+	if len(args) == 1 {
+		name := ctx.EnvName
+		if name == "" {
+			name = "default"
+		}
+		return name, args[0], nil
+	}
+
+	if len(args) == 2 {
+		return args[0], args[1], nil
+	}
+
+	return "", "", fmt.Errorf("usage: env export [name] <file>")
 }
