@@ -30,6 +30,7 @@ lingo.txt
 # generated index: do not track
 /docs/index.html
 
+*.exe
 .claude
 .codex
 .github/prompts/*
