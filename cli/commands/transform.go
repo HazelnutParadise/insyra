@@ -1,9 +1,12 @@
 package commands
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 func init() {
-	_ = Register(&CommandHandler{Name: "rank", Usage: "rank <var> [as <var>]", Description: "Rank DataList", Run: runRankCommand})
+	_ = Register(&CommandHandler{Name: "rank", Usage: "rank <var> [asc|desc|true|false] [as <var>]", Description: "Rank DataList", Run: runRankCommand})
 	_ = Register(&CommandHandler{Name: "normalize", Usage: "normalize <var> [as <var>]", Description: "Normalize DataList", Run: runNormalizeCommand})
 	_ = Register(&CommandHandler{Name: "standardize", Usage: "standardize <var> [as <var>]", Description: "Standardize DataList", Run: runStandardizeCommand})
 	_ = Register(&CommandHandler{Name: "reverse", Usage: "reverse <var> [as <var>]", Description: "Reverse DataList", Run: runReverseCommand})
@@ -15,7 +18,32 @@ func init() {
 }
 
 func runRankCommand(ctx *ExecContext, args []string) error {
-	return runDLTransform(ctx, args, func(dlName string, dlOps *dlTransformProxy) (any, error) { return dlOps.rank(dlName) })
+	coreArgs, alias := parseAlias(args)
+	if len(coreArgs) < 1 || len(coreArgs) > 2 {
+		return fmt.Errorf("usage: rank <var> [asc|desc|true|false] [as <var>]")
+	}
+
+	dlName := coreArgs[0]
+	ascending := true
+	if len(coreArgs) == 2 {
+		direction := strings.ToLower(coreArgs[1])
+		switch direction {
+		case "asc", "ascending", "true":
+			ascending = true
+		case "desc", "descending", "false":
+			ascending = false
+		default:
+			return fmt.Errorf("invalid rank direction %q, expected asc/desc/true/false", coreArgs[1])
+		}
+	}
+
+	result, err := (&dlTransformProxy{ctx: ctx}).rank(dlName, ascending)
+	if err != nil {
+		return err
+	}
+	ctx.Vars[alias] = result
+	_, _ = fmt.Fprintf(ctx.Output, "saved as %s\n", alias)
+	return nil
 }
 func runNormalizeCommand(ctx *ExecContext, args []string) error {
 	return runDLTransform(ctx, args, func(dlName string, dlOps *dlTransformProxy) (any, error) { return dlOps.normalize(dlName) })
@@ -58,12 +86,12 @@ func runDLTransform(ctx *ExecContext, args []string, fn func(dlName string, ops 
 	return nil
 }
 
-func (p *dlTransformProxy) rank(name string) (any, error) {
+func (p *dlTransformProxy) rank(name string, ascending bool) (any, error) {
 	dl, err := getDataListVar(p.ctx, name)
 	if err != nil {
 		return nil, err
 	}
-	return dl.Clone().Rank(), nil
+	return dl.Clone().Rank(ascending), nil
 }
 func (p *dlTransformProxy) normalize(name string) (any, error) {
 	dl, err := getDataListVar(p.ctx, name)

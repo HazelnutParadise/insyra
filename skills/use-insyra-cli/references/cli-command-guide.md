@@ -332,8 +332,8 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 ## Transform / Time-Series
 ### `rank`
 - Description: Rank DataList
-- Usage: `rank <var> [as <var>]`
-- Example: `insyra rank x`
+- Usage: `rank <var> [asc|desc|true|false] [as <var>]`
+- Example: `insyra rank x desc as x_rank`
 
 ### `normalize`
 - Description: Normalize DataList

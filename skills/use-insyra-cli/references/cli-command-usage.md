@@ -245,7 +245,7 @@ For expanded subcommand forms and practical examples, see `cli-command-guide.md`
 
 ## `rank`
 - Description: Rank DataList
-- Usage: `rank <var> [as <var>]`
+- Usage: `rank <var> [asc|desc|true|false] [as <var>]`
 
 ## `read`
 - Description: Quick preview a file without saving variable
