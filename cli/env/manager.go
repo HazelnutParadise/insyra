@@ -136,7 +136,7 @@ func Delete(name string) error {
 	return os.RemoveAll(envPath)
 }
 
-func Clear(name string) error {
+func Clear(name string, keepHistory bool) error {
 	envPath, err := ResolveEnvPath(name)
 	if err != nil {
 		return err
@@ -149,6 +149,9 @@ func Clear(name string) error {
 	}
 	if err := SaveState(name, map[string]any{}); err != nil {
 		return err
+	}
+	if keepHistory {
+		return nil
 	}
 	return os.WriteFile(filepath.Join(envPath, "history.txt"), []byte(""), 0o644)
 }

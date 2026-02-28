@@ -88,21 +88,33 @@ func BuildCobraCommands(ctx *ExecContext) []*cobra.Command {
 			Short:              localHandler.Description,
 			DisableFlagParsing: localHandler.DisableFlagParsing,
 			RunE: func(cmd *cobra.Command, args []string) error {
-				err := Dispatch(ctx, localHandler.Name, args)
+				runArgs := args
+				if localHandler.Name == "env" && len(args) > 0 && strings.EqualFold(args[0], "clear") {
+					keepHistory, flagErr := cmd.Flags().GetBool("keep-history")
+					if flagErr == nil && keepHistory {
+						runArgs = append(runArgs, "--keep-history")
+					}
+				}
+				err := Dispatch(ctx, localHandler.Name, runArgs)
 				envName := ctx.EnvName
 				if envName == "" {
 					envName = "default"
 				}
 				if localHandler.Name != "history" {
 					line := localHandler.Name
-					if len(args) > 0 {
-						line += " " + strings.Join(args, " ")
+					if len(runArgs) > 0 {
+						line += " " + strings.Join(runArgs, " ")
 					}
 					_ = env.AppendHistory(envName, line)
 				}
 				return err
 			},
 		})
+
+		created := commands[len(commands)-1]
+		if localHandler.Name == "env" {
+			created.Flags().Bool("keep-history", false, "With 'env clear', keep command history")
+		}
 	}
 
 	return commands
