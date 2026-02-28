@@ -10,10 +10,11 @@ import (
 
 func init() {
 	_ = Register(&CommandHandler{
-		Name:        "env",
-		Usage:       "env <create|list|open|clear|delete|rename|info> [args]",
-		Description: "Environment management",
-		Run:         runEnvCommand,
+		Name:               "env",
+		Usage:              "env <create|list|open|clear|delete|rename|info> [args]",
+		Description:        "Environment management",
+		DisableFlagParsing: false,
+		Run:                runEnvCommand,
 	})
 }
 
@@ -73,20 +74,21 @@ func runEnvCommand(ctx *ExecContext, args []string) error {
 		}
 		return nil
 	case "clear":
-		name := ctx.EnvName
-		if len(args) >= 2 {
-			name = args[1]
+		name, keepHistory, err := parseEnvClearArgs(ctx, args[1:])
+		if err != nil {
+			return err
 		}
-		if name == "" {
-			name = "default"
-		}
-		if err := env.Clear(name); err != nil {
+		if err := env.Clear(name, keepHistory); err != nil {
 			return err
 		}
 		if name == ctx.EnvName {
 			ctx.Vars = map[string]any{}
 		}
-		_, _ = fmt.Fprintf(ctx.Output, "cleared environment: %s\n", name)
+		if keepHistory {
+			_, _ = fmt.Fprintf(ctx.Output, "cleared environment variables: %s (history kept)\n", name)
+		} else {
+			_, _ = fmt.Fprintf(ctx.Output, "cleared environment: %s\n", name)
+		}
 		return nil
 	case "delete":
 		if len(args) < 2 {
@@ -136,4 +138,31 @@ func runEnvCommand(ctx *ExecContext, args []string) error {
 	default:
 		return fmt.Errorf("unknown env subcommand: %s", sub)
 	}
+}
+
+func parseEnvClearArgs(ctx *ExecContext, args []string) (string, bool, error) {
+	name := ctx.EnvName
+	if name == "" {
+		name = "default"
+	}
+	keepHistory := false
+	nameProvided := false
+
+	for _, arg := range args {
+		switch arg {
+		case "--keep-history":
+			keepHistory = true
+		default:
+			if strings.HasPrefix(arg, "--") {
+				return "", false, fmt.Errorf("unknown flag for env clear: %s", arg)
+			}
+			if nameProvided {
+				return "", false, fmt.Errorf("usage: env clear [name] [--keep-history]")
+			}
+			name = arg
+			nameProvided = true
+		}
+	}
+
+	return name, keepHistory, nil
 }

@@ -122,7 +122,7 @@ func TestClearEnvironmentStateAndHistory(t *testing.T) {
 		t.Fatalf("append history failed: %v", err)
 	}
 
-	if err := Clear("clearable"); err != nil {
+	if err := Clear("clearable", false); err != nil {
 		t.Fatalf("clear failed: %v", err)
 	}
 
@@ -148,5 +148,40 @@ func TestClearEnvironmentStateAndHistory(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(envPath, "config.json")); err != nil {
 		t.Fatalf("config.json should be kept after clear: %v", err)
+	}
+}
+
+func TestClearEnvironmentKeepHistory(t *testing.T) {
+	setupTempHome(t)
+
+	if err := Create("clear-keep-history"); err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	if err := SaveState("clear-keep-history", map[string]any{"a": 1}); err != nil {
+		t.Fatalf("save state failed: %v", err)
+	}
+	if err := AppendHistory("clear-keep-history", "show t1"); err != nil {
+		t.Fatalf("append history failed: %v", err)
+	}
+
+	if err := Clear("clear-keep-history", true); err != nil {
+		t.Fatalf("clear with keep-history failed: %v", err)
+	}
+
+	state, err := LoadState("clear-keep-history")
+	if err != nil {
+		t.Fatalf("load state failed after clear: %v", err)
+	}
+	if len(state.Variables) != 0 {
+		t.Fatalf("expected empty variables after clear, got %d", len(state.Variables))
+	}
+
+	history, err := ReadHistory("clear-keep-history")
+	if err != nil {
+		t.Fatalf("read history failed after clear: %v", err)
+	}
+	if len(history) != 1 || history[0] != "show t1" {
+		t.Fatalf("expected history to be preserved, got %v", history)
 	}
 }
