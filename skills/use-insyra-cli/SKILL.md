@@ -13,6 +13,43 @@ Use this skill when the task should be solved with `insyra` command line instead
 - **REPL mode**: interactive session (`insyra`)
 - **Script mode**: execute `.isr` line-by-line (`insyra run script.isr`)
 
+## Programmatic DSL API (inside Go code)
+
+Use `engine/dsl` public API when you want to execute DSL directly from your Go program without entering interactive REPL.
+
+```go
+package main
+
+import (
+  "fmt"
+
+  "github.com/HazelnutParadise/insyra/engine/dsl"
+)
+
+func main() {
+  session, err := dsl.NewSession("default", nil)
+  if err != nil {
+    panic(err)
+  }
+
+  if err := session.Execute("newdl 1 2 3 as x"); err != nil {
+    panic(err)
+  }
+  if err := session.Execute("mean x"); err != nil {
+    panic(err)
+  }
+
+  fmt.Println("vars:", len(session.Context().Vars))
+}
+```
+
+Notes:
+
+- `Execute` accepts the same DSL syntax as REPL / `.isr` lines.
+- `ExecuteFile` runs a `.isr` file directly in-process and returns line-numbered errors.
+- State/history are persisted after each successful command.
+- Empty line and `# comment` line are ignored.
+
 ## Agent workflow (recommended)
 
 1. Confirm whether the user wants **REPL**, **one-shot CLI**, or **.isr script**.
