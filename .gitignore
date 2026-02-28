@@ -29,3 +29,8 @@ lingo.txt
 
 # generated index: do not track
 /docs/index.html
+
+.claude
+.codex
+.github/prompts/*
+.github/skills/*
