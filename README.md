@@ -17,9 +17,18 @@ A next-generation data analysis library for Golang. Supports **parallel processi
 **Go.dev Package: <https://pkg.go.dev/github.com/HazelnutParadise/insyra>**
 
 
-## AI / Agent Skill
+## AI / Agent Skills
 
-This repository includes an **agent skill** at [`skills/insyra`](skills/insyra) to help AI agents use Insyra effectively (DataList/DataTable workflows, CCL formulas, and common file I/O helpers).
+This repository includes **agent skills**:
+
+- [`skills/insyra`](skills/insyra): helps AI agents use Insyra in Go code (DataList/DataTable workflows, CCL formulas, and common file I/O helpers).
+- [`skills/use-insyra-cli`](skills/use-insyra-cli): teaches agents how to use Insyra CLI/REPL and `.isr` scripts, including environment workflows and full command reference.
+
+Quick picker:
+
+- Use `skills/insyra` when the task is to write or modify Go code using Insyra APIs.
+- Use `skills/use-insyra-cli` when the task should be done via `insyra` commands, REPL, or `.isr` scripts.
+- Use both when you need a hybrid flow (CLI prototyping first, then productionize in Go code).
 
 It is **platform-agnostic** and can be used with OpenClaw, Claude Code, opencode, or any skill-capable agent runtime.
 
