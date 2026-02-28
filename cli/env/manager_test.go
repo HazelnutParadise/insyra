@@ -245,7 +245,7 @@ func TestImportEnvironmentRestoresStateAndHistory(t *testing.T) {
 		t.Fatalf("export failed: %v", err)
 	}
 
-	importedName, err := Import(exportFile, "", false)
+	importedName, err := Import(exportFile, "", true)
 	if err != nil {
 		t.Fatalf("import failed: %v", err)
 	}

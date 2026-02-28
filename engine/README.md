@@ -6,6 +6,7 @@ The `engine` package re-exports some of Insyra's core data structures and algori
 
 - [Overview](#overview)
 - [Exports](#exports)
+    - [DSL Session](#dsl-session)
   - [BiIndex](#biindex)
   - [Ring](#ring)
   - [AtomicDo](#atomicdo)
@@ -21,6 +22,39 @@ The `engine` package re-exports some of Insyra's core data structures and algori
 `engine` aims to expose a small set of highly useful internals from `internal/core`, `internal/algorithms` and `internal/ccl` with a clean API.
 
 ## Exports
+
+### DSL Session
+
+`DSL Session` re-exports the programmatic Insyra CLI DSL session API, allowing external packages to execute DSL commands or `.isr` files directly from Go code.
+
+**Package:** `engine/dsl`.
+
+```go
+type Session = repl.DSLSession
+func NewSession(envName string, output io.Writer) (*Session, error)
+```
+
+Key methods on `Session`:
+
+- `Execute(line string) error` — execute one DSL command line.
+- `ExecuteFile(path string) error` — execute a `.isr` script file with line-numbered errors.
+- `Context() *commands.ExecContext` — access the underlying execution context/variables.
+
+Example:
+
+```go
+package main
+
+import (
+    "github.com/HazelnutParadise/insyra/engine/dsl"
+)
+
+func main() {
+    s, _ := dsl.NewSession("default", nil)
+    _ = s.Execute("newdl 1 2 3 as x")
+    _ = s.Execute("mean x")
+}
+```
 
 ### BiIndex
 
