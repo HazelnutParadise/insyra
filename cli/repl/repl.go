@@ -8,6 +8,7 @@ import (
 
 	"github.com/HazelnutParadise/insyra/cli/commands"
 	"github.com/HazelnutParadise/insyra/cli/env"
+	"github.com/HazelnutParadise/insyra/cli/style"
 	"github.com/ergochat/readline"
 )
 
@@ -75,7 +76,7 @@ func Start(ctx *commands.ExecContext) error {
 		}
 
 		if err := commands.Dispatch(ctx, tokens[0], tokens[1:]); err != nil {
-			_, _ = fmt.Fprintf(instance.Stderr(), "error: %v\n", err)
+			_, _ = fmt.Fprintln(instance.Stderr(), style.ErrorText(err.Error()))
 		}
 
 		_ = env.AppendHistory(ctx.EnvName, trimmed)

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/HazelnutParadise/insyra/cli/style"
 )
 
 func init() {
@@ -34,7 +36,7 @@ func runScriptCommand(ctx *ExecContext, args []string) error {
 			continue
 		}
 		if err := Dispatch(ctx, tokens[0], tokens[1:]); err != nil {
-			_, _ = fmt.Fprintf(ctx.Output, "line %d: %v\n", lineNumber, err)
+			_, _ = fmt.Fprintf(ctx.Output, "%s\n", style.ErrorText(fmt.Sprintf("line %d: %v", lineNumber, err)))
 		}
 	}
 	if err := scanner.Err(); err != nil {

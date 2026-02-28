@@ -94,37 +94,37 @@
 
 ## 13. Advanced Statistics Commands
 
-- [ ] 13.1 建立 `cli/commands/stats_adv.go`（`corr`/`corrmatrix`/`cov`/`skewness`/`kurtosis` 命令）
-- [ ] 13.2 建立 `cli/commands/regression.go`（`regression <type> <y> <x...>` — linear/poly/exp/log）
-- [ ] 13.3 建立 `cli/commands/hypothesis.go`（`ttest`/`ztest`/`anova`/`ftest`/`chisq` 命令）
-- [ ] 13.4 建立 `cli/commands/pca.go`（`pca <var> <n>`）
+- [x] 13.1 建立 `cli/commands/stats_adv.go`（`corr`/`corrmatrix`/`cov`/`skewness`/`kurtosis` 命令）
+- [x] 13.2 建立 `cli/commands/regression.go`（`regression <type> <y> <x...>` — linear/poly/exp/log）
+- [x] 13.3 建立 `cli/commands/hypothesis.go`（`ttest`/`ztest`/`anova`/`ftest`/`chisq` 命令）
+- [x] 13.4 建立 `cli/commands/pca.go`（`pca <var> <n>`）
 
 ## 14. CCL & Merge Commands
 
-- [ ] 14.1 建立 `cli/commands/ccl.go`（`ccl <var> <expression>` / `addcolccl <var> <name> <expr>`）
-- [ ] 14.2 建立 `cli/commands/merge.go`（`merge <var1> <var2> <direction> <mode> [on <cols>] [as <var>]`）
+- [x] 14.1 建立 `cli/commands/ccl.go`（`ccl <var> <expression>` / `addcolccl <var> <name> <expr>`）
+- [x] 14.2 建立 `cli/commands/merge.go`（`merge <var1> <var2> <direction> <mode> [on <cols>] [as <var>]`）
 
 ## 15. Visualization & Data Fetch Commands
 
-- [ ] 15.1 建立 `cli/commands/plot.go`（`plot <type> <var> [options...] [save <file>]`）
-- [ ] 15.2 建立 `cli/commands/fetch.go`（`fetch yahoo <ticker> <method> [params...] [as <var>]`）
+- [x] 15.1 建立 `cli/commands/plot.go`（`plot <type> <var> [options...] [save <file>]`）
+- [x] 15.2 建立 `cli/commands/fetch.go`（`fetch yahoo <ticker> <method> [params...] [as <var>]`）
 
 ## 16. Script Runner
 
-- [ ] 16.1 建立 `cli/commands/run.go`（`run <script.isr>` 逐行讀取 .isr 檔 → Registry.Dispatch）
-- [ ] 16.2 實作 `#` 註解跳過、空行跳過、錯誤顯示行號
+- [x] 16.1 建立 `cli/commands/run.go`（`run <script.isr>` 逐行讀取 .isr 檔 → Registry.Dispatch）
+- [x] 16.2 實作 `#` 註解跳過、空行跳過、錯誤顯示行號
 
 ## 17. Tab Completion
 
-- [ ] 17.1 建立 `cli/repl/completer.go`（命令名補全：從 Registry 取、變數名補全：從 ExecContext.Vars 取、檔案路徑補全：load/save/read/run 後觸發）
+- [x] 17.1 建立 `cli/repl/completer.go`（命令名補全：從 Registry 取、變數名補全：從 ExecContext.Vars 取、檔案路徑補全：load/save/read/run 後觸發）
 
 ## 18. Polish & Testing
 
-- [ ] 18.1 CLI 有狀態命令自動讀寫環境 state（DisableFlagParsing 處理負數參數）
-- [ ] 18.2 彩色輸出與 `--no-color` flag 實作
-- [ ] 18.3 錯誤訊息美化（友善的格式與顏色）
+- [x] 18.1 CLI 有狀態命令自動讀寫環境 state（DisableFlagParsing 處理負數參數）
+- [x] 18.2 彩色輸出與 `--no-color` flag 實作
+- [x] 18.3 錯誤訊息美化（友善的格式與顏色）
 - [x] 18.4 建立 `cli/commands/registry_test.go`（命令 handler 單元測試）
 - [x] 18.5 建立 `cli/env/manager_test.go`（環境 CRUD 測試）
 - [x] 18.6 建立 `cli/repl/repl_test.go`（REPL 整合測試）
-- [ ] 18.7 手動端對端測試：`go run ./cmd/insyra` 進入 REPL → load/show/filter/save 完整流程
-- [ ] 18.8 跨平台驗證：Windows `%USERPROFILE%\.insyra\` 路徑正確解析
+- [x] 18.7 手動端對端測試：`go run ./cmd/insyra` 進入 REPL → load/show/filter/save 完整流程
+- [x] 18.8 跨平台驗證：Windows `%USERPROFILE%\.insyra\` 路徑正確解析

@@ -1,6 +1,9 @@
 package commands
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 func init() {
 	_ = Register(&CommandHandler{Name: "ccl", Usage: "ccl <var> <expression>", Description: "Execute CCL statements on DataTable", Run: runCCLCommand})
@@ -15,7 +18,7 @@ func runCCLCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	table.ExecuteCCL(args[1])
+	table.ExecuteCCL(strings.Join(args[1:], " "))
 	_, _ = fmt.Fprintln(ctx.Output, "ccl executed")
 	return nil
 }
@@ -28,7 +31,7 @@ func runAddColCCLCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	table.AddColUsingCCL(args[1], args[2])
+	table.AddColUsingCCL(args[1], strings.Join(args[2:], " "))
 	_, _ = fmt.Fprintln(ctx.Output, "column added by ccl")
 	return nil
 }
