@@ -102,6 +102,18 @@ Use this as the authoritative command list for current repository state.
 
 See: `references/cli-commands.md`
 
+## How to use each command
+
+For **every command usage syntax** (one-by-one), use:
+
+- `references/cli-command-usage.md`
+
+This file contains, for each command:
+
+- description
+- exact `Usage:` syntax (from `insyra help <command>`)
+- expanded full forms for shorthand commands such as `ttest`, `ztest`, `anova`, `ftest`, `chisq`, `regression`, `fetch`, and `plot`
+
 ## Fast command templates
 
 ```bash
