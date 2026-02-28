@@ -107,6 +107,7 @@ See: `references/cli-commands.md`
 For **every command usage syntax** (one-by-one), use:
 
 - `references/cli-command-usage.md`
+- `references/cli-command-guide.md` (recommended: by-topic + one example per command)
 
 This file contains, for each command:
 

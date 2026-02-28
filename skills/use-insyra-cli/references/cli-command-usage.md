@@ -2,6 +2,8 @@
 
 Generated from `insyra help` + `insyra help <command>` in current repository state.
 
+For expanded subcommand forms and practical examples, see `cli-command-guide.md`.
+
 ## `addcol`
 - Description: Add one column to DataTable
 - Usage: `addcol <var> <values...>`
