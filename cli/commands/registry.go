@@ -5,7 +5,9 @@ import (
 	"io"
 	"os"
 	"sort"
+	"strings"
 
+	"github.com/HazelnutParadise/insyra/cli/env"
 	"github.com/spf13/cobra"
 )
 
@@ -86,7 +88,19 @@ func BuildCobraCommands(ctx *ExecContext) []*cobra.Command {
 			Short:              localHandler.Description,
 			DisableFlagParsing: localHandler.DisableFlagParsing,
 			RunE: func(cmd *cobra.Command, args []string) error {
-				return Dispatch(ctx, localHandler.Name, args)
+				err := Dispatch(ctx, localHandler.Name, args)
+				envName := ctx.EnvName
+				if envName == "" {
+					envName = "default"
+				}
+				if localHandler.Name != "history" {
+					line := localHandler.Name
+					if len(args) > 0 {
+						line += " " + strings.Join(args, " ")
+					}
+					_ = env.AppendHistory(envName, line)
+				}
+				return err
 			},
 		})
 	}
