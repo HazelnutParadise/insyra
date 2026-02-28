@@ -95,6 +95,12 @@ func BuildCobraCommands(ctx *ExecContext) []*cobra.Command {
 						runArgs = append(runArgs, "--keep-history")
 					}
 				}
+				if localHandler.Name == "env" && len(args) > 0 && strings.EqualFold(args[0], "import") {
+					force, flagErr := cmd.Flags().GetBool("force")
+					if flagErr == nil && force {
+						runArgs = append(runArgs, "--force")
+					}
+				}
 				err := Dispatch(ctx, localHandler.Name, runArgs)
 				envName := ctx.EnvName
 				if envName == "" {
@@ -114,6 +120,7 @@ func BuildCobraCommands(ctx *ExecContext) []*cobra.Command {
 		created := commands[len(commands)-1]
 		if localHandler.Name == "env" {
 			created.Flags().Bool("keep-history", false, "With 'env clear', keep command history")
+			created.Flags().Bool("force", false, "With 'env import', overwrite non-empty target environment")
 		}
 	}
 

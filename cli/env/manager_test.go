@@ -226,3 +226,123 @@ func TestExportEnvironmentIncludesStateAndHistory(t *testing.T) {
 		t.Fatalf("unexpected exported history: %v", payload.History)
 	}
 }
+
+func TestImportEnvironmentRestoresStateAndHistory(t *testing.T) {
+	setupTempHome(t)
+
+	if err := Create("source-env"); err != nil {
+		t.Fatalf("create source failed: %v", err)
+	}
+	if err := SaveState("source-env", map[string]any{"a": 1, "b": "x"}); err != nil {
+		t.Fatalf("save state failed: %v", err)
+	}
+	if err := AppendHistory("source-env", "mean x"); err != nil {
+		t.Fatalf("append history failed: %v", err)
+	}
+
+	exportFile := filepath.Join(t.TempDir(), "source-export.json")
+	if err := Export("source-env", exportFile); err != nil {
+		t.Fatalf("export failed: %v", err)
+	}
+
+	importedName, err := Import(exportFile, "", false)
+	if err != nil {
+		t.Fatalf("import failed: %v", err)
+	}
+	if importedName != "source-env" {
+		t.Fatalf("unexpected imported name: %s", importedName)
+	}
+
+	state, err := LoadState("source-env")
+	if err != nil {
+		t.Fatalf("load state after import failed: %v", err)
+	}
+	if len(state.Variables) != 2 {
+		t.Fatalf("expected 2 variables after import, got %d", len(state.Variables))
+	}
+
+	history, err := ReadHistory("source-env")
+	if err != nil {
+		t.Fatalf("read history after import failed: %v", err)
+	}
+	if len(history) != 1 || history[0] != "mean x" {
+		t.Fatalf("unexpected history after import: %v", history)
+	}
+}
+
+func TestImportEnvironmentNameOverride(t *testing.T) {
+	setupTempHome(t)
+
+	if err := Create("origin"); err != nil {
+		t.Fatalf("create origin failed: %v", err)
+	}
+	if err := SaveState("origin", map[string]any{"k": 99}); err != nil {
+		t.Fatalf("save state failed: %v", err)
+	}
+
+	exportFile := filepath.Join(t.TempDir(), "origin-export.json")
+	if err := Export("origin", exportFile); err != nil {
+		t.Fatalf("export failed: %v", err)
+	}
+
+	importedName, err := Import(exportFile, "restored", false)
+	if err != nil {
+		t.Fatalf("import with override failed: %v", err)
+	}
+	if importedName != "restored" {
+		t.Fatalf("expected overridden imported name, got %s", importedName)
+	}
+
+	if !Exists("restored") {
+		t.Fatalf("overridden target environment should exist")
+	}
+	state, err := LoadState("restored")
+	if err != nil {
+		t.Fatalf("load restored state failed: %v", err)
+	}
+	if len(state.Variables) != 1 {
+		t.Fatalf("expected 1 variable in restored env, got %d", len(state.Variables))
+	}
+}
+
+func TestImportEnvironmentNonEmptyRequiresForce(t *testing.T) {
+	setupTempHome(t)
+
+	if err := Create("source"); err != nil {
+		t.Fatalf("create source failed: %v", err)
+	}
+	if err := SaveState("source", map[string]any{"new": 1}); err != nil {
+		t.Fatalf("save source state failed: %v", err)
+	}
+
+	exportFile := filepath.Join(t.TempDir(), "source-export.json")
+	if err := Export("source", exportFile); err != nil {
+		t.Fatalf("export source failed: %v", err)
+	}
+
+	if err := Create("target"); err != nil {
+		t.Fatalf("create target failed: %v", err)
+	}
+	if err := SaveState("target", map[string]any{"old": 999}); err != nil {
+		t.Fatalf("save target state failed: %v", err)
+	}
+
+	if _, err := Import(exportFile, "target", false); err == nil {
+		t.Fatalf("expected import to fail for non-empty target without force")
+	}
+
+	if _, err := Import(exportFile, "target", true); err != nil {
+		t.Fatalf("expected forced import to succeed: %v", err)
+	}
+
+	state, err := LoadState("target")
+	if err != nil {
+		t.Fatalf("load target state failed: %v", err)
+	}
+	if _, exists := state.Variables["new"]; !exists {
+		t.Fatalf("expected imported variable 'new' in target")
+	}
+	if _, exists := state.Variables["old"]; exists {
+		t.Fatalf("expected old target variable to be overwritten")
+	}
+}
