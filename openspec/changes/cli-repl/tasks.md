@@ -123,8 +123,8 @@
 - [ ] 18.1 CLI 有狀態命令自動讀寫環境 state（DisableFlagParsing 處理負數參數）
 - [ ] 18.2 彩色輸出與 `--no-color` flag 實作
 - [ ] 18.3 錯誤訊息美化（友善的格式與顏色）
-- [ ] 18.4 建立 `cli/commands/registry_test.go`（命令 handler 單元測試）
-- [ ] 18.5 建立 `cli/env/manager_test.go`（環境 CRUD 測試）
-- [ ] 18.6 建立 `cli/repl/repl_test.go`（REPL 整合測試）
+- [x] 18.4 建立 `cli/commands/registry_test.go`（命令 handler 單元測試）
+- [x] 18.5 建立 `cli/env/manager_test.go`（環境 CRUD 測試）
+- [x] 18.6 建立 `cli/repl/repl_test.go`（REPL 整合測試）
 - [ ] 18.7 手動端對端測試：`go run ./cmd/insyra` 進入 REPL → load/show/filter/save 完整流程
 - [ ] 18.8 跨平台驗證：Windows `%USERPROFILE%\.insyra\` 路徑正確解析
