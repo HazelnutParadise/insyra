@@ -17,9 +17,18 @@ A next-generation data analysis library for Golang. Supports **parallel processi
 **Go.dev Package: <https://pkg.go.dev/github.com/HazelnutParadise/insyra>**
 
 
-## AI / Agent Skill
+## AI / Agent Skills
 
-This repository includes an **agent skill** at [`skills/insyra`](skills/insyra) to help AI agents use Insyra effectively (DataList/DataTable workflows, CCL formulas, and common file I/O helpers).
+This repository includes **agent skills**:
+
+- [`skills/insyra`](skills/insyra): helps AI agents use Insyra in Go code (DataList/DataTable workflows, CCL formulas, and common file I/O helpers).
+- [`skills/use-insyra-cli`](skills/use-insyra-cli): teaches agents how to use Insyra CLI/REPL and `.isr` scripts, including environment workflows and full command reference.
+
+Quick picker:
+
+- Use `skills/insyra` when the task is to write or modify Go code using Insyra APIs.
+- Use `skills/use-insyra-cli` when the task should be done via `insyra` commands, REPL, or `.isr` scripts.
+- Use both when you need a hybrid flow (CLI prototyping first, then productionize in Go code).
 
 It is **platform-agnostic** and can be used with OpenClaw, Claude Code, opencode, or any skill-capable agent runtime.
 
@@ -184,6 +193,51 @@ func main() {
 ### Configuration
 
 See **[Docs/Configuration.md](Docs/Configuration.md)**.
+
+### CLI Quick Examples
+
+Install the CLI (recommended):
+
+```sh
+go install github.com/HazelnutParadise/insyra/cmd/insyra@latest
+```
+
+The binary is installed to `$GOBIN` (or `$GOPATH/bin` if `$GOBIN` is not set).
+
+> [!TIP]
+> On Windows, if `insyra` is not found, add `%USERPROFILE%\\go\\bin` (or your `%GOBIN%`) to PATH, then reopen your terminal.
+
+Start REPL:
+
+```sh
+insyra
+```
+
+Run commands directly (non-REPL):
+
+```sh
+insyra newdl 1 2 3 4 5 as x
+insyra mean x
+```
+
+Advanced command examples:
+
+```sh
+# Regression
+insyra regression linear y x1 x2 as reg
+
+# Hypothesis test
+insyra ttest two group_a group_b equal
+
+# Plot
+insyra plot line sales save sales.html
+
+# Fetch (Yahoo Finance)
+insyra fetch yahoo AAPL quote as q
+```
+
+> [!TIP]
+> Use `--env <name>` to isolate analysis contexts, e.g. `insyra --env exp1`.
 
 ## Thread Safety and Defensive Copies
 

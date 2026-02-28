@@ -17,9 +17,18 @@ Go 語言次世代資料分析庫。支援 **平行處理**、**資料視覺化*
 **Go.dev Package: <https://pkg.go.dev/github.com/HazelnutParadise/insyra>**
 
 
-## AI / Agent Skill
+## AI / Agent Skills
 
-這個 repo 內含一份 **agent skill**：[`skills/insyra`](skills/insyra)，用來協助 AI agent 更有效率地使用 Insyra（DataList / DataTable 工作流、CCL 公式、常見檔案 I/O）。
+這個 repo 內含兩份 **agent skill**：
+
+- [`skills/insyra`](skills/insyra)：協助 AI agent 在 Go 程式碼中使用 Insyra（DataList / DataTable 工作流、CCL 公式、常見檔案 I/O）。
+- [`skills/use-insyra-cli`](skills/use-insyra-cli)：教 agent 使用 Insyra CLI / REPL 與 `.isr` 腳本，包含環境工作流與完整指令參考。
+
+快速選擇：
+
+- 任務是撰寫或修改使用 Insyra API 的 Go 程式碼：用 `skills/insyra`。
+- 任務是透過 `insyra` 指令、REPL 或 `.isr` 腳本執行：用 `skills/use-insyra-cli`。
+- 需要混合流程（先用 CLI 驗證，再落地成 Go 程式）：兩個 skill 一起用。
 
 這份 skill **不綁特定平台**，可用於 OpenClaw、Claude Code、opencode，或任何支援載入 skills 的 agent runtime。
 
@@ -182,6 +191,51 @@ func main() {
 ### 配置
 
 有關配置的詳細資訊請見 **[Docs/Configuration.md](Docs/Configuration_TW.md)**。
+
+### CLI 快速範例
+
+安裝 CLI（建議）：
+
+```sh
+go install github.com/HazelnutParadise/insyra/cmd/insyra@latest
+```
+
+安裝後可執行檔預設在 `$GOBIN`（未設定時為 `$GOPATH/bin`）。
+
+> [!TIP]
+> Windows 使用者若找不到 `insyra` 指令，請確認將 `%USERPROFILE%\\go\\bin`（或你的 `%GOBIN%`）加入 PATH，重新開啟終端機後再執行。
+
+進入 REPL：
+
+```sh
+insyra
+```
+
+批次執行（非 REPL）：
+
+```sh
+insyra newdl 1 2 3 4 5 as x
+insyra mean x
+```
+
+進階命令範例：
+
+```sh
+# Regression
+insyra regression linear y x1 x2 as reg
+
+# Hypothesis test
+insyra ttest two group_a group_b equal
+
+# Plot
+insyra plot line sales save sales.html
+
+# Fetch (Yahoo Finance)
+insyra fetch yahoo AAPL quote as q
+```
+
+> [!TIP]
+> 可搭配 `--env <name>` 管理多個分析環境，例如：`insyra --env exp1`。
 
 ## 執行緒安全與防禦性複製
 
