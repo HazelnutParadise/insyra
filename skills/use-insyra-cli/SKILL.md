@@ -55,6 +55,9 @@ Notes:
 1. Confirm whether the user wants **REPL**, **one-shot CLI**, or **.isr script**.
 2. If isolation is needed, create/select environment first (`--env <name>` or `env open <name>`).
 3. Use `newdl/newdt/load/read` to prepare data.
+
+- For Parquet partial reads, prefer `load parquet <file> cols <c1,c2,...> rowgroups <i1,i2,...> [as <var>]`.
+
 4. Apply transforms/stats/model/plot commands.
 5. Persist outputs (`save`, `env export`) and provide reproducible command history.
 

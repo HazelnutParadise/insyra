@@ -231,6 +231,9 @@ insyra plot line sales save sales.html
 
 # Fetch (Yahoo Finance)
 insyra fetch yahoo AAPL quote as q
+
+# Partial Parquet load (selected columns + row groups)
+insyra load parquet data.parquet cols id,amount,status rowgroups 0,1 as t
 ```
 
 > [!TIP]

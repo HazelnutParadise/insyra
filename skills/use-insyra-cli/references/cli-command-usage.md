@@ -164,7 +164,7 @@ For expanded subcommand forms and practical examples, see `cli-command-guide.md`
 
 ## `load`
 - Description: Load data file into DataTable variable
-- Usage: `load <file>|parquet <file> [sheet <name>] [as <var>]`
+- Usage: `load <file>|parquet <file> [cols <c1,c2,...>] [rowgroups <i1,i2,...>] [sheet <name>] [as <var>]`
 
 ## `lower`
 - Description: Lowercase DataList strings

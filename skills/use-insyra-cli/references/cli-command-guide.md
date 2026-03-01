@@ -98,8 +98,8 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 
 ### `load`
 - Description: Load data file into DataTable variable
-- Usage: `load <file>|parquet <file> [sheet <name>] [as <var>]`
-- Example: `insyra load data.csv|parquet data.csv`
+- Usage: `load <file>|parquet <file> [cols <c1,c2,...>] [rowgroups <i1,i2,...>] [sheet <name>] [as <var>]`
+- Example: `insyra load parquet data.parquet cols id,amount rowgroups 0,1 as t`
 
 ### `read`
 - Description: Quick preview a file without saving variable
