@@ -67,6 +67,16 @@ Go 語言次世代資料分析庫。支援 **平行處理**、**資料視覺化*
 
 ## 開始使用
 
+### 先從主題引導式文件開始
+
+如果你想用實作導向、端到端的方式快速上手 Insyra，建議先從主題引導式文件開始。
+
+- 教學總覽：**[Docs/tutorials/README.md](Docs/tutorials/README.md)**
+- 特色教學：**[Sales Analysis End-to-End](Docs/tutorials/sales-analysis-end-to-end.md)**
+
+特色教學會帶你完整走過流程：  
+CSV 準備 -> DataTable 載入 -> CCL 衍生欄位 -> 排序 -> KPI 彙總 -> 匯出 CSV。
+
 ### 致初學者
 
 > [!TIP]

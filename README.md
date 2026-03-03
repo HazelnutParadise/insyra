@@ -69,6 +69,16 @@ We provide a mini Go IDE, `Idensyra`, which aims to make data analysis even more
 
 ## Getting Started
 
+### Start Here: Guided Tutorials
+
+If you want a practical, end-to-end way to learn Insyra, start with the guided tutorials.
+
+- Tutorial hub: **[Docs/tutorials/README.md](Docs/tutorials/README.md)**
+- Featured tutorial: **[Sales Analysis End-to-End](Docs/tutorials/sales-analysis-end-to-end.md)**
+
+The featured tutorial walks through a full workflow:
+CSV setup -> DataTable loading -> CCL enrichment -> sorting -> KPI aggregation -> CSV export.
+
 ### For those new to Golang
 
 > [!TIP]
