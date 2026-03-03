@@ -37,6 +37,13 @@ dt.Show()
 | [isr](isr.md) | Syntax sugar for fluent, readable code                      |
 | [cli-dsl](cli-dsl.md) | Unified guide for CLI, REPL, `.isr` scripts, and Go DSL sessions |
 
+#### Guided Tutorials
+
+| Document | Description |
+| --- | --- |
+| [tutorials/README](tutorials/README.md) | Scenario-driven tutorial index for hands-on Insyra workflows |
+| [tutorials/sales-analysis-end-to-end](tutorials/sales-analysis-end-to-end.md) | End-to-end sales analysis pipeline using DataTable, CCL, and export |
+
 #### File I/O
 
 | Document              | Description                                                |
