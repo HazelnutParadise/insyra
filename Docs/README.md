@@ -35,6 +35,7 @@ dt.Show()
 | ------------- | ----------------------------------------------------------- |
 | [CCL](CCL.md) | Column Calculation Language for DataTable column operations |
 | [isr](isr.md) | Syntax sugar for fluent, readable code                      |
+| [cli-dsl](cli-dsl.md) | Unified guide for CLI, REPL, `.isr` scripts, and Go DSL sessions |
 
 #### File I/O
 

@@ -239,6 +239,8 @@ insyra load parquet data.parquet cols id,amount,status rowgroups 0,1 as t
 > [!TIP]
 > Use `--env <name>` to isolate analysis contexts, e.g. `insyra --env exp1`.
 
+For full CLI + DSL documentation, see **[Docs/cli-dsl.md](Docs/cli-dsl.md)**.
+
 ## Thread Safety and Defensive Copies
 
 - **Defensive copies:** Insyra returns defensive copies for all public data accessors. Any method that exposes internal slices, maps, or other mutable structures returns a copy so callers cannot mutate internal state unintentionally.

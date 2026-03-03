@@ -233,6 +233,7 @@ insyra fetch yahoo AAPL quote as q
 
 > [!TIP]
 > 可搭配 `--env <name>` 管理多個分析環境，例如：`insyra --env exp1`。
+完整 CLI + DSL 說明請參閱 **[Docs/cli-dsl.md](Docs/cli-dsl.md)**。
 
 ## 執行緒安全與防禦性複製
 
