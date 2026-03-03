@@ -13,6 +13,11 @@ Use this skill when the task should be solved with `insyra` command line instead
 - **REPL mode**: interactive session (`insyra`)
 - **Script mode**: execute `.isr` line-by-line (`insyra run script.isr`)
 
+Official user-facing documentation:
+
+- [CLI + DSL Guide](https://github.com/HazelnutParadise/insyra/blob/main/Docs/cli-dsl.md) (unified CLI + REPL + `.isr` + Go DSL guide)
+- Source of truth: prioritize the latest content in the linked document above.
+
 ## Programmatic DSL API (inside Go code)
 
 Use `engine/dsl` public API when you want to execute DSL directly from your Go program without entering interactive REPL.
