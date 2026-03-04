@@ -1,13 +1,15 @@
 ---
 name: use-insyra-cli
-description: Use when an agent needs to operate Insyra through CLI/REPL or .isr scripts, including environment workflows, reproducible command pipelines, and command selection guidance.
+description: Use when one-off data operation or statistical analysis tasks do not need full program implementation, and the agent should operate Insyra through CLI/REPL or .isr scripts, including environment workflows, reproducible command pipelines, and command selection guidance.
 ---
 
 # Insyra CLI + .isr Script Skill
 
 ## Overview
 
-Use this skill when the task should be solved with `insyra` command line instead of writing Go code directly.
+Use this skill for one-off data operations or statistical analysis where the task should be solved with `insyra` command line instead of writing Go code directly.
+
+It is especially suitable for one-off data operations or statistical analysis where the user does not need to turn the workflow into a full program.
 
 - **CLI mode**: one-shot commands (`insyra <command> ...`)
 - **REPL mode**: interactive session (`insyra`)
