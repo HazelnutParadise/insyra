@@ -73,6 +73,7 @@ Go 語言次世代資料分析庫。支援 **平行處理**、**資料視覺化*
 
 - 教學總覽：**[Docs/tutorials/README.md](Docs/tutorials/README.md)**
 - 特色教學：**[Sales Analysis End-to-End](Docs/tutorials/sales-analysis-end-to-end.md)**
+- 新增主題軌道：**資料品質清理**、**Parquet 串流**、**A/B 統計決策**、**RFM+CAI 分群**、**Yahoo Finance 趨勢**、**互動式 plot 儀表板**、**靜態 gplot 報表**、**LP 容量規劃**、**Python + parallel 批次處理**。
 
 特色教學會帶你完整走過流程：  
 CSV 準備 -> DataTable 載入 -> CCL 衍生欄位 -> 排序 -> KPI 彙總 -> 匯出 CSV。

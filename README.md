@@ -75,6 +75,7 @@ If you want a practical, end-to-end way to learn Insyra, start with the guided t
 
 - Tutorial hub: **[Docs/tutorials/README.md](Docs/tutorials/README.md)**
 - Featured tutorial: **[Sales Analysis End-to-End](Docs/tutorials/sales-analysis-end-to-end.md)**
+- New tutorial tracks: **data quality**, **parquet streaming**, **A/B statistics**, **RFM+CAI segmentation**, **yfinance trend**, **interactive plot dashboards**, **static gplot reports**, **LP capacity planning**, **Python + parallel batch**.
 
 The featured tutorial walks through a full workflow:
 CSV setup -> DataTable loading -> CCL enrichment -> sorting -> KPI aggregation -> CSV export.

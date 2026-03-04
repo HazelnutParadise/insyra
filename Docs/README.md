@@ -41,8 +41,9 @@ dt.Show()
 
 | Document | Description |
 | --- | --- |
-| [tutorials/README](tutorials/README.md) | Scenario-driven tutorial index for hands-on Insyra workflows |
-| [tutorials/sales-analysis-end-to-end](tutorials/sales-analysis-end-to-end.md) | End-to-end sales analysis pipeline using DataTable, CCL, and export |
+| [tutorials/README](tutorials/README.md) | Tutorial hub for all guided, scenario-driven workflows |
+| [tutorials/sales-analysis-end-to-end](tutorials/sales-analysis-end-to-end.md) | Featured tutorial: end-to-end sales analysis with DataTable + CCL |
+| [tutorials/README (9 additional themed tutorials)](tutorials/README.md) | Additional tracks across data engineering, analytics, optimization, and integration |
 
 #### File I/O
 
