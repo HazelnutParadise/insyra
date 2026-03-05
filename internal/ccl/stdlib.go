@@ -85,7 +85,7 @@ func RegisterStandardFunctions() {
 		}
 		var sb strings.Builder
 		for _, arg := range args {
-			sb.WriteString(fmt.Sprintf("%v", arg))
+			_, _ = fmt.Fprint(&sb, arg)
 		}
 		return sb.String(), nil
 	})

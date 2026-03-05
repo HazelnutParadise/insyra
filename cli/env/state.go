@@ -107,9 +107,7 @@ func deserializeVariable(serialized SerializedVariable) any {
 		}
 		if arr, ok := serialized.Data.([]interface{}); ok {
 			converted := make([]any, len(arr))
-			for idx := range arr {
-				converted[idx] = arr[idx]
-			}
+			copy(converted, arr)
 			dl := insyra.NewDataList(converted...)
 			if serialized.Name != "" {
 				dl.SetName(serialized.Name)
@@ -130,8 +128,10 @@ func AppendHistory(envName, command string) error {
 	if err != nil {
 		return err
 	}
-	defer handle.Close()
-	_, err = handle.WriteString(fmt.Sprintf("%s\n", command))
+	defer func() {
+		_ = handle.Close()
+	}()
+	_, err = fmt.Fprintf(handle, "%s\n", command)
 	return err
 }
 

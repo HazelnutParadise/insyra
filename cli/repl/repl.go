@@ -50,7 +50,9 @@ func Start(ctx *commands.ExecContext) error {
 	if err != nil {
 		return err
 	}
-	defer instance.Close()
+	defer func() {
+		_ = instance.Close()
+	}()
 	defer func() {
 		_ = env.SaveState(ctx.EnvName, ctx.Vars)
 	}()

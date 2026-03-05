@@ -19,7 +19,7 @@ func init() {
 
 func runTTestCommand(ctx *ExecContext, args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: ttest single|two|paired ...")
+		return fmt.Errorf("usage: ttest single|two|paired")
 	}
 	switch strings.ToLower(args[0]) {
 	case "single":
@@ -87,7 +87,7 @@ func runTTestCommand(ctx *ExecContext, args []string) error {
 
 func runZTestCommand(ctx *ExecContext, args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: ztest single|two ...")
+		return fmt.Errorf("usage: ztest single|two")
 	}
 	switch strings.ToLower(args[0]) {
 	case "single":
@@ -153,7 +153,7 @@ func runZTestCommand(ctx *ExecContext, args []string) error {
 
 func runAnovaCommand(ctx *ExecContext, args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: anova oneway|twoway|repeated ...")
+		return fmt.Errorf("usage: anova oneway|twoway|repeated")
 	}
 	switch strings.ToLower(args[0]) {
 	case "oneway":
