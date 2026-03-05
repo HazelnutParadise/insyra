@@ -272,7 +272,7 @@ func runFTestCommand(ctx *ExecContext, args []string) error {
 
 func runChiSqCommand(ctx *ExecContext, args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: chisq gof|indep ...")
+		return fmt.Errorf("usage: chisq gof|indep")
 	}
 	switch strings.ToLower(args[0]) {
 	case "gof":
