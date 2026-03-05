@@ -1002,9 +1002,19 @@ func (dl *DataList) Sort(ascending ...bool) *DataList {
 }
 
 // Rank assigns ranks to the elements in the DataList.
-func (dl *DataList) Rank() *DataList {
+// By default, it ranks in ascending order (smaller value gets smaller rank).
+// Pass false to rank in descending order.
+func (dl *DataList) Rank(ascending ...bool) *DataList {
 	data := dl.ToF64Slice()
 	ranked := make([]float64, len(data))
+
+	ascendingOrder := true
+	if len(ascending) > 0 {
+		ascendingOrder = ascending[0]
+	}
+	if len(ascending) > 1 {
+		dl.warn("Rank", "Too many arguments, using only the first one")
+	}
 
 	// 建立一個索引來追蹤原始位置
 	indexes := make([]int, len(data))
@@ -1014,7 +1024,10 @@ func (dl *DataList) Rank() *DataList {
 
 	// 根據數據排序，並追蹤索引
 	algorithms.ParallelSortStableFunc(indexes, func(i, j int) int {
-		return cmp.Compare(data[i], data[j])
+		if ascendingOrder {
+			return cmp.Compare(data[i], data[j])
+		}
+		return cmp.Compare(data[j], data[i])
 	})
 
 	// 分配秩次，處理重複值的情況

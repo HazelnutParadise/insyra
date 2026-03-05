@@ -53,7 +53,7 @@ type IDataList interface {
 	Len() int
 	Sort(ascending ...bool) *DataList
 	Map(mapFunc func(int, any) any) *DataList
-	Rank() *DataList
+	Rank(ascending ...bool) *DataList
 	Reverse() *DataList
 	Upper() *DataList
 	Lower() *DataList

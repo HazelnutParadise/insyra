@@ -23,8 +23,6 @@ A next-generation data analysis library for Golang. Supports **parallel processi
 
 **[繁體中文版 README](README_TW.md)**
 
-Welcome to join [**Side Project Taiwan**(Discord Server)](https://discord.com/channels/1205906503073140776/1280539658551558368) for further discussions.
-
 ## Fast, Lovely, Easy To Use
 
 The **Insyra** library is a dynamic and versatile tool designed for managing and analyzing data in Go. It offers a rich set of features for data manipulation, statistical calculations, data visualization, and more, making it an essential toolkit for developers handling complex data structures.
@@ -41,6 +39,26 @@ The **Insyra** library is a dynamic and versatile tool designed for managing and
 > **For any functions or methods not explicitly listed in Insyra documents, it indicates that the feature is still under active development. These experimental features might provide unstable results.** <br/>
 > Please refer to our latest updates in **[Docs](/Docs)** folder for more details.
 
+## AI / Agent Skills
+
+This repository includes **agent skills**:
+
+- [`skills/insyra`](skills/insyra): helps AI agents use Insyra in Go code (DataList/DataTable workflows, CCL formulas, and common file I/O helpers).
+- [`skills/use-insyra-cli`](skills/use-insyra-cli): teaches agents how to use Insyra CLI/REPL and `.isr` scripts, including environment workflows and full command reference.
+
+Quick picker:
+
+- Use `skills/insyra` when the task is to write or modify Go code using Insyra APIs.
+- Use `skills/use-insyra-cli` when the task should be done via `insyra` commands, REPL, or `.isr` scripts.
+- Use both when you need a hybrid flow (CLI prototyping first, then productionize in Go code).
+
+It is **platform-agnostic** and can be used with OpenClaw, Claude Code, opencode, or any skill-capable agent runtime.
+
+Example prompts:
+
+- "Use insyra to read data.csv, add a derived column with CCL, and export to output.csv."
+- "Use insyra DataList to compute mean/std and show a quick preview."
+
 ## [Idensyra](https://github.com/HazelnutParadise/idensyra)
 
 We provide a mini Go IDE, `Idensyra`, which aims to make data analysis even more easier (though Insyra has already made it very easy).
@@ -50,6 +68,17 @@ We provide a mini Go IDE, `Idensyra`, which aims to make data analysis even more
 **[Know more about Idensyra](https://github.com/HazelnutParadise/idensyra)**
 
 ## Getting Started
+
+### Start Here: Guided Tutorials
+
+If you want a practical, end-to-end way to learn Insyra, start with the guided tutorials.
+
+- Tutorial hub: **[Docs/tutorials/README.md](Docs/tutorials/README.md)**
+- Featured tutorial: **[Sales Analysis End-to-End](Docs/tutorials/sales-analysis-end-to-end.md)**
+- New tutorial tracks: **data quality**, **parquet streaming**, **A/B statistics**, **RFM+CAI segmentation**, **yfinance trend**, **interactive plot dashboards**, **static gplot reports**, **LP capacity planning**, **Python + parallel batch**.
+
+The featured tutorial walks through a full workflow:
+CSV setup -> DataTable loading -> CCL enrichment -> sorting -> KPI aggregation -> CSV export.
 
 ### For those new to Golang
 
@@ -172,6 +201,56 @@ func main() {
 ### Configuration
 
 See **[Docs/Configuration.md](Docs/Configuration.md)**.
+
+### CLI Quick Examples
+
+Install the CLI (recommended):
+
+```sh
+go install github.com/HazelnutParadise/insyra/cmd/insyra@latest
+```
+
+The binary is installed to `$GOBIN` (or `$GOPATH/bin` if `$GOBIN` is not set).
+
+> [!TIP]
+> On Windows, if `insyra` is not found, add `%USERPROFILE%\\go\\bin` (or your `%GOBIN%`) to PATH, then reopen your terminal.
+
+Start REPL:
+
+```sh
+insyra
+```
+
+Run commands directly (non-REPL):
+
+```sh
+insyra newdl 1 2 3 4 5 as x
+insyra mean x
+```
+
+Advanced command examples:
+
+```sh
+# Regression
+insyra regression linear y x1 x2 as reg
+
+# Hypothesis test
+insyra ttest two group_a group_b equal
+
+# Plot
+insyra plot line sales save sales.html
+
+# Fetch (Yahoo Finance)
+insyra fetch yahoo AAPL quote as q
+
+# Partial Parquet load (selected columns + row groups)
+insyra load parquet data.parquet cols id,amount,status rowgroups 0,1 as t
+```
+
+> [!TIP]
+> Use `--env <name>` to isolate analysis contexts, e.g. `insyra --env exp1`.
+
+For full CLI + DSL documentation, see **[Docs/cli-dsl.md](Docs/cli-dsl.md)**.
 
 ## Thread Safety and Defensive Copies
 

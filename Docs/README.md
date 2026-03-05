@@ -35,6 +35,15 @@ dt.Show()
 | ------------- | ----------------------------------------------------------- |
 | [CCL](CCL.md) | Column Calculation Language for DataTable column operations |
 | [isr](isr.md) | Syntax sugar for fluent, readable code                      |
+| [cli-dsl](cli-dsl.md) | Unified guide for CLI, REPL, `.isr` scripts, and Go DSL sessions |
+
+#### Guided Tutorials
+
+| Document | Description |
+| --- | --- |
+| [tutorials/README](tutorials/README.md) | Tutorial hub for all guided, scenario-driven workflows |
+| [tutorials/sales-analysis-end-to-end](tutorials/sales-analysis-end-to-end.md) | Featured tutorial: end-to-end sales analysis with DataTable + CCL |
+| [tutorials/README (9 additional themed tutorials)](tutorials/README.md) | Additional tracks across data engineering, analytics, optimization, and integration |
 
 #### File I/O
 

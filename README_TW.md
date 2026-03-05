@@ -21,8 +21,6 @@ Go 語言次世代資料分析庫。支援 **平行處理**、**資料視覺化*
 
 ![logo](logo/logo.webp)
 
-歡迎加入 [**Side Project Taiwan**(Discord 社群)](https://discord.com/channels/1205906503073140776/1280539658551558368) 與我們一起討論。
-
 ## 太快、太美、太簡單
 
 **Insyra** 庫是一個動態且多功能的 Go 語言資料分析工具。提供了豐富的功能集，可用於數據操作、統計計算、資料視覺化等，對於處理複雜數據結構的開發者來說，是一個必不可少的工具包。
@@ -39,6 +37,26 @@ Go 語言次世代資料分析庫。支援 **平行處理**、**資料視覺化*
 > **對於 Insyra 文檔中未明確列出的任何函數或方法，表示該功能仍在積極開發中。這些實驗性功能可能會提供不穩定的結果。**<br/>
 > 請參閱我們 **[文檔](https://github.com/HazelnutParadise/insyra/tree/main/Docs)** 資料夾中的最新更新以獲取更多詳細資訊。
 
+## AI / Agent Skills
+
+這個 repo 內含兩份 **agent skill**：
+
+- [`skills/insyra`](skills/insyra)：協助 AI agent 在 Go 程式碼中使用 Insyra（DataList / DataTable 工作流、CCL 公式、常見檔案 I/O）。
+- [`skills/use-insyra-cli`](skills/use-insyra-cli)：教 agent 使用 Insyra CLI / REPL 與 `.isr` 腳本，包含環境工作流與完整指令參考。
+
+快速選擇：
+
+- 任務是撰寫或修改使用 Insyra API 的 Go 程式碼：用 `skills/insyra`。
+- 任務是透過 `insyra` 指令、REPL 或 `.isr` 腳本執行：用 `skills/use-insyra-cli`。
+- 需要混合流程（先用 CLI 驗證，再落地成 Go 程式）：兩個 skill 一起用。
+
+這份 skill **不綁特定平台**，可用於 OpenClaw、Claude Code、opencode，或任何支援載入 skills 的 agent runtime。
+
+範例提示詞：
+
+- 「用 insyra 讀取 data.csv，用 CCL 新增衍生欄位，然後輸出成 output.csv。」
+- 「用 insyra 的 DataList 計算 mean/std，並快速 preview。」
+
 ## [Idensyra](https://github.com/HazelnutParadise/idensyra)
 
 我們提供了一個迷你 Go IDE，`Idensyra`，旨在使數據分析變得更簡單（儘管 Insyra 已經使其非常簡單）。
@@ -48,6 +66,17 @@ Go 語言次世代資料分析庫。支援 **平行處理**、**資料視覺化*
 **[了解更多關於 Idensyra](https://github.com/HazelnutParadise/idensyra)**
 
 ## 開始使用
+
+### 先從主題引導式文件開始
+
+如果你想用實作導向、端到端的方式快速上手 Insyra，建議先從主題引導式文件開始。
+
+- 教學總覽：**[Docs/tutorials/README.md](Docs/tutorials/README.md)**
+- 特色教學：**[Sales Analysis End-to-End](Docs/tutorials/sales-analysis-end-to-end.md)**
+- 新增主題軌道：**資料品質清理**、**Parquet 串流**、**A/B 統計決策**、**RFM+CAI 分群**、**Yahoo Finance 趨勢**、**互動式 plot 儀表板**、**靜態 gplot 報表**、**LP 容量規劃**、**Python + parallel 批次處理**。
+
+特色教學會帶你完整走過流程：  
+CSV 準備 -> DataTable 載入 -> CCL 衍生欄位 -> 排序 -> KPI 彙總 -> 匯出 CSV。
 
 ### 致初學者
 
@@ -170,6 +199,52 @@ func main() {
 ### 配置
 
 有關配置的詳細資訊請見 **[Docs/Configuration.md](Docs/Configuration_TW.md)**。
+
+### CLI 快速範例
+
+安裝 CLI（建議）：
+
+```sh
+go install github.com/HazelnutParadise/insyra/cmd/insyra@latest
+```
+
+安裝後可執行檔預設在 `$GOBIN`（未設定時為 `$GOPATH/bin`）。
+
+> [!TIP]
+> Windows 使用者若找不到 `insyra` 指令，請確認將 `%USERPROFILE%\\go\\bin`（或你的 `%GOBIN%`）加入 PATH，重新開啟終端機後再執行。
+
+進入 REPL：
+
+```sh
+insyra
+```
+
+批次執行（非 REPL）：
+
+```sh
+insyra newdl 1 2 3 4 5 as x
+insyra mean x
+```
+
+進階命令範例：
+
+```sh
+# Regression
+insyra regression linear y x1 x2 as reg
+
+# Hypothesis test
+insyra ttest two group_a group_b equal
+
+# Plot
+insyra plot line sales save sales.html
+
+# Fetch (Yahoo Finance)
+insyra fetch yahoo AAPL quote as q
+```
+
+> [!TIP]
+> 可搭配 `--env <name>` 管理多個分析環境，例如：`insyra --env exp1`。
+完整 CLI + DSL 說明請參閱 **[Docs/cli-dsl.md](Docs/cli-dsl.md)**。
 
 ## 執行緒安全與防禦性複製
 

@@ -1267,14 +1267,16 @@ mad := dl.MAD()
 ### Rank
 
 ```go
-func (dl *DataList) Rank() *DataList
+func (dl *DataList) Rank(ascending ...bool) *DataList
 ```
 
-**Description:** Assigns ranks to elements based on their values.
+**Description:** Assigns ranks to elements based on their values. By default it ranks in ascending order. Pass `false` for descending order.
 
 **Parameters:**
 
-- None.
+- `ascending` (optional):
+    - `true` (default): ascending rank (smaller value gets smaller rank)
+    - `false`: descending rank (larger value gets smaller rank)
 
 **Returns:**
 
@@ -1284,8 +1286,8 @@ func (dl *DataList) Rank() *DataList
 
 ```go
 dl := insyra.NewDataList(3, 1, 4, 1, 5)
-ranks := dl.Rank()
-// Returns ranks based on sorted order
+ranksAsc := dl.Rank()      // default ascending
+ranksDesc := dl.Rank(false) // descending
 ```
 
 ### Difference

@@ -392,7 +392,17 @@ func TestDataListSort(t *testing.T) {
 }
 
 func TestDataListRank(t *testing.T) {
-	// TODO
+	dl := NewDataList(10, 30, 20, 20)
+
+	asc := dl.Rank()
+	if !reflect.DeepEqual(asc.Data(), []any{1.0, 4.0, 2.5, 2.5}) {
+		t.Errorf("Expected ascending rank %v, got %v", []any{1.0, 4.0, 2.5, 2.5}, asc.Data())
+	}
+
+	desc := dl.Rank(false)
+	if !reflect.DeepEqual(desc.Data(), []any{4.0, 1.0, 2.5, 2.5}) {
+		t.Errorf("Expected descending rank %v, got %v", []any{4.0, 1.0, 2.5, 2.5}, desc.Data())
+	}
 }
 
 func TestDataListReverse(t *testing.T) {
