@@ -17,16 +17,16 @@ Each tutorial starts from a practical scenario and walks through an end-to-end w
 
 | Tutorial | Category | Learning goal | Estimated time | Link |
 | --- | --- | --- | --- | --- |
-| Sales Analysis End-to-End | Data Engineering | Build a complete sales analysis pipeline from raw CSV to enriched output using DataTable + CCL. | 15-20 min | [Open](/tutorials/sales-analysis-end-to-end.md) |
-| Data Quality and Column Engineering | Data Engineering | Clean messy records, apply replacements/filters, and engineer business columns with CCL. | 15-20 min | [Open](/tutorials/data-quality-and-column-engineering.md) |
-| Parquet Inspection, Streaming, and CCL Filtering | Data Engineering | Inspect schema/row-groups, stream safely, and filter parquet data with CCL. | 20-25 min | [Open](/tutorials/parquet-inspection-streaming-and-filter.md) |
-| A/B Test Decision with Statistics | Analytics | Turn experiment samples into a ship/hold decision with statistical evidence. | 15-20 min | [Open](/tutorials/ab-test-decision-with-statistics.md) |
-| Customer Segmentation with RFM and CAI | Analytics | Segment customers by value and activity momentum for retention/upsell actions. | 20-25 min | [Open](/tutorials/customer-segmentation-rfm-and-cai.md) |
-| Market Trend Forecasting with Yahoo Finance | Analytics | Fetch market data, apply offline fallback, fit trend regression, and export outputs. | 20-25 min | [Open](/tutorials/market-trend-forecasting-with-yfinance.md) |
-| Interactive KPI Dashboard with plot | Analytics | Build browser-ready KPI charts and export HTML/PNG artifacts. | 15-20 min | [Open](/tutorials/interactive-kpi-dashboard-with-plot.md) |
-| Static Executive Report with gplot | Analytics | Generate static PNG charts for executive reports and slide decks. | 15-20 min | [Open](/tutorials/static-executive-report-with-gplot.md) |
-| Capacity Planning with lp and lpgen | Optimization | Build and solve a linear-programming model for constrained capacity planning. | 20-25 min | [Open](/tutorials/capacity-planning-with-lp-and-lpgen.md) |
-| Python Enrichment and Parallel Batch Processing | Integration | Combine Python feature engineering with parallel KPI computation in Go. | 20-25 min | [Open](/tutorials/python-enrichment-and-parallel-batch.md) |
+| Sales Analysis End-to-End | Data Engineering | Build a complete sales analysis pipeline from raw CSV to enriched output using DataTable + CCL. | 15-20 min | [Open](sales-analysis-end-to-end.md) |
+| Data Quality and Column Engineering | Data Engineering | Clean messy records, apply replacements/filters, and engineer business columns with CCL. | 15-20 min | [Open](data-quality-and-column-engineering.md) |
+| Parquet Inspection, Streaming, and CCL Filtering | Data Engineering | Inspect schema/row-groups, stream safely, and filter parquet data with CCL. | 20-25 min | [Open](parquet-inspection-streaming-and-filter.md) |
+| A/B Test Decision with Statistics | Analytics | Turn experiment samples into a ship/hold decision with statistical evidence. | 15-20 min | [Open](ab-test-decision-with-statistics.md) |
+| Customer Segmentation with RFM and CAI | Analytics | Segment customers by value and activity momentum for retention/upsell actions. | 20-25 min | [Open](customer-segmentation-rfm-and-cai.md) |
+| Market Trend Forecasting with Yahoo Finance | Analytics | Fetch market data, apply offline fallback, fit trend regression, and export outputs. | 20-25 min | [Open](market-trend-forecasting-with-yfinance.md) |
+| Interactive KPI Dashboard with plot | Analytics | Build browser-ready KPI charts and export HTML/PNG artifacts. | 15-20 min | [Open](interactive-kpi-dashboard-with-plot.md) |
+| Static Executive Report with gplot | Analytics | Generate static PNG charts for executive reports and slide decks. | 15-20 min | [Open](static-executive-report-with-gplot.md) |
+| Capacity Planning with lp and lpgen | Optimization | Build and solve a linear-programming model for constrained capacity planning. | 20-25 min | [Open](capacity-planning-with-lp-and-lpgen.md) |
+| Python Enrichment and Parallel Batch Processing | Integration | Combine Python feature engineering with parallel KPI computation in Go. | 20-25 min | [Open](python-enrichment-and-parallel-batch.md) |
 
 ## Planned next topics
 
