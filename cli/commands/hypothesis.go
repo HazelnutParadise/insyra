@@ -172,7 +172,7 @@ func runAnovaCommand(ctx *ExecContext, args []string) error {
 		return nil
 	case "twoway":
 		if len(args) < 4 {
-			return fmt.Errorf("usage: anova twoway <aLevels> <bLevels> <cell1> <cell2> ...")
+			return fmt.Errorf("usage: anova twoway <aLevels> <bLevels> <cell1> <cell2> [cellN]")
 		}
 		aLevels, err := strconv.Atoi(args[1])
 		if err != nil {
@@ -197,7 +197,7 @@ func runAnovaCommand(ctx *ExecContext, args []string) error {
 		return nil
 	case "repeated":
 		if len(args) < 3 {
-			return fmt.Errorf("usage: anova repeated <subject1> <subject2> ...")
+			return fmt.Errorf("usage: anova repeated <subject1> <subject2> [subjectN]")
 		}
 		subjects, err := getDataListGroups(ctx, args[1:])
 		if err != nil {
@@ -216,7 +216,7 @@ func runAnovaCommand(ctx *ExecContext, args []string) error {
 
 func runFTestCommand(ctx *ExecContext, args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: ftest var|levene|bartlett ...")
+		return fmt.Errorf("usage: ftest var|levene|bartlett")
 	}
 	switch strings.ToLower(args[0]) {
 	case "var":
