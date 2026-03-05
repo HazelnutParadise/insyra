@@ -117,7 +117,8 @@ func main() {
 					continue
 				}
 				title := titleFromFile(filepath.Join(*dirFlag, f))
-				if _, err := fmt.Fprintf(w, "* [%s](%s)\n", title, f); err != nil {
+				link := filepath.ToSlash(f)
+				if _, err := fmt.Fprintf(w, "* [%s](%s)\n", title, link); err != nil {
 					fmt.Fprintf(os.Stderr, "write error: %v\n", err)
 					os.Exit(1)
 				}
@@ -133,7 +134,7 @@ func main() {
 		}
 		// list files under it with indentation
 		for _, f := range files {
-			rel := f
+			rel := filepath.ToSlash(f)
 			title := titleFromFile(filepath.Join(*dirFlag, f))
 			if _, err := fmt.Fprintf(w, "  * [%s](%s)\n", title, rel); err != nil {
 				fmt.Fprintf(os.Stderr, "write error: %v\n", err)
@@ -258,10 +259,15 @@ body {
 }
 .sidebar {
   background: var(--sidebar-bg) !important;
-  color: var(--text-color) !important;
+  color: #e6eef8 !important;
 }
 .sidebar .sidebar-nav a {
   color: #e6eef8 !important;
+}
+.sidebar .sidebar-nav li > p,
+.sidebar .sidebar-nav li > strong,
+.sidebar .app-name-link {
+  color: #c7d8eb !important;
 }
 .navbar, .app-name, .toolbar {
   background: linear-gradient(180deg, #032a45, #012034);
