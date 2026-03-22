@@ -1,304 +1,184 @@
 <!DOCTYPE html>
 <html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+	<link rel="icon" type="image/x-icon" href="https://insyra.hazelnut-paradise.com/favicon">
+    <title>Insyra Docs</title>
+    <meta name="description" content="Insyra documentation powered by Docsify" />
+    <link rel="stylesheet" href="//unpkg.com/docsify/lib/themes/vue.css" />
+    <!-- Custom theme overrides -->
+    <link rel="stylesheet" href="docs.css" />
+  </head>
+  <body>
+    <div id="app"></div>
 
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="icon" type="image/x-icon" href="https://insyra.hazelnut-paradise.com/favicon">
-  <title>Insyra Docs</title>
-  <meta name="description" content="Insyra documentation powered by Docsify" />
-  <link rel="stylesheet" href="//unpkg.com/docsify/lib/themes/vue.css" />
-  <!-- Custom theme overrides -->
-  <link rel="stylesheet" href="docs.css" />
-</head>
+    <script>
+      const tutorialSlugs = new Set(["ab-test-decision-with-statistics", "capacity-planning-with-lp-and-lpgen", "customer-segmentation-rfm-and-cai", "data-quality-and-column-engineering", "interactive-kpi-dashboard-with-plot", "market-trend-forecasting-with-yfinance", "parquet-inspection-streaming-and-filter", "python-enrichment-and-parallel-batch", "sales-analysis-end-to-end", "static-executive-report-with-gplot"]);
 
-<body>
-  <div id="app"></div>
-
-  <script>
-    const navbarItems = [
-      { text: 'Home', href: '#/README' },
-      { text: 'Official Website', href: 'https://insyra.hazelnut-paradise.com' }
-    ];
-
-    const sidebarSections = [
-      {
-        title: null,
-        items: [
-          { text: 'Home', href: '#/README' },
-          { text: 'Column Calculation Language (CCL)', href: '#/CCL' },
-          { text: 'Configuration', href: '#/Configuration' },
-          { text: 'DataList', href: '#/DataList' },
-          { text: 'DataTable', href: '#/DataTable' },
-          { text: 'CLI + DSL Guide', href: '#/cli-dsl' },
-          { text: '[ csvxl ] Package', href: '#/csvxl' },
-          { text: '[ datafetch ] Package', href: '#/datafetch' },
-          { text: '[ gplot ] Package', href: '#/gplot' },
-          { text: '[ isr ] Package', href: '#/isr' },
-          { text: '[ lp ] Package', href: '#/lp' },
-          { text: '[ lpgen ] Package', href: '#/lpgen' },
-          { text: '[ mkt ] Package', href: '#/mkt' },
-          { text: '[ parallel ] Package', href: '#/parallel' },
-          { text: '[ parquet ] Package', href: '#/parquet' },
-          { text: '[ pd ] Package', href: '#/pd' },
-          { text: '[ plot ] Package', href: '#/plot' },
-          { text: '[ py ] Package', href: '#/py' },
-          { text: '[ stats ] Package', href: '#/stats' },
-          { text: 'Utilities', href: '#/utils' }
-        ]
-      },
-      {
-        title: 'tutorials',
-        items: [
-          { text: 'Guided Tutorials', href: '#/tutorials/README' },
-          { text: 'A/B Test Decision with Statistics', href: '#/tutorials/ab-test-decision-with-statistics' },
-          { text: 'Capacity Planning with lp and lpgen', href: '#/tutorials/capacity-planning-with-lp-and-lpgen' },
-          { text: 'Customer Segmentation with RFM and CAI', href: '#/tutorials/customer-segmentation-rfm-and-cai' },
-          { text: 'Data Quality and Column Engineering', href: '#/tutorials/data-quality-and-column-engineering' },
-          { text: 'Interactive KPI Dashboard with plot', href: '#/tutorials/interactive-kpi-dashboard-with-plot' },
-          { text: 'Market Trend Forecasting with Yahoo Finance', href: '#/tutorials/market-trend-forecasting-with-yfinance' },
-          { text: 'Parquet Inspection, Streaming, and CCL Filtering', href: '#/tutorials/parquet-inspection-streaming-and-filter' },
-          { text: 'Python Enrichment and Parallel Batch Processing', href: '#/tutorials/python-enrichment-and-parallel-batch' },
-          { text: 'Sales Analysis End-to-End', href: '#/tutorials/sales-analysis-end-to-end' },
-          { text: 'Static Executive Report with gplot', href: '#/tutorials/static-executive-report-with-gplot' }
-        ]
-      }
-    ];
-
-    function splitRouteAndQuery(route) {
-      const queryIndex = route.indexOf('?');
-      if (queryIndex === -1) {
-        return { path: route, query: '' };
-      }
-      return {
-        path: route.slice(0, queryIndex),
-        query: route.slice(queryIndex)
-      };
-    }
-
-    function normalizeRoutePath(routePath) {
-      const safePath = routePath || '/';
-      const parts = safePath.split('/');
-      const normalized = [];
-
-      parts.forEach((part) => {
-        if (!part || part === '.') {
-          return;
+      function splitRouteAndQuery(route) {
+        const queryIndex = route.indexOf('?');
+        if (queryIndex === -1) {
+          return { path: route, query: '' };
         }
-        if (part === '..') {
-          normalized.pop();
-          return;
+        return {
+          path: route.slice(0, queryIndex),
+          query: route.slice(queryIndex)
+        };
+      }
+
+      function normalizeRoutePath(routePath) {
+        const safePath = routePath || '/';
+        const parts = safePath.split('/');
+        const normalized = [];
+
+        parts.forEach((part) => {
+          if (!part || part === '.') {
+            return;
+          }
+          if (part === '..') {
+            normalized.pop();
+            return;
+          }
+          normalized.push(part);
+        });
+
+        return '/' + normalized.join('/');
+      }
+
+      function stripMarkdownExtension(routePath) {
+        const safePath = routePath || '/';
+        const parts = safePath.split('/');
+        const lastIndex = parts.length - 1;
+        const lastPart = parts[lastIndex];
+
+        if (lastPart && /\.md$/i.test(lastPart)) {
+          parts[lastIndex] = lastPart.replace(/\.md$/i, '');
         }
-        normalized.push(part);
-      });
 
-      return `/${normalized.join('/')}`;
-    }
-
-    function stripMarkdownExtension(routePath) {
-      const safePath = routePath || '/';
-      const parts = safePath.split('/');
-      const lastIndex = parts.length - 1;
-      const lastPart = parts[lastIndex];
-
-      if (lastPart && /\.md$/i.test(lastPart)) {
-        parts[lastIndex] = lastPart.replace(/\.md$/i, '');
+        return parts.join('/') || '/';
       }
 
-      return parts.join('/') || '/';
-    }
+      function normalizeHashRoute(hash) {
+        const safeHash = typeof hash === 'string' && hash.length > 0 ? hash : '#/';
+        if (!safeHash.startsWith('#')) {
+          return safeHash;
+        }
 
-    let cachedTutorialSlugs = null;
+        const route = safeHash.slice(1);
+        const parsed = splitRouteAndQuery(route || '/');
+        let normalizedPath = stripMarkdownExtension(normalizeRoutePath(parsed.path));
 
-    function getTutorialSlugSet() {
-      if (cachedTutorialSlugs) {
-        return cachedTutorialSlugs;
+        const routeParts = normalizedPath.split('/').filter(Boolean);
+        if (routeParts.length === 1) {
+          const maybeTutorialSlug = routeParts[0];
+          if (tutorialSlugs.has(maybeTutorialSlug)) {
+            normalizedPath = '/tutorials/' + maybeTutorialSlug;
+          }
+        }
+
+        return '#' + normalizedPath + parsed.query;
       }
 
-      const tutorialSlugs = new Set();
-      const tutorialPrefix = '/tutorials/';
+      function getCanonicalRoutePath(hash) {
+        const canonicalHash = normalizeHashRoute(hash || window.location.hash || '#/');
+        const parsed = splitRouteAndQuery(canonicalHash.slice(1));
+        return parsed.path || '/';
+      }
 
-      sidebarSections.forEach((section) => {
-        section.items.forEach((item) => {
-          const rawRoute = item.href.startsWith('#') ? item.href.slice(1) : item.href;
-          const { path } = splitRouteAndQuery(rawRoute || '/');
-          const normalizedPath = normalizeRoutePath(path);
-          if (normalizedPath.startsWith(tutorialPrefix) && normalizedPath !== `${tutorialPrefix}README`) {
-            tutorialSlugs.add(normalizedPath.slice(tutorialPrefix.length));
+      function canonicalizeCurrentHash() {
+        const currentHash = window.location.hash || '#/';
+        const canonicalHash = normalizeHashRoute(currentHash);
+        if (currentHash !== canonicalHash) {
+          window.location.replace(canonicalHash);
+          return true;
+        }
+        return false;
+      }
+
+      function normalizeRenderedContentLinks() {
+        const currentRoutePath = getCanonicalRoutePath(window.location.hash || '#/');
+        const currentDir = currentRoutePath.endsWith('/')
+          ? currentRoutePath
+          : currentRoutePath.slice(0, currentRoutePath.lastIndexOf('/') + 1);
+
+        const contentLinks = document.querySelectorAll('.markdown-section a[href]');
+        contentLinks.forEach((link) => {
+          const href = link.getAttribute('href');
+          if (!href || href.startsWith('http://') || href.startsWith('https://') || href.startsWith('mailto:')) {
+            return;
+          }
+          if (href.startsWith('#') && !href.startsWith('#/')) {
+            return;
+          }
+
+          let normalizedHref = href;
+
+          if (href.startsWith('#/')) {
+            normalizedHref = normalizeHashRoute(href);
+          } else if ((href.startsWith('./') || href.startsWith('../') || href.startsWith('/')) && /\.md($|\?)/i.test(href)) {
+            const parsed = splitRouteAndQuery(href);
+            let targetPath = '';
+            if (parsed.path.startsWith('/')) {
+              targetPath = parsed.path;
+            } else {
+              targetPath = currentDir + parsed.path;
+            }
+            targetPath = stripMarkdownExtension(normalizeRoutePath(targetPath));
+
+            if (currentRoutePath === '/tutorials/README') {
+              const routeParts = targetPath.split('/').filter(Boolean);
+              if (routeParts.length === 1 && tutorialSlugs.has(routeParts[0])) {
+                targetPath = '/tutorials/' + routeParts[0];
+              }
+            }
+
+            normalizedHref = '#' + targetPath + parsed.query;
+          }
+
+          if (normalizedHref !== href) {
+            link.setAttribute('href', normalizedHref);
           }
         });
-      });
-
-      cachedTutorialSlugs = tutorialSlugs;
-      return cachedTutorialSlugs;
-    }
-
-    function normalizeHashRoute(hash) {
-      const safeHash = typeof hash === 'string' && hash.length > 0 ? hash : '#/';
-      if (!safeHash.startsWith('#')) {
-        return safeHash;
       }
 
-      const route = safeHash.slice(1);
-      const { path, query } = splitRouteAndQuery(route || '/');
-      let normalizedPath = stripMarkdownExtension(normalizeRoutePath(path));
+      canonicalizeCurrentHash();
 
-      const routeParts = normalizedPath.split('/').filter(Boolean);
-      if (routeParts.length === 1) {
-        const maybeTutorialSlug = routeParts[0];
-        if (getTutorialSlugSet().has(maybeTutorialSlug)) {
-          normalizedPath = `/tutorials/${maybeTutorialSlug}`;
-        }
-      }
-
-      return `#${normalizedPath}${query}`;
-    }
-
-    function getCanonicalRoutePath(hash) {
-      const canonicalHash = normalizeHashRoute(hash || window.location.hash || '#/');
-      const { path } = splitRouteAndQuery(canonicalHash.slice(1));
-      return path || '/';
-    }
-
-    function canonicalizeCurrentHash() {
-      const currentHash = window.location.hash || '#/';
-      const canonicalHash = normalizeHashRoute(currentHash);
-      if (currentHash !== canonicalHash) {
-        window.location.replace(canonicalHash);
-        return true;
-      }
-      return false;
-    }
-
-    function normalizeRenderedContentLinks() {
-      const currentRoutePath = getCanonicalRoutePath(window.location.hash || '#/');
-      const tutorialSlugs = getTutorialSlugSet();
-      const contentLinks = document.querySelectorAll('.markdown-section a[href^="#/"]');
-      contentLinks.forEach((link) => {
-        const href = link.getAttribute('href');
-        if (!href) {
-          return;
-        }
-        let normalizedHref = normalizeHashRoute(href);
-
-        if (currentRoutePath === '/tutorials/README') {
-          const linkPath = getCanonicalRoutePath(normalizedHref);
-          if (linkPath.startsWith('/') && !linkPath.startsWith('/tutorials/')) {
-            const slug = linkPath.slice(1);
-            if (tutorialSlugs.has(slug)) {
-              normalizedHref = `#/tutorials/${slug}`;
-            }
+      window.$docsify = {
+        name: 'Insyra',
+        repo: 'HazelnutParadise/insyra',
+        loadSidebar: true,
+        loadNavbar: true,
+        logo: 'logo.webp',
+        relativePath: false,
+        alias: {
+          '/.*/_sidebar.md': '/_sidebar.md',
+          '/.*/_navbar.md': '/_navbar.md'
+        },
+        plugins: [
+          function dynamicRoutePlugin(hook) {
+            hook.init(function () {
+              canonicalizeCurrentHash();
+            });
+            hook.ready(function () {
+              if (canonicalizeCurrentHash()) {
+                return;
+              }
+              normalizeRenderedContentLinks();
+            });
+            hook.doneEach(function () {
+              if (canonicalizeCurrentHash()) {
+                return;
+              }
+              normalizeRenderedContentLinks();
+            });
           }
-        }
+        ]
+      };
+    </script>
 
-        if (href !== normalizedHref) {
-          link.setAttribute('href', normalizedHref);
-        }
-      });
-    }
-
-    function isSidebarItemActive(itemHref, currentRoutePath) {
-      const itemRoutePath = getCanonicalRoutePath(itemHref);
-      if (itemRoutePath === currentRoutePath) {
-        return true;
-      }
-      if (itemRoutePath === '/README' && currentRoutePath === '/') {
-        return true;
-      }
-      if (itemRoutePath === '/' && currentRoutePath === '/README') {
-        return true;
-      }
-      return false;
-    }
-
-    function escapeHtml(text) {
-      return text
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/\"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-    }
-
-    function renderNavbar() {
-      const nav = document.querySelector('.app-nav');
-      if (!nav) {
-        return;
-      }
-      nav.innerHTML = navbarItems
-        .map((item) => `<a href="${item.href}">${escapeHtml(item.text)}</a>`)
-        .join(' ');
-    }
-
-    function renderSidebar() {
-      const sidebar = document.querySelector('.sidebar-nav');
-      if (!sidebar) {
-        return;
-      }
-      const currentRoutePath = getCanonicalRoutePath(window.location.hash || '#/');
-
-      const html = sidebarSections
-        .map((section) => {
-          const itemList = section.items
-            .map((item) => {
-              const normalizedHref = normalizeHashRoute(item.href);
-              const activeClass = isSidebarItemActive(normalizedHref, currentRoutePath) ? ' class="active"' : '';
-              return `<li><a href="${normalizedHref}"${activeClass}>${escapeHtml(item.text)}</a></li>`;
-            })
-            .join('');
-
-          if (!section.title) {
-            return `<ul>${itemList}</ul>`;
-          }
-
-          return `<p class="sidebar-section-title">${escapeHtml(section.title)}</p><ul>${itemList}</ul>`;
-        })
-        .join('');
-
-      sidebar.innerHTML = html;
-    }
-
-    function renderDynamicNav() {
-      renderNavbar();
-      renderSidebar();
-      normalizeRenderedContentLinks();
-    }
-
-    // Canonicalize hash before Docsify boots so first markdown fetch uses the right route.
-    canonicalizeCurrentHash();
-
-    window.$docsify = {
-      name: 'Insyra',
-      repo: 'HazelnutParadise/insyra',
-      loadSidebar: false,
-      loadNavbar: false,
-      logo: 'logo.webp',
-      relativePath: false,
-      plugins: [
-        function dynamicNavigationPlugin(hook) {
-          hook.init(function () {
-            canonicalizeCurrentHash();
-          });
-          hook.ready(function () {
-            if (canonicalizeCurrentHash()) {
-              return;
-            }
-            renderDynamicNav();
-          });
-          hook.doneEach(function () {
-            if (canonicalizeCurrentHash()) {
-              return;
-            }
-            renderDynamicNav();
-          });
-        }
-      ]
-    };
-  </script>
-
-  <script src="//unpkg.com/docsify/lib/docsify.min.js"></script>
-  <script src="//unpkg.com/docsify-copy-code"></script>
-  <script src="//cdn.jsdelivr.net/npm/prismjs@1.22/components/prism-go.min.js"></script>
-</body>
-
+    <script src="//unpkg.com/docsify/lib/docsify.min.js"></script>
+	<script src="//unpkg.com/docsify-copy-code"></script>
+	<script src="//cdn.jsdelivr.net/npm/prismjs@1.22/components/prism-go.min.js"></script>
+  </body>
 </html>
