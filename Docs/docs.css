@@ -13,10 +13,44 @@ body {
 }
 .sidebar {
   background: var(--sidebar-bg) !important;
-  color: var(--text-color) !important;
+  color: #d8e7f8 !important;
 }
 .sidebar .sidebar-nav a {
   color: #e6eef8 !important;
+}
+.sidebar .sidebar-nav {
+  padding-bottom: 1rem;
+}
+.sidebar .sidebar-nav ul {
+  margin: 0.25rem 0 0.85rem;
+  padding-left: 1rem;
+}
+.sidebar .sidebar-nav li {
+  margin: 0.15rem 0;
+}
+.sidebar .sidebar-nav a {
+  display: block;
+  border-radius: 0.4rem;
+  padding: 0.32rem 0.5rem;
+  transition: background-color 0.16s ease, color 0.16s ease;
+  line-height: 1.35;
+}
+.sidebar .sidebar-nav a:hover {
+  background: rgba(149, 188, 238, 0.17);
+  color: #ffffff !important;
+}
+.sidebar .sidebar-nav a.active {
+  background: rgba(149, 188, 238, 0.3);
+  color: #ffffff !important;
+  font-weight: 700;
+}
+.sidebar .sidebar-nav .sidebar-section-title {
+  color: #b7d4f0 !important;
+  margin: 0.8rem 0 0.4rem;
+  padding: 0.1rem 0.5rem;
+  font-size: 0.88rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }
 .navbar, .app-name, .toolbar {
   background: linear-gradient(180deg, #032a45, #012034);
