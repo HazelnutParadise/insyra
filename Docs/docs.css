@@ -52,6 +52,10 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
+/* Fallback for unexpected paragraph titles injected by plugins/theme updates */
+.sidebar .sidebar-nav p {
+  color: #b7d4f0 !important;
+}
 .navbar, .app-name, .toolbar {
   background: linear-gradient(180deg, #032a45, #012034);
   color: #e6eef8 !important;
