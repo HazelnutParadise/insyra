@@ -95,6 +95,19 @@
       return `/${normalized.join('/')}`;
     }
 
+    function stripMarkdownExtension(routePath) {
+      const safePath = routePath || '/';
+      const parts = safePath.split('/');
+      const lastIndex = parts.length - 1;
+      const lastPart = parts[lastIndex];
+
+      if (lastPart && /\.md$/i.test(lastPart)) {
+        parts[lastIndex] = lastPart.replace(/\.md$/i, '');
+      }
+
+      return parts.join('/') || '/';
+    }
+
     let cachedTutorialSlugs = null;
 
     function getTutorialSlugSet() {
@@ -128,7 +141,7 @@
 
       const route = safeHash.slice(1);
       const { path, query } = splitRouteAndQuery(route || '/');
-      let normalizedPath = normalizeRoutePath(path);
+      let normalizedPath = stripMarkdownExtension(normalizeRoutePath(path));
 
       const routeParts = normalizedPath.split('/').filter(Boolean);
       if (routeParts.length === 1) {
@@ -250,6 +263,9 @@
       renderSidebar();
       normalizeRenderedContentLinks();
     }
+
+    // Canonicalize hash before Docsify boots so first markdown fetch uses the right route.
+    canonicalizeCurrentHash();
 
     window.$docsify = {
       name: 'Insyra',
