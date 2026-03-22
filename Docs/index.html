@@ -95,6 +95,31 @@
       return `/${normalized.join('/')}`;
     }
 
+    let cachedTutorialSlugs = null;
+
+    function getTutorialSlugSet() {
+      if (cachedTutorialSlugs) {
+        return cachedTutorialSlugs;
+      }
+
+      const tutorialSlugs = new Set();
+      const tutorialPrefix = '/tutorials/';
+
+      sidebarSections.forEach((section) => {
+        section.items.forEach((item) => {
+          const rawRoute = item.href.startsWith('#') ? item.href.slice(1) : item.href;
+          const { path } = splitRouteAndQuery(rawRoute || '/');
+          const normalizedPath = normalizeRoutePath(path);
+          if (normalizedPath.startsWith(tutorialPrefix) && normalizedPath !== `${tutorialPrefix}README`) {
+            tutorialSlugs.add(normalizedPath.slice(tutorialPrefix.length));
+          }
+        });
+      });
+
+      cachedTutorialSlugs = tutorialSlugs;
+      return cachedTutorialSlugs;
+    }
+
     function normalizeHashRoute(hash) {
       const safeHash = typeof hash === 'string' && hash.length > 0 ? hash : '#/';
       if (!safeHash.startsWith('#')) {
@@ -103,7 +128,16 @@
 
       const route = safeHash.slice(1);
       const { path, query } = splitRouteAndQuery(route || '/');
-      const normalizedPath = normalizeRoutePath(path);
+      let normalizedPath = normalizeRoutePath(path);
+
+      const routeParts = normalizedPath.split('/').filter(Boolean);
+      if (routeParts.length === 1) {
+        const maybeTutorialSlug = routeParts[0];
+        if (getTutorialSlugSet().has(maybeTutorialSlug)) {
+          normalizedPath = `/tutorials/${maybeTutorialSlug}`;
+        }
+      }
+
       return `#${normalizedPath}${query}`;
     }
 
@@ -121,22 +155,6 @@
         return true;
       }
       return false;
-    }
-
-    function getTutorialSlugSet() {
-      const tutorialSlugs = new Set();
-      const tutorialPrefix = '/tutorials/';
-
-      sidebarSections.forEach((section) => {
-        section.items.forEach((item) => {
-          const path = getCanonicalRoutePath(item.href);
-          if (path.startsWith(tutorialPrefix) && path !== `${tutorialPrefix}README`) {
-            tutorialSlugs.add(path.slice(tutorialPrefix.length));
-          }
-        });
-      });
-
-      return tutorialSlugs;
     }
 
     function normalizeRenderedContentLinks() {
