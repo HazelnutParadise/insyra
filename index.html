@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+	<link rel="icon" type="image/x-icon" href="https://insyra.hazelnut-paradise.com/favicon">
+    <title>Insyra Docs</title>
+    <meta name="description" content="Insyra documentation powered by Docsify" />
+    <link rel="stylesheet" href="//unpkg.com/docsify/lib/themes/vue.css" />
+    <!-- Custom theme overrides -->
+    <link rel="stylesheet" href="docs.css" />
+  </head>
+  <body>
+    <div id="app"></div>
+
+    <script>
+      const tutorialSlugs = new Set(["ab-test-decision-with-statistics", "capacity-planning-with-lp-and-lpgen", "customer-segmentation-rfm-and-cai", "data-quality-and-column-engineering", "interactive-kpi-dashboard-with-plot", "market-trend-forecasting-with-yfinance", "parquet-inspection-streaming-and-filter", "python-enrichment-and-parallel-batch", "sales-analysis-end-to-end", "static-executive-report-with-gplot"]);
+
+      function splitRouteAndQuery(route) {
+        const queryIndex = route.indexOf('?');
+        if (queryIndex === -1) {
+          return { path: route, query: '' };
+        }
+        return {
+          path: route.slice(0, queryIndex),
+          query: route.slice(queryIndex)
+        };
+      }
+
+      function normalizeRoutePath(routePath) {
+        const safePath = routePath || '/';
+        const parts = safePath.split('/');
+        const normalized = [];
+
+        parts.forEach((part) => {
+          if (!part || part === '.') {
+            return;
+          }
+          if (part === '..') {
+            normalized.pop();
+            return;
+          }
+          normalized.push(part);
+        });
+
+        return '/' + normalized.join('/');
+      }
+
+      function stripMarkdownExtension(routePath) {
+        const safePath = routePath || '/';
+        const parts = safePath.split('/');
+        const lastIndex = parts.length - 1;
+        const lastPart = parts[lastIndex];
+
+        if (lastPart && /\.md$/i.test(lastPart)) {
+          parts[lastIndex] = lastPart.replace(/\.md$/i, '');
+        }
+
+        return parts.join('/') || '/';
+      }
+
+      function normalizeHashRoute(hash) {
+        const safeHash = typeof hash === 'string' && hash.length > 0 ? hash : '#/';
+        if (!safeHash.startsWith('#')) {
+          return safeHash;
+        }
+
+        const route = safeHash.slice(1);
+        const parsed = splitRouteAndQuery(route || '/');
+        let normalizedPath = stripMarkdownExtension(normalizeRoutePath(parsed.path));
+
+        const routeParts = normalizedPath.split('/').filter(Boolean);
+        if (routeParts.length === 1) {
+          const maybeTutorialSlug = routeParts[0];
+          if (tutorialSlugs.has(maybeTutorialSlug)) {
+            normalizedPath = '/tutorials/' + maybeTutorialSlug;
+          }
+        }
+
+        return '#' + normalizedPath + parsed.query;
+      }
+
+      function getCanonicalRoutePath(hash) {
+        const canonicalHash = normalizeHashRoute(hash || window.location.hash || '#/');
+        const parsed = splitRouteAndQuery(canonicalHash.slice(1));
+        return parsed.path || '/';
+      }
+
+      function canonicalizeCurrentHash() {
+        const currentHash = window.location.hash || '#/';
+        const canonicalHash = normalizeHashRoute(currentHash);
+        if (currentHash !== canonicalHash) {
+          window.location.replace(canonicalHash);
+          return true;
+        }
+        return false;
+      }
+
+      function normalizeRenderedContentLinks() {
+        const currentRoutePath = getCanonicalRoutePath(window.location.hash || '#/');
+        const currentDir = currentRoutePath.endsWith('/')
+          ? currentRoutePath
+          : currentRoutePath.slice(0, currentRoutePath.lastIndexOf('/') + 1);
+
+        const contentLinks = document.querySelectorAll('.markdown-section a[href]');
+        contentLinks.forEach((link) => {
+          const href = link.getAttribute('href');
+          if (!href || href.startsWith('http://') || href.startsWith('https://') || href.startsWith('mailto:')) {
+            return;
+          }
+          if (href.startsWith('#') && !href.startsWith('#/')) {
+            return;
+          }
+
+          let normalizedHref = href;
+
+          if (href.startsWith('#/')) {
+            normalizedHref = normalizeHashRoute(href);
+          } else if ((href.startsWith('./') || href.startsWith('../') || href.startsWith('/')) && /\.md($|\?)/i.test(href)) {
+            const parsed = splitRouteAndQuery(href);
+            let targetPath = '';
+            if (parsed.path.startsWith('/')) {
+              targetPath = parsed.path;
+            } else {
+              targetPath = currentDir + parsed.path;
+            }
+            targetPath = stripMarkdownExtension(normalizeRoutePath(targetPath));
+
+            if (currentRoutePath === '/tutorials/README') {
+              const routeParts = targetPath.split('/').filter(Boolean);
+              if (routeParts.length === 1 && tutorialSlugs.has(routeParts[0])) {
+                targetPath = '/tutorials/' + routeParts[0];
+              }
+            }
+
+            normalizedHref = '#' + targetPath + parsed.query;
+          }
+
+          if (normalizedHref !== href) {
+            link.setAttribute('href', normalizedHref);
+          }
+        });
+      }
+
+      canonicalizeCurrentHash();
+
+      window.$docsify = {
+        name: 'Insyra',
+        repo: 'HazelnutParadise/insyra',
+        loadSidebar: true,
+        loadNavbar: true,
+        logo: 'logo.webp',
+        relativePath: false,
+        alias: {
+          '/.*/_sidebar.md': '/_sidebar.md',
+          '/.*/_navbar.md': '/_navbar.md'
+        },
+        plugins: [
+          function dynamicRoutePlugin(hook) {
+            hook.init(function () {
+              canonicalizeCurrentHash();
+            });
+            hook.ready(function () {
+              if (canonicalizeCurrentHash()) {
+                return;
+              }
+              normalizeRenderedContentLinks();
+            });
+            hook.doneEach(function () {
+              if (canonicalizeCurrentHash()) {
+                return;
+              }
+              normalizeRenderedContentLinks();
+            });
+          }
+        ]
+      };
+    </script>
+
+    <script src="//unpkg.com/docsify/lib/docsify.min.js"></script>
+	<script src="//unpkg.com/docsify-copy-code"></script>
+	<script src="//cdn.jsdelivr.net/npm/prismjs@1.22/components/prism-go.min.js"></script>
+  </body>
+</html>
