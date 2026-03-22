@@ -16,13 +16,119 @@
   <div id="app"></div>
 
   <script>
+    const navbarItems = [
+      { text: 'Home', href: '#/README' },
+      { text: 'Official Website', href: 'https://insyra.hazelnut-paradise.com' }
+    ];
+
+    const sidebarSections = [
+      {
+        title: null,
+        items: [
+          { text: 'Home', href: '#/README' },
+          { text: 'Column Calculation Language (CCL)', href: '#/CCL' },
+          { text: 'Configuration', href: '#/Configuration' },
+          { text: 'DataList', href: '#/DataList' },
+          { text: 'DataTable', href: '#/DataTable' },
+          { text: 'CLI + DSL Guide', href: '#/cli-dsl' },
+          { text: '[ csvxl ] Package', href: '#/csvxl' },
+          { text: '[ datafetch ] Package', href: '#/datafetch' },
+          { text: '[ gplot ] Package', href: '#/gplot' },
+          { text: '[ isr ] Package', href: '#/isr' },
+          { text: '[ lp ] Package', href: '#/lp' },
+          { text: '[ lpgen ] Package', href: '#/lpgen' },
+          { text: '[ mkt ] Package', href: '#/mkt' },
+          { text: '[ parallel ] Package', href: '#/parallel' },
+          { text: '[ parquet ] Package', href: '#/parquet' },
+          { text: '[ pd ] Package', href: '#/pd' },
+          { text: '[ plot ] Package', href: '#/plot' },
+          { text: '[ py ] Package', href: '#/py' },
+          { text: '[ stats ] Package', href: '#/stats' },
+          { text: 'Utilities', href: '#/utils' }
+        ]
+      },
+      {
+        title: 'tutorials',
+        items: [
+          { text: 'Guided Tutorials', href: '#/tutorials/README' },
+          { text: 'A/B Test Decision with Statistics', href: '#/tutorials/ab-test-decision-with-statistics' },
+          { text: 'Capacity Planning with lp and lpgen', href: '#/tutorials/capacity-planning-with-lp-and-lpgen' },
+          { text: 'Customer Segmentation with RFM and CAI', href: '#/tutorials/customer-segmentation-rfm-and-cai' },
+          { text: 'Data Quality and Column Engineering', href: '#/tutorials/data-quality-and-column-engineering' },
+          { text: 'Interactive KPI Dashboard with plot', href: '#/tutorials/interactive-kpi-dashboard-with-plot' },
+          { text: 'Market Trend Forecasting with Yahoo Finance', href: '#/tutorials/market-trend-forecasting-with-yfinance' },
+          { text: 'Parquet Inspection, Streaming, and CCL Filtering', href: '#/tutorials/parquet-inspection-streaming-and-filter' },
+          { text: 'Python Enrichment and Parallel Batch Processing', href: '#/tutorials/python-enrichment-and-parallel-batch' },
+          { text: 'Sales Analysis End-to-End', href: '#/tutorials/sales-analysis-end-to-end' },
+          { text: 'Static Executive Report with gplot', href: '#/tutorials/static-executive-report-with-gplot' }
+        ]
+      }
+    ];
+
+    function escapeHtml(text) {
+      return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function renderNavbar() {
+      const nav = document.querySelector('.app-nav');
+      if (!nav) {
+        return;
+      }
+      nav.innerHTML = navbarItems
+        .map((item) => `<a href="${item.href}">${escapeHtml(item.text)}</a>`)
+        .join(' ');
+    }
+
+    function renderSidebar() {
+      const sidebar = document.querySelector('.sidebar-nav');
+      if (!sidebar) {
+        return;
+      }
+
+      const html = sidebarSections
+        .map((section) => {
+          const itemList = section.items
+            .map((item) => `<li><a href="${item.href}">${escapeHtml(item.text)}</a></li>`)
+            .join('');
+
+          if (!section.title) {
+            return `<ul>${itemList}</ul>`;
+          }
+
+          return `<p>${escapeHtml(section.title)}</p><ul>${itemList}</ul>`;
+        })
+        .join('');
+
+      sidebar.innerHTML = html;
+    }
+
+    function renderDynamicNav() {
+      renderNavbar();
+      renderSidebar();
+    }
+
     window.$docsify = {
       name: 'Insyra',
       repo: 'HazelnutParadise/insyra',
-      loadSidebar: '_sidebar.md',
-      loadNavbar: true,
+      loadSidebar: false,
+      loadNavbar: false,
       logo: 'logo.webp',
-      relativePath: false
+      relativePath: false,
+      plugins: [
+        function dynamicNavigationPlugin(hook) {
+          hook.ready(function () {
+            renderDynamicNav();
+          });
+          hook.doneEach(function () {
+            renderDynamicNav();
+          });
+        }
+      ]
     };
   </script>
 
