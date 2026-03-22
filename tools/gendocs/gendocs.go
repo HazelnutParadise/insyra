@@ -117,7 +117,8 @@ func main() {
 					continue
 				}
 				title := titleFromFile(filepath.Join(*dirFlag, f))
-				if _, err := fmt.Fprintf(w, "* [%s](%s)\n", title, f); err != nil {
+				mdPath := filepath.ToSlash(f)
+				if _, err := fmt.Fprintf(w, "* [%s](%s)\n", title, mdPath); err != nil {
 					fmt.Fprintf(os.Stderr, "write error: %v\n", err)
 					os.Exit(1)
 				}
@@ -133,7 +134,7 @@ func main() {
 		}
 		// list files under it with indentation
 		for _, f := range files {
-			rel := f
+			rel := filepath.ToSlash(f)
 			title := titleFromFile(filepath.Join(*dirFlag, f))
 			if _, err := fmt.Fprintf(w, "  * [%s](%s)\n", title, rel); err != nil {
 				fmt.Fprintf(os.Stderr, "write error: %v\n", err)
@@ -144,14 +145,14 @@ func main() {
 
 	fmt.Fprintf(os.Stderr, "generated %s\n", *outputFlag)
 
-	// Also generate docs/index.html (Docsify entry) so index.html need not be tracked in repo
-	if err := writeIndex(*dirFlag, *repoFlag); err != nil {
+	// Also generate docs/index.html (Docsify entry) and navbar/theme files.
+	tutorialSlugs := collectTutorialSlugs(entries)
+	if err := writeIndex(*dirFlag, *repoFlag, tutorialSlugs); err != nil {
 		fmt.Fprintf(os.Stderr, "generate index error: %v\n", err)
 		os.Exit(1)
 	}
 	fmt.Fprintf(os.Stderr, "generated %s\n", filepath.Join(*dirFlag, "index.html"))
 
-	// Generate a navbar with an "Official site" link and a theme CSS with deep-blue colors
 	siteURL := detectSiteURL(*dirFlag, *repoFlag)
 	if err := writeNavbar(*dirFlag, siteURL); err != nil {
 		fmt.Fprintf(os.Stderr, "generate navbar error: %v\n", err)
@@ -172,7 +173,7 @@ func main() {
 	fmt.Fprintf(os.Stderr, "copied %s\n", filepath.Join(*dirFlag, "logo.webp"))
 }
 
-func writeIndex(dir, repoFlag string) error {
+func writeIndex(dir, repoFlag string, tutorialSlugs []string) error {
 	// Prefer explicit repo flag, otherwise use GitHub Actions env var
 	repoURL := ""
 	if repoFlag != "" {
@@ -180,6 +181,7 @@ func writeIndex(dir, repoFlag string) error {
 	} else if repo := os.Getenv("GITHUB_REPOSITORY"); repo != "" {
 		repoURL = "https://github.com/" + repo
 	}
+	slugSetJS := toJSStringArray(tutorialSlugs)
 
 	tmpl := `<!DOCTYPE html>
 <html>
@@ -197,12 +199,166 @@ func writeIndex(dir, repoFlag string) error {
     <div id="app"></div>
 
     <script>
+      const tutorialSlugs = new Set(%s);
+
+      function splitRouteAndQuery(route) {
+        const queryIndex = route.indexOf('?');
+        if (queryIndex === -1) {
+          return { path: route, query: '' };
+        }
+        return {
+          path: route.slice(0, queryIndex),
+          query: route.slice(queryIndex)
+        };
+      }
+
+      function normalizeRoutePath(routePath) {
+        const safePath = routePath || '/';
+        const parts = safePath.split('/');
+        const normalized = [];
+
+        parts.forEach((part) => {
+          if (!part || part === '.') {
+            return;
+          }
+          if (part === '..') {
+            normalized.pop();
+            return;
+          }
+          normalized.push(part);
+        });
+
+        return '/' + normalized.join('/');
+      }
+
+      function stripMarkdownExtension(routePath) {
+        const safePath = routePath || '/';
+        const parts = safePath.split('/');
+        const lastIndex = parts.length - 1;
+        const lastPart = parts[lastIndex];
+
+        if (lastPart && /\.md$/i.test(lastPart)) {
+          parts[lastIndex] = lastPart.replace(/\.md$/i, '');
+        }
+
+        return parts.join('/') || '/';
+      }
+
+      function normalizeHashRoute(hash) {
+        const safeHash = typeof hash === 'string' && hash.length > 0 ? hash : '#/';
+        if (!safeHash.startsWith('#')) {
+          return safeHash;
+        }
+
+        const route = safeHash.slice(1);
+        const parsed = splitRouteAndQuery(route || '/');
+        let normalizedPath = stripMarkdownExtension(normalizeRoutePath(parsed.path));
+
+        const routeParts = normalizedPath.split('/').filter(Boolean);
+        if (routeParts.length === 1) {
+          const maybeTutorialSlug = routeParts[0];
+          if (tutorialSlugs.has(maybeTutorialSlug)) {
+            normalizedPath = '/tutorials/' + maybeTutorialSlug;
+          }
+        }
+
+        return '#' + normalizedPath + parsed.query;
+      }
+
+      function getCanonicalRoutePath(hash) {
+        const canonicalHash = normalizeHashRoute(hash || window.location.hash || '#/');
+        const parsed = splitRouteAndQuery(canonicalHash.slice(1));
+        return parsed.path || '/';
+      }
+
+      function canonicalizeCurrentHash() {
+        const currentHash = window.location.hash || '#/';
+        const canonicalHash = normalizeHashRoute(currentHash);
+        if (currentHash !== canonicalHash) {
+          window.location.replace(canonicalHash);
+          return true;
+        }
+        return false;
+      }
+
+      function normalizeRenderedContentLinks() {
+        const currentRoutePath = getCanonicalRoutePath(window.location.hash || '#/');
+        const currentDir = currentRoutePath.endsWith('/')
+          ? currentRoutePath
+          : currentRoutePath.slice(0, currentRoutePath.lastIndexOf('/') + 1);
+
+        const contentLinks = document.querySelectorAll('.markdown-section a[href]');
+        contentLinks.forEach((link) => {
+          const href = link.getAttribute('href');
+          if (!href || href.startsWith('http://') || href.startsWith('https://') || href.startsWith('mailto:')) {
+            return;
+          }
+          if (href.startsWith('#') && !href.startsWith('#/')) {
+            return;
+          }
+
+          let normalizedHref = href;
+
+          if (href.startsWith('#/')) {
+            normalizedHref = normalizeHashRoute(href);
+          } else if ((href.startsWith('./') || href.startsWith('../') || href.startsWith('/')) && /\.md($|\?)/i.test(href)) {
+            const parsed = splitRouteAndQuery(href);
+            let targetPath = '';
+            if (parsed.path.startsWith('/')) {
+              targetPath = parsed.path;
+            } else {
+              targetPath = currentDir + parsed.path;
+            }
+            targetPath = stripMarkdownExtension(normalizeRoutePath(targetPath));
+
+            if (currentRoutePath === '/tutorials/README') {
+              const routeParts = targetPath.split('/').filter(Boolean);
+              if (routeParts.length === 1 && tutorialSlugs.has(routeParts[0])) {
+                targetPath = '/tutorials/' + routeParts[0];
+              }
+            }
+
+            normalizedHref = '#' + targetPath + parsed.query;
+          }
+
+          if (normalizedHref !== href) {
+            link.setAttribute('href', normalizedHref);
+          }
+        });
+      }
+
+      canonicalizeCurrentHash();
+
       window.$docsify = {
         name: 'Insyra',
         repo: '%s',
         loadSidebar: true,
         loadNavbar: true,
-        logo: 'logo.webp'
+        logo: 'logo.webp',
+        relativePath: false,
+        alias: {
+          '/.*/_sidebar.md': '/_sidebar.md',
+          '/.*/_navbar.md': '/_navbar.md'
+        },
+        plugins: [
+          function dynamicRoutePlugin(hook) {
+            hook.init(function () {
+              canonicalizeCurrentHash();
+            });
+            hook.ready(function () {
+              if (canonicalizeCurrentHash()) {
+                return;
+              }
+              normalizeRenderedContentLinks();
+            });
+            hook.doneEach(function () {
+              if (canonicalizeCurrentHash()) {
+                return;
+              }
+              normalizeRenderedContentLinks();
+            });
+          }
+        ]
       };
     </script>
 
@@ -213,7 +369,7 @@ func writeIndex(dir, repoFlag string) error {
 </html>
 `
 
-	content := fmt.Sprintf(tmpl, repoURL)
+	content := fmt.Sprintf(tmpl, slugSetJS, repoURL)
 	path := filepath.Join(dir, "index.html")
 	return os.WriteFile(path, []byte(content), 0644)
 }
@@ -233,7 +389,7 @@ func detectSiteURL(dir, repoFlag string) string {
 func writeNavbar(dir, siteURL string) error {
 	var content string
 	if siteURL != "" {
-		content = fmt.Sprintf("[Home](README.md) • [Official Website](%s)\n", siteURL)
+		content = fmt.Sprintf("[Home](README.md) | [Official Website](%s)\n", siteURL)
 	} else {
 		content = "[Home](README.md)\n"
 	}
@@ -258,10 +414,44 @@ body {
 }
 .sidebar {
   background: var(--sidebar-bg) !important;
-  color: var(--text-color) !important;
+  color: #d8e7f8 !important;
 }
 .sidebar .sidebar-nav a {
   color: #e6eef8 !important;
+}
+.sidebar .sidebar-nav {
+  padding-bottom: 1rem;
+}
+.sidebar .sidebar-nav ul {
+  margin: 0.25rem 0 0.85rem;
+  padding-left: 1rem;
+}
+.sidebar .sidebar-nav li {
+  margin: 0.15rem 0;
+}
+.sidebar .sidebar-nav a {
+  display: block;
+  border-radius: 0.4rem;
+  padding: 0.32rem 0.5rem;
+  transition: background-color 0.16s ease, color 0.16s ease;
+  line-height: 1.35;
+}
+.sidebar .sidebar-nav a:hover {
+  background: rgba(149, 188, 238, 0.17);
+  color: #ffffff !important;
+}
+.sidebar .sidebar-nav a.active {
+  background: rgba(149, 188, 238, 0.3);
+  color: #ffffff !important;
+  font-weight: 700;
+}
+.sidebar .sidebar-nav p {
+  color: #b7d4f0 !important;
+  margin: 0.8rem 0 0.4rem;
+  padding: 0.1rem 0.5rem;
+  font-size: 0.88rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }
 .navbar, .app-name, .toolbar {
   background: linear-gradient(180deg, #032a45, #012034);
@@ -304,6 +494,37 @@ func copyLogo(dir string) error {
 	}
 	dst := filepath.Join(dir, "logo.webp")
 	return os.WriteFile(dst, data, 0644)
+}
+
+func collectTutorialSlugs(entries map[string][]string) []string {
+	files, ok := entries["tutorials"]
+	if !ok {
+		return nil
+	}
+	slugs := make([]string, 0, len(files))
+	for _, rel := range files {
+		base := filepath.Base(rel)
+		if strings.EqualFold(base, "README.md") {
+			continue
+		}
+		slug := strings.TrimSuffix(base, filepath.Ext(base))
+		if slug != "" {
+			slugs = append(slugs, slug)
+		}
+	}
+	sort.Strings(slugs)
+	return slugs
+}
+
+func toJSStringArray(values []string) string {
+	if len(values) == 0 {
+		return "[]"
+	}
+	quoted := make([]string, 0, len(values))
+	for _, v := range values {
+		quoted = append(quoted, fmt.Sprintf("%q", v))
+	}
+	return "[" + strings.Join(quoted, ", ") + "]"
 }
 
 func titleFromFile(path string) string {

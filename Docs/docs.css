@@ -44,17 +44,13 @@ body {
   color: #ffffff !important;
   font-weight: 700;
 }
-.sidebar .sidebar-nav .sidebar-section-title {
+.sidebar .sidebar-nav p {
   color: #b7d4f0 !important;
   margin: 0.8rem 0 0.4rem;
   padding: 0.1rem 0.5rem;
   font-size: 0.88rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-}
-/* Fallback for unexpected paragraph titles injected by plugins/theme updates */
-.sidebar .sidebar-nav p {
-  color: #b7d4f0 !important;
 }
 .navbar, .app-name, .toolbar {
   background: linear-gradient(180deg, #032a45, #012034);
