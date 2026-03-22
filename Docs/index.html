@@ -65,6 +65,121 @@
       }
     ];
 
+    function splitRouteAndQuery(route) {
+      const queryIndex = route.indexOf('?');
+      if (queryIndex === -1) {
+        return { path: route, query: '' };
+      }
+      return {
+        path: route.slice(0, queryIndex),
+        query: route.slice(queryIndex)
+      };
+    }
+
+    function normalizeRoutePath(routePath) {
+      const safePath = routePath || '/';
+      const parts = safePath.split('/');
+      const normalized = [];
+
+      parts.forEach((part) => {
+        if (!part || part === '.') {
+          return;
+        }
+        if (part === '..') {
+          normalized.pop();
+          return;
+        }
+        normalized.push(part);
+      });
+
+      return `/${normalized.join('/')}`;
+    }
+
+    function normalizeHashRoute(hash) {
+      const safeHash = typeof hash === 'string' && hash.length > 0 ? hash : '#/';
+      if (!safeHash.startsWith('#')) {
+        return safeHash;
+      }
+
+      const route = safeHash.slice(1);
+      const { path, query } = splitRouteAndQuery(route || '/');
+      const normalizedPath = normalizeRoutePath(path);
+      return `#${normalizedPath}${query}`;
+    }
+
+    function getCanonicalRoutePath(hash) {
+      const canonicalHash = normalizeHashRoute(hash || window.location.hash || '#/');
+      const { path } = splitRouteAndQuery(canonicalHash.slice(1));
+      return path || '/';
+    }
+
+    function canonicalizeCurrentHash() {
+      const currentHash = window.location.hash || '#/';
+      const canonicalHash = normalizeHashRoute(currentHash);
+      if (currentHash !== canonicalHash) {
+        window.location.replace(canonicalHash);
+        return true;
+      }
+      return false;
+    }
+
+    function getTutorialSlugSet() {
+      const tutorialSlugs = new Set();
+      const tutorialPrefix = '/tutorials/';
+
+      sidebarSections.forEach((section) => {
+        section.items.forEach((item) => {
+          const path = getCanonicalRoutePath(item.href);
+          if (path.startsWith(tutorialPrefix) && path !== `${tutorialPrefix}README`) {
+            tutorialSlugs.add(path.slice(tutorialPrefix.length));
+          }
+        });
+      });
+
+      return tutorialSlugs;
+    }
+
+    function normalizeRenderedContentLinks() {
+      const currentRoutePath = getCanonicalRoutePath(window.location.hash || '#/');
+      const tutorialSlugs = getTutorialSlugSet();
+      const contentLinks = document.querySelectorAll('.markdown-section a[href^="#/"]');
+      contentLinks.forEach((link) => {
+        const href = link.getAttribute('href');
+        if (!href) {
+          return;
+        }
+        let normalizedHref = normalizeHashRoute(href);
+
+        if (currentRoutePath === '/tutorials/README') {
+          const linkPath = getCanonicalRoutePath(normalizedHref);
+          if (linkPath.startsWith('/') && !linkPath.startsWith('/tutorials/')) {
+            const slug = linkPath.slice(1);
+            if (tutorialSlugs.has(slug)) {
+              normalizedHref = `#/tutorials/${slug}`;
+            }
+          }
+        }
+
+        if (href !== normalizedHref) {
+          link.setAttribute('href', normalizedHref);
+        }
+      });
+    }
+
+    function isSidebarItemActive(itemHref, currentRoutePath) {
+      const itemRoutePath = getCanonicalRoutePath(itemHref);
+      if (itemRoutePath === currentRoutePath) {
+        return true;
+      }
+      if (itemRoutePath === '/README' && currentRoutePath === '/') {
+        return true;
+      }
+      if (itemRoutePath === '/' && currentRoutePath === '/README') {
+        return true;
+      }
+      return false;
+    }
+
     function escapeHtml(text) {
       return text
         .replace(/&/g, '&amp;')
@@ -89,18 +204,23 @@
       if (!sidebar) {
         return;
       }
+      const currentRoutePath = getCanonicalRoutePath(window.location.hash || '#/');
 
       const html = sidebarSections
         .map((section) => {
           const itemList = section.items
-            .map((item) => `<li><a href="${item.href}">${escapeHtml(item.text)}</a></li>`)
+            .map((item) => {
+              const normalizedHref = normalizeHashRoute(item.href);
+              const activeClass = isSidebarItemActive(normalizedHref, currentRoutePath) ? ' class="active"' : '';
+              return `<li><a href="${normalizedHref}"${activeClass}>${escapeHtml(item.text)}</a></li>`;
+            })
             .join('');
 
           if (!section.title) {
             return `<ul>${itemList}</ul>`;
           }
 
-          return `<p>${escapeHtml(section.title)}</p><ul>${itemList}</ul>`;
+          return `<p class="sidebar-section-title">${escapeHtml(section.title)}</p><ul>${itemList}</ul>`;
         })
         .join('');
 
@@ -110,6 +230,7 @@
     function renderDynamicNav() {
       renderNavbar();
       renderSidebar();
+      normalizeRenderedContentLinks();
     }
 
     window.$docsify = {
@@ -121,10 +242,19 @@
       relativePath: false,
       plugins: [
         function dynamicNavigationPlugin(hook) {
+          hook.init(function () {
+            canonicalizeCurrentHash();
+          });
           hook.ready(function () {
+            if (canonicalizeCurrentHash()) {
+              return;
+            }
             renderDynamicNav();
           });
           hook.doneEach(function () {
+            if (canonicalizeCurrentHash()) {
+              return;
+            }
             renderDynamicNav();
           });
         }
