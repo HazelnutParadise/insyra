@@ -19,6 +19,7 @@ func (s *Session) ProjectDataList(dl *insyra.DataList) (*Dataset, error) {
 
 	ds := &Dataset{
 		Name:    dl.GetName(),
+		Lineage: "project:datalist",
 		Rows:    buf.Len,
 		Buffers: []Buffer{buf},
 	}
@@ -44,6 +45,7 @@ func (s *Session) ProjectDataTable(dt *insyra.DataTable) (*Dataset, error) {
 
 	ds := &Dataset{
 		Name:    dt.GetName(),
+		Lineage: "project:datatable",
 		Rows:    dt.NumRows(),
 		Buffers: cols,
 	}

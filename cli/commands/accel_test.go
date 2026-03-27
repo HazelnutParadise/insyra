@@ -15,6 +15,7 @@ func setupCommandHome(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("HOMEDRIVE", "")
 	t.Setenv("HOMEPATH", "")
+	t.Setenv("INSYRA_ACCEL_DISABLE_NATIVE_PROBES", "1")
 }
 
 func TestRunAccelCommandDevicesPrintsBuiltinStubDevices(t *testing.T) {
@@ -82,7 +83,7 @@ func TestShowCommandSupportsAccelCache(t *testing.T) {
 	if !strings.Contains(output.String(), "numbers") {
 		t.Fatalf("expected buffer name in cache output, got %q", output.String())
 	}
-	if !strings.Contains(output.String(), "device webgpu:stub:0") {
+	if !strings.Contains(output.String(), "device ") {
 		t.Fatalf("expected per-device cache usage in output, got %q", output.String())
 	}
 }
@@ -105,6 +106,9 @@ func TestRunAccelCommandRunPrintsReasonAndDeviceCounts(t *testing.T) {
 	if !strings.Contains(rendered, "discovered=0") {
 		t.Fatalf("expected discovered count in output, got %q", rendered)
 	}
+	if !strings.Contains(rendered, "planning_only=true") {
+		t.Fatalf("expected planning-only marker in output, got %q", rendered)
+	}
 }
 
 func TestRunAccelCommandRunPrintsShardPlanSummary(t *testing.T) {
@@ -125,5 +129,40 @@ func TestRunAccelCommandRunPrintsShardPlanSummary(t *testing.T) {
 	}
 	if !strings.Contains(rendered, "shard_devices=cuda:stub:0,webgpu:stub:0") {
 		t.Fatalf("expected shard devices in output, got %q", rendered)
+	}
+	if !strings.Contains(rendered, "planning_only=true") {
+		t.Fatalf("expected planning-only marker in output, got %q", rendered)
+	}
+}
+
+func TestAccelCobraCommandAcceptsModeFlag(t *testing.T) {
+	setupCommandHome(t)
+	t.Setenv("INSYRA_ACCEL_STUB_WEBGPU", "1")
+
+	output := &bytes.Buffer{}
+	ctx := &ExecContext{Vars: map[string]any{}, Output: output}
+	commands := BuildCobraCommands(ctx)
+
+	var accelCmd any
+	for _, cmd := range commands {
+		if cmd.Name() == "accel" {
+			accelCmd = cmd
+			break
+		}
+	}
+	if accelCmd == nil {
+		t.Fatal("expected accel cobra command to be registered")
+	}
+
+	command := accelCmd.(interface {
+		SetArgs([]string)
+		Execute() error
+	})
+	command.SetArgs([]string{"devices", "--mode", "auto"})
+	if err := command.Execute(); err != nil {
+		t.Fatalf("expected cobra accel command to accept --mode, got %v", err)
+	}
+	if !strings.Contains(output.String(), "webgpu:stub:0") {
+		t.Fatalf("expected cobra accel command to render devices, got %q", output.String())
 	}
 }

@@ -9,7 +9,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func disableNativeProbesForRuntimeTest(t *testing.T) {
+	t.Helper()
+	t.Setenv("INSYRA_ACCEL_DISABLE_NATIVE_PROBES", "1")
+}
+
 func TestOpenUsesDefaultsAndExposesReport(t *testing.T) {
+	disableNativeProbesForRuntimeTest(t)
 	session, err := accel.Open(accel.Config{})
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -26,6 +32,7 @@ func TestOpenUsesDefaultsAndExposesReport(t *testing.T) {
 }
 
 func TestProjectDataListBuildsTypedDataset(t *testing.T) {
+	disableNativeProbesForRuntimeTest(t)
 	session, err := accel.Open(accel.Config{})
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -48,6 +55,7 @@ func TestProjectDataListBuildsTypedDataset(t *testing.T) {
 }
 
 func TestProjectDataTableBuildsOneBufferPerColumn(t *testing.T) {
+	disableNativeProbesForRuntimeTest(t)
 	session, err := accel.Open(accel.Config{})
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -71,6 +79,7 @@ func TestProjectDataTableBuildsOneBufferPerColumn(t *testing.T) {
 }
 
 func TestProjectDataListBuildsEncodedStringTransport(t *testing.T) {
+	disableNativeProbesForRuntimeTest(t)
 	session, err := accel.Open(accel.Config{})
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -94,6 +103,7 @@ func TestProjectDataListBuildsEncodedStringTransport(t *testing.T) {
 }
 
 func TestProjectDataListPopulatesCacheSnapshotAndMetrics(t *testing.T) {
+	disableNativeProbesForRuntimeTest(t)
 	session, err := accel.Open(accel.Config{})
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -114,6 +124,53 @@ func TestProjectDataListPopulatesCacheSnapshotAndMetrics(t *testing.T) {
 	assert.Greater(t, session.Report().Metrics["cache.resident_bytes"], float64(0))
 }
 
+func TestProjectedCacheRemainsSessionLocalUntilDeviceResidencyExists(t *testing.T) {
+	disableNativeProbesForRuntimeTest(t)
+	accel.ResetDiscoverersForTest()
+	t.Cleanup(accel.ResetDiscoverersForTest)
+
+	accel.RegisterDiscoverer(runtimeStubDiscoverer{
+		name: "mixed-devices",
+		devices: []accel.Device{
+			{
+				ID:          "cuda:test:0",
+				Backend:     accel.BackendCUDA,
+				Type:        accel.DeviceTypeDiscrete,
+				MemoryClass: accel.MemoryClassDevice,
+				BudgetBytes: 1024,
+				Score:       100,
+			},
+			{
+				ID:           "webgpu:test:0",
+				Backend:      accel.BackendWebGPU,
+				Type:         accel.DeviceTypeIntegrated,
+				MemoryClass:  accel.MemoryClassShared,
+				SharedMemory: true,
+				BudgetBytes:  1024,
+				Score:        90,
+			},
+		},
+	})
+
+	session, err := accel.Open(accel.Config{})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, session.Close())
+	})
+
+	_, err = session.ProjectDataList(insyra.NewDataList(1, 2, nil, 4).SetName("numbers"))
+	require.NoError(t, err)
+
+	snapshot := session.CacheSnapshot()
+	require.Len(t, snapshot.Entries, 1)
+	assert.Empty(t, snapshot.Entries[0].DeviceIDs)
+	for _, usage := range snapshot.DeviceUsage {
+		assert.Zero(t, usage.ResidentBuffers)
+		assert.Zero(t, usage.ResidentBytes)
+	}
+	assert.Equal(t, snapshot.Entries[0].ResidentBytes, snapshot.ResidentBytes)
+}
+
 type runtimeStubDiscoverer struct {
 	name    string
 	devices []accel.Device
@@ -127,6 +184,7 @@ func (d runtimeStubDiscoverer) Discover(cfg accel.Config) ([]accel.Device, error
 }
 
 func TestProjectDataListEnforcesCacheBudget(t *testing.T) {
+	disableNativeProbesForRuntimeTest(t)
 	accel.ResetDiscoverersForTest()
 	t.Cleanup(accel.ResetDiscoverersForTest)
 

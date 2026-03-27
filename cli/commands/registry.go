@@ -119,6 +119,12 @@ func BuildCobraCommands(ctx *ExecContext) []*cobra.Command {
 						runArgs = append(runArgs, "--force")
 					}
 				}
+				if localHandler.Name == "accel" {
+					mode, flagErr := cmd.Flags().GetString("mode")
+					if flagErr == nil && strings.TrimSpace(mode) != "" {
+						runArgs = append(runArgs, "--mode", mode)
+					}
+				}
 				err := Dispatch(ctx, localHandler.Name, runArgs)
 				envName := ctx.EnvName
 				if envName == "" {
@@ -143,6 +149,9 @@ func BuildCobraCommands(ctx *ExecContext) []*cobra.Command {
 		if localHandler.Name == "env" {
 			created.Flags().Bool("keep-history", false, "With 'env clear', keep command history")
 			created.Flags().Bool("force", false, "With 'env import', overwrite non-empty target environment")
+		}
+		if localHandler.Name == "accel" {
+			created.Flags().String("mode", "", "Acceleration mode: auto|cpu|gpu|strict-gpu")
 		}
 	}
 

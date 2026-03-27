@@ -10,9 +10,9 @@ import (
 )
 
 type residentCache struct {
-	entries         map[string]CacheEntry
-	evictedBuffers  uint64
-	evictedBytes    uint64
+	entries        map[string]CacheEntry
+	evictedBuffers uint64
+	evictedBytes   uint64
 }
 
 func newResidentCache() *residentCache {
@@ -50,11 +50,7 @@ func (s *Session) CacheSnapshot() CacheSnapshot {
 		entry := cloneCacheEntry(s.cache.entries[key])
 		snapshot.Entries = append(snapshot.Entries, entry)
 		snapshot.ResidentBuffers++
-		copyCount := len(entry.DeviceIDs)
-		if copyCount == 0 {
-			copyCount = 1
-		}
-		snapshot.ResidentBytes += entry.ResidentBytes * uint64(copyCount)
+		snapshot.ResidentBytes += entry.ResidentBytes
 		for _, deviceID := range entry.DeviceIDs {
 			usage, ok := deviceUsage[deviceID]
 			if !ok {
@@ -84,10 +80,6 @@ func (s *Session) cacheDataset(dataset *Dataset) {
 	}
 
 	now := time.Now()
-	deviceIDs := s.PlanShardable().DeviceIDs
-	if len(deviceIDs) == 0 {
-		deviceIDs = append([]string(nil), s.Report().SelectedDeviceIDs...)
-	}
 
 	for idx, buffer := range dataset.Buffers {
 		key := cacheKey(dataset, buffer, idx)
@@ -95,11 +87,11 @@ func (s *Session) cacheDataset(dataset *Dataset) {
 			Key:           key,
 			DatasetName:   dataset.Name,
 			DatasetID:     dataset.Fingerprint,
+			Lineage:       dataset.Lineage,
 			BufferName:    buffer.Name,
 			Type:          buffer.Type,
 			Len:           buffer.Len,
 			ResidentBytes: estimateBufferResidentBytes(buffer),
-			DeviceIDs:     append([]string(nil), deviceIDs...),
 			LastAccess:    now,
 		}
 	}
@@ -136,6 +128,10 @@ func (s *Session) enforceCacheBudget() {
 		if len(budgets) == 0 {
 			return
 		}
+		totalBudget := uint64(0)
+		for _, budget := range budgets {
+			totalBudget += budget
+		}
 		usage := s.cacheUsageByDevice()
 		overBudget := make(map[string]struct{})
 		for deviceID, budget := range budgets {
@@ -146,14 +142,14 @@ func (s *Session) enforceCacheBudget() {
 				overBudget[deviceID] = struct{}{}
 			}
 		}
-		if len(overBudget) == 0 {
+		if len(overBudget) == 0 && (totalBudget == 0 || s.totalResidentBytes() <= totalBudget) {
 			return
 		}
 
 		evictKey := ""
 		var oldest time.Time
 		for key, entry := range s.cache.entries {
-			if !entryTouchesDevices(entry, overBudget) {
+			if len(overBudget) > 0 && !entryTouchesDevices(entry, overBudget) {
 				continue
 			}
 			if evictKey == "" || entry.LastAccess.Before(oldest) {
@@ -166,12 +162,8 @@ func (s *Session) enforceCacheBudget() {
 		}
 
 		entry := s.cache.entries[evictKey]
-		copyCount := len(entry.DeviceIDs)
-		if copyCount == 0 {
-			copyCount = 1
-		}
 		s.cache.evictedBuffers++
-		s.cache.evictedBytes += entry.ResidentBytes * uint64(copyCount)
+		s.cache.evictedBytes += entry.ResidentBytes
 		delete(s.cache.entries, evictKey)
 	}
 }
@@ -203,6 +195,17 @@ func (s *Session) cacheUsageByDevice() map[string]uint64 {
 	return usage
 }
 
+func (s *Session) totalResidentBytes() uint64 {
+	if s == nil || s.cache == nil {
+		return 0
+	}
+	total := uint64(0)
+	for _, entry := range s.cache.entries {
+		total += entry.ResidentBytes
+	}
+	return total
+}
+
 func entryTouchesDevices(entry CacheEntry, targets map[string]struct{}) bool {
 	for _, deviceID := range entry.DeviceIDs {
 		if _, ok := targets[deviceID]; ok {
@@ -213,7 +216,7 @@ func entryTouchesDevices(entry CacheEntry, targets map[string]struct{}) bool {
 }
 
 func cacheKey(dataset *Dataset, buffer Buffer, idx int) string {
-	return fmt.Sprintf("%s:%d:%s", dataset.Fingerprint, idx, buffer.Name)
+	return fmt.Sprintf("%s:%s:%d:%s", dataset.Fingerprint, dataset.Lineage, idx, buffer.Name)
 }
 
 func estimateBufferResidentBytes(buffer Buffer) uint64 {

@@ -61,10 +61,10 @@ const (
 type FallbackReason string
 
 const (
-	FallbackReasonNone          FallbackReason = "none"
-	FallbackReasonNoAccelerator FallbackReason = "no-accelerator"
-	FallbackReasonCPUOnly       FallbackReason = "cpu-only-mode"
-	FallbackReasonDiscoveryError FallbackReason = "discovery-error"
+	FallbackReasonNone                 FallbackReason = "none"
+	FallbackReasonNoAccelerator        FallbackReason = "no-accelerator"
+	FallbackReasonCPUOnly              FallbackReason = "cpu-only-mode"
+	FallbackReasonDiscoveryError       FallbackReason = "discovery-error"
 	FallbackReasonStrictGPUUnavailable FallbackReason = "strict-gpu-unavailable"
 )
 
@@ -99,17 +99,17 @@ type Device struct {
 }
 
 type Report struct {
-	Mode              Mode
-	Accelerated       bool
-	SelectedBackend   Backend
+	Mode                Mode
+	Accelerated         bool
+	SelectedBackend     Backend
 	DiscoveredDeviceIDs []string
-	SelectedDeviceIDs []string
-	SelectedDevices   []string
-	FallbackReason    FallbackReason
-	StartedAt         time.Time
-	FinishedAt        time.Time
-	GeneratedAt       time.Time
-	Metrics           map[string]float64
+	SelectedDeviceIDs   []string
+	SelectedDevices     []string
+	FallbackReason      FallbackReason
+	StartedAt           time.Time
+	FinishedAt          time.Time
+	GeneratedAt         time.Time
+	Metrics             map[string]float64
 }
 
 func (r Report) Duration() time.Duration {
@@ -133,6 +133,7 @@ type Buffer struct {
 type Dataset struct {
 	Name        string
 	Fingerprint string
+	Lineage     string
 	Rows        int
 	Buffers     []Buffer
 }
@@ -141,6 +142,7 @@ type CacheEntry struct {
 	Key           string
 	DatasetName   string
 	DatasetID     string
+	Lineage       string
 	BufferName    string
 	Type          DataType
 	Len           int
