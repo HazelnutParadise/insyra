@@ -1,7 +1,7 @@
 # Delivery Plan
 
 ## Current Phase
-Phase 1 - Columnar Cache Kickoff
+Phase 1 - Backend Capability Normalization Kickoff
 
 ## Stage Objective
 Build backend discovery and device selection on top of the now-frozen `insyra/accel` runtime surface without expanding scope beyond the named change.
@@ -18,7 +18,7 @@ Build backend discovery and device selection on top of the now-frozen `insyra/ac
 | M0 | Control surface established | planning | done | `delivery-plan.md`, `AGENTS.md`, `CLAUDE.md`, and full accel proposal inventory exist |
 | M1 | Accel runtime API frozen in spec | planning | done | `accel` package compiles, `go test ./accel` passes, docs surface added |
 | M2 | Backend discovery and scoring frozen in spec | planning | in_progress | discoverer registry, builtin CUDA/Metal/WebGPU stubs, normalized scoring, budget normalization, and selection tests land; native SDK probing and richer capability shaping still pending |
-| M3 | Columnar layout and cache model frozen in spec | planning | in_progress | typed projection now populates a session-local resident cache index with budget enforcement, eviction metrics, and per-device cache usage; true allocators and encoded string transport still pending |
+| M3 | Columnar layout and cache model frozen in spec | planning | done | typed projection now emits validity bitmaps, encoded string transport, and a session-local resident cache index with budget enforcement and per-device cache usage |
 | M4 | Scheduler and observable fallback frozen in spec | planning | in_progress | strict-mode fallback reason codes, core accel metrics, and shardable multi-device planning surface land; weighted partitioning and execution merge behavior still pending |
 | M5 | CLI/DSL accel surface frozen in spec | planning | in_progress | `accel devices|cache|run`, `config accel.mode`, and `show accel.devices|accel.cache` land; full cache/runtime execution semantics still pending |
 
@@ -26,10 +26,10 @@ Build backend discovery and device selection on top of the now-frozen `insyra/ac
 None.
 
 ## Next Verifiable Output
-Encoded string transport and allocator-ready residency metadata layered on top of the current session-local cache, so string columns and future GPU allocators stop depending on raw `[]string` transport.
+Backend capability normalization and native probe seams strengthened on top of the current stub discovery layer, so the next change can replace env-driven adapters without redesigning report or cache contracts.
 
 ## Next OpenSpec Change
-`add-accel-columnar-layout-cache`
+`add-accel-backend-discovery`
 
 ## Decision Log
 - decision: Keep acceleration in optional `insyra/accel` packages rather than core `insyra`.
@@ -84,6 +84,10 @@ Encoded string transport and allocator-ready residency metadata layered on top o
   rationale: This makes cache state actionable now and proves eviction/report semantics before native VRAM/shared-memory plumbing is added.
   timestamp: 2026-03-28
   impacted_change_ids: `add-accel-columnar-layout-cache`, `add-accel-observability-fallback`, `add-accel-cli-dsl-surface`
+- decision: Complete the columnar/cache change by adding validity bitmaps and encoded string transport before returning to backend work.
+  rationale: Cache/accounting alone was not enough to claim the memory/layout change complete; string/null transport needed to be allocator-ready first.
+  timestamp: 2026-03-28
+  impacted_change_ids: `add-accel-columnar-layout-cache`
 
 ## Source Links
 - `delivery-plan.md`
@@ -115,6 +119,6 @@ Encoded string transport and allocator-ready residency metadata layered on top o
 - `add-accel-backend-discovery` is now partially implemented in code. Native SDK probing and richer capability normalization are still pending, but builtin stubs and budget normalization are in place.
 - `add-accel-observability-fallback` now has code behind it: stable fallback reason codes, strict-gpu failure reports, discovery-error reporting, and core metrics are wired into `accel.Report` and CLI output.
 - `add-accel-scheduler-multi-gpu` now has an initial planning surface in code: `PlanShardable()` aggregates accelerator devices and total budget for shardable workloads, but no weighted partitioning or execution merge path exists yet.
-- `add-accel-columnar-layout-cache` now has code behind it: typed projection updates a session-local resident cache index, `CacheSnapshot()` exposes resident entries/bytes/budget, and `accel cache` / `show accel.cache` render real cache state from current context variables.
-- `add-accel-columnar-layout-cache` now enforces budget at the cache layer: over-budget resident entries are evicted, eviction metrics are tracked, and cache output includes per-device usage summaries.
+- `add-accel-columnar-layout-cache` is now complete enough to close the current slice: typed projection emits validity bitmaps, string offsets/data transport, session-local cache residency, budget enforcement, eviction metrics, and per-device usage summaries.
 - `add-accel-cli-dsl-surface` remains partially implemented. `accel cache` now shows real resident state, but there is still no device allocator, eviction policy, or true workload execution surface.
+- The next change to pick up is `add-accel-backend-discovery`, focusing on richer capability normalization and eventually replacing env-driven stubs with native probe seams.

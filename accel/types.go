@@ -111,11 +111,14 @@ func (r Report) Duration() time.Duration {
 }
 
 type Buffer struct {
-	Name   string
-	Type   DataType
-	Values any
-	Nulls  []bool
-	Len    int
+	Name          string
+	Type          DataType
+	Values        any
+	Nulls         []bool
+	Validity      []byte
+	StringOffsets []uint32
+	StringData    []byte
+	Len           int
 }
 
 type Dataset struct {
