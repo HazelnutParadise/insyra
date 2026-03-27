@@ -252,10 +252,11 @@ func renderAccelExecution(out io.Writer, varName string, report accelpkg.Report,
 	}
 	_, _ = fmt.Fprintf(
 		out,
-		"var=%s executed=%t backend=%s participants=%d devices=%s assignments=%d bytes_moved=%d merge=%s reason=%s\n",
+		"var=%s executed=%t backend=%s allocator=%s participants=%d devices=%s assignments=%d bytes_moved=%d merge=%s reason=%s\n",
 		varName,
 		result.Accelerated,
 		report.SelectedBackend,
+		result.Allocator,
 		len(result.DeviceIDs),
 		devices,
 		len(result.Assignments),
