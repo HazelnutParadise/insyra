@@ -1,10 +1,10 @@
 # Delivery Plan
 
 ## Current Phase
-Phase 0 - Acceleration Convergence Kickoff
+Phase 1 - Backend Discovery Kickoff
 
 ## Stage Objective
-Establish the shared control surface and full OpenSpec proposal coverage for Insyra GPGPU acceleration so the next agent can pick up one accel change without re-planning the whole phase.
+Build backend discovery and device selection on top of the now-frozen `insyra/accel` runtime surface without expanding scope beyond the named change.
 
 ## Active Workstreams
 - `M0`: convergence surface and handoff contract
@@ -16,8 +16,8 @@ Establish the shared control surface and full OpenSpec proposal coverage for Ins
 | id | target | owner | status | verification_signal |
 | --- | --- | --- | --- | --- |
 | M0 | Control surface established | planning | done | `delivery-plan.md`, `AGENTS.md`, `CLAUDE.md`, and full accel proposal inventory exist |
-| M1 | Accel runtime API frozen in spec | planning | not_started | `add-accel-runtime-capability` proposal/design/spec delta validated |
-| M2 | Backend discovery and scoring frozen in spec | planning | not_started | `add-accel-backend-discovery` proposal/design/spec delta validated |
+| M1 | Accel runtime API frozen in spec | planning | done | `accel` package compiles, `go test ./accel` passes, docs surface added |
+| M2 | Backend discovery and scoring frozen in spec | planning | in_progress | discoverer registry, auto-discovery, normalized scoring, and selection tests land; concrete backend adapters still pending |
 | M3 | Columnar layout and cache model frozen in spec | planning | not_started | `add-accel-columnar-layout-cache` proposal/design/spec delta validated |
 | M4 | Scheduler and observable fallback frozen in spec | planning | not_started | `add-accel-scheduler-multi-gpu` and `add-accel-observability-fallback` validated |
 | M5 | CLI/DSL accel surface frozen in spec | planning | not_started | `add-accel-cli-dsl-surface` validated |
@@ -26,10 +26,10 @@ Establish the shared control surface and full OpenSpec proposal coverage for Ins
 None.
 
 ## Next Verifiable Output
-Reviewed and approved `add-accel-runtime-capability` proposal package: `proposal.md`, `tasks.md`, `design.md`, and `specs/accel-runtime/spec.md`.
+Concrete CUDA, Metal, and WebGPU discoverer stubs merged behind the new discovery contract, with report output still staying backend-agnostic.
 
 ## Next OpenSpec Change
-`add-accel-runtime-capability`
+`add-accel-backend-discovery`
 
 ## Decision Log
 - decision: Keep acceleration in optional `insyra/accel` packages rather than core `insyra`.
@@ -52,6 +52,14 @@ Reviewed and approved `add-accel-runtime-capability` proposal package: `proposal
   rationale: Phase 1 needs typed columnar transport and encoded-string eligibility, but full string-kernel parity should not block runtime convergence.
   timestamp: 2026-03-27
   impacted_change_ids: `add-accel-columnar-layout-cache`, `add-accel-string-kernels-phase-2`
+- decision: Start implementation by freezing the public accel runtime and typed CPU-side projection before backend work.
+  rationale: Backend discovery, cache, scheduler, and CLI all depend on one stable runtime contract.
+  timestamp: 2026-03-28
+  impacted_change_ids: `add-accel-runtime-capability`, `add-accel-backend-discovery`
+- decision: Use a discoverer registry plus `Open()` auto-discovery as the first backend-discovery implementation slice.
+  rationale: This keeps real adapters pluggable while making session behavior testable before native bindings exist.
+  timestamp: 2026-03-28
+  impacted_change_ids: `add-accel-backend-discovery`
 
 ## Source Links
 - `delivery-plan.md`
@@ -65,6 +73,9 @@ Reviewed and approved `add-accel-runtime-capability` proposal package: `proposal
 - `openspec/changes/add-accel-cli-dsl-surface/`
 - `openspec/changes/add-accel-observability-fallback/`
 - `openspec/changes/add-accel-string-kernels-phase-2/`
+- `Docs/accel.md`
+- `README.md`
+- `Docs/README.md`
 - `go.mod`
 - `datalist.go`
 - `datatable.go`
@@ -75,6 +86,7 @@ Reviewed and approved `add-accel-runtime-capability` proposal package: `proposal
 - `openspec/specs/dsl-commands/spec.md`
 
 ## Handoff Notes
-- Phase 0 convergence setup is in place and the proposal inventory is complete enough for the next agent to start with one named change.
-- Do not start runtime implementation outside the named next change. Proposal coverage is complete for the phase, but no accel runtime code exists yet.
-- The next agent should review `add-accel-runtime-capability` first, because it freezes public API shape and package boundaries used by the rest of the phase.
+- The convergence surface and runtime capability are both in place. `accel` now exists as a compilable opt-in package with `Open/NewSession`, typed projection helpers, and report/device/dataset/buffer surface.
+- Use a fresh `GOCACHE` when running Go validation in this environment. The default cache path hit a local toolchain/cache issue after `go clean -cache`, but tests pass with a clean alternate cache directory.
+- `add-accel-backend-discovery` is now partially implemented in code. The remaining work is concrete CUDA, Metal, and WebGPU discoverers plus richer device budget normalization.
+- Do not move to CLI/DSL or scheduler work until the discovery change has real adapter stubs and stable report semantics.

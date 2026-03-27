@@ -130,6 +130,14 @@ CSV setup -> DataTable loading -> CCL enrichment -> sorting -> KPI aggregation -
   go get github.com/HazelnutParadise/insyra/allpkgs
   ```
 
+- To use the optional acceleration runtime surface only:
+
+  ```sh
+  go get github.com/HazelnutParadise/insyra/accel
+  ```
+
+  `accel` is intentionally opt-in and is not included in `allpkgs` at this stage.
+
 - Update **Insyra** to the latest version:
 
   ```sh
@@ -355,6 +363,10 @@ Provides statistical functions for data analysis, including skewness, kurtosis, 
 ### **[parallel](/Docs/parallel.md)**
 
 Offers parallel processing capabilities for data manipulation and analysis. Allows you to execute any function and automatically wait for all goroutines to complete.
+
+### **[accel](/Docs/accel.md)**
+
+Provides the opt-in acceleration runtime surface for Insyra. The current step freezes `Config`, `Session`, `Device`, `Report`, `Buffer`, and `Dataset`, and includes CPU-side typed projection helpers while backend execution is still being built.
 
 ### **[plot](/Docs/plot.md)**
 
