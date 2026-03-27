@@ -14,8 +14,8 @@ type Session struct {
 
 func Open(cfg Config) (*Session, error) {
 	session := NewSession(cfg)
-	if err := session.Discover(); err != nil && len(session.devices) == 0 {
-		return nil, err
+	if err := session.Discover(); err != nil {
+		return session, err
 	}
 	return session, nil
 }
@@ -33,6 +33,7 @@ func NewSession(cfgs ...Config) *Session {
 		GeneratedAt:       time.Now(),
 		StartedAt:         time.Now(),
 		FinishedAt:        time.Now(),
+		DiscoveredDeviceIDs: nil,
 		SelectedDeviceIDs: nil,
 	}
 
@@ -190,6 +191,7 @@ func cloneDevice(device Device) Device {
 
 func cloneReport(report Report) Report {
 	cloned := report
+	cloned.DiscoveredDeviceIDs = append([]string(nil), report.DiscoveredDeviceIDs...)
 	cloned.SelectedDeviceIDs = append([]string(nil), report.SelectedDeviceIDs...)
 	cloned.SelectedDevices = append([]string(nil), report.SelectedDevices...)
 	if report.Metrics != nil {

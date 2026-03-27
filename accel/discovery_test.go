@@ -1,6 +1,9 @@
 package accel
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 type stubDiscoverer struct {
 	name    string
@@ -138,5 +141,93 @@ func TestOpenDiscoversBuiltinStubDeviceFromEnv(t *testing.T) {
 	}
 	if !session.Report().Accelerated {
 		t.Fatal("expected builtin stub device to mark session accelerated")
+	}
+}
+
+func TestOpenStrictGPUFailsWithoutAcceleratorButReturnsSessionReport(t *testing.T) {
+	ResetDiscoverersForTest()
+	t.Cleanup(ResetDiscoverersForTest)
+
+	session, err := Open(Config{Mode: ModeStrictGPU})
+	if err == nil {
+		t.Fatal("expected strict-gpu mode to fail without accelerators")
+	}
+	if session == nil {
+		t.Fatal("expected strict-gpu failure to still return a session")
+	}
+	t.Cleanup(func() {
+		_ = session.Close()
+	})
+
+	report := session.Report()
+	if report.Mode != ModeStrictGPU {
+		t.Fatalf("expected strict-gpu report mode, got %q", report.Mode)
+	}
+	if report.FallbackReason != FallbackReasonStrictGPUUnavailable {
+		t.Fatalf("expected strict-gpu unavailable fallback reason, got %q", report.FallbackReason)
+	}
+	if report.Metrics["devices.discovered"] != 0 {
+		t.Fatalf("expected zero discovered devices, got %v", report.Metrics["devices.discovered"])
+	}
+}
+
+func TestDiscoveryReportPopulatesCoreMetrics(t *testing.T) {
+	ResetDiscoverersForTest()
+	t.Cleanup(ResetDiscoverersForTest)
+	t.Setenv("INSYRA_ACCEL_STUB_CUDA", "1")
+	t.Setenv("INSYRA_ACCEL_STUB_WEBGPU", "1")
+
+	session, err := Open(Config{})
+	if err != nil {
+		t.Fatalf("open failed: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = session.Close()
+	})
+
+	report := session.Report()
+	if report.Metrics["devices.discovered"] != 2 {
+		t.Fatalf("expected 2 discovered devices, got %v", report.Metrics["devices.discovered"])
+	}
+	if report.Metrics["devices.selected"] != 1 {
+		t.Fatalf("expected 1 selected device, got %v", report.Metrics["devices.selected"])
+	}
+	if report.Metrics["fallback.occurred"] != 0 {
+		t.Fatalf("expected no fallback, got %v", report.Metrics["fallback.occurred"])
+	}
+	if report.Metrics["memory.budget_bytes_total"] <= 0 {
+		t.Fatalf("expected positive budget total, got %v", report.Metrics["memory.budget_bytes_total"])
+	}
+}
+
+func TestOpenReportsDiscoveryErrorReasonCode(t *testing.T) {
+	ResetDiscoverersForTest()
+	t.Cleanup(ResetDiscoverersForTest)
+
+	RegisterDiscoverer(stubDiscoverer{
+		name: "broken-backend",
+		err:  errors.New("probe failed"),
+	})
+
+	session, err := Open(Config{})
+	if err == nil {
+		t.Fatal("expected discovery error")
+	}
+	if session == nil {
+		t.Fatal("expected session to be returned on discovery error")
+	}
+	t.Cleanup(func() {
+		_ = session.Close()
+	})
+
+	report := session.Report()
+	if report.FallbackReason != FallbackReasonDiscoveryError {
+		t.Fatalf("expected discovery-error fallback reason, got %q", report.FallbackReason)
+	}
+	if report.Metrics["fallback.occurred"] != 1 {
+		t.Fatalf("expected fallback metric to indicate fallback, got %v", report.Metrics["fallback.occurred"])
+	}
+	if report.Metrics["discovery.errors"] != 1 {
+		t.Fatalf("expected one discovery error, got %v", report.Metrics["discovery.errors"])
 	}
 }
