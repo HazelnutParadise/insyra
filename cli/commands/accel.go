@@ -143,13 +143,25 @@ func renderAccelDevices(out io.Writer, session *accelpkg.Session) {
 func renderAccelCache(out io.Writer, report accelpkg.Report, snapshot accelpkg.CacheSnapshot) {
 	_, _ = fmt.Fprintf(
 		out,
-		"backend=%s fallback=%s resident_buffers=%d resident_bytes=%d budget_bytes=%d\n",
+		"backend=%s fallback=%s resident_buffers=%d resident_bytes=%d budget_bytes=%d evicted_buffers=%d evicted_bytes=%d\n",
 		report.SelectedBackend,
 		report.FallbackReason,
 		snapshot.ResidentBuffers,
 		snapshot.ResidentBytes,
 		snapshot.BudgetBytes,
+		snapshot.EvictedBuffers,
+		snapshot.EvictedBytes,
 	)
+	for _, usage := range snapshot.DeviceUsage {
+		_, _ = fmt.Fprintf(
+			out,
+			"device %s resident_buffers=%d resident_bytes=%d budget_bytes=%d\n",
+			usage.DeviceID,
+			usage.ResidentBuffers,
+			usage.ResidentBytes,
+			usage.BudgetBytes,
+		)
+	}
 	for _, entry := range snapshot.Entries {
 		deviceIDs := "none"
 		if len(entry.DeviceIDs) > 0 {

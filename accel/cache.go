@@ -10,7 +10,9 @@ import (
 )
 
 type residentCache struct {
-	entries map[string]CacheEntry
+	entries         map[string]CacheEntry
+	evictedBuffers  uint64
+	evictedBytes    uint64
 }
 
 func newResidentCache() *residentCache {
@@ -24,13 +26,18 @@ func (s *Session) CacheSnapshot() CacheSnapshot {
 		return CacheSnapshot{}
 	}
 
-	report := s.Report()
-	plan := s.PlanShardable()
+	budgets := s.cacheBudgetByDevice()
 	snapshot := CacheSnapshot{
-		BudgetBytes: plan.TotalBudgetBytes,
+		EvictedBuffers: s.cache.evictedBuffers,
+		EvictedBytes:   s.cache.evictedBytes,
 	}
-	if snapshot.BudgetBytes == 0 {
-		snapshot.BudgetBytes = uint64(report.Metrics["memory.budget_bytes_selected"])
+	deviceUsage := make(map[string]*CacheDeviceUsage, len(budgets))
+	for deviceID, budget := range budgets {
+		deviceUsage[deviceID] = &CacheDeviceUsage{
+			DeviceID:    deviceID,
+			BudgetBytes: budget,
+		}
+		snapshot.BudgetBytes += budget
 	}
 
 	keys := make([]string, 0, len(s.cache.entries))
@@ -43,7 +50,30 @@ func (s *Session) CacheSnapshot() CacheSnapshot {
 		entry := cloneCacheEntry(s.cache.entries[key])
 		snapshot.Entries = append(snapshot.Entries, entry)
 		snapshot.ResidentBuffers++
-		snapshot.ResidentBytes += entry.ResidentBytes
+		copyCount := len(entry.DeviceIDs)
+		if copyCount == 0 {
+			copyCount = 1
+		}
+		snapshot.ResidentBytes += entry.ResidentBytes * uint64(copyCount)
+		for _, deviceID := range entry.DeviceIDs {
+			usage, ok := deviceUsage[deviceID]
+			if !ok {
+				usage = &CacheDeviceUsage{DeviceID: deviceID}
+				deviceUsage[deviceID] = usage
+			}
+			usage.ResidentBuffers++
+			usage.ResidentBytes += entry.ResidentBytes
+		}
+	}
+
+	deviceIDs := make([]string, 0, len(deviceUsage))
+	for deviceID := range deviceUsage {
+		deviceIDs = append(deviceIDs, deviceID)
+	}
+	sort.Strings(deviceIDs)
+	snapshot.DeviceUsage = make([]CacheDeviceUsage, 0, len(deviceIDs))
+	for _, deviceID := range deviceIDs {
+		snapshot.DeviceUsage = append(snapshot.DeviceUsage, *deviceUsage[deviceID])
 	}
 	return snapshot
 }
@@ -74,6 +104,7 @@ func (s *Session) cacheDataset(dataset *Dataset) {
 		}
 	}
 
+	s.enforceCacheBudget()
 	s.updateCacheMetrics()
 }
 
@@ -90,7 +121,95 @@ func (s *Session) updateCacheMetrics() {
 	report.Metrics["cache.resident_buffers"] = float64(snapshot.ResidentBuffers)
 	report.Metrics["cache.resident_bytes"] = float64(snapshot.ResidentBytes)
 	report.Metrics["cache.budget_bytes"] = float64(snapshot.BudgetBytes)
+	report.Metrics["cache.evicted_buffers"] = float64(snapshot.EvictedBuffers)
+	report.Metrics["cache.evicted_bytes"] = float64(snapshot.EvictedBytes)
 	s.reports[len(s.reports)-1] = cloneReport(report)
+}
+
+func (s *Session) enforceCacheBudget() {
+	if s == nil || s.cache == nil || len(s.cache.entries) == 0 {
+		return
+	}
+
+	for {
+		budgets := s.cacheBudgetByDevice()
+		if len(budgets) == 0 {
+			return
+		}
+		usage := s.cacheUsageByDevice()
+		overBudget := make(map[string]struct{})
+		for deviceID, budget := range budgets {
+			if budget == 0 {
+				continue
+			}
+			if usage[deviceID] > budget {
+				overBudget[deviceID] = struct{}{}
+			}
+		}
+		if len(overBudget) == 0 {
+			return
+		}
+
+		evictKey := ""
+		var oldest time.Time
+		for key, entry := range s.cache.entries {
+			if !entryTouchesDevices(entry, overBudget) {
+				continue
+			}
+			if evictKey == "" || entry.LastAccess.Before(oldest) {
+				evictKey = key
+				oldest = entry.LastAccess
+			}
+		}
+		if evictKey == "" {
+			return
+		}
+
+		entry := s.cache.entries[evictKey]
+		copyCount := len(entry.DeviceIDs)
+		if copyCount == 0 {
+			copyCount = 1
+		}
+		s.cache.evictedBuffers++
+		s.cache.evictedBytes += entry.ResidentBytes * uint64(copyCount)
+		delete(s.cache.entries, evictKey)
+	}
+}
+
+func (s *Session) cacheBudgetByDevice() map[string]uint64 {
+	budgets := map[string]uint64{}
+	if s == nil {
+		return budgets
+	}
+	for _, device := range shardableDevices(s.devices, s.cfg) {
+		budgets[device.ID] = device.BudgetBytes
+	}
+	return budgets
+}
+
+func (s *Session) cacheUsageByDevice() map[string]uint64 {
+	usage := map[string]uint64{}
+	if s == nil || s.cache == nil {
+		return usage
+	}
+	for _, entry := range s.cache.entries {
+		if len(entry.DeviceIDs) == 0 {
+			continue
+		}
+		for _, deviceID := range entry.DeviceIDs {
+			usage[deviceID] += entry.ResidentBytes
+		}
+	}
+	return usage
+}
+
+func entryTouchesDevices(entry CacheEntry, targets map[string]struct{}) bool {
+	for _, deviceID := range entry.DeviceIDs {
+		if _, ok := targets[deviceID]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 func cacheKey(dataset *Dataset, buffer Buffer, idx int) string {

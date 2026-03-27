@@ -56,6 +56,7 @@ func TestShowCommandSupportsAccelDevices(t *testing.T) {
 
 func TestShowCommandSupportsAccelCache(t *testing.T) {
 	setupCommandHome(t)
+	t.Setenv("INSYRA_ACCEL_STUB_WEBGPU", "1")
 
 	output := &bytes.Buffer{}
 	ctx := &ExecContext{
@@ -74,6 +75,9 @@ func TestShowCommandSupportsAccelCache(t *testing.T) {
 	}
 	if !strings.Contains(output.String(), "numbers") {
 		t.Fatalf("expected buffer name in cache output, got %q", output.String())
+	}
+	if !strings.Contains(output.String(), "device webgpu:stub:0") {
+		t.Fatalf("expected per-device cache usage in output, got %q", output.String())
 	}
 }
 
