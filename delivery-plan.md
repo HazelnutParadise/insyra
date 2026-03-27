@@ -18,7 +18,7 @@ Build backend discovery and device selection on top of the now-frozen `insyra/ac
 | M0 | Control surface established | planning | done | `delivery-plan.md`, `AGENTS.md`, `CLAUDE.md`, and full accel proposal inventory exist |
 | M1 | Accel runtime API frozen in spec | planning | done | `accel` package compiles, `go test ./accel` passes, docs surface added |
 | M2 | Backend discovery and scoring frozen in spec | planning | in_progress | discoverer registry, builtin CUDA/Metal/WebGPU stubs, normalized scoring, budget normalization, and selection tests land; native SDK probing and richer capability shaping still pending |
-| M3 | Columnar layout and cache model frozen in spec | planning | in_progress | typed projection now populates a session-local resident cache index, cache snapshots, and CLI cache stats; per-device residency, encoded strings, and eviction still pending |
+| M3 | Columnar layout and cache model frozen in spec | planning | in_progress | typed projection now populates a session-local resident cache index with budget enforcement, eviction metrics, and per-device cache usage; true allocators and encoded string transport still pending |
 | M4 | Scheduler and observable fallback frozen in spec | planning | in_progress | strict-mode fallback reason codes, core accel metrics, and shardable multi-device planning surface land; weighted partitioning and execution merge behavior still pending |
 | M5 | CLI/DSL accel surface frozen in spec | planning | in_progress | `accel devices|cache|run`, `config accel.mode`, and `show accel.devices|accel.cache` land; full cache/runtime execution semantics still pending |
 
@@ -26,7 +26,7 @@ Build backend discovery and device selection on top of the now-frozen `insyra/ac
 None.
 
 ## Next Verifiable Output
-Per-device cache residency and eviction policy layered on top of the current session-local resident index, so cache budgets become enforceable instead of purely descriptive.
+Encoded string transport and allocator-ready residency metadata layered on top of the current session-local cache, so string columns and future GPU allocators stop depending on raw `[]string` transport.
 
 ## Next OpenSpec Change
 `add-accel-columnar-layout-cache`
@@ -80,6 +80,10 @@ Per-device cache residency and eviction policy layered on top of the current ses
   rationale: This gives the CLI and report surface truthful cache state now, while preserving a clean seam for later VRAM/shared-memory backends.
   timestamp: 2026-03-28
   impacted_change_ids: `add-accel-columnar-layout-cache`, `add-accel-cli-dsl-surface`
+- decision: Enforce cache budgets at the session-local cache layer before introducing backend-native allocators.
+  rationale: This makes cache state actionable now and proves eviction/report semantics before native VRAM/shared-memory plumbing is added.
+  timestamp: 2026-03-28
+  impacted_change_ids: `add-accel-columnar-layout-cache`, `add-accel-observability-fallback`, `add-accel-cli-dsl-surface`
 
 ## Source Links
 - `delivery-plan.md`
@@ -112,4 +116,5 @@ Per-device cache residency and eviction policy layered on top of the current ses
 - `add-accel-observability-fallback` now has code behind it: stable fallback reason codes, strict-gpu failure reports, discovery-error reporting, and core metrics are wired into `accel.Report` and CLI output.
 - `add-accel-scheduler-multi-gpu` now has an initial planning surface in code: `PlanShardable()` aggregates accelerator devices and total budget for shardable workloads, but no weighted partitioning or execution merge path exists yet.
 - `add-accel-columnar-layout-cache` now has code behind it: typed projection updates a session-local resident cache index, `CacheSnapshot()` exposes resident entries/bytes/budget, and `accel cache` / `show accel.cache` render real cache state from current context variables.
+- `add-accel-columnar-layout-cache` now enforces budget at the cache layer: over-budget resident entries are evicted, eviction metrics are tracked, and cache output includes per-device usage summaries.
 - `add-accel-cli-dsl-surface` remains partially implemented. `accel cache` now shows real resident state, but there is still no device allocator, eviction policy, or true workload execution surface.

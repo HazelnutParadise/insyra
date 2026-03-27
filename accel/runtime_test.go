@@ -89,3 +89,54 @@ func TestProjectDataListPopulatesCacheSnapshotAndMetrics(t *testing.T) {
 	assert.Equal(t, float64(1), session.Report().Metrics["cache.resident_buffers"])
 	assert.Greater(t, session.Report().Metrics["cache.resident_bytes"], float64(0))
 }
+
+type runtimeStubDiscoverer struct {
+	name    string
+	devices []accel.Device
+	err     error
+}
+
+func (d runtimeStubDiscoverer) Name() string { return d.name }
+
+func (d runtimeStubDiscoverer) Discover(cfg accel.Config) ([]accel.Device, error) {
+	return d.devices, d.err
+}
+
+func TestProjectDataListEnforcesCacheBudget(t *testing.T) {
+	accel.ResetDiscoverersForTest()
+	t.Cleanup(accel.ResetDiscoverersForTest)
+
+	accel.RegisterDiscoverer(runtimeStubDiscoverer{
+		name: "tiny-cuda",
+		devices: []accel.Device{
+			{
+				ID:          "cuda:tiny:0",
+				Backend:     accel.BackendCUDA,
+				Type:        accel.DeviceTypeDiscrete,
+				MemoryClass: accel.MemoryClassDevice,
+				BudgetBytes: 100,
+				Score:       100,
+			},
+		},
+	})
+
+	session, err := accel.Open(accel.Config{})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, session.Close())
+	})
+
+	_, err = session.ProjectDataList(insyra.NewDataList(1, 2, nil, 4).SetName("first"))
+	require.NoError(t, err)
+	_, err = session.ProjectDataList(insyra.NewDataList(5, 6, nil, 8).SetName("second"))
+	require.NoError(t, err)
+
+	snapshot := session.CacheSnapshot()
+	assert.Equal(t, uint64(60), snapshot.BudgetBytes)
+	assert.LessOrEqual(t, snapshot.ResidentBytes, snapshot.BudgetBytes)
+	assert.Equal(t, 1, snapshot.ResidentBuffers)
+	require.Len(t, snapshot.Entries, 1)
+	assert.Equal(t, "second", snapshot.Entries[0].BufferName)
+	assert.Equal(t, float64(1), session.Report().Metrics["cache.evicted_buffers"])
+	assert.Greater(t, session.Report().Metrics["cache.evicted_bytes"], float64(0))
+}

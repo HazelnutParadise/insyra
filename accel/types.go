@@ -137,10 +137,20 @@ type CacheEntry struct {
 	LastAccess    time.Time
 }
 
+type CacheDeviceUsage struct {
+	DeviceID        string
+	ResidentBuffers int
+	ResidentBytes   uint64
+	BudgetBytes     uint64
+}
+
 type CacheSnapshot struct {
 	ResidentBuffers int
 	ResidentBytes   uint64
 	BudgetBytes     uint64
+	EvictedBuffers  uint64
+	EvictedBytes    uint64
+	DeviceUsage     []CacheDeviceUsage
 	Entries         []CacheEntry
 }
 
