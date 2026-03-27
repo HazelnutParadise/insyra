@@ -20,7 +20,7 @@ Build backend discovery and device selection on top of the now-frozen `insyra/ac
 | M2 | Backend discovery and scoring frozen in spec | planning | in_progress | discoverer registry, builtin CUDA/Metal/WebGPU stubs, native probe seams, discovery timeout handling, cross-backend dedupe, shared-memory budget fallback, budget normalization, and selection tests land; true SDK-backed probes and deeper capability shaping still pending |
 | M3 | Columnar layout and cache model frozen in spec | planning | done | typed projection now emits validity bitmaps, encoded string transport, lineage-aware session-local cache keys, and aggregate budget enforcement; true device residency is still pending allocator-backed work |
 | M4 | Scheduler and observable fallback frozen in spec | planning | in_progress | strict-mode fallback reason codes, core accel metrics, weighted shard assignments, merge-policy selection, profitability-aware planning, and execution-ledger residency metrics land; true backend execution merge behavior still pending |
-| M5 | CLI/DSL accel surface frozen in spec | planning | in_progress | `accel devices|cache|run`, `config accel.mode`, and `show accel.devices|accel.cache` land; full cache/runtime execution semantics still pending |
+| M5 | CLI/DSL accel surface frozen in spec | planning | in_progress | `accel devices|cache|plan|run <var>`, `config accel.mode`, and `show accel.devices|accel.cache` land; backend-native execution semantics still pending |
 
 ## Current Blockers
 None.
@@ -108,6 +108,10 @@ True SDK-backed backend probes layered onto the new native probe seam, so env-dr
   rationale: Per-device residency and execution metrics need truthful runtime events before CUDA/Metal/WebGPU allocators exist.
   timestamp: 2026-03-28
   impacted_change_ids: `add-accel-runtime-capability`, `add-accel-columnar-layout-cache`, `add-accel-observability-fallback`
+- decision: Split accel CLI into explicit planning and execution surfaces.
+  rationale: `accel plan` and `accel run <var>` should not share the same semantics once the runtime has an execution ledger.
+  timestamp: 2026-03-28
+  impacted_change_ids: `add-accel-cli-dsl-surface`, `add-accel-runtime-capability`, `add-accel-observability-fallback`
 
 ## Source Links
 - `delivery-plan.md`
@@ -142,5 +146,5 @@ True SDK-backed backend probes layered onto the new native probe seam, so env-dr
 - `add-accel-scheduler-multi-gpu` now has a real planning contract in code: `PlanShardable()` / `PlanShardableWorkload(...)` produce weighted per-device assignments, deterministic merge-policy selection, and profitability-aware fallback for auto mode. True execution merge paths still do not exist.
 - `accel` now also has an execution seam in code: `ExecuteProjectedDataset(...)` materializes truthful per-device residency through an internal ledger allocator and updates execution metrics/report state without pretending real GPU kernels already run.
 - `add-accel-columnar-layout-cache` is now complete enough to close the current slice: typed projection emits validity bitmaps, string offsets/data transport, lineage-aware session-local cache identity, aggregate budget enforcement, eviction metrics, and truthful cache output that does not pretend projection buffers are already resident on every shardable device.
-- `add-accel-cli-dsl-surface` remains partially implemented. `accel cache` now shows truthful session-local resident state, the Cobra `--mode` path now works end-to-end, and the broken change-local spec text was repaired; there is still no device allocator, eviction policy, or true workload execution surface.
+- `add-accel-cli-dsl-surface` remains partially implemented. `accel cache` now shows truthful session-local resident state, the Cobra `--mode` path now works end-to-end, `accel plan` stays planning-only, and `accel run <var>` now drives the execution ledger; there is still no device allocator or true backend-native workload execution surface.
 - The next change to pick up is `add-accel-backend-discovery`, focusing on richer capability normalization and eventually replacing env-driven stubs with native probe seams.

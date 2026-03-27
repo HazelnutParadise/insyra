@@ -11,6 +11,11 @@ import (
 	clienv "github.com/HazelnutParadise/insyra/cli/env"
 )
 
+type accelArgs struct {
+	cfg         accelpkg.Config
+	positionals []string
+}
+
 func init() {
 	_ = Register(&CommandHandler{
 		Name:               "accel",
@@ -27,14 +32,14 @@ func runAccelCommand(ctx *ExecContext, args []string) error {
 	}
 
 	action := strings.ToLower(args[0])
-	cfg, err := accelConfigFromArgs(args[1:])
+	parsed, err := accelConfigFromArgs(args[1:])
 	if err != nil {
 		return err
 	}
 
 	switch action {
 	case "devices":
-		session, err := accelpkg.Open(cfg)
+		session, err := accelpkg.Open(parsed.cfg)
 		if err != nil {
 			if session != nil {
 				defer func() { _ = session.Close() }()
@@ -46,7 +51,7 @@ func runAccelCommand(ctx *ExecContext, args []string) error {
 		renderAccelDevices(ctx.Output, session)
 		return nil
 	case "cache":
-		session, err := accelpkg.Open(cfg)
+		session, err := accelpkg.Open(parsed.cfg)
 		if session != nil {
 			hydrateAccelCacheFromContext(session, ctx)
 		}
@@ -60,8 +65,8 @@ func runAccelCommand(ctx *ExecContext, args []string) error {
 		defer func() { _ = session.Close() }()
 		renderAccelCache(ctx.Output, session.Report(), session.CacheSnapshot())
 		return nil
-	case "plan", "run":
-		session, err := accelpkg.Open(cfg)
+	case "plan":
+		session, err := accelpkg.Open(parsed.cfg)
 		if session != nil {
 			defer func() { _ = session.Close() }()
 			renderAccelRun(ctx.Output, session.Report(), session.PlanShardable())
@@ -70,33 +75,50 @@ func runAccelCommand(ctx *ExecContext, args []string) error {
 			return err
 		}
 		return nil
+	case "run":
+		if len(parsed.positionals) < 1 {
+			return fmt.Errorf("usage: accel run <var> [--mode auto|cpu|gpu|strict-gpu]")
+		}
+		session, err := accelpkg.Open(parsed.cfg)
+		if session != nil {
+			defer func() { _ = session.Close() }()
+		}
+		if err != nil {
+			if session != nil {
+				renderAccelRun(ctx.Output, session.Report(), session.PlanShardable())
+			}
+			return err
+		}
+		result, runErr := executeAccelVar(session, ctx, parsed.positionals[0])
+		renderAccelExecution(ctx.Output, parsed.positionals[0], session.Report(), result)
+		return runErr
 	default:
 		return fmt.Errorf("unknown accel action: %s", action)
 	}
 }
 
-func accelConfigFromArgs(args []string) (accelpkg.Config, error) {
-	cfg := accelpkg.Config{}
+func accelConfigFromArgs(args []string) (accelArgs, error) {
+	parsed := accelArgs{cfg: accelpkg.Config{}}
 	explicitMode := ""
 	for idx := 0; idx < len(args); idx++ {
 		switch args[idx] {
 		case "--mode":
 			if idx+1 >= len(args) {
-				return cfg, fmt.Errorf("usage: --mode auto|cpu|gpu|strict-gpu")
+				return parsed, fmt.Errorf("usage: --mode auto|cpu|gpu|strict-gpu")
 			}
 			explicitMode = args[idx+1]
 			idx++
 		default:
-			return cfg, fmt.Errorf("unknown accel argument: %s", args[idx])
+			parsed.positionals = append(parsed.positionals, args[idx])
 		}
 	}
 
 	mode, err := resolveAccelMode(explicitMode)
 	if err != nil {
-		return cfg, err
+		return parsed, err
 	}
-	cfg.Mode = mode
-	return cfg, nil
+	parsed.cfg.Mode = mode
+	return parsed, nil
 }
 
 func resolveAccelMode(explicit string) (accelpkg.Mode, error) {
@@ -221,6 +243,42 @@ func renderAccelRun(out io.Writer, report accelpkg.Report, plan accelpkg.ShardPl
 		assignments,
 		report.FallbackReason,
 	)
+}
+
+func renderAccelExecution(out io.Writer, varName string, report accelpkg.Report, result accelpkg.ExecutionResult) {
+	devices := "none"
+	if len(result.DeviceIDs) > 0 {
+		devices = strings.Join(result.DeviceIDs, ",")
+	}
+	_, _ = fmt.Fprintf(
+		out,
+		"var=%s executed=%t backend=%s participants=%d devices=%s assignments=%d bytes_moved=%d merge=%s reason=%s\n",
+		varName,
+		result.Accelerated,
+		report.SelectedBackend,
+		len(result.DeviceIDs),
+		devices,
+		len(result.Assignments),
+		result.BytesMoved,
+		result.MergePolicy,
+		result.FallbackReason,
+	)
+}
+
+func executeAccelVar(session *accelpkg.Session, ctx *ExecContext, name string) (accelpkg.ExecutionResult, error) {
+	if session == nil {
+		return accelpkg.ExecutionResult{}, fmt.Errorf("accel: nil session")
+	}
+	if ctx == nil {
+		return accelpkg.ExecutionResult{}, fmt.Errorf("accel: nil execution context")
+	}
+	if dl, err := getDataListVar(ctx, name); err == nil {
+		return session.ExecuteDataList(dl, accelpkg.WorkloadEstimate{})
+	}
+	if dt, err := getDataTableVar(ctx, name); err == nil {
+		return session.ExecuteDataTable(dt, accelpkg.WorkloadEstimate{})
+	}
+	return accelpkg.ExecutionResult{}, fmt.Errorf("variable %s is not a DataList or DataTable", name)
 }
 
 func hydrateAccelCacheFromContext(session *accelpkg.Session, ctx *ExecContext) {

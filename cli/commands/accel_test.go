@@ -94,7 +94,7 @@ func TestRunAccelCommandRunPrintsReasonAndDeviceCounts(t *testing.T) {
 	output := &bytes.Buffer{}
 	ctx := &ExecContext{Vars: map[string]any{}, Output: output}
 
-	err := runAccelCommand(ctx, []string{"run", "--mode", "strict-gpu"})
+	err := runAccelCommand(ctx, []string{"plan", "--mode", "strict-gpu"})
 	if err == nil {
 		t.Fatal("expected strict-gpu run to fail without accelerators")
 	}
@@ -119,7 +119,7 @@ func TestRunAccelCommandRunPrintsShardPlanSummary(t *testing.T) {
 	output := &bytes.Buffer{}
 	ctx := &ExecContext{Vars: map[string]any{}, Output: output}
 
-	if err := runAccelCommand(ctx, []string{"run", "--mode", "auto"}); err != nil {
+	if err := runAccelCommand(ctx, []string{"plan", "--mode", "auto"}); err != nil {
 		t.Fatalf("runAccelCommand failed: %v", err)
 	}
 
@@ -138,6 +138,58 @@ func TestRunAccelCommandRunPrintsShardPlanSummary(t *testing.T) {
 	}
 	if !strings.Contains(rendered, "assignments=") {
 		t.Fatalf("expected assignment summary in output, got %q", rendered)
+	}
+}
+
+func TestRunAccelCommandRunExecutesDataListVariable(t *testing.T) {
+	setupCommandHome(t)
+	t.Setenv("INSYRA_ACCEL_STUB_CUDA", "1")
+	t.Setenv("INSYRA_ACCEL_STUB_WEBGPU", "1")
+
+	values := make([]any, 512)
+	for i := range values {
+		values[i] = i + 1
+	}
+
+	output := &bytes.Buffer{}
+	ctx := &ExecContext{
+		Vars: map[string]any{
+			"numbers": insyra.NewDataList(values...).SetName("numbers"),
+		},
+		Output: output,
+	}
+
+	if err := runAccelCommand(ctx, []string{"run", "numbers", "--mode", "auto"}); err != nil {
+		t.Fatalf("runAccelCommand failed: %v", err)
+	}
+
+	rendered := output.String()
+	if !strings.Contains(rendered, "executed=true") {
+		t.Fatalf("expected executed marker in output, got %q", rendered)
+	}
+	if !strings.Contains(rendered, "var=numbers") {
+		t.Fatalf("expected variable name in output, got %q", rendered)
+	}
+	if !strings.Contains(rendered, "participants=2") {
+		t.Fatalf("expected participant count in output, got %q", rendered)
+	}
+	if !strings.Contains(rendered, "bytes_moved=") {
+		t.Fatalf("expected bytes moved in output, got %q", rendered)
+	}
+	if strings.Contains(rendered, "planning_only=true") {
+		t.Fatalf("did not expect planning-only marker in execution output, got %q", rendered)
+	}
+}
+
+func TestRunAccelCommandRunRequiresVariableName(t *testing.T) {
+	setupCommandHome(t)
+
+	output := &bytes.Buffer{}
+	ctx := &ExecContext{Vars: map[string]any{}, Output: output}
+
+	err := runAccelCommand(ctx, []string{"run", "--mode", "auto"})
+	if err == nil {
+		t.Fatal("expected accel run without variable name to fail")
 	}
 }
 

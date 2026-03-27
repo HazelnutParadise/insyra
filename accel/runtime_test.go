@@ -222,3 +222,53 @@ func TestProjectDataListEnforcesCacheBudget(t *testing.T) {
 	assert.Equal(t, float64(1), session.Report().Metrics["cache.evicted_buffers"])
 	assert.Greater(t, session.Report().Metrics["cache.evicted_bytes"], float64(0))
 }
+
+func TestExecuteDataListProjectsAndRuns(t *testing.T) {
+	disableNativeProbesForRuntimeTest(t)
+	accel.ResetDiscoverersForTest()
+	t.Cleanup(accel.ResetDiscoverersForTest)
+
+	accel.RegisterDiscoverer(runtimeStubDiscoverer{
+		name: "exec-devices",
+		devices: []accel.Device{
+			{
+				ID:          "cuda:exec:0",
+				Backend:     accel.BackendCUDA,
+				Type:        accel.DeviceTypeDiscrete,
+				MemoryClass: accel.MemoryClassDevice,
+				BudgetBytes: 1 << 20,
+				Score:       100,
+			},
+			{
+				ID:           "webgpu:exec:0",
+				Backend:      accel.BackendWebGPU,
+				Type:         accel.DeviceTypeIntegrated,
+				MemoryClass:  accel.MemoryClassShared,
+				SharedMemory: true,
+				BudgetBytes:  1 << 20,
+				Score:        80,
+			},
+		},
+	})
+
+	session, err := accel.Open(accel.Config{})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, session.Close())
+	})
+
+	values := make([]any, 512)
+	for i := range values {
+		values[i] = i + 1
+	}
+
+	result, err := session.ExecuteDataList(insyra.NewDataList(values...).SetName("numbers"), accel.WorkloadEstimate{})
+	require.NoError(t, err)
+	assert.True(t, result.Accelerated)
+	assert.Len(t, result.Assignments, 2)
+
+	snapshot := session.CacheSnapshot()
+	require.Len(t, snapshot.Entries, 1)
+	assert.Equal(t, "numbers", snapshot.Entries[0].BufferName)
+	assert.Len(t, snapshot.Entries[0].DeviceResidentBytes, 2)
+}
