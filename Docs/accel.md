@@ -12,6 +12,7 @@ The package is still pre-execution, but it is no longer only a shape freeze. The
 - Backend discovery surface:
   - builtin `CUDA`, `Metal`, and `WebGPU` discoverers
   - native probe seams for NVIDIA, Apple, and portable GPU inventory
+  - portable probe fallback chains on Windows (`Get-CimInstance`, `Get-WmiObject`, `wmic`) and Linux (`lspci`, `lshw`)
   - discovery timeout handling
 - CPU-side typed projection helpers:
   - `ProjectDataList(*insyra.DataList)`
