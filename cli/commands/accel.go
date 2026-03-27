@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 
 	accelpkg "github.com/HazelnutParadise/insyra/accel"
@@ -128,14 +129,16 @@ func renderAccelDevices(out io.Writer, session *accelpkg.Session) {
 	for _, device := range devices {
 		_, _ = fmt.Fprintf(
 			out,
-			"id=%s backend=%s vendor=%s type=%s memory=%s budget=%d accelerated=%t\n",
+			"id=%s backend=%s probe=%s vendor=%s type=%s memory=%s budget=%d accelerated=%t caps=%s\n",
 			device.ID,
 			device.Backend,
+			device.ProbeSource,
 			device.Vendor,
 			device.Type,
 			device.MemoryClass,
 			device.BudgetBytes,
 			report.Accelerated,
+			formatCapabilities(device.CapabilitySummary),
 		)
 	}
 }
@@ -217,4 +220,21 @@ func hydrateAccelCacheFromContext(session *accelpkg.Session, ctx *ExecContext) {
 			_, _ = session.ProjectDataTable(typed)
 		}
 	}
+}
+
+func formatCapabilities(caps map[string]bool) string {
+	if len(caps) == 0 {
+		return "none"
+	}
+	keys := make([]string, 0, len(caps))
+	for key, enabled := range caps {
+		if enabled {
+			keys = append(keys, key)
+		}
+	}
+	if len(keys) == 0 {
+		return "none"
+	}
+	sort.Strings(keys)
+	return strings.Join(keys, ",")
 }

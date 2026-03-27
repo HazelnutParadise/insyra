@@ -1,10 +1,22 @@
 package accel
 
 import (
+	"errors"
 	"os"
 	"runtime"
 	"strings"
 )
+
+var ErrNativeProbeUnavailable = errors.New("accel: native probe unavailable")
+
+type builtinProbeFunc func(Config) ([]Device, error)
+
+type builtinProbeOverride struct {
+	native builtinProbeFunc
+	stub   builtinProbeFunc
+}
+
+var builtinProbeOverrides = map[Backend]builtinProbeOverride{}
 
 type builtinDiscoverer struct {
 	name        string
@@ -66,24 +78,33 @@ func (d builtinDiscoverer) Name() string {
 }
 
 func (d builtinDiscoverer) Discover(cfg Config) ([]Device, error) {
-	if !envEnabled(d.envKey) {
-		return nil, nil
+	if nativeProbe := resolveNativeProbe(d); nativeProbe != nil {
+		devices, err := nativeProbe(cfg)
+		if err == nil && len(devices) > 0 {
+			for idx := range devices {
+				if devices[idx].ProbeSource == ProbeSourceUnknown || devices[idx].ProbeSource == "" {
+					devices[idx].ProbeSource = ProbeSourceNative
+				}
+			}
+			return devices, nil
+		}
+		if err != nil && !errors.Is(err, ErrNativeProbeUnavailable) {
+			return nil, err
+		}
 	}
 
-	return []Device{
-		{
-			ID:                string(d.backend) + ":stub:0",
-			Name:              stubDeviceName(d.backend),
-			Vendor:            d.vendor,
-			Backend:           d.backend,
-			Type:              d.deviceType,
-			MemoryClass:       d.memoryClass,
-			SharedMemory:      d.memoryClass == MemoryClassShared,
-			BudgetBytes:       d.budgetBytes,
-			CapabilitySummary: cloneCaps(d.caps),
-			Score:             stubDeviceScore(d.backend),
-		},
-	}, nil
+	if stubProbe := resolveStubProbe(d); stubProbe != nil {
+		devices, err := stubProbe(cfg)
+		if err == nil {
+			for idx := range devices {
+				if devices[idx].ProbeSource == ProbeSourceUnknown || devices[idx].ProbeSource == "" {
+					devices[idx].ProbeSource = ProbeSourceEnvStub
+				}
+			}
+		}
+		return devices, err
+	}
+	return nil, nil
 }
 
 func envEnabled(key string) bool {
@@ -123,6 +144,49 @@ func stubDeviceScore(backend Backend) float64 {
 	default:
 		return 50
 	}
+}
+
+func resolveNativeProbe(d builtinDiscoverer) builtinProbeFunc {
+	if override, ok := builtinProbeOverrides[d.backend]; ok && override.native != nil {
+		return override.native
+	}
+	return func(cfg Config) ([]Device, error) {
+		return nil, ErrNativeProbeUnavailable
+	}
+}
+
+func resolveStubProbe(d builtinDiscoverer) builtinProbeFunc {
+	if override, ok := builtinProbeOverrides[d.backend]; ok && override.stub != nil {
+		return override.stub
+	}
+	return func(cfg Config) ([]Device, error) {
+		if !envEnabled(d.envKey) {
+			return nil, nil
+		}
+		return []Device{
+			{
+				ID:                string(d.backend) + ":stub:0",
+				Name:              stubDeviceName(d.backend),
+				Vendor:            d.vendor,
+				Backend:           d.backend,
+				ProbeSource:       ProbeSourceEnvStub,
+				Type:              d.deviceType,
+				MemoryClass:       d.memoryClass,
+				SharedMemory:      d.memoryClass == MemoryClassShared,
+				BudgetBytes:       d.budgetBytes,
+				CapabilitySummary: cloneCaps(d.caps),
+				Score:             stubDeviceScore(d.backend),
+			},
+		}, nil
+	}
+}
+
+func SetBuiltinProbeOverrideForTest(backend Backend, native builtinProbeFunc, stub builtinProbeFunc) {
+	builtinProbeOverrides[backend] = builtinProbeOverride{native: native, stub: stub}
+}
+
+func ResetBuiltinProbeOverridesForTest() {
+	builtinProbeOverrides = map[Backend]builtinProbeOverride{}
 }
 
 func cloneCaps(caps map[string]bool) map[string]bool {
