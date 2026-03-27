@@ -175,6 +175,7 @@ type CacheEntry struct {
 	DeviceIDs           []string
 	DeviceResidentBytes map[string]uint64
 	LastAccess          time.Time
+	accessOrdinal       uint64
 }
 
 type CacheDeviceUsage struct {

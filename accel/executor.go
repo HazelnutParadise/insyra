@@ -52,22 +52,8 @@ func (ledgerAllocator) Materialize(dataset *Dataset, plan ShardPlan) AllocationR
 
 	for _, buffer := range dataset.Buffers {
 		bufferBytes := estimateBufferResidentBytes(buffer)
-		deviceBytes := make(map[string]uint64, len(plan.Assignments))
-		remaining := bufferBytes
-		for idx, assignment := range plan.Assignments {
-			var portion uint64
-			if idx == len(plan.Assignments)-1 {
-				portion = remaining
-			} else {
-				portion = uint64(float64(bufferBytes) * assignment.SharePercent)
-				if portion > remaining {
-					portion = remaining
-				}
-				remaining -= portion
-			}
-			deviceBytes[assignment.DeviceID] = portion
-			record.BytesMoved += portion
-		}
+		deviceBytes := distributeResidentBytes(bufferBytes, plan.Assignments)
+		record.BytesMoved += sumDeviceResidentBytes(deviceBytes)
 		record.DeviceResidentMap[buffer.Name] = deviceBytes
 	}
 
@@ -252,6 +238,7 @@ func cloneDeviceResidentBytes(input map[string]uint64) map[string]uint64 {
 }
 
 func resolveExecutionAllocator(plan ShardPlan) (BackendAllocator, AllocatorKind) {
+	ensureBuiltinBackendAllocators()
 	if plan.Heterogeneous || len(plan.DeviceIDs) == 0 {
 		return ledgerAllocator{}, AllocatorKindLedger
 	}

@@ -13,6 +13,7 @@ type residentCache struct {
 	entries        map[string]CacheEntry
 	evictedBuffers uint64
 	evictedBytes   uint64
+	nextOrdinal    uint64
 }
 
 func newResidentCache() *residentCache {
@@ -96,6 +97,7 @@ func (s *Session) cacheDataset(dataset *Dataset) {
 
 	for idx, buffer := range dataset.Buffers {
 		key := cacheKey(dataset, buffer, idx)
+		s.cache.nextOrdinal++
 		s.cache.entries[key] = CacheEntry{
 			Key:           key,
 			DatasetName:   dataset.Name,
@@ -106,6 +108,7 @@ func (s *Session) cacheDataset(dataset *Dataset) {
 			Len:           buffer.Len,
 			ResidentBytes: estimateBufferResidentBytes(buffer),
 			LastAccess:    now,
+			accessOrdinal: s.cache.nextOrdinal,
 		}
 	}
 
@@ -165,7 +168,7 @@ func (s *Session) enforceCacheBudget() {
 			if len(overBudget) > 0 && !entryTouchesDevices(entry, overBudget) {
 				continue
 			}
-			if evictKey == "" || entry.LastAccess.Before(oldest) {
+			if evictKey == "" || entry.LastAccess.Before(oldest) || (entry.LastAccess.Equal(oldest) && entryOlderThan(entry, s.cache.entries[evictKey], key, evictKey)) {
 				evictKey = key
 				oldest = entry.LastAccess
 			}
@@ -179,6 +182,13 @@ func (s *Session) enforceCacheBudget() {
 		s.cache.evictedBytes += entry.ResidentBytes
 		delete(s.cache.entries, evictKey)
 	}
+}
+
+func entryOlderThan(candidate CacheEntry, incumbent CacheEntry, candidateKey string, incumbentKey string) bool {
+	if candidate.accessOrdinal != incumbent.accessOrdinal {
+		return candidate.accessOrdinal < incumbent.accessOrdinal
+	}
+	return candidateKey < incumbentKey
 }
 
 func (s *Session) cacheBudgetByDevice() map[string]uint64 {

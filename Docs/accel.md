@@ -28,13 +28,14 @@ The package is still pre-execution, but it is no longer only a shape freeze. The
   - shardable multi-device planning via `PlanShardable()` / `PlanShardableWorkload(...)`
   - weighted shard assignments and deterministic merge-policy reporting
   - allocator registry plus execution ledger via `ExecuteProjectedDataset(...)`, `ExecuteDataList(...)`, and `ExecuteDataTable(...)`
+  - builtin homogeneous allocators for `CUDA`, `Metal`, and `WebGPU`, with ledger fallback for heterogeneous plans
   - CLI/DSL surfaces: `accel devices`, `accel cache`, `accel plan`, `accel run <var>`, `show accel.devices`, `show accel.cache`, `config accel.mode`
 
 ## Still Not Implemented
 
 - No true CUDA / Metal / WebGPU kernel execution yet
 - No backend-native VRAM allocator implementation yet
-- No true backend allocator or merge execution path yet; current execution seam can route through a registered allocator for single-backend plans, otherwise it falls back to the internal ledger allocator and CPU-side accounting
+- No true backend allocator or merge execution path yet; current execution seam has builtin per-backend allocator stubs for homogeneous plans, but they still materialize accounting/residency records rather than GPU allocations or kernels
 - No implicit acceleration of `DataList.Map(func...)` or `DataTable.Map(func...)`
 - No full string-kernel execution path beyond transport and eligibility preparation
 
@@ -82,4 +83,4 @@ func main() {
 - Default backend preference is `CUDA`, then `Metal`, then `WebGPU`.
 - Native discovery is best-effort. Env-driven stubs remain available for deterministic testing and non-GPU development.
 - Shared-memory devices can derive working-set budgets from host memory when native budget data is unavailable.
-- `accel plan` remains a planning/report surface. `accel run <var>` now drives the internal execution ledger, but it still does not launch backend-native GPU kernels.
+- `accel plan` remains a planning/report surface. `accel run <var>` now drives execution through builtin backend allocator stubs or the internal ledger fallback, but it still does not launch backend-native GPU kernels.
