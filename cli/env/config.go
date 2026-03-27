@@ -10,6 +10,7 @@ type GlobalConfig struct {
 	DefaultEnv string `json:"defaultEnv"`
 	LogLevel   string `json:"logLevel"`
 	NoColor    bool   `json:"noColor"`
+	AccelMode  string `json:"accelMode"`
 }
 
 func defaultGlobalConfig() GlobalConfig {
@@ -17,6 +18,7 @@ func defaultGlobalConfig() GlobalConfig {
 		DefaultEnv: "default",
 		LogLevel:   "info",
 		NoColor:    false,
+		AccelMode:  "auto",
 	}
 }
 
@@ -89,6 +91,8 @@ func UpdateGlobalConfig(key, value string) (GlobalConfig, error) {
 		cfg.LogLevel = value
 	case "no-color", "noColor":
 		cfg.NoColor = value == "true" || value == "1" || value == "yes"
+	case "accel-mode", "accelMode", "accel.mode":
+		cfg.AccelMode = value
 	}
 	if err := SaveGlobalConfig(cfg); err != nil {
 		return GlobalConfig{}, err

@@ -21,6 +21,12 @@ func runShowCommand(ctx *ExecContext, args []string) error {
 	if len(args) < 1 {
 		return fmt.Errorf("usage: show <var> [N] [M]")
 	}
+	switch args[0] {
+	case "accel.devices":
+		return runAccelCommand(ctx, []string{"devices"})
+	case "accel.cache":
+		return runAccelCommand(ctx, []string{"cache"})
+	}
 	value, exists := ctx.Vars[args[0]]
 	if !exists {
 		return fmt.Errorf("variable not found: %s", args[0])

@@ -17,19 +17,19 @@ Build backend discovery and device selection on top of the now-frozen `insyra/ac
 | --- | --- | --- | --- | --- |
 | M0 | Control surface established | planning | done | `delivery-plan.md`, `AGENTS.md`, `CLAUDE.md`, and full accel proposal inventory exist |
 | M1 | Accel runtime API frozen in spec | planning | done | `accel` package compiles, `go test ./accel` passes, docs surface added |
-| M2 | Backend discovery and scoring frozen in spec | planning | in_progress | discoverer registry, auto-discovery, normalized scoring, and selection tests land; concrete backend adapters still pending |
+| M2 | Backend discovery and scoring frozen in spec | planning | in_progress | discoverer registry, builtin CUDA/Metal/WebGPU stubs, normalized scoring, and selection tests land; memory-budget normalization and richer capability shaping still pending |
 | M3 | Columnar layout and cache model frozen in spec | planning | not_started | `add-accel-columnar-layout-cache` proposal/design/spec delta validated |
 | M4 | Scheduler and observable fallback frozen in spec | planning | not_started | `add-accel-scheduler-multi-gpu` and `add-accel-observability-fallback` validated |
-| M5 | CLI/DSL accel surface frozen in spec | planning | not_started | `add-accel-cli-dsl-surface` validated |
+| M5 | CLI/DSL accel surface frozen in spec | planning | in_progress | `accel devices|cache|run`, `config accel.mode`, and `show accel.devices|accel.cache` land; full cache/runtime execution semantics still pending |
 
 ## Current Blockers
 None.
 
 ## Next Verifiable Output
-Concrete CUDA, Metal, and WebGPU discoverer stubs merged behind the new discovery contract, with report output still staying backend-agnostic.
+Observable accel report enrichment for CLI/DSL and the next scheduler-facing report fields, building on the now-landed discovery stubs, budget normalization, and command surface.
 
 ## Next OpenSpec Change
-`add-accel-backend-discovery`
+`add-accel-observability-fallback`
 
 ## Decision Log
 - decision: Keep acceleration in optional `insyra/accel` packages rather than core `insyra`.
@@ -60,6 +60,14 @@ Concrete CUDA, Metal, and WebGPU discoverer stubs merged behind the new discover
   rationale: This keeps real adapters pluggable while making session behavior testable before native bindings exist.
   timestamp: 2026-03-28
   impacted_change_ids: `add-accel-backend-discovery`
+- decision: Ship env-driven builtin CUDA, Metal, and WebGPU adapter stubs before native SDK probing.
+  rationale: This creates stable backend boundaries and lets report, scheduler, and CLI work be verified on machines without GPU SDKs.
+  timestamp: 2026-03-28
+  impacted_change_ids: `add-accel-backend-discovery`, `add-accel-observability-fallback`, `add-accel-cli-dsl-surface`
+- decision: Land the first accel CLI/DSL surface as probe/report commands before true cache or workload execution exists.
+  rationale: This gives users and future agents a stable inspection path without pretending the runtime is already complete.
+  timestamp: 2026-03-28
+  impacted_change_ids: `add-accel-cli-dsl-surface`, `add-accel-observability-fallback`
 
 ## Source Links
 - `delivery-plan.md`
@@ -88,5 +96,6 @@ Concrete CUDA, Metal, and WebGPU discoverer stubs merged behind the new discover
 ## Handoff Notes
 - The convergence surface and runtime capability are both in place. `accel` now exists as a compilable opt-in package with `Open/NewSession`, typed projection helpers, and report/device/dataset/buffer surface.
 - Use a fresh `GOCACHE` when running Go validation in this environment. The default cache path hit a local toolchain/cache issue after `go clean -cache`, but tests pass with a clean alternate cache directory.
-- `add-accel-backend-discovery` is now partially implemented in code. The remaining work is concrete CUDA, Metal, and WebGPU discoverers plus richer device budget normalization.
-- Do not move to CLI/DSL or scheduler work until the discovery change has real adapter stubs and stable report semantics.
+- `add-accel-backend-discovery` is now partially implemented in code. The remaining work is richer device budget normalization, capability normalization, and later replacement of env-driven stubs with native SDK probes.
+- `add-accel-cli-dsl-surface` is now partially implemented in code. `accel devices`, `accel cache`, `accel run`, `config accel.mode`, and `show accel.devices|accel.cache` exist, but cache output and run semantics are still report-only.
+- The next slice should enrich `accel.Report` and CLI rendering with richer fallback and multi-device observability before scheduler work begins.

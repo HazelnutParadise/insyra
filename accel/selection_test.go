@@ -39,12 +39,40 @@ func TestNormalizeDeviceAppliesDefaultScore(t *testing.T) {
 		Backend:     BackendWebGPU,
 		Type:        DeviceTypeIntegrated,
 		MemoryClass: MemoryClassShared,
-	})
+	}, DefaultConfig())
 
 	if device.Score <= 0 {
 		t.Fatalf("expected positive normalized score, got %v", device.Score)
 	}
 	if !device.SharedMemory {
 		t.Fatal("expected shared-memory devices to be flagged")
+	}
+}
+
+func TestNormalizeDeviceAppliesDeviceLocalBudgetFraction(t *testing.T) {
+	device := normalizeDiscoveredDevice(Device{
+		ID:          "cuda:0",
+		Backend:     BackendCUDA,
+		Type:        DeviceTypeDiscrete,
+		MemoryClass: MemoryClassDevice,
+		BudgetBytes: 1000,
+	}, DefaultConfig())
+
+	if device.BudgetBytes != 600 {
+		t.Fatalf("expected device-local budget to normalize to 600, got %d", device.BudgetBytes)
+	}
+}
+
+func TestNormalizeDeviceAppliesSharedBudgetFraction(t *testing.T) {
+	device := normalizeDiscoveredDevice(Device{
+		ID:          "webgpu:0",
+		Backend:     BackendWebGPU,
+		Type:        DeviceTypeIntegrated,
+		MemoryClass: MemoryClassShared,
+		BudgetBytes: 1000,
+	}, DefaultConfig())
+
+	if device.BudgetBytes != 350 {
+		t.Fatalf("expected shared-memory budget to normalize to 350, got %d", device.BudgetBytes)
 	}
 }
