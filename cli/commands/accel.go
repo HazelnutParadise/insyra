@@ -194,9 +194,20 @@ func renderAccelRun(out io.Writer, report accelpkg.Report, plan accelpkg.ShardPl
 	if len(plan.DeviceIDs) > 0 {
 		shardDevices = strings.Join(plan.DeviceIDs, ",")
 	}
+	assignments := "none"
+	if len(plan.Assignments) > 0 {
+		parts := make([]string, 0, len(plan.Assignments))
+		for _, assignment := range plan.Assignments {
+			parts = append(
+				parts,
+				fmt.Sprintf("%s:%.1f%%:%d:%d", assignment.DeviceID, assignment.SharePercent*100, assignment.Rows, assignment.Bytes),
+			)
+		}
+		assignments = strings.Join(parts, ",")
+	}
 	_, _ = fmt.Fprintf(
 		out,
-		"mode=%s accelerated=%t backend=%s devices=%s discovered=%.0f selected=%.0f planned=%d shard_devices=%s shard_budget=%d planning_only=true reason=%s\n",
+		"mode=%s accelerated=%t backend=%s devices=%s discovered=%.0f selected=%.0f planned=%d shard_devices=%s shard_budget=%d merge=%s assignments=%s planning_only=true reason=%s\n",
 		report.Mode,
 		report.Accelerated,
 		report.SelectedBackend,
@@ -206,6 +217,8 @@ func renderAccelRun(out io.Writer, report accelpkg.Report, plan accelpkg.ShardPl
 		len(plan.DeviceIDs),
 		shardDevices,
 		plan.TotalBudgetBytes,
+		plan.MergePolicy,
+		assignments,
 		report.FallbackReason,
 	)
 }

@@ -133,6 +133,12 @@ func TestRunAccelCommandRunPrintsShardPlanSummary(t *testing.T) {
 	if !strings.Contains(rendered, "planning_only=true") {
 		t.Fatalf("expected planning-only marker in output, got %q", rendered)
 	}
+	if !strings.Contains(rendered, "merge=cpu") {
+		t.Fatalf("expected merge policy in output, got %q", rendered)
+	}
+	if !strings.Contains(rendered, "assignments=") {
+		t.Fatalf("expected assignment summary in output, got %q", rendered)
+	}
 }
 
 func TestAccelCobraCommandAcceptsModeFlag(t *testing.T) {

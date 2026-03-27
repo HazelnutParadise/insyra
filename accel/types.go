@@ -61,11 +61,28 @@ const (
 type FallbackReason string
 
 const (
-	FallbackReasonNone                 FallbackReason = "none"
-	FallbackReasonNoAccelerator        FallbackReason = "no-accelerator"
-	FallbackReasonCPUOnly              FallbackReason = "cpu-only-mode"
-	FallbackReasonDiscoveryError       FallbackReason = "discovery-error"
-	FallbackReasonStrictGPUUnavailable FallbackReason = "strict-gpu-unavailable"
+	FallbackReasonNone                  FallbackReason = "none"
+	FallbackReasonNoAccelerator         FallbackReason = "no-accelerator"
+	FallbackReasonCPUOnly               FallbackReason = "cpu-only-mode"
+	FallbackReasonDiscoveryError        FallbackReason = "discovery-error"
+	FallbackReasonStrictGPUUnavailable  FallbackReason = "strict-gpu-unavailable"
+	FallbackReasonWorkloadUnsupported   FallbackReason = "workload-unsupported"
+	FallbackReasonWorkloadNotProfitable FallbackReason = "workload-not-profitable"
+)
+
+type WorkloadClass string
+
+const (
+	WorkloadClassUnknown  WorkloadClass = "unknown"
+	WorkloadClassColumnar WorkloadClass = "columnar"
+)
+
+type MergePolicy string
+
+const (
+	MergePolicyUnknown       MergePolicy = "unknown"
+	MergePolicyCPU           MergePolicy = "cpu"
+	MergePolicyBackendNative MergePolicy = "backend-native"
 )
 
 type MemoryBudgetPolicy struct {
@@ -166,6 +183,22 @@ type CacheSnapshot struct {
 	EvictedBytes    uint64
 	DeviceUsage     []CacheDeviceUsage
 	Entries         []CacheEntry
+}
+
+type WorkloadEstimate struct {
+	Class WorkloadClass
+	Rows  int
+	Bytes uint64
+}
+
+type ShardAssignment struct {
+	DeviceID     string
+	Backend      Backend
+	Weight       float64
+	SharePercent float64
+	Rows         int
+	Bytes        uint64
+	BudgetBytes  uint64
 }
 
 func DefaultConfig() Config {

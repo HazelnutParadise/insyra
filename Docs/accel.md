@@ -25,14 +25,15 @@ The package is still pre-execution, but it is no longer only a shape freeze. The
   - aggregate budget enforcement against normalized accel budgets
   - device usage summaries remain zero until true device residency exists
 - Planning and inspection:
-  - shardable multi-device planning via `PlanShardable()`
+  - shardable multi-device planning via `PlanShardable()` / `PlanShardableWorkload(...)`
+  - weighted shard assignments and deterministic merge-policy reporting
   - CLI/DSL surfaces: `accel devices`, `accel cache`, `accel run`, `show accel.devices`, `show accel.cache`, `config accel.mode`
 
 ## Still Not Implemented
 
 - No true CUDA / Metal / WebGPU workload execution yet
 - No backend-native VRAM allocator yet
-- No weighted shard partitioning or merge execution path yet
+- No true per-device execution or merge execution path yet; current scheduler stops at weighted planning and merge-policy selection
 - No implicit acceleration of `DataList.Map(func...)` or `DataTable.Map(func...)`
 - No full string-kernel execution path beyond transport and eligibility preparation
 
