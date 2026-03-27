@@ -3,12 +3,32 @@ package accel
 import (
 	"fmt"
 	"sort"
+	"sync"
 
 	"github.com/HazelnutParadise/insyra"
 )
 
-type executionAllocator interface {
+type BackendAllocator interface {
+	Name() string
 	Materialize(dataset *Dataset, plan ShardPlan) AllocationRecord
+}
+
+var (
+	backendAllocatorsMu sync.RWMutex
+	backendAllocators   = map[Backend]BackendAllocator{}
+)
+
+func RegisterBackendAllocator(backend Backend, allocator BackendAllocator) error {
+	if backend == "" || backend == BackendUnknown || backend == BackendCPU {
+		return fmt.Errorf("accel: allocator backend is required")
+	}
+	if allocator == nil {
+		return fmt.Errorf("accel: allocator is required")
+	}
+	backendAllocatorsMu.Lock()
+	defer backendAllocatorsMu.Unlock()
+	backendAllocators[backend] = allocator
+	return nil
 }
 
 type AllocationRecord struct {
@@ -18,6 +38,8 @@ type AllocationRecord struct {
 }
 
 type ledgerAllocator struct{}
+
+func (ledgerAllocator) Name() string { return string(AllocatorKindLedger) }
 
 func (ledgerAllocator) Materialize(dataset *Dataset, plan ShardPlan) AllocationRecord {
 	record := AllocationRecord{
@@ -75,6 +97,7 @@ func (s *Session) ExecuteProjectedDataset(dataset *Dataset, workload WorkloadEst
 		Accelerated:    plan.Accelerated,
 		FallbackReason: plan.FallbackReason,
 		MergePolicy:    plan.MergePolicy,
+		AllocatorKind:  AllocatorKindUnknown,
 		Assignments:    append([]ShardAssignment(nil), plan.Assignments...),
 		DeviceIDs:      append([]string(nil), plan.DeviceIDs...),
 	}
@@ -86,7 +109,9 @@ func (s *Session) ExecuteProjectedDataset(dataset *Dataset, workload WorkloadEst
 		return result, nil
 	}
 
-	allocator := ledgerAllocator{}
+	allocator, allocatorKind := resolveExecutionAllocator(plan)
+	result.Allocator = allocator.Name()
+	result.AllocatorKind = allocatorKind
 	s.ensureDatasetCached(dataset)
 	record := allocator.Materialize(dataset, plan)
 	result.BytesMoved = record.BytesMoved
@@ -186,6 +211,8 @@ func (s *Session) recordExecutionMetrics(result ExecutionResult) {
 	report.Metrics["execution.bytes_moved"] = float64(result.BytesMoved)
 	report.Metrics["execution.merge_cpu"] = boolMetric(result.MergePolicy == MergePolicyCPU)
 	report.Metrics["execution.merge_backend_native"] = boolMetric(result.MergePolicy == MergePolicyBackendNative)
+	report.Metrics["execution.allocator_ledger"] = boolMetric(result.AllocatorKind == AllocatorKindLedger)
+	report.Metrics["execution.allocator_registered"] = boolMetric(result.AllocatorKind == AllocatorKindRegistered)
 	s.reports[len(s.reports)-1] = cloneReport(report)
 }
 
@@ -222,4 +249,17 @@ func cloneDeviceResidentBytes(input map[string]uint64) map[string]uint64 {
 		cloned[key] = value
 	}
 	return cloned
+}
+
+func resolveExecutionAllocator(plan ShardPlan) (BackendAllocator, AllocatorKind) {
+	if plan.Heterogeneous || len(plan.DeviceIDs) == 0 {
+		return ledgerAllocator{}, AllocatorKindLedger
+	}
+	backendAllocatorsMu.RLock()
+	allocator, ok := backendAllocators[plan.Backend]
+	backendAllocatorsMu.RUnlock()
+	if ok {
+		return allocator, AllocatorKindRegistered
+	}
+	return ledgerAllocator{}, AllocatorKindLedger
 }

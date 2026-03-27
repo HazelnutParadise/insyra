@@ -27,14 +27,14 @@ The package is still pre-execution, but it is no longer only a shape freeze. The
 - Planning and inspection:
   - shardable multi-device planning via `PlanShardable()` / `PlanShardableWorkload(...)`
   - weighted shard assignments and deterministic merge-policy reporting
-  - execution ledger via `ExecuteProjectedDataset(...)` that materializes truthful per-device residency and execution metrics without claiming real GPU compute yet
+  - allocator registry plus execution ledger via `ExecuteProjectedDataset(...)`, `ExecuteDataList(...)`, and `ExecuteDataTable(...)`
   - CLI/DSL surfaces: `accel devices`, `accel cache`, `accel plan`, `accel run <var>`, `show accel.devices`, `show accel.cache`, `config accel.mode`
 
 ## Still Not Implemented
 
 - No true CUDA / Metal / WebGPU kernel execution yet
-- No backend-native VRAM allocator yet
-- No true backend allocator or merge execution path yet; current execution seam records per-device residency through an internal ledger allocator and CPU-side accounting
+- No backend-native VRAM allocator implementation yet
+- No true backend allocator or merge execution path yet; current execution seam can route through a registered allocator for single-backend plans, otherwise it falls back to the internal ledger allocator and CPU-side accounting
 - No implicit acceleration of `DataList.Map(func...)` or `DataTable.Map(func...)`
 - No full string-kernel execution path beyond transport and eligibility preparation
 

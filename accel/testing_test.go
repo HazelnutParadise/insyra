@@ -15,3 +15,9 @@ func setHostMemoryBytesForTest(bytes uint64) func() {
 		hostMemoryBytesFunc = previous
 	}
 }
+
+func resetBackendAllocatorsForTest() {
+	backendAllocatorsMu.Lock()
+	defer backendAllocatorsMu.Unlock()
+	backendAllocators = map[Backend]BackendAllocator{}
+}

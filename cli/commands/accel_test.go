@@ -173,6 +173,9 @@ func TestRunAccelCommandRunExecutesDataListVariable(t *testing.T) {
 	if !strings.Contains(rendered, "participants=2") {
 		t.Fatalf("expected participant count in output, got %q", rendered)
 	}
+	if !strings.Contains(rendered, "allocator=ledger") {
+		t.Fatalf("expected allocator in output, got %q", rendered)
+	}
 	if !strings.Contains(rendered, "bytes_moved=") {
 		t.Fatalf("expected bytes moved in output, got %q", rendered)
 	}

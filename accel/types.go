@@ -85,6 +85,14 @@ const (
 	MergePolicyBackendNative MergePolicy = "backend-native"
 )
 
+type AllocatorKind string
+
+const (
+	AllocatorKindUnknown    AllocatorKind = "unknown"
+	AllocatorKindLedger     AllocatorKind = "ledger"
+	AllocatorKindRegistered AllocatorKind = "registered"
+)
+
 type MemoryBudgetPolicy struct {
 	DeviceFraction float64
 	SharedFraction float64
@@ -206,6 +214,8 @@ type ExecutionResult struct {
 	Accelerated    bool
 	FallbackReason FallbackReason
 	MergePolicy    MergePolicy
+	Allocator      string
+	AllocatorKind  AllocatorKind
 	Assignments    []ShardAssignment
 	DeviceIDs      []string
 	BytesMoved     uint64
