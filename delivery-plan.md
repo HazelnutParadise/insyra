@@ -19,7 +19,7 @@ Build backend discovery and device selection on top of the now-frozen `insyra/ac
 | M1 | Accel runtime API frozen in spec | planning | done | `accel` package compiles, `go test ./accel` passes, docs surface added |
 | M2 | Backend discovery and scoring frozen in spec | planning | in_progress | discoverer registry, builtin CUDA/Metal/WebGPU stubs, native probe seams, discovery timeout handling, cross-backend dedupe, shared-memory budget fallback, budget normalization, and selection tests land; true SDK-backed probes and deeper capability shaping still pending |
 | M3 | Columnar layout and cache model frozen in spec | planning | done | typed projection now emits validity bitmaps, encoded string transport, lineage-aware session-local cache keys, and aggregate budget enforcement; true device residency is still pending allocator-backed work |
-| M4 | Scheduler and observable fallback frozen in spec | planning | in_progress | strict-mode fallback reason codes, core accel metrics, and shardable multi-device planning surface land; weighted partitioning and execution merge behavior still pending |
+| M4 | Scheduler and observable fallback frozen in spec | planning | in_progress | strict-mode fallback reason codes, core accel metrics, weighted shard assignments, merge-policy selection, and profitability-aware planning land; true execution merge behavior still pending |
 | M5 | CLI/DSL accel surface frozen in spec | planning | in_progress | `accel devices|cache|run`, `config accel.mode`, and `show accel.devices|accel.cache` land; full cache/runtime execution semantics still pending |
 
 ## Current Blockers
@@ -100,6 +100,10 @@ True SDK-backed backend probes layered onto the new native probe seam, so env-dr
   rationale: Broken spec text and a non-functional `--mode` path would make the control surface look complete while failing in actual use.
   timestamp: 2026-03-28
   impacted_change_ids: `add-accel-cli-dsl-surface`, `add-accel-backend-discovery`
+- decision: Move multi-device scheduling from aggregate-only planning to workload-aware weighted partition planning before attempting allocator-backed execution.
+  rationale: A multi-GPU surface that only sums budget is not enough to validate heterogenous scheduling semantics or strict/auto profitability behavior.
+  timestamp: 2026-03-28
+  impacted_change_ids: `add-accel-scheduler-multi-gpu`, `add-accel-cli-dsl-surface`, `add-accel-observability-fallback`
 
 ## Source Links
 - `delivery-plan.md`
@@ -131,7 +135,7 @@ True SDK-backed backend probes layered onto the new native probe seam, so env-dr
 - `add-accel-backend-discovery` is now materially deeper in code. Builtin stubs, native probe seams, normalized capability flags, budget normalization, probe-source reporting, and CLI/report capability visibility are in place. The remaining gap is true SDK-backed probing and any backend-specific capability enrichment that comes with it.
 - `add-accel-backend-discovery` now also honors `DiscoveryTimeout`, supports host-memory-derived shared-memory budgets when native budget data is missing, and avoids the earlier gap where native probe tests and config fields existed without working code behind them.
 - `add-accel-observability-fallback` now has code behind it: stable fallback reason codes, strict-gpu failure reports, discovery-error reporting, and core metrics are wired into `accel.Report` and CLI output.
-- `add-accel-scheduler-multi-gpu` now has an initial planning surface in code: `PlanShardable()` aggregates accelerator devices and total budget for shardable workloads, but no weighted partitioning or execution merge path exists yet.
+- `add-accel-scheduler-multi-gpu` now has a real planning contract in code: `PlanShardable()` / `PlanShardableWorkload(...)` produce weighted per-device assignments, deterministic merge-policy selection, and profitability-aware fallback for auto mode. True execution merge paths and allocator-backed dispatch still do not exist.
 - `add-accel-columnar-layout-cache` is now complete enough to close the current slice: typed projection emits validity bitmaps, string offsets/data transport, lineage-aware session-local cache identity, aggregate budget enforcement, eviction metrics, and truthful cache output that does not pretend projection buffers are already resident on every shardable device.
 - `add-accel-cli-dsl-surface` remains partially implemented. `accel cache` now shows truthful session-local resident state, the Cobra `--mode` path now works end-to-end, and the broken change-local spec text was repaired; there is still no device allocator, eviction policy, or true workload execution surface.
 - The next change to pick up is `add-accel-backend-discovery`, focusing on richer capability normalization and eventually replacing env-driven stubs with native probe seams.
