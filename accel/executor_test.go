@@ -134,6 +134,115 @@ func TestExecuteProjectedDatasetUsesRegisteredAllocatorForSingleBackendPlan(t *t
 	}
 }
 
+func TestExecuteProjectedDatasetUsesBuiltinCUDAAllocatorByDefault(t *testing.T) {
+	t.Setenv("INSYRA_ACCEL_DISABLE_NATIVE_PROBES", "1")
+	ResetDiscoverersForTest()
+	t.Cleanup(ResetDiscoverersForTest)
+	resetBackendAllocatorsForTest()
+	t.Cleanup(resetBackendAllocatorsForTest)
+
+	RegisterDiscoverer(stubDiscoverer{
+		name: "cuda-pair",
+		devices: []Device{
+			{ID: "cuda:0", Backend: BackendCUDA, Type: DeviceTypeDiscrete, MemoryClass: MemoryClassDevice, BudgetBytes: 1 << 20, Score: 100},
+			{ID: "cuda:1", Backend: BackendCUDA, Type: DeviceTypeDiscrete, MemoryClass: MemoryClassDevice, BudgetBytes: 1 << 20, Score: 90},
+		},
+	})
+
+	session, err := Open(Config{})
+	if err != nil {
+		t.Fatalf("open failed: %v", err)
+	}
+	t.Cleanup(func() { _ = session.Close() })
+
+	dataset := &Dataset{
+		Name:        "numbers",
+		Fingerprint: "numbers-fp",
+		Lineage:     "project:datalist",
+		Rows:        1024,
+		Buffers:     []Buffer{{Name: "numbers", Type: DataTypeInt64, Values: []int64{1, 2, 3, 4}, Len: 1024}},
+	}
+
+	result, err := session.ExecuteProjectedDataset(dataset, WorkloadEstimate{})
+	if err != nil {
+		t.Fatalf("execute projected dataset failed: %v", err)
+	}
+	if result.Allocator != "cuda-builtin" {
+		t.Fatalf("expected builtin cuda allocator, got %q", result.Allocator)
+	}
+	if result.AllocatorKind != AllocatorKindRegistered {
+		t.Fatalf("expected registered allocator kind for builtin allocator, got %q", result.AllocatorKind)
+	}
+}
+
+func TestExecuteProjectedDatasetUsesBuiltinSharedMemoryAllocatorsByDefault(t *testing.T) {
+	tests := []struct {
+		name          string
+		backend       Backend
+		allocatorName string
+		deviceType    DeviceType
+	}{
+		{
+			name:          "metal",
+			backend:       BackendMetal,
+			allocatorName: "metal-builtin",
+			deviceType:    DeviceTypeIntegrated,
+		},
+		{
+			name:          "webgpu",
+			backend:       BackendWebGPU,
+			allocatorName: "webgpu-builtin",
+			deviceType:    DeviceTypeIntegrated,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("INSYRA_ACCEL_DISABLE_NATIVE_PROBES", "1")
+			ResetDiscoverersForTest()
+			t.Cleanup(ResetDiscoverersForTest)
+			resetBackendAllocatorsForTest()
+			t.Cleanup(resetBackendAllocatorsForTest)
+
+			RegisterDiscoverer(stubDiscoverer{
+				name: string(tc.backend) + "-pair",
+				devices: []Device{
+					{ID: string(tc.backend) + ":0", Backend: tc.backend, Type: tc.deviceType, MemoryClass: MemoryClassShared, SharedMemory: true, BudgetBytes: 1 << 20, Score: 100},
+					{ID: string(tc.backend) + ":1", Backend: tc.backend, Type: tc.deviceType, MemoryClass: MemoryClassShared, SharedMemory: true, BudgetBytes: 1 << 20, Score: 90},
+				},
+			})
+
+			session, err := Open(Config{})
+			if err != nil {
+				t.Fatalf("open failed: %v", err)
+			}
+			t.Cleanup(func() { _ = session.Close() })
+
+			dataset := &Dataset{
+				Name:        "numbers",
+				Fingerprint: "numbers-fp",
+				Lineage:     "project:datalist",
+				Rows:        1024,
+				Buffers:     []Buffer{{Name: "numbers", Type: DataTypeInt64, Values: []int64{1, 2, 3, 4}, Len: 1024}},
+			}
+
+			result, err := session.ExecuteProjectedDataset(dataset, WorkloadEstimate{})
+			if err != nil {
+				t.Fatalf("execute projected dataset failed: %v", err)
+			}
+			if result.Allocator != tc.allocatorName {
+				t.Fatalf("expected builtin allocator %q, got %q", tc.allocatorName, result.Allocator)
+			}
+			if result.AllocatorKind != AllocatorKindRegistered {
+				t.Fatalf("expected registered allocator kind, got %q", result.AllocatorKind)
+			}
+			if result.BytesMoved == 0 {
+				t.Fatal("expected shared-memory builtin allocator to record synchronization bytes moved")
+			}
+		})
+	}
+}
+
 func TestExecuteProjectedDatasetFallsBackToLedgerForHeterogeneousPlan(t *testing.T) {
 	t.Setenv("INSYRA_ACCEL_DISABLE_NATIVE_PROBES", "1")
 	ResetDiscoverersForTest()

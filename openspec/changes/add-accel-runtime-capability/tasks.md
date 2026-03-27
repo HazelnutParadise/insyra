@@ -4,3 +4,4 @@
 - [x] 1.3 Validate the change with `openspec validate add-accel-runtime-capability --strict`
 - [x] 1.4 Add execution wrappers and execution-result surface so projected datasets can produce truthful residency/report events before backend-native kernels exist
 - [x] 1.5 Add a backend allocator registry and ledger fallback seam so future backend allocators can plug into runtime execution without rewriting the execution surface
+- [x] 1.6 Seed builtin `CUDA`, `Metal`, and `WebGPU` allocator stubs for homogeneous execution plans so runtime execution no longer depends solely on the generic ledger path
