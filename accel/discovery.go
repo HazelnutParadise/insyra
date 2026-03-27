@@ -49,7 +49,7 @@ func (s *Session) Discover() error {
 	var found []Device
 	var errs []error
 	for _, discoverer := range currentDiscoverers() {
-		devices, err := discoverer.Discover(s.cfg)
+		devices, err := runDiscovererWithTimeout(discoverer, s.cfg)
 		if err != nil {
 			errs = append(errs, err)
 			continue
@@ -58,6 +58,7 @@ func (s *Session) Discover() error {
 			found = append(found, normalizeDiscoveredDevice(device, s.cfg))
 		}
 	}
+	found = dedupeDiscoveredDevices(found)
 
 	s.setDiscoveryResult(found)
 	joinedErr := errors.Join(errs...)
@@ -240,7 +241,8 @@ func discoveryMetrics(devices []Device, report Report, discoveryErrors int) map[
 }
 
 func normalizeBudgetBytes(device Device, cfg Config) uint64 {
-	if device.BudgetBytes == 0 {
+	baseBudget := inferredDeviceBudgetBytes(device)
+	if baseBudget == 0 {
 		return 0
 	}
 
@@ -249,9 +251,26 @@ func normalizeBudgetBytes(device Device, cfg Config) uint64 {
 		fraction = cfg.MemoryBudget.SharedFraction
 	}
 	if fraction <= 0 {
+		return baseBudget
+	}
+	return uint64(float64(baseBudget) * fraction)
+}
+
+func inferredDeviceBudgetBytes(device Device) uint64 {
+	if device.BudgetBytes > 0 {
 		return device.BudgetBytes
 	}
-	return uint64(float64(device.BudgetBytes) * fraction)
+	switch {
+	case device.MemoryClass == MemoryClassShared || device.SharedMemory:
+		if hostBytes := hostMemoryBytes(); hostBytes > 0 {
+			return hostBytes
+		}
+		return 4 * 1024 * 1024 * 1024
+	case device.MemoryClass == MemoryClassDevice:
+		return 2 * 1024 * 1024 * 1024
+	default:
+		return 0
+	}
 }
 
 func defaultDeviceScore(device Device) float64 {
@@ -279,4 +298,72 @@ func defaultDeviceScore(device Device) float64 {
 	}
 
 	return score
+}
+
+func runDiscovererWithTimeout(discoverer Discoverer, cfg Config) ([]Device, error) {
+	timeout := cfg.DiscoveryTimeout
+	if timeout <= 0 {
+		return discoverer.Discover(cfg)
+	}
+
+	type result struct {
+		devices []Device
+		err     error
+	}
+	done := make(chan result, 1)
+	go func() {
+		devices, err := discoverer.Discover(cfg)
+		done <- result{devices: devices, err: err}
+	}()
+
+	select {
+	case res := <-done:
+		return res.devices, res.err
+	case <-time.After(timeout):
+		return nil, fmt.Errorf("accel: discoverer %s timed out after %s", discoverer.Name(), timeout)
+	}
+}
+
+func dedupeDiscoveredDevices(devices []Device) []Device {
+	if len(devices) < 2 {
+		return devices
+	}
+
+	bestIndex := map[string]int{}
+	for idx, device := range devices {
+		key := canonicalDeviceKey(device)
+		current, ok := bestIndex[key]
+		if !ok || backendPriority(device.Backend) < backendPriority(devices[current].Backend) {
+			bestIndex[key] = idx
+		}
+	}
+
+	deduped := make([]Device, 0, len(bestIndex))
+	for idx, device := range devices {
+		if bestIndex[canonicalDeviceKey(device)] == idx {
+			deduped = append(deduped, device)
+		}
+	}
+	return deduped
+}
+
+func canonicalDeviceKey(device Device) string {
+	name := device.Name
+	if name == "" {
+		name = device.ID
+	}
+	return string(normalizeVendor(device.Vendor)) + ":" + name
+}
+
+func backendPriority(backend Backend) int {
+	switch backend {
+	case BackendCUDA:
+		return 0
+	case BackendMetal:
+		return 1
+	case BackendWebGPU:
+		return 2
+	default:
+		return 3
+	}
 }

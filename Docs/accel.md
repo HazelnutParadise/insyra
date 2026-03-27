@@ -2,23 +2,39 @@
 
 The `accel` package defines the opt-in acceleration runtime surface for Insyra.
 
-This package is intentionally backend-agnostic in its first implementation step. It freezes the public runtime shape before CUDA, Metal, WebGPU-native discovery, VRAM/shared-memory caching, heterogeneous scheduling, and CLI/DSL controls are implemented.
+The package is still pre-execution, but it is no longer only a shape freeze. The current slice includes backend discovery seams, typed CPU-side projection, resident-cache accounting, shard planning, and CLI/DSL inspection surfaces.
 
 ## Current Scope
 
 - Session-scoped runtime entry: `Open(...)` / `NewSession(...)`
 - Runtime policy object: `Config`
 - Normalized runtime types: `Device`, `Report`, `Buffer`, `Dataset`
+- Backend discovery surface:
+  - builtin `CUDA`, `Metal`, and `WebGPU` discoverers
+  - native probe seams for NVIDIA, Apple, and portable GPU inventory
+  - discovery timeout handling
 - CPU-side typed projection helpers:
   - `ProjectDataList(*insyra.DataList)`
   - `ProjectDataTable(*insyra.DataTable)`
+- Columnar transport:
+  - numeric and boolean typed buffers
+  - validity bitmaps
+  - encoded string transport via offsets and values buffer
+- Session-local cache accounting:
+  - resident buffer index
+  - aggregate budget enforcement against normalized accel budgets
+  - device usage summaries remain zero until true device residency exists
+- Planning and inspection:
+  - shardable multi-device planning via `PlanShardable()`
+  - CLI/DSL surfaces: `accel devices`, `accel cache`, `accel run`, `show accel.devices`, `show accel.cache`, `config accel.mode`
 
-## Non-Goals For This Step
+## Still Not Implemented
 
-- No real GPU backend discovery yet
-- No CUDA / Metal / WebGPU-native execution yet
+- No true CUDA / Metal / WebGPU workload execution yet
+- No backend-native VRAM allocator yet
+- No weighted shard partitioning or merge execution path yet
 - No implicit acceleration of `DataList.Map(func...)` or `DataTable.Map(func...)`
-- No CLI / DSL accel surface yet
+- No full string-kernel execution path beyond transport and eligibility preparation
 
 ## Installation
 
@@ -61,5 +77,7 @@ func main() {
 
 ## Notes
 
-- The current default report is intentionally conservative. It reports a non-accelerated state until a real backend is selected.
-- This package exists to stabilize the runtime contract first. Backend execution, cache residency, and multi-GPU planning are handled in later changes.
+- Default backend preference is `CUDA`, then `Metal`, then `WebGPU`.
+- Native discovery is best-effort. Env-driven stubs remain available for deterministic testing and non-GPU development.
+- Shared-memory devices can derive working-set budgets from host memory when native budget data is unavailable.
+- Current CLI output is a planning and inspection surface, not a general GPU execution wrapper.

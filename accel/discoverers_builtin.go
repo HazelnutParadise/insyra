@@ -146,15 +146,6 @@ func stubDeviceScore(backend Backend) float64 {
 	}
 }
 
-func resolveNativeProbe(d builtinDiscoverer) builtinProbeFunc {
-	if override, ok := builtinProbeOverrides[d.backend]; ok && override.native != nil {
-		return override.native
-	}
-	return func(cfg Config) ([]Device, error) {
-		return nil, ErrNativeProbeUnavailable
-	}
-}
-
 func resolveStubProbe(d builtinDiscoverer) builtinProbeFunc {
 	if override, ok := builtinProbeOverrides[d.backend]; ok && override.stub != nil {
 		return override.stub
@@ -174,19 +165,11 @@ func resolveStubProbe(d builtinDiscoverer) builtinProbeFunc {
 				MemoryClass:       d.memoryClass,
 				SharedMemory:      d.memoryClass == MemoryClassShared,
 				BudgetBytes:       d.budgetBytes,
-				CapabilitySummary: cloneCaps(d.caps),
+				CapabilitySummary: normalizeStubCapabilities(d.caps),
 				Score:             stubDeviceScore(d.backend),
 			},
 		}, nil
 	}
-}
-
-func SetBuiltinProbeOverrideForTest(backend Backend, native builtinProbeFunc, stub builtinProbeFunc) {
-	builtinProbeOverrides[backend] = builtinProbeOverride{native: native, stub: stub}
-}
-
-func ResetBuiltinProbeOverridesForTest() {
-	builtinProbeOverrides = map[Backend]builtinProbeOverride{}
 }
 
 func cloneCaps(caps map[string]bool) map[string]bool {
@@ -196,6 +179,18 @@ func cloneCaps(caps map[string]bool) map[string]bool {
 	cloned := make(map[string]bool, len(caps))
 	for key, value := range caps {
 		cloned[key] = value
+	}
+	return cloned
+}
+
+func normalizeStubCapabilities(caps map[string]bool) map[string]bool {
+	cloned := cloneCaps(caps)
+	if cloned == nil {
+		return nil
+	}
+	if cloned["device_local_mem"] {
+		cloned["device_local_memory"] = true
+		delete(cloned, "device_local_mem")
 	}
 	return cloned
 }

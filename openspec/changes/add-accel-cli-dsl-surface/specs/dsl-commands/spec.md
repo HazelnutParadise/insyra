@@ -1,19 +1,19 @@
 ## ADDED Requirements
 
 ### Requirement: Acceleration mode configuration
-蝟餌絞 SHALL ?? acceleration mode ?賭誘嚗雿輻?銵?DSL ??script ?閮剖? accel ??嚗?
+The DSL SHALL allow acceleration mode configuration so scripts and REPL sessions can select the accel execution policy.
 
 #### Scenario: Set acceleration mode
-- **WHEN** 雿輻?銵?`config accel.mode = strict-gpu`
-- **THEN** 蝟餌絞閮剖? acceleration execution mode ?? strict-gpu
+- **WHEN** a user runs `config accel.mode = strict-gpu`
+- **THEN** the configured acceleration execution mode becomes `strict-gpu`
 
 ### Requirement: Acceleration inspection commands
-蝟餌絞 SHALL ?? DSL/REPL ?賭誘?? acceleration devices ??cache state嚗?
+The DSL and REPL SHALL expose acceleration inspection commands for device state and cache state.
 
 #### Scenario: Show devices in REPL or script
-- **WHEN** 雿輻?銵?`show accel.devices`
-- **THEN** 蝟餌絞憿舐內 discovered acceleration devices ??backend summary
+- **WHEN** a user runs `show accel.devices`
+- **THEN** the runtime prints discovered acceleration devices and backend summary
 
 #### Scenario: Show cache in REPL or script
-- **WHEN** 雿輻?銵?`show accel.cache`
-- **THEN** 蝟餌絞憿舐內 acceleration cache budget?esidency summary?elated metrics
+- **WHEN** a user runs `show accel.cache`
+- **THEN** the runtime prints acceleration cache budget, residency summary, and related metrics

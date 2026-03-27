@@ -6,23 +6,24 @@ import (
 	"sort"
 	"strings"
 
+	insyra "github.com/HazelnutParadise/insyra"
 	accelpkg "github.com/HazelnutParadise/insyra/accel"
 	clienv "github.com/HazelnutParadise/insyra/cli/env"
-	insyra "github.com/HazelnutParadise/insyra"
 )
 
 func init() {
 	_ = Register(&CommandHandler{
-		Name:        "accel",
-		Usage:       "accel <devices|cache|run> [--mode auto|cpu|gpu|strict-gpu]",
-		Description: "Inspect acceleration backends and session reports",
-		Run:         runAccelCommand,
+		Name:               "accel",
+		Usage:              "accel <devices|cache|plan|run> [--mode auto|cpu|gpu|strict-gpu]",
+		Description:        "Inspect acceleration backends, cache state, and planning reports",
+		DisableFlagParsing: false,
+		Run:                runAccelCommand,
 	})
 }
 
 func runAccelCommand(ctx *ExecContext, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: accel <devices|cache|run> [--mode auto|cpu|gpu|strict-gpu]")
+		return fmt.Errorf("usage: accel <devices|cache|plan|run> [--mode auto|cpu|gpu|strict-gpu]")
 	}
 
 	action := strings.ToLower(args[0])
@@ -59,7 +60,7 @@ func runAccelCommand(ctx *ExecContext, args []string) error {
 		defer func() { _ = session.Close() }()
 		renderAccelCache(ctx.Output, session.Report(), session.CacheSnapshot())
 		return nil
-	case "run":
+	case "plan", "run":
 		session, err := accelpkg.Open(cfg)
 		if session != nil {
 			defer func() { _ = session.Close() }()
@@ -172,8 +173,9 @@ func renderAccelCache(out io.Writer, report accelpkg.Report, snapshot accelpkg.C
 		}
 		_, _ = fmt.Fprintf(
 			out,
-			"entry dataset=%s buffer=%s type=%s len=%d bytes=%d devices=%s\n",
+			"entry dataset=%s lineage=%s buffer=%s type=%s len=%d bytes=%d devices=%s\n",
 			entry.DatasetName,
+			entry.Lineage,
 			entry.BufferName,
 			entry.Type,
 			entry.Len,
@@ -194,7 +196,7 @@ func renderAccelRun(out io.Writer, report accelpkg.Report, plan accelpkg.ShardPl
 	}
 	_, _ = fmt.Fprintf(
 		out,
-		"mode=%s accelerated=%t backend=%s devices=%s discovered=%.0f selected=%.0f planned=%d shard_devices=%s shard_budget=%d reason=%s\n",
+		"mode=%s accelerated=%t backend=%s devices=%s discovered=%.0f selected=%.0f planned=%d shard_devices=%s shard_budget=%d planning_only=true reason=%s\n",
 		report.Mode,
 		report.Accelerated,
 		report.SelectedBackend,

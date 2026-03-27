@@ -1,16 +1,16 @@
 ## ADDED Requirements
 
 ### Requirement: Acceleration command group
-蝟餌絞 SHALL ?? `accel` ?賭誘蝯∠?嚗? acceleration ?賭誘閮餃??device?ache?xecution mode ??嚗?
+The CLI SHALL expose an `accel` command group for acceleration device inspection, cache inspection, and execution-mode reporting.
 
 #### Scenario: List acceleration devices
-- **WHEN** 雿輻?銵?`insyra accel devices`
-- **THEN** 蝟餌絞憿舐內 acceleration backend?iscovered devices?hosen capabilities
+- **WHEN** a user runs `insyra accel devices`
+- **THEN** the CLI reports discovered acceleration devices, backend names, probe source, and capability summary
 
 #### Scenario: Show acceleration cache
-- **WHEN** 雿輻?銵?`insyra accel cache`
-- **THEN** 蝟餌絞憿舐內 cache budget?esidency summary?viction-related state
+- **WHEN** a user runs `insyra accel cache`
+- **THEN** the CLI reports cache budget, resident buffers, resident bytes, and eviction-related state
 
 #### Scenario: Run with explicit acceleration mode
-- **WHEN** 雿輻?銵?`insyra accel run --mode strict-gpu <command> ...`
-- **THEN** 蝟餌絞?隞斗??舟? acceleration mode ?厲?狀?? fallback ??蝯???
+- **WHEN** a user runs `insyra accel run --mode strict-gpu`
+- **THEN** the CLI reports the selected acceleration mode, backend choice, shard-planning summary, and any fallback outcome

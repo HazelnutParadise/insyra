@@ -1,14 +1,14 @@
 ## ADDED Requirements
 
 ### Requirement: Acceleration handler registration
-蝟餌絞 SHALL ?? acceleration-related handlers ?? Registry嚗? CLI?EPL??單?梁??剔? acceleration control surface嚗?
+The command registry SHALL register acceleration-related handlers so CLI and REPL entry points can share the same control surface.
 
 #### Scenario: Registry dispatches accel handler
-- **WHEN** 雿輻?? `accel` ?賭誘?砍?璅?楝?勗 Registry.Dispatch
-- **THEN** Registry 頝舐?券? acceleration handler ??shared execution context
+- **WHEN** an accel command is dispatched through `Registry.Dispatch`
+- **THEN** the registry routes the request to the accel handler with the shared execution context
 
 ### Requirement: Acceleration execution report visibility
-蝟餌絞 SHALL ?? acceleration handler ?瑁? selected backend?elected devices?allback outcome ???唳?報?
+The acceleration handler SHALL expose selected backend, selected devices, and fallback outcome through the shared execution path.
 
 #### Scenario: Accel-enabled command completes
 - **WHEN** acceleration-enabled execution finishes

@@ -3,21 +3,32 @@ package accel
 import (
 	"errors"
 	"testing"
+	"time"
 )
+
+func disableNativeProbes(t *testing.T) {
+	t.Helper()
+	t.Setenv("INSYRA_ACCEL_DISABLE_NATIVE_PROBES", "1")
+}
 
 type stubDiscoverer struct {
 	name    string
 	devices []Device
 	err     error
+	delay   time.Duration
 }
 
 func (d stubDiscoverer) Name() string { return d.name }
 
 func (d stubDiscoverer) Discover(cfg Config) ([]Device, error) {
+	if d.delay > 0 {
+		time.Sleep(d.delay)
+	}
 	return d.devices, d.err
 }
 
 func TestOpenDiscoversDevicesFromRegisteredDiscoverers(t *testing.T) {
+	disableNativeProbes(t)
 	ResetDiscoverersForTest()
 	t.Cleanup(ResetDiscoverersForTest)
 
@@ -55,6 +66,7 @@ func TestOpenDiscoversDevicesFromRegisteredDiscoverers(t *testing.T) {
 }
 
 func TestOpenSkipsDiscoveryInCPUMode(t *testing.T) {
+	disableNativeProbes(t)
 	ResetDiscoverersForTest()
 	t.Cleanup(ResetDiscoverersForTest)
 
@@ -82,6 +94,7 @@ func TestOpenSkipsDiscoveryInCPUMode(t *testing.T) {
 }
 
 func TestCurrentDiscoverersIncludesBuiltinBackends(t *testing.T) {
+	disableNativeProbes(t)
 	ResetDiscoverersForTest()
 	t.Cleanup(ResetDiscoverersForTest)
 
@@ -104,6 +117,7 @@ func TestCurrentDiscoverersIncludesBuiltinBackends(t *testing.T) {
 }
 
 func TestCurrentDiscoverersAppendsRegisteredDiscoverersAfterBuiltins(t *testing.T) {
+	disableNativeProbes(t)
 	ResetDiscoverersForTest()
 	t.Cleanup(ResetDiscoverersForTest)
 
@@ -116,10 +130,16 @@ func TestCurrentDiscoverersAppendsRegisteredDiscoverersAfterBuiltins(t *testing.
 }
 
 func TestOpenDiscoversBuiltinStubDeviceFromEnv(t *testing.T) {
+	disableNativeProbes(t)
 	ResetDiscoverersForTest()
 	t.Cleanup(ResetDiscoverersForTest)
-	ResetBuiltinProbeOverridesForTest()
-	t.Cleanup(ResetBuiltinProbeOverridesForTest)
+	resetBuiltinProbeOverridesForTest()
+	t.Cleanup(resetBuiltinProbeOverridesForTest)
+	setBuiltinProbeOverrideForTest(
+		BackendWebGPU,
+		func(cfg Config) ([]Device, error) { return nil, ErrNativeProbeUnavailable },
+		nil,
+	)
 	t.Setenv("INSYRA_ACCEL_STUB_WEBGPU", "1")
 
 	session, err := Open(Config{})
@@ -161,11 +181,11 @@ func TestOpenDiscoversBuiltinStubDeviceFromEnv(t *testing.T) {
 func TestBuiltinDiscovererUsesNativeProbeOverrideBeforeStub(t *testing.T) {
 	ResetDiscoverersForTest()
 	t.Cleanup(ResetDiscoverersForTest)
-	ResetBuiltinProbeOverridesForTest()
-	t.Cleanup(ResetBuiltinProbeOverridesForTest)
+	resetBuiltinProbeOverridesForTest()
+	t.Cleanup(resetBuiltinProbeOverridesForTest)
 	t.Setenv("INSYRA_ACCEL_STUB_CUDA", "1")
 
-	SetBuiltinProbeOverrideForTest(
+	setBuiltinProbeOverrideForTest(
 		BackendCUDA,
 		func(cfg Config) ([]Device, error) {
 			return []Device{
@@ -180,6 +200,11 @@ func TestBuiltinDiscovererUsesNativeProbeOverrideBeforeStub(t *testing.T) {
 				},
 			}, nil
 		},
+		nil,
+	)
+	setBuiltinProbeOverrideForTest(
+		BackendWebGPU,
+		func(cfg Config) ([]Device, error) { return nil, ErrNativeProbeUnavailable },
 		nil,
 	)
 
@@ -210,6 +235,7 @@ func TestBuiltinDiscovererUsesNativeProbeOverrideBeforeStub(t *testing.T) {
 }
 
 func TestOpenStrictGPUFailsWithoutAcceleratorButReturnsSessionReport(t *testing.T) {
+	disableNativeProbes(t)
 	ResetDiscoverersForTest()
 	t.Cleanup(ResetDiscoverersForTest)
 
@@ -239,9 +265,9 @@ func TestOpenStrictGPUFailsWithoutAcceleratorButReturnsSessionReport(t *testing.
 func TestDiscoveryReportPopulatesCoreMetrics(t *testing.T) {
 	ResetDiscoverersForTest()
 	t.Cleanup(ResetDiscoverersForTest)
-	ResetBuiltinProbeOverridesForTest()
-	t.Cleanup(ResetBuiltinProbeOverridesForTest)
-	SetBuiltinProbeOverrideForTest(
+	resetBuiltinProbeOverridesForTest()
+	t.Cleanup(resetBuiltinProbeOverridesForTest)
+	setBuiltinProbeOverrideForTest(
 		BackendCUDA,
 		func(cfg Config) ([]Device, error) {
 			return []Device{
@@ -256,6 +282,11 @@ func TestDiscoveryReportPopulatesCoreMetrics(t *testing.T) {
 				},
 			}, nil
 		},
+		nil,
+	)
+	setBuiltinProbeOverrideForTest(
+		BackendWebGPU,
+		func(cfg Config) ([]Device, error) { return nil, ErrNativeProbeUnavailable },
 		nil,
 	)
 	t.Setenv("INSYRA_ACCEL_STUB_CUDA", "1")
@@ -296,7 +327,26 @@ func TestDiscoveryReportPopulatesCoreMetrics(t *testing.T) {
 	}
 }
 
+func TestNormalizeBudgetBytesFallsBackForSharedMemoryDevicesWithoutNativeBudget(t *testing.T) {
+	restore := setHostMemoryBytesForTest(32 * 1024 * 1024 * 1024)
+	defer restore()
+
+	device := Device{
+		ID:           "webgpu:native:0",
+		Backend:      BackendWebGPU,
+		Type:         DeviceTypeIntegrated,
+		MemoryClass:  MemoryClassShared,
+		SharedMemory: true,
+	}
+
+	normalized := normalizeDiscoveredDevice(device, DefaultConfig())
+	if normalized.BudgetBytes == 0 {
+		t.Fatal("expected non-zero normalized budget for shared-memory device without native budget")
+	}
+}
+
 func TestOpenReportsDiscoveryErrorReasonCode(t *testing.T) {
+	disableNativeProbes(t)
 	ResetDiscoverersForTest()
 	t.Cleanup(ResetDiscoverersForTest)
 
@@ -325,5 +375,82 @@ func TestOpenReportsDiscoveryErrorReasonCode(t *testing.T) {
 	}
 	if report.Metrics["discovery.errors"] != 1 {
 		t.Fatalf("expected one discovery error, got %v", report.Metrics["discovery.errors"])
+	}
+}
+
+func TestOpenHonorsDiscoveryTimeout(t *testing.T) {
+	disableNativeProbes(t)
+	ResetDiscoverersForTest()
+	t.Cleanup(ResetDiscoverersForTest)
+
+	RegisterDiscoverer(stubDiscoverer{
+		name:  "slow-backend",
+		delay: 200 * time.Millisecond,
+	})
+
+	start := time.Now()
+	session, err := Open(Config{DiscoveryTimeout: 20 * time.Millisecond})
+	elapsed := time.Since(start)
+	if err == nil {
+		t.Fatal("expected timeout discovery error")
+	}
+	if elapsed >= 150*time.Millisecond {
+		t.Fatalf("expected timeout to stop discovery early, took %v", elapsed)
+	}
+	if session == nil {
+		t.Fatal("expected session even when discovery times out")
+	}
+	t.Cleanup(func() {
+		_ = session.Close()
+	})
+
+	report := session.Report()
+	if report.FallbackReason != FallbackReasonDiscoveryError {
+		t.Fatalf("expected discovery-error fallback, got %q", report.FallbackReason)
+	}
+	if report.Metrics["discovery.errors"] != 1 {
+		t.Fatalf("expected one discovery error after timeout, got %v", report.Metrics["discovery.errors"])
+	}
+}
+
+func TestParseNvidiaSMIOutputBuildsNativeCUDADevices(t *testing.T) {
+	raw := []byte("NVIDIA GeForce RTX 4090,24564\nNVIDIA RTX A2000,12288\n")
+
+	devices, err := parseNvidiaSMIOutput(raw)
+	if err != nil {
+		t.Fatalf("parse nvidia-smi output failed: %v", err)
+	}
+	if len(devices) != 2 {
+		t.Fatalf("expected 2 devices, got %d", len(devices))
+	}
+	if devices[0].ID != "cuda:native:0" {
+		t.Fatalf("expected first native cuda id, got %q", devices[0].ID)
+	}
+	if devices[0].ProbeSource != ProbeSourceNative {
+		t.Fatalf("expected native probe source, got %q", devices[0].ProbeSource)
+	}
+	if devices[0].BudgetBytes != 24564*1024*1024 {
+		t.Fatalf("unexpected first device budget bytes: %d", devices[0].BudgetBytes)
+	}
+}
+
+func TestParseWindowsVideoControllersJSONBuildsWebGPUDevices(t *testing.T) {
+	raw := `[{"Name":"Intel(R) Iris(R) Xe Graphics","AdapterCompatibility":"Intel Corporation","AdapterRAM":1073741824},{"Name":"AMD Radeon(TM) Graphics","AdapterCompatibility":"Advanced Micro Devices, Inc.","AdapterRAM":2147483648}]`
+
+	devices, err := parseWindowsVideoControllersJSON(raw)
+	if err != nil {
+		t.Fatalf("parse windows video controller json failed: %v", err)
+	}
+	if len(devices) != 2 {
+		t.Fatalf("expected 2 webgpu-eligible devices, got %d", len(devices))
+	}
+	if devices[0].Backend != BackendWebGPU || devices[1].Backend != BackendWebGPU {
+		t.Fatal("expected webgpu backend classification for windows non-nvidia controllers")
+	}
+	if devices[0].ProbeSource != ProbeSourceNative || devices[1].ProbeSource != ProbeSourceNative {
+		t.Fatal("expected native probe source for windows controller parsing")
+	}
+	if !devices[0].SharedMemory || !devices[1].SharedMemory {
+		t.Fatal("expected windows intel/amd graphics to normalize as shared-memory devices")
 	}
 }

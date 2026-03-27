@@ -17,8 +17,8 @@ Build backend discovery and device selection on top of the now-frozen `insyra/ac
 | --- | --- | --- | --- | --- |
 | M0 | Control surface established | planning | done | `delivery-plan.md`, `AGENTS.md`, `CLAUDE.md`, and full accel proposal inventory exist |
 | M1 | Accel runtime API frozen in spec | planning | done | `accel` package compiles, `go test ./accel` passes, docs surface added |
-| M2 | Backend discovery and scoring frozen in spec | planning | in_progress | discoverer registry, builtin CUDA/Metal/WebGPU stubs, native probe seams, normalized capability maps, budget normalization, and selection tests land; true SDK-backed probes and deeper capability shaping still pending |
-| M3 | Columnar layout and cache model frozen in spec | planning | done | typed projection now emits validity bitmaps, encoded string transport, and a session-local resident cache index with budget enforcement and per-device cache usage |
+| M2 | Backend discovery and scoring frozen in spec | planning | in_progress | discoverer registry, builtin CUDA/Metal/WebGPU stubs, native probe seams, discovery timeout handling, cross-backend dedupe, shared-memory budget fallback, budget normalization, and selection tests land; true SDK-backed probes and deeper capability shaping still pending |
+| M3 | Columnar layout and cache model frozen in spec | planning | done | typed projection now emits validity bitmaps, encoded string transport, lineage-aware session-local cache keys, and aggregate budget enforcement; true device residency is still pending allocator-backed work |
 | M4 | Scheduler and observable fallback frozen in spec | planning | in_progress | strict-mode fallback reason codes, core accel metrics, and shardable multi-device planning surface land; weighted partitioning and execution merge behavior still pending |
 | M5 | CLI/DSL accel surface frozen in spec | planning | in_progress | `accel devices|cache|run`, `config accel.mode`, and `show accel.devices|accel.cache` land; full cache/runtime execution semantics still pending |
 
@@ -92,6 +92,14 @@ True SDK-backed backend probes layered onto the new native probe seam, so env-dr
   rationale: Binding to CUDA/Metal/WebGPU without a stable seam would couple probe failures, report semantics, and CLI output too tightly to backend-specific code.
   timestamp: 2026-03-28
   impacted_change_ids: `add-accel-backend-discovery`, `add-accel-observability-fallback`, `add-accel-cli-dsl-surface`
+- decision: Honor discovery timeout and shared-memory budget fallback inside the runtime before treating backend discovery as converged.
+  rationale: A public timeout field and shared-memory budget policy are not credible if they only exist in config shape but not in behavior.
+  timestamp: 2026-03-28
+  impacted_change_ids: `add-accel-backend-discovery`, `add-accel-columnar-layout-cache`, `add-accel-observability-fallback`
+- decision: Repair accel CLI/DSL spec text and Cobra flag parsing before further backend work.
+  rationale: Broken spec text and a non-functional `--mode` path would make the control surface look complete while failing in actual use.
+  timestamp: 2026-03-28
+  impacted_change_ids: `add-accel-cli-dsl-surface`, `add-accel-backend-discovery`
 
 ## Source Links
 - `delivery-plan.md`
@@ -121,8 +129,9 @@ True SDK-backed backend probes layered onto the new native probe seam, so env-dr
 - The convergence surface and runtime capability are both in place. `accel` now exists as a compilable opt-in package with `Open/NewSession`, typed projection helpers, and report/device/dataset/buffer surface.
 - Use a fresh `GOCACHE` when running Go validation in this environment. The default cache path hit a local toolchain/cache issue after `go clean -cache`, but tests pass with a clean alternate cache directory.
 - `add-accel-backend-discovery` is now materially deeper in code. Builtin stubs, native probe seams, normalized capability flags, budget normalization, probe-source reporting, and CLI/report capability visibility are in place. The remaining gap is true SDK-backed probing and any backend-specific capability enrichment that comes with it.
+- `add-accel-backend-discovery` now also honors `DiscoveryTimeout`, supports host-memory-derived shared-memory budgets when native budget data is missing, and avoids the earlier gap where native probe tests and config fields existed without working code behind them.
 - `add-accel-observability-fallback` now has code behind it: stable fallback reason codes, strict-gpu failure reports, discovery-error reporting, and core metrics are wired into `accel.Report` and CLI output.
 - `add-accel-scheduler-multi-gpu` now has an initial planning surface in code: `PlanShardable()` aggregates accelerator devices and total budget for shardable workloads, but no weighted partitioning or execution merge path exists yet.
-- `add-accel-columnar-layout-cache` is now complete enough to close the current slice: typed projection emits validity bitmaps, string offsets/data transport, session-local cache residency, budget enforcement, eviction metrics, and per-device usage summaries.
-- `add-accel-cli-dsl-surface` remains partially implemented. `accel cache` now shows real resident state, but there is still no device allocator, eviction policy, or true workload execution surface.
+- `add-accel-columnar-layout-cache` is now complete enough to close the current slice: typed projection emits validity bitmaps, string offsets/data transport, lineage-aware session-local cache identity, aggregate budget enforcement, eviction metrics, and truthful cache output that does not pretend projection buffers are already resident on every shardable device.
+- `add-accel-cli-dsl-surface` remains partially implemented. `accel cache` now shows truthful session-local resident state, the Cobra `--mode` path now works end-to-end, and the broken change-local spec text was repaired; there is still no device allocator, eviction policy, or true workload execution surface.
 - The next change to pick up is `add-accel-backend-discovery`, focusing on richer capability normalization and eventually replacing env-driven stubs with native probe seams.

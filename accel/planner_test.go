@@ -3,6 +3,7 @@ package accel
 import "testing"
 
 func TestPlanShardableAggregatesAllAccelerators(t *testing.T) {
+	t.Setenv("INSYRA_ACCEL_DISABLE_NATIVE_PROBES", "1")
 	ResetDiscoverersForTest()
 	t.Cleanup(ResetDiscoverersForTest)
 	t.Setenv("INSYRA_ACCEL_STUB_CUDA", "1")
@@ -35,6 +36,7 @@ func TestPlanShardableAggregatesAllAccelerators(t *testing.T) {
 }
 
 func TestPlanShardableFallsBackWithoutAccelerators(t *testing.T) {
+	t.Setenv("INSYRA_ACCEL_DISABLE_NATIVE_PROBES", "1")
 	ResetDiscoverersForTest()
 	t.Cleanup(ResetDiscoverersForTest)
 
