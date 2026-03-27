@@ -56,6 +56,8 @@ const (
 	FallbackReasonNone          FallbackReason = "none"
 	FallbackReasonNoAccelerator FallbackReason = "no-accelerator"
 	FallbackReasonCPUOnly       FallbackReason = "cpu-only-mode"
+	FallbackReasonDiscoveryError FallbackReason = "discovery-error"
+	FallbackReasonStrictGPUUnavailable FallbackReason = "strict-gpu-unavailable"
 )
 
 type MemoryBudgetPolicy struct {
@@ -91,6 +93,7 @@ type Report struct {
 	Mode              Mode
 	Accelerated       bool
 	SelectedBackend   Backend
+	DiscoveredDeviceIDs []string
 	SelectedDeviceIDs []string
 	SelectedDevices   []string
 	FallbackReason    FallbackReason

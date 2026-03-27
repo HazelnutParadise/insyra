@@ -33,6 +33,10 @@ func runAccelCommand(ctx *ExecContext, args []string) error {
 	case "devices":
 		session, err := accelpkg.Open(cfg)
 		if err != nil {
+			if session != nil {
+				defer func() { _ = session.Close() }()
+				renderAccelDevices(ctx.Output, session)
+			}
 			return err
 		}
 		defer func() { _ = session.Close() }()
@@ -41,6 +45,10 @@ func runAccelCommand(ctx *ExecContext, args []string) error {
 	case "cache":
 		session, err := accelpkg.Open(cfg)
 		if err != nil {
+			if session != nil {
+				defer func() { _ = session.Close() }()
+				renderAccelCache(ctx.Output, session.Report())
+			}
 			return err
 		}
 		defer func() { _ = session.Close() }()
@@ -48,11 +56,13 @@ func runAccelCommand(ctx *ExecContext, args []string) error {
 		return nil
 	case "run":
 		session, err := accelpkg.Open(cfg)
+		if session != nil {
+			defer func() { _ = session.Close() }()
+			renderAccelRun(ctx.Output, session.Report(), session.PlanShardable())
+		}
 		if err != nil {
 			return err
 		}
-		defer func() { _ = session.Close() }()
-		renderAccelRun(ctx.Output, session.Report())
 		return nil
 	default:
 		return fmt.Errorf("unknown accel action: %s", action)
@@ -127,21 +137,37 @@ func renderAccelDevices(out io.Writer, session *accelpkg.Session) {
 }
 
 func renderAccelCache(out io.Writer, report accelpkg.Report) {
-	_, _ = fmt.Fprintf(out, "cache not implemented backend=%s fallback=%s\n", report.SelectedBackend, report.FallbackReason)
+	_, _ = fmt.Fprintf(
+		out,
+		"cache not implemented backend=%s fallback=%s resident_buffers=%.0f resident_bytes=%.0f\n",
+		report.SelectedBackend,
+		report.FallbackReason,
+		report.Metrics["cache.resident_buffers"],
+		report.Metrics["cache.resident_bytes"],
+	)
 }
 
-func renderAccelRun(out io.Writer, report accelpkg.Report) {
+func renderAccelRun(out io.Writer, report accelpkg.Report, plan accelpkg.ShardPlan) {
 	selected := "none"
 	if len(report.SelectedDeviceIDs) > 0 {
 		selected = strings.Join(report.SelectedDeviceIDs, ",")
 	}
+	shardDevices := "none"
+	if len(plan.DeviceIDs) > 0 {
+		shardDevices = strings.Join(plan.DeviceIDs, ",")
+	}
 	_, _ = fmt.Fprintf(
 		out,
-		"mode=%s accelerated=%t backend=%s devices=%s fallback=%s\n",
+		"mode=%s accelerated=%t backend=%s devices=%s discovered=%.0f selected=%.0f planned=%d shard_devices=%s shard_budget=%d reason=%s\n",
 		report.Mode,
 		report.Accelerated,
 		report.SelectedBackend,
 		selected,
+		report.Metrics["devices.discovered"],
+		report.Metrics["devices.selected"],
+		len(plan.DeviceIDs),
+		shardDevices,
+		plan.TotalBudgetBytes,
 		report.FallbackReason,
 	)
 }

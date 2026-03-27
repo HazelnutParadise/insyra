@@ -1,7 +1,7 @@
 # Delivery Plan
 
 ## Current Phase
-Phase 1 - Backend Discovery Kickoff
+Phase 1 - Observability and Shard Planning Kickoff
 
 ## Stage Objective
 Build backend discovery and device selection on top of the now-frozen `insyra/accel` runtime surface without expanding scope beyond the named change.
@@ -17,19 +17,19 @@ Build backend discovery and device selection on top of the now-frozen `insyra/ac
 | --- | --- | --- | --- | --- |
 | M0 | Control surface established | planning | done | `delivery-plan.md`, `AGENTS.md`, `CLAUDE.md`, and full accel proposal inventory exist |
 | M1 | Accel runtime API frozen in spec | planning | done | `accel` package compiles, `go test ./accel` passes, docs surface added |
-| M2 | Backend discovery and scoring frozen in spec | planning | in_progress | discoverer registry, builtin CUDA/Metal/WebGPU stubs, normalized scoring, and selection tests land; memory-budget normalization and richer capability shaping still pending |
+| M2 | Backend discovery and scoring frozen in spec | planning | in_progress | discoverer registry, builtin CUDA/Metal/WebGPU stubs, normalized scoring, budget normalization, and selection tests land; native SDK probing and richer capability shaping still pending |
 | M3 | Columnar layout and cache model frozen in spec | planning | not_started | `add-accel-columnar-layout-cache` proposal/design/spec delta validated |
-| M4 | Scheduler and observable fallback frozen in spec | planning | not_started | `add-accel-scheduler-multi-gpu` and `add-accel-observability-fallback` validated |
+| M4 | Scheduler and observable fallback frozen in spec | planning | in_progress | strict-mode fallback reason codes, core accel metrics, and shardable multi-device planning surface land; weighted partitioning and execution merge behavior still pending |
 | M5 | CLI/DSL accel surface frozen in spec | planning | in_progress | `accel devices|cache|run`, `config accel.mode`, and `show accel.devices|accel.cache` land; full cache/runtime execution semantics still pending |
 
 ## Current Blockers
 None.
 
 ## Next Verifiable Output
-Observable accel report enrichment for CLI/DSL and the next scheduler-facing report fields, building on the now-landed discovery stubs, budget normalization, and command surface.
+Real cache state wired into accel reports and CLI output, with resident buffer bookkeeping rather than placeholder cache metrics.
 
 ## Next OpenSpec Change
-`add-accel-observability-fallback`
+`add-accel-columnar-layout-cache`
 
 ## Decision Log
 - decision: Keep acceleration in optional `insyra/accel` packages rather than core `insyra`.
@@ -68,6 +68,14 @@ Observable accel report enrichment for CLI/DSL and the next scheduler-facing rep
   rationale: This gives users and future agents a stable inspection path without pretending the runtime is already complete.
   timestamp: 2026-03-28
   impacted_change_ids: `add-accel-cli-dsl-surface`, `add-accel-observability-fallback`
+- decision: Return a session alongside strict-gpu and discovery errors so report surfaces remain inspectable on failure.
+  rationale: Observable fallback is part of the contract; callers and CLI should still be able to inspect reason codes and metrics when acceleration cannot proceed.
+  timestamp: 2026-03-28
+  impacted_change_ids: `add-accel-observability-fallback`, `add-accel-cli-dsl-surface`
+- decision: Introduce a shardable multi-device planning surface before true execution scheduling.
+  rationale: This establishes the contract for heterogeneous device aggregation and total budget reporting without claiming weighted partitioning or merge execution already exists.
+  timestamp: 2026-03-28
+  impacted_change_ids: `add-accel-scheduler-multi-gpu`, `add-accel-cli-dsl-surface`
 
 ## Source Links
 - `delivery-plan.md`
@@ -96,6 +104,7 @@ Observable accel report enrichment for CLI/DSL and the next scheduler-facing rep
 ## Handoff Notes
 - The convergence surface and runtime capability are both in place. `accel` now exists as a compilable opt-in package with `Open/NewSession`, typed projection helpers, and report/device/dataset/buffer surface.
 - Use a fresh `GOCACHE` when running Go validation in this environment. The default cache path hit a local toolchain/cache issue after `go clean -cache`, but tests pass with a clean alternate cache directory.
-- `add-accel-backend-discovery` is now partially implemented in code. The remaining work is richer device budget normalization, capability normalization, and later replacement of env-driven stubs with native SDK probes.
-- `add-accel-cli-dsl-surface` is now partially implemented in code. `accel devices`, `accel cache`, `accel run`, `config accel.mode`, and `show accel.devices|accel.cache` exist, but cache output and run semantics are still report-only.
-- The next slice should enrich `accel.Report` and CLI rendering with richer fallback and multi-device observability before scheduler work begins.
+- `add-accel-backend-discovery` is now partially implemented in code. Native SDK probing and richer capability normalization are still pending, but builtin stubs and budget normalization are in place.
+- `add-accel-observability-fallback` now has code behind it: stable fallback reason codes, strict-gpu failure reports, discovery-error reporting, and core metrics are wired into `accel.Report` and CLI output.
+- `add-accel-scheduler-multi-gpu` now has an initial planning surface in code: `PlanShardable()` aggregates accelerator devices and total budget for shardable workloads, but no weighted partitioning or execution merge path exists yet.
+- `add-accel-cli-dsl-surface` remains partially implemented. `accel run` now exposes shard planning, but `accel cache` is still placeholder output until resident buffer bookkeeping exists.

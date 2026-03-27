@@ -2,6 +2,7 @@ package accel
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 )
@@ -59,10 +60,25 @@ func (s *Session) Discover() error {
 	}
 
 	s.setDiscoveryResult(found)
-	if len(errs) == 0 {
-		return nil
+	joinedErr := errors.Join(errs...)
+	if joinedErr != nil && !s.Report().Accelerated && !strictGPURequired(s.cfg) {
+		report := s.Report()
+		report.FallbackReason = FallbackReasonDiscoveryError
+		report.Metrics = discoveryMetrics(s.devices, report, len(errs))
+		if len(s.reports) == 0 {
+			s.reports = []Report{cloneReport(report)}
+		} else {
+			s.reports[len(s.reports)-1] = cloneReport(report)
+		}
 	}
-	return errors.Join(errs...)
+	if strictGPURequired(s.cfg) && !s.Report().Accelerated {
+		strictErr := fmt.Errorf("accel: strict-gpu mode requires an accelerator (%s)", s.Report().FallbackReason)
+		if joinedErr != nil {
+			return errors.Join(joinedErr, strictErr)
+		}
+		return strictErr
+	}
+	return joinedErr
 }
 
 func (s *Session) setDiscoveryResult(devices []Device) {
@@ -74,6 +90,7 @@ func (s *Session) setDiscoveryResult(devices []Device) {
 	report.StartedAt = now
 	report.FinishedAt = now
 	report.SelectedBackend = BackendUnknown
+	report.DiscoveredDeviceIDs = deviceIDs(devices)
 	report.SelectedDeviceIDs = nil
 	report.SelectedDevices = nil
 	report.Accelerated = false
@@ -86,6 +103,10 @@ func (s *Session) setDiscoveryResult(devices []Device) {
 		report.SelectedDevices = []string{primary.ID}
 		report.FallbackReason = FallbackReasonNone
 	}
+	if strictGPURequired(s.cfg) && !report.Accelerated {
+		report.FallbackReason = FallbackReasonStrictGPUUnavailable
+	}
+	report.Metrics = discoveryMetrics(devices, report, 0)
 
 	if len(s.reports) == 0 {
 		s.reports = []Report{cloneReport(report)}
@@ -137,6 +158,46 @@ func normalizeDiscoveredDevice(device Device, cfg Config) Device {
 		cloned.Score = defaultDeviceScore(cloned)
 	}
 	return cloned
+}
+
+func strictGPURequired(cfg Config) bool {
+	return cfg.Mode == ModeStrictGPU || cfg.Strict
+}
+
+func deviceIDs(devices []Device) []string {
+	ids := make([]string, 0, len(devices))
+	for _, device := range devices {
+		ids = append(ids, device.ID)
+	}
+	return ids
+}
+
+func discoveryMetrics(devices []Device, report Report, discoveryErrors int) map[string]float64 {
+	metrics := map[string]float64{
+		"devices.discovered":           float64(len(devices)),
+		"devices.selected":             float64(len(report.SelectedDeviceIDs)),
+		"fallback.occurred":            1,
+		"discovery.errors":             float64(discoveryErrors),
+		"memory.budget_bytes_total":    0,
+		"memory.budget_bytes_selected": 0,
+		"cache.resident_buffers":       0,
+		"cache.resident_bytes":         0,
+	}
+	if report.FallbackReason == FallbackReasonNone {
+		metrics["fallback.occurred"] = 0
+	}
+
+	selectedSet := make(map[string]struct{}, len(report.SelectedDeviceIDs))
+	for _, id := range report.SelectedDeviceIDs {
+		selectedSet[id] = struct{}{}
+	}
+	for _, device := range devices {
+		metrics["memory.budget_bytes_total"] += float64(device.BudgetBytes)
+		if _, ok := selectedSet[device.ID]; ok {
+			metrics["memory.budget_bytes_selected"] += float64(device.BudgetBytes)
+		}
+	}
+	return metrics
 }
 
 func normalizeBudgetBytes(device Device, cfg Config) uint64 {
