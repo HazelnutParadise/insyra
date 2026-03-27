@@ -28,7 +28,7 @@ The package is still pre-execution, but it is no longer only a shape freeze. The
   - shardable multi-device planning via `PlanShardable()` / `PlanShardableWorkload(...)`
   - weighted shard assignments and deterministic merge-policy reporting
   - execution ledger via `ExecuteProjectedDataset(...)` that materializes truthful per-device residency and execution metrics without claiming real GPU compute yet
-  - CLI/DSL surfaces: `accel devices`, `accel cache`, `accel run`, `show accel.devices`, `show accel.cache`, `config accel.mode`
+  - CLI/DSL surfaces: `accel devices`, `accel cache`, `accel plan`, `accel run <var>`, `show accel.devices`, `show accel.cache`, `config accel.mode`
 
 ## Still Not Implemented
 
@@ -82,4 +82,4 @@ func main() {
 - Default backend preference is `CUDA`, then `Metal`, then `WebGPU`.
 - Native discovery is best-effort. Env-driven stubs remain available for deterministic testing and non-GPU development.
 - Shared-memory devices can derive working-set budgets from host memory when native budget data is unavailable.
-- Current CLI output is a planning and inspection surface, not a general GPU execution wrapper.
+- `accel plan` remains a planning/report surface. `accel run <var>` now drives the internal execution ledger, but it still does not launch backend-native GPU kernels.

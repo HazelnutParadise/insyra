@@ -3,6 +3,8 @@ package accel
 import (
 	"fmt"
 	"sort"
+
+	"github.com/HazelnutParadise/insyra"
 )
 
 type executionAllocator interface {
@@ -91,6 +93,53 @@ func (s *Session) ExecuteProjectedDataset(dataset *Dataset, workload WorkloadEst
 	s.applyAllocationRecord(dataset, record)
 	s.recordExecutionMetrics(result)
 	return result, nil
+}
+
+func (s *Session) ExecuteDataList(dl *insyra.DataList, workload WorkloadEstimate) (ExecutionResult, error) {
+	if s == nil {
+		return ExecutionResult{}, fmt.Errorf("accel: nil session")
+	}
+	if dl == nil {
+		return ExecutionResult{}, fmt.Errorf("accel: nil datalist")
+	}
+	buffer, err := projectValues(dl.GetName(), dl.Data())
+	if err != nil {
+		return ExecutionResult{}, err
+	}
+	dataset := &Dataset{
+		Name:    dl.GetName(),
+		Lineage: "project:datalist",
+		Rows:    buffer.Len,
+		Buffers: []Buffer{buffer},
+	}
+	assignDatasetFingerprint(dataset)
+	return s.ExecuteProjectedDataset(dataset, workload)
+}
+
+func (s *Session) ExecuteDataTable(dt *insyra.DataTable, workload WorkloadEstimate) (ExecutionResult, error) {
+	if s == nil {
+		return ExecutionResult{}, fmt.Errorf("accel: nil session")
+	}
+	if dt == nil {
+		return ExecutionResult{}, fmt.Errorf("accel: nil datatable")
+	}
+	cols := make([]Buffer, 0, dt.NumCols())
+	for i := 0; i < dt.NumCols(); i++ {
+		col := dt.GetColByNumber(i)
+		buf, err := projectValues(col.GetName(), col.Data())
+		if err != nil {
+			return ExecutionResult{}, err
+		}
+		cols = append(cols, buf)
+	}
+	dataset := &Dataset{
+		Name:    dt.GetName(),
+		Lineage: "project:datatable",
+		Rows:    dt.NumRows(),
+		Buffers: cols,
+	}
+	assignDatasetFingerprint(dataset)
+	return s.ExecuteProjectedDataset(dataset, workload)
 }
 
 func estimateDatasetResidentBytes(dataset *Dataset) uint64 {
