@@ -31,7 +31,9 @@ func ResetDiscoverersForTest() {
 func currentDiscoverers() []Discoverer {
 	discoverersMu.RLock()
 	defer discoverersMu.RUnlock()
-	return append([]Discoverer(nil), discoverers...)
+	combined := append([]Discoverer(nil), builtinDiscoverers()...)
+	combined = append(combined, discoverers...)
+	return combined
 }
 
 func (s *Session) Discover() error {
@@ -52,7 +54,7 @@ func (s *Session) Discover() error {
 			continue
 		}
 		for _, device := range devices {
-			found = append(found, normalizeDiscoveredDevice(device))
+			found = append(found, normalizeDiscoveredDevice(device, s.cfg))
 		}
 	}
 
@@ -128,12 +130,28 @@ func selectPrimaryDevice(devices []Device, preferred []Backend, preferredDevices
 	return selected, true
 }
 
-func normalizeDiscoveredDevice(device Device) Device {
+func normalizeDiscoveredDevice(device Device, cfg Config) Device {
 	cloned := cloneDevice(device)
+	cloned.BudgetBytes = normalizeBudgetBytes(cloned, cfg)
 	if cloned.Score <= 0 {
 		cloned.Score = defaultDeviceScore(cloned)
 	}
 	return cloned
+}
+
+func normalizeBudgetBytes(device Device, cfg Config) uint64 {
+	if device.BudgetBytes == 0 {
+		return 0
+	}
+
+	fraction := cfg.MemoryBudget.DeviceFraction
+	if device.MemoryClass == MemoryClassShared || device.SharedMemory {
+		fraction = cfg.MemoryBudget.SharedFraction
+	}
+	if fraction <= 0 {
+		return device.BudgetBytes
+	}
+	return uint64(float64(device.BudgetBytes) * fraction)
 }
 
 func defaultDeviceScore(device Device) float64 {
