@@ -119,9 +119,29 @@ type Buffer struct {
 }
 
 type Dataset struct {
-	Name    string
-	Rows    int
-	Buffers []Buffer
+	Name        string
+	Fingerprint string
+	Rows        int
+	Buffers     []Buffer
+}
+
+type CacheEntry struct {
+	Key           string
+	DatasetName   string
+	DatasetID     string
+	BufferName    string
+	Type          DataType
+	Len           int
+	ResidentBytes uint64
+	DeviceIDs     []string
+	LastAccess    time.Time
+}
+
+type CacheSnapshot struct {
+	ResidentBuffers int
+	ResidentBytes   uint64
+	BudgetBytes     uint64
+	Entries         []CacheEntry
 }
 
 func DefaultConfig() Config {

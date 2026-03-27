@@ -68,3 +68,24 @@ func TestProjectDataTableBuildsOneBufferPerColumn(t *testing.T) {
 	assert.Equal(t, accel.DataTypeFloat64, ds.Buffers[1].Type)
 	assert.Equal(t, []bool{false, true}, ds.Buffers[1].Nulls)
 }
+
+func TestProjectDataListPopulatesCacheSnapshotAndMetrics(t *testing.T) {
+	session, err := accel.Open(accel.Config{})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, session.Close())
+	})
+
+	dl := insyra.NewDataList(1, 2, nil, 4).SetName("numbers")
+
+	_, err = session.ProjectDataList(dl)
+	require.NoError(t, err)
+
+	snapshot := session.CacheSnapshot()
+	assert.Equal(t, 1, snapshot.ResidentBuffers)
+	assert.Greater(t, snapshot.ResidentBytes, uint64(0))
+	require.Len(t, snapshot.Entries, 1)
+	assert.Equal(t, "numbers", snapshot.Entries[0].BufferName)
+	assert.Equal(t, float64(1), session.Report().Metrics["cache.resident_buffers"])
+	assert.Greater(t, session.Report().Metrics["cache.resident_bytes"], float64(0))
+}

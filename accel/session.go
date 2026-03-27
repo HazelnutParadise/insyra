@@ -9,6 +9,7 @@ type Session struct {
 	cfg     Config
 	devices []Device
 	reports []Report
+	cache   *residentCache
 	closed  bool
 }
 
@@ -39,6 +40,7 @@ func NewSession(cfgs ...Config) *Session {
 
 	return &Session{
 		cfg:     cfg,
+		cache:   newResidentCache(),
 		reports: []Report{baseReport},
 	}
 }

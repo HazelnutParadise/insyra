@@ -7,6 +7,7 @@ import (
 
 	accelpkg "github.com/HazelnutParadise/insyra/accel"
 	clienv "github.com/HazelnutParadise/insyra/cli/env"
+	insyra "github.com/HazelnutParadise/insyra"
 )
 
 func init() {
@@ -44,15 +45,18 @@ func runAccelCommand(ctx *ExecContext, args []string) error {
 		return nil
 	case "cache":
 		session, err := accelpkg.Open(cfg)
+		if session != nil {
+			hydrateAccelCacheFromContext(session, ctx)
+		}
 		if err != nil {
 			if session != nil {
 				defer func() { _ = session.Close() }()
-				renderAccelCache(ctx.Output, session.Report())
+				renderAccelCache(ctx.Output, session.Report(), session.CacheSnapshot())
 			}
 			return err
 		}
 		defer func() { _ = session.Close() }()
-		renderAccelCache(ctx.Output, session.Report())
+		renderAccelCache(ctx.Output, session.Report(), session.CacheSnapshot())
 		return nil
 	case "run":
 		session, err := accelpkg.Open(cfg)
@@ -136,15 +140,32 @@ func renderAccelDevices(out io.Writer, session *accelpkg.Session) {
 	}
 }
 
-func renderAccelCache(out io.Writer, report accelpkg.Report) {
+func renderAccelCache(out io.Writer, report accelpkg.Report, snapshot accelpkg.CacheSnapshot) {
 	_, _ = fmt.Fprintf(
 		out,
-		"cache not implemented backend=%s fallback=%s resident_buffers=%.0f resident_bytes=%.0f\n",
+		"backend=%s fallback=%s resident_buffers=%d resident_bytes=%d budget_bytes=%d\n",
 		report.SelectedBackend,
 		report.FallbackReason,
-		report.Metrics["cache.resident_buffers"],
-		report.Metrics["cache.resident_bytes"],
+		snapshot.ResidentBuffers,
+		snapshot.ResidentBytes,
+		snapshot.BudgetBytes,
 	)
+	for _, entry := range snapshot.Entries {
+		deviceIDs := "none"
+		if len(entry.DeviceIDs) > 0 {
+			deviceIDs = strings.Join(entry.DeviceIDs, ",")
+		}
+		_, _ = fmt.Fprintf(
+			out,
+			"entry dataset=%s buffer=%s type=%s len=%d bytes=%d devices=%s\n",
+			entry.DatasetName,
+			entry.BufferName,
+			entry.Type,
+			entry.Len,
+			entry.ResidentBytes,
+			deviceIDs,
+		)
+	}
 }
 
 func renderAccelRun(out io.Writer, report accelpkg.Report, plan accelpkg.ShardPlan) {
@@ -170,4 +191,18 @@ func renderAccelRun(out io.Writer, report accelpkg.Report, plan accelpkg.ShardPl
 		plan.TotalBudgetBytes,
 		report.FallbackReason,
 	)
+}
+
+func hydrateAccelCacheFromContext(session *accelpkg.Session, ctx *ExecContext) {
+	if session == nil || ctx == nil {
+		return
+	}
+	for _, value := range ctx.Vars {
+		switch typed := value.(type) {
+		case *insyra.DataList:
+			_, _ = session.ProjectDataList(typed)
+		case *insyra.DataTable:
+			_, _ = session.ProjectDataTable(typed)
+		}
+	}
 }
