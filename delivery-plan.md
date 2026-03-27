@@ -17,7 +17,7 @@ Build backend discovery and device selection on top of the now-frozen `insyra/ac
 | --- | --- | --- | --- | --- |
 | M0 | Control surface established | planning | done | `delivery-plan.md`, `AGENTS.md`, `CLAUDE.md`, and full accel proposal inventory exist |
 | M1 | Accel runtime API frozen in spec | planning | done | `accel` package compiles, `go test ./accel` passes, docs surface added |
-| M2 | Backend discovery and scoring frozen in spec | planning | in_progress | discoverer registry, builtin CUDA/Metal/WebGPU stubs, native probe seams, discovery timeout handling, cross-backend dedupe, shared-memory budget fallback, budget normalization, and selection tests land; true SDK-backed probes and deeper capability shaping still pending |
+| M2 | Backend discovery and scoring frozen in spec | planning | in_progress | discoverer registry, builtin CUDA/Metal/WebGPU stubs, native probe seams, Windows/Linux portable probe fallback chains, discovery timeout handling, cross-backend dedupe, shared-memory budget fallback, budget normalization, and selection tests land; true SDK-backed probes and deeper capability shaping still pending |
 | M3 | Columnar layout and cache model frozen in spec | planning | done | typed projection now emits validity bitmaps, encoded string transport, lineage-aware session-local cache keys, and aggregate budget enforcement; true device residency is still pending allocator-backed work |
 | M4 | Scheduler and observable fallback frozen in spec | planning | in_progress | strict-mode fallback reason codes, core accel metrics, weighted shard assignments, merge-policy selection, profitability-aware planning, execution-ledger residency metrics, builtin homogeneous allocator stubs, and deterministic cache eviction land; true backend execution merge behavior still pending |
 | M5 | CLI/DSL accel surface frozen in spec | planning | in_progress | `accel devices|cache|plan|run <var>`, `config accel.mode`, and `show accel.devices|accel.cache` land; backend-native execution semantics still pending |
@@ -120,6 +120,10 @@ True SDK-backed backend probes layered onto the new native probe seam, so env-dr
   rationale: The runtime should exercise backend-specific execution paths for homogeneous plans now, instead of routing every plan through the generic ledger allocator and calling that convergence.
   timestamp: 2026-03-28
   impacted_change_ids: `add-accel-runtime-capability`, `add-accel-observability-fallback`, `add-accel-backend-discovery`
+- decision: Add multi-command fallback chains for portable native probes on Windows and Linux before introducing backend SDK bindings.
+  rationale: Auto-detection should survive missing host utilities on real machines; a single optimistic command path would keep env stubs as the practical default.
+  timestamp: 2026-03-28
+  impacted_change_ids: `add-accel-backend-discovery`, `add-accel-observability-fallback`
 
 ## Source Links
 - `delivery-plan.md`
@@ -149,6 +153,7 @@ True SDK-backed backend probes layered onto the new native probe seam, so env-dr
 - The convergence surface and runtime capability are both in place. `accel` now exists as a compilable opt-in package with `Open/NewSession`, typed projection helpers, and report/device/dataset/buffer surface.
 - Use a fresh `GOCACHE` when running Go validation in this environment. The default cache path hit a local toolchain/cache issue after `go clean -cache`, but tests pass with a clean alternate cache directory.
 - `add-accel-backend-discovery` is now materially deeper in code. Builtin stubs, native probe seams, normalized capability flags, budget normalization, probe-source reporting, and CLI/report capability visibility are in place. The remaining gap is true SDK-backed probing and any backend-specific capability enrichment that comes with it.
+- `add-accel-backend-discovery` now also has portable native-probe fallback chains: Windows no longer depends only on `Get-CimInstance`, and Linux no longer depends only on `lspci`; this makes Intel/AMD iGPU and portable GPU detection more resilient before backend SDK bindings exist.
 - `add-accel-backend-discovery` now also honors `DiscoveryTimeout`, supports host-memory-derived shared-memory budgets when native budget data is missing, and avoids the earlier gap where native probe tests and config fields existed without working code behind them.
 - `add-accel-observability-fallback` now has code behind it: stable fallback reason codes, strict-gpu failure reports, discovery-error reporting, and core metrics are wired into `accel.Report` and CLI output.
 - `add-accel-scheduler-multi-gpu` now has a real planning contract in code: `PlanShardable()` / `PlanShardableWorkload(...)` produce weighted per-device assignments, deterministic merge-policy selection, and profitability-aware fallback for auto mode. True execution merge paths still do not exist.

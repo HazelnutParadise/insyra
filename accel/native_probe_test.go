@@ -61,6 +61,27 @@ func TestParseWindowsVideoControllerJSONForWebGPU(t *testing.T) {
 	}
 }
 
+func TestParseWindowsVideoControllerCSVForWebGPU(t *testing.T) {
+	csvText := []byte("Node,AdapterCompatibility,AdapterRAM,Name\r\nHOST,Intel Corporation,2147483648,Intel(R) Iris(R) Xe Graphics\r\nHOST,Advanced Micro Devices, Inc.,2147483648,AMD Radeon(TM) Graphics\r\n")
+
+	devices, err := parseWindowsVideoControllerCSV(csvText, BackendWebGPU)
+	if err != nil {
+		t.Fatalf("parseWindowsVideoControllerCSV failed: %v", err)
+	}
+	if len(devices) != 2 {
+		t.Fatalf("expected 2 devices, got %d", len(devices))
+	}
+	if devices[0].Vendor != "intel" {
+		t.Fatalf("expected intel vendor first, got %q", devices[0].Vendor)
+	}
+	if devices[1].Vendor != "amd" {
+		t.Fatalf("expected amd vendor second, got %q", devices[1].Vendor)
+	}
+	if devices[0].ProbeSource != ProbeSourceNative || devices[1].ProbeSource != ProbeSourceNative {
+		t.Fatal("expected native probe source for windows csv parsing")
+	}
+}
+
 func TestParseMetalSystemProfilerJSON(t *testing.T) {
 	jsonText := []byte(`{
   "SPDisplaysDataType": [
@@ -115,6 +136,42 @@ func TestParseLSPCIOutputForWebGPU(t *testing.T) {
 	}
 	if devices[0].ProbeSource != ProbeSourceNative || devices[1].ProbeSource != ProbeSourceNative || devices[2].ProbeSource != ProbeSourceNative {
 		t.Fatal("expected native probe source for lspci devices")
+	}
+}
+
+func TestParseLSHWDisplayJSONForWebGPU(t *testing.T) {
+	jsonText := []byte(`[
+  {
+    "id":"display",
+    "class":"display",
+    "product":"Iris Xe Graphics",
+    "vendor":"Intel Corporation",
+    "size":2147483648
+  },
+  {
+    "id":"display:1",
+    "class":"display",
+    "product":"Radeon(TM) Graphics",
+    "vendor":"Advanced Micro Devices, Inc. [AMD/ATI]",
+    "size":2147483648
+  }
+]`)
+
+	devices, err := parseLSHWDisplayJSON(jsonText, BackendWebGPU)
+	if err != nil {
+		t.Fatalf("parseLSHWDisplayJSON failed: %v", err)
+	}
+	if len(devices) != 2 {
+		t.Fatalf("expected 2 devices, got %d", len(devices))
+	}
+	if devices[0].Vendor != "intel" {
+		t.Fatalf("expected intel vendor first, got %q", devices[0].Vendor)
+	}
+	if devices[1].Vendor != "amd" {
+		t.Fatalf("expected amd vendor second, got %q", devices[1].Vendor)
+	}
+	if devices[0].BudgetBytes != 2147483648 {
+		t.Fatalf("expected lshw size to map to budget bytes, got %d", devices[0].BudgetBytes)
 	}
 }
 

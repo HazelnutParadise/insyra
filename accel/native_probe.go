@@ -3,6 +3,7 @@ package accel
 import (
 	"bytes"
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -95,40 +96,106 @@ func probeNativeMetal(cfg Config) ([]Device, error) {
 func probeNativePortableGPU(cfg Config) ([]Device, error) {
 	switch runtime.GOOS {
 	case "windows":
-		output, err := commandOutputWithTimeout(
-			cfg,
-			"powershell",
-			"-NoProfile",
-			"-Command",
-			"Get-CimInstance Win32_VideoController | Select-Object Name,AdapterCompatibility,AdapterRAM | ConvertTo-Json -Compress",
-		)
-		if err != nil {
-			return nil, ErrNativeProbeUnavailable
-		}
-		devices, parseErr := parseWindowsVideoControllerJSON(output, BackendWebGPU)
-		if parseErr != nil {
-			return nil, parseErr
-		}
-		if len(devices) == 0 {
-			return nil, ErrNativeProbeUnavailable
-		}
-		return devices, nil
+		return probeNativePortableWindows(cfg)
 	case "linux":
-		output, err := commandOutputWithTimeout(cfg, "lspci", "-mm")
-		if err != nil {
-			return nil, ErrNativeProbeUnavailable
-		}
-		devices, parseErr := parseLSPCIOutput(output, BackendWebGPU)
-		if parseErr != nil {
-			return nil, parseErr
-		}
-		if len(devices) == 0 {
-			return nil, ErrNativeProbeUnavailable
-		}
-		return devices, nil
+		return probeNativePortableLinux(cfg)
 	default:
 		return nil, ErrNativeProbeUnavailable
 	}
+}
+
+func probeNativePortableWindows(cfg Config) ([]Device, error) {
+	attempts := []portableParseAttempt{
+		{
+			command: probeCommand{
+				name: "powershell",
+				args: []string{
+					"-NoProfile",
+					"-Command",
+					"Get-CimInstance Win32_VideoController | Select-Object Name,AdapterCompatibility,AdapterRAM | ConvertTo-Json -Compress",
+				},
+			},
+			parse: func(output []byte) ([]Device, error) {
+				return parseWindowsVideoControllerJSON(output, BackendWebGPU)
+			},
+		},
+		{
+			command: probeCommand{
+				name: "powershell",
+				args: []string{
+					"-NoProfile",
+					"-Command",
+					"Get-WmiObject Win32_VideoController | Select-Object Name,AdapterCompatibility,AdapterRAM | ConvertTo-Json -Compress",
+				},
+			},
+			parse: func(output []byte) ([]Device, error) {
+				return parseWindowsVideoControllerJSON(output, BackendWebGPU)
+			},
+		},
+		{
+			command: probeCommand{
+				name: "wmic",
+				args: []string{"path", "win32_VideoController", "get", "Name,AdapterCompatibility,AdapterRAM", "/format:csv"},
+			},
+			parse: func(output []byte) ([]Device, error) {
+				return parseWindowsVideoControllerCSV(output, BackendWebGPU)
+			},
+		},
+	}
+
+	return runPortableProbeAttempts(cfg, attempts)
+}
+
+func probeNativePortableLinux(cfg Config) ([]Device, error) {
+	attempts := []portableParseAttempt{
+		{
+			command: probeCommand{name: "lspci", args: []string{"-mm"}},
+			parse: func(output []byte) ([]Device, error) {
+				return parseLSPCIOutput(output, BackendWebGPU)
+			},
+		},
+		{
+			command: probeCommand{name: "lshw", args: []string{"-json", "-C", "display"}},
+			parse: func(output []byte) ([]Device, error) {
+				return parseLSHWDisplayJSON(output, BackendWebGPU)
+			},
+		},
+	}
+
+	return runPortableProbeAttempts(cfg, attempts)
+}
+
+type probeCommand struct {
+	name string
+	args []string
+}
+
+type portableParseAttempt struct {
+	command probeCommand
+	parse   func([]byte) ([]Device, error)
+}
+
+func runPortableProbeAttempts(cfg Config, attempts []portableParseAttempt) ([]Device, error) {
+	var parseErr error
+	for _, attempt := range attempts {
+		output, err := commandOutputWithTimeout(cfg, attempt.command.name, attempt.command.args...)
+		if err != nil {
+			continue
+		}
+		devices, err := attempt.parse(output)
+		if err != nil {
+			parseErr = err
+			continue
+		}
+		if len(devices) == 0 {
+			continue
+		}
+		return devices, nil
+	}
+	if parseErr != nil {
+		return nil, parseErr
+	}
+	return nil, ErrNativeProbeUnavailable
 }
 
 func commandOutputWithTimeout(cfg Config, name string, args ...string) ([]byte, error) {
@@ -147,6 +214,80 @@ func commandOutputWithTimeout(cfg Config, name string, args ...string) ([]byte, 
 
 func parseWindowsVideoControllersJSON(raw string) ([]Device, error) {
 	return parseWindowsVideoControllerJSON([]byte(raw), BackendWebGPU)
+}
+
+func parseWindowsVideoControllerCSV(output []byte, backend Backend) ([]Device, error) {
+	reader := csv.NewReader(bytes.NewReader(output))
+	reader.FieldsPerRecord = -1
+	records, err := reader.ReadAll()
+	if err != nil {
+		return nil, err
+	}
+	if len(records) < 2 {
+		return nil, nil
+	}
+
+	columnIndex := map[string]int{}
+	for idx, column := range records[0] {
+		columnIndex[strings.ToLower(strings.TrimSpace(column))] = idx
+	}
+
+	devices := make([]Device, 0, len(records)-1)
+	for idx, record := range records[1:] {
+		record = normalizeWindowsVideoControllerCSVRecord(record, columnIndex)
+		vendor := csvField(record, columnIndex, "adaptercompatibility")
+		name := csvField(record, columnIndex, "name")
+		if vendor == "" && name == "" {
+			continue
+		}
+		normalizedVendor := normalizeVendor(firstNonEmpty(vendor, name))
+		if normalizedVendor == "" || name == "" {
+			continue
+		}
+		deviceType, memoryClass := classifyPortableDevice(normalizedVendor, name)
+		devices = append(devices, Device{
+			ID:           fmt.Sprintf("%s:native:%d", backend, idx),
+			Name:         name,
+			Vendor:       normalizedVendor,
+			Backend:      backend,
+			ProbeSource:  ProbeSourceNative,
+			Type:         deviceType,
+			MemoryClass:  memoryClass,
+			SharedMemory: memoryClass == MemoryClassShared,
+			BudgetBytes:  parseUintString(csvField(record, columnIndex, "adapterram")),
+			CapabilitySummary: map[string]bool{
+				"portable":        true,
+				"heuristic_probe": true,
+			},
+		})
+	}
+	return devices, nil
+}
+
+func normalizeWindowsVideoControllerCSVRecord(record []string, columns map[string]int) []string {
+	if len(record) == len(columns) {
+		return record
+	}
+	nameIdx, hasName := columns["name"]
+	ramIdx, hasRAM := columns["adapterram"]
+	vendorIdx, hasVendor := columns["adaptercompatibility"]
+	if !hasName || !hasRAM || !hasVendor || len(record) < 4 {
+		return record
+	}
+	normalized := make([]string, len(columns))
+	if nodeIdx, ok := columns["node"]; ok && nodeIdx < len(normalized) && len(record) > 0 {
+		normalized[nodeIdx] = strings.TrimSpace(record[0])
+	}
+	if ramIdx < len(normalized) && len(record) >= 2 {
+		normalized[ramIdx] = strings.TrimSpace(record[len(record)-2])
+	}
+	if nameIdx < len(normalized) && len(record) >= 1 {
+		normalized[nameIdx] = strings.TrimSpace(record[len(record)-1])
+	}
+	if vendorIdx < len(normalized) && len(record) > 3 {
+		normalized[vendorIdx] = strings.TrimSpace(strings.Join(record[1:len(record)-2], ","))
+	}
+	return normalized
 }
 
 func parseLSPCIOutput(output []byte, backend Backend) ([]Device, error) {
@@ -174,6 +315,54 @@ func parseLSPCIOutput(output []byte, backend Backend) ([]Device, error) {
 			Type:         deviceType,
 			MemoryClass:  memoryClass,
 			SharedMemory: memoryClass == MemoryClassShared,
+			CapabilitySummary: map[string]bool{
+				"portable":        true,
+				"heuristic_probe": true,
+			},
+		})
+		index++
+	}
+	return devices, nil
+}
+
+func parseLSHWDisplayJSON(output []byte, backend Backend) ([]Device, error) {
+	trimmed := bytes.TrimSpace(output)
+	if len(trimmed) == 0 {
+		return nil, nil
+	}
+
+	var payload any
+	if err := json.Unmarshal(trimmed, &payload); err != nil {
+		return nil, err
+	}
+
+	nodes := flattenLSHWNodes(payload)
+	devices := make([]Device, 0, len(nodes))
+	index := 0
+	for _, node := range nodes {
+		className := strings.ToLower(firstNonEmpty(stringValue(node, "class"), stringValue(node, "description")))
+		if !strings.Contains(className, "display") && !strings.Contains(className, "vga") && !strings.Contains(className, "3d") {
+			continue
+		}
+		name := firstNonEmpty(stringValue(node, "product"), stringValue(node, "description"))
+		if name == "" {
+			continue
+		}
+		vendor := normalizeVendor(firstNonEmpty(stringValue(node, "vendor"), name))
+		if vendor == "" {
+			continue
+		}
+		deviceType, memoryClass := classifyPortableDevice(vendor, name)
+		devices = append(devices, Device{
+			ID:           fmt.Sprintf("%s:native:%d", backend, index),
+			Name:         name,
+			Vendor:       vendor,
+			Backend:      backend,
+			ProbeSource:  ProbeSourceNative,
+			Type:         deviceType,
+			MemoryClass:  memoryClass,
+			SharedMemory: memoryClass == MemoryClassShared,
+			BudgetBytes:  uint64Value(node["size"]),
 			CapabilitySummary: map[string]bool{
 				"portable":        true,
 				"heuristic_probe": true,
@@ -345,6 +534,17 @@ func uint64Value(value any) uint64 {
 	}
 }
 
+func parseUintString(value string) uint64 {
+	if strings.TrimSpace(value) == "" {
+		return 0
+	}
+	parsed, err := strconv.ParseUint(strings.TrimSpace(value), 10, 64)
+	if err != nil {
+		return 0
+	}
+	return parsed
+}
+
 func parseMemoryString(value string) uint64 {
 	text := strings.TrimSpace(strings.ToUpper(value))
 	if text == "" {
@@ -403,6 +603,41 @@ func classifyPortableDevice(vendor, name string) (DeviceType, MemoryClass) {
 	default:
 		return DeviceTypeIntegrated, MemoryClassShared
 	}
+}
+
+func flattenLSHWNodes(payload any) []map[string]any {
+	nodes := []map[string]any{}
+	switch typed := payload.(type) {
+	case map[string]any:
+		nodes = append(nodes, typed)
+		if children, ok := typed["children"].([]any); ok {
+			for _, child := range children {
+				nodes = append(nodes, flattenLSHWNodes(child)...)
+			}
+		}
+	case []any:
+		for _, item := range typed {
+			nodes = append(nodes, flattenLSHWNodes(item)...)
+		}
+	}
+	return nodes
+}
+
+func csvField(record []string, columns map[string]int, key string) string {
+	idx, ok := columns[key]
+	if !ok || idx >= len(record) {
+		return ""
+	}
+	return strings.TrimSpace(record[idx])
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 func extractQuotedFields(line string) []string {
