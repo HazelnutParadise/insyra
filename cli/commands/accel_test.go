@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+
+	insyra "github.com/HazelnutParadise/insyra"
 )
 
 func setupCommandHome(t *testing.T) {
@@ -56,14 +58,22 @@ func TestShowCommandSupportsAccelCache(t *testing.T) {
 	setupCommandHome(t)
 
 	output := &bytes.Buffer{}
-	ctx := &ExecContext{Vars: map[string]any{}, Output: output}
+	ctx := &ExecContext{
+		Vars: map[string]any{
+			"numbers": insyra.NewDataList(1, 2, nil, 4).SetName("numbers"),
+		},
+		Output: output,
+	}
 
 	if err := runShowCommand(ctx, []string{"accel.cache"}); err != nil {
 		t.Fatalf("runShowCommand failed: %v", err)
 	}
 
-	if !strings.Contains(output.String(), "cache not implemented") {
-		t.Fatalf("expected cache placeholder output, got %q", output.String())
+	if !strings.Contains(output.String(), "resident_buffers=1") {
+		t.Fatalf("expected resident buffer count in output, got %q", output.String())
+	}
+	if !strings.Contains(output.String(), "numbers") {
+		t.Fatalf("expected buffer name in cache output, got %q", output.String())
 	}
 }
 

@@ -17,11 +17,14 @@ func (s *Session) ProjectDataList(dl *insyra.DataList) (*Dataset, error) {
 		return nil, err
 	}
 
-	return &Dataset{
+	ds := &Dataset{
 		Name:    dl.GetName(),
 		Rows:    buf.Len,
 		Buffers: []Buffer{buf},
-	}, nil
+	}
+	assignDatasetFingerprint(ds)
+	s.cacheDataset(ds)
+	return ds, nil
 }
 
 func (s *Session) ProjectDataTable(dt *insyra.DataTable) (*Dataset, error) {
@@ -39,11 +42,14 @@ func (s *Session) ProjectDataTable(dt *insyra.DataTable) (*Dataset, error) {
 		cols = append(cols, buf)
 	}
 
-	return &Dataset{
+	ds := &Dataset{
 		Name:    dt.GetName(),
 		Rows:    dt.NumRows(),
 		Buffers: cols,
-	}, nil
+	}
+	assignDatasetFingerprint(ds)
+	s.cacheDataset(ds)
+	return ds, nil
 }
 
 func projectValues(name string, values []any) (Buffer, error) {

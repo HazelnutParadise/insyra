@@ -1,7 +1,7 @@
 # Delivery Plan
 
 ## Current Phase
-Phase 1 - Observability and Shard Planning Kickoff
+Phase 1 - Columnar Cache Kickoff
 
 ## Stage Objective
 Build backend discovery and device selection on top of the now-frozen `insyra/accel` runtime surface without expanding scope beyond the named change.
@@ -18,7 +18,7 @@ Build backend discovery and device selection on top of the now-frozen `insyra/ac
 | M0 | Control surface established | planning | done | `delivery-plan.md`, `AGENTS.md`, `CLAUDE.md`, and full accel proposal inventory exist |
 | M1 | Accel runtime API frozen in spec | planning | done | `accel` package compiles, `go test ./accel` passes, docs surface added |
 | M2 | Backend discovery and scoring frozen in spec | planning | in_progress | discoverer registry, builtin CUDA/Metal/WebGPU stubs, normalized scoring, budget normalization, and selection tests land; native SDK probing and richer capability shaping still pending |
-| M3 | Columnar layout and cache model frozen in spec | planning | not_started | `add-accel-columnar-layout-cache` proposal/design/spec delta validated |
+| M3 | Columnar layout and cache model frozen in spec | planning | in_progress | typed projection now populates a session-local resident cache index, cache snapshots, and CLI cache stats; per-device residency, encoded strings, and eviction still pending |
 | M4 | Scheduler and observable fallback frozen in spec | planning | in_progress | strict-mode fallback reason codes, core accel metrics, and shardable multi-device planning surface land; weighted partitioning and execution merge behavior still pending |
 | M5 | CLI/DSL accel surface frozen in spec | planning | in_progress | `accel devices|cache|run`, `config accel.mode`, and `show accel.devices|accel.cache` land; full cache/runtime execution semantics still pending |
 
@@ -26,7 +26,7 @@ Build backend discovery and device selection on top of the now-frozen `insyra/ac
 None.
 
 ## Next Verifiable Output
-Real cache state wired into accel reports and CLI output, with resident buffer bookkeeping rather than placeholder cache metrics.
+Per-device cache residency and eviction policy layered on top of the current session-local resident index, so cache budgets become enforceable instead of purely descriptive.
 
 ## Next OpenSpec Change
 `add-accel-columnar-layout-cache`
@@ -76,6 +76,10 @@ Real cache state wired into accel reports and CLI output, with resident buffer b
   rationale: This establishes the contract for heterogeneous device aggregation and total budget reporting without claiming weighted partitioning or merge execution already exists.
   timestamp: 2026-03-28
   impacted_change_ids: `add-accel-scheduler-multi-gpu`, `add-accel-cli-dsl-surface`
+- decision: Start cache implementation as a session-local resident index fed by typed projection, before adding true device allocators or eviction.
+  rationale: This gives the CLI and report surface truthful cache state now, while preserving a clean seam for later VRAM/shared-memory backends.
+  timestamp: 2026-03-28
+  impacted_change_ids: `add-accel-columnar-layout-cache`, `add-accel-cli-dsl-surface`
 
 ## Source Links
 - `delivery-plan.md`
@@ -107,4 +111,5 @@ Real cache state wired into accel reports and CLI output, with resident buffer b
 - `add-accel-backend-discovery` is now partially implemented in code. Native SDK probing and richer capability normalization are still pending, but builtin stubs and budget normalization are in place.
 - `add-accel-observability-fallback` now has code behind it: stable fallback reason codes, strict-gpu failure reports, discovery-error reporting, and core metrics are wired into `accel.Report` and CLI output.
 - `add-accel-scheduler-multi-gpu` now has an initial planning surface in code: `PlanShardable()` aggregates accelerator devices and total budget for shardable workloads, but no weighted partitioning or execution merge path exists yet.
-- `add-accel-cli-dsl-surface` remains partially implemented. `accel run` now exposes shard planning, but `accel cache` is still placeholder output until resident buffer bookkeeping exists.
+- `add-accel-columnar-layout-cache` now has code behind it: typed projection updates a session-local resident cache index, `CacheSnapshot()` exposes resident entries/bytes/budget, and `accel cache` / `show accel.cache` render real cache state from current context variables.
+- `add-accel-cli-dsl-surface` remains partially implemented. `accel cache` now shows real resident state, but there is still no device allocator, eviction policy, or true workload execution surface.
