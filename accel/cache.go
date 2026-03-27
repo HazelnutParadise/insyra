@@ -50,6 +50,19 @@ func (s *Session) CacheSnapshot() CacheSnapshot {
 		entry := cloneCacheEntry(s.cache.entries[key])
 		snapshot.Entries = append(snapshot.Entries, entry)
 		snapshot.ResidentBuffers++
+		if len(entry.DeviceResidentBytes) > 0 {
+			for deviceID, residentBytes := range entry.DeviceResidentBytes {
+				snapshot.ResidentBytes += residentBytes
+				usage, ok := deviceUsage[deviceID]
+				if !ok {
+					usage = &CacheDeviceUsage{DeviceID: deviceID}
+					deviceUsage[deviceID] = usage
+				}
+				usage.ResidentBuffers++
+				usage.ResidentBytes += residentBytes
+			}
+			continue
+		}
 		snapshot.ResidentBytes += entry.ResidentBytes
 		for _, deviceID := range entry.DeviceIDs {
 			usage, ok := deviceUsage[deviceID]
@@ -185,6 +198,12 @@ func (s *Session) cacheUsageByDevice() map[string]uint64 {
 		return usage
 	}
 	for _, entry := range s.cache.entries {
+		if len(entry.DeviceResidentBytes) > 0 {
+			for deviceID, residentBytes := range entry.DeviceResidentBytes {
+				usage[deviceID] += residentBytes
+			}
+			continue
+		}
 		if len(entry.DeviceIDs) == 0 {
 			continue
 		}
@@ -310,5 +329,6 @@ func datasetFingerprint(dataset *Dataset) string {
 func cloneCacheEntry(entry CacheEntry) CacheEntry {
 	cloned := entry
 	cloned.DeviceIDs = append([]string(nil), entry.DeviceIDs...)
+	cloned.DeviceResidentBytes = cloneDeviceResidentBytes(entry.DeviceResidentBytes)
 	return cloned
 }

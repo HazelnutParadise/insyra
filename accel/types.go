@@ -156,16 +156,17 @@ type Dataset struct {
 }
 
 type CacheEntry struct {
-	Key           string
-	DatasetName   string
-	DatasetID     string
-	Lineage       string
-	BufferName    string
-	Type          DataType
-	Len           int
-	ResidentBytes uint64
-	DeviceIDs     []string
-	LastAccess    time.Time
+	Key                 string
+	DatasetName         string
+	DatasetID           string
+	Lineage             string
+	BufferName          string
+	Type                DataType
+	Len                 int
+	ResidentBytes       uint64
+	DeviceIDs           []string
+	DeviceResidentBytes map[string]uint64
+	LastAccess          time.Time
 }
 
 type CacheDeviceUsage struct {
@@ -199,6 +200,15 @@ type ShardAssignment struct {
 	Rows         int
 	Bytes        uint64
 	BudgetBytes  uint64
+}
+
+type ExecutionResult struct {
+	Accelerated    bool
+	FallbackReason FallbackReason
+	MergePolicy    MergePolicy
+	Assignments    []ShardAssignment
+	DeviceIDs      []string
+	BytesMoved     uint64
 }
 
 func DefaultConfig() Config {
