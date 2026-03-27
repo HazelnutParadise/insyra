@@ -35,6 +35,12 @@ func TestRunAccelCommandDevicesPrintsBuiltinStubDevices(t *testing.T) {
 	if !strings.Contains(rendered, "backend=webgpu") {
 		t.Fatalf("expected backend in output, got %q", rendered)
 	}
+	if !strings.Contains(rendered, "probe=env-stub") {
+		t.Fatalf("expected probe source in output, got %q", rendered)
+	}
+	if !strings.Contains(rendered, "caps=encoded_strings,env_stub,heterogeneous_planning,portable,shardable,shared_memory,validity_bitmap") {
+		t.Fatalf("expected normalized capability list in output, got %q", rendered)
+	}
 }
 
 func TestShowCommandSupportsAccelDevices(t *testing.T) {

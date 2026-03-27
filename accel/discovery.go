@@ -154,10 +154,33 @@ func selectPrimaryDevice(devices []Device, preferred []Backend, preferredDevices
 func normalizeDiscoveredDevice(device Device, cfg Config) Device {
 	cloned := cloneDevice(device)
 	cloned.BudgetBytes = normalizeBudgetBytes(cloned, cfg)
+	cloned.CapabilitySummary = normalizeCapabilitySummary(cloned)
 	if cloned.Score <= 0 {
 		cloned.Score = defaultDeviceScore(cloned)
 	}
 	return cloned
+}
+
+func normalizeCapabilitySummary(device Device) map[string]bool {
+	caps := cloneCaps(device.CapabilitySummary)
+	if caps == nil {
+		caps = map[string]bool{}
+	}
+	caps["shardable"] = true
+	caps["validity_bitmap"] = true
+	caps["encoded_strings"] = true
+	caps["heterogeneous_planning"] = true
+	caps["native_probe"] = device.ProbeSource == ProbeSourceNative
+	caps["env_stub"] = device.ProbeSource == ProbeSourceEnvStub
+
+	if device.MemoryClass == MemoryClassShared || device.SharedMemory {
+		caps["shared_memory"] = true
+		delete(caps, "device_local_memory")
+	} else if device.MemoryClass == MemoryClassDevice {
+		caps["device_local_memory"] = true
+		delete(caps, "shared_memory")
+	}
+	return caps
 }
 
 func strictGPURequired(cfg Config) bool {
@@ -176,6 +199,10 @@ func discoveryMetrics(devices []Device, report Report, discoveryErrors int) map[
 	metrics := map[string]float64{
 		"devices.discovered":           float64(len(devices)),
 		"devices.selected":             float64(len(report.SelectedDeviceIDs)),
+		"devices.native":               0,
+		"devices.env_stub":             0,
+		"devices.shared_memory":        0,
+		"devices.device_local":         0,
 		"fallback.occurred":            1,
 		"discovery.errors":             float64(discoveryErrors),
 		"memory.budget_bytes_total":    0,
@@ -192,6 +219,18 @@ func discoveryMetrics(devices []Device, report Report, discoveryErrors int) map[
 		selectedSet[id] = struct{}{}
 	}
 	for _, device := range devices {
+		switch device.ProbeSource {
+		case ProbeSourceNative:
+			metrics["devices.native"]++
+		case ProbeSourceEnvStub:
+			metrics["devices.env_stub"]++
+		}
+		switch {
+		case device.MemoryClass == MemoryClassShared || device.SharedMemory:
+			metrics["devices.shared_memory"]++
+		case device.MemoryClass == MemoryClassDevice:
+			metrics["devices.device_local"]++
+		}
 		metrics["memory.budget_bytes_total"] += float64(device.BudgetBytes)
 		if _, ok := selectedSet[device.ID]; ok {
 			metrics["memory.budget_bytes_selected"] += float64(device.BudgetBytes)

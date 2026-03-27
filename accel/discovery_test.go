@@ -118,6 +118,8 @@ func TestCurrentDiscoverersAppendsRegisteredDiscoverersAfterBuiltins(t *testing.
 func TestOpenDiscoversBuiltinStubDeviceFromEnv(t *testing.T) {
 	ResetDiscoverersForTest()
 	t.Cleanup(ResetDiscoverersForTest)
+	ResetBuiltinProbeOverridesForTest()
+	t.Cleanup(ResetBuiltinProbeOverridesForTest)
 	t.Setenv("INSYRA_ACCEL_STUB_WEBGPU", "1")
 
 	session, err := Open(Config{})
@@ -139,8 +141,71 @@ func TestOpenDiscoversBuiltinStubDeviceFromEnv(t *testing.T) {
 	if device.ID != "webgpu:stub:0" {
 		t.Fatalf("expected deterministic stub device id, got %q", device.ID)
 	}
+	if device.ProbeSource != ProbeSourceEnvStub {
+		t.Fatalf("expected env-stub probe source, got %q", device.ProbeSource)
+	}
+	if !device.CapabilitySummary["encoded_strings"] {
+		t.Fatal("expected normalized encoded_strings capability")
+	}
+	if !device.CapabilitySummary["validity_bitmap"] {
+		t.Fatal("expected normalized validity_bitmap capability")
+	}
+	if !device.CapabilitySummary["shared_memory"] {
+		t.Fatal("expected normalized shared_memory capability")
+	}
 	if !session.Report().Accelerated {
 		t.Fatal("expected builtin stub device to mark session accelerated")
+	}
+}
+
+func TestBuiltinDiscovererUsesNativeProbeOverrideBeforeStub(t *testing.T) {
+	ResetDiscoverersForTest()
+	t.Cleanup(ResetDiscoverersForTest)
+	ResetBuiltinProbeOverridesForTest()
+	t.Cleanup(ResetBuiltinProbeOverridesForTest)
+	t.Setenv("INSYRA_ACCEL_STUB_CUDA", "1")
+
+	SetBuiltinProbeOverrideForTest(
+		BackendCUDA,
+		func(cfg Config) ([]Device, error) {
+			return []Device{
+				{
+					ID:          "cuda:native:0",
+					Name:        "Native CUDA",
+					Backend:     BackendCUDA,
+					Vendor:      "nvidia",
+					Type:        DeviceTypeDiscrete,
+					MemoryClass: MemoryClassDevice,
+					BudgetBytes: 1024,
+				},
+			}, nil
+		},
+		nil,
+	)
+
+	session, err := Open(Config{})
+	if err != nil {
+		t.Fatalf("open failed: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = session.Close()
+	})
+
+	devices := session.Devices()
+	if len(devices) != 1 {
+		t.Fatalf("expected one native device, got %d", len(devices))
+	}
+	if devices[0].ID != "cuda:native:0" {
+		t.Fatalf("expected native cuda device, got %q", devices[0].ID)
+	}
+	if devices[0].ProbeSource != ProbeSourceNative {
+		t.Fatalf("expected native probe source, got %q", devices[0].ProbeSource)
+	}
+	if !devices[0].CapabilitySummary["native_probe"] {
+		t.Fatal("expected native_probe capability flag")
+	}
+	if devices[0].CapabilitySummary["env_stub"] {
+		t.Fatal("did not expect env_stub capability flag for native probe")
 	}
 }
 
@@ -174,6 +239,25 @@ func TestOpenStrictGPUFailsWithoutAcceleratorButReturnsSessionReport(t *testing.
 func TestDiscoveryReportPopulatesCoreMetrics(t *testing.T) {
 	ResetDiscoverersForTest()
 	t.Cleanup(ResetDiscoverersForTest)
+	ResetBuiltinProbeOverridesForTest()
+	t.Cleanup(ResetBuiltinProbeOverridesForTest)
+	SetBuiltinProbeOverrideForTest(
+		BackendCUDA,
+		func(cfg Config) ([]Device, error) {
+			return []Device{
+				{
+					ID:          "cuda:native:0",
+					Name:        "Native CUDA",
+					Backend:     BackendCUDA,
+					Vendor:      "nvidia",
+					Type:        DeviceTypeDiscrete,
+					MemoryClass: MemoryClassDevice,
+					BudgetBytes: 1024,
+				},
+			}, nil
+		},
+		nil,
+	)
 	t.Setenv("INSYRA_ACCEL_STUB_CUDA", "1")
 	t.Setenv("INSYRA_ACCEL_STUB_WEBGPU", "1")
 
@@ -191,6 +275,18 @@ func TestDiscoveryReportPopulatesCoreMetrics(t *testing.T) {
 	}
 	if report.Metrics["devices.selected"] != 1 {
 		t.Fatalf("expected 1 selected device, got %v", report.Metrics["devices.selected"])
+	}
+	if report.Metrics["devices.native"] != 1 {
+		t.Fatalf("expected 1 native device, got %v", report.Metrics["devices.native"])
+	}
+	if report.Metrics["devices.env_stub"] != 1 {
+		t.Fatalf("expected 1 env-stub device, got %v", report.Metrics["devices.env_stub"])
+	}
+	if report.Metrics["devices.device_local"] != 1 {
+		t.Fatalf("expected 1 device-local device, got %v", report.Metrics["devices.device_local"])
+	}
+	if report.Metrics["devices.shared_memory"] != 1 {
+		t.Fatalf("expected 1 shared-memory device, got %v", report.Metrics["devices.shared_memory"])
 	}
 	if report.Metrics["fallback.occurred"] != 0 {
 		t.Fatalf("expected no fallback, got %v", report.Metrics["fallback.occurred"])

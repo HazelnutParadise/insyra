@@ -17,7 +17,7 @@ Build backend discovery and device selection on top of the now-frozen `insyra/ac
 | --- | --- | --- | --- | --- |
 | M0 | Control surface established | planning | done | `delivery-plan.md`, `AGENTS.md`, `CLAUDE.md`, and full accel proposal inventory exist |
 | M1 | Accel runtime API frozen in spec | planning | done | `accel` package compiles, `go test ./accel` passes, docs surface added |
-| M2 | Backend discovery and scoring frozen in spec | planning | in_progress | discoverer registry, builtin CUDA/Metal/WebGPU stubs, normalized scoring, budget normalization, and selection tests land; native SDK probing and richer capability shaping still pending |
+| M2 | Backend discovery and scoring frozen in spec | planning | in_progress | discoverer registry, builtin CUDA/Metal/WebGPU stubs, native probe seams, normalized capability maps, budget normalization, and selection tests land; true SDK-backed probes and deeper capability shaping still pending |
 | M3 | Columnar layout and cache model frozen in spec | planning | done | typed projection now emits validity bitmaps, encoded string transport, and a session-local resident cache index with budget enforcement and per-device cache usage |
 | M4 | Scheduler and observable fallback frozen in spec | planning | in_progress | strict-mode fallback reason codes, core accel metrics, and shardable multi-device planning surface land; weighted partitioning and execution merge behavior still pending |
 | M5 | CLI/DSL accel surface frozen in spec | planning | in_progress | `accel devices|cache|run`, `config accel.mode`, and `show accel.devices|accel.cache` land; full cache/runtime execution semantics still pending |
@@ -26,7 +26,7 @@ Build backend discovery and device selection on top of the now-frozen `insyra/ac
 None.
 
 ## Next Verifiable Output
-Backend capability normalization and native probe seams strengthened on top of the current stub discovery layer, so the next change can replace env-driven adapters without redesigning report or cache contracts.
+True SDK-backed backend probes layered onto the new native probe seam, so env-driven stubs become optional rather than the primary discovery path.
 
 ## Next OpenSpec Change
 `add-accel-backend-discovery`
@@ -88,6 +88,10 @@ Backend capability normalization and native probe seams strengthened on top of t
   rationale: Cache/accounting alone was not enough to claim the memory/layout change complete; string/null transport needed to be allocator-ready first.
   timestamp: 2026-03-28
   impacted_change_ids: `add-accel-columnar-layout-cache`
+- decision: Add native probe seams and normalized capability maps before attempting real SDK bindings.
+  rationale: Binding to CUDA/Metal/WebGPU without a stable seam would couple probe failures, report semantics, and CLI output too tightly to backend-specific code.
+  timestamp: 2026-03-28
+  impacted_change_ids: `add-accel-backend-discovery`, `add-accel-observability-fallback`, `add-accel-cli-dsl-surface`
 
 ## Source Links
 - `delivery-plan.md`
@@ -116,7 +120,7 @@ Backend capability normalization and native probe seams strengthened on top of t
 ## Handoff Notes
 - The convergence surface and runtime capability are both in place. `accel` now exists as a compilable opt-in package with `Open/NewSession`, typed projection helpers, and report/device/dataset/buffer surface.
 - Use a fresh `GOCACHE` when running Go validation in this environment. The default cache path hit a local toolchain/cache issue after `go clean -cache`, but tests pass with a clean alternate cache directory.
-- `add-accel-backend-discovery` is now partially implemented in code. Native SDK probing and richer capability normalization are still pending, but builtin stubs and budget normalization are in place.
+- `add-accel-backend-discovery` is now materially deeper in code. Builtin stubs, native probe seams, normalized capability flags, budget normalization, probe-source reporting, and CLI/report capability visibility are in place. The remaining gap is true SDK-backed probing and any backend-specific capability enrichment that comes with it.
 - `add-accel-observability-fallback` now has code behind it: stable fallback reason codes, strict-gpu failure reports, discovery-error reporting, and core metrics are wired into `accel.Report` and CLI output.
 - `add-accel-scheduler-multi-gpu` now has an initial planning surface in code: `PlanShardable()` aggregates accelerator devices and total budget for shardable workloads, but no weighted partitioning or execution merge path exists yet.
 - `add-accel-columnar-layout-cache` is now complete enough to close the current slice: typed projection emits validity bitmaps, string offsets/data transport, session-local cache residency, budget enforcement, eviction metrics, and per-device usage summaries.

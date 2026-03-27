@@ -39,6 +39,14 @@ const (
 	MemoryClassDevice  MemoryClass = "device-local"
 )
 
+type ProbeSource string
+
+const (
+	ProbeSourceUnknown ProbeSource = "unknown"
+	ProbeSourceNative  ProbeSource = "native"
+	ProbeSourceEnvStub ProbeSource = "env-stub"
+)
+
 type DataType string
 
 const (
@@ -81,6 +89,7 @@ type Device struct {
 	Name              string
 	Vendor            string
 	Backend           Backend
+	ProbeSource       ProbeSource
 	Type              DeviceType
 	MemoryClass       MemoryClass
 	SharedMemory      bool
