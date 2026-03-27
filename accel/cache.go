@@ -226,16 +226,23 @@ func estimateBufferResidentBytes(buffer Buffer) uint64 {
 	case []float64:
 		valueBytes = uint64(len(values) * 8)
 	case []string:
-		offsetBytes := uint64((len(values) + 1) * 4)
-		stringBytes := uint64(0)
-		for _, value := range values {
-			stringBytes += uint64(len(value))
+		if len(buffer.StringOffsets) > 0 || len(buffer.StringData) > 0 {
+			valueBytes = uint64(len(buffer.StringOffsets)*4) + uint64(len(buffer.StringData))
+		} else {
+			offsetBytes := uint64((len(values) + 1) * 4)
+			stringBytes := uint64(0)
+			for _, value := range values {
+				stringBytes += uint64(len(value))
+			}
+			valueBytes = offsetBytes + stringBytes
 		}
-		valueBytes = offsetBytes + stringBytes
 	case []any:
 		valueBytes = uint64(len(values) * 8)
 	default:
 		valueBytes = uint64(buffer.Len * 8)
+	}
+	if len(buffer.Validity) > 0 {
+		return valueBytes + uint64(len(buffer.Validity))
 	}
 	return valueBytes + validityBitmapBytes(buffer.Len)
 }
@@ -271,15 +278,27 @@ func datasetFingerprint(dataset *Dataset) string {
 		_, _ = hasher.Write([]byte{0})
 		_, _ = hasher.Write([]byte(strconv.Itoa(buffer.Len)))
 		_, _ = hasher.Write([]byte{0})
-		for _, isNull := range buffer.Nulls {
-			if isNull {
-				_, _ = hasher.Write([]byte{1})
-			} else {
-				_, _ = hasher.Write([]byte{0})
+		if len(buffer.Validity) > 0 {
+			_, _ = hasher.Write(buffer.Validity)
+		} else {
+			for _, isNull := range buffer.Nulls {
+				if isNull {
+					_, _ = hasher.Write([]byte{1})
+				} else {
+					_, _ = hasher.Write([]byte{0})
+				}
 			}
 		}
 		_, _ = hasher.Write([]byte{0})
-		_, _ = hasher.Write([]byte(strings.TrimSpace(fmt.Sprintf("%v", buffer.Values))))
+		if buffer.Type == DataTypeString && (len(buffer.StringOffsets) > 0 || len(buffer.StringData) > 0) {
+			for _, offset := range buffer.StringOffsets {
+				_, _ = hasher.Write([]byte(strconv.FormatUint(uint64(offset), 10)))
+				_, _ = hasher.Write([]byte{0})
+			}
+			_, _ = hasher.Write(buffer.StringData)
+		} else {
+			_, _ = hasher.Write([]byte(strings.TrimSpace(fmt.Sprintf("%v", buffer.Values))))
+		}
 		_, _ = hasher.Write([]byte{0})
 	}
 	return fmt.Sprintf("%x", hasher.Sum64())

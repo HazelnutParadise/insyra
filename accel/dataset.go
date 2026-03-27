@@ -66,7 +66,7 @@ func projectValues(name string, values []any) (Buffer, error) {
 			}
 			out[i] = value.(bool)
 		}
-		return Buffer{Name: name, Type: dtype, Values: out, Nulls: nulls, Len: len(values)}, nil
+		return Buffer{Name: name, Type: dtype, Values: out, Nulls: nulls, Validity: buildValidityBitmap(nulls), Len: len(values)}, nil
 	case DataTypeInt64:
 		out := make([]int64, len(values))
 		for i, value := range values {
@@ -80,7 +80,7 @@ func projectValues(name string, values []any) (Buffer, error) {
 			}
 			out[i] = converted
 		}
-		return Buffer{Name: name, Type: dtype, Values: out, Nulls: nulls, Len: len(values)}, nil
+		return Buffer{Name: name, Type: dtype, Values: out, Nulls: nulls, Validity: buildValidityBitmap(nulls), Len: len(values)}, nil
 	case DataTypeFloat64:
 		out := make([]float64, len(values))
 		for i, value := range values {
@@ -94,17 +94,33 @@ func projectValues(name string, values []any) (Buffer, error) {
 			}
 			out[i] = converted
 		}
-		return Buffer{Name: name, Type: dtype, Values: out, Nulls: nulls, Len: len(values)}, nil
+		return Buffer{Name: name, Type: dtype, Values: out, Nulls: nulls, Validity: buildValidityBitmap(nulls), Len: len(values)}, nil
 	case DataTypeString:
 		out := make([]string, len(values))
+		offsets := make([]uint32, 0, len(values)+1)
+		data := make([]byte, 0, len(values)*4)
+		offsets = append(offsets, 0)
 		for i, value := range values {
 			if value == nil {
 				nulls[i] = true
+				offsets = append(offsets, uint32(len(data)))
 				continue
 			}
-			out[i] = value.(string)
+			text := value.(string)
+			out[i] = text
+			data = append(data, []byte(text)...)
+			offsets = append(offsets, uint32(len(data)))
 		}
-		return Buffer{Name: name, Type: dtype, Values: out, Nulls: nulls, Len: len(values)}, nil
+		return Buffer{
+			Name:          name,
+			Type:          dtype,
+			Values:        out,
+			Nulls:         nulls,
+			Validity:      buildValidityBitmap(nulls),
+			StringOffsets: offsets,
+			StringData:    data,
+			Len:           len(values),
+		}, nil
 	default:
 		out := make([]any, len(values))
 		copy(out, values)
@@ -113,8 +129,24 @@ func projectValues(name string, values []any) (Buffer, error) {
 				nulls[i] = true
 			}
 		}
-		return Buffer{Name: name, Type: DataTypeAny, Values: out, Nulls: nulls, Len: len(values)}, nil
+		return Buffer{Name: name, Type: DataTypeAny, Values: out, Nulls: nulls, Validity: buildValidityBitmap(nulls), Len: len(values)}, nil
 	}
+}
+
+func buildValidityBitmap(nulls []bool) []byte {
+	if len(nulls) == 0 {
+		return nil
+	}
+	bitmap := make([]byte, (len(nulls)+7)/8)
+	for idx, isNull := range nulls {
+		if isNull {
+			continue
+		}
+		byteIdx := idx / 8
+		bitIdx := idx % 8
+		bitmap[byteIdx] |= 1 << bitIdx
+	}
+	return bitmap
 }
 
 func inferDataType(values []any) DataType {

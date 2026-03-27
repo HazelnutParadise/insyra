@@ -42,6 +42,7 @@ func TestProjectDataListBuildsTypedDataset(t *testing.T) {
 	assert.Equal(t, accel.DataTypeInt64, ds.Buffers[0].Type)
 	assert.Equal(t, 4, ds.Rows)
 	assert.Equal(t, []bool{false, false, true, false}, ds.Buffers[0].Nulls)
+	assert.Equal(t, []byte{0b00001011}, ds.Buffers[0].Validity)
 	require.IsType(t, []int64{}, ds.Buffers[0].Values)
 	assert.Equal(t, []int64{1, 2, 0, 4}, ds.Buffers[0].Values)
 }
@@ -67,6 +68,29 @@ func TestProjectDataTableBuildsOneBufferPerColumn(t *testing.T) {
 	assert.Equal(t, accel.DataTypeString, ds.Buffers[0].Type)
 	assert.Equal(t, accel.DataTypeFloat64, ds.Buffers[1].Type)
 	assert.Equal(t, []bool{false, true}, ds.Buffers[1].Nulls)
+}
+
+func TestProjectDataListBuildsEncodedStringTransport(t *testing.T) {
+	session, err := accel.Open(accel.Config{})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, session.Close())
+	})
+
+	dl := insyra.NewDataList("ab", nil, "xyz").SetName("labels")
+
+	ds, err := session.ProjectDataList(dl)
+	require.NoError(t, err)
+	require.Len(t, ds.Buffers, 1)
+
+	buf := ds.Buffers[0]
+	assert.Equal(t, accel.DataTypeString, buf.Type)
+	assert.Equal(t, []bool{false, true, false}, buf.Nulls)
+	assert.Equal(t, []byte{0b00000101}, buf.Validity)
+	assert.Equal(t, []uint32{0, 2, 2, 5}, buf.StringOffsets)
+	assert.Equal(t, []byte("abxyz"), buf.StringData)
+	require.IsType(t, []string{}, buf.Values)
+	assert.Equal(t, []string{"ab", "", "xyz"}, buf.Values)
 }
 
 func TestProjectDataListPopulatesCacheSnapshotAndMetrics(t *testing.T) {
