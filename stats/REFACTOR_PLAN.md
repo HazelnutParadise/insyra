@@ -216,14 +216,155 @@ effectSizes := []EffectSizeEntry{{Type: "cohen_d", Value: effectSize}}
 
 ---
 
-## 二、重構目標
+### 16. Standard error of the mean（SE = s/√n）
 
-1. 新增 `stats/distutil.go`：集中所有分佈相關的計算函數（不匯出）。
-2. 新增 `stats/mathutil.go`：集中輔助工具函數（CI、信賴水準、誤差邊界、EffectSizes）。
-3. 新增 `stats/linalg.go`：集中所有矩陣運算（高斯消去、矩陣求逆、行列式）。
-4. 新增 `stats/olsutil.go`：集中 OLS 迴歸共用計算（二參數公式、推斷迴圈、R²、SSE/SST）。
-5. 修改各現有檔案：改用新的共用函數，刪除重複實作。
-6. **對外 API 零改動**：所有公開型別、函數簽章均不變。
+| 位置 | 寫法 |
+|---|---|
+| `ttest.go:48`（單樣本）| `stddev / math.Sqrt(float64(n))` |
+| `ttest.go:330`（配對）| `stddevDiff / math.Sqrt(nFloat)` |
+| `ztest.go:35`（單樣本 Z）| `sigma / math.Sqrt(float64(n))` |
+
+語義完全相同，僅變數名不同。
+
+---
+
+### 17. Welch-Satterthwaite 自由度
+
+`ttest.go:179-182`（Welch t-test）：
+```go
+seSum := se1 + se2
+num := seSum * seSum
+den := (se1*se1 / (n1Float-1)) + (se2*se2 / (n2Float-1))
+df = num / den
+```
+這是標準的 Welch-Satterthwaite 公式，目前只在 `TwoSampleTTest` 中出現，但是一個應該有名字的統計原語。
+
+---
+
+### 18. 等方差 pooled standard error
+
+`ttest.go:171-172`：
+```go
+poolVar := ((float64(n1-1)*var1 + float64(n2-1)*var2) / float64(n1+n2-2))
+standardError = math.Sqrt(poolVar * (1/n1Float + 1/n2Float))
+```
+pooledVar 後來又在第 207 行重算（§13 已指出），但這個 SE 計算也是標準公式，應有自己的名字。
+
+---
+
+### 19. Eta-squared（η²）
+
+`anova.go` 中 `SSeffect / (SSeffect + SSerror)` 出現 **4 次**：
+
+```go
+// OneWayANOVA:103
+SSB / (SSB + SSW)
+// TwoWayANOVA:228-230（FactorA、FactorB、Interaction 各一次）
+SSA / (SSA + SSW)
+SSB / (SSB + SSW)
+SSAB / (SSAB + SSW)
+```
+
+RepeatedMeasuresANOVA 使用 `ssBetween / ssTotal`（partial eta-squared 的不同定義），需注意語義差異。
+
+---
+
+### 20. F-ratio（F = MS_between / MS_within = (SS/df₁) / (SS/df₂)）
+
+ANOVA 中的 F 值計算模式出現 **4 次**：
+
+```go
+// OneWayANOVA:99（inline）
+F := (SSB / float64(DFB)) / (SSW / float64(DFW))
+// TwoWayANOVA:219-221（三個因子各一）
+FA  := SSA  / float64(DFA)  / (SSW / float64(DFW))
+FB  := SSB  / float64(DFB)  / (SSW / float64(DFW))
+FAB := SSAB / float64(DFAxB) / (SSW / float64(DFW))
+// RepeatedMeasuresANOVA:305-308（顯式 MS）
+MSBetween := ssBetween / float64(DFBetween)
+MSWithin  := SSWithin  / float64(DFWithin)
+F := MSBetween / MSWithin
+```
+
+---
+
+### 21. Correlation → t 統計量（Pearson 與 Spearman 共用相同公式）
+
+`pearsonCorrelationWithStats`（第 289 行）：
+```go
+tStat := corr * math.Sqrt((n-2) / (1 - corr*corr))
+```
+
+`spearmanCorrelationWithStats`（第 391 行）：
+```go
+t := rho * math.Sqrt(n-2) / math.Sqrt(1 - rho*rho)
+```
+
+兩式完全等價，但 Pearson 寫成 `sqrt((n-2)/(1-r²))` 而 Spearman 寫成 `sqrt(n-2)/sqrt(1-r²)`，且 `(n-2)/(1-corr*corr)` 的整數除法在 Go 中存在**潛在精度問題**（若 n 為 int 時）。
+
+---
+
+### 22. Fisher's z-transform（Pearson r 的 CI）
+
+`pearsonCorrelationWithStats`（第 298-303 行）：
+```go
+z := 0.5 * math.Log((1+corr) / (1-corr))          // arctanh(r)
+se := 1 / math.Sqrt(n-3)
+zLower := z - 1.96 * se                             // ← 硬編碼 1.96！
+zUpper := z + 1.96 * se                             // ← 硬編碼 1.96！
+rLower := (math.Exp(2*zLower) - 1) / (math.Exp(2*zLower) + 1)
+rUpper := (math.Exp(2*zUpper) - 1) / (math.Exp(2*zUpper) + 1)
+```
+
+`spearmanCorrelationWithStats`（第 400-401 行）同樣：
+```go
+se := 1.0 / math.Sqrt(n-3)
+ci := [2]float64{rho - 1.96*se, rho + 1.96*se}     // ← 硬編碼 1.96！
+```
+
+兩處問題：
+1. `1.96` 硬編碼（應使用 `zQuantile(1-(1-cl)/2)` 來支援任意信賴水準）
+2. Spearman 的 CI 直接加減 `1.96*se` 在 r 空間，Pearson 則正確地在 z 空間計算 — **方法不一致**
+
+---
+
+## 二、重構目標（分層架構）
+
+統計學由多個概念層疊加組成；stats 包的內部結構應反映這個事實。
+
+```
+Layer 0 ─ 數學原語
+  linalg.go   : 矩陣運算（determinant, gaussian elimination, inversion）
+  distutil.go : 分佈函數（t/z/F/χ² 的 CDF、quantile、雙尾/單尾 p 值）
+
+Layer 1 ─ 樣本統計原語
+  sampleutil.go : sampleSE、pooledVariance、pooledSE、welchDF
+  moments.go    : CalculateMoment（已存在，供 skewness/kurtosis 共用）
+
+Layer 2 ─ 統計推斷原語
+  mathutil.go : resolveConfidenceLevel、symmetricCI、nanCI、
+                tMarginOfError、zMarginOfError、cohenDEffectSizes、
+                etaSquared、fRatio、correlationToT、
+                fisherZTransform、fisherZInverse
+
+Layer 3 ─ 回歸原語
+  olsutil.go : simpleOLSCoeffs、simpleOLSSxx、computeGoodnessOfFit、
+               computeCoeffInference、buildTwoCoeffCIs、buildMultiCoeffCIs
+
+Layer 4 ─ 對外統計方法（公開 API，不含計算邏輯）
+  ttest.go, ztest.go, anova.go, ftest.go, chi_square.go,
+  correlation.go, regression.go, pca.go, moments.go, skewness.go, kurtosis.go
+```
+
+**原則**：Layer N 只能呼叫 Layer 0 ~ N-1 的函數，不得跨層向上呼叫。
+
+1. 新增 `stats/linalg.go`（Layer 0）
+2. 新增 `stats/distutil.go`（Layer 0）
+3. 新增 `stats/sampleutil.go`（Layer 1）
+4. 新增 `stats/mathutil.go`（Layer 2）
+5. 新增 `stats/olsutil.go`（Layer 3）
+6. 修改各現有檔案：改用新的共用函數，刪除重複實作
+7. **對外 API 零改動**：所有公開型別、函數簽章均不變
 
 ---
 
@@ -295,7 +436,54 @@ func zCDF(z float64) float64 {
 
 ---
 
-### 3.2 `stats/mathutil.go`（通用輔助工具）
+### 3.2 `stats/sampleutil.go`（Layer 1：樣本統計原語）
+
+```go
+package stats
+
+import "math"
+
+// sampleSE 計算樣本平均數的標準誤：SE = s / sqrt(n)。
+// 取代：ttest.go:48、ttest.go:330、ztest.go:35 的重複計算。
+func sampleSE(s, n float64) float64 {
+    return s / math.Sqrt(n)
+}
+
+// pooledVariance 計算等方差假設下的合併方差。
+// 公式：((n1-1)*var1 + (n2-1)*var2) / (n1+n2-2)
+// 取代：ttest.go:171（用於 SE）與 ttest.go:207（用於 effect size）的重複計算。
+func pooledVariance(var1, var2, n1, n2 float64) float64 {
+    return ((n1-1)*var1 + (n2-1)*var2) / (n1 + n2 - 2)
+}
+
+// pooledSE 計算等方差雙樣本 t 檢定的標準誤。
+// 公式：sqrt(pooledVar * (1/n1 + 1/n2))
+// 回傳 (se, pooledVar)，讓呼叫端可同時取得 pooledVar 用於 effect size 計算。
+func pooledSE(var1, var2, n1, n2 float64) (se, pVar float64) {
+    pVar = pooledVariance(var1, var2, n1, n2)
+    se = math.Sqrt(pVar * (1/n1 + 1/n2))
+    return
+}
+
+// welchDF 使用 Welch-Satterthwaite 方程式計算不等方差雙樣本 t 檢定的有效自由度。
+// 取代：ttest.go:179-182 的 inline 計算。
+func welchDF(var1, var2, n1, n2 float64) float64 {
+    se1 := var1 / n1
+    se2 := var2 / n2
+    seSum := se1 + se2
+    return (seSum * seSum) / ((se1*se1/(n1-1) + se2*se2/(n2-1)))
+}
+
+// twoSampleSE 計算不等方差雙樣本檢定的標準誤：sqrt(var1/n1 + var2/n2)。
+// 取代：ttest.go:177、ztest.go:111 的重複計算。
+func twoSampleSE(var1, var2, n1, n2 float64) float64 {
+    return math.Sqrt(var1/n1 + var2/n2)
+}
+```
+
+---
+
+### 3.3 `stats/mathutil.go`（Layer 2：統計推斷原語）
 
 ```go
 package stats
@@ -341,11 +529,60 @@ func zMarginOfError(confidenceLevel, standardError float64) float64 {
 func cohenDEffectSizes(d float64) []EffectSizeEntry {
     return []EffectSizeEntry{{Type: "cohen_d", Value: d}}
 }
+
+// etaSquared 計算 ANOVA 的 eta-squared 效果量：η² = SS_effect / (SS_effect + SS_error)。
+// 取代：anova.go 中 SSB/(SSB+SSW)、SSA/(SSA+SSW) 等 4 處重複計算。
+// 注意：RepeatedMeasuresANOVA 使用 partial eta²（SS_effect / SS_total），
+// 呼叫端自行決定 ssError 傳入 SSWithin 還是 SSTotal-SS_effect。
+func etaSquared(ssEffect, ssError float64) float64 {
+    return ssEffect / (ssEffect + ssError)
+}
+
+// fRatio 計算 F 統計量：F = (SS_between/df_between) / (SS_within/df_within)。
+// 取代：anova.go 中 4 處重複的 (SSx/DFx)/(SSW/DFW) 計算。
+func fRatio(ssBetween float64, dfBetween int, ssWithin float64, dfWithin int) float64 {
+    return (ssBetween / float64(dfBetween)) / (ssWithin / float64(dfWithin))
+}
+
+// correlationToT 將相關係數 r 轉換為 t 統計量。
+// 公式：t = r * sqrt(n-2) / sqrt(1-r²)
+// 取代：pearsonCorrelationWithStats:289 和 spearmanCorrelationWithStats:391 的重複計算。
+// 注意：兩處目前寫法不同（一個用除法，一個用兩個 sqrt），統一為此版本。
+func correlationToT(r, n float64) float64 {
+    return r * math.Sqrt(n-2) / math.Sqrt(1-r*r)
+}
+
+// fisherZTransform 計算 Fisher's z-transform：z = arctanh(r) = 0.5*ln((1+r)/(1-r))。
+// 取代：pearsonCorrelationWithStats:298 的 inline 計算。
+func fisherZTransform(r float64) float64 {
+    return 0.5 * math.Log((1+r)/(1-r))
+}
+
+// fisherZInverse 計算 Fisher's z-transform 的反函數：r = tanh(z)。
+// 取代：pearsonCorrelationWithStats:302-303 的 inline 計算。
+func fisherZInverse(z float64) float64 {
+    e2z := math.Exp(2 * z)
+    return (e2z - 1) / (e2z + 1)
+}
+
+// pearsonFisherCI 使用 Fisher's z-transform 計算 Pearson r 的信賴區間。
+// 取代：pearsonCorrelationWithStats:298-304 的 6 行重複邏輯。
+// 同時修正原本硬編碼 1.96 的問題，改用正確的 z 臨界值。
+// 此函數也供 Spearman 使用，統一 CI 計算方式（消除 §22 中的方法不一致）。
+func pearsonFisherCI(r, n, confidenceLevel float64) [2]float64 {
+    z := fisherZTransform(r)
+    se := 1 / math.Sqrt(n-3)
+    zCrit := norm.Quantile(1 - (1-confidenceLevel)/2)
+    return [2]float64{
+        fisherZInverse(z - zCrit*se),
+        fisherZInverse(z + zCrit*se),
+    }
+}
 ```
 
 ---
 
-### 3.3 `stats/linalg.go`（線性代數工具）
+### 3.5 `stats/linalg.go`（Layer 0：線性代數工具）
 
 將 `regression.go` 和 `correlation.go` 中分散的矩陣運算集中到此檔案。
 
@@ -374,7 +611,7 @@ func determinantGauss(matrix [][]float64) float64 { /* 原邏輯不變 */ }
 
 ---
 
-### 3.4 `stats/olsutil.go`（OLS 迴歸共用計算）
+### 3.6 `stats/olsutil.go`（Layer 3：OLS 迴歸共用計算）
 
 ```go
 package stats
@@ -785,61 +1022,84 @@ func oneWayANOVAOnSlices(values []float64, labels []int, k int) *FTestResult {
 
 ---
 
-## 五、重構完成後架構圖
+## 五、重構完成後架構圖（分層）
 
 ```
-stats/
-├── distutil.go    ← 新增：分佈原語（t/z/F/χ² 的 CDF、quantile、p 值）
-├── mathutil.go    ← 新增：輔助工具（CI、信賴水準、誤差邊界、EffectSizes）
-├── linalg.go      ← 新增：線性代數（gaussianElimination、invertMatrix、determinantGauss）
-├── olsutil.go     ← 新增：OLS 共用計算（simpleOLSCoeffs、computeGoodnessOfFit、
-│                            computeCoeffInference、buildTwoCoeffCIs、buildMultiCoeffCIs）
-├── consts.go      ← 不變（norm 物件保留）
+Layer 0 ── 數學原語
+├── distutil.go    ← 新增：t/z/F/χ² 分佈的 CDF、quantile、p 值
+└── linalg.go      ← 新增：gaussianElimination、invertMatrix、determinantGauss
+
+Layer 1 ── 樣本統計原語
+└── sampleutil.go  ← 新增：sampleSE、pooledVariance、pooledSE、welchDF、twoSampleSE
+
+Layer 2 ── 統計推斷原語
+└── mathutil.go    ← 新增：resolveConfidenceLevel、symmetricCI、nanCI、
+                            tMarginOfError、zMarginOfError、cohenDEffectSizes、
+                            etaSquared、fRatio、correlationToT、
+                            fisherZTransform、fisherZInverse、pearsonFisherCI
+
+Layer 3 ── 回歸原語
+└── olsutil.go     ← 新增：simpleOLSCoeffs、simpleOLSSxx、computeGoodnessOfFit、
+                            computeCoeffInference、buildTwoCoeffCIs、buildMultiCoeffCIs
+
+Layer 4 ── 公開統計方法（不含計算邏輯）
+├── consts.go      ← 不變（norm 物件）
 ├── structs.go     ← 不變
 ├── types.go       ← 不變
 ├── init.go        ← 不變
-├── ttest.go       ← 修改：刪除 calculateTPValue；改用共用函數；修復 pooledVar 重算；
-│                           cohenDEffectSizes 取代切片字面量
-├── ztest.go       ← 修改：刪除 calculateZPValue；改用 zPValue、zMarginOfError；
-│                           cohenDEffectSizes 取代切片字面量
-├── anova.go       ← 修改：F p 值改用 fOneTailedPValue
-├── ftest.go       ← 修改：重構 oneWayANOVA；各 p 值改用共用函數
-├── chi_square.go  ← 修改：chi2 p 值改用 chiSquaredPValue
-├── correlation.go ← 修改：刪除 normalCDF 和 determinantGauss；改用 zCDF/tTwoTailedPValue
-├── regression.go  ← 修改：刪除 studentTCDF/gaussianElimination/invertMatrix；
-│                           改用 olsutil 和 linalg 函數
+├── ttest.go       ← 修改：用 sampleSE、pooledSE、welchDF、tTwoTailedPValue、
+│                           tMarginOfError、symmetricCI、cohenDEffectSizes
+├── ztest.go       ← 修改：用 sampleSE、twoSampleSE、zPValue、zMarginOfError、
+│                           symmetricCI、cohenDEffectSizes
+├── anova.go       ← 修改：用 fOneTailedPValue、fRatio、etaSquared
+├── ftest.go       ← 修改：重構 oneWayANOVA；用 fOneTailedPValue、fTwoTailedPValue、
+│                           chiSquaredPValue
+├── chi_square.go  ← 修改：用 chiSquaredPValue
+├── correlation.go ← 修改：刪除 normalCDF、determinantGauss；
+│                           用 zCDF、tTwoTailedPValue、correlationToT、pearsonFisherCI
+├── regression.go  ← 修改：刪除 studentTCDF、gaussianElimination、invertMatrix；
+│                           用 olsutil、linalg、distutil 函數
 ├── pca.go         ← 不需修改
-├── moments.go     ← 不需修改
-├── skewness.go    ← 不需修改
-├── kurtosis.go    ← 不需修改
+├── moments.go     ← 不需修改（已是共用建構塊）
+├── skewness.go    ← 不需修改（已複用 CalculateMoment）
+├── kurtosis.go    ← 不需修改（已複用 CalculateMoment）
 └── diag.go        ← 不需修改
 ```
 
-**函數對應總覽**：
+**完整函數對應表**：
 
-| 舊（分散各處） | 新（集中位置） |
-|---|---|
-| `calculateTPValue`（ttest.go）、`studentTCDF`（regression.go） | `tTwoTailedPValue`（distutil.go） |
-| `distuv.StudentsT{...}.CDF(t)`（4 處）| `tCDF`（distutil.go）|
-| `distuv.StudentsT{...}.Quantile(...)`（7 處）| `tQuantile`（distutil.go）|
-| `calculateZPValue`（ztest.go）| `zPValue`（distutil.go）|
-| `normalCDF`（correlation.go）| `zCDF`（distutil.go）|
-| `1 - distuv.F{...}.CDF(f)`（6 處）| `fOneTailedPValue`（distutil.go）|
-| `2*min(CDF,1-CDF)`（ftest.go）| `fTwoTailedPValue`（distutil.go）|
-| `1 - distuv.ChiSquared{...}.CDF(x)`（3 處）| `chiSquaredPValue`（distutil.go）|
-| 信賴水準驗證（5 處）| `resolveConfidenceLevel`（mathutil.go）|
-| `&[2]float64{c-m, c+m}`（多處）| `symmetricCI`（mathutil.go）|
-| `[2]float64{NaN, NaN}`（多處）| `nanCI`（mathutil.go）|
-| `[]EffectSizeEntry{{...}}`（5 處）| `cohenDEffectSizes`（mathutil.go）|
-| Cramer's rule（ExponentialRegression、LogarithmicRegression）| `simpleOLSCoeffs`（olsutil.go）|
-| 殘差/SSE/SST/R²（4 個迴歸函數）| `computeGoodnessOfFit`（olsutil.go）|
-| 係數推斷迴圈（LinearRegression、PolynomialRegression）| `computeCoeffInference`（olsutil.go）|
-| 兩係數 CI（ExponentialRegression、LogarithmicRegression）| `buildTwoCoeffCIs`（olsutil.go）|
-| 多係數 CI（LinearRegression、PolynomialRegression）| `buildMultiCoeffCIs`（olsutil.go）|
-| `gaussianElimination`、`invertMatrix`（regression.go）| linalg.go |
-| `determinantGauss`（correlation.go）| linalg.go |
-| `oneWayANOVA` private（ftest.go）| 重構為呼叫 `OneWayANOVA`（anova.go）|
-| pooledVar 計算兩次（TwoSampleTTest）| 合併為一次計算 |
+| 舊（分散各處） | 新（集中位置） | 修正的問題 |
+|---|---|---|
+| `calculateTPValue`（ttest.go）、`studentTCDF`（regression.go）| `tTwoTailedPValue`（distutil.go）| 兩套不同介面 |
+| `distuv.StudentsT{...}.CDF(t)`（4 處直接建立）| `tCDF`（distutil.go）| 重複建立物件 |
+| `distuv.StudentsT{...}.Quantile(...)`（7 處）| `tQuantile`（distutil.go）| 完全相同的 copy-paste |
+| `calculateZPValue`（ztest.go）| `zPValue`（distutil.go）| 搬移至共用層 |
+| `normalCDF` 手寫（correlation.go）| `zCDF`（distutil.go）| 與 norm.CDF 語義重複 |
+| `1 - distuv.F{...}.CDF(f)`（6 處）| `fOneTailedPValue`（distutil.go）| 重複建立分佈物件 |
+| `2*min(CDF,1-CDF)`（ftest.go）| `fTwoTailedPValue`（distutil.go）| 命名 |
+| `1 - distuv.ChiSquared{...}.CDF(x)`（3 處）| `chiSquaredPValue`（distutil.go）| 重複模式 |
+| `stddev / sqrt(n)`（ttest 2 處、ztest 1 處）| `sampleSE`（sampleutil.go）| 無命名 |
+| `sqrt(var1/n1 + var2/n2)`（ttest、ztest）| `twoSampleSE`（sampleutil.go）| 無命名 |
+| `((n1-1)*v1 + (n2-1)*v2) / (n1+n2-2)` 算兩次 | `pooledVariance`（sampleutil.go）| 重複計算 |
+| Welch-Satterthwaite df（ttest.go:179-182）| `welchDF`（sampleutil.go）| 無命名 |
+| 信賴水準驗證（5 處）| `resolveConfidenceLevel`（mathutil.go）| copy-paste |
+| `&[2]float64{c-m, c+m}`（多處）| `symmetricCI`（mathutil.go）| 無命名 |
+| `[2]float64{NaN, NaN}`（多處）| `nanCI`（mathutil.go）| 無命名 |
+| `[]EffectSizeEntry{{...}}`（5 處）| `cohenDEffectSizes`（mathutil.go）| 字串硬編碼 |
+| `SSx/(SSx+SSerror)` 4 次（anova.go）| `etaSquared`（mathutil.go）| 無命名 |
+| `(SS/df1)/(SS/df2)` 4 次（anova.go）| `fRatio`（mathutil.go）| 無命名 |
+| `r*sqrt(n-2)/sqrt(1-r²)`（Pearson、Spearman 各一，寫法不同）| `correlationToT`（mathutil.go）| 兩種寫法 + 潛在整數除法 bug |
+| `0.5*log((1+r)/(1-r))` inline（correlation.go:298）| `fisherZTransform`（mathutil.go）| 無命名 |
+| `(e²ᶻ-1)/(e²ᶻ+1)` inline（correlation.go:302-303）| `fisherZInverse`（mathutil.go）| 無命名 |
+| 硬編碼 `1.96`（correlation.go 3 處）+ Spearman CI 方法錯誤 | `pearsonFisherCI`（mathutil.go）| **bug：hardcoded 95%；Spearman CI 未走 z-space** |
+| Cramer's rule（ExponentialRegression、LogarithmicRegression）| `simpleOLSCoeffs`（olsutil.go）| 重複 |
+| 殘差/SSE/SST/R²（4 個迴歸函數）| `computeGoodnessOfFit`（olsutil.go）| 重複 |
+| 係數推斷迴圈（LinearRegression、PolynomialRegression）| `computeCoeffInference`（olsutil.go）| 逐字相同 |
+| 兩係數 CI（ExponentialRegression、LogarithmicRegression）| `buildTwoCoeffCIs`（olsutil.go）| 完全相同 |
+| 多係數 CI（LinearRegression、PolynomialRegression）| `buildMultiCoeffCIs`（olsutil.go）| 完全相同 |
+| `gaussianElimination`、`invertMatrix`（regression.go）| `linalg.go` | 矩陣工具應集中 |
+| `determinantGauss`（correlation.go）| `linalg.go` | 同上 |
+| `oneWayANOVA` private（ftest.go）| 重構呼叫 `OneWayANOVA`（anova.go）| 邏輯重複 |
 
 ---
 
@@ -867,20 +1127,28 @@ stats/
 
 ## 七、實作順序
 
-1. **新增 `linalg.go`**：搬移 `gaussianElimination`、`invertMatrix`（來自 regression.go）、`determinantGauss`（來自 correlation.go）
-2. **新增 `distutil.go`**：`tTwoTailedPValue`、`tCDF`、`tQuantile`、`fOneTailedPValue`、`fTwoTailedPValue`、`chiSquaredPValue`、`zCDF`、`zPValue`
-3. **新增 `mathutil.go`**：`resolveConfidenceLevel`、`symmetricCI`、`nanCI`、`tMarginOfError`、`zMarginOfError`、`cohenDEffectSizes`
-4. **新增 `olsutil.go`**：`simpleOLSCoeffs`、`simpleOLSSxx`、`computeGoodnessOfFit`、`computeCoeffInference`、`buildTwoCoeffCIs`、`buildMultiCoeffCIs`
-5. **修改 `regression.go`**：刪除已搬移的 3 個私有函數；改用 olsutil、linalg、distutil 函數
-6. **修改 `correlation.go`**：刪除 `normalCDF`、`determinantGauss`；改用 distutil 函數
-7. **修改 `ttest.go`**：刪除 `calculateTPValue`；修復 pooledVar；改用 mathutil/distutil
-8. **修改 `ztest.go`**：刪除 `calculateZPValue`；改用 mathutil/distutil
-9. **修改 `anova.go`**：F p 值改用 `fOneTailedPValue`
-10. **修改 `ftest.go`**：重構 `oneWayANOVA`；各 p 值改用共用函數
-11. **修改 `chi_square.go`**：卡方 p 值改用 `chiSquaredPValue`
-12. **執行 `go test ./stats/...`**：確認所有測試通過，無回歸
+依分層由下往上建立，確保每層建好後上層才改動。
 
-> 建議先完成步驟 1-4（新增檔案），確認編譯通過後再逐步修改現有檔案。每完成一個現有檔案就跑一次測試。
+**Phase 1 — 建立基礎層（不動現有檔案）**
+
+1. **新增 `linalg.go`**（Layer 0）：搬移 `gaussianElimination`、`invertMatrix`（來自 regression.go）、`determinantGauss`（來自 correlation.go）—— 先在新檔案中 copy，舊檔案暫不刪除
+2. **新增 `distutil.go`**（Layer 0）：`tTwoTailedPValue`、`tCDF`、`tQuantile`、`fOneTailedPValue`、`fTwoTailedPValue`、`chiSquaredPValue`、`zCDF`、`zPValue`
+3. **新增 `sampleutil.go`**（Layer 1）：`sampleSE`、`pooledVariance`、`pooledSE`、`welchDF`、`twoSampleSE`
+4. **新增 `mathutil.go`**（Layer 2）：`resolveConfidenceLevel`、`symmetricCI`、`nanCI`、`tMarginOfError`、`zMarginOfError`、`cohenDEffectSizes`、`etaSquared`、`fRatio`、`correlationToT`、`fisherZTransform`、`fisherZInverse`、`pearsonFisherCI`
+5. **新增 `olsutil.go`**（Layer 3）：`simpleOLSCoeffs`、`simpleOLSSxx`、`computeGoodnessOfFit`、`computeCoeffInference`、`buildTwoCoeffCIs`、`buildMultiCoeffCIs`
+6. **`go build ./stats/...`**：確認新增檔案可編譯
+
+**Phase 2 — 逐檔修改（每改一個就跑一次測試）**
+
+7. **修改 `ttest.go`**：刪除 `calculateTPValue`；用 `sampleSE`、`pooledSE`、`welchDF`、`tTwoTailedPValue`、`tMarginOfError`、`symmetricCI`、`cohenDEffectSizes`
+8. **修改 `ztest.go`**：刪除 `calculateZPValue`；用 `sampleSE`、`twoSampleSE`、`zPValue`、`zMarginOfError`、`symmetricCI`、`cohenDEffectSizes`
+9. **修改 `anova.go`**：用 `fRatio`、`fOneTailedPValue`、`etaSquared`
+10. **修改 `ftest.go`**：重構 `oneWayANOVA`；用 `fOneTailedPValue`、`fTwoTailedPValue`、`chiSquaredPValue`
+11. **修改 `chi_square.go`**：用 `chiSquaredPValue`
+12. **修改 `correlation.go`**：刪除 `normalCDF`、`determinantGauss`；用 `zCDF`、`tTwoTailedPValue`、`correlationToT`、`pearsonFisherCI`（同時修正 Spearman CI bug 與硬編碼 `1.96`）
+13. **修改 `regression.go`**：刪除 `studentTCDF`；用 `simpleOLSCoeffs`、`computeGoodnessOfFit`、`computeCoeffInference`、`buildTwoCoeffCIs`、`buildMultiCoeffCIs`
+14. **從 `regression.go` 和 `correlation.go` 刪除已搬移的函數定義**（linalg.go 中已有）
+15. **`go test ./stats/...`**：確認所有測試通過，無回歸
 
 ---
 
@@ -888,10 +1156,12 @@ stats/
 
 | 風險 | 說明 | 緩解方案 |
 |---|---|---|
-| `oneWayANOVA` 重構後效能差異 | 原版直接操作 slice，新版需建立 DataList 物件 | LeveneTest 資料量通常小；若有問題可保留 slice 路徑但共用 F p 值計算 |
-| `tTwoTailedPValue` 邊界行為 | `calculateTPValue` 在 `df<=0` 回傳 `1.0`；`studentTCDF` 回傳 `NaN` | 統一為 `df<=0` 回傳 `1.0`（已納入規格） |
-| `studentTCDF(t, int(df))` 介面不一致 | 原版接受 `int`，呼叫處有 `int()` 轉換 | 新 `tCDF` 接受 `float64`，同步移除 `int()` 轉換 |
-| `computeGoodnessOfFit` 的 `yHatFn` closure 效能 | 每次呼叫一個 closure 而非 inline | 迴歸函數通常 n < 10^6，overhead 可忽略 |
-| `simpleOLSCoeffs` 不支援平行化 | 原 LogarithmicRegression 有 `parallel.GroupUp` | 新函數為順序版；若需要平行化可保留原實作，但至少 Cramer's rule 部分統一 |
-| `buildTwoCoeffCIs` 硬編碼 `defaultConfidenceLevel` | 原函數信賴水準也是硬編碼 0.95 | 行為一致，未來若需參數化兩處同步修改即可 |
-| `TwoSampleTTest` pooledVar 重算修正 | 邏輯上等價，但需確認數值結果不變 | 測試覆蓋等方差路徑的所有回傳值（t、p、CI、effectSize）|
+| `oneWayANOVA` 重構後效能 | 原版直接操作 slice，新版需建立 DataList 物件 | LeveneTest 資料量通常小；若有問題可保留 slice 路徑但共用 F p 值計算 |
+| `tTwoTailedPValue` 邊界行為 | `calculateTPValue` 在 `df<=0` 回傳 `1.0`；`studentTCDF` 回傳 `NaN` | 統一為 `df<=0` 回傳 `1.0`（已納入規格）|
+| `studentTCDF` 介面（接受 int） | 呼叫端已做 `int(df)` 轉換 | 新 `tCDF` 接受 `float64`，同步移除 `int()` 轉換 |
+| `computeGoodnessOfFit` closure 效能 | 每次呼叫 closure 而非 inline | 迴歸函數通常 n < 10⁶，overhead 可忽略 |
+| `simpleOLSCoeffs` 不支援平行化 | 原 LogarithmicRegression 有 `parallel.GroupUp` | 新函數為順序版；效能敏感路徑可保留平行化，但公式統一 |
+| `buildTwoCoeffCIs` 硬編碼信賴水準 | 原函數也是硬編碼 0.95 | 行為一致；未來若參數化，兩處同步改 |
+| `TwoSampleTTest` pooledVar 合併 | 邏輯等價，但需確認數值結果不變 | 測試覆蓋等方差路徑的所有欄位（t、p、CI、effectSize）|
+| **Spearman CI 修正是行為改變** | 原 Spearman CI 直接在 r 空間做 `r ± 1.96*se`，新版走 Fisher z-space | 這是 **bug fix**，但測試結果數值會改變；需更新或新增測試 |
+| `correlationToT` 整數除法 bug | `(n-2)/(1-corr*corr)` 若 n 為 `float64` 無問題；原 Pearson 版本已是 float | 確認呼叫端傳入 float64；加單元測試驗證邊界值 |
