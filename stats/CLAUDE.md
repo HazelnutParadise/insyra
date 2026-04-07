@@ -11,8 +11,8 @@
 
 ```
 Layer 0 — 數學原語（其他所有層的地基）
-  distutil.go   統計分佈：t/z/F/χ² 的 CDF、quantile、p 值
-  linalg.go     矩陣運算：高斯消去、矩陣求逆、行列式
+  distutil.go              統計分佈：t/z/F/χ² 的 CDF、quantile、p 值
+  internal/linalg/linalg.go  矩陣運算：高斯消去、矩陣求逆、行列式
 
 Layer 1 — 樣本統計原語
   sampleutil.go 樣本 SE、合併方差、Welch df
@@ -78,13 +78,17 @@ Layer 4 — 對外統計方法（公開 API）
 | Fisher's z 反函數 | `fisherZInverse(z float64)` |
 | Pearson/Spearman CI（z-space） | `pearsonFisherCI(r, n, cl float64)` |
 
-### 需要矩陣運算？先查 linalg.go
+### 需要矩陣運算？先查 `internal/linalg/linalg.go`
 
-| 你需要的 | 使用函數 |
+> 這是 `stats` 包中唯一放進 `stats/internal/` 的模組。  
+> 原因：純 `float64` 矩陣數學，**不依賴** `EffectSizeEntry`、`AlternativeHypothesis`、`defaultConfidenceLevel`、`norm` 等 stats 型別，不會造成 circular import。  
+> 其他工具檔案（`distutil.go`、`sampleutil.go`、`mathutil.go`、`olsutil.go`）留在 `stats` 包，因為它們使用 stats 包型別。
+
+| 你需要的 | 使用函數（`import ".../stats/internal/linalg"`） |
 |---|---|
-| 解線性方程組 Ax=b | `gaussianElimination(A, b)` |
-| 矩陣求逆 | `invertMatrix(A)` |
-| 方陣行列式 | `determinantGauss(matrix)` |
+| 解線性方程組 Ax=b | `linalg.GaussianElimination(A, b)` |
+| 矩陣求逆 | `linalg.InvertMatrix(A)` |
+| 方陣行列式 | `linalg.DeterminantGauss(matrix)` |
 
 ### 需要 OLS 迴歸計算？先查 olsutil.go
 

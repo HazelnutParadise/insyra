@@ -334,8 +334,8 @@ ci := [2]float64{rho - 1.96*se, rho + 1.96*se}     // ← 硬編碼 1.96！
 
 ```
 Layer 0 ─ 數學原語
-  linalg.go   : 矩陣運算（determinant, gaussian elimination, inversion）
-  distutil.go : 分佈函數（t/z/F/χ² 的 CDF、quantile、雙尾/單尾 p 值）
+  internal/linalg/linalg.go : 矩陣運算（determinant, gaussian elimination, inversion）
+  distutil.go               : 分佈函數（t/z/F/χ² 的 CDF、quantile、雙尾/單尾 p 值）
 
 Layer 1 ─ 樣本統計原語
   sampleutil.go : sampleSE、pooledVariance、pooledSE、welchDF
@@ -358,7 +358,7 @@ Layer 4 ─ 對外統計方法（公開 API，不含計算邏輯）
 
 **原則**：Layer N 只能呼叫 Layer 0 ~ N-1 的函數，不得跨層向上呼叫。
 
-1. 新增 `stats/linalg.go`（Layer 0）
+1. 新增 `stats/internal/linalg/linalg.go`（Layer 0，獨立 package）
 2. 新增 `stats/distutil.go`（Layer 0）
 3. 新增 `stats/sampleutil.go`（Layer 1）
 4. 新增 `stats/mathutil.go`（Layer 2）
@@ -582,7 +582,15 @@ func pearsonFisherCI(r, n, confidenceLevel float64) [2]float64 {
 
 ---
 
-### 3.5 `stats/linalg.go`（Layer 0：線性代數工具）
+### 3.5 `stats/internal/linalg/linalg.go`（Layer 0：線性代數工具）
+
+> **為何放進 `internal/`？**  
+> `gaussianElimination`、`invertMatrix`、`determinantGauss` 均為純 `float64` 矩陣數學，完全不依賴 `EffectSizeEntry`、`AlternativeHypothesis`、`defaultConfidenceLevel`、`norm` 等 stats 包型別，不會造成 circular import。  
+> 同時被 `regression.go`（前兩個）和 `correlation.go`（後一個）使用，是真正的跨檔案共用原語。  
+> 其他工具檔案（`distutil`、`sampleutil`、`mathutil`、`olsutil`）**不能**放進 `internal/`，因為它們使用 `AlternativeHypothesis`、`EffectSizeEntry` 等 stats 型別，會導致 circular import。
+
+package 宣告為 `package linalg`，函數名稱首字母大寫（exported）。  
+呼叫方式：`import ".../stats/internal/linalg"` 後使用 `linalg.GaussianElimination(...)` 等。
 
 將 `regression.go` 和 `correlation.go` 中分散的矩陣運算集中到此檔案。
 
@@ -1026,8 +1034,8 @@ func oneWayANOVAOnSlices(values []float64, labels []int, k int) *FTestResult {
 
 ```
 Layer 0 ── 數學原語
-├── distutil.go    ← 新增：t/z/F/χ² 分佈的 CDF、quantile、p 值
-└── linalg.go      ← 新增：gaussianElimination、invertMatrix、determinantGauss
+├── distutil.go                    ← 新增：t/z/F/χ² 分佈的 CDF、quantile、p 值
+└── internal/linalg/linalg.go      ← 新增（package linalg）：GaussianElimination、InvertMatrix、DeterminantGauss
 
 Layer 1 ── 樣本統計原語
 └── sampleutil.go  ← 新增：sampleSE、pooledVariance、pooledSE、welchDF、twoSampleSE
@@ -1097,8 +1105,8 @@ Layer 4 ── 公開統計方法（不含計算邏輯）
 | 係數推斷迴圈（LinearRegression、PolynomialRegression）| `computeCoeffInference`（olsutil.go）| 逐字相同 |
 | 兩係數 CI（ExponentialRegression、LogarithmicRegression）| `buildTwoCoeffCIs`（olsutil.go）| 完全相同 |
 | 多係數 CI（LinearRegression、PolynomialRegression）| `buildMultiCoeffCIs`（olsutil.go）| 完全相同 |
-| `gaussianElimination`、`invertMatrix`（regression.go）| `linalg.go` | 矩陣工具應集中 |
-| `determinantGauss`（correlation.go）| `linalg.go` | 同上 |
+| `gaussianElimination`、`invertMatrix`（regression.go） | `internal/linalg/linalg.go`（`linalg.GaussianElimination`、`linalg.InvertMatrix`） | 矩陣工具應集中 |
+| `determinantGauss`（correlation.go） | `internal/linalg/linalg.go`（`linalg.DeterminantGauss`） | 同上 |
 | `oneWayANOVA` private（ftest.go）| 重構呼叫 `OneWayANOVA`（anova.go）| 邏輯重複 |
 
 ---
@@ -1131,7 +1139,7 @@ Layer 4 ── 公開統計方法（不含計算邏輯）
 
 **Phase 1 — 建立基礎層（不動現有檔案）**
 
-1. **新增 `linalg.go`**（Layer 0）：搬移 `gaussianElimination`、`invertMatrix`（來自 regression.go）、`determinantGauss`（來自 correlation.go）—— 先在新檔案中 copy，舊檔案暫不刪除
+1. **新增 `internal/linalg/linalg.go`**（Layer 0，`package linalg`）：搬移並 export `GaussianElimination`、`InvertMatrix`（來自 regression.go）、`DeterminantGauss`（來自 correlation.go）—— 先在新檔案中 copy，舊檔案暫不刪除
 2. **新增 `distutil.go`**（Layer 0）：`tTwoTailedPValue`、`tCDF`、`tQuantile`、`fOneTailedPValue`、`fTwoTailedPValue`、`chiSquaredPValue`、`zCDF`、`zPValue`
 3. **新增 `sampleutil.go`**（Layer 1）：`sampleSE`、`pooledVariance`、`pooledSE`、`welchDF`、`twoSampleSE`
 4. **新增 `mathutil.go`**（Layer 2）：`resolveConfidenceLevel`、`symmetricCI`、`nanCI`、`tMarginOfError`、`zMarginOfError`、`cohenDEffectSizes`、`etaSquared`、`fRatio`、`correlationToT`、`fisherZTransform`、`fisherZInverse`、`pearsonFisherCI`
@@ -1145,9 +1153,9 @@ Layer 4 ── 公開統計方法（不含計算邏輯）
 9. **修改 `anova.go`**：用 `fRatio`、`fOneTailedPValue`、`etaSquared`
 10. **修改 `ftest.go`**：重構 `oneWayANOVA`；用 `fOneTailedPValue`、`fTwoTailedPValue`、`chiSquaredPValue`
 11. **修改 `chi_square.go`**：用 `chiSquaredPValue`
-12. **修改 `correlation.go`**：刪除 `normalCDF`、`determinantGauss`；用 `zCDF`、`tTwoTailedPValue`、`correlationToT`、`pearsonFisherCI`（同時修正 Spearman CI bug 與硬編碼 `1.96`）
-13. **修改 `regression.go`**：刪除 `studentTCDF`；用 `simpleOLSCoeffs`、`computeGoodnessOfFit`、`computeCoeffInference`、`buildTwoCoeffCIs`、`buildMultiCoeffCIs`
-14. **從 `regression.go` 和 `correlation.go` 刪除已搬移的函數定義**（linalg.go 中已有）
+12. **修改 `correlation.go`**：刪除 `normalCDF`、`determinantGauss`；改呼叫 `linalg.DeterminantGauss`；用 `zCDF`、`tTwoTailedPValue`、`correlationToT`、`pearsonFisherCI`（同時修正 Spearman CI bug 與硬編碼 `1.96`）
+13. **修改 `regression.go`**：刪除 `studentTCDF`、`gaussianElimination`、`invertMatrix`；改呼叫 `linalg.GaussianElimination`、`linalg.InvertMatrix`；用 `simpleOLSCoeffs`、`computeGoodnessOfFit`、`computeCoeffInference`、`buildTwoCoeffCIs`、`buildMultiCoeffCIs`
+14. **確認 `regression.go` 和 `correlation.go` 已 import `".../stats/internal/linalg"`**，並刪除原本的本地函數定義
 15. **`go test ./stats/...`**：確認所有測試通過，無回歸
 
 ---
