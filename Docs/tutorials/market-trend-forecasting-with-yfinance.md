@@ -124,9 +124,9 @@ for i := 0; i < closeDL.Len(); i++ {
 	x.Append(float64(i + 1))
 }
 
-lr := stats.LinearRegression(closeDL, x)
-if lr == nil {
-	log.Fatal("regression failed")
+lr, err := stats.LinearRegression(closeDL, x)
+if err != nil {
+	log.Fatal(err)
 }
 fmt.Printf("slope=%.6f r2=%.4f\n", lr.Slope, lr.RSquared)
 ```
@@ -237,9 +237,9 @@ func main() {
 		x.Append(float64(i + 1))
 	}
 
-	lr := stats.LinearRegression(closeDL, x)
-	if lr == nil {
-		log.Fatal("regression failed")
+	lr, err := stats.LinearRegression(closeDL, x)
+	if err != nil {
+		log.Fatal(err)
 	}
 	fmt.Printf("slope=%.6f r2=%.4f\n", lr.Slope, lr.RSquared)
 

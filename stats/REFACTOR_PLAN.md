@@ -1227,4 +1227,6 @@ Layer 4 ── 公開統計方法（不含計算邏輯）
 - `stats` exported functions no longer rely on `LogWarning`/`LogFatal` for control flow.
 - CLI command handlers were updated to propagate these errors to users.
 - Detailed signature/migration notes are documented in:
-  - `stats/API_ERROR_CONTRACT.md`
+  - `Docs/stats.md`
+  - `Docs/tutorials/ab-test-decision-with-statistics.md`
+  - `Docs/tutorials/market-trend-forecasting-with-yfinance.md`

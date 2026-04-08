@@ -179,4 +179,4 @@ cl = resolveConfidenceLevel(cl)
 - Exported functions now return `error` for invalid input / failed computation.
 - Exported `stats` APIs do not use `LogWarning`/`LogFatal` for failure signaling.
 - Callers must handle `err` explicitly.
-- See `API_ERROR_CONTRACT.md` for the updated signature contract and migration examples.
+- See `Docs/stats.md` and `Docs/tutorials/*` for updated error-return usage examples.
