@@ -1173,3 +1173,50 @@ Layer 4 ── 公開統計方法（不含計算邏輯）
 | `TwoSampleTTest` pooledVar 合併 | 邏輯等價，但需確認數值結果不變 | 測試覆蓋等方差路徑的所有欄位（t、p、CI、effectSize）|
 | **Spearman CI 修正是行為改變** | 原 Spearman CI 直接在 r 空間做 `r ± 1.96*se`，新版走 Fisher z-space | 這是 **bug fix**，但測試結果數值會改變；需更新或新增測試 |
 | `correlationToT` 整數除法 bug | `(n-2)/(1-corr*corr)` 若 n 為 `float64` 無問題；原 Pearson 版本已是 float | 確認呼叫端傳入 float64；加單元測試驗證邊界值 |
+
+## Post-Refactor Phase 2.5 (Further Decomposition Candidates)
+
+### Goal
+- Continue decomposing repeated statistical logic in `stats` without changing any exported API/type signatures.
+- Follow `stats/CLAUDE.md` layering rule: add helpers in lower layers and keep Layer 4 focused on orchestration.
+
+### Scope (No API Changes)
+1. Correlation inference unification (`correlation.go`)
+- Extract shared inference path for Pearson/Spearman when `n > 2`:
+  - `t := correlationToT(r, n)`
+  - `p := tTwoTailedPValue(t, n-2)`
+  - `ci := pearsonFisherCI(r, n, defaultConfidenceLevel)`
+  - `df := n-2`
+- Keep Kendall-specific logic unchanged.
+
+2. Z-test CI-by-alternative helper (`ztest.go`)
+- Extract one internal helper for alternative-specific CI bounds used by both:
+  - `SingleSampleZTest`
+  - `TwoSampleZTest`
+- Preserve current semantics for `TwoSided`, `Greater`, `Less` exactly.
+
+3. Two-parameter transformed regression inference helper (`regression.go`)
+- Extract shared helper for Exponential/Logarithmic two-parameter inference:
+  - standard errors of intercept/slope
+  - t-values and two-tailed p-values
+  - two-coefficient confidence intervals
+- Keep all formulas and field-population behavior unchanged.
+
+4. ANOVA component constructor (`anova.go`)
+- Extract small constructor/helper for repeated `ANOVAResultComponent` assembly (F/P/Eta paths).
+- Keep RepeatedMeasures eta behavior unchanged unless explicitly approved.
+
+### Priority / Risk Order
+1. Z-test CI-by-alternative helper (lowest risk)
+2. Correlation inference unification
+3. ANOVA component constructor
+4. Two-parameter transformed regression inference helper (highest coupling)
+
+### Verification Gate
+- After each item: `go test ./stats/...`
+- Final gate: `go test ./...`
+- Acceptance rule: no numeric drift beyond current tolerances; no public API changes.
+
+### Out of Scope
+- PCA/moments/skewness/kurtosis algorithmic redesign.
+- Any behavior change beyond pure refactor (unless explicitly approved).
