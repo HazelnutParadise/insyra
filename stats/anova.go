@@ -36,6 +36,27 @@ type RepeatedMeasuresANOVAResult struct {
 	TotalSS float64
 }
 
+func newANOVAComponent(sumOfSquares float64, df int, f, p, eta float64) ANOVAResultComponent {
+	return ANOVAResultComponent{
+		SumOfSquares: sumOfSquares,
+		DF:           df,
+		F:            f,
+		P:            p,
+		EtaSquared:   eta,
+	}
+}
+
+func newANOVAWithinComponent(sumOfSquares float64, df int) ANOVAResultComponent {
+	return newANOVAComponent(sumOfSquares, df, math.NaN(), math.NaN(), math.NaN())
+}
+
+func newANOVABetweenComponent(ssEffect float64, dfEffect int, ssWithin float64, dfWithin int) ANOVAResultComponent {
+	f := fRatio(ssEffect, dfEffect, ssWithin, dfWithin)
+	p := fOneTailedPValue(f, float64(dfEffect), float64(dfWithin))
+	eta := etaSquared(ssEffect, ssWithin)
+	return newANOVAComponent(ssEffect, dfEffect, f, p, eta)
+}
+
 func OneWayANOVA(groups ...insyra.IDataList) *OneWayANOVAResult {
 	if len(groups) < 2 {
 		insyra.LogWarning("stats", "OneWayANOVA", "At least two groups are required")
@@ -71,8 +92,8 @@ func OneWayANOVA(groups ...insyra.IDataList) *OneWayANOVAResult {
 	}
 
 	return &OneWayANOVAResult{
-		Factor:  ANOVAResultComponent{stats.SSB, stats.DFB, stats.F, stats.P, stats.Eta},
-		Within:  ANOVAResultComponent{stats.SSW, stats.DFW, math.NaN(), math.NaN(), math.NaN()},
+		Factor:  newANOVAComponent(stats.SSB, stats.DFB, stats.F, stats.P, stats.Eta),
+		Within:  newANOVAWithinComponent(stats.SSW, stats.DFW),
 		TotalSS: stats.SSB + stats.SSW,
 	}
 }
@@ -187,15 +208,15 @@ func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) *T
 	DFAxB := DFA * DFB
 	DFW := totalCount - factorALevels*factorBLevels
 
-	FA := fRatio(SSA, DFA, SSW, DFW)
-	FB := fRatio(SSB, DFB, SSW, DFW)
-	FAB := fRatio(SSAB, DFAxB, SSW, DFW)
+	factorA := newANOVABetweenComponent(SSA, DFA, SSW, DFW)
+	factorB := newANOVABetweenComponent(SSB, DFB, SSW, DFW)
+	interaction := newANOVABetweenComponent(SSAB, DFAxB, SSW, DFW)
 
 	return &TwoWayANOVAResult{
-		FactorA:     ANOVAResultComponent{SSA, DFA, FA, fOneTailedPValue(FA, float64(DFA), float64(DFW)), etaSquared(SSA, SSW)},
-		FactorB:     ANOVAResultComponent{SSB, DFB, FB, fOneTailedPValue(FB, float64(DFB), float64(DFW)), etaSquared(SSB, SSW)},
-		Interaction: ANOVAResultComponent{SSAB, DFAxB, FAB, fOneTailedPValue(FAB, float64(DFAxB), float64(DFW)), etaSquared(SSAB, SSW)},
-		Within:      ANOVAResultComponent{SSW, DFW, math.NaN(), math.NaN(), math.NaN()},
+		FactorA:     factorA,
+		FactorB:     factorB,
+		Interaction: interaction,
+		Within:      newANOVAWithinComponent(SSW, DFW),
 		TotalSS:     SSA + SSB + SSAB + SSW,
 	}
 }
@@ -273,9 +294,9 @@ func RepeatedMeasuresANOVA(subjects ...insyra.IDataList) *RepeatedMeasuresANOVAR
 	P := fOneTailedPValue(F, float64(DFBetween), float64(DFWithin))
 
 	return &RepeatedMeasuresANOVAResult{
-		Factor:  ANOVAResultComponent{ssBetween, DFBetween, F, P, ssBetween / ssTotal},
-		Subject: ANOVAResultComponent{ssSubjects, DFSubjects, math.NaN(), math.NaN(), math.NaN()},
-		Within:  ANOVAResultComponent{SSWithin, DFWithin, math.NaN(), math.NaN(), math.NaN()},
+		Factor:  newANOVAComponent(ssBetween, DFBetween, F, P, ssBetween/ssTotal),
+		Subject: newANOVAWithinComponent(ssSubjects, DFSubjects),
+		Within:  newANOVAWithinComponent(SSWithin, DFWithin),
 		TotalSS: ssTotal,
 	}
 }

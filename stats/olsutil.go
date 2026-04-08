@@ -103,6 +103,15 @@ func computeCoeffInference(coeffs []float64, xtxInv [][]float64, mse, df float64
 	return standardErrors, tValues, pValues
 }
 
+func inferTwoCoeffStats(intercept, slope, seIntercept, seSlope, df float64) (tIntercept, tSlope, pIntercept, pSlope float64, ciIntercept, ciSlope [2]float64) {
+	tIntercept = intercept / seIntercept
+	tSlope = slope / seSlope
+	pIntercept = tTwoTailedPValue(tIntercept, df)
+	pSlope = tTwoTailedPValue(tSlope, df)
+	ciIntercept, ciSlope = buildTwoCoeffCIs(intercept, slope, seIntercept, seSlope, df)
+	return
+}
+
 func buildTwoCoeffCIs(intercept, slope, seIntercept, seSlope, df float64) (ciIntercept, ciSlope [2]float64) {
 	if df <= 0 {
 		return nanCI(), nanCI()

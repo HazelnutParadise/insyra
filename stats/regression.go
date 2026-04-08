@@ -277,12 +277,7 @@ func ExponentialRegression(dlY, dlX insyra.IDataList) *ExponentialRegressionResu
 	seLnA := math.Sqrt(mseLog * (1.0/n + meanX*meanX/sumXMinusMeanXSquared))
 	seA := a * seLnA
 
-	tValB := b / seB
-	tValA := a / seA
-	pValB := tTwoTailedPValue(tValB, df)
-	pValA := tTwoTailedPValue(tValA, df)
-
-	ciIntercept, ciSlope := buildTwoCoeffCIs(a, b, seA, seB, df)
+	tValA, tValB, pValA, pValB, ciIntercept, ciSlope := inferTwoCoeffStats(a, b, seA, seB, df)
 
 	return &ExponentialRegressionResult{
 		Intercept:                   a,
@@ -360,12 +355,7 @@ func LogarithmicRegression(dlY, dlX insyra.IDataList) *LogarithmicRegressionResu
 	mse := sse / df
 	seB := math.Sqrt(mse / sxxLX)
 	seA := math.Sqrt(mse * (1.0/n + meanLX*meanLX/sxxLX))
-	tValB := b / seB
-	tValA := a / seA
-	pValB := tTwoTailedPValue(tValB, df)
-	pValA := tTwoTailedPValue(tValA, df)
-
-	ciIntercept, ciSlope := buildTwoCoeffCIs(a, b, seA, seB, df)
+	tValA, tValB, pValA, pValB, ciIntercept, ciSlope := inferTwoCoeffStats(a, b, seA, seB, df)
 
 	return &LogarithmicRegressionResult{
 		Intercept:                   a,

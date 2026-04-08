@@ -39,22 +39,9 @@ func SingleSampleZTest(data insyra.IDataList, mu float64, sigma float64, alterna
 	confidenceLevel = resolveConfidenceLevel(confidenceLevel)
 	marginOfError := zMarginOfError(confidenceLevel, standardError)
 
-	var lowerCI, upperCI float64
-	switch alternative {
-	case TwoSided:
-		lowerCI = mean - marginOfError
-		upperCI = mean + marginOfError
-	case Greater:
-		lowerCI = mean - marginOfError
-		upperCI = math.Inf(1)
-	case Less:
-		lowerCI = math.Inf(-1)
-		upperCI = mean + marginOfError
-	}
-
 	effectSize := math.Abs(mean-mu) / sigma
 	effectSizes := cohenDEffectSizes(effectSize)
-	ci := &[2]float64{lowerCI, upperCI}
+	ci := ciByAlternative(mean, marginOfError, alternative)
 
 	return &ZTestResult{
 		testResultBase: testResultBase{
@@ -107,23 +94,10 @@ func TwoSampleZTest(data1, data2 insyra.IDataList, sigma1, sigma2 float64, alter
 	confidenceLevel = resolveConfidenceLevel(confidenceLevel)
 	marginOfError := zMarginOfError(confidenceLevel, standardError)
 
-	var lowerCI, upperCI float64
-	switch alternative {
-	case TwoSided:
-		lowerCI = meanDiff - marginOfError
-		upperCI = meanDiff + marginOfError
-	case Greater:
-		lowerCI = meanDiff - marginOfError
-		upperCI = math.Inf(1)
-	case Less:
-		lowerCI = math.Inf(-1)
-		upperCI = meanDiff + marginOfError
-	}
-
 	pooledSigma := math.Sqrt((n1Float*sigma1Sq + n2Float*sigma2Sq) / (n1Float + n2Float))
 	effectSize := math.Abs(meanDiff) / pooledSigma
 	effectSizes := cohenDEffectSizes(effectSize)
-	ci := &[2]float64{lowerCI, upperCI}
+	ci := ciByAlternative(meanDiff, marginOfError, alternative)
 
 	return &ZTestResult{
 		testResultBase: testResultBase{

@@ -14,6 +14,23 @@ func symmetricCI(center, margin float64) *[2]float64 {
 	return &ci
 }
 
+func ciByAlternative(center, margin float64, alternative AlternativeHypothesis) *[2]float64 {
+	lower, upper := 0.0, 0.0
+	switch alternative {
+	case TwoSided:
+		lower = center - margin
+		upper = center + margin
+	case Greater:
+		lower = center - margin
+		upper = math.Inf(1)
+	case Less:
+		lower = math.Inf(-1)
+		upper = center + margin
+	}
+	ci := [2]float64{lower, upper}
+	return &ci
+}
+
 func nanCI() [2]float64 {
 	return [2]float64{math.NaN(), math.NaN()}
 }
