@@ -7,7 +7,6 @@ import (
 	"sync"
 
 	"github.com/HazelnutParadise/insyra"
-	"gonum.org/v1/gonum/stat/distuv"
 )
 
 type TTestResult struct {
@@ -45,28 +44,19 @@ func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...flo
 		return nil
 	}
 
-	standardError := stddev / math.Sqrt(float64(n))
+	standardError := sampleSE(stddev, float64(n))
 	tValue := (mean - mu) / standardError
 	df := float64(n - 1)
-	pValue := calculateTPValue(tValue, df)
+	pValue := tTwoTailedPValue(tValue, df)
 
-	// Handle optional confidence level parameter
-	var cl float64
+	var rawCL float64
 	if len(confidenceLevel) > 0 {
-		cl = confidenceLevel[0]
-	} else {
-		cl = defaultConfidenceLevel
+		rawCL = confidenceLevel[0]
 	}
+	cl := resolveConfidenceLevel(rawCL)
 
-	if cl <= 0 || cl >= 1 {
-		cl = defaultConfidenceLevel
-	}
-
-	tDist := distuv.StudentsT{Mu: 0, Sigma: 1, Nu: df}
-	tCritical := tDist.Quantile(1 - (1-cl)/2)
-	marginOfError := tCritical * standardError
-
-	ci := &[2]float64{mean - marginOfError, mean + marginOfError}
+	marginOfError := tMarginOfError(cl, df, standardError)
+	ci := symmetricCI(mean, marginOfError)
 
 	// Handle constant data (stddev == 0)
 	if stddev == 0 {
@@ -74,7 +64,7 @@ func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...flo
 			effectSize := 0.0
 			tValue = math.NaN()
 			pValue = math.NaN()
-			effectSizes := []EffectSizeEntry{{Type: "cohen_d", Value: effectSize}}
+			effectSizes := cohenDEffectSizes(effectSize)
 			return &TTestResult{
 				testResultBase: testResultBase{
 					Statistic:   tValue,
@@ -91,7 +81,7 @@ func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...flo
 			effectSize := math.Inf(int(math.Copysign(1, mean-mu)))
 			tValue = math.Inf(int(math.Copysign(1, mean-mu)))
 			pValue = 0
-			effectSizes := []EffectSizeEntry{{Type: "cohen_d", Value: effectSize}}
+			effectSizes := cohenDEffectSizes(effectSize)
 			return &TTestResult{
 				testResultBase: testResultBase{
 					Statistic:   tValue,
@@ -107,9 +97,7 @@ func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...flo
 	}
 
 	effectSize := (mean - mu) / stddev //Preserve the sign
-	effectSizes := []EffectSizeEntry{
-		{Type: "cohen_d", Value: effectSize},
-	}
+	effectSizes := cohenDEffectSizes(effectSize)
 
 	return &TTestResult{
 		testResultBase: testResultBase{
@@ -167,53 +155,34 @@ func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenc
 	var standardError float64
 	var df float64
 
+	pooledVar := math.NaN()
 	if equalVariance {
-		poolVar := ((float64(n1-1)*var1 + float64(n2-1)*var2) / float64(n1+n2-2))
-		standardError = math.Sqrt(poolVar * (1/n1Float + 1/n2Float))
+		standardError, pooledVar = pooledSE(var1, var2, n1Float, n2Float)
 		df = float64(n1 + n2 - 2)
 	} else {
-		se1 := var1 / n1Float
-		se2 := var2 / n2Float
-		standardError = math.Sqrt(se1 + se2)
-
-		seSum := se1 + se2
-		num := seSum * seSum
-		den := (se1 * se1 / (n1Float - 1)) + (se2 * se2 / (n2Float - 1))
-		df = num / den
+		standardError = twoSampleSE(var1, var2, n1Float, n2Float)
+		df = welchDF(var1, var2, n1Float, n2Float)
 	}
 	tValue := meanDiff / standardError
-	pValue := calculateTPValue(tValue, df)
+	pValue := tTwoTailedPValue(tValue, df)
 
-	// Handle optional confidence level parameter
-	var cl float64
+	var rawCL float64
 	if len(confidenceLevel) > 0 {
-		cl = confidenceLevel[0]
-	} else {
-		cl = defaultConfidenceLevel
+		rawCL = confidenceLevel[0]
 	}
+	cl := resolveConfidenceLevel(rawCL)
 
-	if cl <= 0 || cl >= 1 {
-		cl = defaultConfidenceLevel
-	}
-
-	tDist := distuv.StudentsT{Mu: 0, Sigma: 1, Nu: df}
-	tCritical := tDist.Quantile(1 - (1-cl)/2)
-	marginOfError := tCritical * standardError
-
-	ci := &[2]float64{meanDiff - marginOfError, meanDiff + marginOfError}
+	marginOfError := tMarginOfError(cl, df, standardError)
+	ci := symmetricCI(meanDiff, marginOfError)
 
 	var effectSize float64
 	if equalVariance {
-		pooledVar := ((n1Float-1)*var1 + (n2Float-1)*var2) / (n1Float + n2Float - 2)
-		pooledStd := math.Sqrt(pooledVar)
-		effectSize = meanDiff / pooledStd // Preserve the sign
+		effectSize = meanDiff / math.Sqrt(pooledVar) // Preserve the sign
 	} else {
 		effectSize = meanDiff / math.Sqrt((var1+var2)/2) // Preserve the sign
 	}
 
-	effectSizes := []EffectSizeEntry{
-		{Type: "cohen_d", Value: effectSize},
-	}
+	effectSizes := cohenDEffectSizes(effectSize)
 
 	return &TTestResult{
 		testResultBase: testResultBase{
@@ -327,33 +296,22 @@ func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel ...float64) *TTe
 	meanDiff := sum / nFloat
 	variance := (sumSq - sum*sum/nFloat) / (nFloat - 1)
 	stddevDiff := math.Sqrt(variance)
-	standardError := stddevDiff / math.Sqrt(nFloat)
+	standardError := sampleSE(stddevDiff, nFloat)
 	tValue := meanDiff / standardError
 	df := nFloat - 1
-	pValue := calculateTPValue(tValue, df)
+	pValue := tTwoTailedPValue(tValue, df)
 
-	// Handle optional confidence level parameter
-	var cl float64
+	var rawCL float64
 	if len(confidenceLevel) > 0 {
-		cl = confidenceLevel[0]
-	} else {
-		cl = defaultConfidenceLevel
+		rawCL = confidenceLevel[0]
 	}
+	cl := resolveConfidenceLevel(rawCL)
 
-	if cl <= 0 || cl >= 1 {
-		cl = defaultConfidenceLevel
-	}
-
-	tDist := distuv.StudentsT{Mu: 0, Sigma: 1, Nu: df}
-	tCritical := tDist.Quantile(1 - (1-cl)/2)
-	marginOfError := tCritical * standardError
-
-	ci := &[2]float64{meanDiff - marginOfError, meanDiff + marginOfError}
+	marginOfError := tMarginOfError(cl, df, standardError)
+	ci := symmetricCI(meanDiff, marginOfError)
 
 	effectSize := math.Abs(meanDiff) / stddevDiff
-	effectSizes := []EffectSizeEntry{
-		{Type: "cohen_d", Value: effectSize},
-	}
+	effectSizes := cohenDEffectSizes(effectSize)
 
 	return &TTestResult{
 		testResultBase: testResultBase{
@@ -366,20 +324,4 @@ func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel ...float64) *TTe
 		MeanDiff: &meanDiff,
 		N:        n,
 	}
-}
-
-func calculateTPValue(tValue float64, df float64) float64 {
-	if df <= 0 {
-		return 1.0
-	}
-
-	tDist := distuv.StudentsT{
-		Mu:    0,
-		Sigma: 1,
-		Nu:    df,
-	}
-
-	tAbs := math.Abs(tValue)
-	cdfValue := tDist.CDF(tAbs)
-	return 2 * (1 - cdfValue)
 }

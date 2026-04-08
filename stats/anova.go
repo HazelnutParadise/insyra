@@ -5,7 +5,6 @@ import (
 
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/parallel"
-	"gonum.org/v1/gonum/stat/distuv"
 )
 
 type ANOVAResultComponent struct {
@@ -43,66 +42,38 @@ func OneWayANOVA(groups ...insyra.IDataList) *OneWayANOVAResult {
 		return nil
 	}
 
-	totalSum := 0.0
-	totalCount := 0
+	values := make([]float64, 0)
+	labels := make([]int, 0)
 	for i, g := range groups {
-		var groupLen int
-		var groupSum float64
+		var groupData []any
 		g.AtomicDo(func(gdl *insyra.DataList) {
-			groupLen = gdl.Len()
-			groupSum = gdl.Sum()
+			groupData = gdl.Data()
 		})
 
-		if groupLen == 0 {
+		if len(groupData) == 0 {
 			insyra.LogWarning("stats", "OneWayANOVA", "Group %d is empty", i)
 			return nil
 		}
-		totalSum += groupSum
-		totalCount += groupLen
+		for j, v := range groupData {
+			x, ok := insyra.ToFloat64Safe(v)
+			if !ok {
+				insyra.LogWarning("stats", "OneWayANOVA", "Invalid data at group %d index %d", i, j)
+				return nil
+			}
+			values = append(values, x)
+			labels = append(labels, i)
+		}
 	}
 
-	totalMean := totalSum / float64(totalCount)
-
-	var SSB, SSW float64
-
-	parallel.GroupUp(func() {
-		for _, g := range groups {
-			var groupMean float64
-			var groupLen int
-			g.AtomicDo(func(gdl *insyra.DataList) {
-				groupMean = gdl.Mean()
-				groupLen = gdl.Len()
-			})
-			SSB += float64(groupLen) * (groupMean - totalMean) * (groupMean - totalMean)
-		}
-	}, func() {
-		for i, g := range groups {
-			var groupData []any
-			var groupMean float64
-			g.AtomicDo(func(gdl *insyra.DataList) {
-				groupMean = gdl.Mean()
-				groupData = gdl.Data()
-			})
-			for j, v := range groupData {
-				x, ok := insyra.ToFloat64Safe(v)
-				if !ok {
-					insyra.LogWarning("stats", "OneWayANOVA", "Invalid data at group %d index %d", i, j)
-					return
-				}
-				SSW += (x - groupMean) * (x - groupMean)
-			}
-		}
-	}).Run().AwaitResult()
-
-	DFB := len(groups) - 1
-	DFW := totalCount - len(groups)
-	F := (SSB / float64(DFB)) / (SSW / float64(DFW))
-	P := 1 - distuv.F{D1: float64(DFB), D2: float64(DFW)}.CDF(F)
+	stats := oneWayANOVAFromSlices(values, labels, len(groups))
+	if stats == nil {
+		return nil
+	}
 
 	return &OneWayANOVAResult{
-		Factor:  ANOVAResultComponent{SSB, DFB, F, P, SSB / (SSB + SSW)},
-		Within:  ANOVAResultComponent{SSW, DFW, math.NaN(), math.NaN(), math.NaN()},
-		TotalSS: SSB + SSW,
+		Factor:  ANOVAResultComponent{stats.SSB, stats.DFB, stats.F, stats.P, stats.Eta},
+		Within:  ANOVAResultComponent{stats.SSW, stats.DFW, math.NaN(), math.NaN(), math.NaN()},
+		TotalSS: stats.SSB + stats.SSW,
 	}
 }
 
@@ -216,18 +187,14 @@ func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) *T
 	DFAxB := DFA * DFB
 	DFW := totalCount - factorALevels*factorBLevels
 
-	FA := SSA / float64(DFA) / (SSW / float64(DFW))
-	FB := SSB / float64(DFB) / (SSW / float64(DFW))
-	FAB := SSAB / float64(DFAxB) / (SSW / float64(DFW))
-
-	fd := func(d1, d2 float64, f float64) float64 {
-		return 1 - distuv.F{D1: d1, D2: d2}.CDF(f)
-	}
+	FA := fRatio(SSA, DFA, SSW, DFW)
+	FB := fRatio(SSB, DFB, SSW, DFW)
+	FAB := fRatio(SSAB, DFAxB, SSW, DFW)
 
 	return &TwoWayANOVAResult{
-		FactorA:     ANOVAResultComponent{SSA, DFA, FA, fd(float64(DFA), float64(DFW), FA), SSA / (SSA + SSW)},
-		FactorB:     ANOVAResultComponent{SSB, DFB, FB, fd(float64(DFB), float64(DFW), FB), SSB / (SSB + SSW)},
-		Interaction: ANOVAResultComponent{SSAB, DFAxB, FAB, fd(float64(DFAxB), float64(DFW), FAB), SSAB / (SSAB + SSW)},
+		FactorA:     ANOVAResultComponent{SSA, DFA, FA, fOneTailedPValue(FA, float64(DFA), float64(DFW)), etaSquared(SSA, SSW)},
+		FactorB:     ANOVAResultComponent{SSB, DFB, FB, fOneTailedPValue(FB, float64(DFB), float64(DFW)), etaSquared(SSB, SSW)},
+		Interaction: ANOVAResultComponent{SSAB, DFAxB, FAB, fOneTailedPValue(FAB, float64(DFAxB), float64(DFW)), etaSquared(SSAB, SSW)},
 		Within:      ANOVAResultComponent{SSW, DFW, math.NaN(), math.NaN(), math.NaN()},
 		TotalSS:     SSA + SSB + SSAB + SSW,
 	}
@@ -302,11 +269,8 @@ func RepeatedMeasuresANOVA(subjects ...insyra.IDataList) *RepeatedMeasuresANOVAR
 	DFSubjects := len(subjects) - 1
 	DFWithin := DFBetween * DFSubjects
 
-	MSBetween := ssBetween / float64(DFBetween)
-	MSWithin := SSWithin / float64(DFWithin)
-
-	F := MSBetween / MSWithin
-	P := 1 - distuv.F{D1: float64(DFBetween), D2: float64(DFWithin)}.CDF(F)
+	F := fRatio(ssBetween, DFBetween, SSWithin, DFWithin)
+	P := fOneTailedPValue(F, float64(DFBetween), float64(DFWithin))
 
 	return &RepeatedMeasuresANOVAResult{
 		Factor:  ANOVAResultComponent{ssBetween, DFBetween, F, P, ssBetween / ssTotal},

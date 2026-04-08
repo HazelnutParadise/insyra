@@ -7,7 +7,6 @@ import (
 
 	"github.com/HazelnutParadise/Go-Utils/conv"
 	"github.com/HazelnutParadise/insyra"
-	"gonum.org/v1/gonum/stat/distuv"
 )
 
 type ChiSquareTestResult struct {
@@ -39,8 +38,7 @@ func calculateChiSquare(observed, expected []float64, df int) (*ChiSquareTestRes
 		chiSquare += (observed[i] - expected[i]) * (observed[i] - expected[i]) / expected[i]
 	}
 
-	chiDist := distuv.ChiSquared{K: float64(df)}
-	pValue := 1 - chiDist.CDF(chiSquare)
+	pValue := chiSquaredPValue(chiSquare, float64(df))
 
 	float64DF := float64(df)
 	return &ChiSquareTestResult{

@@ -4,7 +4,6 @@ import (
 	"math"
 
 	"github.com/HazelnutParadise/insyra"
-	"gonum.org/v1/gonum/stat/distuv"
 )
 
 type FTestResult struct {
@@ -12,7 +11,7 @@ type FTestResult struct {
 	DF2 float64 // degree of freedom for the second group
 }
 
-// FTestForVarianceEquality performs an F-test for variance equality
+// FTestForVarianceEquality performs an F-test for variance equality.
 func FTestForVarianceEquality(data1, data2 insyra.IDataList) *FTestResult {
 	var var1, var2 float64
 	var len1, len2 int
@@ -26,7 +25,6 @@ func FTestForVarianceEquality(data1, data2 insyra.IDataList) *FTestResult {
 		})
 	})
 
-	// 計算 F 值
 	var fValue float64
 	if var1 > var2 {
 		fValue = var1 / var2
@@ -34,13 +32,9 @@ func FTestForVarianceEquality(data1, data2 insyra.IDataList) *FTestResult {
 		fValue = var2 / var1
 	}
 
-	// 計算自由度
 	df1 := float64(len1 - 1)
 	df2 := float64(len2 - 1)
-
-	// 使用卡方分佈計算 P 值
-	fDist := distuv.F{D1: df1, D2: float64(df2)}
-	pValue := 2 * math.Min(fDist.CDF(fValue), 1-fDist.CDF(fValue)) // 使用雙尾檢定
+	pValue := fTwoTailedPValue(fValue, df1, df2)
 
 	return &FTestResult{
 		testResultBase: testResultBase{
@@ -52,9 +46,7 @@ func FTestForVarianceEquality(data1, data2 insyra.IDataList) *FTestResult {
 	}
 }
 
-// LeveneTest performs Levene's Test for equality of variances across multiple groups.
-// Input: slice of *insyra.DataList, each representing a group.
-// Output: *FTestResult
+// LeveneTest performs Levene's test for equality of variances across groups.
 func LeveneTest(groups []insyra.IDataList) *FTestResult {
 	k := len(groups)
 	if k < 2 {
@@ -79,12 +71,10 @@ func LeveneTest(groups []insyra.IDataList) *FTestResult {
 		})
 	}
 
-	// 對 |x - median| 做單因子 ANOVA
-	return oneWayANOVA(allDiffs, groupLabels, k)
+	return oneWayANOVAForLevene(allDiffs, groupLabels, k)
 }
 
 // BartlettTest performs Bartlett's test for equality of variances.
-// Input: slice of *insyra.DataList, each representing a group.
 func BartlettTest(groups []insyra.IDataList) *FTestResult {
 	k := len(groups)
 	if k < 2 {
@@ -92,9 +82,7 @@ func BartlettTest(groups []insyra.IDataList) *FTestResult {
 		return nil
 	}
 
-	var totalN int
 	var pooledLogVar float64
-	var sumLogVar float64
 	var sumNMinus1 int
 	var weight float64
 
@@ -110,11 +98,13 @@ func BartlettTest(groups []insyra.IDataList) *FTestResult {
 			continue
 		}
 
-		totalN += n
 		sumNMinus1 += n - 1
 		pooledLogVar += float64(n-1) * math.Log(v)
-		sumLogVar += float64(n - 1)
 		weight += 1.0 / float64(n-1)
+	}
+
+	if sumNMinus1 == 0 {
+		return nil
 	}
 
 	meanVar := 0.0
@@ -130,7 +120,7 @@ func BartlettTest(groups []insyra.IDataList) *FTestResult {
 	chiSquared := T / correction
 
 	df := float64(k - 1)
-	pValue := 1 - distuv.ChiSquared{K: df}.CDF(chiSquared)
+	pValue := chiSquaredPValue(chiSquared, df)
 
 	return &FTestResult{
 		testResultBase: testResultBase{
@@ -143,14 +133,9 @@ func BartlettTest(groups []insyra.IDataList) *FTestResult {
 }
 
 // FTestForRegression performs an overall F-test for a regression model.
-// ssr: regression sum of squares
-// sse: error sum of squares
-// df1: degrees of freedom for the model (number of predictors)
-// df2: degrees of freedom for residuals (n - k - 1)
 func FTestForRegression(ssr, sse float64, df1, df2 int) *FTestResult {
-	fValue := (ssr / float64(df1)) / (sse / float64(df2))
-	fDist := distuv.F{D1: float64(df1), D2: float64(df2)}
-	pValue := 1 - fDist.CDF(fValue)
+	fValue := fRatio(ssr, df1, sse, df2)
+	pValue := fOneTailedPValue(fValue, float64(df1), float64(df2))
 
 	df1f := float64(df1)
 	df2f := float64(df2)
@@ -165,16 +150,12 @@ func FTestForRegression(ssr, sse float64, df1, df2 int) *FTestResult {
 }
 
 // FTestForNestedModels compares two nested regression models.
-// rssReduced: residual sum of squares of reduced model
-// rssFull: residual sum of squares of full model
-// dfReduced, dfFull: degrees of freedom of both models
 func FTestForNestedModels(rssReduced, rssFull float64, dfReduced, dfFull int) *FTestResult {
 	numeratorDF := dfReduced - dfFull
 	denominatorDF := dfFull
 
-	fValue := ((rssReduced - rssFull) / float64(numeratorDF)) / (rssFull / float64(denominatorDF))
-	fDist := distuv.F{D1: float64(numeratorDF), D2: float64(denominatorDF)}
-	pValue := 1 - fDist.CDF(fValue)
+	fValue := fRatio(rssReduced-rssFull, numeratorDF, rssFull, denominatorDF)
+	pValue := fOneTailedPValue(fValue, float64(numeratorDF), float64(denominatorDF))
 
 	df1f := float64(numeratorDF)
 	df2f := float64(denominatorDF)
@@ -188,54 +169,18 @@ func FTestForNestedModels(rssReduced, rssFull float64, dfReduced, dfFull int) *F
 	}
 }
 
-// 之後用正式ANOVA替代
-// oneWayANOVA 用於 LeveneTest 中
-func oneWayANOVA(values []float64, labels []int, k int) *FTestResult {
-	if len(values) != len(labels) {
+func oneWayANOVAForLevene(values []float64, labels []int, k int) *FTestResult {
+	stats := oneWayANOVAFromSlices(values, labels, k)
+	if stats == nil {
 		return nil
 	}
 
-	n := len(values)
-	groupSums := make([]float64, k)
-	groupCounts := make([]int, k)
-	totalSum := 0.0
-
-	for i, v := range values {
-		group := labels[i]
-		groupSums[group] += v
-		groupCounts[group]++
-		totalSum += v
-	}
-
-	totalMean := totalSum / float64(n)
-
-	// 計算組間平方和（SSB）
-	ssb := 0.0
-	for i := range k {
-		mean := groupSums[i] / float64(groupCounts[i])
-		ssb += float64(groupCounts[i]) * (mean - totalMean) * (mean - totalMean)
-	}
-
-	// 計算組內平方和（SSW）
-	ssw := 0.0
-	for i, v := range values {
-		group := labels[i]
-		mean := groupSums[group] / float64(groupCounts[group])
-		ssw += (v - mean) * (v - mean)
-	}
-
-	df1 := float64(k - 1)
-	df2 := float64(n - k)
-	msb := ssb / df1
-	msw := ssw / df2
-	fValue := msb / msw
-
-	pValue := 1 - distuv.F{D1: df1, D2: df2}.CDF(fValue)
-
+	df1 := float64(stats.DFB)
+	df2 := float64(stats.DFW)
 	return &FTestResult{
 		testResultBase: testResultBase{
-			Statistic: fValue,
-			PValue:    pValue,
+			Statistic: stats.F,
+			PValue:    stats.P,
 			DF:        &df1,
 		},
 		DF2: df2,
