@@ -94,7 +94,7 @@ if err != nil {
 }
 corrMatrix.Show() // Display the correlation matrix
 pMatrix.Show()    // Display the p-value matrix
-fmt.Printf("Bartlett's test: ?簡=%.4f, p=%.4f, df=%d\n", chiSquare, pValue, df)
+fmt.Printf("Bartlett's test: chi-square=%.4f, p=%.4f, df=%d\n", chiSquare, pValue, df)
 corrMatrix.ToCSV("correlation_matrix.csv", true, true, true) // Export to CSV
 pMatrix.ToCSV("correlation_matrix_p.csv", true, true, true)  // Export p-values to CSV
 ```
@@ -222,7 +222,7 @@ chiSquare, pValue, df, err := stats.BartlettSphericity(dataTable)
 if err != nil {
     log.Fatal(err)
 }
-fmt.Printf("Bartlett's test: ?簡=%.4f, p=%.4f, df=%d\n", chiSquare, pValue, df)
+fmt.Printf("Bartlett's test: chi-square=%.4f, p=%.4f, df=%d\n", chiSquare, pValue, df)
 // A p-value < 0.05 generally indicates that the correlation matrix is significantly
 // different from an identity matrix, making it suitable for factor analysis
 ```
@@ -826,105 +826,65 @@ fmt.Printf("Explained variance: %.2f%%\n", result.ExplainedVariance[0])
 func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) (*LinearRegressionResult, error)
 ```
 
-**Description:** Performs ordinary least-squares linear regression. Supports both simple (one X) and multiple (multiple X) linear regression.
+**Description:** Performs ordinary least-squares linear regression. Supports both simple regression (one predictor) and multiple regression (multiple predictors).
 
 **Parameters:**
 
-- `dlY`: Dependent variable (IDataList).
-- `dlXs`: Independent variable(s) (variadic IDataList). At least one independent variable must be provided. All IDataList inputs must have the same length, and the number of observations must be greater than the number of independent variables.
+- `dlY`: Dependent variable.
+- `dlXs`: One or more independent variables. All inputs must have the same length.
 
 **Returns:**
 
-- `*LinearRegressionResult`: Return value.
+- `*LinearRegressionResult`: Model coefficients, inference statistics, residuals, and fit metrics.
 
 #### Linear Regression Result
 
 ```go
 type LinearRegressionResult struct {
-    // Legacy fields for simple regression (when only one dlX is provided)
-    Slope                  float64 // Regression coefficient 帣??(slope)
-    Intercept              float64 // Regression coefficient 帣? (intercept)
-    StandardError          float64 // Standard error of the slope (SE(帣??)
-    StandardErrorIntercept float64 // Standard error of the intercept (SE(帣?))    TValue                 float64 // t-statistic for the slope (帣??
-    TValueIntercept        float64 // t-statistic for the intercept (帣?)
-    PValue                 float64 // Two-tailed p-value for the slope (帣??
-    PValueIntercept        float64 // Two-tailed p-value for the intercept (帣?)
+    // Simple-regression convenience fields (when len(dlXs) == 1)
+    Slope                  float64
+    Intercept              float64
+    StandardError          float64
+    StandardErrorIntercept float64
+    TValue                 float64
+    TValueIntercept        float64
+    PValue                 float64
+    PValueIntercept        float64
 
-    // Legacy confidence intervals for simple regression compatibility
-    ConfidenceIntervalIntercept [2]float64 // 95% confidence interval for intercept [lower, upper]
-    ConfidenceIntervalSlope     [2]float64 // 95% confidence interval for slope [lower, upper]
+    ConfidenceIntervalIntercept [2]float64
+    ConfidenceIntervalSlope     [2]float64
 
-    // Extended fields for multiple regression (and also populated for simple regression)
-    Coefficients   []float64 // Slice of coefficients: [帣?, 帣?? ..., 帣? (intercept followed by slopes)
-    StandardErrors []float64 // Slice of standard errors for each coefficient
-    TValues        []float64 // Slice of t-statistics for each coefficient
-    PValues        []float64 // Slice of two-tailed p-values for each coefficient
+    // General fields (available for both simple and multiple regression)
+    Coefficients        []float64
+    StandardErrors      []float64
+    TValues             []float64
+    PValues             []float64
+    ConfidenceIntervals [][2]float64
 
-    // Confidence intervals for coefficients (95% by default)
-    ConfidenceIntervals [][2]float64 // 95% confidence intervals for each coefficient [lower, upper]
-
-    // Common fields for both simple and multiple regression
-    Residuals        []float64 // Residuals (y廘???韁廘?
-    RSquared         float64   // Coefficient of determination (R簡)
-    AdjustedRSquared float64   // Adjusted R簡
+    Residuals        []float64
+    RSquared         float64
+    AdjustedRSquared float64
 }
 ```
 
-**Fields in LinearRegressionResult**:
-
-- **Legacy Fields (for simple regression, where `len(dlXs) == 1`)**:
-
-  - `Slope`: The slope of the regression line (帣??.
-  - `Intercept`: The y-intercept of the regression line (帣?).
-  - `StandardError`: The standard error of the slope coefficient.
-  - `StandardErrorIntercept`: The standard error of the intercept coefficient.
-  - `TValue`: The t-statistic for the slope, used to test its significance. - `TValueIntercept`: The t-statistic for the intercept, used to test its significance.
-  - `PValue`: The p-value associated with the t-statistic for the slope.
-  - `PValueIntercept`: The p-value associated with the t-statistic for the intercept.
-  - `ConfidenceIntervalIntercept`: The 95% confidence interval for the intercept `[lower_bound, upper_bound]`.
-  - `ConfidenceIntervalSlope`: The 95% confidence interval for the slope `[lower_bound, upper_bound]`.
-
-- **Extended Fields (for multiple regression, also available for simple regression)**:
-
-  - `Coefficients`: A slice containing all model coefficients. The first element (`Coefficients[0]`) is the intercept (帣?), and subsequent elements (`Coefficients[1:]`) are the coefficients for the independent variables (帣?? 帣?? ..., 帣??.
-  - `StandardErrors`: A slice of standard errors corresponding to each coefficient in `Coefficients`. - `TValues`: A slice of t-statistics corresponding to each coefficient.
-  - `PValues`: A slice of p-values corresponding to each t-statistic.
-  - `ConfidenceIntervals`: A slice of 95% confidence intervals for each coefficient. Each element is a `[2]float64` array containing `[lower_bound, upper_bound]`.
-
-- **Common Fields**:
-  - `Residuals`: A slice of the differences between the observed and predicted values for the dependent variable.
-  - `RSquared`: The proportion of the variance in the dependent variable that is predictable from the independent variable(s).
-  - `AdjustedRSquared`: R-squared adjusted for the number of predictors in the model.
-
-**Example (Simple Linear Regression)**:
+**Example (simple regression):**
 
 ```go
 y := insyra.NewDataList([]float64{1, 2, 3, 4, 5})
-x1 := insyra.NewDataList([]float64{2, 4, 5, 4, 5})
+x := insyra.NewDataList([]float64{2, 4, 5, 4, 5})
 
-result, err := stats.LinearRegression(y, x1)
-if err == nil {
-    fmt.Printf("Simple Linear Regression:\n")
-    fmt.Printf("  Intercept (帣?): %.4f (p=%.4f)\n", result.Intercept, result.PValueIntercept)
-    fmt.Printf("  Slope (帣??for x1): %.4f (p=%.4f)\n", result.Slope, result.PValue)
-    fmt.Printf("  R-squared: %.4f\n", result.RSquared)
-    fmt.Printf("  Adjusted R-squared: %.4f\n", result.AdjustedRSquared)
-
-    // Display 95% confidence intervals using clear field names
-    fmt.Printf("  95%% CI for Intercept: [%.4f, %.4f]\n",
-        result.ConfidenceIntervalIntercept[0], result.ConfidenceIntervalIntercept[1])
-    fmt.Printf("  95%% CI for Slope: [%.4f, %.4f]\n",
-        result.ConfidenceIntervalSlope[0], result.ConfidenceIntervalSlope[1])
-
-    // Alternative: using array format (useful for multiple regression)
-    // fmt.Printf("  95%% CI for Intercept: [%.4f, %.4f]\n",
-    //     result.ConfidenceIntervals[0][0], result.ConfidenceIntervals[0][1])
-    // fmt.Printf("  95%% CI for Slope: [%.4f, %.4f]\n",
-    //     result.ConfidenceIntervals[1][0], result.ConfidenceIntervals[1][1])
+result, err := stats.LinearRegression(y, x)
+if err != nil {
+    log.Fatal(err)
 }
+
+fmt.Printf("intercept=%.4f (p=%.4f)\n", result.Intercept, result.PValueIntercept)
+fmt.Printf("slope=%.4f (p=%.4f)\n", result.Slope, result.PValue)
+fmt.Printf("R-squared=%.4f\n", result.RSquared)
+fmt.Printf("95%% CI slope=[%.4f, %.4f]\n", result.ConfidenceIntervalSlope[0], result.ConfidenceIntervalSlope[1])
 ```
 
-**Example (Multiple Linear Regression)**:
+**Example (multiple regression):**
 
 ```go
 y := insyra.NewDataList([]float64{15, 25, 30, 35, 40, 50})
@@ -932,23 +892,18 @@ x1 := insyra.NewDataList([]float64{2, 3, 4, 5, 6, 7})
 x2 := insyra.NewDataList([]float64{1, 2, 2, 3, 3, 4})
 
 result, err := stats.LinearRegression(y, x1, x2)
-if err == nil {
-    fmt.Printf("\nMultiple Linear Regression:\n")
-    fmt.Printf("  Intercept (帣?): %.4f (p=%.4f)\n", result.Coefficients[0], result.PValues[0])
-    for i := 1; i < len(result.Coefficients); i++ {
-        fmt.Printf("  Slope (帣%d for x%d): %.4f (p=%.4f)\n", i, i, result.Coefficients[i], result.PValues[i])
-    }
-    fmt.Printf("  R-squared: %.4f\n", result.RSquared)
-    fmt.Printf("  Adjusted R-squared: %.4f\n", result.AdjustedRSquared)
+if err != nil {
+    log.Fatal(err)
+}
 
-    // Display 95% confidence intervals for all coefficients
-    fmt.Printf("  95%% Confidence Intervals:\n")
-    fmt.Printf("    Intercept: [%.4f, %.4f]\n",
-        result.ConfidenceIntervals[0][0], result.ConfidenceIntervals[0][1])
-    for i := 1; i < len(result.ConfidenceIntervals); i++ {
-        fmt.Printf("    帣%d: [%.4f, %.4f]\n", i,
-            result.ConfidenceIntervals[i][0], result.ConfidenceIntervals[i][1])
-    }
+for i := range result.Coefficients {
+    fmt.Printf("beta[%d]=%.4f, p=%.4f, CI=[%.4f, %.4f]\n",
+        i,
+        result.Coefficients[i],
+        result.PValues[i],
+        result.ConfidenceIntervals[i][0],
+        result.ConfidenceIntervals[i][1],
+    )
 }
 ```
 
@@ -958,48 +913,46 @@ if err == nil {
 func PolynomialRegression(dlY insyra.IDataList, dlX insyra.IDataList, degree int) (*PolynomialRegressionResult, error)
 ```
 
-**Description:** Perform polynomial regression analysis (y = a? + a? + a?簡 + ... + a???.
+**Description:** Fits a polynomial model:
+
+```text
+y = a0 + a1*x + a2*x^2 + ... + ak*x^k
+```
 
 **Parameters:**
 
-- `dlY`: Dependent variable data
-- `dlX`: Independent variable data
-- `degree`: Degree of the polynomial (??1)
+- `dlY`: Dependent variable.
+- `dlX`: Independent variable.
+- `degree`: Polynomial degree (`>= 1`).
 
 **Returns:**
 
-- `*PolynomialRegressionResult`: Return value.
+- `*PolynomialRegressionResult`: Coefficients, inference statistics, residuals, and fit metrics.
 
 #### Polynomial Regression Result
 
 ```go
 type PolynomialRegressionResult struct {
-    Coefficients     []float64 // Polynomial coefficients [a?, a?? a?? ...]
-    Degree           int       // Degree of polynomial
-    Residuals        []float64 // Residual values (y廘???韁廘?
-    RSquared         float64   // Coefficient of determination
-    AdjustedRSquared float64   // Adjusted R簡
-    StandardErrors   []float64 // Standard errors for each coefficient
-    TValues          []float64 // t statistics for each coefficient
-    PValues          []float64 // p-values for each coefficient
-
-    // Confidence intervals for coefficients (95% by default)
-    ConfidenceIntervals [][2]float64 // 95% confidence intervals for each coefficient [lower, upper]
+    Coefficients        []float64
+    Degree              int
+    Residuals           []float64
+    RSquared            float64
+    AdjustedRSquared    float64
+    StandardErrors      []float64
+    TValues             []float64
+    PValues             []float64
+    ConfidenceIntervals [][2]float64
 }
 ```
 
-**Example**:
+**Example:**
 
 ```go
-// Perform cubic polynomial regression: y = a? + a? + a?簡 + a?糧
-result, err := stats.PolynomialRegression(yData, xData, 3) // Corrected parameter order
+result, err := stats.PolynomialRegression(yData, xData, 3)
 if err != nil {
     log.Fatal(err)
 }
-fmt.Printf("Equation: y = %.4f + %.4f繚x + %.4f繚x簡 + %.4f繚x糧\\n", \r
-    result.Coefficients[0], result.Coefficients[1], \r
-    result.Coefficients[2], result.Coefficients[3])
-fmt.Printf("R簡 = %.4f\\n", result.RSquared)
+fmt.Printf("R-squared=%.4f\n", result.RSquared)
 ```
 
 ### Exponential Regression
@@ -1008,53 +961,39 @@ fmt.Printf("R簡 = %.4f\\n", result.RSquared)
 func ExponentialRegression(dlY insyra.IDataList, dlX insyra.IDataList) (*ExponentialRegressionResult, error)
 ```
 
-**Description:** Perform exponential regression analysis (y = a繚e^(b繚x)).
+**Description:** Fits an exponential model:
+
+```text
+y = a * exp(b*x)
+```
 
 **Parameters:**
 
-- `dlY`: Dependent variable data (must contain positive values)
-- `dlX`: Independent variable data
+- `dlY`: Dependent variable (`y > 0` required).
+- `dlX`: Independent variable.
 
 **Returns:**
 
-- `*ExponentialRegressionResult`: Return value.
+- `*ExponentialRegressionResult`: Coefficients, inference statistics, confidence intervals, residuals, and fit metrics.
 
 #### Exponential Regression Result
 
 ```go
 type ExponentialRegressionResult struct {
-    Intercept              float64   // coefficient a in y = a繚e^(b繚x)
-    Slope                  float64   // coefficient b in y = a繚e^(b繚x)
-    Residuals              []float64 // y廘???韁廘?
-    RSquared               float64   // coefficient of determination
-    AdjustedRSquared       float64   // adjusted R簡
-    StandardErrorIntercept float64   // standard error of coefficient a
-    StandardErrorSlope     float64   // standard error of coefficient b
-    TValueIntercept        float64   // t statistic for coefficient a
-    TValueSlope            float64   // t statistic for coefficient b
-    PValueIntercept        float64   // p-value for coefficient a
-    PValueSlope            float64   // p-value for coefficient b
+    Intercept              float64
+    Slope                  float64
+    Residuals              []float64
+    RSquared               float64
+    AdjustedRSquared       float64
+    StandardErrorIntercept float64
+    StandardErrorSlope     float64
+    TValueIntercept        float64
+    TValueSlope            float64
+    PValueIntercept        float64
+    PValueSlope            float64
 
-    // Confidence intervals for coefficients (95% by default)
-    ConfidenceIntervalIntercept [2]float64 // 95% confidence interval for intercept [lower, upper]
-    ConfidenceIntervalSlope     [2]float64 // 95% confidence interval for slope [lower, upper]
-}
-```
-
-**Example**:
-
-```go
-// Perform exponential regression: y = a繚e^(b繚x)
-result, err := stats.ExponentialRegression(yData, xData) // Corrected parameter order
-if err == nil {
-    fmt.Printf("Equation: y = %.4f 繚 e^(%.4f繚x)\n", result.Intercept, result.Slope)
-    fmt.Printf("R簡 = %.4f\n", result.RSquared)
-
-    // Display 95% confidence intervals
-    fmt.Printf("95%% CI for Intercept (a): [%.4f, %.4f]\n",
-        result.ConfidenceIntervalIntercept[0], result.ConfidenceIntervalIntercept[1])
-    fmt.Printf("95%% CI for Slope (b): [%.4f, %.4f]\n",
-        result.ConfidenceIntervalSlope[0], result.ConfidenceIntervalSlope[1])
+    ConfidenceIntervalIntercept [2]float64
+    ConfidenceIntervalSlope     [2]float64
 }
 ```
 
@@ -1064,53 +1003,39 @@ if err == nil {
 func LogarithmicRegression(dlY insyra.IDataList, dlX insyra.IDataList) (*LogarithmicRegressionResult, error)
 ```
 
-**Description:** Perform logarithmic regression analysis (y = a + b繚ln(x)).
+**Description:** Fits a logarithmic model:
+
+```text
+y = a + b*ln(x)
+```
 
 **Parameters:**
 
-- `dlY`: Dependent variable data
-- `dlX`: Independent variable data (must contain positive values)
+- `dlY`: Dependent variable.
+- `dlX`: Independent variable (`x > 0` required).
 
 **Returns:**
 
-- `*LogarithmicRegressionResult`: Return value.
+- `*LogarithmicRegressionResult`: Coefficients, inference statistics, confidence intervals, residuals, and fit metrics.
 
 #### Logarithmic Regression Result
 
 ```go
 type LogarithmicRegressionResult struct {
-    Intercept              float64   // intercept coefficient in y = a + b繚ln(x)
-    Slope                  float64   // slope coefficient in y = a + b繚ln(x)
-    Residuals              []float64 // y廘???韁廘?
-    RSquared               float64   // coefficient of determination
-    AdjustedRSquared       float64   // adjusted R簡
-    StandardErrorIntercept float64   // standard error of coefficient a
-    StandardErrorSlope     float64   // standard error of coefficient b
-    TValueIntercept        float64   // t statistic for coefficient a
-    TValueSlope            float64   // t statistic for coefficient b
-    PValueIntercept        float64   // p-value for coefficient a
-    PValueSlope            float64   // p-value for coefficient b
+    Intercept              float64
+    Slope                  float64
+    Residuals              []float64
+    RSquared               float64
+    AdjustedRSquared       float64
+    StandardErrorIntercept float64
+    StandardErrorSlope     float64
+    TValueIntercept        float64
+    TValueSlope            float64
+    PValueIntercept        float64
+    PValueSlope            float64
 
-    // Confidence intervals for coefficients (95% by default)
-    ConfidenceIntervalIntercept [2]float64 // 95% confidence interval for intercept [lower, upper]
-    ConfidenceIntervalSlope     [2]float64 // 95% confidence interval for slope [lower, upper]
-}
-```
-
-**Example**:
-
-```go
-// Perform logarithmic regression: y = a + b繚ln(x)
-result, err := stats.LogarithmicRegression(yData, xData) // Corrected parameter order
-if err == nil {
-    fmt.Printf("Equation: y = %.4f + %.4f繚ln(x)\n", result.Intercept, result.Slope)
-    fmt.Printf("R簡 = %.4f\n", result.RSquared)
-
-    // Display 95% confidence intervals
-    fmt.Printf("95%% CI for Intercept (a): [%.4f, %.4f]\n",
-        result.ConfidenceIntervalIntercept[0], result.ConfidenceIntervalIntercept[1])
-    fmt.Printf("95%% CI for Slope (b): [%.4f, %.4f]\n",
-        result.ConfidenceIntervalSlope[0], result.ConfidenceIntervalSlope[1])
+    ConfidenceIntervalIntercept [2]float64
+    ConfidenceIntervalSlope     [2]float64
 }
 ```
 
@@ -1141,7 +1066,9 @@ func Diag(x any, dims ...int) (any, error)
 **Returns:**
 
 - When extracting: `[]float64` containing diagonal elements
-- When creating: `*mat.Dense` diagonal or identity matrix**Examples**:
+- When creating: `*mat.Dense` diagonal or identity matrix
+
+**Examples**:
 
 ```go
 // Extract diagonal from matrix
@@ -1199,14 +1126,14 @@ All regression functions (Linear, Polynomial, Exponential, and Logarithmic) now 
 The confidence intervals are calculated using the t-distribution with appropriate degrees of freedom:
 
 ```text
-CI = coefficient 簣 t_(帢/2, df) ? standard_error
+CI = coefficient +/- t_(alpha/2, df) * standard_error
 ```
 
 Where:
 
-- `t_(帢/2, df)` is the critical value from the t-distribution
+- `t_(alpha/2, df)` is the critical value from the t-distribution
 - `df` is the degrees of freedom (sample_size - number_of_parameters)
-- `帢 = 0.05` for 95% confidence intervals
+- `alpha = 0.05` for 95% confidence intervals
 
 ### Data Input Types
 
@@ -1218,12 +1145,13 @@ Functions accept various data input types:
 
 ### Error Handling
 
-Functions return `nil` or `NaN` values when:
+Functions return `error` values when:
 
 - Input data is empty or invalid
 - Sample sizes are too small for the test
 - Mathematical requirements are not met
 - Invalid parameter combinations are provided
 
-All error conditions are logged via `insyra.LogWarning()` for debugging purposes.
+Call sites should always check `err` and handle it explicitly.
+
 
