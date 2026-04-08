@@ -1,5 +1,7 @@
 package stats
 
+import "errors"
+
 type oneWayANOVAStats struct {
 	SSB float64
 	SSW float64
@@ -10,9 +12,9 @@ type oneWayANOVAStats struct {
 	Eta float64
 }
 
-func oneWayANOVAFromSlices(values []float64, labels []int, k int) *oneWayANOVAStats {
+func oneWayANOVAFromSlices(values []float64, labels []int, k int) (*oneWayANOVAStats, error) {
 	if k < 2 || len(values) == 0 || len(values) != len(labels) {
-		return nil
+		return nil, errors.New("invalid group count or input lengths")
 	}
 
 	n := len(values)
@@ -23,7 +25,7 @@ func oneWayANOVAFromSlices(values []float64, labels []int, k int) *oneWayANOVASt
 	for i, v := range values {
 		group := labels[i]
 		if group < 0 || group >= k {
-			return nil
+			return nil, errors.New("group label out of range")
 		}
 		groupSums[group] += v
 		groupCounts[group]++
@@ -32,7 +34,7 @@ func oneWayANOVAFromSlices(values []float64, labels []int, k int) *oneWayANOVASt
 
 	for _, count := range groupCounts {
 		if count == 0 {
-			return nil
+			return nil, errors.New("at least one group is empty")
 		}
 	}
 
@@ -54,7 +56,7 @@ func oneWayANOVAFromSlices(values []float64, labels []int, k int) *oneWayANOVASt
 	dfb := k - 1
 	dfw := n - k
 	if dfb <= 0 || dfw <= 0 {
-		return nil
+		return nil, errors.New("invalid degrees of freedom")
 	}
 
 	f := fRatio(ssb, dfb, ssw, dfw)
@@ -66,5 +68,5 @@ func oneWayANOVAFromSlices(values []float64, labels []int, k int) *oneWayANOVASt
 		F:   f,
 		P:   fOneTailedPValue(f, float64(dfb), float64(dfw)),
 		Eta: etaSquared(ssb, ssw),
-	}
+	}, nil
 }

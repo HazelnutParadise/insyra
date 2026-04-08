@@ -19,9 +19,9 @@ func TestOneWayANOVACoreMatchesPublic(t *testing.T) {
 
 	values := []float64{10, 12, 9, 11, 20, 19, 21, 22, 30, 29, 28, 32}
 	labels := []int{0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2}
-	core := oneWayANOVAFromSlices(values, labels, 3)
-	if core == nil {
-		t.Fatal("oneWayANOVAFromSlices returned nil")
+	core, err := oneWayANOVAFromSlices(values, labels, 3)
+	if err != nil {
+		t.Fatalf("oneWayANOVAFromSlices returned error: %v", err)
 	}
 
 	if !coreAlmostEqual(public.Factor.SumOfSquares, core.SSB, 1e-12) {
@@ -70,9 +70,9 @@ func TestLeveneUsesSharedOneWayCore(t *testing.T) {
 		}
 	}
 
-	core := oneWayANOVAFromSlices(allDiffs, labels, len(groups))
-	if core == nil {
-		t.Fatal("oneWayANOVAFromSlices returned nil for Levene data")
+	core, err := oneWayANOVAFromSlices(allDiffs, labels, len(groups))
+	if err != nil {
+		t.Fatalf("oneWayANOVAFromSlices returned error for Levene data: %v", err)
 	}
 
 	if !coreAlmostEqual(levene.Statistic, core.F, 1e-12) {

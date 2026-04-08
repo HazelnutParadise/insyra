@@ -1,6 +1,7 @@
 package stats
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -29,11 +30,11 @@ func (r *ChiSquareTestResult) Show() {
 
 // calculateChiSquare calculates the chi-square statistic and related results.
 // Returns nil and an error message if any problems occur.
-func calculateChiSquare(observed, expected []float64, df int) (*ChiSquareTestResult, string) {
+func calculateChiSquare(observed, expected []float64, df int) (*ChiSquareTestResult, error) {
 	chiSquare := 0.0
 	for i := range observed {
 		if expected[i] == 0 {
-			return nil, "Expected values must not be zero"
+			return nil, errors.New("expected values must not be zero")
 		}
 		chiSquare += (observed[i] - expected[i]) * (observed[i] - expected[i]) / expected[i]
 	}
@@ -47,7 +48,7 @@ func calculateChiSquare(observed, expected []float64, df int) (*ChiSquareTestRes
 			PValue:    pValue,
 			DF:        &float64DF,
 		},
-	}, ""
+	}, nil
 }
 
 // ChiSquareGoodnessOfFit performs a one-dimensional chi-square goodness of fit test.
@@ -109,9 +110,9 @@ func ChiSquareGoodnessOfFit(input insyra.IDataList, p []float64, rescaleP bool) 
 	}
 
 	df = len(observed) - 1
-	result, errMsg := calculateChiSquare(observed, expected, df)
-	if errMsg != "" {
-		insyra.LogWarning("stats", "ChiSquareGoodnessOfFit", "%s", errMsg)
+	result, err := calculateChiSquare(observed, expected, df)
+	if err != nil {
+		insyra.LogWarning("stats", "ChiSquareGoodnessOfFit", "%s", err)
 		return nil
 	}
 
@@ -220,9 +221,9 @@ func ChiSquareIndependenceTest(rowData, colData insyra.IDataList) *ChiSquareTest
 	}
 
 	df := (rows - 1) * (cols - 1)
-	result, errMsg := calculateChiSquare(observed, expected, df)
-	if errMsg != "" {
-		insyra.LogWarning("stats", "ChiSquareIndependenceTest", "%s", errMsg)
+	result, err := calculateChiSquare(observed, expected, df)
+	if err != nil {
+		insyra.LogWarning("stats", "ChiSquareIndependenceTest", "%s", err)
 		return nil
 	}
 

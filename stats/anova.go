@@ -86,8 +86,9 @@ func OneWayANOVA(groups ...insyra.IDataList) *OneWayANOVAResult {
 		}
 	}
 
-	stats := oneWayANOVAFromSlices(values, labels, len(groups))
-	if stats == nil {
+	stats, err := oneWayANOVAFromSlices(values, labels, len(groups))
+	if err != nil {
+		insyra.LogWarning("stats", "OneWayANOVA", "%s", err)
 		return nil
 	}
 

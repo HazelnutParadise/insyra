@@ -170,8 +170,8 @@ func FTestForNestedModels(rssReduced, rssFull float64, dfReduced, dfFull int) *F
 }
 
 func oneWayANOVAForLevene(values []float64, labels []int, k int) *FTestResult {
-	stats := oneWayANOVAFromSlices(values, labels, k)
-	if stats == nil {
+	stats, err := oneWayANOVAFromSlices(values, labels, k)
+	if err != nil {
 		return nil
 	}
 
