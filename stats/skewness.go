@@ -1,6 +1,7 @@
 package stats
 
 import (
+	"errors"
 	"math"
 
 	"github.com/HazelnutParadise/insyra"
@@ -16,58 +17,51 @@ const (
 )
 
 // Skewness calculates the skewness of a sample using the specified method.
-//
-// method default: SkewnessG1（type 1）。
-func Skewness(sample any, method ...SkewnessMethod) float64 {
-	// 數據預處理和錯誤檢查
+func Skewness(sample any, method ...SkewnessMethod) (float64, error) {
 	d, dLen := insyra.ProcessData(sample)
 	if dLen == 0 {
-		insyra.LogWarning("stats", "Skewness", "Empty data")
-		return math.NaN()
+		return math.NaN(), errors.New("empty data")
 	}
 
 	d64 := insyra.SliceToF64(d)
 	dl := insyra.NewDataList(d64)
 	n := float64(dl.Len())
 
-	// 方法選擇
 	usemethod := SkewnessG1
 	if len(method) > 0 {
 		usemethod = method[0]
 	}
 	if len(method) > 1 {
-		insyra.LogWarning("stats", "Skewness", "Too many methods specified, returning NaN")
-		return math.NaN()
+		return math.NaN(), errors.New("too many methods specified")
 	}
 
-	// 特定方法的數據長度檢查
 	if usemethod == SkewnessAdjusted && n < 3 {
-		insyra.LogWarning("stats", "Skewness", "Insufficient data for adjusted method (n < 3)")
-		return math.NaN()
+		return math.NaN(), errors.New("insufficient data for adjusted method (n < 3)")
 	}
 
-	// 計算中心矩
-	m2 := CalculateMoment(dl, 2, true)
-	m3 := CalculateMoment(dl, 3, true)
+	m2, err := CalculateMoment(dl, 2, true)
+	if err != nil {
+		return math.NaN(), err
+	}
+	m3, err := CalculateMoment(dl, 3, true)
+	if err != nil {
+		return math.NaN(), err
+	}
 
-	// 零方差檢查
 	if m2 == 0 {
-		return 0 // 如果方差為零，偏度為零
+		return 0, nil
 	}
 
-	// 計算基本偏度
 	g1 := m3 / math.Pow(m2, 1.5)
 
-	// 根據方法應用調整
 	switch usemethod {
 	case SkewnessG1:
-		return g1
+		return g1, nil
 	case SkewnessAdjusted:
-		return g1 * math.Sqrt(n*(n-1)) / (n - 2)
+		return g1 * math.Sqrt(n*(n-1)) / (n - 2), nil
 	case SkewnessBiasAdjusted:
-		return g1 * math.Pow((n-1)/n, 1.5)
+		return g1 * math.Pow((n-1)/n, 1.5), nil
 	default:
-		insyra.LogWarning("stats", "Skewness", "Unknown method")
-		return math.NaN()
+		return math.NaN(), errors.New("unknown skewness method")
 	}
 }

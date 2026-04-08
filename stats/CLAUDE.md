@@ -171,3 +171,12 @@ cl = resolveConfidenceLevel(cl)
 ## 詳細重構規劃
 
 見 [REFACTOR_PLAN.md](REFACTOR_PLAN.md)，記錄了所有現有的重複點及完整的修改規格。
+
+---
+
+## 2026-04-08 API Update (Error-First)
+
+- Exported functions now return `error` for invalid input / failed computation.
+- Exported `stats` APIs do not use `LogWarning`/`LogFatal` for failure signaling.
+- Callers must handle `err` explicitly.
+- See `API_ERROR_CONTRACT.md` for the updated signature contract and migration examples.

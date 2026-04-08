@@ -56,7 +56,7 @@ func calculateChiSquare(observed, expected []float64, df int) (*ChiSquareTestRes
 // input: A DataList containing categorical data (e.g., ["A", "B", "A"]).
 // p: Expected probabilities (e.g., []float64{0.5, 0.5}). If nil, assumes uniform distribution.
 // rescaleP: Whether to rescale p to sum to 1.
-func ChiSquareGoodnessOfFit(input insyra.IDataList, p []float64, rescaleP bool) *ChiSquareTestResult {
+func ChiSquareGoodnessOfFit(input insyra.IDataList, p []float64, rescaleP bool) (*ChiSquareTestResult, error) {
 	// 計算類別頻率
 	data := input.Data()
 	categoryFreq := make(map[string]float64)
@@ -85,8 +85,7 @@ func ChiSquareGoodnessOfFit(input insyra.IDataList, p []float64, rescaleP bool) 
 			p[i] = 1.0 / float64(len(observed))
 		}
 	} else if len(p) != len(observed) {
-		insyra.LogWarning("stats", "ChiSquareGoodnessOfFit", "Length of p does not match number of categories")
-		return nil
+		return nil, errors.New("length of p does not match number of categories")
 	}
 
 	if rescaleP {
@@ -112,8 +111,7 @@ func ChiSquareGoodnessOfFit(input insyra.IDataList, p []float64, rescaleP bool) 
 	df = len(observed) - 1
 	result, err := calculateChiSquare(observed, expected, df)
 	if err != nil {
-		insyra.LogWarning("stats", "ChiSquareGoodnessOfFit", "%s", err)
-		return nil
+		return nil, err
 	}
 
 	// 創建 ContingencyTable 作為單列表格
@@ -131,21 +129,19 @@ func ChiSquareGoodnessOfFit(input insyra.IDataList, p []float64, rescaleP bool) 
 	}
 
 	result.ContingencyTable = contingencyTable.SetName("Contingency_Table")
-	return result
+	return result, nil
 }
 
 // ChiSquareIndependenceTest performs a chi-square test of independence.
-func ChiSquareIndependenceTest(rowData, colData insyra.IDataList) *ChiSquareTestResult {
+func ChiSquareIndependenceTest(rowData, colData insyra.IDataList) (*ChiSquareTestResult, error) {
 	rowVals := rowData.Data()
 	colVals := colData.Data()
 
 	if len(rowVals) == 0 || len(colVals) == 0 {
-		insyra.LogWarning("stats", "ChiSquareIndependenceTest", "Input DataLists cannot be empty")
-		return nil
+		return nil, errors.New("input DataLists cannot be empty")
 	}
 	if len(rowVals) != len(colVals) {
-		insyra.LogWarning("stats", "ChiSquareIndependenceTest", "Both DataLists must have the same length")
-		return nil
+		return nil, errors.New("both DataLists must have the same length")
 	}
 
 	// 建立分類
@@ -223,8 +219,7 @@ func ChiSquareIndependenceTest(rowData, colData insyra.IDataList) *ChiSquareTest
 	df := (rows - 1) * (cols - 1)
 	result, err := calculateChiSquare(observed, expected, df)
 	if err != nil {
-		insyra.LogWarning("stats", "ChiSquareIndependenceTest", "%s", err)
-		return nil
+		return nil, err
 	}
 
 	// 創建 ContingencyTable
@@ -251,5 +246,5 @@ func ChiSquareIndependenceTest(rowData, colData insyra.IDataList) *ChiSquareTest
 	}
 
 	result.ContingencyTable = contingencyTable.SetName("Contingency_Table")
-	return result
+	return result, nil
 }

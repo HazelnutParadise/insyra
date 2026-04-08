@@ -3,6 +3,7 @@
 package stats
 
 import (
+	"errors"
 	"math"
 	"sync"
 
@@ -26,22 +27,21 @@ type TTestResult struct {
 //     Must be between 0 and 1. If not provided or invalid, defaults to 0.95
 //
 // ** Verified using R **
-func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...float64) *TTestResult {
+func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...float64) (*TTestResult, error) {
 	var n int
 	var mean, stddev float64
-	isFailed := false
+	var err error
 	data.AtomicDo(func(dl *insyra.DataList) {
 		n = dl.Len()
 		if n <= 1 {
-			insyra.LogWarning("stats", "SingleSampleTTest", "Sample size too small")
-			isFailed = true
+			err = errors.New("sample size too small")
 			return
 		}
 		mean = dl.Mean()
 		stddev = dl.Stdev()
 	})
-	if isFailed {
-		return nil
+	if err != nil {
+		return nil, err
 	}
 
 	standardError := sampleSE(stddev, float64(n))
@@ -75,7 +75,7 @@ func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...flo
 				},
 				Mean: &mean,
 				N:    n,
-			}
+			}, nil
 
 		} else {
 			effectSize := math.Inf(int(math.Copysign(1, mean-mu)))
@@ -92,7 +92,7 @@ func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...flo
 				},
 				Mean: &mean,
 				N:    n,
-			}
+			}, nil
 		}
 	}
 
@@ -109,7 +109,7 @@ func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...flo
 		},
 		Mean: &mean,
 		N:    n,
-	}
+	}, nil
 }
 
 // TwoSampleTTest performs a two-sample t-test comparing the means of two independent groups.
@@ -120,18 +120,17 @@ func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...flo
 //     Must be between 0 and 1. If not provided or invalid, defaults to 0.95
 //
 // ** Verified using R **
-func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenceLevel ...float64) *TTestResult {
+func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenceLevel ...float64) (*TTestResult, error) {
 	var n1, n2 int
 	var mean1, mean2 float64
 	var stddev1, stddev2 float64
-	isFailed := false
+	var err error
 	data1.AtomicDo(func(dl1 *insyra.DataList) {
 		data2.AtomicDo(func(dl2 *insyra.DataList) {
 			n1 = dl1.Len()
 			n2 = dl2.Len()
 			if n1 <= 1 || n2 <= 1 {
-				insyra.LogWarning("stats", "TwoSampleTTest", "Sample sizes too small")
-				isFailed = true
+				err = errors.New("sample sizes too small")
 				return
 			}
 
@@ -141,8 +140,8 @@ func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenc
 			stddev2 = dl2.Stdev()
 		})
 	})
-	if isFailed {
-		return nil
+	if err != nil {
+		return nil, err
 	}
 
 	meanDiff := mean1 - mean2
@@ -196,7 +195,7 @@ func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenc
 		Mean2: &mean2,
 		N:     n1,
 		N2:    &n2,
-	}
+	}, nil
 }
 
 // PairedTTest performs a paired-samples t-test comparing the means of two related groups.
@@ -207,16 +206,15 @@ func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenc
 //     Must be between 0 and 1. If not provided or invalid, defaults to 0.95
 //
 // ** Verified using R **
-func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel ...float64) *TTestResult {
+func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel ...float64) (*TTestResult, error) {
 	var n int
-	isFailed := false
+	var err error
 	var data1Slice, data2Slice []any
 	data1.AtomicDo(func(dl1 *insyra.DataList) {
 		data2.AtomicDo(func(dl2 *insyra.DataList) {
 			n = dl1.Len()
 			if n != dl2.Len() || n <= 1 {
-				insyra.LogWarning("stats", "PairedTTest", "Paired samples must have the same non-zero length")
-				isFailed = true
+				err = errors.New("paired samples must have the same non-zero length")
 				return
 			}
 
@@ -224,8 +222,8 @@ func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel ...float64) *TTe
 			data2Slice = dl2.Data()
 		})
 	})
-	if isFailed {
-		return nil
+	if err != nil {
+		return nil, err
 	}
 
 	// 僅對大型數據集使用平行運算
@@ -323,5 +321,5 @@ func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel ...float64) *TTe
 		},
 		MeanDiff: &meanDiff,
 		N:        n,
-	}
+	}, nil
 }

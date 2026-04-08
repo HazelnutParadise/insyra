@@ -47,7 +47,10 @@ func TestSingleSampleZTest(t *testing.T) {
 
 	for i, test := range tests {
 		dl := insyra.NewDataList(test.data)
-		result := stats.SingleSampleZTest(dl, test.mu, test.sigma, test.alternative, 0.95)
+		result, err := stats.SingleSampleZTest(dl, test.mu, test.sigma, test.alternative, 0.95)
+		if err != nil {
+			t.Fatalf("case %d: SingleSampleZTest error: %v", i, err)
+		}
 
 		if !floatAlmostEqual(result.Statistic, test.expectZ, 0.01) {
 			t.Errorf("case %d: Z mismatch, got %f, want %f", i, result.Statistic, test.expectZ)
@@ -119,7 +122,10 @@ func TestTwoSampleZTest(t *testing.T) {
 	for i, test := range tests {
 		dl1 := insyra.NewDataList(test.data1)
 		dl2 := insyra.NewDataList(test.data2)
-		result := stats.TwoSampleZTest(dl1, dl2, test.sigma1, test.sigma2, test.alternative, 0.95)
+		result, err := stats.TwoSampleZTest(dl1, dl2, test.sigma1, test.sigma2, test.alternative, 0.95)
+		if err != nil {
+			t.Fatalf("Two-sample case %d: TwoSampleZTest error: %v", i, err)
+		}
 
 		if !floatAlmostEqual(result.Statistic, test.expectZ, 0.01) {
 			t.Errorf("Two-sample case %d: Z mismatch, got %f, want %f", i, result.Statistic, test.expectZ)

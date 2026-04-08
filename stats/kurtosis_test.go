@@ -21,7 +21,10 @@ func TestKurtosis_AllMethods(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		got := stats.Kurtosis(data, tt.method)
+		got, err := stats.Kurtosis(data, tt.method)
+		if err != nil {
+			t.Fatalf("Kurtosis(data, method=%v) error: %v", tt.method, err)
+		}
 		if !almostEqual(got, tt.expect, tolerance) {
 			t.Errorf("Kurtosis(data, method=%v) = %f; want %f", tt.method, got, tt.expect)
 		}
@@ -31,7 +34,10 @@ func TestKurtosis_AllMethods(t *testing.T) {
 func TestKurtosis_DefaultMethod(t *testing.T) {
 	data := []float64{2.0, 4.0, 7.0, 1.0, 8.0, 3.0, 9.0, 2.0}
 	expect := -1.4710743801652892
-	got := stats.Kurtosis(data)
+	got, err := stats.Kurtosis(data)
+	if err != nil {
+		t.Fatalf("Kurtosis(data) error: %v", err)
+	}
 	tolerance := 1e-6
 	if !almostEqual(got, expect, tolerance) {
 		t.Errorf("Kurtosis(data) default = %f; want %f", got, expect)
@@ -39,11 +45,19 @@ func TestKurtosis_DefaultMethod(t *testing.T) {
 }
 
 func TestKurtosis_InvalidOrEmpty(t *testing.T) {
-	if !math.IsNaN(stats.Kurtosis([]float64{})) {
+	got, err := stats.Kurtosis([]float64{})
+	if err == nil {
+		t.Errorf("Expected error for empty data")
+	}
+	if !math.IsNaN(got) {
 		t.Errorf("Expected NaN for empty data")
 	}
 
-	if !math.IsNaN(stats.Kurtosis([]float64{1.0, 2.0}, stats.KurtosisG2, stats.KurtosisAdjusted)) {
+	got, err = stats.Kurtosis([]float64{1.0, 2.0}, stats.KurtosisG2, stats.KurtosisAdjusted)
+	if err == nil {
+		t.Errorf("Expected error for multiple method args")
+	}
+	if !math.IsNaN(got) {
 		t.Errorf("Expected NaN for multiple method args")
 	}
 }
@@ -65,13 +79,22 @@ func TestKurtosis_MultipleDatasets(t *testing.T) {
 	}
 
 	for i, c := range cases {
-		got := stats.Kurtosis(c.data, c.method)
+		got, err := stats.Kurtosis(c.data, c.method)
 		if math.IsNaN(c.expect) {
+			if err == nil {
+				t.Errorf("Case %d: expected error for NaN case", i+1)
+			}
 			if !math.IsNaN(got) {
 				t.Errorf("Case %d: Expected NaN but got %f", i+1, got)
 			}
-		} else if !almostEqual(got, c.expect, tolerance) {
-			t.Errorf("Case %d: Kurtosis(data, method=%v) = %f; want %f", i+1, c.method, got, c.expect)
+		} else {
+			if err != nil {
+				t.Errorf("Case %d: unexpected error: %v", i+1, err)
+				continue
+			}
+			if !almostEqual(got, c.expect, tolerance) {
+				t.Errorf("Case %d: Kurtosis(data, method=%v) = %f; want %f", i+1, c.method, got, c.expect)
+			}
 		}
 	}
 }

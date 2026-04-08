@@ -1,6 +1,7 @@
 package stats
 
 import (
+	"errors"
 	"math"
 
 	"github.com/HazelnutParadise/insyra"
@@ -14,22 +15,25 @@ type ZTestResult struct {
 	N2    *int     // sample size of the second group (nil if not applicable)
 }
 
-func SingleSampleZTest(data insyra.IDataList, mu float64, sigma float64, alternative AlternativeHypothesis, confidenceLevel float64) *ZTestResult {
+func SingleSampleZTest(data insyra.IDataList, mu float64, sigma float64, alternative AlternativeHypothesis, confidenceLevel float64) (*ZTestResult, error) {
+	if sigma <= 0 {
+		return nil, errors.New("sigma must be greater than zero")
+	}
+
 	var n int
 	var mean float64
-	isFailed := false
+	var err error
 	data.AtomicDo(func(dl *insyra.DataList) {
 		n = dl.Len()
 		if n <= 0 {
-			insyra.LogWarning("stats", "SingleSampleZTest", "Sample size too small")
-			isFailed = true
+			err = errors.New("sample size too small")
 			return
 		}
 
 		mean = dl.Mean()
 	})
-	if isFailed {
-		return nil
+	if err != nil {
+		return nil, err
 	}
 
 	standardError := sampleSE(sigma, float64(n))
@@ -55,20 +59,23 @@ func SingleSampleZTest(data insyra.IDataList, mu float64, sigma float64, alterna
 		Mean2: nil,
 		N:     n,
 		N2:    nil,
-	}
+	}, nil
 }
 
-func TwoSampleZTest(data1, data2 insyra.IDataList, sigma1, sigma2 float64, alternative AlternativeHypothesis, confidenceLevel float64) *ZTestResult {
+func TwoSampleZTest(data1, data2 insyra.IDataList, sigma1, sigma2 float64, alternative AlternativeHypothesis, confidenceLevel float64) (*ZTestResult, error) {
+	if sigma1 <= 0 || sigma2 <= 0 {
+		return nil, errors.New("sigma1 and sigma2 must be greater than zero")
+	}
+
 	var n1, n2 int
 	var mean1, mean2 float64
-	isFailed := false
+	var err error
 	data1.AtomicDo(func(dl1 *insyra.DataList) {
 		data2.AtomicDo(func(dl2 *insyra.DataList) {
 			n1 = dl1.Len()
 			n2 = dl2.Len()
 			if n1 <= 0 || n2 <= 0 {
-				insyra.LogWarning("stats", "TwoSampleZTest", "Sample sizes too small")
-				isFailed = true
+				err = errors.New("sample sizes too small")
 				return
 			}
 
@@ -76,8 +83,8 @@ func TwoSampleZTest(data1, data2 insyra.IDataList, sigma1, sigma2 float64, alter
 			mean2 = dl2.Mean()
 		})
 	})
-	if isFailed {
-		return nil
+	if err != nil {
+		return nil, err
 	}
 
 	meanDiff := mean1 - mean2
@@ -111,5 +118,5 @@ func TwoSampleZTest(data1, data2 insyra.IDataList, sigma1, sigma2 float64, alter
 		Mean2: &mean2,
 		N:     n1,
 		N2:    &n2,
-	}
+	}, nil
 }

@@ -13,8 +13,8 @@ func TestCorrelationCIUsesFisherTransform(t *testing.T) {
 	x := insyra.NewDataList([]float64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10})
 	y := insyra.NewDataList([]float64{1, 2, 3, 5, 4, 6, 8, 7, 10, 9})
 
-	pearson := stats.Correlation(x, y, stats.PearsonCorrelation)
-	if pearson == nil || pearson.CI == nil {
+	pearson, err := stats.Correlation(x, y, stats.PearsonCorrelation)
+	if err != nil || pearson == nil || pearson.CI == nil {
 		t.Fatalf("expected Pearson correlation with CI, got %+v", pearson)
 	}
 
@@ -23,8 +23,8 @@ func TestCorrelationCIUsesFisherTransform(t *testing.T) {
 		t.Fatalf("Pearson CI mismatch: got [%v %v], want [%v %v]", pearson.CI[0], pearson.CI[1], pLower, pUpper)
 	}
 
-	spearman := stats.Correlation(x, y, stats.SpearmanCorrelation)
-	if spearman == nil || spearman.CI == nil {
+	spearman, err := stats.Correlation(x, y, stats.SpearmanCorrelation)
+	if err != nil || spearman == nil || spearman.CI == nil {
 		t.Fatalf("expected Spearman correlation with CI, got %+v", spearman)
 	}
 

@@ -1,6 +1,8 @@
 package stats
 
 import (
+	"errors"
+	"fmt"
 	"math"
 
 	"github.com/HazelnutParadise/insyra"
@@ -84,7 +86,7 @@ type LogarithmicRegressionResult struct {
 }
 
 // LinearRegression performs ordinary least-squares linear regression.
-func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) *LinearRegressionResult {
+func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) (*LinearRegressionResult, error) {
 	var n int
 	var ys []float64
 	dlY.AtomicDo(func(dly *insyra.DataList) {
@@ -94,8 +96,7 @@ func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) *LinearReg
 	p := len(dlXs)
 
 	if p == 0 {
-		insyra.LogWarning("stats", "LinearRegression", "no independent variables provided")
-		return nil
+		return nil, errors.New("no independent variables provided")
 	}
 
 	xSlices := make([][]float64, p)
@@ -103,20 +104,18 @@ func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) *LinearReg
 		isFailed := false
 		dlX.AtomicDo(func(l *insyra.DataList) {
 			if l.Len() != n {
-				insyra.LogWarning("stats", "LinearRegression", "x and y must have the same length")
 				isFailed = true
 				return
 			}
 			xSlices[j] = l.ToF64Slice()
 		})
 		if isFailed {
-			return nil
+			return nil, fmt.Errorf("x and y must have the same length for predictor %d", j)
 		}
 	}
 
 	if n <= p+1 {
-		insyra.LogWarning("stats", "LinearRegression", "need at least p+2 observations for p independent variables to compute statistics")
-		return nil
+		return nil, errors.New("need at least p+2 observations for p independent variables to compute statistics")
 	}
 
 	X := make([][]float64, n)
@@ -144,8 +143,7 @@ func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) *LinearReg
 
 	coeffs := linalg.GaussianElimination(XTX, XTy)
 	if coeffs == nil {
-		insyra.LogWarning("stats", "LinearRegression", "matrix is singular, cannot solve")
-		return nil
+		return nil, errors.New("matrix is singular, cannot solve")
 	}
 
 	df := float64(n - p - 1)
@@ -157,8 +155,7 @@ func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) *LinearReg
 		return yHat
 	}, df)
 	if !ok {
-		insyra.LogWarning("stats", "LinearRegression", "variance of y is zero; R² undefined")
-		return nil
+		return nil, errors.New("variance of y is zero; R-squared undefined")
 	}
 
 	XTXInv := linalg.InvertMatrix(XTX)
@@ -190,9 +187,6 @@ func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) *LinearReg
 	}
 
 	confIntervals := buildMultiCoeffCIs(coeffs, standardErrors, df)
-	if df <= 0 {
-		insyra.LogWarning("stats", "LinearRegression", "insufficient degrees of freedom for confidence intervals")
-	}
 	result.ConfidenceIntervals = confIntervals
 
 	if p == 1 {
@@ -200,22 +194,20 @@ func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) *LinearReg
 		result.ConfidenceIntervalSlope = confIntervals[1]
 	}
 
-	return result
+	return result, nil
 }
 
 // ExponentialRegression performs y = a*e^(b*x) regression.
-func ExponentialRegression(dlY, dlX insyra.IDataList) *ExponentialRegressionResult {
+func ExponentialRegression(dlY, dlX insyra.IDataList) (*ExponentialRegressionResult, error) {
 	var xs, ys []float64
 	isFailed := false
 	dlX.AtomicDo(func(dlx *insyra.DataList) {
 		dlY.AtomicDo(func(dly *insyra.DataList) {
 			if dlx.Len() != dly.Len() || dlx.Len() == 0 {
-				insyra.LogWarning("stats", "ExponentialRegression", "input lengths mismatch or zero")
 				isFailed = true
 				return
 			}
 			if dlx.Len() <= 2 {
-				insyra.LogWarning("stats", "ExponentialRegression", "need at least 3 observations for exponential regression")
 				isFailed = true
 				return
 			}
@@ -224,22 +216,20 @@ func ExponentialRegression(dlY, dlX insyra.IDataList) *ExponentialRegressionResu
 		})
 	})
 	if isFailed {
-		return nil
+		return nil, errors.New("input lengths mismatch/zero, or need at least 3 observations")
 	}
 
 	logYs := make([]float64, len(ys))
 	for i := range ys {
 		if ys[i] <= 0 {
-			insyra.LogWarning("stats", "ExponentialRegression", "y must be > 0 for log computation")
-			return nil
+			return nil, fmt.Errorf("y must be > 0 for log computation (index %d)", i)
 		}
 		logYs[i] = math.Log(ys[i])
 	}
 
 	lnA, b, ok := simpleOLSCoeffs(xs, logYs)
 	if !ok {
-		insyra.LogWarning("stats", "ExponentialRegression", "denominator zero, cannot compute coefficients")
-		return nil
+		return nil, errors.New("denominator zero, cannot compute coefficients")
 	}
 	a := math.Exp(lnA)
 
@@ -249,8 +239,7 @@ func ExponentialRegression(dlY, dlX insyra.IDataList) *ExponentialRegressionResu
 		return a * math.Exp(b*xs[i])
 	}, df)
 	if !fitOK {
-		insyra.LogWarning("stats", "ExponentialRegression", "variance of y is zero; R² undefined")
-		return nil
+		return nil, errors.New("variance of y is zero; R-squared undefined")
 	}
 
 	sumX := 0.0
@@ -293,22 +282,20 @@ func ExponentialRegression(dlY, dlX insyra.IDataList) *ExponentialRegressionResu
 		PValueSlope:                 pValB,
 		ConfidenceIntervalIntercept: ciIntercept,
 		ConfidenceIntervalSlope:     ciSlope,
-	}
+	}, nil
 }
 
 // LogarithmicRegression performs y = a + b*ln(x) regression.
-func LogarithmicRegression(dlY, dlX insyra.IDataList) *LogarithmicRegressionResult {
+func LogarithmicRegression(dlY, dlX insyra.IDataList) (*LogarithmicRegressionResult, error) {
 	var xs, ys []float64
 	isFailed := false
 	dlX.AtomicDo(func(dlx *insyra.DataList) {
 		dlY.AtomicDo(func(dly *insyra.DataList) {
 			if dlx.Len() != dly.Len() || dlx.Len() == 0 {
-				insyra.LogWarning("stats", "LogarithmicRegression", "input lengths mismatch or zero")
 				isFailed = true
 				return
 			}
 			if dlx.Len() <= 2 {
-				insyra.LogWarning("stats", "LogarithmicRegression", "need at least 3 observations for logarithmic regression")
 				isFailed = true
 				return
 			}
@@ -317,22 +304,20 @@ func LogarithmicRegression(dlY, dlX insyra.IDataList) *LogarithmicRegressionResu
 		})
 	})
 	if isFailed {
-		return nil
+		return nil, errors.New("input lengths mismatch/zero, or need at least 3 observations")
 	}
 
 	logXs := make([]float64, len(xs))
 	for i := range xs {
 		if xs[i] <= 0 {
-			insyra.LogWarning("stats", "LogarithmicRegression", "x must be > 0 for ln computation")
-			return nil
+			return nil, fmt.Errorf("x must be > 0 for ln computation (index %d)", i)
 		}
 		logXs[i] = math.Log(xs[i])
 	}
 
 	a, b, ok := simpleOLSCoeffs(logXs, ys)
 	if !ok {
-		insyra.LogWarning("stats", "LogarithmicRegression", "denominator zero, cannot compute coefficients")
-		return nil
+		return nil, errors.New("denominator zero, cannot compute coefficients")
 	}
 
 	n := float64(len(xs))
@@ -341,8 +326,7 @@ func LogarithmicRegression(dlY, dlX insyra.IDataList) *LogarithmicRegressionResu
 		return a + b*logXs[i]
 	}, df)
 	if !fitOK {
-		insyra.LogWarning("stats", "LogarithmicRegression", "variance of y is zero; R² undefined")
-		return nil
+		return nil, errors.New("variance of y is zero; R-squared undefined")
 	}
 
 	sumLX := 0.0
@@ -371,27 +355,24 @@ func LogarithmicRegression(dlY, dlX insyra.IDataList) *LogarithmicRegressionResu
 		PValueSlope:                 pValB,
 		ConfidenceIntervalIntercept: ciIntercept,
 		ConfidenceIntervalSlope:     ciSlope,
-	}
+	}, nil
 }
 
 // PolynomialRegression performs polynomial regression of given degree.
-func PolynomialRegression(dlY, dlX insyra.IDataList, degree int) *PolynomialRegressionResult {
+func PolynomialRegression(dlY, dlX insyra.IDataList, degree int) (*PolynomialRegressionResult, error) {
 	var xs, ys []float64
 	isFailed := false
 	dlX.AtomicDo(func(dlx *insyra.DataList) {
 		dlY.AtomicDo(func(dly *insyra.DataList) {
 			if dlx.Len() != dly.Len() || dlx.Len() == 0 {
-				insyra.LogWarning("stats", "PolynomialRegression", "input lengths mismatch or zero")
 				isFailed = true
 				return
 			}
 			if degree < 1 || degree >= dlx.Len() {
-				insyra.LogWarning("stats", "PolynomialRegression", "invalid degree")
 				isFailed = true
 				return
 			}
 			if dlx.Len() <= degree+1 {
-				insyra.LogWarning("stats", "PolynomialRegression", "need at least degree+2 observations for polynomial regression")
 				isFailed = true
 				return
 			}
@@ -401,7 +382,7 @@ func PolynomialRegression(dlY, dlX insyra.IDataList, degree int) *PolynomialRegr
 		})
 	})
 	if isFailed {
-		return nil
+		return nil, errors.New("invalid input lengths, degree, or insufficient observations")
 	}
 
 	n := len(xs)
@@ -433,8 +414,7 @@ func PolynomialRegression(dlY, dlX insyra.IDataList, degree int) *PolynomialRegr
 
 	coeffs := linalg.GaussianElimination(XTX, XTy)
 	if coeffs == nil {
-		insyra.LogWarning("stats", "PolynomialRegression", "matrix is singular, cannot solve")
-		return nil
+		return nil, errors.New("matrix is singular, cannot solve")
 	}
 
 	df := float64(n - degree - 1)
@@ -446,8 +426,7 @@ func PolynomialRegression(dlY, dlX insyra.IDataList, degree int) *PolynomialRegr
 		return yHat
 	}, df)
 	if !fitOK {
-		insyra.LogWarning("stats", "PolynomialRegression", "variance of y is zero; R² undefined")
-		return nil
+		return nil, errors.New("variance of y is zero; R-squared undefined")
 	}
 
 	XTXInv := linalg.InvertMatrix(XTX)
@@ -468,5 +447,5 @@ func PolynomialRegression(dlY, dlX insyra.IDataList, degree int) *PolynomialRegr
 		TValues:             tValues,
 		PValues:             pValues,
 		ConfidenceIntervals: confIntervals,
-	}
+	}, nil
 }

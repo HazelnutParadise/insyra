@@ -1,6 +1,7 @@
 package stats
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/HazelnutParadise/insyra"
@@ -11,44 +12,48 @@ import (
 
 // PCAResult contains the results of a Principal Component Analysis.
 type PCAResult struct {
-	Components        insyra.IDataTable // 主成分存為 DataTable
-	Eigenvalues       []float64         // 對應的特徵值
-	ExplainedVariance []float64         // 每個主成分解釋的變異百分比
+	Components        insyra.IDataTable // component loadings matrix
+	Eigenvalues       []float64
+	ExplainedVariance []float64
 }
 
 // PCA calculates the Principal Component Analysis of a DataTable.
-// The function returns a PCAResult struct containing the principal components,
-// eigenvalues, and explained variance.
-// The number of components to extract can be specified using the nComponents parameter.
-// If nComponents is not specified or exceeds the number of columns, all components will be extracted.
-func PCA(dataTable insyra.IDataTable, nComponents ...int) *PCAResult {
+func PCA(dataTable insyra.IDataTable, nComponents ...int) (*PCAResult, error) {
 	var rowNum, colNum, numComponents int
 	var data *mat.Dense
 	dataTable.AtomicDo(func(dt *insyra.DataTable) {
 		rowNum, colNum = dt.Size()
 
-		// 如果 nComponents 沒有指定，或者超過列數，則提取所有主成分
 		numComponents = colNum
-		if len(nComponents) == 1 && nComponents[0] > 0 && nComponents[0] <= colNum {
-			numComponents = nComponents[0]
-		} else if len(nComponents) > 1 {
-			insyra.LogWarning("stats", "PCA", "Invalid number of components, extracting all components")
+		if len(nComponents) == 1 {
+			if nComponents[0] > 0 && nComponents[0] <= colNum {
+				numComponents = nComponents[0]
+			}
 		}
 
-		// 將 DataTable 轉換為矩陣，將每行視為一個樣本
 		data = mat.NewDense(rowNum, colNum, nil)
 		for i := range rowNum {
 			row := dt.GetRow(i)
 			for j := range colNum {
-				value, ok := row.Get(j).(float64)
-				if ok {
-					data.Set(i, j, value)
+				value, ok := insyra.ToFloat64Safe(row.Get(j))
+				if !ok {
+					data = nil
+					return
 				}
+				data.Set(i, j, value)
 			}
 		}
 	})
+	if len(nComponents) > 1 {
+		return nil, errors.New("nComponents accepts at most one value")
+	}
+	if data == nil {
+		return nil, errors.New("input contains non-numeric values")
+	}
+	if rowNum < 2 || colNum < 1 {
+		return nil, errors.New("insufficient data shape for PCA")
+	}
 
-	// 進行數據標準化（Z-Score 標準化）
 	for j := range colNum {
 		col := mat.Col(nil, j, data)
 		mean, std := stat.MeanStdDev(col, nil)
@@ -60,23 +65,18 @@ func PCA(dataTable insyra.IDataTable, nComponents ...int) *PCAResult {
 		}
 	}
 
-	// 計算數據的協方差矩陣
 	covMatrix := mat.NewSymDense(colNum, nil)
 	stat.CovarianceMatrix(covMatrix, data, nil)
 
-	// 特徵值分解協方差矩陣
 	var eig mat.EigenSym
 	if !eig.Factorize(covMatrix, true) {
-		insyra.LogWarning("stats", "PCA", "Eigenvalue decomposition failed")
-		return nil
+		return nil, errors.New("eigenvalue decomposition failed")
 	}
 
-	// 取得特徵值和特徵向量
 	eigenvalues := eig.Values(nil)
 	var eigenvectors mat.Dense
 	eig.VectorsTo(&eigenvectors)
 
-	// 將特徵值與特徵向量根據特徵值大小進行排序
 	indices := make([]int, len(eigenvalues))
 	for i := range indices {
 		indices[i] = i
@@ -91,26 +91,19 @@ func PCA(dataTable insyra.IDataTable, nComponents ...int) *PCAResult {
 		}
 	})
 
-	// 生成 DataTable 並存儲主成分
 	componentTable := insyra.NewDataTable()
-
-	// 手動調整每個主成分的正負號，使其與 R 的結果一致
 	for compIndex := range numComponents {
 		column := insyra.NewDataList()
-		sign := 1.0 // 默認正負號
-
-		// 根據某個基準來確定特徵向量的正負號，這裡你可以自行設置基準，例如 R 的結果
+		sign := 1.0
 		if eigenvectors.At(0, indices[compIndex]) < 0 {
-			sign = -1.0 // 若第一個值為負數，則反轉整列的正負號
+			sign = -1.0
 		}
-
 		for i := range eigenvectors.RawMatrix().Rows {
-			column.Append(sign * eigenvectors.At(i, indices[compIndex])) // 根據排序後的索引提取數據並調整正負號
+			column.Append(sign * eigenvectors.At(i, indices[compIndex]))
 		}
 		componentTable.AppendCols(column.SetName(fmt.Sprintf("PC%d", compIndex+1)))
 	}
 
-	// 計算解釋變異百分比，使用協方差矩陣的特徵值
 	totalVariance := 0.0
 	for _, v := range eigenvalues {
 		totalVariance += v
@@ -120,7 +113,6 @@ func PCA(dataTable insyra.IDataTable, nComponents ...int) *PCAResult {
 		explainedVariance[i] = (eigenvalues[indices[i]] / totalVariance) * 100
 	}
 
-	// 按排序後的特徵值順序返回結果
 	sortedEigenvalues := make([]float64, numComponents)
 	for i := range numComponents {
 		sortedEigenvalues[i] = eigenvalues[indices[i]]
@@ -130,5 +122,5 @@ func PCA(dataTable insyra.IDataTable, nComponents ...int) *PCAResult {
 		Components:        componentTable,
 		Eigenvalues:       sortedEigenvalues,
 		ExplainedVariance: explainedVariance,
-	}
+	}, nil
 }

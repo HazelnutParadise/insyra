@@ -12,9 +12,9 @@ func TestOneWayANOVA(t *testing.T) {
 	group2 := insyra.NewDataList([]float64{20, 19, 21, 22})
 	group3 := insyra.NewDataList([]float64{30, 29, 28, 32})
 
-	result := stats.OneWayANOVA(group1, group2, group3)
-	if result == nil {
-		t.Fatal("OneWayANOVA returned nil")
+	result, err := stats.OneWayANOVA(group1, group2, group3)
+	if err != nil {
+		t.Fatalf("OneWayANOVA returned error: %v", err)
 	}
 
 	expectF := 177.96
@@ -34,9 +34,9 @@ func TestTwoWayANOVA(t *testing.T) {
 	A2B1 := insyra.NewDataList([]float64{4, 3, 4})
 	A2B2 := insyra.NewDataList([]float64{10, 11, 9})
 
-	result := stats.TwoWayANOVA(2, 2, A1B1, A1B2, A2B1, A2B2)
-	if result == nil {
-		t.Fatal("TwoWayANOVA returned nil")
+	result, err := stats.TwoWayANOVA(2, 2, A1B1, A1B2, A2B1, A2B2)
+	if err != nil {
+		t.Fatalf("TwoWayANOVA returned error: %v", err)
 	}
 
 	expectF_A := 0.125
@@ -57,9 +57,9 @@ func TestRepeatedMeasuresANOVA(t *testing.T) {
 	s4 := insyra.NewDataList([]float64{13, 15, 14})
 	s5 := insyra.NewDataList([]float64{12, 13, 15})
 
-	result := stats.RepeatedMeasuresANOVA(s1, s2, s3, s4, s5)
-	if result == nil {
-		t.Fatal("RepeatedMeasuresANOVA returned nil")
+	result, err := stats.RepeatedMeasuresANOVA(s1, s2, s3, s4, s5)
+	if err != nil {
+		t.Fatalf("RepeatedMeasuresANOVA returned error: %v", err)
 	}
 
 	expectF := 9.33

@@ -19,9 +19,9 @@ func TestChiSquareIndependenceTest(t *testing.T) {
 	rowData := insyra.NewDataList([]string{"A", "A", "B", "B", "B", "C"})
 	colData := insyra.NewDataList([]string{"X", "Y", "X", "Y", "Y", "Y"})
 
-	result := stats.ChiSquareIndependenceTest(rowData, colData)
-	if result == nil {
-		t.Fatal("ChiSquareIndependenceTest returned nil")
+	result, err := stats.ChiSquareIndependenceTest(rowData, colData)
+	if err != nil {
+		t.Fatalf("ChiSquareIndependenceTest returned error: %v", err)
 	}
 
 	expectedStat := 0.75

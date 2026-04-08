@@ -24,9 +24,9 @@ func runPCACommand(ctx *ExecContext, args []string) error {
 	if err != nil || n < 1 {
 		return fmt.Errorf("invalid number of components: %s", coreArgs[1])
 	}
-	result := stats.PCA(dt, n)
-	if result == nil {
-		return fmt.Errorf("pca failed")
+	result, err := stats.PCA(dt, n)
+	if err != nil {
+		return fmt.Errorf("pca failed: %w", err)
 	}
 	ctx.Vars[alias] = result.Components
 	ctx.Vars[alias+"_eigenvalues"] = result.Eigenvalues

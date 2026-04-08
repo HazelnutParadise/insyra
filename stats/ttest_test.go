@@ -116,7 +116,10 @@ func TestSingleSampleTTest_R(t *testing.T) {
 
 	for _, test := range tests {
 		dl := insyra.NewDataList(test.data)
-		result := stats.SingleSampleTTest(dl, test.mu, 0.95)
+		result, err := stats.SingleSampleTTest(dl, test.mu, 0.95)
+		if err != nil {
+			t.Fatalf("case %s: SingleSampleTTest error: %v", test.name, err)
+		}
 
 		if !floatEquals(result.Statistic, test.expectT, 0.01) {
 			t.Errorf("case %s: T mismatch, got %f, want %f", test.name, result.Statistic, test.expectT)
@@ -252,7 +255,10 @@ func TestTwoSampleTTest_R(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			data1 := insyra.NewDataList(tt.data1)
 			data2 := insyra.NewDataList(tt.data2)
-			result := stats.TwoSampleTTest(data1, data2, tt.equalVar, 0.95)
+			result, err := stats.TwoSampleTTest(data1, data2, tt.equalVar, 0.95)
+			if err != nil {
+				t.Fatalf("[%s] TwoSampleTTest error: %v", tt.name, err)
+			}
 
 			if !floatEquals(result.Statistic, tt.expectT, 0.01) {
 				t.Errorf("[%s] T value mismatch: got %f, want %f", tt.name, result.Statistic, tt.expectT)
@@ -277,7 +283,10 @@ func TestTwoSampleTTest_R(t *testing.T) {
 func TestPairedTTest_R(t *testing.T) {
 	before := insyra.NewDataList([]float64{55.0, 48.5, 51.6, 53.2, 50.4, 52.1, 54.0, 56.3})
 	after := insyra.NewDataList([]float64{52.2, 45.7, 49.8, 50.9, 47.6, 50.3, 52.1, 53.9})
-	result := stats.PairedTTest(before, after, 0.95)
+	result, err := stats.PairedTTest(before, after, 0.95)
+	if err != nil {
+		t.Fatalf("PairedTTest error: %v", err)
+	}
 
 	expectT := 14.6264
 	expectP := 0.000001668

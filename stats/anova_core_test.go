@@ -12,9 +12,9 @@ func TestOneWayANOVACoreMatchesPublic(t *testing.T) {
 	g2 := insyra.NewDataList([]float64{20, 19, 21, 22})
 	g3 := insyra.NewDataList([]float64{30, 29, 28, 32})
 
-	public := OneWayANOVA(g1, g2, g3)
-	if public == nil {
-		t.Fatal("OneWayANOVA returned nil")
+	public, err := OneWayANOVA(g1, g2, g3)
+	if err != nil {
+		t.Fatalf("OneWayANOVA returned error: %v", err)
 	}
 
 	values := []float64{10, 12, 9, 11, 20, 19, 21, 22, 30, 29, 28, 32}
@@ -51,9 +51,9 @@ func TestLeveneUsesSharedOneWayCore(t *testing.T) {
 		insyra.NewDataList([]float64{30, 29, 28, 32}),
 	}
 
-	levene := LeveneTest(groups)
-	if levene == nil {
-		t.Fatal("LeveneTest returned nil")
+	levene, err := LeveneTest(groups)
+	if err != nil {
+		t.Fatalf("LeveneTest returned error: %v", err)
 	}
 
 	allDiffs := make([]float64, 0)

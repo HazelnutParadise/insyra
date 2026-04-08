@@ -1,6 +1,8 @@
 package stats
 
 import (
+	"errors"
+	"fmt"
 	"math"
 
 	"github.com/HazelnutParadise/insyra"
@@ -57,10 +59,9 @@ func newANOVABetweenComponent(ssEffect float64, dfEffect int, ssWithin float64, 
 	return newANOVAComponent(ssEffect, dfEffect, f, p, eta)
 }
 
-func OneWayANOVA(groups ...insyra.IDataList) *OneWayANOVAResult {
+func OneWayANOVA(groups ...insyra.IDataList) (*OneWayANOVAResult, error) {
 	if len(groups) < 2 {
-		insyra.LogWarning("stats", "OneWayANOVA", "At least two groups are required")
-		return nil
+		return nil, errors.New("at least two groups are required")
 	}
 
 	values := make([]float64, 0)
@@ -72,14 +73,12 @@ func OneWayANOVA(groups ...insyra.IDataList) *OneWayANOVAResult {
 		})
 
 		if len(groupData) == 0 {
-			insyra.LogWarning("stats", "OneWayANOVA", "Group %d is empty", i)
-			return nil
+			return nil, fmt.Errorf("group %d is empty", i)
 		}
 		for j, v := range groupData {
 			x, ok := insyra.ToFloat64Safe(v)
 			if !ok {
-				insyra.LogWarning("stats", "OneWayANOVA", "Invalid data at group %d index %d", i, j)
-				return nil
+				return nil, fmt.Errorf("invalid data at group %d index %d", i, j)
 			}
 			values = append(values, x)
 			labels = append(labels, i)
@@ -88,21 +87,19 @@ func OneWayANOVA(groups ...insyra.IDataList) *OneWayANOVAResult {
 
 	stats, err := oneWayANOVAFromSlices(values, labels, len(groups))
 	if err != nil {
-		insyra.LogWarning("stats", "OneWayANOVA", "%s", err)
-		return nil
+		return nil, err
 	}
 
 	return &OneWayANOVAResult{
 		Factor:  newANOVAComponent(stats.SSB, stats.DFB, stats.F, stats.P, stats.Eta),
 		Within:  newANOVAWithinComponent(stats.SSW, stats.DFW),
 		TotalSS: stats.SSB + stats.SSW,
-	}
+	}, nil
 }
 
-func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) *TwoWayANOVAResult {
+func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) (*TwoWayANOVAResult, error) {
 	if factorALevels < 2 || factorBLevels < 2 || len(cells) != factorALevels*factorBLevels {
-		insyra.LogWarning("stats", "TwoWayANOVA", "Invalid levels or cells")
-		return nil
+		return nil, errors.New("invalid levels or cells")
 	}
 
 	var allValues []float64
@@ -120,12 +117,14 @@ func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) *T
 				cellLen = cdl.Len()
 			})
 			if cellLen == 0 {
-				insyra.LogWarning("stats", "TwoWayANOVA", "Empty cell")
-				return nil
+				return nil, fmt.Errorf("empty cell at A=%d, B=%d", i, j)
 			}
 			cellCounts[i*factorBLevels+j] = cellLen
-			for _, v := range cellData {
-				value, _ := insyra.ToFloat64Safe(v)
+			for k, v := range cellData {
+				value, ok := insyra.ToFloat64Safe(v)
+				if !ok {
+					return nil, fmt.Errorf("invalid data at cell (A=%d, B=%d) index %d", i, j, k)
+				}
 				allValues = append(allValues, value)
 				factorsA = append(factorsA, i)
 				factorsB = append(factorsB, j)
@@ -197,8 +196,11 @@ func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) *T
 			idx := i*factorBLevels + j
 			exp := aMeans[i] + bMeans[j] - totalMean
 			SSAB += float64(cellCounts[idx]) * (cellMeans[idx] - exp) * (cellMeans[idx] - exp)
-			for _, v := range cells[idx].Data() {
-				x, _ := insyra.ToFloat64Safe(v)
+			for k, v := range cells[idx].Data() {
+				x, ok := insyra.ToFloat64Safe(v)
+				if !ok {
+					return nil, fmt.Errorf("invalid data at cell %d index %d", idx, k)
+				}
 				SSW += (x - cellMeans[idx]) * (x - cellMeans[idx])
 			}
 		}
@@ -219,24 +221,21 @@ func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) *T
 		Interaction: interaction,
 		Within:      newANOVAWithinComponent(SSW, DFW),
 		TotalSS:     SSA + SSB + SSAB + SSW,
-	}
+	}, nil
 }
 
-func RepeatedMeasuresANOVA(subjects ...insyra.IDataList) *RepeatedMeasuresANOVAResult {
+func RepeatedMeasuresANOVA(subjects ...insyra.IDataList) (*RepeatedMeasuresANOVAResult, error) {
 	if len(subjects) < 2 {
-		insyra.LogWarning("stats", "RepeatedMeasuresANOVA", "At least two subjects are required")
-		return nil
+		return nil, errors.New("at least two subjects are required")
 	}
 	conditionCount := subjects[0].Len()
 	for i, subj := range subjects {
 		if subj.Len() != conditionCount {
-			insyra.LogWarning("stats", "RepeatedMeasuresANOVA", "Inconsistent condition count at subject %d", i)
-			return nil
+			return nil, fmt.Errorf("inconsistent condition count at subject %d", i)
 		}
 	}
 	if conditionCount < 2 {
-		insyra.LogWarning("stats", "RepeatedMeasuresANOVA", "Less than two conditions")
-		return nil
+		return nil, errors.New("less than two conditions")
 	}
 
 	data := make([][]float64, conditionCount)
@@ -245,7 +244,10 @@ func RepeatedMeasuresANOVA(subjects ...insyra.IDataList) *RepeatedMeasuresANOVAR
 	}
 	for j, subj := range subjects {
 		for i, v := range subj.Data() {
-			value, _ := insyra.ToFloat64Safe(v)
+			value, ok := insyra.ToFloat64Safe(v)
+			if !ok {
+				return nil, fmt.Errorf("invalid data at subject %d condition %d", j, i)
+			}
 			data[i][j] = value
 		}
 	}
@@ -299,5 +301,5 @@ func RepeatedMeasuresANOVA(subjects ...insyra.IDataList) *RepeatedMeasuresANOVAR
 		Subject: newANOVAWithinComponent(ssSubjects, DFSubjects),
 		Within:  newANOVAWithinComponent(SSWithin, DFWithin),
 		TotalSS: ssTotal,
-	}
+	}, nil
 }

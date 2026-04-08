@@ -23,10 +23,9 @@ func TestMultipleLinearRegression_R(t *testing.T) {
 	dlX2 := insyra.NewDataList(x2)
 	dlY := insyra.NewDataList(y)
 
-	result := stats.LinearRegression(dlY, dlX1, dlX2)
-
-	if result == nil {
-		t.Fatal("LinearRegression returned nil")
+	result, err := stats.LinearRegression(dlY, dlX1, dlX2)
+	if err != nil {
+		t.Fatalf("LinearRegression returned error: %v", err)
 	}
 
 	// R results (updated with actual output):
@@ -74,9 +73,9 @@ func TestMultipleLinearRegression_EdgeCases(t *testing.T) {
 	y := []float64{1, 2, 3}
 	dlY := insyra.NewDataList(y)
 
-	result := stats.LinearRegression(dlY)
-	if result != nil {
-		t.Error("Expected nil for no independent variables")
+	result, err := stats.LinearRegression(dlY)
+	if err == nil || result != nil {
+		t.Error("Expected error for no independent variables")
 	}
 
 	// Test case 2: Mismatched lengths
@@ -88,9 +87,9 @@ func TestMultipleLinearRegression_EdgeCases(t *testing.T) {
 	dlX2 := insyra.NewDataList(x2)
 	dlY2 := insyra.NewDataList(y2)
 
-	result2 := stats.LinearRegression(dlY2, dlX1, dlX2)
-	if result2 != nil {
-		t.Error("Expected nil for mismatched lengths")
+	result2, err := stats.LinearRegression(dlY2, dlX1, dlX2)
+	if err == nil || result2 != nil {
+		t.Error("Expected error for mismatched lengths")
 	}
 
 	// Test case 3: More variables than observations
@@ -104,9 +103,9 @@ func TestMultipleLinearRegression_EdgeCases(t *testing.T) {
 	dlX3_small := insyra.NewDataList(x3_small)
 	dlY_small := insyra.NewDataList(y_small)
 
-	result3 := stats.LinearRegression(dlY_small, dlX1_small, dlX2_small, dlX3_small)
-	if result3 != nil {
-		t.Error("Expected nil for more variables than observations")
+	result3, err := stats.LinearRegression(dlY_small, dlX1_small, dlX2_small, dlX3_small)
+	if err == nil || result3 != nil {
+		t.Error("Expected error for more variables than observations")
 	}
 }
 
@@ -180,10 +179,9 @@ func TestLinearRegression_R(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dlX := insyra.NewDataList(tc.x)
 			dlY := insyra.NewDataList(tc.y)
-			result := stats.LinearRegression(dlY, dlX)
-
-			if result == nil {
-				t.Error("LinearRegression returned nil")
+			result, err := stats.LinearRegression(dlY, dlX)
+			if err != nil {
+				t.Errorf("LinearRegression returned error: %v", err)
 				return
 			}
 			assertClose(t, "Slope", result.Slope, tc.expected.Slope, tolerance)
@@ -245,10 +243,9 @@ func TestPolynomialRegression_R(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dlX := insyra.NewDataList(tc.x)
 			dlY := insyra.NewDataList(tc.y)
-			result := stats.PolynomialRegression(dlY, dlX, tc.degree)
-
-			if result == nil {
-				t.Error("PolynomialRegression returned nil")
+			result, err := stats.PolynomialRegression(dlY, dlX, tc.degree)
+			if err != nil {
+				t.Errorf("PolynomialRegression returned error: %v", err)
 				return
 			}
 
@@ -315,10 +312,9 @@ func TestExponentialRegression_R(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dlX := insyra.NewDataList(tc.x)
 			dlY := insyra.NewDataList(tc.y)
-			result := stats.ExponentialRegression(dlY, dlX)
-
-			if result == nil {
-				t.Error("ExponentialRegression returned nil")
+			result, err := stats.ExponentialRegression(dlY, dlX)
+			if err != nil {
+				t.Errorf("ExponentialRegression returned error: %v", err)
 				return
 			}
 			assertClose(t, "Slope", result.Slope, tc.expected.Slope, tolerance)
@@ -373,10 +369,9 @@ func TestLogarithmicRegression_R(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dlX := insyra.NewDataList(tc.x)
 			dlY := insyra.NewDataList(tc.y)
-			result := stats.LogarithmicRegression(dlY, dlX)
-
-			if result == nil {
-				t.Error("LogarithmicRegression returned nil")
+			result, err := stats.LogarithmicRegression(dlY, dlX)
+			if err != nil {
+				t.Errorf("LogarithmicRegression returned error: %v", err)
 				return
 			}
 			assertClose(t, "Slope", result.Slope, tc.expected.Slope, tolerance)

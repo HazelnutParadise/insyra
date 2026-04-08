@@ -44,9 +44,9 @@ func TestCorrelation(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			result := stats.Correlation(x, y, tc.method)
-			if result == nil {
-				t.Errorf("%s: expected non-nil result", tc.name)
+			result, err := stats.Correlation(x, y, tc.method)
+			if err != nil {
+				t.Errorf("%s: unexpected error: %v", tc.name, err)
 				return
 			}
 			if math.Abs(result.Statistic-tc.expectedStat) > tc.tolerance {
@@ -100,17 +100,17 @@ func TestCorrelation_MoreCases(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			x := insyra.NewDataList(tc.x)
 			y := insyra.NewDataList(tc.y)
-			result := stats.Correlation(x, y, tc.method)
+			result, err := stats.Correlation(x, y, tc.method)
 
 			if tc.expectNil {
-				if result != nil {
-					t.Errorf("%s: expected nil, got %+v", tc.name, result)
+				if err == nil {
+					t.Errorf("%s: expected error, got result %+v", tc.name, result)
 				}
 				return
 			}
 
-			if result == nil {
-				t.Errorf("%s: expected result, got nil", tc.name)
+			if err != nil {
+				t.Errorf("%s: expected result, got error: %v", tc.name, err)
 				return
 			}
 			if math.Abs(result.Statistic-tc.expectedStat) > tc.tolerance {

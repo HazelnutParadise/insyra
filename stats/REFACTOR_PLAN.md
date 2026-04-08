@@ -1220,3 +1220,11 @@ Layer 4 ── 公開統計方法（不含計算邏輯）
 ### Out of Scope
 - PCA/moments/skewness/kurtosis algorithmic redesign.
 - Any behavior change beyond pure refactor (unless explicitly approved).
+
+## 2026-04-08 Follow-up: Exported API Error Contract
+
+- This package now treats failure paths in exported APIs with explicit return values (`error`) instead of logging side effects.
+- `stats` exported functions no longer rely on `LogWarning`/`LogFatal` for control flow.
+- CLI command handlers were updated to propagate these errors to users.
+- Detailed signature/migration notes are documented in:
+  - `stats/API_ERROR_CONTRACT.md`
