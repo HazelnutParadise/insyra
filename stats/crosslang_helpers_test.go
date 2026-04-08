@@ -189,3 +189,89 @@ func assertSliceCloseToBoth(t *testing.T, label string, got, rWant, pyWant []flo
 		assertCloseToBoth(t, fmt.Sprintf("%s[%d]", label, i), got[i], rWant[i], pyWant[i], tol)
 	}
 }
+
+func assertMatrixCloseToBoth(t *testing.T, label string, got, rWant, pyWant [][]float64, tol float64) {
+	t.Helper()
+	if len(got) != len(rWant) || len(got) != len(pyWant) {
+		t.Fatalf("%s row length mismatch got=%d r=%d py=%d", label, len(got), len(rWant), len(pyWant))
+	}
+	for i := range got {
+		if len(got[i]) != len(rWant[i]) || len(got[i]) != len(pyWant[i]) {
+			t.Fatalf("%s row %d length mismatch got=%d r=%d py=%d", label, i, len(got[i]), len(rWant[i]), len(pyWant[i]))
+		}
+		for j := range got[i] {
+			assertCloseToBoth(t, fmt.Sprintf("%s[%d,%d]", label, i, j), got[i][j], rWant[i][j], pyWant[i][j], tol)
+		}
+	}
+}
+
+func toObservedExpectedPair(t *testing.T, value any) (float64, float64) {
+	t.Helper()
+	switch v := value.(type) {
+	case [2]float64:
+		return v[0], v[1]
+	case []float64:
+		if len(v) != 2 {
+			t.Fatalf("expected []float64 length=2, got %d", len(v))
+		}
+		return v[0], v[1]
+	case [2]any:
+		a, okA := toFloat64FromAny(v[0])
+		b, okB := toFloat64FromAny(v[1])
+		if !okA || !okB {
+			t.Fatalf("expected numeric [2]any pair, got %T with values %#v", value, value)
+		}
+		return a, b
+	case []any:
+		if len(v) != 2 {
+			t.Fatalf("expected []any length=2, got %d", len(v))
+		}
+		a, okA := toFloat64FromAny(v[0])
+		b, okB := toFloat64FromAny(v[1])
+		if !okA || !okB {
+			t.Fatalf("expected numeric []any pair, got %T with values %#v", value, value)
+		}
+		return a, b
+	default:
+		t.Fatalf("expected observed/expected pair cell, got %T (%#v)", value, value)
+		return math.NaN(), math.NaN()
+	}
+}
+
+func toFloat64FromAny(v any) (float64, bool) {
+	switch x := v.(type) {
+	case float64:
+		return x, true
+	case float32:
+		return float64(x), true
+	case int:
+		return float64(x), true
+	case int8:
+		return float64(x), true
+	case int16:
+		return float64(x), true
+	case int32:
+		return float64(x), true
+	case int64:
+		return float64(x), true
+	case uint:
+		return float64(x), true
+	case uint8:
+		return float64(x), true
+	case uint16:
+		return float64(x), true
+	case uint32:
+		return float64(x), true
+	case uint64:
+		return float64(x), true
+	default:
+		return 0, false
+	}
+}
+
+func assertNaNToBoth(t *testing.T, label string, got, rWant, pyWant float64) {
+	t.Helper()
+	if !math.IsNaN(got) || !math.IsNaN(rWant) || !math.IsNaN(pyWant) {
+		t.Fatalf("%s expected NaN for go/r/py, got go=%v r=%v py=%v", label, got, rWant, pyWant)
+	}
+}

@@ -247,6 +247,9 @@ corr_pair_stat_p <- function(x, y, method) {
   n <- length(x)
   if (method == "pearson") {
     r <- cor(x, y, method = "pearson")
+    if (abs(r) >= 0.9999) {
+      return(list(stat = r, p = 0))
+    }
     inf <- correlation_inference(r, n)
     return(list(stat = r, p = inf$p))
   }
@@ -254,12 +257,45 @@ corr_pair_stat_p <- function(x, y, method) {
     rx <- rank(x, ties.method = "average")
     ry <- rank(y, ties.method = "average")
     r <- cor(rx, ry, method = "pearson")
+    if (abs(r) >= 0.9999) {
+      return(list(stat = r, p = 0))
+    }
     inf <- correlation_inference(r, n)
     return(list(stat = r, p = inf$p))
   }
   tau <- cor(x, y, method = "kendall")
-  z <- 3 * tau * sqrt(n * (n - 1)) / sqrt(2 * (2 * n + 5))
-  p <- 2 * (1 - pnorm(abs(z)))
+  if (n <= 7) {
+    permute_all <- function(v) {
+      if (length(v) == 1) {
+        return(list(v))
+      }
+      res <- list()
+      idx <- 1
+      for (i in seq_along(v)) {
+        sub <- permute_all(v[-i])
+        for (p in sub) {
+          res[[idx]] <- c(v[i], p)
+          idx <- idx + 1
+        }
+      }
+      res
+    }
+    y_sorted <- sort(as.double(y))
+    perms <- permute_all(y_sorted)
+    obs <- abs(tau)
+    extreme <- 0
+    total <- length(perms)
+    for (perm in perms) {
+      alt_tau <- cor(x, perm, method = "kendall")
+      if (abs(alt_tau) >= obs) {
+        extreme <- extreme + 1
+      }
+    }
+    p <- extreme / total
+  } else {
+    z <- 3 * tau * sqrt(n * (n - 1)) / sqrt(2 * (2 * n + 5))
+    p <- 2 * (1 - pnorm(abs(z)))
+  }
   list(stat = tau, p = p)
 }
 
@@ -405,7 +441,7 @@ if (method == "single_t") {
   chi <- sum((observed - expected)^2 / expected)
   df <- as.double(length(observed) - 1)
   p <- 1 - pchisq(chi, df)
-  out <- list(stat = chi, p = p, df = df)
+  out <- list(stat = chi, p = p, df = df, observed = observed, expected = expected, keys = keys)
 } else if (method == "chi_ind") {
   rows <- trimws(as.character(unlist(payload$rows)))
   cols <- trimws(as.character(unlist(payload$cols)))
@@ -424,7 +460,15 @@ if (method == "single_t") {
   chi <- sum((obs - exp)^2 / exp)
   df <- as.double((nrow(obs) - 1) * (ncol(obs) - 1))
   p <- 1 - pchisq(chi, df)
-  out <- list(stat = chi, p = p, df = df)
+  out <- list(
+    stat = chi,
+    p = p,
+    df = df,
+    observed = lapply(seq_len(nrow(obs)), function(i) as.double(obs[i, ])),
+    expected = lapply(seq_len(nrow(exp)), function(i) as.double(exp[i, ])),
+    row_keys = as.character(rownames(obs)),
+    col_keys = as.character(colnames(obs))
+  )
 } else if (method == "oneway_anova") {
   st <- one_way_stats(payload$groups)
   out <- list(ssb = st$ssb, ssw = st$ssw, dfb = st$dfb, dfw = st$dfw, f = st$f, p = st$p, eta = st$eta, total_ss = st$ssb + st$ssw)
@@ -504,19 +548,25 @@ if (method == "single_t") {
   n <- length(x)
   if (m == "pearson") {
     r <- cor(x, y, method = "pearson")
-    inf <- correlation_inference(r, n)
-    out <- list(stat = r, p = inf$p, df = inf$df, ci = inf$ci)
+    if (abs(r) >= 0.9999) {
+      out <- list(stat = r, p = 0, df = as.double(n - 2))
+    } else {
+      inf <- correlation_inference(r, n)
+      out <- list(stat = r, p = inf$p, df = inf$df, ci = inf$ci)
+    }
   } else if (m == "spearman") {
     rx <- rank(x, ties.method = "average")
     ry <- rank(y, ties.method = "average")
     r <- cor(rx, ry, method = "pearson")
-    inf <- correlation_inference(r, n)
-    out <- list(stat = r, p = inf$p, df = inf$df, ci = inf$ci)
+    if (abs(r) >= 0.9999) {
+      out <- list(stat = r, p = 0)
+    } else {
+      inf <- correlation_inference(r, n)
+      out <- list(stat = r, p = inf$p, df = inf$df, ci = inf$ci)
+    }
   } else {
-    tau <- cor(x, y, method = "kendall")
-    z <- 3 * tau * sqrt(n * (n - 1)) / sqrt(2 * (2 * n + 5))
-    p <- 2 * (1 - pnorm(abs(z)))
-    out <- list(stat = tau, p = p)
+    cp <- corr_pair_stat_p(x, y, "kendall")
+    out <- list(stat = cp$stat, p = cp$p)
   }
 } else if (method == "bartlett_sphericity") {
   out <- bartlett_sphericity(payload$rows)

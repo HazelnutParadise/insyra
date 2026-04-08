@@ -2,6 +2,7 @@ package stats_test
 
 import (
 	"fmt"
+	"math"
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
@@ -45,6 +46,23 @@ func tableToFloatMatrix(dt *insyra.DataTable) [][]float64 {
 	return out
 }
 
+func contingencyToObservedExpectedMatrices(t *testing.T, dt *insyra.DataTable) ([][]float64, [][]float64) {
+	t.Helper()
+	rows, cols := dt.Size()
+	observed := make([][]float64, rows)
+	expected := make([][]float64, rows)
+	for i := 0; i < rows; i++ {
+		observed[i] = make([]float64, cols)
+		expected[i] = make([]float64, cols)
+		for j := 0; j < cols; j++ {
+			obs, exp := toObservedExpectedPair(t, dt.GetElementByNumberIndex(i, j))
+			observed[i][j] = obs
+			expected[i][j] = exp
+		}
+	}
+	return observed, expected
+}
+
 func TestCrossLangSingleSampleTTest(t *testing.T) {
 	requireCrossLangTools(t)
 
@@ -79,6 +97,9 @@ func TestCrossLangSingleSampleTTest(t *testing.T) {
 			assertCloseToBoth(t, "ci.high", got.CI[1], rCI[1], pCI[1], 1e-7)
 			assertCloseToBoth(t, "mean", *got.Mean, baselineFloat(t, rb, "mean"), baselineFloat(t, pb, "mean"), 1e-10)
 			assertCloseToBoth(t, "effect", got.EffectSizes[0].Value, baselineFloat(t, rb, "effect"), baselineFloat(t, pb, "effect"), 1e-8)
+			if got.N != len(tc.x) {
+				t.Fatalf("n mismatch: got=%d want=%d", got.N, len(tc.x))
+			}
 		})
 	}
 }
@@ -139,6 +160,12 @@ func TestCrossLangTwoSampleTTest(t *testing.T) {
 			assertCloseToBoth(t, "mean1", *got.Mean, baselineFloat(t, rb, "mean1"), baselineFloat(t, pb, "mean1"), 1e-10)
 			assertCloseToBoth(t, "mean2", *got.Mean2, baselineFloat(t, rb, "mean2"), baselineFloat(t, pb, "mean2"), 1e-10)
 			assertCloseToBoth(t, "effect", got.EffectSizes[0].Value, baselineFloat(t, rb, "effect"), baselineFloat(t, pb, "effect"), 1e-7)
+			if got.N != len(tc.x) {
+				t.Fatalf("n mismatch: got=%d want=%d", got.N, len(tc.x))
+			}
+			if got.N2 == nil || *got.N2 != len(tc.y) {
+				t.Fatalf("n2 mismatch: got=%v want=%d", got.N2, len(tc.y))
+			}
 		})
 	}
 }
@@ -177,6 +204,9 @@ func TestCrossLangPairedTTest(t *testing.T) {
 			assertCloseToBoth(t, "ci.high", got.CI[1], rCI[1], pCI[1], 1e-7)
 			assertCloseToBoth(t, "mean_diff", *got.MeanDiff, baselineFloat(t, rb, "mean_diff"), baselineFloat(t, pb, "mean_diff"), 1e-10)
 			assertCloseToBoth(t, "effect", got.EffectSizes[0].Value, baselineFloat(t, rb, "effect"), baselineFloat(t, pb, "effect"), 1e-8)
+			if got.N != len(tc.x) {
+				t.Fatalf("n mismatch: got=%d want=%d", got.N, len(tc.x))
+			}
 		})
 	}
 }
@@ -185,12 +215,12 @@ func TestCrossLangSingleSampleZTest(t *testing.T) {
 	requireCrossLangTools(t)
 
 	cases := []struct {
-		name string
-		x    []float64
-		mu   float64
+		name  string
+		x     []float64
+		mu    float64
 		sigma float64
-		alt  stats.AlternativeHypothesis
-		cl   float64
+		alt   stats.AlternativeHypothesis
+		cl    float64
 	}{
 		{name: "two_sided", x: []float64{52, 55, 49, 51, 53, 50, 54}, mu: 50, sigma: 10, alt: stats.TwoSided, cl: 0.95},
 		{name: "greater", x: []float64{105, 108, 102, 110, 107, 106, 109}, mu: 100, sigma: 12, alt: stats.Greater, cl: 0.95},
@@ -215,6 +245,9 @@ func TestCrossLangSingleSampleZTest(t *testing.T) {
 			assertCloseToBoth(t, "ci.high", got.CI[1], rCI[1], pCI[1], 1e-7)
 			assertCloseToBoth(t, "mean", got.Mean, baselineFloat(t, rb, "mean"), baselineFloat(t, pb, "mean"), 1e-10)
 			assertCloseToBoth(t, "effect", got.EffectSizes[0].Value, baselineFloat(t, rb, "effect"), baselineFloat(t, pb, "effect"), 1e-8)
+			if got.N != len(tc.x) {
+				t.Fatalf("n mismatch: got=%d want=%d", got.N, len(tc.x))
+			}
 		})
 	}
 }
@@ -266,6 +299,12 @@ func TestCrossLangTwoSampleZTest(t *testing.T) {
 			assertCloseToBoth(t, "mean1", got.Mean, baselineFloat(t, rb, "mean1"), baselineFloat(t, pb, "mean1"), 1e-10)
 			assertCloseToBoth(t, "mean2", *got.Mean2, baselineFloat(t, rb, "mean2"), baselineFloat(t, pb, "mean2"), 1e-10)
 			assertCloseToBoth(t, "effect", got.EffectSizes[0].Value, baselineFloat(t, rb, "effect"), baselineFloat(t, pb, "effect"), 1e-8)
+			if got.N != len(tc.x) {
+				t.Fatalf("n mismatch: got=%d want=%d", got.N, len(tc.x))
+			}
+			if got.N2 == nil || *got.N2 != len(tc.y) {
+				t.Fatalf("n2 mismatch: got=%v want=%d", got.N2, len(tc.y))
+			}
 		})
 	}
 }
@@ -299,6 +338,19 @@ func TestCrossLangChiSquareGoodnessOfFit(t *testing.T) {
 			assertCloseToBoth(t, "chi", got.Statistic, baselineFloat(t, rb, "stat"), baselineFloat(t, pb, "stat"), 1e-8)
 			assertCloseToBoth(t, "p", got.PValue, baselineFloat(t, rb, "p"), baselineFloat(t, pb, "p"), 1e-8)
 			assertCloseToBoth(t, "df", *got.DF, baselineFloat(t, rb, "df"), baselineFloat(t, pb, "df"), 1e-8)
+
+			gotObserved, gotExpected := contingencyToObservedExpectedMatrices(t, got.ContingencyTable)
+			rObserved := baselineFloatSlice(t, rb, "observed")
+			pObserved := baselineFloatSlice(t, pb, "observed")
+			rExpected := baselineFloatSlice(t, rb, "expected")
+			pExpected := baselineFloatSlice(t, pb, "expected")
+			for i := range gotObserved {
+				if len(gotObserved[i]) != 1 || len(gotExpected[i]) != 1 {
+					t.Fatalf("unexpected GOF contingency shape at row=%d", i)
+				}
+				assertCloseToBoth(t, fmt.Sprintf("observed[%d]", i), gotObserved[i][0], rObserved[i], pObserved[i], 1e-8)
+				assertCloseToBoth(t, fmt.Sprintf("expected[%d]", i), gotExpected[i][0], rExpected[i], pExpected[i], 1e-8)
+			}
 		})
 	}
 }
@@ -329,6 +381,14 @@ func TestCrossLangChiSquareIndependence(t *testing.T) {
 			assertCloseToBoth(t, "chi", got.Statistic, baselineFloat(t, rb, "stat"), baselineFloat(t, pb, "stat"), 1e-8)
 			assertCloseToBoth(t, "p", got.PValue, baselineFloat(t, rb, "p"), baselineFloat(t, pb, "p"), 1e-8)
 			assertCloseToBoth(t, "df", *got.DF, baselineFloat(t, rb, "df"), baselineFloat(t, pb, "df"), 1e-8)
+
+			gotObserved, gotExpected := contingencyToObservedExpectedMatrices(t, got.ContingencyTable)
+			rObserved := baselineFloatMatrix(t, rb, "observed")
+			pObserved := baselineFloatMatrix(t, pb, "observed")
+			rExpected := baselineFloatMatrix(t, rb, "expected")
+			pExpected := baselineFloatMatrix(t, pb, "expected")
+			assertMatrixCloseToBoth(t, "observed", gotObserved, rObserved, pObserved, 1e-8)
+			assertMatrixCloseToBoth(t, "expected", gotExpected, rExpected, pExpected, 1e-8)
 		})
 	}
 }
@@ -361,10 +421,15 @@ func TestCrossLangOneWayANOVA(t *testing.T) {
 
 			assertCloseToBoth(t, "ssb", got.Factor.SumOfSquares, baselineFloat(t, rb, "ssb"), baselineFloat(t, pb, "ssb"), 1e-8)
 			assertCloseToBoth(t, "ssw", got.Within.SumOfSquares, baselineFloat(t, rb, "ssw"), baselineFloat(t, pb, "ssw"), 1e-8)
+			assertCloseToBoth(t, "dfb", float64(got.Factor.DF), baselineFloat(t, rb, "dfb"), baselineFloat(t, pb, "dfb"), 1e-8)
+			assertCloseToBoth(t, "dfw", float64(got.Within.DF), baselineFloat(t, rb, "dfw"), baselineFloat(t, pb, "dfw"), 1e-8)
 			assertCloseToBoth(t, "f", got.Factor.F, baselineFloat(t, rb, "f"), baselineFloat(t, pb, "f"), 1e-8)
 			assertCloseToBoth(t, "p", got.Factor.P, baselineFloat(t, rb, "p"), baselineFloat(t, pb, "p"), 1e-8)
 			assertCloseToBoth(t, "eta", got.Factor.EtaSquared, baselineFloat(t, rb, "eta"), baselineFloat(t, pb, "eta"), 1e-8)
 			assertCloseToBoth(t, "total_ss", got.TotalSS, baselineFloat(t, rb, "total_ss"), baselineFloat(t, pb, "total_ss"), 1e-8)
+			if !math.IsNaN(got.Within.F) || !math.IsNaN(got.Within.P) || !math.IsNaN(got.Within.EtaSquared) {
+				t.Fatalf("within component should have NaN F/P/Eta, got F=%v P=%v Eta=%v", got.Within.F, got.Within.P, got.Within.EtaSquared)
+			}
 		})
 	}
 }
@@ -410,9 +475,23 @@ func TestCrossLangTwoWayANOVA(t *testing.T) {
 			assertCloseToBoth(t, "ssb", got.FactorB.SumOfSquares, baselineFloat(t, rb, "ssb"), baselineFloat(t, pb, "ssb"), 1e-7)
 			assertCloseToBoth(t, "ssab", got.Interaction.SumOfSquares, baselineFloat(t, rb, "ssab"), baselineFloat(t, pb, "ssab"), 1e-7)
 			assertCloseToBoth(t, "ssw", got.Within.SumOfSquares, baselineFloat(t, rb, "ssw"), baselineFloat(t, pb, "ssw"), 1e-7)
+			assertCloseToBoth(t, "dfa", float64(got.FactorA.DF), baselineFloat(t, rb, "dfa"), baselineFloat(t, pb, "dfa"), 1e-7)
+			assertCloseToBoth(t, "dfb", float64(got.FactorB.DF), baselineFloat(t, rb, "dfb"), baselineFloat(t, pb, "dfb"), 1e-7)
+			assertCloseToBoth(t, "dfab", float64(got.Interaction.DF), baselineFloat(t, rb, "dfab"), baselineFloat(t, pb, "dfab"), 1e-7)
+			assertCloseToBoth(t, "dfw", float64(got.Within.DF), baselineFloat(t, rb, "dfw"), baselineFloat(t, pb, "dfw"), 1e-7)
 			assertCloseToBoth(t, "fa", got.FactorA.F, baselineFloat(t, rb, "fa"), baselineFloat(t, pb, "fa"), 1e-7)
 			assertCloseToBoth(t, "fb", got.FactorB.F, baselineFloat(t, rb, "fb"), baselineFloat(t, pb, "fb"), 1e-7)
 			assertCloseToBoth(t, "fab", got.Interaction.F, baselineFloat(t, rb, "fab"), baselineFloat(t, pb, "fab"), 1e-7)
+			assertCloseToBoth(t, "pa", got.FactorA.P, baselineFloat(t, rb, "pa"), baselineFloat(t, pb, "pa"), 1e-7)
+			assertCloseToBoth(t, "pb", got.FactorB.P, baselineFloat(t, rb, "pb"), baselineFloat(t, pb, "pb"), 1e-7)
+			assertCloseToBoth(t, "pab", got.Interaction.P, baselineFloat(t, rb, "pab"), baselineFloat(t, pb, "pab"), 1e-7)
+			assertCloseToBoth(t, "etaa", got.FactorA.EtaSquared, baselineFloat(t, rb, "etaa"), baselineFloat(t, pb, "etaa"), 1e-7)
+			assertCloseToBoth(t, "etab", got.FactorB.EtaSquared, baselineFloat(t, rb, "etab"), baselineFloat(t, pb, "etab"), 1e-7)
+			assertCloseToBoth(t, "etaab", got.Interaction.EtaSquared, baselineFloat(t, rb, "etaab"), baselineFloat(t, pb, "etaab"), 1e-7)
+			assertCloseToBoth(t, "total_ss", got.TotalSS, baselineFloat(t, rb, "total_ss"), baselineFloat(t, pb, "total_ss"), 1e-7)
+			if !math.IsNaN(got.Within.F) || !math.IsNaN(got.Within.P) || !math.IsNaN(got.Within.EtaSquared) {
+				t.Fatalf("within component should have NaN F/P/Eta, got F=%v P=%v Eta=%v", got.Within.F, got.Within.P, got.Within.EtaSquared)
+			}
 		})
 	}
 }
@@ -446,9 +525,19 @@ func TestCrossLangRepeatedMeasuresANOVA(t *testing.T) {
 			assertCloseToBoth(t, "ss_factor", got.Factor.SumOfSquares, baselineFloat(t, rb, "ss_factor"), baselineFloat(t, pb, "ss_factor"), 1e-7)
 			assertCloseToBoth(t, "ss_subject", got.Subject.SumOfSquares, baselineFloat(t, rb, "ss_subject"), baselineFloat(t, pb, "ss_subject"), 1e-7)
 			assertCloseToBoth(t, "ss_within", got.Within.SumOfSquares, baselineFloat(t, rb, "ss_within"), baselineFloat(t, pb, "ss_within"), 1e-7)
+			assertCloseToBoth(t, "ss_total", got.TotalSS, baselineFloat(t, rb, "ss_total"), baselineFloat(t, pb, "ss_total"), 1e-7)
+			assertCloseToBoth(t, "df_factor", float64(got.Factor.DF), baselineFloat(t, rb, "df_factor"), baselineFloat(t, pb, "df_factor"), 1e-7)
+			assertCloseToBoth(t, "df_subject", float64(got.Subject.DF), baselineFloat(t, rb, "df_subject"), baselineFloat(t, pb, "df_subject"), 1e-7)
+			assertCloseToBoth(t, "df_within", float64(got.Within.DF), baselineFloat(t, rb, "df_within"), baselineFloat(t, pb, "df_within"), 1e-7)
 			assertCloseToBoth(t, "f", got.Factor.F, baselineFloat(t, rb, "f"), baselineFloat(t, pb, "f"), 1e-7)
 			assertCloseToBoth(t, "p", got.Factor.P, baselineFloat(t, rb, "p"), baselineFloat(t, pb, "p"), 1e-7)
 			assertCloseToBoth(t, "eta", got.Factor.EtaSquared, baselineFloat(t, rb, "eta"), baselineFloat(t, pb, "eta"), 1e-7)
+			if !math.IsNaN(got.Subject.F) || !math.IsNaN(got.Subject.P) || !math.IsNaN(got.Subject.EtaSquared) {
+				t.Fatalf("subject component should have NaN F/P/Eta, got F=%v P=%v Eta=%v", got.Subject.F, got.Subject.P, got.Subject.EtaSquared)
+			}
+			if !math.IsNaN(got.Within.F) || !math.IsNaN(got.Within.P) || !math.IsNaN(got.Within.EtaSquared) {
+				t.Fatalf("within component should have NaN F/P/Eta, got F=%v P=%v Eta=%v", got.Within.F, got.Within.P, got.Within.EtaSquared)
+			}
 		})
 	}
 }
@@ -639,6 +728,7 @@ func TestCrossLangCovarianceCorrelationAndBartlett(t *testing.T) {
 			{name: "pearson_case", x: []float64{1, 2, 3, 4, 5, 6, 7, 8, 9}, y: []float64{1.1, 2.2, 2.9, 4.2, 5.1, 6.0, 6.8, 8.1, 9.2}, method: stats.PearsonCorrelation, methodName: "pearson"},
 			{name: "spearman_case", x: []float64{10, 20, 30, 40, 50, 60, 70, 80, 90}, y: []float64{11, 25, 24, 44, 49, 62, 68, 79, 92}, method: stats.SpearmanCorrelation, methodName: "spearman"},
 			{name: "kendall_case", x: []float64{3, 1, 4, 2, 5, 7, 6, 9, 8}, y: []float64{30, 12, 41, 21, 52, 72, 60, 91, 83}, method: stats.KendallCorrelation, methodName: "kendall"},
+			{name: "kendall_exact_case", x: []float64{1, 2, 3, 4, 5, 6}, y: []float64{1, 3, 2, 6, 5, 4}, method: stats.KendallCorrelation, methodName: "kendall"},
 		}
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
@@ -653,11 +743,24 @@ func TestCrossLangCovarianceCorrelationAndBartlett(t *testing.T) {
 				assertCloseToBoth(t, "stat", got.Statistic, baselineFloat(t, rb, "stat"), baselineFloat(t, pb, "stat"), 1e-8)
 				assertCloseToBoth(t, "p", got.PValue, baselineFloat(t, rb, "p"), baselineFloat(t, pb, "p"), 1e-8)
 				if tc.method != stats.KendallCorrelation {
+					if got.DF == nil {
+						t.Fatalf("expected non-nil DF for method=%s", tc.methodName)
+					}
 					assertCloseToBoth(t, "df", *got.DF, baselineFloat(t, rb, "df"), baselineFloat(t, pb, "df"), 1e-8)
+					if got.CI == nil {
+						t.Fatalf("expected non-nil CI for method=%s", tc.methodName)
+					}
 					rCI := baselineFloatSlice(t, rb, "ci")
 					pCI := baselineFloatSlice(t, pb, "ci")
 					assertCloseToBoth(t, "ci.low", got.CI[0], rCI[0], pCI[0], 1e-7)
 					assertCloseToBoth(t, "ci.high", got.CI[1], rCI[1], pCI[1], 1e-7)
+				} else {
+					if got.DF != nil {
+						t.Fatalf("expected nil DF for Kendall, got=%v", *got.DF)
+					}
+					if got.CI != nil {
+						t.Fatalf("expected nil CI for Kendall, got=%v", *got.CI)
+					}
 				}
 			})
 		}
@@ -746,6 +849,14 @@ func TestCrossLangRegressionFamily(t *testing.T) {
 					assertCloseToBoth(t, "simple.t_slope", got.TValue, baselineFloat(t, rb, "t_slope"), baselineFloat(t, pb, "t_slope"), 1e-6)
 					assertCloseToBoth(t, "simple.p_intercept", got.PValueIntercept, baselineFloat(t, rb, "p_intercept"), baselineFloat(t, pb, "p_intercept"), 1e-6)
 					assertCloseToBoth(t, "simple.p_slope", got.PValue, baselineFloat(t, rb, "p_slope"), baselineFloat(t, pb, "p_slope"), 1e-6)
+					rCIIntercept := baselineFloatSlice(t, rb, "ci_intercept")
+					pCIIntercept := baselineFloatSlice(t, pb, "ci_intercept")
+					assertCloseToBoth(t, "simple.ci_intercept.low", got.ConfidenceIntervalIntercept[0], rCIIntercept[0], pCIIntercept[0], 1e-6)
+					assertCloseToBoth(t, "simple.ci_intercept.high", got.ConfidenceIntervalIntercept[1], rCIIntercept[1], pCIIntercept[1], 1e-6)
+					rCISlope := baselineFloatSlice(t, rb, "ci_slope")
+					pCISlope := baselineFloatSlice(t, pb, "ci_slope")
+					assertCloseToBoth(t, "simple.ci_slope.low", got.ConfidenceIntervalSlope[0], rCISlope[0], pCISlope[0], 1e-6)
+					assertCloseToBoth(t, "simple.ci_slope.high", got.ConfidenceIntervalSlope[1], rCISlope[1], pCISlope[1], 1e-6)
 				}
 			})
 		}
@@ -779,6 +890,13 @@ func TestCrossLangRegressionFamily(t *testing.T) {
 				assertSliceCloseToBoth(t, "residuals", got.Residuals, baselineFloatSlice(t, rb, "residuals"), baselineFloatSlice(t, pb, "residuals"), 1e-6)
 				assertCloseToBoth(t, "r_squared", got.RSquared, baselineFloat(t, rb, "r_squared"), baselineFloat(t, pb, "r_squared"), 1e-6)
 				assertCloseToBoth(t, "adj_r_squared", got.AdjustedRSquared, baselineFloat(t, rb, "adj_r_squared"), baselineFloat(t, pb, "adj_r_squared"), 1e-6)
+				rCI := baselineFloatMatrix(t, rb, "confidence_intervals")
+				pCI := baselineFloatMatrix(t, pb, "confidence_intervals")
+				gotCI := make([][]float64, len(got.ConfidenceIntervals))
+				for i := range got.ConfidenceIntervals {
+					gotCI[i] = []float64{got.ConfidenceIntervals[i][0], got.ConfidenceIntervals[i][1]}
+				}
+				assertMatrixCloseToBoth(t, "confidence_intervals", gotCI, rCI, pCI, 1e-6)
 			})
 		}
 	})
@@ -813,6 +931,14 @@ func TestCrossLangRegressionFamily(t *testing.T) {
 				assertCloseToBoth(t, "p_intercept", got.PValueIntercept, baselineFloat(t, rb, "p_intercept"), baselineFloat(t, pb, "p_intercept"), 1e-6)
 				assertCloseToBoth(t, "p_slope", got.PValueSlope, baselineFloat(t, rb, "p_slope"), baselineFloat(t, pb, "p_slope"), 1e-6)
 				assertSliceCloseToBoth(t, "residuals", got.Residuals, baselineFloatSlice(t, rb, "residuals"), baselineFloatSlice(t, pb, "residuals"), 1e-6)
+				rCIIntercept := baselineFloatSlice(t, rb, "ci_intercept")
+				pCIIntercept := baselineFloatSlice(t, pb, "ci_intercept")
+				assertCloseToBoth(t, "ci_intercept.low", got.ConfidenceIntervalIntercept[0], rCIIntercept[0], pCIIntercept[0], 1e-6)
+				assertCloseToBoth(t, "ci_intercept.high", got.ConfidenceIntervalIntercept[1], rCIIntercept[1], pCIIntercept[1], 1e-6)
+				rCISlope := baselineFloatSlice(t, rb, "ci_slope")
+				pCISlope := baselineFloatSlice(t, pb, "ci_slope")
+				assertCloseToBoth(t, "ci_slope.low", got.ConfidenceIntervalSlope[0], rCISlope[0], pCISlope[0], 1e-6)
+				assertCloseToBoth(t, "ci_slope.high", got.ConfidenceIntervalSlope[1], rCISlope[1], pCISlope[1], 1e-6)
 			})
 		}
 	})
@@ -847,6 +973,14 @@ func TestCrossLangRegressionFamily(t *testing.T) {
 				assertCloseToBoth(t, "p_intercept", got.PValueIntercept, baselineFloat(t, rb, "p_intercept"), baselineFloat(t, pb, "p_intercept"), 1e-6)
 				assertCloseToBoth(t, "p_slope", got.PValueSlope, baselineFloat(t, rb, "p_slope"), baselineFloat(t, pb, "p_slope"), 1e-6)
 				assertSliceCloseToBoth(t, "residuals", got.Residuals, baselineFloatSlice(t, rb, "residuals"), baselineFloatSlice(t, pb, "residuals"), 1e-6)
+				rCIIntercept := baselineFloatSlice(t, rb, "ci_intercept")
+				pCIIntercept := baselineFloatSlice(t, pb, "ci_intercept")
+				assertCloseToBoth(t, "ci_intercept.low", got.ConfidenceIntervalIntercept[0], rCIIntercept[0], pCIIntercept[0], 1e-6)
+				assertCloseToBoth(t, "ci_intercept.high", got.ConfidenceIntervalIntercept[1], rCIIntercept[1], pCIIntercept[1], 1e-6)
+				rCISlope := baselineFloatSlice(t, rb, "ci_slope")
+				pCISlope := baselineFloatSlice(t, pb, "ci_slope")
+				assertCloseToBoth(t, "ci_slope.low", got.ConfidenceIntervalSlope[0], rCISlope[0], pCISlope[0], 1e-6)
+				assertCloseToBoth(t, "ci_slope.high", got.ConfidenceIntervalSlope[1], rCISlope[1], pCISlope[1], 1e-6)
 			})
 		}
 	})
@@ -1031,6 +1165,95 @@ func TestCrossLangCorrelationMatrixAndAnalysis(t *testing.T) {
 				assertCloseToBoth(t, "analysis.chi", chi, baselineFloat(t, rb, "chi_square"), baselineFloat(t, pb, "chi_square"), 1e-6)
 				assertCloseToBoth(t, "analysis.p", p, baselineFloat(t, rb, "p_value"), baselineFloat(t, pb, "p_value"), 1e-6)
 				assertCloseToBoth(t, "analysis.df", float64(df), baselineFloat(t, rb, "df"), baselineFloat(t, pb, "df"), 1e-6)
+			})
+		}
+
+		nonPearsonModes := []struct {
+			name       string
+			method     stats.CorrelationMethod
+			methodName string
+		}{
+			{name: "spearman", method: stats.SpearmanCorrelation, methodName: "spearman"},
+			{name: "kendall", method: stats.KendallCorrelation, methodName: "kendall"},
+		}
+		nonPearsonCases := []struct {
+			name string
+			rows [][]float64
+		}{
+			{
+				name: "np_case_a",
+				rows: [][]float64{
+					{1, 2, 3},
+					{2, 3, 5},
+					{3, 5, 8},
+					{4, 7, 13},
+					{5, 11, 21},
+					{6, 13, 34},
+				},
+			},
+			{
+				name: "np_case_b",
+				rows: [][]float64{
+					{10, 15, 20},
+					{12, 18, 23},
+					{14, 21, 26},
+					{16, 24, 30},
+					{18, 27, 33},
+					{20, 30, 37},
+				},
+			},
+			{
+				name: "np_case_c",
+				rows: [][]float64{
+					{5, 30, 100},
+					{7, 28, 96},
+					{9, 26, 92},
+					{11, 24, 89},
+					{13, 22, 85},
+					{15, 20, 81},
+				},
+			},
+		}
+
+		for _, mode := range nonPearsonModes {
+			t.Run("nonpearson_"+mode.name, func(t *testing.T) {
+				for _, tc := range nonPearsonCases {
+					t.Run(tc.name, func(t *testing.T) {
+						dt := dataTableFromRows(tc.rows)
+						gotCorr, gotP, chi, p, df, err := stats.CorrelationAnalysis(dt, mode.method)
+						if err != nil {
+							t.Fatalf("CorrelationAnalysis error: %v", err)
+						}
+						payload := map[string]any{"rows": tc.rows, "corr_method": mode.methodName}
+						rb := runRBaseline(t, "corr_analysis", payload)
+						pb := runPythonBaseline(t, "corr_analysis", payload)
+
+						gotCorrM := tableToFloatMatrix(gotCorr)
+						gotPM := tableToFloatMatrix(gotP)
+						rCorr := baselineFloatMatrix(t, rb, "corr_matrix")
+						pCorr := baselineFloatMatrix(t, pb, "corr_matrix")
+						rPM := baselineFloatMatrix(t, rb, "p_matrix")
+						pPM := baselineFloatMatrix(t, pb, "p_matrix")
+						assertMatrixCloseToBoth(t, "analysis_nonpearson.corr", gotCorrM, rCorr, pCorr, 1e-6)
+						assertMatrixCloseToBoth(t, "analysis_nonpearson.p", gotPM, rPM, pPM, 1e-6)
+
+						assertNaNToBoth(
+							t,
+							"analysis_nonpearson.chi",
+							chi,
+							baselineFloat(t, rb, "chi_square"),
+							baselineFloat(t, pb, "chi_square"),
+						)
+						assertNaNToBoth(
+							t,
+							"analysis_nonpearson.p",
+							p,
+							baselineFloat(t, rb, "p_value"),
+							baselineFloat(t, pb, "p_value"),
+						)
+						assertCloseToBoth(t, "analysis_nonpearson.df", float64(df), baselineFloat(t, rb, "df"), baselineFloat(t, pb, "df"), 1e-6)
+					})
+				}
 			})
 		}
 	})

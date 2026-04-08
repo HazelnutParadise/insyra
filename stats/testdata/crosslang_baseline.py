@@ -1,6 +1,7 @@
 import json
 import math
 import sys
+from itertools import permutations
 
 import numpy as np
 import scipy.stats as st
@@ -399,6 +400,18 @@ def corr_pair_stat_p(x, y, method):
         _, p, _, _ = correlation_inference(r, n)
         return r, p
     tau = float(st.kendalltau(x, y, method="asymptotic").statistic)
+    if n <= 7:
+        obs = abs(tau)
+        y_sorted = sorted([float(v) for v in y])
+        total = 0
+        extreme = 0
+        for perm in permutations(y_sorted):
+            alt_tau = float(st.kendalltau(x, perm, method="asymptotic").statistic)
+            if abs(alt_tau) >= obs:
+                extreme += 1
+            total += 1
+        p = extreme / total
+        return tau, p
     z = 3 * tau * math.sqrt(n * (n - 1)) / math.sqrt(2 * (2 * n + 5))
     p = 2 * (1 - st.norm.cdf(abs(z)))
     return tau, p
@@ -539,7 +552,14 @@ def main():
         chi = float(np.sum((observed - expected) ** 2 / expected))
         df = float(len(observed) - 1)
         pval = 1 - st.chi2.cdf(chi, df)
-        out = {"stat": chi, "p": pval, "df": df}
+        out = {
+            "stat": chi,
+            "p": pval,
+            "df": df,
+            "observed": observed.tolist(),
+            "expected": expected.tolist(),
+            "keys": keys,
+        }
     elif method == "chi_ind":
         rows = [str(v).strip() for v in payload["rows"]]
         cols = [str(v).strip() for v in payload["cols"]]
@@ -557,7 +577,15 @@ def main():
         chi = float(np.sum((obs - exp) ** 2 / exp))
         df = float((len(rkeys) - 1) * (len(ckeys) - 1))
         pval = 1 - st.chi2.cdf(chi, df)
-        out = {"stat": chi, "p": pval, "df": df}
+        out = {
+            "stat": chi,
+            "p": pval,
+            "df": df,
+            "observed": obs.tolist(),
+            "expected": exp.tolist(),
+            "row_keys": rkeys,
+            "col_keys": ckeys,
+        }
     elif method == "oneway_anova":
         groups = payload["groups"]
         ssb, ssw, dfb, dfw, f, p, eta = one_way_stats(groups)
@@ -639,18 +667,22 @@ def main():
         n = len(x)
         if m == "pearson":
             r = float(np.corrcoef(x, y)[0, 1])
-            _, p, df, ci = correlation_inference(r, n)
-            out = {"stat": r, "p": p, "df": df, "ci": ci}
+            if abs(r) >= 0.9999:
+                out = {"stat": r, "p": 0.0, "df": float(n - 2)}
+            else:
+                _, p, df, ci = correlation_inference(r, n)
+                out = {"stat": r, "p": p, "df": df, "ci": ci}
         elif m == "spearman":
             rx = rank_average(x)
             ry = rank_average(y)
             r = float(np.corrcoef(rx, ry)[0, 1])
-            _, p, df, ci = correlation_inference(r, n)
-            out = {"stat": r, "p": p, "df": df, "ci": ci}
+            if abs(r) >= 0.9999:
+                out = {"stat": r, "p": 0.0}
+            else:
+                _, p, df, ci = correlation_inference(r, n)
+                out = {"stat": r, "p": p, "df": df, "ci": ci}
         else:
-            tau = float(st.kendalltau(x, y, method="asymptotic").statistic)
-            z = 3 * tau * math.sqrt(n * (n - 1)) / math.sqrt(2 * (2 * n + 5))
-            p = 2 * (1 - st.norm.cdf(abs(z)))
+            tau, p = corr_pair_stat_p(x, y, "kendall")
             out = {"stat": tau, "p": p}
     elif method == "bartlett_sphericity":
         out = bartlett_sphericity(payload["rows"])
