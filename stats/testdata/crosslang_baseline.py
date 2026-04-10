@@ -722,6 +722,8 @@ def orient_cluster(a, b):
 
 
 def updated_distance(method, other, a, b, dik, djk, dij):
+    if method in ("ward.d", "ward.d2"):
+        return (((a["size"] + other["size"]) * dik) + ((b["size"] + other["size"]) * djk) - (other["size"] * dij)) / (a["size"] + b["size"] + other["size"])
     if method == "single":
         return min(dik, djk)
     if method == "complete":
@@ -730,16 +732,10 @@ def updated_distance(method, other, a, b, dik, djk, dij):
         return (a["size"] * dik + b["size"] * djk) / (a["size"] + b["size"])
     if method == "mcquitty":
         return 0.5 * dik + 0.5 * djk
-    if method in ("centroid", "median"):
-        merged = merged_centroid(a, b, method)
-        return float(np.linalg.norm(np.array(other["centroid"]) - np.array(merged)))
-    if method == "ward.d2":
-        merged = merged_centroid(a, b, "average")
-        d = float(np.linalg.norm(np.array(other["centroid"]) - np.array(merged)))
-        return d * d
-    if method == "ward.d":
-        merged = merged_centroid(a, b, "average")
-        return float(np.linalg.norm(np.array(other["centroid"]) - np.array(merged)))
+    if method == "median":
+        return ((dik + djk) - dij / 2.0) / 2.0
+    if method == "centroid":
+        return (a["size"] * dik + b["size"] * djk - ((a["size"] * b["size"]) * dij) / (a["size"] + b["size"])) / (a["size"] + b["size"])
     return max(dik, djk)
 
 
@@ -760,6 +756,7 @@ def tie_break_pair(a1, b1, a2, b2):
 
 def hclust_stats(rows, method, k=None, h=None):
     data = [list(map(float, row)) for row in rows]
+    method = method.lower()
     n = len(data)
     labels = [str(i + 1) for i in range(n)]
     clusters = {}
@@ -777,11 +774,13 @@ def hclust_stats(rows, method, k=None, h=None):
         }
     for i in range(n):
         for j in range(i + 1, n):
-            dists[(i, j)] = float(np.linalg.norm(np.array(data[i]) - np.array(data[j])))
+            dist = float(np.linalg.norm(np.array(data[i]) - np.array(data[j])))
+            if method == "ward.d2":
+                dist = dist * dist
+            dists[(i, j)] = dist
     merge = []
     height = []
     next_id = n
-    method = method.lower()
     for step in range(1, n):
         best_i, best_j, best_d = active[0], active[1], float("inf")
         for i in range(len(active)):
@@ -794,7 +793,7 @@ def hclust_stats(rows, method, k=None, h=None):
         a, b = clusters[best_i], clusters[best_j]
         left, right = orient_cluster(a, b)
         merge.append([left["rid"], right["rid"]])
-        height.append(best_d)
+        height.append(math.sqrt(best_d) if method == "ward.d2" else best_d)
         new_cluster = {
             "id": next_id,
             "members": left["members"] + right["members"],

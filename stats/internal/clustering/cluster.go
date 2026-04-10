@@ -462,7 +462,11 @@ func Hierarchical(data [][]float64, labels []string, method string) (*Hierarchic
 	dists := map[[2]int]float64{}
 	for i := 0; i < n; i++ {
 		for j := i + 1; j < n; j++ {
-			dists[pairKey(i, j)] = euclidean(data[i], data[j])
+			if method == "ward.d2" {
+				dists[pairKey(i, j)] = squaredEuclidean(data[i], data[j])
+			} else {
+				dists[pairKey(i, j)] = euclidean(data[i], data[j])
+			}
 		}
 	}
 
@@ -476,7 +480,11 @@ func Hierarchical(data [][]float64, labels []string, method string) (*Hierarchic
 		left, right := orientClusters(a, b)
 
 		merge = append(merge, [2]int{left.rID, right.rID})
-		height = append(height, dist)
+		if method == "ward.d2" {
+			height = append(height, math.Sqrt(dist))
+		} else {
+			height = append(height, dist)
+		}
 
 		newCluster := &clusterNode{
 			id:       nextID,
@@ -707,6 +715,8 @@ func Silhouette(data [][]float64, labels []int) (*SilhouetteResult, error) {
 
 func updatedDistance(method string, other, a, b *clusterNode, dik, djk, dij float64) float64 {
 	switch method {
+	case "ward.d", "ward.d2":
+		return ((float64(a.size+other.size) * dik) + (float64(b.size+other.size) * djk) - float64(other.size)*dij) / float64(a.size+b.size+other.size)
 	case "single":
 		return math.Min(dik, djk)
 	case "complete":
@@ -715,15 +725,10 @@ func updatedDistance(method string, other, a, b *clusterNode, dik, djk, dij floa
 		return (float64(a.size)*dik + float64(b.size)*djk) / float64(a.size+b.size)
 	case "mcquitty":
 		return 0.5*dik + 0.5*djk
-	case "centroid", "median":
-		return euclidean(other.centroid, mergedCentroid(a, b, method))
-	case "ward.d", "ward.d2":
-		merged := mergedCentroid(a, b, "average")
-		d := euclidean(other.centroid, merged)
-		if method == "ward.d2" {
-			return d * d
-		}
-		return d
+	case "median":
+		return ((dik + djk) - dij/2) / 2
+	case "centroid":
+		return (float64(a.size)*dik + float64(b.size)*djk - float64(a.size*b.size)*dij/float64(a.size+b.size)) / float64(a.size+b.size)
 	default:
 		return math.Max(dik, djk)
 	}

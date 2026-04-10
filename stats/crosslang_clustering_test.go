@@ -29,6 +29,24 @@ func TestCrossLangClusteringMethods(t *testing.T) {
 				rows: [][]float64{{0, 0}, {0, 0}, {5, 5}, {5, 6}, {9, 9}, {9, 10}},
 				k:    3, nstart: 4, itermax: 25, seed: 11,
 			},
+			{
+				name: "high_dim_zero_variance",
+				rows: [][]float64{
+					{0, 0, 1, 7}, {0, 1, 1, 7}, {1, 0, 1, 7},
+					{10, 10, 1, 7}, {10, 11, 1, 7}, {11, 10, 1, 7},
+					{20, 20, 1, 7}, {20, 21, 1, 7}, {21, 20, 1, 7},
+				},
+				k: 3, nstart: 5, itermax: 40, seed: 17,
+			},
+			{
+				name: "unbalanced_duplicate_heavy",
+				rows: [][]float64{
+					{0, 0}, {0, 0}, {0, 0.1}, {0.2, 0}, {0.1, 0.1},
+					{8, 8}, {8, 8}, {8.1, 8}, {8, 8.1},
+					{20, 20},
+				},
+				k: 3, nstart: 6, itermax: 50, seed: 29,
+			},
 		}
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
@@ -63,6 +81,11 @@ func TestCrossLangClusteringMethods(t *testing.T) {
 		}{
 			{name: "complete_case", rows: [][]float64{{0, 0}, {0, 1}, {10, 10}, {10, 11}}, method: stats.AggloComplete, k: 2, h: 5},
 			{name: "average_case", rows: [][]float64{{0, 0}, {1, 0}, {4, 4}, {5, 4}, {9, 9}}, method: stats.AggloAverage, k: 3, h: 2.5},
+			{name: "single_ties_case", rows: [][]float64{{0, 0}, {0, 2}, {2, 0}, {2, 2}, {10, 10}}, method: stats.AggloSingle, k: 2, h: 3},
+			{name: "ward_d2_case", rows: [][]float64{{0, 0}, {0, 1}, {5, 5}, {5, 6}, {9, 9}, {9, 10}}, method: stats.AggloWardD2, k: 3, h: 6},
+			{name: "mcquitty_case", rows: [][]float64{{1, 1}, {1, 2}, {4, 4}, {4, 5}, {8, 8}, {9, 8}}, method: stats.AggloMcQuitty, k: 3, h: 2.1},
+			{name: "centroid_case", rows: [][]float64{{0, 0}, {0, 1}, {3, 3}, {4, 3}, {8, 8}}, method: stats.AggloCentroid, k: 3, h: 2.0},
+			{name: "median_case", rows: [][]float64{{0, 0}, {1, 0}, {4, 4}, {4, 5}, {9, 9}}, method: stats.AggloMedian, k: 3, h: 2.0},
 		}
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
@@ -101,6 +124,8 @@ func TestCrossLangClusteringMethods(t *testing.T) {
 		}{
 			{name: "noise_case", rows: [][]float64{{0, 0}, {0.1, 0}, {0, 0.1}, {8, 8}}, eps: 0.25, minPts: 3},
 			{name: "two_clusters", rows: [][]float64{{0, 0}, {0.2, 0.1}, {5, 5}, {5.2, 5.1}, {10, 10}}, eps: 0.35, minPts: 2},
+			{name: "all_noise", rows: [][]float64{{0, 0}, {3, 3}, {6, 6}, {9, 9}}, eps: 0.5, minPts: 2},
+			{name: "duplicate_core_and_border", rows: [][]float64{{0, 0}, {0, 0}, {0.1, 0}, {0, 0.1}, {1.2, 1.2}, {1.3, 1.2}, {3.5, 3.5}}, eps: 0.18, minPts: 3},
 		}
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
@@ -126,6 +151,8 @@ func TestCrossLangClusteringMethods(t *testing.T) {
 		}{
 			{name: "two_clusters", rows: [][]float64{{0, 0}, {0, 1}, {10, 10}, {10, 11}}, labels: []int{1, 1, 2, 2}},
 			{name: "three_clusters", rows: [][]float64{{0, 0}, {0, 1}, {5, 5}, {5, 6}, {10, 10}, {10, 11}}, labels: []int{1, 1, 2, 2, 3, 3}},
+			{name: "imbalanced_clusters", rows: [][]float64{{0, 0}, {0, 1}, {0, 2}, {5, 5}, {10, 10}, {10, 11}, {10, 12}}, labels: []int{1, 1, 1, 2, 3, 3, 3}},
+			{name: "duplicate_points", rows: [][]float64{{0, 0}, {0, 0}, {5, 5}, {5, 5}, {9, 9}, {9, 10}}, labels: []int{1, 1, 2, 2, 3, 3}},
 		}
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
