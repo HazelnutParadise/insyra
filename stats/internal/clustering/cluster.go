@@ -116,7 +116,10 @@ func KMeans(data [][]float64, centers int, opts KMeansOptions) (*KMeansResult, e
 		if err != nil {
 			return nil, err
 		}
-		if best == nil || current.TotWithinSS < best.TotWithinSS {
+		// Keep the first start when objectives are equal within floating-point noise.
+		// This matches R's deterministic "best nstart" behavior more closely than
+		// replacing the incumbent on sub-ulp drift.
+		if best == nil || (current.TotWithinSS < best.TotWithinSS && !almostEqual(current.TotWithinSS, best.TotWithinSS)) {
 			best = current
 		}
 	}
