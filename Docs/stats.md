@@ -23,9 +23,18 @@ The stats package provides comprehensive statistical analysis functions:
 - **Regression Analysis**: Linear, Exponential, Logarithmic, Polynomial regression with confidence intervals
 - **F-Tests**: Variance equality, Levene's test, Bartlett's test, regression F-test, nested models
 - **Dimensionality Reduction**: Principal Component Analysis (PCA)
+- **Clustering Analysis**: K-means, hierarchical agglomerative clustering, DBSCAN, silhouette analysis
 - **Matrix Operations**: Diagonal matrix creation and extraction (Diag function)
 
 Most functions expect numeric data in `DataList`/`DataTable` and return `error` when inputs are invalid or computation fails. Always handle `err` at call sites.
+
+For clustering APIs, Insyra uses an R-oriented result shape and cross-language verification policy:
+
+- R is the authoritative semantic reference for clustering behavior and output structure
+- Python baselines are used as a verification companion, not as the source of truth
+- v1 clustering distance support is Euclidean-only
+- `KMeansOptions.Seed` is an Insyra reproducibility extension for deterministic validation
+- Clustering computations are implemented in pure Go; R and Python are used only for parity validation in tests
 
 ---
 
@@ -816,6 +825,182 @@ if err != nil {
 // Access components and explained variance
 components := result.Components
 fmt.Printf("Explained variance: %.2f%%\n", result.ExplainedVariance[0])
+```
+
+## Clustering Analysis
+
+### KMeans
+
+```go
+func KMeans(dataTable insyra.IDataTable, centers int, opts ...KMeansOptions) (*KMeansResult, error)
+```
+
+**Description:** Partition observations into `centers` clusters and return cluster labels, centers, and sum-of-squares summaries.
+
+**Parameters:**
+
+- `dataTable`: Numeric input data with observations in rows
+- `centers`: Number of clusters (`1 <= centers <= nrow`)
+- `opts`: Optional `KMeansOptions` (at most one value)
+
+#### KMeans Options
+
+```go
+type KMeansOptions struct {
+    NStart  int
+    IterMax int
+    Seed    *int64
+}
+```
+
+#### KMeans Result
+
+```go
+type KMeansResult struct {
+    Cluster     []int
+    Centers     insyra.IDataTable
+    TotSS       float64
+    WithinSS    []float64
+    TotWithinSS float64
+    BetweenSS   float64
+    Size        []int
+    Iter        int
+    IFault      int
+}
+```
+
+**Example**:
+
+```go
+seed := int64(7)
+result, err := stats.KMeans(dataTable, 3, stats.KMeansOptions{
+    NStart:  5,
+    IterMax: 25,
+    Seed:    &seed,
+})
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Println(result.Cluster)
+fmt.Println(result.Size)
+result.Centers.Show()
+```
+
+### Hierarchical Agglomerative Clustering
+
+```go
+func HierarchicalAgglomerative(dataTable insyra.IDataTable, method AgglomerativeMethod) (*HierarchicalResult, error)
+func CutTreeByK(tree *HierarchicalResult, k int) ([]int, error)
+func CutTreeByHeight(tree *HierarchicalResult, h float64) ([]int, error)
+```
+
+#### Agglomerative Method
+
+```go
+type AgglomerativeMethod string
+const (
+    AggloComplete AgglomerativeMethod = "complete"
+    AggloSingle   AgglomerativeMethod = "single"
+    AggloAverage  AgglomerativeMethod = "average"
+    AggloWardD    AgglomerativeMethod = "ward.D"
+    AggloWardD2   AgglomerativeMethod = "ward.D2"
+    AggloMcQuitty AgglomerativeMethod = "mcquitty"
+    AggloMedian   AgglomerativeMethod = "median"
+    AggloCentroid AgglomerativeMethod = "centroid"
+)
+```
+
+#### Hierarchical Result
+
+```go
+type HierarchicalResult struct {
+    Merge      [][2]int
+    Height     []float64
+    Order      []int
+    Labels     []string
+    Method     AgglomerativeMethod
+    DistMethod string
+}
+```
+
+**Example**:
+
+```go
+tree, err := stats.HierarchicalAgglomerative(dataTable, stats.AggloComplete)
+if err != nil {
+    log.Fatal(err)
+}
+labels, err := stats.CutTreeByK(tree, 3)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Println(labels)
+```
+
+### DBSCAN
+
+```go
+func DBSCAN(dataTable insyra.IDataTable, eps float64, minPts int, opts ...DBSCANOptions) (*DBSCANResult, error)
+```
+
+#### DBSCAN Options
+
+```go
+type DBSCANOptions struct {
+    BorderPoints *bool
+}
+```
+
+#### DBSCAN Result
+
+```go
+type DBSCANResult struct {
+    Cluster []int
+    IsSeed  []bool
+}
+```
+
+**Example**:
+
+```go
+result, err := stats.DBSCAN(dataTable, 0.35, 4)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Println(result.Cluster)
+fmt.Println(result.IsSeed)
+```
+
+### Silhouette
+
+```go
+func Silhouette(dataTable insyra.IDataTable, labels insyra.IDataList) (*SilhouetteResult, error)
+```
+
+#### Silhouette Result
+
+```go
+type SilhouettePoint struct {
+    Cluster  int
+    Neighbor int
+    SilWidth float64
+}
+
+type SilhouetteResult struct {
+    Points            []SilhouettePoint
+    AverageSilhouette float64
+}
+```
+
+**Example**:
+
+```go
+labels := insyra.NewDataList(1, 1, 2, 2, 3, 3)
+result, err := stats.Silhouette(dataTable, labels)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("Average silhouette: %.4f\n", result.AverageSilhouette)
 ```
 
 ## Regression Analysis

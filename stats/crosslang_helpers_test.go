@@ -24,12 +24,12 @@ func requireCrossLangTools(t *testing.T) {
 		t.Skipf("Rscript not found: %v", err)
 	}
 
-	checkPy := exec.Command("python", "-c", "import scipy, numpy, statsmodels")
+	checkPy := exec.Command("python", "-c", "import scipy, numpy, statsmodels, sklearn")
 	if out, err := checkPy.CombinedOutput(); err != nil {
 		t.Skipf("python scientific stack unavailable: %v, out=%s", err, string(out))
 	}
 
-	checkR := exec.Command("Rscript", "-e", "if (!requireNamespace('jsonlite', quietly=TRUE)) quit(status=1)")
+	checkR := exec.Command("Rscript", "-e", "pkgs <- c('jsonlite','cluster','dbscan'); ok <- all(sapply(pkgs, function(p) requireNamespace(p, quietly=TRUE))); if (!ok) quit(status=1)")
 	if out, err := checkR.CombinedOutput(); err != nil {
 		t.Skipf("R jsonlite unavailable: %v, out=%s", err, string(out))
 	}
@@ -157,6 +157,95 @@ func baselineFloatMatrix(t *testing.T, m crossLangBaseline, key string) [][]floa
 	return mat
 }
 
+func baselineIntSlice(t *testing.T, m crossLangBaseline, key string) []int {
+	t.Helper()
+	v, ok := m[key]
+	if !ok {
+		t.Fatalf("baseline missing key %q", key)
+	}
+	arr, ok := v.([]any)
+	if !ok {
+		t.Fatalf("baseline key %q has non-array type %T", key, v)
+	}
+	out := make([]int, len(arr))
+	for i, item := range arr {
+		f, ok := toFloat64FromAny(item)
+		if !ok {
+			t.Fatalf("baseline key %q index %d has non-numeric type %T", key, i, item)
+		}
+		out[i] = int(f)
+	}
+	return out
+}
+
+func baselineBoolSlice(t *testing.T, m crossLangBaseline, key string) []bool {
+	t.Helper()
+	v, ok := m[key]
+	if !ok {
+		t.Fatalf("baseline missing key %q", key)
+	}
+	arr, ok := v.([]any)
+	if !ok {
+		t.Fatalf("baseline key %q has non-array type %T", key, v)
+	}
+	out := make([]bool, len(arr))
+	for i, item := range arr {
+		b, ok := item.(bool)
+		if !ok {
+			t.Fatalf("baseline key %q index %d has non-bool type %T", key, i, item)
+		}
+		out[i] = b
+	}
+	return out
+}
+
+func baselineStringSlice(t *testing.T, m crossLangBaseline, key string) []string {
+	t.Helper()
+	v, ok := m[key]
+	if !ok {
+		t.Fatalf("baseline missing key %q", key)
+	}
+	arr, ok := v.([]any)
+	if !ok {
+		t.Fatalf("baseline key %q has non-array type %T", key, v)
+	}
+	out := make([]string, len(arr))
+	for i, item := range arr {
+		s, ok := item.(string)
+		if !ok {
+			t.Fatalf("baseline key %q index %d has non-string type %T", key, i, item)
+		}
+		out[i] = s
+	}
+	return out
+}
+
+func baselineIntMatrix(t *testing.T, m crossLangBaseline, key string) [][2]int {
+	t.Helper()
+	v, ok := m[key]
+	if !ok {
+		t.Fatalf("baseline missing key %q", key)
+	}
+	rows, ok := v.([]any)
+	if !ok {
+		t.Fatalf("baseline key %q has non-matrix type %T", key, v)
+	}
+	out := make([][2]int, len(rows))
+	for i, row := range rows {
+		rowAny, ok := row.([]any)
+		if !ok || len(rowAny) != 2 {
+			t.Fatalf("baseline key %q row %d invalid: %T %#v", key, i, row, row)
+		}
+		a, okA := toFloat64FromAny(rowAny[0])
+		b, okB := toFloat64FromAny(rowAny[1])
+		if !okA || !okB {
+			t.Fatalf("baseline key %q row %d has non-numeric values", key, i)
+		}
+		out[i] = [2]int{int(a), int(b)}
+	}
+	return out
+}
+
 func assertCloseToBoth(t *testing.T, label string, got, rWant, pyWant, tol float64) {
 	t.Helper()
 	if math.IsNaN(got) || math.IsNaN(rWant) || math.IsNaN(pyWant) {
@@ -201,6 +290,66 @@ func assertMatrixCloseToBoth(t *testing.T, label string, got, rWant, pyWant [][]
 		}
 		for j := range got[i] {
 			assertCloseToBoth(t, fmt.Sprintf("%s[%d,%d]", label, i, j), got[i][j], rWant[i][j], pyWant[i][j], tol)
+		}
+	}
+}
+
+func assertIntSliceEqualToBoth(t *testing.T, label string, got, rWant, pyWant []int) {
+	t.Helper()
+	if len(got) != len(rWant) || len(got) != len(pyWant) {
+		t.Fatalf("%s length mismatch got=%d r=%d py=%d", label, len(got), len(rWant), len(pyWant))
+	}
+	for i := range got {
+		if got[i] != rWant[i] {
+			t.Fatalf("%s mismatch vs R at %d: got=%d r=%d", label, i, got[i], rWant[i])
+		}
+		if got[i] != pyWant[i] {
+			t.Fatalf("%s mismatch vs Python at %d: got=%d py=%d", label, i, got[i], pyWant[i])
+		}
+	}
+}
+
+func assertBoolSliceEqualToBoth(t *testing.T, label string, got, rWant, pyWant []bool) {
+	t.Helper()
+	if len(got) != len(rWant) || len(got) != len(pyWant) {
+		t.Fatalf("%s length mismatch got=%d r=%d py=%d", label, len(got), len(rWant), len(pyWant))
+	}
+	for i := range got {
+		if got[i] != rWant[i] {
+			t.Fatalf("%s mismatch vs R at %d: got=%v r=%v", label, i, got[i], rWant[i])
+		}
+		if got[i] != pyWant[i] {
+			t.Fatalf("%s mismatch vs Python at %d: got=%v py=%v", label, i, got[i], pyWant[i])
+		}
+	}
+}
+
+func assertStringSliceEqualToBoth(t *testing.T, label string, got, rWant, pyWant []string) {
+	t.Helper()
+	if len(got) != len(rWant) || len(got) != len(pyWant) {
+		t.Fatalf("%s length mismatch got=%d r=%d py=%d", label, len(got), len(rWant), len(pyWant))
+	}
+	for i := range got {
+		if got[i] != rWant[i] {
+			t.Fatalf("%s mismatch vs R at %d: got=%q r=%q", label, i, got[i], rWant[i])
+		}
+		if got[i] != pyWant[i] {
+			t.Fatalf("%s mismatch vs Python at %d: got=%q py=%q", label, i, got[i], pyWant[i])
+		}
+	}
+}
+
+func assertIntMatrixEqualToBoth(t *testing.T, label string, got, rWant, pyWant [][2]int) {
+	t.Helper()
+	if len(got) != len(rWant) || len(got) != len(pyWant) {
+		t.Fatalf("%s length mismatch got=%d r=%d py=%d", label, len(got), len(rWant), len(pyWant))
+	}
+	for i := range got {
+		if got[i] != rWant[i] {
+			t.Fatalf("%s mismatch vs R at %d: got=%v r=%v", label, i, got[i], rWant[i])
+		}
+		if got[i] != pyWant[i] {
+			t.Fatalf("%s mismatch vs Python at %d: got=%v py=%v", label, i, got[i], pyWant[i])
 		}
 	}
 }

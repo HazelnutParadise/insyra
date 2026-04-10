@@ -371,6 +371,578 @@ def pca_stats(rows, n_components=None):
     }
 
 
+class RRNG:
+    def __init__(self, seed):
+        self.mt = [0] * 624
+        self.mti = 624
+        seed = int(seed) & 0xFFFFFFFF
+        for _ in range(50):
+            seed = (69069 * seed + 1) & 0xFFFFFFFF
+        for i in range(625):
+            seed = (69069 * seed + 1) & 0xFFFFFFFF
+            if i > 0:
+                self.mt[i - 1] = seed
+
+    def mt_genrand(self):
+        n = 624
+        m = 397
+        matrix_a = 0x9908B0DF
+        upper_mask = 0x80000000
+        lower_mask = 0x7FFFFFFF
+        tempering_mask_b = 0x9D2C5680
+        tempering_mask_c = 0xEFC60000
+        if self.mti >= n:
+            mag01 = [0x0, matrix_a]
+            for kk in range(0, n - m):
+                y = (self.mt[kk] & upper_mask) | (self.mt[kk + 1] & lower_mask)
+                self.mt[kk] = self.mt[kk + m] ^ (y >> 1) ^ mag01[y & 0x1]
+            for kk in range(n - m, n - 1):
+                y = (self.mt[kk] & upper_mask) | (self.mt[kk + 1] & lower_mask)
+                self.mt[kk] = self.mt[kk + (m - n)] ^ (y >> 1) ^ mag01[y & 0x1]
+            y = (self.mt[n - 1] & upper_mask) | (self.mt[0] & lower_mask)
+            self.mt[n - 1] = self.mt[m - 1] ^ (y >> 1) ^ mag01[y & 0x1]
+            self.mti = 0
+        y = self.mt[self.mti]
+        self.mti += 1
+        y ^= y >> 11
+        y ^= (y << 7) & tempering_mask_b
+        y ^= (y << 15) & tempering_mask_c
+        y ^= y >> 18
+        return float(y) * 2.3283064365386963e-10
+
+    def unif(self):
+        i2_32m1 = 2.328306437080797e-10
+        x = self.mt_genrand()
+        if x <= 0.0:
+            return 0.5 * i2_32m1
+        if (1.0 - x) <= 0.0:
+            return 1.0 - 0.5 * i2_32m1
+        return x
+
+    def rbits(self, bits):
+        v = 0
+        for _ in range(0, bits + 1, 16):
+            v1 = int(math.floor(self.unif() * 65536))
+            v = 65536 * v + v1
+        if bits <= 0:
+            return 0.0
+        return float(v & ((1 << bits) - 1))
+
+    def unif_index(self, dn):
+        if dn <= 0:
+            return 0
+        bits = int(math.ceil(math.log2(dn)))
+        while True:
+            dv = self.rbits(bits)
+            if dn > dv:
+                return int(dv)
+
+    def sample_int(self, n, k):
+        pool = list(range(n))
+        out = []
+        for _ in range(k):
+            j = self.unif_index(n)
+            out.append(pool[j])
+            n -= 1
+            pool[j] = pool[n]
+        return out
+
+
+def sq_euclidean(a, b):
+    return float(sum((x - y) ** 2 for x, y in zip(a, b)))
+
+
+def bounded_sq_euclidean(a, b, bound):
+    total = 0.0
+    for x, y in zip(a, b):
+        total += (x - y) ** 2
+        if total >= bound:
+            return total
+    return total
+
+
+def update_centers_for_transfer(row, centers, nc, an1, an2, from_idx, to_idx):
+    al1 = float(nc[from_idx])
+    alw = al1 - 1.0
+    al2 = float(nc[to_idx])
+    alt = al2 + 1.0
+    for j in range(len(row)):
+        centers[from_idx][j] = (centers[from_idx][j] * al1 - row[j]) / alw
+        centers[to_idx][j] = (centers[to_idx][j] * al2 + row[j]) / alt
+    nc[from_idx] -= 1
+    nc[to_idx] += 1
+    an2[from_idx] = alw / al1
+    an1[from_idx] = 1.0e30
+    if alw > 1.0:
+        an1[from_idx] = alw / (alw - 1.0)
+    an1[to_idx] = alt / al2
+    an2[to_idx] = alt / (alt + 1.0)
+
+
+def hw_optra(data, centers, ic1, ic2, nc, an1, an2, ncp, d, itran, live, indx):
+    n = len(data)
+    k = len(centers)
+    for l in range(k):
+        if itran[l] == 1:
+            live[l] = n + 1
+    for i, row in enumerate(data):
+        indx += 1
+        l1 = ic1[i]
+        l2 = ic2[i]
+        ll = l2
+        if nc[l1] == 1:
+            continue
+        if ncp[l1] != 0:
+            d[i] = sq_euclidean(row, centers[l1]) * an1[l1]
+        r2 = sq_euclidean(row, centers[l2]) * an2[l2]
+        for l in range(k):
+            if ((i + 1) >= live[l1] and (i + 1) >= live[l]) or l == l1 or l == ll:
+                continue
+            rr = r2 / an2[l]
+            dc = bounded_sq_euclidean(row, centers[l], rr)
+            if dc < rr:
+                r2 = dc * an2[l]
+                l2 = l
+        if r2 >= d[i]:
+            ic2[i] = l2
+        else:
+            indx = 0
+            live[l1] = n + i + 1
+            live[l2] = n + i + 1
+            ncp[l1] = i + 1
+            ncp[l2] = i + 1
+            update_centers_for_transfer(row, centers, nc, an1, an2, l1, l2)
+            ic1[i] = l2
+            ic2[i] = l1
+        if indx == n:
+            return indx
+    for l in range(k):
+        itran[l] = 0
+        live[l] -= n
+    return indx
+
+
+def hw_qtran(data, centers, ic1, ic2, nc, an1, an2, ncp, d, itran, indx_ref, max_qtran):
+    n = len(data)
+    icoun = 0
+    istep = 0
+    while True:
+        for i, row in enumerate(data):
+            icoun += 1
+            istep += 1
+            if istep >= max_qtran:
+                return True
+            l1 = ic1[i]
+            l2 = ic2[i]
+            if nc[l1] == 1:
+                if icoun == n:
+                    return False
+                continue
+            if istep <= ncp[l1]:
+                d[i] = sq_euclidean(row, centers[l1]) * an1[l1]
+            if istep < ncp[l1] or istep < ncp[l2]:
+                r2 = d[i] / an2[l2]
+                dd = bounded_sq_euclidean(row, centers[l2], r2)
+                if dd < r2:
+                    icoun = 0
+                    indx_ref[0] = 0
+                    itran[l1] = 1
+                    itran[l2] = 1
+                    ncp[l1] = istep + n
+                    ncp[l2] = istep + n
+                    update_centers_for_transfer(row, centers, nc, an1, an2, l1, l2)
+                    ic1[i] = l2
+                    ic2[i] = l1
+            if icoun == n:
+                return False
+
+
+def build_kmeans_result(data, centers, assignments, nc, iteration, ifault):
+    mean = np.mean(np.array(data, dtype=float), axis=0)
+    p = len(data[0])
+    final_centers = [[0.0] * p for _ in centers]
+    for i, row in enumerate(data):
+        cluster = assignments[i]
+        for j in range(p):
+            final_centers[cluster][j] += row[j]
+    for l in range(len(final_centers)):
+        for j in range(p):
+            final_centers[l][j] /= nc[l]
+    withinss = [0.0] * len(final_centers)
+    totss = 0.0
+    for i, row in enumerate(data):
+        cluster = assignments[i]
+        withinss[cluster] += sq_euclidean(row, final_centers[cluster])
+        totss += sq_euclidean(row, mean)
+    totwithinss = float(sum(withinss))
+    return {
+        "cluster": [a + 1 for a in assignments],
+        "centers": final_centers,
+        "totss": float(totss),
+        "withinss": [float(x) for x in withinss],
+        "totwithinss": totwithinss,
+        "betweenss": float(totss - totwithinss),
+        "size": list(nc),
+        "iter": int(iteration),
+        "ifault": int(ifault),
+    }
+
+
+def single_cluster_result(rows):
+    data = [list(map(float, row)) for row in rows]
+    center = np.mean(np.array(data, dtype=float), axis=0).tolist()
+    totss = 0.0
+    for row in data:
+        totss += sq_euclidean(row, center)
+    return {
+        "cluster": [1] * len(data),
+        "centers": [center],
+        "totss": float(totss),
+        "withinss": [float(totss)],
+        "totwithinss": float(totss),
+        "betweenss": 0.0,
+        "size": [len(data)],
+        "iter": 1,
+        "ifault": 0,
+    }
+
+
+def kmeans_single(rows, init_pool, center_idx, itermax):
+    data = [list(map(float, row)) for row in rows]
+    k = len(center_idx)
+    if k == 1:
+        return single_cluster_result(rows)
+    centers = [init_pool[i][:] for i in center_idx]
+    n = len(data)
+    ic1 = [0] * n
+    ic2 = [0] * n
+    nc = [0] * k
+    an1 = [0.0] * k
+    an2 = [0.0] * k
+    ncp = [0] * k
+    d = [0.0] * n
+    itran = [0] * k
+    live = [0] * k
+
+    for i, row in enumerate(data):
+        ic1[i] = 0
+        ic2[i] = 1
+        dt1 = sq_euclidean(row, centers[0])
+        dt2 = sq_euclidean(row, centers[1])
+        if dt1 > dt2:
+            ic1[i], ic2[i] = 1, 0
+            dt1, dt2 = dt2, dt1
+        for l in range(2, k):
+            db = sq_euclidean(row, centers[l])
+            if db >= dt2:
+                continue
+            if db >= dt1:
+                dt2 = db
+                ic2[i] = l
+                continue
+            dt2 = dt1
+            ic2[i] = ic1[i]
+            dt1 = db
+            ic1[i] = l
+
+    p = len(data[0])
+    centers = [[0.0] * p for _ in range(k)]
+    for i, row in enumerate(data):
+        l = ic1[i]
+        nc[l] += 1
+        for j in range(p):
+            centers[l][j] += row[j]
+    for l in range(k):
+        if nc[l] == 0:
+            raise ValueError("empty cluster: try a better set of initial centers")
+        aa = float(nc[l])
+        for j in range(p):
+            centers[l][j] /= aa
+        an2[l] = aa / (aa + 1.0)
+        an1[l] = 1.0e30
+        if aa > 1.0:
+            an1[l] = aa / (aa - 1.0)
+        itran[l] = 1
+        ncp[l] = -1
+
+    ifault = 0
+    indx = 0
+    max_qtran = 50 * n
+    iteration = 0
+    for ij in range(1, int(itermax) + 1):
+        iteration = ij
+        indx = hw_optra(data, centers, ic1, ic2, nc, an1, an2, ncp, d, itran, live, indx)
+        if indx == n:
+            break
+        indx_ref = [indx]
+        if hw_qtran(data, centers, ic1, ic2, nc, an1, an2, ncp, d, itran, indx_ref, max_qtran):
+            ifault = 4
+            break
+        indx = indx_ref[0]
+        if k == 2:
+            break
+        for l in range(k):
+            ncp[l] = 0
+    return build_kmeans_result(data, centers, ic1, nc, iteration, ifault)
+
+
+def kmeans_stats(rows, k, nstart=1, itermax=10, seed=None):
+    data_rows = [list(map(float, row)) for row in rows]
+    init_pool = data_rows
+    if int(nstart) >= 2:
+        deduped = []
+        seen = set()
+        for row in data_rows:
+            key = tuple(row)
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(list(key))
+        init_pool = deduped
+        if len(init_pool) < int(k):
+            raise ValueError("more cluster centers than distinct data points")
+    rng = RRNG(int(seed if seed is not None else 1))
+    best = None
+    for _ in range(max(1, int(nstart))):
+        center_idx = rng.sample_int(len(init_pool), int(k))
+        current = kmeans_single(data_rows, init_pool, center_idx, int(itermax))
+        if best is None or current["totwithinss"] < best["totwithinss"]:
+            best = current
+    return best
+
+
+def orient_cluster(a, b):
+    if abs(a["height"] - b["height"]) > 1e-12:
+        return (a, b) if a["height"] < b["height"] else (b, a)
+    if a["min_leaf"] < b["min_leaf"]:
+        return a, b
+    if b["min_leaf"] < a["min_leaf"]:
+        return b, a
+    return (a, b) if a["rid"] <= b["rid"] else (b, a)
+
+
+def updated_distance(method, other, a, b, dik, djk, dij):
+    if method == "single":
+        return min(dik, djk)
+    if method == "complete":
+        return max(dik, djk)
+    if method == "average":
+        return (a["size"] * dik + b["size"] * djk) / (a["size"] + b["size"])
+    if method == "mcquitty":
+        return 0.5 * dik + 0.5 * djk
+    if method in ("centroid", "median"):
+        merged = merged_centroid(a, b, method)
+        return float(np.linalg.norm(np.array(other["centroid"]) - np.array(merged)))
+    if method == "ward.d2":
+        merged = merged_centroid(a, b, "average")
+        d = float(np.linalg.norm(np.array(other["centroid"]) - np.array(merged)))
+        return d * d
+    if method == "ward.d":
+        merged = merged_centroid(a, b, "average")
+        return float(np.linalg.norm(np.array(other["centroid"]) - np.array(merged)))
+    return max(dik, djk)
+
+
+def merged_centroid(a, b, method):
+    if method == "median":
+        return [0.5 * (x + y) for x, y in zip(a["centroid"], b["centroid"])]
+    total = a["size"] + b["size"]
+    return [(a["size"] * x + b["size"] * y) / total for x, y in zip(a["centroid"], b["centroid"])]
+
+
+def tie_break_pair(a1, b1, a2, b2):
+    la1, lb1 = orient_cluster(a1, b1)
+    la2, lb2 = orient_cluster(a2, b2)
+    if la1["min_leaf"] != la2["min_leaf"]:
+        return la1["min_leaf"] < la2["min_leaf"]
+    return lb1["min_leaf"] < lb2["min_leaf"]
+
+
+def hclust_stats(rows, method, k=None, h=None):
+    data = [list(map(float, row)) for row in rows]
+    n = len(data)
+    labels = [str(i + 1) for i in range(n)]
+    clusters = {}
+    active = list(range(n))
+    dists = {}
+    for i in range(n):
+        clusters[i] = {
+            "id": i,
+            "members": [i],
+            "size": 1,
+            "centroid": data[i][:],
+            "rid": -(i + 1),
+            "min_leaf": i,
+            "height": 0.0,
+        }
+    for i in range(n):
+        for j in range(i + 1, n):
+            dists[(i, j)] = float(np.linalg.norm(np.array(data[i]) - np.array(data[j])))
+    merge = []
+    height = []
+    next_id = n
+    method = method.lower()
+    for step in range(1, n):
+        best_i, best_j, best_d = active[0], active[1], float("inf")
+        for i in range(len(active)):
+            for j in range(i + 1, len(active)):
+                a_id, b_id = active[i], active[j]
+                key = (a_id, b_id) if a_id < b_id else (b_id, a_id)
+                d = dists[key]
+                if d < best_d or (abs(d - best_d) <= 1e-12 and tie_break_pair(clusters[a_id], clusters[b_id], clusters[best_i], clusters[best_j])):
+                    best_i, best_j, best_d = a_id, b_id, d
+        a, b = clusters[best_i], clusters[best_j]
+        left, right = orient_cluster(a, b)
+        merge.append([left["rid"], right["rid"]])
+        height.append(best_d)
+        new_cluster = {
+            "id": next_id,
+            "members": left["members"] + right["members"],
+            "size": left["size"] + right["size"],
+            "centroid": merged_centroid(left, right, method),
+            "rid": step,
+            "min_leaf": min(left["min_leaf"], right["min_leaf"]),
+            "height": best_d,
+        }
+        clusters[next_id] = new_cluster
+        new_active = []
+        for cid in active:
+            if cid in (best_i, best_j):
+                continue
+            new_active.append(cid)
+            key_i = (cid, best_i) if cid < best_i else (best_i, cid)
+            key_j = (cid, best_j) if cid < best_j else (best_j, cid)
+            dists[(cid, next_id) if cid < next_id else (next_id, cid)] = updated_distance(method, clusters[cid], a, b, dists[key_i], dists[key_j], best_d)
+            dists.pop(key_i, None)
+            dists.pop(key_j, None)
+        dists.pop((best_i, best_j) if best_i < best_j else (best_j, best_i), None)
+        new_active.append(next_id)
+        active = new_active
+        next_id += 1
+
+    root = clusters[active[0]]
+    order = [m + 1 for m in root["members"]]
+    result = {"merge": merge, "height": height, "order": order, "labels": labels}
+    if k is not None:
+        result["cut_k"] = cut_tree_from_result(result, k=int(k))
+    if h is not None:
+        result["cut_h"] = cut_tree_from_result(result, height_cut=float(h))
+    return result
+
+
+def cut_tree_from_result(tree, k=None, height_cut=None):
+    n = len(tree["labels"])
+    parent = list(range(n))
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(a, b):
+        ra, rb = find(a), find(b)
+        if ra == rb:
+            return
+        if ra < rb:
+            parent[rb] = ra
+        else:
+            parent[ra] = rb
+
+    nodes = {-(i + 1): [i] for i in range(n)}
+    merges_to_apply = n - int(k) if k is not None else None
+    for step, row in enumerate(tree["merge"]):
+        combined = nodes[row[0]] + nodes[row[1]]
+        nodes[step + 1] = combined
+        include = (step < merges_to_apply) if merges_to_apply is not None else (tree["height"][step] <= float(height_cut))
+        if include and combined:
+            base = combined[0]
+            for member in combined[1:]:
+                union(base, member)
+
+    label_map = {}
+    next_label = 1
+    out = []
+    for i in range(n):
+        root = find(i)
+        if root not in label_map:
+            label_map[root] = next_label
+            next_label += 1
+        out.append(label_map[root])
+    return out
+
+
+def dbscan_stats(rows, eps, min_pts):
+    data = [list(map(float, row)) for row in rows]
+    n = len(data)
+    neighbors = [[] for _ in range(n)]
+    is_seed = [False] * n
+    for i in range(n):
+        for j in range(n):
+            if float(np.linalg.norm(np.array(data[i]) - np.array(data[j]))) <= float(eps):
+                neighbors[i].append(j)
+        if len(neighbors[i]) >= int(min_pts):
+            is_seed[i] = True
+    cluster = [0] * n
+    visited = [False] * n
+    cluster_id = 0
+    for i in range(n):
+        if visited[i] or not is_seed[i]:
+            continue
+        cluster_id += 1
+        queue = list(neighbors[i])
+        cluster[i] = cluster_id
+        visited[i] = True
+        while queue:
+            cur = queue.pop(0)
+            if not visited[cur]:
+                visited[cur] = True
+                if is_seed[cur]:
+                    queue.extend(neighbors[cur])
+            if cluster[cur] == 0:
+                cluster[cur] = cluster_id
+    return {"cluster": cluster, "isseed": is_seed}
+
+
+def silhouette_stats(rows, labels):
+    data = [list(map(float, row)) for row in rows]
+    labels = [int(x) for x in labels]
+    n = len(data)
+    dist = np.zeros((n, n), dtype=float)
+    for i in range(n):
+        for j in range(i):
+            d = float(np.linalg.norm(np.array(data[i]) - np.array(data[j])))
+            dist[i, j] = d
+            dist[j, i] = d
+    members = {}
+    for i, label in enumerate(labels):
+        members.setdefault(label, []).append(i)
+    points = []
+    total = 0.0
+    for i, label in enumerate(labels):
+        own = members[label]
+        a = 0.0
+        if len(own) > 1:
+            a = sum(dist[i, j] for j in own if j != i) / (len(own) - 1)
+        best_b = float("inf")
+        neighbor = 0
+        for other_label, idxs in members.items():
+            if other_label == label:
+                continue
+            avg = sum(dist[i, j] for j in idxs) / len(idxs)
+            if avg < best_b or (abs(avg - best_b) <= 1e-12 and (neighbor == 0 or other_label < neighbor)):
+                best_b = avg
+                neighbor = other_label
+        s = 0.0
+        if len(own) > 1:
+            denom = max(a, best_b)
+            if denom > 0:
+                s = (best_b - a) / denom
+        points.append([float(label), float(neighbor), s])
+        total += s
+    return {"points": points, "avg_width": total / n}
+
+
 def bartlett_sphericity(rows):
     m = np.array(rows, dtype=float)
     n = m.shape[0]
@@ -706,6 +1278,14 @@ def main():
         out = log_reg(payload["y"], payload["x"])
     elif method == "pca":
         out = pca_stats(payload["rows"], payload.get("n_components", None))
+    elif method == "kmeans":
+        out = kmeans_stats(payload["rows"], payload["k"], payload.get("nstart", 1), payload.get("itermax", 10), payload.get("seed", 1))
+    elif method == "hclust":
+        out = hclust_stats(payload["rows"], payload["method"], payload.get("k", None), payload.get("h", None))
+    elif method == "dbscan":
+        out = dbscan_stats(payload["rows"], payload["eps"], payload["min_pts"])
+    elif method == "silhouette":
+        out = silhouette_stats(payload["rows"], payload["labels"])
     elif method == "moment":
         x = np.array(payload["x"], dtype=float)
         order = int(payload["order"])

@@ -231,6 +231,262 @@ pca_stats <- function(rows, n_components = NULL) {
   list(eigenvalues = as.double(vals), explained = as.double(explained), components = components)
 }
 
+lcg_new <- function(seed) {
+  env <- new.env(parent = emptyenv())
+  env$state <- bitwAnd(as.integer(seed), 0x7fffffff)
+  env
+}
+
+lcg_next <- function(rng) {
+  rng$state <- (1103515245 * rng$state + 12345) %% 2147483647
+  rng$state
+}
+
+lcg_perm <- function(rng, n) {
+  out <- seq_len(n) - 1L
+  if (n <= 1) return(out)
+  for (i in seq.int(n - 1L, 1L)) {
+    j <- (lcg_next(rng) %% (i + 1L)) + 1L
+    tmp <- out[i + 1L]
+    out[i + 1L] <- out[j]
+    out[j] <- tmp
+  }
+  out
+}
+
+nearest_center <- function(row, centers) {
+  best_idx <- 1L
+  best_dist <- sum((row - centers[[1]])^2)
+  if (length(centers) == 1L) return(best_idx)
+  for (i in 2:length(centers)) {
+    dist <- sum((row - centers[[i]])^2)
+    if (dist < best_dist || (abs(dist - best_dist) <= 1e-12 && i < best_idx)) {
+      best_idx <- i
+      best_dist <- dist
+    }
+  }
+  best_idx
+}
+
+farthest_point <- function(data, assignments, centers) {
+  best_idx <- 1L
+  best_dist <- -1
+  for (i in seq_len(nrow(data))) {
+    dist <- sum((data[i, ] - centers[[assignments[i]]])^2)
+    if (dist > best_dist) {
+      best_idx <- i
+      best_dist <- dist
+    }
+  }
+  best_idx
+}
+
+reorder_kmeans <- function(cluster, centers, size, withinss) {
+  keys <- sapply(centers, function(center) paste(sprintf("%.12f", center), collapse = "|"))
+  ord <- order(keys, seq_along(keys))
+  map <- integer(length(ord))
+  for (i in seq_along(ord)) map[ord[i]] <- i
+  list(
+    cluster = as.integer(map[cluster]),
+    centers = lapply(ord, function(i) as.double(centers[[i]])),
+    size = as.integer(size[ord]),
+    withinss = as.double(withinss[ord])
+  )
+}
+
+kmeans_single <- function(rows, k, itermax, rng) {
+  data <- do.call(rbind, lapply(rows, function(r) as.double(unlist(r))))
+  n <- nrow(data)
+  p <- ncol(data)
+  idx <- lcg_perm(rng, n)[seq_len(k)] + 1L
+  centers <- lapply(idx, function(i) as.double(data[i, ]))
+  assignments <- integer(n)
+  iter <- 0L
+  changed <- TRUE
+  while (iter < itermax && changed) {
+    changed <- FALSE
+    counts <- integer(k)
+    sums <- replicate(k, numeric(p), simplify = FALSE)
+    for (i in seq_len(n)) {
+      best <- nearest_center(data[i, ], centers)
+      if (iter == 0L || assignments[i] != best) changed <- TRUE
+      assignments[i] <- best
+      counts[best] <- counts[best] + 1L
+      sums[[best]] <- sums[[best]] + data[i, ]
+    }
+    for (c in seq_len(k)) {
+      if (counts[c] == 0L) {
+        farthest <- farthest_point(data, assignments, centers)
+        origin <- nearest_center(data[farthest, ], centers)
+        assignments[farthest] <- c
+        counts[c] <- 1L
+        sums[[c]] <- as.double(data[farthest, ])
+        if (origin != c && counts[origin] > 0L) {
+          counts[origin] <- counts[origin] - 1L
+          sums[[origin]] <- sums[[origin]] - data[farthest, ]
+        }
+      }
+      centers[[c]] <- sums[[c]] / counts[c]
+    }
+    iter <- iter + 1L
+  }
+  mean_row <- colMeans(data)
+  size <- integer(k)
+  withinss <- numeric(k)
+  totss <- 0
+  for (i in seq_len(n)) {
+    size[assignments[i]] <- size[assignments[i]] + 1L
+    withinss[assignments[i]] <- withinss[assignments[i]] + sum((data[i, ] - centers[[assignments[i]]])^2)
+    totss <- totss + sum((data[i, ] - mean_row)^2)
+  }
+  totwithinss <- sum(withinss)
+  reordered <- reorder_kmeans(assignments, centers, size, withinss)
+  list(
+    cluster = reordered$cluster,
+    centers = reordered$centers,
+    totss = totss,
+    withinss = reordered$withinss,
+    totwithinss = totwithinss,
+    betweenss = totss - totwithinss,
+    size = reordered$size,
+    iter = as.double(iter),
+    ifault = 0
+  )
+}
+
+kmeans_stats <- function(rows, k, nstart = 1L, itermax = 10L, seed = 1L) {
+  m <- do.call(rbind, lapply(rows, function(r) as.double(unlist(r))))
+  set.seed(as.integer(seed))
+  km <- stats::kmeans(m, centers = as.integer(k), nstart = as.integer(nstart), iter.max = as.integer(itermax))
+  centers <- lapply(seq_len(nrow(km$centers)), function(i) as.double(km$centers[i, ]))
+  list(
+    cluster = as.integer(unname(km$cluster)),
+    centers = centers,
+    totss = as.double(km$totss),
+    withinss = as.double(km$withinss),
+    totwithinss = as.double(km$tot.withinss),
+    betweenss = as.double(km$betweenss),
+    size = as.integer(km$size),
+    iter = as.double(km$iter),
+    ifault = as.integer(km$ifault)
+  )
+}
+
+orient_cluster <- function(a, b) {
+  if (a$min_leaf < b$min_leaf) return(list(a, b))
+  if (b$min_leaf < a$min_leaf) return(list(b, a))
+  if (a$rid <= b$rid) return(list(a, b))
+  list(b, a)
+}
+
+merged_centroid <- function(a, b, method) {
+  if (method == "median") {
+    return((a$centroid + b$centroid) / 2)
+  }
+  total <- a$size + b$size
+  (a$size * a$centroid + b$size * b$centroid) / total
+}
+
+updated_distance <- function(method, other, a, b, dik, djk, dij) {
+  if (method == "single") return(min(dik, djk))
+  if (method == "complete") return(max(dik, djk))
+  if (method == "average") return((a$size * dik + b$size * djk) / (a$size + b$size))
+  if (method == "mcquitty") return(0.5 * dik + 0.5 * djk)
+  if (method %in% c("centroid", "median")) {
+    merged <- merged_centroid(a, b, method)
+    return(sqrt(sum((other$centroid - merged)^2)))
+  }
+  merged <- merged_centroid(a, b, "average")
+  d <- sqrt(sum((other$centroid - merged)^2))
+  if (method == "ward.d2") return(d * d)
+  d
+}
+
+tie_break_pair <- function(a1, b1, a2, b2) {
+  p1 <- orient_cluster(a1, b1)
+  p2 <- orient_cluster(a2, b2)
+  if (p1[[1]]$min_leaf != p2[[1]]$min_leaf) return(p1[[1]]$min_leaf < p2[[1]]$min_leaf)
+  p1[[2]]$min_leaf < p2[[2]]$min_leaf
+}
+
+cut_tree_from_result <- function(tree, k = NULL, height_cut = NULL) {
+  n <- length(tree$labels)
+  parent <- seq_len(n)
+  find_root <- function(x) {
+    while (parent[x] != x) {
+      parent[x] <<- parent[parent[x]]
+      x <- parent[x]
+    }
+    x
+  }
+  union_nodes <- function(a, b) {
+    ra <- find_root(a)
+    rb <- find_root(b)
+    if (ra == rb) return()
+    if (ra < rb) parent[rb] <<- ra else parent[ra] <<- rb
+  }
+  nodes <- new.env(parent = emptyenv())
+  for (i in seq_len(n)) assign(as.character(-i), c(i), envir = nodes)
+  merges_to_apply <- if (!is.null(k)) n - as.integer(k) else NULL
+  for (step in seq_along(tree$merge)) {
+    row <- tree$merge[[step]]
+    left <- get(as.character(row[[1]]), envir = nodes)
+    right <- get(as.character(row[[2]]), envir = nodes)
+    combined <- c(left, right)
+    assign(as.character(step), combined, envir = nodes)
+    include <- if (!is.null(merges_to_apply)) (step - 1L) < merges_to_apply else tree$height[step] <= height_cut
+    if (include && length(combined) > 1L) {
+      base <- combined[[1]]
+      for (member in combined[-1]) union_nodes(base, member)
+    }
+  }
+  label_map <- list()
+  next_label <- 1L
+  out <- integer(n)
+  for (i in seq_len(n)) {
+    root <- find_root(i)
+    key <- as.character(root)
+    if (is.null(label_map[[key]])) {
+      label_map[[key]] <- next_label
+      next_label <- next_label + 1L
+    }
+    out[i] <- label_map[[key]]
+  }
+  out
+}
+
+hclust_stats <- function(rows, method, k = NULL, h = NULL) {
+  m <- do.call(rbind, lapply(rows, function(r) as.double(unlist(r))))
+  hc <- stats::hclust(stats::dist(m, method = "euclidean"), method = as.character(method))
+  labels <- hc$labels
+  if (is.null(labels)) labels <- as.character(seq_len(nrow(m)))
+  out <- list(
+    merge = lapply(seq_len(nrow(hc$merge)), function(i) as.integer(hc$merge[i, ])),
+    height = as.double(hc$height),
+    order = as.integer(hc$order),
+    labels = as.character(labels)
+  )
+  if (!is.null(k)) out$cut_k <- as.integer(stats::cutree(hc, k = as.integer(k)))
+  if (!is.null(h)) out$cut_h <- as.integer(stats::cutree(hc, h = as.double(h)))
+  out
+}
+
+dbscan_stats <- function(rows, eps, min_pts) {
+  m <- do.call(rbind, lapply(rows, function(r) as.double(unlist(r))))
+  fit <- dbscan::dbscan(m, eps = as.double(eps), minPts = as.integer(min_pts))
+  list(cluster = as.integer(fit$cluster), isseed = as.logical(dbscan::is.corepoint(m, eps = as.double(eps), minPts = as.integer(min_pts))))
+}
+
+silhouette_stats <- function(rows, labels) {
+  m <- do.call(rbind, lapply(rows, function(r) as.double(unlist(r))))
+  sil <- cluster::silhouette(as.integer(unlist(labels)), stats::dist(m, method = "euclidean"))
+  raw <- unclass(sil)
+  list(
+    points = lapply(seq_len(nrow(raw)), function(i) as.double(raw[i, ])),
+    avg_width = as.double(summary(sil)$avg.width)
+  )
+}
+
 bartlett_sphericity <- function(rows) {
   m <- do.call(rbind, lapply(rows, function(r) as.double(unlist(r))))
   n <- nrow(m)
@@ -688,6 +944,14 @@ if (method == "single_t") {
   )
 } else if (method == "pca") {
   out <- pca_stats(payload$rows, payload$n_components)
+} else if (method == "kmeans") {
+  out <- kmeans_stats(payload$rows, payload$k, payload$nstart, payload$itermax, payload$seed)
+} else if (method == "hclust") {
+  out <- hclust_stats(payload$rows, payload$method, payload$k, payload$h)
+} else if (method == "dbscan") {
+  out <- dbscan_stats(payload$rows, payload$eps, payload$min_pts)
+} else if (method == "silhouette") {
+  out <- silhouette_stats(payload$rows, payload$labels)
 } else if (method == "moment") {
   x <- as.double(unlist(payload$x))
   order <- as.integer(payload$order)
