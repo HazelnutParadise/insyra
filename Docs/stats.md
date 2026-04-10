@@ -23,6 +23,7 @@ The stats package provides comprehensive statistical analysis functions:
 - **Regression Analysis**: Linear, Exponential, Logarithmic, Polynomial regression with confidence intervals
 - **F-Tests**: Variance equality, Levene's test, Bartlett's test, regression F-test, nested models
 - **Dimensionality Reduction**: Principal Component Analysis (PCA)
+- **Instance-Based Prediction**: K-nearest neighbors (KNN) classification and regression
 - **Clustering Analysis**: K-means, hierarchical agglomerative clustering, DBSCAN, silhouette analysis
 - **Matrix Operations**: Diagonal matrix creation and extraction (Diag function)
 
@@ -828,6 +829,89 @@ fmt.Printf("Explained variance: %.2f%%\n", result.ExplainedVariance[0])
 ```
 
 ## Clustering Analysis
+
+## K-Nearest Neighbors (KNN)
+
+### KNN Classification
+
+```go
+func KNNClassify(trainData insyra.IDataTable, trainLabels insyra.IDataList, testData insyra.IDataTable, k int, opts ...KNNOptions) (*KNNClassificationResult, error)
+```
+
+**Description:** Predict categorical labels for `testData` by majority vote among the `k` nearest rows in `trainData`.
+
+#### KNN Options
+
+```go
+type KNNWeighting string
+
+const (
+    KNNUniformWeighting  KNNWeighting = "uniform"
+    KNNDistanceWeighting KNNWeighting = "distance"
+)
+
+type KNNOptions struct {
+    Weighting KNNWeighting
+}
+```
+
+#### KNN Classification Result
+
+```go
+type KNNClassificationResult struct {
+    Predictions   insyra.IDataList
+    Classes       insyra.IDataList
+    Probabilities insyra.IDataTable
+}
+```
+
+**Notes:**
+
+- v1 uses Euclidean distance
+- default weighting is `uniform`
+- `distance` weighting uses inverse distance
+- exact-distance matches dominate distance-weighted predictions
+
+**Example**:
+
+```go
+trainLabels := insyra.NewDataList("red", "red", "red", "blue", "blue", "blue")
+result, err := stats.KNNClassify(trainTable, trainLabels, testTable, 3, stats.KNNOptions{
+    Weighting: stats.KNNDistanceWeighting,
+})
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Println(result.Predictions.Get(0))
+result.Probabilities.Show()
+```
+
+### KNN Regression
+
+```go
+func KNNRegress(trainData insyra.IDataTable, trainTargets insyra.IDataList, testData insyra.IDataTable, k int, opts ...KNNOptions) (*KNNRegressionResult, error)
+```
+
+**Description:** Predict numeric targets for `testData` by averaging the `k` nearest training targets.
+
+#### KNN Regression Result
+
+```go
+type KNNRegressionResult struct {
+    Predictions []float64
+}
+```
+
+**Example**:
+
+```go
+targets := insyra.NewDataList(1.0, 1.5, 9.0, 9.5)
+result, err := stats.KNNRegress(trainTable, targets, testTable, 2)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Println(result.Predictions)
+```
 
 ### KMeans
 
