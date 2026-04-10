@@ -9,14 +9,22 @@ import (
 )
 
 type KNNWeighting string
+type KNNAlgorithm string
 
 const (
 	KNNUniformWeighting  KNNWeighting = "uniform"
 	KNNDistanceWeighting KNNWeighting = "distance"
+
+	KNNAuto       KNNAlgorithm = "auto"
+	KNNBruteForce KNNAlgorithm = "brute"
+	KNNKDTree     KNNAlgorithm = "kd_tree"
+	KNNBallTree   KNNAlgorithm = "ball_tree"
 )
 
 type KNNOptions struct {
 	Weighting KNNWeighting
+	Algorithm KNNAlgorithm
+	LeafSize  int
 }
 
 type KNNClassificationResult struct {
@@ -29,6 +37,11 @@ type KNNRegressionResult struct {
 	Predictions []float64
 }
 
+type KNNNeighborsResult struct {
+	Indices   [][]int
+	Distances [][]float64
+}
+
 func KNNClassify(trainData insyra.IDataTable, trainLabels insyra.IDataList, testData insyra.IDataTable, k int, opts ...KNNOptions) (*KNNClassificationResult, error) {
 	train, _, err := numericMatrixFromTable(trainData)
 	if err != nil {
@@ -38,20 +51,15 @@ func KNNClassify(trainData insyra.IDataTable, trainLabels insyra.IDataList, test
 	if err != nil {
 		return nil, err
 	}
-	if len(opts) > 1 {
-		return nil, errors.New("opts accepts at most one value")
-	}
-	var options KNNOptions
-	if len(opts) == 1 {
-		options = opts[0]
+	options, err := parseKNNOptions(opts)
+	if err != nil {
+		return nil, err
 	}
 	labelInfo, err := categoricalLabelsFromDataList(trainLabels, len(train))
 	if err != nil {
 		return nil, err
 	}
-	got, err := internalknn.Classify(train, test, labelInfo.encoded, k, internalknn.Options{
-		Weighting: internalknn.Weighting(options.Weighting),
-	})
+	got, err := internalknn.Classify(train, test, labelInfo.encoded, k, toInternalKNNOptions(options))
 	if err != nil {
 		return nil, err
 	}
@@ -60,14 +68,12 @@ func KNNClassify(trainData insyra.IDataTable, trainLabels insyra.IDataList, test
 	for _, encoded := range got.Predictions {
 		predictions.Append(labelInfo.values[encoded])
 	}
-
 	classes := insyra.NewDataList()
 	columnNames := make([]string, len(got.Classes))
 	for i, encoded := range got.Classes {
 		classes.Append(labelInfo.values[encoded])
 		columnNames[i] = labelInfo.names[encoded]
 	}
-
 	return &KNNClassificationResult{
 		Predictions:   predictions,
 		Classes:       classes,
@@ -84,26 +90,68 @@ func KNNRegress(trainData insyra.IDataTable, trainTargets insyra.IDataList, test
 	if err != nil {
 		return nil, err
 	}
-	if len(opts) > 1 {
-		return nil, errors.New("opts accepts at most one value")
-	}
-	var options KNNOptions
-	if len(opts) == 1 {
-		options = opts[0]
+	options, err := parseKNNOptions(opts)
+	if err != nil {
+		return nil, err
 	}
 	targets, err := numericVectorFromDataList(trainTargets, len(train))
 	if err != nil {
 		return nil, err
 	}
-	got, err := internalknn.Regress(train, test, targets, k, internalknn.Options{
-		Weighting: internalknn.Weighting(options.Weighting),
-	})
+	got, err := internalknn.Regress(train, test, targets, k, toInternalKNNOptions(options))
 	if err != nil {
 		return nil, err
 	}
-	return &KNNRegressionResult{
-		Predictions: append([]float64(nil), got.Predictions...),
-	}, nil
+	return &KNNRegressionResult{Predictions: append([]float64(nil), got.Predictions...)}, nil
+}
+
+func KNearestNeighbors(trainData insyra.IDataTable, testData insyra.IDataTable, k int, opts ...KNNOptions) (*KNNNeighborsResult, error) {
+	train, _, err := numericMatrixFromTable(trainData)
+	if err != nil {
+		return nil, err
+	}
+	test, _, err := numericMatrixFromTable(testData)
+	if err != nil {
+		return nil, err
+	}
+	options, err := parseKNNOptions(opts)
+	if err != nil {
+		return nil, err
+	}
+	got, err := internalknn.Neighbors(train, test, k, toInternalKNNOptions(options))
+	if err != nil {
+		return nil, err
+	}
+	indices := make([][]int, len(got.Indices))
+	for i := range got.Indices {
+		indices[i] = make([]int, len(got.Indices[i]))
+		for j, idx := range got.Indices[i] {
+			indices[i][j] = idx + 1
+		}
+	}
+	distances := make([][]float64, len(got.Distances))
+	for i := range got.Distances {
+		distances[i] = append([]float64(nil), got.Distances[i]...)
+	}
+	return &KNNNeighborsResult{Indices: indices, Distances: distances}, nil
+}
+
+func parseKNNOptions(opts []KNNOptions) (KNNOptions, error) {
+	if len(opts) > 1 {
+		return KNNOptions{}, errors.New("opts accepts at most one value")
+	}
+	if len(opts) == 0 {
+		return KNNOptions{}, nil
+	}
+	return opts[0], nil
+}
+
+func toInternalKNNOptions(opts KNNOptions) internalknn.Options {
+	return internalknn.Options{
+		Weighting: internalknn.Weighting(opts.Weighting),
+		Algorithm: internalknn.Algorithm(opts.Algorithm),
+		LeafSize:  opts.LeafSize,
+	}
 }
 
 type categoricalLabelSet struct {

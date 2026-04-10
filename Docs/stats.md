@@ -850,8 +850,19 @@ const (
     KNNDistanceWeighting KNNWeighting = "distance"
 )
 
+type KNNAlgorithm string
+
+const (
+    KNNAuto       KNNAlgorithm = "auto"
+    KNNBruteForce KNNAlgorithm = "brute"
+    KNNKDTree     KNNAlgorithm = "kd_tree"
+    KNNBallTree   KNNAlgorithm = "ball_tree"
+)
+
 type KNNOptions struct {
     Weighting KNNWeighting
+    Algorithm KNNAlgorithm
+    LeafSize  int
 }
 ```
 
@@ -869,8 +880,10 @@ type KNNClassificationResult struct {
 
 - v1 uses Euclidean distance
 - default weighting is `uniform`
+- default algorithm is `auto`
 - `distance` weighting uses inverse distance
 - exact-distance matches dominate distance-weighted predictions
+- `auto` chooses exact brute-force / KD-tree / ball-tree search based on data shape
 
 **Example**:
 
@@ -878,6 +891,7 @@ type KNNClassificationResult struct {
 trainLabels := insyra.NewDataList("red", "red", "red", "blue", "blue", "blue")
 result, err := stats.KNNClassify(trainTable, trainLabels, testTable, 3, stats.KNNOptions{
     Weighting: stats.KNNDistanceWeighting,
+    Algorithm: stats.KNNKDTree,
 })
 if err != nil {
     log.Fatal(err)
@@ -911,6 +925,42 @@ if err != nil {
     log.Fatal(err)
 }
 fmt.Println(result.Predictions)
+```
+
+### K-Nearest Neighbor Search
+
+```go
+func KNearestNeighbors(trainData insyra.IDataTable, testData insyra.IDataTable, k int, opts ...KNNOptions) (*KNNNeighborsResult, error)
+```
+
+**Description:** Return the `k` nearest training-row indices and distances for each row in `testData`.
+
+#### KNN Neighbors Result
+
+```go
+type KNNNeighborsResult struct {
+    Indices   [][]int
+    Distances [][]float64
+}
+```
+
+**Notes:**
+
+- returned indices are 1-based row indices
+- `Distances[i][j]` matches `Indices[i][j]`
+- all backends return exact nearest neighbors, not approximations
+
+**Example**:
+
+```go
+neighbors, err := stats.KNearestNeighbors(trainTable, testTable, 3, stats.KNNOptions{
+    Algorithm: stats.KNNBallTree,
+})
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Println(neighbors.Indices)
+fmt.Println(neighbors.Distances)
 ```
 
 ### KMeans

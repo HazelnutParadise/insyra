@@ -315,6 +315,9 @@ Source policy:
 | `help` | `help [command]` | Show command help |
 | `history` | `history` | Show command history |
 | `iqr` | `iqr <var>` | DataList IQR |
+| `knn_classify` | `knn_classify <train_var> <labels_var> <test_var> <k> [weighting <uniform\|distance>] [algorithm <auto\|brute\|kd_tree\|ball_tree>] [leafsize <n>] [as <var>]` | K-nearest neighbors classification |
+| `knn_regress` | `knn_regress <train_var> <targets_var> <test_var> <k> [weighting <uniform\|distance>] [algorithm <auto\|brute\|kd_tree\|ball_tree>] [leafsize <n>] [as <var>]` | K-nearest neighbors regression |
+| `knn_neighbors` | `knn_neighbors <train_var> <test_var> <k> [algorithm <auto\|brute\|kd_tree\|ball_tree>] [leafsize <n>] [as <var>]` | K-nearest neighbors search |
 | `kmeans` | `kmeans <var> <k> [nstart <n>] [itermax <n>] [seed <n>] [as <var>]` | K-means clustering |
 | `kurtosis` | `kurtosis <var>` | Kurtosis of a DataList |
 | `load` | `load <file>\|parquet <file> [cols <c1,c2,...>] [rowgroups <i1,i2,...>] [sheet <name>] [as <var>]` | Load data file into DataTable variable |

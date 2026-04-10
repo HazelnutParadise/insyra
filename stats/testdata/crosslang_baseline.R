@@ -487,6 +487,99 @@ silhouette_stats <- function(rows, labels) {
   )
 }
 
+knn_neighbors_stats <- function(train_rows, test_rows, k) {
+  train <- do.call(rbind, lapply(train_rows, function(r) as.double(unlist(r))))
+  test <- do.call(rbind, lapply(test_rows, function(r) as.double(unlist(r))))
+  idx_out <- vector("list", nrow(test))
+  dist_out <- vector("list", nrow(test))
+  for (i in seq_len(nrow(test))) {
+    d <- sqrt(rowSums((t(t(train) - test[i, ]))^2))
+    ord <- order(d, seq_along(d))
+    picked <- ord[seq_len(k)]
+    idx_out[[i]] <- as.integer(picked)
+    dist_out[[i]] <- as.double(d[picked])
+  }
+  list(indices = idx_out, distances = dist_out)
+}
+
+knn_class_probs <- function(indices, distances, labels, classes, weighting) {
+  weights <- rep(0, length(classes))
+  use <- seq_along(indices)
+  if (any(abs(distances) <= 1e-12)) {
+    use <- which(abs(distances) <= 1e-12)
+  }
+  for (u in use) {
+    w <- 1.0
+    if (weighting == "distance") {
+      if (abs(distances[u]) <= 1e-12) {
+        w <- 1.0
+      } else {
+        w <- 1.0 / distances[u]
+      }
+    }
+    cls <- labels[indices[u]]
+    weights[match(cls, classes)] <- weights[match(cls, classes)] + w
+  }
+  total <- sum(weights)
+  if (total > 0) weights <- weights / total
+  weights
+}
+
+knn_classify_stats <- function(train_rows, test_rows, labels, k, weighting) {
+  labels <- as.character(unlist(labels))
+  classes <- unique(labels)
+  nn <- knn_neighbors_stats(train_rows, test_rows, k)
+  probs <- vector("list", length(nn$indices))
+  preds <- character(length(nn$indices))
+  for (i in seq_along(nn$indices)) {
+    p <- knn_class_probs(nn$indices[[i]], nn$distances[[i]], labels, classes, weighting)
+    probs[[i]] <- as.double(p)
+    best <- 1
+    best_mean <- mean(nn$distances[[i]][labels[nn$indices[[i]]] == classes[[1]]])
+    if (is.nan(best_mean)) best_mean <- Inf
+    for (j in 2:length(classes)) {
+      if (p[j] > p[best] && abs(p[j] - p[best]) > 1e-12) {
+        best <- j
+        cand <- mean(nn$distances[[i]][labels[nn$indices[[i]]] == classes[[j]]])
+        best_mean <- if (is.nan(cand)) Inf else cand
+        next
+      }
+      if (abs(p[j] - p[best]) <= 1e-12) {
+        cand <- mean(nn$distances[[i]][labels[nn$indices[[i]]] == classes[[j]]])
+        if (is.nan(cand)) cand <- Inf
+        if (cand < best_mean && abs(cand - best_mean) > 1e-12) {
+          best <- j
+          best_mean <- cand
+        }
+      }
+    }
+    preds[[i]] <- classes[[best]]
+  }
+  list(predictions = as.character(preds), classes = as.character(classes), probabilities = probs)
+}
+
+knn_regress_stats <- function(train_rows, test_rows, targets, k, weighting) {
+  targets <- as.double(unlist(targets))
+  nn <- knn_neighbors_stats(train_rows, test_rows, k)
+  preds <- numeric(length(nn$indices))
+  for (i in seq_along(nn$indices)) {
+    use <- seq_along(nn$indices[[i]])
+    if (any(abs(nn$distances[[i]]) <= 1e-12)) {
+      use <- which(abs(nn$distances[[i]]) <= 1e-12)
+    }
+    w <- rep(1.0, length(use))
+    if (weighting == "distance") {
+      for (j in seq_along(use)) {
+        d <- nn$distances[[i]][use[j]]
+        if (abs(d) > 1e-12) w[j] <- 1.0 / d
+      }
+    }
+    idx <- nn$indices[[i]][use]
+    preds[[i]] <- sum(w * targets[idx]) / sum(w)
+  }
+  list(predictions = as.double(preds))
+}
+
 bartlett_sphericity <- function(rows) {
   m <- do.call(rbind, lapply(rows, function(r) as.double(unlist(r))))
   n <- nrow(m)
@@ -952,6 +1045,12 @@ if (method == "single_t") {
   out <- dbscan_stats(payload$rows, payload$eps, payload$min_pts)
 } else if (method == "silhouette") {
   out <- silhouette_stats(payload$rows, payload$labels)
+} else if (method == "knn_classify") {
+  out <- knn_classify_stats(payload$train_rows, payload$test_rows, payload$labels, as.integer(payload$k), as.character(payload$weighting))
+} else if (method == "knn_regress") {
+  out <- knn_regress_stats(payload$train_rows, payload$test_rows, payload$targets, as.integer(payload$k), as.character(payload$weighting))
+} else if (method == "knn_neighbors") {
+  out <- knn_neighbors_stats(payload$train_rows, payload$test_rows, as.integer(payload$k))
 } else if (method == "moment") {
   x <- as.double(unlist(payload$x))
   order <- as.integer(payload$order)

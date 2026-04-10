@@ -167,6 +167,53 @@ func TestKNNClassifyReportsClassesInProbabilityColumns(t *testing.T) {
 	}
 }
 
+func TestKNearestNeighborsReturnsIndicesDistancesAndBackendParity(t *testing.T) {
+	train := dataTableFromRows([][]float64{
+		{0, 0},
+		{0, 1},
+		{1, 0},
+		{10, 10},
+		{10, 11},
+		{11, 10},
+	})
+	test := dataTableFromRows([][]float64{
+		{0.1, 0.2},
+		{10.1, 10.2},
+	})
+
+	brute, err := stats.KNearestNeighbors(train, test, 2, stats.KNNOptions{Algorithm: stats.KNNBruteForce})
+	if err != nil {
+		t.Fatalf("KNearestNeighbors brute returned error: %v", err)
+	}
+	kd, err := stats.KNearestNeighbors(train, test, 2, stats.KNNOptions{Algorithm: stats.KNNKDTree})
+	if err != nil {
+		t.Fatalf("KNearestNeighbors kd-tree returned error: %v", err)
+	}
+	ball, err := stats.KNearestNeighbors(train, test, 2, stats.KNNOptions{Algorithm: stats.KNNBallTree})
+	if err != nil {
+		t.Fatalf("KNearestNeighbors ball-tree returned error: %v", err)
+	}
+
+	wantFirst := []int{1, 2}
+	wantSecond := []int{4, 5}
+	if !reflect.DeepEqual(brute.Indices[0], wantFirst) {
+		t.Fatalf("unexpected first brute neighbor indices: %v", brute.Indices[0])
+	}
+	if !reflect.DeepEqual(brute.Indices[1], wantSecond) {
+		t.Fatalf("unexpected second brute neighbor indices: %v", brute.Indices[1])
+	}
+	if !reflect.DeepEqual(brute.Indices, kd.Indices) || !reflect.DeepEqual(brute.Indices, ball.Indices) {
+		t.Fatalf("backend index mismatch: brute=%v kd=%v ball=%v", brute.Indices, kd.Indices, ball.Indices)
+	}
+	for i := range brute.Distances {
+		for j := range brute.Distances[i] {
+			if math.Abs(brute.Distances[i][j]-kd.Distances[i][j]) > 1e-12 || math.Abs(brute.Distances[i][j]-ball.Distances[i][j]) > 1e-12 {
+				t.Fatalf("backend distance mismatch at row=%d col=%d: brute=%v kd=%v ball=%v", i, j, brute.Distances[i][j], kd.Distances[i][j], ball.Distances[i][j])
+			}
+		}
+	}
+}
+
 func anyListToSlice(dl insyra.IDataList) []any {
 	out := make([]any, dl.Len())
 	for i := 0; i < dl.Len(); i++ {

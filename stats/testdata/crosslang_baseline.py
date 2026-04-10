@@ -942,6 +942,94 @@ def silhouette_stats(rows, labels):
     return {"points": points, "avg_width": total / n}
 
 
+def knn_neighbors_stats(train_rows, test_rows, k):
+    train = np.array(train_rows, dtype=float)
+    test = np.array(test_rows, dtype=float)
+    indices = []
+    distances = []
+    for row in test:
+        d = np.sqrt(np.sum((train - row) ** 2, axis=1))
+        order = sorted(range(len(d)), key=lambda i: (float(d[i]), i))
+        picked = order[: int(k)]
+        indices.append([i + 1 for i in picked])
+        distances.append([float(d[i]) for i in picked])
+    return {"indices": indices, "distances": distances}
+
+
+def knn_class_probabilities(indices, distances, labels, classes, weighting):
+    probs = [0.0] * len(classes)
+    use = list(range(len(indices)))
+    if any(abs(distances[i]) <= 1e-12 for i in range(len(distances))):
+        use = [i for i in range(len(distances)) if abs(distances[i]) <= 1e-12]
+    for pos in use:
+        weight = 1.0
+        if weighting == "distance" and abs(distances[pos]) > 1e-12:
+            weight = 1.0 / distances[pos]
+        cls = labels[indices[pos] - 1]
+        probs[classes.index(cls)] += weight
+    total = sum(probs)
+    if total > 0:
+        probs = [p / total for p in probs]
+    return probs
+
+
+def knn_classify_stats(train_rows, test_rows, labels, k, weighting):
+    labels = [str(v) for v in labels]
+    classes = []
+    for label in labels:
+        if label not in classes:
+            classes.append(label)
+    nn = knn_neighbors_stats(train_rows, test_rows, k)
+    predictions = []
+    probabilities = []
+    for row_idx in range(len(nn["indices"])):
+        idx = nn["indices"][row_idx]
+        dist = nn["distances"][row_idx]
+        probs = knn_class_probabilities(idx, dist, labels, classes, weighting)
+        probabilities.append(probs)
+        best = 0
+        best_mean = float("inf")
+        members = [dist[i] for i in range(len(idx)) if labels[idx[i] - 1] == classes[0]]
+        if members:
+            best_mean = sum(members) / len(members)
+        for c in range(1, len(classes)):
+            if probs[c] > probs[best] and abs(probs[c] - probs[best]) > 1e-12:
+                best = c
+                members = [dist[i] for i in range(len(idx)) if labels[idx[i] - 1] == classes[c]]
+                best_mean = sum(members) / len(members) if members else float("inf")
+                continue
+            if abs(probs[c] - probs[best]) <= 1e-12:
+                members = [dist[i] for i in range(len(idx)) if labels[idx[i] - 1] == classes[c]]
+                cand_mean = sum(members) / len(members) if members else float("inf")
+                if cand_mean < best_mean and abs(cand_mean - best_mean) > 1e-12:
+                    best = c
+                    best_mean = cand_mean
+        predictions.append(classes[best])
+    return {"predictions": predictions, "classes": classes, "probabilities": probabilities}
+
+
+def knn_regress_stats(train_rows, test_rows, targets, k, weighting):
+    targets = [float(v) for v in targets]
+    nn = knn_neighbors_stats(train_rows, test_rows, k)
+    predictions = []
+    for row_idx in range(len(nn["indices"])):
+        idx = nn["indices"][row_idx]
+        dist = nn["distances"][row_idx]
+        use = list(range(len(idx)))
+        if any(abs(dist[i]) <= 1e-12 for i in range(len(dist))):
+            use = [i for i in range(len(dist)) if abs(dist[i]) <= 1e-12]
+        weights = []
+        values = []
+        for pos in use:
+            weight = 1.0
+            if weighting == "distance" and abs(dist[pos]) > 1e-12:
+                weight = 1.0 / dist[pos]
+            weights.append(weight)
+            values.append(targets[idx[pos] - 1])
+        predictions.append(sum(w * v for w, v in zip(weights, values)) / sum(weights))
+    return {"predictions": predictions}
+
+
 def bartlett_sphericity(rows):
     m = np.array(rows, dtype=float)
     n = m.shape[0]
@@ -1285,6 +1373,12 @@ def main():
         out = dbscan_stats(payload["rows"], payload["eps"], payload["min_pts"])
     elif method == "silhouette":
         out = silhouette_stats(payload["rows"], payload["labels"])
+    elif method == "knn_classify":
+        out = knn_classify_stats(payload["train_rows"], payload["test_rows"], payload["labels"], payload["k"], payload["weighting"])
+    elif method == "knn_regress":
+        out = knn_regress_stats(payload["train_rows"], payload["test_rows"], payload["targets"], payload["k"], payload["weighting"])
+    elif method == "knn_neighbors":
+        out = knn_neighbors_stats(payload["train_rows"], payload["test_rows"], payload["k"])
     elif method == "moment":
         x = np.array(payload["x"], dtype=float)
         order = int(payload["order"])
