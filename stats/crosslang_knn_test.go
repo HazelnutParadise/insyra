@@ -123,7 +123,7 @@ func TestCrossLangKNNMethods(t *testing.T) {
 		}
 		rb := runRBaseline(t, "knn_neighbors", payload)
 		pb := runPythonBaseline(t, "knn_neighbors", payload)
-		assertIntMatrixEqualToBoth(t, "indices", intPairs(got.Indices), baselineIntMatrix(t, rb, "indices"), baselineIntMatrix(t, pb, "indices"))
+		assertIntRowsEqualToBoth(t, "indices", got.Indices, baselineIntRows(t, rb, "indices"), baselineIntRows(t, pb, "indices"))
 		assertMatrixCloseToBoth(t, "distances", got.Distances, baselineFloatMatrix(t, rb, "distances"), baselineFloatMatrix(t, pb, "distances"), 1e-10)
 	})
 }
@@ -153,14 +153,6 @@ func dataListToStringSlice(t *testing.T, dl insyra.IDataList) []string {
 			t.Fatalf("data list index %d is %T, want string", i, dl.Get(i))
 		}
 		out[i] = s
-	}
-	return out
-}
-
-func intPairs(rows [][]int) [][2]int {
-	out := make([][2]int, len(rows))
-	for i := range rows {
-		out[i] = [2]int{rows[i][0], rows[i][1]}
 	}
 	return out
 }

@@ -246,6 +246,34 @@ func baselineIntMatrix(t *testing.T, m crossLangBaseline, key string) [][2]int {
 	return out
 }
 
+func baselineIntRows(t *testing.T, m crossLangBaseline, key string) [][]int {
+	t.Helper()
+	v, ok := m[key]
+	if !ok {
+		t.Fatalf("baseline missing key %q", key)
+	}
+	rows, ok := v.([]any)
+	if !ok {
+		t.Fatalf("baseline key %q has non-matrix type %T", key, v)
+	}
+	out := make([][]int, len(rows))
+	for i, row := range rows {
+		rowAny, ok := row.([]any)
+		if !ok {
+			t.Fatalf("baseline key %q row %d invalid: %T %#v", key, i, row, row)
+		}
+		out[i] = make([]int, len(rowAny))
+		for j, cell := range rowAny {
+			f, ok := toFloat64FromAny(cell)
+			if !ok {
+				t.Fatalf("baseline key %q row %d col %d has non-numeric value %T", key, i, j, cell)
+			}
+			out[i][j] = int(f)
+		}
+	}
+	return out
+}
+
 func assertCloseToBoth(t *testing.T, label string, got, rWant, pyWant, tol float64) {
 	t.Helper()
 	if math.IsNaN(got) || math.IsNaN(rWant) || math.IsNaN(pyWant) {
@@ -350,6 +378,26 @@ func assertIntMatrixEqualToBoth(t *testing.T, label string, got, rWant, pyWant [
 		}
 		if got[i] != pyWant[i] {
 			t.Fatalf("%s mismatch vs Python at %d: got=%v py=%v", label, i, got[i], pyWant[i])
+		}
+	}
+}
+
+func assertIntRowsEqualToBoth(t *testing.T, label string, got, rWant, pyWant [][]int) {
+	t.Helper()
+	if len(got) != len(rWant) || len(got) != len(pyWant) {
+		t.Fatalf("%s length mismatch got=%d r=%d py=%d", label, len(got), len(rWant), len(pyWant))
+	}
+	for i := range got {
+		if len(got[i]) != len(rWant[i]) || len(got[i]) != len(pyWant[i]) {
+			t.Fatalf("%s row %d length mismatch got=%d r=%d py=%d", label, i, len(got[i]), len(rWant[i]), len(pyWant[i]))
+		}
+		for j := range got[i] {
+			if got[i][j] != rWant[i][j] {
+				t.Fatalf("%s mismatch vs R at row=%d col=%d: got=%d r=%d", label, i, j, got[i][j], rWant[i][j])
+			}
+			if got[i][j] != pyWant[i][j] {
+				t.Fatalf("%s mismatch vs Python at row=%d col=%d: got=%d py=%d", label, i, j, got[i][j], pyWant[i][j])
+			}
 		}
 	}
 }
