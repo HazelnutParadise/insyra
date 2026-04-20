@@ -30,12 +30,18 @@ func TestCalculateMoment(t *testing.T) {
 	}
 
 	for i := 1; i <= 5; i++ {
-		raw := stats.CalculateMoment(dl, i, false)
+		raw, err := stats.CalculateMoment(dl, i, false)
+		if err != nil {
+			t.Fatalf("CalculateMoment raw order %d error: %v", i, err)
+		}
 		if !almostEqual(raw, rawExpect[i-1], tol) {
 			t.Errorf("Raw moment %d = %f; want %f", i, raw, rawExpect[i-1])
 		}
 
-		central := stats.CalculateMoment(dl, i, true)
+		central, err := stats.CalculateMoment(dl, i, true)
+		if err != nil {
+			t.Fatalf("CalculateMoment central order %d error: %v", i, err)
+		}
 		if !almostEqual(central, centralExpect[i-1], tol) {
 			t.Errorf("Central moment %d = %f; want %f", i, central, centralExpect[i-1])
 		}
@@ -44,12 +50,20 @@ func TestCalculateMoment(t *testing.T) {
 
 func TestCalculateMoment_EdgeCases(t *testing.T) {
 	empty := insyra.NewDataList([]float64{})
-	if !math.IsNaN(stats.CalculateMoment(empty, 2, true)) {
+	if _, err := stats.CalculateMoment(empty, 2, true); err == nil {
+		t.Error("Expected error for empty input")
+	}
+	m, _ := stats.CalculateMoment(empty, 2, true)
+	if !math.IsNaN(m) {
 		t.Error("Expected NaN for empty input")
 	}
 
 	data := insyra.NewDataList([]float64{1.0, 2.0})
-	if !math.IsNaN(stats.CalculateMoment(data, 0, true)) {
+	if _, err := stats.CalculateMoment(data, 0, true); err == nil {
+		t.Error("Expected error for moment order 0")
+	}
+	m, _ = stats.CalculateMoment(data, 0, true)
+	if !math.IsNaN(m) {
 		t.Error("Expected NaN for moment order 0")
 	}
 }

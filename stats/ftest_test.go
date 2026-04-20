@@ -12,9 +12,9 @@ func TestFTestForVarianceEquality(t *testing.T) {
 	data1 := insyra.NewDataList([]float64{10, 12, 9, 11})
 	data2 := insyra.NewDataList([]float64{20, 19, 21, 22})
 
-	result := stats.FTestForVarianceEquality(data1, data2)
-	if result == nil {
-		t.Fatal("FTestForVarianceEquality returned nil")
+	result, err := stats.FTestForVarianceEquality(data1, data2)
+	if err != nil {
+		t.Fatalf("FTestForVarianceEquality returned error: %v", err)
 	}
 
 	expectedF := 1.0
@@ -37,9 +37,9 @@ func TestLeveneAndBartlett(t *testing.T) {
 	groups := isr.DLs{group1, group2, group3}
 
 	// Levene's Test
-	leveneResult := stats.LeveneTest(groups)
-	if leveneResult == nil {
-		t.Fatal("LeveneTest returned nil")
+	leveneResult, err := stats.LeveneTest(groups)
+	if err != nil {
+		t.Fatalf("LeveneTest returned error: %v", err)
 	}
 	expectedLeveneStat := 0.1579
 	expectedLeveneP := 0.8562
@@ -51,9 +51,9 @@ func TestLeveneAndBartlett(t *testing.T) {
 	}
 
 	// Bartlett's Test
-	bartlettResult := stats.BartlettTest(groups)
-	if bartlettResult == nil {
-		t.Fatal("BartlettTest returned nil")
+	bartlettResult, err := stats.BartlettTest(groups)
+	if err != nil {
+		t.Fatalf("BartlettTest returned error: %v", err)
 	}
 	expectedBartlettStat := 0.2869
 	expectedBartlettP := 0.8663
@@ -71,9 +71,9 @@ func TestFTestForRegression(t *testing.T) {
 	df1 := 3
 	df2 := 16
 
-	result := stats.FTestForRegression(ssr, sse, df1, df2)
-	if result == nil {
-		t.Fatal("FTestForRegression returned nil")
+	result, err := stats.FTestForRegression(ssr, sse, df1, df2)
+	if err != nil {
+		t.Fatalf("FTestForRegression returned error: %v", err)
 	}
 
 	expectedF := 13.3333
@@ -93,9 +93,9 @@ func TestFTestForNestedModels(t *testing.T) {
 	dfReduced := 18
 	dfFull := 16
 
-	result := stats.FTestForNestedModels(rssReduced, rssFull, dfReduced, dfFull)
-	if result == nil {
-		t.Fatal("FTestForNestedModels returned nil")
+	result, err := stats.FTestForNestedModels(rssReduced, rssFull, dfReduced, dfFull)
+	if err != nil {
+		t.Fatalf("FTestForNestedModels returned error: %v", err)
 	}
 
 	expectedF := 4.0

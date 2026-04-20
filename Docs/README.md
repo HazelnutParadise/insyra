@@ -62,7 +62,7 @@ dt.Show()
 
 | Document          | Description                                             |
 | ----------------- | ------------------------------------------------------- |
-| [stats](stats.md) | Correlation, hypothesis testing, regression, ANOVA, PCA |
+| [stats](stats.md) | Correlation, hypothesis testing, regression, ANOVA, PCA, clustering |
 
 #### Visualization
 

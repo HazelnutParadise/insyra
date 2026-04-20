@@ -1,15 +1,17 @@
 package stats
 
 import (
+	"errors"
+	"fmt"
 	"math"
 	"sort"
 
 	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/stats/internal/linalg"
 	"gonum.org/v1/gonum/stat"
-	"gonum.org/v1/gonum/stat/distuv"
 )
 
-// CorrelationMethod 定義了相關係數的計算方法
+// CorrelationMethod specifies which correlation coefficient to compute.
 type CorrelationMethod int
 
 const (
@@ -18,38 +20,33 @@ const (
 	SpearmanCorrelation
 )
 
-// CorrelationAnalysis provides a comprehensive correlation analysis.
-// It calculates the correlation coefficient matrix, p-value matrix, and overall test (Bartlett's sphericity test) at once.
-// Returns: correlation coefficient matrix, p-value matrix, chi-square value, p-value, degrees of freedom.
-func CorrelationAnalysis(dataTable insyra.IDataTable, method CorrelationMethod) (corrMatrix *insyra.DataTable, pMatrix *insyra.DataTable, chiSquare float64, pValue float64, df int) {
+// CorrelationAnalysis calculates correlation matrix, p-value matrix and Bartlett test.
+func CorrelationAnalysis(dataTable insyra.IDataTable, method CorrelationMethod) (corrMatrix *insyra.DataTable, pMatrix *insyra.DataTable, chiSquare float64, pValue float64, df int, err error) {
 	dataTable.AtomicDo(func(dt *insyra.DataTable) {
-		corrMatrix, pMatrix = CorrelationMatrix(dt, method)
+		corrMatrix, pMatrix, err = CorrelationMatrix(dt, method)
+		if err != nil {
+			return
+		}
 
-		// 只有在使用 Pearson 相關係數時執行巴特萊特球形檢定
 		if method == PearsonCorrelation {
-			chiSquare, pValue, df = BartlettSphericity(dt)
+			chiSquare, pValue, df, err = BartlettSphericity(dt)
 		} else {
-			// 對於非 Pearson 相關係數，不計算球形檢定
 			chiSquare, pValue, df = math.NaN(), math.NaN(), 0
 		}
 	})
 
-	return corrMatrix, pMatrix, chiSquare, pValue, df
+	return corrMatrix, pMatrix, chiSquare, pValue, df, err
 }
 
-// CorrelationMatrix calculates the correlation coefficient matrix and its corresponding p-value matrix.
-// dataTable: The DataTable used to compute the correlation matrix.
-// method: The method used to calculate the correlation coefficient (Pearson, Kendall, or Spearman).
-// Returns two DataTables: the first contains the correlation coefficient matrix, the second contains the p-value matrix.
-func CorrelationMatrix(dataTable insyra.IDataTable, method CorrelationMethod) (corrMatrix *insyra.DataTable, pMatrix *insyra.DataTable) {
+// CorrelationMatrix calculates the correlation coefficient matrix and p-value matrix.
+func CorrelationMatrix(dataTable insyra.IDataTable, method CorrelationMethod) (corrMatrix *insyra.DataTable, pMatrix *insyra.DataTable, err error) {
 	dt := insyra.NewDataTable()
 	pdt := insyra.NewDataTable()
-	isFailed := false
+	var pairErr error
 	dataTable.AtomicDo(func(table *insyra.DataTable) {
 		_, n := table.Size()
 		if n < 2 {
-			insyra.LogWarning("stats", "CorrelationMatrix", "Need at least two columns for correlation")
-			isFailed = true
+			err = errors.New("need at least two columns for correlation")
 			return
 		}
 
@@ -63,19 +60,25 @@ func CorrelationMatrix(dataTable insyra.IDataTable, method CorrelationMethod) (c
 		for i := range n {
 			for j := i; j < n; j++ {
 				if i == j {
-					matrix[i][j] = 1.0  // 變數與自身的相關性為 1
-					pmatrix[i][j] = 0.0 // 變數與自身的 p 值為 0
+					matrix[i][j] = 1.0
+					pmatrix[i][j] = 0.0
 					continue
 				}
 
-				corrResult := Correlation(table.GetColByNumber(i), table.GetColByNumber(j), method)
-				if corrResult != nil && !math.IsNaN(corrResult.Statistic) {
+				corrResult, corrErr := Correlation(table.GetColByNumber(i), table.GetColByNumber(j), method)
+				if corrErr == nil && corrResult != nil && !math.IsNaN(corrResult.Statistic) {
 					matrix[i][j] = corrResult.Statistic
-					matrix[j][i] = corrResult.Statistic // 矩陣是對稱的
+					matrix[j][i] = corrResult.Statistic
 					pmatrix[i][j] = corrResult.PValue
-					pmatrix[j][i] = corrResult.PValue // p值矩陣也是對稱的
+					pmatrix[j][i] = corrResult.PValue
 				} else {
-					insyra.LogWarning("stats", "CorrelationMatrix", "Unable to calculate correlation between column %d and column %d. Setting as NaN", i, j)
+					if pairErr == nil {
+						if corrErr != nil {
+							pairErr = fmt.Errorf("unable to calculate correlation for columns %d and %d: %w", i, j, corrErr)
+						} else {
+							pairErr = fmt.Errorf("unable to calculate correlation for columns %d and %d", i, j)
+						}
+					}
 					matrix[i][j] = math.NaN()
 					matrix[j][i] = math.NaN()
 					pmatrix[i][j] = math.NaN()
@@ -84,7 +87,6 @@ func CorrelationMatrix(dataTable insyra.IDataTable, method CorrelationMethod) (c
 			}
 		}
 
-		// 將相關係數結果轉換為 insyra.DataTable
 		dtColNames := insyra.NewDataList()
 		for i := range matrix {
 			rowName := table.GetColByNumber(i).GetName()
@@ -98,7 +100,6 @@ func CorrelationMatrix(dataTable insyra.IDataTable, method CorrelationMethod) (c
 		dt.AppendRowsFromDataList(dtColNames)
 		dt.SetRowToColNames(-1)
 
-		// 將 p 值結果轉換為 insyra.DataTable
 		pdtColNames := insyra.NewDataList()
 		for i := range pmatrix {
 			rowName := table.GetColByNumber(i).GetName()
@@ -112,48 +113,52 @@ func CorrelationMatrix(dataTable insyra.IDataTable, method CorrelationMethod) (c
 		pdt.AppendRowsFromDataList(pdtColNames)
 		pdt.SetRowToColNames(-1)
 	})
-	if isFailed {
-		return nil, nil
+	if err != nil {
+		return nil, nil, err
 	}
 
-	return dt, pdt
+	return dt, pdt, pairErr
 }
 
-func Covariance(dlX, dlY insyra.IDataList) float64 {
+func Covariance(dlX, dlY insyra.IDataList) (float64, error) {
 	var meanX, meanY float64
 	var lenX int
+	var lenY int
 	var dataX, dataY []float64
 	dlX.AtomicDo(func(dlx *insyra.DataList) {
 		dlY.AtomicDo(func(dly *insyra.DataList) {
 			meanX = dlx.Mean()
 			meanY = dly.Mean()
 			lenX = dlx.Len()
+			lenY = dly.Len()
 			dataX = dlx.ToF64Slice()
 			dataY = dly.ToF64Slice()
 		})
 	})
+	if lenX != lenY {
+		return math.NaN(), errors.New("input lengths must match")
+	}
+	if lenX < 2 {
+		return math.NaN(), errors.New("at least two observations are required")
+	}
 
-	var sum float64 = 0
+	var sum float64
 	for i := range lenX {
 		x := dataX[i]
 		y := dataY[i]
 		sum += (x - meanX) * (y - meanY)
 	}
-	return sum / float64(lenX-1)
+	return sum / float64(lenX-1), nil
 }
 
 type CorrelationResult struct {
 	testResultBase
 }
 
-// Correlation calculates the correlation between two IDataLists using the specified method.
-// dlX: the first IDataList.
-// dlY: the second IDataList.
-// method: the method to use for calculating the correlation (Pearson, Kendall, or Spearman).
-// Returns a CorrelationResult containing the correlation statistic, p-value, confidence interval, and degrees of freedom.
-func Correlation(dlX, dlY insyra.IDataList, method CorrelationMethod) *CorrelationResult {
+// Correlation calculates correlation between two IDataLists.
+func Correlation(dlX, dlY insyra.IDataList, method CorrelationMethod) (*CorrelationResult, error) {
 	var result CorrelationResult
-	isFailed := false
+	var err error
 	dlX.AtomicDo(func(dlx *insyra.DataList) {
 		dlY.AtomicDo(func(dly *insyra.DataList) {
 			lenX := dlx.Len()
@@ -162,58 +167,49 @@ func Correlation(dlX, dlY insyra.IDataList, method CorrelationMethod) *Correlati
 			stdevY := dly.Stdev()
 
 			if lenX != lenY || lenX < 2 {
-				insyra.LogWarning("stats", "Correlation", "Invalid input length or nil input")
-				isFailed = true
+				err = errors.New("invalid input length or insufficient data")
 				return
 			}
 			if stdevX == 0 || stdevY == 0 {
-				insyra.LogWarning("stats", "Correlation", "Cannot calculate correlation due to zero variance")
-				isFailed = true
+				err = errors.New("cannot calculate correlation due to zero variance")
 				return
 			}
 
 			switch method {
 			case PearsonCorrelation:
-				result = pearsonCorrelationWithStats(dlx, dly)
+				result, err = pearsonCorrelationWithStats(dlx, dly)
 			case KendallCorrelation:
 				result = kendallCorrelationWithStats(dlx, dly)
 			case SpearmanCorrelation:
-				result = spearmanCorrelationWithStats(dlx, dly)
+				result, err = spearmanCorrelationWithStats(dlx, dly)
 			default:
-				insyra.LogWarning("stats", "Correlation", "Unsupported method")
-				isFailed = true
+				err = errors.New("unsupported method")
 				return
 			}
 		})
 	})
-	if isFailed {
-		return nil
+	if err != nil {
+		return nil, err
 	}
 
 	if math.IsNaN(result.Statistic) {
-		insyra.LogWarning("stats", "Correlation", "Cannot calculate correlation")
-		return nil
+		return nil, errors.New("cannot calculate correlation")
 	}
 
-	return &result
+	return &result, nil
 }
 
-// BartlettSphericity performs Bartlett's test of sphericity to assess the overall significance of the correlation matrix.
-// dataTable: The DataTable containing the data to be tested.
-// Returns the chi-square statistic, p-value, and degrees of freedom.
-func BartlettSphericity(dataTable insyra.IDataTable) (chiSquare float64, pValue float64, df int) {
+// BartlettSphericity performs Bartlett's test of sphericity.
+func BartlettSphericity(dataTable insyra.IDataTable) (chiSquare float64, pValue float64, df int, err error) {
 	var rows, cols int
 	var corrMatrix [][]float64
-	isFailed := false
 	dataTable.AtomicDo(func(dt *insyra.DataTable) {
 		rows, cols = dt.Size()
 		if cols < 2 {
-			insyra.LogWarning("stats", "BartlettSphericity", "Need at least two columns for sphericity test")
-			isFailed = true
+			err = errors.New("need at least two columns for sphericity test")
 			return
 		}
 
-		// 建立相關係數矩陣
 		corrMatrix = make([][]float64, cols)
 		for i := range corrMatrix {
 			corrMatrix[i] = make([]float64, cols)
@@ -223,90 +219,77 @@ func BartlettSphericity(dataTable insyra.IDataTable) (chiSquare float64, pValue 
 				} else {
 					col1 := dt.GetColByNumber(i)
 					col2 := dt.GetColByNumber(j)
-					result := Correlation(col1, col2, PearsonCorrelation)
-					if result != nil && !math.IsNaN(result.Statistic) {
+					result, corrErr := Correlation(col1, col2, PearsonCorrelation)
+					if corrErr == nil && result != nil && !math.IsNaN(result.Statistic) {
 						corrMatrix[i][j] = result.Statistic
 					} else {
-						corrMatrix[i][j] = 0.0
+						if corrErr != nil {
+							err = fmt.Errorf("failed to calculate Pearson correlation for columns %d and %d: %w", i, j, corrErr)
+						} else {
+							err = fmt.Errorf("failed to calculate Pearson correlation for columns %d and %d", i, j)
+						}
+						return
 					}
 				}
 			}
 		}
 	})
-	if isFailed {
-		return math.NaN(), math.NaN(), 0
+	if err != nil {
+		return math.NaN(), math.NaN(), 0, err
 	}
 
-	// 計算行列式 (使用高斯消元法)
-	det := determinantGauss(corrMatrix)
+	det := linalg.DeterminantGauss(corrMatrix)
 	if det <= 0 {
-		insyra.LogWarning("stats", "BartlettSphericity", "Correlation matrix is singular or not positive definite")
-		return math.NaN(), math.NaN(), 0
+		return math.NaN(), math.NaN(), 0, errors.New("correlation matrix is singular or not positive definite")
 	}
 
-	// 計算巴特萊特檢定統計量
 	n := float64(rows)
 	p := float64(cols)
 	chisq := -((n - 1) - (2*p+5)/6) * math.Log(det)
-	// 計算自由度
 	degreesOfFreedom := int((p * (p - 1)) / 2)
+	pval := chiSquaredPValue(chisq, float64(degreesOfFreedom))
 
-	// 計算 p 值
-	pval := 1 - distuv.ChiSquared{K: float64(degreesOfFreedom)}.CDF(chisq)
-
-	return chisq, pval, degreesOfFreedom
+	return chisq, pval, degreesOfFreedom, nil
 }
 
-func pearsonCorrelation(dlX, dlY insyra.IDataList) float64 {
+func pearsonCorrelation(dlX, dlY insyra.IDataList) (float64, error) {
 	var stdX, stdY float64
 	var cov float64
+	var err error
 	dlX.AtomicDo(func(dlx *insyra.DataList) {
 		dlY.AtomicDo(func(dly *insyra.DataList) {
-			cov = Covariance(dlx, dly)
+			cov, err = Covariance(dlx, dly)
 			stdX = dlx.Stdev()
 			stdY = dly.Stdev()
 		})
 	})
-	if stdX == 0 || stdY == 0 {
-		return math.NaN()
+	if err != nil {
+		return math.NaN(), err
 	}
-	return cov / (stdX * stdY)
+	if stdX == 0 || stdY == 0 {
+		return math.NaN(), errors.New("cannot calculate correlation due to zero variance")
+	}
+	return cov / (stdX * stdY), nil
 }
 
-func pearsonCorrelationWithStats(dlX, dlY insyra.IDataList) CorrelationResult {
+func pearsonCorrelationWithStats(dlX, dlY insyra.IDataList) (CorrelationResult, error) {
 	result := CorrelationResult{}
 	var corr, n float64
+	var err error
 	dlX.AtomicDo(func(dlx *insyra.DataList) {
 		dlY.AtomicDo(func(dly *insyra.DataList) {
-			corr = pearsonCorrelation(dlx, dly)
+			corr, err = pearsonCorrelation(dlx, dly)
 			result.Statistic = corr
-
 			n = float64(dlx.Len())
 		})
 	})
-	if !math.IsNaN(corr) && n > 2 {
-		// 使用 Student's t 分布計算 p 值
-		tStat := corr * math.Sqrt((n-2)/(1-corr*corr))
-		tDist := distuv.StudentsT{
-			Mu:    0,
-			Sigma: 1,
-			Nu:    n - 2,
-		}
-		pValue := 2 * tDist.CDF(-math.Abs(tStat))
-		result.PValue = pValue
-
-		z := 0.5 * math.Log((1+corr)/(1-corr))
-		se := 1 / math.Sqrt(n-3)
-		zLower := z - 1.96*se
-		zUpper := z + 1.96*se
-		rLower := (math.Exp(2*zLower) - 1) / (math.Exp(2*zLower) + 1)
-		rUpper := (math.Exp(2*zUpper) - 1) / (math.Exp(2*zUpper) + 1)
-		ci := [2]float64{rLower, rUpper}
-		result.CI = &ci
-		df := n - 2
-		result.DF = &df
+	if err != nil {
+		return result, err
 	}
-	return result
+	if !math.IsNaN(corr) && n > 2 {
+		populateCorrelationInference(&result, corr, n)
+	}
+	return result, nil
 }
 
 func kendallCorrelationWithStats(dlX, dlY insyra.IDataList) CorrelationResult {
@@ -330,7 +313,7 @@ func kendallCorrelationWithStats(dlX, dlY insyra.IDataList) CorrelationResult {
 		result.PValue = float64(extreme) / float64(len(perms))
 	} else {
 		z := 3 * tau * math.Sqrt(float64(n*(n-1))) / math.Sqrt(2*float64(2*n+5))
-		result.PValue = 2 * (1 - normalCDF(math.Abs(z)))
+		result.PValue = 2 * (1 - zCDF(math.Abs(z)))
 	}
 
 	return result
@@ -365,7 +348,7 @@ func generatePermutations(arr []float64) [][]float64 {
 	return res
 }
 
-func spearmanCorrelationWithStats(dlX, dlY insyra.IDataList) CorrelationResult {
+func spearmanCorrelationWithStats(dlX, dlY insyra.IDataList) (CorrelationResult, error) {
 	result := CorrelationResult{}
 	var rankX, rankY insyra.IDataList
 	var n float64
@@ -376,94 +359,34 @@ func spearmanCorrelationWithStats(dlX, dlY insyra.IDataList) CorrelationResult {
 			n = float64(dlx.Len())
 		})
 	})
-	rho := pearsonCorrelation(rankX, rankY)
+	rho, err := pearsonCorrelation(rankX, rankY)
+	if err != nil {
+		return result, err
+	}
 	result.Statistic = rho
 
 	if math.IsNaN(rho) {
 		result.PValue = math.NaN()
-		return result
+		return result, nil
 	}
 
 	if n > 2 {
 		if math.Abs(rho) >= 0.9999 {
 			result.PValue = 0.0
 		} else {
-			t := rho * math.Sqrt(n-2) / math.Sqrt(1-rho*rho)
-			df := n - 2
-			tDist := distuv.StudentsT{
-				Mu:    0,
-				Sigma: 1,
-				Nu:    df,
-			}
-			pValue := 2 * tDist.CDF(-math.Abs(t))
-			result.PValue = pValue
-			se := 1.0 / math.Sqrt(n-3)
-			ci := [2]float64{rho - 1.96*se, rho + 1.96*se}
-			result.CI = &ci
-			result.DF = &df
+			populateCorrelationInference(&result, rho, n)
 		}
 	} else {
 		result.PValue = math.NaN()
 	}
 
-	return result
+	return result, nil
 }
 
-func normalCDF(z float64) float64 {
-	return 0.5 * (1 + math.Erf(z/math.Sqrt(2)))
-}
-
-// determinantGauss 計算方陣的行列式 (使用高斯消元法)
-// 相較於遞歸的拉普拉斯展開法，高斯消元更適合較大的矩陣
-func determinantGauss(matrix [][]float64) float64 {
-	n := len(matrix)
-	if n == 1 {
-		return matrix[0][0]
-	}
-	if n == 2 {
-		return matrix[0][0]*matrix[1][1] - matrix[0][1]*matrix[1][0]
-	}
-
-	// 創建矩陣的副本，以避免修改原始矩陣
-	A := make([][]float64, n)
-	for i := range matrix {
-		A[i] = make([]float64, n)
-		copy(A[i], matrix[i])
-	}
-
-	// 高斯消元
-	det := 1.0
-	for i := 0; i < n; i++ {
-		// 找主元
-		maxRow := i
-		for j := i + 1; j < n; j++ {
-			if math.Abs(A[j][i]) > math.Abs(A[maxRow][i]) {
-				maxRow = j
-			}
-		}
-
-		// 如果主元為零，則行列式為零
-		if math.Abs(A[maxRow][i]) < 1e-10 {
-			return 0.0
-		}
-
-		// 如果需要交換行，則將行列式乘以-1
-		if maxRow != i {
-			A[i], A[maxRow] = A[maxRow], A[i]
-			det *= -1
-		}
-
-		// 將行列式乘以主元
-		det *= A[i][i]
-
-		// 消元過程
-		for j := i + 1; j < n; j++ {
-			factor := A[j][i] / A[i][i]
-			for k := i; k < n; k++ {
-				A[j][k] -= factor * A[i][k]
-			}
-		}
-	}
-
-	return det
+func populateCorrelationInference(result *CorrelationResult, corr, n float64) {
+	tStat := correlationToT(corr, n)
+	df := n - 2
+	result.PValue = tTwoTailedPValue(tStat, df)
+	result.CI = pearsonFisherCI(corr, n, defaultConfidenceLevel)
+	result.DF = &df
 }

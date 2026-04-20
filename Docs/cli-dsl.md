@@ -268,7 +268,7 @@ High-level command map:
 - **Data Processing**: `filter`, `sort`, `sample`, `find`, `replace`, `clean`, `merge`, `ccl`, `addcolccl`
 - **DataList Stats**: `sum`, `mean`, `median`, `mode`, `stdev`, `var`, `min`, `max`, `range`, `quartile`, `iqr`, `percentile`, `count`, `counter`, `corr`, `cov`, `corrmatrix`, `skewness`, `kurtosis`
 - **Time Series / Transforms**: `rank`, `normalize`, `standardize`, `reverse`, `upper`, `lower`, `capitalize`, `parsenums`, `parsestrings`, `movavg`, `expsmooth`, `diff`, `fillnan`
-- **Modeling / Viz / Fetch**: `regression`, `pca`, `ttest`, `ztest`, `anova`, `ftest`, `chisq`, `plot`, `fetch`
+- **Modeling / Viz / Fetch**: `regression`, `pca`, `kmeans`, `hclust`, `cutree`, `dbscan`, `silhouette`, `ttest`, `ztest`, `anova`, `ftest`, `chisq`, `plot`, `fetch`
 
 ## Full Command Index (Appendix)
 
@@ -315,6 +315,10 @@ Source policy:
 | `help` | `help [command]` | Show command help |
 | `history` | `history` | Show command history |
 | `iqr` | `iqr <var>` | DataList IQR |
+| `knn_classify` | `knn_classify <train_var> <labels_var> <test_var> <k> [weighting <uniform\|distance>] [algorithm <auto\|brute\|kd_tree\|ball_tree>] [leafsize <n>] [as <var>]` | K-nearest neighbors classification |
+| `knn_regress` | `knn_regress <train_var> <targets_var> <test_var> <k> [weighting <uniform\|distance>] [algorithm <auto\|brute\|kd_tree\|ball_tree>] [leafsize <n>] [as <var>]` | K-nearest neighbors regression |
+| `knn_neighbors` | `knn_neighbors <train_var> <test_var> <k> [algorithm <auto\|brute\|kd_tree\|ball_tree>] [leafsize <n>] [as <var>]` | K-nearest neighbors search |
+| `kmeans` | `kmeans <var> <k> [nstart <n>] [itermax <n>] [seed <n>] [as <var>]` | K-means clustering |
 | `kurtosis` | `kurtosis <var>` | Kurtosis of a DataList |
 | `load` | `load <file>\|parquet <file> [cols <c1,c2,...>] [rowgroups <i1,i2,...>] [sheet <name>] [as <var>]` | Load data file into DataTable variable |
 | `lower` | `lower <var> [as <var>]` | Lowercase DataList strings |
@@ -331,6 +335,10 @@ Source policy:
 | `parsenums` | `parsenums <var> [as <var>]` | Parse DataList strings to numbers |
 | `parsestrings` | `parsestrings <var> [as <var>]` | Parse DataList numbers to strings |
 | `pca` | `pca <var> <n>` | Principal component analysis |
+| `hclust` | `hclust <var> <method> [as <var>]` | Hierarchical agglomerative clustering |
+| `cutree` | `cutree <tree_var> k <n>\|h <value> [as <var>]` | Cut a hierarchical clustering tree |
+| `dbscan` | `dbscan <var> <eps> <minpts> [as <var>]` | Density-based clustering |
+| `silhouette` | `silhouette <var> <labels_var> [as <var>]` | Silhouette analysis |
 | `percentile` | `percentile <var> <p>` | DataList percentile |
 | `plot` | `plot <type> <var> [options...] [save <file>]` | Create charts from variables |
 | `quartile` | `quartile <var> <q>` | DataList quartile |

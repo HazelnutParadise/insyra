@@ -1,6 +1,7 @@
 package stats
 
 import (
+	"errors"
 	"math"
 	"runtime"
 	"sync"
@@ -10,12 +11,9 @@ import (
 
 // CalculateMoment calculates the n-th moment of the DataList.
 // If central is true, it computes the central moment; otherwise, raw moment.
-// Returns NaN if the DataList is empty or the moment cannot be calculated.
-func CalculateMoment(dl insyra.IDataList, n int, central bool) float64 {
-	// 處理無效輸入
+func CalculateMoment(dl insyra.IDataList, n int, central bool) (float64, error) {
 	if n <= 0 {
-		insyra.LogWarning("stats", "CalculateMoment", "Invalid moment order")
-		return math.NaN()
+		return math.NaN(), errors.New("invalid moment order")
 	}
 
 	var length int
@@ -26,13 +24,11 @@ func CalculateMoment(dl insyra.IDataList, n int, central bool) float64 {
 	dl.AtomicDo(func(l *insyra.DataList) {
 		length = l.Len()
 		if length == 0 {
-			insyra.LogWarning("stats", "CalculateMoment", "Empty DataList")
 			result = math.NaN()
 			hasResult = true
 			return
 		}
 
-		// 快速處理特殊情況
 		if central {
 			if n == 1 {
 				result = 0.0
@@ -44,38 +40,33 @@ func CalculateMoment(dl insyra.IDataList, n int, central bool) float64 {
 				hasResult = true
 				return
 			}
-		} else {
-			if n == 1 {
-				result = l.Mean()
-				hasResult = true
-				return
-			}
+		} else if n == 1 {
+			result = l.Mean()
+			hasResult = true
+			return
 		}
 
-		// 獲取數據並預檢查
 		floatData = l.ToF64Slice()
-
-		// 預先計算平均值（如果需要）
 		if central {
 			mean = l.Mean()
 		}
 	})
+
 	if hasResult {
-		return result
+		if math.IsNaN(result) {
+			return result, errors.New("empty data")
+		}
+		return result, nil
 	}
 
-	// 對於大型數據集和高階矩，考慮並行計算
 	if length > 10000 && n > 2 {
-		return calculateMomentParallel(floatData, n, central, mean, length)
+		return calculateMomentParallel(floatData, n, central, mean, length), nil
 	}
 
-	// 對於小型數據集或低階矩，使用順序計算
-	return calculateMomentSequential(floatData, n, central, mean, length)
+	return calculateMomentSequential(floatData, n, central, mean, length), nil
 }
 
-// calculateMomentSequential 使用順序計算方式計算矩
 func calculateMomentSequential(data []float64, n int, central bool, mean float64, length int) float64 {
-	// 根據不同情況選擇計算方法
 	if central {
 		switch n {
 		case 2:
@@ -87,23 +78,21 @@ func calculateMomentSequential(data []float64, n int, central bool, mean float64
 		default:
 			return calculateGeneralCentralMoment(data, mean, n, length)
 		}
-	} else {
-		switch n {
-		case 2:
-			return calculateRawMoment2(data, length)
-		case 3:
-			return calculateRawMoment3(data, length)
-		case 4:
-			return calculateRawMoment4(data, length)
-		default:
-			return calculateGeneralRawMoment(data, n, length)
-		}
+	}
+
+	switch n {
+	case 2:
+		return calculateRawMoment2(data, length)
+	case 3:
+		return calculateRawMoment3(data, length)
+	case 4:
+		return calculateRawMoment4(data, length)
+	default:
+		return calculateGeneralRawMoment(data, n, length)
 	}
 }
 
-// calculateMomentParallel 使用並行計算方式計算矩
 func calculateMomentParallel(data []float64, n int, central bool, mean float64, length int) float64 {
-	// 確定子任務數量（基於CPU核心數）
 	numCPU := runtime.NumCPU()
 	chunkSize := (length + numCPU - 1) / numCPU
 
@@ -122,8 +111,6 @@ func calculateMomentParallel(data []float64, n int, central bool, mean float64, 
 			}
 
 			var sum float64
-
-			// 分塊計算
 			if central {
 				for j := start; j < end; j++ {
 					val := data[j]
@@ -163,7 +150,6 @@ func calculateMomentParallel(data []float64, n int, central bool, mean float64, 
 
 	wg.Wait()
 
-	// 合併結果
 	var totalSum float64
 	for _, r := range results {
 		totalSum += r
@@ -172,7 +158,6 @@ func calculateMomentParallel(data []float64, n int, central bool, mean float64, 
 	return totalSum / float64(length)
 }
 
-// calculateCentralMoment2 計算第二中心矩
 func calculateCentralMoment2(data []float64, mean float64, length int) float64 {
 	var sum2 float64
 	for _, val := range data {
@@ -182,7 +167,6 @@ func calculateCentralMoment2(data []float64, mean float64, length int) float64 {
 	return sum2 / float64(length)
 }
 
-// calculateCentralMoment3 計算第三中心矩
 func calculateCentralMoment3(data []float64, mean float64, length int) float64 {
 	var sum float64
 	for _, val := range data {
@@ -193,7 +177,6 @@ func calculateCentralMoment3(data []float64, mean float64, length int) float64 {
 	return sum / float64(length)
 }
 
-// calculateCentralMoment4 計算第四中心矩
 func calculateCentralMoment4(data []float64, mean float64, length int) float64 {
 	var sum float64
 	for _, val := range data {
@@ -204,7 +187,6 @@ func calculateCentralMoment4(data []float64, mean float64, length int) float64 {
 	return sum / float64(length)
 }
 
-// calculateRawMoment2 計算第二原始矩
 func calculateRawMoment2(data []float64, length int) float64 {
 	var sum float64
 	for _, val := range data {
@@ -213,7 +195,6 @@ func calculateRawMoment2(data []float64, length int) float64 {
 	return sum / float64(length)
 }
 
-// calculateRawMoment3 計算第三原始矩
 func calculateRawMoment3(data []float64, length int) float64 {
 	var sum float64
 	for _, val := range data {
@@ -222,7 +203,6 @@ func calculateRawMoment3(data []float64, length int) float64 {
 	return sum / float64(length)
 }
 
-// calculateRawMoment4 計算第四原始矩
 func calculateRawMoment4(data []float64, length int) float64 {
 	var sum float64
 	for _, val := range data {
@@ -232,7 +212,6 @@ func calculateRawMoment4(data []float64, length int) float64 {
 	return sum / float64(length)
 }
 
-// calculateGeneralCentralMoment 計算一般中心矩
 func calculateGeneralCentralMoment(data []float64, mean float64, n int, length int) float64 {
 	var sum float64
 	for _, val := range data {
@@ -242,7 +221,6 @@ func calculateGeneralCentralMoment(data []float64, mean float64, n int, length i
 	return sum / float64(length)
 }
 
-// calculateGeneralRawMoment 計算一般原始矩
 func calculateGeneralRawMoment(data []float64, n int, length int) float64 {
 	var sum float64
 	for _, val := range data {

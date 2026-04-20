@@ -1,4 +1,4 @@
-# [ stats ] Package
+﻿# [ stats ] Package
 
 This document describes all public APIs in the `stats` package, designed for AI/automated applications to directly understand each function, type, parameter, and return value.
 
@@ -23,9 +23,19 @@ The stats package provides comprehensive statistical analysis functions:
 - **Regression Analysis**: Linear, Exponential, Logarithmic, Polynomial regression with confidence intervals
 - **F-Tests**: Variance equality, Levene's test, Bartlett's test, regression F-test, nested models
 - **Dimensionality Reduction**: Principal Component Analysis (PCA)
+- **Instance-Based Prediction**: K-nearest neighbors (KNN) classification and regression
+- **Clustering Analysis**: K-means, hierarchical agglomerative clustering, DBSCAN, silhouette analysis
 - **Matrix Operations**: Diagonal matrix creation and extraction (Diag function)
 
-Most functions expect numeric data in `DataList`/`DataTable`. Non-numeric values are skipped using `ToFloat64Safe`, and a warning may be logged.
+Most functions expect numeric data in `DataList`/`DataTable` and return `error` when inputs are invalid or computation fails. Always handle `err` at call sites.
+
+For clustering APIs, Insyra uses an R-oriented result shape and cross-language verification policy:
+
+- R is the authoritative semantic reference for clustering behavior and output structure
+- Python baselines are used as a verification companion, not as the source of truth
+- v1 clustering distance support is Euclidean-only
+- `KMeansOptions.Seed` is an Insyra reproducibility extension for deterministic validation
+- Clustering computations are implemented in pure Go; R and Python are used only for parity validation in tests
 
 ---
 
@@ -66,7 +76,7 @@ const (
 ### Correlation Analysis
 
 ```go
-func CorrelationAnalysis(dataTable insyra.IDataTable, method CorrelationMethod) (*insyra.DataTable, *insyra.DataTable, float64, float64, int)
+func CorrelationAnalysis(dataTable insyra.IDataTable, method CorrelationMethod) (*insyra.DataTable, *insyra.DataTable, float64, float64, int, error)
 ```
 
 **Description:** Provides a comprehensive correlation analysis including correlation coefficient matrix, p-value matrix, and overall test (Bartlett's sphericity test).
@@ -88,10 +98,13 @@ func CorrelationAnalysis(dataTable insyra.IDataTable, method CorrelationMethod) 
 
 ```go
 // Calculate correlations with p-values and Bartlett's test
-corrMatrix, pMatrix, chiSquare, pValue, df := stats.CorrelationAnalysis(dataTable, stats.PearsonCorrelation)
+corrMatrix, pMatrix, chiSquare, pValue, df, err := stats.CorrelationAnalysis(dataTable, stats.PearsonCorrelation)
+if err != nil {
+    log.Fatal(err)
+}
 corrMatrix.Show() // Display the correlation matrix
 pMatrix.Show()    // Display the p-value matrix
-fmt.Printf("Bartlett's test: χ²=%.4f, p=%.4f, df=%d\n", chiSquare, pValue, df)
+fmt.Printf("Bartlett's test: chi-square=%.4f, p=%.4f, df=%d\n", chiSquare, pValue, df)
 corrMatrix.ToCSV("correlation_matrix.csv", true, true, true) // Export to CSV
 pMatrix.ToCSV("correlation_matrix_p.csv", true, true, true)  // Export p-values to CSV
 ```
@@ -99,7 +112,7 @@ pMatrix.ToCSV("correlation_matrix_p.csv", true, true, true)  // Export p-values 
 ### Correlation Matrix
 
 ```go
-func CorrelationMatrix(dataTable insyra.IDataTable, method CorrelationMethod) (*insyra.DataTable, *insyra.DataTable)
+func CorrelationMatrix(dataTable insyra.IDataTable, method CorrelationMethod) (*insyra.DataTable, *insyra.DataTable, error)
 ```
 
 **Description:** Calculate correlation matrix and corresponding p-value matrix for all columns in a DataTable.
@@ -120,7 +133,10 @@ Two DataTables:
 
 ```go
 // Calculate correlation matrix with p-values using Pearson correlation
-corrMatrix, pMatrix := stats.CorrelationMatrix(dataTable, stats.PearsonCorrelation)
+corrMatrix, pMatrix, err := stats.CorrelationMatrix(dataTable, stats.PearsonCorrelation)
+if err != nil {
+    log.Fatal(err)
+}
 corrMatrix.Show() // Display the correlation matrix
 pMatrix.Show()    // Display the p-value matrix
 corrMatrix.ToCSV("correlation_matrix.csv", true, true, true) // Export to CSV
@@ -130,7 +146,7 @@ pMatrix.ToCSV("correlation_matrix_p.csv", true, true, true)  // Export p-values 
 ### Correlation
 
 ```go
-func Correlation(dlX, dlY insyra.IDataList, method CorrelationMethod) *CorrelationResult
+func Correlation(dlX, dlY insyra.IDataList, method CorrelationMethod) (*CorrelationResult, error)
 ```
 
 **Description:** Calculate correlation coefficient between two datasets.
@@ -166,14 +182,17 @@ type CorrelationResult struct {
 **Example**:
 
 ```go
-result := stats.Correlation(dataX, dataY, stats.PearsonCorrelation)
+result, err := stats.Correlation(dataX, dataY, stats.PearsonCorrelation)
+if err != nil {
+    log.Fatal(err)
+}
 fmt.Printf("Correlation: %.4f, P-value: %.4f\n", result.Statistic, result.PValue)
 ```
 
 ### Covariance
 
 ```go
-func Covariance(dlX, dlY insyra.IDataList) float64
+func Covariance(dlX, dlY insyra.IDataList) (float64, error)
 ```
 
 **Description:** Calculate sample covariance between two datasets.
@@ -190,7 +209,7 @@ func Covariance(dlX, dlY insyra.IDataList) float64
 ### Bartlett Sphericity
 
 ```go
-func BartlettSphericity(dataTable insyra.IDataTable) (chiSquare float64, pValue float64, df int)
+func BartlettSphericity(dataTable insyra.IDataTable) (chiSquare float64, pValue float64, df int, err error)
 ```
 
 **Description:** Performs Bartlett's test of sphericity to assess whether the correlation matrix is significantly different from an identity matrix.
@@ -209,8 +228,11 @@ func BartlettSphericity(dataTable insyra.IDataTable) (chiSquare float64, pValue 
 
 ```go
 // Perform Bartlett's test of sphericity
-chiSquare, pValue, df := stats.BartlettSphericity(dataTable)
-fmt.Printf("Bartlett's test: χ²=%.4f, p=%.4f, df=%d\n", chiSquare, pValue, df)
+chiSquare, pValue, df, err := stats.BartlettSphericity(dataTable)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("Bartlett's test: chi-square=%.4f, p=%.4f, df=%d\n", chiSquare, pValue, df)
 // A p-value < 0.05 generally indicates that the correlation matrix is significantly
 // different from an identity matrix, making it suitable for factor analysis
 ```
@@ -222,7 +244,7 @@ fmt.Printf("Bartlett's test: χ²=%.4f, p=%.4f, df=%d\n", chiSquare, pValue, df)
 ### Single Sample T-Test
 
 ```go
-func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel float64) *TTestResult
+func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...float64) (*TTestResult, error)
 ```
 
 **Description:** Test if sample mean differs from hypothesized population mean.
@@ -240,7 +262,7 @@ func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel float6
 ### Two Sample T-Test
 
 ```go
-func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenceLevel ...float64) *TTestResult
+func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenceLevel ...float64) (*TTestResult, error)
 ```
 
 **Description:** Compare means of two independent samples.
@@ -258,7 +280,7 @@ func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenc
 ### Paired T-Test
 
 ```go
-func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel ...float64) *TTestResult
+func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel ...float64) (*TTestResult, error)
 ```
 
 **Description:** Compare means of paired/dependent samples.
@@ -289,15 +311,24 @@ type TTestResult struct {
 
 ```go
 // Single sample t-test
-result := stats.SingleSampleTTest(data, 100.0, 0.95)
+result, err := stats.SingleSampleTTest(data, 100.0, 0.95)
+if err != nil {
+    log.Fatal(err)
+}
 fmt.Printf("t=%.4f, p=%.4f, df=%.0f\n", result.Statistic, result.PValue, *result.DF)
 
 // Two sample t-test
-result := stats.TwoSampleTTest(group1, group2, true, 0.95)
+result, err = stats.TwoSampleTTest(group1, group2, true, 0.95)
+if err != nil {
+    log.Fatal(err)
+}
 fmt.Printf("t=%.4f, p=%.4f\n", result.Statistic, result.PValue)
 
 // Paired t-test
-result := stats.PairedTTest(before, after, 0.95)
+result, err = stats.PairedTTest(before, after, 0.95)
+if err != nil {
+    log.Fatal(err)
+}
 fmt.Printf("t=%.4f, p=%.4f, mean diff=%.4f\n", result.Statistic, result.PValue, *result.MeanDiff)
 ```
 
@@ -308,7 +339,7 @@ fmt.Printf("t=%.4f, p=%.4f, mean diff=%.4f\n", result.Statistic, result.PValue, 
 ### Single Sample Z-Test
 
 ```go
-func SingleSampleZTest(data insyra.IDataList, mu float64, sigma float64, alternative AlternativeHypothesis, confidenceLevel float64) *ZTestResult
+func SingleSampleZTest(data insyra.IDataList, mu float64, sigma float64, alternative AlternativeHypothesis, confidenceLevel float64) (*ZTestResult, error)
 ```
 
 **Description:** Test sample mean against population mean when population standard deviation is known.
@@ -340,7 +371,10 @@ type ZTestResult struct {
 **Example**:
 
 ```go
-result := stats.SingleSampleZTest(data, 100.0, 15.0, stats.TwoSided, 0.95)
+result, err := stats.SingleSampleZTest(data, 100.0, 15.0, stats.TwoSided, 0.95)
+if err != nil {
+    log.Fatal(err)
+}
 fmt.Printf("z=%.4f, p=%.4f\n", result.Statistic, result.PValue)
 ```
 
@@ -351,7 +385,7 @@ fmt.Printf("z=%.4f, p=%.4f\n", result.Statistic, result.PValue)
 ### Chi-Square Goodness of Fit
 
 ```go
-func ChiSquareGoodnessOfFit(input insyra.IDataList, p []float64, rescaleP bool) *ChiSquareTestResult
+func ChiSquareGoodnessOfFit(input insyra.IDataList, p []float64, rescaleP bool) (*ChiSquareTestResult, error)
 ```
 
 **Description:** Test if observed categorical data matches expected distribution.
@@ -369,7 +403,7 @@ func ChiSquareGoodnessOfFit(input insyra.IDataList, p []float64, rescaleP bool) 
 ### Chi-Square Independence Test
 
 ```go
-func ChiSquareIndependenceTest(rowData, colData insyra.IDataList) *ChiSquareTestResult
+func ChiSquareIndependenceTest(rowData, colData insyra.IDataList) (*ChiSquareTestResult, error)
 ```
 
 **Description:** Test independence between two categorical variables.
@@ -415,11 +449,17 @@ func (r *ChiSquareTestResult) Show()
 // Goodness of fit test with categorical data
 categoricalData := insyra.NewDataList("A", "B", "A", "C", "A", "B")
 p := []float64{0.5, 0.3, 0.2} // Expected probabilities for A, B, C
-result := stats.ChiSquareGoodnessOfFit(categoricalData, p, true)
+result, err := stats.ChiSquareGoodnessOfFit(categoricalData, p, true)
+if err != nil {
+    log.Fatal(err)
+}
 result.Show() // Display complete test results
 
 // Independence test
-result := stats.ChiSquareIndependenceTest(rowData, colData)
+result, err = stats.ChiSquareIndependenceTest(rowData, colData)
+if err != nil {
+    log.Fatal(err)
+}
 result.Show() // Display complete test results with contingency table
 ```
 
@@ -430,7 +470,7 @@ result.Show() // Display complete test results with contingency table
 ### Skewness
 
 ```go
-func Skewness(sample any, method ...SkewnessMethod) float64
+func Skewness(sample any, method ...SkewnessMethod) (float64, error)
 ```
 
 **Description:** Calculate skewness (asymmetry) of a distribution.
@@ -460,7 +500,7 @@ const (
 ### Kurtosis
 
 ```go
-func Kurtosis(data any, method ...KurtosisMethod) float64
+func Kurtosis(data any, method ...KurtosisMethod) (float64, error)
 ```
 
 **Description:** Calculate kurtosis (tail heaviness) of a distribution.
@@ -490,7 +530,7 @@ const (
 ### Calculate Moment
 
 ```go
-func CalculateMoment(dl insyra.IDataList, n int, central bool) float64
+func CalculateMoment(dl insyra.IDataList, n int, central bool) (float64, error)
 ```
 
 **Description:** Calculate n-th moment of a dataset.
@@ -509,15 +549,24 @@ func CalculateMoment(dl insyra.IDataList, n int, central bool) float64
 
 ```go
 // Calculate skewness
-skew := stats.Skewness(data, stats.SkewnessG1)
+skew, err := stats.Skewness(data, stats.SkewnessG1)
+if err != nil {
+    log.Fatal(err)
+}
 fmt.Printf("Skewness: %.4f\n", skew)
 
 // Calculate kurtosis
-kurt := stats.Kurtosis(data, stats.KurtosisG2)
+kurt, err := stats.Kurtosis(data, stats.KurtosisG2)
+if err != nil {
+    log.Fatal(err)
+}
 fmt.Printf("Kurtosis: %.4f\n", kurt)
 
 // Calculate 3rd central moment
-moment3 := stats.CalculateMoment(dataList, 3, true)
+moment3, err := stats.CalculateMoment(dataList, 3, true)
+if err != nil {
+    log.Fatal(err)
+}
 fmt.Printf("3rd central moment: %.4f\n", moment3)
 ```
 
@@ -528,7 +577,7 @@ fmt.Printf("3rd central moment: %.4f\n", moment3)
 ### One Way ANOVA
 
 ```go
-func OneWayANOVA(groups ...insyra.IDataList) *OneWayANOVAResult
+func OneWayANOVA(groups ...insyra.IDataList) (*OneWayANOVAResult, error)
 ```
 
 **Description:** Compare means across multiple independent groups.
@@ -544,7 +593,7 @@ func OneWayANOVA(groups ...insyra.IDataList) *OneWayANOVAResult
 ### Two Way ANOVA
 
 ```go
-func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) *TwoWayANOVAResult
+func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) (*TwoWayANOVAResult, error)
 ```
 
 **Description:** Analyze effects of two factors and their interaction.
@@ -591,7 +640,10 @@ type ANOVAResultComponent struct {
 group1 := insyra.NewDataList(4, 5, 6)
 group2 := insyra.NewDataList(7, 8, 9)
 group3 := insyra.NewDataList(1, 2, 3)
-result := stats.OneWayANOVA(group1, group2, group3)
+result, err := stats.OneWayANOVA(group1, group2, group3)
+if err != nil {
+    log.Fatal(err)
+}
 fmt.Printf("F=%.4f, p=%.4f\n", result.Factor.F, result.Factor.P)
 
 // Two-way ANOVA
@@ -601,7 +653,10 @@ cells := []insyra.IDataList{
     insyra.NewDataList(7, 8, 9),  // A2B1
     insyra.NewDataList(10, 11, 12), // A2B2
 }
-result := stats.TwoWayANOVA(2, 2, cells...)
+result, err = stats.TwoWayANOVA(2, 2, cells...)
+if err != nil {
+    log.Fatal(err)
+}
 fmt.Printf("Factor A F=%.4f, p=%.4f\n", result.FactorA.F, result.FactorA.P)
 ```
 
@@ -612,7 +667,7 @@ fmt.Printf("Factor A F=%.4f, p=%.4f\n", result.FactorA.F, result.FactorA.P)
 ### F-Test For Variance Equality
 
 ```go
-func FTestForVarianceEquality(data1, data2 insyra.IDataList) *FTestResult
+func FTestForVarianceEquality(data1, data2 insyra.IDataList) (*FTestResult, error)
 ```
 
 **Description:** Test equality of variances between two groups.
@@ -629,7 +684,7 @@ func FTestForVarianceEquality(data1, data2 insyra.IDataList) *FTestResult
 ### Levene Test
 
 ```go
-func LeveneTest(groups []insyra.IDataList) *FTestResult
+func LeveneTest(groups []insyra.IDataList) (*FTestResult, error)
 ```
 
 **Description:** Test equality of variances across multiple groups (robust).
@@ -645,7 +700,7 @@ func LeveneTest(groups []insyra.IDataList) *FTestResult
 ### Bartlett Test
 
 ```go
-func BartlettTest(groups []insyra.IDataList) *FTestResult
+func BartlettTest(groups []insyra.IDataList) (*FTestResult, error)
 ```
 
 **Description:** Test equality of variances across multiple groups (assumes normality).
@@ -661,7 +716,7 @@ func BartlettTest(groups []insyra.IDataList) *FTestResult
 ### F-Test For Regression
 
 ```go
-func FTestForRegression(ssr, sse float64, df1, df2 int) *FTestResult
+func FTestForRegression(ssr, sse float64, df1, df2 int) (*FTestResult, error)
 ```
 
 **Description:** Test overall significance of regression model.
@@ -679,7 +734,7 @@ func FTestForRegression(ssr, sse float64, df1, df2 int) *FTestResult
 ### F-Test For Nested Models
 
 ```go
-func FTestForNestedModels(rssReduced, rssFull float64, dfReduced, dfFull int) *FTestResult
+func FTestForNestedModels(rssReduced, rssFull float64, dfReduced, dfFull int) (*FTestResult, error)
 ```
 
 **Description:** Compare nested regression models.
@@ -706,16 +761,25 @@ type FTestResult struct {
 
 ```go
 // Test variance equality
-result := stats.FTestForVarianceEquality(group1, group2)
+result, err := stats.FTestForVarianceEquality(group1, group2)
+if err != nil {
+    log.Fatal(err)
+}
 fmt.Printf("F=%.4f, p=%.4f\n", result.Statistic, result.PValue)
 
 // Levene's test
 groups := []insyra.IDataList{group1, group2, group3}
-result := stats.LeveneTest(groups)
+result, err = stats.LeveneTest(groups)
+if err != nil {
+    log.Fatal(err)
+}
 fmt.Printf("Levene F=%.4f, p=%.4f\n", result.Statistic, result.PValue)
 
 // Regression F-test
-result := stats.FTestForRegression(1200.0, 800.0, 3, 20)
+result, err = stats.FTestForRegression(1200.0, 800.0, 3, 20)
+if err != nil {
+    log.Fatal(err)
+}
 fmt.Printf("Regression F=%.4f, p=%.4f\n", result.Statistic, result.PValue)
 ```
 
@@ -726,7 +790,7 @@ fmt.Printf("Regression F=%.4f, p=%.4f\n", result.Statistic, result.PValue)
 ### PCA
 
 ```go
-func PCA(dataTable insyra.IDataTable, nComponents ...int) *PCAResult
+func PCA(dataTable insyra.IDataTable, nComponents ...int) (*PCAResult, error)
 ```
 
 **Description:** Perform principal component analysis to reduce dimensionality of data.
@@ -754,11 +818,323 @@ type PCAResult struct {
 
 ```go
 // Perform PCA with 2 components
-result := stats.PCA(dataTable, 2)
+result, err := stats.PCA(dataTable, 2)
+if err != nil {
+    log.Fatal(err)
+}
 
 // Access components and explained variance
 components := result.Components
 fmt.Printf("Explained variance: %.2f%%\n", result.ExplainedVariance[0])
+```
+
+## Clustering Analysis
+
+## K-Nearest Neighbors (KNN)
+
+### KNN Classification
+
+```go
+func KNNClassify(trainData insyra.IDataTable, trainLabels insyra.IDataList, testData insyra.IDataTable, k int, opts ...KNNOptions) (*KNNClassificationResult, error)
+```
+
+**Description:** Predict categorical labels for `testData` by majority vote among the `k` nearest rows in `trainData`.
+
+#### KNN Options
+
+```go
+type KNNWeighting string
+
+const (
+    KNNUniformWeighting  KNNWeighting = "uniform"
+    KNNDistanceWeighting KNNWeighting = "distance"
+)
+
+type KNNAlgorithm string
+
+const (
+    KNNAuto       KNNAlgorithm = "auto"
+    KNNBruteForce KNNAlgorithm = "brute"
+    KNNKDTree     KNNAlgorithm = "kd_tree"
+    KNNBallTree   KNNAlgorithm = "ball_tree"
+)
+
+type KNNOptions struct {
+    Weighting KNNWeighting
+    Algorithm KNNAlgorithm
+    LeafSize  int
+}
+```
+
+#### KNN Classification Result
+
+```go
+type KNNClassificationResult struct {
+    Predictions   insyra.IDataList
+    Classes       insyra.IDataList
+    Probabilities insyra.IDataTable
+}
+```
+
+**Notes:**
+
+- v1 uses Euclidean distance
+- default weighting is `uniform`
+- default algorithm is `auto`
+- `distance` weighting uses inverse distance
+- exact-distance matches dominate distance-weighted predictions
+- `auto` chooses exact brute-force / KD-tree / ball-tree search based on data shape
+
+**Example**:
+
+```go
+trainLabels := insyra.NewDataList("red", "red", "red", "blue", "blue", "blue")
+result, err := stats.KNNClassify(trainTable, trainLabels, testTable, 3, stats.KNNOptions{
+    Weighting: stats.KNNDistanceWeighting,
+    Algorithm: stats.KNNKDTree,
+})
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Println(result.Predictions.Get(0))
+result.Probabilities.Show()
+```
+
+### KNN Regression
+
+```go
+func KNNRegress(trainData insyra.IDataTable, trainTargets insyra.IDataList, testData insyra.IDataTable, k int, opts ...KNNOptions) (*KNNRegressionResult, error)
+```
+
+**Description:** Predict numeric targets for `testData` by averaging the `k` nearest training targets.
+
+#### KNN Regression Result
+
+```go
+type KNNRegressionResult struct {
+    Predictions []float64
+}
+```
+
+**Example**:
+
+```go
+targets := insyra.NewDataList(1.0, 1.5, 9.0, 9.5)
+result, err := stats.KNNRegress(trainTable, targets, testTable, 2)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Println(result.Predictions)
+```
+
+### K-Nearest Neighbor Search
+
+```go
+func KNearestNeighbors(trainData insyra.IDataTable, testData insyra.IDataTable, k int, opts ...KNNOptions) (*KNNNeighborsResult, error)
+```
+
+**Description:** Return the `k` nearest training-row indices and distances for each row in `testData`.
+
+#### KNN Neighbors Result
+
+```go
+type KNNNeighborsResult struct {
+    Indices   [][]int
+    Distances [][]float64
+}
+```
+
+**Notes:**
+
+- returned indices are 1-based row indices
+- `Distances[i][j]` matches `Indices[i][j]`
+- all backends return exact nearest neighbors, not approximations
+
+**Example**:
+
+```go
+neighbors, err := stats.KNearestNeighbors(trainTable, testTable, 3, stats.KNNOptions{
+    Algorithm: stats.KNNBallTree,
+})
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Println(neighbors.Indices)
+fmt.Println(neighbors.Distances)
+```
+
+### KMeans
+
+```go
+func KMeans(dataTable insyra.IDataTable, centers int, opts ...KMeansOptions) (*KMeansResult, error)
+```
+
+**Description:** Partition observations into `centers` clusters and return cluster labels, centers, and sum-of-squares summaries.
+
+**Parameters:**
+
+- `dataTable`: Numeric input data with observations in rows
+- `centers`: Number of clusters (`1 <= centers <= nrow`)
+- `opts`: Optional `KMeansOptions` (at most one value)
+
+#### KMeans Options
+
+```go
+type KMeansOptions struct {
+    NStart  int
+    IterMax int
+    Seed    *int64
+}
+```
+
+#### KMeans Result
+
+```go
+type KMeansResult struct {
+    Cluster     []int
+    Centers     insyra.IDataTable
+    TotSS       float64
+    WithinSS    []float64
+    TotWithinSS float64
+    BetweenSS   float64
+    Size        []int
+    Iter        int
+    IFault      int
+}
+```
+
+**Example**:
+
+```go
+seed := int64(7)
+result, err := stats.KMeans(dataTable, 3, stats.KMeansOptions{
+    NStart:  5,
+    IterMax: 25,
+    Seed:    &seed,
+})
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Println(result.Cluster)
+fmt.Println(result.Size)
+result.Centers.Show()
+```
+
+### Hierarchical Agglomerative Clustering
+
+```go
+func HierarchicalAgglomerative(dataTable insyra.IDataTable, method AgglomerativeMethod) (*HierarchicalResult, error)
+func CutTreeByK(tree *HierarchicalResult, k int) ([]int, error)
+func CutTreeByHeight(tree *HierarchicalResult, h float64) ([]int, error)
+```
+
+#### Agglomerative Method
+
+```go
+type AgglomerativeMethod string
+const (
+    AggloComplete AgglomerativeMethod = "complete"
+    AggloSingle   AgglomerativeMethod = "single"
+    AggloAverage  AgglomerativeMethod = "average"
+    AggloWardD    AgglomerativeMethod = "ward.D"
+    AggloWardD2   AgglomerativeMethod = "ward.D2"
+    AggloMcQuitty AgglomerativeMethod = "mcquitty"
+    AggloMedian   AgglomerativeMethod = "median"
+    AggloCentroid AgglomerativeMethod = "centroid"
+)
+```
+
+#### Hierarchical Result
+
+```go
+type HierarchicalResult struct {
+    Merge      [][2]int
+    Height     []float64
+    Order      []int
+    Labels     []string
+    Method     AgglomerativeMethod
+    DistMethod string
+}
+```
+
+**Example**:
+
+```go
+tree, err := stats.HierarchicalAgglomerative(dataTable, stats.AggloComplete)
+if err != nil {
+    log.Fatal(err)
+}
+labels, err := stats.CutTreeByK(tree, 3)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Println(labels)
+```
+
+### DBSCAN
+
+```go
+func DBSCAN(dataTable insyra.IDataTable, eps float64, minPts int, opts ...DBSCANOptions) (*DBSCANResult, error)
+```
+
+#### DBSCAN Options
+
+```go
+type DBSCANOptions struct {
+    BorderPoints *bool
+}
+```
+
+#### DBSCAN Result
+
+```go
+type DBSCANResult struct {
+    Cluster []int
+    IsSeed  []bool
+}
+```
+
+**Example**:
+
+```go
+result, err := stats.DBSCAN(dataTable, 0.35, 4)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Println(result.Cluster)
+fmt.Println(result.IsSeed)
+```
+
+### Silhouette
+
+```go
+func Silhouette(dataTable insyra.IDataTable, labels insyra.IDataList) (*SilhouetteResult, error)
+```
+
+#### Silhouette Result
+
+```go
+type SilhouettePoint struct {
+    Cluster  int
+    Neighbor int
+    SilWidth float64
+}
+
+type SilhouetteResult struct {
+    Points            []SilhouettePoint
+    AverageSilhouette float64
+}
+```
+
+**Example**:
+
+```go
+labels := insyra.NewDataList(1, 1, 2, 2, 3, 3)
+result, err := stats.Silhouette(dataTable, labels)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("Average silhouette: %.4f\n", result.AverageSilhouette)
 ```
 
 ## Regression Analysis
@@ -766,291 +1142,219 @@ fmt.Printf("Explained variance: %.2f%%\n", result.ExplainedVariance[0])
 ### Linear Regression
 
 ```go
-func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) *LinearRegressionResult
+func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) (*LinearRegressionResult, error)
 ```
 
-**Description:** Performs ordinary least-squares linear regression. Supports both simple (one X) and multiple (multiple X) linear regression.
+**Description:** Performs ordinary least-squares linear regression. Supports both simple regression (one predictor) and multiple regression (multiple predictors).
 
 **Parameters:**
 
-- `dlY`: Dependent variable (IDataList).
-- `dlXs`: Independent variable(s) (variadic IDataList). At least one independent variable must be provided. All IDataList inputs must have the same length, and the number of observations must be greater than the number of independent variables.
+- `dlY`: Dependent variable.
+- `dlXs`: One or more independent variables. All inputs must have the same length.
 
 **Returns:**
 
-- `*LinearRegressionResult`: Return value.
+- `*LinearRegressionResult`: Model coefficients, inference statistics, residuals, and fit metrics.
 
 #### Linear Regression Result
 
 ```go
 type LinearRegressionResult struct {
-    // Legacy fields for simple regression (when only one dlX is provided)
-    Slope                  float64 // Regression coefficient β₁ (slope)
-    Intercept              float64 // Regression coefficient β₀ (intercept)
-    StandardError          float64 // Standard error of the slope (SE(β₁))
-    StandardErrorIntercept float64 // Standard error of the intercept (SE(β₀))    TValue                 float64 // t-statistic for the slope (β₁)
-    TValueIntercept        float64 // t-statistic for the intercept (β₀)
-    PValue                 float64 // Two-tailed p-value for the slope (β₁)
-    PValueIntercept        float64 // Two-tailed p-value for the intercept (β₀)
+    // Simple-regression convenience fields (when len(dlXs) == 1)
+    Slope                  float64
+    Intercept              float64
+    StandardError          float64
+    StandardErrorIntercept float64
+    TValue                 float64
+    TValueIntercept        float64
+    PValue                 float64
+    PValueIntercept        float64
 
-    // Legacy confidence intervals for simple regression compatibility
-    ConfidenceIntervalIntercept [2]float64 // 95% confidence interval for intercept [lower, upper]
-    ConfidenceIntervalSlope     [2]float64 // 95% confidence interval for slope [lower, upper]
+    ConfidenceIntervalIntercept [2]float64
+    ConfidenceIntervalSlope     [2]float64
 
-    // Extended fields for multiple regression (and also populated for simple regression)
-    Coefficients   []float64 // Slice of coefficients: [β₀, β₁, ..., βₚ] (intercept followed by slopes)
-    StandardErrors []float64 // Slice of standard errors for each coefficient
-    TValues        []float64 // Slice of t-statistics for each coefficient
-    PValues        []float64 // Slice of two-tailed p-values for each coefficient
+    // General fields (available for both simple and multiple regression)
+    Coefficients        []float64
+    StandardErrors      []float64
+    TValues             []float64
+    PValues             []float64
+    ConfidenceIntervals [][2]float64
 
-    // Confidence intervals for coefficients (95% by default)
-    ConfidenceIntervals [][2]float64 // 95% confidence intervals for each coefficient [lower, upper]
-
-    // Common fields for both simple and multiple regression
-    Residuals        []float64 // Residuals (yᵢ − ŷᵢ)
-    RSquared         float64   // Coefficient of determination (R²)
-    AdjustedRSquared float64   // Adjusted R²
+    Residuals        []float64
+    RSquared         float64
+    AdjustedRSquared float64
 }
 ```
 
-**Fields in LinearRegressionResult**:
-
-- **Legacy Fields (for simple regression, where `len(dlXs) == 1`)**:
-
-  - `Slope`: The slope of the regression line (β₁).
-  - `Intercept`: The y-intercept of the regression line (β₀).
-  - `StandardError`: The standard error of the slope coefficient.
-  - `StandardErrorIntercept`: The standard error of the intercept coefficient.
-  - `TValue`: The t-statistic for the slope, used to test its significance. - `TValueIntercept`: The t-statistic for the intercept, used to test its significance.
-  - `PValue`: The p-value associated with the t-statistic for the slope.
-  - `PValueIntercept`: The p-value associated with the t-statistic for the intercept.
-  - `ConfidenceIntervalIntercept`: The 95% confidence interval for the intercept `[lower_bound, upper_bound]`.
-  - `ConfidenceIntervalSlope`: The 95% confidence interval for the slope `[lower_bound, upper_bound]`.
-
-- **Extended Fields (for multiple regression, also available for simple regression)**:
-
-  - `Coefficients`: A slice containing all model coefficients. The first element (`Coefficients[0]`) is the intercept (β₀), and subsequent elements (`Coefficients[1:]`) are the coefficients for the independent variables (β₁, β₂, ..., βₚ).
-  - `StandardErrors`: A slice of standard errors corresponding to each coefficient in `Coefficients`. - `TValues`: A slice of t-statistics corresponding to each coefficient.
-  - `PValues`: A slice of p-values corresponding to each t-statistic.
-  - `ConfidenceIntervals`: A slice of 95% confidence intervals for each coefficient. Each element is a `[2]float64` array containing `[lower_bound, upper_bound]`.
-
-- **Common Fields**:
-  - `Residuals`: A slice of the differences between the observed and predicted values for the dependent variable.
-  - `RSquared`: The proportion of the variance in the dependent variable that is predictable from the independent variable(s).
-  - `AdjustedRSquared`: R-squared adjusted for the number of predictors in the model.
-
-**Example (Simple Linear Regression)**:
+**Example (simple regression):**
 
 ```go
 y := insyra.NewDataList([]float64{1, 2, 3, 4, 5})
-x1 := insyra.NewDataList([]float64{2, 4, 5, 4, 5})
+x := insyra.NewDataList([]float64{2, 4, 5, 4, 5})
 
-result := stats.LinearRegression(y, x1)
-if result != nil {
-    fmt.Printf("Simple Linear Regression:\n")
-    fmt.Printf("  Intercept (β₀): %.4f (p=%.4f)\n", result.Intercept, result.PValueIntercept)
-    fmt.Printf("  Slope (β₁ for x1): %.4f (p=%.4f)\n", result.Slope, result.PValue)
-    fmt.Printf("  R-squared: %.4f\n", result.RSquared)
-    fmt.Printf("  Adjusted R-squared: %.4f\n", result.AdjustedRSquared)
-
-    // Display 95% confidence intervals using clear field names
-    fmt.Printf("  95%% CI for Intercept: [%.4f, %.4f]\n",
-        result.ConfidenceIntervalIntercept[0], result.ConfidenceIntervalIntercept[1])
-    fmt.Printf("  95%% CI for Slope: [%.4f, %.4f]\n",
-        result.ConfidenceIntervalSlope[0], result.ConfidenceIntervalSlope[1])
-
-    // Alternative: using array format (useful for multiple regression)
-    // fmt.Printf("  95%% CI for Intercept: [%.4f, %.4f]\n",
-    //     result.ConfidenceIntervals[0][0], result.ConfidenceIntervals[0][1])
-    // fmt.Printf("  95%% CI for Slope: [%.4f, %.4f]\n",
-    //     result.ConfidenceIntervals[1][0], result.ConfidenceIntervals[1][1])
+result, err := stats.LinearRegression(y, x)
+if err != nil {
+    log.Fatal(err)
 }
+
+fmt.Printf("intercept=%.4f (p=%.4f)\n", result.Intercept, result.PValueIntercept)
+fmt.Printf("slope=%.4f (p=%.4f)\n", result.Slope, result.PValue)
+fmt.Printf("R-squared=%.4f\n", result.RSquared)
+fmt.Printf("95%% CI slope=[%.4f, %.4f]\n", result.ConfidenceIntervalSlope[0], result.ConfidenceIntervalSlope[1])
 ```
 
-**Example (Multiple Linear Regression)**:
+**Example (multiple regression):**
 
 ```go
 y := insyra.NewDataList([]float64{15, 25, 30, 35, 40, 50})
 x1 := insyra.NewDataList([]float64{2, 3, 4, 5, 6, 7})
 x2 := insyra.NewDataList([]float64{1, 2, 2, 3, 3, 4})
 
-result := stats.LinearRegression(y, x1, x2)
-if result != nil {
-    fmt.Printf("\nMultiple Linear Regression:\n")
-    fmt.Printf("  Intercept (β₀): %.4f (p=%.4f)\n", result.Coefficients[0], result.PValues[0])
-    for i := 1; i < len(result.Coefficients); i++ {
-        fmt.Printf("  Slope (β%d for x%d): %.4f (p=%.4f)\n", i, i, result.Coefficients[i], result.PValues[i])
-    }
-    fmt.Printf("  R-squared: %.4f\n", result.RSquared)
-    fmt.Printf("  Adjusted R-squared: %.4f\n", result.AdjustedRSquared)
+result, err := stats.LinearRegression(y, x1, x2)
+if err != nil {
+    log.Fatal(err)
+}
 
-    // Display 95% confidence intervals for all coefficients
-    fmt.Printf("  95%% Confidence Intervals:\n")
-    fmt.Printf("    Intercept: [%.4f, %.4f]\n",
-        result.ConfidenceIntervals[0][0], result.ConfidenceIntervals[0][1])
-    for i := 1; i < len(result.ConfidenceIntervals); i++ {
-        fmt.Printf("    β%d: [%.4f, %.4f]\n", i,
-            result.ConfidenceIntervals[i][0], result.ConfidenceIntervals[i][1])
-    }
+for i := range result.Coefficients {
+    fmt.Printf("beta[%d]=%.4f, p=%.4f, CI=[%.4f, %.4f]\n",
+        i,
+        result.Coefficients[i],
+        result.PValues[i],
+        result.ConfidenceIntervals[i][0],
+        result.ConfidenceIntervals[i][1],
+    )
 }
 ```
 
 ### Polynomial Regression
 
 ```go
-func PolynomialRegression(dlY insyra.IDataList, dlX insyra.IDataList, degree int) *PolynomialRegressionResult
+func PolynomialRegression(dlY insyra.IDataList, dlX insyra.IDataList, degree int) (*PolynomialRegressionResult, error)
 ```
 
-**Description:** Perform polynomial regression analysis (y = a₀ + a₁x + a₂x² + ... + aₙxⁿ).
+**Description:** Fits a polynomial model:
+
+```text
+y = a0 + a1*x + a2*x^2 + ... + ak*x^k
+```
 
 **Parameters:**
 
-- `dlY`: Dependent variable data
-- `dlX`: Independent variable data
-- `degree`: Degree of the polynomial (≥ 1)
+- `dlY`: Dependent variable.
+- `dlX`: Independent variable.
+- `degree`: Polynomial degree (`>= 1`).
 
 **Returns:**
 
-- `*PolynomialRegressionResult`: Return value.
+- `*PolynomialRegressionResult`: Coefficients, inference statistics, residuals, and fit metrics.
 
 #### Polynomial Regression Result
 
 ```go
 type PolynomialRegressionResult struct {
-    Coefficients     []float64 // Polynomial coefficients [a₀, a₁, a₂, ...]
-    Degree           int       // Degree of polynomial
-    Residuals        []float64 // Residual values (yᵢ − ŷᵢ)
-    RSquared         float64   // Coefficient of determination
-    AdjustedRSquared float64   // Adjusted R²
-    StandardErrors   []float64 // Standard errors for each coefficient
-    TValues          []float64 // t statistics for each coefficient
-    PValues          []float64 // p-values for each coefficient
-
-    // Confidence intervals for coefficients (95% by default)
-    ConfidenceIntervals [][2]float64 // 95% confidence intervals for each coefficient [lower, upper]
+    Coefficients        []float64
+    Degree              int
+    Residuals           []float64
+    RSquared            float64
+    AdjustedRSquared    float64
+    StandardErrors      []float64
+    TValues             []float64
+    PValues             []float64
+    ConfidenceIntervals [][2]float64
 }
 ```
 
-**Example**:
+**Example:**
 
 ```go
-// Perform cubic polynomial regression: y = a₀ + a₁x + a₂x² + a₃x³
-result := stats.PolynomialRegression(yData, xData, 3) // Corrected parameter order
-fmt.Printf("Equation: y = %.4f + %.4f·x + %.4f·x² + %.4f·x³\\n", \r
-    result.Coefficients[0], result.Coefficients[1], \r
-    result.Coefficients[2], result.Coefficients[3])
-fmt.Printf("R² = %.4f\\n", result.RSquared)
+result, err := stats.PolynomialRegression(yData, xData, 3)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("R-squared=%.4f\n", result.RSquared)
 ```
 
 ### Exponential Regression
 
 ```go
-func ExponentialRegression(dlY insyra.IDataList, dlX insyra.IDataList) *ExponentialRegressionResult
+func ExponentialRegression(dlY insyra.IDataList, dlX insyra.IDataList) (*ExponentialRegressionResult, error)
 ```
 
-**Description:** Perform exponential regression analysis (y = a·e^(b·x)).
+**Description:** Fits an exponential model:
+
+```text
+y = a * exp(b*x)
+```
 
 **Parameters:**
 
-- `dlY`: Dependent variable data (must contain positive values)
-- `dlX`: Independent variable data
+- `dlY`: Dependent variable (`y > 0` required).
+- `dlX`: Independent variable.
 
 **Returns:**
 
-- `*ExponentialRegressionResult`: Return value.
+- `*ExponentialRegressionResult`: Coefficients, inference statistics, confidence intervals, residuals, and fit metrics.
 
 #### Exponential Regression Result
 
 ```go
 type ExponentialRegressionResult struct {
-    Intercept              float64   // coefficient a in y = a·e^(b·x)
-    Slope                  float64   // coefficient b in y = a·e^(b·x)
-    Residuals              []float64 // yᵢ − ŷᵢ
-    RSquared               float64   // coefficient of determination
-    AdjustedRSquared       float64   // adjusted R²
-    StandardErrorIntercept float64   // standard error of coefficient a
-    StandardErrorSlope     float64   // standard error of coefficient b
-    TValueIntercept        float64   // t statistic for coefficient a
-    TValueSlope            float64   // t statistic for coefficient b
-    PValueIntercept        float64   // p-value for coefficient a
-    PValueSlope            float64   // p-value for coefficient b
+    Intercept              float64
+    Slope                  float64
+    Residuals              []float64
+    RSquared               float64
+    AdjustedRSquared       float64
+    StandardErrorIntercept float64
+    StandardErrorSlope     float64
+    TValueIntercept        float64
+    TValueSlope            float64
+    PValueIntercept        float64
+    PValueSlope            float64
 
-    // Confidence intervals for coefficients (95% by default)
-    ConfidenceIntervalIntercept [2]float64 // 95% confidence interval for intercept [lower, upper]
-    ConfidenceIntervalSlope     [2]float64 // 95% confidence interval for slope [lower, upper]
-}
-```
-
-**Example**:
-
-```go
-// Perform exponential regression: y = a·e^(b·x)
-result := stats.ExponentialRegression(yData, xData) // Corrected parameter order
-if result != nil {
-    fmt.Printf("Equation: y = %.4f · e^(%.4f·x)\n", result.Intercept, result.Slope)
-    fmt.Printf("R² = %.4f\n", result.RSquared)
-
-    // Display 95% confidence intervals
-    fmt.Printf("95%% CI for Intercept (a): [%.4f, %.4f]\n",
-        result.ConfidenceIntervalIntercept[0], result.ConfidenceIntervalIntercept[1])
-    fmt.Printf("95%% CI for Slope (b): [%.4f, %.4f]\n",
-        result.ConfidenceIntervalSlope[0], result.ConfidenceIntervalSlope[1])
+    ConfidenceIntervalIntercept [2]float64
+    ConfidenceIntervalSlope     [2]float64
 }
 ```
 
 ### Logarithmic Regression
 
 ```go
-func LogarithmicRegression(dlY insyra.IDataList, dlX insyra.IDataList) *LogarithmicRegressionResult
+func LogarithmicRegression(dlY insyra.IDataList, dlX insyra.IDataList) (*LogarithmicRegressionResult, error)
 ```
 
-**Description:** Perform logarithmic regression analysis (y = a + b·ln(x)).
+**Description:** Fits a logarithmic model:
+
+```text
+y = a + b*ln(x)
+```
 
 **Parameters:**
 
-- `dlY`: Dependent variable data
-- `dlX`: Independent variable data (must contain positive values)
+- `dlY`: Dependent variable.
+- `dlX`: Independent variable (`x > 0` required).
 
 **Returns:**
 
-- `*LogarithmicRegressionResult`: Return value.
+- `*LogarithmicRegressionResult`: Coefficients, inference statistics, confidence intervals, residuals, and fit metrics.
 
 #### Logarithmic Regression Result
 
 ```go
 type LogarithmicRegressionResult struct {
-    Intercept              float64   // intercept coefficient in y = a + b·ln(x)
-    Slope                  float64   // slope coefficient in y = a + b·ln(x)
-    Residuals              []float64 // yᵢ − ŷᵢ
-    RSquared               float64   // coefficient of determination
-    AdjustedRSquared       float64   // adjusted R²
-    StandardErrorIntercept float64   // standard error of coefficient a
-    StandardErrorSlope     float64   // standard error of coefficient b
-    TValueIntercept        float64   // t statistic for coefficient a
-    TValueSlope            float64   // t statistic for coefficient b
-    PValueIntercept        float64   // p-value for coefficient a
-    PValueSlope            float64   // p-value for coefficient b
+    Intercept              float64
+    Slope                  float64
+    Residuals              []float64
+    RSquared               float64
+    AdjustedRSquared       float64
+    StandardErrorIntercept float64
+    StandardErrorSlope     float64
+    TValueIntercept        float64
+    TValueSlope            float64
+    PValueIntercept        float64
+    PValueSlope            float64
 
-    // Confidence intervals for coefficients (95% by default)
-    ConfidenceIntervalIntercept [2]float64 // 95% confidence interval for intercept [lower, upper]
-    ConfidenceIntervalSlope     [2]float64 // 95% confidence interval for slope [lower, upper]
-}
-```
-
-**Example**:
-
-```go
-// Perform logarithmic regression: y = a + b·ln(x)
-result := stats.LogarithmicRegression(yData, xData) // Corrected parameter order
-if result != nil {
-    fmt.Printf("Equation: y = %.4f + %.4f·ln(x)\n", result.Intercept, result.Slope)
-    fmt.Printf("R² = %.4f\n", result.RSquared)
-
-    // Display 95% confidence intervals
-    fmt.Printf("95%% CI for Intercept (a): [%.4f, %.4f]\n",
-        result.ConfidenceIntervalIntercept[0], result.ConfidenceIntervalIntercept[1])
-    fmt.Printf("95%% CI for Slope (b): [%.4f, %.4f]\n",
-        result.ConfidenceIntervalSlope[0], result.ConfidenceIntervalSlope[1])
+    ConfidenceIntervalIntercept [2]float64
+    ConfidenceIntervalSlope     [2]float64
 }
 ```
 
@@ -1061,7 +1365,7 @@ if result != nil {
 ### Diag
 
 ```go
-func Diag(x any, dims ...int) any
+func Diag(x any, dims ...int) (any, error)
 ```
 
 **Description:** Create diagonal matrices or extract diagonal elements from matrices, mimicking R's `diag()` function.
@@ -1081,22 +1385,36 @@ func Diag(x any, dims ...int) any
 **Returns:**
 
 - When extracting: `[]float64` containing diagonal elements
-- When creating: `*mat.Dense` diagonal or identity matrix**Examples**:
+- When creating: `*mat.Dense` diagonal or identity matrix
+
+**Examples**:
 
 ```go
 // Extract diagonal from matrix
 matrix := mat.NewDense(3, 3, []float64{1, 2, 3, 4, 5, 6, 7, 8, 9})
-diagonal := Diag(matrix) // Returns []float64{1, 5, 9}
+diagonal, err := Diag(matrix) // Returns []float64{1, 5, 9}
+if err != nil {
+    log.Fatal(err)
+}
 
 // Create diagonal matrix from slice
 values := []float64{1, 2, 3}
-diagMatrix := Diag(values) // Returns 3x3 diagonal matrix
+diagMatrix, err := Diag(values) // Returns 3x3 diagonal matrix
+if err != nil {
+    log.Fatal(err)
+}
 
 // Create identity matrix
-identity := Diag(3) // Returns 3x3 identity matrix
+identity, err := Diag(3) // Returns 3x3 identity matrix
+if err != nil {
+    log.Fatal(err)
+}
 
 // Create rectangular identity matrix
-rectIdentity := Diag(nil, 2, 3) // Returns 2x3 matrix with diagonal 1s
+rectIdentity, err := Diag(nil, 2, 3) // Returns 2x3 matrix with diagonal 1s
+if err != nil {
+    log.Fatal(err)
+}
 ```
 
 ---
@@ -1127,14 +1445,14 @@ All regression functions (Linear, Polynomial, Exponential, and Logarithmic) now 
 The confidence intervals are calculated using the t-distribution with appropriate degrees of freedom:
 
 ```text
-CI = coefficient ± t_(α/2, df) × standard_error
+CI = coefficient +/- t_(alpha/2, df) * standard_error
 ```
 
 Where:
 
-- `t_(α/2, df)` is the critical value from the t-distribution
+- `t_(alpha/2, df)` is the critical value from the t-distribution
 - `df` is the degrees of freedom (sample_size - number_of_parameters)
-- `α = 0.05` for 95% confidence intervals
+- `alpha = 0.05` for 95% confidence intervals
 
 ### Data Input Types
 
@@ -1146,11 +1464,13 @@ Functions accept various data input types:
 
 ### Error Handling
 
-Functions return `nil` or `NaN` values when:
+Functions return `error` values when:
 
 - Input data is empty or invalid
 - Sample sizes are too small for the test
 - Mathematical requirements are not met
 - Invalid parameter combinations are provided
 
-All error conditions are logged via `insyra.LogWarning()` for debugging purposes.
+Call sites should always check `err` and handle it explicitly.
+
+

@@ -38,9 +38,9 @@ func runCorrCommand(ctx *ExecContext, args []string) error {
 		}
 	}
 
-	result := stats.Correlation(x, y, method)
-	if result == nil {
-		return fmt.Errorf("failed to calculate correlation")
+	result, err := stats.Correlation(x, y, method)
+	if err != nil {
+		return fmt.Errorf("failed to calculate correlation: %w", err)
 	}
 	_, _ = fmt.Fprintf(ctx.Output, "correlation=%v p=%v\n", result.Statistic, result.PValue)
 	return nil
@@ -63,9 +63,9 @@ func runCorrMatrixCommand(ctx *ExecContext, args []string) error {
 		}
 	}
 
-	corr, p := stats.CorrelationMatrix(dt, method)
-	if corr == nil {
-		return fmt.Errorf("failed to compute correlation matrix")
+	corr, p, err := stats.CorrelationMatrix(dt, method)
+	if err != nil {
+		return fmt.Errorf("failed to compute correlation matrix: %w", err)
 	}
 	ctx.Vars[alias] = corr
 	if p != nil {
@@ -87,7 +87,11 @@ func runCovCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	_, _ = fmt.Fprintf(ctx.Output, "%v\n", stats.Covariance(x, y))
+	value, err := stats.Covariance(x, y)
+	if err != nil {
+		return fmt.Errorf("failed to compute covariance: %w", err)
+	}
+	_, _ = fmt.Fprintf(ctx.Output, "%v\n", value)
 	return nil
 }
 
@@ -99,7 +103,11 @@ func runSkewnessCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	_, _ = fmt.Fprintf(ctx.Output, "%v\n", stats.Skewness(dl))
+	value, err := stats.Skewness(dl)
+	if err != nil {
+		return fmt.Errorf("failed to compute skewness: %w", err)
+	}
+	_, _ = fmt.Fprintf(ctx.Output, "%v\n", value)
 	return nil
 }
 
@@ -111,7 +119,11 @@ func runKurtosisCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	_, _ = fmt.Fprintf(ctx.Output, "%v\n", stats.Kurtosis(dl))
+	value, err := stats.Kurtosis(dl)
+	if err != nil {
+		return fmt.Errorf("failed to compute kurtosis: %w", err)
+	}
+	_, _ = fmt.Fprintf(ctx.Output, "%v\n", value)
 	return nil
 }
 
