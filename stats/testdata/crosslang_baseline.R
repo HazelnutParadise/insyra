@@ -231,6 +231,64 @@ pca_stats <- function(rows, n_components = NULL) {
   list(eigenvalues = as.double(vals), explained = as.double(explained), components = components)
 }
 
+factor_analysis_stats <- function(rows, extraction, rotation, scoring, nfactors) {
+  suppressMessages(library(psych))
+  suppressMessages(library(GPArotation))
+
+  m <- do.call(rbind, lapply(rows, function(r) as.double(unlist(r))))
+  colnames(m) <- paste0("C", seq_len(ncol(m)))
+  rotation <- as.character(rotation)
+  scoring <- as.character(scoring)
+  score_arg <- switch(scoring,
+    "none" = "none",
+    "regression" = "regression",
+    "bartlett" = "Bartlett",
+    "anderson-rubin" = "Anderson",
+    "regression"
+  )
+
+  if (as.character(extraction) == "pca") {
+    fit <- psych::principal(m, nfactors = as.integer(nfactors), rotate = rotation, scores = scoring != "none")
+    fit0 <- psych::principal(m, nfactors = as.integer(nfactors), rotate = "none", scores = FALSE)
+    initial <- rep(1, ncol(m))
+  } else {
+    fm <- switch(as.character(extraction), "paf" = "pa", "ml" = "ml", "minres" = "minres", "minres")
+    fit <- psych::fa(m, nfactors = as.integer(nfactors), rotate = rotation, fm = fm, scores = score_arg)
+    fit0 <- psych::fa(m, nfactors = as.integer(nfactors), rotate = "none", fm = fm, scores = "none")
+    initial <- psych::smc(stats::cor(m))
+  }
+
+  as_rows <- function(x) {
+    if (is.null(x)) return(NULL)
+    mm <- as.matrix(x)
+    lapply(seq_len(nrow(mm)), function(i) as.double(mm[i, ]))
+  }
+  pick_v <- function(name) {
+    va <- fit$Vaccounted
+    if (is.null(va) || is.null(rownames(va)) || !(name %in% rownames(va))) return(rep(NaN, as.integer(nfactors)))
+    as.double(va[name, seq_len(as.integer(nfactors))])
+  }
+
+  score_cov <- NULL
+  if (!is.null(fit$scores)) score_cov <- stats::cov(as.matrix(fit$scores))
+
+  list(
+    loadings = as_rows(fit$loadings),
+    unrotated_loadings = as_rows(fit0$loadings),
+    structure = as_rows(if (!is.null(fit$Structure)) fit$Structure else fit$loadings),
+    uniquenesses = as.double(fit$uniquenesses),
+    communalities = as_rows(cbind(Initial = as.double(initial), Extraction = as.double(fit$communality))),
+    phi = as_rows(fit$Phi),
+    rotation_matrix = as_rows(fit$rot.mat),
+    eigenvalues = as.double(fit$values)[seq_len(as.integer(nfactors))],
+    explained_proportion = pick_v("Proportion Var"),
+    cumulative_proportion = pick_v("Cumulative Var"),
+    scores = as_rows(fit$scores),
+    score_coefficients = as_rows(fit$weights),
+    score_covariance = as_rows(score_cov)
+  )
+}
+
 lcg_new <- function(seed) {
   env <- new.env(parent = emptyenv())
   env$state <- bitwAnd(as.integer(seed), 0x7fffffff)
@@ -1037,6 +1095,8 @@ if (method == "single_t") {
   )
 } else if (method == "pca") {
   out <- pca_stats(payload$rows, payload$n_components)
+} else if (method == "factor_analysis") {
+  out <- factor_analysis_stats(payload$rows, payload$extraction, payload$rotation, payload$scoring, payload$nfactors)
 } else if (method == "kmeans") {
   out <- kmeans_stats(payload$rows, payload$k, payload$nstart, payload$itermax, payload$seed)
 } else if (method == "hclust") {
