@@ -1,6 +1,11 @@
 package linalg
 
-import "math"
+import (
+	"math"
+	"sort"
+
+	"gonum.org/v1/gonum/mat"
+)
 
 // GaussianElimination solves Ax=b using Gaussian elimination with partial pivoting.
 func GaussianElimination(A [][]float64, b []float64) []float64 {
@@ -145,4 +150,69 @@ func DeterminantGauss(matrix [][]float64) float64 {
 	}
 
 	return det
+}
+
+// IdentityDense returns an n by n identity matrix.
+func IdentityDense(n int) *mat.Dense {
+	identity := mat.NewDense(n, n, nil)
+	for i := 0; i < n; i++ {
+		identity.Set(i, i, 1)
+	}
+	return identity
+}
+
+// InverseOrIdentityDense returns the inverse of m, or identity if inversion fails.
+func InverseOrIdentityDense(m *mat.Dense, n int) *mat.Dense {
+	if m == nil {
+		return IdentityDense(n)
+	}
+	var inv mat.Dense
+	if err := inv.Inverse(m); err != nil {
+		return IdentityDense(n)
+	}
+	return mat.DenseCopyOf(&inv)
+}
+
+// SymmetricEigenDescending computes eigenvalues/eigenvectors for a symmetric
+// matrix and returns them sorted from largest to smallest, matching R's eigen().
+func SymmetricEigenDescending(a mat.Matrix) ([]float64, *mat.Dense, bool) {
+	rows, cols := a.Dims()
+	if rows != cols {
+		return nil, nil, false
+	}
+
+	sym := mat.NewSymDense(rows, nil)
+	for i := 0; i < rows; i++ {
+		for j := i; j < rows; j++ {
+			sym.SetSym(i, j, 0.5*(a.At(i, j)+a.At(j, i)))
+		}
+	}
+
+	var eig mat.EigenSym
+	if !eig.Factorize(sym, true) {
+		return nil, nil, false
+	}
+
+	values := eig.Values(nil)
+	vectors := mat.NewDense(rows, rows, nil)
+	eig.VectorsTo(vectors)
+
+	order := make([]int, rows)
+	for i := range order {
+		order[i] = i
+	}
+	sort.SliceStable(order, func(i, j int) bool {
+		return values[order[i]] > values[order[j]]
+	})
+
+	sortedValues := make([]float64, rows)
+	sortedVectors := mat.NewDense(rows, rows, nil)
+	for newCol, oldCol := range order {
+		sortedValues[newCol] = values[oldCol]
+		for row := 0; row < rows; row++ {
+			sortedVectors.Set(row, newCol, vectors.At(row, oldCol))
+		}
+	}
+
+	return sortedValues, sortedVectors, true
 }

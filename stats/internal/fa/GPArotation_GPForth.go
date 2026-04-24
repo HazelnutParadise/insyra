@@ -52,14 +52,14 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			"f":      f,
 			"Method": "vgQ." + method,
 		}
-	case "geominT":
+	case "geomin", "geominT":
 		Gq, f, _ := vgQGeomin(L, 0.01)
 		VgQ = map[string]any{
 			"Gq":     Gq,
 			"f":      f,
 			"Method": "vgQ." + method,
 		}
-	case "bentlerT":
+	case "bentler", "bentlerT":
 		Gq, f, _, err := vgQBentler(L)
 		if err != nil {
 			return nil, err
@@ -168,6 +168,21 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 				}
 			case "quartimax":
 				GqNew, fNew, _ := vgQQuartimax(L)
+				VgQt = map[string]any{
+					"Gq": GqNew,
+					"f":  fNew,
+				}
+			case "geomin", "geominT":
+				GqNew, fNew, _ := vgQGeomin(L, 0.01)
+				VgQt = map[string]any{
+					"Gq": GqNew,
+					"f":  fNew,
+				}
+			case "bentler", "bentlerT":
+				GqNew, fNew, _, err := vgQBentler(L)
+				if err != nil {
+					return nil, err
+				}
 				VgQt = map[string]any{
 					"Gq": GqNew,
 					"f":  fNew,

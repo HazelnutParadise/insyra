@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"strings"
 
+	statslinalg "github.com/HazelnutParadise/insyra/stats/internal/linalg"
 	"gonum.org/v1/gonum/mat"
 )
 
@@ -190,7 +191,7 @@ func GeominT(loadings *mat.Dense, normalize bool, eps float64, maxIter int, delt
 	Tmat := identityMatrix(cols)
 
 	// Use GPForth for proper geominT rotation
-	result, err := GPForth(loadings, Tmat, normalize, eps, maxIter, "geominT")
+	result, err := GPForth(loadings, Tmat, normalize, eps, maxIter, "geomin")
 	if err != nil {
 		// Return identity rotation on error
 		return map[string]any{
@@ -229,7 +230,7 @@ func BentlerT(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map
 	Tmat := identityMatrix(cols)
 
 	// Use GPForth for proper bentlerT rotation
-	result, err := GPForth(loadings, Tmat, normalize, eps, maxIter, "bentlerT")
+	result, err := GPForth(loadings, Tmat, normalize, eps, maxIter, "bentler")
 	if err != nil {
 		// Return identity rotation on error
 		return map[string]any{
@@ -466,11 +467,11 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 		case "quartimax":
 			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
 			pre.Mul(baseLoadings, start)
-			result = Quartimax(pre, true, 1e-05, 1000)
+			result = Quartimax(pre, false, 1e-05, 1000)
 		case "quartimin":
 			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
 			pre.Mul(baseLoadings, start)
-			result = Quartimin(pre, true, 1e-05, 1000)
+			result = Quartimin(pre, false, 1e-05, 1000)
 		case "oblimin":
 			// Use identity matrix as starting point
 			// This provides better SPSS compatibility than random starts
@@ -480,7 +481,7 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 			}
 			var gpf map[string]any
 			// Match R's default parameters: eps=1e-05
-			gpf, err := GPFoblq(baseLoadings, startIdentity, true, 1e-05, 1000, "oblimin", hyper)
+			gpf, err := GPFoblq(baseLoadings, startIdentity, false, 1e-05, 1000, "oblimin", hyper)
 			if err != nil {
 				continue
 			}
@@ -488,27 +489,51 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 		case "geomint":
 			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
 			pre.Mul(baseLoadings, start)
-			result = GeominT(pre, true, 1e-05, 1000, 0.01)
+			result = GeominT(pre, false, 1e-05, 1000, 0.01)
 		case "geominq":
 			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
 			pre.Mul(baseLoadings, start)
-			result = GeominQ(pre, true, 1e-05, 1000, 0.01)
+			result = GeominQ(pre, false, 1e-05, 1000, 0.01)
 		case "bentlert":
 			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
 			pre.Mul(baseLoadings, start)
-			result = BentlerT(pre, true, 1e-08, 5000)
+			result = BentlerT(pre, false, 1e-05, 1000)
 		case "bentlerq":
 			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
 			pre.Mul(baseLoadings, start)
-			result = BentlerQ(pre, true, 1e-08, 5000)
+			result = BentlerQ(pre, false, 1e-05, 1000)
 		case "simplimax":
 			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
 			pre.Mul(baseLoadings, start)
-			result = Simplimax(pre, true, 1e-08, 5000, pre.RawMatrix().Rows)
+			result = Simplimax(pre, false, 1e-05, 1000, pre.RawMatrix().Rows)
 		case "promax":
 			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
 			pre.Mul(baseLoadings, start)
-			res := Promax(pre, 4, true)
+			h2 := make([]float64, pre.RawMatrix().Rows)
+			weighted := mat.DenseCopyOf(pre)
+			for i := 0; i < pre.RawMatrix().Rows; i++ {
+				sum := 0.0
+				for j := 0; j < pre.RawMatrix().Cols; j++ {
+					v := pre.At(i, j)
+					sum += v * v
+				}
+				h2[i] = math.Sqrt(sum)
+				if h2[i] != 0 {
+					for j := 0; j < pre.RawMatrix().Cols; j++ {
+						weighted.Set(i, j, pre.At(i, j)/h2[i])
+					}
+				}
+			}
+			res := Promax(weighted, 4, false)
+			if lm, ok := res["loadings"].(*mat.Dense); ok && lm != nil {
+				normalized := mat.DenseCopyOf(lm)
+				for i := 0; i < normalized.RawMatrix().Rows; i++ {
+					for j := 0; j < normalized.RawMatrix().Cols; j++ {
+						normalized.Set(i, j, normalized.At(i, j)*h2[i])
+					}
+				}
+				res["loadings"] = normalized
+			}
 			result = map[string]any{
 				"loadings": res["loadings"],
 				"rotmat":   res["rotmat"],
@@ -598,11 +623,7 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 }
 
 func identityMatrix(n int) *mat.Dense {
-	matIdentity := mat.NewDense(n, n, nil)
-	for i := 0; i < n; i++ {
-		matIdentity.Set(i, i, 1.0)
-	}
-	return matIdentity
+	return statslinalg.IdentityDense(n)
 }
 
 func randomOrthonormalMatrix(n int, rnd *rand.Rand) *mat.Dense {
@@ -731,15 +752,7 @@ func rotMatFromTh(Th *mat.Dense, nf int) *mat.Dense {
 // if inversion fails. This is a small safe fallback used by rotation routines
 // to avoid panics when matrices are singular or near-singular.
 func inverseOrIdentity(M *mat.Dense, n int) *mat.Dense {
-	if M == nil {
-		return identityMatrix(n)
-	}
-	var inv mat.Dense
-	if err := inv.Inverse(M); err != nil {
-		// fallback to identity to allow algorithms to continue safely
-		return identityMatrix(n)
-	}
-	return mat.DenseCopyOf(&inv)
+	return statslinalg.InverseOrIdentityDense(M, n)
 }
 
 // ParseRotationResult accepts the opaque result value returned by

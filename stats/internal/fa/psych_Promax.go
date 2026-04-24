@@ -28,10 +28,16 @@ func Promax(x *mat.Dense, m int, normalize bool) map[string]any {
 		}
 	}
 
-	// Step 1: Perform varimax rotation
-	varimaxResult := Varimax(x, normalize, 1e-5, 1000)
-	xx := varimaxResult["loadings"].(*mat.Dense)
-	rotmatVarimax := varimaxResult["rotmat"].(*mat.Dense)
+	// Step 1: psych::Promax uses stats::varimax(x), whose normalize default is TRUE.
+	xx, rotmatVarimax, err := KaiserVarimaxWithRotationMatrix(x, true, 1000, 1e-5)
+	if err != nil {
+		return map[string]any{
+			"loadings":    x,
+			"rotmat":      identityMatrix(cols),
+			"Phi":         identityMatrix(cols),
+			"diagnostics": diagnostics,
+		}
+	}
 
 	// x <- xx$loadings
 	x = xx
@@ -52,7 +58,7 @@ func Promax(x *mat.Dense, m int, normalize bool) map[string]any {
 	var XtQ mat.Dense
 	XtQ.Mul(x.T(), Q)
 	var U mat.Dense
-	err := U.Solve(&XtX, &XtQ)
+	err = U.Solve(&XtX, &XtQ)
 	if err != nil {
 		// Handle singular matrix - use approximation like R
 		diagnostics["converged"] = false
