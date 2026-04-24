@@ -82,8 +82,8 @@ type FactorCountSpec struct {
 type VarimaxAlgorithm string
 
 const (
-	VarimaxGPArotation VarimaxAlgorithm = "gparotation" // Gradient-based (matches R GPArotation)
-	VarimaxKaiser      VarimaxAlgorithm = "kaiser"      // Jacobi rotation (matches SPSS)
+	VarimaxGPArotation VarimaxAlgorithm = "gparotation" // GPArotation::Varimax
+	VarimaxKaiser      VarimaxAlgorithm = "kaiser"      // stats::varimax / psych::fa rotate="varimax"
 )
 
 // FactorRotationOptions specifies rotation parameters
@@ -92,7 +92,7 @@ type FactorRotationOptions struct {
 	Kappa            float64          // Optional: Promax power (default 4)
 	Delta            float64          // Optional: default 0 for Oblimin
 	Restarts         int              // Optional: random orthonormal starts for GPA rotations (default 10)
-	VarimaxAlgorithm VarimaxAlgorithm // Optional: "gparotation" (default) or "kaiser" (SPSS-compatible)
+	VarimaxAlgorithm VarimaxAlgorithm // Optional: "kaiser" (psych default) or "gparotation"
 }
 
 // FactorAnalysisOptions contains all options for factor analysis
@@ -223,8 +223,8 @@ func DefaultFactorAnalysisOptions() FactorAnalysisOptions {
 			Method:           FactorRotationOblimin, // R default: "oblimin"
 			Kappa:            4,                     // R default for promax
 			Delta:            0,                     // R default for oblimin
-			Restarts:         10,
-			VarimaxAlgorithm: VarimaxGPArotation,
+			Restarts:         1,
+			VarimaxAlgorithm: VarimaxKaiser,
 		},
 		Scoring: FactorScoreRegression, // R default: "regression"
 		MaxIter: 100,                   // R default: 50
@@ -579,7 +579,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 	}
 
 	initialCommunalities := make([]float64, colNum)
-	if opt.Extraction == FactorExtractionPAF || opt.Extraction == FactorExtractionML {
+	if opt.Extraction != FactorExtractionPCA {
 		// R: if (nfactors <= n) { diag(r.mat) <- smc(...) }
 		// else { warning and use 1 instead }
 		if numFactors > colNum {
@@ -636,7 +636,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 		}
 	}
 
-	loadings, _, converged, iterations, err := extractFactors(data, corrDense, sortedEigenvalues, sortedEigenvectors, numFactors, opt, rowNum, tolVal, initialCommunalities)
+	loadings, _, _, converged, iterations, err := extractFactors(data, corrDense, sortedEigenvalues, sortedEigenvectors, numFactors, opt, rowNum, tolVal, initialCommunalities)
 	if err != nil {
 		return nil, fmt.Errorf("factor extraction failed: %w", err)
 	}
@@ -722,16 +722,13 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 	signs := make([]float64, cols)
 
 	for j := range cols {
-		signs[j] = 1.0
+		sum := 0.0
 		for i := range rows {
-			v := rotatedLoadings.At(i, j)
-			if math.Abs(v) <= 1e-15 {
-				continue
-			}
-			if v < 0 {
-				signs[j] = -1.0
-			}
-			break
+			sum += rotatedLoadings.At(i, j)
+		}
+		signs[j] = 1.0
+		if sum < 0 {
+			signs[j] = -1.0
 		}
 	}
 
@@ -764,9 +761,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 	uniquenesses := make([]float64, colNum)
 	for i := 0; i < colNum; i++ {
 		var hi2 float64
-		// Communalities should always be computed from unrotated loadings
-		// Rotation (whether orthogonal or oblique) does not change communalities
-		// R: model$communalities = rowSums(fit$loadings^2) where fit$loadings is unrotated
+		// R psych reports communality as the diagonal of loadings %*% t(loadings).
 		for j := 0; j < numFactors; j++ {
 			v := unrotatedLoadings.At(i, j)
 			hi2 += v * v
@@ -775,19 +770,9 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 		if diag == 0 {
 			diag = 1.0
 		}
-		if hi2 > diag {
-			hi2 = diag
-		}
-		if hi2 < 0 {
-			hi2 = 0
-		}
 		extractionCommunalities[i] = hi2
 
-		uniq := diag - hi2
-		if uniq < uniquenessLowerBound {
-			uniq = uniquenessLowerBound
-		}
-		uniquenesses[i] = uniq
+		uniquenesses[i] = diag - hi2
 	}
 
 	commMatrix := mat.NewDense(colNum, 2, nil)
@@ -1185,7 +1170,7 @@ func countByThreshold(eigenvalues []float64, threshold float64) int {
 }
 
 // extractFactors wraps the internal extraction functions
-func extractFactors(data, corrMatrix *mat.Dense, eigenvalues []float64, eigenvectors *mat.Dense, numFactors int, opt FactorAnalysisOptions, sampleSize int, tol float64, initialCommunalities []float64) (*mat.Dense, []float64, bool, int, error) {
+func extractFactors(data, corrMatrix *mat.Dense, eigenvalues []float64, eigenvectors *mat.Dense, numFactors int, opt FactorAnalysisOptions, sampleSize int, tol float64, initialCommunalities []float64) (*mat.Dense, []float64, []float64, bool, int, error) {
 	// Use our psych_fac.Fac implementation for all extraction methods
 	facOpts := &fa.FacOptions{
 		NFactors:      numFactors,
@@ -1215,7 +1200,7 @@ func extractFactors(data, corrMatrix *mat.Dense, eigenvalues []float64, eigenvec
 	case FactorExtractionPCA:
 		// For PCA, we still use the original implementation since psych_fac doesn't handle PCA
 		loadings, converged, iterations, err := extractPCA(eigenvalues, eigenvectors, numFactors)
-		return loadings, nil, converged, iterations, err
+		return loadings, nil, nil, converged, iterations, err
 
 	case FactorExtractionPAF:
 		facOpts.Fm = "pa"
@@ -1234,11 +1219,12 @@ func extractFactors(data, corrMatrix *mat.Dense, eigenvalues []float64, eigenvec
 	// Call our psych_fac.Fac implementation
 	result, err := fa.Fac(corrMatrix, facOpts)
 	if err != nil {
-		return nil, nil, false, 0, err
+		return nil, nil, nil, false, 0, err
 	}
 
 	// Extract results from FacResult
 	loadings := result.Loadings
+	communalities := append([]float64(nil), result.Communalities...)
 	converged := true // psych_fac handles convergence internally
 	iterations := 0   // psych_fac doesn't track iterations in the same way
 
@@ -1249,7 +1235,7 @@ func extractFactors(data, corrMatrix *mat.Dense, eigenvalues []float64, eigenvec
 		copy(extractionEigenvalues, result.EValues)
 	}
 
-	return loadings, extractionEigenvalues, converged, iterations, nil
+	return loadings, communalities, extractionEigenvalues, converged, iterations, nil
 }
 
 // computePCALoadings constructs factor loadings for PCA given eigenvalues/vectors.
@@ -2908,7 +2894,7 @@ func rotateFactors(loadings *mat.Dense, rotationOpts FactorRotationOptions, minE
 		// Check if user wants Kaiser Varimax (SPSS-compatible) or GPArotation (R-compatible)
 		if rotationOpts.VarimaxAlgorithm == VarimaxKaiser {
 			// Use Kaiser Varimax (Jacobi rotation) - matches SPSS
-			rotatedLoadings, rotMat, err := fa.KaiserVarimaxWithRotationMatrix(loadings, true, maxIter, minErr)
+			rotatedLoadings, rotMat, err := fa.KaiserVarimaxWithRotationMatrix(loadings, true, 1000, 1e-5)
 			if err != nil {
 				return nil, nil, nil, false, err
 			}
@@ -2980,7 +2966,7 @@ func rotateFactors(loadings *mat.Dense, rotationOpts FactorRotationOptions, minE
 	opts := &fa.RotOpts{
 		Eps:         minErr,                  // Use MinErr from function parameter
 		MaxIter:     maxIter,                 // Use MaxIter from function parameter
-		Gamma:       rotationOpts.Kappa,      // Use Kappa as Gamma for oblimin
+		Gamma:       rotationOpts.Delta,      // Use Delta as GPArotation gamma for oblimin
 		PromaxPower: int(rotationOpts.Kappa), // Use Kappa as PromaxPower
 		Restarts:    rotationOpts.Restarts,
 	}

@@ -43,16 +43,15 @@ func vgQOblimin(L *mat.Dense, gamma float64) (*mat.Dense, float64, error) {
 	// Apply gamma correction if gamma != 0
 	if gamma != 0.0 {
 		gammaOverRows := gamma / float64(rows)
-		for i := 0; i < rows; i++ {
-			// Compute row sum of L2
-			rowSum := 0.0
-			for j := 0; j < cols; j++ {
-				rowSum += L2.At(i, j)
+		colSums := make([]float64, cols)
+		for j := 0; j < cols; j++ {
+			for i := 0; i < rows; i++ {
+				colSums[j] += X.At(i, j)
 			}
-			// Apply correction: X = X - (gamma/rows) * (rowSum - L2_ij) for each j
+		}
+		for i := 0; i < rows; i++ {
 			for j := 0; j < cols; j++ {
-				correction := gammaOverRows * (rowSum - L2.At(i, j))
-				X.Set(i, j, X.At(i, j)-correction)
+				X.Set(i, j, X.At(i, j)-gammaOverRows*colSums[j])
 			}
 		}
 	}
@@ -73,7 +72,7 @@ func vgQOblimin(L *mat.Dense, gamma float64) (*mat.Dense, float64, error) {
 		}
 	}
 
-	return Gq, f, nil
+	return Gq, f / 4, nil
 }
 
 // VgQOblimin is the exported version for testing

@@ -104,8 +104,11 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 		// R code: al <- 2 * al
 		alpha *= 2
 
-		// Step size selection with backtracking
-		stepAccepted := false
+		// Step size selection with backtracking. R updates Tmat to the last
+		// trial Tmatt even when the sufficient-improvement condition does not
+		// trigger before the inner loop limit.
+		var lastT, lastL, lastGq *mat.Dense
+		var lastF float64
 		for i := 0; i <= 10; i++ {
 			X := mat.DenseCopyOf(T)
 			var scaledGp mat.Dense
@@ -137,6 +140,10 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 				// Skip this step if criterion fails
 				continue
 			}
+			lastT = Tnew
+			lastL = Lnew
+			lastGq = GqNew
+			lastF = fNew
 
 			improvement := f - fNew
 			// Match R's threshold: 0.5 * s^2 * al
@@ -144,29 +151,18 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			threshold := 0.5 * s * s * alpha
 
 			if improvement > threshold {
-				// Accept the step
-				T = Tnew
-				L = Lnew
-				Gq = GqNew
-				f = fNew
-				G = computeGMatrix(L, Gq, T)
-				// Match R: double alpha after successful step
-				// R code: al <- 2 * al (at the start of iteration)
-				// We apply it here after accepting the step
-				stepAccepted = true
 				break
 			} else {
 				alpha /= 2
-				// If alpha becomes too small, break inner loop and proceed to next main iteration
-				if alpha < 1e-10 {
-					break
-				}
 			}
 		}
 
-		// If no step was accepted and alpha became too small, reset alpha to a larger value
-		if !stepAccepted && alpha < 1e-10 {
-			alpha = 1.0 // Reset to initial value for fresh start
+		if lastT != nil {
+			T = lastT
+			L = lastL
+			Gq = lastGq
+			f = lastF
+			G = computeGMatrix(L, Gq, T)
 		}
 
 		iter++
@@ -203,7 +199,7 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 }
 
 func computeGMatrix(L *mat.Dense, Gq *mat.Dense, T *mat.Dense) *mat.Dense {
-	// G <- - solve(T) %*% (t(L) %*% Gq) - match R's GPArotation::GPFoblq
+	// R: G <- -t(t(L) %*% Gq %*% solve(Tmat))
 	// Compute transpose of L: t(L) is q x p
 	var Lt mat.Dense
 	Lt.CloneFrom(L.T())
@@ -215,11 +211,11 @@ func computeGMatrix(L *mat.Dense, Gq *mat.Dense, T *mat.Dense) *mat.Dense {
 	// Compute inverse of T or identity if singular
 	invT := inverseOrIdentity(T, T.RawMatrix().Rows)
 
-	// Compute solve(T) %*% (t(L) %*% Gq): q x q
-	var G mat.Dense
-	G.Mul(invT, &LtGq)
+	var temp mat.Dense
+	temp.Mul(&LtGq, invT)
 
-	// Apply negative sign: G <- -G
+	var G mat.Dense
+	G.CloneFrom(temp.T())
 	G.Scale(-1, &G)
 
 	return &G

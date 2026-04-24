@@ -6,8 +6,14 @@ import (
 	"math"
 
 	"github.com/HazelnutParadise/insyra"
+	statslinalg "github.com/HazelnutParadise/insyra/stats/internal/linalg"
 	"gonum.org/v1/gonum/mat"
 	"gonum.org/v1/gonum/optimize"
+)
+
+const (
+	machineEpsilon         = 2.220446e-16
+	eigenvalueMinThreshold = 100 * machineEpsilon
 )
 
 // FacOptions represents options for the Fac function
@@ -307,38 +313,34 @@ func principalAxisFactoring(r, rMat *mat.Dense, nfactors int, minErr float64, ma
 	i := 1
 
 	for err > minErr && i <= maxIter {
-		// Eigen decomposition
-		var eig mat.Eigen
-		ok := eig.Factorize(rMat, mat.EigenRight)
+		// Eigen decomposition. R's eigen() returns symmetric eigenpairs in
+		// descending order; Gonum's EigenSym returns ascending values.
+		values, vectors, ok := statslinalg.SymmetricEigenDescending(rMat)
 		if !ok {
 			break
 		}
-
-		values := eig.Values(nil)
-		vectors := mat.NewCDense(p, p, nil)
-		eig.VectorsTo(vectors)
 
 		// Extract loadings
 		loadings := mat.NewDense(p, nfactors, nil)
 		if nfactors > 1 {
 			for j := 0; j < nfactors; j++ {
-				eigenVal := real(values[j])
+				eigenVal := values[j]
 				if eigenVal < 0 {
 					eigenVal = 0
 				}
 				sqrtEigenVal := math.Sqrt(eigenVal)
 				for k := 0; k < p; k++ {
-					loadings.Set(k, j, real(vectors.At(k, j))*sqrtEigenVal)
+					loadings.Set(k, j, vectors.At(k, j)*sqrtEigenVal)
 				}
 			}
 		} else {
-			eigenVal := real(values[0])
+			eigenVal := values[0]
 			if eigenVal < 0 {
 				eigenVal = 0
 			}
 			sqrtEigenVal := math.Sqrt(eigenVal)
 			for k := 0; k < p; k++ {
-				loadings.Set(k, 0, real(vectors.At(k, 0))*sqrtEigenVal)
+				loadings.Set(k, 0, vectors.At(k, 0)*sqrtEigenVal)
 			}
 		}
 
@@ -370,40 +372,39 @@ func principalAxisFactoring(r, rMat *mat.Dense, nfactors int, minErr float64, ma
 	}
 
 	// Final eigen decomposition
-	var eig mat.Eigen
-	eig.Factorize(rMat, mat.EigenRight)
-	values := eig.Values(nil)
-	vectors := mat.NewCDense(p, p, nil)
-	eig.VectorsTo(vectors)
+	values, vectors, ok := statslinalg.SymmetricEigenDescending(rMat)
+	if !ok {
+		return mat.NewDense(p, nfactors, nil), make([]float64, p), make([]float64, p)
+	}
 
 	// Extract final loadings
 	loadings := mat.NewDense(p, nfactors, nil)
 	if nfactors > 1 {
 		for j := 0; j < nfactors; j++ {
-			eigenVal := real(values[j])
+			eigenVal := values[j]
 			if eigenVal < 0 {
 				eigenVal = 0
 			}
 			sqrtEigenVal := math.Sqrt(eigenVal)
 			for k := 0; k < p; k++ {
-				loadings.Set(k, j, real(vectors.At(k, j))*sqrtEigenVal)
+				loadings.Set(k, j, vectors.At(k, j)*sqrtEigenVal)
 			}
 		}
 	} else {
-		eigenVal := real(values[0])
+		eigenVal := values[0]
 		if eigenVal < 0 {
 			eigenVal = 0
 		}
 		sqrtEigenVal := math.Sqrt(eigenVal)
 		for k := 0; k < p; k++ {
-			loadings.Set(k, 0, real(vectors.At(k, 0))*sqrtEigenVal)
+			loadings.Set(k, 0, vectors.At(k, 0)*sqrtEigenVal)
 		}
 	}
 
 	// Extract eigenvalues
 	eValues := make([]float64, p)
 	for j := 0; j < p; j++ {
-		eValues[j] = real(values[j])
+		eValues[j] = values[j]
 	}
 
 	// Extract communalities
@@ -426,8 +427,8 @@ func minimumResidualFactoring(r, rMat *mat.Dense, nfactors int, fm string, covar
 		smcVec[i] = smcResult.AtVec(i)
 	}
 
-	// Set upper bound
-	upper := 0.0
+	// Set upper bound. R psych: upper <- max(S.smc, 1).
+	upper := 1.0
 	for _, v := range smcVec {
 		if v > upper {
 			upper = v
@@ -447,20 +448,18 @@ func minimumResidualFactoring(r, rMat *mat.Dense, nfactors int, fm string, covar
 		}
 	}
 
-	// Optimization
-	problem := optimize.Problem{
-		Func: func(x []float64) float64 {
+	psi := optimizeBounded(
+		start,
+		0.005,
+		upper,
+		maxIter,
+		func(x []float64) float64 {
 			return fitResiduals(x, r, nfactors, fm)
 		},
-	}
-
-	settings := &optimize.Settings{MajorIterations: maxIter}
-
-	result, err := optimize.Minimize(problem, start, settings, &optimize.NelderMead{})
-	psi := start
-	if err == nil && result != nil && result.X != nil {
-		psi = result.X
-	}
+		func(grad, x []float64) {
+			faGrMinres(grad, x, r, nfactors)
+		},
+	)
 
 	// Extract loadings
 	loadings := faOutWLS(psi, r, nfactors)
@@ -476,13 +475,11 @@ func minimumResidualFactoring(r, rMat *mat.Dense, nfactors int, fm string, covar
 		}
 		s.Set(i, i, communality)
 	}
-	var eig mat.Eigen
-	eig.Factorize(s, mat.EigenNone)
-	values := eig.Values(nil)
+	values, _, ok := statslinalg.SymmetricEigenDescending(s)
 
 	eValues := make([]float64, p)
-	for i := 0; i < p; i++ {
-		eValues[i] = real(values[i])
+	if ok {
+		copy(eValues, values)
 	}
 
 	communalities := make([]float64, p)
@@ -500,6 +497,95 @@ func minimumResidualFactoring(r, rMat *mat.Dense, nfactors int, fm string, covar
 	return loadings, communalities, eValues
 }
 
+func optimizeBounded(start []float64, lower, upper float64, maxIter int, fn func([]float64) float64, grad func([]float64, []float64)) []float64 {
+	if len(start) == 0 || upper <= lower || fn == nil {
+		return append([]float64(nil), start...)
+	}
+
+	y0 := make([]float64, len(start))
+	for i, v := range start {
+		y0[i] = boundedToUnbounded(v, lower, upper)
+	}
+
+	x := make([]float64, len(start))
+	problem := optimize.Problem{
+		Func: func(y []float64) float64 {
+			unboundedToBounded(x, y, lower, upper)
+			return fn(x)
+		},
+	}
+	if grad != nil {
+		gx := make([]float64, len(start))
+		problem.Grad = func(gy, y []float64) {
+			unboundedToBounded(x, y, lower, upper)
+			for i := range gx {
+				gx[i] = 0
+			}
+			grad(gx, x)
+			for i := range gy {
+				gy[i] = gx[i] * boundedDerivative(y[i], lower, upper)
+			}
+		}
+	}
+
+	settings := &optimize.Settings{MajorIterations: maxIter}
+	method := optimize.Method(&optimize.NelderMead{})
+	if grad != nil {
+		method = &optimize.LBFGS{}
+	}
+
+	result, err := optimize.Minimize(problem, y0, settings, method)
+	if err != nil || result == nil || result.X == nil {
+		return append([]float64(nil), start...)
+	}
+
+	out := make([]float64, len(start))
+	unboundedToBounded(out, result.X, lower, upper)
+	return out
+}
+
+func boundedToUnbounded(x, lower, upper float64) float64 {
+	const eps = 1e-12
+	if x <= lower {
+		x = lower + eps*(upper-lower)
+	}
+	if x >= upper {
+		x = upper - eps*(upper-lower)
+	}
+	r := (x - lower) / (upper - lower)
+	if r < eps {
+		r = eps
+	}
+	if r > 1-eps {
+		r = 1 - eps
+	}
+	return math.Log(r / (1 - r))
+}
+
+func unboundedToBounded(dst, src []float64, lower, upper float64) {
+	for i, y := range src {
+		if y >= 0 {
+			e := math.Exp(-y)
+			dst[i] = lower + (upper-lower)/(1+e)
+		} else {
+			e := math.Exp(y)
+			dst[i] = lower + (upper-lower)*e/(1+e)
+		}
+	}
+}
+
+func boundedDerivative(y, lower, upper float64) float64 {
+	var s float64
+	if y >= 0 {
+		e := math.Exp(-y)
+		s = 1 / (1 + e)
+	} else {
+		e := math.Exp(y)
+		s = e / (1 + e)
+	}
+	return (upper - lower) * s * (1 - s)
+}
+
 // fitResiduals computes the fit residuals (mirrors fit.residuals in R)
 func fitResiduals(psi []float64, s *mat.Dense, nf int, fm string) float64 {
 	p, _ := s.Dims()
@@ -508,30 +594,25 @@ func fitResiduals(psi []float64, s *mat.Dense, nf int, fm string) float64 {
 	sWork := mat.NewDense(p, p, nil)
 	sWork.CloneFrom(s)
 	for i := 0; i < p; i++ {
-		v := 1 - psi[i]
-		if v < 0 {
-			v = 0
-		}
-		sWork.Set(i, i, v)
+		sWork.Set(i, i, 1-psi[i])
 	}
 
 	// Eigen decomposition
-	var eig mat.Eigen
-	eig.Factorize(sWork, mat.EigenRight)
-	values := eig.Values(nil)
-	vectors := mat.NewCDense(p, p, nil)
-	eig.VectorsTo(vectors)
+	values, vectors, ok := statslinalg.SymmetricEigenDescending(sWork)
+	if !ok {
+		return math.Inf(1)
+	}
 
 	// Extract loadings
 	loadings := mat.NewDense(p, nf, nil)
 	for j := 0; j < nf; j++ {
-		eigenVal := real(values[j])
-		if eigenVal < 0 {
-			eigenVal = 0
+		eigenVal := values[j]
+		if eigenVal < machineEpsilon {
+			eigenVal = eigenvalueMinThreshold
 		}
 		sqrtEigenVal := math.Sqrt(eigenVal)
 		for i := 0; i < p; i++ {
-			loadings.Set(i, j, real(vectors.At(i, j))*sqrtEigenVal)
+			loadings.Set(i, j, vectors.At(i, j)*sqrtEigenVal)
 		}
 	}
 
@@ -546,18 +627,16 @@ func fitResiduals(psi []float64, s *mat.Dense, nf int, fm string) float64 {
 	// Apply method-specific residual computation
 	var error float64
 	switch fm {
-	case "uls", "minres", "old.min":
-		// Sum of squared residuals
+	case "uls":
+		// R: residual <- (S - model)^2
 		for i := 0; i < p; i++ {
 			for j := 0; j < p; j++ {
-				if i != j {
-					val := residual.At(i, j)
-					error += val * val
-				}
+				val := residual.At(i, j)
+				error += val * val
 			}
 		}
-	case "ols":
-		// Sum of squared lower triangular residuals
+	case "ols", "minres", "old.min":
+		// R: residual <- residual[lower.tri(residual)]^2
 		for i := 1; i < p; i++ {
 			for j := 0; j < i; j++ {
 				val := residual.At(i, j)
@@ -569,6 +648,42 @@ func fitResiduals(psi []float64, s *mat.Dense, nf int, fm string) float64 {
 	return error
 }
 
+// faGrMinres computes psych::fac's FAgr.minres gradient.
+func faGrMinres(grad []float64, psi []float64, s *mat.Dense, nf int) {
+	p, _ := s.Dims()
+	sWork := mat.NewDense(p, p, nil)
+	sWork.CloneFrom(s)
+	for i := 0; i < p; i++ {
+		sWork.Set(i, i, sWork.At(i, i)-psi[i])
+	}
+
+	values, vectors, ok := statslinalg.SymmetricEigenDescending(sWork)
+	if !ok {
+		for i := range grad {
+			grad[i] = 0
+		}
+		return
+	}
+
+	loadings := mat.NewDense(p, nf, nil)
+	for j := 0; j < nf; j++ {
+		eigenVal := values[j]
+		if eigenVal < 0 {
+			eigenVal = 0
+		}
+		sqrtEigenVal := math.Sqrt(eigenVal)
+		for i := 0; i < p; i++ {
+			loadings.Set(i, j, vectors.At(i, j)*sqrtEigenVal)
+		}
+	}
+
+	model := mat.NewDense(p, p, nil)
+	model.Mul(loadings, loadings.T())
+	for i := 0; i < p; i++ {
+		grad[i] = model.At(i, i) + psi[i] - s.At(i, i)
+	}
+}
+
 // faOutWLS extracts loadings from parameters (mirrors FAout.wls in R)
 func faOutWLS(psi []float64, s *mat.Dense, q int) *mat.Dense {
 	p, _ := s.Dims()
@@ -577,30 +692,25 @@ func faOutWLS(psi []float64, s *mat.Dense, q int) *mat.Dense {
 	sWork := mat.NewDense(p, p, nil)
 	sWork.CloneFrom(s)
 	for i := 0; i < p; i++ {
-		v := sWork.At(i, i) - psi[i]
-		if v < 0 {
-			v = 0
-		}
-		sWork.Set(i, i, v)
+		sWork.Set(i, i, sWork.At(i, i)-psi[i])
 	}
 
 	// Eigen decomposition
-	var eig mat.Eigen
-	eig.Factorize(sWork, mat.EigenRight)
-	values := eig.Values(nil)
-	vectors := mat.NewCDense(p, p, nil)
-	eig.VectorsTo(vectors)
+	values, vectors, ok := statslinalg.SymmetricEigenDescending(sWork)
+	if !ok {
+		return mat.NewDense(p, q, nil)
+	}
 
 	// Extract loadings
 	loadings := mat.NewDense(p, q, nil)
 	for j := 0; j < q; j++ {
-		eigenVal := real(values[j])
+		eigenVal := values[j]
 		if eigenVal < 0 {
 			eigenVal = 0
 		}
 		sqrtEigenVal := math.Sqrt(eigenVal)
 		for i := 0; i < p; i++ {
-			loadings.Set(i, j, real(vectors.At(i, j))*sqrtEigenVal)
+			loadings.Set(i, j, vectors.At(i, j)*sqrtEigenVal)
 		}
 	}
 
@@ -618,8 +728,8 @@ func maximumLikelihoodFactoring(r, rMat *mat.Dense, nfactors int, covar bool, mi
 		smcVec[i] = smcResult.AtVec(i)
 	}
 
-	// Set upper bound
-	upper := 0.0
+	// Set upper bound. R psych: upper <- max(S.smc, 1).
+	upper := 1.0
 	for _, v := range smcVec {
 		if v > upper {
 			upper = v
@@ -638,22 +748,18 @@ func maximumLikelihoodFactoring(r, rMat *mat.Dense, nfactors int, covar bool, mi
 		}
 	}
 
-	// Optimization
-	problem := optimize.Problem{
-		Func: func(x []float64) float64 {
+	psi := optimizeBounded(
+		start,
+		0.005,
+		upper,
+		maxIter,
+		func(x []float64) float64 {
 			return faFn(x, r, nfactors)
 		},
-	}
-
-	settings := &optimize.Settings{MajorIterations: maxIter}
-
-	result, err := optimize.Minimize(problem, start, settings, &optimize.NelderMead{})
-
-	// Use result.X if optimization succeeded, otherwise use start values
-	psi := start
-	if err == nil && result != nil && result.X != nil {
-		psi = result.X
-	}
+		func(grad, x []float64) {
+			faGr(grad, x, r, nfactors)
+		},
+	)
 
 	// Extract loadings
 	loadings := faOut(psi, r, nfactors)
@@ -664,13 +770,11 @@ func maximumLikelihoodFactoring(r, rMat *mat.Dense, nfactors int, covar bool, mi
 	for i := 0; i < p; i++ {
 		s.Set(i, i, s.At(i, i)-psi[i])
 	}
-	var eig mat.Eigen
-	eig.Factorize(s, mat.EigenNone)
-	values := eig.Values(nil)
+	values, _, ok := statslinalg.SymmetricEigenDescending(s)
 
 	eValues := make([]float64, p)
-	for i := 0; i < p; i++ {
-		eValues[i] = real(values[i])
+	if ok {
+		copy(eValues, values)
 	}
 
 	communalities := make([]float64, p)
@@ -698,17 +802,18 @@ func faFn(psi []float64, s *mat.Dense, nf int) float64 {
 	temp.Mul(sStar, sc)
 
 	// Eigen decomposition
-	var eig mat.Eigen
-	eig.Factorize(temp, mat.EigenNone)
-	values := eig.Values(nil)
+	values, _, ok := statslinalg.SymmetricEigenDescending(temp)
+	if !ok {
+		return math.Inf(1)
+	}
 
 	// Extract eigenvalues after nf
 	sum := 0.0
 	for i := nf; i < p; i++ {
-		eigenVal := real(values[i])
+		eigenVal := values[i]
 		sum += math.Log(eigenVal) - eigenVal
 	}
-	sum -= float64(nf) + float64(p)
+	sum += -float64(nf) + float64(p)
 
 	return -sum
 }
@@ -730,22 +835,24 @@ func faGr(grad []float64, psi []float64, s *mat.Dense, nf int) []float64 {
 	temp.Mul(sStar, sc)
 
 	// Eigen decomposition
-	var eig mat.Eigen
-	eig.Factorize(temp, mat.EigenRight)
-	values := eig.Values(nil)
-	vectors := mat.NewCDense(p, p, nil)
-	eig.VectorsTo(vectors)
+	values, vectors, ok := statslinalg.SymmetricEigenDescending(temp)
+	if !ok {
+		for i := range grad {
+			grad[i] = 0
+		}
+		return grad
+	}
 
 	// Extract first nf eigenvectors and eigenvalues
 	l := mat.NewDense(p, nf, nil)
 	for j := 0; j < nf; j++ {
-		eigenVal := real(values[j])
+		eigenVal := values[j]
 		if eigenVal < 1.0 {
 			eigenVal = 1.0
 		}
 		sqrtEigenVal := math.Sqrt(eigenVal - 1.0)
 		for i := 0; i < p; i++ {
-			l.Set(i, j, real(vectors.At(i, j))*sqrtEigenVal)
+			l.Set(i, j, vectors.At(i, j)*sqrtEigenVal)
 		}
 	}
 
@@ -793,22 +900,21 @@ func faOut(psi []float64, s *mat.Dense, q int) *mat.Dense {
 	temp.Mul(sStar, sc)
 
 	// Eigen decomposition
-	var eig mat.Eigen
-	eig.Factorize(temp, mat.EigenRight)
-	values := eig.Values(nil)
-	vectors := mat.NewCDense(p, p, nil)
-	eig.VectorsTo(vectors)
+	values, vectors, ok := statslinalg.SymmetricEigenDescending(temp)
+	if !ok {
+		return mat.NewDense(p, q, nil)
+	}
 
 	// Extract first q eigenvectors and eigenvalues
 	l := mat.NewDense(p, q, nil)
 	for j := 0; j < q; j++ {
-		eigenVal := real(values[j])
+		eigenVal := values[j]
 		if eigenVal < 1.0 {
 			eigenVal = 1.0
 		}
 		sqrtEigenVal := math.Sqrt(eigenVal - 1.0)
 		for i := 0; i < p; i++ {
-			l.Set(i, j, real(vectors.At(i, j))*sqrtEigenVal)
+			l.Set(i, j, vectors.At(i, j)*sqrtEigenVal)
 		}
 	}
 
@@ -828,11 +934,10 @@ func alphaFactoring(r, rMat *mat.Dense, nfactors int, minErr float64, maxIter in
 	p, _ := r.Dims()
 
 	// Get eigenvalues for initial communalities
-	var eig mat.Eigen
-	eig.Factorize(r, mat.EigenRight)
-	eValues := eig.Values(nil)
-	vectors := mat.NewCDense(p, p, nil)
-	eig.VectorsTo(vectors)
+	eValues, vectors, ok := statslinalg.SymmetricEigenDescending(r)
+	if !ok {
+		return mat.NewDense(p, nfactors, nil), make([]float64, p), make([]float64, p)
+	}
 
 	// Initialize communalities
 	h2 := make([]float64, p)
@@ -851,26 +956,26 @@ func alphaFactoring(r, rMat *mat.Dense, nfactors int, minErr float64, maxIter in
 		}
 
 		// Eigen decomposition
-		eig.Factorize(rMatWork, mat.EigenRight)
-		values := eig.Values(nil)
-		vectorsWork := mat.NewCDense(p, p, nil)
-		eig.VectorsTo(vectorsWork)
+		values, vectorsWork, ok := statslinalg.SymmetricEigenDescending(rMatWork)
+		if !ok {
+			break
+		}
 
 		// Extract loadings
 		loadings := mat.NewDense(p, nfactors, nil)
 		if nfactors > 1 {
 			for j := 0; j < nfactors; j++ {
-				eigenVal := real(values[j])
+				eigenVal := values[j]
 				sqrtEigenVal := math.Sqrt(eigenVal)
 				for k := 0; k < p; k++ {
-					loadings.Set(k, j, real(vectorsWork.At(k, j))*sqrtEigenVal)
+					loadings.Set(k, j, vectorsWork.At(k, j)*sqrtEigenVal)
 				}
 			}
 		} else {
-			eigenVal := real(values[0])
+			eigenVal := values[0]
 			sqrtEigenVal := math.Sqrt(eigenVal)
 			for k := 0; k < p; k++ {
-				loadings.Set(k, 0, real(vectorsWork.At(k, 0))*sqrtEigenVal)
+				loadings.Set(k, 0, vectorsWork.At(k, 0)*sqrtEigenVal)
 			}
 		}
 
@@ -908,24 +1013,24 @@ func alphaFactoring(r, rMat *mat.Dense, nfactors int, minErr float64, maxIter in
 	loadings := mat.NewDense(p, nfactors, nil)
 	if nfactors > 1 {
 		for j := 0; j < nfactors; j++ {
-			eigenVal := real(eValues[j])
+			eigenVal := eValues[j]
 			sqrtEigenVal := math.Sqrt(eigenVal)
 			for k := 0; k < p; k++ {
-				loadings.Set(k, j, real(vectors.At(k, j))*sqrtEigenVal*math.Sqrt(h2[k]))
+				loadings.Set(k, j, vectors.At(k, j)*sqrtEigenVal*math.Sqrt(h2[k]))
 			}
 		}
 	} else {
-		eigenVal := real(eValues[0])
+		eigenVal := eValues[0]
 		sqrtEigenVal := math.Sqrt(eigenVal)
 		for k := 0; k < p; k++ {
-			loadings.Set(k, 0, real(vectors.At(k, 0))*sqrtEigenVal*math.Sqrt(h2[k]))
+			loadings.Set(k, 0, vectors.At(k, 0)*sqrtEigenVal*math.Sqrt(h2[k]))
 		}
 	}
 
 	// Extract eigenvalues
 	finalEValues := make([]float64, p)
 	for j := 0; j < p; j++ {
-		finalEValues[j] = real(eValues[j])
+		finalEValues[j] = eValues[j]
 	}
 
 	// Communalities
@@ -957,32 +1062,30 @@ func minrankFactoring(r, rMat *mat.Dense, nfactors int) (*mat.Dense, []float64, 
 	}
 
 	// Eigen decomposition
-	var eig mat.Eigen
-	eig.Factorize(rWork, mat.EigenRight)
-	values := eig.Values(nil)
-	vectors := mat.NewCDense(p, p, nil)
-	eig.VectorsTo(vectors)
+	values, vectors, ok := statslinalg.SymmetricEigenDescending(rWork)
+	if !ok {
+		return mat.NewDense(p, nfactors, nil), make([]float64, p), make([]float64, p)
+	}
 
 	// Extract loadings
 	loadings := mat.NewDense(p, nfactors, nil)
 	for j := 0; j < nfactors; j++ {
-		eigenVal := real(values[j])
+		eigenVal := values[j]
 		if eigenVal < 0 {
 			eigenVal = 0
 		}
 		sqrtEigenVal := math.Sqrt(eigenVal)
 		for i := 0; i < p; i++ {
-			loadings.Set(i, j, real(vectors.At(i, j))*sqrtEigenVal)
+			loadings.Set(i, j, vectors.At(i, j)*sqrtEigenVal)
 		}
 	}
 
 	// Extract eigenvalues from original matrix
-	eig.Factorize(r, mat.EigenNone)
-	eValues := eig.Values(nil)
+	eValues, _, ok := statslinalg.SymmetricEigenDescending(r)
 
 	finalEValues := make([]float64, p)
-	for i := 0; i < p; i++ {
-		finalEValues[i] = real(eValues[i])
+	if ok {
+		copy(finalEValues, eValues)
 	}
 
 	// Communalities
