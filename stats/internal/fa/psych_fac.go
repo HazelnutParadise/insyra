@@ -434,14 +434,17 @@ func minimumResidualFactoring(r, rMat *mat.Dense, nfactors int, fm string, covar
 		}
 	}
 
-	// Initial parameters
-	start := make([]float64, nfactors)
-	if nfactors > 1 {
-		for i := range start {
-			start[i] = 0.5
+	// Initial uniquenesses. R's minres/uls family optimizes one uniqueness
+	// parameter per variable, not one parameter per retained factor.
+	start := make([]float64, p)
+	for i := range start {
+		start[i] = 1.0 - smcVec[i]
+		if start[i] < 0.005 {
+			start[i] = 0.005
 		}
-	} else {
-		start[0] = smcVec[0]
+		if start[i] > 1.0 {
+			start[i] = 1.0
+		}
 	}
 
 	// Optimization
@@ -484,7 +487,14 @@ func minimumResidualFactoring(r, rMat *mat.Dense, nfactors int, fm string, covar
 
 	communalities := make([]float64, p)
 	for i := 0; i < p; i++ {
-		communalities[i] = 1.0 - psi[i%nfactors]
+		communality := 1.0 - psi[i]
+		if communality < 0 {
+			communality = 0
+		}
+		if communality > 1 {
+			communality = 1
+		}
+		communalities[i] = communality
 	}
 
 	return loadings, communalities, eValues
@@ -498,7 +508,11 @@ func fitResiduals(psi []float64, s *mat.Dense, nf int, fm string) float64 {
 	sWork := mat.NewDense(p, p, nil)
 	sWork.CloneFrom(s)
 	for i := 0; i < p; i++ {
-		sWork.Set(i, i, 1-psi[i%len(psi)])
+		v := 1 - psi[i]
+		if v < 0 {
+			v = 0
+		}
+		sWork.Set(i, i, v)
 	}
 
 	// Eigen decomposition
@@ -563,7 +577,11 @@ func faOutWLS(psi []float64, s *mat.Dense, q int) *mat.Dense {
 	sWork := mat.NewDense(p, p, nil)
 	sWork.CloneFrom(s)
 	for i := 0; i < p; i++ {
-		sWork.Set(i, i, sWork.At(i, i)-psi[i%len(psi)])
+		v := sWork.At(i, i) - psi[i]
+		if v < 0 {
+			v = 0
+		}
+		sWork.Set(i, i, v)
 	}
 
 	// Eigen decomposition
