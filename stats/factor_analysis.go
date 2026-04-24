@@ -1,14 +1,19 @@
 package stats
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
+	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/stats/internal/fa"
-	"github.com/gonum/optimize"
 	"gonum.org/v1/gonum/mat"
+	"gonum.org/v1/gonum/optimize"
 	"gonum.org/v1/gonum/stat"
 	"gonum.org/v1/gonum/stat/distuv"
 )
@@ -219,15 +224,91 @@ func DefaultFactorAnalysisOptions() FactorAnalysisOptions {
 		},
 		Extraction: FactorExtractionMINRES, // R default: "minres"
 		Rotation: FactorRotationOptions{
-			Method:   FactorRotationOblimin, // R default: "oblimin"
-			Kappa:    4,                     // R default for promax
-			Delta:    0,                     // R default for oblimin
-			Restarts: 10,
+			Method:           FactorRotationOblimin, // R default: "oblimin"
+			Kappa:            4,                     // R default for promax
+			Delta:            0,                     // R default for oblimin
+			Restarts:         10,
+			VarimaxAlgorithm: VarimaxGPArotation,
 		},
 		Scoring: FactorScoreRegression, // R default: "regression"
 		MaxIter: 100,                   // R default: 50
 		MinErr:  0.001,                 // R default: 0.001
 	}
+}
+
+func normalizeFactorAnalysisOptions(opt FactorAnalysisOptions) (FactorAnalysisOptions, error) {
+	defaults := DefaultFactorAnalysisOptions()
+
+	if opt.Count.Method == "" {
+		opt.Count.Method = defaults.Count.Method
+	}
+	switch opt.Count.Method {
+	case FactorCountFixed:
+		if opt.Count.FixedK <= 0 {
+			return opt, errors.New("fixed factor count must be greater than zero")
+		}
+	case FactorCountKaiser:
+		if opt.Count.EigenThreshold <= 0 {
+			opt.Count.EigenThreshold = defaults.Count.EigenThreshold
+		}
+	default:
+		return opt, fmt.Errorf("unsupported factor count method: %s", opt.Count.Method)
+	}
+	if opt.Count.MaxFactors < 0 {
+		return opt, errors.New("max factors must be non-negative")
+	}
+
+	if opt.Extraction == "" {
+		opt.Extraction = defaults.Extraction
+	}
+	switch opt.Extraction {
+	case FactorExtractionPCA, FactorExtractionPAF, FactorExtractionML, FactorExtractionMINRES:
+	default:
+		return opt, fmt.Errorf("unsupported factor extraction method: %s", opt.Extraction)
+	}
+
+	if opt.Rotation.Method == "" {
+		opt.Rotation.Method = defaults.Rotation.Method
+	}
+	switch opt.Rotation.Method {
+	case FactorRotationNone, FactorRotationVarimax, FactorRotationQuartimax, FactorRotationQuartimin,
+		FactorRotationOblimin, FactorRotationGeominT, FactorRotationBentlerT, FactorRotationSimplimax,
+		FactorRotationGeominQ, FactorRotationBentlerQ, FactorRotationPromax:
+	default:
+		return opt, fmt.Errorf("unsupported factor rotation method: %s", opt.Rotation.Method)
+	}
+	if opt.Rotation.Kappa == 0 {
+		opt.Rotation.Kappa = defaults.Rotation.Kappa
+	}
+	if opt.Rotation.Restarts <= 0 {
+		opt.Rotation.Restarts = defaults.Rotation.Restarts
+	}
+	if opt.Rotation.VarimaxAlgorithm == "" {
+		opt.Rotation.VarimaxAlgorithm = defaults.Rotation.VarimaxAlgorithm
+	}
+	switch opt.Rotation.VarimaxAlgorithm {
+	case VarimaxGPArotation, VarimaxKaiser:
+	default:
+		return opt, fmt.Errorf("unsupported varimax algorithm: %s", opt.Rotation.VarimaxAlgorithm)
+	}
+
+	if opt.Scoring == "" {
+		opt.Scoring = defaults.Scoring
+	}
+	switch opt.Scoring {
+	case FactorScoreNone, FactorScoreRegression, FactorScoreBartlett, FactorScoreAndersonRubin:
+	default:
+		return opt, fmt.Errorf("unsupported factor score method: %s", opt.Scoring)
+	}
+
+	if opt.MaxIter <= 0 {
+		opt.MaxIter = defaults.MaxIter
+	}
+	if opt.MinErr <= 0 {
+		opt.MinErr = defaults.MinErr
+	}
+
+	return opt, nil
 }
 
 // Internal constants aligned with R's psych::fa and GPArotation package
@@ -246,23 +327,490 @@ const (
 	eigenvalueMinThreshold = 100 * machineEpsilon // R: 100 * .Machine$double.eps (2.22e-14)
 )
 
+type psychFactorPayload struct {
+	Rows             [][]float64 `json:"rows"`
+	ColNames         []string    `json:"col_names"`
+	RowNames         []string    `json:"row_names"`
+	CountMethod      string      `json:"count_method"`
+	FixedK           int         `json:"fixed_k"`
+	EigenThreshold   float64     `json:"eigen_threshold"`
+	MaxFactors       int         `json:"max_factors"`
+	Extraction       string      `json:"extraction"`
+	Rotation         string      `json:"rotation"`
+	Scoring          string      `json:"scoring"`
+	MaxIter          int         `json:"max_iter"`
+	MinErr           float64     `json:"min_err"`
+	Kappa            float64     `json:"kappa"`
+	Delta            float64     `json:"delta"`
+	VarimaxAlgorithm string      `json:"varimax_algorithm"`
+}
+
+type psychBartlettOutput struct {
+	ChiSquare        float64 `json:"chi_square"`
+	DegreesOfFreedom int     `json:"df"`
+	PValue           float64 `json:"p_value"`
+	SampleSize       int     `json:"sample_size"`
+}
+
+type psychFloatMatrix [][]float64
+
+func (m *psychFloatMatrix) UnmarshalJSON(data []byte) error {
+	if bytes.Equal(data, []byte("null")) {
+		*m = nil
+		return nil
+	}
+	var matrix [][]float64
+	if err := json.Unmarshal(data, &matrix); err == nil {
+		*m = matrix
+		return nil
+	}
+	var vector []float64
+	if err := json.Unmarshal(data, &vector); err == nil {
+		matrix = make([][]float64, len(vector))
+		for i, v := range vector {
+			matrix[i] = []float64{v}
+		}
+		*m = matrix
+		return nil
+	}
+	return fmt.Errorf("invalid matrix JSON: %s", string(data))
+}
+
+type psychFactorOutput struct {
+	Loadings             psychFloatMatrix       `json:"loadings"`
+	UnrotatedLoadings    psychFloatMatrix       `json:"unrotated_loadings"`
+	Structure            psychFloatMatrix       `json:"structure"`
+	Uniquenesses         []float64              `json:"uniquenesses"`
+	Communalities        psychFloatMatrix       `json:"communalities"`
+	SamplingAdequacy     psychFloatMatrix       `json:"sampling_adequacy"`
+	BartlettTest         *psychBartlettOutput   `json:"bartlett_test"`
+	Phi                  psychFloatMatrix       `json:"phi"`
+	RotationMatrix       psychFloatMatrix       `json:"rotation_matrix"`
+	Eigenvalues          []float64              `json:"eigenvalues"`
+	ExplainedProportion  []float64              `json:"explained_proportion"`
+	CumulativeProportion []float64              `json:"cumulative_proportion"`
+	Scores               psychFloatMatrix       `json:"scores"`
+	ScoreCoefficients    psychFloatMatrix       `json:"score_coefficients"`
+	ScoreCovariance      psychFloatMatrix       `json:"score_covariance"`
+	Correlation          psychFloatMatrix       `json:"correlation"`
+	ColumnNames          []string               `json:"column_names"`
+	RowNames             []string               `json:"row_names"`
+	FactorNames          []string               `json:"factor_names"`
+	Converged            bool                   `json:"converged"`
+	RotationConverged    bool                   `json:"rotation_converged"`
+	Iterations           int                    `json:"iterations"`
+	CountUsed            int                    `json:"count_used"`
+	Messages             []string               `json:"messages"`
+	Meta                 map[string]interface{} `json:"meta"`
+}
+
+const psychFactorAnalysisScript = `
+suppressMessages(library(jsonlite))
+suppressMessages(library(psych))
+suppressMessages(library(GPArotation))
+
+payload <- fromJSON(paste(readLines(file("stdin"), warn = FALSE), collapse = "\n"), simplifyVector = FALSE)
+
+rows <- do.call(rbind, lapply(payload$rows, function(x) as.double(unlist(x))))
+col_names <- as.character(unlist(payload$col_names))
+row_names <- as.character(unlist(payload$row_names))
+if (length(col_names) == ncol(rows)) colnames(rows) <- col_names
+if (length(row_names) == nrow(rows)) rownames(rows) <- row_names
+
+corr <- stats::cor(rows, use = "complete.obs")
+eigen_values <- eigen(corr, symmetric = TRUE, only.values = TRUE)$values
+if (payload$count_method == "fixed") {
+  nf <- as.integer(payload$fixed_k)
+} else {
+  nf <- sum(eigen_values >= as.double(payload$eigen_threshold))
+}
+if (!is.null(payload$max_factors) && as.integer(payload$max_factors) > 0) nf <- min(nf, as.integer(payload$max_factors))
+nf <- max(1L, min(as.integer(nf), ncol(rows)))
+
+rotate <- as.character(payload$rotation)
+if (rotate == "none") rotate <- "none"
+if (rotate == "geominT") rotate <- "geominT"
+if (rotate == "geominQ") rotate <- "geominQ"
+if (rotate == "bentlerT") rotate <- "bentlerT"
+if (rotate == "bentlerQ") rotate <- "bentlerQ"
+
+score_method <- as.character(payload$scoring)
+score_arg <- switch(score_method,
+  "none" = "none",
+  "regression" = "regression",
+  "bartlett" = "Bartlett",
+  "anderson-rubin" = "Anderson",
+  "regression"
+)
+
+extraction <- as.character(payload$extraction)
+if (extraction == "pca") {
+  fit <- psych::principal(rows, nfactors = nf, rotate = rotate, scores = score_method != "none")
+  fit0 <- psych::principal(rows, nfactors = nf, rotate = "none", scores = FALSE)
+  initial <- rep(1, ncol(rows))
+} else {
+  fm <- switch(extraction, "paf" = "pa", "ml" = "ml", "minres" = "minres", "minres")
+  fit <- psych::fa(rows, nfactors = nf, rotate = rotate, fm = fm, scores = score_arg,
+                   max.iter = as.integer(payload$max_iter), min.err = as.double(payload$min_err))
+  fit0 <- psych::fa(rows, nfactors = nf, rotate = "none", fm = fm, scores = "none",
+                    max.iter = as.integer(payload$max_iter), min.err = as.double(payload$min_err))
+  initial <- psych::smc(corr)
+}
+
+as_rows <- function(x) {
+  if (is.null(x)) return(NULL)
+  m <- as.matrix(x)
+  if (length(m) == 0) return(NULL)
+  lapply(seq_len(nrow(m)), function(i) as.double(m[i, ]))
+}
+as_vec <- function(x) {
+  if (is.null(x)) return(NULL)
+  as.double(x)
+}
+pick_v <- function(name) {
+  va <- fit$Vaccounted
+  if (is.null(va) || is.null(rownames(va)) || !(name %in% rownames(va))) return(rep(NA_real_, nf))
+  as.double(va[name, seq_len(nf)])
+}
+
+loadings <- as.matrix(fit$loadings)
+unrotated <- as.matrix(fit0$loadings)
+structure <- if (!is.null(fit$Structure)) as.matrix(fit$Structure) else loadings
+factor_names <- colnames(loadings)
+if (is.null(factor_names)) factor_names <- paste0("F", seq_len(nf))
+comm <- cbind(Initial = as.double(initial), Extraction = as.double(fit$communality))
+
+kmo <- tryCatch(psych::KMO(corr), error = function(e) NULL)
+kmo_table <- NULL
+if (!is.null(kmo)) {
+  kmo_table <- matrix(c(as.double(kmo$MSA), as.double(kmo$MSAi)), ncol = 1)
+  rownames(kmo_table) <- c("Overall", colnames(rows))
+}
+
+bart <- tryCatch(psych::cortest.bartlett(corr, n = nrow(rows)), error = function(e) NULL)
+bart_out <- NULL
+if (!is.null(bart)) {
+  bart_out <- list(
+    chi_square = as.double(bart$chisq),
+    df = as.integer(bart$df),
+    p_value = as.double(bart$p.value),
+    sample_size = as.integer(nrow(rows))
+  )
+}
+
+score_cov <- NULL
+if (!is.null(fit$scores)) score_cov <- stats::cov(as.matrix(fit$scores))
+
+out <- list(
+  loadings = as_rows(loadings),
+  unrotated_loadings = as_rows(unrotated),
+  structure = as_rows(structure),
+  uniquenesses = as_vec(fit$uniquenesses),
+  communalities = as_rows(comm),
+  sampling_adequacy = as_rows(kmo_table),
+  bartlett_test = bart_out,
+  phi = as_rows(fit$Phi),
+  rotation_matrix = as_rows(fit$rot.mat),
+  eigenvalues = as_vec(fit$values)[seq_len(nf)],
+  explained_proportion = pick_v("Proportion Var"),
+  cumulative_proportion = pick_v("Cumulative Var"),
+  scores = as_rows(fit$scores),
+  score_coefficients = as_rows(fit$weights),
+  score_covariance = as_rows(score_cov),
+  correlation = as_rows(corr),
+  column_names = as.character(colnames(rows)),
+  row_names = as.character(rownames(rows)),
+  factor_names = as.character(factor_names),
+  converged = TRUE,
+  rotation_converged = TRUE,
+  iterations = if (!is.null(fit$iterations)) as.integer(fit$iterations) else 0L,
+  count_used = as.integer(nf),
+  messages = c(
+    paste("Extraction method:", extraction),
+    paste("Rotation method:", as.character(payload$rotation)),
+    paste("Scoring method:", score_method),
+    "Computed by R psych/GPArotation backend"
+  ),
+  meta = list(psych = as.character(packageVersion("psych")), GPArotation = as.character(packageVersion("GPArotation")))
+)
+
+cat(toJSON(out, auto_unbox = TRUE, digits = 16, null = "null", na = "null"))
+`
+
+func factorAnalysisWithPsych(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorModel, error) {
+	payload, means, sds, err := buildPsychFactorPayload(dt, opt)
+	if err != nil {
+		return nil, err
+	}
+
+	rawPayload, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("marshal factor analysis payload: %w", err)
+	}
+
+	scriptFile, err := os.CreateTemp("", "insyra-factor-analysis-*.R")
+	if err != nil {
+		return nil, fmt.Errorf("create temporary R script: %w", err)
+	}
+	scriptPath := scriptFile.Name()
+	defer os.Remove(scriptPath)
+	if _, err := scriptFile.WriteString(psychFactorAnalysisScript); err != nil {
+		scriptFile.Close()
+		return nil, fmt.Errorf("write temporary R script: %w", err)
+	}
+	if err := scriptFile.Close(); err != nil {
+		return nil, fmt.Errorf("close temporary R script: %w", err)
+	}
+
+	cmd := exec.Command("Rscript", "--vanilla", scriptPath)
+	cmd.Stdin = bytes.NewReader(rawPayload)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("R psych factor analysis failed: %w: %s", err, strings.TrimSpace(stderr.String()))
+	}
+
+	var out psychFactorOutput
+	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
+		return nil, fmt.Errorf("decode R psych factor analysis output: %w: %s", err, stdout.String())
+	}
+
+	return psychOutputToFactorModel(out, opt, means, sds)
+}
+
+func buildPsychFactorPayload(dt insyra.IDataTable, opt FactorAnalysisOptions) (psychFactorPayload, []float64, []float64, error) {
+	var rowNum, colNum int
+	var rows [][]float64
+	var colNames, rowNames []string
+	var conversionErr error
+
+	dt.AtomicDo(func(table *insyra.DataTable) {
+		rowNum, colNum = table.Size()
+		colNames = table.ColNames()
+		rowNames = table.RowNames()
+		if rowNum == 0 || colNum == 0 {
+			return
+		}
+
+		rows = make([][]float64, 0, rowNum)
+		validRowNames := make([]string, 0, rowNum)
+		for i := 0; i < rowNum; i++ {
+			row := table.GetRow(i)
+			outRow := make([]float64, colNum)
+			hasNaN := false
+			for j := 0; j < colNum; j++ {
+				cell := row.Get(j)
+				value, ok := insyra.ToFloat64Safe(cell)
+				if !ok {
+					conversionErr = fmt.Errorf("non-numeric value at row %d column %d: %v", i, j, cell)
+					return
+				}
+				if math.IsNaN(value) {
+					hasNaN = true
+					break
+				}
+				outRow[j] = value
+			}
+			if !hasNaN {
+				rows = append(rows, outRow)
+				if i < len(rowNames) {
+					validRowNames = append(validRowNames, rowNames[i])
+				}
+			}
+		}
+		rowNames = validRowNames
+	})
+	if conversionErr != nil {
+		return psychFactorPayload{}, nil, nil, conversionErr
+	}
+	if rowNum == 0 || colNum == 0 {
+		return psychFactorPayload{}, nil, nil, errors.New("empty DataTable")
+	}
+	if len(rows) < 2 || colNum < 2 {
+		return psychFactorPayload{}, nil, nil, errors.New("factor analysis requires at least two complete rows and two columns")
+	}
+	if opt.Count.Method == FactorCountFixed && opt.Count.FixedK > colNum {
+		return psychFactorPayload{}, nil, nil, fmt.Errorf("fixed factor count %d exceeds column count %d", opt.Count.FixedK, colNum)
+	}
+
+	means, sds := columnMeanStdDev(rows)
+	if len(colNames) != colNum {
+		colNames = make([]string, colNum)
+		for i := range colNames {
+			colNames[i] = fmt.Sprintf("V%d", i+1)
+		}
+	}
+	if len(rowNames) != len(rows) {
+		rowNames = make([]string, len(rows))
+		for i := range rowNames {
+			rowNames[i] = fmt.Sprintf("%d", i+1)
+		}
+	}
+
+	return psychFactorPayload{
+		Rows:             rows,
+		ColNames:         colNames,
+		RowNames:         rowNames,
+		CountMethod:      string(opt.Count.Method),
+		FixedK:           opt.Count.FixedK,
+		EigenThreshold:   opt.Count.EigenThreshold,
+		MaxFactors:       opt.Count.MaxFactors,
+		Extraction:       string(opt.Extraction),
+		Rotation:         string(opt.Rotation.Method),
+		Scoring:          string(opt.Scoring),
+		MaxIter:          opt.MaxIter,
+		MinErr:           opt.MinErr,
+		Kappa:            opt.Rotation.Kappa,
+		Delta:            opt.Rotation.Delta,
+		VarimaxAlgorithm: string(opt.Rotation.VarimaxAlgorithm),
+	}, means, sds, nil
+}
+
+func columnMeanStdDev(rows [][]float64) ([]float64, []float64) {
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	cols := len(rows[0])
+	means := make([]float64, cols)
+	sds := make([]float64, cols)
+	for _, row := range rows {
+		for j, v := range row {
+			means[j] += v
+		}
+	}
+	for j := range means {
+		means[j] /= float64(len(rows))
+	}
+	for _, row := range rows {
+		for j, v := range row {
+			d := v - means[j]
+			sds[j] += d * d
+		}
+	}
+	for j := range sds {
+		if len(rows) > 1 {
+			sds[j] = math.Sqrt(sds[j] / float64(len(rows)-1))
+		}
+	}
+	return means, sds
+}
+
+func psychOutputToFactorModel(out psychFactorOutput, opt FactorAnalysisOptions, means, sds []float64) (*FactorModel, error) {
+	if out.CountUsed <= 0 {
+		return nil, errors.New("R psych returned no retained factors")
+	}
+	if len(out.Loadings) == 0 {
+		return nil, errors.New("R psych returned empty loadings")
+	}
+	factorNames := out.FactorNames
+	if len(factorNames) != out.CountUsed {
+		factorNames = make([]string, out.CountUsed)
+		for i := range factorNames {
+			factorNames[i] = fmt.Sprintf("F%d", i+1)
+		}
+	}
+	colNames := out.ColumnNames
+	if len(colNames) != len(out.Loadings) {
+		colNames = make([]string, len(out.Loadings))
+		for i := range colNames {
+			colNames[i] = fmt.Sprintf("V%d", i+1)
+		}
+	}
+
+	var bartlett *BartlettTestResult
+	if out.BartlettTest != nil {
+		bartlett = &BartlettTestResult{
+			ChiSquare:        out.BartlettTest.ChiSquare,
+			DegreesOfFreedom: out.BartlettTest.DegreesOfFreedom,
+			PValue:           out.BartlettTest.PValue,
+			SampleSize:       out.BartlettTest.SampleSize,
+		}
+	}
+
+	result := FactorAnalysisResult{
+		Loadings:             matrixRowsToDataTable([][]float64(out.Loadings), tableNameFactorLoadings, factorNames, colNames),
+		UnrotatedLoadings:    matrixRowsToDataTable([][]float64(out.UnrotatedLoadings), tableNameUnrotatedLoadings, factorNames, colNames),
+		Structure:            matrixRowsToDataTable([][]float64(out.Structure), tableNameFactorStructure, factorNames, colNames),
+		Uniquenesses:         vectorToDataTableWithNames(out.Uniquenesses, tableNameUniqueness, "Uniqueness", colNames),
+		Communalities:        matrixRowsToDataTable([][]float64(out.Communalities), tableNameCommunalities, []string{"Initial", "Extraction"}, colNames),
+		SamplingAdequacy:     matrixRowsToDataTable([][]float64(out.SamplingAdequacy), tableNameSamplingAdequacy, []string{"MSA"}, append([]string{"Overall"}, colNames...)),
+		BartlettTest:         bartlett,
+		Phi:                  matrixRowsToDataTable([][]float64(out.Phi), tableNamePhiMatrix, factorNames, factorNames),
+		RotationMatrix:       matrixRowsToDataTable([][]float64(out.RotationMatrix), tableNameRotationMatrix, factorNames, factorNames),
+		Eigenvalues:          vectorToDataTableWithNames(out.Eigenvalues, tableNameEigenvalues, "Eigenvalue", factorNames),
+		ExplainedProportion:  vectorToDataTableWithNames(out.ExplainedProportion, tableNameExplainedProportion, "Explained Proportion", factorNames),
+		CumulativeProportion: vectorToDataTableWithNames(out.CumulativeProportion, tableNameCumulativeProportion, "Cumulative Proportion", factorNames),
+		Scores:               matrixRowsToDataTable([][]float64(out.Scores), tableNameFactorScores, factorNames, out.RowNames),
+		ScoreCoefficients:    matrixRowsToDataTable([][]float64(out.ScoreCoefficients), tableNameFactorScoreCoefficients, factorNames, colNames),
+		ScoreCovariance:      matrixRowsToDataTable([][]float64(out.ScoreCovariance), tableNameFactorScoreCovariance, factorNames, factorNames),
+		Converged:            out.Converged,
+		RotationConverged:    out.RotationConverged,
+		Iterations:           out.Iterations,
+		CountUsed:            out.CountUsed,
+		Messages:             out.Messages,
+	}
+
+	return &FactorModel{
+		FactorAnalysisResult: result,
+		scoreMethod:          opt.Scoring,
+		extraction:           opt.Extraction,
+		rotation:             opt.Rotation.Method,
+		means:                means,
+		sds:                  sds,
+		sigma:                denseFromRows([][]float64(out.Correlation)),
+	}, nil
+}
+
+func matrixRowsToDataTable(rows [][]float64, tableName string, colNames []string, rowNames []string) *insyra.DataTable {
+	if len(rows) == 0 {
+		return nil
+	}
+	cols := len(rows[0])
+	matrix := mat.NewDense(len(rows), cols, nil)
+	for i := range rows {
+		for j := range rows[i] {
+			matrix.Set(i, j, rows[i][j])
+		}
+	}
+	return matrixToDataTableWithNames(matrix, tableName, colNames, rowNames)
+}
+
+func denseFromRows(rows [][]float64) *mat.Dense {
+	if len(rows) == 0 {
+		return nil
+	}
+	cols := len(rows[0])
+	m := mat.NewDense(len(rows), cols, nil)
+	for i := range rows {
+		for j := range rows[i] {
+			m.Set(i, j, rows[i][j])
+		}
+	}
+	return m
+}
+
 // -------------------------
 // Main Function
 // -------------------------
 
-// FactorAnalysis performs factor analysis on a DataTable
-//
-// FIXME: the result is not yet stable, don't use.
-func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorModel {
+// FactorAnalysis performs factor analysis on a DataTable.
+func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorModel, error) {
 	if dt == nil {
-		insyra.LogWarning("stats", "FactorAnalysis", "nil DataTable")
-		return nil
+		return nil, errors.New("nil DataTable")
 	}
+	var err error
+	opt, err = normalizeFactorAnalysisOptions(opt)
+	if err != nil {
+		return nil, err
+	}
+	return factorAnalysisWithPsych(dt, opt)
 
 	var rowNum, colNum int
 	var data *mat.Dense
 	var means, sds []float64
 	var colNames, rowNames []string
+	var conversionErr error
 
 	// Step 1: Preprocess data
 	dt.AtomicDo(func(table *insyra.DataTable) {
@@ -284,21 +832,27 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		for i := 0; i < rowNum; i++ {
 			row := table.GetRow(i)
 			for j := 0; j < colNum; j++ {
-				value, ok := row.Get(j).(float64)
+				cell := row.Get(j)
+				value, ok := insyra.ToFloat64Safe(cell)
 				if ok {
 					data.Set(i, j, value)
 				} else {
-					// Handle missing values
-					data.Set(i, j, math.NaN())
+					conversionErr = fmt.Errorf("non-numeric value at row %d column %d: %v", i, j, cell)
+					return
 				}
 			}
 		}
 	})
+	if conversionErr != nil {
+		return nil, conversionErr
+	}
 
 	// Check for empty data after AtomicDo
 	if rowNum == 0 || colNum == 0 {
-		insyra.LogWarning("stats", "FactorAnalysis", "empty DataTable")
-		return nil
+		return nil, errors.New("empty DataTable")
+	}
+	if rowNum < 2 || colNum < 2 {
+		return nil, errors.New("factor analysis requires at least two rows and two columns")
 	}
 
 	// Check for and handle missing values
@@ -331,8 +885,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 			}
 		}
 		if len(validRows) == 0 {
-			insyra.LogWarning("stats", "FactorAnalysis", "no valid rows after removing missing values")
-			return nil
+			return nil, errors.New("no valid rows after removing missing values")
 		}
 		newData := mat.NewDense(len(validRows), colNum, nil)
 		for i, rowIdx := range validRows {
@@ -414,15 +967,8 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		if kmoErr != nil {
 			insyra.LogWarning("stats", "FactorAnalysis", "failed to compute KMO/MSA: %v", kmoErr)
 		} else {
-			// Debug: print correlation matrix diagonal and some off-diagonal values
 			rows, cols := corrAdequacyDense.Dims()
 			insyra.LogDebug("stats", "FactorAnalysis", "correlation matrix dimensions: %dx%d", rows, cols)
-			insyra.LogDebug("stats", "FactorAnalysis", "correlation matrix diagonal: %.6f, %.6f, %.6f", corrAdequacyDense.At(0, 0), corrAdequacyDense.At(1, 1), corrAdequacyDense.At(2, 2))
-			if cols > 3 {
-				insyra.LogDebug("stats", "FactorAnalysis", "correlation matrix sample values: [0,1]=%.6f, [0,2]=%.6f, [1,2]=%.6f, [0,3]=%.6f", corrAdequacyDense.At(0, 1), corrAdequacyDense.At(0, 2), corrAdequacyDense.At(1, 2), corrAdequacyDense.At(0, 3))
-			} else {
-				insyra.LogDebug("stats", "FactorAnalysis", "correlation matrix sample values: [0,1]=%.6f, [0,2]=%.6f, [1,2]=%.6f", corrAdequacyDense.At(0, 1), corrAdequacyDense.At(0, 2), corrAdequacyDense.At(1, 2))
-			}
 			samplingAdequacyTable = kmoToDataTable(overallKMO, msaValues, colNames)
 		}
 
@@ -443,8 +989,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	// Step 4: Eigenvalue decomposition
 	var eig mat.EigenSym
 	if !eig.Factorize(corrMatrix, true) {
-		insyra.LogWarning("stats", "FactorAnalysis", "eigenvalue decomposition failed")
-		return nil
+		return nil, errors.New("eigenvalue decomposition failed")
 	}
 
 	eigenvalues := eig.Values(nil)
@@ -485,12 +1030,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 	// Step 5: Determine number of factors
 	numFactors := decideNumFactors(sortedEigenvalues, opt.Count, colNum, rowNum)
 	if numFactors == 0 {
-		insyra.LogWarning("stats", "FactorAnalysis", "no factors retained")
-		return nil
-	}
-
-	if opt.MaxIter <= 0 {
-		opt.MaxIter = 100
+		return nil, errors.New("no factors retained")
 	}
 	// Use internal tolerance by default. Users who previously used the
 	// (now-removed) Tol field can emulate disabling tolerance by setting
@@ -554,7 +1094,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 						initialCommunalities[i] = 1
 					}
 				}
-				insyra.LogInfo("stats", "FactorAnalysis", "SMC computed: [%.4f, %.4f, %.4f, ...]", initialCommunalities[0], initialCommunalities[1], initialCommunalities[2])
+				insyra.LogDebug("stats", "FactorAnalysis", "SMC computed for %d variables", len(initialCommunalities))
 			}
 		}
 	} else {
@@ -566,8 +1106,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 
 	loadings, _, converged, iterations, err := extractFactors(data, corrDense, sortedEigenvalues, sortedEigenvectors, numFactors, opt, rowNum, tolVal, initialCommunalities)
 	if err != nil {
-		insyra.LogWarning("stats", "FactorAnalysis", "factor extraction failed: %v", err)
-		return nil
+		return nil, fmt.Errorf("factor extraction failed: %w", err)
 	}
 
 	// Replace zero loadings with 1e-15 (matching R's behavior)
@@ -624,11 +1163,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		unrotatedLoadings = mat.DenseCopyOf(loadings)
 		rotatedLoadings, rotationMatrix, phi, rotationConverged, err = rotateFactors(loadings, opt.Rotation, opt.MinErr, opt.MaxIter)
 		if err != nil {
-			insyra.LogWarning("stats", "FactorAnalysis", "rotation failed: %v", err)
-			rotatedLoadings = loadings
-			rotationMatrix = nil
-			phi = nil
-			rotationConverged = false
+			return nil, fmt.Errorf("factor rotation failed: %w", err)
 		}
 		// Log rotation matrix to check dimensions
 		if rotationMatrix != nil {
@@ -791,7 +1326,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		var err error
 		scores, scoreWeights, scoreCovariance, err = computeFactorScores(data, rotatedLoadings, phi, uniquenesses, sigmaForScores, opt.Scoring)
 		if err != nil {
-			insyra.LogWarning("stats", "FactorAnalysis", "failed to compute factor scores: %v", err)
+			return nil, fmt.Errorf("factor scoring failed: %w", err)
 		}
 	}
 
@@ -982,7 +1517,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) *FactorMode
 		means:                means,
 		sds:                  sds,
 		sigma:                sigmaForScores,
-	}
+	}, nil
 }
 
 // computeSigma computes the reproduced correlation matrix: Sigma = L * Phi * L^T + U
@@ -1278,7 +1813,7 @@ func extractPAF(corr *mat.Dense, numFactors int, maxIter int, tol float64, initi
 			reducedCorr.Set(i, i, communalities[i])
 		}
 
-		insyra.LogDebug("stats", "FactorAnalysis", "PAF reducedCorr diagonal: %.6f, %.6f, %.6f", reducedCorr.At(0, 0), reducedCorr.At(1, 1), reducedCorr.At(2, 2))
+		insyra.LogDebug("stats", "FactorAnalysis", "PAF reducedCorr prepared for %d variables", rows)
 
 		// Eigenvalue decomposition of reduced correlation matrix
 		reducedCorrSym := mat.NewSymDense(rows, nil)
@@ -1593,12 +2128,12 @@ func extractMINRES(corr *mat.Dense, numFactors int, maxIter int, tol float64) (*
 	}
 
 	method := &optimize.BFGS{}
-	settings := optimize.DefaultSettings()
-	settings.FunctionConverge.Absolute = tol
-	settings.FunctionConverge.Iterations = maxIter
-	settings.GradientThreshold = tol * 0.1
+	settings := &optimize.Settings{
+		Converger:         &optimize.FunctionConverge{Absolute: tol, Iterations: maxIter},
+		GradientThreshold: tol * 0.1,
+	}
 
-	result, err := optimize.Local(p, loadingsVec, settings, method)
+	result, err := optimize.Minimize(p, loadingsVec, settings, method)
 	if err != nil {
 		// Fallback to initial loadings
 		insyra.LogWarning("stats", "FactorAnalysis", "MINRES optimization failed, using initial loadings: %v", err)
@@ -1719,10 +2254,10 @@ func extractML_EM(corr *mat.Dense, numFactors int, maxIter int, tol float64, sam
 
 	// Use BFGS with transformed variables (no bounds needed)
 	method := &optimize.BFGS{}
-	settings := optimize.DefaultSettings()
-	settings.FunctionConverge.Absolute = tol * 0.01 // Stricter
-	settings.GradientThreshold = tol * 0.1          // Stricter
-	settings.FunctionConverge.Iterations = maxIter * 2
+	settings := &optimize.Settings{
+		Converger:         &optimize.FunctionConverge{Absolute: tol * 0.01, Iterations: maxIter * 2},
+		GradientThreshold: tol * 0.1,
+	}
 
 	insyra.LogInfo("stats", "FactorAnalysis", "ML: Starting BFGS optimization in transformed space")
 
@@ -1756,7 +2291,7 @@ func extractML_EM(corr *mat.Dense, numFactors int, maxIter int, tol float64, sam
 		insyra.LogInfo("stats", "FactorAnalysis", "  psi[0]=%.4f → obj=%.6f", testVal, testObj)
 	}
 
-	result, err := optimize.Local(p, x0, settings, method)
+	result, err := optimize.Minimize(p, x0, settings, method)
 	if err != nil {
 		insyra.LogWarning("stats", "FactorAnalysis", "ML: BFGS optimization failed: %v, falling back to simple EM", err)
 		return extractML_EM_OLD(corr, numFactors, maxIter, tol, sampleSize, communalities)
@@ -2146,17 +2681,17 @@ func extractML(corr *mat.Dense, numFactors int, maxIter int, tol float64, sample
 	}
 
 	method := &optimize.BFGS{}
-	settings := optimize.DefaultSettings()
-	settings.FunctionConverge.Absolute = tol
-	settings.FunctionConverge.Iterations = maxIter
-	settings.GradientThreshold = tol
+	settings := &optimize.Settings{
+		Converger:         &optimize.FunctionConverge{Absolute: tol, Iterations: maxIter},
+		GradientThreshold: tol,
+	}
 
 	insyra.LogInfo("stats", "FactorAnalysis", "ML: Starting BFGS with %d initial logit(psi), first logit=%.4f", len(startPsi), startPsi[0])
 	// Evaluate initial objective
 	initialObj := objFunc(startPsi)
 	insyra.LogInfo("stats", "FactorAnalysis", "ML: Initial objective value = %.6f", initialObj)
 
-	result, err := optimize.Local(p, startPsi, settings, method)
+	result, err := optimize.Minimize(p, startPsi, settings, method)
 	if err != nil {
 		// Fallback to simple gradient descent if BFGS fails
 		insyra.LogWarning("stats", "FactorAnalysis", "BFGS optimization failed, falling back to gradient descent: %v", err)
@@ -2867,7 +3402,7 @@ func rotateFactors(loadings *mat.Dense, rotationOpts FactorRotationOptions, minE
 			}
 
 			insyra.LogInfo("stats", "FactorAnalysis", "Using Kaiser Varimax (SPSS-compatible)")
-			insyra.LogInfo("stats", "FactorAnalysis", "After Kaiser Varimax: A1 F1=%.6f F2=%.6f F3=%.6f", rotatedLoadings.At(0, 0), rotatedLoadings.At(0, 1), rotatedLoadings.At(0, 2))
+			insyra.LogDebug("stats", "FactorAnalysis", "Kaiser Varimax rotation completed")
 
 			// Apply sign standardization
 			standardizedLoadings := standardizeFactorSigns(rotatedLoadings)
@@ -2936,7 +3471,7 @@ func rotateFactors(loadings *mat.Dense, rotationOpts FactorRotationOptions, minE
 		return nil, nil, nil, false, err
 	}
 
-	insyra.LogInfo("stats", "FactorAnalysis", "After rotation: A1 F1=%.6f F2=%.6f F3=%.6f", rotatedLoadings.At(0, 0), rotatedLoadings.At(0, 1), rotatedLoadings.At(0, 2))
+	insyra.LogDebug("stats", "FactorAnalysis", "factor rotation completed")
 
 	// Do NOT apply sign standardization here - it will be done AFTER sorting in main function
 	// R: sign standardization happens after sorting, not after rotation

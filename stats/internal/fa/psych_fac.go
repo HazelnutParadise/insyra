@@ -6,8 +6,8 @@ import (
 	"math"
 
 	"github.com/HazelnutParadise/insyra"
-	"github.com/gonum/optimize"
 	"gonum.org/v1/gonum/mat"
+	"gonum.org/v1/gonum/optimize"
 )
 
 // FacOptions represents options for the Fac function
@@ -451,20 +451,27 @@ func minimumResidualFactoring(r, rMat *mat.Dense, nfactors int, fm string, covar
 		},
 	}
 
-	settings := optimize.DefaultSettings()
-	method := &optimize.BFGS{}
+	settings := &optimize.Settings{MajorIterations: maxIter}
 
-	result, err := optimize.Local(problem, start, settings, method)
-	_ = err // Ignore error, fallback handled below
+	result, err := optimize.Minimize(problem, start, settings, &optimize.NelderMead{})
+	psi := start
+	if err == nil && result != nil && result.X != nil {
+		psi = result.X
+	}
 
 	// Extract loadings
-	loadings := faOutWLS(result.X, r, nfactors)
+	loadings := faOutWLS(psi, r, nfactors)
 
 	// Compute eigenvalues
 	s := mat.NewDense(p, p, nil)
 	s.CloneFrom(r)
 	for i := 0; i < p; i++ {
-		s.Set(i, i, loadings.At(i, i))
+		communality := 0.0
+		for j := 0; j < nfactors; j++ {
+			v := loadings.At(i, j)
+			communality += v * v
+		}
+		s.Set(i, i, communality)
 	}
 	var eig mat.Eigen
 	eig.Factorize(s, mat.EigenNone)
@@ -477,7 +484,7 @@ func minimumResidualFactoring(r, rMat *mat.Dense, nfactors int, fm string, covar
 
 	communalities := make([]float64, p)
 	for i := 0; i < p; i++ {
-		communalities[i] = 1.0 - result.X[i%nfactors]
+		communalities[i] = 1.0 - psi[i%nfactors]
 	}
 
 	return loadings, communalities, eValues
@@ -620,16 +627,14 @@ func maximumLikelihoodFactoring(r, rMat *mat.Dense, nfactors int, covar bool, mi
 		},
 	}
 
-	settings := optimize.DefaultSettings()
-	method := &optimize.BFGS{}
+	settings := &optimize.Settings{MajorIterations: maxIter}
 
-	result, err := optimize.Local(problem, start, settings, method)
-	_ = err // Ignore error, fallback handled below
+	result, err := optimize.Minimize(problem, start, settings, &optimize.NelderMead{})
 
 	// Use result.X if optimization succeeded, otherwise use start values
-	psi := result.X
-	if err != nil || psi == nil {
-		psi = start
+	psi := start
+	if err == nil && result != nil && result.X != nil {
+		psi = result.X
 	}
 
 	// Extract loadings
