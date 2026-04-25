@@ -4,6 +4,7 @@ package fa
 import (
 	"fmt"
 
+	statslinalg "github.com/HazelnutParadise/insyra/stats/internal/linalg"
 	"gonum.org/v1/gonum/mat"
 )
 
@@ -12,7 +13,7 @@ import (
 func SMC(r *mat.Dense, isCorr bool) (*mat.VecDense, error) {
 	if !isCorr {
 		// If not correlation matrix, compute it first
-		r = CorrelationMatrix(r)
+		r = statslinalg.CorrelationDense(r)
 	}
 	smc, diagnostics := Smc(r, nil) // Use default options
 	if smc == nil {

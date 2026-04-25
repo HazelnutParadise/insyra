@@ -31,11 +31,19 @@ func Factor2Cluster(loadings *mat.Dense, opts *Factor2ClusterOptions) *mat.Dense
 
 	// If using R-like pipeline, apply rotations first
 	if opts.UseRLikePipeline {
-		// Apply varimax rotation
 		varimaxResult := Varimax(loadings, true, 1e-5, 1000)
-		loadings = varimaxResult["loadings"].(*mat.Dense)
-		// Note: Full R pipeline would include target rotation, but simplified here
-		// to avoid circular dependencies. Target rotation can be applied separately if needed.
+		if errMsg, ok := varimaxResult["error"].(string); ok && errMsg != "" {
+			return nil
+		}
+		varimaxLoadings, ok := varimaxResult["loadings"].(*mat.Dense)
+		if !ok || varimaxLoadings == nil {
+			return nil
+		}
+		targetLoadings, _, _, err := TargetRot(varimaxLoadings, nil)
+		if err != nil {
+			return nil
+		}
+		loadings = targetLoadings
 	}
 
 	// For each variable, find the factor with maximum absolute loading
