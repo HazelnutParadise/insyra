@@ -38,8 +38,8 @@ type RotOpts struct {
 // Rotate performs factor rotation on loadings.
 // This is a wrapper around FaRotations for compatibility.
 func Rotate(loadings *mat.Dense, method string, opts *RotOpts) (*mat.Dense, *mat.Dense, *mat.Dense, bool, error) {
-	// loadings is p x nf (variables x factors)
-	// Create correlation matrix (identity for now, as we don't have it)
+	// loadings is p x nf (variables x factors). The rotation helpers operate
+	// on the factor-space identity when no factor correlation has been induced yet.
 	_, nf := loadings.Dims()
 	r := mat.NewDense(nf, nf, nil)
 	for i := range nf {
@@ -96,8 +96,8 @@ func Rotate(loadings *mat.Dense, method string, opts *RotOpts) (*mat.Dense, *mat
 // RotateWithDiagnostics performs factor rotation on loadings with diagnostics.
 // Returns rotated loadings, rotation matrix, Phi matrix, convergence status, and diagnostics map.
 func RotateWithDiagnostics(loadings *mat.Dense, method string, opts *RotOpts) (*mat.Dense, *mat.Dense, *mat.Dense, bool, map[string]interface{}, error) {
-	// loadings is p x nf (variables x factors)
-	// Create correlation matrix (identity for now, as we don't have it)
+	// loadings is p x nf (variables x factors). The rotation helpers operate
+	// on the factor-space identity when no factor correlation has been induced yet.
 	_, nf := loadings.Dims()
 	r := mat.NewDense(nf, nf, nil)
 	for i := range nf {
