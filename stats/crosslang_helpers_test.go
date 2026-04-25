@@ -102,6 +102,16 @@ func baselineFloatSlice(t *testing.T, m crossLangBaseline, key string) []float64
 	}
 	arr, ok := v.([]any)
 	if !ok {
+		if f, ok := toFloat64FromAny(v); ok {
+			return []float64{f}
+		}
+		if s, ok := v.(string); ok {
+			f, err := strconv.ParseFloat(s, 64)
+			if err != nil {
+				t.Fatalf("baseline key %q parse float failed: %v (raw=%v)", key, err, s)
+			}
+			return []float64{f}
+		}
 		t.Fatalf("baseline key %q has non-array type %T", key, v)
 	}
 	out := make([]float64, len(arr))
@@ -131,6 +141,19 @@ func baselineFloatMatrix(t *testing.T, m crossLangBaseline, key string) [][]floa
 	rows, ok := v.([]any)
 	if !ok {
 		t.Fatalf("baseline key %q has non-matrix type %T", key, v)
+	}
+	if len(rows) > 0 {
+		if _, ok := toFloat64FromAny(rows[0]); ok {
+			mat := make([][]float64, len(rows))
+			for i, cell := range rows {
+				f, ok := toFloat64FromAny(cell)
+				if !ok {
+					t.Fatalf("baseline key %q row %d has non-float scalar type %T", key, i, cell)
+				}
+				mat[i] = []float64{f}
+			}
+			return mat
+		}
 	}
 	mat := make([][]float64, len(rows))
 	for i, r := range rows {
