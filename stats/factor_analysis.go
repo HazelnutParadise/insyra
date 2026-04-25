@@ -2541,17 +2541,10 @@ func computeBartlettFromCorrelation(corr *mat.Dense, n int) (chiSquare float64, 
 	df = p * (p - 1) / 2
 
 	detR := mat.Det(corr)
-	var logDetR float64
-	if detR > 0 && !math.IsNaN(detR) {
-		logDetR = math.Log(detR)
-	} else {
-		var ok bool
-		logDetR, ok = correlationLogDet(corr)
-		if !ok || math.IsNaN(logDetR) {
-			return 0, 1.0, df, nil
-		}
+	if detR <= 0 || math.IsNaN(detR) {
+		return 0, 0, df, fmt.Errorf("correlation matrix determinant must be positive for Bartlett's test")
 	}
-	chiSquare = -logDetR * (float64(n-1) - (2*float64(p)+5)/6)
+	chiSquare = -math.Log(detR) * (float64(n-1) - (2*float64(p)+5)/6)
 
 	// Compute p-value using chi-square distribution
 	if chiSquare > 0 && chiSquare < 1e10 { // Check for reasonable chi-square value
@@ -2561,43 +2554,6 @@ func computeBartlettFromCorrelation(corr *mat.Dense, n int) (chiSquare float64, 
 	}
 
 	return chiSquare, pValue, df, nil
-}
-
-func correlationLogDet(corr *mat.Dense) (float64, bool) {
-	p, _ := corr.Dims()
-	sym := mat.NewSymDense(p, nil)
-	for i := range p {
-		for j := 0; j <= i; j++ {
-			sym.SetSym(i, j, 0.5*(corr.At(i, j)+corr.At(j, i)))
-		}
-	}
-	var chol mat.Cholesky
-	if chol.Factorize(sym) {
-		var tri mat.TriDense
-		chol.LTo(&tri)
-		logDet := 0.0
-		for i := range p {
-			d := tri.At(i, i)
-			if d <= 0 || math.IsNaN(d) {
-				return 0, false
-			}
-			logDet += 2 * math.Log(d)
-		}
-		return logDet, true
-	}
-
-	var eig mat.EigenSym
-	if !eig.Factorize(sym, false) {
-		return 0, false
-	}
-	logDet := 0.0
-	for _, value := range eig.Values(nil) {
-		if value <= 0 || math.IsNaN(value) {
-			return 0, false
-		}
-		logDet += math.Log(value)
-	}
-	return logDet, true
 }
 
 // bartlettToDataTable converts Bartlett's test results to BartlettTestResult struct
