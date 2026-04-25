@@ -74,12 +74,7 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 		// This would need to be passed as parameter
 		return nil, fmt.Errorf("targetT requires Target matrix parameter")
 	default:
-		Gq, f, _ := vgQVarimax(L)
-		VgQ = map[string]any{
-			"Gq":     Gq,
-			"f":      f,
-			"Method": "vgQ." + method,
-		}
+		return nil, fmt.Errorf("unsupported orthogonal rotation criterion: %s", method)
 	}
 
 	// G <- crossprod(A, VgQ$Gq)
@@ -185,11 +180,7 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 					"f":  fNew,
 				}
 			default:
-				GqNew, fNew, _ := vgQVarimax(L)
-				VgQt = map[string]any{
-					"Gq": GqNew,
-					"f":  fNew,
-				}
+				return nil, fmt.Errorf("unsupported orthogonal rotation criterion: %s", method)
 			}
 
 			// if (VgQt$f < (f - 0.5 * s^2 * al)) break

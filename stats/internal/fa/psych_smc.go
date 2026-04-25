@@ -213,13 +213,8 @@ func Smc(r *mat.Dense, opts *SmcOptions) (*mat.VecDense, map[string]interface{})
 	}
 
 	if err != nil || RInv == nil {
-		// Fallback: set SMC to 1
-		smc := mat.NewVecDense(p, nil)
-		for i := range p {
-			smc.SetVec(i, 1.0)
-		}
 		diagnostics["errors"] = append(diagnostics["errors"].([]string), "pseudoinverse computation failed")
-		return smc, diagnostics
+		return nil, diagnostics
 	}
 
 	// Compute SMC = 1 - 1/diag(R.inv)
@@ -234,7 +229,8 @@ func Smc(r *mat.Dense, opts *SmcOptions) (*mat.VecDense, map[string]interface{})
 				if diagVal > 0 {
 					smc[i] = 1.0 - 1.0/diagVal
 				} else {
-					smc[i] = 1.0 // Fallback
+					diagnostics["errors"] = append(diagnostics["errors"].([]string), "non-positive inverse diagonal in SMC computation")
+					smc[i] = 1.0
 				}
 			}
 		}
@@ -246,7 +242,8 @@ func Smc(r *mat.Dense, opts *SmcOptions) (*mat.VecDense, map[string]interface{})
 			if diagVal > 0 {
 				smc[i] = 1.0 - 1.0/diagVal
 			} else {
-				smc[i] = 1.0 // Fallback
+				diagnostics["errors"] = append(diagnostics["errors"].([]string), "non-positive inverse diagonal in SMC computation")
+				smc[i] = 1.0
 			}
 		}
 	}
@@ -265,10 +262,12 @@ func Smc(r *mat.Dense, opts *SmcOptions) (*mat.VecDense, map[string]interface{})
 					if diagVal > 0 {
 						smcNA[i] = 1.0 - 1.0/diagVal
 					} else {
+						diagnostics["errors"] = append(diagnostics["errors"].([]string), "non-positive inverse diagonal in SMC NA computation")
 						smcNA[i] = 1.0
 					}
 				}
 			} else {
+				diagnostics["errors"] = append(diagnostics["errors"].([]string), "pseudoinverse computation failed for SMC NA reconstruction")
 				smcNA = make([]float64, len(smc))
 				for i := range smcNA {
 					smcNA[i] = 1.0
@@ -283,6 +282,7 @@ func Smc(r *mat.Dense, opts *SmcOptions) (*mat.VecDense, map[string]interface{})
 	// Apply bounds and handle special cases
 	for i := range smc {
 		if math.IsNaN(smc[i]) {
+			diagnostics["errors"] = append(diagnostics["errors"].([]string), "NaN SMC value")
 			smc[i] = 1.0
 		}
 		if smc[i] > 1.0 {

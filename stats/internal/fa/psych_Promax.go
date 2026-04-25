@@ -2,6 +2,7 @@
 package fa
 
 import (
+	"fmt"
 	"math"
 
 	"gonum.org/v1/gonum/mat"
@@ -32,9 +33,7 @@ func Promax(x *mat.Dense, m int, normalize bool) map[string]any {
 	xx, rotmatVarimax, err := KaiserVarimaxWithRotationMatrix(x, true, 1000, 1e-5)
 	if err != nil {
 		return map[string]any{
-			"loadings":    x,
-			"rotmat":      identityMatrix(cols),
-			"Phi":         identityMatrix(cols),
+			"error":       fmt.Sprintf("varimax pre-rotation failed: %v", err),
 			"diagnostics": diagnostics,
 		}
 	}
@@ -60,15 +59,12 @@ func Promax(x *mat.Dense, m int, normalize bool) map[string]any {
 	var U mat.Dense
 	err = U.Solve(&XtX, &XtQ)
 	if err != nil {
-		// Handle singular matrix - use approximation like R
 		diagnostics["converged"] = false
 		diagnostics["matrixInversionErrors"] = append(
 			diagnostics["matrixInversionErrors"].([]string),
 			"failed to solve for U coefficients: "+err.Error())
 		return map[string]any{
-			"loadings":    xx,
-			"rotmat":      rotmatVarimax,
-			"Phi":         identityMatrix(cols),
+			"error":       fmt.Sprintf("failed to solve for promax U coefficients: %v", err),
 			"diagnostics": diagnostics,
 		}
 	}
@@ -77,35 +73,26 @@ func Promax(x *mat.Dense, m int, normalize bool) map[string]any {
 	var UtU mat.Dense
 	UtU.Mul(U.T(), &U)
 	var UtUInv mat.Dense
-
-	// Attempt regular inverse first; keep existing fallback logic below.
 	err = UtUInv.Inverse(&UtU)
 	d := make([]float64, cols)
 	if err != nil {
-		// Match R's eigenvalue approximation for singular matrices
-		// Use simplified regularization approach
-		regularization := 1e-8
-		for i := 0; i < cols; i++ {
-			UtU.Set(i, i, UtU.At(i, i)+regularization)
+		diagnostics["converged"] = false
+		diagnostics["matrixInversionErrors"] = append(
+			diagnostics["matrixInversionErrors"].([]string),
+			"failed to invert UtU: "+err.Error())
+		return map[string]any{
+			"error":       fmt.Sprintf("failed to invert promax UtU: %v", err),
+			"diagnostics": diagnostics,
 		}
-		err = UtUInv.Inverse(&UtU)
-		if err != nil {
-			// Final fallback
+	}
+	for i := 0; i < cols; i++ {
+		d[i] = UtUInv.At(i, i)
+		if d[i] <= 0 || math.IsNaN(d[i]) {
 			diagnostics["converged"] = false
-			diagnostics["matrixInversionErrors"] = append(
-				diagnostics["matrixInversionErrors"].([]string),
-				"failed to invert UtU after regularization: "+err.Error())
-			for i := 0; i < cols; i++ {
-				d[i] = 1.0
+			return map[string]any{
+				"error":       fmt.Sprintf("invalid promax normalization diagonal at %d: %g", i, d[i]),
+				"diagnostics": diagnostics,
 			}
-		} else {
-			for i := 0; i < cols; i++ {
-				d[i] = UtUInv.At(i, i)
-			}
-		}
-	} else {
-		for i := 0; i < cols; i++ {
-			d[i] = UtUInv.At(i, i)
 		}
 	}
 
@@ -125,14 +112,22 @@ func Promax(x *mat.Dense, m int, normalize bool) map[string]any {
 	var rotmat mat.Dense
 	rotmat.Mul(rotmatVarimax, &U)
 
-	// Step 8: ui <- solve(U) using a safe inverse helper
-	uiDense := inverseOrIdentity(&rotmat, rotmat.RawMatrix().Rows)
-	var ui mat.Dense
-	ui.CloneFrom(uiDense)
+	// Step 8: ui <- solve(U)
+	ui, err := invertDense(&rotmat)
+	if err != nil {
+		diagnostics["converged"] = false
+		diagnostics["matrixInversionErrors"] = append(
+			diagnostics["matrixInversionErrors"].([]string),
+			"failed to invert final rotation matrix: "+err.Error())
+		return map[string]any{
+			"error":       fmt.Sprintf("failed to invert promax rotation matrix: %v", err),
+			"diagnostics": diagnostics,
+		}
+	}
 
 	// Step 9: Phi <- ui %*% t(ui)
 	var Phi mat.Dense
-	Phi.Mul(&ui, ui.T())
+	Phi.Mul(ui, ui.T())
 
 	return map[string]any{
 		"loadings":    &z,

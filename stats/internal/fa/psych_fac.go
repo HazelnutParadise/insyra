@@ -123,8 +123,7 @@ func Fac(r *mat.Dense, opts *FacOptions) (*FacResult, error) {
 		}
 	}
 	if !isValid {
-		insyra.LogWarning("fa", "Fac", "factor method not specified correctly, minimum residual (unweighted least squares) used")
-		fm = "minres"
+		return nil, fmt.Errorf("unsupported factor method: %s", fm)
 	}
 
 	// Handle matrix input
@@ -136,19 +135,19 @@ func Fac(r *mat.Dense, opts *FacOptions) (*FacResult, error) {
 	if smcBool, ok := opts.SMC.(bool); ok {
 		if smcBool {
 			if opts.NFactors <= p {
-				smcResult, _ := Smc(rMat, &SmcOptions{Covar: opts.Covar})
+				smcResult, smcDiagnostics := Smc(rMat, &SmcOptions{Covar: opts.Covar})
+				if smcResult == nil {
+					return nil, fmt.Errorf("failed to compute SMC communalities")
+				}
+				if errs, ok := smcDiagnostics["errors"].([]string); ok && len(errs) > 0 {
+					return nil, fmt.Errorf("failed to compute SMC communalities: %v", errs)
+				}
 				smcVec = make([]float64, p)
 				for i := 0; i < p; i++ {
 					smcVec[i] = smcResult.AtVec(i)
 				}
 			} else {
-				if opts.Warnings {
-					insyra.LogWarning("fa", "Fac", "too many factors requested for this number of variables to use SMC for communality estimates, 1s are used instead")
-				}
-				smcVec = make([]float64, p)
-				for i := range smcVec {
-					smcVec[i] = 1.0
-				}
+				return nil, fmt.Errorf("number of factors (%d) cannot exceed number of variables (%d)", opts.NFactors, p)
 			}
 		} else {
 			smcVec = make([]float64, p)
@@ -175,6 +174,7 @@ func Fac(r *mat.Dense, opts *FacOptions) (*FacResult, error) {
 	var loadings *mat.Dense
 	var communalities []float64
 	var eValues []float64
+	var err error
 
 	switch fm {
 	case "pa":
@@ -184,11 +184,14 @@ func Fac(r *mat.Dense, opts *FacOptions) (*FacResult, error) {
 	case "minrank":
 		loadings, communalities, eValues = minrankFactoring(r, rMat, opts.NFactors)
 	case "minres", "uls", "wls", "gls", "ols":
-		loadings, communalities, eValues = minimumResidualFactoring(r, rMat, opts.NFactors, fm, opts.Covar, opts.MinErr, opts.MaxIter)
+		loadings, communalities, eValues, err = minimumResidualFactoring(r, rMat, opts.NFactors, fm, opts.Covar, opts.MinErr, opts.MaxIter)
 	case "ml":
-		loadings, communalities, eValues = maximumLikelihoodFactoring(r, rMat, opts.NFactors, opts.Covar, opts.MinErr, opts.MaxIter)
+		loadings, communalities, eValues, err = maximumLikelihoodFactoring(r, rMat, opts.NFactors, opts.Covar, opts.MinErr, opts.MaxIter)
 	default:
 		return nil, fmt.Errorf("unsupported factor method: %s", fm)
+	}
+	if err != nil {
+		return nil, err
 	}
 
 	// Handle sign convention
@@ -409,11 +412,17 @@ func principalAxisFactoring(r, rMat *mat.Dense, nfactors int, minErr float64, ma
 }
 
 // minimumResidualFactoring implements minimum residual factoring and related methods
-func minimumResidualFactoring(r, rMat *mat.Dense, nfactors int, fm string, covar bool, minErr float64, maxIter int) (*mat.Dense, []float64, []float64) {
+func minimumResidualFactoring(r, rMat *mat.Dense, nfactors int, fm string, covar bool, minErr float64, maxIter int) (*mat.Dense, []float64, []float64, error) {
 	p, _ := r.Dims()
 
 	// Get SMC values for initial communalities
-	smcResult, _ := Smc(r, &SmcOptions{Covar: covar})
+	smcResult, smcDiagnostics := Smc(r, &SmcOptions{Covar: covar})
+	if smcResult == nil {
+		return nil, nil, nil, fmt.Errorf("failed to compute SMC communalities")
+	}
+	if errs, ok := smcDiagnostics["errors"].([]string); ok && len(errs) > 0 {
+		return nil, nil, nil, fmt.Errorf("failed to compute SMC communalities: %v", errs)
+	}
 	smcVec := make([]float64, p)
 	for i := 0; i < p; i++ {
 		smcVec[i] = smcResult.AtVec(i)
@@ -440,7 +449,7 @@ func minimumResidualFactoring(r, rMat *mat.Dense, nfactors int, fm string, covar
 		}
 	}
 
-	psi := optimizeBounded(
+	psi, err := optimizeBounded(
 		start,
 		0.005,
 		upper,
@@ -452,6 +461,9 @@ func minimumResidualFactoring(r, rMat *mat.Dense, nfactors int, fm string, covar
 			faGrMinres(grad, x, r, nfactors)
 		},
 	)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("minimum residual optimization failed: %w", err)
+	}
 	applyLowerBoundGradientNudge(psi, 0.005, upper, func(grad, x []float64) {
 		faGrMinres(grad, x, r, nfactors)
 	})
@@ -489,7 +501,7 @@ func minimumResidualFactoring(r, rMat *mat.Dense, nfactors int, fm string, covar
 		communalities[i] = communality
 	}
 
-	return loadings, communalities, eValues
+	return loadings, communalities, eValues, nil
 }
 
 func applyLowerBoundGradientNudge(x []float64, lower, upper float64, grad func([]float64, []float64)) {
@@ -510,10 +522,11 @@ func applyLowerBoundGradientNudge(x []float64, lower, upper float64, grad func([
 	}
 }
 
-func optimizeBounded(start []float64, lower, upper float64, maxIter int, fn func([]float64) float64, grad func([]float64, []float64)) []float64 {
+func optimizeBounded(start []float64, lower, upper float64, maxIter int, fn func([]float64) float64, grad func([]float64, []float64)) ([]float64, error) {
 	if len(start) == 0 || upper <= lower || fn == nil {
-		return append([]float64(nil), start...)
+		return nil, fmt.Errorf("invalid bounded optimization inputs")
 	}
+	startObj := fn(start)
 
 	y0 := make([]float64, len(start))
 	for i, v := range start {
@@ -552,13 +565,20 @@ func optimizeBounded(start []float64, lower, upper float64, maxIter int, fn func
 	}
 
 	result, err := optimize.Minimize(problem, y0, settings, method)
-	if err != nil || result == nil || result.X == nil {
-		return append([]float64(nil), start...)
+	if err != nil {
+		return append([]float64(nil), start...), nil
+	}
+	if result == nil || result.X == nil {
+		return nil, fmt.Errorf("optimizer returned no solution")
 	}
 
 	out := make([]float64, len(start))
 	unboundedToBounded(out, result.X, lower, upper)
-	return out
+	outObj := fn(out)
+	if math.IsNaN(outObj) || (!math.IsNaN(startObj) && startObj <= outObj) {
+		return append([]float64(nil), start...), nil
+	}
+	return out, nil
 }
 
 func boundedToUnbounded(x, lower, upper float64) float64 {
@@ -817,11 +837,17 @@ func faOutWLS(psi []float64, s *mat.Dense, q int) *mat.Dense {
 }
 
 // maximumLikelihoodFactoring implements Maximum Likelihood factor analysis
-func maximumLikelihoodFactoring(r, rMat *mat.Dense, nfactors int, covar bool, minErr float64, maxIter int) (*mat.Dense, []float64, []float64) {
+func maximumLikelihoodFactoring(r, rMat *mat.Dense, nfactors int, covar bool, minErr float64, maxIter int) (*mat.Dense, []float64, []float64, error) {
 	p, _ := r.Dims()
 
 	// Get SMC values for initial communalities
-	smcResult, _ := Smc(r, &SmcOptions{Covar: covar})
+	smcResult, smcDiagnostics := Smc(r, &SmcOptions{Covar: covar})
+	if smcResult == nil {
+		return nil, nil, nil, fmt.Errorf("failed to compute SMC communalities")
+	}
+	if errs, ok := smcDiagnostics["errors"].([]string); ok && len(errs) > 0 {
+		return nil, nil, nil, fmt.Errorf("failed to compute SMC communalities: %v", errs)
+	}
 	smcVec := make([]float64, p)
 	for i := 0; i < p; i++ {
 		smcVec[i] = smcResult.AtVec(i)
@@ -847,7 +873,7 @@ func maximumLikelihoodFactoring(r, rMat *mat.Dense, nfactors int, covar bool, mi
 		}
 	}
 
-	psi := optimizeBounded(
+	psi, err := optimizeBounded(
 		start,
 		0.005,
 		upper,
@@ -859,6 +885,9 @@ func maximumLikelihoodFactoring(r, rMat *mat.Dense, nfactors int, covar bool, mi
 			faGr(grad, x, r, nfactors)
 		},
 	)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("maximum likelihood optimization failed: %w", err)
+	}
 	psi = refineBoundedCoordinates(psi, 0.005, upper, maxIter, func(x []float64) float64 {
 		return faFn(x, r, nfactors)
 	})
@@ -889,7 +918,7 @@ func maximumLikelihoodFactoring(r, rMat *mat.Dense, nfactors int, covar bool, mi
 		communalities[i] = 1.0 - psi[i]
 	}
 
-	return loadings, communalities, eValues
+	return loadings, communalities, eValues, nil
 }
 
 // faFn computes the maximum likelihood objective function (mirrors FAfn in R)

@@ -70,13 +70,9 @@ func TargetRotWithMask(x *mat.Dense, keys *mat.Dense, mask *mat.Dense) (loadings
 	// Normalize U
 	var UtU mat.Dense
 	UtU.Mul(U.T(), &U)
-	var UtUInv mat.Dense
-	// Prefer exact inverse, but fall back safely to identity-like behavior
-	// to avoid panics in edge cases.
-	if inv := inverseOrIdentity(&UtU, UtU.RawMatrix().Rows); inv == nil {
-		return nil, nil, nil, diagnostics, errors.New("failed to invert UtU and no safe fallback")
-	} else {
-		UtUInv.CloneFrom(inv)
+	UtUInv, err := invertDense(&UtU)
+	if err != nil {
+		return nil, nil, nil, diagnostics, err
 	}
 	d := make([]float64, q)
 	for i := range q {
@@ -95,16 +91,12 @@ func TargetRotWithMask(x *mat.Dense, keys *mat.Dense, mask *mat.Dense) (loadings
 	loadings.Mul(x, &U)
 
 	// Phi = solve(U) %*% t(solve(U))
-	var UInv mat.Dense
-	// Use safe inverse helper; if inversion fails, return error to caller
-	// as target rotation depends on U being invertible for Phi.
-	invU := inverseOrIdentity(&U, U.RawMatrix().Rows)
-	if invU == nil {
-		return nil, nil, nil, diagnostics, errors.New("failed to invert U for target rotation")
+	UInv, err := invertDense(&U)
+	if err != nil {
+		return nil, nil, nil, diagnostics, err
 	}
-	UInv.CloneFrom(invU)
 	Phi = mat.NewDense(q, q, nil)
-	Phi.Mul(&UInv, UInv.T())
+	Phi.Mul(UInv, UInv.T())
 
 	return loadings, &U, Phi, diagnostics, nil
 }

@@ -2,6 +2,8 @@
 package fa
 
 import (
+	"fmt"
+
 	"gonum.org/v1/gonum/mat"
 )
 
@@ -12,7 +14,13 @@ func SMC(r *mat.Dense, isCorr bool) (*mat.VecDense, error) {
 		// If not correlation matrix, compute it first
 		r = CorrelationMatrix(r)
 	}
-	smc, _ := Smc(r, nil) // Use default options
+	smc, diagnostics := Smc(r, nil) // Use default options
+	if smc == nil {
+		return nil, fmt.Errorf("failed to compute SMC")
+	}
+	if errs, ok := diagnostics["errors"].([]string); ok && len(errs) > 0 {
+		return nil, fmt.Errorf("failed to compute SMC: %v", errs)
+	}
 	return smc, nil
 }
 
@@ -54,9 +62,18 @@ func Rotate(loadings *mat.Dense, method string, opts *RotOpts) (*mat.Dense, *mat
 
 	// Call FaRotations
 	res := FaRotations(loadings, r, method, opts.Gamma, opts.Restarts).(map[string]any)
+	if errMsg, ok := res["error"].(string); ok && errMsg != "" {
+		return nil, nil, nil, false, fmt.Errorf("rotation failed: %s", errMsg)
+	}
 
-	rotatedLoadings := res["loadings"].(*mat.Dense)
-	rotMat := res["rotmat"].(*mat.Dense)
+	rotatedLoadings, ok := res["loadings"].(*mat.Dense)
+	if !ok || rotatedLoadings == nil {
+		return nil, nil, nil, false, fmt.Errorf("rotation did not return loadings")
+	}
+	rotMat, ok := res["rotmat"].(*mat.Dense)
+	if !ok || rotMat == nil {
+		return nil, nil, nil, false, fmt.Errorf("rotation did not return rotation matrix")
+	}
 
 	var phiMat *mat.Dense
 	if phi, ok := res["Phi"]; ok {
@@ -103,9 +120,18 @@ func RotateWithDiagnostics(loadings *mat.Dense, method string, opts *RotOpts) (*
 
 	// Call FaRotations
 	res := FaRotations(loadings, r, method, opts.Gamma, opts.Restarts).(map[string]any)
+	if errMsg, ok := res["error"].(string); ok && errMsg != "" {
+		return nil, nil, nil, false, nil, fmt.Errorf("rotation failed: %s", errMsg)
+	}
 
-	rotatedLoadings := res["loadings"].(*mat.Dense)
-	rotMat := res["rotmat"].(*mat.Dense)
+	rotatedLoadings, ok := res["loadings"].(*mat.Dense)
+	if !ok || rotatedLoadings == nil {
+		return nil, nil, nil, false, nil, fmt.Errorf("rotation did not return loadings")
+	}
+	rotMat, ok := res["rotmat"].(*mat.Dense)
+	if !ok || rotMat == nil {
+		return nil, nil, nil, false, nil, fmt.Errorf("rotation did not return rotation matrix")
+	}
 
 	var phiMat *mat.Dense
 	if phi, ok := res["Phi"]; ok {
