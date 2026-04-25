@@ -987,81 +987,6 @@ func computeSigma(loadings *mat.Dense, phi *mat.Dense, uniquenesses []float64) *
 	return &sigma
 }
 
-// computePseudoInverse computes the Moore-Penrose pseudoinverse using SVD
-// This matches R's psych::Pinv function for numerical stability
-func computePseudoInverse(X *mat.Dense) *mat.Dense {
-	if X == nil {
-		return nil
-	}
-
-	m, n := X.Dims()
-
-	// Perform SVD
-	var svd mat.SVD
-	if !svd.Factorize(X, mat.SVDThin) {
-		insyra.LogWarning("stats", "FactorAnalysis", "SVD factorization failed in pseudoinverse computation")
-		return nil
-	}
-
-	// Get singular values
-	values := svd.Values(nil)
-
-	// Compute tolerance (R uses tol = sqrt(.Machine$double.eps))
-	tol := math.Sqrt(math.Nextafter(1.0, 2.0) - 1.0) // Go equivalent of sqrt(.Machine$double.eps)
-
-	// Find indices of non-small singular values
-	threshold := tol * values[0]
-	p := 0 // Count of non-small values
-	for _, v := range values {
-		if v > threshold {
-			p++
-		}
-	}
-
-	if p == 0 {
-		return nil
-	}
-
-	// Get U and V matrices
-	U := mat.NewDense(m, len(values), nil)
-	V := mat.NewDense(n, len(values), nil)
-	svd.UTo(U)
-	svd.VTo(V)
-
-	// Compute pseudoinverse: Pinv = V[, 1:p] %*% diag(1/d[1:p]) %*% t(U[, 1:p])
-	// Extract U[:, 1:p] and V[:, 1:p]
-	Uphp := mat.NewDense(m, p, nil)
-	Vp := mat.NewDense(n, p, nil)
-	for i := 0; i < m; i++ {
-		for j := 0; j < p; j++ {
-			Uphp.Set(i, j, U.At(i, j))
-		}
-	}
-	for i := 0; i < n; i++ {
-		for j := 0; j < p; j++ {
-			Vp.Set(i, j, V.At(i, j))
-		}
-	}
-
-	// Compute D^{-1} = diag(1/d[1:p])
-	Dinv := mat.NewDense(p, p, nil)
-	for i := 0; i < p; i++ {
-		if values[i] > 0 {
-			Dinv.Set(i, i, 1.0/values[i])
-		}
-	}
-
-	// Compute V %*% D^{-1}
-	var temp mat.Dense
-	temp.Mul(Vp, Dinv)
-
-	// Compute Pinv = temp %*% U^T
-	var Pinv mat.Dense
-	Pinv.Mul(&temp, Uphp.T())
-
-	return &Pinv
-}
-
 // decideNumFactors determines the number of factors to extract
 func decideNumFactors(eigenvalues []float64, spec FactorCountSpec, maxPossible int, sampleSize int) int {
 	switch spec.Method {
@@ -1231,7 +1156,6 @@ func extractPCA(eigenvalues []float64, eigenvectors *mat.Dense, numFactors int) 
 	return loadings, true, 0, nil
 }
 
-// extractMINRES performs MINRES factor extraction (simplified implementation)
 // extractPAF performs Principal Axis Factoring extraction
 func extractPAF(corr *mat.Dense, numFactors int, maxIter int, tol float64, initialCommunalities []float64) (*mat.Dense, []float64, bool, int, error) {
 	if corr == nil {
@@ -2876,50 +2800,68 @@ func isIdentityMatrix(m *mat.Dense) bool {
 	return true
 }
 
-// FactorPAFOblimin performs PA-F Oblimin rotation (simplified implementation)
+// FactorPAFOblimin performs principal-axis factoring followed by oblimin rotation.
 func FactorPAFOblimin(corr *mat.Dense, numFactors int, delta float64, epsilon float64, maxIter int, normalize float64) (*mat.Dense, *mat.Dense, *mat.Dense, *mat.Dense, *mat.Dense, []float64, []float64, int, bool, error) {
-	// This is a simplified placeholder implementation
-	// In a real implementation, this would call an external rotation library
-
 	if corr == nil {
 		return nil, nil, nil, nil, nil, nil, nil, 0, false, fmt.Errorf("nil correlation matrix")
 	}
 
-	_, cols := corr.Dims()
-	if numFactors > cols {
-		numFactors = cols
+	rows, cols := corr.Dims()
+	if rows != cols {
+		return nil, nil, nil, nil, nil, nil, nil, 0, false, fmt.Errorf("correlation matrix must be square")
+	}
+	if numFactors <= 0 || numFactors > cols {
+		return nil, nil, nil, nil, nil, nil, nil, 0, false, fmt.Errorf("invalid number of factors: %d", numFactors)
+	}
+	if epsilon <= 0 {
+		epsilon = 1e-5
+	}
+	if maxIter <= 0 {
+		maxIter = 1000
 	}
 
-	// Create identity loadings (simplified)
-	P := mat.NewDense(cols, numFactors, nil)
-	for i := 0; i < cols && i < numFactors; i++ {
-		P.Set(i, i, 1.0)
+	smcVec, smcDiagnostics := fa.Smc(corr, &fa.SmcOptions{Covar: false})
+	if smcVec == nil || smcVec.Len() != cols {
+		return nil, nil, nil, nil, nil, nil, nil, 0, false, fmt.Errorf("failed to compute SMC communalities")
+	}
+	if errs, ok := smcDiagnostics["errors"].([]string); ok && len(errs) > 0 {
+		return nil, nil, nil, nil, nil, nil, nil, 0, false, fmt.Errorf("failed to compute SMC communalities: %s", strings.Join(errs, "; "))
+	}
+	initialCommunalities := append([]float64(nil), smcVec.RawVector().Data...)
+	facRes, err := fa.Fac(corr, &fa.FacOptions{
+		NFactors: numFactors,
+		NObs:     -999,
+		Rotate:   "none",
+		Scores:   "none",
+		SMC:      initialCommunalities,
+		Covar:    false,
+		MinErr:   epsilon,
+		MaxIter:  maxIter,
+		Fm:       "pa",
+		Warnings: true,
+	})
+	if err != nil {
+		return nil, nil, nil, nil, nil, nil, nil, 0, false, err
 	}
 
-	// Create identity transformation matrix
-	T := mat.NewDense(numFactors, numFactors, nil)
-	for i := 0; i < numFactors; i++ {
-		T.Set(i, i, 1.0)
+	rotOpts := &fa.RotOpts{
+		Eps:      epsilon,
+		MaxIter:  maxIter,
+		Gamma:    delta,
+		Restarts: 1,
 	}
-
-	// Create identity phi matrix
-	Phi := mat.NewDense(numFactors, numFactors, nil)
-	for i := 0; i < numFactors; i++ {
-		Phi.Set(i, i, 1.0)
+	rotated, rotMat, phi, converged, err := fa.Rotate(facRes.Loadings, "oblimin", rotOpts)
+	if err != nil {
+		return nil, nil, nil, nil, nil, nil, nil, 0, false, err
 	}
-
-	// Dummy values for other return parameters
-	h_final := make([]float64, numFactors)
-	ev := make([]float64, numFactors)
-	for i := 0; i < numFactors; i++ {
-		h_final[i] = 1.0
-		ev[i] = 1.0
+	var structure *mat.Dense
+	if phi != nil {
+		structure = mat.NewDense(cols, numFactors, nil)
+		structure.Mul(rotated, phi)
 	}
-
-	iters := 1
-	conv := true
-
-	return P, nil, Phi, T, nil, h_final, ev, iters, conv, nil
+	communalities := append([]float64(nil), facRes.Communalities...)
+	eigenvalues := append([]float64(nil), facRes.EValues...)
+	return rotated, facRes.Loadings, phi, rotMat, structure, communalities, eigenvalues, 0, converged, nil
 }
 
 // computeFactorScores computes factor scores using the specified method

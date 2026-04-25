@@ -173,6 +173,129 @@ func InverseOrIdentityDense(m *mat.Dense, n int) *mat.Dense {
 	return mat.DenseCopyOf(&inv)
 }
 
+// CorrelationDense computes a Pearson correlation matrix from complete dense data.
+func CorrelationDense(data *mat.Dense) *mat.Dense {
+	n, p := data.Dims()
+	corr := mat.NewDense(p, p, nil)
+	for i := 0; i < p; i++ {
+		for j := 0; j < p; j++ {
+			if i == j {
+				corr.Set(i, j, 1)
+				continue
+			}
+			meanI, meanJ := 0.0, 0.0
+			for k := 0; k < n; k++ {
+				meanI += data.At(k, i)
+				meanJ += data.At(k, j)
+			}
+			meanI /= float64(n)
+			meanJ /= float64(n)
+
+			varI, varJ, cov := 0.0, 0.0, 0.0
+			for k := 0; k < n; k++ {
+				devI := data.At(k, i) - meanI
+				devJ := data.At(k, j) - meanJ
+				varI += devI * devI
+				varJ += devJ * devJ
+				cov += devI * devJ
+			}
+			if varI > 0 && varJ > 0 {
+				corr.Set(i, j, cov/math.Sqrt(varI*varJ))
+			}
+		}
+	}
+	return corr
+}
+
+// CovarianceDense computes a sample covariance matrix from complete dense data.
+func CovarianceDense(data *mat.Dense) *mat.Dense {
+	n, p := data.Dims()
+	cov := mat.NewDense(p, p, nil)
+	for i := 0; i < p; i++ {
+		for j := 0; j < p; j++ {
+			meanI, meanJ := 0.0, 0.0
+			for k := 0; k < n; k++ {
+				meanI += data.At(k, i)
+				meanJ += data.At(k, j)
+			}
+			meanI /= float64(n)
+			meanJ /= float64(n)
+
+			covVal := 0.0
+			for k := 0; k < n; k++ {
+				covVal += (data.At(k, i) - meanI) * (data.At(k, j) - meanJ)
+			}
+			cov.Set(i, j, covVal/float64(n-1))
+		}
+	}
+	return cov
+}
+
+// CorrelationDensePairwise computes Pearson correlations using pairwise complete observations.
+func CorrelationDensePairwise(data *mat.Dense) *mat.Dense {
+	n, p := data.Dims()
+	corr := mat.NewDense(p, p, nil)
+	for i := 0; i < p; i++ {
+		for j := 0; j < p; j++ {
+			if i == j {
+				corr.Set(i, j, 1)
+				continue
+			}
+			validPairs := 0
+			sumI, sumJ, sumI2, sumJ2, sumIJ := 0.0, 0.0, 0.0, 0.0, 0.0
+			for k := 0; k < n; k++ {
+				valI, valJ := data.At(k, i), data.At(k, j)
+				if !math.IsNaN(valI) && !math.IsNaN(valJ) {
+					validPairs++
+					sumI += valI
+					sumJ += valJ
+					sumI2 += valI * valI
+					sumJ2 += valJ * valJ
+					sumIJ += valI * valJ
+				}
+			}
+			if validPairs > 1 {
+				meanI := sumI / float64(validPairs)
+				meanJ := sumJ / float64(validPairs)
+				varI := (sumI2 - float64(validPairs)*meanI*meanI) / float64(validPairs-1)
+				varJ := (sumJ2 - float64(validPairs)*meanJ*meanJ) / float64(validPairs-1)
+				cov := (sumIJ - float64(validPairs)*meanI*meanJ) / float64(validPairs-1)
+				if varI > 0 && varJ > 0 {
+					corr.Set(i, j, cov/math.Sqrt(varI*varJ))
+				}
+			}
+		}
+	}
+	return corr
+}
+
+// CovarianceDensePairwise computes sample covariance using pairwise complete observations.
+func CovarianceDensePairwise(data *mat.Dense) *mat.Dense {
+	n, p := data.Dims()
+	cov := mat.NewDense(p, p, nil)
+	for i := 0; i < p; i++ {
+		for j := 0; j < p; j++ {
+			validPairs := 0
+			sumI, sumJ, sumIJ := 0.0, 0.0, 0.0
+			for k := 0; k < n; k++ {
+				valI, valJ := data.At(k, i), data.At(k, j)
+				if !math.IsNaN(valI) && !math.IsNaN(valJ) {
+					validPairs++
+					sumI += valI
+					sumJ += valJ
+					sumIJ += valI * valJ
+				}
+			}
+			if validPairs > 1 {
+				meanI := sumI / float64(validPairs)
+				meanJ := sumJ / float64(validPairs)
+				cov.Set(i, j, (sumIJ-float64(validPairs)*meanI*meanJ)/float64(validPairs-1))
+			}
+		}
+	}
+	return cov
+}
+
 // SymmetricEigenDescending computes eigenvalues/eigenvectors for a symmetric
 // matrix and returns them sorted from largest to smallest, matching R's eigen().
 func SymmetricEigenDescending(a mat.Matrix) ([]float64, *mat.Dense, bool) {
