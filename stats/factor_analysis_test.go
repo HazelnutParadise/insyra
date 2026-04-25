@@ -51,23 +51,25 @@ func factorAnalysisRowsAny() [][]any {
 	return floatRowsToAny(factorAnalysisRows())
 }
 
+func generatedOneFactorRows() [][]any {
+	rows := make([][]any, 18)
+	for i := range rows {
+		x := float64(i)
+		f := -2.2 + 0.27*x + 0.35*math.Sin(0.47*x)
+		rows[i] = []any{
+			1.0 + 0.92*f + 0.22*math.Sin(1.31*x),
+			-0.5 + 0.84*f + 0.25*math.Cos(1.07*x),
+			0.7 + 1.05*f + 0.20*math.Sin(0.83*x+0.4),
+			2.0 + 0.76*f + 0.24*math.Cos(1.53*x+0.2),
+		}
+	}
+	return rows
+}
+
 func factorAnalysisDatasets() []factorAnalysisDataset {
 	return []factorAnalysisDataset{
 		{name: "two_blocks", rows: factorAnalysisRowsAny(), nFactors: 2},
-		{name: "one_factor", rows: [][]any{
-			{1.0, 1.1, 0.9, 1.2},
-			{1.4, 1.5, 1.3, 1.6},
-			{1.8, 1.7, 1.9, 1.75},
-			{2.2, 2.3, 2.1, 2.35},
-			{2.7, 2.6, 2.8, 2.65},
-			{3.1, 3.2, 3.0, 3.25},
-			{3.6, 3.5, 3.7, 3.45},
-			{4.0, 4.1, 3.9, 4.2},
-			{4.4, 4.3, 4.5, 4.35},
-			{4.9, 5.0, 4.8, 5.1},
-			{5.3, 5.2, 5.4, 5.25},
-			{5.8, 5.9, 5.7, 6.0},
-		}, nFactors: 1},
+		{name: "one_factor", rows: generatedOneFactorRows(), nFactors: 1},
 		{name: "three_blocks", rows: [][]any{
 			{5.0, 4.8, 1.1, 1.2, 2.5, 2.7},
 			{4.7, 5.1, 1.3, 1.0, 2.8, 2.6},
@@ -110,6 +112,48 @@ func factorAnalysisDatasets() []factorAnalysisDataset {
 			{2.0, 2.2, 2.1, nil, 3.8, 3.9},
 			{3.8, 3.7, 3.9, 2.1, 2.0, 2.2},
 		}, nFactors: 2},
+	}
+}
+
+func generatedFactorAnalysisRows(n int, variant int) [][]any {
+	rows := make([][]any, n)
+	for i := range n {
+		x := float64(i)
+		f1 := float64(i%7) - 3.0 + 0.18*float64(i/7)
+		f2 := 1.15*math.Sin(0.73*x) + 0.35*math.Cos(0.29*x)
+		f3 := 0.75*math.Cos(0.41*x) - 0.20*float64(i%5)
+		j1 := 0.55 * math.Sin(1.37*x+float64(variant))
+		j2 := 0.50 * math.Cos(0.91*x+float64(variant))
+		shift := float64(variant-1) * 1.7
+		scale := 1.0 + 0.35*float64(variant)
+		rows[i] = []any{
+			shift + scale*(0.72*f1+0.18*f2+j1+0.55*math.Sin(2.11*x)),
+			-0.6 + scale*(0.64*f1-0.13*f2+0.08*f3+j2+0.58*math.Cos(1.73*x)),
+			1.3 + scale*(0.15*f1+0.70*f2-0.06*f3-j1+0.56*math.Sin(1.19*x)),
+			-1.1 + scale*(-0.10*f1+0.66*f2+0.12*f3+j2+0.54*math.Cos(2.37*x)),
+			2.4 + scale*(0.38*f1+0.34*f2+0.28*f3+j1-j2+0.52*math.Sin(2.71*x)),
+			-2.0 + scale*(-0.32*f1+0.22*f2+0.58*f3-j1+0.56*math.Cos(1.53*x)),
+		}
+	}
+	return rows
+}
+
+func generatedFactorAnalysisDatasets() []factorAnalysisDataset {
+	rowsWithMissing := generatedFactorAnalysisRows(22, 2)
+	rowsWithMissing[3][4] = nil
+	rowsWithMissing[17][1] = nil
+
+	return []factorAnalysisDataset{
+		{name: "generated_oblique", rows: generatedFactorAnalysisRows(24, 0), nFactors: 2},
+		{name: "generated_scaled_shifted", rows: generatedFactorAnalysisRows(26, 1), nFactors: 2},
+		{name: "generated_complete_case", rows: rowsWithMissing, nFactors: 2},
+	}
+}
+
+func factorAnalysisFullCombinationDatasets() []factorAnalysisDataset {
+	base := factorAnalysisDatasets()
+	return []factorAnalysisDataset{
+		base[0],
 	}
 }
 
@@ -171,6 +215,15 @@ func dataTableMatrix(dt insyra.IDataTable) [][]float64 {
 
 func assertFactorAnalysisMatchesR(t *testing.T, got *stats.FactorModel, rb crossLangBaseline, tol float64) {
 	t.Helper()
+	if got.CountUsed <= 0 {
+		t.Fatalf("expected positive factor count, got %d", got.CountUsed)
+	}
+	if !got.Converged {
+		t.Fatalf("expected factor extraction to converge")
+	}
+	if !got.RotationConverged {
+		t.Fatalf("expected factor rotation to converge")
+	}
 	assertMatrixCloseToBoth(t, "loadings", dataTableMatrix(got.Loadings), baselineFloatMatrix(t, rb, "loadings"), baselineFloatMatrix(t, rb, "loadings"), tol)
 	assertMatrixCloseToBoth(t, "unrotated_loadings", dataTableMatrix(got.UnrotatedLoadings), baselineFloatMatrix(t, rb, "unrotated_loadings"), baselineFloatMatrix(t, rb, "unrotated_loadings"), tol)
 	assertMatrixCloseToBoth(t, "structure", dataTableMatrix(got.Structure), baselineFloatMatrix(t, rb, "structure"), baselineFloatMatrix(t, rb, "structure"), tol)
@@ -306,7 +359,6 @@ func TestCrossLangFactorAnalysisScoring(t *testing.T) {
 
 func TestCrossLangFactorAnalysisAllModeCombinations(t *testing.T) {
 	requireFactorAnalysisRTools(t)
-	ds := factorAnalysisDatasets()[0]
 	extractions := []stats.FactorExtractionMethod{
 		stats.FactorExtractionPCA,
 		stats.FactorExtractionPAF,
@@ -332,25 +384,28 @@ func TestCrossLangFactorAnalysisAllModeCombinations(t *testing.T) {
 		stats.FactorScoreBartlett,
 		stats.FactorScoreAndersonRubin,
 	}
-	for _, extraction := range extractions {
-		for _, rotation := range rotations {
-			for _, scoring := range scorings {
-				t.Run(string(extraction)+"/"+string(rotation)+"/"+string(scoring), func(t *testing.T) {
-					opt := factorOptions(extraction, rotation, scoring)
-					got, err := stats.FactorAnalysis(dataTableFromAnyRows(ds.rows), opt)
-					if err != nil {
-						t.Fatalf("FactorAnalysis error: %v", err)
-					}
-					rb := runRBaseline(t, "factor_analysis", map[string]any{
-						"rows": ds.rows, "extraction": string(extraction), "rotation": string(rotation), "scoring": string(scoring), "nfactors": ds.nFactors,
+	for _, ds := range factorAnalysisFullCombinationDatasets() {
+		for _, extraction := range extractions {
+			for _, rotation := range rotations {
+				for _, scoring := range scorings {
+					t.Run(ds.name+"/"+string(extraction)+"/"+string(rotation)+"/"+string(scoring), func(t *testing.T) {
+						opt := factorOptions(extraction, rotation, scoring)
+						opt.Count.FixedK = ds.nFactors
+						got, err := stats.FactorAnalysis(dataTableFromAnyRows(ds.rows), opt)
+						if err != nil {
+							t.Fatalf("FactorAnalysis error: %v", err)
+						}
+						rb := runRBaseline(t, "factor_analysis", map[string]any{
+							"rows": ds.rows, "extraction": string(extraction), "rotation": string(rotation), "scoring": string(scoring), "nfactors": ds.nFactors,
+						})
+						assertFactorAnalysisMatchesR(t, got, rb, factorParityTol)
+						if scoring != stats.FactorScoreNone {
+							assertMatrixCloseToBoth(t, "scores", dataTableMatrix(got.Scores), baselineFloatMatrix(t, rb, "scores"), baselineFloatMatrix(t, rb, "scores"), factorParityTol)
+							assertMatrixCloseToBoth(t, "score_coefficients", dataTableMatrix(got.ScoreCoefficients), baselineFloatMatrix(t, rb, "score_coefficients"), baselineFloatMatrix(t, rb, "score_coefficients"), factorParityTol)
+							assertMatrixCloseToBoth(t, "score_covariance", dataTableMatrix(got.ScoreCovariance), baselineFloatMatrix(t, rb, "score_covariance"), baselineFloatMatrix(t, rb, "score_covariance"), factorParityTol)
+						}
 					})
-					assertFactorAnalysisMatchesR(t, got, rb, factorParityTol)
-					if scoring != stats.FactorScoreNone {
-						assertMatrixCloseToBoth(t, "scores", dataTableMatrix(got.Scores), baselineFloatMatrix(t, rb, "scores"), baselineFloatMatrix(t, rb, "scores"), factorParityTol)
-						assertMatrixCloseToBoth(t, "score_coefficients", dataTableMatrix(got.ScoreCoefficients), baselineFloatMatrix(t, rb, "score_coefficients"), baselineFloatMatrix(t, rb, "score_coefficients"), factorParityTol)
-						assertMatrixCloseToBoth(t, "score_covariance", dataTableMatrix(got.ScoreCovariance), baselineFloatMatrix(t, rb, "score_covariance"), baselineFloatMatrix(t, rb, "score_covariance"), factorParityTol)
-					}
-				})
+				}
 			}
 		}
 	}
@@ -364,12 +419,16 @@ func TestCrossLangFactorAnalysisRepresentativeDatasets(t *testing.T) {
 		rotation   stats.FactorRotationMethod
 		scoring    stats.FactorScoreMethod
 	}{
-		{factorAnalysisDatasets()[1], stats.FactorExtractionMINRES, stats.FactorRotationNone, stats.FactorScoreRegression},
+		{factorAnalysisDatasets()[1], stats.FactorExtractionPAF, stats.FactorRotationNone, stats.FactorScoreRegression},
 		{factorAnalysisDatasets()[1], stats.FactorExtractionPCA, stats.FactorRotationNone, stats.FactorScoreRegression},
 		{factorAnalysisDatasets()[2], stats.FactorExtractionMINRES, stats.FactorRotationOblimin, stats.FactorScoreRegression},
 		{factorAnalysisDatasets()[2], stats.FactorExtractionML, stats.FactorRotationVarimax, stats.FactorScoreBartlett},
 		{factorAnalysisDatasets()[3], stats.FactorExtractionPAF, stats.FactorRotationPromax, stats.FactorScoreAndersonRubin},
 		{factorAnalysisDatasets()[4], stats.FactorExtractionMINRES, stats.FactorRotationOblimin, stats.FactorScoreRegression},
+		{generatedFactorAnalysisDatasets()[0], stats.FactorExtractionPCA, stats.FactorRotationBentlerQ, stats.FactorScoreAndersonRubin},
+		{generatedFactorAnalysisDatasets()[0], stats.FactorExtractionPAF, stats.FactorRotationGeominQ, stats.FactorScoreBartlett},
+		{generatedFactorAnalysisDatasets()[1], stats.FactorExtractionML, stats.FactorRotationGeominT, stats.FactorScoreBartlett},
+		{generatedFactorAnalysisDatasets()[2], stats.FactorExtractionPAF, stats.FactorRotationQuartimin, stats.FactorScoreRegression},
 	}
 	for _, tc := range cases {
 		t.Run(tc.dataset.name+"/"+string(tc.extraction)+"/"+string(tc.rotation)+"/"+string(tc.scoring), func(t *testing.T) {
