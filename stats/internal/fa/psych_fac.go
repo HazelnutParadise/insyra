@@ -526,8 +526,9 @@ func optimizeBounded(start []float64, lower, upper float64, maxIter int, fn func
 	if len(start) == 0 || upper <= lower || fn == nil {
 		return nil, fmt.Errorf("invalid bounded optimization inputs")
 	}
-	startObj := fn(start)
-
+	if grad != nil {
+		return optimizeBoundedProjected(start, lower, upper, maxIter, fn, grad)
+	}
 	y0 := make([]float64, len(start))
 	for i, v := range start {
 		y0[i] = boundedToUnbounded(v, lower, upper)
@@ -561,12 +562,15 @@ func optimizeBounded(start []float64, lower, upper float64, maxIter int, fn func
 	settings := &optimize.Settings{MajorIterations: majorIterations}
 	method := optimize.Method(&optimize.NelderMead{})
 	if grad != nil {
-		method = &optimize.BFGS{GradStopThreshold: math.NaN()}
+		method = &optimize.LBFGS{
+			GradStopThreshold: math.NaN(),
+			Store:             15,
+		}
 	}
 
 	result, err := optimize.Minimize(problem, y0, settings, method)
 	if err != nil {
-		return append([]float64(nil), start...), nil
+		return nil, err
 	}
 	if result == nil || result.X == nil {
 		return nil, fmt.Errorf("optimizer returned no solution")
@@ -574,11 +578,93 @@ func optimizeBounded(start []float64, lower, upper float64, maxIter int, fn func
 
 	out := make([]float64, len(start))
 	unboundedToBounded(out, result.X, lower, upper)
-	outObj := fn(out)
-	if math.IsNaN(outObj) || (!math.IsNaN(startObj) && startObj <= outObj) {
-		return append([]float64(nil), start...), nil
-	}
 	return out, nil
+}
+
+func optimizeBoundedProjected(start []float64, lower, upper float64, maxIter int, fn func([]float64) float64, grad func([]float64, []float64)) ([]float64, error) {
+	x := append([]float64(nil), start...)
+	projectIntoBounds(x, lower, upper)
+	fx := fn(x)
+	if math.IsNaN(fx) || math.IsInf(fx, 0) {
+		return nil, fmt.Errorf("invalid initial objective value: %g", fx)
+	}
+
+	g := make([]float64, len(x))
+	direction := make([]float64, len(x))
+	trial := make([]float64, len(x))
+	const parscale = 0.01
+	const c1 = 1e-4
+	const projectedStepTol = 1e-4
+	iterations := maxIter
+	if iterations < 1000 {
+		iterations = 1000
+	}
+
+	for iter := 0; iter < iterations; iter++ {
+		for i := range g {
+			g[i] = 0
+		}
+		grad(g, x)
+
+		projectedNorm := 0.0
+		directionalDerivative := 0.0
+		for i := range x {
+			if x[i] <= lower+1e-12 && g[i] >= 0 {
+				direction[i] = 0
+				continue
+			}
+			if x[i] >= upper-1e-12 && g[i] <= 0 {
+				direction[i] = 0
+				continue
+			}
+			direction[i] = -g[i] * parscale * parscale
+			if x[i]+direction[i] < lower {
+				direction[i] = lower - x[i]
+			}
+			if x[i]+direction[i] > upper {
+				direction[i] = upper - x[i]
+			}
+			projectedNorm += direction[i] * direction[i]
+			directionalDerivative += g[i] * direction[i]
+		}
+
+		if math.Sqrt(projectedNorm) < projectedStepTol {
+			return x, nil
+		}
+
+		step := 1.0
+		accepted := false
+		for ls := 0; ls < 40; ls++ {
+			for i := range x {
+				trial[i] = x[i] + step*direction[i]
+			}
+			projectIntoBounds(trial, lower, upper)
+			ft := fn(trial)
+			if !math.IsNaN(ft) && !math.IsInf(ft, 0) && ft <= fx+c1*step*directionalDerivative {
+				copy(x, trial)
+				fx = ft
+				accepted = true
+				break
+			}
+			step *= 0.5
+		}
+		if !accepted {
+			return nil, fmt.Errorf("bounded optimizer line search failed to find a feasible descent step")
+		}
+	}
+
+	return nil, fmt.Errorf("bounded optimizer failed to converge in %d iterations", iterations)
+}
+
+func projectIntoBounds(x []float64, lower, upper float64) {
+	for i := range x {
+		if x[i] < lower {
+			x[i] = lower
+		}
+		if x[i] > upper {
+			x[i] = upper
+		}
+	}
 }
 
 func boundedToUnbounded(x, lower, upper float64) float64 {
@@ -625,7 +711,7 @@ func boundedDerivative(y, lower, upper float64) float64 {
 
 func refineBoundedCoordinates(start []float64, lower, upper float64, maxIter int, fn func([]float64) float64) []float64 {
 	if len(start) == 0 || fn == nil || upper <= lower {
-		return append([]float64(nil), start...)
+		return nil
 	}
 	x := append([]float64(nil), start...)
 	best := fn(x)

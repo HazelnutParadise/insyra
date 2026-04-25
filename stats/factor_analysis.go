@@ -1666,8 +1666,7 @@ func extractML_EM(corr *mat.Dense, numFactors int, maxIter int, tol float64, sam
 
 	result, err := optimize.Minimize(p, x0, settings, method)
 	if err != nil {
-		insyra.LogWarning("stats", "FactorAnalysis", "ML: BFGS optimization failed: %v, falling back to simple EM", err)
-		return extractML_EM_OLD(corr, numFactors, maxIter, tol, sampleSize, communalities)
+		return nil, false, 0, fmt.Errorf("ML BFGS optimization failed: %w", err)
 	}
 
 	// Transform back to psi
@@ -2273,8 +2272,7 @@ func computeKMOMeasures(corr *mat.Dense) (overallKMO float64, msaValues []float6
 
 	q := mat.NewDense(p, p, nil)
 	if err := q.Inverse(corr); err != nil {
-		// psych::KMO falls back to the input matrix when solve(r) fails.
-		q.CloneFrom(corr)
+		return 0, nil, fmt.Errorf("failed to invert correlation matrix for KMO/MSA: %w", err)
 	}
 	return computeKMOFromInverse(corr, q, msaValues)
 }
