@@ -497,7 +497,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 		corrAdequacyDense := mat.DenseCopyOf(corrForAdequacy)
 		overallKMO, msaValues, kmoErr := computeKMOMeasures(corrAdequacyDense)
 		if kmoErr != nil {
-			insyra.LogWarning("stats", "FactorAnalysis", "failed to compute KMO/MSA: %v", kmoErr)
+			return nil, fmt.Errorf("failed to compute KMO/MSA: %w", kmoErr)
 		} else {
 			rows, cols := corrAdequacyDense.Dims()
 			insyra.LogDebug("stats", "FactorAnalysis", "correlation matrix dimensions: %dx%d", rows, cols)
@@ -505,7 +505,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 		}
 
 		if chi, pval, df, bartErr := computeBartlettFromCorrelation(corrAdequacyDense, rowNum); bartErr != nil {
-			insyra.LogWarning("stats", "FactorAnalysis", "failed to compute Bartlett's test: %v", bartErr)
+			return nil, fmt.Errorf("failed to compute Bartlett's test: %w", bartErr)
 		} else {
 			bartlettResult = bartlettToDataTable(chi, df, pval, rowNum)
 		}
@@ -583,22 +583,18 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 		// R: if (nfactors <= n) { diag(r.mat) <- smc(...) }
 		// else { warning and use 1 instead }
 		if numFactors > colNum {
-			// Too many factors requested: use 1 instead of SMC
-			insyra.LogWarning("stats", "FactorAnalysis", "too many factors requested (%d) for number of variables (%d); using 1s instead of SMC estimates", numFactors, colNum)
-			for i := 0; i < colNum; i++ {
-				initialCommunalities[i] = 1.0
-			}
+			return nil, fmt.Errorf("number of factors (%d) cannot exceed number of variables (%d)", numFactors, colNum)
 		} else {
 			// Use the internal psych-compatible SMC helper instead of
 			// duplicating pseudo-inverse logic in the public orchestration layer.
-			smcVec, _ := fa.Smc(corrDense, &fa.SmcOptions{Covar: false})
-			if smcVec != nil {
-				copy(initialCommunalities, smcVec.RawVector().Data)
-			} else {
-				for i := 0; i < colNum; i++ {
-					initialCommunalities[i] = 0.5
-				}
+			smcVec, smcDiagnostics := fa.Smc(corrDense, &fa.SmcOptions{Covar: false})
+			if smcVec == nil || smcVec.Len() != colNum {
+				return nil, fmt.Errorf("failed to compute SMC communalities")
 			}
+			if errs, ok := smcDiagnostics["errors"].([]string); ok && len(errs) > 0 {
+				return nil, fmt.Errorf("failed to compute SMC communalities: %s", strings.Join(errs, "; "))
+			}
+			copy(initialCommunalities, smcVec.RawVector().Data)
 			for i := 0; i < colNum; i++ {
 				if initialCommunalities[i] < 0 {
 					initialCommunalities[i] = 0
@@ -817,10 +813,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 			factorColNames[i] = fmt.Sprintf("MR%d", i+1)
 		}
 	default:
-		// Fallback to generic names
-		for i := range numFactors {
-			factorColNames[i] = fmt.Sprintf("Factor_%d", i+1)
-		}
+		return nil, fmt.Errorf("unsupported extraction method: %s", opt.Extraction)
 	}
 
 	// Step 9: Compute explained proportions matching R's variance explanation calculation
@@ -1156,8 +1149,7 @@ func extractFactors(data, corrMatrix *mat.Dense, eigenvalues []float64, eigenvec
 		facOpts.Fm = "minres"
 
 	default:
-		// Default to MINRES to match R psych::fa and the documented default behavior.
-		facOpts.Fm = "minres"
+		return nil, nil, nil, false, 0, fmt.Errorf("unsupported extraction method: %s", opt.Extraction)
 	}
 
 	// Call our psych_fac.Fac implementation
@@ -1183,7 +1175,6 @@ func extractFactors(data, corrMatrix *mat.Dense, eigenvalues []float64, eigenvec
 }
 
 // computePCALoadings constructs factor loadings for PCA given eigenvalues/vectors.
-// The logic is shared with PCA extraction and ML fallbacks to avoid duplication.
 func computePCALoadings(eigenvalues []float64, eigenvectors *mat.Dense, numFactors int) (*mat.Dense, error) {
 	if eigenvectors == nil {
 		return nil, fmt.Errorf("computePCALoadings: eigenvectors nil")
@@ -1595,9 +1586,7 @@ func extractMINRES(corr *mat.Dense, numFactors int, maxIter int, tol float64) (*
 
 	result, err := optimize.Minimize(p, loadingsVec, settings, method)
 	if err != nil {
-		// Fallback to initial loadings
-		insyra.LogWarning("stats", "FactorAnalysis", "MINRES optimization failed, using initial loadings: %v", err)
-		return loadings, false, 0, nil
+		return nil, false, 0, fmt.Errorf("MINRES optimization failed: %w", err)
 	}
 
 	converged := result.Status == optimize.Success || result.Status == optimize.FunctionConvergence
@@ -2153,9 +2142,7 @@ func extractML(corr *mat.Dense, numFactors int, maxIter int, tol float64, sample
 
 	result, err := optimize.Minimize(p, startPsi, settings, method)
 	if err != nil {
-		// Fallback to simple gradient descent if BFGS fails
-		insyra.LogWarning("stats", "FactorAnalysis", "BFGS optimization failed, falling back to gradient descent: %v", err)
-		return extractMLFallback(corr, numFactors, maxIter, tol, sampleSize, initialCommunalities)
+		return nil, false, 0, fmt.Errorf("ML BFGS optimization failed: %w", err)
 	}
 
 	// Extract optimized psi from logit space
@@ -2171,90 +2158,6 @@ func extractML(corr *mat.Dense, numFactors int, maxIter int, tol float64, sample
 	insyra.LogInfo("stats", "FactorAnalysis", "ML: Final objective value = %.6f", finalObj)
 
 	// Extract final loadings using the optimized psi
-	loadings, err := mlExtractLoadings(corr, psi, numFactors)
-	if err != nil {
-		return nil, false, iterations, err
-	}
-
-	return loadings, converged, iterations, nil
-}
-
-// extractMLFallback is the fallback implementation using simple gradient descent
-func extractMLFallback(corr *mat.Dense, numFactors int, maxIter int, tol float64, sampleSize int, initialCommunalities []float64) (*mat.Dense, bool, int, error) {
-	rows, cols := corr.Dims()
-	if numFactors > cols {
-		numFactors = cols
-	}
-
-	// Initialize communalities
-	communalities := make([]float64, rows)
-	for i := range rows {
-		val := corr.At(i, i)
-		communalities[i] = val * val
-		if communalities[i] > 0.995 {
-			communalities[i] = 0.995
-		}
-	}
-
-	if len(initialCommunalities) == rows {
-		copy(communalities, initialCommunalities)
-	}
-
-	startPsi := make([]float64, rows)
-	for i := range rows {
-		startPsi[i] = 1.0 - communalities[i]
-		if startPsi[i] < 0.005 {
-			startPsi[i] = 0.005
-		}
-		if startPsi[i] > 0.995 {
-			startPsi[i] = 0.995
-		}
-	}
-
-	converged := false
-	iterations := 0
-	psi := make([]float64, rows)
-	copy(psi, startPsi)
-
-	learningRate := 0.01 // Reduced learning rate for stability
-	maxStepSize := 0.1   // Reduced max step size
-
-	for iter := range maxIter {
-		iterations = iter + 1
-
-		// Compute current objective function and gradient
-		_, grad := mlObjectiveAndGradient(corr, psi, numFactors)
-
-		// Check for convergence
-		gradNorm := 0.0
-		for _, g := range grad {
-			gradNorm += g * g
-		}
-		gradNorm = math.Sqrt(gradNorm)
-
-		if gradNorm < tol {
-			converged = true
-			break
-		}
-
-		// Update psi using gradient descent with bounds
-		for i := range rows {
-			step := -learningRate * grad[i]
-			if math.Abs(step) > maxStepSize {
-				step = maxStepSize * step / math.Abs(step)
-			}
-			newPsi := psi[i] + step
-			// Bound psi between 0.005 and 0.995
-			if newPsi < 0.005 {
-				newPsi = 0.005
-			}
-			if newPsi > 0.995 {
-				newPsi = 0.995
-			}
-			psi[i] = newPsi
-		}
-	}
-
 	loadings, err := mlExtractLoadings(corr, psi, numFactors)
 	if err != nil {
 		return nil, false, iterations, err
@@ -2736,6 +2639,9 @@ func rotatePrincipalPromax(loadings *mat.Dense, rotationOpts FactorRotationOptio
 		power = 4
 	}
 	res := fa.Promax(loadings, power, false)
+	if errMsg, ok := res["error"].(string); ok && errMsg != "" {
+		return nil, nil, nil, false, fmt.Errorf("promax rotation failed: %s", errMsg)
+	}
 	rotated, ok := res["loadings"].(*mat.Dense)
 	if !ok || rotated == nil {
 		return nil, nil, nil, false, fmt.Errorf("promax rotation did not return loadings")
@@ -2744,18 +2650,10 @@ func rotatePrincipalPromax(loadings *mat.Dense, rotationOpts FactorRotationOptio
 	if !ok || rotMat == nil {
 		return nil, nil, nil, false, fmt.Errorf("promax rotation did not return rotation matrix")
 	}
-
-	var inv mat.Dense
-	if err := inv.Inverse(rotMat); err != nil {
-		pinv, pinvErr := fa.Pinv(rotMat, 0)
-		if pinvErr != nil {
-			return nil, nil, nil, false, fmt.Errorf("failed to invert promax rotation matrix: %w", err)
-		}
-		inv.CloneFrom(pinv)
+	phi, ok := res["Phi"].(*mat.Dense)
+	if !ok || phi == nil {
+		return nil, nil, nil, false, fmt.Errorf("promax rotation did not return Phi")
 	}
-	var cov mat.Dense
-	cov.Mul(&inv, inv.T())
-	phi := covarianceToCorrelation(&cov)
 	return rotated, rotMat, phi, true, nil
 }
 

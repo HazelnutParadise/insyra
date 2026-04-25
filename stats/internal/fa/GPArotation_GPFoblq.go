@@ -60,20 +60,28 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 	alpha := 1.0 // Start with larger alpha for better initial progress
 	T := mat.DenseCopyOf(Tmat)
 
-	computeL := func(Tcur *mat.Dense) *mat.Dense {
-		// Use safe inverse helper to avoid panics when Tcur is singular.
-		invT := inverseOrIdentity(Tcur, Tcur.RawMatrix().Rows)
+	computeL := func(Tcur *mat.Dense) (*mat.Dense, error) {
+		invT, err := invertDense(Tcur)
+		if err != nil {
+			return nil, fmt.Errorf("failed to invert oblique rotation matrix: %w", err)
+		}
 		L := mat.NewDense(rows, cols, nil)
 		L.Mul(Aw, invT.T())
-		return L
+		return L, nil
 	}
 
-	L := computeL(T)
+	L, err := computeL(T)
+	if err != nil {
+		return nil, err
+	}
 	Gq, f, methodName, err := obliqueCriterion(method, L, gamma)
 	if err != nil {
 		return nil, err
 	}
-	G := computeGMatrix(L, Gq, T)
+	G, err := computeGMatrix(L, Gq, T)
+	if err != nil {
+		return nil, err
+	}
 
 	table := make([][]float64, 0, max(1, maxit+1))
 	convergence := false
@@ -131,7 +139,10 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			Tnew := mat.NewDense(X.RawMatrix().Rows, colsX, nil)
 			Tnew.Mul(X, diagScale)
 
-			Lnew := computeL(Tnew)
+			Lnew, err := computeL(Tnew)
+			if err != nil {
+				continue
+			}
 			GqNew, fNew, _, err := obliqueCriterion(method, Lnew, gamma)
 			if err != nil {
 				// Skip this step if criterion fails
@@ -159,7 +170,10 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			L = lastL
 			Gq = lastGq
 			f = lastF
-			G = computeGMatrix(L, Gq, T)
+			G, err = computeGMatrix(L, Gq, T)
+			if err != nil {
+				return nil, err
+			}
 		}
 
 		iter++
@@ -195,7 +209,7 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 	}, nil
 }
 
-func computeGMatrix(L *mat.Dense, Gq *mat.Dense, T *mat.Dense) *mat.Dense {
+func computeGMatrix(L *mat.Dense, Gq *mat.Dense, T *mat.Dense) (*mat.Dense, error) {
 	// R: G <- -t(t(L) %*% Gq %*% solve(Tmat))
 	// Compute transpose of L: t(L) is q x p
 	var Lt mat.Dense
@@ -205,8 +219,10 @@ func computeGMatrix(L *mat.Dense, Gq *mat.Dense, T *mat.Dense) *mat.Dense {
 	var LtGq mat.Dense
 	LtGq.Mul(&Lt, Gq)
 
-	// Compute inverse of T or identity if singular
-	invT := inverseOrIdentity(T, T.RawMatrix().Rows)
+	invT, err := invertDense(T)
+	if err != nil {
+		return nil, fmt.Errorf("failed to invert oblique rotation matrix for gradient: %w", err)
+	}
 
 	var temp mat.Dense
 	temp.Mul(&LtGq, invT)
@@ -215,7 +231,7 @@ func computeGMatrix(L *mat.Dense, Gq *mat.Dense, T *mat.Dense) *mat.Dense {
 	G.CloneFrom(temp.T())
 	G.Scale(-1, &G)
 
-	return &G
+	return &G, nil
 }
 
 // computeGp computes the projected gradient Gp.
@@ -301,8 +317,6 @@ func obliqueCriterion(method string, L *mat.Dense, gamma float64) (*mat.Dense, f
 		return Gq, f, "vgQ.bentler", nil
 
 	default:
-		// Default to quartimin if method not recognized
-		Gq, f, _ := vgQQuartimin(L)
-		return Gq, f, "vgQ.quartimin", nil
+		return nil, 0, "", fmt.Errorf("unsupported oblique rotation criterion: %s", method)
 	}
 }

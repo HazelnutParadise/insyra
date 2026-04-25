@@ -31,18 +31,21 @@ func Varimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map[
 	// Use GPForth for proper varimax rotation
 	result, err := GPForth(loadings, Tmat, normalize, eps, maxIter, "varimax")
 	if err != nil {
-		// Return identity rotation on error
 		return map[string]any{
-			"loadings": mat.DenseCopyOf(loadings),
-			"rotmat":   identityMatrix(cols),
-			"f":        0.0,
-			"error":    err.Error(),
+			"f":     0.0,
+			"error": err.Error(),
 		}
 	}
 
 	// Calculate rotation matrix as t(solve(Th)) like in R
 	Th := result["Th"].(*mat.Dense)
 	rotMatDense := rotMatFromTh(Th, cols)
+	if rotMatDense == nil {
+		return map[string]any{
+			"f":     result["f"],
+			"error": "failed to compute varimax rotation matrix",
+		}
+	}
 
 	// Return with correct key names expected by FaRotations
 	return map[string]any{
@@ -70,18 +73,21 @@ func Quartimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int) ma
 	// Use GPForth for proper quartimax rotation
 	result, err := GPForth(loadings, Tmat, normalize, eps, maxIter, "quartimax")
 	if err != nil {
-		// Return identity rotation on error
 		return map[string]any{
-			"loadings": mat.DenseCopyOf(loadings),
-			"rotmat":   identityMatrix(cols),
-			"f":        0.0,
-			"error":    err.Error(),
+			"f":     0.0,
+			"error": err.Error(),
 		}
 	}
 
 	// Calculate rotation matrix as t(solve(Th)) like in R
 	Th := result["Th"].(*mat.Dense)
 	rotMatDense := rotMatFromTh(Th, cols)
+	if rotMatDense == nil {
+		return map[string]any{
+			"f":     result["f"],
+			"error": "failed to compute quartimax rotation matrix",
+		}
+	}
 
 	// Return with correct key names expected by FaRotations
 	return map[string]any{
@@ -110,19 +116,21 @@ func Quartimin(loadings *mat.Dense, normalize bool, eps float64, maxIter int) ma
 	// Use GPFoblq for proper quartimin rotation
 	result, err := GPFoblq(loadings, Tmat, normalize, eps, maxIter, "quartimin", 0.0)
 	if err != nil {
-		// Return identity rotation on error
 		return map[string]any{
-			"loadings": mat.DenseCopyOf(loadings),
-			"rotmat":   identityMatrix(cols),
-			"phi":      nil,
-			"f":        0.0,
-			"error":    err.Error(),
+			"f":     0.0,
+			"error": err.Error(),
 		}
 	}
 
 	// Calculate rotation matrix as t(solve(Th)) like in R
 	Th := result["Th"].(*mat.Dense)
 	rotMatDense := rotMatFromTh(Th, cols)
+	if rotMatDense == nil {
+		return map[string]any{
+			"f":     result["f"],
+			"error": "failed to compute quartimin rotation matrix",
+		}
+	}
 
 	// Return with correct key names expected by FaRotations
 	return map[string]any{
@@ -152,19 +160,21 @@ func Oblimin(loadings *mat.Dense, normalize bool, eps float64, maxIter int, gamm
 	// Use GPFoblq for proper oblimin rotation
 	result, err := GPFoblq(loadings, Tmat, normalize, eps, maxIter, "oblimin", gamma)
 	if err != nil {
-		// Return identity rotation on error
 		return map[string]any{
-			"loadings": mat.DenseCopyOf(loadings),
-			"rotmat":   identityMatrix(cols),
-			"phi":      nil,
-			"f":        0.0,
-			"error":    err.Error(),
+			"f":     0.0,
+			"error": err.Error(),
 		}
 	}
 
 	// Calculate rotation matrix as t(solve(Th)) like in R
 	Th := result["Th"].(*mat.Dense)
 	rotMatDense := rotMatFromTh(Th, cols)
+	if rotMatDense == nil {
+		return map[string]any{
+			"f":     result["f"],
+			"error": "failed to compute oblimin rotation matrix",
+		}
+	}
 
 	// Return with correct key names expected by FaRotations
 	return map[string]any{
@@ -193,18 +203,21 @@ func GeominT(loadings *mat.Dense, normalize bool, eps float64, maxIter int, delt
 	// Use GPForth for proper geominT rotation
 	result, err := GPForth(loadings, Tmat, normalize, eps, maxIter, "geomin")
 	if err != nil {
-		// Return identity rotation on error
 		return map[string]any{
-			"loadings": mat.DenseCopyOf(loadings),
-			"rotmat":   identityMatrix(cols),
-			"f":        0.0,
-			"error":    err.Error(),
+			"f":     0.0,
+			"error": err.Error(),
 		}
 	}
 
 	// Calculate rotation matrix as t(solve(Th)) like in R
 	Th := result["Th"].(*mat.Dense)
 	rotMatDense := rotMatFromTh(Th, cols)
+	if rotMatDense == nil {
+		return map[string]any{
+			"f":     result["f"],
+			"error": "failed to compute geominT rotation matrix",
+		}
+	}
 
 	// Return with correct key names expected by FaRotations
 	return map[string]any{
@@ -232,12 +245,9 @@ func BentlerT(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map
 	// Use GPForth for proper bentlerT rotation
 	result, err := GPForth(loadings, Tmat, normalize, eps, maxIter, "bentler")
 	if err != nil {
-		// Return identity rotation on error
 		return map[string]any{
-			"loadings": mat.DenseCopyOf(loadings),
-			"rotmat":   identityMatrix(cols),
-			"f":        0.0,
-			"error":    err.Error(),
+			"f":     0.0,
+			"error": err.Error(),
 		}
 	}
 
@@ -272,19 +282,21 @@ func Simplimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int, k 
 	// Use GPFoblq for proper simplimax rotation
 	result, err := GPFoblq(loadings, Tmat, normalize, eps, maxIter, "simplimax", 0.0)
 	if err != nil {
-		// Return identity rotation on error
 		return map[string]any{
-			"loadings": mat.DenseCopyOf(loadings),
-			"rotmat":   identityMatrix(cols),
-			"phi":      nil,
-			"f":        0.0,
-			"error":    err.Error(),
+			"f":     0.0,
+			"error": err.Error(),
 		}
 	}
 
 	// Calculate rotation matrix as t(solve(Th)) to match other oblique handlers
 	Th := result["Th"].(*mat.Dense)
 	rotMatDense := rotMatFromTh(Th, cols)
+	if rotMatDense == nil {
+		return map[string]any{
+			"f":     result["f"],
+			"error": "failed to compute simplimax rotation matrix",
+		}
+	}
 
 	// Return with correct key names expected by FaRotations
 	return map[string]any{
@@ -314,19 +326,21 @@ func GeominQ(loadings *mat.Dense, normalize bool, eps float64, maxIter int, delt
 	// Use GPFoblq for proper geominQ rotation
 	result, err := GPFoblq(loadings, Tmat, normalize, eps, maxIter, "geominQ", 0.0)
 	if err != nil {
-		// Return identity rotation on error
 		return map[string]any{
-			"loadings": mat.DenseCopyOf(loadings),
-			"rotmat":   identityMatrix(cols),
-			"phi":      nil,
-			"f":        0.0,
-			"error":    err.Error(),
+			"f":     0.0,
+			"error": err.Error(),
 		}
 	}
 
 	// Calculate rotation matrix as t(solve(Th)) like in R
 	Th := result["Th"].(*mat.Dense)
 	rotMatDense := rotMatFromTh(Th, cols)
+	if rotMatDense == nil {
+		return map[string]any{
+			"f":     result["f"],
+			"error": "failed to compute geominQ rotation matrix",
+		}
+	}
 
 	// Return with correct key names expected by FaRotations
 	return map[string]any{
@@ -356,19 +370,21 @@ func BentlerQ(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map
 	// Use GPFoblq for proper bentlerQ rotation
 	result, err := GPFoblq(loadings, Tmat, normalize, eps, maxIter, "bentlerQ", 0.0)
 	if err != nil {
-		// Return identity rotation on error
 		return map[string]any{
-			"loadings": mat.DenseCopyOf(loadings),
-			"rotmat":   identityMatrix(cols),
-			"phi":      nil,
-			"f":        0.0,
-			"error":    err.Error(),
+			"f":     0.0,
+			"error": err.Error(),
 		}
 	}
 
 	// Calculate rotation matrix as t(solve(Th)) like in R
 	Th := result["Th"].(*mat.Dense)
 	rotMatDense := rotMatFromTh(Th, cols)
+	if rotMatDense == nil {
+		return map[string]any{
+			"f":     result["f"],
+			"error": "failed to compute bentlerQ rotation matrix",
+		}
+	}
 
 	// Return with correct key names expected by FaRotations
 	return map[string]any{
@@ -525,6 +541,10 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 				}
 			}
 			res := Promax(weighted, 4, false)
+			if errMsg, ok := res["error"].(string); ok && errMsg != "" {
+				result = map[string]any{"error": errMsg}
+				break
+			}
 			if lm, ok := res["loadings"].(*mat.Dense); ok && lm != nil {
 				normalized := mat.DenseCopyOf(lm)
 				for i := 0; i < normalized.RawMatrix().Rows; i++ {
@@ -543,11 +563,13 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
 			pre.Mul(baseLoadings, start)
 			result = map[string]any{
-				"loadings": mat.DenseCopyOf(pre),
-				"rotmat":   identityMatrix(nf),
+				"error": fmt.Sprintf("unsupported rotation method: %s", rotate),
 			}
 		}
 
+		if errMsg, ok := result["error"].(string); ok && errMsg != "" {
+			continue
+		}
 		rotLoad, ok := result["loadings"].(*mat.Dense)
 		if !ok {
 			continue
@@ -564,11 +586,7 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 				finalRot.Mul(start, rm)
 			}
 		} else {
-			if rotateLower == "oblimin" {
-				finalRot = identityMatrix(nf)
-			} else {
-				finalRot = mat.DenseCopyOf(start)
-			}
+			continue
 		}
 
 		candidate := map[string]any{
@@ -608,11 +626,8 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 	}
 
 	if best == nil {
-		rotatedLoadings := mat.DenseCopyOf(loadings)
-		rotMat := identityMatrix(nf)
 		best = map[string]any{
-			"loadings": rotatedLoadings,
-			"rotmat":   rotMat,
+			"error": fmt.Sprintf("rotation %s failed for all starts", rotate),
 		}
 	}
 	if debugOblimin && rotateLower == "oblimin" {
@@ -692,6 +707,9 @@ func finalizeGpfResult(gpf map[string]any, nf int) map[string]any {
 	}
 	// rotmat = t(solve(Th)) to be consistent with composition rules
 	rotMat := rotMatFromTh(Th, nf)
+	if rotMat == nil {
+		return map[string]any{"error": "failed to compute rotation matrix from transformation matrix"}
+	}
 	res := map[string]any{
 		"loadings": gpf["loadings"],
 		"rotmat":   rotMat,
@@ -713,7 +731,7 @@ func finalizeGpfResult(gpf map[string]any, nf int) map[string]any {
 // This means rotmat^T = Th, so rotmat = Th^T
 func rotMatFromTh(Th *mat.Dense, nf int) *mat.Dense {
 	if Th == nil {
-		return identityMatrix(nf)
+		return nil
 	}
 	// R code: rot.mat <- t(solve(Th))
 	// For orthogonal rotations (like Varimax), Th is orthogonal, so:
@@ -744,15 +762,9 @@ func rotMatFromTh(Th *mat.Dense, nf int) *mat.Dense {
 	// For non-orthogonal: compute inverse and transpose
 	var invTh mat.Dense
 	if err := invTh.Inverse(Th); err != nil {
-		// If inverse fails, return identity matrix
-		return identityMatrix(nf)
+		return nil
 	}
 	return mat.DenseCopyOf(invTh.T())
-} // inverseOrIdentity returns the inverse of M, or an identity matrix of size n
-// if inversion fails. This is a small safe fallback used by rotation routines
-// to avoid panics when matrices are singular or near-singular.
-func inverseOrIdentity(M *mat.Dense, n int) *mat.Dense {
-	return statslinalg.InverseOrIdentityDense(M, n)
 }
 
 // ParseRotationResult accepts the opaque result value returned by
@@ -772,6 +784,9 @@ func ParseRotationResult(res any) (loadings, rotmat, phi *mat.Dense, f float64, 
 	case map[string]any:
 		m = v
 	default:
+		return
+	}
+	if errMsg, found := m["error"].(string); found && errMsg != "" {
 		return
 	}
 
