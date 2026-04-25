@@ -161,18 +161,6 @@ func IdentityDense(n int) *mat.Dense {
 	return identity
 }
 
-// InverseOrIdentityDense returns the inverse of m, or identity if inversion fails.
-func InverseOrIdentityDense(m *mat.Dense, n int) *mat.Dense {
-	if m == nil {
-		return IdentityDense(n)
-	}
-	var inv mat.Dense
-	if err := inv.Inverse(m); err != nil {
-		return IdentityDense(n)
-	}
-	return mat.DenseCopyOf(&inv)
-}
-
 // CorrelationDense computes a Pearson correlation matrix from complete dense data.
 func CorrelationDense(data *mat.Dense) *mat.Dense {
 	n, p := data.Dims()

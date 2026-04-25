@@ -138,6 +138,84 @@ func generatedFactorAnalysisRows(n int, variant int) [][]any {
 	return rows
 }
 
+func generatedModerateThreeFactorRows() [][]any {
+	const n = 32
+	rows := make([][]any, n)
+	for i := range n {
+		x := float64(i)
+		f1 := 1.20*math.Sin(0.39*x) + 0.32*float64(i%5-2)
+		f2 := 1.05*math.Cos(0.53*x+0.4) - 0.24*float64(i%7-3)
+		f3 := 0.88*math.Sin(0.71*x-0.2) + 0.42*math.Cos(0.17*x)
+		n1 := 0.42 * math.Sin(1.37*x+0.2)
+		n2 := 0.39 * math.Cos(1.11*x-0.4)
+		n3 := 0.36 * math.Sin(1.83*x+0.7)
+		rows[i] = []any{
+			1.0 + 0.78*f1 + 0.18*f2 + n1,
+			-0.7 + 0.72*f1 - 0.12*f3 + n2,
+			0.4 + 0.20*f1 + 0.70*f2 + n3,
+			-1.2 + 0.75*f2 + 0.14*f3 - n1,
+			1.8 + 0.16*f1 + 0.76*f3 - n2,
+			-2.1 - 0.18*f2 + 0.68*f3 + n3,
+			0.2 + 0.34*f1 + 0.31*f2 + 0.29*f3 + 0.33*math.Cos(2.07*x),
+		}
+	}
+	return rows
+}
+
+func generatedWeakTwoFactorRows() [][]any {
+	const n = 34
+	rows := make([][]any, n)
+	for i := range n {
+		x := float64(i)
+		f1 := 0.95*math.Sin(0.31*x) + 0.18*float64(i%6-2)
+		f2 := 0.90*math.Cos(0.47*x+0.3) - 0.14*float64(i%5-2)
+		rows[i] = []any{
+			0.2 + 0.54*f1 + 0.10*f2 + 0.64*math.Sin(1.19*x),
+			-0.4 + 0.49*f1 - 0.08*f2 + 0.61*math.Cos(1.43*x+0.2),
+			1.1 + 0.12*f1 + 0.52*f2 + 0.66*math.Sin(1.71*x-0.3),
+			-1.3 - 0.11*f1 + 0.47*f2 + 0.63*math.Cos(1.97*x),
+			0.7 + 0.32*f1 + 0.28*f2 + 0.67*math.Sin(2.23*x+0.5),
+		}
+	}
+	return rows
+}
+
+func generatedHighCorrelationRows() [][]any {
+	const n = 28
+	rows := make([][]any, n)
+	for i := range n {
+		x := float64(i)
+		f := 1.10*math.Sin(0.27*x) + 0.72*math.Cos(0.13*x) + 0.10*float64(i%4-1)
+		rows[i] = []any{
+			1.0 + 0.96*f + 0.11*math.Sin(1.07*x),
+			-0.5 + 0.93*f + 0.10*math.Cos(1.29*x+0.1),
+			0.8 + 0.98*f + 0.09*math.Sin(1.51*x-0.2),
+			-1.4 + 0.91*f + 0.12*math.Cos(1.73*x+0.4),
+			0.1 + 0.88*f + 0.13*math.Sin(1.91*x),
+		}
+	}
+	return rows
+}
+
+func generatedMixedSignRows() [][]any {
+	const n = 30
+	rows := make([][]any, n)
+	for i := range n {
+		x := float64(i)
+		f1 := 1.15*math.Sin(0.35*x) + 0.22*float64(i%7-3)
+		f2 := 1.00*math.Cos(0.49*x-0.2) - 0.18*float64(i%6-2)
+		rows[i] = []any{
+			0.3 + 0.80*f1 + 0.15*f2 + 0.38*math.Sin(1.23*x),
+			-0.8 - 0.74*f1 + 0.18*f2 + 0.36*math.Cos(1.41*x),
+			1.2 + 0.22*f1 + 0.76*f2 + 0.35*math.Sin(1.69*x+0.2),
+			-1.5 + 0.16*f1 - 0.72*f2 + 0.37*math.Cos(1.87*x-0.4),
+			0.6 + 0.46*f1 - 0.34*f2 + 0.40*math.Sin(2.09*x),
+			-0.2 - 0.38*f1 - 0.42*f2 + 0.39*math.Cos(2.31*x+0.1),
+		}
+	}
+	return rows
+}
+
 func generatedFactorAnalysisDatasets() []factorAnalysisDataset {
 	rowsWithMissing := generatedFactorAnalysisRows(22, 2)
 	rowsWithMissing[3][4] = nil
@@ -147,6 +225,10 @@ func generatedFactorAnalysisDatasets() []factorAnalysisDataset {
 		{name: "generated_oblique", rows: generatedFactorAnalysisRows(24, 0), nFactors: 2},
 		{name: "generated_scaled_shifted", rows: generatedFactorAnalysisRows(26, 1), nFactors: 2},
 		{name: "generated_complete_case", rows: rowsWithMissing, nFactors: 2},
+		{name: "generated_moderate_three_factor", rows: generatedModerateThreeFactorRows(), nFactors: 3},
+		{name: "generated_weak_two_factor", rows: generatedWeakTwoFactorRows(), nFactors: 2},
+		{name: "generated_high_correlation", rows: generatedHighCorrelationRows(), nFactors: 1},
+		{name: "generated_mixed_sign", rows: generatedMixedSignRows(), nFactors: 2},
 	}
 }
 
@@ -413,22 +495,32 @@ func TestCrossLangFactorAnalysisAllModeCombinations(t *testing.T) {
 
 func TestCrossLangFactorAnalysisRepresentativeDatasets(t *testing.T) {
 	requireFactorAnalysisRTools(t)
+	base := factorAnalysisDatasets()
+	generated := generatedFactorAnalysisDatasets()
 	cases := []struct {
 		dataset    factorAnalysisDataset
 		extraction stats.FactorExtractionMethod
 		rotation   stats.FactorRotationMethod
 		scoring    stats.FactorScoreMethod
 	}{
-		{factorAnalysisDatasets()[1], stats.FactorExtractionPAF, stats.FactorRotationNone, stats.FactorScoreRegression},
-		{factorAnalysisDatasets()[1], stats.FactorExtractionPCA, stats.FactorRotationNone, stats.FactorScoreRegression},
-		{factorAnalysisDatasets()[2], stats.FactorExtractionMINRES, stats.FactorRotationOblimin, stats.FactorScoreRegression},
-		{factorAnalysisDatasets()[2], stats.FactorExtractionML, stats.FactorRotationVarimax, stats.FactorScoreBartlett},
-		{factorAnalysisDatasets()[3], stats.FactorExtractionPAF, stats.FactorRotationPromax, stats.FactorScoreAndersonRubin},
-		{factorAnalysisDatasets()[4], stats.FactorExtractionMINRES, stats.FactorRotationOblimin, stats.FactorScoreRegression},
-		{generatedFactorAnalysisDatasets()[0], stats.FactorExtractionPCA, stats.FactorRotationBentlerQ, stats.FactorScoreAndersonRubin},
-		{generatedFactorAnalysisDatasets()[0], stats.FactorExtractionPAF, stats.FactorRotationGeominQ, stats.FactorScoreBartlett},
-		{generatedFactorAnalysisDatasets()[1], stats.FactorExtractionML, stats.FactorRotationGeominT, stats.FactorScoreBartlett},
-		{generatedFactorAnalysisDatasets()[2], stats.FactorExtractionPAF, stats.FactorRotationQuartimin, stats.FactorScoreRegression},
+		{base[1], stats.FactorExtractionPAF, stats.FactorRotationNone, stats.FactorScoreRegression},
+		{base[1], stats.FactorExtractionPCA, stats.FactorRotationNone, stats.FactorScoreRegression},
+		{base[2], stats.FactorExtractionMINRES, stats.FactorRotationOblimin, stats.FactorScoreRegression},
+		{base[2], stats.FactorExtractionML, stats.FactorRotationVarimax, stats.FactorScoreBartlett},
+		{base[3], stats.FactorExtractionPAF, stats.FactorRotationPromax, stats.FactorScoreAndersonRubin},
+		{base[4], stats.FactorExtractionMINRES, stats.FactorRotationOblimin, stats.FactorScoreRegression},
+		{generated[0], stats.FactorExtractionPCA, stats.FactorRotationBentlerQ, stats.FactorScoreAndersonRubin},
+		{generated[0], stats.FactorExtractionPAF, stats.FactorRotationGeominQ, stats.FactorScoreBartlett},
+		{generated[1], stats.FactorExtractionML, stats.FactorRotationGeominT, stats.FactorScoreBartlett},
+		{generated[2], stats.FactorExtractionPAF, stats.FactorRotationQuartimin, stats.FactorScoreRegression},
+		{generated[3], stats.FactorExtractionPCA, stats.FactorRotationOblimin, stats.FactorScoreRegression},
+		{generated[3], stats.FactorExtractionPAF, stats.FactorRotationGeominQ, stats.FactorScoreAndersonRubin},
+		{generated[4], stats.FactorExtractionPCA, stats.FactorRotationQuartimax, stats.FactorScoreRegression},
+		{generated[4], stats.FactorExtractionPAF, stats.FactorRotationNone, stats.FactorScoreBartlett},
+		{generated[5], stats.FactorExtractionPCA, stats.FactorRotationNone, stats.FactorScoreRegression},
+		{generated[5], stats.FactorExtractionPAF, stats.FactorRotationNone, stats.FactorScoreBartlett},
+		{generated[6], stats.FactorExtractionML, stats.FactorRotationQuartimin, stats.FactorScoreRegression},
+		{generated[6], stats.FactorExtractionPAF, stats.FactorRotationPromax, stats.FactorScoreBartlett},
 	}
 	for _, tc := range cases {
 		t.Run(tc.dataset.name+"/"+string(tc.extraction)+"/"+string(tc.rotation)+"/"+string(tc.scoring), func(t *testing.T) {
