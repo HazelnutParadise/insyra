@@ -19,7 +19,7 @@ import (
 // -------------------------
 
 // FactorExtractionMethod defines the method for extracting factors.
-// See Docs/stats.md (Factor Analysis → Extraction Methods) for algorithmic details.
+// See Docs/stats.md (Factor Analysis - Extraction Methods) for algorithmic details.
 type FactorExtractionMethod string
 
 const (
@@ -119,21 +119,21 @@ type BartlettTestResult struct {
 
 // FactorAnalysisResult contains the output of factor analysis
 type FactorAnalysisResult struct {
-	Loadings             insyra.IDataTable   // Loading matrix (variables × factors)
-	UnrotatedLoadings    insyra.IDataTable   // Unrotated loading matrix (variables × factors)
-	Structure            insyra.IDataTable   // Structure matrix (variables × factors)
-	Uniquenesses         insyra.IDataTable   // Uniqueness vector (p × 1)
-	Communalities        insyra.IDataTable   // Communality table (p × 1: Extraction)
+	Loadings             insyra.IDataTable   // Loading matrix (variables x factors)
+	UnrotatedLoadings    insyra.IDataTable   // Unrotated loading matrix (variables x factors)
+	Structure            insyra.IDataTable   // Structure matrix (variables x factors)
+	Uniquenesses         insyra.IDataTable   // Uniqueness vector (p x 1)
+	Communalities        insyra.IDataTable   // Communality table (p x 1: Extraction)
 	SamplingAdequacy     insyra.IDataTable   // KMO overall index and per-variable MSA values
 	BartlettTest         *BartlettTestResult // Bartlett's test of sphericity summary
-	Phi                  insyra.IDataTable   // Factor correlation matrix (m × m), nil for orthogonal
-	RotationMatrix       insyra.IDataTable   // Rotation matrix (m × m), nil if no rotation
-	Eigenvalues          insyra.IDataTable   // Eigenvalues vector (p × 1)
-	ExplainedProportion  insyra.IDataTable   // Proportion explained by each factor (m × 1)
-	CumulativeProportion insyra.IDataTable   // Cumulative proportion explained (m × 1)
-	Scores               insyra.IDataTable   // Factor scores (n × m), nil if not computed
-	ScoreCoefficients    insyra.IDataTable   // Factor score coefficient matrix (variables × factors)
-	ScoreCovariance      insyra.IDataTable   // Factor score covariance matrix (factors × factors)
+	Phi                  insyra.IDataTable   // Factor correlation matrix (m x m), nil for orthogonal
+	RotationMatrix       insyra.IDataTable   // Rotation matrix (m x m), nil if no rotation
+	Eigenvalues          insyra.IDataTable   // Eigenvalues vector (p x 1)
+	ExplainedProportion  insyra.IDataTable   // Proportion explained by each factor (m x 1)
+	CumulativeProportion insyra.IDataTable   // Cumulative proportion explained (m x 1)
+	Scores               insyra.IDataTable   // Factor scores (n x m), nil if not computed
+	ScoreCoefficients    insyra.IDataTable   // Factor score coefficient matrix (variables x factors)
+	ScoreCovariance      insyra.IDataTable   // Factor score covariance matrix (factors x factors)
 
 	Converged         bool
 	RotationConverged bool
@@ -227,7 +227,7 @@ func DefaultFactorAnalysisOptions() FactorAnalysisOptions {
 			VarimaxAlgorithm: VarimaxKaiser,
 		},
 		Scoring: FactorScoreRegression, // R default: "regression"
-		MaxIter: 100,                   // R default: 50
+		MaxIter: 50,                    // R default: 50
 		MinErr:  0.001,                 // R default: 0.001
 	}
 }
@@ -564,10 +564,10 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 	if numFactors == 0 {
 		return nil, errors.New("no factors retained")
 	}
-	// Use internal tolerance by default. Users who previously used the
-	// (now-removed) Tol field can emulate disabling tolerance by setting
-	// MaxIter explicitly.
-	tolVal := extractionTolerance
+	tolVal := opt.MinErr
+	if tolVal <= 0 {
+		tolVal = 0.001
+	}
 
 	// Step 6: Extract factors
 	// Convert SymDense to Dense for extraction functions
@@ -589,44 +589,23 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 				initialCommunalities[i] = 1.0
 			}
 		} else {
-			// For PAF and ML, SPSS default is to use squared multiple correlations (SMC) as initial estimates
-			// SMC[i] = 1 - 1/R_ii^{-1}, where R^{-1} is pseudoinverse of correlation matrix (matching R's psych::smc)
-			// R's psych::smc uses Pinv (pseudoinverse) via SVD for numerical stability
-			insyra.LogInfo("stats", "FactorAnalysis", "Computing SMC using pseudoinverse correlation matrix method")
-
-			// Use SVD-based pseudoinverse for numerical stability (matching R's Pinv function)
-			corrInv := computePseudoInverse(corrDense)
-
-			if corrInv == nil {
-				insyra.LogWarning("stats", "FactorAnalysis", "Pseudoinverse computation failed, using fallback SMC method")
-				// Fallback to the fa package's SMC method
-				smcVec, _ := fa.Smc(corrDense, nil)
-				if smcVec != nil {
-					copy(initialCommunalities, smcVec.RawVector().Data)
-				} else {
-					// Ultimate fallback: use 0.5 as default
-					for i := 0; i < colNum; i++ {
-						initialCommunalities[i] = 0.5
-					}
-				}
+			// Use the internal psych-compatible SMC helper instead of
+			// duplicating pseudo-inverse logic in the public orchestration layer.
+			smcVec, _ := fa.Smc(corrDense, &fa.SmcOptions{Covar: false})
+			if smcVec != nil {
+				copy(initialCommunalities, smcVec.RawVector().Data)
 			} else {
-				// SMC[i] = 1 - 1/R_ii^{-1}
 				for i := 0; i < colNum; i++ {
-					diagInv := corrInv.At(i, i)
-					if diagInv > 0 {
-						initialCommunalities[i] = 1.0 - 1.0/diagInv
-					} else {
-						initialCommunalities[i] = 0.5 // Fallback
-					}
-					// Clamp to valid range [0, 1]
-					if initialCommunalities[i] < 0 {
-						initialCommunalities[i] = 0
-					}
-					if initialCommunalities[i] > 1 {
-						initialCommunalities[i] = 1
-					}
+					initialCommunalities[i] = 0.5
 				}
-				insyra.LogDebug("stats", "FactorAnalysis", "SMC computed for %d variables", len(initialCommunalities))
+			}
+			for i := 0; i < colNum; i++ {
+				if initialCommunalities[i] < 0 {
+					initialCommunalities[i] = 0
+				}
+				if initialCommunalities[i] > 1 {
+					initialCommunalities[i] = 1
+				}
 			}
 		}
 	} else {
@@ -656,32 +635,6 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 		}
 	}
 
-	// Sanity check: inspect unrotated loadings before any rotation is applied
-	if loadings != nil {
-		pVars, mFactors := loadings.Dims()
-		if pVars > 0 && mFactors > 0 {
-			maxAbs := 0.0
-			for i := range pVars {
-				for j := range mFactors {
-					val := math.Abs(loadings.At(i, j))
-					if val > maxAbs {
-						maxAbs = val
-					}
-				}
-			}
-			sampleVars := min(2, pVars)
-			sampleFactors := min(2, mFactors)
-			buffer := make([]float64, 0, sampleVars*sampleFactors)
-			for i := range sampleVars {
-				for j := range sampleFactors {
-					buffer = append(buffer, loadings.At(i, j))
-				}
-			}
-			insyra.LogInfo("stats", "FactorAnalysis", "pre-rotation loadings |max|=%.3f, samples=%v", maxAbs, buffer)
-		}
-	}
-
-	// Special handling for PAF + Oblimin to match SPSS
 	// Step 7: Rotate factors
 	var rotatedLoadings *mat.Dense
 	var unrotatedLoadings *mat.Dense
@@ -696,11 +649,6 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 		rotatedLoadings, rotationMatrix, phi, rotationConverged, err = rotateFactors(loadings, opt.Rotation, opt.MinErr, opt.MaxIter)
 		if err != nil {
 			return nil, fmt.Errorf("factor rotation failed: %w", err)
-		}
-		// Log rotation matrix to check dimensions
-		if rotationMatrix != nil {
-			rows, cols := rotationMatrix.Dims()
-			insyra.LogInfo("stats", "FactorAnalysis", "Rotation matrix dims: %dx%d", rows, cols)
 		}
 	} else {
 		// No rotation
@@ -885,7 +833,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 		}
 	} else {
 		// Oblique rotation: vx <- diag(Phi %*% t(loadings) %*% loadings)
-		// Step 1: Compute t(loadings) %*% loadings (m × m matrix)
+		// Step 1: Compute t(loadings) %*% loadings (m x m matrix)
 		ltl := mat.NewDense(mFactors, mFactors, nil)
 		ltl.Mul(rotatedLoadings.T(), rotatedLoadings)
 		// Step 2: Compute Phi %*% (t(loadings) %*% loadings)
@@ -989,23 +937,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 		result.Scores = matrixToDataTableWithNames(scores, tableNameFactorScores, factorColNames, rowNames)
 	}
 	if scoreWeights != nil {
-		// Adjust score coefficients for raw data (not standardized data)
-		// scoreWeights are currently for standardized data: S_std = Z * W
-		// We want coefficients for raw data: S = (X - μ) / σ * W
-		// So: S = X * (W / σ^T) - μ/σ * W
-		// The coefficients are W / σ^T for each variable
-		p, _ := scoreWeights.Dims()
-		adjustedWeights := mat.NewDense(p, numFactors, nil)
-		for i := range p {
-			for j := range numFactors {
-				if i < len(sds) && sds[i] > 0 {
-					adjustedWeights.Set(i, j, scoreWeights.At(i, j)/sds[i])
-				} else {
-					adjustedWeights.Set(i, j, scoreWeights.At(i, j))
-				}
-			}
-		}
-		scoreCoeffTable := matrixToDataTableWithNames(adjustedWeights, tableNameFactorScoreCoefficients, factorColNames, colNames)
+		scoreCoeffTable := matrixToDataTableWithNames(scoreWeights, tableNameFactorScoreCoefficients, factorColNames, colNames)
 		result.ScoreCoefficients = scoreCoeffTable
 	}
 	if scoreCovariance != nil {
@@ -1270,6 +1202,17 @@ func computePCALoadings(eigenvalues []float64, eigenvectors *mat.Dense, numFacto
 				loadings.Set(i, j, eigenvectors.At(i, j)*math.Sqrt(adjustedEigenvalues[j]))
 			} else {
 				loadings.Set(i, j, 0)
+			}
+		}
+	}
+	for j := 0; j < numFactors; j++ {
+		colSum := 0.0
+		for i := range p {
+			colSum += loadings.At(i, j)
+		}
+		if colSum < 0 {
+			for i := range p {
+				loadings.Set(i, j, -loadings.At(i, j))
 			}
 		}
 	}
@@ -1793,7 +1736,7 @@ func extractML_EM(corr *mat.Dense, numFactors int, maxIter int, tol float64, sam
 			testX[i] = xi / parscale
 		}
 		testObj := objFunc(testX)
-		insyra.LogInfo("stats", "FactorAnalysis", "  psi[0]=%.4f → obj=%.6f", testVal, testObj)
+		insyra.LogInfo("stats", "FactorAnalysis", "  psi[0]=%.4f obj=%.6f", testVal, testObj)
 	}
 
 	result, err := optimize.Minimize(p, x0, settings, method)
@@ -2906,7 +2849,6 @@ func rotateFactors(loadings *mat.Dense, rotationOpts FactorRotationOptions, minE
 				phi.Set(i, i, 1.0)
 			}
 
-			insyra.LogInfo("stats", "FactorAnalysis", "Using Kaiser Varimax (SPSS-compatible)")
 			insyra.LogDebug("stats", "FactorAnalysis", "Kaiser Varimax rotation completed")
 
 			// Apply sign standardization
@@ -2916,7 +2858,6 @@ func rotateFactors(loadings *mat.Dense, rotationOpts FactorRotationOptions, minE
 		} else {
 			// Default: Use GPArotation Varimax - matches R
 			method = "varimax"
-			insyra.LogInfo("stats", "FactorAnalysis", "Using GPArotation Varimax (R-compatible)")
 		}
 
 	case FactorRotationQuartimax:
@@ -3144,10 +3085,10 @@ func computeFactorScores(data *mat.Dense, loadings *mat.Dense, phi *mat.Dense, u
 		return computeRegressionScores(data, loadings, phi, uniquenesses, sigmaForScores)
 
 	case FactorScoreBartlett:
-		return computeBartlettScores(data, loadings, phi, uniquenesses)
+		return computeBartlettScores(data, loadings, phi, uniquenesses, sigmaForScores)
 
 	case FactorScoreAndersonRubin:
-		return computeAndersonRubinScores(data, loadings, phi)
+		return computeAndersonRubinScores(data, loadings, phi, uniquenesses, sigmaForScores)
 
 	default:
 		// Default to regression method
@@ -3157,231 +3098,206 @@ func computeFactorScores(data *mat.Dense, loadings *mat.Dense, phi *mat.Dense, u
 
 // computeRegressionScores computes factor scores using regression method
 func computeRegressionScores(data *mat.Dense, loadings *mat.Dense, phi *mat.Dense, uniquenesses []float64, sigma *mat.Dense) (*mat.Dense, *mat.Dense, *mat.Dense, error) {
-
-	// Use provided sigma (reproduced correlation matrix) or compute it
-	var R *mat.Dense
-	if sigma != nil {
-		R = sigma
-	} else {
-		// Create diagonal matrix of uniquenesses
-		U := mat.NewDiagDense(len(uniquenesses), uniquenesses)
-
-		// Compute R = L * Phi * L^T + U (reproduced correlation matrix)
-		var temp mat.Dense
-		if phi != nil {
-			temp.Mul(loadings, phi)
-		} else {
-			// If phi is nil (orthogonal rotation), use identity
-			_, m := loadings.Dims()
-			identity := mat.NewDense(m, m, nil)
-			for i := range m {
-				identity.Set(i, i, 1.0)
-			}
-			temp.Mul(loadings, identity)
-		}
-		R = &mat.Dense{}
-		R.Mul(&temp, loadings.T())
-		R.Add(R, U)
-	}
-
-	// Compute inverse of R
-	var Rinv mat.Dense
-	err := Rinv.Inverse(R)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to invert correlation matrix: %v", err)
-	}
-
-	// Compute weights W = R^(-1) * L * Phi (regression method)
-	var weights mat.Dense
-	weights.Mul(&Rinv, loadings)
-	if phi != nil {
-		weights.Mul(&weights, phi)
-	}
-	// If phi is nil, weights is already R^(-1) * L, which is correct for orthogonal case
-
-	// Compute scores S = data * W (not W^T!)
-	var scores mat.Dense
-	scores.Mul(data, &weights)
-
-	// Return phi, or identity matrix if phi is nil (orthogonal rotation)
-	var covariance *mat.Dense
-	if phi != nil {
-		covariance = phi
-	} else {
-		_, m := loadings.Dims()
-		covariance = mat.NewDense(m, m, nil)
-		for i := range m {
-			covariance.Set(i, i, 1.0)
-		}
-	}
-
-	return &scores, &weights, covariance, nil
-}
-
-// computeBartlettScores computes factor scores using Bartlett's weighted least squares method
-func computeBartlettScores(data *mat.Dense, loadings *mat.Dense, phi *mat.Dense, uniquenesses []float64) (*mat.Dense, *mat.Dense, *mat.Dense, error) {
-	n, _ := data.Dims()
-	_, m := loadings.Dims()
-
-	// Create uniqueness matrix (diagonal)
-	U := mat.NewDiagDense(len(uniquenesses), uniquenesses)
-
-	// Compute R = L * Phi * L^T + U (reproduced correlation matrix)
-	var temp mat.Dense
-	if phi != nil {
-		temp.Mul(loadings, phi)
-	} else {
-		// Orthogonal case
-		temp.CloneFrom(loadings)
-	}
-	var R mat.Dense
-	R.Mul(&temp, loadings.T())
-	R.Add(&R, U)
-
-	// For Bartlett method, use inverse of uniquenesses as weights
-	// W = diag(1/psi) where psi are the uniquenesses
-	weights := make([]float64, len(uniquenesses))
-	for i, u := range uniquenesses {
-		if u > 0 {
-			weights[i] = 1.0 / u
-		} else {
-			weights[i] = 1.0 // Avoid division by zero
-		}
-	}
-	W := mat.NewDiagDense(len(weights), weights)
-
-	// Compute weighted loadings: L_w = W^{1/2} * L
-	var sqrtW mat.Dense
-	sqrtW.Apply(func(i, j int, v float64) float64 {
-		return math.Sqrt(v)
-	}, W)
-
-	var Lw mat.Dense
-	Lw.Mul(&sqrtW, loadings)
-
-	// Compute weighted phi if oblique
-	var Phi_w *mat.Dense
-	if phi != nil {
-		Phi_w = mat.NewDense(m, m, nil)
-		Phi_w.Mul(&Lw, phi)
-		Phi_w.Mul(Phi_w, Lw.T())
-	}
-
-	// Compute the weighted regression: scores = (L_w^T * L_w)^{-1} * L_w^T * W^{1/2} * data^T
-	var LtLw mat.Dense
-	LtLw.Mul(Lw.T(), &Lw)
-
-	var LtLwInv mat.Dense
-	err := LtLwInv.Inverse(&LtLw)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to invert weighted loadings matrix: %v", err)
-	}
-
-	var temp2 mat.Dense
-	temp2.Mul(&LtLwInv, Lw.T())
-	temp2.Mul(&temp2, &sqrtW)
-
-	// Compute scores: S = temp2 * data^T (but need to transpose result)
-	var scoresT mat.Dense
-	scoresT.Mul(&temp2, data.T())
-
-	scores := mat.NewDense(n, m, nil)
-	scores.CloneFrom(scoresT.T())
-
-	// Return phi, or identity matrix if orthogonal
-	var covariance *mat.Dense
-	if phi != nil {
-		covariance = phi
-	} else {
-		covariance = mat.NewDense(m, m, nil)
-		for i := range m {
-			covariance.Set(i, i, 1.0)
-		}
-	}
-
-	return scores, &Lw, covariance, nil
-}
-
-// computeAndersonRubinScores computes factor scores using Anderson-Rubin's method
-func computeAndersonRubinScores(data *mat.Dense, loadings *mat.Dense, phi *mat.Dense) (*mat.Dense, *mat.Dense, *mat.Dense, error) {
-	_, p := data.Dims()
-	_, m := loadings.Dims()
-
-	// For Anderson-Rubin, we need uniquenesses. If not provided, assume minimal uniquenesses
-	uniquenesses := make([]float64, p)
-	for i := range p {
-		uniquenesses[i] = 0.005 // Small positive value
-	}
-
-	// First compute regression scores
-	regScores, regCoeff, _, err := computeRegressionScores(data, loadings, phi, uniquenesses, nil)
+	r := scoreCorrelationMatrix(loadings, phi, uniquenesses, sigma)
+	factorPattern := factorPatternWithPhi(loadings, phi)
+	weights, err := solveOrPinv(r, factorPattern)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 
-	// Anderson-Rubin normalization: normalize scores to have identity covariance
-	// Compute sample covariance of regression scores
-	scoreCov := mat.NewSymDense(m, nil)
-	stat.CovarianceMatrix(scoreCov, regScores, nil)
+	var scores mat.Dense
+	scores.Mul(data, weights)
 
-	// Compute Cholesky decomposition for normalization
-	var chol mat.Cholesky
-	if !chol.Factorize(scoreCov) {
-		// If Cholesky fails, use eigenvalue decomposition
-		var eig mat.EigenSym
-		if !eig.Factorize(scoreCov, true) {
-			return nil, nil, nil, fmt.Errorf("failed to decompose score covariance matrix")
-		}
+	return &scores, weights, sampleCovarianceDense(&scores), nil
+}
 
-		eigenvals := eig.Values(nil)
-		eigenvecs := mat.NewDense(m, m, nil)
-		eig.VectorsTo(eigenvecs)
+// computeBartlettScores computes factor scores using Bartlett's weighted least squares method
+func computeBartlettScores(data *mat.Dense, loadings *mat.Dense, phi *mat.Dense, uniquenesses []float64, sigma *mat.Dense) (*mat.Dense, *mat.Dense, *mat.Dense, error) {
+	_ = sigma
+	invU2 := inverseUniquenessDiagonal(loadings, phi, uniquenesses)
 
-		// Normalize scores: S_ar = S_reg * V * D^{-1/2} * V^T
-		for j := range m {
-			if eigenvals[j] > 0 {
-				eigenvals[j] = 1.0 / math.Sqrt(eigenvals[j])
-			} else {
-				eigenvals[j] = 1.0
-			}
-		}
+	var invU2Loadings mat.Dense
+	invU2Loadings.Mul(invU2, loadings)
 
-		normMat := mat.NewDense(m, m, nil)
-		for i := range m {
-			for j := range m {
-				normMat.Set(i, j, eigenvecs.At(i, j)*eigenvals[j])
-			}
-		}
+	var middle mat.Dense
+	middle.Mul(loadings.T(), &invU2Loadings)
 
-		var normalizedScores mat.Dense
-		normalizedScores.Mul(regScores, normMat)
-
-		// Identity covariance for Anderson-Rubin
-		identity := mat.NewDense(m, m, nil)
-		for i := range m {
-			identity.Set(i, i, 1.0)
-		}
-
-		return &normalizedScores, regCoeff, identity, nil
-	}
-
-	// Use Cholesky for normalization
-	L := mat.NewTriDense(m, mat.Lower, nil)
-	chol.LTo(L)
-	var LInv mat.Dense
-	err = LInv.Inverse(L.T())
+	middleInv, err := inverseOrPinv(&middle)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to invert Cholesky factor: %v", err)
+		return nil, nil, nil, err
 	}
 
-	var normalizedScores mat.Dense
-	normalizedScores.Mul(regScores, &LInv)
+	var weights mat.Dense
+	weights.Mul(&invU2Loadings, middleInv)
 
-	// Identity covariance for Anderson-Rubin
-	identity := mat.NewDense(m, m, nil)
+	var scores mat.Dense
+	scores.Mul(data, &weights)
+
+	return &scores, &weights, sampleCovarianceDense(&scores), nil
+}
+
+// computeAndersonRubinScores computes factor scores using Anderson-Rubin's method
+func computeAndersonRubinScores(data *mat.Dense, loadings *mat.Dense, phi *mat.Dense, uniquenesses []float64, sigma *mat.Dense) (*mat.Dense, *mat.Dense, *mat.Dense, error) {
+	r := scoreCorrelationMatrix(loadings, phi, uniquenesses, sigma)
+	invU2 := inverseUniquenessDiagonal(loadings, phi, uniquenesses)
+
+	var invU2R mat.Dense
+	invU2R.Mul(invU2, r)
+	var invU2RInvU2 mat.Dense
+	invU2RInvU2.Mul(&invU2R, invU2)
+	var left mat.Dense
+	left.Mul(loadings.T(), &invU2RInvU2)
+	var middle mat.Dense
+	middle.Mul(&left, loadings)
+
+	invSqrt, err := inverseSymmetricSqrt(&middle)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	var invU2Loadings mat.Dense
+	invU2Loadings.Mul(invU2, loadings)
+	var weights mat.Dense
+	weights.Mul(&invU2Loadings, invSqrt)
+
+	var scores mat.Dense
+	scores.Mul(data, &weights)
+
+	return &scores, &weights, sampleCovarianceDense(&scores), nil
+}
+
+func scoreCorrelationMatrix(loadings *mat.Dense, phi *mat.Dense, uniquenesses []float64, sigma *mat.Dense) *mat.Dense {
+	if sigma != nil {
+		return sigma
+	}
+	return computeSigma(loadings, phi, uniquenesses)
+}
+
+func factorPatternWithPhi(loadings *mat.Dense, phi *mat.Dense) *mat.Dense {
+	if phi == nil {
+		return mat.DenseCopyOf(loadings)
+	}
+	var pattern mat.Dense
+	pattern.Mul(loadings, phi)
+	return &pattern
+}
+
+func solveOrPinv(a *mat.Dense, b mat.Matrix) (*mat.Dense, error) {
+	var chol mat.Cholesky
+	if chol.Factorize(symDenseCopy(a)) {
+		var solved mat.Dense
+		if err := chol.SolveTo(&solved, b); err == nil {
+			return &solved, nil
+		}
+	}
+
+	var lu mat.LU
+	lu.Factorize(a)
+	var solved mat.Dense
+	if err := lu.SolveTo(&solved, false, b); err == nil {
+		return &solved, nil
+	}
+
+	pinv, err := fa.Pinv(a, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to solve scoring linear system: %w", err)
+	}
+	solved.Mul(pinv, b)
+	return &solved, nil
+}
+
+func inverseOrPinv(a *mat.Dense) (*mat.Dense, error) {
+	var inv mat.Dense
+	if err := inv.Inverse(a); err == nil {
+		return &inv, nil
+	}
+	pinv, err := fa.Pinv(a, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to invert scoring matrix: %w", err)
+	}
+	return pinv, nil
+}
+
+func inverseUniquenessDiagonal(loadings *mat.Dense, phi *mat.Dense, uniquenesses []float64) *mat.DiagDense {
+	p, _ := loadings.Dims()
+	inv := make([]float64, p)
+	if phi != nil {
+		var tmp mat.Dense
+		tmp.Mul(loadings, phi)
+		var reproduced mat.Dense
+		reproduced.Mul(&tmp, loadings.T())
+		for i := range p {
+			u2 := 1 - reproduced.At(i, i)
+			if math.Abs(u2) <= machineEpsilon {
+				u2 = math.Copysign(machineEpsilon, u2)
+			}
+			inv[i] = 1 / u2
+		}
+		return mat.NewDiagDense(p, inv)
+	}
+	for i := range p {
+		u2 := 1.0
+		if i < len(uniquenesses) {
+			u2 = uniquenesses[i]
+		}
+		if math.Abs(u2) <= machineEpsilon {
+			u2 = math.Copysign(machineEpsilon, u2)
+		}
+		inv[i] = 1 / u2
+	}
+	return mat.NewDiagDense(p, inv)
+}
+
+func inverseSymmetricSqrt(a *mat.Dense) (*mat.Dense, error) {
+	sym := symDenseCopy(a)
+	var eig mat.EigenSym
+	if !eig.Factorize(sym, true) {
+		return nil, fmt.Errorf("failed to decompose scoring matrix")
+	}
+	values := eig.Values(nil)
+	vectors := mat.NewDense(len(values), len(values), nil)
+	eig.VectorsTo(vectors)
+
+	scaled := mat.NewDense(len(values), len(values), nil)
+	for j, value := range values {
+		if value < eigenvalueMinThreshold {
+			value = eigenvalueMinThreshold
+		}
+		scale := 1 / math.Sqrt(value)
+		for i := range values {
+			scaled.Set(i, j, vectors.At(i, j)*scale)
+		}
+	}
+
+	var invSqrt mat.Dense
+	invSqrt.Mul(scaled, vectors.T())
+	return &invSqrt, nil
+}
+
+func symDenseCopy(a mat.Matrix) *mat.SymDense {
+	r, c := a.Dims()
+	n := r
+	if c < n {
+		n = c
+	}
+	sym := mat.NewSymDense(n, nil)
+	for i := range n {
+		for j := 0; j <= i; j++ {
+			sym.SetSym(i, j, 0.5*(a.At(i, j)+a.At(j, i)))
+		}
+	}
+	return sym
+}
+
+func sampleCovarianceDense(scores *mat.Dense) *mat.Dense {
+	_, m := scores.Dims()
+	cov := mat.NewSymDense(m, nil)
+	stat.CovarianceMatrix(cov, scores, nil)
+	dense := mat.NewDense(m, m, nil)
 	for i := range m {
-		identity.Set(i, i, 1.0)
+		for j := range m {
+			dense.Set(i, j, cov.At(i, j))
+		}
 	}
-
-	return &normalizedScores, regCoeff, identity, nil
+	return dense
 }

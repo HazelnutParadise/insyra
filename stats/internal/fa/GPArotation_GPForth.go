@@ -150,10 +150,7 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 
 			// Tmatt <- UDV$u %*% t(UDV$v)
 			Tmatt = mat.NewDense(U.RawMatrix().Rows, V.RawMatrix().Cols, nil)
-			var Vt mat.Dense
-			Vt.CloneFrom(&V)
-			Vt.T()
-			Tmatt.Mul(&U, &Vt)
+			Tmatt.Mul(&U, V.T())
 
 			// L <- A %*% Tmatt
 			L.Mul(A, Tmatt)
