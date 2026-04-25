@@ -615,7 +615,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 		}
 	}
 
-	loadings, _, _, converged, iterations, err := extractFactors(data, corrDense, sortedEigenvalues, sortedEigenvectors, numFactors, opt, rowNum, tolVal, initialCommunalities)
+	loadings, _, extractionEigenvalues, converged, iterations, err := extractFactors(data, corrDense, sortedEigenvalues, sortedEigenvectors, numFactors, opt, rowNum, tolVal, initialCommunalities)
 	if err != nil {
 		return nil, fmt.Errorf("factor extraction failed: %w", err)
 	}
@@ -646,7 +646,11 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 		// Apply rotation only if more than one factor
 		// R: if (nfactors > 1) { ... rotation logic ... }
 		unrotatedLoadings = mat.DenseCopyOf(loadings)
-		rotatedLoadings, rotationMatrix, phi, rotationConverged, err = rotateFactors(loadings, opt.Rotation, opt.MinErr, opt.MaxIter)
+		if opt.Extraction == FactorExtractionPCA && opt.Rotation.Method == FactorRotationPromax {
+			rotatedLoadings, rotationMatrix, phi, rotationConverged, err = rotatePrincipalPromax(loadings, opt.Rotation)
+		} else {
+			rotatedLoadings, rotationMatrix, phi, rotationConverged, err = rotateFactors(loadings, opt.Rotation, opt.MinErr, opt.MaxIter)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("factor rotation failed: %w", err)
 		}
@@ -734,7 +738,9 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 	// R: S <- r; diag(S) <- diag(model); eigens <- eigen(S)$values
 	// This is the modified correlation matrix with final communalities as diagonal
 	reportedEigenvalues := sortedEigenvalues // Default: use original eigenvalues
-	if opt.Extraction != FactorExtractionPCA {
+	if opt.Extraction != FactorExtractionPCA && len(extractionEigenvalues) > 0 {
+		reportedEigenvalues = append([]float64(nil), extractionEigenvalues...)
+	} else if opt.Extraction != FactorExtractionPCA {
 		// For non-PCA methods, compute eigenvalues of correlation matrix with final communalities
 		modifiedCorr := mat.NewDense(colNum, colNum, nil)
 		modifiedCorr.CloneFrom(corrMatrix)
@@ -776,7 +782,13 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 	var scoreCovariance *mat.Dense
 	if rowNum > 0 {
 		var err error
-		scores, scoreWeights, scoreCovariance, err = computeFactorScores(data, rotatedLoadings, phi, uniquenesses, sigmaForScores, opt.Scoring)
+		scoringMethod := opt.Scoring
+		if opt.Extraction == FactorExtractionPCA && scoringMethod != FactorScoreNone {
+			// psych::principal exposes scores as a boolean and uses its
+			// regression-style principal-component scoring for every non-none mode.
+			scoringMethod = FactorScoreRegression
+		}
+		scores, scoreWeights, scoreCovariance, err = computeFactorScores(data, rotatedLoadings, phi, uniquenesses, sigmaForScores, scoringMethod)
 		if err != nil {
 			return nil, fmt.Errorf("factor scoring failed: %w", err)
 		}
@@ -2432,64 +2444,29 @@ func computeKMOMeasures(corr *mat.Dense) (overallKMO float64, msaValues []float6
 	p, _ := corr.Dims()
 	msaValues = make([]float64, p)
 
-	// Use Cholesky decomposition for better numerical stability when computing partial correlations
-	symCorr := mat.NewSymDense(p, nil)
-	for i := range p {
-		for j := 0; j <= i; j++ {
-			symCorr.SetSym(i, j, corr.At(i, j))
-		}
+	q := mat.NewDense(p, p, nil)
+	if err := q.Inverse(corr); err != nil {
+		// psych::KMO falls back to the input matrix when solve(r) fails.
+		q.CloneFrom(corr)
 	}
-
-	var chol mat.Cholesky
-	if !chol.Factorize(symCorr) {
-		// Fallback to eigenvalue decomposition if Cholesky fails
-		var eig mat.EigenSym
-		if !eig.Factorize(symCorr, true) {
-			return 0, nil, fmt.Errorf("failed to decompose correlation matrix")
-		}
-
-		// Use pseudoinverse for better stability
-		eigenvals := eig.Values(nil)
-		eigenvecs := mat.NewDense(p, p, nil)
-		eig.VectorsTo(eigenvecs)
-
-		// Compute regularized inverse
-		invCorr := mat.NewDense(p, p, nil)
-		for i := range p {
-			for j := range p {
-				sum := 0.0
-				for k := range p {
-					if eigenvals[k] > 1e-12 { // Threshold for numerical stability
-						sum += eigenvecs.At(i, k) * eigenvecs.At(j, k) / eigenvals[k]
-					}
-				}
-				invCorr.Set(i, j, sum)
-			}
-		}
-
-		return computeKMOFromInverse(corr, invCorr, msaValues)
-	}
-
-	// Use Cholesky-based inverse for better stability
-	var L mat.TriDense
-	chol.LTo(&L)
-
-	invCorr := mat.NewDense(p, p, nil)
-	err = invCorr.Inverse(L.T())
-	if err != nil {
-		return 0, nil, fmt.Errorf("failed to compute inverse from Cholesky: %v", err)
-	}
-
-	// Compute L^{-T} * L^{-1}
-	var temp mat.Dense
-	temp.Mul(invCorr.T(), invCorr)
-
-	return computeKMOFromInverse(corr, &temp, msaValues)
+	return computeKMOFromInverse(corr, q, msaValues)
 }
 
 // computeKMOFromInverse computes KMO measures given the correlation matrix and its inverse
 func computeKMOFromInverse(corr, invCorr *mat.Dense, msaValues []float64) (overallKMO float64, msa []float64, err error) {
 	p, _ := corr.Dims()
+	qCor := mat.NewDense(p, p, nil)
+	for i := range p {
+		for j := range p {
+			denom := math.Sqrt(invCorr.At(i, i) * invCorr.At(j, j))
+			if denom == 0 || math.IsNaN(denom) {
+				qCor.Set(i, j, 0)
+			} else {
+				qCor.Set(i, j, invCorr.At(i, j)/denom)
+			}
+		}
+		qCor.Set(i, i, 0)
+	}
 
 	// Compute MSA (Measure of Sampling Adequacy) for each variable
 	for i := range p {
@@ -2499,8 +2476,7 @@ func computeKMOFromInverse(corr, invCorr *mat.Dense, msaValues []float64) (overa
 		for j := range p {
 			if i != j {
 				r := corr.At(i, j)
-				// Compute partial correlation with regularization
-				p_ij := -invCorr.At(i, j) / math.Sqrt(math.Max(invCorr.At(i, i)*invCorr.At(j, j), 1e-10))
+				p_ij := qCor.At(i, j)
 				sumRSquared += r * r
 				sumPSquared += p_ij * p_ij
 			}
@@ -2521,7 +2497,7 @@ func computeKMOFromInverse(corr, invCorr *mat.Dense, msaValues []float64) (overa
 		for j := range p {
 			if i != j {
 				r := corr.At(i, j)
-				p_ij := -invCorr.At(i, j) / math.Sqrt(math.Max(invCorr.At(i, i)*invCorr.At(j, j), 1e-10))
+				p_ij := qCor.At(i, j)
 				sumRSquared += r * r
 				sumPSquared += p_ij * p_ij
 			}
@@ -2564,53 +2540,11 @@ func computeBartlettFromCorrelation(corr *mat.Dense, n int) (chiSquare float64, 
 	p, _ := corr.Dims()
 	df = p * (p - 1) / 2
 
-	// Use Cholesky decomposition for more stable determinant calculation
-	symCorr := mat.NewSymDense(p, nil)
-	for i := range p {
-		for j := 0; j <= i; j++ {
-			symCorr.SetSym(i, j, corr.At(i, j))
-		}
+	detR := mat.Det(corr)
+	if detR <= 0 || math.IsNaN(detR) {
+		return 0, 1.0, df, nil
 	}
-
-	var chol mat.Cholesky
-	if !chol.Factorize(symCorr) {
-		// Fallback to eigenvalue decomposition
-		var eig mat.EigenSym
-		if !eig.Factorize(symCorr, false) {
-			return 0, 0, df, fmt.Errorf("failed to decompose correlation matrix")
-		}
-
-		// Compute log determinant from eigenvalues
-		logDet := 0.0
-		for _, v := range eig.Values(nil) {
-			if v > 1e-12 { // Threshold for numerical stability
-				logDet += math.Log(v)
-			} else {
-				// Matrix is singular or near-singular
-				return 0, 1.0, df, nil
-			}
-		}
-
-		chiSquare = -((float64(n - 1)) - (2*float64(p)+5)/6) * logDet
-	} else {
-		// Use Cholesky determinant for better stability
-		logDet := 0.0
-		L := mat.NewTriDense(p, mat.Lower, nil)
-		chol.LTo(L)
-		for i := range p {
-			diag := L.At(i, i)
-			if diag > 1e-12 {
-				logDet += math.Log(diag)
-			} else {
-				// Matrix is singular or near-singular
-				return 0, 1.0, df, nil
-			}
-		}
-		// Cholesky gives L such that A = L*L^T, so det(A) = det(L)^2 = product(diag(L))^2
-		logDet *= 2
-
-		chiSquare = -((float64(n - 1)) - (2*float64(p)+5)/6) * logDet
-	}
+	chiSquare = -math.Log(detR) * (float64(n-1) - (2*float64(p)+5)/6)
 
 	// Compute p-value using chi-square distribution
 	if chiSquare > 0 && chiSquare < 1e10 { // Check for reasonable chi-square value
@@ -2775,24 +2709,10 @@ func sortFactorsByExplainedVariance(loadings *mat.Dense, rotationMatrix *mat.Den
 
 	// Reorder loadings matrix
 	sortedLoadings := mat.NewDense(rows, cols, nil)
-	if rotationMatrix != nil {
-		sortedRotationMatrix := mat.NewDense(cols, cols, nil)
-		for j := range cols {
-			newCol := indices[j]
-			for i := range rows {
-				sortedLoadings.Set(i, j, loadings.At(i, newCol))
-			}
-			for k := range cols {
-				sortedRotationMatrix.Set(k, j, rotationMatrix.At(k, newCol))
-			}
-		}
-		rotationMatrix = sortedRotationMatrix
-	} else {
-		for j := range cols {
-			newCol := indices[j]
-			for i := range rows {
-				sortedLoadings.Set(i, j, loadings.At(i, newCol))
-			}
+	for j := range cols {
+		newCol := indices[j]
+		for i := range rows {
+			sortedLoadings.Set(i, j, loadings.At(i, newCol))
 		}
 	}
 
@@ -2808,6 +2728,51 @@ func sortFactorsByExplainedVariance(loadings *mat.Dense, rotationMatrix *mat.Den
 	}
 
 	return sortedLoadings, rotationMatrix, sortedPhi
+}
+
+func rotatePrincipalPromax(loadings *mat.Dense, rotationOpts FactorRotationOptions) (*mat.Dense, *mat.Dense, *mat.Dense, bool, error) {
+	power := int(rotationOpts.Kappa)
+	if power <= 0 {
+		power = 4
+	}
+	res := fa.Promax(loadings, power, false)
+	rotated, ok := res["loadings"].(*mat.Dense)
+	if !ok || rotated == nil {
+		return nil, nil, nil, false, fmt.Errorf("promax rotation did not return loadings")
+	}
+	rotMat, ok := res["rotmat"].(*mat.Dense)
+	if !ok || rotMat == nil {
+		return nil, nil, nil, false, fmt.Errorf("promax rotation did not return rotation matrix")
+	}
+
+	var inv mat.Dense
+	if err := inv.Inverse(rotMat); err != nil {
+		pinv, pinvErr := fa.Pinv(rotMat, 0)
+		if pinvErr != nil {
+			return nil, nil, nil, false, fmt.Errorf("failed to invert promax rotation matrix: %w", err)
+		}
+		inv.CloneFrom(pinv)
+	}
+	var cov mat.Dense
+	cov.Mul(&inv, inv.T())
+	phi := covarianceToCorrelation(&cov)
+	return rotated, rotMat, phi, true, nil
+}
+
+func covarianceToCorrelation(cov *mat.Dense) *mat.Dense {
+	n, _ := cov.Dims()
+	cor := mat.NewDense(n, n, nil)
+	for i := range n {
+		for j := range n {
+			denom := math.Sqrt(cov.At(i, i) * cov.At(j, j))
+			if denom == 0 || math.IsNaN(denom) {
+				cor.Set(i, j, 0)
+			} else {
+				cor.Set(i, j, cov.At(i, j)/denom)
+			}
+		}
+	}
+	return cor
 }
 
 // rotateFactors rotates factor loadings based on rotation options
@@ -2842,19 +2807,12 @@ func rotateFactors(loadings *mat.Dense, rotationOpts FactorRotationOptions, minE
 				return nil, nil, nil, false, err
 			}
 
-			// Create phi matrix (identity for orthogonal rotation)
-			_, cols := loadings.Dims()
-			phi := mat.NewDense(cols, cols, nil)
-			for i := range cols {
-				phi.Set(i, i, 1.0)
-			}
-
 			insyra.LogDebug("stats", "FactorAnalysis", "Kaiser Varimax rotation completed")
 
 			// Apply sign standardization
 			standardizedLoadings := standardizeFactorSigns(rotatedLoadings)
 
-			return standardizedLoadings, rotMat, phi, true, nil
+			return standardizedLoadings, rotMat, nil, true, nil
 		} else {
 			// Default: Use GPArotation Varimax - matches R
 			method = "varimax"

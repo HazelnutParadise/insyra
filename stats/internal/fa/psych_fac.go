@@ -870,7 +870,12 @@ func maximumLikelihoodFactoring(r, rMat *mat.Dense, nfactors int, covar bool, mi
 	s := mat.NewDense(p, p, nil)
 	s.CloneFrom(r)
 	for i := 0; i < p; i++ {
-		s.Set(i, i, s.At(i, i)-psi[i])
+		communality := 0.0
+		for j := 0; j < nfactors; j++ {
+			v := loadings.At(i, j)
+			communality += v * v
+		}
+		s.Set(i, i, communality)
 	}
 	values, _, ok := statslinalg.SymmetricEigenDescending(s)
 

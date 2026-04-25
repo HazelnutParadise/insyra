@@ -235,7 +235,21 @@ factor_analysis_stats <- function(rows, extraction, rotation, scoring, nfactors)
   suppressMessages(library(psych))
   suppressMessages(library(GPArotation))
 
-  m <- do.call(rbind, lapply(rows, function(r) as.double(unlist(r))))
+  rows_to_matrix <- function(rows) {
+    nr <- length(rows)
+    nc <- max(vapply(rows, length, integer(1)))
+    out <- matrix(NA_real_, nrow = nr, ncol = nc)
+    for (i in seq_len(nr)) {
+      for (j in seq_len(length(rows[[i]]))) {
+        v <- rows[[i]][[j]]
+        if (!is.null(v)) out[i, j] <- as.double(v)
+      }
+    }
+    out
+  }
+
+  m <- rows_to_matrix(rows)
+  m <- m[stats::complete.cases(m), , drop = FALSE]
   colnames(m) <- paste0("C", seq_len(ncol(m)))
   rotation <- as.character(rotation)
   scoring <- as.character(scoring)
@@ -265,12 +279,19 @@ factor_analysis_stats <- function(rows, extraction, rotation, scoring, nfactors)
   }
   pick_v <- function(name) {
     va <- fit$Vaccounted
-    if (is.null(va) || is.null(rownames(va)) || !(name %in% rownames(va))) return(rep(NaN, as.integer(nfactors)))
+    if (is.null(va) || is.null(rownames(va)) || !(name %in% rownames(va))) {
+      if (name == "Cumulative Var" && !is.null(va) && !is.null(rownames(va)) && ("Proportion Var" %in% rownames(va))) {
+        return(cumsum(as.double(va["Proportion Var", seq_len(as.integer(nfactors))])))
+      }
+      return(rep(NaN, as.integer(nfactors)))
+    }
     as.double(va[name, seq_len(as.integer(nfactors))])
   }
 
   score_cov <- NULL
   if (!is.null(fit$scores)) score_cov <- stats::cov(as.matrix(fit$scores))
+  kmo <- psych::KMO(stats::cor(m))
+  bart <- psych::cortest.bartlett(stats::cor(m), n = nrow(m))
 
   list(
     loadings = as_rows(fit$loadings),
@@ -283,6 +304,13 @@ factor_analysis_stats <- function(rows, extraction, rotation, scoring, nfactors)
     eigenvalues = as.double(fit$values)[seq_len(as.integer(nfactors))],
     explained_proportion = pick_v("Proportion Var"),
     cumulative_proportion = pick_v("Cumulative Var"),
+    sampling_adequacy = as.double(c(kmo$MSAi, kmo$MSA)),
+    bartlett = list(
+      chi_square = as.double(bart$chisq),
+      df = as.double(bart$df),
+      p_value = as.double(bart$p.value),
+      sample_size = as.double(nrow(m))
+    ),
     scores = as_rows(fit$scores),
     score_coefficients = as_rows(fit$weights),
     score_covariance = as_rows(score_cov)
