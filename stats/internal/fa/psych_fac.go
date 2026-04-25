@@ -311,17 +311,21 @@ func principalAxisFactoring(r, rMat *mat.Dense, nfactors int, minErr float64, ma
 	}
 	err := comm
 	i := 1
+	var values []float64
+	var loadings *mat.Dense
 
 	for err > minErr && i <= maxIter {
 		// Eigen decomposition. R's eigen() returns symmetric eigenpairs in
 		// descending order; Gonum's EigenSym returns ascending values.
-		values, vectors, ok := statslinalg.SymmetricEigenDescending(rMat)
+		var vectors *mat.Dense
+		var ok bool
+		values, vectors, ok = statslinalg.SymmetricEigenDescending(rMat)
 		if !ok {
 			break
 		}
 
 		// Extract loadings
-		loadings := mat.NewDense(p, nfactors, nil)
+		loadings = mat.NewDense(p, nfactors, nil)
 		if nfactors > 1 {
 			for j := 0; j < nfactors; j++ {
 				eigenVal := values[j]
@@ -371,15 +375,12 @@ func principalAxisFactoring(r, rMat *mat.Dense, nfactors int, minErr float64, ma
 		insyra.LogWarning("fa", "principalAxisFactoring", "maximum iteration exceeded")
 	}
 
-	// Final eigen decomposition
-	values, vectors, ok := statslinalg.SymmetricEigenDescending(rMat)
-	if !ok {
-		return mat.NewDense(p, nfactors, nil), make([]float64, p), make([]float64, p)
-	}
-
-	// Extract final loadings
-	loadings := mat.NewDense(p, nfactors, nil)
-	if nfactors > 1 {
+	if loadings == nil || values == nil {
+		values, vectors, ok := statslinalg.SymmetricEigenDescending(rMat)
+		if !ok {
+			return mat.NewDense(p, nfactors, nil), make([]float64, p), make([]float64, p)
+		}
+		loadings = mat.NewDense(p, nfactors, nil)
 		for j := 0; j < nfactors; j++ {
 			eigenVal := values[j]
 			if eigenVal < 0 {
@@ -389,15 +390,6 @@ func principalAxisFactoring(r, rMat *mat.Dense, nfactors int, minErr float64, ma
 			for k := 0; k < p; k++ {
 				loadings.Set(k, j, vectors.At(k, j)*sqrtEigenVal)
 			}
-		}
-	} else {
-		eigenVal := values[0]
-		if eigenVal < 0 {
-			eigenVal = 0
-		}
-		sqrtEigenVal := math.Sqrt(eigenVal)
-		for k := 0; k < p; k++ {
-			loadings.Set(k, 0, vectors.At(k, 0)*sqrtEigenVal)
 		}
 	}
 
@@ -460,6 +452,9 @@ func minimumResidualFactoring(r, rMat *mat.Dense, nfactors int, fm string, covar
 			faGrMinres(grad, x, r, nfactors)
 		},
 	)
+	applyLowerBoundGradientNudge(psi, 0.005, upper, func(grad, x []float64) {
+		faGrMinres(grad, x, r, nfactors)
+	})
 
 	// Extract loadings
 	loadings := faOutWLS(psi, r, nfactors)
@@ -497,6 +492,24 @@ func minimumResidualFactoring(r, rMat *mat.Dense, nfactors int, fm string, covar
 	return loadings, communalities, eValues
 }
 
+func applyLowerBoundGradientNudge(x []float64, lower, upper float64, grad func([]float64, []float64)) {
+	if len(x) == 0 || grad == nil {
+		return
+	}
+	g := make([]float64, len(x))
+	grad(g, x)
+	const parscale = 0.01
+	stepScale := parscale * parscale
+	for i := range x {
+		if x[i] <= lower+1e-12 && g[i] < 0 {
+			x[i] -= g[i] * stepScale
+			if x[i] > upper {
+				x[i] = upper
+			}
+		}
+	}
+}
+
 func optimizeBounded(start []float64, lower, upper float64, maxIter int, fn func([]float64) float64, grad func([]float64, []float64)) []float64 {
 	if len(start) == 0 || upper <= lower || fn == nil {
 		return append([]float64(nil), start...)
@@ -528,10 +541,14 @@ func optimizeBounded(start []float64, lower, upper float64, maxIter int, fn func
 		}
 	}
 
-	settings := &optimize.Settings{MajorIterations: maxIter}
+	majorIterations := maxIter
+	if majorIterations < 100 {
+		majorIterations = 100
+	}
+	settings := &optimize.Settings{MajorIterations: majorIterations}
 	method := optimize.Method(&optimize.NelderMead{})
 	if grad != nil {
-		method = &optimize.LBFGS{}
+		method = &optimize.BFGS{GradStopThreshold: math.NaN()}
 	}
 
 	result, err := optimize.Minimize(problem, y0, settings, method)
@@ -545,7 +562,7 @@ func optimizeBounded(start []float64, lower, upper float64, maxIter int, fn func
 }
 
 func boundedToUnbounded(x, lower, upper float64) float64 {
-	const eps = 1e-12
+	const eps = 1e-4
 	if x <= lower {
 		x = lower + eps*(upper-lower)
 	}
@@ -584,6 +601,88 @@ func boundedDerivative(y, lower, upper float64) float64 {
 		s = e / (1 + e)
 	}
 	return (upper - lower) * s * (1 - s)
+}
+
+func refineBoundedCoordinates(start []float64, lower, upper float64, maxIter int, fn func([]float64) float64) []float64 {
+	if len(start) == 0 || fn == nil || upper <= lower {
+		return append([]float64(nil), start...)
+	}
+	x := append([]float64(nil), start...)
+	best := fn(x)
+	iterations := maxIter
+	if iterations < 100 {
+		iterations = 100
+	}
+	for iter := 0; iter < iterations; iter++ {
+		improved := false
+		for idx := range x {
+			current := x[idx]
+			candidate, candidateValue := boundedCoordinateMinimize(x, idx, lower, upper, fn)
+			if candidateValue+1e-12 < best {
+				x[idx] = candidate
+				best = candidateValue
+				improved = true
+			} else {
+				x[idx] = current
+			}
+		}
+		if !improved {
+			break
+		}
+	}
+	return x
+}
+
+func boundedCoordinateMinimize(x []float64, idx int, lower, upper float64, fn func([]float64) float64) (float64, float64) {
+	const gr = 0.6180339887498949
+	orig := x[idx]
+	bestX := orig
+	bestValue := fn(x)
+
+	eval := func(v float64) float64 {
+		x[idx] = v
+		return fn(x)
+	}
+
+	lowerValue := eval(lower)
+	if lowerValue < bestValue {
+		bestValue = lowerValue
+		bestX = lower
+	}
+	upperValue := eval(upper)
+	if upperValue < bestValue {
+		bestValue = upperValue
+		bestX = upper
+	}
+
+	a, b := lower, upper
+	c := b - gr*(b-a)
+	d := a + gr*(b-a)
+	fc := eval(c)
+	fd := eval(d)
+	for iter := 0; iter < 80 && math.Abs(b-a) > 1e-12; iter++ {
+		if fc < fd {
+			b = d
+			d = c
+			fd = fc
+			c = b - gr*(b-a)
+			fc = eval(c)
+		} else {
+			a = c
+			c = d
+			fc = fd
+			d = a + gr*(b-a)
+			fd = eval(d)
+		}
+	}
+	mid := 0.5 * (a + b)
+	midValue := eval(mid)
+	if midValue < bestValue {
+		bestValue = midValue
+		bestX = mid
+	}
+	x[idx] = orig
+	return bestX, bestValue
 }
 
 // fitResiduals computes the fit residuals (mirrors fit.residuals in R)
@@ -760,6 +859,9 @@ func maximumLikelihoodFactoring(r, rMat *mat.Dense, nfactors int, covar bool, mi
 			faGr(grad, x, r, nfactors)
 		},
 	)
+	psi = refineBoundedCoordinates(psi, 0.005, upper, maxIter, func(x []float64) float64 {
+		return faFn(x, r, nfactors)
+	})
 
 	// Extract loadings
 	loadings := faOut(psi, r, nfactors)

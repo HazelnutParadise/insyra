@@ -63,11 +63,8 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 	computeL := func(Tcur *mat.Dense) *mat.Dense {
 		// Use safe inverse helper to avoid panics when Tcur is singular.
 		invT := inverseOrIdentity(Tcur, Tcur.RawMatrix().Rows)
-		var invTT mat.Dense
-		invTT.CloneFrom(invT)
-		invTT.T()
 		L := mat.NewDense(rows, cols, nil)
-		L.Mul(Aw, &invTT)
+		L.Mul(Aw, invT.T())
 		return L
 	}
 

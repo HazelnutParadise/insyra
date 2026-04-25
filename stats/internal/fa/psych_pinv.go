@@ -58,12 +58,8 @@ func Pinv(X *mat.Dense, tol float64) (*mat.Dense, error) {
 			D.Set(i, i, 1.0/values[i])
 		}
 
-		var Ut mat.Dense
-		Ut.CloneFrom(&U)
-		Ut.T()
-
 		var temp mat.Dense
-		temp.Mul(D, &Ut)
+		temp.Mul(D, U.T())
 
 		var Pinv mat.Dense
 		Pinv.Mul(&V, &temp)
@@ -95,12 +91,8 @@ func Pinv(X *mat.Dense, tol float64) (*mat.Dense, error) {
 			D.Set(i, i, 1.0/valuesP[i])
 		}
 
-		var Upt mat.Dense
-		Upt.CloneFrom(Up)
-		Upt.T()
-
 		var temp mat.Dense
-		temp.Mul(D, &Upt)
+		temp.Mul(D, Up.T())
 
 		var Pinv mat.Dense
 		Pinv.Mul(Vp, &temp)
