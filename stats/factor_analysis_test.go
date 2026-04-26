@@ -268,8 +268,18 @@ func generatedFactorAnalysisDatasets() []factorAnalysisDataset {
 
 func factorAnalysisFullCombinationDatasets() []factorAnalysisDataset {
 	base := factorAnalysisDatasets()
+	generated := generatedFactorAnalysisDatasets()
 	return []factorAnalysisDataset{
-		base[0],
+		base[0],      // two_blocks: 10x6, two clean factors
+		base[1],      // one_factor: 18x4, single latent factor
+		base[2],      // three_blocks: 12x6, three orthogonal blocks
+		base[3],      // cross_loading: 12x5, factors with cross-loading variable
+		base[4],      // missing_rows: triggers listwise deletion path
+		generated[0], // generated_oblique: 24x6, correlated latent factors
+		generated[3], // generated_moderate_three_factor: 32x7
+		generated[5], // generated_high_correlation: 28x5, single dominant factor
+		generated[7], // generated_wide_two_factor: 36x8, wider variable count
+		generated[8], // generated_alternating_missing: missing values across cols
 	}
 }
 

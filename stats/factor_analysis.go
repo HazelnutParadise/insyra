@@ -8,9 +8,9 @@ import (
 
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/stats/internal/fa"
+	"github.com/HazelnutParadise/insyra/stats/internal/linalg"
 	"gonum.org/v1/gonum/mat"
 	"gonum.org/v1/gonum/stat"
-	"gonum.org/v1/gonum/stat/distuv"
 )
 
 // -------------------------
@@ -441,11 +441,11 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 	for j := 0; j < colNum; j++ {
 		col := mat.Col(nil, j, data)
 		mean, std := stat.MeanStdDev(col, nil)
+		if std == 0 {
+			return nil, fmt.Errorf("factor analysis undefined for zero-variance column %d", j)
+		}
 		means[j] = mean
 		sds[j] = std
-		if std == 0 {
-			std = 1 // Avoid division by zero
-		}
 		for i := 0; i < rowNum; i++ {
 			data.Set(i, j, (data.At(i, j)-mean)/std)
 		}
@@ -517,45 +517,10 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 		}
 	}
 
-	// Step 4: Eigenvalue decomposition
-	var eig mat.EigenSym
-	if !eig.Factorize(corrMatrix, true) {
+	// Step 4: Eigenvalue decomposition (descending order, matching R's eigen())
+	sortedEigenvalues, sortedEigenvectors, ok := linalg.SymmetricEigenDescending(corrMatrix)
+	if !ok {
 		return nil, errors.New("eigenvalue decomposition failed")
-	}
-
-	eigenvalues := eig.Values(nil)
-	var eigenvectors mat.Dense
-	eig.VectorsTo(&eigenvectors)
-
-	// Sort eigenvalues and eigenvectors in descending order
-	type eigenPair struct {
-		value  float64
-		vector []float64
-	}
-	pairs := make([]eigenPair, colNum)
-	for i := 0; i < colNum; i++ {
-		vec := make([]float64, colNum)
-		for j := 0; j < colNum; j++ {
-			vec[j] = eigenvectors.At(j, i)
-		}
-		pairs[i] = eigenPair{value: eigenvalues[i], vector: vec}
-	}
-	// Sort in descending order
-	for i := 0; i < len(pairs)-1; i++ {
-		for j := i + 1; j < len(pairs); j++ {
-			if pairs[i].value < pairs[j].value {
-				pairs[i], pairs[j] = pairs[j], pairs[i]
-			}
-		}
-	}
-
-	sortedEigenvalues := make([]float64, colNum)
-	sortedEigenvectors := mat.NewDense(colNum, colNum, nil)
-	for i := 0; i < colNum; i++ {
-		sortedEigenvalues[i] = pairs[i].value
-		for j := 0; j < colNum; j++ {
-			sortedEigenvectors.Set(j, i, pairs[i].vector[j])
-		}
 	}
 
 	// Step 5: Determine number of factors
@@ -742,27 +707,8 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 		for i := range colNum {
 			modifiedCorr.Set(i, i, extractionCommunalities[i])
 		}
-
-		// Compute eigenvalues of modified correlation matrix
-		modifiedCorrSym := mat.NewSymDense(colNum, nil)
-		for i := range colNum {
-			for j := range colNum {
-				modifiedCorrSym.SetSym(i, j, modifiedCorr.At(i, j))
-			}
-		}
-		var eig mat.EigenSym
-		if eig.Factorize(modifiedCorrSym, true) {
-			eigenvals := eig.Values(nil)
-			reportedEigenvalues = make([]float64, len(eigenvals))
-			copy(reportedEigenvalues, eigenvals)
-			// Sort in descending order
-			for i := 0; i < len(reportedEigenvalues)-1; i++ {
-				for j := i + 1; j < len(reportedEigenvalues); j++ {
-					if reportedEigenvalues[i] < reportedEigenvalues[j] {
-						reportedEigenvalues[i], reportedEigenvalues[j] = reportedEigenvalues[j], reportedEigenvalues[i]
-					}
-				}
-			}
+		if vals, _, ok := linalg.SymmetricEigenDescending(modifiedCorr); ok {
+			reportedEigenvalues = vals
 		}
 	}
 
@@ -1264,13 +1210,7 @@ func computeBartlettFromCorrelation(corr *mat.Dense, n int) (chiSquare float64, 
 		return 0, 0, df, fmt.Errorf("correlation matrix determinant must be positive for Bartlett's test")
 	}
 	chiSquare = -math.Log(detR) * (float64(n-1) - (2*float64(p)+5)/6)
-
-	// Compute p-value using chi-square distribution
-	if chiSquare > 0 && chiSquare < 1e10 { // Check for reasonable chi-square value
-		pValue = 1 - distuv.ChiSquared{K: float64(df)}.CDF(chiSquare)
-	} else {
-		pValue = 1.0
-	}
+	pValue = chiSquaredPValue(chiSquare, float64(df))
 
 	return chiSquare, pValue, df, nil
 }
@@ -1769,8 +1709,7 @@ func computeFactorScores(data *mat.Dense, loadings *mat.Dense, phi *mat.Dense, u
 		return computeAndersonRubinScores(data, loadings, phi, uniquenesses, sigmaForScores)
 
 	default:
-		// Default to regression method
-		return computeRegressionScores(data, loadings, phi, uniquenesses, sigmaForScores)
+		return nil, nil, nil, fmt.Errorf("unsupported factor score method: %s", method)
 	}
 }
 
@@ -1927,14 +1866,10 @@ func inverseUniquenessDiagonal(loadings *mat.Dense, phi *mat.Dense, uniquenesses
 }
 
 func inverseSymmetricSqrt(a *mat.Dense) (*mat.Dense, error) {
-	sym := symDenseCopy(a)
-	var eig mat.EigenSym
-	if !eig.Factorize(sym, true) {
+	values, vectors, ok := linalg.SymmetricEigenDescending(a)
+	if !ok {
 		return nil, fmt.Errorf("failed to decompose scoring matrix")
 	}
-	values := eig.Values(nil)
-	vectors := mat.NewDense(len(values), len(values), nil)
-	eig.VectorsTo(vectors)
 
 	scaled := mat.NewDense(len(values), len(values), nil)
 	for j, value := range values {
