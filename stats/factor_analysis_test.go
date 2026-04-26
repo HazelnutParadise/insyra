@@ -216,6 +216,38 @@ func generatedMixedSignRows() [][]any {
 	return rows
 }
 
+func generatedWideTwoFactorRows() [][]any {
+	const n = 36
+	rows := make([][]any, n)
+	for i := range n {
+		x := float64(i)
+		f1 := 1.08*math.Sin(0.29*x) + 0.24*float64(i%8-3)
+		f2 := 0.97*math.Cos(0.43*x+0.5) - 0.21*float64(i%6-2)
+		cross := 0.28 * math.Sin(0.17*x+0.4)
+		rows[i] = []any{
+			1.5 + 0.78*f1 + 0.16*f2 + 0.34*math.Sin(1.13*x),
+			-0.2 + 0.70*f1 - 0.11*f2 + 0.32*math.Cos(1.31*x),
+			0.8 + 0.64*f1 + 0.22*f2 + 0.35*math.Sin(1.59*x+0.3),
+			-1.1 - 0.58*f1 + 0.19*f2 + 0.33*math.Cos(1.77*x-0.2),
+			2.0 + 0.13*f1 + 0.76*f2 + 0.31*math.Sin(2.01*x),
+			-1.7 - 0.18*f1 + 0.69*f2 + 0.36*math.Cos(2.19*x+0.4),
+			0.4 + 0.26*f1 - 0.62*f2 + cross + 0.30*math.Sin(2.41*x),
+			-0.9 + 0.34*f1 + 0.48*f2 - cross + 0.37*math.Cos(2.63*x),
+		}
+	}
+	return rows
+}
+
+func generatedAlternatingMissingRows() [][]any {
+	rows := generatedWideTwoFactorRows()
+	rows[2][1] = nil
+	rows[7][5] = nil
+	rows[13][0] = nil
+	rows[19][6] = nil
+	rows[27][3] = nil
+	return rows
+}
+
 func generatedFactorAnalysisDatasets() []factorAnalysisDataset {
 	rowsWithMissing := generatedFactorAnalysisRows(22, 2)
 	rowsWithMissing[3][4] = nil
@@ -229,6 +261,8 @@ func generatedFactorAnalysisDatasets() []factorAnalysisDataset {
 		{name: "generated_weak_two_factor", rows: generatedWeakTwoFactorRows(), nFactors: 2},
 		{name: "generated_high_correlation", rows: generatedHighCorrelationRows(), nFactors: 1},
 		{name: "generated_mixed_sign", rows: generatedMixedSignRows(), nFactors: 2},
+		{name: "generated_wide_two_factor", rows: generatedWideTwoFactorRows(), nFactors: 2},
+		{name: "generated_alternating_missing", rows: generatedAlternatingMissingRows(), nFactors: 2},
 	}
 }
 
@@ -521,6 +555,10 @@ func TestCrossLangFactorAnalysisRepresentativeDatasets(t *testing.T) {
 		{generated[5], stats.FactorExtractionPAF, stats.FactorRotationNone, stats.FactorScoreBartlett},
 		{generated[6], stats.FactorExtractionML, stats.FactorRotationQuartimin, stats.FactorScoreRegression},
 		{generated[6], stats.FactorExtractionPAF, stats.FactorRotationPromax, stats.FactorScoreBartlett},
+		{generated[7], stats.FactorExtractionPCA, stats.FactorRotationBentlerQ, stats.FactorScoreAndersonRubin},
+		{generated[7], stats.FactorExtractionPAF, stats.FactorRotationGeominT, stats.FactorScoreRegression},
+		{generated[8], stats.FactorExtractionPCA, stats.FactorRotationPromax, stats.FactorScoreRegression},
+		{generated[8], stats.FactorExtractionPAF, stats.FactorRotationQuartimin, stats.FactorScoreBartlett},
 	}
 	for _, tc := range cases {
 		t.Run(tc.dataset.name+"/"+string(tc.extraction)+"/"+string(tc.rotation)+"/"+string(tc.scoring), func(t *testing.T) {

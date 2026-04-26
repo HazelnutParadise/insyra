@@ -464,9 +464,6 @@ func minimumResidualFactoring(r, rMat *mat.Dense, nfactors int, fm string, covar
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("minimum residual optimization failed: %w", err)
 	}
-	applyLowerBoundGradientNudge(psi, 0.005, upper, func(grad, x []float64) {
-		faGrMinres(grad, x, r, nfactors)
-	})
 
 	// Extract loadings
 	loadings := faOutWLS(psi, r, nfactors)
@@ -502,24 +499,6 @@ func minimumResidualFactoring(r, rMat *mat.Dense, nfactors int, fm string, covar
 	}
 
 	return loadings, communalities, eValues, nil
-}
-
-func applyLowerBoundGradientNudge(x []float64, lower, upper float64, grad func([]float64, []float64)) {
-	if len(x) == 0 || grad == nil {
-		return
-	}
-	g := make([]float64, len(x))
-	grad(g, x)
-	const parscale = 0.01
-	stepScale := parscale * parscale
-	for i := range x {
-		if x[i] <= lower+1e-12 && g[i] < 0 {
-			x[i] -= g[i] * stepScale
-			if x[i] > upper {
-				x[i] = upper
-			}
-		}
-	}
 }
 
 func optimizeBounded(start []float64, lower, upper float64, maxIter int, fn func([]float64) float64, grad func([]float64, []float64)) ([]float64, error) {
@@ -628,9 +607,7 @@ func optimizeBoundedProjected(start []float64, lower, upper float64, maxIter int
 			directionalDerivative += g[i] * direction[i]
 		}
 
-		if math.Sqrt(projectedNorm) < projectedStepTol {
-			return x, nil
-		}
+		smallProjectedStep := math.Sqrt(projectedNorm) < projectedStepTol
 
 		step := 1.0
 		accepted := false
@@ -650,6 +627,9 @@ func optimizeBoundedProjected(start []float64, lower, upper float64, maxIter int
 		}
 		if !accepted {
 			return nil, fmt.Errorf("bounded optimizer line search failed to find a feasible descent step")
+		}
+		if smallProjectedStep {
+			return x, nil
 		}
 	}
 
