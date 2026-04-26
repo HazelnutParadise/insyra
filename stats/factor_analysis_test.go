@@ -248,6 +248,132 @@ func generatedAlternatingMissingRows() [][]any {
 	return rows
 }
 
+// generatedNearCollinearRows produces a 30x5 matrix where columns 0 and 1 are
+// near-duplicates (correlation ~0.999). Stresses ML/MINRES optimization,
+// pseudo-inverse fallback in scoring, and KMO partial-correlation stability.
+func generatedNearCollinearRows() [][]any {
+	const n = 30
+	rows := make([][]any, n)
+	for i := range n {
+		x := float64(i)
+		base := 1.20*math.Sin(0.31*x) + 0.42*math.Cos(0.19*x)
+		other := 0.85*math.Sin(0.57*x+0.3) - 0.30*math.Cos(0.41*x)
+		rows[i] = []any{
+			0.5 + base + 0.0021*math.Sin(13.7*x), // near-duplicate of col 1
+			0.5 + base + 0.0023*math.Cos(11.3*x),
+			-0.7 + 0.78*base + 0.62*math.Sin(1.71*x),
+			1.4 + 0.71*other + 0.58*math.Cos(2.13*x),
+			-0.9 + 0.36*base + 0.41*other + 0.55*math.Sin(2.91*x),
+		}
+	}
+	return rows
+}
+
+// generatedHeywoodProneRows produces 9x4 data where one variable is almost
+// entirely explained by a latent factor (low n, p=4, low residual). Likely to
+// produce a Heywood case (communality > 1 / negative uniqueness clamp).
+func generatedHeywoodProneRows() [][]any {
+	const n = 9
+	rows := make([][]any, n)
+	for i := range n {
+		x := float64(i)
+		f := 1.10*math.Sin(0.41*x) + 0.85*math.Cos(0.23*x)
+		rows[i] = []any{
+			0.4 + 0.99*f + 0.005*math.Sin(11.0*x), // near-perfect indicator
+			-0.7 + 0.92*f + 0.18*math.Cos(1.31*x),
+			1.1 + 0.88*f + 0.23*math.Sin(1.97*x+0.4),
+			-1.3 + 0.81*f + 0.27*math.Cos(2.41*x-0.2),
+		}
+	}
+	return rows
+}
+
+// generatedMixedScaleRows produces 22x5 data where columns span very different
+// magnitudes (1e-3 to 1e3). Standardization should still produce a valid
+// correlation matrix; tests numerical stability of the eigendecomposition.
+func generatedMixedScaleRows() [][]any {
+	const n = 22
+	rows := make([][]any, n)
+	for i := range n {
+		x := float64(i)
+		f1 := math.Sin(0.39*x) + 0.30*math.Cos(0.17*x)
+		f2 := math.Cos(0.51*x+0.4) - 0.22*math.Sin(0.29*x)
+		rows[i] = []any{
+			1e-3 * (1.0 + 0.78*f1 + 0.16*math.Sin(1.13*x)),
+			1e3 * (-0.5 + 0.71*f1 + 0.18*math.Cos(1.29*x)),
+			1e1 * (0.8 + 0.18*f1 + 0.74*f2 + 0.21*math.Sin(1.57*x)),
+			1e-2 * (-1.1 - 0.14*f1 + 0.69*f2 + 0.24*math.Cos(1.83*x)),
+			1e2 * (0.6 + 0.41*f1 - 0.36*f2 + 0.27*math.Sin(2.07*x)),
+		}
+	}
+	return rows
+}
+
+// generatedNegativeDominantRows produces 26x5 data where the dominant factor
+// loads negatively on most variables. Tests sign-standardization parity.
+func generatedNegativeDominantRows() [][]any {
+	const n = 26
+	rows := make([][]any, n)
+	for i := range n {
+		x := float64(i)
+		f := 1.05*math.Sin(0.33*x) + 0.42*math.Cos(0.19*x)
+		rows[i] = []any{
+			-1.4 - 0.92*f + 0.18*math.Sin(1.21*x),
+			-0.6 - 0.88*f + 0.21*math.Cos(1.43*x+0.2),
+			-2.1 - 0.81*f + 0.23*math.Sin(1.69*x-0.3),
+			-0.9 - 0.74*f + 0.25*math.Cos(1.91*x),
+			-1.7 - 0.67*f + 0.27*math.Sin(2.13*x+0.5),
+		}
+	}
+	return rows
+}
+
+// generatedNarrowPlusGroupRows produces 14x6 data where N is barely larger
+// than p, with two factors of very different strength. Stresses degree of
+// freedom calculation and ML's small-sample behavior.
+func generatedNarrowPlusGroupRows() [][]any {
+	const n = 14
+	rows := make([][]any, n)
+	for i := range n {
+		x := float64(i)
+		fStrong := 1.30*math.Sin(0.43*x) + 0.55*math.Cos(0.21*x)
+		fWeak := 0.42*math.Sin(0.71*x+0.3) - 0.18*math.Cos(0.59*x)
+		rows[i] = []any{
+			0.5 + 0.86*fStrong + 0.11*fWeak + 0.34*math.Sin(1.13*x),
+			-0.7 + 0.83*fStrong - 0.09*fWeak + 0.31*math.Cos(1.31*x),
+			1.2 + 0.79*fStrong + 0.13*fWeak + 0.33*math.Sin(1.57*x+0.2),
+			-0.4 + 0.12*fStrong + 0.49*fWeak + 0.36*math.Cos(1.79*x),
+			0.9 - 0.10*fStrong + 0.45*fWeak + 0.32*math.Sin(2.01*x+0.4),
+			-1.1 + 0.16*fStrong - 0.41*fWeak + 0.34*math.Cos(2.23*x),
+		}
+	}
+	return rows
+}
+
+// generatedHeavyTailRows produces 28x5 data with heavy-tailed (cubic) noise
+// that violates multivariate normality assumed by ML. Useful to check
+// extraction-method divergence between PAF/MINRES (least-squares) and ML.
+func generatedHeavyTailRows() [][]any {
+	const n = 28
+	rows := make([][]any, n)
+	for i := range n {
+		x := float64(i)
+		f1 := math.Sin(0.31*x) + 0.30*math.Cos(0.17*x)
+		f2 := math.Cos(0.49*x+0.3) - 0.22*math.Sin(0.27*x)
+		// cubic noise gives heavy tails
+		n1 := math.Pow(0.55*math.Sin(1.31*x), 3)
+		n2 := math.Pow(0.50*math.Cos(1.09*x+0.2), 3)
+		rows[i] = []any{
+			0.4 + 0.78*f1 + 0.15*f2 + n1,
+			-0.6 + 0.71*f1 - 0.11*f2 + n2,
+			1.1 + 0.18*f1 + 0.74*f2 + n1*0.6,
+			-1.4 - 0.13*f1 + 0.69*f2 + n2*0.7,
+			0.7 + 0.39*f1 - 0.34*f2 + n1*0.5 + n2*0.4,
+		}
+	}
+	return rows
+}
+
 func generatedFactorAnalysisDatasets() []factorAnalysisDataset {
 	rowsWithMissing := generatedFactorAnalysisRows(22, 2)
 	rowsWithMissing[3][4] = nil
@@ -263,6 +389,13 @@ func generatedFactorAnalysisDatasets() []factorAnalysisDataset {
 		{name: "generated_mixed_sign", rows: generatedMixedSignRows(), nFactors: 2},
 		{name: "generated_wide_two_factor", rows: generatedWideTwoFactorRows(), nFactors: 2},
 		{name: "generated_alternating_missing", rows: generatedAlternatingMissingRows(), nFactors: 2},
+		// adversarial / divergence-prone datasets
+		{name: "generated_near_collinear", rows: generatedNearCollinearRows(), nFactors: 2},
+		{name: "generated_heywood_prone", rows: generatedHeywoodProneRows(), nFactors: 1},
+		{name: "generated_mixed_scale", rows: generatedMixedScaleRows(), nFactors: 2},
+		{name: "generated_negative_dominant", rows: generatedNegativeDominantRows(), nFactors: 1},
+		{name: "generated_narrow_plus_group", rows: generatedNarrowPlusGroupRows(), nFactors: 2},
+		{name: "generated_heavy_tail", rows: generatedHeavyTailRows(), nFactors: 2},
 	}
 }
 
@@ -270,16 +403,34 @@ func factorAnalysisFullCombinationDatasets() []factorAnalysisDataset {
 	base := factorAnalysisDatasets()
 	generated := generatedFactorAnalysisDatasets()
 	return []factorAnalysisDataset{
-		base[0],      // two_blocks: 10x6, two clean factors
-		base[1],      // one_factor: 18x4, single latent factor
-		base[2],      // three_blocks: 12x6, three orthogonal blocks
-		base[3],      // cross_loading: 12x5, factors with cross-loading variable
-		base[4],      // missing_rows: triggers listwise deletion path
-		generated[0], // generated_oblique: 24x6, correlated latent factors
-		generated[3], // generated_moderate_three_factor: 32x7
-		generated[5], // generated_high_correlation: 28x5, single dominant factor
-		generated[7], // generated_wide_two_factor: 36x8, wider variable count
-		generated[8], // generated_alternating_missing: missing values across cols
+		base[0],       // two_blocks: 10x6, two clean factors
+		base[1],       // one_factor: 18x4, single latent factor
+		base[2],       // three_blocks: 12x6, three orthogonal blocks
+		base[3],       // cross_loading: 12x5, factors with cross-loading variable
+		base[4],       // missing_rows: triggers listwise deletion path
+		generated[0],  // generated_oblique: 24x6, correlated latent factors
+		generated[3],  // generated_moderate_three_factor: 32x7
+		generated[5],  // generated_high_correlation: 28x5, single dominant factor
+		generated[7],  // generated_wide_two_factor: 36x8, wider variable count
+		generated[8],  // generated_alternating_missing: missing values across cols
+		generated[9],  // generated_near_collinear: tests Pinv fallback / KMO stability
+		generated[11], // generated_mixed_scale: standardization stress test
+		generated[12], // generated_negative_dominant: sign-standardization stress test
+		generated[14], // generated_heavy_tail: ML vs PAF/MINRES divergence
+	}
+}
+
+// factorAnalysisAdversarialDatasets returns the small but high-signal weird
+// datasets used for targeted divergence-detection tests.
+func factorAnalysisAdversarialDatasets() []factorAnalysisDataset {
+	g := generatedFactorAnalysisDatasets()
+	return []factorAnalysisDataset{
+		g[9],  // near_collinear
+		g[10], // heywood_prone
+		g[11], // mixed_scale
+		g[12], // negative_dominant
+		g[13], // narrow_plus_group
+		g[14], // heavy_tail
 	}
 }
 
@@ -588,5 +739,55 @@ func TestCrossLangFactorAnalysisRepresentativeDatasets(t *testing.T) {
 				assertMatrixCloseToBoth(t, "score_covariance", dataTableMatrix(got.ScoreCovariance), baselineFloatMatrix(t, rb, "score_covariance"), baselineFloatMatrix(t, rb, "score_covariance"), factorParityTol)
 			}
 		})
+	}
+}
+
+// TestCrossLangFactorAnalysisAdversarialDatasets exercises every extraction on
+// the adversarial datasets (near-collinear, Heywood-prone, mixed-scale,
+// negative-dominant, narrow-N, heavy-tailed). Designed to catch silent
+// algorithmic divergence from R that the well-conditioned datasets miss.
+func TestCrossLangFactorAnalysisAdversarialDatasets(t *testing.T) {
+	requireFactorAnalysisRTools(t)
+	extractions := []stats.FactorExtractionMethod{
+		stats.FactorExtractionPCA,
+		stats.FactorExtractionPAF,
+		stats.FactorExtractionML,
+		stats.FactorExtractionMINRES,
+	}
+	rotations := []stats.FactorRotationMethod{
+		stats.FactorRotationNone,
+		stats.FactorRotationVarimax,
+		stats.FactorRotationOblimin,
+		stats.FactorRotationPromax,
+	}
+	scorings := []stats.FactorScoreMethod{
+		stats.FactorScoreRegression,
+		stats.FactorScoreBartlett,
+	}
+	for _, ds := range factorAnalysisAdversarialDatasets() {
+		for _, extraction := range extractions {
+			for _, rotation := range rotations {
+				if ds.nFactors < 2 && rotation != stats.FactorRotationNone {
+					continue // single-factor: rotation has no effect
+				}
+				for _, scoring := range scorings {
+					t.Run(ds.name+"/"+string(extraction)+"/"+string(rotation)+"/"+string(scoring), func(t *testing.T) {
+						opt := factorOptions(extraction, rotation, scoring)
+						opt.Count.FixedK = ds.nFactors
+						got, err := stats.FactorAnalysis(dataTableFromAnyRows(ds.rows), opt)
+						if err != nil {
+							t.Fatalf("FactorAnalysis error: %v", err)
+						}
+						rb := runRBaseline(t, "factor_analysis", map[string]any{
+							"rows": ds.rows, "extraction": string(extraction), "rotation": string(rotation), "scoring": string(scoring), "nfactors": ds.nFactors,
+						})
+						assertFactorAnalysisMatchesR(t, got, rb, factorParityTol)
+						assertMatrixCloseToBoth(t, "scores", dataTableMatrix(got.Scores), baselineFloatMatrix(t, rb, "scores"), baselineFloatMatrix(t, rb, "scores"), factorParityTol)
+						assertMatrixCloseToBoth(t, "score_coefficients", dataTableMatrix(got.ScoreCoefficients), baselineFloatMatrix(t, rb, "score_coefficients"), baselineFloatMatrix(t, rb, "score_coefficients"), factorParityTol)
+						assertMatrixCloseToBoth(t, "score_covariance", dataTableMatrix(got.ScoreCovariance), baselineFloatMatrix(t, rb, "score_covariance"), baselineFloatMatrix(t, rb, "score_covariance"), factorParityTol)
+					})
+				}
+			}
+		}
 	}
 }

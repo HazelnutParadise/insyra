@@ -7,77 +7,26 @@ import (
 	"gonum.org/v1/gonum/mat"
 )
 
-// Factor2ClusterOptions represents options for Factor2Cluster
-type Factor2ClusterOptions struct {
-	Cut              float64 // Loading threshold below which variables are not assigned to any cluster
-	UseRLikePipeline bool    // If true, use R-like pipeline: varimax -> target.rot -> cluster
-}
-
 // Factor2Cluster creates a cluster structure from factor loadings.
-// Mirrors GPArotation::factor2cluster exactly
-//
-// For each variable, assign it to the factor with the highest absolute loading
-// if that loading exceeds the cut threshold. Otherwise, assign to no cluster (0).
-func Factor2Cluster(loadings *mat.Dense, opts *Factor2ClusterOptions) *mat.Dense {
+// Mirrors GPArotation::factor2cluster: assigns each variable to the factor with
+// the highest |loading| if that exceeds cut (R default 0.3), else no cluster.
+func Factor2Cluster(loadings *mat.Dense) *mat.Dense {
+	const cut = 0.3
 	p, q := loadings.Dims()
-
-	// Set default options
-	if opts == nil {
-		opts = &Factor2ClusterOptions{
-			Cut:              0.3, // Default cut value from R
-			UseRLikePipeline: false,
-		}
-	}
-
-	// If using R-like pipeline, apply rotations first
-	if opts.UseRLikePipeline {
-		varimaxResult := Varimax(loadings, true, 1e-5, 1000)
-		if errMsg, ok := varimaxResult["error"].(string); ok && errMsg != "" {
-			return nil
-		}
-		varimaxLoadings, ok := varimaxResult["loadings"].(*mat.Dense)
-		if !ok || varimaxLoadings == nil {
-			return nil
-		}
-		targetLoadings, _, _, err := TargetRot(varimaxLoadings, nil)
-		if err != nil {
-			return nil
-		}
-		loadings = targetLoadings
-	}
-
-	// For each variable, find the factor with maximum absolute loading
-	clusters := make([]int, p)
+	clusterMat := mat.NewDense(p, q, nil)
 	for i := 0; i < p; i++ {
 		maxAbs := 0.0
-		maxFactor := 0
+		maxFactor := -1
 		for j := 0; j < q; j++ {
 			absVal := math.Abs(loadings.At(i, j))
 			if absVal > maxAbs {
 				maxAbs = absVal
-				maxFactor = j + 1 // R uses 1-based indexing
+				maxFactor = j
 			}
 		}
-		// Only assign if max loading exceeds cut threshold
-		if maxAbs <= opts.Cut {
-			clusters[i] = 0 // No cluster assignment
-		} else {
-			clusters[i] = maxFactor
+		if maxFactor >= 0 && maxAbs > cut {
+			clusterMat.Set(i, maxFactor, 1.0)
 		}
 	}
-
-	// Create cluster matrix
-	clusterMat := mat.NewDense(p, q, nil)
-	for i := 0; i < p; i++ {
-		if clusters[i] > 0 {
-			clusterMat.Set(i, clusters[i]-1, 1.0) // Convert back to 0-based indexing
-		}
-	}
-
 	return clusterMat
-}
-
-// Factor2ClusterSimple is a backward-compatible wrapper for Factor2Cluster
-func Factor2ClusterSimple(loadings *mat.Dense) *mat.Dense {
-	return Factor2Cluster(loadings, nil)
 }

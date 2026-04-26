@@ -1646,14 +1646,8 @@ func factorPatternWithPhi(loadings *mat.Dense, phi *mat.Dense) *mat.Dense {
 }
 
 func solveOrPinv(a *mat.Dense, b mat.Matrix) (*mat.Dense, error) {
-	var chol mat.Cholesky
-	if chol.Factorize(symDenseCopy(a)) {
-		var solved mat.Dense
-		if err := chol.SolveTo(&solved, b); err == nil {
-			return &solved, nil
-		}
-	}
-
+	// Mirror R psych::factor.scores: try solve(R, S); if singular, fall back to
+	// ginv(R) %*% S. We use LU (matches R's solve()) then pseudo-inverse.
 	var lu mat.LU
 	lu.Factorize(a)
 	var solved mat.Dense
@@ -1731,21 +1725,6 @@ func inverseSymmetricSqrt(a *mat.Dense) (*mat.Dense, error) {
 	var invSqrt mat.Dense
 	invSqrt.Mul(scaled, vectors.T())
 	return &invSqrt, nil
-}
-
-func symDenseCopy(a mat.Matrix) *mat.SymDense {
-	r, c := a.Dims()
-	n := r
-	if c < n {
-		n = c
-	}
-	sym := mat.NewSymDense(n, nil)
-	for i := range n {
-		for j := 0; j <= i; j++ {
-			sym.SetSym(i, j, 0.5*(a.At(i, j)+a.At(j, i)))
-		}
-	}
-	return sym
 }
 
 func sampleCovarianceDense(scores *mat.Dense) *mat.Dense {

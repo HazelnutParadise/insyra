@@ -4,26 +4,8 @@ package fa
 import (
 	"fmt"
 
-	statslinalg "github.com/HazelnutParadise/insyra/stats/internal/linalg"
 	"gonum.org/v1/gonum/mat"
 )
-
-// SMC computes the squared multiple correlations for a correlation matrix.
-// This is a wrapper around Smc for compatibility.
-func SMC(r *mat.Dense, isCorr bool) (*mat.VecDense, error) {
-	if !isCorr {
-		// If not correlation matrix, compute it first
-		r = statslinalg.CorrelationDense(r)
-	}
-	smc, diagnostics := Smc(r, nil) // Use default options
-	if smc == nil {
-		return nil, fmt.Errorf("failed to compute SMC")
-	}
-	if errs, ok := diagnostics["errors"].([]string); ok && len(errs) > 0 {
-		return nil, fmt.Errorf("failed to compute SMC: %v", errs)
-	}
-	return smc, nil
-}
 
 // RotOpts represents rotation options
 type RotOpts struct {
@@ -93,75 +75,3 @@ func Rotate(loadings *mat.Dense, method string, opts *RotOpts) (*mat.Dense, *mat
 	return rotatedLoadings, rotMat, phiMat, converged, nil
 }
 
-// RotateWithDiagnostics performs factor rotation on loadings with diagnostics.
-// Returns rotated loadings, rotation matrix, Phi matrix, convergence status, and diagnostics map.
-func RotateWithDiagnostics(loadings *mat.Dense, method string, opts *RotOpts) (*mat.Dense, *mat.Dense, *mat.Dense, bool, map[string]interface{}, error) {
-	// loadings is p x nf (variables x factors). The rotation helpers operate
-	// on the factor-space identity when no factor correlation has been induced yet.
-	_, nf := loadings.Dims()
-	r := mat.NewDense(nf, nf, nil)
-	for i := range nf {
-		r.Set(i, i, 1.0)
-	}
-
-	// Set default options if nil
-	if opts == nil {
-		opts = &RotOpts{
-			Eps:         1e-5,
-			MaxIter:     1000,
-			Alpha0:      1.0,
-			Gamma:       0.0,
-			PromaxPower: 4,
-			Restarts:    20,
-		}
-	}
-	if opts.Restarts <= 0 {
-		opts.Restarts = 1
-	}
-
-	// Call FaRotations
-	res := FaRotations(loadings, r, method, opts.Gamma, opts.Restarts).(map[string]any)
-	if errMsg, ok := res["error"].(string); ok && errMsg != "" {
-		return nil, nil, nil, false, nil, fmt.Errorf("rotation failed: %s", errMsg)
-	}
-
-	rotatedLoadings, ok := res["loadings"].(*mat.Dense)
-	if !ok || rotatedLoadings == nil {
-		return nil, nil, nil, false, nil, fmt.Errorf("rotation did not return loadings")
-	}
-	rotMat, ok := res["rotmat"].(*mat.Dense)
-	if !ok || rotMat == nil {
-		return nil, nil, nil, false, nil, fmt.Errorf("rotation did not return rotation matrix")
-	}
-
-	var phiMat *mat.Dense
-	if phi, ok := res["Phi"]; ok {
-		if phiDense, ok := phi.(*mat.Dense); ok {
-			phiMat = phiDense
-		}
-	}
-
-	converged := true
-	if conv, ok := res["convergence"]; ok {
-		if convBool, ok := conv.(bool); ok {
-			converged = convBool
-		}
-	}
-
-	// Build diagnostics map
-	diagnostics := map[string]interface{}{
-		"method":    method,
-		"converged": converged,
-		"restarts":  opts.Restarts,
-	}
-
-	if f, ok := res["f"].(float64); ok {
-		diagnostics["objective"] = f
-	}
-
-	if iterations, ok := res["iterations"].(int); ok {
-		diagnostics["iterations"] = iterations
-	}
-
-	return rotatedLoadings, rotMat, phiMat, converged, diagnostics, nil
-}

@@ -74,8 +74,3 @@ func vgQOblimin(L *mat.Dense, gamma float64) (*mat.Dense, float64, error) {
 
 	return Gq, f / 4, nil
 }
-
-// VgQOblimin is the exported version for testing
-func VgQOblimin(L *mat.Dense, gamma float64) (*mat.Dense, float64, error) {
-	return vgQOblimin(L, gamma)
-}

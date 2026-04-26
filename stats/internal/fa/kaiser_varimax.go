@@ -7,12 +7,6 @@ import (
 	"gonum.org/v1/gonum/mat"
 )
 
-// KaiserVarimax performs the same SVD iteration used by stats::varimax.
-func KaiserVarimax(A *mat.Dense, normalize bool, maxIter int, epsilon float64) (*mat.Dense, error) {
-	loadings, _, err := KaiserVarimaxWithRotationMatrix(A, normalize, maxIter, epsilon)
-	return loadings, err
-}
-
 // KaiserVarimaxWithRotationMatrix returns stats::varimax-style rotated loadings
 // and the orthogonal rotation matrix.
 func KaiserVarimaxWithRotationMatrix(A *mat.Dense, normalize bool, maxIter int, epsilon float64) (*mat.Dense, *mat.Dense, error) {

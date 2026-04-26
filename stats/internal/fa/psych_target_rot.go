@@ -8,95 +8,52 @@ import (
 	"gonum.org/v1/gonum/mat"
 )
 
-// TargetRot performs target rotation on an unrotated loading matrix x.
-// Mirrors psych::target.rot exactly
-func TargetRot(x *mat.Dense, keys *mat.Dense) (loadings, rotmat, Phi *mat.Dense, err error) {
-	loadings, rotmat, Phi, _, err = TargetRotWithMask(x, keys, nil)
-	return
-}
-
-// TargetRotWithMask performs target rotation with optional mask for target matrix elements.
-// Elements marked with NaN in the mask are excluded from the alignment process.
-func TargetRotWithMask(x *mat.Dense, keys *mat.Dense, mask *mat.Dense) (loadings, rotmat, Phi *mat.Dense, diagnostics map[string]interface{}, err error) {
+// TargetRot performs target rotation on an unrotated loading matrix x against
+// an automatically derived cluster target. Mirrors psych::target.rot.
+func TargetRot(x *mat.Dense) (loadings, rotmat, Phi *mat.Dense, err error) {
 	p, q := x.Dims()
 	if q < 2 {
-		return nil, nil, nil, nil, errors.New("rotation not meaningful with less than 2 factors")
+		return nil, nil, nil, errors.New("rotation not meaningful with less than 2 factors")
 	}
 
-	diagnostics = map[string]interface{}{
-		"maskApplied":    false,
-		"maskedElements": [][]int{},
-	}
-
-	var Q *mat.Dense
-	if keys == nil {
-		Q = Factor2Cluster(x, nil)
-	} else {
-		Q = mat.DenseCopyOf(keys)
-	}
-
+	Q := Factor2Cluster(x)
 	if Q.RawMatrix().Cols < 2 {
-		return nil, nil, nil, diagnostics, errors.New("cluster structure produces 1 cluster")
+		return nil, nil, nil, errors.New("cluster structure produces 1 cluster")
 	}
 
-	// Apply mask if provided
-	if mask != nil {
-		diagnostics["maskApplied"] = true
-		maskedElements := [][]int{}
-		for i := range p {
-			for j := range q {
-				if math.IsNaN(mask.At(i, j)) {
-					// Set corresponding element in Q to 0 (exclude from alignment)
-					Q.Set(i, j, 0.0)
-					maskedElements = append(maskedElements, []int{i, j})
-				}
-			}
-		}
-		diagnostics["maskedElements"] = maskedElements
-	}
-
-	// U = coefficients from lm.fit(x, Q)
-	// Simplified: U = solve(t(x) %*% x) %*% t(x) %*% Q
+	// U = coefficients from lm.fit(x, Q): U = solve(t(x) %*% x) %*% t(x) %*% Q
 	var XtX mat.Dense
 	XtX.Mul(x.T(), x)
 	var XtQ mat.Dense
 	XtQ.Mul(x.T(), Q)
 	var U mat.Dense
-	err = U.Solve(&XtX, &XtQ)
-	if err != nil {
-		return nil, nil, nil, diagnostics, err
+	if err = U.Solve(&XtX, &XtQ); err != nil {
+		return nil, nil, nil, err
 	}
 
-	// Normalize U
+	// Normalize U columns by sqrt(diag(solve(U'U)))
 	var UtU mat.Dense
 	UtU.Mul(U.T(), &U)
 	UtUInv, err := invertDense(&UtU)
 	if err != nil {
-		return nil, nil, nil, diagnostics, err
+		return nil, nil, nil, err
 	}
-	d := make([]float64, q)
-	for i := range q {
-		d[i] = UtUInv.At(i, i)
-	}
-
-	for j := range q {
-		sqrtD := math.Sqrt(d[j])
-		for i := range q { // U is q x q
+	for j := 0; j < q; j++ {
+		sqrtD := math.Sqrt(UtUInv.At(j, j))
+		for i := 0; i < q; i++ {
 			U.Set(i, j, U.At(i, j)*sqrtD)
 		}
 	}
 
-	// z = x %*% U
 	loadings = mat.NewDense(p, q, nil)
 	loadings.Mul(x, &U)
 
-	// Phi = solve(U) %*% t(solve(U))
 	UInv, err := invertDense(&U)
 	if err != nil {
-		return nil, nil, nil, diagnostics, err
+		return nil, nil, nil, err
 	}
 	Phi = mat.NewDense(q, q, nil)
 	Phi.Mul(UInv, UInv.T())
 
-	return loadings, &U, Phi, diagnostics, nil
+	return loadings, &U, Phi, nil
 }

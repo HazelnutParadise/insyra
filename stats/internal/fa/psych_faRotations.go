@@ -455,7 +455,7 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 			starts = append(starts, mat.DenseCopyOf(rot))
 		}
 		if loadings != nil {
-			if _, trgRot, _, err := TargetRot(baseLoadings, nil); err == nil {
+			if _, trgRot, _, err := TargetRot(baseLoadings); err == nil {
 				if trgRot != nil {
 					starts = append(starts, mat.DenseCopyOf(trgRot))
 				}
@@ -667,28 +667,6 @@ func seedFromMatrix(m *mat.Dense) int64 {
 	return int64(seed)
 }
 
-func kaiserNormalize(loadings *mat.Dense) (*mat.Dense, []float64) {
-	rows, cols := loadings.Dims()
-	weights := make([]float64, rows)
-	normalized := mat.NewDense(rows, cols, nil)
-	for i := range rows {
-		sum := 0.0
-		for j := range cols {
-			val := loadings.At(i, j)
-			sum += val * val
-		}
-		if sum <= 0 {
-			weights[i] = 1.0
-		} else {
-			weights[i] = 1.0 / math.Sqrt(sum)
-		}
-		for j := range cols {
-			normalized.Set(i, j, loadings.At(i, j)*weights[i])
-		}
-	}
-	return normalized, weights
-}
-
 func finalizeGpfResult(gpf map[string]any, nf int) map[string]any {
 	Th, ok := gpf["Th"].(*mat.Dense)
 	if !ok || Th == nil {
@@ -767,58 +745,3 @@ func rotMatFromTh(Th *mat.Dense, nf int) *mat.Dense {
 	return mat.DenseCopyOf(invTh.T())
 }
 
-// ParseRotationResult accepts the opaque result value returned by
-// FaRotations (or individual rotation functions) and returns typed
-// pointers to the rotated loadings, rotation matrix (rotmat), Phi
-// (may be nil for orthogonal rotations), the objective f and a bool
-// indicating success. This helper centralizes key extraction so callers
-// can programmatically compare matrices (e.g. against SPSS reference).
-func ParseRotationResult(res any) (loadings, rotmat, phi *mat.Dense, f float64, ok bool) {
-	ok = false
-	if res == nil {
-		return
-	}
-	// Many rotation functions return map[string]any
-	var m map[string]any
-	switch v := res.(type) {
-	case map[string]any:
-		m = v
-	default:
-		return
-	}
-	if errMsg, found := m["error"].(string); found && errMsg != "" {
-		return
-	}
-
-	if lv, found := m["loadings"]; found {
-		if ld, cast := lv.(*mat.Dense); cast {
-			loadings = mat.DenseCopyOf(ld)
-		}
-	}
-	if rv, found := m["rotmat"]; found {
-		if rd, cast := rv.(*mat.Dense); cast {
-			rotmat = mat.DenseCopyOf(rd)
-		}
-	}
-	// Accept either "Phi" or "phi" keys used in code
-	if pv, found := m["Phi"]; found {
-		if pd, cast := pv.(*mat.Dense); cast {
-			phi = mat.DenseCopyOf(pd)
-		}
-	} else if pv, found := m["phi"]; found {
-		if pd, cast := pv.(*mat.Dense); cast {
-			phi = mat.DenseCopyOf(pd)
-		}
-	}
-	if fv, found := m["f"]; found {
-		if ff, cast := fv.(float64); cast {
-			f = ff
-		}
-	}
-
-	// success if at least loadings and rotmat present
-	if loadings != nil && rotmat != nil {
-		ok = true
-	}
-	return
-}
