@@ -114,7 +114,7 @@ func Fac(r *mat.Dense, opts *FacOptions) (*FacResult, error) {
 		fm = "ml"
 	}
 
-	validMethods := []string{"pa", "alpha", "minrank", "wls", "gls", "minres", "minchi", "uls", "ml", "ols", "old.min"}
+	validMethods := []string{"pa", "wls", "gls", "minres", "minchi", "uls", "ml", "ols", "old.min"}
 	isValid := false
 	for _, method := range validMethods {
 		if fm == method {
@@ -179,10 +179,6 @@ func Fac(r *mat.Dense, opts *FacOptions) (*FacResult, error) {
 	switch fm {
 	case "pa":
 		loadings, communalities, eValues = principalAxisFactoring(r, rMat, opts.NFactors, opts.MinErr, opts.MaxIter, opts.Warnings)
-	case "alpha":
-		loadings, communalities, eValues = alphaFactoring(r, rMat, opts.NFactors, opts.MinErr, opts.MaxIter, opts.Warnings)
-	case "minrank":
-		loadings, communalities, eValues = minrankFactoring(r, rMat, opts.NFactors)
 	case "minres", "uls", "wls", "gls", "ols":
 		loadings, communalities, eValues, err = minimumResidualFactoring(r, rMat, opts.NFactors, fm, opts.Covar, opts.MinErr, opts.MaxIter)
 	case "ml":
@@ -228,10 +224,6 @@ func Fac(r *mat.Dense, opts *FacOptions) (*FacResult, error) {
 	// Set column names
 	colNames := make([]string, opts.NFactors)
 	switch fm {
-	case "alpha":
-		for i := 0; i < opts.NFactors; i++ {
-			colNames[i] = fmt.Sprintf("alpha%d", i+1)
-		}
 	case "wls":
 		for i := 0; i < opts.NFactors; i++ {
 			colNames[i] = fmt.Sprintf("WLS%d", i+1)
@@ -1131,170 +1123,3 @@ func faOut(psi []float64, s *mat.Dense, q int) *mat.Dense {
 	return loadings
 }
 
-// alphaFactoring implements alpha factoring (mirrors alpha method in R psych)
-func alphaFactoring(r, rMat *mat.Dense, nfactors int, minErr float64, maxIter int, warnings bool) (*mat.Dense, []float64, []float64) {
-	p, _ := r.Dims()
-
-	// Get eigenvalues for initial communalities
-	eValues, vectors, ok := statslinalg.SymmetricEigenDescending(r)
-	if !ok {
-		return mat.NewDense(p, nfactors, nil), make([]float64, p), make([]float64, p)
-	}
-
-	// Initialize communalities
-	h2 := make([]float64, p)
-	for i := 0; i < p; i++ {
-		h2[i] = rMat.At(i, i)
-	}
-
-	// Iterative process
-	i := 1
-	for i <= maxIter {
-		// Update r.mat
-		rMatWork := mat.NewDense(p, p, nil)
-		rMatWork.CloneFrom(r)
-		for j := 0; j < p; j++ {
-			rMatWork.Set(j, j, h2[j])
-		}
-
-		// Eigen decomposition
-		values, vectorsWork, ok := statslinalg.SymmetricEigenDescending(rMatWork)
-		if !ok {
-			break
-		}
-
-		// Extract loadings
-		loadings := mat.NewDense(p, nfactors, nil)
-		if nfactors > 1 {
-			for j := 0; j < nfactors; j++ {
-				eigenVal := values[j]
-				sqrtEigenVal := math.Sqrt(eigenVal)
-				for k := 0; k < p; k++ {
-					loadings.Set(k, j, vectorsWork.At(k, j)*sqrtEigenVal)
-				}
-			}
-		} else {
-			eigenVal := values[0]
-			sqrtEigenVal := math.Sqrt(eigenVal)
-			for k := 0; k < p; k++ {
-				loadings.Set(k, 0, vectorsWork.At(k, 0)*sqrtEigenVal)
-			}
-		}
-
-		// Compute model
-		model := mat.NewDense(p, p, nil)
-		model.Mul(loadings, loadings.T())
-
-		// Update communalities
-		newH2 := make([]float64, p)
-		for j := 0; j < p; j++ {
-			newH2[j] = h2[j] * model.At(j, j)
-		}
-
-		// Check convergence
-		err := 0.0
-		for j := 0; j < p; j++ {
-			diff := h2[j] - newH2[j]
-			err += diff * diff
-		}
-		err = math.Sqrt(err)
-
-		if err < minErr {
-			break
-		}
-
-		h2 = newH2
-		i++
-
-		if i > maxIter && warnings {
-			insyra.LogWarning("fa", "alphaFactoring", "maximum iteration exceeded")
-		}
-	}
-
-	// Final loadings with sqrt(H2) scaling
-	loadings := mat.NewDense(p, nfactors, nil)
-	if nfactors > 1 {
-		for j := 0; j < nfactors; j++ {
-			eigenVal := eValues[j]
-			sqrtEigenVal := math.Sqrt(eigenVal)
-			for k := 0; k < p; k++ {
-				loadings.Set(k, j, vectors.At(k, j)*sqrtEigenVal*math.Sqrt(h2[k]))
-			}
-		}
-	} else {
-		eigenVal := eValues[0]
-		sqrtEigenVal := math.Sqrt(eigenVal)
-		for k := 0; k < p; k++ {
-			loadings.Set(k, 0, vectors.At(k, 0)*sqrtEigenVal*math.Sqrt(h2[k]))
-		}
-	}
-
-	// Extract eigenvalues
-	finalEValues := make([]float64, p)
-	for j := 0; j < p; j++ {
-		finalEValues[j] = eValues[j]
-	}
-
-	// Communalities
-	communalities := make([]float64, p)
-	copy(communalities, h2)
-
-	return loadings, communalities, finalEValues
-}
-
-// minrankFactoring implements minimum rank factoring (mirrors minrank method in R psych)
-func minrankFactoring(r, rMat *mat.Dense, nfactors int) (*mat.Dense, []float64, []float64) {
-	p, _ := r.Dims()
-
-	// For simplicity, implement a basic version using eigenvalue decomposition
-	// In R psych, this uses glb.algebraic for more sophisticated minimum rank approximation
-
-	// Get communality estimate
-	comGlb := 0.0
-	for i := 0; i < p; i++ {
-		comGlb += rMat.At(i, i)
-	}
-	comGlb /= float64(p)
-
-	// Set diagonal to 1 - communality estimate
-	rWork := mat.NewDense(p, p, nil)
-	rWork.CloneFrom(r)
-	for i := 0; i < p; i++ {
-		rWork.Set(i, i, 1.0-comGlb)
-	}
-
-	// Eigen decomposition
-	values, vectors, ok := statslinalg.SymmetricEigenDescending(rWork)
-	if !ok {
-		return mat.NewDense(p, nfactors, nil), make([]float64, p), make([]float64, p)
-	}
-
-	// Extract loadings
-	loadings := mat.NewDense(p, nfactors, nil)
-	for j := 0; j < nfactors; j++ {
-		eigenVal := values[j]
-		if eigenVal < 0 {
-			eigenVal = 0
-		}
-		sqrtEigenVal := math.Sqrt(eigenVal)
-		for i := 0; i < p; i++ {
-			loadings.Set(i, j, vectors.At(i, j)*sqrtEigenVal)
-		}
-	}
-
-	// Extract eigenvalues from original matrix
-	eValues, _, ok := statslinalg.SymmetricEigenDescending(r)
-
-	finalEValues := make([]float64, p)
-	if ok {
-		copy(finalEValues, eValues)
-	}
-
-	// Communalities
-	communalities := make([]float64, p)
-	for i := 0; i < p; i++ {
-		communalities[i] = comGlb
-	}
-
-	return loadings, communalities, finalEValues
-}

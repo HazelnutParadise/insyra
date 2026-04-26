@@ -1225,40 +1225,6 @@ func bartlettToDataTable(chiSquare float64, df int, pValue float64, n int) *Bart
 	}
 }
 
-// reflectFactorsForPositiveLoadings ensures all factor loadings are positive by reflecting factors with negative loadings
-func reflectFactorsForPositiveLoadings(loadings *mat.Dense) (*mat.Dense, error) {
-	if loadings == nil {
-		return nil, fmt.Errorf("nil loadings matrix")
-	}
-
-	rows, cols := loadings.Dims()
-	reflectedLoadings := mat.DenseCopyOf(loadings)
-
-	for j := range cols { // For each factor
-		positiveCount := 0
-		negativeCount := 0
-
-		// Count positive and negative loadings for this factor
-		for i := range rows {
-			loading := reflectedLoadings.At(i, j)
-			if loading > 0 {
-				positiveCount++
-			} else if loading < 0 {
-				negativeCount++
-			}
-		}
-
-		// If negative loadings are more than positive, reflect the factor
-		if negativeCount > positiveCount {
-			for i := range rows {
-				reflectedLoadings.Set(i, j, -reflectedLoadings.At(i, j))
-			}
-		}
-	}
-
-	return reflectedLoadings, nil
-}
-
 // matrixToDataTableWithNames converts a matrix to DataTable with row and column names
 func matrixToDataTableWithNames(matrix mat.Matrix, tableName string, colNames []string, rowNames []string) *insyra.DataTable {
 	if matrix == nil {
@@ -1413,22 +1379,6 @@ func rotatePrincipalPromax(loadings *mat.Dense, rotationOpts FactorRotationOptio
 	return rotated, rotMat, phi, true, nil
 }
 
-func covarianceToCorrelation(cov *mat.Dense) *mat.Dense {
-	n, _ := cov.Dims()
-	cor := mat.NewDense(n, n, nil)
-	for i := range n {
-		for j := range n {
-			denom := math.Sqrt(cov.At(i, i) * cov.At(j, j))
-			if denom == 0 || math.IsNaN(denom) {
-				cor.Set(i, j, 0)
-			} else {
-				cor.Set(i, j, cov.At(i, j)/denom)
-			}
-		}
-	}
-	return cor
-}
-
 // rotateFactors rotates factor loadings based on rotation options
 func rotateFactors(loadings *mat.Dense, rotationOpts FactorRotationOptions, minErr float64, maxIter int) (*mat.Dense, *mat.Dense, *mat.Dense, bool, error) {
 	if loadings == nil {
@@ -1553,46 +1503,6 @@ func standardizeFactorSigns(loadings *mat.Dense) *mat.Dense {
 	return standardized
 }
 
-// standardizePhiSigns applies sign changes to phi matrix based on loading sign changes
-// R code: if (!is.null(Phi)) { Phi <- diag(signed) %*% Phi %*% diag(signed) }
-func standardizePhiSigns(phi *mat.Dense, originalLoadings, standardizedLoadings *mat.Dense) *mat.Dense {
-	if phi == nil || originalLoadings == nil || standardizedLoadings == nil {
-		return phi
-	}
-
-	_, cols := phi.Dims()
-
-	// Determine which factors had their signs flipped
-	signs := make([]float64, cols)
-	for j := range cols {
-		// Compare first non-zero loading to determine if sign was flipped
-		origSum := 0.0
-		stdSum := 0.0
-		rows, _ := originalLoadings.Dims()
-		for i := range rows {
-			origSum += originalLoadings.At(i, j)
-			stdSum += standardizedLoadings.At(i, j)
-		}
-
-		// If signs are opposite, this factor was flipped
-		if origSum*stdSum < 0 {
-			signs[j] = -1.0
-		} else {
-			signs[j] = 1.0
-		}
-	}
-
-	// Apply: Phi <- diag(signed) %*% Phi %*% diag(signed)
-	standardizedPhi := mat.NewDense(cols, cols, nil)
-	for i := range cols {
-		for j := range cols {
-			standardizedPhi.Set(i, j, signs[i]*phi.At(i, j)*signs[j])
-		}
-	}
-
-	return standardizedPhi
-}
-
 // isIdentityMatrix checks if a matrix is an identity matrix (within tolerance)
 func isIdentityMatrix(m *mat.Dense) bool {
 	if m == nil {
@@ -1618,70 +1528,6 @@ func isIdentityMatrix(m *mat.Dense) bool {
 	}
 
 	return true
-}
-
-// FactorPAFOblimin performs principal-axis factoring followed by oblimin rotation.
-func FactorPAFOblimin(corr *mat.Dense, numFactors int, delta float64, epsilon float64, maxIter int, normalize float64) (*mat.Dense, *mat.Dense, *mat.Dense, *mat.Dense, *mat.Dense, []float64, []float64, int, bool, error) {
-	if corr == nil {
-		return nil, nil, nil, nil, nil, nil, nil, 0, false, fmt.Errorf("nil correlation matrix")
-	}
-
-	rows, cols := corr.Dims()
-	if rows != cols {
-		return nil, nil, nil, nil, nil, nil, nil, 0, false, fmt.Errorf("correlation matrix must be square")
-	}
-	if numFactors <= 0 || numFactors > cols {
-		return nil, nil, nil, nil, nil, nil, nil, 0, false, fmt.Errorf("invalid number of factors: %d", numFactors)
-	}
-	if epsilon <= 0 {
-		epsilon = 1e-5
-	}
-	if maxIter <= 0 {
-		maxIter = 1000
-	}
-
-	smcVec, smcDiagnostics := fa.Smc(corr, &fa.SmcOptions{Covar: false})
-	if smcVec == nil || smcVec.Len() != cols {
-		return nil, nil, nil, nil, nil, nil, nil, 0, false, fmt.Errorf("failed to compute SMC communalities")
-	}
-	if errs, ok := smcDiagnostics["errors"].([]string); ok && len(errs) > 0 {
-		return nil, nil, nil, nil, nil, nil, nil, 0, false, fmt.Errorf("failed to compute SMC communalities: %s", strings.Join(errs, "; "))
-	}
-	initialCommunalities := append([]float64(nil), smcVec.RawVector().Data...)
-	facRes, err := fa.Fac(corr, &fa.FacOptions{
-		NFactors: numFactors,
-		NObs:     -999,
-		Rotate:   "none",
-		Scores:   "none",
-		SMC:      initialCommunalities,
-		Covar:    false,
-		MinErr:   epsilon,
-		MaxIter:  maxIter,
-		Fm:       "pa",
-		Warnings: true,
-	})
-	if err != nil {
-		return nil, nil, nil, nil, nil, nil, nil, 0, false, err
-	}
-
-	rotOpts := &fa.RotOpts{
-		Eps:      epsilon,
-		MaxIter:  maxIter,
-		Gamma:    delta,
-		Restarts: 1,
-	}
-	rotated, rotMat, phi, converged, err := fa.Rotate(facRes.Loadings, "oblimin", rotOpts)
-	if err != nil {
-		return nil, nil, nil, nil, nil, nil, nil, 0, false, err
-	}
-	var structure *mat.Dense
-	if phi != nil {
-		structure = mat.NewDense(cols, numFactors, nil)
-		structure.Mul(rotated, phi)
-	}
-	communalities := append([]float64(nil), facRes.Communalities...)
-	eigenvalues := append([]float64(nil), facRes.EValues...)
-	return rotated, facRes.Loadings, phi, rotMat, structure, communalities, eigenvalues, 0, converged, nil
 }
 
 // computeFactorScores computes factor scores using the specified method
