@@ -51,7 +51,13 @@ func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...flo
 
 	var rawCL float64
 	if len(confidenceLevel) > 0 {
+		if len(confidenceLevel) > 1 {
+			return nil, errors.New("confidenceLevel accepts at most one value")
+		}
 		rawCL = confidenceLevel[0]
+		if rawCL <= 0 || rawCL >= 1 {
+			return nil, errors.New("confidenceLevel must be between 0 and 1")
+		}
 	}
 	cl := resolveConfidenceLevel(rawCL)
 
@@ -167,7 +173,13 @@ func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenc
 
 	var rawCL float64
 	if len(confidenceLevel) > 0 {
+		if len(confidenceLevel) > 1 {
+			return nil, errors.New("confidenceLevel accepts at most one value")
+		}
 		rawCL = confidenceLevel[0]
+		if rawCL <= 0 || rawCL >= 1 {
+			return nil, errors.New("confidenceLevel must be between 0 and 1")
+		}
 	}
 	cl := resolveConfidenceLevel(rawCL)
 
@@ -301,7 +313,13 @@ func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel ...float64) (*TT
 
 	var rawCL float64
 	if len(confidenceLevel) > 0 {
+		if len(confidenceLevel) > 1 {
+			return nil, errors.New("confidenceLevel accepts at most one value")
+		}
 		rawCL = confidenceLevel[0]
+		if rawCL <= 0 || rawCL >= 1 {
+			return nil, errors.New("confidenceLevel must be between 0 and 1")
+		}
 	}
 	cl := resolveConfidenceLevel(rawCL)
 

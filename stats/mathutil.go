@@ -26,6 +26,8 @@ func ciByAlternative(center, margin float64, alternative AlternativeHypothesis) 
 	case Less:
 		lower = math.Inf(-1)
 		upper = center + margin
+	default:
+		return nanCIPtr()
 	}
 	ci := [2]float64{lower, upper}
 	return &ci
@@ -33,6 +35,11 @@ func ciByAlternative(center, margin float64, alternative AlternativeHypothesis) 
 
 func nanCI() [2]float64 {
 	return [2]float64{math.NaN(), math.NaN()}
+}
+
+func nanCIPtr() *[2]float64 {
+	ci := nanCI()
+	return &ci
 }
 
 func tMarginOfError(confidenceLevel, df, standardError float64) float64 {
@@ -56,6 +63,12 @@ func fRatio(ssBetween float64, dfBetween int, ssWithin float64, dfWithin int) fl
 }
 
 func correlationToT(r, n float64) float64 {
+	if r >= 1 {
+		return math.Inf(1)
+	}
+	if r <= -1 {
+		return math.Inf(-1)
+	}
 	return r * math.Sqrt(n-2) / math.Sqrt(1-r*r)
 }
 
@@ -69,6 +82,15 @@ func fisherZInverse(z float64) float64 {
 }
 
 func pearsonFisherCI(r, n, confidenceLevel float64) *[2]float64 {
+	if n <= 3 {
+		return nanCIPtr()
+	}
+	if r >= 1 {
+		return &[2]float64{1, 1}
+	}
+	if r <= -1 {
+		return &[2]float64{-1, -1}
+	}
 	z := fisherZTransform(r)
 	se := 1 / math.Sqrt(n-3)
 	zCritical := norm.Quantile(1 - (1-resolveConfidenceLevel(confidenceLevel))/2)

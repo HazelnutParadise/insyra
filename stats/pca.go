@@ -26,9 +26,7 @@ func PCA(dataTable insyra.IDataTable, nComponents ...int) (*PCAResult, error) {
 
 		numComponents = colNum
 		if len(nComponents) == 1 {
-			if nComponents[0] > 0 && nComponents[0] <= colNum {
-				numComponents = nComponents[0]
-			}
+			numComponents = nComponents[0]
 		}
 
 		data = mat.NewDense(rowNum, colNum, nil)
@@ -53,12 +51,15 @@ func PCA(dataTable insyra.IDataTable, nComponents ...int) (*PCAResult, error) {
 	if rowNum < 2 || colNum < 1 {
 		return nil, errors.New("insufficient data shape for PCA")
 	}
+	if numComponents <= 0 || numComponents > colNum {
+		return nil, fmt.Errorf("nComponents must be between 1 and %d", colNum)
+	}
 
 	for j := range colNum {
 		col := mat.Col(nil, j, data)
 		mean, std := stat.MeanStdDev(col, nil)
 		if std == 0 {
-			std = 1
+			return nil, fmt.Errorf("PCA undefined for zero-variance column %d", j)
 		}
 		for i := range rowNum {
 			data.Set(i, j, (data.At(i, j)-mean)/std)

@@ -49,7 +49,7 @@ func Skewness(sample any, method ...SkewnessMethod) (float64, error) {
 	}
 
 	if m2 == 0 {
-		return 0, nil
+		return math.NaN(), errors.New("skewness undefined for zero variance")
 	}
 
 	g1 := m3 / math.Pow(m2, 1.5)

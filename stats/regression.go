@@ -166,31 +166,36 @@ func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) (*LinearRe
 	standardErrors, tValues, pValues := computeCoeffInference(coeffs, XTXInv, mse, df)
 
 	result := &LinearRegressionResult{
-		Residuals:        residuals,
-		RSquared:         rSquared,
-		AdjustedRSquared: adjRSquared,
-		Coefficients:     coeffs,
-		StandardErrors:   standardErrors,
-		TValues:          tValues,
-		PValues:          pValues,
+		Slope:                   math.NaN(),
+		Intercept:               coeffs[0],
+		StandardError:           math.NaN(),
+		StandardErrorIntercept:  standardErrors[0],
+		TValue:                  math.NaN(),
+		TValueIntercept:         tValues[0],
+		PValue:                  math.NaN(),
+		PValueIntercept:         pValues[0],
+		ConfidenceIntervalSlope: nanCI(),
+		Residuals:               residuals,
+		RSquared:                rSquared,
+		AdjustedRSquared:        adjRSquared,
+		Coefficients:            coeffs,
+		StandardErrors:          standardErrors,
+		TValues:                 tValues,
+		PValues:                 pValues,
 	}
 
 	if p == 1 {
-		result.Intercept = coeffs[0]
 		result.Slope = coeffs[1]
-		result.StandardErrorIntercept = standardErrors[0]
 		result.StandardError = standardErrors[1]
-		result.TValueIntercept = tValues[0]
 		result.TValue = tValues[1]
-		result.PValueIntercept = pValues[0]
 		result.PValue = pValues[1]
 	}
 
 	confIntervals := buildMultiCoeffCIs(coeffs, standardErrors, df)
 	result.ConfidenceIntervals = confIntervals
 
+	result.ConfidenceIntervalIntercept = confIntervals[0]
 	if p == 1 {
-		result.ConfidenceIntervalIntercept = confIntervals[0]
 		result.ConfidenceIntervalSlope = confIntervals[1]
 	}
 

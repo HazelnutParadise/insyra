@@ -19,6 +19,12 @@ func SingleSampleZTest(data insyra.IDataList, mu float64, sigma float64, alterna
 	if sigma <= 0 {
 		return nil, errors.New("sigma must be greater than zero")
 	}
+	if alternative != TwoSided && alternative != Greater && alternative != Less {
+		return nil, errors.New("unsupported alternative hypothesis")
+	}
+	if confidenceLevel <= 0 || confidenceLevel >= 1 {
+		return nil, errors.New("confidenceLevel must be between 0 and 1")
+	}
 
 	var n int
 	var mean float64
@@ -40,7 +46,6 @@ func SingleSampleZTest(data insyra.IDataList, mu float64, sigma float64, alterna
 	zValue := (mean - mu) / standardError
 	pValue := zPValue(zValue, alternative)
 
-	confidenceLevel = resolveConfidenceLevel(confidenceLevel)
 	marginOfError := zMarginOfError(confidenceLevel, standardError)
 
 	effectSize := math.Abs(mean-mu) / sigma
@@ -65,6 +70,12 @@ func SingleSampleZTest(data insyra.IDataList, mu float64, sigma float64, alterna
 func TwoSampleZTest(data1, data2 insyra.IDataList, sigma1, sigma2 float64, alternative AlternativeHypothesis, confidenceLevel float64) (*ZTestResult, error) {
 	if sigma1 <= 0 || sigma2 <= 0 {
 		return nil, errors.New("sigma1 and sigma2 must be greater than zero")
+	}
+	if alternative != TwoSided && alternative != Greater && alternative != Less {
+		return nil, errors.New("unsupported alternative hypothesis")
+	}
+	if confidenceLevel <= 0 || confidenceLevel >= 1 {
+		return nil, errors.New("confidenceLevel must be between 0 and 1")
 	}
 
 	var n1, n2 int
@@ -98,7 +109,6 @@ func TwoSampleZTest(data1, data2 insyra.IDataList, sigma1, sigma2 float64, alter
 	zValue := meanDiff / standardError
 	pValue := zPValue(zValue, alternative)
 
-	confidenceLevel = resolveConfidenceLevel(confidenceLevel)
 	marginOfError := zMarginOfError(confidenceLevel, standardError)
 
 	pooledSigma := math.Sqrt((n1Float*sigma1Sq + n2Float*sigma2Sq) / (n1Float + n2Float))

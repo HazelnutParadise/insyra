@@ -84,18 +84,34 @@ func computeCoeffInference(coeffs []float64, xtxInv [][]float64, mse, df float64
 	standardErrors = make([]float64, n)
 	tValues = make([]float64, n)
 	pValues = make([]float64, n)
+	for i := 0; i < n; i++ {
+		standardErrors[i] = math.NaN()
+		tValues[i] = math.NaN()
+		pValues[i] = math.NaN()
+	}
 
 	for i := 0; i < n; i++ {
 		if xtxInv == nil || i >= len(xtxInv) || i >= len(xtxInv[i]) || xtxInv[i][i] < 0 || math.IsNaN(mse) {
 			continue
 		}
 		standardErrors[i] = math.Sqrt(mse * xtxInv[i][i])
-		if standardErrors[i] > 0 {
+		if standardErrors[i] == 0 {
+			switch {
+			case coeffs[i] > 0:
+				tValues[i] = math.Inf(1)
+				if df > 0 {
+					pValues[i] = 0
+				}
+			case coeffs[i] < 0:
+				tValues[i] = math.Inf(-1)
+				if df > 0 {
+					pValues[i] = 0
+				}
+			}
+		} else if standardErrors[i] > 0 {
 			tValues[i] = coeffs[i] / standardErrors[i]
 			if df > 0 {
 				pValues[i] = tTwoTailedPValue(tValues[i], df)
-			} else {
-				pValues[i] = math.NaN()
 			}
 		}
 	}

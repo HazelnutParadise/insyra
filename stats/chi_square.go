@@ -3,6 +3,7 @@ package stats
 import (
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 
@@ -31,10 +32,13 @@ func (r *ChiSquareTestResult) Show() {
 // calculateChiSquare calculates the chi-square statistic and related results.
 // Returns nil and an error message if any problems occur.
 func calculateChiSquare(observed, expected []float64, df int) (*ChiSquareTestResult, error) {
+	if df <= 0 {
+		return nil, errors.New("degrees of freedom must be positive")
+	}
 	chiSquare := 0.0
 	for i := range observed {
-		if expected[i] == 0 {
-			return nil, errors.New("expected values must not be zero")
+		if expected[i] <= 0 {
+			return nil, errors.New("expected values must be greater than zero")
 		}
 		chiSquare += (observed[i] - expected[i]) * (observed[i] - expected[i]) / expected[i]
 	}
@@ -59,6 +63,9 @@ func calculateChiSquare(observed, expected []float64, df int) (*ChiSquareTestRes
 func ChiSquareGoodnessOfFit(input insyra.IDataList, p []float64, rescaleP bool) (*ChiSquareTestResult, error) {
 	// 計算類別頻率
 	data := input.Data()
+	if len(data) == 0 {
+		return nil, errors.New("input DataList cannot be empty")
+	}
 	categoryFreq := make(map[string]float64)
 	for _, v := range data {
 		s := strings.TrimSpace(conv.ToString(v))
@@ -88,14 +95,22 @@ func ChiSquareGoodnessOfFit(input insyra.IDataList, p []float64, rescaleP bool) 
 		return nil, errors.New("length of p does not match number of categories")
 	}
 
-	if rescaleP {
-		sumP := 0.0
-		for _, val := range p {
-			sumP += val
+	sumP := 0.0
+	for _, val := range p {
+		if val < 0 || math.IsNaN(val) || math.IsInf(val, 0) {
+			return nil, errors.New("probabilities must be finite and non-negative")
 		}
+		sumP += val
+	}
+	if sumP <= 0 {
+		return nil, errors.New("probabilities must sum to a positive value")
+	}
+	if rescaleP {
 		for i := range p {
 			p[i] /= sumP
 		}
+	} else if math.Abs(sumP-1) > 1e-12 {
+		return nil, errors.New("probabilities must sum to 1 unless rescaleP is true")
 	}
 
 	totalObserved := 0.0
@@ -180,6 +195,9 @@ func ChiSquareIndependenceTest(rowData, colData insyra.IDataList) (*ChiSquareTes
 
 	rows := len(rowKeys)
 	cols := len(colKeys)
+	if rows < 2 || cols < 2 {
+		return nil, errors.New("chi-square independence test requires at least two row and column categories")
+	}
 	observed := make([]float64, rows*cols)
 
 	// 填入觀察值

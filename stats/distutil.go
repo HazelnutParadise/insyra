@@ -8,7 +8,7 @@ import (
 
 func tTwoTailedPValue(t, df float64) float64 {
 	if df <= 0 {
-		return 1.0
+		return math.NaN()
 	}
 	dist := distuv.StudentsT{Mu: 0, Sigma: 1, Nu: df}
 	return 2 * (1 - dist.CDF(math.Abs(t)))

@@ -97,7 +97,7 @@ func BartlettTest(groups []insyra.IDataList) (*FTestResult, error) {
 	var sumNMinus1 int
 	var weight float64
 
-	for _, group := range groups {
+	for i, group := range groups {
 		var n int
 		var v float64
 		group.AtomicDo(func(gdl *insyra.DataList) {
@@ -106,7 +106,7 @@ func BartlettTest(groups []insyra.IDataList) (*FTestResult, error) {
 		})
 
 		if n < 2 || v <= 0 {
-			continue
+			return nil, fmt.Errorf("group %d must have at least two observations and positive variance", i)
 		}
 
 		sumNMinus1 += n - 1

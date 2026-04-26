@@ -286,7 +286,10 @@ func pearsonCorrelationWithStats(dlX, dlY insyra.IDataList) (CorrelationResult, 
 	if err != nil {
 		return result, err
 	}
-	if !math.IsNaN(corr) && n > 2 {
+	if math.IsNaN(corr) {
+		result.PValue = math.NaN()
+		result.CI = nanCIPtr()
+	} else {
 		populateCorrelationInference(&result, corr, n)
 	}
 	return result, nil
@@ -370,23 +373,20 @@ func spearmanCorrelationWithStats(dlX, dlY insyra.IDataList) (CorrelationResult,
 		return result, nil
 	}
 
-	if n > 2 {
-		if math.Abs(rho) >= 0.9999 {
-			result.PValue = 0.0
-		} else {
-			populateCorrelationInference(&result, rho, n)
-		}
-	} else {
-		result.PValue = math.NaN()
-	}
+	populateCorrelationInference(&result, rho, n)
 
 	return result, nil
 }
 
 func populateCorrelationInference(result *CorrelationResult, corr, n float64) {
-	tStat := correlationToT(corr, n)
 	df := n - 2
+	result.DF = &df
+	if df <= 0 || math.IsNaN(corr) {
+		result.PValue = math.NaN()
+		result.CI = nanCIPtr()
+		return
+	}
+	tStat := correlationToT(corr, n)
 	result.PValue = tTwoTailedPValue(tStat, df)
 	result.CI = pearsonFisherCI(corr, n, defaultConfidenceLevel)
-	result.DF = &df
 }
