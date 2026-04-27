@@ -264,7 +264,7 @@ func Fac(r *mat.Dense, opts *FacOptions) (*FacResult, error) {
 
 	// Compute model
 	model := mat.NewDense(p, p, nil)
-	refMul(model, loadings, mat.DenseCopyOf(loadings.T()))
+	model.Mul(loadings, loadings.T())
 
 	// Initialize result
 	result := &FacResult{
@@ -352,7 +352,7 @@ func principalAxisFactoring(r, rMat *mat.Dense, nfactors int, minErr float64, ma
 
 		// Compute model
 		model := mat.NewDense(p, p, nil)
-		refMul(model, loadings, mat.DenseCopyOf(loadings.T()))
+		model.Mul(loadings, loadings.T())
 
 		// Update communalities
 		newComm := 0.0
@@ -659,7 +659,7 @@ func fitResiduals(psi []float64, s *mat.Dense, nf int, fm string) float64 {
 
 	// Compute model
 	model := mat.NewDense(p, p, nil)
-	refMul(model, loadings, mat.DenseCopyOf(loadings.T()))
+	model.Mul(loadings, loadings.T())
 
 	// Compute residuals
 	residual := mat.NewDense(p, p, nil)
@@ -724,7 +724,7 @@ func faGrMinres(grad []float64, psi []float64, s *mat.Dense, nf int) {
 	}
 
 	model := mat.NewDense(p, p, nil)
-	refMul(model, loadings, mat.DenseCopyOf(loadings.T()))
+	model.Mul(loadings, loadings.T())
 	for i := 0; i < p; i++ {
 		grad[i] = model.At(i, i) + psi[i] - s.At(i, i)
 	}
@@ -859,12 +859,11 @@ func faFn(psi []float64, s *mat.Dense, nf int) float64 {
 		sc.Set(i, i, 1.0/math.Sqrt(psi[i]))
 	}
 
-	// Compute Sstar = sc %*% S %*% sc using reference dgemm to keep
-	// the J-L-I accumulation order in lockstep with R's BLAS.
+	// Compute Sstar = sc %*% S %*% sc
 	sStar := mat.NewDense(p, p, nil)
-	refMul(sStar, sc, s)
+	sStar.Mul(sc, s)
 	temp := mat.NewDense(p, p, nil)
-	refMul(temp, sStar, sc)
+	temp.Mul(sStar, sc)
 
 	// Eigen decomposition
 	values, _, ok := statslinalg.SymmetricEigenDescending(temp)
@@ -893,12 +892,11 @@ func faGr(grad []float64, psi []float64, s *mat.Dense, nf int) []float64 {
 		sc.Set(i, i, 1.0/math.Sqrt(psi[i]))
 	}
 
-	// Compute Sstar = sc %*% S %*% sc using reference dgemm to keep
-	// the J-L-I accumulation order in lockstep with R's BLAS.
+	// Compute Sstar = sc %*% S %*% sc
 	sStar := mat.NewDense(p, p, nil)
-	refMul(sStar, sc, s)
+	sStar.Mul(sc, s)
 	temp := mat.NewDense(p, p, nil)
-	refMul(temp, sStar, sc)
+	temp.Mul(sStar, sc)
 
 	// Eigen decomposition
 	values, vectors, ok := statslinalg.SymmetricEigenDescending(temp)
@@ -959,12 +957,11 @@ func faOut(psi []float64, s *mat.Dense, q int) *mat.Dense {
 		sc.Set(i, i, 1.0/math.Sqrt(psi[i]))
 	}
 
-	// Compute Sstar = sc %*% S %*% sc using reference dgemm to keep
-	// the J-L-I accumulation order in lockstep with R's BLAS.
+	// Compute Sstar = sc %*% S %*% sc
 	sStar := mat.NewDense(p, p, nil)
-	refMul(sStar, sc, s)
+	sStar.Mul(sc, s)
 	temp := mat.NewDense(p, p, nil)
-	refMul(temp, sStar, sc)
+	temp.Mul(sStar, sc)
 
 	// Eigen decomposition
 	values, vectors, ok := statslinalg.SymmetricEigenDescending(temp)
