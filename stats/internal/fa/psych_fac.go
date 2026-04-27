@@ -8,7 +8,6 @@ import (
 	"github.com/HazelnutParadise/insyra"
 	statslinalg "github.com/HazelnutParadise/insyra/stats/internal/linalg"
 	"gonum.org/v1/gonum/mat"
-	"gonum.org/v1/gonum/optimize"
 )
 
 const (
@@ -493,192 +492,41 @@ func minimumResidualFactoring(r, rMat *mat.Dense, nfactors int, fm string, covar
 	return loadings, communalities, eValues, nil
 }
 
+// optimizeBounded minimizes fn(x) subject to lower <= x_i <= upper. The
+// caller must supply a gradient routine. We dispatch to the L-BFGS-B
+// implementation in lbfgsb.go with parameters set to mirror R's
+// optim(method="L-BFGS-B", control=list(parscale=rep(0.01,n))) used by
+// psych::fa for ML / minres factor extraction.
 func optimizeBounded(start []float64, lower, upper float64, maxIter int, fn func([]float64) float64, grad func([]float64, []float64)) ([]float64, error) {
-	if len(start) == 0 || upper <= lower || fn == nil {
+	if len(start) == 0 || upper <= lower || fn == nil || grad == nil {
 		return nil, fmt.Errorf("invalid bounded optimization inputs")
 	}
-	if grad != nil {
-		return optimizeBoundedProjected(start, lower, upper, maxIter, fn, grad)
+	n := len(start)
+	lo := make([]float64, n)
+	hi := make([]float64, n)
+	parscale := make([]float64, n)
+	for i := range start {
+		lo[i] = lower
+		hi[i] = upper
+		parscale[i] = 0.01
 	}
-	y0 := make([]float64, len(start))
-	for i, v := range start {
-		y0[i] = boundedToUnbounded(v, lower, upper)
-	}
-
-	x := make([]float64, len(start))
-	problem := optimize.Problem{
-		Func: func(y []float64) float64 {
-			unboundedToBounded(x, y, lower, upper)
-			return fn(x)
-		},
-	}
-	if grad != nil {
-		gx := make([]float64, len(start))
-		problem.Grad = func(gy, y []float64) {
-			unboundedToBounded(x, y, lower, upper)
-			for i := range gx {
-				gx[i] = 0
-			}
-			grad(gx, x)
-			for i := range gy {
-				gy[i] = gx[i] * boundedDerivative(y[i], lower, upper)
-			}
-		}
-	}
-
-	majorIterations := maxIter
-	if majorIterations < 100 {
-		majorIterations = 100
-	}
-	settings := &optimize.Settings{MajorIterations: majorIterations}
-	method := optimize.Method(&optimize.NelderMead{})
-	if grad != nil {
-		method = &optimize.LBFGS{
-			GradStopThreshold: math.NaN(),
-			Store:             15,
-		}
-	}
-
-	result, err := optimize.Minimize(problem, y0, settings, method)
-	if err != nil {
-		return nil, err
-	}
-	if result == nil || result.X == nil {
-		return nil, fmt.Errorf("optimizer returned no solution")
-	}
-
-	out := make([]float64, len(start))
-	unboundedToBounded(out, result.X, lower, upper)
-	return out, nil
-}
-
-func optimizeBoundedProjected(start []float64, lower, upper float64, maxIter int, fn func([]float64) float64, grad func([]float64, []float64)) ([]float64, error) {
-	x := append([]float64(nil), start...)
-	projectIntoBounds(x, lower, upper)
-	fx := fn(x)
-	if math.IsNaN(fx) || math.IsInf(fx, 0) {
-		return nil, fmt.Errorf("invalid initial objective value: %g", fx)
-	}
-
-	g := make([]float64, len(x))
-	direction := make([]float64, len(x))
-	trial := make([]float64, len(x))
-	const parscale = 0.01
-	const c1 = 1e-4
-	const projectedStepTol = 1e-4
-	iterations := maxIter
-	if iterations < 1000 {
-		iterations = 1000
-	}
-
-	for iter := 0; iter < iterations; iter++ {
+	gradWrap := func(g, x []float64) {
 		for i := range g {
 			g[i] = 0
 		}
 		grad(g, x)
-
-		projectedNorm := 0.0
-		directionalDerivative := 0.0
-		for i := range x {
-			if x[i] <= lower+1e-12 && g[i] >= 0 {
-				direction[i] = 0
-				continue
-			}
-			if x[i] >= upper-1e-12 && g[i] <= 0 {
-				direction[i] = 0
-				continue
-			}
-			direction[i] = -g[i] * parscale * parscale
-			if x[i]+direction[i] < lower {
-				direction[i] = lower - x[i]
-			}
-			if x[i]+direction[i] > upper {
-				direction[i] = upper - x[i]
-			}
-			projectedNorm += direction[i] * direction[i]
-			directionalDerivative += g[i] * direction[i]
-		}
-
-		smallProjectedStep := math.Sqrt(projectedNorm) < projectedStepTol
-
-		step := 1.0
-		accepted := false
-		for ls := 0; ls < 40; ls++ {
-			for i := range x {
-				trial[i] = x[i] + step*direction[i]
-			}
-			projectIntoBounds(trial, lower, upper)
-			ft := fn(trial)
-			if !math.IsNaN(ft) && !math.IsInf(ft, 0) && ft <= fx+c1*step*directionalDerivative {
-				copy(x, trial)
-				fx = ft
-				accepted = true
-				break
-			}
-			step *= 0.5
-		}
-		if !accepted {
-			return nil, fmt.Errorf("bounded optimizer line search failed to find a feasible descent step")
-		}
-		if smallProjectedStep {
-			return x, nil
-		}
 	}
-
-	return nil, fmt.Errorf("bounded optimizer failed to converge in %d iterations", iterations)
-}
-
-func projectIntoBounds(x []float64, lower, upper float64) {
-	for i := range x {
-		if x[i] < lower {
-			x[i] = lower
-		}
-		if x[i] > upper {
-			x[i] = upper
-		}
+	mi := maxIter
+	if mi < 200 {
+		mi = 200
 	}
-}
-
-func boundedToUnbounded(x, lower, upper float64) float64 {
-	const eps = 1e-4
-	if x <= lower {
-		x = lower + eps*(upper-lower)
+	res, err := lbfgsb(start, lo, hi, fn, gradWrap, lbfgsbParams{
+		M: 5, Factr: 1, PgTol: 1e-12, MaxIter: mi, Parscale: parscale,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("L-BFGS-B failed: %w", err)
 	}
-	if x >= upper {
-		x = upper - eps*(upper-lower)
-	}
-	r := (x - lower) / (upper - lower)
-	if r < eps {
-		r = eps
-	}
-	if r > 1-eps {
-		r = 1 - eps
-	}
-	return math.Log(r / (1 - r))
-}
-
-func unboundedToBounded(dst, src []float64, lower, upper float64) {
-	for i, y := range src {
-		if y >= 0 {
-			e := math.Exp(-y)
-			dst[i] = lower + (upper-lower)/(1+e)
-		} else {
-			e := math.Exp(y)
-			dst[i] = lower + (upper-lower)*e/(1+e)
-		}
-	}
-}
-
-func boundedDerivative(y, lower, upper float64) float64 {
-	var s float64
-	if y >= 0 {
-		e := math.Exp(-y)
-		s = 1 / (1 + e)
-	} else {
-		e := math.Exp(y)
-		s = e / (1 + e)
-	}
-	return (upper - lower) * s * (1 - s)
+	return res.X, nil
 }
 
 func refineBoundedCoordinates(start []float64, lower, upper float64, maxIter int, fn func([]float64) float64) []float64 {
