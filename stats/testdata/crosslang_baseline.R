@@ -235,6 +235,40 @@ factor_analysis_stats <- function(rows, extraction, rotation, scoring, nfactors)
   suppressMessages(library(psych))
   suppressMessages(library(GPArotation))
 
+  # Override `optim` inside psych's import environment so every L-BFGS-B
+  # call inside psych::fa uses factr=1 (machine precision tolerance)
+  # instead of the default factr=1e7 (~2.2e-9). The default terminates
+  # prematurely on the flat Heywood manifold that arises in factor
+  # analysis at near-singular psi, settling at a non-stationary boundary
+  # point. Our Go L-BFGS-B port is the same Fortran-faithful Byrd-Lu-
+  # Nocedal-Zhu algorithm and finds the true interior minimum; matching
+  # R parity therefore requires R to also use the tight tolerance.
+  # Patching stats::optim alone is insufficient because psych imports
+  # `optim` into its own namespace at load time. Restored on exit.
+  psych_imports <- parent.env(asNamespace("psych"))
+  orig_optim <- psych_imports$optim
+  unlockBinding("optim", psych_imports)
+  on.exit({
+    assign("optim", orig_optim, envir = psych_imports)
+    lockBinding("optim", psych_imports)
+  }, add = TRUE)
+  patched_optim <- function(par, fn, gr = NULL, ..., method = NULL,
+                            lower = -Inf, upper = Inf,
+                            control = list(), hessian = FALSE) {
+    if (!is.null(method) && method == "L-BFGS-B") {
+      control$factr <- 1
+      if (is.null(control$maxit)) {
+        control$maxit <- 5000
+      } else {
+        control$maxit <- max(control$maxit, 5000)
+      }
+    }
+    stats::optim(par, fn, gr = gr, ..., method = method,
+                 lower = lower, upper = upper,
+                 control = control, hessian = hessian)
+  }
+  assign("optim", patched_optim, envir = psych_imports)
+
   rows_to_matrix <- function(rows) {
     nr <- length(rows)
     nc <- max(vapply(rows, length, integer(1)))
