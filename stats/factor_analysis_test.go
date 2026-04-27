@@ -353,22 +353,33 @@ func generatedNarrowPlusGroupRows() [][]any {
 // generatedHeavyTailRows produces 28x5 data with heavy-tailed (cubic) noise
 // that violates multivariate normality assumed by ML. Useful to check
 // extraction-method divergence between PAF/MINRES (least-squares) and ML.
+//
+// The original draft used cubed noise multiplied by f1/f2 contributions
+// which produced a near-singular correlation matrix that broke KMO matrix
+// inversion before extraction even started. This revised version uses
+// independent leptokurtic noise per indicator (deterministic but
+// uncorrelated across columns), so the correlation matrix stays
+// well-conditioned while still violating ML's normality assumption.
 func generatedHeavyTailRows() [][]any {
 	const n = 28
 	rows := make([][]any, n)
 	for i := range n {
 		x := float64(i)
-		f1 := math.Sin(0.31*x) + 0.30*math.Cos(0.17*x)
-		f2 := math.Cos(0.49*x+0.3) - 0.22*math.Sin(0.27*x)
-		// cubic noise gives heavy tails
-		n1 := math.Pow(0.55*math.Sin(1.31*x), 3)
-		n2 := math.Pow(0.50*math.Cos(1.09*x+0.2), 3)
+		// Two latent factors with moderate spread.
+		f1 := math.Sin(0.31*x) + 0.40*math.Cos(0.17*x)
+		f2 := math.Cos(0.49*x+0.3) - 0.32*math.Sin(0.27*x)
+		// Independent heavy-tail (cubic-of-trig) noise per column. Each
+		// column gets its own frequency / phase so noise is essentially
+		// uncorrelated across indicators while remaining deterministic.
+		hn := func(freq, phase float64) float64 {
+			return 0.55 * math.Pow(math.Sin(freq*x+phase), 3)
+		}
 		rows[i] = []any{
-			0.4 + 0.78*f1 + 0.15*f2 + n1,
-			-0.6 + 0.71*f1 - 0.11*f2 + n2,
-			1.1 + 0.18*f1 + 0.74*f2 + n1*0.6,
-			-1.4 - 0.13*f1 + 0.69*f2 + n2*0.7,
-			0.7 + 0.39*f1 - 0.34*f2 + n1*0.5 + n2*0.4,
+			0.4 + 0.80*f1 + 0.10*f2 + hn(1.31, 0.0),
+			-0.6 + 0.74*f1 - 0.08*f2 + hn(1.79, 0.5),
+			1.1 + 0.12*f1 + 0.78*f2 + hn(2.13, 1.1),
+			-1.4 - 0.10*f1 + 0.71*f2 + hn(2.47, 1.7),
+			0.7 + 0.42*f1 - 0.38*f2 + hn(2.91, 2.3),
 		}
 	}
 	return rows
