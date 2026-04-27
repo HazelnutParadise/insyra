@@ -102,6 +102,23 @@ type FactorAnalysisOptions struct {
 	Scoring    FactorScoreMethod
 	MaxIter    int     // Optional: default 100
 	MinErr     float64 // Optional: default 0.001 (R's min.err)
+
+	// OptimFactr controls the L-BFGS-B convergence tolerance used by ML
+	// and MINRES factor extraction: the optimizer terminates when the
+	// relative function change drops below OptimFactr * machine epsilon.
+	// Defaults to 1e7 (≈2.2e-9 absolute), matching R psych::fa /
+	// stats::optim's "moderate accuracy" default. Use 1 for machine
+	// precision (≈2.2e-16) when you want the true stationary point on
+	// near-Heywood / flat objective surfaces; the default terminates
+	// prematurely on those problems and settles at a non-stationary
+	// boundary point. Use 1e12 for low precision (faster).
+	OptimFactr float64
+
+	// OptimMaxIter caps L-BFGS-B iterations for ML / MINRES extraction.
+	// Defaults to 100 (matching R stats::optim default). Increase for
+	// ill-conditioned problems where the optimizer would otherwise hit
+	// the iteration cap before converging.
+	OptimMaxIter int
 }
 
 // -------------------------
@@ -225,9 +242,11 @@ func DefaultFactorAnalysisOptions() FactorAnalysisOptions {
 			Restarts:         1,
 			VarimaxAlgorithm: VarimaxKaiser,
 		},
-		Scoring: FactorScoreRegression, // R default: "regression"
-		MaxIter: 50,                    // R default: 50
-		MinErr:  0.001,                 // R default: 0.001
+		Scoring:      FactorScoreRegression, // R default: "regression"
+		MaxIter:      50,                    // R default: 50
+		MinErr:       0.001,                 // R default: 0.001
+		OptimFactr:   1e7,                   // R default: stats::optim factr
+		OptimMaxIter: 100,                   // R default: stats::optim maxit
 	}
 }
 
@@ -301,6 +320,12 @@ func normalizeFactorAnalysisOptions(opt FactorAnalysisOptions) (FactorAnalysisOp
 	}
 	if opt.MinErr <= 0 {
 		opt.MinErr = defaults.MinErr
+	}
+	if opt.OptimFactr <= 0 {
+		opt.OptimFactr = defaults.OptimFactr
+	}
+	if opt.OptimMaxIter <= 0 {
+		opt.OptimMaxIter = defaults.OptimMaxIter
 	}
 
 	return opt, nil
@@ -1005,6 +1030,8 @@ func extractFactors(data, corrMatrix *mat.Dense, eigenvalues []float64, eigenvec
 		NRotations:    1,
 		Hyper:         0.15,
 		Smooth:        true,
+		OptimFactr:    opt.OptimFactr,
+		OptimMaxIter:  opt.OptimMaxIter,
 	}
 
 	// Map our extraction methods to psych_fac method names

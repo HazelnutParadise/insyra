@@ -66,7 +66,10 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			return nil, fmt.Errorf("failed to invert oblique rotation matrix: %w", err)
 		}
 		L := mat.NewDense(rows, cols, nil)
-		L.Mul(Aw, invT.T())
+		// refMul preserves R/Fortran reference dgemm accumulation order so
+		// the long oblimin sweep stays in lockstep with R's GPArotation.
+		invTt := mat.DenseCopyOf(invT.T())
+		refMul(L, Aw, invTt)
 		return L, nil
 	}
 
@@ -90,8 +93,8 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 	for iter <= maxit {
 		// Add M matrix calculation to match R's implementation, for closer comparison.
 		// M <- t(Tmat) %*% Tmat
-		var M mat.Dense
-		M.Mul(T.T(), T)
+		Tt := mat.DenseCopyOf(T.T())
+		_ = refMulNew(Tt, T) // computed for parity with R's loop structure; unused
 
 		Gp := computeGp(G, T)
 		s := frobNorm(Gp)
@@ -137,7 +140,7 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			}
 			diagScale := mat.NewDiagDense(colsX, scaleVals)
 			Tnew := mat.NewDense(X.RawMatrix().Rows, colsX, nil)
-			Tnew.Mul(X, diagScale)
+			refMul(Tnew, X, diagScale)
 
 			Lnew, err := computeL(Tnew)
 			if err != nil {
@@ -191,12 +194,13 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 		}
 	}
 
-	var Phi mat.Dense
-	Phi.Mul(T.T(), T)
+	Tt := mat.DenseCopyOf(T.T())
+	Phi := mat.NewDense(cols, cols, nil)
+	refMul(Phi, Tt, T)
 
 	return map[string]any{
 		"loadings":    L,
-		"Phi":         &Phi,
+		"Phi":         Phi,
 		"Th":          T,
 		"Table":       table,
 		"method":      methodName,
@@ -211,27 +215,18 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 
 func computeGMatrix(L *mat.Dense, Gq *mat.Dense, T *mat.Dense) (*mat.Dense, error) {
 	// R: G <- -t(t(L) %*% Gq %*% solve(Tmat))
-	// Compute transpose of L: t(L) is q x p
-	var Lt mat.Dense
-	Lt.CloneFrom(L.T())
-
-	// Compute t(L) %*% Gq: q x p * p x q = q x q
-	var LtGq mat.Dense
-	LtGq.Mul(&Lt, Gq)
+	Lt := mat.DenseCopyOf(L.T())
+	LtGq := refMulNew(Lt, Gq)
 
 	invT, err := invertDense(T)
 	if err != nil {
 		return nil, fmt.Errorf("failed to invert oblique rotation matrix for gradient: %w", err)
 	}
+	temp := refMulNew(LtGq, invT)
 
-	var temp mat.Dense
-	temp.Mul(&LtGq, invT)
-
-	var G mat.Dense
-	G.CloneFrom(temp.T())
-	G.Scale(-1, &G)
-
-	return &G, nil
+	G := mat.DenseCopyOf(temp.T())
+	G.Scale(-1, G)
+	return G, nil
 }
 
 // computeGp computes the projected gradient Gp.
@@ -240,10 +235,8 @@ func computeGMatrix(L *mat.Dense, Gq *mat.Dense, T *mat.Dense) (*mat.Dense, erro
 func computeGp(G, T *mat.Dense) *mat.Dense {
 	// R's GPFoblq uses: Gp <- G - T %*% diag(diag(t(T) %*% G))
 	// This projects G onto the tangent space at T
-
-	// Compute t(T) %*% G
-	var TtG mat.Dense
-	TtG.Mul(T.T(), G)
+	Tt := mat.DenseCopyOf(T.T())
+	TtG := refMulNew(Tt, G)
 
 	// Extract diagonal elements: diag(t(T) %*% G)
 	rows, cols := TtG.Dims()
@@ -260,12 +253,11 @@ func computeGp(G, T *mat.Dense) *mat.Dense {
 	diagMat := mat.NewDiagDense(minDim, diagVals)
 
 	// Compute T %*% diag(diag(t(T) %*% G))
-	var TDiag mat.Dense
-	TDiag.Mul(T, diagMat)
+	TDiag := refMulNew(T, diagMat)
 
 	// Gp = G - T %*% diag(diag(t(T) %*% G))
 	Gp := mat.DenseCopyOf(G)
-	Gp.Sub(Gp, &TDiag)
+	Gp.Sub(Gp, TDiag)
 
 	return Gp
 }

@@ -41,6 +41,14 @@ type FacOptions struct {
 	NRotations    int
 	Hyper         float64
 	Smooth        bool
+
+	// L-BFGS-B parameters used by ML / MINRES extraction. Defaults match
+	// R's stats::optim: OptimFactr=1e7, OptimMaxIter=100. Caller can tighten
+	// OptimFactr (down to 1) for machine-precision convergence on flat
+	// objective surfaces (e.g. Heywood-prone problems where the default
+	// terminates prematurely).
+	OptimFactr   float64
+	OptimMaxIter int
 }
 
 // FacResult represents the result of factor analysis
@@ -179,9 +187,9 @@ func Fac(r *mat.Dense, opts *FacOptions) (*FacResult, error) {
 	case "pa":
 		loadings, communalities, eValues = principalAxisFactoring(r, rMat, opts.NFactors, opts.MinErr, opts.MaxIter, opts.Warnings)
 	case "minres", "uls", "wls", "gls", "ols":
-		loadings, communalities, eValues, err = minimumResidualFactoring(r, rMat, opts.NFactors, fm, opts.Covar, opts.MinErr, opts.MaxIter)
+		loadings, communalities, eValues, err = minimumResidualFactoring(r, rMat, opts.NFactors, fm, opts.Covar, opts.MinErr, opts.MaxIter, opts.OptimFactr, opts.OptimMaxIter)
 	case "ml":
-		loadings, communalities, eValues, err = maximumLikelihoodFactoring(r, rMat, opts.NFactors, opts.Covar, opts.MinErr, opts.MaxIter)
+		loadings, communalities, eValues, err = maximumLikelihoodFactoring(r, rMat, opts.NFactors, opts.Covar, opts.MinErr, opts.MaxIter, opts.OptimFactr, opts.OptimMaxIter)
 	default:
 		return nil, fmt.Errorf("unsupported factor method: %s", fm)
 	}
@@ -403,7 +411,7 @@ func principalAxisFactoring(r, rMat *mat.Dense, nfactors int, minErr float64, ma
 }
 
 // minimumResidualFactoring implements minimum residual factoring and related methods
-func minimumResidualFactoring(r, rMat *mat.Dense, nfactors int, fm string, covar bool, minErr float64, maxIter int) (*mat.Dense, []float64, []float64, error) {
+func minimumResidualFactoring(r, rMat *mat.Dense, nfactors int, fm string, covar bool, minErr float64, maxIter int, optimFactr float64, optimMaxIter int) (*mat.Dense, []float64, []float64, error) {
 	p, _ := r.Dims()
 
 	// Get SMC values for initial communalities
@@ -444,7 +452,8 @@ func minimumResidualFactoring(r, rMat *mat.Dense, nfactors int, fm string, covar
 		start,
 		0.005,
 		upper,
-		maxIter,
+		optimFactr,
+		optimMaxIter,
 		func(x []float64) float64 {
 			return fitResiduals(x, r, nfactors, fm)
 		},
@@ -497,9 +506,20 @@ func minimumResidualFactoring(r, rMat *mat.Dense, nfactors int, fm string, covar
 // implementation in lbfgsb.go with parameters set to mirror R's
 // optim(method="L-BFGS-B", control=list(parscale=rep(0.01,n))) used by
 // psych::fa for ML / minres factor extraction.
-func optimizeBounded(start []float64, lower, upper float64, maxIter int, fn func([]float64) float64, grad func([]float64, []float64)) ([]float64, error) {
+//
+// factr controls the convergence tolerance (multiplier of machine epsilon);
+// 1e7 matches R's default. maxIter caps the number of iterations; 100
+// matches R's default.
+func optimizeBounded(start []float64, lower, upper float64, factr float64, maxIter int,
+	fn func([]float64) float64, grad func([]float64, []float64)) ([]float64, error) {
 	if len(start) == 0 || upper <= lower || fn == nil || grad == nil {
 		return nil, fmt.Errorf("invalid bounded optimization inputs")
+	}
+	if factr <= 0 {
+		factr = 1e7
+	}
+	if maxIter <= 0 {
+		maxIter = 100
 	}
 	n := len(start)
 	lo := make([]float64, n)
@@ -516,12 +536,8 @@ func optimizeBounded(start []float64, lower, upper float64, maxIter int, fn func
 		}
 		grad(g, x)
 	}
-	mi := maxIter
-	if mi < 200 {
-		mi = 200
-	}
 	res, err := lbfgsb(start, lo, hi, fn, gradWrap, lbfgsbParams{
-		M: 5, Factr: 1, PgTol: 1e-12, MaxIter: mi, Parscale: parscale,
+		M: 5, Factr: factr, PgTol: 0, MaxIter: maxIter, Parscale: parscale,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("L-BFGS-B failed: %w", err)
@@ -748,7 +764,7 @@ func faOutWLS(psi []float64, s *mat.Dense, q int) *mat.Dense {
 }
 
 // maximumLikelihoodFactoring implements Maximum Likelihood factor analysis
-func maximumLikelihoodFactoring(r, rMat *mat.Dense, nfactors int, covar bool, minErr float64, maxIter int) (*mat.Dense, []float64, []float64, error) {
+func maximumLikelihoodFactoring(r, rMat *mat.Dense, nfactors int, covar bool, minErr float64, maxIter int, optimFactr float64, optimMaxIter int) (*mat.Dense, []float64, []float64, error) {
 	p, _ := r.Dims()
 
 	// Get SMC values for initial communalities
@@ -788,7 +804,8 @@ func maximumLikelihoodFactoring(r, rMat *mat.Dense, nfactors int, covar bool, mi
 		start,
 		0.005,
 		upper,
-		maxIter,
+		optimFactr,
+		optimMaxIter,
 		func(x []float64) float64 {
 			return faFn(x, r, nfactors)
 		},
@@ -799,7 +816,7 @@ func maximumLikelihoodFactoring(r, rMat *mat.Dense, nfactors int, covar bool, mi
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("maximum likelihood optimization failed: %w", err)
 	}
-	psi = refineBoundedCoordinates(psi, 0.005, upper, maxIter, func(x []float64) float64 {
+	psi = refineBoundedCoordinates(psi, 0.005, upper, optimMaxIter, func(x []float64) float64 {
 		return faFn(x, r, nfactors)
 	})
 
