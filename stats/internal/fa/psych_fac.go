@@ -662,8 +662,13 @@ func fitResiduals(psi []float64, s *mat.Dense, nf int, fm string) float64 {
 		}
 	case "ols", "minres", "old.min":
 		// R: residual <- residual[lower.tri(residual)]^2
-		for i := 1; i < p; i++ {
-			for j := 0; j < i; j++ {
+		// lower.tri() returns elements in COLUMN-MAJOR order:
+		// (1,0), (2,0), (3,0), ..., (p-1, 0), (2,1), (3,1), ...
+		// Match this accumulation order so the floating-point sum is bit-
+		// identical to R's; row-major would round differently and that 1-ulp
+		// difference cascades through L-BFGS-B convergence checks.
+		for j := 0; j < p-1; j++ {
+			for i := j + 1; i < p; i++ {
 				val := residual.At(i, j)
 				error += val * val
 			}
