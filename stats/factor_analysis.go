@@ -668,12 +668,18 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 		rotatedLoadings, rotationMatrix, phi = sortFactorsByExplainedVariance(rotatedLoadings, rotationMatrix, phi)
 	}
 
-	// Step 8: Compute communalities and uniquenesses
+	// Step 8: Compute communalities and uniquenesses.
+	//
+	// psych::fa computes both fields from the *unrotated* loadings:
+	//   model <- loadings %*% t(loadings)        (fa.R line 460, before rotate)
+	//   result$communality <- diag(model)        (line 670)
+	//   result$uniquenesses <- diag(r - model)   (line 684)
+	// The rotation block does not refresh `model`, so even for oblique
+	// rotations the reported communality / uniqueness use unrotated L.
 	extractionCommunalities := make([]float64, colNum)
 	uniquenesses := make([]float64, colNum)
 	for i := 0; i < colNum; i++ {
 		var hi2 float64
-		// R psych reports communality as the diagonal of loadings %*% t(loadings).
 		for j := 0; j < numFactors; j++ {
 			v := unrotatedLoadings.At(i, j)
 			hi2 += v * v
@@ -683,7 +689,6 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 			diag = 1.0
 		}
 		extractionCommunalities[i] = hi2
-
 		uniquenesses[i] = diag - hi2
 	}
 
