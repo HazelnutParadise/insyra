@@ -8,6 +8,62 @@ import (
 	"gonum.org/v1/gonum/mat"
 )
 
+// TestDsyevrSmallSizes — n=1, 2, 3, 4 sanity check.
+func TestDsyevrSmallSizes(t *testing.T) {
+	cases := []struct {
+		n    int
+		data []float64
+	}{
+		{2, []float64{2, 1, 1, 3}},
+		{3, []float64{4, -1, 0.5, -1, 3, 0.2, 0.5, 0.2, 2}},
+		{4, []float64{1, 0.5, 0.25, 0.125, 0.5, 1, 0.5, 0.25, 0.25, 0.5, 1, 0.5, 0.125, 0.25, 0.5, 1}},
+	}
+	for _, tc := range cases {
+		n := tc.n
+		// row-major to column-major
+		a := make([]float64, n*n)
+		for i := 0; i < n; i++ {
+			for j := 0; j < n; j++ {
+				a[j*n+i] = tc.data[i*n+j]
+			}
+		}
+		// gonum reference
+		sym := mat.NewSymDense(n, tc.data)
+		var eig mat.EigenSym
+		if !eig.Factorize(sym, true) {
+			t.Errorf("n=%d gonum failed", n)
+			continue
+		}
+		wRef := eig.Values(nil)
+		sort.Float64s(wRef)
+
+		// our dsyevr
+		w := make([]float64, n)
+		z := make([]float64, n*n)
+		isuppz := make([]int, 2*n)
+		work := make([]float64, 26*n)
+		iwork := make([]int, 10*n)
+		m, info := dsyevr('V', 'A', 'L', n, a, n, 0, 0, 0, 0, 0,
+			w, z, n, isuppz, work, iwork)
+		if info != 0 || m != n {
+			t.Errorf("n=%d dsyevr info=%d m=%d", n, info, m)
+			continue
+		}
+		sort.Float64s(w)
+		maxDiff := 0.0
+		for i := 0; i < n; i++ {
+			d := math.Abs(w[i] - wRef[i])
+			if d > maxDiff {
+				maxDiff = d
+			}
+		}
+		t.Logf("n=%d max eigenvalue diff = %g", n, maxDiff)
+		if maxDiff > 1e-10 {
+			t.Errorf("n=%d eigenvalues differ by %g", n, maxDiff)
+		}
+	}
+}
+
 // TestDsyevrAgainstGonum verifies our pure-Go dsyevr (full MRRR pipeline)
 // matches gonum's EigenSym (which uses dsyev/QL+QR internally). The two
 // algorithms differ in last-bit details but should agree to ~1e-10 on

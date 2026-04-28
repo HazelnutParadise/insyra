@@ -6,7 +6,6 @@ import (
 	"math"
 
 	"github.com/HazelnutParadise/insyra"
-	statslinalg "github.com/HazelnutParadise/insyra/stats/internal/linalg"
 	"gonum.org/v1/gonum/mat"
 )
 
@@ -321,7 +320,7 @@ func principalAxisFactoring(r, rMat *mat.Dense, nfactors int, minErr float64, ma
 		// descending order; Gonum's EigenSym returns ascending values.
 		var vectors *mat.Dense
 		var ok bool
-		values, vectors, ok = statslinalg.SymmetricEigenDescending(rMat)
+		values, vectors, ok = symmetricEigenDescendingDsyevr(rMat)
 		if !ok {
 			break
 		}
@@ -378,7 +377,7 @@ func principalAxisFactoring(r, rMat *mat.Dense, nfactors int, minErr float64, ma
 	}
 
 	if loadings == nil || values == nil {
-		values, vectors, ok := statslinalg.SymmetricEigenDescending(rMat)
+		values, vectors, ok := symmetricEigenDescendingDsyevr(rMat)
 		if !ok {
 			return mat.NewDense(p, nfactors, nil), make([]float64, p), make([]float64, p)
 		}
@@ -479,7 +478,7 @@ func minimumResidualFactoring(r, rMat *mat.Dense, nfactors int, fm string, covar
 		}
 		s.Set(i, i, communality)
 	}
-	values, _, ok := statslinalg.SymmetricEigenDescending(s)
+	values, _, ok := symmetricEigenDescendingDsyevr(s)
 
 	eValues := make([]float64, p)
 	if ok {
@@ -639,7 +638,7 @@ func fitResiduals(psi []float64, s *mat.Dense, nf int, fm string) float64 {
 	}
 
 	// Eigen decomposition
-	values, vectors, ok := statslinalg.SymmetricEigenDescending(sWork)
+	values, vectors, ok := symmetricEigenDescendingDsyevr(sWork)
 	if !ok {
 		return math.Inf(1)
 	}
@@ -703,7 +702,7 @@ func faGrMinres(grad []float64, psi []float64, s *mat.Dense, nf int) {
 		sWork.Set(i, i, sWork.At(i, i)-psi[i])
 	}
 
-	values, vectors, ok := statslinalg.SymmetricEigenDescending(sWork)
+	values, vectors, ok := symmetricEigenDescendingDsyevr(sWork)
 	if !ok {
 		for i := range grad {
 			grad[i] = 0
@@ -742,7 +741,7 @@ func faOutWLS(psi []float64, s *mat.Dense, q int) *mat.Dense {
 	}
 
 	// Eigen decomposition
-	values, vectors, ok := statslinalg.SymmetricEigenDescending(sWork)
+	values, vectors, ok := symmetricEigenDescendingDsyevr(sWork)
 	if !ok {
 		return mat.NewDense(p, q, nil)
 	}
@@ -834,7 +833,7 @@ func maximumLikelihoodFactoring(r, rMat *mat.Dense, nfactors int, covar bool, mi
 		}
 		s.Set(i, i, communality)
 	}
-	values, _, ok := statslinalg.SymmetricEigenDescending(s)
+	values, _, ok := symmetricEigenDescendingDsyevr(s)
 
 	eValues := make([]float64, p)
 	if ok {
@@ -866,7 +865,7 @@ func faFn(psi []float64, s *mat.Dense, nf int) float64 {
 	temp.Mul(sStar, sc)
 
 	// Eigen decomposition
-	values, _, ok := statslinalg.SymmetricEigenDescending(temp)
+	values, _, ok := symmetricEigenDescendingDsyevr(temp)
 	if !ok {
 		return math.Inf(1)
 	}
@@ -899,7 +898,7 @@ func faGr(grad []float64, psi []float64, s *mat.Dense, nf int) []float64 {
 	temp.Mul(sStar, sc)
 
 	// Eigen decomposition
-	values, vectors, ok := statslinalg.SymmetricEigenDescending(temp)
+	values, vectors, ok := symmetricEigenDescendingDsyevr(temp)
 	if !ok {
 		for i := range grad {
 			grad[i] = 0
@@ -964,7 +963,7 @@ func faOut(psi []float64, s *mat.Dense, q int) *mat.Dense {
 	temp.Mul(sStar, sc)
 
 	// Eigen decomposition
-	values, vectors, ok := statslinalg.SymmetricEigenDescending(temp)
+	values, vectors, ok := symmetricEigenDescendingDsyevr(temp)
 	if !ok {
 		return mat.NewDense(p, q, nil)
 	}
