@@ -200,16 +200,26 @@ func Smc(r *mat.Dense, opts *SmcOptions) (*mat.VecDense, map[string]interface{})
 		diagnostics["imputationMethod"] = "remove_variables_with_most_NAs"
 	}
 
-	// Compute pseudoinverse and SMC
+	// Compute inverse and SMC. R's psych::smc uses solve() (LU); fall back
+	// to SVD pseudoinverse for singular matrices.
+	tryInverse := func(m *mat.Dense) (*mat.Dense, error) {
+		nr, _ := m.Dims()
+		out := mat.NewDense(nr, nr, nil)
+		if invErr := out.Inverse(m); invErr == nil {
+			return out, nil
+		}
+		// Fall back to SVD pseudoinverse on singular input.
+		return Pinv(m, opts.Tol)
+	}
 	var RInv *mat.Dense
 	var err error
 	if tempR != nil {
 		rows, _ := tempR.Dims()
 		if rows > 0 {
-			RInv, err = Pinv(tempR, opts.Tol)
+			RInv, err = tryInverse(tempR)
 		}
 	} else {
-		RInv, err = Pinv(corrMatrix, opts.Tol)
+		RInv, err = tryInverse(corrMatrix)
 	}
 
 	if err != nil || RInv == nil {
