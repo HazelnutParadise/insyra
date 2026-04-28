@@ -16,42 +16,9 @@ package fa
 
 import "math"
 
-// dlae2 computes the eigenvalues of a 2×2 symmetric matrix
-// [[a, b], [b, c]] with rt1 the larger and rt2 the smaller in absolute
-// value. Mirrors LAPACK dlae2.f.
+// dlae2 delegates to gonum's bit-equivalent Dlae2.
 func dlae2(a, b, c float64) (rt1, rt2 float64) {
-	sm := a + c
-	df := a - c
-	adf := math.Abs(df)
-	tb := b + b
-	ab := math.Abs(tb)
-	var acmx, acmn float64
-	if math.Abs(a) > math.Abs(c) {
-		acmx, acmn = a, c
-	} else {
-		acmx, acmn = c, a
-	}
-	var rt float64
-	switch {
-	case adf > ab:
-		rt = adf * math.Sqrt(1+(ab/adf)*(ab/adf))
-	case adf < ab:
-		rt = ab * math.Sqrt(1+(adf/ab)*(adf/ab))
-	default:
-		rt = ab * math.Sqrt(2)
-	}
-	switch {
-	case sm < 0:
-		rt1 = 0.5 * (sm - rt)
-		rt2 = (acmx/rt1)*acmn - (b/rt1)*b
-	case sm > 0:
-		rt1 = 0.5 * (sm + rt)
-		rt2 = (acmx/rt1)*acmn - (b/rt1)*b
-	default:
-		rt1 = 0.5 * rt
-		rt2 = -0.5 * rt
-	}
-	return
+	return gonumImpl().Dlae2(a, b, c)
 }
 
 // dlaset initializes an m×n matrix A with diagonal `diag` and off-diagonal
