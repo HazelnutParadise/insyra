@@ -330,11 +330,16 @@ func dorgtr(uplo byte, n int, a []float64, lda int, tau []float64) {
 		// Generate Q(1:n-1, 1:n-1) using dorg2l.
 		dorg2l(n-1, n-1, n-1, a, lda, tau)
 	} else {
-		// Lower: shift up.
+		// Lower: shift Householder vectors RIGHT (column j-1 → column j).
+		// This mirrors gonum's row-major Dorgtr (verified correct via tests
+		// in TestDormtrAgainstExplicitQ etc.). The LAPACK 3.12 reference
+		// shifts left when reading column-major; experimentation shows this
+		// loses v_0's data. The correct shift for column-major preserving
+		// gonum semantics is shift-right.
 		for j := n - 1; j >= 1; j-- {
 			a[j*lda+0] = 0
 			for i := j + 1; i < n; i++ {
-				a[(j-1)*lda+i] = a[j*lda+i]
+				a[j*lda+i] = a[(j-1)*lda+i]
 			}
 		}
 		a[0] = 1

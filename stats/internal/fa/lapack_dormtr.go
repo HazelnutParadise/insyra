@@ -4,29 +4,29 @@
 // to a matrix C: C := Q*C, Q^T*C, C*Q, or C*Q^T. Used by dsyevr to
 // transform tridiagonal-basis eigenvectors back to the original basis.
 //
-// The reference LAPACK implementation dispatches to dormql (UPLO='U')
-// or dormqr (UPLO='L'). Our implementation:
-//   - UPLO='L': uses gonum's Dormqr directly (faithful BLAS-level ports)
-//   - UPLO='U': panics — not yet implemented; not needed by our
-//     factor-analysis pipeline (we always call dsytrd/dormtr with 'L').
+// Implementation strategy: we cannot reuse gonum's Dormqr because gonum
+// uses ROW-MAJOR storage (dense[i*ld + j]), while our entire LAPACK port
+// is column-major (Fortran convention dense[(j-1)*ld + (i-1)]). So we:
+//   1. Build the explicit Q via our dorgtr (column-major, already
+//      validated against gonum's EigenSym in dsyev).
+//   2. Multiply Q (or Q^T) by C in column-major into a temporary,
+//      copy back to C.
 package fa
 
-import (
-	"gonum.org/v1/gonum/blas"
-	"gonum.org/v1/gonum/lapack/gonum"
-)
+import "math"
 
-// dormtr applies Q from dsytrd to C.
+// dormtr applies Q from dsytrd to C, in place.
 //
 //	side  : 'L' (Q on the left) or 'R' (Q on the right)
-//	uplo  : must match the uplo passed to dsytrd
+//	uplo  : 'L' or 'U' (must match dsytrd's uplo)
 //	trans : 'N' (apply Q) or 'T' (apply Q^T)
 //	m, n  : rows / cols of C
 //	a     : the symmetric matrix returned by dsytrd, lda*nq column-major,
-//	         where nq = m if side='L' else n
+//	         where nq = m if side='L' else n. NOT modified.
 //	tau   : Householder scalars from dsytrd, length nq-1
 //	c     : the matrix to overwrite, ldc*n column-major
-//	work  : workspace, length >= max(1, n) for side='L' or max(1, m) for side='R'
+//	work  : workspace, length >= nq*nq + nq for the Q construction +
+//	        m*n for the multiply temporary.
 func dormtr(
 	side, uplo, trans byte,
 	m, n int,
@@ -49,61 +49,73 @@ func dormtr(
 		work[0] = 1
 		return 0
 	}
+	_ = upper
+	_ = math.NaN
 
-	if upper {
-		panic("fa: dormtr UPLO='U' not implemented (port Dormql to enable)")
+	// Build a private copy of A for dorgtr (which destroys its input).
+	// We need the lda × nq portion.
+	aCopy := make([]float64, lda*nq)
+	for j := 0; j < nq; j++ {
+		base := j * lda
+		copy(aCopy[base:base+nq], a[base:base+nq])
 	}
+	tauCopy := make([]float64, nq-1)
+	copy(tauCopy, tau[:nq-1])
 
-	var mi, ni int
+	// dorgtr: produce explicit Q (nq × nq, column-major) into aCopy.
+	dorgtr(uplo, nq, aCopy, lda, tauCopy)
+
+	// Now compute C := op(Q) * C (left) or C := C * op(Q) (right),
+	// where op(Q) is Q for trans='N' or Q^T for trans='T'.
+	// We do the multiply column-by-column into a temp, then copy back.
+	transpose := trans == 'T' || trans == 't'
+
 	if left {
-		mi = m
-		ni = n
+		// C is m × n = nq × n. New C[i, j] = sum_k op(Q)[i, k] * C[k, j].
+		// op(Q)[i, k] = Q[i, k] if !transpose else Q[k, i].
+		tmp := make([]float64, nq)
+		for j := 0; j < n; j++ {
+			cCol := c[j*ldc : j*ldc+nq]
+			for i := 0; i < nq; i++ {
+				s := 0.0
+				if transpose {
+					qCol := aCopy[i*lda : i*lda+nq] // column i of Q
+					for k := 0; k < nq; k++ {
+						s += qCol[k] * cCol[k]
+					}
+				} else {
+					for k := 0; k < nq; k++ {
+						s += aCopy[k*lda+i] * cCol[k]
+					}
+				}
+				tmp[i] = s
+			}
+			copy(cCol, tmp)
+		}
 	} else {
-		mi = m
-		ni = n
-	}
-	_ = mi
-	_ = ni
-
-	var sideBLAS blas.Side
-	if left {
-		sideBLAS = blas.Left
-	} else {
-		sideBLAS = blas.Right
-	}
-	var transBLAS blas.Transpose
-	if trans == 'N' || trans == 'n' {
-		transBLAS = blas.NoTrans
-	} else {
-		transBLAS = blas.Trans
-	}
-
-	// LAPACK dormtr (UPLO='L') reduced sizes:
-	if left {
-		mi = m - 1
-		ni = n
-	} else {
-		mi = m
-		ni = n - 1
+		// C is m × n; nq = n. New C[i, j] = sum_k C[i, k] * op(Q)[k, j].
+		tmp := make([]float64, n)
+		for i := 0; i < m; i++ {
+			for j := 0; j < n; j++ {
+				s := 0.0
+				if transpose {
+					// op(Q)[k, j] = Q[j, k]
+					for k := 0; k < n; k++ {
+						s += c[k*ldc+i] * aCopy[k*lda+j]
+					}
+				} else {
+					for k := 0; k < n; k++ {
+						s += c[k*ldc+i] * aCopy[j*lda+k]
+					}
+				}
+				tmp[j] = s
+			}
+			for j := 0; j < n; j++ {
+				c[j*ldc+i] = tmp[j]
+			}
+		}
 	}
 
-	// Shift A by one row: A(2:NQ, 1:NQ-1) — flat index (j-1)*lda + 1 for column j.
-	// In Go we just pass a[1:] and it is column-major with the same lda.
-	aShifted := a[1:]
-
-	// Shift C: for SIDE='L' use C(2:M, :), i.e. c[1:].
-	//          for SIDE='R' use C(:, 2:N), i.e. c[ldc:].
-	var cShifted []float64
-	if left {
-		cShifted = c[1:]
-	} else {
-		cShifted = c[ldc:]
-	}
-
-	var impl gonum.Implementation
-	// gonum.Dormqr(side, trans, m, n, k, a, lda, tau, c, ldc, work, lwork)
-	// k = NQ-1
-	impl.Dormqr(sideBLAS, transBLAS, mi, ni, nq-1, aShifted, lda, tau, cShifted, ldc, work, len(work))
 	work[0] = 1
 	return 0
 }
