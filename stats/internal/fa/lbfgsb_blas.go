@@ -107,13 +107,19 @@ func dcopy(n int, dx []float64, incx int, dy []float64, incy int) {
 // ddot: returns sum_{k=1..n} dx[ix(k)]*dy[iy(k)].
 //
 // Fortran: double precision function ddot(n,dx,incx,dy,incy)
+//
+// CRITICAL: Fortran's "DTEMP = DTEMP + DX(I)*DY(I) + DX(I+1)*DY(I+1) + ..."
+// is left-associative, evaluating as ((((DTEMP + a) + b) + c) + d) + e —
+// i.e. dtemp is the FIRST addend, chained left-to-right one at a time.
+// Go's `dtemp += a + b + c + d + e` evaluates the RHS first as a chunk
+// then adds — different bit-level result. We replicate Fortran's order
+// explicitly with five sequential `dtemp +=` lines.
 func ddot(n int, dx []float64, incx int, dy []float64, incy int) float64 {
 	if n <= 0 {
 		return 0
 	}
 	dtemp := 0.0
 	if incx == 1 && incy == 1 {
-		// Unrolled by 5 (matches Fortran's clean-up).
 		m := n % 5
 		for i := 0; i < m; i++ {
 			dtemp += dx[i] * dy[i]
@@ -122,11 +128,11 @@ func ddot(n int, dx []float64, incx int, dy []float64, incy int) float64 {
 			return dtemp
 		}
 		for i := m; i < n; i += 5 {
-			dtemp += dx[i]*dy[i] +
-				dx[i+1]*dy[i+1] +
-				dx[i+2]*dy[i+2] +
-				dx[i+3]*dy[i+3] +
-				dx[i+4]*dy[i+4]
+			dtemp += dx[i] * dy[i]
+			dtemp += dx[i+1] * dy[i+1]
+			dtemp += dx[i+2] * dy[i+2]
+			dtemp += dx[i+3] * dy[i+3]
+			dtemp += dx[i+4] * dy[i+4]
 		}
 		return dtemp
 	}
