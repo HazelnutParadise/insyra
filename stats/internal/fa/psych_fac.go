@@ -196,6 +196,54 @@ func Fac(r *mat.Dense, opts *FacOptions) (*FacResult, error) {
 		return nil, err
 	}
 
+	// Reorder columns by descending SS-loadings (sum of squared loadings),
+	// matching R's psych::fa post-extraction step:
+	//   ev.rotates <- diag(t(loadings) %*% loadings)
+	//   ev.order   <- order(ev.rotates, decreasing = TRUE)
+	//   loadings   <- loadings[, ev.order]
+	// Without this, our columns (sorted by eigenvalue magnitude in faOut) can
+	// disagree with R's column order when eigenvalues are close but
+	// communality-weighted SS-loadings differ — surfaced by 44 cases on
+	// generated_moderate_three_factor / ml in the parity tests.
+	if opts.NFactors > 1 {
+		ssLoadings := make([]float64, opts.NFactors)
+		for j := 0; j < opts.NFactors; j++ {
+			s := 0.0
+			for i := 0; i < p; i++ {
+				v := loadings.At(i, j)
+				s += v * v
+			}
+			ssLoadings[j] = s
+		}
+		// Stable insertion sort indices in descending order.
+		order := make([]int, opts.NFactors)
+		for i := range order {
+			order[i] = i
+		}
+		for i := 1; i < opts.NFactors; i++ {
+			for j := i; j > 0 && ssLoadings[order[j-1]] < ssLoadings[order[j]]; j-- {
+				order[j-1], order[j] = order[j], order[j-1]
+			}
+		}
+		// Permute loadings columns according to order.
+		needsReorder := false
+		for i, o := range order {
+			if i != o {
+				needsReorder = true
+				break
+			}
+		}
+		if needsReorder {
+			newLoadings := mat.NewDense(p, opts.NFactors, nil)
+			for jNew, jOld := range order {
+				for i := 0; i < p; i++ {
+					newLoadings.Set(i, jNew, loadings.At(i, jOld))
+				}
+			}
+			loadings = newLoadings
+		}
+	}
+
 	// Handle sign convention
 	if opts.NFactors > 1 {
 		signTot := make([]float64, opts.NFactors)
