@@ -188,7 +188,11 @@ func cauchy(n int, x, l, u []float64, nbd []int, g []float64,
 
 			nseg++
 			dibp2 := dibp * dibp
-			f1 += dt*f2 + dibp2 - theta*dibp*zibp
+			// Fortran: f1 = f1 + dt*f2 + dibp2 - theta*dibp*zibp
+			// left-associative — f1 first; replicate exact accumulation order.
+			f1 += dt * f2
+			f1 += dibp2
+			f1 -= theta * dibp * zibp
 			f2 -= theta * dibp2
 
 			if col > 0 {
@@ -207,7 +211,9 @@ func cauchy(n int, x, l, u []float64, nbd []int, g []float64,
 				wmw := ddot(col2, wbp, 1, v, 1)
 				daxpy(col2, -dibp, wbp, 1, p, 1)
 				f1 += dibp * wmc
-				f2 += 2.0*dibp*wmp - dibp2*wmw
+				// Fortran: f2 = f2 + 2.0d0*dibp*wmp - dibp2*wmw — left-fold.
+				f2 += 2.0 * dibp * wmp
+				f2 -= dibp2 * wmw
 			}
 			if v := epsmch * f2Org; f2 < v {
 				f2 = v
