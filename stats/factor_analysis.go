@@ -691,6 +691,13 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 	// R: if (nfactors > 1) { ... sorting logic ... }
 	if numFactors > 1 {
 		rotatedLoadings, rotationMatrix, phi = sortFactorsByExplainedVariance(rotatedLoadings, rotationMatrix, phi)
+
+		// R's reference for `unrotated_loadings` is fit0$loadings from a separate
+		// fa(rotation="none") call, which itself runs R's SS-loadings sort. Apply
+		// the same sort independently to our captured unrotated copy so both
+		// match R's column ordering. The unrotated SS-sort permutation can
+		// differ from the rotated one when rotation is not identity.
+		unrotatedLoadings, _, _ = sortFactorsByExplainedVariance(unrotatedLoadings, nil, nil)
 	}
 
 	// Step 8: Compute communalities and uniquenesses.
