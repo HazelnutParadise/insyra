@@ -485,16 +485,17 @@ func minimumResidualFactoring(r, rMat *mat.Dense, nfactors int, fm string, covar
 		copy(eValues, values)
 	}
 
+	// Communalities = sum(loadings_i^2) per row — matches R's psych::fa,
+	// which uses diag(L %*% t(L)) NOT 1 - psi. The two diverge at the
+	// bounded-optim lower clamp.
 	communalities := make([]float64, p)
 	for i := 0; i < p; i++ {
-		communality := 1.0 - psi[i]
-		if communality < 0 {
-			communality = 0
+		s := 0.0
+		for j := 0; j < nfactors; j++ {
+			v := loadings.At(i, j)
+			s += v * v
 		}
-		if communality > 1 {
-			communality = 1
-		}
-		communalities[i] = communality
+		communalities[i] = s
 	}
 
 	return loadings, communalities, eValues, nil
@@ -840,9 +841,19 @@ func maximumLikelihoodFactoring(r, rMat *mat.Dense, nfactors int, covar bool, mi
 		copy(eValues, values)
 	}
 
+	// Communalities = sum(loadings_i^2) — matches R's psych::fa, which uses
+	// diag(Lambda %*% t(Lambda)) NOT 1 - psi. The two diverge when psi hits
+	// the bounded-optim lower clamp (0.005), so the bug only shows up on
+	// near-singular correlation matrices but is the root cause of ~10% of
+	// our R-parity failures (e.g. generated_near_collinear / ml).
 	communalities := make([]float64, p)
 	for i := 0; i < p; i++ {
-		communalities[i] = 1.0 - psi[i]
+		s := 0.0
+		for j := 0; j < nfactors; j++ {
+			v := loadings.At(i, j)
+			s += v * v
+		}
+		communalities[i] = s
 	}
 
 	return loadings, communalities, eValues, nil
