@@ -394,6 +394,11 @@ func dlarrv(
 						needbs := !tryrqc
 
 						var bstres, bstw float64
+						// nrminv is captured across iterations of the RQI loop and
+						// any second dlar1v call in the stp2ii branch; it is used
+						// after the loop to scale the eigenvector (matches Fortran
+						// DSCAL by NRMINV = 1/sqrt(ZTZ)).
+						var nrminv float64
 
 						// Singleton iteration.
 					singletonLoop:
@@ -410,23 +415,24 @@ func dlarrv(
 									return -3
 								}
 								lambda = work[windex-1]
+								// Reset twist index to force recomputation of MINGMA.
 								iwork[iindr+windex-1] = 0
 							}
-							// Compute the eigenvector.
+							// Compute the eigenvector. Note: dlar1v returns
+							//   (negcnt, ztz, mingma, rOut, isuppz1, isuppz2,
+							//    nrminv, resid, rqcorr)
+							// The 4th return (rOut) is the new twist index — must
+							// be written back to IWORK(IINDR+WINDEX), not isuppz1.
 							zCol := z[(windex-1)*ldz+ibegin-1 : (windex-1)*ldz+ibegin-1+in]
-							supp := []int{0, 0}
-							negcnt, ztz, mingma, _, sup1, sup2, nrminv, resid, rqcorr := dlar1v(
+							negcnt, _, _, rOut, sup1, sup2, nrminvNew, resid, rqcorr := dlar1v(
 								in, 1, in, lambda,
 								d[ibegin-1:], l[ibegin-1:],
 								work[indld+ibegin-1:], work[indlld+ibegin-1:],
 								pivmin, gaptol, zCol,
 								!usedbs, iwork[iindr+windex-1],
 								work[indwrk:])
-							iwork[iindr+windex-1] = sup1 // dlar1v returns rOut here? See note below.
-							_ = supp
-							_ = ztz
-							_ = mingma
-							_ = negcnt
+							iwork[iindr+windex-1] = rOut
+							nrminv = nrminvNew
 							isuppz[2*(windex-1)] = sup1
 							isuppz[2*(windex-1)+1] = sup2
 							if iter == 0 || resid < bstres {
@@ -480,19 +486,19 @@ func dlarrv(
 								}
 								if stp2ii {
 									zCol2 := z[(windex-1)*ldz+ibegin-1 : (windex-1)*ldz+ibegin-1+in]
-									_, _, _, _, sup1b, sup2b, nrminv2, _, _ := dlar1v(
+									_, _, _, rOut2, sup1b, sup2b, nrminv2, _, _ := dlar1v(
 										in, 1, in, lambda,
 										d[ibegin-1:], l[ibegin-1:],
 										work[indld+ibegin-1:], work[indlld+ibegin-1:],
 										pivmin, gaptol, zCol2,
 										!usedbs, iwork[iindr+windex-1],
 										work[indwrk:])
+									iwork[iindr+windex-1] = rOut2
 									isuppz[2*(windex-1)] = sup1b
 									isuppz[2*(windex-1)+1] = sup2b
 									nrminv = nrminv2
 								}
 								work[windex-1] = lambda
-								_ = nrminv
 								break singletonLoop
 							}
 						}
@@ -514,21 +520,10 @@ func dlarrv(
 									z[(windex-1)*ldz+ii-1] = 0
 								}
 							}
-							// Scale eigenvector by nrminv.
-							// We need nrminv from the last dlar1v call — capture from
-							// the converged lambda by recomputing the norm: scale by
-							// 1/||z|| for the support. We saved nrminv inside the loop
-							// only locally; redo norm here for safety.
-							var ztz float64
+							// DSCAL: multiply z[zfrom..zto, windex] by nrminv
+							// (= 1/sqrt(ZTZ) returned by the last dlar1v call).
 							for ii := zfrom; ii <= zto; ii++ {
-								v := z[(windex-1)*ldz+ii-1]
-								ztz += v * v
-							}
-							if ztz > 0 {
-								scale := 1.0 / math.Sqrt(ztz)
-								for ii := zfrom; ii <= zto; ii++ {
-									z[(windex-1)*ldz+ii-1] *= scale
-								}
+								z[(windex-1)*ldz+ii-1] *= nrminv
 							}
 						}
 						w[windex-1] = lambda + sigma
