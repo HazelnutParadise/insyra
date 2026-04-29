@@ -1530,20 +1530,32 @@ p = 2 · (1 − pt(|t|, n − 2))
 R's `cor.test(method="spearman")` uses the AS-89 algorithm by default for
 small n. The two converge as n grows. SPSS uses the t-approximation.
 
-### Kendall rank correlation (tau-a)
+### Kendall rank correlation
 
-`Correlation(..., KendallCorrelation)` returns **Kendall's tau-a**
-(via `gonum/stat.Kendall`):
+`Correlation(..., KendallCorrelation)` returns **Kendall's τ-b** with
+tie correction:
 
 ```text
-τ_a = (concordant − discordant) / (n choose 2)
+τ_b = (concordant − discordant) / sqrt((n0 − n1) · (n0 − n2))
+       n0 = n(n − 1) / 2
+       n1 = Σ tx(tx − 1) / 2  (tie groups in X)
+       n2 = Σ ty(ty − 1) / 2  (tie groups in Y)
 ```
 
-R's `cor.test(method="kendall")` returns **tau-b**, which corrects for
-ties. The two agree exactly when there are no ties. With many ties,
-|tau-a| can fall short of 1 even for a perfectly monotonic relationship —
-prefer Spearman if your data has heavy ties and you want the [-1, 1]
-range to reflect monotonic strength.
+Matches R's `cor.test(method="kendall")` and SciPy's `stats.kendalltau`.
+
+The p-value uses an exact two-sided permutation test for n ≤ 7 and the
+asymptotic z = S / sqrt(var(S)) with first-order tie correction for
+n > 7 (var(S) = (n(n − 1)(2n + 5) − T1 − T2) / 18 where Ti are
+tie-corrected sums; matches SciPy). For n > 7 with ties this differs
+slightly from R's `cor.test`, which uses an exact algorithm with ties
+when feasible; for moderate-to-large n the two agree to within 1e-3.
+
+We do **not** wrap `gonum/stat.Kendall` because gonum returns τ-a, where
+the `n0` denominator does not react to ties. With ties present, |τ-a|
+can fall short of 1 even for a perfectly monotonic relationship and
+disagrees with virtually every other stats package. Self-implementing
+τ-b is ~30 lines (`stats/correlation.go:kendallTauBStats`).
 
 ### Pearson / Spearman confidence interval
 

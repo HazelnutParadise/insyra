@@ -9,12 +9,18 @@
 ##                       R's cor.test default uses an asymptotic AS-89 algorithm
 ##                       which gives a slightly different p-value; we mirror
 ##                       insyra's t-based p instead.
-##   Kendall tau      -> cor(x, y, method="kendall")  (treats ties via Kendall's tau-b)
+##   Kendall tau      -> cor(x, y, method="kendall")  (Kendall's tau-b)
 ##   Kendall p        -> insyra-specific:
-##                         n <= 7  : exact permutation-based two-sided p
-##                         n  > 7  : 2*(1 - pnorm(|z|)) where
-##                                   z = 3*tau*sqrt(n*(n-1)) / sqrt(2*(2n+5))
-##                       (R's cor.test uses different formulae; we mirror insyra).
+##                         n <= 7  : exact two-sided permutation p (using tau-b)
+##                         n  > 7  : 2*(1 - pnorm(|z|)) with
+##                                   z = S / sqrt(var(S))
+##                                   S = concordant - discordant
+##                                   var(S) = (n(n-1)(2n+5) - T1 - T2) / 18
+##                                   T1 = Σ tx(tx-1)(2tx+5)  (tie groups in x)
+##                                   T2 = Σ ty(ty-1)(2ty+5)  (tie groups in y)
+##                       Reduces to Kendall's classical no-ties formula when
+##                       T1=T2=0; for tied data this is the standard tie-
+##                       corrected asymptotic (matches scipy.stats.kendalltau).
 ##
 ## Covariance   -> stats::cov(x, y) (sample covariance, n-1 divisor) — matches insyra.
 ##
@@ -56,7 +62,7 @@ all_perms <- function(v) {
   out
 }
 
-# Insyra's Kendall p-value (mirrors generatePermutations + tau-comparison logic)
+# Insyra's Kendall p-value (mirrors kendallCorrelationWithStats logic)
 kendall_p_insyra <- function(x, y) {
   n <- length(x)
   tau <- cor(x, y, method = "kendall")
@@ -71,7 +77,22 @@ kendall_p_insyra <- function(x, y) {
     }
     return(extreme / nrow(perms))
   } else {
-    z <- 3 * tau * sqrt(n * (n - 1)) / sqrt(2 * (2 * n + 5))
+    # tie-corrected asymptotic: z = S / sqrt(var(S))
+    sval <- 0
+    for (i in seq_len(n - 1)) {
+      for (j in seq(i + 1, n)) {
+        dx <- x[i] - x[j]; dy <- y[i] - y[j]
+        if (dx == 0 || dy == 0) next
+        if ((dx > 0) == (dy > 0)) sval <- sval + 1 else sval <- sval - 1
+      }
+    }
+    tx <- table(x); tx <- tx[tx > 1]
+    ty <- table(y); ty <- ty[ty > 1]
+    T1 <- sum(tx * (tx - 1) * (2 * tx + 5))
+    T2 <- sum(ty * (ty - 1) * (2 * ty + 5))
+    varS <- (n * (n - 1) * (2 * n + 5) - T1 - T2) / 18
+    if (varS <= 0) return(NaN)
+    z <- sval / sqrt(varS)
     return(2 * (1 - pnorm(abs(z))))
   }
 }
@@ -181,7 +202,7 @@ emit_pearson("p_ties", c(1, 2, 2, 3, 3, 3, 4, 5, 5, 6),
 emit_spearman("s_ties", c(1, 2, 2, 3, 3, 3, 4, 5, 5, 6),
                        c(1, 1, 2, 3, 3, 4, 5, 5, 6, 7))
 emit_kendall("k_ties", c(1, 2, 2, 3, 3, 3, 4, 5, 5, 6),
-                       c(1, 1, 2, 3, 3, 4, 5, 5, 6, 7))
+                      c(1, 1, 2, 3, 3, 4, 5, 5, 6, 7))
 
 # Huge magnitude
 emit_pearson("p_huge", c(1.0e9, 1.0001e9, 0.9999e9, 1.00005e9, 1.00015e9),

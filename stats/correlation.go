@@ -295,28 +295,128 @@ func pearsonCorrelationWithStats(dlX, dlY insyra.IDataList) (CorrelationResult, 
 	return result, nil
 }
 
+// kendallTauBStats computes Kendall's τ-b along with the S-statistic and the
+// asymptotic variance with full tie correction.
+//
+// Why we don't use gonum/stat.Kendall: gonum returns τ-a, defined as
+// (concordant − discordant) / (n choose 2). That divisor doesn't react to
+// ties in either variable, so |τ_a| can fall short of 1 even for a perfectly
+// monotonic mapping when the data has ties — and the value disagrees with
+// R's cor(method="kendall"), SciPy's kendalltau, and SPSS, which all default
+// to τ-b. We implement τ-b directly here.
+//
+// Algorithm: O(n²) pair iteration plus an O(n log n) sort per axis to extract
+// tie group sizes for the tie-corrected asymptotic variance. Knight's
+// O(n log n) merge-sort variant exists but adds significant complexity for
+// little gain at the n's we exercise (the package's other tests cap around
+// n ≈ 250); the naive form is correct by inspection.
+//
+// Returns:
+//   tau  — Kendall's τ-b in [-1, 1] (NaN if either axis is all-tied)
+//   sval — concordant minus discordant pair count (the "S" statistic)
+//   varS — variance of S under H₀ with tie correction (Conover 1999, eq. 5.16)
+func kendallTauBStats(x, y []float64) (tau, sval, varS float64) {
+	n := len(x)
+	if n < 2 {
+		return math.NaN(), 0, math.NaN()
+	}
+	var nC, nD float64
+	for i := range n {
+		for j := i + 1; j < n; j++ {
+			dx := x[i] - x[j]
+			dy := y[i] - y[j]
+			if dx == 0 || dy == 0 {
+				continue // tied in at least one axis: contributes neither to nC nor nD
+			}
+			if (dx > 0) == (dy > 0) {
+				nC++
+			} else {
+				nD++
+			}
+		}
+	}
+
+	// Tie group sizes per axis. n1 = Σ t(t-1)/2 (pairs tied in x); same for y.
+	// T1 = Σ t(t-1)(2t+5) appears in the variance formula's primary term.
+	tieGroupSizes := func(z []float64) []int {
+		s := append([]float64(nil), z...)
+		sort.Float64s(s)
+		var out []int
+		for i := 0; i < len(s); {
+			j := i + 1
+			for j < len(s) && s[j] == s[i] {
+				j++
+			}
+			if j-i > 1 {
+				out = append(out, j-i)
+			}
+			i = j
+		}
+		return out
+	}
+	tx := tieGroupSizes(x)
+	ty := tieGroupSizes(y)
+	var n1, n2, T1, T2 float64
+	for _, t := range tx {
+		tt := float64(t)
+		n1 += tt * (tt - 1) / 2
+		T1 += tt * (tt - 1) * (2*tt + 5)
+	}
+	for _, t := range ty {
+		tt := float64(t)
+		n2 += tt * (tt - 1) / 2
+		T2 += tt * (tt - 1) * (2*tt + 5)
+	}
+
+	n0 := float64(n*(n-1)) / 2
+	denom := math.Sqrt((n0 - n1) * (n0 - n2))
+	if denom == 0 {
+		tau = math.NaN()
+	} else {
+		tau = (nC - nD) / denom
+	}
+
+	sval = nC - nD
+	nF := float64(n)
+	// Primary asymptotic variance with first-order tie correction. Reduces to
+	// n(n−1)(2n+5)/18 (Kendall's classical no-ties formula) when T1=T2=0.
+	varS = (nF*(nF-1)*(2*nF+5) - T1 - T2) / 18
+	return tau, sval, varS
+}
+
 func kendallCorrelationWithStats(dlX, dlY insyra.IDataList) CorrelationResult {
 	result := CorrelationResult{}
 	x := dlX.ToF64Slice()
 	y := dlY.ToF64Slice()
-	tau := stat.Kendall(x, y, nil)
+	tau, sval, varS := kendallTauBStats(x, y)
 	result.Statistic = tau
 
 	n := len(x)
 	if n <= 7 {
+		// Exact two-sided permutation p-value: hold x fixed, permute y, count
+		// how many permutations give |τ_b| at least as large as the observed
+		// one. Tau-b (not gonum's tau-a) is used inside the loop too.
 		perms := generatePermutations(y)
 		extreme := 0
 		obs := math.Abs(tau)
 		for _, perm := range perms {
-			altTau := stat.Kendall(x, perm, nil)
+			altTau, _, _ := kendallTauBStats(x, perm)
 			if math.Abs(altTau) >= obs {
 				extreme++
 			}
 		}
 		result.PValue = float64(extreme) / float64(len(perms))
 	} else {
-		z := 3 * tau * math.Sqrt(float64(n*(n-1))) / math.Sqrt(2*float64(2*n+5))
-		result.PValue = 2 * (1 - zCDF(math.Abs(z)))
+		// Asymptotic z = S / sqrt(var(S)). For no-ties data this is identical
+		// to the previous Kendall formula 3·τ·sqrt(n(n−1)) / sqrt(2(2n+5)).
+		// With ties, varS subtracts the tie-group contributions from both
+		// axes — matching scipy.stats.kendalltau and R cor.test asymptotic.
+		if varS <= 0 || math.IsNaN(varS) {
+			result.PValue = math.NaN()
+		} else {
+			z := sval / math.Sqrt(varS)
+			result.PValue = 2 * (1 - zCDF(math.Abs(z)))
+		}
 	}
 
 	return result

@@ -183,11 +183,8 @@ func TestKendallCorrelation_R(t *testing.T) {
 			[]float64{1, 2, 3, 5, 4, 6, 8, 7, 10, 9}, "k_n10"},
 		{"n50_weak", corrDump.get(t, "n50_x"), corrDump.get(t, "n50_y"), "k_n50"},
 		{"n20_negative", corrDump.get(t, "n20neg_x"), corrDump.get(t, "n20neg_y"), "k_n20neg"},
-		// "with_ties" is intentionally omitted: gonum's stat.Kendall returns
-		// tau-a (concordant−discordant)/(n choose 2) while R's cor.test returns
-		// tau-b (which corrects for ties). The two agree only when there are
-		// no ties; insyra's behavior follows gonum and cannot match the R
-		// reference for tied data without changing the formula.
+		{"with_ties", []float64{1, 2, 2, 3, 3, 3, 4, 5, 5, 6},
+			[]float64{1, 1, 2, 3, 3, 4, 5, 5, 6, 7}, "k_ties"},
 	}
 
 	for _, c := range cases {
