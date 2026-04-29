@@ -441,8 +441,8 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 				validRows = append(validRows, i)
 			}
 		}
-		if len(validRows) == 0 {
-			return nil, errors.New("no valid rows after removing missing values")
+		if len(validRows) < 2 {
+			return nil, fmt.Errorf("factor analysis requires at least two complete rows; %d remained after listwise deletion", len(validRows))
 		}
 		newData := mat.NewDense(len(validRows), colNum, nil)
 		for i, rowIdx := range validRows {
@@ -978,10 +978,16 @@ func computeSigma(loadings *mat.Dense, phi *mat.Dense, uniquenesses []float64) *
 
 // decideNumFactors determines the number of factors to extract
 func decideNumFactors(eigenvalues []float64, spec FactorCountSpec, maxPossible int, sampleSize int) int {
+	_ = sampleSize // reserved for future parallel-analysis-style methods
 	switch spec.Method {
 	case FactorCountFixed:
 		if spec.FixedK > 0 && spec.FixedK <= maxPossible {
 			return spec.FixedK
+		}
+		if spec.FixedK > maxPossible {
+			insyra.LogWarning("stats", "FactorAnalysis",
+				"FixedK=%d exceeds variable count %d; capping to %d",
+				spec.FixedK, maxPossible, maxPossible)
 		}
 		return maxPossible
 
@@ -1159,9 +1165,20 @@ func computeKMOMeasures(corr *mat.Dense) (overallKMO float64, msaValues []float6
 	p, _ := corr.Dims()
 	msaValues = make([]float64, p)
 
+	// Invert correlation matrix; gonum may panic on truly singular matrices,
+	// so wrap with recover and surface a clean error instead of crashing.
 	q := mat.NewDense(p, p, nil)
-	if err := q.Inverse(corr); err != nil {
-		return 0, nil, fmt.Errorf("failed to invert correlation matrix for KMO/MSA: %w", err)
+	var invErr error
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				invErr = fmt.Errorf("inversion panicked (correlation matrix is singular): %v", r)
+			}
+		}()
+		invErr = q.Inverse(corr)
+	}()
+	if invErr != nil {
+		return 0, nil, fmt.Errorf("failed to invert correlation matrix for KMO/MSA: %w", invErr)
 	}
 	return computeKMOFromInverse(corr, q, msaValues)
 }
@@ -1254,9 +1271,18 @@ func computeBartlettFromCorrelation(corr *mat.Dense, n int) (chiSquare float64, 
 	p, _ := corr.Dims()
 	df = p * (p - 1) / 2
 
+	if n <= 1 {
+		return 0, 0, df, fmt.Errorf("Bartlett's test requires sample size > 1, got %d", n)
+	}
+
 	detR := mat.Det(corr)
-	if detR <= 0 || math.IsNaN(detR) {
-		return 0, 0, df, fmt.Errorf("correlation matrix determinant must be positive for Bartlett's test")
+	if math.IsNaN(detR) {
+		return 0, 0, df, fmt.Errorf("correlation matrix determinant is NaN")
+	}
+	// True correlation matrices are PSD with det >= 0; tiny negatives are
+	// numerical noise on near-singular matrices, treat as 0 (singular).
+	if detR <= 0 {
+		return 0, 0, df, fmt.Errorf("correlation matrix is singular (det=%g); Bartlett's test undefined", detR)
 	}
 	chiSquare = -math.Log(detR) * (float64(n-1) - (2*float64(p)+5)/6)
 	pValue = chiSquaredPValue(chiSquare, float64(df))
