@@ -294,6 +294,11 @@ func normalizeFactorAnalysisOptions(opt FactorAnalysisOptions) (FactorAnalysisOp
 	}
 	if opt.Rotation.Kappa == 0 {
 		opt.Rotation.Kappa = defaults.Rotation.Kappa
+	} else if opt.Rotation.Kappa < 0 {
+		return opt, fmt.Errorf("rotation Kappa (Promax power) must be positive, got %g", opt.Rotation.Kappa)
+	}
+	if opt.Rotation.GeominEpsilon < 0 {
+		return opt, fmt.Errorf("rotation GeominEpsilon must be non-negative, got %g", opt.Rotation.GeominEpsilon)
 	}
 	if opt.Rotation.Restarts <= 0 {
 		opt.Rotation.Restarts = defaults.Rotation.Restarts
