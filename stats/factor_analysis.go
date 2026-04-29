@@ -1287,22 +1287,36 @@ func computeKMOFromInverse(corr, invCorr *mat.Dense, msaValues []float64) (overa
 	return overallKMO, msaValues, nil
 }
 
-// kmoToDataTable converts KMO results to DataTable
+// kmoToDataTable converts KMO results to DataTable. The output is
+// (p+1) × 1 with rows = per-variable MSA followed by the overall KMO.
+// Row labels are taken from colNames (variable names) plus a final
+// "Overall" row so consumers can tell which row is which.
 func kmoToDataTable(overallKMO float64, msaValues []float64, colNames []string) *insyra.DataTable {
-	// Create DataList for MSA values only (matching test expectation of 5x1)
 	msaList := insyra.NewDataList().SetName("MSA")
 
-	// MSA values for each variable
 	for i := range msaValues {
 		msaList.Append(msaValues[i])
 	}
-
-	// Overall KMO (though test expects only variable MSAs)
 	msaList.Append(overallKMO)
 
 	insyra.LogDebug("stats", "FactorAnalysis", "KMO values: MSA=%v, overall=%.6f", msaValues, overallKMO)
 
-	return insyra.NewDataTable(msaList)
+	dt := insyra.NewDataTable(msaList)
+	// Build row labels: one per variable, plus "Overall" for the trailing
+	// aggregate value. Without this the consumer can't tell which row is
+	// which variable, nor that the last row is the global KMO.
+	rowLabels := make([]string, 0, len(msaValues)+1)
+	for i := range msaValues {
+		if i < len(colNames) {
+			rowLabels = append(rowLabels, colNames[i])
+		} else {
+			rowLabels = append(rowLabels, fmt.Sprintf("Var%d", i+1))
+		}
+	}
+	rowLabels = append(rowLabels, "Overall")
+	dt.SetRowNames(rowLabels)
+	dt.SetName(tableNameSamplingAdequacy)
+	return dt
 }
 
 // computeBartlettFromCorrelation computes Bartlett's test of sphericity with improved numerical stability
