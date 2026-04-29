@@ -24,7 +24,8 @@
 ```
 Layer 0 — 數學原語（其他所有層的地基）
   distutil.go              統計分佈：t/z/F/χ² 的 CDF、quantile、p 值
-  internal/linalg/linalg.go  矩陣運算：高斯消去、矩陣求逆、行列式
+  gonum/mat 直接使用       矩陣運算：mat.SolveVec / mat.Inverse / mat.Det
+                          （無自家包裝，需要時直接 import gonum.org/v1/gonum/mat）
 
 Layer 1 — 樣本統計原語
   sampleutil.go 樣本 SE、合併方差、Welch df
@@ -90,17 +91,17 @@ Layer 4 — 對外統計方法（公開 API）
 | Fisher's z 反函數 | `fisherZInverse(z float64)` |
 | Pearson/Spearman CI（z-space） | `pearsonFisherCI(r, n, cl float64)` |
 
-### 需要矩陣運算？先查 `internal/linalg/linalg.go`
+### 需要矩陣運算？直接用 gonum/mat
 
-> 這是 `stats` 包中唯一放進 `stats/internal/` 的模組。  
-> 原因：純 `float64` 矩陣數學，**不依賴** `EffectSizeEntry`、`AlternativeHypothesis`、`defaultConfidenceLevel`、`norm` 等 stats 型別，不會造成 circular import。  
-> 其他工具檔案（`distutil.go`、`sampleutil.go`、`mathutil.go`、`olsutil.go`）留在 `stats` 包，因為它們使用 stats 包型別。
-
-| 你需要的 | 使用函數（`import ".../stats/internal/linalg"`） |
+| 你需要的 | 使用函數（`import "gonum.org/v1/gonum/mat"`） |
 |---|---|
-| 解線性方程組 Ax=b | `linalg.GaussianElimination(A, b)` |
-| 矩陣求逆 | `linalg.InvertMatrix(A)` |
-| 方陣行列式 | `linalg.DeterminantGauss(matrix)` |
+| 解線性方程組 Ax=b（單一 RHS） | `var x mat.VecDense; x.SolveVec(A, b)` |
+| 矩陣求逆 | `var inv mat.Dense; inv.Inverse(A)` |
+| 方陣行列式 | `mat.Det(A)` |
+| 矩陣相乘 | `var c mat.Dense; c.Mul(a, b)` |
+| 構造矩陣 | `mat.NewDense(rows, cols, data)`（row-major） |
+
+> gonum 的 `mat` 用 LU 分解配 partial pivoting，比手寫 Gauss-Jordan 在條件數高的矩陣上穩定。`stats` 包之前有 `internal/linalg`，已在 Batch 5 重構移除（commit history 可查）。如果出現大型/稀疏需求，再考慮包裝。
 
 ### 需要 OLS 迴歸計算？先查 olsutil.go
 
