@@ -1170,7 +1170,8 @@ def main():
             p = st.norm.cdf(z)
         else:
             p = 2 * (1 - st.norm.cdf(abs(z)))
-        margin = st.norm.ppf(1 - (1 - cl) / 2) * se
+        q = st.norm.ppf(1 - (1 - cl) / 2) if alt == "two-sided" else st.norm.ppf(cl)
+        margin = q * se
         ci = ci_by_alt(mean, margin, alt)
         out = {"stat": z, "p": p, "ci": ci, "mean": mean, "effect": abs(mean - mu) / sigma}
     elif method == "two_z":
@@ -1193,7 +1194,8 @@ def main():
             p = st.norm.cdf(z)
         else:
             p = 2 * (1 - st.norm.cdf(abs(z)))
-        margin = st.norm.ppf(1 - (1 - cl) / 2) * se
+        q = st.norm.ppf(1 - (1 - cl) / 2) if alt == "two-sided" else st.norm.ppf(cl)
+        margin = q * se
         ci = ci_by_alt(diff, margin, alt)
         pooled_sigma = math.sqrt((n1 * s1 * s1 + n2 * s2 * s2) / (n1 + n2))
         out = {"stat": z, "p": p, "ci": ci, "mean1": m1, "mean2": m2, "effect": abs(diff) / pooled_sigma}

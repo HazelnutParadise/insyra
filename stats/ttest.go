@@ -270,7 +270,10 @@ func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel ...float64) (*TT
 	marginOfError := tMarginOfError(cl, df, standardError)
 	ci := symmetricCI(meanDiff, marginOfError)
 
-	effectSize := math.Abs(meanDiff) / stddevDiff
+	// Cohen's d_z for paired data, sign-preserving (matches single & two-sample
+	// Cohen's d in this same file — previously this used math.Abs which
+	// dropped direction-of-effect information for paired tests only).
+	effectSize := meanDiff / stddevDiff
 	effectSizes := cohenDEffectSizes(effectSize)
 
 	return &TTestResult{

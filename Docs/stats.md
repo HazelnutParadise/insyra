@@ -1473,4 +1473,90 @@ Functions return `error` values when:
 
 Call sites should always check `err` and handle it explicitly.
 
+---
+
+## Conventions That Differ From R / SciPy
+
+This section documents intentional formula and convention choices in the
+`stats` package that produce results different from `R`'s `cor.test` /
+`t.test` / `aov` defaults or from `scipy.stats`. They are deliberate (each
+one is a valid statistical convention published in a textbook or used by
+mainstream software) — not bugs. If your reference is one of these tools,
+expect a numerical difference even when the input is identical.
+
+### Cohen's d (effect size)
+
+| Test variant | insyra formula | Notes |
+|---|---|---|
+| `SingleSampleTTest` | `(mean − μ) / sd` | Standard one-sample d. Sign preserved. |
+| `TwoSampleTTest` (equal var) | `(m1 − m2) / sqrt(pooledVar)` | Classical Cohen's d using `pooledVar = ((n1−1)v1 + (n2−1)v2) / (n1+n2−2)`. |
+| `TwoSampleTTest` (Welch / unequal var) | `(m1 − m2) / sqrt((v1 + v2) / 2)` | Cohen's d_av (average-variance variant). Used because pooled variance assumes equal variances. Some packages report Glass's Δ instead. |
+| `PairedTTest` | `meanDiff / sd(diff)` | Cohen's d_z, sign preserved. |
+| `SingleSampleZTest` | `\|mean − μ\| / σ` | Uses known population σ. Magnitude only — direction is conveyed by the z-statistic. |
+| `TwoSampleZTest` | `\|m1 − m2\| / sqrt((n1·σ1² + n2·σ2²) / (n1+n2))` | Sample-size-weighted pooled population sigma. Differs from the textbook `sqrt((σ1² + σ2²) / 2)`; insyra weighs each population sigma by its observed sample size. |
+
+Edge cases for the t-tests:
+
+- Constant data with `mean == μ` returns `t = NaN`, `p = NaN`, `d = 0`,
+  `CI = [μ, μ]`. R's `t.test()` errors out; insyra returns sentinel values.
+- Constant data with `mean ≠ μ` returns `t = ±Inf`, `p = 0`, `d = ±Inf`,
+  `CI = [mean, mean]` with the sign matching `mean − μ`.
+
+### ANOVA effect size
+
+`OneWayANOVA` / `TwoWayANOVA` report **partial η²** for each factor:
+
+```text
+η²_partial = SS_effect / (SS_effect + SS_within)
+```
+
+For one-way ANOVA this equals classical η² (`SS_effect / SS_total`); for
+two-way ANOVA they differ. SPSS reports partial η² by default; R's
+`aov()` does not give η² directly. `RepeatedMeasuresANOVA` is the one
+exception — its `Factor.EtaSquared` is **classical** η²
+(`SS_factor / SS_total`), since partial η² for within-subjects designs
+has multiple competing definitions.
+
+### Spearman rank correlation p-value
+
+`Correlation(..., SpearmanCorrelation)` computes `p` from the
+**Fisher r-to-t** approximation:
+
+```text
+t = ρ · sqrt(n − 2) / sqrt(1 − ρ²)
+p = 2 · (1 − pt(|t|, n − 2))
+```
+
+R's `cor.test(method="spearman")` uses the AS-89 algorithm by default for
+small n. The two converge as n grows. SPSS uses the t-approximation.
+
+### Kendall rank correlation (tau-a)
+
+`Correlation(..., KendallCorrelation)` returns **Kendall's tau-a**
+(via `gonum/stat.Kendall`):
+
+```text
+τ_a = (concordant − discordant) / (n choose 2)
+```
+
+R's `cor.test(method="kendall")` returns **tau-b**, which corrects for
+ties. The two agree exactly when there are no ties. With many ties,
+|tau-a| can fall short of 1 even for a perfectly monotonic relationship —
+prefer Spearman if your data has heavy ties and you want the [-1, 1]
+range to reflect monotonic strength.
+
+### Pearson / Spearman confidence interval
+
+CI for both Pearson r and Spearman ρ uses the **Fisher z-transform**:
+
+```text
+z = atanh(r),  se = 1 / sqrt(n − 3)
+[lower, upper] = tanh([z − z_crit·se, z + z_crit·se])
+```
+
+with the boundary cases `r ≥ 1 → [1, 1]`, `r ≤ −1 → [−1, −1]`, and
+`n ≤ 3 → [NaN, NaN]`. R's `cor.test` returns the same Fisher CI for
+Pearson but **does not** return a CI for Spearman by default; insyra
+applies the same Fisher transform to ρ as if it were a Pearson r.
+
 

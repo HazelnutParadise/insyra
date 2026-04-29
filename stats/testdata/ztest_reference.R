@@ -1,12 +1,10 @@
 ## Reference values for stats/ztest.go tests, computed in R 4.5.1 using base
 ## qnorm/pnorm (R's gold-standard normal CDF/quantile).
 ##
-## Implementation note: insyra's z-test uses two-sided qnorm(1-(1-cl)/2) for
-## *all* alternatives when computing the CI margin (see ztest.go:zMarginOfError
-## via mathutil.go). This differs from BSDA::z.test() which uses one-sided
-## qnorm(cl) for one-sided alternatives. We mirror insyra's formula here so
-## reference values describe what the function actually returns. The z-statistic,
-## p-value and effect size are unaffected by this convention.
+## CI margin convention (matches insyra after the one-sided fix):
+##   two-sided alternative -> qnorm(1 - (1-cl)/2) * SE     (e.g. qnorm(.975) for cl=.95)
+##   one-sided alternative -> qnorm(cl) * SE               (e.g. qnorm(.95)  for cl=.95)
+## Same as R's BSDA::z.test().
 ##
 ## Effect size formulas (preserve insyra's, not Cohen's classical):
 ##   single  : |mean - mu| / sigma
@@ -30,11 +28,12 @@ ztest_single <- function(prefix, x, mu, sigma, alt, cl) {
     two.sided = 2 * pnorm(-abs(z)),
     greater   = 1 - pnorm(z),
     less      = pnorm(z))
-  margin <- qnorm(1 - (1 - cl) / 2) * se
+  margin_two <- qnorm(1 - (1 - cl) / 2) * se
+  margin_one <- qnorm(cl) * se
   ci <- switch(alt,
-    two.sided = c(m - margin, m + margin),
-    greater   = c(m - margin, Inf),
-    less      = c(-Inf, m + margin))
+    two.sided = c(m - margin_two, m + margin_two),
+    greater   = c(m - margin_one, Inf),
+    less      = c(-Inf, m + margin_one))
   d <- abs(m - mu) / sigma
   emit(paste0(prefix, ".z"),    z)
   emit(paste0(prefix, ".p"),    p)
@@ -54,11 +53,12 @@ ztest_two <- function(prefix, x, y, sigma1, sigma2, alt, cl) {
     two.sided = 2 * pnorm(-abs(z)),
     greater   = 1 - pnorm(z),
     less      = pnorm(z))
-  margin <- qnorm(1 - (1 - cl) / 2) * se
+  margin_two <- qnorm(1 - (1 - cl) / 2) * se
+  margin_one <- qnorm(cl) * se
   ci <- switch(alt,
-    two.sided = c(diff - margin, diff + margin),
-    greater   = c(diff - margin, Inf),
-    less      = c(-Inf, diff + margin))
+    two.sided = c(diff - margin_two, diff + margin_two),
+    greater   = c(diff - margin_one, Inf),
+    less      = c(-Inf, diff + margin_one))
   pooled_sigma <- sqrt((n1 * sigma1^2 + n2 * sigma2^2) / (n1 + n2))
   d <- abs(diff) / pooled_sigma
   emit(paste0(prefix, ".z"),    z)

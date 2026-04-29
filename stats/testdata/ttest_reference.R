@@ -27,7 +27,7 @@ cohen_two_uneq <- function(x, y) {
 }
 cohen_paired <- function(x, y) {
   d <- x - y
-  abs(mean(d)) / sd(d)
+  mean(d) / sd(d)        # sign-preserving (Cohen's d_z)
 }
 
 emit_single <- function(prefix, x, mu, cl = 0.95) {

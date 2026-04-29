@@ -33,15 +33,20 @@ func FTestForVarianceEquality(data1, data2 insyra.IDataList) (*FTestResult, erro
 		return nil, errors.New("sample variances must be greater than zero")
 	}
 
-	var fValue float64
+	// F = (larger sample variance) / (smaller sample variance). The numerator
+	// and denominator degrees of freedom must follow whichever variance ended
+	// up in each position — previously this always used (n1−1, n2−1)
+	// regardless, which gave a wrong p-value whenever var2 > var1.
+	var fValue, df1, df2 float64
 	if var1 > var2 {
 		fValue = var1 / var2
+		df1 = float64(len1 - 1)
+		df2 = float64(len2 - 1)
 	} else {
 		fValue = var2 / var1
+		df1 = float64(len2 - 1)
+		df2 = float64(len1 - 1)
 	}
-
-	df1 := float64(len1 - 1)
-	df2 := float64(len2 - 1)
 	pValue := fTwoTailedPValue(fValue, df1, df2)
 
 	return &FTestResult{

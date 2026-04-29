@@ -46,7 +46,12 @@ func SingleSampleZTest(data insyra.IDataList, mu float64, sigma float64, alterna
 	zValue := (mean - mu) / standardError
 	pValue := zPValue(zValue, alternative)
 
-	marginOfError := zMarginOfError(confidenceLevel, standardError)
+	var marginOfError float64
+	if alternative == TwoSided {
+		marginOfError = zMarginOfError(confidenceLevel, standardError)
+	} else {
+		marginOfError = zMarginOfErrorOneSided(confidenceLevel, standardError)
+	}
 
 	effectSize := math.Abs(mean-mu) / sigma
 	effectSizes := cohenDEffectSizes(effectSize)
@@ -109,7 +114,12 @@ func TwoSampleZTest(data1, data2 insyra.IDataList, sigma1, sigma2 float64, alter
 	zValue := meanDiff / standardError
 	pValue := zPValue(zValue, alternative)
 
-	marginOfError := zMarginOfError(confidenceLevel, standardError)
+	var marginOfError float64
+	if alternative == TwoSided {
+		marginOfError = zMarginOfError(confidenceLevel, standardError)
+	} else {
+		marginOfError = zMarginOfErrorOneSided(confidenceLevel, standardError)
+	}
 
 	pooledSigma := math.Sqrt((n1Float*sigma1Sq + n2Float*sigma2Sq) / (n1Float + n2Float))
 	effectSize := math.Abs(meanDiff) / pooledSigma

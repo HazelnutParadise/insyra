@@ -132,15 +132,19 @@ emit_rm <- function(prefix, subjects) {
 }
 
 # ---- F-test for variance equality (two-tailed) ----
-# insyra always reports F = max(v1,v2) / min(v1,v2) but reports DF1=n1-1,
-# DF2=n2-1 *regardless* of which variance is larger, and computes p against
-# those DFs (see ftest.go:FTestForVarianceEquality). That convention does not
-# match R's var.test() when v2 > v1; we mirror insyra's behavior here.
+# insyra reports F = (larger var) / (smaller var) and the DFs follow whichever
+# variance is in the numerator/denominator. Matches R's var.test() up to the
+# choice of orientation.
 emit_fvar <- function(prefix, x, y) {
   v1 <- var(x); v2 <- var(y)
   n1 <- length(x); n2 <- length(y)
-  fval <- if (v1 > v2) v1 / v2 else v2 / v1
-  df1  <- n1 - 1; df2 <- n2 - 1
+  if (v1 > v2) {
+    fval <- v1 / v2
+    df1  <- n1 - 1; df2 <- n2 - 1
+  } else {
+    fval <- v2 / v1
+    df1  <- n2 - 1; df2 <- n1 - 1
+  }
   # two-tailed: 2 * min(P(F<=fval), P(F>=fval))
   p <- 2 * min(pf(fval, df1, df2), 1 - pf(fval, df1, df2))
   emit(paste0(prefix, ".F"),   fval)

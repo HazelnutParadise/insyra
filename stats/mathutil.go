@@ -46,8 +46,16 @@ func tMarginOfError(confidenceLevel, df, standardError float64) float64 {
 	return tQuantile(1-(1-confidenceLevel)/2, df) * standardError
 }
 
+// zMarginOfError returns the half-width of a *two-sided* z confidence interval.
+// One-sided alternatives need zMarginOfErrorOneSided (different quantile).
 func zMarginOfError(confidenceLevel, standardError float64) float64 {
 	return norm.Quantile(1-(1-confidenceLevel)/2) * standardError
+}
+
+// zMarginOfErrorOneSided returns the margin for a one-sided z confidence
+// bound at the given level: qnorm(cl) · SE.
+func zMarginOfErrorOneSided(confidenceLevel, standardError float64) float64 {
+	return norm.Quantile(confidenceLevel) * standardError
 }
 
 func cohenDEffectSizes(d float64) []EffectSizeEntry {
