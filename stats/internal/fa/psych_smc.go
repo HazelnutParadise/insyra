@@ -134,23 +134,36 @@ func Smc(r *mat.Dense, opts *SmcOptions) (*mat.VecDense, map[string]interface{})
 			tempR.Set(i, i, vr[i])
 		}
 
-		// Find variables to remove (similar to R's approach)
+		// Find variables to remove (similar to R's approach). Keep tempR at
+		// the FULL p×p size and track removed-original-indices via wcl. The
+		// NA-count loop iterates the full p×p but skips any index already
+		// in wcl. Previously the code tried to shrink tempR each iteration
+		// AND indexed it by original p, which panicked on the second
+		// iteration (out-of-bounds on shrunk matrix).
 		bad := true
 		for bad {
-			// Count NAs for each variable
 			naCounts := make([]int, p)
 			for i := 0; i < p; i++ {
+				if contains(wcl, i) {
+					continue
+				}
 				for j := 0; j < p; j++ {
+					if contains(wcl, j) {
+						continue
+					}
 					if math.IsNaN(tempR.At(i, j)) {
 						naCounts[i]++
 					}
 				}
 			}
 
-			// Find variable with most NAs
+			// Find remaining variable with most NAs
 			maxCount := 0
 			maxIdx := -1
 			for i := 0; i < p; i++ {
+				if contains(wcl, i) {
+					continue
+				}
 				if naCounts[i] > maxCount {
 					maxCount = naCounts[i]
 					maxIdx = i
@@ -159,41 +172,51 @@ func Smc(r *mat.Dense, opts *SmcOptions) (*mat.VecDense, map[string]interface{})
 
 			if maxIdx >= 0 {
 				wcl = append(wcl, maxIdx)
-				// Remove this variable from tempR
-				newSize := p - len(wcl)
-				newTempR := mat.NewDense(newSize, newSize, nil)
-				rowIdx := 0
-				for i := 0; i < p; i++ {
-					if !contains(wcl, i) {
-						colIdx := 0
-						for j := 0; j < p; j++ {
-							if !contains(wcl, j) {
-								newTempR.Set(rowIdx, colIdx, tempR.At(i, j))
-								colIdx++
-							}
-						}
-						rowIdx++
-					}
-				}
-				tempR = newTempR
 
-				// Check if still has NAs
+				// Check if still has NAs in the remaining variables
 				stillHasNA := false
-				for i := 0; i < newSize; i++ {
-					for j := 0; j < newSize; j++ {
+				for i := 0; i < p && !stillHasNA; i++ {
+					if contains(wcl, i) {
+						continue
+					}
+					for j := 0; j < p; j++ {
+						if contains(wcl, j) {
+							continue
+						}
 						if math.IsNaN(tempR.At(i, j)) {
 							stillHasNA = true
 							break
 						}
-					}
-					if stillHasNA {
-						break
 					}
 				}
 				bad = stillHasNA
 			} else {
 				bad = false
 			}
+		}
+
+		// Build the shrunk reduced matrix from tempR using wcl as the
+		// removal mask. tempR keeps its original p×p layout above so that
+		// the NaN-count loop can index by original variable index.
+		if len(wcl) > 0 && len(wcl) < p {
+			newSize := p - len(wcl)
+			newTempR := mat.NewDense(newSize, newSize, nil)
+			rowIdx := 0
+			for i := 0; i < p; i++ {
+				if contains(wcl, i) {
+					continue
+				}
+				colIdx := 0
+				for j := 0; j < p; j++ {
+					if contains(wcl, j) {
+						continue
+					}
+					newTempR.Set(rowIdx, colIdx, tempR.At(i, j))
+					colIdx++
+				}
+				rowIdx++
+			}
+			tempR = newTempR
 		}
 
 		diagnostics["wasImputed"] = true
