@@ -42,17 +42,22 @@ func vgQBentler(L *mat.Dense) (Gq *mat.Dense, f float64, method string, err erro
 		factorVars.Set(i, i, factorCorr.At(i, i))
 	}
 
-	// Compute inverse of factor correlation matrix
-	var invFactorCorr mat.Dense
-	if err = invFactorCorr.Inverse(&factorCorr); err != nil {
+	// Compute inverse of factor correlation matrix. invertDense is panic-
+	// safe (recovers from gonum singular-matrix panics) and returns a
+	// clean error.
+	invFactorCorrPtr, err := invertDense(&factorCorr)
+	if err != nil {
 		return nil, 0, "", err
 	}
+	invFactorCorr := *invFactorCorrPtr
 
-	// Compute inverse of factor variances matrix
-	var invFactorVars mat.Dense
-	if err = invFactorVars.Inverse(factorVars); err != nil {
+	// Compute inverse of factor variances matrix (diagonal — singular
+	// when a factor has all-zero loadings).
+	invFactorVarsPtr, err := invertDense(factorVars)
+	if err != nil {
 		return nil, 0, "", err
 	}
+	invFactorVars := *invFactorVarsPtr
 
 	// Compute difference: inv(M) - inv(D)
 	var diff mat.Dense

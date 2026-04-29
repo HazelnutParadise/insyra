@@ -11,7 +11,13 @@ import (
 // Pinv computes the Moore-Penrose pseudo-inverse of a matrix.
 // Mirrors psych::Pinv exactly
 func Pinv(X *mat.Dense, tol float64) (*mat.Dense, error) {
+	if X == nil {
+		return nil, fmt.Errorf("Pinv: nil input matrix")
+	}
 	m, n := X.Dims()
+	if m == 0 || n == 0 {
+		return nil, fmt.Errorf("Pinv: empty matrix (%dx%d)", m, n)
+	}
 
 	// svdX <- svd(X)
 	var svd mat.SVD
@@ -25,6 +31,9 @@ func Pinv(X *mat.Dense, tol float64) (*mat.Dense, error) {
 	svd.UTo(&U)
 	svd.VTo(&V)
 	values := svd.Values(nil)
+	if len(values) == 0 {
+		return nil, fmt.Errorf("Pinv: SVD returned no singular values")
+	}
 
 	// If tol is not provided or negative, use default
 	if tol <= 0 {
