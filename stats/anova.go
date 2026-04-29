@@ -134,60 +134,37 @@ func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) (*
 	totalMean := insyra.NewDataList(allValues).Mean()
 	totalCount := len(allValues)
 
+	// Pre-aggregate sums and counts per A-row and per B-column in a single
+	// pass over the values. Eliminates the previous O(N × levels) inner-loop
+	// pattern (and its math.Pow(_, 2) calls — see stats/CLAUDE.md "禁止 inline
+	// math.Pow with integer exponent 2").
+	sumsA := make([]float64, factorALevels)
+	sumsB := make([]float64, factorBLevels)
+	countsA := make([]int, factorALevels)
+	countsB := make([]int, factorBLevels)
+	for idx, v := range allValues {
+		sumsA[factorsA[idx]] += v
+		sumsB[factorsB[idx]] += v
+		countsA[factorsA[idx]]++
+		countsB[factorsB[idx]]++
+	}
+	aMeans := make([]float64, factorALevels)
+	bMeans := make([]float64, factorBLevels)
 	var SSA, SSB float64
-	parallel.GroupUp(func() {
-		for i := range factorALevels {
-			var sum float64
-			var count int
-			for idx, a := range factorsA {
-				if a == i {
-					sum += allValues[idx]
-					count++
-				}
-			}
-			SSA += float64(count) * math.Pow(sum/float64(count)-totalMean, 2)
-		}
-	}, func() {
-		for j := range factorBLevels {
-			var sum float64
-			var count int
-			for idx, b := range factorsB {
-				if b == j {
-					sum += allValues[idx]
-					count++
-				}
-			}
-			SSB += float64(count) * math.Pow(sum/float64(count)-totalMean, 2)
-		}
-	}).Run().AwaitResult()
+	for i := range factorALevels {
+		aMeans[i] = sumsA[i] / float64(countsA[i])
+		dev := aMeans[i] - totalMean
+		SSA += float64(countsA[i]) * dev * dev
+	}
+	for j := range factorBLevels {
+		bMeans[j] = sumsB[j] / float64(countsB[j])
+		dev := bMeans[j] - totalMean
+		SSB += float64(countsB[j]) * dev * dev
+	}
 
 	cellMeans := make([]float64, len(cells))
 	for i := range cells {
 		cellMeans[i] = cells[i].Mean()
-	}
-	aMeans := make([]float64, factorALevels)
-	bMeans := make([]float64, factorBLevels)
-	for i := range factorALevels {
-		var sum float64
-		var count int
-		for idx, a := range factorsA {
-			if a == i {
-				sum += allValues[idx]
-				count++
-			}
-		}
-		aMeans[i] = sum / float64(count)
-	}
-	for j := range factorBLevels {
-		var sum float64
-		var count int
-		for idx, b := range factorsB {
-			if b == j {
-				sum += allValues[idx]
-				count++
-			}
-		}
-		bMeans[j] = sum / float64(count)
 	}
 
 	var SSAB, SSW float64
