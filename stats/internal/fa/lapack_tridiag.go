@@ -19,8 +19,6 @@
 // triangle is referenced when uplo='U', only the lower when uplo='L'.
 package fa
 
-import "math"
-
 // dsymv computes y := alpha*A*x + beta*y where A is n×n symmetric.
 // Reference BLAS dsymv. uplo='U' references upper triangle, 'L' lower.
 func dsymv(uplo byte, n int, alpha float64, a []float64, lda int,
@@ -155,100 +153,6 @@ func dsyr2(uplo byte, n int, alpha float64, x []float64, incx int,
 			jy += incy
 		}
 	}
-}
-
-// dlatrd reduces NB columns of a real symmetric matrix A to symmetric
-// tridiagonal form by an orthogonal similarity transformation Q^T*A*Q.
-// Used by dsytrd's blocked path. We invoke it with NB=1 for unblocked.
-//
-// Mirrors LAPACK dlatrd.f.
-func dlatrd(uplo byte, n, nb int, a []float64, lda int,
-	e, tau []float64, w []float64, ldw int,
-) {
-	if n <= 0 {
-		return
-	}
-	if uplo == 'U' || uplo == 'u' {
-		// Reduce last NB columns of upper triangle.
-		for i := n; i >= n-nb+1; i-- {
-			iw := i - n + nb
-			if i < n {
-				// Update A(1:i, i):
-				// A(1:i, i) -= A(1:i, i+1:n) * W(i, iw+1:nb)^T
-				dgemv('N', i, n-i, -1, a[i*lda:], lda,
-					w[iw*ldw+(i-1):], ldw, 1, a[(i-1)*lda:], 1)
-				// A(1:i, i) -= W(1:i, iw+1:nb) * A(i, i+1:n)^T
-				dgemv('N', i, n-i, -1, w[iw*ldw:], ldw,
-					a[i*lda+(i-1):], lda, 1, a[(i-1)*lda:], 1)
-			}
-			if i > 1 {
-				// Generate elementary reflector H(i) to annihilate A(1:i-2, i).
-				alpha := a[(i-1)*lda+(i-2)]
-				tauI := dlarfg(i-1, &alpha, a[(i-1)*lda:], 1)
-				a[(i-1)*lda+(i-2)] = alpha
-				e[i-2] = a[(i-1)*lda+(i-2)]
-				a[(i-1)*lda+(i-2)] = 1
-				// Compute W(1:i-1, iw) := A(1:i-1, 1:i-1) * v
-				dsymv('U', i-1, 1, a, lda, a[(i-1)*lda:], 1, 0, w[(iw-1)*ldw:], 1)
-				if i < n {
-					// W(1:i-1, iw) -= ...
-					dgemv('T', i-1, n-i, 1, w[iw*ldw:], ldw,
-						a[(i-1)*lda:], 1, 0, w[iw*ldw+(i-1):], ldw)
-					dgemv('N', i-1, n-i, -1, a[i*lda:], lda,
-						w[iw*ldw+(i-1):], ldw, 1, w[(iw-1)*ldw:], 1)
-					dgemv('T', i-1, n-i, 1, a[i*lda:], lda,
-						a[(i-1)*lda:], 1, 0, w[iw*ldw+(i-1):], ldw)
-					dgemv('N', i-1, n-i, -1, w[iw*ldw:], ldw,
-						w[iw*ldw+(i-1):], ldw, 1, w[(iw-1)*ldw:], 1)
-				}
-				dscal(i-1, tauI, w[(iw-1)*ldw:], 1)
-				alphaW := -0.5 * tauI * ddot(i-1, w[(iw-1)*ldw:], 1, a[(i-1)*lda:], 1)
-				daxpy(i-1, alphaW, a[(i-1)*lda:], 1, w[(iw-1)*ldw:], 1)
-				tau[i-2] = tauI
-			}
-		}
-	} else {
-		// Reduce first NB columns of lower triangle.
-		for i := 1; i <= nb; i++ {
-			// Update A(i:n, i):
-			if i > 1 {
-				dgemv('N', n-i+1, i-1, -1, a[0*lda+(i-1):], lda,
-					w[0*ldw+(i-1):], ldw, 1, a[(i-1)*lda+(i-1):], 1)
-				dgemv('N', n-i+1, i-1, -1, w[0*ldw+(i-1):], ldw,
-					a[0*lda+(i-1):], lda, 1, a[(i-1)*lda+(i-1):], 1)
-			}
-			if i < n {
-				// Generate elementary reflector H(i).
-				ip2 := i + 2
-				if ip2 > n {
-					ip2 = n
-				}
-				alpha := a[(i-1)*lda+i]
-				tauI := dlarfg(n-i, &alpha, a[(i-1)*lda+(ip2-1):], 1)
-				a[(i-1)*lda+i] = alpha
-				e[i-1] = a[(i-1)*lda+i]
-				a[(i-1)*lda+i] = 1
-				// W(i+1:n, i) := A(i+1:n, i+1:n) * v
-				dsymv('L', n-i, 1, a[i*lda+i:], lda,
-					a[(i-1)*lda+i:], 1, 0, w[(i-1)*ldw+i:], 1)
-				if i > 1 {
-					dgemv('T', n-i, i-1, 1, w[0*ldw+i:], ldw,
-						a[(i-1)*lda+i:], 1, 0, w[(i-1)*ldw+0:], 1)
-					dgemv('N', n-i, i-1, -1, a[0*lda+i:], lda,
-						w[(i-1)*ldw+0:], 1, 1, w[(i-1)*ldw+i:], 1)
-					dgemv('T', n-i, i-1, 1, a[0*lda+i:], lda,
-						a[(i-1)*lda+i:], 1, 0, w[(i-1)*ldw+0:], 1)
-					dgemv('N', n-i, i-1, -1, w[0*ldw+i:], ldw,
-						w[(i-1)*ldw+0:], 1, 1, w[(i-1)*ldw+i:], 1)
-				}
-				dscal(n-i, tauI, w[(i-1)*ldw+i:], 1)
-				alphaW := -0.5 * tauI * ddot(n-i, w[(i-1)*ldw+i:], 1, a[(i-1)*lda+i:], 1)
-				daxpy(n-i, alphaW, a[(i-1)*lda+i:], 1, w[(i-1)*ldw+i:], 1)
-				tau[i-1] = tauI
-			}
-		}
-	}
-	_ = math.Inf
 }
 
 // dsytrd reduces a real symmetric matrix A to tridiagonal form T:

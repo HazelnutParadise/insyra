@@ -24,21 +24,12 @@ package fa
 // lapackSafmin = DLAMCH('S'); used by various MRRR routines.
 const lapackSafmin = 2.2250738585072014e-308
 
-// dlapy2 returns sqrt(x^2 + y^2) computed without overflow / underflow.
-// Delegates to gonum's bit-equivalent implementation.
-func dlapy2(x, y float64) float64 {
-	return gonumImpl().Dlapy2(x, y)
-}
 
 // dlassq delegates to gonum's bit-equivalent implementation.
 func dlassq(n int, x []float64, incx int, scale, sumsq float64) (float64, float64) {
 	return gonumImpl().Dlassq(n, x, incx, scale, sumsq)
 }
 
-// dlartg generates a Givens plane rotation. Delegates to gonum.
-func dlartg(f, g float64) (c, s, r float64) {
-	return gonumImpl().Dlartg(f, g)
-}
 
 // dlanst delegates to gonum (translates byte → lapack.MatrixNorm enum).
 func dlanst(norm byte, n int, d, e []float64) float64 {
