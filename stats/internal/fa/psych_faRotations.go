@@ -766,9 +766,10 @@ func rotMatFromTh(Th *mat.Dense, nf int) *mat.Dense {
 		return mat.DenseCopyOf(Th)
 	}
 
-	// For non-orthogonal: compute inverse and transpose
-	var invTh mat.Dense
-	if err := invTh.Inverse(Th); err != nil {
+	// For non-orthogonal: compute inverse and transpose. invertDense
+	// recovers from gonum's panic on truly-singular input.
+	invTh, err := invertDense(Th)
+	if err != nil {
 		return nil
 	}
 	return mat.DenseCopyOf(invTh.T())
