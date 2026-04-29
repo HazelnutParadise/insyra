@@ -1797,6 +1797,14 @@ func inverseUniquenessDiagonal(loadings *mat.Dense, phi *mat.Dense, uniquenesses
 		}
 		return mat.NewDiagDense(p, inv)
 	}
+	// Fall back to uniqueness=1 for missing entries silently — but only as a
+	// last resort. A length mismatch usually means the caller threaded the
+	// wrong array; log a warning so it doesn't go unnoticed.
+	if len(uniquenesses) < p {
+		insyra.LogWarning("stats", "inverseUniquenessDiagonal",
+			"uniquenesses length %d < variables %d; padding with 1.0",
+			len(uniquenesses), p)
+	}
 	for i := range p {
 		u2 := 1.0
 		if i < len(uniquenesses) {
