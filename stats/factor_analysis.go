@@ -212,14 +212,6 @@ func (r *FactorAnalysisResult) Show(startEndRange ...any) {
 // FactorModel holds the factor analysis model
 type FactorModel struct {
 	FactorAnalysisResult
-
-	// Internal fields for scoring new data
-	scoreMethod FactorScoreMethod
-	extraction  FactorExtractionMethod
-	rotation    FactorRotationMethod
-	means       []float64
-	sds         []float64
-	sigma       *mat.Dense
 }
 
 // -------------------------
@@ -339,14 +331,9 @@ func normalizeFactorAnalysisOptions(opt FactorAnalysisOptions) (FactorAnalysisOp
 
 // Internal constants aligned with R's psych::fa and GPArotation package
 const (
-	// Convergence tolerance for extraction methods (PAF, ML, MINRES)
-	// R psych uses different tolerances for different contexts
-	extractionTolerance = 1e-8 // General convergence tolerance for factor extraction
-
 	// Correlation matrix diagonal checks
 	corrDiagTolerance    = 1e-6 // Tolerance for diagonal deviation from 1.0
 	corrDiagLogThreshold = 1e-8 // Threshold for logging diagonal deviations
-	uniquenessLowerBound = 1e-9 // Lower bound for uniqueness values
 
 	// Machine epsilon and eigenvalue thresholds (aligned with R's .Machine$double.eps)
 	machineEpsilon         = 2.220446e-16         // R's .Machine$double.eps
@@ -963,15 +950,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 		result.ScoreCovariance = scoreCovTable
 	}
 
-	return &FactorModel{
-		FactorAnalysisResult: result,
-		scoreMethod:          opt.Scoring,
-		extraction:           opt.Extraction,
-		rotation:             opt.Rotation.Method,
-		means:                means,
-		sds:                  sds,
-		sigma:                sigmaForScores,
-	}, nil
+	return &FactorModel{FactorAnalysisResult: result}, nil
 }
 
 // computeSigma computes the reproduced correlation matrix: Sigma = L * Phi * L^T + U
