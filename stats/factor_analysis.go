@@ -609,9 +609,16 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 	if err != nil {
 		return nil, fmt.Errorf("factor extraction failed: %w", err)
 	}
+	if loadings == nil {
+		// Catastrophic extraction failure (e.g., PAF eigendecomposition
+		// returned ok=false). The internal layer doesn't always surface
+		// this as an error, so guard explicitly to avoid a downstream nil
+		// pointer panic in mat.DenseCopyOf / sign-fix.
+		return nil, fmt.Errorf("factor extraction returned nil loadings (degenerate input?)")
+	}
 
 	// Replace zero loadings with 1e-15 (matching R's behavior).
-	if loadings != nil {
+	{
 		pVars, mFactors := loadings.Dims()
 		for i := range pVars {
 			for j := range mFactors {
