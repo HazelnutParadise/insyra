@@ -303,13 +303,35 @@ func Smc(r *mat.Dense, opts *SmcOptions) (*mat.VecDense, map[string]interface{})
 		}
 	}
 
-	// Fill smcAll
+	// Fill smcAll. Build a mapping from original variable index -> reduced
+	// matrix index so non-contiguous removed variables (wcl) don't break the
+	// re-indexing. Variables in wcl get their fallback maxr value applied
+	// later at the NaN-handling step.
 	smcAll := make([]float64, p)
 	for i := range smcAll {
-		if !contains(wcl, i) {
-			smcAll[i] = smc[i-len(wcl)]
-		} else {
-			smcAll[i] = smcNA[i-len(wcl)]
+		smcAll[i] = math.NaN()
+	}
+	reducedIdx := 0
+	for i := 0; i < p; i++ {
+		if contains(wcl, i) {
+			continue
+		}
+		if reducedIdx < len(smc) {
+			smcAll[i] = smc[reducedIdx]
+		}
+		reducedIdx++
+	}
+	// Replicate same indexing for smcNA fallback (used when SMC unavailable).
+	if smcNA != nil {
+		reducedIdx = 0
+		for i := 0; i < p; i++ {
+			if contains(wcl, i) {
+				continue
+			}
+			if math.IsNaN(smcAll[i]) && reducedIdx < len(smcNA) {
+				smcAll[i] = smcNA[reducedIdx]
+			}
+			reducedIdx++
 		}
 	}
 

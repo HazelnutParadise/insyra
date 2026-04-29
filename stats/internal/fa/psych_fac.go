@@ -77,6 +77,8 @@ type FacResult struct {
 	Hyperplane    []float64
 	Vaccounted    *mat.Dense
 	ECV           []float64
+	Converged     bool // True if iterative extraction converged (always true for PCA / PAF that iterates within minErr)
+	Iterations    int  // Number of iterations used by ML / MINRES L-BFGS-B
 }
 
 // Fac performs factor analysis using various methods (mirrors psych::fac)
@@ -180,15 +182,17 @@ func Fac(r *mat.Dense, opts *FacOptions) (*FacResult, error) {
 	var loadings *mat.Dense
 	var communalities []float64
 	var eValues []float64
+	var converged = true
+	var iters int
 	var err error
 
 	switch fm {
 	case "pa":
 		loadings, communalities, eValues = principalAxisFactoring(r, rMat, opts.NFactors, opts.MinErr, opts.MaxIter, opts.Warnings)
 	case "minres", "uls", "wls", "gls", "ols":
-		loadings, communalities, eValues, err = minimumResidualFactoring(r, rMat, opts.NFactors, fm, opts.Covar, opts.MinErr, opts.MaxIter, opts.OptimFactr, opts.OptimMaxIter)
+		loadings, communalities, eValues, converged, iters, err = minimumResidualFactoring(r, rMat, opts.NFactors, fm, opts.Covar, opts.MinErr, opts.MaxIter, opts.OptimFactr, opts.OptimMaxIter)
 	case "ml":
-		loadings, communalities, eValues, err = maximumLikelihoodFactoring(r, rMat, opts.NFactors, opts.Covar, opts.MinErr, opts.MaxIter, opts.OptimFactr, opts.OptimMaxIter)
+		loadings, communalities, eValues, converged, iters, err = maximumLikelihoodFactoring(r, rMat, opts.NFactors, opts.Covar, opts.MinErr, opts.MaxIter, opts.OptimFactr, opts.OptimMaxIter)
 	default:
 		return nil, fmt.Errorf("unsupported factor method: %s", fm)
 	}
@@ -282,6 +286,8 @@ func Fac(r *mat.Dense, opts *FacOptions) (*FacResult, error) {
 		Method:        opts.Scores,
 		Factors:       opts.NFactors,
 		R:             r,
+		Converged:     converged,
+		Iterations:    iters,
 	}
 
 	// Compute communality and uniquenesses
@@ -353,7 +359,8 @@ func principalAxisFactoring(r, rMat *mat.Dense, nfactors int, minErr float64, ma
 		model := mat.NewDense(p, p, nil)
 		model.Mul(loadings, loadings.T())
 
-		// Update communalities
+		// Update communalities (restored sum-of-changes test — cached
+		// baselines reject the max-change variant).
 		newComm := 0.0
 		for k := 0; k < p; k++ {
 			newVal := model.At(k, k)
@@ -410,23 +417,25 @@ func principalAxisFactoring(r, rMat *mat.Dense, nfactors int, minErr float64, ma
 }
 
 // minimumResidualFactoring implements minimum residual factoring and related methods
-func minimumResidualFactoring(r, rMat *mat.Dense, nfactors int, fm string, covar bool, minErr float64, maxIter int, optimFactr float64, optimMaxIter int) (*mat.Dense, []float64, []float64, error) {
+func minimumResidualFactoring(r, rMat *mat.Dense, nfactors int, fm string, covar bool, minErr float64, maxIter int, optimFactr float64, optimMaxIter int) (*mat.Dense, []float64, []float64, bool, int, error) {
 	p, _ := r.Dims()
 
 	// Get SMC values for initial communalities
 	smcResult, smcDiagnostics := Smc(r, &SmcOptions{Covar: covar})
 	if smcResult == nil {
-		return nil, nil, nil, fmt.Errorf("failed to compute SMC communalities")
+		return nil, nil, nil, false, 0, fmt.Errorf("failed to compute SMC communalities")
 	}
 	if errs, ok := smcDiagnostics["errors"].([]string); ok && len(errs) > 0 {
-		return nil, nil, nil, fmt.Errorf("failed to compute SMC communalities: %v", errs)
+		return nil, nil, nil, false, 0, fmt.Errorf("failed to compute SMC communalities: %v", errs)
 	}
 	smcVec := make([]float64, p)
 	for i := 0; i < p; i++ {
 		smcVec[i] = smcResult.AtVec(i)
 	}
 
-	// Set upper bound. R psych: upper <- max(S.smc, 1).
+	// Restore original behavior — agent suggested R uses upper=1, but the
+	// cached R baselines reject that change. Keep upper = max(SMC, 1) and
+	// the start formula that the prior code used.
 	upper := 1.0
 	for _, v := range smcVec {
 		if v > upper {
@@ -434,8 +443,6 @@ func minimumResidualFactoring(r, rMat *mat.Dense, nfactors int, fm string, covar
 		}
 	}
 
-	// Initial uniquenesses. R's minres/uls family optimizes one uniqueness
-	// parameter per variable, not one parameter per retained factor.
 	start := make([]float64, p)
 	for i := range start {
 		start[i] = 1.0 - smcVec[i]
@@ -447,7 +454,7 @@ func minimumResidualFactoring(r, rMat *mat.Dense, nfactors int, fm string, covar
 		}
 	}
 
-	psi, err := optimizeBounded(
+	psi, converged, iters, err := optimizeBounded(
 		start,
 		0.005,
 		upper,
@@ -461,7 +468,7 @@ func minimumResidualFactoring(r, rMat *mat.Dense, nfactors int, fm string, covar
 		},
 	)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("minimum residual optimization failed: %w", err)
+		return nil, nil, nil, false, 0, fmt.Errorf("minimum residual optimization failed: %w", err)
 	}
 
 	// Extract loadings
@@ -498,7 +505,7 @@ func minimumResidualFactoring(r, rMat *mat.Dense, nfactors int, fm string, covar
 		communalities[i] = s
 	}
 
-	return loadings, communalities, eValues, nil
+	return loadings, communalities, eValues, converged, iters, nil
 }
 
 // optimizeBounded minimizes fn(x) subject to lower <= x_i <= upper. The
@@ -511,9 +518,9 @@ func minimumResidualFactoring(r, rMat *mat.Dense, nfactors int, fm string, covar
 // 1e7 matches R's default. maxIter caps the number of iterations; 100
 // matches R's default.
 func optimizeBounded(start []float64, lower, upper float64, factr float64, maxIter int,
-	fn func([]float64) float64, grad func([]float64, []float64)) ([]float64, error) {
+	fn func([]float64) float64, grad func([]float64, []float64)) ([]float64, bool, int, error) {
 	if len(start) == 0 || upper <= lower || fn == nil || grad == nil {
-		return nil, fmt.Errorf("invalid bounded optimization inputs")
+		return nil, false, 0, fmt.Errorf("invalid bounded optimization inputs")
 	}
 	if factr <= 0 {
 		factr = 1e7
@@ -540,9 +547,9 @@ func optimizeBounded(start []float64, lower, upper float64, factr float64, maxIt
 		M: 5, Factr: factr, PgTol: 0, MaxIter: maxIter, Parscale: parscale,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("L-BFGS-B failed: %w", err)
+		return nil, false, 0, fmt.Errorf("L-BFGS-B failed: %w", err)
 	}
-	return res.X, nil
+	return res.X, res.Converged, res.Iters, nil
 }
 
 func refineBoundedCoordinates(start []float64, lower, upper float64, maxIter int, fn func([]float64) float64) []float64 {
@@ -631,7 +638,7 @@ func boundedCoordinateMinimize(x []float64, idx int, lower, upper float64, fn fu
 func fitResiduals(psi []float64, s *mat.Dense, nf int, fm string) float64 {
 	p, _ := s.Dims()
 
-	// Set diagonal
+	// Set diagonal — restore original 1-psi (correlation matrix only).
 	sWork := mat.NewDense(p, p, nil)
 	sWork.CloneFrom(s)
 	for i := 0; i < p; i++ {
@@ -644,7 +651,8 @@ func fitResiduals(psi []float64, s *mat.Dense, nf int, fm string) float64 {
 		return math.Inf(1)
 	}
 
-	// Extract loadings
+	// Extract loadings. Restore original eps floor — cached baselines reject
+	// the pmax(0) change.
 	loadings := mat.NewDense(p, nf, nil)
 	for j := 0; j < nf; j++ {
 		eigenVal := values[j]
@@ -764,23 +772,24 @@ func faOutWLS(psi []float64, s *mat.Dense, q int) *mat.Dense {
 }
 
 // maximumLikelihoodFactoring implements Maximum Likelihood factor analysis
-func maximumLikelihoodFactoring(r, rMat *mat.Dense, nfactors int, covar bool, minErr float64, maxIter int, optimFactr float64, optimMaxIter int) (*mat.Dense, []float64, []float64, error) {
+func maximumLikelihoodFactoring(r, rMat *mat.Dense, nfactors int, covar bool, minErr float64, maxIter int, optimFactr float64, optimMaxIter int) (*mat.Dense, []float64, []float64, bool, int, error) {
 	p, _ := r.Dims()
 
 	// Get SMC values for initial communalities
 	smcResult, smcDiagnostics := Smc(r, &SmcOptions{Covar: covar})
 	if smcResult == nil {
-		return nil, nil, nil, fmt.Errorf("failed to compute SMC communalities")
+		return nil, nil, nil, false, 0, fmt.Errorf("failed to compute SMC communalities")
 	}
 	if errs, ok := smcDiagnostics["errors"].([]string); ok && len(errs) > 0 {
-		return nil, nil, nil, fmt.Errorf("failed to compute SMC communalities: %v", errs)
+		return nil, nil, nil, false, 0, fmt.Errorf("failed to compute SMC communalities: %v", errs)
 	}
 	smcVec := make([]float64, p)
 	for i := 0; i < p; i++ {
 		smcVec[i] = smcResult.AtVec(i)
 	}
 
-	// Set upper bound. R psych: upper <- max(S.smc, 1).
+	// Set upper bound. Restore original max(SMC, 1) — cached baselines
+	// reject the upper=1 change.
 	upper := 1.0
 	for _, v := range smcVec {
 		if v > upper {
@@ -800,7 +809,7 @@ func maximumLikelihoodFactoring(r, rMat *mat.Dense, nfactors int, covar bool, mi
 		}
 	}
 
-	psi, err := optimizeBounded(
+	psi, converged, iters, err := optimizeBounded(
 		start,
 		0.005,
 		upper,
@@ -814,7 +823,7 @@ func maximumLikelihoodFactoring(r, rMat *mat.Dense, nfactors int, covar bool, mi
 		},
 	)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("maximum likelihood optimization failed: %w", err)
+		return nil, nil, nil, false, 0, fmt.Errorf("maximum likelihood optimization failed: %w", err)
 	}
 	psi = refineBoundedCoordinates(psi, 0.005, upper, optimMaxIter, func(x []float64) float64 {
 		return faFn(x, r, nfactors)
@@ -856,7 +865,7 @@ func maximumLikelihoodFactoring(r, rMat *mat.Dense, nfactors int, covar bool, mi
 		communalities[i] = s
 	}
 
-	return loadings, communalities, eValues, nil
+	return loadings, communalities, eValues, converged, iters, nil
 }
 
 // faFn computes the maximum likelihood objective function (mirrors FAfn in R)

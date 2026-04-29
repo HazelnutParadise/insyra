@@ -9,12 +9,13 @@ import (
 
 // RotOpts represents rotation options
 type RotOpts struct {
-	Eps         float64
-	MaxIter     int
-	Alpha0      float64
-	Gamma       float64
-	PromaxPower int
-	Restarts    int
+	Eps           float64
+	MaxIter       int
+	Alpha0        float64
+	Gamma         float64 // Oblimin gamma
+	GeominEpsilon float64 // Geomin delta (R psych default 0.01)
+	PromaxPower   int
+	Restarts      int
 }
 
 // Rotate performs factor rotation on loadings.
@@ -44,7 +45,7 @@ func Rotate(loadings *mat.Dense, method string, opts *RotOpts) (*mat.Dense, *mat
 	}
 
 	// Call FaRotations
-	res := FaRotations(loadings, r, method, opts.Gamma, opts.Restarts).(map[string]any)
+	res := FaRotations(loadings, r, method, opts.Gamma, opts.Restarts, opts.PromaxPower, opts.GeominEpsilon).(map[string]any)
 	if errMsg, ok := res["error"].(string); ok && errMsg != "" {
 		return nil, nil, nil, false, fmt.Errorf("rotation failed: %s", errMsg)
 	}

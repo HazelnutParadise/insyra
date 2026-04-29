@@ -47,12 +47,17 @@ func Varimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map[
 		}
 	}
 
-	// Return with correct key names expected by FaRotations
-	return map[string]any{
+	// Return with correct key names expected by FaRotations.
+	// Propagate convergence so callers can correctly report RotationConverged.
+	out := map[string]any{
 		"loadings": result["loadings"],
 		"rotmat":   rotMatDense,
 		"f":        result["f"],
 	}
+	if conv, ok := result["convergence"]; ok {
+		out["convergence"] = conv
+	}
+	return out
 }
 
 // Quartimax performs quartimax rotation.
@@ -89,12 +94,17 @@ func Quartimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int) ma
 		}
 	}
 
-	// Return with correct key names expected by FaRotations
-	return map[string]any{
+	// Return with correct key names expected by FaRotations.
+	// Propagate convergence so callers can correctly report RotationConverged.
+	out := map[string]any{
 		"loadings": result["loadings"],
 		"rotmat":   rotMatDense,
 		"f":        result["f"],
 	}
+	if conv, ok := result["convergence"]; ok {
+		out["convergence"] = conv
+	}
+	return out
 }
 
 // Quartimin performs quartimin rotation.
@@ -219,12 +229,17 @@ func GeominT(loadings *mat.Dense, normalize bool, eps float64, maxIter int, delt
 		}
 	}
 
-	// Return with correct key names expected by FaRotations
-	return map[string]any{
+	// Return with correct key names expected by FaRotations.
+	// Propagate convergence so callers can correctly report RotationConverged.
+	out := map[string]any{
 		"loadings": result["loadings"],
 		"rotmat":   rotMatDense,
 		"f":        result["f"],
 	}
+	if conv, ok := result["convergence"]; ok {
+		out["convergence"] = conv
+	}
+	return out
 }
 
 // BentlerT performs Bentler's criterion rotation.
@@ -255,12 +270,17 @@ func BentlerT(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map
 	Th := result["Th"].(*mat.Dense)
 	rotMatDense := mat.DenseCopyOf(Th)
 
-	// Return with correct key names expected by FaRotations
-	return map[string]any{
+	// Return with correct key names expected by FaRotations.
+	// Propagate convergence so callers can correctly report RotationConverged.
+	out := map[string]any{
 		"loadings": result["loadings"],
 		"rotmat":   rotMatDense,
 		"f":        result["f"],
 	}
+	if conv, ok := result["convergence"]; ok {
+		out["convergence"] = conv
+	}
+	return out
 }
 
 // Simplimax performs simplimax rotation.
@@ -396,7 +416,16 @@ func BentlerQ(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map
 }
 
 // FaRotations performs rotation selection with optional random restarts.
-func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64, nRotations int) any {
+// FaRotations applies a factor rotation. promaxPower (R: m, default 4) is
+// honored for the "promax" rotation; geominDelta (R: delta, default 0.01)
+// is honored for "geomint" / "geominq". Pass <= 0 to use defaults.
+func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64, nRotations int, promaxPower int, geominDelta float64) any {
+	if promaxPower <= 0 {
+		promaxPower = 4
+	}
+	if geominDelta <= 0 {
+		geominDelta = 0.01
+	}
 	_, nf := loadings.Dims()
 	if nf == 0 {
 		return map[string]any{}
@@ -505,11 +534,11 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 		case "geomint":
 			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
 			pre.Mul(baseLoadings, start)
-			result = GeominT(pre, false, 1e-05, 1000, 0.01)
+			result = GeominT(pre, false, 1e-05, 1000, geominDelta)
 		case "geominq":
 			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
 			pre.Mul(baseLoadings, start)
-			result = GeominQ(pre, false, 1e-05, 1000, 0.01)
+			result = GeominQ(pre, false, 1e-05, 1000, geominDelta)
 		case "bentlert":
 			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
 			pre.Mul(baseLoadings, start)
@@ -540,7 +569,7 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 					}
 				}
 			}
-			res := Promax(weighted, 4, false)
+			res := Promax(weighted, promaxPower, false)
 			if errMsg, ok := res["error"].(string); ok && errMsg != "" {
 				result = map[string]any{"error": errMsg}
 				break

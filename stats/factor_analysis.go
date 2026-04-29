@@ -89,7 +89,8 @@ const (
 type FactorRotationOptions struct {
 	Method           FactorRotationMethod
 	Kappa            float64          // Optional: Promax power (default 4)
-	Delta            float64          // Optional: default 0 for Oblimin
+	Delta            float64          // Optional: Oblimin gamma (default 0)
+	GeominEpsilon    float64          // Optional: Geomin delta (default 0.01)
 	Restarts         int              // Optional: random orthonormal starts for GPA rotations (default 10)
 	VarimaxAlgorithm VarimaxAlgorithm // Optional: "kaiser" (psych default) or "gparotation"
 }
@@ -605,15 +606,12 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 		return nil, fmt.Errorf("factor extraction failed: %w", err)
 	}
 
-	// Replace zero loadings with 1e-15 (matching R's behavior)
-	// R: loadings[loadings == 0] <- 10^-15
-	// This prevents numerical issues in subsequent calculations
+	// Replace zero loadings with 1e-15 (matching R's behavior).
 	if loadings != nil {
 		pVars, mFactors := loadings.Dims()
 		for i := range pVars {
 			for j := range mFactors {
-				val := loadings.At(i, j)
-				if val == 0 {
+				if loadings.At(i, j) == 0 {
 					loadings.Set(i, j, 1e-15)
 				}
 			}
@@ -628,8 +626,6 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 	var rotationConverged bool
 
 	if numFactors > 1 && opt.Rotation.Method != FactorRotationNone {
-		// Apply rotation only if more than one factor
-		// R: if (nfactors > 1) { ... rotation logic ... }
 		unrotatedLoadings = mat.DenseCopyOf(loadings)
 		if opt.Extraction == FactorExtractionPCA && opt.Rotation.Method == FactorRotationPromax {
 			rotatedLoadings, rotationMatrix, phi, rotationConverged, err = rotatePrincipalPromax(loadings, opt.Rotation)
@@ -640,13 +636,11 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 			return nil, fmt.Errorf("factor rotation failed: %w", err)
 		}
 	} else {
-		// No rotation
 		unrotatedLoadings = mat.DenseCopyOf(loadings)
 		rotatedLoadings = loadings
 		rotationMatrix = nil
 		phi = nil
 		rotationConverged = true
-		// Sign standardization will be done later, after sorting (if applicable)
 	}
 
 	// Sort or align factor columns by explained variance
@@ -685,6 +679,10 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 			}
 		}
 	}
+
+	// R psych::fa does NOT apply the sign flip to rot.mat. It only flips
+	// the reported loadings and Phi. The internal T is left as-is so the
+	// reported `fit$rot.mat` is whatever the rotation routine emitted.
 
 	// R's psych::fa() sorts factors AFTER sign standardization, by explained variance
 	// This must be done AFTER rotation and sign standardization to match R's behavior
@@ -750,9 +748,17 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 		}
 	}
 
-	// Limit reportedEigenvalues to numFactors for output (R reports only numFactors eigenvalues)
-	if len(reportedEigenvalues) > numFactors {
+	// Limit/pad reportedEigenvalues to exactly numFactors for output. R always
+	// reports an nFactors-length vector; if extraction returned fewer values
+	// (rare: small p, degenerate eigendecomposition), pad with zeros so
+	// downstream consumers see a consistent shape.
+	switch {
+	case len(reportedEigenvalues) > numFactors:
 		reportedEigenvalues = reportedEigenvalues[:numFactors]
+	case len(reportedEigenvalues) < numFactors:
+		padded := make([]float64, numFactors)
+		copy(padded, reportedEigenvalues)
+		reportedEigenvalues = padded
 	}
 
 	// Step 10: Compute factor scores if data is available
@@ -1071,8 +1077,11 @@ func extractFactors(data, corrMatrix *mat.Dense, eigenvalues []float64, eigenvec
 	// Extract results from FacResult
 	loadings := result.Loadings
 	communalities := append([]float64(nil), result.Communalities...)
-	converged := true // psych_fac handles convergence internally
-	iterations := 0   // psych_fac doesn't track iterations in the same way
+	// L-BFGS-B converged flag from the optimizer (ML/MINRES); PCA/PAF treat
+	// convergence as their own loop's exit condition (see psych_fac.go: PAF
+	// always returns Converged=true after its iteration).
+	converged := result.Converged
+	iterations := result.Iterations
 
 	// For methods other than PCA, we need to compute eigenvalues from the final communalities
 	var extractionEigenvalues []float64
@@ -1385,6 +1394,9 @@ func sortFactorsByExplainedVariance(loadings *mat.Dense, rotationMatrix *mat.Den
 		}
 	}
 
+	// R psych::fa does NOT permute rot.mat when sorting factors; it just
+	// permutes loadings, Phi, and structure. Pass rotationMatrix through
+	// unchanged to match psych's reported `fit$rot.mat`.
 	return sortedLoadings, rotationMatrix, sortedPhi
 }
 
@@ -1488,11 +1500,12 @@ func rotateFactors(loadings *mat.Dense, rotationOpts FactorRotationOptions, minE
 
 	// Use fa.Rotate function
 	opts := &fa.RotOpts{
-		Eps:         minErr,                  // Use MinErr from function parameter
-		MaxIter:     maxIter,                 // Use MaxIter from function parameter
-		Gamma:       rotationOpts.Delta,      // Use Delta as GPArotation gamma for oblimin
-		PromaxPower: int(rotationOpts.Kappa), // Use Kappa as PromaxPower
-		Restarts:    rotationOpts.Restarts,
+		Eps:           minErr,                  // Use MinErr from function parameter
+		MaxIter:       maxIter,                 // Use MaxIter from function parameter
+		Gamma:         rotationOpts.Delta,      // Use Delta as GPArotation gamma for oblimin
+		GeominEpsilon: rotationOpts.GeominEpsilon,
+		PromaxPower:   int(rotationOpts.Kappa), // Use Kappa as PromaxPower
+		Restarts:      rotationOpts.Restarts,
 	}
 
 	rotatedLoadings, rotMat, phi, converged, err := fa.Rotate(loadings, method, opts)
@@ -1580,7 +1593,10 @@ func computeRegressionScores(data *mat.Dense, loadings *mat.Dense, phi *mat.Dens
 	return &scores, weights, sampleCovarianceDense(&scores), nil
 }
 
-// computeBartlettScores computes factor scores using Bartlett's weighted least squares method
+// computeBartlettScores computes factor scores using Bartlett's weighted least squares method.
+// R psych: weights = inv.U2 %*% L %*% solve(t(L) %*% inv.U2 %*% L). Bartlett uses pattern L
+// (not S = L·Φ); ScoreCovariance is reported as the sample covariance of
+// the produced scores, matching the R baseline script's stats::cov(scores).
 func computeBartlettScores(data *mat.Dense, loadings *mat.Dense, phi *mat.Dense, uniquenesses []float64, sigma *mat.Dense) (*mat.Dense, *mat.Dense, *mat.Dense, error) {
 	_ = sigma
 	invU2 := inverseUniquenessDiagonal(loadings, phi, uniquenesses)
@@ -1605,7 +1621,10 @@ func computeBartlettScores(data *mat.Dense, loadings *mat.Dense, phi *mat.Dense,
 	return &scores, &weights, sampleCovarianceDense(&scores), nil
 }
 
-// computeAndersonRubinScores computes factor scores using Anderson-Rubin's method
+// computeAndersonRubinScores computes factor scores using Anderson-Rubin's method.
+// Empirically the R baseline cache rejects S=L·Φ — psych::factor.scores either
+// uses L (factor pattern) directly or `S` is bound differently than the agent
+// trace claimed. Use L throughout to match the baseline outputs.
 func computeAndersonRubinScores(data *mat.Dense, loadings *mat.Dense, phi *mat.Dense, uniquenesses []float64, sigma *mat.Dense) (*mat.Dense, *mat.Dense, *mat.Dense, error) {
 	r := scoreCorrelationMatrix(loadings, phi, uniquenesses, sigma)
 	invU2 := inverseUniquenessDiagonal(loadings, phi, uniquenesses)
@@ -1653,25 +1672,50 @@ func factorPatternWithPhi(loadings *mat.Dense, phi *mat.Dense) *mat.Dense {
 
 func solveOrPinv(a *mat.Dense, b mat.Matrix) (*mat.Dense, error) {
 	// Mirror R psych::factor.scores: try solve(R, S); if singular, fall back to
-	// ginv(R) %*% S. We use LU (matches R's solve()) then pseudo-inverse.
-	var lu mat.LU
-	lu.Factorize(a)
-	var solved mat.Dense
-	if err := lu.SolveTo(&solved, false, b); err == nil {
-		return &solved, nil
+	// ginv(R) %*% S. gonum mat.LU.SolveTo can panic on a structurally
+	// singular A (zero diagonal in U), so wrap in recover and route to Pinv.
+	var solved *mat.Dense
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				solved = nil
+			}
+		}()
+		var lu mat.LU
+		lu.Factorize(a)
+		var s mat.Dense
+		if err := lu.SolveTo(&s, false, b); err == nil {
+			solved = &s
+		}
+	}()
+	if solved != nil {
+		return solved, nil
 	}
-
 	pinv, err := fa.Pinv(a, 0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to solve scoring linear system: %w", err)
 	}
-	solved.Mul(pinv, b)
-	return &solved, nil
+	var out mat.Dense
+	out.Mul(pinv, b)
+	return &out, nil
 }
 
 func inverseOrPinv(a *mat.Dense) (*mat.Dense, error) {
+	// gonum's mat.Dense.Inverse can panic on truly-singular matrices.
+	// Recover and fall back to SVD pseudoinverse.
+	var ok bool
 	var inv mat.Dense
-	if err := inv.Inverse(a); err == nil {
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				ok = false
+			}
+		}()
+		if err := inv.Inverse(a); err == nil {
+			ok = true
+		}
+	}()
+	if ok {
 		return &inv, nil
 	}
 	pinv, err := fa.Pinv(a, 0)
@@ -1749,3 +1793,4 @@ func sampleCovarianceDense(scores *mat.Dense) *mat.Dense {
 	}
 	return dense
 }
+

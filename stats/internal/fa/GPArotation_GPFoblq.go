@@ -58,7 +58,24 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 	}
 
 	alpha := 1.0 // Start with larger alpha for better initial progress
+
+	// Re-normalize columns of T so each has unit norm. Oblique GPA expects
+	// columns of T on the unit sphere; an arbitrary start (e.g. an oblique
+	// matrix from Promax) violates this and corrupts the first iteration.
 	T := mat.DenseCopyOf(Tmat)
+	for j := 0; j < cols; j++ {
+		s := 0.0
+		for i := 0; i < cols; i++ {
+			v := T.At(i, j)
+			s += v * v
+		}
+		s = math.Sqrt(s)
+		if s > 0 && s != 1 {
+			for i := 0; i < cols; i++ {
+				T.Set(i, j, T.At(i, j)/s)
+			}
+		}
+	}
 
 	computeL := func(Tcur *mat.Dense) (*mat.Dense, error) {
 		invT, err := invertDense(Tcur)
