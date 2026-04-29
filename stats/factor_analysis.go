@@ -621,6 +621,14 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 		// pointer panic in mat.DenseCopyOf / sign-fix.
 		return nil, fmt.Errorf("factor extraction returned nil loadings (degenerate input?)")
 	}
+	// Sanity check loadings dimensions — extraction should produce p × numFactors.
+	// If extraction returned wrong dimensions (rare bug in internal path),
+	// catch here rather than letting it cause a confusing panic deeper in
+	// the pipeline.
+	if pL, mL := loadings.Dims(); pL != colNum || mL != numFactors {
+		return nil, fmt.Errorf("factor extraction produced wrong dimensions: got %dx%d, want %dx%d",
+			pL, mL, colNum, numFactors)
+	}
 
 	// Replace zero loadings with 1e-15 (matching R's behavior).
 	{
