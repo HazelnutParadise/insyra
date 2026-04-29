@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/HazelnutParadise/insyra"
 	"gonum.org/v1/gonum/mat"
 )
 
@@ -197,8 +198,15 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 	}
 
 	convergence = (s < eps)
-	if iter == maxit && !convergence {
-		fmt.Printf("convergence not obtained in GPForth. %d iterations used.\n", maxit)
+	// Loop exits with iter == maxit+1 when it ran the full count without
+	// breaking early on convergence. The previous "iter == maxit" check
+	// never fired because the variable always overshoots by 1 after a
+	// completed for-loop. Use convergence flag directly so non-converged
+	// rotations actually warn.
+	if !convergence {
+		insyra.LogWarning("fa", "GPForth",
+			"convergence not obtained after %d iterations (max %d)",
+			iter-1, maxit)
 	}
 
 	if normalize {
