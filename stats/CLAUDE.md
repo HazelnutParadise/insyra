@@ -166,6 +166,14 @@ if cl <= 0 || cl >= 1 { cl = defaultConfidenceLevel }
 
 // ✅ 應該使用
 cl = resolveConfidenceLevel(cl)
+
+// ❌ 禁止：用 math.Pow 算整數次方（特別是 2、3）
+math.Pow(x, 2)
+math.Pow(x, 3)
+
+// ✅ 應該使用（更快、最後 1~2 ULP 也更準）
+x * x
+x * x * x
 ```
 
 ---
