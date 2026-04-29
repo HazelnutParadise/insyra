@@ -2,6 +2,7 @@
 package fa
 
 import (
+	"fmt"
 	"math"
 
 	"gonum.org/v1/gonum/mat"
@@ -70,7 +71,7 @@ func KaiserVarimaxWithRotationMatrix(A *mat.Dense, normalize bool, maxIter int, 
 
 		var svd mat.SVD
 		if !svd.Factorize(b, mat.SVDFull) {
-			return nil, nil, nil
+			return nil, nil, fmt.Errorf("kaiser varimax: SVD factorization failed at iteration %d", iter)
 		}
 
 		var u, v mat.Dense
