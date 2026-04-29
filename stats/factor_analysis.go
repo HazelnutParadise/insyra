@@ -1612,14 +1612,12 @@ func computeFactorScores(data *mat.Dense, loadings *mat.Dense, phi *mat.Dense, u
 		return nil, nil, nil, fmt.Errorf("nil input matrices")
 	}
 
-	n, _ := data.Dims()
-	_, m := loadings.Dims()
-
 	switch method {
 	case FactorScoreNone:
-		// Return zero scores
-		scores := mat.NewDense(n, m, nil)
-		return scores, nil, nil, nil
+		// R psych returns NULL when scores=FALSE; mirror that with nil so
+		// the public API doesn't fill `Scores` with a meaningless zero
+		// matrix the user didn't ask for.
+		return nil, nil, nil, nil
 
 	case FactorScoreRegression:
 		return computeRegressionScores(data, loadings, phi, uniquenesses, sigmaForScores)
