@@ -501,33 +501,71 @@ func dataTableMatrix(dt insyra.IDataTable) [][]float64 {
 	return out
 }
 
+// runField wraps a single field assertion in a sub-test so a failure in
+// one field does not skip the others — every (extraction × rotation ×
+// scoring × dataset) sub-test reports its full per-field delta picture.
+func runField(t *testing.T, name string, fn func(t *testing.T)) {
+	t.Helper()
+	t.Run(name, fn)
+}
+
 func assertFactorAnalysisMatchesR(t *testing.T, got *stats.FactorModel, rb crossLangBaseline, tol float64) {
 	t.Helper()
-	if got.CountUsed <= 0 {
-		t.Fatalf("expected positive factor count, got %d", got.CountUsed)
-	}
-	if !got.Converged {
-		t.Fatalf("expected factor extraction to converge")
-	}
-	if !got.RotationConverged {
-		t.Fatalf("expected factor rotation to converge")
-	}
-	assertMatrixCloseToBoth(t, "loadings", dataTableMatrix(got.Loadings), baselineFloatMatrix(t, rb, "loadings"), baselineFloatMatrix(t, rb, "loadings"), tol)
-	assertMatrixCloseToBoth(t, "unrotated_loadings", dataTableMatrix(got.UnrotatedLoadings), baselineFloatMatrix(t, rb, "unrotated_loadings"), baselineFloatMatrix(t, rb, "unrotated_loadings"), tol)
-	assertMatrixCloseToBoth(t, "structure", dataTableMatrix(got.Structure), baselineFloatMatrix(t, rb, "structure"), baselineFloatMatrix(t, rb, "structure"), tol)
-	assertSliceCloseToBoth(t, "uniquenesses", got.Uniquenesses.GetColByNumber(0).ToF64Slice(), baselineFloatSlice(t, rb, "uniquenesses"), baselineFloatSlice(t, rb, "uniquenesses"), tol)
-	assertMatrixCloseToBoth(t, "communalities", dataTableMatrix(got.Communalities), baselineFloatMatrix(t, rb, "communalities"), baselineFloatMatrix(t, rb, "communalities"), tol)
-	assertSliceCloseToBoth(t, "eigenvalues", got.Eigenvalues.GetColByNumber(0).ToF64Slice(), baselineFloatSlice(t, rb, "eigenvalues"), baselineFloatSlice(t, rb, "eigenvalues"), tol)
-	assertSliceCloseToBoth(t, "explained", got.ExplainedProportion.GetColByNumber(0).ToF64Slice(), baselineFloatSlice(t, rb, "explained_proportion"), baselineFloatSlice(t, rb, "explained_proportion"), tol)
-	assertSliceCloseToBoth(t, "cumulative", got.CumulativeProportion.GetColByNumber(0).ToF64Slice(), baselineFloatSlice(t, rb, "cumulative_proportion"), baselineFloatSlice(t, rb, "cumulative_proportion"), tol)
-	assertOptionalMatrixCloseToR(t, "phi", dataTableMatrix(got.Phi), rb, "phi", tol)
-	assertOptionalMatrixCloseToR(t, "rotation_matrix", dataTableMatrix(got.RotationMatrix), rb, "rotation_matrix", tol)
-	assertSliceCloseToBoth(t, "sampling_adequacy", got.SamplingAdequacy.GetColByNumber(0).ToF64Slice(), baselineFloatSlice(t, rb, "sampling_adequacy"), baselineFloatSlice(t, rb, "sampling_adequacy"), tol)
-	bart := baselineMap(t, rb, "bartlett")
-	assertCloseToBoth(t, "bartlett.chi_square", got.BartlettTest.ChiSquare, baselineFloat(t, bart, "chi_square"), baselineFloat(t, bart, "chi_square"), tol)
-	assertCloseToBoth(t, "bartlett.df", float64(got.BartlettTest.DegreesOfFreedom), baselineFloat(t, bart, "df"), baselineFloat(t, bart, "df"), tol)
-	assertCloseToBoth(t, "bartlett.p_value", got.BartlettTest.PValue, baselineFloat(t, bart, "p_value"), baselineFloat(t, bart, "p_value"), tol)
-	assertCloseToBoth(t, "bartlett.sample_size", float64(got.BartlettTest.SampleSize), baselineFloat(t, bart, "sample_size"), baselineFloat(t, bart, "sample_size"), tol)
+	runField(t, "count_used", func(t *testing.T) {
+		if got.CountUsed <= 0 {
+			t.Errorf("expected positive factor count, got %d", got.CountUsed)
+		}
+	})
+	runField(t, "converged", func(t *testing.T) {
+		if !got.Converged {
+			t.Errorf("expected factor extraction to converge")
+		}
+	})
+	runField(t, "rotation_converged", func(t *testing.T) {
+		if !got.RotationConverged {
+			t.Errorf("expected factor rotation to converge")
+		}
+	})
+	runField(t, "loadings", func(t *testing.T) {
+		assertMatrixCloseToBoth(t, "loadings", dataTableMatrix(got.Loadings), baselineFloatMatrix(t, rb, "loadings"), baselineFloatMatrix(t, rb, "loadings"), tol)
+	})
+	runField(t, "unrotated_loadings", func(t *testing.T) {
+		assertMatrixCloseToBoth(t, "unrotated_loadings", dataTableMatrix(got.UnrotatedLoadings), baselineFloatMatrix(t, rb, "unrotated_loadings"), baselineFloatMatrix(t, rb, "unrotated_loadings"), tol)
+	})
+	runField(t, "structure", func(t *testing.T) {
+		assertMatrixCloseToBoth(t, "structure", dataTableMatrix(got.Structure), baselineFloatMatrix(t, rb, "structure"), baselineFloatMatrix(t, rb, "structure"), tol)
+	})
+	runField(t, "uniquenesses", func(t *testing.T) {
+		assertSliceCloseToBoth(t, "uniquenesses", got.Uniquenesses.GetColByNumber(0).ToF64Slice(), baselineFloatSlice(t, rb, "uniquenesses"), baselineFloatSlice(t, rb, "uniquenesses"), tol)
+	})
+	runField(t, "communalities", func(t *testing.T) {
+		assertMatrixCloseToBoth(t, "communalities", dataTableMatrix(got.Communalities), baselineFloatMatrix(t, rb, "communalities"), baselineFloatMatrix(t, rb, "communalities"), tol)
+	})
+	runField(t, "eigenvalues", func(t *testing.T) {
+		assertSliceCloseToBoth(t, "eigenvalues", got.Eigenvalues.GetColByNumber(0).ToF64Slice(), baselineFloatSlice(t, rb, "eigenvalues"), baselineFloatSlice(t, rb, "eigenvalues"), tol)
+	})
+	runField(t, "explained_proportion", func(t *testing.T) {
+		assertSliceCloseToBoth(t, "explained", got.ExplainedProportion.GetColByNumber(0).ToF64Slice(), baselineFloatSlice(t, rb, "explained_proportion"), baselineFloatSlice(t, rb, "explained_proportion"), tol)
+	})
+	runField(t, "cumulative_proportion", func(t *testing.T) {
+		assertSliceCloseToBoth(t, "cumulative", got.CumulativeProportion.GetColByNumber(0).ToF64Slice(), baselineFloatSlice(t, rb, "cumulative_proportion"), baselineFloatSlice(t, rb, "cumulative_proportion"), tol)
+	})
+	runField(t, "phi", func(t *testing.T) {
+		assertOptionalMatrixCloseToR(t, "phi", dataTableMatrix(got.Phi), rb, "phi", tol)
+	})
+	runField(t, "rotation_matrix", func(t *testing.T) {
+		assertOptionalMatrixCloseToR(t, "rotation_matrix", dataTableMatrix(got.RotationMatrix), rb, "rotation_matrix", tol)
+	})
+	runField(t, "sampling_adequacy", func(t *testing.T) {
+		assertSliceCloseToBoth(t, "sampling_adequacy", got.SamplingAdequacy.GetColByNumber(0).ToF64Slice(), baselineFloatSlice(t, rb, "sampling_adequacy"), baselineFloatSlice(t, rb, "sampling_adequacy"), tol)
+	})
+	runField(t, "bartlett", func(t *testing.T) {
+		bart := baselineMap(t, rb, "bartlett")
+		assertCloseToBoth(t, "bartlett.chi_square", got.BartlettTest.ChiSquare, baselineFloat(t, bart, "chi_square"), baselineFloat(t, bart, "chi_square"), tol)
+		assertCloseToBoth(t, "bartlett.df", float64(got.BartlettTest.DegreesOfFreedom), baselineFloat(t, bart, "df"), baselineFloat(t, bart, "df"), tol)
+		assertCloseToBoth(t, "bartlett.p_value", got.BartlettTest.PValue, baselineFloat(t, bart, "p_value"), baselineFloat(t, bart, "p_value"), tol)
+		assertCloseToBoth(t, "bartlett.sample_size", float64(got.BartlettTest.SampleSize), baselineFloat(t, bart, "sample_size"), baselineFloat(t, bart, "sample_size"), tol)
+	})
 }
 
 func baselineMap(t *testing.T, m crossLangBaseline, key string) crossLangBaseline {
@@ -689,9 +727,15 @@ func TestCrossLangFactorAnalysisAllModeCombinations(t *testing.T) {
 						})
 						assertFactorAnalysisMatchesR(t, got, rb, factorParityTol)
 						if scoring != stats.FactorScoreNone {
-							assertMatrixCloseToBoth(t, "scores", dataTableMatrix(got.Scores), baselineFloatMatrix(t, rb, "scores"), baselineFloatMatrix(t, rb, "scores"), factorParityTol)
-							assertMatrixCloseToBoth(t, "score_coefficients", dataTableMatrix(got.ScoreCoefficients), baselineFloatMatrix(t, rb, "score_coefficients"), baselineFloatMatrix(t, rb, "score_coefficients"), factorParityTol)
-							assertMatrixCloseToBoth(t, "score_covariance", dataTableMatrix(got.ScoreCovariance), baselineFloatMatrix(t, rb, "score_covariance"), baselineFloatMatrix(t, rb, "score_covariance"), factorParityTol)
+							runField(t, "scores", func(t *testing.T) {
+								assertMatrixCloseToBoth(t, "scores", dataTableMatrix(got.Scores), baselineFloatMatrix(t, rb, "scores"), baselineFloatMatrix(t, rb, "scores"), factorParityTol)
+							})
+							runField(t, "score_coefficients", func(t *testing.T) {
+								assertMatrixCloseToBoth(t, "score_coefficients", dataTableMatrix(got.ScoreCoefficients), baselineFloatMatrix(t, rb, "score_coefficients"), baselineFloatMatrix(t, rb, "score_coefficients"), factorParityTol)
+							})
+							runField(t, "score_covariance", func(t *testing.T) {
+								assertMatrixCloseToBoth(t, "score_covariance", dataTableMatrix(got.ScoreCovariance), baselineFloatMatrix(t, rb, "score_covariance"), baselineFloatMatrix(t, rb, "score_covariance"), factorParityTol)
+							})
 						}
 					})
 				}
