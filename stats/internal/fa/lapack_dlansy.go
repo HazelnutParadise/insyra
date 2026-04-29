@@ -45,6 +45,13 @@ func dlansy(norm, uplo byte, n int, a []float64, lda int, work []float64) float6
 		// 1-norm = inf-norm for symmetric.
 		var value float64
 		if upper {
+			// LAPACK reference dlansy.f initializes work to zero before
+			// the main loop. The upper branch's `work[i-1] += absa`
+			// reads-modifies-writes, so a dirty buffer (e.g. reused from
+			// another LAPACK call) would corrupt the row sum.
+			for i := 0; i < n; i++ {
+				work[i] = 0
+			}
 			for j := 1; j <= n; j++ {
 				sum := 0.0
 				for i := 1; i <= j-1; i++ {
