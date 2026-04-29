@@ -5,9 +5,9 @@ package stats
 import (
 	"errors"
 	"math"
-	"sync"
 
 	"github.com/HazelnutParadise/insyra"
+	"gonum.org/v1/gonum/stat"
 )
 
 type TTestResult struct {
@@ -238,74 +238,18 @@ func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel ...float64) (*TT
 		return nil, err
 	}
 
-	// 僅對大型數據集使用平行運算
-	const minSizeForParallel = 5000
-	var sum, sumSq float64
-
-	if n >= minSizeForParallel {
-		// 決定 goroutine 數量 (根據 CPU 核心數和數據大小調整)
-		numGoroutines := 4
-		if n > 50000 {
-			numGoroutines = 8
-		}
-
-		chunkSize := n / numGoroutines
-		var wg sync.WaitGroup
-
-		// 創建結果集合
-		sums := make([]float64, numGoroutines)
-		sumSqs := make([]float64, numGoroutines)
-
-		// 啟動多個 goroutine 平行處理數據
-		for i := range numGoroutines {
-			wg.Add(1)
-
-			// 計算每個 goroutine 的數據範圍
-			start := i * chunkSize
-			end := start + chunkSize
-			if i == numGoroutines-1 {
-				end = n // 確保最後一個處理所有剩餘數據
-			}
-
-			go func(id, start, end int) {
-				defer wg.Done()
-
-				// 每個 goroutine 計算自己的部分和
-				var localSum, localSumSq float64
-				for j := start; j < end; j++ {
-					diff := data1Slice[j].(float64) - data2Slice[j].(float64)
-					localSum += diff
-					localSumSq += diff * diff
-				}
-
-				// 保存到對應的結果陣列
-				sums[id] = localSum
-				sumSqs[id] = localSumSq
-			}(i, start, end)
-		}
-
-		// 等待所有 goroutine 完成
-		wg.Wait()
-
-		// 合併所有 goroutine 的結果
-		for i := range numGoroutines {
-			sum += sums[i]
-			sumSq += sumSqs[i]
-		}
-	} else {
-		// 對小型數據集使用順序處理
-		for i := range n {
-			diff := data1Slice[i].(float64) - data2Slice[i].(float64)
-			sum += diff
-			sumSq += diff * diff
-		}
+	// Compute paired-difference mean & sample variance via gonum's two-pass
+	// algorithm (numerically stable; replaces the previous parallel naive
+	// (sumSq - sum²/n)/(n-1) one-pass formula which suffers catastrophic
+	// cancellation when |meanDiff| is small relative to data magnitude).
+	diffs := make([]float64, n)
+	for i := range n {
+		diffs[i] = data1Slice[i].(float64) - data2Slice[i].(float64)
 	}
+	meanDiff, varDiff := stat.MeanVariance(diffs, nil)
+	stddevDiff := math.Sqrt(varDiff)
 
-	// 計算統計量（與原始代碼相同）
 	nFloat := float64(n)
-	meanDiff := sum / nFloat
-	variance := (sumSq - sum*sum/nFloat) / (nFloat - 1)
-	stddevDiff := math.Sqrt(variance)
 	standardError := sampleSE(stddevDiff, nFloat)
 	tValue := meanDiff / standardError
 	df := nFloat - 1
