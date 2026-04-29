@@ -9,6 +9,18 @@
 
 ## 分層架構
 
+### gonum 優先原則
+
+實作任何層級時，**如果 gonum 有符合需求的實作，優先使用 gonum。** 直接引用或建立輕量包裝都可以，無需重新實作。
+
+常用的 gonum 模組：
+
+- `gonum/mat` — 矩陣運算（LU 分解、求逆、行列式）
+- `gonum/stat` — 樣本統計（均值、方差、相關係數）
+- `gonum/stat/distuv` — 機率分佈（t、F、χ²、常態）
+
+---
+
 ```
 Layer 0 — 數學原語（其他所有層的地基）
   distutil.go              統計分佈：t/z/F/χ² 的 CDF、quantile、p 值
