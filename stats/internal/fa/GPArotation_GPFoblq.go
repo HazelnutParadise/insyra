@@ -6,6 +6,7 @@ import (
 	"math"
 	"strings"
 
+	"github.com/HazelnutParadise/insyra"
 	"gonum.org/v1/gonum/mat"
 )
 
@@ -195,6 +196,14 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 		}
 
 		iter++
+	}
+
+	// Warn on non-convergence — R's GPArotation::GPFoblq emits a warning
+	// when the gradient norm hasn't dropped below eps within maxit iters.
+	if !convergence {
+		insyra.LogWarning("fa", "GPFoblq",
+			"oblique rotation did not converge after %d iterations (max %d)",
+			iter, maxit)
 	}
 
 	if normalize && weights != nil {
