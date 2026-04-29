@@ -78,19 +78,6 @@ const (
 	tolCI   = 1e-10
 )
 
-// floatEquals — kept for use by other batch tests (ftest, chi_square, etc.) that
-// have not yet been migrated to the tighter tolerance scheme. Will be removed
-// once every batch in CLAUDE.md's gonum-priority refactor lands.
-func floatEquals(a, b, epsilon float64) bool {
-	if math.IsNaN(a) && math.IsNaN(b) {
-		return true
-	}
-	if math.IsInf(a, 0) && math.IsInf(b, 0) && ((a > 0 && b > 0) || (a < 0 && b < 0)) {
-		return true
-	}
-	return math.Abs(a-b) <= epsilon
-}
-
 func tEqualOrNaNInf(a, b, tol float64) bool {
 	if math.IsNaN(a) && math.IsNaN(b) {
 		return true
