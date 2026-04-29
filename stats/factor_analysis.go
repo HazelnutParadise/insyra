@@ -412,27 +412,31 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 		return nil, errors.New("factor analysis requires at least two rows and two columns")
 	}
 
-	// Check for and handle missing values
-	hasNaN := false
+	// Check for missing / non-finite values. Treat ±Inf as missing too —
+	// without this, an Inf in the data would propagate into the correlation
+	// matrix and produce silently-NaN output downstream.
+	hasNonFinite := false
 	for i := 0; i < rowNum; i++ {
 		for j := 0; j < colNum; j++ {
-			if math.IsNaN(data.At(i, j)) {
-				hasNaN = true
+			v := data.At(i, j)
+			if math.IsNaN(v) || math.IsInf(v, 0) {
+				hasNonFinite = true
 				break
 			}
 		}
-		if hasNaN {
+		if hasNonFinite {
 			break
 		}
 	}
 
-	if hasNaN {
-		// Remove rows with any NaN (listwise deletion)
+	if hasNonFinite {
+		// Remove rows with any NaN/Inf (listwise deletion)
 		validRows := make([]int, 0, rowNum)
 		for i := 0; i < rowNum; i++ {
 			valid := true
 			for j := 0; j < colNum; j++ {
-				if math.IsNaN(data.At(i, j)) {
+				v := data.At(i, j)
+				if math.IsNaN(v) || math.IsInf(v, 0) {
 					valid = false
 					break
 				}
@@ -955,22 +959,37 @@ func computeSigma(loadings *mat.Dense, phi *mat.Dense, uniquenesses []float64) *
 	if loadings == nil {
 		return nil
 	}
+	p, _ := loadings.Dims()
+	if len(uniquenesses) != p {
+		// Defensive: callers should always supply p uniquenesses, but
+		// silently truncating/zero-padding could mask upstream bugs.
+		return nil
+	}
 
-	// Create diagonal matrix of uniquenesses
-	U := mat.NewDiagDense(len(uniquenesses), uniquenesses)
+	// Floor any Heywood-case negative uniquenesses to 0 before forming
+	// Sigma so downstream Cholesky / Eigen calls don't blow up on a
+	// non-PSD matrix. This mirrors R psych's display-time clamp.
+	uClamped := make([]float64, p)
+	for i, u := range uniquenesses {
+		if u < 0 {
+			uClamped[i] = 0
+		} else {
+			uClamped[i] = u
+		}
+	}
+	U := mat.NewDiagDense(p, uClamped)
 
 	// Compute L * Phi * L^T
 	var temp mat.Dense
 	if phi != nil {
 		temp.Mul(loadings, phi)
 	} else {
-		// Orthogonal case
 		temp.CloneFrom(loadings)
 	}
 	var sigma mat.Dense
 	sigma.Mul(&temp, loadings.T())
 
-	// Add uniquenesses: Sigma = L*Phi*L^T + U
+	// Add uniquenesses: Sigma = L·Phi·L^T + U
 	sigma.Add(&sigma, U)
 
 	return &sigma
