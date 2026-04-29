@@ -201,14 +201,25 @@ func Smc(r *mat.Dense, opts *SmcOptions) (*mat.VecDense, map[string]interface{})
 	}
 
 	// Compute inverse and SMC. R's psych::smc uses solve() (LU); fall back
-	// to SVD pseudoinverse for singular matrices.
+	// to SVD pseudoinverse for singular matrices. gonum's mat.Dense.Inverse
+	// can panic on truly-singular input, so wrap in recover and fall through
+	// to Pinv on either error or panic.
 	tryInverse := func(m *mat.Dense) (*mat.Dense, error) {
 		nr, _ := m.Dims()
 		out := mat.NewDense(nr, nr, nil)
-		if invErr := out.Inverse(m); invErr == nil {
+		var invErr error
+		var panicked bool
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					panicked = true
+				}
+			}()
+			invErr = out.Inverse(m)
+		}()
+		if !panicked && invErr == nil {
 			return out, nil
 		}
-		// Fall back to SVD pseudoinverse on singular input.
 		return Pinv(m, opts.Tol)
 	}
 	var RInv *mat.Dense
