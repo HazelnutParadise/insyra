@@ -289,7 +289,10 @@ func cmprlb(n, m int, x, g, ws, wy, sy, wt, z, r, wa []float64,
 		a2 := theta * wa[col+j-1]
 		for i := 1; i <= nfree; i++ {
 			k := index[i-1]
-			r[i-1] += wy[(pointr-1)*n+(k-1)]*a1 + ws[(pointr-1)*n+(k-1)]*a2
+			// Fortran: r(i) = r(i) + wy(k,p)*a1 + ws(k,p)*a2
+			// Left-fold; replicate exact accumulation order.
+			r[i-1] += wy[(pointr-1)*n+(k-1)] * a1
+			r[i-1] += ws[(pointr-1)*n+(k-1)] * a2
 		}
 		pointr = (pointr)%m + 1
 	}

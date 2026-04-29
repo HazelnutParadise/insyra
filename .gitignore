@@ -35,3 +35,6 @@ lingo.txt
 .github/prompts/*
 .github/skills/*
 _lbfgsb_ref/
+
+# auto-rebuilt cache for cross-language (R/Python) baseline outputs
+/stats/testdata/baseline_cache/

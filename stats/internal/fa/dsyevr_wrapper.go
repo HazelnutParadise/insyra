@@ -7,6 +7,14 @@ package fa
 
 import "gonum.org/v1/gonum/mat"
 
+// SymmetricEigenDescendingDsyevr is the exported wrapper. R-bit-perfect
+// alternative to statslinalg.SymmetricEigenDescending. Use this for
+// downstream stages (e.g. inverse-symmetric-sqrt in Anderson-Rubin
+// scoring) that must agree with R's eigen() at ULP level.
+func SymmetricEigenDescendingDsyevr(a mat.Matrix) ([]float64, *mat.Dense, bool) {
+	return symmetricEigenDescendingDsyevr(a)
+}
+
 // symmetricEigenDescendingDsyevr computes eigenvalues+eigenvectors of a
 // symmetric matrix using the LAPACK MRRR algorithm (dsyevr), returning
 // them sorted from largest to smallest (matching R's eigen()).

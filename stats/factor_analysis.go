@@ -690,14 +690,15 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 	// This must be done AFTER rotation and sign standardization to match R's behavior
 	// R: if (nfactors > 1) { ... sorting logic ... }
 	if numFactors > 1 {
-		rotatedLoadings, rotationMatrix, phi = sortFactorsByExplainedVariance(rotatedLoadings, rotationMatrix, phi)
+		isPCA := opt.Extraction == FactorExtractionPCA
+		rotatedLoadings, rotationMatrix, phi = sortFactorsByExplainedVariance(rotatedLoadings, rotationMatrix, phi, isPCA)
 
 		// R's reference for `unrotated_loadings` is fit0$loadings from a separate
 		// fa(rotation="none") call, which itself runs R's SS-loadings sort. Apply
 		// the same sort independently to our captured unrotated copy so both
 		// match R's column ordering. The unrotated SS-sort permutation can
 		// differ from the rotated one when rotation is not identity.
-		unrotatedLoadings, _, _ = sortFactorsByExplainedVariance(unrotatedLoadings, nil, nil)
+		unrotatedLoadings, _, _ = sortFactorsByExplainedVariance(unrotatedLoadings, nil, nil, isPCA)
 	}
 
 	// Step 8: Compute communalities and uniquenesses.
@@ -1316,22 +1317,20 @@ func vectorToDataTableWithNames(vector []float64, tableName string, colName stri
 	return dt
 }
 
-// sortFactorsByExplainedVariance sorts factors by explained variance in descending order
-// Uses R's method:
-//   - For orthogonal: ev.rotated <- diag(t(loadings) %*% loadings)
-//   - For oblique: ev.rotated <- diag(Phi %*% t(loadings) %*% loadings)
-func sortFactorsByExplainedVariance(loadings *mat.Dense, rotationMatrix *mat.Dense, phi *mat.Dense) (*mat.Dense, *mat.Dense, *mat.Dense) {
+// sortFactorsByExplainedVariance sorts factors by explained variance in
+// descending order. R's psych::principal (PCA) uses diag(t(L) %*% L)
+// regardless of rotation; psych::fa for oblique rotations uses
+// diag(Phi %*% t(L) %*% L). The flag selects which convention.
+func sortFactorsByExplainedVariance(loadings *mat.Dense, rotationMatrix *mat.Dense, phi *mat.Dense, isPCA bool) (*mat.Dense, *mat.Dense, *mat.Dense) {
 	if loadings == nil {
 		return nil, rotationMatrix, phi
 	}
 
 	rows, cols := loadings.Dims()
-
-	// Calculate explained variance for each factor
 	variances := make([]float64, cols)
 
-	if phi == nil || isIdentityMatrix(phi) {
-		// Orthogonal rotation: ev.rotated <- diag(t(loadings) %*% loadings)
+	if phi == nil || isPCA {
+		// Either orthogonal (no Phi) or PCA: ev <- diag(t(L) %*% L).
 		for j := range cols {
 			sum := 0.0
 			for i := range rows {
@@ -1341,16 +1340,11 @@ func sortFactorsByExplainedVariance(loadings *mat.Dense, rotationMatrix *mat.Den
 			variances[j] = sum
 		}
 	} else {
-		// Oblique rotation: ev.rotated <- diag(Phi %*% t(loadings) %*% loadings)
-		// First compute t(loadings) %*% loadings
+		// psych::fa oblique: ev <- diag(Phi %*% t(L) %*% L).
 		ltl := mat.NewDense(cols, cols, nil)
 		ltl.Product(loadings.T(), loadings)
-
-		// Then compute Phi %*% (t(loadings) %*% loadings)
 		result := mat.NewDense(cols, cols, nil)
 		result.Product(phi, ltl)
-
-		// Extract diagonal
 		for j := range cols {
 			variances[j] = result.At(j, j)
 		}
@@ -1542,33 +1536,6 @@ func standardizeFactorSigns(loadings *mat.Dense) *mat.Dense {
 	return standardized
 }
 
-// isIdentityMatrix checks if a matrix is an identity matrix (within tolerance)
-func isIdentityMatrix(m *mat.Dense) bool {
-	if m == nil {
-		return false
-	}
-
-	rows, cols := m.Dims()
-	if rows != cols {
-		return false
-	}
-
-	const tol = 1e-6
-	for i := range rows {
-		for j := range cols {
-			expected := 0.0
-			if i == j {
-				expected = 1.0
-			}
-			if math.Abs(m.At(i, j)-expected) > tol {
-				return false
-			}
-		}
-	}
-
-	return true
-}
-
 // computeFactorScores computes factor scores using the specified method
 func computeFactorScores(data *mat.Dense, loadings *mat.Dense, phi *mat.Dense, uniquenesses []float64, sigmaForScores *mat.Dense, method FactorScoreMethod) (*mat.Dense, *mat.Dense, *mat.Dense, error) {
 	if data == nil || loadings == nil {
@@ -1745,7 +1712,11 @@ func inverseUniquenessDiagonal(loadings *mat.Dense, phi *mat.Dense, uniquenesses
 }
 
 func inverseSymmetricSqrt(a *mat.Dense) (*mat.Dense, error) {
-	values, vectors, ok := linalg.SymmetricEigenDescending(a)
+	// Use the R-bit-perfect Dsyevr port: gonum's mat.EigenSym uses dsyev
+	// (QL/QR) which can drift from R's dsyevr (MRRR) at ULP level on
+	// ill-conditioned scoring matrices, propagating into Anderson-Rubin
+	// weights via the V·Λ^{-1/2}·V^T sum.
+	values, vectors, ok := fa.SymmetricEigenDescendingDsyevr(a)
 	if !ok {
 		return nil, fmt.Errorf("failed to decompose scoring matrix")
 	}

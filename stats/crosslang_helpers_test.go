@@ -2,17 +2,113 @@ package stats_test
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"math"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 )
 
 type crossLangBaseline map[string]any
+
+// ----- baseline cache + concurrency control -----
+//
+// Each baseline call is keyed by SHA256(scriptContent || exe || method ||
+// payloadJSON). Cached responses live under testdata/baseline_cache/<exe>/
+// <hash>.json. Editing the .R or .py script automatically invalidates every
+// cached entry derived from it because the script content participates in
+// the hash. Subprocess concurrency is capped to avoid swamping the OS with
+// hundreds of simultaneous Rscript / python interpreters.
+
+var (
+	scriptContentCache   sync.Map // scriptPath -> []byte
+	baselineSemOnce      sync.Once
+	baselineSem          chan struct{}
+	baselineCacheRootDir = filepath.Join("testdata", "baseline_cache")
+)
+
+func baselineConcurrency() int {
+	if v := os.Getenv("INSYRA_BASELINE_PARALLEL"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+	}
+	n := runtime.NumCPU()
+	if n < 2 {
+		n = 2
+	}
+	if n > 8 {
+		n = 8
+	}
+	return n
+}
+
+func acquireBaselineSlot() func() {
+	baselineSemOnce.Do(func() {
+		baselineSem = make(chan struct{}, baselineConcurrency())
+	})
+	baselineSem <- struct{}{}
+	return func() { <-baselineSem }
+}
+
+func loadScriptContent(scriptPath string) ([]byte, error) {
+	if v, ok := scriptContentCache.Load(scriptPath); ok {
+		return v.([]byte), nil
+	}
+	data, err := os.ReadFile(scriptPath)
+	if err != nil {
+		return nil, err
+	}
+	scriptContentCache.Store(scriptPath, data)
+	return data, nil
+}
+
+func baselineCacheKey(scriptContent []byte, exe, method string, payloadJSON []byte) string {
+	h := sha256.New()
+	h.Write([]byte(exe))
+	h.Write([]byte{0})
+	h.Write([]byte(method))
+	h.Write([]byte{0})
+	h.Write(scriptContent)
+	h.Write([]byte{0})
+	h.Write(payloadJSON)
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func baselineCachePath(exe, hash string) string {
+	return filepath.Join(baselineCacheRootDir, exe, hash[:2], hash+".json")
+}
+
+func readBaselineCache(path string) (crossLangBaseline, bool) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, false
+	}
+	m := crossLangBaseline{}
+	if err := json.Unmarshal(data, &m); err != nil {
+		return nil, false
+	}
+	return m, true
+}
+
+func writeBaselineCache(path string, payload []byte) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, payload, 0o644); err != nil {
+		return
+	}
+	_ = os.Rename(tmp, path)
+}
 
 func requireCrossLangTools(t *testing.T) {
 	t.Helper()
@@ -53,11 +149,37 @@ func runBaselineScript(t *testing.T, exe, scriptPath, method string, payload any
 		t.Fatalf("marshal payload failed: %v", err)
 	}
 
+	scriptContent, err := loadScriptContent(scriptPath)
+	if err != nil {
+		t.Fatalf("read baseline script %q failed: %v", scriptPath, err)
+	}
+	hash := baselineCacheKey(scriptContent, exe, method, raw)
+	cachePath := baselineCachePath(exe, hash)
+	if cached, ok := readBaselineCache(cachePath); ok {
+		return cached
+	}
+
+	release := acquireBaselineSlot()
+	defer release()
+
+	// Re-check cache: another goroutine in this run may have populated it
+	// while we were waiting for a slot.
+	if cached, ok := readBaselineCache(cachePath); ok {
+		return cached
+	}
+
 	cmd := exec.Command(exe, scriptPath, method, string(raw))
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
+		stderrStr := stderr.String()
+		// Known R-side bug in psych::factor.scores -> invMatSqrt: non-conformable
+		// matmul when the scoring matrix has non-positive eigenvalues. R cannot
+		// produce a baseline, so we skip rather than failing the Go test.
+		if strings.Contains(stderrStr, "invMatSqrt") && strings.Contains(stderrStr, "non-conformable") {
+			t.Skipf("R %s baseline skipped (psych::factor.scores invMatSqrt bug, method=%s)", exe, method)
+		}
 		t.Fatalf("%s baseline failed (method=%s): %v\nstderr=%s\nstdout=%s", exe, method, err, stderr.String(), stdout.String())
 	}
 
@@ -70,6 +192,7 @@ func runBaselineScript(t *testing.T, exe, scriptPath, method string, payload any
 	if err := json.Unmarshal([]byte(out), &m); err != nil {
 		t.Fatalf("parse %s baseline JSON failed (method=%s): %v\noutput=%s", exe, method, err, out)
 	}
+	writeBaselineCache(cachePath, []byte(out))
 	return m
 }
 

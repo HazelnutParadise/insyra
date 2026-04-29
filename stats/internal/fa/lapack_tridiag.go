@@ -68,7 +68,10 @@ func dsymv(uplo byte, n int, alpha float64, a []float64, lda int,
 				ix += incx
 				iy += incy
 			}
-			y[jy] += temp1*a[j*lda+j] + alpha*temp2
+			// Reference BLAS dsymv left-fold:
+			// y(j) = y(j) + temp1*a(j,j) + alpha*temp2
+			y[jy] += temp1 * a[j*lda+j]
+			y[jy] += alpha * temp2
 			jx += incx
 			jy += incy
 		}
@@ -121,7 +124,10 @@ func dsyr2(uplo byte, n int, alpha float64, x []float64, incx int,
 				ix := kx
 				iy := ky
 				for i := 0; i <= j; i++ {
-					a[j*lda+i] += x[ix]*temp1 + y[iy]*temp2
+					// Reference BLAS dsyr2 left-fold:
+					// a(i,j) = a(i,j) + x(i)*temp1 + y(i)*temp2
+					a[j*lda+i] += x[ix] * temp1
+					a[j*lda+i] += y[iy] * temp2
 					ix += incx
 					iy += incy
 				}
@@ -137,7 +143,10 @@ func dsyr2(uplo byte, n int, alpha float64, x []float64, incx int,
 				ix := jx
 				iy := jy
 				for i := j; i < n; i++ {
-					a[j*lda+i] += x[ix]*temp1 + y[iy]*temp2
+					// Reference BLAS dsyr2 left-fold:
+					// a(i,j) = a(i,j) + x(i)*temp1 + y(i)*temp2
+					a[j*lda+i] += x[ix] * temp1
+					a[j*lda+i] += y[iy] * temp2
 					ix += incx
 					iy += incy
 				}

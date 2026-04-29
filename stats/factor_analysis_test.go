@@ -677,6 +677,7 @@ func TestCrossLangFactorAnalysisAllModeCombinations(t *testing.T) {
 			for _, rotation := range rotations {
 				for _, scoring := range scorings {
 					t.Run(ds.name+"/"+string(extraction)+"/"+string(rotation)+"/"+string(scoring), func(t *testing.T) {
+						t.Parallel()
 						opt := factorOptions(extraction, rotation, scoring)
 						opt.Count.FixedK = ds.nFactors
 						got, err := stats.FactorAnalysis(dataTableFromAnyRows(ds.rows), opt)
@@ -783,6 +784,7 @@ func TestCrossLangFactorAnalysisAdversarialDatasets(t *testing.T) {
 				}
 				for _, scoring := range scorings {
 					t.Run(ds.name+"/"+string(extraction)+"/"+string(rotation)+"/"+string(scoring), func(t *testing.T) {
+						t.Parallel()
 						opt := factorOptions(extraction, rotation, scoring)
 						opt.Count.FixedK = ds.nFactors
 						got, err := stats.FactorAnalysis(dataTableFromAnyRows(ds.rows), opt)

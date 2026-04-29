@@ -882,12 +882,17 @@ func faFn(psi []float64, s *mat.Dense, nf int) float64 {
 	}
 
 	// Extract eigenvalues after nf
+	// R: sum = sum + log(eigenVal) - eigenVal (left-fold). Replicate exact
+	// accumulation order — `x += a - b` would compile as x + (a-b) which
+	// differs at ULP level from ((x + a) - b).
 	sum := 0.0
 	for i := nf; i < p; i++ {
 		eigenVal := values[i]
-		sum += math.Log(eigenVal) - eigenVal
+		sum += math.Log(eigenVal)
+		sum -= eigenVal
 	}
-	sum += -float64(nf) + float64(p)
+	sum -= float64(nf)
+	sum += float64(p)
 
 	return -sum
 }

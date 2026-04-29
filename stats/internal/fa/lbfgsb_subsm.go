@@ -59,8 +59,10 @@ func subsm(n, m, nsub int, ind []int, l, u []float64, nbd []int,
 		js := col + jy
 		for i := 1; i <= nsub; i++ {
 			k := ind[i-1]
-			d[i-1] += wy[(pointr-1)*n+(k-1)]*wv[jy-1]/theta +
-				ws[(pointr-1)*n+(k-1)]*wv[js-1]
+			// Fortran: d(i) = d(i) + wy(k,p)*wv(jy)/theta + ws(k,p)*wv(js)
+			// Left-fold; replicate exact accumulation order.
+			d[i-1] += wy[(pointr-1)*n+(k-1)] * wv[jy-1] / theta
+			d[i-1] += ws[(pointr-1)*n+(k-1)] * wv[js-1]
 		}
 		pointr = (pointr)%m + 1
 	}

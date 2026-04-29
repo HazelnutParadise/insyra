@@ -115,8 +115,13 @@ func formk(n, nsub int, ind []int, nenter, ileave int, indx2 []int,
 					temp3 += wy[(ipntr-1)*n+(k1-1)] * wy[(jpntr-1)*n+(k1-1)]
 					temp4 += ws[(ipntr-1)*n+(k1-1)] * ws[(jpntr-1)*n+(k1-1)]
 				}
-				wn1[(jy-1)*ldwn+(iy-1)] += temp1 - temp3
-				wn1[(js-1)*ldwn+(is-1)] += -temp2 + temp4
+				// Fortran: wn1(jy,iy) = wn1(jy,iy) + temp1 - temp3
+				// and     wn1(js,is) = wn1(js,is) - temp2 + temp4
+				// Left-fold; replicate accumulation order.
+				wn1[(jy-1)*ldwn+(iy-1)] += temp1
+				wn1[(jy-1)*ldwn+(iy-1)] -= temp3
+				wn1[(js-1)*ldwn+(is-1)] -= temp2
+				wn1[(js-1)*ldwn+(is-1)] += temp4
 				jpntr = (jpntr)%m + 1
 			}
 			ipntr = (ipntr)%m + 1
@@ -136,10 +141,13 @@ func formk(n, nsub int, ind []int, nenter, ileave int, indx2 []int,
 					k1 := indx2[k-1]
 					temp3 += ws[(ipntr-1)*n+(k1-1)] * wy[(jpntr-1)*n+(k1-1)]
 				}
+				// Fortran left-fold: wn1(jy,is) = wn1(jy,is) ± temp1 ∓ temp3
 				if is <= jy+m {
-					wn1[(jy-1)*ldwn+(is-1)] += temp1 - temp3
+					wn1[(jy-1)*ldwn+(is-1)] += temp1
+					wn1[(jy-1)*ldwn+(is-1)] -= temp3
 				} else {
-					wn1[(jy-1)*ldwn+(is-1)] += -temp1 + temp3
+					wn1[(jy-1)*ldwn+(is-1)] -= temp1
+					wn1[(jy-1)*ldwn+(is-1)] += temp3
 				}
 				jpntr = (jpntr)%m + 1
 			}
