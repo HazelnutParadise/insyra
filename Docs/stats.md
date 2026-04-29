@@ -1542,20 +1542,30 @@ tie correction:
        n2 = Σ ty(ty − 1) / 2  (tie groups in Y)
 ```
 
-Matches R's `cor.test(method="kendall")` and SciPy's `stats.kendalltau`.
-
 The p-value uses an exact two-sided permutation test for n ≤ 7 and the
-asymptotic z = S / sqrt(var(S)) with first-order tie correction for
-n > 7 (var(S) = (n(n − 1)(2n + 5) − T1 − T2) / 18 where Ti are
-tie-corrected sums; matches SciPy). For n > 7 with ties this differs
-slightly from R's `cor.test`, which uses an exact algorithm with ties
-when feasible; for moderate-to-large n the two agree to within 1e-3.
+full Kendall (1948) tie-corrected asymptotic for n > 7:
+
+```text
+z = S / sqrt(var(S))                         S = concordant − discordant
+var(S) = (n(n − 1)(2n + 5) − T1 − T2) / 18   ← first-order
+       + (T1b · T2b) / (9 n(n − 1)(n − 2))   ← second-order (cross)
+       + (T1c · T2c) / (2 n(n − 1))          ← second-order (pair)
+  Ti  = Σ t(t − 1)(2t + 5)
+  Tib = Σ t(t − 1)(t − 2)
+  Tic = Σ t(t − 1)
+```
+
+τ-b and the p-value match R's `cor.test(method="kendall")` to machine
+precision (R uses the same asymptotic for any input with ties — its
+"exact algorithm" only applies when the data is tie-free). SciPy's
+`stats.kendalltau` historically dropped the second-order corrections
+and so disagrees with both R and insyra by a small amount on tied data.
 
 We do **not** wrap `gonum/stat.Kendall` because gonum returns τ-a, where
 the `n0` denominator does not react to ties. With ties present, |τ-a|
 can fall short of 1 even for a perfectly monotonic relationship and
 disagrees with virtually every other stats package. Self-implementing
-τ-b is ~30 lines (`stats/correlation.go:kendallTauBStats`).
+τ-b is ~50 lines (`stats/correlation.go:kendallTauBStats`).
 
 ### Pearson / Spearman confidence interval
 

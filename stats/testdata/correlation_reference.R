@@ -77,7 +77,8 @@ kendall_p_insyra <- function(x, y) {
     }
     return(extreme / nrow(perms))
   } else {
-    # tie-corrected asymptotic: z = S / sqrt(var(S))
+    # full Kendall (1948) tie-corrected asymptotic: z = S / sqrt(var(S))
+    # — matches R cor.test(method="kendall") exactly.
     sval <- 0
     for (i in seq_len(n - 1)) {
       for (j in seq(i + 1, n)) {
@@ -86,11 +87,17 @@ kendall_p_insyra <- function(x, y) {
         if ((dx > 0) == (dy > 0)) sval <- sval + 1 else sval <- sval - 1
       }
     }
-    tx <- table(x); tx <- tx[tx > 1]
-    ty <- table(y); ty <- ty[ty > 1]
-    T1 <- sum(tx * (tx - 1) * (2 * tx + 5))
-    T2 <- sum(ty * (ty - 1) * (2 * ty + 5))
+    tx <- as.numeric(table(x)); tx <- tx[tx > 1]
+    ty <- as.numeric(table(y)); ty <- ty[ty > 1]
+    T1  <- sum(tx * (tx - 1) * (2 * tx + 5))
+    T2  <- sum(ty * (ty - 1) * (2 * ty + 5))
+    T1b <- sum(tx * (tx - 1) * (tx - 2))
+    T2b <- sum(ty * (ty - 1) * (ty - 2))
+    T1c <- sum(tx * (tx - 1))
+    T2c <- sum(ty * (ty - 1))
     varS <- (n * (n - 1) * (2 * n + 5) - T1 - T2) / 18
+    if (n >= 3) varS <- varS + (T1b * T2b) / (9 * n * (n - 1) * (n - 2))
+    if (n >= 2) varS <- varS + (T1c * T2c) / (2 * n * (n - 1))
     if (varS <= 0) return(NaN)
     z <- sval / sqrt(varS)
     return(2 * (1 - pnorm(abs(z))))

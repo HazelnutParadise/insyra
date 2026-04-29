@@ -356,16 +356,25 @@ func kendallTauBStats(x, y []float64) (tau, sval, varS float64) {
 	}
 	tx := tieGroupSizes(x)
 	ty := tieGroupSizes(y)
-	var n1, n2, T1, T2 float64
+	var n1, n2 float64                  // Σ t(t-1)/2  — for τ-b denominator
+	var T1, T2 float64                  // Σ t(t-1)(2t+5)
+	var T1b, T2b float64                // Σ t(t-1)(t-2)
+	var T1c, T2c float64                // Σ t(t-1)
 	for _, t := range tx {
 		tt := float64(t)
-		n1 += tt * (tt - 1) / 2
-		T1 += tt * (tt - 1) * (2*tt + 5)
+		t1 := tt - 1
+		n1 += tt * t1 / 2
+		T1 += tt * t1 * (2*tt + 5)
+		T1b += tt * t1 * (tt - 2)
+		T1c += tt * t1
 	}
 	for _, t := range ty {
 		tt := float64(t)
-		n2 += tt * (tt - 1) / 2
-		T2 += tt * (tt - 1) * (2*tt + 5)
+		t1 := tt - 1
+		n2 += tt * t1 / 2
+		T2 += tt * t1 * (2*tt + 5)
+		T2b += tt * t1 * (tt - 2)
+		T2c += tt * t1
 	}
 
 	n0 := float64(n*(n-1)) / 2
@@ -378,9 +387,21 @@ func kendallTauBStats(x, y []float64) (tau, sval, varS float64) {
 
 	sval = nC - nD
 	nF := float64(n)
-	// Primary asymptotic variance with first-order tie correction. Reduces to
-	// n(n−1)(2n+5)/18 (Kendall's classical no-ties formula) when T1=T2=0.
-	varS = (nF*(nF-1)*(2*nF+5) - T1 - T2) / 18
+	// Full Kendall (1948) asymptotic variance under H₀ with both first-order
+	// (T1, T2) and second-order (T1b·T2b, T1c·T2c) tie corrections. Matches
+	// R's cor.test(method="kendall") exactly. SciPy's kendalltau historically
+	// dropped the second-order terms (matching only T1/T2); we include them
+	// so the p-value is correct for tied data with non-trivial tie structure.
+	// Reduces to n(n−1)(2n+5)/18 — Kendall's classical no-ties formula —
+	// when both axes are tie-free.
+	base := nF*(nF-1)*(2*nF+5) - T1 - T2
+	varS = base / 18
+	if n >= 3 {
+		varS += (T1b * T2b) / (9 * nF * (nF - 1) * (nF - 2))
+	}
+	if n >= 2 {
+		varS += (T1c * T2c) / (2 * nF * (nF - 1))
+	}
 	return tau, sval, varS
 }
 
