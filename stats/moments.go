@@ -9,6 +9,27 @@ import (
 	"github.com/HazelnutParadise/insyra"
 )
 
+// intPow returns x^n for non-negative integer n by repeated multiplication.
+// Replaces math.Pow(x, float64(n)) in the general-order moment paths:
+// math.Pow walks an exp(n·log(x)) implementation regardless of n, costing
+// 1–2 ULPs of precision per call; for the integer exponents we hit here
+// (5..50 range, used in higher-order moments) the multiplicative form is
+// both faster and bit-exact except for a single rounding per multiply.
+func intPow(x float64, n int) float64 {
+	if n < 0 {
+		return math.Pow(x, float64(n)) // negative exponent: fall back
+	}
+	r := 1.0
+	for n > 0 {
+		if n&1 == 1 {
+			r *= x
+		}
+		x *= x
+		n >>= 1
+	}
+	return r
+}
+
 // CalculateMoment calculates the n-th moment of the DataList.
 // If central is true, it computes the central moment; otherwise, raw moment.
 func CalculateMoment(dl insyra.IDataList, n int, central bool) (float64, error) {
@@ -124,7 +145,7 @@ func calculateMomentParallel(data []float64, n int, central bool, mean float64, 
 						diff2 := diff * diff
 						sum += diff2 * diff2
 					default:
-						sum += math.Pow(diff, float64(n))
+						sum += intPow(diff, n)
 					}
 				}
 			} else {
@@ -139,7 +160,7 @@ func calculateMomentParallel(data []float64, n int, central bool, mean float64, 
 						val2 := val * val
 						sum += val2 * val2
 					default:
-						sum += math.Pow(val, float64(n))
+						sum += intPow(val, n)
 					}
 				}
 			}
@@ -215,8 +236,7 @@ func calculateRawMoment4(data []float64, length int) float64 {
 func calculateGeneralCentralMoment(data []float64, mean float64, n int, length int) float64 {
 	var sum float64
 	for _, val := range data {
-		diff := val - mean
-		sum += math.Pow(diff, float64(n))
+		sum += intPow(val-mean, n)
 	}
 	return sum / float64(length)
 }
@@ -224,7 +244,7 @@ func calculateGeneralCentralMoment(data []float64, mean float64, n int, length i
 func calculateGeneralRawMoment(data []float64, n int, length int) float64 {
 	var sum float64
 	for _, val := range data {
-		sum += math.Pow(val, float64(n))
+		sum += intPow(val, n)
 	}
 	return sum / float64(length)
 }
