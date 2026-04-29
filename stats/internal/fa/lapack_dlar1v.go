@@ -194,18 +194,15 @@ func dlar1v(
 
 	// Upward sweep from R-1 down to B1.
 	if !sawnan1 && !sawnan2 {
-		earlyExit := false
 		for i := r - 1; i >= b1; i-- {
 			z[i-1] = -(work[indlpl+i-1] * z[i])
 			if (math.Abs(z[i-1])+math.Abs(z[i]))*math.Abs(ld[i-1]) < gaptol {
 				z[i-1] = 0
 				isuppz1 = i + 1
-				earlyExit = true
 				break
 			}
 			ztz += z[i-1] * z[i-1]
 		}
-		_ = earlyExit
 	} else {
 		for i := r - 1; i >= b1; i-- {
 			if z[i] == 0 {

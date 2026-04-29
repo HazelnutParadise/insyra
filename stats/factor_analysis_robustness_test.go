@@ -266,6 +266,45 @@ func TestFactorAnalysis_RejectsNegativeMaxFactors(t *testing.T) {
 	}
 }
 
+// matrixToDataTableWithNames bug — output DataTables previously discarded
+// rowNames (variable labels) and tableName, leaving them blank in the
+// reported result. Verify they actually flow through now.
+func TestFactorAnalysis_PropagatesRowNames(t *testing.T) {
+	dt := insyra.NewDataTable(
+		insyra.NewDataList(1.1, 2.7, 3.4, 4.9, 5.3, 6.8).SetName("Var_X"),
+		insyra.NewDataList(2.5, 3.1, 5.2, 4.8, 7.6, 6.4).SetName("Var_Y"),
+		insyra.NewDataList(3.7, 4.5, 5.9, 7.2, 6.1, 9.3).SetName("Var_Z"),
+	)
+	got, err := stats.FactorAnalysis(dt, stats.FactorAnalysisOptions{
+		Count:      stats.FactorCountSpec{Method: stats.FactorCountFixed, FixedK: 1},
+		Extraction: stats.FactorExtractionPCA,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Loadings == nil {
+		t.Fatalf("Loadings is nil")
+	}
+	rowNames := got.Loadings.RowNames()
+	if len(rowNames) == 0 {
+		t.Fatalf("Loadings has no row names — variable labels not propagated")
+	}
+	// At least one of the variable names should appear.
+	expected := []string{"Var_X", "Var_Y", "Var_Z"}
+	found := 0
+	for _, want := range expected {
+		for _, got := range rowNames {
+			if got == want {
+				found++
+				break
+			}
+		}
+	}
+	if found != len(expected) {
+		t.Errorf("Loadings row names = %v, want all of %v", rowNames, expected)
+	}
+}
+
 // b31ef08 — FactorCountFixed with FixedK <= 0 rejected.
 func TestFactorAnalysis_RejectsZeroFixedK(t *testing.T) {
 	rows := [][]float64{

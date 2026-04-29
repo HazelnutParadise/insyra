@@ -1065,8 +1065,12 @@ func countByThreshold(eigenvalues []float64, threshold float64) int {
 	return count
 }
 
-// extractFactors wraps the internal extraction functions
+// extractFactors wraps the internal extraction functions. The `data`
+// parameter is unused (extraction operates on the correlation matrix);
+// it is retained in the signature for symmetry with future extensions
+// that may need raw observations (e.g. weighted least squares).
 func extractFactors(data, corrMatrix *mat.Dense, eigenvalues []float64, eigenvectors *mat.Dense, numFactors int, opt FactorAnalysisOptions, sampleSize int, tol float64, initialCommunalities []float64) (*mat.Dense, []float64, []float64, bool, int, error) {
+	_ = data
 	// Use our psych_fac.Fac implementation for all extraction methods
 	facOpts := &fa.FacOptions{
 		NFactors:      numFactors,
@@ -1364,7 +1368,20 @@ func matrixToDataTableWithNames(matrix mat.Matrix, tableName string, colNames []
 		}
 	}
 
-	return insyra.NewDataTable(dataLists...)
+	dt := insyra.NewDataTable(dataLists...)
+	if tableName != "" {
+		dt.SetName(tableName)
+	}
+	// Set row names if provided. SetRowNames uses each entry up to the
+	// number of rows; pad/truncate to match.
+	if len(rowNames) > 0 {
+		rn := rowNames
+		if len(rn) > rows {
+			rn = rn[:rows]
+		}
+		dt.SetRowNames(rn)
+	}
+	return dt
 }
 
 // vectorToDataTableWithNames converts a vector (slice) to DataTable with row and column names
@@ -1382,6 +1399,9 @@ func vectorToDataTableWithNames(vector []float64, tableName string, colName stri
 	}
 
 	dt := insyra.NewDataTable(dataList)
+	if tableName != "" {
+		dt.SetName(tableName)
+	}
 
 	// Set row names if provided
 	if len(rowNames) > 0 && len(rowNames) >= len(vector) {

@@ -106,12 +106,6 @@ func GPFoblq(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 
 	iter := 0
 	for iter <= maxit {
-		// Add M matrix calculation to match R's implementation, for closer comparison.
-		// M <- t(Tmat) %*% Tmat
-		var M mat.Dense
-		M.Mul(T.T(), T)
-		_ = M
-
 		Gp := computeGp(G, T)
 		s := frobNorm(Gp)
 		logTerm := math.Inf(-1)
