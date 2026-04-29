@@ -7,7 +7,7 @@ import (
 	"sort"
 
 	"github.com/HazelnutParadise/insyra"
-	"github.com/HazelnutParadise/insyra/stats/internal/linalg"
+	"gonum.org/v1/gonum/mat"
 	"gonum.org/v1/gonum/stat"
 )
 
@@ -121,14 +121,10 @@ func CorrelationMatrix(dataTable insyra.IDataTable, method CorrelationMethod) (c
 }
 
 func Covariance(dlX, dlY insyra.IDataList) (float64, error) {
-	var meanX, meanY float64
-	var lenX int
-	var lenY int
+	var lenX, lenY int
 	var dataX, dataY []float64
 	dlX.AtomicDo(func(dlx *insyra.DataList) {
 		dlY.AtomicDo(func(dly *insyra.DataList) {
-			meanX = dlx.Mean()
-			meanY = dly.Mean()
 			lenX = dlx.Len()
 			lenY = dly.Len()
 			dataX = dlx.ToF64Slice()
@@ -141,14 +137,9 @@ func Covariance(dlX, dlY insyra.IDataList) (float64, error) {
 	if lenX < 2 {
 		return math.NaN(), errors.New("at least two observations are required")
 	}
-
-	var sum float64
-	for i := range lenX {
-		x := dataX[i]
-		y := dataY[i]
-		sum += (x - meanX) * (y - meanY)
-	}
-	return sum / float64(lenX-1), nil
+	// gonum/stat.Covariance returns the sample covariance with n-1 divisor when
+	// weights == nil — same definition as the previous hand-rolled formula.
+	return stat.Covariance(dataX, dataY, nil), nil
 }
 
 type CorrelationResult struct {
@@ -238,7 +229,16 @@ func BartlettSphericity(dataTable insyra.IDataTable) (chiSquare float64, pValue 
 		return math.NaN(), math.NaN(), 0, err
 	}
 
-	det := linalg.DeterminantGauss(corrMatrix)
+	// Flatten corrMatrix into row-major storage for gonum/mat (LU-based det,
+	// numerically more stable than the previous hand-rolled Gauss elimination
+	// in stats/internal/linalg).
+	cm := mat.NewDense(cols, cols, nil)
+	for i := range corrMatrix {
+		for j := range corrMatrix[i] {
+			cm.Set(i, j, corrMatrix[i][j])
+		}
+	}
+	det := mat.Det(cm)
 	if det <= 0 {
 		return math.NaN(), math.NaN(), 0, errors.New("correlation matrix is singular or not positive definite")
 	}
