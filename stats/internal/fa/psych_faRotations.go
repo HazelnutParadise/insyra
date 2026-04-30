@@ -7,7 +7,6 @@ import (
 	"math/rand"
 	"strings"
 
-	statslinalg "github.com/HazelnutParadise/insyra/stats/internal/linalg"
 	"gonum.org/v1/gonum/mat"
 )
 
@@ -667,7 +666,11 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 }
 
 func identityMatrix(n int) *mat.Dense {
-	return statslinalg.IdentityDense(n)
+	out := mat.NewDense(n, n, nil)
+	for i := 0; i < n; i++ {
+		out.Set(i, i, 1)
+	}
+	return out
 }
 
 func randomOrthonormalMatrix(n int, rnd *rand.Rand) *mat.Dense {

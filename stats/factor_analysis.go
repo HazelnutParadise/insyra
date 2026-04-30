@@ -8,7 +8,6 @@ import (
 
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/stats/internal/fa"
-	"github.com/HazelnutParadise/insyra/stats/internal/linalg"
 	"gonum.org/v1/gonum/mat"
 	"gonum.org/v1/gonum/stat"
 )
@@ -540,7 +539,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 	}
 
 	// Step 4: Eigenvalue decomposition (descending order, matching R's eigen())
-	sortedEigenvalues, sortedEigenvectors, ok := linalg.SymmetricEigenDescending(corrMatrix)
+	sortedEigenvalues, sortedEigenvectors, ok := fa.SymmetricEigenDescendingDsyevr(corrMatrix)
 	if !ok {
 		return nil, errors.New("eigenvalue decomposition failed")
 	}
@@ -754,7 +753,7 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 		for i := range colNum {
 			modifiedCorr.Set(i, i, extractionCommunalities[i])
 		}
-		if vals, _, ok := linalg.SymmetricEigenDescending(modifiedCorr); ok {
+		if vals, _, ok := fa.SymmetricEigenDescendingDsyevr(modifiedCorr); ok {
 			reportedEigenvalues = vals
 		}
 	}

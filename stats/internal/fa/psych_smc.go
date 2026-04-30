@@ -4,7 +4,6 @@ package fa
 import (
 	"math"
 
-	statslinalg "github.com/HazelnutParadise/insyra/stats/internal/linalg"
 	"gonum.org/v1/gonum/mat"
 )
 
@@ -35,25 +34,13 @@ func Smc(r *mat.Dense, opts *SmcOptions) (*mat.VecDense, map[string]interface{})
 		"errors":           []string{},
 	}
 
-	// If not square, assume it's data matrix, compute correlation/covariance
+	// All callers pass a square correlation/covariance matrix. Reject
+	// non-square input rather than silently computing one — the previous
+	// path delegated to stats/internal/linalg which has been removed
+	// (Batch 5; gonum-priority refactor).
 	if p != q {
-		if opts.Pairwise {
-			if opts.Covar {
-				r = statslinalg.CovarianceDensePairwise(r)
-			} else {
-				r = statslinalg.CorrelationDensePairwise(r)
-			}
-			diagnostics["wasImputed"] = true
-			diagnostics["imputationMethod"] = "pairwise"
-		} else {
-			// Standard correlation/covariance computation
-			if opts.Covar {
-				r = statslinalg.CovarianceDense(r)
-			} else {
-				r = statslinalg.CorrelationDense(r)
-			}
-		}
-		p, _ = r.Dims()
+		diagnostics["errors"] = append(diagnostics["errors"].([]string), "Smc: input must be a square matrix")
+		return nil, diagnostics
 	}
 
 	// Handle covar parameter - convert covariance to correlation if needed
