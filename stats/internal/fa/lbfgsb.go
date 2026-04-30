@@ -40,6 +40,9 @@ type lbfgsbParams struct {
 	PgTol    float64   // projected-gradient inf-norm tolerance (R default 0)
 	MaxIter  int       // iteration cap
 	Parscale []float64 // parameter scales (R default rep(1, n))
+	// Trace, if non-nil, is invoked after every fn evaluation in original
+	// (un-scaled) coordinates: cb(evalIdx, f, x, g). Diagnostic only.
+	Trace func(evalIdx int, f float64, x, g []float64)
 }
 
 // lbfgsb minimizes fn subject to lower <= x <= upper using the L-BFGS-B
@@ -134,12 +137,19 @@ func lbfgsb(start, lower, upper []float64,
 
 	xWork := make([]float64, n)
 	gWork := make([]float64, n)
+	evalIdx := 0
 	evalFG := func(zCur []float64) (float64, []float64) {
 		for i := 0; i < n; i++ {
 			xWork[i] = zCur[i] * scale[i]
 		}
 		f := fn(xWork)
 		grad(gWork, xWork)
+		evalIdx++
+		if params.Trace != nil {
+			xCopy := append([]float64(nil), xWork...)
+			gCopy := append([]float64(nil), gWork...)
+			params.Trace(evalIdx, f, xCopy, gCopy)
+		}
 		gz := make([]float64, n)
 		for i := 0; i < n; i++ {
 			gz[i] = gWork[i] * scale[i]
