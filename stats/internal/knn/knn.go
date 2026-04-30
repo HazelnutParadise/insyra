@@ -71,20 +71,13 @@ func Classify(train, test [][]float64, labels []string, k int, opts Options) (*C
 	for i, row := range test {
 		neighbors := search.QueryKNN(row, k)
 		probabilities[i] = classifyProbabilities(neighbors, labels, classIndex, len(classes), normalized.Weighting)
+		// Tie-break = alphabetical first, matching R's `which.max` semantics
+		// (since `classes` is already alphabetically sorted, the first index
+		// hitting the maximum probability is the alphabetical winner).
 		best := 0
-		bestMeanDistance := classMeanDistance(neighbors, labels, classIndex, 0)
 		for c := 1; c < len(classes); c++ {
 			if probabilities[i][c] > probabilities[i][best] && !almostEqual(probabilities[i][c], probabilities[i][best]) {
 				best = c
-				bestMeanDistance = classMeanDistance(neighbors, labels, classIndex, c)
-				continue
-			}
-			if almostEqual(probabilities[i][c], probabilities[i][best]) {
-				currentMeanDistance := classMeanDistance(neighbors, labels, classIndex, c)
-				if currentMeanDistance < bestMeanDistance && !almostEqual(currentMeanDistance, bestMeanDistance) {
-					best = c
-					bestMeanDistance = currentMeanDistance
-				}
 			}
 		}
 		predictions[i] = classes[best]
@@ -511,26 +504,46 @@ func worseNeighbor(a, b neighbor) bool {
 	return a.dist2 > b.dist2
 }
 
+// orderedClasses returns unique class labels in alphabetical order along with
+// a label→column-index map. Alphabetical order matches R's cor.test/which.max
+// convention and scikit-learn's `LabelEncoder` / `predict_proba` columns;
+// previously this used first-appearance order, which is
+// implementation-dependent and made the probability matrix's columns swap
+// when the training labels were reordered.
 func orderedClasses(labels []string) ([]string, map[string]int) {
+	seen := make(map[string]struct{}, len(labels))
 	classes := make([]string, 0)
-	classIndex := make(map[string]int, len(labels))
 	for _, label := range labels {
-		if _, ok := classIndex[label]; ok {
+		if _, ok := seen[label]; ok {
 			continue
 		}
-		classIndex[label] = len(classes)
+		seen[label] = struct{}{}
 		classes = append(classes, label)
+	}
+	sort.Strings(classes)
+	classIndex := make(map[string]int, len(classes))
+	for i, label := range classes {
+		classIndex[label] = i
 	}
 	return classes, classIndex
 }
 
 func classifyProbabilities(neighbors []neighbor, labels []string, classIndex map[string]int, nClasses int, weighting Weighting) []float64 {
 	weights := make([]float64, nClasses)
+	// Distance weighting must collapse to zero-distance neighbors only,
+	// because 1/dist diverges as dist → 0. Uniform weighting has no such
+	// pathology and must use ALL k neighbors equally — previously this
+	// branch ignored the weighting argument and incorrectly dropped the
+	// non-matching neighbors for uniform mode too, which made KNNClassify
+	// disagree with KNearestNeighbors whenever a test point coincided
+	// with a training point.
 	hasZeroDistance := false
-	for _, nb := range neighbors {
-		if almostEqual(nb.dist2, 0) {
-			hasZeroDistance = true
-			break
+	if weighting == DistanceWeighting {
+		for _, nb := range neighbors {
+			if almostEqual(nb.dist2, 0) {
+				hasZeroDistance = true
+				break
+			}
 		}
 	}
 	for _, nb := range neighbors {
@@ -553,28 +566,16 @@ func classifyProbabilities(neighbors []neighbor, labels []string, classIndex map
 	return weights
 }
 
-func classMeanDistance(neighbors []neighbor, labels []string, classIndex map[string]int, class int) float64 {
-	sum := 0.0
-	count := 0.0
-	for _, nb := range neighbors {
-		if classIndex[labels[nb.index]] != class {
-			continue
-		}
-		sum += math.Sqrt(nb.dist2)
-		count++
-	}
-	if count == 0 {
-		return math.Inf(1)
-	}
-	return sum / count
-}
-
 func regressPrediction(neighbors []neighbor, targets []float64, weighting Weighting) float64 {
+	// See classifyProbabilities for the rationale: zero-distance collapse is
+	// only required for distance weighting (where weights diverge as 1/dist).
 	hasZeroDistance := false
-	for _, nb := range neighbors {
-		if almostEqual(nb.dist2, 0) {
-			hasZeroDistance = true
-			break
+	if weighting == DistanceWeighting {
+		for _, nb := range neighbors {
+			if almostEqual(nb.dist2, 0) {
+				hasZeroDistance = true
+				break
+			}
 		}
 	}
 	sumWeight := 0.0

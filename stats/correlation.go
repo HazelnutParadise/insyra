@@ -7,7 +7,7 @@ import (
 	"sort"
 
 	"github.com/HazelnutParadise/insyra"
-	"github.com/HazelnutParadise/insyra/stats/internal/linalg"
+	"gonum.org/v1/gonum/mat"
 	"gonum.org/v1/gonum/stat"
 )
 
@@ -121,14 +121,10 @@ func CorrelationMatrix(dataTable insyra.IDataTable, method CorrelationMethod) (c
 }
 
 func Covariance(dlX, dlY insyra.IDataList) (float64, error) {
-	var meanX, meanY float64
-	var lenX int
-	var lenY int
+	var lenX, lenY int
 	var dataX, dataY []float64
 	dlX.AtomicDo(func(dlx *insyra.DataList) {
 		dlY.AtomicDo(func(dly *insyra.DataList) {
-			meanX = dlx.Mean()
-			meanY = dly.Mean()
 			lenX = dlx.Len()
 			lenY = dly.Len()
 			dataX = dlx.ToF64Slice()
@@ -141,14 +137,9 @@ func Covariance(dlX, dlY insyra.IDataList) (float64, error) {
 	if lenX < 2 {
 		return math.NaN(), errors.New("at least two observations are required")
 	}
-
-	var sum float64
-	for i := range lenX {
-		x := dataX[i]
-		y := dataY[i]
-		sum += (x - meanX) * (y - meanY)
-	}
-	return sum / float64(lenX-1), nil
+	// gonum/stat.Covariance returns the sample covariance with n-1 divisor when
+	// weights == nil — same definition as the previous hand-rolled formula.
+	return stat.Covariance(dataX, dataY, nil), nil
 }
 
 type CorrelationResult struct {
@@ -238,7 +229,16 @@ func BartlettSphericity(dataTable insyra.IDataTable) (chiSquare float64, pValue 
 		return math.NaN(), math.NaN(), 0, err
 	}
 
-	det := linalg.DeterminantGauss(corrMatrix)
+	// Flatten corrMatrix into row-major storage for gonum/mat (LU-based det,
+	// numerically more stable than the previous hand-rolled Gauss elimination
+	// in stats/internal/linalg).
+	cm := mat.NewDense(cols, cols, nil)
+	for i := range corrMatrix {
+		for j := range corrMatrix[i] {
+			cm.Set(i, j, corrMatrix[i][j])
+		}
+	}
+	det := mat.Det(cm)
 	if det <= 0 {
 		return math.NaN(), math.NaN(), 0, errors.New("correlation matrix is singular or not positive definite")
 	}
@@ -295,28 +295,149 @@ func pearsonCorrelationWithStats(dlX, dlY insyra.IDataList) (CorrelationResult, 
 	return result, nil
 }
 
+// kendallTauBStats computes Kendall's τ-b along with the S-statistic and the
+// asymptotic variance with full tie correction.
+//
+// Why we don't use gonum/stat.Kendall: gonum returns τ-a, defined as
+// (concordant − discordant) / (n choose 2). That divisor doesn't react to
+// ties in either variable, so |τ_a| can fall short of 1 even for a perfectly
+// monotonic mapping when the data has ties — and the value disagrees with
+// R's cor(method="kendall"), SciPy's kendalltau, and SPSS, which all default
+// to τ-b. We implement τ-b directly here.
+//
+// Algorithm: O(n²) pair iteration plus an O(n log n) sort per axis to extract
+// tie group sizes for the tie-corrected asymptotic variance. Knight's
+// O(n log n) merge-sort variant exists but adds significant complexity for
+// little gain at the n's we exercise (the package's other tests cap around
+// n ≈ 250); the naive form is correct by inspection.
+//
+// Returns:
+//   tau  — Kendall's τ-b in [-1, 1] (NaN if either axis is all-tied)
+//   sval — concordant minus discordant pair count (the "S" statistic)
+//   varS — variance of S under H₀ with tie correction (Conover 1999, eq. 5.16)
+func kendallTauBStats(x, y []float64) (tau, sval, varS float64) {
+	n := len(x)
+	if n < 2 {
+		return math.NaN(), 0, math.NaN()
+	}
+	var nC, nD float64
+	for i := range n {
+		for j := i + 1; j < n; j++ {
+			dx := x[i] - x[j]
+			dy := y[i] - y[j]
+			if dx == 0 || dy == 0 {
+				continue // tied in at least one axis: contributes neither to nC nor nD
+			}
+			if (dx > 0) == (dy > 0) {
+				nC++
+			} else {
+				nD++
+			}
+		}
+	}
+
+	// Tie group sizes per axis. n1 = Σ t(t-1)/2 (pairs tied in x); same for y.
+	// T1 = Σ t(t-1)(2t+5) appears in the variance formula's primary term.
+	tieGroupSizes := func(z []float64) []int {
+		s := append([]float64(nil), z...)
+		sort.Float64s(s)
+		var out []int
+		for i := 0; i < len(s); {
+			j := i + 1
+			for j < len(s) && s[j] == s[i] {
+				j++
+			}
+			if j-i > 1 {
+				out = append(out, j-i)
+			}
+			i = j
+		}
+		return out
+	}
+	tx := tieGroupSizes(x)
+	ty := tieGroupSizes(y)
+	var n1, n2 float64                  // Σ t(t-1)/2  — for τ-b denominator
+	var T1, T2 float64                  // Σ t(t-1)(2t+5)
+	var T1b, T2b float64                // Σ t(t-1)(t-2)
+	var T1c, T2c float64                // Σ t(t-1)
+	for _, t := range tx {
+		tt := float64(t)
+		t1 := tt - 1
+		n1 += tt * t1 / 2
+		T1 += tt * t1 * (2*tt + 5)
+		T1b += tt * t1 * (tt - 2)
+		T1c += tt * t1
+	}
+	for _, t := range ty {
+		tt := float64(t)
+		t1 := tt - 1
+		n2 += tt * t1 / 2
+		T2 += tt * t1 * (2*tt + 5)
+		T2b += tt * t1 * (tt - 2)
+		T2c += tt * t1
+	}
+
+	n0 := float64(n*(n-1)) / 2
+	denom := math.Sqrt((n0 - n1) * (n0 - n2))
+	if denom == 0 {
+		tau = math.NaN()
+	} else {
+		tau = (nC - nD) / denom
+	}
+
+	sval = nC - nD
+	nF := float64(n)
+	// Full Kendall (1948) asymptotic variance under H₀ with both first-order
+	// (T1, T2) and second-order (T1b·T2b, T1c·T2c) tie corrections. Matches
+	// R's cor.test(method="kendall") exactly. SciPy's kendalltau historically
+	// dropped the second-order terms (matching only T1/T2); we include them
+	// so the p-value is correct for tied data with non-trivial tie structure.
+	// Reduces to n(n−1)(2n+5)/18 — Kendall's classical no-ties formula —
+	// when both axes are tie-free.
+	base := nF*(nF-1)*(2*nF+5) - T1 - T2
+	varS = base / 18
+	if n >= 3 {
+		varS += (T1b * T2b) / (9 * nF * (nF - 1) * (nF - 2))
+	}
+	if n >= 2 {
+		varS += (T1c * T2c) / (2 * nF * (nF - 1))
+	}
+	return tau, sval, varS
+}
+
 func kendallCorrelationWithStats(dlX, dlY insyra.IDataList) CorrelationResult {
 	result := CorrelationResult{}
 	x := dlX.ToF64Slice()
 	y := dlY.ToF64Slice()
-	tau := stat.Kendall(x, y, nil)
+	tau, sval, varS := kendallTauBStats(x, y)
 	result.Statistic = tau
 
 	n := len(x)
 	if n <= 7 {
+		// Exact two-sided permutation p-value: hold x fixed, permute y, count
+		// how many permutations give |τ_b| at least as large as the observed
+		// one. Tau-b (not gonum's tau-a) is used inside the loop too.
 		perms := generatePermutations(y)
 		extreme := 0
 		obs := math.Abs(tau)
 		for _, perm := range perms {
-			altTau := stat.Kendall(x, perm, nil)
+			altTau, _, _ := kendallTauBStats(x, perm)
 			if math.Abs(altTau) >= obs {
 				extreme++
 			}
 		}
 		result.PValue = float64(extreme) / float64(len(perms))
 	} else {
-		z := 3 * tau * math.Sqrt(float64(n*(n-1))) / math.Sqrt(2*float64(2*n+5))
-		result.PValue = 2 * (1 - zCDF(math.Abs(z)))
+		// Asymptotic z = S / sqrt(var(S)). For no-ties data this is identical
+		// to the previous Kendall formula 3·τ·sqrt(n(n−1)) / sqrt(2(2n+5)).
+		// With ties, varS subtracts the tie-group contributions from both
+		// axes — matching scipy.stats.kendalltau and R cor.test asymptotic.
+		if varS <= 0 || math.IsNaN(varS) {
+			result.PValue = math.NaN()
+		} else {
+			z := sval / math.Sqrt(varS)
+			result.PValue = 2 * (1 - zCDF(math.Abs(z)))
+		}
 	}
 
 	return result
@@ -354,11 +475,14 @@ func generatePermutations(arr []float64) [][]float64 {
 func spearmanCorrelationWithStats(dlX, dlY insyra.IDataList) (CorrelationResult, error) {
 	result := CorrelationResult{}
 	var rankX, rankY insyra.IDataList
+	var rawX, rawY []float64
 	var n float64
 	dlX.AtomicDo(func(dlx *insyra.DataList) {
 		dlY.AtomicDo(func(dly *insyra.DataList) {
 			rankX = dlx.Rank()
 			rankY = dly.Rank()
+			rawX = dlx.ToF64Slice()
+			rawY = dly.ToF64Slice()
 			n = float64(dlx.Len())
 		})
 	})
@@ -373,9 +497,183 @@ func spearmanCorrelationWithStats(dlX, dlY insyra.IDataList) (CorrelationResult,
 		return result, nil
 	}
 
-	populateCorrelationInference(&result, rho, n)
+	df := n - 2
+	result.DF = &df
+	if df <= 0 {
+		result.PValue = math.NaN()
+		result.CI = nanCIPtr()
+		return result, nil
+	}
 
+	// p-value: matches R cor.test(method="spearman"). For data without ties
+	// and n ≤ 1290 (no integer overflow), R uses prho() — exact enumeration
+	// for n ≤ 9, AS-89 Edgeworth-series approximation for n ≥ 10. With ties
+	// or very large n, R falls back to Fisher r-to-t (which is also what
+	// insyra used universally before).
+	if hasTiesFloats(rawX) || hasTiesFloats(rawY) || n > 1290 {
+		tStat := correlationToT(rho, n)
+		result.PValue = tTwoTailedPValue(tStat, df)
+	} else {
+		result.PValue = spearmanPValueAS89(rho, int(n))
+	}
+	// CI uses Fisher z-transform (same as Pearson — R does not return one for
+	// Spearman by default; we keep our existing Fisher CI behaviour).
+	result.CI = pearsonFisherCI(rho, n, defaultConfidenceLevel)
 	return result, nil
+}
+
+// hasTiesFloats reports whether any value in v repeats. O(n log n).
+func hasTiesFloats(v []float64) bool {
+	sorted := append([]float64(nil), v...)
+	sort.Float64s(sorted)
+	for i := 1; i < len(sorted); i++ {
+		if sorted[i] == sorted[i-1] {
+			return true
+		}
+	}
+	return false
+}
+
+// spearmanPValueAS89 returns the two-sided p-value for Spearman's rho via R's
+// pspearman/prho path. Mirrors the wrapper in stats:::cor.test:
+//
+//	q       = (n^3 - n) * (1 - rho) / 6      (Hotelling-Pabst S statistic)
+//	if q > (n^3 - n)/6   →   p = pSpearmanRho(round(q),     n, lower=false)
+//	else                 →   p = pSpearmanRho(round(q)+2, n, lower=true)
+//	return min(2p, 1)
+//
+// The +2 in the lower-tail branch accounts for S taking only even integer
+// values under the no-ties null distribution (so Pr[S ≤ q] = Pr[S < q+2]).
+func spearmanPValueAS89(rho float64, n int) float64 {
+	q := float64(n*n*n-n) * (1 - rho) / 6.0
+	mu := float64(n*n*n-n) / 6.0
+	var p float64
+	if q > mu {
+		p = pSpearmanRho(math.Round(q), n, false)
+	} else {
+		p = pSpearmanRho(math.Round(q)+2, n, true)
+	}
+	if 2*p > 1 {
+		return 1
+	}
+	return 2 * p
+}
+
+// pSpearmanRho is a faithful Go port of R's prho() (src/library/stats/src/
+// prho.c, AS-89 by Best & Roberts, Appl. Statist. 1975 24:377). Returns
+// Pr[S ≥ s] when lowerTail is false, Pr[S < s] when lowerTail is true,
+// under the H₀ rank-permutation distribution (no ties, n ≥ 2).
+//
+// Two regimes:
+//   - n ≤ 9: exact enumeration of all n! rank permutations (matches R
+//     character-for-character; the rotation-based permutation generator and
+//     the (i+1 - l[i]) running squared-difference accumulation are direct
+//     translations of the original Fortran).
+//   - n ≥ 10: Edgeworth-series approximation with the twelve AS-89
+//     coefficients c1..c12.
+func pSpearmanRho(s float64, n int, lowerTail bool) float64 {
+	pv := 0.0
+	if !lowerTail {
+		pv = 1.0
+	}
+	if n <= 1 {
+		return math.NaN()
+	}
+	if s <= 0 {
+		return pv
+	}
+	nF := float64(n)
+	n3 := nF * (nF*nF - 1) / 3.0 // = (n³ − n)/3
+	if s > n3 {
+		return 1 - pv
+	}
+
+	const nSmall = 9
+	if n <= nSmall {
+		nfac := 1
+		for i := 1; i <= n; i++ {
+			nfac *= i
+		}
+		l := make([]int, n)
+		for i := range l {
+			l[i] = i + 1
+		}
+
+		ifr := 0
+		if s == n3 {
+			ifr = 1
+		} else {
+			sInt := int(s)
+			for m := 0; m < nfac; m++ {
+				ise := 0
+				for i := 0; i < n; i++ {
+					d := i + 1 - l[i]
+					ise += d * d
+				}
+				if sInt <= ise {
+					ifr++
+				}
+				// Rotation-based permutation enumeration (matches R's
+				// algorithm AS 89). The carry-style termination mirrors the
+				// original Fortran do-while.
+				n1 := n
+				for {
+					mt := l[0]
+					for i := 1; i < n1; i++ {
+						l[i-1] = l[i]
+					}
+					n1--
+					l[n1] = mt
+					if mt != n1+1 || n1 <= 1 {
+						break
+					}
+				}
+			}
+		}
+		if lowerTail {
+			return float64(nfac-ifr) / float64(nfac)
+		}
+		return float64(ifr) / float64(nfac)
+	}
+
+	// AS-89 Edgeworth coefficients
+	const (
+		c1  = 0.2274
+		c2  = 0.2531
+		c3  = 0.1745
+		c4  = 0.0758
+		c5  = 0.1033
+		c6  = 0.3932
+		c7  = 0.0879
+		c8  = 0.0151
+		c9  = 0.0072
+		c10 = 0.0831
+		c11 = 0.0131
+		c12 = 4.6e-4
+	)
+	y := nF
+	b := 1 / y
+	x := (6.0*(s-1)*b/(y*y-1) - 1) * math.Sqrt(y-1)
+	yy := x * x
+	u := x * b * (c1 + b*(c2+c3*b) +
+		yy*(-c4+b*(c5+c6*b)-
+			yy*b*(c7+c8*b-yy*(c9-c10*b+yy*b*(c11-c12*yy)))))
+	corr := u / math.Exp(yy/2.0)
+	var pn float64
+	if lowerTail {
+		pn = norm.CDF(x)
+		pv = -corr + pn
+	} else {
+		pn = 1 - norm.CDF(x)
+		pv = corr + pn
+	}
+	if pv < 0 {
+		pv = 0
+	}
+	if pv > 1 {
+		pv = 1
+	}
+	return pv
 }
 
 func populateCorrelationInference(result *CorrelationResult, corr, n float64) {

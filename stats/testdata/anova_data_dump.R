@@ -1,0 +1,13 @@
+## Dumps rnorm-generated data for ANOVA / F-test diverse cases.
+set.seed(101)
+ga <- round(rnorm(50, 100, 10), 3)
+gb <- round(rnorm(50, 102, 10), 3)
+gc <- round(rnorm(50, 101, 10), 3)
+cat("ow_largeN_a:", paste(ga, collapse=","), "\n", sep="")
+cat("ow_largeN_b:", paste(gb, collapse=","), "\n", sep="")
+cat("ow_largeN_c:", paste(gc, collapse=","), "\n", sep="")
+set.seed(102)
+fv1 <- round(rnorm(60, 50, 10), 3)
+fv2 <- round(rnorm(60, 50, 11), 3)
+cat("fv_largeN_1:", paste(fv1, collapse=","), "\n", sep="")
+cat("fv_largeN_2:", paste(fv2, collapse=","), "\n", sep="")

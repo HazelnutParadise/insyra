@@ -221,3 +221,189 @@ func anyListToSlice(dl insyra.IDataList) []any {
 	}
 	return out
 }
+
+// ============================================================
+// R reference suite — Batch 9
+// ============================================================
+
+const (
+	tolKNN = 1e-12
+)
+
+// knnRef is the same physical file as clusterRef but accessed via its own
+// var; the refTable cache makes either path equivalent. Declared separately
+// here to keep KNN tests independent from clustering tests in case the
+// reference files diverge later.
+
+func TestKNNClassify_R(t *testing.T) {
+	t.Run("basic_k3_two_class", func(t *testing.T) {
+		train := dataTableFromRows([][]float64{
+			{0, 0}, {0, 1}, {1, 0},
+			{10, 10}, {10, 11}, {11, 10},
+		})
+		test := dataTableFromRows([][]float64{
+			{0.1, 0.2}, {10.2, 10.1}, {5, 5},
+		})
+		labels := insyra.NewDataList("red", "red", "red", "blue", "blue", "blue")
+
+		got, err := stats.KNNClassify(train, labels, test, 3)
+		if err != nil {
+			t.Fatalf("error: %v", err)
+		}
+		// Class column order is alphabetical (insyra matches R/sklearn).
+		assertKNNClassify(t, got, "knn_basic_k3", 3, []string{"blue", "red"})
+	})
+
+	t.Run("3class_k5_n_train_20", func(t *testing.T) {
+		train := dataTableFromRows(loadKnnTrain3c(t))
+		// R script picks rows 1, 5, 10, 15, 20 from train as test.
+		trainRows := loadKnnTrain3c(t)
+		testRows := [][]float64{
+			trainRows[0], trainRows[4], trainRows[9], trainRows[14], trainRows[19],
+		}
+		test := dataTableFromRows(testRows)
+		labels := insyra.NewDataList(
+			"a", "a", "a", "a", "a", "a", "a",
+			"b", "b", "b", "b", "b", "b", "b",
+			"c", "c", "c", "c", "c", "c",
+		)
+		got, err := stats.KNNClassify(train, labels, test, 5)
+		if err != nil {
+			t.Fatalf("error: %v", err)
+		}
+		assertKNNClassify(t, got, "knn_3class_k5", 5, []string{"a", "b", "c"})
+	})
+}
+
+func loadKnnTrain3c(t *testing.T) [][]float64 {
+	t.Helper()
+	rows := make([][]float64, 20)
+	for i := range rows {
+		rows[i] = clusterDump.get(t, "knn3c_train_row"+itoa(i))
+	}
+	return rows
+}
+
+func assertKNNClassify(t *testing.T, got *stats.KNNClassificationResult, prefix string, nTest int, classes []string) {
+	t.Helper()
+	if got.Predictions.Len() != nTest {
+		t.Fatalf("predictions length: got %d, want %d", got.Predictions.Len(), nTest)
+	}
+	probTbl, ok := got.Probabilities.(*insyra.DataTable)
+	if !ok {
+		t.Fatalf("Probabilities is not *DataTable: %T", got.Probabilities)
+	}
+	rows, cols := probTbl.Size()
+	if rows != nTest || cols != len(classes) {
+		t.Fatalf("Probabilities shape: got (%d,%d), want (%d,%d)",
+			rows, cols, nTest, len(classes))
+	}
+	// Class column order — first-appearance, matches R reference.
+	for ci := range len(classes) {
+		expClass := clusterRef.getString(t, prefix+".class["+itoa(ci)+"]_str")
+		gotClass, ok := got.Classes.Get(ci).(string)
+		if !ok {
+			t.Fatalf("class[%d] not string: %T", ci, got.Classes.Get(ci))
+		}
+		if gotClass != expClass {
+			t.Errorf("class[%d]: got %q, want %q", ci, gotClass, expClass)
+		}
+	}
+	for q := range nTest {
+		row := probTbl.GetRow(q)
+		probs := make([]float64, len(classes))
+		for ci := range len(classes) {
+			expProb := clusterRef.get(t, prefix+".prob["+itoa(q)+"]["+itoa(ci)+"]")
+			gotProb, ok := row.Get(ci).(float64)
+			if !ok {
+				t.Fatalf("prob[%d][%d] not float: %T", q, ci, row.Get(ci))
+			}
+			probs[ci] = gotProb
+			if math.Abs(gotProb-expProb) > tolKNN {
+				t.Errorf("prob[%d][%d]: got %.17g, want %.17g", q, ci, gotProb, expProb)
+			}
+		}
+		// Prediction must be the class with strict-max probability. Skip when
+		// the top probabilities are tied (insyra's tie-breaker uses mean
+		// distance per class, which we don't reproduce in the R reference).
+		maxIdx, secondIdx := 0, -1
+		for ci := 1; ci < len(probs); ci++ {
+			if probs[ci] > probs[maxIdx] {
+				secondIdx = maxIdx
+				maxIdx = ci
+			} else if secondIdx < 0 || probs[ci] > probs[secondIdx] {
+				secondIdx = ci
+			}
+		}
+		if secondIdx >= 0 && math.Abs(probs[maxIdx]-probs[secondIdx]) <= tolKNN {
+			continue // tied → skip prediction equality check
+		}
+		gotPred, ok := got.Predictions.Get(q).(string)
+		if !ok {
+			t.Fatalf("pred[%d] not string: %T", q, got.Predictions.Get(q))
+		}
+		if gotPred != classes[maxIdx] {
+			t.Errorf("pred[%d]: got %q, want %q (probabilities=%v)",
+				q, gotPred, classes[maxIdx], probs)
+		}
+	}
+}
+
+func TestKNNRegress_R(t *testing.T) {
+	train := dataTableFromRows([][]float64{
+		{0, 0}, {0, 1}, {10, 10}, {10, 11},
+	})
+	test := dataTableFromRows([][]float64{
+		{0.1, 0.2}, {9.9, 10.1},
+	})
+	targets := insyra.NewDataList(1.0, 1.5, 9.0, 9.5)
+	got, err := stats.KNNRegress(train, targets, test, 2)
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	for q := range 2 {
+		exp := clusterRef.get(t, "knn_reg_k2_uniform.pred["+itoa(q)+"]")
+		if math.Abs(got.Predictions[q]-exp) > tolKNN {
+			t.Errorf("pred[%d]: got %.17g, want %.17g", q, got.Predictions[q], exp)
+		}
+	}
+}
+
+func TestKNearestNeighbors_R(t *testing.T) {
+	train := dataTableFromRows([][]float64{
+		{0, 0}, {0, 1}, {1, 0},
+		{10, 10}, {10, 11}, {11, 10},
+	})
+	test := dataTableFromRows([][]float64{
+		{0.1, 0.2}, {10.1, 10.2},
+	})
+
+	for _, alg := range []struct {
+		name string
+		opt  stats.KNNAlgorithm
+	}{
+		{"brute", stats.KNNBruteForce},
+		{"kd_tree", stats.KNNKDTree},
+		{"ball_tree", stats.KNNBallTree},
+	} {
+		t.Run(alg.name, func(t *testing.T) {
+			got, err := stats.KNearestNeighbors(train, test, 2, stats.KNNOptions{Algorithm: alg.opt})
+			if err != nil {
+				t.Fatalf("error: %v", err)
+			}
+			for q := range 2 {
+				for j := range 2 {
+					expIdx := int(clusterRef.get(t, "knn_nbr_k2.idx["+itoa(q)+"]["+itoa(j)+"]"))
+					if got.Indices[q][j] != expIdx {
+						t.Errorf("idx[%d][%d]: got %d, want %d", q, j, got.Indices[q][j], expIdx)
+					}
+					expDist := clusterRef.get(t, "knn_nbr_k2.dist["+itoa(q)+"]["+itoa(j)+"]")
+					if math.Abs(got.Distances[q][j]-expDist) > tolKNN {
+						t.Errorf("dist[%d][%d]: got %.17g, want %.17g",
+							q, j, got.Distances[q][j], expDist)
+					}
+				}
+			}
+		})
+	}
+}

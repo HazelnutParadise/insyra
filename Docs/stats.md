@@ -1473,4 +1473,144 @@ Functions return `error` values when:
 
 Call sites should always check `err` and handle it explicitly.
 
+---
+
+## Behavior Differences From R
+
+The numerical output of insyra's `stats` package agrees with R's standard
+functions (`t.test`, `cor.test`, `aov`, `prcomp`, `kmeans`, `dbscan`,
+`lm`, `chisq.test`, `var.test`, `bartlett.test`, median-centered
+`car::leveneTest`) to within ~1e-12 on every well-defined numerical
+field, with the single semantic exception below. Discrete outputs (DF,
+cluster IDs, hclust merge structure) match exactly.
+
+### Behavior on degenerate / constant inputs
+
+R's `t.test`, `cor.test`, and similar functions abort with an error
+when the input is essentially constant (zero variance, singleton
+cluster, etc.). insyra returns **sentinel values** instead so callers
+can handle the case without recovering from a panic:
+
+| Function | Degenerate input | insyra returns | R behavior |
+|---|---|---|---|
+| `SingleSampleTTest` | constant data, `mean == μ` | `t = NaN, p = NaN, d = 0, CI = [μ, μ]` | error |
+| `SingleSampleTTest` | constant data, `mean ≠ μ` | `t = ±Inf, p = 0, d = ±Inf, CI = [mean, mean]` | error |
+| `Correlation` (any method) | one variable has zero variance | error (`"cannot calculate correlation due to zero variance"`) | `NA` with warning |
+| `Silhouette` | only one cluster | error | not defined |
+
+If you are migrating a script from R: wrap insyra calls' results in a
+`!math.IsNaN(t)` guard rather than expecting a panic.
+
+## Inference Extensions Beyond R
+
+Several insyra return values have no direct R counterpart — R's standard
+functions don't return them, so there is no R reference to "agree" or
+"disagree" with. We document insyra's formula choices here so you can
+compare against textbooks or other packages (SPSS, scipy, Pingouin).
+
+### Cohen's d (effect size on t-tests / z-tests)
+
+R's `t.test` / `BSDA::z.test` don't return effect size at all. insyra
+populates `EffectSizes[0]` ("`cohen_d`") for every t-test and z-test
+variant. Each formula has been validated against R's `effectsize`
+package — they all agree exactly.
+
+| Test variant | insyra formula | Cross-check |
+|---|---|---|
+| `SingleSampleTTest` | `(mean − μ) / sd` | matches `effectsize::cohens_d(x, mu)` |
+| `TwoSampleTTest` (equal var) | `(m1 − m2) / sqrt(pooledVar)`, `pooledVar = ((n1−1)v1 + (n2−1)v2) / (n1+n2−2)` | matches `effectsize::cohens_d(pooled_sd=TRUE)` and `effsize::cohen.d(pooled=TRUE)` |
+| `TwoSampleTTest` (Welch) | `(m1 − m2) / sqrt((v1 + v2) / 2)` (Cohen's d_av) | matches `effectsize::cohens_d(pooled_sd=FALSE)` |
+| `PairedTTest` | `meanDiff / sd(diff)` (Cohen's d_z) | matches `effectsize::cohens_d(paired=TRUE)` |
+| `SingleSampleZTest` | `\|mean − μ\| / σ` | textbook formula for known σ |
+| `TwoSampleZTest` | `\|m1 − m2\| / sqrt((σ1² + σ2²) / 2)` (Cohen's d_av for known σ) | textbook |
+
+### ANOVA partial η²
+
+`OneWayANOVA` / `TwoWayANOVA` populate `EtaSquared` per factor as
+
+```text
+η²_partial = SS_effect / (SS_effect + SS_within)
+```
+
+R's `aov()` does not give η² directly; SPSS reports partial η² by
+default. For one-way ANOVA partial η² equals classical η² (`SS_effect /
+SS_total`); for two-way ANOVA they differ.
+
+`RepeatedMeasuresANOVA` is the one exception — its `Factor.EtaSquared`
+is **classical** η² (`SS_factor / SS_total`), since partial η² for
+within-subjects designs has multiple competing definitions.
+
+### Spearman correlation confidence interval
+
+R's `cor.test(method="spearman")` does not return a CI by default.
+insyra applies the same **Fisher z-transform** CI used for Pearson:
+
+```text
+z = atanh(r),  se = 1 / sqrt(n − 3)
+[lower, upper] = tanh([z − z_crit·se, z + z_crit·se])
+```
+
+with boundary cases `r ≥ 1 → [1, 1]`, `r ≤ −1 → [−1, −1]`, and
+`n ≤ 3 → [NaN, NaN]`. For Pearson this is exactly what R's `cor.test`
+returns; for Spearman it's an insyra-only addition (the asymptotic
+distribution of Fisher-z(ρ) is normal under H₀ and approximately so
+under any null, so the same CI formula is defensible).
+
+## Algorithm Notes
+
+These sections describe non-obvious implementation choices that match
+R but may surprise readers expecting other packages' defaults.
+
+### Spearman p-value (matches R `cor.test`)
+
+`Correlation(..., SpearmanCorrelation)` is a port of R's
+`cor.test(method="spearman")` p-value path:
+
+| n | Algorithm |
+|---|---|
+| 2 ≤ n ≤ 9 | Exact enumeration of all n! rank permutations |
+| 10 ≤ n ≤ 1290 | AS-89 Edgeworth-series approximation (Best & Roberts 1975) |
+| n > 1290, or any n with ties | Fisher r-to-t — `t = ρ · √(n−2) / √(1−ρ²)` |
+
+The exact and AS-89 paths follow R's `prho.c` byte-for-byte. SciPy's
+`stats.spearmanr` uses Fisher r-to-t universally and disagrees with R
+(and insyra) for small n without ties — its p-value is much smaller
+than the discrete exact distribution allows.
+
+### Kendall correlation (matches R `cor.test`)
+
+`Correlation(..., KendallCorrelation)` returns Kendall's τ-b with
+tie correction:
+
+```text
+τ_b = (concordant − discordant) / sqrt((n0 − n1) · (n0 − n2))
+       n0 = n(n − 1) / 2
+       n1 = Σ tx(tx − 1) / 2  (tie groups in X)
+       n2 = Σ ty(ty − 1) / 2  (tie groups in Y)
+```
+
+The p-value uses exact two-sided permutation for n ≤ 7 and the full
+Kendall (1948) tie-corrected asymptotic for n > 7:
+
+```text
+z = S / sqrt(var(S))                          S = concordant − discordant
+var(S) = (n(n − 1)(2n + 5) − T1 − T2) / 18    ← first-order
+       + (T1b · T2b) / (9 n(n − 1)(n − 2))    ← second-order (cross)
+       + (T1c · T2c) / (2 n(n − 1))           ← second-order (pair)
+  Ti  = Σ t(t − 1)(2t + 5)
+  Tib = Σ t(t − 1)(t − 2)
+  Tic = Σ t(t − 1)
+```
+
+τ-b and the p-value match `cor.test(method="kendall")` to machine
+precision. SciPy's `stats.kendalltau` historically dropped the
+second-order variance corrections and so disagrees with both R and
+insyra by a small amount on tied data.
+
+We do **not** wrap `gonum/stat.Kendall` because gonum returns τ-a
+(no tie correction in the denominator). With ties present, |τ-a| can
+fall short of 1 even for a perfectly monotonic relationship and
+disagrees with virtually every other stats package. Self-implementing
+τ-b is ~50 lines in `stats/correlation.go:kendallTauBStats`.
+
 

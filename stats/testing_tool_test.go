@@ -2,22 +2,10 @@ package stats_test
 
 import "math"
 
-func almostEqual(a, b, tol float64) bool {
-	return math.Abs(a-b) < tol
-}
-
+// floatAlmostEqual is kept for the legacy correlation_ci_test.go which
+// has its own (very tight, 1e-12) tolerance scheme; the rest of the
+// stats test suite uses per-batch helpers (mClose, cClose, etc.) that
+// add NaN/Inf handling.
 func floatAlmostEqual(a, b float64, eps float64) bool {
 	return math.Abs(a-b) <= eps
-}
-
-func floatSliceAlmostEqual(a, b []float64, eps float64) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if !floatAlmostEqual(a[i], b[i], eps) {
-			return false
-		}
-	}
-	return true
 }

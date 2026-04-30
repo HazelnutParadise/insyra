@@ -34,6 +34,79 @@ def correlation_inference(corr, n):
     return t, p, float(n - 2), ci
 
 
+def _pspearman_rho(s, n, lower_tail):
+    """Port of R's prho() — AS-89 by Best & Roberts (Appl. Statist. 1975 24:377).
+    Returns Pr[S >= s] when lower_tail=False, Pr[S < s] when lower_tail=True.
+    Exact enumeration for n <= 9, Edgeworth-series approximation for n >= 10.
+    """
+    pv = 0.0 if lower_tail else 1.0
+    if n <= 1:
+        return float("nan")
+    if s <= 0:
+        return pv
+    n3 = n * (n * n - 1) / 3.0
+    if s > n3:
+        return 1 - pv
+    if n <= 9:
+        nfac = 1
+        for i in range(1, n + 1):
+            nfac *= i
+        l = list(range(1, n + 1))
+        ifr = 0
+        if s == n3:
+            ifr = 1
+        else:
+            s_int = int(s)
+            for _ in range(nfac):
+                ise = 0
+                for i in range(n):
+                    d = (i + 1) - l[i]
+                    ise += d * d
+                if s_int <= ise:
+                    ifr += 1
+                # Rotation-based permutation enumeration (matches AS-89).
+                n1 = n
+                while True:
+                    mt = l[0]
+                    for i in range(1, n1):
+                        l[i - 1] = l[i]
+                    n1 -= 1
+                    l[n1] = mt
+                    if mt != n1 + 1 or n1 <= 1:
+                        break
+        return (nfac - ifr) / nfac if lower_tail else ifr / nfac
+    # AS-89 Edgeworth expansion
+    c1, c2, c3 = 0.2274, 0.2531, 0.1745
+    c4, c5, c6 = 0.0758, 0.1033, 0.3932
+    c7, c8, c9 = 0.0879, 0.0151, 0.0072
+    c10, c11, c12 = 0.0831, 0.0131, 4.6e-4
+    y = float(n)
+    b = 1 / y
+    x = (6.0 * (s - 1) * b / (y * y - 1) - 1) * math.sqrt(y - 1)
+    yy = x * x
+    u = x * b * (c1 + b * (c2 + c3 * b) +
+                 yy * (-c4 + b * (c5 + c6 * b) -
+                       yy * b * (c7 + c8 * b - yy * (c9 - c10 * b + yy * b * (c11 - c12 * yy)))))
+    corr = u / math.exp(yy / 2.0)
+    if lower_tail:
+        pn = st.norm.cdf(x)
+        pv = -corr + pn
+    else:
+        pn = 1 - st.norm.cdf(x)
+        pv = corr + pn
+    return max(0.0, min(1.0, float(pv)))
+
+
+def _spearman_prho_p(rho, n):
+    q = (n * n * n - n) * (1 - rho) / 6.0
+    mu = (n * n * n - n) / 6.0
+    if q > mu:
+        p = _pspearman_rho(round(q), n, False)
+    else:
+        p = _pspearman_rho(round(q) + 2, n, True)
+    return min(2 * p, 1.0)
+
+
 def rank_average(arr):
     return st.rankdata(arr, method="average")
 
@@ -975,10 +1048,7 @@ def knn_class_probabilities(indices, distances, labels, classes, weighting):
 
 def knn_classify_stats(train_rows, test_rows, labels, k, weighting):
     labels = [str(v) for v in labels]
-    classes = []
-    for label in labels:
-        if label not in classes:
-            classes.append(label)
+    classes = sorted(set(labels))   # alphabetical, matches insyra after Batch 9 fix
     nn = knn_neighbors_stats(train_rows, test_rows, k)
     predictions = []
     probabilities = []
@@ -987,23 +1057,11 @@ def knn_classify_stats(train_rows, test_rows, labels, k, weighting):
         dist = nn["distances"][row_idx]
         probs = knn_class_probabilities(idx, dist, labels, classes, weighting)
         probabilities.append(probs)
+        # Tie-break = alphabetical first (matches R which.max convention).
         best = 0
-        best_mean = float("inf")
-        members = [dist[i] for i in range(len(idx)) if labels[idx[i] - 1] == classes[0]]
-        if members:
-            best_mean = sum(members) / len(members)
         for c in range(1, len(classes)):
             if probs[c] > probs[best] and abs(probs[c] - probs[best]) > 1e-12:
                 best = c
-                members = [dist[i] for i in range(len(idx)) if labels[idx[i] - 1] == classes[c]]
-                best_mean = sum(members) / len(members) if members else float("inf")
-                continue
-            if abs(probs[c] - probs[best]) <= 1e-12:
-                members = [dist[i] for i in range(len(idx)) if labels[idx[i] - 1] == classes[c]]
-                cand_mean = sum(members) / len(members) if members else float("inf")
-                if cand_mean < best_mean and abs(cand_mean - best_mean) > 1e-12:
-                    best = c
-                    best_mean = cand_mean
         predictions.append(classes[best])
     return {"predictions": predictions, "classes": classes, "probabilities": probabilities}
 
@@ -1051,13 +1109,22 @@ def corr_pair_stat_p(x, y, method):
         _, p, _, _ = correlation_inference(r, n)
         return r, p
     if method == "spearman":
+        # scipy.stats.spearmanr uses the asymptotic Fisher r-to-t approximation
+        # which disagrees with R cor.test (and insyra) for small n. Port R's
+        # prho directly so the Python baseline matches the canonical R/insyra
+        # behavior — exact for n ≤ 9, AS-89 Edgeworth for 10 ≤ n ≤ 1290,
+        # Fisher r-to-t for ties or n > 1290.
         rx = rank_average(x)
         ry = rank_average(y)
         r = float(np.corrcoef(rx, ry)[0, 1])
-        if abs(r) >= 0.9999:
-            return r, 0.0
-        _, p, _, _ = correlation_inference(r, n)
-        return r, p
+        x_arr = list(x); y_arr = list(y)
+        has_ties = len(set(x_arr)) != len(x_arr) or len(set(y_arr)) != len(y_arr)
+        if has_ties or n > 1290:
+            if abs(r) >= 0.9999:
+                return r, 0.0
+            t = r * math.sqrt(n - 2) / math.sqrt(1 - r * r)
+            return r, float(2 * (1 - st.t.cdf(abs(t), n - 2)))
+        return r, _spearman_prho_p(r, n)
     tau = float(st.kendalltau(x, y, method="asymptotic").statistic)
     if n <= 7:
         obs = abs(tau)
@@ -1170,7 +1237,8 @@ def main():
             p = st.norm.cdf(z)
         else:
             p = 2 * (1 - st.norm.cdf(abs(z)))
-        margin = st.norm.ppf(1 - (1 - cl) / 2) * se
+        q = st.norm.ppf(1 - (1 - cl) / 2) if alt == "two-sided" else st.norm.ppf(cl)
+        margin = q * se
         ci = ci_by_alt(mean, margin, alt)
         out = {"stat": z, "p": p, "ci": ci, "mean": mean, "effect": abs(mean - mu) / sigma}
     elif method == "two_z":
@@ -1193,9 +1261,10 @@ def main():
             p = st.norm.cdf(z)
         else:
             p = 2 * (1 - st.norm.cdf(abs(z)))
-        margin = st.norm.ppf(1 - (1 - cl) / 2) * se
+        q = st.norm.ppf(1 - (1 - cl) / 2) if alt == "two-sided" else st.norm.ppf(cl)
+        margin = q * se
         ci = ci_by_alt(diff, margin, alt)
-        pooled_sigma = math.sqrt((n1 * s1 * s1 + n2 * s2 * s2) / (n1 + n2))
+        pooled_sigma = math.sqrt((s1 * s1 + s2 * s2) / 2)   # Cohen's d_av
         out = {"stat": z, "p": p, "ci": ci, "mean1": m1, "mean2": m2, "effect": abs(diff) / pooled_sigma}
     elif method == "chi_gof":
         vals = [str(v).strip() for v in payload["values"]]
@@ -1332,14 +1401,11 @@ def main():
                 _, p, df, ci = correlation_inference(r, n)
                 out = {"stat": r, "p": p, "df": df, "ci": ci}
         elif m == "spearman":
-            rx = rank_average(x)
-            ry = rank_average(y)
-            r = float(np.corrcoef(rx, ry)[0, 1])
-            if abs(r) >= 0.9999:
-                out = {"stat": r, "p": 0.0}
-            else:
-                _, p, df, ci = correlation_inference(r, n)
-                out = {"stat": r, "p": p, "df": df, "ci": ci}
+            # Match insyra (and R cor.test) via the prho port — scipy's
+            # spearmanr uses Fisher r-to-t which differs for small n.
+            r, p = corr_pair_stat_p(x, y, "spearman")
+            _, _, df, ci = correlation_inference(r, n)
+            out = {"stat": r, "p": p, "df": df, "ci": ci}
         else:
             tau, p = corr_pair_stat_p(x, y, "kendall")
             out = {"stat": tau, "p": p}

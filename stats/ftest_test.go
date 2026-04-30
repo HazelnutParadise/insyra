@@ -1,6 +1,7 @@
 package stats_test
 
 import (
+	"math"
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
@@ -8,103 +9,306 @@ import (
 	"github.com/HazelnutParadise/insyra/stats"
 )
 
-func TestFTestForVarianceEquality(t *testing.T) {
-	data1 := insyra.NewDataList([]float64{10, 12, 9, 11})
-	data2 := insyra.NewDataList([]float64{20, 19, 21, 22})
+const (
+	tolF    = 1e-12
+	tolFP   = 1e-12
+	tolBart = 1e-12
+)
 
-	result, err := stats.FTestForVarianceEquality(data1, data2)
-	if err != nil {
-		t.Fatalf("FTestForVarianceEquality returned error: %v", err)
+// ============================================================
+// F-test for variance equality (two-tailed F = max(v1,v2) / min(v1,v2))
+// ============================================================
+
+type fVarCase struct {
+	name        string
+	data1, data2 []float64
+	prefix      string
+}
+
+func TestFTestForVarianceEquality_R(t *testing.T) {
+	cases := []fVarCase{
+		{name: "fv_basic",
+			data1: []float64{10, 12, 9, 11},
+			data2: []float64{20, 19, 21, 22},
+			prefix: "fv_basic",
+		},
+		{name: "fv_unequal",
+			data1: []float64{1, 2, 3, 4, 5},
+			data2: []float64{10, 30, 50, 70, 90, 100, 5},
+			prefix: "fv_unequal",
+		},
+		{name: "fv_largeN",
+			data1: anovaDump.get(t, "fv_largeN_1"),
+			data2: anovaDump.get(t, "fv_largeN_2"),
+			prefix: "fv_largeN",
+		},
 	}
-
-	expectedF := 1.0
-	expectedP := 1.0
-
-	if !floatEquals(result.Statistic, expectedF, 1e-6) {
-		t.Errorf("F-value mismatch: got %.6f, want %.6f", result.Statistic, expectedF)
-	}
-	if !floatEquals(result.PValue, expectedP, 1e-6) {
-		t.Errorf("P-value mismatch: got %.6f, want %.6f", result.PValue, expectedP)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r, err := stats.FTestForVarianceEquality(
+				insyra.NewDataList(c.data1),
+				insyra.NewDataList(c.data2))
+			if err != nil {
+				t.Fatalf("error: %v", err)
+			}
+			expF := anovaRef.get(t, c.prefix+".F")
+			expP := anovaRef.get(t, c.prefix+".P")
+			expDF1 := anovaRef.get(t, c.prefix+".DF1")
+			expDF2 := anovaRef.get(t, c.prefix+".DF2")
+			if !aClose(r.Statistic, expF, tolF) {
+				t.Errorf("F: got %.17g, want %.17g", r.Statistic, expF)
+			}
+			if !aClose(r.PValue, expP, tolFP) {
+				t.Errorf("P: got %.17g, want %.17g", r.PValue, expP)
+			}
+			if r.DF == nil || *r.DF != expDF1 {
+				t.Errorf("DF1: got %v, want %v", r.DF, expDF1)
+			}
+			if r.DF2 != expDF2 {
+				t.Errorf("DF2: got %v, want %v", r.DF2, expDF2)
+			}
+		})
 	}
 }
 
-func TestLeveneAndBartlett(t *testing.T) {
-	// 測試資料（Python 驗證過）
-	group1 := insyra.NewDataList([]float64{10, 12, 9, 11})
-	group2 := insyra.NewDataList([]float64{20, 19, 21, 22})
-	group3 := insyra.NewDataList([]float64{30, 29, 28, 32})
-
-	groups := isr.DLs{group1, group2, group3}
-
-	// Levene's Test
-	leveneResult, err := stats.LeveneTest(groups)
-	if err != nil {
-		t.Fatalf("LeveneTest returned error: %v", err)
+func TestFTestForVarianceEquality_Errors(t *testing.T) {
+	d1 := insyra.NewDataList([]float64{1})
+	d2 := insyra.NewDataList([]float64{1, 2})
+	if _, err := stats.FTestForVarianceEquality(d1, d2); err == nil {
+		t.Error("expected error for n1<2")
 	}
-	expectedLeveneStat := 0.1579
-	expectedLeveneP := 0.8562
-	if !floatEquals(leveneResult.Statistic, expectedLeveneStat, 0.01) {
-		t.Errorf("Levene Statistic mismatch: got %.4f, want %.4f", leveneResult.Statistic, expectedLeveneStat)
+	if _, err := stats.FTestForVarianceEquality(d2, d1); err == nil {
+		t.Error("expected error for n2<2")
 	}
-	if !floatEquals(leveneResult.PValue, expectedLeveneP, 0.01) {
-		t.Errorf("Levene P-value mismatch: got %.4f, want %.4f", leveneResult.PValue, expectedLeveneP)
-	}
-
-	// Bartlett's Test
-	bartlettResult, err := stats.BartlettTest(groups)
-	if err != nil {
-		t.Fatalf("BartlettTest returned error: %v", err)
-	}
-	expectedBartlettStat := 0.2869
-	expectedBartlettP := 0.8663
-	if !floatEquals(bartlettResult.Statistic, expectedBartlettStat, 0.01) {
-		t.Errorf("Bartlett Statistic mismatch: got %.4f, want %.4f", bartlettResult.Statistic, expectedBartlettStat)
-	}
-	if !floatEquals(bartlettResult.PValue, expectedBartlettP, 0.01) {
-		t.Errorf("Bartlett P-value mismatch: got %.4f, want %.4f", bartlettResult.PValue, expectedBartlettP)
+	const_ := insyra.NewDataList([]float64{5, 5, 5})
+	other := insyra.NewDataList([]float64{1, 2, 3})
+	if _, err := stats.FTestForVarianceEquality(const_, other); err == nil {
+		t.Error("expected error for zero variance")
 	}
 }
 
-func TestFTestForRegression(t *testing.T) {
-	ssr := 500.0
-	sse := 200.0
-	df1 := 3
-	df2 := 16
+// ============================================================
+// Levene's test (median-centered, also known as Brown-Forsythe)
+// ============================================================
 
-	result, err := stats.FTestForRegression(ssr, sse, df1, df2)
-	if err != nil {
-		t.Fatalf("FTestForRegression returned error: %v", err)
+type leveneCase struct {
+	name   string
+	groups [][]float64
+	prefix string
+}
+
+func TestLeveneTest_R(t *testing.T) {
+	cases := []leveneCase{
+		{name: "levene_basic", prefix: "levene_basic",
+			groups: [][]float64{{10, 12, 9, 11}, {20, 19, 21, 22}, {30, 29, 28, 32}}},
+		{name: "levene_2grp", prefix: "levene_2grp",
+			groups: [][]float64{{1, 2, 3, 4, 5}, {2, 5, 8, 11, 14}}},
+		{name: "levene_4grp", prefix: "levene_4grp",
+			groups: [][]float64{
+				{10, 11, 9}, {20, 21, 22, 23},
+				{30, 32}, {40, 39, 41, 42, 38},
+			}},
 	}
-
-	expectedF := 13.3333
-	expectedP := 0.000128
-
-	if !floatEquals(result.Statistic, expectedF, 1e-3) {
-		t.Errorf("F-value mismatch: got %.4f, want %.4f", result.Statistic, expectedF)
-	}
-	if !floatEquals(result.PValue, expectedP, 1e-5) {
-		t.Errorf("P-value mismatch: got %.6f, want %.6f", result.PValue, expectedP)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			groups := isr.DLs{}
+			for _, g := range c.groups {
+				groups = append(groups, insyra.NewDataList(g))
+			}
+			r, err := stats.LeveneTest(groups)
+			if err != nil {
+				t.Fatalf("error: %v", err)
+			}
+			expF := anovaRef.get(t, c.prefix+".F")
+			expP := anovaRef.get(t, c.prefix+".P")
+			expDF1 := anovaRef.get(t, c.prefix+".DF1")
+			expDF2 := anovaRef.get(t, c.prefix+".DF2")
+			if !aClose(r.Statistic, expF, tolF) {
+				t.Errorf("F: got %.17g, want %.17g", r.Statistic, expF)
+			}
+			if !aClose(r.PValue, expP, tolFP) {
+				t.Errorf("P: got %.17g, want %.17g", r.PValue, expP)
+			}
+			if r.DF == nil || *r.DF != expDF1 {
+				t.Errorf("DF1: got %v, want %v", r.DF, expDF1)
+			}
+			if r.DF2 != expDF2 {
+				t.Errorf("DF2: got %v, want %v", r.DF2, expDF2)
+			}
+		})
 	}
 }
 
-func TestFTestForNestedModels(t *testing.T) {
-	rssReduced := 300.0
-	rssFull := 200.0
-	dfReduced := 18
-	dfFull := 16
-
-	result, err := stats.FTestForNestedModels(rssReduced, rssFull, dfReduced, dfFull)
-	if err != nil {
-		t.Fatalf("FTestForNestedModels returned error: %v", err)
+func TestLeveneTest_Errors(t *testing.T) {
+	if _, err := stats.LeveneTest(isr.DLs{insyra.NewDataList([]float64{1, 2, 3})}); err == nil {
+		t.Error("expected error for fewer than two groups")
 	}
+}
 
-	expectedF := 4.0
-	expectedP := 0.0390
+// ============================================================
+// Bartlett's test
+// ============================================================
 
-	if !floatEquals(result.Statistic, expectedF, 1e-3) {
-		t.Errorf("F-value mismatch: got %.4f, want %.4f", result.Statistic, expectedF)
+type bartlettCase struct {
+	name   string
+	groups [][]float64
+	prefix string
+}
+
+func TestBartlettTest_R(t *testing.T) {
+	cases := []bartlettCase{
+		{name: "bartlett_basic", prefix: "bartlett_basic",
+			groups: [][]float64{{10, 12, 9, 11}, {20, 19, 21, 22}, {30, 29, 28, 32}}},
+		{name: "bartlett_4grp", prefix: "bartlett_4grp",
+			groups: [][]float64{
+				{1, 2, 3, 4}, {2, 4, 6, 8},
+				{5, 6, 7, 8}, {10, 11, 12, 13},
+			}},
 	}
-	if !floatEquals(result.PValue, expectedP, 1e-4) {
-		t.Errorf("P-value mismatch: got %.5f, want %.5f", result.PValue, expectedP)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			groups := isr.DLs{}
+			for _, g := range c.groups {
+				groups = append(groups, insyra.NewDataList(g))
+			}
+			r, err := stats.BartlettTest(groups)
+			if err != nil {
+				t.Fatalf("error: %v", err)
+			}
+			expStat := anovaRef.get(t, c.prefix+".Stat")
+			expP := anovaRef.get(t, c.prefix+".P")
+			expDF := anovaRef.get(t, c.prefix+".DF")
+			if !aClose(r.Statistic, expStat, tolBart) {
+				t.Errorf("Stat: got %.17g, want %.17g", r.Statistic, expStat)
+			}
+			if !aClose(r.PValue, expP, tolFP) {
+				t.Errorf("P: got %.17g, want %.17g", r.PValue, expP)
+			}
+			if r.DF == nil || *r.DF != expDF {
+				t.Errorf("DF: got %v, want %v", r.DF, expDF)
+			}
+		})
+	}
+}
+
+func TestBartlettTest_Errors(t *testing.T) {
+	if _, err := stats.BartlettTest(isr.DLs{insyra.NewDataList([]float64{1, 2, 3})}); err == nil {
+		t.Error("expected error for fewer than two groups")
+	}
+	if _, err := stats.BartlettTest(isr.DLs{
+		insyra.NewDataList([]float64{1}),
+		insyra.NewDataList([]float64{2, 3}),
+	}); err == nil {
+		t.Error("expected error for n<2 group")
+	}
+}
+
+// ============================================================
+// F-test for regression
+// ============================================================
+
+func TestFTestForRegression_R(t *testing.T) {
+	cases := []struct {
+		name      string
+		ssr, sse  float64
+		df1, df2  int
+		prefix    string
+	}{
+		{"freg_basic", 500, 200, 3, 16, "freg_basic"},
+		{"freg_large", 1000, 50, 4, 95, "freg_large"},
+		{"freg_small", 50, 100, 2, 20, "freg_small"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r, err := stats.FTestForRegression(c.ssr, c.sse, c.df1, c.df2)
+			if err != nil {
+				t.Fatalf("error: %v", err)
+			}
+			expF := anovaRef.get(t, c.prefix+".F")
+			expP := anovaRef.get(t, c.prefix+".P")
+			if !aClose(r.Statistic, expF, tolF) {
+				t.Errorf("F: got %.17g, want %.17g", r.Statistic, expF)
+			}
+			if !aClose(r.PValue, expP, tolFP) {
+				t.Errorf("P: got %.17g, want %.17g", r.PValue, expP)
+			}
+			if r.DF == nil || *r.DF != float64(c.df1) {
+				t.Errorf("DF1: got %v, want %d", r.DF, c.df1)
+			}
+			if r.DF2 != float64(c.df2) {
+				t.Errorf("DF2: got %v, want %d", r.DF2, c.df2)
+			}
+		})
+	}
+}
+
+func TestFTestForRegression_Errors(t *testing.T) {
+	if _, err := stats.FTestForRegression(100, 50, 0, 5); err == nil {
+		t.Error("expected error for df1=0")
+	}
+	if _, err := stats.FTestForRegression(100, 50, 1, 0); err == nil {
+		t.Error("expected error for df2=0")
+	}
+	if _, err := stats.FTestForRegression(-1, 50, 1, 5); err == nil {
+		t.Error("expected error for ssr<0")
+	}
+	if _, err := stats.FTestForRegression(100, 0, 1, 5); err == nil {
+		t.Error("expected error for sse=0")
+	}
+}
+
+// ============================================================
+// F-test for nested models
+// ============================================================
+
+func TestFTestForNestedModels_R(t *testing.T) {
+	cases := []struct {
+		name                   string
+		rssReduced, rssFull    float64
+		dfReduced, dfFull      int
+		prefix                 string
+	}{
+		{"fnest_basic", 300, 200, 18, 16, "fnest_basic"},
+		{"fnest_2", 250, 200, 20, 18, "fnest_2"},
+		{"fnest_5", 800, 500, 30, 25, "fnest_5"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r, err := stats.FTestForNestedModels(c.rssReduced, c.rssFull, c.dfReduced, c.dfFull)
+			if err != nil {
+				t.Fatalf("error: %v", err)
+			}
+			expF := anovaRef.get(t, c.prefix+".F")
+			expP := anovaRef.get(t, c.prefix+".P")
+			expDF1 := anovaRef.get(t, c.prefix+".DF1")
+			expDF2 := anovaRef.get(t, c.prefix+".DF2")
+			if !aClose(r.Statistic, expF, tolF) {
+				t.Errorf("F: got %.17g, want %.17g", r.Statistic, expF)
+			}
+			if !aClose(r.PValue, expP, tolFP) {
+				t.Errorf("P: got %.17g, want %.17g (Δ=%g)", r.PValue, expP, math.Abs(r.PValue-expP))
+			}
+			if r.DF == nil || *r.DF != expDF1 {
+				t.Errorf("DF1: got %v, want %v", r.DF, expDF1)
+			}
+			if r.DF2 != expDF2 {
+				t.Errorf("DF2: got %v, want %v", r.DF2, expDF2)
+			}
+		})
+	}
+}
+
+func TestFTestForNestedModels_Errors(t *testing.T) {
+	if _, err := stats.FTestForNestedModels(300, 200, 16, 16); err == nil {
+		t.Error("expected error for dfReduced<=dfFull")
+	}
+	if _, err := stats.FTestForNestedModels(300, 200, 18, 0); err == nil {
+		t.Error("expected error for dfFull<=0")
+	}
+	if _, err := stats.FTestForNestedModels(100, 200, 18, 16); err == nil {
+		t.Error("expected error for rssReduced<rssFull")
+	}
+	if _, err := stats.FTestForNestedModels(300, 0, 18, 16); err == nil {
+		t.Error("expected error for rssFull<=0")
 	}
 }

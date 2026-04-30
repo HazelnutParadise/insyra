@@ -6,8 +6,47 @@ import (
 	"math"
 
 	"github.com/HazelnutParadise/insyra"
-	"github.com/HazelnutParadise/insyra/stats/internal/linalg"
+	"gonum.org/v1/gonum/mat"
 )
+
+// solveOLS computes β = (XᵀX)⁻¹ Xᵀy and returns β plus (XᵀX)⁻¹ as a [][]float64
+// (so the surrounding helpers — computeCoeffInference / buildMultiCoeffCIs —
+// can stay slice-shaped and unchanged).
+//
+// X has shape (n, k); y has length n. Returns (nil, nil) if XᵀX is singular.
+func solveOLS(X *mat.Dense, y []float64) (beta []float64, xtxInv [][]float64) {
+	_, k := X.Dims()
+	yVec := mat.NewVecDense(len(y), y)
+
+	var xtx mat.Dense
+	xtx.Mul(X.T(), X)
+
+	var xty mat.VecDense
+	xty.MulVec(X.T(), yVec)
+
+	var betaVec mat.VecDense
+	if err := betaVec.SolveVec(&xtx, &xty); err != nil {
+		return nil, nil
+	}
+
+	var xtxInvDense mat.Dense
+	if err := xtxInvDense.Inverse(&xtx); err != nil {
+		return nil, nil
+	}
+
+	beta = make([]float64, k)
+	for i := range k {
+		beta[i] = betaVec.AtVec(i)
+	}
+	xtxInv = make([][]float64, k)
+	for i := range k {
+		xtxInv[i] = make([]float64, k)
+		for j := range k {
+			xtxInv[i][j] = xtxInvDense.At(i, j)
+		}
+	}
+	return beta, xtxInv
+}
 
 // LinearRegressionResult holds the result of both simple and multiple linear regression.
 // For simple regression: Coefficients[0] = intercept, Coefficients[1] = slope.
@@ -118,30 +157,18 @@ func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) (*LinearRe
 		return nil, errors.New("need at least p+2 observations for p independent variables to compute statistics")
 	}
 
-	X := make([][]float64, n)
+	// Design matrix X (n × (p+1)) with leading intercept column.
+	X := mat.NewDense(n, p+1, nil)
 	for i := range n {
-		X[i] = make([]float64, p+1)
-		X[i][0] = 1.0
+		X.Set(i, 0, 1.0)
 		for j := range p {
-			X[i][j+1] = xSlices[j][i]
+			X.Set(i, j+1, xSlices[j][i])
 		}
 	}
 
-	XTX := make([][]float64, p+1)
-	XTy := make([]float64, p+1)
-	for i := 0; i <= p; i++ {
-		XTX[i] = make([]float64, p+1)
-		for j := 0; j <= p; j++ {
-			for k := range n {
-				XTX[i][j] += X[k][i] * X[k][j]
-			}
-		}
-		for k := range n {
-			XTy[i] += X[k][i] * ys[k]
-		}
-	}
-
-	coeffs := linalg.GaussianElimination(XTX, XTy)
+	// Solve β = (XᵀX)⁻¹ Xᵀy and obtain (XᵀX)⁻¹ via gonum's LU-based solver
+	// (replaces the previous hand-rolled Gauss-Jordan in stats/internal/linalg).
+	coeffs, XTXInv := solveOLS(X, ys)
 	if coeffs == nil {
 		return nil, errors.New("matrix is singular, cannot solve")
 	}
@@ -150,7 +177,7 @@ func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) (*LinearRe
 	residuals, rSquared, adjRSquared, sse, ok := computeGoodnessOfFit(ys, func(i int) float64 {
 		yHat := 0.0
 		for j := 0; j <= p; j++ {
-			yHat += coeffs[j] * X[i][j]
+			yHat += coeffs[j] * X.At(i, j)
 		}
 		return yHat
 	}, df)
@@ -158,7 +185,6 @@ func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) (*LinearRe
 		return nil, errors.New("variance of y is zero; R-squared undefined")
 	}
 
-	XTXInv := linalg.InvertMatrix(XTX)
 	mse := math.NaN()
 	if df > 0 {
 		mse = sse / df
@@ -392,32 +418,16 @@ func PolynomialRegression(dlY, dlX insyra.IDataList, degree int) (*PolynomialReg
 
 	n := len(xs)
 
-	X := make([][]float64, n)
-	for i := range X {
-		X[i] = make([]float64, degree+1)
-		X[i][0] = 1.0
+	// Design matrix [1, x, x², …, x^degree]
+	X := mat.NewDense(n, degree+1, nil)
+	for i := range n {
+		X.Set(i, 0, 1.0)
 		for j := 1; j <= degree; j++ {
-			X[i][j] = X[i][j-1] * xs[i]
+			X.Set(i, j, X.At(i, j-1)*xs[i])
 		}
 	}
 
-	XTX := make([][]float64, degree+1)
-	XTy := make([]float64, degree+1)
-	for i := range XTX {
-		XTX[i] = make([]float64, degree+1)
-		for j := range XTX[i] {
-			for k := 0; k < n; k++ {
-				XTX[i][j] += X[k][i] * X[k][j]
-			}
-		}
-	}
-	for i := 0; i <= degree; i++ {
-		for j := range n {
-			XTy[i] += X[j][i] * ys[j]
-		}
-	}
-
-	coeffs := linalg.GaussianElimination(XTX, XTy)
+	coeffs, XTXInv := solveOLS(X, ys)
 	if coeffs == nil {
 		return nil, errors.New("matrix is singular, cannot solve")
 	}
@@ -426,7 +436,7 @@ func PolynomialRegression(dlY, dlX insyra.IDataList, degree int) (*PolynomialReg
 	residuals, r2, adjR2, sse, fitOK := computeGoodnessOfFit(ys, func(i int) float64 {
 		yHat := 0.0
 		for j := 0; j <= degree; j++ {
-			yHat += coeffs[j] * X[i][j]
+			yHat += coeffs[j] * X.At(i, j)
 		}
 		return yHat
 	}, df)
@@ -434,7 +444,6 @@ func PolynomialRegression(dlY, dlX insyra.IDataList, degree int) (*PolynomialReg
 		return nil, errors.New("variance of y is zero; R-squared undefined")
 	}
 
-	XTXInv := linalg.InvertMatrix(XTX)
 	mse := math.NaN()
 	if df > 0 {
 		mse = sse / df
