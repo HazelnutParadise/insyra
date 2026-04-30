@@ -526,11 +526,20 @@ func orderedClasses(labels []string) ([]string, map[string]int) {
 
 func classifyProbabilities(neighbors []neighbor, labels []string, classIndex map[string]int, nClasses int, weighting Weighting) []float64 {
 	weights := make([]float64, nClasses)
+	// Distance weighting must collapse to zero-distance neighbors only,
+	// because 1/dist diverges as dist → 0. Uniform weighting has no such
+	// pathology and must use ALL k neighbors equally — previously this
+	// branch ignored the weighting argument and incorrectly dropped the
+	// non-matching neighbors for uniform mode too, which made KNNClassify
+	// disagree with KNearestNeighbors whenever a test point coincided
+	// with a training point.
 	hasZeroDistance := false
-	for _, nb := range neighbors {
-		if almostEqual(nb.dist2, 0) {
-			hasZeroDistance = true
-			break
+	if weighting == DistanceWeighting {
+		for _, nb := range neighbors {
+			if almostEqual(nb.dist2, 0) {
+				hasZeroDistance = true
+				break
+			}
 		}
 	}
 	for _, nb := range neighbors {
@@ -570,11 +579,15 @@ func classMeanDistance(neighbors []neighbor, labels []string, classIndex map[str
 }
 
 func regressPrediction(neighbors []neighbor, targets []float64, weighting Weighting) float64 {
+	// See classifyProbabilities for the rationale: zero-distance collapse is
+	// only required for distance weighting (where weights diverge as 1/dist).
 	hasZeroDistance := false
-	for _, nb := range neighbors {
-		if almostEqual(nb.dist2, 0) {
-			hasZeroDistance = true
-			break
+	if weighting == DistanceWeighting {
+		for _, nb := range neighbors {
+			if almostEqual(nb.dist2, 0) {
+				hasZeroDistance = true
+				break
+			}
 		}
 	}
 	sumWeight := 0.0

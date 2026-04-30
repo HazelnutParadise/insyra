@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"gonum.org/v1/gonum/floats"
 )
 
 type KMeansOptions struct {
@@ -925,8 +927,14 @@ func union(parent []int, a, b int) {
 	}
 }
 
+// euclidean delegates to gonum/floats.Distance which uses the same
+// loop-and-sqrt formulation but is the package-standard primitive.
+// The boundedSquaredEuclidean and squaredEuclidean helpers below stay
+// hand-rolled — gonum has no direct equivalent for "early-exit if the
+// running sum exceeds a bound" or for plain squared-Euclidean without
+// a sqrt at the end.
 func euclidean(a, b []float64) float64 {
-	return math.Sqrt(squaredEuclidean(a, b))
+	return floats.Distance(a, b, 2)
 }
 
 func boundedSquaredEuclidean(a, b []float64, bound float64) float64 {

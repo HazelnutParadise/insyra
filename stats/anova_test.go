@@ -43,14 +43,18 @@ func aClose(a, b, tol float64) bool {
 
 // loadLabelledFile is a stand-alone parser for ANOVA-shape testdata files
 // — distinct from the labelledFloats helper above (which only supports CSV
-// numeric arrays). This one parses `key = value` per line for scalar refs.
+// numeric arrays). This one parses `key = value` per line for scalar refs;
+// values that don't parse as float64 (and aren't Inf/-Inf/NaN sentinels) are
+// stored as strings instead — call getString to retrieve those. Quoted
+// strings ("foo") have their surrounding quotes stripped.
 type refTable struct {
 	once sync.Once
 	data map[string]float64
+	strs map[string]string
 	path string
 }
 
-func (r *refTable) get(t *testing.T, key string) float64 {
+func (r *refTable) load(t *testing.T) {
 	t.Helper()
 	r.once.Do(func() {
 		raw, err := os.ReadFile(r.path)
@@ -58,6 +62,7 @@ func (r *refTable) get(t *testing.T, key string) float64 {
 			t.Fatalf("read %s: %v", r.path, err)
 		}
 		r.data = map[string]float64{}
+		r.strs = map[string]string{}
 		for _, line := range strings.Split(string(raw), "\n") {
 			line = strings.TrimSpace(line)
 			if line == "" {
@@ -70,24 +75,45 @@ func (r *refTable) get(t *testing.T, key string) float64 {
 			k := strings.TrimSpace(line[:eq])
 			v := strings.TrimSpace(line[eq+1:])
 			f, err := strconv.ParseFloat(v, 64)
-			if err != nil {
-				switch v {
-				case "Inf":
-					f = math.Inf(1)
-				case "-Inf":
-					f = math.Inf(-1)
-				case "NaN":
-					f = math.NaN()
-				default:
-					t.Fatalf("parse %s=%q: %v", k, v, err)
-				}
+			if err == nil {
+				r.data[k] = f
+				continue
 			}
-			r.data[k] = f
+			switch v {
+			case "Inf":
+				r.data[k] = math.Inf(1)
+			case "-Inf":
+				r.data[k] = math.Inf(-1)
+			case "NaN":
+				r.data[k] = math.NaN()
+			default:
+				// Store as string. Strip surrounding double quotes if any
+				// (the R script wraps string values in quotes for clarity).
+				if len(v) >= 2 && v[0] == '"' && v[len(v)-1] == '"' {
+					v = v[1 : len(v)-1]
+				}
+				r.strs[k] = v
+			}
 		}
 	})
+}
+
+func (r *refTable) get(t *testing.T, key string) float64 {
+	t.Helper()
+	r.load(t)
 	v, ok := r.data[key]
 	if !ok {
-		t.Fatalf("ref key %q not found in %s", key, r.path)
+		t.Fatalf("ref key %q not found (or not numeric) in %s", key, r.path)
+	}
+	return v
+}
+
+func (r *refTable) getString(t *testing.T, key string) string {
+	t.Helper()
+	r.load(t)
+	v, ok := r.strs[key]
+	if !ok {
+		t.Fatalf("ref string key %q not found in %s", key, r.path)
 	}
 	return v
 }
