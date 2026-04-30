@@ -59,7 +59,7 @@ ztest_two <- function(prefix, x, y, sigma1, sigma2, alt, cl) {
     two.sided = c(diff - margin_two, diff + margin_two),
     greater   = c(diff - margin_one, Inf),
     less      = c(-Inf, diff + margin_one))
-  pooled_sigma <- sqrt((n1 * sigma1^2 + n2 * sigma2^2) / (n1 + n2))
+  pooled_sigma <- sqrt((sigma1^2 + sigma2^2) / 2)   # Cohen's d_av (matches R effectsize)
   d <- abs(diff) / pooled_sigma
   emit(paste0(prefix, ".z"),    z)
   emit(paste0(prefix, ".p"),    p)

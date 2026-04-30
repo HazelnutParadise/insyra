@@ -121,7 +121,13 @@ func TwoSampleZTest(data1, data2 insyra.IDataList, sigma1, sigma2 float64, alter
 		marginOfError = zMarginOfErrorOneSided(confidenceLevel, standardError)
 	}
 
-	pooledSigma := math.Sqrt((n1Float*sigma1Sq + n2Float*sigma2Sq) / (n1Float + n2Float))
+	// Cohen's d_av for two-sample z-test with known population sigmas:
+	// the standard textbook formula (matches R's effectsize package). The
+	// previous version weighted by sample size — n1·σ1² + n2·σ2² /(n1+n2) —
+	// which has no published authority. Sample size is used to estimate the
+	// mean, not to revise our knowledge of the (already known) population
+	// dispersion.
+	pooledSigma := math.Sqrt((sigma1Sq + sigma2Sq) / 2)
 	effectSize := math.Abs(meanDiff) / pooledSigma
 	effectSizes := cohenDEffectSizes(effectSize)
 	ci := ciByAlternative(meanDiff, marginOfError, alternative)

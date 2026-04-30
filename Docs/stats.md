@@ -1512,17 +1512,17 @@ compare against textbooks or other packages (SPSS, scipy, Pingouin).
 
 R's `t.test` / `BSDA::z.test` don't return effect size at all. insyra
 populates `EffectSizes[0]` ("`cohen_d`") for every t-test and z-test
-variant using the formulas below — chosen to match the textbook
-convention for each design.
+variant. Each formula has been validated against R's `effectsize`
+package — they all agree exactly.
 
-| Test variant | insyra formula | Note |
+| Test variant | insyra formula | Cross-check |
 |---|---|---|
-| `SingleSampleTTest` | `(mean − μ) / sd` | Standard one-sample d, sign preserved. |
-| `TwoSampleTTest` (equal var) | `(m1 − m2) / sqrt(pooledVar)`, `pooledVar = ((n1−1)v1 + (n2−1)v2) / (n1+n2−2)` | Classical Cohen's d using sample-pooled SD. |
-| `TwoSampleTTest` (Welch) | `(m1 − m2) / sqrt((v1 + v2) / 2)` | Cohen's d_av — average-variance variant; pooled SD assumes equal variance. |
-| `PairedTTest` | `meanDiff / sd(diff)` | Cohen's d_z, sign preserved. |
-| `SingleSampleZTest` | `\|mean − μ\| / σ` | Uses known population σ. Sign carried by the z-statistic. |
-| `TwoSampleZTest` | `\|m1 − m2\| / sqrt((n1·σ1² + n2·σ2²) / (n1+n2))` | Sample-size-weighted pooled population σ. Differs from the textbook `sqrt((σ1² + σ2²) / 2)` by weighting each population variance by its observed sample size. |
+| `SingleSampleTTest` | `(mean − μ) / sd` | matches `effectsize::cohens_d(x, mu)` |
+| `TwoSampleTTest` (equal var) | `(m1 − m2) / sqrt(pooledVar)`, `pooledVar = ((n1−1)v1 + (n2−1)v2) / (n1+n2−2)` | matches `effectsize::cohens_d(pooled_sd=TRUE)` and `effsize::cohen.d(pooled=TRUE)` |
+| `TwoSampleTTest` (Welch) | `(m1 − m2) / sqrt((v1 + v2) / 2)` (Cohen's d_av) | matches `effectsize::cohens_d(pooled_sd=FALSE)` |
+| `PairedTTest` | `meanDiff / sd(diff)` (Cohen's d_z) | matches `effectsize::cohens_d(paired=TRUE)` |
+| `SingleSampleZTest` | `\|mean − μ\| / σ` | textbook formula for known σ |
+| `TwoSampleZTest` | `\|m1 − m2\| / sqrt((σ1² + σ2²) / 2)` (Cohen's d_av for known σ) | textbook |
 
 ### ANOVA partial η²
 

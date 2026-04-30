@@ -1264,7 +1264,7 @@ def main():
         q = st.norm.ppf(1 - (1 - cl) / 2) if alt == "two-sided" else st.norm.ppf(cl)
         margin = q * se
         ci = ci_by_alt(diff, margin, alt)
-        pooled_sigma = math.sqrt((n1 * s1 * s1 + n2 * s2 * s2) / (n1 + n2))
+        pooled_sigma = math.sqrt((s1 * s1 + s2 * s2) / 2)   # Cohen's d_av
         out = {"stat": z, "p": p, "ci": ci, "mean1": m1, "mean2": m2, "effect": abs(diff) / pooled_sigma}
     elif method == "chi_gof":
         vals = [str(v).strip() for v in payload["values"]]

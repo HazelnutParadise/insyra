@@ -758,7 +758,7 @@ if (method == "single_t") {
   q <- if (alt == "two-sided") qnorm(1 - (1 - cl) / 2) else qnorm(cl)
   margin <- q * se
   ci <- ci_by_alt(diff, margin, alt)
-  pooled_sigma <- sqrt((n1 * s1^2 + n2 * s2^2) / (n1 + n2))
+  pooled_sigma <- sqrt((s1^2 + s2^2) / 2)   # Cohen's d_av
   out <- list(stat = z, p = p, ci = ci, mean1 = m1, mean2 = m2, effect = abs(diff) / pooled_sigma)
 } else if (method == "chi_gof") {
   vals <- trimws(as.character(unlist(payload$values)))
