@@ -475,11 +475,14 @@ func generatePermutations(arr []float64) [][]float64 {
 func spearmanCorrelationWithStats(dlX, dlY insyra.IDataList) (CorrelationResult, error) {
 	result := CorrelationResult{}
 	var rankX, rankY insyra.IDataList
+	var rawX, rawY []float64
 	var n float64
 	dlX.AtomicDo(func(dlx *insyra.DataList) {
 		dlY.AtomicDo(func(dly *insyra.DataList) {
 			rankX = dlx.Rank()
 			rankY = dly.Rank()
+			rawX = dlx.ToF64Slice()
+			rawY = dly.ToF64Slice()
 			n = float64(dlx.Len())
 		})
 	})
@@ -494,9 +497,183 @@ func spearmanCorrelationWithStats(dlX, dlY insyra.IDataList) (CorrelationResult,
 		return result, nil
 	}
 
-	populateCorrelationInference(&result, rho, n)
+	df := n - 2
+	result.DF = &df
+	if df <= 0 {
+		result.PValue = math.NaN()
+		result.CI = nanCIPtr()
+		return result, nil
+	}
 
+	// p-value: matches R cor.test(method="spearman"). For data without ties
+	// and n ≤ 1290 (no integer overflow), R uses prho() — exact enumeration
+	// for n ≤ 9, AS-89 Edgeworth-series approximation for n ≥ 10. With ties
+	// or very large n, R falls back to Fisher r-to-t (which is also what
+	// insyra used universally before).
+	if hasTiesFloats(rawX) || hasTiesFloats(rawY) || n > 1290 {
+		tStat := correlationToT(rho, n)
+		result.PValue = tTwoTailedPValue(tStat, df)
+	} else {
+		result.PValue = spearmanPValueAS89(rho, int(n))
+	}
+	// CI uses Fisher z-transform (same as Pearson — R does not return one for
+	// Spearman by default; we keep our existing Fisher CI behaviour).
+	result.CI = pearsonFisherCI(rho, n, defaultConfidenceLevel)
 	return result, nil
+}
+
+// hasTiesFloats reports whether any value in v repeats. O(n log n).
+func hasTiesFloats(v []float64) bool {
+	sorted := append([]float64(nil), v...)
+	sort.Float64s(sorted)
+	for i := 1; i < len(sorted); i++ {
+		if sorted[i] == sorted[i-1] {
+			return true
+		}
+	}
+	return false
+}
+
+// spearmanPValueAS89 returns the two-sided p-value for Spearman's rho via R's
+// pspearman/prho path. Mirrors the wrapper in stats:::cor.test:
+//
+//	q       = (n^3 - n) * (1 - rho) / 6      (Hotelling-Pabst S statistic)
+//	if q > (n^3 - n)/6   →   p = pSpearmanRho(round(q),     n, lower=false)
+//	else                 →   p = pSpearmanRho(round(q)+2, n, lower=true)
+//	return min(2p, 1)
+//
+// The +2 in the lower-tail branch accounts for S taking only even integer
+// values under the no-ties null distribution (so Pr[S ≤ q] = Pr[S < q+2]).
+func spearmanPValueAS89(rho float64, n int) float64 {
+	q := float64(n*n*n-n) * (1 - rho) / 6.0
+	mu := float64(n*n*n-n) / 6.0
+	var p float64
+	if q > mu {
+		p = pSpearmanRho(math.Round(q), n, false)
+	} else {
+		p = pSpearmanRho(math.Round(q)+2, n, true)
+	}
+	if 2*p > 1 {
+		return 1
+	}
+	return 2 * p
+}
+
+// pSpearmanRho is a faithful Go port of R's prho() (src/library/stats/src/
+// prho.c, AS-89 by Best & Roberts, Appl. Statist. 1975 24:377). Returns
+// Pr[S ≥ s] when lowerTail is false, Pr[S < s] when lowerTail is true,
+// under the H₀ rank-permutation distribution (no ties, n ≥ 2).
+//
+// Two regimes:
+//   - n ≤ 9: exact enumeration of all n! rank permutations (matches R
+//     character-for-character; the rotation-based permutation generator and
+//     the (i+1 - l[i]) running squared-difference accumulation are direct
+//     translations of the original Fortran).
+//   - n ≥ 10: Edgeworth-series approximation with the twelve AS-89
+//     coefficients c1..c12.
+func pSpearmanRho(s float64, n int, lowerTail bool) float64 {
+	pv := 0.0
+	if !lowerTail {
+		pv = 1.0
+	}
+	if n <= 1 {
+		return math.NaN()
+	}
+	if s <= 0 {
+		return pv
+	}
+	nF := float64(n)
+	n3 := nF * (nF*nF - 1) / 3.0 // = (n³ − n)/3
+	if s > n3 {
+		return 1 - pv
+	}
+
+	const nSmall = 9
+	if n <= nSmall {
+		nfac := 1
+		for i := 1; i <= n; i++ {
+			nfac *= i
+		}
+		l := make([]int, n)
+		for i := range l {
+			l[i] = i + 1
+		}
+
+		ifr := 0
+		if s == n3 {
+			ifr = 1
+		} else {
+			sInt := int(s)
+			for m := 0; m < nfac; m++ {
+				ise := 0
+				for i := 0; i < n; i++ {
+					d := i + 1 - l[i]
+					ise += d * d
+				}
+				if sInt <= ise {
+					ifr++
+				}
+				// Rotation-based permutation enumeration (matches R's
+				// algorithm AS 89). The carry-style termination mirrors the
+				// original Fortran do-while.
+				n1 := n
+				for {
+					mt := l[0]
+					for i := 1; i < n1; i++ {
+						l[i-1] = l[i]
+					}
+					n1--
+					l[n1] = mt
+					if mt != n1+1 || n1 <= 1 {
+						break
+					}
+				}
+			}
+		}
+		if lowerTail {
+			return float64(nfac-ifr) / float64(nfac)
+		}
+		return float64(ifr) / float64(nfac)
+	}
+
+	// AS-89 Edgeworth coefficients
+	const (
+		c1  = 0.2274
+		c2  = 0.2531
+		c3  = 0.1745
+		c4  = 0.0758
+		c5  = 0.1033
+		c6  = 0.3932
+		c7  = 0.0879
+		c8  = 0.0151
+		c9  = 0.0072
+		c10 = 0.0831
+		c11 = 0.0131
+		c12 = 4.6e-4
+	)
+	y := nF
+	b := 1 / y
+	x := (6.0*(s-1)*b/(y*y-1) - 1) * math.Sqrt(y-1)
+	yy := x * x
+	u := x * b * (c1 + b*(c2+c3*b) +
+		yy*(-c4+b*(c5+c6*b)-
+			yy*b*(c7+c8*b-yy*(c9-c10*b+yy*b*(c11-c12*yy)))))
+	corr := u / math.Exp(yy/2.0)
+	var pn float64
+	if lowerTail {
+		pn = norm.CDF(x)
+		pv = -corr + pn
+	} else {
+		pn = 1 - norm.CDF(x)
+		pv = corr + pn
+	}
+	if pv < 0 {
+		pv = 0
+	}
+	if pv > 1 {
+		pv = 1
+	}
+	return pv
 }
 
 func populateCorrelationInference(result *CorrelationResult, corr, n float64) {

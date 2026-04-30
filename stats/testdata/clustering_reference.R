@@ -80,12 +80,12 @@ emit_silhouette <- function(prefix, mat, labels) {
 }
 
 # ---- KNN classify ----
-# Class column order is first-appearance (matches insyra's orderedClasses, not
-# alphabetical sort). Tie-breaking for the prediction is insyra-specific (it
-# picks the class with smaller mean distance among the k nearest); we emit
-# probabilities only and compare predictions only on cases without ties.
+# Class column order is alphabetical (insyra now matches R/sklearn convention
+# via sort.Strings in orderedClasses; previously it was first-appearance).
+# Tie-breaking for the prediction is also alphabetical-first (matches R's
+# which.max).
 emit_knn_classify <- function(prefix, train, test, train_labels, k) {
-  classes <- unique(train_labels)   # preserves first-appearance order
+  classes <- sort(unique(train_labels))
   for (q in seq_len(nrow(test))) {
     dists <- apply(train, 1, function(r) sqrt(sum((r - test[q, ])^2)))
     o <- order(dists)[seq_len(k)]

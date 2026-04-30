@@ -1519,16 +1519,19 @@ has multiple competing definitions.
 
 ### Spearman rank correlation p-value
 
-`Correlation(..., SpearmanCorrelation)` computes `p` from the
-**Fisher r-to-t** approximation:
+`Correlation(..., SpearmanCorrelation)` is a faithful port of R's
+`cor.test(method="spearman")` p-value path:
 
-```text
-t = ρ · sqrt(n − 2) / sqrt(1 − ρ²)
-p = 2 · (1 − pt(|t|, n − 2))
-```
+| n         | Algorithm                                          |
+|-----------|----------------------------------------------------|
+| 2 ≤ n ≤ 9 | Exact enumeration of all n! rank permutations       |
+| 10 ≤ n ≤ 1290 | AS-89 Edgeworth-series approximation (Best & Roberts 1975) |
+| n > 1290 or with ties | Fisher r-to-t (`t = ρ · √(n−2) / √(1−ρ²)`) |
 
-R's `cor.test(method="spearman")` uses the AS-89 algorithm by default for
-small n. The two converge as n grows. SPSS uses the t-approximation.
+The exact and AS-89 paths follow R's `prho.c` byte-for-byte. SciPy's
+`spearmanr` uses Fisher r-to-t universally and so disagrees with both
+R and insyra for small n without ties (its p-value is much smaller
+than the discrete exact distribution allows).
 
 ### Kendall rank correlation
 

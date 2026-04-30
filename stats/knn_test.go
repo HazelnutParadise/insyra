@@ -250,9 +250,8 @@ func TestKNNClassify_R(t *testing.T) {
 		if err != nil {
 			t.Fatalf("error: %v", err)
 		}
-		// Class column order is first-appearance from training labels:
-		// labels = [red, red, red, blue, blue, blue] → classes = [red, blue].
-		assertKNNClassify(t, got, "knn_basic_k3", 3, []string{"red", "blue"})
+		// Class column order is alphabetical (insyra matches R/sklearn).
+		assertKNNClassify(t, got, "knn_basic_k3", 3, []string{"blue", "red"})
 	})
 
 	t.Run("3class_k5_n_train_20", func(t *testing.T) {

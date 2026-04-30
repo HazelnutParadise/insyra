@@ -527,30 +527,18 @@ knn_class_probs <- function(indices, distances, labels, classes, weighting) {
 
 knn_classify_stats <- function(train_rows, test_rows, labels, k, weighting) {
   labels <- as.character(unlist(labels))
-  classes <- unique(labels)
+  classes <- sort(unique(labels))   # alphabetical, matches insyra's orderedClasses
   nn <- knn_neighbors_stats(train_rows, test_rows, k)
   probs <- vector("list", length(nn$indices))
   preds <- character(length(nn$indices))
   for (i in seq_along(nn$indices)) {
     p <- knn_class_probs(nn$indices[[i]], nn$distances[[i]], labels, classes, weighting)
     probs[[i]] <- as.double(p)
+    # Tie-break = alphabetical first, matching R's which.max convention.
     best <- 1
-    best_mean <- mean(nn$distances[[i]][labels[nn$indices[[i]]] == classes[[1]]])
-    if (is.nan(best_mean)) best_mean <- Inf
     for (j in 2:length(classes)) {
       if (p[j] > p[best] && abs(p[j] - p[best]) > 1e-12) {
         best <- j
-        cand <- mean(nn$distances[[i]][labels[nn$indices[[i]]] == classes[[j]]])
-        best_mean <- if (is.nan(cand)) Inf else cand
-        next
-      }
-      if (abs(p[j] - p[best]) <= 1e-12) {
-        cand <- mean(nn$distances[[i]][labels[nn$indices[[i]]] == classes[[j]]])
-        if (is.nan(cand)) cand <- Inf
-        if (cand < best_mean && abs(cand - best_mean) > 1e-12) {
-          best <- j
-          best_mean <- cand
-        }
       }
     }
     preds[[i]] <- classes[[best]]
@@ -603,14 +591,10 @@ corr_pair_stat_p <- function(x, y, method) {
     return(list(stat = r, p = inf$p))
   }
   if (method == "spearman") {
-    rx <- rank(x, ties.method = "average")
-    ry <- rank(y, ties.method = "average")
-    r <- cor(rx, ry, method = "pearson")
-    if (abs(r) >= 0.9999) {
-      return(list(stat = r, p = 0))
-    }
-    inf <- correlation_inference(r, n)
-    return(list(stat = r, p = inf$p))
+    # Match insyra (and R's cor.test): use prho-based exact/AS-89 path when
+    # there are no ties; fall back to Fisher r-to-t with ties.
+    res <- suppressWarnings(cor.test(x, y, method = "spearman"))
+    return(list(stat = unname(res$estimate), p = res$p.value))
   }
   tau <- cor(x, y, method = "kendall")
   if (n <= 7) {
@@ -906,15 +890,13 @@ if (method == "single_t") {
       out <- list(stat = r, p = inf$p, df = inf$df, ci = inf$ci)
     }
   } else if (m == "spearman") {
-    rx <- rank(x, ties.method = "average")
-    ry <- rank(y, ties.method = "average")
-    r <- cor(rx, ry, method = "pearson")
-    if (abs(r) >= 0.9999) {
-      out <- list(stat = r, p = 0)
-    } else {
-      inf <- correlation_inference(r, n)
-      out <- list(stat = r, p = inf$p, df = inf$df, ci = inf$ci)
-    }
+    # Match insyra's prho-based path (R cor.test default).
+    res <- suppressWarnings(cor.test(x, y, method = "spearman"))
+    rho <- unname(res$estimate)
+    p   <- res$p.value
+    # CI is Fisher-z (insyra convention; R doesn't return one).
+    inf <- correlation_inference(rho, n)
+    out <- list(stat = rho, p = p, df = as.double(n - 2), ci = inf$ci)
   } else {
     cp <- corr_pair_stat_p(x, y, "kendall")
     out <- list(stat = cp$stat, p = cp$p)

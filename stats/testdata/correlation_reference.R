@@ -5,10 +5,10 @@
 ##   Pearson p, df    -> cor.test(x, y, method="pearson") -> Student t (n-2 df)
 ##   Pearson Fisher CI-> direct formula matching insyra's pearsonFisherCI
 ##   Spearman rho     -> cor(x, y, method="spearman")  (computed as Pearson on ranks)
-##   Spearman p, df   -> insyra reuses the Pearson t-formula on rho with df=n-2.
-##                       R's cor.test default uses an asymptotic AS-89 algorithm
-##                       which gives a slightly different p-value; we mirror
-##                       insyra's t-based p instead.
+##   Spearman p, df   -> cor.test(x, y, method="spearman")$p.value
+##                       (insyra now ports R's prho — exact for n ≤ 9,
+##                       AS-89 Edgeworth for n ≥ 10; falls back to Fisher
+##                       r-to-t for ties.)
 ##   Kendall tau      -> cor(x, y, method="kendall")  (Kendall's tau-b)
 ##   Kendall p        -> insyra-specific:
 ##                         n <= 7  : exact two-sided permutation p (using tau-b)
@@ -122,8 +122,7 @@ emit_spearman <- function(prefix, x, y) {
   rho <- cor(x, y, method = "spearman")
   n   <- length(x)
   df  <- n - 2
-  t   <- rho * sqrt(n - 2) / sqrt(1 - rho * rho)
-  p   <- 2 * (1 - pt(abs(t), df))
+  p   <- suppressWarnings(cor.test(x, y, method = "spearman"))$p.value
   ci  <- fisher_ci(rho, n, 0.95)
   emit(paste0(prefix, ".rho"),  rho)
   emit(paste0(prefix, ".p"),    p)
