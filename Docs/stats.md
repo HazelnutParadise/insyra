@@ -1475,67 +1475,111 @@ Call sites should always check `err` and handle it explicitly.
 
 ---
 
-## Conventions That Differ From R / SciPy
+## Behavior Differences From R
 
-This section documents intentional formula and convention choices in the
-`stats` package that produce results different from `R`'s `cor.test` /
-`t.test` / `aov` defaults or from `scipy.stats`. They are deliberate (each
-one is a valid statistical convention published in a textbook or used by
-mainstream software) — not bugs. If your reference is one of these tools,
-expect a numerical difference even when the input is identical.
+The numerical output of insyra's `stats` package agrees with R's standard
+functions (`t.test`, `cor.test`, `aov`, `prcomp`, `kmeans`, `dbscan`,
+`lm`, `chisq.test`, `var.test`, `bartlett.test`, median-centered
+`car::leveneTest`) to within ~1e-12 on every well-defined numerical
+field, with the single semantic exception below. Discrete outputs (DF,
+cluster IDs, hclust merge structure) match exactly.
 
-### Cohen's d (effect size)
+### Behavior on degenerate / constant inputs
 
-| Test variant | insyra formula | Notes |
+R's `t.test`, `cor.test`, and similar functions abort with an error
+when the input is essentially constant (zero variance, singleton
+cluster, etc.). insyra returns **sentinel values** instead so callers
+can handle the case without recovering from a panic:
+
+| Function | Degenerate input | insyra returns | R behavior |
+|---|---|---|---|
+| `SingleSampleTTest` | constant data, `mean == μ` | `t = NaN, p = NaN, d = 0, CI = [μ, μ]` | error |
+| `SingleSampleTTest` | constant data, `mean ≠ μ` | `t = ±Inf, p = 0, d = ±Inf, CI = [mean, mean]` | error |
+| `Correlation` (any method) | one variable has zero variance | error (`"cannot calculate correlation due to zero variance"`) | `NA` with warning |
+| `Silhouette` | only one cluster | error | not defined |
+
+If you are migrating a script from R: wrap insyra calls' results in a
+`!math.IsNaN(t)` guard rather than expecting a panic.
+
+## Inference Extensions Beyond R
+
+Several insyra return values have no direct R counterpart — R's standard
+functions don't return them, so there is no R reference to "agree" or
+"disagree" with. We document insyra's formula choices here so you can
+compare against textbooks or other packages (SPSS, scipy, Pingouin).
+
+### Cohen's d (effect size on t-tests / z-tests)
+
+R's `t.test` / `BSDA::z.test` don't return effect size at all. insyra
+populates `EffectSizes[0]` ("`cohen_d`") for every t-test and z-test
+variant using the formulas below — chosen to match the textbook
+convention for each design.
+
+| Test variant | insyra formula | Note |
 |---|---|---|
-| `SingleSampleTTest` | `(mean − μ) / sd` | Standard one-sample d. Sign preserved. |
-| `TwoSampleTTest` (equal var) | `(m1 − m2) / sqrt(pooledVar)` | Classical Cohen's d using `pooledVar = ((n1−1)v1 + (n2−1)v2) / (n1+n2−2)`. |
-| `TwoSampleTTest` (Welch / unequal var) | `(m1 − m2) / sqrt((v1 + v2) / 2)` | Cohen's d_av (average-variance variant). Used because pooled variance assumes equal variances. Some packages report Glass's Δ instead. |
+| `SingleSampleTTest` | `(mean − μ) / sd` | Standard one-sample d, sign preserved. |
+| `TwoSampleTTest` (equal var) | `(m1 − m2) / sqrt(pooledVar)`, `pooledVar = ((n1−1)v1 + (n2−1)v2) / (n1+n2−2)` | Classical Cohen's d using sample-pooled SD. |
+| `TwoSampleTTest` (Welch) | `(m1 − m2) / sqrt((v1 + v2) / 2)` | Cohen's d_av — average-variance variant; pooled SD assumes equal variance. |
 | `PairedTTest` | `meanDiff / sd(diff)` | Cohen's d_z, sign preserved. |
-| `SingleSampleZTest` | `\|mean − μ\| / σ` | Uses known population σ. Magnitude only — direction is conveyed by the z-statistic. |
-| `TwoSampleZTest` | `\|m1 − m2\| / sqrt((n1·σ1² + n2·σ2²) / (n1+n2))` | Sample-size-weighted pooled population sigma. Differs from the textbook `sqrt((σ1² + σ2²) / 2)`; insyra weighs each population sigma by its observed sample size. |
+| `SingleSampleZTest` | `\|mean − μ\| / σ` | Uses known population σ. Sign carried by the z-statistic. |
+| `TwoSampleZTest` | `\|m1 − m2\| / sqrt((n1·σ1² + n2·σ2²) / (n1+n2))` | Sample-size-weighted pooled population σ. Differs from the textbook `sqrt((σ1² + σ2²) / 2)` by weighting each population variance by its observed sample size. |
 
-Edge cases for the t-tests:
+### ANOVA partial η²
 
-- Constant data with `mean == μ` returns `t = NaN`, `p = NaN`, `d = 0`,
-  `CI = [μ, μ]`. R's `t.test()` errors out; insyra returns sentinel values.
-- Constant data with `mean ≠ μ` returns `t = ±Inf`, `p = 0`, `d = ±Inf`,
-  `CI = [mean, mean]` with the sign matching `mean − μ`.
-
-### ANOVA effect size
-
-`OneWayANOVA` / `TwoWayANOVA` report **partial η²** for each factor:
+`OneWayANOVA` / `TwoWayANOVA` populate `EtaSquared` per factor as
 
 ```text
 η²_partial = SS_effect / (SS_effect + SS_within)
 ```
 
-For one-way ANOVA this equals classical η² (`SS_effect / SS_total`); for
-two-way ANOVA they differ. SPSS reports partial η² by default; R's
-`aov()` does not give η² directly. `RepeatedMeasuresANOVA` is the one
-exception — its `Factor.EtaSquared` is **classical** η²
-(`SS_factor / SS_total`), since partial η² for within-subjects designs
-has multiple competing definitions.
+R's `aov()` does not give η² directly; SPSS reports partial η² by
+default. For one-way ANOVA partial η² equals classical η² (`SS_effect /
+SS_total`); for two-way ANOVA they differ.
 
-### Spearman rank correlation p-value
+`RepeatedMeasuresANOVA` is the one exception — its `Factor.EtaSquared`
+is **classical** η² (`SS_factor / SS_total`), since partial η² for
+within-subjects designs has multiple competing definitions.
 
-`Correlation(..., SpearmanCorrelation)` is a faithful port of R's
+### Spearman correlation confidence interval
+
+R's `cor.test(method="spearman")` does not return a CI by default.
+insyra applies the same **Fisher z-transform** CI used for Pearson:
+
+```text
+z = atanh(r),  se = 1 / sqrt(n − 3)
+[lower, upper] = tanh([z − z_crit·se, z + z_crit·se])
+```
+
+with boundary cases `r ≥ 1 → [1, 1]`, `r ≤ −1 → [−1, −1]`, and
+`n ≤ 3 → [NaN, NaN]`. For Pearson this is exactly what R's `cor.test`
+returns; for Spearman it's an insyra-only addition (the asymptotic
+distribution of Fisher-z(ρ) is normal under H₀ and approximately so
+under any null, so the same CI formula is defensible).
+
+## Algorithm Notes
+
+These sections describe non-obvious implementation choices that match
+R but may surprise readers expecting other packages' defaults.
+
+### Spearman p-value (matches R `cor.test`)
+
+`Correlation(..., SpearmanCorrelation)` is a port of R's
 `cor.test(method="spearman")` p-value path:
 
-| n         | Algorithm                                          |
-|-----------|----------------------------------------------------|
-| 2 ≤ n ≤ 9 | Exact enumeration of all n! rank permutations       |
+| n | Algorithm |
+|---|---|
+| 2 ≤ n ≤ 9 | Exact enumeration of all n! rank permutations |
 | 10 ≤ n ≤ 1290 | AS-89 Edgeworth-series approximation (Best & Roberts 1975) |
-| n > 1290 or with ties | Fisher r-to-t (`t = ρ · √(n−2) / √(1−ρ²)`) |
+| n > 1290, or any n with ties | Fisher r-to-t — `t = ρ · √(n−2) / √(1−ρ²)` |
 
 The exact and AS-89 paths follow R's `prho.c` byte-for-byte. SciPy's
-`spearmanr` uses Fisher r-to-t universally and so disagrees with both
-R and insyra for small n without ties (its p-value is much smaller
-than the discrete exact distribution allows).
+`stats.spearmanr` uses Fisher r-to-t universally and disagrees with R
+(and insyra) for small n without ties — its p-value is much smaller
+than the discrete exact distribution allows.
 
-### Kendall rank correlation
+### Kendall correlation (matches R `cor.test`)
 
-`Correlation(..., KendallCorrelation)` returns **Kendall's τ-b** with
+`Correlation(..., KendallCorrelation)` returns Kendall's τ-b with
 tie correction:
 
 ```text
@@ -1545,43 +1589,28 @@ tie correction:
        n2 = Σ ty(ty − 1) / 2  (tie groups in Y)
 ```
 
-The p-value uses an exact two-sided permutation test for n ≤ 7 and the
-full Kendall (1948) tie-corrected asymptotic for n > 7:
+The p-value uses exact two-sided permutation for n ≤ 7 and the full
+Kendall (1948) tie-corrected asymptotic for n > 7:
 
 ```text
-z = S / sqrt(var(S))                         S = concordant − discordant
-var(S) = (n(n − 1)(2n + 5) − T1 − T2) / 18   ← first-order
-       + (T1b · T2b) / (9 n(n − 1)(n − 2))   ← second-order (cross)
-       + (T1c · T2c) / (2 n(n − 1))          ← second-order (pair)
+z = S / sqrt(var(S))                          S = concordant − discordant
+var(S) = (n(n − 1)(2n + 5) − T1 − T2) / 18    ← first-order
+       + (T1b · T2b) / (9 n(n − 1)(n − 2))    ← second-order (cross)
+       + (T1c · T2c) / (2 n(n − 1))           ← second-order (pair)
   Ti  = Σ t(t − 1)(2t + 5)
   Tib = Σ t(t − 1)(t − 2)
   Tic = Σ t(t − 1)
 ```
 
-τ-b and the p-value match R's `cor.test(method="kendall")` to machine
-precision (R uses the same asymptotic for any input with ties — its
-"exact algorithm" only applies when the data is tie-free). SciPy's
-`stats.kendalltau` historically dropped the second-order corrections
-and so disagrees with both R and insyra by a small amount on tied data.
+τ-b and the p-value match `cor.test(method="kendall")` to machine
+precision. SciPy's `stats.kendalltau` historically dropped the
+second-order variance corrections and so disagrees with both R and
+insyra by a small amount on tied data.
 
-We do **not** wrap `gonum/stat.Kendall` because gonum returns τ-a, where
-the `n0` denominator does not react to ties. With ties present, |τ-a|
-can fall short of 1 even for a perfectly monotonic relationship and
+We do **not** wrap `gonum/stat.Kendall` because gonum returns τ-a
+(no tie correction in the denominator). With ties present, |τ-a| can
+fall short of 1 even for a perfectly monotonic relationship and
 disagrees with virtually every other stats package. Self-implementing
-τ-b is ~50 lines (`stats/correlation.go:kendallTauBStats`).
-
-### Pearson / Spearman confidence interval
-
-CI for both Pearson r and Spearman ρ uses the **Fisher z-transform**:
-
-```text
-z = atanh(r),  se = 1 / sqrt(n − 3)
-[lower, upper] = tanh([z − z_crit·se, z + z_crit·se])
-```
-
-with the boundary cases `r ≥ 1 → [1, 1]`, `r ≤ −1 → [−1, −1]`, and
-`n ≤ 3 → [NaN, NaN]`. R's `cor.test` returns the same Fisher CI for
-Pearson but **does not** return a CI for Spearman by default; insyra
-applies the same Fisher transform to ρ as if it were a Pearson r.
+τ-b is ~50 lines in `stats/correlation.go:kendallTauBStats`.
 
 
