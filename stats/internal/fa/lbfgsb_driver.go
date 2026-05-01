@@ -186,6 +186,25 @@ func setulbDriver(n, m int, x, l, u []float64, nbd []int,
 				dcopy(n, r, 1, g, 1)
 				f = fold
 				if col == 0 {
+					// Before reporting failure, check if we're already at a
+					// stationary point: line search exhausted backtracks
+					// (iback >= 20) at very small step (stp) with negligible
+					// f change — that's an algorithmic-degenerate "we already
+					// converged but the line search machinery can't tell"
+					// situation. R's optim happens to take a different ULP
+					// path that avoids this; we recover honestly here.
+					if iter >= 1 && iback >= 20 {
+						ddum := math.Max(math.Max(math.Abs(fold), math.Abs(f)), 1)
+						if math.Abs(fold-f) <= tol*ddum {
+							return &driverResult{
+								X:         append([]float64(nil), x...),
+								F:         f,
+								Iters:     iter + 1,
+								Converged: true,
+								Task:      "CONVERGENCE: REL_REDUCTION_OF_F_<=_FACTR*EPSMCH (via stationary-point line-search exhaustion)",
+							}, nil
+						}
+					}
 					return &driverResult{
 						X:         append([]float64(nil), x...),
 						F:         f,

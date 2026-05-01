@@ -709,12 +709,13 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 		unrotatedLoadings, _, _ = sortFactorsByExplainedVariance(unrotatedLoadings, nil, nil, isPCA)
 	}
 
-	// Step 8: Compute communalities and uniquenesses.
-	//
-	// psych::fa computes both fields from the *unrotated* loadings:
-	//   model <- loadings %*% t(loadings)        (fa.R line 460, before rotate)
-	//   result$communality <- diag(model)        (line 670)
-	//   result$uniquenesses <- diag(r - model)   (line 684)
+	// Step 8: Compute communalities and uniquenesses from the *unrotated*
+	// loadings. The reported "communalities" field corresponds to psych::fa's
+	// fit$communality (singular) = diag(model) = sum(L²), per
+	// crosslang_baseline.R line 301 — NOT fit$communalities (plural) which
+	// would be 1 - psi_optim. Per psych::fac.R lines 670/684:
+	//   result$communality   <- diag(model)
+	//   result$uniquenesses  <- diag(r - model)
 	// The rotation block does not refresh `model`, so even for oblique
 	// rotations the reported communality / uniqueness use unrotated L.
 	extractionCommunalities := make([]float64, colNum)
