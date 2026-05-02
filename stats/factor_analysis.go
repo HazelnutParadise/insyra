@@ -782,6 +782,15 @@ func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorMod
 		if opt.Extraction == FactorExtractionPCA && scoringMethod != FactorScoreNone {
 			// psych::principal exposes scores as a boolean and uses its
 			// regression-style principal-component scoring for every non-none mode.
+			// We mirror that for R-baseline parity, but warn so callers who
+			// explicitly asked for Bartlett/Anderson-Rubin know it was silently
+			// downgraded — they likely want non-PCA extraction (PAF/ML/MINRES)
+			// to get true AR/Bartlett scoring.
+			if scoringMethod != FactorScoreRegression {
+				insyra.LogWarning("stats", "FactorAnalysis",
+					"%s scoring is not supported for PCA extraction (psych::principal uses regression-style scoring); silently using FactorScoreRegression. For true %s scoring, use PAF/ML/MINRES extraction.",
+					scoringMethod, scoringMethod)
+			}
 			scoringMethod = FactorScoreRegression
 		}
 		scores, scoreWeights, scoreCovariance, err = computeFactorScores(data, rotatedLoadings, phi, uniquenesses, sigmaForScores, scoringMethod)
