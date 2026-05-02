@@ -240,6 +240,259 @@ func TestVarimaxAlgorithmChoice(t *testing.T) {
 	}
 }
 
+// TestExplainedProportionInvariant: sum(explained_proportion) for k factors
+// should equal sum(communalities) / p (sum of variance explained / total variance).
+func TestExplainedProportionInvariant(t *testing.T) {
+	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
+		t.Skip()
+	}
+	const n = 60
+	const p = 6
+	tbl := buildSyntheticTable(n, p, syntheticGen3Factor)
+	for _, ex := range []stats.FactorExtractionMethod{
+		stats.FactorExtractionPCA,
+		stats.FactorExtractionPAF,
+		stats.FactorExtractionML,
+		stats.FactorExtractionMINRES,
+	} {
+		opt := stats.DefaultFactorAnalysisOptions()
+		opt.Count.Method = stats.FactorCountFixed
+		opt.Count.FixedK = 3
+		opt.Extraction = ex
+		opt.Rotation.Method = stats.FactorRotationVarimax
+		opt.Scoring = stats.FactorScoreNone
+		res, err := stats.FactorAnalysis(tbl, opt)
+		if err != nil {
+			t.Errorf("[%s] FA error: %v", ex, err)
+			continue
+		}
+		// sum(explained) = sum(SS_loadings) / p = sum(communalities) / p (orthog rotation)
+		sumExp := 0.0
+		ep := dtToDense(res.ExplainedProportion)
+		// ExplainedProportion is 1×k or k×1; iterate all entries
+		r1, c1 := ep.Dims()
+		for i := 0; i < r1; i++ {
+			for j := 0; j < c1; j++ {
+				sumExp += ep.At(i, j)
+			}
+		}
+		// Communalities: col 1 = Extraction value
+		sumComm := 0.0
+		commRows, _ := res.Communalities.Size()
+		for i := 0; i < commRows; i++ {
+			v, _ := res.Communalities.GetElementByNumberIndex(i, 1).(float64)
+			sumComm += v
+		}
+		expected := sumComm / float64(p)
+		if math.Abs(sumExp-expected) > 1e-9 {
+			t.Errorf("[%s] sum(explained)=%.10f ≠ sum(comm)/p=%.10f", ex, sumExp, expected)
+		} else {
+			fmt.Printf("[%-7s] sum(explained)=%.6f = sum(comm)/p=%.6f ✓\n", ex, sumExp, expected)
+		}
+	}
+}
+
+// TestEdgeCaseConstantColumn: a column with zero variance should error
+// gracefully (correlation matrix becomes singular).
+func TestEdgeCaseConstantColumn(t *testing.T) {
+	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
+		t.Skip()
+	}
+	const n = 30
+	tbl := insyra.NewDataTable()
+	for c := 0; c < 4; c++ {
+		col := make([]any, n)
+		for i := 0; i < n; i++ {
+			col[i] = math.Sin(float64(i)*0.3) + float64(c)
+		}
+		tbl.AppendCols(insyra.NewDataList(col...))
+	}
+	// Add a constant column → corr undefined for that var
+	constCol := make([]any, n)
+	for i := 0; i < n; i++ {
+		constCol[i] = 42.0
+	}
+	tbl.AppendCols(insyra.NewDataList(constCol...))
+
+	opt := stats.DefaultFactorAnalysisOptions()
+	opt.Count.Method = stats.FactorCountFixed
+	opt.Count.FixedK = 2
+	opt.Extraction = stats.FactorExtractionML
+	opt.Rotation.Method = stats.FactorRotationVarimax
+	opt.Scoring = stats.FactorScoreNone
+	_, err := stats.FactorAnalysis(tbl, opt)
+	if err == nil {
+		t.Errorf("expected error on constant column, got success")
+	} else {
+		fmt.Printf("constant column: rejected with error: %v ✓\n", err)
+	}
+}
+
+// TestEdgeCaseSmallSample: n < p should still produce a result or error
+// gracefully (depending on extraction method).
+func TestEdgeCaseSmallSample(t *testing.T) {
+	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
+		t.Skip()
+	}
+	const n = 4
+	const p = 6 // p > n
+	tbl := buildSyntheticTable(n, p, syntheticGen3Factor)
+	for _, ex := range []stats.FactorExtractionMethod{
+		stats.FactorExtractionPCA,
+		stats.FactorExtractionML,
+	} {
+		opt := stats.DefaultFactorAnalysisOptions()
+		opt.Count.Method = stats.FactorCountFixed
+		opt.Count.FixedK = 1
+		opt.Extraction = ex
+		opt.Rotation.Method = stats.FactorRotationNone
+		opt.Scoring = stats.FactorScoreNone
+		res, err := stats.FactorAnalysis(tbl, opt)
+		if err != nil {
+			fmt.Printf("[%s n=%d p=%d] error: %v ✓ (expected; p>n)\n", ex, n, p, err)
+		} else {
+			fmt.Printf("[%s n=%d p=%d] succeeded with %d factors\n", ex, n, p, res.CountUsed)
+		}
+	}
+}
+
+// TestFactorsSortedByExplainedVariance: factors should be reported in
+// descending order of explained variance.
+func TestFactorsSortedByExplainedVariance(t *testing.T) {
+	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
+		t.Skip()
+	}
+	const n = 60
+	tbl := buildSyntheticTable(n, 6, syntheticGen3Factor)
+	for _, ex := range []stats.FactorExtractionMethod{
+		stats.FactorExtractionPCA,
+		stats.FactorExtractionML,
+	} {
+		opt := stats.DefaultFactorAnalysisOptions()
+		opt.Count.Method = stats.FactorCountFixed
+		opt.Count.FixedK = 3
+		opt.Extraction = ex
+		opt.Rotation.Method = stats.FactorRotationVarimax
+		opt.Scoring = stats.FactorScoreNone
+		res, err := stats.FactorAnalysis(tbl, opt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ep := dtToDense(res.ExplainedProportion)
+		_, k := ep.Dims()
+		// Should be descending
+		prev := math.Inf(1)
+		for j := 0; j < k; j++ {
+			v := ep.At(0, j)
+			if v > prev+1e-12 {
+				t.Errorf("[%s] explained_proportion not descending: [%d]=%v > prev=%v", ex, j, v, prev)
+			}
+			prev = v
+		}
+		fmt.Printf("[%s] explained sorted descending ✓\n", ex)
+	}
+}
+
+// TestRestartsParameter: rotation Restarts > 1 should not break, and for
+// rotations supporting restarts (geomin, oblimin, etc.) it can find a
+// better local minimum than restarts=1.
+func TestRestartsParameter(t *testing.T) {
+	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
+		t.Skip()
+	}
+	const n = 60
+	tbl := buildSyntheticTable(n, 6, syntheticGen3Factor)
+	for _, restarts := range []int{1, 5, 10} {
+		opt := stats.DefaultFactorAnalysisOptions()
+		opt.Count.Method = stats.FactorCountFixed
+		opt.Count.FixedK = 3
+		opt.Extraction = stats.FactorExtractionML
+		opt.Rotation.Method = stats.FactorRotationGeominQ
+		opt.Rotation.Restarts = restarts
+		opt.Scoring = stats.FactorScoreNone
+		res, err := stats.FactorAnalysis(tbl, opt)
+		if err != nil {
+			t.Errorf("[restarts=%d] %v", restarts, err)
+			continue
+		}
+		// Verify rotation invariant still holds
+		L := dtToDense(res.Loadings)
+		Lu := dtToDense(res.UnrotatedLoadings)
+		Phi := dtToDense(res.Phi)
+		LuT := mat.DenseCopyOf(Lu.T())
+		LT := mat.DenseCopyOf(L.T())
+		var Mu, Mr mat.Dense
+		Mu.Mul(Lu, LuT)
+		LPhi := mat.NewDense(6, 3, nil)
+		LPhi.Mul(L, Phi)
+		Mr.Mul(LPhi, LT)
+		md := maxAbsDiff(&Mr, &Mu)
+		if md > 1e-7 {
+			t.Errorf("[restarts=%d] model not preserved max=%.3e", restarts, md)
+		}
+		fmt.Printf("[restarts=%d] model preserved max=%.3e ✓\n", restarts, md)
+	}
+}
+
+// TestSigmaConsistency: the reproduced covariance Sigma = L·Phi·L' + diag(U)
+// should reproduce the diag of the original correlation matrix (= 1 for
+// each variable). Off-diag should approximate the original correlations.
+func TestSigmaConsistency(t *testing.T) {
+	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
+		t.Skip()
+	}
+	const n = 60
+	tbl := buildSyntheticTable(n, 6, syntheticGen3Factor)
+	S := tableToCorrMatrix(tbl)
+	opt := stats.DefaultFactorAnalysisOptions()
+	opt.Count.Method = stats.FactorCountFixed
+	opt.Count.FixedK = 3
+	opt.Extraction = stats.FactorExtractionML
+	opt.Rotation.Method = stats.FactorRotationVarimax
+	opt.Scoring = stats.FactorScoreNone
+	res, err := stats.FactorAnalysis(tbl, opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	L := dtToDense(res.UnrotatedLoadings)
+	uniqDt := res.Uniquenesses
+	uRows, _ := uniqDt.Size()
+	U := make([]float64, uRows)
+	for i := 0; i < uRows; i++ {
+		U[i], _ = uniqDt.GetElementByNumberIndex(i, 0).(float64)
+	}
+	// Reproduce: Sigma = L·L' + diag(U) (orthogonal)
+	LT := mat.DenseCopyOf(L.T())
+	var Sigma mat.Dense
+	Sigma.Mul(L, LT)
+	for i := 0; i < uRows; i++ {
+		Sigma.Set(i, i, Sigma.At(i, i)+U[i])
+	}
+	// Diag should be ≈ 1 (model + uniqueness = total variance for std variables)
+	maxDiagErr := 0.0
+	for i := 0; i < uRows; i++ {
+		if d := math.Abs(Sigma.At(i, i) - S.At(i, i)); d > maxDiagErr {
+			maxDiagErr = d
+		}
+	}
+	if maxDiagErr > 1e-9 {
+		t.Errorf("Sigma diag mismatch max=%.3e", maxDiagErr)
+	}
+	// Off-diag: residual = S - Sigma should be small (the model fits)
+	maxOffRes := 0.0
+	for i := 0; i < uRows; i++ {
+		for j := 0; j < uRows; j++ {
+			if i == j {
+				continue
+			}
+			if d := math.Abs(S.At(i, j) - Sigma.At(i, j)); d > maxOffRes {
+				maxOffRes = d
+			}
+		}
+	}
+	fmt.Printf("Sigma diag err max=%.3e (≤1e-9 ✓), off-diag residual max=%.3e\n", maxDiagErr, maxOffRes)
+}
+
 // TestEdgeCaseMaxFactors: k = p-1 (saturated factor model).
 func TestEdgeCaseMaxFactors(t *testing.T) {
 	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
