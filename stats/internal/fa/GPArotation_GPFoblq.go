@@ -320,8 +320,12 @@ func obliqueCriterion(method string, L *mat.Dense, gamma float64) (*mat.Dense, f
 		return Gq, f, "vgQ.simplimax", nil
 
 	case "geominq":
-		// Use default epsilon = 0.01 for geomin
-		epsilon := 0.01
+		// gamma is repurposed as ε for geomin (unused by the geomin criterion
+		// otherwise). Caller GeominQ() passes the user's GeominEpsilon.
+		epsilon := gamma
+		if epsilon <= 0 {
+			epsilon = 0.01
+		}
 		Gq, f, _ := vgQGeomin(L, epsilon)
 		return Gq, f, "vgQ.geomin", nil
 

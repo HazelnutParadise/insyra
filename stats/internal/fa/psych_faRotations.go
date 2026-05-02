@@ -28,7 +28,7 @@ func Varimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map[
 	Tmat := identityMatrix(cols)
 
 	// Use GPForth for proper varimax rotation
-	result, err := GPForth(loadings, Tmat, normalize, eps, maxIter, "varimax")
+	result, err := GPForth(loadings, Tmat, normalize, eps, maxIter, "varimax", 0)
 	if err != nil {
 		return map[string]any{
 			"f":     0.0,
@@ -75,7 +75,7 @@ func Quartimax(loadings *mat.Dense, normalize bool, eps float64, maxIter int) ma
 	Tmat := identityMatrix(cols)
 
 	// Use GPForth for proper quartimax rotation
-	result, err := GPForth(loadings, Tmat, normalize, eps, maxIter, "quartimax")
+	result, err := GPForth(loadings, Tmat, normalize, eps, maxIter, "quartimax", 0)
 	if err != nil {
 		return map[string]any{
 			"f":     0.0,
@@ -210,7 +210,7 @@ func GeominT(loadings *mat.Dense, normalize bool, eps float64, maxIter int, delt
 	Tmat := identityMatrix(cols)
 
 	// Use GPForth for proper geominT rotation
-	result, err := GPForth(loadings, Tmat, normalize, eps, maxIter, "geomin")
+	result, err := GPForth(loadings, Tmat, normalize, eps, maxIter, "geomin", delta)
 	if err != nil {
 		return map[string]any{
 			"f":     0.0,
@@ -257,7 +257,7 @@ func BentlerT(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map
 	Tmat := identityMatrix(cols)
 
 	// Use GPForth for proper bentlerT rotation
-	result, err := GPForth(loadings, Tmat, normalize, eps, maxIter, "bentler")
+	result, err := GPForth(loadings, Tmat, normalize, eps, maxIter, "bentler", 0)
 	if err != nil {
 		return map[string]any{
 			"f":     0.0,
@@ -342,8 +342,9 @@ func GeominQ(loadings *mat.Dense, normalize bool, eps float64, maxIter int, delt
 	// Initialize rotation matrix as identity
 	Tmat := identityMatrix(cols)
 
-	// Use GPFoblq for proper geominQ rotation
-	result, err := GPFoblq(loadings, Tmat, normalize, eps, maxIter, "geominQ", 0.0)
+	// Use GPFoblq for proper geominQ rotation. The 7th param (named gamma in
+	// GPFoblq) is repurposed as ε for the geomin criterion.
+	result, err := GPFoblq(loadings, Tmat, normalize, eps, maxIter, "geominQ", delta)
 	if err != nil {
 		return map[string]any{
 			"f":     0.0,

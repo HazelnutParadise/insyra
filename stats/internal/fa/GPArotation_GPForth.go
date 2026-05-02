@@ -11,7 +11,10 @@ import (
 
 // GPForth performs orthogonal rotation using GPA.
 // Mirrors GPArotation::GPForth exactly
-func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit int, method string) (map[string]any, error) {
+// GPForth performs orthogonal Gradient Projection rotation. criterionParam is
+// a method-specific scalar (currently only used by geomin as ε; ignored by
+// varimax/quartimax/bentler). Pass <= 0 to use the per-method default.
+func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit int, method string, criterionParam float64) (map[string]any, error) {
 	rows, cols := A.Dims() // A is p x nf (variables x factors), nf is number of factors
 	if cols <= 1 {
 		return nil, fmt.Errorf("rotation does not make sense for single factor models")
@@ -54,7 +57,11 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 			"Method": "vgQ." + method,
 		}
 	case "geomin", "geominT":
-		Gq, f, _ := vgQGeomin(L, 0.01)
+		ε := criterionParam
+		if ε <= 0 {
+			ε = 0.01
+		}
+		Gq, f, _ := vgQGeomin(L, ε)
 		VgQ = map[string]any{
 			"Gq":     Gq,
 			"f":      f,
@@ -166,7 +173,11 @@ func GPForth(A *mat.Dense, Tmat *mat.Dense, normalize bool, eps float64, maxit i
 					"f":  fNew,
 				}
 			case "geomin", "geominT":
-				GqNew, fNew, _ := vgQGeomin(L, 0.01)
+				ε := criterionParam
+				if ε <= 0 {
+					ε = 0.01
+				}
+				GqNew, fNew, _ := vgQGeomin(L, ε)
 				VgQt = map[string]any{
 					"Gq": GqNew,
 					"f":  fNew,
