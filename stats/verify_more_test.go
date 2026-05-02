@@ -493,6 +493,141 @@ func TestSigmaConsistency(t *testing.T) {
 	fmt.Printf("Sigma diag err max=%.3e (≤1e-9 ✓), off-diag residual max=%.3e\n", maxDiagErr, maxOffRes)
 }
 
+// TestEdgeCaseHighCollinearity: nearly-identical columns shouldn't crash;
+// should either succeed with degenerate output or error gracefully.
+func TestEdgeCaseHighCollinearity(t *testing.T) {
+	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
+		t.Skip()
+	}
+	const n = 30
+	tbl := insyra.NewDataTable()
+	for c := 0; c < 5; c++ {
+		col := make([]any, n)
+		for i := 0; i < n; i++ {
+			col[i] = math.Sin(float64(i)*0.3) + 0.0001*float64(c)*math.Cos(float64(i))
+		}
+		tbl.AppendCols(insyra.NewDataList(col...))
+	}
+	opt := stats.DefaultFactorAnalysisOptions()
+	opt.Count.Method = stats.FactorCountFixed
+	opt.Count.FixedK = 2
+	opt.Extraction = stats.FactorExtractionML
+	opt.Rotation.Method = stats.FactorRotationVarimax
+	opt.Scoring = stats.FactorScoreNone
+	res, err := stats.FactorAnalysis(tbl, opt)
+	if err != nil {
+		fmt.Printf("high-collinearity: error: %v ✓\n", err)
+	} else {
+		fmt.Printf("high-collinearity: succeeded with %d factors, converged=%v ✓\n", res.CountUsed, res.Converged)
+	}
+}
+
+// TestRepeatability: running FactorAnalysis twice on the same data must
+// produce identical results (within ULP, no rotation random restart).
+func TestRepeatability(t *testing.T) {
+	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
+		t.Skip()
+	}
+	const n = 60
+	tbl := buildSyntheticTable(n, 6, syntheticGen3Factor)
+	opt := stats.DefaultFactorAnalysisOptions()
+	opt.Count.Method = stats.FactorCountFixed
+	opt.Count.FixedK = 3
+	opt.Extraction = stats.FactorExtractionML
+	opt.Rotation.Method = stats.FactorRotationVarimax
+	opt.Rotation.Restarts = 1
+	opt.Scoring = stats.FactorScoreRegression
+	r1, err := stats.FactorAnalysis(tbl, opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r2, err := stats.FactorAnalysis(tbl, opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	L1 := dtToDense(r1.Loadings)
+	L2 := dtToDense(r2.Loadings)
+	if d := maxAbsDiff(L1, L2); d != 0 {
+		t.Errorf("loadings differ between runs: max=%.3e", d)
+	}
+	S1 := dtToDense(r1.Scores)
+	S2 := dtToDense(r2.Scores)
+	if d := maxAbsDiff(S1, S2); d != 0 {
+		t.Errorf("scores differ between runs: max=%.3e", d)
+	}
+	fmt.Printf("repeatability: bit-identical across runs ✓\n")
+}
+
+// TestEdgeCaseZeroFactors: nfactors=0 should error.
+func TestEdgeCaseZeroFactors(t *testing.T) {
+	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
+		t.Skip()
+	}
+	const n = 30
+	tbl := buildSyntheticTable(n, 5, syntheticGen3Factor)
+	opt := stats.DefaultFactorAnalysisOptions()
+	opt.Count.Method = stats.FactorCountFixed
+	opt.Count.FixedK = 0
+	opt.Extraction = stats.FactorExtractionML
+	opt.Scoring = stats.FactorScoreNone
+	_, err := stats.FactorAnalysis(tbl, opt)
+	if err == nil {
+		t.Errorf("expected error for FixedK=0, got success")
+	} else {
+		fmt.Printf("FixedK=0: rejected: %v ✓\n", err)
+	}
+}
+
+// TestConcurrencySafety: 10 parallel FactorAnalysis on independent tables
+// should each produce the same result as serial; no shared mutable state.
+func TestConcurrencySafety(t *testing.T) {
+	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
+		t.Skip()
+	}
+	const n = 60
+	tbl := buildSyntheticTable(n, 6, syntheticGen3Factor)
+	opt := stats.DefaultFactorAnalysisOptions()
+	opt.Count.Method = stats.FactorCountFixed
+	opt.Count.FixedK = 3
+	opt.Extraction = stats.FactorExtractionML
+	opt.Rotation.Method = stats.FactorRotationVarimax
+	opt.Rotation.Restarts = 1
+	opt.Scoring = stats.FactorScoreRegression
+
+	// Serial baseline
+	baseline, err := stats.FactorAnalysis(tbl, opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	baselineL := dtToDense(baseline.Loadings)
+
+	// Parallel
+	const par = 10
+	results := make([]*stats.FactorModel, par)
+	errs := make([]error, par)
+	done := make(chan int, par)
+	for i := 0; i < par; i++ {
+		go func(i int) {
+			results[i], errs[i] = stats.FactorAnalysis(tbl, opt)
+			done <- i
+		}(i)
+	}
+	for i := 0; i < par; i++ {
+		<-done
+	}
+	for i := 0; i < par; i++ {
+		if errs[i] != nil {
+			t.Errorf("[%d] %v", i, errs[i])
+			continue
+		}
+		L := dtToDense(results[i].Loadings)
+		if d := maxAbsDiff(L, baselineL); d != 0 {
+			t.Errorf("[%d] loadings differ from serial baseline: max=%.3e", i, d)
+		}
+	}
+	fmt.Printf("concurrency: %d parallel runs all bit-identical to serial ✓\n", par)
+}
+
 // TestEdgeCaseMaxFactors: k = p-1 (saturated factor model).
 func TestEdgeCaseMaxFactors(t *testing.T) {
 	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
