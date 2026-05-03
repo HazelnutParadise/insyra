@@ -419,12 +419,18 @@ func BentlerQ(loadings *mat.Dense, normalize bool, eps float64, maxIter int) map
 // FaRotations applies a factor rotation. promaxPower (R: m, default 4) is
 // honored for the "promax" rotation; geominDelta (R: delta, default 0.01)
 // is honored for "geomint" / "geominq". Pass <= 0 to use defaults.
-func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64, nRotations int, promaxPower int, geominDelta float64) any {
+func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64, nRotations int, promaxPower int, geominDelta float64, eps float64, maxIter int) any {
 	if promaxPower <= 0 {
 		promaxPower = 4
 	}
 	if geominDelta <= 0 {
 		geominDelta = 0.01
+	}
+	if eps <= 0 {
+		eps = 1e-05
+	}
+	if maxIter <= 0 {
+		maxIter = 1000
 	}
 	_, nf := loadings.Dims()
 	if nf == 0 {
@@ -507,16 +513,16 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 		case "varimax":
 			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
 			pre.Mul(baseLoadings, start)
-			// Match R's default parameters: eps=1e-05, maxit=1000
-			result = Varimax(pre, true, 1e-05, 1000)
+			// R defaults: eps=1e-05, maxit=1000 (now overridable via opts)
+			result = Varimax(pre, true, eps, maxIter)
 		case "quartimax":
 			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
 			pre.Mul(baseLoadings, start)
-			result = Quartimax(pre, false, 1e-05, 1000)
+			result = Quartimax(pre, false, eps, maxIter)
 		case "quartimin":
 			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
 			pre.Mul(baseLoadings, start)
-			result = Quartimin(pre, false, 1e-05, 1000)
+			result = Quartimin(pre, false, eps, maxIter)
 		case "oblimin":
 			// Use identity matrix as starting point
 			// This provides better SPSS compatibility than random starts
@@ -525,8 +531,7 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 				startIdentity.Set(i, i, 1.0)
 			}
 			var gpf map[string]any
-			// Match R's default parameters: eps=1e-05
-			gpf, err := GPFoblq(baseLoadings, startIdentity, false, 1e-05, 1000, "oblimin", hyper)
+			gpf, err := GPFoblq(baseLoadings, startIdentity, false, eps, maxIter, "oblimin", hyper)
 			if err != nil {
 				continue
 			}
@@ -534,23 +539,23 @@ func FaRotations(loadings *mat.Dense, r *mat.Dense, rotate string, hyper float64
 		case "geomint":
 			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
 			pre.Mul(baseLoadings, start)
-			result = GeominT(pre, false, 1e-05, 1000, geominDelta)
+			result = GeominT(pre, false, eps, maxIter, geominDelta)
 		case "geominq":
 			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
 			pre.Mul(baseLoadings, start)
-			result = GeominQ(pre, false, 1e-05, 1000, geominDelta)
+			result = GeominQ(pre, false, eps, maxIter, geominDelta)
 		case "bentlert":
 			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
 			pre.Mul(baseLoadings, start)
-			result = BentlerT(pre, false, 1e-05, 1000)
+			result = BentlerT(pre, false, eps, maxIter)
 		case "bentlerq":
 			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
 			pre.Mul(baseLoadings, start)
-			result = BentlerQ(pre, false, 1e-05, 1000)
+			result = BentlerQ(pre, false, eps, maxIter)
 		case "simplimax":
 			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
 			pre.Mul(baseLoadings, start)
-			result = Simplimax(pre, false, 1e-05, 1000, pre.RawMatrix().Rows)
+			result = Simplimax(pre, false, eps, maxIter, pre.RawMatrix().Rows)
 		case "promax":
 			pre := mat.NewDense(baseLoadings.RawMatrix().Rows, baseLoadings.RawMatrix().Cols, nil)
 			pre.Mul(baseLoadings, start)

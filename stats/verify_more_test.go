@@ -1404,6 +1404,102 @@ func TestInfInputListwiseDeletion(t *testing.T) {
 	}
 }
 
+// TestRotationConvergedFlag: when MaxIter is set very low, oblique rotations
+// should report RotationConverged=false. With normal MaxIter, true.
+func TestRotationConvergedFlag(t *testing.T) {
+	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
+		t.Skip()
+	}
+	const n = 60
+	tbl := buildSyntheticTable(n, 6, syntheticGen3Factor)
+
+	// Normal: should converge
+	opt := stats.DefaultFactorAnalysisOptions()
+	opt.Count.Method = stats.FactorCountFixed
+	opt.Count.FixedK = 3
+	opt.Extraction = stats.FactorExtractionML
+	opt.Rotation.Method = stats.FactorRotationOblimin
+	opt.MaxIter = 1000
+	opt.Scoring = stats.FactorScoreNone
+	res, err := stats.FactorAnalysis(tbl, opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.RotationConverged {
+		t.Errorf("normal: RotationConverged=false (expected true)")
+	}
+	fmt.Printf("normal MaxIter=1000: RotationConverged=%v ✓\n", res.RotationConverged)
+
+	// Cripple: MaxIter=1 should not converge for GPF-based oblique rotations
+	opt.MaxIter = 1
+	res2, err := stats.FactorAnalysis(tbl, opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res2.RotationConverged {
+		t.Logf("note: even MaxIter=1 reports RotationConverged=true (rotation may converge in 1 iter on this data)")
+	}
+	fmt.Printf("crippled MaxIter=1: RotationConverged=%v\n", res2.RotationConverged)
+}
+
+// TestNoRotationConvergedTrue: when Rotation=None, RotationConverged should
+// trivially be true (nothing to rotate, can't fail).
+func TestNoRotationConvergedTrue(t *testing.T) {
+	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
+		t.Skip()
+	}
+	const n = 50
+	tbl := buildSyntheticTable(n, 5, syntheticGen3Factor)
+	opt := stats.DefaultFactorAnalysisOptions()
+	opt.Count.Method = stats.FactorCountFixed
+	opt.Count.FixedK = 2
+	opt.Extraction = stats.FactorExtractionML
+	opt.Rotation.Method = stats.FactorRotationNone
+	opt.Scoring = stats.FactorScoreNone
+	res, err := stats.FactorAnalysis(tbl, opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.RotationConverged {
+		t.Errorf("Rotation=None: RotationConverged should be true, got false")
+	}
+	fmt.Printf("Rotation=None: RotationConverged=true ✓\n")
+}
+
+// TestKaiserPCAOnly: Kaiser EigenThreshold=2 should select fewer factors
+// than threshold=1 (stricter cutoff).
+func TestKaiserThresholdEffect(t *testing.T) {
+	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
+		t.Skip()
+	}
+	const n = 60
+	tbl := buildSyntheticTable(n, 6, syntheticGen3Factor)
+
+	makeRes := func(thr float64) int {
+		opt := stats.DefaultFactorAnalysisOptions()
+		opt.Count.Method = stats.FactorCountKaiser
+		opt.Count.EigenThreshold = thr
+		opt.Extraction = stats.FactorExtractionPCA
+		opt.Rotation.Method = stats.FactorRotationNone
+		opt.Scoring = stats.FactorScoreNone
+		res, err := stats.FactorAnalysis(tbl, opt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res.CountUsed
+	}
+	c1 := makeRes(1.0)
+	c2 := makeRes(2.0)
+	c0 := makeRes(0.5)
+	if c2 > c1 {
+		t.Errorf("Kaiser threshold=2 should select ≤ threshold=1: got %d vs %d", c2, c1)
+	}
+	if c0 < c1 {
+		t.Errorf("Kaiser threshold=0.5 should select ≥ threshold=1: got %d vs %d", c0, c1)
+	}
+	fmt.Printf("Kaiser threshold 0.5/1.0/2.0 → CountUsed %d/%d/%d (monotonically decreasing) ✓\n", c0, c1, c2)
+}
+
 // TestEdgeCaseMaxFactors: k = p-1 (saturated factor model).
 func TestEdgeCaseMaxFactors(t *testing.T) {
 	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {

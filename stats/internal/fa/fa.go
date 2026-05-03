@@ -44,8 +44,9 @@ func Rotate(loadings *mat.Dense, method string, opts *RotOpts) (*mat.Dense, *mat
 		opts.Restarts = 1
 	}
 
-	// Call FaRotations
-	res := FaRotations(loadings, r, method, opts.Gamma, opts.Restarts, opts.PromaxPower, opts.GeominEpsilon).(map[string]any)
+	// Call FaRotations. Eps/MaxIter are honored if positive; otherwise
+	// each rotation method falls back to its R-default (eps=1e-05, maxit=1000).
+	res := FaRotations(loadings, r, method, opts.Gamma, opts.Restarts, opts.PromaxPower, opts.GeominEpsilon, opts.Eps, opts.MaxIter).(map[string]any)
 	if errMsg, ok := res["error"].(string); ok && errMsg != "" {
 		return nil, nil, nil, false, fmt.Errorf("rotation failed: %s", errMsg)
 	}

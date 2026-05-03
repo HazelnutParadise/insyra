@@ -1585,11 +1585,16 @@ func rotateFactors(loadings *mat.Dense, rotationOpts FactorRotationOptions, minE
 		return nil, nil, nil, false, fmt.Errorf("unsupported rotation method: %s", rotationOpts.Method)
 	}
 
-	// Use fa.Rotate function
+	// Use fa.Rotate function. Note: opt.MinErr/opt.MaxIter govern extraction
+	// iteration, not rotation. Rotation uses its own R-default eps=1e-05 and
+	// maxit=1000 (per psych::fa); passing the much smaller extraction defaults
+	// (MaxIter=50) here would prevent oblique rotations from converging on
+	// realistic data. Leaving Eps/MaxIter unset → FaRotations falls back to
+	// the algorithm defaults.
+	_ = minErr
+	_ = maxIter
 	opts := &fa.RotOpts{
-		Eps:           minErr,                  // Use MinErr from function parameter
-		MaxIter:       maxIter,                 // Use MaxIter from function parameter
-		Gamma:         rotationOpts.Delta,      // Use Delta as GPArotation gamma for oblimin
+		Gamma:         rotationOpts.Delta, // Use Delta as GPArotation gamma for oblimin
 		GeominEpsilon: rotationOpts.GeominEpsilon,
 		PromaxPower:   int(rotationOpts.Kappa), // Use Kappa as PromaxPower
 		Restarts:      rotationOpts.Restarts,
