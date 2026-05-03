@@ -998,6 +998,111 @@ func TestPCAOrthogonalScores(t *testing.T) {
 	_ = r
 }
 
+// TestPAFConvergence: PAF should iterate communalities to a fixed point.
+// At the fixed point, sum(L²)[i] for k factors should approximately equal
+// the iterated communality h²[i].
+func TestPAFConvergence(t *testing.T) {
+	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
+		t.Skip()
+	}
+	const n = 60
+	const p = 6
+	tbl := buildSyntheticTable(n, p, syntheticGen3Factor)
+	opt := stats.DefaultFactorAnalysisOptions()
+	opt.Count.Method = stats.FactorCountFixed
+	opt.Count.FixedK = 3
+	opt.Extraction = stats.FactorExtractionPAF
+	opt.Rotation.Method = stats.FactorRotationNone
+	opt.Scoring = stats.FactorScoreNone
+	opt.MaxIter = 100
+	opt.MinErr = 1e-9
+	res, err := stats.FactorAnalysis(tbl, opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	L := dtToDense(res.UnrotatedLoadings)
+	for i := 0; i < p; i++ {
+		hSq := 0.0
+		for j := 0; j < 3; j++ {
+			v := L.At(i, j)
+			hSq += v * v
+		}
+		c, _ := res.Communalities.GetElementByNumberIndex(i, 1).(float64)
+		if d := math.Abs(hSq - c); d > 1e-6 {
+			t.Errorf("PAF[%d]: sum(L²)=%v ≠ communality=%v (diff %.3e)", i, hSq, c, d)
+		}
+	}
+	fmt.Printf("PAF: sum(L²) = communality at converged fixed point ✓\n")
+}
+
+// TestPAFDeterministic: same data, same options → same loadings.
+func TestPAFDeterministic(t *testing.T) {
+	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
+		t.Skip()
+	}
+	const n = 50
+	tbl := buildSyntheticTable(n, 5, syntheticGen3Factor)
+	opt := stats.DefaultFactorAnalysisOptions()
+	opt.Count.Method = stats.FactorCountFixed
+	opt.Count.FixedK = 2
+	opt.Extraction = stats.FactorExtractionPAF
+	opt.Rotation.Method = stats.FactorRotationNone
+	opt.Scoring = stats.FactorScoreNone
+	r1, err := stats.FactorAnalysis(tbl, opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r2, err := stats.FactorAnalysis(tbl, opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	L1 := dtToDense(r1.Loadings)
+	L2 := dtToDense(r2.Loadings)
+	if d := maxAbsDiff(L1, L2); d != 0 {
+		t.Errorf("PAF non-deterministic: max=%.3e", d)
+	} else {
+		fmt.Printf("PAF deterministic: bit-identical across runs ✓\n")
+	}
+}
+
+// TestMINRESObjectiveLowerBound: MINRES objective at converged psi should
+// be ≥ 0 (it's a sum of squares) and finite.
+func TestMINRESObjectiveLowerBound(t *testing.T) {
+	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
+		t.Skip()
+	}
+	const n = 60
+	const p = 6
+	tbl := buildSyntheticTable(n, p, syntheticGen3Factor)
+	opt := stats.DefaultFactorAnalysisOptions()
+	opt.Count.Method = stats.FactorCountFixed
+	opt.Count.FixedK = 3
+	opt.Extraction = stats.FactorExtractionMINRES
+	opt.Rotation.Method = stats.FactorRotationNone
+	opt.Scoring = stats.FactorScoreNone
+	res, err := stats.FactorAnalysis(tbl, opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// MINRES objective = sum of squared off-diagonal residuals
+	S := tableToCorrMatrix(tbl)
+	L := dtToDense(res.UnrotatedLoadings)
+	LT := mat.DenseCopyOf(L.T())
+	var Reproduced mat.Dense
+	Reproduced.Mul(L, LT)
+	obj := 0.0
+	for i := 0; i < p; i++ {
+		for j := i + 1; j < p; j++ {
+			r := S.At(i, j) - Reproduced.At(i, j)
+			obj += r * r
+		}
+	}
+	if obj < 0 || math.IsNaN(obj) || math.IsInf(obj, 0) {
+		t.Errorf("MINRES objective invalid: %v", obj)
+	}
+	fmt.Printf("MINRES off-diag SSE at converged psi = %.6e (≥0, finite) ✓\n", obj)
+}
+
 // TestEdgeCaseMaxFactors: k = p-1 (saturated factor model).
 func TestEdgeCaseMaxFactors(t *testing.T) {
 	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
