@@ -879,6 +879,125 @@ func TestEigenvaluesMatchPCAOnCorrMatrix(t *testing.T) {
 	fmt.Printf("PCA eigenvalues match correlation matrix eigenvalues ✓\n")
 }
 
+// TestPartialNaNListwiseDeletion: rows containing NaN are listwise deleted.
+// Result should match running on the manually-cleaned data.
+func TestPartialNaNListwiseDeletion(t *testing.T) {
+	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
+		t.Skip()
+	}
+	const n = 60
+	const p = 5
+	clean := make([][]float64, n)
+	for i := 0; i < n; i++ {
+		clean[i] = []float64{
+			math.Sin(0.31*float64(i)) + 0.2*math.Cos(0.7*float64(i)),
+			math.Cos(0.42*float64(i)) - 0.3*math.Sin(0.5*float64(i)),
+			math.Sin(0.61*float64(i)+0.4) + 0.15*math.Cos(0.83*float64(i)),
+			0.3*math.Sin(0.31*float64(i)) + 0.5*math.Cos(0.42*float64(i)),
+			0.4*math.Cos(0.31*float64(i)) - 0.6*math.Sin(0.42*float64(i)),
+		}
+	}
+	// Inject NaN in 5 specific rows
+	dirty := make([][]float64, n)
+	for i := 0; i < n; i++ {
+		dirty[i] = append([]float64(nil), clean[i]...)
+	}
+	dirtyRows := []int{3, 17, 28, 41, 53}
+	for _, r := range dirtyRows {
+		dirty[r][1] = math.NaN()
+	}
+	// Build the manually-cleaned reference: drop NaN rows from `clean`
+	cleaned := make([][]float64, 0, n-len(dirtyRows))
+	skip := map[int]bool{}
+	for _, r := range dirtyRows {
+		skip[r] = true
+	}
+	for i := 0; i < n; i++ {
+		if !skip[i] {
+			cleaned = append(cleaned, clean[i])
+		}
+	}
+
+	makeTbl := func(rows [][]float64) *insyra.DataTable {
+		tbl := insyra.NewDataTable()
+		nr := len(rows)
+		for c := 0; c < p; c++ {
+			col := make([]any, nr)
+			for i := 0; i < nr; i++ {
+				col[i] = rows[i][c]
+			}
+			tbl.AppendCols(insyra.NewDataList(col...))
+		}
+		return tbl
+	}
+	dirtyTbl := makeTbl(dirty)
+	cleanTbl := makeTbl(cleaned)
+
+	opt := stats.DefaultFactorAnalysisOptions()
+	opt.Count.Method = stats.FactorCountFixed
+	opt.Count.FixedK = 2
+	opt.Extraction = stats.FactorExtractionML
+	opt.Rotation.Method = stats.FactorRotationVarimax
+	opt.Scoring = stats.FactorScoreNone
+	rDirty, err := stats.FactorAnalysis(dirtyTbl, opt)
+	if err != nil {
+		t.Fatalf("dirty: %v", err)
+	}
+	rClean, err := stats.FactorAnalysis(cleanTbl, opt)
+	if err != nil {
+		t.Fatalf("clean: %v", err)
+	}
+	LD := dtToDense(rDirty.Loadings)
+	LC := dtToDense(rClean.Loadings)
+	if d := maxAbsDiff(LD, LC); d > 1e-10 {
+		t.Errorf("listwise-deleted loadings differ from manually-cleaned: max=%.3e", d)
+	} else {
+		fmt.Printf("partial NaN: listwise = manual clean, max=%.3e ✓\n", d)
+	}
+}
+
+// TestPCAOrthogonalScores: PCA Regression scores with no rotation should
+// have empirical Cor matrix ≈ I (PCA scores are orthogonal by construction).
+func TestPCAOrthogonalScores(t *testing.T) {
+	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
+		t.Skip()
+	}
+	const n = 80
+	tbl := buildSyntheticTable(n, 5, syntheticGen3Factor)
+	opt := stats.DefaultFactorAnalysisOptions()
+	opt.Count.Method = stats.FactorCountFixed
+	opt.Count.FixedK = 3
+	opt.Extraction = stats.FactorExtractionPCA
+	opt.Rotation.Method = stats.FactorRotationNone
+	opt.Scoring = stats.FactorScoreRegression
+	res, err := stats.FactorAnalysis(tbl, opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	S := dtToDense(res.Scores)
+	r, c := S.Dims()
+	cov := empiricalCov(S)
+	// Standardize to correlation
+	maxOff := 0.0
+	for i := 0; i < c; i++ {
+		for j := 0; j < c; j++ {
+			if i == j {
+				continue
+			}
+			corr := cov.At(i, j) / math.Sqrt(cov.At(i, i)*cov.At(j, j))
+			if math.Abs(corr) > maxOff {
+				maxOff = math.Abs(corr)
+			}
+		}
+	}
+	if maxOff > 1e-9 {
+		t.Errorf("PCA unrotated scores not orthogonal: max|corr|=%.3e", maxOff)
+	} else {
+		fmt.Printf("PCA unrotated: empirical Cor(scores) ≈ I, max off-diag=%.3e ✓\n", maxOff)
+	}
+	_ = r
+}
+
 // TestEdgeCaseMaxFactors: k = p-1 (saturated factor model).
 func TestEdgeCaseMaxFactors(t *testing.T) {
 	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
