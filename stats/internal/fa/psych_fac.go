@@ -193,7 +193,7 @@ func Fac(r *mat.Dense, opts *FacOptions) (*FacResult, error) {
 
 	switch fm {
 	case "pa":
-		loadings, communalities, eValues = principalAxisFactoring(r, rMat, opts.NFactors, opts.MinErr, opts.MaxIter, opts.Warnings)
+		loadings, communalities, eValues, iters = principalAxisFactoring(r, rMat, opts.NFactors, opts.MinErr, opts.MaxIter, opts.Warnings)
 	case "minres", "uls", "wls", "gls", "ols":
 		loadings, communalities, eValues, converged, iters, optimPsi, err = minimumResidualFactoring(r, rMat, opts.NFactors, fm, opts.Covar, opts.MinErr, opts.MaxIter, opts.OptimFactr, opts.OptimMaxIter)
 	case "ml":
@@ -316,7 +316,7 @@ func Fac(r *mat.Dense, opts *FacOptions) (*FacResult, error) {
 }
 
 // principalAxisFactoring implements Principal Axis Factoring
-func principalAxisFactoring(r, rMat *mat.Dense, nfactors int, minErr float64, maxIter int, warnings bool) (*mat.Dense, []float64, []float64) {
+func principalAxisFactoring(r, rMat *mat.Dense, nfactors int, minErr float64, maxIter int, warnings bool) (*mat.Dense, []float64, []float64, int) {
 	p, _ := r.Dims()
 	comm := 0.0
 	for i := 0; i < p; i++ {
@@ -392,7 +392,7 @@ func principalAxisFactoring(r, rMat *mat.Dense, nfactors int, minErr float64, ma
 	if loadings == nil || values == nil {
 		values, vectors, ok := symmetricEigenDescendingDsyevr(rMat)
 		if !ok {
-			return mat.NewDense(p, nfactors, nil), make([]float64, p), make([]float64, p)
+			return mat.NewDense(p, nfactors, nil), make([]float64, p), make([]float64, p), i - 1
 		}
 		loadings = mat.NewDense(p, nfactors, nil)
 		for j := 0; j < nfactors; j++ {
@@ -419,7 +419,7 @@ func principalAxisFactoring(r, rMat *mat.Dense, nfactors int, minErr float64, ma
 		communalities[j] = rMat.At(j, j)
 	}
 
-	return loadings, communalities, eValues
+	return loadings, communalities, eValues, i - 1
 }
 
 // minimumResidualFactoring implements minimum residual factoring and related methods

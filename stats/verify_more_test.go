@@ -1103,6 +1103,307 @@ func TestMINRESObjectiveLowerBound(t *testing.T) {
 	fmt.Printf("MINRES off-diag SSE at converged psi = %.6e (≥0, finite) ✓\n", obj)
 }
 
+// TestInitialCommunalityIsSMC: for ML/MINRES/PAF, the "Initial" column of
+// the Communalities table should match the SMC (squared multiple
+// correlation) of each variable — psych::fa convention.
+func TestInitialCommunalityIsSMC(t *testing.T) {
+	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
+		t.Skip()
+	}
+	const n = 60
+	const p = 5
+	tbl := buildSyntheticTable(n, p, syntheticGen3Factor)
+	S := tableToCorrMatrix(tbl)
+	// Compute SMC manually: SMC[i] = 1 - 1/diag(R^-1)[i]
+	var Sinv mat.Dense
+	if err := Sinv.Inverse(S); err != nil {
+		t.Fatal(err)
+	}
+	expectedSMC := make([]float64, p)
+	for i := 0; i < p; i++ {
+		expectedSMC[i] = 1.0 - 1.0/Sinv.At(i, i)
+	}
+	for _, ex := range []stats.FactorExtractionMethod{
+		stats.FactorExtractionPAF,
+		stats.FactorExtractionML,
+		stats.FactorExtractionMINRES,
+	} {
+		opt := stats.DefaultFactorAnalysisOptions()
+		opt.Count.Method = stats.FactorCountFixed
+		opt.Count.FixedK = 2
+		opt.Extraction = ex
+		opt.Rotation.Method = stats.FactorRotationNone
+		opt.Scoring = stats.FactorScoreNone
+		res, err := stats.FactorAnalysis(tbl, opt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Initial = column 0
+		maxDiff := 0.0
+		for i := 0; i < p; i++ {
+			v, _ := res.Communalities.GetElementByNumberIndex(i, 0).(float64)
+			if d := math.Abs(v - expectedSMC[i]); d > maxDiff {
+				maxDiff = d
+			}
+		}
+		if maxDiff > 1e-9 {
+			t.Errorf("[%s] Initial communality ≠ SMC: max=%.3e", ex, maxDiff)
+		} else {
+			fmt.Printf("[%-7s] Initial communality = SMC: max=%.3e ✓\n", ex, maxDiff)
+		}
+	}
+}
+
+// TestBartlettSampleSize: SampleSize field should equal the input row count
+// (after listwise NaN deletion if applicable).
+func TestBartlettSampleSize(t *testing.T) {
+	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
+		t.Skip()
+	}
+	const n = 60
+	tbl := buildSyntheticTable(n, 5, syntheticGen3Factor)
+	opt := stats.DefaultFactorAnalysisOptions()
+	opt.Count.Method = stats.FactorCountFixed
+	opt.Count.FixedK = 2
+	opt.Extraction = stats.FactorExtractionML
+	opt.Rotation.Method = stats.FactorRotationNone
+	opt.Scoring = stats.FactorScoreNone
+	res, err := stats.FactorAnalysis(tbl, opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.BartlettTest.SampleSize != n {
+		t.Errorf("BartlettTest.SampleSize = %d, expected %d", res.BartlettTest.SampleSize, n)
+	} else {
+		fmt.Printf("BartlettTest.SampleSize = %d ✓\n", n)
+	}
+}
+
+// TestRotationNoneIdentityRotMat: when Rotation = None, RotationMatrix
+// should be either nil or identity (k×k).
+func TestRotationNoneIdentityRotMat(t *testing.T) {
+	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
+		t.Skip()
+	}
+	const n = 50
+	tbl := buildSyntheticTable(n, 5, syntheticGen3Factor)
+	opt := stats.DefaultFactorAnalysisOptions()
+	opt.Count.Method = stats.FactorCountFixed
+	opt.Count.FixedK = 2
+	opt.Extraction = stats.FactorExtractionML
+	opt.Rotation.Method = stats.FactorRotationNone
+	opt.Scoring = stats.FactorScoreNone
+	res, err := stats.FactorAnalysis(tbl, opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	R := dtToDense(res.RotationMatrix)
+	if R == nil {
+		fmt.Printf("Rotation=None: RotationMatrix = nil ✓\n")
+		return
+	}
+	r, c := R.Dims()
+	if r != 2 || c != 2 {
+		t.Errorf("Rotation=None: RotMat shape = %dx%d, expected 2x2", r, c)
+	}
+	// Should be identity
+	maxOff := 0.0
+	for i := 0; i < r; i++ {
+		for j := 0; j < c; j++ {
+			target := 0.0
+			if i == j {
+				target = 1.0
+			}
+			if d := math.Abs(R.At(i, j) - target); d > maxOff {
+				maxOff = d
+			}
+		}
+	}
+	if maxOff > 1e-12 {
+		t.Errorf("Rotation=None: RotMat ≠ I, max=%.3e", maxOff)
+	} else {
+		fmt.Printf("Rotation=None: RotationMatrix = I (2x2), max diff=%.3e ✓\n", maxOff)
+	}
+}
+
+// TestMaxFactorsLimit: MaxFactors should cap the Kaiser-derived count.
+func TestMaxFactorsLimit(t *testing.T) {
+	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
+		t.Skip()
+	}
+	const n = 60
+	tbl := buildSyntheticTable(n, 6, syntheticGen3Factor)
+	opt := stats.DefaultFactorAnalysisOptions()
+	opt.Count.Method = stats.FactorCountKaiser
+	opt.Count.EigenThreshold = 1.0
+	opt.Count.MaxFactors = 1 // Force cap to 1
+	opt.Extraction = stats.FactorExtractionPCA
+	opt.Rotation.Method = stats.FactorRotationNone
+	opt.Scoring = stats.FactorScoreNone
+	res, err := stats.FactorAnalysis(tbl, opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.CountUsed != 1 {
+		t.Errorf("MaxFactors=1: CountUsed=%d, expected 1", res.CountUsed)
+	} else {
+		fmt.Printf("MaxFactors=1: cap respected, CountUsed=%d ✓\n", res.CountUsed)
+	}
+}
+
+// TestIterationsFieldSemantics: Iterations should be >0 for L-BFGS-B-based
+// methods (ML/MINRES) on real data, and 0 (or 1) for closed-form (PCA).
+func TestIterationsFieldSemantics(t *testing.T) {
+	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
+		t.Skip()
+	}
+	const n = 60
+	tbl := buildSyntheticTable(n, 5, syntheticGen3Factor)
+	cases := []struct {
+		ex      stats.FactorExtractionMethod
+		mustPos bool
+	}{
+		{stats.FactorExtractionPCA, false},   // closed-form
+		{stats.FactorExtractionPAF, true},    // iterative
+		{stats.FactorExtractionML, true},     // L-BFGS-B
+		{stats.FactorExtractionMINRES, true}, // L-BFGS-B
+	}
+	for _, c := range cases {
+		opt := stats.DefaultFactorAnalysisOptions()
+		opt.Count.Method = stats.FactorCountFixed
+		opt.Count.FixedK = 2
+		opt.Extraction = c.ex
+		opt.Rotation.Method = stats.FactorRotationNone
+		opt.Scoring = stats.FactorScoreNone
+		res, err := stats.FactorAnalysis(tbl, opt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c.mustPos && res.Iterations <= 0 {
+			t.Errorf("[%s] expected Iterations > 0, got %d", c.ex, res.Iterations)
+		}
+		fmt.Printf("[%-7s] Iterations=%d Converged=%v ✓\n", c.ex, res.Iterations, res.Converged)
+	}
+}
+
+// TestMLConvergenceOnNormalData: ML should always converge=true on
+// well-conditioned data.
+func TestMLConvergenceOnNormalData(t *testing.T) {
+	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
+		t.Skip()
+	}
+	const n = 100
+	tbl := buildSyntheticTable(n, 6, syntheticGen3Factor)
+	opt := stats.DefaultFactorAnalysisOptions()
+	opt.Count.Method = stats.FactorCountFixed
+	opt.Count.FixedK = 3
+	opt.Extraction = stats.FactorExtractionML
+	opt.Rotation.Method = stats.FactorRotationNone
+	opt.Scoring = stats.FactorScoreNone
+	res, err := stats.FactorAnalysis(tbl, opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Converged {
+		t.Errorf("ML on normal data: Converged=false (Iterations=%d)", res.Iterations)
+	}
+	fmt.Printf("ML on normal n=100 p=6 k=3: Converged=%v Iter=%d ✓\n", res.Converged, res.Iterations)
+}
+
+// TestFixedKOverridesKaiser: setting FactorCountFixed always returns FixedK
+// regardless of MaxFactors value.
+func TestFixedKOverridesKaiser(t *testing.T) {
+	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
+		t.Skip()
+	}
+	const n = 60
+	tbl := buildSyntheticTable(n, 5, syntheticGen3Factor)
+	opt := stats.DefaultFactorAnalysisOptions()
+	opt.Count.Method = stats.FactorCountFixed
+	opt.Count.FixedK = 4
+	opt.Count.MaxFactors = 1 // Should be ignored when Method=Fixed
+	opt.Extraction = stats.FactorExtractionPCA
+	opt.Rotation.Method = stats.FactorRotationNone
+	opt.Scoring = stats.FactorScoreNone
+	res, err := stats.FactorAnalysis(tbl, opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.CountUsed != 4 {
+		t.Errorf("FixedK=4 + MaxFactors=1: expected 4, got %d", res.CountUsed)
+	}
+	fmt.Printf("FixedK=4 with MaxFactors=1 ignored: CountUsed=%d ✓\n", res.CountUsed)
+}
+
+// TestInfInputListwiseDeletion: Inf values are treated like NaN (listwise
+// delete the row).
+func TestInfInputListwiseDeletion(t *testing.T) {
+	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
+		t.Skip()
+	}
+	const n = 60
+	const p = 5
+	clean := make([][]float64, n)
+	for i := 0; i < n; i++ {
+		clean[i] = []float64{
+			math.Sin(0.31*float64(i)) + 0.2*math.Cos(0.7*float64(i)),
+			math.Cos(0.42*float64(i)) - 0.3*math.Sin(0.5*float64(i)),
+			math.Sin(0.61*float64(i)+0.4) + 0.15*math.Cos(0.83*float64(i)),
+			0.3*math.Sin(0.31*float64(i)) + 0.5*math.Cos(0.42*float64(i)),
+			0.4*math.Cos(0.31*float64(i)) - 0.6*math.Sin(0.42*float64(i)),
+		}
+	}
+	dirty := make([][]float64, n)
+	for i := 0; i < n; i++ {
+		dirty[i] = append([]float64(nil), clean[i]...)
+	}
+	dirty[10][2] = math.Inf(1)
+	dirty[25][3] = math.Inf(-1)
+
+	makeTbl := func(rows [][]float64) *insyra.DataTable {
+		tbl := insyra.NewDataTable()
+		nr := len(rows)
+		for c := 0; c < p; c++ {
+			col := make([]any, nr)
+			for i := 0; i < nr; i++ {
+				col[i] = rows[i][c]
+			}
+			tbl.AppendCols(insyra.NewDataList(col...))
+		}
+		return tbl
+	}
+	cleaned := make([][]float64, 0, n-2)
+	for i := 0; i < n; i++ {
+		if i == 10 || i == 25 {
+			continue
+		}
+		cleaned = append(cleaned, clean[i])
+	}
+
+	opt := stats.DefaultFactorAnalysisOptions()
+	opt.Count.Method = stats.FactorCountFixed
+	opt.Count.FixedK = 2
+	opt.Extraction = stats.FactorExtractionML
+	opt.Rotation.Method = stats.FactorRotationNone
+	opt.Scoring = stats.FactorScoreNone
+
+	rDirty, err := stats.FactorAnalysis(makeTbl(dirty), opt)
+	if err != nil {
+		t.Fatalf("dirty: %v", err)
+	}
+	rClean, err := stats.FactorAnalysis(makeTbl(cleaned), opt)
+	if err != nil {
+		t.Fatalf("clean: %v", err)
+	}
+	LD := dtToDense(rDirty.Loadings)
+	LC := dtToDense(rClean.Loadings)
+	if d := maxAbsDiff(LD, LC); d != 0 {
+		t.Errorf("Inf listwise vs manual cleanup: max=%.3e", d)
+	} else {
+		fmt.Printf("Inf input: listwise = manual clean, bit-identical ✓\n")
+	}
+}
+
 // TestEdgeCaseMaxFactors: k = p-1 (saturated factor model).
 func TestEdgeCaseMaxFactors(t *testing.T) {
 	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
