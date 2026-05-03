@@ -3,7 +3,6 @@ package stats_test
 import (
 	"fmt"
 	"math"
-	"os"
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
@@ -26,11 +25,7 @@ import (
 //	Anderson-Rubin scores:
 //	  Cov(scores) = I (uncorrelated factors with unit variance)
 //
-// Run with INSYRA_VERIFY_SCORING=1.
 func TestScoringInvariants(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_SCORING") != "1" {
-		t.Skip()
-	}
 	const n = 80
 	rows := make([][]any, n)
 	for i := 0; i < n; i++ {

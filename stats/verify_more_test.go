@@ -3,7 +3,6 @@ package stats_test
 import (
 	"fmt"
 	"math"
-	"os"
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
@@ -15,9 +14,6 @@ import (
 // TestKaiserSelection: with threshold=1, count of factors must equal the
 // count of eigenvalues ≥ 1 in the correlation matrix.
 func TestKaiserSelection(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
-		t.Skip()
-	}
 	const n = 60
 	tbl := buildSyntheticTable(n, 5, syntheticGen3Factor)
 	opt := stats.DefaultFactorAnalysisOptions()
@@ -46,18 +42,12 @@ func TestKaiserSelection(t *testing.T) {
 // TestCovarMode: extraction with Covar=true uses covariance, not correlation.
 // Diagonal of model + uniqueness should reproduce diag of covariance matrix.
 func TestCovarMode(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
-		t.Skip()
-	}
 	t.Skip("Covar option not yet exposed via DefaultFactorAnalysisOptions; skipping")
 }
 
 // TestKMOSphericity: KMO sampling adequacy is in [0,1]; Bartlett's
 // sphericity test χ² ≥ 0, df = p(p-1)/2, p-value in [0,1].
 func TestKMOSphericity(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
-		t.Skip()
-	}
 	const n = 60
 	tbl := buildSyntheticTable(n, 5, syntheticGen3Factor)
 	opt := stats.DefaultFactorAnalysisOptions()
@@ -101,9 +91,6 @@ func TestKMOSphericity(t *testing.T) {
 
 // TestEdgeCaseSingleFactor: k=1 special case.
 func TestEdgeCaseSingleFactor(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
-		t.Skip()
-	}
 	const n = 50
 	tbl := buildSyntheticTable(n, 5, syntheticGen3Factor)
 	opt := stats.DefaultFactorAnalysisOptions()
@@ -140,9 +127,6 @@ func TestEdgeCaseSingleFactor(t *testing.T) {
 // TestRotationParams: changing Kappa/Delta/GeominEpsilon should change the
 // resulting loadings (i.e., the parameter is actually being honored).
 func TestRotationParams(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
-		t.Skip()
-	}
 	const n = 60
 	tbl := buildSyntheticTable(n, 6, syntheticGen3Factor)
 
@@ -206,9 +190,6 @@ func TestRotationParams(t *testing.T) {
 // TestVarimaxAlgorithmChoice: kaiser vs gparotation should both produce
 // orthogonal rotations (R'R = I) and preserve the model matrix.
 func TestVarimaxAlgorithmChoice(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
-		t.Skip()
-	}
 	const n = 60
 	tbl := buildSyntheticTable(n, 6, syntheticGen3Factor)
 	for _, alg := range []stats.VarimaxAlgorithm{stats.VarimaxKaiser, stats.VarimaxGPArotation} {
@@ -243,9 +224,6 @@ func TestVarimaxAlgorithmChoice(t *testing.T) {
 // TestExplainedProportionInvariant: sum(explained_proportion) for k factors
 // should equal sum(communalities) / p (sum of variance explained / total variance).
 func TestExplainedProportionInvariant(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
-		t.Skip()
-	}
 	const n = 60
 	const p = 6
 	tbl := buildSyntheticTable(n, p, syntheticGen3Factor)
@@ -295,9 +273,6 @@ func TestExplainedProportionInvariant(t *testing.T) {
 // TestEdgeCaseConstantColumn: a column with zero variance should error
 // gracefully (correlation matrix becomes singular).
 func TestEdgeCaseConstantColumn(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
-		t.Skip()
-	}
 	const n = 30
 	tbl := insyra.NewDataTable()
 	for c := 0; c < 4; c++ {
@@ -331,9 +306,6 @@ func TestEdgeCaseConstantColumn(t *testing.T) {
 // TestEdgeCaseSmallSample: n < p should still produce a result or error
 // gracefully (depending on extraction method).
 func TestEdgeCaseSmallSample(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
-		t.Skip()
-	}
 	const n = 4
 	const p = 6 // p > n
 	tbl := buildSyntheticTable(n, p, syntheticGen3Factor)
@@ -359,9 +331,6 @@ func TestEdgeCaseSmallSample(t *testing.T) {
 // TestFactorsSortedByExplainedVariance: factors should be reported in
 // descending order of explained variance.
 func TestFactorsSortedByExplainedVariance(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
-		t.Skip()
-	}
 	const n = 60
 	tbl := buildSyntheticTable(n, 6, syntheticGen3Factor)
 	for _, ex := range []stats.FactorExtractionMethod{
@@ -397,9 +366,6 @@ func TestFactorsSortedByExplainedVariance(t *testing.T) {
 // rotations supporting restarts (geomin, oblimin, etc.) it can find a
 // better local minimum than restarts=1.
 func TestRestartsParameter(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
-		t.Skip()
-	}
 	const n = 60
 	tbl := buildSyntheticTable(n, 6, syntheticGen3Factor)
 	for _, restarts := range []int{1, 5, 10} {
@@ -438,9 +404,6 @@ func TestRestartsParameter(t *testing.T) {
 // should reproduce the diag of the original correlation matrix (= 1 for
 // each variable). Off-diag should approximate the original correlations.
 func TestSigmaConsistency(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
-		t.Skip()
-	}
 	const n = 60
 	tbl := buildSyntheticTable(n, 6, syntheticGen3Factor)
 	S := tableToCorrMatrix(tbl)
@@ -496,9 +459,6 @@ func TestSigmaConsistency(t *testing.T) {
 // TestEdgeCaseHighCollinearity: nearly-identical columns shouldn't crash;
 // should either succeed with degenerate output or error gracefully.
 func TestEdgeCaseHighCollinearity(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
-		t.Skip()
-	}
 	const n = 30
 	tbl := insyra.NewDataTable()
 	for c := 0; c < 5; c++ {
@@ -525,9 +485,6 @@ func TestEdgeCaseHighCollinearity(t *testing.T) {
 // TestRepeatability: running FactorAnalysis twice on the same data must
 // produce identical results (within ULP, no rotation random restart).
 func TestRepeatability(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
-		t.Skip()
-	}
 	const n = 60
 	tbl := buildSyntheticTable(n, 6, syntheticGen3Factor)
 	opt := stats.DefaultFactorAnalysisOptions()
@@ -560,9 +517,6 @@ func TestRepeatability(t *testing.T) {
 
 // TestEdgeCaseZeroFactors: nfactors=0 should error.
 func TestEdgeCaseZeroFactors(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
-		t.Skip()
-	}
 	const n = 30
 	tbl := buildSyntheticTable(n, 5, syntheticGen3Factor)
 	opt := stats.DefaultFactorAnalysisOptions()
@@ -581,9 +535,6 @@ func TestEdgeCaseZeroFactors(t *testing.T) {
 // TestConcurrencySafety: 10 parallel FactorAnalysis on independent tables
 // should each produce the same result as serial; no shared mutable state.
 func TestConcurrencySafety(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
-		t.Skip()
-	}
 	const n = 60
 	tbl := buildSyntheticTable(n, 6, syntheticGen3Factor)
 	opt := stats.DefaultFactorAnalysisOptions()
@@ -631,9 +582,6 @@ func TestConcurrencySafety(t *testing.T) {
 // TestScoreCoefficientsConsistency: Scores should equal Z · ScoreCoefficients
 // where Z is centered/standardized data per the scoring method's convention.
 func TestScoreCoefficientsConsistency(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
-		t.Skip()
-	}
 	const n = 60
 	const p = 6
 	tbl := buildSyntheticTable(n, p, syntheticGen3Factor)
@@ -692,9 +640,6 @@ func TestScoreCoefficientsConsistency(t *testing.T) {
 
 // TestCumulativeProportionInvariant: Cumulative[j] = sum(Explained[0..j]).
 func TestCumulativeProportionInvariant(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
-		t.Skip()
-	}
 	const n = 60
 	tbl := buildSyntheticTable(n, 6, syntheticGen3Factor)
 	opt := stats.DefaultFactorAnalysisOptions()
@@ -725,9 +670,6 @@ func TestCumulativeProportionInvariant(t *testing.T) {
 // post-processing in factor_analysis.go can break L = Lu·R but RotMat itself
 // should still be orthonormal).
 func TestRotationMatrixOrthogonal(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
-		t.Skip()
-	}
 	const n = 60
 	tbl := buildSyntheticTable(n, 6, syntheticGen3Factor)
 	for _, m := range []stats.FactorRotationMethod{
@@ -778,9 +720,6 @@ func TestRotationMatrixOrthogonal(t *testing.T) {
 // TestPCAFullRankReconstruction: PCA with k=p reconstructs correlation
 // matrix exactly: L · L' = R.
 func TestPCAFullRankReconstruction(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
-		t.Skip()
-	}
 	const n = 60
 	const p = 5
 	tbl := buildSyntheticTable(n, p, syntheticGen3Factor)
@@ -810,9 +749,6 @@ func TestPCAFullRankReconstruction(t *testing.T) {
 // TestCommunalityMonotonicity: increasing nfactors monotonically increases
 // sum(communalities) — more factors capture more variance.
 func TestCommunalityMonotonicity(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
-		t.Skip()
-	}
 	const n = 60
 	const p = 6
 	tbl := buildSyntheticTable(n, p, syntheticGen3Factor)
@@ -845,9 +781,6 @@ func TestCommunalityMonotonicity(t *testing.T) {
 // TestEigenvaluesMatchPCAOnCorrMatrix: for PCA, reported eigenvalues
 // should match the actual eigenvalues of the correlation matrix.
 func TestEigenvaluesMatchPCAOnCorrMatrix(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
-		t.Skip()
-	}
 	const n = 60
 	tbl := buildSyntheticTable(n, 6, syntheticGen3Factor)
 	S := tableToCorrMatrix(tbl)
@@ -882,9 +815,6 @@ func TestEigenvaluesMatchPCAOnCorrMatrix(t *testing.T) {
 // TestPartialNaNListwiseDeletion: rows containing NaN are listwise deleted.
 // Result should match running on the manually-cleaned data.
 func TestPartialNaNListwiseDeletion(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
-		t.Skip()
-	}
 	const n = 60
 	const p = 5
 	clean := make([][]float64, n)
@@ -959,9 +889,6 @@ func TestPartialNaNListwiseDeletion(t *testing.T) {
 // TestPCAOrthogonalScores: PCA Regression scores with no rotation should
 // have empirical Cor matrix ≈ I (PCA scores are orthogonal by construction).
 func TestPCAOrthogonalScores(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
-		t.Skip()
-	}
 	const n = 80
 	tbl := buildSyntheticTable(n, 5, syntheticGen3Factor)
 	opt := stats.DefaultFactorAnalysisOptions()
@@ -1002,9 +929,6 @@ func TestPCAOrthogonalScores(t *testing.T) {
 // At the fixed point, sum(L²)[i] for k factors should approximately equal
 // the iterated communality h²[i].
 func TestPAFConvergence(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
-		t.Skip()
-	}
 	const n = 60
 	const p = 6
 	tbl := buildSyntheticTable(n, p, syntheticGen3Factor)
@@ -1037,9 +961,6 @@ func TestPAFConvergence(t *testing.T) {
 
 // TestPAFDeterministic: same data, same options → same loadings.
 func TestPAFDeterministic(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
-		t.Skip()
-	}
 	const n = 50
 	tbl := buildSyntheticTable(n, 5, syntheticGen3Factor)
 	opt := stats.DefaultFactorAnalysisOptions()
@@ -1068,9 +989,6 @@ func TestPAFDeterministic(t *testing.T) {
 // TestMINRESObjectiveLowerBound: MINRES objective at converged psi should
 // be ≥ 0 (it's a sum of squares) and finite.
 func TestMINRESObjectiveLowerBound(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
-		t.Skip()
-	}
 	const n = 60
 	const p = 6
 	tbl := buildSyntheticTable(n, p, syntheticGen3Factor)
@@ -1107,9 +1025,6 @@ func TestMINRESObjectiveLowerBound(t *testing.T) {
 // the Communalities table should match the SMC (squared multiple
 // correlation) of each variable — psych::fa convention.
 func TestInitialCommunalityIsSMC(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
-		t.Skip()
-	}
 	const n = 60
 	const p = 5
 	tbl := buildSyntheticTable(n, p, syntheticGen3Factor)
@@ -1157,9 +1072,6 @@ func TestInitialCommunalityIsSMC(t *testing.T) {
 // TestBartlettSampleSize: SampleSize field should equal the input row count
 // (after listwise NaN deletion if applicable).
 func TestBartlettSampleSize(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
-		t.Skip()
-	}
 	const n = 60
 	tbl := buildSyntheticTable(n, 5, syntheticGen3Factor)
 	opt := stats.DefaultFactorAnalysisOptions()
@@ -1182,9 +1094,6 @@ func TestBartlettSampleSize(t *testing.T) {
 // TestRotationNoneIdentityRotMat: when Rotation = None, RotationMatrix
 // should be either nil or identity (k×k).
 func TestRotationNoneIdentityRotMat(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
-		t.Skip()
-	}
 	const n = 50
 	tbl := buildSyntheticTable(n, 5, syntheticGen3Factor)
 	opt := stats.DefaultFactorAnalysisOptions()
@@ -1228,9 +1137,6 @@ func TestRotationNoneIdentityRotMat(t *testing.T) {
 
 // TestMaxFactorsLimit: MaxFactors should cap the Kaiser-derived count.
 func TestMaxFactorsLimit(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
-		t.Skip()
-	}
 	const n = 60
 	tbl := buildSyntheticTable(n, 6, syntheticGen3Factor)
 	opt := stats.DefaultFactorAnalysisOptions()
@@ -1254,9 +1160,6 @@ func TestMaxFactorsLimit(t *testing.T) {
 // TestIterationsFieldSemantics: Iterations should be >0 for L-BFGS-B-based
 // methods (ML/MINRES) on real data, and 0 (or 1) for closed-form (PCA).
 func TestIterationsFieldSemantics(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
-		t.Skip()
-	}
 	const n = 60
 	tbl := buildSyntheticTable(n, 5, syntheticGen3Factor)
 	cases := []struct {
@@ -1289,9 +1192,6 @@ func TestIterationsFieldSemantics(t *testing.T) {
 // TestMLConvergenceOnNormalData: ML should always converge=true on
 // well-conditioned data.
 func TestMLConvergenceOnNormalData(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
-		t.Skip()
-	}
 	const n = 100
 	tbl := buildSyntheticTable(n, 6, syntheticGen3Factor)
 	opt := stats.DefaultFactorAnalysisOptions()
@@ -1313,9 +1213,6 @@ func TestMLConvergenceOnNormalData(t *testing.T) {
 // TestFixedKOverridesKaiser: setting FactorCountFixed always returns FixedK
 // regardless of MaxFactors value.
 func TestFixedKOverridesKaiser(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
-		t.Skip()
-	}
 	const n = 60
 	tbl := buildSyntheticTable(n, 5, syntheticGen3Factor)
 	opt := stats.DefaultFactorAnalysisOptions()
@@ -1338,9 +1235,6 @@ func TestFixedKOverridesKaiser(t *testing.T) {
 // TestInfInputListwiseDeletion: Inf values are treated like NaN (listwise
 // delete the row).
 func TestInfInputListwiseDeletion(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
-		t.Skip()
-	}
 	const n = 60
 	const p = 5
 	clean := make([][]float64, n)
@@ -1407,9 +1301,6 @@ func TestInfInputListwiseDeletion(t *testing.T) {
 // TestRotationConvergedFlag: when MaxIter is set very low, oblique rotations
 // should report RotationConverged=false. With normal MaxIter, true.
 func TestRotationConvergedFlag(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
-		t.Skip()
-	}
 	const n = 60
 	tbl := buildSyntheticTable(n, 6, syntheticGen3Factor)
 
@@ -1445,9 +1336,6 @@ func TestRotationConvergedFlag(t *testing.T) {
 // TestNoRotationConvergedTrue: when Rotation=None, RotationConverged should
 // trivially be true (nothing to rotate, can't fail).
 func TestNoRotationConvergedTrue(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
-		t.Skip()
-	}
 	const n = 50
 	tbl := buildSyntheticTable(n, 5, syntheticGen3Factor)
 	opt := stats.DefaultFactorAnalysisOptions()
@@ -1469,9 +1357,6 @@ func TestNoRotationConvergedTrue(t *testing.T) {
 // TestKaiserPCAOnly: Kaiser EigenThreshold=2 should select fewer factors
 // than threshold=1 (stricter cutoff).
 func TestKaiserThresholdEffect(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
-		t.Skip()
-	}
 	const n = 60
 	tbl := buildSyntheticTable(n, 6, syntheticGen3Factor)
 
@@ -1502,9 +1387,6 @@ func TestKaiserThresholdEffect(t *testing.T) {
 
 // TestEdgeCaseMaxFactors: k = p-1 (saturated factor model).
 func TestEdgeCaseMaxFactors(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
-		t.Skip()
-	}
 	const n = 50
 	const p = 5
 	tbl := buildSyntheticTable(n, p, syntheticGen3Factor)

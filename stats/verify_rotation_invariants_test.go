@@ -3,7 +3,6 @@ package stats_test
 import (
 	"fmt"
 	"math"
-	"os"
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
@@ -24,9 +23,6 @@ import (
 // Note on simplimax: GPArotation::simplimax is mathematically OBLIQUE
 // (Q-suffix convention). Go correctly uses GPFoblq.
 func TestRotationInvariants(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_ROT") != "1" {
-		t.Skip()
-	}
 	const n = 50
 	rows := make([][]any, n)
 	for i := 0; i < n; i++ {

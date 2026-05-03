@@ -10,6 +10,38 @@ import (
 	"github.com/HazelnutParadise/insyra/stats"
 )
 
+// factorParityTol is the strict per-element |Go - R| tolerance. Tightened
+// from 1e-3 to 2e-5 in commit a6eb8ff. With this threshold, ~595 (field ×
+// case) sub-tests fail, all on 3 adversarial datasets (near_collinear,
+// mixed_scale, narrow_plus_group). Empirical max diff per field on those
+// failing cases (last full strict-suite run, 2026-05-03):
+//
+//	field                 max |Go - R|     decimal places that match R
+//	--------------------  ---------------  --------------------------
+//	explained_proportion  3.08e-5          ~4
+//	cumulative_proportion 3.08e-5          ~4
+//	eigenvalues           6.91e-5          ~4
+//	unrotated_loadings    1.01e-4          ~3-4
+//	loadings              1.16e-4          ~3-4
+//	communalities         1.24e-4          ~3-4
+//	uniquenesses          1.24e-4          ~3-4
+//	phi                   1.72e-4          ~3
+//	score_covariance      1.79e-4          ~3
+//	structure             1.88e-4          ~3
+//	scores                2.78e-4          ~3
+//	rotation_matrix       2.80e-4          ~3
+//	score_coefficients    3.25e-4          ~3
+//
+// Root cause is gonum's BLAS/LAPACK port differing from R's at 1 ULP per
+// element in matrix multiplication and dsyevr (MRRR) eigendecomposition;
+// this is amplified by 1/psi² (Heywood floor 0.005 → ×40000) and 1/θ²
+// (~×4×10⁶ in subspace minimization) on ill-conditioned data. Eliminating
+// the residual gap requires cgo binding the same LAPACK R uses. On normal
+// (non-adversarial) datasets all 12+ test datasets PASS at this tolerance.
+//
+// The 595 failures are mathematically equivalent solutions: see
+// TestVerifyAllAdversarial — Go's objective f(Go_psi) ≤ R's f(R_psi) on
+// every tested cluster, often deeper.
 const factorParityTol = 2e-5
 
 func requireFactorAnalysisRTools(t *testing.T) {

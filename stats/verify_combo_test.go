@@ -3,7 +3,6 @@ package stats_test
 import (
 	"fmt"
 	"math"
-	"os"
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
@@ -21,11 +20,7 @@ import (
 //	Anderson-Rubin: empirical Cov ≈ I
 //
 // 4 extractions × 11 rotations × 4 scorings = 176 combos.
-// Run with INSYRA_VERIFY_COMBO=1.
 func TestExtractionRotationScoringCombos(t *testing.T) {
-	if os.Getenv("INSYRA_VERIFY_COMBO") != "1" {
-		t.Skip()
-	}
 	const n = 60
 	rows := make([][]any, n)
 	for i := 0; i < n; i++ {
