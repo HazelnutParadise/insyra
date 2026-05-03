@@ -628,6 +628,257 @@ func TestConcurrencySafety(t *testing.T) {
 	fmt.Printf("concurrency: %d parallel runs all bit-identical to serial ✓\n", par)
 }
 
+// TestScoreCoefficientsConsistency: Scores should equal Z · ScoreCoefficients
+// where Z is centered/standardized data per the scoring method's convention.
+func TestScoreCoefficientsConsistency(t *testing.T) {
+	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
+		t.Skip()
+	}
+	const n = 60
+	const p = 6
+	tbl := buildSyntheticTable(n, p, syntheticGen3Factor)
+	for _, sm := range []stats.FactorScoreMethod{
+		stats.FactorScoreRegression,
+		stats.FactorScoreBartlett,
+		stats.FactorScoreAndersonRubin,
+	} {
+		opt := stats.DefaultFactorAnalysisOptions()
+		opt.Count.Method = stats.FactorCountFixed
+		opt.Count.FixedK = 3
+		opt.Extraction = stats.FactorExtractionML
+		opt.Rotation.Method = stats.FactorRotationVarimax
+		opt.Scoring = sm
+		res, err := stats.FactorAnalysis(tbl, opt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		Scores := dtToDense(res.Scores)
+		W := dtToDense(res.ScoreCoefficients)
+		// Build standardized X (z-score)
+		data := mat.NewDense(n, p, nil)
+		for i := 0; i < n; i++ {
+			for j := 0; j < p; j++ {
+				v, _ := tbl.GetElementByNumberIndex(i, j).(float64)
+				data.Set(i, j, v)
+			}
+		}
+		// Standardize: z = (x - mean) / sd
+		Z := mat.NewDense(n, p, nil)
+		for j := 0; j < p; j++ {
+			mean, sd := 0.0, 0.0
+			for i := 0; i < n; i++ {
+				mean += data.At(i, j)
+			}
+			mean /= float64(n)
+			for i := 0; i < n; i++ {
+				d := data.At(i, j) - mean
+				sd += d * d
+			}
+			sd = math.Sqrt(sd / float64(n-1))
+			for i := 0; i < n; i++ {
+				Z.Set(i, j, (data.At(i, j)-mean)/sd)
+			}
+		}
+		// Reproduce: scores = Z · W
+		var ScoresCheck mat.Dense
+		ScoresCheck.Mul(Z, W)
+		if d := maxAbsDiff(Scores, &ScoresCheck); d > 1e-8 {
+			t.Errorf("[%s] Scores ≠ Z·W: max=%.3e", sm, d)
+		} else {
+			fmt.Printf("[%-15s] Scores = Z · ScoreCoefficients: max=%.3e ✓\n", sm, d)
+		}
+	}
+}
+
+// TestCumulativeProportionInvariant: Cumulative[j] = sum(Explained[0..j]).
+func TestCumulativeProportionInvariant(t *testing.T) {
+	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
+		t.Skip()
+	}
+	const n = 60
+	tbl := buildSyntheticTable(n, 6, syntheticGen3Factor)
+	opt := stats.DefaultFactorAnalysisOptions()
+	opt.Count.Method = stats.FactorCountFixed
+	opt.Count.FixedK = 3
+	opt.Extraction = stats.FactorExtractionML
+	opt.Rotation.Method = stats.FactorRotationVarimax
+	opt.Scoring = stats.FactorScoreNone
+	res, err := stats.FactorAnalysis(tbl, opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ep := dtToDense(res.ExplainedProportion)
+	cp := dtToDense(res.CumulativeProportion)
+	_, k := ep.Dims()
+	cum := 0.0
+	for j := 0; j < k; j++ {
+		cum += ep.At(0, j)
+		if d := math.Abs(cum - cp.At(0, j)); d > 1e-12 {
+			t.Errorf("Cumulative[%d] = %v ≠ cumsum = %v", j, cp.At(0, j), cum)
+		}
+	}
+	fmt.Printf("CumulativeProportion = cumsum(ExplainedProportion): exact ✓\n")
+}
+
+// TestRotationMatrixOrthogonal: for orthogonal rotations, RotMat'·RotMat = I
+// when measured against the rotation algorithm's internal frame (sign/sort
+// post-processing in factor_analysis.go can break L = Lu·R but RotMat itself
+// should still be orthonormal).
+func TestRotationMatrixOrthogonal(t *testing.T) {
+	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
+		t.Skip()
+	}
+	const n = 60
+	tbl := buildSyntheticTable(n, 6, syntheticGen3Factor)
+	for _, m := range []stats.FactorRotationMethod{
+		stats.FactorRotationVarimax,
+		stats.FactorRotationQuartimax,
+		stats.FactorRotationGeominT,
+		stats.FactorRotationBentlerT,
+	} {
+		opt := stats.DefaultFactorAnalysisOptions()
+		opt.Count.Method = stats.FactorCountFixed
+		opt.Count.FixedK = 3
+		opt.Extraction = stats.FactorExtractionML
+		opt.Rotation.Method = m
+		opt.Scoring = stats.FactorScoreNone
+		res, err := stats.FactorAnalysis(tbl, opt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		R := dtToDense(res.RotationMatrix)
+		if R == nil {
+			t.Errorf("[%s] RotationMatrix nil", m)
+			continue
+		}
+		_, c := R.Dims()
+		RT := mat.DenseCopyOf(R.T())
+		var RTR mat.Dense
+		RTR.Mul(RT, R)
+		maxOff := 0.0
+		for i := 0; i < c; i++ {
+			for j := 0; j < c; j++ {
+				target := 0.0
+				if i == j {
+					target = 1.0
+				}
+				if d := math.Abs(RTR.At(i, j) - target); d > maxOff {
+					maxOff = d
+				}
+			}
+		}
+		if maxOff > 1e-9 {
+			t.Errorf("[%s] R'R - I max=%.3e (RotMat not orthonormal)", m, maxOff)
+		} else {
+			fmt.Printf("[%-12s] R'R - I max=%.3e (orthonormal) ✓\n", m, maxOff)
+		}
+	}
+}
+
+// TestPCAFullRankReconstruction: PCA with k=p reconstructs correlation
+// matrix exactly: L · L' = R.
+func TestPCAFullRankReconstruction(t *testing.T) {
+	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
+		t.Skip()
+	}
+	const n = 60
+	const p = 5
+	tbl := buildSyntheticTable(n, p, syntheticGen3Factor)
+	opt := stats.DefaultFactorAnalysisOptions()
+	opt.Count.Method = stats.FactorCountFixed
+	opt.Count.FixedK = p
+	opt.Extraction = stats.FactorExtractionPCA
+	opt.Rotation.Method = stats.FactorRotationNone
+	opt.Scoring = stats.FactorScoreNone
+	res, err := stats.FactorAnalysis(tbl, opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	L := dtToDense(res.Loadings)
+	LT := mat.DenseCopyOf(L.T())
+	var Reconstructed mat.Dense
+	Reconstructed.Mul(L, LT)
+	S := tableToCorrMatrix(tbl)
+	d := maxAbsDiff(&Reconstructed, S)
+	if d > 1e-10 {
+		t.Errorf("PCA k=p: L·L' ≠ R, max=%.3e", d)
+	} else {
+		fmt.Printf("PCA k=p: L·L' = R, max diff=%.3e ✓\n", d)
+	}
+}
+
+// TestCommunalityMonotonicity: increasing nfactors monotonically increases
+// sum(communalities) — more factors capture more variance.
+func TestCommunalityMonotonicity(t *testing.T) {
+	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
+		t.Skip()
+	}
+	const n = 60
+	const p = 6
+	tbl := buildSyntheticTable(n, p, syntheticGen3Factor)
+	prevSum := 0.0
+	for k := 1; k <= 4; k++ {
+		opt := stats.DefaultFactorAnalysisOptions()
+		opt.Count.Method = stats.FactorCountFixed
+		opt.Count.FixedK = k
+		opt.Extraction = stats.FactorExtractionPCA
+		opt.Rotation.Method = stats.FactorRotationNone
+		opt.Scoring = stats.FactorScoreNone
+		res, err := stats.FactorAnalysis(tbl, opt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sumComm := 0.0
+		commRows, _ := res.Communalities.Size()
+		for i := 0; i < commRows; i++ {
+			v, _ := res.Communalities.GetElementByNumberIndex(i, 1).(float64)
+			sumComm += v
+		}
+		if sumComm < prevSum-1e-9 {
+			t.Errorf("k=%d: sum(comm)=%v < prev=%v (not monotonic)", k, sumComm, prevSum)
+		}
+		fmt.Printf("PCA k=%d: sum(communalities) = %.6f\n", k, sumComm)
+		prevSum = sumComm
+	}
+}
+
+// TestEigenvaluesMatchPCAOnCorrMatrix: for PCA, reported eigenvalues
+// should match the actual eigenvalues of the correlation matrix.
+func TestEigenvaluesMatchPCAOnCorrMatrix(t *testing.T) {
+	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
+		t.Skip()
+	}
+	const n = 60
+	tbl := buildSyntheticTable(n, 6, syntheticGen3Factor)
+	S := tableToCorrMatrix(tbl)
+	expectedEigvals := eigenvaluesDescending(S)
+	opt := stats.DefaultFactorAnalysisOptions()
+	opt.Count.Method = stats.FactorCountFixed
+	opt.Count.FixedK = 3
+	opt.Extraction = stats.FactorExtractionPCA
+	opt.Rotation.Method = stats.FactorRotationNone
+	opt.Scoring = stats.FactorScoreNone
+	res, err := stats.FactorAnalysis(tbl, opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Eigenvalues field reports the top k eigenvalues of correlation matrix
+	ep := dtToDense(res.Eigenvalues)
+	rows, cols := ep.Dims()
+	got := make([]float64, 0)
+	for i := 0; i < rows; i++ {
+		for j := 0; j < cols; j++ {
+			got = append(got, ep.At(i, j))
+		}
+	}
+	for j := 0; j < len(got) && j < len(expectedEigvals); j++ {
+		if d := math.Abs(got[j] - expectedEigvals[j]); d > 1e-9 {
+			t.Errorf("eigval[%d]: got %v, expected %v (diff %.3e)", j, got[j], expectedEigvals[j], d)
+		}
+	}
+	fmt.Printf("PCA eigenvalues match correlation matrix eigenvalues ✓\n")
+}
+
 // TestEdgeCaseMaxFactors: k = p-1 (saturated factor model).
 func TestEdgeCaseMaxFactors(t *testing.T) {
 	if os.Getenv("INSYRA_VERIFY_MORE") != "1" {
