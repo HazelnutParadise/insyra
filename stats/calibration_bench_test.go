@@ -127,6 +127,35 @@ func BenchmarkCalib_KendallPairs(b *testing.B) {
 	}
 }
 
+// BenchmarkCalib_KendallStrategies extends the brute-vs-parallel grid with
+// Knight's O(n log n) algorithm to find the second crossover (where Knight
+// beats parallel brute). Knight has higher constant factor (mergesort,
+// allocation, lex sort) so it loses for small n where the n² loop's dense
+// inner kernel dominates; the crossover lands well past the brute-parallel
+// crossover and gates Knight's dispatch.
+func BenchmarkCalib_KendallStrategies(b *testing.B) {
+	sizes := []int{32, 64, 96, 128, 192, 256, 512, 1024, 1536, 2048, 3072, 4096, 6144, 8192}
+	for _, n := range sizes {
+		x := calibVec(n, uint64(n))
+		y := calibVec(n, uint64(n)+1)
+		b.Run(fmt.Sprintf("BruteSer_n=%d", n), func(b *testing.B) {
+			for b.Loop() {
+				_, _ = kendallPairCountBruteSerial(x, y)
+			}
+		})
+		b.Run(fmt.Sprintf("BrutePar_n=%d", n), func(b *testing.B) {
+			for b.Loop() {
+				_, _ = kendallPairCountBruteParallel(x, y)
+			}
+		})
+		b.Run(fmt.Sprintf("Knight_n=%d", n), func(b *testing.B) {
+			for b.Loop() {
+				_, _ = kendallPairCountKnight(x, y)
+			}
+		})
+	}
+}
+
 // ---------- EuclideanDistanceMatrix ----------
 
 func euclideanDistanceMatrixSerial(data [][]float64) [][]float64 {

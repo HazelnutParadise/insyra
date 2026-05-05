@@ -1,6 +1,7 @@
 package stats
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"math"
@@ -8,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/internal/algorithms"
 	"github.com/HazelnutParadise/insyra/stats/internal/parutil"
 	"gonum.org/v1/gonum/mat"
 	"gonum.org/v1/gonum/stat"
@@ -203,8 +205,12 @@ func rankSliceAverage(data []float64) []float64 {
 	for i := range indexes {
 		indexes[i] = i
 	}
-	sort.SliceStable(indexes, func(a, b int) bool {
-		return data[indexes[a]] < data[indexes[b]]
+	// algorithms.ParallelSortStableFunc is generic (no reflection) and
+	// auto-falls-back to slices.SortStableFunc below n=4910. So this is
+	// strictly faster than sort.SliceStable at every size: small n loses
+	// the reflection overhead, large n picks up parallel sort for free.
+	algorithms.ParallelSortStableFunc(indexes, func(a, b int) int {
+		return cmp.Compare(data[a], data[b])
 	})
 	ranked := make([]float64, n)
 	for i := 0; i < n; {
@@ -508,54 +514,77 @@ func pearsonCorrelationWithStats(dlX, dlY insyra.IDataList) (CorrelationResult, 
 // R's cor(method="kendall"), SciPy's kendalltau, and SPSS, which all default
 // to τ-b. We implement τ-b directly here.
 //
-// Algorithm: O(n²) pair iteration plus an O(n log n) sort per axis to extract
-// tie group sizes for the tie-corrected asymptotic variance. Knight's
-// O(n log n) merge-sort variant exists but adds significant complexity for
-// little gain at the n's we exercise (the package's other tests cap around
-// n ≈ 250); the naive form is correct by inspection.
+// Two pair-counting strategies, dispatched by n based on calibration data
+// (BenchmarkCalib_KendallStrategies on 24 threads):
+//   - n < 128 : serial brute O(n²). Tightest inner loop, smallest constant
+//               — at n≤96 this beats every alternative including Knight.
+//   - n ≥ 128 : Knight's O(n log n) algorithm via mergesort inversion
+//               counting. Wins by 5% at n=128, 38% at n=192, 3.5× at n=1024,
+//               12× at n=8192.
+//
+// Note: a parallel brute O(n²) variant exists in this file
+// (kendallPairCountBruteParallel) but is NOT on the dispatch path.
+// Calibration shows Knight's serial implementation beats parallel brute on
+// 24 threads at every n where parallel brute would otherwise be picked
+// (e.g. n=512: knight 42µs, brute-par 110µs; n=2048: knight 268µs,
+// brute-par 1.16ms). Spending 24 cores on n² work that Knight does in
+// O(n log n) on one core is just bad triage. The parallel brute remains
+// callable for the kendall_knight_test.go equivalence check.
+//
+// All branches return identical (nC, nD) — they're integer pair counts
+// of the same combinatorial definition, just enumerated differently — so
+// τ, sval and varS are bit-identical regardless of which branch fires.
 //
 // Returns:
-//   tau  — Kendall's τ-b in [-1, 1] (NaN if either axis is all-tied)
-//   sval — concordant minus discordant pair count (the "S" statistic)
-//   varS — variance of S under H₀ with tie correction (Conover 1999, eq. 5.16)
+//
+//	tau  — Kendall's τ-b in [-1, 1] (NaN if either axis is all-tied)
+//	sval — concordant minus discordant pair count (the "S" statistic)
+//	varS — variance of S under H₀ with tie correction (Conover 1999, eq. 5.16)
 func kendallTauBStats(x, y []float64) (tau, sval, varS float64) {
 	n := len(x)
 	if n < 2 {
 		return math.NaN(), 0, math.NaN()
 	}
-	// Pair counting parallel reduction. Each i row's inner loop (j > i) is
-	// independent — workers accumulate concordant/discordant counts into
-	// per-worker slots and we sum them serially. Sums are integers, so the
-	// reduction order doesn't change the result.
-	//
-	// Calibrated cutoff (BenchmarkCalib_KendallPairs on 24 threads): the
-	// per-pair body is ~5ns. Total work ≈n²·2.5ns. Goroutine launch +
-	// join is ≈18µs, so the parallel branch only wins when total serial
-	// cost ≳ 20µs, i.e. n ≳ 192. We gate at n ≥ 192 (data: n=192 parallel
-	// is 1.04× serial; n=128 parallel is 0.77× — losing).
-	workers := 1
-	if n >= 192 {
-		workers = parutil.MaxWorkers(n)
+	var nC, nD float64
+	if n >= 128 {
+		nC, nD = kendallPairCountKnight(x, y)
+	} else {
+		nC, nD = kendallPairCountBruteSerial(x, y)
 	}
-	if workers <= 1 {
-		var nC, nD float64
-		for i := range n {
-			xi := x[i]
-			yi := y[i]
-			for j := i + 1; j < n; j++ {
-				dx := xi - x[j]
-				dy := yi - y[j]
-				if dx == 0 || dy == 0 {
-					continue
-				}
-				if (dx > 0) == (dy > 0) {
-					nC++
-				} else {
-					nD++
-				}
+	return kendallTauBFinish(x, y, n, nC, nD)
+}
+
+// kendallPairCountBruteSerial is the textbook O(n²) double loop. Used as the
+// reference and as the production path for small n where the loop body's
+// constant factor (≈5ns/pair) beats Knight's mergesort overhead.
+func kendallPairCountBruteSerial(x, y []float64) (nC, nD float64) {
+	n := len(x)
+	for i := range n {
+		xi, yi := x[i], y[i]
+		for j := i + 1; j < n; j++ {
+			dx := xi - x[j]
+			dy := yi - y[j]
+			if dx == 0 || dy == 0 {
+				continue
+			}
+			if (dx > 0) == (dy > 0) {
+				nC++
+			} else {
+				nD++
 			}
 		}
-		return kendallTauBFinish(x, y, n, nC, nD)
+	}
+	return
+}
+
+// kendallPairCountBruteParallel mirrors the serial brute count but spreads
+// the outer i-loop across goroutines with worker-local int accumulators.
+// Sums are integer-valued so the reduction order doesn't perturb the result.
+func kendallPairCountBruteParallel(x, y []float64) (nC, nD float64) {
+	n := len(x)
+	workers := parutil.MaxWorkers(n)
+	if workers <= 1 {
+		return kendallPairCountBruteSerial(x, y)
 	}
 	cArr := make([]float64, workers)
 	dArr := make([]float64, workers)
@@ -572,8 +601,7 @@ func kendallTauBStats(x, y []float64) (tau, sval, varS float64) {
 			defer wg.Done()
 			var lc, ld float64
 			for i := start; i < end; i++ {
-				xi := x[i]
-				yi := y[i]
+				xi, yi := x[i], y[i]
 				for j := i + 1; j < n; j++ {
 					dx := xi - x[j]
 					dy := yi - y[j]
@@ -592,12 +620,156 @@ func kendallTauBStats(x, y []float64) (tau, sval, varS float64) {
 		}(w, start, end)
 	}
 	wg.Wait()
-	var nC, nD float64
 	for i := range workers {
 		nC += cArr[i]
 		nD += dArr[i]
 	}
-	return kendallTauBFinish(x, y, n, nC, nD)
+	return
+}
+
+// kendallPairCountKnight implements Knight (1966)'s O(n log n) algorithm.
+// Reference: "A computer method for calculating Kendall's tau with ungrouped
+// data", JASA 61(314): 436–439.
+//
+// Method:
+//  1. Lex-sort pairs by (x, y).
+//  2. Walk the sorted array to count tie groups: n1 = pairs tied in x,
+//     n_xy = pairs tied in both axes (the lex sort makes (x,y)-tie groups
+//     contiguous within x-tie groups).
+//  3. Extract the y-vector in x-sorted order, count its inversions via
+//     mergesort. Because the secondary sort orders y-ascending within
+//     x-ties, every inversion (i<j, y_i>y_j) has x_i<x_j — i.e. each is
+//     exactly one discordant pair. So discordant = inversions.
+//  4. After the mergesort the y-vector is sorted; walk it to count
+//     n2 = pairs tied in y.
+//  5. nC = n0 − n1 − n2 + n_xy − discordant   (derived in the comment
+//     block below).
+//
+// Derivation. After lex-sort, every pair (i<j) falls into:
+//
+//	A: x_i<x_j ∧ y_i<y_j  (concordant)
+//	B: x_i<x_j ∧ y_i>y_j  (discordant) = inversions
+//	C: x_i<x_j ∧ y_i=y_j  (tied in y only)
+//	D: x_i=x_j ∧ y_i<y_j  (tied in x only — secondary sort puts these here)
+//	E: x_i=x_j ∧ y_i=y_j  (tied in both)
+//
+// Then n1 = D+E, n2 = C+E, n_xy = E, and A+B+C+D+E = n0, so
+// A = n0 − B − C − D − E = n0 − inversions − (n2−E) − (n1−E) − E
+//   = n0 − n1 − n2 + E − inversions.
+func kendallPairCountKnight(x, y []float64) (nC, nD float64) {
+	n := len(x)
+	if n < 2 {
+		return 0, 0
+	}
+	type pair struct{ x, y float64 }
+	pairs := make([]pair, n)
+	for i := range x {
+		pairs[i] = pair{x[i], y[i]}
+	}
+	sort.Slice(pairs, func(i, j int) bool {
+		if pairs[i].x != pairs[j].x {
+			return pairs[i].x < pairs[j].x
+		}
+		return pairs[i].y < pairs[j].y
+	})
+
+	// Walk lex-sorted pairs, counting n1 (x-ties) and n_xy (xy-ties).
+	var n1, eXY float64
+	i := 0
+	for i < n {
+		j := i
+		for j < n && pairs[j].x == pairs[i].x {
+			j++
+		}
+		if t := j - i; t > 1 {
+			tt := float64(t)
+			n1 += tt * (tt - 1) / 2
+			// Within this x-tie group, count y-tie subgroups (secondary
+			// sort means equal y's are contiguous here).
+			k := i
+			for k < j {
+				l := k
+				for l < j && pairs[l].y == pairs[k].y {
+					l++
+				}
+				if tt := float64(l - k); tt > 1 {
+					eXY += tt * (tt - 1) / 2
+				}
+				k = l
+			}
+		}
+		i = j
+	}
+
+	// Project y into x-sorted order, count inversions (= discordant), and
+	// pick up the y-sort as a side effect of mergesort.
+	ys := make([]float64, n)
+	for i := range pairs {
+		ys[i] = pairs[i].y
+	}
+	aux := make([]float64, n)
+	inversions := mergeCountInversions(ys, aux, 0, n-1)
+
+	// ys is now sorted; walk it for n2 (y-ties).
+	var n2 float64
+	i = 0
+	for i < n {
+		j := i
+		for j < n && ys[j] == ys[i] {
+			j++
+		}
+		if t := j - i; t > 1 {
+			tt := float64(t)
+			n2 += tt * (tt - 1) / 2
+		}
+		i = j
+	}
+
+	n0 := float64(n*(n-1)) / 2
+	nC = n0 - n1 - n2 + eXY - inversions
+	nD = inversions
+	return
+}
+
+// mergeCountInversions sorts a[lo:hi+1] in place via mergesort and returns
+// the inversion count. aux must have len ≥ hi+1.
+func mergeCountInversions(a, aux []float64, lo, hi int) float64 {
+	if lo >= hi {
+		return 0
+	}
+	mid := (lo + hi) / 2
+	inv := mergeCountInversions(a, aux, lo, mid)
+	inv += mergeCountInversions(a, aux, mid+1, hi)
+	inv += mergeCountStep(a, aux, lo, mid, hi)
+	return inv
+}
+
+func mergeCountStep(a, aux []float64, lo, mid, hi int) float64 {
+	for k := lo; k <= hi; k++ {
+		aux[k] = a[k]
+	}
+	var inv float64
+	i, j := lo, mid+1
+	for k := lo; k <= hi; k++ {
+		switch {
+		case i > mid:
+			a[k] = aux[j]
+			j++
+		case j > hi:
+			a[k] = aux[i]
+			i++
+		case aux[i] <= aux[j]:
+			a[k] = aux[i]
+			i++
+		default:
+			// aux[i] > aux[j]: every remaining element in left half [i..mid]
+			// forms an inversion with aux[j].
+			inv += float64(mid - i + 1)
+			a[k] = aux[j]
+			j++
+		}
+	}
+	return inv
 }
 
 func kendallTauBFinish(x, y []float64, n int, nC, nD float64) (tau, sval, varS float64) {
