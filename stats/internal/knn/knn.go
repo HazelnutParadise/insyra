@@ -4,6 +4,8 @@ import (
 	"errors"
 	"math"
 	"sort"
+
+	"github.com/HazelnutParadise/insyra/stats/internal/parutil"
 )
 
 type Weighting string
@@ -68,8 +70,11 @@ func Classify(train, test [][]float64, labels []string, k int, opts Options) (*C
 	classes, classIndex := orderedClasses(labels)
 	predictions := make([]string, len(test))
 	probabilities := make([][]float64, len(test))
-	for i, row := range test {
-		neighbors := search.QueryKNN(row, k)
+	// Each test row is queried independently; the searchers are read-only
+	// after construction (kd/ball trees + brute store input slices and never
+	// mutate them), so parallel queries are race-free.
+	parutil.For(len(test), func(i int) {
+		neighbors := search.QueryKNN(test[i], k)
 		probabilities[i] = classifyProbabilities(neighbors, labels, classIndex, len(classes), normalized.Weighting)
 		// Tie-break = alphabetical first, matching R's `which.max` semantics
 		// (since `classes` is already alphabetically sorted, the first index
@@ -81,7 +86,7 @@ func Classify(train, test [][]float64, labels []string, k int, opts Options) (*C
 			}
 		}
 		predictions[i] = classes[best]
-	}
+	})
 	return &ClassificationResult{
 		Predictions:   predictions,
 		Classes:       classes,
@@ -106,10 +111,10 @@ func Regress(train, test [][]float64, targets []float64, k int, opts Options) (*
 	}
 
 	predictions := make([]float64, len(test))
-	for i, row := range test {
-		neighbors := search.QueryKNN(row, k)
+	parutil.For(len(test), func(i int) {
+		neighbors := search.QueryKNN(test[i], k)
 		predictions[i] = regressPrediction(neighbors, targets, normalized.Weighting)
-	}
+	})
 	return &RegressionResult{Predictions: predictions}, nil
 }
 
@@ -128,15 +133,15 @@ func Neighbors(train, test [][]float64, k int, opts Options) (*NeighborResult, e
 
 	indices := make([][]int, len(test))
 	distances := make([][]float64, len(test))
-	for i, row := range test {
-		neighbors := search.QueryKNN(row, k)
+	parutil.For(len(test), func(i int) {
+		neighbors := search.QueryKNN(test[i], k)
 		indices[i] = make([]int, len(neighbors))
 		distances[i] = make([]float64, len(neighbors))
 		for j, nb := range neighbors {
 			indices[i][j] = nb.index
 			distances[i][j] = math.Sqrt(nb.dist2)
 		}
-	}
+	})
 	return &NeighborResult{Indices: indices, Distances: distances}, nil
 }
 

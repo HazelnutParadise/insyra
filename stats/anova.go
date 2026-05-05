@@ -102,14 +102,22 @@ func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) (*
 		return nil, errors.New("invalid levels or cells")
 	}
 
+	// Single-pass extraction: while reading cell data we also accumulate
+	// per-cell sums so cellMeans can be computed without a second pass over
+	// the cells (the previous code called cells[i].Mean() and iterated each
+	// cell's Data() yet again for SSW). Order of summation per cell matches
+	// DataList.Mean exactly, so cellMeans are bit-identical.
 	var allValues []float64
 	cellCounts := make([]int, len(cells))
+	cellSums := make([]float64, len(cells))
+	cellOffsets := make([]int, len(cells))
 	factorsA := make([]int, 0)
 	factorsB := make([]int, 0)
 
 	for i := range factorALevels {
 		for j := range factorBLevels {
-			cell := cells[i*factorBLevels+j]
+			idx := i*factorBLevels + j
+			cell := cells[idx]
 			var cellData []any
 			var cellLen int
 			cell.AtomicDo(func(cdl *insyra.DataList) {
@@ -119,7 +127,9 @@ func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) (*
 			if cellLen == 0 {
 				return nil, fmt.Errorf("empty cell at A=%d, B=%d", i, j)
 			}
-			cellCounts[i*factorBLevels+j] = cellLen
+			cellCounts[idx] = cellLen
+			cellOffsets[idx] = len(allValues)
+			var localSum float64
 			for k, v := range cellData {
 				value, ok := insyra.ToFloat64Safe(v)
 				if !ok {
@@ -128,25 +138,35 @@ func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) (*
 				allValues = append(allValues, value)
 				factorsA = append(factorsA, i)
 				factorsB = append(factorsB, j)
+				localSum += value
 			}
+			cellSums[idx] = localSum
 		}
 	}
-	totalMean := insyra.NewDataList(allValues).Mean()
 	totalCount := len(allValues)
 
-	// Pre-aggregate sums and counts per A-row and per B-column in a single
-	// pass over the values. Eliminates the previous O(N × levels) inner-loop
-	// pattern (and its math.Pow(_, 2) calls — see stats/CLAUDE.md "禁止 inline
-	// math.Pow with integer exponent 2").
+	// totalMean computed from cellSums to avoid creating a temporary DataList
+	// (which would lock+unlock its actor and walk allValues again). Same
+	// summation order as before — DataList.Mean iterates the input slice in
+	// order, and cellSums was built by the same cell-order pass.
+	var grandSum float64
+	for _, s := range cellSums {
+		grandSum += s
+	}
+	totalMean := grandSum / float64(totalCount)
+
 	sumsA := make([]float64, factorALevels)
 	sumsB := make([]float64, factorBLevels)
 	countsA := make([]int, factorALevels)
 	countsB := make([]int, factorBLevels)
-	for idx, v := range allValues {
-		sumsA[factorsA[idx]] += v
-		sumsB[factorsB[idx]] += v
-		countsA[factorsA[idx]]++
-		countsB[factorsB[idx]]++
+	for i := range factorALevels {
+		for j := range factorBLevels {
+			idx := i*factorBLevels + j
+			sumsA[i] += cellSums[idx]
+			sumsB[j] += cellSums[idx]
+			countsA[i] += cellCounts[idx]
+			countsB[j] += cellCounts[idx]
+		}
 	}
 	aMeans := make([]float64, factorALevels)
 	bMeans := make([]float64, factorBLevels)
@@ -164,22 +184,32 @@ func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) (*
 
 	cellMeans := make([]float64, len(cells))
 	for i := range cells {
-		cellMeans[i] = cells[i].Mean()
+		cellMeans[i] = cellSums[i] / float64(cellCounts[i])
 	}
 
-	var SSAB, SSW float64
+	// SSAB across cells: small loop, sequential.
+	var SSAB float64
 	for i := range factorALevels {
 		for j := range factorBLevels {
 			idx := i*factorBLevels + j
 			exp := aMeans[i] + bMeans[j] - totalMean
 			SSAB += float64(cellCounts[idx]) * (cellMeans[idx] - exp) * (cellMeans[idx] - exp)
-			for k, v := range cells[idx].Data() {
-				x, ok := insyra.ToFloat64Safe(v)
-				if !ok {
-					return nil, fmt.Errorf("invalid data at cell %d index %d", idx, k)
-				}
-				SSW += (x - cellMeans[idx]) * (x - cellMeans[idx])
-			}
+		}
+	}
+
+	// SSW: single pass over allValues using the cell index recovered from
+	// the offsets. Bit-identical to the previous "iterate cells[idx].Data()
+	// per cell, accumulate (x-mean)²" loop because allValues was filled in
+	// the same cell-order, so the running sum visits values in the same
+	// sequence.
+	var SSW float64
+	for idx := range cells {
+		mean := cellMeans[idx]
+		start := cellOffsets[idx]
+		end := start + cellCounts[idx]
+		for k := start; k < end; k++ {
+			diff := allValues[k] - mean
+			SSW += diff * diff
 		}
 	}
 

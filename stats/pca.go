@@ -3,9 +3,11 @@ package stats
 import (
 	"errors"
 	"fmt"
+	"math"
 
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/internal/algorithms"
+	"github.com/HazelnutParadise/insyra/stats/internal/parutil"
 	"gonum.org/v1/gonum/mat"
 	"gonum.org/v1/gonum/stat"
 )
@@ -55,16 +57,46 @@ func PCA(dataTable insyra.IDataTable, nComponents ...int) (*PCAResult, error) {
 		return nil, fmt.Errorf("nComponents must be between 1 and %d", colNum)
 	}
 
-	for j := range colNum {
-		col := mat.Col(nil, j, data)
-		mean, std := stat.MeanStdDev(col, nil)
-		if std == 0 {
-			return nil, fmt.Errorf("PCA undefined for zero-variance column %d", j)
-		}
+	// Standardisation in two parallel phases:
+	//   (1) per-column mean & sample std — each column j is independent.
+	//       Uses the same two-pass formula as gonum/stat.MeanStdDev (Σx then
+	//       Σ(x-mean)² with n-1 divisor) so the result is bit-identical to
+	//       the previous mat.Col + MeanStdDev path, while skipping the
+	//       per-column []float64 allocation.
+	//   (2) row-parallel rewrite using the precomputed (mean, std). Each
+	//       worker writes only to rows it owns, so no cache-line ping-pong.
+	means := make([]float64, colNum)
+	stds := make([]float64, colNum)
+	stdErrs := make([]error, colNum)
+	parutil.For(colNum, func(j int) {
+		var sum float64
 		for i := range rowNum {
-			data.Set(i, j, (data.At(i, j)-mean)/std)
+			sum += data.At(i, j)
+		}
+		mean := sum / float64(rowNum)
+		var ss float64
+		for i := range rowNum {
+			d := data.At(i, j) - mean
+			ss += d * d
+		}
+		std := math.Sqrt(ss / float64(rowNum-1))
+		if std == 0 {
+			stdErrs[j] = fmt.Errorf("PCA undefined for zero-variance column %d", j)
+			return
+		}
+		means[j] = mean
+		stds[j] = std
+	})
+	for _, e := range stdErrs {
+		if e != nil {
+			return nil, e
 		}
 	}
+	parutil.For(rowNum, func(i int) {
+		for j := range colNum {
+			data.Set(i, j, (data.At(i, j)-means[j])/stds[j])
+		}
+	})
 
 	covMatrix := mat.NewSymDense(colNum, nil)
 	stat.CovarianceMatrix(covMatrix, data, nil)

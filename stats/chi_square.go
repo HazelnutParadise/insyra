@@ -159,33 +159,41 @@ func ChiSquareIndependenceTest(rowData, colData insyra.IDataList) (*ChiSquareTes
 		return nil, errors.New("both DataLists must have the same length")
 	}
 
-	// 建立分類
+	// Convert each value to its trimmed string form exactly once. The
+	// previous implementation called conv.ToString + strings.TrimSpace four
+	// times per row (twice during set building, twice during the observed-
+	// count fill). For n=5000 with both columns this was ~40k redundant
+	// allocations. The cached strings feed every downstream step.
+	n := len(rowVals)
+	rowStrs := make([]string, n)
+	colStrs := make([]string, n)
+	for i := range n {
+		rowStrs[i] = strings.TrimSpace(conv.ToString(rowVals[i]))
+		colStrs[i] = strings.TrimSpace(conv.ToString(colVals[i]))
+	}
+
 	rowSet := make(map[string]struct{})
 	colSet := make(map[string]struct{})
-	for _, v := range rowVals {
-		s := strings.TrimSpace(conv.ToString(v))
+	for _, s := range rowStrs {
 		rowSet[s] = struct{}{}
 	}
-	for _, v := range colVals {
-		s := strings.TrimSpace(conv.ToString(v))
+	for _, s := range colStrs {
 		colSet[s] = struct{}{}
 	}
 
-	// 排序分類鍵值，確保順序一致
 	rowKeys := make([]string, 0, len(rowSet))
 	colKeys := make([]string, 0, len(colSet))
 	for k := range rowSet {
-		rowKeys = append(rowKeys, strings.TrimSpace(k))
+		rowKeys = append(rowKeys, k)
 	}
 	for k := range colSet {
-		colKeys = append(colKeys, strings.TrimSpace(k))
+		colKeys = append(colKeys, k)
 	}
 	sort.Strings(rowKeys)
 	sort.Strings(colKeys)
 
-	// 建立分類到索引的映射
-	rowIndices := make(map[string]int)
-	colIndices := make(map[string]int)
+	rowIndices := make(map[string]int, len(rowKeys))
+	colIndices := make(map[string]int, len(colKeys))
 	for i, k := range rowKeys {
 		rowIndices[k] = i
 	}
@@ -200,17 +208,16 @@ func ChiSquareIndependenceTest(rowData, colData insyra.IDataList) (*ChiSquareTes
 	}
 	observed := make([]float64, rows*cols)
 
-	// 填入觀察值
-	for i := range rowVals {
-		rStr := strings.TrimSpace(conv.ToString(rowVals[i]))
-		cStr := strings.TrimSpace(conv.ToString(colVals[i]))
-		r := rStr
-		c := cStr
-		if _, exists := rowIndices[r]; exists {
-			if _, exists := colIndices[c]; exists {
-				observed[rowIndices[r]*cols+colIndices[c]]++
-			}
+	for i := range n {
+		ri, rOK := rowIndices[rowStrs[i]]
+		if !rOK {
+			continue
 		}
+		ci, cOK := colIndices[colStrs[i]]
+		if !cOK {
+			continue
+		}
+		observed[ri*cols+ci]++
 	}
 
 	// 計算期望值

@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"sync"
 
 	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/stats/internal/parutil"
 	"gonum.org/v1/gonum/mat"
 	"gonum.org/v1/gonum/stat"
 )
@@ -39,85 +41,271 @@ func CorrelationAnalysis(dataTable insyra.IDataTable, method CorrelationMethod) 
 }
 
 // CorrelationMatrix calculates the correlation coefficient matrix and p-value matrix.
+//
+// Performance notes: extracts every column's float64 slice exactly once
+// (dropping the previous O(C²) ToF64Slice + AtomicDo work), pre-computes
+// per-column ranks for Spearman, then computes the C(C-1)/2 unique pairs in
+// parallel on those cached slices. Result is bit-identical to the previous
+// serial path: the underlying primitives are the same, only the order /
+// granularity of work differs.
 func CorrelationMatrix(dataTable insyra.IDataTable, method CorrelationMethod) (corrMatrix *insyra.DataTable, pMatrix *insyra.DataTable, err error) {
 	dt := insyra.NewDataTable()
 	pdt := insyra.NewDataTable()
-	var pairErr error
+
+	var n int
+	var colSlices [][]float64
+	var colNames []string
 	dataTable.AtomicDo(func(table *insyra.DataTable) {
-		_, n := table.Size()
+		_, n = table.Size()
 		if n < 2 {
 			err = errors.New("need at least two columns for correlation")
 			return
 		}
-
-		matrix := make([][]float64, n)
-		pmatrix := make([][]float64, n)
-		for i := range matrix {
-			matrix[i] = make([]float64, n)
-			pmatrix[i] = make([]float64, n)
-		}
-
+		colSlices = make([][]float64, n)
+		colNames = make([]string, n)
 		for i := range n {
-			for j := i; j < n; j++ {
-				if i == j {
-					matrix[i][j] = 1.0
-					pmatrix[i][j] = 0.0
-					continue
-				}
-
-				corrResult, corrErr := Correlation(table.GetColByNumber(i), table.GetColByNumber(j), method)
-				if corrErr == nil && corrResult != nil && !math.IsNaN(corrResult.Statistic) {
-					matrix[i][j] = corrResult.Statistic
-					matrix[j][i] = corrResult.Statistic
-					pmatrix[i][j] = corrResult.PValue
-					pmatrix[j][i] = corrResult.PValue
-				} else {
-					if pairErr == nil {
-						if corrErr != nil {
-							pairErr = fmt.Errorf("unable to calculate correlation for columns %d and %d: %w", i, j, corrErr)
-						} else {
-							pairErr = fmt.Errorf("unable to calculate correlation for columns %d and %d", i, j)
-						}
-					}
-					matrix[i][j] = math.NaN()
-					matrix[j][i] = math.NaN()
-					pmatrix[i][j] = math.NaN()
-					pmatrix[j][i] = math.NaN()
-				}
-			}
+			c := table.GetColByNumber(i)
+			c.AtomicDo(func(dl *insyra.DataList) {
+				colSlices[i] = dl.ToF64Slice()
+				colNames[i] = dl.GetName()
+			})
 		}
-
-		dtColNames := insyra.NewDataList()
-		for i := range matrix {
-			rowName := table.GetColByNumber(i).GetName()
-			row := insyra.NewDataList().SetName(rowName)
-			dtColNames.Append(rowName)
-			for j := range matrix[i] {
-				row.Append(matrix[i][j])
-			}
-			dt.AppendRowsFromDataList(row)
-		}
-		dt.AppendRowsFromDataList(dtColNames)
-		dt.SetRowToColNames(-1)
-
-		pdtColNames := insyra.NewDataList()
-		for i := range pmatrix {
-			rowName := table.GetColByNumber(i).GetName()
-			row := insyra.NewDataList().SetName(rowName)
-			pdtColNames.Append(rowName)
-			for j := range pmatrix[i] {
-				row.Append(pmatrix[i][j])
-			}
-			pdt.AppendRowsFromDataList(row)
-		}
-		pdt.AppendRowsFromDataList(pdtColNames)
-		pdt.SetRowToColNames(-1)
 	})
 	if err != nil {
 		return nil, nil, err
 	}
 
+	matrix := make([][]float64, n)
+	pmatrix := make([][]float64, n)
+	for i := range matrix {
+		matrix[i] = make([]float64, n)
+		pmatrix[i] = make([]float64, n)
+		matrix[i][i] = 1.0
+	}
+
+	// For Spearman the rank vectors are reused across every pair the column
+	// participates in, so we precompute them once. The ranking algorithm
+	// matches DataList.Rank exactly (stable sort + average-rank ties).
+	var ranks [][]float64
+	if method == SpearmanCorrelation {
+		ranks = make([][]float64, n)
+		parutil.For(n, func(i int) {
+			ranks[i] = rankSliceAverage(colSlices[i])
+		})
+	}
+
+	pairs := n * (n - 1) / 2
+	pairErrs := make([]error, pairs)
+	pairAt := func(p int) (int, int) {
+		// Map linear pair index p ∈ [0, n*(n-1)/2) to (i, j) with i < j.
+		i := 0
+		for {
+			rowSize := n - i - 1
+			if p < rowSize {
+				return i, i + 1 + p
+			}
+			p -= rowSize
+			i++
+		}
+	}
+
+	parutil.For(pairs, func(p int) {
+		i, j := pairAt(p)
+		var statVal, pval float64
+		var perr error
+		switch method {
+		case PearsonCorrelation:
+			statVal, pval, perr = pearsonOnSlices(colSlices[i], colSlices[j])
+		case KendallCorrelation:
+			statVal, pval, perr = kendallOnSlices(colSlices[i], colSlices[j])
+		case SpearmanCorrelation:
+			statVal, pval, perr = spearmanOnSlices(colSlices[i], colSlices[j], ranks[i], ranks[j])
+		default:
+			perr = errors.New("unsupported method")
+		}
+		if perr != nil || math.IsNaN(statVal) {
+			matrix[i][j] = math.NaN()
+			matrix[j][i] = math.NaN()
+			pmatrix[i][j] = math.NaN()
+			pmatrix[j][i] = math.NaN()
+			if perr != nil {
+				pairErrs[p] = fmt.Errorf("unable to calculate correlation for columns %d and %d: %w", i, j, perr)
+			} else {
+				pairErrs[p] = fmt.Errorf("unable to calculate correlation for columns %d and %d", i, j)
+			}
+			return
+		}
+		matrix[i][j] = statVal
+		matrix[j][i] = statVal
+		pmatrix[i][j] = pval
+		pmatrix[j][i] = pval
+	})
+
+	var pairErr error
+	for _, e := range pairErrs {
+		if e != nil {
+			pairErr = e
+			break
+		}
+	}
+
+	dtColNames := insyra.NewDataList()
+	for i := range matrix {
+		row := insyra.NewDataList().SetName(colNames[i])
+		dtColNames.Append(colNames[i])
+		for j := range matrix[i] {
+			row.Append(matrix[i][j])
+		}
+		dt.AppendRowsFromDataList(row)
+	}
+	dt.AppendRowsFromDataList(dtColNames)
+	dt.SetRowToColNames(-1)
+
+	pdtColNames := insyra.NewDataList()
+	for i := range pmatrix {
+		row := insyra.NewDataList().SetName(colNames[i])
+		pdtColNames.Append(colNames[i])
+		for j := range pmatrix[i] {
+			row.Append(pmatrix[i][j])
+		}
+		pdt.AppendRowsFromDataList(row)
+	}
+	pdt.AppendRowsFromDataList(pdtColNames)
+	pdt.SetRowToColNames(-1)
+
 	return dt, pdt, pairErr
+}
+
+// rankSliceAverage replicates DataList.Rank's average-rank-on-ties behaviour
+// on a raw []float64 — used by CorrelationMatrix's Spearman path so each
+// column is ranked exactly once instead of once per pair.
+func rankSliceAverage(data []float64) []float64 {
+	n := len(data)
+	if n == 0 {
+		return nil
+	}
+	indexes := make([]int, n)
+	for i := range indexes {
+		indexes[i] = i
+	}
+	sort.SliceStable(indexes, func(a, b int) bool {
+		return data[indexes[a]] < data[indexes[b]]
+	})
+	ranked := make([]float64, n)
+	for i := 0; i < n; {
+		sumRank := 0.0
+		count := 0
+		val := data[indexes[i]]
+		for j := i; j < n && data[indexes[j]] == val; j++ {
+			sumRank += float64(j + 1)
+			count++
+		}
+		avgRank := sumRank / float64(count)
+		for k := range count {
+			ranked[indexes[i+k]] = avgRank
+		}
+		i += count
+	}
+	return ranked
+}
+
+func pearsonOnSlices(x, y []float64) (statVal, pValue float64, err error) {
+	n := len(x)
+	if n != len(y) || n < 2 {
+		return math.NaN(), math.NaN(), errors.New("invalid input length or insufficient data")
+	}
+	// gonum's Variance is two-pass with n-1 divisor — matches DataList.Var.
+	varX := stat.Variance(x, nil)
+	varY := stat.Variance(y, nil)
+	if varX == 0 || varY == 0 {
+		return math.NaN(), math.NaN(), errors.New("cannot calculate correlation due to zero variance")
+	}
+	cov := stat.Covariance(x, y, nil)
+	r := cov / math.Sqrt(varX*varY)
+	res := CorrelationResult{}
+	res.Statistic = r
+	populateCorrelationInference(&res, r, float64(n))
+	return res.Statistic, res.PValue, nil
+}
+
+func kendallOnSlices(x, y []float64) (statVal, pValue float64, err error) {
+	n := len(x)
+	if n != len(y) || n < 2 {
+		return math.NaN(), math.NaN(), errors.New("invalid input length or insufficient data")
+	}
+	// Mirror kendallCorrelationWithStats but on slices directly. The stdev
+	// guard from the IDataList path is preserved: a constant axis means no
+	// usable rank ordering, so τ-b is NaN.
+	if !hasVarianceFloats(x) || !hasVarianceFloats(y) {
+		return math.NaN(), math.NaN(), errors.New("cannot calculate correlation due to zero variance")
+	}
+	tau, sval, varS := kendallTauBStats(x, y)
+	if math.IsNaN(tau) {
+		return math.NaN(), math.NaN(), errors.New("cannot calculate correlation")
+	}
+	if n <= 7 {
+		yCopy := append([]float64(nil), y...)
+		perms := generatePermutations(yCopy)
+		extreme := 0
+		obs := math.Abs(tau)
+		for _, perm := range perms {
+			altTau, _, _ := kendallTauBStats(x, perm)
+			if math.Abs(altTau) >= obs {
+				extreme++
+			}
+		}
+		return tau, float64(extreme) / float64(len(perms)), nil
+	}
+	if varS <= 0 || math.IsNaN(varS) {
+		return tau, math.NaN(), nil
+	}
+	z := sval / math.Sqrt(varS)
+	return tau, 2 * (1 - zCDF(math.Abs(z))), nil
+}
+
+func spearmanOnSlices(rawX, rawY, rankX, rankY []float64) (statVal, pValue float64, err error) {
+	n := len(rawX)
+	if n != len(rawY) || n < 2 {
+		return math.NaN(), math.NaN(), errors.New("invalid input length or insufficient data")
+	}
+	if !hasVarianceFloats(rawX) || !hasVarianceFloats(rawY) {
+		return math.NaN(), math.NaN(), errors.New("cannot calculate correlation due to zero variance")
+	}
+	varRX := stat.Variance(rankX, nil)
+	varRY := stat.Variance(rankY, nil)
+	if varRX == 0 || varRY == 0 {
+		return math.NaN(), math.NaN(), errors.New("cannot calculate correlation due to zero variance")
+	}
+	covR := stat.Covariance(rankX, rankY, nil)
+	rho := covR / math.Sqrt(varRX*varRY)
+	if math.IsNaN(rho) {
+		return math.NaN(), math.NaN(), errors.New("cannot calculate correlation")
+	}
+	nF := float64(n)
+	df := nF - 2
+	if df <= 0 {
+		return rho, math.NaN(), nil
+	}
+	if hasTiesFloats(rawX) || hasTiesFloats(rawY) || nF > 1290 {
+		return rho, tTwoTailedPValue(correlationToT(rho, nF), df), nil
+	}
+	return rho, spearmanPValueAS89(rho, n), nil
+}
+
+// hasVarianceFloats reports whether the slice has at least two distinct
+// values (i.e. non-zero sample variance). Cheap O(n) replacement for
+// computing Stdev() just to compare to zero.
+func hasVarianceFloats(v []float64) bool {
+	if len(v) < 2 {
+		return false
+	}
+	first := v[0]
+	for _, x := range v[1:] {
+		if x != first {
+			return true
+		}
+	}
+	return false
 }
 
 func Covariance(dlX, dlY insyra.IDataList) (float64, error) {
@@ -320,21 +508,75 @@ func kendallTauBStats(x, y []float64) (tau, sval, varS float64) {
 	if n < 2 {
 		return math.NaN(), 0, math.NaN()
 	}
-	var nC, nD float64
-	for i := range n {
-		for j := i + 1; j < n; j++ {
-			dx := x[i] - x[j]
-			dy := y[i] - y[j]
-			if dx == 0 || dy == 0 {
-				continue // tied in at least one axis: contributes neither to nC nor nD
-			}
-			if (dx > 0) == (dy > 0) {
-				nC++
-			} else {
-				nD++
+	// Pair counting parallel reduction. Each i row's inner loop (j > i) is
+	// independent — workers accumulate concordant/discordant counts into
+	// per-worker slots and we sum them serially. Sums are integers, so the
+	// reduction order doesn't change the result.
+	workers := parutil.NumWorkers(n)
+	if workers <= 1 {
+		var nC, nD float64
+		for i := range n {
+			xi := x[i]
+			yi := y[i]
+			for j := i + 1; j < n; j++ {
+				dx := xi - x[j]
+				dy := yi - y[j]
+				if dx == 0 || dy == 0 {
+					continue
+				}
+				if (dx > 0) == (dy > 0) {
+					nC++
+				} else {
+					nD++
+				}
 			}
 		}
+		return kendallTauBFinish(x, y, n, nC, nD)
 	}
+	cArr := make([]float64, workers)
+	dArr := make([]float64, workers)
+	chunk := (n + workers - 1) / workers
+	var wg sync.WaitGroup
+	for w := range workers {
+		start := w * chunk
+		if start >= n {
+			break
+		}
+		end := min(start+chunk, n)
+		wg.Add(1)
+		go func(w, start, end int) {
+			defer wg.Done()
+			var lc, ld float64
+			for i := start; i < end; i++ {
+				xi := x[i]
+				yi := y[i]
+				for j := i + 1; j < n; j++ {
+					dx := xi - x[j]
+					dy := yi - y[j]
+					if dx == 0 || dy == 0 {
+						continue
+					}
+					if (dx > 0) == (dy > 0) {
+						lc++
+					} else {
+						ld++
+					}
+				}
+			}
+			cArr[w] = lc
+			dArr[w] = ld
+		}(w, start, end)
+	}
+	wg.Wait()
+	var nC, nD float64
+	for i := range workers {
+		nC += cArr[i]
+		nD += dArr[i]
+	}
+	return kendallTauBFinish(x, y, n, nC, nD)
+}
+
+func kendallTauBFinish(x, y []float64, n int, nC, nD float64) (tau, sval, varS float64) {
 
 	// Tie group sizes per axis. n1 = Σ t(t-1)/2 (pairs tied in x); same for y.
 	// T1 = Σ t(t-1)(2t+5) appears in the variance formula's primary term.
