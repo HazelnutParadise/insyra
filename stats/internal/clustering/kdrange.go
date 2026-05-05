@@ -1,6 +1,88 @@
 package clustering
 
-import "sort"
+import (
+	"sort"
+
+	"github.com/HazelnutParadise/insyra/stats/internal/parutil"
+)
+
+// dbscanShouldUseKD returns true if DBSCAN's neighbour finder should switch
+// from parallel brute O(n²·p) to a KD-tree range query.
+//
+// Calibrated cutoff (BenchmarkCalib_DBSCAN_Brute_vs_KD on 24 threads):
+//   - At (n=500, p=4)  brute-par 197µs vs KD-par 226µs  → brute wins (KD overhead).
+//   - At (n=500, p=16) brute-par 529µs vs KD-par 510µs  → KD wins.
+//   - At (n=2000, p=8) brute-par 3.32ms vs KD-par 2.19ms → KD wins (1.5×).
+//
+// The gate `n ≥ 500 ∧ n·p ≥ 8000` captures the empirical wedge.
+//
+// Exposed (lowercase) so the dispatch_coverage tests can force either path
+// and assert bit-equal neighbour sets — see TestDBSCANBruteVsKDEquivalence.
+func dbscanShouldUseKD(n, dim int) bool {
+	return n >= 500 && n*dim >= 8000
+}
+
+// dbscanBuildNeighbors constructs the per-point neighbour lists and seed
+// flags using either the brute-force or KD-tree path.
+//
+// Both paths produce identical sorted neighbour lists by construction:
+//   - Brute iterates j in 0..n order and appends qualifying j; output is
+//     naturally sorted ascending.
+//   - KD's tree traversal can deliver indices in any order, so we sort.Ints
+//     the result to match.
+//
+// Behaviour for the two paths is therefore bit-equal at the neighbour-list
+// level, which is the only piece of state DBSCAN's downstream cluster-
+// expansion BFS reads. The expansion is deterministic given identical
+// neighbours, so cluster IDs are also bit-equal.
+//
+// Exposed (lowercase) for the equivalence test in dispatch_coverage_test.go.
+func dbscanBuildNeighbors(data [][]float64, eps float64, minPts int, useKD bool) (neighbors [][]int, isSeed []bool) {
+	n := len(data)
+	dim := 0
+	if n > 0 {
+		dim = len(data[0])
+	}
+	neighbors = make([][]int, n)
+	isSeed = make([]bool, n)
+	if useKD {
+		idx := make([]int, n)
+		for i := range idx {
+			idx[i] = i
+		}
+		root := buildKdRange(data, idx, 16)
+		eps2 := eps * eps
+		parutil.Run(n, true, func(i int) {
+			var nbrs []int
+			kdRangeSearch(root, data, data[i], eps2, &nbrs)
+			sort.Ints(nbrs)
+			neighbors[i] = nbrs
+			if len(nbrs) >= minPts {
+				isSeed[i] = true
+			}
+		})
+		return
+	}
+	parutil.Run(n, n*n*dim >= 30_000, func(i int) {
+		ai := data[i]
+		nbrs := make([]int, 0, 8)
+		for j := range n {
+			if euclideanDist1(ai, data[j]) <= eps {
+				nbrs = append(nbrs, j)
+			}
+		}
+		neighbors[i] = nbrs
+		if len(nbrs) >= minPts {
+			isSeed[i] = true
+		}
+	})
+	return
+}
+
+// euclideanDist1 forwards to the cluster.go euclidean primitive without
+// pulling that file into kdrange.go's import surface — same numbers, same
+// gonum/floats backend.
+var euclideanDist1 = euclidean
 
 // kdRangeNode is a binary KD-tree node specialised for ε-ball range queries.
 // It is private to this package and used only by the DBSCAN neighbour finder

@@ -689,57 +689,13 @@ func DBSCAN(data [][]float64, eps float64, minPts int, opts DBSCANOptions) (*DBS
 	}
 
 	// Neighbour-finding strategy is chosen from calibration data
-	// (BenchmarkCalib_DBSCAN_Brute_vs_KD on 24 threads):
-	//
-	//   - Brute O(n²·p) parallel beats serial brute as soon as n²·p ≳ 30K.
-	//   - KD-tree O(n log n + n·k_avg) parallel beats parallel brute when
-	//     `n · p ≳ 8000 && n ≥ 500`. Below that threshold the tree's
-	//     construction overhead and the per-query traversal exceed the
-	//     savings — at (n=500, p=4) parallel brute is 197µs, KD parallel
-	//     is 226µs (15% slower); at (n=500, p=16) KD parallel is 510µs vs
-	//     brute parallel 529µs (KD wins). At (n=2000, p=8) the gap is
-	//     2.19ms (KD) vs 3.32ms (brute) — a 34% improvement.
-	//   - Both algorithms produce the same neighbour set; we sort the KD
-	//     output to match brute's natural 0..n traversal order so the
-	//     downstream cluster-expansion BFS visits points identically.
-	neighbors := make([][]int, n)
-	isSeed := make([]bool, n)
+	// (BenchmarkCalib_DBSCAN_Brute_vs_KD on 24 threads).
 	dim := 0
 	if n > 0 {
 		dim = len(data[0])
 	}
-	useKD := n >= 500 && n*dim >= 8000
-	if useKD {
-		idx := make([]int, n)
-		for i := range idx {
-			idx[i] = i
-		}
-		root := buildKdRange(data, idx, 16)
-		eps2 := eps * eps
-		parutil.Run(n, true, func(i int) {
-			var nbrs []int
-			kdRangeSearch(root, data, data[i], eps2, &nbrs)
-			sort.Ints(nbrs)
-			neighbors[i] = nbrs
-			if len(nbrs) >= minPts {
-				isSeed[i] = true
-			}
-		})
-	} else {
-		parutil.Run(n, n*n*dim >= 30_000, func(i int) {
-			ai := data[i]
-			nbrs := make([]int, 0, 8)
-			for j := range n {
-				if euclidean(ai, data[j]) <= eps {
-					nbrs = append(nbrs, j)
-				}
-			}
-			neighbors[i] = nbrs
-			if len(nbrs) >= minPts {
-				isSeed[i] = true
-			}
-		})
-	}
+	useKD := dbscanShouldUseKD(n, dim)
+	neighbors, isSeed := dbscanBuildNeighbors(data, eps, minPts, useKD)
 
 	cluster := make([]int, n)
 	visited := make([]bool, n)
@@ -794,6 +750,27 @@ func Silhouette(data [][]float64, labels []int) (*SilhouetteResult, error) {
 	dist := EuclideanDistanceMatrix(data)
 	points := make([]SilhouettePoint, n)
 
+	// Iterating clusterMembers via `for k := range map` gives a randomised
+	// order per Go run. The previous tie-break logic
+	//   `avg < bestB || (almostEqual(avg, bestB) && otherLabel < neighborLabel)`
+	// is NOT order-independent when two avg values differ by less than the
+	// 1e-12 almostEqual tolerance: visiting the slightly-smaller one first
+	// locks bestB to it, then a slightly-larger but smaller-labelled cluster
+	// arriving second satisfies the almostEqual branch and overwrites — but
+	// the OPPOSITE order keeps the slightly-smaller (larger-label) cluster.
+	// On tied data (e.g. axis-aligned grids) this surfaces as a different
+	// neighborLabel between runs.
+	//
+	// Fix: pre-sort the cluster keys ascending. With a deterministic order
+	// we visit smaller labels first and the tie-break collapses to "take the
+	// first cluster whose avg is no further from the running best than 1ε" —
+	// a single condition rather than a three-way OR.
+	clusterKeys := make([]int, 0, len(clusterMembers))
+	for k := range clusterMembers {
+		clusterKeys = append(clusterKeys, k)
+	}
+	sort.Ints(clusterKeys)
+
 	// Per-worker partial sums avoid contention on a single accumulator.
 	// Each worker only writes to its own slot in `partial` and only writes
 	// points[i] for its assigned i's, so no shared state is mutated.
@@ -831,22 +808,25 @@ func Silhouette(data [][]float64, labels []int) (*SilhouetteResult, error) {
 					a /= float64(len(own) - 1)
 				}
 
-				// The map iteration order varies per Go run, but the tie-break
-				// (smallest cluster ID wins on tie) yields a deterministic
-				// neighborLabel regardless of order, so this path is safe to
-				// run concurrently across i.
 				neighborLabel := 0
 				bestB := math.Inf(1)
-				for otherLabel, members := range clusterMembers {
+				// Visit clusters in ascending-label order (clusterKeys is
+				// pre-sorted). This makes the result independent of the
+				// hash-map iteration order. Update only on strictly-smaller
+				// avg (outside the almostEqual tolerance band) — within the
+				// band we keep the running best, which by sort order has
+				// the smaller label.
+				for _, otherLabel := range clusterKeys {
 					if otherLabel == label {
 						continue
 					}
+					members := clusterMembers[otherLabel]
 					avg := 0.0
 					for _, j := range members {
 						avg += dist[i][j]
 					}
 					avg /= float64(len(members))
-					if avg < bestB || (almostEqual(avg, bestB) && otherLabel < neighborLabel) || neighborLabel == 0 {
+					if neighborLabel == 0 || (avg < bestB && !almostEqual(avg, bestB)) {
 						bestB = avg
 						neighborLabel = otherLabel
 					}
