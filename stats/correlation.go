@@ -265,17 +265,20 @@ func kendallOnSlices(x, y []float64) (statVal, pValue float64, err error) {
 		return math.NaN(), math.NaN(), errors.New("cannot calculate correlation")
 	}
 	if n <= 7 {
+		// Exact two-sided permutation p-value via Heap's algorithm:
+		// iterate every permutation of y in place (no per-leaf allocation)
+		// and count how many give |τ_b| ≥ observed.
 		yCopy := append([]float64(nil), y...)
-		perms := generatePermutations(yCopy)
+		sort.Float64s(yCopy)
 		extreme := 0
 		obs := math.Abs(tau)
-		for _, perm := range perms {
+		forEachPermutation(yCopy, func(perm []float64) {
 			altTau, _, _ := kendallTauBStats(x, perm)
 			if math.Abs(altTau) >= obs {
 				extreme++
 			}
-		}
-		return tau, float64(extreme) / float64(len(perms)), nil
+		})
+		return tau, float64(extreme) / float64(factorial(n)), nil
 	}
 	if varS <= 0 || math.IsNaN(varS) {
 		return tau, math.NaN(), nil
@@ -852,19 +855,23 @@ func kendallCorrelationWithStats(dlX, dlY insyra.IDataList) CorrelationResult {
 
 	n := len(x)
 	if n <= 7 {
-		// Exact two-sided permutation p-value: hold x fixed, permute y, count
-		// how many permutations give |τ_b| at least as large as the observed
-		// one. Tau-b (not gonum's tau-a) is used inside the loop too.
-		perms := generatePermutations(y)
+		// Exact two-sided permutation p-value via Heap's algorithm:
+		// hold x fixed, iterate every permutation of y in place, count
+		// how many give |τ_b| ≥ observed. Tau-b (not gonum's tau-a) is
+		// used inside the loop too. The previous form copied each leaf
+		// permutation; Heap's mutates y in place across n! visits with
+		// zero per-leaf allocation.
+		yCopy := append([]float64(nil), y...)
+		sort.Float64s(yCopy)
 		extreme := 0
 		obs := math.Abs(tau)
-		for _, perm := range perms {
+		forEachPermutation(yCopy, func(perm []float64) {
 			altTau, _, _ := kendallTauBStats(x, perm)
 			if math.Abs(altTau) >= obs {
 				extreme++
 			}
-		}
-		result.PValue = float64(extreme) / float64(len(perms))
+		})
+		result.PValue = float64(extreme) / float64(factorial(n))
 	} else {
 		// Asymptotic z = S / sqrt(var(S)). For no-ties data this is identical
 		// to the previous Kendall formula 3·τ·sqrt(n(n−1)) / sqrt(2(2n+5)).
@@ -881,33 +888,46 @@ func kendallCorrelationWithStats(dlX, dlY insyra.IDataList) CorrelationResult {
 	return result
 }
 
-func generatePermutations(arr []float64) [][]float64 {
-	sort.Float64s(arr)
-	res := [][]float64{}
-	n := len(arr)
-	used := make([]bool, n)
-	perm := make([]float64, n)
+// forEachPermutation iterates every permutation of arr in-place, calling
+// fn with the current arrangement on each leaf. fn must NOT keep a reference
+// to the slice — we mutate it back to a new arrangement on the next step.
+//
+// Heap's algorithm (1963): generates n! permutations using only single
+// element swaps, no allocations per leaf. The previous DFS form copied the
+// whole slice at every leaf (n! × n floats); for n=7 that was 5040 × 7 =
+// 35280 allocated floats plus 5040 slice headers. Heap's allocates exactly
+// zero per leaf — the caller's accumulator (e.g. counting how many leaves
+// satisfy a predicate) is the only state.
+func forEachPermutation(arr []float64, fn func([]float64)) {
+	heapsPermute(len(arr), arr, fn)
+}
 
-	var dfs func(int)
-	dfs = func(depth int) {
-		if depth == n {
-			copyPerm := make([]float64, n)
-			copy(copyPerm, perm)
-			res = append(res, copyPerm)
-			return
-		}
-		for i := range n {
-			if used[i] {
-				continue
-			}
-			used[i] = true
-			perm[depth] = arr[i]
-			dfs(depth + 1)
-			used[i] = false
+func heapsPermute(k int, arr []float64, fn func([]float64)) {
+	if k == 1 {
+		fn(arr)
+		return
+	}
+	// Recurse first, then swap: this is the iterative-friendly "even/odd"
+	// form of Heap's algorithm. Each invocation produces every permutation
+	// of the prefix arr[:k] exactly once.
+	for i := 0; i < k; i++ {
+		heapsPermute(k-1, arr, fn)
+		if k%2 == 0 {
+			arr[i], arr[k-1] = arr[k-1], arr[i]
+		} else {
+			arr[0], arr[k-1] = arr[k-1], arr[0]
 		}
 	}
-	dfs(0)
-	return res
+}
+
+// factorial returns n! for n in [0, 20]. Used only to compute the
+// permutation-p-value denominator for Kendall n ≤ 7.
+func factorial(n int) int {
+	r := 1
+	for i := 2; i <= n; i++ {
+		r *= i
+	}
+	return r
 }
 
 func spearmanCorrelationWithStats(dlX, dlY insyra.IDataList) (CorrelationResult, error) {

@@ -582,6 +582,57 @@ func TestHierarchicalAcrossMethodsAndSizes(t *testing.T) {
 	}
 }
 
+// ---------- NN-chain vs greedy hierarchical equivalence ----------
+
+// TestHierarchicalNNChainVsGreedy asserts that for Lance-Williams reducible
+// methods, the NN-chain dispatch and the greedy O(N³) reference produce
+// dendrograms with identical heights. The merge order in `Merge[]` may
+// differ at near-ties because the two algorithms have different tie-break
+// conventions, but heights — sorted, both algorithms — must be bit-equal
+// because reducibility guarantees the same set of merge distances.
+//
+// This is the safety net: if a future change to NN-chain's tie-break or
+// chain-seeding logic perturbs heights, this test fires immediately. The
+// existing R-reference tests would also catch it but only at cases R
+// happens to cover.
+func TestHierarchicalNNChainVsGreedy(t *testing.T) {
+	methods := []string{"single", "complete", "average", "mcquitty", "ward.d", "ward.d2"}
+	for _, n := range []int{10, 50, 200, 600} {
+		for _, mode := range dataModes {
+			for _, method := range methods {
+				t.Run(fmt.Sprintf("n%d_%s_%s", n, method, mode.name), func(t *testing.T) {
+					rng := rand.New(rand.NewPCG(uint64(n), uint64(len(method))*101))
+					data := mode.gen(rng, n, 4)
+					labels := make([]string, n)
+					for i := range labels {
+						labels[i] = fmt.Sprintf("p%d", i)
+					}
+					nn, err := hierarchicalNNChain(data, labels, method)
+					if err != nil {
+						t.Fatalf("NN-chain error: %v", err)
+					}
+					gd, err := hierarchicalGreedy(data, labels, method)
+					if err != nil {
+						t.Fatalf("greedy error: %v", err)
+					}
+					if len(nn.Height) != len(gd.Height) {
+						t.Fatalf("merge count: nn=%d greedy=%d", len(nn.Height), len(gd.Height))
+					}
+					nnH := append([]float64(nil), nn.Height...)
+					gdH := append([]float64(nil), gd.Height...)
+					sort.Float64s(nnH)
+					sort.Float64s(gdH)
+					for i := range nnH {
+						if math.Abs(nnH[i]-gdH[i]) > 1e-9 {
+							t.Fatalf("height[%d] diverges: nn=%v greedy=%v", i, nnH[i], gdH[i])
+						}
+					}
+				})
+			}
+		}
+	}
+}
+
 // ---------- KMeansInit serial vs parallel equivalence ----------
 
 // TestKMeansInitAssignmentParity is a microtest asserting that the

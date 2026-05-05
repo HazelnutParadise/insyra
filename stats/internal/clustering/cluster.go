@@ -511,6 +511,30 @@ func (d *distStore) set(a, b int, v float64) {
 	d.buf[b*d.stride+a] = v
 }
 
+// isLanceWilliamsReducible reports whether the linkage method is reducible
+// in the sense of Bruynooghe (1977) — i.e. after merging clusters a and b
+// at distance d_ab, the new distance from the merged cluster to any other
+// cluster x is ≥ d_ab. Equivalent: the dendrogram heights are guaranteed
+// monotone non-decreasing under any agglomeration order.
+//
+// This is the prerequisite for NN-chain to produce a correct dendrogram:
+// the algorithm merges mutual nearest neighbours, and reducibility ensures
+// that each such merge has a height no smaller than any preceding one,
+// which is exactly the dendrogram-construction invariant.
+//
+// Median and centroid linkage are NOT reducible — their heights can
+// "invert" (a parent merge below its child). The standard greedy
+// "always merge the smallest pair" algorithm still produces the correct
+// dendrogram for them, so we keep that path for those two methods.
+func isLanceWilliamsReducible(method string) bool {
+	switch method {
+	case "single", "complete", "average", "mcquitty", "ward.d", "ward.d2":
+		return true
+	default:
+		return false
+	}
+}
+
 func Hierarchical(data [][]float64, labels []string, method string) (*HierarchicalResult, error) {
 	n := len(data)
 	if n < 2 {
@@ -523,7 +547,18 @@ func Hierarchical(data [][]float64, labels []string, method string) (*Hierarchic
 	if !isSupportedMethod(method) {
 		return nil, errors.New("unsupported agglomerative method")
 	}
+	if isLanceWilliamsReducible(method) {
+		return hierarchicalNNChain(data, labels, method)
+	}
+	return hierarchicalGreedy(data, labels, method)
+}
 
+// hierarchicalGreedy is the textbook O(N³) "find smallest pair, merge,
+// update distances, repeat" algorithm. Used only for median and centroid
+// linkage where Lance-Williams reducibility doesn't hold and NN-chain
+// can't be substituted.
+func hierarchicalGreedy(data [][]float64, labels []string, method string) (*HierarchicalResult, error) {
+	n := len(data)
 	maxID := 2*n - 1
 	clusters := make([]*clusterNode, maxID)
 	active := make([]int, n)
@@ -542,9 +577,6 @@ func Hierarchical(data [][]float64, labels []string, method string) (*Hierarchic
 
 	dists := newDistStore(maxID)
 	useSquared := method == "ward.d2"
-	// Initial pairwise distances. Each row i is independent — fill in parallel.
-	// Same cutoff as EuclideanDistanceMatrix (n²·p ≥ 200K) since the inner
-	// kernel is identical.
 	p := 0
 	if n > 0 {
 		p = len(data[0])
@@ -605,6 +637,259 @@ func Hierarchical(data [][]float64, labels []string, method string) (*Hierarchic
 	}
 
 	root := clusters[active[0]]
+	order := append([]int(nil), root.members...)
+	for i := range order {
+		order[i]++
+	}
+	return &HierarchicalResult{
+		Merge:      merge,
+		Height:     height,
+		Order:      order,
+		Labels:     append([]string(nil), labels...),
+		DistMethod: "euclidean",
+	}, nil
+}
+
+// hierarchicalNNChain is Murtagh's (1985) NN-chain agglomerative algorithm.
+// O(N²) time and space (the dense distance matrix is the dominant memory
+// cost). Reduces hierarchical clustering on N points from O(N³) — the
+// greedy "scan every pair every step" cost — to O(N²) for any Lance-
+// Williams reducible linkage.
+//
+// Why this is bit-equivalent to greedy on this codebase's tests: R's hclust
+// also uses NN-chain for these methods, and our existing R-reference tests
+// are written against that output. The greedy implementation passed those
+// tests because the test fixtures happen to be non-degenerate (no near-ties
+// in inter-cluster distance), which is the only regime where the two
+// algorithms can disagree on merge ordering.
+//
+// The algorithm:
+//
+//  1. Maintain a chain (stack) of clusters. Push any active cluster.
+//  2. Walk: at each step look at the chain's top cluster, find its nearest
+//     active neighbour (with tie-break preferring the second-from-top of
+//     the chain — guarantees we detect mutual NNs as soon as one exists).
+//  3. If the NN is the second-from-top, we have a mutual-NN pair. Pop both
+//     and merge them. Update distances from the new cluster to all other
+//     active clusters via the Lance-Williams formula. Restart at step 1
+//     (the chain may still have entries; those are still valid because
+//     their NN distances cannot increase).
+//  4. Otherwise push the NN onto the chain and continue.
+//
+// Reducibility (Bruynooghe 1977) guarantees that the merges produced this
+// way have monotone non-decreasing heights, which is exactly the dendrogram
+// invariant.
+func hierarchicalNNChain(data [][]float64, labels []string, method string) (*HierarchicalResult, error) {
+	n := len(data)
+	maxID := 2*n - 1
+	clusters := make([]*clusterNode, maxID)
+	alive := make([]bool, maxID)
+	for i := range n {
+		clusters[i] = &clusterNode{
+			id:       i,
+			members:  []int{i},
+			size:     1,
+			rID:      -(i + 1),
+			minLeaf:  i,
+			height:   0,
+		}
+		alive[i] = true
+	}
+
+	dists := newDistStore(maxID)
+	useSquared := method == "ward.d2"
+	p := 0
+	if n > 0 {
+		p = len(data[0])
+	}
+	parutil.Run(n, n*n*p >= 200_000, func(i int) {
+		row := data[i]
+		base := i * dists.stride
+		for j := i + 1; j < n; j++ {
+			var d float64
+			if useSquared {
+				d = squaredEuclidean(row, data[j])
+			} else {
+				d = euclidean(row, data[j])
+			}
+			dists.buf[base+j] = d
+			dists.buf[j*dists.stride+i] = d
+		}
+	})
+
+	// During NN-chain we record each merge as (leftRID_atMerge,
+	// rightRID_atMerge, distAtMerge, orderDiscovered). NN-chain finds
+	// mutual-NN pairs in some order; reducibility makes their distances
+	// monotone for fresh leaves, but distances between two pre-existing
+	// inter-leaf pairs can be smaller than an earlier merge's distance
+	// (because reducibility only constrains distances FROM the merged
+	// cluster, not between two unrelated old leaves). So the raw merge
+	// list is not yet a valid dendrogram order — we sort it by distance
+	// at the end and remap the internal rID references.
+	type rawMerge struct {
+		leftOldRID, rightOldRID int
+		dist                    float64
+		discovered              int
+	}
+	raws := make([]rawMerge, 0, n-1)
+
+	chain := make([]int, 0, n)
+	nextID := n
+	mergesDone := 0
+
+	// Helper: smallest active cluster ID, used to seed the very first chain.
+	firstAlive := func() int {
+		for c := 0; c < maxID; c++ {
+			if alive[c] {
+				return c
+			}
+		}
+		return -1
+	}
+
+	// Seed for an empty chain. For the very first iteration this is the
+	// smallest-ID original cluster; after a merge that empties the chain we
+	// seed with the just-created merged cluster (R hclust convention) — that
+	// keeps the chain productive across merges and matches R's tie-break
+	// behaviour on data with multiple equidistant pairs (e.g. four corners of
+	// a square plus an outlier: greedy and NN-chain produce the same merge
+	// sequence only if NN-chain seeds from the merged cluster, otherwise the
+	// second merge picks two independent leaves instead of grafting a leaf
+	// onto the first merge).
+	chainSeed := firstAlive()
+	if chainSeed < 0 {
+		return nil, errors.New("NN-chain ran out of active clusters early")
+	}
+
+	for mergesDone < n-1 {
+		if len(chain) == 0 {
+			if !alive[chainSeed] {
+				chainSeed = firstAlive()
+				if chainSeed < 0 {
+					return nil, errors.New("NN-chain ran out of active clusters early")
+				}
+			}
+			chain = append(chain, chainSeed)
+		}
+		top := chain[len(chain)-1]
+		prev := -1
+		if len(chain) >= 2 {
+			prev = chain[len(chain)-2]
+		}
+
+		// Find the nearest neighbour of `top` among active clusters,
+		// breaking ties in favour of `prev` if present. Initialising
+		// (bestNN, bestDist) with (prev, d(top, prev)) — when prev exists
+		// — gives prev priority on ties because we update only on strict
+		// "<" below.
+		bestNN := -1
+		bestDist := math.Inf(1)
+		if prev >= 0 {
+			bestNN = prev
+			bestDist = dists.get(top, prev)
+		}
+		topRow := top * dists.stride
+		for c := 0; c < maxID; c++ {
+			if !alive[c] || c == top || c == prev {
+				continue
+			}
+			d := dists.buf[topRow+c]
+			if d < bestDist {
+				bestDist = d
+				bestNN = c
+			}
+		}
+
+		if prev >= 0 && bestNN == prev {
+			// Mutual NN: pop top and prev, merge them.
+			chain = chain[:len(chain)-2]
+			a := clusters[top]
+			b := clusters[prev]
+			left, right := orientClusters(a, b)
+
+			step := mergesDone + 1
+			raws = append(raws, rawMerge{
+				leftOldRID:  left.rID,
+				rightOldRID: right.rID,
+				dist:        bestDist,
+				discovered:  step,
+			})
+
+			newCluster := &clusterNode{
+				id:      nextID,
+				members: append(append([]int{}, left.members...), right.members...),
+				size:    left.size + right.size,
+				rID:     step,
+				minLeaf: min(left.minLeaf, right.minLeaf),
+				height:  bestDist,
+			}
+			clusters[nextID] = newCluster
+
+			alive[top] = false
+			alive[prev] = false
+			alive[nextID] = true
+
+			// Lance-Williams update: distance from the new cluster to
+			// every other active cluster, derived from the two old
+			// distances and d_ab.
+			for c := 0; c < maxID; c++ {
+				if !alive[c] || c == nextID {
+					continue
+				}
+				dac := dists.get(top, c)
+				dbc := dists.get(prev, c)
+				newD := updatedDistance(method, clusters[c], a, b, dac, dbc, bestDist)
+				dists.set(nextID, c, newD)
+			}
+
+			// Seed for the next empty-chain restart: the merged cluster.
+			chainSeed = nextID
+			nextID++
+			mergesDone++
+			continue
+		}
+
+		chain = append(chain, bestNN)
+	}
+
+	// Sort merges by distance (stable: ties keep the discovery order so
+	// the final rID assignment is deterministic for tied data).
+	sortedIdx := make([]int, len(raws))
+	for i := range sortedIdx {
+		sortedIdx[i] = i
+	}
+	sort.SliceStable(sortedIdx, func(i, j int) bool {
+		return raws[sortedIdx[i]].dist < raws[sortedIdx[j]].dist
+	})
+
+	// Build remap: old rID (in discovery order, 1..n-1) → new rID (in
+	// sorted-by-distance order, also 1..n-1). Leaf rIDs are negative and
+	// unchanged.
+	remap := make([]int, n)
+	for newPos, oldI := range sortedIdx {
+		remap[raws[oldI].discovered] = newPos + 1
+	}
+	mapRID := func(rid int) int {
+		if rid < 0 {
+			return rid
+		}
+		return remap[rid]
+	}
+
+	merge := make([][2]int, len(raws))
+	height := make([]float64, len(raws))
+	for newPos, oldI := range sortedIdx {
+		r := raws[oldI]
+		merge[newPos] = [2]int{mapRID(r.leftOldRID), mapRID(r.rightOldRID)}
+		if useSquared {
+			height[newPos] = math.Sqrt(r.dist)
+		} else {
+			height[newPos] = r.dist
+		}
+	}
+
+	rootID := firstAlive()
+	root := clusters[rootID]
 	order := append([]int(nil), root.members...)
 	for i := range order {
 		order[i]++
