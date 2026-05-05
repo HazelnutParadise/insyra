@@ -73,7 +73,14 @@ func Classify(train, test [][]float64, labels []string, k int, opts Options) (*C
 	// Each test row is queried independently; the searchers are read-only
 	// after construction (kd/ball trees + brute store input slices and never
 	// mutate them), so parallel queries are race-free.
-	parutil.For(len(test), func(i int) {
+	//
+	// Per-query cost is at minimum O(k log n_train) for tree searches and
+	// O(n_train · dim) for brute, both dwarfing goroutine overhead even at
+	// modest n_train. Threshold scales with the *per-query* lower bound of
+	// useful work: len(test) ≥ 16 ensures fan-out to a few workers, and
+	// len(train) ≥ 32 ensures each query has enough work to amortise launch.
+	goPar := len(test) >= 16 && len(train) >= 32
+	parutil.Run(len(test), goPar, func(i int) {
 		neighbors := search.QueryKNN(test[i], k)
 		probabilities[i] = classifyProbabilities(neighbors, labels, classIndex, len(classes), normalized.Weighting)
 		// Tie-break = alphabetical first, matching R's `which.max` semantics
@@ -111,7 +118,8 @@ func Regress(train, test [][]float64, targets []float64, k int, opts Options) (*
 	}
 
 	predictions := make([]float64, len(test))
-	parutil.For(len(test), func(i int) {
+	goPar := len(test) >= 16 && len(train) >= 32
+	parutil.Run(len(test), goPar, func(i int) {
 		neighbors := search.QueryKNN(test[i], k)
 		predictions[i] = regressPrediction(neighbors, targets, normalized.Weighting)
 	})
@@ -133,7 +141,8 @@ func Neighbors(train, test [][]float64, k int, opts Options) (*NeighborResult, e
 
 	indices := make([][]int, len(test))
 	distances := make([][]float64, len(test))
-	parutil.For(len(test), func(i int) {
+	goPar := len(test) >= 16 && len(train) >= 32
+	parutil.Run(len(test), goPar, func(i int) {
 		neighbors := search.QueryKNN(test[i], k)
 		indices[i] = make([]int, len(neighbors))
 		distances[i] = make([]float64, len(neighbors))

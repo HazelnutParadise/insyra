@@ -3,6 +3,7 @@ package clustering
 import (
 	"errors"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -76,8 +77,15 @@ func EuclideanDistanceMatrix(data [][]float64) [][]float64 {
 	}
 	// Each row's strict lower-triangular fill is independent; we mirror to
 	// the upper triangle within the same goroutine so no row is written by
-	// two workers.
-	parutil.For(n, func(i int) {
+	// two workers. Calibrated cutoff (BenchmarkCalib_DistMatrix on a 24-thread
+	// AMD Ryzen): parallel beats serial when n²·p ≳ 200000. Below that the
+	// goroutine launch dwarfs the work — e.g. (n=128, p=4) is 21% slower in
+	// parallel because each row only has ~256 multiply-adds.
+	p := 0
+	if n > 0 {
+		p = len(data[0])
+	}
+	parutil.Run(n, n*n*p >= 200_000, func(i int) {
 		ai := data[i]
 		for j := 0; j < i; j++ {
 			d := euclidean(ai, data[j])
@@ -129,13 +137,13 @@ func KMeans(data [][]float64, centers int, opts KMeansOptions) (*KMeansResult, e
 
 	results := make([]*KMeansResult, opts.NStart)
 	errs := make([]error, opts.NStart)
-	if opts.NStart >= 2 {
-		parutil.For(opts.NStart, func(s int) {
-			results[s], errs[s] = kmeansSingleStart(data, initPool, centerIdxs[s], opts.IterMax)
-		})
-	} else {
-		results[0], errs[0] = kmeansSingleStart(data, initPool, centerIdxs[0], opts.IterMax)
-	}
+	// Each start runs an independent kmeansSingleStart whose cost is at
+	// least ~1ms even for tiny n (Hartigan-Wong's OPTRA does ≥1 sweep over
+	// all rows). Goroutine launch overhead is negligible relative to that,
+	// so the parallel branch is worth taking from NStart=2 upwards.
+	parutil.Run(opts.NStart, opts.NStart >= 2, func(s int) {
+		results[s], errs[s] = kmeansSingleStart(data, initPool, centerIdxs[s], opts.IterMax)
+	})
 
 	// Reduce serially with the same comparison as before so the "first start
 	// wins on near-tie" tie-break behaviour is identical to the previous loop.
@@ -181,7 +189,13 @@ func kmeansSingleStart(data, initPool [][]float64, centerIdx []int, iterMax int)
 	// fixed initial centers, with deterministic tie-breaking baked into the
 	// cascade. The subsequent centroid accumulation stays sequential to
 	// preserve the running-sum order Hartigan-Wong expects.
-	parutil.For(n, func(i int) {
+	//
+	// Calibrated cutoff (BenchmarkCalib_KMeansInit): per-row cost is ≈O(k·p)
+	// inner ops, total work ≈n·k·p. Parallel beats serial when n·k·p ≳ 50000.
+	// Below that the goroutine overhead dominates (e.g. n=500,k=8,p=8 totals
+	// 32K ops and is 6% slower in parallel; n=1500,k=8,p=8 totals 96K and is
+	// 1.5× faster).
+	parutil.Run(n, n*centers*p >= 50_000, func(i int) {
 		row := data[i]
 		ic1[i] = 0
 		ic2[i] = 1
@@ -529,7 +543,13 @@ func Hierarchical(data [][]float64, labels []string, method string) (*Hierarchic
 	dists := newDistStore(maxID)
 	useSquared := method == "ward.d2"
 	// Initial pairwise distances. Each row i is independent — fill in parallel.
-	parutil.For(n, func(i int) {
+	// Same cutoff as EuclideanDistanceMatrix (n²·p ≥ 200K) since the inner
+	// kernel is identical.
+	p := 0
+	if n > 0 {
+		p = len(data[0])
+	}
+	parutil.Run(n, n*n*p >= 200_000, func(i int) {
 		row := data[i]
 		base := i * dists.stride
 		for j := i + 1; j < n; j++ {
@@ -668,25 +688,58 @@ func DBSCAN(data [][]float64, eps float64, minPts int, opts DBSCANOptions) (*DBS
 		borderPoints = *opts.BorderPoints
 	}
 
-	// Build neighbour lists in parallel: each row's neighbour search is
-	// independent, and we never mutate shared state from the workers.
+	// Neighbour-finding strategy is chosen from calibration data
+	// (BenchmarkCalib_DBSCAN_Brute_vs_KD on 24 threads):
+	//
+	//   - Brute O(n²·p) parallel beats serial brute as soon as n²·p ≳ 30K.
+	//   - KD-tree O(n log n + n·k_avg) parallel beats parallel brute when
+	//     `n · p ≳ 8000 && n ≥ 500`. Below that threshold the tree's
+	//     construction overhead and the per-query traversal exceed the
+	//     savings — at (n=500, p=4) parallel brute is 197µs, KD parallel
+	//     is 226µs (15% slower); at (n=500, p=16) KD parallel is 510µs vs
+	//     brute parallel 529µs (KD wins). At (n=2000, p=8) the gap is
+	//     2.19ms (KD) vs 3.32ms (brute) — a 34% improvement.
+	//   - Both algorithms produce the same neighbour set; we sort the KD
+	//     output to match brute's natural 0..n traversal order so the
+	//     downstream cluster-expansion BFS visits points identically.
 	neighbors := make([][]int, n)
 	isSeed := make([]bool, n)
-	parutil.For(n, func(i int) {
-		ai := data[i]
-		// Pre-size the local list using the upper bound on neighbour count
-		// (≤ n) avoids growth reallocations in dense datasets.
-		nbrs := make([]int, 0, 8)
-		for j := range n {
-			if euclidean(ai, data[j]) <= eps {
-				nbrs = append(nbrs, j)
+	dim := 0
+	if n > 0 {
+		dim = len(data[0])
+	}
+	useKD := n >= 500 && n*dim >= 8000
+	if useKD {
+		idx := make([]int, n)
+		for i := range idx {
+			idx[i] = i
+		}
+		root := buildKdRange(data, idx, 16)
+		eps2 := eps * eps
+		parutil.Run(n, true, func(i int) {
+			var nbrs []int
+			kdRangeSearch(root, data, data[i], eps2, &nbrs)
+			sort.Ints(nbrs)
+			neighbors[i] = nbrs
+			if len(nbrs) >= minPts {
+				isSeed[i] = true
 			}
-		}
-		neighbors[i] = nbrs
-		if len(nbrs) >= minPts {
-			isSeed[i] = true
-		}
-	})
+		})
+	} else {
+		parutil.Run(n, n*n*dim >= 30_000, func(i int) {
+			ai := data[i]
+			nbrs := make([]int, 0, 8)
+			for j := range n {
+				if euclidean(ai, data[j]) <= eps {
+					nbrs = append(nbrs, j)
+				}
+			}
+			neighbors[i] = nbrs
+			if len(nbrs) >= minPts {
+				isSeed[i] = true
+			}
+		})
+	}
 
 	cluster := make([]int, n)
 	visited := make([]bool, n)
@@ -744,9 +797,12 @@ func Silhouette(data [][]float64, labels []int) (*SilhouetteResult, error) {
 	// Per-worker partial sums avoid contention on a single accumulator.
 	// Each worker only writes to its own slot in `partial` and only writes
 	// points[i] for its assigned i's, so no shared state is mutated.
-	workers := parutil.NumWorkers(n)
-	if workers < 1 {
-		workers = 1
+	// Per-i cost is O(n) (sum of distances to own cluster + scan of other
+	// clusters). Total ≈ O(n²). Same break-even shape as Kendall pair
+	// counting (~n=192 on 24 threads), so we use n ≥ 200 here.
+	workers := 1
+	if n >= 200 {
+		workers = parutil.MaxWorkers(n)
 	}
 	partial := make([]float64, workers)
 	chunk := (n + workers - 1) / workers
@@ -886,6 +942,13 @@ func orientClusters(a, b *clusterNode) (*clusterNode, *clusterNode) {
 // using the same comparison, so the parallel version is bit-identical to the
 // previous serial scan.
 //
+// Calibrated cutoff (BenchmarkCalib_PickPair on 24 threads): the inner kernel
+// is just an array load + compare per pair, so per-i work is ~m·5ns. Goroutine
+// overhead is much larger than that for m ≲ 480 — at m=384 parallel is 18%
+// slower because the pair-count work (≈74K compares) is dwarfed by 24-way
+// fan-out cost. Crossover lands at m ≈ 480-512 (m=512 is 1.09× faster, m=768
+// is 1.45×). We gate at 480.
+//
 // Initial bestDist = +Inf means the first finite distance always wins outright,
 // so the placeholder (bestI=0, bestJ=1) is never read for tie-breaking.
 func pickClosestPair(active []int, clusters []*clusterNode, dists *distStore) (int, int, float64) {
@@ -893,7 +956,10 @@ func pickClosestPair(active []int, clusters []*clusterNode, dists *distStore) (i
 	if m < 2 {
 		return active[0], active[0], 0
 	}
-	workers := parutil.NumWorkers(m)
+	workers := 1
+	if m >= 480 {
+		workers = parutil.MaxWorkers(m)
+	}
 	if workers <= 1 {
 		bestI, bestJ := 0, 1
 		bestDist := math.Inf(1)

@@ -86,10 +86,17 @@ func CorrelationMatrix(dataTable insyra.IDataTable, method CorrelationMethod) (c
 	// For Spearman the rank vectors are reused across every pair the column
 	// participates in, so we precompute them once. The ranking algorithm
 	// matches DataList.Rank exactly (stable sort + average-rank ties).
+	rows := 0
+	if n > 0 {
+		rows = len(colSlices[0])
+	}
 	var ranks [][]float64
 	if method == SpearmanCorrelation {
 		ranks = make([][]float64, n)
-		parutil.For(n, func(i int) {
+		// Per-column rank cost is O(rows·log rows). Parallel pays off once
+		// rows·n exceeds a few thousand "work units" — gate generously since
+		// the rank step is typically a small fraction of the pairs phase.
+		parutil.Run(n, n >= 4 && rows >= 100, func(i int) {
 			ranks[i] = rankSliceAverage(colSlices[i])
 		})
 	}
@@ -109,7 +116,15 @@ func CorrelationMatrix(dataTable insyra.IDataTable, method CorrelationMethod) (c
 		}
 	}
 
-	parutil.For(pairs, func(p int) {
+	// Per-pair cost: Pearson/Spearman are O(rows) (~5µs at rows=500). Kendall
+	// is O(rows²) so it always wants parallel as soon as we have ≥2 pairs.
+	// Pearson/Spearman want pairs ≥ 4 to amortise goroutine launch (~18µs at
+	// 24 workers). rows ≥ 50 ensures per-pair has actual work.
+	goPar := pairs >= 2 && rows >= 50
+	if method != KendallCorrelation {
+		goPar = pairs >= 4 && rows >= 50
+	}
+	parutil.Run(pairs, goPar, func(p int) {
 		i, j := pairAt(p)
 		var statVal, pval float64
 		var perr error
@@ -512,7 +527,16 @@ func kendallTauBStats(x, y []float64) (tau, sval, varS float64) {
 	// independent — workers accumulate concordant/discordant counts into
 	// per-worker slots and we sum them serially. Sums are integers, so the
 	// reduction order doesn't change the result.
-	workers := parutil.NumWorkers(n)
+	//
+	// Calibrated cutoff (BenchmarkCalib_KendallPairs on 24 threads): the
+	// per-pair body is ~5ns. Total work ≈n²·2.5ns. Goroutine launch +
+	// join is ≈18µs, so the parallel branch only wins when total serial
+	// cost ≳ 20µs, i.e. n ≳ 192. We gate at n ≥ 192 (data: n=192 parallel
+	// is 1.04× serial; n=128 parallel is 0.77× — losing).
+	workers := 1
+	if n >= 192 {
+		workers = parutil.MaxWorkers(n)
+	}
 	if workers <= 1 {
 		var nC, nD float64
 		for i := range n {

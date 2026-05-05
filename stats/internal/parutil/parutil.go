@@ -2,6 +2,15 @@
 // the stats package's internal compute paths. It avoids the reflection
 // overhead of the public parallel.GroupUp helper, which is unsuitable for
 // tight numeric inner loops.
+//
+// API design note: parutil performs NO auto-threshold. Every caller is
+// responsible for deciding whether the workload is large enough to amortise
+// goroutine launch — the right cutoff is wildly different across hot paths
+// (kendall pair count breaks even at n≈192, pickClosestPair at m≈512,
+// KMeans-init assignment at n·k·p≈50000, brute distance matrix at n²·p≈200K).
+// A single global threshold would systematically miss wins or mis-fire.
+// Each caller's decision must be backed by data — see
+// stats/calibration_bench_test.go for the methodology.
 package parutil
 
 import (
@@ -9,28 +18,40 @@ import (
 	"sync"
 )
 
-// minParallelN is the smallest n for which parallel splitting is preferred.
-// Below this threshold the goroutine launch + sync overhead exceeds any gain.
-// Tuned conservatively — caller should still gate with a domain-specific
-// "is the work per i actually expensive" check when items are tiny.
-const minParallelN = 256
+// MaxWorkers returns the worker count to use for n items, capped at
+// GOMAXPROCS. Always ≥ 1 for n > 0. Applies NO threshold.
+func MaxWorkers(n int) int {
+	if n <= 0 {
+		return 0
+	}
+	w := runtime.GOMAXPROCS(0)
+	w = min(w, n)
+	if w < 1 {
+		w = 1
+	}
+	return w
+}
 
-// For runs fn(i) for i in [0, n) using up to GOMAXPROCS workers, contiguous
-// chunking. fn must be safe for concurrent invocation across distinct i's.
+// Run runs fn(i) for i in [0, n). When goParallel is true, splits across
+// up to MaxWorkers(n) goroutines; otherwise runs a plain serial loop.
+// The goParallel decision should come from calibration data.
 //
-// Falls back to a serial loop when n is small or GOMAXPROCS == 1.
-func For(n int, fn func(i int)) {
+// fn must be safe for concurrent invocation across distinct i's when
+// goParallel is true.
+func Run(n int, goParallel bool, fn func(i int)) {
 	if n <= 0 {
 		return
 	}
 	workers := runtime.GOMAXPROCS(0)
-	if workers <= 1 || n < minParallelN {
+	if !goParallel || workers <= 1 {
 		for i := range n {
 			fn(i)
 		}
 		return
 	}
-	workers = min(workers, n)
+	if workers > n {
+		workers = n
+	}
 	chunk := (n + workers - 1) / workers
 	var wg sync.WaitGroup
 	for w := range workers {
@@ -50,55 +71,10 @@ func For(n int, fn func(i int)) {
 	wg.Wait()
 }
 
-// Chunk splits [0, n) into up to GOMAXPROCS contiguous chunks and calls
-// fn(start, end) once per chunk in parallel. Useful for per-chunk reductions
-// where the caller maintains a worker-local accumulator.
-//
-// Falls back to a single in-line call for small n / single-CPU contexts.
-func Chunk(n int, fn func(start, end int)) {
-	if n <= 0 {
-		return
-	}
-	workers := runtime.GOMAXPROCS(0)
-	if workers <= 1 || n < minParallelN {
-		fn(0, n)
-		return
-	}
-	workers = min(workers, n)
-	chunk := (n + workers - 1) / workers
-	var wg sync.WaitGroup
-	for w := range workers {
-		start := w * chunk
-		if start >= n {
-			break
-		}
-		end := min(start+chunk, n)
-		wg.Add(1)
-		go func(start, end int) {
-			defer wg.Done()
-			fn(start, end)
-		}(start, end)
-	}
-	wg.Wait()
-}
-
-// NumWorkers returns the worker count For/Chunk would use for n items.
-// Callers can size per-worker slices accordingly.
-func NumWorkers(n int) int {
-	if n <= 0 {
-		return 0
-	}
-	workers := runtime.GOMAXPROCS(0)
-	if workers <= 1 || n < minParallelN {
-		return 1
-	}
-	return min(workers, n)
-}
-
 // ChunkBounds returns the [start, end) range that worker w (0 ≤ w < workers)
 // owns when [0, n) is split contiguously across `workers` workers. Mirrors
-// Chunk's slicing exactly so the caller can index a per-worker accumulator
-// slice consistently.
+// the slicing used internally by Run — useful when the caller manages its
+// own goroutines (e.g. for per-worker accumulators).
 func ChunkBounds(n, workers, w int) (int, int) {
 	if workers <= 0 || w < 0 || w >= workers {
 		return 0, 0
