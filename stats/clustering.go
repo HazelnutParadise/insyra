@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sync"
 
 	"github.com/HazelnutParadise/insyra"
 	internalcluster "github.com/HazelnutParadise/insyra/stats/internal/clustering"
@@ -202,39 +203,77 @@ func defaultSeed(seed *int64) int64 {
 	return *seed
 }
 
+// numericMatrixFromTable converts a DataTable to a row-major float64 matrix
+// plus row labels, with NaN / Inf / non-numeric rejection.
+//
+// The previous form did `for i { row := dt.GetRow(i); for j { row.Get(j) } }`
+// which paid one actor entry per row + one per cell. For an n × p input
+// that's n + n·p actor handshakes, each ~30µs of runtime.Stack walk —
+// dominating wall time on KMeans / Hierarchical / DBSCAN / Silhouette
+// (every clustering entry point goes through this loader).
+//
+// Fix: under the table actor, collect column-DataList references and row
+// names serially (cheap); release the table actor; then enter each
+// column's actor in parallel (each is a separate actor — no contention).
+// Spawning goroutines INSIDE the table's AtomicDo would deadlock — the
+// goroutines aren't the actor's owner so re-entry would block on the
+// actor's lock. Doing it AFTER the table actor is released sidesteps
+// that and still gets the parallel actor-handshake fan-out.
 func numericMatrixFromTable(dataTable insyra.IDataTable) ([][]float64, []string, error) {
 	var rows, cols int
-	var matrix [][]float64
-	var labels []string
+	var colDLs []insyra.IDataList
+	var rowNames []string
 	dataTable.AtomicDo(func(dt *insyra.DataTable) {
 		rows, cols = dt.Size()
-		matrix = make([][]float64, rows)
-		labels = make([]string, rows)
+		colDLs = make([]insyra.IDataList, cols)
+		for j := range cols {
+			colDLs[j] = dt.GetColByNumber(j)
+		}
+		rowNames = make([]string, rows)
 		for i := range rows {
-			matrix[i] = make([]float64, cols)
-			row := dt.GetRow(i)
-			for j := range cols {
-				v, ok := insyra.ToFloat64Safe(row.Get(j))
-				if !ok || math.IsNaN(v) || math.IsInf(v, 0) {
-					matrix = nil
-					return
-				}
-				matrix[i][j] = v
-			}
 			if name, ok := dt.GetRowNameByIndex(i); ok && name != "" {
-				labels[i] = name
+				rowNames[i] = name
 			} else {
-				labels[i] = fmt.Sprintf("%d", i+1)
+				rowNames[i] = fmt.Sprintf("%d", i+1)
 			}
 		}
 	})
-	if matrix == nil {
-		return nil, nil, errors.New("input contains non-numeric values")
-	}
 	if rows < 1 || cols < 1 {
 		return nil, nil, errors.New("input must have at least 1 row and 1 column")
 	}
-	return matrix, labels, nil
+
+	// Pull every column's raw []any in parallel — outside the table actor,
+	// so per-column actor entries can run concurrently.
+	colsRaw := make([][]any, cols)
+	var wg sync.WaitGroup
+	for j := range cols {
+		wg.Add(1)
+		go func(j int) {
+			defer wg.Done()
+			colDLs[j].AtomicDo(func(dl *insyra.DataList) {
+				colsRaw[j] = dl.Data()
+			})
+		}(j)
+	}
+	wg.Wait()
+	matrix := make([][]float64, rows)
+	for i := range rows {
+		matrix[i] = make([]float64, cols)
+	}
+	for j := range cols {
+		raw := colsRaw[j]
+		if len(raw) != rows {
+			return nil, nil, errors.New("input has irregular row counts across columns")
+		}
+		for i := range rows {
+			v, ok := insyra.ToFloat64Safe(raw[i])
+			if !ok || math.IsNaN(v) || math.IsInf(v, 0) {
+				return nil, nil, errors.New("input contains non-numeric values")
+			}
+			matrix[i][j] = v
+		}
+	}
+	return matrix, rowNames, nil
 }
 
 func intLabelsFromDataList(labels insyra.IDataList, expected int) ([]int, error) {

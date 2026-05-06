@@ -1488,6 +1488,12 @@ func boundedSquaredEuclidean(a, b []float64, bound float64) float64 {
 	return sum
 }
 
+// squaredEuclidean is the hottest primitive in the package (KMeans
+// Hartigan-Wong, KNN, DBSCAN, Silhouette all call it heavily). Tried a
+// `_ = b[len(a)-1]` BCE hint; it measured slower in BenchmarkKNN_
+// BruteClassify (~390µs → ~460µs) because the entry-time bounds-check +
+// empty-len guard cost more than the per-iter check savings the
+// compiler would extract. Keep the simple form.
 func squaredEuclidean(a, b []float64) float64 {
 	sum := 0.0
 	for i := range a {

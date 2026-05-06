@@ -157,18 +157,33 @@ func PCA(dataTable insyra.IDataTable, nComponents ...int) (*PCAResult, error) {
 		}
 	})
 
+	// Build the component table without per-cell Append. The previous form
+	// did `column := NewDataList(); for i { column.Append(...) }` which
+	// pays one DataList AtomicDo entry per cell — for numComponents × p
+	// cells that's a getGID stack walk per cell. Same actor-overhead trap
+	// we fixed in CorrelationMatrix and PCA's input loading.
+	//
+	// Instead: pull eigenvectors' raw row-major buffer once, build each
+	// component's []any in plain memory, hand it to NewDataList in one
+	// shot, and submit the columns via one variadic AppendCols call.
 	componentTable := insyra.NewDataTable()
+	evRaw := eigenvectors.RawMatrix()
+	evStride := evRaw.Stride
+	evRows := evRaw.Rows
+	componentCols := make([]*insyra.DataList, numComponents)
 	for compIndex := range numComponents {
-		column := insyra.NewDataList()
+		col := indices[compIndex]
 		sign := 1.0
-		if eigenvectors.At(0, indices[compIndex]) < 0 {
+		if evRaw.Data[col] < 0 {
 			sign = -1.0
 		}
-		for i := range eigenvectors.RawMatrix().Rows {
-			column.Append(sign * eigenvectors.At(i, indices[compIndex]))
+		vals := make([]any, evRows)
+		for i := range evRows {
+			vals[i] = sign * evRaw.Data[i*evStride+col]
 		}
-		componentTable.AppendCols(column.SetName(fmt.Sprintf("PC%d", compIndex+1)))
+		componentCols[compIndex] = insyra.NewDataList(vals...).SetName(fmt.Sprintf("PC%d", compIndex+1))
 	}
+	componentTable.AppendCols(componentCols...)
 
 	totalVariance := 0.0
 	for _, v := range eigenvalues {

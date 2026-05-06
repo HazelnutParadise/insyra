@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sync"
 
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/stats/internal/parutil"
@@ -127,29 +128,41 @@ type LogarithmicRegressionResult struct {
 
 // LinearRegression performs ordinary least-squares linear regression.
 func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) (*LinearRegressionResult, error) {
-	var n int
-	var ys []float64
-	dlY.AtomicDo(func(dly *insyra.DataList) {
-		n = dly.Len()
-		ys = dly.ToF64Slice()
-	})
 	p := len(dlXs)
-
 	if p == 0 {
 		return nil, errors.New("no independent variables provided")
 	}
 
+	// Pull y and every xⱼ in parallel — each list is a separate actor and
+	// can be entered independently. The previous serial form paid one
+	// actor handshake per predictor sequentially; for p large this was
+	// the wall-clock bottleneck.
+	var n int
+	var ys []float64
 	xSlices := make([][]float64, p)
-	for j, dlX := range dlXs {
-		isFailed := false
-		dlX.AtomicDo(func(l *insyra.DataList) {
-			if l.Len() != n {
-				isFailed = true
-				return
-			}
-			xSlices[j] = l.ToF64Slice()
+	xLens := make([]int, p)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		dlY.AtomicDo(func(dly *insyra.DataList) {
+			n = dly.Len()
+			ys = dly.ToF64Slice()
 		})
-		if isFailed {
+	}()
+	for j, dlX := range dlXs {
+		wg.Add(1)
+		go func(j int, dlX insyra.IDataList) {
+			defer wg.Done()
+			dlX.AtomicDo(func(l *insyra.DataList) {
+				xLens[j] = l.Len()
+				xSlices[j] = l.ToF64Slice()
+			})
+		}(j, dlX)
+	}
+	wg.Wait()
+	for j, xLen := range xLens {
+		if xLen != n {
 			return nil, fmt.Errorf("x and y must have the same length for predictor %d", j)
 		}
 	}

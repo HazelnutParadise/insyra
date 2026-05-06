@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sync"
 
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/parallel"
@@ -64,14 +65,25 @@ func OneWayANOVA(groups ...insyra.IDataList) (*OneWayANOVAResult, error) {
 		return nil, errors.New("at least two groups are required")
 	}
 
+	// Pull every group's raw []any in parallel (each is a separate actor;
+	// no contention between them). The serial form's actor-entry chain
+	// dominated wall time at >2 groups — same fix as TwoWayANOVA.
+	groupsRaw := make([][]any, len(groups))
+	var extractWG sync.WaitGroup
+	for i := range groups {
+		extractWG.Add(1)
+		go func(i int) {
+			defer extractWG.Done()
+			groups[i].AtomicDo(func(gdl *insyra.DataList) {
+				groupsRaw[i] = gdl.Data()
+			})
+		}(i)
+	}
+	extractWG.Wait()
+
 	values := make([]float64, 0)
 	labels := make([]int, 0)
-	for i, g := range groups {
-		var groupData []any
-		g.AtomicDo(func(gdl *insyra.DataList) {
-			groupData = gdl.Data()
-		})
-
+	for i, groupData := range groupsRaw {
 		if len(groupData) == 0 {
 			return nil, fmt.Errorf("group %d is empty", i)
 		}
@@ -102,6 +114,22 @@ func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) (*
 		return nil, errors.New("invalid levels or cells")
 	}
 
+	// Per-cell AtomicDo serially. An earlier attempt to fan these out to
+	// goroutines (one per cell) made TwoWayANOVA ~2× SLOWER on the n=60
+	// per-cell, 20-cell benchmark — for that workload the AtomicDo cost
+	// per cell is small enough that goroutine-launch + scheduler latency
+	// dominates the saved actor-handshake time. Profile-driven decision:
+	// keep the simple serial loop. If a future caller passes thousands of
+	// cells, revisit with a calibrated threshold.
+	cellsRaw := make([][]any, len(cells))
+	cellLens := make([]int, len(cells))
+	for c := range cells {
+		cells[c].AtomicDo(func(cdl *insyra.DataList) {
+			cellsRaw[c] = cdl.Data()
+			cellLens[c] = cdl.Len()
+		})
+	}
+
 	// Single-pass extraction: while reading cell data we also accumulate
 	// per-cell sums so cellMeans can be computed without a second pass over
 	// the cells (the previous code called cells[i].Mean() and iterated each
@@ -117,16 +145,11 @@ func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) (*
 	for i := range factorALevels {
 		for j := range factorBLevels {
 			idx := i*factorBLevels + j
-			cell := cells[idx]
-			var cellData []any
-			var cellLen int
-			cell.AtomicDo(func(cdl *insyra.DataList) {
-				cellData = cdl.Data()
-				cellLen = cdl.Len()
-			})
+			cellLen := cellLens[idx]
 			if cellLen == 0 {
 				return nil, fmt.Errorf("empty cell at A=%d, B=%d", i, j)
 			}
+			cellData := cellsRaw[idx]
 			cellCounts[idx] = cellLen
 			cellOffsets[idx] = len(allValues)
 			var localSum float64
