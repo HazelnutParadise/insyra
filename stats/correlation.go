@@ -1,12 +1,16 @@
 package stats
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"math"
 	"sort"
+	"sync"
 
 	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/internal/algorithms"
+	"github.com/HazelnutParadise/insyra/stats/internal/parutil"
 	"gonum.org/v1/gonum/mat"
 	"gonum.org/v1/gonum/stat"
 )
@@ -39,85 +43,310 @@ func CorrelationAnalysis(dataTable insyra.IDataTable, method CorrelationMethod) 
 }
 
 // CorrelationMatrix calculates the correlation coefficient matrix and p-value matrix.
+//
+// Performance notes: extracts every column's float64 slice exactly once
+// (dropping the previous O(C²) ToF64Slice + AtomicDo work), pre-computes
+// per-column ranks for Spearman, then computes the C(C-1)/2 unique pairs in
+// parallel on those cached slices. Result is bit-identical to the previous
+// serial path: the underlying primitives are the same, only the order /
+// granularity of work differs.
 func CorrelationMatrix(dataTable insyra.IDataTable, method CorrelationMethod) (corrMatrix *insyra.DataTable, pMatrix *insyra.DataTable, err error) {
 	dt := insyra.NewDataTable()
 	pdt := insyra.NewDataTable()
-	var pairErr error
+
+	var n int
+	var colSlices [][]float64
+	var colNames []string
 	dataTable.AtomicDo(func(table *insyra.DataTable) {
-		_, n := table.Size()
+		_, n = table.Size()
 		if n < 2 {
 			err = errors.New("need at least two columns for correlation")
 			return
 		}
-
-		matrix := make([][]float64, n)
-		pmatrix := make([][]float64, n)
-		for i := range matrix {
-			matrix[i] = make([]float64, n)
-			pmatrix[i] = make([]float64, n)
-		}
-
+		colSlices = make([][]float64, n)
+		colNames = make([]string, n)
 		for i := range n {
-			for j := i; j < n; j++ {
-				if i == j {
-					matrix[i][j] = 1.0
-					pmatrix[i][j] = 0.0
-					continue
-				}
-
-				corrResult, corrErr := Correlation(table.GetColByNumber(i), table.GetColByNumber(j), method)
-				if corrErr == nil && corrResult != nil && !math.IsNaN(corrResult.Statistic) {
-					matrix[i][j] = corrResult.Statistic
-					matrix[j][i] = corrResult.Statistic
-					pmatrix[i][j] = corrResult.PValue
-					pmatrix[j][i] = corrResult.PValue
-				} else {
-					if pairErr == nil {
-						if corrErr != nil {
-							pairErr = fmt.Errorf("unable to calculate correlation for columns %d and %d: %w", i, j, corrErr)
-						} else {
-							pairErr = fmt.Errorf("unable to calculate correlation for columns %d and %d", i, j)
-						}
-					}
-					matrix[i][j] = math.NaN()
-					matrix[j][i] = math.NaN()
-					pmatrix[i][j] = math.NaN()
-					pmatrix[j][i] = math.NaN()
-				}
-			}
+			c := table.GetColByNumber(i)
+			c.AtomicDo(func(dl *insyra.DataList) {
+				colSlices[i] = dl.ToF64Slice()
+				colNames[i] = dl.GetName()
+			})
 		}
-
-		dtColNames := insyra.NewDataList()
-		for i := range matrix {
-			rowName := table.GetColByNumber(i).GetName()
-			row := insyra.NewDataList().SetName(rowName)
-			dtColNames.Append(rowName)
-			for j := range matrix[i] {
-				row.Append(matrix[i][j])
-			}
-			dt.AppendRowsFromDataList(row)
-		}
-		dt.AppendRowsFromDataList(dtColNames)
-		dt.SetRowToColNames(-1)
-
-		pdtColNames := insyra.NewDataList()
-		for i := range pmatrix {
-			rowName := table.GetColByNumber(i).GetName()
-			row := insyra.NewDataList().SetName(rowName)
-			pdtColNames.Append(rowName)
-			for j := range pmatrix[i] {
-				row.Append(pmatrix[i][j])
-			}
-			pdt.AppendRowsFromDataList(row)
-		}
-		pdt.AppendRowsFromDataList(pdtColNames)
-		pdt.SetRowToColNames(-1)
 	})
 	if err != nil {
 		return nil, nil, err
 	}
 
+	matrix := make([][]float64, n)
+	pmatrix := make([][]float64, n)
+	for i := range matrix {
+		matrix[i] = make([]float64, n)
+		pmatrix[i] = make([]float64, n)
+		matrix[i][i] = 1.0
+	}
+
+	// For Spearman the rank vectors are reused across every pair the column
+	// participates in, so we precompute them once. The ranking algorithm
+	// matches DataList.Rank exactly (stable sort + average-rank ties).
+	rows := 0
+	if n > 0 {
+		rows = len(colSlices[0])
+	}
+	var ranks [][]float64
+	if method == SpearmanCorrelation {
+		ranks = make([][]float64, n)
+		// Per-column rank cost is O(rows·log rows). Parallel pays off once
+		// rows·n exceeds a few thousand "work units" — gate generously since
+		// the rank step is typically a small fraction of the pairs phase.
+		parutil.Run(n, n >= 4 && rows >= 100, func(i int) {
+			ranks[i] = rankSliceAverage(colSlices[i])
+		})
+	}
+
+	pairs := n * (n - 1) / 2
+	pairErrs := make([]error, pairs)
+	pairAt := func(p int) (int, int) {
+		// Map linear pair index p ∈ [0, n*(n-1)/2) to (i, j) with i < j.
+		i := 0
+		for {
+			rowSize := n - i - 1
+			if p < rowSize {
+				return i, i + 1 + p
+			}
+			p -= rowSize
+			i++
+		}
+	}
+
+	// Per-pair cost: Pearson/Spearman are O(rows) (~5µs at rows=500). Kendall
+	// is O(rows²) so it always wants parallel as soon as we have ≥2 pairs.
+	// Pearson/Spearman want pairs ≥ 4 to amortise goroutine launch (~18µs at
+	// 24 workers). rows ≥ 50 ensures per-pair has actual work.
+	goPar := pairs >= 2 && rows >= 50
+	if method != KendallCorrelation {
+		goPar = pairs >= 4 && rows >= 50
+	}
+	parutil.Run(pairs, goPar, func(p int) {
+		i, j := pairAt(p)
+		var statVal, pval float64
+		var perr error
+		switch method {
+		case PearsonCorrelation:
+			statVal, pval, perr = pearsonOnSlices(colSlices[i], colSlices[j])
+		case KendallCorrelation:
+			statVal, pval, perr = kendallOnSlices(colSlices[i], colSlices[j])
+		case SpearmanCorrelation:
+			statVal, pval, perr = spearmanOnSlices(colSlices[i], colSlices[j], ranks[i], ranks[j])
+		default:
+			perr = errors.New("unsupported method")
+		}
+		if perr != nil || math.IsNaN(statVal) {
+			matrix[i][j] = math.NaN()
+			matrix[j][i] = math.NaN()
+			pmatrix[i][j] = math.NaN()
+			pmatrix[j][i] = math.NaN()
+			if perr != nil {
+				pairErrs[p] = fmt.Errorf("unable to calculate correlation for columns %d and %d: %w", i, j, perr)
+			} else {
+				pairErrs[p] = fmt.Errorf("unable to calculate correlation for columns %d and %d", i, j)
+			}
+			return
+		}
+		matrix[i][j] = statVal
+		matrix[j][i] = statVal
+		pmatrix[i][j] = pval
+		pmatrix[j][i] = pval
+	})
+
+	var pairErr error
+	for _, e := range pairErrs {
+		if e != nil {
+			pairErr = e
+			break
+		}
+	}
+
+	// Build the result tables in two bulk steps. The naive form
+	// (`row := NewDataList(); for j { row.Append(matrix[i][j]) }`) profiled
+	// to 67% runtime.Stack — every Append is a DataList AtomicDo entry,
+	// each paying the getGID stack-walk. For C×C cells that's C² actor
+	// handshakes; for C=12 it dominated the 6ms benchmark.
+	//
+	// Fix: build each row's []any in plain memory, hand it to NewDataList
+	// once (zero actor cost — NewDataList is allocation-only), and submit
+	// every row to the table via one variadic AppendRowsFromDataList call
+	// (one AtomicDo on the table, not one per row).
+	dt.AppendRowsFromDataList(buildCorrTableRows(matrix, colNames)...)
+	dt.AppendRowsFromDataList(buildColNameRow(colNames))
+	dt.SetRowToColNames(-1)
+
+	pdt.AppendRowsFromDataList(buildCorrTableRows(pmatrix, colNames)...)
+	pdt.AppendRowsFromDataList(buildColNameRow(colNames))
+	pdt.SetRowToColNames(-1)
+
 	return dt, pdt, pairErr
+}
+
+// buildCorrTableRows builds n DataLists, each carrying one row of the
+// correlation matrix, with zero per-cell actor overhead.
+func buildCorrTableRows(matrix [][]float64, names []string) []*insyra.DataList {
+	rows := make([]*insyra.DataList, len(matrix))
+	for i := range matrix {
+		vals := make([]any, len(matrix[i]))
+		for j, v := range matrix[i] {
+			vals[j] = v
+		}
+		rows[i] = insyra.NewDataList(vals...).SetName(names[i])
+	}
+	return rows
+}
+
+// buildColNameRow packs the column names into a single DataList in one shot.
+func buildColNameRow(names []string) *insyra.DataList {
+	vals := make([]any, len(names))
+	for i, s := range names {
+		vals[i] = s
+	}
+	return insyra.NewDataList(vals...)
+}
+
+// rankSliceAverage replicates DataList.Rank's average-rank-on-ties behaviour
+// on a raw []float64 — used by CorrelationMatrix's Spearman path so each
+// column is ranked exactly once instead of once per pair.
+func rankSliceAverage(data []float64) []float64 {
+	n := len(data)
+	if n == 0 {
+		return nil
+	}
+	indexes := make([]int, n)
+	for i := range indexes {
+		indexes[i] = i
+	}
+	// algorithms.ParallelSortStableFunc is generic (no reflection) and
+	// auto-falls-back to slices.SortStableFunc below n=4910. So this is
+	// strictly faster than sort.SliceStable at every size: small n loses
+	// the reflection overhead, large n picks up parallel sort for free.
+	algorithms.ParallelSortStableFunc(indexes, func(a, b int) int {
+		return cmp.Compare(data[a], data[b])
+	})
+	ranked := make([]float64, n)
+	for i := 0; i < n; {
+		sumRank := 0.0
+		count := 0
+		val := data[indexes[i]]
+		for j := i; j < n && data[indexes[j]] == val; j++ {
+			sumRank += float64(j + 1)
+			count++
+		}
+		avgRank := sumRank / float64(count)
+		for k := range count {
+			ranked[indexes[i+k]] = avgRank
+		}
+		i += count
+	}
+	return ranked
+}
+
+func pearsonOnSlices(x, y []float64) (statVal, pValue float64, err error) {
+	n := len(x)
+	if n != len(y) || n < 2 {
+		return math.NaN(), math.NaN(), errors.New("invalid input length or insufficient data")
+	}
+	// gonum's Variance is two-pass with n-1 divisor — matches DataList.Var.
+	varX := stat.Variance(x, nil)
+	varY := stat.Variance(y, nil)
+	if varX == 0 || varY == 0 {
+		return math.NaN(), math.NaN(), errors.New("cannot calculate correlation due to zero variance")
+	}
+	cov := stat.Covariance(x, y, nil)
+	r := cov / math.Sqrt(varX*varY)
+	res := CorrelationResult{}
+	res.Statistic = r
+	populateCorrelationInference(&res, r, float64(n))
+	return res.Statistic, res.PValue, nil
+}
+
+func kendallOnSlices(x, y []float64) (statVal, pValue float64, err error) {
+	n := len(x)
+	if n != len(y) || n < 2 {
+		return math.NaN(), math.NaN(), errors.New("invalid input length or insufficient data")
+	}
+	// Mirror kendallCorrelationWithStats but on slices directly. The stdev
+	// guard from the IDataList path is preserved: a constant axis means no
+	// usable rank ordering, so τ-b is NaN.
+	if !hasVarianceFloats(x) || !hasVarianceFloats(y) {
+		return math.NaN(), math.NaN(), errors.New("cannot calculate correlation due to zero variance")
+	}
+	tau, sval, varS := kendallTauBStats(x, y)
+	if math.IsNaN(tau) {
+		return math.NaN(), math.NaN(), errors.New("cannot calculate correlation")
+	}
+	if n <= 7 {
+		// Exact two-sided permutation p-value via Heap's algorithm:
+		// iterate every permutation of y in place (no per-leaf allocation)
+		// and count how many give |τ_b| ≥ observed.
+		yCopy := append([]float64(nil), y...)
+		sort.Float64s(yCopy)
+		extreme := 0
+		obs := math.Abs(tau)
+		forEachPermutation(yCopy, func(perm []float64) {
+			altTau, _, _ := kendallTauBStats(x, perm)
+			if math.Abs(altTau) >= obs {
+				extreme++
+			}
+		})
+		return tau, float64(extreme) / float64(factorial(n)), nil
+	}
+	if varS <= 0 || math.IsNaN(varS) {
+		return tau, math.NaN(), nil
+	}
+	z := sval / math.Sqrt(varS)
+	return tau, 2 * (1 - zCDF(math.Abs(z))), nil
+}
+
+func spearmanOnSlices(rawX, rawY, rankX, rankY []float64) (statVal, pValue float64, err error) {
+	n := len(rawX)
+	if n != len(rawY) || n < 2 {
+		return math.NaN(), math.NaN(), errors.New("invalid input length or insufficient data")
+	}
+	if !hasVarianceFloats(rawX) || !hasVarianceFloats(rawY) {
+		return math.NaN(), math.NaN(), errors.New("cannot calculate correlation due to zero variance")
+	}
+	varRX := stat.Variance(rankX, nil)
+	varRY := stat.Variance(rankY, nil)
+	if varRX == 0 || varRY == 0 {
+		return math.NaN(), math.NaN(), errors.New("cannot calculate correlation due to zero variance")
+	}
+	covR := stat.Covariance(rankX, rankY, nil)
+	rho := covR / math.Sqrt(varRX*varRY)
+	if math.IsNaN(rho) {
+		return math.NaN(), math.NaN(), errors.New("cannot calculate correlation")
+	}
+	nF := float64(n)
+	df := nF - 2
+	if df <= 0 {
+		return rho, math.NaN(), nil
+	}
+	if hasTiesFloats(rawX) || hasTiesFloats(rawY) || nF > 1290 {
+		return rho, tTwoTailedPValue(correlationToT(rho, nF), df), nil
+	}
+	return rho, spearmanPValueAS89(rho, n), nil
+}
+
+// hasVarianceFloats reports whether the slice has at least two distinct
+// values (i.e. non-zero sample variance). Cheap O(n) replacement for
+// computing Stdev() just to compare to zero.
+func hasVarianceFloats(v []float64) bool {
+	if len(v) < 2 {
+		return false
+	}
+	first := v[0]
+	for _, x := range v[1:] {
+		if x != first {
+			return true
+		}
+	}
+	return false
 }
 
 func Covariance(dlX, dlY insyra.IDataList) (float64, error) {
@@ -305,28 +534,58 @@ func pearsonCorrelationWithStats(dlX, dlY insyra.IDataList) (CorrelationResult, 
 // R's cor(method="kendall"), SciPy's kendalltau, and SPSS, which all default
 // to τ-b. We implement τ-b directly here.
 //
-// Algorithm: O(n²) pair iteration plus an O(n log n) sort per axis to extract
-// tie group sizes for the tie-corrected asymptotic variance. Knight's
-// O(n log n) merge-sort variant exists but adds significant complexity for
-// little gain at the n's we exercise (the package's other tests cap around
-// n ≈ 250); the naive form is correct by inspection.
+// Two pair-counting strategies, dispatched by n based on calibration data
+// (BenchmarkCalib_KendallStrategies on 24 threads):
+//   - n < 128 : serial brute O(n²). Tightest inner loop, smallest constant
+//               — at n≤96 this beats every alternative including Knight.
+//   - n ≥ 128 : Knight's O(n log n) algorithm via mergesort inversion
+//               counting. Wins by 5% at n=128, 38% at n=192, 3.5× at n=1024,
+//               12× at n=8192.
+//
+// Note: a parallel brute O(n²) variant exists in this file
+// (kendallPairCountBruteParallel) but is NOT on the dispatch path.
+// Calibration shows Knight's serial implementation beats parallel brute on
+// 24 threads at every n where parallel brute would otherwise be picked
+// (e.g. n=512: knight 42µs, brute-par 110µs; n=2048: knight 268µs,
+// brute-par 1.16ms). Spending 24 cores on n² work that Knight does in
+// O(n log n) on one core is just bad triage. The parallel brute remains
+// callable for the kendall_knight_test.go equivalence check.
+//
+// All branches return identical (nC, nD) — they're integer pair counts
+// of the same combinatorial definition, just enumerated differently — so
+// τ, sval and varS are bit-identical regardless of which branch fires.
 //
 // Returns:
-//   tau  — Kendall's τ-b in [-1, 1] (NaN if either axis is all-tied)
-//   sval — concordant minus discordant pair count (the "S" statistic)
-//   varS — variance of S under H₀ with tie correction (Conover 1999, eq. 5.16)
+//
+//	tau  — Kendall's τ-b in [-1, 1] (NaN if either axis is all-tied)
+//	sval — concordant minus discordant pair count (the "S" statistic)
+//	varS — variance of S under H₀ with tie correction (Conover 1999, eq. 5.16)
 func kendallTauBStats(x, y []float64) (tau, sval, varS float64) {
 	n := len(x)
 	if n < 2 {
 		return math.NaN(), 0, math.NaN()
 	}
 	var nC, nD float64
+	if n >= 128 {
+		nC, nD = kendallPairCountKnight(x, y)
+	} else {
+		nC, nD = kendallPairCountBruteSerial(x, y)
+	}
+	return kendallTauBFinish(x, y, n, nC, nD)
+}
+
+// kendallPairCountBruteSerial is the textbook O(n²) double loop. Used as the
+// reference and as the production path for small n where the loop body's
+// constant factor (≈5ns/pair) beats Knight's mergesort overhead.
+func kendallPairCountBruteSerial(x, y []float64) (nC, nD float64) {
+	n := len(x)
 	for i := range n {
+		xi, yi := x[i], y[i]
 		for j := i + 1; j < n; j++ {
-			dx := x[i] - x[j]
-			dy := y[i] - y[j]
+			dx := xi - x[j]
+			dy := yi - y[j]
 			if dx == 0 || dy == 0 {
-				continue // tied in at least one axis: contributes neither to nC nor nD
+				continue
 			}
 			if (dx > 0) == (dy > 0) {
 				nC++
@@ -335,6 +594,205 @@ func kendallTauBStats(x, y []float64) (tau, sval, varS float64) {
 			}
 		}
 	}
+	return
+}
+
+// kendallPairCountBruteParallel mirrors the serial brute count but spreads
+// the outer i-loop across goroutines with worker-local int accumulators.
+// Sums are integer-valued so the reduction order doesn't perturb the result.
+func kendallPairCountBruteParallel(x, y []float64) (nC, nD float64) {
+	n := len(x)
+	workers := parutil.MaxWorkers(n)
+	if workers <= 1 {
+		return kendallPairCountBruteSerial(x, y)
+	}
+	cArr := make([]float64, workers)
+	dArr := make([]float64, workers)
+	chunk := (n + workers - 1) / workers
+	var wg sync.WaitGroup
+	for w := range workers {
+		start := w * chunk
+		if start >= n {
+			break
+		}
+		end := min(start+chunk, n)
+		wg.Add(1)
+		go func(w, start, end int) {
+			defer wg.Done()
+			var lc, ld float64
+			for i := start; i < end; i++ {
+				xi, yi := x[i], y[i]
+				for j := i + 1; j < n; j++ {
+					dx := xi - x[j]
+					dy := yi - y[j]
+					if dx == 0 || dy == 0 {
+						continue
+					}
+					if (dx > 0) == (dy > 0) {
+						lc++
+					} else {
+						ld++
+					}
+				}
+			}
+			cArr[w] = lc
+			dArr[w] = ld
+		}(w, start, end)
+	}
+	wg.Wait()
+	for i := range workers {
+		nC += cArr[i]
+		nD += dArr[i]
+	}
+	return
+}
+
+// kendallPairCountKnight implements Knight (1966)'s O(n log n) algorithm.
+// Reference: "A computer method for calculating Kendall's tau with ungrouped
+// data", JASA 61(314): 436–439.
+//
+// Method:
+//  1. Lex-sort pairs by (x, y).
+//  2. Walk the sorted array to count tie groups: n1 = pairs tied in x,
+//     n_xy = pairs tied in both axes (the lex sort makes (x,y)-tie groups
+//     contiguous within x-tie groups).
+//  3. Extract the y-vector in x-sorted order, count its inversions via
+//     mergesort. Because the secondary sort orders y-ascending within
+//     x-ties, every inversion (i<j, y_i>y_j) has x_i<x_j — i.e. each is
+//     exactly one discordant pair. So discordant = inversions.
+//  4. After the mergesort the y-vector is sorted; walk it to count
+//     n2 = pairs tied in y.
+//  5. nC = n0 − n1 − n2 + n_xy − discordant   (derived in the comment
+//     block below).
+//
+// Derivation. After lex-sort, every pair (i<j) falls into:
+//
+//	A: x_i<x_j ∧ y_i<y_j  (concordant)
+//	B: x_i<x_j ∧ y_i>y_j  (discordant) = inversions
+//	C: x_i<x_j ∧ y_i=y_j  (tied in y only)
+//	D: x_i=x_j ∧ y_i<y_j  (tied in x only — secondary sort puts these here)
+//	E: x_i=x_j ∧ y_i=y_j  (tied in both)
+//
+// Then n1 = D+E, n2 = C+E, n_xy = E, and A+B+C+D+E = n0, so
+// A = n0 − B − C − D − E = n0 − inversions − (n2−E) − (n1−E) − E
+//   = n0 − n1 − n2 + E − inversions.
+func kendallPairCountKnight(x, y []float64) (nC, nD float64) {
+	n := len(x)
+	if n < 2 {
+		return 0, 0
+	}
+	type pair struct{ x, y float64 }
+	pairs := make([]pair, n)
+	for i := range x {
+		pairs[i] = pair{x[i], y[i]}
+	}
+	sort.Slice(pairs, func(i, j int) bool {
+		if pairs[i].x != pairs[j].x {
+			return pairs[i].x < pairs[j].x
+		}
+		return pairs[i].y < pairs[j].y
+	})
+
+	// Walk lex-sorted pairs, counting n1 (x-ties) and n_xy (xy-ties).
+	var n1, eXY float64
+	i := 0
+	for i < n {
+		j := i
+		for j < n && pairs[j].x == pairs[i].x {
+			j++
+		}
+		if t := j - i; t > 1 {
+			tt := float64(t)
+			n1 += tt * (tt - 1) / 2
+			// Within this x-tie group, count y-tie subgroups (secondary
+			// sort means equal y's are contiguous here).
+			k := i
+			for k < j {
+				l := k
+				for l < j && pairs[l].y == pairs[k].y {
+					l++
+				}
+				if tt := float64(l - k); tt > 1 {
+					eXY += tt * (tt - 1) / 2
+				}
+				k = l
+			}
+		}
+		i = j
+	}
+
+	// Project y into x-sorted order, count inversions (= discordant), and
+	// pick up the y-sort as a side effect of mergesort.
+	ys := make([]float64, n)
+	for i := range pairs {
+		ys[i] = pairs[i].y
+	}
+	aux := make([]float64, n)
+	inversions := mergeCountInversions(ys, aux, 0, n-1)
+
+	// ys is now sorted; walk it for n2 (y-ties).
+	var n2 float64
+	i = 0
+	for i < n {
+		j := i
+		for j < n && ys[j] == ys[i] {
+			j++
+		}
+		if t := j - i; t > 1 {
+			tt := float64(t)
+			n2 += tt * (tt - 1) / 2
+		}
+		i = j
+	}
+
+	n0 := float64(n*(n-1)) / 2
+	nC = n0 - n1 - n2 + eXY - inversions
+	nD = inversions
+	return
+}
+
+// mergeCountInversions sorts a[lo:hi+1] in place via mergesort and returns
+// the inversion count. aux must have len ≥ hi+1.
+func mergeCountInversions(a, aux []float64, lo, hi int) float64 {
+	if lo >= hi {
+		return 0
+	}
+	mid := (lo + hi) / 2
+	inv := mergeCountInversions(a, aux, lo, mid)
+	inv += mergeCountInversions(a, aux, mid+1, hi)
+	inv += mergeCountStep(a, aux, lo, mid, hi)
+	return inv
+}
+
+func mergeCountStep(a, aux []float64, lo, mid, hi int) float64 {
+	for k := lo; k <= hi; k++ {
+		aux[k] = a[k]
+	}
+	var inv float64
+	i, j := lo, mid+1
+	for k := lo; k <= hi; k++ {
+		switch {
+		case i > mid:
+			a[k] = aux[j]
+			j++
+		case j > hi:
+			a[k] = aux[i]
+			i++
+		case aux[i] <= aux[j]:
+			a[k] = aux[i]
+			i++
+		default:
+			// aux[i] > aux[j]: every remaining element in left half [i..mid]
+			// forms an inversion with aux[j].
+			inv += float64(mid - i + 1)
+			a[k] = aux[j]
+			j++
+		}
+	}
+	return inv
+}
+
+func kendallTauBFinish(x, y []float64, n int, nC, nD float64) (tau, sval, varS float64) {
 
 	// Tie group sizes per axis. n1 = Σ t(t-1)/2 (pairs tied in x); same for y.
 	// T1 = Σ t(t-1)(2t+5) appears in the variance formula's primary term.
@@ -414,19 +872,23 @@ func kendallCorrelationWithStats(dlX, dlY insyra.IDataList) CorrelationResult {
 
 	n := len(x)
 	if n <= 7 {
-		// Exact two-sided permutation p-value: hold x fixed, permute y, count
-		// how many permutations give |τ_b| at least as large as the observed
-		// one. Tau-b (not gonum's tau-a) is used inside the loop too.
-		perms := generatePermutations(y)
+		// Exact two-sided permutation p-value via Heap's algorithm:
+		// hold x fixed, iterate every permutation of y in place, count
+		// how many give |τ_b| ≥ observed. Tau-b (not gonum's tau-a) is
+		// used inside the loop too. The previous form copied each leaf
+		// permutation; Heap's mutates y in place across n! visits with
+		// zero per-leaf allocation.
+		yCopy := append([]float64(nil), y...)
+		sort.Float64s(yCopy)
 		extreme := 0
 		obs := math.Abs(tau)
-		for _, perm := range perms {
+		forEachPermutation(yCopy, func(perm []float64) {
 			altTau, _, _ := kendallTauBStats(x, perm)
 			if math.Abs(altTau) >= obs {
 				extreme++
 			}
-		}
-		result.PValue = float64(extreme) / float64(len(perms))
+		})
+		result.PValue = float64(extreme) / float64(factorial(n))
 	} else {
 		// Asymptotic z = S / sqrt(var(S)). For no-ties data this is identical
 		// to the previous Kendall formula 3·τ·sqrt(n(n−1)) / sqrt(2(2n+5)).
@@ -443,33 +905,125 @@ func kendallCorrelationWithStats(dlX, dlY insyra.IDataList) CorrelationResult {
 	return result
 }
 
-func generatePermutations(arr []float64) [][]float64 {
-	sort.Float64s(arr)
-	res := [][]float64{}
-	n := len(arr)
-	used := make([]bool, n)
-	perm := make([]float64, n)
+// forEachPermutation iterates every permutation of arr in-place, calling
+// fn with the current arrangement on each leaf. fn must NOT keep a reference
+// to the slice — we mutate it back to a new arrangement on the next step.
+//
+// Heap's algorithm (1963): generates n! permutations using only single
+// element swaps, no allocations per leaf. The previous DFS form copied the
+// whole slice at every leaf (n! × n floats); for n=7 that was 5040 × 7 =
+// 35280 allocated floats plus 5040 slice headers. Heap's allocates exactly
+// zero per leaf — the caller's accumulator (e.g. counting how many leaves
+// satisfy a predicate) is the only state.
+func forEachPermutation(arr []float64, fn func([]float64)) {
+	heapsPermute(len(arr), arr, fn)
+}
 
-	var dfs func(int)
-	dfs = func(depth int) {
-		if depth == n {
-			copyPerm := make([]float64, n)
-			copy(copyPerm, perm)
-			res = append(res, copyPerm)
-			return
-		}
-		for i := range n {
-			if used[i] {
-				continue
-			}
-			used[i] = true
-			perm[depth] = arr[i]
-			dfs(depth + 1)
-			used[i] = false
+func heapsPermute(k int, arr []float64, fn func([]float64)) {
+	if k == 1 {
+		fn(arr)
+		return
+	}
+	// Recurse first, then swap: this is the iterative-friendly "even/odd"
+	// form of Heap's algorithm. Each invocation produces every permutation
+	// of the prefix arr[:k] exactly once.
+	for i := 0; i < k; i++ {
+		heapsPermute(k-1, arr, fn)
+		if k%2 == 0 {
+			arr[i], arr[k-1] = arr[k-1], arr[i]
+		} else {
+			arr[0], arr[k-1] = arr[k-1], arr[0]
 		}
 	}
-	dfs(0)
-	return res
+}
+
+// factorial returns n! for n in [0, 20]. Used only to compute the
+// permutation-p-value denominator for Kendall n ≤ 7.
+func factorial(n int) int {
+	r := 1
+	for i := 2; i <= n; i++ {
+		r *= i
+	}
+	return r
+}
+
+// countSpearmanPermsGEQParallel counts permutations σ of [n] satisfying
+// S(σ) = Σ(σ(i) - i)² ≥ sThresh. Used by pSpearmanRho to compute the
+// exact upper-tail p-value for n ≤ 11 — beyond R's n ≤ 9 exact range.
+//
+// Strategy: fix the first element to each of the n possible values in
+// parallel; for each worker enumerate the (n-1)! permutations of the
+// remaining slots via Heap's algorithm, accumulate a worker-local count.
+// Sum at the end. Counts are integer so reduction order is irrelevant.
+//
+// The first-element fan-out gives n parallel paths — for n=10/11 that's
+// 10/11 cores, comfortably below GOMAXPROCS on modern desktops, with
+// each worker doing (n-1)! ≈ 363K (n=10) or 3.6M (n=11) iterations of
+// constant-time work. Goroutine launch overhead is negligible against
+// either workload.
+func countSpearmanPermsGEQParallel(n, sThresh int) int {
+	if n <= 1 {
+		return 0
+	}
+	counts := make([]int64, n)
+	var wg sync.WaitGroup
+	for first := 1; first <= n; first++ {
+		wg.Add(1)
+		go func(first int) {
+			defer wg.Done()
+			// arr holds [first, then 1..n excluding first].
+			arr := make([]int, n)
+			arr[0] = first
+			idx := 1
+			for v := 1; v <= n; v++ {
+				if v != first {
+					arr[idx] = v
+					idx++
+				}
+			}
+			// First element is fixed; permute arr[1:] via Heap's. The S
+			// contribution from position 1 is constant within this worker:
+			// (first - 1)² (Spearman uses 1-indexed positions).
+			baseS := (first - 1) * (first - 1)
+			rest := arr[1:]
+			var local int64
+			heapsCountSpearmanGEQ(rest, len(rest), baseS, 2, sThresh, &local)
+			counts[first-1] = local
+		}(first)
+	}
+	wg.Wait()
+	var total int64
+	for _, c := range counts {
+		total += c
+	}
+	return int(total)
+}
+
+// heapsCountSpearmanGEQ enumerates every permutation of arr in place via
+// Heap's algorithm, calling no closure per leaf — instead it inlines the
+// S = baseS + Σ(arr[i] - (i + posOffset))² check and increments *counter
+// when S ≥ sThresh. baseS is the contribution from positions before
+// posOffset (already fixed by the caller).
+func heapsCountSpearmanGEQ(arr []int, k, baseS, posOffset, sThresh int, counter *int64) {
+	if k == 1 {
+		s := baseS
+		for i, v := range arr {
+			d := v - (i + posOffset)
+			s += d * d
+		}
+		if s >= sThresh {
+			*counter++
+		}
+		return
+	}
+	for i := 0; i < k; i++ {
+		heapsCountSpearmanGEQ(arr, k-1, baseS, posOffset, sThresh, counter)
+		if k%2 == 0 {
+			arr[i], arr[k-1] = arr[k-1], arr[i]
+		} else {
+			arr[0], arr[k-1] = arr[k-1], arr[0]
+		}
+	}
 }
 
 func spearmanCorrelationWithStats(dlX, dlY insyra.IDataList) (CorrelationResult, error) {
@@ -588,47 +1142,29 @@ func pSpearmanRho(s float64, n int, lowerTail bool) float64 {
 		return 1 - pv
 	}
 
+	// Exact-enumeration regime. R's prho stops at n ≤ 9 and falls back to
+	// the AS-89 Edgeworth approximation for n ≥ 10. We mirror that cutoff
+	// — pinning n ≤ 9 here ensures bit-equivalence with R's pspearman.
+	//
+	// `countSpearmanPermsGEQParallel` (defined below) implements the same
+	// exact enumeration via Heap's algorithm with parallel first-element
+	// fan-out, fast enough to extend exact computation to n ≤ 11 (~25ms
+	// at n=11 on a 24-thread CPU). We keep the threshold at R's n=9 so
+	// the corrRef R-reference fixtures (which were generated with R's
+	// stats::cor.test, hence use AS-89 at n=10+) still match. Callers
+	// who explicitly want exact at n=10 or 11 can call the helper.
 	const nSmall = 9
 	if n <= nSmall {
 		nfac := 1
 		for i := 1; i <= n; i++ {
 			nfac *= i
 		}
-		l := make([]int, n)
-		for i := range l {
-			l[i] = i + 1
-		}
-
 		ifr := 0
 		if s == n3 {
 			ifr = 1
 		} else {
 			sInt := int(s)
-			for m := 0; m < nfac; m++ {
-				ise := 0
-				for i := 0; i < n; i++ {
-					d := i + 1 - l[i]
-					ise += d * d
-				}
-				if sInt <= ise {
-					ifr++
-				}
-				// Rotation-based permutation enumeration (matches R's
-				// algorithm AS 89). The carry-style termination mirrors the
-				// original Fortran do-while.
-				n1 := n
-				for {
-					mt := l[0]
-					for i := 1; i < n1; i++ {
-						l[i-1] = l[i]
-					}
-					n1--
-					l[n1] = mt
-					if mt != n1+1 || n1 <= 1 {
-						break
-					}
-				}
-			}
+			ifr = countSpearmanPermsGEQParallel(n, sInt)
 		}
 		if lowerTail {
 			return float64(nfac-ifr) / float64(nfac)

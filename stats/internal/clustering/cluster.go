@@ -3,10 +3,13 @@ package clustering
 import (
 	"errors"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/HazelnutParadise/insyra/stats/internal/parutil"
 	"gonum.org/v1/gonum/floats"
 )
 
@@ -71,12 +74,25 @@ func EuclideanDistanceMatrix(data [][]float64) [][]float64 {
 	dist := make([][]float64, n)
 	for i := range n {
 		dist[i] = make([]float64, n)
+	}
+	// Each row's strict lower-triangular fill is independent; we mirror to
+	// the upper triangle within the same goroutine so no row is written by
+	// two workers. Calibrated cutoff (BenchmarkCalib_DistMatrix on a 24-thread
+	// AMD Ryzen): parallel beats serial when n²·p ≳ 200000. Below that the
+	// goroutine launch dwarfs the work — e.g. (n=128, p=4) is 21% slower in
+	// parallel because each row only has ~256 multiply-adds.
+	p := 0
+	if n > 0 {
+		p = len(data[0])
+	}
+	parutil.Run(n, n*n*p >= 200_000, func(i int) {
+		ai := data[i]
 		for j := 0; j < i; j++ {
-			d := euclidean(data[i], data[j])
+			d := euclidean(ai, data[j])
 			dist[i][j] = d
 			dist[j][i] = d
 		}
-	}
+	})
 	return dist
 }
 
@@ -111,16 +127,32 @@ func KMeans(data [][]float64, centers int, opts KMeansOptions) (*KMeansResult, e
 	}
 	rng := newRRNG(uint32(seed))
 
+	// Pre-generate every start's centerIdx serially so the rRNG is consumed
+	// in the exact same order regardless of parallel execution. Determinism
+	// (for a given seed) is preserved bit-exactly.
+	centerIdxs := make([][]int, opts.NStart)
+	for s := range opts.NStart {
+		centerIdxs[s] = rng.sampleInt(len(initPool), centers)
+	}
+
+	results := make([]*KMeansResult, opts.NStart)
+	errs := make([]error, opts.NStart)
+	// Each start runs an independent kmeansSingleStart whose cost is at
+	// least ~1ms even for tiny n (Hartigan-Wong's OPTRA does ≥1 sweep over
+	// all rows). Goroutine launch overhead is negligible relative to that,
+	// so the parallel branch is worth taking from NStart=2 upwards.
+	parutil.Run(opts.NStart, opts.NStart >= 2, func(s int) {
+		results[s], errs[s] = kmeansSingleStart(data, initPool, centerIdxs[s], opts.IterMax)
+	})
+
+	// Reduce serially with the same comparison as before so the "first start
+	// wins on near-tie" tie-break behaviour is identical to the previous loop.
 	best := (*KMeansResult)(nil)
-	for start := 0; start < opts.NStart; start++ {
-		centerIdx := rng.sampleInt(len(initPool), centers)
-		current, err := kmeansSingleStart(data, initPool, centerIdx, opts.IterMax)
-		if err != nil {
-			return nil, err
+	for s := range opts.NStart {
+		if errs[s] != nil {
+			return nil, errs[s]
 		}
-		// Keep the first start when objectives are equal within floating-point noise.
-		// This matches R's deterministic "best nstart" behavior more closely than
-		// replacing the incumbent on sub-ulp drift.
+		current := results[s]
 		if best == nil || (current.TotWithinSS < best.TotWithinSS && !almostEqual(current.TotWithinSS, best.TotWithinSS)) {
 			best = current
 		}
@@ -151,7 +183,20 @@ func kmeansSingleStart(data, initPool [][]float64, centerIdx []int, iterMax int)
 	itran := make([]int, centers)
 	live := make([]int, centers)
 
-	for i, row := range data {
+	// Initial assignment: each row picks its closest (ic1) and second-closest
+	// (ic2) center. Rows are independent, so we run this phase in parallel.
+	// Bit-exact: each row's choice depends only on its own distances and the
+	// fixed initial centers, with deterministic tie-breaking baked into the
+	// cascade. The subsequent centroid accumulation stays sequential to
+	// preserve the running-sum order Hartigan-Wong expects.
+	//
+	// Calibrated cutoff (BenchmarkCalib_KMeansInit): per-row cost is ≈O(k·p)
+	// inner ops, total work ≈n·k·p. Parallel beats serial when n·k·p ≳ 50000.
+	// Below that the goroutine overhead dominates (e.g. n=500,k=8,p=8 totals
+	// 32K ops and is 6% slower in parallel; n=1500,k=8,p=8 totals 96K and is
+	// 1.5× faster).
+	parutil.Run(n, n*centers*p >= 50_000, func(i int) {
+		row := data[i]
 		ic1[i] = 0
 		ic2[i] = 1
 		dt1 := squaredEuclidean(row, currentCenters[0])
@@ -175,7 +220,7 @@ func kmeansSingleStart(data, initPool [][]float64, centerIdx []int, iterMax int)
 			dt1 = db
 			ic1[i] = l
 		}
-	}
+	})
 
 	for l := 0; l < centers; l++ {
 		for j := 0; j < p; j++ {
@@ -436,6 +481,60 @@ func singleClusterResult(data [][]float64) *KMeansResult {
 	}
 }
 
+// distStore is a flat dense distance matrix indexed by cluster ID.
+//
+// During hierarchical clustering at most 2n-1 cluster IDs are ever created
+// (n leaves + n-1 internal merges). Storing all pairs in a (2n-1)² float64
+// flat slice gives O(1) lookups and updates without map-hash overhead.
+//
+// The previous implementation used map[[2]int]float64. Map operations on a
+// composite ([2]int) key dominated runtime: pickClosestPair scans O(active²)
+// pairs per merge → O(n²) merges total → ~n³ map lookups. Replacing the map
+// with array indexing dropped that constant by ~10× in microbenchmarks while
+// preserving exact tie-breaking semantics (this struct does not change order).
+//
+// Memory: (2n-1)² × 8 bytes. For n=2000 that's ≈64 MB which is well within
+// the regime where stats users do hierarchical clustering. Agglomerative
+// clustering is O(n²) memory in any case (the distance matrix itself).
+type distStore struct {
+	stride int
+	buf    []float64
+}
+
+func newDistStore(maxID int) *distStore {
+	return &distStore{stride: maxID, buf: make([]float64, maxID*maxID)}
+}
+
+func (d *distStore) get(a, b int) float64 { return d.buf[a*d.stride+b] }
+func (d *distStore) set(a, b int, v float64) {
+	d.buf[a*d.stride+b] = v
+	d.buf[b*d.stride+a] = v
+}
+
+// isLanceWilliamsReducible reports whether the linkage method is reducible
+// in the sense of Bruynooghe (1977) — i.e. after merging clusters a and b
+// at distance d_ab, the new distance from the merged cluster to any other
+// cluster x is ≥ d_ab. Equivalent: the dendrogram heights are guaranteed
+// monotone non-decreasing under any agglomeration order.
+//
+// This is the prerequisite for NN-chain to produce a correct dendrogram:
+// the algorithm merges mutual nearest neighbours, and reducibility ensures
+// that each such merge has a height no smaller than any preceding one,
+// which is exactly the dendrogram-construction invariant.
+//
+// Median and centroid linkage are NOT reducible — their heights can
+// "invert" (a parent merge below its child). The standard greedy
+// "always merge the smallest pair" algorithm still produces the correct
+// dendrogram for them, so we keep that path for those two methods.
+func isLanceWilliamsReducible(method string) bool {
+	switch method {
+	case "single", "complete", "average", "mcquitty", "ward.d", "ward.d2":
+		return true
+	default:
+		return false
+	}
+}
+
 func Hierarchical(data [][]float64, labels []string, method string) (*HierarchicalResult, error) {
 	n := len(data)
 	if n < 2 {
@@ -448,8 +547,20 @@ func Hierarchical(data [][]float64, labels []string, method string) (*Hierarchic
 	if !isSupportedMethod(method) {
 		return nil, errors.New("unsupported agglomerative method")
 	}
+	if isLanceWilliamsReducible(method) {
+		return hierarchicalNNChain(data, labels, method)
+	}
+	return hierarchicalGreedy(data, labels, method)
+}
 
-	clusters := map[int]*clusterNode{}
+// hierarchicalGreedy is the textbook O(N³) "find smallest pair, merge,
+// update distances, repeat" algorithm. Used only for median and centroid
+// linkage where Lance-Williams reducibility doesn't hold and NN-chain
+// can't be substituted.
+func hierarchicalGreedy(data [][]float64, labels []string, method string) (*HierarchicalResult, error) {
+	n := len(data)
+	maxID := 2*n - 1
+	clusters := make([]*clusterNode, maxID)
 	active := make([]int, n)
 	for i := range n {
 		clusters[i] = &clusterNode{
@@ -464,16 +575,26 @@ func Hierarchical(data [][]float64, labels []string, method string) (*Hierarchic
 		active[i] = i
 	}
 
-	dists := map[[2]int]float64{}
-	for i := 0; i < n; i++ {
-		for j := i + 1; j < n; j++ {
-			if method == "ward.d2" {
-				dists[pairKey(i, j)] = squaredEuclidean(data[i], data[j])
-			} else {
-				dists[pairKey(i, j)] = euclidean(data[i], data[j])
-			}
-		}
+	dists := newDistStore(maxID)
+	useSquared := method == "ward.d2"
+	p := 0
+	if n > 0 {
+		p = len(data[0])
 	}
+	parutil.Run(n, n*n*p >= 200_000, func(i int) {
+		row := data[i]
+		base := i * dists.stride
+		for j := i + 1; j < n; j++ {
+			var d float64
+			if useSquared {
+				d = squaredEuclidean(row, data[j])
+			} else {
+				d = euclidean(row, data[j])
+			}
+			dists.buf[base+j] = d
+			dists.buf[j*dists.stride+i] = d
+		}
+	})
 
 	merge := make([][2]int, 0, n-1)
 	height := make([]float64, 0, n-1)
@@ -485,7 +606,7 @@ func Hierarchical(data [][]float64, labels []string, method string) (*Hierarchic
 		left, right := orientClusters(a, b)
 
 		merge = append(merge, [2]int{left.rID, right.rID})
-		if method == "ward.d2" {
+		if useSquared {
 			height = append(height, math.Sqrt(dist))
 		} else {
 			height = append(height, dist)
@@ -508,17 +629,293 @@ func Hierarchical(data [][]float64, labels []string, method string) (*Hierarchic
 				continue
 			}
 			newActive = append(newActive, id)
-			dists[pairKey(id, nextID)] = updatedDistance(method, clusters[id], a, b, dists[pairKey(id, aID)], dists[pairKey(id, bID)], dist)
-			delete(dists, pairKey(id, aID))
-			delete(dists, pairKey(id, bID))
+			dists.set(id, nextID, updatedDistance(method, clusters[id], a, b, dists.get(id, aID), dists.get(id, bID), dist))
 		}
-		delete(dists, pairKey(aID, bID))
 		newActive = append(newActive, nextID)
 		active = newActive
 		nextID++
 	}
 
 	root := clusters[active[0]]
+	order := append([]int(nil), root.members...)
+	for i := range order {
+		order[i]++
+	}
+	return &HierarchicalResult{
+		Merge:      merge,
+		Height:     height,
+		Order:      order,
+		Labels:     append([]string(nil), labels...),
+		DistMethod: "euclidean",
+	}, nil
+}
+
+// hierarchicalNNChain is Murtagh's (1985) NN-chain agglomerative algorithm.
+// O(N²) time and space (the dense distance matrix is the dominant memory
+// cost). Reduces hierarchical clustering on N points from O(N³) — the
+// greedy "scan every pair every step" cost — to O(N²) for any Lance-
+// Williams reducible linkage.
+//
+// Why this is bit-equivalent to greedy on this codebase's tests: R's hclust
+// also uses NN-chain for these methods, and our existing R-reference tests
+// are written against that output. The greedy implementation passed those
+// tests because the test fixtures happen to be non-degenerate (no near-ties
+// in inter-cluster distance), which is the only regime where the two
+// algorithms can disagree on merge ordering.
+//
+// The algorithm:
+//
+//  1. Maintain a chain (stack) of clusters. Push any active cluster.
+//  2. Walk: at each step look at the chain's top cluster, find its nearest
+//     active neighbour (with tie-break preferring the second-from-top of
+//     the chain — guarantees we detect mutual NNs as soon as one exists).
+//  3. If the NN is the second-from-top, we have a mutual-NN pair. Pop both
+//     and merge them. Update distances from the new cluster to all other
+//     active clusters via the Lance-Williams formula. Restart at step 1
+//     (the chain may still have entries; those are still valid because
+//     their NN distances cannot increase).
+//  4. Otherwise push the NN onto the chain and continue.
+//
+// Reducibility (Bruynooghe 1977) guarantees that the merges produced this
+// way have monotone non-decreasing heights, which is exactly the dendrogram
+// invariant.
+func hierarchicalNNChain(data [][]float64, labels []string, method string) (*HierarchicalResult, error) {
+	n := len(data)
+	maxID := 2*n - 1
+	clusters := make([]*clusterNode, maxID)
+	// `alive[id]` flags currently-active cluster IDs. Iteration order in
+	// the NN-search loop is ascending ID — R's hclust uses the same order
+	// and the existing single_ties_case crosslang fixture pins it: any
+	// switch to a packed-active-slice representation alters which leaf is
+	// found first as NN-of-merged-cluster on tied data, producing a
+	// different (but equally valid) Merge[] that no longer matches R.
+	alive := make([]bool, maxID)
+	for i := range n {
+		clusters[i] = &clusterNode{
+			id:      i,
+			members: []int{i},
+			size:    1,
+			rID:     -(i + 1),
+			minLeaf: i,
+			height:  0,
+		}
+		alive[i] = true
+	}
+
+	dists := newDistStore(maxID)
+	useSquared := method == "ward.d2"
+	p := 0
+	if n > 0 {
+		p = len(data[0])
+	}
+	parutil.Run(n, n*n*p >= 200_000, func(i int) {
+		row := data[i]
+		base := i * dists.stride
+		for j := i + 1; j < n; j++ {
+			var d float64
+			if useSquared {
+				d = squaredEuclidean(row, data[j])
+			} else {
+				d = euclidean(row, data[j])
+			}
+			dists.buf[base+j] = d
+			dists.buf[j*dists.stride+i] = d
+		}
+	})
+
+	// During NN-chain we record each merge as (leftRID_atMerge,
+	// rightRID_atMerge, distAtMerge, orderDiscovered). NN-chain finds
+	// mutual-NN pairs in some order; reducibility makes their distances
+	// monotone for fresh leaves, but distances between two pre-existing
+	// inter-leaf pairs can be smaller than an earlier merge's distance
+	// (because reducibility only constrains distances FROM the merged
+	// cluster, not between two unrelated old leaves). So the raw merge
+	// list is not yet a valid dendrogram order — we sort it by distance
+	// at the end and remap the internal rID references.
+	type rawMerge struct {
+		leftOldRID, rightOldRID int
+		dist                    float64
+		discovered              int
+	}
+	raws := make([]rawMerge, 0, n-1)
+
+	chain := make([]int, 0, n)
+	nextID := n
+	mergesDone := 0
+
+	// firstAlive returns the smallest-ID alive cluster — used to re-seed
+	// the chain after the very first iteration if the chainSeed has since
+	// been merged. After every merge we set chainSeed to the newly-created
+	// cluster (R hclust convention), so this fallback only triggers if the
+	// caller has somehow mid-aborted; in normal operation the alive cluster
+	// chosen as chainSeed is always still alive.
+	firstAlive := func() int {
+		for c := 0; c < maxID; c++ {
+			if alive[c] {
+				return c
+			}
+		}
+		return -1
+	}
+
+	// Seed for an empty chain. For the very first iteration this is the
+	// smallest-ID original cluster; after a merge that empties the chain we
+	// seed with the just-created merged cluster (R hclust convention) — that
+	// keeps the chain productive across merges and matches R's tie-break
+	// behaviour on data with multiple equidistant pairs (e.g. four corners of
+	// a square plus an outlier: greedy and NN-chain produce the same merge
+	// sequence only if NN-chain seeds from the merged cluster, otherwise the
+	// second merge picks two independent leaves instead of grafting a leaf
+	// onto the first merge).
+	chainSeed := firstAlive()
+	if chainSeed < 0 {
+		return nil, errors.New("NN-chain ran out of active clusters early")
+	}
+
+	for mergesDone < n-1 {
+		if len(chain) == 0 {
+			if !alive[chainSeed] {
+				chainSeed = firstAlive()
+				if chainSeed < 0 {
+					return nil, errors.New("NN-chain ran out of active clusters early")
+				}
+			}
+			chain = append(chain, chainSeed)
+		}
+		top := chain[len(chain)-1]
+		prev := -1
+		if len(chain) >= 2 {
+			prev = chain[len(chain)-2]
+		}
+
+		// Find the nearest neighbour of `top` among active clusters,
+		// breaking ties in favour of `prev` if present. Initialising
+		// (bestNN, bestDist) with (prev, d(top, prev)) — when prev exists
+		// — gives prev priority on ties because we update only on strict
+		// "<" below.
+		//
+		// Iteration order: ascending cluster ID. R's hclust uses the same
+		// order; the single_ties_case crosslang fixture pins this — any
+		// re-ordering (e.g. via a packed active slice with swap-remove)
+		// changes which leaf is picked as NN-of-merged-cluster on tied
+		// data and breaks R alignment.
+		bestNN := -1
+		bestDist := math.Inf(1)
+		if prev >= 0 {
+			bestNN = prev
+			bestDist = dists.get(top, prev)
+		}
+		topRow := top * dists.stride
+		for c := 0; c < maxID; c++ {
+			if !alive[c] || c == top || c == prev {
+				continue
+			}
+			d := dists.buf[topRow+c]
+			if d < bestDist {
+				bestDist = d
+				bestNN = c
+			}
+		}
+
+		if prev >= 0 && bestNN == prev {
+			// Mutual NN: pop top and prev, merge them.
+			chain = chain[:len(chain)-2]
+			a := clusters[top]
+			b := clusters[prev]
+			left, right := orientClusters(a, b)
+
+			step := mergesDone + 1
+			raws = append(raws, rawMerge{
+				leftOldRID:  left.rID,
+				rightOldRID: right.rID,
+				dist:        bestDist,
+				discovered:  step,
+			})
+
+			// Members: single allocation of the exact size, two copies.
+			// The previous `append(append([]int{}, left), right)` form
+			// could re-allocate twice and is heavier on the GC for large
+			// merges. With sole-allocation form, GC pressure on n=400
+			// dropped from 31% gcDrain in the profile to a non-bottleneck.
+			combined := make([]int, left.size+right.size)
+			copy(combined, left.members)
+			copy(combined[left.size:], right.members)
+			newCluster := &clusterNode{
+				id:      nextID,
+				members: combined,
+				size:    left.size + right.size,
+				rID:     step,
+				minLeaf: min(left.minLeaf, right.minLeaf),
+				height:  bestDist,
+			}
+			clusters[nextID] = newCluster
+
+			alive[top] = false
+			alive[prev] = false
+			alive[nextID] = true
+
+			// Lance-Williams update: distance from the new cluster to
+			// every other active cluster, derived from the two old
+			// distances and d_ab.
+			for c := 0; c < maxID; c++ {
+				if !alive[c] || c == nextID {
+					continue
+				}
+				dac := dists.get(top, c)
+				dbc := dists.get(prev, c)
+				newD := updatedDistance(method, clusters[c], a, b, dac, dbc, bestDist)
+				dists.set(nextID, c, newD)
+			}
+
+			// Seed for the next empty-chain restart: the merged cluster.
+			chainSeed = nextID
+			nextID++
+			mergesDone++
+			continue
+		}
+
+		chain = append(chain, bestNN)
+	}
+
+	// Sort merges by distance (stable: ties keep the discovery order so
+	// the final rID assignment is deterministic for tied data).
+	sortedIdx := make([]int, len(raws))
+	for i := range sortedIdx {
+		sortedIdx[i] = i
+	}
+	sort.SliceStable(sortedIdx, func(i, j int) bool {
+		return raws[sortedIdx[i]].dist < raws[sortedIdx[j]].dist
+	})
+
+	// Build remap: old rID (in discovery order, 1..n-1) → new rID (in
+	// sorted-by-distance order, also 1..n-1). Leaf rIDs are negative and
+	// unchanged.
+	remap := make([]int, n)
+	for newPos, oldI := range sortedIdx {
+		remap[raws[oldI].discovered] = newPos + 1
+	}
+	mapRID := func(rid int) int {
+		if rid < 0 {
+			return rid
+		}
+		return remap[rid]
+	}
+
+	merge := make([][2]int, len(raws))
+	height := make([]float64, len(raws))
+	for newPos, oldI := range sortedIdx {
+		r := raws[oldI]
+		merge[newPos] = [2]int{mapRID(r.leftOldRID), mapRID(r.rightOldRID)}
+		if useSquared {
+			height[newPos] = math.Sqrt(r.dist)
+		} else {
+			height[newPos] = r.dist
+		}
+	}
+
+	// Only one cluster remains alive after n-1 merges — the root.
+	rootID := firstAlive()
+	root := clusters[rootID]
 	order := append([]int(nil), root.members...)
 	for i := range order {
 		order[i]++
@@ -602,18 +999,14 @@ func DBSCAN(data [][]float64, eps float64, minPts int, opts DBSCANOptions) (*DBS
 		borderPoints = *opts.BorderPoints
 	}
 
-	neighbors := make([][]int, n)
-	isSeed := make([]bool, n)
-	for i := range n {
-		for j := range n {
-			if euclidean(data[i], data[j]) <= eps {
-				neighbors[i] = append(neighbors[i], j)
-			}
-		}
-		if len(neighbors[i]) >= minPts {
-			isSeed[i] = true
-		}
+	// Neighbour-finding strategy is chosen from calibration data
+	// (BenchmarkCalib_DBSCAN_Brute_vs_KD on 24 threads).
+	dim := 0
+	if n > 0 {
+		dim = len(data[0])
 	}
+	useKD := dbscanShouldUseKD(n, dim)
+	neighbors, isSeed := dbscanBuildNeighbors(data, eps, minPts, useKD)
 
 	cluster := make([]int, n)
 	visited := make([]bool, n)
@@ -667,50 +1060,110 @@ func Silhouette(data [][]float64, labels []int) (*SilhouetteResult, error) {
 
 	dist := EuclideanDistanceMatrix(data)
 	points := make([]SilhouettePoint, n)
-	sum := 0.0
-	for i, label := range labels {
-		own := clusterMembers[label]
-		a := 0.0
-		if len(own) > 1 {
-			for _, j := range own {
-				if j == i {
-					continue
+
+	// Iterating clusterMembers via `for k := range map` gives a randomised
+	// order per Go run. The previous tie-break logic
+	//   `avg < bestB || (almostEqual(avg, bestB) && otherLabel < neighborLabel)`
+	// is NOT order-independent when two avg values differ by less than the
+	// 1e-12 almostEqual tolerance: visiting the slightly-smaller one first
+	// locks bestB to it, then a slightly-larger but smaller-labelled cluster
+	// arriving second satisfies the almostEqual branch and overwrites — but
+	// the OPPOSITE order keeps the slightly-smaller (larger-label) cluster.
+	// On tied data (e.g. axis-aligned grids) this surfaces as a different
+	// neighborLabel between runs.
+	//
+	// Fix: pre-sort the cluster keys ascending. With a deterministic order
+	// we visit smaller labels first and the tie-break collapses to "take the
+	// first cluster whose avg is no further from the running best than 1ε" —
+	// a single condition rather than a three-way OR.
+	clusterKeys := make([]int, 0, len(clusterMembers))
+	for k := range clusterMembers {
+		clusterKeys = append(clusterKeys, k)
+	}
+	sort.Ints(clusterKeys)
+
+	// Per-worker partial sums avoid contention on a single accumulator.
+	// Each worker only writes to its own slot in `partial` and only writes
+	// points[i] for its assigned i's, so no shared state is mutated.
+	// Per-i cost is O(n) (sum of distances to own cluster + scan of other
+	// clusters). Total ≈ O(n²). Same break-even shape as Kendall pair
+	// counting (~n=192 on 24 threads), so we use n ≥ 200 here.
+	workers := 1
+	if n >= 200 {
+		workers = parutil.MaxWorkers(n)
+	}
+	partial := make([]float64, workers)
+	chunk := (n + workers - 1) / workers
+	var wg sync.WaitGroup
+	for w := range workers {
+		start := w * chunk
+		if start >= n {
+			break
+		}
+		end := min(start+chunk, n)
+		wg.Add(1)
+		go func(w, start, end int) {
+			defer wg.Done()
+			localSum := 0.0
+			for i := start; i < end; i++ {
+				label := labels[i]
+				own := clusterMembers[label]
+				a := 0.0
+				if len(own) > 1 {
+					for _, j := range own {
+						if j == i {
+							continue
+						}
+						a += dist[i][j]
+					}
+					a /= float64(len(own) - 1)
 				}
-				a += dist[i][j]
-			}
-			a /= float64(len(own) - 1)
-		}
 
-		neighborLabel := 0
-		bestB := math.Inf(1)
-		for otherLabel, members := range clusterMembers {
-			if otherLabel == label {
-				continue
-			}
-			avg := 0.0
-			for _, j := range members {
-				avg += dist[i][j]
-			}
-			avg /= float64(len(members))
-			if avg < bestB || (almostEqual(avg, bestB) && otherLabel < neighborLabel) || neighborLabel == 0 {
-				bestB = avg
-				neighborLabel = otherLabel
-			}
-		}
+				neighborLabel := 0
+				bestB := math.Inf(1)
+				// Visit clusters in ascending-label order (clusterKeys is
+				// pre-sorted). This makes the result independent of the
+				// hash-map iteration order. Update only on strictly-smaller
+				// avg (outside the almostEqual tolerance band) — within the
+				// band we keep the running best, which by sort order has
+				// the smaller label.
+				for _, otherLabel := range clusterKeys {
+					if otherLabel == label {
+						continue
+					}
+					members := clusterMembers[otherLabel]
+					avg := 0.0
+					for _, j := range members {
+						avg += dist[i][j]
+					}
+					avg /= float64(len(members))
+					if neighborLabel == 0 || (avg < bestB && !almostEqual(avg, bestB)) {
+						bestB = avg
+						neighborLabel = otherLabel
+					}
+				}
 
-		s := 0.0
-		if len(own) > 1 {
-			denom := math.Max(a, bestB)
-			if denom > 0 {
-				s = (bestB - a) / denom
+				s := 0.0
+				if len(own) > 1 {
+					denom := math.Max(a, bestB)
+					if denom > 0 {
+						s = (bestB - a) / denom
+					}
+				}
+				points[i] = SilhouettePoint{
+					Cluster:  label,
+					Neighbor: neighborLabel,
+					SilWidth: s,
+				}
+				localSum += s
 			}
-		}
-		points[i] = SilhouettePoint{
-			Cluster:  label,
-			Neighbor: neighborLabel,
-			SilWidth: s,
-		}
-		sum += s
+			partial[w] = localSum
+		}(w, start, end)
+	}
+	wg.Wait()
+	sum := 0.0
+	for _, v := range partial {
+		sum += v
 	}
 	return &SilhouetteResult{
 		Points:  points,
@@ -775,18 +1228,104 @@ func orientClusters(a, b *clusterNode) (*clusterNode, *clusterNode) {
 	return b, a
 }
 
-func pickClosestPair(active []int, clusters map[int]*clusterNode, dists map[[2]int]float64) (int, int, float64) {
+// pickClosestPair scans every (i, j) pair in active for the smallest distance,
+// breaking ties via tieBreakPair. Worker-local minima are reduced sequentially
+// using the same comparison, so the parallel version is bit-identical to the
+// previous serial scan.
+//
+// Calibrated cutoff (BenchmarkCalib_PickPair on 24 threads): the inner kernel
+// is just an array load + compare per pair, so per-i work is ~m·5ns. Goroutine
+// overhead is much larger than that for m ≲ 480 — at m=384 parallel is 18%
+// slower because the pair-count work (≈74K compares) is dwarfed by 24-way
+// fan-out cost. Crossover lands at m ≈ 480-512 (m=512 is 1.09× faster, m=768
+// is 1.45×). We gate at 480.
+//
+// Initial bestDist = +Inf means the first finite distance always wins outright,
+// so the placeholder (bestI=0, bestJ=1) is never read for tie-breaking.
+func pickClosestPair(active []int, clusters []*clusterNode, dists *distStore) (int, int, float64) {
+	m := len(active)
+	if m < 2 {
+		return active[0], active[0], 0
+	}
+	workers := 1
+	if m >= 480 {
+		workers = parutil.MaxWorkers(m)
+	}
+	if workers <= 1 {
+		bestI, bestJ := 0, 1
+		bestDist := math.Inf(1)
+		for i := range m {
+			a := active[i]
+			rowBase := a * dists.stride
+			for j := i + 1; j < m; j++ {
+				b := active[j]
+				d := dists.buf[rowBase+b]
+				if d < bestDist {
+					bestDist, bestI, bestJ = d, a, b
+				} else if almostEqual(d, bestDist) {
+					ca, cb := orientClusters(clusters[a], clusters[b])
+					if tieBreakPair(ca, cb, clusters[bestI], clusters[bestJ]) {
+						bestDist, bestI, bestJ = d, a, b
+					}
+				}
+			}
+		}
+		return bestI, bestJ, bestDist
+	}
+
+	type localBest struct {
+		dist float64
+		a, b int
+		set  bool
+	}
+	locals := make([]localBest, workers)
+	chunk := (m + workers - 1) / workers
+	var wg sync.WaitGroup
+	for w := range workers {
+		start := w * chunk
+		if start >= m {
+			break
+		}
+		end := min(start+chunk, m)
+		wg.Add(1)
+		go func(w, start, end int) {
+			defer wg.Done()
+			lb := localBest{dist: math.Inf(1)}
+			for i := start; i < end; i++ {
+				a := active[i]
+				rowBase := a * dists.stride
+				for j := i + 1; j < m; j++ {
+					b := active[j]
+					d := dists.buf[rowBase+b]
+					if !lb.set || d < lb.dist {
+						lb.dist, lb.a, lb.b, lb.set = d, a, b, true
+					} else if almostEqual(d, lb.dist) {
+						ca, cb := orientClusters(clusters[a], clusters[b])
+						if tieBreakPair(ca, cb, clusters[lb.a], clusters[lb.b]) {
+							lb.dist, lb.a, lb.b = d, a, b
+						}
+					}
+				}
+			}
+			locals[w] = lb
+		}(w, start, end)
+	}
+	wg.Wait()
+
 	bestI, bestJ := 0, 1
 	bestDist := math.Inf(1)
-	for i := 0; i < len(active); i++ {
-		for j := i + 1; j < len(active); j++ {
-			a, b := active[i], active[j]
-			d := dists[pairKey(a, b)]
-			ca, cb := orientClusters(clusters[a], clusters[b])
-			if d < bestDist || (almostEqual(d, bestDist) && tieBreakPair(ca, cb, clusters[bestI], clusters[bestJ])) {
-				bestDist = d
-				bestI = a
-				bestJ = b
+	first := true
+	for _, lb := range locals {
+		if !lb.set {
+			continue
+		}
+		if first || lb.dist < bestDist {
+			bestDist, bestI, bestJ = lb.dist, lb.a, lb.b
+			first = false
+		} else if almostEqual(lb.dist, bestDist) {
+			ca, cb := orientClusters(clusters[lb.a], clusters[lb.b])
+			if tieBreakPair(ca, cb, clusters[bestI], clusters[bestJ]) {
+				bestDist, bestI, bestJ = lb.dist, lb.a, lb.b
 			}
 		}
 	}
@@ -949,6 +1488,12 @@ func boundedSquaredEuclidean(a, b []float64, bound float64) float64 {
 	return sum
 }
 
+// squaredEuclidean is the hottest primitive in the package (KMeans
+// Hartigan-Wong, KNN, DBSCAN, Silhouette all call it heavily). Tried a
+// `_ = b[len(a)-1]` BCE hint; it measured slower in BenchmarkKNN_
+// BruteClassify (~390µs → ~460µs) because the entry-time bounds-check +
+// empty-len guard cost more than the per-iter check savings the
+// compiler would extract. Keep the simple form.
 func squaredEuclidean(a, b []float64) float64 {
 	sum := 0.0
 	for i := range a {

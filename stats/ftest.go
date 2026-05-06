@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sync"
 
 	"github.com/HazelnutParadise/insyra"
 )
@@ -66,25 +67,41 @@ func LeveneTest(groups []insyra.IDataList) (*FTestResult, error) {
 		return nil, errors.New("at least two groups required")
 	}
 
+	// Per-group: pull median + raw []any in parallel. Each group is its own
+	// actor so per-group AtomicDo entries can run concurrently. Collapses
+	// the previously-serial actor-handshake chain (same fix pattern as
+	// OneWayANOVA / TwoWayANOVA).
+	type groupExtract struct {
+		raw    []any
+		median float64
+	}
+	extracted := make([]groupExtract, len(groups))
+	var wg sync.WaitGroup
+	for i := range groups {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			groups[i].AtomicDo(func(gdl *insyra.DataList) {
+				extracted[i] = groupExtract{
+					raw:    gdl.Data(),
+					median: gdl.Median(),
+				}
+			})
+		}(i)
+	}
+	wg.Wait()
+
 	var allDiffs []float64
 	var groupLabels []int
-	var err error
-
-	for i, group := range groups {
-		group.AtomicDo(func(gdl *insyra.DataList) {
-			median := gdl.Median()
-			for idx, v := range gdl.Data() {
-				x, ok := insyra.ToFloat64Safe(v)
-				if !ok {
-					err = fmt.Errorf("invalid value in group %d at index %d", i, idx)
-					return
-				}
-				allDiffs = append(allDiffs, math.Abs(x-median))
-				groupLabels = append(groupLabels, i)
+	for i, ex := range extracted {
+		median := ex.median
+		for idx, v := range ex.raw {
+			x, ok := insyra.ToFloat64Safe(v)
+			if !ok {
+				return nil, fmt.Errorf("invalid value in group %d at index %d", i, idx)
 			}
-		})
-		if err != nil {
-			return nil, err
+			allDiffs = append(allDiffs, math.Abs(x-median))
+			groupLabels = append(groupLabels, i)
 		}
 	}
 
@@ -98,35 +115,49 @@ func BartlettTest(groups []insyra.IDataList) (*FTestResult, error) {
 		return nil, errors.New("at least two groups required")
 	}
 
+	// Per-group n + Var via parallel actor entries. Var() is the bulk of
+	// the work (two-pass sum + sumsq); doing it in parallel saves the
+	// serial actor-entry chain for ≥3 groups.
+	type bartlettExtract struct {
+		n int
+		v float64
+	}
+	bx := make([]bartlettExtract, len(groups))
+	var wg sync.WaitGroup
+	for i := range groups {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			groups[i].AtomicDo(func(gdl *insyra.DataList) {
+				bx[i] = bartlettExtract{n: gdl.Len(), v: gdl.Var()}
+			})
+		}(i)
+	}
+	wg.Wait()
+
 	var pooledLogVar float64
 	var sumNMinus1 int
 	var weight float64
-
-	for i, group := range groups {
-		var n int
-		var v float64
-		group.AtomicDo(func(gdl *insyra.DataList) {
-			n = gdl.Len()
-			v = gdl.Var()
-		})
-
-		if n < 2 || v <= 0 {
+	for i, e := range bx {
+		if e.n < 2 || e.v <= 0 {
 			return nil, fmt.Errorf("group %d must have at least two observations and positive variance", i)
 		}
-
-		sumNMinus1 += n - 1
-		pooledLogVar += float64(n-1) * math.Log(v)
-		weight += 1.0 / float64(n-1)
+		sumNMinus1 += e.n - 1
+		pooledLogVar += float64(e.n-1) * math.Log(e.v)
+		weight += 1.0 / float64(e.n-1)
 	}
 
 	if sumNMinus1 == 0 {
 		return nil, errors.New("insufficient valid groups for Bartlett test")
 	}
 
+	// meanVar reuses the already-extracted (n, var) pairs — no extra
+	// AtomicDo calls. The previous form did `group.Len()` + `group.Var()`
+	// once more per group inside this loop (= 2k more actor entries).
 	meanVar := 0.0
-	for _, group := range groups {
-		if group.Len() >= 2 {
-			meanVar += float64(group.Len()-1) * group.Var()
+	for _, e := range bx {
+		if e.n >= 2 {
+			meanVar += float64(e.n-1) * e.v
 		}
 	}
 	meanVar /= float64(sumNMinus1)

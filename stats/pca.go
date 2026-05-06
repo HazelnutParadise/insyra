@@ -3,9 +3,11 @@ package stats
 import (
 	"errors"
 	"fmt"
+	"math"
 
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/internal/algorithms"
+	"github.com/HazelnutParadise/insyra/stats/internal/parutil"
 	"gonum.org/v1/gonum/mat"
 	"gonum.org/v1/gonum/stat"
 )
@@ -21,6 +23,13 @@ type PCAResult struct {
 func PCA(dataTable insyra.IDataTable, nComponents ...int) (*PCAResult, error) {
 	var rowNum, colNum, numComponents int
 	var data *mat.Dense
+	// Bulk-load per column via ToF64Slice. The previous nested-loop form
+	// (`dt.GetRow(i).Get(j)` for every cell) profiled to 67% runtime.Stack —
+	// each Get goes through the DataList actor, whose getGID call walks the
+	// goroutine stack on every invocation. For an 800×12 table that is
+	// 800 row-actor entries plus 9600 cell-actor entries, all paying the
+	// stack-trace cost. Switching to one AtomicDo per column drops that
+	// to colNum entries (= 12 here, ≈800× fewer actor handshakes).
 	dataTable.AtomicDo(func(dt *insyra.DataTable) {
 		rowNum, colNum = dt.Size()
 
@@ -30,15 +39,30 @@ func PCA(dataTable insyra.IDataTable, nComponents ...int) (*PCAResult, error) {
 		}
 
 		data = mat.NewDense(rowNum, colNum, nil)
-		for i := range rowNum {
-			row := dt.GetRow(i)
-			for j := range colNum {
-				value, ok := insyra.ToFloat64Safe(row.Get(j))
-				if !ok {
+		for j := range colNum {
+			col := dt.GetColByNumber(j)
+			col.AtomicDo(func(dl *insyra.DataList) {
+				// One AtomicDo entry → one getGID stack walk. Inside we
+				// pull the raw []any once (Data() re-enters the same
+				// actor inline, no extra getGID) and iterate with
+				// ToFloat64Safe so non-numeric cells surface as errors
+				// (ToF64Slice would silently coerce them to 0).
+				raw := dl.Data()
+				if len(raw) != rowNum {
 					data = nil
 					return
 				}
-				data.Set(i, j, value)
+				for i, v := range raw {
+					f, ok := insyra.ToFloat64Safe(v)
+					if !ok {
+						data = nil
+						return
+					}
+					data.Set(i, j, f)
+				}
+			})
+			if data == nil {
+				return
 			}
 		}
 	})
@@ -55,16 +79,57 @@ func PCA(dataTable insyra.IDataTable, nComponents ...int) (*PCAResult, error) {
 		return nil, fmt.Errorf("nComponents must be between 1 and %d", colNum)
 	}
 
-	for j := range colNum {
-		col := mat.Col(nil, j, data)
-		mean, std := stat.MeanStdDev(col, nil)
-		if std == 0 {
-			return nil, fmt.Errorf("PCA undefined for zero-variance column %d", j)
-		}
+	// Standardisation in two parallel phases:
+	//   (1) per-column mean & sample std — each column j is independent.
+	//       Uses the same two-pass formula as gonum/stat.MeanStdDev (Σx then
+	//       Σ(x-mean)² with n-1 divisor) so the result is bit-identical to
+	//       the previous mat.Col + MeanStdDev path, while skipping the
+	//       per-column []float64 allocation.
+	//   (2) row-parallel rewrite using the precomputed (mean, std). Each
+	//       worker writes only to rows it owns, so no cache-line ping-pong.
+	means := make([]float64, colNum)
+	stds := make([]float64, colNum)
+	stdErrs := make([]error, colNum)
+	// Direct access to data.RawMatrix().Data avoids the per-element method
+	// call + bounds-check overhead of mat.Dense.At/Set. mat.Dense is
+	// row-major so column access is strided (stride = colNum here, since
+	// we built data with mat.NewDense(rowNum, colNum, nil) and no padding),
+	// but the indexing math is the same — we just skip the dispatch.
+	dataRaw := data.RawMatrix()
+	stride := dataRaw.Stride
+	dataBuf := dataRaw.Data
+	parutil.Run(colNum, rowNum*colNum >= 5000, func(j int) {
+		var sum float64
 		for i := range rowNum {
-			data.Set(i, j, (data.At(i, j)-mean)/std)
+			sum += dataBuf[i*stride+j]
+		}
+		mean := sum / float64(rowNum)
+		var ss float64
+		for i := range rowNum {
+			d := dataBuf[i*stride+j] - mean
+			ss += d * d
+		}
+		std := math.Sqrt(ss / float64(rowNum-1))
+		if std == 0 {
+			stdErrs[j] = fmt.Errorf("PCA undefined for zero-variance column %d", j)
+			return
+		}
+		means[j] = mean
+		stds[j] = std
+	})
+	for _, e := range stdErrs {
+		if e != nil {
+			return nil, e
 		}
 	}
+	// Row-parallel rewrite: each worker writes contiguous rows, no false
+	// sharing. Direct row-major buffer write hits the cache line per row.
+	parutil.Run(rowNum, rowNum*colNum >= 5000, func(i int) {
+		base := i * stride
+		for j := range colNum {
+			dataBuf[base+j] = (dataBuf[base+j] - means[j]) / stds[j]
+		}
+	})
 
 	covMatrix := mat.NewSymDense(colNum, nil)
 	stat.CovarianceMatrix(covMatrix, data, nil)
@@ -92,18 +157,33 @@ func PCA(dataTable insyra.IDataTable, nComponents ...int) (*PCAResult, error) {
 		}
 	})
 
+	// Build the component table without per-cell Append. The previous form
+	// did `column := NewDataList(); for i { column.Append(...) }` which
+	// pays one DataList AtomicDo entry per cell — for numComponents × p
+	// cells that's a getGID stack walk per cell. Same actor-overhead trap
+	// we fixed in CorrelationMatrix and PCA's input loading.
+	//
+	// Instead: pull eigenvectors' raw row-major buffer once, build each
+	// component's []any in plain memory, hand it to NewDataList in one
+	// shot, and submit the columns via one variadic AppendCols call.
 	componentTable := insyra.NewDataTable()
+	evRaw := eigenvectors.RawMatrix()
+	evStride := evRaw.Stride
+	evRows := evRaw.Rows
+	componentCols := make([]*insyra.DataList, numComponents)
 	for compIndex := range numComponents {
-		column := insyra.NewDataList()
+		col := indices[compIndex]
 		sign := 1.0
-		if eigenvectors.At(0, indices[compIndex]) < 0 {
+		if evRaw.Data[col] < 0 {
 			sign = -1.0
 		}
-		for i := range eigenvectors.RawMatrix().Rows {
-			column.Append(sign * eigenvectors.At(i, indices[compIndex]))
+		vals := make([]any, evRows)
+		for i := range evRows {
+			vals[i] = sign * evRaw.Data[i*evStride+col]
 		}
-		componentTable.AppendCols(column.SetName(fmt.Sprintf("PC%d", compIndex+1)))
+		componentCols[compIndex] = insyra.NewDataList(vals...).SetName(fmt.Sprintf("PC%d", compIndex+1))
 	}
+	componentTable.AppendCols(componentCols...)
 
 	totalVariance := 0.0
 	for _, v := range eigenvalues {

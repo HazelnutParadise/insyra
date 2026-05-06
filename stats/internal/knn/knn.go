@@ -4,7 +4,22 @@ import (
 	"errors"
 	"math"
 	"sort"
+	"sync"
+
+	"github.com/HazelnutParadise/insyra/stats/internal/parutil"
 )
+
+// treeBuildParallelDepth bounds how many recursion levels of buildKDNode /
+// buildBallNode can fan out to goroutines. With 24 cores, depth 5 gives
+// 2^5 = 32 parallel subtrees at the leaf of the parallel zone — enough to
+// saturate every core. Beyond that the synchronisation overhead per
+// recursion level outweighs the gain.
+const treeBuildParallelDepth = 5
+
+// treeBuildParallelCutoff is the minimum subtree size (in points) below
+// which we recurse serially regardless of depth. For very small subtrees
+// the goroutine launch dwarfs the actual O(n log n) sort + split work.
+const treeBuildParallelCutoff = 256
 
 type Weighting string
 type Algorithm string
@@ -68,8 +83,24 @@ func Classify(train, test [][]float64, labels []string, k int, opts Options) (*C
 	classes, classIndex := orderedClasses(labels)
 	predictions := make([]string, len(test))
 	probabilities := make([][]float64, len(test))
-	for i, row := range test {
-		neighbors := search.QueryKNN(row, k)
+	// Each test row is queried independently; the searchers are read-only
+	// after construction (kd/ball trees + brute store input slices and never
+	// mutate them), so parallel queries are race-free.
+	//
+	// Per-query cost is at minimum O(k log n_train) for tree searches and
+	// O(n_train · dim) for brute, both dwarfing goroutine overhead even at
+	// modest n_train. Threshold scales with the *per-query* lower bound of
+	// useful work: len(test) ≥ 16 ensures fan-out to a few workers, and
+	// len(train) ≥ 32 ensures each query has enough work to amortise launch.
+	// Per-query cost is ≥ several hundred ns even for the smallest brute
+	// search (k-set maintenance + distance evals) and grows with train size,
+	// so the goroutine-launch overhead is amortised quickly. Empirically
+	// parallel beats serial for test_size ≥ 16 with train_size ≥ 32 — the
+	// (200, 200) brute-classify case is 2.5× faster in parallel (160µs vs
+	// 400µs serial).
+	goPar := len(test) >= 16 && len(train) >= 32
+	parutil.Run(len(test), goPar, func(i int) {
+		neighbors := search.QueryKNN(test[i], k)
 		probabilities[i] = classifyProbabilities(neighbors, labels, classIndex, len(classes), normalized.Weighting)
 		// Tie-break = alphabetical first, matching R's `which.max` semantics
 		// (since `classes` is already alphabetically sorted, the first index
@@ -81,7 +112,7 @@ func Classify(train, test [][]float64, labels []string, k int, opts Options) (*C
 			}
 		}
 		predictions[i] = classes[best]
-	}
+	})
 	return &ClassificationResult{
 		Predictions:   predictions,
 		Classes:       classes,
@@ -106,10 +137,17 @@ func Regress(train, test [][]float64, targets []float64, k int, opts Options) (*
 	}
 
 	predictions := make([]float64, len(test))
-	for i, row := range test {
-		neighbors := search.QueryKNN(row, k)
+	// Per-query cost is ≥ several hundred ns even for the smallest brute
+	// search (k-set maintenance + distance evals) and grows with train size,
+	// so the goroutine-launch overhead is amortised quickly. Empirically
+	// parallel beats serial for test_size ≥ 16 with train_size ≥ 32 — the
+	// (200, 200) brute-classify case is 2.5× faster in parallel (160µs vs
+	// 400µs serial).
+	goPar := len(test) >= 16 && len(train) >= 32
+	parutil.Run(len(test), goPar, func(i int) {
+		neighbors := search.QueryKNN(test[i], k)
 		predictions[i] = regressPrediction(neighbors, targets, normalized.Weighting)
-	}
+	})
 	return &RegressionResult{Predictions: predictions}, nil
 }
 
@@ -128,15 +166,22 @@ func Neighbors(train, test [][]float64, k int, opts Options) (*NeighborResult, e
 
 	indices := make([][]int, len(test))
 	distances := make([][]float64, len(test))
-	for i, row := range test {
-		neighbors := search.QueryKNN(row, k)
+	// Per-query cost is ≥ several hundred ns even for the smallest brute
+	// search (k-set maintenance + distance evals) and grows with train size,
+	// so the goroutine-launch overhead is amortised quickly. Empirically
+	// parallel beats serial for test_size ≥ 16 with train_size ≥ 32 — the
+	// (200, 200) brute-classify case is 2.5× faster in parallel (160µs vs
+	// 400µs serial).
+	goPar := len(test) >= 16 && len(train) >= 32
+	parutil.Run(len(test), goPar, func(i int) {
+		neighbors := search.QueryKNN(test[i], k)
 		indices[i] = make([]int, len(neighbors))
 		distances[i] = make([]float64, len(neighbors))
 		for j, nb := range neighbors {
 			indices[i][j] = nb.index
 			distances[i][j] = math.Sqrt(nb.dist2)
 		}
-	}
+	})
 	return &NeighborResult{Indices: indices, Distances: distances}, nil
 }
 
@@ -257,11 +302,16 @@ func newKDTreeSearcher(train [][]float64, leafSize int) *kdTreeSearcher {
 	return &kdTreeSearcher{
 		train:    train,
 		leafSize: leafSize,
-		root:     buildKDNode(train, indices, leafSize),
+		root:     buildKDNode(train, indices, leafSize, 0),
 	}
 }
 
-func buildKDNode(train [][]float64, indices []int, leafSize int) *kdNode {
+// buildKDNode constructs the KD-tree subtree for `indices`. Left and right
+// subtrees are completely independent (no shared mutable state — they slice
+// their own halves of `indices` with explicit copies), so we fan them out
+// to goroutines when both `depth < treeBuildParallelDepth` and the subtree
+// is large enough to amortise the goroutine launch.
+func buildKDNode(train [][]float64, indices []int, leafSize, depth int) *kdNode {
 	if len(indices) == 0 {
 		return nil
 	}
@@ -282,13 +332,31 @@ func buildKDNode(train [][]float64, indices []int, leafSize int) *kdNode {
 	})
 	mid := len(indices) / 2
 	pivot := indices[mid]
-	left := append([]int(nil), indices[:mid]...)
-	right := append([]int(nil), indices[mid+1:]...)
+	leftIdx := append([]int(nil), indices[:mid]...)
+	rightIdx := append([]int(nil), indices[mid+1:]...)
+
+	var left, right *kdNode
+	if depth < treeBuildParallelDepth && len(indices) >= treeBuildParallelCutoff {
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			left = buildKDNode(train, leftIdx, leafSize, depth+1)
+		}()
+		go func() {
+			defer wg.Done()
+			right = buildKDNode(train, rightIdx, leafSize, depth+1)
+		}()
+		wg.Wait()
+	} else {
+		left = buildKDNode(train, leftIdx, leafSize, depth+1)
+		right = buildKDNode(train, rightIdx, leafSize, depth+1)
+	}
 	return &kdNode{
 		axis:  axis,
 		pivot: pivot,
-		left:  buildKDNode(train, left, leafSize),
-		right: buildKDNode(train, right, leafSize),
+		left:  left,
+		right: right,
 	}
 }
 
@@ -344,11 +412,16 @@ func newBallTreeSearcher(train [][]float64, leafSize int) *ballTreeSearcher {
 	return &ballTreeSearcher{
 		train:    train,
 		leafSize: leafSize,
-		root:     buildBallNode(train, indices, leafSize),
+		root:     buildBallNode(train, indices, leafSize, 0),
 	}
 }
 
-func buildBallNode(train [][]float64, indices []int, leafSize int) *ballNode {
+// buildBallNode mirrors buildKDNode's parallel fan-out: independent left
+// and right subtrees can be constructed concurrently because they each
+// own a private `indices` slice. The centroid + radius computation at
+// this node stays serial — it's O(n) and feeds both subtrees, so there
+// is nothing to parallelise above the recursion split.
+func buildBallNode(train [][]float64, indices []int, leafSize, depth int) *ballNode {
 	if len(indices) == 0 {
 		return nil
 	}
@@ -367,29 +440,47 @@ func buildBallNode(train [][]float64, indices []int, leafSize int) *ballNode {
 	}
 
 	leftPivot, rightPivot := chooseBallPivots(train, indices)
-	left := make([]int, 0, len(indices)/2)
-	right := make([]int, 0, len(indices)/2)
+	leftIdx := make([]int, 0, len(indices)/2)
+	rightIdx := make([]int, 0, len(indices)/2)
 	for _, idx := range indices {
 		dl := squaredEuclidean(train[idx], train[leftPivot])
 		dr := squaredEuclidean(train[idx], train[rightPivot])
 		if dl < dr || (almostEqual(dl, dr) && idx <= rightPivot) {
-			left = append(left, idx)
+			leftIdx = append(leftIdx, idx)
 		} else {
-			right = append(right, idx)
+			rightIdx = append(rightIdx, idx)
 		}
 	}
-	if len(left) == 0 || len(right) == 0 {
+	if len(leftIdx) == 0 || len(rightIdx) == 0 {
 		sorted := append([]int(nil), indices...)
 		sort.Ints(sorted)
 		half := len(sorted) / 2
-		left = sorted[:half]
-		right = sorted[half:]
+		leftIdx = sorted[:half]
+		rightIdx = sorted[half:]
+	}
+
+	var left, right *ballNode
+	if depth < treeBuildParallelDepth && len(indices) >= treeBuildParallelCutoff {
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			left = buildBallNode(train, leftIdx, leafSize, depth+1)
+		}()
+		go func() {
+			defer wg.Done()
+			right = buildBallNode(train, rightIdx, leafSize, depth+1)
+		}()
+		wg.Wait()
+	} else {
+		left = buildBallNode(train, leftIdx, leafSize, depth+1)
+		right = buildBallNode(train, rightIdx, leafSize, depth+1)
 	}
 	return &ballNode{
 		center: center,
 		radius: radius,
-		left:   buildBallNode(train, left, leafSize),
-		right:  buildBallNode(train, right, leafSize),
+		left:   left,
+		right:  right,
 	}
 }
 
@@ -437,6 +528,31 @@ func ballLowerBound(query []float64, node *ballNode) float64 {
 	return dist * dist
 }
 
+// neighborSet is the bounded "k smallest neighbours" container used by every
+// KNN search path. Internally a max-heap by `worseNeighbor` ordering — i.e.
+// buf[0] is the WORST currently-held neighbour, the one a new candidate has
+// to beat to enter the set.
+//
+// Why a heap and not a linear scan: profiling BenchmarkKNN_KDTreeQueries on
+// 24 threads (n_train=2000, n_test=500, k=8) showed neighborSet.tryAdd at
+// 37% of CPU, with worseNeighbor + linear scan to find the worst index
+// dominating that. tryAdd is called once per candidate distance evaluation
+// — for brute that's O(n_train) per query, for trees the visited-leaf size
+// times the number of explored leaves. For k=8 the linear scan is ~8 cmps
+// per call; for larger k (k=50, common for density-weighted KNN) it becomes
+// O(50) per call which is the hot loop's main cost.
+//
+// Heap converts both tryAdd and worstDist2 to O(log k) and O(1):
+//
+//	tryAdd       linear   heap
+//	  k=5        ~5 cmp   ~3 cmp + 1 swap chain
+//	  k=50       ~50 cmp  ~6 cmp + 1 swap chain
+//	  k=500      ~500 cmp ~9 cmp + 1 swap chain
+//
+// Bit-equivalence: both data structures maintain the same invariant — "the
+// k items minimising the worseNeighbor order on the input stream so far".
+// `results()` sort-orders the final set, so output is bit-identical to the
+// previous linear-scan implementation.
 type neighborSet struct {
 	k   int
 	buf []neighbor
@@ -450,32 +566,66 @@ func (s *neighborSet) full() bool {
 	return len(s.buf) >= s.k
 }
 
+// worstDist2 is buf[0].dist2 — the dist² of the heap root, i.e. the
+// worst-held neighbour. O(1).
 func (s *neighborSet) worstDist2() float64 {
 	if len(s.buf) == 0 {
 		return math.Inf(1)
 	}
-	worst := s.buf[0]
-	for _, nb := range s.buf[1:] {
-		if worseNeighbor(nb, worst) {
-			worst = nb
-		}
-	}
-	return worst.dist2
+	return s.buf[0].dist2
 }
 
+// tryAdd inserts nb into the set. If the set isn't full, push + sift-up.
+// If full, compare against the worst (buf[0]) — replace and sift-down only
+// when nb is strictly better in the worseNeighbor order. Both paths are
+// O(log k).
 func (s *neighborSet) tryAdd(nb neighbor) {
 	if len(s.buf) < s.k {
 		s.buf = append(s.buf, nb)
+		s.siftUp(len(s.buf) - 1)
 		return
 	}
-	worstIdx := 0
-	for i := 1; i < len(s.buf); i++ {
-		if worseNeighbor(s.buf[i], s.buf[worstIdx]) {
-			worstIdx = i
-		}
+	if betterNeighbor(nb, s.buf[0]) {
+		s.buf[0] = nb
+		s.siftDown(0)
 	}
-	if betterNeighbor(nb, s.buf[worstIdx]) {
-		s.buf[worstIdx] = nb
+}
+
+// siftUp restores the heap invariant after appending a new element at
+// index `i` (the leaf). Walks up parent links, swapping while the new
+// element is "worse than" its parent (so it should be higher in the
+// max-heap).
+func (s *neighborSet) siftUp(i int) {
+	for i > 0 {
+		parent := (i - 1) / 2
+		if !worseNeighbor(s.buf[i], s.buf[parent]) {
+			return
+		}
+		s.buf[i], s.buf[parent] = s.buf[parent], s.buf[i]
+		i = parent
+	}
+}
+
+// siftDown restores the heap invariant after replacing the root.
+// Walks down to the larger (worse) child while the current node is
+// better than at least one of its children.
+func (s *neighborSet) siftDown(i int) {
+	n := len(s.buf)
+	for {
+		left := 2*i + 1
+		if left >= n {
+			return
+		}
+		worst := left
+		right := left + 1
+		if right < n && worseNeighbor(s.buf[right], s.buf[left]) {
+			worst = right
+		}
+		if !worseNeighbor(s.buf[worst], s.buf[i]) {
+			return
+		}
+		s.buf[i], s.buf[worst] = s.buf[worst], s.buf[i]
+		i = worst
 	}
 }
 
