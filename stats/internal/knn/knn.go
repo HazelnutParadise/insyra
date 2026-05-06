@@ -4,9 +4,22 @@ import (
 	"errors"
 	"math"
 	"sort"
+	"sync"
 
 	"github.com/HazelnutParadise/insyra/stats/internal/parutil"
 )
+
+// treeBuildParallelDepth bounds how many recursion levels of buildKDNode /
+// buildBallNode can fan out to goroutines. With 24 cores, depth 5 gives
+// 2^5 = 32 parallel subtrees at the leaf of the parallel zone — enough to
+// saturate every core. Beyond that the synchronisation overhead per
+// recursion level outweighs the gain.
+const treeBuildParallelDepth = 5
+
+// treeBuildParallelCutoff is the minimum subtree size (in points) below
+// which we recurse serially regardless of depth. For very small subtrees
+// the goroutine launch dwarfs the actual O(n log n) sort + split work.
+const treeBuildParallelCutoff = 256
 
 type Weighting string
 type Algorithm string
@@ -289,11 +302,16 @@ func newKDTreeSearcher(train [][]float64, leafSize int) *kdTreeSearcher {
 	return &kdTreeSearcher{
 		train:    train,
 		leafSize: leafSize,
-		root:     buildKDNode(train, indices, leafSize),
+		root:     buildKDNode(train, indices, leafSize, 0),
 	}
 }
 
-func buildKDNode(train [][]float64, indices []int, leafSize int) *kdNode {
+// buildKDNode constructs the KD-tree subtree for `indices`. Left and right
+// subtrees are completely independent (no shared mutable state — they slice
+// their own halves of `indices` with explicit copies), so we fan them out
+// to goroutines when both `depth < treeBuildParallelDepth` and the subtree
+// is large enough to amortise the goroutine launch.
+func buildKDNode(train [][]float64, indices []int, leafSize, depth int) *kdNode {
 	if len(indices) == 0 {
 		return nil
 	}
@@ -314,13 +332,31 @@ func buildKDNode(train [][]float64, indices []int, leafSize int) *kdNode {
 	})
 	mid := len(indices) / 2
 	pivot := indices[mid]
-	left := append([]int(nil), indices[:mid]...)
-	right := append([]int(nil), indices[mid+1:]...)
+	leftIdx := append([]int(nil), indices[:mid]...)
+	rightIdx := append([]int(nil), indices[mid+1:]...)
+
+	var left, right *kdNode
+	if depth < treeBuildParallelDepth && len(indices) >= treeBuildParallelCutoff {
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			left = buildKDNode(train, leftIdx, leafSize, depth+1)
+		}()
+		go func() {
+			defer wg.Done()
+			right = buildKDNode(train, rightIdx, leafSize, depth+1)
+		}()
+		wg.Wait()
+	} else {
+		left = buildKDNode(train, leftIdx, leafSize, depth+1)
+		right = buildKDNode(train, rightIdx, leafSize, depth+1)
+	}
 	return &kdNode{
 		axis:  axis,
 		pivot: pivot,
-		left:  buildKDNode(train, left, leafSize),
-		right: buildKDNode(train, right, leafSize),
+		left:  left,
+		right: right,
 	}
 }
 
@@ -376,11 +412,16 @@ func newBallTreeSearcher(train [][]float64, leafSize int) *ballTreeSearcher {
 	return &ballTreeSearcher{
 		train:    train,
 		leafSize: leafSize,
-		root:     buildBallNode(train, indices, leafSize),
+		root:     buildBallNode(train, indices, leafSize, 0),
 	}
 }
 
-func buildBallNode(train [][]float64, indices []int, leafSize int) *ballNode {
+// buildBallNode mirrors buildKDNode's parallel fan-out: independent left
+// and right subtrees can be constructed concurrently because they each
+// own a private `indices` slice. The centroid + radius computation at
+// this node stays serial — it's O(n) and feeds both subtrees, so there
+// is nothing to parallelise above the recursion split.
+func buildBallNode(train [][]float64, indices []int, leafSize, depth int) *ballNode {
 	if len(indices) == 0 {
 		return nil
 	}
@@ -399,29 +440,47 @@ func buildBallNode(train [][]float64, indices []int, leafSize int) *ballNode {
 	}
 
 	leftPivot, rightPivot := chooseBallPivots(train, indices)
-	left := make([]int, 0, len(indices)/2)
-	right := make([]int, 0, len(indices)/2)
+	leftIdx := make([]int, 0, len(indices)/2)
+	rightIdx := make([]int, 0, len(indices)/2)
 	for _, idx := range indices {
 		dl := squaredEuclidean(train[idx], train[leftPivot])
 		dr := squaredEuclidean(train[idx], train[rightPivot])
 		if dl < dr || (almostEqual(dl, dr) && idx <= rightPivot) {
-			left = append(left, idx)
+			leftIdx = append(leftIdx, idx)
 		} else {
-			right = append(right, idx)
+			rightIdx = append(rightIdx, idx)
 		}
 	}
-	if len(left) == 0 || len(right) == 0 {
+	if len(leftIdx) == 0 || len(rightIdx) == 0 {
 		sorted := append([]int(nil), indices...)
 		sort.Ints(sorted)
 		half := len(sorted) / 2
-		left = sorted[:half]
-		right = sorted[half:]
+		leftIdx = sorted[:half]
+		rightIdx = sorted[half:]
+	}
+
+	var left, right *ballNode
+	if depth < treeBuildParallelDepth && len(indices) >= treeBuildParallelCutoff {
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			left = buildBallNode(train, leftIdx, leafSize, depth+1)
+		}()
+		go func() {
+			defer wg.Done()
+			right = buildBallNode(train, rightIdx, leafSize, depth+1)
+		}()
+		wg.Wait()
+	} else {
+		left = buildBallNode(train, leftIdx, leafSize, depth+1)
+		right = buildBallNode(train, rightIdx, leafSize, depth+1)
 	}
 	return &ballNode{
 		center: center,
 		radius: radius,
-		left:   buildBallNode(train, left, leafSize),
-		right:  buildBallNode(train, right, leafSize),
+		left:   left,
+		right:  right,
 	}
 }
 

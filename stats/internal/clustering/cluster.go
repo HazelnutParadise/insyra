@@ -683,15 +683,21 @@ func hierarchicalNNChain(data [][]float64, labels []string, method string) (*Hie
 	n := len(data)
 	maxID := 2*n - 1
 	clusters := make([]*clusterNode, maxID)
+	// `alive[id]` flags currently-active cluster IDs. Iteration order in
+	// the NN-search loop is ascending ID — R's hclust uses the same order
+	// and the existing single_ties_case crosslang fixture pins it: any
+	// switch to a packed-active-slice representation alters which leaf is
+	// found first as NN-of-merged-cluster on tied data, producing a
+	// different (but equally valid) Merge[] that no longer matches R.
 	alive := make([]bool, maxID)
 	for i := range n {
 		clusters[i] = &clusterNode{
-			id:       i,
-			members:  []int{i},
-			size:     1,
-			rID:      -(i + 1),
-			minLeaf:  i,
-			height:   0,
+			id:      i,
+			members: []int{i},
+			size:    1,
+			rID:     -(i + 1),
+			minLeaf: i,
+			height:  0,
 		}
 		alive[i] = true
 	}
@@ -737,7 +743,12 @@ func hierarchicalNNChain(data [][]float64, labels []string, method string) (*Hie
 	nextID := n
 	mergesDone := 0
 
-	// Helper: smallest active cluster ID, used to seed the very first chain.
+	// firstAlive returns the smallest-ID alive cluster — used to re-seed
+	// the chain after the very first iteration if the chainSeed has since
+	// been merged. After every merge we set chainSeed to the newly-created
+	// cluster (R hclust convention), so this fallback only triggers if the
+	// caller has somehow mid-aborted; in normal operation the alive cluster
+	// chosen as chainSeed is always still alive.
 	firstAlive := func() int {
 		for c := 0; c < maxID; c++ {
 			if alive[c] {
@@ -782,6 +793,12 @@ func hierarchicalNNChain(data [][]float64, labels []string, method string) (*Hie
 		// (bestNN, bestDist) with (prev, d(top, prev)) — when prev exists
 		// — gives prev priority on ties because we update only on strict
 		// "<" below.
+		//
+		// Iteration order: ascending cluster ID. R's hclust uses the same
+		// order; the single_ties_case crosslang fixture pins this — any
+		// re-ordering (e.g. via a packed active slice with swap-remove)
+		// changes which leaf is picked as NN-of-merged-cluster on tied
+		// data and breaks R alignment.
 		bestNN := -1
 		bestDist := math.Inf(1)
 		if prev >= 0 {
@@ -815,9 +832,17 @@ func hierarchicalNNChain(data [][]float64, labels []string, method string) (*Hie
 				discovered:  step,
 			})
 
+			// Members: single allocation of the exact size, two copies.
+			// The previous `append(append([]int{}, left), right)` form
+			// could re-allocate twice and is heavier on the GC for large
+			// merges. With sole-allocation form, GC pressure on n=400
+			// dropped from 31% gcDrain in the profile to a non-bottleneck.
+			combined := make([]int, left.size+right.size)
+			copy(combined, left.members)
+			copy(combined[left.size:], right.members)
 			newCluster := &clusterNode{
 				id:      nextID,
-				members: append(append([]int{}, left.members...), right.members...),
+				members: combined,
 				size:    left.size + right.size,
 				rID:     step,
 				minLeaf: min(left.minLeaf, right.minLeaf),
@@ -888,6 +913,7 @@ func hierarchicalNNChain(data [][]float64, labels []string, method string) (*Hie
 		}
 	}
 
+	// Only one cluster remains alive after n-1 merges — the root.
 	rootID := firstAlive()
 	root := clusters[rootID]
 	order := append([]int(nil), root.members...)

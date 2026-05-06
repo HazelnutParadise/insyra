@@ -90,19 +90,23 @@ func PCA(dataTable insyra.IDataTable, nComponents ...int) (*PCAResult, error) {
 	means := make([]float64, colNum)
 	stds := make([]float64, colNum)
 	stdErrs := make([]error, colNum)
-	// Per-column work is 2·rowNum reads + 1·rowNum writes plus an Sqrt.
-	// Strided column access through mat.Dense costs ~3ns per element on
-	// modern x86, so per-column ≈ rowNum·9ns. Parallel pays off when
-	// rowNum·colNum (total ops) ≳ 5000 — well below typical PCA sizes.
+	// Direct access to data.RawMatrix().Data avoids the per-element method
+	// call + bounds-check overhead of mat.Dense.At/Set. mat.Dense is
+	// row-major so column access is strided (stride = colNum here, since
+	// we built data with mat.NewDense(rowNum, colNum, nil) and no padding),
+	// but the indexing math is the same — we just skip the dispatch.
+	dataRaw := data.RawMatrix()
+	stride := dataRaw.Stride
+	dataBuf := dataRaw.Data
 	parutil.Run(colNum, rowNum*colNum >= 5000, func(j int) {
 		var sum float64
 		for i := range rowNum {
-			sum += data.At(i, j)
+			sum += dataBuf[i*stride+j]
 		}
 		mean := sum / float64(rowNum)
 		var ss float64
 		for i := range rowNum {
-			d := data.At(i, j) - mean
+			d := dataBuf[i*stride+j] - mean
 			ss += d * d
 		}
 		std := math.Sqrt(ss / float64(rowNum-1))
@@ -119,10 +123,11 @@ func PCA(dataTable insyra.IDataTable, nComponents ...int) (*PCAResult, error) {
 		}
 	}
 	// Row-parallel rewrite: each worker writes contiguous rows, no false
-	// sharing. Same total-ops gate as the column phase.
+	// sharing. Direct row-major buffer write hits the cache line per row.
 	parutil.Run(rowNum, rowNum*colNum >= 5000, func(i int) {
+		base := i * stride
 		for j := range colNum {
-			data.Set(i, j, (data.At(i, j)-means[j])/stds[j])
+			dataBuf[base+j] = (dataBuf[base+j] - means[j]) / stds[j]
 		}
 	})
 

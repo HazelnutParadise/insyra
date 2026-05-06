@@ -39,3 +39,5 @@ _lbfgsb_ref/
 # auto-rebuilt cache for cross-language (R/Python) baseline outputs
 /stats/testdata/baseline_cache/
 pca.prof
+*.prof
+

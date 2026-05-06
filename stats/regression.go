@@ -6,6 +6,7 @@ import (
 	"math"
 
 	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/stats/internal/parutil"
 	"gonum.org/v1/gonum/mat"
 )
 
@@ -158,13 +159,26 @@ func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) (*LinearRe
 	}
 
 	// Design matrix X (n × (p+1)) with leading intercept column.
+	//
+	// Direct buffer write via RawMatrix().Data is row-major contiguous,
+	// so for each row we touch (p+1) consecutive float64 slots — friendly
+	// to the cache. mat.Dense.Set goes through a method-call + bounds-
+	// check path that's significantly slower in tight loops; for large
+	// (n, p) the design-matrix fill was a measurable fraction of the
+	// regression call.
+	//
+	// Row writes are independent so we parallelise over rows when
+	// n·(p+1) is large enough to amortise the goroutine launch.
 	X := mat.NewDense(n, p+1, nil)
-	for i := range n {
-		X.Set(i, 0, 1.0)
+	xRaw := X.RawMatrix()
+	stride := xRaw.Stride
+	parutil.Run(n, n*(p+1) >= 50_000, func(i int) {
+		base := i * stride
+		xRaw.Data[base] = 1.0
 		for j := range p {
-			X.Set(i, j+1, xSlices[j][i])
+			xRaw.Data[base+j+1] = xSlices[j][i]
 		}
-	}
+	})
 
 	// Solve β = (XᵀX)⁻¹ Xᵀy and obtain (XᵀX)⁻¹ via gonum's LU-based solver
 	// (replaces the previous hand-rolled Gauss-Jordan in stats/internal/linalg).
@@ -174,10 +188,15 @@ func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) (*LinearRe
 	}
 
 	df := float64(n - p - 1)
+	// computeGoodnessOfFit calls predict(i) once per row. Per-row work is
+	// (p+1) X.At lookups; switching to direct row-major buffer indexing
+	// avoids that many method calls + bounds checks. xRaw / stride were
+	// captured above for the parallel design-matrix fill.
 	residuals, rSquared, adjRSquared, sse, ok := computeGoodnessOfFit(ys, func(i int) float64 {
 		yHat := 0.0
+		base := i * stride
 		for j := 0; j <= p; j++ {
-			yHat += coeffs[j] * X.At(i, j)
+			yHat += coeffs[j] * xRaw.Data[base+j]
 		}
 		return yHat
 	}, df)
@@ -418,14 +437,21 @@ func PolynomialRegression(dlY, dlX insyra.IDataList, degree int) (*PolynomialReg
 
 	n := len(xs)
 
-	// Design matrix [1, x, x², …, x^degree]
+	// Design matrix [1, x, x², …, x^degree]. Same direct-buffer +
+	// row-parallel pattern as LinearRegression. Each x^j is computed by
+	// repeated multiplication, so we walk row-major and never read across
+	// rows.
 	X := mat.NewDense(n, degree+1, nil)
-	for i := range n {
-		X.Set(i, 0, 1.0)
+	xRaw := X.RawMatrix()
+	stride := xRaw.Stride
+	parutil.Run(n, n*(degree+1) >= 50_000, func(i int) {
+		base := i * stride
+		xRaw.Data[base] = 1.0
+		xi := xs[i]
 		for j := 1; j <= degree; j++ {
-			X.Set(i, j, X.At(i, j-1)*xs[i])
+			xRaw.Data[base+j] = xRaw.Data[base+j-1] * xi
 		}
-	}
+	})
 
 	coeffs, XTXInv := solveOLS(X, ys)
 	if coeffs == nil {
@@ -433,10 +459,12 @@ func PolynomialRegression(dlY, dlX insyra.IDataList, degree int) (*PolynomialReg
 	}
 
 	df := float64(n - degree - 1)
+	// Direct buffer access — see LinearRegression for the rationale.
 	residuals, r2, adjR2, sse, fitOK := computeGoodnessOfFit(ys, func(i int) float64 {
 		yHat := 0.0
+		base := i * stride
 		for j := 0; j <= degree; j++ {
-			yHat += coeffs[j] * X.At(i, j)
+			yHat += coeffs[j] * xRaw.Data[base+j]
 		}
 		return yHat
 	}, df)
