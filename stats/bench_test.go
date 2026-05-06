@@ -151,6 +151,31 @@ func BenchmarkKNN_BruteClassify(b *testing.B) {
 	}
 }
 
+// BenchmarkKNN_NeighborSetK exercises neighborSet's tryAdd hot path across
+// a range of k values. The previous linear-scan implementation was O(k) per
+// tryAdd; the heap is O(log k). The cross-over for benefit is at moderate k
+// — at k=5 it's a wash, at k=50 the heap is several × faster.
+func BenchmarkKNN_NeighborSetK(b *testing.B) {
+	train := benchMatrix(2000, 8, 81)
+	test := benchMatrix(500, 8, 82)
+	labels := make([]string, len(train))
+	for i := range labels {
+		labels[i] = fmt.Sprintf("c%d", i%4)
+	}
+	for _, k := range []int{5, 20, 50, 100, 200} {
+		b.Run(fmt.Sprintf("k=%d", k), func(b *testing.B) {
+			opts := internalknn.Options{Algorithm: internalknn.BruteForceAlgorithm, Weighting: internalknn.UniformWeighting}
+			b.ResetTimer()
+			for b.Loop() {
+				_, err := internalknn.Classify(train, test, labels, k, opts)
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
 func BenchmarkKNN_KDTreeQueries(b *testing.B) {
 	train := benchMatrix(2000, 4, 10)
 	test := benchMatrix(500, 4, 11)

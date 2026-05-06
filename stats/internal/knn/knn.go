@@ -528,6 +528,31 @@ func ballLowerBound(query []float64, node *ballNode) float64 {
 	return dist * dist
 }
 
+// neighborSet is the bounded "k smallest neighbours" container used by every
+// KNN search path. Internally a max-heap by `worseNeighbor` ordering — i.e.
+// buf[0] is the WORST currently-held neighbour, the one a new candidate has
+// to beat to enter the set.
+//
+// Why a heap and not a linear scan: profiling BenchmarkKNN_KDTreeQueries on
+// 24 threads (n_train=2000, n_test=500, k=8) showed neighborSet.tryAdd at
+// 37% of CPU, with worseNeighbor + linear scan to find the worst index
+// dominating that. tryAdd is called once per candidate distance evaluation
+// — for brute that's O(n_train) per query, for trees the visited-leaf size
+// times the number of explored leaves. For k=8 the linear scan is ~8 cmps
+// per call; for larger k (k=50, common for density-weighted KNN) it becomes
+// O(50) per call which is the hot loop's main cost.
+//
+// Heap converts both tryAdd and worstDist2 to O(log k) and O(1):
+//
+//	tryAdd       linear   heap
+//	  k=5        ~5 cmp   ~3 cmp + 1 swap chain
+//	  k=50       ~50 cmp  ~6 cmp + 1 swap chain
+//	  k=500      ~500 cmp ~9 cmp + 1 swap chain
+//
+// Bit-equivalence: both data structures maintain the same invariant — "the
+// k items minimising the worseNeighbor order on the input stream so far".
+// `results()` sort-orders the final set, so output is bit-identical to the
+// previous linear-scan implementation.
 type neighborSet struct {
 	k   int
 	buf []neighbor
@@ -541,32 +566,66 @@ func (s *neighborSet) full() bool {
 	return len(s.buf) >= s.k
 }
 
+// worstDist2 is buf[0].dist2 — the dist² of the heap root, i.e. the
+// worst-held neighbour. O(1).
 func (s *neighborSet) worstDist2() float64 {
 	if len(s.buf) == 0 {
 		return math.Inf(1)
 	}
-	worst := s.buf[0]
-	for _, nb := range s.buf[1:] {
-		if worseNeighbor(nb, worst) {
-			worst = nb
-		}
-	}
-	return worst.dist2
+	return s.buf[0].dist2
 }
 
+// tryAdd inserts nb into the set. If the set isn't full, push + sift-up.
+// If full, compare against the worst (buf[0]) — replace and sift-down only
+// when nb is strictly better in the worseNeighbor order. Both paths are
+// O(log k).
 func (s *neighborSet) tryAdd(nb neighbor) {
 	if len(s.buf) < s.k {
 		s.buf = append(s.buf, nb)
+		s.siftUp(len(s.buf) - 1)
 		return
 	}
-	worstIdx := 0
-	for i := 1; i < len(s.buf); i++ {
-		if worseNeighbor(s.buf[i], s.buf[worstIdx]) {
-			worstIdx = i
-		}
+	if betterNeighbor(nb, s.buf[0]) {
+		s.buf[0] = nb
+		s.siftDown(0)
 	}
-	if betterNeighbor(nb, s.buf[worstIdx]) {
-		s.buf[worstIdx] = nb
+}
+
+// siftUp restores the heap invariant after appending a new element at
+// index `i` (the leaf). Walks up parent links, swapping while the new
+// element is "worse than" its parent (so it should be higher in the
+// max-heap).
+func (s *neighborSet) siftUp(i int) {
+	for i > 0 {
+		parent := (i - 1) / 2
+		if !worseNeighbor(s.buf[i], s.buf[parent]) {
+			return
+		}
+		s.buf[i], s.buf[parent] = s.buf[parent], s.buf[i]
+		i = parent
+	}
+}
+
+// siftDown restores the heap invariant after replacing the root.
+// Walks down to the larger (worse) child while the current node is
+// better than at least one of its children.
+func (s *neighborSet) siftDown(i int) {
+	n := len(s.buf)
+	for {
+		left := 2*i + 1
+		if left >= n {
+			return
+		}
+		worst := left
+		right := left + 1
+		if right < n && worseNeighbor(s.buf[right], s.buf[left]) {
+			worst = right
+		}
+		if !worseNeighbor(s.buf[worst], s.buf[i]) {
+			return
+		}
+		s.buf[i], s.buf[worst] = s.buf[worst], s.buf[i]
+		i = worst
 	}
 }
 
