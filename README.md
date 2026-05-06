@@ -255,7 +255,7 @@ For full CLI + DSL documentation, see **[Docs/cli-dsl.md](Docs/cli-dsl.md)**.
 ## Thread Safety and Defensive Copies
 
 - **Defensive copies:** Insyra returns defensive copies for all public data accessors. Any method that exposes internal slices, maps, or other mutable structures returns a copy so callers cannot mutate internal state unintentionally.
-- **Atomic operations:** For safe concurrent multi-step operations, use the helper `AtomicDo`. `AtomicDo` serializes all operations for an instance via a dedicated actor goroutine and a command channel (see [atomic.go](atomic.go)), avoiding mutexes.
+- **Atomic operations:** For safe concurrent multi-step operations, use the helper `AtomicDo`. `AtomicDo` serializes all operations for an instance via a `sync.Mutex` plus a goroutine-id holder (using [`petermattis/goid`](https://github.com/petermattis/goid)) for fast same-goroutine re-entry detection (see [atomic.go](atomic.go)). Per-call overhead is ~30 ns; same-goroutine re-entry runs inline without re-acquiring the lock.
 
 ## [DataList](/Docs/DataList.md)
 

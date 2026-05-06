@@ -249,7 +249,7 @@ insyra fetch yahoo AAPL quote as q
 ## 執行緒安全與防禦性複製
 
 - **防禦性複製：** Insyra 對所有公開資料存取器回傳防禦性複製（defensive copies）。任何會暴露內部 `slice`、`map` 或其他可變結構的方法，會回傳該結構的複製，避免呼叫端無意間修改內部狀態。
-- **原子操作：** 若需在並發環境中執行多步驟操作，請使用 `AtomicDo`。`AtomicDo` 透過每個實例的專用 actor goroutine 與命令 channel 序列化執行，避免使用互斥鎖（mutex）。參考實作： [atomic.go](atomic.go)。
+- **原子操作：** 若需在並發環境中執行多步驟操作，請使用 `AtomicDo`。`AtomicDo` 透過每個實例的 `sync.Mutex` 加上 goroutine-id holder（使用 [`petermattis/goid`](https://github.com/petermattis/goid)）序列化執行；同一 goroutine 的 re-entry 會 inline 跑、不重新取鎖，每次呼叫成本約 30 ns。參考實作：[atomic.go](atomic.go)。
 
 ## [DataList](/Docs/DataList.md)
 

@@ -189,7 +189,7 @@ func AtomicDoWithInit[T any](actor *Actor, owner *T, f func(*T), initHook func()
 What each item does:
 
 - `Group`: Reentrancy scope. If a goroutine is already inside any actor of the same group, nested `AtomicDo` calls run inline to avoid deadlocks.
-- `Actor`: The per-structure executor. Each actor has its own queue and goroutine; serialization is per actor, not per group.
+- `Actor`: The per-structure executor. Each actor owns a `sync.Mutex` and an atomic goroutine-id holder; serialization is per actor, not per group. Same-goroutine re-entry is detected via the holder and runs inline without re-locking. Per-call overhead is ~30 ns (uses [`petermattis/goid`](https://github.com/petermattis/goid) for cross-platform fast goroutine-ID extraction).
 - `NewGroup()`: Create a new reentrancy group (use when multiple structures should be considered “same group”).
 - `DefaultGroup()`: Shared default group used when you don’t care about cross-structure reentrancy.
 - `NewActor(group)`: Create an actor bound to a group. Use the same group for related structures if you want nested calls to run inline.
