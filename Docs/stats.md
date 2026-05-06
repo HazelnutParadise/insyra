@@ -828,6 +828,237 @@ components := result.Components
 fmt.Printf("Explained variance: %.2f%%\n", result.ExplainedVariance[0])
 ```
 
+## Factor Analysis
+
+Factor Analysis (FA) extracts a small number of latent factors that explain
+the covariation among observed variables. The Insyra implementation mirrors
+R's `psych::fa` (factor extraction) and `psych::principal` (PCA-as-factoring)
+with their full set of rotations and scoring methods.
+
+### FactorAnalysis
+
+```go
+func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorModel, error)
+```
+
+**Description:** Extract `k` latent factors from a data table, optionally
+rotate them, and optionally compute factor scores. The input must be numeric
+columns (rows = observations, columns = variables); rows containing NaN/Inf
+are listwise-deleted.
+
+**Parameters:**
+
+- `dt`: Input data table (n × p)
+- `opt`: `FactorAnalysisOptions` controlling extraction, rotation, scoring, and convergence
+
+**Returns:**
+
+- `*FactorModel`: Wraps `FactorAnalysisResult` with all output tables and metadata
+
+**Example:**
+
+```go
+opt := stats.DefaultFactorAnalysisOptions()
+opt.Count.Method = stats.FactorCountFixed
+opt.Count.FixedK = 3
+opt.Extraction = stats.FactorExtractionML
+opt.Rotation.Method = stats.FactorRotationOblimin
+opt.Scoring = stats.FactorScoreRegression
+
+res, err := stats.FactorAnalysis(dt, opt)
+if err != nil {
+    log.Fatal(err)
+}
+res.Show()  // prints loadings, communalities, KMO, Bartlett, scores, ...
+```
+
+#### Factor Extraction Method
+
+```go
+const (
+    FactorExtractionPCA    FactorExtractionMethod = "pca"     // principal components (closed-form)
+    FactorExtractionPAF    FactorExtractionMethod = "paf"     // principal axis factoring (iterative)
+    FactorExtractionML     FactorExtractionMethod = "ml"      // maximum likelihood (L-BFGS-B)
+    FactorExtractionMINRES FactorExtractionMethod = "minres"  // minimum residual (L-BFGS-B, default)
+)
+```
+
+| Method | Algorithm | When to use |
+| --- | --- | --- |
+| `pca` | eigendecomposition of correlation matrix; loadings `= Uₖ·√λₖ` | descriptive variance reduction; full-rank reconstruction at `k=p` |
+| `paf` | iterative SMC → eigendecomp → update communalities → repeat | classical Spearman-school FA; no distributional assumption |
+| `ml` | maximize Wishart log-likelihood under common-factor model | want χ² fit test; data is multivariate normal |
+| `minres` | minimize sum-of-squared off-diagonal residuals (R default) | most robust to non-normality; default if unsure |
+
+#### Factor Rotation Method
+
+```go
+const (
+    FactorRotationNone      FactorRotationMethod = "none"
+    // Orthogonal (uncorrelated factors, R'R = I, Phi = I)
+    FactorRotationVarimax   FactorRotationMethod = "varimax"
+    FactorRotationQuartimax FactorRotationMethod = "quartimax"
+    FactorRotationGeominT   FactorRotationMethod = "geominT"
+    FactorRotationBentlerT  FactorRotationMethod = "bentlerT"
+    // Oblique (factors may correlate, Phi reported)
+    FactorRotationPromax    FactorRotationMethod = "promax"
+    FactorRotationOblimin   FactorRotationMethod = "oblimin"
+    FactorRotationQuartimin FactorRotationMethod = "quartimin"
+    FactorRotationGeominQ   FactorRotationMethod = "geominQ"
+    FactorRotationBentlerQ  FactorRotationMethod = "bentlerQ"
+    FactorRotationSimplimax FactorRotationMethod = "simplimax"
+)
+```
+
+The model matrix is preserved across rotations:
+`L_rotated · Phi · L_rotated' = L_unrotated · L_unrotated'`. For orthogonal
+rotations Phi = I and the relationship simplifies to `L · L' = Lu · Lu'`.
+This invariant is checked by `TestRotationInvariants`.
+
+#### Factor Score Method
+
+```go
+const (
+    FactorScoreNone          FactorScoreMethod = "none"
+    FactorScoreRegression    FactorScoreMethod = "regression"     // Thomson's regression scores
+    FactorScoreBartlett      FactorScoreMethod = "bartlett"       // WLS scores
+    FactorScoreAndersonRubin FactorScoreMethod = "anderson-rubin" // forces empirical Cov(scores) = I
+)
+```
+
+When `Extraction = PCA` and a non-Regression scoring is requested, Insyra
+silently falls back to Regression to mirror `psych::principal` (which exposes
+scoring as a single boolean). A warning is logged so callers can switch to
+PAF/ML/MINRES if true Bartlett or Anderson-Rubin scores are needed.
+
+#### Factor Count Method
+
+```go
+const (
+    FactorCountFixed  FactorCountMethod = "fixed"  // use FixedK
+    FactorCountKaiser FactorCountMethod = "kaiser" // count eigvals ≥ EigenThreshold
+)
+```
+
+`FactorCountSpec.MaxFactors` caps the Kaiser-derived count. When
+`Method = Fixed`, `MaxFactors` is ignored and `FixedK` is used as-is.
+
+#### FactorAnalysisOptions
+
+```go
+type FactorAnalysisOptions struct {
+    Count        FactorCountSpec
+    Extraction   FactorExtractionMethod
+    Rotation     FactorRotationOptions
+    Scoring      FactorScoreMethod
+    MaxIter      int     // PAF iteration cap (default 50)
+    MinErr       float64 // PAF convergence tolerance (default 0.001)
+    OptimFactr   float64 // L-BFGS-B factr for ML/MINRES (default 1e7)
+    OptimMaxIter int     // L-BFGS-B max iterations for ML/MINRES (default 100)
+}
+
+type FactorCountSpec struct {
+    Method         FactorCountMethod
+    FixedK         int     // used when Method = Fixed
+    EigenThreshold float64 // Kaiser threshold (default 1.0)
+    MaxFactors    int     // cap for Kaiser (0 = no limit)
+}
+
+type FactorRotationOptions struct {
+    Method           FactorRotationMethod
+    Kappa            float64          // Promax power m (default 4); cast to int internally
+    Delta            float64          // Oblimin gamma (default 0)
+    GeominEpsilon    float64          // Geomin ε (default 0.01)
+    Restarts         int              // random orthonormal starts for GPA rotations (default 1)
+    VarimaxAlgorithm VarimaxAlgorithm // "kaiser" (psych default) or "gparotation"
+}
+```
+
+`OptimFactr` is the L-BFGS-B relative-function-change tolerance multiplier
+(stop when `(f_old − f) ≤ OptimFactr · ε_machine · max(|f_old|, |f|, 1)`).
+Default `1e7` matches R's "moderate accuracy"; lower to `1` for machine
+precision (slower; useful when converging on a flat / boundary objective).
+
+`DefaultFactorAnalysisOptions()` returns: Kaiser count, MINRES extraction,
+Oblimin rotation, Regression scoring, MaxIter=50, MinErr=0.001, OptimFactr=1e7,
+OptimMaxIter=100 (matching R `psych::fa` defaults).
+
+#### FactorAnalysisResult
+
+```go
+type FactorAnalysisResult struct {
+    Loadings             insyra.IDataTable   // p × k (after rotation)
+    UnrotatedLoadings    insyra.IDataTable   // p × k (before rotation)
+    Structure            insyra.IDataTable   // p × k = L · Phi (oblique) or L (orthogonal)
+    Uniquenesses         insyra.IDataTable   // p × 1 = 1 − Σ L²ᵢⱼ
+    Communalities        insyra.IDataTable   // p × 2: Initial (SMC), Extraction (Σ L²ᵢⱼ)
+    SamplingAdequacy     insyra.IDataTable   // (p+1) × 1: per-variable MSA + overall KMO
+    BartlettTest         *BartlettTestResult // sphericity test
+    Phi                  insyra.IDataTable   // k × k factor correlation; nil for orthogonal
+    RotationMatrix       insyra.IDataTable   // k × k rotation T; nil if rotation = none
+    Eigenvalues          insyra.IDataTable   // p × 1 eigenvalues of correlation (PCA) or modified-comm matrix
+    ExplainedProportion  insyra.IDataTable   // 1 × k = SS_loadings / p
+    CumulativeProportion insyra.IDataTable   // 1 × k cumulative ExplainedProportion
+    Scores               insyra.IDataTable   // n × k; nil if Scoring = none
+    ScoreCoefficients    insyra.IDataTable   // p × k weights such that scores = Z · W
+    ScoreCovariance      insyra.IDataTable   // k × k empirical Cov(scores)
+
+    Converged         bool     // true if PAF / L-BFGS-B converged
+    RotationConverged bool     // true if rotation algorithm converged
+    Iterations        int      // PAF / L-BFGS-B iteration count
+    CountUsed         int      // actual k extracted (may differ from FixedK if capped)
+    Messages          []string // informational messages
+}
+
+type BartlettTestResult struct {
+    ChiSquare        float64 // -log(det(R)) · (n - 1 - (2p+5)/6)
+    DegreesOfFreedom int     // p · (p-1) / 2
+    PValue           float64
+    SampleSize       int
+}
+```
+
+`FactorModel` embeds `FactorAnalysisResult` and adds a `Show(...)` method that
+prints every output table.
+
+#### KMO and Bartlett's Test
+
+`SamplingAdequacy` reports the Kaiser-Meyer-Olkin measure (per variable and
+overall) using the standard formula `MSA = Σr²/(Σr² + Σp²)` over off-diagonal
+entries, where `p_ij = -inv(R)_ij / √(inv(R)_ii · inv(R)_jj)` is the
+anti-image partial correlation. Both values lie in [0, 1]; conventional
+guidelines treat `KMO > 0.7` as adequate.
+
+`BartlettTest` reports the χ² test of sphericity using
+`χ² = -log(det(R)) · (n - 1 - (2p+5)/6)` with `df = p(p-1)/2`. A small
+p-value rejects the null hypothesis that R is the identity matrix
+(i.e. supports proceeding with FA).
+
+Both are computed before extraction; if R is singular (e.g. constant column,
+perfect collinearity), `FactorAnalysis` returns a clear error rather than
+producing NaN output.
+
+#### Extraction Notes
+
+- **PCA** is closed-form: loadings are `Uₖ · diag(√λₖ)` from the eigendecomposition of the correlation matrix. With `k = p` it reconstructs R exactly (`L·L' = R` to machine precision).
+- **PAF** iterates the SMC initial communalities until `|comm_new − comm_old| < MinErr` or `MaxIter` is reached.
+- **ML** and **MINRES** optimize ψ (uniqueness) under bounds `[0.005, 1]` via L-BFGS-B (a port of BLNZ Fortran lbfgsb v3.0). The optimized ψ is the L-BFGS-B variable; the reported `Uniquenesses` field is `1 − Σ L²ᵢⱼ` from the post-extraction loadings (psych::fa convention; can go negative on Heywood cases).
+
+#### R Parity
+
+The implementation is verified against R's `psych::fa` and `psych::principal`
+across an extensive parity test suite (set `INSYRA_STRICT_FACTOR_R_PARITY=1`
+to run; requires Rscript with `psych` installed). On normal datasets every
+output field matches R within `2e-5`. On three adversarial datasets
+(near-collinear, mixed-scale, narrow-with-Heywood) some fields diverge by up
+to ~3e-4 in the worst element due to gonum BLAS/LAPACK port differences from
+R's LAPACK at 1 ULP per matrix operation, amplified by `1/ψ²` and `1/θ²`
+factors on ill-conditioned problems. These divergent solutions remain
+mathematically valid: Go's objective function value is verified to be at
+least as low as R's at every tested adversarial point. See the comment block
+above `factorParityTol` in `stats/factor_analysis_test.go` for the full
+per-field precision table.
+
 ## Clustering Analysis
 
 ## K-Nearest Neighbors (KNN)
