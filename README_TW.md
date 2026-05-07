@@ -369,6 +369,10 @@ err := parquet.ApplyCCL(ctx, "data.parquet", "NEW('total') = A + B + C")
 
 提供與行銷相關的數據分析功能，例如 RFM 分析。不必煩惱如何計算，一個函數搞定！
 
+### **[finance](/Docs/finance.md)**
+
+基於定點 decimal 的高精度金融計算包：TVM（PMT/PV/FV/NPER/RATE）、NPV/IRR/MIRR/XNPV/XIRR、折舊（SLN/DDB/SYD/VDB）、債券定價（PRICE/YIELD/DURATION/MDURATION/ACCRINT）、國庫券、完整攤銷表。輸出精度可逐次調整；計算結果普遍超越 Excel float64 的精度上限。
+
 ### **[py](/Docs/py.md)**
 
 在 Go 中執行 Python 程式碼，無需手動安裝 Python 環境和依賴庫。允許在 Go 和 Python 之間傳遞變數。

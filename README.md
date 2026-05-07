@@ -376,6 +376,10 @@ Provides read and write support for the Apache Parquet file format, deeply integ
 
 Provides marketing-related data analysis functions, such as RFM analysis. No need to worry about how to calculate, one function does it all!
 
+### **[finance](/Docs/finance.md)**
+
+High-precision financial calculations on top of fixed-point decimals — TVM (PMT/PV/FV/NPER/RATE), NPV/IRR/MIRR/XNPV/XIRR, depreciation (SLN/DDB/SYD/VDB), bond pricing (PRICE/YIELD/DURATION/MDURATION/ACCRINT), Treasury bills, and full amortization schedules. Output precision is configurable per call; the package routinely produces results that are correct beyond Excel's float64 precision limit.
+
 ### **[py](/Docs/py.md)**
 
 Execute Python code in Go without manually installing Python environment and dependencies. Allows passing variables between Go and Python.
