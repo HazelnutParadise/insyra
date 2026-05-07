@@ -548,15 +548,20 @@ func main() {
 ### Custom Precision and Rounding
 
 ```go
-import "github.com/TimLai666/go-decimal/decimal"
-
 opts := finance.Options{
     Scale: 4,
-    Mode:  decimal.RoundingModeHalfUp,
+    Mode:  finance.RoundHalfUp,
 }
 pmt, _ := finance.PMT(rate, 360, pv, finance.Zero, finance.PaymentEnd, opts)
 fmt.Println(pmt.String()) // -599.5505
 ```
+
+`Options.Mode` is a string-typed enum. The empty string keeps the package
+default (`RoundHalfUp`); other available modes are `RoundHalfEven` (banker's
+rounding), `RoundHalfDown`, `RoundUp`, `RoundDown`, `RoundCeiling`,
+`RoundFloor`, `Round05Up`, and `RoundUnnecessary`. `Scale` and `Mode` resolve
+independently — leaving either at its zero value uses that field's default
+while letting the other be customized.
 
 ### Solving for Different TVM Variables
 

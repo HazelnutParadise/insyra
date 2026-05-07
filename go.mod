@@ -119,7 +119,7 @@ require (
 require (
 	github.com/Masterminds/squirrel v1.5.4
 	github.com/Microsoft/go-winio v0.6.2
-	github.com/TimLai666/go-decimal v0.1.1
+	github.com/TimLai666/go-decimal v0.1.2
 	github.com/apache/arrow/go/v17 v17.0.0
 	github.com/apoplexi24/gpandas v0.1.0
 	github.com/ergochat/readline v0.1.3
