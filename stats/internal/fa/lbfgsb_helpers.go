@@ -369,7 +369,7 @@ func lnsrlb(n int, l, u []float64, nbd []int,
 		xtol = 0.1
 	)
 
-	if !(len(task) >= 5 && task[:5] == "FG_LN") {
+	if len(task) < 5 || task[:5] != "FG_LN" {
 		// First entry for this iteration: prepare the search direction.
 		*dtd = ddot(n, d, 1, d, 1)
 		*dnorm = math.Sqrt(*dtd)
@@ -431,7 +431,7 @@ func lnsrlb(n int, l, u []float64, nbd []int,
 	dcsrch(f, gd, stp, ftol, gtol, xtol, zero, *stpmx, &st.csave, &st.dcs)
 
 	*xstep = (*stp) * (*dnorm)
-	if !(len(st.csave) >= 4 && (st.csave[:4] == "CONV" || st.csave[:4] == "WARN")) {
+	if len(st.csave) < 4 || (st.csave[:4] != "CONV" && st.csave[:4] != "WARN") {
 		*ifun++
 		*nfgv++
 		*iback = *ifun - 1
