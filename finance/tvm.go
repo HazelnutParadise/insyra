@@ -7,6 +7,67 @@ import (
 	"github.com/TimLai666/go-decimal/decimal"
 )
 
+// pmtInternal computes PMT in the supplied working context, without
+// the outer Normalize. Public PMT / FV / IPMT / PPMT / CumIPMT /
+// CumPPMT / AmortizationSchedule all funnel through this so the TVM
+// formula lives in exactly one place.
+func pmtInternal(ctx decimal.Context, rate decimal.Decimal, nper int, pv, fv decimal.Decimal, timing PaymentTiming) (decimal.Decimal, error) {
+	if isZero(rate) {
+		// PV + PMT·n + FV = 0  ⇒  PMT = -(PV+FV)/n
+		nperD := decimal.NewFromInt64(ctx, int64(nper))
+		sum := decimal.Add(ctx, pv, fv)
+		return decimal.Div(ctx, neg(sum), nperD)
+	}
+	q, err := powInt(ctx, onePlus(ctx, rate), nper)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
+	one := decimal.NewFromInt64(ctx, 1)
+	qMinus1 := decimal.Sub(ctx, q, one)
+
+	// numerator = -(pv·q + fv)
+	num := neg(decimal.Add(ctx, decimal.Mul(ctx, pv, q), fv))
+
+	// denominator = (1 + r·t) · (q-1) / r
+	tFactor := timingFactor(ctx, rate, timing)
+	tQm1, err := decimal.Div(ctx, qMinus1, rate)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
+	den := decimal.Mul(ctx, tFactor, tQm1)
+	return decimal.Div(ctx, num, den)
+}
+
+// fvInternal computes the (signed) future-value balance after k
+// payments — equivalent to Excel's FV(rate, k, pmt, pv, type) — in
+// the supplied working context, without the outer Normalize. k=0
+// short-circuits to -pv (no payments have happened yet) so IPMT can
+// query "balance just before period 1" cleanly.
+func fvInternal(ctx decimal.Context, rate decimal.Decimal, k int, pmt, pv decimal.Decimal, timing PaymentTiming) (decimal.Decimal, error) {
+	if k == 0 {
+		return neg(pv), nil
+	}
+	if isZero(rate) {
+		// PV + PMT·k + FV = 0  ⇒  FV = -(PV + PMT·k)
+		nperD := decimal.NewFromInt64(ctx, int64(k))
+		return neg(decimal.Add(ctx, pv, decimal.Mul(ctx, pmt, nperD))), nil
+	}
+	q, err := powInt(ctx, onePlus(ctx, rate), k)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
+	one := decimal.NewFromInt64(ctx, 1)
+	qMinus1 := decimal.Sub(ctx, q, one)
+	tFactor := timingFactor(ctx, rate, timing)
+	tQm1, err := decimal.Div(ctx, qMinus1, rate)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
+	pvq := decimal.Mul(ctx, pv, q)
+	annuityPart := decimal.Mul(ctx, decimal.Mul(ctx, pmt, tFactor), tQm1)
+	return neg(decimal.Add(ctx, pvq, annuityPart)), nil
+}
+
 // PMT computes the periodic payment of an annuity given an interest
 // rate per period, total number of periods, present value, future
 // value, and payment timing. Result follows Excel's sign convention:
@@ -25,41 +86,8 @@ func PMT(rate decimal.Decimal, nper int, pv, fv decimal.Decimal, timing PaymentT
 	if err := validateTiming(timing); err != nil {
 		return decimal.Decimal{}, err
 	}
-
 	o := resolveOpts(opts)
-	work := o.workCtx()
-	nperD := decimal.NewFromInt64(work, int64(nper))
-
-	if isZero(rate) {
-		// PV + PMT*n + FV = 0  =>  PMT = -(PV+FV)/n
-		sum := decimal.Add(work, pv, fv)
-		quo, err := decimal.Div(work, neg(sum), nperD)
-		if err != nil {
-			return decimal.Decimal{}, err
-		}
-		return o.outCtx().Normalize(quo), nil
-	}
-
-	q, err := powInt(work, onePlus(work, rate), nper)
-	if err != nil {
-		return decimal.Decimal{}, err
-	}
-	one := decimal.NewFromInt64(work, 1)
-	qMinus1 := decimal.Sub(work, q, one)
-
-	// numerator = -(pv*q + fv)
-	pvq := decimal.Mul(work, pv, q)
-	num := neg(decimal.Add(work, pvq, fv))
-
-	// denominator = (1 + r*t) * (q - 1) / r
-	tFactor := timingFactor(work, rate, timing)
-	tQm1, err := decimal.Div(work, qMinus1, rate)
-	if err != nil {
-		return decimal.Decimal{}, err
-	}
-	den := decimal.Mul(work, tFactor, tQm1)
-
-	pmt, err := decimal.Div(work, num, den)
+	pmt, err := pmtInternal(o.workCtx(), rate, nper, pv, fv, timing)
 	if err != nil {
 		return decimal.Decimal{}, err
 	}
@@ -123,34 +151,12 @@ func FV(rate decimal.Decimal, nper int, pmt, pv decimal.Decimal, timing PaymentT
 	if err := validateTiming(timing); err != nil {
 		return decimal.Decimal{}, err
 	}
-
 	o := resolveOpts(opts)
-	work := o.workCtx()
-	nperD := decimal.NewFromInt64(work, int64(nper))
-
-	if isZero(rate) {
-		// PV + PMT*n + FV = 0  =>  FV = -(PV + PMT*n)
-		sum := decimal.Add(work, pv, decimal.Mul(work, pmt, nperD))
-		return o.outCtx().Normalize(neg(sum)), nil
-	}
-
-	q, err := powInt(work, onePlus(work, rate), nper)
+	fv, err := fvInternal(o.workCtx(), rate, nper, pmt, pv, timing)
 	if err != nil {
 		return decimal.Decimal{}, err
 	}
-	one := decimal.NewFromInt64(work, 1)
-	qMinus1 := decimal.Sub(work, q, one)
-
-	// FV = -(PV*q + PMT*(1+r*t)*(q-1)/r)
-	tFactor := timingFactor(work, rate, timing)
-	tQm1, err := decimal.Div(work, qMinus1, rate)
-	if err != nil {
-		return decimal.Decimal{}, err
-	}
-	pvq := decimal.Mul(work, pv, q)
-	annuityPart := decimal.Mul(work, decimal.Mul(work, pmt, tFactor), tQm1)
-	fv2 := neg(decimal.Add(work, pvq, annuityPart))
-	return o.outCtx().Normalize(fv2), nil
+	return o.outCtx().Normalize(fv), nil
 }
 
 // NPER computes the number of periods required to satisfy the TVM

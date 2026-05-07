@@ -163,53 +163,5 @@ func validatePer(per, nper int) error {
 	return nil
 }
 
-// pmtInternal computes PMT in the supplied working context (no
-// final-result normalize). Used by IPMT/PPMT/CumIPMT/CumPPMT to keep
-// chained operations at full precision until the very end.
-func pmtInternal(ctx decimal.Context, rate decimal.Decimal, nper int, pv, fv decimal.Decimal, timing PaymentTiming) (decimal.Decimal, error) {
-	if isZero(rate) {
-		nperD := decimal.NewFromInt64(ctx, int64(nper))
-		sum := decimal.Add(ctx, pv, fv)
-		return decimal.Div(ctx, neg(sum), nperD)
-	}
-	q, err := powInt(ctx, onePlus(ctx, rate), nper)
-	if err != nil {
-		return decimal.Decimal{}, err
-	}
-	one := decimal.NewFromInt64(ctx, 1)
-	qMinus1 := decimal.Sub(ctx, q, one)
-	num := neg(decimal.Add(ctx, decimal.Mul(ctx, pv, q), fv))
-	tFactor := timingFactor(ctx, rate, timing)
-	tQm1, err := decimal.Div(ctx, qMinus1, rate)
-	if err != nil {
-		return decimal.Decimal{}, err
-	}
-	den := decimal.Mul(ctx, tFactor, tQm1)
-	return decimal.Div(ctx, num, den)
-}
-
-// fvInternal computes the (signed) future-value balance after k
-// payments. Equivalent to Excel's FV(rate, k, pmt, pv, type).
-func fvInternal(ctx decimal.Context, rate decimal.Decimal, k int, pmt, pv decimal.Decimal, timing PaymentTiming) (decimal.Decimal, error) {
-	if k == 0 {
-		return neg(pv), nil
-	}
-	if isZero(rate) {
-		nperD := decimal.NewFromInt64(ctx, int64(k))
-		return neg(decimal.Add(ctx, pv, decimal.Mul(ctx, pmt, nperD))), nil
-	}
-	q, err := powInt(ctx, onePlus(ctx, rate), k)
-	if err != nil {
-		return decimal.Decimal{}, err
-	}
-	one := decimal.NewFromInt64(ctx, 1)
-	qMinus1 := decimal.Sub(ctx, q, one)
-	tFactor := timingFactor(ctx, rate, timing)
-	tQm1, err := decimal.Div(ctx, qMinus1, rate)
-	if err != nil {
-		return decimal.Decimal{}, err
-	}
-	pvq := decimal.Mul(ctx, pv, q)
-	annuityPart := decimal.Mul(ctx, decimal.Mul(ctx, pmt, tFactor), tQm1)
-	return neg(decimal.Add(ctx, pvq, annuityPart)), nil
-}
+// pmtInternal and fvInternal live in tvm.go — the same TVM core that
+// public PMT / FV use, so the formula is defined exactly once.
