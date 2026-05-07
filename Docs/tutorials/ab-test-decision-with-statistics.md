@@ -52,9 +52,9 @@ Test whether conversion means differ between groups.
 **Code**
 
 ```go
-tt := stats.TwoSampleTTest(control, variant, false, 0.95)
-if tt == nil {
-	log.Fatal("t-test failed")
+tt, err := stats.TwoSampleTTest(control, variant, false, 0.95)
+if err != nil {
+	log.Fatal(err)
 }
 fmt.Printf("t-test p-value: %.6f\n", tt.PValue)
 ```
@@ -70,9 +70,9 @@ Evaluate whether higher spend is associated with stronger conversion outcomes.
 **Code**
 
 ```go
-corr := stats.Correlation(spend, variant, stats.PearsonCorrelation)
-if corr == nil {
-	log.Fatal("correlation failed")
+corr, err := stats.Correlation(spend, variant, stats.PearsonCorrelation)
+if err != nil {
+	log.Fatal(err)
 }
 fmt.Printf("correlation: %.4f (p=%.6f)\n", corr.Statistic, corr.PValue)
 ```
@@ -153,14 +153,14 @@ func main() {
 	variant := insyra.NewDataList(0.10, 0.11, 0.09, 0.12, 0.10, 0.11, 0.10)
 	spend := insyra.NewDataList(120, 130, 110, 150, 140, 135, 145)
 
-	tt := stats.TwoSampleTTest(control, variant, false, 0.95)
-	if tt == nil {
-		log.Fatal("t-test failed")
+	tt, err := stats.TwoSampleTTest(control, variant, false, 0.95)
+	if err != nil {
+		log.Fatal(err)
 	}
 
-	corr := stats.Correlation(spend, variant, stats.PearsonCorrelation)
-	if corr == nil {
-		log.Fatal("correlation failed")
+	corr, err := stats.Correlation(spend, variant, stats.PearsonCorrelation)
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	controlMean := control.Mean()

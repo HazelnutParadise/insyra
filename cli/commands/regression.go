@@ -35,9 +35,9 @@ func runRegressionCommand(ctx *ExecContext, args []string) error {
 			}
 			xs = append(xs, x)
 		}
-		regressionResult := stats.LinearRegression(y, xs...)
-		if regressionResult == nil {
-			return fmt.Errorf("failed to run linear regression")
+		regressionResult, err := stats.LinearRegression(y, xs...)
+		if err != nil {
+			return fmt.Errorf("failed to run linear regression: %w", err)
 		}
 		ctx.Vars[alias] = regressionResult
 		_, _ = fmt.Fprintf(ctx.Output, "linear regression stored in %s (R2=%v)\n", alias, regressionResult.RSquared)
@@ -54,9 +54,9 @@ func runRegressionCommand(ctx *ExecContext, args []string) error {
 		if err != nil || degree < 1 {
 			return fmt.Errorf("invalid polynomial degree: %s", coreArgs[3])
 		}
-		result := stats.PolynomialRegression(y, x, degree)
-		if result == nil {
-			return fmt.Errorf("failed to run polynomial regression")
+		result, err := stats.PolynomialRegression(y, x, degree)
+		if err != nil {
+			return fmt.Errorf("failed to run polynomial regression: %w", err)
 		}
 		ctx.Vars[alias] = result
 		_, _ = fmt.Fprintf(ctx.Output, "polynomial regression stored in %s (R2=%v)\n", alias, result.RSquared)
@@ -66,9 +66,9 @@ func runRegressionCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
-		result := stats.ExponentialRegression(y, x)
-		if result == nil {
-			return fmt.Errorf("failed to run exponential regression")
+		result, err := stats.ExponentialRegression(y, x)
+		if err != nil {
+			return fmt.Errorf("failed to run exponential regression: %w", err)
 		}
 		ctx.Vars[alias] = result
 		_, _ = fmt.Fprintf(ctx.Output, "exponential regression stored in %s (R2=%v)\n", alias, result.RSquared)
@@ -78,9 +78,9 @@ func runRegressionCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
-		result := stats.LogarithmicRegression(y, x)
-		if result == nil {
-			return fmt.Errorf("failed to run logarithmic regression")
+		result, err := stats.LogarithmicRegression(y, x)
+		if err != nil {
+			return fmt.Errorf("failed to run logarithmic regression: %w", err)
 		}
 		ctx.Vars[alias] = result
 		_, _ = fmt.Fprintf(ctx.Output, "logarithmic regression stored in %s (R2=%v)\n", alias, result.RSquared)

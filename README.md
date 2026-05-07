@@ -255,7 +255,7 @@ For full CLI + DSL documentation, see **[Docs/cli-dsl.md](Docs/cli-dsl.md)**.
 ## Thread Safety and Defensive Copies
 
 - **Defensive copies:** Insyra returns defensive copies for all public data accessors. Any method that exposes internal slices, maps, or other mutable structures returns a copy so callers cannot mutate internal state unintentionally.
-- **Atomic operations:** For safe concurrent multi-step operations, use the helper `AtomicDo`. `AtomicDo` serializes all operations for an instance via a dedicated actor goroutine and a command channel (see [atomic.go](atomic.go)), avoiding mutexes.
+- **Atomic operations:** For safe concurrent multi-step operations, use the helper `AtomicDo`. `AtomicDo` serializes all operations for an instance via a `sync.Mutex` plus a goroutine-id holder (using [`petermattis/goid`](https://github.com/petermattis/goid)) for fast same-goroutine re-entry detection (see [atomic.go](atomic.go)). Per-call overhead is ~30 ns; same-goroutine re-entry runs inline without re-acquiring the lock.
 
 ## [DataList](/Docs/DataList.md)
 
@@ -375,6 +375,10 @@ Provides read and write support for the Apache Parquet file format, deeply integ
 ### **[mkt](/Docs/mkt.md)**
 
 Provides marketing-related data analysis functions, such as RFM analysis. No need to worry about how to calculate, one function does it all!
+
+### **[finance](/Docs/finance.md)**
+
+High-precision financial calculations on top of fixed-point decimals — TVM (PMT/PV/FV/NPER/RATE), NPV/IRR/MIRR/XNPV/XIRR, depreciation (SLN/DDB/SYD/VDB), bond pricing (PRICE/YIELD/DURATION/MDURATION/ACCRINT), Treasury bills, and full amortization schedules. Output precision is configurable per call; the package routinely produces results that are correct beyond Excel's float64 precision limit.
 
 ### **[py](/Docs/py.md)**
 

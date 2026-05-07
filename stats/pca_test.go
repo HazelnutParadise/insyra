@@ -1,0 +1,274 @@
+package stats_test
+
+import (
+	"math"
+	"testing"
+
+	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/stats"
+)
+
+// PCA tolerance is looser than other batches because eigenvalue decomposition
+// of small samples is sensitive to FP order: gonum's go-routine-based EigenSym
+// (Cholesky/Jacobi-style) and R's prcomp (SVD via LAPACK dgesvd) can disagree
+// at the 1e-9 level even for well-conditioned matrices. For degenerate or
+// near-zero eigenvalues the loading vectors themselves are non-unique.
+const (
+	tolPCAEig  = 1e-9  // eigenvalues / explained variance (relative)
+	tolPCAComp = 1e-9  // loadings on PCs whose eigenvalue is well-separated
+)
+
+var pcaRef = &refTable{path: "testdata/pca_reference.txt"}
+
+func pClose(a, b, tol float64) bool {
+	if math.IsNaN(a) && math.IsNaN(b) {
+		return true
+	}
+	if b == 0 {
+		return math.Abs(a) <= tol
+	}
+	return math.Abs(a-b) <= tol*math.Max(1, math.Abs(b))
+}
+
+func dataTableFromPCARows(rows [][]float64) insyra.IDataTable {
+	if len(rows) == 0 {
+		return insyra.NewDataTable()
+	}
+	nCols := len(rows[0])
+	cols := make([]*insyra.DataList, nCols)
+	for j := range cols {
+		cols[j] = insyra.NewDataList()
+	}
+	for _, row := range rows {
+		for j, v := range row {
+			cols[j].Append(v)
+		}
+	}
+	dt := insyra.NewDataTable()
+	for _, c := range cols {
+		dt.AppendCols(c)
+	}
+	return dt
+}
+
+type pcaCase struct {
+	name        string
+	rows        [][]float64
+	nComponents int
+	nVars       int // number of variables (= nrow of loadings)
+	prefix      string
+}
+
+func TestPCA_R(t *testing.T) {
+	cases := []pcaCase{
+		{name: "case_a_3var_n6_correlated",
+			rows: [][]float64{
+				{2.5, 2.4, 1.2}, {0.5, 0.7, 0.3}, {2.2, 2.9, 1.1},
+				{1.9, 2.2, 0.9}, {3.1, 3.0, 1.5}, {2.3, 2.7, 1.3},
+			},
+			nComponents: 2, nVars: 3, prefix: "pca_a"},
+		{name: "case_b_3var_n6_strong_corr",
+			rows: [][]float64{
+				{10, 20, 30}, {11, 19, 29}, {12, 21, 31},
+				{13, 22, 33}, {9, 18, 28}, {14, 23, 34},
+			},
+			nComponents: 2, nVars: 3, prefix: "pca_b"},
+		{name: "case_c_rank_deficient",
+			rows: [][]float64{
+				{100, 60, 30}, {98, 58, 29}, {102, 62, 31},
+				{101, 61, 32}, {99, 59, 30}, {97, 57, 28},
+			},
+			nComponents: 3, nVars: 3, prefix: "pca_c"},
+		{name: "n4_minimum_3var",
+			rows: [][]float64{
+				{1, 2, 3}, {2, 3, 4}, {3, 4, 5}, {4, 5, 7},
+			},
+			nComponents: 3, nVars: 3, prefix: "pca_n4"},
+		{name: "huge_magnitude",
+			rows: [][]float64{
+				{1e6, 2e6, 3e6},
+				{1.001e6, 2.002e6, 3.001e6},
+				{0.999e6, 1.998e6, 2.999e6},
+				{1.0005e6, 2.001e6, 3.0005e6},
+				{1.0015e6, 2.003e6, 3.002e6},
+			},
+			nComponents: 3, nVars: 3, prefix: "pca_huge"},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			dt := dataTableFromPCARows(c.rows)
+			r, err := stats.PCA(dt, c.nComponents)
+			if err != nil {
+				t.Fatalf("PCA error: %v", err)
+			}
+			if len(r.Eigenvalues) != c.nComponents {
+				t.Fatalf("expected %d eigenvalues, got %d", c.nComponents, len(r.Eigenvalues))
+			}
+			if len(r.ExplainedVariance) != c.nComponents {
+				t.Fatalf("expected %d explained-variance values, got %d", c.nComponents, len(r.ExplainedVariance))
+			}
+
+			// Eigenvalues + explained variance: always meaningful.
+			for i := range c.nComponents {
+				expEig := pcaRef.get(t, c.prefix+".eig["+itoa(i)+"]")
+				if !pClose(r.Eigenvalues[i], expEig, tolPCAEig) {
+					t.Errorf("eig[%d]: got %.17g, want %.17g (Δ=%g)",
+						i, r.Eigenvalues[i], expEig, math.Abs(r.Eigenvalues[i]-expEig))
+				}
+				expExp := pcaRef.get(t, c.prefix+".exp["+itoa(i)+"]")
+				if !pClose(r.ExplainedVariance[i], expExp, tolPCAEig) {
+					t.Errorf("exp[%d]: got %.17g, want %.17g",
+						i, r.ExplainedVariance[i], expExp)
+				}
+			}
+
+			// Loadings: only compare for PCs whose eigenvalue is well-separated
+			// from zero. For numerically-zero eigenvalues the loading vector
+			// is non-unique (any vector spanning the null space is valid),
+			// and gonum EigenSym vs LAPACK dgesvd can pick different bases.
+			rowsTbl, colsTbl := r.Components.Size()
+			if rowsTbl != c.nVars || colsTbl != c.nComponents {
+				t.Fatalf("Components shape: got (%d,%d), want (%d,%d)",
+					rowsTbl, colsTbl, c.nVars, c.nComponents)
+			}
+			const eigZeroThreshold = 1e-9
+			for pc := range c.nComponents {
+				if r.Eigenvalues[pc] < eigZeroThreshold {
+					t.Logf("skipping pc%d loadings (eigenvalue %g below threshold)",
+						pc+1, r.Eigenvalues[pc])
+					continue
+				}
+				col := r.Components.GetColByNumber(pc)
+				for i := range c.nVars {
+					got, ok := insyra.ToFloat64Safe(col.Get(i))
+					if !ok {
+						t.Fatalf("pc%d[%d] not numeric: %v", pc+1, i, col.Get(i))
+					}
+					expLoading := pcaRef.get(t, c.prefix+".pc"+itoa(pc+1)+"["+itoa(i)+"]")
+					if !pClose(got, expLoading, tolPCAComp) {
+						t.Errorf("pc%d[%d]: got %.17g, want %.17g (Δ=%g)",
+							pc+1, i, got, expLoading, math.Abs(got-expLoading))
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestPCA_RandomLargeN(t *testing.T) {
+	// 4 variables × 10 obs and 5 variables × 20 obs — generated by the same
+	// R script. Inputs are stored in the .txt reference (loaded via labels).
+	t.Run("4var_n10", func(t *testing.T) {
+		// Inline the data so the test is self-contained; the R reference uses
+		// the same set.seed(4001) sequence so values match.
+		runReseededPCA(t, "pca_4var", 4, 4, 10, 4001, false)
+	})
+	t.Run("5var_n20", func(t *testing.T) {
+		runReseededPCA(t, "pca_5var", 5, 5, 20, 4002, true)
+	})
+}
+
+// runReseededPCA mirrors the R-side rnorm() sequence by reading the test data
+// inline. We don't replicate R's RNG in Go, so this helper just re-builds the
+// data table from a labelled dump, runs PCA, and compares against pcaRef.
+//
+// The dumps are written by stats/testdata/pca_data_dump.R alongside the
+// reference file. Each dump line is `name:v1,v2,...` for one column or row.
+func runReseededPCA(t *testing.T, prefix string, nComp, nVars, nObs, seed int, columnMajor bool) {
+	t.Helper()
+	dump := &labelledFloats{path: "testdata/pca_data_dump.txt"}
+	rows := make([][]float64, nObs)
+	for i := range rows {
+		rows[i] = make([]float64, nVars)
+	}
+	if columnMajor {
+		// 5var case: each column is dumped as one labelled vector
+		for j := range nVars {
+			col := dump.get(t, prefix+"_v"+itoa(j+1))
+			if len(col) != nObs {
+				t.Fatalf("%s_v%d length: got %d want %d", prefix, j+1, len(col), nObs)
+			}
+			for i := range nObs {
+				rows[i][j] = col[i]
+			}
+		}
+	} else {
+		// 4var case
+		for j := range nVars {
+			col := dump.get(t, prefix+"_v"+itoa(j+1))
+			if len(col) != nObs {
+				t.Fatalf("%s_v%d length: got %d want %d", prefix, j+1, len(col), nObs)
+			}
+			for i := range nObs {
+				rows[i][j] = col[i]
+			}
+		}
+	}
+	_ = seed // documentary
+	dt := dataTableFromPCARows(rows)
+	r, err := stats.PCA(dt, nComp)
+	if err != nil {
+		t.Fatalf("PCA error: %v", err)
+	}
+	for i := range nComp {
+		expEig := pcaRef.get(t, prefix+".eig["+itoa(i)+"]")
+		if !pClose(r.Eigenvalues[i], expEig, tolPCAEig) {
+			t.Errorf("eig[%d]: got %.17g, want %.17g", i, r.Eigenvalues[i], expEig)
+		}
+	}
+	const eigZeroThreshold = 1e-9
+	for pc := range nComp {
+		if r.Eigenvalues[pc] < eigZeroThreshold {
+			continue
+		}
+		col := r.Components.GetColByNumber(pc)
+		for i := range nVars {
+			got, _ := insyra.ToFloat64Safe(col.Get(i))
+			expLoading := pcaRef.get(t, prefix+".pc"+itoa(pc+1)+"["+itoa(i)+"]")
+			if !pClose(got, expLoading, tolPCAComp) {
+				t.Errorf("pc%d[%d]: got %.17g, want %.17g", pc+1, i, got, expLoading)
+			}
+		}
+	}
+}
+
+func TestPCA_Errors(t *testing.T) {
+	good := dataTableFromPCARows([][]float64{{1, 2}, {3, 4}, {5, 6}})
+
+	// nComponents argument count
+	if _, err := stats.PCA(good, 1, 2); err == nil {
+		t.Error("expected error for multiple nComponents args")
+	}
+	// out-of-range nComponents
+	if _, err := stats.PCA(good, 0); err == nil {
+		t.Error("expected error for nComponents=0")
+	}
+	if _, err := stats.PCA(good, 5); err == nil {
+		t.Error("expected error for nComponents > colCount")
+	}
+	// Insufficient rows
+	tiny := dataTableFromPCARows([][]float64{{1, 2}})
+	if _, err := stats.PCA(tiny); err == nil {
+		t.Error("expected error for fewer than 2 rows")
+	}
+	// Zero-variance column
+	zeroVar := dataTableFromPCARows([][]float64{{1, 5}, {2, 5}, {3, 5}})
+	if _, err := stats.PCA(zeroVar); err == nil {
+		t.Error("expected error for zero-variance column")
+	}
+	// Non-numeric data — needs a DataTable with a string cell
+	withStr := insyra.NewDataTable(
+		insyra.NewDataList(1.0, 2.0, 3.0),
+		func() *insyra.DataList {
+			dl := insyra.NewDataList()
+			dl.Append(1.0)
+			dl.Append("oops")
+			dl.Append(3.0)
+			return dl
+		}(),
+	)
+	if _, err := stats.PCA(withStr); err == nil {
+		t.Error("expected error for non-numeric cell")
+	}
+}

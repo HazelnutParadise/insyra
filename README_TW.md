@@ -249,7 +249,7 @@ insyra fetch yahoo AAPL quote as q
 ## 執行緒安全與防禦性複製
 
 - **防禦性複製：** Insyra 對所有公開資料存取器回傳防禦性複製（defensive copies）。任何會暴露內部 `slice`、`map` 或其他可變結構的方法，會回傳該結構的複製，避免呼叫端無意間修改內部狀態。
-- **原子操作：** 若需在並發環境中執行多步驟操作，請使用 `AtomicDo`。`AtomicDo` 透過每個實例的專用 actor goroutine 與命令 channel 序列化執行，避免使用互斥鎖（mutex）。參考實作： [atomic.go](atomic.go)。
+- **原子操作：** 若需在並發環境中執行多步驟操作，請使用 `AtomicDo`。`AtomicDo` 透過每個實例的 `sync.Mutex` 加上 goroutine-id holder（使用 [`petermattis/goid`](https://github.com/petermattis/goid)）序列化執行；同一 goroutine 的 re-entry 會 inline 跑、不重新取鎖，每次呼叫成本約 30 ns。參考實作：[atomic.go](atomic.go)。
 
 ## [DataList](/Docs/DataList.md)
 
@@ -368,6 +368,10 @@ err := parquet.ApplyCCL(ctx, "data.parquet", "NEW('total') = A + B + C")
 ### **[mkt](/Docs/mkt.md)**
 
 提供與行銷相關的數據分析功能，例如 RFM 分析。不必煩惱如何計算，一個函數搞定！
+
+### **[finance](/Docs/finance.md)**
+
+基於定點 decimal 的高精度金融計算包：TVM（PMT/PV/FV/NPER/RATE）、NPV/IRR/MIRR/XNPV/XIRR、折舊（SLN/DDB/SYD/VDB）、債券定價（PRICE/YIELD/DURATION/MDURATION/ACCRINT）、國庫券、完整攤銷表。輸出精度可逐次調整；計算結果普遍超越 Excel float64 的精度上限。
 
 ### **[py](/Docs/py.md)**
 

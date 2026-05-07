@@ -44,7 +44,7 @@ type DataList struct {
 - `name`: Optional name for the DataList
 - `creationTimestamp`: Unix timestamp when the DataList was created
 - `lastModifiedTimestamp`: Unix timestamp when the DataList was last modified
-- `atomicActor`: Internal actor used by `AtomicDo` to provide serialized execution without external locks
+- `atomicActor`: Internal mutex + holder pair used by `AtomicDo` to serialise execution; same-goroutine re-entry runs inline without re-locking
 
 ### Naming Conventions
 
@@ -2289,7 +2289,7 @@ dl.ClearErr()
 func (dl *DataList) AtomicDo(f func(*DataList))
 ```
 
-**Description:** `AtomicDo` provides safe, serialized access to a DataList using an internal actor goroutine. It ensures all mutations and reads inside the function run in order and without races, even across multiple goroutines.
+**Description:** `AtomicDo` provides safe, serialized access to a DataList using a per-instance `sync.Mutex` plus a goroutine-id holder (`petermattis/goid`) for fast same-goroutine re-entry detection. All mutations and reads inside the function run in order and without races, even across multiple goroutines, with ~30 ns per-call overhead.
 
 **Parameters:**
 

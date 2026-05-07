@@ -301,7 +301,7 @@ TBD - created by archiving change cli-repl. Update Purpose after archive.
 - **THEN** 系統呼叫 `d1.FillNaNWithMean()`
 
 ### Requirement: Advanced statistics commands
-系統 SHALL 提供進階統計命令：`corr`、`corrmatrix`、`regression`、`ttest`、`ztest`、`anova`、`ftest`、`chisq`、`pca`、`skewness`、`kurtosis`、`cov`。
+系統 SHALL 提供進階統計命令：`corr`、`corrmatrix`、`regression`、`ttest`、`ztest`、`anova`、`ftest`、`chisq`、`pca`、`kmeans`、`hclust`、`cutree`、`dbscan`、`silhouette`、`skewness`、`kurtosis`、`cov`。
 
 #### Scenario: Correlation
 - **WHEN** 使用者執行 `corr d1 d2 pearson`
@@ -314,6 +314,26 @@ TBD - created by archiving change cli-repl. Update Purpose after archive.
 #### Scenario: PCA
 - **WHEN** 使用者執行 `pca t1 3`
 - **THEN** 系統呼叫 `stats.PCA()` 取前 3 個主成份
+
+#### Scenario: KMeans
+- **WHEN** 使用者執行 `kmeans t1 3 seed 7 as km1`
+- **THEN** 系統呼叫 `stats.KMeans()` 並將 labels、centers 與 sum-of-squares 摘要存到變數
+
+#### Scenario: Hierarchical clustering
+- **WHEN** 使用者執行 `hclust t1 complete as hc1`
+- **THEN** 系統呼叫 `stats.HierarchicalAgglomerative()` 並儲存分群樹結果
+
+#### Scenario: Cut hierarchical tree
+- **WHEN** 使用者執行 `cutree hc1 k 3 as g1`
+- **THEN** 系統呼叫 `stats.CutTreeByK()` 並將群組 labels 存到變數
+
+#### Scenario: DBSCAN
+- **WHEN** 使用者執行 `dbscan t1 0.35 4 as db1`
+- **THEN** 系統呼叫 `stats.DBSCAN()` 並將 labels 與 `isseed` 存到變數
+
+#### Scenario: Silhouette
+- **WHEN** 使用者執行 `silhouette t1 g1 as sil1`
+- **THEN** 系統呼叫 `stats.Silhouette()` 並將每筆 silhouette width 與平均值存到變數
 
 ### Requirement: CCL commands
 系統 SHALL 提供 `ccl` 和 `addcolccl` 命令執行 CCL 表達式。

@@ -46,7 +46,7 @@ type DataTable struct {
 - `name`: Name of the DataTable
 - `creationTimestamp`: Unix timestamp when the table was created
 - `lastModifiedTimestamp`: Unix timestamp when the table was last modified
-- `atomicActor`: Internal actor used by `AtomicDo` to provide serialized execution without external locks
+- `atomicActor`: Internal mutex + holder pair used by `AtomicDo` to serialise execution; same-goroutine re-entry runs inline without re-locking
 
 ### Naming Conventions
 
@@ -3717,7 +3717,7 @@ insyra.Config.SetDefaultErrHandlingFunc(func(errType insyra.LogLevel, packageNam
 func (dt *DataTable) AtomicDo(f func(*DataTable))
 ```
 
-**Description:** `AtomicDo` provides safe, serialized access to a DataTable via an internal actor goroutine. All operations inside the function run in order and without races, allowing concurrent callers to compose multi-step updates safely.
+**Description:** `AtomicDo` provides safe, serialized access to a DataTable via a per-instance `sync.Mutex` plus a goroutine-id holder (`petermattis/goid`) for fast same-goroutine re-entry detection. All operations inside the function run in order and without races, allowing concurrent callers to compose multi-step updates safely with ~30 ns per-call overhead.
 
 **Parameters:**
 

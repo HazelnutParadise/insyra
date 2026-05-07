@@ -34,9 +34,9 @@ func runTTestCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
-		result := stats.SingleSampleTTest(dl, mu)
-		if result == nil {
-			return fmt.Errorf("ttest failed")
+		result, err := stats.SingleSampleTTest(dl, mu)
+		if err != nil {
+			return fmt.Errorf("ttest failed: %w", err)
 		}
 		_, _ = fmt.Fprintf(ctx.Output, "t=%v p=%v\n", result.Statistic, result.PValue)
 		return nil
@@ -56,9 +56,9 @@ func runTTestCommand(ctx *ExecContext, args []string) error {
 		if len(args) >= 4 {
 			equalVariance = strings.EqualFold(args[3], "equal")
 		}
-		result := stats.TwoSampleTTest(a, b, equalVariance)
-		if result == nil {
-			return fmt.Errorf("ttest failed")
+		result, err := stats.TwoSampleTTest(a, b, equalVariance)
+		if err != nil {
+			return fmt.Errorf("ttest failed: %w", err)
 		}
 		_, _ = fmt.Fprintf(ctx.Output, "t=%v p=%v\n", result.Statistic, result.PValue)
 		return nil
@@ -74,9 +74,9 @@ func runTTestCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
-		result := stats.PairedTTest(a, b)
-		if result == nil {
-			return fmt.Errorf("ttest failed")
+		result, err := stats.PairedTTest(a, b)
+		if err != nil {
+			return fmt.Errorf("ttest failed: %w", err)
 		}
 		_, _ = fmt.Fprintf(ctx.Output, "t=%v p=%v\n", result.Statistic, result.PValue)
 		return nil
@@ -110,9 +110,9 @@ func runZTestCommand(ctx *ExecContext, args []string) error {
 		if len(args) >= 5 {
 			alternative = parseAlternativeHypothesis(args[4])
 		}
-		result := stats.SingleSampleZTest(dl, mu, sigma, alternative, 0.95)
-		if result == nil {
-			return fmt.Errorf("ztest failed")
+		result, err := stats.SingleSampleZTest(dl, mu, sigma, alternative, 0.95)
+		if err != nil {
+			return fmt.Errorf("ztest failed: %w", err)
 		}
 		_, _ = fmt.Fprintf(ctx.Output, "z=%v p=%v\n", result.Statistic, result.PValue)
 		return nil
@@ -140,9 +140,9 @@ func runZTestCommand(ctx *ExecContext, args []string) error {
 		if len(args) >= 6 {
 			alternative = parseAlternativeHypothesis(args[5])
 		}
-		result := stats.TwoSampleZTest(a, b, s1, s2, alternative, 0.95)
-		if result == nil {
-			return fmt.Errorf("ztest failed")
+		result, err := stats.TwoSampleZTest(a, b, s1, s2, alternative, 0.95)
+		if err != nil {
+			return fmt.Errorf("ztest failed: %w", err)
 		}
 		_, _ = fmt.Fprintf(ctx.Output, "z=%v p=%v\n", result.Statistic, result.PValue)
 		return nil
@@ -164,9 +164,9 @@ func runAnovaCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
-		result := stats.OneWayANOVA(groups...)
-		if result == nil {
-			return fmt.Errorf("anova failed")
+		result, err := stats.OneWayANOVA(groups...)
+		if err != nil {
+			return fmt.Errorf("anova failed: %w", err)
 		}
 		_, _ = fmt.Fprintf(ctx.Output, "F=%v p=%v\n", result.Factor.F, result.Factor.P)
 		return nil
@@ -189,9 +189,9 @@ func runAnovaCommand(ctx *ExecContext, args []string) error {
 		if len(cells) != aLevels*bLevels {
 			return fmt.Errorf("twoway requires exactly %d cells", aLevels*bLevels)
 		}
-		result := stats.TwoWayANOVA(aLevels, bLevels, cells...)
-		if result == nil {
-			return fmt.Errorf("anova failed")
+		result, err := stats.TwoWayANOVA(aLevels, bLevels, cells...)
+		if err != nil {
+			return fmt.Errorf("anova failed: %w", err)
 		}
 		_, _ = fmt.Fprintf(ctx.Output, "FA=%v pA=%v FB=%v pB=%v\n", result.FactorA.F, result.FactorA.P, result.FactorB.F, result.FactorB.P)
 		return nil
@@ -203,9 +203,9 @@ func runAnovaCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
-		result := stats.RepeatedMeasuresANOVA(subjects...)
-		if result == nil {
-			return fmt.Errorf("anova failed")
+		result, err := stats.RepeatedMeasuresANOVA(subjects...)
+		if err != nil {
+			return fmt.Errorf("anova failed: %w", err)
 		}
 		_, _ = fmt.Fprintf(ctx.Output, "F=%v p=%v\n", result.Factor.F, result.Factor.P)
 		return nil
@@ -231,9 +231,9 @@ func runFTestCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
-		result := stats.FTestForVarianceEquality(a, b)
-		if result == nil {
-			return fmt.Errorf("ftest failed")
+		result, err := stats.FTestForVarianceEquality(a, b)
+		if err != nil {
+			return fmt.Errorf("ftest failed: %w", err)
 		}
 		_, _ = fmt.Fprintf(ctx.Output, "F=%v p=%v\n", result.Statistic, result.PValue)
 		return nil
@@ -245,9 +245,9 @@ func runFTestCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
-		result := stats.LeveneTest(groups)
-		if result == nil {
-			return fmt.Errorf("levene test failed")
+		result, err := stats.LeveneTest(groups)
+		if err != nil {
+			return fmt.Errorf("levene test failed: %w", err)
 		}
 		_, _ = fmt.Fprintf(ctx.Output, "F=%v p=%v\n", result.Statistic, result.PValue)
 		return nil
@@ -259,9 +259,9 @@ func runFTestCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
-		result := stats.BartlettTest(groups)
-		if result == nil {
-			return fmt.Errorf("bartlett test failed")
+		result, err := stats.BartlettTest(groups)
+		if err != nil {
+			return fmt.Errorf("bartlett test failed: %w", err)
 		}
 		_, _ = fmt.Fprintf(ctx.Output, "chi2=%v p=%v\n", result.Statistic, result.PValue)
 		return nil
@@ -291,9 +291,9 @@ func runChiSqCommand(ctx *ExecContext, args []string) error {
 			}
 			probabilities = append(probabilities, value)
 		}
-		result := stats.ChiSquareGoodnessOfFit(dl, probabilities, true)
-		if result == nil {
-			return fmt.Errorf("chi-square gof failed")
+		result, err := stats.ChiSquareGoodnessOfFit(dl, probabilities, true)
+		if err != nil {
+			return fmt.Errorf("chi-square gof failed: %w", err)
 		}
 		_, _ = fmt.Fprintf(ctx.Output, "chi2=%v p=%v\n", result.Statistic, result.PValue)
 		return nil
@@ -309,9 +309,9 @@ func runChiSqCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
-		result := stats.ChiSquareIndependenceTest(row, col)
-		if result == nil {
-			return fmt.Errorf("chi-square independence test failed")
+		result, err := stats.ChiSquareIndependenceTest(row, col)
+		if err != nil {
+			return fmt.Errorf("chi-square independence test failed: %w", err)
 		}
 		_, _ = fmt.Fprintf(ctx.Output, "chi2=%v p=%v\n", result.Statistic, result.PValue)
 		return nil

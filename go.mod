@@ -1,10 +1,10 @@
 module github.com/HazelnutParadise/insyra
 
-go 1.25
+go 1.25.0
 
 require (
 	github.com/HazelnutParadise/Go-Utils v0.8.2
-	golang.org/x/text v0.32.0
+	golang.org/x/text v0.36.0
 )
 
 require (
@@ -91,17 +91,17 @@ require (
 	go.opentelemetry.io/otel v1.41.0 // indirect
 	go.opentelemetry.io/otel/metric v1.41.0 // indirect
 	go.opentelemetry.io/otel/trace v1.41.0 // indirect
-	golang.org/x/crypto v0.46.0 // indirect
+	golang.org/x/crypto v0.49.0 // indirect
 	golang.org/x/exp v0.0.0-20250911091902-df9299821621 // indirect
-	golang.org/x/image v0.25.0 // indirect
-	golang.org/x/mod v0.30.0 // indirect
-	golang.org/x/net v0.48.0 // indirect
+	golang.org/x/image v0.39.0 // indirect
+	golang.org/x/mod v0.34.0 // indirect
+	golang.org/x/net v0.52.0 // indirect
 	golang.org/x/oauth2 v0.34.0 // indirect
-	golang.org/x/sync v0.19.0 // indirect
-	golang.org/x/sys v0.40.0 // indirect
-	golang.org/x/telemetry v0.0.0-20251111182119-bc8e575c7b54 // indirect
+	golang.org/x/sync v0.20.0 // indirect
+	golang.org/x/sys v0.42.0 // indirect
+	golang.org/x/telemetry v0.0.0-20260311193753-579e4da9a98c // indirect
 	golang.org/x/time v0.8.0 // indirect
-	golang.org/x/tools v0.39.0 // indirect
+	golang.org/x/tools v0.43.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
 	google.golang.org/api v0.211.0 // indirect
 	google.golang.org/genproto v0.0.0-20241118233622-e639e219e697 // indirect
@@ -119,6 +119,7 @@ require (
 require (
 	github.com/Masterminds/squirrel v1.5.4
 	github.com/Microsoft/go-winio v0.6.2
+	github.com/TimLai666/go-decimal v0.1.3
 	github.com/apache/arrow/go/v17 v17.0.0
 	github.com/apoplexi24/gpandas v0.1.0
 	github.com/ergochat/readline v0.1.3
@@ -127,12 +128,13 @@ require (
 	github.com/goccy/go-json v0.10.5
 	github.com/google/uuid v1.6.0
 	github.com/mattn/go-runewidth v0.0.19
+	github.com/petermattis/goid v0.0.0-20260330135022-df67b199bc81
 	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
 	github.com/wnjoon/go-yfinance v1.0.0
 	github.com/xuri/excelize/v2 v2.10.0
-	golang.org/x/term v0.38.0
+	golang.org/x/term v0.41.0
 	gonum.org/v1/gonum v0.16.0
 	gonum.org/v1/plot v0.15.2
 	gorm.io/driver/sqlite v1.6.0

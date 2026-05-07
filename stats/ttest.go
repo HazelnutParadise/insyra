@@ -3,11 +3,11 @@
 package stats
 
 import (
+	"errors"
 	"math"
-	"sync"
 
 	"github.com/HazelnutParadise/insyra"
-	"gonum.org/v1/gonum/stat/distuv"
+	"gonum.org/v1/gonum/stat"
 )
 
 type TTestResult struct {
@@ -27,46 +27,42 @@ type TTestResult struct {
 //     Must be between 0 and 1. If not provided or invalid, defaults to 0.95
 //
 // ** Verified using R **
-func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...float64) *TTestResult {
+func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...float64) (*TTestResult, error) {
 	var n int
 	var mean, stddev float64
-	isFailed := false
+	var err error
 	data.AtomicDo(func(dl *insyra.DataList) {
 		n = dl.Len()
 		if n <= 1 {
-			insyra.LogWarning("stats", "SingleSampleTTest", "Sample size too small")
-			isFailed = true
+			err = errors.New("sample size too small")
 			return
 		}
 		mean = dl.Mean()
 		stddev = dl.Stdev()
 	})
-	if isFailed {
-		return nil
+	if err != nil {
+		return nil, err
 	}
 
-	standardError := stddev / math.Sqrt(float64(n))
+	standardError := sampleSE(stddev, float64(n))
 	tValue := (mean - mu) / standardError
 	df := float64(n - 1)
-	pValue := calculateTPValue(tValue, df)
+	pValue := tTwoTailedPValue(tValue, df)
 
-	// Handle optional confidence level parameter
-	var cl float64
+	var rawCL float64
 	if len(confidenceLevel) > 0 {
-		cl = confidenceLevel[0]
-	} else {
-		cl = defaultConfidenceLevel
+		if len(confidenceLevel) > 1 {
+			return nil, errors.New("confidenceLevel accepts at most one value")
+		}
+		rawCL = confidenceLevel[0]
+		if rawCL <= 0 || rawCL >= 1 {
+			return nil, errors.New("confidenceLevel must be between 0 and 1")
+		}
 	}
+	cl := resolveConfidenceLevel(rawCL)
 
-	if cl <= 0 || cl >= 1 {
-		cl = defaultConfidenceLevel
-	}
-
-	tDist := distuv.StudentsT{Mu: 0, Sigma: 1, Nu: df}
-	tCritical := tDist.Quantile(1 - (1-cl)/2)
-	marginOfError := tCritical * standardError
-
-	ci := &[2]float64{mean - marginOfError, mean + marginOfError}
+	marginOfError := tMarginOfError(cl, df, standardError)
+	ci := symmetricCI(mean, marginOfError)
 
 	// Handle constant data (stddev == 0)
 	if stddev == 0 {
@@ -74,7 +70,7 @@ func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...flo
 			effectSize := 0.0
 			tValue = math.NaN()
 			pValue = math.NaN()
-			effectSizes := []EffectSizeEntry{{Type: "cohen_d", Value: effectSize}}
+			effectSizes := cohenDEffectSizes(effectSize)
 			return &TTestResult{
 				testResultBase: testResultBase{
 					Statistic:   tValue,
@@ -85,13 +81,13 @@ func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...flo
 				},
 				Mean: &mean,
 				N:    n,
-			}
+			}, nil
 
 		} else {
 			effectSize := math.Inf(int(math.Copysign(1, mean-mu)))
 			tValue = math.Inf(int(math.Copysign(1, mean-mu)))
 			pValue = 0
-			effectSizes := []EffectSizeEntry{{Type: "cohen_d", Value: effectSize}}
+			effectSizes := cohenDEffectSizes(effectSize)
 			return &TTestResult{
 				testResultBase: testResultBase{
 					Statistic:   tValue,
@@ -102,14 +98,12 @@ func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...flo
 				},
 				Mean: &mean,
 				N:    n,
-			}
+			}, nil
 		}
 	}
 
 	effectSize := (mean - mu) / stddev //Preserve the sign
-	effectSizes := []EffectSizeEntry{
-		{Type: "cohen_d", Value: effectSize},
-	}
+	effectSizes := cohenDEffectSizes(effectSize)
 
 	return &TTestResult{
 		testResultBase: testResultBase{
@@ -121,7 +115,7 @@ func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...flo
 		},
 		Mean: &mean,
 		N:    n,
-	}
+	}, nil
 }
 
 // TwoSampleTTest performs a two-sample t-test comparing the means of two independent groups.
@@ -132,18 +126,17 @@ func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...flo
 //     Must be between 0 and 1. If not provided or invalid, defaults to 0.95
 //
 // ** Verified using R **
-func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenceLevel ...float64) *TTestResult {
+func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenceLevel ...float64) (*TTestResult, error) {
 	var n1, n2 int
 	var mean1, mean2 float64
 	var stddev1, stddev2 float64
-	isFailed := false
+	var err error
 	data1.AtomicDo(func(dl1 *insyra.DataList) {
 		data2.AtomicDo(func(dl2 *insyra.DataList) {
 			n1 = dl1.Len()
 			n2 = dl2.Len()
 			if n1 <= 1 || n2 <= 1 {
-				insyra.LogWarning("stats", "TwoSampleTTest", "Sample sizes too small")
-				isFailed = true
+				err = errors.New("sample sizes too small")
 				return
 			}
 
@@ -153,8 +146,8 @@ func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenc
 			stddev2 = dl2.Stdev()
 		})
 	})
-	if isFailed {
-		return nil
+	if err != nil {
+		return nil, err
 	}
 
 	meanDiff := mean1 - mean2
@@ -167,53 +160,40 @@ func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenc
 	var standardError float64
 	var df float64
 
+	pooledVar := math.NaN()
 	if equalVariance {
-		poolVar := ((float64(n1-1)*var1 + float64(n2-1)*var2) / float64(n1+n2-2))
-		standardError = math.Sqrt(poolVar * (1/n1Float + 1/n2Float))
+		standardError, pooledVar = pooledSE(var1, var2, n1Float, n2Float)
 		df = float64(n1 + n2 - 2)
 	} else {
-		se1 := var1 / n1Float
-		se2 := var2 / n2Float
-		standardError = math.Sqrt(se1 + se2)
-
-		seSum := se1 + se2
-		num := seSum * seSum
-		den := (se1 * se1 / (n1Float - 1)) + (se2 * se2 / (n2Float - 1))
-		df = num / den
+		standardError = twoSampleSE(var1, var2, n1Float, n2Float)
+		df = welchDF(var1, var2, n1Float, n2Float)
 	}
 	tValue := meanDiff / standardError
-	pValue := calculateTPValue(tValue, df)
+	pValue := tTwoTailedPValue(tValue, df)
 
-	// Handle optional confidence level parameter
-	var cl float64
+	var rawCL float64
 	if len(confidenceLevel) > 0 {
-		cl = confidenceLevel[0]
-	} else {
-		cl = defaultConfidenceLevel
+		if len(confidenceLevel) > 1 {
+			return nil, errors.New("confidenceLevel accepts at most one value")
+		}
+		rawCL = confidenceLevel[0]
+		if rawCL <= 0 || rawCL >= 1 {
+			return nil, errors.New("confidenceLevel must be between 0 and 1")
+		}
 	}
+	cl := resolveConfidenceLevel(rawCL)
 
-	if cl <= 0 || cl >= 1 {
-		cl = defaultConfidenceLevel
-	}
-
-	tDist := distuv.StudentsT{Mu: 0, Sigma: 1, Nu: df}
-	tCritical := tDist.Quantile(1 - (1-cl)/2)
-	marginOfError := tCritical * standardError
-
-	ci := &[2]float64{meanDiff - marginOfError, meanDiff + marginOfError}
+	marginOfError := tMarginOfError(cl, df, standardError)
+	ci := symmetricCI(meanDiff, marginOfError)
 
 	var effectSize float64
 	if equalVariance {
-		pooledVar := ((n1Float-1)*var1 + (n2Float-1)*var2) / (n1Float + n2Float - 2)
-		pooledStd := math.Sqrt(pooledVar)
-		effectSize = meanDiff / pooledStd // Preserve the sign
+		effectSize = meanDiff / math.Sqrt(pooledVar) // Preserve the sign
 	} else {
 		effectSize = meanDiff / math.Sqrt((var1+var2)/2) // Preserve the sign
 	}
 
-	effectSizes := []EffectSizeEntry{
-		{Type: "cohen_d", Value: effectSize},
-	}
+	effectSizes := cohenDEffectSizes(effectSize)
 
 	return &TTestResult{
 		testResultBase: testResultBase{
@@ -227,7 +207,7 @@ func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenc
 		Mean2: &mean2,
 		N:     n1,
 		N2:    &n2,
-	}
+	}, nil
 }
 
 // PairedTTest performs a paired-samples t-test comparing the means of two related groups.
@@ -238,16 +218,15 @@ func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenc
 //     Must be between 0 and 1. If not provided or invalid, defaults to 0.95
 //
 // ** Verified using R **
-func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel ...float64) *TTestResult {
+func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel ...float64) (*TTestResult, error) {
 	var n int
-	isFailed := false
+	var err error
 	var data1Slice, data2Slice []any
 	data1.AtomicDo(func(dl1 *insyra.DataList) {
 		data2.AtomicDo(func(dl2 *insyra.DataList) {
 			n = dl1.Len()
 			if n != dl2.Len() || n <= 1 {
-				insyra.LogWarning("stats", "PairedTTest", "Paired samples must have the same non-zero length")
-				isFailed = true
+				err = errors.New("paired samples must have the same non-zero length")
 				return
 			}
 
@@ -255,105 +234,47 @@ func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel ...float64) *TTe
 			data2Slice = dl2.Data()
 		})
 	})
-	if isFailed {
-		return nil
+	if err != nil {
+		return nil, err
 	}
 
-	// 僅對大型數據集使用平行運算
-	const minSizeForParallel = 5000
-	var sum, sumSq float64
-
-	if n >= minSizeForParallel {
-		// 決定 goroutine 數量 (根據 CPU 核心數和數據大小調整)
-		numGoroutines := 4
-		if n > 50000 {
-			numGoroutines = 8
-		}
-
-		chunkSize := n / numGoroutines
-		var wg sync.WaitGroup
-
-		// 創建結果集合
-		sums := make([]float64, numGoroutines)
-		sumSqs := make([]float64, numGoroutines)
-
-		// 啟動多個 goroutine 平行處理數據
-		for i := range numGoroutines {
-			wg.Add(1)
-
-			// 計算每個 goroutine 的數據範圍
-			start := i * chunkSize
-			end := start + chunkSize
-			if i == numGoroutines-1 {
-				end = n // 確保最後一個處理所有剩餘數據
-			}
-
-			go func(id, start, end int) {
-				defer wg.Done()
-
-				// 每個 goroutine 計算自己的部分和
-				var localSum, localSumSq float64
-				for j := start; j < end; j++ {
-					diff := data1Slice[j].(float64) - data2Slice[j].(float64)
-					localSum += diff
-					localSumSq += diff * diff
-				}
-
-				// 保存到對應的結果陣列
-				sums[id] = localSum
-				sumSqs[id] = localSumSq
-			}(i, start, end)
-		}
-
-		// 等待所有 goroutine 完成
-		wg.Wait()
-
-		// 合併所有 goroutine 的結果
-		for i := range numGoroutines {
-			sum += sums[i]
-			sumSq += sumSqs[i]
-		}
-	} else {
-		// 對小型數據集使用順序處理
-		for i := range n {
-			diff := data1Slice[i].(float64) - data2Slice[i].(float64)
-			sum += diff
-			sumSq += diff * diff
-		}
+	// Compute paired-difference mean & sample variance via gonum's two-pass
+	// algorithm (numerically stable; replaces the previous parallel naive
+	// (sumSq - sum²/n)/(n-1) one-pass formula which suffers catastrophic
+	// cancellation when |meanDiff| is small relative to data magnitude).
+	diffs := make([]float64, n)
+	for i := range n {
+		diffs[i] = data1Slice[i].(float64) - data2Slice[i].(float64)
 	}
+	meanDiff, varDiff := stat.MeanVariance(diffs, nil)
+	stddevDiff := math.Sqrt(varDiff)
 
-	// 計算統計量（與原始代碼相同）
 	nFloat := float64(n)
-	meanDiff := sum / nFloat
-	variance := (sumSq - sum*sum/nFloat) / (nFloat - 1)
-	stddevDiff := math.Sqrt(variance)
-	standardError := stddevDiff / math.Sqrt(nFloat)
+	standardError := sampleSE(stddevDiff, nFloat)
 	tValue := meanDiff / standardError
 	df := nFloat - 1
-	pValue := calculateTPValue(tValue, df)
+	pValue := tTwoTailedPValue(tValue, df)
 
-	// Handle optional confidence level parameter
-	var cl float64
+	var rawCL float64
 	if len(confidenceLevel) > 0 {
-		cl = confidenceLevel[0]
-	} else {
-		cl = defaultConfidenceLevel
+		if len(confidenceLevel) > 1 {
+			return nil, errors.New("confidenceLevel accepts at most one value")
+		}
+		rawCL = confidenceLevel[0]
+		if rawCL <= 0 || rawCL >= 1 {
+			return nil, errors.New("confidenceLevel must be between 0 and 1")
+		}
 	}
+	cl := resolveConfidenceLevel(rawCL)
 
-	if cl <= 0 || cl >= 1 {
-		cl = defaultConfidenceLevel
-	}
+	marginOfError := tMarginOfError(cl, df, standardError)
+	ci := symmetricCI(meanDiff, marginOfError)
 
-	tDist := distuv.StudentsT{Mu: 0, Sigma: 1, Nu: df}
-	tCritical := tDist.Quantile(1 - (1-cl)/2)
-	marginOfError := tCritical * standardError
-
-	ci := &[2]float64{meanDiff - marginOfError, meanDiff + marginOfError}
-
-	effectSize := math.Abs(meanDiff) / stddevDiff
-	effectSizes := []EffectSizeEntry{
-		{Type: "cohen_d", Value: effectSize},
-	}
+	// Cohen's d_z for paired data, sign-preserving (matches single & two-sample
+	// Cohen's d in this same file — previously this used math.Abs which
+	// dropped direction-of-effect information for paired tests only).
+	effectSize := meanDiff / stddevDiff
+	effectSizes := cohenDEffectSizes(effectSize)
 
 	return &TTestResult{
 		testResultBase: testResultBase{
@@ -365,21 +286,5 @@ func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel ...float64) *TTe
 		},
 		MeanDiff: &meanDiff,
 		N:        n,
-	}
-}
-
-func calculateTPValue(tValue float64, df float64) float64 {
-	if df <= 0 {
-		return 1.0
-	}
-
-	tDist := distuv.StudentsT{
-		Mu:    0,
-		Sigma: 1,
-		Nu:    df,
-	}
-
-	tAbs := math.Abs(tValue)
-	cdfValue := tDist.CDF(tAbs)
-	return 2 * (1 - cdfValue)
+	}, nil
 }

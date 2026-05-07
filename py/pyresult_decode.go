@@ -77,11 +77,11 @@ func bindPyResult(out any, result any) error {
 		if dl, err := decodeDataList(result); err == nil {
 			rv := reflect.ValueOf(out)
 			for depth := 0; depth < 3 && rv.IsValid(); depth++ {
-				if rv.Kind() != reflect.Ptr {
+				if rv.Kind() != reflect.Pointer {
 					break
 				}
 				// If we have a pointer-to-pointer and the inner pointer is nil, allocate it
-				if rv.Elem().Kind() == reflect.Ptr && rv.Elem().IsNil() {
+				if rv.Elem().Kind() == reflect.Pointer && rv.Elem().IsNil() {
 					rv.Elem().Set(reflect.New(rv.Elem().Type().Elem()))
 				}
 				if rv.Elem().Kind() == reflect.Struct {
@@ -102,10 +102,10 @@ func bindPyResult(out any, result any) error {
 		if dt, err := decodeDataTable(result); err == nil {
 			rv := reflect.ValueOf(out)
 			for depth := 0; depth < 3 && rv.IsValid(); depth++ {
-				if rv.Kind() != reflect.Ptr {
+				if rv.Kind() != reflect.Pointer {
 					break
 				}
-				if rv.Elem().Kind() == reflect.Ptr && rv.Elem().IsNil() {
+				if rv.Elem().Kind() == reflect.Pointer && rv.Elem().IsNil() {
 					rv.Elem().Set(reflect.New(rv.Elem().Type().Elem()))
 				}
 				if rv.Elem().Kind() == reflect.Struct {
