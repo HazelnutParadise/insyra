@@ -73,7 +73,6 @@ func coupDays(settlement, maturity time.Time, freq int, basis DayCountBasis) int
 func coupNum(settlement, maturity time.Time, freq int) int {
 	_, next := coupPrevNext(settlement, maturity, freq)
 	months := 12 / freq
-	settlement = toDateUTC(settlement)
 	maturity = toDateUTC(maturity)
 	count := 0
 	c := next

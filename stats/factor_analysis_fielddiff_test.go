@@ -21,15 +21,6 @@ func TestFieldDiffAllFailingCombos(t *testing.T) {
 	}
 	requireFactorAnalysisRTools(t)
 
-	type combo struct {
-		dataset    string
-		rows       [][]any
-		nFactors   int
-		extraction stats.FactorExtractionMethod
-		rotation   stats.FactorRotationMethod
-		scoring    stats.FactorScoreMethod
-	}
-
 	// Replicate dataset map from factor_analysis_test.go
 	datasetMap := map[string][][]any{
 		"generated_near_collinear":      generatedNearCollinearRows(),

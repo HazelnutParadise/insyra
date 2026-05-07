@@ -84,7 +84,7 @@ func dlarrd(
 	}
 
 	// Validate ORDER.
-	if !(order == 'B' || order == 'b' || order == 'E' || order == 'e') {
+	if order != 'B' && order != 'b' && order != 'E' && order != 'e' {
 		return 0, 0, 0, -2
 	}
 	if irange == valRng && vl >= vu {

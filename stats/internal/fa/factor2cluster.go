@@ -21,7 +21,7 @@ func Factor2Cluster(loadings *mat.Dense) *mat.Dense {
 	for i := 0; i < p; i++ {
 		maxAbs := 0.0
 		maxFactor := -1
-		var maxSign float64 = 1.0
+		maxSign := 1.0
 		for j := 0; j < q; j++ {
 			val := loadings.At(i, j)
 			absVal := math.Abs(val)

@@ -222,8 +222,6 @@ func cauchy(n int, x, l, u []float64, nbd []int, g []float64,
 				dtm = -f1 / f2
 				continue
 			} else if bnded {
-				f1 = 0
-				f2 = 0
 				dtm = 0
 			} else {
 				dtm = -f1 / f2

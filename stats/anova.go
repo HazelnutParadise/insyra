@@ -139,8 +139,6 @@ func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) (*
 	cellCounts := make([]int, len(cells))
 	cellSums := make([]float64, len(cells))
 	cellOffsets := make([]int, len(cells))
-	factorsA := make([]int, 0)
-	factorsB := make([]int, 0)
 
 	for i := range factorALevels {
 		for j := range factorBLevels {
@@ -159,8 +157,6 @@ func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) (*
 					return nil, fmt.Errorf("invalid data at cell (A=%d, B=%d) index %d", i, j, k)
 				}
 				allValues = append(allValues, value)
-				factorsA = append(factorsA, i)
-				factorsB = append(factorsB, j)
 				localSum += value
 			}
 			cellSums[idx] = localSum

@@ -238,7 +238,7 @@ func matupd(n, m int, ws, wy, sy, ss []float64, d, r []float64,
 			// dcopy(j, ss(2,j+1), 1, ss(1,j), 1):
 			//   from column j+1, rows 2..2+j-1  →  column j, rows 1..j
 			src := (j+1-1)*m + (2 - 1)
-			dst := (j-1)*m + (1 - 1)
+			dst := (j - 1) * m
 			dcopy(j, ss[src:], 1, ss[dst:], 1)
 			// dcopy(col-j, sy(j+1,j+1), 1, sy(j,j), 1):
 			//   from column j+1, rows j+1..col  →  column j, rows j..col-1

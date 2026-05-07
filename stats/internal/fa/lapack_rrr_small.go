@@ -29,8 +29,6 @@ func dlarrr(n int, d, e []float64) (info int) {
 		return 0
 	}
 	const relCond = 0.999
-	// Default: do NOT use RRR.
-	info = 1
 	const safmin = lapackSafmin
 	const eps = 2.2204460492503131e-16
 	smlnum := safmin / eps

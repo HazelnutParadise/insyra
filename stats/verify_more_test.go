@@ -131,11 +131,10 @@ func TestRotationParams(t *testing.T) {
 	tbl := buildSyntheticTable(n, 6, syntheticGen3Factor)
 
 	type pcase struct {
-		name      string
-		setupA    func(*stats.FactorAnalysisOptions)
-		setupB    func(*stats.FactorAnalysisOptions)
-		rotation  stats.FactorRotationMethod
-		expectDif bool
+		name     string
+		setupA   func(*stats.FactorAnalysisOptions)
+		setupB   func(*stats.FactorAnalysisOptions)
+		rotation stats.FactorRotationMethod
 	}
 	cases := []pcase{
 		{

@@ -123,7 +123,6 @@ func setulbDriver(n, m int, x, l, u []float64, nbd []int,
 			dcopy(n, x, 1, z, 1)
 			wrk = updatd
 		} else {
-			info = 0
 			_, info = cauchy(n, x, l, u, nbd, g,
 				indx2, iwhere, tArr, d, z, m, wy, ws, sy, wt,
 				theta, col, head,

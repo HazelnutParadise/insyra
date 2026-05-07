@@ -69,10 +69,8 @@ func TestXIRR_AnnualEquivalence(t *testing.T) {
 	// Two cashflows exactly 365 days apart should give the same XIRR
 	// as the equivalent IRR with 1 period.
 	values := []decimal.Decimal{mustDec("-100"), mustDec("110")}
-	dates := []time.Time{date(2024, 1, 1), date(2025, 1, 1)} // exactly 366 days
-	// Wait: 2024 is a leap year, so 1/1/2024 to 1/1/2025 = 366 days.
-	// Use 2023→2024 instead for 365 days.
-	dates = []time.Time{date(2023, 1, 1), date(2024, 1, 1)}
+	// 2023→2024 = 365 days (2023 is not a leap year).
+	dates := []time.Time{date(2023, 1, 1), date(2024, 1, 1)}
 	xirr, err := XIRR(values, dates, Zero, Options{Scale: 10})
 	if err != nil {
 		t.Fatal(err)

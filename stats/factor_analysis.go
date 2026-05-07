@@ -1317,7 +1317,7 @@ func computeBartlettFromCorrelation(corr *mat.Dense, n int) (chiSquare float64, 
 	df = p * (p - 1) / 2
 
 	if n <= 1 {
-		return 0, 0, df, fmt.Errorf("Bartlett's test requires sample size > 1, got %d", n)
+		return 0, 0, df, fmt.Errorf("sample size must be > 1 for Bartlett's test, got %d", n)
 	}
 
 	detR := mat.Det(corr)

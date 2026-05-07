@@ -103,7 +103,7 @@ func tbillDSM(settlement, maturity time.Time) (int, error) {
 		return 0, errors.New("maturity must be after settlement")
 	}
 	if dsm > 365 {
-		return 0, errors.New("T-bill: settlement to maturity must not exceed 365 days")
+		return 0, errors.New("settlement to maturity must not exceed 365 days for a T-bill")
 	}
 	return dsm, nil
 }

@@ -185,12 +185,12 @@ func dlarre(
 		if in == 1 {
 			// 1x1 block.
 			take := false
-			switch {
-			case irange == allRng:
+			switch irange {
+			case allRng:
 				take = true
-			case irange == valRng:
+			case valRng:
 				take = d[ibegin-1] > vlOut && d[ibegin-1] <= vuOut
-			case irange == indRng:
+			case indRng:
 				take = iblock[wbegin-1] == jblk
 			}
 			if take {
@@ -222,7 +222,7 @@ func dlarre(
 		spdiam = gu - gl
 
 		var mb, indl, indu, wend int
-		if !(irange == allRng && !forceB) {
+		if irange != allRng || forceB {
 			// Count eigenvalues in this block.
 			mb = 0
 			for i := wbegin; i <= mm; i++ {

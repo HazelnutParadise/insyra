@@ -89,7 +89,6 @@ func dstebz(
 	nb := 0
 
 	if n == 1 {
-		nsplit = 1
 		isplit[0] = 1
 		if irange == 2 && (vl >= d[0] || vu < d[0]) {
 			return 0, 1, 0
@@ -195,11 +194,6 @@ func dstebz(
 			if v := math.Abs(d[j-1]) + math.Abs(e[j-2]) + math.Abs(e[j-1]); v > tnorm {
 				tnorm = v
 			}
-		}
-		if abstol <= 0 {
-			atoli = eps * tnorm
-		} else {
-			atoli = abstol
 		}
 		if irange == 2 {
 			wl = vl

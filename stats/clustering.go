@@ -189,20 +189,6 @@ func Silhouette(dataTable insyra.IDataTable, labels insyra.IDataList) (*Silhouet
 	}, nil
 }
 
-func defaultInt(v, def int) int {
-	if v <= 0 {
-		return def
-	}
-	return v
-}
-
-func defaultSeed(seed *int64) int64 {
-	if seed == nil {
-		return 1
-	}
-	return *seed
-}
-
 // numericMatrixFromTable converts a DataTable to a row-major float64 matrix
 // plus row labels, with NaN / Inf / non-numeric rejection.
 //

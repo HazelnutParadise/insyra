@@ -172,7 +172,7 @@ restart:
 		}
 
 		// Both shifts had too much growth — record the better one.
-		if !(sawnan1 && sawnan2) {
+		if !sawnan1 || !sawnan2 {
 			if !sawnan1 {
 				indx = 1
 				if max1 <= smlgrowth {

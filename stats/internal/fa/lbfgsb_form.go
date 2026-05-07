@@ -208,7 +208,7 @@ func formk(n, nsub int, ind []int, nenter, ileave int, indx2 []int,
 // and Cholesky-factorizes it. info=-3 on failure.
 func formt(m int, wt, sy, ss []float64, col int, theta float64) (info int) {
 	for j := 1; j <= col; j++ {
-		wt[(j-1)*m+(1-1)] = theta * ss[(j-1)*m+(1-1)]
+		wt[(j-1)*m] = theta * ss[(j-1)*m]
 	}
 	for i := 2; i <= col; i++ {
 		for j := i; j <= col; j++ {

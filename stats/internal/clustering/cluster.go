@@ -1341,44 +1341,10 @@ func tieBreakPair(a1, b1, a2, b2 *clusterNode) bool {
 	return lb1.minLeaf < lb2.minLeaf
 }
 
-func nearestCenter(row []float64, centers [][]float64) int {
-	bestIdx := 0
-	bestDist := squaredEuclidean(row, centers[0])
-	for i := 1; i < len(centers); i++ {
-		d := squaredEuclidean(row, centers[i])
-		if d < bestDist || (almostEqual(d, bestDist) && i < bestIdx) {
-			bestDist = d
-			bestIdx = i
-		}
-	}
-	return bestIdx
-}
-
-func farthestPoint(data [][]float64, assignments []int, centers [][]float64) int {
-	bestIdx := 0
-	bestDist := -1.0
-	for i, row := range data {
-		d := squaredEuclidean(row, centers[assignments[i]])
-		if d > bestDist {
-			bestDist = d
-			bestIdx = i
-		}
-	}
-	return bestIdx
-}
-
 func addOne(xs []int) []int {
 	out := make([]int, len(xs))
 	for i, x := range xs {
 		out[i] = x + 1
-	}
-	return out
-}
-
-func cloneMatrix(in [][]float64) [][]float64 {
-	out := make([][]float64, len(in))
-	for i := range in {
-		out[i] = append([]float64(nil), in[i]...)
 	}
 	return out
 }
@@ -1427,13 +1393,6 @@ func isSupportedMethod(method string) bool {
 	default:
 		return false
 	}
-}
-
-func pairKey(a, b int) [2]int {
-	if a < b {
-		return [2]int{a, b}
-	}
-	return [2]int{b, a}
 }
 
 func unionMembers(parent []int, members []int) {
@@ -1512,31 +1471,6 @@ func min(a, b int) int {
 
 func almostEqual(a, b float64) bool {
 	return math.Abs(a-b) <= 1e-12
-}
-
-type lcg struct {
-	state uint64
-}
-
-func newLCG(seed uint64) *lcg {
-	return &lcg{state: seed % 2147483647}
-}
-
-func (r *lcg) next() uint64 {
-	r.state = (1103515245*r.state + 12345) % 2147483647
-	return r.state
-}
-
-func (r *lcg) perm(n int) []int {
-	out := make([]int, n)
-	for i := range n {
-		out[i] = i
-	}
-	for i := n - 1; i > 0; i-- {
-		j := int(r.next() % uint64(i+1))
-		out[i], out[j] = out[j], out[i]
-	}
-	return out
 }
 
 type rRNG struct {
