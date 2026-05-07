@@ -63,13 +63,13 @@ func dsyevr(
 	lower := uplo == 'L' || uplo == 'l'
 	upper := uplo == 'U' || uplo == 'u'
 
-	if !(wantz || jobz == 'N' || jobz == 'n') {
+	if !wantz && jobz != 'N' && jobz != 'n' {
 		return 0, -1
 	}
-	if !(alleig || valeig || indeig) {
+	if !alleig && !valeig && !indeig {
 		return 0, -2
 	}
-	if !(lower || upper) {
+	if !lower && !upper {
 		return 0, -3
 	}
 	if n < 0 {
