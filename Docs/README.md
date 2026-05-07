@@ -86,9 +86,9 @@ dt.Show()
 
 #### Financial Calculations
 
-| Document              | Description                                                                      |
-| --------------------- | -------------------------------------------------------------------------------- |
-| [finance](finance.md) | High-precision TVM (PMT/PV/FV/NPER/RATE), NPV/IRR, rate conversion, amortization |
+| Document              | Description                                                                                       |
+| --------------------- | ------------------------------------------------------------------------------------------------- |
+| [finance](finance.md) | High-precision TVM, NPV/IRR/MIRR/XNPV/XIRR, depreciation, bonds, T-bills, amortization schedules  |
 
 #### Integration & Utilities
 

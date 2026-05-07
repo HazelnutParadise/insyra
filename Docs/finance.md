@@ -20,8 +20,12 @@ The `finance` package provides high-precision financial calculations for banking
 
 - **Time Value of Money**: `PMT`, `PV`, `FV`, `NPER`, `RATE` — solve any of the five Excel TVM variables given the others
 - **Per-Period Split**: `IPMT`, `PPMT`, `CumIPMT`, `CumPPMT` — separate interest from principal in any period or range
-- **Discounted Cashflows**: `NPV`, `NPVExcel`, `IRR` — net present value and internal rate of return
+- **Discounted Cashflows**: `NPV`, `NPVExcel`, `IRR`, `MIRR` — net present value, internal rate of return, modified IRR
+- **Date-Indexed Cashflows**: `XNPV`, `XIRR` — same as NPV/IRR but cashflows can fall on arbitrary dates
 - **Rate Conversion**: `EffectiveRate`, `NominalRate`, `ContinuousFromAnnual`, `AnnualFromContinuous`
+- **Depreciation**: `SLN`, `DDB`, `SYD`, `VDB` — straight-line, declining-balance, sum-of-years digits, variable declining-balance
+- **Bonds**: `Price`, `Yield`, `Duration`, `MDuration`, `AccrInt` with five day-count basis options
+- **Treasury Bills**: `TBillEq`, `TBillPrice`, `TBillYield`
 - **Amortization**: `AmortizationSchedule` (typed slice) and `ScheduleTable` (returns `insyra.IDataTable` for printing/export)
 
 All functions perform their internal arithmetic on `decimal.Decimal` values, never on `float64`, so results are exact up to the chosen output precision. The output `Scale` (digits after the decimal point) and rounding `Mode` are configurable per call via `Options`.
@@ -251,6 +255,51 @@ Internal rate of return, i.e. the `r` that drives `NPV(r, cashflows) → 0`. Sol
 
 `cashflows` must contain at least two entries with at least one sign change. Returns an error if Newton fails to converge within 100 iterations or if iterates fall below `r = -1`. When that happens, retry with a guess closer to the expected answer.
 
+### MIRR
+
+```go
+func MIRR(cashflows []decimal.Decimal, financeRate, reinvestRate decimal.Decimal,
+    opts ...Options) (decimal.Decimal, error)
+```
+
+Modified internal rate of return. Unlike `IRR`, it lets you discount negative (financing) cashflows and compound positive (reinvestment) cashflows at different rates:
+
+```text
+MIRR = (FV(positive_cf @ reinvestRate) / -PV(negative_cf @ financeRate))^(1/n) - 1
+```
+
+where n = `len(cashflows) - 1`. Excel equivalent: `MIRR(values, finance_rate, reinvest_rate)`.
+
+Returns an error if the cashflow stream contains no negatives (no financing to recover) or no positives (no nth-root to take).
+
+---
+
+## Date-Indexed Cashflows
+
+`XNPV` and `XIRR` discount each cashflow by its actual elapsed time from a reference date, using a fixed 365-day year (matching Excel exactly).
+
+### XNPV
+
+```go
+func XNPV(rate decimal.Decimal, values []decimal.Decimal, dates []time.Time,
+    opts ...Options) (decimal.Decimal, error)
+```
+
+```text
+XNPV = Σ values[i] / (1 + rate)^((dates[i] - dates[0]) / 365)
+```
+
+`dates[0]` is the reference (t=0). Lengths of `values` and `dates` must match and there must be at least 2 entries. Excel equivalent: `XNPV(rate, values, dates)`.
+
+### XIRR
+
+```go
+func XIRR(values []decimal.Decimal, dates []time.Time, guess decimal.Decimal,
+    opts ...Options) (decimal.Decimal, error)
+```
+
+The rate that drives `XNPV → 0`. Newton's method, default seed 0.1 (pass `finance.Zero` to get the default). Excel equivalent: `XIRR(values, dates, [guess])`.
+
 ---
 
 ## Rate Conversion
@@ -325,6 +374,147 @@ Same data as `AmortizationSchedule`, packaged into an `insyra.IDataTable` with f
 table, _ := finance.ScheduleTable(rate, 12, pv, finance.Zero, finance.PaymentEnd)
 table.Show() // pretty-print to terminal
 ```
+
+---
+
+## Depreciation
+
+All depreciation functions accept the asset's `cost` and `salvage` value as `decimal.Decimal` and report depreciation in dollars at the same precision.
+
+### SLN
+
+```go
+func SLN(cost, salvage decimal.Decimal, life int, opts ...Options) (decimal.Decimal, error)
+```
+
+Straight-line: `(cost - salvage) / life`. Excel equivalent: `SLN(cost, salvage, life)`.
+
+### DDB
+
+```go
+func DDB(cost, salvage decimal.Decimal, life, per int, factor decimal.Decimal,
+    opts ...Options) (decimal.Decimal, error)
+```
+
+Declining-balance depreciation in the `per`-th period. `factor=2` is conventional double-declining; pass `finance.MustNew("1.5")` for 150% etc. Each period the asset depreciates by `bookValue · factor/life`, capped so the asset never falls below `salvage`. Excel equivalent: `DDB(cost, salvage, life, period, factor)`.
+
+### SYD
+
+```go
+func SYD(cost, salvage decimal.Decimal, life, per int, opts ...Options) (decimal.Decimal, error)
+```
+
+Sum-of-years digits in the `per`-th period: `(cost - salvage) · (life - per + 1) / (life·(life+1)/2)`. Excel equivalent: `SYD(cost, salvage, life, per)`.
+
+### VDB
+
+```go
+func VDB(cost, salvage decimal.Decimal, life int,
+    startPeriod, endPeriod, factor decimal.Decimal, noSwitch bool,
+    opts ...Options) (decimal.Decimal, error)
+```
+
+Cumulative depreciation between `startPeriod` and `endPeriod` (real numbers in `[0, life]`; partial periods are pro-rated linearly). When `noSwitch=false` (Excel default), the method automatically switches from declining-balance to straight-line as soon as straight-line would yield more — which is what most US tax schedules require. Excel equivalent: `VDB(cost, salvage, life, start_period, end_period, factor, no_switch)`.
+
+---
+
+## Day-Count Basis
+
+Bond and ACCRINT functions take a `DayCountBasis` that mirrors Excel's `basis` parameter:
+
+```go
+type DayCountBasis uint8
+
+const (
+    Basis30_360US     DayCountBasis = 0 // US (NASD) 30/360
+    BasisActualActual DayCountBasis = 1 // ISDA actual/actual
+    BasisActual360    DayCountBasis = 2 // actual/360 (money-market)
+    BasisActual365    DayCountBasis = 3 // actual/365 (fixed)
+    Basis30_360EU     DayCountBasis = 4 // European 30/360
+)
+```
+
+The `Basis30_360US` rules used by bond pricing apply the four canonical substitutions in order: last-of-Feb→30 (when both endpoints are Feb-end), last-of-Feb→30 for D1 alone, 31→30 for D1, then 31→30 for D2 if D1 already became 30. `BasisActualActual` follows ISDA's variant: each year-segment of the period contributes `daysInSegment / 365_or_366`.
+
+---
+
+## Bonds
+
+All bond pricing functions assume coupon dates land on the same day-of-month as the maturity date, stepping backward by `12/frequency` months. `frequency` must be 1, 2, or 4. Prices are quoted per $100 face value; pass `redemption` separately for non-par redemption values.
+
+### Price
+
+```go
+func Price(settlement, maturity time.Time, rate, yld, redemption decimal.Decimal,
+    freq int, basis DayCountBasis, opts ...Options) (decimal.Decimal, error)
+```
+
+Clean price per $100 face value. Compound discounting at `yld/freq` per period, with a fractional first-period exponent `DSC/E`. The single-coupon-remaining case automatically falls back to simple-interest discounting (matching Excel). Excel equivalent: `PRICE(settlement, maturity, rate, yld, redemption, frequency, basis)`.
+
+### Yield
+
+```go
+func Yield(settlement, maturity time.Time, rate, pr, redemption decimal.Decimal,
+    freq int, basis DayCountBasis, guess decimal.Decimal,
+    opts ...Options) (decimal.Decimal, error)
+```
+
+Inverse of `Price`: solve for the yield that reproduces `pr`. Newton's method with default seed 0.05 (pass `finance.Zero` for the default). Returns an error if the iteration fails to converge in 80 steps. Excel equivalent: `YIELD(settlement, maturity, rate, pr, redemption, frequency, basis)`.
+
+### Duration, MDuration
+
+```go
+func Duration(settlement, maturity time.Time, coupon, yld decimal.Decimal,
+    freq int, basis DayCountBasis, opts ...Options) (decimal.Decimal, error)
+
+func MDuration(settlement, maturity time.Time, coupon, yld decimal.Decimal,
+    freq int, basis DayCountBasis, opts ...Options) (decimal.Decimal, error)
+```
+
+Macaulay duration (years) and modified duration (`= Duration / (1 + yld/freq)`). Excel equivalents: `DURATION`, `MDURATION`.
+
+### AccrInt
+
+```go
+func AccrInt(issue, firstInterest, settlement time.Time, rate, par decimal.Decimal,
+    freq int, basis DayCountBasis, calcMethod bool,
+    opts ...Options) (decimal.Decimal, error)
+```
+
+Accrued interest = `par · rate · yearFraction(start, settlement, basis)`, where `start = issue` if `calcMethod=true` (Excel's default — accumulate from issue) or `start = firstInterest` otherwise. Excel equivalent: `ACCRINT(issue, first_interest, settlement, rate, par, frequency, basis, calc_method)`.
+
+---
+
+## Treasury Bills
+
+T-bill functions use ACT/360 conventions and require `0 < (maturity - settlement) ≤ 365` calendar days.
+
+### TBillEq
+
+```go
+func TBillEq(settlement, maturity time.Time, discount decimal.Decimal,
+    opts ...Options) (decimal.Decimal, error)
+```
+
+Bond-equivalent yield: `365 · discount / (360 - discount · DSM)`. Excel equivalent: `TBILLEQ(settlement, maturity, discount)`.
+
+### TBillPrice
+
+```go
+func TBillPrice(settlement, maturity time.Time, discount decimal.Decimal,
+    opts ...Options) (decimal.Decimal, error)
+```
+
+Price per $100 face value: `100 · (1 - discount · DSM / 360)`. Excel equivalent: `TBILLPRICE(settlement, maturity, discount)`.
+
+### TBillYield
+
+```go
+func TBillYield(settlement, maturity time.Time, pr decimal.Decimal,
+    opts ...Options) (decimal.Decimal, error)
+```
+
+Yield given a price: `((100 - pr) / pr) · (360 / DSM)`. Excel equivalent: `TBILLYIELD(settlement, maturity, pr)`.
 
 ---
 
@@ -443,6 +633,100 @@ table.Show()
 // …
 ```
 
+### MIRR with Different Finance / Reinvestment Rates
+
+```go
+cf := []decimal.Decimal{
+    finance.MustNew("-120000"),
+    finance.MustNew("39000"),
+    finance.MustNew("30000"),
+    finance.MustNew("21000"),
+    finance.MustNew("37000"),
+    finance.MustNew("46000"),
+}
+mirr, _ := finance.MIRR(cf, finance.MustNew("0.10"), finance.MustNew("0.12"))
+// mirr ≈ 0.12609413
+```
+
+### XNPV / XIRR for Irregular-Date Cashflows
+
+```go
+import "time"
+
+values := []decimal.Decimal{
+    finance.MustNew("-10000"),
+    finance.MustNew("2750"),
+    finance.MustNew("4250"),
+    finance.MustNew("3250"),
+    finance.MustNew("2750"),
+}
+dates := []time.Time{
+    time.Date(2008, 1, 1, 0, 0, 0, 0, time.UTC),
+    time.Date(2008, 3, 1, 0, 0, 0, 0, time.UTC),
+    time.Date(2008, 10, 30, 0, 0, 0, 0, time.UTC),
+    time.Date(2009, 2, 15, 0, 0, 0, 0, time.UTC),
+    time.Date(2009, 4, 1, 0, 0, 0, 0, time.UTC),
+}
+xnpv, _ := finance.XNPV(finance.MustNew("0.09"), values, dates)
+xirr, _ := finance.XIRR(values, dates, finance.Zero)
+```
+
+### Depreciation Schedules
+
+```go
+cost    := finance.MustNew("30000")
+salvage := finance.MustNew("7500")
+life    := 10
+
+// Straight-line: same per period.
+sln, _ := finance.SLN(cost, salvage, life)
+
+// Sum-of-years digits: front-loaded, sums to (cost - salvage).
+for per := 1; per <= life; per++ {
+    d, _ := finance.SYD(cost, salvage, life, per)
+    fmt.Printf("Year %d: %s\n", per, d.String())
+}
+
+// Variable declining-balance for the first half-year.
+half, _ := finance.VDB(cost, salvage, life,
+    finance.MustNew("0"), finance.MustNew("0.5"),
+    finance.MustNew("2"), false)
+```
+
+### Bond Pricing and Yield
+
+```go
+settlement := time.Date(2008, 2, 15, 0, 0, 0, 0, time.UTC)
+maturity   := time.Date(2017, 11, 15, 0, 0, 0, 0, time.UTC)
+
+price, _ := finance.Price(settlement, maturity,
+    finance.MustNew("0.0575"), finance.MustNew("0.065"),
+    finance.MustNew("100"),    // redemption per 100
+    2,                         // semi-annual coupons
+    finance.Basis30_360US)
+// price ≈ 94.6337
+
+yld, _ := finance.Yield(settlement, maturity,
+    finance.MustNew("0.0575"), price,
+    finance.MustNew("100"), 2,
+    finance.Basis30_360US, finance.Zero)
+// yld round-trips back to 0.065
+```
+
+### T-Bill Quoting
+
+```go
+settlement := time.Date(2008, 3, 31, 0, 0, 0, 0, time.UTC)
+maturity   := time.Date(2008, 6, 1, 0, 0, 0, 0, time.UTC)
+
+// Discount-quoted T-bill at 9% — what's the price per 100?
+pr,  _ := finance.TBillPrice(settlement, maturity, finance.MustNew("0.09"))
+// 98.45
+
+// And the bond-equivalent yield?
+beq, _ := finance.TBillEq(settlement, maturity, finance.MustNew("0.09"))
+```
+
 ---
 
 ## Error Handling
@@ -454,8 +738,15 @@ All exported functions return `(value, error)` and surface validation problems t
 - **`CumIPMT/CumPPMT`** — `startPeriod < 1`, `endPeriod > nper`, or `startPeriod > endPeriod`
 - **`NPV/NPVExcel`** — empty `cashflows` or `rate == -1`
 - **`IRR`** — fewer than two cashflows, derivative vanishes, iterate falls below `-1`, or no convergence in 100 iterations
+- **`MIRR`** — fewer than two cashflows, no negatives (no PV) or no positives (no FV)
 - **`NPER`** — degenerate `rate = pmt = 0`, or argument to `Log` is non-positive
-- **`RATE/IRR`** — failed convergence (in 60 / 100 iterations respectively)
+- **`RATE/IRR/XIRR/YIELD`** — failed convergence in their respective iteration caps
+- **`XNPV/XIRR`** — length mismatch between `values` and `dates`, fewer than 2 entries
+- **`SLN/SYD/DDB`** — `life ≤ 0`, `per` outside `[1, life]`, or `factor = 0`
+- **`VDB`** — `startPeriod / endPeriod` outside `[0, life]`, or `startPeriod > endPeriod`
+- **`Price/Yield/Duration/MDuration`** — `maturity ≤ settlement`, frequency not in {1, 2, 4}, or basis not in `[0, 4]`
+- **`AccrInt`** — `settlement ≤ issue`, frequency not in {1, 2, 4}, or basis not in `[0, 4]`
+- **`TBill*`** — `maturity ≤ settlement` or settlement-to-maturity exceeds 365 days
 - **`EffectiveRate/NominalRate`** — `periodsPerYear < 1`
 - **`Pow`-based paths** (`NominalRate`, `Effective`, etc.) — propagate `decimal.Pow` errors when the base would be invalid
 
