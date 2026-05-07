@@ -55,10 +55,10 @@ func dstemr(
 	valeig := rang == 'V' || rang == 'v'
 	indeig := rang == 'I' || rang == 'i'
 
-	if !(wantz || jobz == 'N' || jobz == 'n') {
+	if !wantz && jobz != 'N' && jobz != 'n' {
 		return 0, -1
 	}
-	if !(alleig || valeig || indeig) {
+	if !alleig && !valeig && !indeig {
 		return 0, -2
 	}
 	if n < 0 {

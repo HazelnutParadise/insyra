@@ -105,7 +105,7 @@ func dlarrv(
 
 	rqtol := 2 * eps
 	tryrqc := true
-	if !(dol == 1 && dou == m) {
+	if dol != 1 || dou != m {
 		// Selected eigenpairs path: bisection must reach full accuracy.
 		rtol1 = 4 * eps
 		rtol2 = 4 * eps

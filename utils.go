@@ -48,7 +48,7 @@ func ProcessData(input any) ([]any, int) {
 	value := reflect.ValueOf(input)
 
 	// 处理指针类型，获取指针指向的元素
-	if value.Kind() == reflect.Ptr {
+	if value.Kind() == reflect.Pointer {
 		value = value.Elem()
 	}
 
