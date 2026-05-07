@@ -30,14 +30,15 @@ lingo.txt
 /docs/index.html
 
 *.exe
-.claude
-.codex
-.github/prompts/*
-.github/skills/*
 _lbfgsb_ref/
 
 # auto-rebuilt cache for cross-language (R/Python) baseline outputs
 /stats/testdata/baseline_cache/
 pca.prof
 *.prof
+
+# Claude Code runtime/session-local files (keep curated commands/skills/settings)
+.claude/scheduled_tasks.lock
+.claude/worktrees/
+.claude/settings.local.json
 
