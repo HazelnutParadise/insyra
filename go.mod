@@ -24,7 +24,7 @@ require (
 	github.com/ajstarks/svgo v0.0.0-20211024235047-1546f124cd8b // indirect
 	github.com/andybalholm/brotli v1.1.0 // indirect
 	github.com/apache/arrow/go/v15 v15.0.2 // indirect
-	github.com/apache/thrift v0.20.0 // indirect
+	github.com/apache/thrift v0.23.0 // indirect
 	github.com/campoy/embedmd v1.0.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/chromedp/cdproto v0.0.0-20241208230723-d1c7de7e5dd2 // indirect
