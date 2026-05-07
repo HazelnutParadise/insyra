@@ -84,6 +84,12 @@ dt.Show()
 | ------------- | ---------------------------------------- |
 | [mkt](mkt.md) | RFM analysis and Customer Activity Index |
 
+#### Financial Calculations
+
+| Document              | Description                                                                      |
+| --------------------- | -------------------------------------------------------------------------------- |
+| [finance](finance.md) | High-precision TVM (PMT/PV/FV/NPER/RATE), NPV/IRR, rate conversion, amortization |
+
 #### Integration & Utilities
 
 | Document                | Description                                                 |
@@ -126,6 +132,7 @@ go get github.com/HazelnutParadise/insyra/plot
 | Create interactive web charts             | [plot](plot.md)                 |
 | Solve optimization problems               | [lp](lp.md) + [lpgen](lpgen.md) |
 | Analyze customer behavior                 | [mkt](mkt.md)                   |
+| Run high-precision financial math         | [finance](finance.md)           |
 | Use Python libraries from Go              | [py](py.md)                     |
 | Run functions in parallel                 | [parallel](parallel.md)         |
 
