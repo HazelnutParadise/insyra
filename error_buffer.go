@@ -59,23 +59,8 @@ type errorStruct struct {
 
 var (
 	errRing    = core.NewRing[errorStruct](1536)
-	errorChan  = make(chan errorStruct, 1024)
 	errorMutex = sync.Mutex{}
 )
-
-func init() {
-	// Initialize the error channel
-	go func() {
-		for err := range errorChan {
-			if errHandlingFunc := Config.GetDefaultErrHandlingFunc(); errHandlingFunc != nil {
-				go errHandlingFunc(err.errType, err.packageName, err.fnName, err.message)
-			}
-			errorMutex.Lock()
-			errRing.Push(err)
-			errorMutex.Unlock()
-		}
-	}()
-}
 
 func pushError(errType LogLevel, packageName, fnName, errMes string) {
 	err := errorStruct{
@@ -85,7 +70,12 @@ func pushError(errType LogLevel, packageName, fnName, errMes string) {
 		message:     errMes,
 		timestamp:   time.Now(),
 	}
-	errorChan <- err
+	if errHandlingFunc := Config.GetDefaultErrHandlingFunc(); errHandlingFunc != nil {
+		go errHandlingFunc(err.errType, err.packageName, err.fnName, err.message)
+	}
+	errorMutex.Lock()
+	errRing.Push(err)
+	errorMutex.Unlock()
 }
 
 // PopError retrieves and removes the first error from the buffer.
