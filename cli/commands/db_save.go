@@ -11,7 +11,7 @@ import (
 
 // runSaveSQL implements the `save <var> sql ...` subcommand.
 //
-//	save <var> sql <conn> <table> [if-exists fail|replace|append] [batch N] [schema <s>] [rownames]
+//	save <var> sql <conn> <table> [if-exists fail|replace|append] [batch N] [schema <s>] [rownames [true|false]]
 //
 // `var` is the variable name (passed in as varName for log messages); table is
 // the already-resolved DataTable. args holds the remainder after `sql`.
@@ -82,7 +82,17 @@ func parseSaveSQLOptions(args []string) (insyra.ToSQLOptions, error) {
 			opts.Schema = v
 			i += 2
 		case "rownames":
-			// flag, no value
+			// Backward-compat: bare `rownames` (no value, or followed by
+			// another option key) means "true". An optional explicit value
+			// `rownames true|false|yes|no|on|off|1|0` is also accepted so
+			// the flag is consistent with `save <var> <file> rownames ...`.
+			if i+1 < len(args) {
+				if b, err := parseFlexBool(args[i+1]); err == nil {
+					opts.RowNames = b
+					i += 2
+					continue
+				}
+			}
 			opts.RowNames = true
 			i++
 		default:

@@ -185,6 +185,57 @@ func TestSaveSQL_AppendBatchSize(t *testing.T) {
 	}
 }
 
+func TestSaveSQL_RownamesAcceptsBareAndValueForms(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+		want bool
+	}{
+		{"bare flag (last arg)", []string{"$dt", "sql", "mem", "t1", "rownames"}, true},
+		{"explicit true", []string{"$dt", "sql", "mem", "t2", "rownames", "true"}, true},
+		{"explicit false", []string{"$dt", "sql", "mem", "t3", "rownames", "false"}, false},
+		{"explicit yes", []string{"$dt", "sql", "mem", "t4", "rownames", "yes"}, true},
+		{"bare flag before another option", []string{"$dt", "sql", "mem", "t5", "rownames", "batch", "100"}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := newTestExecContext(t)
+			mustConnectSQLite(t, ctx, "mem", "sqlite::memory:")
+			ctx.Vars["$dt"] = insyra.NewDataTable(insyra.NewDataList(1, 2).SetName("v"))
+
+			if err := runSaveCommand(ctx, tc.args); err != nil {
+				t.Fatalf("save sql failed: %v", err)
+			}
+			conn, _ := getDBConn(ctx, "mem")
+			var cols []string
+			rows, err := conn.DB.Raw("PRAGMA table_info(" + tc.args[3] + ")").Rows()
+			if err != nil {
+				t.Fatalf("pragma failed: %v", err)
+			}
+			defer func() { _ = rows.Close() }()
+			for rows.Next() {
+				var cid int
+				var name, typ string
+				var notNull, pk int
+				var dflt any
+				if err := rows.Scan(&cid, &name, &typ, &notNull, &dflt, &pk); err != nil {
+					t.Fatalf("scan: %v", err)
+				}
+				cols = append(cols, name)
+			}
+			hasRowName := false
+			for _, c := range cols {
+				if strings.EqualFold(c, "row_name") || strings.EqualFold(c, "rowname") {
+					hasRowName = true
+					break
+				}
+			}
+			if hasRowName != tc.want {
+				t.Fatalf("rownames=%v expected hasRowNameColumn=%v, got %v (cols=%v)", tc.args, tc.want, hasRowName, cols)
+			}
+		})
+	}
+}
+
 func TestDBTables_ListsSQLiteTables(t *testing.T) {
 	ctx := newTestExecContext(t)
 	mustConnectSQLite(t, ctx, "mem", "sqlite::memory:")
