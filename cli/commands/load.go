@@ -13,8 +13,8 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "load",
-		Usage:       "load <file>|parquet <file> [cols <c1,c2,...>] [rowgroups <i1,i2,...>] [sheet <name>] [as <var>]",
-		Description: "Load data file into DataTable variable",
+		Usage:       "load <file>|parquet <file>|sql <conn> <table>|sql <conn> query \"<sql>\" [...] [as <var>]",
+		Description: "Load data into a DataTable variable from a file, parquet, or SQL connection",
 		Run:         runLoadCommand,
 	})
 }
@@ -22,13 +22,14 @@ func init() {
 func runLoadCommand(ctx *ExecContext, args []string) error {
 	coreArgs, alias := parseAlias(args)
 	if len(coreArgs) == 0 {
-		return fmt.Errorf("usage: load <file>|parquet <file> [cols <c1,c2,...>] [rowgroups <i1,i2,...>] [sheet <name>] [as <var>]")
+		return fmt.Errorf("usage: load <file>|parquet <file>|sql <conn> <table>|sql <conn> query \"<sql>\" [...] [as <var>]")
 	}
 
 	var table *insyra.DataTable
 	var err error
 
-	if coreArgs[0] == "parquet" {
+	switch coreArgs[0] {
+	case "parquet":
 		if len(coreArgs) < 2 {
 			return fmt.Errorf("usage: load parquet <file> [cols <c1,c2,...>] [rowgroups <i1,i2,...>] [as <var>]")
 		}
@@ -40,7 +41,12 @@ func runLoadCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
-	} else {
+	case "sql":
+		table, err = runLoadSQL(ctx, coreArgs[1:])
+		if err != nil {
+			return err
+		}
+	default:
 		path := coreArgs[0]
 		switch detectFileKind(path) {
 		case "csv":

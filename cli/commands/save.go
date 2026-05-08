@@ -9,20 +9,25 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "save",
-		Usage:       "save <var> <file>",
-		Description: "Save DataTable variable to file",
+		Usage:       "save <var> <file> | save <var> sql <conn> <table> [if-exists fail|replace|append] [batch N] [schema <s>] [rownames]",
+		Description: "Save a DataTable variable to a file or SQL connection",
 		Run:         runSaveCommand,
 	})
 }
 
 func runSaveCommand(ctx *ExecContext, args []string) error {
 	if len(args) < 2 {
-		return fmt.Errorf("usage: save <var> <file>")
+		return fmt.Errorf("usage: save <var> <file> | save <var> sql <conn> <table> [...]")
 	}
 	table, err := getDataTableVar(ctx, args[0])
 	if err != nil {
 		return err
 	}
+
+	if args[1] == "sql" {
+		return runSaveSQL(ctx, args[0], table, args[2:])
+	}
+
 	path := args[1]
 	switch detectFileKind(path) {
 	case "csv":

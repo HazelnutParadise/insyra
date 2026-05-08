@@ -13,6 +13,7 @@ import (
 
 type ExecContext struct {
 	Vars     map[string]any
+	DBConns  map[string]*DBConn
 	EnvName  string
 	EnvPath  string
 	Output   io.Writer

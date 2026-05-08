@@ -56,6 +56,7 @@ func Start(ctx *commands.ExecContext) error {
 	defer func() {
 		_ = env.SaveState(ctx.EnvName, ctx.Vars)
 	}()
+	defer commands.CloseAllDBConns(ctx)
 
 	for {
 		line, err := instance.ReadLine()
