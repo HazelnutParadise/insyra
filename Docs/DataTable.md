@@ -332,39 +332,102 @@ if err != nil {
 
 ```go
 func ReadSQL(db *gorm.DB, tableName string, options ...ReadSQLOptions) (*DataTable, error)
+func ReadSQLContext(ctx context.Context, db *gorm.DB, tableName string, options ...ReadSQLOptions) (*DataTable, error)
+func ReadSQLStream(ctx context.Context, db *gorm.DB, tableName string, options ...ReadSQLOptions) (<-chan ReadSQLChunk, error)
 ```
 
 **Description:** Loads data from a database table or custom SQL query into a DataTable.
 
+- `ReadSQL` is the simple form. It is equivalent to `ReadSQLContext(context.Background(), ...)`.
+- `ReadSQLContext` is the context-aware variant. The query and row scanning run under `ctx`, so callers can cancel long-running reads.
+- `ReadSQLStream` reads a (potentially huge) result set in chunks, emitting each chunk as a `*DataTable` on the returned channel. The channel closes when the stream completes, when `ctx` is cancelled, or after a fatal error. Use this when the result set does not fit in memory.
+
 **Parameters:**
 
+- `ctx`: Context that controls cancellation of the database calls (Context variants only)
 - `db`: GORM database connection
-- `tableName`: Name of the database table to read from
-- `options`: Optional configuration for reading data (ReadSQLOptions struct)
+- `tableName`: Name of the database table to read from. Ignored when `ReadSQLOptions.Query` is set.
+- `options`: Optional configuration (`ReadSQLOptions` struct, see below)
 
 **Returns:**
 
-- `*DataTable`: DataTable loaded with data
+- `*DataTable`: DataTable loaded with data (single-result functions)
+- `<-chan ReadSQLChunk`: Channel of streamed chunks (`ReadSQLStream`)
 - `error`: Error information, returns nil if successful
+
+**ReadSQLChunk:**
+
+```go
+type ReadSQLChunk struct {
+    Table *DataTable // populated on success
+    Err   error      // populated on failure or cancellation
+}
+```
+
+Exactly one of `Table` or `Err` is set per chunk.
 
 **ReadSQLOptions:**
 
-- `RowNameColumn`: Column name to use as row names (default: "row_name")
-- `Query`: Custom SQL query string (if provided, other options are ignored)
-- `Limit`: Maximum number of rows to read (0 means no limit)
-- `Offset`: Starting row offset
-- `WhereClause`: WHERE clause for filtering
-- `OrderBy`: ORDER BY clause for sorting
+| Field | Type | Description |
+| --- | --- | --- |
+| `RowNameColumn` | `string` | Column whose values become DataTable row names. Defaults to `"row_name"` when neither this nor `IndexCol` is set. |
+| `IndexCol` | `string` | Alias for `RowNameColumn`; mirrors pandas' `read_sql(index_col=...)`. When non-empty, takes precedence. |
+| `Query` | `string` | Custom SQL query. When set, all other query-shape options are ignored. |
+| `Params` | `[]any` | Positional bind parameters for `Query`. Equivalent to pandas' `read_sql(params=...)`. |
+| `Columns` | `[]string` | Restricts the auto-built `SELECT` to these columns. Ignored when `Query` is set. |
+| `Schema` | `string` | Optional schema (PostgreSQL) or database (MySQL) prefix. SQLite ignores this. |
+| `Limit` | `int` | Maximum number of rows to read (0 means no limit). |
+| `Offset` | `int` | Starting row offset. |
+| `WhereClause` | `string` | `WHERE` clause body (without the `WHERE` keyword). |
+| `OrderBy` | `string` | `ORDER BY` clause body (without the `ORDER BY` keyword). |
+| `ParseDates` | `[]string` | Columns whose `string`/`[]byte` values should be parsed as `time.Time`. Several common ISO-style layouts are tried in order (RFC3339, `2006-01-02 15:04:05`, etc.). |
+| `DType` | `map[string]reflect.Type` | Forces the resulting Go type for the named columns. Recognized targets: `int*`/`uint*`/`float*`/`bool`/`string`/`time.Time`/`[]byte`. |
+| `ChunkSize` | `int` | Per-chunk row count for `ReadSQLStream`. Defaults to 1000. Ignored by `ReadSQL`/`ReadSQLContext`. |
 
-**Example:**
+**Type handling:** When the driver returns numeric or boolean columns as `[]byte` (common with the MySQL driver), `ReadSQL` consults `rows.ColumnTypes()` and converts to the appropriate Go primitive. Binary columns (`BLOB`/`BYTEA`) are kept as `[]byte`. `DType` overrides take precedence over the default mapping.
+
+**Examples:**
 
 ```go
-// Using table name with options
+// Simple read with options.
 db, _ := gorm.Open(mysql.Open("connection_string"), &gorm.Config{})
-dt, err := insyra.ReadSQL(db, "users", insyra.ReadSQLOptions{Limit: 100, OrderBy: "id DESC"})
+dt, err := insyra.ReadSQL(db, "users", insyra.ReadSQLOptions{
+    Limit:   100,
+    OrderBy: "id DESC",
+})
 
-// Using custom query
-dt, err := insyra.ReadSQL(db, "", insyra.ReadSQLOptions{Query: "SELECT * FROM users WHERE active = 1"})
+// Parameterized custom query.
+dt, err := insyra.ReadSQL(db, "", insyra.ReadSQLOptions{
+    Query:  "SELECT * FROM users WHERE active = ? AND age > ?",
+    Params: []any{true, 18},
+})
+
+// Cancelable read.
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
+dt, err := insyra.ReadSQLContext(ctx, db, "users")
+
+// Streaming a huge table in chunks of 5000 rows.
+ctx, cancel := context.WithCancel(context.Background())
+defer cancel()
+ch, err := insyra.ReadSQLStream(ctx, db, "events", insyra.ReadSQLOptions{ChunkSize: 5000})
+if err != nil {
+    log.Fatal(err)
+}
+for chunk := range ch {
+    if chunk.Err != nil {
+        log.Fatal(chunk.Err)
+    }
+    process(chunk.Table)
+}
+
+// Force types and parse a date column.
+dt, err := insyra.ReadSQL(db, "events", insyra.ReadSQLOptions{
+    ParseDates: []string{"created_at"},
+    DType: map[string]reflect.Type{
+        "score": reflect.TypeFor[float64](),
+    },
+})
 ```
 
 ### ReadExcelSheet
@@ -527,41 +590,73 @@ for k, col := range m {
 
 ```go
 func (dt *DataTable) ToSQL(db *gorm.DB, tableName string, options ...ToSQLOptions) error
+func (dt *DataTable) ToSQLContext(ctx context.Context, db *gorm.DB, tableName string, options ...ToSQLOptions) error
 ```
 
 **Description:** Writes the DataTable to a SQL database.
 
+- `ToSQL` is the simple form. It is equivalent to `ToSQLContext(context.Background(), ...)`.
+- `ToSQLContext` runs every database call under `ctx`, so callers can cancel long writes.
+
 **Behavior:**
 
-- All database operations performed by `ToSQL` (CREATE TABLE, ALTER TABLE, INSERT, etc.) are executed inside a single database transaction. If any step fails, the transaction is rolled back and no partial changes are committed. ✅
-- When `IfExists` is set to append mode, `ToSQL` will add missing columns to the existing table to accommodate new data.
-- You can provide `ColumnTypes` to override inferred column types.
+- All database operations (CREATE TABLE, ALTER TABLE, INSERT, etc.) are executed inside a single database transaction. If any step fails, the transaction is rolled back and no partial changes are committed.
+- Rows are inserted with **batched multi-value INSERTs**. The default batch size is 500 rows; tune via `ToSQLOptions.BatchSize`. Note that `BatchSize × column-count` must stay below the driver's bind-parameter limit (PostgreSQL/MySQL: 65535).
+- When `IfExists` is set to append mode, `ToSQL` fetches the existing table's columns once and adds any missing ones via `ALTER TABLE` before inserting (no per-row schema introspection).
+- Type inference samples the first non-nil value in each column. Recognized types include `time.Time` (→ `DATETIME`/`TIMESTAMP`), `[]byte` (→ `BLOB`/`BYTEA`), `sql.Null*` (unwraps the underlying value), and pointers (dereferenced). All-nil columns fall back to `TEXT`.
+- You can provide `ColumnTypes` to override the inferred SQL types.
 
 **Parameters:**
 
+- `ctx`: Context that controls cancellation of the database calls (`ToSQLContext` only)
 - `db`: GORM database connection
 - `tableName`: Target table name
-- `options`: Optional SQL options
-  - `IfExists` (type `SQLActionIfTableExists`): Controls behavior when the target table already exists:
-    - `SQLActionIfTableExistsFail` — return an error if the table exists (default)
-    - `SQLActionIfTableExistsReplace` — drop and recreate the table
-    - `SQLActionIfTableExistsAppend` — keep the table and append rows, adding missing columns if needed
-  - `RowNames` (bool): If true, include row names as a `row_name` column (type `TEXT` by default)
-  - `ColumnTypes` (map[string]string): Optional explicit SQL column types to use instead of type inference
+- `options`: Optional SQL options (`ToSQLOptions` struct, see below)
+
+**ToSQLOptions:**
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `IfExists` | `SQLActionIfTableExists` | Behavior when the target table already exists. See enum values below. Default: `SQLActionIfTableExistsFail`. |
+| `RowNames` | `bool` | If true, include row names as a `row_name` column (default type `TEXT`). |
+| `ColumnTypes` | `map[string]string` | Explicit SQL column types per column, used instead of type inference. |
+| `Schema` | `string` | Optional schema (PostgreSQL) or database (MySQL) prefix. SQLite ignores this. The caller is responsible for any required quoting. |
+| `BatchSize` | `int` | Rows per multi-value `INSERT`. Zero means use the package default (500). |
+
+**SQLActionIfTableExists values:**
+
+- `SQLActionIfTableExistsFail` — return an error if the table exists (default)
+- `SQLActionIfTableExistsReplace` — drop and recreate the table
+- `SQLActionIfTableExistsAppend` — keep the table and append rows, adding missing columns if needed
 
 **Returns:**
 
 - `error`: Error information, returns nil if successful; if any DDL/DML step fails, an error is returned and the entire operation is rolled back.
 
-**Example:**
+**Examples:**
 
 ```go
 db, _ := gorm.Open(mysql.Open("connection_string"))
-// Replace existing table if present
+
+// Replace existing table if present.
 err := dt.ToSQL(db, "users", ToSQLOptions{IfExists: SQLActionIfTableExistsReplace})
 if err != nil {
     log.Fatal(err)
 }
+
+// Append into an existing table; missing columns are added once.
+err = dt.ToSQL(db, "events", ToSQLOptions{
+    IfExists:  SQLActionIfTableExistsAppend,
+    BatchSize: 1000,
+})
+
+// Cancelable write with a deadline.
+ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+defer cancel()
+err = dt.ToSQLContext(ctx, db, "events_archive", ToSQLOptions{
+    IfExists: SQLActionIfTableExistsReplace,
+    Schema:   "analytics",
+})
 ```
 
 ## Data Operations
