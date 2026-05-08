@@ -10,7 +10,22 @@ import (
 )
 
 func init() {
-	_ = Register(&CommandHandler{Name: "plot", Usage: "plot <type> <var> [options...] [save <file>]", Description: "Create charts from variables", Run: runPlotCommand})
+	_ = Register(&CommandHandler{
+		Name:        "plot",
+		Usage:       "plot <type> <var> [options...] [save <file>]",
+		Description: "Create charts from variables",
+		Forms: []string{
+			"plot line <var> [save <file>]                line chart",
+			"plot bar <var> [save <file>]                 bar chart",
+			"plot scatter <var> [save <file>]             scatter chart",
+		},
+		Examples: []string{
+			"insyra plot line series",
+			"insyra plot bar counts save bar.html",
+			"insyra plot scatter xy save scatter.png",
+		},
+		Run: runPlotCommand,
+	})
 }
 
 func runPlotCommand(ctx *ExecContext, args []string) error {

@@ -12,7 +12,24 @@ func init() {
 		Name:        "save",
 		Usage:       "save <var> <file> [headers true|false] [rownames true|false] [bom true|false] | save <var> sql <conn> <table> [if-exists fail|replace|append] [batch N] [schema <s>] [rownames [true|false]]",
 		Description: "Save a DataTable variable to a file or SQL connection",
-		Run:         runSaveCommand,
+		Forms: []string{
+			"save <var> <file.csv> [headers true|false] [rownames true|false] [bom true|false]",
+			"save <var> <file.json> [headers true|false]",
+			"save <var> <file.parquet>",
+			"save <var> sql <conn> <table> [if-exists fail|replace|append] [batch N] [schema <s>] [rownames [true|false]]",
+			"",
+			"File option defaults: headers=true, rownames=false, bom=false.",
+			"Booleans accept true|false|yes|no|on|off|1|0.",
+			"SQL if-exists default: fail.",
+		},
+		Examples: []string{
+			"insyra save report data.csv",
+			"insyra save matrix data.csv headers false",
+			"insyra save gdp out.csv rownames true",
+			"insyra save report data.csv bom true",
+			"insyra save report sql main report_table if-exists replace batch 1000",
+		},
+		Run: runSaveCommand,
 	})
 }
 

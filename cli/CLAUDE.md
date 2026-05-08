@@ -14,7 +14,7 @@ Guidance for working in `cli/`. The top-level [CLAUDE.md](../CLAUDE.md) covers t
 ## Always-reuse helpers (commands/helpers.go)
 
 | Helper | Use for | Don't write your own |
-|---|---|---|
+| --- | --- | --- |
 | `parseAlias(args) -> (coreArgs, alias)` | extracting a trailing `as <var>`; defaults alias to `$result` | a copy that handles `as` differently — every transforming command must behave the same |
 | `parseFlexBool(raw) -> (bool, err)` | any **option-value boolean** (`headers true\|false`, `rownames yes\|no`, `bom 1\|0`, …) | `strconv.ParseBool` (rejects `yes/no/on/off`); ad-hoc `== "true"` chains |
 | `parseLiteral(raw) -> any` | converting a **data literal** (SQL `params`, single-cell `set` value): nil/true/false/int/float, else string | a separate type-coercion ladder; do not relax this with `yes/no` — it's about typed data, not flags |
@@ -26,7 +26,7 @@ Guidance for working in `cli/`. The top-level [CLAUDE.md](../CLAUDE.md) covers t
 Tests:
 
 | Helper | Use for |
-|---|---|
+| --- | --- |
 | `newTestExecContext(t)` (in `db_test.go`) | every command test that needs an `*ExecContext` with `Vars` and a buffered `Output` |
 | `mustConnectSQLite(t, ctx, name, dsn)` | DB-touching tests; auto-cleans up via `t.Cleanup` |
 
@@ -88,6 +88,17 @@ Conventions:
 Every command file has a `func init()` that calls `Register(&CommandHandler{...})` with `Name`, `Usage`, `Description`, `Run`. Don't bypass `Register` and don't mutate the registry from elsewhere.
 
 The `Usage` string is what the user sees in `insyra help <command>`. Keep it accurate and tight; if it gets long, separate the major shapes with `|` (see `load`, `save`).
+
+### Forms and Examples (optional but expected for complex commands)
+
+`CommandHandler` has two optional `[]string` fields rendered by `help <cmd>` under "Forms:" and "Examples:" headers. Use them — don't stuff everything into `Usage` or write your own help-printing path.
+
+- **`Forms`** — one entry per major shape, with a short tail-aligned note. Use a blank-string entry to insert a visual blank line (e.g. before a "DSN forms:" sub-block in `db`).
+- **`Examples`** — complete `insyra ...` lines that copy-paste cleanly into a shell.
+
+Add them whenever the command has subcommands, multiple sub-shapes, or non-obvious option semantics. Simple commands (`mean x`, `shape x`) leave both empty and `help` falls back to the two-line format. The current "complex enough to deserve Forms/Examples" set is: `ttest`, `ztest`, `anova`, `ftest`, `chisq`, `regression`, `fetch`, `plot`, `db`, `groupby`, `load`, `save`. Match the existing tone (concise descriptors, lowercase verbs in tail notes) when adding more.
+
+Don't introduce a parallel `LongHelp string` or print extra help from inside `Run` — the structured fields exist so `help` output stays uniform and so we can later generate skill-reference docs from the registry.
 
 ## Output and errors
 

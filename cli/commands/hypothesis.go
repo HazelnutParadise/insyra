@@ -10,11 +10,83 @@ import (
 )
 
 func init() {
-	_ = Register(&CommandHandler{Name: "ttest", Usage: "ttest single|two|paired ...", Description: "T-test commands", Run: runTTestCommand})
-	_ = Register(&CommandHandler{Name: "ztest", Usage: "ztest single|two ...", Description: "Z-test commands", Run: runZTestCommand})
-	_ = Register(&CommandHandler{Name: "anova", Usage: "anova oneway|twoway|repeated ...", Description: "ANOVA commands", Run: runAnovaCommand})
-	_ = Register(&CommandHandler{Name: "ftest", Usage: "ftest var|levene|bartlett ...", Description: "F-test commands", Run: runFTestCommand})
-	_ = Register(&CommandHandler{Name: "chisq", Usage: "chisq gof|indep ...", Description: "Chi-square test commands", Run: runChiSqCommand})
+	_ = Register(&CommandHandler{
+		Name:        "ttest",
+		Usage:       "ttest single|two|paired ...",
+		Description: "T-test commands",
+		Forms: []string{
+			"ttest single <var> <mu>                     one-sample, against population mean mu",
+			"ttest two <var1> <var2> [equal|unequal]     two-sample (default: equal variances)",
+			"ttest paired <var1> <var2>                  paired on matched samples",
+		},
+		Examples: []string{
+			"insyra ttest single weights 70",
+			"insyra ttest two before after equal",
+			"insyra ttest paired pre post",
+		},
+		Run: runTTestCommand,
+	})
+	_ = Register(&CommandHandler{
+		Name:        "ztest",
+		Usage:       "ztest single|two ...",
+		Description: "Z-test commands",
+		Forms: []string{
+			"ztest single <var> <mu> <sigma> [two-sided|greater|less]",
+			"ztest two <var1> <var2> <sigma1> <sigma2> [two-sided|greater|less]",
+		},
+		Examples: []string{
+			"insyra ztest single iq 100 15",
+			"insyra ztest two a b 1.0 1.2 greater",
+		},
+		Run: runZTestCommand,
+	})
+	_ = Register(&CommandHandler{
+		Name:        "anova",
+		Usage:       "anova oneway|twoway|repeated ...",
+		Description: "ANOVA commands",
+		Forms: []string{
+			"anova oneway <group1> <group2> [group3...]                  one-way ANOVA across groups",
+			"anova twoway <aLevels> <bLevels> <cell1> <cell2> ...        two-way ANOVA; cell count must equal aLevels*bLevels",
+			"anova repeated <subject1> <subject2> [subjectN]             repeated-measures ANOVA",
+		},
+		Examples: []string{
+			"insyra anova oneway g1 g2 g3",
+			"insyra anova twoway 2 3 c11 c12 c13 c21 c22 c23",
+			"insyra anova repeated s1 s2 s3",
+		},
+		Run: runAnovaCommand,
+	})
+	_ = Register(&CommandHandler{
+		Name:        "ftest",
+		Usage:       "ftest var|levene|bartlett ...",
+		Description: "F-test commands",
+		Forms: []string{
+			"ftest var <var1> <var2>                          F-test for equality of two variances",
+			"ftest levene <group1> <group2> [group3...]       Levene's test for variance homogeneity",
+			"ftest bartlett <group1> <group2> [group3...]     Bartlett's test for variance homogeneity",
+		},
+		Examples: []string{
+			"insyra ftest var a b",
+			"insyra ftest levene g1 g2 g3",
+			"insyra ftest bartlett g1 g2 g3",
+		},
+		Run: runFTestCommand,
+	})
+	_ = Register(&CommandHandler{
+		Name:        "chisq",
+		Usage:       "chisq gof|indep ...",
+		Description: "Chi-square test commands",
+		Forms: []string{
+			"chisq gof <var> [p1 p2 ...]                  goodness-of-fit; expected proportions default to uniform",
+			"chisq indep <rowVar> <colVar>                independence test on contingency table",
+		},
+		Examples: []string{
+			"insyra chisq gof counts",
+			"insyra chisq gof counts 0.25 0.25 0.5",
+			"insyra chisq indep gender preference",
+		},
+		Run: runChiSqCommand,
+	})
 }
 
 func runTTestCommand(ctx *ExecContext, args []string) error {

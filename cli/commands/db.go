@@ -11,7 +11,26 @@ func init() {
 		Name:        "db",
 		Usage:       "db connect <name> <dsn> | db list | db tables <name> [schema <s>] | db disconnect <name>",
 		Description: "Manage named database connections (sqlite, mysql, postgres; pure-Go drivers)",
-		Run:         runDBCommand,
+		Forms: []string{
+			"db connect <name> <dsn>                     open and register a named connection",
+			"db list                                     list active connections (passwords masked)",
+			"db tables <name> [schema <s>]               list tables on a connection",
+			"db disconnect <name>                        close and unregister a connection",
+			"",
+			"DSN forms:",
+			"  sqlite:<path-or-uri>                      e.g. sqlite::memory:, sqlite:./foo.db",
+			"  mysql:<go-sql-driver-dsn>                 e.g. mysql:user:pass@tcp(host:3306)/db",
+			"  mysql://user:pass@host:port/db?...        URL form, auto-converted",
+			"  postgres://user:pass@host:port/db?...     pgx URL form",
+			"  postgres:host=... user=... dbname=...     libpq KV form",
+		},
+		Examples: []string{
+			"insyra db connect main sqlite:./demo.db",
+			"insyra db tables main schema public",
+			"insyra db list",
+			"insyra db disconnect main",
+		},
+		Run: runDBCommand,
 	})
 }
 

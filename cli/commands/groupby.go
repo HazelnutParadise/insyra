@@ -12,7 +12,21 @@ func init() {
 		Name:        "groupby",
 		Usage:       "groupby <var> by <col1>[,<col2>...] agg <col>:<op>[:<alias>] [<col>:<op>[:<alias>] ...] [as <var>]",
 		Description: "Group a DataTable and aggregate columns",
-		Run:         runGroupByCommand,
+		Forms: []string{
+			"<col>:<op>[:<alias>]                spec syntax; alias defaults to <col>_<op>",
+			"count                               shorthand for :countall:count (group size)",
+			"",
+			"Ops: sum, mean (alias avg), median, min, max,",
+			"     count (non-nil), countall (group size),",
+			"     std/stdev, stdp/stdevp, var, varp,",
+			"     first, last, nunique",
+		},
+		Examples: []string{
+			"insyra groupby sales by region agg revenue:sum:total qty:mean as report",
+			"insyra groupby sales by region,product agg revenue:sum count as report2",
+			"insyra groupby orders by customer agg amount:max:biggest",
+		},
+		Run: runGroupByCommand,
 	})
 }
 
