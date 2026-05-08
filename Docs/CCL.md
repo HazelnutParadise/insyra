@@ -585,6 +585,96 @@ Example:
 // Returns 'A' if A > 90, 'B' if A > 80, 'C' if A > 70, otherwise returns 'F'
 ```
 
+### Math Functions
+
+Standard scalar math functions. All accept any value coercible to a number; passing a non-coercible value returns a typed error.
+
+| Function | Description | Example |
+| --- | --- | --- |
+| `ABS(x)` | Absolute value | `ABS(-3.5)` → `3.5` |
+| `ROUND(x, n?)` | Round to `n` decimal places (default `0`) | `ROUND(3.14159, 2)` → `3.14` |
+| `FLOOR(x)` | Largest integer ≤ x | `FLOOR(3.7)` → `3` |
+| `CEIL(x)` | Smallest integer ≥ x | `CEIL(3.2)` → `4` |
+| `TRUNC(x)` | Truncate fractional part | `TRUNC(-3.9)` → `-3` |
+| `MOD(a, b)` | Floating-point remainder of `a / b` | `MOD(10, 3)` → `1` |
+| `POW(base, exp)` | Power | `POW(2, 10)` → `1024` |
+| `SQRT(x)` | Square root (errors on negatives) | `SQRT(16)` → `4` |
+| `LN(x)` | Natural log | `LN(E)` → `1` |
+| `LOG(x, base?)` | `LOG(x)` defaults to base 10; otherwise log base `base` | `LOG(8, 2)` → `3` |
+| `LOG10(x)` | Base-10 log | `LOG10(100)` → `2` |
+| `EXP(x)` | e^x | `EXP(0)` → `1` |
+| `SIGN(x)` | -1, 0, or 1 | `SIGN(-7)` → `-1` |
+
+```go
+dt.AddColUsingCCL("tax", "ROUND(['price'] * 0.0825, 2)")
+dt.AddColUsingCCL("delta", "ABS(['actual'] - ['target'])")
+```
+
+### String Functions
+
+All string functions are rune-aware (Unicode safe). `nil` is treated as the empty string. `LEN` returns rune count, `LEFT`/`RIGHT`/`MID`/`SUBSTR` slice by rune.
+
+| Function | Description |
+| --- | --- |
+| `LEN(s)` | Number of Unicode characters |
+| `UPPER(s)` / `LOWER(s)` | Case conversion |
+| `TRIM(s)` / `LTRIM(s)` / `RTRIM(s)` | Strip ASCII whitespace from both / left / right |
+| `LEFT(s, n)` | First `n` characters |
+| `RIGHT(s, n)` | Last `n` characters |
+| `MID(s, start, length)` / `SUBSTR(...)` | Substring (1-based start, like Excel) |
+| `REPLACE(s, old, new)` | Replace all occurrences of `old` with `new` |
+| `FIND(needle, haystack)` | 1-based position of `needle`; `0` if not found |
+| `CONTAINS(s, sub)` / `STARTSWITH(s, p)` / `ENDSWITH(s, p)` | Boolean checks |
+| `REGEX_MATCH(s, pattern)` | Go regexp match |
+| `REPEAT(s, n)` | Repeat `s` `n` times |
+
+```go
+// Email cleanup pipeline
+dt.ExecuteCCL(`
+    ['email'] = LOWER(TRIM(['email']))
+    NEW('domain') = MID(['email'], FIND('@', ['email']) + 1, LEN(['email']))
+    NEW('is_gift') = CONTAINS(LOWER(['description']), 'gift')
+`)
+```
+
+### Type-Conversion and Null Helpers
+
+| Function | Description |
+| --- | --- |
+| `TONUM(x)` / `VALUE(x)` | Coerce to `float64`; returns `nil` if conversion fails |
+| `TOSTR(x, fmt?)` / `TEXT(x, fmt?)` | Convert to string. With a second argument, formats using a Go `fmt` verb (e.g. `"%.2f"`) |
+| `TOBOOL(x)` | Coerce to bool; `nil`/non-coercible → `nil` |
+| `COALESCE(a, b, ...)` | First non-`nil`, non-`NaN` argument |
+| `IFNULL(x, fallback)` | `fallback` when `x` is `nil`; otherwise `x` |
+
+`IFNULL` differs from the existing `IFNA`: `IFNA` only triggers on float `NaN` or the string `"#N/A"`, while `IFNULL` matches actual `nil` values.
+
+```go
+dt.AddColUsingCCL("price_num", "COALESCE(TONUM(['price_str']), 0)")
+dt.AddColUsingCCL("price_fmt", "TOSTR(['price'], '$%.2f')")
+```
+
+### Date Component & Arithmetic Functions
+
+These complement the existing `DAY`/`HOUR`/`MINUTE`/`SECOND` duration helpers and operate on `time.Time` values (or strings parseable by Insyra's date parser).
+
+| Function | Description |
+| --- | --- |
+| `YEAR(d)` | Year as number |
+| `MONTH(d)` | Month 1–12 |
+| `DAYOFMONTH(d)` | Day 1–31 |
+| `WEEKDAY(d)` | 0 (Sunday) – 6 (Saturday) |
+| `DATEDIFF(d1, d2, unit)` | `d1 - d2` in `'day'` / `'hour'` / `'minute'` / `'second'` |
+| `DATEADD(d, n, unit)` | Shift `d` by `n` units. Supports `day`/`hour`/`minute`/`second`/`month`/`year` |
+| `FORMAT_DATE(d, layout)` | Format using a Go reference layout (e.g. `"2006-01-02"`) |
+
+```go
+dt.AddColUsingCCL("order_year", "YEAR(['order_date'])")
+dt.AddColUsingCCL("days_open", "DATEDIFF(['closed_at'], ['opened_at'], 'day')")
+dt.AddColUsingCCL("renew_at", "DATEADD(['signed_at'], 1, 'year')")
+dt.AddColUsingCCL("order_iso", "FORMAT_DATE(['order_date'], '2006-01-02')")
+```
+
 ## Aggregate Functions
 
 Aggregate functions perform calculations on a set of values (a column, a row, or an expression) and return a single value. This value is then "broadcasted" to all rows in the resulting column (unless in row-wise mode).
@@ -663,6 +753,34 @@ Calculates the minimum value among all numeric values in the input.
 "MIN(A, B)"          // Minimum value in columns A and B
 "MIN(@.#)"           // Minimum value in the current row
 "MIN(@)"             // Minimum value in the entire tableW
+```
+
+### MEDIAN
+
+Calculates the median (50th percentile) of all numeric values in the input. For even-count inputs returns the mean of the two middle values.
+
+```
+"MEDIAN(A)"          // Median of column A
+"MEDIAN(@.#)"        // Median of the current row
+```
+
+### STDEV / STDEVP
+
+Sample standard deviation (`STDEV`, divides by `n-1`) and population standard deviation (`STDEVP`, divides by `n`). `STDEV` requires at least 2 numeric values; `STDEVP` requires at least 1.
+
+```
+"STDEV(A)"
+"STDEVP(@)"
+"(['price'] - AVG(['price'])) / STDEV(['price'])"   // z-score
+```
+
+### VAR / VARP
+
+Sample variance (`VAR`, divides by `n-1`) and population variance (`VARP`, divides by `n`). `VAR` requires at least 2 numeric values; `VARP` requires at least 1.
+
+```
+"VAR(A)"
+"VARP(@.#)"
 ```
 
 ## Row-wise Aggregation
