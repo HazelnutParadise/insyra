@@ -61,6 +61,7 @@ Notes:
 
 ## Agent workflow (recommended)
 
+0. **Verify syntax with `insyra help <cmd>` before running any command you're not 100% sure about.** Complex commands print `Forms:` and `Examples:` blocks; for simple ones you'll at least see the canonical Usage line.
 1. Confirm whether the user wants **REPL**, **one-shot CLI**, or **.isr script**.
 2. If isolation is needed, create/select environment first (`--env <name>` or `env open <name>`).
 3. Use `newdl/newdt/load/read` to prepare data.
@@ -73,9 +74,10 @@ Notes:
 
 ## Runtime guardrails
 
+- **First step on any unfamiliar command: run `insyra help <cmd>`.** Complex commands (`ttest`, `ztest`, `anova`, `ftest`, `chisq`, `regression`, `fetch`, `plot`, `db`, `groupby`, `load`, `save`) include `Forms:` and `Examples:` blocks that show every sub-shape and a copy-paste-ready invocation. Use this before falling back to `references/cli-command-guide.md` — `help` reflects the live binary, references can drift.
+- `insyra help` (no args) lists all registered commands with one-line descriptions. Use it when you don't know the command name.
 - Prefer deterministic commands over ad-hoc manual REPL edits when reproducibility matters.
 - For shell variables in PowerShell, remind users to quote names like `$result` as `"$result"`.
-- Use `help` (or `help <command>`) when syntax is uncertain.
 - For environment restore:
   - `env import <file> [name] [--force]`
   - Import to a **non-empty** target fails unless `--force` is provided.
@@ -188,6 +190,9 @@ insyra silhouette iris labels as widths
 
 When command behavior and docs conflict, trust in this order:
 
-1. `cli/commands/*.go` implementation
-2. `insyra help` output
-3. README command examples
+1. `insyra help <cmd>` output (live binary; structured `Forms:` / `Examples:` for complex commands)
+2. `cli/commands/*.go` implementation (when you need to dig deeper than `help` exposes)
+3. `references/cli-command-guide.md` and `references/cli-command-usage.md` in this skill
+4. README and `Docs/cli-dsl.md`
+
+`help` and source code can never lie; markdown can drift between releases.
