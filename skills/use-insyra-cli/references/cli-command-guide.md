@@ -97,9 +97,13 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 - Example: `insyra newdt x y`
 
 ### `load`
-- Description: Load data file into DataTable variable
-- Usage: `load <file>|parquet <file> [cols <c1,c2,...>] [rowgroups <i1,i2,...>] [sheet <name>] [as <var>]`
-- Example: `insyra load parquet data.parquet cols id,amount rowgroups 0,1 as t`
+- Description: Load data into a DataTable variable from a file, parquet, or SQL connection
+- Usage: `load <file>|parquet <file> [cols <c1,c2,...>] [rowgroups <i1,i2,...>] [sheet <name>]|sql <conn> <table> [where "..."] [order "..."] [limit N] [offset N] [cols "c1,c2"] [schema <s>] [indexcol <c>] [parsedates "c1,c2"]|sql <conn> query "<SQL>" [params <v1> <v2> ...] [as <var>]`
+- Examples:
+  - `insyra load data.csv as t`
+  - `insyra load parquet data.parquet cols id,amount rowgroups 0,1 as t`
+  - `insyra load sql main customers as customers`
+  - `insyra load sql main query "SELECT * FROM orders WHERE year = ?" params 2025 as orders`
 
 ### `read`
 - Description: Quick preview a file without saving variable
@@ -107,14 +111,42 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 - Example: `insyra read data.csv`
 
 ### `save`
-- Description: Save DataTable variable to file
-- Usage: `save <var> <file>`
-- Example: `insyra save x data.csv`
+- Description: Save a DataTable variable to a file or SQL connection
+- Usage: `save <var> <file> | save <var> sql <conn> <table> [if-exists fail|replace|append] [batch N] [schema <s>] [rownames]`
+- Examples:
+  - `insyra save x data.csv`
+  - `insyra save report sql main report_table if-exists replace batch 1000`
 
 ### `convert`
 - Description: Convert file formats (csv<->xlsx)
 - Usage: `convert <input> <output>`
 - Example: `insyra convert input.csv output.xlsx`
+
+## Database (sqlite / mysql / postgres, pure-Go drivers)
+
+### `db`
+- Description: Manage named database connections (sqlite, mysql, postgres; pure-Go drivers)
+- Usage: `db connect <name> <dsn> | db list | db tables <name> [schema <s>] | db disconnect <name>`
+- Example: `insyra db connect main sqlite:./demo.db`
+- DSN forms:
+  - `sqlite:<path-or-uri>`, e.g. `sqlite::memory:`, `sqlite:./foo.db`
+  - `mysql:<go-sql-driver-dsn>`, e.g. `mysql:user:pass@tcp(host:3306)/db`
+  - `mysql://user:pass@host:port/db?param=value` (URL form, auto-converted)
+  - `postgres://user:pass@host:port/db?sslmode=disable` (pgx URL form)
+  - `postgres:host=... user=... password=... dbname=...` (libpq KV form)
+- Notes: connections are environment-scoped and not persisted across CLI process restarts. Reopen them at the top of each session/script. `db list` masks passwords.
+
+### `load sql`
+- Description: Load a SQL table or query result into a DataTable
+- Usage:
+  - `load sql <conn> <table> [where "..."] [order "..."] [limit N] [offset N] [cols "c1,c2"] [schema <s>] [indexcol <c>] [parsedates "c1,c2"] [as <var>]`
+  - `load sql <conn> query "<SQL>" [params <v1> <v2> ...] [as <var>]`
+- Example: `insyra load sql main query "SELECT * FROM orders WHERE region = ?" params APAC as orders`
+
+### `save sql`
+- Description: Write a DataTable to a SQL table
+- Usage: `save <var> sql <conn> <table> [if-exists fail|replace|append] [batch N] [schema <s>] [rownames]`
+- Example: `insyra save report sql main report_table if-exists replace batch 1000`
 
 ## DataTable Structure & Access
 ### `addcol`
@@ -413,6 +445,51 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 - Description: Principal component analysis
 - Usage: `pca <var> <n>`
 - Example: `insyra pca x 3`
+
+### `kmeans`
+- Description: K-means clustering
+- Usage: `kmeans <var> <k> [nstart <n>] [itermax <n>] [seed <n>] [as <var>]`
+- Example: `insyra kmeans x 3 seed 42 as labels`
+- Side variables (alias `R`): `R_centers`, `R_size`, `R_withinss`, `R_totss`, `R_totwithinss`, `R_betweenss`, `R_iter`, `R_ifault`.
+
+### `hclust`
+- Description: Hierarchical agglomerative clustering
+- Usage: `hclust <var> <method> [as <var>]`
+- Example: `insyra hclust x ward as tree`
+
+### `cutree`
+- Description: Cut a hierarchical clustering tree
+- Usage: `cutree <tree_var> k <n>|h <value> [as <var>]`
+- Example: `insyra cutree tree k 3 as labels`
+
+### `dbscan`
+- Description: Density-based clustering
+- Usage: `dbscan <var> <eps> <minpts> [as <var>]`
+- Example: `insyra dbscan x 0.5 5 as labels`
+- Side variable: `<alias>_isseed`.
+
+### `silhouette`
+- Description: Silhouette analysis
+- Usage: `silhouette <var> <labels_var> [as <var>]`
+- Example: `insyra silhouette x labels as widths`
+- Side variable: `<alias>_avg` (average silhouette width).
+
+### `knn_classify`
+- Description: K-nearest neighbors classification
+- Usage: `knn_classify <train_var> <labels_var> <test_var> <k> [weighting <uniform|distance>] [algorithm <auto|brute|kd_tree|ball_tree>] [leafsize <n>] [as <var>]`
+- Example: `insyra knn_classify train labels test 5 weighting distance as preds`
+- Side variables: `<alias>_classes`, `<alias>_probs`.
+
+### `knn_regress`
+- Description: K-nearest neighbors regression
+- Usage: `knn_regress <train_var> <targets_var> <test_var> <k> [weighting <uniform|distance>] [algorithm <auto|brute|kd_tree|ball_tree>] [leafsize <n>] [as <var>]`
+- Example: `insyra knn_regress train targets test 5 as preds`
+
+### `knn_neighbors`
+- Description: K-nearest neighbors search
+- Usage: `knn_neighbors <train_var> <test_var> <k> [algorithm <auto|brute|kd_tree|ball_tree>] [leafsize <n>] [as <var>]`
+- Example: `insyra knn_neighbors train test 5 algorithm kd_tree as nn`
+- Side variable: `<alias>_distances`.
 
 ### `ttest`
 - Description: T-test commands

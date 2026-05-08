@@ -228,6 +228,41 @@ Run:
 insyra --env demo run pipeline.isr
 ```
 
+### B0. SQL workflow (load and save against a live DB)
+
+Open a named connection, list tables, load a query into a DataTable, transform, and write back:
+
+```text
+# pure-Go drivers; supports sqlite, mysql, postgres
+db connect main sqlite:./demo.db
+db list
+db tables main
+
+# load a whole table or a parameterized query
+load sql main customers as customers
+load sql main query "SELECT region, SUM(amount) AS total FROM orders WHERE year = ? GROUP BY region" params 2025 as totals
+
+# transform with the usual commands, then write back
+filter totals "['total'] > 10000" as top_regions
+save top_regions sql main top_regions if-exists replace
+
+db disconnect main
+```
+
+`load sql <conn> <table>` accepts `where "<sql>"`, `order "<sql>"`, `limit N`, `offset N`, `cols "c1,c2"`, `schema <s>`, `indexcol <c>`, and `parsedates "c1,c2"`. `load sql <conn> query "<SQL>"` accepts only `params <v1> <v2> ...` (positional placeholders, parsed as literals).
+
+`save <var> sql <conn> <table>` accepts `if-exists fail|replace|append` (default `fail`), `batch N`, `schema <s>`, and the `rownames` flag (writes the DataTable row names as an extra column).
+
+DSN forms accepted by `db connect`:
+
+- `sqlite:<path-or-uri>` — e.g. `sqlite::memory:`, `sqlite:./foo.db`, `sqlite:file:./foo.db?mode=ro`
+- `mysql:<go-sql-driver-dsn>` — e.g. `mysql:user:pass@tcp(host:3306)/db`
+- `mysql://user:pass@host:port/db?param=value` (URL form, auto-converted)
+- `postgres://user:pass@host:port/db?sslmode=disable` (URL form, native to pgx)
+- `postgres:host=... user=... password=... dbname=...` (libpq KV form)
+
+Passwords are masked when listed with `db list`.
+
 ### B2. GroupBy aggregations
 
 `groupby <var> by <col1>[,<col2>...] agg <spec> [<spec> ...] [as <var>]` runs split-apply-combine. Each `<spec>` is `<col>:<op>[:<alias>]`, plus the shorthand `count` for "row count per group". Supported ops: `sum`, `mean` (alias `avg`), `median`, `min`, `max`, `count`, `countall`, `std` (`stdev`), `stdp` (`stdevp`), `var`, `varp`, `first`, `last`, `nunique`. Aliases default to `<col>_<op>`.
@@ -279,11 +314,12 @@ High-level command map:
 - **Core**: `help`, `version`, `exit`, `history`, `clear`, `config`, `run`, `completion`
 - **Environment**: `env`, `vars`, `drop`, `clone`, `rename`, `shape`, `types`, `show`, `summary`
 - **Data IO / Creation**: `newdl`, `newdt`, `load`, `read`, `save`, `convert`
+- **Database**: `db` (`connect` / `list` / `tables` / `disconnect`), `load sql`, `save <var> sql`
 - **DataTable Structure / Access**: `addcol`, `addrow`, `dropcol`, `droprow`, `swap`, `transpose`, `rows`, `cols`, `row`, `col`, `get`, `set`, `setrownames`, `setcolnames`
 - **Data Processing**: `filter`, `sort`, `sample`, `find`, `replace`, `clean`, `merge`, `groupby`, `ccl`, `addcolccl`
 - **DataList Stats**: `sum`, `mean`, `median`, `mode`, `stdev`, `var`, `min`, `max`, `range`, `quartile`, `iqr`, `percentile`, `count`, `counter`, `corr`, `cov`, `corrmatrix`, `skewness`, `kurtosis`
 - **Time Series / Transforms**: `rank`, `normalize`, `standardize`, `reverse`, `upper`, `lower`, `capitalize`, `parsenums`, `parsestrings`, `movavg`, `expsmooth`, `diff`, `fillnan`
-- **Modeling / Viz / Fetch**: `regression`, `pca`, `kmeans`, `hclust`, `cutree`, `dbscan`, `silhouette`, `ttest`, `ztest`, `anova`, `ftest`, `chisq`, `plot`, `fetch`
+- **Modeling / Viz / Fetch**: `regression`, `pca`, `kmeans`, `hclust`, `cutree`, `dbscan`, `silhouette`, `knn_classify`, `knn_regress`, `knn_neighbors`, `ttest`, `ztest`, `anova`, `ftest`, `chisq`, `plot`, `fetch`
 
 ## Full Command Index (Appendix)
 
@@ -314,6 +350,7 @@ Source policy:
 | `count` | `count <var> [value]` | Count occurrences |
 | `counter` | `counter <var>` | DataList frequency map |
 | `cov` | `cov <x> <y>` | Covariance between two DataLists |
+| `db` | `db connect <name> <dsn> \| db list \| db tables <name> [schema <s>] \| db disconnect <name>` | Manage named database connections (sqlite, mysql, postgres; pure-Go drivers) |
 | `diff` | `diff <var> [as <var>]` | Difference |
 | `drop` | `drop <var>` | Delete variable |
 | `dropcol` | `dropcol <var> <name\|index...>` | Drop columns by name or index |
@@ -336,7 +373,7 @@ Source policy:
 | `knn_neighbors` | `knn_neighbors <train_var> <test_var> <k> [algorithm <auto\|brute\|kd_tree\|ball_tree>] [leafsize <n>] [as <var>]` | K-nearest neighbors search |
 | `kmeans` | `kmeans <var> <k> [nstart <n>] [itermax <n>] [seed <n>] [as <var>]` | K-means clustering |
 | `kurtosis` | `kurtosis <var>` | Kurtosis of a DataList |
-| `load` | `load <file>\|parquet <file> [cols <c1,c2,...>] [rowgroups <i1,i2,...>] [sheet <name>] [as <var>]` | Load data file into DataTable variable |
+| `load` | `load <file>\|parquet <file> [cols <c1,c2,...>] [rowgroups <i1,i2,...>] [sheet <name>]\|sql <conn> <table> [where "..."] [order "..."] [limit N] [offset N] [cols "c1,c2"] [schema <s>] [indexcol <c>] [parsedates "c1,c2"]\|sql <conn> query "<SQL>" [params <v1> <v2> ...] [as <var>]` | Load data into a DataTable variable from a file, parquet, or SQL connection |
 | `lower` | `lower <var> [as <var>]` | Lowercase DataList strings |
 | `max` | `max <var>` | DataList maximum |
 | `mean` | `mean <var>` | DataList mean |
@@ -369,7 +406,7 @@ Source policy:
 | `rows` | `rows <var>` | List DataTable row names |
 | `run` | `run <script.isr>` | Run DSL script file |
 | `sample` | `sample <var> <n> [as <var>]` | Simple random sample from DataTable |
-| `save` | `save <var> <file>` | Save DataTable variable to file |
+| `save` | `save <var> <file> \| save <var> sql <conn> <table> [if-exists fail\|replace\|append] [batch N] [schema <s>] [rownames]` | Save a DataTable variable to a file or SQL connection |
 | `set` | `set <var> <row> <col> <value>` | Set single element in DataTable |
 | `setcolnames` | `setcolnames <var> <names...>` | Set DataTable column names |
 | `setrownames` | `setrownames <var> <names...>` | Set DataTable row names |

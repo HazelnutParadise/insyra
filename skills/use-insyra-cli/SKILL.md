@@ -66,9 +66,10 @@ Notes:
 3. Use `newdl/newdt/load/read` to prepare data.
 
 - For Parquet partial reads, prefer `load parquet <file> cols <c1,c2,...> rowgroups <i1,i2,...> [as <var>]`.
+- For SQL sources, open a named connection with `db connect <name> <dsn>` first, then `load sql <name> <table>` or `load sql <name> query "<SQL>" [params ...]`. Connections are session-scoped and need to be reopened in each new run.
 
 4. Apply transforms/stats/model/plot commands.
-5. Persist outputs (`save`, `env export`) and provide reproducible command history.
+5. Persist outputs (`save` for files, `save <var> sql <conn> <table>` for databases, `env export` for state bundles) and provide reproducible command history.
 
 ## Runtime guardrails
 
@@ -148,9 +149,30 @@ insyra groupby sales by region agg revenue:sum:total_rev qty:mean as report
 insyra show report
 # Multi-key + count shorthand
 insyra groupby sales by region,product agg revenue:sum count as report2
+
+# SQL: connect, list tables, load query, transform, write back, disconnect
+# Connections live for the current process only — reopen at the top of every session/script.
+insyra db connect main sqlite:./demo.db
+insyra db tables main
+insyra load sql main query "SELECT region, SUM(amount) total FROM orders WHERE year = ? GROUP BY region" params 2025 as totals
+insyra filter totals "['total'] > 10000" as top
+insyra save top sql main top_regions if-exists replace
+insyra db disconnect main
+
+# Clustering + silhouette
+insyra kmeans iris 3 seed 42 as labels
+insyra silhouette iris labels as widths
 ```
 
 `groupby <var> by <col1>[,<col2>...] agg <col>:<op>[:<alias>] [<col>:<op>[:<alias>] ...] [as <var>]` produces a new DataTable with one row per unique key combination. Supported ops: `sum`, `mean` (alias `avg`), `median`, `min`, `max`, `count` (non-nil), `countall` (group size), `std`/`stdev`, `stdp`/`stdevp`, `var`, `varp`, `first`, `last`, `nunique`. The bare token `count` is shorthand for `:countall:count`.
+
+## Database (db) workflow notes
+
+- `db connect <name> <dsn>` registers a named connection in the current `ExecContext`. Pure-Go drivers cover sqlite, mysql, and postgres; passwords are masked in `db list` output.
+- DSN dialect prefix is required: `sqlite:`, `mysql:`, `postgres:` (or `postgresql:`). Both URL form (`mysql://...`) and native/libpq forms are accepted.
+- Connections are NOT persisted to the environment bundle — re-run `db connect` at the top of every session/script that needs SQL access.
+- `load sql <conn> <table>` accepts `where`, `order`, `limit`, `offset`, `cols`, `schema`, `indexcol`, `parsedates`. `load sql <conn> query "<SQL>"` supports only `params <v1> <v2> ...` (positional bind values, parsed as literals — no SQL injection from user-supplied values).
+- `save <var> sql <conn> <table>` accepts `if-exists fail|replace|append` (default `fail`), `batch N`, `schema <s>`, and the `rownames` flag.
 
 ## Reference priority for agents
 
