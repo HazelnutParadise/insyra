@@ -11,9 +11,28 @@ import (
 )
 
 // RegisterStandardFunctions registers the standard library of CCL functions.
-// This includes logical functions (IF, AND, OR), string functions (CONCAT),
-// and aggregate functions (SUM, AVG, COUNT, MAX, MIN).
+// Categories:
+//   - Logical: IF, AND, OR, CASE
+//   - Null/NaN: ISNA, IFNA
+//   - String concat / duration helpers (this file)
+//   - Math (stdlib_math.go): ABS, ROUND, FLOOR, CEIL, TRUNC, MOD, POW,
+//     SQRT, LN, LOG, LOG10, EXP, SIGN
+//   - String (stdlib_string.go): LEN, UPPER, LOWER, TRIM/L/RTRIM,
+//     LEFT, RIGHT, MID/SUBSTR, REPLACE, FIND, CONTAINS, STARTSWITH,
+//     ENDSWITH, REGEX_MATCH, REPEAT
+//   - Type conversion (stdlib_typeconv.go): TONUM/VALUE, TOSTR/TEXT,
+//     TOBOOL, COALESCE, IFNULL
+//   - Date components (stdlib_datetime.go): YEAR, MONTH, DAYOFMONTH,
+//     WEEKDAY, DATEDIFF, DATEADD, FORMAT_DATE
+//   - Aggregates: SUM, AVG, COUNT, MAX, MIN (this file) and
+//     MEDIAN, STDEV/STDEVP, VAR/VARP (stdlib_aggregates.go)
 func RegisterStandardFunctions() {
+	registerMathFunctions()
+	registerStringFunctions()
+	registerTypeConversionFunctions()
+	registerDateTimeFunctions()
+	registerAggregateStatFunctions()
+
 	// Logical Functions
 	registerFunction("IF", func(args ...any) (any, error) {
 		if len(args) != 3 {
