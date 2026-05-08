@@ -10,7 +10,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "save",
-		Usage:       "save <var> <file> [headers true|false] [rownames true|false] [bom true|false] | save <var> sql <conn> <table> [if-exists fail|replace|append] [batch N] [schema <s>] [rownames]",
+		Usage:       "save <var> <file> [headers true|false] [rownames true|false] [bom true|false] | save <var> sql <conn> <table> [if-exists fail|replace|append] [batch N] [schema <s>] [rownames [true|false]]",
 		Description: "Save a DataTable variable to a file or SQL connection",
 		Run:         runSaveCommand,
 	})
