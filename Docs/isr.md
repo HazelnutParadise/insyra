@@ -771,6 +771,39 @@ CCL(cclStatements string) *dt
 
 > **Note**: For detailed CCL syntax and features, see the [CCL Documentation](CCL.md).
 
+#### Grouping and Aggregating
+
+```go
+// Group rows by one or more key columns and apply aggregations.
+report := isr.DT.From(isr.Rows{
+    {"region": "east", "revenue": 100, "qty": 1},
+    {"region": "east", "revenue": 200, "qty": 2},
+    {"region": "west", "revenue": 50,  "qty": 3},
+}).GroupBy("region").Aggregate(
+    insyra.AggregateConfig{SourceCol: "revenue", Op: insyra.OpSum,  As: "total_rev"},
+    insyra.AggregateConfig{SourceCol: "qty",     Op: insyra.OpMean, As: "avg_qty"},
+)
+// report columns: region, total_rev, avg_qty
+```
+
+**Method:**
+
+```go
+GroupBy(keyCols ...string) *insyra.GroupedDataTable
+```
+
+**Description:** Splits the DataTable by the value combinations of the given key columns and returns an intermediate object whose `Aggregate`, `AggregateAll`, or `Count` methods produce a new `*insyra.DataTable`. See [DataTable.GroupBy](DataTable.md#groupby) for the full list of supported aggregate operations.
+
+**Parameters:**
+
+- One or more column references (name or Excel-style index, e.g. `"A"`).
+
+**Returns:**
+
+- `*insyra.GroupedDataTable` — call `.Aggregate(...)`, `.AggregateAll(op)`, or `.Count()` to materialize a `*insyra.DataTable`.
+
+**Equivalent:** `insyra.DataTable.GroupBy()`
+
 ## Advanced Features
 
 ### Named Elements

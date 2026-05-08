@@ -146,6 +146,16 @@ For expanded subcommand forms and practical examples, see `cli-command-guide.md`
 - Description: Get single element from DataTable
 - Usage: `get <var> <row> <col>`
 
+## `groupby`
+- Description: Group a DataTable and aggregate columns
+- Usage: `groupby <var> by <col1>[,<col2>...] agg <col>:<op>[:<alias>] [<col>:<op>[:<alias>] ...] [as <var>]`
+- Notes:
+  - Ops: `sum`, `mean` (alias `avg`), `median`, `min`, `max`, `count` (non-nil), `countall` (group size), `std`/`stdev`, `stdp`/`stdevp`, `var`, `varp`, `first`, `last`, `nunique`.
+  - Bare token `count` is shorthand for `:countall:count`.
+  - Aliases default to `<col>_<op>`.
+  - Output column order: keys first (in `by` order), then aggregates (in `agg` order).
+  - Group order: each unique key combination in first-seen order.
+
 ## `help`
 - Description: Show command help
 - Usage: `help [command]`

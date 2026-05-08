@@ -199,6 +199,43 @@ dt.ExecuteCCL("NEW('FirstRowData') = @.0")
 ```
 
 
+### 3c) GroupBy + Aggregate (split-apply-combine)
+
+For "summarize by key" tasks (RFM segments, sales reports, per-bucket stats), use `DataTable.GroupBy(...)` followed by `Aggregate(...)`. Each `AggregateConfig` describes one output column; key columns appear first in the result, followed by aggregates in config order. Use `OpCustom` with `Custom func(group *DataList) any` for anything not covered by the built-in ops.
+
+```go
+import "github.com/HazelnutParadise/insyra"
+
+dt := /* DataTable with columns region, product, revenue, qty, status */
+
+report := dt.GroupBy("region").Aggregate(
+    insyra.AggregateConfig{SourceCol: "revenue", Op: insyra.OpSum,   As: "total_rev"},
+    insyra.AggregateConfig{SourceCol: "revenue", Op: insyra.OpMean,  As: "avg_rev"},
+    insyra.AggregateConfig{SourceCol: "qty",     Op: insyra.OpSum,   As: "total_qty"},
+    insyra.AggregateConfig{SourceCol: "status",  Op: insyra.OpCount, As: "n_orders"},
+)
+
+// Multi-key (auto-named output columns)
+quarterly := dt.GroupBy("region", "product").Aggregate(
+    insyra.AggregateConfig{SourceCol: "revenue", Op: insyra.OpSum},  // -> "revenue_sum"
+    insyra.AggregateConfig{SourceCol: "qty",     Op: insyra.OpMean}, // -> "qty_mean"
+)
+
+// Custom aggregate
+weighted := dt.GroupBy("region").Aggregate(
+    insyra.AggregateConfig{
+        SourceCol: "price",
+        As:        "wprice",
+        Op:        insyra.OpCustom,
+        Custom: func(group *insyra.DataList) any {
+            return group.Mean()
+        },
+    },
+)
+```
+
+Supported `AggregateOp`: `OpSum`, `OpMean`, `OpMedian`, `OpMin`, `OpMax`, `OpCount` (non-nil), `OpCountAll` (group size), `OpStdev`, `OpStdevP`, `OpVar`, `OpVarP`, `OpFirst`, `OpLast`, `OpNUnique`, `OpCustom`. Group order in the result follows the order each key combination is first seen during a single linear scan; `nil` keys form their own group, and `int(1)` and string `"1"` are kept distinct.
+
 ### 4) Export a DataTable to CSV
 
 ```go

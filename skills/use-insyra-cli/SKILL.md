@@ -141,7 +141,16 @@ insyra env import ./exp1.json exp1-copy --force
 
 # Run script in environment
 insyra --env exp1 run ./pipeline.isr
+
+# Group rows by key, aggregate columns (split-apply-combine)
+insyra load sales.csv as sales
+insyra groupby sales by region agg revenue:sum:total_rev qty:mean as report
+insyra show report
+# Multi-key + count shorthand
+insyra groupby sales by region,product agg revenue:sum count as report2
 ```
+
+`groupby <var> by <col1>[,<col2>...] agg <col>:<op>[:<alias>] [<col>:<op>[:<alias>] ...] [as <var>]` produces a new DataTable with one row per unique key combination. Supported ops: `sum`, `mean` (alias `avg`), `median`, `min`, `max`, `count` (non-nil), `countall` (group size), `std`/`stdev`, `stdp`/`stdevp`, `var`, `varp`, `first`, `last`, `nunique`. The bare token `count` is shorthand for `:countall:count`.
 
 ## Reference priority for agents
 
