@@ -63,6 +63,7 @@ This list is generated from `insyra help` in this repository state.
 - `replace` - Replace values in DataTable/DataList
 - `clean` - Clean values from DataTable/DataList
 - `merge` - Merge two DataTables
+- `groupby` - Group a DataTable and aggregate columns (split-apply-combine)
 - `ccl` - Execute CCL statements on DataTable
 - `addcolccl` - Add DataTable column using CCL
 

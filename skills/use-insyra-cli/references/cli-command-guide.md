@@ -223,6 +223,13 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 - Usage: `merge <var1> <var2> <direction> <mode> [on <cols>] [as <var>]`
 - Example: `insyra merge x1 x2 inner strict`
 
+### `groupby`
+- Description: Group a DataTable and aggregate columns (split-apply-combine)
+- Usage: `groupby <var> by <col1>[,<col2>...] agg <col>:<op>[:<alias>] [<col>:<op>[:<alias>] ...] [as <var>]`
+- Example: `insyra groupby sales by region agg revenue:sum:total_rev qty:mean as report`
+- Multi-key with row-count shorthand: `insyra groupby sales by region,product agg revenue:sum count as report2`
+- Ops: `sum`, `mean` (alias `avg`), `median`, `min`, `max`, `count` (non-nil), `countall` (group size), `std`/`stdev`, `stdp`/`stdevp`, `var`, `varp`, `first`, `last`, `nunique`. Aliases default to `<col>_<op>`.
+
 ### `ccl`
 - Description: Execute CCL statements on DataTable
 - Usage: `ccl <var> <expression>`

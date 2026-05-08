@@ -10,6 +10,7 @@ DataTable is the core data structure of Insyra for handling structured data. It 
 - [Data Saving](#data-saving)
 - [Data Operations](#data-operations)
   - [Merge](#merge)
+  - [GroupBy](#groupby)
 - [Data Replacement](#data-replacement)
 - [Column Calculation](#column-calculation)
 - [Searching](#searching)
@@ -728,6 +729,88 @@ resRight, _ := dt1.Merge(dt2, insyra.MergeDirectionHorizontal, insyra.MergeModeR
 // B, 2, 10
 // C, 3, 20
 // D, <nil>, 30
+```
+
+### GroupBy
+
+```go
+func (dt *DataTable) GroupBy(keyCols ...string) *GroupedDataTable
+func (g *GroupedDataTable) Aggregate(configs ...AggregateConfig) *DataTable
+func (g *GroupedDataTable) AggregateAll(op AggregateOp) *DataTable
+func (g *GroupedDataTable) Count() *DataTable
+```
+
+**Description:** Splits the DataTable into groups by one or more key columns and applies aggregate functions to each group ("split-apply-combine"). The result is a new DataTable with one row per unique key combination — key columns first (in `GroupBy` order), then the aggregate columns (in `Aggregate` order). Group order in the output follows the order in which each key combination is first seen during a single linear scan; `nil` keys form their own group, and `int(1)` is kept distinct from the string `"1"`.
+
+**`AggregateConfig` fields:**
+
+- `SourceCol`: The column to aggregate. Resolved by name first, then as an Excel-style index (`"A"`, `"B"`, ...). Required for every op except `OpCountAll`.
+- `As`: Output column name. When empty it is auto-named `"<source>_<op>"` (e.g. `"revenue_sum"`).
+- `Op`: One of the `AggregateOp` constants below.
+- `Custom`: Used only when `Op == OpCustom`. The provided function receives a `*DataList` containing the source-column values of the group, in original row order, including `nil` entries.
+
+**Supported `AggregateOp`:**
+
+| Op | Behavior |
+|---|---|
+| `OpSum` | Sum of numeric values; non-numeric and `nil` skipped |
+| `OpMean` | Arithmetic mean of numeric values |
+| `OpMedian` | Median of numeric values |
+| `OpMin` / `OpMax` | Numeric min / max |
+| `OpCount` | Count of **non-nil** values |
+| `OpCountAll` | Count of **all** rows in the group (group size) |
+| `OpStdev` / `OpStdevP` | Sample / population standard deviation |
+| `OpVar` / `OpVarP` | Sample / population variance |
+| `OpFirst` / `OpLast` | First / last **non-nil** value in original row order |
+| `OpNUnique` | Distinct non-nil value count |
+| `OpCustom` | User-supplied `Custom func(group *DataList) any` |
+
+**Errors:** Unknown key columns, unknown source columns, missing `Custom` for `OpCustom`, empty configs, and empty key lists are reported via the parent `dt.Err()` instance-level error. The aggregate output is still returned (with affected columns nil-filled or empty), so callers can inspect partial results and continue chaining.
+
+**Example (single key, multiple aggregates):**
+
+```go
+dt := insyra.NewDataTable(
+    insyra.NewDataList("east", "east", "west", "west", "south").SetName("region"),
+    insyra.NewDataList(100, 200, 50, 75, 300).SetName("revenue"),
+    insyra.NewDataList(1, 2, 3, 4, 5).SetName("qty"),
+)
+
+report := dt.GroupBy("region").Aggregate(
+    insyra.AggregateConfig{SourceCol: "revenue", Op: insyra.OpSum,  As: "total_rev"},
+    insyra.AggregateConfig{SourceCol: "revenue", Op: insyra.OpMean, As: "avg_rev"},
+    insyra.AggregateConfig{SourceCol: "qty",     Op: insyra.OpSum,  As: "total_qty"},
+)
+// report columns: region, total_rev, avg_rev, total_qty
+// report rows:    east 300 150 3 / west 125 62.5 7 / south 300 300 5
+```
+
+**Example (multiple keys, custom aggregate):**
+
+```go
+weighted := dt.GroupBy("region", "product").Aggregate(
+    insyra.AggregateConfig{SourceCol: "revenue", Op: insyra.OpSum},  // auto-named "revenue_sum"
+    insyra.AggregateConfig{
+        SourceCol: "price",
+        As:        "wprice",
+        Op:        insyra.OpCustom,
+        Custom: func(group *insyra.DataList) any {
+            // Custom receives the group's column slice as a DataList. nil
+            // entries are preserved; you handle them.
+            return group.Mean()
+        },
+    },
+)
+```
+
+**Pipeline:** `GroupBy + Aggregate` composes naturally with `FilterRows` and `SortBy`:
+
+```go
+top := dt.
+    FilterRows(func(_, _ string, x any) bool { return true /* ... */ }).
+    GroupBy("region").
+    Aggregate(insyra.AggregateConfig{SourceCol: "revenue", Op: insyra.OpSum, As: "total"}).
+    SortBy(insyra.DataTableSortConfig{ColumnName: "total", Descending: true})
 ```
 
 ### AppendCols

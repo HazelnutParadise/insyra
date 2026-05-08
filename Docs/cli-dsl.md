@@ -228,6 +228,21 @@ Run:
 insyra --env demo run pipeline.isr
 ```
 
+### B2. GroupBy aggregations
+
+`groupby <var> by <col1>[,<col2>...] agg <spec> [<spec> ...] [as <var>]` runs split-apply-combine. Each `<spec>` is `<col>:<op>[:<alias>]`, plus the shorthand `count` for "row count per group". Supported ops: `sum`, `mean` (alias `avg`), `median`, `min`, `max`, `count`, `countall`, `std` (`stdev`), `stdp` (`stdevp`), `var`, `varp`, `first`, `last`, `nunique`. Aliases default to `<col>_<op>`.
+
+```text
+load sales.csv as sales
+groupby sales by region agg revenue:sum:total_rev qty:mean as report
+show report
+
+# Multi-key + count + named aggregate
+groupby sales by region,product agg revenue:sum count as report2
+```
+
+The result is a fresh DataTable with one row per group; key columns appear first (in `by` order), aggregate columns next (in `agg` order).
+
 ### C. Go `engine/dsl` session flow
 
 ```go
@@ -265,7 +280,7 @@ High-level command map:
 - **Environment**: `env`, `vars`, `drop`, `clone`, `rename`, `shape`, `types`, `show`, `summary`
 - **Data IO / Creation**: `newdl`, `newdt`, `load`, `read`, `save`, `convert`
 - **DataTable Structure / Access**: `addcol`, `addrow`, `dropcol`, `droprow`, `swap`, `transpose`, `rows`, `cols`, `row`, `col`, `get`, `set`, `setrownames`, `setcolnames`
-- **Data Processing**: `filter`, `sort`, `sample`, `find`, `replace`, `clean`, `merge`, `ccl`, `addcolccl`
+- **Data Processing**: `filter`, `sort`, `sample`, `find`, `replace`, `clean`, `merge`, `groupby`, `ccl`, `addcolccl`
 - **DataList Stats**: `sum`, `mean`, `median`, `mode`, `stdev`, `var`, `min`, `max`, `range`, `quartile`, `iqr`, `percentile`, `count`, `counter`, `corr`, `cov`, `corrmatrix`, `skewness`, `kurtosis`
 - **Time Series / Transforms**: `rank`, `normalize`, `standardize`, `reverse`, `upper`, `lower`, `capitalize`, `parsenums`, `parsestrings`, `movavg`, `expsmooth`, `diff`, `fillnan`
 - **Modeling / Viz / Fetch**: `regression`, `pca`, `kmeans`, `hclust`, `cutree`, `dbscan`, `silhouette`, `ttest`, `ztest`, `anova`, `ftest`, `chisq`, `plot`, `fetch`
@@ -312,6 +327,7 @@ Source policy:
 | `find` | `find <var> <value>` | Find rows containing value |
 | `ftest` | `ftest var\|levene\|bartlett ...` | F-test commands |
 | `get` | `get <var> <row> <col>` | Get single element from DataTable |
+| `groupby` | `groupby <var> by <col1>[,<col2>...] agg <col>:<op>[:<alias>] [<col>:<op>[:<alias>] ...] [as <var>]` | Group a DataTable and aggregate columns (split-apply-combine) |
 | `help` | `help [command]` | Show command help |
 | `history` | `history` | Show command history |
 | `iqr` | `iqr <var>` | DataList IQR |
