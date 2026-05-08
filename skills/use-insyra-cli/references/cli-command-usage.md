@@ -220,7 +220,13 @@ For expanded subcommand forms and practical examples, see `cli-command-guide.md`
 
 ## `load`
 - Description: Load data into a DataTable variable from a file, parquet, or SQL connection
-- Usage: `load <file>|parquet <file> [cols <c1,c2,...>] [rowgroups <i1,i2,...>] [sheet <name>]|sql <conn> <table> [where "..."] [order "..."] [limit N] [offset N] [cols "c1,c2"] [schema <s>] [indexcol <c>] [parsedates "c1,c2"]|sql <conn> query "<SQL>" [params <v1> <v2> ...] [as <var>]`
+- Usage: `load <file> [headers true|false] [rownames true|false] [encoding <enc>] [sheet <name>] | load parquet <file> [cols <c1,c2,...>] [rowgroups <i1,i2,...>] | load sql <conn> <table> [where "..."] [order "..."] [limit N] [offset N] [cols "c1,c2"] [schema <s>] [indexcol <c>] [parsedates "c1,c2"] | load sql <conn> query "<SQL>" [params <v1> <v2> ...] [as <var>]`
+- File options (CSV / Excel):
+	- `headers true|false` — first row is column names. Default `true`. JSON ignores this option (warns on use); Excel respects it.
+	- `rownames true|false` — first column is row names. Default `false`.
+	- `encoding <enc>` — CSV-only read-side hint (e.g. `big5`, `gbk`). Auto-detect when omitted.
+	- `sheet <name>` — Excel-only; required for `.xlsx`/`.xlsm`/`.xls`.
+	- Booleans accept `true|false|yes|no|on|off|1|0` (case-insensitive).
 - SQL options:
 	- Table form: `where "<expr>"`, `order "<expr>"`, `limit N`, `offset N`, `cols "c1,c2,..."`, `schema <s>`, `indexcol <c>`, `parsedates "c1,c2"`.
 	- Query form: only `params <v1> <v2> ...` (positional bind values, parsed as literals).
@@ -308,7 +314,8 @@ For expanded subcommand forms and practical examples, see `cli-command-guide.md`
 
 ## `read`
 - Description: Quick preview a file without saving variable
-- Usage: `read <file>`
+- Usage: `read <file> [headers true|false] [rownames true|false] [encoding <enc>] [sheet <name>]`
+- Notes: forwards the file-side options to `load`; result is shown but not stored.
 
 ## `regression`
 - Description: Regression analysis: linear/poly/exp/log
@@ -349,7 +356,14 @@ For expanded subcommand forms and practical examples, see `cli-command-guide.md`
 
 ## `save`
 - Description: Save a DataTable variable to a file or SQL connection
-- Usage: `save <var> <file> | save <var> sql <conn> <table> [if-exists fail|replace|append] [batch N] [schema <s>] [rownames]`
+- Usage: `save <var> <file> [headers true|false] [rownames true|false] [bom true|false] | save <var> sql <conn> <table> [if-exists fail|replace|append] [batch N] [schema <s>] [rownames]`
+- File options (CSV):
+	- `headers true|false` — write column names as the first row. Default `true`.
+	- `rownames true|false` — write row names as the first column. Default `false`.
+	- `bom true|false` — write a UTF-8 BOM (helps Excel for Windows open Chinese CSVs cleanly). Default `false`.
+	- JSON: only `headers` applies (controls whether values use column names as keys); `rownames`/`bom` are rejected.
+	- Parquet: file options are not supported (rejected).
+	- Booleans accept `true|false|yes|no|on|off|1|0` (case-insensitive).
 - SQL options:
 	- `if-exists fail|replace|append` (default: `fail`)
 	- `batch N` — INSERT batch size

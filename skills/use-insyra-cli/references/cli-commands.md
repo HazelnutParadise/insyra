@@ -35,8 +35,10 @@ This list is generated from `insyra help` in this repository state.
 - `newdl` - Create DataList manually
 - `newdt` - Create DataTable from DataList variables
 - `load` - Load data into a DataTable variable from a file, parquet, or SQL connection
-- `read` - Quick preview a file without saving variable
+  - File options: `headers true|false` (default `true`), `rownames true|false` (default `false`), `encoding <enc>` (CSV only), `sheet <name>` (Excel)
+- `read` - Quick preview a file without saving variable (forwards the same file options as `load`)
 - `save` - Save a DataTable variable to a file or SQL connection
+  - File options: `headers true|false` (default `true`), `rownames true|false` (default `false`), `bom true|false` (default `false`, CSV only)
 - `convert` - Convert file formats (csv<->xlsx)
 
 ## Database (sqlite / mysql / postgres, pure-Go drivers)

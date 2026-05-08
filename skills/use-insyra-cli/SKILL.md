@@ -143,6 +143,16 @@ insyra env import ./exp1.json exp1-copy --force
 # Run script in environment
 insyra --env exp1 run ./pipeline.isr
 
+# CSV / Excel: control headers and row names on read/write
+# Defaults: headers=true, rownames=false. Booleans accept true|false|yes|no|on|off|1|0.
+insyra load matrix.csv headers false as t                  # no header row
+insyra load gdp.csv rownames true as t                     # first column = row names
+insyra load legacy.csv encoding big5 as t                  # CSV-only encoding hint
+insyra load report.xlsx sheet 2025 rownames true as t      # Excel needs `sheet`
+insyra save report data.csv bom true                       # UTF-8 BOM (Windows Excel)
+insyra save gdp out.csv rownames true                      # row names as first col
+insyra save matrix data.csv headers false                  # pure data dump
+
 # Group rows by key, aggregate columns (split-apply-combine)
 insyra load sales.csv as sales
 insyra groupby sales by region agg revenue:sum:total_rev qty:mean as report

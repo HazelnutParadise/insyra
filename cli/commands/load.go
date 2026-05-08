@@ -13,7 +13,7 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "load",
-		Usage:       "load <file>|parquet <file>|sql <conn> <table>|sql <conn> query \"<sql>\" [...] [as <var>]",
+		Usage:       "load <file> [headers true|false] [rownames true|false] [encoding <enc>] [sheet <name>] | load parquet <file> [...] | load sql <conn> <table>|query \"<sql>\" [...] [as <var>]",
 		Description: "Load data into a DataTable variable from a file, parquet, or SQL connection",
 		Run:         runLoadCommand,
 	})
@@ -22,7 +22,7 @@ func init() {
 func runLoadCommand(ctx *ExecContext, args []string) error {
 	coreArgs, alias := parseAlias(args)
 	if len(coreArgs) == 0 {
-		return fmt.Errorf("usage: load <file>|parquet <file>|sql <conn> <table>|sql <conn> query \"<sql>\" [...] [as <var>]")
+		return fmt.Errorf("usage: load <file> [headers true|false] [rownames true|false] [encoding <enc>] [sheet <name>] | load parquet <file> [...] | load sql <conn> <table>|query \"<sql>\" [...] [as <var>]")
 	}
 
 	var table *insyra.DataTable
@@ -48,20 +48,33 @@ func runLoadCommand(ctx *ExecContext, args []string) error {
 		}
 	default:
 		path := coreArgs[0]
+		opts, parseErr := parseFileLoadOptions(coreArgs[1:])
+		if parseErr != nil {
+			return parseErr
+		}
 		switch detectFileKind(path) {
 		case "csv":
-			table, err = insyra.ReadCSV_File(path, false, true)
+			if opts.SheetSet {
+				return fmt.Errorf("load csv: 'sheet' is not valid for CSV files")
+			}
+			if opts.Encoding != "" {
+				table, err = insyra.ReadCSV_File(path, opts.RowNames, opts.Headers, opts.Encoding)
+			} else {
+				table, err = insyra.ReadCSV_File(path, opts.RowNames, opts.Headers)
+			}
 		case "json":
+			if opts.HeadersSet || opts.RowNamesSet || opts.SheetSet || opts.Encoding != "" {
+				return fmt.Errorf("load json: headers/rownames/sheet/encoding options are not supported for JSON")
+			}
 			table, err = insyra.ReadJSON_File(path)
 		case "excel":
-			sheetName := ""
-			if len(coreArgs) >= 3 && coreArgs[1] == "sheet" {
-				sheetName = coreArgs[2]
+			if opts.Encoding != "" {
+				return fmt.Errorf("load excel: 'encoding' is not valid for Excel files")
 			}
-			if sheetName == "" {
-				return fmt.Errorf("usage for excel: load <file.xlsx> sheet <sheet-name> [as <var>]")
+			if !opts.SheetSet || opts.Sheet == "" {
+				return fmt.Errorf("usage for excel: load <file.xlsx> sheet <sheet-name> [headers true|false] [rownames true|false] [as <var>]")
 			}
-			table, err = insyra.ReadExcelSheet(path, sheetName, false, true)
+			table, err = insyra.ReadExcelSheet(path, opts.Sheet, opts.RowNames, opts.Headers)
 		default:
 			return fmt.Errorf("unsupported file type: %s", path)
 		}
@@ -73,6 +86,75 @@ func runLoadCommand(ctx *ExecContext, args []string) error {
 	ctx.Vars[alias] = table
 	_, _ = fmt.Fprintf(ctx.Output, "loaded %s (rows=%d, cols=%d)\n", alias, table.NumRows(), table.NumCols())
 	return nil
+}
+
+// fileLoadOptions captures the shared CSV/Excel/JSON load options. The *Set
+// flags let format-specific code reject options that don't apply.
+type fileLoadOptions struct {
+	Headers     bool
+	HeadersSet  bool
+	RowNames    bool
+	RowNamesSet bool
+	Encoding    string
+	Sheet       string
+	SheetSet    bool
+}
+
+func parseFileLoadOptions(args []string) (fileLoadOptions, error) {
+	opts := fileLoadOptions{Headers: true, RowNames: false}
+	for i := 0; i < len(args); {
+		key := strings.ToLower(args[i])
+		next := func() (string, error) {
+			if i+1 >= len(args) {
+				return "", fmt.Errorf("load: option %q requires a value", args[i])
+			}
+			return args[i+1], nil
+		}
+		switch key {
+		case "headers", "header":
+			v, err := next()
+			if err != nil {
+				return opts, err
+			}
+			b, err := parseFlexBool(v)
+			if err != nil {
+				return opts, fmt.Errorf("load: invalid value for headers: %w", err)
+			}
+			opts.Headers = b
+			opts.HeadersSet = true
+			i += 2
+		case "rownames", "rowname":
+			v, err := next()
+			if err != nil {
+				return opts, err
+			}
+			b, err := parseFlexBool(v)
+			if err != nil {
+				return opts, fmt.Errorf("load: invalid value for rownames: %w", err)
+			}
+			opts.RowNames = b
+			opts.RowNamesSet = true
+			i += 2
+		case "encoding":
+			v, err := next()
+			if err != nil {
+				return opts, err
+			}
+			opts.Encoding = v
+			i += 2
+		case "sheet":
+			v, err := next()
+			if err != nil {
+				return opts, err
+			}
+			opts.Sheet = v
+			opts.SheetSet = true
+			i += 2
+		default:
+			return opts, fmt.Errorf("load: unknown option %q (supported: headers, rownames, encoding, sheet)", args[i])
+		}
+	}
+	return opts, nil
 }
 
 func parseParquetLoadOptions(args []string) (parquet.ReadOptions, error) {

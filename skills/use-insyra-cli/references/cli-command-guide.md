@@ -98,23 +98,33 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 
 ### `load`
 - Description: Load data into a DataTable variable from a file, parquet, or SQL connection
-- Usage: `load <file>|parquet <file> [cols <c1,c2,...>] [rowgroups <i1,i2,...>] [sheet <name>]|sql <conn> <table> [where "..."] [order "..."] [limit N] [offset N] [cols "c1,c2"] [schema <s>] [indexcol <c>] [parsedates "c1,c2"]|sql <conn> query "<SQL>" [params <v1> <v2> ...] [as <var>]`
+- Usage: `load <file> [headers true|false] [rownames true|false] [encoding <enc>] [sheet <name>] | load parquet <file> [cols <c1,c2,...>] [rowgroups <i1,i2,...>] | load sql <conn> <table> [where "..."] [order "..."] [limit N] [offset N] [cols "c1,c2"] [schema <s>] [indexcol <c>] [parsedates "c1,c2"] | load sql <conn> query "<SQL>" [params <v1> <v2> ...] [as <var>]`
+- Defaults: `headers=true`, `rownames=false`. Booleans accept `true|false|yes|no|on|off|1|0`.
 - Examples:
   - `insyra load data.csv as t`
+  - `insyra load matrix.csv headers false as t` (no header row)
+  - `insyra load gdp.csv rownames true as t` (first column = row names)
+  - `insyra load legacy.csv encoding big5 as t`
+  - `insyra load report.xlsx sheet 2025 rownames true as t`
   - `insyra load parquet data.parquet cols id,amount rowgroups 0,1 as t`
   - `insyra load sql main customers as customers`
   - `insyra load sql main query "SELECT * FROM orders WHERE year = ?" params 2025 as orders`
 
 ### `read`
 - Description: Quick preview a file without saving variable
-- Usage: `read <file>`
+- Usage: `read <file> [headers true|false] [rownames true|false] [encoding <enc>] [sheet <name>]`
 - Example: `insyra read data.csv`
+- Note: forwards the same file options as `load`.
 
 ### `save`
 - Description: Save a DataTable variable to a file or SQL connection
-- Usage: `save <var> <file> | save <var> sql <conn> <table> [if-exists fail|replace|append] [batch N] [schema <s>] [rownames]`
+- Usage: `save <var> <file> [headers true|false] [rownames true|false] [bom true|false] | save <var> sql <conn> <table> [if-exists fail|replace|append] [batch N] [schema <s>] [rownames]`
+- Defaults: `headers=true`, `rownames=false`, `bom=false`. Booleans accept `true|false|yes|no|on|off|1|0`.
 - Examples:
   - `insyra save x data.csv`
+  - `insyra save matrix data.csv headers false`
+  - `insyra save gdp out.csv rownames true`
+  - `insyra save report data.csv bom true` (UTF-8 BOM for Windows Excel)
   - `insyra save report sql main report_table if-exists replace batch 1000`
 
 ### `convert`
