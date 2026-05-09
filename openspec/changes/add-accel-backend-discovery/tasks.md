@@ -8,3 +8,4 @@
 - [x] 1.7 Implement builtin CUDA, Metal, and WebGPU discoverer stubs behind the new discovery contract
 - [x] 1.8 Honor `DiscoveryTimeout` across session-level discoverers and native probe commands
 - [x] 1.9 Add shared-memory budget fallback and cross-backend dedupe so portable/native inventory stays credible when native budget data is missing
+- [x] 1.10 Introduce an SDK probe seam ahead of the native command probe seam, ship a Windows NVML SDK probe via stdlib `syscall` (no cgo), and surface driver/compute/PCI metadata on `Device` so env-driven stubs and host commands stop being the primary discovery path on supported hosts

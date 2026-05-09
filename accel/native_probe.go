@@ -59,7 +59,7 @@ func probeNativeCUDA(cfg Config) ([]Device, error) {
 	output, err := commandOutputWithTimeout(
 		cfg,
 		"nvidia-smi",
-		"--query-gpu=index,name,memory.total",
+		"--query-gpu=index,name,memory.total,driver_version,compute_cap,pci.bus_id",
 		"--format=csv,noheader,nounits",
 	)
 	if err != nil {
@@ -389,11 +389,22 @@ func parseNvidiaSMIOutput(output []byte) ([]Device, error) {
 		index := strconv.Itoa(fallbackIndex)
 		name := ""
 		memoryToken := ""
-		if len(parts) >= 3 {
+		driverVersion := ""
+		computeCap := ""
+		pciBusID := ""
+		switch {
+		case len(parts) >= 6:
 			index = strings.TrimSpace(parts[0])
 			name = strings.TrimSpace(parts[1])
 			memoryToken = strings.TrimSpace(parts[2])
-		} else {
+			driverVersion = strings.TrimSpace(parts[3])
+			computeCap = strings.TrimSpace(parts[4])
+			pciBusID = strings.TrimSpace(parts[5])
+		case len(parts) >= 3:
+			index = strings.TrimSpace(parts[0])
+			name = strings.TrimSpace(parts[1])
+			memoryToken = strings.TrimSpace(parts[2])
+		default:
 			name = strings.TrimSpace(parts[0])
 			memoryToken = strings.TrimSpace(parts[1])
 		}
@@ -402,14 +413,17 @@ func parseNvidiaSMIOutput(output []byte) ([]Device, error) {
 			return nil, fmt.Errorf("accel: invalid nvidia-smi memory %q", memoryToken)
 		}
 		devices = append(devices, Device{
-			ID:          "cuda:native:" + index,
-			Name:        name,
-			Vendor:      "nvidia",
-			Backend:     BackendCUDA,
-			ProbeSource: ProbeSourceNative,
-			Type:        DeviceTypeDiscrete,
-			MemoryClass: MemoryClassDevice,
-			BudgetBytes: memoryMiB * 1024 * 1024,
+			ID:                "cuda:native:" + index,
+			Name:              name,
+			Vendor:            "nvidia",
+			Backend:           BackendCUDA,
+			ProbeSource:       ProbeSourceNative,
+			Type:              DeviceTypeDiscrete,
+			MemoryClass:       MemoryClassDevice,
+			BudgetBytes:       memoryMiB * 1024 * 1024,
+			DriverVersion:     driverVersion,
+			ComputeCapability: computeCap,
+			PCIBusID:          pciBusID,
 			CapabilitySummary: map[string]bool{
 				"multi_gpu":           true,
 				"device_local_memory": true,

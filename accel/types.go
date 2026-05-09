@@ -43,6 +43,7 @@ type ProbeSource string
 
 const (
 	ProbeSourceUnknown ProbeSource = "unknown"
+	ProbeSourceSDK     ProbeSource = "sdk"
 	ProbeSourceNative  ProbeSource = "native"
 	ProbeSourceEnvStub ProbeSource = "env-stub"
 )
@@ -121,6 +122,9 @@ type Device struct {
 	BudgetBytes       uint64
 	Score             float64
 	CapabilitySummary map[string]bool
+	DriverVersion     string
+	ComputeCapability string
+	PCIBusID          string
 }
 
 type Report struct {

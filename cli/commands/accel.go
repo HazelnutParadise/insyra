@@ -152,7 +152,7 @@ func renderAccelDevices(out io.Writer, session *accelpkg.Session) {
 	for _, device := range devices {
 		_, _ = fmt.Fprintf(
 			out,
-			"id=%s backend=%s probe=%s vendor=%s type=%s memory=%s budget=%d accelerated=%t caps=%s\n",
+			"id=%s backend=%s probe=%s vendor=%s type=%s memory=%s budget=%d driver=%s compute=%s pci=%s accelerated=%t caps=%s\n",
 			device.ID,
 			device.Backend,
 			device.ProbeSource,
@@ -160,6 +160,9 @@ func renderAccelDevices(out io.Writer, session *accelpkg.Session) {
 			device.Type,
 			device.MemoryClass,
 			device.BudgetBytes,
+			fallbackString(device.DriverVersion),
+			fallbackString(device.ComputeCapability),
+			fallbackString(device.PCIBusID),
 			report.Accelerated,
 			formatCapabilities(device.CapabilitySummary),
 		)
@@ -294,6 +297,13 @@ func hydrateAccelCacheFromContext(session *accelpkg.Session, ctx *ExecContext) {
 			_, _ = session.ProjectDataTable(typed)
 		}
 	}
+}
+
+func fallbackString(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return "-"
+	}
+	return value
 }
 
 func formatCapabilities(caps map[string]bool) string {
