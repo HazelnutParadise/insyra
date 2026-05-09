@@ -25,8 +25,9 @@ func RegisterDiscoverer(d Discoverer) {
 
 func ResetDiscoverersForTest() {
 	discoverersMu.Lock()
-	defer discoverersMu.Unlock()
 	discoverers = nil
+	discoverersMu.Unlock()
+	ResetSDKProbesForTest()
 }
 
 func currentDiscoverers() []Discoverer {
@@ -171,6 +172,7 @@ func normalizeCapabilitySummary(device Device) map[string]bool {
 	caps["validity_bitmap"] = true
 	caps["encoded_strings"] = true
 	caps["heterogeneous_planning"] = true
+	caps["sdk_probe"] = device.ProbeSource == ProbeSourceSDK
 	caps["native_probe"] = device.ProbeSource == ProbeSourceNative
 	caps["env_stub"] = device.ProbeSource == ProbeSourceEnvStub
 
@@ -200,6 +202,7 @@ func discoveryMetrics(devices []Device, report Report, discoveryErrors int) map[
 	metrics := map[string]float64{
 		"devices.discovered":           float64(len(devices)),
 		"devices.selected":             float64(len(report.SelectedDeviceIDs)),
+		"devices.sdk":                  0,
 		"devices.native":               0,
 		"devices.env_stub":             0,
 		"devices.shared_memory":        0,
@@ -221,6 +224,8 @@ func discoveryMetrics(devices []Device, report Report, discoveryErrors int) map[
 	}
 	for _, device := range devices {
 		switch device.ProbeSource {
+		case ProbeSourceSDK:
+			metrics["devices.sdk"]++
 		case ProbeSourceNative:
 			metrics["devices.native"]++
 		case ProbeSourceEnvStub:

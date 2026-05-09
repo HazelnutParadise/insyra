@@ -17,7 +17,7 @@ Build backend discovery and device selection on top of the now-frozen `insyra/ac
 | --- | --- | --- | --- | --- |
 | M0 | Control surface established | planning | done | `delivery-plan.md`, `AGENTS.md`, `CLAUDE.md`, and full accel proposal inventory exist |
 | M1 | Accel runtime API frozen in spec | planning | done | `accel` package compiles, `go test ./accel` passes, docs surface added |
-| M2 | Backend discovery and scoring frozen in spec | planning | in_progress | discoverer registry, builtin CUDA/Metal/WebGPU stubs, native probe seams, Windows/Linux portable probe fallback chains, discovery timeout handling, cross-backend dedupe, shared-memory budget fallback, budget normalization, and selection tests land; true SDK-backed probes and deeper capability shaping still pending |
+| M2 | Backend discovery and scoring frozen in spec | planning | in_progress | discoverer registry, builtin CUDA/Metal/WebGPU stubs, native probe seams, Windows/Linux portable probe fallback chains, discovery timeout handling, cross-backend dedupe, shared-memory budget fallback, budget normalization, selection tests, the SDK probe seam, a Windows NVML SDK probe via stdlib `syscall` (no cgo), and driver/compute/PCI metadata on `Device` land; Linux/macOS NVML and Metal/WebGPU SDK probes still pending |
 | M3 | Columnar layout and cache model frozen in spec | planning | done | typed projection now emits validity bitmaps, encoded string transport, lineage-aware session-local cache keys, and aggregate budget enforcement; true device residency is still pending allocator-backed work |
 | M4 | Scheduler and observable fallback frozen in spec | planning | in_progress | strict-mode fallback reason codes, core accel metrics, weighted shard assignments, merge-policy selection, profitability-aware planning, execution-ledger residency metrics, builtin homogeneous allocator stubs, and deterministic cache eviction land; true backend execution merge behavior still pending |
 | M5 | CLI/DSL accel surface frozen in spec | planning | in_progress | `accel devices|cache|plan|run <var>`, `config accel.mode`, and `show accel.devices|accel.cache` land; backend-native execution semantics still pending |
@@ -26,7 +26,7 @@ Build backend discovery and device selection on top of the now-frozen `insyra/ac
 None.
 
 ## Next Verifiable Output
-True SDK-backed backend probes layered onto the new native probe seam, so env-driven stubs become optional rather than the primary discovery path.
+Linux/macOS NVML SDK probe (and Metal/WebGPU SDK probes) layered onto the now-existing SDK probe seam, so SDK-backed discovery becomes the primary path on every supported host rather than only Windows.
 
 ## Next OpenSpec Change
 `add-accel-backend-discovery`
@@ -124,6 +124,14 @@ True SDK-backed backend probes layered onto the new native probe seam, so env-dr
   rationale: Auto-detection should survive missing host utilities on real machines; a single optimistic command path would keep env stubs as the practical default.
   timestamp: 2026-03-28
   impacted_change_ids: `add-accel-backend-discovery`, `add-accel-observability-fallback`
+- decision: Layer SDK probes on top of the native probe seam with a fixed priority of SDK > native command > env stub, instead of replacing the native command probe seam.
+  rationale: Native command probes already work on hosts that ship `nvidia-smi`/`system_profiler`/`lspci`; keeping them as a documented fallback means SDK probe outages do not regress discovery, and tests can exercise the priority order without mocking driver libraries.
+  timestamp: 2026-05-09
+  impacted_change_ids: `add-accel-backend-discovery`, `add-accel-observability-fallback`, `add-accel-cli-dsl-surface`
+- decision: Ship the first SDK-backed probe (Windows NVML) via stdlib `syscall.LoadLibrary`/`SyscallN` instead of cgo or third-party bindings.
+  rationale: The accel package has been deliberately cgo-free; using stdlib lets the SDK probe seam land on Windows immediately without forcing a cgo toolchain on every consumer of `insyra/accel`. Linux/macOS NVML, Metal, and wgpu-native probes can plug into the same seam later.
+  timestamp: 2026-05-09
+  impacted_change_ids: `add-accel-backend-discovery`
 
 ## Source Links
 - `delivery-plan.md`
@@ -160,4 +168,6 @@ True SDK-backed backend probes layered onto the new native probe seam, so env-dr
 - `accel` now also has an execution seam in code: `ExecuteProjectedDataset(...)`, `ExecuteDataList(...)`, and `ExecuteDataTable(...)` materialize truthful per-device residency through builtin `CUDA` / `Metal` / `WebGPU` allocator stubs plus ledger fallback and update execution metrics/report state without pretending real GPU kernels already run.
 - `add-accel-columnar-layout-cache` is now complete enough to close the current slice: typed projection emits validity bitmaps, string offsets/data transport, lineage-aware session-local cache identity, aggregate budget enforcement, eviction metrics, and truthful cache output that does not pretend projection buffers are already resident on every shardable device.
 - `add-accel-cli-dsl-surface` remains partially implemented. `accel cache` now shows truthful session-local resident state, the Cobra `--mode` path now works end-to-end, `accel plan` stays planning-only, and `accel run <var>` now drives the execution ledger; there is still no device allocator or true backend-native workload execution surface.
-- The next change to pick up is `add-accel-backend-discovery`, focusing on richer capability normalization and eventually replacing env-driven stubs with native probe seams.
+- `add-accel-backend-discovery` now also has an SDK probe seam in code: `RegisterSDKProbe` / `SDKProbe` / `ResetSDKProbesForTest` route SDK-backed discoverers ahead of native command probes and env stubs, and `ProbeSourceSDK` plus a new `devices.sdk` metric let observers tell SDK-discovered devices apart from native and env-stub ones.
+- The accel runtime now ships a Windows NVML SDK probe via stdlib `syscall.LoadLibrary` and `SyscallN` (no cgo), populating `Device.DriverVersion`, `Device.ComputeCapability`, and (via the enriched nvidia-smi parser) `Device.PCIBusID`. `INSYRA_ACCEL_DISABLE_NVML_SDK=1` lets tests opt out on hosts that ship NVIDIA drivers; the CLI `accel devices` output now also prints `driver=`, `compute=`, and `pci=` columns.
+- The next change to pick up is still `add-accel-backend-discovery`, now focusing on Linux/macOS NVML probes and Metal/WebGPU SDK probes plugged into the same SDK probe seam, so SDK-backed discovery becomes the primary path on every supported platform rather than only Windows.

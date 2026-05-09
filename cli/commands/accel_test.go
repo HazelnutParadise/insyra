@@ -16,6 +16,7 @@ func setupCommandHome(t *testing.T) {
 	t.Setenv("HOMEDRIVE", "")
 	t.Setenv("HOMEPATH", "")
 	t.Setenv("INSYRA_ACCEL_DISABLE_NATIVE_PROBES", "1")
+	t.Setenv("INSYRA_ACCEL_DISABLE_NVML_SDK", "1")
 }
 
 func TestRunAccelCommandDevicesPrintsBuiltinStubDevices(t *testing.T) {

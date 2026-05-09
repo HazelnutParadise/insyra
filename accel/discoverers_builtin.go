@@ -78,6 +78,12 @@ func (d builtinDiscoverer) Name() string {
 }
 
 func (d builtinDiscoverer) Discover(cfg Config) ([]Device, error) {
+	if devices, err := runSDKProbes(d.backend, cfg); err == nil && len(devices) > 0 {
+		return devices, nil
+	} else if err != nil && !errors.Is(err, ErrSDKProbeUnavailable) {
+		return nil, err
+	}
+
 	if nativeProbe := resolveNativeProbe(d); nativeProbe != nil {
 		devices, err := nativeProbe(cfg)
 		if err == nil && len(devices) > 0 {
