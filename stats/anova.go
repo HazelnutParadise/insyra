@@ -1,11 +1,13 @@
 package stats
 
 import (
+	"errors"
+	"fmt"
 	"math"
+	"sync"
 
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/parallel"
-	"gonum.org/v1/gonum/stat/distuv"
 )
 
 type ANOVAResultComponent struct {
@@ -37,177 +39,196 @@ type RepeatedMeasuresANOVAResult struct {
 	TotalSS float64
 }
 
-func OneWayANOVA(groups ...insyra.IDataList) *OneWayANOVAResult {
-	if len(groups) < 2 {
-		insyra.LogWarning("stats", "OneWayANOVA", "At least two groups are required")
-		return nil
-	}
-
-	totalSum := 0.0
-	totalCount := 0
-	for i, g := range groups {
-		var groupLen int
-		var groupSum float64
-		g.AtomicDo(func(gdl *insyra.DataList) {
-			groupLen = gdl.Len()
-			groupSum = gdl.Sum()
-		})
-
-		if groupLen == 0 {
-			insyra.LogWarning("stats", "OneWayANOVA", "Group %d is empty", i)
-			return nil
-		}
-		totalSum += groupSum
-		totalCount += groupLen
-	}
-
-	totalMean := totalSum / float64(totalCount)
-
-	var SSB, SSW float64
-
-	parallel.GroupUp(func() {
-		for _, g := range groups {
-			var groupMean float64
-			var groupLen int
-			g.AtomicDo(func(gdl *insyra.DataList) {
-				groupMean = gdl.Mean()
-				groupLen = gdl.Len()
-			})
-			SSB += float64(groupLen) * (groupMean - totalMean) * (groupMean - totalMean)
-		}
-	}, func() {
-		for i, g := range groups {
-			var groupData []any
-			var groupMean float64
-			g.AtomicDo(func(gdl *insyra.DataList) {
-				groupMean = gdl.Mean()
-				groupData = gdl.Data()
-			})
-			for j, v := range groupData {
-				x, ok := insyra.ToFloat64Safe(v)
-				if !ok {
-					insyra.LogWarning("stats", "OneWayANOVA", "Invalid data at group %d index %d", i, j)
-					return
-				}
-				SSW += (x - groupMean) * (x - groupMean)
-			}
-		}
-	}).Run().AwaitResult()
-
-	DFB := len(groups) - 1
-	DFW := totalCount - len(groups)
-	F := (SSB / float64(DFB)) / (SSW / float64(DFW))
-	P := 1 - distuv.F{D1: float64(DFB), D2: float64(DFW)}.CDF(F)
-
-	return &OneWayANOVAResult{
-		Factor:  ANOVAResultComponent{SSB, DFB, F, P, SSB / (SSB + SSW)},
-		Within:  ANOVAResultComponent{SSW, DFW, math.NaN(), math.NaN(), math.NaN()},
-		TotalSS: SSB + SSW,
+func newANOVAComponent(sumOfSquares float64, df int, f, p, eta float64) ANOVAResultComponent {
+	return ANOVAResultComponent{
+		SumOfSquares: sumOfSquares,
+		DF:           df,
+		F:            f,
+		P:            p,
+		EtaSquared:   eta,
 	}
 }
 
-func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) *TwoWayANOVAResult {
-	if factorALevels < 2 || factorBLevels < 2 || len(cells) != factorALevels*factorBLevels {
-		insyra.LogWarning("stats", "TwoWayANOVA", "Invalid levels or cells")
-		return nil
+func newANOVAWithinComponent(sumOfSquares float64, df int) ANOVAResultComponent {
+	return newANOVAComponent(sumOfSquares, df, math.NaN(), math.NaN(), math.NaN())
+}
+
+func newANOVABetweenComponent(ssEffect float64, dfEffect int, ssWithin float64, dfWithin int) ANOVAResultComponent {
+	f := fRatio(ssEffect, dfEffect, ssWithin, dfWithin)
+	p := fOneTailedPValue(f, float64(dfEffect), float64(dfWithin))
+	eta := etaSquared(ssEffect, ssWithin)
+	return newANOVAComponent(ssEffect, dfEffect, f, p, eta)
+}
+
+func OneWayANOVA(groups ...insyra.IDataList) (*OneWayANOVAResult, error) {
+	if len(groups) < 2 {
+		return nil, errors.New("at least two groups are required")
 	}
 
+	// Pull every group's raw []any in parallel (each is a separate actor;
+	// no contention between them). The serial form's actor-entry chain
+	// dominated wall time at >2 groups — same fix as TwoWayANOVA.
+	groupsRaw := make([][]any, len(groups))
+	var extractWG sync.WaitGroup
+	for i := range groups {
+		extractWG.Add(1)
+		go func(i int) {
+			defer extractWG.Done()
+			groups[i].AtomicDo(func(gdl *insyra.DataList) {
+				groupsRaw[i] = gdl.Data()
+			})
+		}(i)
+	}
+	extractWG.Wait()
+
+	values := make([]float64, 0)
+	labels := make([]int, 0)
+	for i, groupData := range groupsRaw {
+		if len(groupData) == 0 {
+			return nil, fmt.Errorf("group %d is empty", i)
+		}
+		for j, v := range groupData {
+			x, ok := insyra.ToFloat64Safe(v)
+			if !ok {
+				return nil, fmt.Errorf("invalid data at group %d index %d", i, j)
+			}
+			values = append(values, x)
+			labels = append(labels, i)
+		}
+	}
+
+	stats, err := oneWayANOVAFromSlices(values, labels, len(groups))
+	if err != nil {
+		return nil, err
+	}
+
+	return &OneWayANOVAResult{
+		Factor:  newANOVAComponent(stats.SSB, stats.DFB, stats.F, stats.P, stats.Eta),
+		Within:  newANOVAWithinComponent(stats.SSW, stats.DFW),
+		TotalSS: stats.SSB + stats.SSW,
+	}, nil
+}
+
+func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) (*TwoWayANOVAResult, error) {
+	if factorALevels < 2 || factorBLevels < 2 || len(cells) != factorALevels*factorBLevels {
+		return nil, errors.New("invalid levels or cells")
+	}
+
+	// Per-cell AtomicDo serially. An earlier attempt to fan these out to
+	// goroutines (one per cell) made TwoWayANOVA ~2× SLOWER on the n=60
+	// per-cell, 20-cell benchmark — for that workload the AtomicDo cost
+	// per cell is small enough that goroutine-launch + scheduler latency
+	// dominates the saved actor-handshake time. Profile-driven decision:
+	// keep the simple serial loop. If a future caller passes thousands of
+	// cells, revisit with a calibrated threshold.
+	cellsRaw := make([][]any, len(cells))
+	cellLens := make([]int, len(cells))
+	for c := range cells {
+		cells[c].AtomicDo(func(cdl *insyra.DataList) {
+			cellsRaw[c] = cdl.Data()
+			cellLens[c] = cdl.Len()
+		})
+	}
+
+	// Single-pass extraction: while reading cell data we also accumulate
+	// per-cell sums so cellMeans can be computed without a second pass over
+	// the cells (the previous code called cells[i].Mean() and iterated each
+	// cell's Data() yet again for SSW). Order of summation per cell matches
+	// DataList.Mean exactly, so cellMeans are bit-identical.
 	var allValues []float64
 	cellCounts := make([]int, len(cells))
-	factorsA := make([]int, 0)
-	factorsB := make([]int, 0)
+	cellSums := make([]float64, len(cells))
+	cellOffsets := make([]int, len(cells))
 
 	for i := range factorALevels {
 		for j := range factorBLevels {
-			cell := cells[i*factorBLevels+j]
-			var cellData []any
-			var cellLen int
-			cell.AtomicDo(func(cdl *insyra.DataList) {
-				cellData = cdl.Data()
-				cellLen = cdl.Len()
-			})
+			idx := i*factorBLevels + j
+			cellLen := cellLens[idx]
 			if cellLen == 0 {
-				insyra.LogWarning("stats", "TwoWayANOVA", "Empty cell")
-				return nil
+				return nil, fmt.Errorf("empty cell at A=%d, B=%d", i, j)
 			}
-			cellCounts[i*factorBLevels+j] = cellLen
-			for _, v := range cellData {
-				value, _ := insyra.ToFloat64Safe(v)
+			cellData := cellsRaw[idx]
+			cellCounts[idx] = cellLen
+			cellOffsets[idx] = len(allValues)
+			var localSum float64
+			for k, v := range cellData {
+				value, ok := insyra.ToFloat64Safe(v)
+				if !ok {
+					return nil, fmt.Errorf("invalid data at cell (A=%d, B=%d) index %d", i, j, k)
+				}
 				allValues = append(allValues, value)
-				factorsA = append(factorsA, i)
-				factorsB = append(factorsB, j)
+				localSum += value
 			}
+			cellSums[idx] = localSum
 		}
 	}
-	totalMean := insyra.NewDataList(allValues).Mean()
 	totalCount := len(allValues)
 
-	var SSA, SSB float64
-	parallel.GroupUp(func() {
-		for i := range factorALevels {
-			var sum float64
-			var count int
-			for idx, a := range factorsA {
-				if a == i {
-					sum += allValues[idx]
-					count++
-				}
-			}
-			SSA += float64(count) * math.Pow(sum/float64(count)-totalMean, 2)
-		}
-	}, func() {
-		for j := range factorBLevels {
-			var sum float64
-			var count int
-			for idx, b := range factorsB {
-				if b == j {
-					sum += allValues[idx]
-					count++
-				}
-			}
-			SSB += float64(count) * math.Pow(sum/float64(count)-totalMean, 2)
-		}
-	}).Run().AwaitResult()
+	// totalMean computed from cellSums to avoid creating a temporary DataList
+	// (which would lock+unlock its actor and walk allValues again). Same
+	// summation order as before — DataList.Mean iterates the input slice in
+	// order, and cellSums was built by the same cell-order pass.
+	var grandSum float64
+	for _, s := range cellSums {
+		grandSum += s
+	}
+	totalMean := grandSum / float64(totalCount)
 
-	cellMeans := make([]float64, len(cells))
-	for i := range cells {
-		cellMeans[i] = cells[i].Mean()
+	sumsA := make([]float64, factorALevels)
+	sumsB := make([]float64, factorBLevels)
+	countsA := make([]int, factorALevels)
+	countsB := make([]int, factorBLevels)
+	for i := range factorALevels {
+		for j := range factorBLevels {
+			idx := i*factorBLevels + j
+			sumsA[i] += cellSums[idx]
+			sumsB[j] += cellSums[idx]
+			countsA[i] += cellCounts[idx]
+			countsB[j] += cellCounts[idx]
+		}
 	}
 	aMeans := make([]float64, factorALevels)
 	bMeans := make([]float64, factorBLevels)
+	var SSA, SSB float64
 	for i := range factorALevels {
-		var sum float64
-		var count int
-		for idx, a := range factorsA {
-			if a == i {
-				sum += allValues[idx]
-				count++
-			}
-		}
-		aMeans[i] = sum / float64(count)
+		aMeans[i] = sumsA[i] / float64(countsA[i])
+		dev := aMeans[i] - totalMean
+		SSA += float64(countsA[i]) * dev * dev
 	}
 	for j := range factorBLevels {
-		var sum float64
-		var count int
-		for idx, b := range factorsB {
-			if b == j {
-				sum += allValues[idx]
-				count++
-			}
-		}
-		bMeans[j] = sum / float64(count)
+		bMeans[j] = sumsB[j] / float64(countsB[j])
+		dev := bMeans[j] - totalMean
+		SSB += float64(countsB[j]) * dev * dev
 	}
 
-	var SSAB, SSW float64
+	cellMeans := make([]float64, len(cells))
+	for i := range cells {
+		cellMeans[i] = cellSums[i] / float64(cellCounts[i])
+	}
+
+	// SSAB across cells: small loop, sequential.
+	var SSAB float64
 	for i := range factorALevels {
 		for j := range factorBLevels {
 			idx := i*factorBLevels + j
 			exp := aMeans[i] + bMeans[j] - totalMean
 			SSAB += float64(cellCounts[idx]) * (cellMeans[idx] - exp) * (cellMeans[idx] - exp)
-			for _, v := range cells[idx].Data() {
-				x, _ := insyra.ToFloat64Safe(v)
-				SSW += (x - cellMeans[idx]) * (x - cellMeans[idx])
-			}
+		}
+	}
+
+	// SSW: single pass over allValues using the cell index recovered from
+	// the offsets. Bit-identical to the previous "iterate cells[idx].Data()
+	// per cell, accumulate (x-mean)²" loop because allValues was filled in
+	// the same cell-order, so the running sum visits values in the same
+	// sequence.
+	var SSW float64
+	for idx := range cells {
+		mean := cellMeans[idx]
+		start := cellOffsets[idx]
+		end := start + cellCounts[idx]
+		for k := start; k < end; k++ {
+			diff := allValues[k] - mean
+			SSW += diff * diff
 		}
 	}
 
@@ -216,38 +237,31 @@ func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) *T
 	DFAxB := DFA * DFB
 	DFW := totalCount - factorALevels*factorBLevels
 
-	FA := SSA / float64(DFA) / (SSW / float64(DFW))
-	FB := SSB / float64(DFB) / (SSW / float64(DFW))
-	FAB := SSAB / float64(DFAxB) / (SSW / float64(DFW))
-
-	fd := func(d1, d2 float64, f float64) float64 {
-		return 1 - distuv.F{D1: d1, D2: d2}.CDF(f)
-	}
+	factorA := newANOVABetweenComponent(SSA, DFA, SSW, DFW)
+	factorB := newANOVABetweenComponent(SSB, DFB, SSW, DFW)
+	interaction := newANOVABetweenComponent(SSAB, DFAxB, SSW, DFW)
 
 	return &TwoWayANOVAResult{
-		FactorA:     ANOVAResultComponent{SSA, DFA, FA, fd(float64(DFA), float64(DFW), FA), SSA / (SSA + SSW)},
-		FactorB:     ANOVAResultComponent{SSB, DFB, FB, fd(float64(DFB), float64(DFW), FB), SSB / (SSB + SSW)},
-		Interaction: ANOVAResultComponent{SSAB, DFAxB, FAB, fd(float64(DFAxB), float64(DFW), FAB), SSAB / (SSAB + SSW)},
-		Within:      ANOVAResultComponent{SSW, DFW, math.NaN(), math.NaN(), math.NaN()},
+		FactorA:     factorA,
+		FactorB:     factorB,
+		Interaction: interaction,
+		Within:      newANOVAWithinComponent(SSW, DFW),
 		TotalSS:     SSA + SSB + SSAB + SSW,
-	}
+	}, nil
 }
 
-func RepeatedMeasuresANOVA(subjects ...insyra.IDataList) *RepeatedMeasuresANOVAResult {
+func RepeatedMeasuresANOVA(subjects ...insyra.IDataList) (*RepeatedMeasuresANOVAResult, error) {
 	if len(subjects) < 2 {
-		insyra.LogWarning("stats", "RepeatedMeasuresANOVA", "At least two subjects are required")
-		return nil
+		return nil, errors.New("at least two subjects are required")
 	}
 	conditionCount := subjects[0].Len()
 	for i, subj := range subjects {
 		if subj.Len() != conditionCount {
-			insyra.LogWarning("stats", "RepeatedMeasuresANOVA", "Inconsistent condition count at subject %d", i)
-			return nil
+			return nil, fmt.Errorf("inconsistent condition count at subject %d", i)
 		}
 	}
 	if conditionCount < 2 {
-		insyra.LogWarning("stats", "RepeatedMeasuresANOVA", "Less than two conditions")
-		return nil
+		return nil, errors.New("less than two conditions")
 	}
 
 	data := make([][]float64, conditionCount)
@@ -256,7 +270,10 @@ func RepeatedMeasuresANOVA(subjects ...insyra.IDataList) *RepeatedMeasuresANOVAR
 	}
 	for j, subj := range subjects {
 		for i, v := range subj.Data() {
-			value, _ := insyra.ToFloat64Safe(v)
+			value, ok := insyra.ToFloat64Safe(v)
+			if !ok {
+				return nil, fmt.Errorf("invalid data at subject %d condition %d", j, i)
+			}
 			data[i][j] = value
 		}
 	}
@@ -302,16 +319,13 @@ func RepeatedMeasuresANOVA(subjects ...insyra.IDataList) *RepeatedMeasuresANOVAR
 	DFSubjects := len(subjects) - 1
 	DFWithin := DFBetween * DFSubjects
 
-	MSBetween := ssBetween / float64(DFBetween)
-	MSWithin := SSWithin / float64(DFWithin)
-
-	F := MSBetween / MSWithin
-	P := 1 - distuv.F{D1: float64(DFBetween), D2: float64(DFWithin)}.CDF(F)
+	F := fRatio(ssBetween, DFBetween, SSWithin, DFWithin)
+	P := fOneTailedPValue(F, float64(DFBetween), float64(DFWithin))
 
 	return &RepeatedMeasuresANOVAResult{
-		Factor:  ANOVAResultComponent{ssBetween, DFBetween, F, P, ssBetween / ssTotal},
-		Subject: ANOVAResultComponent{ssSubjects, DFSubjects, math.NaN(), math.NaN(), math.NaN()},
-		Within:  ANOVAResultComponent{SSWithin, DFWithin, math.NaN(), math.NaN(), math.NaN()},
+		Factor:  newANOVAComponent(ssBetween, DFBetween, F, P, ssBetween/ssTotal),
+		Subject: newANOVAWithinComponent(ssSubjects, DFSubjects),
+		Within:  newANOVAWithinComponent(SSWithin, DFWithin),
 		TotalSS: ssTotal,
-	}
+	}, nil
 }

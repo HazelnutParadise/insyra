@@ -34,10 +34,22 @@ This list is generated from `insyra help` in this repository state.
 ## Data Creation / IO
 - `newdl` - Create DataList manually
 - `newdt` - Create DataTable from DataList variables
-- `load` - Load data file into DataTable variable
-- `read` - Quick preview a file without saving variable
-- `save` - Save DataTable variable to file
+- `load` - Load data into a DataTable variable from a file, parquet, or SQL connection
+  - File options: `headers true|false` (default `true`), `rownames true|false` (default `false`), `encoding <enc>` (CSV only), `sheet <name>` (Excel)
+- `read` - Quick preview a file without saving variable (forwards the same file options as `load`)
+- `save` - Save a DataTable variable to a file or SQL connection
+  - File options: `headers true|false` (default `true`), `rownames true|false` (default `false`), `bom true|false` (default `false`, CSV only)
 - `convert` - Convert file formats (csv<->xlsx)
+
+## Database (sqlite / mysql / postgres, pure-Go drivers)
+
+- `db connect <name> <dsn>` - Open and register a named connection
+- `db list` - List active connections (passwords masked)
+- `db tables <name> [schema <s>]` - List tables on a connection
+- `db disconnect <name>` - Close and unregister a connection
+- `load sql <conn> <table> [...]` - Load a table into a DataTable
+- `load sql <conn> query "<SQL>" [params <v1> ...]` - Load a parameterized query result
+- `save <var> sql <conn> <table> [...]` - Write a DataTable to a SQL table
 
 ## DataTable Structure & Access
 - `addcol` - Add one column to DataTable
@@ -63,6 +75,9 @@ This list is generated from `insyra help` in this repository state.
 - `replace` - Replace values in DataTable/DataList
 - `clean` - Clean values from DataTable/DataList
 - `merge` - Merge two DataTables
+- `groupby` - Group a DataTable and aggregate columns (split-apply-combine)
+- `pivot` - Reshape long-form DataTable to wide form (long -> wide)
+- `unpivot` - Reshape wide-form DataTable to long form (wide -> long)
 - `ccl` - Execute CCL statements on DataTable
 - `addcolccl` - Add DataTable column using CCL
 
@@ -105,6 +120,14 @@ This list is generated from `insyra help` in this repository state.
 ## Modeling / Inference / Visualization / Fetch
 - `regression` - Regression analysis: linear/poly/exp/log
 - `pca` - Principal component analysis
+- `kmeans` - K-means clustering
+- `hclust` - Hierarchical agglomerative clustering
+- `cutree` - Cut a hierarchical clustering tree
+- `dbscan` - Density-based clustering
+- `silhouette` - Silhouette analysis
+- `knn_classify` - K-nearest neighbors classification
+- `knn_regress` - K-nearest neighbors regression
+- `knn_neighbors` - K-nearest neighbors search
 - `ttest` - T-test commands
 - `ztest` - Z-test commands
 - `anova` - ANOVA commands

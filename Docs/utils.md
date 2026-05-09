@@ -107,7 +107,13 @@ func PowRat(base *big.Rat, exponent int) *big.Rat
 func ConvertLongDataToWide(data, factor IDataList, independents []IDataList, aggFunc func([]float64) float64) IDataTable
 ```
 
-**Description:** Converts long data into a wide table. When `aggFunc` is nil, the first value is used for duplicates.
+**Deprecated.** Despite the name, this function does **not** produce a true long-to-wide pivot — it groups rows by `factor` and applies `aggFunc` to every independent column and the observation column independently, yielding one row per factor with one cell per `(factor, column)` pair. The unique values of `factor` are **not** spread into new column headers.
+
+For a real long-to-wide reshape (where unique values of one column become new column headers), use [`(*DataTable).Pivot`](DataTable.md#pivot--unpivot-long--wide-reshape). For the group-and-summarise behaviour this helper actually provides, use [`(*DataTable).GroupBy`](DataTable.md#groupby) followed by `Aggregate` — it is type-safe, surfaces errors via `Err()`, and supports the full `AggregateOp` set.
+
+This function will be removed in a future release.
+
+**Description (legacy):** Converts long data into a wide table. When `aggFunc` is nil, the first value is used for duplicates.
 
 **Parameters:**
 

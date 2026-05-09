@@ -1,0 +1,13 @@
+## Dumps the actual rnorm-generated data so the Go test file can use literals.
+set.seed(42); d1 <- round(rnorm(100, mean=5, sd=2), 4)
+cat("singleA_largeN:", paste(d1, collapse=","), "\n", sep="")
+set.seed(7)
+d2a <- round(rnorm(200, mean=100, sd=5), 3)
+d2b <- round(rnorm(250, mean=102, sd=5), 3)
+cat("twoA_largeN_d1:", paste(d2a, collapse=","), "\n", sep="")
+cat("twoA_largeN_d2:", paste(d2b, collapse=","), "\n", sep="")
+set.seed(11)
+b <- round(rnorm(40, mean=100, sd=10), 3)
+a <- b + round(rnorm(40, mean=2, sd=1), 3)
+cat("pairedA_largeN_a:", paste(a, collapse=","), "\n", sep="")
+cat("pairedA_largeN_b:", paste(b, collapse=","), "\n", sep="")

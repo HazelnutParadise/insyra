@@ -87,6 +87,29 @@ For expanded subcommand forms and practical examples, see `cli-command-guide.md`
 - Description: Covariance between two DataLists
 - Usage: `cov <x> <y>`
 
+## `cutree`
+- Description: Cut a hierarchical clustering tree
+- Usage: `cutree <tree_var> k <n>|h <value> [as <var>]`
+
+## `db`
+- Description: Manage named database connections (sqlite, mysql, postgres; pure-Go drivers)
+- Usage: `db connect <name> <dsn> | db list | db tables <name> [schema <s>] | db disconnect <name>`
+- DSN forms:
+	- `sqlite:<path-or-uri>` (e.g. `sqlite::memory:`, `sqlite:./foo.db`, `sqlite:file:./foo.db?mode=ro`)
+	- `mysql:<go-sql-driver-dsn>` (e.g. `mysql:user:pass@tcp(host:3306)/db`)
+	- `mysql://user:pass@host:port/db?param=value` (URL form, auto-converted)
+	- `postgres://user:pass@host:port/db?sslmode=disable` (pgx URL form)
+	- `postgres:host=... user=... password=... dbname=...` (libpq KV form)
+- Notes:
+	- Connection name must be unique within the environment.
+	- `db list` masks passwords.
+	- `db tables` defaults to current schema/database; pass `schema <s>` to override (mysql/postgres).
+	- Connections do not persist across CLI process restarts; reopen at start of each session/script.
+
+## `dbscan`
+- Description: Density-based clustering
+- Usage: `dbscan <var> <eps> <minpts> [as <var>]`
+
 ## `diff`
 - Description: Difference
 - Usage: `diff <var> [as <var>]`
@@ -146,6 +169,16 @@ For expanded subcommand forms and practical examples, see `cli-command-guide.md`
 - Description: Get single element from DataTable
 - Usage: `get <var> <row> <col>`
 
+## `groupby`
+- Description: Group a DataTable and aggregate columns
+- Usage: `groupby <var> by <col1>[,<col2>...] agg <col>:<op>[:<alias>] [<col>:<op>[:<alias>] ...] [as <var>]`
+- Notes:
+  - Ops: `sum`, `mean` (alias `avg`), `median`, `min`, `max`, `count` (non-nil), `countall` (group size), `std`/`stdev`, `stdp`/`stdevp`, `var`, `varp`, `first`, `last`, `nunique`.
+  - Bare token `count` is shorthand for `:countall:count`.
+  - Aliases default to `<col>_<op>`.
+  - Output column order: keys first (in `by` order), then aggregates (in `agg` order).
+  - Group order: each unique key combination in first-seen order.
+
 ## `help`
 - Description: Show command help
 - Usage: `help [command]`
@@ -158,13 +191,45 @@ For expanded subcommand forms and practical examples, see `cli-command-guide.md`
 - Description: DataList IQR
 - Usage: `iqr <var>`
 
+## `kmeans`
+- Description: K-means clustering
+- Usage: `kmeans <var> <k> [nstart <n>] [itermax <n>] [seed <n>] [as <var>]`
+- Side variables (auto-stored when result alias is `R`): `R_centers`, `R_size`, `R_withinss`, `R_totss`, `R_totwithinss`, `R_betweenss`, `R_iter`, `R_ifault`.
+
+## `knn_classify`
+- Description: K-nearest neighbors classification
+- Usage: `knn_classify <train_var> <labels_var> <test_var> <k> [weighting <uniform|distance>] [algorithm <auto|brute|kd_tree|ball_tree>] [leafsize <n>] [as <var>]`
+- Side variables: `<alias>_classes`, `<alias>_probs`.
+
+## `knn_neighbors`
+- Description: K-nearest neighbors search
+- Usage: `knn_neighbors <train_var> <test_var> <k> [algorithm <auto|brute|kd_tree|ball_tree>] [leafsize <n>] [as <var>]`
+- Side variables: `<alias>_distances`.
+
+## `knn_regress`
+- Description: K-nearest neighbors regression
+- Usage: `knn_regress <train_var> <targets_var> <test_var> <k> [weighting <uniform|distance>] [algorithm <auto|brute|kd_tree|ball_tree>] [leafsize <n>] [as <var>]`
+
 ## `kurtosis`
 - Description: Kurtosis of a DataList
 - Usage: `kurtosis <var>`
 
+## `hclust`
+- Description: Hierarchical agglomerative clustering
+- Usage: `hclust <var> <method> [as <var>]`
+
 ## `load`
-- Description: Load data file into DataTable variable
-- Usage: `load <file>|parquet <file> [cols <c1,c2,...>] [rowgroups <i1,i2,...>] [sheet <name>] [as <var>]`
+- Description: Load data into a DataTable variable from a file, parquet, or SQL connection
+- Usage: `load <file> [headers true|false] [rownames true|false] [encoding <enc>] [sheet <name>] | load parquet <file> [cols <c1,c2,...>] [rowgroups <i1,i2,...>] | load sql <conn> <table> [where "..."] [order "..."] [limit N] [offset N] [cols "c1,c2"] [schema <s>] [indexcol <c>] [parsedates "c1,c2"] | load sql <conn> query "<SQL>" [params <v1> <v2> ...] [as <var>]`
+- File options (CSV / Excel):
+	- `headers true|false` — first row is column names. Default `true`. JSON ignores this option (warns on use); Excel respects it.
+	- `rownames true|false` — first column is row names. Default `false`.
+	- `encoding <enc>` — CSV-only read-side hint (e.g. `big5`, `gbk`). Auto-detect when omitted.
+	- `sheet <name>` — Excel-only; required for `.xlsx`/`.xlsm`/`.xls`.
+	- Booleans accept `true|false|yes|no|on|off|1|0` (case-insensitive).
+- SQL options:
+	- Table form: `where "<expr>"`, `order "<expr>"`, `limit N`, `offset N`, `cols "c1,c2,..."`, `schema <s>`, `indexcol <c>`, `parsedates "c1,c2"`.
+	- Query form: only `params <v1> <v2> ...` (positional bind values, parsed as literals).
 
 ## `lower`
 - Description: Lowercase DataList strings
@@ -226,6 +291,18 @@ For expanded subcommand forms and practical examples, see `cli-command-guide.md`
 - Description: DataList percentile
 - Usage: `percentile <var> <p>`
 
+## `pivot`
+- Description: Reshape long-form DataTable to wide form (long -> wide)
+- Usage: `pivot <var> index <col1[,col2,...]> columns <col> values <col> [agg <op>] [fillna <literal>] [sortcols true|false] [as <var>]`
+- Notes:
+  - `index` accepts comma-separated columns; `columns` and `values` take a single column.
+  - Column tokens are resolved by `column.name` first, then fall back to Excel-style alphabetic index (`A`, `B`, ..., `AA`). The first row of data is never used as a header. Unknown tokens are an error.
+  - Ops for `agg`: `sum`, `mean` (alias `avg`), `median`, `min`, `max`, `count` (non-nil), `countall` (group size), `std`/`stdev`, `stdp`/`stdevp`, `var`, `varp`, `first`, `last`, `nunique`.
+  - When `agg` is omitted, duplicate `(index, columns)` combinations are an error.
+  - `fillna <literal>` is parsed via `parseLiteral` (nil/true/false/int/float, else string).
+  - `sortcols true` orders generated columns by key value; default is first-seen.
+  - Output column order: index first (in `index` order), then one column per unique `columns` value.
+
 ## `plot`
 - Description: Create charts from variables
 - Usage: `plot <type> <var> [options...] [save <file>]`
@@ -249,7 +326,8 @@ For expanded subcommand forms and practical examples, see `cli-command-guide.md`
 
 ## `read`
 - Description: Quick preview a file without saving variable
-- Usage: `read <file>`
+- Usage: `read <file> [headers true|false] [rownames true|false] [encoding <enc>] [sheet <name>]`
+- Notes: forwards the file-side options to `load`; result is shown but not stored.
 
 ## `regression`
 - Description: Regression analysis: linear/poly/exp/log
@@ -289,8 +367,20 @@ For expanded subcommand forms and practical examples, see `cli-command-guide.md`
 - Usage: `sample <var> <n> [as <var>]`
 
 ## `save`
-- Description: Save DataTable variable to file
-- Usage: `save <var> <file>`
+- Description: Save a DataTable variable to a file or SQL connection
+- Usage: `save <var> <file> [headers true|false] [rownames true|false] [bom true|false] | save <var> sql <conn> <table> [if-exists fail|replace|append] [batch N] [schema <s>] [rownames]`
+- File options (CSV):
+	- `headers true|false` — write column names as the first row. Default `true`.
+	- `rownames true|false` — write row names as the first column. Default `false`.
+	- `bom true|false` — write a UTF-8 BOM (helps Excel for Windows open Chinese CSVs cleanly). Default `false`.
+	- JSON: only `headers` applies (controls whether values use column names as keys); `rownames`/`bom` are rejected.
+	- Parquet: file options are not supported (rejected).
+	- Booleans accept `true|false|yes|no|on|off|1|0` (case-insensitive).
+- SQL options:
+	- `if-exists fail|replace|append` (default: `fail`)
+	- `batch N` — INSERT batch size
+	- `schema <s>` — target schema (mysql/postgres)
+	- `rownames` — flag, write the DataTable row names as an extra column
 
 ## `set`
 - Description: Set single element in DataTable
@@ -311,6 +401,11 @@ For expanded subcommand forms and practical examples, see `cli-command-guide.md`
 ## `show`
 - Description: Display data with optional range (supports negative and _)
 - Usage: `show <var> [N] [M]`
+
+## `silhouette`
+- Description: Silhouette analysis
+- Usage: `silhouette <var> <labels_var> [as <var>]`
+- Side variables: `<alias>_avg` (average silhouette width).
 
 ## `skewness`
 - Description: Skewness of a DataList
@@ -355,6 +450,17 @@ For expanded subcommand forms and practical examples, see `cli-command-guide.md`
 ## `types`
 - Description: Show value types of DataTable/DataList
 - Usage: `types <var>`
+
+## `unpivot`
+- Description: Reshape wide-form DataTable to long form (wide -> long)
+- Usage: `unpivot <var> idvars <col1[,col2,...]> [valuevars <col1[,col2,...]>] [varname <name>] [valuename <name>] [dropna true|false] [as <var>]`
+- Notes:
+  - `idvars` is required and accepts comma-separated columns.
+  - Column tokens (in `idvars` and `valuevars`) are resolved by `column.name` first, then fall back to Excel-style alphabetic index (`A`, `B`, ..., `AA`). The first row of data is never used as a header. Unknown tokens are an error.
+  - `valuevars` defaults to all non-`idvars` columns when omitted.
+  - `varname` defaults to `variable`; `valuename` defaults to `value`. They must differ.
+  - `dropna true` skips output rows whose value is nil or NaN.
+  - Output schema: idvars (in `idvars` order), then `varname`, then `valuename`.
 
 ## `upper`
 - Description: Uppercase DataList strings

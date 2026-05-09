@@ -1,6 +1,7 @@
 package stats
 
 import (
+	"errors"
 	"math"
 
 	"github.com/HazelnutParadise/insyra"
@@ -15,14 +16,11 @@ const (
 	KurtosisBiasAdjusted                           // Type 3: bias-adjusted
 )
 
-// Kurtosis calculates the kurtosis of the DataList.
-// method: 1 = g2, 2 = adjusted Fisher kurtosis, 3 = bias-adjusted.
-// Default is KurtosisG2.
-// Returns NaN if the data is empty or undefined.
-func Kurtosis(data any, method ...KurtosisMethod) float64 {
+// Kurtosis calculates the kurtosis of the input data.
+func Kurtosis(data any, method ...KurtosisMethod) (float64, error) {
 	d, dLen := insyra.ProcessData(data)
 	if dLen == 0 {
-		return math.NaN()
+		return math.NaN(), errors.New("empty data")
 	}
 	d64 := insyra.SliceToF64(d)
 	dl := insyra.NewDataList(d64)
@@ -32,7 +30,7 @@ func Kurtosis(data any, method ...KurtosisMethod) float64 {
 		useMethod = method[0]
 	}
 	if len(method) > 1 {
-		return math.NaN()
+		return math.NaN(), errors.New("too many methods specified")
 	}
 
 	switch useMethod {
@@ -43,45 +41,48 @@ func Kurtosis(data any, method ...KurtosisMethod) float64 {
 	case KurtosisBiasAdjusted:
 		return calculateKurtType3(dl)
 	default:
-		return math.NaN()
+		return math.NaN(), errors.New("unknown kurtosis method")
 	}
 }
 
-// ======================== calculation functions ========================
-
-func calculateKurtType1(dl insyra.IDataList) float64 {
+func calculateKurtType1(dl insyra.IDataList) (float64, error) {
 	var n, m2, m4 float64
+	var err error
 	dl.AtomicDo(func(l *insyra.DataList) {
 		n = float64(l.Len())
 		if n == 0 {
 			return
 		}
-		m2 = CalculateMoment(l, 2, true)
-		m4 = CalculateMoment(l, 4, true)
-	})
-
-	if n == 0 || m2 == 0 {
-		return math.NaN()
-	}
-
-	// g2 = m4 / m2^2 - 3
-	return m4/(m2*m2) - 3
-}
-
-func calculateKurtType2(dl insyra.IDataList) float64 {
-	var n, g2 float64
-	dl.AtomicDo(func(l *insyra.DataList) {
-		n = float64(l.Len())
-		if n < 4 {
+		m2, err = CalculateMoment(l, 2, true)
+		if err != nil {
 			return
 		}
-		g2 = calculateKurtType1(l)
+		m4, err = CalculateMoment(l, 4, true)
 	})
-	if n < 4 {
-		return math.NaN()
+	if err != nil {
+		return math.NaN(), err
+	}
+	if n == 0 || m2 == 0 {
+		return math.NaN(), errors.New("kurtosis undefined for empty data or zero variance")
 	}
 
-	// adjusted Fisher kurtosis
+	return m4/(m2*m2) - 3, nil
+}
+
+func calculateKurtType2(dl insyra.IDataList) (float64, error) {
+	var n float64
+	dl.AtomicDo(func(l *insyra.DataList) {
+		n = float64(l.Len())
+	})
+	if n < 4 {
+		return math.NaN(), errors.New("insufficient data for adjusted kurtosis (n < 4)")
+	}
+
+	g2, err := calculateKurtType1(dl)
+	if err != nil {
+		return math.NaN(), err
+	}
+
 	nPlus1 := n + 1
 	nMinus1 := n - 1
 	nMinus2 := n - 2
@@ -90,25 +91,23 @@ func calculateKurtType2(dl insyra.IDataList) float64 {
 	numerator := (g2*(nPlus1) + 6) * nMinus1
 	denominator := nMinus2 * nMinus3
 
-	return numerator / denominator
+	return numerator / denominator, nil
 }
 
-func calculateKurtType3(dl insyra.IDataList) float64 {
-	var n, g2 float64
+func calculateKurtType3(dl insyra.IDataList) (float64, error) {
+	var n float64
 	dl.AtomicDo(func(l *insyra.DataList) {
 		n = float64(l.Len())
-		if n == 0 {
-			return
-		}
-		g2 = calculateKurtType1(l)
 	})
-
 	if n == 0 {
-		return math.NaN()
+		return math.NaN(), errors.New("empty data")
 	}
-	kurt := g2 + 3 // convert to raw kurtosis
 
-	// bias-adjusted version
+	g2, err := calculateKurtType1(dl)
+	if err != nil {
+		return math.NaN(), err
+	}
+	kurt := g2 + 3
 	adjustment := (1 - 1/n) * (1 - 1/n)
-	return kurt*adjustment - 3
+	return kurt*adjustment - 3, nil
 }

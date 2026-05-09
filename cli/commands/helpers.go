@@ -16,6 +16,19 @@ func parseAlias(args []string) ([]string, string) {
 	return args, "$result"
 }
 
+// parseFlexBool accepts true|false|yes|no|on|off|1|0 (case-insensitive).
+// Returns an error so the caller can produce an option-specific message
+// (e.g. "load: invalid value %q for headers").
+func parseFlexBool(raw string) (bool, error) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "true", "yes", "on", "1":
+		return true, nil
+	case "false", "no", "off", "0":
+		return false, nil
+	}
+	return false, fmt.Errorf("expected true|false|yes|no|1|0, got %q", raw)
+}
+
 func parseLiteral(raw string) any {
 	if strings.EqualFold(raw, "nil") {
 		return nil

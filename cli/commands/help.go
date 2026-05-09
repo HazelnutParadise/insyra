@@ -21,6 +21,18 @@ func runHelpCommand(ctx *ExecContext, args []string) error {
 			return fmt.Errorf("unknown command: %s", args[0])
 		}
 		_, _ = fmt.Fprintf(ctx.Output, "%s\nusage: %s\n", handler.Description, handler.Usage)
+		if len(handler.Forms) > 0 {
+			_, _ = fmt.Fprintln(ctx.Output, "\nForms:")
+			for _, form := range handler.Forms {
+				_, _ = fmt.Fprintf(ctx.Output, "  %s\n", form)
+			}
+		}
+		if len(handler.Examples) > 0 {
+			_, _ = fmt.Fprintln(ctx.Output, "\nExamples:")
+			for _, ex := range handler.Examples {
+				_, _ = fmt.Fprintf(ctx.Output, "  %s\n", ex)
+			}
+		}
 		return nil
 	}
 

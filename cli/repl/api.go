@@ -2,6 +2,7 @@ package repl
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -15,8 +16,17 @@ type DSLSession struct {
 	ctx *commands.ExecContext
 }
 
-func NewDSLSession(envName string, output io.Writer) (*DSLSession, error) {
-	if err := env.EnsureDefaultEnvironment(); err != nil {
+// NewDSLSession creates a DSL session bound to mgr's environment storage.
+//
+// mgr must be non-nil — pass env.Default() to use the standard
+// <UserHomeDir>/.insyra root, or env.NewManager(path) for a custom one.
+// envName "" defaults to "default". output nil silently discards.
+func NewDSLSession(mgr *env.Manager, envName string, output io.Writer) (*DSLSession, error) {
+	if mgr == nil {
+		return nil, errors.New("dsl: env manager is required (pass env.Default() or env.NewManager(path))")
+	}
+
+	if err := mgr.EnsureDefaultEnvironment(); err != nil {
 		return nil, err
 	}
 
@@ -24,12 +34,12 @@ func NewDSLSession(envName string, output io.Writer) (*DSLSession, error) {
 		envName = "default"
 	}
 
-	envPath, err := env.Open(envName)
+	envPath, err := mgr.Open(envName)
 	if err != nil {
 		return nil, err
 	}
 
-	vars, err := env.RestoreVariables(envName)
+	vars, err := mgr.RestoreVariables(envName)
 	if err != nil {
 		vars = map[string]any{}
 	}
@@ -44,6 +54,7 @@ func NewDSLSession(envName string, output io.Writer) (*DSLSession, error) {
 			EnvPath: envPath,
 			Vars:    vars,
 			Output:  output,
+			Env:     mgr,
 		},
 	}, nil
 }
@@ -67,8 +78,8 @@ func (session *DSLSession) Execute(line string) error {
 		return err
 	}
 
-	_ = env.AppendHistory(session.ctx.EnvName, trimmed)
-	return env.SaveState(session.ctx.EnvName, session.ctx.Vars)
+	_ = session.ctx.Env.AppendHistory(session.ctx.EnvName, trimmed)
+	return session.ctx.Env.SaveState(session.ctx.EnvName, session.ctx.Vars)
 }
 
 func (session *DSLSession) Context() *commands.ExecContext {

@@ -2,8 +2,6 @@ package commands
 
 import (
 	"fmt"
-
-	"github.com/HazelnutParadise/insyra/cli/env"
 )
 
 func init() {
@@ -19,7 +17,7 @@ func runHistoryCommand(ctx *ExecContext, args []string) error {
 	if ctx.EnvName == "" {
 		ctx.EnvName = "default"
 	}
-	entries, err := env.ReadHistory(ctx.EnvName)
+	entries, err := ctx.Env.ReadHistory(ctx.EnvName)
 	if err != nil {
 		return err
 	}

@@ -9,7 +9,29 @@ import (
 )
 
 func init() {
-	_ = Register(&CommandHandler{Name: "fetch", Usage: "fetch yahoo <ticker> <method> [params...] [as <var>]", Description: "Fetch external data", Run: runFetchCommand})
+	_ = Register(&CommandHandler{
+		Name:        "fetch",
+		Usage:       "fetch yahoo <ticker> <method> [params...] [as <var>]",
+		Description: "Fetch external data",
+		Forms: []string{
+			"fetch yahoo <ticker> quote                       latest quote",
+			"fetch yahoo <ticker> info                        company info",
+			"fetch yahoo <ticker> history                     OHLCV history",
+			"fetch yahoo <ticker> dividends                   dividend history",
+			"fetch yahoo <ticker> splits                      split history",
+			"fetch yahoo <ticker> actions                     dividends + splits",
+			"fetch yahoo <ticker> options                     options chain",
+			"fetch yahoo <ticker> news [count]                latest news (default count=10)",
+			"fetch yahoo <ticker> calendar                    earnings/event calendar",
+			"fetch yahoo <ticker> fastinfo                    quick metrics snapshot",
+		},
+		Examples: []string{
+			"insyra fetch yahoo AAPL quote as q",
+			"insyra fetch yahoo TSLA history as hist",
+			"insyra fetch yahoo MSFT news 20 as news",
+		},
+		Run: runFetchCommand,
+	})
 }
 
 func runFetchCommand(ctx *ExecContext, args []string) error {

@@ -1,0 +1,842 @@
+package knn
+
+import (
+	"errors"
+	"math"
+	"sort"
+	"sync"
+
+	"github.com/HazelnutParadise/insyra/stats/internal/parutil"
+)
+
+// treeBuildParallelDepth bounds how many recursion levels of buildKDNode /
+// buildBallNode can fan out to goroutines. With 24 cores, depth 5 gives
+// 2^5 = 32 parallel subtrees at the leaf of the parallel zone — enough to
+// saturate every core. Beyond that the synchronisation overhead per
+// recursion level outweighs the gain.
+const treeBuildParallelDepth = 5
+
+// treeBuildParallelCutoff is the minimum subtree size (in points) below
+// which we recurse serially regardless of depth. For very small subtrees
+// the goroutine launch dwarfs the actual O(n log n) sort + split work.
+const treeBuildParallelCutoff = 256
+
+type Weighting string
+type Algorithm string
+
+const (
+	UniformWeighting  Weighting = "uniform"
+	DistanceWeighting Weighting = "distance"
+
+	AutoAlgorithm       Algorithm = "auto"
+	BruteForceAlgorithm Algorithm = "brute"
+	KDTreeAlgorithm     Algorithm = "kd_tree"
+	BallTreeAlgorithm   Algorithm = "ball_tree"
+)
+
+type Options struct {
+	Weighting Weighting
+	Algorithm Algorithm
+	LeafSize  int
+}
+
+type ClassificationResult struct {
+	Predictions   []string
+	Classes       []string
+	Probabilities [][]float64
+}
+
+type RegressionResult struct {
+	Predictions []float64
+}
+
+type NeighborResult struct {
+	Indices   [][]int
+	Distances [][]float64
+}
+
+type neighbor struct {
+	index int
+	dist2 float64
+}
+
+type searcher interface {
+	QueryKNN(query []float64, k int) []neighbor
+}
+
+func Classify(train, test [][]float64, labels []string, k int, opts Options) (*ClassificationResult, error) {
+	normalized, err := normalizeOptions(opts)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateInputs(train, test, k); err != nil {
+		return nil, err
+	}
+	if len(labels) != len(train) {
+		return nil, errors.New("labels length must match training row count")
+	}
+	search, err := newSearcher(train, normalized)
+	if err != nil {
+		return nil, err
+	}
+
+	classes, classIndex := orderedClasses(labels)
+	predictions := make([]string, len(test))
+	probabilities := make([][]float64, len(test))
+	// Each test row is queried independently; the searchers are read-only
+	// after construction (kd/ball trees + brute store input slices and never
+	// mutate them), so parallel queries are race-free.
+	//
+	// Per-query cost is at minimum O(k log n_train) for tree searches and
+	// O(n_train · dim) for brute, both dwarfing goroutine overhead even at
+	// modest n_train. Threshold scales with the *per-query* lower bound of
+	// useful work: len(test) ≥ 16 ensures fan-out to a few workers, and
+	// len(train) ≥ 32 ensures each query has enough work to amortise launch.
+	// Per-query cost is ≥ several hundred ns even for the smallest brute
+	// search (k-set maintenance + distance evals) and grows with train size,
+	// so the goroutine-launch overhead is amortised quickly. Empirically
+	// parallel beats serial for test_size ≥ 16 with train_size ≥ 32 — the
+	// (200, 200) brute-classify case is 2.5× faster in parallel (160µs vs
+	// 400µs serial).
+	goPar := len(test) >= 16 && len(train) >= 32
+	parutil.Run(len(test), goPar, func(i int) {
+		neighbors := search.QueryKNN(test[i], k)
+		probabilities[i] = classifyProbabilities(neighbors, labels, classIndex, len(classes), normalized.Weighting)
+		// Tie-break = alphabetical first, matching R's `which.max` semantics
+		// (since `classes` is already alphabetically sorted, the first index
+		// hitting the maximum probability is the alphabetical winner).
+		best := 0
+		for c := 1; c < len(classes); c++ {
+			if probabilities[i][c] > probabilities[i][best] && !almostEqual(probabilities[i][c], probabilities[i][best]) {
+				best = c
+			}
+		}
+		predictions[i] = classes[best]
+	})
+	return &ClassificationResult{
+		Predictions:   predictions,
+		Classes:       classes,
+		Probabilities: probabilities,
+	}, nil
+}
+
+func Regress(train, test [][]float64, targets []float64, k int, opts Options) (*RegressionResult, error) {
+	normalized, err := normalizeOptions(opts)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateInputs(train, test, k); err != nil {
+		return nil, err
+	}
+	if len(targets) != len(train) {
+		return nil, errors.New("targets length must match training row count")
+	}
+	search, err := newSearcher(train, normalized)
+	if err != nil {
+		return nil, err
+	}
+
+	predictions := make([]float64, len(test))
+	// Per-query cost is ≥ several hundred ns even for the smallest brute
+	// search (k-set maintenance + distance evals) and grows with train size,
+	// so the goroutine-launch overhead is amortised quickly. Empirically
+	// parallel beats serial for test_size ≥ 16 with train_size ≥ 32 — the
+	// (200, 200) brute-classify case is 2.5× faster in parallel (160µs vs
+	// 400µs serial).
+	goPar := len(test) >= 16 && len(train) >= 32
+	parutil.Run(len(test), goPar, func(i int) {
+		neighbors := search.QueryKNN(test[i], k)
+		predictions[i] = regressPrediction(neighbors, targets, normalized.Weighting)
+	})
+	return &RegressionResult{Predictions: predictions}, nil
+}
+
+func Neighbors(train, test [][]float64, k int, opts Options) (*NeighborResult, error) {
+	normalized, err := normalizeOptions(opts)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateInputs(train, test, k); err != nil {
+		return nil, err
+	}
+	search, err := newSearcher(train, normalized)
+	if err != nil {
+		return nil, err
+	}
+
+	indices := make([][]int, len(test))
+	distances := make([][]float64, len(test))
+	// Per-query cost is ≥ several hundred ns even for the smallest brute
+	// search (k-set maintenance + distance evals) and grows with train size,
+	// so the goroutine-launch overhead is amortised quickly. Empirically
+	// parallel beats serial for test_size ≥ 16 with train_size ≥ 32 — the
+	// (200, 200) brute-classify case is 2.5× faster in parallel (160µs vs
+	// 400µs serial).
+	goPar := len(test) >= 16 && len(train) >= 32
+	parutil.Run(len(test), goPar, func(i int) {
+		neighbors := search.QueryKNN(test[i], k)
+		indices[i] = make([]int, len(neighbors))
+		distances[i] = make([]float64, len(neighbors))
+		for j, nb := range neighbors {
+			indices[i][j] = nb.index
+			distances[i][j] = math.Sqrt(nb.dist2)
+		}
+	})
+	return &NeighborResult{Indices: indices, Distances: distances}, nil
+}
+
+func normalizeOptions(opts Options) (Options, error) {
+	if opts.Weighting == "" {
+		opts.Weighting = UniformWeighting
+	}
+	switch opts.Weighting {
+	case UniformWeighting, DistanceWeighting:
+	default:
+		return Options{}, errors.New("unsupported KNN weighting")
+	}
+
+	if opts.Algorithm == "" {
+		opts.Algorithm = AutoAlgorithm
+	}
+	switch opts.Algorithm {
+	case AutoAlgorithm, BruteForceAlgorithm, KDTreeAlgorithm, BallTreeAlgorithm:
+	default:
+		return Options{}, errors.New("unsupported KNN algorithm")
+	}
+	if opts.LeafSize <= 0 {
+		opts.LeafSize = 16
+	}
+	return opts, nil
+}
+
+func validateInputs(train, test [][]float64, k int) error {
+	if len(train) == 0 || len(train[0]) == 0 {
+		return errors.New("training data must have at least 1 row and 1 column")
+	}
+	if len(test) == 0 || len(test[0]) == 0 {
+		return errors.New("test data must have at least 1 row and 1 column")
+	}
+	if k <= 0 {
+		return errors.New("k must be greater than 0")
+	}
+	if k > len(train) {
+		return errors.New("k must not exceed training row count")
+	}
+	p := len(train[0])
+	for _, row := range train {
+		if len(row) != p {
+			return errors.New("training rows must all have the same dimension")
+		}
+		if hasInvalidFloat(row) {
+			return errors.New("training data contains invalid numeric values")
+		}
+	}
+	for _, row := range test {
+		if len(row) != p {
+			return errors.New("training and test data must have the same column count")
+		}
+		if hasInvalidFloat(row) {
+			return errors.New("test data contains invalid numeric values")
+		}
+	}
+	return nil
+}
+
+func newSearcher(train [][]float64, opts Options) (searcher, error) {
+	switch resolveAlgorithm(len(train), len(train[0]), opts.Algorithm) {
+	case BruteForceAlgorithm:
+		return &bruteSearcher{train: train}, nil
+	case KDTreeAlgorithm:
+		return newKDTreeSearcher(train, opts.LeafSize), nil
+	case BallTreeAlgorithm:
+		return newBallTreeSearcher(train, opts.LeafSize), nil
+	default:
+		return nil, errors.New("unsupported KNN algorithm")
+	}
+}
+
+func resolveAlgorithm(n, dims int, algo Algorithm) Algorithm {
+	if algo != AutoAlgorithm {
+		return algo
+	}
+	if n < 64 {
+		return BruteForceAlgorithm
+	}
+	if dims <= 8 {
+		return KDTreeAlgorithm
+	}
+	return BallTreeAlgorithm
+}
+
+type bruteSearcher struct {
+	train [][]float64
+}
+
+func (s *bruteSearcher) QueryKNN(query []float64, k int) []neighbor {
+	set := newNeighborSet(k)
+	for i, row := range s.train {
+		set.tryAdd(neighbor{index: i, dist2: squaredEuclidean(row, query)})
+	}
+	return set.results()
+}
+
+type kdTreeSearcher struct {
+	train    [][]float64
+	leafSize int
+	root     *kdNode
+}
+
+type kdNode struct {
+	axis    int
+	pivot   int
+	indices []int
+	left    *kdNode
+	right   *kdNode
+}
+
+func newKDTreeSearcher(train [][]float64, leafSize int) *kdTreeSearcher {
+	indices := make([]int, len(train))
+	for i := range indices {
+		indices[i] = i
+	}
+	return &kdTreeSearcher{
+		train:    train,
+		leafSize: leafSize,
+		root:     buildKDNode(train, indices, leafSize, 0),
+	}
+}
+
+// buildKDNode constructs the KD-tree subtree for `indices`. Left and right
+// subtrees are completely independent (no shared mutable state — they slice
+// their own halves of `indices` with explicit copies), so we fan them out
+// to goroutines when both `depth < treeBuildParallelDepth` and the subtree
+// is large enough to amortise the goroutine launch.
+func buildKDNode(train [][]float64, indices []int, leafSize, depth int) *kdNode {
+	if len(indices) == 0 {
+		return nil
+	}
+	if len(indices) <= leafSize {
+		out := append([]int(nil), indices...)
+		sort.Ints(out)
+		return &kdNode{indices: out}
+	}
+
+	axis := widestDimension(train, indices)
+	sort.Slice(indices, func(i, j int) bool {
+		ai := train[indices[i]][axis]
+		aj := train[indices[j]][axis]
+		if almostEqual(ai, aj) {
+			return indices[i] < indices[j]
+		}
+		return ai < aj
+	})
+	mid := len(indices) / 2
+	pivot := indices[mid]
+	leftIdx := append([]int(nil), indices[:mid]...)
+	rightIdx := append([]int(nil), indices[mid+1:]...)
+
+	var left, right *kdNode
+	if depth < treeBuildParallelDepth && len(indices) >= treeBuildParallelCutoff {
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			left = buildKDNode(train, leftIdx, leafSize, depth+1)
+		}()
+		go func() {
+			defer wg.Done()
+			right = buildKDNode(train, rightIdx, leafSize, depth+1)
+		}()
+		wg.Wait()
+	} else {
+		left = buildKDNode(train, leftIdx, leafSize, depth+1)
+		right = buildKDNode(train, rightIdx, leafSize, depth+1)
+	}
+	return &kdNode{
+		axis:  axis,
+		pivot: pivot,
+		left:  left,
+		right: right,
+	}
+}
+
+func (s *kdTreeSearcher) QueryKNN(query []float64, k int) []neighbor {
+	set := newNeighborSet(k)
+	searchKDTree(s.train, s.root, query, set)
+	return set.results()
+}
+
+func searchKDTree(train [][]float64, node *kdNode, query []float64, set *neighborSet) {
+	if node == nil {
+		return
+	}
+	if len(node.indices) > 0 {
+		for _, idx := range node.indices {
+			set.tryAdd(neighbor{index: idx, dist2: squaredEuclidean(train[idx], query)})
+		}
+		return
+	}
+
+	pivotPoint := train[node.pivot]
+	set.tryAdd(neighbor{index: node.pivot, dist2: squaredEuclidean(pivotPoint, query)})
+	diff := query[node.axis] - pivotPoint[node.axis]
+	near, far := node.left, node.right
+	if diff > 0 {
+		near, far = node.right, node.left
+	}
+	searchKDTree(train, near, query, set)
+	if !set.full() || diff*diff <= set.worstDist2()+1e-12 {
+		searchKDTree(train, far, query, set)
+	}
+}
+
+type ballTreeSearcher struct {
+	train    [][]float64
+	leafSize int
+	root     *ballNode
+}
+
+type ballNode struct {
+	center  []float64
+	radius  float64
+	indices []int
+	left    *ballNode
+	right   *ballNode
+}
+
+func newBallTreeSearcher(train [][]float64, leafSize int) *ballTreeSearcher {
+	indices := make([]int, len(train))
+	for i := range indices {
+		indices[i] = i
+	}
+	return &ballTreeSearcher{
+		train:    train,
+		leafSize: leafSize,
+		root:     buildBallNode(train, indices, leafSize, 0),
+	}
+}
+
+// buildBallNode mirrors buildKDNode's parallel fan-out: independent left
+// and right subtrees can be constructed concurrently because they each
+// own a private `indices` slice. The centroid + radius computation at
+// this node stays serial — it's O(n) and feeds both subtrees, so there
+// is nothing to parallelise above the recursion split.
+func buildBallNode(train [][]float64, indices []int, leafSize, depth int) *ballNode {
+	if len(indices) == 0 {
+		return nil
+	}
+	center := centroid(train, indices)
+	radius := 0.0
+	for _, idx := range indices {
+		d := math.Sqrt(squaredEuclidean(train[idx], center))
+		if d > radius {
+			radius = d
+		}
+	}
+	if len(indices) <= leafSize {
+		out := append([]int(nil), indices...)
+		sort.Ints(out)
+		return &ballNode{center: center, radius: radius, indices: out}
+	}
+
+	leftPivot, rightPivot := chooseBallPivots(train, indices)
+	leftIdx := make([]int, 0, len(indices)/2)
+	rightIdx := make([]int, 0, len(indices)/2)
+	for _, idx := range indices {
+		dl := squaredEuclidean(train[idx], train[leftPivot])
+		dr := squaredEuclidean(train[idx], train[rightPivot])
+		if dl < dr || (almostEqual(dl, dr) && idx <= rightPivot) {
+			leftIdx = append(leftIdx, idx)
+		} else {
+			rightIdx = append(rightIdx, idx)
+		}
+	}
+	if len(leftIdx) == 0 || len(rightIdx) == 0 {
+		sorted := append([]int(nil), indices...)
+		sort.Ints(sorted)
+		half := len(sorted) / 2
+		leftIdx = sorted[:half]
+		rightIdx = sorted[half:]
+	}
+
+	var left, right *ballNode
+	if depth < treeBuildParallelDepth && len(indices) >= treeBuildParallelCutoff {
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			left = buildBallNode(train, leftIdx, leafSize, depth+1)
+		}()
+		go func() {
+			defer wg.Done()
+			right = buildBallNode(train, rightIdx, leafSize, depth+1)
+		}()
+		wg.Wait()
+	} else {
+		left = buildBallNode(train, leftIdx, leafSize, depth+1)
+		right = buildBallNode(train, rightIdx, leafSize, depth+1)
+	}
+	return &ballNode{
+		center: center,
+		radius: radius,
+		left:   left,
+		right:  right,
+	}
+}
+
+func (s *ballTreeSearcher) QueryKNN(query []float64, k int) []neighbor {
+	set := newNeighborSet(k)
+	searchBallTree(s.train, s.root, query, set)
+	return set.results()
+}
+
+func searchBallTree(train [][]float64, node *ballNode, query []float64, set *neighborSet) {
+	if node == nil {
+		return
+	}
+	if len(node.indices) > 0 {
+		for _, idx := range node.indices {
+			set.tryAdd(neighbor{index: idx, dist2: squaredEuclidean(train[idx], query)})
+		}
+		return
+	}
+
+	leftBound := ballLowerBound(query, node.left)
+	rightBound := ballLowerBound(query, node.right)
+	first, second := node.left, node.right
+	firstBound, secondBound := leftBound, rightBound
+	if rightBound < leftBound && !almostEqual(rightBound, leftBound) {
+		first, second = node.right, node.left
+		firstBound, secondBound = rightBound, leftBound
+	}
+	if !set.full() || firstBound <= set.worstDist2()+1e-12 {
+		searchBallTree(train, first, query, set)
+	}
+	if !set.full() || secondBound <= set.worstDist2()+1e-12 {
+		searchBallTree(train, second, query, set)
+	}
+}
+
+func ballLowerBound(query []float64, node *ballNode) float64 {
+	if node == nil {
+		return math.Inf(1)
+	}
+	dist := math.Sqrt(squaredEuclidean(query, node.center)) - node.radius
+	if dist < 0 {
+		return 0
+	}
+	return dist * dist
+}
+
+// neighborSet is the bounded "k smallest neighbours" container used by every
+// KNN search path. Internally a max-heap by `worseNeighbor` ordering — i.e.
+// buf[0] is the WORST currently-held neighbour, the one a new candidate has
+// to beat to enter the set.
+//
+// Why a heap and not a linear scan: profiling BenchmarkKNN_KDTreeQueries on
+// 24 threads (n_train=2000, n_test=500, k=8) showed neighborSet.tryAdd at
+// 37% of CPU, with worseNeighbor + linear scan to find the worst index
+// dominating that. tryAdd is called once per candidate distance evaluation
+// — for brute that's O(n_train) per query, for trees the visited-leaf size
+// times the number of explored leaves. For k=8 the linear scan is ~8 cmps
+// per call; for larger k (k=50, common for density-weighted KNN) it becomes
+// O(50) per call which is the hot loop's main cost.
+//
+// Heap converts both tryAdd and worstDist2 to O(log k) and O(1):
+//
+//	tryAdd       linear   heap
+//	  k=5        ~5 cmp   ~3 cmp + 1 swap chain
+//	  k=50       ~50 cmp  ~6 cmp + 1 swap chain
+//	  k=500      ~500 cmp ~9 cmp + 1 swap chain
+//
+// Bit-equivalence: both data structures maintain the same invariant — "the
+// k items minimising the worseNeighbor order on the input stream so far".
+// `results()` sort-orders the final set, so output is bit-identical to the
+// previous linear-scan implementation.
+type neighborSet struct {
+	k   int
+	buf []neighbor
+}
+
+func newNeighborSet(k int) *neighborSet {
+	return &neighborSet{k: k, buf: make([]neighbor, 0, k)}
+}
+
+func (s *neighborSet) full() bool {
+	return len(s.buf) >= s.k
+}
+
+// worstDist2 is buf[0].dist2 — the dist² of the heap root, i.e. the
+// worst-held neighbour. O(1).
+func (s *neighborSet) worstDist2() float64 {
+	if len(s.buf) == 0 {
+		return math.Inf(1)
+	}
+	return s.buf[0].dist2
+}
+
+// tryAdd inserts nb into the set. If the set isn't full, push + sift-up.
+// If full, compare against the worst (buf[0]) — replace and sift-down only
+// when nb is strictly better in the worseNeighbor order. Both paths are
+// O(log k).
+func (s *neighborSet) tryAdd(nb neighbor) {
+	if len(s.buf) < s.k {
+		s.buf = append(s.buf, nb)
+		s.siftUp(len(s.buf) - 1)
+		return
+	}
+	if betterNeighbor(nb, s.buf[0]) {
+		s.buf[0] = nb
+		s.siftDown(0)
+	}
+}
+
+// siftUp restores the heap invariant after appending a new element at
+// index `i` (the leaf). Walks up parent links, swapping while the new
+// element is "worse than" its parent (so it should be higher in the
+// max-heap).
+func (s *neighborSet) siftUp(i int) {
+	for i > 0 {
+		parent := (i - 1) / 2
+		if !worseNeighbor(s.buf[i], s.buf[parent]) {
+			return
+		}
+		s.buf[i], s.buf[parent] = s.buf[parent], s.buf[i]
+		i = parent
+	}
+}
+
+// siftDown restores the heap invariant after replacing the root.
+// Walks down to the larger (worse) child while the current node is
+// better than at least one of its children.
+func (s *neighborSet) siftDown(i int) {
+	n := len(s.buf)
+	for {
+		left := 2*i + 1
+		if left >= n {
+			return
+		}
+		worst := left
+		right := left + 1
+		if right < n && worseNeighbor(s.buf[right], s.buf[left]) {
+			worst = right
+		}
+		if !worseNeighbor(s.buf[worst], s.buf[i]) {
+			return
+		}
+		s.buf[i], s.buf[worst] = s.buf[worst], s.buf[i]
+		i = worst
+	}
+}
+
+func (s *neighborSet) results() []neighbor {
+	out := append([]neighbor(nil), s.buf...)
+	sort.Slice(out, func(i, j int) bool {
+		if almostEqual(out[i].dist2, out[j].dist2) {
+			return out[i].index < out[j].index
+		}
+		return out[i].dist2 < out[j].dist2
+	})
+	return out
+}
+
+func betterNeighbor(a, b neighbor) bool {
+	if almostEqual(a.dist2, b.dist2) {
+		return a.index < b.index
+	}
+	return a.dist2 < b.dist2
+}
+
+func worseNeighbor(a, b neighbor) bool {
+	if almostEqual(a.dist2, b.dist2) {
+		return a.index > b.index
+	}
+	return a.dist2 > b.dist2
+}
+
+// orderedClasses returns unique class labels in alphabetical order along with
+// a label→column-index map. Alphabetical order matches R's cor.test/which.max
+// convention and scikit-learn's `LabelEncoder` / `predict_proba` columns;
+// previously this used first-appearance order, which is
+// implementation-dependent and made the probability matrix's columns swap
+// when the training labels were reordered.
+func orderedClasses(labels []string) ([]string, map[string]int) {
+	seen := make(map[string]struct{}, len(labels))
+	classes := make([]string, 0)
+	for _, label := range labels {
+		if _, ok := seen[label]; ok {
+			continue
+		}
+		seen[label] = struct{}{}
+		classes = append(classes, label)
+	}
+	sort.Strings(classes)
+	classIndex := make(map[string]int, len(classes))
+	for i, label := range classes {
+		classIndex[label] = i
+	}
+	return classes, classIndex
+}
+
+func classifyProbabilities(neighbors []neighbor, labels []string, classIndex map[string]int, nClasses int, weighting Weighting) []float64 {
+	weights := make([]float64, nClasses)
+	// Distance weighting must collapse to zero-distance neighbors only,
+	// because 1/dist diverges as dist → 0. Uniform weighting has no such
+	// pathology and must use ALL k neighbors equally — previously this
+	// branch ignored the weighting argument and incorrectly dropped the
+	// non-matching neighbors for uniform mode too, which made KNNClassify
+	// disagree with KNearestNeighbors whenever a test point coincided
+	// with a training point.
+	hasZeroDistance := false
+	if weighting == DistanceWeighting {
+		for _, nb := range neighbors {
+			if almostEqual(nb.dist2, 0) {
+				hasZeroDistance = true
+				break
+			}
+		}
+	}
+	for _, nb := range neighbors {
+		if hasZeroDistance && !almostEqual(nb.dist2, 0) {
+			continue
+		}
+		idx := classIndex[labels[nb.index]]
+		weights[idx] += neighborWeight(math.Sqrt(nb.dist2), weighting)
+	}
+	total := 0.0
+	for _, weight := range weights {
+		total += weight
+	}
+	if total == 0 {
+		return weights
+	}
+	for i := range weights {
+		weights[i] /= total
+	}
+	return weights
+}
+
+func regressPrediction(neighbors []neighbor, targets []float64, weighting Weighting) float64 {
+	// See classifyProbabilities for the rationale: zero-distance collapse is
+	// only required for distance weighting (where weights diverge as 1/dist).
+	hasZeroDistance := false
+	if weighting == DistanceWeighting {
+		for _, nb := range neighbors {
+			if almostEqual(nb.dist2, 0) {
+				hasZeroDistance = true
+				break
+			}
+		}
+	}
+	sumWeight := 0.0
+	sumTarget := 0.0
+	for _, nb := range neighbors {
+		if hasZeroDistance && !almostEqual(nb.dist2, 0) {
+			continue
+		}
+		weight := neighborWeight(math.Sqrt(nb.dist2), weighting)
+		sumWeight += weight
+		sumTarget += weight * targets[nb.index]
+	}
+	if sumWeight == 0 {
+		return math.NaN()
+	}
+	return sumTarget / sumWeight
+}
+
+func neighborWeight(distance float64, weighting Weighting) float64 {
+	switch weighting {
+	case DistanceWeighting:
+		if almostEqual(distance, 0) {
+			return 1
+		}
+		return 1 / distance
+	default:
+		return 1
+	}
+}
+
+func widestDimension(train [][]float64, indices []int) int {
+	bestAxis := 0
+	bestSpread := -1.0
+	for axis := range train[0] {
+		minV := train[indices[0]][axis]
+		maxV := minV
+		for _, idx := range indices[1:] {
+			v := train[idx][axis]
+			if v < minV {
+				minV = v
+			}
+			if v > maxV {
+				maxV = v
+			}
+		}
+		spread := maxV - minV
+		if spread > bestSpread {
+			bestSpread = spread
+			bestAxis = axis
+		}
+	}
+	return bestAxis
+}
+
+func chooseBallPivots(train [][]float64, indices []int) (int, int) {
+	first := indices[0]
+	farthest := first
+	best := -1.0
+	for _, idx := range indices[1:] {
+		d := squaredEuclidean(train[first], train[idx])
+		if d > best {
+			best = d
+			farthest = idx
+		}
+	}
+	second := farthest
+	best = -1.0
+	for _, idx := range indices {
+		d := squaredEuclidean(train[farthest], train[idx])
+		if d > best {
+			best = d
+			second = idx
+		}
+	}
+	if farthest == second && len(indices) > 1 {
+		second = indices[1]
+	}
+	return farthest, second
+}
+
+func centroid(train [][]float64, indices []int) []float64 {
+	center := make([]float64, len(train[0]))
+	for _, idx := range indices {
+		for j, v := range train[idx] {
+			center[j] += v
+		}
+	}
+	for j := range center {
+		center[j] /= float64(len(indices))
+	}
+	return center
+}
+
+func squaredEuclidean(a, b []float64) float64 {
+	sum := 0.0
+	for i := range a {
+		d := a[i] - b[i]
+		sum += d * d
+	}
+	return sum
+}
+
+func hasInvalidFloat(row []float64) bool {
+	for _, v := range row {
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			return true
+		}
+	}
+	return false
+}
+
+func almostEqual(a, b float64) bool {
+	return math.Abs(a-b) <= 1e-12
+}

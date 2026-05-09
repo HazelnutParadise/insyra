@@ -10,6 +10,7 @@ DataTable is the core data structure of Insyra for handling structured data. It 
 - [Data Saving](#data-saving)
 - [Data Operations](#data-operations)
   - [Merge](#merge)
+  - [GroupBy](#groupby)
 - [Data Replacement](#data-replacement)
 - [Column Calculation](#column-calculation)
 - [Searching](#searching)
@@ -46,7 +47,7 @@ type DataTable struct {
 - `name`: Name of the DataTable
 - `creationTimestamp`: Unix timestamp when the table was created
 - `lastModifiedTimestamp`: Unix timestamp when the table was last modified
-- `atomicActor`: Internal actor used by `AtomicDo` to provide serialized execution without external locks
+- `atomicActor`: Internal mutex + holder pair used by `AtomicDo` to serialise execution; same-goroutine re-entry runs inline without re-locking
 
 ### Naming Conventions
 
@@ -332,39 +333,102 @@ if err != nil {
 
 ```go
 func ReadSQL(db *gorm.DB, tableName string, options ...ReadSQLOptions) (*DataTable, error)
+func ReadSQLContext(ctx context.Context, db *gorm.DB, tableName string, options ...ReadSQLOptions) (*DataTable, error)
+func ReadSQLStream(ctx context.Context, db *gorm.DB, tableName string, options ...ReadSQLOptions) (<-chan ReadSQLChunk, error)
 ```
 
 **Description:** Loads data from a database table or custom SQL query into a DataTable.
 
+- `ReadSQL` is the simple form. It is equivalent to `ReadSQLContext(context.Background(), ...)`.
+- `ReadSQLContext` is the context-aware variant. The query and row scanning run under `ctx`, so callers can cancel long-running reads.
+- `ReadSQLStream` reads a (potentially huge) result set in chunks, emitting each chunk as a `*DataTable` on the returned channel. The channel closes when the stream completes, when `ctx` is cancelled, or after a fatal error. Use this when the result set does not fit in memory.
+
 **Parameters:**
 
+- `ctx`: Context that controls cancellation of the database calls (Context variants only)
 - `db`: GORM database connection
-- `tableName`: Name of the database table to read from
-- `options`: Optional configuration for reading data (ReadSQLOptions struct)
+- `tableName`: Name of the database table to read from. Ignored when `ReadSQLOptions.Query` is set.
+- `options`: Optional configuration (`ReadSQLOptions` struct, see below)
 
 **Returns:**
 
-- `*DataTable`: DataTable loaded with data
+- `*DataTable`: DataTable loaded with data (single-result functions)
+- `<-chan ReadSQLChunk`: Channel of streamed chunks (`ReadSQLStream`)
 - `error`: Error information, returns nil if successful
+
+**ReadSQLChunk:**
+
+```go
+type ReadSQLChunk struct {
+    Table *DataTable // populated on success
+    Err   error      // populated on failure or cancellation
+}
+```
+
+Exactly one of `Table` or `Err` is set per chunk.
 
 **ReadSQLOptions:**
 
-- `RowNameColumn`: Column name to use as row names (default: "row_name")
-- `Query`: Custom SQL query string (if provided, other options are ignored)
-- `Limit`: Maximum number of rows to read (0 means no limit)
-- `Offset`: Starting row offset
-- `WhereClause`: WHERE clause for filtering
-- `OrderBy`: ORDER BY clause for sorting
+| Field | Type | Description |
+| --- | --- | --- |
+| `RowNameColumn` | `string` | Column whose values become DataTable row names. Defaults to `"row_name"` when neither this nor `IndexCol` is set. |
+| `IndexCol` | `string` | Alias for `RowNameColumn`; mirrors pandas' `read_sql(index_col=...)`. When non-empty, takes precedence. |
+| `Query` | `string` | Custom SQL query. When set, all other query-shape options are ignored. |
+| `Params` | `[]any` | Positional bind parameters for `Query`. Equivalent to pandas' `read_sql(params=...)`. |
+| `Columns` | `[]string` | Restricts the auto-built `SELECT` to these columns. Ignored when `Query` is set. |
+| `Schema` | `string` | Optional schema (PostgreSQL) or database (MySQL) prefix. SQLite ignores this. |
+| `Limit` | `int` | Maximum number of rows to read (0 means no limit). |
+| `Offset` | `int` | Starting row offset. |
+| `WhereClause` | `string` | `WHERE` clause body (without the `WHERE` keyword). |
+| `OrderBy` | `string` | `ORDER BY` clause body (without the `ORDER BY` keyword). |
+| `ParseDates` | `[]string` | Columns whose `string`/`[]byte` values should be parsed as `time.Time`. Several common ISO-style layouts are tried in order (RFC3339, `2006-01-02 15:04:05`, etc.). |
+| `DType` | `map[string]reflect.Type` | Forces the resulting Go type for the named columns. Recognized targets: `int*`/`uint*`/`float*`/`bool`/`string`/`time.Time`/`[]byte`. |
+| `ChunkSize` | `int` | Per-chunk row count for `ReadSQLStream`. Defaults to 1000. Ignored by `ReadSQL`/`ReadSQLContext`. |
 
-**Example:**
+**Type handling:** When the driver returns numeric or boolean columns as `[]byte` (common with the MySQL driver), `ReadSQL` consults `rows.ColumnTypes()` and converts to the appropriate Go primitive. Binary columns (`BLOB`/`BYTEA`) are kept as `[]byte`. `DType` overrides take precedence over the default mapping.
+
+**Examples:**
 
 ```go
-// Using table name with options
+// Simple read with options.
 db, _ := gorm.Open(mysql.Open("connection_string"), &gorm.Config{})
-dt, err := insyra.ReadSQL(db, "users", insyra.ReadSQLOptions{Limit: 100, OrderBy: "id DESC"})
+dt, err := insyra.ReadSQL(db, "users", insyra.ReadSQLOptions{
+    Limit:   100,
+    OrderBy: "id DESC",
+})
 
-// Using custom query
-dt, err := insyra.ReadSQL(db, "", insyra.ReadSQLOptions{Query: "SELECT * FROM users WHERE active = 1"})
+// Parameterized custom query.
+dt, err := insyra.ReadSQL(db, "", insyra.ReadSQLOptions{
+    Query:  "SELECT * FROM users WHERE active = ? AND age > ?",
+    Params: []any{true, 18},
+})
+
+// Cancelable read.
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
+dt, err := insyra.ReadSQLContext(ctx, db, "users")
+
+// Streaming a huge table in chunks of 5000 rows.
+ctx, cancel := context.WithCancel(context.Background())
+defer cancel()
+ch, err := insyra.ReadSQLStream(ctx, db, "events", insyra.ReadSQLOptions{ChunkSize: 5000})
+if err != nil {
+    log.Fatal(err)
+}
+for chunk := range ch {
+    if chunk.Err != nil {
+        log.Fatal(chunk.Err)
+    }
+    process(chunk.Table)
+}
+
+// Force types and parse a date column.
+dt, err := insyra.ReadSQL(db, "events", insyra.ReadSQLOptions{
+    ParseDates: []string{"created_at"},
+    DType: map[string]reflect.Type{
+        "score": reflect.TypeFor[float64](),
+    },
+})
 ```
 
 ### ReadExcelSheet
@@ -527,41 +591,73 @@ for k, col := range m {
 
 ```go
 func (dt *DataTable) ToSQL(db *gorm.DB, tableName string, options ...ToSQLOptions) error
+func (dt *DataTable) ToSQLContext(ctx context.Context, db *gorm.DB, tableName string, options ...ToSQLOptions) error
 ```
 
 **Description:** Writes the DataTable to a SQL database.
 
+- `ToSQL` is the simple form. It is equivalent to `ToSQLContext(context.Background(), ...)`.
+- `ToSQLContext` runs every database call under `ctx`, so callers can cancel long writes.
+
 **Behavior:**
 
-- All database operations performed by `ToSQL` (CREATE TABLE, ALTER TABLE, INSERT, etc.) are executed inside a single database transaction. If any step fails, the transaction is rolled back and no partial changes are committed. ✅
-- When `IfExists` is set to append mode, `ToSQL` will add missing columns to the existing table to accommodate new data.
-- You can provide `ColumnTypes` to override inferred column types.
+- All database operations (CREATE TABLE, ALTER TABLE, INSERT, etc.) are executed inside a single database transaction. If any step fails, the transaction is rolled back and no partial changes are committed.
+- Rows are inserted with **batched multi-value INSERTs**. The default batch size is 500 rows; tune via `ToSQLOptions.BatchSize`. Note that `BatchSize × column-count` must stay below the driver's bind-parameter limit (PostgreSQL/MySQL: 65535).
+- When `IfExists` is set to append mode, `ToSQL` fetches the existing table's columns once and adds any missing ones via `ALTER TABLE` before inserting (no per-row schema introspection).
+- Type inference samples the first non-nil value in each column. Recognized types include `time.Time` (→ `DATETIME`/`TIMESTAMP`), `[]byte` (→ `BLOB`/`BYTEA`), `sql.Null*` (unwraps the underlying value), and pointers (dereferenced). All-nil columns fall back to `TEXT`.
+- You can provide `ColumnTypes` to override the inferred SQL types.
 
 **Parameters:**
 
+- `ctx`: Context that controls cancellation of the database calls (`ToSQLContext` only)
 - `db`: GORM database connection
 - `tableName`: Target table name
-- `options`: Optional SQL options
-  - `IfExists` (type `SQLActionIfTableExists`): Controls behavior when the target table already exists:
-    - `SQLActionIfTableExistsFail` — return an error if the table exists (default)
-    - `SQLActionIfTableExistsReplace` — drop and recreate the table
-    - `SQLActionIfTableExistsAppend` — keep the table and append rows, adding missing columns if needed
-  - `RowNames` (bool): If true, include row names as a `row_name` column (type `TEXT` by default)
-  - `ColumnTypes` (map[string]string): Optional explicit SQL column types to use instead of type inference
+- `options`: Optional SQL options (`ToSQLOptions` struct, see below)
+
+**ToSQLOptions:**
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `IfExists` | `SQLActionIfTableExists` | Behavior when the target table already exists. See enum values below. Default: `SQLActionIfTableExistsFail`. |
+| `RowNames` | `bool` | If true, include row names as a `row_name` column (default type `TEXT`). |
+| `ColumnTypes` | `map[string]string` | Explicit SQL column types per column, used instead of type inference. |
+| `Schema` | `string` | Optional schema (PostgreSQL) or database (MySQL) prefix. SQLite ignores this. The caller is responsible for any required quoting. |
+| `BatchSize` | `int` | Rows per multi-value `INSERT`. Zero means use the package default (500). |
+
+**SQLActionIfTableExists values:**
+
+- `SQLActionIfTableExistsFail` — return an error if the table exists (default)
+- `SQLActionIfTableExistsReplace` — drop and recreate the table
+- `SQLActionIfTableExistsAppend` — keep the table and append rows, adding missing columns if needed
 
 **Returns:**
 
 - `error`: Error information, returns nil if successful; if any DDL/DML step fails, an error is returned and the entire operation is rolled back.
 
-**Example:**
+**Examples:**
 
 ```go
 db, _ := gorm.Open(mysql.Open("connection_string"))
-// Replace existing table if present
+
+// Replace existing table if present.
 err := dt.ToSQL(db, "users", ToSQLOptions{IfExists: SQLActionIfTableExistsReplace})
 if err != nil {
     log.Fatal(err)
 }
+
+// Append into an existing table; missing columns are added once.
+err = dt.ToSQL(db, "events", ToSQLOptions{
+    IfExists:  SQLActionIfTableExistsAppend,
+    BatchSize: 1000,
+})
+
+// Cancelable write with a deadline.
+ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+defer cancel()
+err = dt.ToSQLContext(ctx, db, "events_archive", ToSQLOptions{
+    IfExists: SQLActionIfTableExistsReplace,
+    Schema:   "analytics",
+})
 ```
 
 ## Data Operations
@@ -634,6 +730,162 @@ resRight, _ := dt1.Merge(dt2, insyra.MergeDirectionHorizontal, insyra.MergeModeR
 // C, 3, 20
 // D, <nil>, 30
 ```
+
+### GroupBy
+
+```go
+func (dt *DataTable) GroupBy(keyCols ...string) *GroupedDataTable
+func (g *GroupedDataTable) Aggregate(configs ...AggregateConfig) *DataTable
+func (g *GroupedDataTable) AggregateAll(op AggregateOp) *DataTable
+func (g *GroupedDataTable) Count() *DataTable
+```
+
+**Description:** Splits the DataTable into groups by one or more key columns and applies aggregate functions to each group ("split-apply-combine"). The result is a new DataTable with one row per unique key combination — key columns first (in `GroupBy` order), then the aggregate columns (in `Aggregate` order). Group order in the output follows the order in which each key combination is first seen during a single linear scan; `nil` keys form their own group, and `int(1)` is kept distinct from the string `"1"`.
+
+**`AggregateConfig` fields:**
+
+- `SourceCol`: The column to aggregate. Resolved by name first, then as an Excel-style index (`"A"`, `"B"`, ...). Required for every op except `OpCountAll`.
+- `As`: Output column name. When empty it is auto-named `"<source>_<op>"` (e.g. `"revenue_sum"`).
+- `Op`: One of the `AggregateOp` constants below.
+- `Custom`: Used only when `Op == OpCustom`. The provided function receives a `*DataList` containing the source-column values of the group, in original row order, including `nil` entries.
+
+**Supported `AggregateOp`:**
+
+| Op | Behavior |
+|---|---|
+| `OpSum` | Sum of numeric values; non-numeric and `nil` skipped |
+| `OpMean` | Arithmetic mean of numeric values |
+| `OpMedian` | Median of numeric values |
+| `OpMin` / `OpMax` | Numeric min / max |
+| `OpCount` | Count of **non-nil** values |
+| `OpCountAll` | Count of **all** rows in the group (group size) |
+| `OpStdev` / `OpStdevP` | Sample / population standard deviation |
+| `OpVar` / `OpVarP` | Sample / population variance |
+| `OpFirst` / `OpLast` | First / last **non-nil** value in original row order |
+| `OpNUnique` | Distinct non-nil value count |
+| `OpCustom` | User-supplied `Custom func(group *DataList) any` |
+
+**Errors:** Unknown key columns, unknown source columns, missing `Custom` for `OpCustom`, empty configs, and empty key lists are reported via the parent `dt.Err()` instance-level error. The aggregate output is still returned (with affected columns nil-filled or empty), so callers can inspect partial results and continue chaining.
+
+**Example (single key, multiple aggregates):**
+
+```go
+dt := insyra.NewDataTable(
+    insyra.NewDataList("east", "east", "west", "west", "south").SetName("region"),
+    insyra.NewDataList(100, 200, 50, 75, 300).SetName("revenue"),
+    insyra.NewDataList(1, 2, 3, 4, 5).SetName("qty"),
+)
+
+report := dt.GroupBy("region").Aggregate(
+    insyra.AggregateConfig{SourceCol: "revenue", Op: insyra.OpSum,  As: "total_rev"},
+    insyra.AggregateConfig{SourceCol: "revenue", Op: insyra.OpMean, As: "avg_rev"},
+    insyra.AggregateConfig{SourceCol: "qty",     Op: insyra.OpSum,  As: "total_qty"},
+)
+// report columns: region, total_rev, avg_rev, total_qty
+// report rows:    east 300 150 3 / west 125 62.5 7 / south 300 300 5
+```
+
+**Example (multiple keys, custom aggregate):**
+
+```go
+weighted := dt.GroupBy("region", "product").Aggregate(
+    insyra.AggregateConfig{SourceCol: "revenue", Op: insyra.OpSum},  // auto-named "revenue_sum"
+    insyra.AggregateConfig{
+        SourceCol: "price",
+        As:        "wprice",
+        Op:        insyra.OpCustom,
+        Custom: func(group *insyra.DataList) any {
+            // Custom receives the group's column slice as a DataList. nil
+            // entries are preserved; you handle them.
+            return group.Mean()
+        },
+    },
+)
+```
+
+**Pipeline:** `GroupBy + Aggregate` composes naturally with `FilterRows` and `SortBy`:
+
+```go
+top := dt.
+    FilterRows(func(_, _ string, x any) bool { return true /* ... */ }).
+    GroupBy("region").
+    Aggregate(insyra.AggregateConfig{SourceCol: "revenue", Op: insyra.OpSum, As: "total"}).
+    SortBy(insyra.DataTableSortConfig{ColumnName: "total", Descending: true})
+```
+
+### Pivot / Unpivot (long ↔ wide reshape)
+
+```go
+func (dt *DataTable) Pivot(cfg PivotConfig) (*DataTable, error)
+func (dt *DataTable) Unpivot(cfg UnpivotConfig) (*DataTable, error)
+```
+
+**Description:** `Pivot` reshapes long-form data into wide form (each unique value of `cfg.Columns` becomes a new column header, with cells filled from `cfg.Values` and rows keyed by `cfg.Index`). `Unpivot` is the inverse: each row is expanded into one output row per `ValueVar`, with the original column name written into the new `VarName` column and the cell value written into `ValueName`. Both methods return a fresh `*DataTable`; the receiver is not modified. On error the returned `*DataTable` is empty and carries the failure on its `Err()`, so chained calls remain safe.
+
+**Column reference resolution (applies to every column-name field below — `Index`, `Columns`, `Values`, `IDVars`, `ValueVars`):** each token is matched against `column.name` first; if no column has that name, it falls back to the Excel-style alphabetic index (`"A"` → column 0, `"B"` → column 1, ..., `"AA"` → column 26, ...). The first row of data is **never** consulted — column headers live only on `column.name` (set via `SetName`, `SetColNames`, CSV/Excel `firstRow2ColNames=true`, etc.). Tokens that match neither a name nor a valid alphabetic index are an error.
+
+**`PivotConfig` fields:**
+
+- `Index`: Identifier columns; their unique combinations form output rows. At least one required. Each entry follows the resolution rule above.
+- `Columns`: Column whose unique values become new column headers. Required. Same resolution rule.
+- `Values`: Column supplying cell values. Required. Same resolution rule.
+- `AggFunc`: Aggregator applied when an `(Index, Columns)` pair has duplicates. Recognised: `"sum"`, `"mean"` (alias `"avg"`), `"median"`, `"min"`, `"max"`, `"count"` (non-nil), `"countall"` (group size), `"stdev"` (alias `"std"`), `"stdevp"` (alias `"stdp"`), `"var"`, `"varp"`, `"first"`, `"last"`, `"nunique"`, `"custom"`. When empty, duplicate `(Index, Columns)` combinations are an error.
+- `Custom`: Required when `AggFunc == "custom"`. Receives the cell's values as a `*DataList` in original row order, including nil entries.
+- `FillNA`: Value placed in cells whose `(Index, Columns)` combination is absent (or whose aggregated value is nil). Default `nil`.
+- `SortCols`: When `true`, generated columns are emitted in sorted order of the key value; when `false` (default), first-seen order is preserved.
+
+**`UnpivotConfig` fields:**
+
+- `IDVars`: Columns kept as-is (identifier columns). Same resolution rule.
+- `ValueVars`: Columns to unpivot. Same resolution rule. When empty, all non-`IDVars` columns are unpivoted.
+- `VarName`: Name of the new "variable" column. Defaults to `"variable"`. The string written into this column for each output row is the source column's `name` (or, if a column was unnamed, its Excel-style label).
+- `ValueName`: Name of the new "value" column. Defaults to `"value"`.
+- `DropNA`: When `true`, omits rows whose value is `nil` or `NaN`.
+
+**Errors:** Missing/unknown columns, duplicate listings, overlap between `Index`/`Columns`/`Values` (Pivot) or `IDVars`/`ValueVars` (Unpivot), unknown `AggFunc`, and `(Index, Columns)` duplicates without an aggregator are all surfaced via the returned `error` and recorded on the returned table's `Err()`.
+
+**Example — long to wide:**
+
+```go
+// Long input:
+//   region | product | sales
+//   APAC   | A       | 10
+//   APAC   | B       | 20
+//   EMEA   | A       | 30
+wide, err := dt.Pivot(insyra.PivotConfig{
+    Index:    []string{"region"},
+    Columns:  "product",
+    Values:   "sales",
+    AggFunc:  "sum",  // optional; required if (region, product) has duplicates
+    FillNA:   0,
+    SortCols: true,
+})
+// wide:
+//   region | A  | B
+//   APAC   | 10 | 20
+//   EMEA   | 30 | 0
+```
+
+**Example — wide to long:**
+
+```go
+// Wide input:
+//   id | Q1 | Q2 | Q3
+//   1  | 5  | 4  | 3
+long, err := dt.Unpivot(insyra.UnpivotConfig{
+    IDVars:    []string{"id"},
+    ValueVars: []string{"Q1", "Q2", "Q3"},
+    VarName:   "question",
+    ValueName: "score",
+})
+// long:
+//   id | question | score
+//   1  | Q1       | 5
+//   1  | Q2       | 4
+//   1  | Q3       | 3
+```
+
+**Relationship to `GroupBy + Aggregate`:** `Pivot` is essentially `GroupBy(Index..., Columns).Aggregate(Values, AggFunc)` followed by spreading the `Columns` key out into headers. When you only need the grouped summary (one row per key, no header spreading), use `GroupBy + Aggregate` directly — it is simpler and produces the same intermediate structure.
 
 ### AppendCols
 
@@ -3717,7 +3969,7 @@ insyra.Config.SetDefaultErrHandlingFunc(func(errType insyra.LogLevel, packageNam
 func (dt *DataTable) AtomicDo(f func(*DataTable))
 ```
 
-**Description:** `AtomicDo` provides safe, serialized access to a DataTable via an internal actor goroutine. All operations inside the function run in order and without races, allowing concurrent callers to compose multi-step updates safely.
+**Description:** `AtomicDo` provides safe, serialized access to a DataTable via a per-instance `sync.Mutex` plus a goroutine-id holder (`petermattis/goid`) for fast same-goroutine re-entry detection. All operations inside the function run in order and without races, allowing concurrent callers to compose multi-step updates safely with ~30 ns per-call overhead.
 
 **Parameters:**
 

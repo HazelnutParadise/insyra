@@ -9,7 +9,10 @@ import (
 func TestDiag(t *testing.T) {
 	// Test extracting diagonal from matrix
 	matrix := mat.NewDense(3, 3, []float64{1, 2, 3, 4, 5, 6, 7, 8, 9})
-	result := Diag(matrix)
+	result, err := Diag(matrix)
+	if err != nil {
+		t.Fatalf("Diag(matrix) returned error: %v", err)
+	}
 	diag, ok := result.([]float64)
 	if !ok {
 		t.Errorf("Expected []float64, got %T", result)
@@ -23,7 +26,10 @@ func TestDiag(t *testing.T) {
 
 	// Test creating diagonal matrix from slice
 	vec := []float64{1, 2, 3}
-	result = Diag(vec)
+	result, err = Diag(vec)
+	if err != nil {
+		t.Fatalf("Diag(vec) returned error: %v", err)
+	}
 	diagMat, ok := result.(*mat.Dense)
 	if !ok {
 		t.Errorf("Expected *mat.Dense, got %T", result)
@@ -47,7 +53,10 @@ func TestDiag(t *testing.T) {
 	}
 
 	// Test creating identity matrix
-	result = Diag(3)
+	result, err = Diag(3)
+	if err != nil {
+		t.Fatalf("Diag(3) returned error: %v", err)
+	}
 	idMat, ok := result.(*mat.Dense)
 	if !ok {
 		t.Errorf("Expected *mat.Dense, got %T", result)
@@ -71,7 +80,10 @@ func TestDiag(t *testing.T) {
 	}
 
 	// Test creating identity matrix from float64
-	result = Diag(3.0)
+	result, err = Diag(3.0)
+	if err != nil {
+		t.Fatalf("Diag(3.0) returned error: %v", err)
+	}
 	idMat2, ok := result.(*mat.Dense)
 	if !ok {
 		t.Errorf("Expected *mat.Dense, got %T", result)
@@ -95,7 +107,10 @@ func TestDiag(t *testing.T) {
 	}
 
 	// Test creating identity matrix from nil
-	result = Diag(nil, 3, 3)
+	result, err = Diag(nil, 3, 3)
+	if err != nil {
+		t.Fatalf("Diag(nil,3,3) returned error: %v", err)
+	}
 	idMat3, ok := result.(*mat.Dense)
 	if !ok {
 		t.Errorf("Expected *mat.Dense, got %T", result)

@@ -1,18 +1,36 @@
 package insyra
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
+	"maps"
 	"reflect"
 	"strings"
+	"time"
 
 	sq "github.com/Masterminds/squirrel"
 	"gorm.io/gorm"
 )
 
+// defaultBatchSize is the per-INSERT row count when ToSQLOptions.BatchSize is unset.
+const defaultBatchSize = 500
+
 type ToSQLOptions struct {
 	IfExists    SQLActionIfTableExists // "fail", "replace", "append"
 	RowNames    bool
 	ColumnTypes map[string]string // 自訂型別
+
+	// Schema is an optional schema (PostgreSQL) or database (MySQL) name to
+	// prefix the table reference with. SQLite ignores this. The caller is
+	// responsible for any required quoting; the value is passed through as-is.
+	Schema string
+
+	// BatchSize controls how many rows are bundled into a single multi-row
+	// INSERT. Zero falls back to defaultBatchSize. Note that the total number
+	// of bind parameters per batch (BatchSize * column-count) must stay below
+	// the driver limit (PostgreSQL/MySQL: 65535).
+	BatchSize int
 }
 
 type SQLActionIfTableExists int
@@ -23,336 +41,348 @@ const (
 	SQLActionIfTableExistsAppend
 )
 
+// ToSQL writes the DataTable to the given database table.
+//
+// Equivalent to ToSQLContext(context.Background(), db, tableName, options...).
 func (dt *DataTable) ToSQL(db *gorm.DB, tableName string, options ...ToSQLOptions) error {
+	return dt.ToSQLContext(context.Background(), db, tableName, options...)
+}
+
+// ToSQLContext is the context-aware variant of ToSQL.
+//
+// All database calls run under ctx, so callers can cancel long writes.
+// Rows are inserted with batched multi-value INSERT statements; the batch size
+// is controlled by options[0].BatchSize.
+func (dt *DataTable) ToSQLContext(ctx context.Context, db *gorm.DB, tableName string, options ...ToSQLOptions) error {
 	if dt == nil {
 		return fmt.Errorf("dt is nil")
 	}
+	if db == nil {
+		return fmt.Errorf("db cannot be nil")
+	}
 
-	// 設定默認選項
 	var opts ToSQLOptions
 	if len(options) > 0 {
 		opts = options[0]
-	} else {
-		opts = ToSQLOptions{
-			IfExists:    SQLActionIfTableExistsFail,
-			RowNames:    false,
-			ColumnTypes: make(map[string]string),
-		}
 	}
-	var dataMap []map[string]any
-	dt.AtomicDo(func(dt *DataTable) {
-		numRow, numCol := dt.Size()
-		for i := range numRow {
-			row := dt.GetRow(i)
-			rowMap := make(map[string]any)
+	if opts.BatchSize <= 0 {
+		opts.BatchSize = defaultBatchSize
+	}
 
-			// 如果啟用行名稱，則將其添加到資料中
-			if opts.RowNames {
-				rowName, ok := dt.GetRowNameByIndex(i)
-				if ok && rowName != "" {
-					rowMap["row_name"] = rowName
-				}
-			}
-
-			for j := range numCol {
-				colName := dt.columns[j].GetName()
-				rowMap[colName] = row.Get(j)
-			}
-			dataMap = append(dataMap, rowMap)
-		}
-	})
-	if len(dataMap) == 0 {
+	cols, rows := dt.collectRowsForSQL(opts.RowNames)
+	if len(rows) == 0 {
 		return fmt.Errorf("data is empty")
 	}
 
-	// 儲存資料到資料庫
-	if err := saveDataMapToDB(db, tableName, dataMap, opts); err != nil {
-		return fmt.Errorf("failed to save data to DB: %w", err)
-	}
-	return nil
+	fullName := qualifiedTableName(opts.Schema, tableName)
+	tx := db.WithContext(ctx)
+	return saveRowsToDB(tx, fullName, tableName, opts.Schema, cols, rows, opts)
 }
 
-func saveDataMapToDB(db *gorm.DB, tableName string, data []map[string]any, opts ToSQLOptions) error {
-	if len(data) == 0 {
+// collectRowsForSQL extracts the canonical column ordering and row values
+// from the DataTable. When includeRowName is true, the first column is
+// "row_name" populated from GetRowNameByIndex.
+func (dt *DataTable) collectRowsForSQL(includeRowName bool) (cols []string, rows [][]any) {
+	dt.AtomicDo(func(dt *DataTable) {
+		numRow, numCol := dt.Size()
+		if numRow == 0 {
+			return
+		}
+		if includeRowName {
+			cols = append(cols, "row_name")
+		}
+		for j := range numCol {
+			cols = append(cols, dt.columns[j].GetName())
+		}
+		rows = make([][]any, 0, numRow)
+		for i := range numRow {
+			row := make([]any, 0, len(cols))
+			if includeRowName {
+				rn, ok := dt.GetRowNameByIndex(i)
+				if !ok {
+					rn = ""
+				}
+				row = append(row, rn)
+			}
+			r := dt.GetRow(i)
+			for j := range numCol {
+				row = append(row, r.Get(j))
+			}
+			rows = append(rows, row)
+		}
+	})
+	return cols, rows
+}
+
+func qualifiedTableName(schema, table string) string {
+	if schema == "" {
+		return table
+	}
+	return schema + "." + table
+}
+
+func saveRowsToDB(db *gorm.DB, fullName, plainTable, schema string, cols []string, rows [][]any, opts ToSQLOptions) error {
+	if len(rows) == 0 {
 		return fmt.Errorf("data is empty")
 	}
-
-	// 將所有 DB 操作包在單一 transaction 中，若有錯誤會自動回滾
 	return db.Transaction(func(tx *gorm.DB) error {
-		// 取得欄位與型別
-		columnTypes := map[string]string{}
-
-		// 使用自訂欄位型別（如果有提供）
-		if len(opts.ColumnTypes) > 0 {
-			columnTypes = opts.ColumnTypes
-		} else {
-			// 自動推斷型別
-			for k, v := range data[0] {
-				columnTypes[k] = inferSQLType(reflect.TypeOf(v), tx.Name())
-			}
-		}
-
-		// 處理表格已存在的情況
-		var tableExists bool
 		dialect := tx.Name()
 
-		// 根據數據庫類型選擇檢查表格是否存在的查詢
-		var result *gorm.DB
-		var count int
-
-		switch dialect {
-		case "mysql":
-			result = tx.Raw("SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ? AND table_schema = (SELECT DATABASE())", tableName)
-		case "postgres":
-			result = tx.Raw("SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ? AND table_schema = current_schema()", tableName)
-		case "sqlite":
-			result = tx.Raw("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?", tableName)
-		default:
-			result = tx.Raw("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?", tableName)
+		// Resolve column types: caller-provided overrides take precedence;
+		// otherwise infer from the first non-nil sample in each column.
+		columnTypes := make(map[string]string, len(cols))
+		if len(opts.ColumnTypes) > 0 {
+			maps.Copy(columnTypes, opts.ColumnTypes)
+		}
+		for ci, col := range cols {
+			if _, ok := columnTypes[col]; ok {
+				continue
+			}
+			var sample any
+			for _, row := range rows {
+				if row[ci] != nil {
+					sample = row[ci]
+					break
+				}
+			}
+			columnTypes[col] = inferSQLType(sample, dialect)
+		}
+		if opts.RowNames {
+			if _, ok := columnTypes["row_name"]; !ok {
+				columnTypes["row_name"] = textType(dialect)
+			}
 		}
 
-		if err := result.Scan(&count).Error; err != nil {
-			// 如果無法檢查表格存在，假設表格不存在
-			tableExists = false
-		} else {
-			tableExists = count > 0
+		exists, err := tableExists(tx, dialect, schema, plainTable)
+		if err != nil {
+			return err
 		}
 
-		if tableExists {
+		if exists {
 			switch opts.IfExists {
 			case SQLActionIfTableExistsFail:
-				return fmt.Errorf("table %s already exists", tableName)
+				return fmt.Errorf("table %s already exists", fullName)
 			case SQLActionIfTableExistsReplace:
-				// 刪除現有表格
-				if err := tx.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s;", tableName)).Error; err != nil {
+				if err := tx.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s;", fullName)).Error; err != nil {
 					return err
 				}
-				tableExists = false
+				exists = false
 			case SQLActionIfTableExistsAppend:
-				// 保留現有表格，繼續執行
+				// keep existing table
 			}
 		}
 
-		// 如果表格不存在，則建立表格
-		if !tableExists {
-			// 確保啟用行名稱時，row_name 欄位存在
-			if opts.RowNames {
-				columnTypes["row_name"] = "TEXT"
+		if !exists {
+			colDefs := make([]string, 0, len(cols))
+			for _, c := range cols {
+				colDefs = append(colDefs, fmt.Sprintf("%s %s", c, columnTypes[c]))
 			}
-
-			// 產生建表語法
-			colDefs := []string{}
-			for col, typ := range columnTypes {
-				colDefs = append(colDefs, fmt.Sprintf("%s %s", col, typ))
-			}
-			createSQL := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (%s);", tableName, strings.Join(colDefs, ", "))
+			createSQL := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (%s);", fullName, strings.Join(colDefs, ", "))
 			if err := tx.Exec(createSQL).Error; err != nil {
 				return err
 			}
 		} else if opts.IfExists == SQLActionIfTableExistsAppend {
-			// 檢查現有表格是否需要新增欄位
-			var existingCols []string
-
-			// 根據數據庫方言選擇正確的查詢方式
-			var columnsQuery string
-			var args []any
-
-			switch dialect {
-			case "mysql":
-				columnsQuery = "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = ? AND TABLE_SCHEMA = (SELECT DATABASE());"
-				args = []any{tableName}
-			case "postgres":
-				columnsQuery = "SELECT column_name FROM information_schema.columns WHERE table_name = ? AND table_schema = current_schema();"
-				args = []any{tableName}
-			case "sqlite":
-				columnsQuery = fmt.Sprintf("PRAGMA table_info(%s);", tableName)
-				rows, err := tx.Raw(columnsQuery).Rows()
-				if err == nil {
-					defer func() { _ = rows.Close() }()
-					for rows.Next() {
-						var cid int
-						var name string
-						var type_name string
-						var notnull int
-						var dflt_value *string
-						var pk int
-						if err := rows.Scan(&cid, &name, &type_name, &notnull, &dflt_value, &pk); err == nil {
-							existingCols = append(existingCols, name)
-						}
+			// Hoist the schema check out of the per-row loop. Existing column
+			// names are fetched once; missing columns are added once.
+			existing, err := fetchTableColumns(tx, dialect, schema, plainTable)
+			if err != nil {
+				return err
+			}
+			existingMap := make(map[string]bool, len(existing))
+			for _, c := range existing {
+				existingMap[strings.ToLower(c)] = true
+			}
+			for _, c := range cols {
+				if !existingMap[strings.ToLower(c)] {
+					typ := columnTypes[c]
+					if typ == "" {
+						typ = textType(dialect)
 					}
-				}
-			default:
-				// 對於未知數據庫，假設是SQLite
-				columnsQuery = fmt.Sprintf("PRAGMA table_info(%s);", tableName)
-				rows, err := tx.Raw(columnsQuery).Rows()
-				if err == nil {
-					defer func() { _ = rows.Close() }()
-					for rows.Next() {
-						var cid int
-						var name string
-						var type_name string
-						var notnull int
-						var dflt_value *string
-						var pk int
-						if err := rows.Scan(&cid, &name, &type_name, &notnull, &dflt_value, &pk); err == nil {
-							existingCols = append(existingCols, name)
-						}
-					}
-				}
-			}
-
-			// 如果是MySQL或PostgreSQL，需要執行查詢獲取列名
-			if dialect == "mysql" || dialect == "postgres" {
-				rows, err := tx.Raw(columnsQuery, args...).Rows()
-				if err == nil {
-					defer func() { _ = rows.Close() }()
-					for rows.Next() {
-						var name string
-						if err := rows.Scan(&name); err == nil {
-							existingCols = append(existingCols, name)
-						}
-					}
-				}
-			}
-			// 檢查每個欄位是否存在，如果不存在則添加
-			existingColsMap := make(map[string]bool)
-			for _, col := range existingCols {
-				existingColsMap[strings.ToLower(col)] = true
-			}
-
-			// 如果啟用了行名稱功能，確保 row_name 欄位存在
-			if opts.RowNames && !existingColsMap["row_name"] {
-				alterSQL := fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s;", tableName, "row_name", "TEXT")
-				if err := tx.Exec(alterSQL).Error; err != nil {
-					return err
-				}
-				LogInfo("DataTable", "ToSQL", "Added column row_name to table %s", tableName)
-				existingColsMap["row_name"] = true
-			}
-
-			for col, typ := range columnTypes {
-				if !existingColsMap[strings.ToLower(col)] {
-					alterSQL := fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s;", tableName, col, typ)
+					alterSQL := fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s;", fullName, c, typ)
 					if err := tx.Exec(alterSQL).Error; err != nil {
 						return err
 					}
-					LogInfo("DataTable", "ToSQL", "Added column %s to table %s", col, tableName)
+					LogInfo("DataTable", "ToSQL", "Added column %s to table %s", c, fullName)
 				}
 			}
 		}
 
-		// 插入資料
-		for _, row := range data {
-			// 檢查此行的欄位是否都存在於資料表中
-			// 如果表格是使用AppendIfExists模式，且發現需要添加新欄位，則重新檢查表格結構
-			if opts.IfExists == SQLActionIfTableExistsAppend {
-				// 獲取當前表格的列
-				var existingCols []string
-				switch dialect {
-				case "mysql":
-					rows, err := tx.Raw("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = ? AND TABLE_SCHEMA = (SELECT DATABASE());", tableName).Rows()
-					if err == nil {
-						defer func() { _ = rows.Close() }()
-						for rows.Next() {
-							var name string
-							if err := rows.Scan(&name); err == nil {
-								existingCols = append(existingCols, strings.ToLower(name))
-							}
-						}
-					}
-				case "postgres":
-					rows, err := tx.Raw("SELECT column_name FROM information_schema.columns WHERE table_name = ? AND table_schema = current_schema();", tableName).Rows()
-					if err == nil {
-						defer func() { _ = rows.Close() }()
-						for rows.Next() {
-							var name string
-							if err := rows.Scan(&name); err == nil {
-								existingCols = append(existingCols, strings.ToLower(name))
-							}
-						}
-					}
-				default: // sqlite
-					rows, err := tx.Raw(fmt.Sprintf("PRAGMA table_info(%s);", tableName)).Rows()
-					if err == nil {
-						defer func() { _ = rows.Close() }()
-						for rows.Next() {
-							var cid int
-							var name string
-							var type_name string
-							var notnull int
-							var dflt_value *string
-							var pk int
-							if err := rows.Scan(&cid, &name, &type_name, &notnull, &dflt_value, &pk); err == nil {
-								existingCols = append(existingCols, strings.ToLower(name))
-							}
-						}
-					}
-				}
-
-				// 將現有列轉換為 map 以便快速查找
-				existingColsMap := make(map[string]bool)
-				for _, col := range existingCols {
-					existingColsMap[strings.ToLower(col)] = true
-				}
-
-				// 檢查此行的每個列是否存在
-				missingCols := []string{}
-				for col := range row {
-					if !existingColsMap[strings.ToLower(col)] {
-						missingCols = append(missingCols, col)
-					}
-				}
-
-				// 如果有缺失的列，則添加它們
-				for _, col := range missingCols {
-					// 根據值推斷類型
-					value := row[col]
-					typ := inferSQLType(reflect.TypeOf(value), dialect)
-
-					// 添加新列
-					alterSQL := fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s;", tableName, col, typ)
-					if err := tx.Exec(alterSQL).Error; err == nil {
-						LogInfo("DataTable", "ToSQL", "Added column %s to table %s", col, tableName)
-						// 將此列添加到存在列映射中
-						existingColsMap[strings.ToLower(col)] = true
-					} else {
-						return err
-					}
-				}
+		// Batched multi-value INSERT.
+		ph := placeholderFormat(dialect)
+		for start := 0; start < len(rows); start += opts.BatchSize {
+			end := start + opts.BatchSize
+			if end > len(rows) {
+				end = len(rows)
 			}
-
-			// 只包含表格中存在的列
-			builder := sq.Insert(tableName).PlaceholderFormat(sq.Question)
-			cols := []string{}
-			vals := []any{}
-			for col, val := range row {
-				cols = append(cols, col)
-				vals = append(vals, val)
+			builder := sq.Insert(fullName).PlaceholderFormat(ph).Columns(cols...)
+			for _, row := range rows[start:end] {
+				builder = builder.Values(row...)
 			}
-			builder = builder.Columns(cols...).Values(vals...)
-
 			sqlStr, args, err := builder.ToSql()
 			if err != nil {
 				return err
 			}
-
 			if err := tx.Exec(sqlStr, args...).Error; err != nil {
 				return err
 			}
 		}
-
 		return nil
 	})
 }
 
-func inferSQLType(t reflect.Type, dialect string) string {
-	kind := t.Kind()
+func placeholderFormat(dialect string) sq.PlaceholderFormat {
+	switch dialect {
+	case "postgres":
+		return sq.Dollar
+	default:
+		return sq.Question
+	}
+}
+
+func textType(dialect string) string {
+	_ = dialect
+	return "TEXT"
+}
+
+// tableExists checks whether the given table is present, using a
+// dialect-appropriate query. Errors are swallowed and treated as "not
+// existing" to preserve historical behaviour.
+func tableExists(tx *gorm.DB, dialect, schema, table string) (bool, error) {
+	var count int
+	var q *gorm.DB
 	switch dialect {
 	case "mysql":
-		switch kind {
-		case reflect.Int, reflect.Int64:
+		if schema != "" {
+			q = tx.Raw("SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ? AND table_schema = ?", table, schema)
+		} else {
+			q = tx.Raw("SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ? AND table_schema = (SELECT DATABASE())", table)
+		}
+	case "postgres":
+		if schema != "" {
+			q = tx.Raw("SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ? AND table_schema = ?", table, schema)
+		} else {
+			q = tx.Raw("SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ? AND table_schema = current_schema()", table)
+		}
+	default: // sqlite or unknown
+		q = tx.Raw("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?", table)
+	}
+	if err := q.Scan(&count).Error; err != nil {
+		return false, nil
+	}
+	return count > 0, nil
+}
+
+// fetchTableColumns returns the existing column names of the given table.
+func fetchTableColumns(tx *gorm.DB, dialect, schema, table string) ([]string, error) {
+	var (
+		rows *sql.Rows
+		err  error
+	)
+	switch dialect {
+	case "mysql":
+		if schema != "" {
+			rows, err = tx.Raw("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = ? AND TABLE_SCHEMA = ?", table, schema).Rows()
+		} else {
+			rows, err = tx.Raw("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = ? AND TABLE_SCHEMA = (SELECT DATABASE())", table).Rows()
+		}
+	case "postgres":
+		if schema != "" {
+			rows, err = tx.Raw("SELECT column_name FROM information_schema.columns WHERE table_name = ? AND table_schema = ?", table, schema).Rows()
+		} else {
+			rows, err = tx.Raw("SELECT column_name FROM information_schema.columns WHERE table_name = ? AND table_schema = current_schema()", table).Rows()
+		}
+	default: // sqlite or unknown
+		rows, err = tx.Raw(fmt.Sprintf("PRAGMA table_info(%s)", table)).Rows()
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []string
+	switch dialect {
+	case "mysql", "postgres":
+		for rows.Next() {
+			var name string
+			if err := rows.Scan(&name); err != nil {
+				return nil, err
+			}
+			out = append(out, name)
+		}
+	default: // PRAGMA table_info: cid, name, type, notnull, dflt_value, pk
+		for rows.Next() {
+			var (
+				cid       int
+				name      string
+				typeName  string
+				notnull   int
+				dfltValue *string
+				pk        int
+			)
+			if err := rows.Scan(&cid, &name, &typeName, &notnull, &dfltValue, &pk); err != nil {
+				return nil, err
+			}
+			out = append(out, name)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// inferSQLType returns a dialect-appropriate column type for the given sample
+// value. nil samples (e.g. an entirely-nil column) fall back to TEXT.
+func inferSQLType(v any, dialect string) string {
+	if v == nil {
+		return textType(dialect)
+	}
+	return inferSQLTypeFromReflect(reflect.TypeOf(v), dialect)
+}
+
+func inferSQLTypeFromReflect(t reflect.Type, dialect string) string {
+	if t == nil {
+		return textType(dialect)
+	}
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	if t == reflect.TypeFor[time.Time]() {
+		switch dialect {
+		case "postgres":
+			return "TIMESTAMP"
+		default:
+			return "DATETIME"
+		}
+	}
+	if t.Kind() == reflect.Slice && t.Elem().Kind() == reflect.Uint8 {
+		switch dialect {
+		case "postgres":
+			return "BYTEA"
+		default:
+			return "BLOB"
+		}
+	}
+	// sql.Null* and similar: a struct with a Valid bool plus one value field.
+	if t.Kind() == reflect.Struct {
+		if vf, ok := t.FieldByName("Valid"); ok && vf.Type.Kind() == reflect.Bool {
+			for i := 0; i < t.NumField(); i++ {
+				f := t.Field(i)
+				if f.Name == "Valid" {
+					continue
+				}
+				return inferSQLTypeFromReflect(f.Type, dialect)
+			}
+		}
+	}
+	switch dialect {
+	case "mysql":
+		switch t.Kind() {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 			return "BIGINT"
-		case reflect.Float64:
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			return "BIGINT UNSIGNED"
+		case reflect.Float32, reflect.Float64:
 			return "DOUBLE"
 		case reflect.Bool:
 			return "BOOLEAN"
@@ -362,10 +392,11 @@ func inferSQLType(t reflect.Type, dialect string) string {
 			return "TEXT"
 		}
 	case "postgres":
-		switch kind {
-		case reflect.Int, reflect.Int64:
-			return "INTEGER"
-		case reflect.Float64:
+		switch t.Kind() {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+			reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			return "BIGINT"
+		case reflect.Float32, reflect.Float64:
 			return "DOUBLE PRECISION"
 		case reflect.Bool:
 			return "BOOLEAN"
@@ -374,11 +405,12 @@ func inferSQLType(t reflect.Type, dialect string) string {
 		default:
 			return "TEXT"
 		}
-	default: // SQLite
-		switch kind {
-		case reflect.Int, reflect.Int64:
+	default: // sqlite / unknown
+		switch t.Kind() {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+			reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 			return "INTEGER"
-		case reflect.Float64:
+		case reflect.Float32, reflect.Float64:
 			return "REAL"
 		case reflect.Bool:
 			return "BOOLEAN"

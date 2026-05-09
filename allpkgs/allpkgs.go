@@ -7,6 +7,7 @@ import (
 	_ "github.com/HazelnutParadise/insyra"
 	_ "github.com/HazelnutParadise/insyra/csvxl"
 	_ "github.com/HazelnutParadise/insyra/datafetch"
+	_ "github.com/HazelnutParadise/insyra/finance"
 	_ "github.com/HazelnutParadise/insyra/gplot"
 	_ "github.com/HazelnutParadise/insyra/isr"
 	_ "github.com/HazelnutParadise/insyra/lp"
