@@ -8,12 +8,13 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
 const (
-	baseDirName = ".insyra"
-	envsDirName = "envs"
+	baseDirName        = ".insyra"
+	defaultEnvsDirName = "envs"
 )
 
 type EnvironmentInfo struct {
@@ -32,7 +33,75 @@ type ExportPayload struct {
 	Config        json.RawMessage `json:"config"`
 }
 
-func BasePath() (string, error) {
+// Manager owns a single environment-storage root and exposes all
+// env-related operations (CRUD, state, history, config) as methods.
+//
+// Embedders that want per-workspace isolation should construct one Manager
+// per workspace via NewManager. The CLI binary and any code calling the
+// package-level wrapper functions share a single process-wide Default()
+// Manager rooted at <UserHomeDir>/.insyra/envs (overridable via SetBasePath
+// and SetEnvsDirName).
+type Manager struct {
+	mu          sync.RWMutex
+	basePath    string // empty = use UserHomeDir/.insyra
+	envsDirName string // empty = "envs"
+}
+
+// NewManager constructs a Manager rooted at basePath. envsDirName overrides
+// the per-environment subfolder name; pass "" for the default "envs".
+//
+// Examples:
+//
+//	env.NewManager("", "")                       // ~/.insyra/envs/<name>/
+//	env.NewManager("/ws/.idensyra", "")          // /ws/.idensyra/envs/<name>/
+//	env.NewManager("/ws/.idensyra", "insights")  // /ws/.idensyra/insights/<name>/
+//
+// Both fields are fixed at construction; create a new Manager to point
+// somewhere else.
+func NewManager(basePath, envsDirName string) *Manager {
+	return &Manager{
+		basePath:    strings.TrimSpace(basePath),
+		envsDirName: strings.TrimSpace(envsDirName),
+	}
+}
+
+var defaultManager = &Manager{}
+
+// Default returns the shared process-wide Manager used by the package-level
+// wrapper functions (env.BasePath, env.Create, …) and by SetBasePath.
+func Default() *Manager { return defaultManager }
+
+// SetBasePath overrides the default Manager's root. Pass "" to restore the
+// default <UserHomeDir>/.insyra. This only affects the package-level
+// wrappers and any caller that explicitly uses Default(); per-session
+// Managers created via NewManager are unaffected.
+func SetBasePath(path string) { defaultManager.SetBasePath(path) }
+
+// SetBasePath updates this Manager's root. Pass "" to fall back to the
+// default <UserHomeDir>/.insyra. Safe to call before opening or creating
+// any environment; not safe to change while an environment is in use.
+func (m *Manager) SetBasePath(path string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.basePath = strings.TrimSpace(path)
+}
+
+// SetEnvsDirName updates this Manager's per-environment subfolder name.
+// Pass "" to fall back to the default "envs". Same usage caveats as
+// SetBasePath — not safe to change while an environment is in use.
+func (m *Manager) SetEnvsDirName(name string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.envsDirName = strings.TrimSpace(name)
+}
+
+func (m *Manager) BasePath() (string, error) {
+	m.mu.RLock()
+	bp := m.basePath
+	m.mu.RUnlock()
+	if bp != "" {
+		return bp, nil
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
@@ -40,43 +109,53 @@ func BasePath() (string, error) {
 	return filepath.Join(home, baseDirName), nil
 }
 
-func EnvsPath() (string, error) {
-	base, err := BasePath()
+func (m *Manager) EnvsDirName() string {
+	m.mu.RLock()
+	dir := m.envsDirName
+	m.mu.RUnlock()
+	if dir == "" {
+		return defaultEnvsDirName
+	}
+	return dir
+}
+
+func (m *Manager) EnvsPath() (string, error) {
+	base, err := m.BasePath()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(base, envsDirName), nil
+	return filepath.Join(base, m.EnvsDirName()), nil
 }
 
-func ResolveEnvPath(name string) (string, error) {
+func (m *Manager) ResolveEnvPath(name string) (string, error) {
 	if strings.TrimSpace(name) == "" {
 		return "", errors.New("environment name is required")
 	}
-	envsPath, err := EnvsPath()
+	envsPath, err := m.EnvsPath()
 	if err != nil {
 		return "", err
 	}
 	return filepath.Join(envsPath, name), nil
 }
 
-func EnsureDefaultEnvironment() error {
-	if err := EnsureBaseStructure(); err != nil {
+func (m *Manager) EnsureDefaultEnvironment() error {
+	if err := m.EnsureBaseStructure(); err != nil {
 		return err
 	}
-	if !Exists("default") {
-		if err := Create("default"); err != nil {
+	if !m.Exists("default") {
+		if err := m.Create("default"); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func EnsureBaseStructure() error {
-	base, err := BasePath()
+func (m *Manager) EnsureBaseStructure() error {
+	base, err := m.BasePath()
 	if err != nil {
 		return err
 	}
-	envsPath, err := EnvsPath()
+	envsPath, err := m.EnvsPath()
 	if err != nil {
 		return err
 	}
@@ -89,8 +168,8 @@ func EnsureBaseStructure() error {
 	return nil
 }
 
-func Exists(name string) bool {
-	envPath, err := ResolveEnvPath(name)
+func (m *Manager) Exists(name string) bool {
+	envPath, err := m.ResolveEnvPath(name)
 	if err != nil {
 		return false
 	}
@@ -98,11 +177,11 @@ func Exists(name string) bool {
 	return err == nil && stat.IsDir()
 }
 
-func Create(name string) error {
-	if err := EnsureBaseStructure(); err != nil {
+func (m *Manager) Create(name string) error {
+	if err := m.EnsureBaseStructure(); err != nil {
 		return err
 	}
-	envPath, err := ResolveEnvPath(name)
+	envPath, err := m.ResolveEnvPath(name)
 	if err != nil {
 		return err
 	}
@@ -118,8 +197,8 @@ func Create(name string) error {
 	return nil
 }
 
-func Open(name string) (string, error) {
-	envPath, err := ResolveEnvPath(name)
+func (m *Manager) Open(name string) (string, error) {
+	envPath, err := m.ResolveEnvPath(name)
 	if err != nil {
 		return "", err
 	}
@@ -132,8 +211,8 @@ func Open(name string) (string, error) {
 	return envPath, nil
 }
 
-func Delete(name string) error {
-	envPath, err := ResolveEnvPath(name)
+func (m *Manager) Delete(name string) error {
+	envPath, err := m.ResolveEnvPath(name)
 	if err != nil {
 		return err
 	}
@@ -146,8 +225,8 @@ func Delete(name string) error {
 	return os.RemoveAll(envPath)
 }
 
-func Clear(name string, keepHistory bool) error {
-	envPath, err := ResolveEnvPath(name)
+func (m *Manager) Clear(name string, keepHistory bool) error {
+	envPath, err := m.ResolveEnvPath(name)
 	if err != nil {
 		return err
 	}
@@ -157,7 +236,7 @@ func Clear(name string, keepHistory bool) error {
 		}
 		return err
 	}
-	if err := SaveState(name, map[string]any{}); err != nil {
+	if err := m.SaveState(name, map[string]any{}); err != nil {
 		return err
 	}
 	if keepHistory {
@@ -166,12 +245,12 @@ func Clear(name string, keepHistory bool) error {
 	return os.WriteFile(filepath.Join(envPath, "history.txt"), []byte(""), 0o644)
 }
 
-func Rename(oldName, newName string) error {
-	oldPath, err := ResolveEnvPath(oldName)
+func (m *Manager) Rename(oldName, newName string) error {
+	oldPath, err := m.ResolveEnvPath(oldName)
 	if err != nil {
 		return err
 	}
-	newPath, err := ResolveEnvPath(newName)
+	newPath, err := m.ResolveEnvPath(newName)
 	if err != nil {
 		return err
 	}
@@ -187,12 +266,12 @@ func Rename(oldName, newName string) error {
 	return os.Rename(oldPath, newPath)
 }
 
-func List() ([]EnvironmentInfo, error) {
-	envsPath, err := EnvsPath()
+func (m *Manager) List() ([]EnvironmentInfo, error) {
+	envsPath, err := m.EnvsPath()
 	if err != nil {
 		return nil, err
 	}
-	if err := EnsureBaseStructure(); err != nil {
+	if err := m.EnsureBaseStructure(); err != nil {
 		return nil, err
 	}
 	entries, err := os.ReadDir(envsPath)
@@ -205,7 +284,7 @@ func List() ([]EnvironmentInfo, error) {
 			continue
 		}
 		name := entry.Name()
-		info, err := Info(name)
+		info, err := m.Info(name)
 		if err != nil {
 			continue
 		}
@@ -215,12 +294,12 @@ func List() ([]EnvironmentInfo, error) {
 	return infos, nil
 }
 
-func Info(name string) (EnvironmentInfo, error) {
-	envPath, err := ResolveEnvPath(name)
+func (m *Manager) Info(name string) (EnvironmentInfo, error) {
+	envPath, err := m.ResolveEnvPath(name)
 	if err != nil {
 		return EnvironmentInfo{}, err
 	}
-	state, err := LoadState(name)
+	state, err := m.LoadState(name)
 	if err != nil {
 		state = &State{Variables: map[string]SerializedVariable{}}
 	}
@@ -237,8 +316,8 @@ func Info(name string) (EnvironmentInfo, error) {
 	return info, nil
 }
 
-func Export(name, outputPath string) error {
-	envPath, err := ResolveEnvPath(name)
+func (m *Manager) Export(name, outputPath string) error {
+	envPath, err := m.ResolveEnvPath(name)
 	if err != nil {
 		return err
 	}
@@ -249,12 +328,12 @@ func Export(name, outputPath string) error {
 		return err
 	}
 
-	state, err := LoadState(name)
+	state, err := m.LoadState(name)
 	if err != nil {
 		state = &State{Variables: map[string]SerializedVariable{}, LastAccess: ""}
 	}
 
-	history, err := ReadHistory(name)
+	history, err := m.ReadHistory(name)
 	if err != nil {
 		history = []string{}
 	}
@@ -288,7 +367,7 @@ func Export(name, outputPath string) error {
 	return os.WriteFile(outputPath, bytes, 0o644)
 }
 
-func Import(inputPath, targetName string, force bool) (string, error) {
+func (m *Manager) Import(inputPath, targetName string, force bool) (string, error) {
 	bytes, err := os.ReadFile(inputPath)
 	if err != nil {
 		return "", err
@@ -307,21 +386,21 @@ func Import(inputPath, targetName string, force bool) (string, error) {
 		return "", errors.New("environment name is required")
 	}
 
-	if err := EnsureBaseStructure(); err != nil {
+	if err := m.EnsureBaseStructure(); err != nil {
 		return "", err
 	}
 
-	envPath, err := ResolveEnvPath(name)
+	envPath, err := m.ResolveEnvPath(name)
 	if err != nil {
 		return "", err
 	}
 
-	if !Exists(name) {
-		if err := Create(name); err != nil {
+	if !m.Exists(name) {
+		if err := m.Create(name); err != nil {
 			return "", err
 		}
 	} else if !force {
-		empty, err := isEnvironmentEmpty(name)
+		empty, err := m.isEnvironmentEmpty(name)
 		if err != nil {
 			return "", err
 		}
@@ -373,18 +452,18 @@ func Import(inputPath, targetName string, force bool) (string, error) {
 	return name, nil
 }
 
-func isEnvironmentEmpty(name string) (bool, error) {
-	state, err := LoadState(name)
+func (m *Manager) isEnvironmentEmpty(name string) (bool, error) {
+	state, err := m.LoadState(name)
 	if err == nil && state != nil && len(state.Variables) > 0 {
 		return false, nil
 	}
 
-	history, err := ReadHistory(name)
+	history, err := m.ReadHistory(name)
 	if err == nil && len(history) > 0 {
 		return false, nil
 	}
 
-	envPath, err := ResolveEnvPath(name)
+	envPath, err := m.ResolveEnvPath(name)
 	if err != nil {
 		return false, err
 	}
@@ -424,4 +503,28 @@ func writeDefaultFiles(envPath string) error {
 		return err
 	}
 	return nil
+}
+
+// Package-level wrappers around the default Manager. These exist for
+// backward compatibility with code that doesn't yet thread a Manager
+// through. New code should prefer NewManager + method calls.
+
+func BasePath() (string, error)               { return defaultManager.BasePath() }
+func EnvsPath() (string, error)                { return defaultManager.EnvsPath() }
+func ResolveEnvPath(name string) (string, error) {
+	return defaultManager.ResolveEnvPath(name)
+}
+func EnsureDefaultEnvironment() error           { return defaultManager.EnsureDefaultEnvironment() }
+func EnsureBaseStructure() error                { return defaultManager.EnsureBaseStructure() }
+func Exists(name string) bool                   { return defaultManager.Exists(name) }
+func Create(name string) error                  { return defaultManager.Create(name) }
+func Open(name string) (string, error)          { return defaultManager.Open(name) }
+func Delete(name string) error                  { return defaultManager.Delete(name) }
+func Clear(name string, keepHistory bool) error { return defaultManager.Clear(name, keepHistory) }
+func Rename(oldName, newName string) error      { return defaultManager.Rename(oldName, newName) }
+func List() ([]EnvironmentInfo, error)          { return defaultManager.List() }
+func Info(name string) (EnvironmentInfo, error) { return defaultManager.Info(name) }
+func Export(name, outputPath string) error      { return defaultManager.Export(name, outputPath) }
+func Import(inputPath, targetName string, force bool) (string, error) {
+	return defaultManager.Import(inputPath, targetName, force)
 }

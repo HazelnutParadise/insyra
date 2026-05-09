@@ -20,26 +20,26 @@ func defaultGlobalConfig() GlobalConfig {
 	}
 }
 
-func GlobalConfigPath() (string, error) {
-	base, err := BasePath()
+func (m *Manager) GlobalConfigPath() (string, error) {
+	base, err := m.BasePath()
 	if err != nil {
 		return "", err
 	}
 	return filepath.Join(base, "config.json"), nil
 }
 
-func LoadGlobalConfig() (GlobalConfig, error) {
-	if err := EnsureBaseStructure(); err != nil {
+func (m *Manager) LoadGlobalConfig() (GlobalConfig, error) {
+	if err := m.EnsureBaseStructure(); err != nil {
 		return GlobalConfig{}, err
 	}
-	path, err := GlobalConfigPath()
+	path, err := m.GlobalConfigPath()
 	if err != nil {
 		return GlobalConfig{}, err
 	}
 	_, statErr := os.Stat(path)
 	if os.IsNotExist(statErr) {
 		cfg := defaultGlobalConfig()
-		if saveErr := SaveGlobalConfig(cfg); saveErr != nil {
+		if saveErr := m.SaveGlobalConfig(cfg); saveErr != nil {
 			return GlobalConfig{}, saveErr
 		}
 		return cfg, nil
@@ -50,7 +50,7 @@ func LoadGlobalConfig() (GlobalConfig, error) {
 	}
 	if len(bytes) == 0 {
 		cfg := defaultGlobalConfig()
-		if saveErr := SaveGlobalConfig(cfg); saveErr != nil {
+		if saveErr := m.SaveGlobalConfig(cfg); saveErr != nil {
 			return GlobalConfig{}, saveErr
 		}
 		return cfg, nil
@@ -62,11 +62,11 @@ func LoadGlobalConfig() (GlobalConfig, error) {
 	return cfg, nil
 }
 
-func SaveGlobalConfig(cfg GlobalConfig) error {
-	if err := EnsureBaseStructure(); err != nil {
+func (m *Manager) SaveGlobalConfig(cfg GlobalConfig) error {
+	if err := m.EnsureBaseStructure(); err != nil {
 		return err
 	}
-	path, err := GlobalConfigPath()
+	path, err := m.GlobalConfigPath()
 	if err != nil {
 		return err
 	}
@@ -77,8 +77,8 @@ func SaveGlobalConfig(cfg GlobalConfig) error {
 	return os.WriteFile(path, payload, 0o644)
 }
 
-func UpdateGlobalConfig(key, value string) (GlobalConfig, error) {
-	cfg, err := LoadGlobalConfig()
+func (m *Manager) UpdateGlobalConfig(key, value string) (GlobalConfig, error) {
+	cfg, err := m.LoadGlobalConfig()
 	if err != nil {
 		return GlobalConfig{}, err
 	}
@@ -90,8 +90,20 @@ func UpdateGlobalConfig(key, value string) (GlobalConfig, error) {
 	case "no-color", "noColor":
 		cfg.NoColor = value == "true" || value == "1" || value == "yes"
 	}
-	if err := SaveGlobalConfig(cfg); err != nil {
+	if err := m.SaveGlobalConfig(cfg); err != nil {
 		return GlobalConfig{}, err
 	}
 	return cfg, nil
+}
+
+// Package-level wrappers around the default Manager.
+
+func GlobalConfigPath() (string, error) { return defaultManager.GlobalConfigPath() }
+
+func LoadGlobalConfig() (GlobalConfig, error) { return defaultManager.LoadGlobalConfig() }
+
+func SaveGlobalConfig(cfg GlobalConfig) error { return defaultManager.SaveGlobalConfig(cfg) }
+
+func UpdateGlobalConfig(key, value string) (GlobalConfig, error) {
+	return defaultManager.UpdateGlobalConfig(key, value)
 }

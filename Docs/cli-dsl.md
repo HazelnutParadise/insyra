@@ -90,11 +90,12 @@ package main
 import (
     "fmt"
 
+    "github.com/HazelnutParadise/insyra/cli/env"
     "github.com/HazelnutParadise/insyra/engine/dsl"
 )
 
 func main() {
-    session, err := dsl.NewSession("default", nil)
+    session, err := dsl.NewSession(env.Default(), "default", nil)
     if err != nil {
         panic(err)
     }
@@ -111,6 +112,48 @@ func main() {
 ```
 
 `Execute` accepts the same DSL syntax as REPL and `.isr`.
+
+#### Custom environment storage location
+
+`NewSession` takes an `*env.Manager` that owns where environment files live.
+Pass `env.Default()` for the standard `<UserHomeDir>/.insyra/envs/` layout,
+or `env.NewManager(basePath, envsDirName)` for a custom root and/or a
+custom per-environment subfolder name:
+
+```go
+// /workspace/.idensyra/envs/<name>/
+mgr := env.NewManager("/workspace/.idensyra", "")
+
+// /workspace/.idensyra/insights/<name>/  (Idensyra's layout)
+mgr := env.NewManager("/workspace/.idensyra", "insights")
+
+session, err := dsl.NewSession(mgr, "default", &out)
+```
+
+Both arguments accept "" to fall back to the defaults
+(`<UserHomeDir>/.insyra` and `"envs"`).
+
+Each session keeps its own Manager, so multiple sessions can coexist in
+the same process with different roots and not interfere:
+
+```go
+mgrA := env.NewManager("/wsA", "")
+mgrB := env.NewManager("/wsB", "")
+
+sessionA, _ := dsl.NewSession(mgrA, "default", outA)
+sessionB, _ := dsl.NewSession(mgrB, "default", outB)
+// sessionA reads/writes /wsA/envs/...; sessionB reads/writes /wsB/envs/...
+```
+
+The Manager is also useful on its own when you only need the storage layer
+(listing envs, exporting, reading history) without spinning up a session:
+
+```go
+mgr := env.NewManager("/workspace/.idensyra", "insights")
+envs, _ := mgr.List()
+mgr.Create("scratch")
+mgr.Export("scratch", "/tmp/backup.json")
+```
 
 ## Global Flags
 
@@ -323,13 +366,14 @@ import (
     "bytes"
     "fmt"
 
+    "github.com/HazelnutParadise/insyra/cli/env"
     "github.com/HazelnutParadise/insyra/engine/dsl"
 )
 
 func main() {
     var out bytes.Buffer
 
-    session, err := dsl.NewSession("demo", &out)
+    session, err := dsl.NewSession(env.Default(), "demo", &out)
     if err != nil {
         panic(err)
     }

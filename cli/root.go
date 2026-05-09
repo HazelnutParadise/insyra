@@ -23,17 +23,18 @@ func Execute() error {
 func NewRootCommand() *cobra.Command {
 	execCtx := &commands.ExecContext{
 		OpenREPL: repl.Start,
+		Env:      env.Default(),
 	}
 	cmd := &cobra.Command{
 		Use:          "insyra",
 		Short:        "Insyra CLI and REPL for data analysis",
 		SilenceUsage: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			if err := env.EnsureDefaultEnvironment(); err != nil {
+			if err := execCtx.Env.EnsureDefaultEnvironment(); err != nil {
 				return err
 			}
 
-			envPath, err := env.Open(flagEnv)
+			envPath, err := execCtx.Env.Open(flagEnv)
 			if err != nil {
 				return err
 			}
@@ -41,7 +42,7 @@ func NewRootCommand() *cobra.Command {
 			execCtx.EnvName = flagEnv
 			execCtx.EnvPath = envPath
 
-			vars, err := env.RestoreVariables(flagEnv)
+			vars, err := execCtx.Env.RestoreVariables(flagEnv)
 			if err != nil {
 				execCtx.Vars = map[string]any{}
 			} else {
@@ -58,7 +59,7 @@ func NewRootCommand() *cobra.Command {
 			if execCtx.InREPL {
 				return nil
 			}
-			return env.SaveState(execCtx.EnvName, execCtx.Vars)
+			return execCtx.Env.SaveState(execCtx.EnvName, execCtx.Vars)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return repl.Start(execCtx)

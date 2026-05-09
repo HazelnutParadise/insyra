@@ -3,8 +3,6 @@ package commands
 import (
 	"encoding/json"
 	"fmt"
-
-	"github.com/HazelnutParadise/insyra/cli/env"
 )
 
 func init() {
@@ -18,7 +16,7 @@ func init() {
 
 func runConfigCommand(ctx *ExecContext, args []string) error {
 	if len(args) == 0 {
-		cfg, err := env.LoadGlobalConfig()
+		cfg, err := ctx.Env.LoadGlobalConfig()
 		if err != nil {
 			return err
 		}
@@ -34,7 +32,7 @@ func runConfigCommand(ctx *ExecContext, args []string) error {
 		return fmt.Errorf("usage: config [key] [value]")
 	}
 
-	cfg, err := env.UpdateGlobalConfig(args[0], args[1])
+	cfg, err := ctx.Env.UpdateGlobalConfig(args[0], args[1])
 	if err != nil {
 		return err
 	}

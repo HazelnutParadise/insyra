@@ -19,6 +19,11 @@ type ExecContext struct {
 	Output   io.Writer
 	InREPL   bool
 	OpenREPL func(ctx *ExecContext) error
+	// Env is the per-session environment Manager. Commands MUST go through
+	// it (ctx.Env.SaveState etc.) so embedders that supply a per-workspace
+	// Manager don't get their writes redirected to the default ~/.insyra.
+	// Dispatch fills this with env.Default() if the caller left it nil.
+	Env *env.Manager
 }
 
 type CommandHandler struct {
@@ -72,6 +77,9 @@ func Dispatch(ctx *ExecContext, name string, args []string) error {
 	if ctx.Output == nil {
 		ctx.Output = os.Stdout
 	}
+	if ctx.Env == nil {
+		ctx.Env = env.Default()
+	}
 	return handler.Run(ctx, args)
 }
 
@@ -121,7 +129,11 @@ func BuildCobraCommands(ctx *ExecContext) []*cobra.Command {
 					if len(runArgs) > 0 {
 						line += " " + strings.Join(runArgs, " ")
 					}
-					_ = env.AppendHistory(envName, line)
+					mgr := ctx.Env
+					if mgr == nil {
+						mgr = env.Default()
+					}
+					_ = mgr.AppendHistory(envName, line)
 				}
 				return err
 			},

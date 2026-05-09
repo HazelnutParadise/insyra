@@ -32,11 +32,12 @@ package main
 import (
   "fmt"
 
+  "github.com/HazelnutParadise/insyra/cli/env"
   "github.com/HazelnutParadise/insyra/engine/dsl"
 )
 
 func main() {
-  session, err := dsl.NewSession("default", nil)
+  session, err := dsl.NewSession(env.Default(), "default", nil)
   if err != nil {
     panic(err)
   }
@@ -58,6 +59,7 @@ Notes:
 - `ExecuteFile` runs a `.isr` file directly in-process and returns line-numbered errors.
 - State/history are persisted after each successful command.
 - Empty line and `# comment` line are ignored.
+- Pass `env.NewManager("/path/to/root", "")` instead of `env.Default()` to store environments outside `~/.insyra` (e.g. for per-workspace embedding). The second argument renames the per-env subfolder ("" defaults to `"envs"`; e.g. `env.NewManager(workspace, "insights")` gives `<workspace>/insights/<env>/`). Each session is bound to its own Manager.
 
 ## Agent workflow (recommended)
 
