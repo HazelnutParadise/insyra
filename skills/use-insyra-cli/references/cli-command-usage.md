@@ -291,6 +291,18 @@ For expanded subcommand forms and practical examples, see `cli-command-guide.md`
 - Description: DataList percentile
 - Usage: `percentile <var> <p>`
 
+## `pivot`
+- Description: Reshape long-form DataTable to wide form (long -> wide)
+- Usage: `pivot <var> index <col1[,col2,...]> columns <col> values <col> [agg <op>] [fillna <literal>] [sortcols true|false] [as <var>]`
+- Notes:
+  - `index` accepts comma-separated columns; `columns` and `values` take a single column.
+  - Column tokens are resolved by `column.name` first, then fall back to Excel-style alphabetic index (`A`, `B`, ..., `AA`). The first row of data is never used as a header. Unknown tokens are an error.
+  - Ops for `agg`: `sum`, `mean` (alias `avg`), `median`, `min`, `max`, `count` (non-nil), `countall` (group size), `std`/`stdev`, `stdp`/`stdevp`, `var`, `varp`, `first`, `last`, `nunique`.
+  - When `agg` is omitted, duplicate `(index, columns)` combinations are an error.
+  - `fillna <literal>` is parsed via `parseLiteral` (nil/true/false/int/float, else string).
+  - `sortcols true` orders generated columns by key value; default is first-seen.
+  - Output column order: index first (in `index` order), then one column per unique `columns` value.
+
 ## `plot`
 - Description: Create charts from variables
 - Usage: `plot <type> <var> [options...] [save <file>]`
@@ -438,6 +450,17 @@ For expanded subcommand forms and practical examples, see `cli-command-guide.md`
 ## `types`
 - Description: Show value types of DataTable/DataList
 - Usage: `types <var>`
+
+## `unpivot`
+- Description: Reshape wide-form DataTable to long form (wide -> long)
+- Usage: `unpivot <var> idvars <col1[,col2,...]> [valuevars <col1[,col2,...]>] [varname <name>] [valuename <name>] [dropna true|false] [as <var>]`
+- Notes:
+  - `idvars` is required and accepts comma-separated columns.
+  - Column tokens (in `idvars` and `valuevars`) are resolved by `column.name` first, then fall back to Excel-style alphabetic index (`A`, `B`, ..., `AA`). The first row of data is never used as a header. Unknown tokens are an error.
+  - `valuevars` defaults to all non-`idvars` columns when omitted.
+  - `varname` defaults to `variable`; `valuename` defaults to `value`. They must differ.
+  - `dropna true` skips output rows whose value is nil or NaN.
+  - Output schema: idvars (in `idvars` order), then `varname`, then `valuename`.
 
 ## `upper`
 - Description: Uppercase DataList strings

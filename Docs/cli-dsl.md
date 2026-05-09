@@ -357,6 +357,26 @@ groupby sales by region,product agg revenue:sum count as report2
 
 The result is a fresh DataTable with one row per group; key columns appear first (in `by` order), aggregate columns next (in `agg` order).
 
+### B3. Pivot / Unpivot (long ↔ wide reshape)
+
+`pivot <var> index <col1[,col2,...]> columns <col> values <col> [agg <op>] [fillna <literal>] [sortcols true|false] [as <var>]` reshapes long-form data into wide form. The unique values of the `columns` column become new column headers; cells are filled from the `values` column; rows are keyed by the `index` columns.
+
+```text
+load sales.csv as sales
+pivot sales index region columns product values amount agg sum fillna 0 sortcols true as wide
+show wide
+```
+
+Supported `agg` ops match `groupby`: `sum`, `mean` (alias `avg`), `median`, `min`, `max`, `count`, `countall`, `std`/`stdev`, `stdp`/`stdevp`, `var`, `varp`, `first`, `last`, `nunique`. When `agg` is omitted and any `(index, columns)` pair has duplicates, the command errors.
+
+`unpivot <var> idvars <col1[,col2,...]> [valuevars <col1[,col2,...]>] [varname <name>] [valuename <name>] [dropna true|false] [as <var>]` is the inverse: each input row is expanded into one output row per value column, with the source column name written to `varname` (default `variable`) and the cell value to `valuename` (default `value`). When `valuevars` is omitted it defaults to all non-`idvars` columns. `dropna true` skips rows whose value is nil or NaN.
+
+```text
+load survey.csv as survey
+unpivot survey idvars id valuevars Q1,Q2,Q3 varname question valuename score as long
+show long
+```
+
 ### C. Go `engine/dsl` session flow
 
 ```go
@@ -396,7 +416,7 @@ High-level command map:
 - **Data IO / Creation**: `newdl`, `newdt`, `load`, `read`, `save`, `convert`
 - **Database**: `db` (`connect` / `list` / `tables` / `disconnect`), `load sql`, `save <var> sql`
 - **DataTable Structure / Access**: `addcol`, `addrow`, `dropcol`, `droprow`, `swap`, `transpose`, `rows`, `cols`, `row`, `col`, `get`, `set`, `setrownames`, `setcolnames`
-- **Data Processing**: `filter`, `sort`, `sample`, `find`, `replace`, `clean`, `merge`, `groupby`, `ccl`, `addcolccl`
+- **Data Processing**: `filter`, `sort`, `sample`, `find`, `replace`, `clean`, `merge`, `groupby`, `pivot`, `unpivot`, `ccl`, `addcolccl`
 - **DataList Stats**: `sum`, `mean`, `median`, `mode`, `stdev`, `var`, `min`, `max`, `range`, `quartile`, `iqr`, `percentile`, `count`, `counter`, `corr`, `cov`, `corrmatrix`, `skewness`, `kurtosis`
 - **Time Series / Transforms**: `rank`, `normalize`, `standardize`, `reverse`, `upper`, `lower`, `capitalize`, `parsenums`, `parsestrings`, `movavg`, `expsmooth`, `diff`, `fillnan`
 - **Modeling / Viz / Fetch**: `regression`, `pca`, `kmeans`, `hclust`, `cutree`, `dbscan`, `silhouette`, `knn_classify`, `knn_regress`, `knn_neighbors`, `ttest`, `ztest`, `anova`, `ftest`, `chisq`, `plot`, `fetch`
@@ -468,6 +488,7 @@ Source policy:
 | `parsenums` | `parsenums <var> [as <var>]` | Parse DataList strings to numbers |
 | `parsestrings` | `parsestrings <var> [as <var>]` | Parse DataList numbers to strings |
 | `pca` | `pca <var> <n>` | Principal component analysis |
+| `pivot` | `pivot <var> index <col1[,col2,...]> columns <col> values <col> [agg <op>] [fillna <literal>] [sortcols true\|false] [as <var>]` | Reshape long-form DataTable to wide form |
 | `hclust` | `hclust <var> <method> [as <var>]` | Hierarchical agglomerative clustering |
 | `cutree` | `cutree <tree_var> k <n>\|h <value> [as <var>]` | Cut a hierarchical clustering tree |
 | `dbscan` | `dbscan <var> <eps> <minpts> [as <var>]` | Density-based clustering |
@@ -502,6 +523,7 @@ Source policy:
 | `transpose` | `transpose <var> [as <var>]` | Transpose DataTable |
 | `ttest` | `ttest single\|two\|paired ...` | T-test commands |
 | `types` | `types <var>` | Show value types of DataTable/DataList |
+| `unpivot` | `unpivot <var> idvars <col1[,col2,...]> [valuevars <col1[,col2,...]>] [varname <name>] [valuename <name>] [dropna true\|false] [as <var>]` | Reshape wide-form DataTable to long form |
 | `upper` | `upper <var> [as <var>]` | Uppercase DataList strings |
 | `var` | `var <var>` | DataList variance |
 | `vars` | `vars` | List variables in current environment |

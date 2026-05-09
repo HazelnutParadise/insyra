@@ -272,6 +272,18 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 - Multi-key with row-count shorthand: `insyra groupby sales by region,product agg revenue:sum count as report2`
 - Ops: `sum`, `mean` (alias `avg`), `median`, `min`, `max`, `count` (non-nil), `countall` (group size), `std`/`stdev`, `stdp`/`stdevp`, `var`, `varp`, `first`, `last`, `nunique`. Aliases default to `<col>_<op>`.
 
+### `pivot`
+- Description: Reshape long-form DataTable to wide form (long -> wide)
+- Usage: `pivot <var> index <col1[,col2,...]> columns <col> values <col> [agg <op>] [fillna <literal>] [sortcols true|false] [as <var>]`
+- Example: `insyra pivot sales index region columns product values amount agg sum fillna 0 sortcols true as wide`
+- Ops accepted by `agg` match `groupby`. When `agg` is omitted, duplicate `(index, columns)` combinations are an error.
+
+### `unpivot`
+- Description: Reshape wide-form DataTable to long form (wide -> long)
+- Usage: `unpivot <var> idvars <col1[,col2,...]> [valuevars <col1[,col2,...]>] [varname <name>] [valuename <name>] [dropna true|false] [as <var>]`
+- Example: `insyra unpivot survey idvars id valuevars Q1,Q2,Q3 varname question valuename score as long`
+- `valuevars` defaults to all non-`idvars` columns. `varname` defaults to `variable`, `valuename` to `value`. `dropna true` skips nil/NaN values.
+
 ### `ccl`
 - Description: Execute CCL statements on DataTable
 - Usage: `ccl <var> <expression>`

@@ -813,6 +813,80 @@ top := dt.
     SortBy(insyra.DataTableSortConfig{ColumnName: "total", Descending: true})
 ```
 
+### Pivot / Unpivot (long ↔ wide reshape)
+
+```go
+func (dt *DataTable) Pivot(cfg PivotConfig) (*DataTable, error)
+func (dt *DataTable) Unpivot(cfg UnpivotConfig) (*DataTable, error)
+```
+
+**Description:** `Pivot` reshapes long-form data into wide form (each unique value of `cfg.Columns` becomes a new column header, with cells filled from `cfg.Values` and rows keyed by `cfg.Index`). `Unpivot` is the inverse: each row is expanded into one output row per `ValueVar`, with the original column name written into the new `VarName` column and the cell value written into `ValueName`. Both methods return a fresh `*DataTable`; the receiver is not modified. On error the returned `*DataTable` is empty and carries the failure on its `Err()`, so chained calls remain safe.
+
+**Column reference resolution (applies to every column-name field below — `Index`, `Columns`, `Values`, `IDVars`, `ValueVars`):** each token is matched against `column.name` first; if no column has that name, it falls back to the Excel-style alphabetic index (`"A"` → column 0, `"B"` → column 1, ..., `"AA"` → column 26, ...). The first row of data is **never** consulted — column headers live only on `column.name` (set via `SetName`, `SetColNames`, CSV/Excel `firstRow2ColNames=true`, etc.). Tokens that match neither a name nor a valid alphabetic index are an error.
+
+**`PivotConfig` fields:**
+
+- `Index`: Identifier columns; their unique combinations form output rows. At least one required. Each entry follows the resolution rule above.
+- `Columns`: Column whose unique values become new column headers. Required. Same resolution rule.
+- `Values`: Column supplying cell values. Required. Same resolution rule.
+- `AggFunc`: Aggregator applied when an `(Index, Columns)` pair has duplicates. Recognised: `"sum"`, `"mean"` (alias `"avg"`), `"median"`, `"min"`, `"max"`, `"count"` (non-nil), `"countall"` (group size), `"stdev"` (alias `"std"`), `"stdevp"` (alias `"stdp"`), `"var"`, `"varp"`, `"first"`, `"last"`, `"nunique"`, `"custom"`. When empty, duplicate `(Index, Columns)` combinations are an error.
+- `Custom`: Required when `AggFunc == "custom"`. Receives the cell's values as a `*DataList` in original row order, including nil entries.
+- `FillNA`: Value placed in cells whose `(Index, Columns)` combination is absent (or whose aggregated value is nil). Default `nil`.
+- `SortCols`: When `true`, generated columns are emitted in sorted order of the key value; when `false` (default), first-seen order is preserved.
+
+**`UnpivotConfig` fields:**
+
+- `IDVars`: Columns kept as-is (identifier columns). Same resolution rule.
+- `ValueVars`: Columns to unpivot. Same resolution rule. When empty, all non-`IDVars` columns are unpivoted.
+- `VarName`: Name of the new "variable" column. Defaults to `"variable"`. The string written into this column for each output row is the source column's `name` (or, if a column was unnamed, its Excel-style label).
+- `ValueName`: Name of the new "value" column. Defaults to `"value"`.
+- `DropNA`: When `true`, omits rows whose value is `nil` or `NaN`.
+
+**Errors:** Missing/unknown columns, duplicate listings, overlap between `Index`/`Columns`/`Values` (Pivot) or `IDVars`/`ValueVars` (Unpivot), unknown `AggFunc`, and `(Index, Columns)` duplicates without an aggregator are all surfaced via the returned `error` and recorded on the returned table's `Err()`.
+
+**Example — long to wide:**
+
+```go
+// Long input:
+//   region | product | sales
+//   APAC   | A       | 10
+//   APAC   | B       | 20
+//   EMEA   | A       | 30
+wide, err := dt.Pivot(insyra.PivotConfig{
+    Index:    []string{"region"},
+    Columns:  "product",
+    Values:   "sales",
+    AggFunc:  "sum",  // optional; required if (region, product) has duplicates
+    FillNA:   0,
+    SortCols: true,
+})
+// wide:
+//   region | A  | B
+//   APAC   | 10 | 20
+//   EMEA   | 30 | 0
+```
+
+**Example — wide to long:**
+
+```go
+// Wide input:
+//   id | Q1 | Q2 | Q3
+//   1  | 5  | 4  | 3
+long, err := dt.Unpivot(insyra.UnpivotConfig{
+    IDVars:    []string{"id"},
+    ValueVars: []string{"Q1", "Q2", "Q3"},
+    VarName:   "question",
+    ValueName: "score",
+})
+// long:
+//   id | question | score
+//   1  | Q1       | 5
+//   1  | Q2       | 4
+//   1  | Q3       | 3
+```
+
+**Relationship to `GroupBy + Aggregate`:** `Pivot` is essentially `GroupBy(Index..., Columns).Aggregate(Values, AggFunc)` followed by spreading the `Columns` key out into headers. When you only need the grouped summary (one row per key, no header spreading), use `GroupBy + Aggregate` directly — it is simpler and produces the same intermediate structure.
+
 ### AppendCols
 
 ```go

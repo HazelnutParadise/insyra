@@ -76,6 +76,8 @@ This list is generated from `insyra help` in this repository state.
 - `clean` - Clean values from DataTable/DataList
 - `merge` - Merge two DataTables
 - `groupby` - Group a DataTable and aggregate columns (split-apply-combine)
+- `pivot` - Reshape long-form DataTable to wide form (long -> wide)
+- `unpivot` - Reshape wide-form DataTable to long form (wide -> long)
 - `ccl` - Execute CCL statements on DataTable
 - `addcolccl` - Add DataTable column using CCL
 

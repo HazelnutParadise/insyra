@@ -236,6 +236,45 @@ weighted := dt.GroupBy("region").Aggregate(
 
 Supported `AggregateOp`: `OpSum`, `OpMean`, `OpMedian`, `OpMin`, `OpMax`, `OpCount` (non-nil), `OpCountAll` (group size), `OpStdev`, `OpStdevP`, `OpVar`, `OpVarP`, `OpFirst`, `OpLast`, `OpNUnique`, `OpCustom`. Group order in the result follows the order each key combination is first seen during a single linear scan; `nil` keys form their own group, and `int(1)` and string `"1"` are kept distinct.
 
+### 3d) Pivot / Unpivot (long ↔ wide reshape)
+
+Use `Pivot` to spread the unique values of one column into new column headers (long → wide), and `Unpivot` to do the inverse (wide → long). Both return `(*DataTable, error)`; on failure the returned table is empty and carries the error on its `Err()`, so chained calls remain safe.
+
+```go
+// Long input:
+//   region | product | sales
+//   APAC   | A       | 10
+//   APAC   | B       | 20
+//   EMEA   | A       | 30
+
+wide, err := dt.Pivot(insyra.PivotConfig{
+    Index:    []string{"region"},
+    Columns:  "product",
+    Values:   "sales",
+    AggFunc:  "sum",   // optional; required if (region, product) has duplicates
+    FillNA:   0,
+    SortCols: true,
+})
+// wide:
+//   region | A  | B
+//   APAC   | 10 | 20
+//   EMEA   | 30 | 0
+
+// Wide input:
+//   id | Q1 | Q2 | Q3
+long, err := wide.Unpivot(insyra.UnpivotConfig{
+    IDVars:    []string{"id"},
+    ValueVars: []string{"Q1", "Q2", "Q3"}, // optional; defaults to all non-IDVars
+    VarName:   "question",                  // default "variable"
+    ValueName: "score",                     // default "value"
+    DropNA:    false,
+})
+```
+
+Recognised `AggFunc` strings: `sum`, `mean` (alias `avg`), `median`, `min`, `max`, `count` (non-nil), `countall` (group size), `stdev`/`std`, `stdevp`/`stdp`, `var`, `varp`, `first`, `last`, `nunique`, `custom` (requires `Custom func(group *DataList) any`). When `AggFunc` is empty, duplicate `(Index, Columns)` combinations are an error. `Pivot` is essentially `GroupBy(Index..., Columns).Aggregate(Values, AggFunc)` with the columns key spread into headers — if you only need the grouped summary, prefer `GroupBy + Aggregate` directly.
+
+Column reference resolution (applies to `Index`, `Columns`, `Values`, `IDVars`, `ValueVars`): each token is matched against `column.name` first, then falls back to the Excel-style alphabetic index (`"A"` → column 0, `"AA"` → column 26). The first row of data is never consulted as a header — column names live only on `column.name`. Tokens matching neither produce an error surfaced via the returned table's `Err()`.
+
 ### 4) Export a DataTable to CSV
 
 ```go
