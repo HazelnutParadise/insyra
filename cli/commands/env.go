@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	"github.com/HazelnutParadise/insyra/cli/env"
 )
 
 func init() {
@@ -28,13 +26,13 @@ func runEnvCommand(ctx *ExecContext, args []string) error {
 		if len(args) < 2 {
 			return fmt.Errorf("usage: env create <name>")
 		}
-		if err := env.Create(args[1]); err != nil {
+		if err := ctx.Env.Create(args[1]); err != nil {
 			return err
 		}
 		_, _ = fmt.Fprintf(ctx.Output, "created environment: %s\n", args[1])
 		return nil
 	case "list":
-		items, err := env.List()
+		items, err := ctx.Env.List()
 		if err != nil {
 			return err
 		}
@@ -58,13 +56,13 @@ func runEnvCommand(ctx *ExecContext, args []string) error {
 		if len(args) < 2 {
 			return fmt.Errorf("usage: env open <name>")
 		}
-		envPath, err := env.Open(args[1])
+		envPath, err := ctx.Env.Open(args[1])
 		if err != nil {
 			return err
 		}
 		ctx.EnvName = args[1]
 		ctx.EnvPath = envPath
-		vars, err := env.RestoreVariables(args[1])
+		vars, err := ctx.Env.RestoreVariables(args[1])
 		if err == nil {
 			ctx.Vars = vars
 		}
@@ -78,7 +76,7 @@ func runEnvCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
-		if err := env.Clear(name, keepHistory); err != nil {
+		if err := ctx.Env.Clear(name, keepHistory); err != nil {
 			return err
 		}
 		if name == ctx.EnvName {
@@ -95,7 +93,7 @@ func runEnvCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
-		if err := env.Export(name, out); err != nil {
+		if err := ctx.Env.Export(name, out); err != nil {
 			return err
 		}
 		_, _ = fmt.Fprintf(ctx.Output, "exported environment %s -> %s\n", name, out)
@@ -105,12 +103,12 @@ func runEnvCommand(ctx *ExecContext, args []string) error {
 		if err != nil {
 			return err
 		}
-		name, err := env.Import(in, target, force)
+		name, err := ctx.Env.Import(in, target, force)
 		if err != nil {
 			return err
 		}
 		if name == ctx.EnvName {
-			vars, restoreErr := env.RestoreVariables(name)
+			vars, restoreErr := ctx.Env.RestoreVariables(name)
 			if restoreErr == nil {
 				ctx.Vars = vars
 			}
@@ -124,7 +122,7 @@ func runEnvCommand(ctx *ExecContext, args []string) error {
 		if args[1] == ctx.EnvName {
 			return fmt.Errorf("cannot delete current environment: %s", args[1])
 		}
-		if err := env.Delete(args[1]); err != nil {
+		if err := ctx.Env.Delete(args[1]); err != nil {
 			return err
 		}
 		_, _ = fmt.Fprintf(ctx.Output, "deleted environment: %s\n", args[1])
@@ -133,12 +131,12 @@ func runEnvCommand(ctx *ExecContext, args []string) error {
 		if len(args) < 3 {
 			return fmt.Errorf("usage: env rename <old> <new>")
 		}
-		if err := env.Rename(args[1], args[2]); err != nil {
+		if err := ctx.Env.Rename(args[1], args[2]); err != nil {
 			return err
 		}
 		if ctx.EnvName == args[1] {
 			ctx.EnvName = args[2]
-			if envPath, err := env.ResolveEnvPath(args[2]); err == nil {
+			if envPath, err := ctx.Env.ResolveEnvPath(args[2]); err == nil {
 				ctx.EnvPath = envPath
 			}
 		}
@@ -152,7 +150,7 @@ func runEnvCommand(ctx *ExecContext, args []string) error {
 		if name == "" {
 			name = "default"
 		}
-		item, err := env.Info(name)
+		item, err := ctx.Env.Info(name)
 		if err != nil {
 			return err
 		}
