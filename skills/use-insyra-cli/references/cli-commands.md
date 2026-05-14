@@ -114,7 +114,16 @@ This list is generated from `insyra help` in this repository state.
 - `parsestrings` - Parse DataList numbers to strings
 - `movavg` - Moving average
 - `expsmooth` - Exponential smoothing
-- `diff` - Difference
+- `diff` - Difference (legacy, length n-1)
+- `diffn` - Backward difference, same-length output with leading nils
+- `shift` - Shift / lag / lead a DataList
+- `pctchange` - Percent change over N rows
+- `cumsum` - Running total
+- `cumprod` - Running product
+- `cummax` - Running maximum (historical high)
+- `cummin` - Running minimum (historical low)
+- `rolling` - Rolling-window reduction (sum/mean/min/max/median/std/var)
+- `expanding` - Expanding-window reduction (sum/mean/min/max/median/std/var)
 - `fillnan` - Fill NaN with mean
 
 ## Modeling / Inference / Visualization / Fetch

@@ -804,6 +804,58 @@ GroupBy(keyCols ...string) *insyra.GroupedDataTable
 
 **Equivalent:** `insyra.DataTable.GroupBy()`
 
+#### Window / sequence transforms (Shift / Diff / PctChange / Cum\* / Rolling / Expanding)
+
+```go
+// Per-column time-series transforms on a DataTable.
+dataTable.Push(dataTable.Shift("price", 1).SetName("prev_price"))
+dataTable.Push(dataTable.PctChange("price", 1).SetName("ret"))
+dataTable.Push(dataTable.CumSum("price").SetName("cum"))
+dataTable.Push(dataTable.RollingOn("price", isr.Rolling{Window: 7}).Mean().SetName("ma7"))
+dataTable.Push(dataTable.ExpandingOn("price", 1).Mean().SetName("emean"))
+```
+
+**Methods:**
+
+```go
+Shift(col string, periods int, fill ...any) *insyra.DataList
+Diff(col string, periods int) *insyra.DataList
+PctChange(col string, periods int) *insyra.DataList
+CumSum(col string) *insyra.DataList
+CumProd(col string) *insyra.DataList
+CumMax(col string) *insyra.DataList
+CumMin(col string) *insyra.DataList
+RollingOn(col string, r Rolling) *insyra.RollingDataList
+ExpandingOn(col string, minObs int) *insyra.ExpandingDataList
+```
+
+**Description:** Thin wrappers over `insyra.DataTable`'s `ShiftCol` / `DiffCol` / `PctChangeCol` / `Cum*Col` / `RollingCol` / `ExpandingCol`. Each scalar transform returns an `*insyra.DataList` ready to feed back into the table with `Push(...)`. `RollingOn` and `ExpandingOn` return builders; pick a reducer (`.Mean()`, `.Sum()`, `.Min()`, `.Max()`, `.Median()`, `.Std()`, `.Var()`, `.Apply(...)`, or `.Corr(...)`) to materialise the column.
+
+**`isr.Rolling`** mirrors `insyra.RollingOptions` with the same field semantics:
+
+```go
+type Rolling struct {
+    Window  int
+    MinObs  int
+    Center  bool
+    Weights []float64
+}
+```
+
+**Parameters:**
+
+- `col`: column name or Excel-style index (e.g., `"price"`, `"B"`).
+- `periods`: lag distance for `Shift` / `Diff` / `PctChange` (negative on `Shift` = lead).
+- `fill` (optional, `Shift` only): value to put in empty slots; defaults to `nil`.
+- `r`: rolling options (see `isr.Rolling`).
+- `minObs`: minimum valid observations for `ExpandingOn` to emit a value.
+
+**Returns:**
+
+- A `*insyra.DataList` (same length as the source column) for the scalar transforms, or a builder for `RollingOn` / `ExpandingOn`.
+
+**Equivalent:** `insyra.DataTable.ShiftCol` / `.DiffCol` / `.PctChangeCol` / `.CumSumCol` / `.CumProdCol` / `.CumMaxCol` / `.CumMinCol` / `.RollingCol` / `.ExpandingCol`. For group-aware versions (per-id rolling means, per-customer cumulative sums, etc.), call `.GroupBy(...)` first and use the matching `*Col` builders — see [DataTable.md](DataTable.md#groupby-aware-versions).
+
 ## Advanced Features
 
 ### Named Elements

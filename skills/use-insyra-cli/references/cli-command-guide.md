@@ -447,9 +447,54 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 - Example: `insyra expsmooth x 0.3`
 
 ### `diff`
-- Description: Difference
+- Description: Difference (legacy, length n-1)
 - Usage: `diff <var> [as <var>]`
 - Example: `insyra diff x`
+
+### `diffn`
+- Description: Backward difference with same-length output and leading nils. Prefer this over `diff` when you need column-aligned results.
+- Usage: `diffn <var> <periods> [as <var>]`
+- Example: `insyra diffn price 1 as d1`
+
+### `shift`
+- Description: Shift / lag / lead a DataList. Positive periods shift right (lag); negative shift left (lead). Empty slots default to nil; override with `fill <value>`.
+- Usage: `shift <var> <periods> [fill <value>] [as <var>]`
+- Example: `insyra shift price 1 as prev_price`
+
+### `pctchange`
+- Description: Percent change over `periods` rows. Divide-by-zero / non-numeric cells emit nil.
+- Usage: `pctchange <var> <periods> [as <var>]`
+- Example: `insyra pctchange price 1 as ret`
+
+### `cumsum`
+- Description: Running total. Nil / non-numeric cells emit nil at that position but the accumulator continues (pandas `skipna=True`).
+- Usage: `cumsum <var> [as <var>]`
+- Example: `insyra cumsum pnl as cum_pnl`
+
+### `cumprod`
+- Description: Running product. Same nil semantics as `cumsum`.
+- Usage: `cumprod <var> [as <var>]`
+- Example: `insyra cumprod growth as compounded`
+
+### `cummax`
+- Description: Running maximum (historical high). Same nil semantics as `cumsum`.
+- Usage: `cummax <var> [as <var>]`
+- Example: `insyra cummax price as hwm`
+
+### `cummin`
+- Description: Running minimum (historical low). Same nil semantics as `cumsum`.
+- Usage: `cummin <var> [as <var>]`
+- Example: `insyra cummin price as trough`
+
+### `rolling`
+- Description: Rolling-window reduction. Reducers: sum, mean, min, max, median, std, var. `minobs` defaults to window; `center yes` anchors at the central row (pandas-style).
+- Usage: `rolling <var> <window> <reducer> [minobs <n>] [center yes|no] [as <var>]`
+- Example: `insyra rolling price 7 mean minobs 1 as ma7_soft`
+
+### `expanding`
+- Description: Expanding-window reduction over `in[0..=i]`. Reducers: sum, mean, min, max, median, std, var. Emits nil until `minobs` valid observations are available.
+- Usage: `expanding <var> <minobs> <reducer> [as <var>]`
+- Example: `insyra expanding pnl 1 sum as cumulative_pnl`
 
 ### `fillnan`
 - Description: Fill NaN with mean

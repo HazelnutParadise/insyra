@@ -12,6 +12,7 @@ CCL (Column Calculation Language) is a specialized expression language in Insyra
 - [Operators](#operators)
 - [Column References](#column-references)
 - [Functions](#functions)
+- [Sequence Functions](#sequence-functions)
 - [Conditional Expressions](#conditional-expressions)
 - [Chained Comparisons](#chained-comparisons)
 - [Examples](#examples)
@@ -814,6 +815,52 @@ To count non-nil values in each row:
 ```
 "NEW('row_count') = COUNT(@.#)"
 ```
+
+## Sequence Functions
+
+Sequence functions take whole columns and return same-length columns. They fill the gap between scalar functions (one value in, one value out per row) and aggregate functions (whole column in, single scalar broadcast back) — examples include `LAG`, `CUMSUM`, and `ROLLING_MEAN`. Available in both expression mode (`AddColUsingCCL`) and statement mode (`ExecuteCCL`).
+
+| Function                | Equivalent Go                              | Notes |
+| ----------------------- | ------------------------------------------ | --- |
+| `LAG(col, n)`           | `col.Shift(n)`                             | Empty slots are `nil`. |
+| `LEAD(col, n)`          | `col.Shift(-n)`                            | |
+| `DIFF(col [, n])`       | `col.Diff(n)`                              | `n` defaults to 1. |
+| `PCT_CHANGE(col [, n])` | `col.PctChange(n)`                         | Divide-by-zero → `nil`. |
+| `CUMSUM(col)`           | `col.CumSum()`                             | pandas `skipna=True` semantics. |
+| `CUMPROD(col)`          | `col.CumProd()`                            | |
+| `CUMMAX(col)`           | `col.CumMax()`                             | |
+| `CUMMIN(col)`           | `col.CumMin()`                             | |
+| `ROLLING_SUM(col, w)`   | `col.Rolling({Window: w}).Sum()`           | Right-aligned, `MinObs = Window`. |
+| `ROLLING_MEAN(col, w)`  | `col.Rolling({Window: w}).Mean()`          | |
+| `ROLLING_MIN(col, w)`   | `col.Rolling({Window: w}).Min()`           | |
+| `ROLLING_MAX(col, w)`   | `col.Rolling({Window: w}).Max()`           | |
+| `ROLLING_STD(col, w)`   | `col.Rolling({Window: w}).Std()`           | Sample (n-1). |
+
+### Examples
+
+```go
+dt.ExecuteCCL(`
+    NEW('prev_price') = LAG(B, 1)
+    NEW('ret')        = PCT_CHANGE(B, 1)
+    NEW('cum_pnl')    = CUMSUM(D)
+    NEW('ma7')        = ROLLING_MEAN(B, 7)
+`)
+
+dt.AddColUsingCCL("rolling_via_name", "ROLLING_SUM(['price'], 2)")
+```
+
+### v1 limitation: top-level usage only
+
+Sequence functions are designed to be the **root** of an expression assigned to a new column. Combining them inside binary ops in a single expression — e.g. `LAG(B, 1) + 1` — is **undefined in v1**. Split into two statements instead:
+
+```go
+dt.ExecuteCCL(`
+    NEW('prev') = LAG(B, 1)
+    NEW('adj')  = prev + 1
+`)
+```
+
+The richer Go API (`DataList.Shift`, `DataTable.RollingCol`, `GroupedDataTable.*Col`) supports the same operations with group-aware variants and custom reducers — see [DataList.md](DataList.md#shift) and [DataTable.md](DataTable.md#window--sequence-transforms-shift--diff--pctchange--cum--rolling--expanding).
 
 ## Conditional Expressions
 

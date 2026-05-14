@@ -17,6 +17,7 @@ It is intended as a practical quickstart plus a complete command index.
 - [Global Flags](#global-flags)
 - [Environment Model](#environment-model)
 - [DSL Syntax Rules](#dsl-syntax-rules)
+  - [Literal Values](#literal-values)
 - [CLI Script Runner vs Go DSL API](#cli-script-runner-vs-go-dsl-api)
 - [Quickstart Workflows](#quickstart-workflows)
 - [Command Groups](#command-groups)
@@ -224,6 +225,36 @@ newdl 4 5 6
 # second command writes to $result
 ```
 
+### Literal Values
+
+Several commands accept **literal data values** as arguments — places where a single cell value is being supplied. The CLI coerces each token through this ladder (case-insensitive for the keyword rows):
+
+| Token                                  | Parsed as                  |
+| -------------------------------------- | -------------------------- |
+| `nil`                                  | Go `nil`                   |
+| `true` / `false`                       | `bool`                     |
+| `123` / `-7`                           | `int`                      |
+| `1.5` / `1e3` / `.25` / `-2.5`         | `float64`                  |
+| `nan` / `NaN` / `NAN`                  | `math.NaN()`               |
+| `inf` / `Inf` / `infinity` / `+inf`    | `math.Inf(+1)`             |
+| `-inf` / `-Inf` / `-infinity`          | `math.Inf(-1)`             |
+| anything else                          | `string` (as typed)        |
+
+The float row is dispatched by Go's `strconv.ParseFloat`, which is why `nan`, `inf`, and `infinity` are recognised as IEEE-754 special values rather than literal strings. **If you need the string `"nan"` itself, pick a different token** (e.g. `missing`) — quoting at the shell level only strips quotes before the command sees the argument, it does not promote the token back to a string.
+
+Commands whose arguments go through this ladder include (non-exhaustive):
+
+| Where it applies                                         | Token position                    |
+| -------------------------------------------------------- | --------------------------------- |
+| `shift <var> <periods> fill <value> [as <var>]`          | `<value>`                         |
+| `addcol <var> <values...>`                               | every `<value>`                   |
+| `set <var> <row> <col> <value>`                          | `<value>`                         |
+| `replace <var> <old\|nan\|nil> <new>`                    | `<new>`                           |
+| `pivot ... fillna <literal>`                             | `<literal>`                       |
+| `load sql <conn> query "<SQL>" params <v1> <v2> ...`     | every `<v>`                       |
+
+This is intentionally separate from the boolean-flag parsing used by option arguments like `headers true|false`, `center yes|no`, `rownames 1|0` — those go through `parseFlexBool` and accept `yes/no/on/off/1/0/true/false` but **not** numeric or special-float tokens. See the option-parsing convention in each command's `help` output.
+
 ## CLI Script Runner vs Go DSL API
 
 `insyra run <script.isr>` and `Session.ExecuteFile(path)` are intentionally different on error handling.
@@ -418,7 +449,7 @@ High-level command map:
 - **DataTable Structure / Access**: `addcol`, `addrow`, `dropcol`, `droprow`, `swap`, `transpose`, `rows`, `cols`, `row`, `col`, `get`, `set`, `setrownames`, `setcolnames`
 - **Data Processing**: `filter`, `sort`, `sample`, `find`, `replace`, `clean`, `merge`, `groupby`, `pivot`, `unpivot`, `ccl`, `addcolccl`
 - **DataList Stats**: `sum`, `mean`, `median`, `mode`, `stdev`, `var`, `min`, `max`, `range`, `quartile`, `iqr`, `percentile`, `count`, `counter`, `corr`, `cov`, `corrmatrix`, `skewness`, `kurtosis`
-- **Time Series / Transforms**: `rank`, `normalize`, `standardize`, `reverse`, `upper`, `lower`, `capitalize`, `parsenums`, `parsestrings`, `movavg`, `expsmooth`, `diff`, `fillnan`
+- **Time Series / Transforms**: `rank`, `normalize`, `standardize`, `reverse`, `upper`, `lower`, `capitalize`, `parsenums`, `parsestrings`, `movavg`, `expsmooth`, `diff`, `diffn`, `shift`, `pctchange`, `cumsum`, `cumprod`, `cummax`, `cummin`, `rolling`, `expanding`, `fillnan`
 - **Modeling / Viz / Fetch**: `regression`, `pca`, `kmeans`, `hclust`, `cutree`, `dbscan`, `silhouette`, `knn_classify`, `knn_regress`, `knn_neighbors`, `ttest`, `ztest`, `anova`, `ftest`, `chisq`, `plot`, `fetch`
 
 ## Full Command Index (Appendix)
@@ -451,12 +482,18 @@ Source policy:
 | `counter` | `counter <var>` | DataList frequency map |
 | `cov` | `cov <x> <y>` | Covariance between two DataLists |
 | `db` | `db connect <name> <dsn> \| db list \| db tables <name> [schema <s>] \| db disconnect <name>` | Manage named database connections (sqlite, mysql, postgres; pure-Go drivers) |
-| `diff` | `diff <var> [as <var>]` | Difference |
+| `cummax` | `cummax <var> [as <var>]` | Running maximum (historical high) |
+| `cummin` | `cummin <var> [as <var>]` | Running minimum (historical low) |
+| `cumprod` | `cumprod <var> [as <var>]` | Running product |
+| `cumsum` | `cumsum <var> [as <var>]` | Running total |
+| `diff` | `diff <var> [as <var>]` | Difference (legacy, length n-1) |
+| `diffn` | `diffn <var> <periods> [as <var>]` | Backward difference, same-length output with leading nils |
 | `drop` | `drop <var>` | Delete variable |
 | `dropcol` | `dropcol <var> <name\|index...>` | Drop columns by name or index |
 | `droprow` | `droprow <var> <index\|name...>` | Drop rows by index or name |
 | `env` | `env <create\|list\|open\|clear\|export\|import\|delete\|rename\|info> [args]` | Environment management |
 | `exit` | `exit` | Exit REPL |
+| `expanding` | `expanding <var> <minobs> <reducer> [as <var>]` | Expanding-window reduction (reducer: sum\|mean\|min\|max\|median\|std\|var) |
 | `expsmooth` | `expsmooth <var> <alpha> [as <var>]` | Exponential smoothing |
 | `fetch` | `fetch yahoo <ticker> <method> [params...] [as <var>]` | Fetch external data |
 | `fillnan` | `fillnan <var> mean` | Fill NaN with mean |
@@ -488,6 +525,7 @@ Source policy:
 | `parsenums` | `parsenums <var> [as <var>]` | Parse DataList strings to numbers |
 | `parsestrings` | `parsestrings <var> [as <var>]` | Parse DataList numbers to strings |
 | `pca` | `pca <var> <n>` | Principal component analysis |
+| `pctchange` | `pctchange <var> <periods> [as <var>]` | Percent change over `periods` rows |
 | `pivot` | `pivot <var> index <col1[,col2,...]> columns <col> values <col> [agg <op>] [fillna <literal>] [sortcols true\|false] [as <var>]` | Reshape long-form DataTable to wide form |
 | `hclust` | `hclust <var> <method> [as <var>]` | Hierarchical agglomerative clustering |
 | `cutree` | `cutree <tree_var> k <n>\|h <value> [as <var>]` | Cut a hierarchical clustering tree |
@@ -503,6 +541,7 @@ Source policy:
 | `rename` | `rename <var> <new>` | Rename variable |
 | `replace` | `replace <var> <old\|nan\|nil> <new>` | Replace values in DataTable/DataList |
 | `reverse` | `reverse <var> [as <var>]` | Reverse DataList |
+| `rolling` | `rolling <var> <window> <reducer> [minobs <n>] [center yes\|no] [as <var>]` | Rolling-window reduction (reducer: sum\|mean\|min\|max\|median\|std\|var) |
 | `row` | `row <var> <index\|name> [as <var>]` | Extract DataTable row as DataList |
 | `rows` | `rows <var>` | List DataTable row names |
 | `run` | `run <script.isr>` | Run DSL script file |
@@ -512,6 +551,7 @@ Source policy:
 | `setcolnames` | `setcolnames <var> <names...>` | Set DataTable column names |
 | `setrownames` | `setrownames <var> <names...>` | Set DataTable row names |
 | `shape` | `shape <var>` | Show shape of DataTable/DataList |
+| `shift` | `shift <var> <periods> [fill <value>] [as <var>]` | Shift / lag (periods > 0) / lead (periods < 0); empty slots default to nil |
 | `show` | `show <var> [N] [M]` | Display data with optional range (supports negative and _) |
 | `skewness` | `skewness <var>` | Skewness of a DataList |
 | `sort` | `sort <var> <col> [asc\|desc]` | Sort DataTable by one column |

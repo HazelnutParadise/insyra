@@ -1296,7 +1296,9 @@ ranksDesc := dl.Rank(false) // descending
 func (dl *DataList) Difference() *DataList
 ```
 
-**Description:** Calculates differences between consecutive elements.
+**Description:** Calculates differences between consecutive elements. The output is one element **shorter** than the input (`out[i] = in[i+1] - in[i]`).
+
+> For column-aligned use (same length as the input, leading `nil` instead of a shorter result) prefer [`Diff(1)`](#diff). `Difference` is retained for backwards compatibility.
 
 **Parameters:**
 
@@ -1304,7 +1306,7 @@ func (dl *DataList) Difference() *DataList
 
 **Returns:**
 
-- `*DataList`: New DataList with consecutive differences
+- `*DataList`: New DataList with consecutive differences (length `n-1`).
 
 **Example:**
 
@@ -1430,6 +1432,215 @@ func (dl *DataList) MovingStdev(windowSize int) *DataList
 ```go
 dl := insyra.NewDataList(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
 mstdev := dl.MovingStdev(3)
+```
+
+### Shift
+
+```go
+func (dl *DataList) Shift(periods int, fill ...any) *DataList
+```
+
+**Description:** Shifts the DataList by `periods` positions, keeping the original length. Positive `periods` shifts right (creates a lag); negative `periods` shifts left (creates a lead). Empty slots are filled with `nil` by default; pass a single `fill` value to override. Non-numeric cells pass through unchanged — `Shift` works on any column type. When `|periods| >= len(dl)` the output is all-fill of the same length.
+
+**Parameters:**
+
+- `periods`: Positive for lag, negative for lead, zero for a clone.
+- `fill` (optional): Value to put in empty slots. Defaults to `nil`.
+
+**Returns:**
+
+- `*DataList`: New DataList of the same length.
+
+**Example:**
+
+```go
+src := insyra.NewDataList(10, 20, 30, 40, 50)
+prev := src.Shift(1)        // [nil, 10, 20, 30, 40]
+next := src.Shift(-1)       // [20, 30, 40, 50, nil]
+filled := src.Shift(2, 0)   // [0, 0, 10, 20, 30]
+```
+
+### Diff
+
+```go
+func (dl *DataList) Diff(periods int) *DataList
+```
+
+**Description:** Returns the `periods`-step backward difference (`out[i] = in[i] - in[i-periods]`) with the same length as the input. The first `periods` positions are `nil`. Cells where either operand is non-numeric or nil are emitted as `nil`. `periods` must be > 0.
+
+Unlike [Difference](#difference) (which returns length `n-1`), `Diff` preserves the input length so the result lines up with neighbouring columns — preferred for use inside a `DataTable`.
+
+**Parameters:**
+
+- `periods`: Lag distance, must be > 0.
+
+**Returns:**
+
+- `*DataList`: Same-length DataList. Returns `nil` and records a warning when `periods <= 0`.
+
+**Example:**
+
+```go
+src := insyra.NewDataList(10, 13, 18, 17, 25)
+d1 := src.Diff(1) // [nil, 3, 5, -1, 8]
+d2 := src.Diff(2) // [nil, nil, 8, 4, 7]
+```
+
+### PctChange
+
+```go
+func (dl *DataList) PctChange(periods int) *DataList
+```
+
+**Description:** Returns the `periods`-step percent change (`out[i] = (in[i] - in[i-periods]) / in[i-periods]`) with the same length as the input. The first `periods` positions are `nil`. Cells where either operand is non-numeric, or where the denominator is zero, are emitted as `nil`.
+
+**Parameters:**
+
+- `periods`: Lag distance for the comparison, must be > 0.
+
+**Returns:**
+
+- `*DataList`: Same-length DataList.
+
+**Example:**
+
+```go
+price := insyra.NewDataList(100, 110, 99, 99)
+ret := price.PctChange(1) // [nil, 0.1, -0.1, 0]
+```
+
+### CumSum
+
+```go
+func (dl *DataList) CumSum() *DataList
+```
+
+**Description:** Cumulative (running) sum. Same-length output. Non-numeric or nil cells at position `i` produce `nil` at `out[i]` but the running accumulator continues, matching pandas `cumsum(skipna=True)`.
+
+**Returns:**
+
+- `*DataList`: Same-length DataList of running totals.
+
+**Example:**
+
+```go
+dl := insyra.NewDataList(10, 20, 30, 40)
+cs := dl.CumSum() // [10, 30, 60, 100]
+```
+
+### CumProd
+
+```go
+func (dl *DataList) CumProd() *DataList
+```
+
+**Description:** Cumulative product. Same nil semantics as `CumSum`.
+
+**Example:**
+
+```go
+dl := insyra.NewDataList(2, 3, 4)
+cp := dl.CumProd() // [2, 6, 24]
+```
+
+### CumMax
+
+```go
+func (dl *DataList) CumMax() *DataList
+```
+
+**Description:** Running maximum (historical high-water mark). The accumulator is seeded from the first numeric value. Same nil semantics as `CumSum`.
+
+**Example:**
+
+```go
+dl := insyra.NewDataList(3, 1, 4, 1, 5, 9, 2)
+m := dl.CumMax() // [3, 3, 4, 4, 5, 9, 9]
+```
+
+### CumMin
+
+```go
+func (dl *DataList) CumMin() *DataList
+```
+
+**Description:** Running minimum (historical low). Symmetrical to `CumMax`.
+
+**Example:**
+
+```go
+dl := insyra.NewDataList(3, 1, 4, 1, 5, 9, 2)
+m := dl.CumMin() // [3, 1, 1, 1, 1, 1, 1]
+```
+
+### Rolling
+
+```go
+func (dl *DataList) Rolling(opts RollingOptions) *RollingDataList
+```
+
+**Description:** Builds a rolling-window view over `dl`. Pick a terminal reducer to materialise the result; every reducer returns a same-length `*DataList`. The returned builder captures `dl`'s current contents — later mutations to `dl` don't affect the rolling computation.
+
+**`RollingOptions` fields:**
+
+- `Window` (int, required, > 0): Window size.
+- `MinObs` (int): Minimum number of valid (non-nil, numeric) values a window must contain for the reducer to emit a value. Defaults to `Window` when zero.
+- `Center` (bool): When true, the window is anchored at the central row (pandas-style — covers `[i-(w-1)/2, i+w/2]`, clipped to `[0, n-1]`).
+- `Weights` ([]float64): When set, length must equal `Window`. Used by `Sum` and `Mean` only.
+
+**Available reducers:**
+
+| Method | Returns |
+| --- | --- |
+| `Sum()` | Rolling sum (weighted when `Weights` is set) |
+| `Mean()` | Rolling mean (weighted when `Weights` is set) |
+| `Min()` | Rolling minimum |
+| `Max()` | Rolling maximum |
+| `Median()` | Rolling median (linear interpolation for even windows) |
+| `Std()` | Sample (n-1) standard deviation |
+| `Var()` | Sample (n-1) variance |
+| `Apply(fn func(window []any) any)` | Custom reducer over the raw window slice (nils preserved) |
+| `Corr(other *DataList)` | Sample Pearson correlation against `other` |
+
+**Example:**
+
+```go
+src := insyra.NewDataList(1, 2, 3, 4, 5)
+ma3   := src.Rolling(insyra.RollingOptions{Window: 3}).Mean()           // [nil, nil, 2, 3, 4]
+ma3p  := src.Rolling(insyra.RollingOptions{Window: 3, MinObs: 1}).Mean() // [1, 1.5, 2, 3, 4]
+maC   := src.Rolling(insyra.RollingOptions{Window: 3, Center: true}).Mean() // [nil, 2, 3, 4, nil]
+wma   := src.Rolling(insyra.RollingOptions{Window: 2, Weights: []float64{1, 3}}).Mean()
+
+// Custom reducer (sum of squares).
+ss := src.Rolling(insyra.RollingOptions{Window: 2}).Apply(func(w []any) any {
+    var s float64
+    for _, v := range w { f, _ := insyra.ToFloat64Safe(v); s += f * f }
+    return s
+})
+
+// Rolling correlation.
+y := insyra.NewDataList(2, 4, 6, 8, 10)
+corr := src.Rolling(insyra.RollingOptions{Window: 3}).Corr(y)
+```
+
+### Expanding
+
+```go
+func (dl *DataList) Expanding(minObs int) *ExpandingDataList
+```
+
+**Description:** Builds an expanding-window view over `dl`: each position `i` reduces over `in[0..=i]`. Output `nil` until at least `minObs` valid observations are available. `minObs <= 0` defaults to 1.
+
+**Available reducers:** `Sum()`, `Mean()`, `Min()`, `Max()`, `Median()`, `Std()` (sample, needs ≥ 2 valid values), `Var()` (sample, needs ≥ 2 valid values).
+
+**Example:**
+
+```go
+src := insyra.NewDataList(1, 2, 3, 4)
+e := src.Expanding(1)
+e.Mean() // [1, 1.5, 2, 2.5]
+e.Sum()  // [1, 3, 6, 10]
+e.Std()  // [nil, 0.7071…, 1, 1.2910…]
 ```
 
 ### Summary
