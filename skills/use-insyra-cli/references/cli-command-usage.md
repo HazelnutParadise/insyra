@@ -4,6 +4,27 @@ Generated from `insyra help` + `insyra help <command>` in current repository sta
 
 For expanded subcommand forms and practical examples, see `cli-command-guide.md`.
 
+## Conventions
+
+### Literal value parsing
+
+Commands that take a "value" argument (`addcol`, `set`, `shift ... fill ...`, `replace`, `pivot ... fillna ...`, `load sql ... params ...`, etc.) coerce each token through this ladder (case-insensitive for the keyword rows):
+
+| Token                                  | Parsed as           |
+| -------------------------------------- | ------------------- |
+| `nil`                                  | Go `nil`            |
+| `true` / `false`                       | bool                |
+| `123` / `-7`                           | int                 |
+| `1.5` / `1e3` / `.25` / `-2.5`         | float64             |
+| `nan` / `NaN` / `NAN`                  | `math.NaN()`        |
+| `inf` / `Inf` / `infinity` / `+inf`    | `math.Inf(+1)`      |
+| `-inf` / `-Inf` / `-infinity`          | `math.Inf(-1)`      |
+| anything else                          | string (as typed)   |
+
+Because the float row dispatches through Go's `strconv.ParseFloat`, the tokens `nan`/`inf`/`infinity` are recognised as IEEE-754 special values, **not** as literal strings. If you genuinely need the string `"nan"` itself, pick a different token (e.g. `missing`).
+
+This is separate from boolean-flag parsing used by option arguments like `headers true|false`, `center yes|no`, `rownames 1|0` — those accept only `yes/no/on/off/1/0/true/false`.
+
 ## `addcol`
 - Description: Add one column to DataTable
 - Usage: `addcol <var> <values...>`
@@ -87,6 +108,22 @@ For expanded subcommand forms and practical examples, see `cli-command-guide.md`
 - Description: Covariance between two DataLists
 - Usage: `cov <x> <y>`
 
+## `cummax`
+- Description: Running maximum (historical high)
+- Usage: `cummax <var> [as <var>]`
+
+## `cummin`
+- Description: Running minimum (historical low)
+- Usage: `cummin <var> [as <var>]`
+
+## `cumprod`
+- Description: Running product
+- Usage: `cumprod <var> [as <var>]`
+
+## `cumsum`
+- Description: Running total
+- Usage: `cumsum <var> [as <var>]`
+
 ## `cutree`
 - Description: Cut a hierarchical clustering tree
 - Usage: `cutree <tree_var> k <n>|h <value> [as <var>]`
@@ -111,8 +148,12 @@ For expanded subcommand forms and practical examples, see `cli-command-guide.md`
 - Usage: `dbscan <var> <eps> <minpts> [as <var>]`
 
 ## `diff`
-- Description: Difference
+- Description: Difference (legacy, length n-1)
 - Usage: `diff <var> [as <var>]`
+
+## `diffn`
+- Description: Backward difference, same-length output with leading nils
+- Usage: `diffn <var> <periods> [as <var>]`
 
 ## `drop`
 - Description: Delete variable
@@ -133,6 +174,10 @@ For expanded subcommand forms and practical examples, see `cli-command-guide.md`
 ## `exit`
 - Description: Exit REPL
 - Usage: `exit`
+
+## `expanding`
+- Description: Expanding-window reduction (in[0..=i]). Reducers: sum, mean, min, max, median, std, var.
+- Usage: `expanding <var> <minobs> <reducer> [as <var>]`
 
 ## `expsmooth`
 - Description: Exponential smoothing
@@ -287,6 +332,10 @@ For expanded subcommand forms and practical examples, see `cli-command-guide.md`
 - Description: Principal component analysis
 - Usage: `pca <var> <n>`
 
+## `pctchange`
+- Description: Percent change over `periods` rows
+- Usage: `pctchange <var> <periods> [as <var>]`
+
 ## `percentile`
 - Description: DataList percentile
 - Usage: `percentile <var> <p>`
@@ -299,7 +348,7 @@ For expanded subcommand forms and practical examples, see `cli-command-guide.md`
   - Column tokens are resolved by `column.name` first, then fall back to Excel-style alphabetic index (`A`, `B`, ..., `AA`). The first row of data is never used as a header. Unknown tokens are an error.
   - Ops for `agg`: `sum`, `mean` (alias `avg`), `median`, `min`, `max`, `count` (non-nil), `countall` (group size), `std`/`stdev`, `stdp`/`stdevp`, `var`, `varp`, `first`, `last`, `nunique`.
   - When `agg` is omitted, duplicate `(index, columns)` combinations are an error.
-  - `fillna <literal>` is parsed via `parseLiteral` (nil/true/false/int/float, else string).
+  - `fillna <literal>` is parsed via the literal-value ladder (see below): nil → Go nil; true/false → bool; integer → int; float → float64 (incl. `nan` → math.NaN, `inf`/`infinity` → math.Inf(+1), `-inf` → math.Inf(-1), case-insensitive); else → string.
   - `sortcols true` orders generated columns by key value; default is first-seen.
   - Output column order: index first (in `index` order), then one column per unique `columns` value.
 
@@ -350,6 +399,10 @@ For expanded subcommand forms and practical examples, see `cli-command-guide.md`
 - Description: Reverse DataList
 - Usage: `reverse <var> [as <var>]`
 
+## `rolling`
+- Description: Rolling-window reduction. Reducers: sum, mean, min, max, median, std, var. `minobs` defaults to window; `center yes` anchors at the central row (pandas-style).
+- Usage: `rolling <var> <window> <reducer> [minobs <n>] [center yes|no] [as <var>]`
+
 ## `row`
 - Description: Extract DataTable row as DataList
 - Usage: `row <var> <index|name> [as <var>]`
@@ -397,6 +450,10 @@ For expanded subcommand forms and practical examples, see `cli-command-guide.md`
 ## `shape`
 - Description: Show shape of DataTable/DataList
 - Usage: `shape <var>`
+
+## `shift`
+- Description: Shift / lag / lead a DataList. Positive periods shift right (lag); negative shift left (lead). Empty slots default to nil; override with `fill <value>`.
+- Usage: `shift <var> <periods> [fill <value>] [as <var>]`
 
 ## `show`
 - Description: Display data with optional range (supports negative and _)

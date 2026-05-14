@@ -1848,7 +1848,13 @@ func (dl *DataList) Percentile(p float64) float64 {
 	return result
 }
 
-// Difference calculates the differences between adjacent elements in the DataList.
+// Difference calculates the differences between adjacent elements in the
+// DataList. The output is one element shorter than the input
+// (out[i] = in[i+1] - in[i]).
+//
+// For column-aligned use (same length as the input, leading nils) prefer
+// Diff(1) — it preserves length so the result can sit alongside other
+// columns in a DataTable. Difference is retained for backwards compatibility.
 func (dl *DataList) Difference() *DataList {
 	var result *DataList
 	dl.AtomicDo(func(dl *DataList) {

@@ -134,8 +134,15 @@ func IsRowDependent(n cclNode) bool {
 		}
 		return false
 	case *funcCallNode:
-		// 如果是聚合函數，通常是行無關的，除非參數中包含 #
-		if _, isAgg := aggregateFunctions[strings.ToUpper(t.name)]; isAgg {
+		upper := strings.ToUpper(t.name)
+		// Sequence functions (LAG, CUMSUM, ROLLING_MEAN, ...) consume whole
+		// columns and produce same-length output; they are evaluated once
+		// per expression, not per row.
+		if _, isSeq := sequenceFunctions[upper]; isSeq {
+			return false
+		}
+		// Aggregate functions are row-independent unless # appears in args.
+		if _, isAgg := aggregateFunctions[upper]; isAgg {
 			return containsRowIndex(t)
 		}
 		for _, arg := range t.args {
@@ -278,6 +285,23 @@ func evaluateWithContext(n cclNode, ctx Context) (any, error) {
 				}
 			}
 			return false, nil
+		}
+
+		// Sequence functions: whole-column input, same-length-column output.
+		// Args are evaluated to columns (mirroring aggregate path); the
+		// returned []any is consumed directly by the assigner / cell broadcaster
+		// at the top level. Nested usage inside arithmetic is not supported
+		// in v1 and may produce undefined results.
+		if _, isSeq := sequenceFunctions[upper]; isSeq {
+			seqArgs := make([][]any, len(t.args))
+			for i, arg := range t.args {
+				colData, err := evaluateToColumn(arg, ctx)
+				if err != nil {
+					return nil, fmt.Errorf("sequence function %s: %v", t.name, err)
+				}
+				seqArgs[i] = colData
+			}
+			return callSequenceFunction(t.name, seqArgs)
 		}
 
 		// 檢查是否為聚合函數

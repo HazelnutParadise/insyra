@@ -887,6 +887,88 @@ long, err := dt.Unpivot(insyra.UnpivotConfig{
 
 **Relationship to `GroupBy + Aggregate`:** `Pivot` is essentially `GroupBy(Index..., Columns).Aggregate(Values, AggFunc)` followed by spreading the `Columns` key out into headers. When you only need the grouped summary (one row per key, no header spreading), use `GroupBy + Aggregate` directly — it is simpler and produces the same intermediate structure.
 
+### Window / sequence transforms (Shift / Diff / PctChange / Cum\* / Rolling / Expanding)
+
+```go
+func (dt *DataTable) ShiftCol(col string, periods int, fill ...any) *DataList
+func (dt *DataTable) DiffCol(col string, periods int) *DataList
+func (dt *DataTable) PctChangeCol(col string, periods int) *DataList
+func (dt *DataTable) CumSumCol(col string) *DataList
+func (dt *DataTable) CumProdCol(col string) *DataList
+func (dt *DataTable) CumMaxCol(col string) *DataList
+func (dt *DataTable) CumMinCol(col string) *DataList
+func (dt *DataTable) RollingCol(col string, opts RollingOptions) *RollingDataList
+func (dt *DataTable) ExpandingCol(col string, minObs int) *ExpandingDataList
+```
+
+**Description:** Per-column time-series / sequence transforms. Each method resolves `col` by **name first**, then by Excel-style index (`"A"`, `"B"`, ...), and runs the matching operation on a snapshot of that column. The returned `*DataList` (or builder) has the same length as the source so the result lines up with neighbouring columns when appended back.
+
+The scalar transforms (`ShiftCol` / `DiffCol` / `PctChangeCol` / `Cum*Col`) return `*DataList` directly. `RollingCol` and `ExpandingCol` return builders — pick a reducer (`.Mean()` / `.Sum()` / `.Min()` / `.Max()` / `.Median()` / `.Std()` / `.Var()` / `.Apply(...)` / `.Corr(...)`) to materialise the column. See [DataList.Rolling](DataList.md#rolling) and [DataList.Expanding](DataList.md#expanding) for the full reducer list and `RollingOptions` semantics.
+
+**Missing-value behaviour:** edge positions (e.g. the first row of `ShiftCol(_, 1)` or partial windows below `MinObs`) emit `nil`. `Shift` works on any column type (including strings / bools); the rest coerce numerically and emit `nil` for cells that aren't numeric.
+
+**Errors:** When `col` cannot be resolved, the method records a warning on `dt.Err()` and returns an empty `*DataList`.
+
+**Examples:**
+
+```go
+// Date | Price
+dt := insyra.NewDataTable(/* date, price */)
+
+prev   := dt.ShiftCol("price", 1)                                            // lag-1
+ret    := dt.PctChangeCol("price", 1)                                        // simple return
+cum    := dt.CumSumCol("price")                                              // running total
+hwm    := dt.CumMaxCol("price")                                              // historical high
+ma7    := dt.RollingCol("price", insyra.RollingOptions{Window: 7}).Mean()    // 7-day MA
+ewmean := dt.ExpandingCol("price", 1).Mean()                                 // expanding mean
+
+// Attach results back to the table.
+ma7.SetName("ma7")
+dt.AppendCols(ma7)
+```
+
+#### GroupBy-aware versions
+
+```go
+func (g *GroupedDataTable) ShiftCol(col string, periods int, fill ...any) *GroupedColumnTransform
+func (g *GroupedDataTable) DiffCol(col string, periods int) *GroupedColumnTransform
+func (g *GroupedDataTable) PctChangeCol(col string, periods int) *GroupedColumnTransform
+func (g *GroupedDataTable) CumSumCol(col string) *GroupedColumnTransform
+func (g *GroupedDataTable) CumProdCol(col string) *GroupedColumnTransform
+func (g *GroupedDataTable) CumMaxCol(col string) *GroupedColumnTransform
+func (g *GroupedDataTable) CumMinCol(col string) *GroupedColumnTransform
+func (g *GroupedDataTable) RollingCol(col string, opts RollingOptions) *GroupedRollingCol
+func (g *GroupedDataTable) ExpandingCol(col string, minObs int) *GroupedExpandingCol
+
+func (t *GroupedColumnTransform) As(name string) *DataList
+```
+
+**Description:** Same operations as above, but scoped to each group independently. Each method returns a builder whose terminal call `.As(name)` materialises a single `*DataList` aligned to the **parent's original row order**. Internally, each group is transformed in isolation and the results are scattered back to the rows that contributed to that group, so the output sits naturally beside the source column.
+
+For `RollingCol` / `ExpandingCol`, the builder exposes the same reducers as the ungrouped form, each of which returns a `*GroupedColumnTransform` ready for `.As`.
+
+**Example — panel data lag/rolling per id:**
+
+```go
+//   id | t | price
+//   A  | 1 | 10
+//   B  | 1 | 100
+//   A  | 2 | 12
+//   B  | 2 | 110
+//   A  | 3 | 11
+//   B  | 3 | 105
+prev := dt.GroupBy("id").ShiftCol("price", 1).As("prev_price")
+// Per group, lag-1: A -> [nil, 10, 12]; B -> [nil, 100, 110]
+// Aligned to original row order: [nil, nil, 10, 100, 12, 110]
+
+ma3 := dt.GroupBy("id").RollingCol("price", insyra.RollingOptions{Window: 3}).Mean().As("ma3")
+cum := dt.GroupBy("id").CumSumCol("price").As("cum_price")
+
+dt.AppendCols(prev, ma3, cum)
+```
+
+**Cross-language validation:** all algorithms (Shift, Diff, PctChange, Cum*, Rolling, Expanding) are validated against pandas/numpy via fixtures committed in `testdata/window_fixtures.json`. Refresh them with `python testdata/gen_window_fixtures.py` when adding cases.
+
 ### AppendCols
 
 ```go
