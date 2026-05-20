@@ -18,6 +18,7 @@ The stats package provides comprehensive statistical analysis functions:
 
 - **Correlation Analysis**: Pearson, Kendall, Spearman correlation coefficients, correlation matrices
 - **Hypothesis Testing**: t-tests (single, two-sample, paired), z-tests, chi-square tests
+- **Nonparametric Tests**: Wilcoxon signed-rank (single/paired), Mann-Whitney U, Kruskal-Wallis, Friedman — rank-based counterparts to the t-test / ANOVA family
 - **Distribution Analysis**: Skewness, Kurtosis, n-th moments
 - **Analysis of Variance**: One-way, Two-way, Repeated measures ANOVA
 - **Regression Analysis**: Linear, Exponential, Logarithmic, Polynomial regression with confidence intervals
@@ -781,6 +782,249 @@ if err != nil {
     log.Fatal(err)
 }
 fmt.Printf("Regression F=%.4f, p=%.4f\n", result.Statistic, result.PValue)
+```
+
+---
+
+## Nonparametric Tests (Rank-Based)
+
+Rank-based tests do not assume normality or homogeneity of variance. They
+are the recommended fallback when the parametric assumptions of the
+t-test / ANOVA family are violated. Each method is the direct
+counterpart of a parametric test:
+
+| Parametric | Nonparametric counterpart |
+| --- | --- |
+| `SingleSampleTTest` / `PairedTTest` | `SingleSampleWilcoxon` / `PairedWilcoxon` |
+| `TwoSampleTTest` | `MannWhitneyU` |
+| `OneWayANOVA` | `KruskalWallis` |
+| `RepeatedMeasuresANOVA` | `FriedmanTest` |
+
+### When to switch to a nonparametric test
+
+```text
+                    ┌─────────────────────────────────────────┐
+                    │ Is the response interval/ratio AND       │
+                    │ approximately normal in each group?      │
+                    └─────────────────────────────────────────┘
+                          │ yes                    │ no
+                          ▼                         ▼
+              ┌───────────────────┐    ┌─────────────────────────────┐
+              │ Variances roughly │    │ Ordinal data, small n (<20),│
+              │ equal? (Levene /  │    │ heavy tails / outliers, or  │
+              │ Bartlett)         │    │ Likert-type scale?          │
+              └───────────────────┘    └─────────────────────────────┘
+                  │ yes    │ no                     │ yes
+                  ▼        ▼                         ▼
+            ┌─────────┐  ┌──────────┐    ┌──────────────────────────────┐
+            │ t-test/ │  │ Welch    │    │ Use the rank-based test:     │
+            │ ANOVA   │  │ t-test   │    │ • 1 sample / paired → Wilcoxon│
+            └─────────┘  └──────────┘    │ • 2 indep. groups   → MWU     │
+                                         │ • k indep. groups   → KW      │
+                                         │ • k repeated meas.  → Friedman│
+                                         └──────────────────────────────┘
+```
+
+Practical triggers for the right branch:
+
+- **Ordinal / Likert data** (1–5 satisfaction, star ratings): rank-based.
+- **Small n (< 20)** where normality cannot be checked: rank-based.
+- **Heavy tails / outliers** that would dominate a mean: rank-based.
+- **Levene / Bartlett reject equal variance** and you do not want to fall
+  back to Welch: `MannWhitneyU` instead of `TwoSampleTTest`.
+- **Repeated measures violating sphericity**: `FriedmanTest` instead of
+  `RepeatedMeasuresANOVA`.
+
+All four methods are pure functions: they do not write back to the input
+and are automatically thread-safe (same contract as `OneWayANOVA`).
+
+### Exact vs asymptotic distribution
+
+Each test auto-selects its p-value path, matching R `wilcox.test` /
+`kruskal.test` / `friedman.test`:
+
+| Test | Exact path used when | Otherwise |
+| --- | --- | --- |
+| Wilcoxon (single/paired) | no ties **and** `n_eff < 50` | normal approx. + continuity correction |
+| Mann-Whitney U | no ties **and** `n.x < 50 && n.y < 50` | normal approx. + continuity correction |
+| Kruskal-Wallis | — (always χ² asymptotic, tie-corrected) | — |
+| Friedman | — (always χ² asymptotic, tie-corrected) | — |
+
+`WilcoxonTestResult.Method` / `MannWhitneyUResult.Method` report
+`"exact"` or `"asymptotic"`; `Z` is populated only on the asymptotic
+path (and is `NaN` for exact).
+
+### Single Sample Wilcoxon
+
+```go
+func SingleSampleWilcoxon(data insyra.IDataList, mu float64, alt AlternativeHypothesis, confidenceLevel ...float64) (*WilcoxonTestResult, error)
+```
+
+**Description:** Tests whether the median of `data` equals `mu` (Wilcoxon
+signed-rank test on `data - mu`). Zero differences are dropped before
+ranking (R `wilcox.test` default zero-method). The CI is the
+Hodges-Lehmann pseudo-median interval on the `data` scale.
+
+**Parameters:**
+
+- `data`: Sample. Type: `insyra.IDataList`.
+- `mu`: Hypothesized median.
+- `alt`: `stats.TwoSided` / `stats.Greater` / `stats.Less`.
+- `confidenceLevel`: Optional, default `0.95`. Range `(0, 1)`.
+
+**Returns:**
+
+- `*WilcoxonTestResult`: Return value.
+
+### Paired Wilcoxon
+
+```go
+func PairedWilcoxon(data1, data2 insyra.IDataList, alt AlternativeHypothesis, confidenceLevel ...float64) (*WilcoxonTestResult, error)
+```
+
+**Description:** Tests whether the median of `data1 - data2` equals 0.
+`data1` and `data2` must have the same length. CI is for the median
+paired difference.
+
+**Parameters:**
+
+- `data1`, `data2`: Paired samples. Type: `insyra.IDataList`.
+- `alt`: Alternative hypothesis.
+- `confidenceLevel`: Optional, default `0.95`.
+
+**Returns:**
+
+- `*WilcoxonTestResult`: Return value.
+
+### Mann-Whitney U
+
+```go
+func MannWhitneyU(data1, data2 insyra.IDataList, alt AlternativeHypothesis, confidenceLevel ...float64) (*MannWhitneyUResult, error)
+```
+
+**Description:** Wilcoxon-Mann-Whitney rank-sum test on two independent
+samples. `U1` is for `data1`, `U2 = n1·n2 − U1`; `Statistic` is
+`min(U1, U2)`. CI is the Hodges-Lehmann shift interval.
+
+**Parameters:**
+
+- `data1`, `data2`: Independent samples. Type: `insyra.IDataList`.
+- `alt`: Alternative hypothesis (direction applies to `data1`).
+- `confidenceLevel`: Optional, default `0.95`.
+
+**Returns:**
+
+- `*MannWhitneyUResult`: Return value.
+
+### Kruskal-Wallis
+
+```go
+func KruskalWallis(groups ...insyra.IDataList) (*KruskalWallisResult, error)
+```
+
+**Description:** Kruskal-Wallis H test on ≥ 2 independent samples.
+`Statistic` is the tie-corrected H referred to χ² with `k − 1` df.
+
+**Parameters:**
+
+- `groups`: Two or more independent samples. Type: `...insyra.IDataList`.
+
+**Returns:**
+
+- `*KruskalWallisResult`: Return value.
+
+### Friedman
+
+```go
+func FriedmanTest(subjects ...insyra.IDataList) (*FriedmanTestResult, error)
+```
+
+**Description:** Friedman test for repeated measures. Each `IDataList`
+is one subject's measurements across `k` conditions; all subjects must
+have the same length `k`. `Statistic` is the tie-corrected Q referred
+to χ² with `k − 1` df.
+
+**Parameters:**
+
+- `subjects`: One `IDataList` per subject (each length `k`). Type: `...insyra.IDataList`.
+
+**Returns:**
+
+- `*FriedmanTestResult`: Return value.
+
+#### Nonparametric Result Types
+
+```go
+type WilcoxonTestResult struct {
+    testResultBase             // Statistic = W+ ; DF nil ; CI = Hodges-Lehmann ; EffectSizes: rank_biserial
+    Z          float64         // asymptotic z (NaN for exact)
+    Method     string          // "exact" | "asymptotic"
+    NEffective int             // nonzero |d_i| used (zeros dropped)
+}
+
+type MannWhitneyUResult struct {
+    testResultBase             // Statistic = min(U1,U2) ; DF nil ; CI = HL shift ; EffectSizes: rank_biserial, cles_a12
+    U1     float64
+    U2     float64
+    Z      float64             // asymptotic z (NaN for exact)
+    Method string              // "exact" | "asymptotic"
+}
+
+type KruskalWallisResult struct {
+    testResultBase             // Statistic = H (tie-corrected) ; DF = k-1 ; CI nil ; EffectSizes: epsilon_squared
+    NTotal       int
+    GroupRankSum []float64      // rank sum per group, input order
+}
+
+type FriedmanTestResult struct {
+    testResultBase             // Statistic = Q (tie-corrected) ; DF = k-1 ; CI nil ; EffectSizes: kendalls_w
+    NSubjects   int
+    KConditions int
+}
+```
+
+Effect-size `Type` strings: `rank_biserial`, `cles_a12` (CLES A12,
+Mann-Whitney only), `epsilon_squared` (Kruskal-Wallis), `kendalls_w`
+(Friedman).
+
+**Example**:
+
+```go
+// Likert satisfaction, normality not assumed: paired Wilcoxon
+before := insyra.NewDataList(3, 4, 2, 5, 3, 4, 2, 3)
+after := insyra.NewDataList(4, 5, 4, 5, 4, 5, 3, 4)
+w, err := stats.PairedWilcoxon(before, after, stats.Less)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("W+=%.1f p=%.4f method=%s r_rb=%.3f\n",
+    w.Statistic, w.PValue, w.Method, w.EffectSizes[0].Value)
+
+// Two independent groups, heavy-tailed: Mann-Whitney U
+a := insyra.NewDataList(15, 18, 22, 11, 30, 14, 26, 25)
+b := insyra.NewDataList(10, 9, 13, 17, 7, 12, 19, 8, 20)
+u, err := stats.MannWhitneyU(a, b, stats.TwoSided)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("U1=%.1f U2=%.1f p=%.4f CI=[%.3f, %.3f]\n",
+    u.U1, u.U2, u.PValue, u.CI[0], u.CI[1])
+
+// k independent groups: Kruskal-Wallis
+kw, err := stats.KruskalWallis(group1, group2, group3)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("H=%.4f df=%.0f p=%.4f eps2=%.3f\n",
+    kw.Statistic, *kw.DF, kw.PValue, kw.EffectSizes[0].Value)
+
+// k repeated conditions: Friedman (one IDataList per subject)
+fr, err := stats.FriedmanTest(subj1, subj2, subj3, subj4, subj5)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("Q=%.4f df=%.0f p=%.4f W=%.3f\n",
+    fr.Statistic, *fr.DF, fr.PValue, fr.EffectSizes[0].Value)
 ```
 
 ---
@@ -1843,5 +2087,46 @@ We do **not** wrap `gonum/stat.Kendall` because gonum returns τ-a
 fall short of 1 even for a perfectly monotonic relationship and
 disagrees with virtually every other stats package. Self-implementing
 τ-b is ~50 lines in `stats/correlation.go:kendallTauBStats`.
+
+### Nonparametric tests (match R `wilcox.test` / `kruskal.test` / `friedman.test`)
+
+`SingleSampleWilcoxon` / `PairedWilcoxon` / `MannWhitneyU` /
+`KruskalWallis` / `FriedmanTest` are ports of the corresponding R
+functions, verified field-by-field against R and SciPy in
+`stats/crosslang_nonparam_test.go`.
+
+Implementation notes that may surprise readers:
+
+- **Exact distributions** use partition-enumeration DP (Wilcoxon
+  signed-rank: subset-sum recurrence; Mann-Whitney U: the
+  "last-element" recurrence `f(u,i,j) = f(u−j,i−1,j) + f(u,i,j−1)`).
+  Total over all `u` equals `2^n` and `C(n1+n2, n1)` respectively.
+- **Tie correction is computed over the ranks, not the raw values.**
+  IEEE-754 subtraction can split values that are "logically equal"
+  (e.g. `1.2 − 0.9` vs `4.5 − 4.3`) into floats differing by 1 ulp.
+  R's `wilcox.test` counts ties with `table(rank(...))`, so insyra
+  does the same — counting tie groups on the assigned mid-ranks —
+  to stay bit-aligned with R's σ.
+- **Hodges-Lehmann CI**: the exact path uses `qsignrank` / `qwilcox`
+  rank cutoffs indexed into the sorted Walsh averages / pairwise
+  differences (R's exact `conf.int` algorithm). The asymptotic path
+  solves `z(data − c) = ±z_crit` by bisection, mirroring R's
+  `uniroot` on the continuity-corrected z.
+- **Single-sample CI scale**: the test runs on `data − mu` but the CI
+  is reported on the `data` (location) scale, i.e. the Walsh-average
+  interval shifted back by `+ mu`, matching R's `conf.int` output.
+- **Exact-path selection** matches R 4.5 `wilcox.test` defaults:
+  Wilcoxon `n_eff < 50` and untied; Mann-Whitney `n.x < 50 && n.y < 50`
+  and untied. Kruskal-Wallis and Friedman always use the tie-corrected
+  χ² asymptotic (R has no exact path for them by default).
+- The asymptotic CI agrees with R up to one Walsh-average step: R's
+  `uniroot` returns a continuous value within `tol.root = 1e-4` of a
+  discrete jump, whereas insyra/SciPy land exactly on the boundary.
+  Exact-path statistics, p-values, and CIs are bit-identical across
+  Go / R / SciPy.
+
+No third-party dependency is added — the standard `math` package plus
+the existing `gonum/stat` normal/χ² helpers are sufficient. There is
+no `scipy` port.
 
 

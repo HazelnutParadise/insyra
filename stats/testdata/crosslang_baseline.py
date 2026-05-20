@@ -1482,6 +1482,309 @@ def main():
             out = {"value": ((g2 * (n + 1) + 6) * (n - 1)) / ((n - 2) * (n - 3))}
         else:
             out = {"value": (g2 + 3) * ((1 - 1 / n) ** 2) - 3}
+    elif method in ("wilcoxon_single", "wilcoxon_paired"):
+        x = np.array(payload["x"], dtype=float)
+        if method == "wilcoxon_paired":
+            y = np.array(payload["y"], dtype=float)
+            diffs = x - y
+        else:
+            mu_val = float(payload["mu"])
+            diffs = x - mu_val
+        alt_in = payload["alt"]
+        # Map R-style alternative to scipy.
+        alt_map = {"two.sided": "two-sided", "greater": "greater", "less": "less"}
+        alt_sp = alt_map[alt_in]
+        cl = float(payload["cl"])
+        nonzero = diffs[diffs != 0]
+        n_eff = int(len(nonzero))
+        abs_d = np.abs(nonzero)
+        unique_abs = len(np.unique(abs_d))
+        has_ties = unique_abs != len(nonzero)
+        use_exact = (not has_ties) and (n_eff < 50)
+
+        if n_eff == 0:
+            out = {
+                "stat": float("nan"), "p": float("nan"), "z": float("nan"),
+                "method": "undefined", "n_eff": 0,
+                "ci_lo": float("nan"), "ci_hi": float("nan"),
+                "rank_biserial": float("nan"),
+            }
+        else:
+            # Compute W+ explicitly to match Go.
+            ranks = st.rankdata(abs_d, method="average")
+            signs = np.sign(nonzero)
+            wplus = float(np.sum(ranks[signs > 0]))
+            total_rank = n_eff * (n_eff + 1) / 2
+
+            # Use scipy.stats.wilcoxon for the p-value path that matches R.
+            wmode = "exact" if use_exact else "approx"
+            if method == "wilcoxon_paired":
+                w_res = st.wilcoxon(x, y, alternative=alt_sp, mode=wmode,
+                                    correction=(not use_exact), zero_method="wilcox")
+            else:
+                w_res = st.wilcoxon(diffs, alternative=alt_sp, mode=wmode,
+                                    correction=(not use_exact), zero_method="wilcox")
+            p_val = float(w_res.pvalue)
+            # scipy's statistic is min(W+, W-); rebuild W+ ourselves above to match Go.
+            stat_val = wplus
+
+            # Asymptotic z (NaN for exact mode).
+            if use_exact:
+                z_val = float("nan")
+                method_tag = "exact"
+            else:
+                # Match R wilcox.test: tie correction over RANKS (table(r)),
+                # not over the |d_i| values. They diverge when subtraction
+                # rounding splits "logically equal" values into floats that
+                # differ by 1 ulp.
+                _, cts = np.unique(ranks, return_counts=True)
+                tie_sum = float(np.sum(cts ** 3 - cts))
+                mu_w = n_eff * (n_eff + 1) / 4
+                sigma2 = n_eff * (n_eff + 1) * (2 * n_eff + 1) / 24 - tie_sum / 48
+                sigma = math.sqrt(sigma2)
+                correction = 0.0
+                if alt_in == "two.sided":
+                    if stat_val > mu_w:
+                        correction = 0.5
+                    elif stat_val < mu_w:
+                        correction = -0.5
+                elif alt_in == "greater":
+                    correction = 0.5
+                else:
+                    correction = -0.5
+                z_val = (stat_val - mu_w - correction) / sigma
+                method_tag = "asymptotic"
+
+            # Hodges-Lehmann CI: walsh averages + qsignrank or asymptotic.
+            walsh = sorted(((nonzero[i] + nonzero[j]) / 2
+                            for i in range(n_eff) for j in range(i, n_eff)))
+            K = len(walsh)
+            alpha = 1 - cl
+
+            def qsignrank(p, n):
+                # smallest k s.t. P(W+ <= k) >= p
+                m = n * (n + 1) // 2
+                cnt = [0.0] * (m + 1)
+                cnt[0] = 1.0
+                for kk in range(1, n + 1):
+                    for s in range(m, kk - 1, -1):
+                        cnt[s] += cnt[s - kk]
+                total = 2.0 ** n
+                cum = 0.0
+                for k in range(m + 1):
+                    cum += cnt[k]
+                    if cum / total >= p:
+                        return k
+                return m
+
+            def cutoff(a):
+                if a <= 0:
+                    return 0
+                if use_exact:
+                    qu = qsignrank(a, n_eff)
+                    if qu == 0:
+                        qu = 1
+                    return qu
+                zcrit = st.norm.ppf(1 - a)
+                cf = mu_w - zcrit * sigma - 0.5
+                return max(int(round(cf)), 1)
+
+            if alt_in == "two.sided":
+                a_lo = a_hi = alpha / 2
+            elif alt_in == "greater":
+                a_lo = alpha; a_hi = 0
+            else:
+                a_lo = 0; a_hi = alpha
+
+            qu_lo = cutoff(a_lo)
+            qu_hi = cutoff(a_hi)
+
+            if alt_in == "less":
+                ci_lo = float("-inf")
+            else:
+                idx = max(qu_lo - 1, 0)
+                if idx >= K:
+                    idx = K - 1
+                ci_lo = walsh[idx]
+            if alt_in == "greater":
+                ci_hi = float("inf")
+            else:
+                idx = max(K - qu_hi, 0)
+                if idx >= K:
+                    idx = K - 1
+                ci_hi = walsh[idx]
+
+            # For single-sample tests R reports the CI on the median(x)
+            # scale (location parameter), which is the Walsh CI of (x - mu)
+            # shifted back by + mu. PairedWilcoxon already uses the natural
+            # (x - y) scale so no shift is applied.
+            ci_offset = 0.0
+            if method == "wilcoxon_single":
+                ci_offset = float(payload["mu"])
+            if math.isfinite(ci_lo):
+                ci_lo += ci_offset
+            if math.isfinite(ci_hi):
+                ci_hi += ci_offset
+
+            rank_biserial = (2 * wplus - total_rank) / total_rank
+
+            out = {
+                "stat": stat_val, "p": p_val, "z": z_val,
+                "method": method_tag, "n_eff": n_eff,
+                "ci_lo": ci_lo, "ci_hi": ci_hi,
+                "rank_biserial": rank_biserial,
+            }
+    elif method == "mwu":
+        x = np.array(payload["x"], dtype=float)
+        y = np.array(payload["y"], dtype=float)
+        alt_in = payload["alt"]
+        alt_map = {"two.sided": "two-sided", "greater": "greater", "less": "less"}
+        alt_sp = alt_map[alt_in]
+        cl = float(payload["cl"])
+        n1 = len(x); n2 = len(y)
+
+        # Joint rank with ties for U1, U2.
+        all_v = np.concatenate([x, y])
+        ranks = st.rankdata(all_v, method="average")
+        r1 = float(np.sum(ranks[:n1]))
+        u1 = r1 - n1 * (n1 + 1) / 2
+        u2 = n1 * n2 - u1
+        stat_val = min(u1, u2)
+
+        # ties?
+        _, cts = np.unique(all_v, return_counts=True)
+        cts_t = cts[cts >= 2]
+        has_ties = len(cts_t) > 0
+        use_exact = (not has_ties) and (n1 < 50) and (n2 < 50)
+
+        # scipy mannwhitneyu p-value path
+        wmode = "exact" if use_exact else "asymptotic"
+        mw = st.mannwhitneyu(x, y, alternative=alt_sp, method=wmode,
+                             use_continuity=(not use_exact))
+        p_val = float(mw.pvalue)
+
+        mu_u = n1 * n2 / 2
+        if use_exact:
+            z_val = float("nan")
+            method_tag = "exact"
+        else:
+            N = n1 + n2
+            tie_sum = float(np.sum(cts_t ** 3 - cts_t))
+            tie_factor = 1 - tie_sum / (N ** 3 - N)
+            sigma2 = n1 * n2 * (N + 1) / 12 * tie_factor
+            sigma = math.sqrt(sigma2)
+            correction = 0.0
+            if alt_in == "two.sided":
+                if u1 > mu_u:
+                    correction = 0.5
+                elif u1 < mu_u:
+                    correction = -0.5
+            elif alt_in == "greater":
+                correction = 0.5
+            else:
+                correction = -0.5
+            z_val = (u1 - mu_u - correction) / sigma
+            method_tag = "asymptotic"
+
+        # Hodges-Lehmann shift CI
+        diffs_sorted = sorted(
+            x[i] - y[j] for i in range(n1) for j in range(n2)
+        )
+        K = len(diffs_sorted)
+        alpha = 1 - cl
+
+        def qwilcox(p, m, n):
+            mu = m * n
+            dp = [[0.0] * (mu + 1) for _ in range(m + 1)]
+            for ii in range(m + 1):
+                dp[ii][0] = 1.0
+            for jj in range(1, n + 1):
+                for ii in range(1, m + 1):
+                    for uu in range(jj, mu + 1):
+                        dp[ii][uu] += dp[ii - 1][uu - jj]
+            total = float(sum(dp[m]))
+            cum = 0.0
+            for k in range(mu + 1):
+                cum += dp[m][k]
+                if cum / total >= p:
+                    return k
+            return mu
+
+        def cutoff(a):
+            if a <= 0:
+                return 0
+            if use_exact:
+                qu = qwilcox(a, n1, n2)
+                if qu == 0:
+                    qu = 1
+                return qu
+            zcrit = st.norm.ppf(1 - a)
+            cf = mu_u - zcrit * sigma - 0.5
+            return max(int(round(cf)), 1)
+
+        if alt_in == "two.sided":
+            a_lo = a_hi = alpha / 2
+        elif alt_in == "greater":
+            a_lo = alpha; a_hi = 0
+        else:
+            a_lo = 0; a_hi = alpha
+
+        qu_lo = cutoff(a_lo)
+        qu_hi = cutoff(a_hi)
+        if alt_in == "less":
+            ci_lo = float("-inf")
+        else:
+            idx = max(qu_lo - 1, 0)
+            if idx >= K:
+                idx = K - 1
+            ci_lo = diffs_sorted[idx]
+        if alt_in == "greater":
+            ci_hi = float("inf")
+        else:
+            idx = max(K - qu_hi, 0)
+            if idx >= K:
+                idx = K - 1
+            ci_hi = diffs_sorted[idx]
+
+        rank_biserial = 1 - 2 * u1 / (n1 * n2)
+        cles = u1 / (n1 * n2)
+
+        out = {
+            "stat": stat_val, "u1": u1, "u2": u2,
+            "p": p_val, "z": z_val, "method": method_tag,
+            "ci_lo": ci_lo, "ci_hi": ci_hi,
+            "rank_biserial": rank_biserial, "cles_a12": cles,
+        }
+    elif method == "kruskal":
+        groups = [np.array(g, dtype=float) for g in payload["groups"]]
+        kw = st.kruskal(*groups)
+        H = float(kw.statistic)
+        p_val = float(kw.pvalue)
+        k = len(groups)
+        all_v = np.concatenate(groups)
+        labels = np.concatenate([np.full(len(g), i) for i, g in enumerate(groups)])
+        ranks = st.rankdata(all_v, method="average")
+        group_rank_sum = [float(np.sum(ranks[labels == i])) for i in range(k)]
+        N = len(all_v)
+        eps2 = H / (N - 1)
+        out = {
+            "stat": H, "p": p_val, "df": float(k - 1),
+            "n_total": N, "group_rank_sum": group_rank_sum,
+            "epsilon_squared": eps2,
+        }
+    elif method == "friedman":
+        subjects = [np.array(s, dtype=float) for s in payload["subjects"]]
+        mat = np.array(subjects)
+        n, k = mat.shape
+        # Use scipy.friedmanchisquare; it takes columns as separate args.
+        fc = st.friedmanchisquare(*[mat[:, j] for j in range(k)])
+        Q = float(fc.statistic)
+        p_val = float(fc.pvalue)
+        W = Q / (n * (k - 1))
+        out = {
+            "stat": Q, "p": p_val, "df": float(k - 1),
+            "n_subjects": n, "k_conditions": k, "kendalls_w": W,
+        }
     else:
         raise ValueError(f"unsupported method: {method}")
 

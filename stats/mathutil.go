@@ -89,6 +89,64 @@ func fisherZInverse(z float64) float64 {
 	return (exp2z - 1) / (exp2z + 1)
 }
 
+// rankBiserialMWU returns the rank-biserial correlation r_rb for the
+// Mann-Whitney U test: r_rb = 1 - 2 * U1 / (n1 * n2). Equivalent to
+// Cliff's delta; range [-1, 1]. U1 here is the U for the first sample.
+func rankBiserialMWU(u1 float64, n1, n2 int) float64 {
+	if n1 <= 0 || n2 <= 0 {
+		return math.NaN()
+	}
+	return 1.0 - 2.0*u1/(float64(n1)*float64(n2))
+}
+
+// rankBiserialMatched returns the rank-biserial correlation r_rb for
+// paired / single-sample Wilcoxon signed-rank tests:
+//
+//	r_rb = (W+ - W-) / (W+ + W-)
+//	     = (2 * Wplus - n*(n+1)/2) / (n*(n+1)/2)
+//
+// where n is the effective sample size (zeros dropped under "wilcox"
+// zero-method). Range [-1, 1].
+func rankBiserialMatched(wPlus float64, nEff int) float64 {
+	if nEff <= 0 {
+		return math.NaN()
+	}
+	total := float64(nEff) * float64(nEff+1) / 2.0
+	wMinus := total - wPlus
+	return (wPlus - wMinus) / total
+}
+
+// clesA12 returns the Common Language Effect Size A12 = P(X > Y) + 0.5 *
+// P(X = Y). When U1 is computed with mid-ranks (ties contribute 0.5),
+// this collapses to A12 = U1 / (n1 * n2). Range [0, 1]; A12 = 0.5 means
+// no effect.
+func clesA12(u1 float64, n1, n2 int) float64 {
+	if n1 <= 0 || n2 <= 0 {
+		return math.NaN()
+	}
+	return u1 / (float64(n1) * float64(n2))
+}
+
+// epsilonSquaredKW returns the Kruskal-Wallis epsilon-squared effect size:
+// epsilon^2 = H / (N - 1). Range [0, 1]. Matches the rcompanion convention
+// of using the tie-corrected H and total sample size N.
+func epsilonSquaredKW(h float64, n int) float64 {
+	if n <= 1 {
+		return math.NaN()
+	}
+	return h / float64(n-1)
+}
+
+// kendallsW returns Kendall's coefficient of concordance W for Friedman:
+// W = Q / (n * (k - 1)), where Q is the tie-corrected Friedman statistic,
+// n is the number of subjects, k is the number of conditions. Range [0, 1].
+func kendallsW(q float64, n, k int) float64 {
+	if n <= 0 || k <= 1 {
+		return math.NaN()
+	}
+	return q / (float64(n) * float64(k-1))
+}
+
 func pearsonFisherCI(r, n, confidenceLevel float64) *[2]float64 {
 	if n <= 3 {
 		return nanCIPtr()
