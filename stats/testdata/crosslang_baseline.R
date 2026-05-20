@@ -1163,6 +1163,183 @@ if (method == "single_t") {
   } else {
     out <- list(value = (g2 + 3) * ((1 - 1 / n)^2) - 3)
   }
+} else if (method == "wilcoxon_single" || method == "wilcoxon_paired") {
+  x <- as.double(unlist(payload$x))
+  if (method == "wilcoxon_paired") {
+    y <- as.double(unlist(payload$y))
+    diffs <- x - y
+  } else {
+    mu <- as.double(payload$mu)
+    diffs <- x - mu
+  }
+  alt <- as.character(payload$alt)
+  cl <- as.double(payload$cl)
+  nonzero <- diffs[diffs != 0]
+  n_eff <- length(nonzero)
+  has_ties <- length(unique(abs(nonzero))) != length(nonzero)
+  use_exact <- (!has_ties) && (n_eff < 50)
+
+  if (method == "wilcoxon_paired") {
+    r <- suppressWarnings(wilcox.test(x, y, paired = TRUE, alternative = alt,
+                                      conf.int = TRUE, conf.level = cl,
+                                      exact = use_exact, correct = !use_exact))
+  } else {
+    r <- suppressWarnings(wilcox.test(x, mu = mu, alternative = alt,
+                                      conf.int = TRUE, conf.level = cl,
+                                      exact = use_exact, correct = !use_exact))
+  }
+
+  stat_val <- as.numeric(r$statistic)
+  p_val <- r$p.value
+  ci <- as.numeric(r$conf.int)
+
+  # Compute Go-style z (asymptotic only). For exact mode return NaN.
+  if (use_exact) {
+    z_val <- NaN
+    method_tag <- "exact"
+  } else {
+    # Tie-corrected sigma. NTIES is over RANK values (matches R wilcox.test
+    # internals): for nonzero |d_i| values that are bit-equal, they share a
+    # mid-rank; values differing by even 1 ulp get distinct ranks. Using
+    # table(abs_d) directly produces a slightly different tie count when
+    # subtraction rounding splits values that "should" be equal.
+    abs_d <- abs(nonzero)
+    rk <- rank(abs_d)
+    NTIES <- table(rk)
+    sum_t3 <- sum(as.numeric(NTIES)^3 - as.numeric(NTIES))
+    mu_W <- n_eff * (n_eff + 1) / 4
+    sigma2 <- n_eff * (n_eff + 1) * (2 * n_eff + 1) / 24 - sum_t3 / 48
+    sigma <- sqrt(sigma2)
+    correction <- 0
+    if (alt == "two.sided") {
+      if (stat_val > mu_W) correction <- 0.5
+      else if (stat_val < mu_W) correction <- -0.5
+    } else if (alt == "greater") {
+      correction <- 0.5
+    } else if (alt == "less") {
+      correction <- -0.5
+    }
+    z_val <- (stat_val - mu_W - correction) / sigma
+    method_tag <- "asymptotic"
+  }
+
+  # rank-biserial = (W+ - W-) / (W+ + W-)
+  total_rank <- n_eff * (n_eff + 1) / 2
+  W_minus <- total_rank - stat_val
+  rank_biserial <- (stat_val - W_minus) / total_rank
+
+  out <- list(
+    stat = stat_val,
+    p = p_val,
+    z = z_val,
+    method = method_tag,
+    n_eff = n_eff,
+    ci_lo = ci[1],
+    ci_hi = ci[2],
+    rank_biserial = rank_biserial
+  )
+} else if (method == "mwu") {
+  x <- as.double(unlist(payload$x))
+  y <- as.double(unlist(payload$y))
+  alt <- as.character(payload$alt)
+  cl <- as.double(payload$cl)
+  n1 <- length(x); n2 <- length(y)
+  all_v <- c(x, y)
+  has_ties <- length(unique(all_v)) != length(all_v)
+  use_exact <- (!has_ties) && (n1 < 50) && (n2 < 50)
+
+  r <- suppressWarnings(wilcox.test(x, y, paired = FALSE, alternative = alt,
+                                    conf.int = TRUE, conf.level = cl,
+                                    exact = use_exact, correct = !use_exact))
+  u1 <- as.numeric(r$statistic)
+  u2 <- n1 * n2 - u1
+  stat_val <- min(u1, u2)
+  p_val <- r$p.value
+  ci <- as.numeric(r$conf.int)
+
+  mu_U <- n1 * n2 / 2
+  if (use_exact) {
+    z_val <- NaN
+    method_tag <- "exact"
+  } else {
+    # Tie-adjusted variance.
+    rk <- rank(all_v)
+    tab <- table(all_v)
+    tab <- tab[tab >= 2]
+    sum_t3 <- sum(as.numeric(tab)^3 - as.numeric(tab))
+    N <- n1 + n2
+    tie_factor <- 1 - sum_t3 / (N^3 - N)
+    sigma2 <- n1 * n2 * (N + 1) / 12 * tie_factor
+    sigma <- sqrt(sigma2)
+    correction <- 0
+    if (alt == "two.sided") {
+      if (u1 > mu_U) correction <- 0.5
+      else if (u1 < mu_U) correction <- -0.5
+    } else if (alt == "greater") {
+      correction <- 0.5
+    } else if (alt == "less") {
+      correction <- -0.5
+    }
+    z_val <- (u1 - mu_U - correction) / sigma
+    method_tag <- "asymptotic"
+  }
+
+  rank_biserial <- 1 - 2 * u1 / (n1 * n2)
+  cles <- u1 / (n1 * n2)
+
+  out <- list(
+    stat = stat_val,
+    u1 = u1,
+    u2 = u2,
+    p = p_val,
+    z = z_val,
+    method = method_tag,
+    ci_lo = ci[1],
+    ci_hi = ci[2],
+    rank_biserial = rank_biserial,
+    cles_a12 = cles
+  )
+} else if (method == "kruskal") {
+  groups <- lapply(payload$groups, function(g) as.double(unlist(g)))
+  r <- kruskal.test(groups)
+  H <- as.numeric(r$statistic)
+  p_val <- r$p.value
+  df <- as.numeric(r$parameter)
+
+  all_v <- unlist(groups)
+  labels <- unlist(mapply(function(i, g) rep(i, length(g)), seq_along(groups), groups))
+  rk <- rank(all_v)
+  group_rank_sum <- as.numeric(tapply(rk, labels, sum))
+  N <- length(all_v)
+  eps2 <- H / (N - 1)
+
+  out <- list(
+    stat = H,
+    p = p_val,
+    df = df,
+    n_total = N,
+    group_rank_sum = group_rank_sum,
+    epsilon_squared = eps2
+  )
+} else if (method == "friedman") {
+  subjects <- lapply(payload$subjects, function(s) as.double(unlist(s)))
+  mat <- do.call(rbind, subjects)
+  r <- friedman.test(mat)
+  Q <- as.numeric(r$statistic)
+  p_val <- r$p.value
+  df <- as.numeric(r$parameter)
+  n <- nrow(mat)
+  k <- ncol(mat)
+  W <- Q / (n * (k - 1))
+
+  out <- list(
+    stat = Q,
+    p = p_val,
+    df = df,
+    n_subjects = n,
+    k_conditions = k,
+    kendalls_w = W
+  )
 } else {
   stop(paste("unsupported method:", method))
 }
