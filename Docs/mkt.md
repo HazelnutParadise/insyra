@@ -18,6 +18,7 @@ The mkt package provides marketing analytics functions for customer segmentation
 
 - **RFM Analysis**: Customer segmentation based on Recency, Frequency, and Monetary value
 - **CAI Analysis**: Customer Activity Index calculation to evaluate customer activity trends over time
+- **Basket Analysis**: Market basket analysis producing item-by-item support, confidence, and lift matrices from order/product transaction data
 
 ---
 
@@ -92,6 +93,38 @@ type CAIConfig struct {
 - `TradingDayColName`: Column name for transaction date (column index takes precedence if both are provided)
 - `DateFormat`: Date format string using `YYYY`, `MM`, `DD` tokens (defaults to "YYYY-MM-DD" if empty)
 - `TimeScale`: Time scale for analysis (defaults to "daily" if empty)
+
+### BasketConfig
+
+Configuration structure for market basket analysis. Input data should follow the same shape as RFM / CAI: each row represents one product appearing in one order.
+
+```go
+type BasketConfig struct {
+    OrderIDColIndex   string // The column index(A, B, C, ...) of order ID in the data table
+    OrderIDColName    string // The column name of order ID in the data table (if both index and name are provided, index takes precedence)
+    ProductIDColIndex string // The column index(A, B, C, ...) of product ID in the data table
+    ProductIDColName  string // The column name of product ID in the data table (if both index and name are provided, index takes precedence)
+}
+```
+
+**Fields:**
+
+- `OrderIDColIndex`: Column index for order ID (e.g., "A", "B", "C")
+- `OrderIDColName`: Column name for order ID (column index takes precedence if both are provided)
+- `ProductIDColIndex`: Column index for product ID
+- `ProductIDColName`: Column name for product ID (column index takes precedence if both are provided)
+
+### BasketResult
+
+Container holding the three matrices returned by `BasketAnalysis`. Each matrix is an item × item DataTable where rows represent the antecedent item A and columns represent the consequent item B. Row and column names are set to the product IDs (sorted lexicographically).
+
+```go
+type BasketResult struct {
+    Support    insyra.IDataTable // Support matrix:    P(A ∩ B)
+    Confidence insyra.IDataTable // Confidence matrix: P(B | A)
+    Lift       insyra.IDataTable // Lift matrix:       Support(A,B) / (P(A) * P(B))
+}
+```
 
 ---
 
@@ -175,6 +208,46 @@ Calculates the Customer Activity Index (CAI) for each customer based on their tr
 - `MLE`: Mean Lifetime Expectancy (average transaction interval)
 - `WMLE`: Weighted Mean Lifetime Expectancy
 - `CAI`: Customer Activity Index (activity trend indicator)
+
+### BasketAnalysis
+
+Market basket analysis computes association strength between every pair of products from a transaction-level data table.
+
+For every pair of items (A, B):
+
+- **Support(A, B)**  = orders containing both A and B / total orders
+- **Confidence(A → B)** = orders containing both A and B / orders containing A
+- **Lift(A → B)** = Support(A, B) / (P(A) × P(B))
+
+Lift > 1 means the combination is meaningful (A and B co-occur more often than independence would predict); Lift < 1 means the combination is weaker than independence; Lift = 1 means independent.
+
+```go
+func BasketAnalysis(dt insyra.IDataTable, config BasketConfig) *BasketResult
+```
+
+**Description:**
+
+Performs market basket analysis on the given transaction data and returns three item × item matrices (support, confidence, lift) wrapped in a `BasketResult`. Each order is treated as a **set** of items, so a product appearing multiple times in the same order is counted only once.
+
+**Parameters:**
+
+- `dt`: Input data table containing transaction records, with one row per (order, product) pair
+- `config`: Configuration for basket analysis
+
+**Returns:**
+
+- `*BasketResult`: A struct containing `Support`, `Confidence`, and `Lift` matrices as `insyra.IDataTable` values; or `nil` if an error occurs
+
+**Output Matrix Structure:**
+
+All three matrices share the same shape and labelling:
+
+- Rows: antecedent item A (row names = product IDs)
+- Columns: consequent item B (column names = product IDs)
+- Cell `(A, B)`: the corresponding metric value (Support / Confidence / Lift)
+
+> [!NOTE]
+> The diagonal `(A, A)` is always populated: `Support(A, A) = P(A)`, `Confidence(A → A) = 1`, and `Lift(A, A) = 1 / P(A)`.
 
 ---
 
@@ -381,6 +454,64 @@ result := mkt.CAI(dt, config)
 // Positive CAI indicates increasing activity, negative indicates decreasing
 ```
 
+### Basic Basket Analysis
+
+```go
+package main
+
+import (
+    "fmt"
+    "github.com/HazelnutParadise/Go-Utils/conv"
+    "github.com/HazelnutParadise/insyra"
+    "github.com/HazelnutParadise/insyra/mkt"
+)
+
+func main() {
+    // Each row = one product in one order.
+    // 5 orders:
+    //   O1: A, B, C
+    //   O2: A, B
+    //   O3: A, C
+    //   O4: B, C
+    //   O5: A
+    dt := insyra.NewDataTable()
+    rows := []struct{ order, product string }{
+        {"O1", "A"}, {"O1", "B"}, {"O1", "C"},
+        {"O2", "A"}, {"O2", "B"},
+        {"O3", "A"}, {"O3", "C"},
+        {"O4", "B"}, {"O4", "C"},
+        {"O5", "A"},
+    }
+    for _, r := range rows {
+        dt.AppendRowsByColIndex(map[string]any{
+            "A": r.order,
+            "B": r.product,
+        })
+    }
+    dt.SetColNameByIndex("A", "OrderID")
+    dt.SetColNameByIndex("B", "ProductID")
+
+    result := mkt.BasketAnalysis(dt, mkt.BasketConfig{
+        OrderIDColName:   "OrderID",
+        ProductIDColName: "ProductID",
+    })
+    if result == nil {
+        fmt.Println("Basket analysis failed")
+        return
+    }
+
+    result.Support.Show()
+    result.Confidence.Show()
+    result.Lift.Show()
+
+    // Look up a specific cell, e.g. Confidence(A → B)
+    rowIdx, _ := result.Confidence.GetRowIndexByName("A")
+    colIdx := result.Confidence.GetColIndexByName("B")
+    conf := conv.ParseF64(result.Confidence.GetElement(rowIdx, colIdx))
+    fmt.Printf("Confidence(A→B) = %.3f\n", conf) // 0.500
+}
+```
+
 ---
 
 ## Error Handling
@@ -433,6 +564,21 @@ The function logs warnings for specific issues:
 - Missing column specifications
 - Data parsing failures
 - Customers with insufficient transaction data (less than 2 transactions)
+
+The BasketAnalysis function returns `nil` in the following cases:
+
+- Missing required configuration fields (OrderID or ProductID columns)
+- No valid orders found in the input data (all rows had empty order or product IDs)
+
+Always check the return value:
+
+```go
+result := mkt.BasketAnalysis(dt, config)
+if result == nil {
+    insyra.LogError("mkt", "BasketAnalysis", "Analysis failed")
+    return
+}
+```
 
 ---
 
