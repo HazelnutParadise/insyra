@@ -16,6 +16,9 @@ func Start(ctx *commands.ExecContext) error {
 	if ctx == nil {
 		ctx = &commands.ExecContext{}
 	}
+	if ctx.Env == nil {
+		ctx.Env = env.Default()
+	}
 	ctx.InREPL = true
 	defer func() {
 		ctx.InREPL = false
@@ -24,14 +27,14 @@ func Start(ctx *commands.ExecContext) error {
 		ctx.EnvName = "default"
 	}
 	if ctx.EnvPath == "" {
-		envPath, err := env.Open(ctx.EnvName)
+		envPath, err := ctx.Env.Open(ctx.EnvName)
 		if err != nil {
 			return err
 		}
 		ctx.EnvPath = envPath
 	}
 	if ctx.Vars == nil {
-		vars, err := env.RestoreVariables(ctx.EnvName)
+		vars, err := ctx.Env.RestoreVariables(ctx.EnvName)
 		if err != nil {
 			ctx.Vars = map[string]any{}
 		} else {
@@ -54,8 +57,9 @@ func Start(ctx *commands.ExecContext) error {
 		_ = instance.Close()
 	}()
 	defer func() {
-		_ = env.SaveState(ctx.EnvName, ctx.Vars)
+		_ = ctx.Env.SaveState(ctx.EnvName, ctx.Vars)
 	}()
+	defer commands.CloseAllDBConns(ctx)
 
 	for {
 		line, err := instance.ReadLine()
@@ -81,8 +85,8 @@ func Start(ctx *commands.ExecContext) error {
 			_, _ = fmt.Fprintln(instance.Stderr(), style.ErrorText(err.Error()))
 		}
 
-		_ = env.AppendHistory(ctx.EnvName, trimmed)
-		_ = env.SaveState(ctx.EnvName, ctx.Vars)
+		_ = ctx.Env.AppendHistory(ctx.EnvName, trimmed)
+		_ = ctx.Env.SaveState(ctx.EnvName, ctx.Vars)
 
 		if ctx.EnvName != "" {
 			instance.SetPrompt(prompt(ctx.EnvName))

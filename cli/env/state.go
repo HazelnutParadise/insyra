@@ -21,8 +21,8 @@ type State struct {
 	LastAccess string                        `json:"lastAccess"`
 }
 
-func SaveState(envName string, vars map[string]any) error {
-	envPath, err := ResolveEnvPath(envName)
+func (m *Manager) SaveState(envName string, vars map[string]any) error {
+	envPath, err := m.ResolveEnvPath(envName)
 	if err != nil {
 		return err
 	}
@@ -40,8 +40,8 @@ func SaveState(envName string, vars map[string]any) error {
 	return os.WriteFile(filepath.Join(envPath, "state.json"), payload, 0o644)
 }
 
-func LoadState(envName string) (*State, error) {
-	envPath, err := ResolveEnvPath(envName)
+func (m *Manager) LoadState(envName string) (*State, error) {
+	envPath, err := m.ResolveEnvPath(envName)
 	if err != nil {
 		return nil, err
 	}
@@ -59,8 +59,8 @@ func LoadState(envName string) (*State, error) {
 	return &state, nil
 }
 
-func RestoreVariables(envName string) (map[string]any, error) {
-	state, err := LoadState(envName)
+func (m *Manager) RestoreVariables(envName string) (map[string]any, error) {
+	state, err := m.LoadState(envName)
 	if err != nil {
 		return nil, err
 	}
@@ -118,8 +118,8 @@ func deserializeVariable(serialized SerializedVariable) any {
 	return serialized.Data
 }
 
-func AppendHistory(envName, command string) error {
-	envPath, err := ResolveEnvPath(envName)
+func (m *Manager) AppendHistory(envName, command string) error {
+	envPath, err := m.ResolveEnvPath(envName)
 	if err != nil {
 		return err
 	}
@@ -135,8 +135,8 @@ func AppendHistory(envName, command string) error {
 	return err
 }
 
-func ReadHistory(envName string) ([]string, error) {
-	envPath, err := ResolveEnvPath(envName)
+func (m *Manager) ReadHistory(envName string) ([]string, error) {
+	envPath, err := m.ResolveEnvPath(envName)
 	if err != nil {
 		return nil, err
 	}
@@ -163,4 +163,26 @@ func ReadHistory(envName string) ([]string, error) {
 		lines = append(lines, current)
 	}
 	return lines, nil
+}
+
+// Package-level wrappers around the default Manager.
+
+func SaveState(envName string, vars map[string]any) error {
+	return defaultManager.SaveState(envName, vars)
+}
+
+func LoadState(envName string) (*State, error) {
+	return defaultManager.LoadState(envName)
+}
+
+func RestoreVariables(envName string) (map[string]any, error) {
+	return defaultManager.RestoreVariables(envName)
+}
+
+func AppendHistory(envName, command string) error {
+	return defaultManager.AppendHistory(envName, command)
+}
+
+func ReadHistory(envName string) ([]string, error) {
+	return defaultManager.ReadHistory(envName)
 }

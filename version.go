@@ -1,4 +1,4 @@
 package insyra
 
-const Version = "0.2.17"
+const Version = "0.2.18"
 const VersionName = "Pier-2"

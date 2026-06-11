@@ -374,7 +374,7 @@ Provides read and write support for the Apache Parquet file format, deeply integ
 
 ### **[mkt](/Docs/mkt.md)**
 
-Provides marketing-related data analysis functions, such as RFM analysis. No need to worry about how to calculate, one function does it all!
+Provides marketing-related data analysis functions, including RFM, Customer Activity Index, and market basket analysis. No need to worry about how to calculate, one function does it all!
 
 ### **[finance](/Docs/finance.md)**
 

@@ -97,24 +97,66 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 - Example: `insyra newdt x y`
 
 ### `load`
-- Description: Load data file into DataTable variable
-- Usage: `load <file>|parquet <file> [cols <c1,c2,...>] [rowgroups <i1,i2,...>] [sheet <name>] [as <var>]`
-- Example: `insyra load parquet data.parquet cols id,amount rowgroups 0,1 as t`
+- Description: Load data into a DataTable variable from a file, parquet, or SQL connection
+- Usage: `load <file> [headers true|false] [rownames true|false] [encoding <enc>] [sheet <name>] | load parquet <file> [cols <c1,c2,...>] [rowgroups <i1,i2,...>] | load sql <conn> <table> [where "..."] [order "..."] [limit N] [offset N] [cols "c1,c2"] [schema <s>] [indexcol <c>] [parsedates "c1,c2"] | load sql <conn> query "<SQL>" [params <v1> <v2> ...] [as <var>]`
+- Defaults: `headers=true`, `rownames=false`. Booleans accept `true|false|yes|no|on|off|1|0`.
+- Examples:
+  - `insyra load data.csv as t`
+  - `insyra load matrix.csv headers false as t` (no header row)
+  - `insyra load gdp.csv rownames true as t` (first column = row names)
+  - `insyra load legacy.csv encoding big5 as t`
+  - `insyra load report.xlsx sheet 2025 rownames true as t`
+  - `insyra load parquet data.parquet cols id,amount rowgroups 0,1 as t`
+  - `insyra load sql main customers as customers`
+  - `insyra load sql main query "SELECT * FROM orders WHERE year = ?" params 2025 as orders`
 
 ### `read`
 - Description: Quick preview a file without saving variable
-- Usage: `read <file>`
+- Usage: `read <file> [headers true|false] [rownames true|false] [encoding <enc>] [sheet <name>]`
 - Example: `insyra read data.csv`
+- Note: forwards the same file options as `load`.
 
 ### `save`
-- Description: Save DataTable variable to file
-- Usage: `save <var> <file>`
-- Example: `insyra save x data.csv`
+- Description: Save a DataTable variable to a file or SQL connection
+- Usage: `save <var> <file> [headers true|false] [rownames true|false] [bom true|false] | save <var> sql <conn> <table> [if-exists fail|replace|append] [batch N] [schema <s>] [rownames]`
+- Defaults: `headers=true`, `rownames=false`, `bom=false`. Booleans accept `true|false|yes|no|on|off|1|0`.
+- Examples:
+  - `insyra save x data.csv`
+  - `insyra save matrix data.csv headers false`
+  - `insyra save gdp out.csv rownames true`
+  - `insyra save report data.csv bom true` (UTF-8 BOM for Windows Excel)
+  - `insyra save report sql main report_table if-exists replace batch 1000`
 
 ### `convert`
 - Description: Convert file formats (csv<->xlsx)
 - Usage: `convert <input> <output>`
 - Example: `insyra convert input.csv output.xlsx`
+
+## Database (sqlite / mysql / postgres, pure-Go drivers)
+
+### `db`
+- Description: Manage named database connections (sqlite, mysql, postgres; pure-Go drivers)
+- Usage: `db connect <name> <dsn> | db list | db tables <name> [schema <s>] | db disconnect <name>`
+- Example: `insyra db connect main sqlite:./demo.db`
+- DSN forms:
+  - `sqlite:<path-or-uri>`, e.g. `sqlite::memory:`, `sqlite:./foo.db`
+  - `mysql:<go-sql-driver-dsn>`, e.g. `mysql:user:pass@tcp(host:3306)/db`
+  - `mysql://user:pass@host:port/db?param=value` (URL form, auto-converted)
+  - `postgres://user:pass@host:port/db?sslmode=disable` (pgx URL form)
+  - `postgres:host=... user=... password=... dbname=...` (libpq KV form)
+- Notes: connections are environment-scoped and not persisted across CLI process restarts. Reopen them at the top of each session/script. `db list` masks passwords.
+
+### `load sql`
+- Description: Load a SQL table or query result into a DataTable
+- Usage:
+  - `load sql <conn> <table> [where "..."] [order "..."] [limit N] [offset N] [cols "c1,c2"] [schema <s>] [indexcol <c>] [parsedates "c1,c2"] [as <var>]`
+  - `load sql <conn> query "<SQL>" [params <v1> <v2> ...] [as <var>]`
+- Example: `insyra load sql main query "SELECT * FROM orders WHERE region = ?" params APAC as orders`
+
+### `save sql`
+- Description: Write a DataTable to a SQL table
+- Usage: `save <var> sql <conn> <table> [if-exists fail|replace|append] [batch N] [schema <s>] [rownames]`
+- Example: `insyra save report sql main report_table if-exists replace batch 1000`
 
 ## DataTable Structure & Access
 ### `addcol`
@@ -222,6 +264,25 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 - Description: Merge two DataTables
 - Usage: `merge <var1> <var2> <direction> <mode> [on <cols>] [as <var>]`
 - Example: `insyra merge x1 x2 inner strict`
+
+### `groupby`
+- Description: Group a DataTable and aggregate columns (split-apply-combine)
+- Usage: `groupby <var> by <col1>[,<col2>...] agg <col>:<op>[:<alias>] [<col>:<op>[:<alias>] ...] [as <var>]`
+- Example: `insyra groupby sales by region agg revenue:sum:total_rev qty:mean as report`
+- Multi-key with row-count shorthand: `insyra groupby sales by region,product agg revenue:sum count as report2`
+- Ops: `sum`, `mean` (alias `avg`), `median`, `min`, `max`, `count` (non-nil), `countall` (group size), `std`/`stdev`, `stdp`/`stdevp`, `var`, `varp`, `first`, `last`, `nunique`. Aliases default to `<col>_<op>`.
+
+### `pivot`
+- Description: Reshape long-form DataTable to wide form (long -> wide)
+- Usage: `pivot <var> index <col1[,col2,...]> columns <col> values <col> [agg <op>] [fillna <literal>] [sortcols true|false] [as <var>]`
+- Example: `insyra pivot sales index region columns product values amount agg sum fillna 0 sortcols true as wide`
+- Ops accepted by `agg` match `groupby`. When `agg` is omitted, duplicate `(index, columns)` combinations are an error.
+
+### `unpivot`
+- Description: Reshape wide-form DataTable to long form (wide -> long)
+- Usage: `unpivot <var> idvars <col1[,col2,...]> [valuevars <col1[,col2,...]>] [varname <name>] [valuename <name>] [dropna true|false] [as <var>]`
+- Example: `insyra unpivot survey idvars id valuevars Q1,Q2,Q3 varname question valuename score as long`
+- `valuevars` defaults to all non-`idvars` columns. `varname` defaults to `variable`, `valuename` to `value`. `dropna true` skips nil/NaN values.
 
 ### `ccl`
 - Description: Execute CCL statements on DataTable
@@ -386,9 +447,54 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 - Example: `insyra expsmooth x 0.3`
 
 ### `diff`
-- Description: Difference
+- Description: Difference (legacy, length n-1)
 - Usage: `diff <var> [as <var>]`
 - Example: `insyra diff x`
+
+### `diffn`
+- Description: Backward difference with same-length output and leading nils. Prefer this over `diff` when you need column-aligned results.
+- Usage: `diffn <var> <periods> [as <var>]`
+- Example: `insyra diffn price 1 as d1`
+
+### `shift`
+- Description: Shift / lag / lead a DataList. Positive periods shift right (lag); negative shift left (lead). Empty slots default to nil; override with `fill <value>`.
+- Usage: `shift <var> <periods> [fill <value>] [as <var>]`
+- Example: `insyra shift price 1 as prev_price`
+
+### `pctchange`
+- Description: Percent change over `periods` rows. Divide-by-zero / non-numeric cells emit nil.
+- Usage: `pctchange <var> <periods> [as <var>]`
+- Example: `insyra pctchange price 1 as ret`
+
+### `cumsum`
+- Description: Running total. Nil / non-numeric cells emit nil at that position but the accumulator continues (pandas `skipna=True`).
+- Usage: `cumsum <var> [as <var>]`
+- Example: `insyra cumsum pnl as cum_pnl`
+
+### `cumprod`
+- Description: Running product. Same nil semantics as `cumsum`.
+- Usage: `cumprod <var> [as <var>]`
+- Example: `insyra cumprod growth as compounded`
+
+### `cummax`
+- Description: Running maximum (historical high). Same nil semantics as `cumsum`.
+- Usage: `cummax <var> [as <var>]`
+- Example: `insyra cummax price as hwm`
+
+### `cummin`
+- Description: Running minimum (historical low). Same nil semantics as `cumsum`.
+- Usage: `cummin <var> [as <var>]`
+- Example: `insyra cummin price as trough`
+
+### `rolling`
+- Description: Rolling-window reduction. Reducers: sum, mean, min, max, median, std, var. `minobs` defaults to window; `center yes` anchors at the central row (pandas-style).
+- Usage: `rolling <var> <window> <reducer> [minobs <n>] [center yes|no] [as <var>]`
+- Example: `insyra rolling price 7 mean minobs 1 as ma7_soft`
+
+### `expanding`
+- Description: Expanding-window reduction over `in[0..=i]`. Reducers: sum, mean, min, max, median, std, var. Emits nil until `minobs` valid observations are available.
+- Usage: `expanding <var> <minobs> <reducer> [as <var>]`
+- Example: `insyra expanding pnl 1 sum as cumulative_pnl`
 
 ### `fillnan`
 - Description: Fill NaN with mean
@@ -406,6 +512,51 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 - Description: Principal component analysis
 - Usage: `pca <var> <n>`
 - Example: `insyra pca x 3`
+
+### `kmeans`
+- Description: K-means clustering
+- Usage: `kmeans <var> <k> [nstart <n>] [itermax <n>] [seed <n>] [as <var>]`
+- Example: `insyra kmeans x 3 seed 42 as labels`
+- Side variables (alias `R`): `R_centers`, `R_size`, `R_withinss`, `R_totss`, `R_totwithinss`, `R_betweenss`, `R_iter`, `R_ifault`.
+
+### `hclust`
+- Description: Hierarchical agglomerative clustering
+- Usage: `hclust <var> <method> [as <var>]`
+- Example: `insyra hclust x ward as tree`
+
+### `cutree`
+- Description: Cut a hierarchical clustering tree
+- Usage: `cutree <tree_var> k <n>|h <value> [as <var>]`
+- Example: `insyra cutree tree k 3 as labels`
+
+### `dbscan`
+- Description: Density-based clustering
+- Usage: `dbscan <var> <eps> <minpts> [as <var>]`
+- Example: `insyra dbscan x 0.5 5 as labels`
+- Side variable: `<alias>_isseed`.
+
+### `silhouette`
+- Description: Silhouette analysis
+- Usage: `silhouette <var> <labels_var> [as <var>]`
+- Example: `insyra silhouette x labels as widths`
+- Side variable: `<alias>_avg` (average silhouette width).
+
+### `knn_classify`
+- Description: K-nearest neighbors classification
+- Usage: `knn_classify <train_var> <labels_var> <test_var> <k> [weighting <uniform|distance>] [algorithm <auto|brute|kd_tree|ball_tree>] [leafsize <n>] [as <var>]`
+- Example: `insyra knn_classify train labels test 5 weighting distance as preds`
+- Side variables: `<alias>_classes`, `<alias>_probs`.
+
+### `knn_regress`
+- Description: K-nearest neighbors regression
+- Usage: `knn_regress <train_var> <targets_var> <test_var> <k> [weighting <uniform|distance>] [algorithm <auto|brute|kd_tree|ball_tree>] [leafsize <n>] [as <var>]`
+- Example: `insyra knn_regress train targets test 5 as preds`
+
+### `knn_neighbors`
+- Description: K-nearest neighbors search
+- Usage: `knn_neighbors <train_var> <test_var> <k> [algorithm <auto|brute|kd_tree|ball_tree>] [leafsize <n>] [as <var>]`
+- Example: `insyra knn_neighbors train test 5 algorithm kd_tree as nn`
+- Side variable: `<alias>_distances`.
 
 ### `ttest`
 - Description: T-test commands

@@ -10,7 +10,24 @@ import (
 )
 
 func init() {
-	_ = Register(&CommandHandler{Name: "regression", Usage: "regression <type> <y> <x...>", Description: "Regression analysis: linear/poly/exp/log", Run: runRegressionCommand})
+	_ = Register(&CommandHandler{
+		Name:        "regression",
+		Usage:       "regression <type> <y> <x...>",
+		Description: "Regression analysis: linear/poly/exp/log",
+		Forms: []string{
+			"regression linear <y> <x1> [x2 ...] [as <var>]    multiple linear regression",
+			"regression poly <y> <x> <degree> [as <var>]       polynomial regression of given degree",
+			"regression exp <y> <x> [as <var>]                 exponential regression y = a * e^(bx)",
+			"regression log <y> <x> [as <var>]                 logarithmic regression y = a + b*ln(x)",
+		},
+		Examples: []string{
+			"insyra regression linear y x1 x2 as fit",
+			"insyra regression poly y x 3 as poly3",
+			"insyra regression exp y x",
+			"insyra regression log y x",
+		},
+		Run: runRegressionCommand,
+	})
 }
 
 func runRegressionCommand(ctx *ExecContext, args []string) error {

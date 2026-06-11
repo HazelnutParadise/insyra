@@ -111,12 +111,25 @@ func PowRat(base *big.Rat, exponent int) *big.Rat {
 	return result
 }
 
-// ConvertLongDataToWide converts long data to wide data.
-// data: 觀測值(依變數)
-// factor: 因子
-// independents: 自變數
-// aggFunc: 聚合函數
-// Return DataTable.
+// Deprecated: ConvertLongDataToWide is misleadingly named — it does not produce
+// a true wide-form pivot. It groups rows by the factor column and aggregates
+// every independent column and the observation column into a single row per
+// factor (i.e. one cell per (factor, column) pair, never spreading the factor
+// values into new column headers).
+//
+// For an actual long-to-wide reshape (where unique values of one column become
+// new column headers), use (*DataTable).Pivot. For the group-and-summarise
+// behaviour this function provides, use (*DataTable).GroupBy followed by
+// Aggregate, which is type-safe, surfaces errors via Err(), and supports the
+// full AggregateOp set:
+//
+//	dt.GroupBy("factor").Aggregate(
+//	    insyra.AggregateConfig{SourceCol: "ind1", Op: insyra.OpMean},
+//	    insyra.AggregateConfig{SourceCol: "ind2", Op: insyra.OpMean},
+//	    insyra.AggregateConfig{SourceCol: "data", Op: insyra.OpMean},
+//	)
+//
+// This function will be removed in a future release.
 func ConvertLongDataToWide(data, factor IDataList, independents []IDataList, aggFunc func([]float64) float64) IDataTable {
 
 	// 檢查是否存在空的 factor 或 data

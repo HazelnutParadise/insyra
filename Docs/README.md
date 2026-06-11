@@ -82,7 +82,7 @@ dt.Show()
 
 | Document      | Description                              |
 | ------------- | ---------------------------------------- |
-| [mkt](mkt.md) | RFM analysis and Customer Activity Index |
+| [mkt](mkt.md) | RFM analysis, Customer Activity Index, and market basket analysis |
 
 #### Financial Calculations
 

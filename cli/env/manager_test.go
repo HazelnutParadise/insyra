@@ -14,7 +14,171 @@ func setupTempHome(t *testing.T) string {
 	t.Setenv("HOME", home)
 	t.Setenv("HOMEDRIVE", "")
 	t.Setenv("HOMEPATH", "")
+	t.Cleanup(func() { SetBasePath("") })
 	return home
+}
+
+func TestManagerIsolatedFromDefault(t *testing.T) {
+	setupTempHome(t)
+
+	custom := filepath.Join(t.TempDir(), "scoped")
+	mgr := NewManager(custom, "")
+
+	// Operating on the per-session manager should not touch the default
+	// manager's view (which still resolves to <home>/.insyra).
+	if err := mgr.EnsureDefaultEnvironment(); err != nil {
+		t.Fatalf("manager EnsureDefaultEnvironment: %v", err)
+	}
+
+	wantMgrPath := filepath.Join(custom, "envs", "default")
+	if _, err := os.Stat(wantMgrPath); err != nil {
+		t.Fatalf("manager-scoped default env missing: %v", err)
+	}
+
+	// Default manager root must not have been created by mgr's operations.
+	defaultBase, err := Default().BasePath()
+	if err != nil {
+		t.Fatalf("default BasePath: %v", err)
+	}
+	if defaultBase == custom {
+		t.Fatalf("default manager unexpectedly inherits custom path")
+	}
+}
+
+func TestTwoManagersWriteToOwnRoots(t *testing.T) {
+	setupTempHome(t)
+
+	rootA := filepath.Join(t.TempDir(), "A")
+	rootB := filepath.Join(t.TempDir(), "B")
+	mgrA := NewManager(rootA, "")
+	mgrB := NewManager(rootB, "")
+
+	if err := mgrA.EnsureDefaultEnvironment(); err != nil {
+		t.Fatalf("mgrA ensure: %v", err)
+	}
+	if err := mgrB.EnsureDefaultEnvironment(); err != nil {
+		t.Fatalf("mgrB ensure: %v", err)
+	}
+
+	if err := mgrA.SaveState("default", map[string]any{"only_in_a": 1}); err != nil {
+		t.Fatalf("mgrA save: %v", err)
+	}
+	if err := mgrB.SaveState("default", map[string]any{"only_in_b": 2}); err != nil {
+		t.Fatalf("mgrB save: %v", err)
+	}
+
+	stateA, err := mgrA.LoadState("default")
+	if err != nil {
+		t.Fatalf("mgrA load: %v", err)
+	}
+	stateB, err := mgrB.LoadState("default")
+	if err != nil {
+		t.Fatalf("mgrB load: %v", err)
+	}
+
+	if _, ok := stateA.Variables["only_in_a"]; !ok {
+		t.Fatalf("mgrA missing only_in_a")
+	}
+	if _, ok := stateA.Variables["only_in_b"]; ok {
+		t.Fatalf("mgrA leaked only_in_b")
+	}
+	if _, ok := stateB.Variables["only_in_b"]; !ok {
+		t.Fatalf("mgrB missing only_in_b")
+	}
+	if _, ok := stateB.Variables["only_in_a"]; ok {
+		t.Fatalf("mgrB leaked only_in_a")
+	}
+}
+
+func TestManagerCustomEnvsDirName(t *testing.T) {
+	setupTempHome(t)
+
+	root := filepath.Join(t.TempDir(), "ws", ".idensyra")
+	mgr := NewManager(root, "insights")
+
+	if got := mgr.EnvsDirName(); got != "insights" {
+		t.Fatalf("EnvsDirName = %q, want %q", got, "insights")
+	}
+
+	envsPath, err := mgr.EnvsPath()
+	if err != nil {
+		t.Fatalf("EnvsPath: %v", err)
+	}
+	if want := filepath.Join(root, "insights"); envsPath != want {
+		t.Fatalf("EnvsPath = %q, want %q", envsPath, want)
+	}
+
+	if err := mgr.EnsureDefaultEnvironment(); err != nil {
+		t.Fatalf("EnsureDefaultEnvironment: %v", err)
+	}
+
+	wantEnvPath := filepath.Join(root, "insights", "default")
+	if _, err := os.Stat(filepath.Join(wantEnvPath, "state.json")); err != nil {
+		t.Fatalf("state.json missing under custom envs dir: %v", err)
+	}
+
+	// The legacy "envs" subfolder must NOT have been created.
+	if _, err := os.Stat(filepath.Join(root, "envs")); !os.IsNotExist(err) {
+		t.Fatalf("default envs/ should not exist when custom name is used")
+	}
+}
+
+func TestManagerEmptyEnvsDirNameDefaults(t *testing.T) {
+	setupTempHome(t)
+
+	root := filepath.Join(t.TempDir(), "default-envsname")
+	mgr := NewManager(root, "")
+
+	if got := mgr.EnvsDirName(); got != "envs" {
+		t.Fatalf("EnvsDirName = %q, want %q", got, "envs")
+	}
+}
+
+func TestSetBasePathOverridesDefault(t *testing.T) {
+	setupTempHome(t)
+
+	custom := filepath.Join(t.TempDir(), "workspace", ".idensyra")
+	SetBasePath(custom)
+
+	got, err := BasePath()
+	if err != nil {
+		t.Fatalf("BasePath after override failed: %v", err)
+	}
+	if got != custom {
+		t.Fatalf("BasePath = %q, want %q", got, custom)
+	}
+
+	if err := Create("scoped"); err != nil {
+		t.Fatalf("create under override failed: %v", err)
+	}
+
+	envPath, err := ResolveEnvPath("scoped")
+	if err != nil {
+		t.Fatalf("resolve under override failed: %v", err)
+	}
+	expected := filepath.Join(custom, "envs", "scoped")
+	if envPath != expected {
+		t.Fatalf("ResolveEnvPath = %q, want %q", envPath, expected)
+	}
+	if _, err := os.Stat(filepath.Join(envPath, "state.json")); err != nil {
+		t.Fatalf("state.json missing under override: %v", err)
+	}
+}
+
+func TestSetBasePathEmptyRestoresDefault(t *testing.T) {
+	home := setupTempHome(t)
+
+	SetBasePath(filepath.Join(t.TempDir(), "elsewhere"))
+	SetBasePath("")
+
+	got, err := BasePath()
+	if err != nil {
+		t.Fatalf("BasePath after reset failed: %v", err)
+	}
+	expected := filepath.Join(home, ".insyra")
+	if got != expected {
+		t.Fatalf("BasePath = %q, want %q", got, expected)
+	}
 }
 
 func TestEnvironmentCRUD(t *testing.T) {

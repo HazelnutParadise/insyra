@@ -13,11 +13,17 @@ import (
 
 type ExecContext struct {
 	Vars     map[string]any
+	DBConns  map[string]*DBConn
 	EnvName  string
 	EnvPath  string
 	Output   io.Writer
 	InREPL   bool
 	OpenREPL func(ctx *ExecContext) error
+	// Env is the per-session environment Manager. Commands MUST go through
+	// it (ctx.Env.SaveState etc.) so embedders that supply a per-workspace
+	// Manager don't get their writes redirected to the default ~/.insyra.
+	// Dispatch fills this with env.Default() if the caller left it nil.
+	Env *env.Manager
 }
 
 type CommandHandler struct {
@@ -25,6 +31,15 @@ type CommandHandler struct {
 	Aliases            []string
 	Usage              string
 	Description        string
+	// Forms lists the major sub-shapes of a command (one entry per shape).
+	// Each entry is rendered as-is under a "Forms:" header by `help <cmd>`.
+	// Use for commands like `ttest single|two|paired` where the bare Usage
+	// can't enumerate every form.
+	Forms []string
+	// Examples lists ready-to-run invocations rendered under "Examples:" by
+	// `help <cmd>`. Each entry should be a complete `insyra ...` line that
+	// the user can copy into a shell.
+	Examples           []string
 	DisableFlagParsing bool
 	Run                func(ctx *ExecContext, args []string) error
 }
@@ -61,6 +76,9 @@ func Dispatch(ctx *ExecContext, name string, args []string) error {
 	}
 	if ctx.Output == nil {
 		ctx.Output = os.Stdout
+	}
+	if ctx.Env == nil {
+		ctx.Env = env.Default()
 	}
 	return handler.Run(ctx, args)
 }
@@ -111,7 +129,11 @@ func BuildCobraCommands(ctx *ExecContext) []*cobra.Command {
 					if len(runArgs) > 0 {
 						line += " " + strings.Join(runArgs, " ")
 					}
-					_ = env.AppendHistory(envName, line)
+					mgr := ctx.Env
+					if mgr == nil {
+						mgr = env.Default()
+					}
+					_ = mgr.AppendHistory(envName, line)
 				}
 				return err
 			},
