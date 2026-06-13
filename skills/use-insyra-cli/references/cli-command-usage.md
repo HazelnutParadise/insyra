@@ -379,13 +379,18 @@ This is separate from boolean-flag parsing used by option arguments like `header
 - Notes: forwards the file-side options to `load`; result is shown but not stored.
 
 ## `regression`
-- Description: Regression analysis: linear/poly/exp/log
+- Description: Regression analysis: linear/poly/exp/log/logistic/poisson
 - Usage: `regression <type> <y> <x...>`
 - Full forms:
 	- `regression linear <y> <x1> [x2 ...] [as <var>]`
 	- `regression poly <y> <x> <degree> [as <var>]`
 	- `regression exp <y> <x> [as <var>]`
 	- `regression log <y> <x> [as <var>]`
+	- `regression logistic <y> <x1> [x2 ...] [as <var>]`
+	- `regression poisson <y> <x1> [x2 ...] [as <var>]`
+- Examples:
+	- `insyra regression logistic y x1 x2 as fit`
+	- `insyra regression poisson y x1 x2`
 
 ## `rename`
 - Description: Rename variable

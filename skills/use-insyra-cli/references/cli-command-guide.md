@@ -503,10 +503,10 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 
 ## Modeling / Inference / Visualization / Fetch
 ### `regression`
-- Description: Regression analysis: linear/poly/exp/log
+- Description: Regression analysis: linear/poly/exp/log/logistic/poisson
 - Usage: `regression <type> <y> <x...>`
-- Example: `insyra regression line y x1 x2`
-- Full forms: `regression linear <y> <x1> [x2 ...] [as <var>]` / `regression poly <y> <x> <degree> [as <var>]` / `regression exp <y> <x> [as <var>]` / `regression log <y> <x> [as <var>]`
+- Examples: `insyra regression logistic y x1 x2 as fit` / `insyra regression poisson y x1 x2`
+- Full forms: `regression linear <y> <x1> [x2 ...] [as <var>]` / `regression poly <y> <x> <degree> [as <var>]` / `regression exp <y> <x> [as <var>]` / `regression log <y> <x> [as <var>]` / `regression logistic <y> <x1> [x2 ...] [as <var>]` / `regression poisson <y> <x1> [x2 ...] [as <var>]`
 
 ### `pca`
 - Description: Principal component analysis

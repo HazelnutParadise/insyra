@@ -22,6 +22,7 @@ Each tutorial starts from a practical scenario and walks through an end-to-end w
 | Parquet Inspection, Streaming, and CCL Filtering | Data Engineering | Inspect schema/row-groups, stream safely, and filter parquet data with CCL. | 20-25 min | [Open](./parquet-inspection-streaming-and-filter.md) |
 | A/B Test Decision with Statistics | Analytics | Turn experiment samples into a ship/hold decision with statistical evidence. | 15-20 min | [Open](./ab-test-decision-with-statistics.md) |
 | Nonparametric Tests When Normality Fails | Analytics | Route ordinal / small-n / heavy-tailed data to Wilcoxon, Mann-Whitney U, Kruskal-Wallis, or Friedman. | 15-20 min | [Open](./nonparametric-tests-when-normality-fails.md) |
+| GLM for Binary Outcomes and Counts | Analytics | Choose logistic, Poisson, or generic GLM, including offsets and over-dispersion checks. | 15-20 min | [Open](./glm-logistic-poisson.md) |
 | Customer Segmentation with RFM and CAI | Analytics | Segment customers by value and activity momentum for retention/upsell actions. | 20-25 min | [Open](./customer-segmentation-rfm-and-cai.md) |
 | Market Trend Forecasting with Yahoo Finance | Analytics | Fetch market data, apply offline fallback, fit trend regression, and export outputs. | 20-25 min | [Open](./market-trend-forecasting-with-yfinance.md) |
 | Interactive KPI Dashboard with plot | Analytics | Build browser-ready KPI charts and export HTML/PNG artifacts. | 15-20 min | [Open](./interactive-kpi-dashboard-with-plot.md) |

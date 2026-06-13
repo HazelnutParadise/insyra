@@ -176,6 +176,10 @@ insyra db disconnect main
 # Clustering + silhouette
 insyra kmeans iris 3 seed 42 as labels
 insyra silhouette iris labels as widths
+
+# Regression models
+insyra regression logistic y x1 x2 as fit
+insyra regression poisson y x1 x2
 ```
 
 `groupby <var> by <col1>[,<col2>...] agg <col>:<op>[:<alias>] [<col>:<op>[:<alias>] ...] [as <var>]` produces a new DataTable with one row per unique key combination. Supported ops: `sum`, `mean` (alias `avg`), `median`, `min`, `max`, `count` (non-nil), `countall` (group size), `std`/`stdev`, `stdp`/`stdevp`, `var`, `varp`, `first`, `last`, `nunique`. The bare token `count` is shorthand for `:countall:count`.

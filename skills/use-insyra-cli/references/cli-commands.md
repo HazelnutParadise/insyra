@@ -127,7 +127,7 @@ This list is generated from `insyra help` in this repository state.
 - `fillnan` - Fill NaN with mean
 
 ## Modeling / Inference / Visualization / Fetch
-- `regression` - Regression analysis: linear/poly/exp/log
+- `regression` - Regression analysis: linear/poly/exp/log/logistic/poisson
 - `pca` - Principal component analysis
 - `kmeans` - K-means clustering
 - `hclust` - Hierarchical agglomerative clustering

@@ -1421,6 +1421,90 @@ def main():
             out = {"corr_matrix": corr, "p_matrix": pmat, "chi_square": b["chi_square"], "p_value": b["p_value"], "df": b["df"]}
         else:
             out = {"corr_matrix": corr, "p_matrix": pmat, "chi_square": "NaN", "p_value": "NaN", "df": 0.0}
+    elif method == "logistic_reg":
+        y = np.array(payload["y"], dtype=float)
+        x_cols = [np.array(col, dtype=float) for col in payload["xs"]]
+        x = sm.add_constant(np.column_stack(x_cols), has_constant="add")
+        fit = sm.GLM(y, x, family=sm.families.Binomial()).fit(maxiter=100, tol=1e-10)
+        ci = fit.conf_int(alpha=0.05).tolist()
+        out = {
+            "coefficients": fit.params.tolist(),
+            "standard_errors": fit.bse.tolist(),
+            "z_values": fit.tvalues.tolist(),
+            "p_values": fit.pvalues.tolist(),
+            "ci": ci,
+            "odds_ratios": np.exp(fit.params).tolist(),
+            "log_likelihood": float(fit.llf),
+            "null_deviance": float(fit.null_deviance),
+            "deviance": float(fit.deviance),
+            "aic": float(fit.aic),
+            "bic": float(getattr(fit, "bic_llf", -2 * fit.llf + len(fit.params) * math.log(len(y)))),
+            "iterations": float(fit.fit_history.get("iteration", float("nan"))),
+            "fitted": fit.fittedvalues.tolist(),
+        }
+    elif method == "poisson_reg":
+        y = np.array(payload["y"], dtype=float)
+        x_cols = [np.array(col, dtype=float) for col in payload["xs"]]
+        x = sm.add_constant(np.column_stack(x_cols), has_constant="add")
+        offset = np.array(payload.get("offset", np.zeros(len(y))), dtype=float)
+        fit = sm.GLM(y, x, family=sm.families.Poisson(), offset=offset).fit(maxiter=100, tol=1e-10)
+        pearson = float(np.sum(fit.resid_pearson ** 2))
+        ci = fit.conf_int(alpha=0.05).tolist()
+        out = {
+            "coefficients": fit.params.tolist(),
+            "standard_errors": fit.bse.tolist(),
+            "z_values": fit.tvalues.tolist(),
+            "p_values": fit.pvalues.tolist(),
+            "ci": ci,
+            "irr": np.exp(fit.params).tolist(),
+            "log_likelihood": float(fit.llf),
+            "deviance": float(fit.deviance),
+            "null_deviance": float(fit.null_deviance),
+            "pearson_chi2": pearson,
+            "dispersion": pearson / float(fit.df_resid),
+            "aic": float(fit.aic),
+            "bic": float(getattr(fit, "bic_llf", -2 * fit.llf + len(fit.params) * math.log(len(y)))),
+            "iterations": float(fit.fit_history.get("iteration", float("nan"))),
+            "fitted": fit.fittedvalues.tolist(),
+        }
+    elif method == "glm_generic":
+        y = np.array(payload["y"], dtype=float)
+        x_cols = [np.array(col, dtype=float) for col in payload["xs"]]
+        x = sm.add_constant(np.column_stack(x_cols), has_constant="add")
+        offset = np.array(payload.get("offset", np.zeros(len(y))), dtype=float)
+        weights = np.array(payload.get("weights", np.ones(len(y))), dtype=float)
+        family_name = payload["family"]
+        link_name = payload["link"]
+        if family_name == "binomial":
+            link = sm.families.links.Logit()
+            fam = sm.families.Binomial(link=link)
+        elif family_name == "poisson":
+            link = sm.families.links.Log()
+            fam = sm.families.Poisson(link=link)
+        elif family_name == "gaussian":
+            link = sm.families.links.Identity()
+            fam = sm.families.Gaussian(link=link)
+        else:
+            raise ValueError(f"unsupported family: {family_name}/{link_name}")
+        fit = sm.GLM(y, x, family=fam, offset=offset, freq_weights=weights).fit(maxiter=100, tol=1e-10)
+        ci = fit.conf_int(alpha=0.05).tolist()
+        dispersion = float(fit.scale)
+        k_bic = len(fit.params) + (1 if family_name == "gaussian" else 0)
+        bic_val = float(-2 * fit.llf + k_bic * math.log(len(y)))
+        out = {
+            "coefficients": fit.params.tolist(),
+            "standard_errors": fit.bse.tolist(),
+            "z_values": fit.tvalues.tolist(),
+            "p_values": fit.pvalues.tolist(),
+            "ci": ci,
+            "deviance": float(fit.deviance),
+            "null_deviance": float(fit.null_deviance),
+            "aic": float(fit.aic),
+            "bic": bic_val,
+            "log_likelihood": float(fit.llf),
+            "dispersion": dispersion,
+            "fitted": fit.fittedvalues.tolist(),
+        }
     elif method == "linear_reg":
         out = linear_common(payload["y"], payload["xs"])
     elif method == "poly_reg":
