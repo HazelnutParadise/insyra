@@ -16,6 +16,7 @@ type LogisticRegressionOptions struct {
 	Tolerance        float64
 	PositiveClass    any
 	SeparationPolicy SeparationPolicy
+	Ridge            float64
 }
 
 type LogisticRegressionResult struct {
@@ -46,6 +47,8 @@ type LogisticRegressionResult struct {
 	Iterations                   int
 	Converged                    bool
 	SeparationDetected           bool
+	Penalized                    bool
+	Ridge                        float64
 	PositiveClass                any
 	ClassLabels                  []any
 	ConfidenceLevel              float64
@@ -64,11 +67,15 @@ func LogisticRegressionWithOptions(opts LogisticRegressionOptions, dlY insyra.ID
 	if opts.SeparationPolicy == "" {
 		opts.SeparationPolicy = SepWarn
 	}
-	if opts.SeparationPolicy == SepRidge {
-		return nil, errors.New("ridge separation policy is not yet available")
-	}
-	if opts.SeparationPolicy != SepWarn && opts.SeparationPolicy != SepError {
+	if opts.SeparationPolicy != SepWarn && opts.SeparationPolicy != SepError && opts.SeparationPolicy != SepRidge {
 		return nil, fmt.Errorf("unsupported separation policy %q", opts.SeparationPolicy)
+	}
+	ridge := 0.0
+	if opts.SeparationPolicy == SepRidge {
+		ridge = opts.Ridge
+		if ridge <= 0 {
+			ridge = 1e-4
+		}
 	}
 
 	_, xs, _, n, err := gatherRegressionInputs(dlY, dlXs)
@@ -92,6 +99,7 @@ func LogisticRegressionWithOptions(opts LogisticRegressionOptions, dlY insyra.ID
 	fit, err := fitIRLS(X, y, fam, link, irlsOptions{
 		maxIter:   opts.MaxIter,
 		tolerance: opts.Tolerance,
+		ridge:     ridge,
 	})
 	if err != nil {
 		return nil, err
@@ -143,6 +151,8 @@ func LogisticRegressionWithOptions(opts LogisticRegressionOptions, dlY insyra.ID
 		Iterations:                   fit.iterations,
 		Converged:                    fit.converged,
 		SeparationDetected:           fit.sepFlag,
+		Penalized:                    ridge > 0,
+		Ridge:                        ridge,
 		PositiveClass:                positiveClass,
 		ClassLabels:                  classLabels,
 		ConfidenceLevel:              cl,

@@ -69,6 +69,11 @@ func (identityLink) name() string           { return string(Identity) }
 type probitLink struct{}  // TODO: implement in a follow-up issue.
 type cloglogLink struct{} // TODO: implement in a follow-up issue.
 
+var (
+	_ = probitLink{}
+	_ = cloglogLink{}
+)
+
 func clampProbability(mu float64) float64 {
 	if math.IsNaN(mu) {
 		return mu

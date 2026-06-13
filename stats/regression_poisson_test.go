@@ -33,3 +33,19 @@ func TestPoissonRegressionWithOffset(t *testing.T) {
 		t.Fatalf("IRR does not match exp(coef)")
 	}
 }
+
+func TestPoissonRegressionDispersionFlag(t *testing.T) {
+	y := insyra.NewDataList(0, 0, 12, 0, 18, 1, 25, 0, 30, 2)
+	x := insyra.NewDataList(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
+	got, err := PoissonRegressionWithOptions(PoissonRegressionOptions{
+		MaxIter:         100,
+		Tolerance:       1e-10,
+		DispersionCheck: true,
+	}, y, x)
+	if err != nil {
+		t.Fatalf("PoissonRegressionWithOptions error: %v", err)
+	}
+	if got.OverDispersed != (got.DispersionStatistic > 1.5) {
+		t.Fatalf("over-dispersion flag mismatch: flag=%v dispersion=%v", got.OverDispersed, got.DispersionStatistic)
+	}
+}

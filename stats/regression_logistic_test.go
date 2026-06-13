@@ -42,3 +42,24 @@ func TestLogisticRegressionSeparationError(t *testing.T) {
 		t.Fatalf("expected separation error, got %v", err)
 	}
 }
+
+func TestLogisticRegressionSeparationRidge(t *testing.T) {
+	y := insyra.NewDataList(0, 0, 0, 0, 1, 1, 1, 1)
+	x := insyra.NewDataList(-4, -3, -2, -1, 1, 2, 3, 4)
+	got, err := LogisticRegressionWithOptions(LogisticRegressionOptions{
+		MaxIter:          100,
+		Tolerance:        1e-10,
+		SeparationPolicy: SepRidge,
+	}, y, x)
+	if err != nil {
+		t.Fatalf("LogisticRegressionWithOptions ridge error: %v", err)
+	}
+	if !got.Penalized || got.Ridge <= 0 {
+		t.Fatalf("expected penalized ridge result, got penalized=%v ridge=%v", got.Penalized, got.Ridge)
+	}
+	for i, coef := range got.Coefficients {
+		if math.IsNaN(coef) || math.IsInf(coef, 0) {
+			t.Fatalf("coef[%d] is not finite: %v", i, coef)
+		}
+	}
+}

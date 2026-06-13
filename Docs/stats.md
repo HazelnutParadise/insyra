@@ -21,7 +21,7 @@ The stats package provides comprehensive statistical analysis functions:
 - **Nonparametric Tests**: Wilcoxon signed-rank (single/paired), Mann-Whitney U, Kruskal-Wallis, Friedman — rank-based counterparts to the t-test / ANOVA family
 - **Distribution Analysis**: Skewness, Kurtosis, n-th moments
 - **Analysis of Variance**: One-way, Two-way, Repeated measures ANOVA
-- **Regression Analysis**: Linear, Exponential, Logarithmic, Polynomial regression with confidence intervals
+- **Regression Analysis**: Linear, Logistic, Poisson, generic GLM, Exponential, Logarithmic, Polynomial regression with confidence intervals
 - **F-Tests**: Variance equality, Levene's test, Bartlett's test, regression F-test, nested models
 - **Dimensionality Reduction**: Principal Component Analysis (PCA)
 - **Instance-Based Prediction**: K-nearest neighbors (KNN) classification and regression
@@ -1703,6 +1703,111 @@ for i := range result.Coefficients {
 
 ### Polynomial Regression
 
+### Logistic Regression
+
+```go
+func LogisticRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) (*LogisticRegressionResult, error)
+func LogisticRegressionWithOptions(opts LogisticRegressionOptions, dlY insyra.IDataList, dlXs ...insyra.IDataList) (*LogisticRegressionResult, error)
+```
+
+**Description:** Fits a binomial GLM with a logit link using IRLS, matching the usual `stats::glm(..., family = binomial(link = "logit"))` workflow. The response may be numeric `0/1`, boolean, or any two class labels. Use `PositiveClass` when you need explicit control over which label is encoded as `1`.
+
+```go
+type LogisticRegressionOptions struct {
+    ConfidenceLevel  float64
+    MaxIter          int
+    Tolerance        float64
+    PositiveClass    any
+    SeparationPolicy stats.SeparationPolicy // SepWarn, SepError, SepRidge
+    Ridge            float64                 // used when SeparationPolicy == SepRidge
+}
+```
+
+Important result fields include `Coefficients`, `StandardErrors`, `ZValues`, `PValues`, `ConfidenceIntervals`, `OddsRatios`, `FittedProbabilities`, `Deviance`, `NullDeviance`, `AIC`, `BIC`, and pseudo-R-squared values (`McFaddenR2`, `CoxSnellR2`, `NagelkerkeR2`). Use `Predict(stats.PredictResponse, xs...)` for probabilities, `Predict(stats.PredictLinear, xs...)` for linear predictors, and `Predict(stats.PredictClass, xs...)` for class labels.
+
+```go
+y := insyra.NewDataList("no", "no", "yes", "yes", "no", "yes")
+x := insyra.NewDataList(-2.0, -1.0, 0.2, 1.0, 1.8, 2.4)
+
+fit, err := stats.LogisticRegressionWithOptions(stats.LogisticRegressionOptions{
+    PositiveClass: "yes",
+}, y, x)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("odds ratio for x = %.4f\n", fit.OddsRatios[1])
+```
+
+### Poisson Regression
+
+```go
+func PoissonRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) (*PoissonRegressionResult, error)
+func PoissonRegressionWithOptions(opts PoissonRegressionOptions, dlY insyra.IDataList, dlXs ...insyra.IDataList) (*PoissonRegressionResult, error)
+```
+
+**Description:** Fits a Poisson GLM with a log link for count/rate outcomes. Use `Offset` for exposure, usually `log(exposure)`. When `DispersionCheck` is true, `OverDispersed` is set when Pearson chi-square divided by residual degrees of freedom is greater than `1.5`.
+
+```go
+type PoissonRegressionOptions struct {
+    ConfidenceLevel float64
+    MaxIter         int
+    Tolerance       float64
+    Offset          insyra.IDataList
+    DispersionCheck bool
+}
+```
+
+Important result fields include `Coefficients`, `StandardErrors`, `ZValues`, `PValues`, `ConfidenceIntervals`, `IncidenceRateRatios`, `FittedRates`, `PearsonChi2`, `DispersionStatistic`, `Deviance`, `NullDeviance`, `AIC`, and `BIC`.
+
+```go
+counts := insyra.NewDataList(1, 2, 3, 4, 6, 8)
+x := insyra.NewDataList(0.1, 0.4, 0.8, 1.2, 1.7, 2.0)
+exposure := insyra.NewDataList(math.Log(1.0), math.Log(1.2), math.Log(0.9), math.Log(1.4), math.Log(1.3), math.Log(1.5))
+
+fit, err := stats.PoissonRegressionWithOptions(stats.PoissonRegressionOptions{
+    Offset:          exposure,
+    DispersionCheck: true,
+}, counts, x)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("IRR for x = %.4f\n", fit.IncidenceRateRatios[1])
+```
+
+### Generic GLM
+
+```go
+func GLM(opts GLMOptions, dlY insyra.IDataList, dlXs ...insyra.IDataList) (*GLMResult, error)
+```
+
+**Description:** Fits a generalized linear model for supported family/link pairs. If `Link` is empty, the canonical link is used. Current supported pairs are `Binomial` + `Logit`, `Poisson` + `Log`, and `Gaussian` + `Identity`.
+
+```go
+type GLMOptions struct {
+    Family          stats.GLMFamily // Binomial, Poisson, Gaussian
+    Link            stats.GLMLink   // Logit, Log, Identity
+    ConfidenceLevel float64
+    MaxIter         int
+    Tolerance       float64
+    Offset          insyra.IDataList
+    Weights         insyra.IDataList
+}
+```
+
+`GLMResult` exposes coefficient inference, fitted values, residuals, deviance, log-likelihood, AIC/BIC, Pearson chi-square, dispersion, convergence status, and `Predict`.
+
+```go
+fit, err := stats.GLM(stats.GLMOptions{
+    Family: stats.Poisson,
+    Link:   stats.Log,
+    Offset: exposure,
+}, counts, x)
+if err != nil {
+    log.Fatal(err)
+}
+rates, err := fit.Predict(stats.PredictResponse, xNew)
+```
+
 ```go
 func PolynomialRegression(dlY insyra.IDataList, dlX insyra.IDataList, degree int) (*PolynomialRegressionResult, error)
 ```
@@ -1912,10 +2017,11 @@ Most functions accept optional confidence levels. If not specified or invalid (o
 
 ### Confidence Intervals for Regression Analysis
 
-All regression functions (Linear, Polynomial, Exponential, and Logarithmic) now provide 95% confidence intervals for their coefficients:
+All regression functions (Linear, Logistic, Poisson, GLM, Polynomial, Exponential, and Logarithmic) provide confidence intervals for their coefficients:
 
 - **Linear and Polynomial Regression**: Returns `ConfidenceIntervals [][2]float64` containing confidence intervals for all coefficients (intercept and slopes).
 - **Exponential and Logarithmic Regression**: Returns separate `ConfidenceIntervalIntercept [2]float64` and `ConfidenceIntervalSlope [2]float64` fields.
+- **Logistic, Poisson, and GLM**: Return Wald z confidence intervals via `ConfidenceIntervals`; logistic also exposes odds-ratio intervals and Poisson exposes incidence-rate-ratio intervals.
 
 The confidence intervals are calculated using the t-distribution with appropriate degrees of freedom:
 
