@@ -1054,6 +1054,38 @@ if (method == "single_t") {
     iterations      = as.double(fit$iter),
     fitted          = unname(fitted(fit))
   )
+} else if (method == "glm_generic") {
+  fam_name  <- as.character(payload$family)
+  link_name <- as.character(payload$link)
+  fam <- switch(fam_name,
+    binomial = binomial(link = link_name),
+    poisson  = poisson(link = link_name),
+    gaussian = gaussian(link = link_name))
+  y  <- as.double(unlist(payload$y))
+  xs <- lapply(payload$xs, function(v) as.double(unlist(v)))
+  w  <- if (!is.null(payload$weights)) as.double(unlist(payload$weights)) else rep(1, length(y))
+  off<- if (!is.null(payload$offset))  as.double(unlist(payload$offset))  else rep(0, length(y))
+  df <- data.frame(y = y, do.call(cbind, xs))
+  names(df) <- c("y", paste0("x", seq_along(xs)))
+  fit <- glm(y ~ ., data = df, family = fam, weights = w, offset = off,
+             control = glm.control(epsilon = 1e-10, maxit = 100))
+  s  <- summary(fit)$coefficients
+  ci <- confint.default(fit)
+  ci_rows <- lapply(seq_len(nrow(ci)), function(i) as.double(ci[i, ]))
+  out <- list(
+    coefficients    = unname(s[, "Estimate"]),
+    standard_errors = unname(s[, "Std. Error"]),
+    z_values        = unname(s[, ncol(s) - 1]),
+    p_values        = unname(s[, ncol(s)]),
+    ci              = ci_rows,
+    deviance        = fit$deviance,
+    null_deviance   = fit$null.deviance,
+    aic             = fit$aic,
+    bic             = as.numeric(BIC(fit)),
+    log_likelihood  = as.numeric(logLik(fit)),
+    dispersion      = summary(fit)$dispersion,
+    fitted          = unname(fitted(fit))
+  )
 } else if (method == "linear_reg") {
   y <- as.double(unlist(payload$y))
   xs <- lapply(payload$xs, function(v) as.double(unlist(v)))

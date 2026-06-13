@@ -150,16 +150,26 @@ func fitIRLS(X *mat.Dense, y []float64, fam glmFamily, link glmLink, opts irlsOp
 }
 
 func fitNullIRLS(y []float64, fam glmFamily, link glmLink, offset, weights []float64) (*irlsFit, error) {
+	return fitNullIRLSWithOptions(y, fam, link, offset, weights, irlsOptions{
+		maxIter:   defaultIRLSMaxIter,
+		tolerance: defaultIRLSTolerance,
+	})
+}
+
+func fitNullIRLSWithOptions(y []float64, fam glmFamily, link glmLink, offset, weights []float64, opts irlsOptions) (*irlsFit, error) {
 	X := mat.NewDense(len(y), 1, nil)
 	raw := X.RawMatrix()
 	for i := range y {
 		raw.Data[i*raw.Stride] = 1
 	}
+	opts.offset = offset
+	opts.weights = weights
+	opts.ridge = 0
 	return fitIRLS(X, y, fam, link, irlsOptions{
-		maxIter:   defaultIRLSMaxIter,
-		tolerance: defaultIRLSTolerance,
-		offset:    offset,
-		weights:   weights,
+		maxIter:   opts.maxIter,
+		tolerance: opts.tolerance,
+		offset:    opts.offset,
+		weights:   opts.weights,
 	})
 }
 

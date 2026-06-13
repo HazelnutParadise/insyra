@@ -87,3 +87,37 @@ func buildDesignMatrix(xs [][]float64, n int) *mat.Dense {
 	})
 	return X
 }
+
+func gatherPredictorInputs(dlXs []insyra.IDataList) (xs [][]float64, n int, err error) {
+	if len(dlXs) == 0 {
+		return nil, 0, fmt.Errorf("no predictor data lists provided")
+	}
+	for j, dlX := range dlXs {
+		if dlX == nil {
+			return nil, 0, fmt.Errorf("predictor %d data list is nil", j)
+		}
+	}
+
+	xs = make([][]float64, len(dlXs))
+	xLens := make([]int, len(dlXs))
+	var wg sync.WaitGroup
+	for j, dlX := range dlXs {
+		wg.Add(1)
+		go func(j int, dlX insyra.IDataList) {
+			defer wg.Done()
+			dlX.AtomicDo(func(l *insyra.DataList) {
+				xLens[j] = l.Len()
+				xs[j] = l.ToF64Slice()
+			})
+		}(j, dlX)
+	}
+	wg.Wait()
+
+	n = xLens[0]
+	for j, xLen := range xLens {
+		if xLen != n {
+			return nil, 0, fmt.Errorf("all predictors must have the same length; predictor %d has length %d, want %d", j, xLen, n)
+		}
+	}
+	return xs, n, nil
+}
