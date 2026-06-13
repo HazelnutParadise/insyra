@@ -432,22 +432,20 @@ Predict 重建 design matrix(複用 `buildDesignMatrix`,D6)→ `η = Xβ`(若提
 
 ---
 
-## Phase 4 — isr 暴露
+## Phase 4 — isr 暴露(已取消)
 
-- [ ] `isr/glm.go`:
-  ```go
-  type LogisticRegressionResult = stats.LogisticRegressionResult
-  type PoissonRegressionResult  = stats.PoissonRegressionResult
-  type GLMResult                = stats.GLMResult
-  type GLMOptions               = stats.GLMOptions   // + Family/Link 常數 alias
-  func LogisticRegression(y insyra.IDataList, xs ...insyra.IDataList) (*stats.LogisticRegressionResult, error)
-  func PoissonRegression(y insyra.IDataList, xs ...insyra.IDataList) (*stats.PoissonRegressionResult, error)
-  func GLM(opts stats.GLMOptions, y insyra.IDataList, xs ...insyra.IDataList) (*stats.GLMResult, error)
-  ```
-  風格對齊 [isr/groupby.go](../isr/groupby.go) / [isr/pivot.go](../isr/pivot.go)(薄包裝 + doc 範例)。
-- [ ] `isr/glm_test.go`:呼叫三入口跑通 + 與 `stats` 直呼結果一致。
+> **決定:不在 `isr` 包裝 GLM。**
+>
+> issue #164 原列「`isr/glm.go` 暴露 + alias」為驗收條件,但與 repo 現狀不一致:
+> `isr` 目前只對 DataList / DataTable 的結構操作與 I/O(`dl`/`dt`/`csv`/`excel`/`json`/
+> `groupby`/`pivot`/`window`)提供語法糖,**沒有任何 `stats` 統計方法被 `isr` 轉包**
+> ——`LinearRegression`、`TTest`、`ANOVA`、`PCA` 等一律由使用者直接 `stats.` 呼叫。
+> 單獨為 GLM 開語法糖會破例且不一致,故 `isr/glm.go` 與 `isr/glm_test.go` 已移除。
+>
+> 若日後要讓 `isr` 全面成為 `stats` 的公開門面,應另開 issue 一次補齊所有統計方法,
+> 不在本 PR 範圍。
 
-**Phase 4 完成準則:** `isr.LogisticRegression/PoissonRegression/GLM` 可用,測試綠。
+**Phase 4 完成準則:** 不適用(已取消)。
 
 ---
 
@@ -508,7 +506,7 @@ Predict 重建 design matrix(複用 `buildDesignMatrix`,D6)→ `η = Xβ`(若提
 | separation `warn`/`error`/`ridge` 三路徑單元測試 | P2(warn/error)/ P5(ridge) | ☐ |
 | over-dispersion 警示 + `DispersionStatistic` 測試 | P2 / P5 | ☐ |
 | offset 與 prior weights baseline 對拍 | P3 | ☐ |
-| `isr/glm.go` 暴露 + alias + test | P4 | ☐ |
+| ~~`isr/glm.go` 暴露 + alias + test~~ | P4 | ✗ 取消(與 repo 慣例不一致,見 Phase 4) |
 | `Docs/stats.md` + tutorials + 決策樹 | P6 | ☐ |
 | `golangci-lint` / `govulncheck` / `go test -race` 全綠 | P6 | ☐ |
 | 純加法,不破壞既有簽名 | P0 / P6 | ☐ |
