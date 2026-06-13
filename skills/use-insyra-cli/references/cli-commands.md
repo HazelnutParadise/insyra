@@ -124,7 +124,8 @@ This list is generated from `insyra help` in this repository state.
 - `cummin` - Running minimum (historical low)
 - `rolling` - Rolling-window reduction (sum/mean/min/max/median/std/var)
 - `expanding` - Expanding-window reduction (sum/mean/min/max/median/std/var)
-- `fillnan` - Fill NaN with mean
+- `fillna` - Fill missing DataList/DataTable values (mean/median/mode/ffill/bfill/interpolate)
+- `fillnan` - Fill NaN with mean (deprecated alias)
 
 ## Modeling / Inference / Visualization / Fetch
 - `regression` - Regression analysis: linear/poly/exp/log/logistic/poisson
@@ -144,3 +145,15 @@ This list is generated from `insyra help` in this repository state.
 - `chisq` - Chi-square test commands
 - `plot` - Create charts from variables
 - `fetch` - Fetch external data
+
+## Missing-Value Fill Commands
+
+- `fillna <var> mean|median|mode|ffill|bfill|interpolate [cols A,B,C] [limit N] [extrapolate yes|no] [missing nan|nil|both] [as <var>]`
+  - Works on either a DataList or a DataTable; saves a cloned result to `as <var>` or `$result`.
+  - `cols` filters which DataTable columns to fill (omitted = all applicable); ignored for DataList input.
+  - `limit` applies to `ffill` and `bfill`; `0` means unlimited.
+  - `extrapolate yes` lets interpolation fill leading/trailing numeric gaps.
+  - `missing` selects which kind of missing to fill: `nan`, `nil`, or `both` (default `both`).
+  - `mean`, `median`, and `interpolate` skip non-numeric columns; `mode`, `ffill`, and `bfill` can fill any selected column type.
+- `fillnan <var> mean [as <var>]`
+  - Deprecated alias kept for backward compatibility. Only fills NaN (leaves nil alone) and only supports `mean`. Use `fillna <var> mean missing nan` instead.

@@ -190,9 +190,13 @@ This is separate from boolean-flag parsing used by option arguments like `header
 	- `quote`, `info`, `history`, `dividends`, `splits`, `actions`, `options`, `calendar`, `fastinfo`
 	- `news [count]` (default count = `10`)
 
+## `fillna`
+- Description: Fill missing DataList/DataTable values
+- Usage: `fillna <var> mean|median|mode|ffill|bfill|interpolate [cols A,B,C] [limit N] [extrapolate yes|no] [missing nan|nil|both] [as <var>]`
+
 ## `fillnan`
-- Description: Fill NaN with mean
-- Usage: `fillnan <var> mean`
+- Description: Fill NaN with mean (deprecated alias)
+- Usage: `fillnan <var> mean [as <var>]`
 
 ## `filter`
 - Description: Filter DataTable by CCL expression

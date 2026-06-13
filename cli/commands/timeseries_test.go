@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"math"
 	"reflect"
+	"strings"
 	"testing"
 
 	insyra "github.com/HazelnutParadise/insyra"
@@ -31,6 +32,19 @@ func resultDL(t *testing.T, ctx *ExecContext, name string) *insyra.DataList {
 		t.Fatalf("expected %q to be *DataList, got %T", name, v)
 	}
 	return dl
+}
+
+func resultDT(t *testing.T, ctx *ExecContext, name string) *insyra.DataTable {
+	t.Helper()
+	v, ok := ctx.Vars[name]
+	if !ok {
+		t.Fatalf("expected variable %q to be set", name)
+	}
+	dt, ok := v.(*insyra.DataTable)
+	if !ok {
+		t.Fatalf("expected %q to be *DataTable, got %T", name, v)
+	}
+	return dt
 }
 
 // approxEqualAny compares two slices element-wise; numeric values use a
@@ -213,6 +227,83 @@ func TestExpandingCommand_MinObsThreshold(t *testing.T) {
 	}
 	if !approxEqualAny(resultDL(t, ctx, "e").Data(), []any{nil, nil, 2.0, 2.5}, 1e-9) {
 		t.Errorf("expanding minobs wrong: %v", resultDL(t, ctx, "e").Data())
+	}
+}
+
+func TestFillNACommand_Interpolate(t *testing.T) {
+	ctx := newWindowCtx(nil, 1.0, nil, 3.0, math.NaN())
+	if err := runFillNACommand(ctx, []string{"x", "interpolate", "extrapolate", "yes", "as", "filled"}); err != nil {
+		t.Fatalf("fillna interpolate failed: %v", err)
+	}
+	if !approxEqualAny(resultDL(t, ctx, "filled").Data(), []any{0.0, 1.0, 2.0, 3.0, 4.0}, 1e-9) {
+		t.Errorf("fillna interpolate wrong: %v", resultDL(t, ctx, "filled").Data())
+	}
+}
+
+func TestFillNACommand_MissingNaNPreservesNil(t *testing.T) {
+	ctx := newWindowCtx(1.0, math.NaN(), nil, 4.0)
+	if err := runFillNACommand(ctx, []string{"x", "ffill", "missing", "nan", "as", "filled"}); err != nil {
+		t.Fatalf("fillna missing=nan failed: %v", err)
+	}
+	if !approxEqualAny(resultDL(t, ctx, "filled").Data(), []any{1.0, 1.0, nil, 4.0}, 1e-9) {
+		t.Errorf("fillna missing=nan wrong: %v", resultDL(t, ctx, "filled").Data())
+	}
+}
+
+func TestFillNACommand_MissingNilPreservesNaN(t *testing.T) {
+	ctx := newWindowCtx(1.0, math.NaN(), nil, 4.0)
+	if err := runFillNACommand(ctx, []string{"x", "ffill", "missing", "nil", "as", "filled"}); err != nil {
+		t.Fatalf("fillna missing=nil failed: %v", err)
+	}
+	got := resultDL(t, ctx, "filled").Data()
+	if len(got) != 4 || got[0] != 1.0 || got[2] != 1.0 || got[3] != 4.0 {
+		t.Errorf("fillna missing=nil wrong shape: %v", got)
+	}
+	if f, ok := got[1].(float64); !ok || !math.IsNaN(f) {
+		t.Errorf("fillna missing=nil should keep NaN at index 1, got %v", got[1])
+	}
+}
+
+func TestFillNACommand_TableMedianCols(t *testing.T) {
+	ctx := &ExecContext{
+		Vars: map[string]any{
+			"t": insyra.NewDataTable(
+				insyra.NewDataList(1.0, nil, 3.0).SetName("num"),
+				insyra.NewDataList("x", nil, "z").SetName("text"),
+			),
+		},
+		Output: &bytes.Buffer{},
+	}
+	if err := runFillNACommand(ctx, []string{"t", "median", "cols", "num,text", "as", "filled"}); err != nil {
+		t.Fatalf("fillna median failed: %v", err)
+	}
+	result := resultDT(t, ctx, "filled")
+	if !approxEqualAny(result.GetColByName("num").Data(), []any{1.0, 2.0, 3.0}, 1e-9) {
+		t.Errorf("fillna numeric col wrong: %v", result.GetColByName("num").Data())
+	}
+	if !approxEqualAny(result.GetColByName("text").Data(), []any{"x", nil, "z"}, 1e-9) {
+		t.Errorf("fillna string col should be skipped: %v", result.GetColByName("text").Data())
+	}
+}
+
+func TestFillNaNLegacy_MeanOnly(t *testing.T) {
+	ctx := newWindowCtx(1.0, math.NaN(), 3.0)
+	if err := runFillNaNCommand(ctx, []string{"x", "mean", "as", "filled"}); err != nil {
+		t.Fatalf("fillnan mean failed: %v", err)
+	}
+	if !approxEqualAny(resultDL(t, ctx, "filled").Data(), []any{1.0, 2.0, 3.0}, 1e-9) {
+		t.Errorf("fillnan mean wrong: %v", resultDL(t, ctx, "filled").Data())
+	}
+	out := ctx.Output.(*bytes.Buffer).String()
+	if !strings.Contains(out, "deprecated") || !strings.Contains(out, "fillna") {
+		t.Errorf("expected deprecation warning pointing to fillna, got: %q", out)
+	}
+}
+
+func TestFillNaNLegacy_RejectsOtherStrategies(t *testing.T) {
+	ctx := newWindowCtx(1.0, math.NaN(), 3.0)
+	if err := runFillNaNCommand(ctx, []string{"x", "median"}); err == nil {
+		t.Error("expected error for non-mean strategy on legacy fillnan")
 	}
 }
 

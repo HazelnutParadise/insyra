@@ -104,6 +104,31 @@ func main() {
 }
 ```
 
+### 1b) Fill missing values
+
+All fill methods treat both `nil` and `math.NaN()` as missing values. The legacy `FillNaNWithMean` remains for backwards compatibility but only replaces NaN; prefer `FillWithMean` for new code. Use `ReplaceNaNsWith`, `ReplaceNilsWith`, or `ReplaceNaNsAndNilsWith` when you want constant replacement instead.
+
+```go
+dl.FillWithMean()
+dl.FillForward(limit ...int)
+dl.FillBackward(limit ...int)
+dl.FillWithMedian()
+dl.FillWithMode()
+dl.FillByInterpolation(extrapolate ...bool)
+
+dt.FillForward(limit int, cols ...string)
+dt.FillBackward(limit int, cols ...string)
+dt.FillWithMean(cols ...string)
+dt.FillWithMedian(cols ...string)
+dt.FillWithMode(cols ...string)
+dt.FillByInterpolation(cols ...string)
+```
+
+Notes:
+- `limit` uses `0` or omitted as unlimited for forward/backward fill.
+- DataTable `mean`, `median`, and `interpolation` skip non-numeric columns; `mode`, `ffill`, and `bfill` work with any selected column type.
+- `FillByInterpolation` fills gaps inside a sequence; it is distinct from `LinearInterpolation(x)`, which evaluates a y-value at a given x.
+
 ### 2) Read a CSV file into a DataTable + preview
 
 ```go
