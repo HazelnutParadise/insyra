@@ -45,6 +45,12 @@ type IDataList interface {
 	Normalize() *DataList
 	Standardize() *DataList
 	FillNaNWithMean() *DataList
+	FillWithMean() *DataList
+	FillForward(limit ...int) *DataList
+	FillBackward(limit ...int) *DataList
+	FillWithMedian() *DataList
+	FillWithMode() *DataList
+	FillByInterpolation(extrapolate ...bool) *DataList
 	MovingAverage(int) *DataList
 	WeightedMovingAverage(int, any) *DataList
 	ExponentialSmoothing(float64) *DataList
@@ -279,6 +285,12 @@ type IDataTable interface {
 	ReplaceNaNsWith(newValue any) *DataTable
 	ReplaceNilsWith(newValue any) *DataTable
 	ReplaceNaNsAndNilsWith(newValue any) *DataTable
+	FillForward(int, ...string) *DataTable
+	FillBackward(int, ...string) *DataTable
+	FillWithMean(...string) *DataTable
+	FillWithMedian(...string) *DataTable
+	FillWithMode(...string) *DataTable
+	FillByInterpolation(...string) *DataTable
 	ReplaceInRow(rowIndex int, oldValue, newValue any, mode ...int) *DataTable
 	ReplaceNaNsInRow(rowIndex int, newValue any, mode ...int) *DataTable
 	ReplaceNilsInRow(rowIndex int, newValue any, mode ...int) *DataTable

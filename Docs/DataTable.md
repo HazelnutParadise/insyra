@@ -2550,6 +2550,36 @@ sampled := dt.SimpleRandomSample(10)
 
 DataTable provides several methods to replace values within the entire table, a specific row, or a specific column.
 
+### Missing-Value Fill Methods
+
+```go
+func (dt *DataTable) FillForward(limit int, cols ...string) *DataTable
+func (dt *DataTable) FillBackward(limit int, cols ...string) *DataTable
+func (dt *DataTable) FillWithMean(cols ...string) *DataTable
+func (dt *DataTable) FillWithMedian(cols ...string) *DataTable
+func (dt *DataTable) FillWithMode(cols ...string) *DataTable
+func (dt *DataTable) FillByInterpolation(cols ...string) *DataTable
+```
+
+**Description:** Fills `nil` and `math.NaN()` values column by column. When `cols` is omitted, all applicable columns are processed. Mean, median, and interpolation apply only to numeric columns; mode and forward/backward fill can apply to any selected column.
+
+**Parameters:**
+
+- `limit`: Maximum consecutive values to fill for forward/backward fill. `0` means unlimited.
+- `cols` (optional): Column names or Excel-style indices to process.
+
+**Returns:**
+
+- `*DataTable`: Reference to the modified DataTable.
+
+**Example:**
+
+```go
+dt.FillWithMedian("revenue", "cost")
+dt.FillForward(2, "status")
+dt.FillByInterpolation() // all numeric columns
+```
+
 ### Replace
 
 ```go

@@ -496,10 +496,17 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 - Usage: `expanding <var> <minobs> <reducer> [as <var>]`
 - Example: `insyra expanding pnl 1 sum as cumulative_pnl`
 
-### `fillnan`
-- Description: Fill NaN with mean
-- Usage: `fillnan <var> mean`
-- Example: `insyra fillnan x mean`
+### `fillna`
+- Description: Fill missing DataList/DataTable values
+- Usage: `fillna <var> mean|median|mode|ffill|bfill|interpolate [cols A,B,C] [limit N] [extrapolate yes|no] [missing nan|nil|both] [as <var>]`
+- Examples: `insyra fillna price median as price_filled` / `insyra fillna price ffill limit 2 missing nan as price_ffill` / `insyra fillna sales median cols revenue,cost as cleaned`
+- Notes: works on DataList or DataTable; `cols` filters DataTable columns and is ignored for DataList input; `limit` applies to `ffill`/`bfill` (`0` = unlimited); `extrapolate yes` lets interpolation fill leading/trailing gaps; `missing` selects NaN-only, nil-only, or both (default `both`); `mean`/`median`/`interpolate` skip non-numeric columns; `mode`/`ffill`/`bfill` work on any selected column type.
+
+### `fillnan` (deprecated)
+- Description: Fill NaN with mean — legacy alias
+- Usage: `fillnan <var> mean [as <var>]`
+- Example: `insyra fillnan price mean as price_filled`
+- Notes: only fills NaN (leaves nil alone) and only supports `mean`. Use `fillna <var> mean missing nan` for the same behaviour with the new command.
 
 ## Modeling / Inference / Visualization / Fetch
 ### `regression`

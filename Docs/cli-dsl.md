@@ -447,10 +447,30 @@ High-level command map:
 - **Data IO / Creation**: `newdl`, `newdt`, `load`, `read`, `save`, `convert`
 - **Database**: `db` (`connect` / `list` / `tables` / `disconnect`), `load sql`, `save <var> sql`
 - **DataTable Structure / Access**: `addcol`, `addrow`, `dropcol`, `droprow`, `swap`, `transpose`, `rows`, `cols`, `row`, `col`, `get`, `set`, `setrownames`, `setcolnames`
-- **Data Processing**: `filter`, `sort`, `sample`, `find`, `replace`, `clean`, `merge`, `groupby`, `pivot`, `unpivot`, `ccl`, `addcolccl`
+- **Data Processing**: `filter`, `sort`, `sample`, `find`, `replace`, `clean`, `fillna`, `merge`, `groupby`, `pivot`, `unpivot`, `ccl`, `addcolccl`
 - **DataList Stats**: `sum`, `mean`, `median`, `mode`, `stdev`, `var`, `min`, `max`, `range`, `quartile`, `iqr`, `percentile`, `count`, `counter`, `corr`, `cov`, `corrmatrix`, `skewness`, `kurtosis`
-- **Time Series / Transforms**: `rank`, `normalize`, `standardize`, `reverse`, `upper`, `lower`, `capitalize`, `parsenums`, `parsestrings`, `movavg`, `expsmooth`, `diff`, `diffn`, `shift`, `pctchange`, `cumsum`, `cumprod`, `cummax`, `cummin`, `rolling`, `expanding`, `fillnan`
+- **Time Series / Transforms**: `rank`, `normalize`, `standardize`, `reverse`, `upper`, `lower`, `capitalize`, `parsenums`, `parsestrings`, `movavg`, `expsmooth`, `diff`, `diffn`, `shift`, `pctchange`, `cumsum`, `cumprod`, `cummax`, `cummin`, `rolling`, `expanding`, `fillna`
 - **Modeling / Viz / Fetch**: `regression`, `pca`, `kmeans`, `hclust`, `cutree`, `dbscan`, `silhouette`, `knn_classify`, `knn_regress`, `knn_neighbors`, `ttest`, `ztest`, `anova`, `ftest`, `chisq`, `plot`, `fetch`
+
+### Missing-Value Fill Commands
+
+```bash
+fillna <var> mean|median|mode|ffill|bfill|interpolate [cols A,B,C] [limit N] [extrapolate yes|no] [missing nan|nil|both] [as <var>]
+fillnan <var> mean [as <var>]   # deprecated; only fills NaN, mean only
+```
+
+`fillna` clones the input (DataList or DataTable) and saves the filled result under `as <var>` or `$result`. `cols` filters which DataTable columns to touch (ignored for DataList). `limit` caps consecutive forward/backward fills; `extrapolate` controls whether interpolation fills leading/trailing gaps; `missing` selects which kind of missing to fill (default `both`). `mean`, `median`, and `interpolate` skip non-numeric columns; `mode`, `ffill`, and `bfill` work with any selected column type.
+
+`fillnan <var> mean` is a legacy alias kept for backward compatibility — it only fills NaN (leaves nil alone) and only supports the `mean` strategy. New code should use `fillna ... missing nan` instead.
+
+Examples:
+
+```bash
+fillna price interpolate extrapolate yes as price_interp
+fillna status ffill limit 2 missing nan as status_filled
+fillna sales median cols revenue,cost as sales_clean
+fillna sales bfill limit 1 as sales_bfill
+```
 
 ## Full Command Index (Appendix)
 
@@ -496,7 +516,8 @@ Source policy:
 | `expanding` | `expanding <var> <minobs> <reducer> [as <var>]` | Expanding-window reduction (reducer: sum\|mean\|min\|max\|median\|std\|var) |
 | `expsmooth` | `expsmooth <var> <alpha> [as <var>]` | Exponential smoothing |
 | `fetch` | `fetch yahoo <ticker> <method> [params...] [as <var>]` | Fetch external data |
-| `fillnan` | `fillnan <var> mean` | Fill NaN with mean |
+| `fillna` | `fillna <var> mean\|median\|mode\|ffill\|bfill\|interpolate [cols A,B,C] [limit N] [extrapolate yes\|no] [missing nan\|nil\|both] [as <var>]` | Fill missing DataList/DataTable values |
+| `fillnan` | `fillnan <var> mean [as <var>]` | Fill NaN with mean (deprecated alias) |
 | `filter` | `filter <var> <expr> [as <var>]` | Filter DataTable by CCL expression |
 | `find` | `find <var> <value>` | Find rows containing value |
 | `ftest` | `ftest var\|levene\|bartlett ...` | F-test commands |

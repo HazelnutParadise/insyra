@@ -772,6 +772,39 @@ dl.FillNaNWithMean()
 // NaN values are replaced with mean (3.0)
 ```
 
+### Missing-Value Fill Methods
+
+```go
+func (dl *DataList) FillForward(limit ...int) *DataList
+func (dl *DataList) FillBackward(limit ...int) *DataList
+func (dl *DataList) FillWithMedian() *DataList
+func (dl *DataList) FillWithMode() *DataList
+func (dl *DataList) FillByInterpolation(extrapolate ...bool) *DataList
+```
+
+**Description:** Fills `nil` and `math.NaN()` values in place. `FillForward` uses the most recent observed value, `FillBackward` uses the next observed value, `FillWithMedian` uses observed numeric values, `FillWithMode` works with any observed value type, and `FillByInterpolation` linearly fills numeric gaps by index.
+
+**Parameters:**
+
+- `limit` (optional): Maximum consecutive values to fill for forward/backward fill. `0` or omitted means unlimited.
+- `extrapolate` (optional): When `true`, `FillByInterpolation` also fills leading and trailing numeric gaps.
+
+**Returns:**
+
+- `*DataList`: Reference to the modified DataList
+
+**Example:**
+
+```go
+dl := insyra.NewDataList(1.0, nil, math.NaN(), 4.0)
+dl.FillByInterpolation()
+// dl now contains: [1.0, 2.0, 3.0, 4.0]
+
+labels := insyra.NewDataList("A", nil, "A", math.NaN())
+labels.FillWithMode()
+// labels now contains: ["A", "A", "A", "A"]
+```
+
 ### ReplaceOutliers
 
 ```go
@@ -1749,7 +1782,7 @@ dl.Capitalize()
 func (dl *DataList) LinearInterpolation(x float64) float64
 ```
 
-**Description:** Performs linear interpolation for a given x value.
+**Description:** Performs linear interpolation for a given x value. To fill missing values in a sequence by linear interpolation, use `FillByInterpolation`.
 
 **Parameters:**
 
