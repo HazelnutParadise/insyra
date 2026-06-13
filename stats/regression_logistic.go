@@ -20,40 +20,38 @@ type LogisticRegressionOptions struct {
 }
 
 type LogisticRegressionResult struct {
-	Coefficients                 []float64
-	StandardErrors               []float64
-	ZValues                      []float64
-	PValues                      []float64
-	ConfidenceIntervals          [][2]float64
-	OddsRatios                   []float64
-	OddsRatioConfidenceIntervals [][2]float64
-	OddsRatioCIs                 [][2]float64
-	LinearPredictors             []float64
-	FittedProbabilities          []float64
-	FittedValues                 []float64
-	Residuals                    []float64
-	PearsonResiduals             []float64
-	DevianceResiduals            []float64
-	Deviance                     float64
-	NullDeviance                 float64
-	LogLikelihood                float64
-	NullLogLikelihood            float64
-	AIC                          float64
-	BIC                          float64
-	McFaddenR2                   float64
-	CoxSnellR2                   float64
-	NagelkerkeR2                 float64
-	DFResidual                   int
-	Iterations                   int
-	Converged                    bool
-	SeparationDetected           bool
-	Penalized                    bool
-	Ridge                        float64
-	PositiveClass                any
-	ClassLabels                  []any
-	ConfidenceLevel              float64
-	family                       glmFamily
-	link                         glmLink
+	Coefficients        []float64
+	StandardErrors      []float64
+	ZValues             []float64
+	PValues             []float64
+	ConfidenceIntervals [][2]float64
+	OddsRatios          []float64
+	OddsRatioCIs        [][2]float64
+	LinearPredictors    []float64
+	FittedProbabilities []float64
+	Residuals           []float64
+	PearsonResiduals    []float64
+	DevianceResiduals   []float64
+	Deviance            float64
+	NullDeviance        float64
+	LogLikelihood       float64
+	NullLogLikelihood   float64
+	AIC                 float64
+	BIC                 float64
+	McFaddenR2          float64
+	CoxSnellR2          float64
+	NagelkerkeR2        float64
+	DFResidual          int
+	Iterations          int
+	Converged           bool
+	SeparationDetected  bool
+	Penalized           bool
+	Ridge               float64
+	PositiveClass       any
+	ClassLabels         []any
+	ConfidenceLevel     float64
+	family              glmFamily
+	link                glmLink
 }
 
 func LogisticRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) (*LogisticRegressionResult, error) {
@@ -78,14 +76,24 @@ func LogisticRegressionWithOptions(opts LogisticRegressionOptions, dlY insyra.ID
 		}
 	}
 
-	_, xs, _, n, err := gatherRegressionInputs(dlY, dlXs)
+	if dlY == nil {
+		return nil, errors.New("y data list is nil")
+	}
+	xs, n, err := gatherPredictorInputs(dlXs)
 	if err != nil {
 		return nil, err
 	}
 	if n <= len(dlXs)+1 {
 		return nil, errors.New("need at least p+2 observations for logistic regression")
 	}
-	y, positiveClass, classLabels, err := encodeBinaryResponse(dlY.Data(), opts.PositiveClass)
+	var rawY []any
+	dlY.AtomicDo(func(l *insyra.DataList) {
+		rawY = l.Data()
+	})
+	if len(rawY) != n {
+		return nil, errors.New("x and y must have the same length")
+	}
+	y, positiveClass, classLabels, err := encodeBinaryResponse(rawY, opts.PositiveClass)
 	if err != nil {
 		return nil, err
 	}
@@ -104,11 +112,8 @@ func LogisticRegressionWithOptions(opts LogisticRegressionOptions, dlY insyra.ID
 	if err != nil {
 		return nil, err
 	}
-	if fit.sepFlag {
-		if opts.SeparationPolicy == SepError {
-			return nil, errors.New("possible separation detected in logistic regression")
-		}
-		insyra.LogWarning("stats", "LogisticRegression", "possible separation detected; estimates may be unstable")
+	if fit.sepFlag && opts.SeparationPolicy == SepError {
+		return nil, errors.New("possible separation detected in logistic regression")
 	}
 
 	weights := priorWeightsOrOnes(nil, n)
@@ -124,40 +129,38 @@ func LogisticRegressionWithOptions(opts LogisticRegressionOptions, dlY insyra.ID
 	k := len(fit.beta)
 
 	return &LogisticRegressionResult{
-		Coefficients:                 append([]float64(nil), fit.beta...),
-		StandardErrors:               se,
-		ZValues:                      z,
-		PValues:                      p,
-		ConfidenceIntervals:          cis,
-		OddsRatios:                   expSlice(fit.beta),
-		OddsRatioConfidenceIntervals: expCIs(cis),
-		OddsRatioCIs:                 expCIs(cis),
-		LinearPredictors:             append([]float64(nil), fit.eta...),
-		FittedProbabilities:          append([]float64(nil), fit.mu...),
-		FittedValues:                 append([]float64(nil), fit.mu...),
-		Residuals:                    responseResiduals(y, fit.mu),
-		PearsonResiduals:             pearsonResiduals(y, fit.mu, weights, fam),
-		DevianceResiduals:            devianceResiduals(y, fit.mu, weights, fam),
-		Deviance:                     fit.deviance,
-		NullDeviance:                 nullFit.deviance,
-		LogLikelihood:                logLik,
-		NullLogLikelihood:            nullLogLik,
-		AIC:                          glmAIC(logLik, k),
-		BIC:                          glmBIC(logLik, k, n),
-		McFaddenR2:                   mcFaddenR2(logLik, nullLogLik),
-		CoxSnellR2:                   coxSnellR2(logLik, nullLogLik, n),
-		NagelkerkeR2:                 nagelkerkeR2(logLik, nullLogLik, n),
-		DFResidual:                   n - k,
-		Iterations:                   fit.iterations,
-		Converged:                    fit.converged,
-		SeparationDetected:           fit.sepFlag,
-		Penalized:                    ridge > 0,
-		Ridge:                        ridge,
-		PositiveClass:                positiveClass,
-		ClassLabels:                  classLabels,
-		ConfidenceLevel:              cl,
-		family:                       fam,
-		link:                         link,
+		Coefficients:        append([]float64(nil), fit.beta...),
+		StandardErrors:      se,
+		ZValues:             z,
+		PValues:             p,
+		ConfidenceIntervals: cis,
+		OddsRatios:          expSlice(fit.beta),
+		OddsRatioCIs:        expCIs(cis),
+		LinearPredictors:    append([]float64(nil), fit.eta...),
+		FittedProbabilities: append([]float64(nil), fit.mu...),
+		Residuals:           responseResiduals(y, fit.mu),
+		PearsonResiduals:    pearsonResiduals(y, fit.mu, weights, fam),
+		DevianceResiduals:   devianceResiduals(y, fit.mu, weights, fam),
+		Deviance:            fit.deviance,
+		NullDeviance:        nullFit.deviance,
+		LogLikelihood:       logLik,
+		NullLogLikelihood:   nullLogLik,
+		AIC:                 glmAIC(logLik, k),
+		BIC:                 glmBIC(logLik, k, n),
+		McFaddenR2:          mcFaddenR2(logLik, nullLogLik),
+		CoxSnellR2:          coxSnellR2(logLik, nullLogLik, n),
+		NagelkerkeR2:        nagelkerkeR2(logLik, nullLogLik, n),
+		DFResidual:          n - k,
+		Iterations:          fit.iterations,
+		Converged:           fit.converged,
+		SeparationDetected:  fit.sepFlag,
+		Penalized:           ridge > 0,
+		Ridge:               ridge,
+		PositiveClass:       positiveClass,
+		ClassLabels:         classLabels,
+		ConfidenceLevel:     cl,
+		family:              fam,
+		link:                link,
 	}, nil
 }
 

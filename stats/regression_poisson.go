@@ -23,9 +23,7 @@ type PoissonRegressionResult struct {
 	PValues                []float64
 	ConfidenceIntervals    [][2]float64
 	IncidenceRateRatios    []float64
-	IRR                    []float64
 	IRRConfidenceIntervals [][2]float64
-	IRRConfidenceInterval  [][2]float64
 	LinearPredictors       []float64
 	FittedRates            []float64
 	FittedValues           []float64
@@ -105,9 +103,6 @@ func PoissonRegressionWithOptions(opts PoissonRegressionOptions, dlY insyra.IDat
 	pearson := pearsonChiSq(y, fit.mu, weights, fam)
 	dispersion := pearsonDispersion(pearson, dfResidual)
 	overDispersed := opts.DispersionCheck && dispersion > 1.5
-	if overDispersed {
-		insyra.LogWarning("stats", "PoissonRegression", "possible over-dispersion detected: Pearson chi-square / df = %.6g", dispersion)
-	}
 	irr := expSlice(fit.beta)
 	irrCI := expCIs(cis)
 
@@ -118,9 +113,7 @@ func PoissonRegressionWithOptions(opts PoissonRegressionOptions, dlY insyra.IDat
 		PValues:                p,
 		ConfidenceIntervals:    cis,
 		IncidenceRateRatios:    irr,
-		IRR:                    irr,
 		IRRConfidenceIntervals: irrCI,
-		IRRConfidenceInterval:  irrCI,
 		LinearPredictors:       append([]float64(nil), fit.eta...),
 		FittedRates:            append([]float64(nil), fit.mu...),
 		FittedValues:           append([]float64(nil), fit.mu...),
