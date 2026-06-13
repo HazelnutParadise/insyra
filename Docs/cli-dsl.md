@@ -537,7 +537,7 @@ Source policy:
 | `range` | `range <var>` | DataList range |
 | `rank` | `rank <var> [asc\|desc\|true\|false] [as <var>]` | Rank DataList |
 | `read` | `read <file> [headers true\|false] [rownames true\|false] [encoding <enc>] [sheet <name>]` | Quick preview a file without saving variable |
-| `regression` | `regression <type> <y> <x...>` | Regression analysis: linear/poly/exp/log |
+| `regression` | `regression <type> <y> <x...>` | Regression analysis: linear/poly/exp/log/logistic/poisson |
 | `rename` | `rename <var> <new>` | Rename variable |
 | `replace` | `replace <var> <old\|nan\|nil> <new>` | Replace values in DataTable/DataList |
 | `reverse` | `reverse <var> [as <var>]` | Reverse DataList |
@@ -569,6 +569,24 @@ Source policy:
 | `vars` | `vars` | List variables in current environment |
 | `version` | `version` | Show insyra version |
 | `ztest` | `ztest single\|two ...` | Z-test commands |
+
+## Regression Forms
+
+The `regression` command supports:
+
+- `regression linear <y> <x1> [x2 ...] [as <var>]`
+- `regression poly <y> <x> <degree> [as <var>]`
+- `regression exp <y> <x> [as <var>]`
+- `regression log <y> <x> [as <var>]`
+- `regression logistic <y> <x1> [x2 ...] [as <var>]`
+- `regression poisson <y> <x1> [x2 ...] [as <var>]`
+
+Examples:
+
+```bash
+insyra regression logistic y x1 x2 as fit
+insyra regression poisson y x1 x2
+```
 
 ## Troubleshooting
 
