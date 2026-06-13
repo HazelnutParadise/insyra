@@ -1000,6 +1000,60 @@ if (method == "single_t") {
   } else {
     out <- list(corr_matrix = cm$corr, p_matrix = cm$pmat, chi_square = NaN, p_value = NaN, df = 0)
   }
+} else if (method == "logistic_reg") {
+  y  <- as.double(unlist(payload$y))
+  xs <- lapply(payload$xs, function(v) as.double(unlist(v)))
+  df <- data.frame(y = y, do.call(cbind, xs))
+  names(df) <- c("y", paste0("x", seq_along(xs)))
+  fit <- glm(y ~ ., data = df, family = binomial(link = "logit"),
+             control = glm.control(epsilon = 1e-10, maxit = 100))
+  s   <- summary(fit)$coefficients
+  ci  <- confint.default(fit)
+  ci_rows <- lapply(seq_len(nrow(ci)), function(i) as.double(ci[i, ]))
+  out <- list(
+    coefficients    = unname(s[, "Estimate"]),
+    standard_errors = unname(s[, "Std. Error"]),
+    z_values        = unname(s[, "z value"]),
+    p_values        = unname(s[, "Pr(>|z|)"]),
+    ci              = ci_rows,
+    odds_ratios     = unname(exp(s[, "Estimate"])),
+    log_likelihood  = as.numeric(logLik(fit)),
+    null_deviance   = fit$null.deviance,
+    deviance        = fit$deviance,
+    aic             = fit$aic,
+    bic             = as.numeric(BIC(fit)),
+    iterations      = as.double(fit$iter),
+    fitted          = unname(fitted(fit))
+  )
+} else if (method == "poisson_reg") {
+  y  <- as.double(unlist(payload$y))
+  xs <- lapply(payload$xs, function(v) as.double(unlist(v)))
+  off <- if (!is.null(payload$offset)) as.double(unlist(payload$offset)) else rep(0, length(y))
+  df <- data.frame(y = y, do.call(cbind, xs))
+  names(df) <- c("y", paste0("x", seq_along(xs)))
+  fit <- glm(y ~ ., data = df, family = poisson(link = "log"),
+             offset = off, control = glm.control(epsilon = 1e-10, maxit = 100))
+  s   <- summary(fit)$coefficients
+  ci  <- confint.default(fit)
+  ci_rows <- lapply(seq_len(nrow(ci)), function(i) as.double(ci[i, ]))
+  pear <- sum(residuals(fit, type = "pearson")^2)
+  out <- list(
+    coefficients    = unname(s[, "Estimate"]),
+    standard_errors = unname(s[, "Std. Error"]),
+    z_values        = unname(s[, "z value"]),
+    p_values        = unname(s[, "Pr(>|z|)"]),
+    ci              = ci_rows,
+    irr             = unname(exp(s[, "Estimate"])),
+    log_likelihood  = as.numeric(logLik(fit)),
+    deviance        = fit$deviance,
+    null_deviance   = fit$null.deviance,
+    pearson_chi2    = pear,
+    dispersion      = pear / fit$df.residual,
+    aic             = fit$aic,
+    bic             = as.numeric(BIC(fit)),
+    iterations      = as.double(fit$iter),
+    fitted          = unname(fitted(fit))
+  )
 } else if (method == "linear_reg") {
   y <- as.double(unlist(payload$y))
   xs <- lapply(payload$xs, function(v) as.double(unlist(v)))
