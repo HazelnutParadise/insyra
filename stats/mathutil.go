@@ -9,6 +9,15 @@ func resolveConfidenceLevel(cl float64) float64 {
 	return defaultConfidenceLevel
 }
 
+func sigmoid(x float64) float64 {
+	if x >= 0 {
+		z := math.Exp(-x)
+		return 1 / (1 + z)
+	}
+	z := math.Exp(x)
+	return z / (1 + z)
+}
+
 func symmetricCI(center, margin float64) *[2]float64 {
 	ci := [2]float64{center - margin, center + margin}
 	return &ci
