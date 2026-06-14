@@ -164,6 +164,11 @@ insyra show report
 # Multi-key + count shorthand
 insyra groupby sales by region,product agg revenue:sum count as report2
 
+# One-shot categorical encoding for DataTable variables
+insyra encode sales onehot region,channel dropfirst true as x
+insyra encode sales label segment newcol segment_id sortby freq keeporiginal true as labeled
+insyra encode survey ordinal satisfaction order low,medium,high unknown error as ranked
+
 # SQL: connect, list tables, load query, transform, write back, disconnect
 # Connections live for the current process only — reopen at the top of every session/script.
 insyra db connect main sqlite:./demo.db
@@ -183,6 +188,12 @@ insyra regression poisson y x1 x2
 ```
 
 `groupby <var> by <col1>[,<col2>...] agg <col>:<op>[:<alias>] [<col>:<op>[:<alias>] ...] [as <var>]` produces a new DataTable with one row per unique key combination. Supported ops: `sum`, `mean` (alias `avg`), `median`, `min`, `max`, `count` (non-nil), `countall` (group size), `std`/`stdev`, `stdp`/`stdevp`, `var`, `varp`, `first`, `last`, `nunique`. The bare token `count` is shorthand for `:countall:count`.
+
+`encode` is one-shot fit+transform only; it does not persist encoder state between CLI commands. For reusable train/test encoders, use the Go API.
+
+- `encode <var> onehot <col1[,col2,...]> [dropfirst true|false] [keeporiginal true|false] [nan category|error|skip] [unknown ignore|error|new] [prefix <p>] [sep <s>] [sortcats true|false] [as <var>]`
+- `encode <var> label <col> [newcol <name>] [sortby firstseen|lex|freq] [nan category|error|skip] [unknown ignore|error|new] [keeporiginal true|false] [as <var>]`
+- `encode <var> ordinal <col> order <v1,v2,...> [newcol <name>] [unknown error|ignore] [nan category|error|skip] [keeporiginal true|false] [as <var>]`
 
 ## Database (db) workflow notes
 

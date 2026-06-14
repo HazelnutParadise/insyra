@@ -78,6 +78,7 @@ This list is generated from `insyra help` in this repository state.
 - `groupby` - Group a DataTable and aggregate columns (split-apply-combine)
 - `pivot` - Reshape long-form DataTable to wide form (long -> wide)
 - `unpivot` - Reshape wide-form DataTable to long form (wide -> long)
+- `encode` - One-shot categorical encoding for DataTable variables
 - `ccl` - Execute CCL statements on DataTable
 - `addcolccl` - Add DataTable column using CCL
 
@@ -157,3 +158,13 @@ This list is generated from `insyra help` in this repository state.
   - `mean`, `median`, and `interpolate` skip non-numeric columns; `mode`, `ffill`, and `bfill` can fill any selected column type.
 - `fillnan <var> mean [as <var>]`
   - Deprecated alias kept for backward compatibility. Only fills NaN (leaves nil alone) and only supports `mean`. Use `fillna <var> mean missing nan` instead.
+
+## Categorical Encoding Command
+
+- `encode <var> onehot <col1[,col2,...]> [dropfirst true|false] [keeporiginal true|false] [nan category|error|skip] [unknown ignore|error|new] [prefix <p>] [sep <s>] [sortcats true|false] [as <var>]`
+  - Emits 0/1 indicator columns for each selected category column.
+- `encode <var> label <col> [newcol <name>] [sortby firstseen|lex|freq] [nan category|error|skip] [unknown ignore|error|new] [keeporiginal true|false] [as <var>]`
+  - Emits integer class ids for one category column.
+- `encode <var> ordinal <col> order <v1,v2,...> [newcol <name>] [unknown error|ignore] [nan category|error|skip] [keeporiginal true|false] [as <var>]`
+  - Uses the explicit order as `0..n-1`; `order` values are parsed as literals.
+- CLI encoding is one-shot fit+transform and does not persist encoder state. Use the Go API when you need reusable train/test `Transform`.

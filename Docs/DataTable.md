@@ -11,6 +11,7 @@ DataTable is the core data structure of Insyra for handling structured data. It 
 - [Data Operations](#data-operations)
   - [Merge](#merge)
   - [GroupBy](#groupby)
+  - [Categorical Encoding](#categorical-encoding)
 - [Data Replacement](#data-replacement)
 - [Column Calculation](#column-calculation)
 - [Searching](#searching)
@@ -886,6 +887,164 @@ long, err := dt.Unpivot(insyra.UnpivotConfig{
 ```
 
 **Relationship to `GroupBy + Aggregate`:** `Pivot` is essentially `GroupBy(Index..., Columns).Aggregate(Values, AggFunc)` followed by spreading the `Columns` key out into headers. When you only need the grouped summary (one row per key, no header spreading), use `GroupBy + Aggregate` directly — it is simpler and produces the same intermediate structure.
+
+### Categorical Encoding
+
+```go
+func (dt *DataTable) OneHotEncode(opts OneHotOptions) (*DataTable, *OneHotEncoder, error)
+func (dt *DataTable) LabelEncode(opts LabelEncodeOptions) (*DataTable, *LabelEncoder, error)
+func (dt *DataTable) OrdinalEncode(opts OrdinalEncodeOptions) (*DataTable, *OrdinalEncoder, error)
+```
+
+**Description:** Categorical encoding turns string or mixed-type category columns into numeric columns that can feed `stats.LinearRegression`, KNN, PCA, and clustering. Each method returns a fresh `*DataTable`; the receiver is not modified. The returned encoder stores the fitted category mapping and can `Transform` another table with the same schema, such as a test set or prediction batch.
+
+Column references are resolved by column name first, then Excel-style index (`"A"`, `"B"`, ..., `"AA"`). Category identity uses both type and value, so `int(1)` and string `"1"` are distinct. Missing means `nil` or `NaN`.
+
+**Policies:**
+
+| Type | Values | Behavior |
+|---|---|---|
+| `NaNPolicy` | `NaNAsCategory`, `NaNError`, `NaNSkip` | Missing becomes its own category, errors, or is skipped (`nil` for label/ordinal; all-zero for one-hot). |
+| `UnknownPolicy` | `UnknownIgnore`, `UnknownError`, `UnknownAsNew` | On `Transform`, unseen categories become all-zero/`nil`, error, or extend the encoder. |
+| `LabelSort` | `LabelSortFirstSeen`, `LabelSortLexicographic`, `LabelSortByFrequency` | Controls label id assignment order. |
+
+**Options:**
+
+```go
+type OneHotOptions struct {
+    Columns        []string
+    DropFirst      bool
+    HandleNaN      NaNPolicy
+    Unknown        UnknownPolicy
+    Prefix         string
+    Separator      string
+    KeepOriginal   bool
+    SortCategories bool
+}
+
+type LabelEncodeOptions struct {
+    Column       string
+    NewColumn    string
+    SortBy       LabelSort
+    HandleNaN    NaNPolicy
+    Unknown      UnknownPolicy
+    KeepOriginal bool
+}
+
+type OrdinalEncodeOptions struct {
+    Column       string
+    Order        []any
+    NewColumn    string
+    HandleNaN    NaNPolicy
+    Unknown      UnknownPolicy
+    KeepOriginal bool
+}
+```
+
+`OneHotEncode` emits one `0/1` `int` column per category, named `<prefix><separator><category>`; by default the prefix is the source column name and the separator is `"_"`. `DropFirst` omits the first category as the reference level. `LabelEncode` maps each class to an integer id. `OrdinalEncode` uses the explicit `Order` slice as `0..n-1`.
+
+**Encoder interface and introspection:**
+
+```go
+type Encoder interface {
+    Transform(dt *DataTable) (*DataTable, error)
+    InverseTransform(dt *DataTable) (*DataTable, error)
+    Kind() string
+}
+
+func (e *OneHotEncoder) Categories() map[string][]any
+func (e *OneHotEncoder) OutputColumns() []string
+func (e *LabelEncoder) Classes() []any
+func (e *LabelEncoder) Inverse(values ...any) ([]any, error)
+func (e *OrdinalEncoder) Classes() []any
+func (e *OrdinalEncoder) Inverse(values ...any) ([]any, error)
+```
+
+**Example — fit, transform, inverse:**
+
+```go
+package main
+
+import (
+    "fmt"
+    "log"
+
+    "github.com/HazelnutParadise/insyra"
+)
+
+func main() {
+    train := insyra.NewDataTable(
+        insyra.NewDataList("red", "blue", "red").SetName("color"),
+        insyra.NewDataList(10, 20, 30).SetName("value"),
+    )
+
+    encoded, enc, err := train.OneHotEncode(insyra.OneHotOptions{
+        Columns:   []string{"color"},
+        DropFirst: true,
+        Unknown:   insyra.UnknownIgnore,
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    fmt.Println(encoded.ColNames()) // [color_blue value]
+
+    test := insyra.NewDataTable(
+        insyra.NewDataList("blue", "green").SetName("color"),
+        insyra.NewDataList(40, 50).SetName("value"),
+    )
+    encodedTest, err := enc.Transform(test)
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Println(encodedTest.GetColByName("color_blue").Data()) // [1 0]
+
+    originalShape, err := enc.InverseTransform(encoded)
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Println(originalShape.ColNames()) // [color value]
+}
+```
+
+**Example — categorical predictor into `stats.LinearRegression`:**
+
+```go
+package main
+
+import (
+    "fmt"
+    "log"
+
+    "github.com/HazelnutParadise/insyra"
+    "github.com/HazelnutParadise/insyra/stats"
+)
+
+func main() {
+    dt := insyra.NewDataTable(
+        insyra.NewDataList(100.0, 130.0, 110.0, 150.0).SetName("sales"),
+        insyra.NewDataList("basic", "pro", "basic", "pro").SetName("plan"),
+    )
+
+    x, _, err := dt.OneHotEncode(insyra.OneHotOptions{
+        Columns:   []string{"plan"},
+        DropFirst: true, // baseline = first-seen category ("basic")
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    fit, err := stats.LinearRegression(
+        dt.GetColByName("sales"),
+        x.GetColByName("plan_pro"),
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    fmt.Println(fit.Coefficients) // intercept, effect of plan_pro
+}
+```
 
 ### Window / sequence transforms (Shift / Diff / PctChange / Cum\* / Rolling / Expanding)
 

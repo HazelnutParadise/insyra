@@ -129,6 +129,48 @@ Notes:
 - DataTable `mean`, `median`, and `interpolation` skip non-numeric columns; `mode`, `ffill`, and `bfill` work with any selected column type.
 - `FillByInterpolation` fills gaps inside a sequence; it is distinct from `LinearInterpolation(x)`, which evaluates a y-value at a given x.
 
+### 1c) Encode categorical DataTable columns
+
+Use DataTable categorical encoders before stats methods that require numeric features (`stats.LinearRegression`, KNN, PCA, clustering). These methods return a new table plus a fitted encoder; the receiver is not modified.
+
+```go
+encoded, enc, err := dt.OneHotEncode(insyra.OneHotOptions{
+    Columns:   []string{"plan", "region"},
+    DropFirst: true,
+    Unknown:   insyra.UnknownIgnore,
+})
+if err != nil { log.Fatal(err) }
+
+testEncoded, err := enc.Transform(testDT)       // reuse train mapping
+original, err := enc.InverseTransform(encoded)  // rebuild source columns
+_ = testEncoded
+_ = original
+
+labels, labelEnc, err := dt.LabelEncode(insyra.LabelEncodeOptions{
+    Column:    "segment",
+    NewColumn: "segment_id",
+    SortBy:    insyra.LabelSortByFrequency,
+})
+_ = labels
+classes := labelEnc.Classes()
+values, err := labelEnc.Inverse(0, 2, 1)
+_ = classes
+_ = values
+
+ranked, ordinalEnc, err := dt.OrdinalEncode(insyra.OrdinalEncodeOptions{
+    Column: "satisfaction",
+    Order:  []any{"low", "medium", "high"},
+})
+_ = ranked
+_ = ordinalEnc
+```
+
+Policies:
+- `NaNAsCategory`, `NaNError`, `NaNSkip` handle `nil`/`NaN`.
+- `UnknownIgnore`, `UnknownError`, `UnknownAsNew` handle categories seen only during `Transform`.
+- `LabelSortFirstSeen`, `LabelSortLexicographic`, `LabelSortByFrequency` control label ids.
+- Column refs resolve by name first, then Excel-style index (`A`, `B`, `AA`). Category identity keeps typed values distinct (`1` and `"1"` are different).
+
 ### 2) Read a CSV file into a DataTable + preview
 
 ```go

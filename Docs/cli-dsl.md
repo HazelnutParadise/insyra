@@ -408,6 +408,24 @@ unpivot survey idvars id valuevars Q1,Q2,Q3 varname question valuename score as 
 show long
 ```
 
+### B4. Categorical encoding
+
+`encode` does one-shot categorical encoding for DataTable variables: it fits on the input table, writes the encoded table to `as <var>` or `$result`, and does not persist encoder state across CLI commands. Use the Go API when you need train/test reuse with `Transform`.
+
+```text
+encode <var> onehot <col1[,col2,...]> [dropfirst true|false] [keeporiginal true|false] [nan category|error|skip] [unknown ignore|error|new] [prefix <p>] [sep <s>] [sortcats true|false] [as <var>]
+encode <var> label <col> [newcol <name>] [sortby firstseen|lex|freq] [nan category|error|skip] [unknown ignore|error|new] [keeporiginal true|false] [as <var>]
+encode <var> ordinal <col> order <v1,v2,...> [newcol <name>] [unknown error|ignore] [nan category|error|skip] [keeporiginal true|false] [as <var>]
+```
+
+Examples:
+
+```text
+encode sales onehot region,channel dropfirst true as x
+encode sales label segment newcol segment_id sortby freq keeporiginal true as labeled
+encode survey ordinal satisfaction order low,medium,high unknown error as ranked
+```
+
 ### C. Go `engine/dsl` session flow
 
 ```go
@@ -447,7 +465,7 @@ High-level command map:
 - **Data IO / Creation**: `newdl`, `newdt`, `load`, `read`, `save`, `convert`
 - **Database**: `db` (`connect` / `list` / `tables` / `disconnect`), `load sql`, `save <var> sql`
 - **DataTable Structure / Access**: `addcol`, `addrow`, `dropcol`, `droprow`, `swap`, `transpose`, `rows`, `cols`, `row`, `col`, `get`, `set`, `setrownames`, `setcolnames`
-- **Data Processing**: `filter`, `sort`, `sample`, `find`, `replace`, `clean`, `fillna`, `merge`, `groupby`, `pivot`, `unpivot`, `ccl`, `addcolccl`
+- **Data Processing**: `filter`, `sort`, `sample`, `find`, `replace`, `clean`, `fillna`, `merge`, `groupby`, `pivot`, `unpivot`, `encode`, `ccl`, `addcolccl`
 - **DataList Stats**: `sum`, `mean`, `median`, `mode`, `stdev`, `var`, `min`, `max`, `range`, `quartile`, `iqr`, `percentile`, `count`, `counter`, `corr`, `cov`, `corrmatrix`, `skewness`, `kurtosis`
 - **Time Series / Transforms**: `rank`, `normalize`, `standardize`, `reverse`, `upper`, `lower`, `capitalize`, `parsenums`, `parsestrings`, `movavg`, `expsmooth`, `diff`, `diffn`, `shift`, `pctchange`, `cumsum`, `cumprod`, `cummax`, `cummin`, `rolling`, `expanding`, `fillna`
 - **Modeling / Viz / Fetch**: `regression`, `pca`, `kmeans`, `hclust`, `cutree`, `dbscan`, `silhouette`, `knn_classify`, `knn_regress`, `knn_neighbors`, `ttest`, `ztest`, `anova`, `ftest`, `chisq`, `plot`, `fetch`
@@ -511,6 +529,7 @@ Source policy:
 | `drop` | `drop <var>` | Delete variable |
 | `dropcol` | `dropcol <var> <name\|index...>` | Drop columns by name or index |
 | `droprow` | `droprow <var> <index\|name...>` | Drop rows by index or name |
+| `encode` | `encode <var> onehot\|label\|ordinal ... [as <var>]` | One-shot categorical encoding for DataTable variables |
 | `env` | `env <create\|list\|open\|clear\|export\|import\|delete\|rename\|info> [args]` | Environment management |
 | `exit` | `exit` | Exit REPL |
 | `expanding` | `expanding <var> <minobs> <reducer> [as <var>]` | Expanding-window reduction (reducer: sum\|mean\|min\|max\|median\|std\|var) |
