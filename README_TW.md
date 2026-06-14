@@ -8,6 +8,8 @@
 [![GoDoc](https://godoc.org/github.com/HazelnutParadise/insyra?status.svg)](https://pkg.go.dev/github.com/HazelnutParadise/insyra)
 [![MIT license](https://img.shields.io/badge/license-MIT-brightgreen.svg)](https://opensource.org/licenses/MIT)
 
+**繁體中文 | [English](README.md)**
+
 Go 語言次世代資料分析庫。支援 **平行處理**、**資料視覺化**，並 **與 Python 無縫整合**。
 
 **官方網站: <https://insyra.hazelnut-paradise.com>**

@@ -8,6 +8,8 @@
 [![GoDoc](https://godoc.org/github.com/HazelnutParadise/insyra?status.svg)](https://pkg.go.dev/github.com/HazelnutParadise/insyra)
 [![MIT license](https://img.shields.io/badge/license-MIT-brightgreen.svg)](https://opensource.org/licenses/MIT)
 
+**[繁體中文](README_TW.md) | English**
+
 A next-generation data analysis library for Golang. Supports **parallel processing**, **data visualization**, and **seamless integration with Python**.
 
 **Official Website: <https://insyra.hazelnut-paradise.com>**
@@ -20,8 +22,6 @@ A next-generation data analysis library for Golang. Supports **parallel processi
 > This project is evolving rapidly—please star and watch the repository to stay up to date with the latest changes!
 
 ![logo](logo/logo_transparent.png)
-
-**[繁體中文版 README](README_TW.md)**
 
 ## Fast, Lovely, Easy To Use
 
