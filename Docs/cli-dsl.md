@@ -524,6 +524,7 @@ Source policy:
 | `cummin` | `cummin <var> [as <var>]` | Running minimum (historical low) |
 | `cumprod` | `cumprod <var> [as <var>]` | Running product |
 | `cumsum` | `cumsum <var> [as <var>]` | Running total |
+| `describe` | `describe <var> [by <col1[,col2,...]>] [all true\|false] [percentiles <p1,p2,...>] [as <var>]` | Create a programmatic summary table |
 | `diff` | `diff <var> [as <var>]` | Difference (legacy, length n-1) |
 | `diffn` | `diffn <var> <periods> [as <var>]` | Backward difference, same-length output with leading nils |
 | `drop` | `drop <var>` | Delete variable |
@@ -610,6 +611,20 @@ Source policy:
 | `vars` | `vars` | List variables in current environment |
 | `version` | `version` | Show insyra version |
 | `ztest` | `ztest single\|two ...` | Z-test commands |
+
+## Describe Command
+
+`describe` creates a DataTable summary that can be saved or reused in later commands.
+
+```bash
+describe sales as summary
+describe sales all true as summary_all
+describe sales percentiles 0.1,0.5,0.9 as summary_p
+describe sales by region all true as region_summary
+save region_summary region_summary.csv
+```
+
+Without `as`, the result is stored in `$result`. `all true` includes non-numeric and mixed columns. `by` is available for DataTable variables only.
 
 ## Regression Forms
 

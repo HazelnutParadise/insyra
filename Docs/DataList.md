@@ -1709,6 +1709,29 @@ e.Sum()  // [1, 3, 6, 10]
 e.Std()  // [nil, 0.7071…, 1, 1.2910…]
 ```
 
+### Describe
+
+```go
+type DescribeOptions struct {
+    Percentiles []float64
+    IncludeAll  bool
+}
+
+func (dl *DataList) Describe(options ...DescribeOptions) *DataTable
+```
+
+**Description:** Returns a programmatic summary table. Row names are statistics (`count`, `missing`, `unique`, `top`, `freq`, `mean`, `std`, `min`, percentiles, `max`) and the single output column is named from the DataList name, or `value` when unnamed.
+
+`nil` and `NaN` count as missing. Numeric lists report numeric statistics; non-numeric or mixed lists report categorical statistics (`unique`, `top`, `freq`). `Percentiles` uses values in `[0, 1]`; when omitted it defaults to `0.25`, `0.5`, and `0.75`.
+
+**Example:**
+
+```go
+dl := insyra.NewDataList(1, 2, nil, 4).SetName("score")
+desc := dl.Describe(insyra.DescribeOptions{Percentiles: []float64{0.1, 0.5, 0.9}})
+desc.Show()
+```
+
 ### Summary
 
 ```go

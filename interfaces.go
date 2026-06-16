@@ -85,6 +85,7 @@ type IDataList interface {
 	IQR() float64
 	Percentile(float64) float64
 	Difference() *DataList
+	Describe(...DescribeOptions) *DataTable
 	Summary()
 
 	// Error handling (instance-level)
@@ -214,6 +215,7 @@ type IDataTable interface {
 	NumCols() int
 	Count(value any) int
 	Mean() any
+	Describe(...DescribeOptions) *DataTable
 	Summary()
 
 	// Error handling (instance-level)

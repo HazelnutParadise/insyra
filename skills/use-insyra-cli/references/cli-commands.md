@@ -30,6 +30,7 @@ This list is generated from `insyra help` in this repository state.
 - `types` - Show value types of DataTable/DataList
 - `show` - Display data with optional range (supports negative and `_`)
 - `summary` - Show summary statistics
+- `describe` - Create a reusable summary DataTable
 
 ## Data Creation / IO
 - `newdl` - Create DataList manually
@@ -77,6 +78,7 @@ This list is generated from `insyra help` in this repository state.
 - `clean` - Clean values from DataTable/DataList
 - `merge` - Merge two DataTables
 - `groupby` - Group a DataTable and aggregate columns (split-apply-combine)
+- `describe` - Create DataList/DataTable or grouped summary tables
 - `pivot` - Reshape long-form DataTable to wide form (long -> wide)
 - `unpivot` - Reshape wide-form DataTable to long form (wide -> long)
 - `encode` - One-shot categorical encoding for DataTable variables

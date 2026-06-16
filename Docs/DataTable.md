@@ -739,6 +739,7 @@ func (dt *DataTable) GroupBy(keyCols ...string) *GroupedDataTable
 func (g *GroupedDataTable) Aggregate(configs ...AggregateConfig) *DataTable
 func (g *GroupedDataTable) AggregateAll(op AggregateOp) *DataTable
 func (g *GroupedDataTable) Count() *DataTable
+func (g *GroupedDataTable) Describe(options ...DescribeOptions) *DataTable
 ```
 
 **Description:** Splits the DataTable into groups by one or more key columns and applies aggregate functions to each group ("split-apply-combine"). The result is a new DataTable with one row per unique key combination — key columns first (in `GroupBy` order), then the aggregate columns (in `Aggregate` order). Group order in the output follows the order in which each key combination is first seen during a single linear scan; `nil` keys form their own group, and `int(1)` is kept distinct from the string `"1"`.
@@ -767,6 +768,8 @@ func (g *GroupedDataTable) Count() *DataTable
 | `OpCustom` | User-supplied `Custom func(group *DataList) any` |
 
 **Errors:** Unknown key columns, unknown source columns, missing `Custom` for `OpCustom`, empty configs, and empty key lists are reported via the parent `dt.Err()` instance-level error. The aggregate output is still returned (with affected columns nil-filled or empty), so callers can inspect partial results and continue chaining.
+
+**Describe:** `GroupBy(...).Describe()` returns one row per group. Key columns are emitted first, followed by flattened summary columns such as `revenue_count`, `revenue_mean`, `revenue_25%`, and `segment_unique` when `IncludeAll` is enabled. Group order follows the same first-seen order as `Aggregate`.
 
 **Example (single key, multiple aggregates):**
 
@@ -3634,6 +3637,32 @@ filtered := dt.FilterRowsByRowIndexEqualTo(3) // Only row 3
 ```
 
 ## Statistical Analysis
+
+### Describe
+
+```go
+type DescribeOptions struct {
+    Percentiles []float64
+    IncludeAll  bool
+}
+
+func (dt *DataTable) Describe(options ...DescribeOptions) *DataTable
+```
+
+**Description:** Returns a programmatic per-column summary table. Row names are statistics (`count`, `missing`, `unique`, `top`, `freq`, `mean`, `std`, `min`, percentiles, `max`) and columns are source columns.
+
+By default, only columns whose non-missing values are all numeric are included. With `IncludeAll: true`, non-numeric and mixed columns are included with categorical statistics. `nil` and `NaN` count as missing. `Percentiles` uses values in `[0, 1]`; when omitted it defaults to `0.25`, `0.5`, and `0.75`.
+
+**Example:**
+
+```go
+desc := dt.Describe(insyra.DescribeOptions{
+    IncludeAll:  true,
+    Percentiles: []float64{0.1, 0.5, 0.9},
+})
+
+byRegion := dt.GroupBy("region").Describe(insyra.DescribeOptions{IncludeAll: true})
+```
 
 ### Summary
 
