@@ -151,6 +151,20 @@ func main() {
 }
 ```
 
+### 2b) Sampling, shuffle, and train/test split
+
+Use core sampling methods for ML preprocessing and quick previews. DataTable sampling is row-wise, so columns and row names stay aligned. Use `SamplingOptions{UseSeed: true, Seed: 42}` for reproducible experiments.
+
+```go
+sample := dt.Sample(100, false, insyra.SamplingOptions{UseSeed: true, Seed: 42})
+preview := dt.SampleFrac(0.05, false)
+shuffled := dt.Shuffle()
+train, test := dt.TrainTestSplit(0.8, insyra.SamplingOptions{UseSeed: true, Seed: 42})
+orderedTrain, orderedTest := dt.TrainTestSplit(0.8, insyra.SamplingOptions{PreserveOrder: true})
+
+listSample := dl.Sample(10, false, insyra.SamplingOptions{UseSeed: true, Seed: 42})
+```
+
 ### 3) Add a derived column with CCL (Excel-like)
 
 ```go

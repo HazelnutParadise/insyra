@@ -57,6 +57,9 @@ type IDataList interface {
 	DoubleExponentialSmoothing(float64, float64) *DataList
 	MovingStdev(int) *DataList
 	Len() int
+	Sample(n int, withReplacement bool, options ...SamplingOptions) *DataList
+	SampleFrac(frac float64, withReplacement bool, options ...SamplingOptions) *DataList
+	Shuffle(options ...SamplingOptions) *DataList
 	Sort(ascending ...bool) *DataList
 	Map(mapFunc func(int, any) any) *DataList
 	Rank(ascending ...bool) *DataList
@@ -222,6 +225,10 @@ type IDataTable interface {
 	Clone() *DataTable
 	To2DSlice() [][]any
 	SimpleRandomSample(sampleSize int) *DataTable
+	Sample(n int, withReplacement bool, options ...SamplingOptions) *DataTable
+	SampleFrac(frac float64, withReplacement bool, options ...SamplingOptions) *DataTable
+	Shuffle(options ...SamplingOptions) *DataTable
+	TrainTestSplit(trainFrac float64, options ...SamplingOptions) (*DataTable, *DataTable)
 	Map(mapFunc func(rowIndex int, colIndex string, element any) any) *DataTable
 	SortBy(configs ...DataTableSortConfig) *DataTable
 

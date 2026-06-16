@@ -242,6 +242,10 @@ insyra plot line sales save sales.html
 
 # Fetch (Yahoo Finance)
 insyra fetch yahoo AAPL quote as q
+
+# Reproducible sampling and train/test split
+insyra sample t frac 0.1 seed 42 as preview
+insyra split t train 0.8 seed 42 as train test
 ```
 
 > [!TIP]

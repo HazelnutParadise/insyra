@@ -241,9 +241,14 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 - Example: `insyra sort x 0`
 
 ### `sample`
-- Description: Simple random sample from DataTable
-- Usage: `sample <var> <n> [as <var>]`
-- Example: `insyra sample x 3`
+- Description: Randomly sample or shuffle a DataList/DataTable
+- Usage: `sample <var> <n>|frac <frac>|shuffle [replace true|false] [seed N] [as <var>]`
+- Example: `insyra sample x frac 0.1 seed 42 as preview`
+
+### `split`
+- Description: Split a DataTable into train/test tables
+- Usage: `split <var> train <frac> [shuffle true|false] [seed N] as <trainVar> <testVar>`
+- Example: `insyra split x train 0.8 seed 42 as train test`
 
 ### `find`
 - Description: Find rows containing value

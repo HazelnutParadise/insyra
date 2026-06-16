@@ -447,7 +447,7 @@ High-level command map:
 - **Data IO / Creation**: `newdl`, `newdt`, `load`, `read`, `save`, `convert`
 - **Database**: `db` (`connect` / `list` / `tables` / `disconnect`), `load sql`, `save <var> sql`
 - **DataTable Structure / Access**: `addcol`, `addrow`, `dropcol`, `droprow`, `swap`, `transpose`, `rows`, `cols`, `row`, `col`, `get`, `set`, `setrownames`, `setcolnames`
-- **Data Processing**: `filter`, `sort`, `sample`, `find`, `replace`, `clean`, `fillna`, `merge`, `groupby`, `pivot`, `unpivot`, `ccl`, `addcolccl`
+- **Data Processing**: `filter`, `sort`, `sample`, `split`, `find`, `replace`, `clean`, `fillna`, `merge`, `groupby`, `pivot`, `unpivot`, `ccl`, `addcolccl`
 - **DataList Stats**: `sum`, `mean`, `median`, `mode`, `stdev`, `var`, `min`, `max`, `range`, `quartile`, `iqr`, `percentile`, `count`, `counter`, `corr`, `cov`, `corrmatrix`, `skewness`, `kurtosis`
 - **Time Series / Transforms**: `rank`, `normalize`, `standardize`, `reverse`, `upper`, `lower`, `capitalize`, `parsenums`, `parsestrings`, `movavg`, `expsmooth`, `diff`, `diffn`, `shift`, `pctchange`, `cumsum`, `cumprod`, `cummax`, `cummin`, `rolling`, `expanding`, `fillna`
 - **Modeling / Viz / Fetch**: `regression`, `pca`, `kmeans`, `hclust`, `cutree`, `dbscan`, `silhouette`, `knn_classify`, `knn_regress`, `knn_neighbors`, `ttest`, `ztest`, `anova`, `ftest`, `chisq`, `plot`, `fetch`
@@ -566,7 +566,7 @@ Source policy:
 | `row` | `row <var> <index\|name> [as <var>]` | Extract DataTable row as DataList |
 | `rows` | `rows <var>` | List DataTable row names |
 | `run` | `run <script.isr>` | Run DSL script file |
-| `sample` | `sample <var> <n> [as <var>]` | Simple random sample from DataTable |
+| `sample` | `sample <var> <n>\|frac <frac>\|shuffle [replace true\|false] [seed N] [as <var>]` | Randomly sample or shuffle a DataList/DataTable |
 | `save` | `save <var> <file> [headers true\|false] [rownames true\|false] [bom true\|false] \| save <var> sql <conn> <table> [if-exists fail\|replace\|append] [batch N] [schema <s>] [rownames]` | Save a DataTable variable to a file or SQL connection |
 | `set` | `set <var> <row> <col> <value>` | Set single element in DataTable |
 | `setcolnames` | `setcolnames <var> <names...>` | Set DataTable column names |
@@ -576,6 +576,7 @@ Source policy:
 | `show` | `show <var> [N] [M]` | Display data with optional range (supports negative and _) |
 | `skewness` | `skewness <var>` | Skewness of a DataList |
 | `sort` | `sort <var> <col> [asc\|desc]` | Sort DataTable by one column |
+| `split` | `split <var> train <frac> [shuffle true\|false] [seed N] as <trainVar> <testVar>` | Split DataTable rows into train/test tables |
 | `standardize` | `standardize <var> [as <var>]` | Standardize DataList |
 | `stdev` | `stdev <var>` | DataList standard deviation |
 | `sum` | `sum <var>` | DataList sum |

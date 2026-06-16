@@ -245,6 +245,10 @@ insyra fetch yahoo AAPL quote as q
 
 # Partial Parquet load (selected columns + row groups)
 insyra load parquet data.parquet cols id,amount,status rowgroups 0,1 as t
+
+# Reproducible sampling and train/test split
+insyra sample t frac 0.1 seed 42 as preview
+insyra split t train 0.8 seed 42 as train test
 ```
 
 > [!TIP]

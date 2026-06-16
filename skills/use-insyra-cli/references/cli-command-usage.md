@@ -425,8 +425,12 @@ This is separate from boolean-flag parsing used by option arguments like `header
 - Usage: `run <script.isr>`
 
 ## `sample`
-- Description: Simple random sample from DataTable
-- Usage: `sample <var> <n> [as <var>]`
+- Description: Randomly sample or shuffle a DataList/DataTable
+- Usage: `sample <var> <n>|frac <frac>|shuffle [replace true|false] [seed N] [as <var>]`
+
+## `split`
+- Description: Split a DataTable into train/test tables
+- Usage: `split <var> train <frac> [shuffle true|false] [seed N] as <trainVar> <testVar>`
 
 ## `save`
 - Description: Save a DataTable variable to a file or SQL connection

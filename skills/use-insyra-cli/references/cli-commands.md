@@ -70,7 +70,8 @@ This list is generated from `insyra help` in this repository state.
 ## Data Processing
 - `filter` - Filter DataTable by CCL expression
 - `sort` - Sort DataTable by one column
-- `sample` - Simple random sample from DataTable
+- `sample` - Randomly sample or shuffle a DataList/DataTable
+- `split` - Split a DataTable into train/test tables
 - `find` - Find rows containing value
 - `replace` - Replace values in DataTable/DataList
 - `clean` - Clean values from DataTable/DataList

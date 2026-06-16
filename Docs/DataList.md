@@ -1606,6 +1606,39 @@ dl := insyra.NewDataList(3, 1, 4, 1, 5, 9, 2)
 m := dl.CumMin() // [3, 1, 1, 1, 1, 1, 1]
 ```
 
+### Sample / SampleFrac / Shuffle
+
+```go
+func (dl *DataList) Sample(n int, withReplacement bool, options ...SamplingOptions) *DataList
+func (dl *DataList) SampleFrac(frac float64, withReplacement bool, options ...SamplingOptions) *DataList
+func (dl *DataList) Shuffle(options ...SamplingOptions) *DataList
+```
+
+**Description:** Returns randomly sampled or shuffled copies of a DataList. `Sample` draws `n` elements, `SampleFrac` draws `floor(frac * Len())` elements with a minimum of 1 for non-empty lists, and `Shuffle` returns all elements in random order.
+
+**Options:**
+
+```go
+type SamplingOptions struct {
+    Seed          uint64
+    UseSeed       bool
+    PreserveOrder bool // Used by DataTable.TrainTestSplit only.
+}
+```
+
+Use `SamplingOptions{UseSeed: true, Seed: 42}` for reproducible results.
+
+**Example:**
+
+```go
+dl := insyra.NewDataList(1, 2, 3, 4, 5)
+sample := dl.Sample(3, false, insyra.SamplingOptions{UseSeed: true, Seed: 42})
+preview := dl.SampleFrac(0.4, false)
+shuffled := dl.Shuffle(insyra.SamplingOptions{UseSeed: true, Seed: 42})
+```
+
+**Errors:** Invalid `n`, invalid `frac`, empty input, and `n > Len()` without replacement are recorded via `dl.Err()` and return an empty DataList.
+
 ### Rolling
 
 ```go

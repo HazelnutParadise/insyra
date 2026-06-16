@@ -2546,6 +2546,47 @@ sampled := dt.SimpleRandomSample(10)
 - If sample size is greater than or equal to the number of rows, returns a full copy
 - If sample size is less than or equal to 0, returns an empty DataTable
 
+### Sample / SampleFrac / Shuffle / TrainTestSplit
+
+```go
+func (dt *DataTable) Sample(n int, withReplacement bool, options ...SamplingOptions) *DataTable
+func (dt *DataTable) SampleFrac(frac float64, withReplacement bool, options ...SamplingOptions) *DataTable
+func (dt *DataTable) Shuffle(options ...SamplingOptions) *DataTable
+func (dt *DataTable) TrainTestSplit(trainFrac float64, options ...SamplingOptions) (*DataTable, *DataTable)
+```
+
+**Description:** Performs row-wise random sampling, shuffling, and train/test splitting. DataTable operations always move whole rows together, so every column and row name remains aligned.
+
+**Options:**
+
+```go
+type SamplingOptions struct {
+    Seed          uint64
+    UseSeed       bool
+    PreserveOrder bool // TrainTestSplit only; false means shuffle before split.
+}
+```
+
+Use `SamplingOptions{UseSeed: true, Seed: 42}` for reproducible samples. `TrainTestSplit` shuffles before splitting by default; set `PreserveOrder: true` for ordered splits, such as time-series data.
+
+**Examples:**
+
+```go
+sample := dt.Sample(100, false, insyra.SamplingOptions{UseSeed: true, Seed: 42})
+preview := dt.SampleFrac(0.05, false)
+shuffled := dt.Shuffle()
+
+train, test := dt.TrainTestSplit(0.8, insyra.SamplingOptions{UseSeed: true, Seed: 42})
+orderedTrain, orderedTest := dt.TrainTestSplit(0.8, insyra.SamplingOptions{PreserveOrder: true})
+```
+
+**Notes:**
+
+- `SampleFrac` and `TrainTestSplit` use `floor(frac * rows)`, with a minimum of 1 row for non-empty data.
+- Without replacement, `n > rows` records an error and returns an empty DataTable.
+- With replacement, duplicate source rows may appear in the output.
+- Invalid fractions, empty input, and invalid sample sizes are recorded via `dt.Err()`.
+
 ## Data Replacement
 
 DataTable provides several methods to replace values within the entire table, a specific row, or a specific column.
