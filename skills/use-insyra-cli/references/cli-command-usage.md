@@ -8,7 +8,7 @@ For expanded subcommand forms and practical examples, see `cli-command-guide.md`
 
 ### Literal value parsing
 
-Commands that take a "value" argument (`addcol`, `set`, `shift ... fill ...`, `replace`, `pivot ... fillna ...`, `load sql ... params ...`, etc.) coerce each token through this ladder (case-insensitive for the keyword rows):
+Commands that take a "value" argument (`addcol`, `set`, `shift ... fill ...`, `replace`, `pivot ... fillna ...`, `encode ordinal ... order ...`, `load sql ... params ...`, etc.) coerce each token through this ladder (case-insensitive for the keyword rows):
 
 | Token                                  | Parsed as           |
 | -------------------------------------- | ------------------- |
@@ -166,6 +166,20 @@ This is separate from boolean-flag parsing used by option arguments like `header
 ## `droprow`
 - Description: Drop rows by index or name
 - Usage: `droprow <var> <index|name...>`
+
+## `encode`
+- Description: One-shot categorical encoding for DataTable variables (encoder state is not persisted)
+- Usage: `encode <var> onehot|label|ordinal ... [as <var>]`
+- Full forms:
+	- `encode <var> onehot <col1[,col2,...]> [dropfirst true|false] [keeporiginal true|false] [nan category|error|skip] [unknown ignore|error|new] [prefix <p>] [sep <s>] [sortcats true|false] [as <var>]`
+	- `encode <var> label <col> [newcol <name>] [sortby firstseen|lex|freq] [nan category|error|skip] [unknown ignore|error|new] [keeporiginal true|false] [as <var>]`
+	- `encode <var> ordinal <col> order <v1,v2,...> [newcol <name>] [unknown error|ignore] [nan category|error|skip] [keeporiginal true|false] [as <var>]`
+- Notes:
+  - Works on DataTable variables only.
+  - CLI does one-shot fit+transform; it does not save encoder state for later commands.
+  - `nan`: `category`, `error`, `skip`.
+  - `unknown`: `ignore`, `error`, `new` for onehot/label; `ignore`, `error` for ordinal CLI.
+  - `order` values are comma-separated and parsed through the literal-value ladder.
 
 ## `env`
 - Description: Environment management

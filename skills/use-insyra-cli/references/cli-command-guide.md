@@ -289,6 +289,16 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 - Example: `insyra unpivot survey idvars id valuevars Q1,Q2,Q3 varname question valuename score as long`
 - `valuevars` defaults to all non-`idvars` columns. `varname` defaults to `variable`, `valuename` to `value`. `dropna true` skips nil/NaN values.
 
+### `encode`
+- Description: One-shot categorical encoding for DataTable variables (encoder state is not persisted)
+- Usage: `encode <var> onehot|label|ordinal ... [as <var>]`
+- Examples: `insyra encode sales onehot region,channel dropfirst true as x` / `insyra encode sales label segment newcol segment_id sortby freq keeporiginal true as labeled` / `insyra encode survey ordinal satisfaction order low,medium,high unknown error as ranked`
+- Full forms:
+  - `encode <var> onehot <col1[,col2,...]> [dropfirst true|false] [keeporiginal true|false] [nan category|error|skip] [unknown ignore|error|new] [prefix <p>] [sep <s>] [sortcats true|false] [as <var>]`
+  - `encode <var> label <col> [newcol <name>] [sortby firstseen|lex|freq] [nan category|error|skip] [unknown ignore|error|new] [keeporiginal true|false] [as <var>]`
+  - `encode <var> ordinal <col> order <v1,v2,...> [newcol <name>] [unknown error|ignore] [nan category|error|skip] [keeporiginal true|false] [as <var>]`
+- Notes: one-shot only; use Go encoders for reusable train/test `Transform`. `order` values are parsed as literals.
+
 ### `ccl`
 - Description: Execute CCL statements on DataTable
 - Usage: `ccl <var> <expression>`

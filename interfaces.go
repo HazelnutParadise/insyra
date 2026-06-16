@@ -298,6 +298,12 @@ type IDataTable interface {
 	FillWithMedian(...string) *DataTable
 	FillWithMode(...string) *DataTable
 	FillByInterpolation(...string) *DataTable
+
+	// Encoding
+	OneHotEncode(opts OneHotOptions) (*DataTable, *OneHotEncoder, error)
+	LabelEncode(opts LabelEncodeOptions) (*DataTable, *LabelEncoder, error)
+	OrdinalEncode(opts OrdinalEncodeOptions) (*DataTable, *OrdinalEncoder, error)
+
 	ReplaceInRow(rowIndex int, oldValue, newValue any, mode ...int) *DataTable
 	ReplaceNaNsInRow(rowIndex int, newValue any, mode ...int) *DataTable
 	ReplaceNilsInRow(rowIndex int, newValue any, mode ...int) *DataTable
