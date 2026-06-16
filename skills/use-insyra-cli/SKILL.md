@@ -164,6 +164,11 @@ insyra show report
 # Multi-key + count shorthand
 insyra groupby sales by region,product agg revenue:sum count as report2
 
+# Programmatic summaries that can be saved
+insyra describe sales all true as summary
+insyra describe sales by region percentiles 0.1,0.5,0.9 as region_summary
+insyra save region_summary region_summary.csv
+
 # One-shot categorical encoding for DataTable variables
 insyra encode sales onehot region,channel dropfirst true as x
 insyra encode sales label segment newcol segment_id sortby freq keeporiginal true as labeled
@@ -188,6 +193,8 @@ insyra regression poisson y x1 x2
 ```
 
 `groupby <var> by <col1>[,<col2>...] agg <col>:<op>[:<alias>] [<col>:<op>[:<alias>] ...] [as <var>]` produces a new DataTable with one row per unique key combination. Supported ops: `sum`, `mean` (alias `avg`), `median`, `min`, `max`, `count` (non-nil), `countall` (group size), `std`/`stdev`, `stdp`/`stdevp`, `var`, `varp`, `first`, `last`, `nunique`. The bare token `count` is shorthand for `:countall:count`.
+
+`describe <var> [by <col1>[,<col2>...]] [all true|false] [percentiles <p1,p2,...>] [as <var>]` creates a reusable summary DataTable. Without `as`, it saves to `$result`. `all true` includes non-numeric and mixed columns; `by` is DataTable-only and returns one row per group.
 
 `encode` is one-shot fit+transform only; it does not persist encoder state between CLI commands. For reusable train/test encoders, use the Go API.
 

@@ -317,6 +317,20 @@ weighted := dt.GroupBy("region").Aggregate(
 
 Supported `AggregateOp`: `OpSum`, `OpMean`, `OpMedian`, `OpMin`, `OpMax`, `OpCount` (non-nil), `OpCountAll` (group size), `OpStdev`, `OpStdevP`, `OpVar`, `OpVarP`, `OpFirst`, `OpLast`, `OpNUnique`, `OpCustom`. Group order in the result follows the order each key combination is first seen during a single linear scan; `nil` keys form their own group, and `int(1)` and string `"1"` are kept distinct.
 
+### 3c.1) Describe summaries
+
+Use `Describe` when you need a reusable summary table instead of console-only `Summary`.
+
+```go
+desc := dt.Describe(insyra.DescribeOptions{
+    IncludeAll:  true,
+    Percentiles: []float64{0.1, 0.5, 0.9},
+})
+byRegion := dt.GroupBy("region").Describe(insyra.DescribeOptions{IncludeAll: true})
+```
+
+`DataList.Describe()` and `DataTable.Describe()` return `*DataTable`. `GroupBy(...).Describe()` returns one row per group with flattened columns such as `revenue_mean` and `segment_top`. `nil` and `NaN` are missing. Do not assume an `isr` wrapper exists; call the root API.
+
 ### 3d) Pivot / Unpivot (long ↔ wide reshape)
 
 Use `Pivot` to spread the unique values of one column into new column headers (long → wide), and `Unpivot` to do the inverse (wide → long). Both return `(*DataTable, error)`; on failure the returned table is empty and carries the error on its `Err()`, so chained calls remain safe.

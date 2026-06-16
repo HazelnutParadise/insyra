@@ -515,6 +515,10 @@ This is separate from boolean-flag parsing used by option arguments like `header
 - Description: Show summary statistics
 - Usage: `summary <var>`
 
+## `describe`
+- Description: Create a reusable summary DataTable
+- Usage: `describe <var> [by <col1>[,<col2>...]] [all true|false] [percentiles <p1,p2,...>] [as <var>]`
+
 ## `swap`
 - Description: Swap DataTable columns or rows
 - Usage: `swap <var> col|row <a> <b>`

@@ -85,6 +85,12 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 - Usage: `summary <var>`
 - Example: `insyra summary x`
 
+### `describe`
+- Description: Create a reusable summary DataTable
+- Usage: `describe <var> [by <col1[,col2,...]>] [all true|false] [percentiles <p1,p2,...>] [as <var>]`
+- Example: `insyra describe sales all true as summary`
+- Grouped example: `insyra describe sales by region percentiles 0.1,0.5,0.9 as region_summary`
+
 ## Data Creation / IO
 ### `newdl`
 - Description: Create DataList manually
