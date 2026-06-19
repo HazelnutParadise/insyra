@@ -305,6 +305,19 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
   - `encode <var> ordinal <col> order <v1,v2,...> [newcol <name>] [unknown error|ignore] [nan category|error|skip] [keeporiginal true|false] [as <var>]`
 - Notes: one-shot only; use Go encoders for reusable train/test `Transform`. `order` values are parsed as literals.
 
+### `scale`
+- Description: Fit a reusable feature scaler and transform/inverse tables with it (stateful)
+- Usage: `scale fit std|minmax|robust|maxabs <scalerVar> <tableVar> [range <min> <max>] cols <c1,c2,...>` / `scale transform|inverse <scalerVar> <tableVar> as <outVar>`
+- Examples: `insyra scale fit std sc train cols Age,Income` / `insyra scale transform sc test as test_scaled` / `insyra scale inverse sc pred as pred_original`
+- Full forms:
+  - `scale fit std <scalerVar> <tableVar> cols <c1,c2,...>`
+  - `scale fit minmax <scalerVar> <tableVar> range <min> <max> cols <c1,c2,...>` (range defaults to 0 1)
+  - `scale fit robust <scalerVar> <tableVar> cols <c1,c2,...>`
+  - `scale fit maxabs <scalerVar> <tableVar> cols <c1,c2,...>`
+  - `scale transform <scalerVar> <tableVar> as <outVar>`
+  - `scale inverse <scalerVar> <tableVar> as <outVar>`
+- Notes: stateful — fit on train, transform train and test with the same parameters (no leakage). Scaler variables are session-only. `nil`/`NaN` preserved and ignored when fitting; non-fitted columns pass through; `show <scalerVar>` prints kind + fitted columns.
+
 ### `ccl`
 - Description: Execute CCL statements on DataTable
 - Usage: `ccl <var> <expression>`

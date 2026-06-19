@@ -31,6 +31,11 @@ func (m *Manager) SaveState(envName string, vars map[string]any) error {
 		LastAccess: time.Now().UTC().Format(time.RFC3339),
 	}
 	for key, value := range vars {
+		// Scalers hold fitted state in unexported fields and cannot be
+		// round-tripped through JSON; they are session-only.
+		if _, ok := value.(insyra.Scaler); ok {
+			continue
+		}
 		state.Variables[key] = serializeVariable(value)
 	}
 	payload, err := json.MarshalIndent(state, "", "  ")

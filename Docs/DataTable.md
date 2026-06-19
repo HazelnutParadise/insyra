@@ -1049,6 +1049,105 @@ func main() {
 }
 ```
 
+### Feature Scaling
+
+```go
+func (dt *DataTable) StandardScale(cols ...string) (*DataTable, *StandardScaler, error)
+func (dt *DataTable) MinMaxScale(featureMin, featureMax float64, cols ...string) (*DataTable, *MinMaxScaler, error)
+func (dt *DataTable) RobustScale(cols ...string) (*DataTable, *RobustScaler, error)
+func (dt *DataTable) MaxAbsScale(cols ...string) (*DataTable, *MaxAbsScaler, error)
+```
+
+**Description:** Feature scalers fit numeric scaling parameters once and reuse them. Each method returns a fresh `*DataTable` (the receiver is not modified) plus a fitted scaler. The scaler can `Transform` and `InverseTransform` other tables with the same parameters.
+
+**Why this is not `DataList.Normalize` / `Standardize`:** `Normalize()` and `Standardize()` are stateless and modify the list in place — they recompute min/max or mean/std from whatever data they are handed. That is exactly what you must *not* do to a test set: scaling test data with its own statistics leaks information and makes train/test results incomparable. A `Scaler` fits on the **training** set and applies those frozen parameters to the test set, which is the correct, leakage-free workflow.
+
+**Choosing a scaler:**
+
+| Scaler | Centers on | Scales by | Use when |
+|---|---|---|---|
+| `StandardScaler` | mean | sample std dev (matches `Standardize`) | roughly Gaussian features; the common default |
+| `MinMaxScaler` | min | range, into `[featureMin, featureMax]` | you need a bounded range (e.g. `[0,1]`) and have few outliers |
+| `RobustScaler` | median | IQR (Q3−Q1) | features have outliers that would distort mean/std |
+| `MaxAbsScaler` | 0 | max absolute value, into `[-1,1]` | sparse or sign-meaningful data you don't want to shift |
+
+**Behavior:**
+
+- Column references resolve by name first, then Excel-style index (`"A"`, `"B"`, ...). `cols` is required.
+- Only the listed columns are scaled; other columns pass through unchanged, preserving column order, names, table name, and row names.
+- `nil` and `NaN` are preserved and excluded from fitting (they do not affect the computed parameters).
+- A non-numeric, non-missing value in a target column is an error.
+- `Transform` errors if a fitted column is missing from the input. `InverseTransform` only restores fitted columns that are present and passes others through (so a prediction table covering a subset still works).
+- Constant / degenerate columns (`std==0`, `max==min`, `IQR==0`, `maxAbs==0`) do not panic: the fitted training data maps to the degenerate output (`0`, or `featureMin` for min-max) and the inverse round-trips.
+
+**Interface and introspection:**
+
+```go
+type Scaler interface {
+    Fit(dt *DataTable, cols ...string) error
+    Transform(dt *DataTable) (*DataTable, error)
+    FitTransform(dt *DataTable, cols ...string) (*DataTable, error)
+    InverseTransform(dt *DataTable) (*DataTable, error)
+    Params() map[string]ScalerParams
+    Kind() string
+}
+
+func NewStandardScaler() *StandardScaler
+func NewMinMaxScaler(featureMin, featureMax float64) *MinMaxScaler
+func NewDefaultMinMaxScaler() *MinMaxScaler // [0, 1]
+func NewRobustScaler() *RobustScaler
+func NewMaxAbsScaler() *MaxAbsScaler
+```
+
+`Params()` returns the fitted parameters keyed by column name (`Mean`/`Std`, `Min`/`Max`/`OutputMin`/`OutputMax`, `Median`/`Q1`/`Q3`/`IQR`, or `MaxAbs` depending on the kind).
+
+There is also a DataList-oriented counterpart (`DataListScaler`) on every scaler: `FitDataList`, `TransformDataList`, `FitTransformDataList`, `InverseTransformDataList`, each returning a new `*DataList`.
+
+**Example — fit on train, transform test (no leakage):**
+
+```go
+package main
+
+import (
+    "fmt"
+    "log"
+
+    "github.com/HazelnutParadise/insyra"
+)
+
+func main() {
+    data := insyra.NewDataTable(
+        insyra.NewDataList(20.0, 30.0, 40.0, 50.0, 60.0).SetName("Age"),
+        insyra.NewDataList(30.0, 45.0, 50.0, 70.0, 90.0).SetName("Income"),
+    )
+    train, test := data.TrainTestSplit(0.8, insyra.SamplingOptions{UseSeed: true, Seed: 42})
+
+    // Fit the scaler on the training set only.
+    sc := insyra.NewStandardScaler()
+    trainScaled, err := sc.FitTransform(train, "Age", "Income")
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // Apply the SAME parameters to the test set.
+    testScaled, err := sc.Transform(test)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    fmt.Println(sc.Params()["Age"]) // {Age standard <mean> <std> ...}
+    _ = trainScaled
+    _ = testScaled
+
+    // Recover the original scale (e.g. for predictions).
+    restored, err := sc.InverseTransform(trainScaled)
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Println(restored.GetColByName("Age").Data())
+}
+```
+
 ### Window / sequence transforms (Shift / Diff / PctChange / Cum\* / Rolling / Expanding)
 
 ```go
