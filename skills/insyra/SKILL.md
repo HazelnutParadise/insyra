@@ -234,13 +234,15 @@ listSample := dl.Sample(10, false, insyra.SamplingOptions{UseSeed: true, Seed: 4
 ### 3) Add a derived column with CCL (Excel-like)
 
 ```go
-// Example: classify scores in column A
-err := dt.AddColUsingCCL(
+// Example: classify scores in column A.
+// CCL methods return the (modified) *DataTable for chaining, not an error;
+// check the instance-level Err() after the call.
+dt.AddColUsingCCL(
     "category",
     "IF(A > 90, 'Excellent', IF(A > 70, 'Good', 'Average'))",
 )
-if err != nil {
-    log.Fatal(err)
+if dt.Err() != nil {
+    log.Fatal(dt.Err())
 }
 ```
 
