@@ -82,6 +82,7 @@ This list is generated from `insyra help` in this repository state.
 - `pivot` - Reshape long-form DataTable to wide form (long -> wide)
 - `unpivot` - Reshape wide-form DataTable to long form (wide -> long)
 - `encode` - One-shot categorical encoding for DataTable variables
+- `scale` - Fit a reusable feature scaler and transform/inverse tables with it
 - `ccl` - Execute CCL statements on DataTable
 - `addcolccl` - Add DataTable column using CCL
 
@@ -171,3 +172,13 @@ This list is generated from `insyra help` in this repository state.
 - `encode <var> ordinal <col> order <v1,v2,...> [newcol <name>] [unknown error|ignore] [nan category|error|skip] [keeporiginal true|false] [as <var>]`
   - Uses the explicit order as `0..n-1`; `order` values are parsed as literals.
 - CLI encoding is one-shot fit+transform and does not persist encoder state. Use the Go API when you need reusable train/test `Transform`.
+
+## Feature Scaling Command
+
+- `scale fit std|minmax|robust|maxabs <scalerVar> <tableVar> [range <min> <max>] cols <c1,c2,...>`
+  - Fits a scaler on the listed columns of `<tableVar>` and stores it as `<scalerVar>`. `minmax` defaults to `[0,1]` when `range` is omitted; `range` is only valid for `minmax`.
+- `scale transform <scalerVar> <tableVar> as <outVar>`
+  - Applies the fitted scaler to `<tableVar>`, writing a new table to `<outVar>`.
+- `scale inverse <scalerVar> <tableVar> as <outVar>`
+  - Restores the original scale of fitted columns.
+- Unlike `encode`, `scale` is stateful: fit once, then transform train and test with the same parameters (no leakage). Scaler variables are session-only (not persisted to a named environment). `nil`/`NaN` are preserved and ignored when fitting; non-fitted columns pass through. `show <scalerVar>` prints the scaler kind and fitted columns.

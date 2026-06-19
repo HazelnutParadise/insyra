@@ -171,6 +171,30 @@ Policies:
 - `LabelSortFirstSeen`, `LabelSortLexicographic`, `LabelSortByFrequency` control label ids.
 - Column refs resolve by name first, then Excel-style index (`A`, `B`, `AA`). Category identity keeps typed values distinct (`1` and `"1"` are different).
 
+### 1d) Scale numeric features (fit once, reuse)
+
+Feature scalers fit parameters on a training set and reuse them on a test set — the leakage-free alternative to the stateless, in-place `DataList.Normalize()` / `Standardize()`. Each method returns a new table plus a fitted scaler; the receiver is not modified.
+
+```go
+sc := insyra.NewStandardScaler() // or NewMinMaxScaler(0,1), NewRobustScaler(), NewMaxAbsScaler()
+trainScaled, err := sc.FitTransform(train, "Age", "Income")
+if err != nil { log.Fatal(err) }
+
+testScaled, err := sc.Transform(test)          // reuse TRAIN mean/std — no re-fit
+original, err := sc.InverseTransform(trainScaled) // back to original scale
+_ = trainScaled
+_ = testScaled
+_ = original
+
+params := sc.Params()["Age"] // {Mean, Std, ...} depending on kind
+_ = params
+```
+
+- Pick by data: `StandardScaler` (Gaussian-ish, matches `Standardize`'s sample std), `MinMaxScaler` (bounded range), `RobustScaler` (outliers; median/IQR), `MaxAbsScaler` (sparse/sign-preserving, `[-1,1]`).
+- `cols` is required; other columns pass through. Column order, names, table name, and row names are preserved.
+- `nil`/`NaN` are preserved and excluded from fitting. A non-numeric value in a target column is an error. `Transform` errors on a missing fitted column; constant/degenerate columns do not panic.
+- DataList versions exist too: `FitDataList`, `TransformDataList`, `FitTransformDataList`, `InverseTransformDataList`.
+
 ### 2) Read a CSV file into a DataTable + preview
 
 ```go

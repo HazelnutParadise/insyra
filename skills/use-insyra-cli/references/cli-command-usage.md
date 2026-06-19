@@ -181,6 +181,23 @@ This is separate from boolean-flag parsing used by option arguments like `header
   - `unknown`: `ignore`, `error`, `new` for onehot/label; `ignore`, `error` for ordinal CLI.
   - `order` values are comma-separated and parsed through the literal-value ladder.
 
+## `scale`
+- Description: Fit a reusable feature scaler and transform/inverse tables with it (stateful)
+- Usage: `scale fit std|minmax|robust|maxabs <scalerVar> <tableVar> [range <min> <max>] cols <c1,c2,...>` / `scale transform|inverse <scalerVar> <tableVar> as <outVar>`
+- Full forms:
+	- `scale fit std <scalerVar> <tableVar> cols <c1,c2,...>`
+	- `scale fit minmax <scalerVar> <tableVar> range <min> <max> cols <c1,c2,...>`
+	- `scale fit robust <scalerVar> <tableVar> cols <c1,c2,...>`
+	- `scale fit maxabs <scalerVar> <tableVar> cols <c1,c2,...>`
+	- `scale transform <scalerVar> <tableVar> as <outVar>`
+	- `scale inverse <scalerVar> <tableVar> as <outVar>`
+- Notes:
+  - Works on DataTable variables only.
+  - Stateful: `scale fit` stores a scaler variable; `transform`/`inverse` reuse it. Fit on train, transform test with the same parameters (no leakage).
+  - Scaler variables are session-only and not saved to a named environment.
+  - `minmax` defaults to `[0,1]` when `range` is omitted; `range` is only valid for `minmax`.
+  - `nil`/`NaN` are preserved and excluded from fitting; non-fitted columns pass through unchanged.
+
 ## `env`
 - Description: Environment management
 - Usage: `env <create|list|open|clear|export|import|delete|rename|info> [args]`

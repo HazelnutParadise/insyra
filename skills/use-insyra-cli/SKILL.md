@@ -174,6 +174,13 @@ insyra encode sales onehot region,channel dropfirst true as x
 insyra encode sales label segment newcol segment_id sortby freq keeporiginal true as labeled
 insyra encode survey ordinal satisfaction order low,medium,high unknown error as ranked
 
+# Stateful feature scaling: fit on train, reuse on test (no leakage)
+insyra split sales train 0.8 as train test
+insyra scale fit std sc train cols Age,Income
+insyra scale transform sc train as train_scaled
+insyra scale transform sc test as test_scaled
+insyra scale inverse sc train_scaled as train_original
+
 # SQL: connect, list tables, load query, transform, write back, disconnect
 # Connections live for the current process only — reopen at the top of every session/script.
 insyra db connect main sqlite:./demo.db
@@ -201,6 +208,12 @@ insyra regression poisson y x1 x2
 - `encode <var> onehot <col1[,col2,...]> [dropfirst true|false] [keeporiginal true|false] [nan category|error|skip] [unknown ignore|error|new] [prefix <p>] [sep <s>] [sortcats true|false] [as <var>]`
 - `encode <var> label <col> [newcol <name>] [sortby firstseen|lex|freq] [nan category|error|skip] [unknown ignore|error|new] [keeporiginal true|false] [as <var>]`
 - `encode <var> ordinal <col> order <v1,v2,...> [newcol <name>] [unknown error|ignore] [nan category|error|skip] [keeporiginal true|false] [as <var>]`
+
+`scale`, unlike `encode`, is **stateful**: `scale fit` stores a reusable scaler variable that `scale transform` / `scale inverse` apply, so you can fit on train and transform test with the same parameters. Scaler variables are session-only (not saved to a named environment). `minmax` defaults to `[0,1]` if `range` is omitted; `nil`/`NaN` are preserved and ignored when fitting; `show <scalerVar>` prints kind + fitted columns.
+
+- `scale fit std|minmax|robust|maxabs <scalerVar> <tableVar> [range <min> <max>] cols <c1,c2,...>`
+- `scale transform <scalerVar> <tableVar> as <outVar>`
+- `scale inverse <scalerVar> <tableVar> as <outVar>`
 
 ## Database (db) workflow notes
 

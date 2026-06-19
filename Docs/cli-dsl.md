@@ -426,6 +426,31 @@ encode sales label segment newcol segment_id sortby freq keeporiginal true as la
 encode survey ordinal satisfaction order low,medium,high unknown error as ranked
 ```
 
+### B5. Feature scaling
+
+Unlike `encode`, `scale` is **stateful**: `scale fit` stores a reusable scaler variable, and `scale transform` / `scale inverse` apply that fitted scaler to any table. This lets you fit on a training set and transform a test set with the same parameters (no data leakage). Scaler variables live only for the session — they are not persisted to a named environment.
+
+```text
+scale fit std <scalerVar> <tableVar> cols <c1,c2,...>
+scale fit minmax <scalerVar> <tableVar> range <min> <max> cols <c1,c2,...>
+scale fit robust <scalerVar> <tableVar> cols <c1,c2,...>
+scale fit maxabs <scalerVar> <tableVar> cols <c1,c2,...>
+scale transform <scalerVar> <tableVar> as <outVar>
+scale inverse <scalerVar> <tableVar> as <outVar>
+```
+
+`minmax` defaults to `[0,1]` when `range` is omitted. `nil`/`NaN` are preserved and ignored when fitting; non-fitted columns pass through unchanged. `show <scalerVar>` prints the scaler kind and its fitted columns.
+
+Example (train/test without leakage):
+
+```text
+split dt train 0.8 as train test
+scale fit std sc train cols Age,Income
+scale transform sc train as train_scaled
+scale transform sc test as test_scaled
+scale inverse sc train_scaled as train_original
+```
+
 ### C. Go `engine/dsl` session flow
 
 ```go
@@ -465,7 +490,7 @@ High-level command map:
 - **Data IO / Creation**: `newdl`, `newdt`, `load`, `read`, `save`, `convert`
 - **Database**: `db` (`connect` / `list` / `tables` / `disconnect`), `load sql`, `save <var> sql`
 - **DataTable Structure / Access**: `addcol`, `addrow`, `dropcol`, `droprow`, `swap`, `transpose`, `rows`, `cols`, `row`, `col`, `get`, `set`, `setrownames`, `setcolnames`
-- **Data Processing**: `filter`, `sort`, `sample`, `split`, `find`, `replace`, `clean`, `fillna`, `merge`, `groupby`, `pivot`, `unpivot`, `encode`, `ccl`, `addcolccl`
+- **Data Processing**: `filter`, `sort`, `sample`, `split`, `find`, `replace`, `clean`, `fillna`, `merge`, `groupby`, `pivot`, `unpivot`, `encode`, `scale`, `ccl`, `addcolccl`
 - **DataList Stats**: `sum`, `mean`, `median`, `mode`, `stdev`, `var`, `min`, `max`, `range`, `quartile`, `iqr`, `percentile`, `count`, `counter`, `corr`, `cov`, `corrmatrix`, `skewness`, `kurtosis`
 - **Time Series / Transforms**: `rank`, `normalize`, `standardize`, `reverse`, `upper`, `lower`, `capitalize`, `parsenums`, `parsestrings`, `movavg`, `expsmooth`, `diff`, `diffn`, `shift`, `pctchange`, `cumsum`, `cumprod`, `cummax`, `cummin`, `rolling`, `expanding`, `fillna`
 - **Modeling / Viz / Fetch**: `regression`, `pca`, `kmeans`, `hclust`, `cutree`, `dbscan`, `silhouette`, `knn_classify`, `knn_regress`, `knn_neighbors`, `ttest`, `ztest`, `anova`, `ftest`, `chisq`, `plot`, `fetch`
@@ -588,6 +613,7 @@ Source policy:
 | `run` | `run <script.isr>` | Run DSL script file |
 | `sample` | `sample <var> <n>\|frac <frac>\|shuffle [replace true\|false] [seed N] [as <var>]` | Randomly sample or shuffle a DataList/DataTable |
 | `save` | `save <var> <file> [headers true\|false] [rownames true\|false] [bom true\|false] \| save <var> sql <conn> <table> [if-exists fail\|replace\|append] [batch N] [schema <s>] [rownames]` | Save a DataTable variable to a file or SQL connection |
+| `scale` | `scale fit std\|minmax\|robust\|maxabs <scalerVar> <tableVar> [range <min> <max>] cols <c1,c2,...> \| scale transform\|inverse <scalerVar> <tableVar> as <outVar>` | Fit a reusable feature scaler and transform/inverse tables with it |
 | `set` | `set <var> <row> <col> <value>` | Set single element in DataTable |
 | `setcolnames` | `setcolnames <var> <names...>` | Set DataTable column names |
 | `setrownames` | `setrownames <var> <names...>` | Set DataTable row names |
