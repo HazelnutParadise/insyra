@@ -46,6 +46,12 @@ This repository includes **agent skills**:
 - [`skills/insyra`](skills/insyra): helps AI agents use Insyra in Go code (DataList/DataTable workflows, CCL formulas, and common file I/O helpers).
 - [`skills/use-insyra-cli`](skills/use-insyra-cli): teaches agents how to use Insyra CLI/REPL and `.isr` scripts, including environment workflows and full command reference.
 
+Install the skills with:
+
+```bash
+npx skills add HazelnutParadise/insyra/skills
+```
+
 Quick picker:
 
 - Use `skills/insyra` when the task is to write or modify Go code using Insyra APIs.
