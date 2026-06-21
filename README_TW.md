@@ -46,6 +46,12 @@ Go 語言次世代資料分析庫。支援 **平行處理**、**資料視覺化*
 - [`skills/insyra`](skills/insyra)：協助 AI agent 在 Go 程式碼中使用 Insyra（DataList / DataTable 工作流、CCL 公式、常見檔案 I/O）。
 - [`skills/use-insyra-cli`](skills/use-insyra-cli)：教 agent 使用 Insyra CLI / REPL 與 `.isr` 腳本，包含環境工作流與完整指令參考。
 
+用以下指令安裝 skills：
+
+```bash
+npx skills add HazelnutParadise/insyra/skills
+```
+
 快速選擇：
 
 - 任務是撰寫或修改使用 Insyra API 的 Go 程式碼：用 `skills/insyra`。
