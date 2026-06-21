@@ -348,65 +348,23 @@ For a complete list of DataTable methods and features, please refer to the **[Da
 
 **Insyra** also provides several expansion packages, each focusing on a specific aspect of data analysis.
 
-### **[isr](/Docs/isr.md)**
-
-Provides **Syntactic Sugar** for **Insyra**. It is designed to simplify the usage of **Insyra** and make it more intuitive.
-
-### **[stats](/Docs/stats.md)**
-
-Provides statistical functions for data analysis, including skewness, kurtosis, and moment calculations.
-
-### **[parallel](/Docs/parallel.md)**
-
-Offers parallel processing capabilities for data manipulation and analysis. Allows you to execute any function and automatically wait for all goroutines to complete.
-
-### **[plot](/Docs/plot.md)**
-
-Provides a wrapper around the powerful [github.com/go-echarts/go-echarts](https://github.com/go-echarts/go-echarts) library, designed to simplify data visualization.
-
-### **[gplot](/Docs/gplot.md)**
-
-A visualization package based on [github.com/gonum/plot](https://github.com/gonum/plot). Fast and no need for Chrome. Even supports function plot.
-
-### **[csvxl](/Docs/csvxl.md)**
-
-Work with Excel and CSV files. Such as convert CSV to Excel.
-
-### **[parquet](/Docs/parquet.md)**
-
-Provides read and write support for the Apache Parquet file format, deeply integrated with Insyra's `DataTable` and `DataList`. Supports streaming, column-level reading, and CCL filtering.
-
-### **[mkt](/Docs/mkt.md)**
-
-Provides marketing-related data analysis functions, including RFM, Customer Activity Index, and market basket analysis. No need to worry about how to calculate, one function does it all!
-
-### **[finance](/Docs/finance.md)**
-
-High-precision financial calculations on top of fixed-point decimals — TVM (PMT/PV/FV/NPER/RATE), NPV/IRR/MIRR/XNPV/XIRR, depreciation (SLN/DDB/SYD/VDB), bond pricing (PRICE/YIELD/DURATION/MDURATION/ACCRINT), Treasury bills, and full amortization schedules. Output precision is configurable per call; the package routinely produces results that are correct beyond Excel's float64 precision limit.
-
-### **[py](/Docs/py.md)**
-
-Execute Python code in Go without manually installing Python environment and dependencies. Allows passing variables between Go and Python.
-
-### **[pd](/Docs/pd.md)**
-
-Pandas-like DataFrame helpers built on top of `gpandas`. Provides conversion helpers between Insyra's `DataTable` and `gpandas.DataFrame`, and exposes a pandas-like API in Go. See the package docs at `/Docs/pd.md` and the upstream `gpandas` documentation: https://gpandas.apoplexi.com/docs/
-
-### **[datafetch](/Docs/datafetch.md)**
-
-Allows you to fetch data easily. It currently includes a Google Maps store review crawler and a Yahoo Finance wrapper (powered by [go-yfinance](https://github.com/wnjoon/go-yfinance)). Network access is required for remote fetchers and some features depend on third-party backends which may change.
-
-### **[lpgen](/Docs/lpgen.md)**
-
-Provides a **super simple** and intuitive way to generate linear programming (LP) models and save them as `.lp` files. It supports setting objectives, adding constraints, defining variable bounds, and specifying binary or integer variables.
-
-### **[lp](/Docs/lp.md)**
-
-Fully automatic linear programming (LP) solver using [GLPK](https://www.gnu.org/software/glpk/).
-
-### **[engine](/engine/README.md)**
-
-Exports selected internal implementations from Insyra for developers to reuse in other projects.
+| Package | Description |
+|---|---|
+| **[isr](/Docs/isr.md)** | Syntactic sugar over **Insyra** — the recommended entry point for new code. |
+| **[stats](/Docs/stats.md)** | Statistical functions for data analysis: skewness, kurtosis, moment calculations, and more. |
+| **[parallel](/Docs/parallel.md)** | Parallel processing for data manipulation; runs any function and auto-waits for all goroutines. |
+| **[plot](/Docs/plot.md)** | Data visualization wrapping [go-echarts](https://github.com/go-echarts/go-echarts). |
+| **[gplot](/Docs/gplot.md)** | Static charts via [gonum/plot](https://github.com/gonum/plot) — fast, no Chrome, supports function plots. |
+| **[csvxl](/Docs/csvxl.md)** | Work with Excel and CSV files (e.g. convert CSV to Excel). |
+| **[parquet](/Docs/parquet.md)** | Apache Parquet read/write, deeply integrated with `DataTable`/`DataList`; streaming, column-level reads, CCL filtering. |
+| **[mkt](/Docs/mkt.md)** | Marketing analytics: RFM, Customer Activity Index, and market-basket analysis. |
+| **[finance](/Docs/finance.md)** | High-precision fixed-point finance: TVM, NPV/IRR, depreciation, bond pricing, and amortization schedules. |
+| **[py](/Docs/py.md)** | Run Python from Go with no manual environment setup; pass variables both ways. |
+| **[pd](/Docs/pd.md)** | Pandas-like `DataFrame` helpers built on `gpandas`, with `DataTable` conversion. |
+| **[datafetch](/Docs/datafetch.md)** | Easy data fetching: Google Maps store reviews and a Yahoo Finance wrapper. |
+| **[lpgen](/Docs/lpgen.md)** | Generate linear programming (LP) models and export them as `.lp` files. |
+| **[lp](/Docs/lp.md)** | Fully automatic LP solver using [GLPK](https://www.gnu.org/software/glpk/). |
+| **[engine](/engine/README.md)** | Re-exports selected Insyra internals for reuse in other projects. |
 
 ## Advanced Usage
 
