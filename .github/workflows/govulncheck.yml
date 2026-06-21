@@ -15,10 +15,4 @@ jobs:
     steps:
     - uses: golang/govulncheck-action@v1
       with:
-        # Pin to the module's Go version (matches every other workflow). The
-        # action otherwise defaults to the latest stable Go, and govulncheck
-        # under Go 1.26 panics analyzing generics ("ForEachElement called on
-        # type containing *types.TypeParam").
-        go-version-file: go.mod
-        check-latest: false
         go-package: ./...
