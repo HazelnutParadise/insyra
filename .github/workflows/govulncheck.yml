@@ -17,7 +17,10 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version-file: go.mod
+        # Latest 1.25 patch rather than go.mod's exact 1.25.0: 1.25.0 ships
+        # standard-library CVEs fixed in 1.25.9/1.25.10/1.25.11, which the scan
+        # would otherwise (correctly) flag against the toolchain itself.
+        go-version: '1.25.x'
         cache-dependency-path: go.sum
     # Pinned to v1.3.0 instead of golang/govulncheck-action@v1 (which always
     # installs @latest). v1.4.0 bundles x/tools v0.46.0, which panics while
