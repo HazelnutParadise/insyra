@@ -106,7 +106,7 @@ func main() {
 
 ### 1b) Fill missing values
 
-All fill methods treat both `nil` and `math.NaN()` as missing values. The legacy `FillNaNWithMean` remains for backwards compatibility but only replaces NaN; prefer `FillWithMean` for new code. Use `ReplaceNaNsWith`, `ReplaceNilsWith`, or `ReplaceNaNsAndNilsWith` when you want constant replacement instead.
+All fill methods treat both `nil` and `math.NaN()` as missing values. `FillNaNWithMean` is deprecated (it only replaces NaN, not nil); use `FillWithMean` instead. Use `ReplaceNaNsWith`, `ReplaceNilsWith`, or `ReplaceNaNsAndNilsWith` when you want constant replacement instead.
 
 ```go
 dl.FillWithMean()
