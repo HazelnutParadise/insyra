@@ -36,7 +36,7 @@ func init() {
 
 func runScaleCommand(ctx *ExecContext, args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: scale fit|transform|inverse ...")
+		return fmt.Errorf("usage: scale fit|transform|inverse <args> (see 'help scale')")
 	}
 	switch strings.ToLower(args[0]) {
 	case "fit":
