@@ -19,7 +19,7 @@ func (r *LogisticRegressionResult) Predict(typ PredictType, newXs ...insyra.IDat
 	if r == nil {
 		return nil, errors.New("logistic regression result is nil")
 	}
-	return predictFromCoefficients(r.Coefficients, r.link, typ, r.ClassLabels, newXs...)
+	return predictFromCoefficients(r.Coefficients, r.link, typ, r.ClassLabels, nil, newXs...)
 }
 
 func (r *PoissonRegressionResult) Predict(typ PredictType, newXs ...insyra.IDataList) (*insyra.DataList, error) {
@@ -29,7 +29,25 @@ func (r *PoissonRegressionResult) Predict(typ PredictType, newXs ...insyra.IData
 	if typ == PredictClass {
 		return nil, errors.New("class prediction is only available for logistic regression")
 	}
-	return predictFromCoefficients(r.Coefficients, r.link, typ, nil, newXs...)
+	if r.hasOffset {
+		return nil, errors.New("model was fit with an offset; use PredictWithOffset to supply the new-data offset")
+	}
+	return predictFromCoefficients(r.Coefficients, r.link, typ, nil, nil, newXs...)
+}
+
+// PredictWithOffset predicts on new data while applying a per-row offset, as
+// required when the model was fit with an offset (e.g. log-exposure rate models).
+func (r *PoissonRegressionResult) PredictWithOffset(typ PredictType, offset insyra.IDataList, newXs ...insyra.IDataList) (*insyra.DataList, error) {
+	if r == nil {
+		return nil, errors.New("poisson regression result is nil")
+	}
+	if typ == PredictClass {
+		return nil, errors.New("class prediction is only available for logistic regression")
+	}
+	if offset == nil {
+		return nil, errors.New("offset data list is nil")
+	}
+	return predictFromCoefficients(r.Coefficients, r.link, typ, nil, offset, newXs...)
 }
 
 func (r *GLMResult) Predict(typ PredictType, newXs ...insyra.IDataList) (*insyra.DataList, error) {
@@ -39,10 +57,28 @@ func (r *GLMResult) Predict(typ PredictType, newXs ...insyra.IDataList) (*insyra
 	if typ == PredictClass {
 		return nil, errors.New("class prediction is only available for logistic regression")
 	}
-	return predictFromCoefficients(r.Coefficients, r.link, typ, nil, newXs...)
+	if r.hasOffset {
+		return nil, errors.New("model was fit with an offset; use PredictWithOffset to supply the new-data offset")
+	}
+	return predictFromCoefficients(r.Coefficients, r.link, typ, nil, nil, newXs...)
 }
 
-func predictFromCoefficients(beta []float64, link glmLink, typ PredictType, classLabels []any, newXs ...insyra.IDataList) (*insyra.DataList, error) {
+// PredictWithOffset predicts on new data while applying a per-row offset, as
+// required when the model was fit with an offset.
+func (r *GLMResult) PredictWithOffset(typ PredictType, offset insyra.IDataList, newXs ...insyra.IDataList) (*insyra.DataList, error) {
+	if r == nil {
+		return nil, errors.New("GLM result is nil")
+	}
+	if typ == PredictClass {
+		return nil, errors.New("class prediction is only available for logistic regression")
+	}
+	if offset == nil {
+		return nil, errors.New("offset data list is nil")
+	}
+	return predictFromCoefficients(r.Coefficients, r.link, typ, nil, offset, newXs...)
+}
+
+func predictFromCoefficients(beta []float64, link glmLink, typ PredictType, classLabels []any, offsetDL insyra.IDataList, newXs ...insyra.IDataList) (*insyra.DataList, error) {
 	if typ == "" {
 		typ = PredictResponse
 	}
@@ -59,12 +95,24 @@ func predictFromCoefficients(beta []float64, link glmLink, typ PredictType, clas
 	if err != nil {
 		return nil, err
 	}
+	var offset []float64
+	if offsetDL != nil {
+		offsetDL.AtomicDo(func(l *insyra.DataList) {
+			offset = l.ToF64Slice()
+		})
+		if len(offset) != n {
+			return nil, fmt.Errorf("offset length %d does not match %d predictor rows", len(offset), n)
+		}
+	}
 	X := buildDesignMatrix(xs, n)
 	out := make([]any, n)
 	for i := range n {
 		eta := 0.0
 		for j := range beta {
 			eta += X.At(i, j) * beta[j]
+		}
+		if offset != nil {
+			eta += offset[i]
 		}
 		switch typ {
 		case PredictLinear:

@@ -2,6 +2,7 @@ package insyra
 
 import (
 	"fmt"
+	"maps"
 	"reflect"
 	"sort"
 	"strings"
@@ -224,8 +225,13 @@ func (e *LabelEncoder) Transform(dt *DataTable) (*DataTable, error) {
 	if e == nil {
 		return nil, fmt.Errorf("LabelEncoder.Transform: encoder is nil")
 	}
+	classes, keyToID := e.classes, e.keyToID
+	if e.opts.Unknown == UnknownAsNew {
+		classes = append([]any(nil), e.classes...)
+		keyToID = maps.Clone(e.keyToID)
+	}
 	return transformScalarEncoder(dt, e.sourceRef, e.sourceName, e.encodedName, e.opts.NewColumn != "", e.opts.KeepOriginal, func(v any) (any, error) {
-		return e.encodeValue(v)
+		return encodeScalarCategory(v, e.opts.HandleNaN, e.opts.Unknown, "LabelEncoder.Transform", &classes, &keyToID)
 	})
 }
 
@@ -257,8 +263,13 @@ func (e *OrdinalEncoder) Transform(dt *DataTable) (*DataTable, error) {
 	if e == nil {
 		return nil, fmt.Errorf("OrdinalEncoder.Transform: encoder is nil")
 	}
+	classes, keyToID := e.classes, e.keyToID
+	if e.opts.Unknown == UnknownAsNew {
+		classes = append([]any(nil), e.classes...)
+		keyToID = maps.Clone(e.keyToID)
+	}
 	return transformScalarEncoder(dt, e.sourceRef, e.sourceName, e.encodedName, e.opts.NewColumn != "", e.opts.KeepOriginal, func(v any) (any, error) {
-		return e.encodeValue(v)
+		return encodeScalarCategory(v, e.opts.HandleNaN, e.opts.Unknown, "OrdinalEncoder.Transform", &classes, &keyToID)
 	})
 }
 
@@ -328,6 +339,9 @@ func fitOneHotEncoder(dt *DataTable, opts OneHotOptions) (*OneHotEncoder, error)
 				sortCategoriesByString(state.categories, state.keyToIndex)
 			}
 			state.outputColumns = oneHotOutputNames(state, opts)
+			if err = checkOneHotNameCollisions(state, opts); err != nil {
+				return
+			}
 			enc.columns = append(enc.columns, state)
 			enc.outputColumns = append(enc.outputColumns, state.outputColumns...)
 		}
@@ -550,6 +564,13 @@ func (e *OneHotEncoder) encodeOneHotColumn(state *oneHotColumnState, values []an
 	if e.opts.DropFirst && len(state.categories) > 0 {
 		start = 1
 	}
+	// Transform must not mutate the fitted encoder: keep per-call category
+	// bookkeeping local so repeated or concurrent Transform calls stay
+	// idempotent. UnknownAsNew extends copies, never the stored fit state.
+	keyToIndex := state.keyToIndex
+	outputColumns := state.outputColumns
+	categoryCount := len(state.categories)
+	copied := false
 	for _, raw := range values {
 		v, skip, err := normalizeCategoryValue(raw, e.opts.HandleNaN, "OneHotEncoder.Transform")
 		if err != nil {
@@ -559,7 +580,7 @@ func (e *OneHotEncoder) encodeOneHotColumn(state *oneHotColumnState, values []an
 			continue
 		}
 		key := labelKey(v)
-		if _, ok := state.keyToIndex[key]; ok {
+		if _, ok := keyToIndex[key]; ok {
 			continue
 		}
 		switch e.opts.Unknown {
@@ -567,17 +588,21 @@ func (e *OneHotEncoder) encodeOneHotColumn(state *oneHotColumnState, values []an
 		case UnknownError:
 			return nil, fmt.Errorf("OneHotEncoder.Transform: unknown category %v", raw)
 		case UnknownAsNew:
-			state.keyToIndex[key] = len(state.categories)
-			state.categories = append(state.categories, v)
-			name := oneHotCategoryColumnName(state.prefix, e.opts.Separator, v)
-			state.outputColumns = append(state.outputColumns, name)
+			if !copied {
+				keyToIndex = maps.Clone(state.keyToIndex)
+				outputColumns = append([]string(nil), state.outputColumns...)
+				copied = true
+			}
+			keyToIndex[key] = categoryCount
+			categoryCount++
+			outputColumns = append(outputColumns, oneHotCategoryColumnName(state.prefix, e.opts.Separator, v))
 		default:
 			return nil, fmt.Errorf("OneHotEncoder.Transform: unknown UnknownPolicy %d", e.opts.Unknown)
 		}
 	}
 
-	cols := make([]*DataList, 0, len(state.categories)-start)
-	for _, name := range state.outputColumns {
+	cols := make([]*DataList, 0, len(outputColumns))
+	for _, name := range outputColumns {
 		cols = append(cols, NewDataList().SetName(name))
 	}
 	for _, raw := range values {
@@ -587,7 +612,7 @@ func (e *OneHotEncoder) encodeOneHotColumn(state *oneHotColumnState, values []an
 			return nil, err
 		}
 		if !skip {
-			if id, ok := state.keyToIndex[labelKey(v)]; ok && id >= start {
+			if id, ok := keyToIndex[labelKey(v)]; ok && id >= start {
 				row[id-start] = 1
 			}
 		}
@@ -710,8 +735,11 @@ func (e *OneHotEncoder) decodeOneHotColumn(t *DataTable, state *oneHotColumnStat
 	return out, nil
 }
 
-func (e *LabelEncoder) encodeValue(raw any) (any, error) {
-	v, skip, err := normalizeCategoryValue(raw, e.opts.HandleNaN, "LabelEncoder.Transform")
+// encodeScalarCategory maps a raw value to its integer id using the supplied
+// class table. For UnknownAsNew the caller passes per-call copies of classes and
+// keyToID, so Transform never mutates the fitted encoder state.
+func encodeScalarCategory(raw any, nan NaNPolicy, unknown UnknownPolicy, method string, classes *[]any, keyToID *map[string]int) (any, error) {
+	v, skip, err := normalizeCategoryValue(raw, nan, method)
 	if err != nil {
 		return nil, err
 	}
@@ -719,21 +747,21 @@ func (e *LabelEncoder) encodeValue(raw any) (any, error) {
 		return nil, nil
 	}
 	key := labelKey(v)
-	if id, ok := e.keyToID[key]; ok {
+	if id, ok := (*keyToID)[key]; ok {
 		return id, nil
 	}
-	switch e.opts.Unknown {
+	switch unknown {
 	case UnknownIgnore:
 		return nil, nil
 	case UnknownError:
-		return nil, fmt.Errorf("LabelEncoder.Transform: unknown category %v", raw)
+		return nil, fmt.Errorf("%s: unknown category %v", method, raw)
 	case UnknownAsNew:
-		id := len(e.classes)
-		e.classes = append(e.classes, v)
-		e.keyToID[key] = id
+		id := len(*classes)
+		*classes = append(*classes, v)
+		(*keyToID)[key] = id
 		return id, nil
 	default:
-		return nil, fmt.Errorf("LabelEncoder.Transform: unknown UnknownPolicy %d", e.opts.Unknown)
+		return nil, fmt.Errorf("%s: unknown UnknownPolicy %d", method, unknown)
 	}
 }
 
@@ -749,33 +777,6 @@ func (e *LabelEncoder) inverseOne(v any) (any, error) {
 		return nil, fmt.Errorf("LabelEncoder.Inverse: id %d out of range", id)
 	}
 	return e.classes[id], nil
-}
-
-func (e *OrdinalEncoder) encodeValue(raw any) (any, error) {
-	v, skip, err := normalizeCategoryValue(raw, e.opts.HandleNaN, "OrdinalEncoder.Transform")
-	if err != nil {
-		return nil, err
-	}
-	if skip {
-		return nil, nil
-	}
-	key := labelKey(v)
-	if id, ok := e.keyToID[key]; ok {
-		return id, nil
-	}
-	switch e.opts.Unknown {
-	case UnknownIgnore:
-		return nil, nil
-	case UnknownError:
-		return nil, fmt.Errorf("OrdinalEncoder.Transform: unknown category %v", raw)
-	case UnknownAsNew:
-		id := len(e.classes)
-		e.classes = append(e.classes, v)
-		e.keyToID[key] = id
-		return id, nil
-	default:
-		return nil, fmt.Errorf("OrdinalEncoder.Transform: unknown UnknownPolicy %d", e.opts.Unknown)
-	}
 }
 
 func (e *OrdinalEncoder) inverseOne(v any) (any, error) {
@@ -905,31 +906,6 @@ func normalizeOneHotOptions(opts OneHotOptions) OneHotOptions {
 	return opts
 }
 
-func resolveEncodingColumn(dt *DataTable, ref string) (int, string, bool) {
-	if idx, ok := dt.getColNumberByName_notAtomic(ref); ok {
-		label := dt.columns[idx].name
-		if label == "" {
-			label = fallbackEncodingColumnName(idx)
-		}
-		return idx, label, true
-	}
-	if idx, ok := ParseColIndex(ref); ok && idx >= 0 && idx < len(dt.columns) {
-		label := dt.columns[idx].name
-		if label == "" {
-			label = fallbackEncodingColumnName(idx)
-		}
-		return idx, label, true
-	}
-	return -1, "", false
-}
-
-func fallbackEncodingColumnName(idx int) string {
-	if name, ok := alphaColIndex(idx); ok {
-		return name
-	}
-	return fmt.Sprintf("col_%d", idx)
-}
-
 func normalizeCategoryValue(v any, policy NaNPolicy, method string) (any, bool, error) {
 	if !isNilOrNaN(v) {
 		return v, false, nil
@@ -988,6 +964,27 @@ func oneHotOutputNames(state oneHotColumnState, opts OneHotOptions) []string {
 	return names
 }
 
+// checkOneHotNameCollisions rejects fits where two distinct categories map to
+// the same generated indicator column name (e.g. int 1 and string "1", or nil
+// and the string "<nil>"), since the string-form column names would otherwise
+// silently clash. Caught at fit time so the message names the offending
+// categories instead of surfacing a generic duplicate-column error later.
+func checkOneHotNameCollisions(state oneHotColumnState, opts OneHotOptions) error {
+	start := 0
+	if opts.DropFirst && len(state.categories) > 0 {
+		start = 1
+	}
+	seen := make(map[string]any, len(state.categories))
+	for _, v := range state.categories[start:] {
+		name := oneHotCategoryColumnName(state.prefix, opts.Separator, v)
+		if prev, ok := seen[name]; ok {
+			return fmt.Errorf("OneHotEncode: categories %#v and %#v both map to indicator column %q; rename a category or set a distinct Prefix/Separator", prev, v, name)
+		}
+		seen[name] = v
+	}
+	return nil
+}
+
 func oneHotCategoryColumnName(prefix, sep string, v any) string {
 	if sep == "" {
 		sep = "_"
@@ -1004,12 +1001,6 @@ func (e *OneHotEncoder) refreshOutputColumns() {
 
 func labelKey(v any) string {
 	return fmt.Sprintf("%T:%#v", v, v)
-}
-
-func copyRowNamesNotAtomic(out, src *DataTable) {
-	if src.rowNames != nil {
-		out.rowNames = src.rowNames.Clone()
-	}
 }
 
 func rejectDuplicateOutputNames(cols []*DataList, method string) error {

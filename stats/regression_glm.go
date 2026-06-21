@@ -45,6 +45,7 @@ type GLMResult struct {
 	ConfidenceLevel     float64
 	family              glmFamily
 	link                glmLink
+	hasOffset           bool
 }
 
 func GLM(opts GLMOptions, dlY insyra.IDataList, dlXs ...insyra.IDataList) (*GLMResult, error) {
@@ -159,6 +160,7 @@ func GLM(opts GLMOptions, dlY insyra.IDataList, dlXs ...insyra.IDataList) (*GLMR
 		ConfidenceLevel:     cl,
 		family:              fam,
 		link:                link,
+		hasOffset:           offsetIdx >= 0,
 	}, nil
 }
 

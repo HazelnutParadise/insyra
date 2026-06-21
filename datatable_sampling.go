@@ -74,84 +74,6 @@ func fracCount(length int, frac float64) int {
 	return n
 }
 
-// Sample returns a new DataList containing n randomly selected elements.
-func (dl *DataList) Sample(n int, withReplacement bool, options ...SamplingOptions) *DataList {
-	var data []any
-	var name string
-	dl.AtomicDo(func(dl *DataList) {
-		data = make([]any, len(dl.data))
-		copy(data, dl.data)
-		name = dl.name
-	})
-	if n <= 0 {
-		dl.warn("Sample", "n must be > 0")
-		return NewDataList()
-	}
-	if len(data) == 0 {
-		dl.warn("Sample", "DataList is empty")
-		return NewDataList()
-	}
-	if !withReplacement && n > len(data) {
-		dl.warn("Sample", "n cannot exceed DataList length when sampling without replacement")
-		return NewDataList()
-	}
-
-	rng := newSamplingRandom(options)
-	indices := sampleIndexSet(len(data), n, withReplacement, rng)
-	out := NewDataList()
-	out.name = name + "_Sampled"
-	out.data = make([]any, len(indices))
-	for i, idx := range indices {
-		out.data[i] = data[idx]
-	}
-	now := time.Now().Unix()
-	out.creationTimestamp = now
-	out.lastModifiedTimestamp.Store(now)
-	return out
-}
-
-// SampleFrac returns a new DataList containing frac of the elements.
-func (dl *DataList) SampleFrac(frac float64, withReplacement bool, options ...SamplingOptions) *DataList {
-	length := dl.Len()
-	if frac <= 0 || frac > 1 {
-		dl.warn("SampleFrac", "frac must be in (0, 1]")
-		return NewDataList()
-	}
-	if length == 0 {
-		dl.warn("SampleFrac", "DataList is empty")
-		return NewDataList()
-	}
-	return dl.Sample(fracCount(length, frac), withReplacement, options...)
-}
-
-// Shuffle returns a randomly reordered copy of the DataList.
-func (dl *DataList) Shuffle(options ...SamplingOptions) *DataList {
-	var data []any
-	var name string
-	dl.AtomicDo(func(dl *DataList) {
-		data = make([]any, len(dl.data))
-		copy(data, dl.data)
-		name = dl.name
-	})
-	if len(data) == 0 {
-		dl.warn("Shuffle", "DataList is empty")
-		return NewDataList()
-	}
-
-	rng := newSamplingRandom(options)
-	indices := rng.perm(len(data))
-	out := NewDataList()
-	out.name = name + "_Shuffled"
-	out.data = make([]any, len(indices))
-	for i, idx := range indices {
-		out.data[i] = data[idx]
-	}
-	now := time.Now().Unix()
-	out.creationTimestamp = now
-	out.lastModifiedTimestamp.Store(now)
-	return out
-}
-
 type dataTableSamplingSnapshot struct {
 	name     string
 	colData  [][]any
@@ -265,12 +187,18 @@ func (dt *DataTable) Shuffle(options ...SamplingOptions) *DataTable {
 // TrainTestSplit splits the DataTable into train and test tables.
 func (dt *DataTable) TrainTestSplit(trainFrac float64, options ...SamplingOptions) (*DataTable, *DataTable) {
 	snap := dt.snapshotForSampling()
-	if trainFrac <= 0 || trainFrac > 1 {
-		dt.warn("TrainTestSplit", "trainFrac must be in (0, 1]")
+	if trainFrac <= 0 || trainFrac >= 1 {
+		dt.warn("TrainTestSplit", "trainFrac must be in (0, 1) so both train and test are non-empty")
 		return NewDataTable(), NewDataTable()
 	}
 	if snap.rows == 0 {
 		dt.warn("TrainTestSplit", "DataTable is empty")
+		return NewDataTable(), NewDataTable()
+	}
+
+	trainN := fracCount(snap.rows, trainFrac)
+	if trainN <= 0 || trainN >= snap.rows {
+		dt.warn("TrainTestSplit", "trainFrac leaves train or test empty for this row count")
 		return NewDataTable(), NewDataTable()
 	}
 
@@ -284,7 +212,6 @@ func (dt *DataTable) TrainTestSplit(trainFrac float64, options ...SamplingOption
 		rng := newSamplingRandom(options)
 		indices = rng.perm(snap.rows)
 	}
-	trainN := fracCount(snap.rows, trainFrac)
 	train := dataTableFromSampledRows(snap, indices[:trainN], "_Train")
 	test := dataTableFromSampledRows(snap, indices[trainN:], "_Test")
 	return train, test
@@ -293,6 +220,11 @@ func (dt *DataTable) TrainTestSplit(trainFrac float64, options ...SamplingOption
 // SimpleRandomSample returns a new DataTable containing a simple random sample of the specified size.
 // If sampleSize is greater than the number of rows in the DataTable, it returns a copy of the original DataTable.
 // If sampleSize is less than or equal to 0, it returns an empty DataTable.
+//
+// Deprecated: use Sample(n, false) instead, which shares the SamplingOptions
+// (seed/reproducibility) surface with the other sampling methods. Note Sample
+// returns an empty table (and sets Err) when n exceeds the row count rather than
+// cloning the whole table.
 func (dt *DataTable) SimpleRandomSample(sampleSize int) *DataTable {
 	if sampleSize <= 0 {
 		dt.warn("SimpleRandomSample", "Sample size is less than or equal to 0. Returning an empty DataTable.")

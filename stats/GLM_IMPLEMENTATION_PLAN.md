@@ -499,18 +499,18 @@ Predict 重建 design matrix(複用 `buildDesignMatrix`,D6)→ `η = Xβ`(若提
 
 | issue 驗收條件 | 對應 Phase | 狀態 |
 |---|---|---|
-| `LogisticRegression(+Options)` / `PoissonRegression(+Options)` / `GLM`,皆 `(*Result, error)` | P2 / P3 | ☐ |
-| 三 result 型別皆有 `Predict(typ, newXs...)`(linear/response/class) | P3 | ☐ |
-| 共用 IRLS 核心 + Family/Link 介面,與 OLS 計算分離,守 CLAUDE.md 分層 | P1 | ☐ |
-| 對拍 R `glm(binomial/poisson)` + statsmodels,β/SE/z/p/deviance/AIC 容差通過 | P2 / P3 | ☐ |
-| separation `warn`/`error`/`ridge` 三路徑單元測試 | P2(warn/error)/ P5(ridge) | ☐ |
-| over-dispersion 警示 + `DispersionStatistic` 測試 | P2 / P5 | ☐ |
-| offset 與 prior weights baseline 對拍 | P3 | ☐ |
+| `LogisticRegression(+Options)` / `PoissonRegression(+Options)` / `GLM`,皆 `(*Result, error)` | P2 / P3 | ☑ |
+| 三 result 型別皆有 `Predict(typ, newXs...)`(linear/response/class) | P3 | ☑ |
+| 共用 IRLS 核心 + Family/Link 介面,與 OLS 計算分離,守 CLAUDE.md 分層 | P1 | ☑ |
+| 對拍 R `glm(binomial/poisson)` + statsmodels,β/SE/z/p/deviance/AIC 容差通過 | P2 / P3 | ☑ |
+| separation `warn`/`error`/`ridge` 三路徑單元測試 | P2(warn/error)/ P5(ridge) | ☑ |
+| over-dispersion 警示 + `DispersionStatistic` 測試 | P2 / P5 | ☑ |
+| offset 與 prior weights baseline 對拍(`PredictWithOffset` 套用新資料 offset) | P3 | ☑ |
 | ~~`isr/glm.go` 暴露 + alias + test~~ | P4 | ✗ 取消(與 repo 慣例不一致,見 Phase 4) |
-| `Docs/stats.md` + tutorials + 決策樹 | P6 | ☐ |
-| `golangci-lint` / `govulncheck` / `go test -race` 全綠 | P6 | ☐ |
-| 純加法,不破壞既有簽名 | P0 / P6 | ☐ |
-| 不實作 NB/Gamma/IG/Probit/Cloglog/Firth/multinomial,但介面可擴充 | §12 | ☐ |
+| `Docs/stats.md` + tutorials + 決策樹 | P6 | ☑ |
+| `golangci-lint` / `govulncheck` / `go test -race` 全綠 | P6 | ☐ 待 CI 驗證 |
+| 純加法,不破壞既有簽名 | P0 / P6 | ☑ |
+| 不實作 NB/Gamma/IG/Probit/Cloglog/Firth/multinomial,但介面可擴充 | §12 | ☑ |
 
 ---
 

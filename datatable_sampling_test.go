@@ -149,6 +149,27 @@ func TestDataTableSamplingErrors(t *testing.T) {
 	}
 }
 
+func TestDataTableTrainTestSplitDegenerateFrac(t *testing.T) {
+	dt := samplingTestTable()
+	train, test := dt.TrainTestSplit(1.0)
+	if train.NumRows() != 0 || test.NumRows() != 0 {
+		t.Fatalf("trainFrac=1.0 must leave no split, got (%d,%d)", train.NumRows(), test.NumRows())
+	}
+	if dt.Err() == nil {
+		t.Fatalf("trainFrac=1.0 should set Err (empty test set is a footgun)")
+	}
+	dt.ClearErr()
+
+	one := NewDataTable(NewDataList(1).SetName("id"))
+	train, test = one.TrainTestSplit(0.5)
+	if train.NumRows() != 0 || test.NumRows() != 0 {
+		t.Fatalf("1-row table cannot be split, got (%d,%d)", train.NumRows(), test.NumRows())
+	}
+	if one.Err() == nil {
+		t.Fatalf("1-row split should set Err")
+	}
+}
+
 func samplingTestTable() *DataTable {
 	dt := NewDataTable()
 	dt.AppendCols(

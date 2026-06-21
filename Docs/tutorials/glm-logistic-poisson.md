@@ -81,7 +81,10 @@ if err != nil {
     log.Fatal(err)
 }
 
-predictedRates, err := fit.Predict(stats.PredictResponse, spend)
+// The model was fit with an offset, so the offset must be supplied for
+// prediction too. Predict (without an offset) would return an error here;
+// use PredictWithOffset and pass the offset for the new rows.
+predictedRates, err := fit.PredictWithOffset(stats.PredictResponse, exposure, spend)
 if err != nil {
     log.Fatal(err)
 }

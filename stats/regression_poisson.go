@@ -45,6 +45,7 @@ type PoissonRegressionResult struct {
 	ConfidenceLevel        float64
 	family                 glmFamily
 	link                   glmLink
+	hasOffset              bool
 }
 
 func PoissonRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) (*PoissonRegressionResult, error) {
@@ -135,5 +136,6 @@ func PoissonRegressionWithOptions(opts PoissonRegressionOptions, dlY insyra.IDat
 		ConfidenceLevel:        cl,
 		family:                 fam,
 		link:                   link,
+		hasOffset:              opts.Offset != nil,
 	}, nil
 }

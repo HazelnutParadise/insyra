@@ -1796,6 +1796,8 @@ type GLMOptions struct {
 
 `GLMResult` exposes coefficient inference, fitted values, residuals, deviance, log-likelihood, AIC/BIC, Pearson chi-square, dispersion, convergence status, and `Predict`.
 
+When a model is fit with an `Offset`, the offset is part of the linear predictor, so it must also be supplied for new data. `Predict` returns an error on an offset-fitted model; use `PredictWithOffset(typ, newOffset, xs...)` instead (available on `PoissonRegressionResult` and `GLMResult`).
+
 ```go
 fit, err := stats.GLM(stats.GLMOptions{
     Family: stats.Poisson,
@@ -1805,7 +1807,8 @@ fit, err := stats.GLM(stats.GLMOptions{
 if err != nil {
     log.Fatal(err)
 }
-rates, err := fit.Predict(stats.PredictResponse, xNew)
+// Offset-fitted model: supply the new-data offset.
+rates, err := fit.PredictWithOffset(stats.PredictResponse, newExposure, xNew)
 ```
 
 ```go

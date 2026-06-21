@@ -37,6 +37,7 @@ func (dt *DataTable) fillColumns(cols []string, methodName string, fill func(*Da
 }
 
 // FillForward fills missing values in selected columns using previous observed values.
+// limit caps how many consecutive missing cells each gap fills; limit <= 0 means unlimited.
 func (dt *DataTable) FillForward(limit int, cols ...string) *DataTable {
 	return dt.fillColumns(cols, "FillForward", func(dl *DataList) bool {
 		dl.FillForward(limit)
@@ -45,6 +46,7 @@ func (dt *DataTable) FillForward(limit int, cols ...string) *DataTable {
 }
 
 // FillBackward fills missing values in selected columns using next observed values.
+// limit caps how many consecutive missing cells each gap fills; limit <= 0 means unlimited.
 func (dt *DataTable) FillBackward(limit int, cols ...string) *DataTable {
 	return dt.fillColumns(cols, "FillBackward", func(dl *DataList) bool {
 		dl.FillBackward(limit)

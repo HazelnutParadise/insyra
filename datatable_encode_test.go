@@ -401,3 +401,78 @@ func TestEncodeErrorsUseColumnResolutionAndDuplicateNames(t *testing.T) {
 		t.Fatalf("expected duplicate-name error, got %v", err)
 	}
 }
+
+// Two distinct categories whose string forms collide (int 1 vs string "1")
+// would generate the same indicator column name; this must be rejected at fit
+// time with a message naming the offending categories.
+func TestOneHotRejectsColumnNameCollision(t *testing.T) {
+	dt := NewDataTable(NewDataList(1, "1").SetName("mixed"))
+	_, _, err := dt.OneHotEncode(OneHotOptions{Columns: []string{"mixed"}})
+	if err == nil || !strings.Contains(err.Error(), "both map to indicator column") {
+		t.Fatalf("expected collision error, got %v", err)
+	}
+}
+
+// Transform must be pure: applying a fitted UnknownAsNew encoder to data with an
+// unseen category must not mutate the encoder, so repeated Transform calls stay
+// idempotent and don't leak categories across calls.
+func TestOneHotUnknownAsNewTransformIsPure(t *testing.T) {
+	train := NewDataTable(NewDataList("red", "blue").SetName("color"))
+	_, enc, err := train.OneHotEncode(OneHotOptions{Columns: []string{"color"}, Unknown: UnknownAsNew})
+	if err != nil {
+		t.Fatalf("fit: %v", err)
+	}
+	before := enc.OutputColumns()
+
+	ext, err := enc.Transform(NewDataTable(NewDataList("green").SetName("color")))
+	if err != nil {
+		t.Fatalf("transform green: %v", err)
+	}
+	assertEncodeCols(t, ext, []string{"color_red", "color_blue", "color_green"})
+	if got := enc.OutputColumns(); !reflect.DeepEqual(got, before) {
+		t.Fatalf("Transform mutated fitted encoder: before %#v after %#v", before, got)
+	}
+
+	// A second Transform of different unseen data must not carry over "green".
+	ext2, err := enc.Transform(NewDataTable(NewDataList("yellow").SetName("color")))
+	if err != nil {
+		t.Fatalf("transform yellow: %v", err)
+	}
+	assertEncodeCols(t, ext2, []string{"color_red", "color_blue", "color_yellow"})
+}
+
+func TestScalarEncoderUnknownAsNewTransformIsPure(t *testing.T) {
+	train := NewDataTable(NewDataList("red", "blue").SetName("color"))
+
+	_, lab, err := train.LabelEncode(LabelEncodeOptions{Column: "color", Unknown: UnknownAsNew})
+	if err != nil {
+		t.Fatalf("fit label: %v", err)
+	}
+	labClasses := lab.Classes()
+	green, err := lab.Transform(NewDataTable(NewDataList("green").SetName("color")))
+	if err != nil {
+		t.Fatalf("label transform green: %v", err)
+	}
+	assertEncodeData(t, green.GetColByName("color"), []any{2})
+	if got := lab.Classes(); !reflect.DeepEqual(got, labClasses) {
+		t.Fatalf("label Transform mutated classes: before %#v after %#v", labClasses, got)
+	}
+	// "green" was never learned, so a second unseen value also maps to id 2.
+	yellow, err := lab.Transform(NewDataTable(NewDataList("yellow").SetName("color")))
+	if err != nil {
+		t.Fatalf("label transform yellow: %v", err)
+	}
+	assertEncodeData(t, yellow.GetColByName("color"), []any{2})
+
+	_, ord, err := train.OrdinalEncode(OrdinalEncodeOptions{Column: "color", Order: []any{"red", "blue"}, Unknown: UnknownAsNew})
+	if err != nil {
+		t.Fatalf("fit ordinal: %v", err)
+	}
+	ordClasses := ord.Classes()
+	if _, err := ord.Transform(NewDataTable(NewDataList("green").SetName("color"))); err != nil {
+		t.Fatalf("ordinal transform green: %v", err)
+	}
+	if got := ord.Classes(); !reflect.DeepEqual(got, ordClasses) {
+		t.Fatalf("ordinal Transform mutated classes: before %#v after %#v", ordClasses, got)
+	}
+}

@@ -45,6 +45,9 @@ func runSplitCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return fmt.Errorf("split: invalid train fraction %q", coreArgs[2])
 	}
+	if trainFrac <= 0 || trainFrac >= 1 {
+		return fmt.Errorf("split: train fraction must be in (0, 1), got %v", trainFrac)
+	}
 	opts, err := parseSplitCommandOptions(coreArgs[3:])
 	if err != nil {
 		return err

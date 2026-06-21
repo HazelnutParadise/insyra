@@ -901,14 +901,14 @@ func (dt *DataTable) OrdinalEncode(opts OrdinalEncodeOptions) (*DataTable, *Ordi
 
 **Description:** Categorical encoding turns string or mixed-type category columns into numeric columns that can feed `stats.LinearRegression`, KNN, PCA, and clustering. Each method returns a fresh `*DataTable`; the receiver is not modified. The returned encoder stores the fitted category mapping and can `Transform` another table with the same schema, such as a test set or prediction batch.
 
-Column references are resolved by column name first, then Excel-style index (`"A"`, `"B"`, ..., `"AA"`). Category identity uses both type and value, so `int(1)` and string `"1"` are distinct. Missing means `nil` or `NaN`.
+Column references are resolved by column name first, then Excel-style index (`"A"`, `"B"`, ..., `"AA"`). Category identity uses both type and value, so `int(1)` and string `"1"` are distinct. Missing means `nil` or `NaN`. For one-hot encoding, two distinct categories that would generate the same indicator column name (for example `int(1)` and `"1"`, both `c_1`, or `nil` and the string `"<nil>"`) are rejected at fit time; rename a category or set a distinct `Prefix`/`Separator`.
 
 **Policies:**
 
 | Type | Values | Behavior |
 |---|---|---|
 | `NaNPolicy` | `NaNAsCategory`, `NaNError`, `NaNSkip` | Missing becomes its own category, errors, or is skipped (`nil` for label/ordinal; all-zero for one-hot). |
-| `UnknownPolicy` | `UnknownIgnore`, `UnknownError`, `UnknownAsNew` | On `Transform`, unseen categories become all-zero/`nil`, error, or extend the encoder. |
+| `UnknownPolicy` | `UnknownIgnore`, `UnknownError`, `UnknownAsNew` | On `Transform`, unseen categories become all-zero/`nil`, error, or are encoded as new outputs for that call. `UnknownAsNew` extends only the returned table; the fitted encoder is left unchanged, so `Transform` is pure and safe to reuse. |
 | `LabelSort` | `LabelSortFirstSeen`, `LabelSortLexicographic`, `LabelSortByFrequency` | Controls label id assignment order. |
 
 **Options:**
@@ -2785,6 +2785,8 @@ func (dt *DataTable) SimpleRandomSample(sampleSize int) *DataTable
 
 **Description:** Performs simple random sampling on the DataTable.
 
+> **Deprecated:** Use [`Sample(n, false)`](#sample--samplefrac--shuffle--traintestsplit) instead, which shares the `SamplingOptions` (seed/reproducibility) surface with the other sampling methods. Note `Sample` records an error and returns an empty table when `n` exceeds the row count, rather than cloning the whole table.
+
 **Parameters:**
 
 - `sampleSize`: Number of rows to sample. If `sampleSize <= 0`, returns an empty DataTable. If `sampleSize >= number of rows`, returns a copy of the original DataTable.
@@ -2844,6 +2846,7 @@ orderedTrain, orderedTest := dt.TrainTestSplit(0.8, insyra.SamplingOptions{Prese
 **Notes:**
 
 - `SampleFrac` and `TrainTestSplit` use `floor(frac * rows)`, with a minimum of 1 row for non-empty data.
+- `TrainTestSplit` requires `trainFrac` in the open interval `(0, 1)` and a row count large enough that neither split is empty; otherwise it records an error via `dt.Err()` and returns two empty DataTables.
 - Without replacement, `n > rows` records an error and returns an empty DataTable.
 - With replacement, duplicate source rows may appear in the output.
 - Invalid fractions, empty input, and invalid sample sizes are recorded via `dt.Err()`.

@@ -756,6 +756,8 @@ func (dl *DataList) FillNaNWithMean() *DataList
 
 **Description:** Replaces all NaN values with the mean value of numeric elements.
 
+> **Deprecated:** Use [`FillWithMean`](#fillwithmean) instead, which also fills `nil` (not just `NaN`), leaves non-numeric values untouched, and matches the other `Fill*` imputation methods.
+
 **Parameters:**
 
 - None.

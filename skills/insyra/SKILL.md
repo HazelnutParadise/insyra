@@ -167,9 +167,9 @@ _ = ordinalEnc
 
 Policies:
 - `NaNAsCategory`, `NaNError`, `NaNSkip` handle `nil`/`NaN`.
-- `UnknownIgnore`, `UnknownError`, `UnknownAsNew` handle categories seen only during `Transform`.
+- `UnknownIgnore`, `UnknownError`, `UnknownAsNew` handle categories seen only during `Transform`. `UnknownAsNew` extends only the returned table; the fitted encoder is unchanged, so `Transform` is pure and reusable across calls.
 - `LabelSortFirstSeen`, `LabelSortLexicographic`, `LabelSortByFrequency` control label ids.
-- Column refs resolve by name first, then Excel-style index (`A`, `B`, `AA`). Category identity keeps typed values distinct (`1` and `"1"` are different).
+- Column refs resolve by name first, then Excel-style index (`A`, `B`, `AA`). Category identity keeps typed values distinct (`1` and `"1"` are different). For one-hot, two categories that produce the same indicator column name (e.g. `1` and `"1"`) are rejected at fit time.
 
 ### 1d) Scale numeric features (fit once, reuse)
 

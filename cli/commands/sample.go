@@ -131,9 +131,6 @@ func applySampleN(ctx *ExecContext, varName string, n int, opts sampleCommandOpt
 	samplingOpts := samplingOptionsFromCLI(opts)
 	switch v := value.(type) {
 	case *insyra.DataTable:
-		if !opts.Replace && !opts.UseSeed {
-			return v.SimpleRandomSample(n), nil
-		}
 		return v.Sample(n, opts.Replace, samplingOpts...), nil
 	case *insyra.DataList:
 		return v.Sample(n, opts.Replace, samplingOpts...), nil
