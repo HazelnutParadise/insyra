@@ -796,6 +796,133 @@ func TestCrossLangCovarianceCorrelationAndBartlett(t *testing.T) {
 func TestCrossLangRegressionFamily(t *testing.T) {
 	requireCrossLangTools(t)
 
+	t.Run("logistic_regression", func(t *testing.T) {
+		y := []float64{0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0}
+		xs := [][]float64{
+			{-2.2, -1.7, -1.1, -0.5, 0.1, 0.4, 0.9, 1.2, 1.6, 2.0, 2.5, 3.0},
+			{1.0, 0.8, 1.4, 1.1, 1.8, 2.0, 1.7, 2.4, 2.1, 2.5, 2.9, 2.7},
+		}
+		xLists := make([]insyra.IDataList, 0, len(xs))
+		for _, x := range xs {
+			xLists = append(xLists, dataListFromFloat64(x))
+		}
+		got, err := stats.LogisticRegressionWithOptions(stats.LogisticRegressionOptions{
+			MaxIter:   100,
+			Tolerance: 1e-10,
+		}, dataListFromFloat64(y), xLists...)
+		if err != nil {
+			t.Fatalf("LogisticRegressionWithOptions error: %v", err)
+		}
+		payload := map[string]any{"y": y, "xs": xs}
+		rb := runRBaseline(t, "logistic_reg", payload)
+		pb := runPythonBaseline(t, "logistic_reg", payload)
+
+		assertSliceCloseToBoth(t, "coefficients", got.Coefficients, baselineFloatSlice(t, rb, "coefficients"), baselineFloatSlice(t, pb, "coefficients"), 1e-6)
+		assertSliceCloseToBoth(t, "standard_errors", got.StandardErrors, baselineFloatSlice(t, rb, "standard_errors"), baselineFloatSlice(t, pb, "standard_errors"), 1e-5)
+		assertSliceCloseToBoth(t, "z_values", got.ZValues, baselineFloatSlice(t, rb, "z_values"), baselineFloatSlice(t, pb, "z_values"), 1e-5)
+		assertSliceCloseToBoth(t, "p_values", got.PValues, baselineFloatSlice(t, rb, "p_values"), baselineFloatSlice(t, pb, "p_values"), 1e-6)
+		assertSliceCloseToBoth(t, "odds_ratios", got.OddsRatios, baselineFloatSlice(t, rb, "odds_ratios"), baselineFloatSlice(t, pb, "odds_ratios"), 1e-6)
+		assertSliceCloseToBoth(t, "fitted", got.FittedProbabilities, baselineFloatSlice(t, rb, "fitted"), baselineFloatSlice(t, pb, "fitted"), 1e-6)
+		assertCloseToBoth(t, "log_likelihood", got.LogLikelihood, baselineFloat(t, rb, "log_likelihood"), baselineFloat(t, pb, "log_likelihood"), 1e-6)
+		assertCloseToBoth(t, "deviance", got.Deviance, baselineFloat(t, rb, "deviance"), baselineFloat(t, pb, "deviance"), 1e-6)
+		assertCloseToBoth(t, "null_deviance", got.NullDeviance, baselineFloat(t, rb, "null_deviance"), baselineFloat(t, pb, "null_deviance"), 1e-6)
+		assertCloseToBoth(t, "aic", got.AIC, baselineFloat(t, rb, "aic"), baselineFloat(t, pb, "aic"), 1e-6)
+		assertCloseToBoth(t, "bic", got.BIC, baselineFloat(t, rb, "bic"), baselineFloat(t, pb, "bic"), 1e-6)
+
+		rCI := baselineFloatMatrix(t, rb, "ci")
+		pCI := baselineFloatMatrix(t, pb, "ci")
+		for i := range got.ConfidenceIntervals {
+			assertCloseToBoth(t, fmt.Sprintf("ci[%d].low", i), got.ConfidenceIntervals[i][0], rCI[i][0], pCI[i][0], 1e-5)
+			assertCloseToBoth(t, fmt.Sprintf("ci[%d].high", i), got.ConfidenceIntervals[i][1], rCI[i][1], pCI[i][1], 1e-5)
+		}
+	})
+
+	t.Run("poisson_regression", func(t *testing.T) {
+		y := []float64{1, 2, 1, 3, 4, 6, 5, 8, 9, 11, 13, 15}
+		xs := [][]float64{
+			{0.2, 0.4, 0.7, 1.0, 1.3, 1.7, 2.0, 2.3, 2.7, 3.0, 3.4, 3.8},
+			{1.1, 1.0, 1.4, 1.6, 1.8, 2.1, 2.0, 2.4, 2.6, 2.8, 3.0, 3.2},
+		}
+		offset := []float64{
+			math.Log(1.0), math.Log(1.2), math.Log(0.9), math.Log(1.1),
+			math.Log(1.4), math.Log(1.3), math.Log(1.5), math.Log(1.7),
+			math.Log(1.6), math.Log(1.9), math.Log(2.0), math.Log(2.2),
+		}
+		xLists := make([]insyra.IDataList, 0, len(xs))
+		for _, x := range xs {
+			xLists = append(xLists, dataListFromFloat64(x))
+		}
+		got, err := stats.PoissonRegressionWithOptions(stats.PoissonRegressionOptions{
+			MaxIter:   100,
+			Tolerance: 1e-10,
+			Offset:    dataListFromFloat64(offset),
+		}, dataListFromFloat64(y), xLists...)
+		if err != nil {
+			t.Fatalf("PoissonRegressionWithOptions error: %v", err)
+		}
+		payload := map[string]any{"y": y, "xs": xs, "offset": offset}
+		rb := runRBaseline(t, "poisson_reg", payload)
+		pb := runPythonBaseline(t, "poisson_reg", payload)
+
+		assertSliceCloseToBoth(t, "coefficients", got.Coefficients, baselineFloatSlice(t, rb, "coefficients"), baselineFloatSlice(t, pb, "coefficients"), 1e-6)
+		assertSliceCloseToBoth(t, "standard_errors", got.StandardErrors, baselineFloatSlice(t, rb, "standard_errors"), baselineFloatSlice(t, pb, "standard_errors"), 1e-5)
+		assertSliceCloseToBoth(t, "z_values", got.ZValues, baselineFloatSlice(t, rb, "z_values"), baselineFloatSlice(t, pb, "z_values"), 1e-5)
+		assertSliceCloseToBoth(t, "p_values", got.PValues, baselineFloatSlice(t, rb, "p_values"), baselineFloatSlice(t, pb, "p_values"), 1e-6)
+		assertSliceCloseToBoth(t, "irr", got.IncidenceRateRatios, baselineFloatSlice(t, rb, "irr"), baselineFloatSlice(t, pb, "irr"), 1e-6)
+		assertSliceCloseToBoth(t, "fitted", got.FittedRates, baselineFloatSlice(t, rb, "fitted"), baselineFloatSlice(t, pb, "fitted"), 1e-6)
+		assertCloseToBoth(t, "log_likelihood", got.LogLikelihood, baselineFloat(t, rb, "log_likelihood"), baselineFloat(t, pb, "log_likelihood"), 1e-6)
+		assertCloseToBoth(t, "deviance", got.Deviance, baselineFloat(t, rb, "deviance"), baselineFloat(t, pb, "deviance"), 1e-6)
+		assertCloseToBoth(t, "null_deviance", got.NullDeviance, baselineFloat(t, rb, "null_deviance"), baselineFloat(t, pb, "null_deviance"), 1e-6)
+		assertCloseToBoth(t, "pearson_chi2", got.PearsonChi2, baselineFloat(t, rb, "pearson_chi2"), baselineFloat(t, pb, "pearson_chi2"), 1e-6)
+		assertCloseToBoth(t, "dispersion", got.DispersionStatistic, baselineFloat(t, rb, "dispersion"), baselineFloat(t, pb, "dispersion"), 1e-6)
+		assertCloseToBoth(t, "aic", got.AIC, baselineFloat(t, rb, "aic"), baselineFloat(t, pb, "aic"), 1e-6)
+		assertCloseToBoth(t, "bic", got.BIC, baselineFloat(t, rb, "bic"), baselineFloat(t, pb, "bic"), 1e-6)
+	})
+
+	t.Run("glm_generic_poisson_weights_offset", func(t *testing.T) {
+		y := []float64{1, 2, 1, 3, 4, 6, 5, 8, 9, 11, 13, 15}
+		xs := [][]float64{
+			{0.2, 0.4, 0.7, 1.0, 1.3, 1.7, 2.0, 2.3, 2.7, 3.0, 3.4, 3.8},
+			{1.1, 1.0, 1.4, 1.6, 1.8, 2.1, 2.0, 2.4, 2.6, 2.8, 3.0, 3.2},
+		}
+		offset := []float64{
+			math.Log(1.0), math.Log(1.2), math.Log(0.9), math.Log(1.1),
+			math.Log(1.4), math.Log(1.3), math.Log(1.5), math.Log(1.7),
+			math.Log(1.6), math.Log(1.9), math.Log(2.0), math.Log(2.2),
+		}
+		weights := []float64{1, 2, 1, 1, 2, 1, 3, 1, 2, 1, 1, 2}
+		xLists := make([]insyra.IDataList, 0, len(xs))
+		for _, x := range xs {
+			xLists = append(xLists, dataListFromFloat64(x))
+		}
+		got, err := stats.GLM(stats.GLMOptions{
+			Family:    stats.Poisson,
+			Link:      stats.Log,
+			MaxIter:   100,
+			Tolerance: 1e-10,
+			Offset:    dataListFromFloat64(offset),
+			Weights:   dataListFromFloat64(weights),
+		}, dataListFromFloat64(y), xLists...)
+		if err != nil {
+			t.Fatalf("GLM error: %v", err)
+		}
+		payload := map[string]any{"family": "poisson", "link": "log", "y": y, "xs": xs, "offset": offset, "weights": weights}
+		rb := runRBaseline(t, "glm_generic", payload)
+		pb := runPythonBaseline(t, "glm_generic", payload)
+
+		assertSliceCloseToBoth(t, "coefficients", got.Coefficients, baselineFloatSlice(t, rb, "coefficients"), baselineFloatSlice(t, pb, "coefficients"), 1e-6)
+		assertSliceCloseToBoth(t, "standard_errors", got.StandardErrors, baselineFloatSlice(t, rb, "standard_errors"), baselineFloatSlice(t, pb, "standard_errors"), 1e-5)
+		assertSliceCloseToBoth(t, "z_values", got.ZValues, baselineFloatSlice(t, rb, "z_values"), baselineFloatSlice(t, pb, "z_values"), 1e-5)
+		assertSliceCloseToBoth(t, "p_values", got.PValues, baselineFloatSlice(t, rb, "p_values"), baselineFloatSlice(t, pb, "p_values"), 1e-6)
+		assertSliceCloseToBoth(t, "fitted", got.FittedValues, baselineFloatSlice(t, rb, "fitted"), baselineFloatSlice(t, pb, "fitted"), 1e-6)
+		assertCloseToBoth(t, "log_likelihood", got.LogLikelihood, baselineFloat(t, rb, "log_likelihood"), baselineFloat(t, pb, "log_likelihood"), 1e-6)
+		assertCloseToBoth(t, "deviance", got.Deviance, baselineFloat(t, rb, "deviance"), baselineFloat(t, pb, "deviance"), 1e-6)
+		assertCloseToBoth(t, "null_deviance", got.NullDeviance, baselineFloat(t, rb, "null_deviance"), baselineFloat(t, pb, "null_deviance"), 1e-6)
+		assertCloseToBoth(t, "aic", got.AIC, baselineFloat(t, rb, "aic"), baselineFloat(t, pb, "aic"), 1e-6)
+		assertCloseToBoth(t, "bic", got.BIC, baselineFloat(t, rb, "bic"), baselineFloat(t, pb, "bic"), 1e-6)
+		assertCloseToBoth(t, "dispersion", got.Dispersion, baselineFloat(t, rb, "dispersion"), baselineFloat(t, pb, "dispersion"), 1e-6)
+	})
+
 	t.Run("linear_regression", func(t *testing.T) {
 		cases := []struct {
 			name string

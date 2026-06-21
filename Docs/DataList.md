@@ -756,6 +756,8 @@ func (dl *DataList) FillNaNWithMean() *DataList
 
 **Description:** Replaces all NaN values with the mean value of numeric elements.
 
+> **Deprecated:** Use [`FillWithMean`](#fillwithmean) instead, which also fills `nil` (not just `NaN`), leaves non-numeric values untouched, and matches the other `Fill*` imputation methods.
+
 **Parameters:**
 
 - None.
@@ -770,6 +772,39 @@ func (dl *DataList) FillNaNWithMean() *DataList
 dl := insyra.NewDataList(1.0, math.NaN(), 3.0, math.NaN(), 5.0)
 dl.FillNaNWithMean()
 // NaN values are replaced with mean (3.0)
+```
+
+### Missing-Value Fill Methods
+
+```go
+func (dl *DataList) FillForward(limit ...int) *DataList
+func (dl *DataList) FillBackward(limit ...int) *DataList
+func (dl *DataList) FillWithMedian() *DataList
+func (dl *DataList) FillWithMode() *DataList
+func (dl *DataList) FillByInterpolation(extrapolate ...bool) *DataList
+```
+
+**Description:** Fills `nil` and `math.NaN()` values in place. `FillForward` uses the most recent observed value, `FillBackward` uses the next observed value, `FillWithMedian` uses observed numeric values, `FillWithMode` works with any observed value type, and `FillByInterpolation` linearly fills numeric gaps by index.
+
+**Parameters:**
+
+- `limit` (optional): Maximum consecutive values to fill for forward/backward fill. `0` or omitted means unlimited.
+- `extrapolate` (optional): When `true`, `FillByInterpolation` also fills leading and trailing numeric gaps.
+
+**Returns:**
+
+- `*DataList`: Reference to the modified DataList
+
+**Example:**
+
+```go
+dl := insyra.NewDataList(1.0, nil, math.NaN(), 4.0)
+dl.FillByInterpolation()
+// dl now contains: [1.0, 2.0, 3.0, 4.0]
+
+labels := insyra.NewDataList("A", nil, "A", math.NaN())
+labels.FillWithMode()
+// labels now contains: ["A", "A", "A", "A"]
 ```
 
 ### ReplaceOutliers
@@ -1573,6 +1608,39 @@ dl := insyra.NewDataList(3, 1, 4, 1, 5, 9, 2)
 m := dl.CumMin() // [3, 1, 1, 1, 1, 1, 1]
 ```
 
+### Sample / SampleFrac / Shuffle
+
+```go
+func (dl *DataList) Sample(n int, withReplacement bool, options ...SamplingOptions) *DataList
+func (dl *DataList) SampleFrac(frac float64, withReplacement bool, options ...SamplingOptions) *DataList
+func (dl *DataList) Shuffle(options ...SamplingOptions) *DataList
+```
+
+**Description:** Returns randomly sampled or shuffled copies of a DataList. `Sample` draws `n` elements, `SampleFrac` draws `floor(frac * Len())` elements with a minimum of 1 for non-empty lists, and `Shuffle` returns all elements in random order.
+
+**Options:**
+
+```go
+type SamplingOptions struct {
+    Seed          uint64
+    UseSeed       bool
+    PreserveOrder bool // Used by DataTable.TrainTestSplit only.
+}
+```
+
+Use `SamplingOptions{UseSeed: true, Seed: 42}` for reproducible results.
+
+**Example:**
+
+```go
+dl := insyra.NewDataList(1, 2, 3, 4, 5)
+sample := dl.Sample(3, false, insyra.SamplingOptions{UseSeed: true, Seed: 42})
+preview := dl.SampleFrac(0.4, false)
+shuffled := dl.Shuffle(insyra.SamplingOptions{UseSeed: true, Seed: 42})
+```
+
+**Errors:** Invalid `n`, invalid `frac`, empty input, and `n > Len()` without replacement are recorded via `dl.Err()` and return an empty DataList.
+
 ### Rolling
 
 ```go
@@ -1641,6 +1709,29 @@ e := src.Expanding(1)
 e.Mean() // [1, 1.5, 2, 2.5]
 e.Sum()  // [1, 3, 6, 10]
 e.Std()  // [nil, 0.7071…, 1, 1.2910…]
+```
+
+### Describe
+
+```go
+type DescribeOptions struct {
+    Percentiles []float64
+    IncludeAll  bool
+}
+
+func (dl *DataList) Describe(options ...DescribeOptions) *DataTable
+```
+
+**Description:** Returns a programmatic summary table. Row names are statistics (`count`, `missing`, `unique`, `top`, `freq`, `mean`, `std`, `min`, percentiles, `max`) and the single output column is named from the DataList name, or `value` when unnamed.
+
+`nil` and `NaN` count as missing. Numeric lists report numeric statistics; non-numeric or mixed lists report categorical statistics (`unique`, `top`, `freq`). `Percentiles` uses values in `[0, 1]`; when omitted it defaults to `0.25`, `0.5`, and `0.75`.
+
+**Example:**
+
+```go
+dl := insyra.NewDataList(1, 2, nil, 4).SetName("score")
+desc := dl.Describe(insyra.DescribeOptions{Percentiles: []float64{0.1, 0.5, 0.9}})
+desc.Show()
 ```
 
 ### Summary
@@ -1749,7 +1840,7 @@ dl.Capitalize()
 func (dl *DataList) LinearInterpolation(x float64) float64
 ```
 
-**Description:** Performs linear interpolation for a given x value.
+**Description:** Performs linear interpolation for a given x value. To fill missing values in a sequence by linear interpolation, use `FillByInterpolation`.
 
 **Parameters:**
 

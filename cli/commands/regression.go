@@ -13,18 +13,22 @@ func init() {
 	_ = Register(&CommandHandler{
 		Name:        "regression",
 		Usage:       "regression <type> <y> <x...>",
-		Description: "Regression analysis: linear/poly/exp/log",
+		Description: "Regression analysis: linear/poly/exp/log/logistic/poisson",
 		Forms: []string{
 			"regression linear <y> <x1> [x2 ...] [as <var>]    multiple linear regression",
 			"regression poly <y> <x> <degree> [as <var>]       polynomial regression of given degree",
 			"regression exp <y> <x> [as <var>]                 exponential regression y = a * e^(bx)",
 			"regression log <y> <x> [as <var>]                 logarithmic regression y = a + b*ln(x)",
+			"regression logistic <y> <x1> [x2 ...] [as <var>]  binary logistic regression",
+			"regression poisson <y> <x1> [x2 ...] [as <var>]   poisson (log-link) count regression",
 		},
 		Examples: []string{
 			"insyra regression linear y x1 x2 as fit",
 			"insyra regression poly y x 3 as poly3",
 			"insyra regression exp y x",
 			"insyra regression log y x",
+			"insyra regression logistic y x1 x2 as fit",
+			"insyra regression poisson y x1 x2",
 		},
 		Run: runRegressionCommand,
 	})
@@ -58,6 +62,38 @@ func runRegressionCommand(ctx *ExecContext, args []string) error {
 		}
 		ctx.Vars[alias] = regressionResult
 		_, _ = fmt.Fprintf(ctx.Output, "linear regression stored in %s (R2=%v)\n", alias, regressionResult.RSquared)
+		return nil
+	case "logistic", "logit":
+		xs := make([]insyra.IDataList, 0, len(coreArgs)-2)
+		for _, name := range coreArgs[2:] {
+			x, getErr := getDataListVar(ctx, name)
+			if getErr != nil {
+				return getErr
+			}
+			xs = append(xs, x)
+		}
+		result, err := stats.LogisticRegression(y, xs...)
+		if err != nil {
+			return fmt.Errorf("failed to run logistic regression: %w", err)
+		}
+		ctx.Vars[alias] = result
+		_, _ = fmt.Fprintf(ctx.Output, "logistic regression stored in %s (McFaddenR2=%v, AIC=%v)\n", alias, result.McFaddenR2, result.AIC)
+		return nil
+	case "poisson":
+		xs := make([]insyra.IDataList, 0, len(coreArgs)-2)
+		for _, name := range coreArgs[2:] {
+			x, getErr := getDataListVar(ctx, name)
+			if getErr != nil {
+				return getErr
+			}
+			xs = append(xs, x)
+		}
+		result, err := stats.PoissonRegression(y, xs...)
+		if err != nil {
+			return fmt.Errorf("failed to run poisson regression: %w", err)
+		}
+		ctx.Vars[alias] = result
+		_, _ = fmt.Fprintf(ctx.Output, "poisson regression stored in %s (AIC=%v, dispersion=%v)\n", alias, result.AIC, result.DispersionStatistic)
 		return nil
 	case "poly", "polynomial":
 		if len(coreArgs) < 4 {

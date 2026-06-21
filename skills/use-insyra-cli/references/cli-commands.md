@@ -30,6 +30,7 @@ This list is generated from `insyra help` in this repository state.
 - `types` - Show value types of DataTable/DataList
 - `show` - Display data with optional range (supports negative and `_`)
 - `summary` - Show summary statistics
+- `describe` - Create a reusable summary DataTable
 
 ## Data Creation / IO
 - `newdl` - Create DataList manually
@@ -70,14 +71,18 @@ This list is generated from `insyra help` in this repository state.
 ## Data Processing
 - `filter` - Filter DataTable by CCL expression
 - `sort` - Sort DataTable by one column
-- `sample` - Simple random sample from DataTable
+- `sample` - Randomly sample or shuffle a DataList/DataTable
+- `split` - Split a DataTable into train/test tables
 - `find` - Find rows containing value
 - `replace` - Replace values in DataTable/DataList
 - `clean` - Clean values from DataTable/DataList
 - `merge` - Merge two DataTables
 - `groupby` - Group a DataTable and aggregate columns (split-apply-combine)
+- `describe` - Create DataList/DataTable or grouped summary tables
 - `pivot` - Reshape long-form DataTable to wide form (long -> wide)
 - `unpivot` - Reshape wide-form DataTable to long form (wide -> long)
+- `encode` - One-shot categorical encoding for DataTable variables
+- `scale` - Fit a reusable feature scaler and transform/inverse tables with it
 - `ccl` - Execute CCL statements on DataTable
 - `addcolccl` - Add DataTable column using CCL
 
@@ -124,10 +129,11 @@ This list is generated from `insyra help` in this repository state.
 - `cummin` - Running minimum (historical low)
 - `rolling` - Rolling-window reduction (sum/mean/min/max/median/std/var)
 - `expanding` - Expanding-window reduction (sum/mean/min/max/median/std/var)
-- `fillnan` - Fill NaN with mean
+- `fillna` - Fill missing DataList/DataTable values (mean/median/mode/ffill/bfill/interpolate)
+- `fillnan` - Fill NaN with mean (deprecated alias)
 
 ## Modeling / Inference / Visualization / Fetch
-- `regression` - Regression analysis: linear/poly/exp/log
+- `regression` - Regression analysis: linear/poly/exp/log/logistic/poisson
 - `pca` - Principal component analysis
 - `kmeans` - K-means clustering
 - `hclust` - Hierarchical agglomerative clustering
@@ -144,3 +150,35 @@ This list is generated from `insyra help` in this repository state.
 - `chisq` - Chi-square test commands
 - `plot` - Create charts from variables
 - `fetch` - Fetch external data
+
+## Missing-Value Fill Commands
+
+- `fillna <var> mean|median|mode|ffill|bfill|interpolate [cols A,B,C] [limit N] [extrapolate yes|no] [missing nan|nil|both] [as <var>]`
+  - Works on either a DataList or a DataTable; saves a cloned result to `as <var>` or `$result`.
+  - `cols` filters which DataTable columns to fill (omitted = all applicable); ignored for DataList input.
+  - `limit` applies to `ffill` and `bfill`; `0` means unlimited.
+  - `extrapolate yes` lets interpolation fill leading/trailing numeric gaps.
+  - `missing` selects which kind of missing to fill: `nan`, `nil`, or `both` (default `both`).
+  - `mean`, `median`, and `interpolate` skip non-numeric columns; `mode`, `ffill`, and `bfill` can fill any selected column type.
+- `fillnan <var> mean [as <var>]`
+  - Deprecated alias kept for backward compatibility. Only fills NaN (leaves nil alone) and only supports `mean`. Use `fillna <var> mean missing nan` instead.
+
+## Categorical Encoding Command
+
+- `encode <var> onehot <col1[,col2,...]> [dropfirst true|false] [keeporiginal true|false] [nan category|error|skip] [unknown ignore|error|new] [prefix <p>] [sep <s>] [sortcats true|false] [as <var>]`
+  - Emits 0/1 indicator columns for each selected category column.
+- `encode <var> label <col> [newcol <name>] [sortby firstseen|lex|freq] [nan category|error|skip] [unknown ignore|error|new] [keeporiginal true|false] [as <var>]`
+  - Emits integer class ids for one category column.
+- `encode <var> ordinal <col> order <v1,v2,...> [newcol <name>] [unknown error|ignore] [nan category|error|skip] [keeporiginal true|false] [as <var>]`
+  - Uses the explicit order as `0..n-1`; `order` values are parsed as literals.
+- CLI encoding is one-shot fit+transform and does not persist encoder state. Use the Go API when you need reusable train/test `Transform`.
+
+## Feature Scaling Command
+
+- `scale fit std|minmax|robust|maxabs <scalerVar> <tableVar> [range <min> <max>] cols <c1,c2,...>`
+  - Fits a scaler on the listed columns of `<tableVar>` and stores it as `<scalerVar>`. `minmax` defaults to `[0,1]` when `range` is omitted; `range` is only valid for `minmax`.
+- `scale transform <scalerVar> <tableVar> as <outVar>`
+  - Applies the fitted scaler to `<tableVar>`, writing a new table to `<outVar>`.
+- `scale inverse <scalerVar> <tableVar> as <outVar>`
+  - Restores the original scale of fitted columns.
+- Unlike `encode`, `scale` is stateful: fit once, then transform train and test with the same parameters (no leakage). Scaler variables are session-only (not persisted to a named environment). `nil`/`NaN` are preserved and ignored when fitting; non-fitted columns pass through. `show <scalerVar>` prints the scaler kind and fitted columns.

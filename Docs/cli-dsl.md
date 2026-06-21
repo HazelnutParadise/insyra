@@ -408,6 +408,49 @@ unpivot survey idvars id valuevars Q1,Q2,Q3 varname question valuename score as 
 show long
 ```
 
+### B4. Categorical encoding
+
+`encode` does one-shot categorical encoding for DataTable variables: it fits on the input table, writes the encoded table to `as <var>` or `$result`, and does not persist encoder state across CLI commands. Use the Go API when you need train/test reuse with `Transform`.
+
+```text
+encode <var> onehot <col1[,col2,...]> [dropfirst true|false] [keeporiginal true|false] [nan category|error|skip] [unknown ignore|error|new] [prefix <p>] [sep <s>] [sortcats true|false] [as <var>]
+encode <var> label <col> [newcol <name>] [sortby firstseen|lex|freq] [nan category|error|skip] [unknown ignore|error|new] [keeporiginal true|false] [as <var>]
+encode <var> ordinal <col> order <v1,v2,...> [newcol <name>] [unknown error|ignore] [nan category|error|skip] [keeporiginal true|false] [as <var>]
+```
+
+Examples:
+
+```text
+encode sales onehot region,channel dropfirst true as x
+encode sales label segment newcol segment_id sortby freq keeporiginal true as labeled
+encode survey ordinal satisfaction order low,medium,high unknown error as ranked
+```
+
+### B5. Feature scaling
+
+Unlike `encode`, `scale` is **stateful**: `scale fit` stores a reusable scaler variable, and `scale transform` / `scale inverse` apply that fitted scaler to any table. This lets you fit on a training set and transform a test set with the same parameters (no data leakage). Scaler variables live only for the session — they are not persisted to a named environment.
+
+```text
+scale fit std <scalerVar> <tableVar> cols <c1,c2,...>
+scale fit minmax <scalerVar> <tableVar> range <min> <max> cols <c1,c2,...>
+scale fit robust <scalerVar> <tableVar> cols <c1,c2,...>
+scale fit maxabs <scalerVar> <tableVar> cols <c1,c2,...>
+scale transform <scalerVar> <tableVar> as <outVar>
+scale inverse <scalerVar> <tableVar> as <outVar>
+```
+
+`minmax` defaults to `[0,1]` when `range` is omitted. `nil`/`NaN` are preserved and ignored when fitting; non-fitted columns pass through unchanged. `show <scalerVar>` prints the scaler kind and its fitted columns.
+
+Example (train/test without leakage):
+
+```text
+split dt train 0.8 as train test
+scale fit std sc train cols Age,Income
+scale transform sc train as train_scaled
+scale transform sc test as test_scaled
+scale inverse sc train_scaled as train_original
+```
+
 ### C. Go `engine/dsl` session flow
 
 ```go
@@ -447,10 +490,30 @@ High-level command map:
 - **Data IO / Creation**: `newdl`, `newdt`, `load`, `read`, `save`, `convert`
 - **Database**: `db` (`connect` / `list` / `tables` / `disconnect`), `load sql`, `save <var> sql`
 - **DataTable Structure / Access**: `addcol`, `addrow`, `dropcol`, `droprow`, `swap`, `transpose`, `rows`, `cols`, `row`, `col`, `get`, `set`, `setrownames`, `setcolnames`
-- **Data Processing**: `filter`, `sort`, `sample`, `find`, `replace`, `clean`, `merge`, `groupby`, `pivot`, `unpivot`, `ccl`, `addcolccl`
+- **Data Processing**: `filter`, `sort`, `sample`, `split`, `find`, `replace`, `clean`, `fillna`, `merge`, `groupby`, `pivot`, `unpivot`, `encode`, `scale`, `ccl`, `addcolccl`
 - **DataList Stats**: `sum`, `mean`, `median`, `mode`, `stdev`, `var`, `min`, `max`, `range`, `quartile`, `iqr`, `percentile`, `count`, `counter`, `corr`, `cov`, `corrmatrix`, `skewness`, `kurtosis`
-- **Time Series / Transforms**: `rank`, `normalize`, `standardize`, `reverse`, `upper`, `lower`, `capitalize`, `parsenums`, `parsestrings`, `movavg`, `expsmooth`, `diff`, `diffn`, `shift`, `pctchange`, `cumsum`, `cumprod`, `cummax`, `cummin`, `rolling`, `expanding`, `fillnan`
+- **Time Series / Transforms**: `rank`, `normalize`, `standardize`, `reverse`, `upper`, `lower`, `capitalize`, `parsenums`, `parsestrings`, `movavg`, `expsmooth`, `diff`, `diffn`, `shift`, `pctchange`, `cumsum`, `cumprod`, `cummax`, `cummin`, `rolling`, `expanding`, `fillna`
 - **Modeling / Viz / Fetch**: `regression`, `pca`, `kmeans`, `hclust`, `cutree`, `dbscan`, `silhouette`, `knn_classify`, `knn_regress`, `knn_neighbors`, `ttest`, `ztest`, `anova`, `ftest`, `chisq`, `plot`, `fetch`
+
+### Missing-Value Fill Commands
+
+```bash
+fillna <var> mean|median|mode|ffill|bfill|interpolate [cols A,B,C] [limit N] [extrapolate yes|no] [missing nan|nil|both] [as <var>]
+fillnan <var> mean [as <var>]   # deprecated; only fills NaN, mean only
+```
+
+`fillna` clones the input (DataList or DataTable) and saves the filled result under `as <var>` or `$result`. `cols` filters which DataTable columns to touch (ignored for DataList). `limit` caps consecutive forward/backward fills; `extrapolate` controls whether interpolation fills leading/trailing gaps; `missing` selects which kind of missing to fill (default `both`). `mean`, `median`, and `interpolate` skip non-numeric columns; `mode`, `ffill`, and `bfill` work with any selected column type.
+
+`fillnan <var> mean` is a legacy alias kept for backward compatibility — it only fills NaN (leaves nil alone) and only supports the `mean` strategy. New code should use `fillna ... missing nan` instead.
+
+Examples:
+
+```bash
+fillna price interpolate extrapolate yes as price_interp
+fillna status ffill limit 2 missing nan as status_filled
+fillna sales median cols revenue,cost as sales_clean
+fillna sales bfill limit 1 as sales_bfill
+```
 
 ## Full Command Index (Appendix)
 
@@ -486,17 +549,20 @@ Source policy:
 | `cummin` | `cummin <var> [as <var>]` | Running minimum (historical low) |
 | `cumprod` | `cumprod <var> [as <var>]` | Running product |
 | `cumsum` | `cumsum <var> [as <var>]` | Running total |
+| `describe` | `describe <var> [by <col1[,col2,...]>] [all true\|false] [percentiles <p1,p2,...>] [as <var>]` | Create a programmatic summary table |
 | `diff` | `diff <var> [as <var>]` | Difference (legacy, length n-1) |
 | `diffn` | `diffn <var> <periods> [as <var>]` | Backward difference, same-length output with leading nils |
 | `drop` | `drop <var>` | Delete variable |
 | `dropcol` | `dropcol <var> <name\|index...>` | Drop columns by name or index |
 | `droprow` | `droprow <var> <index\|name...>` | Drop rows by index or name |
+| `encode` | `encode <var> onehot\|label\|ordinal ... [as <var>]` | One-shot categorical encoding for DataTable variables |
 | `env` | `env <create\|list\|open\|clear\|export\|import\|delete\|rename\|info> [args]` | Environment management |
 | `exit` | `exit` | Exit REPL |
 | `expanding` | `expanding <var> <minobs> <reducer> [as <var>]` | Expanding-window reduction (reducer: sum\|mean\|min\|max\|median\|std\|var) |
 | `expsmooth` | `expsmooth <var> <alpha> [as <var>]` | Exponential smoothing |
 | `fetch` | `fetch yahoo <ticker> <method> [params...] [as <var>]` | Fetch external data |
-| `fillnan` | `fillnan <var> mean` | Fill NaN with mean |
+| `fillna` | `fillna <var> mean\|median\|mode\|ffill\|bfill\|interpolate [cols A,B,C] [limit N] [extrapolate yes\|no] [missing nan\|nil\|both] [as <var>]` | Fill missing DataList/DataTable values |
+| `fillnan` | `fillnan <var> mean [as <var>]` | Fill NaN with mean (deprecated alias) |
 | `filter` | `filter <var> <expr> [as <var>]` | Filter DataTable by CCL expression |
 | `find` | `find <var> <value>` | Find rows containing value |
 | `ftest` | `ftest var\|levene\|bartlett ...` | F-test commands |
@@ -537,7 +603,7 @@ Source policy:
 | `range` | `range <var>` | DataList range |
 | `rank` | `rank <var> [asc\|desc\|true\|false] [as <var>]` | Rank DataList |
 | `read` | `read <file> [headers true\|false] [rownames true\|false] [encoding <enc>] [sheet <name>]` | Quick preview a file without saving variable |
-| `regression` | `regression <type> <y> <x...>` | Regression analysis: linear/poly/exp/log |
+| `regression` | `regression <type> <y> <x...>` | Regression analysis: linear/poly/exp/log/logistic/poisson |
 | `rename` | `rename <var> <new>` | Rename variable |
 | `replace` | `replace <var> <old\|nan\|nil> <new>` | Replace values in DataTable/DataList |
 | `reverse` | `reverse <var> [as <var>]` | Reverse DataList |
@@ -545,8 +611,9 @@ Source policy:
 | `row` | `row <var> <index\|name> [as <var>]` | Extract DataTable row as DataList |
 | `rows` | `rows <var>` | List DataTable row names |
 | `run` | `run <script.isr>` | Run DSL script file |
-| `sample` | `sample <var> <n> [as <var>]` | Simple random sample from DataTable |
+| `sample` | `sample <var> <n>\|frac <frac>\|shuffle [replace true\|false] [seed N] [as <var>]` | Randomly sample or shuffle a DataList/DataTable |
 | `save` | `save <var> <file> [headers true\|false] [rownames true\|false] [bom true\|false] \| save <var> sql <conn> <table> [if-exists fail\|replace\|append] [batch N] [schema <s>] [rownames]` | Save a DataTable variable to a file or SQL connection |
+| `scale` | `scale fit std\|minmax\|robust\|maxabs <scalerVar> <tableVar> [range <min> <max>] cols <c1,c2,...> \| scale transform\|inverse <scalerVar> <tableVar> as <outVar>` | Fit a reusable feature scaler and transform/inverse tables with it |
 | `set` | `set <var> <row> <col> <value>` | Set single element in DataTable |
 | `setcolnames` | `setcolnames <var> <names...>` | Set DataTable column names |
 | `setrownames` | `setrownames <var> <names...>` | Set DataTable row names |
@@ -555,6 +622,7 @@ Source policy:
 | `show` | `show <var> [N] [M]` | Display data with optional range (supports negative and _) |
 | `skewness` | `skewness <var>` | Skewness of a DataList |
 | `sort` | `sort <var> <col> [asc\|desc]` | Sort DataTable by one column |
+| `split` | `split <var> train <frac> [shuffle true\|false] [seed N] as <trainVar> <testVar>` | Split DataTable rows into train/test tables |
 | `standardize` | `standardize <var> [as <var>]` | Standardize DataList |
 | `stdev` | `stdev <var>` | DataList standard deviation |
 | `sum` | `sum <var>` | DataList sum |
@@ -569,6 +637,38 @@ Source policy:
 | `vars` | `vars` | List variables in current environment |
 | `version` | `version` | Show insyra version |
 | `ztest` | `ztest single\|two ...` | Z-test commands |
+
+## Describe Command
+
+`describe` creates a DataTable summary that can be saved or reused in later commands.
+
+```bash
+describe sales as summary
+describe sales all true as summary_all
+describe sales percentiles 0.1,0.5,0.9 as summary_p
+describe sales by region all true as region_summary
+save region_summary region_summary.csv
+```
+
+Without `as`, the result is stored in `$result`. `all true` includes non-numeric and mixed columns. `by` is available for DataTable variables only.
+
+## Regression Forms
+
+The `regression` command supports:
+
+- `regression linear <y> <x1> [x2 ...] [as <var>]`
+- `regression poly <y> <x> <degree> [as <var>]`
+- `regression exp <y> <x> [as <var>]`
+- `regression log <y> <x> [as <var>]`
+- `regression logistic <y> <x1> [x2 ...] [as <var>]`
+- `regression poisson <y> <x1> [x2 ...] [as <var>]`
+
+Examples:
+
+```bash
+insyra regression logistic y x1 x2 as fit
+insyra regression poisson y x1 x2
+```
 
 ## Troubleshooting
 

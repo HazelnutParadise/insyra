@@ -85,6 +85,12 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 - Usage: `summary <var>`
 - Example: `insyra summary x`
 
+### `describe`
+- Description: Create a reusable summary DataTable
+- Usage: `describe <var> [by <col1[,col2,...]>] [all true|false] [percentiles <p1,p2,...>] [as <var>]`
+- Example: `insyra describe sales all true as summary`
+- Grouped example: `insyra describe sales by region percentiles 0.1,0.5,0.9 as region_summary`
+
 ## Data Creation / IO
 ### `newdl`
 - Description: Create DataList manually
@@ -241,9 +247,14 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 - Example: `insyra sort x 0`
 
 ### `sample`
-- Description: Simple random sample from DataTable
-- Usage: `sample <var> <n> [as <var>]`
-- Example: `insyra sample x 3`
+- Description: Randomly sample or shuffle a DataList/DataTable
+- Usage: `sample <var> <n>|frac <frac>|shuffle [replace true|false] [seed N] [as <var>]`
+- Example: `insyra sample x frac 0.1 seed 42 as preview`
+
+### `split`
+- Description: Split a DataTable into train/test tables
+- Usage: `split <var> train <frac> [shuffle true|false] [seed N] as <trainVar> <testVar>`
+- Example: `insyra split x train 0.8 seed 42 as train test`
 
 ### `find`
 - Description: Find rows containing value
@@ -283,6 +294,29 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 - Usage: `unpivot <var> idvars <col1[,col2,...]> [valuevars <col1[,col2,...]>] [varname <name>] [valuename <name>] [dropna true|false] [as <var>]`
 - Example: `insyra unpivot survey idvars id valuevars Q1,Q2,Q3 varname question valuename score as long`
 - `valuevars` defaults to all non-`idvars` columns. `varname` defaults to `variable`, `valuename` to `value`. `dropna true` skips nil/NaN values.
+
+### `encode`
+- Description: One-shot categorical encoding for DataTable variables (encoder state is not persisted)
+- Usage: `encode <var> onehot|label|ordinal ... [as <var>]`
+- Examples: `insyra encode sales onehot region,channel dropfirst true as x` / `insyra encode sales label segment newcol segment_id sortby freq keeporiginal true as labeled` / `insyra encode survey ordinal satisfaction order low,medium,high unknown error as ranked`
+- Full forms:
+  - `encode <var> onehot <col1[,col2,...]> [dropfirst true|false] [keeporiginal true|false] [nan category|error|skip] [unknown ignore|error|new] [prefix <p>] [sep <s>] [sortcats true|false] [as <var>]`
+  - `encode <var> label <col> [newcol <name>] [sortby firstseen|lex|freq] [nan category|error|skip] [unknown ignore|error|new] [keeporiginal true|false] [as <var>]`
+  - `encode <var> ordinal <col> order <v1,v2,...> [newcol <name>] [unknown error|ignore] [nan category|error|skip] [keeporiginal true|false] [as <var>]`
+- Notes: one-shot only; use Go encoders for reusable train/test `Transform`. `order` values are parsed as literals.
+
+### `scale`
+- Description: Fit a reusable feature scaler and transform/inverse tables with it (stateful)
+- Usage: `scale fit std|minmax|robust|maxabs <scalerVar> <tableVar> [range <min> <max>] cols <c1,c2,...>` / `scale transform|inverse <scalerVar> <tableVar> as <outVar>`
+- Examples: `insyra scale fit std sc train cols Age,Income` / `insyra scale transform sc test as test_scaled` / `insyra scale inverse sc pred as pred_original`
+- Full forms:
+  - `scale fit std <scalerVar> <tableVar> cols <c1,c2,...>`
+  - `scale fit minmax <scalerVar> <tableVar> range <min> <max> cols <c1,c2,...>` (range defaults to 0 1)
+  - `scale fit robust <scalerVar> <tableVar> cols <c1,c2,...>`
+  - `scale fit maxabs <scalerVar> <tableVar> cols <c1,c2,...>`
+  - `scale transform <scalerVar> <tableVar> as <outVar>`
+  - `scale inverse <scalerVar> <tableVar> as <outVar>`
+- Notes: stateful — fit on train, transform train and test with the same parameters (no leakage). Scaler variables are session-only. `nil`/`NaN` preserved and ignored when fitting; non-fitted columns pass through; `show <scalerVar>` prints kind + fitted columns.
 
 ### `ccl`
 - Description: Execute CCL statements on DataTable
@@ -496,17 +530,24 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 - Usage: `expanding <var> <minobs> <reducer> [as <var>]`
 - Example: `insyra expanding pnl 1 sum as cumulative_pnl`
 
-### `fillnan`
-- Description: Fill NaN with mean
-- Usage: `fillnan <var> mean`
-- Example: `insyra fillnan x mean`
+### `fillna`
+- Description: Fill missing DataList/DataTable values
+- Usage: `fillna <var> mean|median|mode|ffill|bfill|interpolate [cols A,B,C] [limit N] [extrapolate yes|no] [missing nan|nil|both] [as <var>]`
+- Examples: `insyra fillna price median as price_filled` / `insyra fillna price ffill limit 2 missing nan as price_ffill` / `insyra fillna sales median cols revenue,cost as cleaned`
+- Notes: works on DataList or DataTable; `cols` filters DataTable columns and is ignored for DataList input; `limit` applies to `ffill`/`bfill` (`0` = unlimited); `extrapolate yes` lets interpolation fill leading/trailing gaps; `missing` selects NaN-only, nil-only, or both (default `both`); `mean`/`median`/`interpolate` skip non-numeric columns; `mode`/`ffill`/`bfill` work on any selected column type.
+
+### `fillnan` (deprecated)
+- Description: Fill NaN with mean — legacy alias
+- Usage: `fillnan <var> mean [as <var>]`
+- Example: `insyra fillnan price mean as price_filled`
+- Notes: only fills NaN (leaves nil alone) and only supports `mean`. Use `fillna <var> mean missing nan` for the same behaviour with the new command.
 
 ## Modeling / Inference / Visualization / Fetch
 ### `regression`
-- Description: Regression analysis: linear/poly/exp/log
+- Description: Regression analysis: linear/poly/exp/log/logistic/poisson
 - Usage: `regression <type> <y> <x...>`
-- Example: `insyra regression line y x1 x2`
-- Full forms: `regression linear <y> <x1> [x2 ...] [as <var>]` / `regression poly <y> <x> <degree> [as <var>]` / `regression exp <y> <x> [as <var>]` / `regression log <y> <x> [as <var>]`
+- Examples: `insyra regression logistic y x1 x2 as fit` / `insyra regression poisson y x1 x2`
+- Full forms: `regression linear <y> <x1> [x2 ...] [as <var>]` / `regression poly <y> <x> <degree> [as <var>]` / `regression exp <y> <x> [as <var>]` / `regression log <y> <x> [as <var>]` / `regression logistic <y> <x1> [x2 ...] [as <var>]` / `regression poisson <y> <x1> [x2 ...] [as <var>]`
 
 ### `pca`
 - Description: Principal component analysis

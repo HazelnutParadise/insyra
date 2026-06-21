@@ -8,7 +8,7 @@ For expanded subcommand forms and practical examples, see `cli-command-guide.md`
 
 ### Literal value parsing
 
-Commands that take a "value" argument (`addcol`, `set`, `shift ... fill ...`, `replace`, `pivot ... fillna ...`, `load sql ... params ...`, etc.) coerce each token through this ladder (case-insensitive for the keyword rows):
+Commands that take a "value" argument (`addcol`, `set`, `shift ... fill ...`, `replace`, `pivot ... fillna ...`, `encode ordinal ... order ...`, `load sql ... params ...`, etc.) coerce each token through this ladder (case-insensitive for the keyword rows):
 
 | Token                                  | Parsed as           |
 | -------------------------------------- | ------------------- |
@@ -167,6 +167,37 @@ This is separate from boolean-flag parsing used by option arguments like `header
 - Description: Drop rows by index or name
 - Usage: `droprow <var> <index|name...>`
 
+## `encode`
+- Description: One-shot categorical encoding for DataTable variables (encoder state is not persisted)
+- Usage: `encode <var> onehot|label|ordinal ... [as <var>]`
+- Full forms:
+	- `encode <var> onehot <col1[,col2,...]> [dropfirst true|false] [keeporiginal true|false] [nan category|error|skip] [unknown ignore|error|new] [prefix <p>] [sep <s>] [sortcats true|false] [as <var>]`
+	- `encode <var> label <col> [newcol <name>] [sortby firstseen|lex|freq] [nan category|error|skip] [unknown ignore|error|new] [keeporiginal true|false] [as <var>]`
+	- `encode <var> ordinal <col> order <v1,v2,...> [newcol <name>] [unknown error|ignore] [nan category|error|skip] [keeporiginal true|false] [as <var>]`
+- Notes:
+  - Works on DataTable variables only.
+  - CLI does one-shot fit+transform; it does not save encoder state for later commands.
+  - `nan`: `category`, `error`, `skip`.
+  - `unknown`: `ignore`, `error`, `new` for onehot/label; `ignore`, `error` for ordinal CLI.
+  - `order` values are comma-separated and parsed through the literal-value ladder.
+
+## `scale`
+- Description: Fit a reusable feature scaler and transform/inverse tables with it (stateful)
+- Usage: `scale fit std|minmax|robust|maxabs <scalerVar> <tableVar> [range <min> <max>] cols <c1,c2,...>` / `scale transform|inverse <scalerVar> <tableVar> as <outVar>`
+- Full forms:
+	- `scale fit std <scalerVar> <tableVar> cols <c1,c2,...>`
+	- `scale fit minmax <scalerVar> <tableVar> range <min> <max> cols <c1,c2,...>`
+	- `scale fit robust <scalerVar> <tableVar> cols <c1,c2,...>`
+	- `scale fit maxabs <scalerVar> <tableVar> cols <c1,c2,...>`
+	- `scale transform <scalerVar> <tableVar> as <outVar>`
+	- `scale inverse <scalerVar> <tableVar> as <outVar>`
+- Notes:
+  - Works on DataTable variables only.
+  - Stateful: `scale fit` stores a scaler variable; `transform`/`inverse` reuse it. Fit on train, transform test with the same parameters (no leakage).
+  - Scaler variables are session-only and not saved to a named environment.
+  - `minmax` defaults to `[0,1]` when `range` is omitted; `range` is only valid for `minmax`.
+  - `nil`/`NaN` are preserved and excluded from fitting; non-fitted columns pass through unchanged.
+
 ## `env`
 - Description: Environment management
 - Usage: `env <create|list|open|clear|export|import|delete|rename|info> [args]`
@@ -190,9 +221,13 @@ This is separate from boolean-flag parsing used by option arguments like `header
 	- `quote`, `info`, `history`, `dividends`, `splits`, `actions`, `options`, `calendar`, `fastinfo`
 	- `news [count]` (default count = `10`)
 
+## `fillna`
+- Description: Fill missing DataList/DataTable values
+- Usage: `fillna <var> mean|median|mode|ffill|bfill|interpolate [cols A,B,C] [limit N] [extrapolate yes|no] [missing nan|nil|both] [as <var>]`
+
 ## `fillnan`
-- Description: Fill NaN with mean
-- Usage: `fillnan <var> mean`
+- Description: Fill NaN with mean (deprecated alias)
+- Usage: `fillnan <var> mean [as <var>]`
 
 ## `filter`
 - Description: Filter DataTable by CCL expression
@@ -379,13 +414,18 @@ This is separate from boolean-flag parsing used by option arguments like `header
 - Notes: forwards the file-side options to `load`; result is shown but not stored.
 
 ## `regression`
-- Description: Regression analysis: linear/poly/exp/log
+- Description: Regression analysis: linear/poly/exp/log/logistic/poisson
 - Usage: `regression <type> <y> <x...>`
 - Full forms:
 	- `regression linear <y> <x1> [x2 ...] [as <var>]`
 	- `regression poly <y> <x> <degree> [as <var>]`
 	- `regression exp <y> <x> [as <var>]`
 	- `regression log <y> <x> [as <var>]`
+	- `regression logistic <y> <x1> [x2 ...] [as <var>]`
+	- `regression poisson <y> <x1> [x2 ...] [as <var>]`
+- Examples:
+	- `insyra regression logistic y x1 x2 as fit`
+	- `insyra regression poisson y x1 x2`
 
 ## `rename`
 - Description: Rename variable
@@ -416,8 +456,12 @@ This is separate from boolean-flag parsing used by option arguments like `header
 - Usage: `run <script.isr>`
 
 ## `sample`
-- Description: Simple random sample from DataTable
-- Usage: `sample <var> <n> [as <var>]`
+- Description: Randomly sample or shuffle a DataList/DataTable
+- Usage: `sample <var> <n>|frac <frac>|shuffle [replace true|false] [seed N] [as <var>]`
+
+## `split`
+- Description: Split a DataTable into train/test tables
+- Usage: `split <var> train <frac> [shuffle true|false] [seed N] as <trainVar> <testVar>`
 
 ## `save`
 - Description: Save a DataTable variable to a file or SQL connection
@@ -487,6 +531,10 @@ This is separate from boolean-flag parsing used by option arguments like `header
 ## `summary`
 - Description: Show summary statistics
 - Usage: `summary <var>`
+
+## `describe`
+- Description: Create a reusable summary DataTable
+- Usage: `describe <var> [by <col1>[,<col2>...]] [all true|false] [percentiles <p1,p2,...>] [as <var>]`
 
 ## `swap`
 - Description: Swap DataTable columns or rows

@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"sync"
 
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/stats/internal/parutil"
@@ -137,34 +136,9 @@ func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) (*LinearRe
 	// can be entered independently. The previous serial form paid one
 	// actor handshake per predictor sequentially; for p large this was
 	// the wall-clock bottleneck.
-	var n int
-	var ys []float64
-	xSlices := make([][]float64, p)
-	xLens := make([]int, p)
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		dlY.AtomicDo(func(dly *insyra.DataList) {
-			n = dly.Len()
-			ys = dly.ToF64Slice()
-		})
-	}()
-	for j, dlX := range dlXs {
-		wg.Add(1)
-		go func(j int, dlX insyra.IDataList) {
-			defer wg.Done()
-			dlX.AtomicDo(func(l *insyra.DataList) {
-				xLens[j] = l.Len()
-				xSlices[j] = l.ToF64Slice()
-			})
-		}(j, dlX)
-	}
-	wg.Wait()
-	for j, xLen := range xLens {
-		if xLen != n {
-			return nil, fmt.Errorf("x and y must have the same length for predictor %d", j)
-		}
+	ys, xSlices, _, n, err := gatherRegressionInputs(dlY, dlXs)
+	if err != nil {
+		return nil, err
 	}
 
 	if n <= p+1 {
@@ -182,16 +156,9 @@ func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) (*LinearRe
 	//
 	// Row writes are independent so we parallelise over rows when
 	// n·(p+1) is large enough to amortise the goroutine launch.
-	X := mat.NewDense(n, p+1, nil)
+	X := buildDesignMatrix(xSlices, n)
 	xRaw := X.RawMatrix()
 	stride := xRaw.Stride
-	parutil.Run(n, n*(p+1) >= 50_000, func(i int) {
-		base := i * stride
-		xRaw.Data[base] = 1.0
-		for j := range p {
-			xRaw.Data[base+j+1] = xSlices[j][i]
-		}
-	})
 
 	// Solve β = (XᵀX)⁻¹ Xᵀy and obtain (XᵀX)⁻¹ via gonum's LU-based solver
 	// (replaces the previous hand-rolled Gauss-Jordan in stats/internal/linalg).

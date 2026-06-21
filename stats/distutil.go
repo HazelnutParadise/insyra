@@ -45,6 +45,10 @@ func zCDF(z float64) float64 {
 	return norm.CDF(z)
 }
 
+func zQuantile(p float64) float64 {
+	return norm.Quantile(p)
+}
+
 func zPValue(z float64, alt AlternativeHypothesis) float64 {
 	switch alt {
 	case TwoSided:

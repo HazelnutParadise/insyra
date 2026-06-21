@@ -104,6 +104,97 @@ func main() {
 }
 ```
 
+### 1b) Fill missing values
+
+All fill methods treat both `nil` and `math.NaN()` as missing values. `FillNaNWithMean` is deprecated (it only replaces NaN, not nil); use `FillWithMean` instead. Use `ReplaceNaNsWith`, `ReplaceNilsWith`, or `ReplaceNaNsAndNilsWith` when you want constant replacement instead.
+
+```go
+dl.FillWithMean()
+dl.FillForward(limit ...int)
+dl.FillBackward(limit ...int)
+dl.FillWithMedian()
+dl.FillWithMode()
+dl.FillByInterpolation(extrapolate ...bool)
+
+dt.FillForward(limit int, cols ...string)
+dt.FillBackward(limit int, cols ...string)
+dt.FillWithMean(cols ...string)
+dt.FillWithMedian(cols ...string)
+dt.FillWithMode(cols ...string)
+dt.FillByInterpolation(cols ...string)
+```
+
+Notes:
+- `limit` uses `0` or omitted as unlimited for forward/backward fill.
+- DataTable `mean`, `median`, and `interpolation` skip non-numeric columns; `mode`, `ffill`, and `bfill` work with any selected column type.
+- `FillByInterpolation` fills gaps inside a sequence; it is distinct from `LinearInterpolation(x)`, which evaluates a y-value at a given x.
+
+### 1c) Encode categorical DataTable columns
+
+Use DataTable categorical encoders before stats methods that require numeric features (`stats.LinearRegression`, KNN, PCA, clustering). These methods return a new table plus a fitted encoder; the receiver is not modified.
+
+```go
+encoded, enc, err := dt.OneHotEncode(insyra.OneHotOptions{
+    Columns:   []string{"plan", "region"},
+    DropFirst: true,
+    Unknown:   insyra.UnknownIgnore,
+})
+if err != nil { log.Fatal(err) }
+
+testEncoded, err := enc.Transform(testDT)       // reuse train mapping
+original, err := enc.InverseTransform(encoded)  // rebuild source columns
+_ = testEncoded
+_ = original
+
+labels, labelEnc, err := dt.LabelEncode(insyra.LabelEncodeOptions{
+    Column:    "segment",
+    NewColumn: "segment_id",
+    SortBy:    insyra.LabelSortByFrequency,
+})
+_ = labels
+classes := labelEnc.Classes()
+values, err := labelEnc.Inverse(0, 2, 1)
+_ = classes
+_ = values
+
+ranked, ordinalEnc, err := dt.OrdinalEncode(insyra.OrdinalEncodeOptions{
+    Column: "satisfaction",
+    Order:  []any{"low", "medium", "high"},
+})
+_ = ranked
+_ = ordinalEnc
+```
+
+Policies:
+- `NaNAsCategory`, `NaNError`, `NaNSkip` handle `nil`/`NaN`.
+- `UnknownIgnore`, `UnknownError`, `UnknownAsNew` handle categories seen only during `Transform`. `UnknownAsNew` extends only the returned table; the fitted encoder is unchanged, so `Transform` is pure and reusable across calls.
+- `LabelSortFirstSeen`, `LabelSortLexicographic`, `LabelSortByFrequency` control label ids.
+- Column refs resolve by name first, then Excel-style index (`A`, `B`, `AA`). Category identity keeps typed values distinct (`1` and `"1"` are different). For one-hot, two categories that produce the same indicator column name (e.g. `1` and `"1"`) are rejected at fit time.
+
+### 1d) Scale numeric features (fit once, reuse)
+
+Feature scalers fit parameters on a training set and reuse them on a test set — the leakage-free alternative to the stateless, in-place `DataList.Normalize()` / `Standardize()`. Each method returns a new table plus a fitted scaler; the receiver is not modified.
+
+```go
+sc := insyra.NewStandardScaler() // or NewMinMaxScaler(0,1), NewRobustScaler(), NewMaxAbsScaler()
+trainScaled, err := sc.FitTransform(train, "Age", "Income")
+if err != nil { log.Fatal(err) }
+
+testScaled, err := sc.Transform(test)          // reuse TRAIN mean/std — no re-fit
+original, err := sc.InverseTransform(trainScaled) // back to original scale
+_ = trainScaled
+_ = testScaled
+_ = original
+
+params := sc.Params()["Age"] // {Mean, Std, ...} depending on kind
+_ = params
+```
+
+- Pick by data: `StandardScaler` (Gaussian-ish, matches `Standardize`'s sample std), `MinMaxScaler` (bounded range), `RobustScaler` (outliers; median/IQR), `MaxAbsScaler` (sparse/sign-preserving, `[-1,1]`).
+- `cols` is required; other columns pass through. Column order, names, table name, and row names are preserved.
+- `nil`/`NaN` are preserved and excluded from fitting. A non-numeric value in a target column is an error. `Transform` errors on a missing fitted column; constant/degenerate columns do not panic.
+- DataList versions exist too: `FitDataList`, `TransformDataList`, `FitTransformDataList`, `InverseTransformDataList`.
+
 ### 2) Read a CSV file into a DataTable + preview
 
 ```go
@@ -126,16 +217,32 @@ func main() {
 }
 ```
 
+### 2b) Sampling, shuffle, and train/test split
+
+Use core sampling methods for ML preprocessing and quick previews. DataTable sampling is row-wise, so columns and row names stay aligned. Use `SamplingOptions{UseSeed: true, Seed: 42}` for reproducible experiments.
+
+```go
+sample := dt.Sample(100, false, insyra.SamplingOptions{UseSeed: true, Seed: 42})
+preview := dt.SampleFrac(0.05, false)
+shuffled := dt.Shuffle()
+train, test := dt.TrainTestSplit(0.8, insyra.SamplingOptions{UseSeed: true, Seed: 42})
+orderedTrain, orderedTest := dt.TrainTestSplit(0.8, insyra.SamplingOptions{PreserveOrder: true})
+
+listSample := dl.Sample(10, false, insyra.SamplingOptions{UseSeed: true, Seed: 42})
+```
+
 ### 3) Add a derived column with CCL (Excel-like)
 
 ```go
-// Example: classify scores in column A
-err := dt.AddColUsingCCL(
+// Example: classify scores in column A.
+// CCL methods return the (modified) *DataTable for chaining, not an error;
+// check the instance-level Err() after the call.
+dt.AddColUsingCCL(
     "category",
     "IF(A > 90, 'Excellent', IF(A > 70, 'Good', 'Average'))",
 )
-if err != nil {
-    log.Fatal(err)
+if dt.Err() != nil {
+    log.Fatal(dt.Err())
 }
 ```
 
@@ -235,6 +342,20 @@ weighted := dt.GroupBy("region").Aggregate(
 ```
 
 Supported `AggregateOp`: `OpSum`, `OpMean`, `OpMedian`, `OpMin`, `OpMax`, `OpCount` (non-nil), `OpCountAll` (group size), `OpStdev`, `OpStdevP`, `OpVar`, `OpVarP`, `OpFirst`, `OpLast`, `OpNUnique`, `OpCustom`. Group order in the result follows the order each key combination is first seen during a single linear scan; `nil` keys form their own group, and `int(1)` and string `"1"` are kept distinct.
+
+### 3c.1) Describe summaries
+
+Use `Describe` when you need a reusable summary table instead of console-only `Summary`.
+
+```go
+desc := dt.Describe(insyra.DescribeOptions{
+    IncludeAll:  true,
+    Percentiles: []float64{0.1, 0.5, 0.9},
+})
+byRegion := dt.GroupBy("region").Describe(insyra.DescribeOptions{IncludeAll: true})
+```
+
+`DataList.Describe()` and `DataTable.Describe()` return `*DataTable`. `GroupBy(...).Describe()` returns one row per group with flattened columns such as `revenue_mean` and `segment_top`. `nil` and `NaN` are missing. Do not assume an `isr` wrapper exists; call the root API.
 
 ### 3d) Pivot / Unpivot (long ↔ wide reshape)
 

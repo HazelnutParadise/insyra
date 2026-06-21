@@ -802,6 +802,10 @@ func (dl *DataList) Standardize() *DataList {
 
 // FillNaNWithMean replaces all NaN values in the DataList with the mean value.
 // Directly modifies the DataList.
+//
+// Deprecated: use FillWithMean instead, which also fills nil (not just NaN),
+// leaves non-numeric values untouched, and matches the other Fill* imputation
+// methods.
 func (dl *DataList) FillNaNWithMean() *DataList {
 	defer func() {
 		r := recover()

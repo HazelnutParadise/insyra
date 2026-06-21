@@ -11,6 +11,7 @@ DataTable is the core data structure of Insyra for handling structured data. It 
 - [Data Operations](#data-operations)
   - [Merge](#merge)
   - [GroupBy](#groupby)
+  - [Categorical Encoding](#categorical-encoding)
 - [Data Replacement](#data-replacement)
 - [Column Calculation](#column-calculation)
 - [Searching](#searching)
@@ -738,6 +739,7 @@ func (dt *DataTable) GroupBy(keyCols ...string) *GroupedDataTable
 func (g *GroupedDataTable) Aggregate(configs ...AggregateConfig) *DataTable
 func (g *GroupedDataTable) AggregateAll(op AggregateOp) *DataTable
 func (g *GroupedDataTable) Count() *DataTable
+func (g *GroupedDataTable) Describe(options ...DescribeOptions) *DataTable
 ```
 
 **Description:** Splits the DataTable into groups by one or more key columns and applies aggregate functions to each group ("split-apply-combine"). The result is a new DataTable with one row per unique key combination — key columns first (in `GroupBy` order), then the aggregate columns (in `Aggregate` order). Group order in the output follows the order in which each key combination is first seen during a single linear scan; `nil` keys form their own group, and `int(1)` is kept distinct from the string `"1"`.
@@ -766,6 +768,8 @@ func (g *GroupedDataTable) Count() *DataTable
 | `OpCustom` | User-supplied `Custom func(group *DataList) any` |
 
 **Errors:** Unknown key columns, unknown source columns, missing `Custom` for `OpCustom`, empty configs, and empty key lists are reported via the parent `dt.Err()` instance-level error. The aggregate output is still returned (with affected columns nil-filled or empty), so callers can inspect partial results and continue chaining.
+
+**Describe:** `GroupBy(...).Describe()` returns one row per group. Key columns are emitted first, followed by flattened summary columns such as `revenue_count`, `revenue_mean`, `revenue_25%`, and `segment_unique` when `IncludeAll` is enabled. Group order follows the same first-seen order as `Aggregate`.
 
 **Example (single key, multiple aggregates):**
 
@@ -886,6 +890,263 @@ long, err := dt.Unpivot(insyra.UnpivotConfig{
 ```
 
 **Relationship to `GroupBy + Aggregate`:** `Pivot` is essentially `GroupBy(Index..., Columns).Aggregate(Values, AggFunc)` followed by spreading the `Columns` key out into headers. When you only need the grouped summary (one row per key, no header spreading), use `GroupBy + Aggregate` directly — it is simpler and produces the same intermediate structure.
+
+### Categorical Encoding
+
+```go
+func (dt *DataTable) OneHotEncode(opts OneHotOptions) (*DataTable, *OneHotEncoder, error)
+func (dt *DataTable) LabelEncode(opts LabelEncodeOptions) (*DataTable, *LabelEncoder, error)
+func (dt *DataTable) OrdinalEncode(opts OrdinalEncodeOptions) (*DataTable, *OrdinalEncoder, error)
+```
+
+**Description:** Categorical encoding turns string or mixed-type category columns into numeric columns that can feed `stats.LinearRegression`, KNN, PCA, and clustering. Each method returns a fresh `*DataTable`; the receiver is not modified. The returned encoder stores the fitted category mapping and can `Transform` another table with the same schema, such as a test set or prediction batch.
+
+Column references are resolved by column name first, then Excel-style index (`"A"`, `"B"`, ..., `"AA"`). Category identity uses both type and value, so `int(1)` and string `"1"` are distinct. Missing means `nil` or `NaN`. For one-hot encoding, two distinct categories that would generate the same indicator column name (for example `int(1)` and `"1"`, both `c_1`, or `nil` and the string `"<nil>"`) are rejected at fit time; rename a category or set a distinct `Prefix`/`Separator`.
+
+**Policies:**
+
+| Type | Values | Behavior |
+|---|---|---|
+| `NaNPolicy` | `NaNAsCategory`, `NaNError`, `NaNSkip` | Missing becomes its own category, errors, or is skipped (`nil` for label/ordinal; all-zero for one-hot). |
+| `UnknownPolicy` | `UnknownIgnore`, `UnknownError`, `UnknownAsNew` | On `Transform`, unseen categories become all-zero/`nil`, error, or are encoded as new outputs for that call. `UnknownAsNew` extends only the returned table; the fitted encoder is left unchanged, so `Transform` is pure and safe to reuse. |
+| `LabelSort` | `LabelSortFirstSeen`, `LabelSortLexicographic`, `LabelSortByFrequency` | Controls label id assignment order. |
+
+**Options:**
+
+```go
+type OneHotOptions struct {
+    Columns        []string
+    DropFirst      bool
+    HandleNaN      NaNPolicy
+    Unknown        UnknownPolicy
+    Prefix         string
+    Separator      string
+    KeepOriginal   bool
+    SortCategories bool
+}
+
+type LabelEncodeOptions struct {
+    Column       string
+    NewColumn    string
+    SortBy       LabelSort
+    HandleNaN    NaNPolicy
+    Unknown      UnknownPolicy
+    KeepOriginal bool
+}
+
+type OrdinalEncodeOptions struct {
+    Column       string
+    Order        []any
+    NewColumn    string
+    HandleNaN    NaNPolicy
+    Unknown      UnknownPolicy
+    KeepOriginal bool
+}
+```
+
+`OneHotEncode` emits one `0/1` `int` column per category, named `<prefix><separator><category>`; by default the prefix is the source column name and the separator is `"_"`. `DropFirst` omits the first category as the reference level. `LabelEncode` maps each class to an integer id. `OrdinalEncode` uses the explicit `Order` slice as `0..n-1`.
+
+**Encoder interface and introspection:**
+
+```go
+type Encoder interface {
+    Transform(dt *DataTable) (*DataTable, error)
+    InverseTransform(dt *DataTable) (*DataTable, error)
+    Kind() string
+}
+
+func (e *OneHotEncoder) Categories() map[string][]any
+func (e *OneHotEncoder) OutputColumns() []string
+func (e *LabelEncoder) Classes() []any
+func (e *LabelEncoder) Inverse(values ...any) ([]any, error)
+func (e *OrdinalEncoder) Classes() []any
+func (e *OrdinalEncoder) Inverse(values ...any) ([]any, error)
+```
+
+**Example — fit, transform, inverse:**
+
+```go
+package main
+
+import (
+    "fmt"
+    "log"
+
+    "github.com/HazelnutParadise/insyra"
+)
+
+func main() {
+    train := insyra.NewDataTable(
+        insyra.NewDataList("red", "blue", "red").SetName("color"),
+        insyra.NewDataList(10, 20, 30).SetName("value"),
+    )
+
+    encoded, enc, err := train.OneHotEncode(insyra.OneHotOptions{
+        Columns:   []string{"color"},
+        DropFirst: true,
+        Unknown:   insyra.UnknownIgnore,
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    fmt.Println(encoded.ColNames()) // [color_blue value]
+
+    test := insyra.NewDataTable(
+        insyra.NewDataList("blue", "green").SetName("color"),
+        insyra.NewDataList(40, 50).SetName("value"),
+    )
+    encodedTest, err := enc.Transform(test)
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Println(encodedTest.GetColByName("color_blue").Data()) // [1 0]
+
+    originalShape, err := enc.InverseTransform(encoded)
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Println(originalShape.ColNames()) // [color value]
+}
+```
+
+**Example — categorical predictor into `stats.LinearRegression`:**
+
+```go
+package main
+
+import (
+    "fmt"
+    "log"
+
+    "github.com/HazelnutParadise/insyra"
+    "github.com/HazelnutParadise/insyra/stats"
+)
+
+func main() {
+    dt := insyra.NewDataTable(
+        insyra.NewDataList(100.0, 130.0, 110.0, 150.0).SetName("sales"),
+        insyra.NewDataList("basic", "pro", "basic", "pro").SetName("plan"),
+    )
+
+    x, _, err := dt.OneHotEncode(insyra.OneHotOptions{
+        Columns:   []string{"plan"},
+        DropFirst: true, // baseline = first-seen category ("basic")
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    fit, err := stats.LinearRegression(
+        dt.GetColByName("sales"),
+        x.GetColByName("plan_pro"),
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    fmt.Println(fit.Coefficients) // intercept, effect of plan_pro
+}
+```
+
+### Feature Scaling
+
+```go
+func (dt *DataTable) StandardScale(cols ...string) (*DataTable, *StandardScaler, error)
+func (dt *DataTable) MinMaxScale(featureMin, featureMax float64, cols ...string) (*DataTable, *MinMaxScaler, error)
+func (dt *DataTable) RobustScale(cols ...string) (*DataTable, *RobustScaler, error)
+func (dt *DataTable) MaxAbsScale(cols ...string) (*DataTable, *MaxAbsScaler, error)
+```
+
+**Description:** Feature scalers fit numeric scaling parameters once and reuse them. Each method returns a fresh `*DataTable` (the receiver is not modified) plus a fitted scaler. The scaler can `Transform` and `InverseTransform` other tables with the same parameters.
+
+**Why this is not `DataList.Normalize` / `Standardize`:** `Normalize()` and `Standardize()` are stateless and modify the list in place — they recompute min/max or mean/std from whatever data they are handed. That is exactly what you must *not* do to a test set: scaling test data with its own statistics leaks information and makes train/test results incomparable. A `Scaler` fits on the **training** set and applies those frozen parameters to the test set, which is the correct, leakage-free workflow.
+
+**Choosing a scaler:**
+
+| Scaler | Centers on | Scales by | Use when |
+|---|---|---|---|
+| `StandardScaler` | mean | sample std dev (matches `Standardize`) | roughly Gaussian features; the common default |
+| `MinMaxScaler` | min | range, into `[featureMin, featureMax]` | you need a bounded range (e.g. `[0,1]`) and have few outliers |
+| `RobustScaler` | median | IQR (Q3−Q1) | features have outliers that would distort mean/std |
+| `MaxAbsScaler` | 0 | max absolute value, into `[-1,1]` | sparse or sign-meaningful data you don't want to shift |
+
+**Behavior:**
+
+- Column references resolve by name first, then Excel-style index (`"A"`, `"B"`, ...). `cols` is required.
+- Only the listed columns are scaled; other columns pass through unchanged, preserving column order, names, table name, and row names.
+- `nil` and `NaN` are preserved and excluded from fitting (they do not affect the computed parameters).
+- A non-numeric, non-missing value in a target column is an error.
+- `Transform` errors if a fitted column is missing from the input. `InverseTransform` only restores fitted columns that are present and passes others through (so a prediction table covering a subset still works).
+- Constant / degenerate columns (`std==0`, `max==min`, `IQR==0`, `maxAbs==0`) do not panic: the fitted training data maps to the degenerate output (`0`, or `featureMin` for min-max) and the inverse round-trips.
+
+**Interface and introspection:**
+
+```go
+type Scaler interface {
+    Fit(dt *DataTable, cols ...string) error
+    Transform(dt *DataTable) (*DataTable, error)
+    FitTransform(dt *DataTable, cols ...string) (*DataTable, error)
+    InverseTransform(dt *DataTable) (*DataTable, error)
+    Params() map[string]ScalerParams
+    Kind() string
+}
+
+func NewStandardScaler() *StandardScaler
+func NewMinMaxScaler(featureMin, featureMax float64) *MinMaxScaler
+func NewDefaultMinMaxScaler() *MinMaxScaler // [0, 1]
+func NewRobustScaler() *RobustScaler
+func NewMaxAbsScaler() *MaxAbsScaler
+```
+
+`Params()` returns the fitted parameters keyed by column name (`Mean`/`Std`, `Min`/`Max`/`OutputMin`/`OutputMax`, `Median`/`Q1`/`Q3`/`IQR`, or `MaxAbs` depending on the kind).
+
+There is also a DataList-oriented counterpart (`DataListScaler`) on every scaler: `FitDataList`, `TransformDataList`, `FitTransformDataList`, `InverseTransformDataList`, each returning a new `*DataList`.
+
+**Example — fit on train, transform test (no leakage):**
+
+```go
+package main
+
+import (
+    "fmt"
+    "log"
+
+    "github.com/HazelnutParadise/insyra"
+)
+
+func main() {
+    data := insyra.NewDataTable(
+        insyra.NewDataList(20.0, 30.0, 40.0, 50.0, 60.0).SetName("Age"),
+        insyra.NewDataList(30.0, 45.0, 50.0, 70.0, 90.0).SetName("Income"),
+    )
+    train, test := data.TrainTestSplit(0.8, insyra.SamplingOptions{UseSeed: true, Seed: 42})
+
+    // Fit the scaler on the training set only.
+    sc := insyra.NewStandardScaler()
+    trainScaled, err := sc.FitTransform(train, "Age", "Income")
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // Apply the SAME parameters to the test set.
+    testScaled, err := sc.Transform(test)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    fmt.Println(sc.Params()["Age"]) // {Age standard <mean> <std> ...}
+    _ = trainScaled
+    _ = testScaled
+
+    // Recover the original scale (e.g. for predictions).
+    restored, err := sc.InverseTransform(trainScaled)
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Println(restored.GetColByName("Age").Data())
+}
+```
 
 ### Window / sequence transforms (Shift / Diff / PctChange / Cum\* / Rolling / Expanding)
 
@@ -2524,6 +2785,8 @@ func (dt *DataTable) SimpleRandomSample(sampleSize int) *DataTable
 
 **Description:** Performs simple random sampling on the DataTable.
 
+> **Deprecated:** Use [`Sample(n, false)`](#sample--samplefrac--shuffle--traintestsplit) instead, which shares the `SamplingOptions` (seed/reproducibility) surface with the other sampling methods. Note `Sample` records an error and returns an empty table when `n` exceeds the row count, rather than cloning the whole table.
+
 **Parameters:**
 
 - `sampleSize`: Number of rows to sample. If `sampleSize <= 0`, returns an empty DataTable. If `sampleSize >= number of rows`, returns a copy of the original DataTable.
@@ -2546,9 +2809,81 @@ sampled := dt.SimpleRandomSample(10)
 - If sample size is greater than or equal to the number of rows, returns a full copy
 - If sample size is less than or equal to 0, returns an empty DataTable
 
+### Sample / SampleFrac / Shuffle / TrainTestSplit
+
+```go
+func (dt *DataTable) Sample(n int, withReplacement bool, options ...SamplingOptions) *DataTable
+func (dt *DataTable) SampleFrac(frac float64, withReplacement bool, options ...SamplingOptions) *DataTable
+func (dt *DataTable) Shuffle(options ...SamplingOptions) *DataTable
+func (dt *DataTable) TrainTestSplit(trainFrac float64, options ...SamplingOptions) (*DataTable, *DataTable)
+```
+
+**Description:** Performs row-wise random sampling, shuffling, and train/test splitting. DataTable operations always move whole rows together, so every column and row name remains aligned.
+
+**Options:**
+
+```go
+type SamplingOptions struct {
+    Seed          uint64
+    UseSeed       bool
+    PreserveOrder bool // TrainTestSplit only; false means shuffle before split.
+}
+```
+
+Use `SamplingOptions{UseSeed: true, Seed: 42}` for reproducible samples. `TrainTestSplit` shuffles before splitting by default; set `PreserveOrder: true` for ordered splits, such as time-series data.
+
+**Examples:**
+
+```go
+sample := dt.Sample(100, false, insyra.SamplingOptions{UseSeed: true, Seed: 42})
+preview := dt.SampleFrac(0.05, false)
+shuffled := dt.Shuffle()
+
+train, test := dt.TrainTestSplit(0.8, insyra.SamplingOptions{UseSeed: true, Seed: 42})
+orderedTrain, orderedTest := dt.TrainTestSplit(0.8, insyra.SamplingOptions{PreserveOrder: true})
+```
+
+**Notes:**
+
+- `SampleFrac` and `TrainTestSplit` use `floor(frac * rows)`, with a minimum of 1 row for non-empty data.
+- `TrainTestSplit` requires `trainFrac` in the open interval `(0, 1)` and a row count large enough that neither split is empty; otherwise it records an error via `dt.Err()` and returns two empty DataTables.
+- Without replacement, `n > rows` records an error and returns an empty DataTable.
+- With replacement, duplicate source rows may appear in the output.
+- Invalid fractions, empty input, and invalid sample sizes are recorded via `dt.Err()`.
+
 ## Data Replacement
 
 DataTable provides several methods to replace values within the entire table, a specific row, or a specific column.
+
+### Missing-Value Fill Methods
+
+```go
+func (dt *DataTable) FillForward(limit int, cols ...string) *DataTable
+func (dt *DataTable) FillBackward(limit int, cols ...string) *DataTable
+func (dt *DataTable) FillWithMean(cols ...string) *DataTable
+func (dt *DataTable) FillWithMedian(cols ...string) *DataTable
+func (dt *DataTable) FillWithMode(cols ...string) *DataTable
+func (dt *DataTable) FillByInterpolation(cols ...string) *DataTable
+```
+
+**Description:** Fills `nil` and `math.NaN()` values column by column. When `cols` is omitted, all applicable columns are processed. Mean, median, and interpolation apply only to numeric columns; mode and forward/backward fill can apply to any selected column.
+
+**Parameters:**
+
+- `limit`: Maximum consecutive values to fill for forward/backward fill. `0` means unlimited.
+- `cols` (optional): Column names or Excel-style indices to process.
+
+**Returns:**
+
+- `*DataTable`: Reference to the modified DataTable.
+
+**Example:**
+
+```go
+dt.FillWithMedian("revenue", "cost")
+dt.FillForward(2, "status")
+dt.FillByInterpolation() // all numeric columns
+```
 
 ### Replace
 
@@ -3404,6 +3739,32 @@ filtered := dt.FilterRowsByRowIndexEqualTo(3) // Only row 3
 ```
 
 ## Statistical Analysis
+
+### Describe
+
+```go
+type DescribeOptions struct {
+    Percentiles []float64
+    IncludeAll  bool
+}
+
+func (dt *DataTable) Describe(options ...DescribeOptions) *DataTable
+```
+
+**Description:** Returns a programmatic per-column summary table. Row names are statistics (`count`, `missing`, `unique`, `top`, `freq`, `mean`, `std`, `min`, percentiles, `max`) and columns are source columns.
+
+By default, only columns whose non-missing values are all numeric are included. With `IncludeAll: true`, non-numeric and mixed columns are included with categorical statistics. `nil` and `NaN` count as missing. `Percentiles` uses values in `[0, 1]`; when omitted it defaults to `0.25`, `0.5`, and `0.75`.
+
+**Example:**
+
+```go
+desc := dt.Describe(insyra.DescribeOptions{
+    IncludeAll:  true,
+    Percentiles: []float64{0.1, 0.5, 0.9},
+})
+
+byRegion := dt.GroupBy("region").Describe(insyra.DescribeOptions{IncludeAll: true})
+```
 
 ### Summary
 
