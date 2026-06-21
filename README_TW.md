@@ -343,65 +343,23 @@ err := parquet.ApplyCCL(ctx, "data.parquet", "NEW('total') = A + B + C")
 
 **Insyra** 還提供了多個擴展套件，每個都專注於數據分析的特定方面。
 
-### **[isr](/Docs/isr.md)**
-
-提供 **語法糖**，使 Insyra 更易於使用。使用 `isr` 套件，您可以更快地編寫代碼，並更容易地理解和維護程式碼。
-
-### **[stats](/Docs/stats.md)**
-
-提供數據分析的統計函數，包括偏度、峰度和矩計算。
-
-### **[parallel](/Docs/parallel.md)**
-
-為數據操作和分析提供平行處理能力。可用於執行任何函數，並自動等待所有 goroutine 完成。
-
-### **[plot](/Docs/plot.md)**
-
-強大的 [github.com/go-echarts/go-echarts](https://github.com/go-echarts/go-echarts) 庫的封裝，用於簡化資料視覺化。
-
-### **[gplot](/Docs/gplot.md)**
-
-基於 [github.com/gonum/plot](https://github.com/gonum/plot) 的視覺化套件。快速且不需要 Chrome。甚至支援函數繪圖。
-
-### **[csvxl](/Docs/csvxl.md)**
-
-處理 Excel 和 CSV 文件。例如將 CSV 轉換為 Excel。
-
-### **[parquet](/Docs/parquet.md)**
-
-提供 Apache Parquet 檔案格式的讀寫支援，與 Insyra 的 `DataTable` 和 `DataList` 深度整合。支援串流讀取、欄位級讀取以及 CCL 篩選。
-
-### **[mkt](/Docs/mkt.md)**
-
-提供與行銷相關的數據分析功能，例如 RFM 分析。不必煩惱如何計算，一個函數搞定！
-
-### **[finance](/Docs/finance.md)**
-
-基於定點 decimal 的高精度金融計算包：TVM（PMT/PV/FV/NPER/RATE）、NPV/IRR/MIRR/XNPV/XIRR、折舊（SLN/DDB/SYD/VDB）、債券定價（PRICE/YIELD/DURATION/MDURATION/ACCRINT）、國庫券、完整攤銷表。輸出精度可逐次調整；計算結果普遍超越 Excel float64 的精度上限。
-
-### **[py](/Docs/py.md)**
-
-在 Go 中執行 Python 程式碼，無需手動安裝 Python 環境和依賴庫。允許在 Go 和 Python 之間傳遞變數。
-
-### **[pd](/Docs/pd.md)**
-
-基於 `gpandas` 的 Pandas 風格 `DataFrame` 工具。提供 `DataTable` 與 `gpandas.DataFrame` 之間的轉換，以及類似 pandas 的 API。參考 `gpandas` 文件: https://gpandas.apoplexi.com/docs/
-
-### **[datafetch](/Docs/datafetch.md)**
-
-讓您輕鬆取得網路上的數據。目前包含 Google Maps 商家評論爬蟲與 Yahoo Finance 包裝器（使用 [go-yfinance](https://github.com/wnjoon/go-yfinance) 支援）。遠端抓取需要網路連線，部分功能依賴第三方後端，可能會變動。
-
-### **[lpgen](/Docs/lpgen.md)**
-
-提供一個 **超級簡單** 且直觀的方式來生成線性規劃（LP）模型並將其保存為 `.lp` 檔。支援設置目標、添加約束、定義變量邊界，並指定二進制或整數變量。
-
-### **[lp](/Docs/lp.md)**
-
-使用 [GLPK](https://www.gnu.org/software/glpk/) 的全自動線性規劃（LP）包。
-
-### **[engine](/engine/README.md)**
-
-`engine` 包導出了部分 Insyra 內部實現，供開發者自由運用在任何專案。
+| 套件 | 說明 |
+|---|---|
+| **[isr](/Docs/isr.md)** | Insyra 的語法糖，新專案建議的入口。 |
+| **[stats](/Docs/stats.md)** | 資料分析統計函數：偏度、峰度、矩計算等。 |
+| **[parallel](/Docs/parallel.md)** | 資料操作與分析的平行處理，自動等待所有 goroutine 完成。 |
+| **[plot](/Docs/plot.md)** | 封裝 [go-echarts](https://github.com/go-echarts/go-echarts) 的資料視覺化。 |
+| **[gplot](/Docs/gplot.md)** | 基於 [gonum/plot](https://github.com/gonum/plot) 的靜態圖，快速、免 Chrome、支援函數繪圖。 |
+| **[csvxl](/Docs/csvxl.md)** | 處理 Excel 與 CSV 檔案（例如 CSV 轉 Excel）。 |
+| **[parquet](/Docs/parquet.md)** | Apache Parquet 讀寫，與 `DataTable`／`DataList` 深度整合；支援串流、欄位級讀取、CCL 篩選。 |
+| **[mkt](/Docs/mkt.md)** | 行銷分析：RFM、顧客活躍度指標、購物籃分析。 |
+| **[finance](/Docs/finance.md)** | 高精度定點財務計算：TVM、NPV／IRR、折舊、債券定價、攤還表。 |
+| **[py](/Docs/py.md)** | 在 Go 中執行 Python，免手動安裝環境；變數雙向傳遞。 |
+| **[pd](/Docs/pd.md)** | 基於 `gpandas` 的 Pandas 風格 `DataFrame` 工具，含 `DataTable` 轉換。 |
+| **[datafetch](/Docs/datafetch.md)** | 輕鬆取得網路資料：Google Maps 商家評論、Yahoo Finance。 |
+| **[lpgen](/Docs/lpgen.md)** | 產生線性規劃（LP）模型並輸出 `.lp` 檔。 |
+| **[lp](/Docs/lp.md)** | 使用 [GLPK](https://www.gnu.org/software/glpk/) 的全自動 LP 求解器。 |
+| **[engine](/engine/README.md)** | 匯出部分 Insyra 內部實作，供其他專案重用。 |
 
 ## 進階使用
 
