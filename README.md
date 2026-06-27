@@ -365,6 +365,7 @@ For a complete list of DataTable methods and features, please refer to the **[Da
 | **[parquet](/Docs/parquet.md)** | Apache Parquet read/write, deeply integrated with `DataTable`/`DataList`; streaming, column-level reads, CCL filtering. |
 | **[mkt](/Docs/mkt.md)** | Marketing analytics: RFM, Customer Activity Index, and market-basket analysis. |
 | **[finance](/Docs/finance.md)** | High-precision fixed-point finance: TVM, NPV/IRR, depreciation, bond pricing, and amortization schedules. |
+| **[quant](/Docs/quant.md)** | Quantitative finance for strategy/backtest evaluation: Sharpe ratio, max drawdown, annualized return, PBO (CSCV), Deflated Sharpe Ratio, and walk-forward validation. |
 | **[py](/Docs/py.md)** | Run Python from Go with no manual environment setup; pass variables both ways. |
 | **[pd](/Docs/pd.md)** | Pandas-like `DataFrame` helpers built on `gpandas`, with `DataTable` conversion. |
 | **[datafetch](/Docs/datafetch.md)** | Easy data fetching: Google Maps store reviews and a Yahoo Finance wrapper. |

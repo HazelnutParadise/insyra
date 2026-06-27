@@ -19,7 +19,7 @@ The stats package provides comprehensive statistical analysis functions:
 - **Correlation Analysis**: Pearson, Kendall, Spearman correlation coefficients, correlation matrices
 - **Hypothesis Testing**: t-tests (single, two-sample, paired), z-tests, chi-square tests
 - **Nonparametric Tests**: Wilcoxon signed-rank (single/paired), Mann-Whitney U, Kruskal-Wallis, Friedman — rank-based counterparts to the t-test / ANOVA family
-- **Distribution Analysis**: Skewness, Kurtosis, n-th moments
+- **Distribution Analysis**: Skewness, Kurtosis, n-th moments, standard-normal CDF / quantile (`NormCDF` / `NormPPF`)
 - **Analysis of Variance**: One-way, Two-way, Repeated measures ANOVA
 - **Regression Analysis**: Linear, Logistic, Poisson, generic GLM, Exponential, Logarithmic, Polynomial regression with confidence intervals
 - **F-Tests**: Variance equality, Levene's test, Bartlett's test, regression F-test, nested models
@@ -569,6 +569,56 @@ if err != nil {
     log.Fatal(err)
 }
 fmt.Printf("3rd central moment: %.4f\n", moment3)
+```
+
+---
+
+### Standard Normal CDF (NormCDF)
+
+```go
+func NormCDF(x float64) float64
+```
+
+**Description:** Cumulative distribution function Φ(x) of the standard normal distribution N(0, 1). Defined for every real `x` (`-Inf` → 0, `+Inf` → 1, `NaN` → `NaN`), so it never fails and returns no error. Useful for significance calculations, the Probabilistic/Deflated Sharpe Ratio in [`quant`](./quant.md), and any z-score → probability conversion.
+
+**Parameters:**
+
+- `x`: the value at which to evaluate Φ
+
+**Returns:**
+
+- `float64`: Φ(x) = P(Z ≤ x), in `[0, 1]`
+
+### Standard Normal Quantile / PPF (NormPPF)
+
+```go
+func NormPPF(p float64) (float64, error)
+```
+
+**Description:** Inverse CDF (quantile / percent-point function) Φ⁻¹(p) of the standard normal distribution N(0, 1). Boundaries return the correct infinite quantiles: `p = 0` → `-Inf`, `p = 1` → `+Inf`.
+
+**Parameters:**
+
+- `p`: a probability in `[0, 1]`
+
+**Returns:**
+
+- `float64`: Φ⁻¹(p)
+- `error`: non-nil when `p` is outside `[0, 1]` or `NaN`
+
+**Example**:
+
+```go
+// 97.5th percentile of the standard normal ≈ 1.95996 (the classic
+// two-sided 95% critical value).
+crit, err := stats.NormPPF(0.975)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("z* = %.5f\n", crit)
+
+// Round-trip: NormCDF and NormPPF are inverses.
+fmt.Printf("p = %.4f\n", stats.NormCDF(crit)) // 0.9750
 ```
 
 ---

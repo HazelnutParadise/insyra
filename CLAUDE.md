@@ -98,6 +98,23 @@ Column references use Excel-style indices (`A`, `B`, … `AA`, `AB`, …) or nam
 - Error handling uses an instance-level `Err()` pattern rather than returning errors from every method (check `.Err()` after chained calls).
 - The `isr` package is the recommended public API for new projects; the root `insyra` package is the implementation layer.
 
+## Docs & Skills Must Stay in Sync
+
+Docs and skills are part of a change, not a follow-up. A feature is not done until these are updated in the **same** change.
+
+**When adding a new package:**
+- Create its doc page `Docs/<pkg>.md` (follow an existing page such as [Docs/finance.md](Docs/finance.md) / [Docs/stats.md](Docs/stats.md) for structure).
+- Add a row to the package table in **both** README entry points — `## Packages` in [README.md](README.md) **and** `## 套件` in [README_TW.md](README_TW.md) — linking to `/Docs/<pkg>.md`.
+- Update the docs index [Docs/README.md](Docs/README.md) (the docsify home). `Docs/_sidebar.md` is generated — don't edit it by hand.
+- Register the package in [allpkgs/allpkgs.go](allpkgs/allpkgs.go).
+
+**When adding or changing any feature (new or existing package):**
+- Update the relevant `Docs/*.md` page(s) to match the new/changed API.
+- Update the agent skills so they reflect the change: [skills/insyra/](skills/insyra/) (Go API usage — `SKILL.md` and `references/`), and [skills/use-insyra-cli/](skills/use-insyra-cli/) when CLI/DSL usage is affected.
+- When the change touches the CLI/REPL or the DSL, update the CLI (`cli/`) and its doc [Docs/cli-dsl.md](Docs/cli-dsl.md).
+
+Keep the English ([README.md](README.md), `Docs/`) and Traditional-Chinese ([README_TW.md](README_TW.md)) docs in lockstep — never update one side without the other.
+
 ## Agent Skills
 
 [skills/insyra/](skills/insyra/) — for AI agents writing Go code using Insyra APIs.  

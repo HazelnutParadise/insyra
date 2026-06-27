@@ -360,6 +360,7 @@ err := parquet.ApplyCCL(ctx, "data.parquet", "NEW('total') = A + B + C")
 | **[parquet](/Docs/parquet.md)** | Apache Parquet 讀寫，與 `DataTable`／`DataList` 深度整合；支援串流、欄位級讀取、CCL 篩選。 |
 | **[mkt](/Docs/mkt.md)** | 行銷分析：RFM、顧客活躍度指標、購物籃分析。 |
 | **[finance](/Docs/finance.md)** | 高精度定點財務計算：TVM、NPV／IRR、折舊、債券定價、攤還表。 |
+| **[quant](/Docs/quant.md)** | 量化金融策略／回測評估：夏普比率、最大回撤、年化報酬、過擬合機率（CSCV PBO）、通縮夏普比率、walk-forward 驗證。 |
 | **[py](/Docs/py.md)** | 在 Go 中執行 Python，免手動安裝環境；變數雙向傳遞。 |
 | **[pd](/Docs/pd.md)** | 基於 `gpandas` 的 Pandas 風格 `DataFrame` 工具，含 `DataTable` 轉換。 |
 | **[datafetch](/Docs/datafetch.md)** | 輕鬆取得網路資料：Google Maps 商家評論、Yahoo Finance。 |
