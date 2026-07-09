@@ -69,11 +69,17 @@ type GoogleMapsStoreData struct {
 func GoogleMapsStores() *googleMapsStoreCrawler {
 	const configUrl = "https://raw.githubusercontent.com/TimLai666/google-maps-store-review-crawler/refs/heads/main/crawler_config.json"
 	res, err := http.Get(configUrl)
-	if err != nil || res.StatusCode != 200 {
+	if err != nil {
 		insyra.LogWarning("datafetch", "GoogleMapsStores", "Failed to fetch GoogleMapsStoreReviewCrawler config. Error: %v. Returning nil.", err)
 		return nil
 	}
+	// Register the close before the status check so a non-200 response does not
+	// leak the body (the defer was previously after the early return).
 	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode != 200 {
+		insyra.LogWarning("datafetch", "GoogleMapsStores", "Failed to fetch GoogleMapsStoreReviewCrawler config. HTTP status: %d. Returning nil.", res.StatusCode)
+		return nil
+	}
 
 	config := struct {
 		Headers        map[string]string `json:"headers"`

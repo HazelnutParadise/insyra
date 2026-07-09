@@ -117,15 +117,22 @@ func SavePNG(chart Renderable, pngPath string, useOnlineServiceOnFail ...bool) e
 			return fmt.Errorf("online service returned non-OK status: %s", resp.Status)
 		}
 		insyra.LogInfo("plot", "SavePNG", "successfully received PNG response from HazelnutParadise online service.")
-		// 將響應的 PNG 數據寫入文件
+		// 讀入回應並驗證 PNG 簽章，避免把錯誤頁（如 HTML）當成圖片寫入 .png。
+		data, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return fmt.Errorf("failed to read PNG response: %w", err)
+		}
+		pngSig := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}
+		if len(data) < len(pngSig) || !bytes.Equal(data[:len(pngSig)], pngSig) {
+			return fmt.Errorf("online service response is not a valid PNG image")
+		}
 		outFile, err := os.Create(pngPath)
 		if err != nil {
 			return fmt.Errorf("failed to create PNG file: %w", err)
 		}
 		defer func() { _ = outFile.Close() }()
 
-		_, err = io.Copy(outFile, resp.Body)
-		if err != nil {
+		if _, err = outFile.Write(data); err != nil {
 			return fmt.Errorf("failed to save PNG file: %w", err)
 		}
 	}

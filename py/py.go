@@ -581,8 +581,16 @@ func replaceJsonLiterals(jsonStr string) string {
 				quoteChar = c
 			}
 		} else {
-			if c == quoteChar && (i == 0 || jsonStr[i-1] != '\\') {
-				inString = false
+			if c == quoteChar {
+				// The closing quote is escaped only when preceded by an ODD number
+				// of backslashes; `\\"` (escaped backslash then quote) is NOT escaped.
+				bs := 0
+				for k := i - 1; k >= 0 && jsonStr[k] == '\\'; k-- {
+					bs++
+				}
+				if bs%2 == 0 {
+					inString = false
+				}
 			}
 		}
 		if !inString {

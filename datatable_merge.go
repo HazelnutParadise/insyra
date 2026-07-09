@@ -173,24 +173,24 @@ func (dt *DataTable) mergeHorizontal(other IDataTable, onLeft, onRight string, m
 				return
 			}
 
-			// Construct new columns
+			// Construct new columns. Track ALL assigned output names (left columns
+			// plus already-renamed right columns) so two right columns cannot
+			// collide with each other — checking only the left table let that slip.
 			newCols := make([]*DataList, 0)
+			usedNames := make(map[string]bool)
 			for _, col := range d.columns {
 				newCols = append(newCols, NewDataList().SetName(col.name))
+				usedNames[col.name] = true
 			}
 			for i, col := range o.columns {
 				if i == colIdx2 {
 					continue
 				}
-				// Handle name collision
 				newName := col.name
-				for {
-					_, ok := d.getColNumberByName_notAtomic(newName)
-					if !ok {
-						break
-					}
+				for usedNames[newName] {
 					newName = newName + "_other"
 				}
+				usedNames[newName] = true
 				newCols = append(newCols, NewDataList().SetName(newName))
 			}
 
@@ -382,10 +382,30 @@ func (dt *DataTable) mergeVertical(other IDataTable, mode MergeMode) (*DataTable
 	}
 
 	var result *DataTable
+	var mergeErr error
 	dt.AtomicDo(func(d *DataTable) {
 		otherDT.AtomicDo(func(o *DataTable) {
 			colNames1 := d.ColNames()
 			colNames2 := o.ColNames()
+
+			// Vertical merge aligns columns by name; a duplicate name within a
+			// table would silently drop the extra column's data. Reject it.
+			seen1 := make(map[string]bool)
+			for _, name := range colNames1 {
+				if seen1[name] {
+					mergeErr = fmt.Errorf("vertical merge requires unique column names; first table has duplicate %q", name)
+					return
+				}
+				seen1[name] = true
+			}
+			seen2 := make(map[string]bool)
+			for _, name := range colNames2 {
+				if seen2[name] {
+					mergeErr = fmt.Errorf("vertical merge requires unique column names; second table has duplicate %q", name)
+					return
+				}
+				seen2[name] = true
+			}
 
 			var finalColNames []string
 			if mode == MergeModeInner {
@@ -473,5 +493,8 @@ func (dt *DataTable) mergeVertical(other IDataTable, mode MergeMode) (*DataTable
 			}
 		})
 	})
+	if mergeErr != nil {
+		return nil, mergeErr
+	}
 	return result, nil
 }

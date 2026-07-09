@@ -11,8 +11,8 @@ import (
 var dataListAtomicGroup = core.NewAtomicGroup()
 
 func (s *DataList) AtomicDo(f func(*DataList)) {
-	// LogDebug("DataList", "AtomicDo", "threadSafe: %v", Config.threadSafe)
-	if !Config.threadSafe {
+	// LogDebug("DataList", "AtomicDo", "threadSafe: %v", Config.threadSafe.Load())
+	if !Config.threadSafe.Load() {
 		// 憒??典??蔭??鈭?蝔??剁??湔?瑁?
 		f(s)
 		return
@@ -42,8 +42,8 @@ func (s *DataList) cleanup() {
 var dataTableAtomicGroup = core.NewAtomicGroup()
 
 func (dt *DataTable) AtomicDo(f func(*DataTable)) {
-	// LogDebug("DataTable", "AtomicDo", "threadSafe: %v", Config.threadSafe)
-	if !Config.threadSafe {
+	// LogDebug("DataTable", "AtomicDo", "threadSafe: %v", Config.threadSafe.Load())
+	if !Config.threadSafe.Load() {
 		// 憒??典??蔭??鈭?蝔??剁??湔?瑁?
 		f(dt)
 		return

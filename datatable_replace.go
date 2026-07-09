@@ -227,12 +227,10 @@ func (dt *DataTable) replaceNaNsAndNilsWith_notAtomic(newValue any) {
 	}()
 	for i, col := range dt.columns {
 		for j, cell := range col.data {
-			if cell == nil {
+			// Route through isNilOrNaN so float32 NaN is handled too (a bare
+			// float64 assertion missed it), consistent with impute/pivot.
+			if isNilOrNaN(cell) {
 				dt.columns[i].data[j] = newValue
-			} else if cellFloat, ok := cell.(float64); ok {
-				if math.IsNaN(cellFloat) {
-					dt.columns[i].data[j] = newValue
-				}
 			}
 		}
 	}
