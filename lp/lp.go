@@ -28,8 +28,16 @@ func SolveFromFile(lpFile string, timeoutSeconds ...int) (*insyra.DataTable, *in
 		return nil, nil
 	}
 
-	// Temporary file to store GLPK output
-	tmpFile := "solution.txt"
+	// Unique temporary file for GLPK output. A fixed "solution.txt" in the CWD
+	// collided between concurrent calls and was left behind on error/timeout.
+	solFile, err := os.CreateTemp("", "lp-solution-*.txt")
+	if err != nil {
+		insyra.LogWarning("lp", "SolveFromFile", "Failed to create temporary solution file: %v", err)
+		return nil, nil
+	}
+	tmpFile := solFile.Name()
+	_ = solFile.Close()
+	defer func() { _ = os.Remove(tmpFile) }()
 
 	var ctx context.Context
 	var cancel context.CancelFunc
@@ -138,9 +146,23 @@ func SolveModel(model *lpgen.LPModel, timeoutSeconds ...int) (*insyra.DataTable,
 	defer func() { _ = os.Remove(tmpFile.Name()) }() // 確保在解決完成後刪除臨時文件
 
 	// 使用 GLPK 直接從標準輸入解 LP 問題，並將結果輸出到臨時文件
-	cmd := exec.CommandContext(ctx, "glpsol", "--lp", "/dev/stdin", "--output", tmpFile.Name())
+	// 將 LP 內容寫入真實臨時檔再交給 glpsol。原本用 "/dev/stdin" 在 Windows
+	// 上不是有效路徑，會導致 glpsol 失敗、SolveModel 只回傳錯誤資訊表。
+	lpFile, err := os.CreateTemp("", "model-*.lp")
+	if err != nil {
+		insyra.LogFatal("lp", "SolveModel", "Failed to create temporary LP file: %v", err)
+		return nil, nil
+	}
+	defer func() { _ = os.Remove(lpFile.Name()) }()
+	if _, werr := lpFile.Write(lpBuffer.Bytes()); werr != nil {
+		_ = lpFile.Close()
+		insyra.LogWarning("lp", "SolveModel", "Failed to write LP file: %v", werr)
+		return nil, createAdditionalInfoDataTable("Error", 0, werr.Error(), "", "", "")
+	}
+	_ = lpFile.Close()
+
+	cmd := exec.CommandContext(ctx, "glpsol", "--lp", lpFile.Name(), "--output", tmpFile.Name())
 	utils.ApplyHideWindow(cmd)
-	cmd.Stdin = &lpBuffer // 將 LPModel 的內容傳給標準輸入
 	var outputBuffer bytes.Buffer
 	cmd.Stdout = &outputBuffer
 	cmd.Stderr = &outputBuffer

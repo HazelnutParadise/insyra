@@ -237,7 +237,14 @@ func restorePreservedDT(dt *insyra.DataTable, missing string, preserved map[stri
 		if dl == nil {
 			continue
 		}
+		// GetColByName returns a CLONE, so mutating it in place is lost. Restore
+		// on the clone, then write it back into the live table.
 		restorePreservedDL(dl, missing, positions)
+		idx := dt.GetColIndexByName(col)
+		if idx == "" {
+			continue
+		}
+		dt.UpdateCol(idx, dl)
 	}
 }
 

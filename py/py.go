@@ -463,7 +463,14 @@ func replacePlaceholders(template string, args ...any) (string, error) {
 			jsonStr = replaceJsonLiterals(jsonStr)
 			replacement = "pd.Series("
 			if name := v.GetName(); name != "" {
-				replacement += "name='" + name + "',"
+				// Marshal the name to a JSON string literal so quotes/newlines in
+				// the name cannot break out of the Python source (code injection).
+				// JSON double-quoted string literals are valid Python literals.
+				nameBytes, err := json.Marshal(name)
+				if err != nil {
+					return "", fmt.Errorf("failed to marshal IDataList name: %w", err)
+				}
+				replacement += "name=" + string(nameBytes) + ","
 			}
 			replacement += "data=" + jsonStr + ")"
 		case insyra.IDataTable:

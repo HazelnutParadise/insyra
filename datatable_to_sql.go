@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"reflect"
+	"regexp"
 	"strings"
 	"time"
 
@@ -121,6 +122,42 @@ func qualifiedTableName(schema, table string) string {
 	return schema + "." + table
 }
 
+// quoteSQLIdent quotes a single SQL identifier for the given gorm dialect,
+// escaping the quote character by doubling it. This prevents SQL injection
+// through table/column/schema names that originate from untrusted data
+// (e.g. column names read from a CSV/JSON header).
+func quoteSQLIdent(dialect, name string) string {
+	if dialect == "mysql" {
+		return "`" + strings.ReplaceAll(name, "`", "``") + "`"
+	}
+	// postgres / sqlite / sqlserver and others use the SQL-standard double quote.
+	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
+}
+
+// quoteQualifiedName quotes an optional schema and a table name, joining them
+// with a dot, so the result is a safe fully-qualified identifier.
+func quoteQualifiedName(dialect, schema, table string) string {
+	if schema == "" {
+		return quoteSQLIdent(dialect, table)
+	}
+	return quoteSQLIdent(dialect, schema) + "." + quoteSQLIdent(dialect, table)
+}
+
+// sqlTypeAllowed restricts column-type declarations to a safe character set so
+// that caller-supplied ColumnTypes cannot smuggle SQL. It permits identifiers,
+// spaces, digits, parentheses and commas (e.g. "VARCHAR(255)", "DECIMAL(10,2)",
+// "DOUBLE PRECISION") but rejects quotes, semicolons and other punctuation.
+var sqlTypeAllowed = regexp.MustCompile(`^[A-Za-z0-9_ (),]+$`)
+
+// validateSQLType returns an error if a column type declaration contains
+// characters outside the safe whitelist.
+func validateSQLType(typ string) error {
+	if !sqlTypeAllowed.MatchString(strings.TrimSpace(typ)) {
+		return fmt.Errorf("invalid SQL column type %q: only letters, digits, spaces, underscores, parentheses and commas are allowed", typ)
+	}
+	return nil
+}
+
 func saveRowsToDB(db *gorm.DB, fullName, plainTable, schema string, cols []string, rows [][]any, opts ToSQLOptions) error {
 	if len(rows) == 0 {
 		return fmt.Errorf("data is empty")
@@ -153,6 +190,16 @@ func saveRowsToDB(db *gorm.DB, fullName, plainTable, schema string, cols []strin
 			}
 		}
 
+		// All identifiers below are quoted per-dialect to prevent SQL injection
+		// through table/schema/column names (which may originate from untrusted
+		// CSV/JSON headers), and column types are validated against a whitelist.
+		quotedTable := quoteQualifiedName(dialect, schema, plainTable)
+		for _, c := range cols {
+			if err := validateSQLType(columnTypes[c]); err != nil {
+				return err
+			}
+		}
+
 		exists, err := tableExists(tx, dialect, schema, plainTable)
 		if err != nil {
 			return err
@@ -163,7 +210,7 @@ func saveRowsToDB(db *gorm.DB, fullName, plainTable, schema string, cols []strin
 			case SQLActionIfTableExistsFail:
 				return fmt.Errorf("table %s already exists", fullName)
 			case SQLActionIfTableExistsReplace:
-				if err := tx.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s;", fullName)).Error; err != nil {
+				if err := tx.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s;", quotedTable)).Error; err != nil {
 					return err
 				}
 				exists = false
@@ -175,9 +222,9 @@ func saveRowsToDB(db *gorm.DB, fullName, plainTable, schema string, cols []strin
 		if !exists {
 			colDefs := make([]string, 0, len(cols))
 			for _, c := range cols {
-				colDefs = append(colDefs, fmt.Sprintf("%s %s", c, columnTypes[c]))
+				colDefs = append(colDefs, fmt.Sprintf("%s %s", quoteSQLIdent(dialect, c), columnTypes[c]))
 			}
-			createSQL := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (%s);", fullName, strings.Join(colDefs, ", "))
+			createSQL := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (%s);", quotedTable, strings.Join(colDefs, ", "))
 			if err := tx.Exec(createSQL).Error; err != nil {
 				return err
 			}
@@ -198,7 +245,10 @@ func saveRowsToDB(db *gorm.DB, fullName, plainTable, schema string, cols []strin
 					if typ == "" {
 						typ = textType(dialect)
 					}
-					alterSQL := fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s;", fullName, c, typ)
+					if err := validateSQLType(typ); err != nil {
+						return err
+					}
+					alterSQL := fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s;", quotedTable, quoteSQLIdent(dialect, c), typ)
 					if err := tx.Exec(alterSQL).Error; err != nil {
 						return err
 					}
@@ -207,14 +257,19 @@ func saveRowsToDB(db *gorm.DB, fullName, plainTable, schema string, cols []strin
 			}
 		}
 
-		// Batched multi-value INSERT.
+		// Batched multi-value INSERT. Table and column identifiers are quoted
+		// (squirrel emits them verbatim); only VALUES are parameterized.
+		quotedCols := make([]string, len(cols))
+		for i, c := range cols {
+			quotedCols[i] = quoteSQLIdent(dialect, c)
+		}
 		ph := placeholderFormat(dialect)
 		for start := 0; start < len(rows); start += opts.BatchSize {
 			end := start + opts.BatchSize
 			if end > len(rows) {
 				end = len(rows)
 			}
-			builder := sq.Insert(fullName).PlaceholderFormat(ph).Columns(cols...)
+			builder := sq.Insert(quotedTable).PlaceholderFormat(ph).Columns(quotedCols...)
 			for _, row := range rows[start:end] {
 				builder = builder.Values(row...)
 			}
@@ -267,7 +322,10 @@ func tableExists(tx *gorm.DB, dialect, schema, table string) (bool, error) {
 		q = tx.Raw("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?", table)
 	}
 	if err := q.Scan(&count).Error; err != nil {
-		return false, nil
+		// A COUNT against information_schema/sqlite_master failing is a real DB
+		// error (connection/permission/etc.), not "table absent"; propagate it
+		// instead of silently reporting the table as non-existent.
+		return false, err
 	}
 	return count > 0, nil
 }

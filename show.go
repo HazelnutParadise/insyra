@@ -1036,18 +1036,29 @@ func (dl *DataList) ShowTypesRange(startEnd ...any) {
 			title += ": " + dl.name
 		}
 
-		// 計算顯示範圍
+		// 計算顯示範圍（語意與 ShowRange 一致）：
+		//  - 單一參數：正數=前 N 筆（end），負數=後 |N| 筆（start）。
+		//  - 兩個參數：第一個是 start、第二個是 end（先前正數 start 被忽略）。
 		total := len(dl.data)
 		start, end := 0, total
 		if len(startEnd) > 0 {
-			if v, ok := startEnd[0].(int); ok {
-				if v < 0 {
-					start = max(0, total+v)
-				} else {
-					end = min(v, total)
+			if len(startEnd) == 1 {
+				if v, ok := startEnd[0].(int); ok {
+					if v < 0 {
+						start = max(0, total+v)
+						end = total
+					} else {
+						start = 0
+						end = min(v, total)
+					}
 				}
-			}
-			if len(startEnd) >= 2 {
+			} else { // len >= 2
+				if v, ok := startEnd[0].(int); ok {
+					start = v
+					if start < 0 {
+						start = total + start
+					}
+				}
 				if v2 := startEnd[1]; v2 == nil {
 					end = total
 				} else if e, ok := v2.(int); ok {

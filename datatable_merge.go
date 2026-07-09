@@ -90,11 +90,15 @@ func (dt *DataTable) mergeHorizontal(other IDataTable, onLeft, onRight string, m
 			// Use string representation as key for safety with any type
 			map1 := make(map[string][]int)
 			valMap1 := make(map[string]any)
+			var order1 []string // key first-seen order (left-row order) for deterministic output
 			var nameless1 []int
 			if onLeft == "" && onRight == "" {
 				// Use row names
 				for i := 0; i < d.getMaxColLength(); i++ {
 					if name, ok := d.getRowNameByIndex(i); ok {
+						if _, seen := map1[name]; !seen {
+							order1 = append(order1, name)
+						}
 						map1[name] = append(map1[name], i)
 						valMap1[name] = name
 					} else {
@@ -103,7 +107,12 @@ func (dt *DataTable) mergeHorizontal(other IDataTable, onLeft, onRight string, m
 				}
 			} else {
 				for i, val := range d.columns[colIdx1].data {
-					s := fmt.Sprintf("%v", val)
+					// 以型別標記編碼避免不同型別但字串相同的值碰撞
+					// （例如字串 "1"、int 1、float 1.0 應視為不同 key）。
+					s := encodeGroupKey([]any{val})
+					if _, seen := map1[s]; !seen {
+						order1 = append(order1, s)
+					}
 					map1[s] = append(map1[s], i)
 					valMap1[s] = val
 				}
@@ -111,11 +120,15 @@ func (dt *DataTable) mergeHorizontal(other IDataTable, onLeft, onRight string, m
 
 			map2 := make(map[string][]int)
 			valMap2 := make(map[string]any)
+			var order2 []string // key first-seen order (right-row order)
 			var nameless2 []int
 			if onLeft == "" && onRight == "" {
 				// Use row names
 				for i := 0; i < o.getMaxColLength(); i++ {
 					if name, ok := o.getRowNameByIndex(i); ok {
+						if _, seen := map2[name]; !seen {
+							order2 = append(order2, name)
+						}
 						map2[name] = append(map2[name], i)
 						valMap2[name] = name
 					} else {
@@ -124,40 +137,37 @@ func (dt *DataTable) mergeHorizontal(other IDataTable, onLeft, onRight string, m
 				}
 			} else {
 				for i, val := range o.columns[colIdx2].data {
-					s := fmt.Sprintf("%v", val)
+					// 同上：型別標記編碼避免跨型別 key 碰撞。
+					s := encodeGroupKey([]any{val})
+					if _, seen := map2[s]; !seen {
+						order2 = append(order2, s)
+					}
 					map2[s] = append(map2[s], i)
 					valMap2[s] = val
 				}
 			}
 
-			// Determine keys
+			// Determine keys in a deterministic order (left-row order first),
+			// instead of iterating maps whose iteration order is randomized.
 			var keys []string
 			switch mode {
 			case MergeModeInner:
-				for s := range map1 {
+				for _, s := range order1 {
 					if _, ok := map2[s]; ok {
 						keys = append(keys, s)
 					}
 				}
 			case MergeModeOuter:
-				allKeys := make(map[string]bool)
-				for s := range map1 {
-					allKeys[s] = true
-				}
-				for s := range map2 {
-					allKeys[s] = true
-				}
-				for s := range allKeys {
-					keys = append(keys, s)
+				keys = append(keys, order1...)
+				for _, s := range order2 {
+					if _, ok := map1[s]; !ok {
+						keys = append(keys, s)
+					}
 				}
 			case MergeModeLeft:
-				for s := range map1 {
-					keys = append(keys, s)
-				}
+				keys = append(keys, order1...)
 			case MergeModeRight:
-				for s := range map2 {
-					keys = append(keys, s)
-				}
+				keys = append(keys, order2...)
 			default:
 				err = fmt.Errorf("invalid mode: %v", mode)
 				return
@@ -202,6 +212,16 @@ func (dt *DataTable) mergeHorizontal(other IDataTable, onLeft, onRight string, m
 				return name
 			}
 
+			// cellOrNil guards against ragged columns: the row indices come from the
+			// join column's range, but another column may be shorter, so a bare
+			// col.data[idx] would panic. Append nil beyond a shorter column instead.
+			cellOrNil := func(col *DataList, idx int) any {
+				if idx >= 0 && idx < len(col.data) {
+					return col.data[idx]
+				}
+				return nil
+			}
+
 			// Fill data
 			for _, s := range keys {
 				indices1 := map1[s]
@@ -229,14 +249,14 @@ func (dt *DataTable) mergeHorizontal(other IDataTable, onLeft, onRight string, m
 
 							colOffset := 0
 							for _, col := range d.columns {
-								newCols[colOffset].Append(col.data[idx1])
+								newCols[colOffset].Append(cellOrNil(col, idx1))
 								colOffset++
 							}
 							for i, col := range o.columns {
 								if i == colIdx2 {
 									continue
 								}
-								newCols[colOffset].Append(col.data[idx2])
+								newCols[colOffset].Append(cellOrNil(col, idx2))
 								colOffset++
 							}
 							currentRowIdx++
@@ -260,7 +280,7 @@ func (dt *DataTable) mergeHorizontal(other IDataTable, onLeft, onRight string, m
 
 						colOffset := 0
 						for _, col := range d.columns {
-							newCols[colOffset].Append(col.data[idx1])
+							newCols[colOffset].Append(cellOrNil(col, idx1))
 							colOffset++
 						}
 						for i := range o.columns {
@@ -301,7 +321,7 @@ func (dt *DataTable) mergeHorizontal(other IDataTable, onLeft, onRight string, m
 							if i == colIdx2 {
 								continue
 							}
-							newCols[colOffset].Append(col.data[idx2])
+							newCols[colOffset].Append(cellOrNil(col, idx2))
 							colOffset++
 						}
 						currentRowIdx++
@@ -315,7 +335,7 @@ func (dt *DataTable) mergeHorizontal(other IDataTable, onLeft, onRight string, m
 					for _, idx1 := range nameless1 {
 						colOffset := 0
 						for _, col := range d.columns {
-							newCols[colOffset].Append(col.data[idx1])
+							newCols[colOffset].Append(cellOrNil(col, idx1))
 							colOffset++
 						}
 						for i := range o.columns {
@@ -339,7 +359,7 @@ func (dt *DataTable) mergeHorizontal(other IDataTable, onLeft, onRight string, m
 							if i == colIdx2 {
 								continue
 							}
-							newCols[colOffset].Append(col.data[idx2])
+							newCols[colOffset].Append(cellOrNil(col, idx2))
 							colOffset++
 						}
 						currentRowIdx++

@@ -80,8 +80,8 @@ func CreateHeatMap[X heapMapAxisValue, Y heapMapAxisValue](config HeatMapConfig,
 		Height:          config.Height,
 		BackgroundColor: config.BackgroundColor,
 		Theme:           string(config.Theme),
-		Title:           config.Title,
-		Subtitle:        config.Subtitle,
+		Title:           sanitizeChartText(config.Title),
+		Subtitle:        sanitizeChartText(config.Subtitle),
 		TitlePos:        string(config.TitlePos),
 		HideLegend:      true,
 		LegendPos:       "",
@@ -121,8 +121,8 @@ func CreateHeatMap[X heapMapAxisValue, Y heapMapAxisValue](config HeatMapConfig,
 
 		hm.SetGlobalOptions(
 			charts.WithTitleOpts(opts.Title{
-				Title:    config.Title,
-				Subtitle: config.Subtitle,
+				Title:    sanitizeChartText(config.Title),
+				Subtitle: sanitizeChartText(config.Subtitle),
 			}),
 			charts.WithVisualMapOpts(opts.VisualMap{
 				Min:     float32(minVal),

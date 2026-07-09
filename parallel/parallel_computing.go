@@ -1,6 +1,7 @@
 package parallel
 
 import (
+	"fmt"
 	"reflect"
 	"sync"
 )
@@ -25,7 +26,24 @@ func (pg *ParallelGroup) Run() *ParallelGroup {
 		pg.wg.Add(1)
 		go func(i int, fn any) {
 			defer pg.wg.Done()
+			// Recover so a panic in one worker is surfaced via its result slot
+			// instead of crashing the whole process.
+			defer func() {
+				if r := recover(); r != nil {
+					pg.results[i] = []any{fmt.Errorf("parallel worker %d panicked: %v", i, r)}
+				}
+			}()
 			fnValue := reflect.ValueOf(fn)
+			// Validate the value is a zero-argument function before calling;
+			// reflect.Call(nil) on a non-func or an arity mismatch is a fatal panic.
+			if fnValue.Kind() != reflect.Func {
+				pg.results[i] = []any{fmt.Errorf("parallel worker %d: value is not a function (%T)", i, fn)}
+				return
+			}
+			if t := fnValue.Type(); t.NumIn() != 0 || t.IsVariadic() {
+				pg.results[i] = []any{fmt.Errorf("parallel worker %d: function must take no arguments", i)}
+				return
+			}
 			resultValues := fnValue.Call(nil)
 			if len(resultValues) > 0 {
 				results := make([]any, len(resultValues))

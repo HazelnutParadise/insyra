@@ -14,10 +14,7 @@ func (dl *DataList) LinearInterpolation(x float64) float64 {
 		if len(l.data) < 2 {
 			return
 		}
-		data = make([]float64, len(l.data))
-		for i, v := range l.data {
-			data[i] = v.(float64)
-		}
+		data = l.ToF64Slice()
 	})
 	if len(data) < 2 {
 		dl.warn("LinearInterpolation", "Not enough data points")
@@ -43,10 +40,7 @@ func (dl *DataList) QuadraticInterpolation(x float64) float64 {
 		if len(l.data) < 3 {
 			return
 		}
-		data = make([]float64, len(l.data))
-		for i, v := range l.data {
-			data[i] = v.(float64)
-		}
+		data = l.ToF64Slice()
 	})
 	if len(data) < 3 {
 		dl.warn("QuadraticInterpolation", "Not enough data points")

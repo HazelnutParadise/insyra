@@ -111,21 +111,31 @@ func (dl *DataList) Append(values ...any) *DataList {
 // Concat creates a new DataList by concatenating another DataList to the current DataList.
 func (dl *DataList) Concat(other IDataList) *DataList {
 	result := NewDataList()
+	// Snapshot `other` under ITS OWN actor lock first. Reading other.data inside
+	// dl's actor would run inline without locking other (all DataLists share one
+	// re-entrancy group, so the nested AtomicDo takes the inline trust-zone path),
+	// racing any concurrent mutation of other. A top-level AtomicDo on other is
+	// not nested in any actor, so it acquires other's mutex properly.
+	var otherData []any
+	other.AtomicDo(func(other *DataList) {
+		otherData = append(otherData, other.data...)
+	})
 	dl.AtomicDo(func(dl *DataList) {
-		other.AtomicDo(func(other *DataList) {
-			result.data = append(result.data, dl.data...)
-			result.data = append(result.data, other.data...)
-		})
+		result.data = append(result.data, dl.data...)
+		result.data = append(result.data, otherData...)
 	})
 	return result
 }
 
 // AppendDataList appends another DataList to the current DataList.
 func (dl *DataList) AppendDataList(other IDataList) *DataList {
+	// Snapshot other under its own lock before entering dl's actor (see Concat).
+	var otherData []any
+	other.AtomicDo(func(other *DataList) {
+		otherData = append(otherData, other.data...)
+	})
 	dl.AtomicDo(func(dl *DataList) {
-		other.AtomicDo(func(other *DataList) {
-			dl.data = append(dl.data, other.data...)
-		})
+		dl.data = append(dl.data, otherData...)
 		go dl.updateTimestamp()
 	})
 	return dl
@@ -197,6 +207,7 @@ func (dl *DataList) Update(index int, newValue any) *DataList {
 		}
 		if index < 0 || index >= len(dl.data) {
 			dl.warn("ReplaceAtIndex", "Index %d out of bounds", index)
+			return
 		}
 		dl.data[index] = newValue
 		go dl.updateTimestamp()
@@ -381,7 +392,12 @@ func (dl *DataList) ReplaceOutliers(stdDevs float64, replacement float64) *DataL
 		threshold := stdDevs * stddev
 
 		for i, v := range dl.data {
-			val := conv.ParseF64(v)
+			val, ok := ToFloat64Safe(v)
+			if !ok {
+				// Non-numeric elements cannot be numeric outliers; leave them
+				// unchanged instead of panicking on conversion.
+				continue
+			}
 			if math.Abs(val-mean) > threshold {
 				dl.data[i] = replacement
 			}
@@ -446,7 +462,11 @@ func (dl *DataList) Drop(index int) *DataList {
 		if index < 0 {
 			index += len(dl.data)
 		}
-		if index >= len(dl.data) {
+		// Guard both bounds: a sufficiently negative index (|index| > len) is
+		// still negative after the adjustment above and must be rejected before
+		// slicing, otherwise dl.data[:index] panics. Valid negatives (-1..-len)
+		// have already been mapped into range and are unaffected.
+		if index < 0 || index >= len(dl.data) {
 			dl.warn("Drop", "Index out of bounds, returning")
 			return
 		}
@@ -845,7 +865,13 @@ func (dl *DataList) MovingAverage(windowSize int) *DataList {
 		for i := range movingAverageData {
 			windowSum := 0.0
 			for j := range windowSize {
-				windowSum += dl.data[i+j].(float64)
+				v, ok := ToFloat64Safe(dl.data[i+j])
+				if !ok {
+					dl.warn("MovingAverage", "Element %v is not numeric, aborting", dl.data[i+j])
+					isFailed = true
+					return
+				}
+				windowSum += v
 			}
 			movingAverageData[i] = windowSum / float64(windowSize)
 		}
@@ -872,8 +898,16 @@ func (dl *DataList) WeightedMovingAverage(windowSize int, weights any) *DataList
 
 		// 計算權重總和，避免直接除以 windowSize
 		weightsSum := 0.0
-		for _, w := range weightsSlice {
-			weightsSum += w.(float64)
+		weightVals := make([]float64, len(weightsSlice))
+		for idx, w := range weightsSlice {
+			wf, ok := ToFloat64Safe(w)
+			if !ok {
+				dl.warn("WeightedMovingAverage", "Weight %v is not numeric, aborting", w)
+				isFailed = true
+				return
+			}
+			weightVals[idx] = wf
+			weightsSum += wf
 		}
 
 		movingAvgData = make([]float64, len(dl.data)-windowSize+1)
@@ -881,7 +915,13 @@ func (dl *DataList) WeightedMovingAverage(windowSize int, weights any) *DataList
 			window := dl.data[i : i+windowSize]
 			sum := 0.0
 			for j := 0; j < windowSize; j++ {
-				sum += window[j].(float64) * weightsSlice[j].(float64)
+				wv, ok := ToFloat64Safe(window[j])
+				if !ok {
+					dl.warn("WeightedMovingAverage", "Element %v is not numeric, aborting", window[j])
+					isFailed = true
+					return
+				}
+				sum += wv * weightVals[j]
 			}
 			movingAvgData[i] = sum / weightsSum // 使用權重總和
 		}
@@ -903,6 +943,10 @@ func (dl *DataList) ExponentialSmoothing(alpha float64) *DataList {
 
 	var smoothedData []float64
 	dl.AtomicDo(func(dl *DataList) {
+		if dl.Len() == 0 {
+			dl.warn("ExponentialSmoothing", "DataList is empty")
+			return
+		}
 		floatData := dl.ToF64Slice()
 		smoothedData = make([]float64, dl.Len())
 		smoothedData[0] = floatData[0] // 使用初始值作為第一個平滑值
@@ -923,6 +967,10 @@ func (dl *DataList) DoubleExponentialSmoothing(alpha, beta float64) *DataList {
 	}
 	var smoothedData []float64
 	dl.AtomicDo(func(dl *DataList) {
+		if dl.Len() == 0 {
+			dl.warn("DoubleExponentialSmoothing", "DataList is empty")
+			return
+		}
 		floatData := dl.ToF64Slice()
 		smoothedData = make([]float64, dl.Len())
 		trend := 0.0
@@ -1889,22 +1937,26 @@ func (dl *DataList) Difference() *DataList {
 // IsEqualTo checks if the data of the DataList is equal to another DataList.
 func (dl *DataList) IsEqualTo(anotherDl *DataList) bool {
 	var result bool
+	// Snapshot anotherDl under its own lock first, then compare against dl's live
+	// data inside dl's actor (see Concat for why the nested pattern would race).
+	var otherData []any
+	anotherDl.AtomicDo(func(anotherDl *DataList) {
+		otherData = append(otherData, anotherDl.data...)
+	})
 	dl.AtomicDo(func(dl *DataList) {
-		anotherDl.AtomicDo(func(anotherDl *DataList) {
-			if len(dl.data) != len(anotherDl.data) {
+		if len(dl.data) != len(otherData) {
+			result = false
+			return
+		}
+
+		for i, v := range dl.data {
+			if v != otherData[i] {
 				result = false
 				return
 			}
+		}
 
-			for i, v := range dl.data {
-				if v != anotherDl.data[i] {
-					result = false
-					return
-				}
-			}
-
-			result = true
-		})
+		result = true
 	})
 	return result
 }
@@ -1912,44 +1964,54 @@ func (dl *DataList) IsEqualTo(anotherDl *DataList) bool {
 // IsTheSameAs checks if the DataList is fully the same as another DataList.
 // It checks for equality in name, data, creation timestamp, and last modified timestamp.
 func (dl *DataList) IsTheSameAs(anotherDl *DataList) bool {
+	if dl == anotherDl {
+		return true
+	}
+	if anotherDl == nil {
+		dl.AtomicDo(func(dl *DataList) {
+			dl.warn("IsTheSameAs", "Another DataList is nil, returning false")
+		})
+		return false
+	}
+
+	// Snapshot anotherDl's fields under its own lock before entering dl's actor
+	// (see Concat for why the nested pattern would race on anotherDl).
+	var otherData []any
+	var otherName string
+	var otherCreation int64
+	var otherLastModified int64
+	anotherDl.AtomicDo(func(anotherDl *DataList) {
+		otherData = append(otherData, anotherDl.data...)
+		otherName = anotherDl.name
+		otherCreation = anotherDl.creationTimestamp
+		otherLastModified = anotherDl.lastModifiedTimestamp.Load()
+	})
+
 	var result bool
 	dl.AtomicDo(func(dl *DataList) {
-		anotherDl.AtomicDo(func(anotherDl *DataList) {
-			if dl == anotherDl {
-				result = true
-				return
-			}
+		if len(dl.data) != len(otherData) {
+			result = false
+			return
+		}
 
-			if anotherDl == nil {
-				dl.warn("IsTheSameAs", "Another DataList is nil, returning false")
+		for i, v := range dl.data {
+			if v != otherData[i] {
 				result = false
 				return
 			}
+		}
 
-			if len(dl.data) != len(anotherDl.data) {
-				result = false
-				return
-			}
+		if dl.name != otherName {
+			result = false
+			return
+		}
 
-			for i, v := range dl.data {
-				if v != anotherDl.data[i] {
-					result = false
-					return
-				}
-			}
+		if dl.creationTimestamp != otherCreation || dl.lastModifiedTimestamp.Load() != otherLastModified {
+			result = false
+			return
+		}
 
-			if dl.name != anotherDl.name {
-				result = false
-				return
-			}
-
-			if dl.creationTimestamp != anotherDl.creationTimestamp || dl.lastModifiedTimestamp.Load() != anotherDl.lastModifiedTimestamp.Load() {
-				result = false
-				return
-			}
-
-			result = true
-		})
+		result = true
 	})
 	return result
 }

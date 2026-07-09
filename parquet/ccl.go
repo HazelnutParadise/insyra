@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/HazelnutParadise/Go-Utils/conv"
 	"github.com/HazelnutParadise/insyra"
@@ -227,6 +228,31 @@ func (c *parquetContext) GetAllData() ([]any, error) {
 }
 
 // applyBatchCCL applies CCL transformations to a single arrow.Record batch
+// resolveAssignTarget maps a CCL assignment target to an existing column name.
+// A named target is encoded by the parser as "'name'" (surrounded by single
+// quotes); a column-index target is the bare Excel letter (A, B, ..., AA).
+// Mirrors the resolution used by the DataTable CCL path (executeAssignment).
+func resolveAssignTarget(target string, colNames []string) (string, bool) {
+	if len(target) >= 2 && strings.HasPrefix(target, "'") && strings.HasSuffix(target, "'") {
+		name := target[1 : len(target)-1]
+		for _, c := range colNames {
+			if c == name {
+				return name, true
+			}
+		}
+		return "", false
+	}
+	if idx, ok := insyra.ParseColIndex(target); ok && idx >= 0 && idx < len(colNames) {
+		return colNames[idx], true
+	}
+	for _, c := range colNames {
+		if c == target {
+			return target, true
+		}
+	}
+	return "", false
+}
+
 func applyBatchCCL(rec arrow.Record, pqCtx *parquetContext, colNames []string, compiledNodes []ccl.CCLNode) (arrow.Record, error) {
 	numRows := int(rec.NumRows())
 
@@ -267,7 +293,15 @@ func applyBatchCCL(rec arrow.Record, pqCtx *parquetContext, colNames []string, c
 			colNameMap[newColName] = len(colNames) - 1
 
 		} else if target, isAssignment := ccl.GetAssignmentTarget(node); isAssignment {
-			// Assignment to existing column
+			// Assignment to existing column.
+			// The parser encodes a named target ['x'] as "'x'" (quoted) and a
+			// column-index target A/B/... as the bare letter. Resolve it to the
+			// actual column name used as the resultCols key; otherwise ['x'] = ...
+			// would write to key "'x'" and leave the real column untouched.
+			resolvedTarget, ok := resolveAssignTarget(target, colNames)
+			if !ok {
+				return nil, fmt.Errorf("assignment target %q does not resolve to an existing column", target)
+			}
 			expr := ccl.GetExpressionNode(node)
 
 			// Check if expression depends on row
@@ -284,7 +318,7 @@ func applyBatchCCL(rec arrow.Record, pqCtx *parquetContext, colNames []string, c
 					}
 					updatedCol[rowIdx] = val
 				}
-				resultCols[target] = updatedCol
+				resultCols[resolvedTarget] = updatedCol
 			} else {
 				// Constant expression - evaluate once
 				if err := pqCtx.SetRowIndex(0); err != nil {
@@ -298,7 +332,7 @@ func applyBatchCCL(rec arrow.Record, pqCtx *parquetContext, colNames []string, c
 				for i := range updatedCol {
 					updatedCol[i] = val
 				}
-				resultCols[target] = updatedCol
+				resultCols[resolvedTarget] = updatedCol
 			}
 		}
 	}
@@ -571,6 +605,23 @@ func ApplyCCL(ctx context.Context, path string, cclScript string) error {
 	// Stream through input file (now safe since we write to tmpPath)
 	recChan, errChan := streamAsArrowRecord(ctx, path, ReadOptions{}, batchSize)
 
+	// finish 統一處理串流成功結束時的收尾，供兩個完成路徑（errChan 關閉、recChan 關閉）共用。
+	finish := func() error {
+		if writer == nil {
+			// 沒有任何 record batch（輸入為空）：不可用 0-byte 暫存檔覆蓋原檔，保留原檔不動。
+			return nil
+		}
+		// pqarrow.FileWriter.Close() 會一併關閉底層 *os.File，因此關閉 writer 後
+		// 不可再呼叫 outFile.Close()（會 double-close 失敗並阻斷後續 rename）。
+		if err := writer.Close(); err != nil {
+			return fmt.Errorf("failed to close writer: %w", err)
+		}
+		if err := os.Rename(tmpPath, path); err != nil {
+			return fmt.Errorf("failed to replace original file: %w", err)
+		}
+		return nil
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -581,52 +632,21 @@ func ApplyCCL(ctx context.Context, path string, cclScript string) error {
 			}
 			return ctx.Err()
 		case err := <-errChan:
-			if writer != nil {
-				if err := writer.Close(); err != nil {
-					log.Printf("parquet: failed to close writer: %v", err)
-				}
-			}
 			if err != nil {
+				if writer != nil {
+					if cerr := writer.Close(); cerr != nil {
+						log.Printf("parquet: failed to close writer: %v", cerr)
+					}
+				}
 				return err
 			}
-			// Stream finished successfully
-			if writer != nil {
-				if err := writer.Close(); err != nil {
-					return fmt.Errorf("failed to close writer: %w", err)
-				}
-			}
-
-			// Close output file before moving
-			if err := outFile.Close(); err != nil {
-				return fmt.Errorf("failed to close output file: %w", err)
-			}
-
-			// Move temporary file to original path
-			if err := os.Rename(tmpPath, path); err != nil {
-				return fmt.Errorf("failed to replace original file: %w", err)
-			}
-
-			return nil
+			// errChan 關閉且無錯誤 = 串流成功結束
+			return finish()
 
 		case rec, ok := <-recChan:
 			if !ok {
-				// Channel closed
-				if writer != nil {
-					if err := writer.Close(); err != nil {
-						return fmt.Errorf("failed to close writer: %w", err)
-					}
-				}
-
-				// Close output file before moving
-				if err := outFile.Close(); err != nil {
-					return fmt.Errorf("failed to close output file: %w", err)
-				}
-				// Move temporary file to original path
-				if err := os.Rename(tmpPath, path); err != nil {
-					return fmt.Errorf("failed to replace original file: %w", err)
-				}
-
-				return nil
+				// recChan 關閉 = 串流成功結束（無緩衝 channel，此時所有 record 已消耗完）
+				return finish()
 			}
 
 			// Get column names from first batch

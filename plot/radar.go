@@ -47,8 +47,8 @@ func CreateRadarChart(config RadarChartConfig, series []RadarSeries) *charts.Rad
 		Height:          config.Height,
 		BackgroundColor: config.BackgroundColor,
 		Theme:           string(config.Theme),
-		Title:           config.Title,
-		Subtitle:        config.Subtitle,
+		Title:           sanitizeChartText(config.Title),
+		Subtitle:        sanitizeChartText(config.Subtitle),
 		TitlePos:        string(config.TitlePos),
 		HideLegend:      config.HideLegend,
 		LegendPos:       string(config.LegendPos),
@@ -145,10 +145,20 @@ func calculateMaxValueFromSeries(series []RadarSeries, idx int) float32 {
 		return 0
 	}
 	var maxValue float32
+	found := false
 	for _, s := range series {
-		if idx < len(s.Values) && s.Values[idx] > maxValue {
-			maxValue = s.Values[idx]
+		if idx < len(s.Values) {
+			if !found || s.Values[idx] > maxValue {
+				maxValue = s.Values[idx]
+				found = true
+			}
 		}
+	}
+	// Seeding from 0 made an all-negative/zero indicator return 0, and scaling a
+	// negative max by 1.1 pushes the axis bound the wrong way. Use 0 as the bound
+	// for non-positive maxima (0 bounds all non-positive values); otherwise pad by 10%.
+	if !found || maxValue <= 0 {
+		return 0
 	}
 	return maxValue * 1.1
 }

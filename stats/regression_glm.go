@@ -112,15 +112,25 @@ func GLM(opts GLMOptions, dlY insyra.IDataList, dlXs ...insyra.IDataList) (*GLMR
 		dispersion = pearsonDispersion(pearson, dfResidual)
 	}
 	se, z, p := computeGLMInference(fit.beta, fit.covUnscaled, dispersion)
-	if fam.name() == string(Gaussian) {
+	// For an estimated (non-fixed) dispersion the sampling distribution of the
+	// coefficients is t on dfResidual, not standard normal. Use t for BOTH the
+	// p-values and the CIs so they stay consistent (previously p used t but the
+	// CIs used a z quantile, making them too narrow).
+	useT := !fixed && dfResidual > 0
+	if useT {
 		for i := range z {
-			if !math.IsNaN(z[i]) && dfResidual > 0 {
+			if !math.IsNaN(z[i]) {
 				p[i] = tTwoTailedPValue(z[i], float64(dfResidual))
 			}
 		}
 	}
 	cl := resolveConfidenceLevel(opts.ConfidenceLevel)
-	cis := buildGLMCoeffCIs(fit.beta, se, cl)
+	var cis [][2]float64
+	if useT {
+		cis = buildGLMCoeffCIsT(fit.beta, se, cl, float64(dfResidual))
+	} else {
+		cis = buildGLMCoeffCIs(fit.beta, se, cl)
+	}
 	logLikDispersion := dispersion
 	if fam.name() == string(Gaussian) && n > 0 {
 		logLikDispersion = fit.deviance / float64(n)

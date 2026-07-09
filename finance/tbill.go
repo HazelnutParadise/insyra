@@ -15,6 +15,14 @@ import (
 // Returns an error if maturity ≤ settlement or DSM > 365.
 //
 // Excel equivalent: TBILLEQ(settlement, maturity, discount)
+//
+// KNOWN LIMITATION (M-tbill, pending): Excel switches to a different
+// coupon-equivalent formula with semi-annual compounding when DSM > 182 days;
+// this implementation applies the simple short-bill formula above for all
+// DSM ≤ 365, so results diverge from Excel for DSM > 182. Implementing the
+// long-bill branch correctly requires decimal square-root support and
+// Excel-verified reference values (the formula is numerically unstable near the
+// 182-day boundary), so it is deferred rather than approximated here.
 func TBillEq(settlement, maturity time.Time, discount decimal.Decimal, opts ...Options) (decimal.Decimal, error) {
 	dsm, err := tbillDSM(settlement, maturity)
 	if err != nil {

@@ -336,27 +336,38 @@ func (dt *DataTable) Filter(filterFunc func(rowIndex int, columnIndex string, va
 	dt.AtomicDo(func(dt *DataTable) {
 		filteredCols := make([]*DataList, len(dt.columns))
 		for i := range dt.columns {
-			filteredCols[i] = &DataList{}
+			// Preserve the original column name (and metadata) in the result;
+			// a bare &DataList{} would silently drop every column name.
+			filteredCols[i] = &DataList{name: dt.columns[i].name}
 		}
 
 		var filteredRowIndices []int
-		for rowIdx := range dt.columns[0].data {
-			keepRow := false
-			for colIdx, col := range dt.columns {
-				value := col.data[rowIdx]
-				colName, _ := utils.CalcColIndex(colIdx)
-				if filterFunc(rowIdx, colName, value) {
-					keepRow = true
-					filteredCols[colIdx].data = append(filteredCols[colIdx].data, value)
-				} else {
-					filteredCols[colIdx].data = append(filteredCols[colIdx].data, nil)
+		// Guard against an empty table (no columns): dt.columns[0] would panic.
+		if len(dt.columns) > 0 {
+			cellAt := func(col *DataList, rowIdx int) any {
+				if rowIdx < len(col.data) {
+					return col.data[rowIdx]
 				}
+				return nil
 			}
-			if !keepRow {
-				for _, col := range filteredCols {
-					col.data = col.data[:len(col.data)-1]
+			for rowIdx := range dt.columns[0].data {
+				// A row is kept if the predicate matches ANY cell in it.
+				keepRow := false
+				for colIdx, col := range dt.columns {
+					colName, _ := utils.CalcColIndex(colIdx)
+					if filterFunc(rowIdx, colName, cellAt(col, rowIdx)) {
+						keepRow = true
+						break
+					}
 				}
-			} else {
+				if !keepRow {
+					continue
+				}
+				// Preserve every cell's ORIGINAL value in a kept row; do not mask
+				// non-matching cells to nil (that silently dropped data).
+				for colIdx, col := range dt.columns {
+					filteredCols[colIdx].data = append(filteredCols[colIdx].data, cellAt(col, rowIdx))
+				}
 				filteredRowIndices = append(filteredRowIndices, rowIdx)
 			}
 		}

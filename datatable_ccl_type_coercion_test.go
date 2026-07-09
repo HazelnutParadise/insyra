@@ -227,11 +227,14 @@ func TestCCL_BooleanOperations(t *testing.T) {
 			expected: []any{false, true, false, true},
 		},
 		{
-			name:     "Complex logical expression",
-			colA:     []any{10, 20, 30, 40},
-			colB:     []any{5, 15, 25, 35},
-			cclExpr:  "(A > 15 && B > 10) || (A < 15 && B < 10)",
-			expected: []any{false, true, true, true},
+			name:    "Complex logical expression",
+			colA:    []any{10, 20, 30, 40},
+			colB:    []any{5, 15, 25, 35},
+			cclExpr: "(A > 15 && B > 10) || (A < 15 && B < 10)",
+			// Row 0 (A=10,B=5): (F&&F) || (T&&T) = false || true = true.
+			// The previous expected[0]=false reflected a parser bug that dropped
+			// the "|| (...)" after the first parenthesized group; corrected here.
+			expected: []any{true, true, true, true},
 		},
 	}
 

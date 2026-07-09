@@ -57,11 +57,23 @@ func CompareAny(a, b any) int {
 	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
 		fa := utils.ToFloat64(a)
 		if fb, ok := utils.ToFloat64Safe(b); ok {
-			if fa < fb {
+			// Order NaN deterministically (NaN sorts before every number, and all
+			// NaNs are equal) so the comparator is a valid strict-weak ordering.
+			// Without this, NaN vs any number returns 0, violating transitivity
+			// and corrupting slices.SortStableFunc results.
+			aNaN, bNaN := math.IsNaN(fa), math.IsNaN(fb)
+			switch {
+			case aNaN && bNaN:
+				cmp = 0
+			case aNaN:
 				cmp = -1
-			} else if fa > fb {
+			case bNaN:
 				cmp = 1
-			} else {
+			case fa < fb:
+				cmp = -1
+			case fa > fb:
+				cmp = 1
+			default:
 				cmp = 0
 			}
 		} else {

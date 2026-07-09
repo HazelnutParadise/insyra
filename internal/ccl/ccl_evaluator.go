@@ -5,18 +5,28 @@ import (
 	"log"
 	"math"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/HazelnutParadise/insyra/internal/utils"
+	"github.com/petermattis/goid"
 )
 
-// 新增一個全域變數來追蹤遞迴深度
-var evalDepth int = 0
-var maxEvalDepth int = 100 // 設置合理的最大遞迴深度
+// 以 goroutine 為單位追蹤遞迴深度。原本的全域 evalDepth 會在多個 goroutine
+// 同時評估獨立運算式時互相競寫（go test -race 可重現），改為 per-goroutine
+// 計數即可消除 race，同時保留遞迴深度防護的語意。
+var evalDepthByGoid sync.Map // map[int64]int
+// maxEvalDepth guards against pathological stack growth. It must be well above
+// the AST depth of any legitimate expression: a long flat expression such as
+// A+B+C+... nests one binary node per term, so a low cap (previously 100) would
+// wrongly reject valid formulas. A finite compiled AST cannot recurse infinitely
+// (runaway recursion via registered functions is bounded separately by
+// funcCallDepth), so a high cap is safe.
+var maxEvalDepth = 10000
 
-// ResetEvalDepth 重置全域評估深度變數
+// ResetEvalDepth 重置目前 goroutine 的評估深度。
 func ResetEvalDepth() {
-	evalDepth = 0
+	evalDepthByGoid.Delete(goid.Get())
 }
 
 // EvaluationResult represents the result of evaluating a CCL statement
@@ -200,13 +210,27 @@ func containsRowIndex(n cclNode) bool {
 }
 
 func evaluateWithContext(n cclNode, ctx Context) (any, error) {
-	// 檢查遞迴深度（移除 debug 輸出以提升效能）
-	evalDepth++
-	if evalDepth > maxEvalDepth {
-		evalDepth = 0
+	// 檢查遞迴深度（per-goroutine，避免並發評估共用計數器造成 data race）
+	gid := goid.Get()
+	depth := 0
+	if v, ok := evalDepthByGoid.Load(gid); ok {
+		depth = v.(int)
+	}
+	depth++
+	if depth > maxEvalDepth {
+		evalDepthByGoid.Delete(gid)
 		return nil, fmt.Errorf("evaluate: maximum recursion depth exceeded (%d), possibly infinite recursion", maxEvalDepth)
 	}
-	defer func() { evalDepth-- }()
+	evalDepthByGoid.Store(gid, depth)
+	defer func() {
+		if v, ok := evalDepthByGoid.Load(gid); ok {
+			if d := v.(int) - 1; d <= 0 {
+				evalDepthByGoid.Delete(gid)
+			} else {
+				evalDepthByGoid.Store(gid, d)
+			}
+		}
+	}()
 
 	switch t := n.(type) {
 	case *cclNumberNode:
@@ -548,7 +572,19 @@ func applyOperator(op string, left, right any) (any, error) {
 		case "*":
 			return lf * rf, nil
 		case "/":
+			// Consistent with the nil-operand path and the '%' operator: division
+			// by zero is a reported error, not a silent +Inf.
+			if rf == 0 {
+				return nil, fmt.Errorf("division by zero")
+			}
 			return lf / rf, nil
+		case "%":
+			// '%' is tokenized and given precedence; implement it here (mirrors
+			// the MOD function) instead of erroring on every use.
+			if rf == 0 {
+				return nil, fmt.Errorf("modulo by zero")
+			}
+			return math.Mod(lf, rf), nil
 		case "^":
 			return math.Pow(lf, rf), nil
 		case ">":

@@ -94,6 +94,15 @@ func CustomerActivityIndex(dt insyra.IDataTable, caiConfig CAIConfig) insyra.IDa
 		}
 	})
 
+	// 交易時間是按輸入列順序累積的，未必依時間排序。CAI 需要時間序（錨點取最晚
+	// 交易、以及後續的間隔計算都依賴這點），因此先對每位客戶的時間排序。
+	for id := range customerTransactionsTime {
+		times := customerTransactionsTime[id]
+		algorithms.ParallelSortStableFunc(times, func(a, b time.Time) int {
+			return a.Compare(b)
+		})
+	}
+
 	// 最後一個點加入交易紀錄中最晚的時間
 	allLastTimes := []time.Time{}
 	for _, times := range customerTransactionsTime {
@@ -107,6 +116,10 @@ func CustomerActivityIndex(dt insyra.IDataTable, caiConfig CAIConfig) insyra.IDa
 	algorithms.ParallelSortStableFunc(allLastTimes, func(a, b time.Time) int {
 		return a.Compare(b)
 	})
+	if len(allLastTimes) == 0 {
+		insyra.LogWarning("mkt", "CustomerActivityIndex", "No customer has at least 3 transactions, returning nil")
+		return nil
+	}
 	latestTime := allLastTimes[len(allLastTimes)-1]
 
 	for customerID, times := range customerTransactionsTime {

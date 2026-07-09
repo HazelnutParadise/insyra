@@ -42,7 +42,15 @@ func (m *Manager) SaveState(envName string, vars map[string]any) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(envPath, "state.json"), payload, 0o644)
+	// Atomic write: write to a temp file then rename over state.json (rename is
+	// atomic on the same filesystem), so an interruption mid-write cannot leave a
+	// truncated/corrupted state.json that would wipe the user's variables.
+	finalPath := filepath.Join(envPath, "state.json")
+	tmpPath := finalPath + ".tmp"
+	if err := os.WriteFile(tmpPath, payload, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, finalPath)
 }
 
 func (m *Manager) LoadState(envName string) (*State, error) {

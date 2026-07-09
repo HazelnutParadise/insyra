@@ -19,8 +19,15 @@ func (dt *DataTable) Summary() {
 	dt.AtomicDo(func(dt *DataTable) {
 		// Access dt.name directly while holding the lock, not through GetName() method
 		tableName = dt.name
+		// Deep-copy each column's data inside the lock. A shallow pointer copy
+		// would leave the statistics loop below reading the live backing arrays
+		// after the lock is dropped, racing any concurrent mutation.
 		columns = make([]*DataList, len(dt.columns))
-		copy(columns, dt.columns)
+		for i, c := range dt.columns {
+			dataCopy := make([]any, len(c.data))
+			copy(dataCopy, c.data)
+			columns[i] = &DataList{name: c.name, data: dataCopy}
+		}
 		rowCount = dt.getMaxColLength()
 	})
 

@@ -5,6 +5,7 @@ package plot
 import (
 	"bytes"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"os"
@@ -15,6 +16,16 @@ import (
 	"github.com/go-echarts/snapshot-chromedp/render"
 	"github.com/google/uuid"
 )
+
+// sanitizeChartText neutralizes characters that could break out of the
+// <script>-embedded option JSON that go-echarts emits with HTML escaping
+// disabled, preventing stored XSS through user-provided chart title/subtitle/
+// label text. It HTML-escapes '<', '>' and '&' so a value like
+// "</script><script>…" can no longer form a real tag; ECharts still renders the
+// (escaped) text on the canvas.
+func sanitizeChartText(s string) string {
+	return html.EscapeString(s)
+}
 
 // Renderer
 // Any kinds of charts have their render implementation, and

@@ -163,19 +163,32 @@ func ReadCSV_File(filePath string, setFirstColToRowNames bool, setFirstRowToColN
 				continue
 			}
 			column := dt.columns[colIndex]
-			if num, err := strconv.ParseFloat(cell, 64); err == nil {
-				column.data = append(column.data, num)
-			} else {
-				column.data = append(column.data, cell)
-			}
+			column.data = append(column.data, parseCSVCell(cell))
 		}
 	}
 
 	return dt, nil
 }
 
+// parseCSVCell converts a CSV cell string to a numeric type, falling back to the
+// raw string. NOTE: integer-valued cells are parsed as float64 to preserve the
+// library's existing CSV contract (see TestReadCSV_String). Parsing integers as
+// int64 would preserve precision for values beyond 2^53 but is a compatibility
+// change to the numeric type every caller sees, so it is deferred as a design
+// decision rather than silently changed here (M6).
+func parseCSVCell(cell string) any {
+	if f, err := strconv.ParseFloat(cell, 64); err == nil {
+		return f
+	}
+	return cell
+}
+
 func ReadCSV_String(csvString string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error) {
 	dt := NewDataTable()
+
+	// Strip a leading UTF-8 BOM so the first header/cell is not corrupted
+	// (consistent with the file reader).
+	csvString = strings.TrimPrefix(csvString, string([]byte{0xEF, 0xBB, 0xBF}))
 
 	reader := csv.NewReader(strings.NewReader(csvString))
 	rows, err := reader.ReadAll()
@@ -223,11 +236,7 @@ func ReadCSV_String(csvString string, setFirstColToRowNames bool, setFirstRowToC
 				continue
 			}
 			column := dt.columns[colIndex]
-			if num, err := strconv.ParseFloat(cell, 64); err == nil {
-				column.data = append(column.data, num)
-			} else {
-				column.data = append(column.data, cell)
-			}
+			column.data = append(column.data, parseCSVCell(cell))
 		}
 	}
 
