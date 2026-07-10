@@ -7,6 +7,8 @@ tags: [workflow, artifacts, experimental]
 
 Implement tasks from an OpenSpec change.
 
+**Store selection:** If the user names a store (a store is a standalone OpenSpec repo registered on this machine) or the work lives in one, run `openspec store list --json` to discover registered store ids, then pass `--store <id>` on the commands that read or write specs and changes (`new change`, `status`, `instructions`, `list`, `show`, `validate`, `archive`, `doctor`, `context`). Other commands do not take the flag. Hints printed by commands already carry the flag; keep it on follow-ups. Without a store, commands act on the nearest local `openspec/` root.
+
 **Input**: Optionally specify a change name (e.g., `/opsx:apply add-auth`). If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
 
 **Steps**
@@ -26,6 +28,7 @@ Implement tasks from an OpenSpec change.
    ```
    Parse the JSON to understand:
    - `schemaName`: The workflow being used (e.g., "spec-driven")
+   - `planningHome`, `changeRoot`, and `actionContext`: planning scope and edit constraints
    - Which artifact contains the tasks (typically "tasks" for spec-driven, check status for others)
 
 3. **Get apply instructions**
@@ -35,7 +38,7 @@ Implement tasks from an OpenSpec change.
    ```
 
    This returns:
-   - Context file paths (varies by schema)
+   - `contextFiles`: artifact ID -> array of concrete file paths (varies by schema)
    - Progress (total, complete, remaining)
    - Task list with status
    - Dynamic instruction based on current state
@@ -47,7 +50,7 @@ Implement tasks from an OpenSpec change.
 
 4. **Read context files**
 
-   Read the files listed in `contextFiles` from the apply instructions output.
+   Read every file path listed under `contextFiles` from the apply instructions output.
    The files depend on the schema being used:
    - **spec-driven**: proposal, specs, design, tasks
    - Other schemas: follow the contextFiles from CLI output
