@@ -106,6 +106,7 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 - Description: Load data into a DataTable variable from a file, parquet, or SQL connection
 - Usage: `load <file> [headers true|false] [rownames true|false] [encoding <enc>] [sheet <name>] | load parquet <file> [cols <c1,c2,...>] [rowgroups <i1,i2,...>] | load sql <conn> <table> [where "..."] [order "..."] [limit N] [offset N] [cols "c1,c2"] [schema <s>] [indexcol <c>] [parsedates "c1,c2"] | load sql <conn> query "<SQL>" [params <v1> <v2> ...] [as <var>]`
 - Defaults: `headers=true`, `rownames=false`. Booleans accept `true|false|yes|no|on|off|1|0`.
+- Types: an all-integer CSV column loads as `int64` (large IDs keep full precision); a column with any decimal loads as `float64`; others stay strings.
 - Examples:
   - `insyra load data.csv as t`
   - `insyra load matrix.csv headers false as t` (no header row)
@@ -378,6 +379,7 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 - Description: DataList quartile
 - Usage: `quartile <var> <q>`
 - Example: `insyra quartile x 1`
+- Note: uses R's type-7 quantile (the R / NumPy / pandas default), consistent with `describe` and `percentile`.
 
 ### `iqr`
 - Description: DataList IQR

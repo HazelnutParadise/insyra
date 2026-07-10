@@ -209,6 +209,7 @@ import (
 func main() {
     // Column-level type inference: all-integer columns load as int64 (large IDs
     // keep full precision), columns with any decimal as float64, others as string.
+    // ReadJSON types integer JSON values as int64 the same way.
     dt, err := insyra.ReadCSV_File("data.csv", false, true)
     if err != nil {
         log.Fatal(err)
