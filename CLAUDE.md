@@ -4,11 +4,34 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Repo Is
 
-**Insyra** (`github.com/HazelnutParadise/insyra`) is a Go data analysis library (v0.2.x, "Pier-2") providing:
+**Insyra** (`github.com/HazelnutParadise/insyra`) is a Go data analysis library (v0.3.x, "Huashan") providing:
 - `DataList` and `DataTable` as the core data structures
 - **CCL** (Column Calculation Language) — a domain-specific expression language for column transforms
 - A CLI/REPL (`insyra` binary) built with Cobra
 - Sub-packages for stats, plotting, LP, Python interop, parallel processing, file I/O, etc.
+
+## Change Workflow — OpenSpec (required)
+
+**Every non-trivial change goes through the OpenSpec workflow.** This repo is
+OpenSpec-initialized (see `openspec/`). Do NOT implement a feature, breaking
+change, new package, or substantial fix straight into the code — drive it
+through a change first:
+
+1. **Propose** — create the change (proposal + spec deltas + tasks) under
+   `openspec/changes/<change-id>/` (`openspec-propose` / `openspec-new-change`).
+2. **Apply** — implement the tasks (`openspec-apply-change`).
+3. **Verify** — confirm the implementation matches the artifacts
+   (`openspec-verify-change`).
+4. **Archive** — once the change is implemented and merged, archive it into
+   `openspec/changes/archive/` (`openspec-archive-change`). **Completed changes
+   must be archived, not left sitting in `openspec/changes/`.**
+
+Trivial edits (typos, formatting, comment/doc-only touch-ups) may skip OpenSpec.
+When in doubt, propose a change. The docs/skills-in-sync rule below still applies
+to whatever the change touches.
+
+`AGENTS.md` (and `cli/AGENTS.md`, `stats/AGENTS.md`) are `@CLAUDE.md` includes,
+so this policy applies to every agent tool that reads either file.
 
 ## Commands
 
