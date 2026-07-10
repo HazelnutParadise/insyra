@@ -491,35 +491,12 @@ func maxAbsOf(vals []float64) float64 {
 	return m
 }
 
-// quantileQuartile mirrors DataList.Quartile's p*(n+1) positioning so the
-// RobustScaler's quartiles match the library's IQR().
+// quantileQuartile computes the RobustScaler's quartiles with the library's
+// shared type-7 quantile (see DataList.quantileType7), so they match Quartile /
+// IQR / Percentile / Describe and sklearn's RobustScaler (which uses
+// np.percentile, i.e. type-7).
 func quantileQuartile(sorted []float64, p float64) float64 {
-	n := len(sorted)
-	if n == 0 {
-		return math.NaN()
-	}
-	if n == 1 {
-		return sorted[0]
-	}
-	pos := p * float64(n+1)
-	if pos < 1.0 {
-		pos = 1.0
-	} else if pos > float64(n) {
-		pos = float64(n)
-	}
-	lower := int(math.Floor(pos)) - 1
-	upper := int(math.Ceil(pos)) - 1
-	if lower < 0 {
-		lower = 0
-	}
-	if upper >= n {
-		upper = n - 1
-	}
-	if lower == upper {
-		return sorted[lower]
-	}
-	frac := pos - math.Floor(pos)
-	return sorted[lower] + frac*(sorted[upper]-sorted[lower])
+	return quantileType7(sorted, p)
 }
 
 // compile-time interface checks

@@ -1211,7 +1211,7 @@ range := dl.Range() // 8.0 (9 - 1)
 func (dl *DataList) Quartile(q int) float64
 ```
 
-**Description:** Calculates quartile values (Q1, Q2, Q3).
+**Description:** Calculates quartile values (Q1, Q2, Q3). Uses R's type-7 quantile (the R / NumPy / pandas default), so `Quartile`, `Percentile`, `IQR`, `Describe` and `RobustScale` all agree.
 
 **Parameters:**
 
@@ -1259,7 +1259,7 @@ iqr := dl.IQR()
 func (dl *DataList) Percentile(percentile float64) float64
 ```
 
-**Description:** Calculates the value below which a given percentage of observations fall.
+**Description:** Calculates the value below which a given percentage of observations fall. Uses R's type-7 quantile (the R / NumPy / pandas default), consistent with `Quartile`.
 
 **Parameters:**
 

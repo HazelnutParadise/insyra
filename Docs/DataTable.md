@@ -1068,7 +1068,7 @@ func (dt *DataTable) MaxAbsScale(cols ...string) (*DataTable, *MaxAbsScaler, err
 |---|---|---|---|
 | `StandardScaler` | mean | sample std dev (matches `Standardize`) | roughly Gaussian features; the common default |
 | `MinMaxScaler` | min | range, into `[featureMin, featureMax]` | you need a bounded range (e.g. `[0,1]`) and have few outliers |
-| `RobustScaler` | median | IQR (Q3−Q1) | features have outliers that would distort mean/std |
+| `RobustScaler` | median | IQR (Q3−Q1), type-7 quantile — matches scikit-learn's `RobustScaler` | features have outliers that would distort mean/std |
 | `MaxAbsScaler` | 0 | max absolute value, into `[-1,1]` | sparse or sign-meaningful data you don't want to shift |
 
 **Behavior:**

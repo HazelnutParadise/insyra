@@ -1709,9 +1709,37 @@ func (dl *DataList) Range() float64 {
 	return result
 }
 
+// quantileType7 returns the p-quantile (p in [0,1]) of an ascending-sorted,
+// non-empty slice using R's type-7 method (the R / numpy / pandas default):
+// linear interpolation at position h = p*(n-1). This is the single quantile
+// definition shared by Quartile, Percentile and the RobustScaler so they never
+// disagree with each other or with Describe.
+func quantileType7(sorted []float64, p float64) float64 {
+	n := len(sorted)
+	if n == 0 {
+		return math.NaN()
+	}
+	if n == 1 {
+		return sorted[0]
+	}
+	h := p * float64(n-1)
+	lower := int(math.Floor(h))
+	upper := int(math.Ceil(h))
+	if lower < 0 {
+		lower = 0
+	}
+	if upper >= n {
+		upper = n - 1
+	}
+	if lower == upper {
+		return sorted[lower]
+	}
+	return sorted[lower] + (h-float64(lower))*(sorted[upper]-sorted[lower])
+}
+
 // Quartile calculates the quartile based on the input value (1 to 3).
 // 1 corresponds to the first quartile (Q1), 2 to the median (Q2), and 3 to the third quartile (Q3).
-// This implementation uses percentiles to compute quartiles.
+// Uses R's type-7 quantile (the R / numpy / pandas default), matching Percentile.
 func (dl *DataList) Quartile(q int) float64 {
 	var result float64
 	dl.AtomicDo(func(dl *DataList) {
@@ -1746,10 +1774,7 @@ func (dl *DataList) Quartile(q int) float64 {
 		// Sort the data
 		sort.Float64s(numericData)
 
-		n := len(numericData)
 		var p float64
-
-		// Set the percentile based on the quartile
 		switch q {
 		case 1:
 			p = 0.25
@@ -1759,40 +1784,9 @@ func (dl *DataList) Quartile(q int) float64 {
 			p = 0.75
 		}
 
-		// Calculate the position using the percentile
-		pos := p * float64(n+1)
-
-		// Adjust position if it is outside the range
-		if pos < 1.0 {
-			pos = 1.0
-		} else if pos > float64(n) {
-			pos = float64(n)
-		}
-
-		// Convert position to indices
-		lowerIndex := int(math.Floor(pos)) - 1 // Subtract 1 for zero-based index
-		upperIndex := int(math.Ceil(pos)) - 1
-
-		// Ensure indices are within bounds
-		if lowerIndex < 0 {
-			lowerIndex = 0
-		}
-		if upperIndex >= n {
-			upperIndex = n - 1
-		}
-
-		// Handle the case where the position is exactly an integer
-		if lowerIndex == upperIndex {
-			result = numericData[lowerIndex]
-			return
-		}
-
-		// Interpolate between the lower and upper bounds
-		lowerValue := numericData[lowerIndex]
-		upperValue := numericData[upperIndex]
-		fraction := pos - math.Floor(pos)
-
-		result = lowerValue + fraction*(upperValue-lowerValue)
+		// Unified type-7 quantile so Quartile agrees with Percentile / Describe /
+		// RobustScaler. numericData is already sorted above.
+		result = quantileType7(numericData, p)
 	})
 	return result
 }
@@ -1861,41 +1855,9 @@ func (dl *DataList) Percentile(p float64) float64 {
 		// Sort the data
 		sort.Float64s(numericData)
 
-		n := len(numericData)
-		if n == 1 {
-			result = numericData[0]
-			return
-		}
-
-		// Calculate the position using R's type=7 method
-		p /= 100.0
-		h := p*(float64(n)-1) + 1
-
-		// Adjust position for zero-based index
-		h -= 1
-
-		lowerIndex := int(math.Floor(h))
-		upperIndex := int(math.Ceil(h))
-
-		// Ensure indices are within bounds
-		if lowerIndex < 0 {
-			lowerIndex = 0
-		}
-		if upperIndex >= n {
-			upperIndex = n - 1
-		}
-
-		lowerValue := numericData[lowerIndex]
-		upperValue := numericData[upperIndex]
-
-		if lowerIndex == upperIndex {
-			result = lowerValue
-			return
-		}
-
-		// Interpolate between the lower and upper values
-		fraction := h - float64(lowerIndex)
-		result = lowerValue + fraction*(upperValue-lowerValue)
+		// Unified type-7 quantile (see quantileType7): the R / numpy / pandas
+		// default, shared with Quartile so the two never disagree.
+		result = quantileType7(numericData, p/100.0)
 	})
 	return result
 }
