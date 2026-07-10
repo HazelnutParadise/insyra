@@ -368,7 +368,7 @@ For a complete list of DataTable methods and features, please refer to the **[Da
 | **[quant](/Docs/quant.md)** | Quantitative finance for strategy/backtest evaluation: Sharpe ratio, max drawdown, annualized return, PBO (CSCV), Deflated Sharpe Ratio, and walk-forward validation. |
 | **[py](/Docs/py.md)** | Run Python from Go with no manual environment setup; pass variables both ways. |
 | **[pd](/Docs/pd.md)** | Pandas-like `DataFrame` helpers built on `gpandas`, with `DataTable` conversion. |
-| **[datafetch](/Docs/datafetch.md)** | Easy data fetching: Google Maps store reviews and a Yahoo Finance wrapper. |
+| **[datafetch](/Docs/datafetch.md)** | Easy data fetching: Google Maps store reviews, a Yahoo Finance wrapper, and Taiwan reverse geocoding. |
 | **[lpgen](/Docs/lpgen.md)** | Generate linear programming (LP) models and export them as `.lp` files. |
 | **[lp](/Docs/lp.md)** | Fully automatic LP solver using [GLPK](https://www.gnu.org/software/glpk/). |
 | **[engine](/engine/README.md)** | Re-exports selected Insyra internals for reuse in other projects. |

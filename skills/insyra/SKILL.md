@@ -438,6 +438,33 @@ func main() {
 }
 ```
 
+### 7) Reverse-geocode Taiwan coordinates (datafetch)
+
+`datafetch.TWGeocoding` turns `(lat, lng)` into a Taiwan county/town/village via the geocoding.zuola.com reverse API. Reverse-only (no address → coordinate). The free tier is **15 requests/hour per IP**, so prefer the batch methods (which de-dup identical coordinates) plus `NewFileGeocodeCache` for anything non-trivial.
+
+```go
+import (
+    "errors"
+    "github.com/HazelnutParadise/insyra/datafetch"
+)
+
+g, _ := datafetch.TWGeocoding(datafetch.TWGeocodingConfig{
+    Cache: datafetch.NewFileGeocodeCache("geocache.json"),
+})
+
+// Single lookup (typed result)
+res, err := g.Reverse(24.9884079, 121.4598882)
+if errors.Is(err, datafetch.ErrGeocodeNotFound) {
+    // point outside any TW village
+}
+
+// Batch over a DataTable's lat/lng columns -> enriched DataTable + GeocodeStatus column.
+// ReverseTable addresses columns by Excel index ("A","B"); ReverseTableByColName by name.
+enriched, err := g.ReverseTableByColName(dt, "lat", "lng")
+```
+
+On quota exhaustion the batch stops, returns already-resolved rows (rest marked `pending`), and returns a `*datafetch.RateLimitError` (unwraps to `ErrGeocodeRateLimited`; carries `ResetAt`). See `Docs/datafetch.md` for the full API.
+
 ## Engine package (advanced primitives)
 The repo includes an `engine` package that re-exports well-tested internal primitives (see [`engine/`](../../engine) and `engine/README.md).
 
