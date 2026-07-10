@@ -1738,9 +1738,10 @@ desc.Show()
 
 ```go
 func (dl *DataList) Summary()
+func (dl *DataList) SummaryTo(w io.Writer) // same output, written to w instead of os.Stdout
 ```
 
-**Description:** Displays comprehensive statistical summary to the console.
+**Description:** Displays comprehensive statistical summary to the console. `SummaryTo` writes the same output to any `io.Writer`.
 
 **Parameters:**
 
@@ -1980,9 +1981,10 @@ interpolated := dl.HermiteInterpolation(2.5, derivatives)
 
 ```go
 func (dl *DataList) Show()
+func (dl *DataList) ShowTo(w io.Writer) // same output, written to w instead of os.Stdout
 ```
 
-**Description:** Displays DataList content in a clean, colored linear format.
+**Description:** Displays DataList content in a clean, colored linear format. `ShowTo` writes the same output to any `io.Writer` (e.g. a file or `bytes.Buffer`) instead of stdout.
 
 **Parameters:**
 
@@ -2004,9 +2006,10 @@ dl.Show()
 
 ```go
 func (dl *DataList) ShowRange(startEnd ...any)
+func (dl *DataList) ShowRangeTo(w io.Writer, startEnd ...any) // same output, written to w
 ```
 
-**Description:** Displays DataList content within a specified range.
+**Description:** Displays DataList content within a specified range. `ShowRangeTo` writes the same output to any `io.Writer` instead of stdout.
 
 **Parameters:**
 

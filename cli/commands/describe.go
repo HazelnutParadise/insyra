@@ -70,7 +70,7 @@ func runDescribeCommand(ctx *ExecContext, args []string) error {
 		return fmt.Errorf("describe is only supported for DataTable/DataList")
 	}
 	ctx.Vars[alias] = result
-	result.Show()
+	result.ShowTo(ctx.Output)
 	_, _ = fmt.Fprintf(ctx.Output, "saved description as %s\n", alias)
 	return nil
 }

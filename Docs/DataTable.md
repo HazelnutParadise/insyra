@@ -3770,9 +3770,10 @@ byRegion := dt.GroupBy("region").Describe(insyra.DescribeOptions{IncludeAll: tru
 
 ```go
 func (dt *DataTable) Summary()
+func (dt *DataTable) SummaryTo(w io.Writer) // same output, written to w instead of os.Stdout
 ```
 
-**Description:** Displays a comprehensive statistical summary of the DataTable.
+**Description:** Displays a comprehensive statistical summary of the DataTable. `SummaryTo` writes the same output to any `io.Writer`.
 
 **Parameters:**
 
@@ -3887,9 +3888,10 @@ fmt.Printf("Overall mean: %v\n", mean)
 
 ```go
 func (dt *DataTable) Show()
+func (dt *DataTable) ShowTo(w io.Writer) // same output, written to w instead of os.Stdout
 ```
 
-**Description:** Displays the DataTable content in the console.
+**Description:** Displays the DataTable content in the console. `ShowTo` writes the same output to any `io.Writer` (e.g. a file or `bytes.Buffer`).
 
 **Parameters:**
 
@@ -3909,9 +3911,10 @@ dt.Show() // Display table content in console
 
 ```go
 func (dt *DataTable) ShowRange(startEnd ...any)
+func (dt *DataTable) ShowRangeTo(w io.Writer, startEnd ...any) // same output, written to w
 ```
 
-**Description:** Displays the DataTable with a specified range of rows.
+**Description:** Displays the DataTable with a specified range of rows. `ShowRangeTo` writes the same output to any `io.Writer` instead of stdout.
 
 **Parameters:**
 

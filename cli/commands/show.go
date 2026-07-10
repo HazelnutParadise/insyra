@@ -35,9 +35,9 @@ func runShowCommand(ctx *ExecContext, args []string) error {
 
 	switch typed := value.(type) {
 	case *insyra.DataTable:
-		typed.ShowRange(rangeArgs...)
+		typed.ShowRangeTo(ctx.Output, rangeArgs...)
 	case *insyra.DataList:
-		typed.ShowRange(rangeArgs...)
+		typed.ShowRangeTo(ctx.Output, rangeArgs...)
 	case insyra.Scaler:
 		return showScaler(ctx, args[0], typed)
 	default:
