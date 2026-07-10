@@ -143,3 +143,25 @@ Keep the English ([README.md](README.md), `Docs/`) and Traditional-Chinese ([REA
 
 [skills/insyra/](skills/insyra/) — for AI agents writing Go code using Insyra APIs.  
 [skills/use-insyra-cli/](skills/use-insyra-cli/) — for AI agents operating via the CLI/REPL or `.isr` scripts.
+
+## Follow-ups
+
+Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
+
+### [2026-07-10] — Dependabot high-severity alert (#18) on the default branch
+- **Where**: a Go module dependency — see https://github.com/HazelnutParadise/insyra/security/dependabot/18
+- **What**: GitHub reports 1 high-severity vulnerability in a dependency; it surfaces on every push. Unrelated to the recent audit/refactor work.
+- **Suggestion**: Review the alert, bump the affected module (`go get -u <mod>` + `go mod tidy`), then confirm with `govulncheck ./...`.
+- **Status**: pending
+
+### [2026-07-10] — `types` CLI command prints to stdout, bypassing `ctx.Output`
+- **Where**: `cli/commands/types.go:28,30` → `DataTable/DataList.ShowTypes` (`show.go:437,1041`)
+- **What**: Same bug class as M20 (fixed for `show`/`describe`/`summary`). `ShowTypes`/`ShowTypesRange` were intentionally left stdout-only, so the `types` command's output escapes `ctx.Output` (not captured by the REPL/tests).
+- **Suggestion**: Extend the writer-aware pattern — add `ShowTypesTo(w)` / `ShowTypesRangeTo(w, ...)` (thread `w` through `printTypeRows`), have the old methods delegate to `os.Stdout`, and route `types.go` through `ctx.Output`.
+- **Status**: pending
+
+### [2026-07-10] — `go updateTimestamp()` spawns an unbounded goroutine per mutation
+- **Where**: ~102 sites across `datalist.go` / `datatable.go` (mutating methods call `go x.updateTimestamp()`)
+- **What**: Every mutation fires a fire-and-forget goroutine to bump the last-modified timestamp. Under heavy/tight-loop mutation this floods the scheduler (the `-race` stress tests had to be bounded because of it). Latent scalability/perf concern, not a correctness bug.
+- **Suggestion**: Update the timestamp synchronously (it is a cheap atomic store) instead of spawning a goroutine, or coalesce. First confirm the goroutine is not there to avoid re-entering the actor lock.
+- **Status**: pending
