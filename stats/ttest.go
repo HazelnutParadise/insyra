@@ -131,21 +131,21 @@ func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenc
 	var mean1, mean2 float64
 	var stddev1, stddev2 float64
 	var err error
-	data1.AtomicDo(func(dl1 *insyra.DataList) {
-		data2.AtomicDo(func(dl2 *insyra.DataList) {
-			n1 = dl1.Len()
-			n2 = dl2.Len()
-			if n1 <= 1 || n2 <= 1 {
-				err = errors.New("sample sizes too small")
-				return
-			}
+	dl1 := data1.(*insyra.DataList)
+	dl2 := data2.(*insyra.DataList)
+	insyra.AtomicDoAll(func() {
+		n1 = dl1.Len()
+		n2 = dl2.Len()
+		if n1 <= 1 || n2 <= 1 {
+			err = errors.New("sample sizes too small")
+			return
+		}
 
-			mean1 = dl1.Mean()
-			mean2 = dl2.Mean()
-			stddev1 = dl1.Stdev()
-			stddev2 = dl2.Stdev()
-		})
-	})
+		mean1 = dl1.Mean()
+		mean2 = dl2.Mean()
+		stddev1 = dl1.Stdev()
+		stddev2 = dl2.Stdev()
+	}, dl1, dl2)
 	if err != nil {
 		return nil, err
 	}
@@ -222,18 +222,18 @@ func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel ...float64) (*TT
 	var n int
 	var err error
 	var data1Slice, data2Slice []any
-	data1.AtomicDo(func(dl1 *insyra.DataList) {
-		data2.AtomicDo(func(dl2 *insyra.DataList) {
-			n = dl1.Len()
-			if n != dl2.Len() || n <= 1 {
-				err = errors.New("paired samples must have the same non-zero length")
-				return
-			}
+	dl1 := data1.(*insyra.DataList)
+	dl2 := data2.(*insyra.DataList)
+	insyra.AtomicDoAll(func() {
+		n = dl1.Len()
+		if n != dl2.Len() || n <= 1 {
+			err = errors.New("paired samples must have the same non-zero length")
+			return
+		}
 
-			data1Slice = dl1.Data()
-			data2Slice = dl2.Data()
-		})
-	})
+		data1Slice = dl1.Data()
+		data2Slice = dl2.Data()
+	}, dl1, dl2)
 	if err != nil {
 		return nil, err
 	}

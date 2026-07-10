@@ -44,7 +44,7 @@ Use Insyra when you need any of these in Go:
 
 ## Core mental model
 - DataList: a column/series-like container (stats, sort, transform).
-- Concurrency: DataList is designed to be safe under concurrent access when thread safety is enabled (default) because operations are serialized via AtomicDo. This also makes it usable as a lightweight shared buffer (e.g., append/pop in one AtomicDo block). Keep AtomicDo blocks short and do heavy work outside.
+- Concurrency: DataList is designed to be safe under concurrent access when thread safety is enabled (default) because operations are serialized via AtomicDo. This also makes it usable as a lightweight shared buffer (e.g., append/pop in one AtomicDo block). Keep AtomicDo blocks short and do heavy work outside. To operate on TWO OR MORE instances atomically, use `insyra.AtomicDoAll(func(){...}, a, b)` — it locks all given DataList/DataTable instances together, deadlock-free. Do NOT nest `b.AtomicDo` inside `a.AtomicDo` to read both: the inner call does not lock `b` and can race.
 - DataTable: multiple named DataList columns as a table.
 - isr syntactic sugar: preferred entrypoint for new codebases.
 - CCL (Column Calculation Language): Excel-like formulas for derived columns.

@@ -281,9 +281,14 @@ func (t *dt) Push(data any) *dt {
 			insyra.LogFatal("DT", "Push", "%v", err)
 		}
 		numRow, _ := temDT.Size()
+		// Snapshot rows via temDT's own lock (top level) before entering t's actor,
+		// so we don't nest a cross-instance AtomicDo (which would not lock temDT).
+		rows := make([]*insyra.DataList, 0, numRow)
+		for i := range numRow {
+			rows = append(rows, temDT.GetRow(i))
+		}
 		t.AtomicDo(func(dt *insyra.DataTable) {
-			for i := range numRow {
-				l := temDT.GetRow(i)
+			for _, l := range rows {
 				dt.AppendCols(l)
 			}
 		})
@@ -295,9 +300,12 @@ func (t *dt) Push(data any) *dt {
 				insyra.LogFatal("DT", "Push", "%v", err)
 			}
 			numRow, _ := temDT.Size()
+			rows := make([]*insyra.DataList, 0, numRow)
+			for i := range numRow {
+				rows = append(rows, temDT.GetRow(i))
+			}
 			t.AtomicDo(func(dt *insyra.DataTable) {
-				for i := range numRow {
-					l := temDT.GetRow(i)
+				for _, l := range rows {
 					dt.AppendCols(l)
 				}
 			})

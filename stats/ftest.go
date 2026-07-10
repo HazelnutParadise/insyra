@@ -19,14 +19,14 @@ func FTestForVarianceEquality(data1, data2 insyra.IDataList) (*FTestResult, erro
 	var var1, var2 float64
 	var len1, len2 int
 
-	data1.AtomicDo(func(d1 *insyra.DataList) {
-		data2.AtomicDo(func(d2 *insyra.DataList) {
-			var1 = d1.Var()
-			var2 = d2.Var()
-			len1 = d1.Len()
-			len2 = d2.Len()
-		})
-	})
+	d1 := data1.(*insyra.DataList)
+	d2 := data2.(*insyra.DataList)
+	insyra.AtomicDoAll(func() {
+		var1 = d1.Var()
+		var2 = d2.Var()
+		len1 = d1.Len()
+		len2 = d2.Len()
+	}, d1, d2)
 	if len1 < 2 || len2 < 2 {
 		return nil, errors.New("both samples must have at least two observations")
 	}

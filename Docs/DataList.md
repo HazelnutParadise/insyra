@@ -2605,7 +2605,7 @@ func (dl *DataList) AtomicDo(f func(*DataList))
 
 - Single-threaded execution: Functions passed to `AtomicDo` are processed one at a time.
 - Reentrant: If called from within `AtomicDo`, the function runs immediately (no deadlock).
-- Cross-list nesting: Calling `anotherDl.AtomicDo` inside `dl.AtomicDo` is supported.
+- **Multiple instances:** Do NOT nest `anotherDl.AtomicDo` inside `dl.AtomicDo` to read two lists together — the inner call runs WITHOUT locking `anotherDl` and can race a concurrent mutation of it. To operate on several instances atomically, use `insyra.AtomicDoAll(func(){ ... }, dl, anotherDl)`, which locks all of them together in a deadlock-free order.
 
 Examples
 
@@ -2637,6 +2637,17 @@ dl.AtomicDo(func(dl *insyra.DataList) {
     }
 })
 ```
+
+- Operate on two lists atomically with `AtomicDoAll` (locks both, deadlock-free):
+
+```go
+// Instead of nesting AtomicDo (which does not lock the second list), lock both:
+insyra.AtomicDoAll(func() {
+    // both a and b are locked here — safe to read/compare them together
+}, a, b)
+```
+
+`insyra.AtomicDoAll(f func(), instances ...any)` accepts any mix of `*DataList` / `*DataTable`; instances already held by the current goroutine, and duplicates, are handled automatically.
 
 Guidelines
 

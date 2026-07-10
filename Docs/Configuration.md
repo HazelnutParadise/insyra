@@ -78,6 +78,12 @@ insyra.Config.Dangerously_TurnOffThreadSafety()
 insyra.SetDefaultConfig()
 ```
 
+> Thread safety (on by default) serializes access to **one** instance per `AtomicDo`.
+> To operate on **several** instances atomically, use `insyra.AtomicDoAll(func(){ ... }, a, b, ...)`,
+> which locks all the given `DataList`/`DataTable` instances together in a deadlock-free order.
+> Do NOT nest `AtomicDo` on a different instance to read two of them — the inner call does not
+> lock the other instance and can race a concurrent mutation.
+
 ## Complete Example
 
 ```go

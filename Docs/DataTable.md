@@ -1236,7 +1236,7 @@ dt.AppendCols(prev, ma3, cum)
 func (dt *DataTable) AppendCols(columns ...*DataList) *DataTable
 ```
 
-**Description:** Appends columns to the DataTable.
+**Description:** Appends columns to the DataTable. The passed `DataList`s are **copied** into the table — mutating a source list afterwards does not affect the table (and vice versa).
 
 **Parameters:**
 
@@ -1497,7 +1497,7 @@ dt.UpdateElement(0, "A", "Jane").UpdateCol("B", newCol)
 func (dt *DataTable) UpdateCol(index string, dl *DataList) *DataTable
 ```
 
-**Description:** Updates an entire column with new data. Returns the table to support chaining calls.
+**Description:** Updates an entire column with new data. The passed `DataList` is **copied** into the table, so later mutations of it do not affect the table. Returns the table to support chaining calls.
 
 **Parameters:**
 
@@ -1526,7 +1526,7 @@ dt.UpdateCol("A", newCol).UpdateRow(0, newRow)
 func (dt *DataTable) UpdateColByNumber(index int, dl *DataList) *DataTable
 ```
 
-**Description:** Updates an entire column by its numeric index. Returns the table to support chaining calls.
+**Description:** Updates an entire column by its numeric index. The passed `DataList` is **copied** into the table, so later mutations of it do not affect the table. Returns the table to support chaining calls.
 
 **Parameters:**
 
@@ -4426,7 +4426,7 @@ func (dt *DataTable) AtomicDo(f func(*DataTable))
 
 - Single-threaded execution: `AtomicDo` tasks run one at a time.
 - Reentrant: Calls made within `AtomicDo` run immediately (no deadlock).
-- Cross-object nesting: Calling `dl.AtomicDo` from within `dt.AtomicDo` (and vice versa) is supported by inline execution to avoid deadlocks.
+- **Multiple instances:** Do NOT nest `other.AtomicDo` inside `dt.AtomicDo` to read two instances together — the inner call may run WITHOUT locking the other instance and can race a concurrent mutation. To operate on several instances atomically (including a mix of `DataTable` and `DataList`), use `insyra.AtomicDoAll(func(){ ... }, dt, other)`, which locks all of them together in a deadlock-free order.
 - Closed behavior: After `dt.Close()`, `AtomicDo` executes the function inline without scheduling.
 
 Examples

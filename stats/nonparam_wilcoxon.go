@@ -86,20 +86,20 @@ func PairedWilcoxon(data1, data2 insyra.IDataList, alt AlternativeHypothesis, co
 
 	var d1Slice, d2Slice []any
 	var inputErr error
-	data1.AtomicDo(func(dl1 *insyra.DataList) {
-		data2.AtomicDo(func(dl2 *insyra.DataList) {
-			if dl1.Len() != dl2.Len() {
-				inputErr = errors.New("paired samples must have the same length")
-				return
-			}
-			if dl1.Len() == 0 {
-				inputErr = errors.New("paired samples are empty")
-				return
-			}
-			d1Slice = dl1.Data()
-			d2Slice = dl2.Data()
-		})
-	})
+	dl1 := data1.(*insyra.DataList)
+	dl2 := data2.(*insyra.DataList)
+	insyra.AtomicDoAll(func() {
+		if dl1.Len() != dl2.Len() {
+			inputErr = errors.New("paired samples must have the same length")
+			return
+		}
+		if dl1.Len() == 0 {
+			inputErr = errors.New("paired samples are empty")
+			return
+		}
+		d1Slice = dl1.Data()
+		d2Slice = dl2.Data()
+	}, dl1, dl2)
 	if inputErr != nil {
 		return nil, inputErr
 	}
