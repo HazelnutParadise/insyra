@@ -228,8 +228,10 @@ func TestReadCSV_String(t *testing.T) {
 		t.Errorf("ReadCSV_String() did not parse the correct data, expected 'John', got '%s'", dtt.GetColByName("name").Data()[0])
 		return
 	}
-	if dtt.GetColByName("age").Data()[1] != 25.0 {
-		t.Errorf("ReadCSV_String() did not parse the correct data, expected 25, got %v", dtt.GetColByName("age").Data()[1])
+	// Column-level type inference: an all-integer column parses as int64 (not
+	// float64) so large-integer columns keep full precision. See inferCSVColumnTypes.
+	if dtt.GetColByName("age").Data()[1] != int64(25) {
+		t.Errorf("ReadCSV_String() did not parse the correct data, expected int64(25), got %v (%T)", dtt.GetColByName("age").Data()[1], dtt.GetColByName("age").Data()[1])
 		return
 	}
 	if dtt.GetColByName("city").Data()[0] != "NYC" {

@@ -3,6 +3,7 @@ package insyra
 import (
 	"encoding/csv"
 	"fmt"
+	"math"
 	"os"
 	"reflect"
 	"strconv"
@@ -163,24 +164,65 @@ func ReadCSV_File(filePath string, setFirstColToRowNames bool, setFirstRowToColN
 				continue
 			}
 			column := dt.columns[colIndex]
-			column.data = append(column.data, parseCSVCell(cell))
+			column.data = append(column.data, cell)
 		}
 	}
 
+	inferCSVColumnTypes(dt)
 	return dt, nil
 }
 
-// parseCSVCell converts a CSV cell string to a numeric type, falling back to the
-// raw string. NOTE: integer-valued cells are parsed as float64 to preserve the
-// library's existing CSV contract (see TestReadCSV_String). Parsing integers as
-// int64 would preserve precision for values beyond 2^53 but is a compatibility
-// change to the numeric type every caller sees, so it is deferred as a design
-// decision rather than silently changed here (M6).
-func parseCSVCell(cell string) any {
-	if f, err := strconv.ParseFloat(cell, 64); err == nil {
-		return f
+// inferCSVColumnTypes converts each column's raw string cells to a homogeneous
+// type using pandas-style, column-level inference:
+//   - every cell a valid int64 and no cell empty  → []int64
+//   - otherwise every non-empty cell numeric       → []float64 (empty → NaN)
+//   - otherwise                                     → cells left as strings
+//
+// Integer columns become int64 rather than float64 so large-integer columns
+// (e.g. 19-digit IDs, nanosecond timestamps) keep full precision instead of
+// being rounded to the nearest float64 above 2^53. This matches how
+// pandas.read_csv types a column.
+func inferCSVColumnTypes(dt *DataTable) {
+	for _, col := range dt.columns {
+		if len(col.data) == 0 {
+			continue
+		}
+		allInt, allFloat, hasEmpty := true, true, false
+		for _, v := range col.data {
+			s, ok := v.(string)
+			if !ok {
+				allInt, allFloat = false, false
+				break
+			}
+			if s == "" {
+				hasEmpty = true
+				continue
+			}
+			if _, err := strconv.ParseInt(s, 10, 64); err != nil {
+				allInt = false
+			}
+			if _, err := strconv.ParseFloat(s, 64); err != nil {
+				allFloat = false
+			}
+		}
+		switch {
+		case allInt && !hasEmpty:
+			for i, v := range col.data {
+				n, _ := strconv.ParseInt(v.(string), 10, 64)
+				col.data[i] = n
+			}
+		case allFloat:
+			for i, v := range col.data {
+				s := v.(string)
+				if s == "" {
+					col.data[i] = math.NaN()
+					continue
+				}
+				f, _ := strconv.ParseFloat(s, 64)
+				col.data[i] = f
+			}
+		}
 	}
-	return cell
 }
 
 func ReadCSV_String(csvString string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error) {
@@ -236,10 +278,11 @@ func ReadCSV_String(csvString string, setFirstColToRowNames bool, setFirstRowToC
 				continue
 			}
 			column := dt.columns[colIndex]
-			column.data = append(column.data, parseCSVCell(cell))
+			column.data = append(column.data, cell)
 		}
 	}
 
+	inferCSVColumnTypes(dt)
 	return dt, nil
 }
 

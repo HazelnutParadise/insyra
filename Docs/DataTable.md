@@ -95,6 +95,8 @@ func ReadCSV_File(filePath string, setFirstColToRowNames bool, setFirstRowToColN
 
 **Description:** Reads a CSV file and loads the data into a new DataTable.
 
+Columns are typed with pandas-style, column-level inference: a column whose cells are all integers is loaded as `int64` (so large-integer columns such as 19-digit IDs keep full precision instead of being rounded through `float64` above 2^53); a column with any decimal value is loaded as `float64` (empty cells become `NaN`); any other column is kept as strings.
+
 **Parameters:**
 
 - `filePath`: CSV file path
