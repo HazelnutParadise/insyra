@@ -261,8 +261,10 @@ func TestReadJSON(t *testing.T) {
 		t.Errorf("ReadJSON() did not parse the correct data, expected 'John', got '%s'", dtt.GetColByName("name").Data()[0])
 		return
 	}
-	if dtt.GetColByName("age").Data()[1] != 25.0 {
-		t.Errorf("ReadJSON() did not parse the correct data, expected 25, got %v", dtt.GetColByName("age").Data()[1])
+	// Integer JSON literals (30, 25) are typed as int64 so large integers keep
+	// full precision; decimals stay float64. See coerceJSONNumber.
+	if dtt.GetColByName("age").Data()[1] != int64(25) {
+		t.Errorf("ReadJSON() did not parse the correct data, expected int64(25), got %v (%T)", dtt.GetColByName("age").Data()[1], dtt.GetColByName("age").Data()[1])
 		return
 	}
 	if dtt.GetColByName("city").Data()[0] != "NYC" {

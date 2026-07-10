@@ -1,6 +1,7 @@
 package insyra
 
 import (
+	"bytes"
 	"encoding/csv"
 	"fmt"
 	"math"
@@ -339,6 +340,37 @@ func ReadJSON_File(filePath string) (*DataTable, error) {
 	return dt, nil
 }
 
+// unmarshalJSONRows decodes JSON bytes into row maps while preserving integer
+// precision: numbers are decoded as json.Number (later typed by coerceJSONNumber)
+// instead of collapsing to float64. Falls back to a single object.
+func unmarshalJSONRows(b []byte) ([]map[string]any, error) {
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.UseNumber()
+	var rows []map[string]any
+	if err := dec.Decode(&rows); err != nil {
+		single := map[string]any{}
+		dec2 := json.NewDecoder(bytes.NewReader(b))
+		dec2.UseNumber()
+		if err2 := dec2.Decode(&single); err2 == nil {
+			return []map[string]any{single}, nil
+		}
+		return nil, err
+	}
+	return rows, nil
+}
+
+// coerceJSONNumber types a json.Number as int64 when it is an integer literal
+// (preserving values beyond 2^53) and float64 otherwise.
+func coerceJSONNumber(n json.Number) any {
+	if i, err := n.Int64(); err == nil {
+		return i
+	}
+	if f, err := n.Float64(); err == nil {
+		return f
+	}
+	return n.String()
+}
+
 func ReadJSON(data any) (*DataTable, error) {
 	dt := NewDataTable()
 
@@ -354,25 +386,17 @@ func ReadJSON(data any) (*DataTable, error) {
 	case map[string]any:
 		rows = append(rows, v)
 	case []byte:
-		if err := json.Unmarshal(v, &rows); err != nil {
-			// try single object
-			var single map[string]any
-			if err2 := json.Unmarshal(v, &single); err2 == nil {
-				rows = append(rows, single)
-			} else {
-				return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
-			}
+		r, err := unmarshalJSONRows(v)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
 		}
+		rows = r
 	case string:
-		b := []byte(v)
-		if err := json.Unmarshal(b, &rows); err != nil {
-			var single map[string]any
-			if err2 := json.Unmarshal(b, &single); err2 == nil {
-				rows = append(rows, single)
-			} else {
-				return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
-			}
+		r, err := unmarshalJSONRows([]byte(v))
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
 		}
+		rows = r
 	case []any:
 		for _, item := range v {
 			if m, ok := item.(map[string]any); ok {
@@ -383,23 +407,33 @@ func ReadJSON(data any) (*DataTable, error) {
 			if err != nil {
 				return nil, fmt.Errorf("failed to marshal array element: %w", err)
 			}
-			var m map[string]any
-			if err := json.Unmarshal(b, &m); err != nil {
+			r, err := unmarshalJSONRows(b)
+			if err != nil {
 				return nil, fmt.Errorf("failed to unmarshal array element: %w", err)
 			}
-			rows = append(rows, m)
+			rows = append(rows, r...)
 		}
 	default:
 		b, err := json.Marshal(v)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal input: %w", err)
 		}
-		if err := json.Unmarshal(b, &rows); err != nil {
-			var single map[string]any
-			if err2 := json.Unmarshal(b, &single); err2 == nil {
-				rows = append(rows, single)
-			} else {
-				return nil, fmt.Errorf("failed to marshal/unmarshal input as JSON: %w", err)
+		r, err := unmarshalJSONRows(b)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal/unmarshal input as JSON: %w", err)
+		}
+		rows = r
+	}
+
+	// Type JSON numbers: an integer literal (25) becomes int64 so large integers
+	// keep full precision; a decimal literal (25.5, 25.0) stays float64. JSON
+	// authors the int/float distinction, so this is per value (matching how
+	// encoding/json + json.Number and Python's json.loads type numbers) and is
+	// consistent with ReadCSV loading integer columns as int64.
+	for _, row := range rows {
+		for k, val := range row {
+			if n, ok := val.(json.Number); ok {
+				row[k] = coerceJSONNumber(n)
 			}
 		}
 	}
