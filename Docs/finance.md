@@ -32,6 +32,8 @@ All functions perform their internal arithmetic on `decimal.Decimal` values, nev
 
 > Compared to spreadsheet/`float64`-based references such as Excel and `numpy_financial`, the `finance` package routinely produces answers that are correct further than the 11th significant digit. For the canonical 30-year mortgage `PMT(0.005, 360, 100000)`, Excel returns `-599.5505251260807` while this package returns `-599.55052515275239459146124368…`, which matches the exact rational `-500·201^360 / (201^360 - 200^360)`.
 
+> **Excel-familiar, financially correct.** The function names and signatures mirror Excel/Google-Sheets, but the *values* follow the financially-correct convention rather than being defined as "whatever Excel returns". Outputs are validated against trusted, Excel-independent references — `numpy_financial` for the TVM/cashflow functions and **QuantLib** for the bond functions (`Price`, `Yield`, `Duration`, `MDuration` all agree to machine precision). Where a spreadsheet diverges from the correct convention, this package follows the correct one. Today the only such case is `TBillEq` for bills longer than 182 days: Excel keeps using its short-bill formula and overstates the yield, whereas this package uses the US Treasury / SIA coupon-equivalent (verified against QuantLib within ~1 bp).
+
 Every exported function returns `(decimal.Decimal, error)` (or `([]AmortizationRow, error)` / `(insyra.IDataTable, error)`). Always handle `err` at the call site — invalid arguments and divide-by-zero situations are signaled this way, never via panic or warning logs.
 
 ---
