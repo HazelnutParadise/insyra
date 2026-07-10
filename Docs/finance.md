@@ -496,7 +496,7 @@ func TBillEq(settlement, maturity time.Time, discount decimal.Decimal,
     opts ...Options) (decimal.Decimal, error)
 ```
 
-Bond-equivalent yield: `365 · discount / (360 - discount · DSM)`. Excel equivalent: `TBILLEQ(settlement, maturity, discount)`.
+Bond-equivalent (coupon-equivalent) yield, following the US Treasury / SIA "investment rate" convention: the simple `365 · discount / (360 - discount · DSM)` for `DSM ≤ 182`, and the long-bill quadratic `2·(√(n² − (2n−1)(1 − 1/P)) − n) / (2n − 1)` (with `n = DSM/365`, price per $1 `P = 1 − discount·DSM/360`) for `DSM > 182`. API-compatible with Excel's `TBILLEQ(settlement, maturity, discount)`, but the **value is financially correct**: Excel keeps using the simple formula past 182 days and overstates the yield there (≈7 bp high on a 364-day 5% bill), whereas this follows the Treasury convention — verified against QuantLib's exact semi-annually compounded yield (within ~1 bp for `DSM > 182`).
 
 ### TBillPrice
 
