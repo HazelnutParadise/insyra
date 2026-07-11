@@ -152,6 +152,18 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Where**: a Go module dependency — see https://github.com/HazelnutParadise/insyra/security/dependabot/18
 - **What**: GitHub reports 1 high-severity vulnerability in a dependency; it surfaces on every push. Unrelated to the recent audit/refactor work.
 - **Suggestion**: Review the alert, bump the affected module (`go get -u <mod>` + `go mod tidy`), then confirm with `govulncheck ./...`.
+- **Status**: pending — 2026-07-11 dependency refresh (on `dev`) upgraded all modules to latest (and `go 1.25.12` fixes the two stdlib vulns). The alert tracks the default branch, so pushes to `dev` will NOT close it — it should auto-close only after the next release merges `dev` into `main`; verify then and delete this entry. `govulncheck -scan module` locally now reports only GO-2026-5932 (`x/crypto/openpgp` unmaintained, no fix available, package not imported by any insyra build path).
+
+### [2026-07-11] — chromedp chain pinned to the last go1.25-compatible versions
+- **Where**: `go.mod` — `chromedp v0.14.2`, `cdproto v0.0.0-20250724212937-08a3db8b4327`, `go-json-experiment/json v0.0.0-20250725192818-e39067aee2d2` (pulled in via `go-echarts/snapshot-chromedp`)
+- **What**: `chromedp v0.15.0+`, newer `cdproto`, and newer `go-json-experiment/json` all require go >= 1.26. The module's `go` directive stays on 1.25.x (minimum-Go promise to downstream users), so the 2026-07-11 dependency refresh pinned these three at the newest go1.25-compatible versions instead.
+- **Suggestion**: When the project decides to raise the minimum Go version to 1.26, `go get -u` these three modules in the same change.
+- **Status**: pending
+
+### [2026-07-11] — local golangci-lint 2.12.2 flags 9 pre-existing errcheck issues that CI does not
+- **Where**: `datalist_summary.go:59-170`, `show.go:289-297` — unchecked `fmt.Fprint*` return values
+- **What**: Pre-existing (same result on the pre-refresh tree; unrelated to the dependency update). The repo has no `.golangci.yml`, so linter defaults differ between the CI action's version and newer local versions; a future CI lint upgrade may start failing on these.
+- **Suggestion**: Either check/discard the return values explicitly or add a `.golangci.yml` that excludes `fmt.Fprint*` from errcheck (a common convention).
 - **Status**: pending
 
 ### [2026-07-10] — `types` CLI command prints to stdout, bypassing `ctx.Output`
