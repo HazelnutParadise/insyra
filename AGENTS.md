@@ -153,10 +153,10 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **What**: Alerts track `main`, whose deps are stale. This entry started as 1 high (#18); GitHub's advisory DB has since added entries that hit main's old versions.
 - **Status**: pending — the 2026-07-11 dependency refresh on `dev` (x/crypto 0.54.0, x/image 0.44.0, excelize 2.11.0, go 1.25.12) meets or exceeds every alert's first-patched version. Pushes to `dev` do NOT close them; after the next release merges `dev` → `main`, verify all 15 auto-close, then delete this entry. Locally `govulncheck -scan module` reports only GO-2026-5932 (`x/crypto/openpgp` unmaintained, no fix available, not imported by any insyra build path).
 
-### [2026-07-11] — chromedp chain pinned to the last go1.25-compatible versions
-- **Where**: `go.mod` — `chromedp v0.14.2`, `cdproto v0.0.0-20250724212937-08a3db8b4327`, `go-json-experiment/json v0.0.0-20250725192818-e39067aee2d2` (pulled in via `go-echarts/snapshot-chromedp`)
-- **What**: `chromedp v0.15.0+`, newer `cdproto`, and newer `go-json-experiment/json` all require go >= 1.26. The module's `go` directive stays on 1.25.x (minimum-Go promise to downstream users), so the 2026-07-11 dependency refresh pinned these three at the newest go1.25-compatible versions instead.
-- **Suggestion**: When the project decides to raise the minimum Go version to 1.26, `go get -u` these three modules in the same change.
+### [2026-07-11] — chromedp chain left at pre-refresh versions (two independent blockers)
+- **Where**: `go.mod` — `chromedp v0.11.2`, `cdproto v0.0.0-20241208230723-d1c7de7e5dd2` (pulled in via `go-echarts/snapshot-chromedp`)
+- **What**: The 2026-07-11 dependency refresh could not move these. (1) `chromedp v0.15.0+` and newer `cdproto` require go >= 1.26, while the module's `go` directive stays on 1.25.x (minimum-Go promise to downstream users). (2) The newest go1.25-compatible version, `chromedp v0.14.2`, hard-requires `go-json-experiment/json`, whose generic-variadic code panics govulncheck's symbol-level scan ("got jsontext.Value, want variadic parameter of unnamed slice or string type" in x/tools go/ssa — still broken as of x/tools v0.48.0 / x/vuln v1.6.0), which would permanently break the Govulncheck CI workflow.
+- **Suggestion**: When raising the minimum Go version to 1.26, retry upgrading the whole chain and re-verify `govulncheck ./...` completes (the x/tools SSA bug may be fixed by then).
 - **Status**: pending
 
 ### [2026-07-11] — local golangci-lint 2.12.2 flags 9 pre-existing errcheck issues that CI does not
