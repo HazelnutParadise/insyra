@@ -159,12 +159,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: When raising the minimum Go version to 1.26, retry upgrading the whole chain and re-verify `govulncheck ./...` completes (the x/tools SSA bug may be fixed by then).
 - **Status**: pending
 
-### [2026-07-11] — GolangCI-Lint workflow red on dev: 9 pre-existing errcheck issues
-- **Where**: `datalist_summary.go:59-170` (6×), `show.go:289-297` (3×) — unchecked `fmt.Fprint*` return values
-- **What**: The GolangCI-Lint workflow has failed on every dev push since at least 2026-07-10 (commit 8f3db153, before the dependency refresh) on exactly these 9 errcheck findings; local golangci-lint 2.12.2 reproduces them. Pre-existing, unrelated to the dependency update.
-- **Suggestion**: Either check/discard the return values explicitly or add a `.golangci.yml` that excludes `fmt.Fprint*` from errcheck (a common convention).
-- **Status**: pending
-
 ### [2026-07-10] — `types` CLI command prints to stdout, bypassing `ctx.Output`
 - **Where**: `cli/commands/types.go:28,30` → `DataTable/DataList.ShowTypes` (`show.go:437,1041`)
 - **What**: Same bug class as M20 (fixed for `show`/`describe`/`summary`). `ShowTypes`/`ShowTypesRange` were intentionally left stdout-only, so the `types` command's output escapes `ctx.Output` (not captured by the REPL/tests).
