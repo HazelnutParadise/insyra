@@ -159,10 +159,16 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: When raising the minimum Go version to 1.26, retry upgrading the whole chain and re-verify `govulncheck ./...` completes (the x/tools SSA bug may be fixed by then).
 - **Status**: pending
 
-### [2026-07-11] — local golangci-lint 2.12.2 flags 9 pre-existing errcheck issues that CI does not
-- **Where**: `datalist_summary.go:59-170`, `show.go:289-297` — unchecked `fmt.Fprint*` return values
-- **What**: Pre-existing (same result on the pre-refresh tree; unrelated to the dependency update). The repo has no `.golangci.yml`, so linter defaults differ between the CI action's version and newer local versions; a future CI lint upgrade may start failing on these.
+### [2026-07-11] — GolangCI-Lint workflow red on dev: 9 pre-existing errcheck issues
+- **Where**: `datalist_summary.go:59-170` (6×), `show.go:289-297` (3×) — unchecked `fmt.Fprint*` return values
+- **What**: The GolangCI-Lint workflow has failed on every dev push since at least 2026-07-10 (commit 8f3db153, before the dependency refresh) on exactly these 9 errcheck findings; local golangci-lint 2.12.2 reproduces them. Pre-existing, unrelated to the dependency update.
 - **Suggestion**: Either check/discard the return values explicitly or add a `.golangci.yml` that excludes `fmt.Fprint*` from errcheck (a common convention).
+- **Status**: pending
+
+### [2026-07-11] — Test workflow red on dev: PairedTTest panics under the concurrency stress test
+- **Where**: `stats/ttest.go:247` (`PairedTTest`), triggered by `TestStress_TwoSampleStatsNoRace` (`stats/atomic_stress_test.go:57`)
+- **What**: `panic: interface conversion: interface {} is int, not float64` — a bare `.(float64)` assertion hit concurrently. The Test workflow has failed with this exact signature on every dev push since at least 2026-07-10 (a747be12 on ubuntu, later runs on macOS — which matrix job trips it is a timing lottery). Pre-existing, unrelated to the dependency refresh (stats deps unchanged); likely one of / related to the defects from the 2026-07 full-repo audit.
+- **Suggestion**: Fix the unchecked type assertion (use the numeric-coercion helper the rest of stats uses, or `conv.ParseF64`-style conversion) rather than weakening the stress test.
 - **Status**: pending
 
 ### [2026-07-10] — `types` CLI command prints to stdout, bypassing `ctx.Output`
