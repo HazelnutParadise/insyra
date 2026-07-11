@@ -244,7 +244,15 @@ func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel ...float64) (*TT
 	// cancellation when |meanDiff| is small relative to data magnitude).
 	diffs := make([]float64, n)
 	for i := range n {
-		diffs[i] = data1Slice[i].(float64) - data2Slice[i].(float64)
+		x, ok := insyra.ToFloat64Safe(data1Slice[i])
+		if !ok {
+			return nil, errors.New("invalid numeric value in data1")
+		}
+		y, ok := insyra.ToFloat64Safe(data2Slice[i])
+		if !ok {
+			return nil, errors.New("invalid numeric value in data2")
+		}
+		diffs[i] = x - y
 	}
 	meanDiff, varDiff := stat.MeanVariance(diffs, nil)
 	stddevDiff := math.Sqrt(varDiff)

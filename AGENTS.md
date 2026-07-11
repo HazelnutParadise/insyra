@@ -165,12 +165,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: Either check/discard the return values explicitly or add a `.golangci.yml` that excludes `fmt.Fprint*` from errcheck (a common convention).
 - **Status**: pending
 
-### [2026-07-11] — Test workflow red on dev: PairedTTest panics under the concurrency stress test
-- **Where**: `stats/ttest.go:247` (`PairedTTest`), triggered by `TestStress_TwoSampleStatsNoRace` (`stats/atomic_stress_test.go:57`)
-- **What**: `panic: interface conversion: interface {} is int, not float64` — a bare `.(float64)` assertion hit concurrently. The Test workflow has failed with this exact signature on every dev push since at least 2026-07-10 (a747be12 on ubuntu, later runs on macOS — which matrix job trips it is a timing lottery). Pre-existing, unrelated to the dependency refresh (stats deps unchanged); likely one of / related to the defects from the 2026-07 full-repo audit.
-- **Suggestion**: Fix the unchecked type assertion (use the numeric-coercion helper the rest of stats uses, or `conv.ParseF64`-style conversion) rather than weakening the stress test.
-- **Status**: pending
-
 ### [2026-07-10] — `types` CLI command prints to stdout, bypassing `ctx.Output`
 - **Where**: `cli/commands/types.go:28,30` → `DataTable/DataList.ShowTypes` (`show.go:437,1041`)
 - **What**: Same bug class as M20 (fixed for `show`/`describe`/`summary`). `ShowTypes`/`ShowTypesRange` were intentionally left stdout-only, so the `types` command's output escapes `ctx.Output` (not captured by the REPL/tests).
