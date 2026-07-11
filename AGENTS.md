@@ -148,11 +148,10 @@ Keep the English ([README.md](README.md), `Docs/`) and Traditional-Chinese ([REA
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
-### [2026-07-10] — Dependabot high-severity alert (#18) on the default branch
-- **Where**: a Go module dependency — see https://github.com/HazelnutParadise/insyra/security/dependabot/18
-- **What**: GitHub reports 1 high-severity vulnerability in a dependency; it surfaces on every push. Unrelated to the recent audit/refactor work.
-- **Suggestion**: Review the alert, bump the affected module (`go get -u <mod>` + `go mod tidy`), then confirm with `govulncheck ./...`.
-- **Status**: pending — 2026-07-11 dependency refresh (on `dev`) upgraded all modules to latest (and `go 1.25.12` fixes the two stdlib vulns). The alert tracks the default branch, so pushes to `dev` will NOT close it — it should auto-close only after the next release merges `dev` into `main`; verify then and delete this entry. `govulncheck -scan module` locally now reports only GO-2026-5932 (`x/crypto/openpgp` unmaintained, no fix available, package not imported by any insyra build path).
+### [2026-07-10] — Dependabot alerts on the default branch (grown to 15 open: 7 critical, 4 high, 4 moderate)
+- **Where**: https://github.com/HazelnutParadise/insyra/security/dependabot — 13× `golang.org/x/crypto` (fixed in 0.52.0), 1× `golang.org/x/image` = alert #18 (fixed in 0.41.0), 1× `github.com/xuri/excelize/v2` (fixed in 2.11.0)
+- **What**: Alerts track `main`, whose deps are stale. This entry started as 1 high (#18); GitHub's advisory DB has since added entries that hit main's old versions.
+- **Status**: pending — the 2026-07-11 dependency refresh on `dev` (x/crypto 0.54.0, x/image 0.44.0, excelize 2.11.0, go 1.25.12) meets or exceeds every alert's first-patched version. Pushes to `dev` do NOT close them; after the next release merges `dev` → `main`, verify all 15 auto-close, then delete this entry. Locally `govulncheck -scan module` reports only GO-2026-5932 (`x/crypto/openpgp` unmaintained, no fix available, not imported by any insyra build path).
 
 ### [2026-07-11] — chromedp chain pinned to the last go1.25-compatible versions
 - **Where**: `go.mod` — `chromedp v0.14.2`, `cdproto v0.0.0-20250724212937-08a3db8b4327`, `go-json-experiment/json v0.0.0-20250725192818-e39067aee2d2` (pulled in via `go-echarts/snapshot-chromedp`)
