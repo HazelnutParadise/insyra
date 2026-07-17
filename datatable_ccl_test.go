@@ -2,6 +2,7 @@ package insyra
 
 import (
 	"testing"
+	"time"
 )
 
 func TestDataTable_ExecuteCCL_Assignment(t *testing.T) {
@@ -553,5 +554,51 @@ func TestDataTable_ExecuteCCL_Transposition(t *testing.T) {
 	}
 	if colA.Data()[3] != nil {
 		t.Errorf("Expected column 'A' row 3 to be nil, got %v", colA.Data()[3])
+	}
+}
+
+// Regression test for issue #184: malformed CCL (especially input containing
+// characters the tokenizer has no token for, like '$') used to make
+// AddColUsingCCL/ExecuteCCL spin forever instead of returning. The call must
+// return promptly, leave the table unchanged, and surface the failure via Err().
+func TestDataTable_CCL_MalformedFormulaReturnsAndSetsErr(t *testing.T) {
+	cases := []struct {
+		name string
+		run  func(dt *DataTable)
+	}{
+		{"AddColUsingCCL unknown char", func(dt *DataTable) { dt.AddColUsingCCL("X", "this is junk @#$") }},
+		{"AddColUsingCCL trailing tokens", func(dt *DataTable) { dt.AddColUsingCCL("X", "5 * 3 garbage") }},
+		{"ExecuteCCL unknown char", func(dt *DataTable) { dt.ExecuteCCL("NEW('X') = A + $") }},
+		{"EditColByNameUsingCCL unknown char", func(dt *DataTable) { dt.EditColByNameUsingCCL("A", "~~~") }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dt := NewDataTable(
+				NewDataList(1.0, 2.0, 3.0).SetName("A"),
+				NewDataList(10.0, 20.0, 30.0).SetName("B"),
+			)
+
+			done := make(chan struct{})
+			go func() {
+				tc.run(dt)
+				close(done)
+			}()
+			select {
+			case <-done:
+			case <-time.After(5 * time.Second):
+				t.Fatal("CCL call did not return within 5s — possible tokenizer/parser non-termination (issue #184 regression)")
+			}
+
+			if dt.Err() == nil {
+				t.Error("expected dt.Err() to be set after malformed CCL, got nil")
+			}
+			numRow, numCol := dt.Size()
+			if numCol != 2 || numRow != 3 {
+				t.Errorf("expected table to stay 3x2 after failed CCL, got %dx%d", numRow, numCol)
+			}
+			if a := dt.GetColByName("A").Data(); a[0] != 1.0 || a[1] != 2.0 || a[2] != 3.0 {
+				t.Errorf("expected column A unchanged, got %v", a)
+			}
+		})
 	}
 }
