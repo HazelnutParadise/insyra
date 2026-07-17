@@ -33,7 +33,7 @@ type cclToken struct {
 type CCLNode = cclNode
 
 // 注意：新增「含子節點」的節點型別時，必須同步更新 exceedsDepth
-//（ccl_compiler.go 的編譯期深度保護）與 Bind 的走訪分支，否則該型別的
+// （ccl_compiler.go 的編譯期深度保護）與 Bind 的走訪分支，否則該型別的
 // 子樹會漏掉深度檢查與欄位綁定。
 type cclNode any
 type cclNumberNode struct{ value float64 }
@@ -53,6 +53,18 @@ type cclBinaryOpNode struct {
 	op    string
 	left  cclNode
 	right cclNode
+}
+
+// cclFoldChainNode 表示左結合運算子鏈的攤平形式：
+// ((init ops[0] operands[0]) ops[1] operands[1]) ...
+// parser 把同一優先級迴圈內連續的一般運算子（不含 '.' 與 ':'）攤平成
+// 此節點，讓任意長度的鏈產生 O(1) 深度的 AST，求值時以迴圈左摺疊。
+// 不變量：len(ops) == len(operands) >= 2（0 個運算子不建節點、1 個維持
+// cclBinaryOpNode）。
+type cclFoldChainNode struct {
+	init     cclNode
+	ops      []string
+	operands []cclNode
 }
 
 // 新增連續比較運算節點

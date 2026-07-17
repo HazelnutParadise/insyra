@@ -77,6 +77,12 @@ func exceedsDepth(n cclNode, limit int) bool {
 		switch t := e.node.(type) {
 		case *cclBinaryOpNode:
 			stack = append(stack, entry{t.left, e.depth + 1}, entry{t.right, e.depth + 1})
+		case *cclFoldChainNode:
+			// 攤平鏈的深度是 1 + max(子節點深度)，與鏈長無關。
+			stack = append(stack, entry{t.init, e.depth + 1})
+			for _, operand := range t.operands {
+				stack = append(stack, entry{operand, e.depth + 1})
+			}
 		case *cclChainedComparisonNode:
 			for _, v := range t.values {
 				stack = append(stack, entry{v, e.depth + 1})
@@ -180,6 +186,20 @@ func Bind(n cclNode, colNameMap map[string]int) (cclNode, error) {
 			return nil, err
 		}
 		return &cclBinaryOpNode{op: t.op, left: l, right: r}, nil
+	case *cclFoldChainNode:
+		init, err := Bind(t.init, colNameMap)
+		if err != nil {
+			return nil, err
+		}
+		newOperands := make([]cclNode, len(t.operands))
+		for i, operand := range t.operands {
+			bound, err := Bind(operand, colNameMap)
+			if err != nil {
+				return nil, err
+			}
+			newOperands[i] = bound
+		}
+		return &cclFoldChainNode{init: init, ops: t.ops, operands: newOperands}, nil
 	case *cclChainedComparisonNode:
 		newValues := make([]cclNode, len(t.values))
 		for i, v := range t.values {

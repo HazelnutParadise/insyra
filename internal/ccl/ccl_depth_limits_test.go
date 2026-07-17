@@ -23,7 +23,8 @@ func TestCompileExpression_OverDeepInputsReturnError(t *testing.T) {
 		{"unclosed nested parens", strings.Repeat("(", maxParseDepth+1) + "1"},
 		{"nested calls", strings.Repeat("F(", maxParseDepth+1) + "1" + strings.Repeat(")", maxParseDepth+1)},
 		{"unary chain", strings.Repeat("- ", maxParseDepth+1) + "5"},
-		{"left-associative chain", "1" + strings.Repeat("+1", maxEvalDepth+1)},
+		// 註：左結合長鏈（1+1+1+...）自 flatten-ccl-operator-chains 起攤平為
+		// O(1) 深度，不再受深度限制 — 見 TestCompileExpression_LongChainsCompileAndEvaluate。
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -35,9 +36,9 @@ func TestCompileExpression_OverDeepInputsReturnError(t *testing.T) {
 }
 
 // TestCompileMultiline_OverDeepStatementReturnsError covers the statement
-// path used by ExecuteCCL.
+// path used by ExecuteCCL (nesting input — chains are no longer depth-capped).
 func TestCompileMultiline_OverDeepStatementReturnsError(t *testing.T) {
-	script := "NEW('X') = 1" + strings.Repeat("+1", maxEvalDepth+1)
+	script := "NEW('X') = " + strings.Repeat("(", maxParseDepth+1) + "1" + strings.Repeat(")", maxParseDepth+1)
 	done := make(chan error, 1)
 	go func() {
 		_, err := CompileMultiline(script)
@@ -50,6 +51,28 @@ func TestCompileMultiline_OverDeepStatementReturnsError(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("CompileMultiline on over-deep statement did not return within 5s")
+	}
+}
+
+// TestCompileExpression_LongChainsCompileAndEvaluate pins the point of
+// flatten-ccl-operator-chains: left-associative chains of arbitrary length
+// compile (flattened to O(1) depth) and evaluate to the correct value.
+func TestCompileExpression_LongChainsCompileAndEvaluate(t *testing.T) {
+	const terms = 100_000
+	node, err := CompileExpression("1" + strings.Repeat("+1", terms))
+	if err != nil {
+		t.Fatalf("long chain failed to compile: %v", err)
+	}
+	ctx, err := NewMapContext(map[string][]any{"x": {0.0}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := Evaluate(node, ctx)
+	if err != nil {
+		t.Fatalf("long chain failed to evaluate: %v", err)
+	}
+	if got != float64(terms+1) {
+		t.Errorf("long chain evaluated to %v, want %v", got, float64(terms+1))
 	}
 }
 

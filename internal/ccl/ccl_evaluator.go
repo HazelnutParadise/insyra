@@ -136,6 +136,17 @@ func IsRowDependent(n cclNode) bool {
 			}
 		}
 		return IsRowDependent(t.left) || IsRowDependent(t.right)
+	case *cclFoldChainNode:
+		// 摺疊鏈不含 '.' 與 ':'（parser 保證），無需比照二元節點做特殊處理。
+		if IsRowDependent(t.init) {
+			return true
+		}
+		for _, operand := range t.operands {
+			if IsRowDependent(operand) {
+				return true
+			}
+		}
+		return false
 	case *cclChainedComparisonNode:
 		for _, v := range t.values {
 			if IsRowDependent(v) {
@@ -186,6 +197,16 @@ func containsRowIndex(n cclNode) bool {
 		return true
 	case *cclBinaryOpNode:
 		return containsRowIndex(t.left) || containsRowIndex(t.right)
+	case *cclFoldChainNode:
+		if containsRowIndex(t.init) {
+			return true
+		}
+		for _, operand := range t.operands {
+			if containsRowIndex(operand) {
+				return true
+			}
+		}
+		return false
 	case *cclChainedComparisonNode:
 		for _, v := range t.values {
 			if containsRowIndex(v) {
@@ -391,6 +412,25 @@ func evaluateWithContext(n cclNode, ctx Context) (any, error) {
 			return nil, err
 		}
 		return applyOperator(t.op, left, right)
+	case *cclFoldChainNode:
+		// 左摺疊，運算序列與巢狀二元節點完全一致：逐一「求值運算元、套用
+		// 運算子」由左至右，錯誤同樣先到先回。不引入短路（二元的 && / ||
+		// 本來就不短路，行為必須一致）。
+		acc, err := evaluateWithContext(t.init, ctx)
+		if err != nil {
+			return nil, err
+		}
+		for i, operand := range t.operands {
+			rv, err := evaluateWithContext(operand, ctx)
+			if err != nil {
+				return nil, err
+			}
+			acc, err = applyOperator(t.ops[i], acc, rv)
+			if err != nil {
+				return nil, err
+			}
+		}
+		return acc, nil
 	case *cclChainedComparisonNode:
 		// 處理連續比較運算
 		if len(t.values) != len(t.ops)+1 {

@@ -571,13 +571,15 @@ func TestDataTable_CCL_MalformedFormulaReturnsAndSetsErr(t *testing.T) {
 		{"AddColUsingCCL trailing tokens", func(dt *DataTable) { dt.AddColUsingCCL("X", "5 * 3 garbage") }},
 		{"ExecuteCCL unknown char", func(dt *DataTable) { dt.ExecuteCCL("NEW('X') = A + $") }},
 		{"EditColByNameUsingCCL unknown char", func(dt *DataTable) { dt.EditColByNameUsingCCL("A", "~~~") }},
-		// Over-deep formulas used to fatally overflow the stack (unrecoverable,
+		// Over-deep nesting used to fatally overflow the stack (unrecoverable,
 		// kills the process) instead of erroring. See change bound-ccl-compile-recursion.
+		// (Long operator chains are no longer depth-capped — see
+		// TestDataTable_CCL_LongChainFormula.)
 		{"AddColUsingCCL over-deep nesting", func(dt *DataTable) {
 			dt.AddColUsingCCL("X", strings.Repeat("(", 10001)+"1"+strings.Repeat(")", 10001))
 		}},
-		{"ExecuteCCL over-deep chain", func(dt *DataTable) {
-			dt.ExecuteCCL("NEW('X') = 1" + strings.Repeat("+1", 10001))
+		{"ExecuteCCL over-deep nesting", func(dt *DataTable) {
+			dt.ExecuteCCL("NEW('X') = " + strings.Repeat("(", 10001) + "1" + strings.Repeat(")", 10001))
 		}},
 	}
 	for _, tc := range cases {
@@ -609,5 +611,43 @@ func TestDataTable_CCL_MalformedFormulaReturnsAndSetsErr(t *testing.T) {
 				t.Errorf("expected column A unchanged, got %v", a)
 			}
 		})
+	}
+}
+
+// TestDataTable_CCL_LongChainFormula pins flatten-ccl-operator-chains end to
+// end: long left-associative chains (previously rejected as too complex, and
+// before that a fatal stack overflow) now produce correct column values.
+func TestDataTable_CCL_LongChainFormula(t *testing.T) {
+	const terms = 20000
+	dt := NewDataTable(
+		NewDataList(1.0, 2.0, 3.0).SetName("A"),
+	)
+
+	dt.ClearErr().AddColUsingCCL("sum", "A"+strings.Repeat("+1", terms))
+	if err := dt.Err(); err != nil {
+		t.Fatalf("AddColUsingCCL long chain unexpectedly failed: %v", err)
+	}
+	col := dt.GetColByName("sum")
+	if col == nil {
+		t.Fatal("column 'sum' not found")
+	}
+	want := []float64{1.0 + terms, 2.0 + terms, 3.0 + terms}
+	for i, v := range col.Data() {
+		if v != want[i] {
+			t.Errorf("row %d: got %v, want %v", i, v, want[i])
+		}
+	}
+
+	dt2 := NewDataTable(NewDataList(10.0).SetName("A"))
+	dt2.ClearErr().ExecuteCCL("NEW('X') = 1" + strings.Repeat("+1", terms))
+	if err := dt2.Err(); err != nil {
+		t.Fatalf("ExecuteCCL long chain unexpectedly failed: %v", err)
+	}
+	colX := dt2.GetColByName("X")
+	if colX == nil {
+		t.Fatal("column 'X' not found")
+	}
+	if got := colX.Data()[0]; got != float64(terms+1) {
+		t.Errorf("ExecuteCCL long chain: got %v, want %v", got, float64(terms+1))
 	}
 }

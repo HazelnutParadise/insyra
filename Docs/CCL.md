@@ -1065,14 +1065,16 @@ Test environment: 100,000 rows × 3 columns
 
 ## Limits
 
-To keep a single formula from exhausting the process stack, CCL bounds expression depth at compile time. Both limits are 10000 — the same depth the evaluator supports — so no expression that could actually be evaluated is ever rejected:
+To keep a single formula from exhausting the process stack, CCL bounds expression **nesting** depth at compile time. Both limits are 10000 — the same depth the evaluator supports — so no expression that could actually be evaluated is ever rejected:
 
 | Limit | What it bounds | Error message |
 | --- | --- | --- |
 | Nesting depth | Parentheses, nested function calls, unary operators | `expression too deeply nested (max 10000 levels)` |
-| Expression complexity | Overall depth of the compiled expression tree (e.g. very long `a+b+c+...` chains) | `expression too complex: nesting depth exceeds max 10000` |
+| Expression complexity | Overall depth of the compiled expression tree | `expression too complex: nesting depth exceeds max 10000` |
 
-Like all CCL compile errors, these are logged as warnings and surfaced via the table's `Err()` method; the DataTable is left unchanged.
+Left-associative operator **chains** (`a + b + c + ...`, string concatenation runs, `&&`/`||` sequences) are *not* subject to these limits: the compiler flattens them into a constant-depth internal form and evaluates them iteratively, so chain length is bounded only by available memory. Semantics are unchanged — strict left-to-right evaluation, identical values and error behavior.
+
+Like all CCL compile errors, the limit errors are logged as warnings and surfaced via the table's `Err()` method; the DataTable is left unchanged.
 
 Note that compilation still tokenizes the input before rejecting it, so memory use is proportional to input size. If you expose CCL input to untrusted end users, cap the formula length at your application boundary as well.
 

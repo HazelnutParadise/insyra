@@ -175,6 +175,21 @@ func (p *parser) parseExpression(precedence int) (cclNode, error) {
 
 	// 常規的二元運算優先級攀升迴圈（含比較與 && / ||）。比較之後在此接續處理
 	// 更低優先級的邏輯運算子。
+	// 連續的一般運算子會累積成攤平的左摺疊鏈（cclFoldChainNode），讓長鏈
+	// （如 1+1+1+...）產生 O(1) 深度的 AST 而不是 O(n) 深的斜樹。
+	// '.' 與 ':' 的求值是 node-level 特殊處理（evaluateRowAccess /
+	// evaluateRange，IsRowDependent 也對 ':' 做結構判斷），必須維持二元
+	// 節點，遇到時先 flush 既有累積再照舊包裝。
+	// 累積採延遲配置：0 或 1 個運算子只用純量暫存（常見的短運算式零額外
+	// 配置），第二個一般運算子出現才建立攤平鏈的 slices。hasPending 與
+	// foldOps != nil 互斥；foldOps 一旦建立必含至少兩組。
+	var (
+		pendingOp      string
+		pendingOperand cclNode
+		hasPending     bool
+		foldOps        []string
+		foldOperands   []cclNode
+	)
 	for {
 		tok := p.current()
 		if (tok.typ != tOPERATOR && tok.typ != tDOT && tok.typ != tCOLON) || getPrecedence(tok.value) < precedence {
@@ -186,10 +201,37 @@ func (p *parser) parseExpression(precedence int) (cclNode, error) {
 		if err != nil {
 			return nil, err
 		}
-		left = &cclBinaryOpNode{op: op, left: left, right: right}
+		switch {
+		case op == "." || op == ":":
+			left = materializeFold(left, pendingOp, pendingOperand, hasPending, foldOps, foldOperands)
+			hasPending, foldOps, foldOperands = false, nil, nil
+			left = &cclBinaryOpNode{op: op, left: left, right: right}
+		case foldOps != nil:
+			foldOps = append(foldOps, op)
+			foldOperands = append(foldOperands, right)
+		case hasPending:
+			foldOps = append(make([]string, 0, 4), pendingOp, op)
+			foldOperands = append(make([]cclNode, 0, 4), pendingOperand, right)
+			hasPending = false
+		default:
+			pendingOp, pendingOperand, hasPending = op, right, true
+		}
 	}
 
-	return left, nil
+	return materializeFold(left, pendingOp, pendingOperand, hasPending, foldOps, foldOperands), nil
+}
+
+// materializeFold 把累積中的運算子鏈實體化：無累積返回原節點、單一運算子
+// 維持既有的 cclBinaryOpNode 形狀（常見情況零改變）、兩個以上建立攤平的
+// 摺疊鏈節點（cclFoldChainNode）。
+func materializeFold(left cclNode, pendingOp string, pendingOperand cclNode, hasPending bool, ops []string, operands []cclNode) cclNode {
+	if ops != nil {
+		return &cclFoldChainNode{init: left, ops: ops, operands: operands}
+	}
+	if hasPending {
+		return &cclBinaryOpNode{op: pendingOp, left: left, right: pendingOperand}
+	}
+	return left
 }
 
 // 檢查是否為比較運算符
