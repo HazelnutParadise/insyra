@@ -6,9 +6,17 @@ import (
 	"strings"
 )
 
+// maxParseDepth bounds the parseExpression↔parsePrimary mutual recursion.
+// Go stack overflow is a fatal error (not a recoverable panic), so over-deep
+// input like "((((..." must be rejected before recursion exhausts the stack.
+// Matches maxEvalDepth: an expression nested deeper than that could never be
+// evaluated anyway.
+const maxParseDepth = 10000
+
 type parser struct {
 	tokens []cclToken
 	pos    int
+	depth  int
 }
 
 // parseExpression parses a CCL expression (no assignment).
@@ -195,6 +203,14 @@ func isComparisonOperator(op string) bool {
 }
 
 func (p *parser) parsePrimary() (cclNode, error) {
+	// 深度保護：所有解析遞迴循環（括號、函式呼叫、一元運算）都必經此處，
+	// 在這裡計數即可涵蓋全部路徑。
+	p.depth++
+	defer func() { p.depth-- }()
+	if p.depth > maxParseDepth {
+		return nil, fmt.Errorf("expression too deeply nested (max %d levels)", maxParseDepth)
+	}
+
 	tok := p.current()
 	switch tok.typ {
 	case tNUMBER:

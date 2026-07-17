@@ -32,6 +32,9 @@ type cclToken struct {
 // This allows external packages to store and reuse compiled formulas.
 type CCLNode = cclNode
 
+// 注意：新增「含子節點」的節點型別時，必須同步更新 exceedsDepth
+//（ccl_compiler.go 的編譯期深度保護）與 Bind 的走訪分支，否則該型別的
+// 子樹會漏掉深度檢查與欄位綁定。
 type cclNode any
 type cclNumberNode struct{ value float64 }
 type cclStringNode struct{ value string }

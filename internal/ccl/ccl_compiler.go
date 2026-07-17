@@ -19,7 +19,14 @@ func CompileExpression(expression string) (CCLNode, error) {
 		return nil, err
 	}
 
-	return parseExpression(tokens)
+	node, err := parseExpression(tokens)
+	if err != nil {
+		return nil, err
+	}
+	if err := checkASTDepth(node); err != nil {
+		return nil, err
+	}
+	return node, nil
 }
 
 // compileStatement compiles a CCL statement (expression or assignment).
@@ -28,7 +35,63 @@ func compileStatement(statement string) (CCLNode, error) {
 	if err != nil {
 		return nil, err
 	}
-	return parseStatement(tokens)
+	node, err := parseStatement(tokens)
+	if err != nil {
+		return nil, err
+	}
+	if err := checkASTDepth(node); err != nil {
+		return nil, err
+	}
+	return node, nil
+}
+
+// checkASTDepth rejects ASTs deeper than maxEvalDepth. maxParseDepth only
+// bounds parse recursion; a left-associative chain like "1+1+1+..." parses
+// with O(1) recursion (iterative precedence loop) yet builds an O(n)-deep
+// AST that would fatally overflow the stack in Bind/IsRowDependent before
+// the evaluator's own depth guard could run. Anything deeper than
+// maxEvalDepth could never be evaluated anyway, so nothing usable is lost.
+func checkASTDepth(n cclNode) error {
+	if exceedsDepth(n, maxEvalDepth) {
+		return fmt.Errorf("expression too complex: nesting depth exceeds max %d", maxEvalDepth)
+	}
+	return nil
+}
+
+// exceedsDepth reports whether the AST is deeper than limit. Iterative
+// (explicit stack) on purpose: a recursive walker would overflow on exactly
+// the inputs this exists to reject. Container node types must all be
+// enumerated here — see the note at the node declarations in ccl_types.go.
+func exceedsDepth(n cclNode, limit int) bool {
+	type entry struct {
+		node  cclNode
+		depth int
+	}
+	stack := []entry{{n, 1}}
+	for len(stack) > 0 {
+		e := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if e.depth > limit {
+			return true
+		}
+		switch t := e.node.(type) {
+		case *cclBinaryOpNode:
+			stack = append(stack, entry{t.left, e.depth + 1}, entry{t.right, e.depth + 1})
+		case *cclChainedComparisonNode:
+			for _, v := range t.values {
+				stack = append(stack, entry{v, e.depth + 1})
+			}
+		case *funcCallNode:
+			for _, arg := range t.args {
+				stack = append(stack, entry{arg, e.depth + 1})
+			}
+		case *cclAssignmentNode:
+			stack = append(stack, entry{t.expr, e.depth + 1})
+		case *cclNewColNode:
+			stack = append(stack, entry{t.expr, e.depth + 1})
+		}
+	}
+	return false
 }
 
 // CompileMultiline compiles a multi-line CCL script into a list of AST nodes.

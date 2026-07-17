@@ -1,6 +1,7 @@
 package insyra
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -570,6 +571,14 @@ func TestDataTable_CCL_MalformedFormulaReturnsAndSetsErr(t *testing.T) {
 		{"AddColUsingCCL trailing tokens", func(dt *DataTable) { dt.AddColUsingCCL("X", "5 * 3 garbage") }},
 		{"ExecuteCCL unknown char", func(dt *DataTable) { dt.ExecuteCCL("NEW('X') = A + $") }},
 		{"EditColByNameUsingCCL unknown char", func(dt *DataTable) { dt.EditColByNameUsingCCL("A", "~~~") }},
+		// Over-deep formulas used to fatally overflow the stack (unrecoverable,
+		// kills the process) instead of erroring. See change bound-ccl-compile-recursion.
+		{"AddColUsingCCL over-deep nesting", func(dt *DataTable) {
+			dt.AddColUsingCCL("X", strings.Repeat("(", 10001)+"1"+strings.Repeat(")", 10001))
+		}},
+		{"ExecuteCCL over-deep chain", func(dt *DataTable) {
+			dt.ExecuteCCL("NEW('X') = 1" + strings.Repeat("+1", 10001))
+		}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
