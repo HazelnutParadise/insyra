@@ -5,9 +5,7 @@ import (
 )
 
 func (dl *DataList) replaceAll_notAtomic(oldValue, newValue any) {
-	defer func() {
-		go dl.updateTimestamp()
-	}()
+	defer dl.updateTimestamp()
 
 	isOldValueNaN := false
 	if val, ok := oldValue.(float64); ok && math.IsNaN(val) {
@@ -27,9 +25,7 @@ func (dl *DataList) replaceAll_notAtomic(oldValue, newValue any) {
 }
 
 func (dl *DataList) replaceFirst_notAtomic(oldValue, newValue any) {
-	defer func() {
-		go dl.updateTimestamp()
-	}()
+	defer dl.updateTimestamp()
 
 	isOldValueNaN := false
 	if val, ok := oldValue.(float64); ok && math.IsNaN(val) {
@@ -51,9 +47,7 @@ func (dl *DataList) replaceFirst_notAtomic(oldValue, newValue any) {
 }
 
 func (dl *DataList) replaceLast_notAtomic(oldValue, newValue any) {
-	defer func() {
-		go dl.updateTimestamp()
-	}()
+	defer dl.updateTimestamp()
 	isOldValueNaN := false
 	if val, ok := oldValue.(float64); ok && math.IsNaN(val) {
 		isOldValueNaN = true
@@ -73,9 +67,7 @@ func (dl *DataList) replaceLast_notAtomic(oldValue, newValue any) {
 }
 
 func (dl *DataList) replaceNaNsAndNilsWith_notAtomic(value any) {
-	defer func() {
-		go dl.updateTimestamp()
-	}()
+	defer dl.updateTimestamp()
 
 	for i, v := range dl.data {
 		if v == nil {

@@ -435,8 +435,13 @@ func determineColumnsToShow(colIndices []string, colWidths map[string]int, rowNa
 // ShowTypes displays the data types of each element in the DataTable.
 // For more control over which rows to display, use ShowTypesRange.
 func (dt *DataTable) ShowTypes() {
-	// Call ShowTypesRange without any parameters to show all rows
-	dt.ShowTypesRange()
+	dt.ShowTypesTo(os.Stdout)
+}
+
+// ShowTypesTo writes the data types of each element in the DataTable to the provided writer.
+// For more control over which rows to display, use ShowTypesRangeTo.
+func (dt *DataTable) ShowTypesTo(w io.Writer) {
+	dt.ShowTypesRangeTo(w)
 }
 
 // ShowTypesRange displays the data types of each element in the DataTable within a specified range of rows.
@@ -453,6 +458,12 @@ func (dt *DataTable) ShowTypes() {
 // Example: dt.ShowTypesRange(2, 10) - shows rows with indices 2 to 9 (not including 10)
 // Example: dt.ShowTypesRange(2, nil) - shows rows from index 2 to the end of the table
 func (dt *DataTable) ShowTypesRange(startEnd ...any) {
+	dt.ShowTypesRangeTo(os.Stdout, startEnd...)
+}
+
+// ShowTypesRangeTo displays the data types of the DataTable within a specified range of rows, writing to w.
+// It behaves identically to ShowTypesRange but sends output to w instead of os.Stdout.
+func (dt *DataTable) ShowTypesRangeTo(w io.Writer, startEnd ...any) {
 	dt.AtomicDo(func(dt *DataTable) {
 
 		// Build data map without using Data() method to avoid deadlock
@@ -524,7 +535,7 @@ func (dt *DataTable) ShowTypesRange(startEnd ...any) {
 			}
 			if start >= end {
 				// Nothing to display if start is greater than or equal to end
-				fmt.Println(colorText("2;37", "(empty range)"))
+				fmt.Fprintln(w, colorText("2;37", "(empty range)"))
 				return
 			}
 		}
@@ -537,12 +548,12 @@ func (dt *DataTable) ShowTypesRange(startEnd ...any) {
 
 		tableSummary := fmt.Sprintf("(%d rows x %d columns)%s", rowCount, colCount, rangeInfo)
 		// Display table basic info
-		fmt.Printf("%s %s\n", colorText("1;36", tableTitle), colorText("3;36", tableSummary))
-		fmt.Println(strings.Repeat("=", min(width, 80)))
+		fmt.Fprintf(w, "%s %s\n", colorText("1;36", tableTitle), colorText("3;36", tableSummary))
+		fmt.Fprintln(w, strings.Repeat("=", min(width, 80)))
 
 		// Handle empty table
 		if rowCount == 0 || colCount == 0 {
-			fmt.Println(colorText("3;36", "(empty)"))
+			fmt.Fprintln(w, colorText("3;36", "(empty)"))
 			return
 		}
 
@@ -566,32 +577,32 @@ func (dt *DataTable) ShowTypesRange(startEnd ...any) {
 
 		for page, currentPageCols := range pages {
 			if page > 0 {
-				fmt.Println("\n" + colorText("1;35", "--- Continue Type Display ---"))
+				fmt.Fprintln(w, "\n"+colorText("1;35", "--- Continue Type Display ---"))
 			}
 			if totalPages > 1 {
 				pageInfo := fmt.Sprintf("--- Type Page %d/%d ---", page+1, totalPages)
-				fmt.Println(colorText("1;36", pageInfo))
+				fmt.Fprintln(w, colorText("1;36", pageInfo))
 
 				// Display page navigation prompt
 				if page > 0 && page < totalPages-1 {
-					fmt.Println("(Scroll screen to see more)")
+					fmt.Fprintln(w, "(Scroll screen to see more)")
 				}
 			}
 
 			// Print column names with runewidth alignment
-			fmt.Print(colorText("1;32", runewidth.FillRight("RowNames", maxRowNameWidth+2)))
+			fmt.Fprint(w, colorText("1;32", runewidth.FillRight("RowNames", maxRowNameWidth+2)))
 			for _, colIndex := range currentPageCols {
 				lbl := utils.TruncateString(colIndex, colWidths[colIndex])
-				fmt.Print(" " + colorText("1;32", runewidth.FillRight(lbl, colWidths[colIndex]+1)))
+				fmt.Fprint(w, " "+colorText("1;32", runewidth.FillRight(lbl, colWidths[colIndex]+1)))
 			}
-			fmt.Println()
+			fmt.Fprintln(w)
 
 			// Print separator aligned to header widths
-			fmt.Print(strings.Repeat("-", maxRowNameWidth+2))
+			fmt.Fprint(w, strings.Repeat("-", maxRowNameWidth+2))
 			for _, colIndex := range currentPageCols {
-				fmt.Print(" " + strings.Repeat("-", colWidths[colIndex]+1))
+				fmt.Fprint(w, " "+strings.Repeat("-", colWidths[colIndex]+1))
 			}
-			fmt.Println()
+			fmt.Fprintln(w)
 			// Print row data for the specified range
 			selectedRowCount := end - start
 
@@ -602,38 +613,38 @@ func (dt *DataTable) ShowTypesRange(startEnd ...any) {
 			// UNLESS a range was explicitly specified by the user
 			if selectedRowCount > 25 && !explicitRangeSpecified {
 				// Show first 20 rows
-				printTypeRows(dataMap, start, start+20, rowNames, maxRowNameWidth, currentPageCols, colWidths)
+				printTypeRows(w, dataMap, start, start+20, rowNames, maxRowNameWidth, currentPageCols, colWidths)
 
 				// Show ellipsis line aligned to columns
-				fmt.Print(colorText("1;36", runewidth.FillRight("...", maxRowNameWidth+2)))
+				fmt.Fprint(w, colorText("1;36", runewidth.FillRight("...", maxRowNameWidth+2)))
 				for _, colIndex := range currentPageCols {
-					fmt.Print(" " + colorText("1;36", runewidth.FillRight("...", colWidths[colIndex]+1)))
+					fmt.Fprint(w, " "+colorText("1;36", runewidth.FillRight("...", colWidths[colIndex]+1)))
 				}
-				fmt.Println()
+				fmt.Fprintln(w)
 
 				// Show last 5 rows
-				printTypeRows(dataMap, end-5, end, rowNames, maxRowNameWidth, currentPageCols, colWidths)
+				printTypeRows(w, dataMap, end-5, end, rowNames, maxRowNameWidth, currentPageCols, colWidths)
 
 				// Show data summary
-				fmt.Printf("\n%s\n", colorText("3;36", fmt.Sprintf("Displaying %d rows (from row %d to row %d)",
+				fmt.Fprintf(w, "\n%s\n", colorText("3;36", fmt.Sprintf("Displaying %d rows (from row %d to row %d)",
 					selectedRowCount, start, end-1)))
 			} else {
 				// Either not many rows or user explicitly requested the range,
 				// so show all rows in the range without truncation
-				printTypeRows(dataMap, start, end, rowNames, maxRowNameWidth, currentPageCols, colWidths)
+				printTypeRows(w, dataMap, start, end, rowNames, maxRowNameWidth, currentPageCols, colWidths)
 			}
 
 			// If multiple pages, show footer separator
 			if totalPages > 1 {
-				fmt.Println(strings.Repeat("-", min(width, 80)))
+				fmt.Fprintln(w, strings.Repeat("-", min(width, 80)))
 			}
 		}
 	})
-	fmt.Println()
+	fmt.Fprintln(w)
 }
 
 // Print specified range of rows (type information)
-func printTypeRows(dataMap map[string][]any, start, end int, rowNames []string, maxRowNameWidth int, colIndices []string, colWidths map[string]int) {
+func printTypeRows(w io.Writer, dataMap map[string][]any, start, end int, rowNames []string, maxRowNameWidth int, colIndices []string, colWidths map[string]int) {
 	for rowIndex := start; rowIndex < end; rowIndex++ {
 		rowName := ""
 		if rowIndex < len(rowNames) {
@@ -641,7 +652,7 @@ func printTypeRows(dataMap map[string][]any, start, end int, rowNames []string, 
 		}
 		// Use light gray color for row names with proper alignment using runewidth
 		rowLabel := runewidth.FillRight(utils.TruncateString(rowName, maxRowNameWidth), maxRowNameWidth+2)
-		fmt.Print(colorText("1;37", rowLabel))
+		fmt.Fprint(w, colorText("1;37", rowLabel))
 
 		for _, colIndex := range colIndices {
 			value := "nil"
@@ -685,12 +696,12 @@ func printTypeRows(dataMap map[string][]any, start, end int, rowNames []string, 
 			// Print type cell with proper alignment using runewidth
 			cellText := runewidth.FillRight(utils.TruncateString(value, colWidths[colIndex]), colWidths[colIndex]+1)
 			if typeColorCode != "" {
-				fmt.Print(" " + colorText(typeColorCode, cellText))
+				fmt.Fprint(w, " "+colorText(typeColorCode, cellText))
 			} else {
-				fmt.Print(" " + cellText)
+				fmt.Fprint(w, " "+cellText)
 			}
 		}
-		fmt.Println()
+		fmt.Fprintln(w)
 	}
 }
 
@@ -1039,14 +1050,26 @@ func (dl *DataList) ShowRangeTo(w io.Writer, startEnd ...any) {
 // ShowTypes displays the data types of each element in the DataList.
 // It adapts to terminal width and always displays in a linear format.
 func (dl *DataList) ShowTypes() {
-	dl.ShowTypesRange()
+	dl.ShowTypesTo(os.Stdout)
+}
+
+// ShowTypesTo writes the data types of each element in the DataList to the provided writer.
+// For more control over which items to display, use ShowTypesRangeTo.
+func (dl *DataList) ShowTypesTo(w io.Writer) {
+	dl.ShowTypesRangeTo(w)
 }
 
 // ShowTypesRange displays the data types of DataList within a specified range.
 // startEnd 参数同 ShowRange。
 func (dl *DataList) ShowTypesRange(startEnd ...any) {
+	dl.ShowTypesRangeTo(os.Stdout, startEnd...)
+}
+
+// ShowTypesRangeTo displays the data types of DataList within a specified range, writing to w.
+// It behaves identically to ShowTypesRange but sends output to w instead of os.Stdout.
+func (dl *DataList) ShowTypesRangeTo(w io.Writer, startEnd ...any) {
 	if dl == nil {
-		fmt.Println(colorText("1;31", "ERROR: Unable to show types of a nil DataList"))
+		fmt.Fprintln(w, colorText("1;31", "ERROR: Unable to show types of a nil DataList"))
 		return
 	}
 	dl.AtomicDo(func(dl *DataList) {
@@ -1099,9 +1122,9 @@ func (dl *DataList) ShowTypesRange(startEnd ...any) {
 				end = total
 			}
 			if start >= end {
-				fmt.Printf("%s %s\n", colorText("1;33", title), colorText("3;33", fmt.Sprintf("(%d items)", total)))
-				fmt.Println(strings.Repeat("=", min(width, 80)))
-				fmt.Println(colorText("2;37", "(empty range)"))
+				fmt.Fprintf(w, "%s %s\n", colorText("1;33", title), colorText("3;33", fmt.Sprintf("(%d items)", total)))
+				fmt.Fprintln(w, strings.Repeat("=", min(width, 80)))
+				fmt.Fprintln(w, colorText("2;37", "(empty range)"))
 				return
 			}
 		}
@@ -1111,12 +1134,12 @@ func (dl *DataList) ShowTypesRange(startEnd ...any) {
 		if len(startEnd) > 0 {
 			summary += fmt.Sprintf(" [showing items %d to %d]", start, end-1)
 		}
-		fmt.Printf("%s %s\n", colorText("1;33", title), colorText("3;33", summary))
-		fmt.Println(strings.Repeat("=", min(width, 80)))
+		fmt.Fprintf(w, "%s %s\n", colorText("1;33", title), colorText("3;33", summary))
+		fmt.Fprintln(w, strings.Repeat("=", min(width, 80)))
 
 		// 無資料
 		if end-start == 0 {
-			fmt.Println(colorText("2;37", "(empty)"))
+			fmt.Fprintln(w, colorText("2;37", "(empty)"))
 			return
 		}
 
@@ -1142,10 +1165,10 @@ func (dl *DataList) ShowTypesRange(startEnd ...any) {
 		}
 
 		// 列印表頭
-		fmt.Print(colorText("1;32", runewidth.FillRight("Index", maxIdxW+2)))
-		fmt.Println(" " + colorText("1;32", runewidth.FillRight("Type", maxTypW+1)))
+		fmt.Fprint(w, colorText("1;32", runewidth.FillRight("Index", maxIdxW+2)))
+		fmt.Fprintln(w, " "+colorText("1;32", runewidth.FillRight("Type", maxTypW+1)))
 		// 列印分隔線
-		fmt.Println(strings.Repeat("-", maxIdxW+2+1+maxTypW+1))
+		fmt.Fprintln(w, strings.Repeat("-", maxIdxW+2+1+maxTypW+1))
 
 		// 計算範圍內項目數
 		totalItems := end - start
@@ -1161,28 +1184,28 @@ func (dl *DataList) ShowTypesRange(startEnd ...any) {
 		for i := start; i < start+firstCount; i++ {
 			idx := strconv.Itoa(i)
 			tstr := types[i-start]
-			fmt.Print(colorText("1;37", runewidth.FillRight(idx, maxIdxW+2)))
-			fmt.Println(" " + runewidth.FillRight(tstr, maxTypW+1))
+			fmt.Fprint(w, colorText("1;37", runewidth.FillRight(idx, maxIdxW+2)))
+			fmt.Fprintln(w, " "+runewidth.FillRight(tstr, maxTypW+1))
 		}
 
 		// 如果有截斷，則列印省略號及最後幾項
 		if !showAll {
 			// ellipsis line
-			fmt.Print(colorText("1;33", runewidth.FillRight("...", maxIdxW+2)))
-			fmt.Println(" " + colorText("1;33", runewidth.FillRight("...", maxTypW+1)))
+			fmt.Fprint(w, colorText("1;33", runewidth.FillRight("...", maxIdxW+2)))
+			fmt.Fprintln(w, " "+colorText("1;33", runewidth.FillRight("...", maxTypW+1)))
 			// last 5 items
 			for i := end - 5; i < end; i++ {
 				idx := strconv.Itoa(i)
 				tstr := types[i-start]
-				fmt.Print(colorText("1;37", runewidth.FillRight(idx, maxIdxW+2)))
-				fmt.Println(" " + runewidth.FillRight(tstr, maxTypW+1))
+				fmt.Fprint(w, colorText("1;37", runewidth.FillRight(idx, maxIdxW+2)))
+				fmt.Fprintln(w, " "+runewidth.FillRight(tstr, maxTypW+1))
 			}
 			// summary
-			fmt.Printf("\n%s\n", colorText("3;33", fmt.Sprintf("Displaying %d items (from index %d to index %d)",
+			fmt.Fprintf(w, "\n%s\n", colorText("3;33", fmt.Sprintf("Displaying %d items (from index %d to index %d)",
 				totalItems, start, end-1)))
 		}
 	})
-	fmt.Println()
+	fmt.Fprintln(w)
 }
 
 // getDataListTerminalWidth gets the terminal window width, specifically for DataList

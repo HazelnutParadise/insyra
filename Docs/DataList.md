@@ -2038,9 +2038,10 @@ dl.ShowRange(5, nil) // Show items from index 5 to end
 
 ```go
 func (dl *DataList) ShowTypes()
+func (dl *DataList) ShowTypesTo(w io.Writer) // same output, written to w instead of os.Stdout
 ```
 
-**Description:** Displays the data types of each element in the DataList.
+**Description:** Displays the data types of each element in the DataList. `ShowTypesTo` writes the same output to any `io.Writer` (e.g. a file or `bytes.Buffer`) instead of stdout.
 
 **Parameters:**
 
@@ -2067,9 +2068,10 @@ dl.ShowTypes()
 
 ```go
 func (dl *DataList) ShowTypesRange(startEnd ...any)
+func (dl *DataList) ShowTypesRangeTo(w io.Writer, startEnd ...any) // same output, written to w
 ```
 
-**Description:** Displays the data types of DataList elements within a specified range.
+**Description:** Displays the data types of DataList elements within a specified range. `ShowTypesRangeTo` writes the same output to any `io.Writer` instead of stdout.
 
 **Parameters:**
 

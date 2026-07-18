@@ -31,7 +31,7 @@ func (dt *DataTable) fillColumns(cols []string, methodName string, fill func(*Da
 				dt.columns[idx] = col
 			}
 		}
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 	})
 	return dt
 }

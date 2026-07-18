@@ -105,7 +105,7 @@ func (dt *DataTable) AppendCols(columns ...*DataList) *DataTable {
 			}
 		}
 
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 	}, instances...)
 	return dt
 }
@@ -150,7 +150,7 @@ func (dt *DataTable) AppendRowsFromDataList(rowsData ...*DataList) *DataTable {
 				}
 			}
 		}
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 	}, instances...)
 	return dt
 }
@@ -208,7 +208,7 @@ func (dt *DataTable) AppendRowsByColIndex(rowsData ...map[string]any) *DataTable
 				}
 			}
 		}
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 	})
 	return dt
 }
@@ -247,7 +247,7 @@ func (dt *DataTable) AppendRowsByColName(rowsData ...map[string]any) *DataTable 
 				}
 			}
 		}
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 	})
 	return dt
 }
@@ -422,7 +422,7 @@ func (dt *DataTable) UpdateElement(rowIndex int, columnIndex string, value any) 
 		} else {
 			dt.warn("UpdateElement", "Col index does not exist, returning")
 		}
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 	})
 	return dt
 }
@@ -444,7 +444,7 @@ func (dt *DataTable) UpdateCol(index string, dl *DataList) *DataTable {
 		} else {
 			dt.warn("UpdateCol", "Col index does not exist, returning")
 		}
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 	}, dt, dl)
 	return dt
 }
@@ -467,7 +467,7 @@ func (dt *DataTable) UpdateColByNumber(index int, dl *DataList) *DataTable {
 		column.data = slices.Clone(dl.data)
 		column.name = dl.name
 		dt.columns[index] = column
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 	}, dt, dl)
 	return dt
 }
@@ -497,7 +497,7 @@ func (dt *DataTable) UpdateRow(index int, dl *DataList) *DataTable {
 			_, _ = dt.rowNames.Set(index, srn)
 		}
 
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 	}, dt, dl)
 	return dt
 }
@@ -518,7 +518,7 @@ func (dt *DataTable) SetColToRowNames(columnIndex string) *DataTable {
 
 		dt.DropColsByIndex(columnIndex)
 
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 	})
 	return dt
 }
@@ -536,7 +536,7 @@ func (dt *DataTable) SetRowToColNames(rowIndex int) *DataTable {
 
 		dt.DropRowsByIndex(rowIndex)
 
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 	})
 	return dt
 }
@@ -752,7 +752,7 @@ func (dt *DataTable) DropColsByName(columnNames ...string) *DataTable {
 				}
 			}
 		}
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 	})
 	return dt
 }
@@ -771,7 +771,7 @@ func (dt *DataTable) DropColsByIndex(columnIndices ...string) *DataTable {
 		for _, colPos := range colsToDelete {
 			dt.columns = append(dt.columns[:colPos], dt.columns[colPos+1:]...)
 		}
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 	})
 	return dt
 }
@@ -787,7 +787,7 @@ func (dt *DataTable) DropColsByNumber(columnIndices ...int) *DataTable {
 			}
 		}
 
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 	})
 	return dt
 }
@@ -817,7 +817,7 @@ func (dt *DataTable) DropColsContainString() *DataTable {
 			dt.columns = append(dt.columns[:colIndex], dt.columns[colIndex+1:]...)
 		}
 
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 	})
 	return dt
 }
@@ -850,7 +850,7 @@ func (dt *DataTable) DropColsContainNumber() *DataTable {
 			dt.columns = append(dt.columns[:colIndex], dt.columns[colIndex+1:]...)
 		}
 
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 	})
 	return dt
 }
@@ -880,7 +880,7 @@ func (dt *DataTable) DropColsContainNil() *DataTable {
 			dt.columns = append(dt.columns[:colIndex], dt.columns[colIndex+1:]...)
 		}
 
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 	})
 	return dt
 }
@@ -910,7 +910,7 @@ func (dt *DataTable) DropColsContainNaN() *DataTable {
 			dt.columns = append(dt.columns[:colIndex], dt.columns[colIndex+1:]...)
 		}
 
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 	})
 	return dt
 }
@@ -944,7 +944,7 @@ func (dt *DataTable) DropColsContain(value ...any) *DataTable {
 			colIndex := columnsToDelete[i]
 			dt.columns = append(dt.columns[:colIndex], dt.columns[colIndex+1:]...)
 		}
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 	})
 	return dt
 }
@@ -976,7 +976,7 @@ func (dt *DataTable) DropRowsByIndex(rowIndices ...int) *DataTable {
 
 			dt.reindexRowNamesAfterRemoval(adjustedIndex)
 		}
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 	})
 	return dt
 }
@@ -1001,7 +1001,7 @@ func (dt *DataTable) DropRowsByName(rowNames ...string) *DataTable {
 			dt.reindexRowNamesAfterRemoval(rowIndex)
 		}
 
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 	})
 	return dt
 }
@@ -1040,7 +1040,7 @@ func (dt *DataTable) DropRowsContainString() *DataTable {
 
 			dt.reindexRowNamesAfterRemoval(rowIndex)
 		}
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 	})
 	return dt
 }
@@ -1079,7 +1079,7 @@ func (dt *DataTable) DropRowsContainNumber() *DataTable {
 
 		dt.remapRowNames(rowsToKeep)
 
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 	})
 	return dt
 }
@@ -1123,7 +1123,7 @@ func (dt *DataTable) DropRowsContainNil() *DataTable {
 
 		// 更新 rowNames 映射，以移除被刪除的行
 		dt.remapRowNamesByIndices(nonNilRowIndices)
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 	})
 	return dt
 }
@@ -1169,7 +1169,7 @@ func (dt *DataTable) DropRowsContainNaN() *DataTable {
 
 		// 更新 rowNames 映射，以移除被刪除的行
 		dt.remapRowNamesByIndices(nonNaNRowIndices)
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 	})
 	return dt
 }
@@ -1216,7 +1216,7 @@ func (dt *DataTable) DropRowsContain(value ...any) *DataTable {
 			}
 		}
 		dt.remapRowNames(rowsToKeep)
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 	})
 	return dt
 }
@@ -1371,7 +1371,7 @@ func (dt *DataTable) Transpose() *DataTable {
 		dt.columns = newDt.columns
 		dt.rowNames = newDt.rowNames
 
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 		result = dt
 	})
 	return result

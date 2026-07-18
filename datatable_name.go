@@ -17,7 +17,7 @@ func (dt *DataTable) SetName(name string) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		dt.name = name
 		result = dt
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 	})
 	return result
 }

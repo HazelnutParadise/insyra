@@ -29,13 +29,13 @@ func (dt *DataTable) SetRowNameByIndex(index int, name string) *DataTable {
 
 		if name == "" {
 			_, _ = dt.rowNames.DeleteByID(index)
-			go dt.updateTimestamp()
+			dt.updateTimestamp()
 			return
 		}
 
 		srn := safeRowName(dt, name)
 		_, _ = dt.rowNames.Set(index, srn)
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 	})
 	return dt
 }
@@ -156,7 +156,7 @@ func (dt *DataTable) RowNamesToFirstCol() *DataTable {
 		dt.columns = append([]*DataList{rowNames}, dt.columns...)
 
 		dt.rowNames = core.NewBiIndex(0)
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 	})
 	return dt
 }
@@ -172,7 +172,7 @@ func (dt *DataTable) DropRowNames() *DataTable {
 		}
 
 		dt.rowNames = core.NewBiIndex(0)
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 	})
 	return dt
 }

@@ -69,9 +69,7 @@ func hasOnlyNumericObservedValues(dl *DataList) bool {
 
 // FillForward replaces missing values with the most recent non-missing value.
 func (dl *DataList) FillForward(limit ...int) *DataList {
-	defer func() {
-		go dl.updateTimestamp()
-	}()
+	defer dl.updateTimestamp()
 	maxFill := imputeLimit(limit)
 	dl.AtomicDo(func(dl *DataList) {
 		var last any
@@ -97,9 +95,7 @@ func (dl *DataList) FillForward(limit ...int) *DataList {
 
 // FillBackward replaces missing values with the next non-missing value.
 func (dl *DataList) FillBackward(limit ...int) *DataList {
-	defer func() {
-		go dl.updateTimestamp()
-	}()
+	defer dl.updateTimestamp()
 	maxFill := imputeLimit(limit)
 	dl.AtomicDo(func(dl *DataList) {
 		var next any
@@ -126,9 +122,7 @@ func (dl *DataList) FillBackward(limit ...int) *DataList {
 
 // FillWithMean replaces missing values (NaN and nil) with the mean of observed numeric values.
 func (dl *DataList) FillWithMean() *DataList {
-	defer func() {
-		go dl.updateTimestamp()
-	}()
+	defer dl.updateTimestamp()
 	dl.AtomicDo(func(dl *DataList) {
 		values := numericObservedValues(dl.data)
 		if len(values) == 0 {
@@ -158,9 +152,7 @@ func (dl *DataList) FillWithMean() *DataList {
 
 // FillWithMedian replaces missing values with the median of observed numeric values.
 func (dl *DataList) FillWithMedian() *DataList {
-	defer func() {
-		go dl.updateTimestamp()
-	}()
+	defer dl.updateTimestamp()
 	dl.AtomicDo(func(dl *DataList) {
 		values := numericObservedValues(dl.data)
 		if len(values) == 0 {
@@ -188,9 +180,7 @@ func (dl *DataList) FillWithMedian() *DataList {
 
 // FillWithMode replaces missing values with the first-occurring mode of observed values.
 func (dl *DataList) FillWithMode() *DataList {
-	defer func() {
-		go dl.updateTimestamp()
-	}()
+	defer dl.updateTimestamp()
 	type modeEntry struct {
 		value any
 		count int
@@ -235,9 +225,7 @@ func (dl *DataList) FillWithMode() *DataList {
 
 // FillByInterpolation fills missing sequence values by index, unlike LinearInterpolation which evaluates y at x.
 func (dl *DataList) FillByInterpolation(extrapolate ...bool) *DataList {
-	defer func() {
-		go dl.updateTimestamp()
-	}()
+	defer dl.updateTimestamp()
 	shouldExtrapolate := len(extrapolate) > 0 && extrapolate[0]
 	dl.AtomicDo(func(dl *DataList) {
 		indices, values, ok := numericObservedPoints(dl.data)

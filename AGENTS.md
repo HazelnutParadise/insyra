@@ -148,25 +148,9 @@ Keep the English ([README.md](README.md), `Docs/`) and Traditional-Chinese ([REA
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
-### [2026-07-10] — Dependabot alerts on the default branch (grown to 15 open: 7 critical, 4 high, 4 moderate)
-- **Where**: https://github.com/HazelnutParadise/insyra/security/dependabot — 13× `golang.org/x/crypto` (fixed in 0.52.0), 1× `golang.org/x/image` = alert #18 (fixed in 0.41.0), 1× `github.com/xuri/excelize/v2` (fixed in 2.11.0)
-- **What**: Alerts track `main`, whose deps are stale. This entry started as 1 high (#18); GitHub's advisory DB has since added entries that hit main's old versions.
-- **Status**: pending — the 2026-07-11 dependency refresh on `dev` (x/crypto 0.54.0, x/image 0.44.0, excelize 2.11.0, go 1.25.12) meets or exceeds every alert's first-patched version. Pushes to `dev` do NOT close them; after the next release merges `dev` → `main`, verify all 15 auto-close, then delete this entry. Locally `govulncheck -scan module` reports only GO-2026-5932 (`x/crypto/openpgp` unmaintained, no fix available, not imported by any insyra build path).
-
 ### [2026-07-11] — chromedp chain left at pre-refresh versions (two independent blockers)
 - **Where**: `go.mod` — `chromedp v0.11.2`, `cdproto v0.0.0-20241208230723-d1c7de7e5dd2` (pulled in via `go-echarts/snapshot-chromedp`)
 - **What**: The 2026-07-11 dependency refresh could not move these. (1) `chromedp v0.15.0+` and newer `cdproto` require go >= 1.26, while the module's `go` directive stays on 1.25.x (minimum-Go promise to downstream users). (2) The newest go1.25-compatible version, `chromedp v0.14.2`, hard-requires `go-json-experiment/json`, whose generic-variadic code panics govulncheck's symbol-level scan ("got jsontext.Value, want variadic parameter of unnamed slice or string type" in x/tools go/ssa — still broken as of x/tools v0.48.0 / x/vuln v1.6.0), which would permanently break the Govulncheck CI workflow.
 - **Suggestion**: When raising the minimum Go version to 1.26, retry upgrading the whole chain and re-verify `govulncheck ./...` completes (the x/tools SSA bug may be fixed by then).
 - **Status**: pending
 
-### [2026-07-10] — `types` CLI command prints to stdout, bypassing `ctx.Output`
-- **Where**: `cli/commands/types.go:28,30` → `DataTable/DataList.ShowTypes` (`show.go:437,1041`)
-- **What**: Same bug class as M20 (fixed for `show`/`describe`/`summary`). `ShowTypes`/`ShowTypesRange` were intentionally left stdout-only, so the `types` command's output escapes `ctx.Output` (not captured by the REPL/tests).
-- **Suggestion**: Extend the writer-aware pattern — add `ShowTypesTo(w)` / `ShowTypesRangeTo(w, ...)` (thread `w` through `printTypeRows`), have the old methods delegate to `os.Stdout`, and route `types.go` through `ctx.Output`.
-- **Status**: pending
-
-### [2026-07-10] — `go updateTimestamp()` spawns an unbounded goroutine per mutation
-- **Where**: ~102 sites across `datalist.go` / `datatable.go` (mutating methods call `go x.updateTimestamp()`)
-- **What**: Every mutation fires a fire-and-forget goroutine to bump the last-modified timestamp. Under heavy/tight-loop mutation this floods the scheduler (the `-race` stress tests had to be bounded because of it). Latent scalability/perf concern, not a correctness bug.
-- **Suggestion**: Update the timestamp synchronously (it is a cheap atomic store) instead of spawning a goroutine, or coalesce. First confirm the goroutine is not there to avoid re-entering the actor lock.
-- **Status**: pending

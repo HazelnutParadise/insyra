@@ -103,7 +103,7 @@ func (dl *DataList) Append(values ...any) *DataList {
 	dl.AtomicDo(func(dl *DataList) {
 		// Append data and update timestamp
 		dl.data = append(dl.data, values...)
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return dl
 }
@@ -136,7 +136,7 @@ func (dl *DataList) AppendDataList(other IDataList) *DataList {
 	})
 	dl.AtomicDo(func(dl *DataList) {
 		dl.data = append(dl.data, otherData...)
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return dl
 }
@@ -210,7 +210,7 @@ func (dl *DataList) Update(index int, newValue any) *DataList {
 			return
 		}
 		dl.data[index] = newValue
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return dl
 }
@@ -238,7 +238,7 @@ func (dl *DataList) InsertAt(index int, value any) *DataList {
 			}
 		}
 
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return dl
 }
@@ -359,11 +359,11 @@ func (dl *DataList) ReplaceLast(oldValue, newValue any) *DataList {
 		for i := len(dl.data) - 1; i >= 0; i-- {
 			if !isOldValueNaN && dl.data[i] == oldValue {
 				dl.data[i] = newValue
-				go dl.updateTimestamp()
+				dl.updateTimestamp()
 				return
 			} else if val, ok := dl.data[i].(float64); ok && math.IsNaN(val) {
 				dl.data[i] = newValue
-				go dl.updateTimestamp()
+				dl.updateTimestamp()
 				return
 			}
 		}
@@ -416,9 +416,7 @@ func (dl *DataList) ReplaceNaNsWith(value any) *DataList {
 
 // ReplaceNilsWith replaces all nil values in the DataList with the specified value.
 func (dl *DataList) ReplaceNilsWith(value any) *DataList {
-	defer func() {
-		go dl.updateTimestamp()
-	}()
+	defer dl.updateTimestamp()
 	dl.AtomicDo(func(dl *DataList) {
 		for i, v := range dl.data {
 			if v == nil {
@@ -450,7 +448,7 @@ func (dl *DataList) Pop() any {
 			return
 		}
 		result = n
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return result
 }
@@ -471,7 +469,7 @@ func (dl *DataList) Drop(index int) *DataList {
 			return
 		}
 		dl.data = append(dl.data[:index], dl.data[index+1:]...)
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return dl
 }
@@ -565,7 +563,7 @@ func (dl *DataList) DropAll(toDrop ...any) *DataList {
 
 		// 更新 DataList
 		dl.data = finalResult
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return dl
 }
@@ -591,7 +589,7 @@ func (dl *DataList) DropIfContains(substring string) *DataList {
 
 		// 將新的數據賦值回 dl.data
 		dl.data = newData
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return dl
 }
@@ -600,7 +598,7 @@ func (dl *DataList) DropIfContains(substring string) *DataList {
 func (dl *DataList) Clear() *DataList {
 	dl.AtomicDo(func(dl *DataList) {
 		dl.data = []any{}
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return dl
 }
@@ -668,7 +666,7 @@ func (dl *DataList) ClearStrings() *DataList {
 
 		// 更新 DataList
 		dl.data = finalResult
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return dl
 } // ++++ 此處之後尚未提升性能 ++++
@@ -690,16 +688,14 @@ func (dl *DataList) ClearNumbers() *DataList {
 		}
 
 		dl.data = filteredData
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return dl
 }
 
 // ClearNaNs removes all NaN values from the DataList and updates the timestamp.
 func (dl *DataList) ClearNaNs() *DataList {
-	defer func() {
-		go dl.updateTimestamp()
-	}()
+	defer dl.updateTimestamp()
 	dl.AtomicDo(func(dl *DataList) {
 		for i := len(dl.data) - 1; i >= 0; i-- {
 			if v, ok := dl.data[i].(float64); ok && math.IsNaN(v) {
@@ -712,9 +708,7 @@ func (dl *DataList) ClearNaNs() *DataList {
 
 // ClearNils removes all nil values from the DataList and updates the timestamp.
 func (dl *DataList) ClearNils() *DataList {
-	defer func() {
-		go dl.updateTimestamp()
-	}()
+	defer dl.updateTimestamp()
 	dl.AtomicDo(func(dl *DataList) {
 		for i := len(dl.data) - 1; i >= 0; i-- {
 			if dl.data[i] == nil {
@@ -727,9 +721,7 @@ func (dl *DataList) ClearNils() *DataList {
 
 // ClearNilsAndNaNs removes all nil and NaN values from the DataList and updates the timestamp.
 func (dl *DataList) ClearNilsAndNaNs() *DataList {
-	defer func() {
-		go dl.updateTimestamp()
-	}()
+	defer dl.updateTimestamp()
 	dl.AtomicDo(func(dl *DataList) {
 		dl.ClearNaNs().ClearNils()
 	})
@@ -744,7 +736,7 @@ func (dl *DataList) ClearOutliers(stdDevs float64) *DataList {
 		if r != nil {
 			dl.warn("ClearOutliers", "Data types cannot be compared")
 		}
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	}()
 	dl.AtomicDo(func(dl *DataList) {
 		mean := dl.Mean()
@@ -777,7 +769,7 @@ func (dl *DataList) Normalize() *DataList {
 			dl.warn("Normalize", "Data types cannot be compared, returning nil")
 		}
 
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	}()
 	isFailed := false
 	dl.AtomicDo(func(dl *DataList) {
@@ -815,7 +807,7 @@ func (dl *DataList) Standardize() *DataList {
 			vfloat := conv.ParseF64(v)
 			dl.data[i] = (vfloat - mean) / stddev
 		}
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return dl
 }
@@ -845,7 +837,7 @@ func (dl *DataList) FillNaNWithMean() *DataList {
 				dl.data[i] = vfloat
 			}
 		}
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return dl
 }
@@ -1048,7 +1040,7 @@ func (dl *DataList) Sort(ascending ...bool) *DataList {
 			return algorithms.CompareAny(a, b) * order
 		})
 
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return dl
 }
@@ -1105,7 +1097,7 @@ func (dl *DataList) Rank(ascending ...bool) *DataList {
 func (dl *DataList) Reverse() *DataList {
 	dl.AtomicDo(func(dl *DataList) {
 		sliceutil.Reverse(dl.data)
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return dl
 }
@@ -1118,7 +1110,7 @@ func (dl *DataList) Upper() *DataList {
 				dl.data[i] = strings.ToUpper(str)
 			}
 		}
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return dl
 }
@@ -1131,7 +1123,7 @@ func (dl *DataList) Lower() *DataList {
 				dl.data[i] = strings.ToLower(str)
 			}
 		}
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return dl
 }
@@ -1144,7 +1136,7 @@ func (dl *DataList) Capitalize() *DataList {
 				dl.data[i] = cases.Title(language.English, cases.NoLower).String(strings.ToLower(str))
 			}
 		}
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return dl
 }
@@ -1996,7 +1988,7 @@ func (dl *DataList) ParseNumbers() *DataList {
 			}()
 		}
 
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return dl
 }
@@ -2016,7 +2008,7 @@ func (dl *DataList) ParseStrings() *DataList {
 			}()
 		}
 
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return dl
 }
@@ -2107,7 +2099,7 @@ func (dl *DataList) GetName() string {
 func (dl *DataList) SetName(newName string) *DataList {
 	dl.AtomicDo(func(dl *DataList) {
 		dl.name = newName
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return dl
 }

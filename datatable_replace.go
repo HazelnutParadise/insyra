@@ -204,27 +204,21 @@ func (dt *DataTable) ReplaceNaNsAndNilsInCol(colIndex string, newValue any, mode
 // ========================== Not Atomic Versions ==========================
 
 func (dt *DataTable) replace_notAtomic(oldValue, newValue any) {
-	defer func() {
-		go dt.updateTimestamp()
-	}()
+	defer dt.updateTimestamp()
 	for _, col := range dt.columns {
 		col.replaceAll_notAtomic(oldValue, newValue)
 	}
 }
 
 func (dt *DataTable) replaceNaNsWith_notAtomic(newValue any) {
-	defer func() {
-		go dt.updateTimestamp()
-	}()
+	defer dt.updateTimestamp()
 	for _, col := range dt.columns {
 		col.replaceAll_notAtomic(math.NaN(), newValue)
 	}
 }
 
 func (dt *DataTable) replaceNaNsAndNilsWith_notAtomic(newValue any) {
-	defer func() {
-		go dt.updateTimestamp()
-	}()
+	defer dt.updateTimestamp()
 	for i, col := range dt.columns {
 		for j, cell := range col.data {
 			// Route through isNilOrNaN so float32 NaN is handled too (a bare
@@ -237,9 +231,7 @@ func (dt *DataTable) replaceNaNsAndNilsWith_notAtomic(newValue any) {
 }
 
 func (dt *DataTable) replaceInRow_notAtomic(rowIndex int, oldValue, newValue any, mode ...int) error {
-	defer func() {
-		go dt.updateTimestamp()
-	}()
+	defer dt.updateTimestamp()
 	modeFlag := 0
 	if len(mode) > 1 {
 		return fmt.Errorf("mode parameter can only have 0 or 1 value")
@@ -261,12 +253,12 @@ func (dt *DataTable) replaceInRow_notAtomic(rowIndex int, oldValue, newValue any
 				if isOldValueNaN {
 					if val, ok := col.data[rowIndex].(float64); ok && math.IsNaN(val) {
 						col.data[rowIndex] = newValue
-						go col.updateTimestamp()
+						col.updateTimestamp()
 						break
 					}
 				} else if col.data[rowIndex] == oldValue {
 					col.data[rowIndex] = newValue
-					go col.updateTimestamp()
+					col.updateTimestamp()
 					break
 				}
 			}
@@ -277,11 +269,11 @@ func (dt *DataTable) replaceInRow_notAtomic(rowIndex int, oldValue, newValue any
 				if isOldValueNaN {
 					if val, ok := col.data[rowIndex].(float64); ok && math.IsNaN(val) {
 						col.data[rowIndex] = newValue
-						go col.updateTimestamp()
+						col.updateTimestamp()
 					}
 				} else if col.data[rowIndex] == oldValue {
 					col.data[rowIndex] = newValue
-					go col.updateTimestamp()
+					col.updateTimestamp()
 				}
 			}
 		}
@@ -292,12 +284,12 @@ func (dt *DataTable) replaceInRow_notAtomic(rowIndex int, oldValue, newValue any
 				if isOldValueNaN {
 					if val, ok := col.data[rowIndex].(float64); ok && math.IsNaN(val) {
 						col.data[rowIndex] = newValue
-						go col.updateTimestamp()
+						col.updateTimestamp()
 						break
 					}
 				} else if col.data[rowIndex] == oldValue {
 					col.data[rowIndex] = newValue
-					go col.updateTimestamp()
+					col.updateTimestamp()
 					break
 				}
 			}
@@ -309,9 +301,7 @@ func (dt *DataTable) replaceInRow_notAtomic(rowIndex int, oldValue, newValue any
 }
 
 func (dt *DataTable) replaceNaNsAndNilsInRow_notAtomic(rowIndex int, newValue any, mode ...int) error {
-	defer func() {
-		go dt.updateTimestamp()
-	}()
+	defer dt.updateTimestamp()
 	modeFlag := 0
 	if len(mode) > 1 {
 		return fmt.Errorf("mode parameter can only have 0 or 1 value")
@@ -326,12 +316,12 @@ func (dt *DataTable) replaceNaNsAndNilsInRow_notAtomic(rowIndex int, newValue an
 			if rowIndex >= 0 && rowIndex < len(col.data) {
 				if col.data[rowIndex] == nil {
 					col.data[rowIndex] = newValue
-					go col.updateTimestamp()
+					col.updateTimestamp()
 					break
 				} else if val, ok := col.data[rowIndex].(float64); ok {
 					if math.IsNaN(val) {
 						col.data[rowIndex] = newValue
-						go col.updateTimestamp()
+						col.updateTimestamp()
 						break
 					}
 				}
@@ -342,11 +332,11 @@ func (dt *DataTable) replaceNaNsAndNilsInRow_notAtomic(rowIndex int, newValue an
 			if rowIndex >= 0 && rowIndex < len(col.data) {
 				if col.data[rowIndex] == nil {
 					col.data[rowIndex] = newValue
-					go col.updateTimestamp()
+					col.updateTimestamp()
 				} else if val, ok := col.data[rowIndex].(float64); ok {
 					if math.IsNaN(val) {
 						col.data[rowIndex] = newValue
-						go col.updateTimestamp()
+						col.updateTimestamp()
 					}
 				}
 			}
@@ -357,12 +347,12 @@ func (dt *DataTable) replaceNaNsAndNilsInRow_notAtomic(rowIndex int, newValue an
 			if rowIndex >= 0 && rowIndex < len(col.data) {
 				if col.data[rowIndex] == nil {
 					col.data[rowIndex] = newValue
-					go col.updateTimestamp()
+					col.updateTimestamp()
 					break
 				} else if val, ok := col.data[rowIndex].(float64); ok {
 					if math.IsNaN(val) {
 						col.data[rowIndex] = newValue
-						go col.updateTimestamp()
+						col.updateTimestamp()
 						break
 					}
 				}
@@ -415,11 +405,11 @@ func (dt *DataTable) replaceNaNsAndNilsInCol_notAtomic(colIndex string, newValue
 			for i, val := range dt.columns[colNo].data {
 				if val == nil {
 					dt.columns[colNo].data[i] = newValue
-					go dt.columns[colNo].updateTimestamp()
+					dt.columns[colNo].updateTimestamp()
 					break
 				} else if v, ok := val.(float64); ok && math.IsNaN(v) {
 					dt.columns[colNo].data[i] = newValue
-					go dt.columns[colNo].updateTimestamp()
+					dt.columns[colNo].updateTimestamp()
 					break
 				}
 			}
@@ -430,11 +420,11 @@ func (dt *DataTable) replaceNaNsAndNilsInCol_notAtomic(colIndex string, newValue
 				val := dt.columns[colNo].data[i]
 				if val == nil {
 					dt.columns[colNo].data[i] = newValue
-					go dt.columns[colNo].updateTimestamp()
+					dt.columns[colNo].updateTimestamp()
 					break
 				} else if v, ok := val.(float64); ok && math.IsNaN(v) {
 					dt.columns[colNo].data[i] = newValue
-					go dt.columns[colNo].updateTimestamp()
+					dt.columns[colNo].updateTimestamp()
 					break
 				}
 			}
