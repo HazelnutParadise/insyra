@@ -73,6 +73,14 @@ npx skills add HazelnutParadise/insyra/skills
 
 **[了解更多關於 Idensyra](https://github.com/HazelnutParadise/idensyra)**
 
+## [Syralit](https://github.com/HazelnutParadise/syralit)
+
+想把分析結果變成互動式網頁應用嗎？我們也開發了 `Syralit`，一個 Go 原生、受 Streamlit 啟發的框架，讓你用純 Go 打造資料應用、儀表板與 AI 工具，完全不需要碰 JavaScript 或任何前端建置工具。
+
+`Syralit` 內建對 Insyra 的一級整合：可直接渲染 `DataTable` 與 `DataList`、用資料繪製圖表，甚至能在應用程式中執行 Insyra DSL 腳本。
+
+**[了解更多關於 Syralit](https://github.com/HazelnutParadise/syralit)**
+
 ## 開始使用
 
 ### 先從主題引導式文件開始

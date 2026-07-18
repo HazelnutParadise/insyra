@@ -73,6 +73,14 @@ We provide a mini Go IDE, `Idensyra`, which aims to make data analysis even more
 
 **[Know more about Idensyra](https://github.com/HazelnutParadise/idensyra)**
 
+## [Syralit](https://github.com/HazelnutParadise/syralit)
+
+Want to turn your analysis into an interactive web app? We also build `Syralit`, a Go-native, Streamlit-inspired framework for data apps, dashboards, and AI tools. Write pure Go and get a live web UI, without touching JavaScript or any frontend build tooling.
+
+`Syralit` ships with first-class Insyra integration: render `DataTable`/`DataList` directly, chart your data, and even run Insyra DSL scripts inside your app.
+
+**[Know more about Syralit](https://github.com/HazelnutParadise/syralit)**
+
 ## Getting Started
 
 ### Start Here: Guided Tutorials
