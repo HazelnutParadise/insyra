@@ -38,7 +38,7 @@ func (dt *DataTable) SwapColsByName(columnName1 string, columnName2 string) *Dat
 		}
 
 		result = dt.swapColsByNumber_NoLock(index1, index2)
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 	})
 	return result
 }
@@ -61,7 +61,7 @@ func (dt *DataTable) SwapColsByIndex(columnIndex1 string, columnIndex2 string) *
 		}
 
 		result = dt.swapColsByNumber_NoLock(idx1, idx2)
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 	})
 	return result
 }
@@ -89,7 +89,7 @@ func (dt *DataTable) SwapColsByNumber(columnNumber1 int, columnNumber2 int) *Dat
 		}
 
 		result = dt.swapColsByNumber_NoLock(columnNumber1, columnNumber2)
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 	})
 	return result
 }
@@ -134,7 +134,7 @@ func (dt *DataTable) SwapRowsByIndex(rowIndex1 int, rowIndex2 int) *DataTable {
 		// Swap rows
 		dt.swapRowsByIndex_NoLock(rowIndex1, rowIndex2)
 		result = dt
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 	})
 	return result
 }
@@ -157,7 +157,7 @@ func (dt *DataTable) SwapRowsByName(rowName1 string, rowName2 string) *DataTable
 		}
 
 		result = dt.swapRowsByIndex_NoLock(index1, index2)
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 	})
 	return result
 }

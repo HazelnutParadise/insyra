@@ -154,8 +154,3 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: When raising the minimum Go version to 1.26, retry upgrading the whole chain and re-verify `govulncheck ./...` completes (the x/tools SSA bug may be fixed by then).
 - **Status**: pending
 
-### [2026-07-10] — `go updateTimestamp()` spawns an unbounded goroutine per mutation
-- **Where**: ~102 sites across `datalist.go` / `datatable.go` (mutating methods call `go x.updateTimestamp()`)
-- **What**: Every mutation fires a fire-and-forget goroutine to bump the last-modified timestamp. Under heavy/tight-loop mutation this floods the scheduler (the `-race` stress tests had to be bounded because of it). Latent scalability/perf concern, not a correctness bug.
-- **Suggestion**: Update the timestamp synchronously (it is a cheap atomic store) instead of spawning a goroutine, or coalesce. First confirm the goroutine is not there to avoid re-entering the actor lock.
-- **Status**: pending
