@@ -42,10 +42,14 @@ func waitForResult(executionID string, processDone <-chan struct{}, execErr <-ch
 			resultStore.Delete(executionID)
 			return [2]any{nil, err.Error()}
 		case <-processDone:
-			// Python進程已經正常結束，檢查是否有結果
-			resultStore.Delete(executionID)
-			// 給結果發送留一點時間
-			time.Sleep(10 * time.Millisecond)
+			// Python 進程已正常結束。結果由 handleIPCConnection 在 Python 送出
+			// ack 前就已 Store（Store happens-before 進程結束、也就在 processDone
+			// 關閉之前），因此這裡做最後一次讀取即可拿到剛送達的結果，避免把它刪掉後
+			// 永久空轉。沒有結果則回傳空值而非繼續迴圈。
+			if result, exists := resultStore.LoadAndDelete(executionID); exists {
+				return result.([2]any)
+			}
+			return [2]any{nil, nil}
 		default:
 			// 檢查是否有結果
 			if result, exists := resultStore.Load(executionID); exists {

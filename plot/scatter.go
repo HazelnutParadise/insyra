@@ -1,6 +1,8 @@
 package plot
 
 import (
+	"sort"
+
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/plot/internal"
 	"github.com/go-echarts/go-echarts/v2/charts"
@@ -58,8 +60,8 @@ func CreateScatterChart(config ScatterChartConfig, data map[string][]ScatterPoin
 		Height:          config.Height,
 		BackgroundColor: config.BackgroundColor,
 		Theme:           string(config.Theme),
-		Title:           config.Title,
-		Subtitle:        config.Subtitle,
+		Title:           sanitizeChartText(config.Title),
+		Subtitle:        sanitizeChartText(config.Subtitle),
 		TitlePos:        string(config.TitlePos),
 		HideLegend:      config.HideLegend,
 		LegendPos:       string(config.LegendPos),
@@ -125,9 +127,16 @@ func CreateScatterChart(config ScatterChartConfig, data map[string][]ScatterPoin
 		charts.WithColorsOpts(opts.Colors(config.Colors)),
 	)
 
-	// 處理多個系列的點資料
+	// 處理多個系列的點資料。以排序後的系列名逐一加入，避免 map 迭代順序導致
+	// 每次執行的顏色/符號指派不同（非確定性輸出）。
+	seriesNames := make([]string, 0, len(data))
+	for seriesName := range data {
+		seriesNames = append(seriesNames, seriesName)
+	}
+	sort.Strings(seriesNames)
 	symbolIndex := 0
-	for seriesName, pts := range data {
+	for _, seriesName := range seriesNames {
+		pts := data[seriesName]
 		if symbolIndex >= len(config.Symbol) {
 			symbolIndex = 0
 		}

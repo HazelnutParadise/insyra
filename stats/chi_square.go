@@ -59,7 +59,13 @@ func calculateChiSquare(observed, expected []float64, df int) (*ChiSquareTestRes
 //
 // input: A DataList containing categorical data (e.g., ["A", "B", "A"]).
 // p: Expected probabilities (e.g., []float64{0.5, 0.5}). If nil, assumes uniform distribution.
-// rescaleP: Whether to rescale p to sum to 1.
+//
+//	IMPORTANT: p is matched positionally to the observed categories after they are
+//	sorted in lexicographic (string) order — NOT the order they appear in the input.
+//	Order p to match sort.Strings of the distinct category labels. Categories with
+//	zero observations do not appear and cannot be assigned a probability.
+//
+// rescaleP: Whether to rescale p to sum to 1. p is not mutated (a copy is used).
 func ChiSquareGoodnessOfFit(input insyra.IDataList, p []float64, rescaleP bool) (*ChiSquareTestResult, error) {
 	// 計算類別頻率
 	data := input.Data()
@@ -93,6 +99,10 @@ func ChiSquareGoodnessOfFit(input insyra.IDataList, p []float64, rescaleP bool) 
 		}
 	} else if len(p) != len(observed) {
 		return nil, errors.New("length of p does not match number of categories")
+	} else {
+		// Defensive copy so the rescaleP normalization below does not mutate the
+		// caller's slice in place.
+		p = append([]float64(nil), p...)
 	}
 
 	sumP := 0.0

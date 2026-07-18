@@ -75,11 +75,19 @@ func calculateSamples(xMin, xMax float64) int {
 	// 根據 X 軸範圍自動計算樣本數量
 	rangeX := math.Abs(xMax - xMin)
 	// 每單位範圍 100 個樣本點，可根據需要調整
-	return int(rangeX * 100)
+	s := int(rangeX * 100)
+	// 至少 2 個樣本點，避免 step 除以 (samples-1)==0 或 <0 導致 NaN/Inf。
+	if s < 2 {
+		s = 2
+	}
+	return s
 }
 
 // calculateYRange calculates the minimum and maximum Y values for the function over the specified X range.
 func calculateYRange(f func(x float64) float64, xMin, xMax float64, samples int) (float64, float64) {
+	if samples < 2 {
+		samples = 2
+	}
 	yMin := math.Inf(1)
 	yMax := math.Inf(-1)
 
@@ -89,13 +97,21 @@ func calculateYRange(f func(x float64) float64, xMin, xMax float64, samples int)
 		x := xMin + float64(i)*step
 		y := f(x)
 
-		// 更新 Y 軸範圍
+		// 略過非有限值，避免污染 Y 軸範圍
+		if math.IsNaN(y) || math.IsInf(y, 0) {
+			continue
+		}
 		if y < yMin {
 			yMin = y
 		}
 		if y > yMax {
 			yMax = y
 		}
+	}
+
+	// 若沒有任何有限的 y（或範圍無效），回退到預設範圍，避免產生 +Inf/-Inf 軸。
+	if math.IsInf(yMin, 0) || math.IsInf(yMax, 0) || yMax < yMin {
+		return -1, 1
 	}
 
 	// 增加一些緩衝區以確保圖形不會剛好切齊 Y 軸範圍

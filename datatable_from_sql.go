@@ -116,6 +116,17 @@ type ReadSQLChunk struct {
 // Chunk size is controlled by options[0].ChunkSize; zero means use the package
 // default (1000 rows). The reader goroutine respects ctx cancellation between
 // rows.
+//
+// IMPORTANT: the caller MUST either drain the channel to completion OR cancel
+// ctx when it stops reading early. The reader goroutine parks on its next send
+// once the channel buffer is full, and the underlying *sql.Rows / DB connection
+// is only released when the goroutine returns. Abandoning the range loop without
+// cancelling ctx therefore leaks a goroutine and a DB connection. The idiomatic
+// pattern is:
+//
+//	ctx, cancel := context.WithCancel(ctx)
+//	defer cancel()
+//	for chunk := range ReadSQLStream(ctx, db, table) { ... }
 func ReadSQLStream(ctx context.Context, db *gorm.DB, tableName string, options ...ReadSQLOptions) (<-chan ReadSQLChunk, error) {
 	if db == nil {
 		return nil, fmt.Errorf("db cannot be nil")
@@ -199,10 +210,18 @@ func buildReadSQLQuery(tx *gorm.DB, tableName string, opts ReadSQLOptions) (stri
 		return "", nil, err
 	}
 
-	full := qualifiedTableName(opts.Schema, tableName)
+	// Quote table/schema/column identifiers per-dialect to prevent SQL injection
+	// through names that may originate from untrusted data (e.g. column names read
+	// from a CSV/JSON header). WhereClause and OrderBy are raw SQL fragments the
+	// caller writes explicitly and are treated as trusted (not quotable safely).
+	full := quoteQualifiedName(dialect, opts.Schema, tableName)
 	selectList := "*"
 	if len(opts.Columns) > 0 {
-		selectList = strings.Join(opts.Columns, ", ")
+		quoted := make([]string, len(opts.Columns))
+		for i, c := range opts.Columns {
+			quoted[i] = quoteSQLIdent(dialect, c)
+		}
+		selectList = strings.Join(quoted, ", ")
 	}
 	q := fmt.Sprintf("SELECT %s FROM %s", selectList, full)
 	if opts.WhereClause != "" {

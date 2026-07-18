@@ -15,6 +15,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
+	"sync"
 
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/internal/algorithms"
@@ -24,24 +26,23 @@ import (
 // 用於allpkgs安裝
 func init() {}
 
-var installed bool = false
+var glpkInitOnce sync.Once
 
-// 自動安裝 GLPK 的函數
+// 自動安裝 GLPK 的函數。以 sync.Once 保證偵測/安裝/環境設定在並發 Solve
+// 呼叫下只執行一次，避免對 installed 旗標與 env/PATH 的未同步競寫。
 func initGLPK() {
-	if installed {
-		return
-	}
-	switch runtime.GOOS {
-	case "linux":
-		initializeOnLinux()
-	case "darwin":
-		initializeOnMacOS()
-	case "windows":
-		initializeOnWindows()
-	default:
-		log.Println("Unsupported operating system.")
-	}
-	installed = true
+	glpkInitOnce.Do(func() {
+		switch runtime.GOOS {
+		case "linux":
+			initializeOnLinux()
+		case "darwin":
+			initializeOnMacOS()
+		case "windows":
+			initializeOnWindows()
+		default:
+			log.Println("Unsupported operating system.")
+		}
+	})
 }
 
 // =========================== macOS 安裝邏輯 ===========================
@@ -336,6 +337,18 @@ func downloadFile(filepath string, url string) error {
 	return err
 }
 
+// safeExtractPath joins an archive entry name onto dest and rejects entries
+// that would escape dest (Zip Slip / tar path traversal), e.g. names containing
+// "../". It returns the safe absolute-within-dest path or an error.
+func safeExtractPath(dest, name string) (string, error) {
+	fpath := filepath.Join(dest, name)
+	cleanDest := filepath.Clean(dest)
+	if fpath != cleanDest && !strings.HasPrefix(fpath, cleanDest+string(os.PathSeparator)) {
+		return "", fmt.Errorf("illegal file path in archive (path traversal): %q", name)
+	}
+	return fpath, nil
+}
+
 // 用於解壓 tar.gz 文件的輔助函數
 func untar(src string, dest string) error {
 	file, err := os.Open(src)
@@ -361,7 +374,10 @@ func untar(src string, dest string) error {
 			return err
 		}
 
-		fpath := filepath.Join(dest, header.Name)
+		fpath, err := safeExtractPath(dest, header.Name)
+		if err != nil {
+			return err
+		}
 		switch header.Typeflag {
 		case tar.TypeDir:
 			if err := os.MkdirAll(fpath, os.ModePerm); err != nil {
@@ -391,7 +407,10 @@ func unzip(src string, dest string) error {
 	defer func() { _ = r.Close() }()
 
 	for _, f := range r.File {
-		fpath := filepath.Join(dest, f.Name)
+		fpath, err := safeExtractPath(dest, f.Name)
+		if err != nil {
+			return err
+		}
 		if f.FileInfo().IsDir() {
 			err := os.MkdirAll(fpath, os.ModePerm)
 			if err != nil {

@@ -588,8 +588,9 @@ func TestDataListQuartile(t *testing.T) {
 	dl := NewDataList(6, 47, 49, 15, 42, 41, 7, 39, 43, 40, 36)
 	q := dl.Quartile(3)
 
-	if !float64Equal(q, 43) {
-		t.Errorf("Expected quartile 43, got %v", q)
+	// type-7 (R/numpy/pandas default): n=11, Q3 at h=0.75*10=7.5 -> 42+0.5*(43-42)=42.5
+	if !float64Equal(q, 42.5) {
+		t.Errorf("Expected quartile 42.5, got %v", q)
 	}
 }
 
@@ -598,8 +599,9 @@ func TestDataListIQR(t *testing.T) {
 	dl := NewDataList(6, 47, 49, 15, 42, 41, 7, 39, 43, 40, 36)
 	iqr := dl.IQR()
 
-	if !float64Equal(iqr, 28) {
-		t.Errorf("Expected IQR 28, got %v", iqr)
+	// type-7: Q1 at h=0.25*10=2.5 -> 15+0.5*(36-15)=25.5; Q3=42.5; IQR=17
+	if !float64Equal(iqr, 17) {
+		t.Errorf("Expected IQR 17, got %v", iqr)
 	}
 }
 

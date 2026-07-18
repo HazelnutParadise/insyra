@@ -95,6 +95,8 @@ func ReadCSV_File(filePath string, setFirstColToRowNames bool, setFirstRowToColN
 
 **Description:** Reads a CSV file and loads the data into a new DataTable.
 
+Columns are typed with pandas-style, column-level inference: a column whose cells are all integers is loaded as `int64` (so large-integer columns such as 19-digit IDs keep full precision instead of being rounded through `float64` above 2^53); a column with any decimal value is loaded as `float64` (empty cells become `NaN`); any other column is kept as strings.
+
 **Parameters:**
 
 - `filePath`: CSV file path
@@ -151,7 +153,7 @@ if err != nil {
 func ReadJSON_File(filePath string) (*DataTable, error)
 ```
 
-**Description:** Reads a JSON file and loads the data into a new DataTable.
+**Description:** Reads a JSON file and loads the data into a new DataTable. JSON numbers are typed per value: an integer literal (`25`) becomes `int64` so large integers keep full precision, while a decimal literal (`25.5`, `25.0`) stays `float64` — matching Python's `json.loads` and consistent with `ReadCSV` loading integer columns as `int64`.
 
 **Parameters:**
 
@@ -1068,7 +1070,7 @@ func (dt *DataTable) MaxAbsScale(cols ...string) (*DataTable, *MaxAbsScaler, err
 |---|---|---|---|
 | `StandardScaler` | mean | sample std dev (matches `Standardize`) | roughly Gaussian features; the common default |
 | `MinMaxScaler` | min | range, into `[featureMin, featureMax]` | you need a bounded range (e.g. `[0,1]`) and have few outliers |
-| `RobustScaler` | median | IQR (Q3−Q1) | features have outliers that would distort mean/std |
+| `RobustScaler` | median | IQR (Q3−Q1), type-7 quantile — matches scikit-learn's `RobustScaler` | features have outliers that would distort mean/std |
 | `MaxAbsScaler` | 0 | max absolute value, into `[-1,1]` | sparse or sign-meaningful data you don't want to shift |
 
 **Behavior:**
@@ -1236,7 +1238,7 @@ dt.AppendCols(prev, ma3, cum)
 func (dt *DataTable) AppendCols(columns ...*DataList) *DataTable
 ```
 
-**Description:** Appends columns to the DataTable.
+**Description:** Appends columns to the DataTable. The passed `DataList`s are **copied** into the table — mutating a source list afterwards does not affect the table (and vice versa).
 
 **Parameters:**
 
@@ -1497,7 +1499,7 @@ dt.UpdateElement(0, "A", "Jane").UpdateCol("B", newCol)
 func (dt *DataTable) UpdateCol(index string, dl *DataList) *DataTable
 ```
 
-**Description:** Updates an entire column with new data. Returns the table to support chaining calls.
+**Description:** Updates an entire column with new data. The passed `DataList` is **copied** into the table, so later mutations of it do not affect the table. Returns the table to support chaining calls.
 
 **Parameters:**
 
@@ -1526,7 +1528,7 @@ dt.UpdateCol("A", newCol).UpdateRow(0, newRow)
 func (dt *DataTable) UpdateColByNumber(index int, dl *DataList) *DataTable
 ```
 
-**Description:** Updates an entire column by its numeric index. Returns the table to support chaining calls.
+**Description:** Updates an entire column by its numeric index. The passed `DataList` is **copied** into the table, so later mutations of it do not affect the table. Returns the table to support chaining calls.
 
 **Parameters:**
 
@@ -3770,9 +3772,10 @@ byRegion := dt.GroupBy("region").Describe(insyra.DescribeOptions{IncludeAll: tru
 
 ```go
 func (dt *DataTable) Summary()
+func (dt *DataTable) SummaryTo(w io.Writer) // same output, written to w instead of os.Stdout
 ```
 
-**Description:** Displays a comprehensive statistical summary of the DataTable.
+**Description:** Displays a comprehensive statistical summary of the DataTable. `SummaryTo` writes the same output to any `io.Writer`.
 
 **Parameters:**
 
@@ -3887,9 +3890,10 @@ fmt.Printf("Overall mean: %v\n", mean)
 
 ```go
 func (dt *DataTable) Show()
+func (dt *DataTable) ShowTo(w io.Writer) // same output, written to w instead of os.Stdout
 ```
 
-**Description:** Displays the DataTable content in the console.
+**Description:** Displays the DataTable content in the console. `ShowTo` writes the same output to any `io.Writer` (e.g. a file or `bytes.Buffer`).
 
 **Parameters:**
 
@@ -3909,9 +3913,10 @@ dt.Show() // Display table content in console
 
 ```go
 func (dt *DataTable) ShowRange(startEnd ...any)
+func (dt *DataTable) ShowRangeTo(w io.Writer, startEnd ...any) // same output, written to w
 ```
 
-**Description:** Displays the DataTable with a specified range of rows.
+**Description:** Displays the DataTable with a specified range of rows. `ShowRangeTo` writes the same output to any `io.Writer` instead of stdout.
 
 **Parameters:**
 
@@ -4426,7 +4431,7 @@ func (dt *DataTable) AtomicDo(f func(*DataTable))
 
 - Single-threaded execution: `AtomicDo` tasks run one at a time.
 - Reentrant: Calls made within `AtomicDo` run immediately (no deadlock).
-- Cross-object nesting: Calling `dl.AtomicDo` from within `dt.AtomicDo` (and vice versa) is supported by inline execution to avoid deadlocks.
+- **Multiple instances:** Do NOT nest `other.AtomicDo` inside `dt.AtomicDo` to read two instances together — the inner call may run WITHOUT locking the other instance and can race a concurrent mutation. To operate on several instances atomically (including a mix of `DataTable` and `DataList`), use `insyra.AtomicDoAll(func(){ ... }, dt, other)`, which locks all of them together in a deadlock-free order.
 - Closed behavior: After `dt.Close()`, `AtomicDo` executes the function inline without scheduling.
 
 Examples

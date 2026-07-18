@@ -136,13 +136,19 @@ func (dt *DataTable) RowNamesToFirstCol() *DataTable {
 		if dt.rowNames == nil {
 			dt.rowNames = core.NewBiIndex(0)
 		}
+		// The new first column holds one entry per ROW, so it must be sized by
+		// the row count (max column length), not by the number of columns.
+		// Row names are keyed by row index, so the guard must also use the row
+		// count; using len(dt.columns) drops row names beyond the column count
+		// and yields a jagged, corrupted table.
+		n := dt.getMaxColLength()
 		rowNames := NewDataList()
-		for range dt.columns {
+		for i := 0; i < n; i++ {
 			rowNames.Append("")
 		}
 		for _, index := range dt.rowNames.IDs() {
 			name, ok := dt.rowNames.Get(index)
-			if !ok || index < 0 || index >= len(dt.columns) {
+			if !ok || index < 0 || index >= n {
 				continue
 			}
 			rowNames.data[index] = name

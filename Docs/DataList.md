@@ -1211,7 +1211,7 @@ range := dl.Range() // 8.0 (9 - 1)
 func (dl *DataList) Quartile(q int) float64
 ```
 
-**Description:** Calculates quartile values (Q1, Q2, Q3).
+**Description:** Calculates quartile values (Q1, Q2, Q3). Uses R's type-7 quantile (the R / NumPy / pandas default), so `Quartile`, `Percentile`, `IQR`, `Describe` and `RobustScale` all agree.
 
 **Parameters:**
 
@@ -1259,7 +1259,7 @@ iqr := dl.IQR()
 func (dl *DataList) Percentile(percentile float64) float64
 ```
 
-**Description:** Calculates the value below which a given percentage of observations fall.
+**Description:** Calculates the value below which a given percentage of observations fall. Uses R's type-7 quantile (the R / NumPy / pandas default), consistent with `Quartile`.
 
 **Parameters:**
 
@@ -1738,9 +1738,10 @@ desc.Show()
 
 ```go
 func (dl *DataList) Summary()
+func (dl *DataList) SummaryTo(w io.Writer) // same output, written to w instead of os.Stdout
 ```
 
-**Description:** Displays comprehensive statistical summary to the console.
+**Description:** Displays comprehensive statistical summary to the console. `SummaryTo` writes the same output to any `io.Writer`.
 
 **Parameters:**
 
@@ -1980,9 +1981,10 @@ interpolated := dl.HermiteInterpolation(2.5, derivatives)
 
 ```go
 func (dl *DataList) Show()
+func (dl *DataList) ShowTo(w io.Writer) // same output, written to w instead of os.Stdout
 ```
 
-**Description:** Displays DataList content in a clean, colored linear format.
+**Description:** Displays DataList content in a clean, colored linear format. `ShowTo` writes the same output to any `io.Writer` (e.g. a file or `bytes.Buffer`) instead of stdout.
 
 **Parameters:**
 
@@ -2004,9 +2006,10 @@ dl.Show()
 
 ```go
 func (dl *DataList) ShowRange(startEnd ...any)
+func (dl *DataList) ShowRangeTo(w io.Writer, startEnd ...any) // same output, written to w
 ```
 
-**Description:** Displays DataList content within a specified range.
+**Description:** Displays DataList content within a specified range. `ShowRangeTo` writes the same output to any `io.Writer` instead of stdout.
 
 **Parameters:**
 
@@ -2605,7 +2608,7 @@ func (dl *DataList) AtomicDo(f func(*DataList))
 
 - Single-threaded execution: Functions passed to `AtomicDo` are processed one at a time.
 - Reentrant: If called from within `AtomicDo`, the function runs immediately (no deadlock).
-- Cross-list nesting: Calling `anotherDl.AtomicDo` inside `dl.AtomicDo` is supported.
+- **Multiple instances:** Do NOT nest `anotherDl.AtomicDo` inside `dl.AtomicDo` to read two lists together — the inner call runs WITHOUT locking `anotherDl` and can race a concurrent mutation of it. To operate on several instances atomically, use `insyra.AtomicDoAll(func(){ ... }, dl, anotherDl)`, which locks all of them together in a deadlock-free order.
 
 Examples
 
@@ -2637,6 +2640,17 @@ dl.AtomicDo(func(dl *insyra.DataList) {
     }
 })
 ```
+
+- Operate on two lists atomically with `AtomicDoAll` (locks both, deadlock-free):
+
+```go
+// Instead of nesting AtomicDo (which does not lock the second list), lock both:
+insyra.AtomicDoAll(func() {
+    // both a and b are locked here — safe to read/compare them together
+}, a, b)
+```
+
+`insyra.AtomicDoAll(f func(), instances ...any)` accepts any mix of `*DataList` / `*DataTable`; instances already held by the current goroutine, and duplicates, are handled automatically.
 
 Guidelines
 

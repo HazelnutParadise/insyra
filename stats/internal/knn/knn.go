@@ -641,14 +641,17 @@ func (s *neighborSet) results() []neighbor {
 }
 
 func betterNeighbor(a, b neighbor) bool {
-	if almostEqual(a.dist2, b.dist2) {
+	// Only fall back to the index tie-break on EXACT distance equality. Using an
+	// absolute 1e-12 tolerance here treated genuinely-closer neighbors as ties
+	// and could evict the true nearest neighbor.
+	if a.dist2 == b.dist2 {
 		return a.index < b.index
 	}
 	return a.dist2 < b.dist2
 }
 
 func worseNeighbor(a, b neighbor) bool {
-	if almostEqual(a.dist2, b.dist2) {
+	if a.dist2 == b.dist2 {
 		return a.index > b.index
 	}
 	return a.dist2 > b.dist2

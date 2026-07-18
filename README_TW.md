@@ -1,4 +1,4 @@
-# Insyra
+# Insyra - 開創新數界
 
 [![Test](https://github.com/HazelnutParadise/insyra/actions/workflows/test.yml/badge.svg)](https://github.com/HazelnutParadise/insyra/actions/workflows/test.yml)
 [![GolangCI-Lint](https://github.com/HazelnutParadise/insyra/actions/workflows/golangci-lint.yml/badge.svg)](https://github.com/HazelnutParadise/insyra/actions/workflows/golangci-lint.yml)
@@ -46,6 +46,12 @@ Go 語言次世代資料分析庫。支援 **平行處理**、**資料視覺化*
 - [`skills/insyra`](skills/insyra)：協助 AI agent 在 Go 程式碼中使用 Insyra（DataList / DataTable 工作流、CCL 公式、常見檔案 I/O）。
 - [`skills/use-insyra-cli`](skills/use-insyra-cli)：教 agent 使用 Insyra CLI / REPL 與 `.isr` 腳本，包含環境工作流與完整指令參考。
 
+用以下指令安裝 skills：
+
+```bash
+npx skills add HazelnutParadise/insyra/skills
+```
+
 快速選擇：
 
 - 任務是撰寫或修改使用 Insyra API 的 Go 程式碼：用 `skills/insyra`。
@@ -66,6 +72,14 @@ Go 語言次世代資料分析庫。支援 **平行處理**、**資料視覺化*
 `Idensyra` 預裝了 Insyra，不需要安裝 Go 環境即可運行 Go 程式碼！
 
 **[了解更多關於 Idensyra](https://github.com/HazelnutParadise/idensyra)**
+
+## [Syralit](https://github.com/HazelnutParadise/syralit)
+
+想把分析結果變成互動式網頁應用嗎？我們也開發了 `Syralit`，一個 Go 原生、受 Streamlit 啟發的框架，讓你用純 Go 打造資料應用、儀表板與 AI 工具，完全不需要碰 JavaScript 或任何前端建置工具。
+
+`Syralit` 內建對 Insyra 的一級整合：可直接渲染 `DataTable` 與 `DataList`、用資料繪製圖表，甚至能在應用程式中執行 Insyra DSL 腳本。
+
+**[了解更多關於 Syralit](https://github.com/HazelnutParadise/syralit)**
 
 ## 開始使用
 
@@ -354,9 +368,10 @@ err := parquet.ApplyCCL(ctx, "data.parquet", "NEW('total') = A + B + C")
 | **[parquet](/Docs/parquet.md)** | Apache Parquet 讀寫，與 `DataTable`／`DataList` 深度整合；支援串流、欄位級讀取、CCL 篩選。 |
 | **[mkt](/Docs/mkt.md)** | 行銷分析：RFM、顧客活躍度指標、購物籃分析。 |
 | **[finance](/Docs/finance.md)** | 高精度定點財務計算：TVM、NPV／IRR、折舊、債券定價、攤還表。 |
+| **[quant](/Docs/quant.md)** | 量化金融策略／回測評估：夏普比率、最大回撤、年化報酬、過擬合機率（CSCV PBO）、通縮夏普比率、walk-forward 驗證。 |
 | **[py](/Docs/py.md)** | 在 Go 中執行 Python，免手動安裝環境；變數雙向傳遞。 |
 | **[pd](/Docs/pd.md)** | 基於 `gpandas` 的 Pandas 風格 `DataFrame` 工具，含 `DataTable` 轉換。 |
-| **[datafetch](/Docs/datafetch.md)** | 輕鬆取得網路資料：Google Maps 商家評論、Yahoo Finance。 |
+| **[datafetch](/Docs/datafetch.md)** | 輕鬆取得網路資料：Google Maps 商家評論、Yahoo Finance、台灣逆地理編碼。 |
 | **[lpgen](/Docs/lpgen.md)** | 產生線性規劃（LP）模型並輸出 `.lp` 檔。 |
 | **[lp](/Docs/lp.md)** | 使用 [GLPK](https://www.gnu.org/software/glpk/) 的全自動 LP 求解器。 |
 | **[engine](/engine/README.md)** | 匯出部分 Insyra 內部實作，供其他專案重用。 |

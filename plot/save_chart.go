@@ -5,6 +5,7 @@ package plot
 import (
 	"bytes"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"os"
@@ -15,6 +16,16 @@ import (
 	"github.com/go-echarts/snapshot-chromedp/render"
 	"github.com/google/uuid"
 )
+
+// sanitizeChartText neutralizes characters that could break out of the
+// <script>-embedded option JSON that go-echarts emits with HTML escaping
+// disabled, preventing stored XSS through user-provided chart title/subtitle/
+// label text. It HTML-escapes '<', '>' and '&' so a value like
+// "</script><script>…" can no longer form a real tag; ECharts still renders the
+// (escaped) text on the canvas.
+func sanitizeChartText(s string) string {
+	return html.EscapeString(s)
+}
 
 // Renderer
 // Any kinds of charts have their render implementation, and
@@ -106,15 +117,22 @@ func SavePNG(chart Renderable, pngPath string, useOnlineServiceOnFail ...bool) e
 			return fmt.Errorf("online service returned non-OK status: %s", resp.Status)
 		}
 		insyra.LogInfo("plot", "SavePNG", "successfully received PNG response from HazelnutParadise online service.")
-		// 將響應的 PNG 數據寫入文件
+		// 讀入回應並驗證 PNG 簽章，避免把錯誤頁（如 HTML）當成圖片寫入 .png。
+		data, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return fmt.Errorf("failed to read PNG response: %w", err)
+		}
+		pngSig := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}
+		if len(data) < len(pngSig) || !bytes.Equal(data[:len(pngSig)], pngSig) {
+			return fmt.Errorf("online service response is not a valid PNG image")
+		}
 		outFile, err := os.Create(pngPath)
 		if err != nil {
 			return fmt.Errorf("failed to create PNG file: %w", err)
 		}
 		defer func() { _ = outFile.Close() }()
 
-		_, err = io.Copy(outFile, resp.Body)
-		if err != nil {
+		if _, err = outFile.Write(data); err != nil {
 			return fmt.Errorf("failed to save PNG file: %w", err)
 		}
 	}

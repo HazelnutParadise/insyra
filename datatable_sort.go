@@ -43,13 +43,23 @@ func (dt *DataTable) SortBy(configs ...DataTableSortConfig) *DataTable {
 				continue
 			}
 
-			n := len(column.Data())
+			// Permute ALL rows (max column length), not just the sort column's
+			// length, so rows are not dropped on a jagged table; index the sort
+			// column defensively (treat out-of-range as nil) instead of panicking.
+			sortData := column.Data()
+			n := t.getMaxColLength()
 			indices := make([]int, n)
 			for i := range indices {
 				indices[i] = i
 			}
+			at := func(i int) any {
+				if i >= 0 && i < len(sortData) {
+					return sortData[i]
+				}
+				return nil
+			}
 			algorithms.ParallelSortStableFunc(indices, func(a, b int) int {
-				cmp := algorithms.CompareAny(column.Data()[a], column.Data()[b])
+				cmp := algorithms.CompareAny(at(a), at(b))
 				if config.Descending {
 					return -cmp
 				}

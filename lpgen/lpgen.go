@@ -3,6 +3,7 @@ package lpgen
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/HazelnutParadise/insyra"
 )
@@ -83,11 +84,16 @@ func (lp *LPModel) GenerateLPFile(filename string) {
 		return
 	}
 
-	// 設定最大化或最小化
-	if lp.ObjectiveType == "Minimize" {
+	// 設定最大化或最小化。以大小寫不敏感方式辨識最小化（min/minimize/minimum），
+	// 未知的目標型別回報錯誤，而非靜默當成 MAX。
+	switch strings.ToLower(strings.TrimSpace(lp.ObjectiveType)) {
+	case "minimize", "min", "minimum":
 		_, err = file.WriteString("MIN\n")
-	} else {
+	case "maximize", "max", "maximum":
 		_, err = file.WriteString("MAX\n")
+	default:
+		insyra.LogWarning("lpgen", "GenerateLPFile", "Unknown ObjectiveType %q (expected Minimize/Maximize), returning", lp.ObjectiveType)
+		return
 	}
 	if err != nil {
 		insyra.LogWarning("lpgen", "GenerateLPFile", "Failed to write objective type: %v, returning", err)

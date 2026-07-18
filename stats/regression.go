@@ -231,20 +231,20 @@ func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) (*LinearRe
 func ExponentialRegression(dlY, dlX insyra.IDataList) (*ExponentialRegressionResult, error) {
 	var xs, ys []float64
 	isFailed := false
-	dlX.AtomicDo(func(dlx *insyra.DataList) {
-		dlY.AtomicDo(func(dly *insyra.DataList) {
-			if dlx.Len() != dly.Len() || dlx.Len() == 0 {
-				isFailed = true
-				return
-			}
-			if dlx.Len() <= 2 {
-				isFailed = true
-				return
-			}
-			xs = dlx.ToF64Slice()
-			ys = dly.ToF64Slice()
-		})
-	})
+	dlx := dlX.(*insyra.DataList)
+	dly := dlY.(*insyra.DataList)
+	insyra.AtomicDoAll(func() {
+		if dlx.Len() != dly.Len() || dlx.Len() == 0 {
+			isFailed = true
+			return
+		}
+		if dlx.Len() <= 2 {
+			isFailed = true
+			return
+		}
+		xs = dlx.ToF64Slice()
+		ys = dly.ToF64Slice()
+	}, dlx, dly)
 	if isFailed {
 		return nil, errors.New("input lengths mismatch/zero, or need at least 3 observations")
 	}
@@ -319,20 +319,20 @@ func ExponentialRegression(dlY, dlX insyra.IDataList) (*ExponentialRegressionRes
 func LogarithmicRegression(dlY, dlX insyra.IDataList) (*LogarithmicRegressionResult, error) {
 	var xs, ys []float64
 	isFailed := false
-	dlX.AtomicDo(func(dlx *insyra.DataList) {
-		dlY.AtomicDo(func(dly *insyra.DataList) {
-			if dlx.Len() != dly.Len() || dlx.Len() == 0 {
-				isFailed = true
-				return
-			}
-			if dlx.Len() <= 2 {
-				isFailed = true
-				return
-			}
-			xs = dlx.ToF64Slice()
-			ys = dly.ToF64Slice()
-		})
-	})
+	dlx := dlX.(*insyra.DataList)
+	dly := dlY.(*insyra.DataList)
+	insyra.AtomicDoAll(func() {
+		if dlx.Len() != dly.Len() || dlx.Len() == 0 {
+			isFailed = true
+			return
+		}
+		if dlx.Len() <= 2 {
+			isFailed = true
+			return
+		}
+		xs = dlx.ToF64Slice()
+		ys = dly.ToF64Slice()
+	}, dlx, dly)
 	if isFailed {
 		return nil, errors.New("input lengths mismatch/zero, or need at least 3 observations")
 	}
@@ -392,25 +392,25 @@ func LogarithmicRegression(dlY, dlX insyra.IDataList) (*LogarithmicRegressionRes
 func PolynomialRegression(dlY, dlX insyra.IDataList, degree int) (*PolynomialRegressionResult, error) {
 	var xs, ys []float64
 	isFailed := false
-	dlX.AtomicDo(func(dlx *insyra.DataList) {
-		dlY.AtomicDo(func(dly *insyra.DataList) {
-			if dlx.Len() != dly.Len() || dlx.Len() == 0 {
-				isFailed = true
-				return
-			}
-			if degree < 1 || degree >= dlx.Len() {
-				isFailed = true
-				return
-			}
-			if dlx.Len() <= degree+1 {
-				isFailed = true
-				return
-			}
+	dlx := dlX.(*insyra.DataList)
+	dly := dlY.(*insyra.DataList)
+	insyra.AtomicDoAll(func() {
+		if dlx.Len() != dly.Len() || dlx.Len() == 0 {
+			isFailed = true
+			return
+		}
+		if degree < 1 || degree >= dlx.Len() {
+			isFailed = true
+			return
+		}
+		if dlx.Len() <= degree+1 {
+			isFailed = true
+			return
+		}
 
-			xs = dlx.ToF64Slice()
-			ys = dly.ToF64Slice()
-		})
-	})
+		xs = dlx.ToF64Slice()
+		ys = dly.ToF64Slice()
+	}, dlx, dly)
 	if isFailed {
 		return nil, errors.New("invalid input lengths, degree, or insufficient observations")
 	}

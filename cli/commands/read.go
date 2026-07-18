@@ -24,7 +24,7 @@ func runReadCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	table.ShowRange(10)
+	table.ShowRangeTo(ctx.Output, 10)
 	delete(ctx.Vars, "$preview")
 	return nil
 }

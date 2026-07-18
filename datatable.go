@@ -67,7 +67,14 @@ func NewDataTable(columns ...*DataList) *DataTable {
 // If the columns are shorter than the existing columns, nil values will be appended to match the length.
 // If the columns are longer than the existing columns, the existing columns will be extended with nil values.
 func (dt *DataTable) AppendCols(columns ...*DataList) *DataTable {
-	dt.AtomicDo(func(dt *DataTable) {
+	// Lock the table AND every passed list together, so reading each list's .data
+	// below is race-free (previously the passed lists were read unlocked).
+	instances := make([]any, 0, len(columns)+1)
+	instances = append(instances, dt)
+	for _, c := range columns {
+		instances = append(instances, c)
+	}
+	AtomicDoAll(func() {
 		maxLength := dt.getMaxColLength()
 		for _, col := range columns {
 			if len(col.data) > maxLength {
@@ -77,7 +84,12 @@ func (dt *DataTable) AppendCols(columns ...*DataList) *DataTable {
 
 		for _, col := range columns {
 			column := NewDataList()
-			column.data = col.data
+			// Clone the caller's backing array into a table-owned column. Aliasing
+			// it (column.data = col.data) would let the table and the still-live
+			// source DataList share one backing array — later mutation of either
+			// (col.Append / another AppendCols extending this column) would corrupt
+			// the other and race across their two independent actor locks.
+			column.data = slices.Clone(col.data)
 			column.name = col.name
 			column.name = safeColName(dt, column.name)
 
@@ -94,7 +106,7 @@ func (dt *DataTable) AppendCols(columns ...*DataList) *DataTable {
 		}
 
 		go dt.updateTimestamp()
-	})
+	}, instances...)
 	return dt
 }
 
@@ -102,7 +114,13 @@ func (dt *DataTable) AppendCols(columns ...*DataList) *DataTable {
 // If the rows are shorter than the existing columns, nil values will be appended to match the length.
 // If the rows are longer than the existing columns, the existing columns will be extended with nil values.
 func (dt *DataTable) AppendRowsFromDataList(rowsData ...*DataList) *DataTable {
-	dt.AtomicDo(func(dt *DataTable) {
+	// Lock the table AND every passed row-list together (their .data is read below).
+	instances := make([]any, 0, len(rowsData)+1)
+	instances = append(instances, dt)
+	for _, r := range rowsData {
+		instances = append(instances, r)
+	}
+	AtomicDoAll(func() {
 		for _, rowData := range rowsData {
 			maxLength := dt.getMaxColLength()
 
@@ -133,7 +151,7 @@ func (dt *DataTable) AppendRowsFromDataList(rowsData ...*DataList) *DataTable {
 			}
 		}
 		go dt.updateTimestamp()
-	})
+	}, instances...)
 	return dt
 }
 
@@ -411,22 +429,31 @@ func (dt *DataTable) UpdateElement(rowIndex int, columnIndex string, value any) 
 
 // UpdateCol updates the column with the given index.
 func (dt *DataTable) UpdateCol(index string, dl *DataList) *DataTable {
-	dt.AtomicDo(func(dt *DataTable) {
+	// Lock the table AND the passed list together: dl.data/dl.name are read below
+	// and cloned into a table-owned column. Storing dl directly (dt.columns[i] = dl)
+	// would make the table share a live object with the caller — later mutation of
+	// dl would leak into the table and race dt operations across two actor locks.
+	AtomicDoAll(func() {
 		index = strings.ToUpper(index)
 		colPos, ok := utils.ParseColIndex(index)
 		if ok && colPos >= 0 && colPos < len(dt.columns) {
-			dt.columns[colPos] = dl
+			column := NewDataList()
+			column.data = slices.Clone(dl.data)
+			column.name = dl.name
+			dt.columns[colPos] = column
 		} else {
 			dt.warn("UpdateCol", "Col index does not exist, returning")
 		}
 		go dt.updateTimestamp()
-	})
+	}, dt, dl)
 	return dt
 }
 
 // UpdateColByNumber updates the column at the given index.
 func (dt *DataTable) UpdateColByNumber(index int, dl *DataList) *DataTable {
-	dt.AtomicDo(func(dt *DataTable) {
+	// See UpdateCol: lock table+list together and clone into a table-owned column
+	// rather than aliasing the caller's live DataList.
+	AtomicDoAll(func() {
 		if index < 0 {
 			index = len(dt.columns) + index
 		}
@@ -436,15 +463,19 @@ func (dt *DataTable) UpdateColByNumber(index int, dl *DataList) *DataTable {
 			return
 		}
 
-		dt.columns[index] = dl
+		column := NewDataList()
+		column.data = slices.Clone(dl.data)
+		column.name = dl.name
+		dt.columns[index] = column
 		go dt.updateTimestamp()
-	})
+	}, dt, dl)
 	return dt
 }
 
 // UpdateRow updates the row at the given index.
 func (dt *DataTable) UpdateRow(index int, dl *DataList) *DataTable {
-	dt.AtomicDo(func(dt *DataTable) {
+	// Lock the table AND the passed list together (dl.data / dl.name are read below).
+	AtomicDoAll(func() {
 		if index < 0 || index >= dt.getMaxColLength() {
 			dt.warn("UpdateRow", "Index out of bounds")
 			return
@@ -467,7 +498,7 @@ func (dt *DataTable) UpdateRow(index int, dl *DataList) *DataTable {
 		}
 
 		go dt.updateTimestamp()
-	})
+	}, dt, dl)
 	return dt
 }
 

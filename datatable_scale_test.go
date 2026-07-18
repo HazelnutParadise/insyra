@@ -137,18 +137,18 @@ func TestMinMaxScalerConstantColumnOutputsFeatureMin(t *testing.T) {
 // --- RobustScaler ---
 
 func TestRobustScalerParamsAndRoundTrip(t *testing.T) {
-	// 1..5 : median 3, Q1 (p*(n+1)=0.25*6=1.5 -> between idx0,1) = 1.5, Q3 = 4.5, IQR = 3
+	// 1..5, type-7: median 3, Q1 (h=0.25*(5-1)=1.0 -> idx1) = 2, Q3 (h=3.0 -> idx3) = 4, IQR = 2
 	dt := NewDataTable(NewDataList(1.0, 2.0, 3.0, 4.0, 5.0).SetName("x"))
 	out, sc, err := dt.RobustScale("x")
 	if err != nil {
 		t.Fatalf("RobustScale: %v", err)
 	}
 	p := sc.Params()["x"]
-	if !approx(p.Median, 3) || !approx(p.Q1, 1.5) || !approx(p.Q3, 4.5) || !approx(p.IQR, 3) {
+	if !approx(p.Median, 3) || !approx(p.Q1, 2) || !approx(p.Q3, 4) || !approx(p.IQR, 2) {
 		t.Fatalf("params = %+v", p)
 	}
 	assertApproxSlice(t, floatsOf(t, out.GetColByName("x")),
-		[]float64{(1 - 3) / 3.0, (2 - 3) / 3.0, 0, (4 - 3) / 3.0, (5 - 3) / 3.0})
+		[]float64{(1 - 3) / 2.0, (2 - 3) / 2.0, 0, (4 - 3) / 2.0, (5 - 3) / 2.0})
 	back, err := sc.InverseTransform(out)
 	if err != nil {
 		t.Fatalf("inverse: %v", err)

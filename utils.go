@@ -22,16 +22,15 @@ type F64orRat = utils.F64orRat
 var ToFloat64 = utils.ToFloat64
 var ToFloat64Safe = utils.ToFloat64Safe
 
-// SliceToF64 converts a []any to a []float64.
+// SliceToF64 converts a []any to a []float64. Every numeric element (all int,
+// uint and float widths) is converted to its float64 value; genuinely
+// non-numeric elements are substituted with 0 to preserve the slice length.
 func SliceToF64(input []any) []float64 {
-	var out []float64
+	out := make([]float64, 0, len(input))
 	for _, v := range input {
-		switch val := v.(type) {
-		case float64:
-			out = append(out, val)
-		case int:
-			out = append(out, float64(val))
-		default:
+		if f, ok := ToFloat64Safe(v); ok {
+			out = append(out, f)
+		} else {
 			out = append(out, 0) // Substitute 0 for non-numeric values
 		}
 	}

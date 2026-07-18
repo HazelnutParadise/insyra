@@ -7,14 +7,24 @@ import (
 	"github.com/TimLai666/go-decimal/decimal"
 )
 
-// TBillEq returns the bond-equivalent yield of a Treasury bill.
+// TBillEq returns the bond-equivalent (coupon-equivalent) yield of a Treasury
+// bill, following the US Treasury / SIA "investment rate" convention:
 //
-//	TBILLEQ = 365 · discount / (360 - discount · DSM)
+//	DSM ≤ 182:  i = 365 · discount / (360 - discount · DSM)
+//	DSM > 182:  i = 2·(√(n² − (2n−1)(1 − 1/P)) − n) / (2n − 1)
+//	            with n = DSM/365 and price per $1  P = 1 − discount·DSM/360
 //
 // where DSM is the number of calendar days from settlement to maturity.
 // Returns an error if maturity ≤ settlement or DSM > 365.
 //
-// Excel equivalent: TBILLEQ(settlement, maturity, discount)
+// API-compatible with Excel's TBILLEQ(settlement, maturity, discount), but the
+// VALUE follows the financially-correct Treasury convention. For DSM > 182,
+// Excel keeps using the simple short-bill formula and so overstates the yield
+// (e.g. ~7 bp high on a 364-day 5% bill); this implementation uses the long-bill
+// coupon-equivalent formula, which accounts for the intra-period coupon via
+// semi-annual compounding. Verified against QuantLib's exact semi-annually
+// compounded yield (agreement within ~1 bp for DSM > 182) and continuous with
+// the short-bill formula at the 182-day boundary.
 func TBillEq(settlement, maturity time.Time, discount decimal.Decimal, opts ...Options) (decimal.Decimal, error) {
 	dsm, err := tbillDSM(settlement, maturity)
 	if err != nil {
@@ -22,15 +32,57 @@ func TBillEq(settlement, maturity time.Time, discount decimal.Decimal, opts ...O
 	}
 	o := resolveOpts(opts)
 	work := o.workCtx()
-
 	dsmDec := decimal.NewFromInt64(work, int64(dsm))
-	num := decimal.Mul(work, decimal.NewFromInt64(work, 365), discount)
-	denom := decimal.Sub(work, decimal.NewFromInt64(work, 360),
-		decimal.Mul(work, discount, dsmDec))
-	if isZero(denom) {
-		return decimal.Decimal{}, errors.New("TBILLEQ: denominator vanished (discount · DSM = 360)")
+
+	if dsm <= 182 {
+		// Short bill: simple money-market bond-equivalent yield.
+		num := decimal.Mul(work, decimal.NewFromInt64(work, 365), discount)
+		denom := decimal.Sub(work, decimal.NewFromInt64(work, 360),
+			decimal.Mul(work, discount, dsmDec))
+		if isZero(denom) {
+			return decimal.Decimal{}, errors.New("TBILLEQ: denominator vanished (discount · DSM = 360)")
+		}
+		v, err := decimal.Div(work, num, denom)
+		if err != nil {
+			return decimal.Decimal{}, err
+		}
+		return o.outCtx().Normalize(v), nil
 	}
-	v, err := decimal.Div(work, num, denom)
+
+	// Long bill (DSM > 182): US Treasury / SIA coupon-equivalent yield.
+	one := decimal.NewFromInt64(work, 1)
+	two := decimal.NewFromInt64(work, 2)
+	dfrac, err := decimal.Div(work, decimal.Mul(work, discount, dsmDec),
+		decimal.NewFromInt64(work, 360))
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
+	price := decimal.Sub(work, one, dfrac) // price per $1
+	if isZero(price) {
+		return decimal.Decimal{}, errors.New("TBILLEQ: price vanished (discount · DSM = 360)")
+	}
+	n, err := decimal.Div(work, dsmDec, decimal.NewFromInt64(work, 365))
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
+	twoNm1 := decimal.Sub(work, decimal.Mul(work, two, n), one) // 2n − 1
+	if isZero(twoNm1) {
+		return decimal.Decimal{}, errors.New("TBILLEQ: degenerate at the 182.5-day boundary")
+	}
+	invP, err := decimal.Div(work, one, price)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
+	oneMinusInvP := decimal.Sub(work, one, invP)
+	// discriminant = n² − (2n−1)(1 − 1/P)
+	disc := decimal.Sub(work, decimal.Mul(work, n, n),
+		decimal.Mul(work, twoNm1, oneMinusInvP))
+	root, err := decimal.Sqrt(work, disc)
+	if err != nil {
+		return decimal.Decimal{}, err
+	}
+	// i = 2·(√disc − n) / (2n − 1)
+	v, err := decimal.Div(work, decimal.Mul(work, two, decimal.Sub(work, root, n)), twoNm1)
 	if err != nil {
 		return decimal.Decimal{}, err
 	}

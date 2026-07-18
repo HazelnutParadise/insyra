@@ -1,0 +1,12 @@
+version: "2"
+
+linters:
+  settings:
+    errcheck:
+      # fmt.Fprint* writes to display/terminal writers (Show, Summary, …)
+      # where the error is not actionable. golangci-lint v1 excluded these
+      # by default; v2 dropped that default, which turned the workflow red.
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln

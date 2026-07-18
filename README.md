@@ -1,4 +1,4 @@
-# Insyra - Crafting Your Art of Data
+# Insyra - Create for the Next
 
 [![Test](https://github.com/HazelnutParadise/insyra/actions/workflows/test.yml/badge.svg)](https://github.com/HazelnutParadise/insyra/actions/workflows/test.yml)
 [![GolangCI-Lint](https://github.com/HazelnutParadise/insyra/actions/workflows/golangci-lint.yml/badge.svg)](https://github.com/HazelnutParadise/insyra/actions/workflows/golangci-lint.yml)
@@ -46,6 +46,12 @@ This repository includes **agent skills**:
 - [`skills/insyra`](skills/insyra): helps AI agents use Insyra in Go code (DataList/DataTable workflows, CCL formulas, and common file I/O helpers).
 - [`skills/use-insyra-cli`](skills/use-insyra-cli): teaches agents how to use Insyra CLI/REPL and `.isr` scripts, including environment workflows and full command reference.
 
+Install the skills with:
+
+```bash
+npx skills add HazelnutParadise/insyra/skills
+```
+
 Quick picker:
 
 - Use `skills/insyra` when the task is to write or modify Go code using Insyra APIs.
@@ -66,6 +72,14 @@ We provide a mini Go IDE, `Idensyra`, which aims to make data analysis even more
 `Idensyra` comes with Insyra pre-installed, and allows you to run Go code without installing Go environment!
 
 **[Know more about Idensyra](https://github.com/HazelnutParadise/idensyra)**
+
+## [Syralit](https://github.com/HazelnutParadise/syralit)
+
+Want to turn your analysis into an interactive web app? We also build `Syralit`, a Go-native, Streamlit-inspired framework for data apps, dashboards, and AI tools. Write pure Go and get a live web UI, without touching JavaScript or any frontend build tooling.
+
+`Syralit` ships with first-class Insyra integration: render `DataTable`/`DataList` directly, chart your data, and even run Insyra DSL scripts inside your app.
+
+**[Know more about Syralit](https://github.com/HazelnutParadise/syralit)**
 
 ## Getting Started
 
@@ -359,9 +373,10 @@ For a complete list of DataTable methods and features, please refer to the **[Da
 | **[parquet](/Docs/parquet.md)** | Apache Parquet read/write, deeply integrated with `DataTable`/`DataList`; streaming, column-level reads, CCL filtering. |
 | **[mkt](/Docs/mkt.md)** | Marketing analytics: RFM, Customer Activity Index, and market-basket analysis. |
 | **[finance](/Docs/finance.md)** | High-precision fixed-point finance: TVM, NPV/IRR, depreciation, bond pricing, and amortization schedules. |
+| **[quant](/Docs/quant.md)** | Quantitative finance for strategy/backtest evaluation: Sharpe ratio, max drawdown, annualized return, PBO (CSCV), Deflated Sharpe Ratio, and walk-forward validation. |
 | **[py](/Docs/py.md)** | Run Python from Go with no manual environment setup; pass variables both ways. |
 | **[pd](/Docs/pd.md)** | Pandas-like `DataFrame` helpers built on `gpandas`, with `DataTable` conversion. |
-| **[datafetch](/Docs/datafetch.md)** | Easy data fetching: Google Maps store reviews and a Yahoo Finance wrapper. |
+| **[datafetch](/Docs/datafetch.md)** | Easy data fetching: Google Maps store reviews, a Yahoo Finance wrapper, and Taiwan reverse geocoding. |
 | **[lpgen](/Docs/lpgen.md)** | Generate linear programming (LP) models and export them as `.lp` files. |
 | **[lp](/Docs/lp.md)** | Fully automatic LP solver using [GLPK](https://www.gnu.org/software/glpk/). |
 | **[engine](/engine/README.md)** | Re-exports selected Insyra internals for reuse in other projects. |

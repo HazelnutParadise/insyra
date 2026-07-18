@@ -25,9 +25,9 @@ func runSummaryCommand(ctx *ExecContext, args []string) error {
 	}
 	switch typed := value.(type) {
 	case *insyra.DataTable:
-		typed.Summary()
+		typed.SummaryTo(ctx.Output)
 	case *insyra.DataList:
-		typed.Summary()
+		typed.SummaryTo(ctx.Output)
 	default:
 		return fmt.Errorf("summary is only supported for DataTable/DataList")
 	}

@@ -50,7 +50,10 @@ func (dt *DataTable) ChangeColName(oldName, newName string) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		for _, col := range dt.columns {
 			if col.name == oldName {
-				col.name = newName
+				// Route through safeColName so a rename cannot create a duplicate
+				// column name (which would shadow lookups), consistent with the
+				// other name setters.
+				col.name = safeColName(dt, newName)
 				break
 			}
 		}

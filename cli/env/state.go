@@ -1,6 +1,7 @@
 package env
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -42,7 +43,15 @@ func (m *Manager) SaveState(envName string, vars map[string]any) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(envPath, "state.json"), payload, 0o644)
+	// Atomic write: write to a temp file then rename over state.json (rename is
+	// atomic on the same filesystem), so an interruption mid-write cannot leave a
+	// truncated/corrupted state.json that would wipe the user's variables.
+	finalPath := filepath.Join(envPath, "state.json")
+	tmpPath := finalPath + ".tmp"
+	if err := os.WriteFile(tmpPath, payload, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, finalPath)
 }
 
 func (m *Manager) LoadState(envName string) (*State, error) {
@@ -50,12 +59,17 @@ func (m *Manager) LoadState(envName string) (*State, error) {
 	if err != nil {
 		return nil, err
 	}
-	bytes, err := os.ReadFile(filepath.Join(envPath, "state.json"))
+	raw, err := os.ReadFile(filepath.Join(envPath, "state.json"))
 	if err != nil {
 		return nil, err
 	}
 	var state State
-	if err := json.Unmarshal(bytes, &state); err != nil {
+	// Decode numbers as json.Number so integer variables keep their int64 type
+	// (and large integers keep full precision) instead of collapsing to float64;
+	// coerceEnvNumber types them when a DataList is restored.
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	if err := dec.Decode(&state); err != nil {
 		return nil, err
 	}
 	if state.Variables == nil {
@@ -104,15 +118,10 @@ func deserializeVariable(serialized SerializedVariable) any {
 		}
 	case "DataList":
 		if arr, ok := serialized.Data.([]any); ok {
-			dl := insyra.NewDataList(arr...)
-			if serialized.Name != "" {
-				dl.SetName(serialized.Name)
-			}
-			return dl
-		}
-		if arr, ok := serialized.Data.([]interface{}); ok {
 			converted := make([]any, len(arr))
-			copy(converted, arr)
+			for i, e := range arr {
+				converted[i] = coerceEnvNumber(e)
+			}
 			dl := insyra.NewDataList(converted...)
 			if serialized.Name != "" {
 				dl.SetName(serialized.Name)
@@ -121,6 +130,22 @@ func deserializeVariable(serialized SerializedVariable) any {
 		}
 	}
 	return serialized.Data
+}
+
+// coerceEnvNumber types a json.Number (produced by UseNumber decoding) as int64
+// when it is an integer literal (preserving values beyond 2^53) and float64
+// otherwise; non-number values pass through unchanged.
+func coerceEnvNumber(v any) any {
+	if n, ok := v.(json.Number); ok {
+		if i, err := n.Int64(); err == nil {
+			return i
+		}
+		if f, err := n.Float64(); err == nil {
+			return f
+		}
+		return n.String()
+	}
+	return v
 }
 
 func (m *Manager) AppendHistory(envName, command string) error {

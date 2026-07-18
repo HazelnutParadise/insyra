@@ -50,16 +50,16 @@ func MannWhitneyU(data1, data2 insyra.IDataList, alt AlternativeHypothesis, conf
 
 	var s1, s2 []any
 	var inputErr error
-	data1.AtomicDo(func(dl1 *insyra.DataList) {
-		data2.AtomicDo(func(dl2 *insyra.DataList) {
-			if dl1.Len() == 0 || dl2.Len() == 0 {
-				inputErr = errors.New("both samples must be non-empty")
-				return
-			}
-			s1 = dl1.Data()
-			s2 = dl2.Data()
-		})
-	})
+	dl1 := data1.(*insyra.DataList)
+	dl2 := data2.(*insyra.DataList)
+	insyra.AtomicDoAll(func() {
+		if dl1.Len() == 0 || dl2.Len() == 0 {
+			inputErr = errors.New("both samples must be non-empty")
+			return
+		}
+		s1 = dl1.Data()
+		s2 = dl2.Data()
+	}, dl1, dl2)
 	if inputErr != nil {
 		return nil, inputErr
 	}

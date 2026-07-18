@@ -135,6 +135,13 @@ func (dl *DataList) FillWithMean() *DataList {
 			dl.warn("FillWithMean", "No numeric values to compute mean")
 			return
 		}
+		// Do not inject a numeric mean into a mixed/categorical column, matching
+		// the DataTable-level wrappers. numericObservedValues silently skips
+		// non-numeric values, so guard explicitly here.
+		if !hasOnlyNumericObservedValues(dl) {
+			dl.warn("FillWithMean", "column has non-numeric observed values; not imputing a numeric mean")
+			return
+		}
 		var sum float64
 		for _, v := range values {
 			sum += v
@@ -158,6 +165,10 @@ func (dl *DataList) FillWithMedian() *DataList {
 		values := numericObservedValues(dl.data)
 		if len(values) == 0 {
 			dl.warn("FillWithMedian", "No numeric values to compute median")
+			return
+		}
+		if !hasOnlyNumericObservedValues(dl) {
+			dl.warn("FillWithMedian", "column has non-numeric observed values; not imputing a numeric median")
 			return
 		}
 		sort.Float64s(values)

@@ -112,60 +112,56 @@ func (s *BiIndex) DeleteByID(id int) (string, bool) {
 // of oldID->newID for all shifted ids, and true on success. This operation
 // is O(n) and will change many ids; mapping helps callers update references.
 func (s *BiIndex) DeleteAndShift(id int) (string, map[int]int, bool) {
-	// ensure id exists
-	if _, ok := s.idToString[id]; !ok {
-		return "", nil, false
-	}
-	deleted := s.idToString[id]
+	deleted, hadName := s.idToString[id]
 
-	// collect ids greater than id and sort them
+	// Remove the mapping at id directly. A compacting shift leaves no hole, so
+	// the removed id must NOT be pushed onto the free list (DeleteByID would,
+	// which lets a later Assign hand out a duplicate id). When id has no name we
+	// still perform the shift below so higher rows stay aligned with the data.
+	if hadName {
+		delete(s.idToString, id)
+		delete(s.stringToID, deleted)
+	}
+
+	// Collect ids greater than id and shift each down by one, in increasing order.
 	ids := make([]int, 0)
 	for k := range s.idToString {
 		if k > id {
 			ids = append(ids, k)
 		}
 	}
-	if len(ids) == 0 {
-		// simple delete: like DeleteByID but also adjust freed/nextID
-		_, ok := s.DeleteByID(id)
-		// adjust freed list and nextID
-		for i := range s.freed {
-			if s.freed[i] > id {
-				s.freed[i] = s.freed[i] - 1
-			}
-		}
-		if s.nextID > id {
-			s.nextID--
-		}
-		return deleted, nil, ok
-	}
-
 	sort.Ints(ids)
 	mapping := make(map[int]int, len(ids))
-
-	// perform shifts in increasing order
 	for _, old := range ids {
 		name := s.idToString[old]
 		newID := old - 1
+		delete(s.idToString, old)
 		s.idToString[newID] = name
 		s.stringToID[name] = newID
 		mapping[old] = newID
-		delete(s.idToString, old)
 	}
 
-	// finally remove the requested id mapping
-	delete(s.stringToID, deleted)
-	// adjust freed list and nextID
-	for i := range s.freed {
-		if s.freed[i] > id {
-			s.freed[i] = s.freed[i] - 1
+	// Adjust the free list and nextID for the removed slot: drop any freed entry
+	// equal to id (absorbed by the shift, not a reusable hole) and shift higher
+	// freed ids down by one to stay consistent with the reindexed mappings.
+	if len(s.freed) > 0 {
+		newFreed := s.freed[:0]
+		for _, f := range s.freed {
+			if f == id {
+				continue
+			}
+			if f > id {
+				f--
+			}
+			newFreed = append(newFreed, f)
 		}
+		s.freed = newFreed
 	}
 	if s.nextID > id {
 		s.nextID--
 	}
 
-	return deleted, mapping, true
+	return deleted, mapping, hadName
 }
 
 // DeleteByName removes the mapping for name.

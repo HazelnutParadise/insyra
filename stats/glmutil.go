@@ -55,6 +55,31 @@ func buildGLMCoeffCIs(beta, se []float64, cl float64) [][2]float64 {
 	return cis
 }
 
+// buildGLMCoeffCIsT builds coefficient CIs using the t critical value on df
+// degrees of freedom. Use this for families with an estimated (non-fixed)
+// dispersion (e.g. Gaussian) so the CIs are consistent with the t-distributed
+// p-values instead of being too narrow with a z quantile.
+func buildGLMCoeffCIsT(beta, se []float64, cl, df float64) [][2]float64 {
+	cl = resolveConfidenceLevel(cl)
+	cis := make([][2]float64, len(beta))
+	if df <= 0 {
+		for i := range cis {
+			cis[i] = nanCI()
+		}
+		return cis
+	}
+	tcrit := tQuantile(1-(1-cl)/2, df)
+	for i := range beta {
+		if i >= len(se) || math.IsNaN(se[i]) {
+			cis[i] = nanCI()
+			continue
+		}
+		margin := tcrit * se[i]
+		cis[i] = [2]float64{beta[i] - margin, beta[i] + margin}
+	}
+	return cis
+}
+
 func mcFaddenR2(logLik, nullLogLik float64) float64 {
 	if nullLogLik == 0 || math.IsNaN(logLik) || math.IsNaN(nullLogLik) {
 		return math.NaN()

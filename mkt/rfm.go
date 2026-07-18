@@ -79,6 +79,8 @@ func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable {
 	customerTradingFrequencyMap := make(map[string]uint)          // map[customerID]tradingFrequency
 	customerTotalAmountMap := make(map[string]float64)            // map[customerID]totalAmount
 	customerTradingPeriodsMap := make(map[string]map[string]bool) // map[customerID]map[formattedPeriod]bool
+	var maxTradingDayUnix int64                                   // latest trading day across the whole dataset (reproducible Recency anchor)
+	hasAnyTradingDay := false
 
 	dt.AtomicDo(func(dt *insyra.DataTable) {
 		// 找出每個客戶的最後交易日
@@ -102,6 +104,12 @@ func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable {
 			}
 			lastTradingDayUTC := lastTradingDay.UTC()
 			lastTradingDayUnix := lastTradingDayUTC.Unix()
+
+			// 追蹤全資料集的最新交易日，作為可重現的 Recency 基準
+			if !hasAnyTradingDay || lastTradingDayUnix > maxTradingDayUnix {
+				maxTradingDayUnix = lastTradingDayUnix
+				hasAnyTradingDay = true
+			}
 
 			// 根據 TimeScale 格式化交易時間，用於計算不重複的交易頻率
 			formattedPeriod := formatTradingPeriod(lastTradingDayUTC, timeScale)
@@ -133,13 +141,19 @@ func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable {
 		}
 	})
 
+	// Recency 基準日錨定「資料集最新交易日」，而非 wall-clock time.Now()：可重現、
+	// 與 CustomerActivityIndex 的錨點一致。RFM 分數是 percentile 相對值，換基準日只是
+	// 對所有客戶均勻位移，故此錨點不改變現有輸出；但它移除了非確定性，也讓程式碼在日後
+	// 若暴露原始 recency 天數時仍然正確。
+	referenceUnix := maxTradingDayUnix
+
 	rThresholds := make([]float64, numGroups-1)
 	fThresholds := make([]float64, numGroups-1)
 	mThresholds := make([]float64, numGroups-1)
 	customerRMap := make(map[string]int64) // map[customerID]R_value (days since last trade)
 	parallel.GroupUp(func() {
-		// 計算當前時間（UTC）
-		now := time.Now().UTC()
+		// Recency 基準時間（UTC）：資料集最新交易日或使用者指定的 AsOfDate
+		now := time.Unix(referenceUnix, 0).UTC()
 
 		// 計算R值（根據 TimeScale 的時間差異）
 		for customerID, lastTradingDayUnix := range customerLastTradingDayMap {

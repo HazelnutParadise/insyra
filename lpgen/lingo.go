@@ -97,12 +97,11 @@ func ParseLingoModel_txt(filePath string) *LPModel {
 			// 處理 Integer 變數宣告
 			lingo_handleVariableDeclarations(expr, "@INT", &model.IntegerVars)
 		} else if strings.ContainsAny(expr, "<=>=") {
-			// 處理 Bounds 和 Constraints
-			content := expr
-			if !strings.ContainsAny(content, "+-") {
-				model.Bounds = append(model.Bounds, content)
+			// 處理 Bounds 和 Constraints：以「變數項數量」判斷，而非 +/- 字元。
+			if lingoIsBound(expr) {
+				model.Bounds = append(model.Bounds, expr)
 			} else {
-				model.Constraints = append(model.Constraints, content)
+				model.Constraints = append(model.Constraints, expr)
 			}
 		}
 	}
@@ -195,12 +194,11 @@ func ParseLingoModel_str(modelStr string) *LPModel {
 			// 處理 Integer 變數宣告
 			lingo_handleVariableDeclarations(expr, "@INT", &model.IntegerVars)
 		} else if strings.ContainsAny(expr, "<=>=") {
-			// 處理 Bounds 和 Constraints
-			content := expr
-			if !strings.ContainsAny(content, "+-") {
-				model.Bounds = append(model.Bounds, content)
+			// 處理 Bounds 和 Constraints：以「變數項數量」判斷，而非 +/- 字元。
+			if lingoIsBound(expr) {
+				model.Bounds = append(model.Bounds, expr)
 			} else {
-				model.Constraints = append(model.Constraints, content)
+				model.Constraints = append(model.Constraints, expr)
 			}
 		}
 	}
@@ -214,6 +212,35 @@ func ParseLingoModel_str(modelStr string) *LPModel {
 }
 
 // handleVariableDeclarations 處理變數宣告並將變數名稱添加到相應的列表中
+var lingoBareVarRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+var lingoNumRe = regexp.MustCompile(`^[+-]?(\d+\.?\d*|\.\d+)$`)
+var lingoRelSplitRe = regexp.MustCompile(`<=|>=|==|<|>|=`)
+
+// lingoIsBound reports whether a LINGO relation is a simple variable bound
+// (a single bare variable compared to constants, e.g. "X1 >= -5" or
+// "0 <= X1 <= 10") rather than a general constraint (multiple terms or a
+// non-unit coefficient, e.g. "3 X1 <= 10" or "X1 + X2 <= 10"). The previous
+// heuristic keyed only off the presence of '+'/'-', which misclassified both.
+func lingoIsBound(expr string) bool {
+	segs := lingoRelSplitRe.Split(expr, -1)
+	varCount := 0
+	for _, s := range segs {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		switch {
+		case lingoNumRe.MatchString(s):
+			// constant operand
+		case lingoBareVarRe.MatchString(s):
+			varCount++
+		default:
+			return false
+		}
+	}
+	return varCount == 1
+}
+
 func lingo_handleVariableDeclarations(expr string, declarationType string, targetList *[]string) {
 	// 切分宣告語句並處理每個宣告
 	declarations := strings.Split(expr, ";")

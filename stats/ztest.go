@@ -86,19 +86,19 @@ func TwoSampleZTest(data1, data2 insyra.IDataList, sigma1, sigma2 float64, alter
 	var n1, n2 int
 	var mean1, mean2 float64
 	var err error
-	data1.AtomicDo(func(dl1 *insyra.DataList) {
-		data2.AtomicDo(func(dl2 *insyra.DataList) {
-			n1 = dl1.Len()
-			n2 = dl2.Len()
-			if n1 <= 0 || n2 <= 0 {
-				err = errors.New("sample sizes too small")
-				return
-			}
+	dl1 := data1.(*insyra.DataList)
+	dl2 := data2.(*insyra.DataList)
+	insyra.AtomicDoAll(func() {
+		n1 = dl1.Len()
+		n2 = dl2.Len()
+		if n1 <= 0 || n2 <= 0 {
+			err = errors.New("sample sizes too small")
+			return
+		}
 
-			mean1 = dl1.Mean()
-			mean2 = dl2.Mean()
-		})
-	})
+		mean1 = dl1.Mean()
+		mean2 = dl2.Mean()
+	}, dl1, dl2)
 	if err != nil {
 		return nil, err
 	}

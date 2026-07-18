@@ -44,7 +44,7 @@ Use Insyra when you need any of these in Go:
 
 ## Core mental model
 - DataList: a column/series-like container (stats, sort, transform).
-- Concurrency: DataList is designed to be safe under concurrent access when thread safety is enabled (default) because operations are serialized via AtomicDo. This also makes it usable as a lightweight shared buffer (e.g., append/pop in one AtomicDo block). Keep AtomicDo blocks short and do heavy work outside.
+- Concurrency: DataList is designed to be safe under concurrent access when thread safety is enabled (default) because operations are serialized via AtomicDo. This also makes it usable as a lightweight shared buffer (e.g., append/pop in one AtomicDo block). Keep AtomicDo blocks short and do heavy work outside. To operate on TWO OR MORE instances atomically, use `insyra.AtomicDoAll(func(){...}, a, b)` — it locks all given DataList/DataTable instances together, deadlock-free. Do NOT nest `b.AtomicDo` inside `a.AtomicDo` to read both: the inner call does not lock `b` and can race.
 - DataTable: multiple named DataList columns as a table.
 - isr syntactic sugar: preferred entrypoint for new codebases.
 - CCL (Column Calculation Language): Excel-like formulas for derived columns.
@@ -207,6 +207,9 @@ import (
 )
 
 func main() {
+    // Column-level type inference: all-integer columns load as int64 (large IDs
+    // keep full precision), columns with any decimal as float64, others as string.
+    // ReadJSON types integer JSON values as int64 the same way.
     dt, err := insyra.ReadCSV_File("data.csv", false, true)
     if err != nil {
         log.Fatal(err)
@@ -434,6 +437,33 @@ func main() {
     )
 }
 ```
+
+### 7) Reverse-geocode Taiwan coordinates (datafetch)
+
+`datafetch.TWGeocoding` turns `(lat, lng)` into a Taiwan county/town/village via the geocoding.zuola.com reverse API. Reverse-only (no address → coordinate). The free tier is **15 requests/hour per IP**, so prefer the batch methods (which de-dup identical coordinates) plus `NewFileGeocodeCache` for anything non-trivial.
+
+```go
+import (
+    "errors"
+    "github.com/HazelnutParadise/insyra/datafetch"
+)
+
+g, _ := datafetch.TWGeocoding(datafetch.TWGeocodingConfig{
+    Cache: datafetch.NewFileGeocodeCache("geocache.json"),
+})
+
+// Single lookup (typed result)
+res, err := g.Reverse(24.9884079, 121.4598882)
+if errors.Is(err, datafetch.ErrGeocodeNotFound) {
+    // point outside any TW village
+}
+
+// Batch over a DataTable's lat/lng columns -> enriched DataTable + GeocodeStatus column.
+// ReverseTable addresses columns by Excel index ("A","B"); ReverseTableByColName by name.
+enriched, err := g.ReverseTableByColName(dt, "lat", "lng")
+```
+
+On quota exhaustion the batch stops, returns already-resolved rows (rest marked `pending`), and returns a `*datafetch.RateLimitError` (unwraps to `ErrGeocodeRateLimited`; carries `ResetAt`). See `Docs/datafetch.md` for the full API.
 
 ## Engine package (advanced primitives)
 The repo includes an `engine` package that re-exports well-tested internal primitives (see [`engine/`](../../engine) and `engine/README.md).

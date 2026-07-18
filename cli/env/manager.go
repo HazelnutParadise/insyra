@@ -424,17 +424,10 @@ func (m *Manager) Import(inputPath, targetName string, force bool) (string, erro
 	if err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(filepath.Join(envPath, "state.json"), stateBytes, 0o644); err != nil {
-		return "", err
-	}
-
 	historyBytes := []byte("")
 	if len(payload.History) > 0 {
 		historyText := strings.Join(payload.History, "\n") + "\n"
 		historyBytes = []byte(historyText)
-	}
-	if err := os.WriteFile(filepath.Join(envPath, "history.txt"), historyBytes, 0o644); err != nil {
-		return "", err
 	}
 
 	configBytes := []byte("{}\n")
@@ -445,8 +438,26 @@ func (m *Manager) Import(inputPath, targetName string, force bool) (string, erro
 			return "", errors.New("invalid config payload in export file")
 		}
 	}
-	if err := os.WriteFile(filepath.Join(envPath, "config.json"), configBytes, 0o644); err != nil {
-		return "", err
+
+	// Import all three files atomically: stage as .tmp then rename into place, so
+	// an interruption mid-import cannot leave a half-written environment.
+	staged := []struct {
+		name string
+		data []byte
+	}{
+		{"state.json", stateBytes},
+		{"history.txt", historyBytes},
+		{"config.json", configBytes},
+	}
+	for _, f := range staged {
+		if err := os.WriteFile(filepath.Join(envPath, f.name+".tmp"), f.data, 0o644); err != nil {
+			return "", err
+		}
+	}
+	for _, f := range staged {
+		if err := os.Rename(filepath.Join(envPath, f.name+".tmp"), filepath.Join(envPath, f.name)); err != nil {
+			return "", err
+		}
 	}
 
 	return name, nil
