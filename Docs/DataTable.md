@@ -3945,9 +3945,10 @@ dt.ShowRange(2, nil) // Show rows from index 2 to end
 
 ```go
 func (dt *DataTable) ShowTypes()
+func (dt *DataTable) ShowTypesTo(w io.Writer) // same output, written to w instead of os.Stdout
 ```
 
-**Description:** Displays the data types of each column.
+**Description:** Displays the data types of each column. `ShowTypesTo` writes the same output to any `io.Writer` (e.g. a file or `bytes.Buffer`) instead of stdout.
 
 **Parameters:**
 
@@ -3967,9 +3968,10 @@ dt.ShowTypes() // Display column type information
 
 ```go
 func (dt *DataTable) ShowTypesRange(startEnd ...any)
+func (dt *DataTable) ShowTypesRangeTo(w io.Writer, startEnd ...any) // same output, written to w
 ```
 
-**Description:** Displays the data types of columns within a specified range.
+**Description:** Displays the data types of columns within a specified range. `ShowTypesRangeTo` writes the same output to any `io.Writer` instead of stdout.
 
 **Parameters:**
 

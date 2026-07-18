@@ -25,9 +25,9 @@ func runTypesCommand(ctx *ExecContext, args []string) error {
 	}
 	switch typed := value.(type) {
 	case *insyra.DataTable:
-		typed.ShowTypes()
+		typed.ShowTypesTo(ctx.Output)
 	case *insyra.DataList:
-		typed.ShowTypes()
+		typed.ShowTypesTo(ctx.Output)
 	default:
 		return fmt.Errorf("types is only supported for DataTable/DataList")
 	}

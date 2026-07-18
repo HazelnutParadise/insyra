@@ -154,12 +154,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: When raising the minimum Go version to 1.26, retry upgrading the whole chain and re-verify `govulncheck ./...` completes (the x/tools SSA bug may be fixed by then).
 - **Status**: pending
 
-### [2026-07-10] — `types` CLI command prints to stdout, bypassing `ctx.Output`
-- **Where**: `cli/commands/types.go:28,30` → `DataTable/DataList.ShowTypes` (`show.go:437,1041`)
-- **What**: Same bug class as M20 (fixed for `show`/`describe`/`summary`). `ShowTypes`/`ShowTypesRange` were intentionally left stdout-only, so the `types` command's output escapes `ctx.Output` (not captured by the REPL/tests).
-- **Suggestion**: Extend the writer-aware pattern — add `ShowTypesTo(w)` / `ShowTypesRangeTo(w, ...)` (thread `w` through `printTypeRows`), have the old methods delegate to `os.Stdout`, and route `types.go` through `ctx.Output`.
-- **Status**: pending
-
 ### [2026-07-10] — `go updateTimestamp()` spawns an unbounded goroutine per mutation
 - **Where**: ~102 sites across `datalist.go` / `datatable.go` (mutating methods call `go x.updateTimestamp()`)
 - **What**: Every mutation fires a fire-and-forget goroutine to bump the last-modified timestamp. Under heavy/tight-loop mutation this floods the scheduler (the `-race` stress tests had to be bounded because of it). Latent scalability/perf concern, not a correctness bug.
