@@ -66,6 +66,7 @@ type CSV_inOpts struct {
     FirstCol2RowNames bool   // Treat the first column as row names
     FirstRow2ColNames bool   // Treat the first row as column names
     Encoding          string // Specify input file encoding (e.g., "big5", "utf-8"), Only for FilePath input
+    RawStrings        bool   // Keep every cell as its original string; skip column type inference
 }
 
 // Examples:

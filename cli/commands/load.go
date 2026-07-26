@@ -13,17 +13,18 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "load",
-		Usage:       "load <file> [headers true|false] [rownames true|false] [encoding <enc>] [sheet <name>] | load parquet <file> [...] | load sql <conn> <table>|query \"<sql>\" [...] [as <var>]",
+		Usage:       "load <file> [headers true|false] [rownames true|false] [encoding <enc>] [infer true|false] [sheet <name>] | load parquet <file> [...] | load sql <conn> <table>|query \"<sql>\" [...] [as <var>]",
 		Description: "Load data into a DataTable variable from a file, parquet, or SQL connection",
 		Forms: []string{
-			"load <file.csv> [headers true|false] [rownames true|false] [encoding <enc>] [as <var>]",
+			"load <file.csv> [headers true|false] [rownames true|false] [encoding <enc>] [infer true|false] [as <var>]",
 			"load <file.json> [as <var>]",
 			"load <file.xlsx> sheet <name> [headers true|false] [rownames true|false] [as <var>]",
 			"load parquet <file> [cols <c1,c2,...>] [rowgroups <i1,i2,...>] [as <var>]",
 			"load sql <conn> <table> [where \"...\"] [order \"...\"] [limit N] [offset N] [cols \"c1,c2\"] [schema <s>] [indexcol <c>] [parsedates \"c1,c2\"] [as <var>]",
 			"load sql <conn> query \"<SQL>\" [params <v1> <v2> ...] [as <var>]",
 			"",
-			"File option defaults: headers=true, rownames=false.",
+			"File option defaults: headers=true, rownames=false, infer=true.",
+			"infer false (CSV only) keeps every cell as its original string — no type inference.",
 			"Booleans accept true|false|yes|no|on|off|1|0.",
 		},
 		Examples: []string{
@@ -31,6 +32,7 @@ func init() {
 			"insyra load matrix.csv headers false as raw",
 			"insyra load gdp.csv rownames true as gdp",
 			"insyra load legacy.csv encoding big5 as legacy",
+			"insyra load stocks.csv infer false as raw",
 			"insyra load report.xlsx sheet 2025 rownames true as r",
 			"insyra load parquet data.parquet cols id,amount rowgroups 0,1 as p",
 			"insyra load sql main customers as customers",
@@ -43,7 +45,7 @@ func init() {
 func runLoadCommand(ctx *ExecContext, args []string) error {
 	coreArgs, alias := parseAlias(args)
 	if len(coreArgs) == 0 {
-		return fmt.Errorf("usage: load <file> [headers true|false] [rownames true|false] [encoding <enc>] [sheet <name>] | load parquet <file> [...] | load sql <conn> <table>|query \"<sql>\" [...] [as <var>]")
+		return fmt.Errorf("usage: load <file> [headers true|false] [rownames true|false] [encoding <enc>] [infer true|false] [sheet <name>] | load parquet <file> [...] | load sql <conn> <table>|query \"<sql>\" [...] [as <var>]")
 	}
 
 	var table *insyra.DataTable
@@ -78,19 +80,23 @@ func runLoadCommand(ctx *ExecContext, args []string) error {
 			if opts.SheetSet {
 				return fmt.Errorf("load csv: 'sheet' is not valid for CSV files")
 			}
-			if opts.Encoding != "" {
-				table, err = insyra.ReadCSV_File(path, opts.RowNames, opts.Headers, opts.Encoding)
-			} else {
-				table, err = insyra.ReadCSV_File(path, opts.RowNames, opts.Headers)
-			}
+			table, err = insyra.ReadCSV_FileWithOptions(path, insyra.CSVReadOptions{
+				FirstColToRowNames: opts.RowNames,
+				FirstRowToColNames: opts.Headers,
+				Encoding:           opts.Encoding,
+				RawStrings:         !opts.Infer,
+			})
 		case "json":
-			if opts.HeadersSet || opts.RowNamesSet || opts.SheetSet || opts.Encoding != "" {
-				return fmt.Errorf("load json: headers/rownames/sheet/encoding options are not supported for JSON")
+			if opts.HeadersSet || opts.RowNamesSet || opts.SheetSet || opts.Encoding != "" || opts.InferSet {
+				return fmt.Errorf("load json: headers/rownames/sheet/encoding/infer options are not supported for JSON")
 			}
 			table, err = insyra.ReadJSON_File(path)
 		case "excel":
 			if opts.Encoding != "" {
 				return fmt.Errorf("load excel: 'encoding' is not valid for Excel files")
+			}
+			if opts.InferSet {
+				return fmt.Errorf("load excel: 'infer' is not valid for Excel files")
 			}
 			if !opts.SheetSet || opts.Sheet == "" {
 				return fmt.Errorf("usage for excel: load <file.xlsx> sheet <sheet-name> [headers true|false] [rownames true|false] [as <var>]")
@@ -119,10 +125,12 @@ type fileLoadOptions struct {
 	Encoding    string
 	Sheet       string
 	SheetSet    bool
+	Infer       bool
+	InferSet    bool
 }
 
 func parseFileLoadOptions(args []string) (fileLoadOptions, error) {
-	opts := fileLoadOptions{Headers: true, RowNames: false}
+	opts := fileLoadOptions{Headers: true, RowNames: false, Infer: true}
 	for i := 0; i < len(args); {
 		key := strings.ToLower(args[i])
 		next := func() (string, error) {
@@ -171,8 +179,20 @@ func parseFileLoadOptions(args []string) (fileLoadOptions, error) {
 			opts.Sheet = v
 			opts.SheetSet = true
 			i += 2
+		case "infer":
+			v, err := next()
+			if err != nil {
+				return opts, err
+			}
+			b, err := parseFlexBool(v)
+			if err != nil {
+				return opts, fmt.Errorf("load: invalid value for infer: %w", err)
+			}
+			opts.Infer = b
+			opts.InferSet = true
+			i += 2
 		default:
-			return opts, fmt.Errorf("load: unknown option %q (supported: headers, rownames, encoding, sheet)", args[i])
+			return opts, fmt.Errorf("load: unknown option %q (supported: headers, rownames, encoding, sheet, infer)", args[i])
 		}
 	}
 	return opts, nil

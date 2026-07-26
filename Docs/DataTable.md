@@ -147,6 +147,38 @@ if err != nil {
 }
 ```
 
+### ReadCSV_FileWithOptions / ReadCSV_StringWithOptions
+
+```go
+type CSVReadOptions struct {
+    FirstColToRowNames bool
+    FirstRowToColNames bool
+    Encoding           string // file input only; "" or "auto" auto-detects
+    RawStrings         bool   // keep every cell as its original string; skip type inference
+}
+
+func ReadCSV_FileWithOptions(filePath string, opts CSVReadOptions) (*DataTable, error)
+func ReadCSV_StringWithOptions(csvString string, opts CSVReadOptions) (*DataTable, error)
+```
+
+**Description:** Options-based variants of `ReadCSV_File` / `ReadCSV_String`. The zero value of `CSVReadOptions` behaves exactly like the legacy functions with both flags `false`.
+
+Set `RawStrings: true` to disable column type inference entirely: every cell is kept as its original string and empty cells stay `""` (not `NaN`). Use this for data that looks numeric but must not be parsed as numbers — stock IDs (`0050` would otherwise become `int64` `50`, losing the leading zeros), tax IDs, phone numbers, zip codes, or exact monetary amounts you want to parse with a decimal type yourself.
+
+**Example:**
+
+```go
+csvData := "id,price\n0050,600.855\n00878,100.14"
+dt, err := insyra.ReadCSV_StringWithOptions(csvData, insyra.CSVReadOptions{
+    FirstRowToColNames: true,
+    RawStrings:         true,
+})
+if err != nil {
+    log.Fatal(err)
+}
+// dt cells are all strings: "0050", "00878", "600.855", ...
+```
+
 ### ReadJSON_File
 
 ```go

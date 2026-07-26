@@ -86,22 +86,45 @@ func Slice2DToDataTable(data any) (*DataTable, error) {
 
 // ----- csv -----
 
+// CSVReadOptions configures ReadCSV_FileWithOptions and ReadCSV_StringWithOptions.
+// The zero value reproduces the default behavior of ReadCSV_File/ReadCSV_String:
+// no row/column names taken from the data, auto-detected encoding, and
+// column-level type inference enabled.
+type CSVReadOptions struct {
+	FirstColToRowNames bool
+	FirstRowToColNames bool
+	// Encoding applies to file input only; "" or "auto" auto-detects.
+	Encoding string
+	// RawStrings keeps every cell as its original string and skips column
+	// type inference entirely. Use it for data that looks numeric but must
+	// not be parsed as numbers (stock IDs like "0050", tax IDs, phone
+	// numbers, exact monetary amounts). Empty cells stay "".
+	RawStrings bool
+}
+
 // ReadCSV_File loads a CSV file into a DataTable, with options to set the first column as row names
 // and the first row as column names.
 func ReadCSV_File(filePath string, setFirstColToRowNames bool, setFirstRowToColNames bool, encoding ...string) (*DataTable, error) {
-	dt := NewDataTable()
+	opts := CSVReadOptions{
+		FirstColToRowNames: setFirstColToRowNames,
+		FirstRowToColNames: setFirstRowToColNames,
+	}
+	if len(encoding) > 0 {
+		opts.Encoding = encoding[0]
+	}
+	return ReadCSV_FileWithOptions(filePath, opts)
+}
 
+// ReadCSV_FileWithOptions loads a CSV file into a DataTable according to opts.
+func ReadCSV_FileWithOptions(filePath string, opts CSVReadOptions) (*DataTable, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = file.Close() }()
 
-	if len(encoding) == 0 {
-		encoding = []string{"auto"}
-	}
-	useEncoding := strings.ToLower(encoding[0])
-	if useEncoding == "auto" {
+	useEncoding := strings.ToLower(opts.Encoding)
+	if useEncoding == "" || useEncoding == "auto" {
 		detected, err := DetectEncoding(filePath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to auto-detect encoding for %s: %v", filePath, err)
@@ -122,18 +145,25 @@ func ReadCSV_File(filePath string, setFirstColToRowNames bool, setFirstRowToColN
 		return nil, err
 	}
 
+	return csvRowsToDataTable(rows, opts), nil
+}
+
+// csvRowsToDataTable builds a DataTable from parsed CSV rows, applying the
+// row/column-name options and (unless opts.RawStrings) column type inference.
+func csvRowsToDataTable(rows [][]string, opts CSVReadOptions) *DataTable {
+	dt := NewDataTable()
 	dt.columns = []*DataList{}
 	dt.rowNames = core.NewBiIndex(0)
 
 	if len(rows) == 0 {
-		return dt, nil // 空的CSV
+		return dt // 空的CSV
 	}
 
 	// 處理第一行是否為欄名
 	startRow := 0
-	if setFirstRowToColNames {
+	if opts.FirstRowToColNames {
 		for i, colName := range rows[0] {
-			if setFirstColToRowNames && i == 0 {
+			if opts.FirstColToRowNames && i == 0 {
 				// 第一欄是行名，不作為列名處理
 				continue
 			}
@@ -144,7 +174,7 @@ func ReadCSV_File(filePath string, setFirstColToRowNames bool, setFirstRowToColN
 	} else {
 		// 如果沒有指定第一行作為列名，則動態生成列名
 		for i := range rows[0] {
-			if setFirstColToRowNames && i == 0 {
+			if opts.FirstColToRowNames && i == 0 {
 				continue
 			}
 			column := &DataList{}
@@ -154,7 +184,7 @@ func ReadCSV_File(filePath string, setFirstColToRowNames bool, setFirstRowToColN
 
 	// 處理資料行和是否將第一欄作為行名
 	for rowIndex, row := range rows[startRow:] {
-		if setFirstColToRowNames {
+		if opts.FirstColToRowNames {
 			rowName := row[0]
 			_, _ = dt.rowNames.Set(rowIndex, safeRowName(dt, rowName))
 			row = row[1:] // 移除第一欄作為行名
@@ -169,8 +199,10 @@ func ReadCSV_File(filePath string, setFirstColToRowNames bool, setFirstRowToColN
 		}
 	}
 
-	inferCSVColumnTypes(dt)
-	return dt, nil
+	if !opts.RawStrings {
+		inferCSVColumnTypes(dt)
+	}
+	return dt
 }
 
 // inferCSVColumnTypes converts each column's raw string cells to a homogeneous
@@ -227,8 +259,15 @@ func inferCSVColumnTypes(dt *DataTable) {
 }
 
 func ReadCSV_String(csvString string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error) {
-	dt := NewDataTable()
+	return ReadCSV_StringWithOptions(csvString, CSVReadOptions{
+		FirstColToRowNames: setFirstColToRowNames,
+		FirstRowToColNames: setFirstRowToColNames,
+	})
+}
 
+// ReadCSV_StringWithOptions loads a CSV string into a DataTable according to opts.
+// opts.Encoding is ignored: the input is already a Go string.
+func ReadCSV_StringWithOptions(csvString string, opts CSVReadOptions) (*DataTable, error) {
 	// Strip a leading UTF-8 BOM so the first header/cell is not corrupted
 	// (consistent with the file reader).
 	csvString = strings.TrimPrefix(csvString, string([]byte{0xEF, 0xBB, 0xBF}))
@@ -239,52 +278,7 @@ func ReadCSV_String(csvString string, setFirstColToRowNames bool, setFirstRowToC
 		return nil, err
 	}
 
-	dt.columns = []*DataList{}
-	dt.rowNames = core.NewBiIndex(0)
-
-	if len(rows) == 0 {
-		return dt, nil // 空的CSV
-	}
-
-	// 處理第一行是否為欄名
-	startRow := 0
-	if setFirstRowToColNames {
-		for i, colName := range rows[0] {
-			if setFirstColToRowNames && i == 0 {
-				continue
-			}
-			column := &DataList{name: safeColName(dt, colName)}
-			dt.columns = append(dt.columns, column)
-		}
-		startRow = 1
-	} else {
-		for i := range rows[0] {
-			if setFirstColToRowNames && i == 0 {
-				continue
-			}
-			column := &DataList{}
-			dt.columns = append(dt.columns, column)
-		}
-	}
-
-	for rowIndex, row := range rows[startRow:] {
-		if setFirstColToRowNames {
-			rowName := row[0]
-			_, _ = dt.rowNames.Set(rowIndex, safeRowName(dt, rowName))
-			row = row[1:] // 移除第一欄作為行名
-		}
-
-		for colIndex, cell := range row {
-			if colIndex >= len(dt.columns) {
-				continue
-			}
-			column := dt.columns[colIndex]
-			column.data = append(column.data, cell)
-		}
-	}
-
-	inferCSVColumnTypes(dt)
-	return dt, nil
+	return csvRowsToDataTable(rows, opts), nil
 }
 
 // ----- excel -----

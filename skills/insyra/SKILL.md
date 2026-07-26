@@ -215,6 +215,18 @@ func main() {
         log.Fatal(err)
     }
 
+    // RawStrings disables inference entirely — every cell stays its original
+    // string (empty cells stay ""). Use for stock IDs ("0050" must not become
+    // int64 50), tax IDs, or exact amounts you parse with a decimal type.
+    raw, err := insyra.ReadCSV_FileWithOptions("stocks.csv", insyra.CSVReadOptions{
+        FirstRowToColNames: true,
+        RawStrings:         true,
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+    _ = raw
+
     // Quick console preview (first N rows)
     insyra.Show("preview", dt, 5)
 }

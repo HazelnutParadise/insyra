@@ -152,6 +152,7 @@ insyra --env exp1 run ./pipeline.isr
 insyra load matrix.csv headers false as t                  # no header row
 insyra load gdp.csv rownames true as t                     # first column = row names
 insyra load legacy.csv encoding big5 as t                  # CSV-only encoding hint
+insyra load stocks.csv infer false as raw                  # CSV-only: no type inference, all cells stay strings
 insyra load report.xlsx sheet 2025 rownames true as t      # Excel needs `sheet`
 insyra save report data.csv bom true                       # UTF-8 BOM (Windows Excel)
 insyra save gdp out.csv rownames true                      # row names as first col
