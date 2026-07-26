@@ -1,6 +1,7 @@
 package insyra_test
 
 import (
+	"os"
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
@@ -270,5 +271,107 @@ func TestReadJSON(t *testing.T) {
 	if dtt.GetColByName("city").Data()[0] != "NYC" {
 		t.Errorf("ReadJSON() did not parse the correct data, expected 'NYC', got '%s'", dtt.GetColByName("city").Data()[0])
 		return
+	}
+}
+
+// Issue #188: RawStrings mode loads every cell as its original string —
+// leading zeros in stock IDs survive, thousand-separated amounts stay verbatim,
+// and empty cells stay "" instead of becoming NaN.
+func TestReadCSV_StringWithOptions_RawStrings(t *testing.T) {
+	csvData := "股票代號,集保庫存,成交均價\n2330,1000,600.855\n0050,\"2,000\",100.14\n00878,1500,\n"
+	dt, err := insyra.ReadCSV_StringWithOptions(csvData, insyra.CSVReadOptions{
+		FirstRowToColNames: true,
+		RawStrings:         true,
+	})
+	if err != nil {
+		t.Fatalf("ReadCSV_StringWithOptions: %v", err)
+	}
+
+	ids := dt.GetColByName("股票代號").Data()
+	wantIDs := []any{"2330", "0050", "00878"}
+	for i, want := range wantIDs {
+		if ids[i] != want {
+			t.Errorf("stock ID row %d: expected %q, got %v (%T)", i, want, ids[i], ids[i])
+		}
+	}
+
+	inventory := dt.GetColByName("集保庫存").Data()
+	if inventory[1] != "2,000" {
+		t.Errorf("inventory row 1: expected \"2,000\", got %v (%T)", inventory[1], inventory[1])
+	}
+
+	prices := dt.GetColByName("成交均價").Data()
+	if prices[0] != "600.855" {
+		t.Errorf("price row 0: expected \"600.855\", got %v (%T)", prices[0], prices[0])
+	}
+	if prices[2] != "" {
+		t.Errorf("price row 2 (empty cell): expected \"\", got %v (%T)", prices[2], prices[2])
+	}
+}
+
+// Zero-value CSVReadOptions must reproduce the legacy functions exactly,
+// including column type inference.
+func TestReadCSV_WithOptions_ZeroValueMatchesLegacy(t *testing.T) {
+	csvData := "id,val,note\n0050,600.855,a\n2330,100.14,b\n"
+	legacy, err := insyra.ReadCSV_String(csvData, false, true)
+	if err != nil {
+		t.Fatalf("ReadCSV_String: %v", err)
+	}
+	withOpts, err := insyra.ReadCSV_StringWithOptions(csvData, insyra.CSVReadOptions{FirstRowToColNames: true})
+	if err != nil {
+		t.Fatalf("ReadCSV_StringWithOptions: %v", err)
+	}
+
+	for _, col := range []string{"id", "val", "note"} {
+		l, w := legacy.GetColByName(col).Data(), withOpts.GetColByName(col).Data()
+		if len(l) != len(w) {
+			t.Fatalf("column %s: length mismatch %d vs %d", col, len(l), len(w))
+		}
+		for i := range l {
+			if l[i] != w[i] {
+				t.Errorf("column %s row %d: legacy %v (%T) vs options %v (%T)", col, i, l[i], l[i], w[i], w[i])
+			}
+		}
+	}
+	// Inference still applies with zero-value options: the id column is all-int.
+	if withOpts.GetColByName("id").Data()[0] != int64(50) {
+		t.Errorf("expected inferred int64(50), got %v (%T)", withOpts.GetColByName("id").Data()[0], withOpts.GetColByName("id").Data()[0])
+	}
+}
+
+func TestReadCSV_FileWithOptions_RawStrings(t *testing.T) {
+	path := t.TempDir() + "/stocks.csv"
+	if err := os.WriteFile(path, []byte("id,qty\n0050,1000\n00878,\n"), 0o644); err != nil {
+		t.Fatalf("write temp csv: %v", err)
+	}
+	dt, err := insyra.ReadCSV_FileWithOptions(path, insyra.CSVReadOptions{
+		FirstRowToColNames: true,
+		RawStrings:         true,
+	})
+	if err != nil {
+		t.Fatalf("ReadCSV_FileWithOptions: %v", err)
+	}
+	if got := dt.GetColByName("id").Data()[0]; got != "0050" {
+		t.Errorf("expected \"0050\", got %v (%T)", got, got)
+	}
+	if got := dt.GetColByName("qty").Data()[1]; got != "" {
+		t.Errorf("empty cell: expected \"\", got %v (%T)", got, got)
+	}
+}
+
+// isr passes CSV_inOpts.RawStrings through to the options-based reader.
+func TestReadCSV_ISR_RawStrings(t *testing.T) {
+	dtt := isr.DT.From(isr.CSV{
+		String: "id,price\n0050,100.14\n",
+		InputOpts: isr.CSV_inOpts{
+			FirstRow2ColNames: true,
+			RawStrings:        true,
+		},
+	})
+	if got := dtt.GetColByName("id").Data()[0]; got != "0050" {
+		t.Errorf("expected \"0050\", got %v (%T)", got, got)
+	}
+	if got := dtt.GetColByName("price").Data()[0]; got != "100.14" {
+		t.Errorf("expected \"100.14\", got %v (%T)", got, got)
 	}
 }
