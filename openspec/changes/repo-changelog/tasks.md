@@ -25,5 +25,5 @@
 
 ## 5. Manual maintainer step (outside this change's file edits)
 
-- [ ] 5.1 Draft a comment for [Discussion #6](https://github.com/HazelnutParadise/insyra/discussions/6) pointing readers at the changelog, and get explicit approval before posting it
-- [ ] 5.2 Post the approved comment
+- [x] 5.1 Draft a comment for [Discussion #6](https://github.com/HazelnutParadise/insyra/discussions/6) pointing readers at the changelog, and get explicit approval before posting it
+- [x] 5.2 Post the approved comment — [discussioncomment-17799745](https://github.com/HazelnutParadise/insyra/discussions/6#discussioncomment-17799745). Posted while the changelog files were on `dev` only, so the drafted `blob/main/` links were dropped and the comment names the files instead; nothing in it 404s. Add the links by editing the comment once the files reach `main`.
