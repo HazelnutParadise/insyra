@@ -380,6 +380,10 @@ err := parquet.ApplyCCL(ctx, "data.parquet", "NEW('total') = A + B + C")
 
 除了基本用法外，**Insyra** 還提供了處理不同數據類型和執行複雜統計操作的強大功能。請在 **[詳細文檔](https://github.com/HazelnutParadise/insyra/tree/main/Docs)** 中探索更多內容。
 
+## 變更紀錄
+
+下一個版本會有哪些變更：[CHANGELOG_TW.md](https://github.com/HazelnutParadise/insyra/blob/main/CHANGELOG_TW.md)。已發布的版本：[GitHub Releases](https://github.com/HazelnutParadise/insyra/releases)。
+
 ## 貢獻
 
 歡迎各種形式的貢獻！您可以通過以下方式貢獻 **Insyra**：

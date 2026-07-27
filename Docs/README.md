@@ -138,6 +138,13 @@ go get github.com/HazelnutParadise/insyra/plot
 | Use Python libraries from Go              | [py](py.md)                     |
 | Run functions in parallel                 | [parallel](parallel.md)         |
 
+### Changelog
+
+Changes are recorded in the repository, not on the docs site:
+
+- Next release: [CHANGELOG.md](https://github.com/HazelnutParadise/insyra/blob/main/CHANGELOG.md) · [繁體中文](https://github.com/HazelnutParadise/insyra/blob/main/CHANGELOG_TW.md)
+- Published releases: [GitHub Releases](https://github.com/HazelnutParadise/insyra/releases)
+
 ### Requirements & Notes
 
 - Go 1.25+ (per `go.mod`).

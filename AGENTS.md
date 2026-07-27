@@ -27,8 +27,8 @@ through a change first:
    must be archived, not left sitting in `openspec/changes/`.**
 
 Trivial edits (typos, formatting, comment/doc-only touch-ups) may skip OpenSpec.
-When in doubt, propose a change. The docs/skills-in-sync rule below still applies
-to whatever the change touches.
+When in doubt, propose a change. The docs/changelog/skills-in-sync rule below
+still applies to whatever the change touches.
 
 `CLAUDE.md` (and `cli/CLAUDE.md`, `stats/CLAUDE.md`) are `@AGENTS.md` includes,
 so this policy applies to every agent tool that reads either file.
@@ -122,9 +122,9 @@ Column references use Excel-style indices (`A`, `B`, … `AA`, `AB`, …) or nam
 - Error handling uses an instance-level `Err()` pattern rather than returning errors from every method (check `.Err()` after chained calls).
 - The `isr` package is the recommended public API for new projects; the root `insyra` package is the implementation layer.
 
-## Docs & Skills Must Stay in Sync
+## Docs, Changelog & Skills Must Stay in Sync
 
-Docs and skills are part of a change, not a follow-up. A feature is not done until these are updated in the **same** change.
+Docs, the changelog, and skills are part of a change, not a follow-up. A feature is not done until these are updated in the **same** change.
 
 **When adding a new package:**
 - Create its doc page `Docs/<pkg>.md` (follow an existing page such as [Docs/finance.md](Docs/finance.md) / [Docs/stats.md](Docs/stats.md) for structure).
@@ -137,7 +137,14 @@ Docs and skills are part of a change, not a follow-up. A feature is not done unt
 - Update the agent skills so they reflect the change: [skills/insyra/](skills/insyra/) (Go API usage — `SKILL.md` and `references/`), and [skills/use-insyra-cli/](skills/use-insyra-cli/) when CLI/DSL usage is affected.
 - When the change touches the CLI/REPL or the DSL, update the CLI (`cli/`) and its doc [Docs/cli-dsl.md](Docs/cli-dsl.md).
 
-Keep the English ([README.md](README.md), `Docs/`) and Traditional-Chinese ([README_TW.md](README_TW.md)) docs in lockstep — never update one side without the other.
+**When the change is visible to someone using the library or the CLI:**
+- Add an entry under `## Unreleased` in **both** [CHANGELOG.md](CHANGELOG.md) and [CHANGELOG_TW.md](CHANGELOG_TW.md), in the same change. Under the OpenSpec workflow this belongs in the change's own `tasks.md` — never as a follow-up, and never written from memory at release time.
+- Group entries under the same package headings the release notes use (`### Core`, `### CLI`, `` ### `stats` ``, …), one level deeper than a release note so that promoting `###` to `##` at release time produces the release note as-is. Append to the end of a package section rather than the top.
+- Mark breaking changes the way past release notes do.
+- Skip the entry when nothing user-visible changed: internal refactors, tests, formatting, assets, dependency bumps with no behavioral effect, and OpenSpec bookkeeping.
+- At release time, rename `## Unreleased` to the version number in both files and open a fresh empty `## Unreleased` above it.
+
+Keep the English ([README.md](README.md), [CHANGELOG.md](CHANGELOG.md), `Docs/`) and Traditional-Chinese ([README_TW.md](README_TW.md), [CHANGELOG_TW.md](CHANGELOG_TW.md)) docs in lockstep — never update one side without the other.
 
 ## Agent Skills
 

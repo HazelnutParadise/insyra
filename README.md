@@ -385,6 +385,10 @@ For a complete list of DataTable methods and features, please refer to the **[Da
 
 Beyond basic usage, **Insyra** provides extensive capabilities for handling different data types and performing complex statistical operations. Explore more in the **[detailed documentation](/Docs)**.
 
+## Changelog
+
+What is coming in the next release: [CHANGELOG.md](CHANGELOG.md). Everything already published: [GitHub Releases](https://github.com/HazelnutParadise/insyra/releases).
+
 ## Contributing
 
 Contributions are welcome! You can contribute to **Insyra** by:
