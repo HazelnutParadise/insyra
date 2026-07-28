@@ -1,6 +1,7 @@
 ---
 name: "OPSX: Continue"
 description: Continue working on a change - create the next artifact (Experimental)
+allowed-tools: Bash(openspec:*)
 category: Workflow
 tags: [workflow, artifacts, experimental]
 ---

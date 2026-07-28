@@ -1,6 +1,7 @@
 ---
 name: "OPSX: Bulk Archive"
 description: Archive multiple completed changes at once
+allowed-tools: Bash(openspec:*)
 category: Workflow
 tags: [workflow, archive, experimental, bulk]
 ---

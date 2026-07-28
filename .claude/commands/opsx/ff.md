@@ -1,6 +1,7 @@
 ---
 name: "OPSX: Fast Forward"
 description: Create a change and generate all artifacts needed for implementation in one go
+allowed-tools: Bash(openspec:*)
 category: Workflow
 tags: [workflow, artifacts, experimental]
 ---
