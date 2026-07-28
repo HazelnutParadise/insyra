@@ -37,6 +37,9 @@ type ExecuteRequest struct {
 	// Queries holds one point per entry, each carrying one value per column in
 	// Columns order. Only OpSquaredDistance reads it.
 	Queries [][]float32
+	// Shortlist is how many candidates per row OpNearestShortlist keeps. Other
+	// operations ignore it.
+	Shortlist int
 }
 
 // ExecuteResponse carries the computed results and what the submission cost.
@@ -52,7 +55,15 @@ type ExecuteResponse struct {
 	Distances []float32
 	// NearestIndex holds the closest query point per row. Only OpNearestQuery
 	// fills it.
-	NearestIndex  []uint32
+	NearestIndex []uint32
+	// ShortlistIndex and ShortlistDistance are candidate-major, holding
+	// Shortlist entries per row: entry j*rows+r is row r's j-th nearest.
+	// ShortlistBoundary holds one value per row, the distance of the best
+	// candidate that did not make the list. Only OpNearestShortlist fills them.
+	ShortlistIndex    []uint32
+	ShortlistDistance []float32
+	ShortlistBoundary []float32
+
 	Transfer      time.Duration
 	Dispatch      time.Duration
 	Readback      time.Duration

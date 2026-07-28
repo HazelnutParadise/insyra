@@ -26,10 +26,10 @@ Run one operation end to end on a real device and return a number that matches t
 None. `add-accel-gpu-execution` cannot be archived until its numeric test passes on a non-Apple host (task 1.13); that is a coverage gap, not a blocker on further work.
 
 ## Next Verifiable Output
-`stats.KMeans` returns assignments identical to today's on a dataset large enough to matter, and gets there faster, with the device shortlisting candidates and the CPU deciding in float64. The technique is measured — 7.6x with zero differing assignments — so what remains is the shortlist kernel in `accel` and the wiring into the Hartigan-Wong initial assignment.
+`stats.KMeans` returns assignments identical to today's and reaches them faster on a dataset with enough clusters to clear the profitability floor. `accel.ExecuteNearestExact` now supplies the nearest and second nearest per row as exact float64 values, which is what the Hartigan-Wong initial assignment needs, so what remains is the wiring and a decision about which of `stats` or a new `insyra/ml` owns it.
 
 ## Next OpenSpec Change
-Not yet proposed — stage B begins with a kernel choice. `add-accel-gpu-execution` task 1.13 (non-Apple verification) stays open in parallel; it needs a Windows or Linux machine with an NVIDIA or AMD GPU and cannot be done on this host.
+Not yet proposed — wiring `ExecuteNearestExact` into cluster assignment, once the owning package is settled. `add-accel-gpu-execution` task 1.13 (non-Apple verification) stays open in parallel; it needs a Windows or Linux machine with an NVIDIA or AMD GPU and cannot be done on this host.
 
 ## Decision Log
 - decision: Keep acceleration in optional `insyra/accel` packages rather than core `insyra`.
@@ -196,6 +196,7 @@ Not yet proposed — stage B begins with a kernel choice. `add-accel-gpu-executi
   timestamp: 2026-07-28
   impacted_change_ids: future kernel and dispatcher changes
   caveat: Measured on synthetic data with the f32 error bound taken from an earlier measurement on this host. Real data with many equidistant or duplicated points will raise the fallback rate, and the bound plus the boundary test need re-verifying against real inputs before the pattern is relied on.
+  correction: 2026-07-29. The 7.6x above is overstated, because the float64 baseline it was measured against read its values straight out of the column-major buffers and so paid a cache miss per column per query point. Gathering the row once first makes the same baseline 13x faster. Against that baseline, on the same host and shape, the shipped implementation measures no gain at 16 query points, 3.2x at 64, and 7.1x at 256 — the technique holds and the answer is still exactly the float64 one, but the win depends on the query count and there is a floor below which the runtime declines the device. The rigorous per-row error bound now used in place of the spike's fixed 3e-7 does not change this: 0 of 200,000 rows needed a full recompute either way.
 - decision: Handle an unavailable, unsupported, or failing GPU by falling back to the verification path that already exists, so device failure is a performance event and never a correctness one.
   rationale: The shortlist pattern makes this nearly free. The CPU already recomputes candidates in float64, and already recomputes a row in full when the shortlist cannot be trusted — so "no GPU" is just "every row takes the full path", which is the original CPU implementation unchanged. There is no second code path to keep correct, and no output difference to explain: whether the device is absent, refuses the operation, fails to compile a shader, times out on readback, or fails the platform's parity gate, the answer is identical and only the time changes. The existing fallback reasons already name which of those happened.
   timestamp: 2026-07-28

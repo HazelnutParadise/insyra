@@ -1,6 +1,10 @@
 package accel
 
-import "testing"
+import (
+	"maps"
+	"sync"
+	"testing"
+)
 
 // isolateBuiltinProbes reports every builtin backend as unavailable so a real
 // host GPU cannot be discovered during a test. Without it a test that overrides
@@ -36,8 +40,25 @@ func setHostMemoryBytesForTest(bytes uint64) func() {
 	}
 }
 
+// builtinExecutors holds the registrations the package makes for itself at
+// startup, captured the first time a test clears the registry.
+var (
+	builtinExecutors    map[Backend]BackendExecutor
+	captureBuiltinsOnce sync.Once
+)
+
+// resetBackendExecutorsForTest restores the registry to what package
+// initialisation left in it.
+//
+// It must restore rather than empty. Clearing it outright leaves the builtin
+// device backend unregistered for every later test, which is invisible until a
+// GPU-gated test runs after one of them and fails with no-backend-executor —
+// meaning the bit-parity gate silently stops covering anything in a full run.
 func resetBackendExecutorsForTest() {
 	backendExecutorsMu.Lock()
 	defer backendExecutorsMu.Unlock()
-	backendExecutors = map[Backend]BackendExecutor{}
+	captureBuiltinsOnce.Do(func() {
+		builtinExecutors = maps.Clone(backendExecutors)
+	})
+	backendExecutors = maps.Clone(builtinExecutors)
 }

@@ -95,6 +95,11 @@ const (
 	// result from one value per pair into one per row — the shape KMeans needs
 	// and the one where readback stops dominating.
 	OpNearestQuery Op = "nearest-query"
+	// OpNearestShortlist returns the several nearest query points per row rather
+	// than only the nearest, plus the distance of the best rejected one. It is
+	// how an exact float64 answer is reached through an f32 device: the device
+	// narrows the field, the host settles the ranking.
+	OpNearestShortlist Op = "nearest-shortlist"
 )
 
 // Precision states what the caller will accept from device execution. The

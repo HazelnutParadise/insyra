@@ -73,8 +73,36 @@ A single column sum is memory-bound, so moving the data costs far more than the 
 | `ExecuteDataList` / `ExecuteDataTable` | sum per column | Memory-bound; the CPU wins. Kept as the proving path, not a recommendation. |
 | `ExecuteDistances` | squared distance, row by query | Returns the whole matrix, so readback grows with it. |
 | `ExecuteNearestQuery` | closest query point per row | The matrix is reduced on the device. 13.6x over the CPU at 64 query points on an M3. |
+| `ExecuteNearestExact` | the M nearest query points per row, in `float64` | The device narrows, the host decides. Exactly the `float64` answer. 3.2x at 64 query points, 7.1x at 256. |
 
 Every device operation ships a CPU reference — `SquaredDistancesCPU`, `NearestQueryCPU` — and a test asserting the device result is bit-identical to it on the running platform. Parity depends on both toolchains contracting multiply-add the same way, which is a property of the platform rather than of the kernel, so it is measured where it runs rather than assumed.
+
+### Exact answers from a single-precision device
+
+`ExecuteNearestExact` returns what a `float64` computation over every query point would return — the same indices, the same distances — while still using the device for most of the work.
+
+It gets there by not trusting the device with the decision. The device ranks the query points in single precision and returns a few candidates per row, along with the distance of the best candidate it discarded. The host recomputes those candidates in `float64` and picks from them. If the discarded one is close enough that single precision could not tell them apart, that row is recomputed against every query point instead.
+
+```go
+result, err := session.ExecuteNearestExact(ds, centroids, 2, accel.WorkloadEstimate{})
+// result.Index[r*2], result.Index[r*2+1] — nearest and second nearest for row r
+// result.Distance holds float64 squared distances
+// result.Rechecked — how many rows took the full path
+```
+
+No precision opt-in is needed. Narrowing happens inside the operation, where it cannot reach the result.
+
+Watch `Rechecked`. It is normally near zero, and a rising count is how data with many near-ties announces itself — long before it shows up as a slowdown.
+
+Measured on an Apple M3 over 200,000 rows by 16 dimensions, asking for the two nearest:
+
+| query points | `float64` throughout | through the device | |
+| --- | --- | --- | --- |
+| 16 | 40.7 ms | 40.4 ms | declined |
+| 64 | 125.4 ms | 39.7 ms | 3.2x |
+| 256 | 402.3 ms | 56.3 ms | 7.1x |
+
+The device leg costs about the same whatever the query count, because it is bound by moving the columns across and the shortlist back. Below roughly twenty query points that round trip costs more than the work it removes, so the runtime declines it and reports `workload-not-profitable`.
 
 ### No device is not an error
 
