@@ -18,6 +18,20 @@ type fakeExecutor struct {
 	response ExecuteResponse
 }
 
+func sumColumns(req ExecuteRequest) (map[string]float64, uint64) {
+	sums := make(map[string]float64, len(req.Columns))
+	bytes := uint64(0)
+	for _, column := range req.Columns {
+		var sum float64
+		for _, value := range column.Values {
+			sum += float64(value)
+		}
+		sums[column.Name] = sum
+		bytes += uint64(len(column.Values) * 4)
+	}
+	return sums, bytes
+}
+
 func (e *fakeExecutor) Name() string {
 	if e.name == "" {
 		return "fake"
@@ -32,15 +46,12 @@ func (e *fakeExecutor) Execute(_ context.Context, req ExecuteRequest) (ExecuteRe
 		return ExecuteResponse{}, e.err
 	}
 	response := e.response
-	if response.Value == 0 {
-		var sum float64
-		for _, value := range req.Values {
-			sum += float64(value)
-		}
-		response.Value = sum
+	sums, bytes := sumColumns(req)
+	if response.Reductions == nil {
+		response.Reductions = sums
 	}
 	if response.BytesUploaded == 0 {
-		response.BytesUploaded = uint64(len(req.Values) * 4)
+		response.BytesUploaded = bytes
 	}
 	if response.Transfer == 0 {
 		response.Transfer = time.Millisecond
@@ -115,6 +126,9 @@ func TestExecuteRoutesToRegisteredBackendExecutor(t *testing.T) {
 	}
 	if executor.lastReq.Op != OpSum {
 		t.Fatalf("expected the operation to reach the backend, got %q", executor.lastReq.Op)
+	}
+	if len(executor.lastReq.Columns) != 1 || executor.lastReq.Columns[0].Name != "numbers" {
+		t.Fatalf("expected the column to reach the backend, got %+v", executor.lastReq.Columns)
 	}
 	if executor.lastReq.Device.ID == "" {
 		t.Fatal("expected the device to reach the backend")
@@ -375,5 +389,82 @@ func TestExecuteRejectsUnsupportedOperation(t *testing.T) {
 	}
 	if executor.calls != 0 {
 		t.Fatalf("expected no dispatch for an unsupported operation, got %d calls", executor.calls)
+	}
+}
+
+// The seam used to submit one request per column, so a DataTable paid a full
+// upload/dispatch/readback round trip per column. This pins the batching.
+func TestExecuteSubmitsOneRequestForAllColumns(t *testing.T) {
+	session := singleDeviceSession(t, Config{})
+	executor := &fakeExecutor{}
+	if err := RegisterBackendExecutor(BackendCUDA, executor); err != nil {
+		t.Fatalf("register executor failed: %v", err)
+	}
+
+	dataset := &Dataset{
+		Name: "table", Lineage: "test", Rows: 1024,
+		Buffers: []Buffer{
+			{Name: "a", Type: DataTypeFloat64, Values: []float64{1, 2}, Len: 2},
+			{Name: "b", Type: DataTypeFloat64, Values: []float64{10, 20}, Len: 2},
+			{Name: "c", Type: DataTypeFloat64, Values: []float64{100, 200}, Len: 2},
+		},
+	}
+	assignDatasetFingerprint(dataset)
+
+	result, err := session.ExecuteProjectedDataset(dataset, WorkloadEstimate{Precision: PrecisionFloat32})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if executor.calls != 1 {
+		t.Fatalf("expected one submission for three columns, got %d", executor.calls)
+	}
+	if len(executor.lastReq.Columns) != 3 {
+		t.Fatalf("expected all three columns in one request, got %d", len(executor.lastReq.Columns))
+	}
+	for i, want := range []string{"a", "b", "c"} {
+		if executor.lastReq.Columns[i].Name != want {
+			t.Fatalf("column order not preserved: position %d is %q, want %q", i, executor.lastReq.Columns[i].Name, want)
+		}
+	}
+	for name, want := range map[string]float64{"a": 3, "b": 30, "c": 300} {
+		if got := result.Reductions[name]; got != want {
+			t.Fatalf("column %q: got %v want %v", name, got, want)
+		}
+	}
+}
+
+// Empty columns are answered without reaching the device, but must not stop the
+// non-empty ones in the same dataset from being submitted.
+func TestExecuteMixesEmptyAndNonEmptyColumns(t *testing.T) {
+	session := singleDeviceSession(t, Config{})
+	executor := &fakeExecutor{}
+	if err := RegisterBackendExecutor(BackendCUDA, executor); err != nil {
+		t.Fatalf("register executor failed: %v", err)
+	}
+
+	dataset := &Dataset{
+		Name: "mixed", Lineage: "test", Rows: 1024,
+		Buffers: []Buffer{
+			{Name: "empty", Type: DataTypeFloat64, Values: []float64{}, Len: 0},
+			{Name: "full", Type: DataTypeFloat64, Values: []float64{1, 2, 3}, Len: 3},
+		},
+	}
+	assignDatasetFingerprint(dataset)
+
+	result, err := session.ExecuteProjectedDataset(dataset, WorkloadEstimate{Precision: PrecisionFloat32})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if executor.calls != 1 {
+		t.Fatalf("expected one submission, got %d", executor.calls)
+	}
+	if len(executor.lastReq.Columns) != 1 || executor.lastReq.Columns[0].Name != "full" {
+		t.Fatalf("expected only the non-empty column to be submitted, got %+v", executor.lastReq.Columns)
+	}
+	if result.Reductions["empty"] != 0 {
+		t.Fatalf("expected the additive identity for an empty column, got %v", result.Reductions["empty"])
+	}
+	if result.Reductions["full"] != 6 {
+		t.Fatalf("expected 6 for the full column, got %v", result.Reductions["full"])
 	}
 }

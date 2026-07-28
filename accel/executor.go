@@ -18,24 +18,31 @@ var (
 	ErrReadbackTimeout = errors.New("accel: device readback timed out")
 )
 
-// ExecuteRequest is one operation over one column on one device.
-//
-// Values arrives already narrowed to float32 and with nulls replaced by the
-// operation's identity, so a backend never has to know about precision policy
-// or Insyra's null representation.
+// ExecuteColumn is one projected column, already narrowed to float32 and with
+// nulls replaced by the operation's identity, so a backend never has to know
+// about precision policy or Insyra's null representation.
+type ExecuteColumn struct {
+	Name   string
+	Values []float32
+}
+
+// ExecuteRequest is one operation over one dataset on one device. Columns keep
+// their dataset order, because a kernel that reads across columns cares about
+// position in a way a map would lose.
 type ExecuteRequest struct {
 	Op        Op
 	Device    Device
-	Column    string
-	Values    []float32
+	Columns   []ExecuteColumn
 	Precision Precision
 }
 
-// ExecuteResponse carries the computed value and what it actually cost.
-// Durations are host-observed: Metal and GLES do not implement GPU timestamp
-// queries, so device-side timing is not available on every backend.
+// ExecuteResponse carries the computed results and what the submission cost.
+// The durations describe the whole submission rather than any one column —
+// transfer, dispatch and readback are properties of the submission, and a
+// per-column split would be invented. They are host-observed: Metal and GLES do
+// not implement GPU timestamp queries.
 type ExecuteResponse struct {
-	Value         float64
+	Reductions    map[string]float64
 	Transfer      time.Duration
 	Dispatch      time.Duration
 	Readback      time.Duration
@@ -148,45 +155,51 @@ func (s *Session) ExecuteProjectedDataset(dataset *Dataset, workload WorkloadEst
 	result.DeviceIDs = []string{device.ID}
 	result.Assignments = assignmentsForDevice(plan, device.ID)
 
-	prepared := make([]ExecuteRequest, 0, len(dataset.Buffers))
+	columns := make([]ExecuteColumn, 0, len(dataset.Buffers))
 	counts := make(map[string]int, len(dataset.Buffers))
+	empties := make([]string, 0, len(dataset.Buffers))
 	for _, buffer := range dataset.Buffers {
 		values, count, reason := deviceValues(buffer, workload.Precision)
 		if reason != FallbackReasonNone {
 			return s.abortExecution(result, reason,
 				fmt.Errorf("accel: column %q is not eligible for device execution (%s)", buffer.Name, reason))
 		}
-		prepared = append(prepared, ExecuteRequest{
-			Op:        workload.Op,
-			Device:    device,
-			Column:    buffer.Name,
-			Values:    values,
-			Precision: workload.Precision,
-		})
 		counts[buffer.Name] = count
+		// An empty column needs no device work; dispatching zero workgroups is
+		// a validation error on some backends.
+		if len(values) == 0 {
+			empties = append(empties, buffer.Name)
+			continue
+		}
+		columns = append(columns, ExecuteColumn{Name: buffer.Name, Values: values})
 	}
 
 	result.Precision = workload.Precision
-	result.Reductions = make(map[string]float64, len(prepared))
 	result.Counts = counts
+	result.Reductions = make(map[string]float64, len(dataset.Buffers))
+	for _, name := range empties {
+		result.Reductions[name] = 0
+	}
 
-	ctx := context.Background()
-	for _, req := range prepared {
-		// An empty column needs no device work; dispatching zero workgroups is
-		// a validation error on some backends.
-		if len(req.Values) == 0 {
-			result.Reductions[req.Column] = 0
-			continue
-		}
-		response, err := executor.Execute(ctx, req)
+	// One submission for the whole dataset: readback dominates device cost, so
+	// a request per column would pay that wait once per column.
+	if len(columns) > 0 {
+		response, err := executor.Execute(context.Background(), ExecuteRequest{
+			Op:        workload.Op,
+			Device:    device,
+			Columns:   columns,
+			Precision: workload.Precision,
+		})
 		if err != nil {
 			return s.abortExecution(result, fallbackReasonForExecError(err), err)
 		}
-		result.Reductions[req.Column] = response.Value
-		result.Transfer += response.Transfer
-		result.Dispatch += response.Dispatch
-		result.Readback += response.Readback
-		result.BytesUploaded += response.BytesUploaded
+		for name, value := range response.Reductions {
+			result.Reductions[name] = value
+		}
+		result.Transfer = response.Transfer
+		result.Dispatch = response.Dispatch
+		result.Readback = response.Readback
+		result.BytesUploaded = response.BytesUploaded
 	}
 
 	s.ensureDatasetCached(dataset)

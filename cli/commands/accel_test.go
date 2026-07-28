@@ -152,16 +152,22 @@ type cliSumExecutor struct{}
 func (cliSumExecutor) Name() string { return "cli-fake" }
 
 func (cliSumExecutor) Execute(_ context.Context, req accelpkg.ExecuteRequest) (accelpkg.ExecuteResponse, error) {
-	var sum float64
-	for _, value := range req.Values {
-		sum += float64(value)
+	sums := make(map[string]float64, len(req.Columns))
+	bytes := uint64(0)
+	for _, column := range req.Columns {
+		var sum float64
+		for _, value := range column.Values {
+			sum += float64(value)
+		}
+		sums[column.Name] = sum
+		bytes += uint64(len(column.Values) * 4)
 	}
 	return accelpkg.ExecuteResponse{
-		Value:         sum,
+		Reductions:    sums,
 		Transfer:      time.Millisecond,
 		Dispatch:      100 * time.Microsecond,
 		Readback:      500 * time.Microsecond,
-		BytesUploaded: uint64(len(req.Values) * 4),
+		BytesUploaded: bytes,
 	}, nil
 }
 

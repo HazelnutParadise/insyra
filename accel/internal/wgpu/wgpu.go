@@ -76,43 +76,206 @@ func (h *handle) info0() Info {
 // concurrent submissions would serialize on the hardware queue anyway.
 var submitMu sync.Mutex
 
-// Sum reduces the values on the device and returns the total. Nulls are
-// expected to have been replaced by the additive identity by the caller.
-func Sum(ctx context.Context, values []float32) (float64, Cost, error) {
+// Column is one named slice of values to reduce.
+type Column struct {
+	Name   string
+	Values []float32
+}
+
+// segment is one dispatch: a chunk of one column small enough for the device's
+// limits. Columns larger than a chunk become several segments.
+type segment struct {
+	column string
+	values []float32
+	groups int
+	offset uint64 // byte offset of this segment's partials within the staging buffer
+}
+
+// SumColumns reduces every column on the device and returns a total per column.
+// Nulls are expected to have been replaced by the additive identity by the
+// caller. Cost describes the whole call.
+//
+// Every segment is encoded into one command buffer and every partial lands in
+// one staging buffer, so the call waits on a single map regardless of how many
+// columns it was given. Readback is the dominant device cost, so a wait per
+// column would make a wide table pay for its width.
+func SumColumns(ctx context.Context, columns []Column) (map[string]float64, Cost, error) {
 	submitMu.Lock()
 	defer submitMu.Unlock()
 
 	h, err := acquire()
 	if err != nil {
-		return 0, Cost{}, err
+		return nil, Cost{}, err
 	}
 	pipeline, bgLayout, err := h.computePipeline()
 	if err != nil {
-		return 0, Cost{}, err
+		return nil, Cost{}, err
 	}
 	chunkSize := h.maxElementsPerChunk()
 	if chunkSize <= 0 {
-		return 0, Cost{}, fmt.Errorf("%w: device reports no bindable storage", ErrBufferTooLarge)
+		return nil, Cost{}, fmt.Errorf("%w: device reports no bindable storage", ErrBufferTooLarge)
 	}
 
-	var total float64
-	var cost Cost
-	for start := 0; start < len(values); start += chunkSize {
-		end := start + chunkSize
-		if end > len(values) {
-			end = len(values)
+	sums := make(map[string]float64, len(columns))
+	segments := make([]segment, 0, len(columns))
+	partialBytes := uint64(0)
+	for _, column := range columns {
+		sums[column.Name] = 0
+		for start := 0; start < len(column.Values); start += chunkSize {
+			end := start + chunkSize
+			if end > len(column.Values) {
+				end = len(column.Values)
+			}
+			values := column.Values[start:end]
+			groups := (len(values) + elemsPerGroup - 1) / elemsPerGroup
+			segments = append(segments, segment{
+				column: column.Name,
+				values: values,
+				groups: groups,
+				offset: partialBytes,
+			})
+			partialBytes += uint64(groups * 4)
 		}
-		partial, chunk, err := h.sumChunk(ctx, pipeline, bgLayout, values[start:end])
-		if err != nil {
-			return 0, Cost{}, err
-		}
-		total += partial
-		cost.Transfer += chunk.transfer
-		cost.Dispatch += chunk.dispatch
-		cost.Readback += chunk.readback
-		cost.BytesUploaded += chunk.uploaded
 	}
-	return total, cost, nil
+	if len(segments) == 0 {
+		return sums, Cost{}, nil
+	}
+
+	var cost Cost
+	release := make([]interface{ Release() }, 0, len(segments)*4+1)
+	defer func() {
+		for _, r := range release {
+			r.Release()
+		}
+	}()
+
+	staging, err := h.device.CreateBuffer(&gowgpu.BufferDescriptor{
+		Label: "accel-staging", Size: partialBytes,
+		Usage: gowgpu.BufferUsageCopyDst | gowgpu.BufferUsageMapRead,
+	})
+	if err != nil {
+		return nil, cost, fmt.Errorf("wgpu: staging buffer: %w", err)
+	}
+	release = append(release, staging)
+
+	bindGroups := make([]*gowgpu.BindGroup, len(segments))
+	partials := make([]*gowgpu.Buffer, len(segments))
+
+	transferStart := time.Now()
+	for i, seg := range segments {
+		inputBytes := uint64(len(seg.values) * 4)
+		input, err := h.device.CreateBuffer(&gowgpu.BufferDescriptor{
+			Label: "accel-input", Size: inputBytes,
+			Usage: gowgpu.BufferUsageStorage | gowgpu.BufferUsageCopyDst,
+		})
+		if err != nil {
+			return nil, cost, fmt.Errorf("%w: %v", ErrBufferTooLarge, err)
+		}
+		release = append(release, input)
+
+		partial, err := h.device.CreateBuffer(&gowgpu.BufferDescriptor{
+			Label: "accel-partials", Size: uint64(seg.groups * 4),
+			Usage: gowgpu.BufferUsageStorage | gowgpu.BufferUsageCopySrc,
+		})
+		if err != nil {
+			return nil, cost, fmt.Errorf("wgpu: partial buffer: %w", err)
+		}
+		release = append(release, partial)
+		partials[i] = partial
+
+		params, err := h.device.CreateBuffer(&gowgpu.BufferDescriptor{
+			Label: "accel-params", Size: 4,
+			Usage: gowgpu.BufferUsageUniform | gowgpu.BufferUsageCopyDst,
+		})
+		if err != nil {
+			return nil, cost, fmt.Errorf("wgpu: params buffer: %w", err)
+		}
+		release = append(release, params)
+
+		countBuf := make([]byte, 4)
+		binary.LittleEndian.PutUint32(countBuf, uint32(len(seg.values)))
+		if err := h.device.Queue().WriteBuffer(input, 0, float32Bytes(seg.values)); err != nil {
+			return nil, cost, fmt.Errorf("wgpu: upload column: %w", err)
+		}
+		if err := h.device.Queue().WriteBuffer(params, 0, countBuf); err != nil {
+			return nil, cost, fmt.Errorf("wgpu: upload params: %w", err)
+		}
+		cost.BytesUploaded += inputBytes
+
+		bindGroup, err := h.device.CreateBindGroup(&gowgpu.BindGroupDescriptor{
+			Label: "accel-sum-bg", Layout: bgLayout,
+			Entries: []gowgpu.BindGroupEntry{
+				{Binding: 0, Buffer: input, Size: inputBytes},
+				{Binding: 1, Buffer: partial, Size: uint64(seg.groups * 4)},
+				{Binding: 2, Buffer: params, Size: 4},
+			},
+		})
+		if err != nil {
+			return nil, cost, fmt.Errorf("wgpu: bind group: %w", err)
+		}
+		release = append(release, bindGroup)
+		bindGroups[i] = bindGroup
+	}
+	cost.Transfer = time.Since(transferStart)
+
+	dispatchStart := time.Now()
+	encoder, err := h.device.CreateCommandEncoder(nil)
+	if err != nil {
+		return nil, cost, fmt.Errorf("wgpu: command encoder: %w", err)
+	}
+	for i, seg := range segments {
+		pass, err := encoder.BeginComputePass(nil)
+		if err != nil {
+			return nil, cost, fmt.Errorf("wgpu: compute pass: %w", err)
+		}
+		pass.SetPipeline(pipeline)
+		pass.SetBindGroup(0, bindGroups[i], nil)
+		pass.Dispatch(uint32(seg.groups), 1, 1)
+		if err := pass.End(); err != nil {
+			return nil, cost, fmt.Errorf("wgpu: end compute pass: %w", err)
+		}
+	}
+	for i, seg := range segments {
+		encoder.CopyBufferToBuffer(partials[i], 0, staging, seg.offset, uint64(seg.groups*4))
+	}
+	commands, err := encoder.Finish()
+	if err != nil {
+		return nil, cost, fmt.Errorf("wgpu: finish encoder: %w", err)
+	}
+	if _, err := h.device.Queue().Submit(commands); err != nil {
+		return nil, cost, fmt.Errorf("wgpu: submit: %w", err)
+	}
+	cost.Dispatch = time.Since(dispatchStart)
+
+	readbackStart := time.Now()
+	mapCtx, cancel := context.WithTimeout(ctx, readbackTimeout)
+	defer cancel()
+	if err := staging.Map(mapCtx, gowgpu.MapModeRead, 0, partialBytes); err != nil {
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(mapCtx.Err(), context.DeadlineExceeded) {
+			return nil, cost, fmt.Errorf("%w: %v", ErrReadbackTimeout, err)
+		}
+		return nil, cost, fmt.Errorf("wgpu: map staging buffer: %w", err)
+	}
+	mapped, err := staging.MappedRange(0, partialBytes)
+	if err != nil {
+		_ = staging.Unmap()
+		return nil, cost, fmt.Errorf("wgpu: mapped range: %w", err)
+	}
+	raw := mapped.Bytes()
+	// Fold the per-workgroup partials in float64: only the reduction inside a
+	// workgroup runs at single precision.
+	for _, seg := range segments {
+		for i := 0; i < seg.groups; i++ {
+			at := seg.offset + uint64(i*4)
+			sums[seg.column] += float64(math.Float32frombits(binary.LittleEndian.Uint32(raw[at:])))
+		}
+	}
+	if err := staging.Unmap(); err != nil {
+		return nil, cost, fmt.Errorf("wgpu: unmap staging buffer: %w", err)
+	}
+	cost.Readback = time.Since(readbackStart)
+
+	return sums, cost, nil
 }
 
 // unifiedMemory decides unified versus discrete memory from the vendor and the

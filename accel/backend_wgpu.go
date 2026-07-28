@@ -105,12 +105,19 @@ func (wgpuExecutor) Execute(ctx context.Context, req ExecuteRequest) (ExecuteRes
 	if req.Op != OpSum {
 		return ExecuteResponse{}, fmt.Errorf("accel: wgpu backend does not support operation %q", req.Op)
 	}
-	value, cost, err := wgpu.Sum(ctx, req.Values)
+	if len(req.Columns) == 0 {
+		return ExecuteResponse{}, fmt.Errorf("accel: wgpu backend received no columns")
+	}
+	columns := make([]wgpu.Column, len(req.Columns))
+	for i, column := range req.Columns {
+		columns[i] = wgpu.Column{Name: column.Name, Values: column.Values}
+	}
+	sums, cost, err := wgpu.SumColumns(ctx, columns)
 	if err != nil {
 		return ExecuteResponse{}, translateWGPUError(err)
 	}
 	return ExecuteResponse{
-		Value:         value,
+		Reductions:    sums,
 		Transfer:      cost.Transfer,
 		Dispatch:      cost.Dispatch,
 		Readback:      cost.Readback,

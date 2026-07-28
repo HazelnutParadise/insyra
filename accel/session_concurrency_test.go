@@ -21,16 +21,13 @@ func (e *atomicExecutor) Name() string { return "atomic-fake" }
 
 func (e *atomicExecutor) Execute(_ context.Context, req ExecuteRequest) (ExecuteResponse, error) {
 	e.calls.Add(1)
-	var sum float64
-	for _, value := range req.Values {
-		sum += float64(value)
-	}
+	sums, bytes := sumColumns(req)
 	return ExecuteResponse{
-		Value:         sum,
+		Reductions:    sums,
 		Transfer:      time.Microsecond,
 		Dispatch:      time.Microsecond,
 		Readback:      time.Microsecond,
-		BytesUploaded: uint64(len(req.Values) * 4),
+		BytesUploaded: bytes,
 	}, nil
 }
 
