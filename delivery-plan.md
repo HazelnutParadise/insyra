@@ -26,7 +26,7 @@ Run one operation end to end on a real device and return a number that matches t
 None. `add-accel-gpu-execution` cannot be archived until its numeric test passes on a non-Apple host (task 1.13); that is a coverage gap, not a blocker on further work.
 
 ## Next Verifiable Output
-`stats.KMeans` produces the same labels through the device as it does on the CPU, and finishes faster on a dataset large enough to matter. The kernel it needs exists and is parity-gated; what remains is the wiring — the assignment step inside the KMeans loop, adapting `IDataTable` to a `Dataset`, and deciding where the session comes from.
+`stats.KMeans` returns assignments identical to today's on a dataset large enough to matter, and gets there faster, with the device shortlisting candidates and the CPU deciding in float64. The technique is measured — 7.6x with zero differing assignments — so what remains is the shortlist kernel in `accel` and the wiring into the Hartigan-Wong initial assignment.
 
 ## Next OpenSpec Change
 Not yet proposed — stage B begins with a kernel choice. `add-accel-gpu-execution` task 1.13 (non-Apple verification) stays open in parallel; it needs a Windows or Linux machine with an NVIDIA or AMD GPU and cannot be done on this host.
@@ -190,6 +190,20 @@ Not yet proposed — stage B begins with a kernel choice. `add-accel-gpu-executi
   consequence: Parity is not portable by construction. Go emits FMA on arm64 but not on amd64, so the same reference on an x86 host would stop fusing while a GPU backend still might, and parity would break on exactly the platforms not yet tested. The gate therefore has to run on the target: each operation ships a bit-parity test against its CPU reference, an operation that fails parity on a platform stays on the CPU there, and the fallback reason says so. Writing the reference in the explicitly-rounded form would be the wrong instinct — it guarantees divergence on the one platform measured.
   timestamp: 2026-07-28
   impacted_change_ids: future kernel changes
+
+- decision: Accelerate existing float64 APIs by letting the GPU shortlist and the CPU decide, rather than by moving the arithmetic to the device.
+  rationale: Measured on 2026-07-28, Apple M3, 200,000 rows by 16 dimensions against 64 centres, the shape `stats.KMeans` uses. The GPU computes every distance in f32 and returns only the four most likely centres per row; the CPU then recomputes those four in float64 and picks the nearest and second nearest. Result: 138.7 ms of pure float64 becomes 10.2 ms on the device plus 8.0 ms of verification, a 7.6x improvement, with **zero** assignments differing from the float64 reference across all 200,000 rows. Only 12 rows (0.006%) had a shortlist boundary inside the f32 error bound and were recomputed against every centre. This resolves what looked like a hard conflict between the roadmap's automatic-acceleration goal, the bit-parity requirement, and the fact that WebGPU has no f64: the final arithmetic stays float64, so the numbers cannot change, while the device removes most of the work. The pattern generalises to any operation that ranks or finds extrema before computing precisely on a few candidates — k-nearest neighbours, radius queries, picking the strongest correlations.
+  timestamp: 2026-07-28
+  impacted_change_ids: future kernel and dispatcher changes
+  caveat: Measured on synthetic data with the f32 error bound taken from an earlier measurement on this host. Real data with many equidistant or duplicated points will raise the fallback rate, and the bound plus the boundary test need re-verifying against real inputs before the pattern is relied on.
+- decision: Handle an unavailable, unsupported, or failing GPU by falling back to the verification path that already exists, so device failure is a performance event and never a correctness one.
+  rationale: The shortlist pattern makes this nearly free. The CPU already recomputes candidates in float64, and already recomputes a row in full when the shortlist cannot be trusted — so "no GPU" is just "every row takes the full path", which is the original CPU implementation unchanged. There is no second code path to keep correct, and no output difference to explain: whether the device is absent, refuses the operation, fails to compile a shader, times out on readback, or fails the platform's parity gate, the answer is identical and only the time changes. The existing fallback reasons already name which of those happened.
+  timestamp: 2026-07-28
+  impacted_change_ids: future kernel and dispatcher changes
+- decision: Split the library into three precision tiers — `insyra` and its existing subpackages stay float64, `insyra/ml` carries classical machine learning designed for the device, and `insyra/dl` later carries deep learning.
+  rationale: Set by the project owner. The existing packages keep exact float64 results and gain speed only through the shortlist pattern above, which does not change their numbers. `insyra/ml` is designed f32-first, so its CPU and device paths agree bit for bit by construction and the dispatcher can choose either or split between them — the roadmap's automatic CPU-and-GPU cooperation is achievable there rather than merely approximated. `insyra/dl` follows the same shape and reuses the device layer, as already decided. Keeping the tiers separate means a user always knows which guarantee they are getting, and `stats` users never compile a GPU stack they did not ask for.
+  timestamp: 2026-07-28
+  impacted_change_ids: future `insyra/ml` and `insyra/dl` work
 
 ## Source Links
 - `delivery-plan.md`

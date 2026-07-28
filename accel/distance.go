@@ -83,8 +83,10 @@ func (s *Session) ExecuteDistances(dataset *Dataset, queries [][]float32, worklo
 		return result, err
 	}
 	result.Rows = rows
+	values := columnValues(columns)
 
 	if !plan.Accelerated {
+		s.answerDistancesOnCPU(&result, values, queries, rows)
 		exec, err := s.finishExecution(result.ExecutionResult, nil)
 		result.ExecutionResult = exec
 		return result, err
@@ -92,12 +94,12 @@ func (s *Session) ExecuteDistances(dataset *Dataset, queries [][]float32, worklo
 
 	executor, ok := lookupBackendExecutor(plan.Backend)
 	if !ok {
-		return s.abortDistance(result, FallbackReasonNoBackendExecutor,
+		return s.abortDistance(result, values, queries, FallbackReasonNoBackendExecutor,
 			fmt.Errorf("accel: no execution backend registered for %q", plan.Backend))
 	}
 	device, ok := s.executionDevice(plan)
 	if !ok {
-		return s.abortDistance(result, FallbackReasonNoAccelerator,
+		return s.abortDistance(result, values, queries, FallbackReasonNoAccelerator,
 			fmt.Errorf("accel: plan named no usable device"))
 	}
 	result.Executor = executor.Name()
@@ -113,10 +115,10 @@ func (s *Session) ExecuteDistances(dataset *Dataset, queries [][]float32, worklo
 		Precision: workload.Precision,
 	})
 	if err != nil {
-		return s.abortDistance(result, fallbackReasonForExecError(err), err)
+		return s.abortDistance(result, values, queries, fallbackReasonForExecError(err), err)
 	}
 	if len(response.Distances) != len(queries)*rows {
-		return s.abortDistance(result, FallbackReasonExecutionFailed, fmt.Errorf(
+		return s.abortDistance(result, values, queries, FallbackReasonExecutionFailed, fmt.Errorf(
 			"accel: backend returned %d distances, expected %d", len(response.Distances), len(queries)*rows))
 	}
 
@@ -144,11 +146,7 @@ func SquaredDistancesCPU(dataset *Dataset, queries [][]float32) ([]float32, int,
 	if reason != FallbackReasonNone {
 		return nil, 0, fmt.Errorf("accel: dataset is not eligible (%s)", reason)
 	}
-	values := make([][]float32, len(columns))
-	for i, column := range columns {
-		values[i] = column.Values
-	}
-	return squaredDistancesReference(values, queries, rows), rows, nil
+	return squaredDistancesReference(columnValues(columns), queries, rows), rows, nil
 }
 
 // distanceColumns narrows every column and checks they share a row count.
@@ -178,11 +176,51 @@ func distanceColumns(dataset *Dataset, precision Precision) ([]ExecuteColumn, in
 	return columns, rows, FallbackReasonNone
 }
 
-func (s *Session) abortDistance(result DistanceResult, reason FallbackReason, err error) (DistanceResult, error) {
+func columnValues(columns []ExecuteColumn) [][]float32 {
+	values := make([][]float32, len(columns))
+	for i, column := range columns {
+		values[i] = column.Values
+	}
+	return values
+}
+
+// cpuCanAnswer reports whether the CPU may stand in for the device.
+//
+// It may whenever the device was absent, declined, or failed: the CPU reference
+// computes the same numbers, so the caller gets the answer it asked for and only
+// the time changes. It may not when the caller's own terms are what excluded the
+// device — someone who refused reduced precision must not be handed a narrowed
+// result by another route, and columns no kernel accepts have no reference to
+// fall back to either.
+//
+// A new fallback reason lands on the answering side by default. Anything that
+// describes the request rather than the machine belongs in the list below.
+func cpuCanAnswer(reason FallbackReason) bool {
+	switch reason {
+	case FallbackReasonPrecisionNotAccepted,
+		FallbackReasonDTypeNotEligible,
+		FallbackReasonWorkloadUnsupported:
+		return false
+	default:
+		return true
+	}
+}
+
+// answerDistancesOnCPU fills in the result the device did not produce. Strict
+// mode is excluded on purpose: it exists to fail rather than fall back.
+func (s *Session) answerDistancesOnCPU(result *DistanceResult, values [][]float32, queries [][]float32, rows int) {
+	if strictGPURequired(s.cfg) || !cpuCanAnswer(result.FallbackReason) {
+		return
+	}
+	result.Distances = squaredDistancesReference(values, queries, rows)
+}
+
+func (s *Session) abortDistance(result DistanceResult, values [][]float32, queries [][]float32, reason FallbackReason, err error) (DistanceResult, error) {
 	result.Accelerated = false
 	result.FallbackReason = reason
 	result.Distances = nil
 	result.Transfer, result.Dispatch, result.Readback, result.BytesUploaded = 0, 0, 0, 0
+	s.answerDistancesOnCPU(&result, values, queries, result.Rows)
 	exec, ferr := s.finishExecution(result.ExecutionResult, err)
 	result.ExecutionResult = exec
 	return result, ferr
@@ -265,8 +303,10 @@ func (s *Session) ExecuteNearestQuery(dataset *Dataset, queries [][]float32, wor
 		return result, err
 	}
 	result.Rows = rows
+	values := columnValues(columns)
 
 	if !plan.Accelerated {
+		s.answerNearestOnCPU(&result, values, queries, rows)
 		exec, err := s.finishExecution(result.ExecutionResult, nil)
 		result.ExecutionResult = exec
 		return result, err
@@ -274,12 +314,12 @@ func (s *Session) ExecuteNearestQuery(dataset *Dataset, queries [][]float32, wor
 
 	executor, ok := lookupBackendExecutor(plan.Backend)
 	if !ok {
-		return s.abortNearest(result, FallbackReasonNoBackendExecutor,
+		return s.abortNearest(result, values, queries, FallbackReasonNoBackendExecutor,
 			fmt.Errorf("accel: no execution backend registered for %q", plan.Backend))
 	}
 	device, ok := s.executionDevice(plan)
 	if !ok {
-		return s.abortNearest(result, FallbackReasonNoAccelerator,
+		return s.abortNearest(result, values, queries, FallbackReasonNoAccelerator,
 			fmt.Errorf("accel: plan named no usable device"))
 	}
 	result.Executor = executor.Name()
@@ -295,10 +335,10 @@ func (s *Session) ExecuteNearestQuery(dataset *Dataset, queries [][]float32, wor
 		Precision: workload.Precision,
 	})
 	if err != nil {
-		return s.abortNearest(result, fallbackReasonForExecError(err), err)
+		return s.abortNearest(result, values, queries, fallbackReasonForExecError(err), err)
 	}
 	if len(response.NearestIndex) != rows || len(response.Distances) != rows {
-		return s.abortNearest(result, FallbackReasonExecutionFailed, fmt.Errorf(
+		return s.abortNearest(result, values, queries, FallbackReasonExecutionFailed, fmt.Errorf(
 			"accel: backend returned %d indices and %d distances, expected %d of each",
 			len(response.NearestIndex), len(response.Distances), rows))
 	}
@@ -330,19 +370,24 @@ func NearestQueryCPU(dataset *Dataset, queries [][]float32) ([]uint32, []float32
 	if reason != FallbackReasonNone {
 		return nil, nil, 0, fmt.Errorf("accel: dataset is not eligible (%s)", reason)
 	}
-	values := make([][]float32, len(columns))
-	for i, column := range columns {
-		values[i] = column.Values
-	}
-	indices, distances := nearestQueryReference(values, queries, rows)
+	indices, distances := nearestQueryReference(columnValues(columns), queries, rows)
 	return indices, distances, rows, nil
 }
 
-func (s *Session) abortNearest(result NearestQueryResult, reason FallbackReason, err error) (NearestQueryResult, error) {
+// answerNearestOnCPU fills in the result the device did not produce.
+func (s *Session) answerNearestOnCPU(result *NearestQueryResult, values [][]float32, queries [][]float32, rows int) {
+	if strictGPURequired(s.cfg) || !cpuCanAnswer(result.FallbackReason) {
+		return
+	}
+	result.Index, result.Distance = nearestQueryReference(values, queries, rows)
+}
+
+func (s *Session) abortNearest(result NearestQueryResult, values [][]float32, queries [][]float32, reason FallbackReason, err error) (NearestQueryResult, error) {
 	result.Accelerated = false
 	result.FallbackReason = reason
 	result.Index, result.Distance = nil, nil
 	result.Transfer, result.Dispatch, result.Readback, result.BytesUploaded = 0, 0, 0, 0
+	s.answerNearestOnCPU(&result, values, queries, result.Rows)
 	exec, ferr := s.finishExecution(result.ExecutionResult, err)
 	result.ExecutionResult = exec
 	return result, ferr

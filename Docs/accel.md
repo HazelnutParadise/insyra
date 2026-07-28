@@ -76,6 +76,24 @@ A single column sum is memory-bound, so moving the data costs far more than the 
 
 Every device operation ships a CPU reference — `SquaredDistancesCPU`, `NearestQueryCPU` — and a test asserting the device result is bit-identical to it on the running platform. Parity depends on both toolchains contracting multiply-add the same way, which is a property of the platform rather than of the kernel, so it is measured where it runs rather than assumed.
 
+### No device is not an error
+
+`ExecuteDistances` and `ExecuteNearestQuery` return the answer whether or not a device ran. On a machine with no GPU, or when a device is present but fails, times out, or exceeds a buffer limit, the runtime computes the result on the CPU and hands it back. You do not have to check anything to get a correct answer.
+
+`Accelerated` and `FallbackReason` are still there to tell you *where* the work ran, which is worth logging, but they are not a correctness gate:
+
+```go
+result, err := session.ExecuteNearestQuery(ds, queries, accel.WorkloadEstimate{
+    Precision: accel.PrecisionFloat32,
+})
+// result.Index is populated either way.
+if !result.Accelerated {
+    log.Printf("ran on the CPU: %s", result.FallbackReason)
+}
+```
+
+Two cases deliberately return nothing instead. When the request itself is what excluded the device — `precision-not-accepted`, `dtype-not-eligible`, `workload-unsupported` — the CPU result would be exactly what you declined, so you get no result and the reason says why. And strict GPU mode returns an error rather than falling back, which is the whole point of asking for it.
+
 ## Still Not Implemented
 
 - One operation only: `sum` over a numeric column
