@@ -7,7 +7,7 @@ Phase 1 - First Real GPU Execution Path (achieved; hardening)
 Run one operation end to end on a real device and return a number that matches the CPU path. Every accel surface built so far — discovery, projection, cache, scheduler, CLI — has been verified against stubs only, so the first correct GPU number is what turns the existing scaffolding from assumption into fact.
 
 ## Active Workstreams
-- `M6`: real device execution through an opt-in `gogpu/wgpu` backend module
+- `M7`: roadmap stage A — the foundations default-on acceleration needs. Complete: `Session` is safe for concurrent use, the execution seam carries a whole dataset in one submission, and `accel.Default()` provides a process-shared session.
 
 `M0` through `M5` are closed. They established the convergence surface, the frozen `insyra/accel` runtime API, backend discovery, the columnar layout and cache model, the scheduler and observable fallback, and the CLI/DSL surface. All of it was verified against stubs, which is what `M6` exists to correct.
 
@@ -26,10 +26,10 @@ Run one operation end to end on a real device and return a number that matches t
 None. `add-accel-gpu-execution` cannot be archived until its numeric test passes on a non-Apple host (task 1.13); that is a coverage gap, not a blocker on further work.
 
 ## Next Verifiable Output
-`add-accel-gpu-execution` task 1.13: the GPU numeric test passes on a non-Apple host. Everything else in the accel path is now measured and green on macOS, and the host-cost work has reached the point of diminishing returns — no single dominant term is left. Cross-platform verification is the one claim still unbacked.
+Stage B's first kernel: a pairwise reduction over several columns that beats the CPU on measurement, with bit-level parity against a deterministic reference. `stats` clustering and correlation are the targets — measured at roughly 60x in the arithmetic-intensity spike, and already written, so only the kernel and the wiring are new. Stage A is complete and verified.
 
 ## Next OpenSpec Change
-Propose the `accel.Session` concurrency-safety change (the unguarded-state follow-up in `AGENTS.md`). It gates every step of the end-state roadmap below, and needs no external hardware. `add-accel-gpu-execution` task 1.13 (non-Apple verification) stays open in parallel; it needs a Windows or Linux machine with an NVIDIA or AMD GPU and cannot be done on this host.
+Not yet proposed — stage B begins with a kernel choice. `add-accel-gpu-execution` task 1.13 (non-Apple verification) stays open in parallel; it needs a Windows or Linux machine with an NVIDIA or AMD GPU and cannot be done on this host.
 
 ## Decision Log
 - decision: Keep acceleration in optional `insyra/accel` packages rather than core `insyra`.
@@ -241,4 +241,7 @@ Propose the `accel.Session` concurrency-safety change (the unguarded-state follo
 - Cumulative effect of the two host-cost changes on a 4 Mi `float64` column: `ProjectDataList` 357 ms to 43 ms (8.3x), end-to-end GPU column sum 354 ms to 47.6 ms (7.4x). Device work for the same column is 5.6 ms, so host cost is now roughly eight times the device rather than seventy. The remainder splits about evenly between projection, fingerprinting, and allocation, with nothing dominant left to remove.
 - 2026-07-28: `accel.Session` is safe for concurrent use. One mutex guards every field; public methods lock and internal callers use `*Locked` bodies, because Go mutexes are not reentrant and several public methods call one another. The lock is held across backend execution deliberately — releasing it around the device call would expose half-updated cache and report state. Projection stays outside the lock, since it touches no session state and is the expensive step. `internal/wgpu.Sum` is serialized process-wide, because every session shares one device handle and gogpu's queue-concurrency guarantees are unverified.
 - No test or benchmark that reaches a device can run under `-race` on macOS: `-race` enables `checkptr`, which aborts inside gogpu's Metal completion-block trampoline. Upstream and pre-existing — reproduced at the previous commit. `requireGPU` and `gpuTestsEnabled` skip under the `race` build tag; recorded under `## Follow-ups` in `AGENTS.md`.
+- 2026-07-28: roadmap stage A is complete. `accel.Default()` gives the process one lazily created session — discovery runs once, the resident cache is shared so a column can stay on the device across operations, and `Close` on it is a no-op because library code holding it cannot know it is shared. Importing the package still opens no device, verified with a consumer that imports `accel` and never calls `Default`.
+- The execution seam now carries a whole dataset. One submission encodes every column's dispatch and copy into a single command buffer landing in a single staging buffer, so a wide table waits on one map instead of one per column. Measured over 262,144 rows per column: readback at eight columns fell from 5.52 ms to 1.25 ms, and the whole operation from 36.8 ms to 24.2 ms. The first attempt collapsed only the runtime loop and measured nothing — the batching has to reach the command buffer.
+- Reported gogpu/wgpu#280 upstream: Metal compute aborts under `-race` because checkptr rejects pointer arithmetic in the GPU completion block. Includes a standalone reproduction.
 - The 4 macOS accel test failures are fixed. `isolateBuiltinProbes` in `accel/testing_test.go` reports every builtin backend unavailable so a host GPU cannot leak into a test, and `TestIsolatedBuiltinProbesFindNoHostDevices` is the regression guard. `go test ./...` is green on macOS.

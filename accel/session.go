@@ -16,6 +16,9 @@ type Session struct {
 	reports []Report
 	cache   *residentCache
 	closed  bool
+	// shared marks the process-wide session from Default. It never closes,
+	// because no single caller owns it.
+	shared bool
 }
 
 func Open(cfg Config) (*Session, error) {
@@ -155,9 +158,16 @@ func (s *Session) recordReportLocked(report Report) error {
 	return nil
 }
 
+// Close releases the session. On the process-shared session from Default it is
+// a no-op: library code holding it cannot know it is shared, so failing would
+// turn a reasonable defensive call into a spurious error, and actually closing
+// would let one caller disable acceleration for the whole process.
 func (s *Session) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.shared {
+		return nil
+	}
 	s.closed = true
 	return nil
 }

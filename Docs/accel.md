@@ -75,6 +75,23 @@ A single column sum is memory-bound, so moving the data costs far more than the 
 - No full string-kernel execution path beyond transport and eligibility preparation
 - Verified on macOS and Metal only; other platforms are untested
 
+## The shared session
+
+`accel.Default()` returns a session shared by the whole process, created the
+first time it is asked for:
+
+```go
+session := accel.Default()
+result, err := session.ExecuteDataList(dl, accel.WorkloadEstimate{
+    Precision: accel.PrecisionFloat32,
+})
+```
+
+Discovery runs once, the resident cache is shared so a column stays on the
+device across operations, and no caller owns the lifetime — `Close` on it does
+nothing. Importing the package opens no device; only the first `Default()` call
+does. Use `Open` when you want your own session and your own configuration.
+
 ## Installation
 
 `accel` is part of `allpkgs`, so the standard install includes it. Installing only the root module works too — `accel` is a package inside it.
