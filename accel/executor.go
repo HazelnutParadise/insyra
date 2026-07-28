@@ -46,9 +46,13 @@ type ExecuteRequest struct {
 // not implement GPU timestamp queries.
 type ExecuteResponse struct {
 	Reductions map[string]float64
-	// Distances is query-major: entry q*rows+r is the distance from row r to
-	// query q. Only OpSquaredDistance fills it.
-	Distances     []float32
+	// Distances is query-major for OpSquaredDistance: entry q*rows+r is the
+	// distance from row r to query q. For OpNearestQuery it holds one distance
+	// per row, the smallest one.
+	Distances []float32
+	// NearestIndex holds the closest query point per row. Only OpNearestQuery
+	// fills it.
+	NearestIndex  []uint32
 	Transfer      time.Duration
 	Dispatch      time.Duration
 	Readback      time.Duration

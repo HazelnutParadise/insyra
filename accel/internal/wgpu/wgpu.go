@@ -497,6 +497,234 @@ func SquaredDistances(ctx context.Context, columns []Column, queries [][]float32
 	return out, cost, nil
 }
 
+// nearestWGSL takes the minimum on the device, so the host reads one pair per
+// row instead of the whole rows-by-queries matrix. One thread owns one row and
+// walks every query, which keeps the operation order identical to the CPU
+// reference. The running minimum is seeded from query zero rather than an
+// infinity sentinel, and the comparison is strict so ties keep the lowest index.
+const nearestWGSL = `
+@group(0) @binding(0) var<storage, read> data: array<f32>;
+@group(0) @binding(1) var<storage, read> queries: array<f32>;
+@group(0) @binding(2) var<storage, read_write> outDist: array<f32>;
+@group(0) @binding(3) var<storage, read_write> outIdx: array<u32>;
+
+struct Params { rows: u32, dims: u32, queryCount: u32, base: u32, }
+@group(0) @binding(4) var<uniform> params: Params;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let r = params.base + gid.x;
+    if (r >= params.rows) { return; }
+
+    var best: f32 = 0.0;
+    for (var c: u32 = 0u; c < params.dims; c = c + 1u) {
+        let diff = data[c * params.rows + r] - queries[c];
+        best = best + diff * diff;
+    }
+    var bestIdx: u32 = 0u;
+
+    for (var q: u32 = 1u; q < params.queryCount; q = q + 1u) {
+        var acc: f32 = 0.0;
+        for (var c: u32 = 0u; c < params.dims; c = c + 1u) {
+            let diff = data[c * params.rows + r] - queries[q * params.dims + c];
+            acc = acc + diff * diff;
+        }
+        if (acc < best) {
+            best = acc;
+            bestIdx = q;
+        }
+    }
+    outDist[r] = best;
+    outIdx[r] = bestIdx;
+}
+`
+
+// NearestQuery reports the closest query point per row and its squared distance.
+func NearestQuery(ctx context.Context, columns []Column, queries [][]float32) ([]uint32, []float32, Cost, error) {
+	submitMu.Lock()
+	defer submitMu.Unlock()
+
+	if len(columns) == 0 || len(queries) == 0 {
+		return nil, nil, Cost{}, fmt.Errorf("wgpu: nearest query needs columns and queries")
+	}
+	rows := len(columns[0].Values)
+	dims := len(columns)
+	for _, column := range columns {
+		if len(column.Values) != rows {
+			return nil, nil, Cost{}, fmt.Errorf("wgpu: columns have differing lengths")
+		}
+	}
+
+	h, err := acquire()
+	if err != nil {
+		return nil, nil, Cost{}, err
+	}
+	pipeline, bgLayout, err := h.nearestPipeline()
+	if err != nil {
+		return nil, nil, Cost{}, err
+	}
+
+	flat := make([]float32, 0, rows*dims)
+	for _, column := range columns {
+		flat = append(flat, column.Values...)
+	}
+	flatQueries := make([]float32, 0, len(queries)*dims)
+	for _, query := range queries {
+		if len(query) != dims {
+			return nil, nil, Cost{}, fmt.Errorf("wgpu: query has %d dimensions, expected %d", len(query), dims)
+		}
+		flatQueries = append(flatQueries, query...)
+	}
+
+	var cost Cost
+	release := make([]interface{ Release() }, 0, 8)
+	defer func() {
+		for _, r := range release {
+			r.Release()
+		}
+	}()
+	mk := func(label string, size uint64, usage gowgpu.BufferUsage) (*gowgpu.Buffer, error) {
+		b, err := h.device.CreateBuffer(&gowgpu.BufferDescriptor{Label: label, Size: size, Usage: usage})
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrBufferTooLarge, err)
+		}
+		release = append(release, b)
+		return b, nil
+	}
+
+	dataBytes := uint64(len(flat) * 4)
+	queryBytes := uint64(len(flatQueries) * 4)
+	outBytes := uint64(rows * 4)
+
+	dataBuf, err := mk("accel-nearest-data", dataBytes, gowgpu.BufferUsageStorage|gowgpu.BufferUsageCopyDst)
+	if err != nil {
+		return nil, nil, cost, err
+	}
+	queryBuf, err := mk("accel-nearest-queries", queryBytes, gowgpu.BufferUsageStorage|gowgpu.BufferUsageCopyDst)
+	if err != nil {
+		return nil, nil, cost, err
+	}
+	distBuf, err := mk("accel-nearest-dist", outBytes, gowgpu.BufferUsageStorage|gowgpu.BufferUsageCopySrc)
+	if err != nil {
+		return nil, nil, cost, err
+	}
+	idxBuf, err := mk("accel-nearest-idx", outBytes, gowgpu.BufferUsageStorage|gowgpu.BufferUsageCopySrc)
+	if err != nil {
+		return nil, nil, cost, err
+	}
+	// One staging buffer holding distances then indices, so there is one map.
+	staging, err := mk("accel-nearest-staging", outBytes*2, gowgpu.BufferUsageCopyDst|gowgpu.BufferUsageMapRead)
+	if err != nil {
+		return nil, nil, cost, err
+	}
+
+	transferStart := time.Now()
+	if err := h.device.Queue().WriteBuffer(dataBuf, 0, float32Bytes(flat)); err != nil {
+		return nil, nil, cost, fmt.Errorf("wgpu: upload data: %w", err)
+	}
+	if err := h.device.Queue().WriteBuffer(queryBuf, 0, float32Bytes(flatQueries)); err != nil {
+		return nil, nil, cost, fmt.Errorf("wgpu: upload queries: %w", err)
+	}
+	cost.BytesUploaded = dataBytes + queryBytes
+
+	const perDispatch = maxWorkgroups * 64
+	type slice struct {
+		bindGroup *gowgpu.BindGroup
+		groups    int
+	}
+	slices := make([]slice, 0, rows/perDispatch+1)
+	for base := 0; base < rows; base += perDispatch {
+		count := rows - base
+		if count > perDispatch {
+			count = perDispatch
+		}
+		params, err := mk("accel-nearest-params", 16, gowgpu.BufferUsageUniform|gowgpu.BufferUsageCopyDst)
+		if err != nil {
+			return nil, nil, cost, err
+		}
+		paramBytes := make([]byte, 16)
+		binary.LittleEndian.PutUint32(paramBytes[0:], uint32(rows))
+		binary.LittleEndian.PutUint32(paramBytes[4:], uint32(dims))
+		binary.LittleEndian.PutUint32(paramBytes[8:], uint32(len(queries)))
+		binary.LittleEndian.PutUint32(paramBytes[12:], uint32(base))
+		if err := h.device.Queue().WriteBuffer(params, 0, paramBytes); err != nil {
+			return nil, nil, cost, fmt.Errorf("wgpu: upload params: %w", err)
+		}
+		bindGroup, err := h.device.CreateBindGroup(&gowgpu.BindGroupDescriptor{
+			Label: "accel-nearest-bg", Layout: bgLayout,
+			Entries: []gowgpu.BindGroupEntry{
+				{Binding: 0, Buffer: dataBuf, Size: dataBytes},
+				{Binding: 1, Buffer: queryBuf, Size: queryBytes},
+				{Binding: 2, Buffer: distBuf, Size: outBytes},
+				{Binding: 3, Buffer: idxBuf, Size: outBytes},
+				{Binding: 4, Buffer: params, Size: 16},
+			},
+		})
+		if err != nil {
+			return nil, nil, cost, fmt.Errorf("wgpu: bind group: %w", err)
+		}
+		release = append(release, bindGroup)
+		slices = append(slices, slice{bindGroup: bindGroup, groups: (count + 63) / 64})
+	}
+	cost.Transfer = time.Since(transferStart)
+
+	dispatchStart := time.Now()
+	encoder, err := h.device.CreateCommandEncoder(nil)
+	if err != nil {
+		return nil, nil, cost, fmt.Errorf("wgpu: command encoder: %w", err)
+	}
+	for _, sl := range slices {
+		pass, err := encoder.BeginComputePass(nil)
+		if err != nil {
+			return nil, nil, cost, fmt.Errorf("wgpu: compute pass: %w", err)
+		}
+		pass.SetPipeline(pipeline)
+		pass.SetBindGroup(0, sl.bindGroup, nil)
+		pass.Dispatch(uint32(sl.groups), 1, 1)
+		if err := pass.End(); err != nil {
+			return nil, nil, cost, fmt.Errorf("wgpu: end compute pass: %w", err)
+		}
+	}
+	encoder.CopyBufferToBuffer(distBuf, 0, staging, 0, outBytes)
+	encoder.CopyBufferToBuffer(idxBuf, 0, staging, outBytes, outBytes)
+	commands, err := encoder.Finish()
+	if err != nil {
+		return nil, nil, cost, fmt.Errorf("wgpu: finish encoder: %w", err)
+	}
+	if _, err := h.device.Queue().Submit(commands); err != nil {
+		return nil, nil, cost, fmt.Errorf("wgpu: submit: %w", err)
+	}
+	cost.Dispatch = time.Since(dispatchStart)
+
+	readbackStart := time.Now()
+	mapCtx, cancel := context.WithTimeout(ctx, readbackTimeout)
+	defer cancel()
+	if err := staging.Map(mapCtx, gowgpu.MapModeRead, 0, outBytes*2); err != nil {
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(mapCtx.Err(), context.DeadlineExceeded) {
+			return nil, nil, cost, fmt.Errorf("%w: %v", ErrReadbackTimeout, err)
+		}
+		return nil, nil, cost, fmt.Errorf("wgpu: map staging buffer: %w", err)
+	}
+	mapped, err := staging.MappedRange(0, outBytes*2)
+	if err != nil {
+		_ = staging.Unmap()
+		return nil, nil, cost, fmt.Errorf("wgpu: mapped range: %w", err)
+	}
+	raw := mapped.Bytes()
+	distances := make([]float32, rows)
+	indices := make([]uint32, rows)
+	for i := 0; i < rows; i++ {
+		distances[i] = math.Float32frombits(binary.LittleEndian.Uint32(raw[i*4:]))
+		indices[i] = binary.LittleEndian.Uint32(raw[int(outBytes)+i*4:])
+	}
+	if err := staging.Unmap(); err != nil {
+		return nil, nil, cost, fmt.Errorf("wgpu: unmap staging buffer: %w", err)
+	}
+	cost.Readback = time.Since(readbackStart)
+
+	return indices, distances, cost, nil
+}
+
 // unifiedMemory decides unified versus discrete memory from the vendor and the
 // backend rather than from AdapterInfo.DeviceType, which reports an Apple M3 as
 // DiscreteGPU even though Apple Silicon has unified memory.
@@ -587,6 +815,57 @@ type handle struct {
 	distanceBGLayout *gowgpu.BindGroupLayout
 	distancePipe     *gowgpu.ComputePipeline
 	distanceErr      error
+
+	nearestOnce     sync.Once
+	nearestBGLayout *gowgpu.BindGroupLayout
+	nearestPipe     *gowgpu.ComputePipeline
+	nearestErr      error
+}
+
+func (h *handle) nearestPipeline() (*gowgpu.ComputePipeline, *gowgpu.BindGroupLayout, error) {
+	h.nearestOnce.Do(func() {
+		shader, err := h.device.CreateShaderModule(&gowgpu.ShaderModuleDescriptor{
+			Label: "accel-nearest", WGSL: nearestWGSL,
+		})
+		if err != nil {
+			h.nearestErr = fmt.Errorf("%w: %v", ErrShaderCompile, err)
+			return
+		}
+		ro := &gputypes.BufferBindingLayout{Type: gputypes.BufferBindingTypeReadOnlyStorage}
+		rw := &gputypes.BufferBindingLayout{Type: gputypes.BufferBindingTypeStorage}
+		uni := &gputypes.BufferBindingLayout{Type: gputypes.BufferBindingTypeUniform}
+		bgLayout, err := h.device.CreateBindGroupLayout(&gowgpu.BindGroupLayoutDescriptor{
+			Label: "accel-nearest-bgl",
+			Entries: []gowgpu.BindGroupLayoutEntry{
+				{Binding: 0, Visibility: gowgpu.ShaderStageCompute, Buffer: ro},
+				{Binding: 1, Visibility: gowgpu.ShaderStageCompute, Buffer: ro},
+				{Binding: 2, Visibility: gowgpu.ShaderStageCompute, Buffer: rw},
+				{Binding: 3, Visibility: gowgpu.ShaderStageCompute, Buffer: rw},
+				{Binding: 4, Visibility: gowgpu.ShaderStageCompute, Buffer: uni},
+			},
+		})
+		if err != nil {
+			h.nearestErr = fmt.Errorf("wgpu: nearest bind group layout: %w", err)
+			return
+		}
+		plLayout, err := h.device.CreatePipelineLayout(&gowgpu.PipelineLayoutDescriptor{
+			Label: "accel-nearest-pl", BindGroupLayouts: []*gowgpu.BindGroupLayout{bgLayout},
+		})
+		if err != nil {
+			h.nearestErr = fmt.Errorf("wgpu: nearest pipeline layout: %w", err)
+			return
+		}
+		pipeline, err := h.device.CreateComputePipeline(&gowgpu.ComputePipelineDescriptor{
+			Label: "accel-nearest-pipeline", Layout: plLayout, Module: shader, EntryPoint: "main",
+		})
+		if err != nil {
+			h.nearestErr = fmt.Errorf("%w: %v", ErrShaderCompile, err)
+			return
+		}
+		h.nearestBGLayout = bgLayout
+		h.nearestPipe = pipeline
+	})
+	return h.nearestPipe, h.nearestBGLayout, h.nearestErr
 }
 
 // distancePipeline compiles the distance kernel once per process, the same way

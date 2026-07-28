@@ -31,3 +31,39 @@ func squaredDistancesReference(columns [][]float32, queries [][]float32, rows in
 	}
 	return out
 }
+
+// nearestQueryReference reports the closest query point per row and its squared
+// distance.
+//
+// The running minimum is seeded from the first query rather than an infinity
+// sentinel, so the answer is always one of the supplied points and both
+// implementations agree about what happens when every distance is NaN. The
+// comparison is a strict less-than, which keeps ties on the lowest index.
+//
+// The accumulation is fused deliberately; see squaredDistancesReference.
+func nearestQueryReference(columns [][]float32, queries [][]float32, rows int) ([]uint32, []float32) {
+	indices := make([]uint32, rows)
+	distances := make([]float32, rows)
+	for r := 0; r < rows; r++ {
+		var best float32
+		for c := range columns {
+			diff := columns[c][r] - queries[0][c]
+			best = best + diff*diff
+		}
+		bestIdx := uint32(0)
+		for q := 1; q < len(queries); q++ {
+			var acc float32
+			for c := range columns {
+				diff := columns[c][r] - queries[q][c]
+				acc = acc + diff*diff
+			}
+			if acc < best {
+				best = acc
+				bestIdx = uint32(q)
+			}
+		}
+		indices[r] = bestIdx
+		distances[r] = best
+	}
+	return indices, distances
+}

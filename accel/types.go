@@ -90,6 +90,11 @@ const (
 	// KNN and Silhouette, and unlike a column reduction the device wins on it:
 	// work grows with rows times queries while the data grows with rows.
 	OpSquaredDistance Op = "squared-distance"
+	// OpNearestQuery reports which query point is closest to each row. It is
+	// OpSquaredDistance with the minimum taken on the device, which turns the
+	// result from one value per pair into one per row — the shape KMeans needs
+	// and the one where readback stops dominating.
+	OpNearestQuery Op = "nearest-query"
 )
 
 // Precision states what the caller will accept from device execution. The

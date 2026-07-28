@@ -107,6 +107,8 @@ func (wgpuExecutor) Execute(ctx context.Context, req ExecuteRequest) (ExecuteRes
 		return wgpuSum(ctx, req)
 	case OpSquaredDistance:
 		return wgpuDistances(ctx, req)
+	case OpNearestQuery:
+		return wgpuNearest(ctx, req)
 	default:
 		return ExecuteResponse{}, fmt.Errorf("accel: wgpu backend does not support operation %q", req.Op)
 	}
@@ -122,6 +124,25 @@ func wgpuDistances(ctx context.Context, req ExecuteRequest) (ExecuteResponse, er
 		return ExecuteResponse{}, translateWGPUError(err)
 	}
 	return ExecuteResponse{
+		Distances:     distances,
+		Transfer:      cost.Transfer,
+		Dispatch:      cost.Dispatch,
+		Readback:      cost.Readback,
+		BytesUploaded: cost.BytesUploaded,
+	}, nil
+}
+
+func wgpuNearest(ctx context.Context, req ExecuteRequest) (ExecuteResponse, error) {
+	columns := make([]wgpu.Column, len(req.Columns))
+	for i, column := range req.Columns {
+		columns[i] = wgpu.Column{Name: column.Name, Values: column.Values}
+	}
+	indices, distances, cost, err := wgpu.NearestQuery(ctx, columns, req.Queries)
+	if err != nil {
+		return ExecuteResponse{}, translateWGPUError(err)
+	}
+	return ExecuteResponse{
+		NearestIndex:  indices,
 		Distances:     distances,
 		Transfer:      cost.Transfer,
 		Dispatch:      cost.Dispatch,

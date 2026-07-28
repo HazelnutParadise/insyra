@@ -8,4 +8,4 @@
 - [x] 1.7 Benchmark the kernel against the CPU reference and record the numbers in `design.md`
 - [x] 1.8 Run `go test ./...`, `go test -race ./...`, every accel test individually, and the GPU tests
 - [x] 1.9 Update `Docs/accel.md`, CHANGELOG and CHANGELOG_TW, and `delivery-plan.md`
-- [ ] 1.10 Fold the argmin into the kernel so KMeans and KNN get one value per row instead of the full matrix — the measurement above shows readback, not compute, is the constraint
+- [x] 1.10 Fold the argmin into the kernel so KMeans and KNN get one value per row instead of the full matrix — the measurement above shows readback, not compute, is the constraint

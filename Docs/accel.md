@@ -66,6 +66,16 @@ Measured on an Apple M3 over a `float64` column narrowed to `float32`:
 
 A single column sum is memory-bound, so moving the data costs far more than the arithmetic. Do not expect one reduction to beat a CPU loop on a unified-memory machine. `result.Transfer`, `result.Dispatch`, and `result.Readback` are measured per execution, so you can check rather than assume.
 
+## Operations
+
+| Operation | Shape | Notes |
+| --- | --- | --- |
+| `ExecuteDataList` / `ExecuteDataTable` | sum per column | Memory-bound; the CPU wins. Kept as the proving path, not a recommendation. |
+| `ExecuteDistances` | squared distance, row by query | Returns the whole matrix, so readback grows with it. |
+| `ExecuteNearestQuery` | closest query point per row | The matrix is reduced on the device. 13.6x over the CPU at 64 query points on an M3. |
+
+Every device operation ships a CPU reference — `SquaredDistancesCPU`, `NearestQueryCPU` — and a test asserting the device result is bit-identical to it on the running platform. Parity depends on both toolchains contracting multiply-add the same way, which is a property of the platform rather than of the kernel, so it is measured where it runs rather than assumed.
+
 ## Still Not Implemented
 
 - One operation only: `sum` over a numeric column
