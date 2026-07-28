@@ -26,10 +26,14 @@ Run one operation end to end on a real device and return a number that matches t
 None. `add-accel-gpu-execution` cannot be archived until its numeric test passes on a non-Apple host (task 1.13); that is a coverage gap, not a blocker on further work.
 
 ## Next Verifiable Output
-Undecided, and deliberately so. The exact-nearest operation works and is honestly measured, but the caller it was built for does not clear its own profitability threshold, so committing to a next kernel before the remaining candidates are measured would repeat the mistake. The two worth measuring are brute-force KNN, whose candidate count is the training-set size and therefore always large enough, and the DBSCAN neighbourhood scan. Both need measuring against a parallel host before anything is proposed.
+Every regression family in `stats` can score new data, and its predictions match R's `predict()` — including the five methods that already shipped and have never been checked against a reference. This is the first of several `stats` gaps that must close before `insyra/ml` can wrap it, and it is the one everything else depends on, because a prediction-shaped package cannot be built over results that cannot predict.
+
+Superseded, for the record: the acceleration phase's own next output was undecided, and deliberately so. The exact-nearest operation works and is honestly measured, but the caller it was built for does not clear its own profitability threshold, so committing to a next kernel before the remaining candidates are measured would repeat the mistake. The two worth measuring are brute-force KNN, whose candidate count is the training-set size and therefore always large enough, and the DBSCAN neighbourhood scan. Both need measuring against a parallel host before anything is proposed.
 
 ## Next OpenSpec Change
-Not yet proposed. Two things gate it: measuring brute-force KNN and the DBSCAN neighbourhood scan against a parallel host, and re-measuring the older accel figures that were taken against a single core. `add-accel-gpu-execution` task 1.13 (non-Apple verification) stays open in parallel; it needs a Windows or Linux machine with an NVIDIA or AMD GPU and cannot be done on this host.
+`add-stats-regression-predict`. After it: exporting `Link` on the logistic and Poisson results, giving `PCAResult` its means, standard deviations and scores, and deciding whether `stats` gains a fitted KNN type or `insyra/ml` drops KNN from v1. Each is its own change.
+
+Still open on the acceleration side, and not blocking: measuring brute-force KNN and the DBSCAN neighbourhood scan against a parallel host, and re-measuring the older accel figures that were taken against a single core. `add-accel-gpu-execution` task 1.13 (non-Apple verification) stays open in parallel; it needs a Windows or Linux machine with an NVIDIA or AMD GPU and cannot be done on this host.
 
 ## Decision Log
 - decision: Keep acceleration in optional `insyra/accel` packages rather than core `insyra`.
@@ -271,6 +275,19 @@ Not yet proposed. Two things gate it: measuring brute-force KNN and the DBSCAN n
   rationale: Not a preference — a fact in the working tree, found by reading it. `datatable_scale.go:36` declares `Scaler` with `Fit`, `Transform`, `FitTransform` and `InverseTransform`, and `datatable_scale.go:95-109` provides `NewStandardScaler`, `NewMinMaxScaler`, `NewRobustScaler` and `NewMaxAbsScaler` — scikit-learn's `preprocessing` module, the same four names and the same protocol. `datatable_encode.go` carries `OneHotEncoder`, `LabelEncoder` and `OrdinalEncoder` with `DropFirst` and `Unknown`, matching `drop='first'` and `handle_unknown`. `stats/knn.go:14-27` reproduces `KNeighborsClassifier`'s options verbatim, down to `uniform`/`distance` and `auto`/`brute`/`kd_tree`/`ball_tree`. So the library has been imitating scikit-learn in four places without saying so, and consistency with itself outranks any argument for a different precedent. What does not translate is the machinery underneath: scikit-learn discovers parameters by reflecting over `__init__`, clones estimators by calling the constructor with a string-keyed dict, and distinguishes fitted from unfitted by the presence of trailing-underscore attributes. Go has none of that, so the vocabulary is scikit-learn's while the typing follows Spark MLlib's shape, where fitting produces a separate Model object rather than mutating the estimator.
   timestamp: 2026-07-29
   impacted_change_ids: future `insyra/ml` work
+
+- decision: `insyra/ml` is float32-capable, not float32-only. Every model declares which precision it works at, and a model wrapping `stats` is bit-identical to calling `stats` directly.
+  rationale: This amends the tier decision of 2026-07-28, which said `ml` would be designed f32-first so its CPU and device paths agree by construction. That reading cannot survive contact with v1, which wraps `stats` — float64 throughout and validated against R. If `ml.LogisticRegression` and `stats.LogisticRegression` could return different numbers with no way for the caller to tell which they got, that is the worst outcome available, worse than either precision alone. So the guarantee moves from the package to the model: a wrapped `stats` estimator reports float64 and is bit-identical to the function it wraps, while a new model family designed for the device reports float32 and carries the bit-parity guarantee. The dispatcher reads the declaration rather than assuming.
+  timestamp: 2026-07-29
+  impacted_change_ids: future `insyra/ml` work
+- decision: `stats` cannot be wrapped as it stands. Fix it in `stats` first, in separate changes, before any of `insyra/ml` is written.
+  rationale: Verified by listing every exported method on a fitted result: there are seven, and five of them are prediction, all in the GLM family. `LinearRegressionResult`, `PolynomialRegressionResult`, `ExponentialRegressionResult` and `LogarithmicRegressionResult` have no `Predict` at all. `KMeansResult` carries `Cluster` and `Centers` but nothing assigns a new row to a centre. `PCAResult` lacks the means, standard deviations and scores that a `Transform` or an ONNX export would need. The GLM `Predict` that does exist takes a variadic of columns rather than a table and does not record which columns it was fitted on, `link` is unexported on all three, and an offset model refuses to predict outright. A prediction-shaped package cannot be built over that from the outside.
+  timestamp: 2026-07-29
+  impacted_change_ids: `add-stats-regression-predict`
+- decision: Withdraw the claim that wrapping `stats` inherits its R validation. It inherits it for fitting only.
+  rationale: `stats/testdata` holds 22 `.R` reference scripts and the cross-language tests shell out to `Rscript` and compare field by field — but not one of the 22 calls `predict()`. The validation covers fitting. The prediction path has never been checked against a reference, including the five `Predict` methods that already ship. Since `insyra/ml` is prediction-shaped, wrapping that path and describing it as R-validated would be exactly the kind of unearned claim this phase has spent its time removing. The prediction path gets its own references before anything wraps it.
+  timestamp: 2026-07-29
+  impacted_change_ids: `add-stats-regression-predict`
 
 ## Source Links
 - `delivery-plan.md`
