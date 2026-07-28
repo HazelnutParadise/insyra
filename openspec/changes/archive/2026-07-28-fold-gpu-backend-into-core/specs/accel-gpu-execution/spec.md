@@ -1,4 +1,4 @@
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: GPU dependency stays outside the core module
 The system SHALL make GPU execution available to every consumer of the core module without a second install step or a registration import.

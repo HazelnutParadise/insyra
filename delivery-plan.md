@@ -31,7 +31,7 @@ Every regression family in `stats` can score new data, and its predictions match
 Superseded, for the record: the acceleration phase's own next output was undecided, and deliberately so. The exact-nearest operation works and is honestly measured, but the caller it was built for does not clear its own profitability threshold, so committing to a next kernel before the remaining candidates are measured would repeat the mistake. The two worth measuring are brute-force KNN, whose candidate count is the training-set size and therefore always large enough, and the DBSCAN neighbourhood scan. Both need measuring against a parallel host before anything is proposed.
 
 ## Next OpenSpec Change
-`add-stats-regression-predict`. After it: exporting `Link` on the logistic and Poisson results, giving `PCAResult` its means, standard deviations and scores, and deciding whether `stats` gains a fitted KNN type or `insyra/ml` drops KNN from v1. Each is its own change.
+`add-stats-regression-predict`, then `expose-glm-link` and `add-pca-transform-parameters`, all three proposed and none implemented. They are independent of each other and only the first blocks anything: without a prediction path there is nothing for `insyra/ml` to wrap. The KNN question is dropped — v1 carries decision trees, so it no longer needs KNN to be worth installing.
 
 Still open on the acceleration side, and not blocking: measuring brute-force KNN and the DBSCAN neighbourhood scan against a parallel host, and re-measuring the older accel figures that were taken against a single core. `add-accel-gpu-execution` task 1.13 (non-Apple verification) stays open in parallel; it needs a Windows or Linux machine with an NVIDIA or AMD GPU and cannot be done on this host.
 
@@ -298,6 +298,11 @@ Still open on the acceleration side, and not blocking: measuring brute-force KNN
   rationale: `stats/testdata` holds 22 `.R` reference scripts and the cross-language tests shell out to `Rscript` and compare field by field — but not one of the 22 calls `predict()`. The validation covers fitting. The prediction path has never been checked against a reference, including the five `Predict` methods that already ship. Since `insyra/ml` is prediction-shaped, wrapping that path and describing it as R-validated would be exactly the kind of unearned claim this phase has spent its time removing. The prediction path gets its own references before anything wraps it.
   timestamp: 2026-07-29
   impacted_change_ids: `add-stats-regression-predict`
+
+- decision: The role-based precision contract does not require rewriting anything in `stats`. It sorts `stats` into what can be accelerated as it stands and what stays on the CPU as it stands.
+  rationale: The contract binds the inside of a model, not its interface, and the only thing it promises a caller is that reported values are float64 — which `stats` already produces. What it settles is the internals, and it settles them by the row that says a comparison key deciding a selection is resolved at the widest precision available, on the host, always. That is a description of the shortlist pattern. So any `stats` algorithm whose hot step is a selection — cluster assignment, nearest neighbours, a neighbourhood scan — can be accelerated without `stats` changing at all: the device proposes in single precision and `stats`' own float64 code is the host-side decision the contract asks for. Any algorithm whose hot step is a reduction producing values — the normal equations, an eigendecomposition, iteratively reweighted least squares — could only be accelerated by replacing its accumulator with fixed point, which means reimplementing mathematics that is already validated against R. So it is not accelerated; it is reused unchanged and runs on the CPU. Preprocessing is the same: elementwise, memory-bound, reused unchanged. Only the new tree family is written to the contract from the inside, and it is the family the contract was derived from in the first place.
+  timestamp: 2026-07-29
+  impacted_change_ids: future `insyra/ml` work
 
 ## Source Links
 - `delivery-plan.md`

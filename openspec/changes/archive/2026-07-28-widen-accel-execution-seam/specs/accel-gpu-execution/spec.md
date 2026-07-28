@@ -1,4 +1,4 @@
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: Execution seam carries an operation and a result
 The system SHALL expose a backend execution seam that receives the operation and every column it applies to, and returns the computed results, an error, and measured cost data.
