@@ -1,0 +1,11 @@
+## 1. Implementation
+- [x] 1.1 Validate the change with `openspec validate fix-accel-fingerprint-cost --strict`
+- [x] 1.2 Write the tests first: same data fingerprints equal, a single changed value fingerprints differently, `["ab","c"]` and `["a","bc"]` fingerprint differently, `-0.0` and `0.0` fingerprint differently, and re-projecting the same column still leaves one cache entry
+- [x] 1.3 Add `BenchmarkDatasetFingerprint` over a 4 Mi `float64` column and record the before figure
+- [x] 1.4 Replace the `fmt.Sprintf("%v", buffer.Values)` payload with raw-byte encoding through a reused scratch buffer, covering `[]float64`, `[]int64`, `[]bool`, and `[]string`, keeping `[]any` on the existing per-element path
+- [x] 1.5 Length-prefix string values so differently divided strings with the same bytes do not collide
+- [x] 1.6 Switch the hasher to `github.com/cespare/xxhash/v2` and promote it to a direct dependency with `go mod tidy`
+- [x] 1.7 Re-run the benchmark and record the after figure in `design.md`
+- [x] 1.8 Re-run `BenchmarkProjectionOnly` in `accel/backend/wgpu` and update the cost table in `add-accel-gpu-execution/design.md`, which measured projection rather than the device
+- [x] 1.9 Run `go test ./...` and `go test -race ./accel/...`, and confirm the GPU test still passes with `INSYRA_ACCEL_GPU_TESTS=1`
+- [x] 1.10 Update `delivery-plan.md` and remove the resolved entry from `## Follow-ups` in `AGENTS.md`

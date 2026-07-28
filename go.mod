@@ -27,7 +27,6 @@ require (
 	github.com/andybalholm/brotli v1.2.2 // indirect
 	github.com/apache/arrow/go/v15 v15.0.2 // indirect
 	github.com/apache/thrift v0.23.0 // indirect
-	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/chromedp/cdproto v0.0.0-20241208230723-d1c7de7e5dd2 // indirect
 	github.com/chromedp/chromedp v0.11.2 // indirect
 	github.com/chromedp/sysutil v1.1.0 // indirect
@@ -136,6 +135,7 @@ require (
 	github.com/TimLai666/go-decimal v0.1.3
 	github.com/apache/arrow/go/v17 v17.0.0
 	github.com/apoplexi24/gpandas v0.2.0
+	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/ergochat/readline v0.1.3
 	github.com/glebarez/sqlite v1.11.0
 	github.com/go-echarts/go-echarts/v2 v2.7.2
