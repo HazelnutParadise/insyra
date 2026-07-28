@@ -191,6 +191,6 @@ This list is generated from `insyra help` in this repository state.
 - `accel run <var> [--mode auto|cpu|gpu|strict-gpu] [--precision exact|float32]`
   - Reduces the columns of a DataList or DataTable variable on a device and prints the computed value with measured transfer, dispatch, and readback times.
   - `--precision` defaults to `exact`, which refuses to narrow a `float64` column. GPU backends have no `f64`, so a numeric column will report `reason=precision-not-accepted` until you pass `--precision float32` to accept single-precision device math.
-  - Nothing runs on a device unless the caller's program links a backend module (`github.com/HazelnutParadise/insyra/accel/backend/wgpu`). Without one the output is `executed=false reason=no-backend-executor`, which is a truthful CPU fallback, not an error.
+  - The GPU backend is builtin, so nothing extra needs installing. On a host with no usable GPU the output is `executed=false` with a fallback reason, which is a truthful CPU fallback, not an error. `INSYRA_ACCEL_DISABLE_WGPU=1` turns the backend off.
   - Cost figures are only printed when something actually ran on a device.
 - `config accel.mode <auto|cpu|gpu|strict-gpu>`, `show accel.devices`, `show accel.cache`.

@@ -1,10 +1,9 @@
-package wgpu
+package accel
 
 import (
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
-	"github.com/HazelnutParadise/insyra/accel"
 )
 
 // BenchmarkColumnSum measures what a column reduction actually costs end to end
@@ -22,7 +21,7 @@ func BenchmarkColumnSum(b *testing.B) {
 			if !gpuTestsEnabled(b) {
 				return
 			}
-			session, err := accel.Open(accel.Config{})
+			session, err := Open(Config{})
 			if err != nil {
 				b.Fatalf("open accel session: %v", err)
 			}
@@ -31,7 +30,7 @@ func BenchmarkColumnSum(b *testing.B) {
 			var transfer, dispatch, readback int64
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				result, err := session.ExecuteDataList(dl, accel.WorkloadEstimate{Precision: accel.PrecisionFloat32})
+				result, err := session.ExecuteDataList(dl, WorkloadEstimate{Precision: PrecisionFloat32})
 				if err != nil {
 					b.Fatalf("execute failed: %v", err)
 				}
@@ -67,8 +66,15 @@ func BenchmarkColumnSum(b *testing.B) {
 
 func gpuTestsEnabled(b *testing.B) bool {
 	b.Helper()
-	if _, err := acquire(); err != nil {
-		b.Skipf("no usable GPU on this host: %v", err)
+	session, err := Open(Config{})
+	if err != nil {
+		b.Skipf("cannot open an accel session: %v", err)
+		return false
+	}
+	devices := len(session.Devices())
+	_ = session.Close()
+	if devices == 0 {
+		b.Skip("no GPU discovered on this host")
 		return false
 	}
 	return true
@@ -104,7 +110,7 @@ func BenchmarkProjectionOnly(b *testing.B) {
 		values[i] = float64(i%1000) * 0.5
 	}
 	dl := insyra.NewDataList(values...).SetName("numbers")
-	session, err := accel.Open(accel.Config{})
+	session, err := Open(Config{})
 	if err != nil {
 		b.Fatalf("open: %v", err)
 	}

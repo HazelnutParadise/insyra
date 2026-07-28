@@ -362,7 +362,7 @@ err := parquet.ApplyCCL(ctx, "data.parquet", "NEW('total') = A + B + C")
 | **[isr](/Docs/isr.md)** | Insyra 的語法糖，新專案建議的入口。 |
 | **[stats](/Docs/stats.md)** | 資料分析統計函數：偏度、峰度、矩計算等。 |
 | **[parallel](/Docs/parallel.md)** | 資料操作與分析的平行處理，自動等待所有 goroutine 完成。 |
-| **[accel](/Docs/accel.md)** | 選用的 GPU 加速：裝置探測、型別化欄位投影，並可透過獨立的 `accel/backend/wgpu` 模組在 GPU 上真正執行欄位歸約。 |
+| **[accel](/Docs/accel.md)** | 選用的 GPU 加速：裝置探測、型別化欄位投影，以及在 GPU 上真正執行欄位歸約。純 Go、免 CGO，不需要額外安裝。 |
 | **[plot](/Docs/plot.md)** | 封裝 [go-echarts](https://github.com/go-echarts/go-echarts) 的資料視覺化。 |
 | **[gplot](/Docs/gplot.md)** | 基於 [gonum/plot](https://github.com/gonum/plot) 的靜態圖，快速、免 Chrome、支援函數繪圖。 |
 | **[csvxl](/Docs/csvxl.md)** | 處理 Excel 與 CSV 檔案（例如 CSV 轉 Excel）。 |

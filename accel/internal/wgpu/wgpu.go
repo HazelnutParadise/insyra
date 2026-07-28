@@ -1,16 +1,9 @@
-// Package wgpu runs Insyra accel workloads on a real GPU through the pure-Go
-// WebGPU implementation in github.com/gogpu/wgpu.
+// Package wgpu runs numeric kernels on a GPU through the pure-Go WebGPU
+// implementation in github.com/gogpu/wgpu.
 //
-// Import it for its side effect to make GPU execution available:
-//
-//	import _ "github.com/HazelnutParadise/insyra/accel/backend/wgpu"
-//
-// One WGSL source reaches Metal on macOS, Vulkan on Linux and Windows, and
-// DirectX 12 on Windows, and it builds with CGO_ENABLED=0.
-//
-// WGSL has no f64 and Apple GPUs have no double-precision hardware, so the
-// runtime narrows columns to float32 and only does so when the caller has
-// explicitly accepted single precision. See accel.Precision.
+// It is deliberately ignorant of the accel runtime: it speaks in its own small
+// vocabulary so that accel can import it without a cycle. The adapter that maps
+// this onto accel's Device and ExecuteRequest lives in accel/backend_wgpu.go.
 package wgpu
 
 import (
@@ -24,21 +17,108 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/HazelnutParadise/insyra/accel"
 	"github.com/gogpu/gputypes"
 	gowgpu "github.com/gogpu/wgpu"
 
 	_ "github.com/gogpu/wgpu/hal/allbackends"
 )
 
-func init() {
-	// gogpu reports Metal on Apple and Vulkan or DX12 elsewhere. Register one
-	// probe per accel backend kind so a device is only ever offered under the
-	// backend it actually belongs to, and never enumerated twice.
-	accel.RegisterSDKProbe(probe{backend: accel.BackendMetal})
-	accel.RegisterSDKProbe(probe{backend: accel.BackendWebGPU})
-	_ = accel.RegisterBackendExecutor(accel.BackendMetal, executor{})
-	_ = accel.RegisterBackendExecutor(accel.BackendWebGPU, executor{})
+// Info describes the adapter this package found.
+type Info struct {
+	Name           string
+	Vendor         string
+	Driver         string
+	IsMetal        bool
+	UnifiedMemory  bool
+	MaxBufferBytes uint64
+}
+
+// Cost is what one execution actually took. The durations are host-observed:
+// Metal and GLES do not implement GPU timestamp queries, so device-side timing
+// is not available on every backend.
+type Cost struct {
+	Transfer      time.Duration
+	Dispatch      time.Duration
+	Readback      time.Duration
+	BytesUploaded uint64
+}
+
+// The three failure modes worth telling apart, plus "there is no usable GPU".
+var (
+	ErrUnavailable     = errors.New("wgpu: no usable GPU on this host")
+	ErrShaderCompile   = errors.New("wgpu: shader compilation failed")
+	ErrBufferTooLarge  = errors.New("wgpu: column exceeds device buffer limit")
+	ErrReadbackTimeout = errors.New("wgpu: device readback timed out")
+)
+
+// Probe reports the adapter, or ErrUnavailable when there is no GPU worth using.
+func Probe() (Info, error) {
+	h, err := acquire()
+	if err != nil {
+		return Info{}, ErrUnavailable
+	}
+	return h.info0(), nil
+}
+
+func (h *handle) info0() Info {
+	return Info{
+		Name:           h.info.Name,
+		Vendor:         strings.ToLower(h.info.Vendor),
+		Driver:         h.info.Driver,
+		IsMetal:        h.info.Backend == gputypes.BackendMetal,
+		UnifiedMemory:  unifiedMemory(h.info),
+		MaxBufferBytes: h.limits.MaxStorageBufferBindingSize,
+	}
+}
+
+// Sum reduces the values on the device and returns the total. Nulls are
+// expected to have been replaced by the additive identity by the caller.
+func Sum(ctx context.Context, values []float32) (float64, Cost, error) {
+	h, err := acquire()
+	if err != nil {
+		return 0, Cost{}, err
+	}
+	pipeline, bgLayout, err := h.computePipeline()
+	if err != nil {
+		return 0, Cost{}, err
+	}
+	chunkSize := h.maxElementsPerChunk()
+	if chunkSize <= 0 {
+		return 0, Cost{}, fmt.Errorf("%w: device reports no bindable storage", ErrBufferTooLarge)
+	}
+
+	var total float64
+	var cost Cost
+	for start := 0; start < len(values); start += chunkSize {
+		end := start + chunkSize
+		if end > len(values) {
+			end = len(values)
+		}
+		partial, chunk, err := h.sumChunk(ctx, pipeline, bgLayout, values[start:end])
+		if err != nil {
+			return 0, Cost{}, err
+		}
+		total += partial
+		cost.Transfer += chunk.transfer
+		cost.Dispatch += chunk.dispatch
+		cost.Readback += chunk.readback
+		cost.BytesUploaded += chunk.uploaded
+	}
+	return total, cost, nil
+}
+
+// unifiedMemory decides unified versus discrete memory from the vendor and the
+// backend rather than from AdapterInfo.DeviceType, which reports an Apple M3 as
+// DiscreteGPU even though Apple Silicon has unified memory.
+func unifiedMemory(info gputypes.AdapterInfo) bool {
+	vendor := strings.ToLower(info.Vendor)
+	if info.Backend == gputypes.BackendMetal || strings.Contains(vendor, "apple") {
+		return true
+	}
+	if strings.Contains(vendor, "intel") {
+		return true
+	}
+	return info.DeviceType == gputypes.DeviceTypeIntegratedGPU
 }
 
 const (
@@ -177,7 +257,7 @@ func (h *handle) computePipeline() (*gowgpu.ComputePipeline, *gowgpu.BindGroupLa
 			Label: "accel-sum", WGSL: sumWGSL,
 		})
 		if err != nil {
-			h.pipelineErr = fmt.Errorf("%w: %v", accel.ErrShaderCompile, err)
+			h.pipelineErr = fmt.Errorf("%w: %v", ErrShaderCompile, err)
 			return
 		}
 		h.shader = shader
@@ -209,7 +289,7 @@ func (h *handle) computePipeline() (*gowgpu.ComputePipeline, *gowgpu.BindGroupLa
 			Label: "accel-sum-pipeline", Layout: plLayout, Module: shader, EntryPoint: "main",
 		})
 		if err != nil {
-			h.pipelineErr = fmt.Errorf("%w: %v", accel.ErrShaderCompile, err)
+			h.pipelineErr = fmt.Errorf("%w: %v", ErrShaderCompile, err)
 			return
 		}
 		h.pipeline = pipeline
@@ -227,135 +307,6 @@ func (h *handle) maxElementsPerChunk() int {
 	// Keep chunks aligned to whole workgroups so the last group is never partial
 	// for reasons other than the column ending.
 	return (byLimit / elemsPerGroup) * elemsPerGroup
-}
-
-// -----------------------------------------------------------------------------
-// Discovery
-// -----------------------------------------------------------------------------
-
-type probe struct {
-	backend accel.Backend
-}
-
-func (p probe) Name() string { return "gogpu-wgpu-" + string(p.backend) }
-
-func (p probe) Backend() accel.Backend { return p.backend }
-
-func (p probe) Probe(_ accel.Config) ([]accel.Device, error) {
-	h, err := acquire()
-	if err != nil {
-		// A missing driver, a headless host, or a software-only adapter all mean
-		// the same thing to discovery: this backend has nothing to offer.
-		return nil, accel.ErrSDKProbeUnavailable
-	}
-	device := h.device0()
-	if device.Backend != p.backend {
-		return nil, accel.ErrSDKProbeUnavailable
-	}
-	return []accel.Device{device}, nil
-}
-
-func (h *handle) device0() accel.Device {
-	backend := backendFor(h.info)
-	shared := sharedMemory(h.info)
-	memoryClass := accel.MemoryClassDevice
-	deviceType := accel.DeviceTypeDiscrete
-	if shared {
-		memoryClass = accel.MemoryClassShared
-		deviceType = accel.DeviceTypeIntegrated
-	}
-	return accel.Device{
-		ID:            fmt.Sprintf("%s:wgpu:0", backend),
-		Name:          h.info.Name,
-		Vendor:        strings.ToLower(h.info.Vendor),
-		Backend:       backend,
-		ProbeSource:   accel.ProbeSourceSDK,
-		Type:          deviceType,
-		MemoryClass:   memoryClass,
-		SharedMemory:  shared,
-		BudgetBytes:   h.limits.MaxStorageBufferBindingSize,
-		DriverVersion: h.info.Driver,
-		CapabilitySummary: map[string]bool{
-			"compute_shaders": true,
-			"float32":         true,
-			"float64":         false,
-			"shared_memory":   shared,
-		},
-		Score: scoreFor(shared),
-	}
-}
-
-func backendFor(info gputypes.AdapterInfo) accel.Backend {
-	if info.Backend == gputypes.BackendMetal {
-		return accel.BackendMetal
-	}
-	return accel.BackendWebGPU
-}
-
-// sharedMemory decides unified versus discrete memory from the vendor and the
-// backend rather than from AdapterInfo.DeviceType, which reports an Apple M3 as
-// DiscreteGPU even though Apple Silicon has unified memory.
-func sharedMemory(info gputypes.AdapterInfo) bool {
-	vendor := strings.ToLower(info.Vendor)
-	if info.Backend == gputypes.BackendMetal || strings.Contains(vendor, "apple") {
-		return true
-	}
-	if strings.Contains(vendor, "intel") {
-		return true
-	}
-	return info.DeviceType == gputypes.DeviceTypeIntegratedGPU
-}
-
-func scoreFor(shared bool) float64 {
-	if shared {
-		return 70
-	}
-	return 90
-}
-
-// -----------------------------------------------------------------------------
-// Execution
-// -----------------------------------------------------------------------------
-
-type executor struct{}
-
-func (executor) Name() string { return "gogpu-wgpu" }
-
-func (executor) Execute(ctx context.Context, req accel.ExecuteRequest) (accel.ExecuteResponse, error) {
-	if req.Op != accel.OpSum {
-		return accel.ExecuteResponse{}, fmt.Errorf("wgpu: unsupported operation %q", req.Op)
-	}
-	h, err := acquire()
-	if err != nil {
-		return accel.ExecuteResponse{}, err
-	}
-	pipeline, bgLayout, err := h.computePipeline()
-	if err != nil {
-		return accel.ExecuteResponse{}, err
-	}
-
-	chunkSize := h.maxElementsPerChunk()
-	if chunkSize <= 0 {
-		return accel.ExecuteResponse{}, fmt.Errorf("%w: device reports no bindable storage", accel.ErrBufferTooLarge)
-	}
-
-	var response accel.ExecuteResponse
-	for start := 0; start < len(req.Values); start += chunkSize {
-		end := start + chunkSize
-		if end > len(req.Values) {
-			end = len(req.Values)
-		}
-		partial, chunkCost, err := h.sumChunk(ctx, pipeline, bgLayout, req.Values[start:end])
-		if err != nil {
-			return accel.ExecuteResponse{}, err
-		}
-		response.Value += partial
-		response.Transfer += chunkCost.transfer
-		response.Dispatch += chunkCost.dispatch
-		response.Readback += chunkCost.readback
-		response.BytesUploaded += chunkCost.uploaded
-	}
-	return response, nil
 }
 
 type chunkCost struct {
@@ -381,7 +332,7 @@ func (h *handle) sumChunk(
 		Usage: gowgpu.BufferUsageStorage | gowgpu.BufferUsageCopyDst,
 	})
 	if err != nil {
-		return 0, cost, fmt.Errorf("%w: %v", accel.ErrBufferTooLarge, err)
+		return 0, cost, fmt.Errorf("%w: %v", ErrBufferTooLarge, err)
 	}
 	defer inputBuf.Release()
 
@@ -470,7 +421,7 @@ func (h *handle) sumChunk(
 	defer cancel()
 	if err := stagingBuf.Map(mapCtx, gowgpu.MapModeRead, 0, partialBytes); err != nil {
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(mapCtx.Err(), context.DeadlineExceeded) {
-			return 0, cost, fmt.Errorf("%w: %v", accel.ErrReadbackTimeout, err)
+			return 0, cost, fmt.Errorf("%w: %v", ErrReadbackTimeout, err)
 		}
 		return 0, cost, fmt.Errorf("wgpu: map staging buffer: %w", err)
 	}

@@ -2,7 +2,7 @@
 
 The `accel` package defines the opt-in acceleration runtime surface for Insyra.
 
-The runtime now executes on real hardware. With the optional `accel/backend/wgpu` module imported, a numeric column is uploaded to a GPU, reduced by a compute shader, and read back, and the returned value matches the CPU path. Without that module the package is discovery, typed projection, cache accounting, and planning, and every workload falls back to the CPU with an observable reason.
+The runtime executes on real hardware. A numeric column is uploaded to a GPU, reduced by a compute shader, and read back, and the returned value matches the CPU path. Nothing extra to install and nothing to import — the GPU backend registers itself when `accel` is initialised. On a host with no usable GPU, every workload falls back to the CPU with an observable reason.
 
 ## Current Scope
 
@@ -34,17 +34,11 @@ The runtime now executes on real hardware. With the optional `accel/backend/wgpu
 
 ## GPU Execution
 
-GPU execution lives in a separate module so the core `insyra` module gains no GPU dependency. Install it and import it for its side effect:
+Importing `accel` is all it takes. The backend is built on [gogpu/wgpu](https://github.com/gogpu/wgpu), a pure-Go WebGPU implementation, so it builds with `CGO_ENABLED=0`. One WGSL kernel reaches Metal on macOS, Vulkan on Linux and Windows, and DirectX 12 on Windows.
 
-```bash
-go get github.com/HazelnutParadise/insyra/accel/backend/wgpu
-```
+Programs that never import `accel` do not compile any of it — verified with a consumer that imports only the root package: zero GPU packages in its build. The gogpu modules do appear in `go list -m all` for every consumer, which is the cost of not needing a second install.
 
-```go
-import _ "github.com/HazelnutParadise/insyra/accel/backend/wgpu"
-```
-
-It is built on [gogpu/wgpu](https://github.com/gogpu/wgpu), a pure-Go WebGPU implementation, so it builds with `CGO_ENABLED=0`. One WGSL kernel reaches Metal on macOS, Vulkan on Linux and Windows, and DirectX 12 on Windows.
+Set `INSYRA_ACCEL_DISABLE_WGPU=1` to turn the builtin backend off without changing code.
 
 ### Precision is opt-in
 
@@ -110,8 +104,8 @@ func main() {
 
     dl := insyra.NewDataList(1.5, 2.5, nil, 4.5).SetName("numbers")
 
-    // Reduce the column. With accel/backend/wgpu linked in this runs on a GPU;
-    // without it the result falls back to the CPU and says why.
+    // Reduce the column. Runs on a GPU when the host has one, and falls back
+    // to the CPU with an observable reason when it does not.
     result, err := session.ExecuteDataList(dl, accel.WorkloadEstimate{
         Precision: accel.PrecisionFloat32,
     })
