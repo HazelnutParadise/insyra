@@ -122,7 +122,7 @@ go get github.com/HazelnutParadise/insyra/plot
 # ... and so on
 ```
 
-`accel` remains opt-in and is intentionally not included in `allpkgs` at this stage.
+`accel` is included in `allpkgs`, so the standard install brings GPU acceleration with it.
 
 ### Choosing the Right Tool
 

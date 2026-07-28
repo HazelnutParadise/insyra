@@ -16,3 +16,8 @@ The system SHALL make GPU execution available to every consumer of the core modu
 #### Scenario: A third party supplies its own backend
 - **WHEN** a third party registers an execution backend for a backend kind
 - **THEN** the runtime routes eligible workloads for that kind to the registered backend
+
+#### Scenario: A consumer installs through allpkgs
+- **WHEN** a consumer installs Insyra through the `allpkgs` convenience package
+- **THEN** the GPU backend is registered without any further import
+- **AND** no device is probed until an accel session opens

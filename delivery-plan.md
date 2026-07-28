@@ -29,7 +29,7 @@ None. `add-accel-gpu-execution` cannot be archived until its numeric test passes
 `add-accel-gpu-execution` task 1.13: the GPU numeric test passes on a non-Apple host. Everything else in the accel path is now measured and green on macOS, and the host-cost work has reached the point of diminishing returns — no single dominant term is left. Cross-platform verification is the one claim still unbacked.
 
 ## Next OpenSpec Change
-`add-accel-gpu-execution`, task 1.13 only. It needs a Windows or Linux machine with an NVIDIA or AMD GPU; it cannot be done on this host.
+Propose the `accel.Session` concurrency-safety change (the unguarded-state follow-up in `AGENTS.md`). It gates every step of the end-state roadmap below, and needs no external hardware. `add-accel-gpu-execution` task 1.13 (non-Apple verification) stays open in parallel; it needs a Windows or Linux machine with an NVIDIA or AMD GPU and cannot be done on this host.
 
 ## Decision Log
 - decision: Keep acceleration in optional `insyra/accel` packages rather than core `insyra`.
@@ -158,6 +158,19 @@ None. `add-accel-gpu-execution` cannot be archived until its numeric test passes
   rationale: More discovery does not move the runtime closer to computing anything, and `gogpu`'s adapter enumeration already covers the same hardware for the backends it supports. Opening three backend tracks before one of them can run a kernel is cost without evidence. CUDA is reconsidered only when a measurement shows the WebGPU path is the limit.
   timestamp: 2026-07-28
   impacted_change_ids: `add-accel-backend-discovery`, `add-accel-gpu-execution`
+
+- decision: Adopt as the accel end state: acceleration enabled by default, routed by a measurement-calibrated dispatcher that sends each workload to CPU, GPU, or a weighted split of both — never by moving work to the device unconditionally.
+  rationale: Direction set by the project owner on 2026-07-28, and the measurements support it: the CPU/GPU boundary sits near 1–2.5 flop/byte, single-pass reductions never pay, and residency multiplies the win. Staged path: (A) make `Session` safe for concurrent use, add a process-shared default session, widen the execution seam to multiple columns; (B) ship kernels where measurement says the device wins — pairwise/distance for stats clustering and correlation, CCL expression chains, IRLS-style resident loops; (C) replace `shouldFallbackForProfitability` with a cost model calibrated from the execution ledger's measured transfer/dispatch/readback, and extend the weighted shard planner so the CPU participates as a compute resource; (D) flip the default per operation, gated on the parity requirement below.
+  timestamp: 2026-07-28
+  impacted_change_ids: `add-accel-gpu-execution`, `fold-gpu-backend-into-core`, future kernel and dispatcher changes
+- decision: Default-on GPU execution requires bit-level parity with the CPU result.
+  rationale: Chosen by the project owner over a documented-tolerance regime, after the pairwise measurement spike showed 0.2 relative error from naive f32 accumulation. Because float addition is not associative, parity is only well-defined against a deterministic reference reduction that both sides implement — a parallel sum cannot reproduce the CPU's sequential rounding order. Consequences: each GPU operation ships with a deterministic reference algorithm (double-float accumulation or correctly-rounded reduction), the CPU verification path computes the same reference, and an operation that cannot reach bit parity stays on the CPU rather than shipping as default. The existing `PrecisionFloat32` opt-in remains available for callers who explicitly accept narrowed results.
+  timestamp: 2026-07-28
+  impacted_change_ids: future kernel changes, `add-accel-gpu-execution`
+- decision: The end state gives every user acceleration with zero code change, including programs that import only the root package. `allpkgs` includes `accel` now; root-level availability comes last, via dependency inversion.
+  rationale: Set by the project owner, overriding the earlier recommendation to stop at subpackages, and the owner's case is stronger than the recommendation was: CCL lives in the root package (`AddColUsingCCL`, `ExecuteCCL`), and expression chains measured 11x on the device — so root-level default-on is not paying for unprofitable Sum/Mean acceleration, it is what puts the most-used profitable surface on the GPU. The dispatcher keeps memory-bound root operations on the CPU automatically. Reaching it requires inverting a dependency: accel's runtime core must stop importing the root package (its `Dataset`/`Buffer` layer already does not), with the DataList/DataTable-facing helpers moving so the root can import the dispatcher without a cycle. Accepted cost: every insyra consumer compiles the gogpu stack once that inversion lands. Staging: `allpkgs` includes `accel` immediately (registration is lazy, so the only cost is compile time); subpackage wiring next; root inversion last, after the dispatcher and parity gates exist.
+  timestamp: 2026-07-28
+  impacted_change_ids: `fold-gpu-backend-into-core`, future kernel and dispatcher changes
 
 ## Source Links
 - `delivery-plan.md`

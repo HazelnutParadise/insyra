@@ -77,7 +77,7 @@ A single column sum is memory-bound, so moving the data costs far more than the 
 
 ## Installation
 
-`accel` is optional and is not part of `allpkgs` at this stage.
+`accel` is part of `allpkgs`, so the standard install includes it. Installing only the root module works too — `accel` is a package inside it.
 
 ```bash
 go get github.com/HazelnutParadise/insyra/accel

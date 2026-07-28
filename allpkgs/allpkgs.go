@@ -5,6 +5,7 @@ package allpkgs
 
 import (
 	_ "github.com/HazelnutParadise/insyra"
+	_ "github.com/HazelnutParadise/insyra/accel"
 	_ "github.com/HazelnutParadise/insyra/csvxl"
 	_ "github.com/HazelnutParadise/insyra/datafetch"
 	_ "github.com/HazelnutParadise/insyra/finance"

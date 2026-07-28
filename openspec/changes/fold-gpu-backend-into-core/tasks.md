@@ -8,3 +8,4 @@
 - [x] 1.7 Update `Docs/accel.md`, README and README_TW, CHANGELOG and CHANGELOG_TW, and the CLI skill reference to drop the second install and the blank import
 - [x] 1.8 Run `go test ./...`, `go test -race ./accel/...`, and the GPU test with `INSYRA_ACCEL_GPU_TESTS=1`
 - [x] 1.9 Reverse the logged decision in `delivery-plan.md`, recording what measurement changed it
+- [x] 1.10 Add `accel` to `allpkgs`, so the standard install registers the GPU backend automatically, and update every doc that said it was deliberately excluded

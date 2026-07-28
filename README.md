@@ -150,7 +150,7 @@ CSV setup -> DataTable loading -> CCL enrichment -> sorting -> KPI aggregation -
   go get github.com/HazelnutParadise/insyra/accel
   ```
 
-  `accel` is intentionally opt-in and is not included in `allpkgs` at this stage.
+  `accel` is also included in `allpkgs`, so the standard install already covers it.
 
 - Update **Insyra** to the latest version:
 
