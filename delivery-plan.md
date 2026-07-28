@@ -205,6 +205,15 @@ Not yet proposed — stage B begins with a kernel choice. `add-accel-gpu-executi
   timestamp: 2026-07-28
   impacted_change_ids: future `insyra/ml` and `insyra/dl` work
 
+- decision: Decide what the root package may accelerate by the shape of the result, not by how hot the operation is. Three tiers: a result that is a selection may be accelerated by default, a column the device holds exactly may be accelerated by default, and a result that is a new float64 value may only be accelerated when the caller opts into reduced precision.
+  rationale: The bit-parity gate is what makes acceleration safe to turn on without asking, and only some result shapes can clear it. When the answer is a selection — which row, which index, what order — the device's f32 answer is a proposal, and the CPU settles the few boundary cases in float64, so the final answer is exact. When the column is a native float32, an integer inside int32 range, or a boolean, the device is exact outright and needs no verification. When the answer is a new float64 value, there is nothing cheaper than the computation to verify it against, and WebGPU has no f64 to compute it with, so parity cannot be recovered at any price. This puts CCL on both sides of the line: its predicates are selections and qualify, while its value-producing expressions do not, despite being the 11x and 146x measurements. That is a real cost of choosing bit parity, and it was chosen knowingly.
+  timestamp: 2026-07-28
+  impacted_change_ids: future root-package and `insyra/ml` work
+- decision: Keep the root package reaching acceleration through a registration seam for now, and switch it to importing the device layer directly once a root-package operation is measured to win on a device.
+  rationale: The dependency runs the wrong way today — `accel` imports the root package, so the root package cannot import `accel`. Two routes fix that: a seam the root declares and `accel` fills from `init`, or moving the device layer to a package with no insyra dependency so the root can import it outright. The second is what the end goal needs, since only a direct import reaches a program that imports nothing else, and it is affordable: measured on this host, linking the device layer costs a hello-world 1.9 s of cold build time, 200 KB of binary, and 41 extra packages. `accel/internal/wgpu` already depends on zero insyra packages, so the move is mechanical. What is missing is a reason: the tier rules above admit very few root-package operations, because root operations are mostly memory-bound and the device loses those. The wins measured so far — 7.6x on cluster assignment, 13.6x on nearest query — are all in `stats` and `ml` territory. So the seam goes in now at no cost to anyone, and the direct import waits for the first root operation that earns it. The measurement above means that switch is a scheduling call, not an architectural one.
+  timestamp: 2026-07-28
+  impacted_change_ids: future root-package work
+
 ## Source Links
 - `delivery-plan.md`
 - `AGENTS.md`

@@ -78,6 +78,30 @@ Every accel handoff must include:
 - whether `delivery-plan.md` changed
 - whether `AGENTS.md` changed
 
+### How the CPU and the GPU Divide the Work
+
+Acceleration is meant to be on by default and to change no numbers. Those two goals only hold together under one arrangement: **the GPU proposes, the CPU decides.** The device does the bulk arithmetic in `f32` and narrows the answer down; the CPU settles what is left in `float64`. Never send a `float64` result to the device and hand back what comes off it.
+
+Whether an operation may be accelerated by default is decided by the **shape of its result**, not by how hot it is:
+
+| Result shape | Default | Why |
+| --- | --- | --- |
+| A selection — which row, which index, what order | on | The device's `f32` ranking is a proposal. The CPU recomputes the shortlist in `float64` and picks, so the answer is exact. |
+| Values in a type the device holds exactly — native `float32`, integers inside `int32` range, `bool` | on | Bit-identical outright; no verification needed. |
+| New `float64` values — elementwise math, CCL value expressions | opt-in only | Nothing verifies them more cheaply than recomputing them, and WebGPU has no `f64`. Requires an explicit `PrecisionFloat32`. |
+
+Implementing a selection-shaped operation:
+
+1. The device returns the best *k* candidates per row, not the winner, plus enough information to tell when the boundary between candidate *k* and candidate *k+1* falls inside the `f32` error bound.
+2. The CPU recomputes those *k* candidates in `float64` and decides.
+3. Rows whose boundary is untrustworthy are recomputed against every candidate. Measured on cluster assignment this was 12 rows in 200,000, so the exact path costs almost nothing.
+4. The result is asserted equal to the pure-`float64` reference, not merely close to it.
+
+Two rules follow and are not negotiable:
+
+- **A missing or broken device is a performance event, never a correctness one.** The verification half is a complete implementation, so no device means every row takes the full CPU path — the code that already runs for the untrustworthy rows. Every operation returns its answer whether or not a device ran; `Accelerated` and `FallbackReason` report where the work happened, not whether it worked. The exceptions are a request the caller's own terms made ineligible, and strict GPU mode, which exists to fail.
+- **Do not write a kernel for an operation measurement says the device loses.** Memory-bound work — column sums, means, simple scans — stays on the CPU permanently. Measure before proposing a kernel, and record the number in `delivery-plan.md`.
+
 ### Implementation Constraints
 - Do not silently reinterpret existing `DataList.Map(func...)` or `DataTable.Map(func...)` as GPU kernels.
 - Keep accel runtime opt-in and package-scoped until the relevant OpenSpec changes are implemented and approved.
