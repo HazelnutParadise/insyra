@@ -26,10 +26,10 @@ Run one operation end to end on a real device and return a number that matches t
 None. `add-accel-gpu-execution` cannot be archived until its numeric test passes on a non-Apple host (task 1.13); that is a coverage gap, not a blocker on further work.
 
 ## Next Verifiable Output
-`stats.KMeans` returns assignments identical to today's and reaches them faster on a dataset with enough clusters to clear the profitability floor. `accel.ExecuteNearestExact` now supplies the nearest and second nearest per row as exact float64 values, which is what the Hartigan-Wong initial assignment needs, so what remains is the wiring and a decision about which of `stats` or a new `insyra/ml` owns it.
+Undecided, and deliberately so. The exact-nearest operation works and is honestly measured, but the caller it was built for does not clear its own profitability threshold, so committing to a next kernel before the remaining candidates are measured would repeat the mistake. The two worth measuring are brute-force KNN, whose candidate count is the training-set size and therefore always large enough, and the DBSCAN neighbourhood scan. Both need measuring against a parallel host before anything is proposed.
 
 ## Next OpenSpec Change
-Not yet proposed — wiring `ExecuteNearestExact` into cluster assignment, once the owning package is settled. `add-accel-gpu-execution` task 1.13 (non-Apple verification) stays open in parallel; it needs a Windows or Linux machine with an NVIDIA or AMD GPU and cannot be done on this host.
+Not yet proposed. Two things gate it: measuring brute-force KNN and the DBSCAN neighbourhood scan against a parallel host, and re-measuring the older accel figures that were taken against a single core. `add-accel-gpu-execution` task 1.13 (non-Apple verification) stays open in parallel; it needs a Windows or Linux machine with an NVIDIA or AMD GPU and cannot be done on this host.
 
 ## Decision Log
 - decision: Keep acceleration in optional `insyra/accel` packages rather than core `insyra`.
@@ -214,6 +214,19 @@ Not yet proposed — wiring `ExecuteNearestExact` into cluster assignment, once 
   rationale: The dependency runs the wrong way today — `accel` imports the root package, so the root package cannot import `accel`. Two routes fix that: a seam the root declares and `accel` fills from `init`, or moving the device layer to a package with no insyra dependency so the root can import it outright. The second is what the end goal needs, since only a direct import reaches a program that imports nothing else, and it is affordable: measured on this host, linking the device layer costs a hello-world 1.9 s of cold build time, 200 KB of binary, and 41 extra packages. `accel/internal/wgpu` already depends on zero insyra packages, so the move is mechanical. What is missing is a reason: the tier rules above admit very few root-package operations, because root operations are mostly memory-bound and the device loses those. The wins measured so far — 7.6x on cluster assignment, 13.6x on nearest query — are all in `stats` and `ml` territory. So the seam goes in now at no cost to anyone, and the direct import waits for the first root operation that earns it. The measurement above means that switch is a scheduling call, not an architectural one.
   timestamp: 2026-07-28
   impacted_change_ids: future root-package work
+
+- decision: Measure every acceleration claim against a host using all its cores, and treat every figure recorded before 2026-07-29 as overstated until re-measured.
+  rationale: Every speedup this project has recorded compared a GPU against one CPU core on an eight-core machine. `accel` contains no parallelism at all — the single `go func` in the package is a discovery timeout — while the rest of the library parallelises its hot loops as a matter of course: `stats/internal/clustering/cluster.go` splits five of them, including the very KMeans assignment step this work was aiming at, and `stats/internal/knn` fans out across goroutines. So the comparison was never against the alternative a user actually has. Re-measured honestly on 96 shapes, exact nearest wins in 42 of them and never by more than 3.63x, against figures of 3.2x and 7.1x recorded the day before. The 13.6x recorded for `ExecuteNearestQuery`, and the 11x, 62x and 146x from the arithmetic-intensity sweep, were obtained the same way and are unreliable by up to the core count.
+  timestamp: 2026-07-29
+  impacted_change_ids: all prior accel measurements
+- decision: Decide whether to use a device from the arithmetic one row carries — dimensions times query points — rather than from the query count.
+  rationale: The two trade off directly, and a rule reading only one of them is wrong in both directions. Measured on an Apple M3 against a host using all eight cores: four dimensions need 512 query points before the device is worth it, sixteen need 64 to 128, sixty-four need 32. Those cluster near 2048 distance evaluations per row, and no other threshold misclassifies fewer of the 96 shapes — 2048 gets 88 right, against 84 at 4096 and 78 at 8192. The earlier floor of 32 query points was both dimension-blind and calibrated against a single core.
+  timestamp: 2026-07-29
+  impacted_change_ids: `speed-up-accel-exact-host-path`
+- decision: Do not wire exact nearest into `stats.KMeans`.
+  rationale: Three findings, each sufficient on its own. The cluster count is the query count, and `stats` callers use single digits to low tens, far below the 2048 evaluations per row where a device starts winning. Only the initial assignment is a bulk nearest computation; the main loop is Hartigan-Wong optimal-transfer and quick-transfer, which recompute distances incrementally per candidate transfer and have no shortlist to narrow. And that initial assignment is already parallel across cores, with its own measured threshold, at `stats/internal/clustering/cluster.go:198`. Candidates that do fit the shape, in order of promise: brute-force KNN at `stats/internal/knn/knn.go:275`, where the candidate count is the training-set size and so always clears the threshold; and the DBSCAN neighbourhood scan at `stats/internal/clustering/kdrange.go:66`, which compares every point against every other and whose result is a selection, though it needs a range kernel rather than a shortlist one.
+  timestamp: 2026-07-29
+  impacted_change_ids: future `insyra/ml` work
 
 ## Source Links
 - `delivery-plan.md`

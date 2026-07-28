@@ -4,7 +4,10 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"runtime"
 	"sort"
+	"sync"
+	"sync/atomic"
 
 	"github.com/HazelnutParadise/insyra/accel/internal/wgpu"
 )
@@ -30,20 +33,25 @@ type ExactNearestResult struct {
 // float32Eps is the spacing between consecutive float32 values near 1.
 const float32Eps = 1.1920928955078125e-07
 
-// minQueriesForDevice is the point below which narrowing on a device is not
-// worth the round trip.
+// minWorkPerRowForDevice is how much arithmetic a single row must carry before
+// narrowing on a device beats doing the whole thing on the host's cores.
 //
-// The device leg costs about the same whatever the query count, because it is
-// dominated by moving the columns across and the shortlist back, while the host
-// alternative grows with the query count. Measured on an Apple M3 over 200,000
-// rows by 16 dimensions, the device leg stayed near 40 ms from 16 query points
-// to 256 while the host went from 41.6 ms to 400.1 ms — a wash at 16, 3.0x at
-// 64, 7.3x at 256. The floor sits above the crossover rather than on it, since
-// being slightly slower than the host is worse than not using the device.
+// It reads dimensions times query points — the distance evaluations one row
+// needs — rather than the query count alone, because the two trade off directly.
+// Measured on an Apple M3 against a host using all eight cores, over 96 shapes:
+// four dimensions need 512 query points before the device is worth it, sixteen
+// need 64 to 128, sixty-four need 32. Those cluster around two thousand
+// evaluations per row, and no other threshold misclassifies fewer of the 96 —
+// this one gets 88 of them right, against 84 at 4096 and 78 at 8192.
 //
-// This is one host's number. It belongs in a calibrated dispatcher eventually;
-// until then it is a constant with a measurement attached rather than a guess.
-const minQueriesForDevice = 32
+// The earlier value read the query count alone and was calibrated against a
+// single-threaded host, so it was wrong on both counts.
+//
+// This is one host's number, and a machine with a discrete GPU would put it
+// somewhere else entirely. It belongs in a calibrated dispatcher eventually;
+// until then it is a value with a measurement attached rather than a guess. It
+// is a var so the sweep that calibrates it can look below the floor.
+var minWorkPerRowForDevice = 2048
 
 // ExecuteNearestExact reports the M nearest query points for every row, and
 // returns what a float64 computation over every query point would return.
@@ -143,7 +151,7 @@ func (s *Session) ExecuteNearestExact(dataset *Dataset, queries [][]float64, m i
 	if !plan.Accelerated {
 		return finishOnHost(result.FallbackReason, nil)
 	}
-	if len(queries) < minQueriesForDevice {
+	if len(queries)*len(dataset.Buffers) < minWorkPerRowForDevice {
 		return finishOnHost(FallbackReasonWorkloadNotProfitable, nil)
 	}
 	executor, ok := lookupBackendExecutor(plan.Backend)
@@ -274,6 +282,39 @@ func narrowQueries(queries [][]float64) [][]float32 {
 	return out
 }
 
+// parallelRowThreshold is how much work a pass must carry before splitting it
+// across cores pays for the goroutines. It matches the threshold the clustering
+// package uses for the same shape of loop (stats/internal/clustering).
+const parallelRowThreshold = 50_000
+
+// runRows splits a row range across the available cores when there is enough
+// work to be worth it, and runs it inline when there is not.
+//
+// body owns a whole range rather than one row so that each worker can allocate
+// its scratch once. Ranges never overlap, so writes into a shared output slice
+// need no synchronisation.
+func runRows(rows, work int, body func(lo, hi int)) {
+	workers := runtime.GOMAXPROCS(0)
+	if workers <= 1 || rows < 2*workers || work < parallelRowThreshold {
+		body(0, rows)
+		return
+	}
+	chunk := (rows + workers - 1) / workers
+	var wg sync.WaitGroup
+	for lo := 0; lo < rows; lo += chunk {
+		hi := lo + chunk
+		if hi > rows {
+			hi = rows
+		}
+		wg.Add(1)
+		go func(lo, hi int) {
+			defer wg.Done()
+			body(lo, hi)
+		}(lo, hi)
+	}
+	wg.Wait()
+}
+
 // candidate is one query point's exact distance to one row.
 type candidate struct {
 	dist float64
@@ -360,16 +401,18 @@ func squaredDistanceRow(row []float64, query []float64) float64 {
 func exactNearestAll(columns [][]float64, queries [][]float64, rows, m int) ([]uint32, []float64) {
 	index := make([]uint32, rows*m)
 	distance := make([]float64, rows*m)
-	best := make([]candidate, m)
-	row := make([]float64, len(columns))
-	for r := 0; r < rows; r++ {
-		gatherRow(columns, r, row)
-		selectNearest(row, queries, m, best)
-		for j := 0; j < m; j++ {
-			index[r*m+j] = best[j].idx
-			distance[r*m+j] = best[j].dist
+	runRows(rows, rows*len(queries)*len(columns), func(lo, hi int) {
+		best := make([]candidate, m)
+		row := make([]float64, len(columns))
+		for r := lo; r < hi; r++ {
+			gatherRow(columns, r, row)
+			selectNearest(row, queries, m, best)
+			for j := 0; j < m; j++ {
+				index[r*m+j] = best[j].idx
+				distance[r*m+j] = best[j].dist
+			}
 		}
-	}
+	})
 	return index, distance
 }
 
@@ -384,46 +427,55 @@ func decideFromShortlist(
 	distance := make([]float64, rows*m)
 	scale := queryScale(queries)
 
-	shortlist := make([]candidate, k)
-	full := make([]candidate, m)
-	row := make([]float64, len(columns))
-	rechecked := 0
+	var rechecked atomic.Int64
 
-	for r := 0; r < rows; r++ {
-		gatherRow(columns, r, row)
-		trustworthy := true
-		for j := 0; j < k; j++ {
-			q := shortIdx[j*rows+r]
-			if int(q) >= len(queries) {
-				// The device reported an empty slot, which can only happen when
-				// it had fewer query points than list slots. Treat it as a row
-				// worth redoing rather than reading past the end.
-				trustworthy = false
-				break
+	// Verification costs k distances per row, plus every query point again for
+	// the rows that cannot be trusted. Estimating it at k is enough to decide
+	// whether to split, because a run where most rows are rechecked is heavier
+	// still and wants splitting more.
+	runRows(rows, rows*k*len(columns), func(lo, hi int) {
+		shortlist := make([]candidate, k)
+		full := make([]candidate, m)
+		row := make([]float64, len(columns))
+		local := 0
+		for r := lo; r < hi; r++ {
+			gatherRow(columns, r, row)
+			trustworthy := true
+			for j := 0; j < k; j++ {
+				q := shortIdx[r*k+j]
+				if int(q) >= len(queries) {
+					// The device reported an empty slot, which can only happen
+					// when it had fewer query points than list slots. Treat it
+					// as a row worth redoing rather than reading past the end.
+					trustworthy = false
+					break
+				}
+				shortlist[j] = candidate{squaredDistanceRow(row, queries[q]), q}
 			}
-			shortlist[j] = candidate{squaredDistanceRow(row, queries[q]), q}
-		}
-		if trustworthy {
-			byDistanceThenIndex(shortlist)
-			// Anything the device left out is at least boundary minus the worst
-			// single-precision error this row can carry. If that is still above
-			// the last candidate being returned, nothing left out can beat it.
-			if k < len(queries) &&
-				float64(boundary[r])-rowErrorBound(row, scale) <= shortlist[m-1].dist {
-				trustworthy = false
+			if trustworthy {
+				byDistanceThenIndex(shortlist)
+				// Anything the device left out is at least boundary minus the
+				// worst single-precision error this row can carry. If that is
+				// still above the last candidate being returned, nothing left
+				// out can beat it.
+				if k < len(queries) &&
+					float64(boundary[r])-rowErrorBound(row, scale) <= shortlist[m-1].dist {
+					trustworthy = false
+				}
+			}
+			if !trustworthy {
+				selectNearest(row, queries, m, full)
+				copy(shortlist[:m], full[:m])
+				local++
+			}
+			for j := 0; j < m; j++ {
+				index[r*m+j] = shortlist[j].idx
+				distance[r*m+j] = shortlist[j].dist
 			}
 		}
-		if !trustworthy {
-			selectNearest(row, queries, m, full)
-			copy(shortlist[:m], full[:m])
-			rechecked++
-		}
-		for j := 0; j < m; j++ {
-			index[r*m+j] = shortlist[j].idx
-			distance[r*m+j] = shortlist[j].dist
-		}
-	}
-	return index, distance, rechecked
+		rechecked.Add(int64(local))
+	})
+	return index, distance, int(rechecked.Load())
 }
 
 // queryScale returns, per column, the largest magnitude any query point holds

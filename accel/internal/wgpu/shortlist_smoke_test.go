@@ -59,7 +59,7 @@ func TestShortlistKernelSmoke(t *testing.T) {
 		}
 		sort.SliceStable(all, func(i, j int) bool { return all[i].d < all[j].d })
 		for j := 0; j < k; j++ {
-			gotIdx, gotDist := idx[j*rows+r], dist[j*rows+r]
+			gotIdx, gotDist := idx[r*k+j], dist[r*k+j]
 			if int(gotIdx) != all[j].q || gotDist != all[j].d {
 				if bad < 5 {
 					t.Errorf("row %d slot %d: got (%d, %v), want (%d, %v)",

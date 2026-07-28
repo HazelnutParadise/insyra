@@ -73,7 +73,7 @@ A single column sum is memory-bound, so moving the data costs far more than the 
 | `ExecuteDataList` / `ExecuteDataTable` | sum per column | Memory-bound; the CPU wins. Kept as the proving path, not a recommendation. |
 | `ExecuteDistances` | squared distance, row by query | Returns the whole matrix, so readback grows with it. |
 | `ExecuteNearestQuery` | closest query point per row | The matrix is reduced on the device. 13.6x over the CPU at 64 query points on an M3. |
-| `ExecuteNearestExact` | the M nearest query points per row, in `float64` | The device narrows, the host decides. Exactly the `float64` answer. 3.2x at 64 query points, 7.1x at 256. |
+| `ExecuteNearestExact` | the M nearest query points per row, in `float64` | The device narrows, the host decides. Exactly the `float64` answer. Up to 3.4x over a host using every core, and only when each row carries enough work. |
 
 Every device operation ships a CPU reference — `SquaredDistancesCPU`, `NearestQueryCPU` — and a test asserting the device result is bit-identical to it on the running platform. Parity depends on both toolchains contracting multiply-add the same way, which is a property of the platform rather than of the kernel, so it is measured where it runs rather than assumed.
 
@@ -94,15 +94,18 @@ No precision opt-in is needed. Narrowing happens inside the operation, where it 
 
 Watch `Rechecked`. It is normally near zero, and a rising count is how data with many near-ties announces itself — long before it shows up as a slowdown.
 
-Measured on an Apple M3 over 200,000 rows by 16 dimensions, asking for the two nearest:
+Measured on an Apple M3 over 200,000 rows, asking for the two nearest, against a host using all eight cores:
 
-| query points | `float64` throughout | through the device | |
-| --- | --- | --- | --- |
-| 16 | 40.7 ms | 40.4 ms | declined |
-| 64 | 125.4 ms | 39.7 ms | 3.2x |
-| 256 | 402.3 ms | 56.3 ms | 7.1x |
+| query points | 16 dims, host | 16 dims, device | 64 dims, host | 64 dims, device |
+| --- | --- | --- | --- | --- |
+| 32 | 14.8 ms | 17.5 ms | 62.9 ms | 66.8 ms |
+| 128 | 49.5 ms | 39.4 ms | 222.3 ms | 107.4 ms |
+| 512 | 154.4 ms | 74.5 ms | 819.6 ms | 281.7 ms |
+| 1024 | 306.0 ms | 123.3 ms | 1.648 s | 480.9 ms |
 
-The device leg costs about the same whatever the query count, because it is bound by moving the columns across and the shortlist back. Below roughly twenty query points that round trip costs more than the work it removes, so the runtime declines it and reports `workload-not-profitable`.
+The device is not always the faster option, and the deciding factor is how much arithmetic one row carries — dimensions times query points — rather than the size of the dataset. Below roughly two thousand distance evaluations per row the host's cores win, so the runtime declines the device and reports `workload-not-profitable`. Across 96 shapes on this host, the device was faster in 42.
+
+On unified-memory hardware like Apple Silicon the gap between a GPU and eight CPU cores is not large. A discrete GPU would move this substantially, and has not been measured.
 
 ### No device is not an error
 

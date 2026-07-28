@@ -56,8 +56,8 @@ type ExecuteResponse struct {
 	// NearestIndex holds the closest query point per row. Only OpNearestQuery
 	// fills it.
 	NearestIndex []uint32
-	// ShortlistIndex and ShortlistDistance are candidate-major, holding
-	// Shortlist entries per row: entry j*rows+r is row r's j-th nearest.
+	// ShortlistIndex and ShortlistDistance are row-major, holding Shortlist
+	// entries per row: entry r*Shortlist+j is row r's j-th nearest.
 	// ShortlistBoundary holds one value per row, the distance of the best
 	// candidate that did not make the list. Only OpNearestShortlist fills them.
 	ShortlistIndex    []uint32

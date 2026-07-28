@@ -609,11 +609,11 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
     for (var j: u32 = 0u; j < params.k; j = j + 1u) {
         if (j < filled) {
-            outDist[j * params.rows + r] = d[j];
-            outIdx[j * params.rows + r] = ix[j];
+            outDist[r * params.k + j] = d[j];
+            outIdx[r * params.k + j] = ix[j];
         } else {
-            outDist[j * params.rows + r] = FAR;
-            outIdx[j * params.rows + r] = 0xffffffffu;
+            outDist[r * params.k + j] = FAR;
+            outIdx[r * params.k + j] = 0xffffffffu;
         }
     }
     if (filled > params.k) {
@@ -625,7 +625,11 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 `
 
 // NearestShortlist returns the k nearest query points per row in single
-// precision, candidate-major, plus the distance of the best rejected candidate.
+// precision, row-major, plus the distance of the best rejected candidate.
+//
+// Row-major matters: the host reads one row's whole shortlist together, and a
+// candidate-major layout makes each of those reads stride across the entire
+// array.
 //
 // The shortlist is a proposal, not an answer. Its purpose is to let the caller
 // redo a handful of distances in float64 instead of all of them.

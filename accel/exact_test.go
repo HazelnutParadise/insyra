@@ -40,8 +40,8 @@ func (e *shortlistExecutor) Execute(_ context.Context, req ExecuteRequest) (Exec
 		}
 		sort.SliceStable(all, func(i, j int) bool { return all[i].d < all[j].d })
 		for j := 0; j < k; j++ {
-			idx[j*rows+r] = all[j].q
-			dist[j*rows+r] = all[j].d
+			idx[r*k+j] = all[j].q
+			dist[r*k+j] = all[j].d
 		}
 		if k < len(all) {
 			boundary[r] = all[k].d
@@ -50,6 +50,17 @@ func (e *shortlistExecutor) Execute(_ context.Context, req ExecuteRequest) (Exec
 		}
 	}
 	return ExecuteResponse{ShortlistIndex: idx, ShortlistDistance: dist, ShortlistBoundary: boundary}, nil
+}
+
+// exerciseDeviceRegardlessOfProfit lowers the profitability floor for tests that
+// are about correctness rather than about when the device is worth using. The
+// floor has its own test; making every correctness test carry enough work to
+// clear it would only make them slower and no more convincing.
+func exerciseDeviceRegardlessOfProfit(t *testing.T) {
+	t.Helper()
+	previous := minWorkPerRowForDevice
+	minWorkPerRowForDevice = 0
+	t.Cleanup(func() { minWorkPerRowForDevice = previous })
 }
 
 func exactDataset(rows, dims int, rnd *rand.Rand) *Dataset {
@@ -94,6 +105,7 @@ func assertMatchesReference(t *testing.T, ds *Dataset, queries [][]float64, m in
 }
 
 func TestExactNearestMatchesTheReference(t *testing.T) {
+	exerciseDeviceRegardlessOfProfit(t)
 	session := singleDeviceSession(t, Config{})
 	shortlist := &shortlistExecutor{}
 	if err := RegisterBackendExecutor(BackendCUDA, shortlist); err != nil {
@@ -126,6 +138,7 @@ func TestExactNearestMatchesTheReference(t *testing.T) {
 // get right: duplicated rows, query points that are exactly equidistant, and
 // magnitudes far enough apart that single precision loses the difference.
 func TestExactNearestOnAdversarialData(t *testing.T) {
+	exerciseDeviceRegardlessOfProfit(t)
 	session := singleDeviceSession(t, Config{})
 	if err := RegisterBackendExecutor(BackendCUDA, &shortlistExecutor{}); err != nil {
 		t.Fatalf("register failed: %v", err)
@@ -169,6 +182,7 @@ func TestExactNearestOnAdversarialData(t *testing.T) {
 // TestExactNearestTiesGoToTheLowestIndex pins the tie rule with query points
 // placed so the tie is exact in float64, not merely close.
 func TestExactNearestTiesGoToTheLowestIndex(t *testing.T) {
+	exerciseDeviceRegardlessOfProfit(t)
 	session := singleDeviceSession(t, Config{})
 	if err := RegisterBackendExecutor(BackendCUDA, &shortlistExecutor{}); err != nil {
 		t.Fatalf("register failed: %v", err)
@@ -240,6 +254,7 @@ func TestExactNearestRejectsBadInput(t *testing.T) {
 // field, and the answer still equal to pure float64.
 func TestExactNearestOnGPU(t *testing.T) {
 	requireGPU(t)
+	exerciseDeviceRegardlessOfProfit(t)
 	session, err := Open(Config{})
 	if err != nil {
 		t.Fatalf("open failed: %v", err)
@@ -318,7 +333,7 @@ func TestExactNearestDeclinesTinyQuerySets(t *testing.T) {
 	}
 	rnd := rand.New(rand.NewSource(27))
 	ds := exactDataset(4096, 4, rnd)
-	queries := exactQueries(minQueriesForDevice-1, 4, rnd)
+	queries := exactQueries(minWorkPerRowForDevice/4-1, 4, rnd)
 
 	result, err := session.ExecuteNearestExact(ds, queries, 2, WorkloadEstimate{})
 	if err != nil {
@@ -341,6 +356,7 @@ func TestExactNearestDeclinesTinyQuerySets(t *testing.T) {
 // three carries no information about which of the other thirty-seven might tie
 // it, and the boundary test has to send every row down the full path.
 func TestExactNearestRechecksWhenTheCutIsTooClose(t *testing.T) {
+	exerciseDeviceRegardlessOfProfit(t)
 	session := singleDeviceSession(t, Config{})
 	if err := RegisterBackendExecutor(BackendCUDA, &shortlistExecutor{}); err != nil {
 		t.Fatalf("register failed: %v", err)
