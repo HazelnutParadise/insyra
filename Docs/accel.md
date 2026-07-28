@@ -2,7 +2,7 @@
 
 The `accel` package defines the opt-in acceleration runtime surface for Insyra.
 
-The package is still pre-execution, but it is no longer only a shape freeze. The current slice includes backend discovery seams, typed CPU-side projection, resident-cache accounting, shard planning, and CLI/DSL inspection surfaces.
+The runtime now executes on real hardware. With the optional `accel/backend/wgpu` module imported, a numeric column is uploaded to a GPU, reduced by a compute shader, and read back, and the returned value matches the CPU path. Without that module the package is discovery, typed projection, cache accounting, and planning, and every workload falls back to the CPU with an observable reason.
 
 ## Current Scope
 
@@ -28,17 +28,58 @@ The package is still pre-execution, but it is no longer only a shape freeze. The
 - Planning and inspection:
   - shardable multi-device planning via `PlanShardable()` / `PlanShardableWorkload(...)`
   - weighted shard assignments and deterministic merge-policy reporting
-  - allocator registry plus execution ledger via `ExecuteProjectedDataset(...)`, `ExecuteDataList(...)`, and `ExecuteDataTable(...)`
-  - builtin homogeneous allocators for `CUDA`, `Metal`, and `WebGPU`, with ledger fallback for heterogeneous plans
+  - execution via `ExecuteProjectedDataset(...)`, `ExecuteDataList(...)`, and `ExecuteDataTable(...)`, returning the computed value per column
+  - backend executor registry: `RegisterBackendExecutor(backend, BackendExecutor)`
   - CLI/DSL surfaces: `accel devices`, `accel cache`, `accel plan`, `accel run <var>`, `show accel.devices`, `show accel.cache`, `config accel.mode`
+
+## GPU Execution
+
+GPU execution lives in a separate module so the core `insyra` module gains no GPU dependency. Install it and import it for its side effect:
+
+```bash
+go get github.com/HazelnutParadise/insyra/accel/backend/wgpu
+```
+
+```go
+import _ "github.com/HazelnutParadise/insyra/accel/backend/wgpu"
+```
+
+It is built on [gogpu/wgpu](https://github.com/gogpu/wgpu), a pure-Go WebGPU implementation, so it builds with `CGO_ENABLED=0`. One WGSL kernel reaches Metal on macOS, Vulkan on Linux and Windows, and DirectX 12 on Windows.
+
+### Precision is opt-in
+
+WGSL has no `f64`, and Apple GPUs have no double-precision hardware at all. A `float64` column therefore cannot run on the device at its own precision, and the runtime will not narrow it behind your back — a data-analysis library that silently changes your numbers is worse than one that declines to accelerate them.
+
+Ask for single precision explicitly when that trade is acceptable:
+
+```go
+result, err := session.ExecuteDataList(dl, accel.WorkloadEstimate{
+    Precision: accel.PrecisionFloat32,
+})
+```
+
+Without it the workload falls back to the CPU and `result.FallbackReason` is `precision-not-accepted`. Only the reduction inside one workgroup runs at single precision; the host folds the per-workgroup partials in `float64`.
+
+### What it costs
+
+Measured on an Apple M3 over a `float64` column narrowed to `float32`:
+
+| Column | transfer | dispatch | readback |
+| --- | --- | --- | --- |
+| 64 Ki | 0.021 ms | 0.034 ms | 0.38 ms |
+| 1 Mi | 0.47 ms | 0.061 ms | 0.93 ms |
+| 4 Mi | 2.43 ms | 0.289 ms | 2.91 ms |
+
+A single column sum is memory-bound, so moving the data costs far more than the arithmetic. Do not expect one reduction to beat a CPU loop on a unified-memory machine. `result.Transfer`, `result.Dispatch`, and `result.Readback` are measured per execution, so you can check rather than assume.
 
 ## Still Not Implemented
 
-- No true CUDA / Metal / WebGPU kernel execution yet
-- No backend-native VRAM allocator implementation yet
-- No true backend allocator or merge execution path yet; current execution seam has builtin per-backend allocator stubs for homogeneous plans, but they still materialize accounting/residency records rather than GPU allocations or kernels
+- One operation only: `sum` over a numeric column
+- Single-device execution; multi-device plans run on the highest-weighted device
+- No CUDA-native path — NVIDIA hardware is reached through Vulkan or DirectX 12
 - No implicit acceleration of `DataList.Map(func...)` or `DataTable.Map(func...)`
 - No full string-kernel execution path beyond transport and eligibility preparation
+- Verified on macOS and Metal only; other platforms are untested
 
 ## Installation
 
@@ -67,15 +108,20 @@ func main() {
     }
     defer session.Close()
 
-    dl := insyra.NewDataList(1, 2, nil, 4).SetName("numbers")
-    ds, err := session.ProjectDataList(dl)
+    dl := insyra.NewDataList(1.5, 2.5, nil, 4.5).SetName("numbers")
+
+    // Reduce the column. With accel/backend/wgpu linked in this runs on a GPU;
+    // without it the result falls back to the CPU and says why.
+    result, err := session.ExecuteDataList(dl, accel.WorkloadEstimate{
+        Precision: accel.PrecisionFloat32,
+    })
     if err != nil {
         panic(err)
     }
 
-    fmt.Println(ds.Name)
-    fmt.Println(ds.Rows)
-    fmt.Println(ds.Buffers[0].Type)
+    fmt.Println(result.Accelerated, result.FallbackReason)
+    fmt.Println(result.Reductions["numbers"], result.Counts["numbers"])
+    fmt.Println(result.Transfer, result.Dispatch, result.Readback)
 }
 ```
 
@@ -84,4 +130,5 @@ func main() {
 - Default backend preference is `CUDA`, then `Metal`, then `WebGPU`.
 - Native discovery is best-effort. Env-driven stubs remain available for deterministic testing and non-GPU development.
 - Shared-memory devices can derive working-set budgets from host memory when native budget data is unavailable.
-- `accel plan` remains a planning/report surface. `accel run <var>` now drives execution through builtin backend allocator stubs or the internal ledger fallback, but it still does not launch backend-native GPU kernels.
+- `accel plan` remains a planning/report surface. `accel run <var> --precision float32` executes on a device when a backend module is linked in, and prints the computed value alongside the measured transfer, dispatch, and readback times.
+- Execution cost figures are only reported when something actually ran on a device.

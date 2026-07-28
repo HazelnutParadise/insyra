@@ -206,6 +206,12 @@ Keep the English ([README.md](README.md), [CHANGELOG.md](CHANGELOG.md), `Docs/`)
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-07-28] — `accel.Session` is not safe for concurrent use
+- **Where**: [accel/session.go](accel/session.go), [accel/cache.go](accel/cache.go)
+- **What**: `Session` holds `devices`, `reports`, and `cache` with no mutex anywhere — neither file imports `sync`. `ensureDatasetCached`, `applyDeviceResidency`, and `recordExecutionMetrics` all write `s.cache.entries` and `s.reports` unguarded, so two goroutines calling `ExecuteDataList` on one session race on a map. This contradicts the library's stated default that thread safety is on via the actor model. Pre-existing; the race detector does not catch it because every accel test is single-goroutine. GPU execution now runs device calls on the same unguarded path, and gogpu's own queue concurrency guarantees are unverified.
+- **Suggestion**: Either serialize `Session` internally the way the core uses `AtomicDo`, or document plainly that a `Session` belongs to one goroutine and give callers a per-goroutine construction pattern. Add a `-race` test that drives two concurrent `ExecuteDataList` calls, so the choice is enforced.
+- **Status**: pending
+
 ### [2026-07-26] — ReadExcelSheet does no type inference (inconsistent with CSV)
 - **Where**: [read.go](read.go) `ReadExcelSheet` → `ReadSlice2D`
 - **What**: excelize `GetRows` returns strings and `ReadSlice2D` appends them as-is, so Excel loads produce all-string DataTables while CSV loads run column-level inference (`inferCSVColumnTypes`). Opposite defaults for the two spreadsheet formats. Noticed while adding `CSVReadOptions.RawStrings` (issue #188).
