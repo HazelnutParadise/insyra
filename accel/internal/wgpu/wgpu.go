@@ -278,6 +278,225 @@ func SumColumns(ctx context.Context, columns []Column) (map[string]float64, Cost
 	return sums, cost, nil
 }
 
+// distanceWGSL computes one squared distance per (query, row) pair. One thread
+// owns one output and loops the dimensions sequentially, so the operation order
+// matches the CPU reference exactly — there is no cross-thread reduction and
+// therefore no associativity question. The accumulation is left as
+// `acc + diff*diff` because Metal and Go/arm64 both contract it into a fused
+// multiply-add in the same way; forcing a rounded product here would break bit
+// parity rather than protect it.
+const distanceWGSL = `
+@group(0) @binding(0) var<storage, read> data: array<f32>;
+@group(0) @binding(1) var<storage, read> queries: array<f32>;
+@group(0) @binding(2) var<storage, read_write> out: array<f32>;
+
+struct Params { rows: u32, dims: u32, queryCount: u32, base: u32, }
+@group(0) @binding(3) var<uniform> params: Params;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let total = params.rows * params.queryCount;
+    // base lets one dispatch cover a slice of the output, so an output larger
+    // than the 65535 workgroup limit is split rather than refused.
+    let idx = params.base + gid.x;
+    if (idx >= total) { return; }
+    let q = idx / params.rows;
+    let r = idx % params.rows;
+
+    var acc: f32 = 0.0;
+    for (var c: u32 = 0u; c < params.dims; c = c + 1u) {
+        let diff = data[c * params.rows + r] - queries[q * params.dims + c];
+        acc = acc + diff * diff;
+    }
+    out[idx] = acc;
+}
+`
+
+// SquaredDistances computes the squared Euclidean distance from every row to
+// every query point, query-major. columns is column-major and every column must
+// have the same length; queries carry one value per column.
+func SquaredDistances(ctx context.Context, columns []Column, queries [][]float32) ([]float32, Cost, error) {
+	submitMu.Lock()
+	defer submitMu.Unlock()
+
+	if len(columns) == 0 || len(queries) == 0 {
+		return nil, Cost{}, fmt.Errorf("wgpu: squared distance needs columns and queries")
+	}
+	rows := len(columns[0].Values)
+	dims := len(columns)
+	for _, column := range columns {
+		if len(column.Values) != rows {
+			return nil, Cost{}, fmt.Errorf("wgpu: columns have differing lengths")
+		}
+	}
+
+	h, err := acquire()
+	if err != nil {
+		return nil, Cost{}, err
+	}
+	pipeline, bgLayout, err := h.distancePipeline()
+	if err != nil {
+		return nil, Cost{}, err
+	}
+
+	// Column-major, matching the shader's indexing.
+	flat := make([]float32, 0, rows*dims)
+	for _, column := range columns {
+		flat = append(flat, column.Values...)
+	}
+	flatQueries := make([]float32, 0, len(queries)*dims)
+	for _, query := range queries {
+		if len(query) != dims {
+			return nil, Cost{}, fmt.Errorf("wgpu: query has %d dimensions, expected %d", len(query), dims)
+		}
+		flatQueries = append(flatQueries, query...)
+	}
+	outCount := rows * len(queries)
+
+	var cost Cost
+	release := make([]interface{ Release() }, 0, 5)
+	defer func() {
+		for _, r := range release {
+			r.Release()
+		}
+	}()
+	mk := func(label string, size uint64, usage gowgpu.BufferUsage) (*gowgpu.Buffer, error) {
+		b, err := h.device.CreateBuffer(&gowgpu.BufferDescriptor{Label: label, Size: size, Usage: usage})
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrBufferTooLarge, err)
+		}
+		release = append(release, b)
+		return b, nil
+	}
+
+	dataBytes := uint64(len(flat) * 4)
+	queryBytes := uint64(len(flatQueries) * 4)
+	outBytes := uint64(outCount * 4)
+
+	dataBuf, err := mk("accel-distance-data", dataBytes, gowgpu.BufferUsageStorage|gowgpu.BufferUsageCopyDst)
+	if err != nil {
+		return nil, cost, err
+	}
+	queryBuf, err := mk("accel-distance-queries", queryBytes, gowgpu.BufferUsageStorage|gowgpu.BufferUsageCopyDst)
+	if err != nil {
+		return nil, cost, err
+	}
+	outBuf, err := mk("accel-distance-out", outBytes, gowgpu.BufferUsageStorage|gowgpu.BufferUsageCopySrc)
+	if err != nil {
+		return nil, cost, err
+	}
+	staging, err := mk("accel-distance-staging", outBytes, gowgpu.BufferUsageCopyDst|gowgpu.BufferUsageMapRead)
+	if err != nil {
+		return nil, cost, err
+	}
+	transferStart := time.Now()
+	if err := h.device.Queue().WriteBuffer(dataBuf, 0, float32Bytes(flat)); err != nil {
+		return nil, cost, fmt.Errorf("wgpu: upload data: %w", err)
+	}
+	if err := h.device.Queue().WriteBuffer(queryBuf, 0, float32Bytes(flatQueries)); err != nil {
+		return nil, cost, fmt.Errorf("wgpu: upload queries: %w", err)
+	}
+	cost.BytesUploaded = dataBytes + queryBytes
+
+	// The output can need more workgroups than one dispatch may carry, so it is
+	// split into slices that each fit. Each slice gets its own params buffer and
+	// bind group: WriteBuffer is a queue operation and does not interleave with
+	// recorded commands, so reusing one params buffer would give every dispatch
+	// whichever base was written last.
+	const perDispatch = maxWorkgroups * 64
+	type slice struct {
+		bindGroup *gowgpu.BindGroup
+		groups    int
+	}
+	slices := make([]slice, 0, outCount/perDispatch+1)
+	for base := 0; base < outCount; base += perDispatch {
+		count := outCount - base
+		if count > perDispatch {
+			count = perDispatch
+		}
+		params, err := mk("accel-distance-params", 16, gowgpu.BufferUsageUniform|gowgpu.BufferUsageCopyDst)
+		if err != nil {
+			return nil, cost, err
+		}
+		paramBytes := make([]byte, 16)
+		binary.LittleEndian.PutUint32(paramBytes[0:], uint32(rows))
+		binary.LittleEndian.PutUint32(paramBytes[4:], uint32(dims))
+		binary.LittleEndian.PutUint32(paramBytes[8:], uint32(len(queries)))
+		binary.LittleEndian.PutUint32(paramBytes[12:], uint32(base))
+		if err := h.device.Queue().WriteBuffer(params, 0, paramBytes); err != nil {
+			return nil, cost, fmt.Errorf("wgpu: upload params: %w", err)
+		}
+		bindGroup, err := h.device.CreateBindGroup(&gowgpu.BindGroupDescriptor{
+			Label: "accel-distance-bg", Layout: bgLayout,
+			Entries: []gowgpu.BindGroupEntry{
+				{Binding: 0, Buffer: dataBuf, Size: dataBytes},
+				{Binding: 1, Buffer: queryBuf, Size: queryBytes},
+				{Binding: 2, Buffer: outBuf, Size: outBytes},
+				{Binding: 3, Buffer: params, Size: 16},
+			},
+		})
+		if err != nil {
+			return nil, cost, fmt.Errorf("wgpu: bind group: %w", err)
+		}
+		release = append(release, bindGroup)
+		slices = append(slices, slice{bindGroup: bindGroup, groups: (count + 63) / 64})
+	}
+	cost.Transfer = time.Since(transferStart)
+
+	dispatchStart := time.Now()
+	encoder, err := h.device.CreateCommandEncoder(nil)
+	if err != nil {
+		return nil, cost, fmt.Errorf("wgpu: command encoder: %w", err)
+	}
+	for _, sl := range slices {
+		pass, err := encoder.BeginComputePass(nil)
+		if err != nil {
+			return nil, cost, fmt.Errorf("wgpu: compute pass: %w", err)
+		}
+		pass.SetPipeline(pipeline)
+		pass.SetBindGroup(0, sl.bindGroup, nil)
+		pass.Dispatch(uint32(sl.groups), 1, 1)
+		if err := pass.End(); err != nil {
+			return nil, cost, fmt.Errorf("wgpu: end compute pass: %w", err)
+		}
+	}
+	encoder.CopyBufferToBuffer(outBuf, 0, staging, 0, outBytes)
+	commands, err := encoder.Finish()
+	if err != nil {
+		return nil, cost, fmt.Errorf("wgpu: finish encoder: %w", err)
+	}
+	if _, err := h.device.Queue().Submit(commands); err != nil {
+		return nil, cost, fmt.Errorf("wgpu: submit: %w", err)
+	}
+	cost.Dispatch = time.Since(dispatchStart)
+
+	readbackStart := time.Now()
+	mapCtx, cancel := context.WithTimeout(ctx, readbackTimeout)
+	defer cancel()
+	if err := staging.Map(mapCtx, gowgpu.MapModeRead, 0, outBytes); err != nil {
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(mapCtx.Err(), context.DeadlineExceeded) {
+			return nil, cost, fmt.Errorf("%w: %v", ErrReadbackTimeout, err)
+		}
+		return nil, cost, fmt.Errorf("wgpu: map staging buffer: %w", err)
+	}
+	mapped, err := staging.MappedRange(0, outBytes)
+	if err != nil {
+		_ = staging.Unmap()
+		return nil, cost, fmt.Errorf("wgpu: mapped range: %w", err)
+	}
+	raw := mapped.Bytes()
+	out := make([]float32, outCount)
+	for i := range out {
+		out[i] = math.Float32frombits(binary.LittleEndian.Uint32(raw[i*4:]))
+	}
+	if err := staging.Unmap(); err != nil {
+		return nil, cost, fmt.Errorf("wgpu: unmap staging buffer: %w", err)
+	}
+	cost.Readback = time.Since(readbackStart)
+
+	return out, cost, nil
+}
+
 // unifiedMemory decides unified versus discrete memory from the vendor and the
 // backend rather than from AdapterInfo.DeviceType, which reports an Apple M3 as
 // DiscreteGPU even though Apple Silicon has unified memory.
@@ -363,6 +582,58 @@ type handle struct {
 	plLayout     *gowgpu.PipelineLayout
 	pipeline     *gowgpu.ComputePipeline
 	pipelineErr  error
+
+	distanceOnce     sync.Once
+	distanceBGLayout *gowgpu.BindGroupLayout
+	distancePipe     *gowgpu.ComputePipeline
+	distanceErr      error
+}
+
+// distancePipeline compiles the distance kernel once per process, the same way
+// the sum pipeline is cached.
+func (h *handle) distancePipeline() (*gowgpu.ComputePipeline, *gowgpu.BindGroupLayout, error) {
+	h.distanceOnce.Do(func() {
+		shader, err := h.device.CreateShaderModule(&gowgpu.ShaderModuleDescriptor{
+			Label: "accel-distance", WGSL: distanceWGSL,
+		})
+		if err != nil {
+			h.distanceErr = fmt.Errorf("%w: %v", ErrShaderCompile, err)
+			return
+		}
+		ro := &gputypes.BufferBindingLayout{Type: gputypes.BufferBindingTypeReadOnlyStorage}
+		rw := &gputypes.BufferBindingLayout{Type: gputypes.BufferBindingTypeStorage}
+		uni := &gputypes.BufferBindingLayout{Type: gputypes.BufferBindingTypeUniform}
+		bgLayout, err := h.device.CreateBindGroupLayout(&gowgpu.BindGroupLayoutDescriptor{
+			Label: "accel-distance-bgl",
+			Entries: []gowgpu.BindGroupLayoutEntry{
+				{Binding: 0, Visibility: gowgpu.ShaderStageCompute, Buffer: ro},
+				{Binding: 1, Visibility: gowgpu.ShaderStageCompute, Buffer: ro},
+				{Binding: 2, Visibility: gowgpu.ShaderStageCompute, Buffer: rw},
+				{Binding: 3, Visibility: gowgpu.ShaderStageCompute, Buffer: uni},
+			},
+		})
+		if err != nil {
+			h.distanceErr = fmt.Errorf("wgpu: distance bind group layout: %w", err)
+			return
+		}
+		plLayout, err := h.device.CreatePipelineLayout(&gowgpu.PipelineLayoutDescriptor{
+			Label: "accel-distance-pl", BindGroupLayouts: []*gowgpu.BindGroupLayout{bgLayout},
+		})
+		if err != nil {
+			h.distanceErr = fmt.Errorf("wgpu: distance pipeline layout: %w", err)
+			return
+		}
+		pipeline, err := h.device.CreateComputePipeline(&gowgpu.ComputePipelineDescriptor{
+			Label: "accel-distance-pipeline", Layout: plLayout, Module: shader, EntryPoint: "main",
+		})
+		if err != nil {
+			h.distanceErr = fmt.Errorf("%w: %v", ErrShaderCompile, err)
+			return
+		}
+		h.distanceBGLayout = bgLayout
+		h.distancePipe = pipeline
+	})
+	return h.distancePipe, h.distanceBGLayout, h.distanceErr
 }
 
 var (

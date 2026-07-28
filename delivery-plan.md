@@ -26,7 +26,7 @@ Run one operation end to end on a real device and return a number that matches t
 None. `add-accel-gpu-execution` cannot be archived until its numeric test passes on a non-Apple host (task 1.13); that is a coverage gap, not a blocker on further work.
 
 ## Next Verifiable Output
-Stage B's first kernel: a pairwise reduction over several columns that beats the CPU on measurement, with bit-level parity against a deterministic reference. `stats` clustering and correlation are the targets — measured at roughly 60x in the arithmetic-intensity spike, and already written, so only the kernel and the wiring are new. Stage A is complete and verified.
+A nearest-query kernel that returns one value per row instead of the full rows-by-queries matrix. The distance kernel proved parity and beat the CPU, but readback dominates it — 16 ms of 18 ms at 64 queries — so collapsing the matrix on the device is where the remaining win is, and it is also the shape `stats.KMeans` and the KNN functions actually need.
 
 ## Next OpenSpec Change
 Not yet proposed — stage B begins with a kernel choice. `add-accel-gpu-execution` task 1.13 (non-Apple verification) stays open in parallel; it needs a Windows or Linux machine with an NVIDIA or AMD GPU and cannot be done on this host.
@@ -185,6 +185,12 @@ Not yet proposed — stage B begins with a kernel choice. `add-accel-gpu-executi
   constraint: The device layer sits at `accel/internal/wgpu`, so Go's internal rule blocks any sibling package from importing it — verified by compiling a probe package, which fails with "use of internal package not allowed". When the second consumer appears, move it to `insyra/internal/gpu` or a public `insyra/gpu`. Do not move it before then; one consumer belongs in `internal/`.
   shared_primitive: A device buffer that outlives a single call is needed by both the accel residency phase and any tensor runtime — `internal/wgpu.Sum` currently creates and releases five buffers per invocation. Build it in the device layer rather than in accel's `Dataset` layer so both consumers get it once.
 
+- decision: Bit-level parity is a per-platform property verified by a test, not a portable guarantee, and the CPU reference is written in the natural fused form.
+  rationale: Measured on 2026-07-28, Apple M3 + Metal, over 4096 outputs of a squared-distance kernel with the operation order pinned identically on both sides. GPU output is bit-identical to a Go reference written as `acc + diff*diff`, and differs from one written as `acc + float32(diff*diff)` in 1137 of 4096 outputs by up to 2 ulp. The reason is contraction, not associativity: Metal fuses multiply-add, Go fuses it too on arm64, and they fuse the same way. Go's fusion survives assignment to a named `float32` — only an explicit `float32(a*b)` conversion forbids it, confirmed against a hand-computed unfused value.
+  consequence: Parity is not portable by construction. Go emits FMA on arm64 but not on amd64, so the same reference on an x86 host would stop fusing while a GPU backend still might, and parity would break on exactly the platforms not yet tested. The gate therefore has to run on the target: each operation ships a bit-parity test against its CPU reference, an operation that fails parity on a platform stays on the CPU there, and the fallback reason says so. Writing the reference in the explicitly-rounded form would be the wrong instinct — it guarantees divergence on the one platform measured.
+  timestamp: 2026-07-28
+  impacted_change_ids: future kernel changes
+
 ## Source Links
 - `delivery-plan.md`
 - `AGENTS.md`
@@ -244,4 +250,6 @@ Not yet proposed — stage B begins with a kernel choice. `add-accel-gpu-executi
 - 2026-07-28: roadmap stage A is complete. `accel.Default()` gives the process one lazily created session — discovery runs once, the resident cache is shared so a column can stay on the device across operations, and `Close` on it is a no-op because library code holding it cannot know it is shared. Importing the package still opens no device, verified with a consumer that imports `accel` and never calls `Default`.
 - The execution seam now carries a whole dataset. One submission encodes every column's dispatch and copy into a single command buffer landing in a single staging buffer, so a wide table waits on one map instead of one per column. Measured over 262,144 rows per column: readback at eight columns fell from 5.52 ms to 1.25 ms, and the whole operation from 36.8 ms to 24.2 ms. The first attempt collapsed only the runtime loop and measured nothing — the batching has to reach the command buffer.
 - Reported gogpu/wgpu#280 upstream: Metal compute aborts under `-race` because checkptr rejects pointer arithmetic in the GPU completion block. Includes a standalone reproduction.
+- 2026-07-28: the first stage-B kernel landed. `OpSquaredDistance` computes the squared Euclidean distance from every row to each query point, and the parity gate passes on this host — 160,000 values bit-identical at 16 queries and 6,400,000 at 64, spanning multiple dispatches. `SquaredDistancesCPU` is the reference, written in the natural fused form the parity decision requires.
+- The device wins, but by 1.7x at 16 queries and 3.2x at 64 rather than the 62x the spike suggested, because this operation materialises the whole rows-by-queries matrix and readback dominates: 16 ms of the 18 ms at 64 queries. The next slice folds argmin into the kernel so KMeans and KNN get one value per row instead of one per pair.
 - The 4 macOS accel test failures are fixed. `isolateBuiltinProbes` in `accel/testing_test.go` reports every builtin backend unavailable so a host GPU cannot leak into a test, and `TestIsolatedBuiltinProbesFindNoHostDevices` is the regression guard. `go test ./...` is green on macOS.

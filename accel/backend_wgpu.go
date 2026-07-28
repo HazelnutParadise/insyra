@@ -102,9 +102,35 @@ type wgpuExecutor struct{}
 func (wgpuExecutor) Name() string { return "gogpu-wgpu" }
 
 func (wgpuExecutor) Execute(ctx context.Context, req ExecuteRequest) (ExecuteResponse, error) {
-	if req.Op != OpSum {
+	switch req.Op {
+	case OpSum:
+		return wgpuSum(ctx, req)
+	case OpSquaredDistance:
+		return wgpuDistances(ctx, req)
+	default:
 		return ExecuteResponse{}, fmt.Errorf("accel: wgpu backend does not support operation %q", req.Op)
 	}
+}
+
+func wgpuDistances(ctx context.Context, req ExecuteRequest) (ExecuteResponse, error) {
+	columns := make([]wgpu.Column, len(req.Columns))
+	for i, column := range req.Columns {
+		columns[i] = wgpu.Column{Name: column.Name, Values: column.Values}
+	}
+	distances, cost, err := wgpu.SquaredDistances(ctx, columns, req.Queries)
+	if err != nil {
+		return ExecuteResponse{}, translateWGPUError(err)
+	}
+	return ExecuteResponse{
+		Distances:     distances,
+		Transfer:      cost.Transfer,
+		Dispatch:      cost.Dispatch,
+		Readback:      cost.Readback,
+		BytesUploaded: cost.BytesUploaded,
+	}, nil
+}
+
+func wgpuSum(ctx context.Context, req ExecuteRequest) (ExecuteResponse, error) {
 	if len(req.Columns) == 0 {
 		return ExecuteResponse{}, fmt.Errorf("accel: wgpu backend received no columns")
 	}

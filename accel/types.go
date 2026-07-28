@@ -85,6 +85,11 @@ type Op string
 const (
 	OpUnknown Op = "unknown"
 	OpSum     Op = "sum"
+	// OpSquaredDistance computes the squared Euclidean distance from every row
+	// to each supplied query point. It is the shared primitive under KMeans,
+	// KNN and Silhouette, and unlike a column reduction the device wins on it:
+	// work grows with rows times queries while the data grows with rows.
+	OpSquaredDistance Op = "squared-distance"
 )
 
 // Precision states what the caller will accept from device execution. The

@@ -34,6 +34,9 @@ type ExecuteRequest struct {
 	Device    Device
 	Columns   []ExecuteColumn
 	Precision Precision
+	// Queries holds one point per entry, each carrying one value per column in
+	// Columns order. Only OpSquaredDistance reads it.
+	Queries [][]float32
 }
 
 // ExecuteResponse carries the computed results and what the submission cost.
@@ -42,7 +45,10 @@ type ExecuteRequest struct {
 // per-column split would be invented. They are host-observed: Metal and GLES do
 // not implement GPU timestamp queries.
 type ExecuteResponse struct {
-	Reductions    map[string]float64
+	Reductions map[string]float64
+	// Distances is query-major: entry q*rows+r is the distance from row r to
+	// query q. Only OpSquaredDistance fills it.
+	Distances     []float32
 	Transfer      time.Duration
 	Dispatch      time.Duration
 	Readback      time.Duration
