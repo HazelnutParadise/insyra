@@ -24,7 +24,11 @@ func (s *Session) ProjectDataList(dl *insyra.DataList) (*Dataset, error) {
 		Buffers: []Buffer{buf},
 	}
 	assignDatasetFingerprint(ds)
+	// Projection above touches no session state and is the expensive step, so
+	// only the cache insertion is serialized.
+	s.mu.Lock()
 	s.cacheDataset(ds)
+	s.mu.Unlock()
 	return ds, nil
 }
 
@@ -50,7 +54,11 @@ func (s *Session) ProjectDataTable(dt *insyra.DataTable) (*Dataset, error) {
 		Buffers: cols,
 	}
 	assignDatasetFingerprint(ds)
+	// Projection above touches no session state and is the expensive step, so
+	// only the cache insertion is serialized.
+	s.mu.Lock()
 	s.cacheDataset(ds)
+	s.mu.Unlock()
 	return ds, nil
 }
 

@@ -39,6 +39,8 @@ func currentDiscoverers() []Discoverer {
 }
 
 func (s *Session) Discover() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.closed {
 		return errors.New("accel: session closed")
 	}
@@ -63,8 +65,8 @@ func (s *Session) Discover() error {
 
 	s.setDiscoveryResult(found)
 	joinedErr := errors.Join(errs...)
-	if joinedErr != nil && !s.Report().Accelerated && !strictGPURequired(s.cfg) {
-		report := s.Report()
+	if joinedErr != nil && !s.reportLocked().Accelerated && !strictGPURequired(s.cfg) {
+		report := s.reportLocked()
 		report.FallbackReason = FallbackReasonDiscoveryError
 		report.Metrics = discoveryMetrics(s.devices, report, len(errs))
 		if len(s.reports) == 0 {
@@ -73,8 +75,8 @@ func (s *Session) Discover() error {
 			s.reports[len(s.reports)-1] = cloneReport(report)
 		}
 	}
-	if strictGPURequired(s.cfg) && !s.Report().Accelerated {
-		strictErr := fmt.Errorf("accel: strict-gpu mode requires an accelerator (%s)", s.Report().FallbackReason)
+	if strictGPURequired(s.cfg) && !s.reportLocked().Accelerated {
+		strictErr := fmt.Errorf("accel: strict-gpu mode requires an accelerator (%s)", s.reportLocked().FallbackReason)
 		if joinedErr != nil {
 			return errors.Join(joinedErr, strictErr)
 		}
@@ -83,10 +85,11 @@ func (s *Session) Discover() error {
 	return joinedErr
 }
 
+// setDiscoveryResult assumes s.mu is held.
 func (s *Session) setDiscoveryResult(devices []Device) {
 	s.devices = append([]Device(nil), devices...)
 
-	report := s.Report()
+	report := s.reportLocked()
 	now := time.Now()
 	report.GeneratedAt = now
 	report.StartedAt = now

@@ -2,10 +2,15 @@ package accel
 
 import (
 	"fmt"
+	"sync"
 	"time"
 )
 
+// Session is safe for concurrent use. mu guards every field below it; methods
+// suffixed Locked assume the caller already holds it, which is how the public
+// methods call one another without re-entering a non-reentrant mutex.
 type Session struct {
+	mu      sync.Mutex
 	cfg     Config
 	devices []Device
 	reports []Report
@@ -28,14 +33,14 @@ func NewSession(cfgs ...Config) *Session {
 	}
 
 	baseReport := Report{
-		Mode:              cfg.Mode,
-		SelectedBackend:   BackendUnknown,
-		FallbackReason:    initialFallbackReason(cfg.Mode),
-		GeneratedAt:       time.Now(),
-		StartedAt:         time.Now(),
-		FinishedAt:        time.Now(),
+		Mode:                cfg.Mode,
+		SelectedBackend:     BackendUnknown,
+		FallbackReason:      initialFallbackReason(cfg.Mode),
+		GeneratedAt:         time.Now(),
+		StartedAt:           time.Now(),
+		FinishedAt:          time.Now(),
 		DiscoveredDeviceIDs: nil,
-		SelectedDeviceIDs: nil,
+		SelectedDeviceIDs:   nil,
 	}
 
 	return &Session{
@@ -46,6 +51,8 @@ func NewSession(cfgs ...Config) *Session {
 }
 
 func (s *Session) Config() Config {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	cfg := s.cfg
 	cfg.PreferredBackends = append([]Backend(nil), s.cfg.PreferredBackends...)
 	cfg.PreferredDevices = append([]string(nil), s.cfg.PreferredDevices...)
@@ -53,6 +60,8 @@ func (s *Session) Config() Config {
 }
 
 func (s *Session) Devices() []Device {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	cloned := make([]Device, len(s.devices))
 	for i, device := range s.devices {
 		cloned[i] = cloneDevice(device)
@@ -61,6 +70,12 @@ func (s *Session) Devices() []Device {
 }
 
 func (s *Session) Report() Report {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.reportLocked()
+}
+
+func (s *Session) reportLocked() Report {
 	if len(s.reports) == 0 {
 		return Report{}
 	}
@@ -68,6 +83,8 @@ func (s *Session) Report() Report {
 }
 
 func (s *Session) Reports() []Report {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	cloned := make([]Report, len(s.reports))
 	for i, report := range s.reports {
 		cloned[i] = cloneReport(report)
@@ -76,14 +93,18 @@ func (s *Session) Reports() []Report {
 }
 
 func (s *Session) LastReport() *Report {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if len(s.reports) == 0 {
 		return nil
 	}
-	report := s.Report()
+	report := s.reportLocked()
 	return &report
 }
 
 func (s *Session) RegisterDevice(device Device) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.closed {
 		return fmt.Errorf("accel: session closed")
 	}
@@ -95,6 +116,12 @@ func (s *Session) RegisterDevice(device Device) error {
 }
 
 func (s *Session) RecordReport(report Report) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.recordReportLocked(report)
+}
+
+func (s *Session) recordReportLocked(report Report) error {
 	if s.closed {
 		return fmt.Errorf("accel: session closed")
 	}
@@ -129,11 +156,15 @@ func (s *Session) RecordReport(report Report) error {
 }
 
 func (s *Session) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.closed = true
 	return nil
 }
 
 func (s *Session) Closed() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.closed
 }
 

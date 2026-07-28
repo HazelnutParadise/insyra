@@ -8,11 +8,22 @@ import (
 	"github.com/HazelnutParadise/insyra"
 )
 
-// requireGPU keeps the hardware tests off machines that have no device.
+// requireGPU keeps the hardware tests off machines that have no device, and
+// off race-enabled builds.
+//
+// -race turns on checkptr, which aborts the process inside gogpu's Metal
+// completion-block trampoline (hal/metal/objc.go:958, reached through goffi's
+// callback path) with "checkptr: pointer arithmetic result points to invalid
+// allocation". The violation is upstream and predates the session lock —
+// reproduced at the previous commit — so the guard is here rather than a fix.
+// Everything that does not touch a device still runs under -race.
 func requireGPU(t *testing.T) {
 	t.Helper()
 	if os.Getenv("INSYRA_ACCEL_GPU_TESTS") != "1" {
 		t.Skip("set INSYRA_ACCEL_GPU_TESTS=1 to run tests against a real GPU")
+	}
+	if raceDetectorEnabled {
+		t.Skip("gogpu's Metal path trips checkptr under -race; run device tests without it")
 	}
 }
 

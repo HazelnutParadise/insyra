@@ -71,9 +71,17 @@ func (h *handle) info0() Info {
 	}
 }
 
+// submitMu serializes device submission process-wide. Every session shares one
+// device handle, and gogpu's queue-concurrency guarantees are unverified;
+// concurrent submissions would serialize on the hardware queue anyway.
+var submitMu sync.Mutex
+
 // Sum reduces the values on the device and returns the total. Nulls are
 // expected to have been replaced by the additive identity by the caller.
 func Sum(ctx context.Context, values []float32) (float64, Cost, error) {
+	submitMu.Lock()
+	defer submitMu.Unlock()
+
 	h, err := acquire()
 	if err != nil {
 		return 0, Cost{}, err

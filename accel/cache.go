@@ -25,6 +25,16 @@ func newResidentCache() *residentCache {
 }
 
 func (s *Session) CacheSnapshot() CacheSnapshot {
+	if s == nil {
+		return CacheSnapshot{}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.cacheSnapshotLocked()
+}
+
+// cacheSnapshotLocked assumes s.mu is held.
+func (s *Session) cacheSnapshotLocked() CacheSnapshot {
 	if s == nil || s.cache == nil {
 		return CacheSnapshot{}
 	}
@@ -90,6 +100,7 @@ func (s *Session) CacheSnapshot() CacheSnapshot {
 	return snapshot
 }
 
+// cacheDataset assumes s.mu is held.
 func (s *Session) cacheDataset(dataset *Dataset) {
 	if s == nil || s.cache == nil || dataset == nil {
 		return
@@ -118,13 +129,14 @@ func (s *Session) cacheDataset(dataset *Dataset) {
 	s.updateCacheMetrics()
 }
 
+// updateCacheMetrics assumes s.mu is held.
 func (s *Session) updateCacheMetrics() {
 	if s == nil || len(s.reports) == 0 {
 		return
 	}
 
-	snapshot := s.CacheSnapshot()
-	report := s.Report()
+	snapshot := s.cacheSnapshotLocked()
+	report := s.reportLocked()
 	if report.Metrics == nil {
 		report.Metrics = map[string]float64{}
 	}

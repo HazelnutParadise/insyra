@@ -66,6 +66,10 @@ func BenchmarkColumnSum(b *testing.B) {
 
 func gpuTestsEnabled(b *testing.B) bool {
 	b.Helper()
+	if raceDetectorEnabled {
+		b.Skip("gogpu's Metal path trips checkptr under -race; benchmark without it")
+		return false
+	}
 	session, err := Open(Config{})
 	if err != nil {
 		b.Skipf("cannot open an accel session: %v", err)

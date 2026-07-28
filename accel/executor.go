@@ -105,7 +105,13 @@ func (s *Session) ExecuteProjectedDataset(dataset *Dataset, workload WorkloadEst
 		workload.Bytes = estimateDatasetResidentBytes(dataset)
 	}
 
-	plan := s.PlanShardableWorkload(workload)
+	// Held across backend execution: releasing it around the device call would
+	// let another goroutine observe half-updated cache and report state, which
+	// is the race this lock exists to remove.
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	plan := s.planShardableWorkloadLocked(workload)
 	result := ExecutionResult{
 		Accelerated:    plan.Accelerated,
 		FallbackReason: plan.FallbackReason,
@@ -361,6 +367,7 @@ func estimateDatasetResidentBytes(dataset *Dataset) uint64 {
 // applyDeviceResidency records that the dataset's buffers really are resident
 // on the device that executed the work. Unlike the estimate it replaces, every
 // byte here was actually uploaded.
+// applyDeviceResidency assumes s.mu is held.
 func (s *Session) applyDeviceResidency(dataset *Dataset, deviceID string) {
 	if s == nil || s.cache == nil || dataset == nil || deviceID == "" {
 		return
@@ -378,11 +385,12 @@ func (s *Session) applyDeviceResidency(dataset *Dataset, deviceID string) {
 	s.updateCacheMetrics()
 }
 
+// recordExecutionMetrics assumes s.mu is held.
 func (s *Session) recordExecutionMetrics(result ExecutionResult) {
 	if s == nil || len(s.reports) == 0 {
 		return
 	}
-	report := s.Report()
+	report := s.reportLocked()
 	if report.Metrics == nil {
 		report.Metrics = map[string]float64{}
 	}
@@ -409,6 +417,7 @@ func (s *Session) recordExecutionMetrics(result ExecutionResult) {
 	s.reports[len(s.reports)-1] = cloneReport(report)
 }
 
+// ensureDatasetCached assumes s.mu is held.
 func (s *Session) ensureDatasetCached(dataset *Dataset) {
 	if s == nil || s.cache == nil || dataset == nil {
 		return

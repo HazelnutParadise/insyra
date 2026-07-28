@@ -206,10 +206,10 @@ Keep the English ([README.md](README.md), [CHANGELOG.md](CHANGELOG.md), `Docs/`)
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
-### [2026-07-28] — `accel.Session` is not safe for concurrent use
-- **Where**: [accel/session.go](accel/session.go), [accel/cache.go](accel/cache.go)
-- **What**: `Session` holds `devices`, `reports`, and `cache` with no mutex anywhere — neither file imports `sync`. `ensureDatasetCached`, `applyDeviceResidency`, and `recordExecutionMetrics` all write `s.cache.entries` and `s.reports` unguarded, so two goroutines calling `ExecuteDataList` on one session race on a map. This contradicts the library's stated default that thread safety is on via the actor model. Pre-existing; the race detector does not catch it because every accel test is single-goroutine. GPU execution now runs device calls on the same unguarded path, and gogpu's own queue concurrency guarantees are unverified.
-- **Suggestion**: Either serialize `Session` internally the way the core uses `AtomicDo`, or document plainly that a `Session` belongs to one goroutine and give callers a per-goroutine construction pattern. Add a `-race` test that drives two concurrent `ExecuteDataList` calls, so the choice is enforced.
+### [2026-07-28] — gogpu's Metal path aborts under `-race`
+- **Where**: `github.com/gogpu/wgpu@v0.30.23/hal/metal/objc.go:958`, reached through `go-webgpu/goffi`'s callback trampoline
+- **What**: `-race` enables `checkptr`, which kills the process with `fatal error: checkptr: pointer arithmetic result points to invalid allocation` the first time a Metal completion block fires. No Insyra frame appears in the trace. Reproduced at the commit before the session-lock work, so it is upstream and pre-existing, not something the accel runtime introduced. Consequence: no test or benchmark that reaches a device can run under `-race` on macOS. Everything that stops short of the device still does.
+- **Suggestion**: Report upstream with the stack trace; the pointer arithmetic in the completion-block invoke needs to keep the base pointer live in an `unsafe.Pointer` rather than deriving it from a `uintptr`. Meanwhile `requireGPU` and `gpuTestsEnabled` skip when the `race` build tag is set — remove those guards once upstream fixes it.
 - **Status**: pending
 
 ### [2026-07-26] — ReadExcelSheet does no type inference (inconsistent with CSV)
