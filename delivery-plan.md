@@ -228,6 +228,19 @@ Not yet proposed. Two things gate it: measuring brute-force KNN and the DBSCAN n
   timestamp: 2026-07-29
   impacted_change_ids: future `insyra/ml` work
 
+- decision: Judge a device against the fastest option the library already offers, which is often an algorithm rather than a parallel loop.
+  rationale: Measured through the public `stats.KNearestNeighbors` API on 2026-07-29, 20,000 training rows and 1,000 test rows, five neighbours, against the device path. On unstructured data the device beats the best CPU option by 1.0x to 1.5x depending on dimension. On data with cluster structure it loses to the ball tree everywhere measured, by between 1.4x and 2.7x, because the tree stops looking at most of the candidates while the device still evaluates every one. Tree pruning is worth far more than a device — at 20,000 rows and 64 dimensions the ball tree takes 86 ms where parallel brute force takes 189 ms — and no threshold reading only shape can tell the two data regimes apart. So the device is not a general answer for nearest-neighbour work in this library; it is an answer for data with no exploitable structure, which the runtime cannot detect in advance.
+  timestamp: 2026-07-29
+  impacted_change_ids: future `insyra/ml` work
+- decision: Treat `stats`' KNN algorithm choice as a separate, CPU-only question worth measuring on its own.
+  rationale: `resolveAlgorithm` at `stats/internal/knn/knn.go:258` picks by row count and dimension alone: brute below 64 rows, a kd-tree at eight dimensions or fewer, a ball tree otherwise. Measured, that rule costs up to 3.3x on unstructured data — 50,000 rows by 64 dimensions takes 1.483 s through the ball tree it selects against 452 ms for parallel brute force — while on clustered data the same rule is right and the ball tree wins by roughly 2x. The rule cannot see the property that decides which is faster. This is a pure CPU improvement, larger than anything the device has offered so far, and it needs no acceleration work to collect.
+  timestamp: 2026-07-29
+  impacted_change_ids: none yet
+- decision: Fix three defects an adversarial review found in exact nearest before considering it done.
+  rationale: A review panel reading the implementation returned three blocking findings, two of which reproduce. Asking for nine or more neighbours on an accelerated session panicked with an index out of range, because the shortlist width was clamped to the device's eight slots while the decision still indexed position m-1; the device is now skipped when it cannot hold the request. When every single-precision distance overflows to infinity the device's ordering is meaningless and its boundary is infinite, which passed the trust test for the wrong reason and left the row trusted; the host now checks the device's distances are finite before believing their order. The third, that a purely relative error bound says nothing once a squared term falls below the smallest normal float32, is sound as an argument but no failing case was constructed — the bound was widened anyway, along with a missing rounding of the difference itself.
+  timestamp: 2026-07-29
+  impacted_change_ids: `add-accel-exact-nearest`
+
 ## Source Links
 - `delivery-plan.md`
 - `AGENTS.md`

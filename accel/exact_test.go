@@ -305,7 +305,10 @@ func BenchmarkExactNearest(b *testing.B) {
 				}
 			}
 		})
-		b.Run(fmt.Sprintf("q=%d/gpu-shortlist", queryCount), func(b *testing.B) {
+		// Named for what the runtime decides, not for what we hope it decides:
+		// below the profitability threshold this arm is the host path, and
+		// calling it "gpu" would report a tie that no device took part in.
+		b.Run(fmt.Sprintf("q=%d/runtime-choice", queryCount), func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				result, err := session.ExecuteNearestExact(ds, queries, 2, WorkloadEstimate{})
 				if err != nil {
@@ -386,4 +389,99 @@ func TestExactNearestRechecksWhenTheCutIsTooClose(t *testing.T) {
 			result.Rechecked, rows)
 	}
 	assertMatchesReference(t, ds, queries, 1, result.Index, result.Distance)
+}
+
+// TestExactNearestSurvivesSinglePrecisionOverflow is the counterexample an
+// adversarial review produced: values large enough that every squared distance
+// overflows float32. The device then compares infinities, its ordering carries
+// no information, and its boundary is +Inf — which passes the gap test for
+// entirely the wrong reason.
+func TestExactNearestSurvivesSinglePrecisionOverflow(t *testing.T) {
+	exerciseDeviceRegardlessOfProfit(t)
+	session := singleDeviceSession(t, Config{})
+	if err := RegisterBackendExecutor(BackendCUDA, &shortlistExecutor{}); err != nil {
+		t.Fatalf("register failed: %v", err)
+	}
+	const rows, queryCount = 256, 32
+	values := make([]float64, rows)
+	ds := &Dataset{Name: "overflow", Lineage: "test", Rows: rows, Buffers: []Buffer{
+		{Name: "x", Type: DataTypeFloat64, Values: values, Len: rows},
+	}}
+	// Every squared distance exceeds the largest float32, but they are all
+	// distinct and perfectly orderable in float64.
+	queries := make([][]float64, queryCount)
+	for q := range queries {
+		queries[q] = []float64{2e19 * (1 + float64(queryCount-1-q)/1000)}
+	}
+
+	result, err := session.ExecuteNearestExact(ds, queries, 1, WorkloadEstimate{})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if result.Rechecked != rows {
+		t.Fatalf("an unrankable shortlist must send every row down the full path, got %d of %d",
+			result.Rechecked, rows)
+	}
+	assertMatchesReference(t, ds, queries, 1, result.Index, result.Distance)
+}
+
+// TestExactNearestSurvivesSubnormalDistances exercises squared terms below the
+// smallest normal float32, where a purely relative error bound stops meaning
+// anything and the absolute floor in rowErrorBound takes over.
+//
+// Honest limitation: this test passes against the old relative-only bound too,
+// so it does not demonstrate that bound was wrong — it guards the subnormal path
+// rather than proving a fix. The bound was widened because the derivation does
+// not hold there, not because a failing case was constructed.
+func TestExactNearestSurvivesSubnormalDistances(t *testing.T) {
+	exerciseDeviceRegardlessOfProfit(t)
+	session := singleDeviceSession(t, Config{})
+	if err := RegisterBackendExecutor(BackendCUDA, &shortlistExecutor{}); err != nil {
+		t.Fatalf("register failed: %v", err)
+	}
+	const rows, queryCount = 256, 32
+	zeros := make([]float64, rows)
+	ds := &Dataset{Name: "subnormal", Lineage: "test", Rows: rows, Buffers: []Buffer{
+		{Name: "x", Type: DataTypeFloat64, Values: zeros, Len: rows},
+		{Name: "y", Type: DataTypeFloat64, Values: zeros, Len: rows},
+	}}
+	queries := make([][]float64, queryCount)
+	for q := range queries {
+		v := math.Ldexp(1, -66) * (1 + float64(q)*math.Ldexp(1, -23))
+		queries[q] = []float64{v, 0}
+	}
+
+	result, err := session.ExecuteNearestExact(ds, queries, 1, WorkloadEstimate{})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	assertMatchesReference(t, ds, queries, 1, result.Index, result.Distance)
+	t.Logf("rechecked %d of %d rows", result.Rechecked, rows)
+}
+
+// TestExactNearestRefusesADeviceItCannotUse pins the other half of the clamp
+// fix: asking for more neighbours than the shortlist can hold must skip the
+// device rather than run it with a list too short to index.
+func TestExactNearestRefusesADeviceItCannotUse(t *testing.T) {
+	exerciseDeviceRegardlessOfProfit(t)
+	session := singleDeviceSession(t, Config{})
+	backend := &shortlistExecutor{}
+	if err := RegisterBackendExecutor(BackendCUDA, backend); err != nil {
+		t.Fatalf("register failed: %v", err)
+	}
+	rnd := rand.New(rand.NewSource(31))
+	ds := exactDataset(1024, 3, rnd)
+	queries := exactQueries(64, 3, rnd)
+
+	result, err := session.ExecuteNearestExact(ds, queries, 9, WorkloadEstimate{})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if result.Accelerated {
+		t.Fatal("a shortlist of at most 8 cannot serve m=9")
+	}
+	if backend.calls != 0 {
+		t.Fatal("the device should not have been reached")
+	}
+	assertMatchesReference(t, ds, queries, 9, result.Index, result.Distance)
 }

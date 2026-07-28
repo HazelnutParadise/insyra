@@ -70,17 +70,22 @@ func TestShapeMap(t *testing.T) {
 					return time.Since(start)
 				})
 
+				// The breakdown must come from the repetition whose total is
+				// reported, or the columns describe different runs and cannot be
+				// added up.
 				var sample ExactNearestResult
-				gpu := best(reps, func() time.Duration {
+				gpu := time.Duration(1<<62 - 1)
+				for i := 0; i < reps; i++ {
 					start := time.Now()
 					result, err := session.ExecuteNearestExact(ds, points, m, WorkloadEstimate{})
 					if err != nil {
 						t.Fatal(err)
 					}
-					elapsed := time.Since(start)
-					sample = result
-					return elapsed
-				})
+					if elapsed := time.Since(start); elapsed < gpu {
+						gpu = elapsed
+						sample = result
+					}
+				}
 
 				marker := ""
 				if !sample.Accelerated {

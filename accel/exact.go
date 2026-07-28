@@ -165,7 +165,12 @@ func (s *Session) ExecuteNearestExact(dataset *Dataset, queries [][]float64, m i
 	}
 
 	// Two spare candidates give the float64 pass room to reorder without
-	// falling off the end of the list.
+	// falling off the end of the list. A shortlist that cannot even hold m is
+	// no shortlist, so the device is skipped rather than clamped — clamping
+	// would leave the decision reading past the end of its own scratch.
+	if m > wgpu.MaxShortlist-1 {
+		return finishOnHost(FallbackReasonWorkloadUnsupported, nil)
+	}
 	k := m + 2
 	if k > len(queries) {
 		k = len(queries)
@@ -206,7 +211,8 @@ func (s *Session) ExecuteNearestExact(dataset *Dataset, queries [][]float64, m i
 	}
 
 	index, distance, rechecked := decideFromShortlist(
-		host, queries, rows, m, k, response.ShortlistIndex, response.ShortlistBoundary)
+		host, queries, rows, m, k,
+		response.ShortlistIndex, response.ShortlistDistance, response.ShortlistBoundary)
 	result.Index = index
 	result.Distance = distance
 	result.Rechecked = rechecked
@@ -421,7 +427,7 @@ func exactNearestAll(columns [][]float64, queries [][]float64, rows, m int) ([]u
 // is too close to call in single precision.
 func decideFromShortlist(
 	columns [][]float64, queries [][]float64, rows, m, k int,
-	shortIdx []uint32, boundary []float32,
+	shortIdx []uint32, shortDist []float32, boundary []float32,
 ) ([]uint32, []float64, int) {
 	index := make([]uint32, rows*m)
 	distance := make([]float64, rows*m)
@@ -451,6 +457,12 @@ func decideFromShortlist(
 					break
 				}
 				shortlist[j] = candidate{squaredDistanceRow(row, queries[q]), q}
+			}
+			if trustworthy && !finiteShortlist(shortDist, boundary, r, k) {
+				// Single precision overflowed, so the device compared infinities
+				// and its ordering means nothing. The boundary would be +Inf
+				// too, which passes the gap test for the wrong reason.
+				trustworthy = false
 			}
 			if trustworthy {
 				byDistanceThenIndex(shortlist)
@@ -508,12 +520,44 @@ func queryScale(queries [][]float64) []float64 {
 //
 // The bound ignores fused multiply-add, which only ever reduces the error, so it
 // stays conservative on hardware that fuses.
+//
+// Two details the obvious derivation gets wrong. The difference costs two
+// roundings and not one — rounding each input, then rounding the subtraction —
+// so the factor is d+4 rather than d+3. And a relative bound says nothing once
+// a squared term underflows below the smallest normal float32, where the error
+// stops scaling with the value; the absolute term covers that floor.
 func rowErrorBound(row []float64, scale []float64) float64 {
-	const u = float32Eps / 2
+	const (
+		u            = float32Eps / 2
+		smallestNorm = 1.1754943508222875e-38
+	)
 	var span float64
 	for c, v := range row {
 		reach := math.Abs(v) + scale[c]
 		span += reach * reach
 	}
-	return u * float64(len(row)+3) * span
+	terms := float64(len(row) + 4)
+	return terms*u*span + terms*smallestNorm
+}
+
+// finiteShortlist reports whether the device's single-precision distances for
+// one row can be ranked at all. Overflow turns them into infinities that compare
+// equal, so an ordering over them carries no information.
+func finiteShortlist(shortDist []float32, boundary []float32, row, k int) bool {
+	if !isFiniteFloat32(boundary[row]) {
+		return false
+	}
+	if shortDist == nil {
+		return true
+	}
+	for j := 0; j < k; j++ {
+		if !isFiniteFloat32(shortDist[row*k+j]) {
+			return false
+		}
+	}
+	return true
+}
+
+func isFiniteFloat32(v float32) bool {
+	return !math.IsInf(float64(v), 0) && !math.IsNaN(float64(v))
 }
