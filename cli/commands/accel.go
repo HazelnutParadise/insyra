@@ -76,23 +76,6 @@ func runAccelCommand(ctx *ExecContext, args []string) error {
 			return err
 		}
 		return nil
-	case "run":
-		if len(parsed.positionals) < 1 {
-			return fmt.Errorf("usage: accel run <var> [--mode auto|cpu|gpu|strict-gpu] [--precision exact|float32]")
-		}
-		session, err := accelpkg.Open(parsed.cfg)
-		if session != nil {
-			defer func() { _ = session.Close() }()
-		}
-		if err != nil {
-			if session != nil {
-				renderAccelRun(ctx.Output, session.Report(), session.PlanShardable())
-			}
-			return err
-		}
-		result, runErr := executeAccelVar(session, ctx, parsed.positionals[0], parsed.precision)
-		renderAccelExecution(ctx.Output, parsed.positionals[0], session.Report(), result)
-		return runErr
 	default:
 		return fmt.Errorf("unknown accel action: %s", action)
 	}
@@ -273,48 +256,6 @@ func renderAccelRun(out io.Writer, report accelpkg.Report, plan accelpkg.ShardPl
 	)
 }
 
-func renderAccelExecution(out io.Writer, varName string, report accelpkg.Report, result accelpkg.ExecutionResult) {
-	devices := "none"
-	if len(result.DeviceIDs) > 0 {
-		devices = strings.Join(result.DeviceIDs, ",")
-	}
-	executor := result.Executor
-	if executor == "" {
-		executor = "none"
-	}
-	_, _ = fmt.Fprintf(
-		out,
-		"var=%s executed=%t backend=%s executor=%s participants=%d devices=%s assignments=%d merge=%s reason=%s\n",
-		varName,
-		result.Accelerated,
-		report.SelectedBackend,
-		executor,
-		len(result.DeviceIDs),
-		devices,
-		len(result.Assignments),
-		result.MergePolicy,
-		result.FallbackReason,
-	)
-	// Cost and values describe real device activity, so they are only printed
-	// when something actually ran on a device.
-	if !result.Accelerated {
-		return
-	}
-	_, _ = fmt.Fprintf(
-		out,
-		"  op=%s precision=%s uploaded=%dB transfer=%s dispatch=%s readback=%s\n",
-		result.Op,
-		result.Precision,
-		result.BytesUploaded,
-		result.Transfer,
-		result.Dispatch,
-		result.Readback,
-	)
-	for _, name := range sortedReductionNames(result.Reductions) {
-		_, _ = fmt.Fprintf(out, "  %s=%v n=%d\n", name, result.Reductions[name], result.Counts[name])
-	}
-}
-
 func sortedReductionNames(reductions map[string]float64) []string {
 	names := make([]string, 0, len(reductions))
 	for name := range reductions {
@@ -322,23 +263,6 @@ func sortedReductionNames(reductions map[string]float64) []string {
 	}
 	sort.Strings(names)
 	return names
-}
-
-func executeAccelVar(session *accelpkg.Session, ctx *ExecContext, name string, precision accelpkg.Precision) (accelpkg.ExecutionResult, error) {
-	if session == nil {
-		return accelpkg.ExecutionResult{}, fmt.Errorf("accel: nil session")
-	}
-	if ctx == nil {
-		return accelpkg.ExecutionResult{}, fmt.Errorf("accel: nil execution context")
-	}
-	workload := accelpkg.WorkloadEstimate{Precision: precision}
-	if dl, err := getDataListVar(ctx, name); err == nil {
-		return session.ExecuteDataList(dl, workload)
-	}
-	if dt, err := getDataTableVar(ctx, name); err == nil {
-		return session.ExecuteDataTable(dt, workload)
-	}
-	return accelpkg.ExecutionResult{}, fmt.Errorf("variable %s is not a DataList or DataTable", name)
 }
 
 func hydrateAccelCacheFromContext(session *accelpkg.Session, ctx *ExecContext) {

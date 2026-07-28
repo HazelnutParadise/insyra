@@ -188,9 +188,6 @@ This list is generated from `insyra help` in this repository state.
 - `accel devices` — list discovered acceleration devices, or report why none were found.
 - `accel cache` — show session-local resident buffers.
 - `accel plan` — planning report only; runs nothing.
-- `accel run <var> [--mode auto|cpu|gpu|strict-gpu] [--precision exact|float32]`
-  - Reduces the columns of a DataList or DataTable variable on a device and prints the computed value with measured transfer, dispatch, and readback times.
-  - `--precision` defaults to `exact`, which refuses to narrow a `float64` column. GPU backends have no `f64`, so a numeric column will report `reason=precision-not-accepted` until you pass `--precision float32` to accept single-precision device math.
-  - The GPU backend is builtin, so nothing extra needs installing. On a host with no usable GPU the output is `executed=false` with a fallback reason, which is a truthful CPU fallback, not an error. `INSYRA_ACCEL_DISABLE_WGPU=1` turns the backend off.
-  - Cost figures are only printed when something actually ran on a device.
+- The GPU backend is builtin, so nothing extra needs installing. `INSYRA_ACCEL_DISABLE_WGPU=1` turns it off.
+- There is no `accel run`. It was removed along with the operations it invoked, once each was measured to be slower than the CPU using all its cores. These commands inspect the runtime; none of them executes anything.
 - `config accel.mode <auto|cpu|gpu|strict-gpu>`, `show accel.devices`, `show accel.cache`.

@@ -27,10 +27,10 @@ type ExecContext struct {
 }
 
 type CommandHandler struct {
-	Name               string
-	Aliases            []string
-	Usage              string
-	Description        string
+	Name        string
+	Aliases     []string
+	Usage       string
+	Description string
 	// Forms lists the major sub-shapes of a command (one entry per shape).
 	// Each entry is rendered as-is under a "Forms:" header by `help <cmd>`.
 	// Use for commands like `ttest single|two|paired` where the bare Usage

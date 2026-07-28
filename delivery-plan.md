@@ -263,6 +263,15 @@ Not yet proposed. Two things gate it: measuring brute-force KNN and the DBSCAN n
   timestamp: 2026-07-29
   impacted_change_ids: future `insyra/ml` and `insyra/dl` work
 
+- decision: Remove every accelerated operation except the exact nearest one, and require a measurement against an all-core host before any is added back.
+  rationale: Three of the four were known not to pay, and each was a standing claim that acceleration helps where it does not. The column sum measured 0.7x — it moves one value per element and adds it once, which no device wins. The squared-distance matrix reads back a result growing with rows times query points, which is what the nearest-query operation was built to fix. And the single-precision nearest query answers in f32, which the float64 callers it was written for cannot use, so it was superseded by its own successor. Keeping them was not free: each was a kernel to maintain against a single-maintainer WebGPU backend, a method to document, and a changelog entry claiming a speedup measured against one core. What remains is the shortlist kernel, `ExecuteNearestExact`, and the runtime around it — discovery, cache, scheduler, and the fallback that makes a missing device a performance event rather than a correctness one. That runtime is the seam a future kernel lands in and would cost far more to rebuild than to keep. Nothing removed had shipped; none of it exists in v0.3.0.
+  timestamp: 2026-07-29
+  impacted_change_ids: `remove-unprofitable-accel-ops`
+- decision: Imitate scikit-learn for the `insyra/ml` estimator protocol and public API, because Insyra already chose it.
+  rationale: Not a preference — a fact in the working tree, found by reading it. `datatable_scale.go:36` declares `Scaler` with `Fit`, `Transform`, `FitTransform` and `InverseTransform`, and `datatable_scale.go:95-109` provides `NewStandardScaler`, `NewMinMaxScaler`, `NewRobustScaler` and `NewMaxAbsScaler` — scikit-learn's `preprocessing` module, the same four names and the same protocol. `datatable_encode.go` carries `OneHotEncoder`, `LabelEncoder` and `OrdinalEncoder` with `DropFirst` and `Unknown`, matching `drop='first'` and `handle_unknown`. `stats/knn.go:14-27` reproduces `KNeighborsClassifier`'s options verbatim, down to `uniform`/`distance` and `auto`/`brute`/`kd_tree`/`ball_tree`. So the library has been imitating scikit-learn in four places without saying so, and consistency with itself outranks any argument for a different precedent. What does not translate is the machinery underneath: scikit-learn discovers parameters by reflecting over `__init__`, clones estimators by calling the constructor with a string-keyed dict, and distinguishes fitted from unfitted by the presence of trailing-underscore attributes. Go has none of that, so the vocabulary is scikit-learn's while the typing follows Spark MLlib's shape, where fitting produces a separate Model object rather than mutating the estimator.
+  timestamp: 2026-07-29
+  impacted_change_ids: future `insyra/ml` work
+
 ## Source Links
 - `delivery-plan.md`
 - `AGENTS.md`

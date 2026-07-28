@@ -103,54 +103,11 @@ func (wgpuExecutor) Name() string { return "gogpu-wgpu" }
 
 func (wgpuExecutor) Execute(ctx context.Context, req ExecuteRequest) (ExecuteResponse, error) {
 	switch req.Op {
-	case OpSum:
-		return wgpuSum(ctx, req)
-	case OpSquaredDistance:
-		return wgpuDistances(ctx, req)
-	case OpNearestQuery:
-		return wgpuNearest(ctx, req)
 	case OpNearestShortlist:
 		return wgpuShortlist(ctx, req)
 	default:
 		return ExecuteResponse{}, fmt.Errorf("accel: wgpu backend does not support operation %q", req.Op)
 	}
-}
-
-func wgpuDistances(ctx context.Context, req ExecuteRequest) (ExecuteResponse, error) {
-	columns := make([]wgpu.Column, len(req.Columns))
-	for i, column := range req.Columns {
-		columns[i] = wgpu.Column{Name: column.Name, Values: column.Values}
-	}
-	distances, cost, err := wgpu.SquaredDistances(ctx, columns, req.Queries)
-	if err != nil {
-		return ExecuteResponse{}, translateWGPUError(err)
-	}
-	return ExecuteResponse{
-		Distances:     distances,
-		Transfer:      cost.Transfer,
-		Dispatch:      cost.Dispatch,
-		Readback:      cost.Readback,
-		BytesUploaded: cost.BytesUploaded,
-	}, nil
-}
-
-func wgpuNearest(ctx context.Context, req ExecuteRequest) (ExecuteResponse, error) {
-	columns := make([]wgpu.Column, len(req.Columns))
-	for i, column := range req.Columns {
-		columns[i] = wgpu.Column{Name: column.Name, Values: column.Values}
-	}
-	indices, distances, cost, err := wgpu.NearestQuery(ctx, columns, req.Queries)
-	if err != nil {
-		return ExecuteResponse{}, translateWGPUError(err)
-	}
-	return ExecuteResponse{
-		NearestIndex:  indices,
-		Distances:     distances,
-		Transfer:      cost.Transfer,
-		Dispatch:      cost.Dispatch,
-		Readback:      cost.Readback,
-		BytesUploaded: cost.BytesUploaded,
-	}, nil
 }
 
 func wgpuShortlist(ctx context.Context, req ExecuteRequest) (ExecuteResponse, error) {
@@ -170,27 +127,6 @@ func wgpuShortlist(ctx context.Context, req ExecuteRequest) (ExecuteResponse, er
 		Dispatch:          cost.Dispatch,
 		Readback:          cost.Readback,
 		BytesUploaded:     cost.BytesUploaded,
-	}, nil
-}
-
-func wgpuSum(ctx context.Context, req ExecuteRequest) (ExecuteResponse, error) {
-	if len(req.Columns) == 0 {
-		return ExecuteResponse{}, fmt.Errorf("accel: wgpu backend received no columns")
-	}
-	columns := make([]wgpu.Column, len(req.Columns))
-	for i, column := range req.Columns {
-		columns[i] = wgpu.Column{Name: column.Name, Values: column.Values}
-	}
-	sums, cost, err := wgpu.SumColumns(ctx, columns)
-	if err != nil {
-		return ExecuteResponse{}, translateWGPUError(err)
-	}
-	return ExecuteResponse{
-		Reductions:    sums,
-		Transfer:      cost.Transfer,
-		Dispatch:      cost.Dispatch,
-		Readback:      cost.Readback,
-		BytesUploaded: cost.BytesUploaded,
 	}, nil
 }
 

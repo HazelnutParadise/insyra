@@ -84,21 +84,16 @@ type Op string
 
 const (
 	OpUnknown Op = "unknown"
-	OpSum     Op = "sum"
-	// OpSquaredDistance computes the squared Euclidean distance from every row
-	// to each supplied query point. It is the shared primitive under KMeans,
-	// KNN and Silhouette, and unlike a column reduction the device wins on it:
-	// work grows with rows times queries while the data grows with rows.
-	OpSquaredDistance Op = "squared-distance"
-	// OpNearestQuery reports which query point is closest to each row. It is
-	// OpSquaredDistance with the minimum taken on the device, which turns the
-	// result from one value per pair into one per row — the shape KMeans needs
-	// and the one where readback stops dominating.
-	OpNearestQuery Op = "nearest-query"
 	// OpNearestShortlist returns the several nearest query points per row rather
 	// than only the nearest, plus the distance of the best rejected one. It is
 	// how an exact float64 answer is reached through an f32 device: the device
 	// narrows the field, the host settles the ranking.
+	//
+	// It is the only device operation. Three others existed and were removed once
+	// measured: a column sum at 0.7x, a distance matrix whose readback grew with
+	// the answer, and a single-precision nearest query no float64 caller could
+	// use. Nothing is added back without a measurement against a host using every
+	// core it has.
 	OpNearestShortlist Op = "nearest-shortlist"
 )
 

@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"sync"
 	"time"
-
-	"github.com/HazelnutParadise/insyra"
 )
 
 // Sentinel errors a backend wraps so the runtime can map a failure onto a
@@ -110,139 +108,6 @@ func lookupBackendExecutor(backend Backend) (BackendExecutor, bool) {
 	return executor, ok
 }
 
-func (s *Session) ExecuteProjectedDataset(dataset *Dataset, workload WorkloadEstimate) (ExecutionResult, error) {
-	if s == nil {
-		return ExecutionResult{}, fmt.Errorf("accel: nil session")
-	}
-	if dataset == nil {
-		return ExecutionResult{}, fmt.Errorf("accel: nil dataset")
-	}
-	if workload.Class == "" {
-		workload.Class = WorkloadClassColumnar
-	}
-	if workload.Op == "" {
-		workload.Op = OpSum
-	}
-	if workload.Precision == "" {
-		workload.Precision = PrecisionExact
-	}
-	if workload.Rows <= 0 {
-		workload.Rows = dataset.Rows
-	}
-	if workload.Bytes == 0 {
-		workload.Bytes = estimateDatasetResidentBytes(dataset)
-	}
-
-	// Held across backend execution: releasing it around the device call would
-	// let another goroutine observe half-updated cache and report state, which
-	// is the race this lock exists to remove.
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	plan := s.planShardableWorkloadLocked(workload)
-	result := ExecutionResult{
-		Accelerated:    plan.Accelerated,
-		FallbackReason: plan.FallbackReason,
-		MergePolicy:    plan.MergePolicy,
-		ExecutorKind:   ExecutorKindUnknown,
-		Assignments:    append([]ShardAssignment(nil), plan.Assignments...),
-		DeviceIDs:      append([]string(nil), plan.DeviceIDs...),
-		Op:             workload.Op,
-	}
-	if !plan.Accelerated {
-		return s.finishExecution(result, nil)
-	}
-
-	if workload.Op != OpSum {
-		return s.abortExecution(result, FallbackReasonWorkloadUnsupported,
-			fmt.Errorf("accel: unsupported operation %q", workload.Op))
-	}
-
-	executor, ok := lookupBackendExecutor(plan.Backend)
-	if !ok {
-		return s.abortExecution(result, FallbackReasonNoBackendExecutor,
-			fmt.Errorf("accel: no execution backend registered for %q", plan.Backend))
-	}
-	result.Executor = executor.Name()
-	result.ExecutorKind = ExecutorKindRegistered
-
-	// This change ships single-device execution. Narrow the plan to the device
-	// that actually runs the work rather than reporting devices that did not.
-	device, ok := s.executionDevice(plan)
-	if !ok {
-		return s.abortExecution(result, FallbackReasonNoAccelerator,
-			errors.New("accel: plan named no usable device"))
-	}
-	result.DeviceIDs = []string{device.ID}
-	result.Assignments = assignmentsForDevice(plan, device.ID)
-
-	columns := make([]ExecuteColumn, 0, len(dataset.Buffers))
-	counts := make(map[string]int, len(dataset.Buffers))
-	empties := make([]string, 0, len(dataset.Buffers))
-	for _, buffer := range dataset.Buffers {
-		values, count, reason := deviceValues(buffer, workload.Precision)
-		if reason != FallbackReasonNone {
-			return s.abortExecution(result, reason,
-				fmt.Errorf("accel: column %q is not eligible for device execution (%s)", buffer.Name, reason))
-		}
-		counts[buffer.Name] = count
-		// An empty column needs no device work; dispatching zero workgroups is
-		// a validation error on some backends.
-		if len(values) == 0 {
-			empties = append(empties, buffer.Name)
-			continue
-		}
-		columns = append(columns, ExecuteColumn{Name: buffer.Name, Values: values})
-	}
-
-	result.Precision = workload.Precision
-	result.Counts = counts
-	result.Reductions = make(map[string]float64, len(dataset.Buffers))
-	for _, name := range empties {
-		result.Reductions[name] = 0
-	}
-
-	// One submission for the whole dataset: readback dominates device cost, so
-	// a request per column would pay that wait once per column.
-	if len(columns) > 0 {
-		response, err := executor.Execute(context.Background(), ExecuteRequest{
-			Op:        workload.Op,
-			Device:    device,
-			Columns:   columns,
-			Precision: workload.Precision,
-		})
-		if err != nil {
-			return s.abortExecution(result, fallbackReasonForExecError(err), err)
-		}
-		for name, value := range response.Reductions {
-			result.Reductions[name] = value
-		}
-		result.Transfer = response.Transfer
-		result.Dispatch = response.Dispatch
-		result.Readback = response.Readback
-		result.BytesUploaded = response.BytesUploaded
-	}
-
-	s.ensureDatasetCached(dataset)
-	s.applyDeviceResidency(dataset, device.ID)
-	return s.finishExecution(result, nil)
-}
-
-// abortExecution turns a mid-flight failure back into a non-accelerated result
-// so the caller still gets an inspectable report, and returns the error only
-// when the session demands GPU execution.
-func (s *Session) abortExecution(result ExecutionResult, reason FallbackReason, err error) (ExecutionResult, error) {
-	result.Accelerated = false
-	result.FallbackReason = reason
-	result.Reductions = nil
-	result.Counts = nil
-	result.Transfer = 0
-	result.Dispatch = 0
-	result.Readback = 0
-	result.BytesUploaded = 0
-	return s.finishExecution(result, err)
-}
-
 func (s *Session) finishExecution(result ExecutionResult, err error) (ExecutionResult, error) {
 	s.recordExecutionMetrics(result)
 	if !result.Accelerated && strictGPURequired(s.cfg) {
@@ -338,53 +203,6 @@ func deviceValues(buffer Buffer, precision Precision) ([]float32, int, FallbackR
 	default:
 		return nil, 0, FallbackReasonDTypeNotEligible
 	}
-}
-
-func (s *Session) ExecuteDataList(dl *insyra.DataList, workload WorkloadEstimate) (ExecutionResult, error) {
-	if s == nil {
-		return ExecutionResult{}, fmt.Errorf("accel: nil session")
-	}
-	if dl == nil {
-		return ExecutionResult{}, fmt.Errorf("accel: nil datalist")
-	}
-	buffer, err := projectValues(dl.GetName(), dl.Data())
-	if err != nil {
-		return ExecutionResult{}, err
-	}
-	dataset := &Dataset{
-		Name:    dl.GetName(),
-		Lineage: "project:datalist",
-		Rows:    buffer.Len,
-		Buffers: []Buffer{buffer},
-	}
-	assignDatasetFingerprint(dataset)
-	return s.ExecuteProjectedDataset(dataset, workload)
-}
-
-func (s *Session) ExecuteDataTable(dt *insyra.DataTable, workload WorkloadEstimate) (ExecutionResult, error) {
-	if s == nil {
-		return ExecutionResult{}, fmt.Errorf("accel: nil session")
-	}
-	if dt == nil {
-		return ExecutionResult{}, fmt.Errorf("accel: nil datatable")
-	}
-	cols := make([]Buffer, 0, dt.NumCols())
-	for i := 0; i < dt.NumCols(); i++ {
-		col := dt.GetColByNumber(i)
-		buf, err := projectValues(col.GetName(), col.Data())
-		if err != nil {
-			return ExecutionResult{}, err
-		}
-		cols = append(cols, buf)
-	}
-	dataset := &Dataset{
-		Name:    dt.GetName(),
-		Lineage: "project:datatable",
-		Rows:    dt.NumRows(),
-		Buffers: cols,
-	}
-	assignDatasetFingerprint(dataset)
-	return s.ExecuteProjectedDataset(dataset, workload)
 }
 
 func estimateDatasetResidentBytes(dataset *Dataset) uint64 {

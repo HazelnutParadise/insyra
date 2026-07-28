@@ -43,20 +43,3 @@ func TestUnifiedMemoryIgnoresTheReportedDeviceType(t *testing.T) {
 		t.Fatal("a discrete NVIDIA GPU must not be classified as shared memory")
 	}
 }
-
-func TestChunkSizeStaysWithinDispatchLimits(t *testing.T) {
-	if _, err := Probe(); err != nil {
-		t.Skipf("no usable GPU on this host: %v", err)
-	}
-	h, err := acquire()
-	if err != nil {
-		t.Fatalf("acquire: %v", err)
-	}
-	chunk := h.maxElementsPerChunk()
-	if chunk%elemsPerGroup != 0 {
-		t.Fatalf("chunk size %d must be a whole number of workgroups", chunk)
-	}
-	if chunk > maxElemsPerDispatch {
-		t.Fatalf("chunk size %d exceeds the workgroup-count limit %d", chunk, maxElemsPerDispatch)
-	}
-}

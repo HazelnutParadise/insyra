@@ -1,6 +1,7 @@
 package accel
 
 import (
+	"context"
 	"errors"
 	"math/rand"
 	"testing"
@@ -27,132 +28,77 @@ func noDeviceSession(t *testing.T, cfg Config) *Session {
 	return session
 }
 
-// TestDistanceOpsAnswerWithoutADevice is the whole point of the fallback: a host
-// with no GPU gets the numbers, not an empty slice.
-func TestDistanceOpsAnswerWithoutADevice(t *testing.T) {
-	session := noDeviceSession(t, Config{})
-	rnd := rand.New(rand.NewSource(11))
-	ds := distanceDataset(1024, 3, rnd)
-	queries := randomQueries(4, 3, rnd)
+// failingExecutor reaches the device and then does not deliver.
+type failingExecutor struct {
+	calls int
+	err   error
+}
 
-	wantDist, rows, err := SquaredDistancesCPU(ds, queries)
-	if err != nil {
-		t.Fatalf("cpu reference failed: %v", err)
-	}
+func (*failingExecutor) Name() string { return "failing" }
 
-	dist, err := session.ExecuteDistances(ds, queries, WorkloadEstimate{Precision: PrecisionFloat32})
-	if err != nil {
-		t.Fatalf("distances should not error outside strict mode: %v", err)
-	}
-	if dist.Accelerated {
-		t.Fatal("nothing was discovered, so nothing can have been accelerated")
-	}
-	if dist.FallbackReason != FallbackReasonNoAccelerator {
-		t.Fatalf("expected no-accelerator, got %q", dist.FallbackReason)
-	}
-	if len(dist.Distances) != len(wantDist) {
-		t.Fatalf("expected %d distances, got %d", len(wantDist), len(dist.Distances))
-	}
-	for i, want := range wantDist {
-		if dist.Distances[i] != want {
-			t.Fatalf("distance %d: got %v, want %v", i, dist.Distances[i], want)
-		}
-	}
-	if dist.Rows != rows {
-		t.Fatalf("expected %d rows, got %d", rows, dist.Rows)
-	}
-
-	wantIdx, wantNear, _, err := NearestQueryCPU(ds, queries)
-	if err != nil {
-		t.Fatalf("cpu reference failed: %v", err)
-	}
-	near, err := session.ExecuteNearestQuery(ds, queries, WorkloadEstimate{Precision: PrecisionFloat32})
-	if err != nil {
-		t.Fatalf("nearest query should not error outside strict mode: %v", err)
-	}
-	if near.Accelerated || near.FallbackReason != FallbackReasonNoAccelerator {
-		t.Fatalf("expected an unaccelerated no-accelerator result, got %v/%q", near.Accelerated, near.FallbackReason)
-	}
-	if len(near.Index) != len(wantIdx) {
-		t.Fatalf("expected %d indices, got %d", len(wantIdx), len(near.Index))
-	}
-	for i := range wantIdx {
-		if near.Index[i] != wantIdx[i] || near.Distance[i] != wantNear[i] {
-			t.Fatalf("row %d: got (%d, %v), want (%d, %v)",
-				i, near.Index[i], near.Distance[i], wantIdx[i], wantNear[i])
-		}
-	}
+func (e *failingExecutor) Execute(context.Context, ExecuteRequest) (ExecuteResponse, error) {
+	e.calls++
+	return ExecuteResponse{}, e.err
 }
 
 // TestDeviceFailureStillAnswers covers the device that exists but does not
 // deliver. The reason must still name the failure — falling back is not the same
 // as pretending it worked.
 func TestDeviceFailureStillAnswers(t *testing.T) {
+	exerciseDeviceRegardlessOfProfit(t)
 	session := singleDeviceSession(t, Config{})
-	failing := &fakeExecutor{name: "failing", err: errors.New("device fell over")}
+	failing := &failingExecutor{err: errors.New("device fell over")}
 	if err := RegisterBackendExecutor(BackendCUDA, failing); err != nil {
 		t.Fatalf("register failed: %v", err)
 	}
 
 	rnd := rand.New(rand.NewSource(12))
-	ds := distanceDataset(1024, 3, rnd)
-	queries := randomQueries(4, 3, rnd)
-	wantDist, _, err := SquaredDistancesCPU(ds, queries)
-	if err != nil {
-		t.Fatalf("cpu reference failed: %v", err)
-	}
+	ds := exactDataset(1024, 3, rnd)
+	queries := exactQueries(40, 3, rnd)
 
-	dist, err := session.ExecuteDistances(ds, queries, WorkloadEstimate{Precision: PrecisionFloat32})
+	result, err := session.ExecuteNearestExact(ds, queries, 2, WorkloadEstimate{})
 	if err != nil {
 		t.Fatalf("a device failure should not surface as an error outside strict mode: %v", err)
 	}
 	if failing.calls == 0 {
 		t.Fatal("the executor was never reached, so this is not testing a device failure")
 	}
-	if dist.Accelerated {
+	if result.Accelerated {
 		t.Fatal("a failed execution is not an accelerated one")
 	}
-	if dist.FallbackReason != FallbackReasonExecutionFailed {
-		t.Fatalf("expected execution-failed, got %q", dist.FallbackReason)
+	if result.FallbackReason != FallbackReasonExecutionFailed {
+		t.Fatalf("expected execution-failed, got %q", result.FallbackReason)
 	}
-	if len(dist.Distances) != len(wantDist) {
-		t.Fatalf("expected the CPU answer after the device failed, got %d distances", len(dist.Distances))
-	}
-	for i, want := range wantDist {
-		if dist.Distances[i] != want {
-			t.Fatalf("distance %d: got %v, want %v", i, dist.Distances[i], want)
-		}
-	}
-	if dist.Transfer != 0 || dist.Dispatch != 0 || dist.Readback != 0 || dist.BytesUploaded != 0 {
+	assertMatchesReference(t, ds, queries, 2, result.Index, result.Distance)
+	if result.Transfer != 0 || result.Dispatch != 0 || result.Readback != 0 || result.BytesUploaded != 0 {
 		t.Fatal("a failed device run must not report device cost")
 	}
 }
 
-// TestIneligibleRequestStillReturnsNothing guards the other half of the rule:
-// the CPU must not deliver, by a side door, what the caller refused.
-func TestIneligibleRequestStillReturnsNothing(t *testing.T) {
+// TestIneligibleDatasetReturnsNothing guards the other half of the rule: a
+// dataset no kernel and no reference can read produces no answer, and says why.
+func TestIneligibleDatasetReturnsNothing(t *testing.T) {
 	session := noDeviceSession(t, Config{})
-	rnd := rand.New(rand.NewSource(13))
-	ds := distanceDataset(1024, 3, rnd)
-	queries := randomQueries(2, 3, rnd)
+	const rows = 64
+	values := make([]string, rows)
+	for i := range values {
+		values[i] = "x"
+	}
+	ds := &Dataset{Name: "strings", Lineage: "test", Rows: rows, Buffers: []Buffer{
+		{Name: "s", Type: DataTypeString, Values: values, Len: rows},
+	}}
 
-	dist, err := session.ExecuteDistances(ds, queries, WorkloadEstimate{})
+	// Outside strict mode nothing errors — the reason carries the explanation,
+	// the same way every other path in the package reports one.
+	result, err := session.ExecuteNearestExact(ds, [][]float64{{1}, {2}}, 1, WorkloadEstimate{})
 	if err != nil {
 		t.Fatalf("execute should not error outside strict mode: %v", err)
 	}
-	if dist.FallbackReason != FallbackReasonPrecisionNotAccepted {
-		t.Fatalf("expected precision-not-accepted, got %q", dist.FallbackReason)
+	if result.FallbackReason != FallbackReasonDTypeNotEligible {
+		t.Fatalf("expected dtype-not-eligible, got %q", result.FallbackReason)
 	}
-	if dist.Distances != nil {
-		t.Fatal("a caller who refused reduced precision must not receive a narrowed answer anyway")
-	}
-
-	near, err := session.ExecuteNearestQuery(ds, queries, WorkloadEstimate{})
-	if err != nil {
-		t.Fatalf("execute should not error outside strict mode: %v", err)
-	}
-	if near.Index != nil || near.Distance != nil {
-		t.Fatal("a caller who refused reduced precision must not receive a narrowed answer anyway")
+	if result.Index != nil || result.Distance != nil {
+		t.Fatal("no answer should be produced for a dataset nothing can read")
 	}
 }
 
@@ -177,22 +123,10 @@ func TestStrictGPUStillFails(t *testing.T) {
 	t.Cleanup(func() { _ = session.Close() })
 
 	rnd := rand.New(rand.NewSource(14))
-	ds := distanceDataset(1024, 3, rnd)
-	queries := randomQueries(2, 3, rnd)
+	ds := exactDataset(1024, 3, rnd)
+	queries := exactQueries(40, 3, rnd)
 
-	dist, err := session.ExecuteDistances(ds, queries, WorkloadEstimate{Precision: PrecisionFloat32})
-	if err == nil {
+	if _, err := session.ExecuteNearestExact(ds, queries, 2, WorkloadEstimate{}); err == nil {
 		t.Fatal("strict GPU mode should report that it could not run on a device")
-	}
-	if dist.Distances != nil {
-		t.Fatal("strict GPU mode should not hand back a CPU result")
-	}
-
-	near, err := session.ExecuteNearestQuery(ds, queries, WorkloadEstimate{Precision: PrecisionFloat32})
-	if err == nil {
-		t.Fatal("strict GPU mode should report that it could not run on a device")
-	}
-	if near.Index != nil {
-		t.Fatal("strict GPU mode should not hand back a CPU result")
 	}
 }

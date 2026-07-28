@@ -179,7 +179,7 @@ func (s *Session) ExecuteNearestExact(dataset *Dataset, queries [][]float64, m i
 		k = wgpu.MaxShortlist
 	}
 
-	columns, _, creason := distanceColumns(dataset, PrecisionFloat32)
+	columns, _, creason := narrowColumns(dataset)
 	if creason != FallbackReasonNone {
 		return finishOnHost(creason, fmt.Errorf("accel: dataset is not eligible (%s)", creason))
 	}
@@ -243,6 +243,30 @@ func NearestExactCPU(dataset *Dataset, queries [][]float64, m int) ([]uint32, []
 	}
 	index, distance := exactNearestAll(host, queries, rows, m)
 	return index, distance, rows, nil
+}
+
+// narrowColumns produces the single-precision copy the device kernel reads, and
+// checks the columns share a row count. It is not what the answer is computed
+// from — that is hostColumns — only what the device ranks with.
+func narrowColumns(dataset *Dataset) ([]ExecuteColumn, int, FallbackReason) {
+	columns := make([]ExecuteColumn, 0, len(dataset.Buffers))
+	rows := -1
+	for _, buffer := range dataset.Buffers {
+		values, _, reason := deviceValues(buffer, PrecisionFloat32)
+		if reason != FallbackReasonNone {
+			return nil, 0, reason
+		}
+		if rows == -1 {
+			rows = len(values)
+		} else if len(values) != rows {
+			return nil, 0, FallbackReasonWorkloadUnsupported
+		}
+		columns = append(columns, ExecuteColumn{Name: buffer.Name, Values: values})
+	}
+	if rows <= 0 {
+		return nil, 0, FallbackReasonWorkloadUnsupported
+	}
+	return columns, rows, FallbackReasonNone
 }
 
 // hostColumns pulls the dataset's values at their own precision. This is the

@@ -2,7 +2,7 @@
 
 The `accel` package defines the opt-in acceleration runtime surface for Insyra.
 
-The runtime executes on real hardware. A numeric column is uploaded to a GPU, reduced by a compute shader, and read back, and the returned value matches the CPU path. Nothing extra to install and nothing to import — the GPU backend registers itself when `accel` is initialised. On a host with no usable GPU, every workload falls back to the CPU with an observable reason.
+The runtime executes on real hardware. A dataset is uploaded to a GPU, ranked by a compute shader, and the host settles the answer in `float64`, so the result matches the CPU path exactly. Nothing extra to install and nothing to import — the GPU backend registers itself when `accel` is initialised. On a host with no usable GPU, every workload falls back to the CPU with an observable reason.
 
 ## Current Scope
 
@@ -28,9 +28,9 @@ The runtime executes on real hardware. A numeric column is uploaded to a GPU, re
 - Planning and inspection:
   - shardable multi-device planning via `PlanShardable()` / `PlanShardableWorkload(...)`
   - weighted shard assignments and deterministic merge-policy reporting
-  - execution via `ExecuteProjectedDataset(...)`, `ExecuteDataList(...)`, and `ExecuteDataTable(...)`, returning the computed value per column
+  - execution via `ExecuteNearestExact(...)`, returning the M nearest query points per row as exact `float64` values
   - backend executor registry: `RegisterBackendExecutor(backend, BackendExecutor)`
-  - CLI/DSL surfaces: `accel devices`, `accel cache`, `accel plan`, `accel run <var>`, `show accel.devices`, `show accel.cache`, `config accel.mode`
+  - CLI/DSL surfaces: `accel devices`, `accel cache`, `accel plan`, `show accel.devices`, `show accel.cache`, `config accel.mode`
 
 ## GPU Execution
 
@@ -40,42 +40,21 @@ Programs that never import `accel` do not compile any of it — verified with a 
 
 Set `INSYRA_ACCEL_DISABLE_WGPU=1` to turn the builtin backend off without changing code.
 
-### Precision is opt-in
+### Precision
 
 WGSL has no `f64`, and Apple GPUs have no double-precision hardware at all. A `float64` column therefore cannot run on the device at its own precision, and the runtime will not narrow it behind your back — a data-analysis library that silently changes your numbers is worse than one that declines to accelerate them.
 
-Ask for single precision explicitly when that trade is acceptable:
-
-```go
-result, err := session.ExecuteDataList(dl, accel.WorkloadEstimate{
-    Precision: accel.PrecisionFloat32,
-})
-```
-
-Without it the workload falls back to the CPU and `result.FallbackReason` is `precision-not-accepted`. Only the reduction inside one workgroup runs at single precision; the host folds the per-workgroup partials in `float64`.
-
-### What it costs
-
-Measured on an Apple M3 over a `float64` column narrowed to `float32`:
-
-| Column | transfer | dispatch | readback |
-| --- | --- | --- | --- |
-| 64 Ki | 0.021 ms | 0.034 ms | 0.38 ms |
-| 1 Mi | 0.47 ms | 0.061 ms | 0.93 ms |
-| 4 Mi | 2.43 ms | 0.289 ms | 2.91 ms |
-
-A single column sum is memory-bound, so moving the data costs far more than the arithmetic. Do not expect one reduction to beat a CPU loop on a unified-memory machine. `result.Transfer`, `result.Dispatch`, and `result.Readback` are measured per execution, so you can check rather than assume.
+The surviving operation resolves that rather than trading it away: the device ranks in single precision, and the host settles the answer in `float64`. Narrowing happens inside, where it cannot reach the result, so no precision opt-in is needed and none is offered.
 
 ## Operations
 
 | Operation | Shape | Notes |
 | --- | --- | --- |
-| `ExecuteDataList` / `ExecuteDataTable` | sum per column | Memory-bound; the CPU wins. Kept as the proving path, not a recommendation. |
-| `ExecuteDistances` | squared distance, row by query | Returns the whole matrix, so readback grows with it. |
-| `ExecuteNearestQuery` | closest query point per row | The matrix is reduced on the device. 13.6x over the CPU at 64 query points on an M3. |
-| `ExecuteNearestExact` | the M nearest query points per row, in `float64` | The device narrows, the host decides. Exactly the `float64` answer. Up to 3.4x over a host using every core, and only when each row carries enough work. |
+| `ExecuteNearestExact` | the M nearest query points per row, in `float64` | The device narrows, the host decides. Exactly the `float64` answer. |
 
-Every device operation ships a CPU reference — `SquaredDistancesCPU`, `NearestQueryCPU` — and a test asserting the device result is bit-identical to it on the running platform. Parity depends on both toolchains contracting multiply-add the same way, which is a property of the platform rather than of the kernel, so it is measured where it runs rather than assumed.
+Three other operations existed and were removed once measured against a host using every core it has: a column sum at 0.7x, a squared-distance matrix whose readback grew with the answer, and a single-precision nearest query no `float64` caller could use. Nothing is added back without that measurement.
+
+The device operation ships a CPU reference — `NearestExactCPU` — and a test asserting the device result is bit-identical to it on the running platform. Parity depends on both toolchains contracting multiply-add the same way, which is a property of the platform rather than of the kernel, so it is measured where it runs rather than assumed.
 
 ### Exact answers from a single-precision device
 
@@ -109,25 +88,23 @@ On unified-memory hardware like Apple Silicon the gap between a GPU and eight CP
 
 ### No device is not an error
 
-`ExecuteDistances` and `ExecuteNearestQuery` return the answer whether or not a device ran. On a machine with no GPU, or when a device is present but fails, times out, or exceeds a buffer limit, the runtime computes the result on the CPU and hands it back. You do not have to check anything to get a correct answer.
+`ExecuteNearestExact` returns the answer whether or not a device ran. On a machine with no GPU, or when a device is present but fails, times out, or exceeds a buffer limit, the runtime computes the result on the CPU and hands it back. You do not have to check anything to get a correct answer.
 
 `Accelerated` and `FallbackReason` are still there to tell you *where* the work ran, which is worth logging, but they are not a correctness gate:
 
 ```go
-result, err := session.ExecuteNearestQuery(ds, queries, accel.WorkloadEstimate{
-    Precision: accel.PrecisionFloat32,
-})
+result, err := session.ExecuteNearestExact(ds, queries, 2, accel.WorkloadEstimate{})
 // result.Index is populated either way.
 if !result.Accelerated {
     log.Printf("ran on the CPU: %s", result.FallbackReason)
 }
 ```
 
-Two cases deliberately return nothing instead. When the request itself is what excluded the device — `precision-not-accepted`, `dtype-not-eligible`, `workload-unsupported` — the CPU result would be exactly what you declined, so you get no result and the reason says why. And strict GPU mode returns an error rather than falling back, which is the whole point of asking for it.
+Two cases deliberately return nothing instead. A dataset nothing can read — `dtype-not-eligible`, `workload-unsupported` — has no answer to give, and the reason says so. And strict GPU mode returns an error rather than falling back, which is the whole point of asking for it.
 
 ## Still Not Implemented
 
-- One operation only: `sum` over a numeric column
+- One operation only: the exact nearest query points per row
 - Single-device execution; multi-device plans run on the highest-weighted device
 - No CUDA-native path — NVIDIA hardware is reached through Vulkan or DirectX 12
 - No implicit acceleration of `DataList.Map(func...)` or `DataTable.Map(func...)`
@@ -141,9 +118,7 @@ first time it is asked for:
 
 ```go
 session := accel.Default()
-result, err := session.ExecuteDataList(dl, accel.WorkloadEstimate{
-    Precision: accel.PrecisionFloat32,
-})
+result, err := session.ExecuteNearestExact(ds, centroids, 2, accel.WorkloadEstimate{})
 ```
 
 Discovery runs once, the resident cache is shared so a column stays on the
@@ -178,20 +153,19 @@ func main() {
     }
     defer session.Close()
 
-    dl := insyra.NewDataList(1.5, 2.5, nil, 4.5).SetName("numbers")
+    ds := accel.ProjectDataTable(dt)
+    centroids := [][]float64{{0, 0}, {1, 1}, {2, 2}}
 
-    // Reduce the column. Runs on a GPU when the host has one, and falls back
-    // to the CPU with an observable reason when it does not.
-    result, err := session.ExecuteDataList(dl, accel.WorkloadEstimate{
-        Precision: accel.PrecisionFloat32,
-    })
+    // Find the two nearest centroids per row. A GPU narrows the field when the
+    // host has one; the answer is the float64 one either way.
+    result, err := session.ExecuteNearestExact(ds, centroids, 2, accel.WorkloadEstimate{})
     if err != nil {
         panic(err)
     }
 
     fmt.Println(result.Accelerated, result.FallbackReason)
-    fmt.Println(result.Reductions["numbers"], result.Counts["numbers"])
-    fmt.Println(result.Transfer, result.Dispatch, result.Readback)
+    fmt.Println(result.Index[:4], result.Distance[:4])
+    fmt.Println(result.Rechecked, "of", result.Rows, "rows took the full path")
 }
 ```
 
@@ -200,5 +174,5 @@ func main() {
 - Default backend preference is `CUDA`, then `Metal`, then `WebGPU`.
 - Native discovery is best-effort. Env-driven stubs remain available for deterministic testing and non-GPU development.
 - Shared-memory devices can derive working-set budgets from host memory when native budget data is unavailable.
-- `accel plan` remains a planning/report surface. `accel run <var> --precision float32` executes on a device when a backend module is linked in, and prints the computed value alongside the measured transfer, dispatch, and readback times.
+- `accel devices`, `accel cache` and `accel plan` inspect the runtime; none of them executes anything. The command that did was removed with the operations it invoked.
 - Execution cost figures are only reported when something actually ran on a device.

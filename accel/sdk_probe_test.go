@@ -182,10 +182,10 @@ type fakeNVMLLoader struct {
 	initErr       error
 }
 
-func (l *fakeNVMLLoader) Init() error                          { return l.initErr }
-func (l *fakeNVMLLoader) Shutdown() error                      { return nil }
-func (l *fakeNVMLLoader) DriverVersion() (string, error)       { return l.driverVersion, nil }
-func (l *fakeNVMLLoader) DeviceCount() (int, error)            { return len(l.devices), nil }
+func (l *fakeNVMLLoader) Init() error                    { return l.initErr }
+func (l *fakeNVMLLoader) Shutdown() error                { return nil }
+func (l *fakeNVMLLoader) DriverVersion() (string, error) { return l.driverVersion, nil }
+func (l *fakeNVMLLoader) DeviceCount() (int, error)      { return len(l.devices), nil }
 func (l *fakeNVMLLoader) Device(idx int) (nvmlDeviceInfo, error) {
 	if idx < 0 || idx >= len(l.devices) {
 		return nvmlDeviceInfo{}, errors.New("out of range")
