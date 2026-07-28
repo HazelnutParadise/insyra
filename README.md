@@ -152,6 +152,12 @@ CSV setup -> DataTable loading -> CCL enrichment -> sorting -> KPI aggregation -
 
   `accel` is intentionally opt-in and is not included in `allpkgs` at this stage.
 
+- To run workloads on a GPU, also install the backend module (pure Go, no CGO):
+
+  ```sh
+  go get github.com/HazelnutParadise/insyra/accel/backend/wgpu
+  ```
+
 - Update **Insyra** to the latest version:
 
   ```sh
@@ -375,7 +381,7 @@ For a complete list of DataTable methods and features, please refer to the **[Da
 | **[isr](/Docs/isr.md)** | Syntactic sugar over **Insyra** — the recommended entry point for new code. |
 | **[stats](/Docs/stats.md)** | Statistical functions for data analysis: skewness, kurtosis, moment calculations, and more. |
 | **[parallel](/Docs/parallel.md)** | Parallel processing for data manipulation; runs any function and auto-waits for all goroutines. |
-| **[accel](/Docs/accel.md)** | Opt-in acceleration runtime surface: `Config`, `Session`, `Device`, `Report`, `Buffer`, `Dataset`, plus CPU-side typed projection helpers while backend execution is still being built. |
+| **[accel](/Docs/accel.md)** | Opt-in GPU acceleration: device discovery, typed columnar projection, and real column reductions on a GPU via the separate `accel/backend/wgpu` module. |
 | **[plot](/Docs/plot.md)** | Data visualization wrapping [go-echarts](https://github.com/go-echarts/go-echarts). |
 | **[gplot](/Docs/gplot.md)** | Static charts via [gonum/plot](https://github.com/gonum/plot) — fast, no Chrome, supports function plots. |
 | **[csvxl](/Docs/csvxl.md)** | Work with Excel and CSV files (e.g. convert CSV to Excel). |

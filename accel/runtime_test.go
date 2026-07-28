@@ -1,7 +1,9 @@
 package accel_test
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/accel"
@@ -257,18 +259,92 @@ func TestExecuteDataListProjectsAndRuns(t *testing.T) {
 		require.NoError(t, session.Close())
 	})
 
+	accel.ResetBackendExecutorsForTest()
+	t.Cleanup(accel.ResetBackendExecutorsForTest)
+	require.NoError(t, accel.RegisterBackendExecutor(accel.BackendCUDA, sumExecutor{}))
+
 	values := make([]any, 512)
 	for i := range values {
 		values[i] = i + 1
 	}
 
-	result, err := session.ExecuteDataList(insyra.NewDataList(values...).SetName("numbers"), accel.WorkloadEstimate{})
+	result, err := session.ExecuteDataList(
+		insyra.NewDataList(values...).SetName("numbers"),
+		accel.WorkloadEstimate{Precision: accel.PrecisionFloat32},
+	)
 	require.NoError(t, err)
 	assert.True(t, result.Accelerated)
-	assert.Len(t, result.Assignments, 2)
+	// Single-device execution: the plan may name two devices, the result names
+	// the one that actually ran.
+	assert.Len(t, result.Assignments, 1)
+	assert.Len(t, result.DeviceIDs, 1)
+	assert.Equal(t, float64(512*513/2), result.Reductions["numbers"])
+	assert.Equal(t, 512, result.Counts["numbers"])
 
 	snapshot := session.CacheSnapshot()
 	require.Len(t, snapshot.Entries, 1)
 	assert.Equal(t, "numbers", snapshot.Entries[0].BufferName)
-	assert.Len(t, snapshot.Entries[0].DeviceResidentBytes, 2)
+	assert.Len(t, snapshot.Entries[0].DeviceResidentBytes, 1)
+}
+
+func TestExecuteDataListWithoutBackendExecutorFallsBack(t *testing.T) {
+	disableNativeProbesForRuntimeTest(t)
+	accel.ResetDiscoverersForTest()
+	t.Cleanup(accel.ResetDiscoverersForTest)
+	accel.ResetBackendExecutorsForTest()
+	t.Cleanup(accel.ResetBackendExecutorsForTest)
+
+	accel.RegisterDiscoverer(runtimeStubDiscoverer{
+		name: "exec-devices",
+		devices: []accel.Device{
+			{
+				ID:          "cuda:exec:0",
+				Backend:     accel.BackendCUDA,
+				Type:        accel.DeviceTypeDiscrete,
+				MemoryClass: accel.MemoryClassDevice,
+				BudgetBytes: 1 << 20,
+				Score:       100,
+			},
+		},
+	})
+
+	session, err := accel.Open(accel.Config{})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, session.Close())
+	})
+
+	values := make([]any, 512)
+	for i := range values {
+		values[i] = i + 1
+	}
+
+	result, err := session.ExecuteDataList(
+		insyra.NewDataList(values...).SetName("numbers"),
+		accel.WorkloadEstimate{Precision: accel.PrecisionFloat32},
+	)
+	require.NoError(t, err)
+	assert.False(t, result.Accelerated)
+	assert.Equal(t, accel.FallbackReasonNoBackendExecutor, result.FallbackReason)
+	assert.Nil(t, result.Reductions)
+}
+
+// sumExecutor stands in for a real backend in the external-package runtime
+// tests: it does on the CPU what a device kernel would do.
+type sumExecutor struct{}
+
+func (sumExecutor) Name() string { return "sum-fake" }
+
+func (sumExecutor) Execute(_ context.Context, req accel.ExecuteRequest) (accel.ExecuteResponse, error) {
+	var sum float64
+	for _, value := range req.Values {
+		sum += float64(value)
+	}
+	return accel.ExecuteResponse{
+		Value:         sum,
+		Transfer:      time.Millisecond,
+		Dispatch:      100 * time.Microsecond,
+		Readback:      500 * time.Microsecond,
+		BytesUploaded: uint64(len(req.Values) * 4),
+	}, nil
 }

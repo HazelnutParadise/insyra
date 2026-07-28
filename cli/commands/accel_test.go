@@ -2,10 +2,13 @@ package commands
 
 import (
 	"bytes"
+	"context"
 	"strings"
 	"testing"
+	"time"
 
 	insyra "github.com/HazelnutParadise/insyra"
+	accelpkg "github.com/HazelnutParadise/insyra/accel"
 )
 
 func setupCommandHome(t *testing.T) {
@@ -142,7 +145,28 @@ func TestRunAccelCommandRunPrintsShardPlanSummary(t *testing.T) {
 	}
 }
 
-func TestRunAccelCommandRunExecutesDataListVariable(t *testing.T) {
+// cliSumExecutor stands in for a real GPU backend so the CLI's execution
+// output can be tested on a machine with no device.
+type cliSumExecutor struct{}
+
+func (cliSumExecutor) Name() string { return "cli-fake" }
+
+func (cliSumExecutor) Execute(_ context.Context, req accelpkg.ExecuteRequest) (accelpkg.ExecuteResponse, error) {
+	var sum float64
+	for _, value := range req.Values {
+		sum += float64(value)
+	}
+	return accelpkg.ExecuteResponse{
+		Value:         sum,
+		Transfer:      time.Millisecond,
+		Dispatch:      100 * time.Microsecond,
+		Readback:      500 * time.Microsecond,
+		BytesUploaded: uint64(len(req.Values) * 4),
+	}, nil
+}
+
+func accelRunContext(t *testing.T) (*ExecContext, *bytes.Buffer) {
+	t.Helper()
 	setupCommandHome(t)
 	t.Setenv("INSYRA_ACCEL_STUB_CUDA", "1")
 	t.Setenv("INSYRA_ACCEL_STUB_WEBGPU", "1")
@@ -151,16 +175,24 @@ func TestRunAccelCommandRunExecutesDataListVariable(t *testing.T) {
 	for i := range values {
 		values[i] = i + 1
 	}
-
 	output := &bytes.Buffer{}
-	ctx := &ExecContext{
+	return &ExecContext{
 		Vars: map[string]any{
 			"numbers": insyra.NewDataList(values...).SetName("numbers"),
 		},
 		Output: output,
+	}, output
+}
+
+func TestRunAccelCommandRunExecutesDataListVariable(t *testing.T) {
+	ctx, output := accelRunContext(t)
+	accelpkg.ResetBackendExecutorsForTest()
+	t.Cleanup(accelpkg.ResetBackendExecutorsForTest)
+	if err := accelpkg.RegisterBackendExecutor(accelpkg.BackendCUDA, cliSumExecutor{}); err != nil {
+		t.Fatalf("register executor failed: %v", err)
 	}
 
-	if err := runAccelCommand(ctx, []string{"run", "numbers", "--mode", "auto"}); err != nil {
+	if err := runAccelCommand(ctx, []string{"run", "numbers", "--mode", "auto", "--precision", "float32"}); err != nil {
 		t.Fatalf("runAccelCommand failed: %v", err)
 	}
 
@@ -171,17 +203,80 @@ func TestRunAccelCommandRunExecutesDataListVariable(t *testing.T) {
 	if !strings.Contains(rendered, "var=numbers") {
 		t.Fatalf("expected variable name in output, got %q", rendered)
 	}
-	if !strings.Contains(rendered, "participants=2") {
-		t.Fatalf("expected participant count in output, got %q", rendered)
+	if !strings.Contains(rendered, "executor=cli-fake") {
+		t.Fatalf("expected the executor name in output, got %q", rendered)
 	}
-	if !strings.Contains(rendered, "allocator=ledger") {
-		t.Fatalf("expected allocator in output, got %q", rendered)
+	if !strings.Contains(rendered, "participants=1") {
+		t.Fatalf("this change executes on one device; got %q", rendered)
 	}
-	if !strings.Contains(rendered, "bytes_moved=") {
-		t.Fatalf("expected bytes moved in output, got %q", rendered)
+	if !strings.Contains(rendered, "precision=float32") {
+		t.Fatalf("expected the precision in output, got %q", rendered)
+	}
+	if !strings.Contains(rendered, "numbers=131328") {
+		t.Fatalf("expected the computed sum in output, got %q", rendered)
+	}
+	if !strings.Contains(rendered, "transfer=") {
+		t.Fatalf("expected measured cost in output, got %q", rendered)
 	}
 	if strings.Contains(rendered, "planning_only=true") {
 		t.Fatalf("did not expect planning-only marker in execution output, got %q", rendered)
+	}
+}
+
+func TestRunAccelCommandRunWithoutExecutorReportsFallback(t *testing.T) {
+	ctx, output := accelRunContext(t)
+	accelpkg.ResetBackendExecutorsForTest()
+	t.Cleanup(accelpkg.ResetBackendExecutorsForTest)
+
+	if err := runAccelCommand(ctx, []string{"run", "numbers", "--mode", "auto", "--precision", "float32"}); err != nil {
+		t.Fatalf("runAccelCommand failed: %v", err)
+	}
+
+	rendered := output.String()
+	if !strings.Contains(rendered, "executed=false") {
+		t.Fatalf("expected no execution without a registered backend, got %q", rendered)
+	}
+	if !strings.Contains(rendered, "reason=no-backend-executor") {
+		t.Fatalf("expected the missing-backend reason, got %q", rendered)
+	}
+	if strings.Contains(rendered, "transfer=") {
+		t.Fatalf("expected no cost figures when nothing ran, got %q", rendered)
+	}
+}
+
+func TestRunAccelCommandRunRefusesFloat64WithoutPrecisionOptIn(t *testing.T) {
+	ctx, output := accelRunContext(t)
+	accelpkg.ResetBackendExecutorsForTest()
+	t.Cleanup(accelpkg.ResetBackendExecutorsForTest)
+	if err := accelpkg.RegisterBackendExecutor(accelpkg.BackendCUDA, cliSumExecutor{}); err != nil {
+		t.Fatalf("register executor failed: %v", err)
+	}
+	// Large enough to clear the planner's profitability floor, so the refusal
+	// under test is the precision one and not the size one.
+	scores := make([]any, 512)
+	for i := range scores {
+		scores[i] = float64(i) + 0.5
+	}
+	ctx.Vars["scores"] = insyra.NewDataList(scores...).SetName("scores")
+
+	if err := runAccelCommand(ctx, []string{"run", "scores", "--mode", "auto"}); err != nil {
+		t.Fatalf("runAccelCommand failed: %v", err)
+	}
+
+	rendered := output.String()
+	if !strings.Contains(rendered, "reason=precision-not-accepted") {
+		t.Fatalf("expected a float64 column to be refused without --precision float32, got %q", rendered)
+	}
+}
+
+func TestRunAccelCommandRejectsInvalidPrecision(t *testing.T) {
+	ctx, _ := accelRunContext(t)
+	err := runAccelCommand(ctx, []string{"run", "numbers", "--precision", "float16"})
+	if err == nil {
+		t.Fatal("expected an unknown precision to be rejected")
+	}
+	if !strings.Contains(err.Error(), "invalid accel precision") {
+		t.Fatalf("expected a precision error, got %v", err)
 	}
 }
 

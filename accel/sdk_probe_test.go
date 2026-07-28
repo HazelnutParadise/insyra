@@ -22,8 +22,7 @@ func (p *fakeSDKProbe) Probe(cfg Config) ([]Device, error) {
 func TestSDKProbeWinsOverNativeAndStub(t *testing.T) {
 	ResetDiscoverersForTest()
 	t.Cleanup(ResetDiscoverersForTest)
-	resetBuiltinProbeOverridesForTest()
-	t.Cleanup(resetBuiltinProbeOverridesForTest)
+	isolateBuiltinProbes(t)
 
 	nativeCalls := 0
 	setBuiltinProbeOverrideForTest(
@@ -105,8 +104,7 @@ func TestSDKProbeWinsOverNativeAndStub(t *testing.T) {
 func TestSDKProbeUnavailableFallsThroughToNative(t *testing.T) {
 	ResetDiscoverersForTest()
 	t.Cleanup(ResetDiscoverersForTest)
-	resetBuiltinProbeOverridesForTest()
-	t.Cleanup(resetBuiltinProbeOverridesForTest)
+	isolateBuiltinProbes(t)
 
 	setBuiltinProbeOverrideForTest(
 		BackendCUDA,

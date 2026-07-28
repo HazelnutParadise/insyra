@@ -342,3 +342,14 @@ func cloneCacheEntry(entry CacheEntry) CacheEntry {
 	cloned.DeviceResidentBytes = cloneDeviceResidentBytes(entry.DeviceResidentBytes)
 	return cloned
 }
+
+func cloneDeviceResidentBytes(input map[string]uint64) map[string]uint64 {
+	if input == nil {
+		return nil
+	}
+	cloned := make(map[string]uint64, len(input))
+	for key, value := range input {
+		cloned[key] = value
+	}
+	return cloned
+}

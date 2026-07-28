@@ -95,7 +95,7 @@ dt.Show()
 
 | Document                | Description                                                 |
 | ----------------------- | ----------------------------------------------------------- |
-| [accel](accel.md)       | Optional acceleration runtime surface and typed projections |
+| [accel](accel.md)       | Optional GPU acceleration: device discovery, typed projections, and real column reductions |
 | [py](py.md)             | Execute Python code from Go with an auto-managed Python env |
 | [parallel](parallel.md) | Simple parallel execution of functions                      |
 | [utils](utils.md)       | Helper functions for type conversion and data processing    |
@@ -131,7 +131,7 @@ go get github.com/HazelnutParadise/insyra/plot
 | Store and analyze a single column of data | [DataList](DataList.md)         |
 | Work with tabular data (rows and columns) | [DataTable](DataTable.md)       |
 | Calculate new columns from existing data  | [CCL](CCL.md)                   |
-| Freeze an opt-in acceleration runtime     | [accel](accel.md)              |
+| Run a column reduction on a GPU           | [accel](accel.md)              |
 | Read/write CSV or Excel files             | [csvxl](csvxl.md)               |
 | Perform statistical tests                 | [stats](stats.md)               |
 | Create static charts for reports          | [gplot](gplot.md)               |

@@ -182,3 +182,15 @@ This list is generated from `insyra help` in this repository state.
 - `scale inverse <scalerVar> <tableVar> as <outVar>`
   - Restores the original scale of fitted columns.
 - Unlike `encode`, `scale` is stateful: fit once, then transform train and test with the same parameters (no leakage). Scaler variables are session-only (not persisted to a named environment). `nil`/`NaN` are preserved and ignored when fitting; non-fitted columns pass through. `show <scalerVar>` prints the scaler kind and fitted columns.
+
+## GPU Acceleration Command
+
+- `accel devices` — list discovered acceleration devices, or report why none were found.
+- `accel cache` — show session-local resident buffers.
+- `accel plan` — planning report only; runs nothing.
+- `accel run <var> [--mode auto|cpu|gpu|strict-gpu] [--precision exact|float32]`
+  - Reduces the columns of a DataList or DataTable variable on a device and prints the computed value with measured transfer, dispatch, and readback times.
+  - `--precision` defaults to `exact`, which refuses to narrow a `float64` column. GPU backends have no `f64`, so a numeric column will report `reason=precision-not-accepted` until you pass `--precision float32` to accept single-precision device math.
+  - Nothing runs on a device unless the caller's program links a backend module (`github.com/HazelnutParadise/insyra/accel/backend/wgpu`). Without one the output is `executed=false reason=no-backend-executor`, which is a truthful CPU fallback, not an error.
+  - Cost figures are only printed when something actually ran on a device.
+- `config accel.mode <auto|cpu|gpu|strict-gpu>`, `show accel.devices`, `show accel.cache`.

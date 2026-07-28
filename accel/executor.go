@@ -1,64 +1,85 @@
 package accel
 
 import (
+	"context"
+	"errors"
 	"fmt"
-	"sort"
 	"sync"
+	"time"
 
 	"github.com/HazelnutParadise/insyra"
 )
 
-type BackendAllocator interface {
+// Sentinel errors a backend wraps so the runtime can map a failure onto a
+// stable fallback reason without knowing anything about the backend.
+var (
+	ErrShaderCompile   = errors.New("accel: shader compilation failed")
+	ErrBufferTooLarge  = errors.New("accel: column exceeds device buffer limit")
+	ErrReadbackTimeout = errors.New("accel: device readback timed out")
+)
+
+// ExecuteRequest is one operation over one column on one device.
+//
+// Values arrives already narrowed to float32 and with nulls replaced by the
+// operation's identity, so a backend never has to know about precision policy
+// or Insyra's null representation.
+type ExecuteRequest struct {
+	Op        Op
+	Device    Device
+	Column    string
+	Values    []float32
+	Precision Precision
+}
+
+// ExecuteResponse carries the computed value and what it actually cost.
+// Durations are host-observed: Metal and GLES do not implement GPU timestamp
+// queries, so device-side timing is not available on every backend.
+type ExecuteResponse struct {
+	Value         float64
+	Transfer      time.Duration
+	Dispatch      time.Duration
+	Readback      time.Duration
+	BytesUploaded uint64
+}
+
+// BackendExecutor runs an operation on a real device. Registering one is how a
+// backend module opts into the accel runtime.
+type BackendExecutor interface {
 	Name() string
-	Materialize(dataset *Dataset, plan ShardPlan) AllocationRecord
+	Execute(ctx context.Context, req ExecuteRequest) (ExecuteResponse, error)
 }
 
 var (
-	backendAllocatorsMu sync.RWMutex
-	backendAllocators   = map[Backend]BackendAllocator{}
+	backendExecutorsMu sync.RWMutex
+	backendExecutors   = map[Backend]BackendExecutor{}
 )
 
-func RegisterBackendAllocator(backend Backend, allocator BackendAllocator) error {
+func RegisterBackendExecutor(backend Backend, executor BackendExecutor) error {
 	if backend == "" || backend == BackendUnknown || backend == BackendCPU {
-		return fmt.Errorf("accel: allocator backend is required")
+		return fmt.Errorf("accel: executor backend is required")
 	}
-	if allocator == nil {
-		return fmt.Errorf("accel: allocator is required")
+	if executor == nil {
+		return fmt.Errorf("accel: executor is required")
 	}
-	backendAllocatorsMu.Lock()
-	defer backendAllocatorsMu.Unlock()
-	backendAllocators[backend] = allocator
+	backendExecutorsMu.Lock()
+	defer backendExecutorsMu.Unlock()
+	backendExecutors[backend] = executor
 	return nil
 }
 
-type AllocationRecord struct {
-	DeviceIDs         []string
-	DeviceResidentMap map[string]map[string]uint64
-	BytesMoved        uint64
+// ResetBackendExecutorsForTest clears every registered executor. Tests use this
+// to keep one package's registration from leaking into another's.
+func ResetBackendExecutorsForTest() {
+	backendExecutorsMu.Lock()
+	defer backendExecutorsMu.Unlock()
+	backendExecutors = map[Backend]BackendExecutor{}
 }
 
-type ledgerAllocator struct{}
-
-func (ledgerAllocator) Name() string { return string(AllocatorKindLedger) }
-
-func (ledgerAllocator) Materialize(dataset *Dataset, plan ShardPlan) AllocationRecord {
-	record := AllocationRecord{
-		DeviceIDs:         append([]string(nil), plan.DeviceIDs...),
-		DeviceResidentMap: map[string]map[string]uint64{},
-	}
-	if dataset == nil || len(plan.Assignments) == 0 {
-		return record
-	}
-
-	for _, buffer := range dataset.Buffers {
-		bufferBytes := estimateBufferResidentBytes(buffer)
-		deviceBytes := distributeResidentBytes(bufferBytes, plan.Assignments)
-		record.BytesMoved += sumDeviceResidentBytes(deviceBytes)
-		record.DeviceResidentMap[buffer.Name] = deviceBytes
-	}
-
-	sort.Strings(record.DeviceIDs)
-	return record
+func lookupBackendExecutor(backend Backend) (BackendExecutor, bool) {
+	backendExecutorsMu.RLock()
+	defer backendExecutorsMu.RUnlock()
+	executor, ok := backendExecutors[backend]
+	return executor, ok
 }
 
 func (s *Session) ExecuteProjectedDataset(dataset *Dataset, workload WorkloadEstimate) (ExecutionResult, error) {
@@ -70,6 +91,12 @@ func (s *Session) ExecuteProjectedDataset(dataset *Dataset, workload WorkloadEst
 	}
 	if workload.Class == "" {
 		workload.Class = WorkloadClassColumnar
+	}
+	if workload.Op == "" {
+		workload.Op = OpSum
+	}
+	if workload.Precision == "" {
+		workload.Precision = PrecisionExact
 	}
 	if workload.Rows <= 0 {
 		workload.Rows = dataset.Rows
@@ -83,27 +110,194 @@ func (s *Session) ExecuteProjectedDataset(dataset *Dataset, workload WorkloadEst
 		Accelerated:    plan.Accelerated,
 		FallbackReason: plan.FallbackReason,
 		MergePolicy:    plan.MergePolicy,
-		AllocatorKind:  AllocatorKindUnknown,
+		ExecutorKind:   ExecutorKindUnknown,
 		Assignments:    append([]ShardAssignment(nil), plan.Assignments...),
 		DeviceIDs:      append([]string(nil), plan.DeviceIDs...),
+		Op:             workload.Op,
 	}
 	if !plan.Accelerated {
-		s.recordExecutionMetrics(result)
-		if strictGPURequired(s.cfg) {
-			return result, fmt.Errorf("accel: unable to execute projected dataset on acceleration path (%s)", plan.FallbackReason)
-		}
-		return result, nil
+		return s.finishExecution(result, nil)
 	}
 
-	allocator, allocatorKind := resolveExecutionAllocator(plan)
-	result.Allocator = allocator.Name()
-	result.AllocatorKind = allocatorKind
+	if workload.Op != OpSum {
+		return s.abortExecution(result, FallbackReasonWorkloadUnsupported,
+			fmt.Errorf("accel: unsupported operation %q", workload.Op))
+	}
+
+	executor, ok := lookupBackendExecutor(plan.Backend)
+	if !ok {
+		return s.abortExecution(result, FallbackReasonNoBackendExecutor,
+			fmt.Errorf("accel: no execution backend registered for %q", plan.Backend))
+	}
+	result.Executor = executor.Name()
+	result.ExecutorKind = ExecutorKindRegistered
+
+	// This change ships single-device execution. Narrow the plan to the device
+	// that actually runs the work rather than reporting devices that did not.
+	device, ok := s.executionDevice(plan)
+	if !ok {
+		return s.abortExecution(result, FallbackReasonNoAccelerator,
+			errors.New("accel: plan named no usable device"))
+	}
+	result.DeviceIDs = []string{device.ID}
+	result.Assignments = assignmentsForDevice(plan, device.ID)
+
+	prepared := make([]ExecuteRequest, 0, len(dataset.Buffers))
+	counts := make(map[string]int, len(dataset.Buffers))
+	for _, buffer := range dataset.Buffers {
+		values, count, reason := deviceValues(buffer, workload.Precision)
+		if reason != FallbackReasonNone {
+			return s.abortExecution(result, reason,
+				fmt.Errorf("accel: column %q is not eligible for device execution (%s)", buffer.Name, reason))
+		}
+		prepared = append(prepared, ExecuteRequest{
+			Op:        workload.Op,
+			Device:    device,
+			Column:    buffer.Name,
+			Values:    values,
+			Precision: workload.Precision,
+		})
+		counts[buffer.Name] = count
+	}
+
+	result.Precision = workload.Precision
+	result.Reductions = make(map[string]float64, len(prepared))
+	result.Counts = counts
+
+	ctx := context.Background()
+	for _, req := range prepared {
+		// An empty column needs no device work; dispatching zero workgroups is
+		// a validation error on some backends.
+		if len(req.Values) == 0 {
+			result.Reductions[req.Column] = 0
+			continue
+		}
+		response, err := executor.Execute(ctx, req)
+		if err != nil {
+			return s.abortExecution(result, fallbackReasonForExecError(err), err)
+		}
+		result.Reductions[req.Column] = response.Value
+		result.Transfer += response.Transfer
+		result.Dispatch += response.Dispatch
+		result.Readback += response.Readback
+		result.BytesUploaded += response.BytesUploaded
+	}
+
 	s.ensureDatasetCached(dataset)
-	record := allocator.Materialize(dataset, plan)
-	result.BytesMoved = record.BytesMoved
-	s.applyAllocationRecord(dataset, record)
+	s.applyDeviceResidency(dataset, device.ID)
+	return s.finishExecution(result, nil)
+}
+
+// abortExecution turns a mid-flight failure back into a non-accelerated result
+// so the caller still gets an inspectable report, and returns the error only
+// when the session demands GPU execution.
+func (s *Session) abortExecution(result ExecutionResult, reason FallbackReason, err error) (ExecutionResult, error) {
+	result.Accelerated = false
+	result.FallbackReason = reason
+	result.Reductions = nil
+	result.Counts = nil
+	result.Transfer = 0
+	result.Dispatch = 0
+	result.Readback = 0
+	result.BytesUploaded = 0
+	return s.finishExecution(result, err)
+}
+
+func (s *Session) finishExecution(result ExecutionResult, err error) (ExecutionResult, error) {
 	s.recordExecutionMetrics(result)
+	if !result.Accelerated && strictGPURequired(s.cfg) {
+		if err != nil {
+			return result, fmt.Errorf("accel: unable to execute on the acceleration path (%s): %w", result.FallbackReason, err)
+		}
+		return result, fmt.Errorf("accel: unable to execute on the acceleration path (%s)", result.FallbackReason)
+	}
 	return result, nil
+}
+
+func fallbackReasonForExecError(err error) FallbackReason {
+	switch {
+	case errors.Is(err, ErrShaderCompile):
+		return FallbackReasonShaderCompileFailed
+	case errors.Is(err, ErrBufferTooLarge):
+		return FallbackReasonBufferTooLarge
+	case errors.Is(err, ErrReadbackTimeout), errors.Is(err, context.DeadlineExceeded):
+		return FallbackReasonReadbackTimeout
+	default:
+		return FallbackReasonExecutionFailed
+	}
+}
+
+// executionDevice picks the device carrying the largest share of the plan.
+func (s *Session) executionDevice(plan ShardPlan) (Device, bool) {
+	best := ""
+	bestWeight := -1.0
+	for _, assignment := range plan.Assignments {
+		if assignment.Weight > bestWeight {
+			bestWeight = assignment.Weight
+			best = assignment.DeviceID
+		}
+	}
+	if best == "" && len(plan.DeviceIDs) > 0 {
+		best = plan.DeviceIDs[0]
+	}
+	for _, device := range s.devices {
+		if device.ID == best {
+			return cloneDevice(device), true
+		}
+	}
+	return Device{}, false
+}
+
+func assignmentsForDevice(plan ShardPlan, deviceID string) []ShardAssignment {
+	for _, assignment := range plan.Assignments {
+		if assignment.DeviceID == deviceID {
+			return []ShardAssignment{assignment}
+		}
+	}
+	return nil
+}
+
+// deviceValues narrows a projected column into what a device can hold, or says
+// why it cannot. Nulls become the additive identity so backends need no null
+// concept; the returned count is the number of values that were not null.
+func deviceValues(buffer Buffer, precision Precision) ([]float32, int, FallbackReason) {
+	isNull := func(i int) bool { return i < len(buffer.Nulls) && buffer.Nulls[i] }
+
+	switch values := buffer.Values.(type) {
+	case []float64:
+		if precision != PrecisionFloat32 {
+			return nil, 0, FallbackReasonPrecisionNotAccepted
+		}
+		out := make([]float32, len(values))
+		count := 0
+		for i, value := range values {
+			if isNull(i) {
+				continue
+			}
+			out[i] = float32(value)
+			count++
+		}
+		return out, count, FallbackReasonNone
+	case []int64:
+		// WGSL has no i64 either, so an integer column is only reachable under
+		// the same explicit opt-in. Values above 2^24 lose precision, which is
+		// exactly what the opt-in acknowledges.
+		if precision != PrecisionFloat32 {
+			return nil, 0, FallbackReasonPrecisionNotAccepted
+		}
+		out := make([]float32, len(values))
+		count := 0
+		for i, value := range values {
+			if isNull(i) {
+				continue
+			}
+			out[i] = float32(value)
+			count++
+		}
+		return out, count, FallbackReasonNone
+	default:
+		return nil, 0, FallbackReasonDTypeNotEligible
+	}
 }
 
 func (s *Session) ExecuteDataList(dl *insyra.DataList, workload WorkloadEstimate) (ExecutionResult, error) {
@@ -164,8 +358,11 @@ func estimateDatasetResidentBytes(dataset *Dataset) uint64 {
 	return total
 }
 
-func (s *Session) applyAllocationRecord(dataset *Dataset, record AllocationRecord) {
-	if s == nil || s.cache == nil || dataset == nil {
+// applyDeviceResidency records that the dataset's buffers really are resident
+// on the device that executed the work. Unlike the estimate it replaces, every
+// byte here was actually uploaded.
+func (s *Session) applyDeviceResidency(dataset *Dataset, deviceID string) {
+	if s == nil || s.cache == nil || dataset == nil || deviceID == "" {
 		return
 	}
 	for idx, buffer := range dataset.Buffers {
@@ -174,9 +371,8 @@ func (s *Session) applyAllocationRecord(dataset *Dataset, record AllocationRecor
 		if !ok {
 			continue
 		}
-		entry.DeviceIDs = append([]string(nil), record.DeviceIDs...)
-		deviceBytes := record.DeviceResidentMap[buffer.Name]
-		entry.DeviceResidentBytes = cloneDeviceResidentBytes(deviceBytes)
+		entry.DeviceIDs = []string{deviceID}
+		entry.DeviceResidentBytes = map[string]uint64{deviceID: entry.ResidentBytes}
 		s.cache.entries[key] = entry
 	}
 	s.updateCacheMetrics()
@@ -194,11 +390,22 @@ func (s *Session) recordExecutionMetrics(result ExecutionResult) {
 	report.Metrics["execution.fallback"] = boolMetric(!result.Accelerated && result.FallbackReason != FallbackReasonNone)
 	report.Metrics["execution.device_participants"] = float64(len(result.DeviceIDs))
 	report.Metrics["execution.assignments"] = float64(len(result.Assignments))
-	report.Metrics["execution.bytes_moved"] = float64(result.BytesMoved)
 	report.Metrics["execution.merge_cpu"] = boolMetric(result.MergePolicy == MergePolicyCPU)
 	report.Metrics["execution.merge_backend_native"] = boolMetric(result.MergePolicy == MergePolicyBackendNative)
-	report.Metrics["execution.allocator_ledger"] = boolMetric(result.AllocatorKind == AllocatorKindLedger)
-	report.Metrics["execution.allocator_registered"] = boolMetric(result.AllocatorKind == AllocatorKindRegistered)
+	report.Metrics["execution.executor_registered"] = boolMetric(result.ExecutorKind == ExecutorKindRegistered)
+	// Cost metrics describe real device activity, so they are only present when
+	// something actually ran on a device.
+	if result.Accelerated {
+		report.Metrics["execution.bytes_uploaded"] = float64(result.BytesUploaded)
+		report.Metrics["execution.transfer_ms"] = float64(result.Transfer.Nanoseconds()) / 1e6
+		report.Metrics["execution.dispatch_ms"] = float64(result.Dispatch.Nanoseconds()) / 1e6
+		report.Metrics["execution.readback_ms"] = float64(result.Readback.Nanoseconds()) / 1e6
+	} else {
+		delete(report.Metrics, "execution.bytes_uploaded")
+		delete(report.Metrics, "execution.transfer_ms")
+		delete(report.Metrics, "execution.dispatch_ms")
+		delete(report.Metrics, "execution.readback_ms")
+	}
 	s.reports[len(s.reports)-1] = cloneReport(report)
 }
 
@@ -224,29 +431,4 @@ func boolMetric(value bool) float64 {
 		return 1
 	}
 	return 0
-}
-
-func cloneDeviceResidentBytes(input map[string]uint64) map[string]uint64 {
-	if input == nil {
-		return nil
-	}
-	cloned := make(map[string]uint64, len(input))
-	for key, value := range input {
-		cloned[key] = value
-	}
-	return cloned
-}
-
-func resolveExecutionAllocator(plan ShardPlan) (BackendAllocator, AllocatorKind) {
-	ensureBuiltinBackendAllocators()
-	if plan.Heterogeneous || len(plan.DeviceIDs) == 0 {
-		return ledgerAllocator{}, AllocatorKindLedger
-	}
-	backendAllocatorsMu.RLock()
-	allocator, ok := backendAllocators[plan.Backend]
-	backendAllocatorsMu.RUnlock()
-	if ok {
-		return allocator, AllocatorKindRegistered
-	}
-	return ledgerAllocator{}, AllocatorKindLedger
 }

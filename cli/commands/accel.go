@@ -14,6 +14,7 @@ import (
 type accelArgs struct {
 	cfg         accelpkg.Config
 	positionals []string
+	precision   accelpkg.Precision
 }
 
 func init() {
@@ -77,7 +78,7 @@ func runAccelCommand(ctx *ExecContext, args []string) error {
 		return nil
 	case "run":
 		if len(parsed.positionals) < 1 {
-			return fmt.Errorf("usage: accel run <var> [--mode auto|cpu|gpu|strict-gpu]")
+			return fmt.Errorf("usage: accel run <var> [--mode auto|cpu|gpu|strict-gpu] [--precision exact|float32]")
 		}
 		session, err := accelpkg.Open(parsed.cfg)
 		if session != nil {
@@ -89,7 +90,7 @@ func runAccelCommand(ctx *ExecContext, args []string) error {
 			}
 			return err
 		}
-		result, runErr := executeAccelVar(session, ctx, parsed.positionals[0])
+		result, runErr := executeAccelVar(session, ctx, parsed.positionals[0], parsed.precision)
 		renderAccelExecution(ctx.Output, parsed.positionals[0], session.Report(), result)
 		return runErr
 	default:
@@ -98,7 +99,7 @@ func runAccelCommand(ctx *ExecContext, args []string) error {
 }
 
 func accelConfigFromArgs(args []string) (accelArgs, error) {
-	parsed := accelArgs{cfg: accelpkg.Config{}}
+	parsed := accelArgs{cfg: accelpkg.Config{}, precision: accelpkg.PrecisionExact}
 	explicitMode := ""
 	for idx := 0; idx < len(args); idx++ {
 		switch args[idx] {
@@ -107,6 +108,16 @@ func accelConfigFromArgs(args []string) (accelArgs, error) {
 				return parsed, fmt.Errorf("usage: --mode auto|cpu|gpu|strict-gpu")
 			}
 			explicitMode = args[idx+1]
+			idx++
+		case "--precision":
+			if idx+1 >= len(args) {
+				return parsed, fmt.Errorf("usage: --precision exact|float32")
+			}
+			precision, err := resolveAccelPrecision(args[idx+1])
+			if err != nil {
+				return parsed, err
+			}
+			parsed.precision = precision
 			idx++
 		default:
 			parsed.positionals = append(parsed.positionals, args[idx])
@@ -119,6 +130,20 @@ func accelConfigFromArgs(args []string) (accelArgs, error) {
 	}
 	parsed.cfg.Mode = mode
 	return parsed, nil
+}
+
+// resolveAccelPrecision maps the CLI flag onto the runtime's precision opt-in.
+// The default refuses to narrow a float64 column, because GPU backends have no
+// f64 and narrowing silently would change the user's numbers.
+func resolveAccelPrecision(explicit string) (accelpkg.Precision, error) {
+	switch accelpkg.Precision(strings.TrimSpace(strings.ToLower(explicit))) {
+	case accelpkg.PrecisionExact:
+		return accelpkg.PrecisionExact, nil
+	case accelpkg.PrecisionFloat32:
+		return accelpkg.PrecisionFloat32, nil
+	default:
+		return "", fmt.Errorf("invalid accel precision: %s (supported: exact, float32)", explicit)
+	}
 }
 
 func resolveAccelMode(explicit string) (accelpkg.Mode, error) {
@@ -253,34 +278,65 @@ func renderAccelExecution(out io.Writer, varName string, report accelpkg.Report,
 	if len(result.DeviceIDs) > 0 {
 		devices = strings.Join(result.DeviceIDs, ",")
 	}
+	executor := result.Executor
+	if executor == "" {
+		executor = "none"
+	}
 	_, _ = fmt.Fprintf(
 		out,
-		"var=%s executed=%t backend=%s allocator=%s participants=%d devices=%s assignments=%d bytes_moved=%d merge=%s reason=%s\n",
+		"var=%s executed=%t backend=%s executor=%s participants=%d devices=%s assignments=%d merge=%s reason=%s\n",
 		varName,
 		result.Accelerated,
 		report.SelectedBackend,
-		result.Allocator,
+		executor,
 		len(result.DeviceIDs),
 		devices,
 		len(result.Assignments),
-		result.BytesMoved,
 		result.MergePolicy,
 		result.FallbackReason,
 	)
+	// Cost and values describe real device activity, so they are only printed
+	// when something actually ran on a device.
+	if !result.Accelerated {
+		return
+	}
+	_, _ = fmt.Fprintf(
+		out,
+		"  op=%s precision=%s uploaded=%dB transfer=%s dispatch=%s readback=%s\n",
+		result.Op,
+		result.Precision,
+		result.BytesUploaded,
+		result.Transfer,
+		result.Dispatch,
+		result.Readback,
+	)
+	for _, name := range sortedReductionNames(result.Reductions) {
+		_, _ = fmt.Fprintf(out, "  %s=%v n=%d\n", name, result.Reductions[name], result.Counts[name])
+	}
 }
 
-func executeAccelVar(session *accelpkg.Session, ctx *ExecContext, name string) (accelpkg.ExecutionResult, error) {
+func sortedReductionNames(reductions map[string]float64) []string {
+	names := make([]string, 0, len(reductions))
+	for name := range reductions {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func executeAccelVar(session *accelpkg.Session, ctx *ExecContext, name string, precision accelpkg.Precision) (accelpkg.ExecutionResult, error) {
 	if session == nil {
 		return accelpkg.ExecutionResult{}, fmt.Errorf("accel: nil session")
 	}
 	if ctx == nil {
 		return accelpkg.ExecutionResult{}, fmt.Errorf("accel: nil execution context")
 	}
+	workload := accelpkg.WorkloadEstimate{Precision: precision}
 	if dl, err := getDataListVar(ctx, name); err == nil {
-		return session.ExecuteDataList(dl, accelpkg.WorkloadEstimate{})
+		return session.ExecuteDataList(dl, workload)
 	}
 	if dt, err := getDataTableVar(ctx, name); err == nil {
-		return session.ExecuteDataTable(dt, accelpkg.WorkloadEstimate{})
+		return session.ExecuteDataTable(dt, workload)
 	}
 	return accelpkg.ExecutionResult{}, fmt.Errorf("variable %s is not a DataList or DataTable", name)
 }
