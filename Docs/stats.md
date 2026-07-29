@@ -1802,7 +1802,7 @@ type LogisticRegressionOptions struct {
 }
 ```
 
-Important result fields include `Coefficients`, `StandardErrors`, `ZValues`, `PValues`, `ConfidenceIntervals`, `OddsRatios`, `FittedProbabilities`, `Deviance`, `NullDeviance`, `AIC`, `BIC`, and pseudo-R-squared values (`McFaddenR2`, `CoxSnellR2`, `NagelkerkeR2`). Use `Predict(stats.PredictResponse, xs...)` for probabilities, `Predict(stats.PredictLinear, xs...)` for linear predictors, and `Predict(stats.PredictClass, xs...)` for class labels.
+Important result fields include `Link`, `Coefficients`, `StandardErrors`, `ZValues`, `PValues`, `ConfidenceIntervals`, `OddsRatios`, `FittedProbabilities`, `Deviance`, `NullDeviance`, `AIC`, `BIC`, and pseudo-R-squared values (`McFaddenR2`, `CoxSnellR2`, `NagelkerkeR2`). `Link` is `stats.Logit`; apply it to a `Predict(stats.PredictLinear, xs...)` result to reproduce `Predict(stats.PredictResponse, xs...)`. Use `Predict(stats.PredictClass, xs...)` for class labels.
 
 ```go
 y := insyra.NewDataList("no", "no", "yes", "yes", "no", "yes")
@@ -1836,7 +1836,7 @@ type PoissonRegressionOptions struct {
 }
 ```
 
-Important result fields include `Coefficients`, `StandardErrors`, `ZValues`, `PValues`, `ConfidenceIntervals`, `IncidenceRateRatios`, `FittedRates`, `PearsonChi2`, `DispersionStatistic`, `Deviance`, `NullDeviance`, `AIC`, and `BIC`.
+Important result fields include `Link`, `Coefficients`, `StandardErrors`, `ZValues`, `PValues`, `ConfidenceIntervals`, `IncidenceRateRatios`, `FittedRates`, `PearsonChi2`, `DispersionStatistic`, `Deviance`, `NullDeviance`, `AIC`, and `BIC`. `Link` is `stats.Log`; apply it to a `Predict(stats.PredictLinear, xs...)` result to reproduce `Predict(stats.PredictResponse, xs...)`.
 
 ```go
 counts := insyra.NewDataList(1, 2, 3, 4, 6, 8)

@@ -17,6 +17,7 @@ type PoissonRegressionOptions struct {
 }
 
 type PoissonRegressionResult struct {
+	Link                   GLMLink
 	Coefficients           []float64
 	StandardErrors         []float64
 	ZValues                []float64
@@ -108,6 +109,7 @@ func PoissonRegressionWithOptions(opts PoissonRegressionOptions, dlY insyra.IDat
 	irrCI := expCIs(cis)
 
 	return &PoissonRegressionResult{
+		Link:                   GLMLink(link.name()),
 		Coefficients:           append([]float64(nil), fit.beta...),
 		StandardErrors:         se,
 		ZValues:                z,
