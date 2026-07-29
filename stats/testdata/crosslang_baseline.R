@@ -1025,6 +1025,12 @@ if (method == "single_t") {
     iterations      = as.double(fit$iter),
     fitted          = unname(fitted(fit))
   )
+  if (!is.null(payload$new_xs)) {
+    new_xs <- lapply(payload$new_xs, function(v) as.double(unlist(v)))
+    newdf <- data.frame(do.call(cbind, new_xs))
+    names(newdf) <- paste0("x", seq_along(new_xs))
+    out$predictions <- as.double(predict(fit, newdata = newdf, type = "response"))
+  }
 } else if (method == "poisson_reg") {
   y  <- as.double(unlist(payload$y))
   xs <- lapply(payload$xs, function(v) as.double(unlist(v)))
@@ -1054,6 +1060,20 @@ if (method == "single_t") {
     iterations      = as.double(fit$iter),
     fitted          = unname(fitted(fit))
   )
+  if (!is.null(payload$new_xs)) {
+    new_xs <- lapply(payload$new_xs, function(v) as.double(unlist(v)))
+    newdf <- data.frame(do.call(cbind, new_xs))
+    names(newdf) <- paste0("x", seq_along(new_xs))
+    newdf$off <- as.double(unlist(payload$new_offset))
+    train_df <- data.frame(y = y, do.call(cbind, xs), off = off)
+    names(train_df) <- c("y", paste0("x", seq_along(xs)), "off")
+    fit_pred <- glm(y ~ . - off + offset(off), data = train_df, family = poisson(link = "log"),
+                    control = glm.control(epsilon = 1e-10, maxit = 100))
+    out$predictions <- as.double(predict(fit_pred, newdata = newdf, type = "response"))
+    fit_no_offset <- glm(y ~ ., data = train_df[, names(train_df) != "off", drop = FALSE], family = poisson(link = "log"),
+                         control = glm.control(epsilon = 1e-10, maxit = 100))
+    out$predictions_no_offset <- as.double(predict(fit_no_offset, newdata = newdf[, names(newdf) != "off", drop = FALSE], type = "response"))
+  }
 } else if (method == "glm_generic") {
   fam_name  <- as.character(payload$family)
   link_name <- as.character(payload$link)
@@ -1086,6 +1106,20 @@ if (method == "single_t") {
     dispersion      = summary(fit)$dispersion,
     fitted          = unname(fitted(fit))
   )
+  if (!is.null(payload$new_xs)) {
+    new_xs <- lapply(payload$new_xs, function(v) as.double(unlist(v)))
+    newdf <- data.frame(do.call(cbind, new_xs))
+    names(newdf) <- paste0("x", seq_along(new_xs))
+    newdf$off <- as.double(unlist(payload$new_offset))
+    train_df <- data.frame(y = y, do.call(cbind, xs), off = off)
+    names(train_df) <- c("y", paste0("x", seq_along(xs)), "off")
+    fit_pred <- glm(y ~ . - off + offset(off), data = train_df, family = fam, weights = w,
+                    control = glm.control(epsilon = 1e-10, maxit = 100))
+    out$predictions <- as.double(predict(fit_pred, newdata = newdf, type = "response"))
+    fit_no_offset <- glm(y ~ ., data = train_df[, names(train_df) != "off", drop = FALSE], family = fam, weights = w,
+                         control = glm.control(epsilon = 1e-10, maxit = 100))
+    out$predictions_no_offset <- as.double(predict(fit_no_offset, newdata = newdf[, names(newdf) != "off", drop = FALSE], type = "response"))
+  }
 } else if (method == "linear_reg") {
   y <- as.double(unlist(payload$y))
   xs <- lapply(payload$xs, function(v) as.double(unlist(v)))
@@ -1104,6 +1138,14 @@ if (method == "single_t") {
     out$ci_intercept <- st$confidence_intervals[[1]]
     out$ci_slope <- st$confidence_intervals[[2]]
   }
+  if (!is.null(payload$new_xs)) {
+    train_df <- data.frame(y = y, do.call(cbind, xs))
+    names(train_df) <- c("y", paste0("x", seq_along(xs)))
+    newdf <- data.frame(do.call(cbind, lapply(payload$new_xs, function(v) as.double(unlist(v)))))
+    names(newdf) <- paste0("x", seq_along(xs))
+    fit_pred <- lm(y ~ ., data = train_df)
+    out$predictions <- as.double(predict(fit_pred, newdata = newdf))
+  }
 } else if (method == "poly_reg") {
   y <- as.double(unlist(payload$y))
   x <- as.double(unlist(payload$x))
@@ -1111,6 +1153,14 @@ if (method == "single_t") {
   cols <- lapply(0:degree, function(d) x^d)
   X <- do.call(cbind, cols)
   out <- ols_from_matrix(y, X)
+  if (!is.null(payload$new_x)) {
+    new_x <- as.double(unlist(payload$new_x))
+    terms <- if (degree >= 2) c("x", paste0("I(x^", 2:degree, ")")) else "x"
+    train_df <- data.frame(y = y, x = x)
+    newdf <- data.frame(x = new_x)
+    fit_pred <- lm(as.formula(paste("y ~", paste(terms, collapse = " + "))), data = train_df)
+    out$predictions <- as.double(predict(fit_pred, newdata = newdf))
+  }
 } else if (method == "exp_reg") {
   y <- as.double(unlist(payload$y))
   x <- as.double(unlist(payload$x))
@@ -1154,6 +1204,11 @@ if (method == "single_t") {
     ci_intercept = c(a - tcrit * se_a, a + tcrit * se_a),
     ci_slope = c(b - tcrit * se_b, b + tcrit * se_b)
   )
+  if (!is.null(payload$new_x)) {
+    newdf <- data.frame(x = as.double(unlist(payload$new_x)))
+    fit_pred <- lm(log(y) ~ x, data = data.frame(y = y, x = x))
+    out$predictions <- as.double(exp(predict(fit_pred, newdata = newdf)))
+  }
 } else if (method == "log_reg") {
   y <- as.double(unlist(payload$y))
   x <- as.double(unlist(payload$x))
@@ -1191,6 +1246,11 @@ if (method == "single_t") {
     ci_intercept = c(a - tcrit * se_a, a + tcrit * se_a),
     ci_slope = c(b - tcrit * se_b, b + tcrit * se_b)
   )
+  if (!is.null(payload$new_x)) {
+    newdf <- data.frame(x = as.double(unlist(payload$new_x)))
+    fit_pred <- lm(y ~ log(x), data = data.frame(y = y, x = x))
+    out$predictions <- as.double(predict(fit_pred, newdata = newdf))
+  }
 } else if (method == "pca") {
   out <- pca_stats(payload$rows, payload$n_components)
 } else if (method == "factor_analysis") {

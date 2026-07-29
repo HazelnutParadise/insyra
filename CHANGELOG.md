@@ -37,6 +37,10 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - `ExecuteNearestExact` no longer panics when asked for nine or more neighbours on a host with a GPU. The shortlist width was clamped to the device's eight slots while the decision still indexed position `m-1`; the device is now skipped for requests it cannot serve, and the host answers instead. It also no longer trusts a shortlist whose single-precision distances overflowed to infinity — the ordering carries no information in that case, and the boundary test passed for the wrong reason. The error bound used to decide whether a shortlist can be trusted was widened to account for the rounding of the difference itself and for squared terms below the smallest normal `float32`.
 - **Breaking:** `OpSum`, `OpSquaredDistance` and `OpNearestQuery` are removed, together with `ExecuteDataList`, `ExecuteDataTable`, `ExecuteProjectedDataset`, `ExecuteDistances`, `ExecuteNearestQuery`, `SquaredDistancesCPU`, `NearestQueryCPU`, their WGSL kernels, and the `accel run <var>` CLI command. Each was measured against a host using all its cores and lost: the column sum runs at 0.7x because it moves one value per element and adds it once; the distance matrix reads back a result that grows with rows times query points; and the single-precision nearest query answers in `f32`, which the `float64` callers it was built for cannot use. `ExecuteNearestExact` supersedes the last of these and returns the exact `float64` answer. None of the removed surface appeared in a release. `accel devices`, `accel cache` and `accel plan` are unaffected.
 
+### `stats`
+
+- Added `Predict` to linear, polynomial, exponential, and logarithmic regression results. It follows the GLM prediction signature and returns response-scale point predictions for new data, with predictor-count and row-length validation. R's standard errors and prediction intervals remain outside the current API.
+
 ### CLI
 
 - `load <file.csv>` accepts `infer true|false`, defaulting to `true`. Passing `infer false` loads every cell as a raw string. The option is rejected for JSON and Excel files.

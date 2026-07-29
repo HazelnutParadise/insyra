@@ -253,7 +253,7 @@ def rm_stats(subjects):
     }
 
 
-def linear_common(y, x_cols):
+def linear_common(y, x_cols, new_x_cols=None):
     yv = np.array(y, dtype=float)
     x = np.column_stack([np.array(col, dtype=float) for col in x_cols])
     x = sm.add_constant(x, has_constant="add")
@@ -289,10 +289,13 @@ def linear_common(y, x_cols):
             "ci_intercept": ci[0],
             "ci_slope": ci[1],
         })
+    if new_x_cols is not None:
+        new_x = sm.add_constant(np.column_stack([np.array(col, dtype=float) for col in new_x_cols]), has_constant="add")
+        out["predictions"] = model.predict(new_x).tolist()
     return out
 
 
-def poly_reg(y, x, degree):
+def poly_reg(y, x, degree, new_x=None):
     xv = np.array(x, dtype=float)
     cols = [np.ones_like(xv)]
     for d in range(1, degree + 1):
@@ -300,7 +303,7 @@ def poly_reg(y, x, degree):
     xmat = np.column_stack(cols)
     yv = np.array(y, dtype=float)
     model = sm.OLS(yv, xmat).fit()
-    return {
+    out = {
         "coefficients": model.params.tolist(),
         "standard_errors": model.bse.tolist(),
         "t_values": model.tvalues.tolist(),
@@ -310,9 +313,14 @@ def poly_reg(y, x, degree):
         "r_squared": float(model.rsquared),
         "adj_r_squared": float(model.rsquared_adj),
     }
+    if new_x is not None:
+        nx = np.array(new_x, dtype=float)
+        nmat = np.column_stack([np.ones_like(nx)] + [np.power(nx, d) for d in range(1, degree + 1)])
+        out["predictions"] = model.predict(nmat).tolist()
+    return out
 
 
-def exp_reg(y, x):
+def exp_reg(y, x, new_x=None):
     xv = np.array(x, dtype=float)
     yv = np.array(y, dtype=float)
     lny = np.log(yv)
@@ -346,7 +354,7 @@ def exp_reg(y, x):
     ci_a = [a - tcrit * se_a, a + tcrit * se_a]
     ci_b = [b - tcrit * se_b, b + tcrit * se_b]
 
-    return {
+    out = {
         "intercept": a,
         "slope": b,
         "residuals": residuals,
@@ -361,9 +369,13 @@ def exp_reg(y, x):
         "ci_intercept": ci_a,
         "ci_slope": ci_b,
     }
+    if new_x is not None:
+        nx = np.array(new_x, dtype=float)
+        out["predictions"] = (a * np.exp(b * nx)).tolist()
+    return out
 
 
-def log_reg(y, x):
+def log_reg(y, x, new_x=None):
     xv = np.array(x, dtype=float)
     yv = np.array(y, dtype=float)
     lx = np.log(xv)
@@ -394,7 +406,7 @@ def log_reg(y, x):
     ci_a = [a - tcrit * se_a, a + tcrit * se_a]
     ci_b = [b - tcrit * se_b, b + tcrit * se_b]
 
-    return {
+    out = {
         "intercept": a,
         "slope": b,
         "residuals": residuals,
@@ -409,6 +421,10 @@ def log_reg(y, x):
         "ci_intercept": ci_a,
         "ci_slope": ci_b,
     }
+    if new_x is not None:
+        nx = np.array(new_x, dtype=float)
+        out["predictions"] = fit.predict(sm.add_constant(np.log(nx), has_constant="add")).tolist()
+    return out
 
 
 def pca_stats(rows, n_components=None):
@@ -1442,6 +1458,9 @@ def main():
             "iterations": float(fit.fit_history.get("iteration", float("nan"))),
             "fitted": fit.fittedvalues.tolist(),
         }
+        if "new_xs" in payload:
+            nx = sm.add_constant(np.column_stack([np.array(col, dtype=float) for col in payload["new_xs"]]), has_constant="add")
+            out["predictions"] = fit.predict(nx).tolist()
     elif method == "poisson_reg":
         y = np.array(payload["y"], dtype=float)
         x_cols = [np.array(col, dtype=float) for col in payload["xs"]]
@@ -1467,6 +1486,12 @@ def main():
             "iterations": float(fit.fit_history.get("iteration", float("nan"))),
             "fitted": fit.fittedvalues.tolist(),
         }
+        if "new_xs" in payload:
+            nx = np.column_stack([np.array(col, dtype=float) for col in payload["new_xs"]])
+            nx = sm.add_constant(nx, has_constant="add")
+            out["predictions"] = fit.predict(nx, offset=np.array(payload["new_offset"], dtype=float)).tolist()
+            no_offset = sm.GLM(y, x, family=sm.families.Poisson()).fit(maxiter=100, tol=1e-10)
+            out["predictions_no_offset"] = no_offset.predict(nx).tolist()
     elif method == "glm_generic":
         y = np.array(payload["y"], dtype=float)
         x_cols = [np.array(col, dtype=float) for col in payload["xs"]]
@@ -1505,14 +1530,19 @@ def main():
             "dispersion": dispersion,
             "fitted": fit.fittedvalues.tolist(),
         }
+        if "new_xs" in payload:
+            nx = sm.add_constant(np.column_stack([np.array(col, dtype=float) for col in payload["new_xs"]]), has_constant="add")
+            out["predictions"] = fit.predict(nx, offset=np.array(payload["new_offset"], dtype=float)).tolist()
+            no_offset = sm.GLM(y, x, family=fam, freq_weights=weights).fit(maxiter=100, tol=1e-10)
+            out["predictions_no_offset"] = no_offset.predict(nx).tolist()
     elif method == "linear_reg":
-        out = linear_common(payload["y"], payload["xs"])
+        out = linear_common(payload["y"], payload["xs"], payload.get("new_xs"))
     elif method == "poly_reg":
-        out = poly_reg(payload["y"], payload["x"], int(payload["degree"]))
+        out = poly_reg(payload["y"], payload["x"], int(payload["degree"]), payload.get("new_x"))
     elif method == "exp_reg":
-        out = exp_reg(payload["y"], payload["x"])
+        out = exp_reg(payload["y"], payload["x"], payload.get("new_x"))
     elif method == "log_reg":
-        out = log_reg(payload["y"], payload["x"])
+        out = log_reg(payload["y"], payload["x"], payload.get("new_x"))
     elif method == "pca":
         out = pca_stats(payload["rows"], payload.get("n_components", None))
     elif method == "kmeans":

@@ -1991,6 +1991,23 @@ type LogarithmicRegressionResult struct {
 }
 ```
 
+#### Regression Predictions
+
+All fitted regression results expose the same point-prediction shape:
+
+```go
+func (r *LinearRegressionResult) Predict(typ PredictType, newXs ...insyra.IDataList) (*insyra.DataList, error)
+```
+
+`PolynomialRegressionResult`, `ExponentialRegressionResult`, and
+`LogarithmicRegressionResult` expose the same method. Pass
+`stats.PredictResponse` (or an empty type) and one new predictor list for each
+fitted predictor. Polynomial, exponential, and logarithmic regression each
+take one predictor list. Predictions are returned on the original response
+scale. A mismatched predictor count or predictor row length returns an error.
+These methods provide point predictions only; R's `predict.lm` and
+`predict.glm` can additionally return standard errors and intervals.
+
 ---
 
 ## Matrix Operations
@@ -2287,5 +2304,4 @@ Implementation notes that may surprise readers:
 No third-party dependency is added — the standard `math` package plus
 the existing `gonum/stat` normal/χ² helpers are sufficient. There is
 no `scipy` port.
-
 

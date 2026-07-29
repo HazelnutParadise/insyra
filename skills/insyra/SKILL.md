@@ -480,6 +480,20 @@ On quota exhaustion the batch stops, returns already-resolved rows (rest marked 
 ## Engine package (advanced primitives)
 The repo includes an `engine` package that re-exports well-tested internal primitives (see [`engine/`](../../engine) and `engine/README.md).
 
+### Regression predictions
+
+Regression results use the same prediction shape as GLM results. Pass one new
+predictor `DataList` per fitted predictor and request response-scale point
+predictions:
+
+```go
+fit, err := stats.LinearRegression(y, x1, x2)
+predicted, err := fit.Predict(stats.PredictResponse, newX1, newX2)
+```
+
+Polynomial, exponential, and logarithmic results take one predictor list.
+The predictor count and row lengths must match the fit.
+
 Use `engine` when you are building higher-level tooling (agent tools, MCP servers, pipelines) and want reusable building blocks:
 
 - `engine/atomic`: actor-style `AtomicDo` helpers for serialized critical sections.
