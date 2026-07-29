@@ -10,6 +10,7 @@ import (
 	"github.com/HazelnutParadise/insyra/stats/internal/parutil"
 	"gonum.org/v1/gonum/mat"
 	"gonum.org/v1/gonum/stat"
+	"reflect"
 )
 
 // PCAResult contains the results of a Principal Component Analysis.
@@ -24,6 +25,11 @@ type PCAResult struct {
 
 // PCA calculates the Principal Component Analysis of a DataTable.
 func PCA(dataTable insyra.IDataTable, nComponents ...int) (*PCAResult, error) {
+	// PCA loads its input itself rather than through numericMatrixFromTable, so
+	// it needs the same nil guard the shared loader has.
+	if dataTable == nil || reflect.ValueOf(dataTable).Kind() == reflect.Ptr && reflect.ValueOf(dataTable).IsNil() {
+		return nil, errors.New("data table must not be nil")
+	}
 	var rowNum, colNum, numComponents int
 	var data *mat.Dense
 	// Bulk-load per column via ToF64Slice. The previous nested-loop form

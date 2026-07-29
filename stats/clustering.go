@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"reflect"
 	"sync"
 
 	"github.com/HazelnutParadise/insyra"
@@ -236,6 +237,11 @@ func Silhouette(dataTable insyra.IDataTable, labels insyra.IDataList) (*Silhouet
 // actor's lock. Doing it AFTER the table actor is released sidesteps
 // that and still gets the parallel actor-handshake fan-out.
 func numericMatrixFromTable(dataTable insyra.IDataTable) ([][]float64, []string, error) {
+	// Every clustering and decomposition entry point arrives here, and a nil
+	// table used to reach AtomicDo and panic rather than returning an error.
+	if dataTable == nil || reflect.ValueOf(dataTable).Kind() == reflect.Ptr && reflect.ValueOf(dataTable).IsNil() {
+		return nil, nil, errors.New("data table must not be nil")
+	}
 	var rows, cols int
 	var colDLs []insyra.IDataList
 	var rowNames []string

@@ -43,6 +43,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - Added `KMeansResult.Assign` to apply fitted centers to new observations and return the one-based center index with its squared Euclidean distance.
 - `PCAResult` now returns the fitted per-column centering and scaling parameters, together with the training scores, so callers can project new observations with the same decomposition.
 - Logistic and Poisson regression results now expose the fitted `Link`, matching `GLMResult.Link`, so callers can reproduce response predictions from linear predictors outside `stats`.
+- Passing a nil table to a clustering or decomposition entry point now returns an error instead of panicking. `KMeans`, `DBSCAN`, `Silhouette`, `HierarchicalAgglomerative`, `PCA` and `KMeansResult.Assign` all dereferenced the table before validating it, so both a nil interface and a typed nil crashed the caller.
 
 ### CLI
 
