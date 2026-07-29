@@ -41,6 +41,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 - Added `Predict` to linear, polynomial, exponential, and logarithmic regression results. It follows the GLM prediction signature and returns response-scale point predictions for new data, with predictor-count and row-length validation. R's standard errors and prediction intervals remain outside the current API.
 - Added `KMeansResult.Assign` to apply fitted centers to new observations and return the one-based center index with its squared Euclidean distance.
+- `PCAResult` now returns the fitted per-column centering and scaling parameters, together with the training scores, so callers can project new observations with the same decomposition.
 
 ### CLI
 

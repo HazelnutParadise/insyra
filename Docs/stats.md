@@ -1103,6 +1103,9 @@ func PCA(dataTable insyra.IDataTable, nComponents ...int) (*PCAResult, error)
 ```go
 type PCAResult struct {
     Components        insyra.IDataTable // Principal component loadings as DataTable
+    Center            []float64         // Per-column means subtracted before fitting
+    Scale             []float64         // Per-column sample standard deviations used for fitting
+    Scores            insyra.IDataTable // Training observations projected onto the components
     Eigenvalues       []float64         // Eigenvalues corresponding to components
     ExplainedVariance []float64         // Percentage of variance explained by each component
 }
@@ -1121,6 +1124,19 @@ if err != nil {
 components := result.Components
 fmt.Printf("Explained variance: %.2f%%\n", result.ExplainedVariance[0])
 ```
+
+`Center` and `Scale` are the fitted per-column parameters. `PCA` centers and
+standardizes every input column using the sample standard deviation, so both
+slices contain one value per input column. Apply them to new observations before
+multiplying by the corresponding columns of `Components`:
+
+```go
+scaled := (value - result.Center[column]) / result.Scale[column]
+```
+
+`Scores` contains the training observations after that same transformation and
+projection. Its rows correspond to the input rows and its columns correspond to
+the returned components.
 
 ## Factor Analysis
 
