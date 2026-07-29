@@ -50,6 +50,13 @@ Use Insyra when you need any of these in Go:
 - CCL (Column Calculation Language): Excel-like formulas for derived columns.
 - Instance error tracking: chain fluent ops, then check Err() / ClearErr().
 
+### Fitted KMeans assignment
+
+`stats.KMeans` returns a fitted `*KMeansResult`. Call `result.Assign(newData)`
+to assign new rows without refitting. It returns one-based center indices and
+the squared Euclidean distance for each row, and rejects a different column
+count.
+
 ### Pattern: DataList as a concurrent buffer (AtomicDo)
 Use this when you need a simple shared buffer (e.g., producer/consumer) and want **check + pop** to be atomic.
 

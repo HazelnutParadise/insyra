@@ -131,6 +131,17 @@ func requireCrossLangTools(t *testing.T) {
 	}
 }
 
+func requireRTools(t *testing.T) {
+	t.Helper()
+	if _, err := exec.LookPath("Rscript"); err != nil {
+		t.Skipf("Rscript not found: %v", err)
+	}
+	checkR := exec.Command("Rscript", "-e", "if (!requireNamespace('jsonlite', quietly=TRUE)) quit(status=1)")
+	if out, err := checkR.CombinedOutput(); err != nil {
+		t.Skipf("R jsonlite unavailable: %v, out=%s", err, string(out))
+	}
+}
+
 func runPythonBaseline(t *testing.T, method string, payload any) crossLangBaseline {
 	t.Helper()
 	return runBaselineScript(t, "python", filepath.Join("testdata", "crosslang_baseline.py"), method, payload)

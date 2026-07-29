@@ -458,6 +458,21 @@ kmeans_stats <- function(rows, k, nstart = 1L, itermax = 10L, seed = 1L) {
   )
 }
 
+kmeans_assign <- function(rows, centers) {
+  data <- do.call(rbind, lapply(rows, function(r) as.double(unlist(r))))
+  center_mat <- do.call(rbind, lapply(centers, function(r) as.double(unlist(r))))
+  assignments <- integer(nrow(data))
+  distances <- numeric(nrow(data))
+  for (i in seq_len(nrow(data))) {
+    deltas <- center_mat - matrix(data[i, ], nrow = nrow(center_mat),
+                                  ncol = ncol(center_mat), byrow = TRUE)
+    d <- rowSums(deltas * deltas)
+    assignments[i] <- which.min(d)
+    distances[i] <- d[assignments[i]]
+  }
+  list(assignments = assignments, distances = distances)
+}
+
 orient_cluster <- function(a, b) {
   if (a$min_leaf < b$min_leaf) return(list(a, b))
   if (b$min_leaf < a$min_leaf) return(list(b, a))
@@ -1257,6 +1272,8 @@ if (method == "single_t") {
   out <- factor_analysis_stats(payload$rows, payload$extraction, payload$rotation, payload$scoring, payload$nfactors)
 } else if (method == "kmeans") {
   out <- kmeans_stats(payload$rows, payload$k, payload$nstart, payload$itermax, payload$seed)
+} else if (method == "kmeans_assign") {
+  out <- kmeans_assign(payload$rows, payload$centers)
 } else if (method == "hclust") {
   out <- hclust_stats(payload$rows, payload$method, payload$k, payload$h)
 } else if (method == "dbscan") {

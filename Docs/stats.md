@@ -1526,7 +1526,14 @@ type KMeansResult struct {
     Iter        int
     IFault      int
 }
+
+func (r *KMeansResult) Assign(dataTable insyra.IDataTable) ([]int, []float64, error)
 ```
+
+`Assign` applies the fitted centers to new observations. It returns one-based
+center indices, matching `Cluster`, and the squared Euclidean distance to the
+selected center for each row. The input must have the same number of columns
+as the fitted centers.
 
 **Example**:
 
@@ -1543,6 +1550,12 @@ if err != nil {
 fmt.Println(result.Cluster)
 fmt.Println(result.Size)
 result.Centers.Show()
+
+newClusters, newDistances, err := result.Assign(newData)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Println(newClusters, newDistances)
 ```
 
 ### Hierarchical Agglomerative Clustering
@@ -2304,4 +2317,3 @@ Implementation notes that may surprise readers:
 No third-party dependency is added — the standard `math` package plus
 the existing `gonum/stat` normal/χ² helpers are sufficient. There is
 no `scipy` port.
-
