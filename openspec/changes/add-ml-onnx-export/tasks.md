@@ -5,13 +5,13 @@
 - [ ] 1.2 Export linear regression as a linear regressor node
 - [ ] 1.3 Export logistic regression as a linear classifier node, carrying its link
 - [ ] 1.4 Export trees as tree ensemble nodes, preserving missing-value routing
-- [ ] 1.5 Export the root package's scalers, encoders and imputers as their equivalents
+- [ ] 1.5 Export the root package's scalers and encoders as their equivalents
 - [ ] 1.6 Export a fitted pipeline as one graph
 
 ## 2. Refuse what cannot be expressed
 - [ ] 2.1 Refuse a model with no equivalent, naming it
 - [ ] 2.2 Write nothing on refusal
-- [ ] 2.3 List in the documentation which models export and which do not
+- [ ] 2.3 List in the documentation which models export and which do not, imputation among them, with the reason
 
 ## 3. Verify
 - [ ] 3.1 Round-trip every exportable model through an independent runtime and compare predictions

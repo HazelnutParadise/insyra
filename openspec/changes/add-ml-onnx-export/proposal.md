@@ -12,7 +12,7 @@ It also buys the test that makes every numeric claim in the package checkable ra
 ## What Changes
 - Export the linear and logistic models as their `ai.onnx.ml` equivalents
 - Export the tree models as tree ensembles
-- Export the scalers, encoders and imputers the root package fits, so a pipeline exports as one graph rather than as a model with the preprocessing lost
+- Export the scalers and encoders the root package fits, so a pipeline exports as one graph rather than as a model with the preprocessing lost
 - Export a fitted pipeline as a single graph
 - Verify by round trip: score the exported model in onnxruntime and compare against this package, on the same data
 - Refuse to export a model with no `ai.onnx.ml` equivalent, naming it, rather than emitting something that loads and returns wrong numbers
@@ -22,3 +22,4 @@ It also buys the test that makes every numeric claim in the package checkable ra
 - Affected code: `ml/`
 - Depends on `add-ml-estimator-protocol`, `add-ml-pipeline` and `add-ml-decision-tree`
 - Import is out of scope
+- Imputation is out of scope, and not by preference. `ai.onnx.ml.Imputer` needs a fitted replacement value, and nothing in the repository produces one: `FillWithMean` and its siblings compute a statistic of whatever table they are called on and mutate it in place. A fitted imputer is its own change, and it is needed for pipelines before it is needed for export

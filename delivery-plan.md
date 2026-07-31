@@ -332,6 +332,11 @@ Still open on the acceleration side, and not blocking: measuring brute-force KNN
   timestamp: 2026-07-29
   impacted_change_ids: `add-ml-estimator-protocol`
 
+- decision: Add a fitted imputer to the root package. Imputation is the one preprocessing operation Insyra offers only as an in-place mutation, and that form cannot be used by a model.
+  rationale: Found by Codex while starting the ONNX export change, which listed imputers among the things to export when nothing produces one. Checking why went further than the export list. `FillWithMean`, `FillWithMedian`, `FillWithMode` and the rest exist on both `DataList` and `DataTable`, and every one computes its statistic from whatever data it is called on and mutates it in place. That is right for cleaning a table by hand and wrong for a model: a model must impute new observations with the training statistic, and imputing them with their own is leakage that raises no error and makes the score look better than it is. `insyra.StandardScaler` already has the correct shape — fit, remember, transform — so scaling is safe and imputation is the exception. The concrete consequence is that `FillWithMean(cols ...string) *DataTable` returns no error and is a method on a table rather than an operation over one, so it does not satisfy the transformer protocol at all: `insyra/ml` pipelines currently have no way to handle missing data. The imputer follows the `Scaler` interface, the in-place methods stay as they are, and ONNX export of an imputer becomes possible once it lands.
+  timestamp: 2026-07-29
+  impacted_change_ids: `add-fitted-imputer`, `add-ml-pipeline`, `add-ml-onnx-export`
+
 ## Source Links
 - `delivery-plan.md`
 - `AGENTS.md`
