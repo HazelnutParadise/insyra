@@ -136,6 +136,26 @@ Notes:
 - DataTable `mean`, `median`, and `interpolation` skip non-numeric columns; `mode`, `ffill`, and `bfill` work with any selected column type.
 - `FillByInterpolation` fills gaps inside a sequence; it is distinct from `LinearInterpolation(x)`, which evaluates a y-value at a given x.
 
+For reusable, leakage-free preprocessing, fit `SimpleImputer` on the training
+table and transform later tables with the learned replacements:
+
+```go
+imputer := insyra.NewSimpleImputer(insyra.ImputeMean)
+trainClean, err := imputer.FitTransform(train, "Age", "Income")
+if err != nil { log.Fatal(err) }
+
+testClean, err := imputer.Transform(test) // reuse training replacements
+_ = trainClean
+_ = testClean
+```
+
+Use `ImputeMean`, `ImputeMedian`, or `ImputeMode`, or use
+`NewSimpleImputer(insyra.ImputeConstant, value)` for a caller-supplied value.
+Numeric strategies pass through observed non-numeric columns, selected
+all-missing columns refuse to fit, and `InverseTransform` is unsupported
+because imputation is lossy. Use the existing in-place `FillWith*` methods for
+one-off mutation instead of a reusable fitted transformer.
+
 ### 1c) Encode categorical DataTable columns
 
 Use DataTable categorical encoders before stats methods that require numeric features (`stats.LinearRegression`, KNN, PCA, clustering). These methods return a new table plus a fitted encoder; the receiver is not modified.
@@ -562,8 +582,8 @@ pipeline estimator's `Fit` function is called. Fit the pipeline on the
 training split, then predict the held-out split; fitting preprocessing on the
 full table before splitting leaks test-set information into the parameters.
 Use `ml.NewColumnTransformer` when a fitted transformer must see only named
-columns while other columns pass through unchanged. Root scalers and
-encoders already support column selection during fitting and need no adapter.
+columns while other columns pass through unchanged. Root scalers, encoders,
+and fitted imputers already satisfy `ml.Transformer` and need no adapter.
 
 Use `engine` when you are building higher-level tooling (agent tools, MCP servers, pipelines) and want reusable building blocks:
 

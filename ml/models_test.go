@@ -323,6 +323,16 @@ func TestRootScalersAndEncodersArePipelineTransformers(t *testing.T) {
 	if _, err := transformer.Transform(categories); err != nil {
 		t.Fatal(err)
 	}
+
+	imputationInput := insyra.NewDataTable(dataList([]any{1.0, nil, 3.0}, "value"))
+	imputer := insyra.NewSimpleImputer(insyra.ImputeMean)
+	if err := imputer.Fit(imputationInput, "value"); err != nil {
+		t.Fatal(err)
+	}
+	transformer = imputer
+	if _, err := transformer.Transform(imputationInput); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func assertPredictionMatches(t *testing.T, model ml.Model, input *insyra.DataTable, direct *insyra.DataList, directErr error) {

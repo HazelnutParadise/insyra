@@ -1182,6 +1182,72 @@ func main() {
 }
 ```
 
+### Fitted Missing-Value Imputation
+
+```go
+type ImputationStrategy string
+
+const (
+    ImputeMean     ImputationStrategy = "mean"
+    ImputeMedian   ImputationStrategy = "median"
+    ImputeMode     ImputationStrategy = "mode"
+    ImputeConstant ImputationStrategy = "constant"
+)
+
+func NewSimpleImputer(strategy ImputationStrategy, constant ...any) *SimpleImputer
+```
+
+`SimpleImputer` fits one replacement value per selected column and reuses
+those values on later tables. Use it for training, validation, and production
+data so the statistics come from the training table only. `Transform` returns
+a new table and leaves the source unchanged. Columns not selected during
+`Fit` pass through unchanged. Missing values are `nil` or `NaN`.
+
+Mean and median require numeric observed values. If a selected column contains
+an observed non-numeric value, those strategies leave the column unchanged,
+matching `FillWithMean` and `FillWithMedian`. Mode supports mixed values and
+uses the first-occurring value to break ties. Constant requires exactly one
+constant argument. Every selected column must have at least one observed value
+at fit time, and `Fit` reports the column name otherwise. `InverseTransform` is
+not supported because imputation cannot recover which cells were originally
+missing.
+
+Do not use the fitted imputer and the in-place `FillWithMean`,
+`FillWithMedian`, or `FillWithMode` interchangeably. Use the fitted form in a
+model pipeline; use the in-place methods for one-off table cleaning when
+recomputing from the table being modified is intentional.
+
+**Example — fit on training data, then reuse the replacement:**
+
+```go
+package main
+
+import (
+    "log"
+
+    "github.com/HazelnutParadise/insyra"
+)
+
+func main() {
+    train := insyra.NewDataTable(
+        insyra.NewDataList(10.0, nil, 30.0).SetName("income"),
+    )
+    test := insyra.NewDataTable(
+        insyra.NewDataList(100.0, nil).SetName("income"),
+    )
+
+    imputer := insyra.NewSimpleImputer(insyra.ImputeMean)
+    if err := imputer.Fit(train, "income"); err != nil {
+        log.Fatal(err)
+    }
+    imputedTest, err := imputer.Transform(test) // nil becomes 20.0
+    if err != nil {
+        log.Fatal(err)
+    }
+    _ = imputedTest
+}
+```
+
 ### Window / sequence transforms (Shift / Diff / PctChange / Cum\* / Rolling / Expanding)
 
 ```go

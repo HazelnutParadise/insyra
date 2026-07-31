@@ -11,6 +11,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 ### Core
 
 - Added `CSVReadOptions` together with `ReadCSV_FileWithOptions` and `ReadCSV_StringWithOptions`. Setting `RawStrings` keeps every cell as its original string and skips column-level type inference, so values like stock IDs no longer lose their leading zeros and empty cells stay `""` instead of becoming NaN. `ReadCSV_File` and `ReadCSV_String` keep their existing signatures and behavior.
+- Added fitted `SimpleImputer` strategies for mean, median, mode, and constants. It remembers training-table replacements for later tables, so imputation can be used in leakage-free preprocessing pipelines; the existing in-place `FillWith*` methods are unchanged.
 
 ### `isr`
 
