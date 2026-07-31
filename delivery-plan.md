@@ -33,7 +33,7 @@ Superseded, for the record: the acceleration phase's own next output was undecid
 ## Next OpenSpec Change
 All four `stats` changes are implemented, verified and archived: `add-stats-regression-predict`, `add-kmeans-assign`, `expose-glm-link`, `add-pca-transform-parameters`. `stats` can now predict, assign, publish its links and project new observations, so nothing in it blocks `insyra/ml` any longer. `add-kmeans-assign` is also the acceleration foothold: assigning a row to the nearest centre is the only selection-shaped operation `stats` has, and therefore the only one a device may accelerate by default.
 
-The `insyra/ml` changes are deliberately not proposed yet. Their scope depends on the estimator interfaces being written concretely, and a change specified before its interface is a change that will be rewritten. They follow once the `stats` gaps close. The KNN question is dropped — v1 carries decision trees, so it no longer needs KNN to be worth installing.
+Five `insyra/ml` changes are proposed and none implemented: `add-ml-estimator-protocol`, then `add-ml-pipeline` and `add-ml-model-selection` which are independent of each other, then `add-ml-decision-tree`, and `add-ml-onnx-export` last since it needs the other four. The protocol change carries a `design.md` with the actual interfaces, so the shape is settled rather than left to be invented during implementation. The KNN question is dropped — v1 carries decision trees, so it no longer needs KNN to be worth installing.
 
 Still open on the acceleration side, and not blocking: measuring brute-force KNN and the DBSCAN neighbourhood scan against a parallel host, and re-measuring the older accel figures that were taken against a single core. `add-accel-gpu-execution` task 1.13 (non-Apple verification) stays open in parallel; it needs a Windows or Linux machine with an NVIDIA or AMD GPU and cannot be done on this host.
 
@@ -314,6 +314,19 @@ Still open on the acceleration side, and not blocking: measuring brute-force KNN
   rationale: `KMeansResult.Assign(nil)` panicked, and following it down showed the fault was never Assign's. Every clustering entry point loads through `numericMatrixFromTable` and `PCA` through its own equivalent, and both dereference the table before validating it — so `KMeans`, `DBSCAN`, `Silhouette`, `HierarchicalAgglomerative` and `PCA` all panicked the same way, on a nil interface and on a typed nil alike, and had done so long before any of this work. Putting the guard in Assign alone would have made a new method stricter than its siblings for no reason a caller could see. It goes in the loader, `PCA` gets its own copy since it does not use the loader, and a regression test covers six entry points against both kinds of nil.
   timestamp: 2026-07-29
   impacted_change_ids: none
+
+- decision: A pipeline step in `insyra/ml` is a fit function, not a configured estimator object. This is what replaces scikit-learn's `clone`.
+  rationale: scikit-learn refits a step per cross-validation fold by cloning the configured but unfitted estimator, and cloning reads the constructor's parameters back off the instance through `inspect.signature`. Go has no equivalent that is not reflection over struct tags, which this repository uses nowhere. A closure refits by being called again: configuration is captured at the call site in ordinary Go and checked by the compiler, cross-validation calls the function once per fold, and grid search closes over each combination. Three independent designs converged on this without conferring, which is the strongest signal any of them produced.
+  timestamp: 2026-07-29
+  impacted_change_ids: `add-ml-estimator-protocol`, `add-ml-pipeline`, `add-ml-model-selection`
+- decision: `ml.Transformer` is typed to match `insyra.Scaler.Transform` and `insyra.Encoder.Transform` exactly, concrete `*DataTable` on both sides.
+  rationale: Not an aesthetic choice. With that signature, all four scalers and all three encoders satisfy the interface with no adapter and no change to the root package — verified by compiling the assertions against the tree as it stands. Widening either side to `IDataTable` breaks it, and that reuse is the largest single piece of foundation `ml` inherits. `Model.Predict` takes the same concrete type for symmetry; the interface-to-concrete direction is the one that costs nothing, since `stats` functions already accept the interface.
+  timestamp: 2026-07-29
+  impacted_change_ids: `add-ml-estimator-protocol`
+- decision: `ml.Model` requires `Features() []string`, which scikit-learn treats as advisory.
+  rationale: Nothing in `stats` records which columns a model was fitted on. `LinearRegressionResult`, `GLMResult` and `KMeansResult` all omit it, and `predictFromCoefficients` validates only the count — so passing predictors in the wrong order silently produces wrong numbers rather than an error. `ml` matches columns by name against this list, which closes that. It is the one place `ml` is deliberately stricter than what it wraps.
+  timestamp: 2026-07-29
+  impacted_change_ids: `add-ml-estimator-protocol`
 
 ## Source Links
 - `delivery-plan.md`
