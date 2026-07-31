@@ -501,6 +501,27 @@ predicted, err := fit.Predict(stats.PredictResponse, newX1, newX2)
 Polynomial, exponential, and logarithmic results take one predictor list.
 The predictor count and row lengths must match the fit.
 
+### Machine-learning estimator protocol
+
+Use `github.com/HazelnutParadise/insyra/ml` when several fitted `stats` models need one prediction surface. Fit against a named `DataTable`; `Model.Predict` matches columns by name, ignores extra columns, and returns an error for a missing fitted feature.
+
+```go
+import "github.com/HazelnutParadise/insyra/ml"
+
+model, err := ml.FitLinearRegression(trainX, trainY)
+predictions, err := model.Predict(testX)
+
+if proba, ok := model.(ml.ProbaModel); ok {
+    classes := proba.Classes()
+    probabilities, err := proba.PredictProba(testX)
+    _ = classes
+    _ = probabilities
+    _ = err
+}
+```
+
+`FitPolynomialRegression`, `FitExponentialRegression`, and `FitLogarithmicRegression` require one feature. `FitLogisticRegression` and `FitKNNClassifier` return `ml.ProbaModel`; `FitPCA` returns an `ml.Transformer`. Existing root scalers and encoders satisfy `ml.Transformer` directly, so no adapter is needed. Use `ml/mltest.RunConformance` to check an external model implementation.
+
 Use `engine` when you are building higher-level tooling (agent tools, MCP servers, pipelines) and want reusable building blocks:
 
 - `engine/atomic`: actor-style `AtomicDo` helpers for serialized critical sections.

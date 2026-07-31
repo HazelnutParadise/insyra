@@ -361,6 +361,7 @@ err := parquet.ApplyCCL(ctx, "data.parquet", "NEW('total') = A + B + C")
 |---|---|
 | **[isr](/Docs/isr.md)** | Insyra 的語法糖，新專案建議的入口。 |
 | **[stats](/Docs/stats.md)** | 資料分析統計函數：偏度、峰度、矩計算等。 |
+| **[ml](/Docs/ml.md)** | 統一 `stats` 模型的估計器與轉換器協定。 |
 | **[parallel](/Docs/parallel.md)** | 資料操作與分析的平行處理，自動等待所有 goroutine 完成。 |
 | **[accel](/Docs/accel.md)** | 選用的 GPU 加速：裝置探測、型別化欄位投影，以及在 GPU 上真正執行欄位歸約。純 Go、免 CGO，不需要額外安裝。 |
 | **[plot](/Docs/plot.md)** | 封裝 [go-echarts](https://github.com/go-echarts/go-echarts) 的資料視覺化。 |

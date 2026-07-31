@@ -63,6 +63,7 @@ dt.Show()
 | Document          | Description                                             |
 | ----------------- | ------------------------------------------------------- |
 | [stats](stats.md) | Correlation, hypothesis testing, regression, ANOVA, PCA, clustering |
+| [ml](ml.md)       | Common estimator and transformer protocol over `stats` models |
 
 #### Visualization
 

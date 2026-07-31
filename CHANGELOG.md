@@ -45,6 +45,10 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - Logistic and Poisson regression results now expose the fitted `Link`, matching `GLMResult.Link`, so callers can reproduce response predictions from linear predictors outside `stats`.
 - Passing a nil table to a clustering or decomposition entry point now returns an error instead of panicking. `KMeans`, `DBSCAN`, `Silhouette`, `HierarchicalAgglomerative`, `PCA` and `KMeansResult.Assign` all dereferenced the table before validating it, so both a nil interface and a typed nil crashed the caller.
 
+### `ml`
+
+- Added a common estimator and transformer protocol over the fitted models already provided by `stats`, with name-based feature binding, optional probability capabilities, PCA transformation, KNN wrappers, and `ml/mltest` conformance checks.
+
 ### CLI
 
 - `load <file.csv>` accepts `infer true|false`, defaulting to `true`. Passing `infer false` loads every cell as a raw string. The option is rejected for JSON and Excel files.
