@@ -588,6 +588,16 @@ named. Root scalers, encoders, and fitted imputers already satisfy
 `ml.Transformer` and need no adapter. Fitted pipelines preserve the final
 model's classifier, probability, and importance capabilities.
 
+Use `ml.ExportONNX(writer, fittedModel)` or the `ml.Exporter` capability to
+write supported fitted models for Python and other ONNX runtimes. Linear and
+logistic models, decision trees, and pipelines containing root scalers or
+encoders export as one graph. Polynomial, exponential, logarithmic, Poisson,
+GLM, KMeans, KNN, PCA, imputers, and custom transformers are refused before
+the writer is touched. The independent `onnxruntime` round-trip test is
+skipped explicitly when that runtime is unavailable.
+Encoder configurations with `UnknownError`, `UnknownAsNew`, or a fitted nil
+category are refused for the same reason.
+
 Use `engine` when you are building higher-level tooling (agent tools, MCP servers, pipelines) and want reusable building blocks:
 
 - `engine/atomic`: actor-style `AtomicDo` helpers for serialized critical sections.

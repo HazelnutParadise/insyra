@@ -125,7 +125,6 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20260706201446-f0a921348800 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260706201446-f0a921348800 // indirect
 	google.golang.org/grpc v1.82.0 // indirect
-	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	h12.io/socks v1.0.3 // indirect
 	modernc.org/libc v1.74.1 // indirect
@@ -155,6 +154,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/wnjoon/go-yfinance v1.5.1
 	github.com/xuri/excelize/v2 v2.11.0
+	google.golang.org/protobuf v1.36.11
 	golang.org/x/term v0.45.0
 	gonum.org/v1/gonum v0.17.0
 	gonum.org/v1/plot v0.17.0
