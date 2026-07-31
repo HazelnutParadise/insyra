@@ -27,6 +27,70 @@ type Transformer interface {
 
 `Step` and `Estimator` store fit functions. Configuration can be captured by a closure, so a caller can fit the same step repeatedly without cloning or reflection.
 
+## Splitting and cross-validation
+
+`KFold` returns disjoint folds. Rows are shuffled by default, and a seeded
+`insyra.SamplingOptions` makes the assignment reproducible. Use
+`PreserveOrder: true` when the source order is meaningful. `StratifiedKFold`
+takes a label list and keeps each class represented in every fold; it returns
+an error naming any class with fewer observations than `k`.
+
+```go
+folds, err := ml.StratifiedKFold(
+    features,
+    target,
+    5,
+    insyra.SamplingOptions{UseSeed: true, Seed: 42},
+)
+```
+
+`CrossValidate` fits the supplied `Estimator` independently for every fold.
+Classification metrics select stratified folds automatically. Put preprocessing
+inside the estimator's `Fit` function so it is fitted only on that fold's
+training data; this also makes a pipeline's preprocessing leakage-free.
+
+```go
+result, err := ml.CrossValidate(
+    features,
+    target,
+    ml.Estimator{
+        Name: "linear",
+        Fit:  ml.FitLinearRegression,
+    },
+    5,
+    ml.RMSEMetric{},
+    insyra.SamplingOptions{UseSeed: true, Seed: 42},
+)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Println(result.Metric, result.Scores, result.Mean)
+```
+
+If fitting or scoring fails, the error names the one-based fold. The result
+keeps every fold score rather than returning only the mean.
+
+## Metrics
+
+The metric is always supplied by the caller and its name is carried on the
+result. Available metrics are:
+
+| Metric | Model kind | Direct helper |
+| --- | --- | --- |
+| `AccuracyMetric` | classification labels | `Accuracy` |
+| `LogLossMetric` | class probabilities | `LogLoss` |
+| `ROCAUCMetric` | binary class probabilities | `ROCAUC` |
+| `ConfusionMatrixMetric` | classification labels | `ConfusionMatrix` |
+| `RMSEMetric` | regression | `RMSE` |
+| `MAEMetric` | regression | `MAE` |
+| `R2Metric` | regression | `R2` |
+
+Classification models used with `CrossValidate` implement `Classifier` by
+returning their class labels. Probability metrics additionally require
+`ProbaModel`. A metric for the wrong model kind is rejected instead of
+producing a meaningless score. Confusion-matrix cross-validation results are
+available in `FoldResults`; their scalar `Scores` and `Mean` are `NaN`.
+
 ## Fitting models
 
 ```go
@@ -155,6 +219,3 @@ The `ml/mltest` package checks an implementation's feature contract, name-based 
 ```go
 mltest.RunConformance(t, model, features, target)
 ```
-
-Cross-validation, metrics, decision trees, and ONNX export are separate
-concerns and are not included in this package's first protocol.
