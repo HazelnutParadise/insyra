@@ -522,6 +522,15 @@ if proba, ok := model.(ml.ProbaModel); ok {
 
 `FitPolynomialRegression`, `FitExponentialRegression`, and `FitLogarithmicRegression` require one feature. `FitLogisticRegression` and `FitKNNClassifier` return `ml.ProbaModel`; `FitPCA` returns an `ml.Transformer`. Existing root scalers and encoders satisfy `ml.Transformer` directly, so no adapter is needed. Use `ml/mltest.RunConformance` to check an external model implementation.
 
+Use `ml.NewPipeline` to fit preprocessing and a final `ml.Estimator` as one
+reusable `ml.Model`. Steps run in order and are refitted every time the
+pipeline estimator's `Fit` function is called. Fit the pipeline on the
+training split, then predict the held-out split; fitting preprocessing on the
+full table before splitting leaks test-set information into the parameters.
+Use `ml.NewColumnTransformer` when a fitted transformer must see only named
+columns while other columns pass through unchanged. Root scalers and
+encoders already support column selection during fitting and need no adapter.
+
 Use `engine` when you are building higher-level tooling (agent tools, MCP servers, pipelines) and want reusable building blocks:
 
 - `engine/atomic`: actor-style `AtomicDo` helpers for serialized critical sections.

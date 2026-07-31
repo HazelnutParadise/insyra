@@ -96,6 +96,58 @@ var step ml.Transformer = scaler
 scaled, err := step.Transform(features)
 ```
 
+## Pipelines
+
+`NewPipeline` combines fitted preprocessing with a final `Estimator`. The
+returned estimator refits every step on each call to `Fit`, and the fitted
+pipeline implements `Model`.
+
+```go
+pipeline := ml.NewPipeline([]ml.Step{
+    {
+        Name: "scale numeric",
+        Fit: func(x *insyra.DataTable, _ *insyra.DataList) (ml.Transformer, error) {
+            scaler := insyra.NewStandardScaler()
+            if err := scaler.Fit(x, "age", "income"); err != nil {
+                return nil, err
+            }
+            return scaler, nil
+        },
+    },
+}, ml.Estimator{
+    Name: "linear",
+    Fit: ml.FitLinearRegression,
+})
+
+model, err := pipeline.Fit(trainFeatures, target)
+if err != nil {
+    log.Fatal(err)
+}
+predictions, err := model.Predict(testFeatures)
+```
+
+Steps run in declaration order. A fitting or transformation error names the
+step that failed. `model.Features()` reports the columns accepted at the raw
+pipeline boundary. Since fitting functions create a fresh fitted transformer
+when called, the same pipeline definition can be reused for cross-validation
+or another training set without carrying parameters from an earlier fit.
+
+`NewColumnTransformer` scopes a fitted transformer to named columns. The
+remaining columns pass through unchanged, and columns with the same output
+count retain their original positions. Root scalers and encoders already
+support column selection during fitting, so they need no adapter.
+
+```go
+scoped := ml.NewColumnTransformer(fittedTransformer, "age", "income")
+transformed, err := scoped.Transform(raw)
+```
+
+Fit preprocessing only on the training split. Fitting a scaler or encoder on
+the complete table before splitting leaks information from the future test
+rows into the fitted parameters. The resulting score can look better while
+measuring a model that had already seen part of the data it was supposed to
+hold out. Fit the pipeline on `train`, then call the fitted model on `test`.
+
 ## Conformance checks
 
 The `ml/mltest` package checks an implementation's feature contract, name-based binding, missing and extra columns, reordered inputs, and probability output.
@@ -104,4 +156,5 @@ The `ml/mltest` package checks an implementation's feature contract, name-based 
 mltest.RunConformance(t, model, features, target)
 ```
 
-Pipelines, cross-validation, metrics, decision trees, and ONNX export are separate concerns and are not included in this package's first protocol.
+Cross-validation, metrics, decision trees, and ONNX export are separate
+concerns and are not included in this package's first protocol.
