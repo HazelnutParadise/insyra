@@ -20,6 +20,9 @@ func NewPipeline(steps []Step, estimator Estimator) Estimator {
 			}
 
 			features := x.ColNames()
+			if err := validateFeatureNames(features); err != nil {
+				return nil, err
+			}
 			current := x
 			fitted := make([]fittedPipelineStep, 0, len(definition))
 			for i, step := range definition {
@@ -58,7 +61,7 @@ func NewPipeline(steps []Step, estimator Estimator) Estimator {
 			if len(definition) == 0 {
 				features = model.Features()
 			}
-			return &fittedPipeline{features: features, steps: fitted, model: model}, nil
+			return wrapFittedPipeline(&fittedPipeline{features: features, steps: fitted, model: model}), nil
 		},
 	}
 }
@@ -100,10 +103,19 @@ func (t *ColumnTransformer) Transform(dt *insyra.DataTable) (*insyra.DataTable, 
 	names := dt.ColNames()
 	indexByName := make(map[string]int, len(names))
 	for i, name := range names {
+		if name == "" {
+			continue
+		}
+		if _, duplicate := indexByName[name]; duplicate {
+			return nil, fmt.Errorf("ml: column transformer column %q is not unique", name)
+		}
 		indexByName[name] = i
 	}
 	selected := make(map[int]struct{}, len(t.columns))
 	for _, name := range t.columns {
+		if name == "" {
+			return nil, fmt.Errorf("ml: column transformer requires named columns")
+		}
 		idx, ok := indexByName[name]
 		if !ok {
 			return nil, fmt.Errorf("ml: column transformer column %q not found", name)
@@ -116,12 +128,12 @@ func (t *ColumnTransformer) Transform(dt *insyra.DataTable) (*insyra.DataTable, 
 
 	selectedColumns := make([]*insyra.DataList, 0, len(selected))
 	selectedIndexes := make([]int, 0, len(selected))
-	for idx, name := range names {
+	for idx := range names {
 		if _, ok := selected[idx]; !ok {
 			continue
 		}
 		selectedIndexes = append(selectedIndexes, idx)
-		selectedColumns = append(selectedColumns, dt.GetColByName(name))
+		selectedColumns = append(selectedColumns, dt.GetColByNumber(idx))
 	}
 	selectedTable := insyra.NewDataTable(selectedColumns...)
 	selectedTable.SetName(dt.GetName())
@@ -148,23 +160,23 @@ func (t *ColumnTransformer) Transform(dt *insyra.DataTable) (*insyra.DataTable, 
 		for i, idx := range selectedIndexes {
 			byIndex[idx] = transformedColumns[i]
 		}
-		for idx, name := range names {
+		for idx := range names {
 			if col, ok := byIndex[idx]; ok {
 				outColumns = append(outColumns, col)
 				continue
 			}
-			outColumns = append(outColumns, dt.GetColByName(name))
+			outColumns = append(outColumns, dt.GetColByNumber(idx))
 		}
 	} else {
 		first := selectedIndexes[0]
-		for idx, name := range names {
+		for idx := range names {
 			if idx == first {
 				outColumns = append(outColumns, transformedColumns...)
 			}
 			if _, ok := selected[idx]; ok {
 				continue
 			}
-			outColumns = append(outColumns, dt.GetColByName(name))
+			outColumns = append(outColumns, dt.GetColByNumber(idx))
 		}
 	}
 
@@ -196,14 +208,21 @@ func (p *fittedPipeline) Predict(dt *insyra.DataTable) (*insyra.DataList, error)
 	if p == nil || p.model == nil || isNilPointer(p.model) {
 		return nil, fmt.Errorf("ml: fitted pipeline is nil")
 	}
-	if err := requireTable(dt); err != nil {
+	current, err := p.transformInput(dt)
+	if err != nil {
 		return nil, err
 	}
-	if _, err := orderedFeatures(dt, p.features); err != nil {
-		return nil, err
-	}
+	return p.model.Predict(current)
+}
 
-	current := dt
+func (p *fittedPipeline) transformInput(dt *insyra.DataTable) (*insyra.DataTable, error) {
+	if p == nil || p.model == nil || isNilPointer(p.model) {
+		return nil, fmt.Errorf("ml: fitted pipeline is nil")
+	}
+	current, err := orderedTable(dt, p.features)
+	if err != nil {
+		return nil, err
+	}
 	for _, step := range p.steps {
 		transformed, err := step.transformer.Transform(current)
 		if err != nil {
@@ -214,7 +233,119 @@ func (p *fittedPipeline) Predict(dt *insyra.DataTable) (*insyra.DataList, error)
 		}
 		current = transformed
 	}
-	return p.model.Predict(current)
+	return current, nil
+}
+
+type fittedPipelineClassifier struct{ *fittedPipeline }
+
+func (p *fittedPipelineClassifier) Classes() *insyra.DataList {
+	model, ok := p.model.(Classifier)
+	if !ok {
+		return nil
+	}
+	return model.Classes()
+}
+
+type fittedPipelineProba struct{ *fittedPipeline }
+
+func (p *fittedPipelineProba) Classes() *insyra.DataList {
+	model, ok := p.model.(ProbaModel)
+	if !ok {
+		return nil
+	}
+	return model.Classes()
+}
+
+func (p *fittedPipelineProba) PredictProba(dt *insyra.DataTable) (*insyra.DataTable, error) {
+	model, ok := p.model.(ProbaModel)
+	if !ok {
+		return nil, fmt.Errorf("ml: fitted pipeline model does not provide probabilities")
+	}
+	current, err := p.transformInput(dt)
+	if err != nil {
+		return nil, err
+	}
+	return model.PredictProba(current)
+}
+
+type fittedPipelineImportances struct{ *fittedPipeline }
+
+func (p *fittedPipelineImportances) FeatureImportances() []float64 {
+	model, ok := p.model.(Importances)
+	if !ok {
+		return nil
+	}
+	return model.FeatureImportances()
+}
+
+type fittedPipelineClassifierImportances struct {
+	*fittedPipeline
+}
+
+func (p *fittedPipelineClassifierImportances) Classes() *insyra.DataList {
+	model, ok := p.model.(Classifier)
+	if !ok {
+		return nil
+	}
+	return model.Classes()
+}
+
+func (p *fittedPipelineClassifierImportances) FeatureImportances() []float64 {
+	model, ok := p.model.(Importances)
+	if !ok {
+		return nil
+	}
+	return model.FeatureImportances()
+}
+
+type fittedPipelineProbaImportances struct{ *fittedPipeline }
+
+func (p *fittedPipelineProbaImportances) Classes() *insyra.DataList {
+	model, ok := p.model.(ProbaModel)
+	if !ok {
+		return nil
+	}
+	return model.Classes()
+}
+
+func (p *fittedPipelineProbaImportances) PredictProba(dt *insyra.DataTable) (*insyra.DataTable, error) {
+	model, ok := p.model.(ProbaModel)
+	if !ok {
+		return nil, fmt.Errorf("ml: fitted pipeline model does not provide probabilities")
+	}
+	current, err := p.transformInput(dt)
+	if err != nil {
+		return nil, err
+	}
+	return model.PredictProba(current)
+}
+
+func (p *fittedPipelineProbaImportances) FeatureImportances() []float64 {
+	model, ok := p.model.(Importances)
+	if !ok {
+		return nil
+	}
+	return model.FeatureImportances()
+}
+
+func wrapFittedPipeline(p *fittedPipeline) Model {
+	_, hasProba := p.model.(ProbaModel)
+	_, hasClassifier := p.model.(Classifier)
+	_, hasImportances := p.model.(Importances)
+	switch {
+	case hasProba && hasImportances:
+		return &fittedPipelineProbaImportances{fittedPipeline: p}
+	case hasProba:
+		return &fittedPipelineProba{fittedPipeline: p}
+	case hasClassifier && hasImportances:
+		return &fittedPipelineClassifierImportances{fittedPipeline: p}
+	case hasClassifier:
+		return &fittedPipelineClassifier{fittedPipeline: p}
+	case hasImportances:
+		return &fittedPipelineImportances{fittedPipeline: p}
+	default:
+		return p
+	}
 }
 
 func pipelineStepName(name string, index int) string {

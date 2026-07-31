@@ -38,3 +38,8 @@
 - [x] 6.3 Register `ml` in `allpkgs/allpkgs.go`
 - [x] 6.4 Add the Go API skill coverage in `skills/insyra/`
 - [x] 6.5 Changelog entry in `CHANGELOG.md` and `CHANGELOG_TW.md`
+
+## 7. Review remediation
+- [x] 7.1 Reject unnamed or duplicate fitted feature columns instead of creating an unusable name-based model
+- [x] 7.2 Make logistic `Predict` return class labels while `PredictProba` returns response probabilities
+- [x] 7.3 Reject Poisson and GLM offsets that the current `Model` protocol cannot supply during prediction

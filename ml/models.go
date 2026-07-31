@@ -176,6 +176,9 @@ func FitPoissonRegression(x *insyra.DataTable, y *insyra.DataList, opts ...Poiss
 	if err != nil {
 		return nil, err
 	}
+	if hasOption && option.Offset != nil {
+		return nil, errors.New("ml: poisson regression offsets are not supported by Model.Predict")
+	}
 	var result *stats.PoissonRegressionResult
 	if hasOption {
 		result, err = stats.PoissonRegressionWithOptions(option, y, xs...)
@@ -192,6 +195,9 @@ func FitGLM(x *insyra.DataTable, y *insyra.DataList, opts GLMOptions) (Model, er
 	features, xs, err := fitFeatures(x)
 	if err != nil {
 		return nil, err
+	}
+	if opts.Offset != nil {
+		return nil, errors.New("ml: GLM offsets are not supported by Model.Predict")
 	}
 	result, err := stats.GLM(opts, y, xs...)
 	if err != nil {
@@ -311,7 +317,7 @@ func (m *LogarithmicModel) Predict(dt *insyra.DataTable) (*insyra.DataList, erro
 
 func (m *LogisticModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error) {
 	return predictRegression(dt, m.features, func(xs []insyra.IDataList) (*insyra.DataList, error) {
-		return m.Result.Predict(stats.PredictResponse, xs...)
+		return m.Result.Predict(stats.PredictClass, xs...)
 	})
 }
 
@@ -326,7 +332,9 @@ func (m *LogisticModel) PredictProba(dt *insyra.DataTable) (*insyra.DataTable, e
 	if m == nil || m.Result == nil {
 		return nil, errors.New("ml: logistic model is nil")
 	}
-	probability, err := m.Predict(dt)
+	probability, err := predictRegression(dt, m.features, func(xs []insyra.IDataList) (*insyra.DataList, error) {
+		return m.Result.Predict(stats.PredictResponse, xs...)
+	})
 	if err != nil {
 		return nil, err
 	}

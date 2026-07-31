@@ -65,8 +65,14 @@ func TestDecisionTreeRegressionReportsDoubleValues(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(predictions.Data(), []any{0.0, 0.0, 10.0, 10.0}) {
-		t.Fatalf("predictions = %v", predictions.Data())
+	for index, value := range predictions.ToF64Slice() {
+		want := 0.0
+		if index >= 2 {
+			want = 10.0
+		}
+		if math.Abs(value-want) > 1e-6 {
+			t.Fatalf("prediction[%d] = %.17g, want %.17g", index, value, want)
+		}
 	}
 	for _, value := range model.LeafValues() {
 		if _, ok := any(value).(float64); !ok {
@@ -75,6 +81,21 @@ func TestDecisionTreeRegressionReportsDoubleValues(t *testing.T) {
 	}
 	if got := model.FeatureImportances(); len(got) != 1 || got[0] != 1 {
 		t.Fatalf("feature importances = %v, want [1]", got)
+	}
+}
+
+func TestDecisionTreeRegressionUsesMSEAndRetainsSmallTargets(t *testing.T) {
+	x := insyra.NewDataTable(insyra.NewDataList(0, 1).SetName("x"))
+	y := insyra.NewDataList(1e-9, 3e-9)
+	model, err := ml.FitDecisionTreeRegressor(x, y, ml.DecisionTreeOptions{MinSamplesLeaf: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := model.Root.Impurity, 1e-18; math.Abs(got-want) > 1e-27 {
+		t.Fatalf("root impurity = %.17g, want MSE %.17g", got, want)
+	}
+	if got, want := model.Root.Value, 2e-9; math.Abs(got-want) > 1e-15 {
+		t.Fatalf("root value = %.17g, want %.17g", got, want)
 	}
 }
 

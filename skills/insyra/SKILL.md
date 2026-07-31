@@ -549,7 +549,7 @@ The predictor count and row lengths must match the fit.
 
 ### Machine-learning estimator protocol
 
-Use `github.com/HazelnutParadise/insyra/ml` when several fitted `stats` models need one prediction surface. Fit against a named `DataTable`; `Model.Predict` matches columns by name, ignores extra columns, and returns an error for a missing fitted feature.
+Use `github.com/HazelnutParadise/insyra/ml` when several fitted `stats` models need one prediction surface. Fit against a named `DataTable` with unique column names; `Model.Predict` matches columns by name, ignores extra columns, and returns an error for a missing fitted feature.
 
 ```go
 import "github.com/HazelnutParadise/insyra/ml"
@@ -566,7 +566,7 @@ if proba, ok := model.(ml.ProbaModel); ok {
 }
 ```
 
-`FitPolynomialRegression`, `FitExponentialRegression`, and `FitLogarithmicRegression` require one feature. `FitLogisticRegression` and `FitKNNClassifier` return `ml.ProbaModel`; `FitPCA` returns an `ml.Transformer`. Existing root scalers and encoders satisfy `ml.Transformer` directly, so no adapter is needed. Use `ml/mltest.RunConformance` to check an external model implementation.
+`FitPolynomialRegression`, `FitExponentialRegression`, and `FitLogarithmicRegression` require one feature. `FitLogisticRegression` and `FitKNNClassifier` return `ml.ProbaModel`; logistic `Predict` returns labels and `PredictProba` returns probabilities. `FitPCA` returns an `ml.Transformer`. Poisson and GLM offsets are rejected by the `ml` wrappers because `Model.Predict` cannot receive a new row-wise offset. Existing root scalers and encoders satisfy `ml.Transformer` directly, so no adapter is needed. Use `ml/mltest.RunConformance` to check an external model implementation.
 
 For tabular classification or regression, use `ml.FitDecisionTreeClassifier`
 or `ml.FitDecisionTreeRegressor`. Pass categorical column names through
@@ -582,8 +582,11 @@ pipeline estimator's `Fit` function is called. Fit the pipeline on the
 training split, then predict the held-out split; fitting preprocessing on the
 full table before splitting leaks test-set information into the parameters.
 Use `ml.NewColumnTransformer` when a fitted transformer must see only named
-columns while other columns pass through unchanged. Root scalers, encoders,
-and fitted imputers already satisfy `ml.Transformer` and need no adapter.
+columns while other columns pass through unchanged. It preserves pass-through
+columns by position, including unnamed columns, but selected columns must be
+named. Root scalers, encoders, and fitted imputers already satisfy
+`ml.Transformer` and need no adapter. Fitted pipelines preserve the final
+model's classifier, probability, and importance capabilities.
 
 Use `engine` when you are building higher-level tooling (agent tools, MCP servers, pipelines) and want reusable building blocks:
 

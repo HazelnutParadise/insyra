@@ -52,6 +52,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - Added `ml.NewPipeline` and `ml.NewColumnTransformer` for fitting preprocessing and a model together, scoping transformers to named columns, and reusing the fitted result without preprocessing leakage.
 - Added seeded k-fold and stratified splitting, estimator cross-validation with one score per fold, and classification and regression metrics including accuracy, log loss, ROC AUC, confusion matrices, RMSE, MAE, and R².
 - Added deterministic histogram decision-tree classification and regression with quantile-binned numeric features, categorical subset splits, learned missing-value routing, bounded growth, class probabilities, and feature importances.
+- Hardened the `ml` protocol and pipelines: unnamed feature schemas and unsupported regression offsets are rejected, logistic models distinguish labels from probabilities, fitted pipelines preserve supported capabilities and input order, and decision-tree regression retains precision for small targets.
 
 ### CLI
 

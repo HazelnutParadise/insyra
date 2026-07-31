@@ -401,12 +401,15 @@ func quantizeTargets(raw []any, n int) ([]int64, []int64, float64, error) {
 	}
 	const maxInt64 = int64(^uint64(0) >> 1)
 	maxQuantized := math.Sqrt(float64(maxInt64) / (4 * float64(max(1, n))))
-	scale := 1e6
-	if maxAbs > 0 && maxQuantized/maxAbs < scale {
+	scale := 1.0
+	if maxAbs > 0 {
 		scale = maxQuantized / maxAbs
 	}
 	if scale <= 0 || math.IsNaN(scale) {
 		scale = 1
+	}
+	if math.IsInf(scale, 0) {
+		scale = math.MaxFloat64
 	}
 	quantized := make([]int64, n)
 	squares := make([]int64, n)
@@ -573,7 +576,7 @@ func (g *treeGrowth) impurity(stats treeStats) float64 {
 	if meanSquare < 0 {
 		return 0
 	}
-	return meanSquare / (g.quantizerScale * g.quantizerScale)
+	return meanSquare / float64(stats.count) / (g.quantizerScale * g.quantizerScale)
 }
 
 type treeSplit struct {

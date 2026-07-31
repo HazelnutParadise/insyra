@@ -152,6 +152,72 @@ func TestColumnTransformerScopesAndPreservesOrder(t *testing.T) {
 	}
 }
 
+func TestColumnTransformerPreservesUnnamedPassThroughColumns(t *testing.T) {
+	input := insyra.NewDataTable(
+		pipelineDataList([]any{1.0, 2.0}, ""),
+		pipelineDataList([]any{10.0, 20.0}, "middle"),
+		pipelineDataList([]any{77.0, 88.0}, ""),
+	)
+	got, err := ml.NewColumnTransformer(offsetTransformer{amount: 5}, "middle").Transform(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got.To2DSlice(), [][]any{{1.0, 15.0, 77.0}, {2.0, 25.0, 88.0}}) {
+		t.Fatalf("unnamed pass-through columns = %v", got.To2DSlice())
+	}
+}
+
+func TestPipelinePreservesCapabilitiesAndCanonicalizesInputOrder(t *testing.T) {
+	input := namedTable(
+		pipelineDataList([]any{1.0, 2.0, 3.0, 4.0}, "a"),
+		pipelineDataList([]any{100.0, 200.0, 300.0, 400.0}, "b"),
+	)
+	labels := pipelineDataList([]any{"no", "no", "yes", "yes"}, "label")
+	pipeline := ml.NewPipeline([]ml.Step{{
+		Name: "first-column-offset",
+		Fit: func(*insyra.DataTable, *insyra.DataList) (ml.Transformer, error) {
+			return firstColumnOffsetTransformer{amount: 10}, nil
+		},
+	}}, ml.Estimator{
+		Name: "tree",
+		Fit: func(x *insyra.DataTable, y *insyra.DataList) (ml.Model, error) {
+			return ml.FitDecisionTreeClassifier(x, y, ml.DecisionTreeOptions{MaxDepth: 1, MaxBins: 4})
+		},
+	})
+	fitted, err := pipeline.Fit(input, labels)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := fitted.(ml.Classifier); !ok {
+		t.Fatal("pipeline lost Classifier capability")
+	}
+	if _, ok := fitted.(ml.ProbaModel); !ok {
+		t.Fatal("pipeline lost ProbaModel capability")
+	}
+	if _, ok := fitted.(ml.Importances); !ok {
+		t.Fatal("pipeline lost Importances capability")
+	}
+
+	reordered := namedTable(
+		pipelineDataList([]any{100.0, 200.0, 300.0, 400.0}, "b"),
+		pipelineDataList([]any{1.0, 2.0, 3.0, 4.0}, "a"),
+	)
+	want, err := fitted.Predict(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := fitted.Predict(reordered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got.Data(), want.Data()) {
+		t.Fatalf("pipeline input reordering changed predictions: got=%v want=%v", got.Data(), want.Data())
+	}
+	if _, err := fitted.(ml.ProbaModel).PredictProba(reordered); err != nil {
+		t.Fatalf("pipeline probability prediction: %v", err)
+	}
+}
+
 func TestPipelineMixesRootScalersAndEncoders(t *testing.T) {
 	input := namedTable(
 		pipelineDataList([]any{1.0, 2.0, 3.0}, "number"),
@@ -193,6 +259,33 @@ func TestPipelineMixesRootScalersAndEncoders(t *testing.T) {
 
 type offsetTransformer struct {
 	amount float64
+}
+
+type firstColumnOffsetTransformer struct {
+	amount float64
+}
+
+func (t firstColumnOffsetTransformer) Transform(dt *insyra.DataTable) (*insyra.DataTable, error) {
+	if dt == nil {
+		return nil, fmt.Errorf("table is nil")
+	}
+	columns := make([]*insyra.DataList, dt.NumCols())
+	for column := range columns {
+		values := dt.GetColByNumber(column).Data()
+		out := make([]any, len(values))
+		for row, value := range values {
+			number, ok := insyra.ToFloat64Safe(value)
+			if !ok {
+				return nil, fmt.Errorf("column %q is not numeric", dt.ColNames()[column])
+			}
+			if column == 0 {
+				number += t.amount
+			}
+			out[row] = number
+		}
+		columns[column] = insyra.NewDataList(out...).SetName(dt.ColNames()[column])
+	}
+	return insyra.NewDataTable(columns...), nil
 }
 
 func (t offsetTransformer) Transform(dt *insyra.DataTable) (*insyra.DataTable, error) {

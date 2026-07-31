@@ -177,8 +177,19 @@ func TestWrappersReturnStatsResultsAndPredictionsExactly(t *testing.T) {
 	if !bitwiseEqual(logisticModel.Result, directLogistic) {
 		t.Fatal("logistic result changed by wrapper")
 	}
-	directPrediction, directErr = directLogistic.Predict(stats.PredictResponse, features.table.GetColByNumber(0), features.table.GetColByNumber(1))
+	directPrediction, directErr = directLogistic.Predict(stats.PredictClass, features.table.GetColByNumber(0), features.table.GetColByNumber(1))
 	assertPredictionMatches(t, logisticModel, features.table, directPrediction, directErr)
+	directProbability, directErr := directLogistic.Predict(stats.PredictResponse, features.table.GetColByNumber(0), features.table.GetColByNumber(1))
+	if directErr != nil {
+		t.Fatal(directErr)
+	}
+	probabilities, err := logisticModel.PredictProba(features.table)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := probabilities.GetColByNumber(1).ToF64Slice(); !reflect.DeepEqual(got, directProbability.ToF64Slice()) {
+		t.Fatalf("logistic probabilities changed by wrapper: got=%v want=%v", got, directProbability.ToF64Slice())
+	}
 
 	count := dataList([]any{1, 2, 1, 3, 4, 6, 5, 8}, "count")
 	poisson, err := ml.FitPoissonRegression(features.table, count)
@@ -300,6 +311,25 @@ func TestUnderlyingFitErrorIsReturnedUnchanged(t *testing.T) {
 	_, gotErr := ml.FitLinearRegression(x, y)
 	if gotErr == nil || gotErr.Error() != wantErr.Error() {
 		t.Fatalf("wrapper error = %v, direct error = %v", gotErr, wantErr)
+	}
+}
+
+func TestMLModelsRejectUnsupportedFeatureSchemasAndOffsets(t *testing.T) {
+	unnamed := insyra.NewDataTable(
+		insyra.NewDataList(1.0, 2.0, 3.0),
+	)
+	if _, err := ml.FitLinearRegression(unnamed, dataList([]any{1.0, 2.0, 3.0}, "y")); err == nil || !strings.Contains(err.Error(), "has no name") {
+		t.Fatalf("unnamed feature error = %v", err)
+	}
+
+	features := testFeatures().table
+	count := dataList([]any{1, 2, 1, 3, 4, 6, 5, 8}, "count")
+	offset := dataList([]any{0.0, 0.1, -0.1, 0.2, 0.15, 0.25, 0.3, 0.35}, "offset")
+	if _, err := ml.FitPoissonRegression(features, count, ml.PoissonOptions{Offset: offset}); err == nil || !strings.Contains(err.Error(), "offset") {
+		t.Fatalf("Poisson offset error = %v", err)
+	}
+	if _, err := ml.FitGLM(features, dataList([]any{3.1, 5.4, 7.8, 10.2, 12.7, 15.1, 17.6, 20.0}, "y"), ml.GLMOptions{Family: stats.Gaussian, Link: stats.Identity, Offset: offset}); err == nil || !strings.Contains(err.Error(), "offset") {
+		t.Fatalf("GLM offset error = %v", err)
 	}
 }
 

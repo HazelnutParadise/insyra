@@ -20,11 +20,28 @@ func fitFeatures(dt *insyra.DataTable) ([]string, []insyra.IDataList, error) {
 		return nil, nil, err
 	}
 	features := dt.ColNames()
+	if err := validateFeatureNames(features); err != nil {
+		return nil, nil, err
+	}
 	lists := make([]insyra.IDataList, len(features))
 	for i := range features {
 		lists[i] = dt.GetColByNumber(i)
 	}
 	return features, lists, nil
+}
+
+func validateFeatureNames(features []string) error {
+	seen := make(map[string]struct{}, len(features))
+	for index, name := range features {
+		if name == "" {
+			return fmt.Errorf("ml: feature column %d has no name", index)
+		}
+		if _, exists := seen[name]; exists {
+			return fmt.Errorf("ml: duplicate feature column %q", name)
+		}
+		seen[name] = struct{}{}
+	}
+	return nil
 }
 
 func orderedFeatures(dt *insyra.DataTable, features []string) ([]insyra.IDataList, error) {

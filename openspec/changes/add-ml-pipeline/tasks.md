@@ -21,3 +21,8 @@
 ## 4. Record
 - [x] 4.1 Document pipelines in `Docs/ml.md`, including why fitting preprocessing before splitting leaks
 - [x] 4.2 Changelog entry in `CHANGELOG.md` and `CHANGELOG_TW.md`
+
+## 5. Review remediation
+- [x] 5.1 Preserve classifier, probability, and feature-importance capabilities on fitted pipelines
+- [x] 5.2 Canonicalize raw input columns before applying pipeline steps, including position-sensitive external steps
+- [x] 5.3 Preserve pass-through columns by index in `ColumnTransformer`, including unnamed columns

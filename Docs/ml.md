@@ -10,7 +10,10 @@ go get github.com/HazelnutParadise/insyra/ml
 
 ## Protocol
 
-`Model` exposes the fitted feature names and one prediction method. Prediction binds columns by name, in the order used during fitting. Missing features return an error naming the column. Extra columns are ignored.
+`Model` exposes the fitted feature names and one prediction method. Fitted
+feature columns must have unique, non-empty names. Prediction binds columns by
+name, in the order used during fitting. Missing features return an error naming
+the column. Extra columns are ignored.
 
 ```go
 type Model interface {
@@ -132,7 +135,7 @@ FitDecisionTreeRegressor
 
 The regression, clustering, and KNN wrappers expose their underlying `stats` result through an exported `Result` field. The options types in `ml` are aliases of the corresponding `stats` options types.
 
-Polynomial, exponential, and logarithmic regression require one feature. Logistic regression and KNN classification implement `ProbaModel`. Logistic probabilities use the fitted class order, and KNN probabilities use the class columns returned by `stats`.
+Polynomial, exponential, and logarithmic regression require one feature. Logistic regression and KNN classification implement `ProbaModel`; logistic `Predict` returns class labels and `PredictProba` returns response probabilities. Logistic probabilities use the fitted class order, and KNN probabilities use the class columns returned by `stats`. The `ml` wrappers reject Poisson or GLM offsets because `Model.Predict` has no input for a new row-wise offset.
 
 KNN stores the training table because the underlying `stats.KNNClassify` and `stats.KNNRegress` functions accept training and test tables together. Predictions call those functions with the test table reordered by feature name.
 
@@ -167,7 +170,9 @@ so a fit is unchanged by row order. Classification classes are reported in a
 deterministic order, and probability columns follow that order.
 
 The tree accumulates classification counts and quantised regression sums in
-integers. Leaf values and feature importances are reported as `float64`.
+integers. Regression impurity is mean squared error, and the fixed-point scale
+expands for small target magnitudes within the overflow bound. Leaf values and
+feature importances are reported as `float64`.
 `Root` exposes the fitted nodes, and `LeafValues` returns leaf values in
 left-to-right order.
 
@@ -229,14 +234,20 @@ predictions, err := model.Predict(testFeatures)
 
 Steps run in declaration order. A fitting or transformation error names the
 step that failed. `model.Features()` reports the columns accepted at the raw
-pipeline boundary. Since fitting functions create a fresh fitted transformer
-when called, the same pipeline definition can be reused for cross-validation
-or another training set without carrying parameters from an earlier fit.
+pipeline boundary. The fitted pipeline retains classifier, probability, and
+feature-importance capabilities from its final model. Raw inputs are reordered
+to the fitted feature order before steps run, so position-sensitive steps see
+the same schema at prediction time. Since fitting functions create a fresh
+fitted transformer when called, the same pipeline definition can be reused for
+cross-validation or another training set without carrying parameters from an
+earlier fit.
 
 `NewColumnTransformer` scopes a fitted transformer to named columns. The
-remaining columns pass through unchanged, and columns with the same output
-count retain their original positions. Root scalers and encoders already
-support column selection during fitting, so they need no adapter.
+remaining columns pass through unchanged by their original positions,
+including unnamed columns. The selected columns must have names. Columns with
+the same output count retain their original positions. Root scalers and
+encoders already support column selection during fitting, so they need no
+adapter.
 
 ```go
 scoped := ml.NewColumnTransformer(fittedTransformer, "age", "income")

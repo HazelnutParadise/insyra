@@ -32,3 +32,7 @@
 - [x] 5.1 Document the tree in `Docs/ml.md`, including what the missing-value and unseen-category defaults are
 - [x] 5.2 Record in `delivery-plan.md` that split finding is device-eligible and unmeasured
 - [x] 5.3 Changelog entry in `CHANGELOG.md` and `CHANGELOG_TW.md`
+
+## 6. Review remediation
+- [x] 6.1 Report regression impurity as mean squared error so split gain weighting is mathematically consistent
+- [x] 6.2 Increase fixed-point scale for small target magnitudes while retaining the overflow bound
