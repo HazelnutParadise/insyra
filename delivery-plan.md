@@ -1,7 +1,7 @@
 # Delivery Plan
 
 ## Current Phase
-Phase 1 - First Real GPU Execution Path (achieved; hardening)
+Phase 2 - `insyra/ml` v1 shipped. Acceleration is dormant by choice: no call site was measured to win, and the runtime waits for one.
 
 ## Stage Objective
 Run one operation end to end on a real device and return a number that matches the CPU path. Every accel surface built so far — discovery, projection, cache, scheduler, CLI — has been verified against stubs only, so the first correct GPU number is what turns the existing scaffolding from assumption into fact.
@@ -336,6 +336,16 @@ Still open on the acceleration side, and not blocking: measuring brute-force KNN
   rationale: Found by Codex while starting the ONNX export change, which listed imputers among the things to export when nothing produces one. Checking why went further than the export list. `FillWithMean`, `FillWithMedian`, `FillWithMode` and the rest exist on both `DataList` and `DataTable`, and every one computes its statistic from whatever data it is called on and mutates it in place. That is right for cleaning a table by hand and wrong for a model: a model must impute new observations with the training statistic, and imputing them with their own is leakage that raises no error and makes the score look better than it is. `insyra.StandardScaler` already has the correct shape — fit, remember, transform — so scaling is safe and imputation is the exception. The concrete consequence is that `FillWithMean(cols ...string) *DataTable` returns no error and is a method on a table rather than an operation over one, so it does not satisfy the transformer protocol at all: `insyra/ml` pipelines currently have no way to handle missing data. The imputer follows the `Scaler` interface, the in-place methods stay as they are, and ONNX export of an imputer becomes possible once it lands.
   timestamp: 2026-07-29
   impacted_change_ids: `add-fitted-imputer`, `add-ml-pipeline`, `add-ml-onnx-export`
+
+- decision: `insyra/ml` v1 is implemented, reviewed and archived. All five changes are in, and the remaining open changes are the two accel leftovers.
+  rationale: Reviewed adversarially rather than accepted — four reviewers, one per change, each required to write a failing test rather than argue, and each finding attacked by an independent agent whose default was that it was wrong. Twenty-one findings came back, nine of them blocking, and the strongest were all the same shape: an interface satisfied in form while the substance was missing. `LogisticModel` had `Classes()` so a type assertion reported it a `Classifier`, and its `Predict` returned probabilities — `ml.Accuracy` scored it exactly zero with a nil error. A fitted pipeline implemented only `Model`, silently dropping the wrapped estimator's `Classifier`, `ProbaModel` and `Importances`. `FitPoissonRegression` accepted an offset, fitted successfully, and returned a model whose `Predict` could never work. All were fixed before this verification finished, and each was independently re-probed here rather than taken on trust.
+  timestamp: 2026-08-01
+  impacted_change_ids: archived
+  caveat: The adversarial verification did not complete. Fifteen of the twenty-one attack agents failed on a weekly usage limit, so most findings below blocking severity were never independently challenged. Nine blocking claims were made; five were re-probed directly here and all five are fixed; one was confirmed by an attacker before the limit hit and is fixed; one is now https://github.com/HazelnutParadise/insyra/issues/192; two were addressed in the implementer's own remediation and not independently re-checked. The twelve important and minor findings are reviewer claims, not confirmed defects, and remain unexamined.
+- decision: The permutation test is what makes the tree's precision claim real, and it passes.
+  rationale: Fixed-point accumulation is only worth its complexity if it buys order-independence, and order-independence is only believable if it is measured. Six hundred rows carrying magnitudes from 1e-3 to 1e3, permuted, fit a bit-identical tree. A float64 accumulator cannot pass that test, because summing the same values in a different order gives a different sum — which is the whole reason XGBoost left floating point for `GradientPairInt64`. The implementer's own suite covers the same property, so the claim now has two independent tests behind it.
+  timestamp: 2026-08-01
+  impacted_change_ids: archived
 
 ## Source Links
 - `delivery-plan.md`
