@@ -53,6 +53,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - Added seeded k-fold and stratified splitting, estimator cross-validation with one score per fold, and classification and regression metrics including accuracy, log loss, ROC AUC, confusion matrices, RMSE, MAE, and R².
 - Added deterministic histogram decision-tree classification and regression with quantile-binned numeric features, categorical subset splits, learned missing-value routing, bounded growth, class probabilities, and feature importances.
 - Hardened the `ml` protocol and pipelines: unnamed feature schemas and unsupported regression offsets are rejected, logistic models distinguish labels from probabilities, fitted pipelines preserve supported capabilities and input order, and decision-tree regression retains precision for small targets.
+- Added dependency-free ONNX export for linear and logistic models, decision trees, and fitted pipelines with supported scalers and encoders. Unsupported models are refused before writing, and the export tests use an independent `onnxruntime` round trip when it is available.
 
 ### CLI
 

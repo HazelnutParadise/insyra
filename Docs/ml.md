@@ -254,6 +254,38 @@ scoped := ml.NewColumnTransformer(fittedTransformer, "age", "income")
 transformed, err := scoped.Transform(raw)
 ```
 
+## ONNX export
+
+Export a fitted model without a C dependency. The exporter writes a standard
+ONNX `ModelProto` directly to an `io.Writer`:
+
+```go
+var modelFile bytes.Buffer
+if err := ml.ExportONNX(&modelFile, model); err != nil {
+    log.Fatal(err)
+}
+```
+
+`LinearModel`, `LogisticModel`, `DecisionTreeClassifier`,
+`DecisionTreeRegressor`, and fitted pipelines containing supported root
+scalers or encoders implement `ml.Exporter`. A pipeline is exported as one
+graph, so the ONNX runtime receives the raw feature columns rather than a
+pre-transformed table. ONNX stores model attributes as `float32`; predictions
+are compared with the tolerance of that exchange format.
+
+The exporter refuses polynomial, exponential, logarithmic, Poisson, GLM,
+KMeans, KNN, PCA, fitted imputers, and custom transformers. These models do
+not have a faithful representation in this change. Encoder configurations with
+`UnknownError`, `UnknownAsNew`, or a fitted nil category are also refused,
+because ONNX cannot represent those semantics without changing predictions.
+Refusal happens before the writer is touched. ONNX import is not part of the
+`ml` package.
+
+The test suite round-trips exportable models and pipelines through
+`onnxruntime` when `python3` and that runtime are installed. When the runtime
+is unavailable, the test reports an explicit skip rather than treating the
+independent verification as passed.
+
 Fit preprocessing only on the training split. Fitting a scaler or encoder on
 the complete table before splitting leaks information from the future test
 rows into the fitted parameters. The resulting score can look better while
