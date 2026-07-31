@@ -126,6 +126,8 @@ FitKMeans
 FitPCA
 FitKNNClassifier
 FitKNNRegressor
+FitDecisionTreeClassifier
+FitDecisionTreeRegressor
 ```
 
 The regression, clustering, and KNN wrappers expose their underlying `stats` result through an exported `Result` field. The options types in `ml` are aliases of the corresponding `stats` options types.
@@ -133,6 +135,41 @@ The regression, clustering, and KNN wrappers expose their underlying `stats` res
 Polynomial, exponential, and logarithmic regression require one feature. Logistic regression and KNN classification implement `ProbaModel`. Logistic probabilities use the fitted class order, and KNN probabilities use the class columns returned by `stats`.
 
 KNN stores the training table because the underlying `stats.KNNClassify` and `stats.KNNRegress` functions accept training and test tables together. Predictions call those functions with the test table reordered by feature name.
+
+## Decision trees
+
+`FitDecisionTreeClassifier` and `FitDecisionTreeRegressor` fit deterministic
+histogram trees. They return fitted models that implement `Model` and
+`Importances`; the classifier also implements `ProbaModel`.
+
+```go
+tree, err := ml.FitDecisionTreeClassifier(trainX, trainY, ml.DecisionTreeOptions{
+    MaxDepth:            5,
+    MinSamplesLeaf:     2,
+    CategoricalFeatures: []string{"region"},
+})
+predicted, err := tree.Predict(testX)
+probabilities, err := tree.PredictProba(testX)
+importance := tree.FeatureImportances()
+```
+
+Numeric features are converted to `float32` and binned with deterministic
+type-7 quantile edges. Missing numeric values occupy their own bin. Categorical
+features are split by a learned subset of categories, not by numeric encoding.
+The default `MaxBins` is 32. `MaxDepth` and `MaxLeaves` use zero for unlimited;
+`MinSamplesLeaf` defaults to 1.
+
+At each split, missing values are sent to the branch with the better gain. A
+tie, or a split that saw no missing values while fitting, defaults to the left
+branch. An unseen category at scoring time uses that same stored default. Tied
+gains resolve by feature order, then split order, then left for missing values,
+so a fit is unchanged by row order. Classification classes are reported in a
+deterministic order, and probability columns follow that order.
+
+The tree accumulates classification counts and quantised regression sums in
+integers. Leaf values and feature importances are reported as `float64`.
+`Root` exposes the fitted nodes, and `LeafValues` returns leaf values in
+left-to-right order.
 
 ## PCA transformation
 

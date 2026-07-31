@@ -548,6 +548,14 @@ if proba, ok := model.(ml.ProbaModel); ok {
 
 `FitPolynomialRegression`, `FitExponentialRegression`, and `FitLogarithmicRegression` require one feature. `FitLogisticRegression` and `FitKNNClassifier` return `ml.ProbaModel`; `FitPCA` returns an `ml.Transformer`. Existing root scalers and encoders satisfy `ml.Transformer` directly, so no adapter is needed. Use `ml/mltest.RunConformance` to check an external model implementation.
 
+For tabular classification or regression, use `ml.FitDecisionTreeClassifier`
+or `ml.FitDecisionTreeRegressor`. Pass categorical column names through
+`ml.DecisionTreeOptions.CategoricalFeatures`; numeric columns use deterministic
+quantile bins. Missing values are routed by the direction learned at each
+split, while ties, scoring-time missing values, and unseen categories default
+to the left branch. See [the decision-tree reference](references/ml-decision-tree.md)
+for the bounds and precision contract.
+
 Use `ml.NewPipeline` to fit preprocessing and a final `ml.Estimator` as one
 reusable `ml.Model`. Steps run in order and are refitted every time the
 pipeline estimator's `Fit` function is called. Fit the pipeline on the

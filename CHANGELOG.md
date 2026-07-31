@@ -50,6 +50,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - Added a common estimator and transformer protocol over the fitted models already provided by `stats`, with name-based feature binding, optional probability capabilities, PCA transformation, KNN wrappers, and `ml/mltest` conformance checks.
 - Added `ml.NewPipeline` and `ml.NewColumnTransformer` for fitting preprocessing and a model together, scoping transformers to named columns, and reusing the fitted result without preprocessing leakage.
 - Added seeded k-fold and stratified splitting, estimator cross-validation with one score per fold, and classification and regression metrics including accuracy, log loss, ROC AUC, confusion matrices, RMSE, MAE, and R².
+- Added deterministic histogram decision-tree classification and regression with quantile-binned numeric features, categorical subset splits, learned missing-value routing, bounded growth, class probabilities, and feature importances.
 
 ### CLI
 
