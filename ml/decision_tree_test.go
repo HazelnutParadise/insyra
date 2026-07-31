@@ -148,6 +148,35 @@ func TestDecisionTreeIsDeterministicIncludingTiesAndRowPermutation(t *testing.T)
 	}
 }
 
+func TestDecisionTreePermutationDeterminismAcrossTargetMagnitudes(t *testing.T) {
+	const rows = 600
+	features := make([]any, rows)
+	targets := make([]any, rows)
+	for row := 0; row < rows; row++ {
+		features[row] = float64(row) / float64(rows-1)
+		targets[row] = math.Pow(10, -3+6*float64(row)/float64(rows-1))
+	}
+	input := insyra.NewDataTable(insyra.NewDataList(features...).SetName("x"))
+	labels := insyra.NewDataList(targets...)
+	options := ml.DecisionTreeOptions{MaxBins: 32, MaxDepth: 4}
+	first, err := ml.FitDecisionTreeRegressor(input, labels, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	order := make([]int, rows)
+	for row := range order {
+		order[row] = (row*37 + 11) % rows
+	}
+	permuted, permutedLabels := permuteTable(input, order), permuteList(labels, order)
+	second, err := ml.FitDecisionTreeRegressor(permuted, permutedLabels, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(first.Root, second.Root) {
+		t.Fatal("row permutation changed the fixed-point regression tree")
+	}
+}
+
 func TestDecisionTreeLearnsMissingDirectionAndDefaultsMissingScoringValues(t *testing.T) {
 	x := insyra.NewDataTable(insyra.NewDataList(0, 0, 1, 1, math.NaN()).SetName("x"))
 	y := insyra.NewDataList(0, 0, 1, 1, 0)
