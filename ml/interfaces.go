@@ -19,6 +19,13 @@ type Model interface {
 	Predict(dt *insyra.DataTable) (*insyra.DataList, error)
 }
 
+// Classifier is a fitted model that predicts one of a known set of classes.
+// Models that also expose probabilities implement ProbaModel.
+type Classifier interface {
+	Model
+	Classes() *insyra.DataList
+}
+
 // InverseTransformer is a fitted preprocessing step that can restore its input.
 type InverseTransformer interface {
 	InverseTransform(dt *insyra.DataTable) (*insyra.DataTable, error)
@@ -26,8 +33,7 @@ type InverseTransformer interface {
 
 // ProbaModel is a model that reports class probabilities.
 type ProbaModel interface {
-	Model
-	Classes() *insyra.DataList
+	Classifier
 	PredictProba(dt *insyra.DataTable) (*insyra.DataTable, error)
 }
 

@@ -253,6 +253,32 @@ orderedTrain, orderedTest := dt.TrainTestSplit(0.8, insyra.SamplingOptions{Prese
 listSample := dl.Sample(10, false, insyra.SamplingOptions{UseSeed: true, Seed: 42})
 ```
 
+### ML model selection
+
+The `ml` package provides seeded `KFold` and `StratifiedKFold` splits, plus
+`CrossValidate` for fitting an `Estimator` independently on each training
+fold. Keep preprocessing inside the estimator's `Fit` function so every fold
+fits it only on its own training rows.
+
+```go
+result, err := ml.CrossValidate(
+    features,
+    target,
+    ml.Estimator{Name: "linear", Fit: ml.FitLinearRegression},
+    5,
+    ml.RMSEMetric{},
+    insyra.SamplingOptions{UseSeed: true, Seed: 42},
+)
+_ = result
+_ = err
+```
+
+Choose the metric explicitly. Use `AccuracyMetric`, `LogLossMetric`,
+`ROCAUCMetric`, or `ConfusionMatrixMetric` for classification, and
+`RMSEMetric`, `MAEMetric`, or `R2Metric` for regression. Cross-validation
+rejects a metric when the fitted model does not implement the required
+`Classifier` or `ProbaModel` capability.
+
 ### 3) Add a derived column with CCL (Excel-like)
 
 ```go
