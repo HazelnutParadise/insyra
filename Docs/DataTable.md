@@ -1208,9 +1208,13 @@ an observed non-numeric value, those strategies leave the column unchanged,
 matching `FillWithMean` and `FillWithMedian`. Mode supports mixed values and
 uses the first-occurring value to break ties. Constant requires exactly one
 constant argument. Every selected column must have at least one observed value
-at fit time, and `Fit` reports the column name otherwise. `InverseTransform` is
-not supported because imputation cannot recover which cells were originally
-missing.
+at fit time, and `Fit` reports the column name otherwise. `SimpleImputer` has no
+`InverseTransform` and is not an `insyra.Scaler`, because imputation cannot
+recover which cells were originally missing. That absence is deliberate rather
+than a gap: a method that always returned an error would still satisfy any
+interface asking for it, so code testing for the capability by type assertion
+would be told it is present and then refused at the call. Not having the method
+is the only form of that answer a type assertion can read.
 
 Do not use the fitted imputer and the in-place `FillWithMean`,
 `FillWithMedian`, or `FillWithMode` interchangeably. Use the fitted form in a

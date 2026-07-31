@@ -42,3 +42,7 @@ The system SHALL make a fitted imputer usable wherever a fitted scaler or encode
 #### Scenario: An imputer is used as a pipeline step
 - **WHEN** a fitted imputer is used where a preprocessing step is expected
 - **THEN** it is accepted with no wrapping
+
+#### Scenario: A caller asks whether the imputation can be undone
+- **WHEN** a caller tests whether a fitted imputer can reverse its transformation
+- **THEN** the answer is that it cannot, and it is available before the call rather than as a failure during it

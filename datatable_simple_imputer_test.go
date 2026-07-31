@@ -121,8 +121,29 @@ func TestSimpleImputerErrorsAndPassThrough(t *testing.T) {
 }
 
 func TestSimpleImputerSupportsScalerAndPipelineTransformer(t *testing.T) {
-	var _ Scaler = (*SimpleImputer)(nil)
 	var _ interface {
 		Transform(*DataTable) (*DataTable, error)
 	} = (*SimpleImputer)(nil)
+}
+
+// TestSimpleImputerDoesNotClaimReversibility pins the reason SimpleImputer is
+// not a Scaler. An always-erroring InverseTransform would satisfy every
+// interface that asks for the method, so a caller probing for the capability by
+// type assertion would be told it is present and then refused at the call.
+func TestSimpleImputerDoesNotClaimReversibility(t *testing.T) {
+	var imputer any = NewSimpleImputer(ImputeMean)
+
+	if _, ok := imputer.(interface {
+		InverseTransform(dt *DataTable) (*DataTable, error)
+	}); ok {
+		t.Fatal("SimpleImputer must not carry InverseTransform: a type assertion would report a capability it cannot honour")
+	}
+	if _, ok := imputer.(Scaler); ok {
+		t.Fatal("SimpleImputer must not satisfy Scaler, which requires InverseTransform")
+	}
+	if _, ok := imputer.(interface {
+		Transform(dt *DataTable) (*DataTable, error)
+	}); !ok {
+		t.Fatal("SimpleImputer must satisfy the transformer shape a pipeline needs")
+	}
 }

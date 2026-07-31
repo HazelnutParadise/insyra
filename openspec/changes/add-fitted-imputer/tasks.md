@@ -14,7 +14,7 @@
 - [x] 2.2 Test that fit-and-transform equals the existing in-place method on the same table
 - [x] 2.3 Test that the fitted values are readable and correct
 - [x] 2.4 Test the all-missing column refusal and the non-numeric column pass-through
-- [x] 2.5 Assert the imputer satisfies the same interface the scalers do, so a change to either side fails the build
+- [x] 2.5 Assert the imputer satisfies the transformer shape a pipeline needs, and assert it does NOT carry `InverseTransform` — imputation is not reversible, and an always-erroring method would tell a type assertion the capability is present
 
 ## 3. Record
 - [x] 3.1 Document it in the DataTable docs beside scaling and encoding, stating plainly when to use it rather than the in-place methods

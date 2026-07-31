@@ -193,12 +193,6 @@ func (i *SimpleImputer) Transform(dt *DataTable) (*DataTable, error) {
 	return out, nil
 }
 
-// InverseTransform is unsupported because replacing a missing value loses the
-// information needed to restore whether that cell was missing.
-func (i *SimpleImputer) InverseTransform(_ *DataTable) (*DataTable, error) {
-	return nil, errors.New("SimpleImputer.InverseTransform: imputation is not reversible")
-}
-
 func (i *SimpleImputer) validateConfiguration() error {
 	switch i.strategy {
 	case ImputeMean, ImputeMedian, ImputeMode:
@@ -297,4 +291,17 @@ func firstMode(values []any) any {
 	return best.value
 }
 
-var _ Scaler = (*SimpleImputer)(nil)
+// SimpleImputer deliberately does NOT implement Scaler, and does not carry an
+// InverseTransform at all.
+//
+// Imputation is not reversible: once a missing cell holds the fitted value,
+// nothing records that it was ever missing. An InverseTransform that always
+// returned an error would still satisfy every interface that asks for the
+// method, so a caller testing for the capability by type assertion would be
+// told the capability is present and then be refused at the call. Not having
+// the method is the only form of that answer a type assertion can read.
+//
+// What it does satisfy is the transformer shape, which is all a pipeline needs.
+var _ interface {
+	Transform(dt *DataTable) (*DataTable, error)
+} = (*SimpleImputer)(nil)
