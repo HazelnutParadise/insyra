@@ -139,6 +139,23 @@ func requireCrossLangTools(t *testing.T) {
 	}
 }
 
+// requirePythonTools gates the comparisons whose only reference is Python.
+// Regularized regression is verified against scikit-learn alone: R's glmnet
+// standardises by default and scales its penalty differently, so it computes a
+// different (equally valid) answer that cannot be compared coefficient for
+// coefficient.
+func requirePythonTools(t *testing.T) {
+	t.Helper()
+	const verification = "the scikit-learn reference comparison"
+	if _, err := exec.LookPath("python"); err != nil {
+		reftest.Missing(t, "python", verification, err)
+	}
+	checkPy := exec.Command("python", "-c", "import numpy, sklearn")
+	if out, err := checkPy.CombinedOutput(); err != nil {
+		reftest.MissingOutput(t, "python with numpy and scikit-learn", verification, err, out)
+	}
+}
+
 func requireRTools(t *testing.T) {
 	t.Helper()
 	const verification = "the R reference comparison"

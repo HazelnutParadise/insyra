@@ -1545,6 +1545,37 @@ def main():
         out = log_reg(payload["y"], payload["x"], payload.get("new_x"))
     elif method == "pca":
         out = pca_stats(payload["rows"], payload.get("n_components", None))
+    elif method == "ridge":
+        from sklearn.linear_model import Ridge
+
+        y = np.array(payload["y"], dtype=float)
+        X = np.array(payload["xs"], dtype=float).T
+        model = Ridge(alpha=float(payload["alpha"]), fit_intercept=True, solver="cholesky")
+        model.fit(X, y)
+        newX = np.array(payload["new_xs"], dtype=float).T
+        out = {
+            "intercept": float(model.intercept_),
+            "coefficients": [float(c) for c in model.coef_],
+            "predictions": [float(v) for v in model.predict(newX)],
+        }
+    elif method == "lasso":
+        from sklearn.linear_model import Lasso
+
+        y = np.array(payload["y"], dtype=float)
+        X = np.array(payload["xs"], dtype=float).T
+        model = Lasso(
+            alpha=float(payload["alpha"]),
+            fit_intercept=True,
+            tol=float(payload["tol"]),
+            max_iter=int(payload["max_iter"]),
+        )
+        model.fit(X, y)
+        newX = np.array(payload["new_xs"], dtype=float).T
+        out = {
+            "intercept": float(model.intercept_),
+            "coefficients": [float(c) for c in model.coef_],
+            "predictions": [float(v) for v in model.predict(newX)],
+        }
     elif method == "kmeans":
         out = kmeans_stats(payload["rows"], payload["k"], payload.get("nstart", 1), payload.get("itermax", 10), payload.get("seed", 1))
     elif method == "hclust":

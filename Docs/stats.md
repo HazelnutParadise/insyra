@@ -21,7 +21,7 @@ The stats package provides comprehensive statistical analysis functions:
 - **Nonparametric Tests**: Wilcoxon signed-rank (single/paired), Mann-Whitney U, Kruskal-Wallis, Friedman — rank-based counterparts to the t-test / ANOVA family
 - **Distribution Analysis**: Skewness, Kurtosis, n-th moments, standard-normal CDF / quantile (`NormCDF` / `NormPPF`)
 - **Analysis of Variance**: One-way, Two-way, Repeated measures ANOVA
-- **Regression Analysis**: Linear, Logistic, Poisson, generic GLM, Exponential, Logarithmic, Polynomial regression with confidence intervals
+- **Regression Analysis**: Linear, Ridge, Lasso, Logistic, Poisson, generic GLM, Exponential, Logarithmic, Polynomial regression (confidence intervals on the unpenalized families)
 - **F-Tests**: Variance equality, Levene's test, Bartlett's test, regression F-test, nested models
 - **Dimensionality Reduction**: Principal Component Analysis (PCA)
 - **Instance-Based Prediction**: K-nearest neighbors (KNN) classification and regression
@@ -1714,6 +1714,31 @@ fmt.Printf("Average silhouette: %.4f\n", result.AverageSilhouette)
 ```
 
 ## Regression Analysis
+
+### Ridge Regression
+
+```go
+func RidgeRegression(dlY insyra.IDataList, alpha float64, dlXs ...insyra.IDataList) (*RidgeRegressionResult, error)
+```
+
+**Description:** Fits a linear model under an L2 penalty, minimising `||y − Xβ||² + α·||β||²` with the intercept unpenalized and no feature standardisation — scikit-learn's `Ridge` objective exactly. `alpha = 0` reproduces ordinary least squares. The solve is the penalized normal equations, which stay nonsingular on collinear predictors — the ordinary reason to reach for ridge.
+
+The result carries coefficients (intercept first), residuals and R², and deliberately **no standard errors, t or p values**: penalized estimates have no exact classical sampling distribution, so those fields would be fabricated precision. Verified against scikit-learn; R's `glmnet` is *not* the reference because it standardises by default and scales its penalty differently, so it computes different (equally valid) coefficients from the same data.
+
+```go
+fit, err := stats.RidgeRegression(y, 0.5, x1, x2)
+predicted, err := fit.Predict(stats.PredictResponse, newX1, newX2)
+```
+
+### Lasso Regression
+
+```go
+func LassoRegression(dlY insyra.IDataList, alpha float64, dlXs []insyra.IDataList, options ...LassoOptions) (*LassoRegressionResult, error)
+```
+
+**Description:** Fits a linear model under an L1 penalty, minimising `(1/2n)·||y − Xβ||² + α·||β||₁` — scikit-learn's `Lasso` objective exactly — by coordinate descent with soft thresholding. A predictor whose contribution is worth less than the penalty gets a coefficient of **exactly zero**, which is what makes lasso the standard tool for feature selection.
+
+`LassoOptions{Tolerance, MaxIterations}` default to scikit-learn's `1e-4` and `1000`. A fit that hits the cap before the tolerance still returns, with `Converged: false` and the iteration count — the caller decides whether to raise the cap. The same no-inference rule as ridge applies.
 
 ### Linear Regression
 

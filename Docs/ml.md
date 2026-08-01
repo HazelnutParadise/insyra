@@ -248,6 +248,8 @@ The available fitting functions are:
 
 ```go
 FitLinearRegression
+FitRidgeRegression
+FitLassoRegression
 FitPolynomialRegression
 FitExponentialRegression
 FitLogarithmicRegression
@@ -264,7 +266,11 @@ FitDecisionTreeRegressor
 
 The regression, clustering, and KNN wrappers expose their underlying `stats` result through an exported `Result` field. The options types in `ml` are aliases of the corresponding `stats` options types.
 
-Polynomial, exponential, and logarithmic regression require one feature. Logistic regression and KNN classification implement `ProbaModel`; logistic `Predict` returns class labels and `PredictProba` returns response probabilities. Logistic probabilities use the fitted class order, and KNN probabilities use the class columns returned by `stats`. The `ml` wrappers reject Poisson or GLM offsets because `Model.Predict` has no input for a new row-wise offset.
+Ridge and lasso take the penalty strength as a third argument, using
+scikit-learn's objectives exactly — see [the `stats`
+documentation](/Docs/stats.md#ridge-regression) for the definitions and for why
+the penalized results carry no standard errors. Polynomial, exponential, and
+logarithmic regression require one feature. Logistic regression and KNN classification implement `ProbaModel`; logistic `Predict` returns class labels and `PredictProba` returns response probabilities. Logistic probabilities use the fitted class order, and KNN probabilities use the class columns returned by `stats`. The `ml` wrappers reject Poisson or GLM offsets because `Model.Predict` has no input for a new row-wise offset.
 
 KNN stores the training table because the underlying `stats.KNNClassify` and `stats.KNNRegress` functions accept training and test tables together. Predictions call those functions with the test table reordered by feature name.
 

@@ -20,6 +20,18 @@ type PolynomialModel struct {
 	modelBase
 }
 
+// RidgeModel wraps stats.RidgeRegressionResult.
+type RidgeModel struct {
+	Result *stats.RidgeRegressionResult
+	modelBase
+}
+
+// LassoModel wraps stats.LassoRegressionResult.
+type LassoModel struct {
+	Result *stats.LassoRegressionResult
+	modelBase
+}
+
 // ExponentialModel wraps stats.ExponentialRegressionResult.
 type ExponentialModel struct {
 	Result *stats.ExponentialRegressionResult
@@ -114,6 +126,37 @@ func FitPolynomialRegression(x *insyra.DataTable, y *insyra.DataList, degree int
 		return nil, err
 	}
 	return &PolynomialModel{Result: result, modelBase: modelBase{features: features}}, nil
+}
+
+// FitRidgeRegression fits an L2-penalized linear model. alpha is
+// scikit-learn's: the multiplier on ||coefficients||² with the intercept
+// unpenalized, and 0 reproducing ordinary least squares.
+func FitRidgeRegression(x *insyra.DataTable, y *insyra.DataList, alpha float64) (Model, error) {
+	features, xs, err := fitFeatures(x)
+	if err != nil {
+		return nil, err
+	}
+	result, err := stats.RidgeRegression(y, alpha, xs...)
+	if err != nil {
+		return nil, err
+	}
+	return &RidgeModel{Result: result, modelBase: modelBase{features: features}}, nil
+}
+
+// FitLassoRegression fits an L1-penalized linear model. alpha is
+// scikit-learn's: the multiplier on ||coefficients||₁ in the (1/2n)-scaled
+// objective, with the intercept unpenalized. Coefficients the penalty prices
+// out are exactly zero.
+func FitLassoRegression(x *insyra.DataTable, y *insyra.DataList, alpha float64, options ...stats.LassoOptions) (Model, error) {
+	features, xs, err := fitFeatures(x)
+	if err != nil {
+		return nil, err
+	}
+	result, err := stats.LassoRegression(y, alpha, xs, options...)
+	if err != nil {
+		return nil, err
+	}
+	return &LassoModel{Result: result, modelBase: modelBase{features: features}}, nil
 }
 
 func FitExponentialRegression(x *insyra.DataTable, y *insyra.DataList) (Model, error) {
@@ -292,6 +335,18 @@ func FitKNNRegressor(x *insyra.DataTable, y *insyra.DataList, k int, opts ...KNN
 }
 
 func (m *LinearModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error) {
+	return predictRegression(dt, m.features, func(xs []insyra.IDataList) (*insyra.DataList, error) {
+		return m.Result.Predict(stats.PredictResponse, xs...)
+	})
+}
+
+func (m *RidgeModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error) {
+	return predictRegression(dt, m.features, func(xs []insyra.IDataList) (*insyra.DataList, error) {
+		return m.Result.Predict(stats.PredictResponse, xs...)
+	})
+}
+
+func (m *LassoModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error) {
 	return predictRegression(dt, m.features, func(xs []insyra.IDataList) (*insyra.DataList, error) {
 		return m.Result.Predict(stats.PredictResponse, xs...)
 	})

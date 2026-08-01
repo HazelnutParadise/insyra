@@ -593,7 +593,7 @@ if proba, ok := model.(ml.ProbaModel); ok {
 }
 ```
 
-`FitPolynomialRegression`, `FitExponentialRegression`, and `FitLogarithmicRegression` require one feature. `FitLogisticRegression` and `FitKNNClassifier` return `ml.ProbaModel`; logistic `Predict` returns labels and `PredictProba` returns probabilities. `FitPCA` returns an `ml.Transformer`. Poisson and GLM offsets are rejected by the `ml` wrappers because `Model.Predict` cannot receive a new row-wise offset. Existing root scalers and encoders satisfy `ml.Transformer` directly, so no adapter is needed. Use `ml/mltest.RunConformance` to check an external model implementation.
+`FitRidgeRegression(x, y, alpha)` and `FitLassoRegression(x, y, alpha)` fit penalized linear models using scikit-learn's objectives (intercept unpenalized, no standardisation); lasso coefficients priced out by the penalty are exactly zero, and the underlying `stats` results carry no standard errors or p values because classical inference does not apply to penalized estimates. `FitPolynomialRegression`, `FitExponentialRegression`, and `FitLogarithmicRegression` require one feature. `FitLogisticRegression` and `FitKNNClassifier` return `ml.ProbaModel`; logistic `Predict` returns labels and `PredictProba` returns probabilities. `FitPCA` returns an `ml.Transformer`. Poisson and GLM offsets are rejected by the `ml` wrappers because `Model.Predict` cannot receive a new row-wise offset. Existing root scalers and encoders satisfy `ml.Transformer` directly, so no adapter is needed. Use `ml/mltest.RunConformance` to check an external model implementation.
 
 For tabular classification or regression, use `ml.FitDecisionTreeClassifier`
 or `ml.FitDecisionTreeRegressor`. Pass categorical column names through
