@@ -83,6 +83,9 @@ result. Available metrics are:
 | `AccuracyMetric` | classification labels | higher | `Accuracy` |
 | `LogLossMetric` | class probabilities | lower | `LogLoss` |
 | `ROCAUCMetric` | binary class probabilities | higher | `ROCAUC` |
+| `PrecisionMetric` | classification labels | higher | `Precision` |
+| `RecallMetric` | classification labels | higher | `Recall` |
+| `F1Metric` | classification labels | higher | `F1` |
 | `ConfusionMatrixMetric` | classification labels | — | `ConfusionMatrix` |
 | `RMSEMetric` | regression | lower | `RMSE` |
 | `MAEMetric` | regression | lower | `MAE` |
@@ -93,6 +96,36 @@ returning their class labels. Probability metrics additionally require
 `ProbaModel`. A metric for the wrong model kind is rejected instead of
 producing a meaningless score. Confusion-matrix cross-validation results are
 available in `FoldResults`; their scalar `Scores` and `Mean` are `NaN`.
+
+### Precision, recall and F1 averaging
+
+The three per-class metrics take a `ClassAverage`:
+
+| Average | Meaning |
+| --- | --- |
+| `MacroAverage` (default) | unweighted mean over every observed class |
+| `MicroAverage` | counts combined before dividing — equal to accuracy for single-label classification |
+| `WeightedAverage` | per-class scores weighted by how often each class actually occurs |
+| `BinaryAverage` | one named class alone; `PositiveClass` is required |
+
+```go
+score, err := ml.Score(model, x, y, ml.F1Metric{
+    Average:       ml.BinaryAverage,
+    PositiveClass: "churned",
+})
+```
+
+Two deliberate departures from scikit-learn. Its default is binary averaging
+with `pos_label=1`, which works there because its labels are usually the
+integers 0 and 1; over arbitrary labels that default is a guess, so the default
+here is macro. And the positive class is never chosen for you: unlike ROC AUC —
+which is invariant under swapping the class — precision and recall of the two
+classes are different numbers about different mistakes, so binary averaging
+refuses to run without one named. A positive class combined with any other
+average is refused rather than silently ignored. A class that never appears in
+the predictions contributes precision 0, matching scikit-learn's
+`zero_division=0`; the direct helpers `Precision`, `Recall` and `F1` compute
+the macro default.
 
 ### Which score is better
 

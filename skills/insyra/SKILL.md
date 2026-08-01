@@ -303,9 +303,12 @@ _ = result
 _ = err
 ```
 
-Choose the metric explicitly. Use `AccuracyMetric`, `LogLossMetric`,
-`ROCAUCMetric`, or `ConfusionMatrixMetric` for classification, and
-`RMSEMetric`, `MAEMetric`, or `R2Metric` for regression. Cross-validation
+Choose the metric explicitly. Use `AccuracyMetric`, `PrecisionMetric`,
+`RecallMetric`, `F1Metric`, `LogLossMetric`, `ROCAUCMetric`, or
+`ConfusionMatrixMetric` for classification, and `RMSEMetric`, `MAEMetric`, or
+`R2Metric` for regression. Precision, recall and F1 default to macro averaging;
+`BinaryAverage` requires `PositiveClass` to be set, and a positive class with
+any other average is refused. Cross-validation
 rejects a metric when the fitted model does not implement the required
 `Classifier` or `ProbaModel` capability.
 

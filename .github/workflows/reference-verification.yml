@@ -74,5 +74,5 @@ jobs:
           -skip "TestCrossLang(ClusteringGeneratedCorpus|KNNGeneratedCorpus|FactorAnalysis)"
       - name: ONNX round trip against an independent runtime
         run: go test -count=1 -timeout 10m ./ml/ -run "TestONNX"
-      - name: Decision tree against scikit-learn
-        run: go test -count=1 -timeout 10m ./ml/ -run "TestDecisionTreeAccuracyAgainstScikitLearn"
+      - name: Comparisons against scikit-learn
+        run: go test -count=1 -timeout 10m ./ml/ -run "AgainstScikitLearn"

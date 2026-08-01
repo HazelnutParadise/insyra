@@ -390,6 +390,205 @@ func ConfusionMatrix(yTrue, yPred *insyra.DataList) (*ConfusionMatrixResult, err
 	return &ConfusionMatrixResult{Labels: labels, Counts: counts}, nil
 }
 
+// ClassAverage says how per-class precision, recall and F1 are combined into
+// one number.
+type ClassAverage int
+
+const (
+	// MacroAverage is the unweighted mean over every observed class. It is the
+	// default — the zero value — because it is the only mode that is well
+	// defined over any label set without naming a class. scikit-learn defaults
+	// to binary averaging with pos_label=1 instead, which works there because
+	// its labels are usually the integers 0 and 1; over arbitrary labels that
+	// default degenerates into guessing which class the caller means.
+	MacroAverage ClassAverage = iota
+	// MicroAverage combines the per-class counts before dividing. For
+	// single-label classification, micro precision, recall and F1 are all
+	// equal to accuracy — that is a property of the definition, not a bug.
+	MicroAverage
+	// WeightedAverage combines the per-class scores in proportion to each
+	// class's support, the number of times it actually occurs.
+	WeightedAverage
+	// BinaryAverage scores one class alone. The positive class must be named:
+	// unlike ROC AUC, these scores are not invariant under swapping which
+	// class is positive — precision of one class and precision of the other
+	// are different numbers about different mistakes — so choosing on the
+	// caller's behalf would silently answer a different question.
+	BinaryAverage
+)
+
+// classAverageName is for error messages.
+func (a ClassAverage) String() string {
+	switch a {
+	case MicroAverage:
+		return "micro"
+	case WeightedAverage:
+		return "weighted"
+	case BinaryAverage:
+		return "binary"
+	default:
+		return "macro"
+	}
+}
+
+// precisionRecallF1 computes all three at once from the same label handling
+// ConfusionMatrix uses, so the class set and its ordering cannot disagree with
+// what ConfusionMatrixMetric would report for the same data.
+//
+// A zero denominator contributes zero rather than an error, matching
+// scikit-learn's zero_division=0: a class that is never predicted has
+// precision 0, and a class with no support has recall 0. Refusing there would
+// fail whole cross-validation runs on folds where a rare class happens not to
+// be predicted, which no mainstream implementation does.
+func precisionRecallF1(yTrue, yPred *insyra.DataList, average ClassAverage, positive any) (precision, recall, f1 float64, err error) {
+	if positive != nil && average != BinaryAverage {
+		return 0, 0, 0, fmt.Errorf("ml: a positive class is only used by binary averaging; it would be ignored under %s averaging", average)
+	}
+	if average == BinaryAverage && positive == nil {
+		return 0, 0, 0, fmt.Errorf("ml: binary averaging requires a positive class, because precision and recall change with which class is positive")
+	}
+	matrix, err := ConfusionMatrix(yTrue, yPred)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	if yTrue.Len() == 0 {
+		return 0, 0, 0, fmt.Errorf("ml: precision, recall and F1 are undefined for empty data")
+	}
+
+	classes := len(matrix.Labels)
+	perPrecision := make([]float64, classes)
+	perRecall := make([]float64, classes)
+	perF1 := make([]float64, classes)
+	support := make([]float64, classes)
+	totalTP := 0.0
+	for i := range matrix.Labels {
+		tp := float64(matrix.Counts[i][i])
+		predicted := 0.0
+		actual := 0.0
+		for j := range matrix.Labels {
+			actual += float64(matrix.Counts[i][j])
+			predicted += float64(matrix.Counts[j][i])
+		}
+		support[i] = actual
+		totalTP += tp
+		if predicted > 0 {
+			perPrecision[i] = tp / predicted
+		}
+		if actual > 0 {
+			perRecall[i] = tp / actual
+		}
+		if perPrecision[i]+perRecall[i] > 0 {
+			perF1[i] = 2 * perPrecision[i] * perRecall[i] / (perPrecision[i] + perRecall[i])
+		}
+	}
+
+	switch average {
+	case BinaryAverage:
+		if classes > 2 {
+			return 0, 0, 0, fmt.Errorf("ml: binary averaging requires at most two observed labels, got %d (%v)", classes, matrix.Labels)
+		}
+		index := labelIndex(matrix.Labels, positive)
+		if index < 0 {
+			return 0, 0, 0, fmt.Errorf("ml: positive class %v is not among the observed labels %v", positive, matrix.Labels)
+		}
+		return perPrecision[index], perRecall[index], perF1[index], nil
+	case MicroAverage:
+		total := float64(yTrue.Len())
+		micro := totalTP / total
+		return micro, micro, micro, nil
+	case WeightedAverage:
+		total := float64(yTrue.Len())
+		for i := range matrix.Labels {
+			precision += support[i] * perPrecision[i] / total
+			recall += support[i] * perRecall[i] / total
+			f1 += support[i] * perF1[i] / total
+		}
+		return precision, recall, f1, nil
+	default:
+		for i := range matrix.Labels {
+			precision += perPrecision[i]
+			recall += perRecall[i]
+			f1 += perF1[i]
+		}
+		n := float64(classes)
+		return precision / n, recall / n, f1 / n, nil
+	}
+}
+
+// Precision returns macro-averaged precision. For other averaging modes use
+// PrecisionMetric.
+func Precision(yTrue, yPred *insyra.DataList) (float64, error) {
+	precision, _, _, err := precisionRecallF1(yTrue, yPred, MacroAverage, nil)
+	return precision, err
+}
+
+// Recall returns macro-averaged recall. For other averaging modes use
+// RecallMetric.
+func Recall(yTrue, yPred *insyra.DataList) (float64, error) {
+	_, recall, _, err := precisionRecallF1(yTrue, yPred, MacroAverage, nil)
+	return recall, err
+}
+
+// F1 returns macro-averaged F1. For other averaging modes use F1Metric.
+func F1(yTrue, yPred *insyra.DataList) (float64, error) {
+	_, _, f1, err := precisionRecallF1(yTrue, yPred, MacroAverage, nil)
+	return f1, err
+}
+
+// PrecisionMetric scores class predictions by precision. The zero value is
+// macro-averaged; BinaryAverage requires PositiveClass.
+type PrecisionMetric struct {
+	Average       ClassAverage
+	PositiveClass any
+}
+
+func (PrecisionMetric) Name() string               { return "precision" }
+func (PrecisionMetric) Kind() MetricKind           { return ClassificationMetric }
+func (PrecisionMetric) Direction() MetricDirection { return HigherIsBetter }
+func (PrecisionMetric) NeedsClassLabels() bool     { return true }
+func (m PrecisionMetric) Evaluate(yTrue *insyra.DataList, prediction Prediction) (MetricResult, error) {
+	precision, _, _, err := precisionRecallF1(yTrue, prediction.Values, m.Average, m.PositiveClass)
+	return MetricResult{Name: "precision", Score: precision}, err
+}
+
+// RecallMetric scores class predictions by recall. The zero value is
+// macro-averaged; BinaryAverage requires PositiveClass.
+type RecallMetric struct {
+	Average       ClassAverage
+	PositiveClass any
+}
+
+func (RecallMetric) Name() string               { return "recall" }
+func (RecallMetric) Kind() MetricKind           { return ClassificationMetric }
+func (RecallMetric) Direction() MetricDirection { return HigherIsBetter }
+func (RecallMetric) NeedsClassLabels() bool     { return true }
+func (m RecallMetric) Evaluate(yTrue *insyra.DataList, prediction Prediction) (MetricResult, error) {
+	_, recall, _, err := precisionRecallF1(yTrue, prediction.Values, m.Average, m.PositiveClass)
+	return MetricResult{Name: "recall", Score: recall}, err
+}
+
+// F1Metric scores class predictions by F1. The zero value is macro-averaged;
+// BinaryAverage requires PositiveClass.
+type F1Metric struct {
+	Average       ClassAverage
+	PositiveClass any
+}
+
+func (F1Metric) Name() string               { return "f1" }
+func (F1Metric) Kind() MetricKind           { return ClassificationMetric }
+func (F1Metric) Direction() MetricDirection { return HigherIsBetter }
+func (F1Metric) NeedsClassLabels() bool     { return true }
+func (m F1Metric) Evaluate(yTrue *insyra.DataList, prediction Prediction) (MetricResult, error) {
+	_, _, f1, err := precisionRecallF1(yTrue, prediction.Values, m.Average, m.PositiveClass)
+	return MetricResult{Name: "f1", Score: f1}, err
+}
+
+var (
+	_ ClassLabelMetric = PrecisionMetric{}
+	_ ClassLabelMetric = RecallMetric{}
+	_ ClassLabelMetric = F1Metric{}
+)
+
 // RMSE returns the root mean squared error.
 func RMSE(yTrue, yPred *insyra.DataList) (float64, error) {
 	actual, predicted, err := numericPair(yTrue, yPred)
