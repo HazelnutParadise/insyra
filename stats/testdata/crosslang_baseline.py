@@ -253,7 +253,7 @@ def rm_stats(subjects):
     }
 
 
-def linear_common(y, x_cols):
+def linear_common(y, x_cols, new_x_cols=None):
     yv = np.array(y, dtype=float)
     x = np.column_stack([np.array(col, dtype=float) for col in x_cols])
     x = sm.add_constant(x, has_constant="add")
@@ -289,10 +289,13 @@ def linear_common(y, x_cols):
             "ci_intercept": ci[0],
             "ci_slope": ci[1],
         })
+    if new_x_cols is not None:
+        new_x = sm.add_constant(np.column_stack([np.array(col, dtype=float) for col in new_x_cols]), has_constant="add")
+        out["predictions"] = model.predict(new_x).tolist()
     return out
 
 
-def poly_reg(y, x, degree):
+def poly_reg(y, x, degree, new_x=None):
     xv = np.array(x, dtype=float)
     cols = [np.ones_like(xv)]
     for d in range(1, degree + 1):
@@ -300,7 +303,7 @@ def poly_reg(y, x, degree):
     xmat = np.column_stack(cols)
     yv = np.array(y, dtype=float)
     model = sm.OLS(yv, xmat).fit()
-    return {
+    out = {
         "coefficients": model.params.tolist(),
         "standard_errors": model.bse.tolist(),
         "t_values": model.tvalues.tolist(),
@@ -310,9 +313,14 @@ def poly_reg(y, x, degree):
         "r_squared": float(model.rsquared),
         "adj_r_squared": float(model.rsquared_adj),
     }
+    if new_x is not None:
+        nx = np.array(new_x, dtype=float)
+        nmat = np.column_stack([np.ones_like(nx)] + [np.power(nx, d) for d in range(1, degree + 1)])
+        out["predictions"] = model.predict(nmat).tolist()
+    return out
 
 
-def exp_reg(y, x):
+def exp_reg(y, x, new_x=None):
     xv = np.array(x, dtype=float)
     yv = np.array(y, dtype=float)
     lny = np.log(yv)
@@ -346,7 +354,7 @@ def exp_reg(y, x):
     ci_a = [a - tcrit * se_a, a + tcrit * se_a]
     ci_b = [b - tcrit * se_b, b + tcrit * se_b]
 
-    return {
+    out = {
         "intercept": a,
         "slope": b,
         "residuals": residuals,
@@ -361,9 +369,13 @@ def exp_reg(y, x):
         "ci_intercept": ci_a,
         "ci_slope": ci_b,
     }
+    if new_x is not None:
+        nx = np.array(new_x, dtype=float)
+        out["predictions"] = (a * np.exp(b * nx)).tolist()
+    return out
 
 
-def log_reg(y, x):
+def log_reg(y, x, new_x=None):
     xv = np.array(x, dtype=float)
     yv = np.array(y, dtype=float)
     lx = np.log(xv)
@@ -394,7 +406,7 @@ def log_reg(y, x):
     ci_a = [a - tcrit * se_a, a + tcrit * se_a]
     ci_b = [b - tcrit * se_b, b + tcrit * se_b]
 
-    return {
+    out = {
         "intercept": a,
         "slope": b,
         "residuals": residuals,
@@ -409,6 +421,10 @@ def log_reg(y, x):
         "ci_intercept": ci_a,
         "ci_slope": ci_b,
     }
+    if new_x is not None:
+        nx = np.array(new_x, dtype=float)
+        out["predictions"] = fit.predict(sm.add_constant(np.log(nx), has_constant="add")).tolist()
+    return out
 
 
 def pca_stats(rows, n_components=None):
@@ -1421,14 +1437,112 @@ def main():
             out = {"corr_matrix": corr, "p_matrix": pmat, "chi_square": b["chi_square"], "p_value": b["p_value"], "df": b["df"]}
         else:
             out = {"corr_matrix": corr, "p_matrix": pmat, "chi_square": "NaN", "p_value": "NaN", "df": 0.0}
+    elif method == "logistic_reg":
+        y = np.array(payload["y"], dtype=float)
+        x_cols = [np.array(col, dtype=float) for col in payload["xs"]]
+        x = sm.add_constant(np.column_stack(x_cols), has_constant="add")
+        fit = sm.GLM(y, x, family=sm.families.Binomial()).fit(maxiter=100, tol=1e-10)
+        ci = fit.conf_int(alpha=0.05).tolist()
+        out = {
+            "coefficients": fit.params.tolist(),
+            "standard_errors": fit.bse.tolist(),
+            "z_values": fit.tvalues.tolist(),
+            "p_values": fit.pvalues.tolist(),
+            "ci": ci,
+            "odds_ratios": np.exp(fit.params).tolist(),
+            "log_likelihood": float(fit.llf),
+            "null_deviance": float(fit.null_deviance),
+            "deviance": float(fit.deviance),
+            "aic": float(fit.aic),
+            "bic": float(getattr(fit, "bic_llf", -2 * fit.llf + len(fit.params) * math.log(len(y)))),
+            "iterations": float(fit.fit_history.get("iteration", float("nan"))),
+            "fitted": fit.fittedvalues.tolist(),
+        }
+        if "new_xs" in payload:
+            nx = sm.add_constant(np.column_stack([np.array(col, dtype=float) for col in payload["new_xs"]]), has_constant="add")
+            out["predictions"] = fit.predict(nx).tolist()
+    elif method == "poisson_reg":
+        y = np.array(payload["y"], dtype=float)
+        x_cols = [np.array(col, dtype=float) for col in payload["xs"]]
+        x = sm.add_constant(np.column_stack(x_cols), has_constant="add")
+        offset = np.array(payload.get("offset", np.zeros(len(y))), dtype=float)
+        fit = sm.GLM(y, x, family=sm.families.Poisson(), offset=offset).fit(maxiter=100, tol=1e-10)
+        pearson = float(np.sum(fit.resid_pearson ** 2))
+        ci = fit.conf_int(alpha=0.05).tolist()
+        out = {
+            "coefficients": fit.params.tolist(),
+            "standard_errors": fit.bse.tolist(),
+            "z_values": fit.tvalues.tolist(),
+            "p_values": fit.pvalues.tolist(),
+            "ci": ci,
+            "irr": np.exp(fit.params).tolist(),
+            "log_likelihood": float(fit.llf),
+            "deviance": float(fit.deviance),
+            "null_deviance": float(fit.null_deviance),
+            "pearson_chi2": pearson,
+            "dispersion": pearson / float(fit.df_resid),
+            "aic": float(fit.aic),
+            "bic": float(getattr(fit, "bic_llf", -2 * fit.llf + len(fit.params) * math.log(len(y)))),
+            "iterations": float(fit.fit_history.get("iteration", float("nan"))),
+            "fitted": fit.fittedvalues.tolist(),
+        }
+        if "new_xs" in payload:
+            nx = np.column_stack([np.array(col, dtype=float) for col in payload["new_xs"]])
+            nx = sm.add_constant(nx, has_constant="add")
+            out["predictions"] = fit.predict(nx, offset=np.array(payload["new_offset"], dtype=float)).tolist()
+            no_offset = sm.GLM(y, x, family=sm.families.Poisson()).fit(maxiter=100, tol=1e-10)
+            out["predictions_no_offset"] = no_offset.predict(nx).tolist()
+    elif method == "glm_generic":
+        y = np.array(payload["y"], dtype=float)
+        x_cols = [np.array(col, dtype=float) for col in payload["xs"]]
+        x = sm.add_constant(np.column_stack(x_cols), has_constant="add")
+        offset = np.array(payload.get("offset", np.zeros(len(y))), dtype=float)
+        weights = np.array(payload.get("weights", np.ones(len(y))), dtype=float)
+        family_name = payload["family"]
+        link_name = payload["link"]
+        if family_name == "binomial":
+            link = sm.families.links.Logit()
+            fam = sm.families.Binomial(link=link)
+        elif family_name == "poisson":
+            link = sm.families.links.Log()
+            fam = sm.families.Poisson(link=link)
+        elif family_name == "gaussian":
+            link = sm.families.links.Identity()
+            fam = sm.families.Gaussian(link=link)
+        else:
+            raise ValueError(f"unsupported family: {family_name}/{link_name}")
+        fit = sm.GLM(y, x, family=fam, offset=offset, freq_weights=weights).fit(maxiter=100, tol=1e-10)
+        ci = fit.conf_int(alpha=0.05).tolist()
+        dispersion = float(fit.scale)
+        k_bic = len(fit.params) + (1 if family_name == "gaussian" else 0)
+        bic_val = float(-2 * fit.llf + k_bic * math.log(len(y)))
+        out = {
+            "coefficients": fit.params.tolist(),
+            "standard_errors": fit.bse.tolist(),
+            "z_values": fit.tvalues.tolist(),
+            "p_values": fit.pvalues.tolist(),
+            "ci": ci,
+            "deviance": float(fit.deviance),
+            "null_deviance": float(fit.null_deviance),
+            "aic": float(fit.aic),
+            "bic": bic_val,
+            "log_likelihood": float(fit.llf),
+            "dispersion": dispersion,
+            "fitted": fit.fittedvalues.tolist(),
+        }
+        if "new_xs" in payload:
+            nx = sm.add_constant(np.column_stack([np.array(col, dtype=float) for col in payload["new_xs"]]), has_constant="add")
+            out["predictions"] = fit.predict(nx, offset=np.array(payload["new_offset"], dtype=float)).tolist()
+            no_offset = sm.GLM(y, x, family=fam, freq_weights=weights).fit(maxiter=100, tol=1e-10)
+            out["predictions_no_offset"] = no_offset.predict(nx).tolist()
     elif method == "linear_reg":
-        out = linear_common(payload["y"], payload["xs"])
+        out = linear_common(payload["y"], payload["xs"], payload.get("new_xs"))
     elif method == "poly_reg":
-        out = poly_reg(payload["y"], payload["x"], int(payload["degree"]))
+        out = poly_reg(payload["y"], payload["x"], int(payload["degree"]), payload.get("new_x"))
     elif method == "exp_reg":
-        out = exp_reg(payload["y"], payload["x"])
+        out = exp_reg(payload["y"], payload["x"], payload.get("new_x"))
     elif method == "log_reg":
-        out = log_reg(payload["y"], payload["x"])
+        out = log_reg(payload["y"], payload["x"], payload.get("new_x"))
     elif method == "pca":
         out = pca_stats(payload["rows"], payload.get("n_components", None))
     elif method == "kmeans":
@@ -1482,6 +1596,309 @@ def main():
             out = {"value": ((g2 * (n + 1) + 6) * (n - 1)) / ((n - 2) * (n - 3))}
         else:
             out = {"value": (g2 + 3) * ((1 - 1 / n) ** 2) - 3}
+    elif method in ("wilcoxon_single", "wilcoxon_paired"):
+        x = np.array(payload["x"], dtype=float)
+        if method == "wilcoxon_paired":
+            y = np.array(payload["y"], dtype=float)
+            diffs = x - y
+        else:
+            mu_val = float(payload["mu"])
+            diffs = x - mu_val
+        alt_in = payload["alt"]
+        # Map R-style alternative to scipy.
+        alt_map = {"two.sided": "two-sided", "greater": "greater", "less": "less"}
+        alt_sp = alt_map[alt_in]
+        cl = float(payload["cl"])
+        nonzero = diffs[diffs != 0]
+        n_eff = int(len(nonzero))
+        abs_d = np.abs(nonzero)
+        unique_abs = len(np.unique(abs_d))
+        has_ties = unique_abs != len(nonzero)
+        use_exact = (not has_ties) and (n_eff < 50)
+
+        if n_eff == 0:
+            out = {
+                "stat": float("nan"), "p": float("nan"), "z": float("nan"),
+                "method": "undefined", "n_eff": 0,
+                "ci_lo": float("nan"), "ci_hi": float("nan"),
+                "rank_biserial": float("nan"),
+            }
+        else:
+            # Compute W+ explicitly to match Go.
+            ranks = st.rankdata(abs_d, method="average")
+            signs = np.sign(nonzero)
+            wplus = float(np.sum(ranks[signs > 0]))
+            total_rank = n_eff * (n_eff + 1) / 2
+
+            # Use scipy.stats.wilcoxon for the p-value path that matches R.
+            wmode = "exact" if use_exact else "approx"
+            if method == "wilcoxon_paired":
+                w_res = st.wilcoxon(x, y, alternative=alt_sp, mode=wmode,
+                                    correction=(not use_exact), zero_method="wilcox")
+            else:
+                w_res = st.wilcoxon(diffs, alternative=alt_sp, mode=wmode,
+                                    correction=(not use_exact), zero_method="wilcox")
+            p_val = float(w_res.pvalue)
+            # scipy's statistic is min(W+, W-); rebuild W+ ourselves above to match Go.
+            stat_val = wplus
+
+            # Asymptotic z (NaN for exact mode).
+            if use_exact:
+                z_val = float("nan")
+                method_tag = "exact"
+            else:
+                # Match R wilcox.test: tie correction over RANKS (table(r)),
+                # not over the |d_i| values. They diverge when subtraction
+                # rounding splits "logically equal" values into floats that
+                # differ by 1 ulp.
+                _, cts = np.unique(ranks, return_counts=True)
+                tie_sum = float(np.sum(cts ** 3 - cts))
+                mu_w = n_eff * (n_eff + 1) / 4
+                sigma2 = n_eff * (n_eff + 1) * (2 * n_eff + 1) / 24 - tie_sum / 48
+                sigma = math.sqrt(sigma2)
+                correction = 0.0
+                if alt_in == "two.sided":
+                    if stat_val > mu_w:
+                        correction = 0.5
+                    elif stat_val < mu_w:
+                        correction = -0.5
+                elif alt_in == "greater":
+                    correction = 0.5
+                else:
+                    correction = -0.5
+                z_val = (stat_val - mu_w - correction) / sigma
+                method_tag = "asymptotic"
+
+            # Hodges-Lehmann CI: walsh averages + qsignrank or asymptotic.
+            walsh = sorted(((nonzero[i] + nonzero[j]) / 2
+                            for i in range(n_eff) for j in range(i, n_eff)))
+            K = len(walsh)
+            alpha = 1 - cl
+
+            def qsignrank(p, n):
+                # smallest k s.t. P(W+ <= k) >= p
+                m = n * (n + 1) // 2
+                cnt = [0.0] * (m + 1)
+                cnt[0] = 1.0
+                for kk in range(1, n + 1):
+                    for s in range(m, kk - 1, -1):
+                        cnt[s] += cnt[s - kk]
+                total = 2.0 ** n
+                cum = 0.0
+                for k in range(m + 1):
+                    cum += cnt[k]
+                    if cum / total >= p:
+                        return k
+                return m
+
+            def cutoff(a):
+                if a <= 0:
+                    return 0
+                if use_exact:
+                    qu = qsignrank(a, n_eff)
+                    if qu == 0:
+                        qu = 1
+                    return qu
+                zcrit = st.norm.ppf(1 - a)
+                cf = mu_w - zcrit * sigma - 0.5
+                return max(int(round(cf)), 1)
+
+            if alt_in == "two.sided":
+                a_lo = a_hi = alpha / 2
+            elif alt_in == "greater":
+                a_lo = alpha; a_hi = 0
+            else:
+                a_lo = 0; a_hi = alpha
+
+            qu_lo = cutoff(a_lo)
+            qu_hi = cutoff(a_hi)
+
+            if alt_in == "less":
+                ci_lo = float("-inf")
+            else:
+                idx = max(qu_lo - 1, 0)
+                if idx >= K:
+                    idx = K - 1
+                ci_lo = walsh[idx]
+            if alt_in == "greater":
+                ci_hi = float("inf")
+            else:
+                idx = max(K - qu_hi, 0)
+                if idx >= K:
+                    idx = K - 1
+                ci_hi = walsh[idx]
+
+            # For single-sample tests R reports the CI on the median(x)
+            # scale (location parameter), which is the Walsh CI of (x - mu)
+            # shifted back by + mu. PairedWilcoxon already uses the natural
+            # (x - y) scale so no shift is applied.
+            ci_offset = 0.0
+            if method == "wilcoxon_single":
+                ci_offset = float(payload["mu"])
+            if math.isfinite(ci_lo):
+                ci_lo += ci_offset
+            if math.isfinite(ci_hi):
+                ci_hi += ci_offset
+
+            rank_biserial = (2 * wplus - total_rank) / total_rank
+
+            out = {
+                "stat": stat_val, "p": p_val, "z": z_val,
+                "method": method_tag, "n_eff": n_eff,
+                "ci_lo": ci_lo, "ci_hi": ci_hi,
+                "rank_biserial": rank_biserial,
+            }
+    elif method == "mwu":
+        x = np.array(payload["x"], dtype=float)
+        y = np.array(payload["y"], dtype=float)
+        alt_in = payload["alt"]
+        alt_map = {"two.sided": "two-sided", "greater": "greater", "less": "less"}
+        alt_sp = alt_map[alt_in]
+        cl = float(payload["cl"])
+        n1 = len(x); n2 = len(y)
+
+        # Joint rank with ties for U1, U2.
+        all_v = np.concatenate([x, y])
+        ranks = st.rankdata(all_v, method="average")
+        r1 = float(np.sum(ranks[:n1]))
+        u1 = r1 - n1 * (n1 + 1) / 2
+        u2 = n1 * n2 - u1
+        stat_val = min(u1, u2)
+
+        # ties?
+        _, cts = np.unique(all_v, return_counts=True)
+        cts_t = cts[cts >= 2]
+        has_ties = len(cts_t) > 0
+        use_exact = (not has_ties) and (n1 < 50) and (n2 < 50)
+
+        # scipy mannwhitneyu p-value path
+        wmode = "exact" if use_exact else "asymptotic"
+        mw = st.mannwhitneyu(x, y, alternative=alt_sp, method=wmode,
+                             use_continuity=(not use_exact))
+        p_val = float(mw.pvalue)
+
+        mu_u = n1 * n2 / 2
+        if use_exact:
+            z_val = float("nan")
+            method_tag = "exact"
+        else:
+            N = n1 + n2
+            tie_sum = float(np.sum(cts_t ** 3 - cts_t))
+            tie_factor = 1 - tie_sum / (N ** 3 - N)
+            sigma2 = n1 * n2 * (N + 1) / 12 * tie_factor
+            sigma = math.sqrt(sigma2)
+            correction = 0.0
+            if alt_in == "two.sided":
+                if u1 > mu_u:
+                    correction = 0.5
+                elif u1 < mu_u:
+                    correction = -0.5
+            elif alt_in == "greater":
+                correction = 0.5
+            else:
+                correction = -0.5
+            z_val = (u1 - mu_u - correction) / sigma
+            method_tag = "asymptotic"
+
+        # Hodges-Lehmann shift CI
+        diffs_sorted = sorted(
+            x[i] - y[j] for i in range(n1) for j in range(n2)
+        )
+        K = len(diffs_sorted)
+        alpha = 1 - cl
+
+        def qwilcox(p, m, n):
+            mu = m * n
+            dp = [[0.0] * (mu + 1) for _ in range(m + 1)]
+            for ii in range(m + 1):
+                dp[ii][0] = 1.0
+            for jj in range(1, n + 1):
+                for ii in range(1, m + 1):
+                    for uu in range(jj, mu + 1):
+                        dp[ii][uu] += dp[ii - 1][uu - jj]
+            total = float(sum(dp[m]))
+            cum = 0.0
+            for k in range(mu + 1):
+                cum += dp[m][k]
+                if cum / total >= p:
+                    return k
+            return mu
+
+        def cutoff(a):
+            if a <= 0:
+                return 0
+            if use_exact:
+                qu = qwilcox(a, n1, n2)
+                if qu == 0:
+                    qu = 1
+                return qu
+            zcrit = st.norm.ppf(1 - a)
+            cf = mu_u - zcrit * sigma - 0.5
+            return max(int(round(cf)), 1)
+
+        if alt_in == "two.sided":
+            a_lo = a_hi = alpha / 2
+        elif alt_in == "greater":
+            a_lo = alpha; a_hi = 0
+        else:
+            a_lo = 0; a_hi = alpha
+
+        qu_lo = cutoff(a_lo)
+        qu_hi = cutoff(a_hi)
+        if alt_in == "less":
+            ci_lo = float("-inf")
+        else:
+            idx = max(qu_lo - 1, 0)
+            if idx >= K:
+                idx = K - 1
+            ci_lo = diffs_sorted[idx]
+        if alt_in == "greater":
+            ci_hi = float("inf")
+        else:
+            idx = max(K - qu_hi, 0)
+            if idx >= K:
+                idx = K - 1
+            ci_hi = diffs_sorted[idx]
+
+        rank_biserial = 1 - 2 * u1 / (n1 * n2)
+        cles = u1 / (n1 * n2)
+
+        out = {
+            "stat": stat_val, "u1": u1, "u2": u2,
+            "p": p_val, "z": z_val, "method": method_tag,
+            "ci_lo": ci_lo, "ci_hi": ci_hi,
+            "rank_biserial": rank_biserial, "cles_a12": cles,
+        }
+    elif method == "kruskal":
+        groups = [np.array(g, dtype=float) for g in payload["groups"]]
+        kw = st.kruskal(*groups)
+        H = float(kw.statistic)
+        p_val = float(kw.pvalue)
+        k = len(groups)
+        all_v = np.concatenate(groups)
+        labels = np.concatenate([np.full(len(g), i) for i, g in enumerate(groups)])
+        ranks = st.rankdata(all_v, method="average")
+        group_rank_sum = [float(np.sum(ranks[labels == i])) for i in range(k)]
+        N = len(all_v)
+        eps2 = H / (N - 1)
+        out = {
+            "stat": H, "p": p_val, "df": float(k - 1),
+            "n_total": N, "group_rank_sum": group_rank_sum,
+            "epsilon_squared": eps2,
+        }
+    elif method == "friedman":
+        subjects = [np.array(s, dtype=float) for s in payload["subjects"]]
+        mat = np.array(subjects)
+        n, k = mat.shape
+        # Use scipy.friedmanchisquare; it takes columns as separate args.
+        fc = st.friedmanchisquare(*[mat[:, j] for j in range(k)])
+        Q = float(fc.statistic)
+        p_val = float(fc.pvalue)
+        W = Q / (n * (k - 1))
+        out = {
+            "stat": Q, "p": p_val, "df": float(k - 1),
+            "n_subjects": n, "k_conditions": k, "kendalls_w": W,
+        }
     else:
         raise ValueError(f"unsupported method: {method}")
 

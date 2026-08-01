@@ -404,3 +404,153 @@ These methods return a `*datafetch.YFFinancialStatementTables` structure contain
    - `Earnings()` (Full earnings reports)
    - `Sustainability()` (ESG scores)
    - `FundsData()`, `TopHoldings()` (Fund-specific data)
+
+## Taiwan Reverse Geocoding (TWGeocoding)
+
+`TWGeocoding` wraps the [geocoding.zuola.com](https://geocoding.zuola.com/) reverse-geocoding API, turning a `(lat, lng)` coordinate into its Taiwan administrative region (county / town / village). It follows the same config-driven, stateful pattern as `YFinance`.
+
+> **Reverse only.** The service maps coordinates → regions. It does **not** do forward geocoding (address → coordinates).
+>
+> **Free-tier quota: 15 requests/hour per IP.** This is the dominant constraint. Use a `GeocodeCache` and the batch methods (which de-duplicate identical coordinates) to make the budget last. See [Handling the rate limit](#handling-the-rate-limit).
+
+### Quick Start
+
+```go
+package main
+
+import (
+    "errors"
+    "fmt"
+
+    "github.com/HazelnutParadise/insyra/datafetch"
+)
+
+func main() {
+    g, err := datafetch.TWGeocoding(datafetch.TWGeocodingConfig{})
+    if err != nil {
+        panic(err)
+    }
+
+    res, err := g.Reverse(24.9884079, 121.4598882)
+    switch {
+    case err == nil:
+        fmt.Printf("%s%s%s\n", res.CountyName, res.TownName, res.VillageName) // 新北市土城區青雲里
+    case errors.Is(err, datafetch.ErrGeocodeNotFound):
+        fmt.Println("point is outside any Taiwan village")
+    default:
+        fmt.Println("lookup failed:", err)
+    }
+}
+```
+
+### Initialization & Configuration
+
+```go
+func TWGeocoding(cfg TWGeocodingConfig) (*twGeocoder, error)
+```
+
+**`TWGeocodingConfig` fields:**
+
+| Field          | Type            | Description                                                            | Default             |
+| :------------- | :-------------- | :-------------------------------------------------------------------- | :------------------ |
+| `Timeout`      | `time.Duration` | Per-request timeout.                                                  | `15s`               |
+| `Interval`     | `time.Duration` | Minimum spacing between requests (client-side throttle). `0` = off.   | `0`                 |
+| `UserAgent`    | `string`        | HTTP User-Agent header.                                               | (browser-like UA)   |
+| `Retries`      | `int`           | Retry attempts for **transient** failures (timeout / network).        | `0`                 |
+| `RetryBackoff` | `time.Duration` | Base backoff between retries (`backoff * (attempt+1)`).               | `300ms`             |
+| `BaseURL`      | `string`        | Endpoint override (for mocks/tests or a future paid/self-hosted tier).| Official endpoint   |
+| `Cache`        | `GeocodeCache`  | Optional result cache. `nil` disables caching.                        | `nil`               |
+
+Invalid values (negative `Interval` / `Retries` / `RetryBackoff`) return an error.
+
+### Single Lookup
+
+```go
+func (g *twGeocoder) Reverse(lat, lng float64) (*ReverseGeocodeResult, error)
+```
+
+Returns a typed `*ReverseGeocodeResult`; `ErrGeocodeNotFound` when the point is outside any village; a `*RateLimitError` when the quota is exhausted; `ErrGeocodeTimeout` on timeout.
+
+```go
+type ReverseGeocodeResult struct {
+    Lat, Lng    float64
+    VillCode    string // e.g. "65000130032"
+    CountyName  string // 新北市
+    TownName    string // 土城區
+    VillageName string // 青雲里
+    VillageEng  string // Qingyun Vil. (may be empty for some villages)
+    CountyID, CountyCode, TownID, TownCode string
+}
+
+func (r *ReverseGeocodeResult) ToDataTable() *insyra.DataTable
+```
+
+### Batch Lookups
+
+Batch methods reverse-geocode many coordinates and return an `*insyra.DataTable` with the original coordinates, the resolved region columns, and a `GeocodeStatus` column (`ok` / `not_found` / `pending` / `invalid_coordinate` / `error: ...`).
+
+```go
+// Two parallel DataLists.
+func (g *twGeocoder) ReverseCols(lat, lng *insyra.DataList) (*insyra.DataTable, error)
+
+// A DataTable's columns, addressed by Excel-style index ("A", "B", ...).
+func (g *twGeocoder) ReverseTable(dt *insyra.DataTable, latCol, lngCol string) (*insyra.DataTable, error)
+
+// A DataTable's columns, addressed by name.
+func (g *twGeocoder) ReverseTableByColName(dt *insyra.DataTable, latColName, lngColName string) (*insyra.DataTable, error)
+```
+
+Batch semantics tuned for the 15/hour quota:
+- **De-duplication** — identical `(lat, lng)` pairs cost at most one request.
+- **Per-row tolerance** — a `not_found` or invalid coordinate marks only that row; the batch continues.
+- **Partial results on quota exhaustion** — on HTTP 429 the fetcher stops, returns every row resolved so far with the rest marked `pending`, and returns a `*RateLimitError`.
+
+```go
+g, _ := datafetch.TWGeocoding(datafetch.TWGeocodingConfig{
+    Cache: datafetch.NewFileGeocodeCache("geocache.json"),
+})
+
+enriched, err := g.ReverseTableByColName(dt, "lat", "lng")
+if rl := (*datafetch.RateLimitError)(nil); errors.As(err, &rl) {
+    fmt.Printf("quota hit; resolved rows kept, resets at %s\n", rl.ResetAt)
+}
+enriched.Show()
+```
+
+### Optional Caching
+
+Since village boundaries are effectively static, results are highly cacheable. A cache stores only **definitive** outcomes (successful results and `not_found`), never transient failures, so nothing wrong is ever served.
+
+```go
+type GeocodeCache interface {
+    Get(key string) (*ReverseGeocodeResult, bool)
+    Set(key string, r *ReverseGeocodeResult)
+}
+
+func NewMemoryGeocodeCache() GeocodeCache          // in-process, concurrency-safe
+func NewFileGeocodeCache(path string) GeocodeCache // JSON file; survives across runs
+```
+
+`NewFileGeocodeCache` is the highest-value option under the 15/hour cap — resolved coordinates persist between program runs. Keys are the coordinate quantized to 6 decimal places (`"%.6f,%.6f"`, ~0.1 m — far finer than GPS accuracy), so a cache hit returns the correct region in practice.
+
+### Errors
+
+| Error / Type            | Meaning                                                          |
+| :---------------------- | :--------------------------------------------------------------- |
+| `ErrGeocodeNotFound`    | Coordinate is outside any Taiwan village (sea / outside Taiwan). |
+| `ErrGeocodeTimeout`     | Request exceeded `Timeout`.                                      |
+| `ErrGeocodeRateLimited` | Quota exhausted (sentinel).                                      |
+| `*RateLimitError`       | Carries `Limit`, `Remaining`, `ResetAt`; unwraps to `ErrGeocodeRateLimited`. |
+
+### Handling the rate limit
+
+The free tier allows **15 requests/hour per IP**, reported via `X-Ratelimit-*` response headers and enforced with HTTP 429.
+
+- Match `errors.Is(err, datafetch.ErrGeocodeRateLimited)` to detect exhaustion, and read `*RateLimitError.ResetAt` to know when to retry.
+- Rate-limit errors are **not** auto-retried (a retry within the same window cannot succeed and would waste quota).
+- Prefer batch methods (de-dup) plus a `NewFileGeocodeCache` for repeated or large workloads.
+
+### Notes
+
+- Depends on the third-party `geocoding.zuola.com` endpoint; availability and quota are outside this library's control. Override `BaseURL` for a self-hosted or paid tier.
+- Some villages have an empty `village_eng`; this is returned as an empty string, not an error.

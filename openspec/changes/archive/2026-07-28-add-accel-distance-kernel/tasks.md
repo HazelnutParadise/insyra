@@ -1,0 +1,11 @@
+## 1. Implementation
+- [x] 1.1 Validate the change with `openspec validate add-accel-distance-kernel --strict`
+- [x] 1.2 Add `OpSquaredDistance`, query operands on `ExecuteRequest`, and a distance result on `ExecuteResponse`
+- [x] 1.3 Add the CPU reference in `accel/reference.go`, written in the natural fused form with a comment recording why
+- [x] 1.4 Add `ExecuteDistances` on `Session`, validating query dimension and rejecting an empty query set
+- [x] 1.5 Implement the WGSL kernel: one thread per (query, row) pair, sequential over dimensions
+- [x] 1.6 Add the bit-parity test comparing device output against the CPU reference
+- [x] 1.7 Benchmark the kernel against the CPU reference and record the numbers in `design.md`
+- [x] 1.8 Run `go test ./...`, `go test -race ./...`, every accel test individually, and the GPU tests
+- [x] 1.9 Update `Docs/accel.md`, CHANGELOG and CHANGELOG_TW, and `delivery-plan.md`
+- [x] 1.10 Fold the argmin into the kernel so KMeans and KNN get one value per row instead of the full matrix — the measurement above shows readback, not compute, is the constraint

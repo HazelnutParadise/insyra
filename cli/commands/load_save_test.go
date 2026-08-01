@@ -75,6 +75,43 @@ func TestLoad_CSV_RejectsSheetOption(t *testing.T) {
 	}
 }
 
+func TestLoad_CSV_InferFalseKeepsRawStrings(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "in.csv")
+	mustWrite(t, path, "id,price\n0050,600.855\n00878,\n")
+
+	ctx := newTestExecContext(t)
+	if err := runLoadCommand(ctx, []string{path, "infer", "false", "as", "t"}); err != nil {
+		t.Fatalf("load failed: %v", err)
+	}
+	dt, _ := getDataTableVar(ctx, "t")
+	if got := dt.GetColByName("id").Data()[0]; got != "0050" {
+		t.Fatalf("expected raw string \"0050\", got %v (%T)", got, got)
+	}
+	if got := dt.GetColByName("price").Data()[1]; got != "" {
+		t.Fatalf("expected empty cell to stay \"\", got %v (%T)", got, got)
+	}
+}
+
+func TestLoad_JSON_RejectsInferOption(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "in.json")
+	mustWrite(t, path, `[{"a":1}]`)
+	ctx := newTestExecContext(t)
+	err := runLoadCommand(ctx, []string{path, "infer", "false", "as", "t"})
+	if err == nil || !strings.Contains(err.Error(), "infer") {
+		t.Fatalf("expected error rejecting 'infer' for JSON, got %v", err)
+	}
+}
+
+func TestLoad_Excel_RejectsInferOption(t *testing.T) {
+	ctx := newTestExecContext(t)
+	err := runLoadCommand(ctx, []string{"in.xlsx", "sheet", "S1", "infer", "false", "as", "t"})
+	if err == nil || !strings.Contains(err.Error(), "infer") {
+		t.Fatalf("expected error rejecting 'infer' for Excel, got %v", err)
+	}
+}
+
 func TestLoad_RejectsUnknownOption(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "in.csv")

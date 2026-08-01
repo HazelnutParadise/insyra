@@ -2,12 +2,19 @@ package insyra
 
 import (
 	"fmt"
+	"io"
 	"math"
+	"os"
 	"strings"
 )
 
 // Summary displays a comprehensive statistical summary of the DataList directly to the console.
 func (dl *DataList) Summary() {
+	dl.SummaryTo(os.Stdout)
+}
+
+// SummaryTo writes a comprehensive statistical summary of the DataList to w.
+func (dl *DataList) SummaryTo(w io.Writer) {
 	dl.AtomicDo(func(dl *DataList) {
 		dlName := dl.GetName()
 		dlLen := len(dl.data)
@@ -49,9 +56,9 @@ func (dl *DataList) Summary() {
 		// Check if DataList is empty
 		if dlLen == 0 {
 			// Display header - using yellow as DataList primary color
-			fmt.Println(colorText("1;33", dataTitle))
-			fmt.Println(strings.Repeat("=", min(width, 80)))
-			fmt.Println(colorText("3;33", "Empty dataset"))
+			fmt.Fprintln(w, colorText("1;33", dataTitle))
+			fmt.Fprintln(w, strings.Repeat("=", min(width, 80)))
+			fmt.Fprintln(w, colorText("3;33", "Empty dataset"))
 			return
 		}
 
@@ -65,8 +72,8 @@ func (dl *DataList) Summary() {
 
 		// Start displaying results
 		// Display header - using green as DataList primary color
-		fmt.Println(colorText("1;33", dataTitle))
-		fmt.Println(strings.Repeat("=", min(width, 80)))
+		fmt.Fprintln(w, colorText("1;33", dataTitle))
+		fmt.Fprintln(w, strings.Repeat("=", min(width, 80)))
 
 		// Initialize statistics
 		stats := StatisticsData{
@@ -76,9 +83,9 @@ func (dl *DataList) Summary() {
 		}
 
 		// Display basic info
-		fmt.Printf("Total items: %s\n", colorText("1;33", fmt.Sprintf("%d", stats.totalCount)))
-		fmt.Printf("Numeric items: %s\n", colorText("1;33", fmt.Sprintf("%d (%.1f%%)", stats.numericCount, stats.numericPercent)))
-		fmt.Println()
+		fmt.Fprintf(w, "Total items: %s\n", colorText("1;33", fmt.Sprintf("%d", stats.totalCount)))
+		fmt.Fprintf(w, "Numeric items: %s\n", colorText("1;33", fmt.Sprintf("%d (%.1f%%)", stats.numericCount, stats.numericPercent)))
+		fmt.Fprintln(w)
 
 		// Calculate statistics only if we have numeric values
 		if numericCount > 0 {
@@ -96,15 +103,15 @@ func (dl *DataList) Summary() {
 			stats.modeValues = dl.Mode()
 		} // Calculate statistics only if we have numeric values
 		if numericCount == 0 {
-			fmt.Println(colorText("3;33", "No numeric data available for statistical analysis"))
+			fmt.Fprintln(w, colorText("3;33", "No numeric data available for statistical analysis"))
 			return
 		}
 
 		// Create a nice table with borders for statistics
-		fmt.Println(colorText("1;33", "Statistical Summary"))
+		fmt.Fprintln(w, colorText("1;33", "Statistical Summary"))
 
 		// 使用新的自適應表格顯示邏輯
-		displayDataListSummaryTable(stats, width)
+		displayDataListSummaryTable(w, stats, width)
 	})
 }
 
@@ -118,7 +125,7 @@ func formatFloat(f float64) string {
 
 // displayDataListSummaryTable 以更靈活的方式顯示DataList摘要統計表格
 // 可以根據終端寬度自動調整顯示格式，避免表格歪斜
-func displayDataListSummaryTable(stats struct {
+func displayDataListSummaryTable(w io.Writer, stats struct {
 	// Basic information
 	totalCount     int
 	numericCount   int
@@ -159,11 +166,11 @@ func displayDataListSummaryTable(stats struct {
 	bottomLine := "└" + strings.Repeat("─", statNameWidth+2) + "┴" + strings.Repeat("─", valueWidth+2) + "┘"
 
 	// Central Tendency section
-	fmt.Println(topLine)
-	fmt.Printf(colorText("1;32", headerFmt), "Central Tendency", "Value")
-	fmt.Println(dividerLine)
-	fmt.Printf(headerFmt, "Mean", formatFloat(stats.mean))
-	fmt.Printf(headerFmt, "Median", formatFloat(stats.median))
+	fmt.Fprintln(w, topLine)
+	fmt.Fprintf(w, colorText("1;32", headerFmt), "Central Tendency", "Value")
+	fmt.Fprintln(w, dividerLine)
+	fmt.Fprintf(w, headerFmt, "Mean", formatFloat(stats.mean))
+	fmt.Fprintf(w, headerFmt, "Median", formatFloat(stats.median))
 
 	// Mode calculation
 	modeStr := "N/A" // Default value if mode can't be calculated
@@ -189,25 +196,25 @@ func displayDataListSummaryTable(stats struct {
 		}
 		modeStr = combined
 	}
-	fmt.Printf(headerFmt, "Mode", modeStr)
-	fmt.Println(dividerLine)
+	fmt.Fprintf(w, headerFmt, "Mode", modeStr)
+	fmt.Fprintln(w, dividerLine)
 
 	// Dispersion section
-	fmt.Printf(colorText("1;32", headerFmt), "Dispersion", "Value")
-	fmt.Println(dividerLine)
-	fmt.Printf(headerFmt, "Minimum", formatFloat(stats.min))
-	fmt.Printf(headerFmt, "Maximum", formatFloat(stats.max))
-	fmt.Printf(headerFmt, "Range", formatFloat(stats.rangeVal))
-	fmt.Printf(headerFmt, "Variance", formatFloat(stats.variance))
-	fmt.Printf(headerFmt, "Std Deviation", formatFloat(stats.stdev))
-	fmt.Println(dividerLine)
+	fmt.Fprintf(w, colorText("1;32", headerFmt), "Dispersion", "Value")
+	fmt.Fprintln(w, dividerLine)
+	fmt.Fprintf(w, headerFmt, "Minimum", formatFloat(stats.min))
+	fmt.Fprintf(w, headerFmt, "Maximum", formatFloat(stats.max))
+	fmt.Fprintf(w, headerFmt, "Range", formatFloat(stats.rangeVal))
+	fmt.Fprintf(w, headerFmt, "Variance", formatFloat(stats.variance))
+	fmt.Fprintf(w, headerFmt, "Std Deviation", formatFloat(stats.stdev))
+	fmt.Fprintln(w, dividerLine)
 
 	// Quantiles section
-	fmt.Printf(colorText("1;32", headerFmt), "Quantiles", "Value")
-	fmt.Println(dividerLine)
-	fmt.Printf(headerFmt, "Q1 (25%)", formatFloat(stats.q1))
-	fmt.Printf(headerFmt, "Q2 (50%)", formatFloat(stats.median))
-	fmt.Printf(headerFmt, "Q3 (75%)", formatFloat(stats.q3))
-	fmt.Printf(headerFmt, "IQR", formatFloat(stats.iqr))
-	fmt.Println(bottomLine)
+	fmt.Fprintf(w, colorText("1;32", headerFmt), "Quantiles", "Value")
+	fmt.Fprintln(w, dividerLine)
+	fmt.Fprintf(w, headerFmt, "Q1 (25%)", formatFloat(stats.q1))
+	fmt.Fprintf(w, headerFmt, "Q2 (50%)", formatFloat(stats.median))
+	fmt.Fprintf(w, headerFmt, "Q3 (75%)", formatFloat(stats.q3))
+	fmt.Fprintf(w, headerFmt, "IQR", formatFloat(stats.iqr))
+	fmt.Fprintln(w, bottomLine)
 }

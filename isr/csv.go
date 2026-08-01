@@ -11,6 +11,7 @@ type CSV_inOpts struct {
 	FirstCol2RowNames bool
 	FirstRow2ColNames bool
 	Encoding          string // optional, default is "auto", only for FilePath input
+	RawStrings        bool   // keep every cell as its original string; skip column type inference
 }
 
 type CSV_outOpts struct {

@@ -1349,6 +1349,27 @@ func addOne(xs []int) []int {
 	return out
 }
 
+// Assign returns the zero-based nearest-center index and squared distance for
+// every row. The caller validates the input shape before entering this loop.
+func Assign(data, centers [][]float64) ([]int, []float64) {
+	assignments := make([]int, len(data))
+	distances := make([]float64, len(data))
+	for i, row := range data {
+		best := 0
+		bestDistance := squaredEuclidean(row, centers[0])
+		for center := 1; center < len(centers); center++ {
+			distance := squaredEuclidean(row, centers[center])
+			if distance < bestDistance {
+				best = center
+				bestDistance = distance
+			}
+		}
+		assignments[i] = best
+		distances[i] = bestDistance
+	}
+	return assignments, distances
+}
+
 func uniqueRows(data [][]float64) [][]float64 {
 	seen := make(map[string]struct{}, len(data))
 	out := make([][]float64, 0, len(data))

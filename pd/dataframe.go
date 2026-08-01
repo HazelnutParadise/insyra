@@ -26,21 +26,23 @@ func FromDataTable(dt insyra.IDataTable) (*DataFrame, error) {
 	var columnNames []string
 	var columnVals [][]any
 	var rowNames []string
+	var emptyDF *gpdf.DataFrame
+	var buildErr error
 	dt.AtomicDo(func(dt *insyra.DataTable) {
 		numRows, numCols = dt.Size()
 		if numCols == 0 {
-			// create an empty gpandas DataFrame
+			// Empty DataTable: build an empty gpandas DataFrame and return it via
+			// closure-scoped variables. (Do NOT panic/recover across AtomicDo —
+			// recover() is only valid in a deferred function; the old code's bare
+			// recover never caught the panic and crashed the process.)
 			gp := gpd.GoPandas{}
 			df, err := gp.DataFrame([]string{}, []gpd.Column{}, map[string]any{})
 			if err != nil {
-				// bubble up by assigning to outer scope err via closure; but here just return early from caller
-				// note: since we are inside AtomicDo, we can't return from outer function directly. Use panic as short-circuit is messy.
-				panic(err)
+				buildErr = err
+				return
 			}
-			// store and early-return by panic carry
-			panic(struct {
-				df *gpdf.DataFrame
-			}{df})
+			emptyDF = df
+			return
 		}
 
 		columnNames = make([]string, numCols)
@@ -66,19 +68,12 @@ func FromDataTable(dt insyra.IDataTable) (*DataFrame, error) {
 		rowNames = dt.RowNames()
 	})
 
-	// Handle early-return path from panic used above for empty DataTable
-	// When AtomicDo panics with a wrapper value, unwrap it here.
-	// This is a pragmatic approach to return a created empty DataFrame error-free.
-	// Note: keep this minimal and specific.
-	if r := recover(); r != nil {
-		switch v := r.(type) {
-		case error:
-			return nil, v
-		case struct{ df *gpdf.DataFrame }:
-			return &DataFrame{v.df}, nil
-		default:
-			panic(r)
-		}
+	// Handle the empty-DataTable early return captured inside AtomicDo.
+	if buildErr != nil {
+		return nil, buildErr
+	}
+	if emptyDF != nil {
+		return &DataFrame{emptyDF}, nil
 	}
 
 	columns := columnNames

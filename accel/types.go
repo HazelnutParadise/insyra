@@ -69,6 +69,44 @@ const (
 	FallbackReasonStrictGPUUnavailable  FallbackReason = "strict-gpu-unavailable"
 	FallbackReasonWorkloadUnsupported   FallbackReason = "workload-unsupported"
 	FallbackReasonWorkloadNotProfitable FallbackReason = "workload-not-profitable"
+	FallbackReasonNoBackendExecutor     FallbackReason = "no-backend-executor"
+	FallbackReasonPrecisionNotAccepted  FallbackReason = "precision-not-accepted"
+	FallbackReasonDTypeNotEligible      FallbackReason = "dtype-not-eligible"
+	FallbackReasonShaderCompileFailed   FallbackReason = "shader-compile-failed"
+	FallbackReasonBufferTooLarge        FallbackReason = "buffer-too-large"
+	FallbackReasonReadbackTimeout       FallbackReason = "readback-timeout"
+	FallbackReasonExecutionFailed       FallbackReason = "execution-failed"
+)
+
+// Op names the operation a backend is asked to perform. The runtime ships one
+// operation; adding a second is a spec change, not a signature change.
+type Op string
+
+const (
+	OpUnknown Op = "unknown"
+	// OpNearestShortlist returns the several nearest query points per row rather
+	// than only the nearest, plus the distance of the best rejected one. It is
+	// how an exact float64 answer is reached through an f32 device: the device
+	// narrows the field, the host settles the ranking.
+	//
+	// It is the only device operation. Three others existed and were removed once
+	// measured: a column sum at 0.7x, a distance matrix whose readback grew with
+	// the answer, and a single-precision nearest query no float64 caller could
+	// use. Nothing is added back without a measurement against a host using every
+	// core it has.
+	OpNearestShortlist Op = "nearest-shortlist"
+)
+
+// Precision states what the caller will accept from device execution. The
+// default refuses anything the device cannot compute at the column's own
+// precision, because narrowing a column silently would change the numbers a
+// data-analysis library returns. WGSL has no f64 and Apple GPUs have no
+// double-precision hardware, so float64 columns need an explicit opt-in.
+type Precision string
+
+const (
+	PrecisionExact   Precision = "exact"
+	PrecisionFloat32 Precision = "float32"
 )
 
 type WorkloadClass string
@@ -86,12 +124,12 @@ const (
 	MergePolicyBackendNative MergePolicy = "backend-native"
 )
 
-type AllocatorKind string
+type ExecutorKind string
 
 const (
-	AllocatorKindUnknown    AllocatorKind = "unknown"
-	AllocatorKindLedger     AllocatorKind = "ledger"
-	AllocatorKindRegistered AllocatorKind = "registered"
+	ExecutorKindUnknown    ExecutorKind = "unknown"
+	ExecutorKindNone       ExecutorKind = "none"
+	ExecutorKindRegistered ExecutorKind = "registered"
 )
 
 type MemoryBudgetPolicy struct {
@@ -203,6 +241,10 @@ type WorkloadEstimate struct {
 	Class WorkloadClass
 	Rows  int
 	Bytes uint64
+	// Op is the operation to execute on the device. Empty means OpSum.
+	Op Op
+	// Precision is what the caller will accept. Empty means PrecisionExact.
+	Precision Precision
 }
 
 type ShardAssignment struct {
@@ -219,11 +261,28 @@ type ExecutionResult struct {
 	Accelerated    bool
 	FallbackReason FallbackReason
 	MergePolicy    MergePolicy
-	Allocator      string
-	AllocatorKind  AllocatorKind
+	Executor       string
+	ExecutorKind   ExecutorKind
 	Assignments    []ShardAssignment
 	DeviceIDs      []string
-	BytesMoved     uint64
+
+	// Op and Precision describe what actually ran, not what was asked for.
+	Op        Op
+	Precision Precision
+
+	// Reductions holds one value per buffer, keyed by buffer name. It is only
+	// populated when Accelerated is true.
+	Reductions map[string]float64
+	// Counts holds the number of non-null values folded into each reduction.
+	Counts map[string]int
+
+	// Measured cost. These are host-observed durations: Metal and GLES return
+	// ErrTimestampsNotSupported for GPU timestamp queries, so only Vulkan and
+	// DX12 could report device-side timing. Zero when nothing ran on a device.
+	Transfer      time.Duration
+	Dispatch      time.Duration
+	Readback      time.Duration
+	BytesUploaded uint64
 }
 
 func DefaultConfig() Config {

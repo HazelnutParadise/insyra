@@ -90,8 +90,8 @@ func TestMathFunctions(t *testing.T) {
 		{"POW", []any{2.0, 10.0}, 1024.0},
 		{"SQRT", []any{16.0}, 4.0},
 		{"LN", []any{math.E}, 1.0},
-		{"LOG", []any{1000.0}, 3.0},        // base-10 default
-		{"LOG", []any{8.0, 2.0}, 3.0},      // explicit base
+		{"LOG", []any{1000.0}, 3.0},   // base-10 default
+		{"LOG", []any{8.0, 2.0}, 3.0}, // explicit base
 		{"LOG10", []any{100.0}, 2.0},
 		{"EXP", []any{0.0}, 1.0},
 		{"SIGN", []any{-5.0}, -1.0},

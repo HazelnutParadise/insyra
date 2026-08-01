@@ -14,6 +14,7 @@ import (
 type accelArgs struct {
 	cfg         accelpkg.Config
 	positionals []string
+	precision   accelpkg.Precision
 }
 
 func init() {
@@ -75,30 +76,13 @@ func runAccelCommand(ctx *ExecContext, args []string) error {
 			return err
 		}
 		return nil
-	case "run":
-		if len(parsed.positionals) < 1 {
-			return fmt.Errorf("usage: accel run <var> [--mode auto|cpu|gpu|strict-gpu]")
-		}
-		session, err := accelpkg.Open(parsed.cfg)
-		if session != nil {
-			defer func() { _ = session.Close() }()
-		}
-		if err != nil {
-			if session != nil {
-				renderAccelRun(ctx.Output, session.Report(), session.PlanShardable())
-			}
-			return err
-		}
-		result, runErr := executeAccelVar(session, ctx, parsed.positionals[0])
-		renderAccelExecution(ctx.Output, parsed.positionals[0], session.Report(), result)
-		return runErr
 	default:
 		return fmt.Errorf("unknown accel action: %s", action)
 	}
 }
 
 func accelConfigFromArgs(args []string) (accelArgs, error) {
-	parsed := accelArgs{cfg: accelpkg.Config{}}
+	parsed := accelArgs{cfg: accelpkg.Config{}, precision: accelpkg.PrecisionExact}
 	explicitMode := ""
 	for idx := 0; idx < len(args); idx++ {
 		switch args[idx] {
@@ -107,6 +91,16 @@ func accelConfigFromArgs(args []string) (accelArgs, error) {
 				return parsed, fmt.Errorf("usage: --mode auto|cpu|gpu|strict-gpu")
 			}
 			explicitMode = args[idx+1]
+			idx++
+		case "--precision":
+			if idx+1 >= len(args) {
+				return parsed, fmt.Errorf("usage: --precision exact|float32")
+			}
+			precision, err := resolveAccelPrecision(args[idx+1])
+			if err != nil {
+				return parsed, err
+			}
+			parsed.precision = precision
 			idx++
 		default:
 			parsed.positionals = append(parsed.positionals, args[idx])
@@ -119,6 +113,20 @@ func accelConfigFromArgs(args []string) (accelArgs, error) {
 	}
 	parsed.cfg.Mode = mode
 	return parsed, nil
+}
+
+// resolveAccelPrecision maps the CLI flag onto the runtime's precision opt-in.
+// The default refuses to narrow a float64 column, because GPU backends have no
+// f64 and narrowing silently would change the user's numbers.
+func resolveAccelPrecision(explicit string) (accelpkg.Precision, error) {
+	switch accelpkg.Precision(strings.TrimSpace(strings.ToLower(explicit))) {
+	case accelpkg.PrecisionExact:
+		return accelpkg.PrecisionExact, nil
+	case accelpkg.PrecisionFloat32:
+		return accelpkg.PrecisionFloat32, nil
+	default:
+		return "", fmt.Errorf("invalid accel precision: %s (supported: exact, float32)", explicit)
+	}
 }
 
 func resolveAccelMode(explicit string) (accelpkg.Mode, error) {
@@ -248,41 +256,13 @@ func renderAccelRun(out io.Writer, report accelpkg.Report, plan accelpkg.ShardPl
 	)
 }
 
-func renderAccelExecution(out io.Writer, varName string, report accelpkg.Report, result accelpkg.ExecutionResult) {
-	devices := "none"
-	if len(result.DeviceIDs) > 0 {
-		devices = strings.Join(result.DeviceIDs, ",")
+func sortedReductionNames(reductions map[string]float64) []string {
+	names := make([]string, 0, len(reductions))
+	for name := range reductions {
+		names = append(names, name)
 	}
-	_, _ = fmt.Fprintf(
-		out,
-		"var=%s executed=%t backend=%s allocator=%s participants=%d devices=%s assignments=%d bytes_moved=%d merge=%s reason=%s\n",
-		varName,
-		result.Accelerated,
-		report.SelectedBackend,
-		result.Allocator,
-		len(result.DeviceIDs),
-		devices,
-		len(result.Assignments),
-		result.BytesMoved,
-		result.MergePolicy,
-		result.FallbackReason,
-	)
-}
-
-func executeAccelVar(session *accelpkg.Session, ctx *ExecContext, name string) (accelpkg.ExecutionResult, error) {
-	if session == nil {
-		return accelpkg.ExecutionResult{}, fmt.Errorf("accel: nil session")
-	}
-	if ctx == nil {
-		return accelpkg.ExecutionResult{}, fmt.Errorf("accel: nil execution context")
-	}
-	if dl, err := getDataListVar(ctx, name); err == nil {
-		return session.ExecuteDataList(dl, accelpkg.WorkloadEstimate{})
-	}
-	if dt, err := getDataTableVar(ctx, name); err == nil {
-		return session.ExecuteDataTable(dt, accelpkg.WorkloadEstimate{})
-	}
-	return accelpkg.ExecutionResult{}, fmt.Errorf("variable %s is not a DataList or DataTable", name)
+	sort.Strings(names)
+	return names
 }
 
 func hydrateAccelCacheFromContext(session *accelpkg.Session, ctx *ExecContext) {

@@ -1,12 +1,14 @@
 package accel
 
 import (
+	"encoding/binary"
 	"fmt"
-	"hash/fnv"
+	"math"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
+
+	"github.com/cespare/xxhash/v2"
 )
 
 type residentCache struct {
@@ -23,6 +25,16 @@ func newResidentCache() *residentCache {
 }
 
 func (s *Session) CacheSnapshot() CacheSnapshot {
+	if s == nil {
+		return CacheSnapshot{}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.cacheSnapshotLocked()
+}
+
+// cacheSnapshotLocked assumes s.mu is held.
+func (s *Session) cacheSnapshotLocked() CacheSnapshot {
 	if s == nil || s.cache == nil {
 		return CacheSnapshot{}
 	}
@@ -88,6 +100,7 @@ func (s *Session) CacheSnapshot() CacheSnapshot {
 	return snapshot
 }
 
+// cacheDataset assumes s.mu is held.
 func (s *Session) cacheDataset(dataset *Dataset) {
 	if s == nil || s.cache == nil || dataset == nil {
 		return
@@ -116,13 +129,14 @@ func (s *Session) cacheDataset(dataset *Dataset) {
 	s.updateCacheMetrics()
 }
 
+// updateCacheMetrics assumes s.mu is held.
 func (s *Session) updateCacheMetrics() {
 	if s == nil || len(s.reports) == 0 {
 		return
 	}
 
-	snapshot := s.CacheSnapshot()
-	report := s.Report()
+	snapshot := s.cacheSnapshotLocked()
+	report := s.reportLocked()
 	if report.Metrics == nil {
 		report.Metrics = map[string]float64{}
 	}
@@ -293,52 +307,152 @@ func assignDatasetFingerprint(dataset *Dataset) {
 	dataset.Fingerprint = datasetFingerprint(dataset)
 }
 
+// fingerprintChunkBytes is the scratch buffer the value encoder fills before
+// handing bytes to the hasher, so a column of any size costs one allocation.
+const fingerprintChunkBytes = 32 << 10
+
+// fingerprintHasher hashes a dataset's identity. Values go in as their binary
+// representation rather than as text: rendering a 4 Mi float64 column with
+// fmt.Sprintf("%v", ...) produced roughly 80 MB of decimal digits and cost more
+// than seventy times the GPU work it was supposed to be book-keeping for.
+type fingerprintHasher struct {
+	digest *xxhash.Digest
+	buf    []byte
+}
+
+func newFingerprintHasher() *fingerprintHasher {
+	return &fingerprintHasher{
+		digest: xxhash.New(),
+		buf:    make([]byte, 0, fingerprintChunkBytes),
+	}
+}
+
+// flush must run before any direct write so buffered bytes keep their position
+// in the stream.
+func (h *fingerprintHasher) flush() {
+	if len(h.buf) > 0 {
+		_, _ = h.digest.Write(h.buf)
+		h.buf = h.buf[:0]
+	}
+}
+
+func (h *fingerprintHasher) writeRaw(b []byte) {
+	h.flush()
+	_, _ = h.digest.Write(b)
+}
+
+func (h *fingerprintHasher) writeString(s string) {
+	h.flush()
+	_, _ = h.digest.WriteString(s)
+}
+
+func (h *fingerprintHasher) writeByte(b byte) {
+	if len(h.buf)+1 > cap(h.buf) {
+		h.flush()
+	}
+	h.buf = append(h.buf, b)
+}
+
+func (h *fingerprintHasher) writeUint64(v uint64) {
+	if len(h.buf)+8 > cap(h.buf) {
+		h.flush()
+	}
+	h.buf = binary.LittleEndian.AppendUint64(h.buf, v)
+}
+
+func (h *fingerprintHasher) sum() uint64 {
+	h.flush()
+	return h.digest.Sum64()
+}
+
 func datasetFingerprint(dataset *Dataset) string {
 	if dataset == nil {
 		return ""
 	}
 
-	hasher := fnv.New64a()
-	_, _ = hasher.Write([]byte(dataset.Name))
-	_, _ = hasher.Write([]byte{0})
-	_, _ = hasher.Write([]byte(strconv.Itoa(dataset.Rows)))
-	_, _ = hasher.Write([]byte{0})
+	hasher := newFingerprintHasher()
+	hasher.writeString(dataset.Name)
+	hasher.writeByte(0)
+	hasher.writeUint64(uint64(dataset.Rows))
 	for _, buffer := range dataset.Buffers {
-		_, _ = hasher.Write([]byte(buffer.Name))
-		_, _ = hasher.Write([]byte{0})
-		_, _ = hasher.Write([]byte(buffer.Type))
-		_, _ = hasher.Write([]byte{0})
-		_, _ = hasher.Write([]byte(strconv.Itoa(buffer.Len)))
-		_, _ = hasher.Write([]byte{0})
+		hasher.writeString(buffer.Name)
+		hasher.writeByte(0)
+		hasher.writeString(string(buffer.Type))
+		hasher.writeByte(0)
+		hasher.writeUint64(uint64(buffer.Len))
 		if len(buffer.Validity) > 0 {
-			_, _ = hasher.Write(buffer.Validity)
+			hasher.writeRaw(buffer.Validity)
 		} else {
 			for _, isNull := range buffer.Nulls {
 				if isNull {
-					_, _ = hasher.Write([]byte{1})
+					hasher.writeByte(1)
 				} else {
-					_, _ = hasher.Write([]byte{0})
+					hasher.writeByte(0)
 				}
 			}
 		}
-		_, _ = hasher.Write([]byte{0})
-		if buffer.Type == DataTypeString && (len(buffer.StringOffsets) > 0 || len(buffer.StringData) > 0) {
-			for _, offset := range buffer.StringOffsets {
-				_, _ = hasher.Write([]byte(strconv.FormatUint(uint64(offset), 10)))
-				_, _ = hasher.Write([]byte{0})
-			}
-			_, _ = hasher.Write(buffer.StringData)
-		} else {
-			_, _ = hasher.Write([]byte(strings.TrimSpace(fmt.Sprintf("%v", buffer.Values))))
-		}
-		_, _ = hasher.Write([]byte{0})
+		hasher.writeByte(0)
+		writeBufferValues(hasher, buffer)
+		hasher.writeByte(0)
 	}
-	return fmt.Sprintf("%x", hasher.Sum64())
+	return fmt.Sprintf("%x", hasher.sum())
+}
+
+func writeBufferValues(hasher *fingerprintHasher, buffer Buffer) {
+	if buffer.Type == DataTypeString && (len(buffer.StringOffsets) > 0 || len(buffer.StringData) > 0) {
+		for _, offset := range buffer.StringOffsets {
+			hasher.writeUint64(uint64(offset))
+		}
+		hasher.writeRaw(buffer.StringData)
+		return
+	}
+
+	switch values := buffer.Values.(type) {
+	case []float64:
+		for _, value := range values {
+			hasher.writeUint64(math.Float64bits(value))
+		}
+	case []int64:
+		for _, value := range values {
+			hasher.writeUint64(uint64(value))
+		}
+	case []bool:
+		for _, value := range values {
+			if value {
+				hasher.writeByte(1)
+			} else {
+				hasher.writeByte(0)
+			}
+		}
+	case []string:
+		// Length-prefixed, because concatenating the values would give
+		// ["ab", "c"] and ["a", "bc"] the same bytes.
+		for _, value := range values {
+			hasher.writeUint64(uint64(len(value)))
+			hasher.writeString(value)
+		}
+	default:
+		// Untyped columns keep the per-element formatting path. projectValues
+		// only produces these for genuinely mixed data, which is not eligible
+		// for device execution anyway.
+		hasher.writeString(strings.TrimSpace(fmt.Sprintf("%v", buffer.Values)))
+	}
 }
 
 func cloneCacheEntry(entry CacheEntry) CacheEntry {
 	cloned := entry
 	cloned.DeviceIDs = append([]string(nil), entry.DeviceIDs...)
 	cloned.DeviceResidentBytes = cloneDeviceResidentBytes(entry.DeviceResidentBytes)
+	return cloned
+}
+
+func cloneDeviceResidentBytes(input map[string]uint64) map[string]uint64 {
+	if input == nil {
+		return nil
+	}
+	cloned := make(map[string]uint64, len(input))
+	for key, value := range input {
+		cloned[key] = value
+	}
 	return cloned
 }

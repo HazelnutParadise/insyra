@@ -2,6 +2,8 @@ package insyra
 
 import (
 	"fmt"
+	"io"
+	"os"
 	"strings"
 
 	"github.com/HazelnutParadise/insyra/internal/utils"
@@ -12,6 +14,13 @@ import (
 // and aggregate information about data types and values across the whole table.
 // The output is formatted for easy reading with proper color coding.
 func (dt *DataTable) Summary() {
+	dt.SummaryTo(os.Stdout)
+}
+
+// SummaryTo writes a comprehensive statistical summary of the DataTable to w.
+// It shows overall statistics for the entire table, including the number of rows and columns,
+// and aggregate information about data types and values across the whole table.
+func (dt *DataTable) SummaryTo(w io.Writer) {
 	var tableName string
 	var columns []*DataList
 	var rowCount int
@@ -19,8 +28,15 @@ func (dt *DataTable) Summary() {
 	dt.AtomicDo(func(dt *DataTable) {
 		// Access dt.name directly while holding the lock, not through GetName() method
 		tableName = dt.name
+		// Deep-copy each column's data inside the lock. A shallow pointer copy
+		// would leave the statistics loop below reading the live backing arrays
+		// after the lock is dropped, racing any concurrent mutation.
 		columns = make([]*DataList, len(dt.columns))
-		copy(columns, dt.columns)
+		for i, c := range dt.columns {
+			dataCopy := make([]any, len(c.data))
+			copy(dataCopy, c.data)
+			columns[i] = &DataList{name: c.name, data: dataCopy}
+		}
 		rowCount = dt.getMaxColLength()
 	})
 
@@ -34,15 +50,15 @@ func (dt *DataTable) Summary() {
 	}
 
 	// Display header - using blue as DataTable's primary color
-	fmt.Println(colorText("1;36", tableTitle))
-	fmt.Println(strings.Repeat("=", min(width, 80)))
+	fmt.Fprintln(w, colorText("1;36", tableTitle))
+	fmt.Fprintln(w, strings.Repeat("=", min(width, 80)))
 
 	// Check if DataTable is empty
 	if len(columns) == 0 {
-		fmt.Println(colorText("2;37", "Empty dataset"))
+		fmt.Fprintln(w, colorText("2;37", "Empty dataset"))
 		return
 	} // Display overall table information
-	fmt.Printf("Dimensions: %s rows × %s columns\n",
+	fmt.Fprintf(w, "Dimensions: %s rows × %s columns\n",
 		colorText("1;36", fmt.Sprintf("%d", rowCount)),
 		colorText("1;36", fmt.Sprintf("%d", len(columns))))
 	// Count data types across the entire table
@@ -73,13 +89,13 @@ func (dt *DataTable) Summary() {
 	}
 
 	// Display table-wide statistics (使用固定寬度格式，避免歪斜)
-	fmt.Println("\n" + colorText("1;36", "Table-wide Statistics"))
-	fmt.Println(strings.Repeat("-", min(width, 50)))
+	fmt.Fprintln(w, "\n"+colorText("1;36", "Table-wide Statistics"))
+	fmt.Fprintln(w, strings.Repeat("-", min(width, 50)))
 
-	fmt.Printf("Total elements: %s\n",
+	fmt.Fprintf(w, "Total elements: %s\n",
 		colorText("1;36", fmt.Sprintf("%d", totalElements))) // 顯示各類型資料的比例
 	if totalElements > 0 {
-		fmt.Printf("Data types: %s numeric (%.1f%%), %s string (%.1f%%), %s boolean (%.1f%%), %s other (%.1f%%)\n",
+		fmt.Fprintf(w, "Data types: %s numeric (%.1f%%), %s string (%.1f%%), %s boolean (%.1f%%), %s other (%.1f%%)\n",
 			colorText("1;36", fmt.Sprintf("%d", numericCount)),
 			float64(numericCount)/float64(totalElements)*100,
 			colorText("1;36", fmt.Sprintf("%d", stringCount)),
@@ -105,23 +121,23 @@ func (dt *DataTable) Summary() {
 		dividerLine := "├" + strings.Repeat("─", statNameWidth+2) + "┼" + strings.Repeat("─", valueWidth+2) + "┤"
 		topLine := "┌" + strings.Repeat("─", statNameWidth+2) + "┬" + strings.Repeat("─", valueWidth+2) + "┐"
 		bottomLine := "└" + strings.Repeat("─", statNameWidth+2) + "┴" + strings.Repeat("─", valueWidth+2) + "┘"
-		fmt.Println("\n" + colorText("1;36", "Numeric Data Statistics (Across All Columns)"))
-		fmt.Println(topLine)
-		fmt.Printf(colorText("1;32", headerFmt), "Statistic", "Value")
-		fmt.Println(dividerLine)
-		fmt.Printf(headerFmt, "Count", fmt.Sprintf("%d", len(numericValues)))
-		fmt.Printf(headerFmt, "Mean", formatFloat(tempDl.Mean()))
-		fmt.Printf(headerFmt, "Median", formatFloat(tempDl.Median()))
-		fmt.Printf(headerFmt, "Min", formatFloat(tempDl.Min()))
-		fmt.Printf(headerFmt, "Max", formatFloat(tempDl.Max()))
-		fmt.Printf(headerFmt, "Std Deviation", formatFloat(tempDl.Stdev()))
-		fmt.Println(bottomLine)
+		fmt.Fprintln(w, "\n"+colorText("1;36", "Numeric Data Statistics (Across All Columns)"))
+		fmt.Fprintln(w, topLine)
+		fmt.Fprintf(w, colorText("1;32", headerFmt), "Statistic", "Value")
+		fmt.Fprintln(w, dividerLine)
+		fmt.Fprintf(w, headerFmt, "Count", fmt.Sprintf("%d", len(numericValues)))
+		fmt.Fprintf(w, headerFmt, "Mean", formatFloat(tempDl.Mean()))
+		fmt.Fprintf(w, headerFmt, "Median", formatFloat(tempDl.Median()))
+		fmt.Fprintf(w, headerFmt, "Min", formatFloat(tempDl.Min()))
+		fmt.Fprintf(w, headerFmt, "Max", formatFloat(tempDl.Max()))
+		fmt.Fprintf(w, headerFmt, "Std Deviation", formatFloat(tempDl.Stdev()))
+		fmt.Fprintln(w, bottomLine)
 	} // Display column information
-	fmt.Println("\n" + colorText("1;36", "Column Overview"))
-	fmt.Println(strings.Repeat("-", min(width, 50)))
+	fmt.Fprintln(w, "\n"+colorText("1;36", "Column Overview"))
+	fmt.Fprintln(w, strings.Repeat("-", min(width, 50)))
 
 	// 使用新的自適應表格顯示邏輯
-	displayColumnOverviewTable(columns, width)
+	displayColumnOverviewTable(w, columns, width)
 }
 
 // getColumnQuickInfo returns data type information and quick statistics about a column
@@ -213,7 +229,7 @@ func getColumnQuickInfo(data []any, maxWidth ...int) (string, string) {
 
 // displayColumnOverviewTable 以更靈活的方式顯示列概覽
 // 可以根據終端寬度自動調整顯示格式，避免表格歪斜
-func displayColumnOverviewTable(columns []*DataList, width int) {
+func displayColumnOverviewTable(w io.Writer, columns []*DataList, width int) {
 	if len(columns) == 0 {
 		return
 	}
@@ -240,9 +256,9 @@ func displayColumnOverviewTable(columns []*DataList, width int) {
 	bottomLine := "└" + strings.Repeat("─", colNameWidth+2) + "┴" + strings.Repeat("─", typeWidth+2) + "┴" + strings.Repeat("─", statWidth+2) + "┘"
 
 	// 打印表頭
-	fmt.Println(topLine)
-	fmt.Printf(colorText("1;32", headerFmt), "Column Name", "Data Type", "Quick Statistics")
-	fmt.Println(dividerLine)
+	fmt.Fprintln(w, topLine)
+	fmt.Fprintf(w, colorText("1;32", headerFmt), "Column Name", "Data Type", "Quick Statistics")
+	fmt.Fprintln(w, dividerLine)
 
 	// 為每一列顯示基本信息
 	for i, col := range columns {
@@ -270,24 +286,24 @@ func displayColumnOverviewTable(columns []*DataList, width int) {
 			lines := splitStringByWidth(quickStats, statWidth-2)
 
 			// 打印第一行數據
-			fmt.Printf(headerFmt, colIndex, dataType, lines[0])
+			fmt.Fprintf(w, headerFmt, colIndex, dataType, lines[0])
 
 			// 如果有多行，繼續打印
 			for j := 1; j < len(lines); j++ {
-				fmt.Printf("│ %-"+fmt.Sprintf("%d", colNameWidth)+"s │ %-"+fmt.Sprintf("%d", typeWidth)+"s │ %-"+fmt.Sprintf("%d", statWidth)+"s │\n",
+				fmt.Fprintf(w, "│ %-"+fmt.Sprintf("%d", colNameWidth)+"s │ %-"+fmt.Sprintf("%d", typeWidth)+"s │ %-"+fmt.Sprintf("%d", statWidth)+"s │\n",
 					"", "", lines[j])
 			}
 
 		} else {
-			fmt.Printf(headerFmt, colIndex, dataType, quickStats)
+			fmt.Fprintf(w, headerFmt, colIndex, dataType, quickStats)
 		}
 
 		if i < len(columns)-1 {
-			fmt.Println(dividerLine)
+			fmt.Fprintln(w, dividerLine)
 		}
 	}
 
-	fmt.Println(bottomLine)
+	fmt.Fprintln(w, bottomLine)
 }
 
 // splitStringByWidth 將字符串按照指定寬度分割成多行

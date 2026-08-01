@@ -458,6 +458,21 @@ kmeans_stats <- function(rows, k, nstart = 1L, itermax = 10L, seed = 1L) {
   )
 }
 
+kmeans_assign <- function(rows, centers) {
+  data <- do.call(rbind, lapply(rows, function(r) as.double(unlist(r))))
+  center_mat <- do.call(rbind, lapply(centers, function(r) as.double(unlist(r))))
+  assignments <- integer(nrow(data))
+  distances <- numeric(nrow(data))
+  for (i in seq_len(nrow(data))) {
+    deltas <- center_mat - matrix(data[i, ], nrow = nrow(center_mat),
+                                  ncol = ncol(center_mat), byrow = TRUE)
+    d <- rowSums(deltas * deltas)
+    assignments[i] <- which.min(d)
+    distances[i] <- d[assignments[i]]
+  }
+  list(assignments = assignments, distances = distances)
+}
+
 orient_cluster <- function(a, b) {
   if (a$min_leaf < b$min_leaf) return(list(a, b))
   if (b$min_leaf < a$min_leaf) return(list(b, a))
@@ -1000,6 +1015,126 @@ if (method == "single_t") {
   } else {
     out <- list(corr_matrix = cm$corr, p_matrix = cm$pmat, chi_square = NaN, p_value = NaN, df = 0)
   }
+} else if (method == "logistic_reg") {
+  y  <- as.double(unlist(payload$y))
+  xs <- lapply(payload$xs, function(v) as.double(unlist(v)))
+  df <- data.frame(y = y, do.call(cbind, xs))
+  names(df) <- c("y", paste0("x", seq_along(xs)))
+  fit <- glm(y ~ ., data = df, family = binomial(link = "logit"),
+             control = glm.control(epsilon = 1e-10, maxit = 100))
+  s   <- summary(fit)$coefficients
+  ci  <- confint.default(fit)
+  ci_rows <- lapply(seq_len(nrow(ci)), function(i) as.double(ci[i, ]))
+  out <- list(
+    coefficients    = unname(s[, "Estimate"]),
+    standard_errors = unname(s[, "Std. Error"]),
+    z_values        = unname(s[, "z value"]),
+    p_values        = unname(s[, "Pr(>|z|)"]),
+    ci              = ci_rows,
+    odds_ratios     = unname(exp(s[, "Estimate"])),
+    log_likelihood  = as.numeric(logLik(fit)),
+    null_deviance   = fit$null.deviance,
+    deviance        = fit$deviance,
+    aic             = fit$aic,
+    bic             = as.numeric(BIC(fit)),
+    iterations      = as.double(fit$iter),
+    fitted          = unname(fitted(fit))
+  )
+  if (!is.null(payload$new_xs)) {
+    new_xs <- lapply(payload$new_xs, function(v) as.double(unlist(v)))
+    newdf <- data.frame(do.call(cbind, new_xs))
+    names(newdf) <- paste0("x", seq_along(new_xs))
+    out$predictions <- as.double(predict(fit, newdata = newdf, type = "response"))
+  }
+} else if (method == "poisson_reg") {
+  y  <- as.double(unlist(payload$y))
+  xs <- lapply(payload$xs, function(v) as.double(unlist(v)))
+  off <- if (!is.null(payload$offset)) as.double(unlist(payload$offset)) else rep(0, length(y))
+  df <- data.frame(y = y, do.call(cbind, xs))
+  names(df) <- c("y", paste0("x", seq_along(xs)))
+  fit <- glm(y ~ ., data = df, family = poisson(link = "log"),
+             offset = off, control = glm.control(epsilon = 1e-10, maxit = 100))
+  s   <- summary(fit)$coefficients
+  ci  <- confint.default(fit)
+  ci_rows <- lapply(seq_len(nrow(ci)), function(i) as.double(ci[i, ]))
+  pear <- sum(residuals(fit, type = "pearson")^2)
+  out <- list(
+    coefficients    = unname(s[, "Estimate"]),
+    standard_errors = unname(s[, "Std. Error"]),
+    z_values        = unname(s[, "z value"]),
+    p_values        = unname(s[, "Pr(>|z|)"]),
+    ci              = ci_rows,
+    irr             = unname(exp(s[, "Estimate"])),
+    log_likelihood  = as.numeric(logLik(fit)),
+    deviance        = fit$deviance,
+    null_deviance   = fit$null.deviance,
+    pearson_chi2    = pear,
+    dispersion      = pear / fit$df.residual,
+    aic             = fit$aic,
+    bic             = as.numeric(BIC(fit)),
+    iterations      = as.double(fit$iter),
+    fitted          = unname(fitted(fit))
+  )
+  if (!is.null(payload$new_xs)) {
+    new_xs <- lapply(payload$new_xs, function(v) as.double(unlist(v)))
+    newdf <- data.frame(do.call(cbind, new_xs))
+    names(newdf) <- paste0("x", seq_along(new_xs))
+    newdf$off <- as.double(unlist(payload$new_offset))
+    train_df <- data.frame(y = y, do.call(cbind, xs), off = off)
+    names(train_df) <- c("y", paste0("x", seq_along(xs)), "off")
+    fit_pred <- glm(y ~ . - off + offset(off), data = train_df, family = poisson(link = "log"),
+                    control = glm.control(epsilon = 1e-10, maxit = 100))
+    out$predictions <- as.double(predict(fit_pred, newdata = newdf, type = "response"))
+    fit_no_offset <- glm(y ~ ., data = train_df[, names(train_df) != "off", drop = FALSE], family = poisson(link = "log"),
+                         control = glm.control(epsilon = 1e-10, maxit = 100))
+    out$predictions_no_offset <- as.double(predict(fit_no_offset, newdata = newdf[, names(newdf) != "off", drop = FALSE], type = "response"))
+  }
+} else if (method == "glm_generic") {
+  fam_name  <- as.character(payload$family)
+  link_name <- as.character(payload$link)
+  fam <- switch(fam_name,
+    binomial = binomial(link = link_name),
+    poisson  = poisson(link = link_name),
+    gaussian = gaussian(link = link_name))
+  y  <- as.double(unlist(payload$y))
+  xs <- lapply(payload$xs, function(v) as.double(unlist(v)))
+  w  <- if (!is.null(payload$weights)) as.double(unlist(payload$weights)) else rep(1, length(y))
+  off<- if (!is.null(payload$offset))  as.double(unlist(payload$offset))  else rep(0, length(y))
+  df <- data.frame(y = y, do.call(cbind, xs))
+  names(df) <- c("y", paste0("x", seq_along(xs)))
+  fit <- glm(y ~ ., data = df, family = fam, weights = w, offset = off,
+             control = glm.control(epsilon = 1e-10, maxit = 100))
+  s  <- summary(fit)$coefficients
+  ci <- confint.default(fit)
+  ci_rows <- lapply(seq_len(nrow(ci)), function(i) as.double(ci[i, ]))
+  out <- list(
+    coefficients    = unname(s[, "Estimate"]),
+    standard_errors = unname(s[, "Std. Error"]),
+    z_values        = unname(s[, ncol(s) - 1]),
+    p_values        = unname(s[, ncol(s)]),
+    ci              = ci_rows,
+    deviance        = fit$deviance,
+    null_deviance   = fit$null.deviance,
+    aic             = fit$aic,
+    bic             = as.numeric(BIC(fit)),
+    log_likelihood  = as.numeric(logLik(fit)),
+    dispersion      = summary(fit)$dispersion,
+    fitted          = unname(fitted(fit))
+  )
+  if (!is.null(payload$new_xs)) {
+    new_xs <- lapply(payload$new_xs, function(v) as.double(unlist(v)))
+    newdf <- data.frame(do.call(cbind, new_xs))
+    names(newdf) <- paste0("x", seq_along(new_xs))
+    newdf$off <- as.double(unlist(payload$new_offset))
+    train_df <- data.frame(y = y, do.call(cbind, xs), off = off)
+    names(train_df) <- c("y", paste0("x", seq_along(xs)), "off")
+    fit_pred <- glm(y ~ . - off + offset(off), data = train_df, family = fam, weights = w,
+                    control = glm.control(epsilon = 1e-10, maxit = 100))
+    out$predictions <- as.double(predict(fit_pred, newdata = newdf, type = "response"))
+    fit_no_offset <- glm(y ~ ., data = train_df[, names(train_df) != "off", drop = FALSE], family = fam, weights = w,
+                         control = glm.control(epsilon = 1e-10, maxit = 100))
+    out$predictions_no_offset <- as.double(predict(fit_no_offset, newdata = newdf[, names(newdf) != "off", drop = FALSE], type = "response"))
+  }
 } else if (method == "linear_reg") {
   y <- as.double(unlist(payload$y))
   xs <- lapply(payload$xs, function(v) as.double(unlist(v)))
@@ -1018,6 +1153,14 @@ if (method == "single_t") {
     out$ci_intercept <- st$confidence_intervals[[1]]
     out$ci_slope <- st$confidence_intervals[[2]]
   }
+  if (!is.null(payload$new_xs)) {
+    train_df <- data.frame(y = y, do.call(cbind, xs))
+    names(train_df) <- c("y", paste0("x", seq_along(xs)))
+    newdf <- data.frame(do.call(cbind, lapply(payload$new_xs, function(v) as.double(unlist(v)))))
+    names(newdf) <- paste0("x", seq_along(xs))
+    fit_pred <- lm(y ~ ., data = train_df)
+    out$predictions <- as.double(predict(fit_pred, newdata = newdf))
+  }
 } else if (method == "poly_reg") {
   y <- as.double(unlist(payload$y))
   x <- as.double(unlist(payload$x))
@@ -1025,6 +1168,14 @@ if (method == "single_t") {
   cols <- lapply(0:degree, function(d) x^d)
   X <- do.call(cbind, cols)
   out <- ols_from_matrix(y, X)
+  if (!is.null(payload$new_x)) {
+    new_x <- as.double(unlist(payload$new_x))
+    terms <- if (degree >= 2) c("x", paste0("I(x^", 2:degree, ")")) else "x"
+    train_df <- data.frame(y = y, x = x)
+    newdf <- data.frame(x = new_x)
+    fit_pred <- lm(as.formula(paste("y ~", paste(terms, collapse = " + "))), data = train_df)
+    out$predictions <- as.double(predict(fit_pred, newdata = newdf))
+  }
 } else if (method == "exp_reg") {
   y <- as.double(unlist(payload$y))
   x <- as.double(unlist(payload$x))
@@ -1068,6 +1219,11 @@ if (method == "single_t") {
     ci_intercept = c(a - tcrit * se_a, a + tcrit * se_a),
     ci_slope = c(b - tcrit * se_b, b + tcrit * se_b)
   )
+  if (!is.null(payload$new_x)) {
+    newdf <- data.frame(x = as.double(unlist(payload$new_x)))
+    fit_pred <- lm(log(y) ~ x, data = data.frame(y = y, x = x))
+    out$predictions <- as.double(exp(predict(fit_pred, newdata = newdf)))
+  }
 } else if (method == "log_reg") {
   y <- as.double(unlist(payload$y))
   x <- as.double(unlist(payload$x))
@@ -1105,12 +1261,19 @@ if (method == "single_t") {
     ci_intercept = c(a - tcrit * se_a, a + tcrit * se_a),
     ci_slope = c(b - tcrit * se_b, b + tcrit * se_b)
   )
+  if (!is.null(payload$new_x)) {
+    newdf <- data.frame(x = as.double(unlist(payload$new_x)))
+    fit_pred <- lm(y ~ log(x), data = data.frame(y = y, x = x))
+    out$predictions <- as.double(predict(fit_pred, newdata = newdf))
+  }
 } else if (method == "pca") {
   out <- pca_stats(payload$rows, payload$n_components)
 } else if (method == "factor_analysis") {
   out <- factor_analysis_stats(payload$rows, payload$extraction, payload$rotation, payload$scoring, payload$nfactors)
 } else if (method == "kmeans") {
   out <- kmeans_stats(payload$rows, payload$k, payload$nstart, payload$itermax, payload$seed)
+} else if (method == "kmeans_assign") {
+  out <- kmeans_assign(payload$rows, payload$centers)
 } else if (method == "hclust") {
   out <- hclust_stats(payload$rows, payload$method, payload$k, payload$h)
 } else if (method == "dbscan") {
@@ -1163,6 +1326,183 @@ if (method == "single_t") {
   } else {
     out <- list(value = (g2 + 3) * ((1 - 1 / n)^2) - 3)
   }
+} else if (method == "wilcoxon_single" || method == "wilcoxon_paired") {
+  x <- as.double(unlist(payload$x))
+  if (method == "wilcoxon_paired") {
+    y <- as.double(unlist(payload$y))
+    diffs <- x - y
+  } else {
+    mu <- as.double(payload$mu)
+    diffs <- x - mu
+  }
+  alt <- as.character(payload$alt)
+  cl <- as.double(payload$cl)
+  nonzero <- diffs[diffs != 0]
+  n_eff <- length(nonzero)
+  has_ties <- length(unique(abs(nonzero))) != length(nonzero)
+  use_exact <- (!has_ties) && (n_eff < 50)
+
+  if (method == "wilcoxon_paired") {
+    r <- suppressWarnings(wilcox.test(x, y, paired = TRUE, alternative = alt,
+                                      conf.int = TRUE, conf.level = cl,
+                                      exact = use_exact, correct = !use_exact))
+  } else {
+    r <- suppressWarnings(wilcox.test(x, mu = mu, alternative = alt,
+                                      conf.int = TRUE, conf.level = cl,
+                                      exact = use_exact, correct = !use_exact))
+  }
+
+  stat_val <- as.numeric(r$statistic)
+  p_val <- r$p.value
+  ci <- as.numeric(r$conf.int)
+
+  # Compute Go-style z (asymptotic only). For exact mode return NaN.
+  if (use_exact) {
+    z_val <- NaN
+    method_tag <- "exact"
+  } else {
+    # Tie-corrected sigma. NTIES is over RANK values (matches R wilcox.test
+    # internals): for nonzero |d_i| values that are bit-equal, they share a
+    # mid-rank; values differing by even 1 ulp get distinct ranks. Using
+    # table(abs_d) directly produces a slightly different tie count when
+    # subtraction rounding splits values that "should" be equal.
+    abs_d <- abs(nonzero)
+    rk <- rank(abs_d)
+    NTIES <- table(rk)
+    sum_t3 <- sum(as.numeric(NTIES)^3 - as.numeric(NTIES))
+    mu_W <- n_eff * (n_eff + 1) / 4
+    sigma2 <- n_eff * (n_eff + 1) * (2 * n_eff + 1) / 24 - sum_t3 / 48
+    sigma <- sqrt(sigma2)
+    correction <- 0
+    if (alt == "two.sided") {
+      if (stat_val > mu_W) correction <- 0.5
+      else if (stat_val < mu_W) correction <- -0.5
+    } else if (alt == "greater") {
+      correction <- 0.5
+    } else if (alt == "less") {
+      correction <- -0.5
+    }
+    z_val <- (stat_val - mu_W - correction) / sigma
+    method_tag <- "asymptotic"
+  }
+
+  # rank-biserial = (W+ - W-) / (W+ + W-)
+  total_rank <- n_eff * (n_eff + 1) / 2
+  W_minus <- total_rank - stat_val
+  rank_biserial <- (stat_val - W_minus) / total_rank
+
+  out <- list(
+    stat = stat_val,
+    p = p_val,
+    z = z_val,
+    method = method_tag,
+    n_eff = n_eff,
+    ci_lo = ci[1],
+    ci_hi = ci[2],
+    rank_biserial = rank_biserial
+  )
+} else if (method == "mwu") {
+  x <- as.double(unlist(payload$x))
+  y <- as.double(unlist(payload$y))
+  alt <- as.character(payload$alt)
+  cl <- as.double(payload$cl)
+  n1 <- length(x); n2 <- length(y)
+  all_v <- c(x, y)
+  has_ties <- length(unique(all_v)) != length(all_v)
+  use_exact <- (!has_ties) && (n1 < 50) && (n2 < 50)
+
+  r <- suppressWarnings(wilcox.test(x, y, paired = FALSE, alternative = alt,
+                                    conf.int = TRUE, conf.level = cl,
+                                    exact = use_exact, correct = !use_exact))
+  u1 <- as.numeric(r$statistic)
+  u2 <- n1 * n2 - u1
+  stat_val <- min(u1, u2)
+  p_val <- r$p.value
+  ci <- as.numeric(r$conf.int)
+
+  mu_U <- n1 * n2 / 2
+  if (use_exact) {
+    z_val <- NaN
+    method_tag <- "exact"
+  } else {
+    # Tie-adjusted variance.
+    rk <- rank(all_v)
+    tab <- table(all_v)
+    tab <- tab[tab >= 2]
+    sum_t3 <- sum(as.numeric(tab)^3 - as.numeric(tab))
+    N <- n1 + n2
+    tie_factor <- 1 - sum_t3 / (N^3 - N)
+    sigma2 <- n1 * n2 * (N + 1) / 12 * tie_factor
+    sigma <- sqrt(sigma2)
+    correction <- 0
+    if (alt == "two.sided") {
+      if (u1 > mu_U) correction <- 0.5
+      else if (u1 < mu_U) correction <- -0.5
+    } else if (alt == "greater") {
+      correction <- 0.5
+    } else if (alt == "less") {
+      correction <- -0.5
+    }
+    z_val <- (u1 - mu_U - correction) / sigma
+    method_tag <- "asymptotic"
+  }
+
+  rank_biserial <- 1 - 2 * u1 / (n1 * n2)
+  cles <- u1 / (n1 * n2)
+
+  out <- list(
+    stat = stat_val,
+    u1 = u1,
+    u2 = u2,
+    p = p_val,
+    z = z_val,
+    method = method_tag,
+    ci_lo = ci[1],
+    ci_hi = ci[2],
+    rank_biserial = rank_biserial,
+    cles_a12 = cles
+  )
+} else if (method == "kruskal") {
+  groups <- lapply(payload$groups, function(g) as.double(unlist(g)))
+  r <- kruskal.test(groups)
+  H <- as.numeric(r$statistic)
+  p_val <- r$p.value
+  df <- as.numeric(r$parameter)
+
+  all_v <- unlist(groups)
+  labels <- unlist(mapply(function(i, g) rep(i, length(g)), seq_along(groups), groups))
+  rk <- rank(all_v)
+  group_rank_sum <- as.numeric(tapply(rk, labels, sum))
+  N <- length(all_v)
+  eps2 <- H / (N - 1)
+
+  out <- list(
+    stat = H,
+    p = p_val,
+    df = df,
+    n_total = N,
+    group_rank_sum = group_rank_sum,
+    epsilon_squared = eps2
+  )
+} else if (method == "friedman") {
+  subjects <- lapply(payload$subjects, function(s) as.double(unlist(s)))
+  mat <- do.call(rbind, subjects)
+  r <- friedman.test(mat)
+  Q <- as.numeric(r$statistic)
+  p_val <- r$p.value
+  df <- as.numeric(r$parameter)
+  n <- nrow(mat)
+  k <- ncol(mat)
+  W <- Q / (n * (k - 1))
+
+  out <- list(
+    stat = Q,
+    p = p_val,
+    df = df,
+    n_subjects = n,
+    k_conditions = k,
+    kendalls_w = W
+  )
 } else {
   stop(paste("unsupported method:", method))
 }

@@ -352,14 +352,14 @@ func hasVarianceFloats(v []float64) bool {
 func Covariance(dlX, dlY insyra.IDataList) (float64, error) {
 	var lenX, lenY int
 	var dataX, dataY []float64
-	dlX.AtomicDo(func(dlx *insyra.DataList) {
-		dlY.AtomicDo(func(dly *insyra.DataList) {
-			lenX = dlx.Len()
-			lenY = dly.Len()
-			dataX = dlx.ToF64Slice()
-			dataY = dly.ToF64Slice()
-		})
-	})
+	dlx := dlX.(*insyra.DataList)
+	dly := dlY.(*insyra.DataList)
+	insyra.AtomicDoAll(func() {
+		lenX = dlx.Len()
+		lenY = dly.Len()
+		dataX = dlx.ToF64Slice()
+		dataY = dly.ToF64Slice()
+	}, dlx, dly)
 	if lenX != lenY {
 		return math.NaN(), errors.New("input lengths must match")
 	}
@@ -379,35 +379,35 @@ type CorrelationResult struct {
 func Correlation(dlX, dlY insyra.IDataList, method CorrelationMethod) (*CorrelationResult, error) {
 	var result CorrelationResult
 	var err error
-	dlX.AtomicDo(func(dlx *insyra.DataList) {
-		dlY.AtomicDo(func(dly *insyra.DataList) {
-			lenX := dlx.Len()
-			lenY := dly.Len()
-			stdevX := dlx.Stdev()
-			stdevY := dly.Stdev()
+	dlx := dlX.(*insyra.DataList)
+	dly := dlY.(*insyra.DataList)
+	insyra.AtomicDoAll(func() {
+		lenX := dlx.Len()
+		lenY := dly.Len()
+		stdevX := dlx.Stdev()
+		stdevY := dly.Stdev()
 
-			if lenX != lenY || lenX < 2 {
-				err = errors.New("invalid input length or insufficient data")
-				return
-			}
-			if stdevX == 0 || stdevY == 0 {
-				err = errors.New("cannot calculate correlation due to zero variance")
-				return
-			}
+		if lenX != lenY || lenX < 2 {
+			err = errors.New("invalid input length or insufficient data")
+			return
+		}
+		if stdevX == 0 || stdevY == 0 {
+			err = errors.New("cannot calculate correlation due to zero variance")
+			return
+		}
 
-			switch method {
-			case PearsonCorrelation:
-				result, err = pearsonCorrelationWithStats(dlx, dly)
-			case KendallCorrelation:
-				result = kendallCorrelationWithStats(dlx, dly)
-			case SpearmanCorrelation:
-				result, err = spearmanCorrelationWithStats(dlx, dly)
-			default:
-				err = errors.New("unsupported method")
-				return
-			}
-		})
-	})
+		switch method {
+		case PearsonCorrelation:
+			result, err = pearsonCorrelationWithStats(dlx, dly)
+		case KendallCorrelation:
+			result = kendallCorrelationWithStats(dlx, dly)
+		case SpearmanCorrelation:
+			result, err = spearmanCorrelationWithStats(dlx, dly)
+		default:
+			err = errors.New("unsupported method")
+			return
+		}
+	}, dlx, dly)
 	if err != nil {
 		return nil, err
 	}
@@ -485,13 +485,13 @@ func pearsonCorrelation(dlX, dlY insyra.IDataList) (float64, error) {
 	var stdX, stdY float64
 	var cov float64
 	var err error
-	dlX.AtomicDo(func(dlx *insyra.DataList) {
-		dlY.AtomicDo(func(dly *insyra.DataList) {
-			cov, err = Covariance(dlx, dly)
-			stdX = dlx.Stdev()
-			stdY = dly.Stdev()
-		})
-	})
+	dlx := dlX.(*insyra.DataList)
+	dly := dlY.(*insyra.DataList)
+	insyra.AtomicDoAll(func() {
+		cov, err = Covariance(dlx, dly)
+		stdX = dlx.Stdev()
+		stdY = dly.Stdev()
+	}, dlx, dly)
 	if err != nil {
 		return math.NaN(), err
 	}
@@ -505,13 +505,13 @@ func pearsonCorrelationWithStats(dlX, dlY insyra.IDataList) (CorrelationResult, 
 	result := CorrelationResult{}
 	var corr, n float64
 	var err error
-	dlX.AtomicDo(func(dlx *insyra.DataList) {
-		dlY.AtomicDo(func(dly *insyra.DataList) {
-			corr, err = pearsonCorrelation(dlx, dly)
-			result.Statistic = corr
-			n = float64(dlx.Len())
-		})
-	})
+	dlx := dlX.(*insyra.DataList)
+	dly := dlY.(*insyra.DataList)
+	insyra.AtomicDoAll(func() {
+		corr, err = pearsonCorrelation(dlx, dly)
+		result.Statistic = corr
+		n = float64(dlx.Len())
+	}, dlx, dly)
 	if err != nil {
 		return result, err
 	}
@@ -537,10 +537,10 @@ func pearsonCorrelationWithStats(dlX, dlY insyra.IDataList) (CorrelationResult, 
 // Two pair-counting strategies, dispatched by n based on calibration data
 // (BenchmarkCalib_KendallStrategies on 24 threads):
 //   - n < 128 : serial brute O(n²). Tightest inner loop, smallest constant
-//               — at n≤96 this beats every alternative including Knight.
+//     — at n≤96 this beats every alternative including Knight.
 //   - n ≥ 128 : Knight's O(n log n) algorithm via mergesort inversion
-//               counting. Wins by 5% at n=128, 38% at n=192, 3.5× at n=1024,
-//               12× at n=8192.
+//     counting. Wins by 5% at n=128, 38% at n=192, 3.5× at n=1024,
+//     12× at n=8192.
 //
 // Note: a parallel brute O(n²) variant exists in this file
 // (kendallPairCountBruteParallel) but is NOT on the dispatch path.
@@ -675,7 +675,8 @@ func kendallPairCountBruteParallel(x, y []float64) (nC, nD float64) {
 //
 // Then n1 = D+E, n2 = C+E, n_xy = E, and A+B+C+D+E = n0, so
 // A = n0 − B − C − D − E = n0 − inversions − (n2−E) − (n1−E) − E
-//   = n0 − n1 − n2 + E − inversions.
+//
+//	= n0 − n1 − n2 + E − inversions.
 func kendallPairCountKnight(x, y []float64) (nC, nD float64) {
 	n := len(x)
 	if n < 2 {
@@ -814,10 +815,10 @@ func kendallTauBFinish(x, y []float64, n int, nC, nD float64) (tau, sval, varS f
 	}
 	tx := tieGroupSizes(x)
 	ty := tieGroupSizes(y)
-	var n1, n2 float64                  // Σ t(t-1)/2  — for τ-b denominator
-	var T1, T2 float64                  // Σ t(t-1)(2t+5)
-	var T1b, T2b float64                // Σ t(t-1)(t-2)
-	var T1c, T2c float64                // Σ t(t-1)
+	var n1, n2 float64   // Σ t(t-1)/2  — for τ-b denominator
+	var T1, T2 float64   // Σ t(t-1)(2t+5)
+	var T1b, T2b float64 // Σ t(t-1)(t-2)
+	var T1c, T2c float64 // Σ t(t-1)
 	for _, t := range tx {
 		tt := float64(t)
 		t1 := tt - 1
@@ -1031,15 +1032,15 @@ func spearmanCorrelationWithStats(dlX, dlY insyra.IDataList) (CorrelationResult,
 	var rankX, rankY insyra.IDataList
 	var rawX, rawY []float64
 	var n float64
-	dlX.AtomicDo(func(dlx *insyra.DataList) {
-		dlY.AtomicDo(func(dly *insyra.DataList) {
-			rankX = dlx.Rank()
-			rankY = dly.Rank()
-			rawX = dlx.ToF64Slice()
-			rawY = dly.ToF64Slice()
-			n = float64(dlx.Len())
-		})
-	})
+	dlx := dlX.(*insyra.DataList)
+	dly := dlY.(*insyra.DataList)
+	insyra.AtomicDoAll(func() {
+		rankX = dlx.Rank()
+		rankY = dly.Rank()
+		rawX = dlx.ToF64Slice()
+		rawY = dly.ToF64Slice()
+		n = float64(dlx.Len())
+	}, dlx, dly)
 	rho, err := pearsonCorrelation(rankX, rankY)
 	if err != nil {
 		return result, err

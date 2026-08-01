@@ -5,6 +5,7 @@ import (
 	"github.com/HazelnutParadise/insyra/plot/internal"
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
+	"github.com/go-echarts/go-echarts/v2/types"
 )
 
 // PieItem represents a single item in a pie chart.
@@ -48,8 +49,8 @@ func CreatePieChart(config PieChartConfig, data ...PieItem) *charts.Pie {
 		Height:          config.Height,
 		BackgroundColor: config.BackgroundColor,
 		Theme:           string(config.Theme),
-		Title:           config.Title,
-		Subtitle:        config.Subtitle,
+		Title:           sanitizeChartText(config.Title),
+		Subtitle:        sanitizeChartText(config.Subtitle),
 		TitlePos:        string(config.TitlePos),
 		HideLegend:      config.HideLegend,
 		LegendPos:       string(config.LegendPos),
@@ -86,7 +87,7 @@ func CreatePieChart(config PieChartConfig, data ...PieItem) *charts.Pie {
 		charts.WithLabelOpts(opts.Label{
 			Show:      opts.Bool(config.ShowLabels || config.ShowPercent),
 			Position:  string(config.LabelPos),
-			Formatter: labelFormatter,
+			Formatter: types.FuncStr(labelFormatter),
 		}),
 		charts.WithPieChartOpts(opts.PieChart{
 			RoseType: config.RoseType,

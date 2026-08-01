@@ -85,7 +85,10 @@ func Start(ctx *commands.ExecContext) error {
 			_, _ = fmt.Fprintln(instance.Stderr(), style.ErrorText(err.Error()))
 		}
 
-		_ = ctx.Env.AppendHistory(ctx.EnvName, trimmed)
+		// Do NOT AppendHistory here: readline already persists each entered line
+		// to HistoryFile (the same env history.txt), so an explicit append would
+		// write every command twice. The one-shot CLI path keeps its own
+		// AppendHistory since it does not go through readline.
 		_ = ctx.Env.SaveState(ctx.EnvName, ctx.Vars)
 
 		if ctx.EnvName != "" {

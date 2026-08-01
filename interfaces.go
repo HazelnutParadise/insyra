@@ -45,12 +45,21 @@ type IDataList interface {
 	Normalize() *DataList
 	Standardize() *DataList
 	FillNaNWithMean() *DataList
+	FillWithMean() *DataList
+	FillForward(limit ...int) *DataList
+	FillBackward(limit ...int) *DataList
+	FillWithMedian() *DataList
+	FillWithMode() *DataList
+	FillByInterpolation(extrapolate ...bool) *DataList
 	MovingAverage(int) *DataList
 	WeightedMovingAverage(int, any) *DataList
 	ExponentialSmoothing(float64) *DataList
 	DoubleExponentialSmoothing(float64, float64) *DataList
 	MovingStdev(int) *DataList
 	Len() int
+	Sample(n int, withReplacement bool, options ...SamplingOptions) *DataList
+	SampleFrac(frac float64, withReplacement bool, options ...SamplingOptions) *DataList
+	Shuffle(options ...SamplingOptions) *DataList
 	Sort(ascending ...bool) *DataList
 	Map(mapFunc func(int, any) any) *DataList
 	Rank(ascending ...bool) *DataList
@@ -76,6 +85,7 @@ type IDataList interface {
 	IQR() float64
 	Percentile(float64) float64
 	Difference() *DataList
+	Describe(...DescribeOptions) *DataTable
 	Summary()
 
 	// Error handling (instance-level)
@@ -205,6 +215,7 @@ type IDataTable interface {
 	NumCols() int
 	Count(value any) int
 	Mean() any
+	Describe(...DescribeOptions) *DataTable
 	Summary()
 
 	// Error handling (instance-level)
@@ -216,6 +227,10 @@ type IDataTable interface {
 	Clone() *DataTable
 	To2DSlice() [][]any
 	SimpleRandomSample(sampleSize int) *DataTable
+	Sample(n int, withReplacement bool, options ...SamplingOptions) *DataTable
+	SampleFrac(frac float64, withReplacement bool, options ...SamplingOptions) *DataTable
+	Shuffle(options ...SamplingOptions) *DataTable
+	TrainTestSplit(trainFrac float64, options ...SamplingOptions) (*DataTable, *DataTable)
 	Map(mapFunc func(rowIndex int, colIndex string, element any) any) *DataTable
 	SortBy(configs ...DataTableSortConfig) *DataTable
 
@@ -279,6 +294,24 @@ type IDataTable interface {
 	ReplaceNaNsWith(newValue any) *DataTable
 	ReplaceNilsWith(newValue any) *DataTable
 	ReplaceNaNsAndNilsWith(newValue any) *DataTable
+	FillForward(int, ...string) *DataTable
+	FillBackward(int, ...string) *DataTable
+	FillWithMean(...string) *DataTable
+	FillWithMedian(...string) *DataTable
+	FillWithMode(...string) *DataTable
+	FillByInterpolation(...string) *DataTable
+
+	// Encoding
+	OneHotEncode(opts OneHotOptions) (*DataTable, *OneHotEncoder, error)
+	LabelEncode(opts LabelEncodeOptions) (*DataTable, *LabelEncoder, error)
+	OrdinalEncode(opts OrdinalEncodeOptions) (*DataTable, *OrdinalEncoder, error)
+
+	// Scaling
+	StandardScale(cols ...string) (*DataTable, *StandardScaler, error)
+	MinMaxScale(featureMin, featureMax float64, cols ...string) (*DataTable, *MinMaxScaler, error)
+	RobustScale(cols ...string) (*DataTable, *RobustScaler, error)
+	MaxAbsScale(cols ...string) (*DataTable, *MaxAbsScaler, error)
+
 	ReplaceInRow(rowIndex int, oldValue, newValue any, mode ...int) *DataTable
 	ReplaceNaNsInRow(rowIndex int, newValue any, mode ...int) *DataTable
 	ReplaceNilsInRow(rowIndex int, newValue any, mode ...int) *DataTable

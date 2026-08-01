@@ -44,11 +44,18 @@ Use Insyra when you need any of these in Go:
 
 ## Core mental model
 - DataList: a column/series-like container (stats, sort, transform).
-- Concurrency: DataList is designed to be safe under concurrent access when thread safety is enabled (default) because operations are serialized via AtomicDo. This also makes it usable as a lightweight shared buffer (e.g., append/pop in one AtomicDo block). Keep AtomicDo blocks short and do heavy work outside.
+- Concurrency: DataList is designed to be safe under concurrent access when thread safety is enabled (default) because operations are serialized via AtomicDo. This also makes it usable as a lightweight shared buffer (e.g., append/pop in one AtomicDo block). Keep AtomicDo blocks short and do heavy work outside. To operate on TWO OR MORE instances atomically, use `insyra.AtomicDoAll(func(){...}, a, b)` — it locks all given DataList/DataTable instances together, deadlock-free. Do NOT nest `b.AtomicDo` inside `a.AtomicDo` to read both: the inner call does not lock `b` and can race.
 - DataTable: multiple named DataList columns as a table.
 - isr syntactic sugar: preferred entrypoint for new codebases.
 - CCL (Column Calculation Language): Excel-like formulas for derived columns.
 - Instance error tracking: chain fluent ops, then check Err() / ClearErr().
+
+### Fitted KMeans assignment
+
+`stats.KMeans` returns a fitted `*KMeansResult`. Call `result.Assign(newData)`
+to assign new rows without refitting. It returns one-based center indices and
+the squared Euclidean distance for each row, and rejects a different column
+count.
 
 ### Pattern: DataList as a concurrent buffer (AtomicDo)
 Use this when you need a simple shared buffer (e.g., producer/consumer) and want **check + pop** to be atomic.
@@ -104,6 +111,117 @@ func main() {
 }
 ```
 
+### 1b) Fill missing values
+
+All fill methods treat both `nil` and `math.NaN()` as missing values. `FillNaNWithMean` is deprecated (it only replaces NaN, not nil); use `FillWithMean` instead. Use `ReplaceNaNsWith`, `ReplaceNilsWith`, or `ReplaceNaNsAndNilsWith` when you want constant replacement instead.
+
+```go
+dl.FillWithMean()
+dl.FillForward(limit ...int)
+dl.FillBackward(limit ...int)
+dl.FillWithMedian()
+dl.FillWithMode()
+dl.FillByInterpolation(extrapolate ...bool)
+
+dt.FillForward(limit int, cols ...string)
+dt.FillBackward(limit int, cols ...string)
+dt.FillWithMean(cols ...string)
+dt.FillWithMedian(cols ...string)
+dt.FillWithMode(cols ...string)
+dt.FillByInterpolation(cols ...string)
+```
+
+Notes:
+- `limit` uses `0` or omitted as unlimited for forward/backward fill.
+- DataTable `mean`, `median`, and `interpolation` skip non-numeric columns; `mode`, `ffill`, and `bfill` work with any selected column type.
+- `FillByInterpolation` fills gaps inside a sequence; it is distinct from `LinearInterpolation(x)`, which evaluates a y-value at a given x.
+
+For reusable, leakage-free preprocessing, fit `SimpleImputer` on the training
+table and transform later tables with the learned replacements:
+
+```go
+imputer := insyra.NewSimpleImputer(insyra.ImputeMean)
+trainClean, err := imputer.FitTransform(train, "Age", "Income")
+if err != nil { log.Fatal(err) }
+
+testClean, err := imputer.Transform(test) // reuse training replacements
+_ = trainClean
+_ = testClean
+```
+
+Use `ImputeMean`, `ImputeMedian`, or `ImputeMode`, or use
+`NewSimpleImputer(insyra.ImputeConstant, value)` for a caller-supplied value.
+Numeric strategies pass through observed non-numeric columns, selected
+all-missing columns refuse to fit, and `InverseTransform` is unsupported
+because imputation is lossy. Use the existing in-place `FillWith*` methods for
+one-off mutation instead of a reusable fitted transformer.
+
+### 1c) Encode categorical DataTable columns
+
+Use DataTable categorical encoders before stats methods that require numeric features (`stats.LinearRegression`, KNN, PCA, clustering). These methods return a new table plus a fitted encoder; the receiver is not modified.
+
+```go
+encoded, enc, err := dt.OneHotEncode(insyra.OneHotOptions{
+    Columns:   []string{"plan", "region"},
+    DropFirst: true,
+    Unknown:   insyra.UnknownIgnore,
+})
+if err != nil { log.Fatal(err) }
+
+testEncoded, err := enc.Transform(testDT)       // reuse train mapping
+original, err := enc.InverseTransform(encoded)  // rebuild source columns
+_ = testEncoded
+_ = original
+
+labels, labelEnc, err := dt.LabelEncode(insyra.LabelEncodeOptions{
+    Column:    "segment",
+    NewColumn: "segment_id",
+    SortBy:    insyra.LabelSortByFrequency,
+})
+_ = labels
+classes := labelEnc.Classes()
+values, err := labelEnc.Inverse(0, 2, 1)
+_ = classes
+_ = values
+
+ranked, ordinalEnc, err := dt.OrdinalEncode(insyra.OrdinalEncodeOptions{
+    Column: "satisfaction",
+    Order:  []any{"low", "medium", "high"},
+})
+_ = ranked
+_ = ordinalEnc
+```
+
+Policies:
+- `NaNAsCategory`, `NaNError`, `NaNSkip` handle `nil`/`NaN`.
+- `UnknownIgnore`, `UnknownError`, `UnknownAsNew` handle categories seen only during `Transform`. `UnknownAsNew` extends only the returned table; the fitted encoder is unchanged, so `Transform` is pure and reusable across calls.
+- `LabelSortFirstSeen`, `LabelSortLexicographic`, `LabelSortByFrequency` control label ids.
+- Column refs resolve by name first, then Excel-style index (`A`, `B`, `AA`). Category identity keeps typed values distinct (`1` and `"1"` are different). For one-hot, two categories that produce the same indicator column name (e.g. `1` and `"1"`) are rejected at fit time.
+
+### 1d) Scale numeric features (fit once, reuse)
+
+Feature scalers fit parameters on a training set and reuse them on a test set — the leakage-free alternative to the stateless, in-place `DataList.Normalize()` / `Standardize()`. Each method returns a new table plus a fitted scaler; the receiver is not modified.
+
+```go
+sc := insyra.NewStandardScaler() // or NewMinMaxScaler(0,1), NewRobustScaler(), NewMaxAbsScaler()
+trainScaled, err := sc.FitTransform(train, "Age", "Income")
+if err != nil { log.Fatal(err) }
+
+testScaled, err := sc.Transform(test)          // reuse TRAIN mean/std — no re-fit
+original, err := sc.InverseTransform(trainScaled) // back to original scale
+_ = trainScaled
+_ = testScaled
+_ = original
+
+params := sc.Params()["Age"] // {Mean, Std, ...} depending on kind
+_ = params
+```
+
+- Pick by data: `StandardScaler` (Gaussian-ish, matches `Standardize`'s sample std), `MinMaxScaler` (bounded range), `RobustScaler` (outliers; median/IQR), `MaxAbsScaler` (sparse/sign-preserving, `[-1,1]`).
+- `cols` is required; other columns pass through. Column order, names, table name, and row names are preserved.
+- `nil`/`NaN` are preserved and excluded from fitting. A non-numeric value in a target column is an error. `Transform` errors on a missing fitted column; constant/degenerate columns do not panic.
+- DataList versions exist too: `FitDataList`, `TransformDataList`, `FitTransformDataList`, `InverseTransformDataList`.
+
 ### 2) Read a CSV file into a DataTable + preview
 
 ```go
@@ -116,26 +234,83 @@ import (
 )
 
 func main() {
+    // Column-level type inference: all-integer columns load as int64 (large IDs
+    // keep full precision), columns with any decimal as float64, others as string.
+    // ReadJSON types integer JSON values as int64 the same way.
     dt, err := insyra.ReadCSV_File("data.csv", false, true)
     if err != nil {
         log.Fatal(err)
     }
+
+    // RawStrings disables inference entirely — every cell stays its original
+    // string (empty cells stay ""). Use for stock IDs ("0050" must not become
+    // int64 50), tax IDs, or exact amounts you parse with a decimal type.
+    raw, err := insyra.ReadCSV_FileWithOptions("stocks.csv", insyra.CSVReadOptions{
+        FirstRowToColNames: true,
+        RawStrings:         true,
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+    _ = raw
 
     // Quick console preview (first N rows)
     insyra.Show("preview", dt, 5)
 }
 ```
 
+### 2b) Sampling, shuffle, and train/test split
+
+Use core sampling methods for ML preprocessing and quick previews. DataTable sampling is row-wise, so columns and row names stay aligned. Use `SamplingOptions{UseSeed: true, Seed: 42}` for reproducible experiments.
+
+```go
+sample := dt.Sample(100, false, insyra.SamplingOptions{UseSeed: true, Seed: 42})
+preview := dt.SampleFrac(0.05, false)
+shuffled := dt.Shuffle()
+train, test := dt.TrainTestSplit(0.8, insyra.SamplingOptions{UseSeed: true, Seed: 42})
+orderedTrain, orderedTest := dt.TrainTestSplit(0.8, insyra.SamplingOptions{PreserveOrder: true})
+
+listSample := dl.Sample(10, false, insyra.SamplingOptions{UseSeed: true, Seed: 42})
+```
+
+### ML model selection
+
+The `ml` package provides seeded `KFold` and `StratifiedKFold` splits, plus
+`CrossValidate` for fitting an `Estimator` independently on each training
+fold. Keep preprocessing inside the estimator's `Fit` function so every fold
+fits it only on its own training rows.
+
+```go
+result, err := ml.CrossValidate(
+    features,
+    target,
+    ml.Estimator{Name: "linear", Fit: ml.FitLinearRegression},
+    5,
+    ml.RMSEMetric{},
+    insyra.SamplingOptions{UseSeed: true, Seed: 42},
+)
+_ = result
+_ = err
+```
+
+Choose the metric explicitly. Use `AccuracyMetric`, `LogLossMetric`,
+`ROCAUCMetric`, or `ConfusionMatrixMetric` for classification, and
+`RMSEMetric`, `MAEMetric`, or `R2Metric` for regression. Cross-validation
+rejects a metric when the fitted model does not implement the required
+`Classifier` or `ProbaModel` capability.
+
 ### 3) Add a derived column with CCL (Excel-like)
 
 ```go
-// Example: classify scores in column A
-err := dt.AddColUsingCCL(
+// Example: classify scores in column A.
+// CCL methods return the (modified) *DataTable for chaining, not an error;
+// check the instance-level Err() after the call.
+dt.AddColUsingCCL(
     "category",
     "IF(A > 90, 'Excellent', IF(A > 70, 'Good', 'Average'))",
 )
-if err != nil {
-    log.Fatal(err)
+if dt.Err() != nil {
+    log.Fatal(dt.Err())
 }
 ```
 
@@ -236,6 +411,20 @@ weighted := dt.GroupBy("region").Aggregate(
 
 Supported `AggregateOp`: `OpSum`, `OpMean`, `OpMedian`, `OpMin`, `OpMax`, `OpCount` (non-nil), `OpCountAll` (group size), `OpStdev`, `OpStdevP`, `OpVar`, `OpVarP`, `OpFirst`, `OpLast`, `OpNUnique`, `OpCustom`. Group order in the result follows the order each key combination is first seen during a single linear scan; `nil` keys form their own group, and `int(1)` and string `"1"` are kept distinct.
 
+### 3c.1) Describe summaries
+
+Use `Describe` when you need a reusable summary table instead of console-only `Summary`.
+
+```go
+desc := dt.Describe(insyra.DescribeOptions{
+    IncludeAll:  true,
+    Percentiles: []float64{0.1, 0.5, 0.9},
+})
+byRegion := dt.GroupBy("region").Describe(insyra.DescribeOptions{IncludeAll: true})
+```
+
+`DataList.Describe()` and `DataTable.Describe()` return `*DataTable`. `GroupBy(...).Describe()` returns one row per group with flattened columns such as `revenue_mean` and `segment_top`. `nil` and `NaN` are missing. Do not assume an `isr` wrapper exists; call the root API.
+
 ### 3d) Pivot / Unpivot (long ↔ wide reshape)
 
 Use `Pivot` to spread the unique values of one column into new column headers (long → wide), and `Unpivot` to do the inverse (wide → long). Both return `(*DataTable, error)`; on failure the returned table is empty and carries the error on its `Err()`, so chained calls remain safe.
@@ -314,8 +503,100 @@ func main() {
 }
 ```
 
+### 7) Reverse-geocode Taiwan coordinates (datafetch)
+
+`datafetch.TWGeocoding` turns `(lat, lng)` into a Taiwan county/town/village via the geocoding.zuola.com reverse API. Reverse-only (no address → coordinate). The free tier is **15 requests/hour per IP**, so prefer the batch methods (which de-dup identical coordinates) plus `NewFileGeocodeCache` for anything non-trivial.
+
+```go
+import (
+    "errors"
+    "github.com/HazelnutParadise/insyra/datafetch"
+)
+
+g, _ := datafetch.TWGeocoding(datafetch.TWGeocodingConfig{
+    Cache: datafetch.NewFileGeocodeCache("geocache.json"),
+})
+
+// Single lookup (typed result)
+res, err := g.Reverse(24.9884079, 121.4598882)
+if errors.Is(err, datafetch.ErrGeocodeNotFound) {
+    // point outside any TW village
+}
+
+// Batch over a DataTable's lat/lng columns -> enriched DataTable + GeocodeStatus column.
+// ReverseTable addresses columns by Excel index ("A","B"); ReverseTableByColName by name.
+enriched, err := g.ReverseTableByColName(dt, "lat", "lng")
+```
+
+On quota exhaustion the batch stops, returns already-resolved rows (rest marked `pending`), and returns a `*datafetch.RateLimitError` (unwraps to `ErrGeocodeRateLimited`; carries `ResetAt`). See `Docs/datafetch.md` for the full API.
+
 ## Engine package (advanced primitives)
 The repo includes an `engine` package that re-exports well-tested internal primitives (see [`engine/`](../../engine) and `engine/README.md).
+
+### Regression predictions
+
+Regression results use the same prediction shape as GLM results. Pass one new
+predictor `DataList` per fitted predictor and request response-scale point
+predictions:
+
+```go
+fit, err := stats.LinearRegression(y, x1, x2)
+predicted, err := fit.Predict(stats.PredictResponse, newX1, newX2)
+```
+
+Polynomial, exponential, and logarithmic results take one predictor list.
+The predictor count and row lengths must match the fit.
+
+### Machine-learning estimator protocol
+
+Use `github.com/HazelnutParadise/insyra/ml` when several fitted `stats` models need one prediction surface. Fit against a named `DataTable` with unique column names; `Model.Predict` matches columns by name, ignores extra columns, and returns an error for a missing fitted feature.
+
+```go
+import "github.com/HazelnutParadise/insyra/ml"
+
+model, err := ml.FitLinearRegression(trainX, trainY)
+predictions, err := model.Predict(testX)
+
+if proba, ok := model.(ml.ProbaModel); ok {
+    classes := proba.Classes()
+    probabilities, err := proba.PredictProba(testX)
+    _ = classes
+    _ = probabilities
+    _ = err
+}
+```
+
+`FitPolynomialRegression`, `FitExponentialRegression`, and `FitLogarithmicRegression` require one feature. `FitLogisticRegression` and `FitKNNClassifier` return `ml.ProbaModel`; logistic `Predict` returns labels and `PredictProba` returns probabilities. `FitPCA` returns an `ml.Transformer`. Poisson and GLM offsets are rejected by the `ml` wrappers because `Model.Predict` cannot receive a new row-wise offset. Existing root scalers and encoders satisfy `ml.Transformer` directly, so no adapter is needed. Use `ml/mltest.RunConformance` to check an external model implementation.
+
+For tabular classification or regression, use `ml.FitDecisionTreeClassifier`
+or `ml.FitDecisionTreeRegressor`. Pass categorical column names through
+`ml.DecisionTreeOptions.CategoricalFeatures`; numeric columns use deterministic
+quantile bins. Missing values are routed by the direction learned at each
+split, while ties, scoring-time missing values, and unseen categories default
+to the left branch. See [the decision-tree reference](references/ml-decision-tree.md)
+for the bounds and precision contract.
+
+Use `ml.NewPipeline` to fit preprocessing and a final `ml.Estimator` as one
+reusable `ml.Model`. Steps run in order and are refitted every time the
+pipeline estimator's `Fit` function is called. Fit the pipeline on the
+training split, then predict the held-out split; fitting preprocessing on the
+full table before splitting leaks test-set information into the parameters.
+Use `ml.NewColumnTransformer` when a fitted transformer must see only named
+columns while other columns pass through unchanged. It preserves pass-through
+columns by position, including unnamed columns, but selected columns must be
+named. Root scalers, encoders, and fitted imputers already satisfy
+`ml.Transformer` and need no adapter. Fitted pipelines preserve the final
+model's classifier, probability, and importance capabilities.
+
+Use `ml.ExportONNX(writer, fittedModel)` or the `ml.Exporter` capability to
+write supported fitted models for Python and other ONNX runtimes. Linear and
+logistic models, decision trees, and pipelines containing root scalers or
+encoders export as one graph. Polynomial, exponential, logarithmic, Poisson,
+GLM, KMeans, KNN, PCA, imputers, and custom transformers are refused before
+the writer is touched. The independent `onnxruntime` round-trip test is
+skipped explicitly when that runtime is unavailable.
+Encoder configurations with `UnknownError`, `UnknownAsNew`, or a fitted nil
+category are refused for the same reason.
 
 Use `engine` when you are building higher-level tooling (agent tools, MCP servers, pipelines) and want reusable building blocks:
 

@@ -6,23 +6,47 @@ import (
 	"strings"
 )
 
+// maxParseDepth bounds the parseExpression↔parsePrimary mutual recursion.
+// Go stack overflow is a fatal error (not a recoverable panic), so over-deep
+// input like "((((..." must be rejected before recursion exhausts the stack.
+// Matches maxEvalDepth: an expression nested deeper than that could never be
+// evaluated anyway.
+const maxParseDepth = 10000
+
 type parser struct {
 	tokens []cclToken
 	pos    int
+	depth  int
 }
 
 // parseExpression parses a CCL expression (no assignment).
 // For expressions like: A + B * C, IF(A > 0, 1, 0)
 func parseExpression(tokens []cclToken) (cclNode, error) {
 	p := &parser{tokens: tokens}
-	return p.parseExpression(0)
+	node, err := p.parseExpression(0)
+	if err != nil {
+		return nil, err
+	}
+	// Require the whole input to be consumed; otherwise trailing tokens (e.g.
+	// "1 2 3", "5 * 3 garbage") would be silently dropped and yield wrong results.
+	if p.current().typ != tEOF {
+		return nil, fmt.Errorf("unexpected token %q at position %d", p.current().value, p.pos)
+	}
+	return node, nil
 }
 
 // parseStatement parses a single statement that may include assignment
 // Returns the parsed node which can be either an expression or an assignment
 func parseStatement(tokens []cclToken) (cclNode, error) {
 	p := &parser{tokens: tokens}
-	return p.parseStatement()
+	node, err := p.parseStatement()
+	if err != nil {
+		return nil, err
+	}
+	if p.current().typ != tEOF {
+		return nil, fmt.Errorf("unexpected token %q at position %d", p.current().value, p.pos)
+	}
+	return node, nil
 }
 
 // parseStatement handles both assignments and expressions
@@ -114,19 +138,23 @@ func (p *parser) parseExpression(precedence int) (cclNode, error) {
 		return nil, err
 	}
 
-	// 處理連續比較運算，例如 1 < A <= B
+	// 處理連續比較運算，例如 1 < A <= B。建構後不直接返回，而是把結果存入 left，
+	// 讓下方的一般運算子迴圈接手更低優先級的 && / ||（例如 (A>15 && B>10)）。
+	// 先前這裡直接 return，導致比較之後的 && / || 未被處理；配合括號的嚴格檢查
+	// 會誤報 "expected ')'"。
 	tok := p.current()
 	if tok.typ == tOPERATOR && isComparisonOperator(tok.value) && getPrecedence(tok.value) >= precedence {
-		// 開始建構連續比較
 		ops := []string{}
 		values := []cclNode{left} // 第一個值已經解析過了
 
 		for p.current().typ == tOPERATOR && isComparisonOperator(p.current().value) && getPrecedence(p.current().value) >= precedence {
-			ops = append(ops, p.current().value)
+			op := p.current().value
+			ops = append(ops, op)
 			p.advance()
 
-			// 解析右側運算元
-			nextValue, err := p.parsePrimary()
+			// 解析右側運算元為「比較優先級以上」的完整運算式，讓算術先綁定
+			// （例如 1 < A + 100 < 5 的 A + 100 需整體參與比較，而非只取 A）。
+			nextValue, err := p.parseExpression(getPrecedence(op) + 1)
 			if err != nil {
 				return nil, err
 			}
@@ -138,33 +166,72 @@ func (p *parser) parseExpression(precedence int) (cclNode, error) {
 			}
 		}
 
-		// 如果至少有兩個值和一個運算符，則創建連續比較節點
-		if len(values) > 1 && len(ops) > 0 {
-			// 如果只有一個運算符，則使用普通的二元運算節點
-			if len(ops) == 1 && len(values) == 2 {
-				return &cclBinaryOpNode{op: ops[0], left: values[0], right: values[1]}, nil
-			}
-			// 否則創建一個連續比較節點
-			return &cclChainedComparisonNode{ops: ops, values: values}, nil
-		}
-	} else {
-		// 常規的二元運算表達式處理
-		for {
-			tok := p.current()
-			if (tok.typ != tOPERATOR && tok.typ != tDOT && tok.typ != tCOLON) || getPrecedence(tok.value) < precedence {
-				break
-			}
-			op := tok.value
-			p.advance()
-			right, err := p.parseExpression(getPrecedence(op) + 1)
-			if err != nil {
-				return nil, err
-			}
-			left = &cclBinaryOpNode{op: op, left: left, right: right}
+		if len(ops) == 1 && len(values) == 2 {
+			left = &cclBinaryOpNode{op: ops[0], left: values[0], right: values[1]}
+		} else {
+			left = &cclChainedComparisonNode{ops: ops, values: values}
 		}
 	}
 
-	return left, nil
+	// 常規的二元運算優先級攀升迴圈（含比較與 && / ||）。比較之後在此接續處理
+	// 更低優先級的邏輯運算子。
+	// 連續的一般運算子會累積成攤平的左摺疊鏈（cclFoldChainNode），讓長鏈
+	// （如 1+1+1+...）產生 O(1) 深度的 AST 而不是 O(n) 深的斜樹。
+	// '.' 與 ':' 的求值是 node-level 特殊處理（evaluateRowAccess /
+	// evaluateRange，IsRowDependent 也對 ':' 做結構判斷），必須維持二元
+	// 節點，遇到時先 flush 既有累積再照舊包裝。
+	// 累積採延遲配置：0 或 1 個運算子只用純量暫存（常見的短運算式零額外
+	// 配置），第二個一般運算子出現才建立攤平鏈的 slices。hasPending 與
+	// foldOps != nil 互斥；foldOps 一旦建立必含至少兩組。
+	var (
+		pendingOp      string
+		pendingOperand cclNode
+		hasPending     bool
+		foldOps        []string
+		foldOperands   []cclNode
+	)
+	for {
+		tok := p.current()
+		if (tok.typ != tOPERATOR && tok.typ != tDOT && tok.typ != tCOLON) || getPrecedence(tok.value) < precedence {
+			break
+		}
+		op := tok.value
+		p.advance()
+		right, err := p.parseExpression(getPrecedence(op) + 1)
+		if err != nil {
+			return nil, err
+		}
+		switch {
+		case op == "." || op == ":":
+			left = materializeFold(left, pendingOp, pendingOperand, hasPending, foldOps, foldOperands)
+			hasPending, foldOps, foldOperands = false, nil, nil
+			left = &cclBinaryOpNode{op: op, left: left, right: right}
+		case foldOps != nil:
+			foldOps = append(foldOps, op)
+			foldOperands = append(foldOperands, right)
+		case hasPending:
+			foldOps = append(make([]string, 0, 4), pendingOp, op)
+			foldOperands = append(make([]cclNode, 0, 4), pendingOperand, right)
+			hasPending = false
+		default:
+			pendingOp, pendingOperand, hasPending = op, right, true
+		}
+	}
+
+	return materializeFold(left, pendingOp, pendingOperand, hasPending, foldOps, foldOperands), nil
+}
+
+// materializeFold 把累積中的運算子鏈實體化：無累積返回原節點、單一運算子
+// 維持既有的 cclBinaryOpNode 形狀（常見情況零改變）、兩個以上建立攤平的
+// 摺疊鏈節點（cclFoldChainNode）。
+func materializeFold(left cclNode, pendingOp string, pendingOperand cclNode, hasPending bool, ops []string, operands []cclNode) cclNode {
+	if ops != nil {
+		return &cclFoldChainNode{init: left, ops: ops, operands: operands}
+	}
+	if hasPending {
+		return &cclBinaryOpNode{op: pendingOp, left: left, right: pendingOperand}
+	}
+	return left
 }
 
 // 檢查是否為比較運算符
@@ -178,6 +245,14 @@ func isComparisonOperator(op string) bool {
 }
 
 func (p *parser) parsePrimary() (cclNode, error) {
+	// 深度保護：所有解析遞迴循環（括號、函式呼叫、一元運算）都必經此處，
+	// 在這裡計數即可涵蓋全部路徑。
+	p.depth++
+	defer func() { p.depth-- }()
+	if p.depth > maxParseDepth {
+		return nil, fmt.Errorf("expression too deeply nested (max %d levels)", maxParseDepth)
+	}
+
 	tok := p.current()
 	switch tok.typ {
 	case tNUMBER:
@@ -216,9 +291,10 @@ func (p *parser) parsePrimary() (cclNode, error) {
 					p.advance()
 				}
 			}
-			if p.current().typ == tRPAREN {
-				p.advance()
+			if p.current().typ != tRPAREN {
+				return nil, fmt.Errorf("expected ')' to close call to %s", name)
 			}
+			p.advance()
 			return &funcCallNode{name: name, args: args}, nil
 		}
 		return &cclIdentifierNode{name: name}, nil
@@ -236,9 +312,10 @@ func (p *parser) parsePrimary() (cclNode, error) {
 		if err != nil {
 			return nil, err
 		}
-		if p.current().typ == tRPAREN {
-			p.advance()
+		if p.current().typ != tRPAREN {
+			return nil, fmt.Errorf("expected ')' at position %d", p.pos)
 		}
+		p.advance()
 		return expr, nil
 	case tOPERATOR:
 		// Handle unary operators

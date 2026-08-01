@@ -1,10 +1,53 @@
 package insyra
 
 import (
+	"fmt"
 	"os"
 
+	"github.com/HazelnutParadise/insyra/internal/utils"
 	json "github.com/goccy/go-json"
 )
+
+// buildJSONRows builds the row-oriented representation used by the ToJSON
+// family directly from the ordered column slice, so columns that share a name
+// are not silently dropped (dt.Data collapses duplicate names into one map
+// entry). Duplicate keys are disambiguated with a numeric suffix.
+func (dt *DataTable) buildJSONRows(useColNames bool) []map[string]any {
+	var rows []map[string]any
+	dt.AtomicDo(func(dt *DataTable) {
+		n := len(dt.columns)
+		keys := make([]string, n)
+		used := make(map[string]int, n)
+		for i, col := range dt.columns {
+			key := ""
+			if useColNames && col.name != "" {
+				key = col.name
+			} else {
+				key, _ = utils.CalcColIndex(i)
+			}
+			base := key
+			for suffix := 2; used[key] > 0; suffix++ {
+				key = fmt.Sprintf("%s_%d", base, suffix)
+			}
+			used[key] = 1
+			keys[i] = key
+		}
+		maxLen := dt.getMaxColLength()
+		rows = make([]map[string]any, maxLen)
+		for r := 0; r < maxLen; r++ {
+			row := make(map[string]any, n)
+			for i, col := range dt.columns {
+				if r < len(col.data) {
+					row[keys[i]] = col.data[r]
+				} else {
+					row[keys[i]] = nil
+				}
+			}
+			rows[r] = row
+		}
+	})
+	return rows
+}
 
 // ToJSON converts the DataTable to JSON format and writes it to the provided file path.
 // The function accepts two parameters:
@@ -13,33 +56,7 @@ import (
 // Every row will be a JSON object with the column names as keys and the row values as values.
 // The function returns an error if the file cannot be created or the JSON data cannot be written to the file.
 func (dt *DataTable) ToJSON(filePath string, useColNames bool) error {
-	data := dt.Data(useColNames)
-	columns := []string{}
-	for col := range data {
-		columns = append(columns, col)
-	}
-
-	rows := []map[string]any{}
-
-	maxColLength := 0
-	for _, colData := range data {
-		if len(colData) > maxColLength {
-			maxColLength = len(colData)
-		}
-	}
-
-	for i := 0; i < maxColLength; i++ {
-		row := make(map[string]any)
-		for _, col := range columns {
-			key := col
-			if i < len(data[col]) {
-				row[key] = data[col][i]
-			} else {
-				row[key] = nil
-			}
-		}
-		rows = append(rows, row)
-	}
+	rows := dt.buildJSONRows(useColNames)
 
 	jsonData, err := json.MarshalIndent(rows, "", "  ")
 	if err != nil {
@@ -66,33 +83,7 @@ func (dt *DataTable) ToJSON(filePath string, useColNames bool) error {
 // Every row will be a JSON object with the column names as keys and the row values as values.
 // The function returns the JSON data as a byte slice.
 func (dt *DataTable) ToJSON_Bytes(useColNames bool) []byte {
-	data := dt.Data(useColNames)
-	columns := []string{}
-	for col := range data {
-		columns = append(columns, col)
-	}
-
-	rows := []map[string]any{}
-
-	maxColLength := 0
-	for _, colData := range data {
-		if len(colData) > maxColLength {
-			maxColLength = len(colData)
-		}
-	}
-
-	for i := range maxColLength {
-		row := make(map[string]any)
-		for _, col := range columns {
-			key := col
-			if i < len(data[col]) {
-				row[key] = data[col][i]
-			} else {
-				row[key] = nil
-			}
-		}
-		rows = append(rows, row)
-	}
+	rows := dt.buildJSONRows(useColNames)
 
 	jsonData, err := json.MarshalIndent(rows, "", "  ")
 	if err != nil {

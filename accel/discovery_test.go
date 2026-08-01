@@ -181,8 +181,7 @@ func TestOpenDiscoversBuiltinStubDeviceFromEnv(t *testing.T) {
 func TestBuiltinDiscovererUsesNativeProbeOverrideBeforeStub(t *testing.T) {
 	ResetDiscoverersForTest()
 	t.Cleanup(ResetDiscoverersForTest)
-	resetBuiltinProbeOverridesForTest()
-	t.Cleanup(resetBuiltinProbeOverridesForTest)
+	isolateBuiltinProbes(t)
 	t.Setenv("INSYRA_ACCEL_STUB_CUDA", "1")
 
 	setBuiltinProbeOverrideForTest(
@@ -234,6 +233,30 @@ func TestBuiltinDiscovererUsesNativeProbeOverrideBeforeStub(t *testing.T) {
 	}
 }
 
+// Regression: tests that override only some builtin backends used to pick up
+// whatever GPU the host actually had, so every device count on a Mac came out
+// one too high. isolateBuiltinProbes must leave nothing discoverable.
+func TestIsolatedBuiltinProbesFindNoHostDevices(t *testing.T) {
+	ResetDiscoverersForTest()
+	t.Cleanup(ResetDiscoverersForTest)
+	isolateBuiltinProbes(t)
+
+	session, err := Open(Config{})
+	if err != nil {
+		t.Fatalf("open failed: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = session.Close()
+	})
+
+	if devices := session.Devices(); len(devices) != 0 {
+		t.Fatalf("expected no devices with every builtin probe isolated, got %d: %+v", len(devices), devices)
+	}
+	if got := session.Report().Metrics["devices.discovered"]; got != 0 {
+		t.Fatalf("expected zero discovered devices, got %v", got)
+	}
+}
+
 func TestOpenStrictGPUFailsWithoutAcceleratorButReturnsSessionReport(t *testing.T) {
 	disableNativeProbes(t)
 	ResetDiscoverersForTest()
@@ -265,8 +288,7 @@ func TestOpenStrictGPUFailsWithoutAcceleratorButReturnsSessionReport(t *testing.
 func TestDiscoveryReportPopulatesCoreMetrics(t *testing.T) {
 	ResetDiscoverersForTest()
 	t.Cleanup(ResetDiscoverersForTest)
-	resetBuiltinProbeOverridesForTest()
-	t.Cleanup(resetBuiltinProbeOverridesForTest)
+	isolateBuiltinProbes(t)
 	setBuiltinProbeOverrideForTest(
 		BackendCUDA,
 		func(cfg Config) ([]Device, error) {

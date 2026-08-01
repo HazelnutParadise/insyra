@@ -2,10 +2,13 @@ package commands
 
 import (
 	"bytes"
+	"context"
 	"strings"
 	"testing"
+	"time"
 
 	insyra "github.com/HazelnutParadise/insyra"
+	accelpkg "github.com/HazelnutParadise/insyra/accel"
 )
 
 func setupCommandHome(t *testing.T) {
@@ -142,7 +145,34 @@ func TestRunAccelCommandRunPrintsShardPlanSummary(t *testing.T) {
 	}
 }
 
-func TestRunAccelCommandRunExecutesDataListVariable(t *testing.T) {
+// cliSumExecutor stands in for a real GPU backend so the CLI's execution
+// output can be tested on a machine with no device.
+type cliSumExecutor struct{}
+
+func (cliSumExecutor) Name() string { return "cli-fake" }
+
+func (cliSumExecutor) Execute(_ context.Context, req accelpkg.ExecuteRequest) (accelpkg.ExecuteResponse, error) {
+	sums := make(map[string]float64, len(req.Columns))
+	bytes := uint64(0)
+	for _, column := range req.Columns {
+		var sum float64
+		for _, value := range column.Values {
+			sum += float64(value)
+		}
+		sums[column.Name] = sum
+		bytes += uint64(len(column.Values) * 4)
+	}
+	return accelpkg.ExecuteResponse{
+		Reductions:    sums,
+		Transfer:      time.Millisecond,
+		Dispatch:      100 * time.Microsecond,
+		Readback:      500 * time.Microsecond,
+		BytesUploaded: bytes,
+	}, nil
+}
+
+func accelRunContext(t *testing.T) (*ExecContext, *bytes.Buffer) {
+	t.Helper()
 	setupCommandHome(t)
 	t.Setenv("INSYRA_ACCEL_STUB_CUDA", "1")
 	t.Setenv("INSYRA_ACCEL_STUB_WEBGPU", "1")
@@ -151,50 +181,13 @@ func TestRunAccelCommandRunExecutesDataListVariable(t *testing.T) {
 	for i := range values {
 		values[i] = i + 1
 	}
-
 	output := &bytes.Buffer{}
-	ctx := &ExecContext{
+	return &ExecContext{
 		Vars: map[string]any{
 			"numbers": insyra.NewDataList(values...).SetName("numbers"),
 		},
 		Output: output,
-	}
-
-	if err := runAccelCommand(ctx, []string{"run", "numbers", "--mode", "auto"}); err != nil {
-		t.Fatalf("runAccelCommand failed: %v", err)
-	}
-
-	rendered := output.String()
-	if !strings.Contains(rendered, "executed=true") {
-		t.Fatalf("expected executed marker in output, got %q", rendered)
-	}
-	if !strings.Contains(rendered, "var=numbers") {
-		t.Fatalf("expected variable name in output, got %q", rendered)
-	}
-	if !strings.Contains(rendered, "participants=2") {
-		t.Fatalf("expected participant count in output, got %q", rendered)
-	}
-	if !strings.Contains(rendered, "allocator=ledger") {
-		t.Fatalf("expected allocator in output, got %q", rendered)
-	}
-	if !strings.Contains(rendered, "bytes_moved=") {
-		t.Fatalf("expected bytes moved in output, got %q", rendered)
-	}
-	if strings.Contains(rendered, "planning_only=true") {
-		t.Fatalf("did not expect planning-only marker in execution output, got %q", rendered)
-	}
-}
-
-func TestRunAccelCommandRunRequiresVariableName(t *testing.T) {
-	setupCommandHome(t)
-
-	output := &bytes.Buffer{}
-	ctx := &ExecContext{Vars: map[string]any{}, Output: output}
-
-	err := runAccelCommand(ctx, []string{"run", "--mode", "auto"})
-	if err == nil {
-		t.Fatal("expected accel run without variable name to fail")
-	}
+	}, output
 }
 
 func TestAccelCobraCommandAcceptsModeFlag(t *testing.T) {

@@ -103,7 +103,7 @@ func (dl *DataList) Append(values ...any) *DataList {
 	dl.AtomicDo(func(dl *DataList) {
 		// Append data and update timestamp
 		dl.data = append(dl.data, values...)
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return dl
 }
@@ -111,22 +111,32 @@ func (dl *DataList) Append(values ...any) *DataList {
 // Concat creates a new DataList by concatenating another DataList to the current DataList.
 func (dl *DataList) Concat(other IDataList) *DataList {
 	result := NewDataList()
+	// Snapshot `other` under ITS OWN actor lock first. Reading other.data inside
+	// dl's actor would run inline without locking other (all DataLists share one
+	// re-entrancy group, so the nested AtomicDo takes the inline trust-zone path),
+	// racing any concurrent mutation of other. A top-level AtomicDo on other is
+	// not nested in any actor, so it acquires other's mutex properly.
+	var otherData []any
+	other.AtomicDo(func(other *DataList) {
+		otherData = append(otherData, other.data...)
+	})
 	dl.AtomicDo(func(dl *DataList) {
-		other.AtomicDo(func(other *DataList) {
-			result.data = append(result.data, dl.data...)
-			result.data = append(result.data, other.data...)
-		})
+		result.data = append(result.data, dl.data...)
+		result.data = append(result.data, otherData...)
 	})
 	return result
 }
 
 // AppendDataList appends another DataList to the current DataList.
 func (dl *DataList) AppendDataList(other IDataList) *DataList {
+	// Snapshot other under its own lock before entering dl's actor (see Concat).
+	var otherData []any
+	other.AtomicDo(func(other *DataList) {
+		otherData = append(otherData, other.data...)
+	})
 	dl.AtomicDo(func(dl *DataList) {
-		other.AtomicDo(func(other *DataList) {
-			dl.data = append(dl.data, other.data...)
-		})
-		go dl.updateTimestamp()
+		dl.data = append(dl.data, otherData...)
+		dl.updateTimestamp()
 	})
 	return dl
 }
@@ -197,9 +207,10 @@ func (dl *DataList) Update(index int, newValue any) *DataList {
 		}
 		if index < 0 || index >= len(dl.data) {
 			dl.warn("ReplaceAtIndex", "Index %d out of bounds", index)
+			return
 		}
 		dl.data[index] = newValue
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return dl
 }
@@ -227,7 +238,7 @@ func (dl *DataList) InsertAt(index int, value any) *DataList {
 			}
 		}
 
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return dl
 }
@@ -348,11 +359,11 @@ func (dl *DataList) ReplaceLast(oldValue, newValue any) *DataList {
 		for i := len(dl.data) - 1; i >= 0; i-- {
 			if !isOldValueNaN && dl.data[i] == oldValue {
 				dl.data[i] = newValue
-				go dl.updateTimestamp()
+				dl.updateTimestamp()
 				return
 			} else if val, ok := dl.data[i].(float64); ok && math.IsNaN(val) {
 				dl.data[i] = newValue
-				go dl.updateTimestamp()
+				dl.updateTimestamp()
 				return
 			}
 		}
@@ -381,7 +392,12 @@ func (dl *DataList) ReplaceOutliers(stdDevs float64, replacement float64) *DataL
 		threshold := stdDevs * stddev
 
 		for i, v := range dl.data {
-			val := conv.ParseF64(v)
+			val, ok := ToFloat64Safe(v)
+			if !ok {
+				// Non-numeric elements cannot be numeric outliers; leave them
+				// unchanged instead of panicking on conversion.
+				continue
+			}
 			if math.Abs(val-mean) > threshold {
 				dl.data[i] = replacement
 			}
@@ -400,9 +416,7 @@ func (dl *DataList) ReplaceNaNsWith(value any) *DataList {
 
 // ReplaceNilsWith replaces all nil values in the DataList with the specified value.
 func (dl *DataList) ReplaceNilsWith(value any) *DataList {
-	defer func() {
-		go dl.updateTimestamp()
-	}()
+	defer dl.updateTimestamp()
 	dl.AtomicDo(func(dl *DataList) {
 		for i, v := range dl.data {
 			if v == nil {
@@ -434,7 +448,7 @@ func (dl *DataList) Pop() any {
 			return
 		}
 		result = n
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return result
 }
@@ -446,12 +460,16 @@ func (dl *DataList) Drop(index int) *DataList {
 		if index < 0 {
 			index += len(dl.data)
 		}
-		if index >= len(dl.data) {
+		// Guard both bounds: a sufficiently negative index (|index| > len) is
+		// still negative after the adjustment above and must be rejected before
+		// slicing, otherwise dl.data[:index] panics. Valid negatives (-1..-len)
+		// have already been mapped into range and are unaffected.
+		if index < 0 || index >= len(dl.data) {
 			dl.warn("Drop", "Index out of bounds, returning")
 			return
 		}
 		dl.data = append(dl.data[:index], dl.data[index+1:]...)
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return dl
 }
@@ -545,7 +563,7 @@ func (dl *DataList) DropAll(toDrop ...any) *DataList {
 
 		// 更新 DataList
 		dl.data = finalResult
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return dl
 }
@@ -571,7 +589,7 @@ func (dl *DataList) DropIfContains(substring string) *DataList {
 
 		// 將新的數據賦值回 dl.data
 		dl.data = newData
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return dl
 }
@@ -580,7 +598,7 @@ func (dl *DataList) DropIfContains(substring string) *DataList {
 func (dl *DataList) Clear() *DataList {
 	dl.AtomicDo(func(dl *DataList) {
 		dl.data = []any{}
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return dl
 }
@@ -648,7 +666,7 @@ func (dl *DataList) ClearStrings() *DataList {
 
 		// 更新 DataList
 		dl.data = finalResult
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return dl
 } // ++++ 此處之後尚未提升性能 ++++
@@ -670,16 +688,14 @@ func (dl *DataList) ClearNumbers() *DataList {
 		}
 
 		dl.data = filteredData
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return dl
 }
 
 // ClearNaNs removes all NaN values from the DataList and updates the timestamp.
 func (dl *DataList) ClearNaNs() *DataList {
-	defer func() {
-		go dl.updateTimestamp()
-	}()
+	defer dl.updateTimestamp()
 	dl.AtomicDo(func(dl *DataList) {
 		for i := len(dl.data) - 1; i >= 0; i-- {
 			if v, ok := dl.data[i].(float64); ok && math.IsNaN(v) {
@@ -692,9 +708,7 @@ func (dl *DataList) ClearNaNs() *DataList {
 
 // ClearNils removes all nil values from the DataList and updates the timestamp.
 func (dl *DataList) ClearNils() *DataList {
-	defer func() {
-		go dl.updateTimestamp()
-	}()
+	defer dl.updateTimestamp()
 	dl.AtomicDo(func(dl *DataList) {
 		for i := len(dl.data) - 1; i >= 0; i-- {
 			if dl.data[i] == nil {
@@ -707,9 +721,7 @@ func (dl *DataList) ClearNils() *DataList {
 
 // ClearNilsAndNaNs removes all nil and NaN values from the DataList and updates the timestamp.
 func (dl *DataList) ClearNilsAndNaNs() *DataList {
-	defer func() {
-		go dl.updateTimestamp()
-	}()
+	defer dl.updateTimestamp()
 	dl.AtomicDo(func(dl *DataList) {
 		dl.ClearNaNs().ClearNils()
 	})
@@ -724,7 +736,7 @@ func (dl *DataList) ClearOutliers(stdDevs float64) *DataList {
 		if r != nil {
 			dl.warn("ClearOutliers", "Data types cannot be compared")
 		}
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	}()
 	dl.AtomicDo(func(dl *DataList) {
 		mean := dl.Mean()
@@ -757,7 +769,7 @@ func (dl *DataList) Normalize() *DataList {
 			dl.warn("Normalize", "Data types cannot be compared, returning nil")
 		}
 
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	}()
 	isFailed := false
 	dl.AtomicDo(func(dl *DataList) {
@@ -795,13 +807,17 @@ func (dl *DataList) Standardize() *DataList {
 			vfloat := conv.ParseF64(v)
 			dl.data[i] = (vfloat - mean) / stddev
 		}
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return dl
 }
 
 // FillNaNWithMean replaces all NaN values in the DataList with the mean value.
 // Directly modifies the DataList.
+//
+// Deprecated: use FillWithMean instead, which also fills nil (not just NaN),
+// leaves non-numeric values untouched, and matches the other Fill* imputation
+// methods.
 func (dl *DataList) FillNaNWithMean() *DataList {
 	defer func() {
 		r := recover()
@@ -821,7 +837,7 @@ func (dl *DataList) FillNaNWithMean() *DataList {
 				dl.data[i] = vfloat
 			}
 		}
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return dl
 }
@@ -841,7 +857,13 @@ func (dl *DataList) MovingAverage(windowSize int) *DataList {
 		for i := range movingAverageData {
 			windowSum := 0.0
 			for j := range windowSize {
-				windowSum += dl.data[i+j].(float64)
+				v, ok := ToFloat64Safe(dl.data[i+j])
+				if !ok {
+					dl.warn("MovingAverage", "Element %v is not numeric, aborting", dl.data[i+j])
+					isFailed = true
+					return
+				}
+				windowSum += v
 			}
 			movingAverageData[i] = windowSum / float64(windowSize)
 		}
@@ -868,8 +890,16 @@ func (dl *DataList) WeightedMovingAverage(windowSize int, weights any) *DataList
 
 		// 計算權重總和，避免直接除以 windowSize
 		weightsSum := 0.0
-		for _, w := range weightsSlice {
-			weightsSum += w.(float64)
+		weightVals := make([]float64, len(weightsSlice))
+		for idx, w := range weightsSlice {
+			wf, ok := ToFloat64Safe(w)
+			if !ok {
+				dl.warn("WeightedMovingAverage", "Weight %v is not numeric, aborting", w)
+				isFailed = true
+				return
+			}
+			weightVals[idx] = wf
+			weightsSum += wf
 		}
 
 		movingAvgData = make([]float64, len(dl.data)-windowSize+1)
@@ -877,7 +907,13 @@ func (dl *DataList) WeightedMovingAverage(windowSize int, weights any) *DataList
 			window := dl.data[i : i+windowSize]
 			sum := 0.0
 			for j := 0; j < windowSize; j++ {
-				sum += window[j].(float64) * weightsSlice[j].(float64)
+				wv, ok := ToFloat64Safe(window[j])
+				if !ok {
+					dl.warn("WeightedMovingAverage", "Element %v is not numeric, aborting", window[j])
+					isFailed = true
+					return
+				}
+				sum += wv * weightVals[j]
 			}
 			movingAvgData[i] = sum / weightsSum // 使用權重總和
 		}
@@ -899,6 +935,10 @@ func (dl *DataList) ExponentialSmoothing(alpha float64) *DataList {
 
 	var smoothedData []float64
 	dl.AtomicDo(func(dl *DataList) {
+		if dl.Len() == 0 {
+			dl.warn("ExponentialSmoothing", "DataList is empty")
+			return
+		}
 		floatData := dl.ToF64Slice()
 		smoothedData = make([]float64, dl.Len())
 		smoothedData[0] = floatData[0] // 使用初始值作為第一個平滑值
@@ -919,6 +959,10 @@ func (dl *DataList) DoubleExponentialSmoothing(alpha, beta float64) *DataList {
 	}
 	var smoothedData []float64
 	dl.AtomicDo(func(dl *DataList) {
+		if dl.Len() == 0 {
+			dl.warn("DoubleExponentialSmoothing", "DataList is empty")
+			return
+		}
 		floatData := dl.ToF64Slice()
 		smoothedData = make([]float64, dl.Len())
 		trend := 0.0
@@ -996,7 +1040,7 @@ func (dl *DataList) Sort(ascending ...bool) *DataList {
 			return algorithms.CompareAny(a, b) * order
 		})
 
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return dl
 }
@@ -1053,7 +1097,7 @@ func (dl *DataList) Rank(ascending ...bool) *DataList {
 func (dl *DataList) Reverse() *DataList {
 	dl.AtomicDo(func(dl *DataList) {
 		sliceutil.Reverse(dl.data)
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return dl
 }
@@ -1066,7 +1110,7 @@ func (dl *DataList) Upper() *DataList {
 				dl.data[i] = strings.ToUpper(str)
 			}
 		}
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return dl
 }
@@ -1079,7 +1123,7 @@ func (dl *DataList) Lower() *DataList {
 				dl.data[i] = strings.ToLower(str)
 			}
 		}
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return dl
 }
@@ -1092,7 +1136,7 @@ func (dl *DataList) Capitalize() *DataList {
 				dl.data[i] = cases.Title(language.English, cases.NoLower).String(strings.ToLower(str))
 			}
 		}
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return dl
 }
@@ -1657,9 +1701,37 @@ func (dl *DataList) Range() float64 {
 	return result
 }
 
+// quantileType7 returns the p-quantile (p in [0,1]) of an ascending-sorted,
+// non-empty slice using R's type-7 method (the R / numpy / pandas default):
+// linear interpolation at position h = p*(n-1). This is the single quantile
+// definition shared by Quartile, Percentile and the RobustScaler so they never
+// disagree with each other or with Describe.
+func quantileType7(sorted []float64, p float64) float64 {
+	n := len(sorted)
+	if n == 0 {
+		return math.NaN()
+	}
+	if n == 1 {
+		return sorted[0]
+	}
+	h := p * float64(n-1)
+	lower := int(math.Floor(h))
+	upper := int(math.Ceil(h))
+	if lower < 0 {
+		lower = 0
+	}
+	if upper >= n {
+		upper = n - 1
+	}
+	if lower == upper {
+		return sorted[lower]
+	}
+	return sorted[lower] + (h-float64(lower))*(sorted[upper]-sorted[lower])
+}
+
 // Quartile calculates the quartile based on the input value (1 to 3).
 // 1 corresponds to the first quartile (Q1), 2 to the median (Q2), and 3 to the third quartile (Q3).
-// This implementation uses percentiles to compute quartiles.
+// Uses R's type-7 quantile (the R / numpy / pandas default), matching Percentile.
 func (dl *DataList) Quartile(q int) float64 {
 	var result float64
 	dl.AtomicDo(func(dl *DataList) {
@@ -1694,10 +1766,7 @@ func (dl *DataList) Quartile(q int) float64 {
 		// Sort the data
 		sort.Float64s(numericData)
 
-		n := len(numericData)
 		var p float64
-
-		// Set the percentile based on the quartile
 		switch q {
 		case 1:
 			p = 0.25
@@ -1707,40 +1776,9 @@ func (dl *DataList) Quartile(q int) float64 {
 			p = 0.75
 		}
 
-		// Calculate the position using the percentile
-		pos := p * float64(n+1)
-
-		// Adjust position if it is outside the range
-		if pos < 1.0 {
-			pos = 1.0
-		} else if pos > float64(n) {
-			pos = float64(n)
-		}
-
-		// Convert position to indices
-		lowerIndex := int(math.Floor(pos)) - 1 // Subtract 1 for zero-based index
-		upperIndex := int(math.Ceil(pos)) - 1
-
-		// Ensure indices are within bounds
-		if lowerIndex < 0 {
-			lowerIndex = 0
-		}
-		if upperIndex >= n {
-			upperIndex = n - 1
-		}
-
-		// Handle the case where the position is exactly an integer
-		if lowerIndex == upperIndex {
-			result = numericData[lowerIndex]
-			return
-		}
-
-		// Interpolate between the lower and upper bounds
-		lowerValue := numericData[lowerIndex]
-		upperValue := numericData[upperIndex]
-		fraction := pos - math.Floor(pos)
-
-		result = lowerValue + fraction*(upperValue-lowerValue)
+		// Unified type-7 quantile so Quartile agrees with Percentile / Describe /
+		// RobustScaler. numericData is already sorted above.
+		result = quantileType7(numericData, p)
 	})
 	return result
 }
@@ -1809,46 +1847,20 @@ func (dl *DataList) Percentile(p float64) float64 {
 		// Sort the data
 		sort.Float64s(numericData)
 
-		n := len(numericData)
-		if n == 1 {
-			result = numericData[0]
-			return
-		}
-
-		// Calculate the position using R's type=7 method
-		p /= 100.0
-		h := p*(float64(n)-1) + 1
-
-		// Adjust position for zero-based index
-		h -= 1
-
-		lowerIndex := int(math.Floor(h))
-		upperIndex := int(math.Ceil(h))
-
-		// Ensure indices are within bounds
-		if lowerIndex < 0 {
-			lowerIndex = 0
-		}
-		if upperIndex >= n {
-			upperIndex = n - 1
-		}
-
-		lowerValue := numericData[lowerIndex]
-		upperValue := numericData[upperIndex]
-
-		if lowerIndex == upperIndex {
-			result = lowerValue
-			return
-		}
-
-		// Interpolate between the lower and upper values
-		fraction := h - float64(lowerIndex)
-		result = lowerValue + fraction*(upperValue-lowerValue)
+		// Unified type-7 quantile (see quantileType7): the R / numpy / pandas
+		// default, shared with Quartile so the two never disagree.
+		result = quantileType7(numericData, p/100.0)
 	})
 	return result
 }
 
-// Difference calculates the differences between adjacent elements in the DataList.
+// Difference calculates the differences between adjacent elements in the
+// DataList. The output is one element shorter than the input
+// (out[i] = in[i+1] - in[i]).
+//
+// For column-aligned use (same length as the input, leading nils) prefer
+// Diff(1) — it preserves length so the result can sit alongside other
+// columns in a DataTable. Difference is retained for backwards compatibility.
 func (dl *DataList) Difference() *DataList {
 	var result *DataList
 	dl.AtomicDo(func(dl *DataList) {
@@ -1879,22 +1891,26 @@ func (dl *DataList) Difference() *DataList {
 // IsEqualTo checks if the data of the DataList is equal to another DataList.
 func (dl *DataList) IsEqualTo(anotherDl *DataList) bool {
 	var result bool
+	// Snapshot anotherDl under its own lock first, then compare against dl's live
+	// data inside dl's actor (see Concat for why the nested pattern would race).
+	var otherData []any
+	anotherDl.AtomicDo(func(anotherDl *DataList) {
+		otherData = append(otherData, anotherDl.data...)
+	})
 	dl.AtomicDo(func(dl *DataList) {
-		anotherDl.AtomicDo(func(anotherDl *DataList) {
-			if len(dl.data) != len(anotherDl.data) {
+		if len(dl.data) != len(otherData) {
+			result = false
+			return
+		}
+
+		for i, v := range dl.data {
+			if v != otherData[i] {
 				result = false
 				return
 			}
+		}
 
-			for i, v := range dl.data {
-				if v != anotherDl.data[i] {
-					result = false
-					return
-				}
-			}
-
-			result = true
-		})
+		result = true
 	})
 	return result
 }
@@ -1902,44 +1918,54 @@ func (dl *DataList) IsEqualTo(anotherDl *DataList) bool {
 // IsTheSameAs checks if the DataList is fully the same as another DataList.
 // It checks for equality in name, data, creation timestamp, and last modified timestamp.
 func (dl *DataList) IsTheSameAs(anotherDl *DataList) bool {
+	if dl == anotherDl {
+		return true
+	}
+	if anotherDl == nil {
+		dl.AtomicDo(func(dl *DataList) {
+			dl.warn("IsTheSameAs", "Another DataList is nil, returning false")
+		})
+		return false
+	}
+
+	// Snapshot anotherDl's fields under its own lock before entering dl's actor
+	// (see Concat for why the nested pattern would race on anotherDl).
+	var otherData []any
+	var otherName string
+	var otherCreation int64
+	var otherLastModified int64
+	anotherDl.AtomicDo(func(anotherDl *DataList) {
+		otherData = append(otherData, anotherDl.data...)
+		otherName = anotherDl.name
+		otherCreation = anotherDl.creationTimestamp
+		otherLastModified = anotherDl.lastModifiedTimestamp.Load()
+	})
+
 	var result bool
 	dl.AtomicDo(func(dl *DataList) {
-		anotherDl.AtomicDo(func(anotherDl *DataList) {
-			if dl == anotherDl {
-				result = true
-				return
-			}
+		if len(dl.data) != len(otherData) {
+			result = false
+			return
+		}
 
-			if anotherDl == nil {
-				dl.warn("IsTheSameAs", "Another DataList is nil, returning false")
+		for i, v := range dl.data {
+			if v != otherData[i] {
 				result = false
 				return
 			}
+		}
 
-			if len(dl.data) != len(anotherDl.data) {
-				result = false
-				return
-			}
+		if dl.name != otherName {
+			result = false
+			return
+		}
 
-			for i, v := range dl.data {
-				if v != anotherDl.data[i] {
-					result = false
-					return
-				}
-			}
+		if dl.creationTimestamp != otherCreation || dl.lastModifiedTimestamp.Load() != otherLastModified {
+			result = false
+			return
+		}
 
-			if dl.name != anotherDl.name {
-				result = false
-				return
-			}
-
-			if dl.creationTimestamp != anotherDl.creationTimestamp || dl.lastModifiedTimestamp.Load() != anotherDl.lastModifiedTimestamp.Load() {
-				result = false
-				return
-			}
-
-			result = true
-		})
+		result = true
 	})
 	return result
 }
@@ -1962,7 +1988,7 @@ func (dl *DataList) ParseNumbers() *DataList {
 			}()
 		}
 
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return dl
 }
@@ -1982,7 +2008,7 @@ func (dl *DataList) ParseStrings() *DataList {
 			}()
 		}
 
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return dl
 }
@@ -2073,7 +2099,7 @@ func (dl *DataList) GetName() string {
 func (dl *DataList) SetName(newName string) *DataList {
 	dl.AtomicDo(func(dl *DataList) {
 		dl.name = newName
-		go dl.updateTimestamp()
+		dl.updateTimestamp()
 	})
 	return dl
 }

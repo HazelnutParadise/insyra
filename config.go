@@ -2,12 +2,17 @@
 
 package insyra
 
+import "sync/atomic"
+
 type configStruct struct {
 	logLevel               LogLevel
 	coloredOutput          bool
 	dontPanic              bool
 	defaultErrHandlingFunc func(errType LogLevel, packageName string, funcName string, errMsg string)
-	threadSafe             bool
+	// threadSafe is read on every AtomicDo (hot path) and written by
+	// Dangerously_TurnOffThreadSafety / SetDefaultConfig; use an atomic to avoid
+	// a data race between those.
+	threadSafe atomic.Bool
 }
 
 var Config *configStruct = &configStruct{}
@@ -62,7 +67,7 @@ func (c *configStruct) GetDefaultErrHandlingFunc() func(errType LogLevel, packag
 // Dangerously_TurnOffThreadSafety turns off thread safety for all data structures.
 // You can enjoy extreme performance boost, but data consistency is NOT guaranteed.
 func (c *configStruct) Dangerously_TurnOffThreadSafety() {
-	c.threadSafe = false
+	c.threadSafe.Store(false)
 	LogWarning("config", "Dangerously_TurnOffThreadSafety", "Thread safety is turned off. Data consistency is NOT guaranteed!\nIt may be a mistake. Remove `Dangerously_TurnOffThreadSafety()` in your code to restore thread safety.")
 }
 
@@ -74,5 +79,5 @@ func SetDefaultConfig() {
 	Config.coloredOutput = true
 	Config.dontPanic = false
 	Config.defaultErrHandlingFunc = nil
-	Config.threadSafe = true
+	Config.threadSafe.Store(true)
 }

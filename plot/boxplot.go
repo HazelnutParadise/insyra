@@ -54,27 +54,36 @@ func CreateBoxPlot(config BoxPlotConfig, series ...BoxPlotSeries) *charts.BoxPlo
 		Height:          config.Height,
 		BackgroundColor: config.BackgroundColor,
 		Theme:           string(config.Theme),
-		Title:           config.Title,
-		Subtitle:        config.Subtitle,
+		Title:           sanitizeChartText(config.Title),
+		Subtitle:        sanitizeChartText(config.Subtitle),
 		TitlePos:        string(config.TitlePos),
 		HideLegend:      config.HideLegend,
 		LegendPos:       string(config.LegendPos),
 	})
 
-	// Determine number of categories
-	numCats := 0
-	if len(config.XAxis) > 0 {
+	// Determine number of categories ONCE, before adding any series, as the
+	// smallest series length so no series ends up with empty items. Keep the X
+	// axis consistent with that count. (Previously numCats was based on the first
+	// series and then mutated inside the add-loop, making the result depend on
+	// series order, while the in-loop XAxis reslice was dead code because
+	// SetXAxis had already been called.)
+	numCats := len(series[0].Data)
+	for _, s := range series {
+		if len(s.Data) < numCats {
+			numCats = len(s.Data)
+		}
+	}
+	if len(config.XAxis) > 0 && len(config.XAxis) < numCats {
 		numCats = len(config.XAxis)
-	} else if len(series) > 0 {
-		numCats = len(series[0].Data)
 	}
 
-	// If XAxis not provided, create default labels
 	if len(config.XAxis) == 0 {
 		config.XAxis = []string{}
 		for i := 0; i < numCats; i++ {
 			config.XAxis = append(config.XAxis, fmt.Sprintf("Category %d", i+1))
 		}
+	} else if len(config.XAxis) > numCats {
+		config.XAxis = config.XAxis[:numCats]
 	}
 
 	// Set X axis and add each series (support per-series color/fill)
@@ -93,18 +102,11 @@ func CreateBoxPlot(config BoxPlotConfig, series ...BoxPlotSeries) *charts.BoxPlo
 		if numCats == 0 {
 			continue
 		}
-		// ensure we only use up to numCats items
+		// numCats is already the min across all series, so this only trims longer
+		// series to the fixed category count (no order-dependent mutation).
 		items := s.Data
 		if len(items) > numCats {
 			items = items[:numCats]
-		}
-		if len(items) < numCats {
-			// fallback: truncate numCats to len(items) to avoid empty items
-			insyra.LogWarning("plot", "CreateBoxPlot", "series %s has %d categories but expected %d; truncating to %d", s.Name, len(items), numCats, len(items))
-			numCats = len(items)
-			if len(config.XAxis) > numCats {
-				config.XAxis = config.XAxis[:numCats]
-			}
 		}
 		boxPlotItems := generateBoxPlotItemsFromIDataList(items)
 

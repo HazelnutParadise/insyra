@@ -761,6 +761,44 @@ func TestPairedTTest_R(t *testing.T) {
 	}
 }
 
+// PairedTTest used to read raw elements with a bare .(float64) assertion, so
+// any int-typed element panicked ("interface conversion: interface {} is int,
+// not float64") — TestStress_TwoSampleStatsNoRace tripped it whenever both
+// lists momentarily had equal length. Mixed numeric types must be coerced like
+// every other stats entry point, and produce the same result as the
+// equivalent all-float64 input.
+func TestPairedTTest_MixedNumericTypes(t *testing.T) {
+	intA := insyra.NewDataList(10, 12, 14, 13, 11)
+	floatB := insyra.NewDataList(8.0, 9.0, 12.5, 10.0, 9.5)
+	got, err := stats.PairedTTest(intA, floatB, 0.95)
+	if err != nil {
+		t.Fatalf("PairedTTest with int elements: %v", err)
+	}
+
+	baseA := insyra.NewDataList(10.0, 12.0, 14.0, 13.0, 11.0)
+	want, err := stats.PairedTTest(baseA, floatB, 0.95)
+	if err != nil {
+		t.Fatalf("PairedTTest float64 baseline: %v", err)
+	}
+	if got.Statistic != want.Statistic || got.PValue != want.PValue ||
+		*got.MeanDiff != *want.MeanDiff {
+		t.Errorf("int-typed input diverged from float64 baseline: got t=%v p=%v meanDiff=%v, want t=%v p=%v meanDiff=%v",
+			got.Statistic, got.PValue, *got.MeanDiff, want.Statistic, want.PValue, *want.MeanDiff)
+	}
+}
+
+// Non-numeric elements must surface as an error (error-first API), not a panic.
+func TestPairedTTest_NonNumericElement(t *testing.T) {
+	a := insyra.NewDataList("oops", 2, 3)
+	b := insyra.NewDataList(1.0, 2.0, 3.0)
+	if _, err := stats.PairedTTest(a, b); err == nil {
+		t.Fatal("expected error for non-numeric element in data1, got nil")
+	}
+	if _, err := stats.PairedTTest(b, a); err == nil {
+		t.Fatal("expected error for non-numeric element in data2, got nil")
+	}
+}
+
 // Edge case PairedTTest cannot run via R (R rejects all-zero diffs).
 // Test that insyra returns NaN/Inf as appropriate for degenerate inputs.
 func TestPairedTTest_AllZeroDiff(t *testing.T) {

@@ -8,7 +8,7 @@ import (
 
 func LogFatal(packageName, funcName, msg string, args ...any) {
 	pushError(LogLevelFatal, packageName, funcName, fmt.Sprintf(msg, args...))
-	if msg[len(msg)-1] != '\n' {
+	if len(msg) == 0 || msg[len(msg)-1] != '\n' {
 		msg += "\n"
 	}
 	msg = strings.ToUpper(msg[0:1]) + msg[1:]
@@ -29,7 +29,7 @@ func LogWarning(packageName, funcName, msg string, args ...any) {
 	if Config.GetLogLevel() > LogLevelWarning {
 		return
 	}
-	if msg[len(msg)-1] != '\n' {
+	if len(msg) == 0 || msg[len(msg)-1] != '\n' {
 		msg += "\n"
 	}
 	msg = strings.ToUpper(msg[0:1]) + msg[1:]
@@ -45,7 +45,7 @@ func LogDebug(packageName, funcName, msg string, args ...any) {
 	if Config.GetLogLevel() > LogLevelDebug {
 		return
 	}
-	if msg[len(msg)-1] != '\n' {
+	if len(msg) == 0 || msg[len(msg)-1] != '\n' {
 		msg += "\n"
 	}
 	msg = strings.ToUpper(msg[0:1]) + msg[1:]
@@ -61,7 +61,7 @@ func LogInfo(packageName, funcName, msg string, args ...any) {
 	if Config.GetLogLevel() > LogLevelInfo {
 		return
 	}
-	if msg[len(msg)-1] != '\n' {
+	if len(msg) == 0 || msg[len(msg)-1] != '\n' {
 		msg += "\n"
 	}
 	msg = strings.ToUpper(msg[0:1]) + msg[1:]

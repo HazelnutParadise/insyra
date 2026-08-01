@@ -2,7 +2,9 @@ package commands
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
+	"strings"
 
 	insyra "github.com/HazelnutParadise/insyra"
 )
@@ -39,13 +41,26 @@ func runShowCommand(ctx *ExecContext, args []string) error {
 
 	switch typed := value.(type) {
 	case *insyra.DataTable:
-		typed.ShowRange(rangeArgs...)
+		typed.ShowRangeTo(ctx.Output, rangeArgs...)
 	case *insyra.DataList:
-		typed.ShowRange(rangeArgs...)
+		typed.ShowRangeTo(ctx.Output, rangeArgs...)
+	case insyra.Scaler:
+		return showScaler(ctx, args[0], typed)
 	default:
-		return fmt.Errorf("show is only supported for DataTable/DataList")
+		return fmt.Errorf("show is only supported for DataTable/DataList/scaler")
 	}
 
+	return nil
+}
+
+func showScaler(ctx *ExecContext, name string, scaler insyra.Scaler) error {
+	params := scaler.Params()
+	cols := make([]string, 0, len(params))
+	for col := range params {
+		cols = append(cols, col)
+	}
+	sort.Strings(cols)
+	_, _ = fmt.Fprintf(ctx.Output, "%s: %s scaler, fitted cols: %s\n", name, scaler.Kind(), strings.Join(cols, ", "))
 	return nil
 }
 

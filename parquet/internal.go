@@ -108,6 +108,25 @@ func chunkedToSlice(chunked *arrow.Chunked) any {
 		return nil
 	}
 
+	// 若欄位含 null，typed 快速路徑會直接複製值緩衝區（null 位置為 0/""/false），
+	// 造成 null 靜默遺失。此時改走保留 nil 的 []any 路徑；無 null 時維持原本高效的
+	// typed slice 輸出。
+	for _, chunk := range chunked.Chunks() {
+		if chunk.NullN() > 0 {
+			res := make([]any, 0, chunked.Len())
+			for _, c := range chunked.Chunks() {
+				for i := 0; i < c.Len(); i++ {
+					if c.IsNull(i) {
+						res = append(res, nil)
+					} else {
+						res = append(res, getVal(c, i))
+					}
+				}
+			}
+			return res
+		}
+	}
+
 	dataType := chunked.DataType()
 
 	switch dataType.ID() {
@@ -259,25 +278,49 @@ func dataTableToArrowTable(dt insyra.IDataTable) (arrow.Table, error) {
 	return table, nil
 }
 
+// inferArrowType scans ALL values in a column (not just the first non-nil one)
+// so a mixed column does not panic or silently truncate on Write:
+//   - a column mixing ints and floats is promoted to Float64 (no truncation);
+//   - any string / unknown value, or an incompatible mix (e.g. bool+number,
+//     time+number), falls back to String, which conv.ToString can represent for
+//     every value.
 func inferArrowType(data []any) arrow.DataType {
+	var hasInt, hasFloat, hasString, hasBool, hasTime, hasOther bool
 	for _, v := range data {
 		if v == nil {
 			continue
 		}
 		switch v.(type) {
 		case int, int64, int32, int16, int8, uint, uint64, uint32, uint16, uint8:
-			return arrow.PrimitiveTypes.Int64
+			hasInt = true
 		case float64, float32:
-			return arrow.PrimitiveTypes.Float64
+			hasFloat = true
 		case string:
-			return arrow.BinaryTypes.String
+			hasString = true
 		case bool:
-			return arrow.FixedWidthTypes.Boolean
+			hasBool = true
 		case time.Time:
-			return arrow.FixedWidthTypes.Timestamp_ns
+			hasTime = true
+		default:
+			hasOther = true
 		}
 	}
-	return arrow.BinaryTypes.String // Default to string if all nil or unknown
+	numeric := hasInt || hasFloat
+	switch {
+	case hasString || hasOther:
+		return arrow.BinaryTypes.String
+	case hasBool && !numeric && !hasTime:
+		return arrow.FixedWidthTypes.Boolean
+	case hasTime && !numeric && !hasBool:
+		return arrow.FixedWidthTypes.Timestamp_ns
+	case hasFloat && !hasBool && !hasTime:
+		return arrow.PrimitiveTypes.Float64
+	case hasInt && !hasBool && !hasTime:
+		return arrow.PrimitiveTypes.Int64
+	default:
+		// mixed incompatible kinds (bool+numeric, time+numeric, ...) or all nil
+		return arrow.BinaryTypes.String
+	}
 }
 
 func appendValue(b array.Builder, v any) {

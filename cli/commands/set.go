@@ -28,10 +28,13 @@ func runSetCommand(ctx *ExecContext, args []string) error {
 	}
 	col := args[2]
 	value := parseLiteral(args[3])
-	if _, convErr := strconv.Atoi(col); convErr == nil {
-		table.UpdateElement(row, col, value)
-	} else {
-		table.UpdateElement(row, col, value)
+	table.UpdateElement(row, col, value)
+	// Verify the write took effect; UpdateElement is a silent no-op when the
+	// row/column does not resolve, so read back and surface a real error instead
+	// of always reporting success. (value comes from parseLiteral, so it is a
+	// comparable scalar.)
+	if got := table.GetElement(row, col); got != value {
+		return fmt.Errorf("set: update did not take effect for row %d, col %q (does it exist?)", row, col)
 	}
 	_, _ = fmt.Fprintln(ctx.Output, "updated")
 	return nil

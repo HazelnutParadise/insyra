@@ -69,11 +69,17 @@ type GoogleMapsStoreData struct {
 func GoogleMapsStores() *googleMapsStoreCrawler {
 	const configUrl = "https://raw.githubusercontent.com/TimLai666/google-maps-store-review-crawler/refs/heads/main/crawler_config.json"
 	res, err := http.Get(configUrl)
-	if err != nil || res.StatusCode != 200 {
+	if err != nil {
 		insyra.LogWarning("datafetch", "GoogleMapsStores", "Failed to fetch GoogleMapsStoreReviewCrawler config. Error: %v. Returning nil.", err)
 		return nil
 	}
+	// Register the close before the status check so a non-200 response does not
+	// leak the body (the defer was previously after the early return).
 	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode != 200 {
+		insyra.LogWarning("datafetch", "GoogleMapsStores", "Failed to fetch GoogleMapsStoreReviewCrawler config. HTTP status: %d. Returning nil.", res.StatusCode)
+		return nil
+	}
 
 	config := struct {
 		Headers        map[string]string `json:"headers"`
@@ -213,22 +219,28 @@ func (c *googleMapsStoreCrawler) GetReviews(storeId string, pageCount int, optio
 			insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "Failed to send request. Error: %v. Returning nil.", err)
 			return nil
 		}
-		defer func() { _ = resp.Body.Close() }()
 
 		// 確保回應狀態碼為 200 OK
 		if resp.StatusCode != http.StatusOK {
+			_ = resp.Body.Close()
 			insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "Failed to fetch reviews. HTTP status code: %d. Returning nil.", resp.StatusCode)
 			return nil
 		}
 
-		// 讀取回應內容
-		body, err := io.ReadAll(resp.Body)
+		// 讀取回應內容（限制大小避免無界讀取），並即時關閉 Body。此處在分頁迴圈
+		// 內，若用 defer 會累積到函式結束才釋放連線。
+		body, err := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
+		_ = resp.Body.Close()
 		if err != nil {
 			insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "Failed to read response. Error: %v. Returning nil.", err)
 			return nil
 		}
 
-		// Google 回應有 `)]}'` 前綴，需去除前 4 個字元
+		// Google 回應有 `)]}'` 前綴，需去除前 4 個字元；回應過短則跳過避免切片越界
+		if len(body) < 4 {
+			insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "Response too short (%d bytes). Returning nil.", len(body))
+			return nil
+		}
 		jsonData := []any{}
 		if err := json.Unmarshal(body[4:], &jsonData); err != nil {
 			insyra.LogWarning("datafetch", "GoogleMapsStores.GetReviews", "Failed to decode JSON. Error: %v. Returning nil.", err)

@@ -200,6 +200,11 @@ func tokenize(input string) ([]cclToken, error) {
 			for i < len(input) && isOperatorChar(input[i]) {
 				i++
 			}
+			// 若沒有消耗任何字元（遇到無法辨識的字元，如 ~ $ ? \ { } ; 或非 ASCII 符號），
+			// 必須回傳錯誤，否則 i 不前進、外層迴圈永久空轉造成掛死。
+			if i == start {
+				return nil, fmt.Errorf("unexpected character %q at position %d", input[i], i)
+			}
 			tokens = append(tokens, cclToken{typ: tOPERATOR, value: input[start:i]})
 		}
 	}

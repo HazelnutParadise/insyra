@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"sync"
 
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/stats/internal/parutil"
@@ -126,6 +125,102 @@ type LogarithmicRegressionResult struct {
 	ConfidenceIntervalSlope     [2]float64
 }
 
+func prepareRegressionPrediction(model string, typ PredictType, predictorCount int, newXs []insyra.IDataList) ([][]float64, int, error) {
+	if typ == "" {
+		typ = PredictResponse
+	}
+	if typ != PredictResponse {
+		return nil, 0, fmt.Errorf("unsupported predict type %q for %s regression", typ, model)
+	}
+	if len(newXs) != predictorCount {
+		return nil, 0, fmt.Errorf("expected %d predictors, got %d", predictorCount, len(newXs))
+	}
+	return gatherPredictorInputs(newXs)
+}
+
+// Predict returns response-scale point predictions for new observations.
+func (r *LinearRegressionResult) Predict(typ PredictType, newXs ...insyra.IDataList) (*insyra.DataList, error) {
+	if r == nil {
+		return nil, errors.New("linear regression result is nil")
+	}
+	if len(r.Coefficients) == 0 {
+		return nil, errors.New("no coefficients available")
+	}
+	xs, n, err := prepareRegressionPrediction("linear", typ, len(r.Coefficients)-1, newXs)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]any, n)
+	for i := range n {
+		value := r.Coefficients[0]
+		for j := range xs {
+			value += r.Coefficients[j+1] * xs[j][i]
+		}
+		out[i] = value
+	}
+	return insyra.NewDataList(out), nil
+}
+
+// Predict returns response-scale point predictions for new observations.
+func (r *PolynomialRegressionResult) Predict(typ PredictType, newXs ...insyra.IDataList) (*insyra.DataList, error) {
+	if r == nil {
+		return nil, errors.New("polynomial regression result is nil")
+	}
+	if len(r.Coefficients) == 0 {
+		return nil, errors.New("no coefficients available")
+	}
+	xs, n, err := prepareRegressionPrediction("polynomial", typ, 1, newXs)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]any, n)
+	for i := range n {
+		value := 0.0
+		power := 1.0
+		for _, coefficient := range r.Coefficients {
+			value += coefficient * power
+			power *= xs[0][i]
+		}
+		out[i] = value
+	}
+	return insyra.NewDataList(out), nil
+}
+
+// Predict returns response-scale point predictions for new observations.
+func (r *ExponentialRegressionResult) Predict(typ PredictType, newXs ...insyra.IDataList) (*insyra.DataList, error) {
+	if r == nil {
+		return nil, errors.New("exponential regression result is nil")
+	}
+	xs, n, err := prepareRegressionPrediction("exponential", typ, 1, newXs)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]any, n)
+	for i := range n {
+		out[i] = r.Intercept * math.Exp(r.Slope*xs[0][i])
+	}
+	return insyra.NewDataList(out), nil
+}
+
+// Predict returns response-scale point predictions for new observations.
+func (r *LogarithmicRegressionResult) Predict(typ PredictType, newXs ...insyra.IDataList) (*insyra.DataList, error) {
+	if r == nil {
+		return nil, errors.New("logarithmic regression result is nil")
+	}
+	xs, n, err := prepareRegressionPrediction("logarithmic", typ, 1, newXs)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]any, n)
+	for i, x := range xs[0] {
+		if x <= 0 {
+			return nil, fmt.Errorf("x must be > 0 for ln prediction (index %d)", i)
+		}
+		out[i] = r.Intercept + r.Slope*math.Log(x)
+	}
+	return insyra.NewDataList(out), nil
+}
+
 // LinearRegression performs ordinary least-squares linear regression.
 func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) (*LinearRegressionResult, error) {
 	p := len(dlXs)
@@ -137,34 +232,9 @@ func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) (*LinearRe
 	// can be entered independently. The previous serial form paid one
 	// actor handshake per predictor sequentially; for p large this was
 	// the wall-clock bottleneck.
-	var n int
-	var ys []float64
-	xSlices := make([][]float64, p)
-	xLens := make([]int, p)
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		dlY.AtomicDo(func(dly *insyra.DataList) {
-			n = dly.Len()
-			ys = dly.ToF64Slice()
-		})
-	}()
-	for j, dlX := range dlXs {
-		wg.Add(1)
-		go func(j int, dlX insyra.IDataList) {
-			defer wg.Done()
-			dlX.AtomicDo(func(l *insyra.DataList) {
-				xLens[j] = l.Len()
-				xSlices[j] = l.ToF64Slice()
-			})
-		}(j, dlX)
-	}
-	wg.Wait()
-	for j, xLen := range xLens {
-		if xLen != n {
-			return nil, fmt.Errorf("x and y must have the same length for predictor %d", j)
-		}
+	ys, xSlices, _, n, err := gatherRegressionInputs(dlY, dlXs)
+	if err != nil {
+		return nil, err
 	}
 
 	if n <= p+1 {
@@ -182,16 +252,9 @@ func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) (*LinearRe
 	//
 	// Row writes are independent so we parallelise over rows when
 	// n·(p+1) is large enough to amortise the goroutine launch.
-	X := mat.NewDense(n, p+1, nil)
+	X := buildDesignMatrix(xSlices, n)
 	xRaw := X.RawMatrix()
 	stride := xRaw.Stride
-	parutil.Run(n, n*(p+1) >= 50_000, func(i int) {
-		base := i * stride
-		xRaw.Data[base] = 1.0
-		for j := range p {
-			xRaw.Data[base+j+1] = xSlices[j][i]
-		}
-	})
 
 	// Solve β = (XᵀX)⁻¹ Xᵀy and obtain (XᵀX)⁻¹ via gonum's LU-based solver
 	// (replaces the previous hand-rolled Gauss-Jordan in stats/internal/linalg).
@@ -264,20 +327,20 @@ func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) (*LinearRe
 func ExponentialRegression(dlY, dlX insyra.IDataList) (*ExponentialRegressionResult, error) {
 	var xs, ys []float64
 	isFailed := false
-	dlX.AtomicDo(func(dlx *insyra.DataList) {
-		dlY.AtomicDo(func(dly *insyra.DataList) {
-			if dlx.Len() != dly.Len() || dlx.Len() == 0 {
-				isFailed = true
-				return
-			}
-			if dlx.Len() <= 2 {
-				isFailed = true
-				return
-			}
-			xs = dlx.ToF64Slice()
-			ys = dly.ToF64Slice()
-		})
-	})
+	dlx := dlX.(*insyra.DataList)
+	dly := dlY.(*insyra.DataList)
+	insyra.AtomicDoAll(func() {
+		if dlx.Len() != dly.Len() || dlx.Len() == 0 {
+			isFailed = true
+			return
+		}
+		if dlx.Len() <= 2 {
+			isFailed = true
+			return
+		}
+		xs = dlx.ToF64Slice()
+		ys = dly.ToF64Slice()
+	}, dlx, dly)
 	if isFailed {
 		return nil, errors.New("input lengths mismatch/zero, or need at least 3 observations")
 	}
@@ -352,20 +415,20 @@ func ExponentialRegression(dlY, dlX insyra.IDataList) (*ExponentialRegressionRes
 func LogarithmicRegression(dlY, dlX insyra.IDataList) (*LogarithmicRegressionResult, error) {
 	var xs, ys []float64
 	isFailed := false
-	dlX.AtomicDo(func(dlx *insyra.DataList) {
-		dlY.AtomicDo(func(dly *insyra.DataList) {
-			if dlx.Len() != dly.Len() || dlx.Len() == 0 {
-				isFailed = true
-				return
-			}
-			if dlx.Len() <= 2 {
-				isFailed = true
-				return
-			}
-			xs = dlx.ToF64Slice()
-			ys = dly.ToF64Slice()
-		})
-	})
+	dlx := dlX.(*insyra.DataList)
+	dly := dlY.(*insyra.DataList)
+	insyra.AtomicDoAll(func() {
+		if dlx.Len() != dly.Len() || dlx.Len() == 0 {
+			isFailed = true
+			return
+		}
+		if dlx.Len() <= 2 {
+			isFailed = true
+			return
+		}
+		xs = dlx.ToF64Slice()
+		ys = dly.ToF64Slice()
+	}, dlx, dly)
 	if isFailed {
 		return nil, errors.New("input lengths mismatch/zero, or need at least 3 observations")
 	}
@@ -425,25 +488,25 @@ func LogarithmicRegression(dlY, dlX insyra.IDataList) (*LogarithmicRegressionRes
 func PolynomialRegression(dlY, dlX insyra.IDataList, degree int) (*PolynomialRegressionResult, error) {
 	var xs, ys []float64
 	isFailed := false
-	dlX.AtomicDo(func(dlx *insyra.DataList) {
-		dlY.AtomicDo(func(dly *insyra.DataList) {
-			if dlx.Len() != dly.Len() || dlx.Len() == 0 {
-				isFailed = true
-				return
-			}
-			if degree < 1 || degree >= dlx.Len() {
-				isFailed = true
-				return
-			}
-			if dlx.Len() <= degree+1 {
-				isFailed = true
-				return
-			}
+	dlx := dlX.(*insyra.DataList)
+	dly := dlY.(*insyra.DataList)
+	insyra.AtomicDoAll(func() {
+		if dlx.Len() != dly.Len() || dlx.Len() == 0 {
+			isFailed = true
+			return
+		}
+		if degree < 1 || degree >= dlx.Len() {
+			isFailed = true
+			return
+		}
+		if dlx.Len() <= degree+1 {
+			isFailed = true
+			return
+		}
 
-			xs = dlx.ToF64Slice()
-			ys = dly.ToF64Slice()
-		})
-	})
+		xs = dlx.ToF64Slice()
+		ys = dly.ToF64Slice()
+	}, dlx, dly)
 	if isFailed {
 		return nil, errors.New("invalid input lengths, degree, or insufficient observations")
 	}

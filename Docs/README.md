@@ -63,6 +63,7 @@ dt.Show()
 | Document          | Description                                             |
 | ----------------- | ------------------------------------------------------- |
 | [stats](stats.md) | Correlation, hypothesis testing, regression, ANOVA, PCA, clustering |
+| [ml](ml.md)       | Common estimator and transformer protocol over `stats` models |
 
 #### Visualization
 
@@ -82,19 +83,20 @@ dt.Show()
 
 | Document      | Description                              |
 | ------------- | ---------------------------------------- |
-| [mkt](mkt.md) | RFM analysis and Customer Activity Index |
+| [mkt](mkt.md) | RFM analysis, Customer Activity Index, and market basket analysis |
 
 #### Financial Calculations
 
 | Document              | Description                                                                                       |
 | --------------------- | ------------------------------------------------------------------------------------------------- |
 | [finance](finance.md) | High-precision TVM, NPV/IRR/MIRR/XNPV/XIRR, depreciation, bonds, T-bills, amortization schedules  |
+| [quant](quant.md)     | Strategy/backtest evaluation: Sharpe, max drawdown, annualized return, PBO (CSCV), Deflated Sharpe Ratio, walk-forward |
 
 #### Integration & Utilities
 
 | Document                | Description                                                 |
 | ----------------------- | ----------------------------------------------------------- |
-| [accel](accel.md)       | Optional acceleration runtime surface and typed projections |
+| [accel](accel.md)       | Optional GPU acceleration: device discovery, typed projections, and real column reductions |
 | [py](py.md)             | Execute Python code from Go with an auto-managed Python env |
 | [parallel](parallel.md) | Simple parallel execution of functions                      |
 | [utils](utils.md)       | Helper functions for type conversion and data processing    |
@@ -121,7 +123,7 @@ go get github.com/HazelnutParadise/insyra/plot
 # ... and so on
 ```
 
-`accel` remains opt-in and is intentionally not included in `allpkgs` at this stage.
+`accel` is included in `allpkgs`, so the standard install brings GPU acceleration with it.
 
 ### Choosing the Right Tool
 
@@ -130,7 +132,7 @@ go get github.com/HazelnutParadise/insyra/plot
 | Store and analyze a single column of data | [DataList](DataList.md)         |
 | Work with tabular data (rows and columns) | [DataTable](DataTable.md)       |
 | Calculate new columns from existing data  | [CCL](CCL.md)                   |
-| Freeze an opt-in acceleration runtime     | [accel](accel.md)              |
+| Run a column reduction on a GPU           | [accel](accel.md)              |
 | Read/write CSV or Excel files             | [csvxl](csvxl.md)               |
 | Perform statistical tests                 | [stats](stats.md)               |
 | Create static charts for reports          | [gplot](gplot.md)               |
@@ -138,8 +140,16 @@ go get github.com/HazelnutParadise/insyra/plot
 | Solve optimization problems               | [lp](lp.md) + [lpgen](lpgen.md) |
 | Analyze customer behavior                 | [mkt](mkt.md)                   |
 | Run high-precision financial math         | [finance](finance.md)           |
+| Evaluate a trading strategy / backtest    | [quant](quant.md)               |
 | Use Python libraries from Go              | [py](py.md)                     |
 | Run functions in parallel                 | [parallel](parallel.md)         |
+
+### Changelog
+
+Changes are recorded in the repository, not on the docs site:
+
+- Next release: [CHANGELOG.md](https://github.com/HazelnutParadise/insyra/blob/main/CHANGELOG.md) · [繁體中文](https://github.com/HazelnutParadise/insyra/blob/main/CHANGELOG_TW.md)
+- Published releases: [GitHub Releases](https://github.com/HazelnutParadise/insyra/releases)
 
 ### Requirements & Notes
 

@@ -14,8 +14,8 @@ import (
 // at the 1e-9 level even for well-conditioned matrices. For degenerate or
 // near-zero eigenvalues the loading vectors themselves are non-unique.
 const (
-	tolPCAEig  = 1e-9  // eigenvalues / explained variance (relative)
-	tolPCAComp = 1e-9  // loadings on PCs whose eigenvalue is well-separated
+	tolPCAEig  = 1e-9 // eigenvalues / explained variance (relative)
+	tolPCAComp = 1e-9 // loadings on PCs whose eigenvalue is well-separated
 )
 
 var pcaRef = &refTable{path: "testdata/pca_reference.txt"}
@@ -270,5 +270,100 @@ func TestPCA_Errors(t *testing.T) {
 	)
 	if _, err := stats.PCA(withStr); err == nil {
 		t.Error("expected error for non-numeric cell")
+	}
+}
+
+func TestPCAProjectionParametersMatchR(t *testing.T) {
+	training := [][]float64{
+		{2.5, 2.4, 1.2}, {0.5, 0.7, 0.3}, {2.2, 2.9, 1.1},
+		{1.9, 2.2, 0.9}, {3.1, 3.0, 1.5}, {2.3, 2.7, 1.3},
+	}
+	result, err := stats.PCA(dataTableFromPCARows(training), 2)
+	if err != nil {
+		t.Fatalf("PCA error: %v", err)
+	}
+
+	wantCenter := []float64{2.0833333333333335, 2.3166666666666664, 1.05}
+	wantScale := []float64{0.87273516410573648, 0.84715209181508067, 0.41833001326703778}
+	for i := range wantCenter {
+		if !pClose(result.Center[i], wantCenter[i], tolPCAEig) {
+			t.Errorf("center[%d]: got %.17g, want %.17g", i, result.Center[i], wantCenter[i])
+		}
+		if !pClose(result.Scale[i], wantScale[i], tolPCAEig) {
+			t.Errorf("scale[%d]: got %.17g, want %.17g", i, result.Scale[i], wantScale[i])
+		}
+	}
+
+	newRows := [][]float64{{2.0, 2.5, 1.0}, {1.5, 1.8, 0.6}}
+	// These are R's predict(prcomp(training, center=TRUE, scale=TRUE), newdata)
+	// scores, with the same first-loading-positive sign convention as PCA.
+	wantScores := [][]float64{
+		{-0.0010763364486702787, -0.26187266172936269},
+		{-1.3609078783373265, -0.17787086578064637},
+	}
+	for i, row := range newRows {
+		for pc := range wantScores[i] {
+			got := 0.0
+			loading := result.Components.GetColByNumber(pc)
+			for j, value := range row {
+				component, ok := insyra.ToFloat64Safe(loading.Get(j))
+				if !ok {
+					t.Fatalf("PC%d loading[%d] is not numeric", pc+1, j)
+				}
+				got += (value - result.Center[j]) / result.Scale[j] * component
+			}
+			if !pClose(got, wantScores[i][pc], tolPCAComp) {
+				t.Errorf("new row %d PC%d: got %.17g, want %.17g", i, pc+1, got, wantScores[i][pc])
+			}
+		}
+	}
+}
+
+func TestPCATrainingScoresMatchProjection(t *testing.T) {
+	rows := [][]float64{
+		{2.5, 2.4, 1.2}, {0.5, 0.7, 0.3}, {2.2, 2.9, 1.1},
+		{1.9, 2.2, 0.9}, {3.1, 3.0, 1.5}, {2.3, 2.7, 1.3},
+	}
+	result, err := stats.PCA(dataTableFromPCARows(rows), 2)
+	if err != nil {
+		t.Fatalf("PCA error: %v", err)
+	}
+	scoreRows, scoreCols := result.Scores.Size()
+	if scoreRows != len(rows) || scoreCols != 2 {
+		t.Fatalf("Scores shape: got (%d,%d), want (%d,2)", scoreRows, scoreCols, len(rows))
+	}
+	for i, row := range rows {
+		for pc := 0; pc < scoreCols; pc++ {
+			loading := result.Components.GetColByNumber(pc)
+			want := 0.0
+			for j, value := range row {
+				component, ok := insyra.ToFloat64Safe(loading.Get(j))
+				if !ok {
+					t.Fatalf("PC%d loading[%d] is not numeric", pc+1, j)
+				}
+				want += (value - result.Center[j]) / result.Scale[j] * component
+			}
+			got, ok := insyra.ToFloat64Safe(result.Scores.GetColByNumber(pc).Get(i))
+			if !ok {
+				t.Fatalf("score[%d,%d] is not numeric", i, pc)
+			}
+			if !pClose(got, want, tolPCAComp) {
+				t.Errorf("score[%d,%d]: got %.17g, want %.17g", i, pc, got, want)
+			}
+		}
+	}
+}
+
+func TestPCAScaleDistinguishesStandardizedFit(t *testing.T) {
+	rows := [][]float64{{1, 10}, {2, 20}, {4, 35}, {7, 80}}
+	result, err := stats.PCA(dataTableFromPCARows(rows), 1)
+	if err != nil {
+		t.Fatalf("PCA error: %v", err)
+	}
+	if len(result.Center) != 2 || len(result.Scale) != 2 {
+		t.Fatalf("expected one center and scale per input column, got %d and %d", len(result.Center), len(result.Scale))
+	}
+	if result.Scale[0] == 1 || result.Scale[1] == 1 {
+		t.Fatalf("standardized fit should expose its non-unit sample scales: %v", result.Scale)
 	}
 }

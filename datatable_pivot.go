@@ -286,7 +286,7 @@ func (dt *DataTable) Pivot(cfg PivotConfig) (*DataTable, error) {
 					if idx < len(valSourceCol.data) {
 						v = valSourceCol.data[idx]
 					}
-					if v == nil {
+					if isNilOrNaN(v) {
 						outValCols[j].Append(cfg.FillNA)
 					} else {
 						outValCols[j].Append(v)

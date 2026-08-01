@@ -12,11 +12,13 @@ CCL (Column Calculation Language) is a specialized expression language in Insyra
 - [Operators](#operators)
 - [Column References](#column-references)
 - [Functions](#functions)
+- [Sequence Functions](#sequence-functions)
 - [Conditional Expressions](#conditional-expressions)
 - [Chained Comparisons](#chained-comparisons)
 - [Examples](#examples)
 - [Best Practices](#best-practices)
 - [Performance](#performance)
+- [Limits](#limits)
 - [Troubleshooting](#troubleshooting)
 
 ## Execution Modes
@@ -815,6 +817,52 @@ To count non-nil values in each row:
 "NEW('row_count') = COUNT(@.#)"
 ```
 
+## Sequence Functions
+
+Sequence functions take whole columns and return same-length columns. They fill the gap between scalar functions (one value in, one value out per row) and aggregate functions (whole column in, single scalar broadcast back) — examples include `LAG`, `CUMSUM`, and `ROLLING_MEAN`. Available in both expression mode (`AddColUsingCCL`) and statement mode (`ExecuteCCL`).
+
+| Function                | Equivalent Go                              | Notes |
+| ----------------------- | ------------------------------------------ | --- |
+| `LAG(col, n)`           | `col.Shift(n)`                             | Empty slots are `nil`. |
+| `LEAD(col, n)`          | `col.Shift(-n)`                            | |
+| `DIFF(col [, n])`       | `col.Diff(n)`                              | `n` defaults to 1. |
+| `PCT_CHANGE(col [, n])` | `col.PctChange(n)`                         | Divide-by-zero → `nil`. |
+| `CUMSUM(col)`           | `col.CumSum()`                             | pandas `skipna=True` semantics. |
+| `CUMPROD(col)`          | `col.CumProd()`                            | |
+| `CUMMAX(col)`           | `col.CumMax()`                             | |
+| `CUMMIN(col)`           | `col.CumMin()`                             | |
+| `ROLLING_SUM(col, w)`   | `col.Rolling({Window: w}).Sum()`           | Right-aligned, `MinObs = Window`. |
+| `ROLLING_MEAN(col, w)`  | `col.Rolling({Window: w}).Mean()`          | |
+| `ROLLING_MIN(col, w)`   | `col.Rolling({Window: w}).Min()`           | |
+| `ROLLING_MAX(col, w)`   | `col.Rolling({Window: w}).Max()`           | |
+| `ROLLING_STD(col, w)`   | `col.Rolling({Window: w}).Std()`           | Sample (n-1). |
+
+### Examples
+
+```go
+dt.ExecuteCCL(`
+    NEW('prev_price') = LAG(B, 1)
+    NEW('ret')        = PCT_CHANGE(B, 1)
+    NEW('cum_pnl')    = CUMSUM(D)
+    NEW('ma7')        = ROLLING_MEAN(B, 7)
+`)
+
+dt.AddColUsingCCL("rolling_via_name", "ROLLING_SUM(['price'], 2)")
+```
+
+### v1 limitation: top-level usage only
+
+Sequence functions are designed to be the **root** of an expression assigned to a new column. Combining them inside binary ops in a single expression — e.g. `LAG(B, 1) + 1` — is **undefined in v1**. Split into two statements instead:
+
+```go
+dt.ExecuteCCL(`
+    NEW('prev') = LAG(B, 1)
+    NEW('adj')  = prev + 1
+`)
+```
+
+The richer Go API (`DataList.Shift`, `DataTable.RollingCol`, `GroupedDataTable.*Col`) supports the same operations with group-aware variants and custom reducers — see [DataList.md](DataList.md#shift) and [DataTable.md](DataTable.md#window--sequence-transforms-shift--diff--pctchange--cum--rolling--expanding).
+
 ## Conditional Expressions
 
 Conditional expressions are used in functions like IF, AND, OR, and CASE, returning boolean values (true or false).
@@ -1014,6 +1062,21 @@ Test environment: 100,000 rows × 3 columns
 2. **Minimize function nesting**: Each function call adds overhead
 3. **Use bracket syntax when needed**: `[A]` and `['name']` have minimal overhead compared to direct references
 4. **Batch operations**: Process all rows at once using `AddColUsingCCL` rather than row-by-row operations
+
+## Limits
+
+To keep a single formula from exhausting the process stack, CCL bounds expression **nesting** depth at compile time. Both limits are 10000 — the same depth the evaluator supports — so no expression that could actually be evaluated is ever rejected:
+
+| Limit | What it bounds | Error message |
+| --- | --- | --- |
+| Nesting depth | Parentheses, nested function calls, unary operators | `expression too deeply nested (max 10000 levels)` |
+| Expression complexity | Overall depth of the compiled expression tree | `expression too complex: nesting depth exceeds max 10000` |
+
+Left-associative operator **chains** (`a + b + c + ...`, string concatenation runs, `&&`/`||` sequences) are *not* subject to these limits: the compiler flattens them into a constant-depth internal form and evaluates them iteratively, so chain length is bounded only by available memory. Semantics are unchanged — strict left-to-right evaluation, identical values and error behavior.
+
+Like all CCL compile errors, the limit errors are logged as warnings and surfaced via the table's `Err()` method; the DataTable is left unchanged.
+
+Note that compilation still tokenizes the input before rejecting it, so memory use is proportional to input size. If you expose CCL input to untrusted end users, cap the formula length at your application boundary as well.
 
 ## Troubleshooting
 

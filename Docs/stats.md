@@ -18,9 +18,10 @@ The stats package provides comprehensive statistical analysis functions:
 
 - **Correlation Analysis**: Pearson, Kendall, Spearman correlation coefficients, correlation matrices
 - **Hypothesis Testing**: t-tests (single, two-sample, paired), z-tests, chi-square tests
-- **Distribution Analysis**: Skewness, Kurtosis, n-th moments
+- **Nonparametric Tests**: Wilcoxon signed-rank (single/paired), Mann-Whitney U, Kruskal-Wallis, Friedman — rank-based counterparts to the t-test / ANOVA family
+- **Distribution Analysis**: Skewness, Kurtosis, n-th moments, standard-normal CDF / quantile (`NormCDF` / `NormPPF`)
 - **Analysis of Variance**: One-way, Two-way, Repeated measures ANOVA
-- **Regression Analysis**: Linear, Exponential, Logarithmic, Polynomial regression with confidence intervals
+- **Regression Analysis**: Linear, Logistic, Poisson, generic GLM, Exponential, Logarithmic, Polynomial regression with confidence intervals
 - **F-Tests**: Variance equality, Levene's test, Bartlett's test, regression F-test, nested models
 - **Dimensionality Reduction**: Principal Component Analysis (PCA)
 - **Instance-Based Prediction**: K-nearest neighbors (KNN) classification and regression
@@ -572,6 +573,56 @@ fmt.Printf("3rd central moment: %.4f\n", moment3)
 
 ---
 
+### Standard Normal CDF (NormCDF)
+
+```go
+func NormCDF(x float64) float64
+```
+
+**Description:** Cumulative distribution function Φ(x) of the standard normal distribution N(0, 1). Defined for every real `x` (`-Inf` → 0, `+Inf` → 1, `NaN` → `NaN`), so it never fails and returns no error. Useful for significance calculations, the Probabilistic/Deflated Sharpe Ratio in [`quant`](./quant.md), and any z-score → probability conversion.
+
+**Parameters:**
+
+- `x`: the value at which to evaluate Φ
+
+**Returns:**
+
+- `float64`: Φ(x) = P(Z ≤ x), in `[0, 1]`
+
+### Standard Normal Quantile / PPF (NormPPF)
+
+```go
+func NormPPF(p float64) (float64, error)
+```
+
+**Description:** Inverse CDF (quantile / percent-point function) Φ⁻¹(p) of the standard normal distribution N(0, 1). Boundaries return the correct infinite quantiles: `p = 0` → `-Inf`, `p = 1` → `+Inf`.
+
+**Parameters:**
+
+- `p`: a probability in `[0, 1]`
+
+**Returns:**
+
+- `float64`: Φ⁻¹(p)
+- `error`: non-nil when `p` is outside `[0, 1]` or `NaN`
+
+**Example**:
+
+```go
+// 97.5th percentile of the standard normal ≈ 1.95996 (the classic
+// two-sided 95% critical value).
+crit, err := stats.NormPPF(0.975)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("z* = %.5f\n", crit)
+
+// Round-trip: NormCDF and NormPPF are inverses.
+fmt.Printf("p = %.4f\n", stats.NormCDF(crit)) // 0.9750
+```
+
+---
+
 ## Analysis of Variance (ANOVA)
 
 ### One Way ANOVA
@@ -785,6 +836,249 @@ fmt.Printf("Regression F=%.4f, p=%.4f\n", result.Statistic, result.PValue)
 
 ---
 
+## Nonparametric Tests (Rank-Based)
+
+Rank-based tests do not assume normality or homogeneity of variance. They
+are the recommended fallback when the parametric assumptions of the
+t-test / ANOVA family are violated. Each method is the direct
+counterpart of a parametric test:
+
+| Parametric | Nonparametric counterpart |
+| --- | --- |
+| `SingleSampleTTest` / `PairedTTest` | `SingleSampleWilcoxon` / `PairedWilcoxon` |
+| `TwoSampleTTest` | `MannWhitneyU` |
+| `OneWayANOVA` | `KruskalWallis` |
+| `RepeatedMeasuresANOVA` | `FriedmanTest` |
+
+### When to switch to a nonparametric test
+
+```text
+                    ┌─────────────────────────────────────────┐
+                    │ Is the response interval/ratio AND       │
+                    │ approximately normal in each group?      │
+                    └─────────────────────────────────────────┘
+                          │ yes                    │ no
+                          ▼                         ▼
+              ┌───────────────────┐    ┌─────────────────────────────┐
+              │ Variances roughly │    │ Ordinal data, small n (<20),│
+              │ equal? (Levene /  │    │ heavy tails / outliers, or  │
+              │ Bartlett)         │    │ Likert-type scale?          │
+              └───────────────────┘    └─────────────────────────────┘
+                  │ yes    │ no                     │ yes
+                  ▼        ▼                         ▼
+            ┌─────────┐  ┌──────────┐    ┌──────────────────────────────┐
+            │ t-test/ │  │ Welch    │    │ Use the rank-based test:     │
+            │ ANOVA   │  │ t-test   │    │ • 1 sample / paired → Wilcoxon│
+            └─────────┘  └──────────┘    │ • 2 indep. groups   → MWU     │
+                                         │ • k indep. groups   → KW      │
+                                         │ • k repeated meas.  → Friedman│
+                                         └──────────────────────────────┘
+```
+
+Practical triggers for the right branch:
+
+- **Ordinal / Likert data** (1–5 satisfaction, star ratings): rank-based.
+- **Small n (< 20)** where normality cannot be checked: rank-based.
+- **Heavy tails / outliers** that would dominate a mean: rank-based.
+- **Levene / Bartlett reject equal variance** and you do not want to fall
+  back to Welch: `MannWhitneyU` instead of `TwoSampleTTest`.
+- **Repeated measures violating sphericity**: `FriedmanTest` instead of
+  `RepeatedMeasuresANOVA`.
+
+All four methods are pure functions: they do not write back to the input
+and are automatically thread-safe (same contract as `OneWayANOVA`).
+
+### Exact vs asymptotic distribution
+
+Each test auto-selects its p-value path, matching R `wilcox.test` /
+`kruskal.test` / `friedman.test`:
+
+| Test | Exact path used when | Otherwise |
+| --- | --- | --- |
+| Wilcoxon (single/paired) | no ties **and** `n_eff < 50` | normal approx. + continuity correction |
+| Mann-Whitney U | no ties **and** `n.x < 50 && n.y < 50` | normal approx. + continuity correction |
+| Kruskal-Wallis | — (always χ² asymptotic, tie-corrected) | — |
+| Friedman | — (always χ² asymptotic, tie-corrected) | — |
+
+`WilcoxonTestResult.Method` / `MannWhitneyUResult.Method` report
+`"exact"` or `"asymptotic"`; `Z` is populated only on the asymptotic
+path (and is `NaN` for exact).
+
+### Single Sample Wilcoxon
+
+```go
+func SingleSampleWilcoxon(data insyra.IDataList, mu float64, alt AlternativeHypothesis, confidenceLevel ...float64) (*WilcoxonTestResult, error)
+```
+
+**Description:** Tests whether the median of `data` equals `mu` (Wilcoxon
+signed-rank test on `data - mu`). Zero differences are dropped before
+ranking (R `wilcox.test` default zero-method). The CI is the
+Hodges-Lehmann pseudo-median interval on the `data` scale.
+
+**Parameters:**
+
+- `data`: Sample. Type: `insyra.IDataList`.
+- `mu`: Hypothesized median.
+- `alt`: `stats.TwoSided` / `stats.Greater` / `stats.Less`.
+- `confidenceLevel`: Optional, default `0.95`. Range `(0, 1)`.
+
+**Returns:**
+
+- `*WilcoxonTestResult`: Return value.
+
+### Paired Wilcoxon
+
+```go
+func PairedWilcoxon(data1, data2 insyra.IDataList, alt AlternativeHypothesis, confidenceLevel ...float64) (*WilcoxonTestResult, error)
+```
+
+**Description:** Tests whether the median of `data1 - data2` equals 0.
+`data1` and `data2` must have the same length. CI is for the median
+paired difference.
+
+**Parameters:**
+
+- `data1`, `data2`: Paired samples. Type: `insyra.IDataList`.
+- `alt`: Alternative hypothesis.
+- `confidenceLevel`: Optional, default `0.95`.
+
+**Returns:**
+
+- `*WilcoxonTestResult`: Return value.
+
+### Mann-Whitney U
+
+```go
+func MannWhitneyU(data1, data2 insyra.IDataList, alt AlternativeHypothesis, confidenceLevel ...float64) (*MannWhitneyUResult, error)
+```
+
+**Description:** Wilcoxon-Mann-Whitney rank-sum test on two independent
+samples. `U1` is for `data1`, `U2 = n1·n2 − U1`; `Statistic` is
+`min(U1, U2)`. CI is the Hodges-Lehmann shift interval.
+
+**Parameters:**
+
+- `data1`, `data2`: Independent samples. Type: `insyra.IDataList`.
+- `alt`: Alternative hypothesis (direction applies to `data1`).
+- `confidenceLevel`: Optional, default `0.95`.
+
+**Returns:**
+
+- `*MannWhitneyUResult`: Return value.
+
+### Kruskal-Wallis
+
+```go
+func KruskalWallis(groups ...insyra.IDataList) (*KruskalWallisResult, error)
+```
+
+**Description:** Kruskal-Wallis H test on ≥ 2 independent samples.
+`Statistic` is the tie-corrected H referred to χ² with `k − 1` df.
+
+**Parameters:**
+
+- `groups`: Two or more independent samples. Type: `...insyra.IDataList`.
+
+**Returns:**
+
+- `*KruskalWallisResult`: Return value.
+
+### Friedman
+
+```go
+func FriedmanTest(subjects ...insyra.IDataList) (*FriedmanTestResult, error)
+```
+
+**Description:** Friedman test for repeated measures. Each `IDataList`
+is one subject's measurements across `k` conditions; all subjects must
+have the same length `k`. `Statistic` is the tie-corrected Q referred
+to χ² with `k − 1` df.
+
+**Parameters:**
+
+- `subjects`: One `IDataList` per subject (each length `k`). Type: `...insyra.IDataList`.
+
+**Returns:**
+
+- `*FriedmanTestResult`: Return value.
+
+#### Nonparametric Result Types
+
+```go
+type WilcoxonTestResult struct {
+    testResultBase             // Statistic = W+ ; DF nil ; CI = Hodges-Lehmann ; EffectSizes: rank_biserial
+    Z          float64         // asymptotic z (NaN for exact)
+    Method     string          // "exact" | "asymptotic"
+    NEffective int             // nonzero |d_i| used (zeros dropped)
+}
+
+type MannWhitneyUResult struct {
+    testResultBase             // Statistic = min(U1,U2) ; DF nil ; CI = HL shift ; EffectSizes: rank_biserial, cles_a12
+    U1     float64
+    U2     float64
+    Z      float64             // asymptotic z (NaN for exact)
+    Method string              // "exact" | "asymptotic"
+}
+
+type KruskalWallisResult struct {
+    testResultBase             // Statistic = H (tie-corrected) ; DF = k-1 ; CI nil ; EffectSizes: epsilon_squared
+    NTotal       int
+    GroupRankSum []float64      // rank sum per group, input order
+}
+
+type FriedmanTestResult struct {
+    testResultBase             // Statistic = Q (tie-corrected) ; DF = k-1 ; CI nil ; EffectSizes: kendalls_w
+    NSubjects   int
+    KConditions int
+}
+```
+
+Effect-size `Type` strings: `rank_biserial`, `cles_a12` (CLES A12,
+Mann-Whitney only), `epsilon_squared` (Kruskal-Wallis), `kendalls_w`
+(Friedman).
+
+**Example**:
+
+```go
+// Likert satisfaction, normality not assumed: paired Wilcoxon
+before := insyra.NewDataList(3, 4, 2, 5, 3, 4, 2, 3)
+after := insyra.NewDataList(4, 5, 4, 5, 4, 5, 3, 4)
+w, err := stats.PairedWilcoxon(before, after, stats.Less)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("W+=%.1f p=%.4f method=%s r_rb=%.3f\n",
+    w.Statistic, w.PValue, w.Method, w.EffectSizes[0].Value)
+
+// Two independent groups, heavy-tailed: Mann-Whitney U
+a := insyra.NewDataList(15, 18, 22, 11, 30, 14, 26, 25)
+b := insyra.NewDataList(10, 9, 13, 17, 7, 12, 19, 8, 20)
+u, err := stats.MannWhitneyU(a, b, stats.TwoSided)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("U1=%.1f U2=%.1f p=%.4f CI=[%.3f, %.3f]\n",
+    u.U1, u.U2, u.PValue, u.CI[0], u.CI[1])
+
+// k independent groups: Kruskal-Wallis
+kw, err := stats.KruskalWallis(group1, group2, group3)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("H=%.4f df=%.0f p=%.4f eps2=%.3f\n",
+    kw.Statistic, *kw.DF, kw.PValue, kw.EffectSizes[0].Value)
+
+// k repeated conditions: Friedman (one IDataList per subject)
+fr, err := stats.FriedmanTest(subj1, subj2, subj3, subj4, subj5)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("Q=%.4f df=%.0f p=%.4f W=%.3f\n",
+    fr.Statistic, *fr.DF, fr.PValue, fr.EffectSizes[0].Value)
+```
+
+---
+
 ## Principal Component Analysis (PCA)
 
 ### PCA
@@ -809,6 +1103,9 @@ func PCA(dataTable insyra.IDataTable, nComponents ...int) (*PCAResult, error)
 ```go
 type PCAResult struct {
     Components        insyra.IDataTable // Principal component loadings as DataTable
+    Center            []float64         // Per-column means subtracted before fitting
+    Scale             []float64         // Per-column sample standard deviations used for fitting
+    Scores            insyra.IDataTable // Training observations projected onto the components
     Eigenvalues       []float64         // Eigenvalues corresponding to components
     ExplainedVariance []float64         // Percentage of variance explained by each component
 }
@@ -827,6 +1124,19 @@ if err != nil {
 components := result.Components
 fmt.Printf("Explained variance: %.2f%%\n", result.ExplainedVariance[0])
 ```
+
+`Center` and `Scale` are the fitted per-column parameters. `PCA` centers and
+standardizes every input column using the sample standard deviation, so both
+slices contain one value per input column. Apply them to new observations before
+multiplying by the corresponding columns of `Components`:
+
+```go
+scaled := (value - result.Center[column]) / result.Scale[column]
+```
+
+`Scores` contains the training observations after that same transformation and
+projection. Its rows correspond to the input rows and its columns correspond to
+the returned components.
 
 ## Factor Analysis
 
@@ -1232,7 +1542,14 @@ type KMeansResult struct {
     Iter        int
     IFault      int
 }
+
+func (r *KMeansResult) Assign(dataTable insyra.IDataTable) ([]int, []float64, error)
 ```
+
+`Assign` applies the fitted centers to new observations. It returns one-based
+center indices, matching `Cluster`, and the squared Euclidean distance to the
+selected center for each row. The input must have the same number of columns
+as the fitted centers.
 
 **Example**:
 
@@ -1249,6 +1566,12 @@ if err != nil {
 fmt.Println(result.Cluster)
 fmt.Println(result.Size)
 result.Centers.Show()
+
+newClusters, newDistances, err := result.Assign(newData)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Println(newClusters, newDistances)
 ```
 
 ### Hierarchical Agglomerative Clustering
@@ -1459,6 +1782,114 @@ for i := range result.Coefficients {
 
 ### Polynomial Regression
 
+### Logistic Regression
+
+```go
+func LogisticRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) (*LogisticRegressionResult, error)
+func LogisticRegressionWithOptions(opts LogisticRegressionOptions, dlY insyra.IDataList, dlXs ...insyra.IDataList) (*LogisticRegressionResult, error)
+```
+
+**Description:** Fits a binomial GLM with a logit link using IRLS, matching the usual `stats::glm(..., family = binomial(link = "logit"))` workflow. The response may be numeric `0/1`, boolean, or any two class labels. Use `PositiveClass` when you need explicit control over which label is encoded as `1`.
+
+```go
+type LogisticRegressionOptions struct {
+    ConfidenceLevel  float64
+    MaxIter          int
+    Tolerance        float64
+    PositiveClass    any
+    SeparationPolicy stats.SeparationPolicy // SepWarn, SepError, SepRidge
+    Ridge            float64                 // used when SeparationPolicy == SepRidge
+}
+```
+
+Important result fields include `Link`, `Coefficients`, `StandardErrors`, `ZValues`, `PValues`, `ConfidenceIntervals`, `OddsRatios`, `FittedProbabilities`, `Deviance`, `NullDeviance`, `AIC`, `BIC`, and pseudo-R-squared values (`McFaddenR2`, `CoxSnellR2`, `NagelkerkeR2`). `Link` is `stats.Logit`; apply it to a `Predict(stats.PredictLinear, xs...)` result to reproduce `Predict(stats.PredictResponse, xs...)`. Use `Predict(stats.PredictClass, xs...)` for class labels.
+
+```go
+y := insyra.NewDataList("no", "no", "yes", "yes", "no", "yes")
+x := insyra.NewDataList(-2.0, -1.0, 0.2, 1.0, 1.8, 2.4)
+
+fit, err := stats.LogisticRegressionWithOptions(stats.LogisticRegressionOptions{
+    PositiveClass: "yes",
+}, y, x)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("odds ratio for x = %.4f\n", fit.OddsRatios[1])
+```
+
+### Poisson Regression
+
+```go
+func PoissonRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) (*PoissonRegressionResult, error)
+func PoissonRegressionWithOptions(opts PoissonRegressionOptions, dlY insyra.IDataList, dlXs ...insyra.IDataList) (*PoissonRegressionResult, error)
+```
+
+**Description:** Fits a Poisson GLM with a log link for count/rate outcomes. Use `Offset` for exposure, usually `log(exposure)`. When `DispersionCheck` is true, `OverDispersed` is set when Pearson chi-square divided by residual degrees of freedom is greater than `1.5`.
+
+```go
+type PoissonRegressionOptions struct {
+    ConfidenceLevel float64
+    MaxIter         int
+    Tolerance       float64
+    Offset          insyra.IDataList
+    DispersionCheck bool
+}
+```
+
+Important result fields include `Link`, `Coefficients`, `StandardErrors`, `ZValues`, `PValues`, `ConfidenceIntervals`, `IncidenceRateRatios`, `FittedRates`, `PearsonChi2`, `DispersionStatistic`, `Deviance`, `NullDeviance`, `AIC`, and `BIC`. `Link` is `stats.Log`; apply it to a `Predict(stats.PredictLinear, xs...)` result to reproduce `Predict(stats.PredictResponse, xs...)`.
+
+```go
+counts := insyra.NewDataList(1, 2, 3, 4, 6, 8)
+x := insyra.NewDataList(0.1, 0.4, 0.8, 1.2, 1.7, 2.0)
+exposure := insyra.NewDataList(math.Log(1.0), math.Log(1.2), math.Log(0.9), math.Log(1.4), math.Log(1.3), math.Log(1.5))
+
+fit, err := stats.PoissonRegressionWithOptions(stats.PoissonRegressionOptions{
+    Offset:          exposure,
+    DispersionCheck: true,
+}, counts, x)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("IRR for x = %.4f\n", fit.IncidenceRateRatios[1])
+```
+
+### Generic GLM
+
+```go
+func GLM(opts GLMOptions, dlY insyra.IDataList, dlXs ...insyra.IDataList) (*GLMResult, error)
+```
+
+**Description:** Fits a generalized linear model for supported family/link pairs. If `Link` is empty, the canonical link is used. Current supported pairs are `Binomial` + `Logit`, `Poisson` + `Log`, and `Gaussian` + `Identity`.
+
+```go
+type GLMOptions struct {
+    Family          stats.GLMFamily // Binomial, Poisson, Gaussian
+    Link            stats.GLMLink   // Logit, Log, Identity
+    ConfidenceLevel float64
+    MaxIter         int
+    Tolerance       float64
+    Offset          insyra.IDataList
+    Weights         insyra.IDataList
+}
+```
+
+`GLMResult` exposes coefficient inference, fitted values, residuals, deviance, log-likelihood, AIC/BIC, Pearson chi-square, dispersion, convergence status, and `Predict`.
+
+When a model is fit with an `Offset`, the offset is part of the linear predictor, so it must also be supplied for new data. `Predict` returns an error on an offset-fitted model; use `PredictWithOffset(typ, newOffset, xs...)` instead (available on `PoissonRegressionResult` and `GLMResult`).
+
+```go
+fit, err := stats.GLM(stats.GLMOptions{
+    Family: stats.Poisson,
+    Link:   stats.Log,
+    Offset: exposure,
+}, counts, x)
+if err != nil {
+    log.Fatal(err)
+}
+// Offset-fitted model: supply the new-data offset.
+rates, err := fit.PredictWithOffset(stats.PredictResponse, newExposure, xNew)
+```
+
 ```go
 func PolynomialRegression(dlY insyra.IDataList, dlX insyra.IDataList, degree int) (*PolynomialRegressionResult, error)
 ```
@@ -1589,6 +2020,23 @@ type LogarithmicRegressionResult struct {
 }
 ```
 
+#### Regression Predictions
+
+All fitted regression results expose the same point-prediction shape:
+
+```go
+func (r *LinearRegressionResult) Predict(typ PredictType, newXs ...insyra.IDataList) (*insyra.DataList, error)
+```
+
+`PolynomialRegressionResult`, `ExponentialRegressionResult`, and
+`LogarithmicRegressionResult` expose the same method. Pass
+`stats.PredictResponse` (or an empty type) and one new predictor list for each
+fitted predictor. Polynomial, exponential, and logarithmic regression each
+take one predictor list. Predictions are returned on the original response
+scale. A mismatched predictor count or predictor row length returns an error.
+These methods provide point predictions only; R's `predict.lm` and
+`predict.glm` can additionally return standard errors and intervals.
+
 ---
 
 ## Matrix Operations
@@ -1668,10 +2116,11 @@ Most functions accept optional confidence levels. If not specified or invalid (o
 
 ### Confidence Intervals for Regression Analysis
 
-All regression functions (Linear, Polynomial, Exponential, and Logarithmic) now provide 95% confidence intervals for their coefficients:
+All regression functions (Linear, Logistic, Poisson, GLM, Polynomial, Exponential, and Logarithmic) provide confidence intervals for their coefficients:
 
 - **Linear and Polynomial Regression**: Returns `ConfidenceIntervals [][2]float64` containing confidence intervals for all coefficients (intercept and slopes).
 - **Exponential and Logarithmic Regression**: Returns separate `ConfidenceIntervalIntercept [2]float64` and `ConfidenceIntervalSlope [2]float64` fields.
+- **Logistic, Poisson, and GLM**: Return Wald z confidence intervals via `ConfidenceIntervals`; logistic also exposes odds-ratio intervals and Poisson exposes incidence-rate-ratio intervals.
 
 The confidence intervals are calculated using the t-distribution with appropriate degrees of freedom:
 
@@ -1844,4 +2293,43 @@ fall short of 1 even for a perfectly monotonic relationship and
 disagrees with virtually every other stats package. Self-implementing
 τ-b is ~50 lines in `stats/correlation.go:kendallTauBStats`.
 
+### Nonparametric tests (match R `wilcox.test` / `kruskal.test` / `friedman.test`)
 
+`SingleSampleWilcoxon` / `PairedWilcoxon` / `MannWhitneyU` /
+`KruskalWallis` / `FriedmanTest` are ports of the corresponding R
+functions, verified field-by-field against R and SciPy in
+`stats/crosslang_nonparam_test.go`.
+
+Implementation notes that may surprise readers:
+
+- **Exact distributions** use partition-enumeration DP (Wilcoxon
+  signed-rank: subset-sum recurrence; Mann-Whitney U: the
+  "last-element" recurrence `f(u,i,j) = f(u−j,i−1,j) + f(u,i,j−1)`).
+  Total over all `u` equals `2^n` and `C(n1+n2, n1)` respectively.
+- **Tie correction is computed over the ranks, not the raw values.**
+  IEEE-754 subtraction can split values that are "logically equal"
+  (e.g. `1.2 − 0.9` vs `4.5 − 4.3`) into floats differing by 1 ulp.
+  R's `wilcox.test` counts ties with `table(rank(...))`, so insyra
+  does the same — counting tie groups on the assigned mid-ranks —
+  to stay bit-aligned with R's σ.
+- **Hodges-Lehmann CI**: the exact path uses `qsignrank` / `qwilcox`
+  rank cutoffs indexed into the sorted Walsh averages / pairwise
+  differences (R's exact `conf.int` algorithm). The asymptotic path
+  solves `z(data − c) = ±z_crit` by bisection, mirroring R's
+  `uniroot` on the continuity-corrected z.
+- **Single-sample CI scale**: the test runs on `data − mu` but the CI
+  is reported on the `data` (location) scale, i.e. the Walsh-average
+  interval shifted back by `+ mu`, matching R's `conf.int` output.
+- **Exact-path selection** matches R 4.5 `wilcox.test` defaults:
+  Wilcoxon `n_eff < 50` and untied; Mann-Whitney `n.x < 50 && n.y < 50`
+  and untied. Kruskal-Wallis and Friedman always use the tie-corrected
+  χ² asymptotic (R has no exact path for them by default).
+- The asymptotic CI agrees with R up to one Walsh-average step: R's
+  `uniroot` returns a continuous value within `tol.root = 1e-4` of a
+  discrete jump, whereas insyra/SciPy land exactly on the boundary.
+  Exact-path statistics, p-values, and CIs are bit-identical across
+  Go / R / SciPy.
+
+No third-party dependency is added — the standard `math` package plus
+the existing `gonum/stat` normal/χ² helpers are sufficient. There is
+no `scipy` port.

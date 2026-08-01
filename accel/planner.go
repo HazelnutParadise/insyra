@@ -18,7 +18,14 @@ func (s *Session) PlanShardable() ShardPlan {
 }
 
 func (s *Session) PlanShardableWorkload(workload WorkloadEstimate) ShardPlan {
-	report := s.Report()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.planShardableWorkloadLocked(workload)
+}
+
+// planShardableWorkloadLocked assumes s.mu is held.
+func (s *Session) planShardableWorkloadLocked(workload WorkloadEstimate) ShardPlan {
+	report := s.reportLocked()
 	if len(s.devices) == 0 || !report.Accelerated {
 		return ShardPlan{
 			Accelerated:    false,

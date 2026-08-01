@@ -18,7 +18,7 @@ func (dt *DataTable) SetColNameByIndex(index string, name string) *DataTable {
 		}
 
 		dt.columns[nIndex].name = name
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 		result = dt
 	})
 	return result
@@ -39,7 +39,7 @@ func (dt *DataTable) SetColNameByNumber(numberIndex int, name string) *DataTable
 
 		name = safeColName(dt, name)
 		dt.columns[numberIndex].name = name
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 		result = dt
 	})
 	return result
@@ -50,7 +50,10 @@ func (dt *DataTable) ChangeColName(oldName, newName string) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		for _, col := range dt.columns {
 			if col.name == oldName {
-				col.name = newName
+				// Route through safeColName so a rename cannot create a duplicate
+				// column name (which would shadow lookups), consistent with the
+				// other name setters.
+				col.name = safeColName(dt, newName)
 				break
 			}
 		}
@@ -116,7 +119,7 @@ func (dt *DataTable) ColNamesToFirstRow() *DataTable {
 			col.data = append([]any{col.name}, col.data...)
 			col.name = "" // Clear the name after moving it to the first row
 		}
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 		result = dt
 	})
 	return result
@@ -134,7 +137,7 @@ func (dt *DataTable) DropColNames() *DataTable {
 		for _, col := range dt.columns {
 			col.name = ""
 		}
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 		result = dt
 	})
 	return result
@@ -174,7 +177,7 @@ func (dt *DataTable) SetColNames(colNames []string) *DataTable {
 		for i := len(colNames); i < len(dt.columns); i++ {
 			dt.columns[i].SetName("")
 		}
-		go dt.updateTimestamp()
+		dt.updateTimestamp()
 		result = dt
 	})
 	return result
