@@ -26,15 +26,20 @@ Milestone order is the blocking sequence. OpenSpec has no dependency relationshi
 None. One coverage gap is carried in `AGENTS.md` follow-ups rather than here, because it waits on hardware nobody has rather than on a decision: the device path is verified on Apple and Metal only.
 
 ## Next Verifiable Output
-Undecided, and deliberately. The acceleration line has no landing site that measurement supports, and `insyra/ml` v1 is complete and now audited. The two things worth measuring before anything is proposed are brute-force KNN, whose candidate count is the training-set size and therefore always clears the floor, and the DBSCAN neighbourhood scan. Both need measuring against a parallel host first.
+The acceleration line has its first measured landing site. Brute-force KNN shapes were benchmarked on 2026-08-01 against the all-core host (`accel/knnbench_test.go`, M3, Metal): the device wins every shape tried, from 1.3x at 10k×1k×8 to **4.1x at 100k training rows × 10k queries × 32 dims** and 3.5x at 200k×1k×128 — through the exact-nearest operation, so the answers are float64-verified, not approximate. The next verifiable output is `stats` KNN reaching the device through a seam, behind an OpenSpec change; the shortlist cap of 8 bounds k unless extended.
 
-The CI gap that used to sit here is closed: `Reference Verification` runs the whole comparison set with every toolchain installed and a missing one failing the job.
+The DBSCAN neighbourhood scan remains unmeasured.
 
 ## Next Ticket
-None. Proposing one before that measurement would repeat the mistake this phase already made once — building a kernel, then discovering its intended caller could not clear its own profitability floor.
+Propose `add-knn-device-path`: route `stats` brute-force KNN through `accel.ExecuteNearestExact` when a session is available, observable CPU fallback as always. The measurement that used to gate this exists now and says yes.
 
 ## Decision Log
 Deltas that still change what someone would do. The standing technical decisions they produced — the precision contract, the device rules, the measured thresholds — live in [ENG.md](ENG.md); the full history is in git.
+
+- decision: KNN is the first operation measured to earn the device, and it is allowed to.
+  rationale: Benchmarked 2026-08-01 on the M3 against the all-core CPU path: every KNN-shaped workload tried wins on-device, up to 4.1x at 100k×10k×32, through the exact-nearest operation whose answers are recomputed in float64 on the host. This is the measurement the dormancy decision demanded before any wiring; it now exists and points the other way for exactly one operation.
+  timestamp: 2026-08-01
+  impacted_ticket_ids: add-knn-device-path (proposed next)
 
 - decision: A verification that skips is not a verification, and the suite has to be able to say so. Gates route through `internal/reftest`; `INSYRA_REQUIRE_REFERENCE_TOOLCHAINS=1` makes a missing toolchain a failure.
   rationale: The ONNX round-trip needed `onnxruntime`, which was on no machine it ever ran on, so it skipped everywhere and reported nothing. Executed for the first time, it failed immediately on two defects that made every exported model unloadable. Installing the toolchains was only half the fix — measured in a clean environment, the `Clustering Parity` workflow's own installs left `sklearn` missing, so the job dedicated to running the parity suite had been green while running none of it. Toolchains go missing again; the suite has to fail rather than shrug.
