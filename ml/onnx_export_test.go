@@ -115,6 +115,13 @@ func TestONNXIndependentRuntimeRoundTripOrExplicitlySkips(t *testing.T) {
 		{name: "tree-regressor", model: mustTreeRegressor(t), input: numericInputs(onnxNumericFeatures())},
 		{name: "tree-classifier", model: mustTreeClassifier(t), input: categoricalInputs(onnxTreeInput())},
 		{name: "pipeline", model: mustPipelineModel(t), input: pipelineInputs(onnxPipelineInput())},
+		{name: "ridge", model: mustRidgeModel(t), input: numericInputs(onnxNumericFeatures())},
+		{name: "lasso", model: mustLassoModel(t), input: numericInputs(onnxNumericFeatures())},
+		{name: "wls", model: mustWLSModel(t), input: numericInputs(onnxNumericFeatures())},
+		{name: "forest-regressor", model: mustForestRegressor(t), input: numericInputs(onnxNumericFeatures())},
+		{name: "forest-classifier", model: mustForestClassifier(t), input: numericInputs(onnxNumericFeatures())},
+		{name: "boosted-regressor", model: mustBoostedRegressor(t), input: numericInputs(onnxNumericFeatures())},
+		{name: "boosted-classifier", model: mustBoostedClassifier(t), input: numericInputs(onnxNumericFeatures())},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -289,6 +296,76 @@ func mustTreeClassifier(t *testing.T) ml.Model {
 func mustPipelineModel(t *testing.T) ml.Model {
 	t.Helper()
 	model, err := onnxPipeline().Fit(onnxPipelineInput(), onnxRegressionTargets())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return model
+}
+
+func mustRidgeModel(t *testing.T) ml.Model {
+	t.Helper()
+	model, err := ml.FitRidgeRegression(onnxNumericFeatures(), onnxRegressionTargets(), 0.7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return model
+}
+
+func mustLassoModel(t *testing.T) ml.Model {
+	t.Helper()
+	model, err := ml.FitLassoRegression(onnxNumericFeatures(), onnxRegressionTargets(), 0.05)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return model
+}
+
+func mustWLSModel(t *testing.T) ml.Model {
+	t.Helper()
+	weights := insyra.NewDataList(1.0, 2.0, 1.0, 3.0, 1.0, 2.0, 1.0, 2.0)
+	model, err := ml.FitWeightedLinearRegression(onnxNumericFeatures(), onnxRegressionTargets(), weights)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return model
+}
+
+func mustForestRegressor(t *testing.T) ml.Model {
+	t.Helper()
+	seed := int64(9)
+	model, err := ml.FitRandomForestRegressor(onnxNumericFeatures(), onnxRegressionTargets(),
+		ml.RandomForestOptions{Trees: 12, Seed: &seed, Tree: ml.DecisionTreeOptions{MaxDepth: 3}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return model
+}
+
+func mustForestClassifier(t *testing.T) ml.Model {
+	t.Helper()
+	seed := int64(9)
+	model, err := ml.FitRandomForestClassifier(onnxNumericFeatures(), onnxClassificationTargets(),
+		ml.RandomForestOptions{Trees: 12, Seed: &seed, Tree: ml.DecisionTreeOptions{MaxDepth: 3}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return model
+}
+
+func mustBoostedRegressor(t *testing.T) ml.Model {
+	t.Helper()
+	model, err := ml.FitGradientBoostingRegressor(onnxNumericFeatures(), onnxRegressionTargets(),
+		ml.GradientBoostingOptions{Stages: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return model
+}
+
+func mustBoostedClassifier(t *testing.T) ml.Model {
+	t.Helper()
+	model, err := ml.FitGradientBoostingClassifier(onnxNumericFeatures(), onnxClassificationTargets(),
+		ml.GradientBoostingOptions{Stages: 20})
 	if err != nil {
 		t.Fatal(err)
 	}

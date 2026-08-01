@@ -518,9 +518,17 @@ if err := ml.ExportONNX(&modelFile, model); err != nil {
 }
 ```
 
-`LinearModel`, `LogisticModel`, `DecisionTreeClassifier`,
-`DecisionTreeRegressor`, and fitted pipelines containing supported root
-scalers or encoders implement `ml.Exporter`. A pipeline is exported as one
+`LinearModel`, `RidgeModel`, `LassoModel`, `WeightedLinearModel`,
+`LogisticModel`, `DecisionTreeClassifier`, `DecisionTreeRegressor`,
+`RandomForestClassifier`, `RandomForestRegressor`,
+`GradientBoostingRegressor`, `GradientBoostingClassifier`, and fitted
+pipelines containing supported root scalers or encoders implement
+`ml.Exporter`. Ensembles export as one multi-tree `TreeEnsemble`: a forest's
+leaf contributions are scaled by 1/T so the runtime's sum is the forest's
+average, and boosting bakes the learning rate into the leaf weights with the
+prior as the ensemble's base value — the export is the model, not an
+approximation of it. Every exportable family is proved by execution in the
+`onnxruntime` round trip, not by construction. A pipeline is exported as one
 graph, so the ONNX runtime receives the raw feature columns rather than a
 pre-transformed table. ONNX stores model attributes as `float32`; predictions
 are compared with the tolerance of that exchange format.

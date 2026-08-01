@@ -44,8 +44,25 @@ func ExportONNX(w io.Writer, fitted any) error {
 // verb describing the destination.
 func WriteONNX(w io.Writer, fitted any) error { return ExportONNX(w, fitted) }
 
-func (m *LinearModel) ExportONNX(w io.Writer) error   { return ExportONNX(w, m) }
-func (m *LogisticModel) ExportONNX(w io.Writer) error { return ExportONNX(w, m) }
+func (m *LinearModel) ExportONNX(w io.Writer) error { return ExportONNX(w, m) }
+func (m *RidgeModel) ExportONNX(w io.Writer) error  { return ExportONNX(w, m) }
+func (m *LassoModel) ExportONNX(w io.Writer) error  { return ExportONNX(w, m) }
+
+// ExportONNX writes the fitted weighted linear model.
+func (m *WeightedLinearModel) ExportONNX(w io.Writer) error { return ExportONNX(w, m) }
+
+// ExportONNX writes the fitted forest as one multi-tree ensemble.
+func (m *RandomForestClassifier) ExportONNX(w io.Writer) error { return ExportONNX(w, m) }
+
+// ExportONNX writes the fitted forest as one multi-tree ensemble.
+func (m *RandomForestRegressor) ExportONNX(w io.Writer) error { return ExportONNX(w, m) }
+
+// ExportONNX writes the boosted ensemble with the learning rate baked in.
+func (m *GradientBoostingRegressor) ExportONNX(w io.Writer) error { return ExportONNX(w, m) }
+
+// ExportONNX writes the boosted binary classifier as its log-odds ensemble.
+func (m *GradientBoostingClassifier) ExportONNX(w io.Writer) error { return ExportONNX(w, m) }
+func (m *LogisticModel) ExportONNX(w io.Writer) error              { return ExportONNX(w, m) }
 func (m *DecisionTreeClassifier) ExportONNX(w io.Writer) error {
 	return ExportONNX(w, m)
 }
@@ -193,6 +210,20 @@ func buildONNXModel(fitted any) (*onnxModelProto, error) {
 		return buildDirectONNX(model, model.Features(), model.featureSchemas)
 	case *DecisionTreeRegressor:
 		return buildDirectONNX(model, model.Features(), model.featureSchemas)
+	case *RidgeModel:
+		return buildDirectONNX(model, model.Features(), nil)
+	case *LassoModel:
+		return buildDirectONNX(model, model.Features(), nil)
+	case *WeightedLinearModel:
+		return buildDirectONNX(model, model.Features(), nil)
+	case *RandomForestClassifier:
+		return buildDirectONNX(model, model.Features(), forestSchemas(model.trees))
+	case *RandomForestRegressor:
+		return buildDirectONNX(model, model.Features(), forestSchemas(model.trees))
+	case *GradientBoostingRegressor:
+		return buildDirectONNX(model, model.Features(), forestSchemas(model.trees))
+	case *GradientBoostingClassifier:
+		return buildDirectONNX(model, model.Features(), forestSchemas(model.trees))
 	case Model:
 		return nil, unsupportedONNXModel(model)
 	default:
@@ -270,9 +301,27 @@ func treeSchemas(model Model) []treeFeature {
 		return model.featureSchemas
 	case *DecisionTreeRegressor:
 		return model.featureSchemas
+	case *RandomForestClassifier:
+		return forestSchemas(model.trees)
+	case *RandomForestRegressor:
+		return forestSchemas(model.trees)
+	case *GradientBoostingRegressor:
+		return forestSchemas(model.trees)
+	case *GradientBoostingClassifier:
+		return forestSchemas(model.trees)
 	default:
 		return nil
 	}
+}
+
+// forestSchemas returns one representative feature schema for an ensemble.
+// Every tree encodes from the same data with the same options, so the schemas
+// agree; the first tree's stand for all of them.
+func forestSchemas(trees []*treeFit) []treeFeature {
+	if len(trees) == 0 {
+		return nil
+	}
+	return trees[0].schemas
 }
 
 func treeInputTypes(features []string, schemas []treeFeature) (map[string]int32, error) {
@@ -948,9 +997,161 @@ func appendONNXPredictor(b *onnxBuilder, model Model, groups []onnxGroup) error 
 		return appendONNXTreeClassifier(b, input, model)
 	case *DecisionTreeRegressor:
 		return appendONNXTreeRegressor(b, input, model)
+	case *RidgeModel:
+		if model == nil || model.Result == nil {
+			return errors.New("ml: ONNX export ridge model is nil")
+		}
+		return appendONNXLinearRegressor(b, input, model.Result.Coefficients, len(groups))
+	case *LassoModel:
+		if model == nil || model.Result == nil {
+			return errors.New("ml: ONNX export lasso model is nil")
+		}
+		return appendONNXLinearRegressor(b, input, model.Result.Coefficients, len(groups))
+	case *WeightedLinearModel:
+		if model == nil || model.Result == nil {
+			return errors.New("ml: ONNX export weighted linear model is nil")
+		}
+		return appendONNXLinearRegressor(b, input, model.Result.Coefficients, len(groups))
+	case *RandomForestClassifier:
+		return appendONNXForestClassifier(b, input, model)
+	case *RandomForestRegressor:
+		return appendONNXForestRegressor(b, input, model)
+	case *GradientBoostingRegressor:
+		return appendONNXBoostedRegressor(b, input, model)
+	case *GradientBoostingClassifier:
+		return appendONNXBoostedClassifier(b, input, model)
 	default:
 		return unsupportedONNXModel(model)
 	}
+}
+
+// appendONNXLinearRegressor writes the LinearRegressor node the plain linear
+// path uses; ridge, lasso and WLS share it because their coefficient layout
+// is the same — intercept first, one coefficient per feature.
+func appendONNXLinearRegressor(b *onnxBuilder, input string, coefficients []float64, featureCount int) error {
+	if len(coefficients) != featureCount+1 {
+		return errors.New("ml: ONNX export linear model has invalid coefficients")
+	}
+	b.addNode("LinearRegressor", "ai.onnx.ml", []string{input}, []string{"prediction"},
+		onnxAttrFloats("coefficients", float32Slice(coefficients[1:])),
+		onnxAttrFloats("intercepts", []float32{float32(coefficients[0])}),
+		onnxAttrInt("targets", 1), onnxAttrString("post_transform", "NONE"))
+	b.addOutput("prediction", onnxTensorFloat, []int64{-1, 1})
+	return nil
+}
+
+func appendONNXForestClassifier(b *onnxBuilder, input string, model *RandomForestClassifier) error {
+	if model == nil || len(model.trees) == 0 || model.classes == nil {
+		return errors.New("ml: ONNX export random-forest classifier is nil")
+	}
+	classes := model.classes.Data()
+	// The runtime sums leaf contributions; scaling each tree's probabilities
+	// by 1/T makes that sum the forest's average, which is what Predict does.
+	ensemble := &onnxTreeEnsemble{leafScale: 1 / float64(len(model.trees))}
+	for index, tree := range model.trees {
+		ensemble.currentTree = int64(index)
+		ensemble.emit(tree.root, true, len(classes), tree.schemas)
+	}
+	if len(classes) == 2 {
+		// The runtime routes two-class ensembles through a single-score path:
+		// one entry per leaf on class slot 0 carrying the second class's
+		// probability, the complement and the half-threshold label computed by
+		// the runtime. Leaving both classes' weights in place puts the label
+		// through that binary path with the wrong convention — measured as
+		// every label coming back 1 while the probabilities were exactly
+		// right.
+		ensemble.toBinaryScores()
+	}
+	attrs, err := ensemble.attributes(true, classes)
+	if err != nil {
+		return err
+	}
+	b.addNode("TreeEnsembleClassifier", "ai.onnx.ml", []string{input}, []string{"label", "probabilities"}, attrs...)
+	labelType, _ := onnxClassLabelType(classes)
+	b.addOutput("label", labelType, []int64{-1})
+	b.addOutput("probabilities", onnxTensorFloat, []int64{-1, int64(len(classes))})
+	return nil
+}
+
+func appendONNXForestRegressor(b *onnxBuilder, input string, model *RandomForestRegressor) error {
+	if model == nil || len(model.trees) == 0 {
+		return errors.New("ml: ONNX export random-forest regressor is nil")
+	}
+	ensemble := &onnxTreeEnsemble{leafScale: 1 / float64(len(model.trees))}
+	for index, tree := range model.trees {
+		ensemble.currentTree = int64(index)
+		ensemble.emit(tree.root, false, 0, tree.schemas)
+	}
+	attrs, err := ensemble.attributes(false, nil)
+	if err != nil {
+		return err
+	}
+	b.addNode("TreeEnsembleRegressor", "ai.onnx.ml", []string{input}, []string{"prediction"}, attrs...)
+	b.addOutput("prediction", onnxTensorFloat, []int64{-1, 1})
+	return nil
+}
+
+func appendONNXBoostedRegressor(b *onnxBuilder, input string, model *GradientBoostingRegressor) error {
+	if model == nil || len(model.trees) == 0 {
+		return errors.New("ml: ONNX export gradient-boosting regressor is nil")
+	}
+	// base + Σ lr·leaf is exactly the runtime's base_values + sum over scaled
+	// leaf weights, so the export is the model, not an approximation of it.
+	ensemble := &onnxTreeEnsemble{
+		leafScale:  model.learningRate,
+		baseValues: []float32{float32(model.base)},
+	}
+	for index, tree := range model.trees {
+		ensemble.currentTree = int64(index)
+		ensemble.emit(tree.root, false, 0, tree.schemas)
+	}
+	attrs, err := ensemble.attributes(false, nil)
+	if err != nil {
+		return err
+	}
+	b.addNode("TreeEnsembleRegressor", "ai.onnx.ml", []string{input}, []string{"prediction"}, attrs...)
+	b.addOutput("prediction", onnxTensorFloat, []int64{-1, 1})
+	return nil
+}
+
+func appendONNXBoostedClassifier(b *onnxBuilder, input string, model *GradientBoostingClassifier) error {
+	if model == nil || len(model.trees) == 0 || model.classes == nil {
+		return errors.New("ml: ONNX export gradient-boosting classifier is nil")
+	}
+	classes := model.classes.Data()
+	if len(classes) != 2 {
+		return errors.New("ml: ONNX export gradient-boosting classifier requires two classes")
+	}
+	// The stage trees are regression trees over log-odds. They are emitted as
+	// regression leaves and their entries rewritten onto class id 1: the
+	// second class carries the raw score base + Σ lr·leaf, the runtime's
+	// LOGISTIC transform turns it into a probability, and the runtime's
+	// binary handling gives the first class the complement.
+	ensemble := &onnxTreeEnsemble{
+		leafScale:  model.learningRate,
+		baseValues: []float32{float32(model.base)},
+	}
+	for index, tree := range model.trees {
+		ensemble.currentTree = int64(index)
+		ensemble.emit(tree.root, false, 0, tree.schemas)
+	}
+	// Regression leaves rewritten onto the binary single-score slot: class id
+	// 0 carries the raw log-odds, the runtime's LOGISTIC turns it into the
+	// second class's probability and fills the first with the complement.
+	ensemble.classTreeIDs = ensemble.targetTreeIDs
+	ensemble.classNodeIDs = ensemble.targetNodeIDs
+	ensemble.classWeights = ensemble.targetWeights
+	ensemble.classIDs = make([]int64, len(ensemble.targetIDs))
+	ensemble.targetTreeIDs, ensemble.targetNodeIDs, ensemble.targetIDs, ensemble.targetWeights = nil, nil, nil, nil
+	attrs, err := ensemble.attributesWithTransform(true, classes, "LOGISTIC")
+	if err != nil {
+		return err
+	}
+	b.addNode("TreeEnsembleClassifier", "ai.onnx.ml", []string{input}, []string{"label", "probabilities"}, attrs...)
+	labelType, _ := onnxClassLabelType(classes)
+	b.addOutput("label", labelType, []int64{-1})
+	b.addOutput("probabilities", onnxTensorFloat, []int64{-1, 2})
+	return nil
 }
 
 func onnxClassLabelType(classes []any) (int32, error) {
@@ -1041,6 +1242,46 @@ type onnxTreeEnsemble struct {
 	targetNodeIDs []int64
 	targetIDs     []int64
 	targetWeights []float32
+
+	// currentTree is the tree id the next emit writes. The single-tree paths
+	// leave it zero; an ensemble sets it per tree, and the runtime finds each
+	// tree's root as the first array entry carrying its id.
+	currentTree int64
+	// leafScale multiplies every leaf contribution. The runtime aggregates by
+	// summing, so 1/T turns the sum into a forest's average and a learning
+	// rate turns it into a boosted stage's shrunk step. Zero means one.
+	leafScale float64
+	// baseValues, when set, becomes the ensemble's base_values attribute —
+	// what the sum starts from, which for boosting is the prior.
+	baseValues []float32
+}
+
+// toBinaryScores rewrites two-class entries — interleaved class 0, class 1
+// per leaf — into the single-score form the runtime's binary path expects:
+// one entry per leaf on class slot 0 carrying the second class's weight.
+func (t *onnxTreeEnsemble) toBinaryScores() {
+	treeIDs := make([]int64, 0, len(t.classIDs)/2)
+	nodeIDs := make([]int64, 0, len(t.classIDs)/2)
+	weights := make([]float32, 0, len(t.classIDs)/2)
+	for i, classID := range t.classIDs {
+		if classID != 1 {
+			continue
+		}
+		treeIDs = append(treeIDs, t.classTreeIDs[i])
+		nodeIDs = append(nodeIDs, t.classNodeIDs[i])
+		weights = append(weights, t.classWeights[i])
+	}
+	t.classTreeIDs = treeIDs
+	t.classNodeIDs = nodeIDs
+	t.classWeights = weights
+	t.classIDs = make([]int64, len(treeIDs))
+}
+
+func (t *onnxTreeEnsemble) scale() float64 {
+	if t.leafScale == 0 {
+		return 1
+	}
+	return t.leafScale
 }
 
 func (t *onnxTreeEnsemble) newID() int64 {
@@ -1050,7 +1291,7 @@ func (t *onnxTreeEnsemble) newID() int64 {
 }
 
 func (t *onnxTreeEnsemble) addNode(id int64, feature int64, value float32, mode string, trueID, falseID int64, missingTrue bool) {
-	t.nodesTreeIDs = append(t.nodesTreeIDs, 0)
+	t.nodesTreeIDs = append(t.nodesTreeIDs, t.currentTree)
 	t.nodesNodeIDs = append(t.nodesNodeIDs, id)
 	t.nodesFeatureIDs = append(t.nodesFeatureIDs, feature)
 	t.nodesValues = append(t.nodesValues, value)
@@ -1080,20 +1321,20 @@ func (t *onnxTreeEnsemble) emitLeaf(node *DecisionTreeNode, classifier bool, cla
 			}
 		}
 		for class := 0; class < classCount; class++ {
-			t.classTreeIDs = append(t.classTreeIDs, 0)
+			t.classTreeIDs = append(t.classTreeIDs, t.currentTree)
 			t.classNodeIDs = append(t.classNodeIDs, id)
 			t.classIDs = append(t.classIDs, int64(class))
 			weight := float32(0)
 			if class < len(probabilities) {
-				weight = float32(probabilities[class])
+				weight = float32(probabilities[class] * t.scale())
 			}
 			t.classWeights = append(t.classWeights, weight)
 		}
 	} else {
-		t.targetTreeIDs = append(t.targetTreeIDs, 0)
+		t.targetTreeIDs = append(t.targetTreeIDs, t.currentTree)
 		t.targetNodeIDs = append(t.targetNodeIDs, id)
 		t.targetIDs = append(t.targetIDs, 0)
-		t.targetWeights = append(t.targetWeights, float32(node.Value))
+		t.targetWeights = append(t.targetWeights, float32(node.Value*t.scale()))
 	}
 	return id
 }
@@ -1156,7 +1397,15 @@ func (t *onnxTreeEnsemble) emit(node *DecisionTreeNode, classifier bool, classCo
 }
 
 func (t *onnxTreeEnsemble) attributes(classifier bool, classes []any) ([]onnxAttributeProto, error) {
-	attrs := []onnxAttributeProto{
+	return t.attributesWithTransform(classifier, classes, "NONE")
+}
+
+func (t *onnxTreeEnsemble) attributesWithTransform(classifier bool, classes []any, postTransform string) ([]onnxAttributeProto, error) {
+	attrs := []onnxAttributeProto{}
+	if len(t.baseValues) > 0 {
+		attrs = append(attrs, onnxAttrFloats("base_values", t.baseValues))
+	}
+	attrs = append(attrs,
 		onnxAttrInts("nodes_treeids", t.nodesTreeIDs),
 		onnxAttrInts("nodes_nodeids", t.nodesNodeIDs),
 		onnxAttrInts("nodes_featureids", t.nodesFeatureIDs),
@@ -1165,8 +1414,8 @@ func (t *onnxTreeEnsemble) attributes(classifier bool, classes []any) ([]onnxAtt
 		onnxAttrInts("nodes_truenodeids", t.nodesTrueNodeIDs),
 		onnxAttrInts("nodes_falsenodeids", t.nodesFalseNodeIDs),
 		onnxAttrInts("nodes_missing_value_tracks_true", t.nodesMissingTrue),
-		onnxAttrString("post_transform", "NONE"),
-	}
+		onnxAttrString("post_transform", postTransform),
+	)
 	if classifier {
 		classAttrs, err := onnxClassLabelAttributes(classes)
 		if err != nil {

@@ -637,9 +637,10 @@ that changes the column count makes them different lengths, and pairing
 importances with `Features()` attributes every number to the wrong column.
 
 Use `ml.ExportONNX(writer, fittedModel)` or the `ml.Exporter` capability to
-write supported fitted models for Python and other ONNX runtimes. Linear and
-logistic models, decision trees, and pipelines containing root scalers or
-encoders export as one graph. Polynomial, exponential, logarithmic, Poisson,
+write supported fitted models for Python and other ONNX runtimes. Linear,
+ridge, lasso, weighted-linear and logistic models, decision trees, random
+forests, gradient boosting, and pipelines containing root scalers or encoders
+export as one graph. Polynomial, exponential, logarithmic, Poisson,
 GLM, KMeans, KNN, PCA, imputers, and custom transformers are refused before
 the writer is touched. The independent `onnxruntime` round-trip test is
 skipped explicitly when that runtime is unavailable.
