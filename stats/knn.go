@@ -27,6 +27,19 @@ type KNNOptions struct {
 	LeafSize  int
 }
 
+// KNNDeviceSearcher answers every test row's k nearest training rows in one
+// batch — nearest first, squared Euclidean distances, ties by ascending
+// training index. ok=false declines the shape and the CPU path runs.
+type KNNDeviceSearcher = internalknn.DeviceSearcher
+
+// RegisterKNNDeviceSearcher installs a batch searcher that auto-algorithm KNN
+// consults before choosing a CPU searcher. Explicitly named algorithms never
+// consult it. The accelerator bridge (accel/knnbridge) registers itself here
+// on blank import; stats itself depends on no accelerator.
+func RegisterKNNDeviceSearcher(fn KNNDeviceSearcher) {
+	internalknn.RegisterDeviceSearcher(fn)
+}
+
 type KNNClassificationResult struct {
 	Predictions   insyra.IDataList
 	Classes       insyra.IDataList

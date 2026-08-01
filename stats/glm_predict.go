@@ -97,9 +97,11 @@ func predictFromCoefficients(beta []float64, link glmLink, typ PredictType, clas
 	}
 	var offset []float64
 	if offsetDL != nil {
-		offsetDL.AtomicDo(func(l *insyra.DataList) {
-			offset = l.ToF64Slice()
-		})
+		var offsetErr error
+		offset, _, offsetErr = numericSlice(offsetDL, "offset")
+		if offsetErr != nil {
+			return nil, offsetErr
+		}
 		if len(offset) != n {
 			return nil, fmt.Errorf("offset length %d does not match %d predictor rows", len(offset), n)
 		}

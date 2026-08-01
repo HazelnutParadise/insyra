@@ -125,6 +125,102 @@ type LogarithmicRegressionResult struct {
 	ConfidenceIntervalSlope     [2]float64
 }
 
+func prepareRegressionPrediction(model string, typ PredictType, predictorCount int, newXs []insyra.IDataList) ([][]float64, int, error) {
+	if typ == "" {
+		typ = PredictResponse
+	}
+	if typ != PredictResponse {
+		return nil, 0, fmt.Errorf("unsupported predict type %q for %s regression", typ, model)
+	}
+	if len(newXs) != predictorCount {
+		return nil, 0, fmt.Errorf("expected %d predictors, got %d", predictorCount, len(newXs))
+	}
+	return gatherPredictorInputs(newXs)
+}
+
+// Predict returns response-scale point predictions for new observations.
+func (r *LinearRegressionResult) Predict(typ PredictType, newXs ...insyra.IDataList) (*insyra.DataList, error) {
+	if r == nil {
+		return nil, errors.New("linear regression result is nil")
+	}
+	if len(r.Coefficients) == 0 {
+		return nil, errors.New("no coefficients available")
+	}
+	xs, n, err := prepareRegressionPrediction("linear", typ, len(r.Coefficients)-1, newXs)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]any, n)
+	for i := range n {
+		value := r.Coefficients[0]
+		for j := range xs {
+			value += r.Coefficients[j+1] * xs[j][i]
+		}
+		out[i] = value
+	}
+	return insyra.NewDataList(out), nil
+}
+
+// Predict returns response-scale point predictions for new observations.
+func (r *PolynomialRegressionResult) Predict(typ PredictType, newXs ...insyra.IDataList) (*insyra.DataList, error) {
+	if r == nil {
+		return nil, errors.New("polynomial regression result is nil")
+	}
+	if len(r.Coefficients) == 0 {
+		return nil, errors.New("no coefficients available")
+	}
+	xs, n, err := prepareRegressionPrediction("polynomial", typ, 1, newXs)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]any, n)
+	for i := range n {
+		value := 0.0
+		power := 1.0
+		for _, coefficient := range r.Coefficients {
+			value += coefficient * power
+			power *= xs[0][i]
+		}
+		out[i] = value
+	}
+	return insyra.NewDataList(out), nil
+}
+
+// Predict returns response-scale point predictions for new observations.
+func (r *ExponentialRegressionResult) Predict(typ PredictType, newXs ...insyra.IDataList) (*insyra.DataList, error) {
+	if r == nil {
+		return nil, errors.New("exponential regression result is nil")
+	}
+	xs, n, err := prepareRegressionPrediction("exponential", typ, 1, newXs)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]any, n)
+	for i := range n {
+		out[i] = r.Intercept * math.Exp(r.Slope*xs[0][i])
+	}
+	return insyra.NewDataList(out), nil
+}
+
+// Predict returns response-scale point predictions for new observations.
+func (r *LogarithmicRegressionResult) Predict(typ PredictType, newXs ...insyra.IDataList) (*insyra.DataList, error) {
+	if r == nil {
+		return nil, errors.New("logarithmic regression result is nil")
+	}
+	xs, n, err := prepareRegressionPrediction("logarithmic", typ, 1, newXs)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]any, n)
+	for i, x := range xs[0] {
+		if x <= 0 {
+			return nil, fmt.Errorf("x must be > 0 for ln prediction (index %d)", i)
+		}
+		out[i] = r.Intercept + r.Slope*math.Log(x)
+	}
+	return insyra.NewDataList(out), nil
+}
+
 // LinearRegression performs ordinary least-squares linear regression.
 func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) (*LinearRegressionResult, error) {
 	p := len(dlXs)
@@ -230,6 +326,7 @@ func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) (*LinearRe
 // ExponentialRegression performs y = a*e^(b*x) regression.
 func ExponentialRegression(dlY, dlX insyra.IDataList) (*ExponentialRegressionResult, error) {
 	var xs, ys []float64
+	var xsRaw, ysRaw []any
 	isFailed := false
 	dlx := dlX.(*insyra.DataList)
 	dly := dlY.(*insyra.DataList)
@@ -242,11 +339,18 @@ func ExponentialRegression(dlY, dlX insyra.IDataList) (*ExponentialRegressionRes
 			isFailed = true
 			return
 		}
-		xs = dlx.ToF64Slice()
-		ys = dly.ToF64Slice()
+		xsRaw = dlx.Data()
+		ysRaw = dly.Data()
 	}, dlx, dly)
 	if isFailed {
 		return nil, errors.New("input lengths mismatch/zero, or need at least 3 observations")
+	}
+	var convErr error
+	if xs, convErr = numericValues(xsRaw, "x"); convErr != nil {
+		return nil, convErr
+	}
+	if ys, convErr = numericValues(ysRaw, "y"); convErr != nil {
+		return nil, convErr
 	}
 
 	logYs := make([]float64, len(ys))
@@ -318,6 +422,7 @@ func ExponentialRegression(dlY, dlX insyra.IDataList) (*ExponentialRegressionRes
 // LogarithmicRegression performs y = a + b*ln(x) regression.
 func LogarithmicRegression(dlY, dlX insyra.IDataList) (*LogarithmicRegressionResult, error) {
 	var xs, ys []float64
+	var xsRaw, ysRaw []any
 	isFailed := false
 	dlx := dlX.(*insyra.DataList)
 	dly := dlY.(*insyra.DataList)
@@ -330,11 +435,18 @@ func LogarithmicRegression(dlY, dlX insyra.IDataList) (*LogarithmicRegressionRes
 			isFailed = true
 			return
 		}
-		xs = dlx.ToF64Slice()
-		ys = dly.ToF64Slice()
+		xsRaw = dlx.Data()
+		ysRaw = dly.Data()
 	}, dlx, dly)
 	if isFailed {
 		return nil, errors.New("input lengths mismatch/zero, or need at least 3 observations")
+	}
+	var convErr error
+	if xs, convErr = numericValues(xsRaw, "x"); convErr != nil {
+		return nil, convErr
+	}
+	if ys, convErr = numericValues(ysRaw, "y"); convErr != nil {
+		return nil, convErr
 	}
 
 	logXs := make([]float64, len(xs))
@@ -391,6 +503,7 @@ func LogarithmicRegression(dlY, dlX insyra.IDataList) (*LogarithmicRegressionRes
 // PolynomialRegression performs polynomial regression of given degree.
 func PolynomialRegression(dlY, dlX insyra.IDataList, degree int) (*PolynomialRegressionResult, error) {
 	var xs, ys []float64
+	var xsRaw, ysRaw []any
 	isFailed := false
 	dlx := dlX.(*insyra.DataList)
 	dly := dlY.(*insyra.DataList)
@@ -408,11 +521,18 @@ func PolynomialRegression(dlY, dlX insyra.IDataList, degree int) (*PolynomialReg
 			return
 		}
 
-		xs = dlx.ToF64Slice()
-		ys = dly.ToF64Slice()
+		xsRaw = dlx.Data()
+		ysRaw = dly.Data()
 	}, dlx, dly)
 	if isFailed {
 		return nil, errors.New("invalid input lengths, degree, or insufficient observations")
+	}
+	var convErr error
+	if xs, convErr = numericValues(xsRaw, "x"); convErr != nil {
+		return nil, convErr
+	}
+	if ys, convErr = numericValues(ysRaw, "y"); convErr != nil {
+		return nil, convErr
 	}
 
 	n := len(xs)

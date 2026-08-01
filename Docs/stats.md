@@ -21,7 +21,7 @@ The stats package provides comprehensive statistical analysis functions:
 - **Nonparametric Tests**: Wilcoxon signed-rank (single/paired), Mann-Whitney U, Kruskal-Wallis, Friedman — rank-based counterparts to the t-test / ANOVA family
 - **Distribution Analysis**: Skewness, Kurtosis, n-th moments, standard-normal CDF / quantile (`NormCDF` / `NormPPF`)
 - **Analysis of Variance**: One-way, Two-way, Repeated measures ANOVA
-- **Regression Analysis**: Linear, Logistic, Poisson, generic GLM, Exponential, Logarithmic, Polynomial regression with confidence intervals
+- **Regression Analysis**: Linear, Weighted (WLS), Ridge, Lasso, Logistic, Poisson, generic GLM, Exponential, Logarithmic, Polynomial regression (confidence intervals on the unpenalized families)
 - **F-Tests**: Variance equality, Levene's test, Bartlett's test, regression F-test, nested models
 - **Dimensionality Reduction**: Principal Component Analysis (PCA)
 - **Instance-Based Prediction**: K-nearest neighbors (KNN) classification and regression
@@ -29,6 +29,28 @@ The stats package provides comprehensive statistical analysis functions:
 - **Matrix Operations**: Diagonal matrix creation and extraction (Diag function)
 
 Most functions expect numeric data in `DataList`/`DataTable` and return `error` when inputs are invalid or computation fails. Always handle `err` at call sites.
+
+### Values that are not numbers
+
+A value that cannot be read as a finite number — a missing value, a blank, text,
+an infinity — is **never** replaced with a substitute. What happens instead
+depends on the family, and each family states which:
+
+| Family | Treatment |
+| --- | --- |
+| Regression (linear, polynomial, exponential, logarithmic, logistic, Poisson, GLM) | refused, with an error naming the series and the row |
+| Correlation and covariance | refused, with an error naming the series and the row |
+| Clustering, PCA, KNN | refused |
+| Factor analysis | the whole observation is removed (listwise deletion) |
+| Decision trees in [`insyra/ml`](/Docs/ml.md) | a direction is learned per node for missing *features*; a missing *target* is refused |
+
+Only Go numeric types convert. A string is refused even when it spells a
+number, so a table loaded without type inference has to be converted before it
+can be analysed.
+
+Regression and correlation used to accept these values and treat them as zero.
+That produced a plausible wrong answer rather than an error — one blank among
+six observations moved a Pearson coefficient from 0.9992 to 0.9879, silently.
 
 For clustering APIs, Insyra uses an R-oriented result shape and cross-language verification policy:
 
@@ -1103,6 +1125,9 @@ func PCA(dataTable insyra.IDataTable, nComponents ...int) (*PCAResult, error)
 ```go
 type PCAResult struct {
     Components        insyra.IDataTable // Principal component loadings as DataTable
+    Center            []float64         // Per-column means subtracted before fitting
+    Scale             []float64         // Per-column sample standard deviations used for fitting
+    Scores            insyra.IDataTable // Training observations projected onto the components
     Eigenvalues       []float64         // Eigenvalues corresponding to components
     ExplainedVariance []float64         // Percentage of variance explained by each component
 }
@@ -1121,6 +1146,19 @@ if err != nil {
 components := result.Components
 fmt.Printf("Explained variance: %.2f%%\n", result.ExplainedVariance[0])
 ```
+
+`Center` and `Scale` are the fitted per-column parameters. `PCA` centers and
+standardizes every input column using the sample standard deviation, so both
+slices contain one value per input column. Apply them to new observations before
+multiplying by the corresponding columns of `Components`:
+
+```go
+scaled := (value - result.Center[column]) / result.Scale[column]
+```
+
+`Scores` contains the training observations after that same transformation and
+projection. Its rows correspond to the input rows and its columns correspond to
+the returned components.
 
 ## Factor Analysis
 
@@ -1357,6 +1395,27 @@ per-field precision table.
 
 ## K-Nearest Neighbors (KNN)
 
+### GPU acceleration (opt-in)
+
+With one blank import, auto-algorithm KNN routes profitable shapes through the
+GPU:
+
+```go
+import _ "github.com/HazelnutParadise/insyra/accel/knnbridge"
+```
+
+Results are identical to brute force — the device proposes a candidate
+shortlist and the CPU decides in `float64` — only faster where measurement
+says so: 1.4x at 2k test rows, 2.9x at 4k, 3.7x at 10k (100k training rows ×
+32 dims, against all CPU cores). The device is consulted only when every gate
+passes: the algorithm is `auto` (an explicitly named algorithm is honoured),
+`k ≤ 7`, a device is present, the per-row work clears the profitability
+floor, **and there are at least ~2k test rows** — the kernel's parallelism
+comes from test rows, and below that floor the device's flat dispatch cost
+exceeds the CPU's whole job. Anything else, and any machine without a GPU,
+runs the CPU path unchanged. Without the import, `stats` carries no
+accelerator dependency at all.
+
 ### KNN Classification
 
 ```go
@@ -1526,7 +1585,14 @@ type KMeansResult struct {
     Iter        int
     IFault      int
 }
+
+func (r *KMeansResult) Assign(dataTable insyra.IDataTable) ([]int, []float64, error)
 ```
+
+`Assign` applies the fitted centers to new observations. It returns one-based
+center indices, matching `Cluster`, and the squared Euclidean distance to the
+selected center for each row. The input must have the same number of columns
+as the fitted centers.
 
 **Example**:
 
@@ -1543,6 +1609,12 @@ if err != nil {
 fmt.Println(result.Cluster)
 fmt.Println(result.Size)
 result.Centers.Show()
+
+newClusters, newDistances, err := result.Assign(newData)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Println(newClusters, newDistances)
 ```
 
 ### Hierarchical Agglomerative Clustering
@@ -1664,6 +1736,41 @@ fmt.Printf("Average silhouette: %.4f\n", result.AverageSilhouette)
 
 ## Regression Analysis
 
+### Ridge Regression
+
+```go
+func RidgeRegression(dlY insyra.IDataList, alpha float64, dlXs ...insyra.IDataList) (*RidgeRegressionResult, error)
+```
+
+**Description:** Fits a linear model under an L2 penalty, minimising `||y − Xβ||² + α·||β||²` with the intercept unpenalized and no feature standardisation — scikit-learn's `Ridge` objective exactly. `alpha = 0` reproduces ordinary least squares. The solve is the penalized normal equations, which stay nonsingular on collinear predictors — the ordinary reason to reach for ridge.
+
+The result carries coefficients (intercept first), residuals and R², and deliberately **no standard errors, t or p values**: penalized estimates have no exact classical sampling distribution, so those fields would be fabricated precision. Verified against scikit-learn; R's `glmnet` is *not* the reference because it standardises by default and scales its penalty differently, so it computes different (equally valid) coefficients from the same data.
+
+```go
+fit, err := stats.RidgeRegression(y, 0.5, x1, x2)
+predicted, err := fit.Predict(stats.PredictResponse, newX1, newX2)
+```
+
+### Lasso Regression
+
+```go
+func LassoRegression(dlY insyra.IDataList, alpha float64, dlXs []insyra.IDataList, options ...LassoOptions) (*LassoRegressionResult, error)
+```
+
+**Description:** Fits a linear model under an L1 penalty, minimising `(1/2n)·||y − Xβ||² + α·||β||₁` — scikit-learn's `Lasso` objective exactly — by coordinate descent with soft thresholding. A predictor whose contribution is worth less than the penalty gets a coefficient of **exactly zero**, which is what makes lasso the standard tool for feature selection.
+
+`LassoOptions{Tolerance, MaxIterations}` default to scikit-learn's `1e-4` and `1000`. A fit that hits the cap before the tolerance still returns, with `Converged: false` and the iteration count — the caller decides whether to raise the cap. The same no-inference rule as ridge applies.
+
+### Weighted Linear Regression
+
+```go
+func WeightedLinearRegression(dlY insyra.IDataList, dlWeights insyra.IDataList, dlXs ...insyra.IDataList) (*WeightedLinearRegressionResult, error)
+```
+
+**Description:** Weighted least squares, minimising `Σwᵢ·eᵢ²` with one strictly positive weight per observation. Unlike the penalized estimators, WLS has **exact classical inference**, so the result carries standard errors, t and p values — verified field-for-field against statsmodels' `WLS`, including the weighted R². Uniform weights reproduce ordinary least squares exactly.
+
+A zero weight is refused rather than treated as exclusion: references disagree on whether an excluded row still counts toward degrees of freedom, and guessing between their answers would produce standard errors matching nobody. Drop the row instead.
+
 ### Linear Regression
 
 ```go
@@ -1773,7 +1880,7 @@ type LogisticRegressionOptions struct {
 }
 ```
 
-Important result fields include `Coefficients`, `StandardErrors`, `ZValues`, `PValues`, `ConfidenceIntervals`, `OddsRatios`, `FittedProbabilities`, `Deviance`, `NullDeviance`, `AIC`, `BIC`, and pseudo-R-squared values (`McFaddenR2`, `CoxSnellR2`, `NagelkerkeR2`). Use `Predict(stats.PredictResponse, xs...)` for probabilities, `Predict(stats.PredictLinear, xs...)` for linear predictors, and `Predict(stats.PredictClass, xs...)` for class labels.
+Important result fields include `Link`, `Coefficients`, `StandardErrors`, `ZValues`, `PValues`, `ConfidenceIntervals`, `OddsRatios`, `FittedProbabilities`, `Deviance`, `NullDeviance`, `AIC`, `BIC`, and pseudo-R-squared values (`McFaddenR2`, `CoxSnellR2`, `NagelkerkeR2`). `Link` is `stats.Logit`; apply it to a `Predict(stats.PredictLinear, xs...)` result to reproduce `Predict(stats.PredictResponse, xs...)`. Use `Predict(stats.PredictClass, xs...)` for class labels.
 
 ```go
 y := insyra.NewDataList("no", "no", "yes", "yes", "no", "yes")
@@ -1807,7 +1914,7 @@ type PoissonRegressionOptions struct {
 }
 ```
 
-Important result fields include `Coefficients`, `StandardErrors`, `ZValues`, `PValues`, `ConfidenceIntervals`, `IncidenceRateRatios`, `FittedRates`, `PearsonChi2`, `DispersionStatistic`, `Deviance`, `NullDeviance`, `AIC`, and `BIC`.
+Important result fields include `Link`, `Coefficients`, `StandardErrors`, `ZValues`, `PValues`, `ConfidenceIntervals`, `IncidenceRateRatios`, `FittedRates`, `PearsonChi2`, `DispersionStatistic`, `Deviance`, `NullDeviance`, `AIC`, and `BIC`. `Link` is `stats.Log`; apply it to a `Predict(stats.PredictLinear, xs...)` result to reproduce `Predict(stats.PredictResponse, xs...)`.
 
 ```go
 counts := insyra.NewDataList(1, 2, 3, 4, 6, 8)
@@ -1990,6 +2097,23 @@ type LogarithmicRegressionResult struct {
     ConfidenceIntervalSlope     [2]float64
 }
 ```
+
+#### Regression Predictions
+
+All fitted regression results expose the same point-prediction shape:
+
+```go
+func (r *LinearRegressionResult) Predict(typ PredictType, newXs ...insyra.IDataList) (*insyra.DataList, error)
+```
+
+`PolynomialRegressionResult`, `ExponentialRegressionResult`, and
+`LogarithmicRegressionResult` expose the same method. Pass
+`stats.PredictResponse` (or an empty type) and one new predictor list for each
+fitted predictor. Polynomial, exponential, and logarithmic regression each
+take one predictor list. Predictions are returned on the original response
+scale. A mismatched predictor count or predictor row length returns an error.
+These methods provide point predictions only; R's `predict.lm` and
+`predict.glm` can additionally return standard errors and intervals.
 
 ---
 
@@ -2287,5 +2411,3 @@ Implementation notes that may surprise readers:
 No third-party dependency is added — the standard `math` package plus
 the existing `gonum/stat` normal/χ² helpers are sufficient. There is
 no `scipy` port.
-
-

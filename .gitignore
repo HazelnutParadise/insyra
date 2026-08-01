@@ -43,3 +43,5 @@ pca.prof
 .claude/settings.local.json
 
 /.codex-go-build
+.spectra/
+openspec/.vector-search.db*

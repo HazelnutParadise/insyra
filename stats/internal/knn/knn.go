@@ -75,9 +75,12 @@ func Classify(train, test [][]float64, labels []string, k int, opts Options) (*C
 	if len(labels) != len(train) {
 		return nil, errors.New("labels length must match training row count")
 	}
-	search, err := newSearcher(train, normalized)
-	if err != nil {
-		return nil, err
+	batch := deviceBatch(train, test, k, normalized)
+	var search searcher
+	if batch == nil {
+		if search, err = newSearcher(train, normalized); err != nil {
+			return nil, err
+		}
 	}
 
 	classes, classIndex := orderedClasses(labels)
@@ -100,7 +103,7 @@ func Classify(train, test [][]float64, labels []string, k int, opts Options) (*C
 	// 400µs serial).
 	goPar := len(test) >= 16 && len(train) >= 32
 	parutil.Run(len(test), goPar, func(i int) {
-		neighbors := search.QueryKNN(test[i], k)
+		neighbors := batchOrQuery(batch, search, test, i, k)
 		probabilities[i] = classifyProbabilities(neighbors, labels, classIndex, len(classes), normalized.Weighting)
 		// Tie-break = alphabetical first, matching R's `which.max` semantics
 		// (since `classes` is already alphabetically sorted, the first index
@@ -131,9 +134,12 @@ func Regress(train, test [][]float64, targets []float64, k int, opts Options) (*
 	if len(targets) != len(train) {
 		return nil, errors.New("targets length must match training row count")
 	}
-	search, err := newSearcher(train, normalized)
-	if err != nil {
-		return nil, err
+	batch := deviceBatch(train, test, k, normalized)
+	var search searcher
+	if batch == nil {
+		if search, err = newSearcher(train, normalized); err != nil {
+			return nil, err
+		}
 	}
 
 	predictions := make([]float64, len(test))
@@ -145,7 +151,7 @@ func Regress(train, test [][]float64, targets []float64, k int, opts Options) (*
 	// 400µs serial).
 	goPar := len(test) >= 16 && len(train) >= 32
 	parutil.Run(len(test), goPar, func(i int) {
-		neighbors := search.QueryKNN(test[i], k)
+		neighbors := batchOrQuery(batch, search, test, i, k)
 		predictions[i] = regressPrediction(neighbors, targets, normalized.Weighting)
 	})
 	return &RegressionResult{Predictions: predictions}, nil
@@ -159,9 +165,12 @@ func Neighbors(train, test [][]float64, k int, opts Options) (*NeighborResult, e
 	if err := validateInputs(train, test, k); err != nil {
 		return nil, err
 	}
-	search, err := newSearcher(train, normalized)
-	if err != nil {
-		return nil, err
+	batch := deviceBatch(train, test, k, normalized)
+	var search searcher
+	if batch == nil {
+		if search, err = newSearcher(train, normalized); err != nil {
+			return nil, err
+		}
 	}
 
 	indices := make([][]int, len(test))
@@ -174,7 +183,7 @@ func Neighbors(train, test [][]float64, k int, opts Options) (*NeighborResult, e
 	// 400µs serial).
 	goPar := len(test) >= 16 && len(train) >= 32
 	parutil.Run(len(test), goPar, func(i int) {
-		neighbors := search.QueryKNN(test[i], k)
+		neighbors := batchOrQuery(batch, search, test, i, k)
 		indices[i] = make([]int, len(neighbors))
 		distances[i] = make([]float64, len(neighbors))
 		for j, nb := range neighbors {
@@ -183,6 +192,17 @@ func Neighbors(train, test [][]float64, k int, opts Options) (*NeighborResult, e
 		}
 	})
 	return &NeighborResult{Indices: indices, Distances: distances}, nil
+}
+
+// batchOrQuery reads the device's pre-computed answer when one exists and
+// queries the CPU searcher otherwise. Exactly one of batch and search is
+// non-nil — the device answering is what skips building a tree over the
+// training set nobody will query.
+func batchOrQuery(batch [][]neighbor, search searcher, test [][]float64, i, k int) []neighbor {
+	if batch != nil {
+		return batch[i]
+	}
+	return search.QueryKNN(test[i], k)
 }
 
 func normalizeOptions(opts Options) (Options, error) {

@@ -15,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/HazelnutParadise/insyra/internal/reftest"
 )
 
 type crossLangBaseline map[string]any
@@ -110,24 +112,59 @@ func writeBaselineCache(path string, payload []byte) {
 	_ = os.Rename(tmp, path)
 }
 
+// Every gate below reports a missing toolchain through reftest rather than
+// calling t.Skip itself, so that INSYRA_REQUIRE_REFERENCE_TOOLCHAINS=1 turns
+// all of them into failures at once. A gate that skipped on its own would be
+// invisible to that switch, which is the whole thing being fixed.
+const crossLangVerification = "the cross-language comparison against R and Python"
+
 func requireCrossLangTools(t *testing.T) {
 	t.Helper()
 
 	if _, err := exec.LookPath("python"); err != nil {
-		t.Skipf("python not found: %v", err)
+		reftest.Missing(t, "python", crossLangVerification, err)
 	}
 	if _, err := exec.LookPath("Rscript"); err != nil {
-		t.Skipf("Rscript not found: %v", err)
+		reftest.Missing(t, "Rscript", crossLangVerification, err)
 	}
 
 	checkPy := exec.Command("python", "-c", "import scipy, numpy, statsmodels, sklearn")
 	if out, err := checkPy.CombinedOutput(); err != nil {
-		t.Skipf("python scientific stack unavailable: %v, out=%s", err, string(out))
+		reftest.MissingOutput(t, "python with numpy, scipy, statsmodels and scikit-learn", crossLangVerification, err, out)
 	}
 
 	checkR := exec.Command("Rscript", "-e", "pkgs <- c('jsonlite','cluster','dbscan'); ok <- all(sapply(pkgs, function(p) requireNamespace(p, quietly=TRUE))); if (!ok) quit(status=1)")
 	if out, err := checkR.CombinedOutput(); err != nil {
-		t.Skipf("R jsonlite unavailable: %v, out=%s", err, string(out))
+		reftest.MissingOutput(t, "R with jsonlite, cluster and dbscan", crossLangVerification, err, out)
+	}
+}
+
+// requirePythonTools gates the comparisons whose only reference is Python.
+// Regularized regression is verified against scikit-learn alone: R's glmnet
+// standardises by default and scales its penalty differently, so it computes a
+// different (equally valid) answer that cannot be compared coefficient for
+// coefficient.
+func requirePythonTools(t *testing.T) {
+	t.Helper()
+	const verification = "the scikit-learn reference comparison"
+	if _, err := exec.LookPath("python"); err != nil {
+		reftest.Missing(t, "python", verification, err)
+	}
+	checkPy := exec.Command("python", "-c", "import numpy, sklearn, statsmodels")
+	if out, err := checkPy.CombinedOutput(); err != nil {
+		reftest.MissingOutput(t, "python with numpy, scikit-learn and statsmodels", verification, err, out)
+	}
+}
+
+func requireRTools(t *testing.T) {
+	t.Helper()
+	const verification = "the R reference comparison"
+	if _, err := exec.LookPath("Rscript"); err != nil {
+		reftest.Missing(t, "Rscript", verification, err)
+	}
+	checkR := exec.Command("Rscript", "-e", "if (!requireNamespace('jsonlite', quietly=TRUE)) quit(status=1)")
+	if out, err := checkR.CombinedOutput(); err != nil {
+		reftest.MissingOutput(t, "R with jsonlite", verification, err, out)
 	}
 }
 
@@ -177,6 +214,12 @@ func runBaselineScript(t *testing.T, exe, scriptPath, method string, payload any
 		// Known R-side bug in psych::factor.scores -> invMatSqrt: non-conformable
 		// matmul when the scoring matrix has non-positive eigenvalues. R cannot
 		// produce a baseline, so we skip rather than failing the Go test.
+		//
+		// Deliberately not routed through reftest: this is a reference
+		// implementation that is present and broken for this input, not one
+		// that is missing. Strict mode exists to catch an uninstalled
+		// toolchain, and failing here would make it fail on an upstream bug
+		// nobody can install their way out of.
 		if strings.Contains(stderrStr, "invMatSqrt") && strings.Contains(stderrStr, "non-conformable") {
 			t.Skipf("R %s baseline skipped (psych::factor.scores invMatSqrt bug, method=%s)", exe, method)
 		}

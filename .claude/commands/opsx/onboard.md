@@ -1,6 +1,7 @@
 ---
 name: "OPSX: Onboard"
 description: Guided onboarding - walk through a complete OpenSpec workflow cycle with narration
+allowed-tools: Bash(openspec:*)
 category: Workflow
 tags: [workflow, onboarding, tutorial, learning]
 ---

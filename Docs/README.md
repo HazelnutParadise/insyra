@@ -63,6 +63,7 @@ dt.Show()
 | Document          | Description                                             |
 | ----------------- | ------------------------------------------------------- |
 | [stats](stats.md) | Correlation, hypothesis testing, regression, ANOVA, PCA, clustering |
+| [ml](ml.md)       | Common estimator and transformer protocol over `stats` models |
 
 #### Visualization
 
@@ -95,6 +96,7 @@ dt.Show()
 
 | Document                | Description                                                 |
 | ----------------------- | ----------------------------------------------------------- |
+| [accel](accel.md)       | Optional GPU acceleration: device discovery, typed projections, and real column reductions |
 | [py](py.md)             | Execute Python code from Go with an auto-managed Python env |
 | [parallel](parallel.md) | Simple parallel execution of functions                      |
 | [utils](utils.md)       | Helper functions for type conversion and data processing    |
@@ -115,10 +117,13 @@ go get github.com/HazelnutParadise/insyra/allpkgs
 For sub-packages, install them individually:
 
 ```bash
+go get github.com/HazelnutParadise/insyra/accel
 go get github.com/HazelnutParadise/insyra/stats
 go get github.com/HazelnutParadise/insyra/plot
 # ... and so on
 ```
+
+`accel` is included in `allpkgs`, so the standard install brings GPU acceleration with it.
 
 ### Choosing the Right Tool
 
@@ -127,6 +132,7 @@ go get github.com/HazelnutParadise/insyra/plot
 | Store and analyze a single column of data | [DataList](DataList.md)         |
 | Work with tabular data (rows and columns) | [DataTable](DataTable.md)       |
 | Calculate new columns from existing data  | [CCL](CCL.md)                   |
+| Run a column reduction on a GPU           | [accel](accel.md)              |
 | Read/write CSV or Excel files             | [csvxl](csvxl.md)               |
 | Perform statistical tests                 | [stats](stats.md)               |
 | Create static charts for reports          | [gplot](gplot.md)               |

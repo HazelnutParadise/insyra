@@ -2,11 +2,47 @@ package stats_test
 
 import (
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/stats"
 )
+
+func TestRegressionPredict(t *testing.T) {
+	linear, err := stats.LinearRegression(insyra.NewDataList([]float64{3, 5, 7, 9}), insyra.NewDataList([]float64{1, 2, 3, 4}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	linearPred, err := linear.Predict(stats.PredictResponse, insyra.NewDataList([]float64{5, 6}))
+	if err != nil || !rClose(linearPred.ToF64Slice()[0], 11, 1e-12) || !rClose(linearPred.ToF64Slice()[1], 13, 1e-12) {
+		t.Fatalf("linear prediction: got %v, err %v", linearPred, err)
+	}
+
+	polynomial, err := stats.PolynomialRegression(insyra.NewDataList([]float64{1, 4, 9, 16, 25}), insyra.NewDataList([]float64{1, 2, 3, 4, 5}), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := polynomial.Predict(stats.PredictResponse, insyra.NewDataList([]float64{2}), insyra.NewDataList([]float64{3})); err == nil || !strings.Contains(err.Error(), "expected 1 predictors, got 2") {
+		t.Fatalf("polynomial predictor mismatch error: %v", err)
+	}
+
+	exponential, err := stats.ExponentialRegression(insyra.NewDataList([]float64{2.7, 7.4, 20.1, 54.6}), insyra.NewDataList([]float64{1, 2, 3, 4}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := exponential.Predict(stats.PredictResponse); err == nil || !strings.Contains(err.Error(), "expected 1 predictors, got 0") {
+		t.Fatalf("exponential predictor mismatch error: %v", err)
+	}
+
+	logarithmic, err := stats.LogarithmicRegression(insyra.NewDataList([]float64{0, 0.69, 1.1, 1.39}), insyra.NewDataList([]float64{1, 2, 3, 4}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := logarithmic.Predict(stats.PredictResponse, insyra.NewDataList([]float64{0})); err == nil || !strings.Contains(err.Error(), "x must be > 0") {
+		t.Fatalf("logarithmic domain error: %v", err)
+	}
+}
 
 // Tolerances. Coefficient and SE tolerances loosen for high-degree polynomial
 // fits (the design matrix becomes ill-conditioned: column [1, x, x², x³, x⁴] for

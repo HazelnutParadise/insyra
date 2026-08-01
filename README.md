@@ -144,6 +144,14 @@ CSV setup -> DataTable loading -> CCL enrichment -> sorting -> KPI aggregation -
   go get github.com/HazelnutParadise/insyra/allpkgs
   ```
 
+- To use the optional acceleration runtime surface only:
+
+  ```sh
+  go get github.com/HazelnutParadise/insyra/accel
+  ```
+
+  `accel` is also included in `allpkgs`, so the standard install already covers it.
+
 - Update **Insyra** to the latest version:
 
   ```sh
@@ -366,7 +374,9 @@ For a complete list of DataTable methods and features, please refer to the **[Da
 |---|---|
 | **[isr](/Docs/isr.md)** | Syntactic sugar over **Insyra** — the recommended entry point for new code. |
 | **[stats](/Docs/stats.md)** | Statistical functions for data analysis: skewness, kurtosis, moment calculations, and more. |
+| **[ml](/Docs/ml.md)** | A common estimator and transformer protocol over the models in `stats`. |
 | **[parallel](/Docs/parallel.md)** | Parallel processing for data manipulation; runs any function and auto-waits for all goroutines. |
+| **[accel](/Docs/accel.md)** | Opt-in GPU acceleration: device discovery, typed columnar projection, and real column reductions on a GPU. Pure Go, no CGO, nothing extra to install. |
 | **[plot](/Docs/plot.md)** | Data visualization wrapping [go-echarts](https://github.com/go-echarts/go-echarts). |
 | **[gplot](/Docs/gplot.md)** | Static charts via [gonum/plot](https://github.com/gonum/plot) — fast, no Chrome, supports function plots. |
 | **[csvxl](/Docs/csvxl.md)** | Work with Excel and CSV files (e.g. convert CSV to Excel). |

@@ -20,6 +20,7 @@ type LogisticRegressionOptions struct {
 }
 
 type LogisticRegressionResult struct {
+	Link                GLMLink
 	Coefficients        []float64
 	StandardErrors      []float64
 	ZValues             []float64
@@ -129,6 +130,7 @@ func LogisticRegressionWithOptions(opts LogisticRegressionOptions, dlY insyra.ID
 	k := len(fit.beta)
 
 	return &LogisticRegressionResult{
+		Link:                GLMLink(link.name()),
 		Coefficients:        append([]float64(nil), fit.beta...),
 		StandardErrors:      se,
 		ZValues:             z,

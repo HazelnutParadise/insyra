@@ -6,12 +6,18 @@ import (
 	"sort"
 )
 
-// ScalerParams reports the fitted parameters for a single scaled column.
-// Only the fields relevant to the scaler kind are populated; the rest stay
-// at their zero value.
+// ScalerParams reports the fitted parameters for a single scaled or imputed
+// column. Only the fields relevant to the fitted kind are populated; the rest
+// stay at their zero value.
 type ScalerParams struct {
 	Column string
 	Kind   string
+	// Replacement is populated by fitted imputers. It is nil for scalers.
+	Replacement any
+	// PassThrough reports that a fitted imputer deliberately leaves this
+	// column unchanged because its numeric strategy met observed non-numeric
+	// values.
+	PassThrough bool
 
 	Mean   float64
 	Std    float64

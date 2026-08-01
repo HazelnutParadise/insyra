@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"reflect"
 	"sync"
 
 	"github.com/HazelnutParadise/insyra"
@@ -26,6 +27,36 @@ type KMeansResult struct {
 	Size        []int
 	Iter        int
 	IFault      int
+}
+
+// Assign assigns each observation to the nearest fitted center and returns
+// the 1-based center index and its squared Euclidean distance.
+func (result *KMeansResult) Assign(dataTable insyra.IDataTable) ([]int, []float64, error) {
+	if result == nil {
+		return nil, nil, errors.New("kmeans result must not be nil")
+	}
+	if result.Centers == nil {
+		return nil, nil, errors.New("kmeans result has no fitted centers")
+	}
+	data, _, err := numericMatrixFromTable(dataTable)
+	if err != nil {
+		return nil, nil, err
+	}
+	centers, _, err := numericMatrixFromTable(result.Centers)
+	if err != nil {
+		return nil, nil, fmt.Errorf("fitted centers: %w", err)
+	}
+	if len(data[0]) != len(centers[0]) {
+		return nil, nil, fmt.Errorf(
+			"observation column count %d does not match fitted center column count %d",
+			len(data[0]), len(centers[0]))
+	}
+
+	assignments, distances := internalcluster.Assign(data, centers)
+	for i := range assignments {
+		assignments[i]++
+	}
+	return assignments, distances, nil
 }
 
 type AgglomerativeMethod string
@@ -206,6 +237,11 @@ func Silhouette(dataTable insyra.IDataTable, labels insyra.IDataList) (*Silhouet
 // actor's lock. Doing it AFTER the table actor is released sidesteps
 // that and still gets the parallel actor-handshake fan-out.
 func numericMatrixFromTable(dataTable insyra.IDataTable) ([][]float64, []string, error) {
+	// Every clustering and decomposition entry point arrives here, and a nil
+	// table used to reach AtomicDo and panic rather than returning an error.
+	if dataTable == nil || reflect.ValueOf(dataTable).Kind() == reflect.Pointer && reflect.ValueOf(dataTable).IsNil() {
+		return nil, nil, errors.New("data table must not be nil")
+	}
 	var rows, cols int
 	var colDLs []insyra.IDataList
 	var rowNames []string
@@ -251,12 +287,16 @@ func numericMatrixFromTable(dataTable insyra.IDataTable) ([][]float64, []string,
 		if len(raw) != rows {
 			return nil, nil, errors.New("input has irregular row counts across columns")
 		}
+		// Shares numericValues with the regression and correlation paths so
+		// the one policy has one implementation. The error text stays the
+		// broad one these callers already document; the detailed row is in
+		// the wrapped cause.
+		values, err := numericValues(raw, fmt.Sprintf("column %d", j+1))
+		if err != nil {
+			return nil, nil, fmt.Errorf("input contains non-numeric values: %w", err)
+		}
 		for i := range rows {
-			v, ok := insyra.ToFloat64Safe(raw[i])
-			if !ok || math.IsNaN(v) || math.IsInf(v, 0) {
-				return nil, nil, errors.New("input contains non-numeric values")
-			}
-			matrix[i][j] = v
+			matrix[i][j] = values[i]
 		}
 	}
 	return matrix, rowNames, nil
