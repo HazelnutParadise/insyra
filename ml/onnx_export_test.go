@@ -198,13 +198,22 @@ for i, value in enumerate(payload):
     feed[spec.name] = np.asarray(value, dtype=kind)
 result = session.run(None, feed)[0]
 print(json.dumps(np.asarray(result).reshape(-1).tolist()))`
-	output, err := exec.Command(python, "-c", script, modelPath, payloadPath).CombinedOutput()
-	if err != nil {
-		t.Fatalf("onnxruntime: %v: %s", err, strings.TrimSpace(string(output)))
+	// stdout carries the JSON and stderr carries the runtime's logging, so
+	// they are captured separately. CombinedOutput here made the test pass on
+	// a machine where onnxruntime happened to stay quiet and fail on one where
+	// it warns — on the CI runner it emits a PCI bus-scan warning that landed
+	// in front of the JSON and broke every case at once.
+	cmd := exec.Command(python, "-c", script, modelPath, payloadPath)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("onnxruntime: %v: %s", err, strings.TrimSpace(stderr.String()))
 	}
 	var values []any
-	if err := json.Unmarshal(output, &values); err != nil {
-		t.Fatalf("decode runtime output: %v: %s", err, output)
+	if err := json.Unmarshal(stdout.Bytes(), &values); err != nil {
+		t.Fatalf("decode runtime output: %v\nstdout=%s\nstderr=%s", err,
+			strings.TrimSpace(stdout.String()), strings.TrimSpace(stderr.String()))
 	}
 	return values
 }
