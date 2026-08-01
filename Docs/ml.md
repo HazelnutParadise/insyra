@@ -127,6 +127,32 @@ the predictions contributes precision 0, matching scikit-learn's
 `zero_division=0`; the direct helpers `Precision`, `Recall` and `F1` compute
 the macro default.
 
+### Grid search
+
+`GridSearch` cross-validates every candidate on identical folds and returns the
+winner refitted on the full data:
+
+```go
+result, err := ml.GridSearch(features, target, []ml.Estimator{
+    {Name: "ridge a=0.1", Fit: func(x *insyra.DataTable, y *insyra.DataList) (ml.Model, error) {
+        return ml.FitRidgeRegression(x, y, 0.1)
+    }},
+    {Name: "ridge a=1.0", Fit: func(x *insyra.DataTable, y *insyra.DataList) (ml.Model, error) {
+        return ml.FitRidgeRegression(x, y, 1.0)
+    }},
+}, 5, ml.RMSEMetric{})
+// result.BestName, result.BestModel (refit on all rows), result.Results, result.Seed
+```
+
+scikit-learn's `GridSearchCV` expands a parameter grid by reflecting over
+constructor parameters — the machinery `clone()` needed, which this protocol
+does not have. The grid therefore arrives already expanded: a slice of named
+estimators, names required and unique. What `GridSearch` centralises is the
+part that goes silently wrong by hand: every candidate is scored on identical
+folds (a seed is drawn once and reported on the result when none is supplied),
+ranking follows the metric's declared direction, ties keep the earliest
+candidate, and the winner is refitted on all rows rather than a fold subset.
+
 ### Which score is better
 
 Half the metrics improve as their score rises and half as it falls, so a `Mean`
@@ -262,6 +288,10 @@ FitKNNClassifier
 FitKNNRegressor
 FitDecisionTreeClassifier
 FitDecisionTreeRegressor
+FitRandomForestClassifier
+FitRandomForestRegressor
+FitGradientBoostingClassifier
+FitGradientBoostingRegressor
 ```
 
 The regression, clustering, and KNN wrappers expose their underlying `stats` result through an exported `Result` field. The options types in `ml` are aliases of the corresponding `stats` options types.
@@ -310,6 +340,40 @@ expands for small target magnitudes within the overflow bound. Leaf values and
 feature importances are reported as `float64`.
 `Root` exposes the fitted nodes, and `LeafValues` returns leaf values in
 left-to-right order.
+
+## Ensembles
+
+Both ensemble families are built from the same histogram trees.
+
+**Random forests** (`FitRandomForestClassifier`, `FitRandomForestRegressor`)
+reduce variance: each tree grows on a bootstrap resample with each split
+restricted to a random feature subset (scikit-learn's defaults — 100 trees, √p
+features for classification, all p for regression). Classification averages the
+trees' probabilities and answers the largest; regression averages predictions.
+Trees fit in parallel, but every draw derives from one forest seed, so the same
+seed always gives the same forest — an unseeded fit draws one and reports it as
+`Seed` on the model. Because classes are collected from the full target before
+any resampling, every tree scores over one shared class order even when its
+bootstrap sample misses a class.
+
+```go
+seed := int64(42)
+forest, err := ml.FitRandomForestClassifier(x, y, ml.RandomForestOptions{
+    Trees: 200, Seed: &seed,
+})
+```
+
+**Gradient boosting** (`FitGradientBoostingRegressor`,
+`FitGradientBoostingClassifier`) reduces bias: each stage fits a depth-3 tree
+to what the previous stages left unexplained, shrunk by the learning rate
+(defaults 100 stages, rate 0.1). Regression boosts squared loss, where the
+tree's own leaf means are already optimal. Binary classification boosts
+logistic loss, replacing each leaf's value with the Newton step
+`Σ(y−p)/Σp(1−p)` so the additive log-odds model converges on the loss actually
+being boosted. Boosting is deterministic — no seed to manage. Fitting stops
+early when the residuals reach zero, and `Stages` on the model reports how many
+rounds ran. **Multiclass boosting is refused** in this version rather than
+approximated; use a random forest for more than two classes.
 
 ## PCA transformation
 

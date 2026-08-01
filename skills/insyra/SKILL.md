@@ -320,6 +320,12 @@ which reads the direction the metric declared and is carried on the result as
 `Direction() ml.MetricDirection`; returning `ml.NoDirection` while producing a
 rankable score is refused.
 
+To choose among configurations, use `ml.GridSearch(x, y, candidates, k, metric)`
+with named `ml.Estimator` candidates — it guarantees identical folds across
+candidates, ranks by the metric's direction, and returns the winner refitted on
+the full data as `BestModel`. Do not hand-loop `CrossValidate` and compare
+`Mean` yourself.
+
 To score a model already fitted, use `ml.Score(model, x, y, metric)` rather
 than calling `Accuracy`/`RMSE` directly — it applies the same model/metric
 compatibility check and the same class-label derivation `CrossValidate` does.
@@ -595,8 +601,13 @@ if proba, ok := model.(ml.ProbaModel); ok {
 
 `FitRidgeRegression(x, y, alpha)` and `FitLassoRegression(x, y, alpha)` fit penalized linear models using scikit-learn's objectives (intercept unpenalized, no standardisation); lasso coefficients priced out by the penalty are exactly zero, and the underlying `stats` results carry no standard errors or p values because classical inference does not apply to penalized estimates. `FitPolynomialRegression`, `FitExponentialRegression`, and `FitLogarithmicRegression` require one feature. `FitLogisticRegression` and `FitKNNClassifier` return `ml.ProbaModel`; logistic `Predict` returns labels and `PredictProba` returns probabilities. `FitPCA` returns an `ml.Transformer`. Poisson and GLM offsets are rejected by the `ml` wrappers because `Model.Predict` cannot receive a new row-wise offset. Existing root scalers and encoders satisfy `ml.Transformer` directly, so no adapter is needed. Use `ml/mltest.RunConformance` to check an external model implementation.
 
-For tabular classification or regression, use `ml.FitDecisionTreeClassifier`
-or `ml.FitDecisionTreeRegressor`. Pass categorical column names through
+For tabular classification or regression, prefer the ensembles:
+`ml.FitRandomForestClassifier`/`Regressor` (variance reduction; seeded and
+reproducible, probability-averaged) or
+`ml.FitGradientBoostingRegressor`/`Classifier` (bias reduction; deterministic,
+binary classification only — multiclass is refused). Use
+`ml.FitDecisionTreeClassifier` or `ml.FitDecisionTreeRegressor` for a single
+interpretable tree. Pass categorical column names through
 `ml.DecisionTreeOptions.CategoricalFeatures`; numeric columns use deterministic
 quantile bins. Missing values are routed by the direction learned at each
 split, while ties, scoring-time missing values, and unseen categories default
