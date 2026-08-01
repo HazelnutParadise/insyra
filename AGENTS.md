@@ -238,6 +238,12 @@ Keep the English ([README.md](README.md), [CHANGELOG.md](CHANGELOG.md), `Docs/`)
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-08-01] — multi-GPU planning exists, multi-GPU execution does not
+- **Where**: `accel/planner.go` (`PlanShardable`, weighted per-device `ShardAssignment`s), `accel/executor.go:136` (`executionDevice`)
+- **What**: the planner produces heterogeneous multi-device shard plans — capability-weighted assignments across every shardable device, with a merge policy — but execution then picks the single device carrying the largest share and runs the whole operation there. Every operation today, including the KNN exact-nearest path, executes on one card no matter how many are present. The v1 architecture default ("heterogeneous multi-GPU only for shardable columnar operations") describes the planner, not the executor.
+- **Suggestion**: do not build it until a workload is measured to saturate one device. The KNN true-direction measurement points the other way for now: device wall time was flat in test rows (~467ms at 1k/2k/4k on 100k×32), meaning the single M3 was not saturated — a second card would have nothing to do below saturation. The first honest step is a saturation measurement (find the shape where device time starts scaling with rows); only past that point does splitting a plan across `Assignments` and merging under the existing `MergePolicy` pay. When it happens, `executionDevice` → per-assignment dispatch is the seam, and the exact-nearest verification half already merges per-row results without caring which device proposed them.
+- **Status**: pending
+
 ### [2026-08-01] — `ToF64Slice` still fabricates zeros for 54 callers outside `stats`
 - **Where**: `datalist.go` `ToF64Slice`, and its callers in `plot/`, `gplot/`, `quant/`, `cli/`, `datalist_interpolation.go`
 - **What**: it routes every value through `insyra.ToFloat64`, which has no failure channel and yields `0` for anything it cannot parse, then returns a full-length slice — so a caller cannot tell a real zero from a value that was never read. `stats` was moved off it on 2026-08-01 after a blank among six observations was measured moving a Pearson coefficient from 0.9992 to 0.9879. The remaining callers were left deliberately: they are display and reporting paths, where a fabricated zero shows up as a point on a chart rather than inside a coefficient.
