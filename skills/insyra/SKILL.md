@@ -158,6 +158,12 @@ one-off mutation instead of a reusable fitted transformer.
 
 ### 1c) Encode categorical DataTable columns
 
+To accelerate KNN on a GPU machine, blank-import
+`github.com/HazelnutParadise/insyra/accel/knnbridge` — auto-algorithm KNN then
+routes large shapes through the device with results identical to brute force
+(k must be ≤ 7). Never required: without the import everything runs on CPU
+unchanged.
+
 Use DataTable categorical encoders before stats methods that require numeric features (`stats.LinearRegression`, KNN, PCA, clustering). These methods return a new table plus a fitted encoder; the receiver is not modified.
 
 Every `stats` numeric entry point refuses a value it cannot read as a finite

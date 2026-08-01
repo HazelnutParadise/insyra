@@ -111,6 +111,7 @@ All on an Apple M3, against a host using **all eight cores**. Every figure recor
 | Profitability floor | ~2048 distance evaluations per row (`dims × candidates`), `accel/exact.go` |
 | Raw compute ceiling | GPU 30.4 G evals/s vs 6.6 G/s across 8 cores |
 | Algorithmic pruning beats a device by | 1.4x–2.7x on structured data |
+| KNN device floor (true direction) | ≥ ~2048 test rows AND ≥ 2048 work per row; device time is flat in test rows until saturation, so below the floor it loses outright (469ms vs CPU 324ms at 1k rows) |
 | Linking the device layer into a hello-world | +1.9 s cold build, +200 KB, +41 packages |
 
 The floor is one host's number and belongs in a calibrated dispatcher eventually. A discrete GPU would move it **up**, not down — PCIe transfer raises the bar that unified memory does not charge for.

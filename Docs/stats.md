@@ -1395,6 +1395,27 @@ per-field precision table.
 
 ## K-Nearest Neighbors (KNN)
 
+### GPU acceleration (opt-in)
+
+With one blank import, auto-algorithm KNN routes profitable shapes through the
+GPU:
+
+```go
+import _ "github.com/HazelnutParadise/insyra/accel/knnbridge"
+```
+
+Results are identical to brute force — the device proposes a candidate
+shortlist and the CPU decides in `float64` — only faster where measurement
+says so: 1.4x at 2k test rows, 2.9x at 4k, 3.7x at 10k (100k training rows ×
+32 dims, against all CPU cores). The device is consulted only when every gate
+passes: the algorithm is `auto` (an explicitly named algorithm is honoured),
+`k ≤ 7`, a device is present, the per-row work clears the profitability
+floor, **and there are at least ~2k test rows** — the kernel's parallelism
+comes from test rows, and below that floor the device's flat dispatch cost
+exceeds the CPU's whole job. Anything else, and any machine without a GPU,
+runs the CPU path unchanged. Without the import, `stats` carries no
+accelerator dependency at all.
+
 ### KNN Classification
 
 ```go

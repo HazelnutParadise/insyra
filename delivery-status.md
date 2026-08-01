@@ -26,20 +26,18 @@ Milestone order is the blocking sequence. OpenSpec has no dependency relationshi
 None. One coverage gap is carried in `AGENTS.md` follow-ups rather than here, because it waits on hardware nobody has rather than on a decision: the device path is verified on Apple and Metal only.
 
 ## Next Verifiable Output
-The acceleration line has its first measured landing site. Brute-force KNN shapes were benchmarked on 2026-08-01 against the all-core host (`accel/knnbench_test.go`, M3, Metal): the device wins every shape tried, from 1.3x at 10k×1k×8 to **4.1x at 100k training rows × 10k queries × 32 dims** and 3.5x at 200k×1k×128 — through the exact-nearest operation, so the answers are float64-verified, not approximate. The next verifiable output is `stats` KNN reaching the device through a seam, behind an OpenSpec change; the shortlist cap of 8 bounds k unless extended.
-
-The DBSCAN neighbourhood scan remains unmeasured.
+Undecided again, and healthily: KNN is wired (`accel/knnbridge`, opt-in blank import, two measured floors, exact parity on hardware), which was the line's first and so far only justified landing. The DBSCAN neighbourhood scan remains unmeasured and is the remaining candidate. Extending the shortlist beyond k=7, and multi-device execution of a single operation, are both unearned until a workload demands them.
 
 ## Next Ticket
-Propose `add-knn-device-path`: route `stats` brute-force KNN through `accel.ExecuteNearestExact` when a session is available, observable CPU fallback as always. The measurement that used to gate this exists now and says yes.
+None pending. `add-knn-device-path` is implemented and archived.
 
 ## Decision Log
 Deltas that still change what someone would do. The standing technical decisions they produced — the precision contract, the device rules, the measured thresholds — live in [ENG.md](ENG.md); the full history is in git.
 
-- decision: KNN is the first operation measured to earn the device, and it is allowed to.
-  rationale: Benchmarked 2026-08-01 on the M3 against the all-core CPU path: every KNN-shaped workload tried wins on-device, up to 4.1x at 100k×10k×32, through the exact-nearest operation whose answers are recomputed in float64 on the host. This is the measurement the dormancy decision demanded before any wiring; it now exists and points the other way for exactly one operation.
+- decision: KNN is the first operation wired to the device, behind two measured floors — and the first benchmark overstated it.
+  rationale: The transposed benchmark (dataset=train) won every shape up to 4.1x; re-measured in the wiring's own direction (dataset=test, the side the kernel parallelises over), the device LOSES below ~2k test rows — 469ms against the CPU's 324ms at 1k — because its wall time is nearly flat in test rows until it saturates. Above the floor it wins 1.4x (2k), 2.9x (4k), 3.7x (10k) on 100k×32. accel/knnbridge therefore gates on per-row work ≥ 2048 AND test rows ≥ 2048, and device parity with brute force is asserted exactly on hardware. The lesson is the same one this project keeps re-learning: the direction of a measurement is part of the measurement.
   timestamp: 2026-08-01
-  impacted_ticket_ids: add-knn-device-path (proposed next)
+  impacted_ticket_ids: archived
 
 - decision: A verification that skips is not a verification, and the suite has to be able to say so. Gates route through `internal/reftest`; `INSYRA_REQUIRE_REFERENCE_TOOLCHAINS=1` makes a missing toolchain a failure.
   rationale: The ONNX round-trip needed `onnxruntime`, which was on no machine it ever ran on, so it skipped everywhere and reported nothing. Executed for the first time, it failed immediately on two defects that made every exported model unloadable. Installing the toolchains was only half the fix — measured in a clean environment, the `Clustering Parity` workflow's own installs left `sklearn` missing, so the job dedicated to running the parity suite had been green while running none of it. Toolchains go missing again; the suite has to fail rather than shrug.
