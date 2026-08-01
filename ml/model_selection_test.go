@@ -258,3 +258,127 @@ func TestROCAUCRefusesLabelsOutsideTheClassSet(t *testing.T) {
 		t.Fatalf("ROC AUC refused a well-formed input: %v", err)
 	}
 }
+
+// externalProbabilityMetric is defined here rather than inside the package, so
+// that it can only use what a third party can use. Before the markers were
+// exported it could not have declared its requirement at all, and would have
+// been handed Predict output while silently expecting probabilities.
+type externalProbabilityMetric struct{ seen ml.Prediction }
+
+func (*externalProbabilityMetric) Name() string             { return "external_proba" }
+func (*externalProbabilityMetric) Kind() ml.MetricKind      { return ml.ClassificationMetric }
+func (*externalProbabilityMetric) NeedsProbabilities() bool { return true }
+func (m *externalProbabilityMetric) Evaluate(yTrue *insyra.DataList, p ml.Prediction) (ml.MetricResult, error) {
+	m.seen = p
+	return ml.MetricResult{Name: "external_proba", Score: 1}, nil
+}
+
+// externalPlainMetric declares nothing, and must keep receiving what it always did.
+type externalPlainMetric struct{ seen ml.Prediction }
+
+func (*externalPlainMetric) Name() string        { return "external_plain" }
+func (*externalPlainMetric) Kind() ml.MetricKind { return ml.ClassificationMetric }
+func (m *externalPlainMetric) Evaluate(yTrue *insyra.DataList, p ml.Prediction) (ml.MetricResult, error) {
+	m.seen = p
+	return ml.MetricResult{Name: "external_plain", Score: 1}, nil
+}
+
+// externalDeclinedMetric implements the interface and answers false, which must
+// be treated the same as not implementing it — the declaration is read, not
+// merely the presence of the method.
+type externalDeclinedMetric struct{ seen ml.Prediction }
+
+func (*externalDeclinedMetric) Name() string             { return "external_declined" }
+func (*externalDeclinedMetric) Kind() ml.MetricKind      { return ml.ClassificationMetric }
+func (*externalDeclinedMetric) NeedsProbabilities() bool { return false }
+func (m *externalDeclinedMetric) Evaluate(yTrue *insyra.DataList, p ml.Prediction) (ml.MetricResult, error) {
+	m.seen = p
+	return ml.MetricResult{Name: "external_declined", Score: 1}, nil
+}
+
+func labelledFixture() (*insyra.DataTable, *insyra.DataList, ml.Estimator) {
+	n := 40
+	a := make([]any, n)
+	lab := make([]any, n)
+	for i := range a {
+		a[i] = float64(i)
+		if i < n/2 {
+			lab[i] = "no"
+		} else {
+			lab[i] = "yes"
+		}
+	}
+	x := insyra.NewDataTable(insyra.NewDataList(a...).SetName("a"))
+	y := insyra.NewDataList(lab...)
+	est := ml.Estimator{Name: "logit", Fit: func(x *insyra.DataTable, y *insyra.DataList) (ml.Model, error) {
+		return ml.FitLogisticRegression(x, y)
+	}}
+	return x, y, est
+}
+
+// TestExternalMetricCanRequestProbabilities is the point of exporting the
+// markers. A metric outside the package declares it needs probabilities and
+// receives them; the extension point extends.
+func TestExternalMetricCanRequestProbabilities(t *testing.T) {
+	x, y, est := labelledFixture()
+	metric := &externalProbabilityMetric{}
+	if _, err := ml.CrossValidate(x, y, est, 2, metric); err != nil {
+		t.Fatalf("cross-validate: %v", err)
+	}
+	if metric.seen.Probabilities == nil {
+		t.Fatal("an external metric declaring it needs probabilities did not receive them")
+	}
+	if metric.seen.Classes == nil {
+		t.Fatal("probabilities arrived without the classes naming their columns")
+	}
+}
+
+// A metric that declares nothing keeps receiving predictions, as before.
+func TestExternalMetricDeclaringNothingGetsPredictions(t *testing.T) {
+	x, y, est := labelledFixture()
+	metric := &externalPlainMetric{}
+	if _, err := ml.CrossValidate(x, y, est, 2, metric); err != nil {
+		t.Fatalf("cross-validate: %v", err)
+	}
+	if metric.seen.Values == nil {
+		t.Fatal("a metric declaring nothing should still receive the model's predictions")
+	}
+	if metric.seen.Probabilities != nil {
+		t.Fatal("a metric declaring nothing should not receive probabilities")
+	}
+}
+
+// Answering false must mean the same as not asking.
+func TestExternalMetricDecliningIsTreatedAsNotAsking(t *testing.T) {
+	x, y, est := labelledFixture()
+	metric := &externalDeclinedMetric{}
+	if _, err := ml.CrossValidate(x, y, est, 2, metric); err != nil {
+		t.Fatalf("cross-validate: %v", err)
+	}
+	if metric.seen.Probabilities != nil {
+		t.Fatal("a metric answering false was handed probabilities anyway; the declaration is not being read")
+	}
+	if metric.seen.Values == nil {
+		t.Fatal("a metric answering false should receive predictions")
+	}
+}
+
+// A model that cannot produce probabilities is refused, not scored on values of
+// a different kind.
+func TestProbabilityMetricRefusesAModelWithoutProbabilities(t *testing.T) {
+	n := 30
+	a := make([]any, n)
+	yv := make([]any, n)
+	for i := range a {
+		a[i] = float64(i)
+		yv[i] = float64(i) * 2
+	}
+	x := insyra.NewDataTable(insyra.NewDataList(a...).SetName("a"))
+	y := insyra.NewDataList(yv...)
+	est := ml.Estimator{Name: "linear", Fit: func(x *insyra.DataTable, y *insyra.DataList) (ml.Model, error) {
+		return ml.FitLinearRegression(x, y)
+	}}
+	if _, err := ml.CrossValidate(x, y, est, 2, &externalProbabilityMetric{}); err == nil {
+		t.Fatal("a probability metric was accepted against a model that produces none")
+	}
+}

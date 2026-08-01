@@ -50,6 +50,8 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 ### `ml`
 
+- A metric written outside the package can now say what input it needs. `ClassLabelMetric` and `ProbabilityMetric` are exported, so a caller-written metric can request class labels or probabilities the way the built-in ones do. Previously the routing keyed off unexported marker interfaces, so an external metric could never request probabilities — it silently received the model's predictions instead, with `Prediction.Probabilities` nil and no error. Both interfaces are now read rather than merely detected: implementing one and answering `false` is the same as not implementing it. `Prediction`'s fields document which are populated when.
+
 - `mltest.RunConformance` now checks the probability ordering by value, not only by column name. It compared column names against class names, which a model that derives its names from its own `Classes()` list satisfies by construction — so a model whose probability values sat under the wrong labels passed a check written to catch exactly that. For every row, the class `Predict` returns must now be the class whose column holds the largest probability. Its renamed-column check was also strengthened: the renamed name was a superstring of the original, so an error naming only the incoming column satisfied it.
 
 - `ROCAUC` now refuses a true label that belongs to neither probability class, instead of treating it as negative. It previously reported confident discrimination — an AUC of 1 with a nil error — over data it had not understood, while `LogLoss` refused the identical input. The two metrics no longer disagree.

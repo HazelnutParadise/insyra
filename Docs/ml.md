@@ -94,6 +94,43 @@ returning their class labels. Probability metrics additionally require
 producing a meaningless score. Confusion-matrix cross-validation results are
 available in `FoldResults`; their scalar `Scores` and `Mean` are `NaN`.
 
+### Writing your own metric
+
+`Metric` is three methods, and a metric written outside this package works the
+same way the built-in ones do:
+
+```go
+type BrierScore struct{}
+
+func (BrierScore) Name() string        { return "brier" }
+func (BrierScore) Kind() ml.MetricKind { return ml.ClassificationMetric }
+
+// Declaring this is what makes probabilities arrive. Without it the metric
+// receives the model's predictions instead.
+func (BrierScore) NeedsProbabilities() bool { return true }
+
+func (BrierScore) Evaluate(yTrue *insyra.DataList, p ml.Prediction) (ml.MetricResult, error) {
+    // p.Probabilities holds one column per class, named and ordered by p.Classes.
+    ...
+}
+```
+
+A metric says what input it needs by implementing one of two interfaces:
+
+| Interface | What arrives | Requirement on the model |
+| --- | --- | --- |
+| `ProbabilityMetric` | `Prediction.Probabilities` with `Prediction.Classes` naming its columns | must implement `ProbaModel`, or the run is refused before fitting |
+| `ClassLabelMetric` | `Prediction.Values` holding class labels | none; labels come from `Predict`, or from the argmax of the probabilities when the model reports them |
+| neither | `Prediction.Values` holding the model's own `Predict` output | none |
+
+Both interfaces are read, not merely detected: a metric that implements one and
+answers `false` is treated exactly as one that did not implement it. That lets a
+metric decide at runtime what it needs.
+
+Which fields of `Prediction` are populated follows from that table alone. A nil
+`Probabilities` means the metric did not ask for them — never that the model
+could not supply them, since a model that cannot is refused first.
+
 ## Fitting models
 
 ```go

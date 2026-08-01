@@ -28,9 +28,23 @@ const (
 // continuous predictions; probabilities and classes are populated when the
 // fitted model implements ProbaModel.
 type Prediction struct {
-	Values        *insyra.DataList
+	// Values is what the metric scores when it did not ask for probabilities.
+	// For a metric implementing ClassLabelMetric it holds class labels, taken
+	// from the model's own Predict or from the argmax of its probabilities;
+	// otherwise it holds the model's Predict output unchanged. It is nil only
+	// for a metric that asked for probabilities.
+	Values *insyra.DataList
+
+	// Probabilities is populated only for a metric implementing
+	// ProbabilityMetric, or when class labels had to be derived from them. A nil
+	// here means the metric did not ask, not that the model has none — a model
+	// unable to supply them is refused before it is fitted.
 	Probabilities *insyra.DataTable
-	Classes       *insyra.DataList
+
+	// Classes names the probability columns in order, and is populated whenever
+	// the model implements ProbaModel, whether or not probabilities were
+	// requested. It is nil for a model that reports no classes.
+	Classes *insyra.DataList
 }
 
 // MetricResult is the result of scoring one held-out fold.
@@ -331,7 +345,7 @@ func (AccuracyMetric) Evaluate(yTrue *insyra.DataList, prediction Prediction) (M
 	score, err := Accuracy(yTrue, prediction.Values)
 	return MetricResult{Name: "accuracy", Score: score}, err
 }
-func (AccuracyMetric) needsClassLabels() bool { return true }
+func (AccuracyMetric) NeedsClassLabels() bool { return true }
 
 // LogLossMetric scores class probabilities with logarithmic loss.
 type LogLossMetric struct{}
@@ -342,7 +356,7 @@ func (LogLossMetric) Evaluate(yTrue *insyra.DataList, prediction Prediction) (Me
 	score, err := logLossScore(yTrue, prediction)
 	return MetricResult{Name: "log_loss", Score: score}, err
 }
-func (LogLossMetric) needsProbabilities() bool { return true }
+func (LogLossMetric) NeedsProbabilities() bool { return true }
 
 // ROCAUCMetric scores binary class probabilities using the second class as
 // the positive class.
@@ -354,7 +368,7 @@ func (ROCAUCMetric) Evaluate(yTrue *insyra.DataList, prediction Prediction) (Met
 	score, err := rocAUCScore(yTrue, prediction)
 	return MetricResult{Name: "roc_auc", Score: score}, err
 }
-func (ROCAUCMetric) needsProbabilities() bool { return true }
+func (ROCAUCMetric) NeedsProbabilities() bool { return true }
 
 // ConfusionMatrixMetric returns a confusion matrix for each fold. Its scalar
 // Score is NaN because a confusion matrix has no single aggregate value.
@@ -366,7 +380,7 @@ func (ConfusionMatrixMetric) Evaluate(yTrue *insyra.DataList, prediction Predict
 	matrix, err := ConfusionMatrix(yTrue, prediction.Values)
 	return MetricResult{Name: "confusion_matrix", Score: math.NaN(), ConfusionMatrix: matrix}, err
 }
-func (ConfusionMatrixMetric) needsClassLabels() bool { return true }
+func (ConfusionMatrixMetric) NeedsClassLabels() bool { return true }
 
 // RMSEMetric scores continuous predictions with root mean squared error.
 type RMSEMetric struct{}
@@ -398,12 +412,49 @@ func (R2Metric) Evaluate(yTrue *insyra.DataList, prediction Prediction) (MetricR
 	return MetricResult{Name: "r2", Score: score}, err
 }
 
-type classLabelMetric interface {
-	needsClassLabels() bool
+// ClassLabelMetric is a metric that scores predicted class labels rather than
+// raw model output. A metric declares itself one by implementing this, and the
+// harness then hands it Prediction.Values holding labels — taking the argmax of
+// the model's probabilities when the model reports them, so that a metric never
+// has to know how a particular model spells its prediction.
+//
+// This is exported for the same reason ProbaModel and Importances are: it is an
+// optional capability, discovered by type assertion, and a capability a caller
+// cannot declare is a capability a caller does not have. A metric defined
+// outside this package that does not implement it receives the model's own
+// Predict output.
+type ClassLabelMetric interface {
+	Metric
+	// NeedsClassLabels reports whether this metric wants class labels. Returning
+	// false is equivalent to not implementing the interface at all — the value is
+	// read, not merely the presence of the method.
+	NeedsClassLabels() bool
 }
 
-type probabilityMetric interface {
-	needsProbabilities() bool
+// ProbabilityMetric is a metric that scores class probabilities. A metric
+// declares itself one by implementing this, and the harness then hands it
+// Prediction.Probabilities together with Prediction.Classes naming the columns.
+//
+// A model that cannot produce probabilities is refused before it is fitted,
+// rather than being scored on values of a different kind.
+type ProbabilityMetric interface {
+	Metric
+	// NeedsProbabilities reports whether this metric wants probabilities.
+	// Returning false is equivalent to not implementing the interface at all.
+	NeedsProbabilities() bool
+}
+
+// wantsClassLabels and wantsProbabilities read the declaration rather than only
+// testing for the method, so that a metric returning false is treated as one
+// that did not ask.
+func wantsClassLabels(metric Metric) bool {
+	m, ok := metric.(ClassLabelMetric)
+	return ok && m.NeedsClassLabels()
+}
+
+func wantsProbabilities(metric Metric) bool {
+	m, ok := metric.(ProbabilityMetric)
+	return ok && m.NeedsProbabilities()
 }
 
 func oneSamplingOption(options []insyra.SamplingOptions) (insyra.SamplingOptions, error) {
@@ -616,7 +667,7 @@ func validateMetricModel(metric Metric, model Model) error {
 			return fmt.Errorf("metric %q requires a regression model; %T is a Classifier", metric.Name(), model)
 		}
 	}
-	if _, needsProbability := metric.(probabilityMetric); needsProbability {
+	if wantsProbabilities(metric) {
 		if _, ok := model.(ProbaModel); !ok {
 			return fmt.Errorf("metric %q requires a model implementing ProbaModel; %T does not", metric.Name(), model)
 		}
@@ -630,14 +681,14 @@ func predictionForMetric(model Model, test *insyra.DataTable, metric Metric) (Pr
 	if hasProba {
 		classes = proba.Classes()
 	}
-	if _, needsProbability := metric.(probabilityMetric); needsProbability {
+	if wantsProbabilities(metric) {
 		probabilities, err := proba.PredictProba(test)
 		if err != nil {
 			return Prediction{}, err
 		}
 		return Prediction{Probabilities: probabilities, Classes: classes}, nil
 	}
-	if _, needsLabels := metric.(classLabelMetric); needsLabels && hasProba {
+	if wantsClassLabels(metric) && hasProba {
 		probabilities, err := proba.PredictProba(test)
 		if err != nil {
 			return Prediction{}, err
