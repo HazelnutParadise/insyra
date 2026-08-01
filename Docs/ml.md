@@ -78,15 +78,15 @@ keeps every fold score rather than returning only the mean.
 The metric is always supplied by the caller and its name is carried on the
 result. Available metrics are:
 
-| Metric | Model kind | Direct helper |
-| --- | --- | --- |
-| `AccuracyMetric` | classification labels | `Accuracy` |
-| `LogLossMetric` | class probabilities | `LogLoss` |
-| `ROCAUCMetric` | binary class probabilities | `ROCAUC` |
-| `ConfusionMatrixMetric` | classification labels | `ConfusionMatrix` |
-| `RMSEMetric` | regression | `RMSE` |
-| `MAEMetric` | regression | `MAE` |
-| `R2Metric` | regression | `R2` |
+| Metric | Model kind | Better | Direct helper |
+| --- | --- | --- | --- |
+| `AccuracyMetric` | classification labels | higher | `Accuracy` |
+| `LogLossMetric` | class probabilities | lower | `LogLoss` |
+| `ROCAUCMetric` | binary class probabilities | higher | `ROCAUC` |
+| `ConfusionMatrixMetric` | classification labels | — | `ConfusionMatrix` |
+| `RMSEMetric` | regression | lower | `RMSE` |
+| `MAEMetric` | regression | lower | `MAE` |
+| `R2Metric` | regression | higher | `R2` |
 
 Classification models used with `CrossValidate` implement `Classifier` by
 returning their class labels. Probability metrics additionally require
@@ -94,9 +94,45 @@ returning their class labels. Probability metrics additionally require
 producing a meaningless score. Confusion-matrix cross-validation results are
 available in `FoldResults`; their scalar `Scores` and `Mean` are `NaN`.
 
+### Which score is better
+
+Half the metrics improve as their score rises and half as it falls, so a `Mean`
+on its own cannot be ranked. Every metric declares its direction, the result
+carries it, and `Better` uses it:
+
+```go
+withTree, _ := ml.CrossValidate(x, y, treePipeline, 5, ml.RMSEMetric{})
+withLinear, _ := ml.CrossValidate(x, y, linearPipeline, 5, ml.RMSEMetric{})
+
+treeWins, err := ml.Better(withTree, withLinear)  // smaller RMSE wins
+```
+
+`Better` refuses two results from different metrics, and refuses a metric that
+declares `NoDirection` — the confusion matrix, whose result is not a scalar.
+
+`ROCAUCMetric` treats the second of the model's classes as positive, ordered by
+the sorted distinct training labels. Which one that is does not affect the
+score: the two probability columns are complementary, so naming the other class
+would swap both the positive label and the score column, and the two swaps
+cancel exactly.
+
+### Scoring a fitted model
+
+`Score` evaluates a model you already hold, without fitting anything:
+
+```go
+result, err := ml.Score(model, testFeatures, testTarget, ml.RMSEMetric{})
+```
+
+It runs the same compatibility check and the same prediction assembly
+`CrossValidate` runs, so a metric that needs probabilities — or needs class
+labels from a model that reports probabilities — is served identically either
+way. scikit-learn's `score` carries a default metric on the estimator class;
+Go has nowhere to hang that, so the metric is an argument.
+
 ### Writing your own metric
 
-`Metric` is three methods, and a metric written outside this package works the
+`Metric` is four methods, and a metric written outside this package works the
 same way the built-in ones do:
 
 ```go
@@ -104,6 +140,11 @@ type BrierScore struct{}
 
 func (BrierScore) Name() string        { return "brier" }
 func (BrierScore) Kind() ml.MetricKind { return ml.ClassificationMetric }
+
+// A smaller Brier score is a better one. Every metric must say, because a
+// score whose direction nobody knows cannot be acted on — and it cannot be
+// guessed from the name.
+func (BrierScore) Direction() ml.MetricDirection { return ml.LowerIsBetter }
 
 // Declaring this is what makes probabilities arrive. Without it the metric
 // receives the model's predictions instead.
@@ -139,6 +180,17 @@ Which fields of `Prediction` are populated follows from that table alone. A nil
 could not supply them, since a model that cannot is refused first.
 
 ## Fitting models
+
+### Values that are not numbers
+
+The wrapped `stats` families refuse a value they cannot read as a finite number
+rather than substituting one; see [the table in the `stats`
+documentation](/Docs/stats.md#values-that-are-not-numbers). Decision trees are
+the exception and are deliberately different: a missing **feature** value is
+kept, and the tree learns per node which way such rows should go, which is the
+standard treatment for that family. A missing **target** is refused, because
+there is no direction to learn for the thing being predicted.
+
 
 ```go
 features := insyra.NewDataTable(
@@ -297,6 +349,35 @@ adapter.
 scoped := ml.NewColumnTransformer(fittedTransformer, "age", "income")
 transformed, err := scoped.Transform(raw)
 ```
+
+
+### The columns the estimator actually saw
+
+`Features()` names the columns a pipeline accepts. When a step changes the
+column count — a one-hot encoder is the ordinary case — the final estimator was
+fitted on different columns, and `TransformedFeatureNames` is what names those:
+
+```go
+if expanded, ok := model.(ml.TransformedFeatures); ok {
+    names := expanded.TransformedFeatureNames()
+    importances := model.(ml.Importances).FeatureImportances()
+    // one importance per name, in the same order
+}
+```
+
+**Feature importances reported by a pipeline are indexed by these names, not by
+`Features()`.** A pipeline over two columns that encodes one of them into three
+reports two feature names and four importances; reading them together without
+`TransformedFeatureNames` attributes every number to the wrong column.
+
+### Leakage
+
+Cross-validating a pipeline is leakage-free by construction, not by convention:
+`CrossValidate` calls the pipeline's `Fit` once per fold with that fold's
+training rows, and `Fit` refits every step. A step never sees a held-out row
+before it is scored. The property that has to hold for this is that
+preprocessing lives *inside* the pipeline; a transformer fitted on the whole
+dataset and then passed in already-fitted has seen everything.
 
 ## ONNX export
 

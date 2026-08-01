@@ -160,6 +160,16 @@ one-off mutation instead of a reusable fitted transformer.
 
 Use DataTable categorical encoders before stats methods that require numeric features (`stats.LinearRegression`, KNN, PCA, clustering). These methods return a new table plus a fitted encoder; the receiver is not modified.
 
+Every `stats` numeric entry point refuses a value it cannot read as a finite
+number — a missing value, a blank, text, an infinity — naming the series and
+the row. Only Go numeric types convert, so a string spelling a number is
+refused too: a table loaded without type inference needs converting first.
+Impute or drop missing values before analysing (`insyra` provides
+`SimpleImputer`). Two families are deliberately different and are documented as
+such: factor analysis removes the whole observation, and `ml`'s decision trees
+learn a per-node direction for a missing *feature* while still refusing a
+missing *target*.
+
 ```go
 encoded, enc, err := dt.OneHotEncode(insyra.OneHotOptions{
     Columns:   []string{"plan", "region"},
@@ -298,6 +308,20 @@ Choose the metric explicitly. Use `AccuracyMetric`, `LogLossMetric`,
 `RMSEMetric`, `MAEMetric`, or `R2Metric` for regression. Cross-validation
 rejects a metric when the fitted model does not implement the required
 `Classifier` or `ProbaModel` capability.
+
+Never rank two results by comparing `Mean` directly — `AccuracyMetric`,
+`R2Metric` and `ROCAUCMetric` improve as the score rises while `RMSEMetric`,
+`MAEMetric` and `LogLossMetric` improve as it falls. Use `ml.Better(a, b)`,
+which reads the direction the metric declared and is carried on the result as
+`Direction`. A metric written outside the package must implement
+`Direction() ml.MetricDirection`; returning `ml.NoDirection` while producing a
+rankable score is refused.
+
+To score a model already fitted, use `ml.Score(model, x, y, metric)` rather
+than calling `Accuracy`/`RMSE` directly — it applies the same model/metric
+compatibility check and the same class-label derivation `CrossValidate` does.
+Reach for the bare metric functions only when you hold predictions rather than
+a model.
 
 ### 3) Add a derived column with CCL (Excel-like)
 
@@ -587,6 +611,11 @@ columns by position, including unnamed columns, but selected columns must be
 named. Root scalers, encoders, and fitted imputers already satisfy
 `ml.Transformer` and need no adapter. Fitted pipelines preserve the final
 model's classifier, probability, and importance capabilities.
+
+When reading a pipeline's `FeatureImportances()`, get the names from
+`ml.TransformedFeatures.TransformedFeatureNames()`, not `Features()`. A step
+that changes the column count makes them different lengths, and pairing
+importances with `Features()` attributes every number to the wrong column.
 
 Use `ml.ExportONNX(writer, fittedModel)` or the `ml.Exporter` capability to
 write supported fitted models for Python and other ONNX runtimes. Linear and

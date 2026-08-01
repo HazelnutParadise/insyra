@@ -53,15 +53,19 @@ A pipeline step is a **fit function, not a configured object**. scikit-learn ref
 | --- | --- | --- |
 | Cross-language | every `stats` result field against R, and predictions against R and Python | `stats/testdata/*.R`, `crosslang_*_test.go` |
 | Bit-parity | device result identical to its CPU reference on the running platform | `accel/exact_test.go` |
-| Conformance | a third-party `ml.Model` obeys the protocol | `ml/mltest` |
+| Conformance | a third-party `ml.Model` obeys the protocol, including that importances and feature names agree in number | `ml/mltest` |
+| Round-trip | an exported model loads and scores in `onnxruntime` | `ml/onnx_export_test.go` |
+| Leakage | a cross-validated pipeline's steps see training rows only | `ml/pipeline_features_test.go` |
 | Order-independence | permuting input rows fits an identical tree | `ml/decision_tree_test.go` |
 | Calibration | where a device wins, across 96 shapes | `accel/shapemap_test.go` |
 
-Cross-language tests **skip** without `Rscript` (jsonlite, cluster, dbscan) and `python` (numpy, scipy, statsmodels, sklearn). A skipped verification looks exactly like a passing one — install both before trusting a green run.
+Cross-language tests **skip** without `Rscript` (jsonlite, cluster, dbscan) and `python` (numpy, scipy, statsmodels, sklearn, onnxruntime). A skipped verification looks exactly like a passing one — install all of them before trusting a green run. The ONNX round-trip had never executed anywhere until 2026-08-01, and hid two defects that made every exported model invalid.
 
 ## Precision contract
 
 `insyra/ml` does not have a precision. It has one contract assigned by role, and every model obeys the same one. Each row is sourced from what mainstream libraries actually do, read at source level.
+
+Values that cannot be read as a finite number are refused rather than converted, and each family states which of three treatments it applies: refusal (regression, correlation, clustering, PCA, KNN), listwise deletion (factor analysis), or a learned per-node direction for a missing feature with refusal of a missing target (decision trees).
 
 | Role | Type | Why |
 | --- | --- | --- |
@@ -111,10 +115,12 @@ The floor is one host's number and belongs in a calibrated dispatcher eventually
 
 - **Bit-parity is platform-dependent, not kernel-dependent.** It holds because Metal and Go/arm64 contract multiply-add identically. That is a property of the toolchains, so it is measured where it runs and cannot be inferred for a platform nobody has run on — risk: the device path is verified on Apple and Metal only.
 - **The pure-Go GPU stack is one maintainer.** gogpu/wgpu, naga and goffi are substantially one person's work, 159 stars, and CI exercises no GPU hardware — risk: the observable-fallback design is the mitigation, but no roadmap item should assume the dependency survives.
+- **A conversion with no failure channel is a fabrication.** `DataList.ToF64Slice` routes through `insyra.ToFloat64`, which yields `0` for anything it cannot parse, and returns a slice of the right length regardless — so every caller believed it held the caller's data. Regression and correlation read through it until 2026-08-01; one blank among six observations moved a Pearson coefficient from 0.9992 to 0.9879 with no error. `stats` now converts through one validating helper — risk: 54 call sites elsewhere in the library still use `ToF64Slice`, including `plot`, `gplot`, `quant` and the CLI. Those are display and reporting paths where a zero is visible rather than laundered into a coefficient, which is why they were left; a new numeric analysis must not join them.
 - **`stats`' R validation covers fitting, not prediction.** None of the 22 reference scripts called `predict()` until 2026-07-29 — risk: any claim that wrapping `stats` inherits its validation is true only for the fitting half.
-- **`Predict` returns a `DataList` whatever the model is.** A measurement, a class label and a cluster id are the same type, so nothing downstream can tell them apart. Three defects came from this: a logistic model satisfying `Classifier` while `Predict` returned probabilities, cluster ids scored by RMSE, and a metric unable to say it needed probabilities. Each is a different party guessing at what the other meant — risk: no check can recover the missing information, because it is not in the data. A model must *declare* what it predicts (`Classifier`, `Clusterer`) and a metric what it consumes; inference is not available.
+- **`Predict` returns a `DataList` whatever the model is.** A measurement, a class label and a cluster id are the same type, so nothing downstream can tell them apart. Four defects came from this — the fourth being a metric's *score*, whose direction is equally invisible in a `float64`: a logistic model satisfying `Classifier` while `Predict` returned probabilities, cluster ids scored by RMSE, and a metric unable to say it needed probabilities. Each is a different party guessing at what the other meant — risk: no check can recover the missing information, because it is not in the data. A model must *declare* what it predicts (`Classifier`, `Clusterer`) and a metric what it consumes; inference is not available.
+  The same shape appeared twice more and was fixed the same way. A metric's score is a `float64` whichever way it improves, so `Metric` now declares a `Direction`; without it a caller ranking two means picked the worse model half the time. A pipeline's feature names and its estimator's importances are both `[]string`/`[]float64` with nothing tying them together, so a fitted pipeline now reports `TransformedFeatureNames`.
   The counter-example is `SimpleImputer`, which deliberately does not implement `InverseTransform` rather than implementing one that errors — its comment explains that a method present only to satisfy an assertion tells a caller the capability exists and then refuses at the call, so not having it is the only form of "no" an assertion can read. That is the same reasoning applied before the defect rather than after.
-- **A test that passes for the wrong reason.** Caught three times in this phase: a benchmark arm named for a device that never ran, a numerical test that passed against the bound it was meant to exercise, and a conformance probe failing on an unrelated assertion — risk: a fix is not verified until the test covering it has been shown to fail without it.
+- **A test that passes for the wrong reason, or never runs at all.** Caught five times in this phase: a benchmark arm named for a device that never ran, a numerical test that passed against the bound it was meant to exercise, a conformance probe failing on an unrelated assertion, cross-language validation that skipped wherever `Rscript` was absent, and an ONNX round-trip that had skipped on every machine it ever ran on — hiding two defects that made every exported model invalid — risk: a fix is not verified until its test has been shown to fail without it, and a suite is not green until its skips have been read.
 
 ## Migration plan
 

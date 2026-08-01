@@ -1,10 +1,10 @@
 # Delivery Status
 
 ## Current Phase
-`insyra/ml` v1 shipped and archived. Acceleration is dormant by choice — no call site was measured to beat the CPU, so the runtime waits for one rather than being wired into something that would lose.
+`insyra/ml` v1 shipped and archived, then audited against its own claims and repaired. Acceleration is dormant by choice — no call site was measured to beat the CPU, so the runtime waits for one rather than being wired into something that would lose.
 
 ## Stage Objective
-Nothing is in flight. The stage that just closed had one objective and met it: make `insyra/ml` exist as a scikit-learn-shaped package over the algorithms `stats` already had, plus the one model family `stats` lacked, all of it reviewed adversarially rather than accepted.
+Nothing is in flight. The stage that just closed had one objective and met it: audit `insyra/ml` against what it claimed and fix what did not hold. Six findings were reported; five were real and are fixed, one was a misdiagnosis and is recorded as one.
 
 ## Active Workstreams
 None. Every proposed change is implemented, verified and archived — `openspec/changes/` holds nothing but `archive/`.
@@ -17,6 +17,7 @@ None. Every proposed change is implemented, verified and archived — `openspec/
 | M8 | Find a call site a device wins | planning | done | answered, negatively. 96 shapes measured against an all-core host: the device wins 42, by at most 3.63x, and no `stats` call site clears the threshold. Three operations were removed rather than shipped |
 | M9 | `stats` can be wrapped | planning | done | every regression predicts and matches R's `predict()`; KMeans assigns new rows; logistic and Poisson publish their link; PCA returns its projection parameters |
 | M10 | `insyra/ml` v1 | planning | done | protocol, pipelines, model selection, decision trees and ONNX export archived; 21 review findings raised, the blocking ones fixed, the rest adjudicated |
+| M11 | `ml` holds up under audit | planning | done | ONNX round-trip passes against a real `onnxruntime` for all five model shapes; `stats` refuses input it cannot read instead of scoring zeros; metrics declare a direction; pipelines name the columns their estimator saw |
 
 Milestone order is the blocking sequence. OpenSpec has no dependency relationship between changes, so nothing else carries it.
 
@@ -24,13 +25,30 @@ Milestone order is the blocking sequence. OpenSpec has no dependency relationshi
 None. One coverage gap is carried in `AGENTS.md` follow-ups rather than here, because it waits on hardware nobody has rather than on a decision: the device path is verified on Apple and Metal only.
 
 ## Next Verifiable Output
-Undecided, and deliberately. The acceleration line has no landing site that measurement supports, and `insyra/ml` v1 is complete. The two things worth measuring before anything is proposed are brute-force KNN, whose candidate count is the training-set size and therefore always clears the floor, and the DBSCAN neighbourhood scan. Both need measuring against a parallel host first.
+Undecided, and deliberately. The acceleration line has no landing site that measurement supports, and `insyra/ml` v1 is complete and now audited. The two things worth measuring before anything is proposed are brute-force KNN, whose candidate count is the training-set size and therefore always clears the floor, and the DBSCAN neighbourhood scan. Both need measuring against a parallel host first.
+
+The one thing that would pay for itself immediately is neither: run the suite on a machine with every reference toolchain installed, in CI rather than by hand. Two verifications in this project have been believed on the strength of a skip.
 
 ## Next Ticket
 None. Proposing one before that measurement would repeat the mistake this phase already made once — building a kernel, then discovering its intended caller could not clear its own profitability floor.
 
 ## Decision Log
-Deltas that still change what someone would do. The standing technical decisions they produced — the precision contract, the device rules, the measured thresholds — live in [ENG.md](ENG.md); the full 75-entry history is in git.
+Deltas that still change what someone would do. The standing technical decisions they produced — the precision contract, the device rules, the measured thresholds — live in [ENG.md](ENG.md); the full history is in git.
+
+- decision: A verification that skips is not a verification. Install every reference toolchain before calling a suite green.
+  rationale: The ONNX round-trip needed `onnxruntime`, which was on no machine it ever ran on, so it skipped everywhere and reported nothing. Executed for the first time, it failed immediately on two defects that made every exported model unloadable: a stray string field on every non-string attribute, and tree nodes written deepest-leaf-first when the runtime reads the first entry as the root. Both had been archived as verified.
+  timestamp: 2026-08-01
+  impacted_ticket_ids: archived
+
+- decision: A conversion that cannot fail is a conversion that fabricates. Numeric input in `stats` goes through one validating helper.
+  rationale: Regression and correlation read every value through `ToF64Slice`, which yields 0 for anything unparseable and returns a full-length slice regardless. One blank among six observations moved a Pearson coefficient from 0.9992 to 0.9879, silently. Three treatments of unreadable values now coexist deliberately — refusal, listwise deletion, a learned tree direction — and each is documented; substituting a zero is not one of them.
+  timestamp: 2026-08-01
+  impacted_ticket_ids: archived
+
+- decision: Do not ship a control that provably cannot change the answer.
+  rationale: A positive-class option for `ROCAUCMetric` was proposed, built, and then withdrawn on measurement: the metric receives the whole probability table, so naming the other class swaps both the label and the score column and the two cancel exactly — all three choices returned 0.50838574423480087. It was the only one of six reported findings that had not been measured before being reported.
+  timestamp: 2026-08-01
+  impacted_ticket_ids: archived
 
 - decision: Judge every acceleration claim against a host using all its cores.
   rationale: `accel` contains no parallelism at all, while the rest of the library parallelises its hot loops as a matter of course. Every speedup recorded before this compared a GPU against one core on an eight-core machine, so none described the alternative a user actually has. Re-measured honestly, the best case fell from 7.1x to 3.63x.
@@ -82,6 +100,7 @@ Deltas that still change what someone would do. The standing technical decisions
 
 ## Handoff Notes
 - **Two pure-CPU wins are measured and unclaimed**, and both are worth more than anything acceleration offered. `stats`' KNN auto-selection picks a ball tree up to 3.3x slower than parallel brute force on unstructured data (#190). CCL spends 4.8x–6.2x more time on recursion-depth bookkeeping than on evaluating (#191).
-- **Cross-language tests skip silently** without `Rscript` and `python` plus their scientific stacks. A skipped verification is indistinguishable from a passing one; two changes were nearly archived on tests that had never run.
+- **Cross-language tests skip silently** without `Rscript` and `python` plus their scientific stacks — now including `onnxruntime`. A skipped verification is indistinguishable from a passing one. Two changes were nearly archived on tests that had never run, and one was archived on a round-trip that had never run anywhere, hiding two defects that made every exported model invalid.
+- **The refusal of unreadable numeric input is a breaking change** for anyone whose data contains blanks. What used to return a number now returns an error; the number it used to return was wrong. `ToF64Slice` still backs 54 call sites in `plot`, `gplot`, `quant` and the CLI — display paths where a zero is visible rather than laundered into a coefficient. A new numeric analysis must not join them.
 - **Nothing calls `accel`.** It is reachable through `allpkgs` or a direct import only, so its dormancy costs users nothing today.
 - **The race detector cannot reach the device on macOS**, upstream and pre-existing (gogpu/wgpu#280). Device tests skip under the `race` build tag.

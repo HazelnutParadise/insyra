@@ -238,6 +238,18 @@ Keep the English ([README.md](README.md), [CHANGELOG.md](CHANGELOG.md), `Docs/`)
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-08-01] — the reference toolchains are installed by hand, so verifications skip by default
+- **Where**: `stats/crosslang_*_test.go`, `ml/onnx_export_test.go`, CI
+- **What**: three test families skip silently when their reference implementation is absent — `Rscript` with jsonlite/cluster/dbscan, `python` with numpy/scipy/statsmodels/sklearn, and `python` with onnxruntime. A skipped verification is indistinguishable from a passing one in the output. The ONNX round-trip had skipped on every machine it ever ran on; executed for the first time on 2026-08-01 it failed immediately, on two defects that made every exported model unloadable by any runtime. Both had been archived as verified.
+- **Suggestion**: install all three in CI so the round-trip and the cross-language checks actually execute, and fail the run when a check that was expected to run skipped. The cheaper half — making the skips loud — is worth doing even without the toolchains.
+- **Status**: pending
+
+### [2026-08-01] — `ToF64Slice` still fabricates zeros for 54 callers outside `stats`
+- **Where**: `datalist.go` `ToF64Slice`, and its callers in `plot/`, `gplot/`, `quant/`, `cli/`, `datalist_interpolation.go`
+- **What**: it routes every value through `insyra.ToFloat64`, which has no failure channel and yields `0` for anything it cannot parse, then returns a full-length slice — so a caller cannot tell a real zero from a value that was never read. `stats` was moved off it on 2026-08-01 after a blank among six observations was measured moving a Pearson coefficient from 0.9992 to 0.9879. The remaining callers were left deliberately: they are display and reporting paths, where a fabricated zero shows up as a point on a chart rather than inside a coefficient.
+- **Suggestion**: leave them, but decide rather than drift. If they are to stay, the method's doc comment should say what it does with a value it cannot read, because it currently does not. A new numeric analysis must not use it.
+- **Status**: pending
+
 ### [2026-08-01] — the GPU backend is verified on Apple and Metal only
 - **Where**: `accel/`, the whole device path
 - **What**: every numeric result the backend produces has been checked bit-for-bit against its CPU reference, but only on an Apple M3 through Metal. `add-accel-gpu-execution` required the same check on a Windows or Linux host with an NVIDIA or AMD GPU before archiving; no such machine was available and the task was closed without it. Bit-parity depends on both toolchains contracting multiply-add identically, which is a property of the platform rather than of the kernel — so it is measured where it runs and cannot be inferred for a platform nobody has run it on. Vulkan and DirectX 12 paths compile and are exercised by no numeric test.
