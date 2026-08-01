@@ -10,6 +10,14 @@ This file is the primary guidance for AI coding agents working in this repositor
 - A CLI/REPL (`insyra` binary) built with Cobra
 - Sub-packages for stats, plotting, LP, Python interop, parallel processing, file I/O, etc.
 
+## Required artifacts
+
+Each entry says *when* reading it stops being optional. That trigger is the part that only exists here — the files describe their own contents.
+
+- [`ENG.md`](ENG.md) — the project's standing technical decisions: architecture, test seams, the precision contract, the measured thresholds, the assumptions everything rests on. **Read it before changing architecture, choosing a test seam, deciding what precision something runs at, or writing a migration.** Do not re-derive any of it from scratch; if a decision there is wrong, change it there.
+- [`delivery-status.md`](delivery-status.md) — where the project currently stands: phase, blockers, next output, next ticket. **Read it first on arrival.** It is deltas only, not a roadmap or a changelog.
+- [`openspec/changes/`](openspec/changes/) — the tickets. **Pick up anything whose blockers are all done**; the milestone order in `delivery-status.md` carries the blocking edges, because OpenSpec has none between changes. Completed changes live in `archive/`.
+
 ## Change Workflow — OpenSpec (required)
 
 **Every non-trivial change goes through the OpenSpec workflow.** This repo is
@@ -38,26 +46,26 @@ so this policy applies to every agent tool that reads either file.
 Applies to every accel-related task. It extends the OpenSpec workflow above; it does not replace it.
 
 ### Required Entry Sequence
-- Read `delivery-plan.md` before doing any accel-related work.
-- Use `delivery-plan.md` as the source of truth for current phase, blockers, next verifiable output, and next OpenSpec change.
+- Read `delivery-status.md` before doing any accel-related work.
+- Use `delivery-status.md` as the source of truth for current phase, blockers, next verifiable output, and next OpenSpec change.
 - Read the named OpenSpec change before proposing implementation or writing code.
 
 ### Required Artifacts
-- `delivery-plan.md` is the shared progress and handoff surface.
+- `delivery-status.md` is the shared progress and handoff surface.
 - `openspec/changes/` holds the executable units of work.
 
 ### Planning Discipline
 - The accel phase may not use umbrella proposals. One change must produce one verifiable result.
 - Do not start implementation for uncovered accel scope. Missing proposal coverage means the work is out of bounds.
 - Full GPU string kernels are not a deferred track any more; the change that deferred them was withdrawn on 2026-08-01. A string kernel produces new values, which the result-shape rule below places behind an explicit opt-in rather than in a later phase. Do not reintroduce the deferral.
-- Preserve the fixed architecture defaults unless a new decision is logged in `delivery-plan.md`:
+- Preserve the fixed architecture defaults unless a new decision is logged in `delivery-status.md`:
   - optional `insyra/accel` package family
   - `CUDA + Metal + WebGPU native`
   - heterogeneous multi-GPU only for shardable columnar operations in v1
   - observable CPU fallback by default, strict GPU-only as opt-in
 
 ### Update Discipline
-- Update `delivery-plan.md` after every milestone, blocker, or handoff.
+- Update `delivery-status.md` after every milestone, blocker, or handoff.
 - Change the named next OpenSpec change when the recommended pickup point changes.
 - Update this contract only when operating rules change.
 
@@ -75,7 +83,7 @@ Every accel handoff must include:
 - next OpenSpec change
 - decision delta since previous handoff
 - source links for critical context
-- whether `delivery-plan.md` changed
+- whether `delivery-status.md` changed
 - whether `AGENTS.md` changed
 
 ### How the CPU and the GPU Divide the Work
@@ -100,7 +108,7 @@ Implementing a selection-shaped operation:
 Two rules follow and are not negotiable:
 
 - **A missing or broken device is a performance event, never a correctness one.** The verification half is a complete implementation, so no device means every row takes the full CPU path — the code that already runs for the untrustworthy rows. Every operation returns its answer whether or not a device ran; `Accelerated` and `FallbackReason` report where the work happened, not whether it worked. The exceptions are a request the caller's own terms made ineligible, and strict GPU mode, which exists to fail.
-- **Do not write a kernel for an operation measurement says the device loses.** Memory-bound work — column sums, means, simple scans — stays on the CPU permanently. Measure before proposing a kernel, and record the number in `delivery-plan.md`.
+- **Do not write a kernel for an operation measurement says the device loses.** Memory-bound work — column sums, means, simple scans — stays on the CPU permanently. Measure before proposing a kernel, and record the number in `delivery-status.md`.
 
 ### Implementation Constraints
 - Do not silently reinterpret existing `DataList.Map(func...)` or `DataTable.Map(func...)` as GPU kernels.

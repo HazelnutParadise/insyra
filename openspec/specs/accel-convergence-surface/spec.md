@@ -4,11 +4,11 @@
 TBD - created by archiving change add-accel-convergence-surface. Update Purpose after archive.
 ## Requirements
 ### Requirement: Shared acceleration control surface
-The project SHALL provide a shared control surface for acceleration work through `delivery-plan.md`, `AGENTS.md`, and `CLAUDE.md`.
+The project SHALL provide a shared control surface for acceleration work through `delivery-status.md`, `AGENTS.md`, and `CLAUDE.md`.
 
 #### Scenario: New agent enters the repository
 - **WHEN** a new agent starts accel-related work
-- **THEN** it can determine the current phase, blockers, next verifiable output, and next OpenSpec change by reading `delivery-plan.md`
+- **THEN** it can determine the current phase, blockers, next verifiable output, and next OpenSpec change by reading `delivery-status.md`
 - **AND** it can determine the project operating rules by reading `AGENTS.md`
 - **AND** `CLAUDE.md` points it to `AGENTS.md`
 
@@ -26,5 +26,5 @@ The control surface SHALL capture handoff continuity without relying on prior ch
 
 #### Scenario: Milestone or blocker changes
 - **WHEN** a milestone status changes, a blocker appears, or work is handed off
-- **THEN** `delivery-plan.md` is updated with the new phase state, next verifiable output, next OpenSpec change, and decision delta
+- **THEN** `delivery-status.md` is updated with the new phase state, next verifiable output, next OpenSpec change, and decision delta
 
