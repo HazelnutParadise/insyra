@@ -40,6 +40,8 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 ### `stats`
 
+- `PCA` returns an error instead of panicking on a table with no columns. The shape guard existed but sat 34 lines below the `mat.NewDense` call it was meant to protect, so a zero-column table crashed the caller with `mat: zero length in matrix dimension`.
+
 - Added `Predict` to linear, polynomial, exponential, and logarithmic regression results. It follows the GLM prediction signature and returns response-scale point predictions for new data, with predictor-count and row-length validation. R's standard errors and prediction intervals remain outside the current API.
 - Added `KMeansResult.Assign` to apply fitted centers to new observations and return the one-based center index with its squared Euclidean distance.
 - `PCAResult` now returns the fitted per-column centering and scaling parameters, together with the training scores, so callers can project new observations with the same decomposition.
@@ -47,6 +49,8 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - Passing a nil table to a clustering or decomposition entry point now returns an error instead of panicking. `KMeans`, `DBSCAN`, `Silhouette`, `HierarchicalAgglomerative`, `PCA` and `KMeansResult.Assign` all dereferenced the table before validating it, so both a nil interface and a typed nil crashed the caller.
 
 ### `ml`
+
+- `mltest.RunConformance` now checks the probability ordering by value, not only by column name. It compared column names against class names, which a model that derives its names from its own `Classes()` list satisfies by construction — so a model whose probability values sat under the wrong labels passed a check written to catch exactly that. For every row, the class `Predict` returns must now be the class whose column holds the largest probability. Its renamed-column check was also strengthened: the renamed name was a superstring of the original, so an error naming only the incoming column satisfied it.
 
 - `ROCAUC` now refuses a true label that belongs to neither probability class, instead of treating it as negative. It previously reported confident discrimination — an AUC of 1 with a nil error — over data it had not understood, while `LogLoss` refused the identical input. The two metrics no longer disagree.
 

@@ -352,6 +352,15 @@ Still open on the acceleration side, and not blocking: measuring brute-force KNN
   timestamp: 2026-08-01
   impacted_change_ids: `export-ml-metric-markers`
 
+- decision: The twelve unexamined `ml` findings are adjudicated. Three were real, nine were not.
+  rationale: The third attempt succeeded where two had failed, after the failure was diagnosed as contention rather than content: twelve high-effort agents each writing tests and running `go test` on a machine capped at six concurrent had stalled each other out. Split into two batches of six at medium effort, with each claim told how to falsify itself rather than left to explore, fifteen agents completed with no errors. Three claims survived. `stats.PCA` panicked on a zero-column table because its shape guard sat thirty-four lines below the `mat.NewDense` call it was meant to protect — an ordering bug that reads as correct to anyone who greps for the guard. `mltest.RunConformance` checked probability ordering by comparing column names to class names, which a model deriving its names from its own `Classes()` list satisfies by construction, so a model with values under the wrong labels passed a check written to catch exactly that. And its renamed-column check required the error to mention the original feature, while the renamed column was a superstring of it, so an error naming only the incoming column satisfied the check. The adjudicators corrected the reviewers' severity in both directions rather than deferring to it.
+  timestamp: 2026-08-01
+  impacted_change_ids: none
+- decision: A fix is not verified until the test that covers it has been shown to fail without it.
+  rationale: Applied here and it caught a false positive in my own work. The first probe written to prove the new conformance check catches a transposed model passed with the check disabled — the fake model ignored its input entirely, so an unrelated renamed-column assertion was failing it first. The probe proved nothing about the fix it was written for. Rewritten so the model satisfies every other rule and violates only the ordering one, it passes with the check and fails without it. The same discipline has now caught an unearned claim three times in this phase: a benchmark arm named for a device that never ran, a subnormal test that passed against the bound it was meant to exercise, and this.
+  timestamp: 2026-08-01
+  impacted_change_ids: none
+
 ## Source Links
 - `delivery-plan.md`
 - `AGENTS.md`

@@ -296,6 +296,12 @@ hold out. Fit the pipeline on `train`, then call the fitted model on `test`.
 
 The `ml/mltest` package checks an implementation's feature contract, name-based binding, missing and extra columns, reordered inputs, and probability output.
 
+For a model that reports probabilities, the class order is checked by value and
+not only by column name: for every row, the class `Predict` returns must be the
+class whose probability column holds that row's largest probability. Ties are
+allowed. A model that picks its class by some other rule, such as a decision
+threshold that is not the largest probability, will not pass this check.
+
 ```go
 mltest.RunConformance(t, model, features, target)
 ```

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
@@ -12,6 +13,12 @@ import (
 )
 
 // RunConformance exercises the protocol rules against a fitted model.
+//
+// A model that also implements ml.ProbaModel is held to the ordering rule by
+// value, not only by column name: the class Predict returns for a row must be
+// the class whose probability column holds that row's largest probability.
+// Ties are allowed. A model that decides its class by any rule other than the
+// largest probability does not satisfy this check.
 func RunConformance(t *testing.T, model ml.Model, x *insyra.DataTable, y *insyra.DataList) {
 	t.Helper()
 	if model == nil {
@@ -45,7 +52,10 @@ func RunConformance(t *testing.T, model ml.Model, x *insyra.DataTable, y *insyra
 	renamedNames := append([]string(nil), features...)
 	renamedNames[0] += "_renamed"
 	renamed.SetColNames(renamedNames)
-	if _, err := model.Predict(renamed); err == nil || !contains(err.Error(), features[0]) {
+	// The renamed column is a superstring of the feature it replaced, so every
+	// mention of it is stripped before looking for the missing feature. Without
+	// that, an error naming only the incoming column would satisfy the check.
+	if _, err := model.Predict(renamed); err == nil || !contains(strings.ReplaceAll(err.Error(), renamedNames[0], ""), features[0]) {
 		t.Fatalf("Predict(renamed column) error = %v, want an error naming %q", err, features[0])
 	}
 
@@ -85,13 +95,45 @@ func RunConformance(t *testing.T, model ml.Model, x *insyra.DataTable, y *insyra
 				t.Fatalf("probability column %d = %q, want class %q", i, gotName, wantName)
 			}
 		}
+		if probabilities.NumRows() != x.NumRows() {
+			t.Fatalf("PredictProba returned %d rows, want %d", probabilities.NumRows(), x.NumRows())
+		}
+		columns := make([][]float64, probabilities.NumCols())
+		for col := range columns {
+			columns[col] = probabilities.GetColByNumber(col).ToF64Slice()
+		}
 		for row := 0; row < probabilities.NumRows(); row++ {
 			sum := 0.0
 			for col := 0; col < probabilities.NumCols(); col++ {
-				sum += probabilities.GetColByNumber(col).ToF64Slice()[row]
+				sum += columns[col][row]
 			}
 			if math.Abs(sum-1) > 1e-12 {
 				t.Fatalf("probability row %d sums to %.17g, want 1", row, sum)
+			}
+		}
+		// Matching column names against class names only proves the columns are
+		// labelled in class order. It cannot see values that have been filled in
+		// under the wrong label, because a model that derives its column names
+		// from its own Classes() list satisfies the name check by construction.
+		// Tying each row's predicted class back to its own column is what makes
+		// the ordering rule bite.
+		classIndex := make(map[string]int, classes.Len())
+		for i := 0; i < classes.Len(); i++ {
+			classIndex[fmt.Sprint(classes.Get(i))] = i
+		}
+		predicted := got.Data()
+		for row := 0; row < probabilities.NumRows(); row++ {
+			label := fmt.Sprint(predicted[row])
+			index, ok := classIndex[label]
+			if !ok {
+				t.Fatalf("Predict returned %q at row %d, which is not one of the classes %v", label, row, classes.Data())
+			}
+			chosen := columns[index][row]
+			for col := 0; col < probabilities.NumCols(); col++ {
+				if columns[col][row] > chosen+1e-12 {
+					t.Fatalf("row %d: Predict chose class %q whose column holds %.17g, but column %d (class %q) holds a larger %.17g",
+						row, label, chosen, col, fmt.Sprint(classes.Get(col)), columns[col][row])
+				}
 			}
 		}
 	}

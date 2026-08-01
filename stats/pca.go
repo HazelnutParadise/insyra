@@ -47,6 +47,14 @@ func PCA(dataTable insyra.IDataTable, nComponents ...int) (*PCAResult, error) {
 			numComponents = nComponents[0]
 		}
 
+		// The shape guard has to be enforced here, before the allocation:
+		// mat.NewDense panics with mat.ErrZeroLength on a zero dimension, so
+		// an empty table would crash the caller instead of getting the error
+		// back. Leaving data nil lets the check below report it as an error.
+		if rowNum < 2 || colNum < 1 {
+			return
+		}
+
 		data = mat.NewDense(rowNum, colNum, nil)
 		for j := range colNum {
 			col := dt.GetColByNumber(j)
@@ -78,11 +86,11 @@ func PCA(dataTable insyra.IDataTable, nComponents ...int) (*PCAResult, error) {
 	if len(nComponents) > 1 {
 		return nil, errors.New("nComponents accepts at most one value")
 	}
-	if data == nil {
-		return nil, errors.New("input contains non-numeric values")
-	}
 	if rowNum < 2 || colNum < 1 {
 		return nil, errors.New("insufficient data shape for PCA")
+	}
+	if data == nil {
+		return nil, errors.New("input contains non-numeric values")
 	}
 	if numComponents <= 0 || numComponents > colNum {
 		return nil, fmt.Errorf("nComponents must be between 1 and %d", colNum)

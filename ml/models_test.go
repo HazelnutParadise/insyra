@@ -59,6 +59,33 @@ func TestConformanceEveryWrappedModel(t *testing.T) {
 	}
 }
 
+func TestPCARejectsDegenerateShapeWithoutPanicking(t *testing.T) {
+	cases := []struct {
+		name  string
+		table *insyra.DataTable
+	}{
+		{"no columns", insyra.NewDataTable()},
+		{"column with no rows", insyra.NewDataTable(insyra.NewDataList().SetName("x1"))},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Fatalf("FitPCA panicked instead of returning an error: %v", r)
+				}
+			}()
+			transformer, err := ml.FitPCA(tc.table, 2)
+			if err == nil {
+				t.Fatalf("FitPCA returned no error, transformer = %v", transformer)
+			}
+			if transformer != nil {
+				t.Fatalf("FitPCA returned a transformer alongside error %v", err)
+			}
+		})
+	}
+}
+
 func TestPCAUsesFittedProjectionAndColumnNames(t *testing.T) {
 	features := testFeatures()
 	fitted, err := ml.FitPCA(features.table, 2)
