@@ -49,7 +49,7 @@ Applies to every accel-related task. It extends the OpenSpec workflow above; it 
 ### Planning Discipline
 - The accel phase may not use umbrella proposals. One change must produce one verifiable result.
 - Do not start implementation for uncovered accel scope. Missing proposal coverage means the work is out of bounds.
-- Keep Phase 1 and Phase 2 separate. Full GPU string kernels remain a Phase 2 track unless the delivery plan explicitly changes.
+- Full GPU string kernels are not a deferred track any more; the change that deferred them was withdrawn on 2026-08-01. A string kernel produces new values, which the result-shape rule below places behind an explicit opt-in rather than in a later phase. Do not reintroduce the deferral.
 - Preserve the fixed architecture defaults unless a new decision is logged in `delivery-plan.md`:
   - optional `insyra/accel` package family
   - `CUDA + Metal + WebGPU native`
@@ -229,6 +229,18 @@ Keep the English ([README.md](README.md), [CHANGELOG.md](CHANGELOG.md), `Docs/`)
 ## Follow-ups
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
+
+### [2026-08-01] — the GPU backend is verified on Apple and Metal only
+- **Where**: `accel/`, the whole device path
+- **What**: every numeric result the backend produces has been checked bit-for-bit against its CPU reference, but only on an Apple M3 through Metal. `add-accel-gpu-execution` required the same check on a Windows or Linux host with an NVIDIA or AMD GPU before archiving; no such machine was available and the task was closed without it. Bit-parity depends on both toolchains contracting multiply-add identically, which is a property of the platform rather than of the kernel — so it is measured where it runs and cannot be inferred for a platform nobody has run it on. Vulkan and DirectX 12 paths compile and are exercised by no numeric test.
+- **Suggestion**: run `INSYRA_ACCEL_GPU_TESTS=1 go test ./accel/...` on a non-Apple host with a discrete GPU. If parity fails there, the fix is not a kernel change but a per-platform gate: the exact-nearest operation already recomputes untrustworthy rows in `float64`, so a platform that cannot match bit-for-bit can widen that path rather than lose the operation. Also worth measuring there is whether the profitability threshold moves — PCIe transfer should push it up, not down, and the value in `accel/exact.go` is calibrated on unified memory.
+- **Status**: pending
+
+### [2026-08-01] — accel still transports strings that nothing can consume
+- **Where**: `accel/dataset.go` (string buffers with offsets and data), `accel/cache.go` (their byte accounting)
+- **What**: projection builds encoded-string buffers and the cache charges for them, but no operation accepts a string column — the sole remaining device operation requires numeric columns. This is left over from `add-accel-string-kernels-phase-2`, withdrawn on the same day: string kernels produce new values, which the acceleration rules place behind an explicit opt-in rather than a future phase.
+- **Suggestion**: leave it or remove it, but decide rather than drift. Keeping it costs a little projection work on tables with string columns and would be needed again by any future string operation; removing it trims code that is currently unreachable. Neither is urgent.
+- **Status**: pending
 
 ### [2026-07-28] — gogpu's Metal path aborts under `-race`
 - **Where**: `github.com/gogpu/wgpu@v0.30.23/hal/metal/objc.go:958`, reached through `go-webgpu/goffi`'s callback trampoline

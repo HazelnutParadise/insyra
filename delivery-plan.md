@@ -23,7 +23,7 @@ Run one operation end to end on a real device and return a number that matches t
 | M6 | One operation executes on a real device | planning | done | `go test ./accel/... -run GPU` with `INSYRA_ACCEL_GPU_TESTS=1` reduces a `float32` column on a discovered device and the returned value equals the CPU result, with measured transfer/dispatch/readback timings replacing the fabricated per-backend constants |
 
 ## Current Blockers
-None. `add-accel-gpu-execution` cannot be archived until its numeric test passes on a non-Apple host (task 1.13); that is a coverage gap, not a blocker on further work.
+None outstanding. One coverage gap is carried in `AGENTS.md` follow-ups rather than as a blocker: the device path is verified on Apple and Metal only, because no non-Apple host with a discrete GPU was available. `add-accel-gpu-execution` cannot be archived until its numeric test passes on a non-Apple host (task 1.13); that is a coverage gap, not a blocker on further work.
 
 ## Next Verifiable Output
 Every regression family in `stats` can score new data, and its predictions match R's `predict()` — including the five methods that already shipped and have never been checked against a reference. This is the first of several `stats` gaps that must close before `insyra/ml` can wrap it, and it is the one everything else depends on, because a prediction-shaped package cannot be built over results that cannot predict.
@@ -365,6 +365,15 @@ Still open on the acceleration side, and not blocking: measuring brute-force KNN
   rationale: `Predict` returns a `DataList` whatever the model is, so nothing in the type distinguishes a predicted quantity from a group label. `KMeansModel` correctly does not implement `Classifier` — its groups are discovered, not drawn from a set the caller supplied — so no check refused a regression metric against it, and `RMSE` over cluster ids returned 0.8047 with a nil error. Arithmetically correct, about nothing. The fix is not a better check but a declaration the model was never able to make, and the package already had the shape for it: `ProbaModel`, `Importances` and `Exporter` are all optional interfaces discovered by assertion. This is the fourth defect of the same family found in `insyra/ml` — a capability, or the absence of one, that the type system was not told about. The first three were an imputer claiming reversibility it lacked, a classifier whose `Predict` returned probabilities, and a metric extension point a caller could not reach.
   timestamp: 2026-08-01
   impacted_change_ids: `add-ml-clusterer`
+
+- decision: Withdraw `add-accel-string-kernels-phase-2` rather than leave it open. Both halves of its premise are gone.
+  rationale: It was never an implementation — it drew a planning boundary, deferring full GPU string kernels to a Phase 2 while Phase 1 kept encoded-string transport. There is no Phase 2 to defer to: Phase 1 concluded that no call site in the library was measured to profit from a device, the operations that could be measured were removed, and the one that survives has no caller clearing its threshold. And the rule that emerged would exclude string kernels regardless of phasing — a string kernel produces new values, which the shape rule places behind an explicit opt-in, not in a later stage. Deferring something to a future that has been ruled out is not a plan, and an open change reports pending work nobody intends to do. Archived with the withdrawal reason recorded, without applying its spec delta, since the capability it would have created does not exist and will not.
+  timestamp: 2026-08-01
+  impacted_change_ids: `add-accel-string-kernels-phase-2`
+- decision: Close `add-accel-gpu-execution` as superseded with one task openly unfinished, rather than leaving it open or pretending it was completed.
+  rationale: It did its job — it took the runtime from a scaffold verified against stubs to one executing on real hardware, and established the practices the rest of the phase ran on: a CPU reference per operation, bit parity asserted rather than assumed, measured timings replacing fabricated constants. But the operation it added was a column reduction, removed on 2026-07-29 at a measured 0.7x, so its spec delta describes behaviour that no longer exists and was not applied. One task was never done and cannot be here: the numeric test on a non-Apple host, which this project has no machine for. Marking it complete would be a lie and leaving the change open would report work as pending that is in fact blocked, so it is closed with the gap moved to the follow-ups in `AGENTS.md`, where blocked work belongs and where someone with the hardware will find it.
+  timestamp: 2026-08-01
+  impacted_change_ids: `add-accel-gpu-execution`
 
 ## Source Links
 - `delivery-plan.md`
