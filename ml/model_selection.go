@@ -772,6 +772,13 @@ func rocAUCScore(yTrue *insyra.DataList, prediction Prediction) (float64, error)
 		if !ok || math.IsNaN(score) || math.IsInf(score, 0) {
 			return 0, fmt.Errorf("ml: ROC AUC score at row %d is not finite", row)
 		}
+		// A label belonging to neither class is not a negative — it is a
+		// malformed input, and treating it as negative reports confident
+		// discrimination over data the metric never understood. logLossScore
+		// already refuses the same input; the two must not disagree.
+		if labelIndex(classValues, yTrue.Get(row)) < 0 {
+			return 0, fmt.Errorf("ml: true label %v is absent from probability classes", yTrue.Get(row))
+		}
 		isPositive := sameLabel(yTrue.Get(row), positive)
 		if isPositive {
 			positiveCount++

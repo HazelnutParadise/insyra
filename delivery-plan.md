@@ -347,6 +347,11 @@ Still open on the acceleration side, and not blocking: measuring brute-force KNN
   timestamp: 2026-08-01
   impacted_change_ids: archived
 
+- decision: Re-challenge the twelve unexamined `ml` findings. Two survived and were demonstrated; the run that was meant to adjudicate them failed twice.
+  rationale: The first attempt lost fifteen of twenty-one attackers to a weekly usage limit. The second lost all twelve to stalls and connection failures — nought completed. What came back was three partial reports from agents that died mid-flight, two of which carried a reproduction. Both were then verified by hand here rather than taken on the word of an agent that crashed. `ROCAUC` treated any true label that was not the positive class as negative, so a label belonging to neither reported an AUC of 1 with a nil error, while `logLossScore` refused the identical input with a clear message — two metrics disagreeing about the same malformed data, one of them silently confident. That is fixed, with a regression test asserting both refuse it. The second is that `validateMetricModel` refuses a regression metric only when the model is a `Classifier`, so a clustering model's cluster ids are scored by RMSE without complaint; that needs a declaration a model does not currently make, so it is https://github.com/HazelnutParadise/insyra/issues/193 rather than a fix. The remaining ten findings are still unadjudicated and stay that way — recorded as claims, not defects.
+  timestamp: 2026-08-01
+  impacted_change_ids: `export-ml-metric-markers`
+
 ## Source Links
 - `delivery-plan.md`
 - `AGENTS.md`

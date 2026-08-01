@@ -230,3 +230,31 @@ func (renamedMetric) Kind() ml.MetricKind { return ml.RegressionMetric }
 func (renamedMetric) Evaluate(*insyra.DataList, ml.Prediction) (ml.MetricResult, error) {
 	return ml.MetricResult{Name: "wrong", Score: 1}, nil
 }
+
+// TestROCAUCRefusesLabelsOutsideTheClassSet pins a disagreement between two
+// metrics over the same malformed input. ROC AUC used to treat any label that
+// was not the positive class as negative, so a label belonging to neither
+// reported confident discrimination — AUC 1 with a nil error — while log loss
+// refused the identical input. A metric that cannot understand its input must
+// say so rather than score it.
+func TestROCAUCRefusesLabelsOutsideTheClassSet(t *testing.T) {
+	classes := insyra.NewDataList("neg", "pos")
+	probabilities := insyra.NewDataTable(
+		insyra.NewDataList(0.9, 0.1, 0.5).SetName("neg"),
+		insyra.NewDataList(0.1, 0.9, 0.5).SetName("pos"),
+	)
+	labels := insyra.NewDataList("neg", "pos", "TOTALLY_UNKNOWN")
+
+	if _, err := ml.ROCAUC(labels, probabilities, classes); err == nil {
+		t.Fatal("ROC AUC accepted a label belonging to neither class")
+	}
+	if _, err := ml.LogLoss(labels, probabilities, classes); err == nil {
+		t.Fatal("log loss accepted a label belonging to neither class")
+	}
+
+	// The well-formed case still scores.
+	good := insyra.NewDataList("neg", "pos", "pos")
+	if _, err := ml.ROCAUC(good, probabilities, classes); err != nil {
+		t.Fatalf("ROC AUC refused a well-formed input: %v", err)
+	}
+}
