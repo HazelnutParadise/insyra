@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/rand"
 	"sort"
 
 	"github.com/HazelnutParadise/insyra"
@@ -149,6 +150,18 @@ type treeFit struct {
 }
 
 func fitDecisionTree(x *insyra.DataTable, y *insyra.DataList, options DecisionTreeOptions, classification bool) (*treeFit, error) {
+	preparation, err := prepareDecisionTree(x, y, options, classification)
+	if err != nil {
+		return nil, err
+	}
+	rows := make([]int, preparation.n)
+	for i := range rows {
+		rows[i] = i
+	}
+	return preparation.grow(rows, options, 0, nil), nil
+}
+
+func prepareDecisionTree(x *insyra.DataTable, y *insyra.DataList, options DecisionTreeOptions, classification bool) (*treePreparation, error) {
 	features, columns, err := fitFeatures(x)
 	if err != nil {
 		return nil, err
@@ -214,23 +227,59 @@ func fitDecisionTree(x *insyra.DataTable, y *insyra.DataList, options DecisionTr
 		}
 	}
 
-	rows := make([]int, n)
-	for i := range rows {
-		rows[i] = i
-	}
-	growth := &treeGrowth{
-		features:       schemas,
+	return &treePreparation{
+		n:              n,
+		features:       features,
+		schemas:        schemas,
 		encoded:        encoded,
 		classification: classification,
-		classCount:     len(classes),
+		classes:        classes,
 		targetClasses:  targetClasses,
 		targetQ:        targetQ,
 		targetQ2:       targetQ2,
 		quantizerScale: quantizerScale,
+	}, nil
+}
+
+// treePreparation is the per-dataset half of a tree fit: features encoded,
+// classes collected, targets quantised. It is computed once and can grow many
+// trees — a forest passes each tree its own bootstrap row multiset and feature
+// budget, and because the classes come from the full target, every tree in the
+// forest shares one class order even when a bootstrap sample misses a class.
+type treePreparation struct {
+	n              int
+	features       []string
+	schemas        []treeFeature
+	encoded        [][]uint32
+	classification bool
+	classes        []any
+	targetClasses  []int
+	targetQ        []int64
+	targetQ2       []int64
+	quantizerScale float64
+}
+
+// grow fits one tree on the given row multiset. Repeated indices are how a
+// bootstrap sample is expressed: a row drawn twice simply counts twice in
+// every statistic, which is exactly what resampling with replacement means.
+// maxFeatures > 0 restricts each split to a random subset of that many
+// features, drawn from rng; 0 considers every feature and needs no rng.
+func (p *treePreparation) grow(rows []int, options DecisionTreeOptions, maxFeatures int, rng *rand.Rand) *treeFit {
+	growth := &treeGrowth{
+		features:       p.schemas,
+		encoded:        p.encoded,
+		classification: p.classification,
+		classCount:     len(p.classes),
+		targetClasses:  p.targetClasses,
+		targetQ:        p.targetQ,
+		targetQ2:       p.targetQ2,
+		quantizerScale: p.quantizerScale,
 		options:        options,
 		leafCount:      1,
-		importances:    make([]float64, len(features)),
-		classes:        classes,
+		importances:    make([]float64, len(p.features)),
+		classes:        p.classes,
+		maxFeatures:    maxFeatures,
+		rng:            rng,
 	}
 	root := growth.grow(rows, 0)
 	importanceTotal := 0.0
@@ -243,13 +292,13 @@ func fitDecisionTree(x *insyra.DataTable, y *insyra.DataList, options DecisionTr
 		}
 	}
 	return &treeFit{
-		features:       features,
-		schemas:        schemas,
-		classes:        classes,
+		features:       p.features,
+		schemas:        p.schemas,
+		classes:        p.classes,
 		root:           root,
 		importances:    append([]float64(nil), growth.importances...),
-		quantizerScale: quantizerScale,
-	}, nil
+		quantizerScale: p.quantizerScale,
+	}
 }
 
 func encodeTrainingFeature(name string, raw []any, n int, categorical bool, maxBins int) (treeFeature, []uint32, error) {
@@ -479,6 +528,10 @@ type treeGrowth struct {
 	leafCount      int
 	classes        []any
 	importances    []float64
+	// maxFeatures > 0 restricts each split to a random subset of features —
+	// the decorrelation that makes a random forest more than bagged trees.
+	maxFeatures int
+	rng         *rand.Rand
 }
 
 func (g *treeGrowth) statsFor(rows []int) treeStats {
@@ -592,7 +645,8 @@ type treeSplit struct {
 
 func (g *treeGrowth) bestSplit(rows []int, parent treeStats) *treeSplit {
 	var best *treeSplit
-	for featureIndex, feature := range g.features {
+	for _, featureIndex := range g.splitCandidates() {
+		feature := g.features[featureIndex]
 		if feature.categorical {
 			best = g.bestCategoricalSplit(rows, parent, featureIndex, best)
 		} else {
@@ -600,6 +654,22 @@ func (g *treeGrowth) bestSplit(rows []int, parent treeStats) *treeSplit {
 		}
 	}
 	return best
+}
+
+// splitCandidates returns the feature indices this split may consider. The
+// sampled subset is sorted so ties between equal-gain splits break by feature
+// index, the same rule the exhaustive path applies by iteration order.
+func (g *treeGrowth) splitCandidates() []int {
+	if g.maxFeatures <= 0 || g.maxFeatures >= len(g.features) || g.rng == nil {
+		all := make([]int, len(g.features))
+		for i := range all {
+			all[i] = i
+		}
+		return all
+	}
+	sampled := g.rng.Perm(len(g.features))[:g.maxFeatures]
+	sort.Ints(sampled)
+	return sampled
 }
 
 func (g *treeGrowth) bestNumericSplit(rows []int, parent treeStats, featureIndex int, best *treeSplit) *treeSplit {
