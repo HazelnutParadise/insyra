@@ -198,6 +198,16 @@ func CrossValidate(x *insyra.DataTable, y *insyra.DataList, estimator Estimator,
 	if estimator.Fit == nil {
 		return nil, fmt.Errorf("ml: estimator %q has no Fit function", estimator.Name)
 	}
+	return crossValidateWith(x, y, k, metric, options, func(_ []int, trainX *insyra.DataTable, trainY *insyra.DataList) (Model, error) {
+		return estimator.Fit(trainX, trainY)
+	})
+}
+
+// crossValidateWith is the fold loop CrossValidate and CrossValidateWeighted
+// share. fit receives the fold's original training row indices alongside the
+// already-subset table and target, so a weighted caller can subset per-row
+// state with exactly the indices that built the fold.
+func crossValidateWith(x *insyra.DataTable, y *insyra.DataList, k int, metric Metric, options []insyra.SamplingOptions, fit func(trainIndices []int, trainX *insyra.DataTable, trainY *insyra.DataList) (Model, error)) (*CrossValidationResult, error) {
 	if metric == nil || isNilPointer(metric) {
 		return nil, fmt.Errorf("ml: metric is nil")
 	}
@@ -236,7 +246,7 @@ func CrossValidate(x *insyra.DataTable, y *insyra.DataList, estimator Estimator,
 			return nil, fmt.Errorf("ml: fold %d: build test table: %w", foldNumber+1, err)
 		}
 		trainY := listFromIndices(y, trainIndices)
-		model, err := estimator.Fit(trainX, trainY)
+		model, err := fit(trainIndices, trainX, trainY)
 		if err != nil {
 			return nil, fmt.Errorf("ml: fold %d: fit failed: %w", foldNumber+1, err)
 		}
@@ -318,6 +328,53 @@ func Score(model Model, x *insyra.DataTable, y *insyra.DataList, metric Metric) 
 		return MetricResult{}, fmt.Errorf("ml: %w", err)
 	}
 	return result, nil
+}
+
+// CrossValidateWeighted is CrossValidate with sample weights routed to
+// fitting. Each fold's estimator receives its training rows' weights, subset
+// and ordered exactly as the rows are — the alignment a fit closure capturing
+// the full weight list cannot provide, because folds shuffle and subset rows.
+//
+// Held-out scoring stays unweighted, as scikit-learn's cross_validate does by
+// default: sample_weight is a statement about how much each observation
+// should influence the fit, not a redefinition of the evaluation metric.
+//
+// Weights are validated on the same terms WeightedLinearRegression uses:
+// strictly positive finite numbers, one per row.
+func CrossValidateWeighted(x *insyra.DataTable, y *insyra.DataList, weights *insyra.DataList, estimator Estimator, k int, metric Metric, options ...insyra.SamplingOptions) (*CrossValidationResult, error) {
+	if err := requireTable(x); err != nil {
+		return nil, err
+	}
+	if y == nil || isNilPointer(y) {
+		return nil, fmt.Errorf("ml: target data list is nil")
+	}
+	if weights == nil || isNilPointer(weights) {
+		return nil, fmt.Errorf("ml: weights data list is nil")
+	}
+	if x.NumRows() != y.Len() {
+		return nil, fmt.Errorf("ml: feature rows (%d) and target values (%d) do not match", x.NumRows(), y.Len())
+	}
+	if weights.Len() != x.NumRows() {
+		return nil, fmt.Errorf("ml: feature rows (%d) and weights (%d) do not match", x.NumRows(), weights.Len())
+	}
+	for i := 0; i < weights.Len(); i++ {
+		value, ok := insyra.ToFloat64Safe(weights.Get(i))
+		if !ok || math.IsNaN(value) || math.IsInf(value, 0) {
+			return nil, fmt.Errorf("ml: weight at row %d is not a finite number: %v", i+1, weights.Get(i))
+		}
+		if value <= 0 {
+			return nil, fmt.Errorf("ml: weights must be strictly positive; row %d holds %v", i+1, value)
+		}
+	}
+	if estimator.FitWeighted == nil {
+		return nil, fmt.Errorf("ml: estimator %q has no FitWeighted function; refusing to fit unweighted and report a weighted result", estimator.Name)
+	}
+	// The weights are subset with the same index list, in the same order, that
+	// builds each fold's training table — alignment by construction, which is
+	// the property a fit closure capturing the full weight list cannot have.
+	return crossValidateWith(x, y, k, metric, options, func(trainIndices []int, trainX *insyra.DataTable, trainY *insyra.DataList) (Model, error) {
+		return estimator.FitWeighted(trainX, trainY, listFromIndices(weights, trainIndices))
+	})
 }
 
 // Accuracy returns the fraction of exact label matches.

@@ -600,9 +600,11 @@ if proba, ok := model.(ml.ProbaModel); ok {
 ```
 
 `FitWeightedLinearRegression(x, y, weights)` fits WLS with exact classical
-inference; weights are strictly positive, per row, and do NOT flow through
-`CrossValidate` (no weights channel) — use it with `Fit`/`Predict`/`Score`
-only. `FitRidgeRegression(x, y, alpha)` and `FitLassoRegression(x, y, alpha)` fit penalized linear models using scikit-learn's objectives (intercept unpenalized, no standardisation); lasso coefficients priced out by the penalty are exactly zero, and the underlying `stats` results carry no standard errors or p values because classical inference does not apply to penalized estimates. `FitPolynomialRegression`, `FitExponentialRegression`, and `FitLogarithmicRegression` require one feature. `FitLogisticRegression` and `FitKNNClassifier` return `ml.ProbaModel`; logistic `Predict` returns labels and `PredictProba` returns probabilities. `FitPCA` returns an `ml.Transformer`. Poisson and GLM offsets are rejected by the `ml` wrappers because `Model.Predict` cannot receive a new row-wise offset. Existing root scalers and encoders satisfy `ml.Transformer` directly, so no adapter is needed. Use `ml/mltest.RunConformance` to check an external model implementation.
+inference; weights are strictly positive, per row. To cross-validate a weighted
+estimator, set `Estimator.FitWeighted` and call `ml.CrossValidateWeighted(x,
+y, weights, estimator, k, metric)` — never capture the full weight list in a
+fit closure, because folds subset rows and the weights will misalign. Held-out
+scoring stays unweighted. `FitRidgeRegression(x, y, alpha)` and `FitLassoRegression(x, y, alpha)` fit penalized linear models using scikit-learn's objectives (intercept unpenalized, no standardisation); lasso coefficients priced out by the penalty are exactly zero, and the underlying `stats` results carry no standard errors or p values because classical inference does not apply to penalized estimates. `FitPolynomialRegression`, `FitExponentialRegression`, and `FitLogarithmicRegression` require one feature. `FitLogisticRegression` and `FitKNNClassifier` return `ml.ProbaModel`; logistic `Predict` returns labels and `PredictProba` returns probabilities. `FitPCA` returns an `ml.Transformer`. Poisson and GLM offsets are rejected by the `ml` wrappers because `Model.Predict` cannot receive a new row-wise offset. Existing root scalers and encoders satisfy `ml.Transformer` directly, so no adapter is needed. Use `ml/mltest.RunConformance` to check an external model implementation.
 
 For tabular classification or regression, prefer the ensembles:
 `ml.FitRandomForestClassifier`/`Regressor` (variance reduction; seeded and

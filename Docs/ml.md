@@ -127,6 +127,24 @@ the predictions contributes precision 0, matching scikit-learn's
 `zero_division=0`; the direct helpers `Precision`, `Recall` and `F1` compute
 the macro default.
 
+### Weighted cross-validation
+
+An estimator declares weight support by setting the optional `FitWeighted`
+field; everything that does not mention weights is unchanged. Held-out scoring
+stays **unweighted**, matching scikit-learn's `cross_validate` default —
+sample weights say how much each observation influences the *fit*, not what
+the evaluation metric means. An estimator without `FitWeighted` is refused
+rather than silently fitted unweighted.
+
+```go
+result, err := ml.CrossValidateWeighted(x, y, weights, ml.Estimator{
+    Name: "wls",
+    FitWeighted: func(x *insyra.DataTable, y *insyra.DataList, w *insyra.DataList) (ml.Model, error) {
+        return ml.FitWeightedLinearRegression(x, y, w)
+    },
+}, 5, ml.RMSEMetric{})
+```
+
 ### Grid search
 
 `GridSearch` cross-validates every candidate on identical folds and returns the
@@ -298,9 +316,10 @@ FitGradientBoostingRegressor
 The regression, clustering, and KNN wrappers expose their underlying `stats` result through an exported `Result` field. The options types in `ml` are aliases of the corresponding `stats` options types.
 
 `FitWeightedLinearRegression` takes one strictly positive weight per training
-row. The weights apply to that fit only — **`CrossValidate` has no weights
-channel**, so a weighted estimator inside cross-validation would misalign
-weights with fold rows; use it with `Fit`, `Predict` and `Score`. Ridge and
+row. To cross-validate it, use `CrossValidateWeighted`, which subsets the
+weights with each fold's training rows so alignment holds by construction —
+a fit closure capturing the full weight list cannot provide that, because
+folds shuffle and subset rows. Ridge and
 lasso take the penalty strength as a third argument, using
 scikit-learn's objectives exactly — see [the `stats`
 documentation](/Docs/stats.md#ridge-regression) for the definitions and for why

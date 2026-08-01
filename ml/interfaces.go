@@ -97,6 +97,14 @@ type Step struct {
 type Estimator struct {
 	Name string
 	Fit  func(x *insyra.DataTable, y *insyra.DataList) (Model, error)
+
+	// FitWeighted, when set, is how CrossValidateWeighted fits this estimator:
+	// the same contract as Fit plus one strictly positive weight per training
+	// row, already subset to the fold. Nil means the estimator does not accept
+	// weights, and weighted cross-validation refuses it rather than quietly
+	// fitting unweighted. Everything that does not mention weights ignores
+	// this field entirely.
+	FitWeighted func(x *insyra.DataTable, y *insyra.DataList, weights *insyra.DataList) (Model, error)
 }
 
 // These aliases keep the options in ml identical to the options in stats.
