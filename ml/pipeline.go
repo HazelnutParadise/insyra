@@ -61,7 +61,21 @@ func NewPipeline(steps []Step, estimator Estimator) Estimator {
 			if len(definition) == 0 {
 				features = model.Features()
 			}
-			return wrapFittedPipeline(&fittedPipeline{features: features, steps: fitted, model: model}), nil
+			// The names the estimator actually saw are in hand right here —
+			// fitting ran every transform, so `current` is the fully
+			// transformed table. They were previously discarded, which left a
+			// pipeline's feature importances as a list of anonymous numbers
+			// whenever a step changed the column count.
+			transformed := current.ColNames()
+			if len(definition) == 0 {
+				transformed = append([]string(nil), features...)
+			}
+			return wrapFittedPipeline(&fittedPipeline{
+				features:    features,
+				transformed: transformed,
+				steps:       fitted,
+				model:       model,
+			}), nil
 		},
 	}
 }
@@ -187,9 +201,10 @@ func (t *ColumnTransformer) Transform(dt *insyra.DataTable) (*insyra.DataTable, 
 }
 
 type fittedPipeline struct {
-	features []string
-	steps    []fittedPipelineStep
-	model    Model
+	features    []string
+	transformed []string
+	steps       []fittedPipelineStep
+	model       Model
 }
 
 type fittedPipelineStep struct {
@@ -202,6 +217,17 @@ func (p *fittedPipeline) Features() []string {
 		return nil
 	}
 	return append([]string(nil), p.features...)
+}
+
+// TransformedFeatureNames returns the columns the final estimator was fitted
+// on, after every step had been applied. Feature importances reported by a
+// pipeline are indexed by these, not by the columns the pipeline itself was
+// fitted on.
+func (p *fittedPipeline) TransformedFeatureNames() []string {
+	if p == nil {
+		return nil
+	}
+	return append([]string(nil), p.transformed...)
 }
 
 func (p *fittedPipeline) Predict(dt *insyra.DataTable) (*insyra.DataList, error) {
@@ -364,3 +390,14 @@ func pipelineEstimatorName(name string) string {
 
 var _ Transformer = (*ColumnTransformer)(nil)
 var _ Model = (*fittedPipeline)(nil)
+
+// Every wrapper embeds *fittedPipeline, so the capability survives whichever
+// combination of Classifier, ProbaModel and Importances the inner model has.
+var (
+	_ TransformedFeatures = (*fittedPipeline)(nil)
+	_ TransformedFeatures = (*fittedPipelineClassifier)(nil)
+	_ TransformedFeatures = (*fittedPipelineProba)(nil)
+	_ TransformedFeatures = (*fittedPipelineImportances)(nil)
+	_ TransformedFeatures = (*fittedPipelineClassifierImportances)(nil)
+	_ TransformedFeatures = (*fittedPipelineProbaImportances)(nil)
+)

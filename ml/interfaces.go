@@ -38,9 +38,28 @@ type ProbaModel interface {
 }
 
 // Importances is a model that reports one feature importance per feature.
+//
+// "Per feature" means per column the model was fitted on. For a plain model
+// that is Features(); for a model whose preprocessing changes the column count
+// it is TransformedFeatureNames(), which is why that capability exists.
 type Importances interface {
 	Model
 	FeatureImportances() []float64
+}
+
+// TransformedFeatures is a model that was fitted on columns other than the
+// ones it is called with — a pipeline whose preprocessing adds, removes or
+// replaces columns.
+//
+// Without it, a pipeline that one-hot encodes a categorical column reports two
+// feature names and four importances, and a caller reading them together
+// attributes each number to the wrong column with no signal that anything is
+// wrong. scikit-learn answers the same question with get_feature_names_out.
+type TransformedFeatures interface {
+	Model
+	// TransformedFeatureNames returns the columns the model was fitted on
+	// after every preprocessing step, in the order it saw them.
+	TransformedFeatureNames() []string
 }
 
 // Clusterer is a model whose predictions are group assignments rather than

@@ -138,6 +138,25 @@ func RunConformance(t *testing.T, model ml.Model, x *insyra.DataTable, y *insyra
 		}
 	}
 
+	// Feature importances are read next to feature names, so a model that
+	// reports a different number of each hands the caller a list they will
+	// silently misalign. The names to check against are the transformed ones
+	// when the model has them — a pipeline's estimator sees the columns its
+	// preprocessing produced, not the ones the pipeline was called with.
+	if importances, ok := model.(ml.Importances); ok {
+		values := importances.FeatureImportances()
+		names := model.Features()
+		source := "Features()"
+		if expanded, ok := model.(ml.TransformedFeatures); ok {
+			names = expanded.TransformedFeatureNames()
+			source = "TransformedFeatureNames()"
+		}
+		if len(values) != len(names) {
+			t.Fatalf("FeatureImportances() returned %d values but %s returned %d names; they cannot be read together",
+				len(values), source, len(names))
+		}
+	}
+
 	// The labels the model was fitted on. `Classifier` is documented as
 	// predicting "one of a known set of classes" (ml/interfaces.go:22), and a
 	// set that omits a label the model was trained on is not that set — the
