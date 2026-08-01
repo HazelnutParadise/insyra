@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -144,6 +145,21 @@ func TestONNXIndependentRuntimeRoundTripOrExplicitlySkips(t *testing.T) {
 				t.Fatalf("runtime rows = %d, want %d", len(got), expected.Len())
 			}
 			for index, value := range expected.Data() {
+				// The runtime computes in float32 and this package in float64,
+				// so numeric outputs are compared within single-precision
+				// tolerance — which is what the spec's "within the tolerance
+				// of the exchange format's own precision" means. Labels have
+				// no tolerance and must match exactly.
+				gotNum, gotOK := insyra.ToFloat64Safe(got[index])
+				wantNum, wantOK := insyra.ToFloat64Safe(value)
+				if gotOK && wantOK {
+					diff := math.Abs(gotNum - wantNum)
+					scale := math.Max(math.Abs(wantNum), 1)
+					if diff > 1e-6*scale {
+						t.Fatalf("row %d = %v, want %v (diff %g exceeds float32 tolerance)", index, gotNum, wantNum, diff)
+					}
+					continue
+				}
 				if fmt.Sprint(got[index]) != fmt.Sprint(value) {
 					t.Fatalf("row %d = %v, want %v", index, got[index], value)
 				}

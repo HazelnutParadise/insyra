@@ -138,7 +138,15 @@ func (a onnxAttributeProto) marshal() []byte {
 	if a.HasInt || a.Int != 0 {
 		out = onnxAppendInt64EvenZero(out, 3, a.Int)
 	}
-	out = onnxAppendBytesEvenEmpty(out, 4, a.String)
+	// The s field may only be present on a STRING attribute. Writing it
+	// unconditionally — even empty — made every INT and FLOAT attribute carry a
+	// stray string data field, which onnxruntime rejects as "type field and
+	// data field mismatch" and refuses to load the whole model. The empty-even
+	// form stays, because an empty string VALUE on a string attribute is legal
+	// and must still be encoded.
+	if a.Type == 3 {
+		out = onnxAppendBytesEvenEmpty(out, 4, a.String)
+	}
 	if a.Tensor != nil {
 		out = onnxAppendMessage(out, 5, a.Tensor.marshal())
 	}

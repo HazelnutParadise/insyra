@@ -1098,6 +1098,16 @@ func (t *onnxTreeEnsemble) emitLeaf(node *DecisionTreeNode, classifier bool, cla
 	return id
 }
 
+// emit writes the subtree rooted at node and returns its node id.
+//
+// The traversal is pre-order on purpose: onnxruntime treats the FIRST array
+// entry carrying each tree id as that tree's root and discovers every other
+// node by following the true/false ids from there. The previous post-order
+// form appended the deepest leaf first, so the runtime started its walk at a
+// leaf, found exactly one reachable node, and rejected the model with
+// "Number of nodes in nodes_ (1) is different from n_nodes (N)". A branch
+// therefore appends its own row before recursing, with placeholder child ids
+// patched once the children have allocated theirs.
 func (t *onnxTreeEnsemble) emit(node *DecisionTreeNode, classifier bool, classCount int, schemas []treeFeature) int64 {
 	if node == nil {
 		return t.emitLeaf(&DecisionTreeNode{IsLeaf: true}, classifier, classCount)
@@ -1106,27 +1116,42 @@ func (t *onnxTreeEnsemble) emit(node *DecisionTreeNode, classifier bool, classCo
 		return t.emitLeaf(node, classifier, classCount)
 	}
 	if node.Categorical {
-		leftID := t.emit(node.Left, classifier, classCount, schemas)
-		rightID := t.emit(node.Right, classifier, classCount, schemas)
 		codes := sortedInt64(node.leftCategories)
 		if node.MissingGoLeft {
 			codes = append([]int64{0}, codes...)
 		}
 		if len(codes) == 0 {
-			return rightID
+			return t.emit(node.Right, classifier, classCount, schemas)
 		}
-		next := rightID
-		for index := len(codes) - 1; index >= 0; index-- {
-			id := t.newID()
-			t.addNode(id, int64(node.Feature), float32(codes[index]), "BRANCH_EQ", leftID, next, false)
-			next = id
+		// The chain tests one category per node, falling through to the next;
+		// the chain itself is emitted head first so the runtime's walk enters
+		// at the top of it.
+		rows := make([]int, len(codes))
+		ids := make([]int64, len(codes))
+		for index := range codes {
+			ids[index] = t.newID()
+			rows[index] = len(t.nodesNodeIDs)
+			t.addNode(ids[index], int64(node.Feature), float32(codes[index]), "BRANCH_EQ", 0, 0, false)
 		}
-		return next
+		leftID := t.emit(node.Left, classifier, classCount, schemas)
+		rightID := t.emit(node.Right, classifier, classCount, schemas)
+		for index := range codes {
+			t.nodesTrueNodeIDs[rows[index]] = leftID
+			if index+1 < len(codes) {
+				t.nodesFalseNodeIDs[rows[index]] = ids[index+1]
+			} else {
+				t.nodesFalseNodeIDs[rows[index]] = rightID
+			}
+		}
+		return ids[0]
 	}
+	id := t.newID()
+	row := len(t.nodesNodeIDs)
+	t.addNode(id, int64(node.Feature), float32(node.Threshold), "BRANCH_LEQ", 0, 0, node.MissingGoLeft)
 	leftID := t.emit(node.Left, classifier, classCount, schemas)
 	rightID := t.emit(node.Right, classifier, classCount, schemas)
-	id := t.newID()
-	t.addNode(id, int64(node.Feature), float32(node.Threshold), "BRANCH_LEQ", leftID, rightID, node.MissingGoLeft)
+	t.nodesTrueNodeIDs[row] = leftID
+	t.nodesFalseNodeIDs[row] = rightID
 	return id
 }
 
