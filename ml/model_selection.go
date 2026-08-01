@@ -54,10 +54,47 @@ type MetricResult struct {
 	ConfusionMatrix *ConfusionMatrixResult
 }
 
+// MetricDirection says which way a metric's score is better.
+type MetricDirection int
+
+const (
+	// NoDirection is for a metric whose result is not a scalar that can be
+	// ranked, such as a confusion matrix. Comparing two of its results is
+	// refused rather than resolved arbitrarily.
+	NoDirection MetricDirection = iota
+	// HigherIsBetter marks a gain: accuracy, R², area under the ROC curve.
+	HigherIsBetter
+	// LowerIsBetter marks a loss: root mean squared error, mean absolute
+	// error, logarithmic loss.
+	LowerIsBetter
+)
+
+// String names the direction for error messages and display.
+func (d MetricDirection) String() string {
+	switch d {
+	case HigherIsBetter:
+		return "higher is better"
+	case LowerIsBetter:
+		return "lower is better"
+	default:
+		return "no direction"
+	}
+}
+
 // Metric scores a prediction and names the quantity it measured.
+//
+// Direction is part of the protocol rather than an optional capability
+// because a score without it cannot be acted on: a caller comparing two means
+// picks the worse model half the time, and nothing in the type system objects.
+// It is declared rather than inferred for the same reason a model declares
+// what it predicts — a metric supplied from outside this package could measure
+// anything, and guessing from its name is not available.
 type Metric interface {
 	Name() string
 	Kind() MetricKind
+	// Direction reports whether a larger score is better, a smaller score is
+	// better, or the metric produces nothing rankable.
+	Direction() MetricDirection
 	Evaluate(yTrue *insyra.DataList, prediction Prediction) (MetricResult, error)
 }
 
@@ -65,10 +102,34 @@ type Metric interface {
 // mean. Confusion-matrix metrics populate FoldResults and leave Scores and
 // Mean as NaN because a matrix is not a scalar.
 type CrossValidationResult struct {
-	Metric      string
+	Metric string
+	// Direction is copied from the metric so that a result read apart from
+	// the metric that produced it can still be ranked. Without it a Mean is
+	// an uninterpretable number.
+	Direction   MetricDirection
 	Scores      []float64
 	Mean        float64
 	FoldResults []MetricResult
+}
+
+// Better reports whether a is the better of two results, using the direction
+// the metric declared. Both must come from the same metric, and that metric
+// must have a direction.
+func Better(a, b *CrossValidationResult) (bool, error) {
+	if a == nil || b == nil {
+		return false, fmt.Errorf("ml: cannot compare a nil result")
+	}
+	if a.Metric != b.Metric {
+		return false, fmt.Errorf("ml: cannot compare results from different metrics (%q and %q)", a.Metric, b.Metric)
+	}
+	switch a.Direction {
+	case HigherIsBetter:
+		return a.Mean > b.Mean, nil
+	case LowerIsBetter:
+		return a.Mean < b.Mean, nil
+	default:
+		return false, fmt.Errorf("ml: metric %q declares no direction, so its results cannot be ranked", a.Metric)
+	}
 }
 
 // ConfusionMatrixResult stores counts indexed as [actual][predicted].
@@ -157,6 +218,7 @@ func CrossValidate(x *insyra.DataTable, y *insyra.DataList, estimator Estimator,
 
 	result := &CrossValidationResult{
 		Metric:      metric.Name(),
+		Direction:   metric.Direction(),
 		Scores:      make([]float64, 0, len(foldIndices)),
 		Mean:        math.NaN(),
 		FoldResults: make([]MetricResult, 0, len(foldIndices)),
@@ -194,6 +256,9 @@ func CrossValidate(x *insyra.DataTable, y *insyra.DataList, estimator Estimator,
 		// not let a custom evaluator return a different display name for one
 		// fold and make the aggregate result ambiguous.
 		score.Name = metric.Name()
+		if err := checkDirectionAgainstScore(metric, score); err != nil {
+			return nil, fmt.Errorf("ml: fold %d: %w", foldNumber+1, err)
+		}
 		result.FoldResults = append(result.FoldResults, score)
 		result.Scores = append(result.Scores, score.Score)
 		if !math.IsNaN(score.Score) {
@@ -203,6 +268,54 @@ func CrossValidate(x *insyra.DataTable, y *insyra.DataList, estimator Estimator,
 	}
 	if meanCount > 0 {
 		result.Mean = meanTotal / float64(meanCount)
+	}
+	return result, nil
+}
+
+// Score evaluates an already-fitted model on held-out observations with the
+// supplied metric. Nothing is fitted.
+//
+// scikit-learn's `score` carries a default metric attached to the estimator
+// class — accuracy for a classifier, R² for a regressor. Go has no place to
+// hang that, and inventing one would mean a caller could not tell from the
+// call site which quantity came back. The metric is therefore an argument.
+//
+// It runs the same compatibility check and the same prediction assembly
+// cross-validation runs, so a metric that needs probabilities, or needs class
+// labels from a model that reports probabilities, is served identically
+// whichever route it arrived by.
+func Score(model Model, x *insyra.DataTable, y *insyra.DataList, metric Metric) (MetricResult, error) {
+	if model == nil || isNilPointer(model) {
+		return MetricResult{}, fmt.Errorf("ml: model is nil")
+	}
+	if err := requireTable(x); err != nil {
+		return MetricResult{}, err
+	}
+	if y == nil || isNilPointer(y) {
+		return MetricResult{}, fmt.Errorf("ml: target data list is nil")
+	}
+	if x.NumRows() != y.Len() {
+		return MetricResult{}, fmt.Errorf("ml: feature rows (%d) and target values (%d) do not match", x.NumRows(), y.Len())
+	}
+	if metric == nil || isNilPointer(metric) {
+		return MetricResult{}, fmt.Errorf("ml: metric is nil")
+	}
+	if err := validateMetricModel(metric, model); err != nil {
+		return MetricResult{}, fmt.Errorf("ml: %w", err)
+	}
+	prediction, err := predictionForMetric(model, x, metric)
+	if err != nil {
+		return MetricResult{}, fmt.Errorf("ml: predict failed: %w", err)
+	}
+	result, err := metric.Evaluate(y, prediction)
+	if err != nil {
+		return MetricResult{}, fmt.Errorf("ml: score failed: %w", err)
+	}
+	// Same rule as cross-validation: the supplied metric names the quantity,
+	// not whatever its evaluator chose to call it.
+	result.Name = metric.Name()
+	if err := checkDirectionAgainstScore(metric, result); err != nil {
+		return MetricResult{}, fmt.Errorf("ml: %w", err)
 	}
 	return result, nil
 }
@@ -234,7 +347,8 @@ func LogLoss(yTrue *insyra.DataList, probabilities *insyra.DataTable, classes ..
 }
 
 // ROCAUC returns the binary receiver-operating characteristic area under the
-// curve. The probability for the second class is treated as the positive score.
+// curve. The second class is treated as positive; see ROCAUCMetric for why
+// that choice does not affect the result.
 func ROCAUC(yTrue *insyra.DataList, probabilities *insyra.DataTable, classes ...*insyra.DataList) (float64, error) {
 	prediction, err := probabilityPrediction(probabilities, classes)
 	if err != nil {
@@ -339,8 +453,9 @@ func R2(yTrue, yPred *insyra.DataList) (float64, error) {
 // AccuracyMetric scores class predictions.
 type AccuracyMetric struct{}
 
-func (AccuracyMetric) Name() string     { return "accuracy" }
-func (AccuracyMetric) Kind() MetricKind { return ClassificationMetric }
+func (AccuracyMetric) Name() string               { return "accuracy" }
+func (AccuracyMetric) Kind() MetricKind           { return ClassificationMetric }
+func (AccuracyMetric) Direction() MetricDirection { return HigherIsBetter }
 func (AccuracyMetric) Evaluate(yTrue *insyra.DataList, prediction Prediction) (MetricResult, error) {
 	score, err := Accuracy(yTrue, prediction.Values)
 	return MetricResult{Name: "accuracy", Score: score}, err
@@ -350,20 +465,32 @@ func (AccuracyMetric) NeedsClassLabels() bool { return true }
 // LogLossMetric scores class probabilities with logarithmic loss.
 type LogLossMetric struct{}
 
-func (LogLossMetric) Name() string     { return "log_loss" }
-func (LogLossMetric) Kind() MetricKind { return ClassificationMetric }
+func (LogLossMetric) Name() string               { return "log_loss" }
+func (LogLossMetric) Kind() MetricKind           { return ClassificationMetric }
+func (LogLossMetric) Direction() MetricDirection { return LowerIsBetter }
 func (LogLossMetric) Evaluate(yTrue *insyra.DataList, prediction Prediction) (MetricResult, error) {
 	score, err := logLossScore(yTrue, prediction)
 	return MetricResult{Name: "log_loss", Score: score}, err
 }
 func (LogLossMetric) NeedsProbabilities() bool { return true }
 
-// ROCAUCMetric scores binary class probabilities using the second class as
-// the positive class.
+// ROCAUCMetric scores binary class probabilities, treating the second of the
+// model's classes as positive and its column as the score.
+//
+// Which class that is does not affect the result, and there is deliberately no
+// option to choose. The two probability columns are complementary, so naming
+// the other class swaps both the positive label and the score column, and the
+// two swaps cancel exactly: measured on a deliberately weak fit, all three
+// choices return 0.50838574423480087. The metric is invariant, so an option to
+// set it would be a control that changes nothing.
+//
+// Class order itself comes from the model, which takes it from the sorted
+// distinct training labels.
 type ROCAUCMetric struct{}
 
-func (ROCAUCMetric) Name() string     { return "roc_auc" }
-func (ROCAUCMetric) Kind() MetricKind { return ClassificationMetric }
+func (ROCAUCMetric) Name() string               { return "roc_auc" }
+func (ROCAUCMetric) Kind() MetricKind           { return ClassificationMetric }
+func (ROCAUCMetric) Direction() MetricDirection { return HigherIsBetter }
 func (ROCAUCMetric) Evaluate(yTrue *insyra.DataList, prediction Prediction) (MetricResult, error) {
 	score, err := rocAUCScore(yTrue, prediction)
 	return MetricResult{Name: "roc_auc", Score: score}, err
@@ -374,8 +501,9 @@ func (ROCAUCMetric) NeedsProbabilities() bool { return true }
 // Score is NaN because a confusion matrix has no single aggregate value.
 type ConfusionMatrixMetric struct{}
 
-func (ConfusionMatrixMetric) Name() string     { return "confusion_matrix" }
-func (ConfusionMatrixMetric) Kind() MetricKind { return ClassificationMetric }
+func (ConfusionMatrixMetric) Name() string               { return "confusion_matrix" }
+func (ConfusionMatrixMetric) Kind() MetricKind           { return ClassificationMetric }
+func (ConfusionMatrixMetric) Direction() MetricDirection { return NoDirection }
 func (ConfusionMatrixMetric) Evaluate(yTrue *insyra.DataList, prediction Prediction) (MetricResult, error) {
 	matrix, err := ConfusionMatrix(yTrue, prediction.Values)
 	return MetricResult{Name: "confusion_matrix", Score: math.NaN(), ConfusionMatrix: matrix}, err
@@ -385,8 +513,9 @@ func (ConfusionMatrixMetric) NeedsClassLabels() bool { return true }
 // RMSEMetric scores continuous predictions with root mean squared error.
 type RMSEMetric struct{}
 
-func (RMSEMetric) Name() string     { return "rmse" }
-func (RMSEMetric) Kind() MetricKind { return RegressionMetric }
+func (RMSEMetric) Name() string               { return "rmse" }
+func (RMSEMetric) Kind() MetricKind           { return RegressionMetric }
+func (RMSEMetric) Direction() MetricDirection { return LowerIsBetter }
 func (RMSEMetric) Evaluate(yTrue *insyra.DataList, prediction Prediction) (MetricResult, error) {
 	score, err := RMSE(yTrue, prediction.Values)
 	return MetricResult{Name: "rmse", Score: score}, err
@@ -395,8 +524,9 @@ func (RMSEMetric) Evaluate(yTrue *insyra.DataList, prediction Prediction) (Metri
 // MAEMetric scores continuous predictions with mean absolute error.
 type MAEMetric struct{}
 
-func (MAEMetric) Name() string     { return "mae" }
-func (MAEMetric) Kind() MetricKind { return RegressionMetric }
+func (MAEMetric) Name() string               { return "mae" }
+func (MAEMetric) Kind() MetricKind           { return RegressionMetric }
+func (MAEMetric) Direction() MetricDirection { return LowerIsBetter }
 func (MAEMetric) Evaluate(yTrue *insyra.DataList, prediction Prediction) (MetricResult, error) {
 	score, err := MAE(yTrue, prediction.Values)
 	return MetricResult{Name: "mae", Score: score}, err
@@ -405,8 +535,9 @@ func (MAEMetric) Evaluate(yTrue *insyra.DataList, prediction Prediction) (Metric
 // R2Metric scores continuous predictions with R².
 type R2Metric struct{}
 
-func (R2Metric) Name() string     { return "r2" }
-func (R2Metric) Kind() MetricKind { return RegressionMetric }
+func (R2Metric) Name() string               { return "r2" }
+func (R2Metric) Kind() MetricKind           { return RegressionMetric }
+func (R2Metric) Direction() MetricDirection { return HigherIsBetter }
 func (R2Metric) Evaluate(yTrue *insyra.DataList, prediction Prediction) (MetricResult, error) {
 	score, err := R2(yTrue, prediction.Values)
 	return MetricResult{Name: "r2", Score: score}, err
@@ -442,6 +573,18 @@ type ProbabilityMetric interface {
 	// NeedsProbabilities reports whether this metric wants probabilities.
 	// Returning false is equivalent to not implementing the interface at all.
 	NeedsProbabilities() bool
+}
+
+// checkDirectionAgainstScore refuses a metric that produced a rankable number
+// while declaring nothing about which way is better. Defaulting to a direction
+// here would put the guess back exactly where declaring it was meant to remove
+// it; NoDirection is for a metric with no scalar result, and a metric with one
+// has to say.
+func checkDirectionAgainstScore(metric Metric, result MetricResult) error {
+	if metric.Direction() != NoDirection || math.IsNaN(result.Score) {
+		return nil
+	}
+	return fmt.Errorf("metric %q returned the score %v while declaring no direction; a rankable score must declare whether higher or lower is better", metric.Name(), result.Score)
 }
 
 // wantsClassLabels and wantsProbabilities read the declaration rather than only

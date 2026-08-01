@@ -225,8 +225,9 @@ func (m *scaledModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error) {
 
 type renamedMetric struct{}
 
-func (renamedMetric) Name() string        { return "declared" }
-func (renamedMetric) Kind() ml.MetricKind { return ml.RegressionMetric }
+func (renamedMetric) Name() string                  { return "declared" }
+func (renamedMetric) Kind() ml.MetricKind           { return ml.RegressionMetric }
+func (renamedMetric) Direction() ml.MetricDirection { return ml.HigherIsBetter }
 func (renamedMetric) Evaluate(*insyra.DataList, ml.Prediction) (ml.MetricResult, error) {
 	return ml.MetricResult{Name: "wrong", Score: 1}, nil
 }
@@ -265,9 +266,10 @@ func TestROCAUCRefusesLabelsOutsideTheClassSet(t *testing.T) {
 // been handed Predict output while silently expecting probabilities.
 type externalProbabilityMetric struct{ seen ml.Prediction }
 
-func (*externalProbabilityMetric) Name() string             { return "external_proba" }
-func (*externalProbabilityMetric) Kind() ml.MetricKind      { return ml.ClassificationMetric }
-func (*externalProbabilityMetric) NeedsProbabilities() bool { return true }
+func (*externalProbabilityMetric) Name() string                  { return "external_proba" }
+func (*externalProbabilityMetric) Kind() ml.MetricKind           { return ml.ClassificationMetric }
+func (*externalProbabilityMetric) Direction() ml.MetricDirection { return ml.HigherIsBetter }
+func (*externalProbabilityMetric) NeedsProbabilities() bool      { return true }
 func (m *externalProbabilityMetric) Evaluate(yTrue *insyra.DataList, p ml.Prediction) (ml.MetricResult, error) {
 	m.seen = p
 	return ml.MetricResult{Name: "external_proba", Score: 1}, nil
@@ -276,8 +278,9 @@ func (m *externalProbabilityMetric) Evaluate(yTrue *insyra.DataList, p ml.Predic
 // externalPlainMetric declares nothing, and must keep receiving what it always did.
 type externalPlainMetric struct{ seen ml.Prediction }
 
-func (*externalPlainMetric) Name() string        { return "external_plain" }
-func (*externalPlainMetric) Kind() ml.MetricKind { return ml.ClassificationMetric }
+func (*externalPlainMetric) Name() string                  { return "external_plain" }
+func (*externalPlainMetric) Kind() ml.MetricKind           { return ml.ClassificationMetric }
+func (*externalPlainMetric) Direction() ml.MetricDirection { return ml.HigherIsBetter }
 func (m *externalPlainMetric) Evaluate(yTrue *insyra.DataList, p ml.Prediction) (ml.MetricResult, error) {
 	m.seen = p
 	return ml.MetricResult{Name: "external_plain", Score: 1}, nil
@@ -288,9 +291,10 @@ func (m *externalPlainMetric) Evaluate(yTrue *insyra.DataList, p ml.Prediction) 
 // merely the presence of the method.
 type externalDeclinedMetric struct{ seen ml.Prediction }
 
-func (*externalDeclinedMetric) Name() string             { return "external_declined" }
-func (*externalDeclinedMetric) Kind() ml.MetricKind      { return ml.ClassificationMetric }
-func (*externalDeclinedMetric) NeedsProbabilities() bool { return false }
+func (*externalDeclinedMetric) Name() string                  { return "external_declined" }
+func (*externalDeclinedMetric) Kind() ml.MetricKind           { return ml.ClassificationMetric }
+func (*externalDeclinedMetric) Direction() ml.MetricDirection { return ml.HigherIsBetter }
+func (*externalDeclinedMetric) NeedsProbabilities() bool      { return false }
 func (m *externalDeclinedMetric) Evaluate(yTrue *insyra.DataList, p ml.Prediction) (ml.MetricResult, error) {
 	m.seen = p
 	return ml.MetricResult{Name: "external_declined", Score: 1}, nil
