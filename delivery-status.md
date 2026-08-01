@@ -67,8 +67,8 @@ Deltas that still change what someone would do. The standing technical decisions
   timestamp: 2026-08-01
   impacted_ticket_ids: archived
 
-- decision: A fix is not verified until the test covering it has been shown to fail without it.
-  rationale: Caught three unearned claims in this phase, including one of my own — a probe written to prove a conformance fix passed with the fix disabled, because the fake model was failing an unrelated assertion first.
+- decision: A fix is not verified until the test covering it has been shown to fail without it, and a claim about code is not established until the code has been read.
+  rationale: The first half caught three unearned claims, including one of my own — a probe written to prove a conformance fix passed with the fix disabled, because the fake model was failing an unrelated assertion first. The second half was learned the hard way: `SimpleImputer` was described in three commit messages and in `ENG.md` as having claimed a reversibility it lacked, on the strength of a handoff summary. It never did. It deliberately omits `InverseTransform` and its comment explains why, which is the same reasoning applied correctly. The false premise also reached a review brief as the exemplar of a failure class.
   timestamp: 2026-08-01
   impacted_ticket_ids: none
 
