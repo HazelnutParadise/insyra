@@ -82,15 +82,6 @@ type Column struct {
 	Values []float32
 }
 
-// segment is one dispatch: a chunk of one column small enough for the device's
-// limits. Columns larger than a chunk become several segments.
-type segment struct {
-	column string
-	values []float32
-	groups int
-	offset uint64 // byte offset of this segment's partials within the staging buffer
-}
-
 // MaxShortlist caps how many candidates the shortlist kernel keeps. The slots
 // live in per-thread registers, so a wider list costs occupancy on every row
 // whether or not the extra candidates are ever looked at.
@@ -546,13 +537,6 @@ func isSoftwareAdapter(info gputypes.AdapterInfo) bool {
 		return true
 	}
 	return strings.Contains(strings.ToLower(info.Name), "software")
-}
-
-type chunkCost struct {
-	transfer time.Duration
-	dispatch time.Duration
-	readback time.Duration
-	uploaded uint64
 }
 
 func float32Bytes(values []float32) []byte {

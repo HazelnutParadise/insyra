@@ -239,7 +239,7 @@ func Silhouette(dataTable insyra.IDataTable, labels insyra.IDataList) (*Silhouet
 func numericMatrixFromTable(dataTable insyra.IDataTable) ([][]float64, []string, error) {
 	// Every clustering and decomposition entry point arrives here, and a nil
 	// table used to reach AtomicDo and panic rather than returning an error.
-	if dataTable == nil || reflect.ValueOf(dataTable).Kind() == reflect.Ptr && reflect.ValueOf(dataTable).IsNil() {
+	if dataTable == nil || reflect.ValueOf(dataTable).Kind() == reflect.Pointer && reflect.ValueOf(dataTable).IsNil() {
 		return nil, nil, errors.New("data table must not be nil")
 	}
 	var rows, cols int

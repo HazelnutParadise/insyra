@@ -256,15 +256,6 @@ func renderAccelRun(out io.Writer, report accelpkg.Report, plan accelpkg.ShardPl
 	)
 }
 
-func sortedReductionNames(reductions map[string]float64) []string {
-	names := make([]string, 0, len(reductions))
-	for name := range reductions {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
-}
-
 func hydrateAccelCacheFromContext(session *accelpkg.Session, ctx *ExecContext) {
 	if session == nil || ctx == nil {
 		return

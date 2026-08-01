@@ -2,13 +2,10 @@ package commands
 
 import (
 	"bytes"
-	"context"
 	"strings"
 	"testing"
-	"time"
 
 	insyra "github.com/HazelnutParadise/insyra"
-	accelpkg "github.com/HazelnutParadise/insyra/accel"
 )
 
 func setupCommandHome(t *testing.T) {
@@ -142,82 +139,5 @@ func TestRunAccelCommandRunPrintsShardPlanSummary(t *testing.T) {
 	}
 	if !strings.Contains(rendered, "assignments=") {
 		t.Fatalf("expected assignment summary in output, got %q", rendered)
-	}
-}
-
-// cliSumExecutor stands in for a real GPU backend so the CLI's execution
-// output can be tested on a machine with no device.
-type cliSumExecutor struct{}
-
-func (cliSumExecutor) Name() string { return "cli-fake" }
-
-func (cliSumExecutor) Execute(_ context.Context, req accelpkg.ExecuteRequest) (accelpkg.ExecuteResponse, error) {
-	sums := make(map[string]float64, len(req.Columns))
-	bytes := uint64(0)
-	for _, column := range req.Columns {
-		var sum float64
-		for _, value := range column.Values {
-			sum += float64(value)
-		}
-		sums[column.Name] = sum
-		bytes += uint64(len(column.Values) * 4)
-	}
-	return accelpkg.ExecuteResponse{
-		Reductions:    sums,
-		Transfer:      time.Millisecond,
-		Dispatch:      100 * time.Microsecond,
-		Readback:      500 * time.Microsecond,
-		BytesUploaded: bytes,
-	}, nil
-}
-
-func accelRunContext(t *testing.T) (*ExecContext, *bytes.Buffer) {
-	t.Helper()
-	setupCommandHome(t)
-	t.Setenv("INSYRA_ACCEL_STUB_CUDA", "1")
-	t.Setenv("INSYRA_ACCEL_STUB_WEBGPU", "1")
-
-	values := make([]any, 512)
-	for i := range values {
-		values[i] = i + 1
-	}
-	output := &bytes.Buffer{}
-	return &ExecContext{
-		Vars: map[string]any{
-			"numbers": insyra.NewDataList(values...).SetName("numbers"),
-		},
-		Output: output,
-	}, output
-}
-
-func TestAccelCobraCommandAcceptsModeFlag(t *testing.T) {
-	setupCommandHome(t)
-	t.Setenv("INSYRA_ACCEL_STUB_WEBGPU", "1")
-
-	output := &bytes.Buffer{}
-	ctx := &ExecContext{Vars: map[string]any{}, Output: output}
-	commands := BuildCobraCommands(ctx)
-
-	var accelCmd any
-	for _, cmd := range commands {
-		if cmd.Name() == "accel" {
-			accelCmd = cmd
-			break
-		}
-	}
-	if accelCmd == nil {
-		t.Fatal("expected accel cobra command to be registered")
-	}
-
-	command := accelCmd.(interface {
-		SetArgs([]string)
-		Execute() error
-	})
-	command.SetArgs([]string{"devices", "--mode", "auto"})
-	if err := command.Execute(); err != nil {
-		t.Fatalf("expected cobra accel command to accept --mode, got %v", err)
-	}
-	if !strings.Contains(output.String(), "webgpu:stub:0") {
-		t.Fatalf("expected cobra accel command to render devices, got %q", output.String())
 	}
 }

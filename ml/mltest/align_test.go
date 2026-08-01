@@ -17,7 +17,7 @@ import (
 type misalignedImportances struct{ ml.Model }
 
 func (m misalignedImportances) FeatureImportances() []float64 {
-	return make([]float64, len(m.Model.Features())+1)
+	return make([]float64, len(m.Features())+1)
 }
 
 var _ ml.Importances = misalignedImportances{}

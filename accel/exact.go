@@ -396,15 +396,6 @@ func selectNearest(row []float64, queries [][]float64, m int, best []candidate) 
 	}
 }
 
-func squaredDistance64(columns [][]float64, queries [][]float64, row, query int) float64 {
-	var acc float64
-	for c := range columns {
-		diff := columns[c][row] - queries[query][c]
-		acc += diff * diff
-	}
-	return acc
-}
-
 // gatherRow copies one row out of the column-major buffers.
 //
 // Reading a row straight from the columns touches one cache line per column,

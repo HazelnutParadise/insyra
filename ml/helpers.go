@@ -80,7 +80,7 @@ func requireTable(dt *insyra.DataTable) error {
 
 func isNilPointer(v any) bool {
 	rv := reflect.ValueOf(v)
-	return rv.IsValid() && rv.Kind() == reflect.Ptr && rv.IsNil()
+	return rv.IsValid() && rv.Kind() == reflect.Pointer && rv.IsNil()
 }
 
 func oneLogisticOption(opts []LogisticOptions) (LogisticOptions, bool, error) {

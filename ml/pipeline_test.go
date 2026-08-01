@@ -249,9 +249,8 @@ func TestPipelineMixesRootScalersAndEncoders(t *testing.T) {
 	if !reflect.DeepEqual(fitted.Features(), []string{"number", "color"}) {
 		t.Fatalf("raw pipeline features = %v", fitted.Features())
 	}
-	if _, ok := fitted.(ml.Model); !ok {
-		t.Fatal("fitted pipeline does not satisfy ml.Model")
-	}
+	// No ml.Model assertion here: Fit's signature already returns one, so the
+	// check could not fail. pipeline.go carries the compile-time assertion.
 	if _, err := fitted.Predict(input); err != nil {
 		t.Fatalf("predict with root scaler and encoder: %v", err)
 	}

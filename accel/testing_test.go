@@ -1,12 +1,10 @@
 package accel
 
 import (
-	"context"
 	"maps"
 	"os"
 	"sync"
 	"testing"
-	"time"
 )
 
 // isolateBuiltinProbes reports every builtin backend as unavailable so a real
@@ -66,63 +64,6 @@ func resetBackendExecutorsForTest() {
 	backendExecutors = maps.Clone(builtinExecutors)
 }
 
-// fakeExecutor stands in for a real backend so the runtime's routing,
-// eligibility, and failure reporting can be tested on machines with no GPU.
-type fakeExecutor struct {
-	name     string
-	calls    int
-	lastReq  ExecuteRequest
-	err      error
-	response ExecuteResponse
-}
-
-func sumColumns(req ExecuteRequest) (map[string]float64, uint64) {
-	sums := make(map[string]float64, len(req.Columns))
-	bytes := uint64(0)
-	for _, column := range req.Columns {
-		var sum float64
-		for _, value := range column.Values {
-			sum += float64(value)
-		}
-		sums[column.Name] = sum
-		bytes += uint64(len(column.Values) * 4)
-	}
-	return sums, bytes
-}
-
-func (e *fakeExecutor) Name() string {
-	if e.name == "" {
-		return "fake"
-	}
-	return e.name
-}
-
-func (e *fakeExecutor) Execute(_ context.Context, req ExecuteRequest) (ExecuteResponse, error) {
-	e.calls++
-	e.lastReq = req
-	if e.err != nil {
-		return ExecuteResponse{}, e.err
-	}
-	response := e.response
-	sums, bytes := sumColumns(req)
-	if response.Reductions == nil {
-		response.Reductions = sums
-	}
-	if response.BytesUploaded == 0 {
-		response.BytesUploaded = bytes
-	}
-	if response.Transfer == 0 {
-		response.Transfer = time.Millisecond
-	}
-	if response.Dispatch == 0 {
-		response.Dispatch = 100 * time.Microsecond
-	}
-	if response.Readback == 0 {
-		response.Readback = 500 * time.Microsecond
-	}
-	return response, nil
-}
-
 func singleDeviceSession(t *testing.T, cfg Config) *Session {
 	t.Helper()
 	ResetDiscoverersForTest()
@@ -140,25 +81,6 @@ func singleDeviceSession(t *testing.T, cfg Config) *Session {
 		_ = session.Close()
 	})
 	return session
-}
-
-func float64Dataset(name string, values []float64, nulls []bool) *Dataset {
-	dataset := &Dataset{
-		Name:    name,
-		Lineage: "test",
-		Rows:    1024,
-		Buffers: []Buffer{
-			{
-				Name:   name,
-				Type:   DataTypeFloat64,
-				Values: values,
-				Nulls:  nulls,
-				Len:    len(values),
-			},
-		},
-	}
-	assignDatasetFingerprint(dataset)
-	return dataset
 }
 
 // requireGPU keeps the hardware tests off machines that have no device, and

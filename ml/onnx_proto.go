@@ -184,7 +184,7 @@ type onnxTypeProto struct {
 
 func (t onnxTypeProto) marshal() []byte {
 	var out []byte
-	tensorType := onnxTensorTypeProto{ElemType: t.ElemType, Shape: t.Shape}.marshal()
+	tensorType := onnxTensorTypeProto(t).marshal()
 	out = onnxAppendMessage(out, 1, tensorType)
 	return out
 }

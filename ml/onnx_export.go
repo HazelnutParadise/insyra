@@ -6,7 +6,6 @@ import (
 	"io"
 	"math"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/HazelnutParadise/insyra"
@@ -483,10 +482,6 @@ func onnxAttrStrings(name string, values []string) onnxAttributeProto {
 	return onnxAttributeProto{Name: name, Type: 8, Strings: encoded}
 }
 
-func onnxAttrTensor(name string, tensor onnxTensorProto) onnxAttributeProto {
-	return onnxAttributeProto{Name: name, Type: 4, Tensor: &tensor}
-}
-
 func float32Slice(values []float64) []float32 {
 	out := make([]float32, len(values))
 	for index, value := range values {
@@ -583,15 +578,6 @@ func sortedInt64(values map[uint32]struct{}) []int64 {
 	return out
 }
 
-func onnxCategoryKey(value any) string {
-	if value == nil {
-		return "<nil>"
-	}
-	return fmt.Sprintf("%T:%v", value, value)
-}
-
-func onnxNumberName(value int64) string { return strconv.FormatInt(value, 10) }
-
 func applyONNXTransformer(b *onnxBuilder, groups []onnxGroup, transformer Transformer) ([]onnxGroup, error) {
 	switch transformer := transformer.(type) {
 	case *ColumnTransformer:
@@ -680,7 +666,10 @@ func applyONNXScaler(b *onnxBuilder, groups []onnxGroup, params map[string]insyr
 			return nil, fmt.Errorf("scaler column %q is string", group.name)
 		}
 		group = b.castToFloat(group)
-		center, scale, gain, offset := 0.0, 1.0, 1.0, 0.0
+		// scale carries no default: every scaler kind below defines it, and
+		// the default branch returns rather than falling through.
+		var scale float64
+		center, gain, offset := 0.0, 1.0, 0.0
 		switch kind {
 		case "standard":
 			center, scale = parameter.Mean, parameter.Std

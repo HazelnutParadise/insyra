@@ -27,7 +27,7 @@ type PCAResult struct {
 func PCA(dataTable insyra.IDataTable, nComponents ...int) (*PCAResult, error) {
 	// PCA loads its input itself rather than through numericMatrixFromTable, so
 	// it needs the same nil guard the shared loader has.
-	if dataTable == nil || reflect.ValueOf(dataTable).Kind() == reflect.Ptr && reflect.ValueOf(dataTable).IsNil() {
+	if dataTable == nil || reflect.ValueOf(dataTable).Kind() == reflect.Pointer && reflect.ValueOf(dataTable).IsNil() {
 		return nil, errors.New("data table must not be nil")
 	}
 	var rowNum, colNum, numComponents int

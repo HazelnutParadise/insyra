@@ -296,7 +296,7 @@ func TestWrappersReturnStatsResultsAndPredictionsExactly(t *testing.T) {
 	if !reflect.DeepEqual(knnClassifierPrediction.Data(), directKNNClassifier.Predictions.Data()) {
 		t.Fatalf("KNN classifier prediction changed by wrapper")
 	}
-	knnClassifierProba, err := knnClassifier.(ml.ProbaModel).PredictProba(features.table)
+	knnClassifierProba, err := knnClassifier.PredictProba(features.table)
 	if err != nil {
 		t.Fatal(err)
 	}
