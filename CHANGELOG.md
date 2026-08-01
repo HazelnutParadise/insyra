@@ -50,6 +50,8 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 ### `ml`
 
+- `mltest.RunConformance` now uses the training labels it is given. It took them and discarded them, so a caller passed a value nothing was checked against. For a `Classifier` it now verifies that `Classes()` accounts for every label the model was fitted on — a class set omitting one describes a label the model can never predict.
+
 - Added `ml.Clusterer`, an optional interface a clustering model implements to say its predictions are group assignments rather than measurements, reporting how many groups the fit converged on. A regression metric is now refused against one. Previously `KMeansModel` was neither a `Classifier` nor a continuous predictor, so nothing stopped `RMSE` from scoring its cluster ids and returning an arithmetically correct number about nothing.
 
 - A metric written outside the package can now say what input it needs. `ClassLabelMetric` and `ProbabilityMetric` are exported, so a caller-written metric can request class labels or probabilities the way the built-in ones do. Previously the routing keyed off unexported marker interfaces, so an external metric could never request probabilities — it silently received the model's predictions instead, with `Prediction.Probabilities` nil and no error. Both interfaces are now read rather than merely detected: implementing one and answering `false` is the same as not implementing it. `Prediction`'s fields document which are populated when.

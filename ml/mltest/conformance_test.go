@@ -162,3 +162,52 @@ func TestRunConformanceRejectsErrorNamingOnlyTheRenamedColumn(t *testing.T) {
 		t.Fatalf("RunConformance failed for the wrong reason; child output:\n%s", output)
 	}
 }
+
+// incompleteClasses satisfies every other conformance rule but reports a class
+// set that omits a label it was fitted on — so it can never predict that label.
+type incompleteClasses struct{}
+
+func (incompleteClasses) Features() []string        { return []string{"a"} }
+func (incompleteClasses) Classes() *insyra.DataList { return insyra.NewDataList("no") }
+
+func (m incompleteClasses) Predict(dt *insyra.DataTable) (*insyra.DataList, error) {
+	for _, want := range m.Features() {
+		found := false
+		for _, got := range dt.ColNames() {
+			if got == want {
+				found = true
+			}
+		}
+		if !found {
+			return nil, fmt.Errorf("missing feature column %q", want)
+		}
+	}
+	rows, _ := dt.Size()
+	out := make([]any, rows)
+	for i := range out {
+		out[i] = "no"
+	}
+	return insyra.NewDataList(out...), nil
+}
+
+const incompleteClassesChildEnv = "MLTEST_INCOMPLETE_CLASSES_CHILD"
+
+func TestRunConformanceRejectsClassSetMissingATrainingLabel(t *testing.T) {
+	x := insyra.NewDataTable(insyra.NewDataList(1.0, 2.0, 3.0).SetName("a"))
+	y := insyra.NewDataList("no", "no", "yes") // "yes" is absent from Classes()
+
+	if os.Getenv(incompleteClassesChildEnv) == "1" {
+		mltest.RunConformance(t, incompleteClasses{}, x, y)
+		return
+	}
+
+	command := exec.Command(os.Args[0], "-test.run=^TestRunConformanceRejectsClassSetMissingATrainingLabel$", "-test.v")
+	command.Env = append(os.Environ(), incompleteClassesChildEnv+"=1")
+	output, err := command.CombinedOutput()
+	if err == nil {
+		t.Fatalf("RunConformance accepted a classifier whose Classes() omits a label it was fitted on; child output:\n%s", output)
+	}
+	if !strings.Contains(string(output), "Classes() omits") {
+		t.Fatalf("RunConformance failed for the wrong reason; child output:\n%s", output)
+	}
+}

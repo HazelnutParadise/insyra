@@ -138,7 +138,29 @@ func RunConformance(t *testing.T, model ml.Model, x *insyra.DataTable, y *insyra
 		}
 	}
 
-	_ = y
+	// The labels the model was fitted on. `Classifier` is documented as
+	// predicting "one of a known set of classes" (ml/interfaces.go:22), and a
+	// set that omits a label the model was trained on is not that set — the
+	// model can never predict it. This is the only thing y is here for, and
+	// checking it is what stops the parameter from being decoration.
+	if classifier, ok := model.(ml.Classifier); ok && y != nil {
+		classes := classifier.Classes()
+		known := make(map[string]struct{}, classes.Len())
+		for i := 0; i < classes.Len(); i++ {
+			known[fmt.Sprint(classes.Get(i))] = struct{}{}
+		}
+		seen := make(map[string]struct{}, y.Len())
+		for i := 0; i < y.Len(); i++ {
+			label := fmt.Sprint(y.Get(i))
+			if _, dup := seen[label]; dup {
+				continue
+			}
+			seen[label] = struct{}{}
+			if _, ok := known[label]; !ok {
+				t.Fatalf("Classes() omits %q, which the model was fitted on; it can never predict that label", label)
+			}
+		}
+	}
 }
 
 func reorderByFeatures(x *insyra.DataTable, features []string) *insyra.DataTable {
