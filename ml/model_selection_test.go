@@ -382,3 +382,84 @@ func TestProbabilityMetricRefusesAModelWithoutProbabilities(t *testing.T) {
 		t.Fatal("a probability metric was accepted against a model that produces none")
 	}
 }
+
+// TestRegressionMetricRefusesAClusterer pins the reason Clusterer exists.
+// KMeansModel.Predict returns cluster ids and KMeansModel has no Classes(), so
+// nothing used to refuse an RMSE over them — the result was a correct number
+// about nothing.
+func TestRegressionMetricRefusesAClusterer(t *testing.T) {
+	n := 24
+	a := make([]any, n)
+	b := make([]any, n)
+	y := make([]any, n)
+	for i := range a {
+		// Two separated blobs, so every cross-validation fold can fit two
+		// clusters without emptying one.
+		if i < n/2 {
+			a[i], b[i] = float64(i%4)*0.3, float64(i/4)*0.3
+		} else {
+			a[i], b[i] = 30+float64(i%4)*0.3, 30+float64(i/4)*0.3
+		}
+		y[i] = float64(i % 2)
+	}
+	x := insyra.NewDataTable(
+		insyra.NewDataList(a...).SetName("a"),
+		insyra.NewDataList(b...).SetName("b"),
+	)
+	labels := insyra.NewDataList(y...)
+
+	est := ml.Estimator{Name: "kmeans", Fit: func(x *insyra.DataTable, _ *insyra.DataList) (ml.Model, error) {
+		return ml.FitKMeans(x, 2)
+	}}
+	if _, err := ml.CrossValidate(x, labels, est, 3, ml.RMSEMetric{}); err == nil {
+		t.Fatal("a regression metric scored a clustering model's cluster ids")
+	}
+}
+
+// A clusterer reports the number of groups it converged on.
+func TestClustererReportsItsClusterCount(t *testing.T) {
+	// Three well-separated blobs, so the fit converges on three clusters rather
+	// than emptying one — a degenerate fixture makes this test flaky, not wrong.
+	centres := [][2]float64{{0, 0}, {20, 20}, {40, 0}}
+	var a, b []any
+	for _, c := range centres {
+		for k := 0; k < 6; k++ {
+			a = append(a, c[0]+float64(k%3)*0.4)
+			b = append(b, c[1]+float64(k/3)*0.4)
+		}
+	}
+	x := insyra.NewDataTable(
+		insyra.NewDataList(a...).SetName("a"),
+		insyra.NewDataList(b...).SetName("b"),
+	)
+	model, err := ml.FitKMeans(x, 3)
+	if err != nil {
+		t.Fatalf("fit: %v", err)
+	}
+	clusterer, ok := any(model).(ml.Clusterer)
+	if !ok {
+		t.Fatal("a fitted KMeans model does not declare itself a Clusterer")
+	}
+	if got := clusterer.Clusters(); got != 3 {
+		t.Fatalf("Clusters() = %d, want 3", got)
+	}
+}
+
+// A model declaring neither is scored exactly as before.
+func TestModelDeclaringNeitherIsStillScored(t *testing.T) {
+	n := 30
+	a := make([]any, n)
+	yv := make([]any, n)
+	for i := range a {
+		a[i] = float64(i)
+		yv[i] = float64(i)*2 + 1
+	}
+	x := insyra.NewDataTable(insyra.NewDataList(a...).SetName("a"))
+	y := insyra.NewDataList(yv...)
+	est := ml.Estimator{Name: "linear", Fit: func(x *insyra.DataTable, y *insyra.DataList) (ml.Model, error) {
+		return ml.FitLinearRegression(x, y)
+	}}
+	if _, err := ml.CrossValidate(x, y, est, 3, ml.RMSEMetric{}); err != nil {
+		t.Fatalf("a plain regression model should still be scored: %v", err)
+	}
+}

@@ -361,6 +361,11 @@ Still open on the acceleration side, and not blocking: measuring brute-force KNN
   timestamp: 2026-08-01
   impacted_change_ids: none
 
+- decision: A model declares what kind of thing it predicts, and the metric check reads that declaration. `Clusterer` joins `Classifier` as the second such declaration.
+  rationale: `Predict` returns a `DataList` whatever the model is, so nothing in the type distinguishes a predicted quantity from a group label. `KMeansModel` correctly does not implement `Classifier` — its groups are discovered, not drawn from a set the caller supplied — so no check refused a regression metric against it, and `RMSE` over cluster ids returned 0.8047 with a nil error. Arithmetically correct, about nothing. The fix is not a better check but a declaration the model was never able to make, and the package already had the shape for it: `ProbaModel`, `Importances` and `Exporter` are all optional interfaces discovered by assertion. This is the fourth defect of the same family found in `insyra/ml` — a capability, or the absence of one, that the type system was not told about. The first three were an imputer claiming reversibility it lacked, a classifier whose `Predict` returned probabilities, and a metric extension point a caller could not reach.
+  timestamp: 2026-08-01
+  impacted_change_ids: `add-ml-clusterer`
+
 ## Source Links
 - `delivery-plan.md`
 - `AGENTS.md`

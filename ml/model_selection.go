@@ -657,6 +657,7 @@ func validateMetricModel(metric Metric, model Model) error {
 		return fmt.Errorf("estimator returned a nil model")
 	}
 	_, isClassifier := model.(Classifier)
+	_, isClusterer := model.(Clusterer)
 	switch metric.Kind() {
 	case ClassificationMetric:
 		if !isClassifier {
@@ -665,6 +666,13 @@ func validateMetricModel(metric Metric, model Model) error {
 	case RegressionMetric:
 		if isClassifier {
 			return fmt.Errorf("metric %q requires a regression model; %T is a Classifier", metric.Name(), model)
+		}
+		// A clusterer's predictions are group labels. Scoring them with a
+		// regression metric produces an arithmetically correct number about
+		// nothing, and no other check catches it because Predict returns a
+		// DataList either way.
+		if isClusterer {
+			return fmt.Errorf("metric %q requires a regression model; %T is a Clusterer and its predictions are group assignments", metric.Name(), model)
 		}
 	}
 	if wantsProbabilities(metric) {

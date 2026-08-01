@@ -115,6 +115,13 @@ func (BrierScore) Evaluate(yTrue *insyra.DataList, p ml.Prediction) (ml.MetricRe
 }
 ```
 
+A model says what kind of thing it predicts by implementing an optional
+interface. `Classifier` means the predictions are classes from a known set;
+`Clusterer` means they are group assignments discovered by the fit. A model
+implementing neither predicts measurements. The distinction is what stops a
+regression metric scoring cluster ids — `Predict` returns a `DataList` either
+way, so nothing else can tell them apart.
+
 A metric says what input it needs by implementing one of two interfaces:
 
 | Interface | What arrives | Requirement on the model |

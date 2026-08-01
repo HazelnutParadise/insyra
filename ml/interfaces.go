@@ -43,6 +43,24 @@ type Importances interface {
 	FeatureImportances() []float64
 }
 
+// Clusterer is a model whose predictions are group assignments rather than
+// measurements or classes from a known set.
+//
+// The distinction matters because Predict returns a DataList either way, and
+// nothing in its type says whether a number in it is a predicted quantity or a
+// group label. Without the declaration a regression metric will happily compute
+// an RMSE over cluster ids — arithmetically correct and meaningless. A model
+// implementing this is refused by regression metrics, the way a Classifier
+// already is.
+//
+// A clustering model does not implement Classifier: its groups are discovered,
+// not drawn from a set the caller supplied, so there is no Classes() to report.
+type Clusterer interface {
+	Model
+	// Clusters reports how many groups the fit converged on.
+	Clusters() int
+}
+
 // Exporter writes a fitted model in a format another runtime can read.
 type Exporter interface {
 	Model

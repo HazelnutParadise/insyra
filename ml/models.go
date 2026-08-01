@@ -359,6 +359,16 @@ func (m *GLMModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error) {
 	})
 }
 
+// Clusters reports how many groups the fit converged on, and marks this model
+// as a Clusterer so that a regression metric will not score its cluster ids.
+func (m *KMeansModel) Clusters() int {
+	if m == nil || m.Result == nil || m.Result.Centers == nil {
+		return 0
+	}
+	rows, _ := m.Result.Centers.Size()
+	return rows
+}
+
 func (m *KMeansModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error) {
 	if m == nil || m.Result == nil {
 		return nil, errors.New("ml: kmeans model is nil")
