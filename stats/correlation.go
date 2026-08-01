@@ -68,8 +68,15 @@ func CorrelationMatrix(dataTable insyra.IDataTable, method CorrelationMethod) (c
 		for i := range n {
 			c := table.GetColByNumber(i)
 			c.AtomicDo(func(dl *insyra.DataList) {
-				colSlices[i] = dl.ToF64Slice()
 				colNames[i] = dl.GetName()
+				label := colNames[i]
+				if label == "" {
+					label = fmt.Sprintf("column %d", i+1)
+				}
+				var convErr error
+				if colSlices[i], convErr = numericValues(dl.Data(), label); convErr != nil && err == nil {
+					err = convErr
+				}
 			})
 		}
 	})
@@ -350,6 +357,9 @@ func hasVarianceFloats(v []float64) bool {
 }
 
 func Covariance(dlX, dlY insyra.IDataList) (float64, error) {
+	if err := requireNumericPair(dlX, dlY); err != nil {
+		return math.NaN(), err
+	}
 	var lenX, lenY int
 	var dataX, dataY []float64
 	dlx := dlX.(*insyra.DataList)
@@ -379,6 +389,12 @@ type CorrelationResult struct {
 func Correlation(dlX, dlY insyra.IDataList, method CorrelationMethod) (*CorrelationResult, error) {
 	var result CorrelationResult
 	var err error
+	// Validated here rather than deeper down: every coefficient below reads
+	// its values through a path with no failure channel, so a value that is
+	// not a number would silently become a zero and shift the coefficient.
+	if err := requireNumericPair(dlX, dlY); err != nil {
+		return nil, err
+	}
 	dlx := dlX.(*insyra.DataList)
 	dly := dlY.(*insyra.DataList)
 	insyra.AtomicDoAll(func() {

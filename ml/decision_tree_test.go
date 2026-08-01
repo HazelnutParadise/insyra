@@ -358,3 +358,50 @@ var _ ml.ProbaModel = (*ml.DecisionTreeClassifier)(nil)
 var _ ml.Importances = (*ml.DecisionTreeClassifier)(nil)
 var _ ml.Model = (*ml.DecisionTreeRegressor)(nil)
 var _ ml.Importances = (*ml.DecisionTreeRegressor)(nil)
+
+// The tree neither refuses missing feature values nor replaces them with a
+// number: it learns a direction for them per node. That is deliberate and is a
+// different policy from the refusal `stats` applies elsewhere, so it is pinned
+// here — a later sweep that made everything refuse would break it silently.
+func TestDecisionTreeKeepsItsOwnMissingValuePolicy(t *testing.T) {
+	const n = 60
+	features := make([]any, n)
+	targets := make([]any, n)
+	for i := 0; i < n; i++ {
+		features[i] = float64(i % 9)
+		targets[i] = 2*float64(i%9) + 1
+	}
+	features[7] = nil
+	features[23] = math.NaN()
+
+	x := insyra.NewDataTable(insyra.NewDataList(features...).SetName("f"))
+	y := insyra.NewDataList(targets...).SetName("y")
+
+	model, err := ml.FitDecisionTreeRegressor(x, y)
+	if err != nil {
+		t.Fatalf("a missing feature value was refused: %v", err)
+	}
+	predicted, err := model.Predict(x)
+	if err != nil {
+		t.Fatalf("predict: %v", err)
+	}
+	if predicted.Len() != n {
+		t.Fatalf("predicted %d rows, want %d", predicted.Len(), n)
+	}
+
+	// Text in a feature is a different thing from a missing value and is still
+	// refused — the tree treats a string column as categorical only when every
+	// value is one.
+	withText := insyra.NewDataTable(insyra.NewDataList(append(append([]any(nil), features[:30]...), append([]any{"abc"}, features[31:]...)...)...).SetName("f"))
+	if _, err := ml.FitDecisionTreeRegressor(withText, y); err == nil {
+		t.Fatal("a numeric feature holding text was accepted")
+	}
+
+	// A missing target is refused: there is no direction to learn for the
+	// thing being predicted.
+	holedTargets := append([]any(nil), targets...)
+	holedTargets[11] = nil
+	if _, err := ml.FitDecisionTreeRegressor(x, insyra.NewDataList(holedTargets...)); err == nil {
+		t.Fatal("a missing target was accepted")
+	}
+}

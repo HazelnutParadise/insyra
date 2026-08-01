@@ -30,6 +30,28 @@ The stats package provides comprehensive statistical analysis functions:
 
 Most functions expect numeric data in `DataList`/`DataTable` and return `error` when inputs are invalid or computation fails. Always handle `err` at call sites.
 
+### Values that are not numbers
+
+A value that cannot be read as a finite number — a missing value, a blank, text,
+an infinity — is **never** replaced with a substitute. What happens instead
+depends on the family, and each family states which:
+
+| Family | Treatment |
+| --- | --- |
+| Regression (linear, polynomial, exponential, logarithmic, logistic, Poisson, GLM) | refused, with an error naming the series and the row |
+| Correlation and covariance | refused, with an error naming the series and the row |
+| Clustering, PCA, KNN | refused |
+| Factor analysis | the whole observation is removed (listwise deletion) |
+| Decision trees in [`insyra/ml`](/Docs/ml.md) | a direction is learned per node for missing *features*; a missing *target* is refused |
+
+Only Go numeric types convert. A string is refused even when it spells a
+number, so a table loaded without type inference has to be converted before it
+can be analysed.
+
+Regression and correlation used to accept these values and treat them as zero.
+That produced a plausible wrong answer rather than an error — one blank among
+six observations moved a Pearson coefficient from 0.9992 to 0.9879, silently.
+
 For clustering APIs, Insyra uses an R-oriented result shape and cross-language verification policy:
 
 - R is the authoritative semantic reference for clustering behavior and output structure

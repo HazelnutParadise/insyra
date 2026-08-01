@@ -29,33 +29,30 @@ func gatherRegressionInputs(dlY insyra.IDataList, dlXs []insyra.IDataList, extra
 	extras = make([][]float64, len(extra))
 	extraLens := make([]int, len(extra))
 
+	// Conversion errors are collected per series rather than returned from the
+	// goroutine, so a length mismatch is still reported against the length the
+	// series actually had. The length checks below run first for that reason:
+	// a caller who passed differently-sized inputs should hear about that
+	// rather than about the first cell that failed to convert.
+	convErrs := make([]error, 1+len(dlXs)+len(extra))
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		dlY.AtomicDo(func(dly *insyra.DataList) {
-			n = dly.Len()
-			y = dly.ToF64Slice()
-		})
+		y, n, convErrs[0] = numericSlice(dlY, "y")
 	}()
 	for j, dlX := range dlXs {
 		wg.Add(1)
 		go func(j int, dlX insyra.IDataList) {
 			defer wg.Done()
-			dlX.AtomicDo(func(l *insyra.DataList) {
-				xLens[j] = l.Len()
-				xs[j] = l.ToF64Slice()
-			})
+			xs[j], xLens[j], convErrs[1+j] = numericSlice(dlX, fmt.Sprintf("predictor %d", j))
 		}(j, dlX)
 	}
 	for j, dlExtra := range extra {
 		wg.Add(1)
 		go func(j int, dlExtra insyra.IDataList) {
 			defer wg.Done()
-			dlExtra.AtomicDo(func(l *insyra.DataList) {
-				extraLens[j] = l.Len()
-				extras[j] = l.ToF64Slice()
-			})
+			extras[j], extraLens[j], convErrs[1+len(dlXs)+j] = numericSlice(dlExtra, fmt.Sprintf("extra data list %d", j))
 		}(j, dlExtra)
 	}
 	wg.Wait()
@@ -68,6 +65,11 @@ func gatherRegressionInputs(dlY insyra.IDataList, dlXs []insyra.IDataList, extra
 	for j, extraLen := range extraLens {
 		if extraLen != n {
 			return nil, nil, nil, 0, fmt.Errorf("extra data list %d and y must have the same length", j)
+		}
+	}
+	for _, convErr := range convErrs {
+		if convErr != nil {
+			return nil, nil, nil, 0, convErr
 		}
 	}
 	return y, xs, extras, n, nil
@@ -100,15 +102,13 @@ func gatherPredictorInputs(dlXs []insyra.IDataList) (xs [][]float64, n int, err 
 
 	xs = make([][]float64, len(dlXs))
 	xLens := make([]int, len(dlXs))
+	convErrs := make([]error, len(dlXs))
 	var wg sync.WaitGroup
 	for j, dlX := range dlXs {
 		wg.Add(1)
 		go func(j int, dlX insyra.IDataList) {
 			defer wg.Done()
-			dlX.AtomicDo(func(l *insyra.DataList) {
-				xLens[j] = l.Len()
-				xs[j] = l.ToF64Slice()
-			})
+			xs[j], xLens[j], convErrs[j] = numericSlice(dlX, fmt.Sprintf("predictor %d", j))
 		}(j, dlX)
 	}
 	wg.Wait()
@@ -117,6 +117,11 @@ func gatherPredictorInputs(dlXs []insyra.IDataList) (xs [][]float64, n int, err 
 	for j, xLen := range xLens {
 		if xLen != n {
 			return nil, 0, fmt.Errorf("all predictors must have the same length; predictor %d has length %d, want %d", j, xLen, n)
+		}
+	}
+	for _, convErr := range convErrs {
+		if convErr != nil {
+			return nil, 0, convErr
 		}
 	}
 	return xs, n, nil

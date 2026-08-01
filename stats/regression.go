@@ -326,6 +326,7 @@ func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) (*LinearRe
 // ExponentialRegression performs y = a*e^(b*x) regression.
 func ExponentialRegression(dlY, dlX insyra.IDataList) (*ExponentialRegressionResult, error) {
 	var xs, ys []float64
+	var xsRaw, ysRaw []any
 	isFailed := false
 	dlx := dlX.(*insyra.DataList)
 	dly := dlY.(*insyra.DataList)
@@ -338,11 +339,18 @@ func ExponentialRegression(dlY, dlX insyra.IDataList) (*ExponentialRegressionRes
 			isFailed = true
 			return
 		}
-		xs = dlx.ToF64Slice()
-		ys = dly.ToF64Slice()
+		xsRaw = dlx.Data()
+		ysRaw = dly.Data()
 	}, dlx, dly)
 	if isFailed {
 		return nil, errors.New("input lengths mismatch/zero, or need at least 3 observations")
+	}
+	var convErr error
+	if xs, convErr = numericValues(xsRaw, "x"); convErr != nil {
+		return nil, convErr
+	}
+	if ys, convErr = numericValues(ysRaw, "y"); convErr != nil {
+		return nil, convErr
 	}
 
 	logYs := make([]float64, len(ys))
@@ -414,6 +422,7 @@ func ExponentialRegression(dlY, dlX insyra.IDataList) (*ExponentialRegressionRes
 // LogarithmicRegression performs y = a + b*ln(x) regression.
 func LogarithmicRegression(dlY, dlX insyra.IDataList) (*LogarithmicRegressionResult, error) {
 	var xs, ys []float64
+	var xsRaw, ysRaw []any
 	isFailed := false
 	dlx := dlX.(*insyra.DataList)
 	dly := dlY.(*insyra.DataList)
@@ -426,11 +435,18 @@ func LogarithmicRegression(dlY, dlX insyra.IDataList) (*LogarithmicRegressionRes
 			isFailed = true
 			return
 		}
-		xs = dlx.ToF64Slice()
-		ys = dly.ToF64Slice()
+		xsRaw = dlx.Data()
+		ysRaw = dly.Data()
 	}, dlx, dly)
 	if isFailed {
 		return nil, errors.New("input lengths mismatch/zero, or need at least 3 observations")
+	}
+	var convErr error
+	if xs, convErr = numericValues(xsRaw, "x"); convErr != nil {
+		return nil, convErr
+	}
+	if ys, convErr = numericValues(ysRaw, "y"); convErr != nil {
+		return nil, convErr
 	}
 
 	logXs := make([]float64, len(xs))
@@ -487,6 +503,7 @@ func LogarithmicRegression(dlY, dlX insyra.IDataList) (*LogarithmicRegressionRes
 // PolynomialRegression performs polynomial regression of given degree.
 func PolynomialRegression(dlY, dlX insyra.IDataList, degree int) (*PolynomialRegressionResult, error) {
 	var xs, ys []float64
+	var xsRaw, ysRaw []any
 	isFailed := false
 	dlx := dlX.(*insyra.DataList)
 	dly := dlY.(*insyra.DataList)
@@ -504,11 +521,18 @@ func PolynomialRegression(dlY, dlX insyra.IDataList, degree int) (*PolynomialReg
 			return
 		}
 
-		xs = dlx.ToF64Slice()
-		ys = dly.ToF64Slice()
+		xsRaw = dlx.Data()
+		ysRaw = dly.Data()
 	}, dlx, dly)
 	if isFailed {
 		return nil, errors.New("invalid input lengths, degree, or insufficient observations")
+	}
+	var convErr error
+	if xs, convErr = numericValues(xsRaw, "x"); convErr != nil {
+		return nil, convErr
+	}
+	if ys, convErr = numericValues(ysRaw, "y"); convErr != nil {
+		return nil, convErr
 	}
 
 	n := len(xs)

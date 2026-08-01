@@ -287,12 +287,16 @@ func numericMatrixFromTable(dataTable insyra.IDataTable) ([][]float64, []string,
 		if len(raw) != rows {
 			return nil, nil, errors.New("input has irregular row counts across columns")
 		}
+		// Shares numericValues with the regression and correlation paths so
+		// the one policy has one implementation. The error text stays the
+		// broad one these callers already document; the detailed row is in
+		// the wrapped cause.
+		values, err := numericValues(raw, fmt.Sprintf("column %d", j+1))
+		if err != nil {
+			return nil, nil, fmt.Errorf("input contains non-numeric values: %w", err)
+		}
 		for i := range rows {
-			v, ok := insyra.ToFloat64Safe(raw[i])
-			if !ok || math.IsNaN(v) || math.IsInf(v, 0) {
-				return nil, nil, errors.New("input contains non-numeric values")
-			}
-			matrix[i][j] = v
+			matrix[i][j] = values[i]
 		}
 	}
 	return matrix, rowNames, nil
