@@ -365,6 +365,23 @@ feature importances are reported as `float64`.
 `Root` exposes the fitted nodes, and `LeafValues` returns leaf values in
 left-to-right order.
 
+### Split styles
+
+Numeric splits come in both mainstream styles:
+
+| Style | How | When |
+| --- | --- | --- |
+| Histogram (default) | quantile bins, at most `MaxBins` candidates per feature | large data; LightGBM's design |
+| `ExactSplits: true` | every midpoint between adjacent distinct values | scikit-learn's CART; verified prediction-for-prediction against it |
+
+Exact splitting costs O(distinct values) candidates per feature per node
+against the histogram's O(MaxBins), which is why histogram stays the default.
+Combining `ExactSplits` with `MaxBins` is refused. Ensembles inherit the choice
+through their `Tree` options. One caveat inherent to the comparison: on nodes
+so small that several splits tie exactly, scikit-learn breaks the tie with a
+per-node random feature order, so deep trees on tiny nodes can legitimately
+differ between any two implementations.
+
 ## Ensembles
 
 Both ensemble families are built from the same histogram trees.

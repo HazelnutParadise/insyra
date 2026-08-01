@@ -14,10 +14,18 @@ import (
 // A zero bound means unlimited, except MinSamplesLeaf and MaxBins, which use
 // their documented defaults.
 type DecisionTreeOptions struct {
-	MaxDepth            int
-	MaxLeaves           int
-	MinSamplesLeaf      int
-	MaxBins             int
+	MaxDepth       int
+	MaxLeaves      int
+	MinSamplesLeaf int
+	MaxBins        int
+	// ExactSplits evaluates the midpoint between every pair of adjacent
+	// distinct values of each numeric feature — scikit-learn's CART search —
+	// instead of the default histogram search over at most MaxBins quantile
+	// edges. Exact costs O(distinct values) candidates per feature per node
+	// against the histogram's O(MaxBins), which is why histogram stays the
+	// default. Setting MaxBins together with ExactSplits is refused: a capped
+	// exact search is neither of the two things it names.
+	ExactSplits         bool
 	CategoricalFeatures []string
 }
 
@@ -120,6 +128,9 @@ func oneDecisionTreeOption(opts []DecisionTreeOptions) (DecisionTreeOptions, err
 	if options.MaxDepth < 0 || options.MaxLeaves < 0 || options.MinSamplesLeaf < 0 || options.MaxBins < 0 {
 		return DecisionTreeOptions{}, errors.New("ml: decision-tree bounds must not be negative")
 	}
+	if options.ExactSplits && options.MaxBins != 0 {
+		return DecisionTreeOptions{}, errors.New("ml: ExactSplits and MaxBins cannot be combined; exact splitting has no bin cap")
+	}
 	if options.MinSamplesLeaf == 0 {
 		options.MinSamplesLeaf = 1
 	}
@@ -195,7 +206,7 @@ func prepareDecisionTree(x *insyra.DataTable, y *insyra.DataList, options Decisi
 	schemas := make([]treeFeature, len(features))
 	encoded := make([][]uint32, len(features))
 	for j, column := range columns {
-		schema, values, err := encodeTrainingFeature(features[j], column.Data(), n, categorical[features[j]], options.MaxBins)
+		schema, values, err := encodeTrainingFeature(features[j], column.Data(), n, categorical[features[j]], options.MaxBins, options.ExactSplits)
 		if err != nil {
 			return nil, err
 		}
@@ -301,7 +312,7 @@ func (p *treePreparation) grow(rows []int, options DecisionTreeOptions, maxFeatu
 	}
 }
 
-func encodeTrainingFeature(name string, raw []any, n int, categorical bool, maxBins int) (treeFeature, []uint32, error) {
+func encodeTrainingFeature(name string, raw []any, n int, categorical bool, maxBins int, exact bool) (treeFeature, []uint32, error) {
 	if len(raw) != n {
 		return treeFeature{}, nil, fmt.Errorf("ml: feature %q has %d rows, want %d", name, len(raw), n)
 	}
@@ -351,7 +362,11 @@ func encodeTrainingFeature(name string, raw []any, n int, categorical bool, maxB
 		observed = append(observed, float32(converted))
 	}
 	sort.Slice(observed, func(i, j int) bool { return observed[i] < observed[j] })
-	feature.edges = quantileEdges(observed, maxBins)
+	if exact {
+		feature.edges = exactEdges(observed)
+	} else {
+		feature.edges = quantileEdges(observed, maxBins)
+	}
 	for i, value := range raw {
 		if treeMissing(value) {
 			encoded[i] = 0
@@ -361,6 +376,21 @@ func encodeTrainingFeature(name string, raw []any, n int, categorical bool, maxB
 		encoded[i] = numericBin(feature.edges, float32(converted))
 	}
 	return feature, encoded, nil
+}
+
+// exactEdges puts one boundary at the midpoint of every pair of adjacent
+// distinct values, which makes the existing boundary scan evaluate exactly
+// the candidate set CART does — exact splitting is the histogram algorithm
+// at its limit, not a second algorithm.
+func exactEdges(sortedValues []float32) []float32 {
+	edges := make([]float32, 0)
+	for i := 1; i < len(sortedValues); i++ {
+		if sortedValues[i] == sortedValues[i-1] {
+			continue
+		}
+		edges = append(edges, sortedValues[i-1]+(sortedValues[i]-sortedValues[i-1])/2)
+	}
+	return edges
 }
 
 func quantileEdges(sortedValues []float32, maxBins int) []float32 {

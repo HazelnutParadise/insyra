@@ -612,7 +612,11 @@ reproducible, probability-averaged) or
 `ml.FitGradientBoostingRegressor`/`Classifier` (bias reduction; deterministic,
 binary classification only — multiclass is refused). Use
 `ml.FitDecisionTreeClassifier` or `ml.FitDecisionTreeRegressor` for a single
-interpretable tree. Pass categorical column names through
+interpretable tree. Numeric splits default to histogram binning (LightGBM
+style); set `DecisionTreeOptions.ExactSplits` for scikit-learn's exact CART
+search — verified prediction-for-prediction against sklearn — at
+O(distinct values) cost per feature per node. Do not combine it with
+`MaxBins`. Pass categorical column names through
 `ml.DecisionTreeOptions.CategoricalFeatures`; numeric columns use deterministic
 quantile bins. Missing values are routed by the direction learned at each
 split, while ties, scoring-time missing values, and unseen categories default
