@@ -20,6 +20,12 @@ type PolynomialModel struct {
 	modelBase
 }
 
+// WeightedLinearModel wraps stats.WeightedLinearRegressionResult.
+type WeightedLinearModel struct {
+	Result *stats.WeightedLinearRegressionResult
+	modelBase
+}
+
 // RidgeModel wraps stats.RidgeRegressionResult.
 type RidgeModel struct {
 	Result *stats.RidgeRegressionResult
@@ -126,6 +132,26 @@ func FitPolynomialRegression(x *insyra.DataTable, y *insyra.DataList, degree int
 		return nil, err
 	}
 	return &PolynomialModel{Result: result, modelBase: modelBase{features: features}}, nil
+}
+
+// FitWeightedLinearRegression fits weighted least squares, one strictly
+// positive weight per training row.
+//
+// The weights apply to this fit only. CrossValidate has no weights channel —
+// its folds subset rows and nothing subsets the weights with them — so a
+// weighted estimator inside cross-validation would silently misalign weights
+// with rows. Use this with Fit, Predict and Score; weighted cross-validation
+// waits on a protocol decision, recorded in the change that added this.
+func FitWeightedLinearRegression(x *insyra.DataTable, y *insyra.DataList, weights *insyra.DataList) (Model, error) {
+	features, xs, err := fitFeatures(x)
+	if err != nil {
+		return nil, err
+	}
+	result, err := stats.WeightedLinearRegression(y, weights, xs...)
+	if err != nil {
+		return nil, err
+	}
+	return &WeightedLinearModel{Result: result, modelBase: modelBase{features: features}}, nil
 }
 
 // FitRidgeRegression fits an L2-penalized linear model. alpha is
@@ -335,6 +361,12 @@ func FitKNNRegressor(x *insyra.DataTable, y *insyra.DataList, k int, opts ...KNN
 }
 
 func (m *LinearModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error) {
+	return predictRegression(dt, m.features, func(xs []insyra.IDataList) (*insyra.DataList, error) {
+		return m.Result.Predict(stats.PredictResponse, xs...)
+	})
+}
+
+func (m *WeightedLinearModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error) {
 	return predictRegression(dt, m.features, func(xs []insyra.IDataList) (*insyra.DataList, error) {
 		return m.Result.Predict(stats.PredictResponse, xs...)
 	})

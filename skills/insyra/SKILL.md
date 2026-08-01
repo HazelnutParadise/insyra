@@ -599,7 +599,10 @@ if proba, ok := model.(ml.ProbaModel); ok {
 }
 ```
 
-`FitRidgeRegression(x, y, alpha)` and `FitLassoRegression(x, y, alpha)` fit penalized linear models using scikit-learn's objectives (intercept unpenalized, no standardisation); lasso coefficients priced out by the penalty are exactly zero, and the underlying `stats` results carry no standard errors or p values because classical inference does not apply to penalized estimates. `FitPolynomialRegression`, `FitExponentialRegression`, and `FitLogarithmicRegression` require one feature. `FitLogisticRegression` and `FitKNNClassifier` return `ml.ProbaModel`; logistic `Predict` returns labels and `PredictProba` returns probabilities. `FitPCA` returns an `ml.Transformer`. Poisson and GLM offsets are rejected by the `ml` wrappers because `Model.Predict` cannot receive a new row-wise offset. Existing root scalers and encoders satisfy `ml.Transformer` directly, so no adapter is needed. Use `ml/mltest.RunConformance` to check an external model implementation.
+`FitWeightedLinearRegression(x, y, weights)` fits WLS with exact classical
+inference; weights are strictly positive, per row, and do NOT flow through
+`CrossValidate` (no weights channel) — use it with `Fit`/`Predict`/`Score`
+only. `FitRidgeRegression(x, y, alpha)` and `FitLassoRegression(x, y, alpha)` fit penalized linear models using scikit-learn's objectives (intercept unpenalized, no standardisation); lasso coefficients priced out by the penalty are exactly zero, and the underlying `stats` results carry no standard errors or p values because classical inference does not apply to penalized estimates. `FitPolynomialRegression`, `FitExponentialRegression`, and `FitLogarithmicRegression` require one feature. `FitLogisticRegression` and `FitKNNClassifier` return `ml.ProbaModel`; logistic `Predict` returns labels and `PredictProba` returns probabilities. `FitPCA` returns an `ml.Transformer`. Poisson and GLM offsets are rejected by the `ml` wrappers because `Model.Predict` cannot receive a new row-wise offset. Existing root scalers and encoders satisfy `ml.Transformer` directly, so no adapter is needed. Use `ml/mltest.RunConformance` to check an external model implementation.
 
 For tabular classification or regression, prefer the ensembles:
 `ml.FitRandomForestClassifier`/`Regressor` (variance reduction; seeded and

@@ -100,3 +100,37 @@ func TestRegularizedModelsWorkInTheHarness(t *testing.T) {
 		t.Fatalf("lasso R² = %v on nearly noiseless linear data; the fit is wrong", score.Score)
 	}
 }
+
+func TestWeightedLinearModelConformsAndMatchesStats(t *testing.T) {
+	x, y := regularizedTable()
+	weights := make([]any, y.Len())
+	for i := range weights {
+		weights[i] = 0.5 + float64(i%3)
+	}
+	weightList := insyra.NewDataList(weights...)
+	model, err := ml.FitWeightedLinearRegression(x, y, weightList)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mltest.RunConformance(t, model, x, nil)
+
+	direct, err := stats.WeightedLinearRegression(y, weightList, x.GetColByName("x1"), x.GetColByName("x2"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := direct.Predict(stats.PredictResponse, x.GetColByName("x1"), x.GetColByName("x2"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := model.Predict(x)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < got.Len(); i++ {
+		g, _ := insyra.ToFloat64Safe(got.Get(i))
+		w, _ := insyra.ToFloat64Safe(want.Get(i))
+		if g != w {
+			t.Fatalf("row %d: wrapper %v vs stats %v", i, g, w)
+		}
+	}
+}

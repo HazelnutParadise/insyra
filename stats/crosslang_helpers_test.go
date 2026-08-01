@@ -150,9 +150,9 @@ func requirePythonTools(t *testing.T) {
 	if _, err := exec.LookPath("python"); err != nil {
 		reftest.Missing(t, "python", verification, err)
 	}
-	checkPy := exec.Command("python", "-c", "import numpy, sklearn")
+	checkPy := exec.Command("python", "-c", "import numpy, sklearn, statsmodels")
 	if out, err := checkPy.CombinedOutput(); err != nil {
-		reftest.MissingOutput(t, "python with numpy and scikit-learn", verification, err, out)
+		reftest.MissingOutput(t, "python with numpy, scikit-learn and statsmodels", verification, err, out)
 	}
 }
 

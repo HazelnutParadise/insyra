@@ -274,6 +274,7 @@ The available fitting functions are:
 
 ```go
 FitLinearRegression
+FitWeightedLinearRegression
 FitRidgeRegression
 FitLassoRegression
 FitPolynomialRegression
@@ -296,7 +297,11 @@ FitGradientBoostingRegressor
 
 The regression, clustering, and KNN wrappers expose their underlying `stats` result through an exported `Result` field. The options types in `ml` are aliases of the corresponding `stats` options types.
 
-Ridge and lasso take the penalty strength as a third argument, using
+`FitWeightedLinearRegression` takes one strictly positive weight per training
+row. The weights apply to that fit only — **`CrossValidate` has no weights
+channel**, so a weighted estimator inside cross-validation would misalign
+weights with fold rows; use it with `Fit`, `Predict` and `Score`. Ridge and
+lasso take the penalty strength as a third argument, using
 scikit-learn's objectives exactly — see [the `stats`
 documentation](/Docs/stats.md#ridge-regression) for the definitions and for why
 the penalized results carry no standard errors. Polynomial, exponential, and

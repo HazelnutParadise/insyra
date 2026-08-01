@@ -21,7 +21,7 @@ The stats package provides comprehensive statistical analysis functions:
 - **Nonparametric Tests**: Wilcoxon signed-rank (single/paired), Mann-Whitney U, Kruskal-Wallis, Friedman — rank-based counterparts to the t-test / ANOVA family
 - **Distribution Analysis**: Skewness, Kurtosis, n-th moments, standard-normal CDF / quantile (`NormCDF` / `NormPPF`)
 - **Analysis of Variance**: One-way, Two-way, Repeated measures ANOVA
-- **Regression Analysis**: Linear, Ridge, Lasso, Logistic, Poisson, generic GLM, Exponential, Logarithmic, Polynomial regression (confidence intervals on the unpenalized families)
+- **Regression Analysis**: Linear, Weighted (WLS), Ridge, Lasso, Logistic, Poisson, generic GLM, Exponential, Logarithmic, Polynomial regression (confidence intervals on the unpenalized families)
 - **F-Tests**: Variance equality, Levene's test, Bartlett's test, regression F-test, nested models
 - **Dimensionality Reduction**: Principal Component Analysis (PCA)
 - **Instance-Based Prediction**: K-nearest neighbors (KNN) classification and regression
@@ -1739,6 +1739,16 @@ func LassoRegression(dlY insyra.IDataList, alpha float64, dlXs []insyra.IDataLis
 **Description:** Fits a linear model under an L1 penalty, minimising `(1/2n)·||y − Xβ||² + α·||β||₁` — scikit-learn's `Lasso` objective exactly — by coordinate descent with soft thresholding. A predictor whose contribution is worth less than the penalty gets a coefficient of **exactly zero**, which is what makes lasso the standard tool for feature selection.
 
 `LassoOptions{Tolerance, MaxIterations}` default to scikit-learn's `1e-4` and `1000`. A fit that hits the cap before the tolerance still returns, with `Converged: false` and the iteration count — the caller decides whether to raise the cap. The same no-inference rule as ridge applies.
+
+### Weighted Linear Regression
+
+```go
+func WeightedLinearRegression(dlY insyra.IDataList, dlWeights insyra.IDataList, dlXs ...insyra.IDataList) (*WeightedLinearRegressionResult, error)
+```
+
+**Description:** Weighted least squares, minimising `Σwᵢ·eᵢ²` with one strictly positive weight per observation. Unlike the penalized estimators, WLS has **exact classical inference**, so the result carries standard errors, t and p values — verified field-for-field against statsmodels' `WLS`, including the weighted R². Uniform weights reproduce ordinary least squares exactly.
+
+A zero weight is refused rather than treated as exclusion: references disagree on whether an excluded row still counts toward degrees of freedom, and guessing between their answers would produce standard errors matching nobody. Drop the row instead.
 
 ### Linear Regression
 

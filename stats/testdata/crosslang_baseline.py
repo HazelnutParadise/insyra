@@ -1545,6 +1545,20 @@ def main():
         out = log_reg(payload["y"], payload["x"], payload.get("new_x"))
     elif method == "pca":
         out = pca_stats(payload["rows"], payload.get("n_components", None))
+    elif method == "wls":
+        y = np.array(payload["y"], dtype=float)
+        X = np.array(payload["xs"], dtype=float).T
+        w = np.array(payload["weights"], dtype=float)
+        model = sm.WLS(y, sm.add_constant(X), weights=w).fit()
+        newX = np.array(payload["new_xs"], dtype=float).T
+        out = {
+            "coefficients": [float(c) for c in model.params],
+            "standard_errors": [float(v) for v in model.bse],
+            "t_values": [float(v) for v in model.tvalues],
+            "p_values": [float(v) for v in model.pvalues],
+            "r_squared": float(model.rsquared),
+            "predictions": [float(v) for v in model.predict(sm.add_constant(newX, has_constant="add"))],
+        }
     elif method == "ridge":
         from sklearn.linear_model import Ridge
 
