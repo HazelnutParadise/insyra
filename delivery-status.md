@@ -18,6 +18,7 @@ None. Every proposed change is implemented, verified and archived — `openspec/
 | M9 | `stats` can be wrapped | planning | done | every regression predicts and matches R's `predict()`; KMeans assigns new rows; logistic and Poisson publish their link; PCA returns its projection parameters |
 | M10 | `insyra/ml` v1 | planning | done | protocol, pipelines, model selection, decision trees and ONNX export archived; 21 review findings raised, the blocking ones fixed, the rest adjudicated |
 | M11 | `ml` holds up under audit | planning | done | ONNX round-trip passes against a real `onnxruntime` for all five model shapes; `stats` refuses input it cannot read instead of scoring zeros; metrics declare a direction; pipelines name the columns their estimator saw |
+| M12 | A skip cannot pass for a pass | planning | done | strict mode fails on a missing toolchain and skips without it, verified in both directions; every gate routes through one helper; CI installs all three toolchains and runs with it set |
 
 Milestone order is the blocking sequence. OpenSpec has no dependency relationship between changes, so nothing else carries it.
 
@@ -27,7 +28,7 @@ None. One coverage gap is carried in `AGENTS.md` follow-ups rather than here, be
 ## Next Verifiable Output
 Undecided, and deliberately. The acceleration line has no landing site that measurement supports, and `insyra/ml` v1 is complete and now audited. The two things worth measuring before anything is proposed are brute-force KNN, whose candidate count is the training-set size and therefore always clears the floor, and the DBSCAN neighbourhood scan. Both need measuring against a parallel host first.
 
-The one thing that would pay for itself immediately is neither: run the suite on a machine with every reference toolchain installed, in CI rather than by hand. Two verifications in this project have been believed on the strength of a skip.
+The CI gap that used to sit here is closed: `Reference Verification` runs the whole comparison set with every toolchain installed and a missing one failing the job.
 
 ## Next Ticket
 None. Proposing one before that measurement would repeat the mistake this phase already made once — building a kernel, then discovering its intended caller could not clear its own profitability floor.
@@ -35,8 +36,8 @@ None. Proposing one before that measurement would repeat the mistake this phase 
 ## Decision Log
 Deltas that still change what someone would do. The standing technical decisions they produced — the precision contract, the device rules, the measured thresholds — live in [ENG.md](ENG.md); the full history is in git.
 
-- decision: A verification that skips is not a verification. Install every reference toolchain before calling a suite green.
-  rationale: The ONNX round-trip needed `onnxruntime`, which was on no machine it ever ran on, so it skipped everywhere and reported nothing. Executed for the first time, it failed immediately on two defects that made every exported model unloadable: a stray string field on every non-string attribute, and tree nodes written deepest-leaf-first when the runtime reads the first entry as the root. Both had been archived as verified.
+- decision: A verification that skips is not a verification, and the suite has to be able to say so. Gates route through `internal/reftest`; `INSYRA_REQUIRE_REFERENCE_TOOLCHAINS=1` makes a missing toolchain a failure.
+  rationale: The ONNX round-trip needed `onnxruntime`, which was on no machine it ever ran on, so it skipped everywhere and reported nothing. Executed for the first time, it failed immediately on two defects that made every exported model unloadable. Installing the toolchains was only half the fix — measured in a clean environment, the `Clustering Parity` workflow's own installs left `sklearn` missing, so the job dedicated to running the parity suite had been green while running none of it. Toolchains go missing again; the suite has to fail rather than shrug.
   timestamp: 2026-08-01
   impacted_ticket_ids: archived
 
@@ -100,7 +101,7 @@ Deltas that still change what someone would do. The standing technical decisions
 
 ## Handoff Notes
 - **Two pure-CPU wins are measured and unclaimed**, and both are worth more than anything acceleration offered. `stats`' KNN auto-selection picks a ball tree up to 3.3x slower than parallel brute force on unstructured data (#190). CCL spends 4.8x–6.2x more time on recursion-depth bookkeeping than on evaluating (#191).
-- **Cross-language tests skip silently** without `Rscript` and `python` plus their scientific stacks — now including `onnxruntime`. A skipped verification is indistinguishable from a passing one. Two changes were nearly archived on tests that had never run, and one was archived on a round-trip that had never run anywhere, hiding two defects that made every exported model invalid.
+- **A skipped verification now fails when it was supposed to run.** `INSYRA_REQUIRE_REFERENCE_TOOLCHAINS=1` turns every missing-toolchain skip into a failure, and the `Reference Verification` workflow installs R, the Python scientific stack, scikit-learn and onnxruntime and runs with it set. Before this, `Clustering Parity` had been reporting green while running nothing — its gate imports `sklearn` and the workflow never installed it.
 - **The refusal of unreadable numeric input is a breaking change** for anyone whose data contains blanks. What used to return a number now returns an error; the number it used to return was wrong. `ToF64Slice` still backs 54 call sites in `plot`, `gplot`, `quant` and the CLI — display paths where a zero is visible rather than laundered into a coefficient. A new numeric analysis must not join them.
 - **Nothing calls `accel`.** It is reachable through `allpkgs` or a direct import only, so its dormancy costs users nothing today.
 - **The race detector cannot reach the device on macOS**, upstream and pre-existing (gogpu/wgpu#280). Device tests skip under the `race` build tag.

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/internal/reftest"
 	"github.com/HazelnutParadise/insyra/ml"
 	"github.com/HazelnutParadise/insyra/ml/mltest"
 )
@@ -243,8 +244,11 @@ func TestDecisionTreeGrowthBounds(t *testing.T) {
 }
 
 func TestDecisionTreeAccuracyAgainstScikitLearn(t *testing.T) {
-	if os.Getenv("INSYRA_RUN_ML_SKLEARN") != "1" {
-		t.Skip("set INSYRA_RUN_ML_SKLEARN=1 to compare against scikit-learn")
+	const verification = "the decision-tree comparison against scikit-learn"
+	// Opt-in because scikit-learn is usually absent. Strict mode says it is
+	// present, so the reason to stay opt-in no longer holds.
+	if os.Getenv("INSYRA_RUN_ML_SKLEARN") != "1" && !reftest.Strict() {
+		t.Skipf("set INSYRA_RUN_ML_SKLEARN=1 or %s=1 to run %s", reftest.StrictEnv, verification)
 	}
 	xTrain := [][]float64{{0, 0}, {0, 1}, {1, 0}, {1, 1}, {2, 0}, {2, 1}, {3, 0}, {3, 1}}
 	yTrain := []any{0, 0, 1, 1, 1, 1, 0, 0}
@@ -268,7 +272,7 @@ func TestDecisionTreeAccuracyAgainstScikitLearn(t *testing.T) {
 	}
 	output, err := exec.Command(pythonCommand, "-c", python).Output()
 	if err != nil {
-		t.Skipf("python with scikit-learn unavailable: %v", err)
+		reftest.Missing(t, "python with scikit-learn", verification, err)
 	}
 	var sklearnAccuracy float64
 	if err := json.Unmarshal([]byte(strings.TrimSpace(string(output))), &sklearnAccuracy); err != nil {

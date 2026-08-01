@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/internal/reftest"
 	"github.com/HazelnutParadise/insyra/ml"
 )
 
@@ -94,13 +95,14 @@ func TestONNXExportRefusesUnsupportedModelWithoutWriting(t *testing.T) {
 }
 
 func TestONNXIndependentRuntimeRoundTripOrExplicitlySkips(t *testing.T) {
+	const verification = "the ONNX round trip against an independent runtime"
 	python, err := exec.LookPath("python3")
 	if err != nil {
-		t.Skip("python3 is unavailable; ONNX runtime round-trip was not run")
+		reftest.Missing(t, "python3", verification, err)
 	}
 	check := exec.Command(python, "-c", "import onnxruntime, numpy")
 	if output, err := check.CombinedOutput(); err != nil {
-		t.Skipf("onnxruntime is unavailable; ONNX runtime round-trip was not run: %s", strings.TrimSpace(string(output)))
+		reftest.MissingOutput(t, "python3 with onnxruntime and numpy", verification, err, output)
 	}
 
 	cases := []struct {

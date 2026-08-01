@@ -30,8 +30,11 @@ jobs:
         r-version: "release"
     - name: Install Go dependencies
       run: go mod download
+    # scikit-learn is in this list because requireCrossLangTools imports it.
+    # It was missing until 2026-08-01, so the gate failed and every test in
+    # this workflow skipped — the job reported green by running nothing.
     - name: Install Python baseline dependencies
-      run: python -m pip install --upgrade pip numpy scipy statsmodels
+      run: python -m pip install --upgrade pip numpy scipy statsmodels scikit-learn
     - name: Install R baseline dependencies
       run: Rscript -e "install.packages(c('jsonlite','cluster','dbscan'), repos='https://cloud.r-project.org')"
     - name: Run clustering parity suite
