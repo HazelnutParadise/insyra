@@ -7,7 +7,7 @@
 `insyra/dl`: run ONNX models in pure Go, verified per-operator and per-model against `onnxruntime`, with the op families landing in the decided order MLP → attention → CNN, then phase 2 adds autodiff and optimisers on the same tensors (first-step gradients verified against PyTorch under fixed initial weights via SafeTensors). GGUF/LLM is a decided future track that reuses the kernels; only two v1 constraints serve it now — dtype-carrying tensors and kernels as plain functions.
 
 ## Active Workstreams
-`add-dl-autodiff-mlp` (M18 core slice) — dispatched to the Codex implementation pipeline; operator review and commit happen here. The SafeTensors reader (M18's first slice) is archived.
+None. Every proposed change is implemented, verified and archived — `openspec/changes/` holds nothing but `archive/`.
 
 ## Milestones
 | id | target | owner | status | verification_signal |
@@ -25,7 +25,7 @@
 | M16 | CNN-family ops | planning | done | a fixed-weight MNIST-class CNN — Conv, BatchNormalization, pooling, Pad — matches `onnxruntime` end to end, with one-op parity enumerating the attribute combinations rather than sampling defaults |
 | M19 | An honest CPU baseline for dl's hot kernels | planning | done | MatMul and Conv use all cores with exact output parity. Across four best-of-5 runs on the 8-core M3 (idle to loaded): encoder layer 3.35s → 0.73–1.11s (3.0x–4.6x, ~3.8x reproducible idle), CNN forward 526ms → 97–169ms (3.1x–5.4x, ~4.4x reproducible idle). The encoder sum keeps ~90ms of deliberately serial small ops; its MatMul share alone is ~4.4x. Ordered before M17 — a device claim measured against one core has been withdrawn once already and will not be manufactured again |
 | M17 | Inference reaches the device | planning | done | large 2-D MatMul runs on the device behind opt-in `accel/dlbridge`, bit-equal to the CPU on hardware (asserted with ==); the floor is measured at 16Mi MACs with the 4M–8M noise band refused; all dl suites pass with the bridge active; the measured encoder layer dropped from ~0.9s all-core CPU to 234ms (14.3x over the pre-M19 serial baseline). Batched products stay CPU by measurement |
-| M18 | Training (phase 2) | planning | in progress | SafeTensors reader done (exact round trip vs the Python library, refusals named, dtypes per the Tensor contract). Autodiff architecture decided and in ENG.md: a tape of plain functions with per-op VJPs, not a graph transform. Core slice in implementation: MLP-family VJPs, fused softmax–cross-entropy, SGD, first-step gradient parity vs PyTorch (torch now in the crosslang venv) |
+| M18 | Training (phase 2) | planning | in progress | the core holds: SafeTensors reader (exact vs the Python library) and the autodiff tape (MLP-family VJPs, fused softmax–cross-entropy, SGD) are archived, with first-step loss and every gradient matching PyTorch under identical SafeTensors weights, plus an ungated finite-difference check. Remaining slices: Adam, attention/CNN gradients |
 
 Milestone order is the blocking sequence. OpenSpec has no dependency relationship between changes, so nothing else carries it.
 
@@ -33,10 +33,10 @@ Milestone order is the blocking sequence. OpenSpec has no dependency relationshi
 None. Hardware coverage remains Apple/Metal-only, carried as the standing `AGENTS.md` follow-up.
 
 ## Next Verifiable Output
-`add-dl-autodiff-mlp`: a two-layer MLP whose first-step loss and every parameter gradient match PyTorch under identical SafeTensors-loaded weights, plus an ungated finite-difference check.
+The next M18 slice: Adam, then attention-family gradients (LayerNormalization, Gelu, axis-Softmax, batched MatMul VJPs) proved the same two ways — finite differences ungated, PyTorch parity gated. CNN gradients follow.
 
 ## Next Ticket
-`add-dl-autodiff-mlp` (M18 core) — being implemented. After it: Adam + attention/CNN gradients as later M18 slices. Two measured negatives stand as guardrails meanwhile: no batched device kernel without a single-dispatch batched measurement, and no device Conv without its own measurement.
+The Adam + attention-gradients change (to be cut). Two measured negatives stand as guardrails meanwhile: no batched device kernel without a single-dispatch batched measurement, and no device Conv without its own measurement.
 
 ## Decision Log
 Deltas that still change what someone would do. The standing technical decisions they produced — the precision contract, the device rules, the measured thresholds — live in [ENG.md](ENG.md); the full history is in git.
