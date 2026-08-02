@@ -12,7 +12,7 @@
 - [x] 2.3 Standard-domain operators the pipeline exports need: `Concat`, `Unsqueeze`, `Gather`, `OneHotEncoder`, `LabelEncoder`, plus `Cast`/string handling as the exporter requires
 
 ## 3. Round-trip closure
-- [ ] 3.1 For every family `ml` exports (linear, ridge, lasso, WLS, logistic, both trees, both forests, both boosters): export → `dl` load → run → compare against the fitted model's own predictions AND against `onnxruntime`, both within f32 tolerance
+- [x] 3.1 For every family `ml` exports (linear, ridge, lasso, WLS, logistic, both trees, both forests, both boosters): export → `dl` load → run → compare against the fitted model's own predictions AND against `onnxruntime`, both within f32 tolerance
 - [x] 3.2 The exported-pipeline case with preprocessing
 - [x] 3.3 One-op parity harness rows for each new operator where the Python `onnx` builder can express it
 
