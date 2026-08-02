@@ -2,8 +2,9 @@
 
 The `dl` package loads a focused subset of ONNX models and runs them with pure
 Go. It is intended for small inference graphs such as exported multilayer
-perceptrons and transformer encoder blocks. The graph is validated when it is
-loaded, and runtime inputs and outputs are bound by name.
+perceptrons, transformer encoder blocks, and MNIST-class CNN classifiers. The
+graph is validated when it is loaded, and runtime inputs and outputs are bound
+by name.
 
 ## Installation
 
@@ -75,6 +76,12 @@ tensors and reports the node name when a graph operation fails.
 | --- | --- |
 | `Gemm` | 2-D matrix product with `alpha`, `beta`, `transA`, and `transB` |
 | `MatMul` | 2-D fast path plus N-D matrix products with leading-batch broadcasting |
+| `Conv` | 2-D NCHW convolution with explicit or `auto_pad` padding, strides, dilations, bias, groups, and depthwise groups |
+| `MaxPool` | 2-D NCHW max pooling with kernel shape, padding, strides, and `auto_pad` |
+| `AveragePool` | 2-D NCHW average pooling with padding, strides, `auto_pad`, and `count_include_pad` |
+| `GlobalAveragePool` | 2-D spatial average pooling retaining singleton spatial dimensions |
+| `BatchNormalization` | inference-mode channel normalization with five inputs and configurable epsilon |
+| `Pad` | constant padding from attributes or initializer inputs; reflect and edge modes are refused |
 | `Add`, `Sub`, `Mul`, `Div`, `Pow` | float32 elementwise operations with broadcasting |
 | `Relu`, `Sigmoid`, `Tanh`, `Gelu`, `Erf`, `Sqrt` | elementwise activations and math |
 | `LayerNormalization` | suffix normalization with configurable axis and epsilon |
@@ -99,9 +106,12 @@ tensors and reports the node name when a graph operation fails.
 
 The standalone kernel functions can be called without constructing a graph.
 Their results are checked against one-operator ONNX graphs executed by
-`onnxruntime`. The package also tests fixed-weight MLP and transformer encoder
-round trips. The encoder proof contains two-head self-attention, residual
-connections, a feed-forward GELU block, and LayerNormalization.
+`onnxruntime`, including the padding, stride, dilation, grouping, and pooling
+attribute combinations. The package also tests fixed-weight MLP, transformer
+encoder, and MNIST-class CNN round trips. The encoder proof contains two-head
+self-attention, residual connections, a feed-forward GELU block, and
+LayerNormalization; the CNN proof covers convolution, BatchNormalization,
+pooling, and a softmax classifier.
 
 ## Real-model smoke test
 

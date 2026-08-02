@@ -92,6 +92,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - `dl` now reads `ml`'s exported regressors, tree ensembles, and preprocessing pipelines in pure Go via the `ai.onnx.ml` operator domain. `BindRegressor` and `BindClassifier` adapt loaded networks into the `ml` protocol structurally, with name-bound columns and conformance checks. The strict closure test covers binary logistic classifier labels and probabilities against both the fitted model and `onnxruntime`.
 - `dl` now supports N-D batched `MatMul` with NumPy-style leading-batch broadcasting, LayerNormalization, GELU, reduction and shape-control kernels, comparisons, slicing, splitting, and general-rank Transpose. The two-dimensional MatMul path remains the fast path.
 - Added one-op `onnxruntime` parity rows for the new kernels and a fixed-weight transformer encoder proof covering two-head self-attention, feed-forward GELU, residual connections, and LayerNormalization. A manual `INSYRA_DL_REAL_MODEL` smoke path runs supported local models and prints output shapes.
+- Added pure-Go CNN inference kernels for 2-D Conv, MaxPool, AveragePool, GlobalAveragePool, inference BatchNormalization, and constant Pad. Conv covers explicit and automatic padding, strides, dilations, groups, depthwise groups, and optional bias; pooling and Pad reject unsupported ONNX modes clearly. One-op parity enumerates the attribute combinations, and a fixed-weight MNIST-class CNN matches `onnxruntime` end to end.
 
 ### CLI
 
