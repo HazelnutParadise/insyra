@@ -1,0 +1,86 @@
+# dl-inference Specification
+
+## Purpose
+TBD - created by archiving change add-dl-onnx-mlp-inference. Update Purpose after archive.
+## Requirements
+### Requirement: An exported network loads and predicts in pure Go
+The system SHALL load an ONNX model from bytes and execute its graph on caller-supplied named inputs, in pure Go, returning named output tensors.
+
+#### Scenario: A trained MLP is loaded and run
+
+- **WHEN** a caller loads an `.onnx` file whose operators are all supported and supplies correctly-shaped inputs
+- **THEN** the outputs match `onnxruntime`'s outputs for the same file and inputs within single-precision tolerance
+
+#### Scenario: The file is malformed
+
+- **WHEN** the bytes are not a valid ONNX model
+- **THEN** loading returns an error and never panics, because a model file is untrusted input
+
+#### Scenario: The model uses operators outside the supported set
+
+- **WHEN** a model contains unsupported operators
+- **THEN** loading fails with one error naming every unsupported operator, not merely the first
+
+#### Scenario: Inputs do not match the model
+
+- **WHEN** a required input is missing, misshapen, or of the wrong type
+- **THEN** running returns an error naming the input and the mismatch
+
+### Requirement: Every kernel is proved against the reference runtime
+The system SHALL verify each supported operator against `onnxruntime` on generated single-operator graphs, and route the reference dependency through the shared toolchain gate.
+
+#### Scenario: An operator kernel is tested
+
+- **WHEN** the parity harness runs for any supported operator
+- **THEN** a minimal one-operator model is generated, both runtimes execute it on the same inputs, and outputs must agree within single-precision tolerance
+
+#### Scenario: The reference is absent
+
+- **WHEN** Python with `onnx` and `onnxruntime` is unavailable
+- **THEN** the harness reports through the shared reference-toolchain gate — skipping by default, failing under strict mode
+
+### Requirement: Tensors carry their dtype and kernels stand alone
+The system SHALL represent tensors with an explicit dtype even while f32 is the only implemented one, and SHALL expose kernels as plain functions independent of the graph interpreter.
+
+#### Scenario: A kernel is called without a graph
+
+- **WHEN** a caller invokes an operator function directly on tensors
+- **THEN** it computes without any model or interpreter involved
+
+#### Scenario: An unimplemented dtype is encountered
+
+- **WHEN** a model or tensor declares a dtype the runtime does not implement
+- **THEN** the operation is refused with an error naming the dtype, rather than silently reinterpreting the data
+
+### Requirement: A loaded network is a protocol model
+The system SHALL adapt a loaded ONNX model into the estimator protocol: features bound by column name, predictions returned as a data list, classifier adapters reporting classes and probabilities.
+
+#### Scenario: A network is scored like any other model
+
+- **WHEN** a caller binds a loaded model with feature names and passes a feature table
+- **THEN** columns are matched by name in the bound order, missing features are refused naming the column, and extra columns are ignored
+
+#### Scenario: A classifier adapter reports probabilities
+
+- **WHEN** a bound classifier predicts
+- **THEN** its class labels come from the caller-supplied class list, the label is the highest-probability class, and the probability table's columns follow the class order
+
+#### Scenario: The adapter is checked for conformance
+
+- **WHEN** the protocol conformance checks run against either adapter
+- **THEN** they pass
+
+### Requirement: What insyra writes, insyra reads
+The system SHALL execute the `ai.onnx.ml` operator domain used by `ml`'s exporter, so every model family `ml` exports loads and runs in pure Go.
+
+#### Scenario: An exported model reads back
+
+- **WHEN** any model family `ml` exports is written to ONNX and loaded by `dl`
+- **THEN** running it reproduces the original fitted model's own predictions within single-precision tolerance
+- **AND** matches `onnxruntime` on the same file and inputs
+
+#### Scenario: An exported pipeline reads back
+
+- **WHEN** a fitted pipeline with supported preprocessing is exported and loaded
+- **THEN** the whole graph — preprocessing and estimator — executes and matches both references
+

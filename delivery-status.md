@@ -19,9 +19,9 @@ None. Every proposed change is implemented, verified and archived — `openspec/
 | M10 | `insyra/ml` v1 | planning | done | protocol, pipelines, model selection, decision trees and ONNX export archived; 21 review findings raised, the blocking ones fixed, the rest adjudicated |
 | M11 | `ml` holds up under audit | planning | done | ONNX round-trip passes against a real `onnxruntime` for all five model shapes; `stats` refuses input it cannot read instead of scoring zeros; metrics declare a direction; pipelines name the columns their estimator saw |
 | M12 | A skip cannot pass for a pass | planning | done | strict mode fails on a missing toolchain and skips without it, verified in both directions; every gate routes through one helper; CI installs all three toolchains and runs with it set |
-| M13 | An ONNX MLP runs in pure Go | planning | in progress | a PyTorch-class MLP `.onnx` loads and predicts in `dl`, every kernel passing generated one-op parity against `onnxruntime` and the whole model matching within f32 tolerance |
-| M14 | `dl` models join the `ml` protocol | planning | pending | a `dl` model satisfies `ml.Model`, takes `DataTable` input, and `ml`'s own exports read back and run |
-| M15 | Attention-family ops | planning | pending | a BERT-class encoder runs and matches `onnxruntime`; kernels reusable by the future llm package |
+| M13 | An ONNX MLP runs in pure Go | planning | done | a PyTorch-class MLP `.onnx` loads and predicts in `dl`, every kernel passing generated one-op parity against `onnxruntime` and the whole model matching within f32 tolerance |
+| M14 | `dl` models join the `ml` protocol | planning | done | a `dl` model satisfies `ml.Model`, takes `DataTable` input, and `ml`'s own exports read back and run |
+| M15 | Attention-family ops | planning | in progress | a BERT-class encoder runs and matches `onnxruntime`; kernels reusable by the future llm package |
 | M16 | CNN-family ops | planning | pending | an MNIST-class classifier runs and matches `onnxruntime` |
 | M17 | Inference reaches the device | planning | pending | f32 kernels behind the accel seam, landed only where measured to win |
 | M18 | Training (phase 2) | planning | pending | autodiff + SGD/Adam on the same tensors; first-step gradients match PyTorch under fixed SafeTensors-loaded weights |
@@ -35,7 +35,7 @@ None. One coverage gap is carried in `AGENTS.md` follow-ups rather than here, be
 Undecided again, and healthily: KNN is wired (`accel/knnbridge`, opt-in blank import, two measured floors, exact parity on hardware), which was the line's first and so far only justified landing. The DBSCAN neighbourhood scan remains unmeasured and is the remaining candidate. Extending the shortlist beyond k=7, and multi-device execution of a single operation, are both unearned until a workload demands them.
 
 ## Next Ticket
-`add-dl-onnx-mlp-inference` (M13) — being implemented. `add-dl-ml-protocol` (M14) is cut next.
+`add-dl-attention-ops` (M15) — being implemented. `add-dl-cnn-ops` (M16) is cut and queued.
 
 ## Decision Log
 Deltas that still change what someone would do. The standing technical decisions they produced — the precision contract, the device rules, the measured thresholds — live in [ENG.md](ENG.md); the full history is in git.
