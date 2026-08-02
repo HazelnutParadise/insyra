@@ -7,7 +7,7 @@
 `insyra/dl`: run ONNX models in pure Go, verified per-operator and per-model against `onnxruntime`, with the op families landing in the decided order MLP → attention → CNN, then phase 2 adds autodiff and optimisers on the same tensors (first-step gradients verified against PyTorch under fixed initial weights via SafeTensors). GGUF/LLM is a decided future track that reuses the kernels; only two v1 constraints serve it now — dtype-carrying tensors and kernels as plain functions.
 
 ## Active Workstreams
-None. Every proposed change is implemented, verified and archived — `openspec/changes/` holds nothing but `archive/`.
+`add-dl-parallel-cpu-kernels` (M19, ordered before M17) — dispatched to the Codex implementation pipeline; operator review and commit happen here.
 
 ## Milestones
 | id | target | owner | status | verification_signal |
@@ -23,7 +23,8 @@ None. Every proposed change is implemented, verified and archived — `openspec/
 | M14 | `dl` models join the `ml` protocol | planning | done | a `dl` model satisfies `ml.Model`, takes `DataTable` input, and `ml`'s own exports read back and run |
 | M15 | Attention-family ops | planning | done | a fixed-weight two-head encoder block — batched MatMul, axis-Softmax, Gelu FFN, residuals, LayerNormalization — matches `onnxruntime` end to end; every operator carries one-op parity rows; `INSYRA_DL_REAL_MODEL` smokes local models. Kernels stay plain functions the future llm package can call |
 | M16 | CNN-family ops | planning | done | a fixed-weight MNIST-class CNN — Conv, BatchNormalization, pooling, Pad — matches `onnxruntime` end to end, with one-op parity enumerating the attribute combinations rather than sampling defaults |
-| M17 | Inference reaches the device | planning | pending | f32 kernels behind the accel seam, landed only where measured to win |
+| M19 | An honest CPU baseline for dl's hot kernels | planning | in progress | MatMul and Conv use all cores with bit-identical outputs; encoder-layer and CNN wall time drop ≥4x from the recorded M16 baseline. Ordered before M17 — a device claim measured against one core has been withdrawn once already and will not be manufactured again |
+| M17 | Inference reaches the device | planning | pending | f32 kernels behind the accel seam, landed only where measured to win against the M19 all-core baseline |
 | M18 | Training (phase 2) | planning | pending | autodiff + SGD/Adam on the same tensors; first-step gradients match PyTorch under fixed SafeTensors-loaded weights |
 
 Milestone order is the blocking sequence. OpenSpec has no dependency relationship between changes, so nothing else carries it.
@@ -35,10 +36,15 @@ None. One coverage gap is carried in `AGENTS.md` follow-ups rather than here, be
 Undecided again, and healthily: KNN is wired (`accel/knnbridge`, opt-in blank import, two measured floors, exact parity on hardware), which was the line's first and so far only justified landing. The DBSCAN neighbourhood scan remains unmeasured and is the remaining candidate. Extending the shortlist beyond k=7, and multi-device execution of a single operation, are both unearned until a workload demands them.
 
 ## Next Ticket
-None cut yet. M17 (device inference) is next, and the accel contract requires the measurement first: profile where encoder- and CNN-shaped workloads actually spend their time at realistic sizes, and cut the ticket only for kernels the measurement says a device would win. dl produces new f32 values, which the result-shape rule prices differently from selections — but dl tensors are natively f32, so the "types the device holds exactly" row applies if per-platform bit parity holds; where it does not, the ticket must decide tolerance versus bit-exact per platform before any kernel lands.
+`add-dl-parallel-cpu-kernels` (M19) — being implemented. M17 (device inference) is cut only after M19 lands and the device is re-measured against the all-core baseline; dl tensors are natively f32, so the "types the device holds exactly" row applies if per-platform bit parity holds, and where it does not the ticket must decide tolerance versus bit-exact per platform before any kernel lands.
 
 ## Decision Log
 Deltas that still change what someone would do. The standing technical decisions they produced — the precision contract, the device rules, the measured thresholds — live in [ENG.md](ENG.md); the full history is in git.
+
+- decision: dl's device milestone waits for a parallel CPU baseline; the ticket cut from the measurement is pure-CPU.
+  rationale: Profiled on an 8-core M3 at realistic sizes, MatMul is 98% of an encoder layer (3.37 s) and Conv is 98% of a CNN forward (530 ms) — and both are single-threaded naive loops. A GPU measured against that baseline would repeat the withdrawn one-core comparison with a larger multiplier. Output-element parallelism preserves each element's accumulation order, so the CPU win is bit-identical and costs no precision-contract decision, unlike the device path, which still owes a per-platform bit-parity answer.
+  timestamp: 2026-08-02
+  impacted_ticket_ids: add-dl-parallel-cpu-kernels, the future M17 change
 
 - decision: KNN is the first operation wired to the device, behind two measured floors — and the first benchmark overstated it.
   rationale: The transposed benchmark (dataset=train) won every shape up to 4.1x; re-measured in the wiring's own direction (dataset=test, the side the kernel parallelises over), the device LOSES below ~2k test rows — 469ms against the CPU's 324ms at 1k — because its wall time is nearly flat in test rows until it saturates. Above the floor it wins 1.4x (2k), 2.9x (4k), 3.7x (10k) on 100k×32. accel/knnbridge therefore gates on per-row work ≥ 2048 AND test rows ≥ 2048, and device parity with brute force is asserted exactly on hardware. The lesson is the same one this project keeps re-learning: the direction of a measurement is part of the measurement.
