@@ -1,13 +1,13 @@
 # Delivery Status
 
 ## Current Phase
-`insyra/dl` phase 1 (ONNX inference) has begun; `insyra/ml` v1 is shipped, audited and merged to dev (PR #194). Acceleration has exactly one wired call site (KNN), which measurement earned.
+`insyra/dl` phase 1 (ONNX inference): MLP and attention families are done; the CNN family (M16) is in implementation. `insyra/ml` v1 is shipped, audited and merged to dev (PR #194). Acceleration has exactly one wired call site (KNN), which measurement earned.
 
 ## Stage Objective
 `insyra/dl`: run ONNX models in pure Go, verified per-operator and per-model against `onnxruntime`, with the op families landing in the decided order MLP → attention → CNN, then phase 2 adds autodiff and optimisers on the same tensors (first-step gradients verified against PyTorch under fixed initial weights via SafeTensors). GGUF/LLM is a decided future track that reuses the kernels; only two v1 constraints serve it now — dtype-carrying tensors and kernels as plain functions.
 
 ## Active Workstreams
-None. Every proposed change is implemented, verified and archived — `openspec/changes/` holds nothing but `archive/`.
+`add-dl-cnn-ops` (M16) — dispatched to the Codex implementation pipeline; operator review and commit happen here.
 
 ## Milestones
 | id | target | owner | status | verification_signal |
@@ -21,8 +21,8 @@ None. Every proposed change is implemented, verified and archived — `openspec/
 | M12 | A skip cannot pass for a pass | planning | done | strict mode fails on a missing toolchain and skips without it, verified in both directions; every gate routes through one helper; CI installs all three toolchains and runs with it set |
 | M13 | An ONNX MLP runs in pure Go | planning | done | a PyTorch-class MLP `.onnx` loads and predicts in `dl`, every kernel passing generated one-op parity against `onnxruntime` and the whole model matching within f32 tolerance |
 | M14 | `dl` models join the `ml` protocol | planning | done | a `dl` model satisfies `ml.Model`, takes `DataTable` input, and `ml`'s own exports read back and run |
-| M15 | Attention-family ops | planning | in progress | a BERT-class encoder runs and matches `onnxruntime`; kernels reusable by the future llm package |
-| M16 | CNN-family ops | planning | pending | an MNIST-class classifier runs and matches `onnxruntime` |
+| M15 | Attention-family ops | planning | done | a fixed-weight two-head encoder block — batched MatMul, axis-Softmax, Gelu FFN, residuals, LayerNormalization — matches `onnxruntime` end to end; every operator carries one-op parity rows; `INSYRA_DL_REAL_MODEL` smokes local models. Kernels stay plain functions the future llm package can call |
+| M16 | CNN-family ops | planning | in progress | an MNIST-class classifier runs and matches `onnxruntime` |
 | M17 | Inference reaches the device | planning | pending | f32 kernels behind the accel seam, landed only where measured to win |
 | M18 | Training (phase 2) | planning | pending | autodiff + SGD/Adam on the same tensors; first-step gradients match PyTorch under fixed SafeTensors-loaded weights |
 
@@ -35,7 +35,7 @@ None. One coverage gap is carried in `AGENTS.md` follow-ups rather than here, be
 Undecided again, and healthily: KNN is wired (`accel/knnbridge`, opt-in blank import, two measured floors, exact parity on hardware), which was the line's first and so far only justified landing. The DBSCAN neighbourhood scan remains unmeasured and is the remaining candidate. Extending the shortlist beyond k=7, and multi-device execution of a single operation, are both unearned until a workload demands them.
 
 ## Next Ticket
-`add-dl-attention-ops` (M15) — being implemented. `add-dl-cnn-ops` (M16) is cut and queued.
+`add-dl-cnn-ops` (M16) — being implemented. M17 (device inference, measured) is next to cut; its scope should be drawn from where the encoder and CNN proofs actually spend their time, so cut it after M16's kernels exist to measure.
 
 ## Decision Log
 Deltas that still change what someone would do. The standing technical decisions they produced — the precision contract, the device rules, the measured thresholds — live in [ENG.md](ENG.md); the full history is in git.
