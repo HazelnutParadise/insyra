@@ -85,6 +85,10 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - ONNX export covers the new families: ridge, lasso and WLS through the linear-regressor path, and both forests and both boosters as multi-tree ensembles — a forest's leaves scaled by 1/T so the runtime's sum is the average, boosting with the learning rate baked into leaf weights and the prior as base value. Binary classifiers use the runtime's single-score convention: written with both classes' weights, the probabilities came back exactly right while every label came back 1, so two-class ensembles carry one score per leaf and the runtime computes the complement and the half-threshold label. All seven families pass the independent onnxruntime round trip.
 - Decision trees gained `ExactSplits`: every midpoint between adjacent distinct numeric values is a split candidate — scikit-learn's CART search — alongside the default histogram search. The split criteria already matched (Gini, variance), so the exact tree is verified prediction-for-prediction against scikit-learn: classification labels exact on a probe grid, regression within single-precision tolerance. Histogram stays the default for its O(MaxBins) cost; combining the two options is refused, and ensembles inherit the choice.
 
+### `dl`
+
+- Added pure-Go float32 ONNX inference for a focused MLP operator family. Models are decoded with `protowire`, validated at load time, and run with named inputs and outputs. Malformed files return errors without panicking, and unsupported operators are listed together. Standalone tensor kernels and a fixed-weight MLP are verified against `onnxruntime`.
+
 ### CLI
 
 - `load <file.csv>` accepts `infer true|false`, defaulting to `true`. Passing `infer false` loads every cell as a raw string. The option is rejected for JSON and Excel files.

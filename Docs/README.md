@@ -64,6 +64,7 @@ dt.Show()
 | ----------------- | ------------------------------------------------------- |
 | [stats](stats.md) | Correlation, hypothesis testing, regression, ANOVA, PCA, clustering |
 | [ml](ml.md)       | Common estimator and transformer protocol over `stats` models |
+| [dl](dl.md)       | Pure-Go float32 ONNX inference for focused MLP graphs |
 
 #### Visualization
 

@@ -657,6 +657,19 @@ skipped explicitly when that runtime is unavailable.
 Encoder configurations with `UnknownError`, `UnknownAsNew`, or a fitted nil
 category are refused for the same reason.
 
+### Pure-Go ONNX inference
+
+Use `github.com/HazelnutParadise/insyra/dl` when a service needs to load and
+run a supported float32 ONNX graph without cgo or a runtime binding. Create
+row-major tensors with `dl.NewTensor`, load from an `io.Reader` with
+`dl.LoadONNX`, then call `model.Run` with a map keyed by the model's declared
+input names. Check the returned error: loading rejects malformed files and
+lists unsupported operators together, while running validates required input
+names, dtypes, ranks, and fixed dimensions. The current operator family is
+the MLP subset documented in `Docs/dl.md`; do not assume arbitrary ONNX models
+are supported. `Add`, `Sub`, and `Mul` broadcast trailing dimensions, and the
+standalone kernel functions can be used without the graph interpreter.
+
 Use `engine` when you are building higher-level tooling (agent tools, MCP servers, pipelines) and want reusable building blocks:
 
 - `engine/atomic`: actor-style `AtomicDo` helpers for serialized critical sections.
