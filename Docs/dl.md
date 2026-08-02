@@ -117,6 +117,52 @@ are refused together in one error, with every tensor name and dtype listed.
 There is no silent widening or narrowing, and the loader does not mmap or load
 tensors lazily.
 
+## Training and autodiff
+
+`dl` also provides a small reverse-mode tape for the MLP family. The tape calls
+the existing tensor kernels during the forward pass and stores one VJP record
+per call; it does not transform an ONNX graph.
+
+```go
+tape := dl.NewTape()
+w1, err := tape.Param(weights["layer1.weight"])
+if err != nil { log.Fatal(err) }
+b1, err := tape.Param(weights["layer1.bias"])
+if err != nil { log.Fatal(err) }
+w2, err := tape.Param(weights["layer2.weight"])
+if err != nil { log.Fatal(err) }
+b2, err := tape.Param(weights["layer2.bias"])
+if err != nil { log.Fatal(err) }
+
+hidden, err := tape.MatMul(input, w1.Value())
+if err != nil { log.Fatal(err) }
+hidden, err = tape.Add(hidden, b1.Value())
+if err != nil { log.Fatal(err) }
+hidden, err = tape.Relu(hidden)
+if err != nil { log.Fatal(err) }
+logits, err := tape.MatMul(hidden, w2.Value())
+if err != nil { log.Fatal(err) }
+logits, err = tape.Add(logits, b2.Value())
+if err != nil { log.Fatal(err) }
+
+loss, err := tape.SoftmaxCrossEntropy(logits, labels)
+if err != nil { log.Fatal(err) }
+if err := tape.Backward(loss); err != nil { log.Fatal(err) }
+if err := tape.SGD(0.01); err != nil { log.Fatal(err) }
+gradient := w1.Grad()
+```
+
+The differentiable wrappers are `MatMul`, `Add`, `Relu`, `Sigmoid`, `Tanh`,
+and `Gemm` with alpha, beta, and transpose attributes. `SoftmaxCrossEntropy`
+takes logits
+with shape `[N, C]` and int64 labels with shape `[N]`, and returns one mean-loss
+scalar. Its backward pass emits the fused stable `(softmax - onehot) / N`
+gradient; a separated softmax plus log-loss path is not provided. `SGD` applies
+one in-place `w -= learningRate * gradient` step to every tracked parameter.
+Gradients are float32 and are available through `Parameter.Grad()` or
+`Tape.Grad(parameter.Value())` after `Backward`; an unconnected tracked
+parameter receives a zero tensor.
+
 ## Supported operators
 
 | Operator | Notes |
