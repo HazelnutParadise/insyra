@@ -676,9 +676,12 @@ GELU, LayerNormalization, and the CNN family (`Conv`, pooling,
 `BatchNormalization`, and constant `Pad`), so fixed-weight transformer
 encoder blocks and MNIST-class CNN classifiers can run without torch, cgo, or
 an external runtime. Conv supports 2-D padding, strides, dilations, groups,
-and depthwise groups; use the operator table in `Docs/dl.md` as the support
-boundary, and use `INSYRA_DL_REAL_MODEL` with the manual smoke test when
-checking a local model's unsupported operators.
+and depthwise groups. Large MatMul and Conv workloads use all CPU cores while
+preserving each output's serial accumulation order, so their parallel results
+are bit-identical to serial results; small workloads remain serial. Use the
+operator table in `Docs/dl.md` as the support boundary, and use
+`INSYRA_DL_REAL_MODEL` with the manual smoke test when checking a local
+model's unsupported operators.
 
 To use a loaded network inside the ml protocol, bind it:
 `dl.BindRegressor(model, inputName, features)` or

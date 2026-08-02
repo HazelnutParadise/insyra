@@ -7,7 +7,7 @@
 `insyra/dl`: run ONNX models in pure Go, verified per-operator and per-model against `onnxruntime`, with the op families landing in the decided order MLP → attention → CNN, then phase 2 adds autodiff and optimisers on the same tensors (first-step gradients verified against PyTorch under fixed initial weights via SafeTensors). GGUF/LLM is a decided future track that reuses the kernels; only two v1 constraints serve it now — dtype-carrying tensors and kernels as plain functions.
 
 ## Active Workstreams
-`add-dl-parallel-cpu-kernels` (M19, ordered before M17) — dispatched to the Codex implementation pipeline; operator review and commit happen here.
+`add-dl-parallel-cpu-kernels` (M19, ordered before M17) — implementation and verification complete; operator review and commit happen here.
 
 ## Milestones
 | id | target | owner | status | verification_signal |
@@ -23,7 +23,7 @@
 | M14 | `dl` models join the `ml` protocol | planning | done | a `dl` model satisfies `ml.Model`, takes `DataTable` input, and `ml`'s own exports read back and run |
 | M15 | Attention-family ops | planning | done | a fixed-weight two-head encoder block — batched MatMul, axis-Softmax, Gelu FFN, residuals, LayerNormalization — matches `onnxruntime` end to end; every operator carries one-op parity rows; `INSYRA_DL_REAL_MODEL` smokes local models. Kernels stay plain functions the future llm package can call |
 | M16 | CNN-family ops | planning | done | a fixed-weight MNIST-class CNN — Conv, BatchNormalization, pooling, Pad — matches `onnxruntime` end to end, with one-op parity enumerating the attribute combinations rather than sampling defaults |
-| M19 | An honest CPU baseline for dl's hot kernels | planning | in progress | MatMul and Conv use all cores with bit-identical outputs; encoder-layer and CNN wall time drop ≥4x from the recorded M16 baseline. Ordered before M17 — a device claim measured against one core has been withdrawn once already and will not be manufactured again |
+| M19 | An honest CPU baseline for dl's hot kernels | planning | done | MatMul and Conv use all cores with exact output parity. Across four best-of-5 runs on the 8-core M3 (idle to loaded): encoder layer 3.35s → 0.73–1.11s (3.0x–4.6x, ~3.8x reproducible idle), CNN forward 526ms → 97–169ms (3.1x–5.4x, ~4.4x reproducible idle). The encoder sum keeps ~90ms of deliberately serial small ops; its MatMul share alone is ~4.4x. Ordered before M17 — a device claim measured against one core has been withdrawn once already and will not be manufactured again |
 | M17 | Inference reaches the device | planning | pending | f32 kernels behind the accel seam, landed only where measured to win against the M19 all-core baseline |
 | M18 | Training (phase 2) | planning | pending | autodiff + SGD/Adam on the same tensors; first-step gradients match PyTorch under fixed SafeTensors-loaded weights |
 
@@ -33,10 +33,10 @@ Milestone order is the blocking sequence. OpenSpec has no dependency relationshi
 None. One coverage gap is carried in `AGENTS.md` follow-ups rather than here, because it waits on hardware nobody has rather than on a decision: the device path is verified on Apple and Metal only.
 
 ## Next Verifiable Output
-Undecided again, and healthily: KNN is wired (`accel/knnbridge`, opt-in blank import, two measured floors, exact parity on hardware), which was the line's first and so far only justified landing. The DBSCAN neighbourhood scan remains unmeasured and is the remaining candidate. Extending the shortlist beyond k=7, and multi-device execution of a single operation, are both unearned until a workload demands them.
+M17 can now be measured against the all-core M19 baseline. The device path still owes a per-platform bit-parity result before any `dl` f32 kernel is proposed.
 
 ## Next Ticket
-`add-dl-parallel-cpu-kernels` (M19) — being implemented. M17 (device inference) is cut only after M19 lands and the device is re-measured against the all-core baseline; dl tensors are natively f32, so the "types the device holds exactly" row applies if per-platform bit parity holds, and where it does not the ticket must decide tolerance versus bit-exact per platform before any kernel lands.
+`M17` — device inference, measured against the all-core M19 baseline. `dl` tensors are natively f32, so the "types the device holds exactly" row applies if per-platform bit parity holds; where it does not, the ticket must decide tolerance versus bit-exact behavior before any kernel lands.
 
 ## Decision Log
 Deltas that still change what someone would do. The standing technical decisions they produced — the precision contract, the device rules, the measured thresholds — live in [ENG.md](ENG.md); the full history is in git.

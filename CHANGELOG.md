@@ -93,6 +93,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - `dl` now supports N-D batched `MatMul` with NumPy-style leading-batch broadcasting, LayerNormalization, GELU, reduction and shape-control kernels, comparisons, slicing, splitting, and general-rank Transpose. The two-dimensional MatMul path remains the fast path.
 - Added one-op `onnxruntime` parity rows for the new kernels and a fixed-weight transformer encoder proof covering two-head self-attention, feed-forward GELU, residual connections, and LayerNormalization. A manual `INSYRA_DL_REAL_MODEL` smoke path runs supported local models and prints output shapes.
 - Added pure-Go CNN inference kernels for 2-D Conv, MaxPool, AveragePool, GlobalAveragePool, inference BatchNormalization, and constant Pad. Conv covers explicit and automatic padding, strides, dilations, groups, depthwise groups, and optional bias; pooling and Pad reject unsupported ONNX modes clearly. One-op parity enumerates the attribute combinations, and a fixed-weight MNIST-class CNN matches `onnxruntime` end to end.
+- `MatMul` (2-D and batched) and `Conv` now use all CPU cores for large workloads while preserving each output's serial accumulation order, so results are bit-identical. Measured on an 8-core M3, an encoder layer dropped from 3.35s to roughly 0.9s and an MNIST-class CNN forward from 526ms to roughly 120ms (about 3.8x and 4.4x reproducibly; individual runs ranged up to 4.6x and 5.4x); small workloads remain serial.
 
 ### CLI
 

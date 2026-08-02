@@ -36,6 +36,9 @@ fmt.Println(input.Strides()) // [3 1]
 `Shape`, `Strides`, and the typed data accessors return copies. Elementwise
 float32 arithmetic and batched `MatMul` use NumPy-style broadcasting. `MatMul`
 keeps a tight two-dimensional path and broadcasts all leading batch dimensions.
+Large `MatMul` and `Conv` workloads distribute independent output work across
+all CPU cores. Each output keeps the serial accumulation order, so parallel
+results are bit-identical to serial results; small workloads stay serial.
 `NewInt64Tensor`, `NewStringTensor`, and `NewBoolTensor` build the control and
 label tensors used by ONNX graphs.
 
