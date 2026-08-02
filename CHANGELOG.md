@@ -90,6 +90,8 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 - Added pure-Go float32 ONNX inference for a focused MLP operator family. Models are decoded with `protowire`, validated at load time, and run with named inputs and outputs. Malformed files return errors without panicking, and unsupported operators are listed together. Standalone tensor kernels and a fixed-weight MLP are verified against `onnxruntime`.
 - `dl` now reads `ml`'s exported regressors, tree ensembles, and preprocessing pipelines in pure Go via the `ai.onnx.ml` operator domain. `BindRegressor` and `BindClassifier` adapt loaded networks into the `ml` protocol structurally, with name-bound columns and conformance checks. The strict closure test covers binary logistic classifier labels and probabilities against both the fitted model and `onnxruntime`.
+- `dl` now supports N-D batched `MatMul` with NumPy-style leading-batch broadcasting, LayerNormalization, GELU, reduction and shape-control kernels, comparisons, slicing, splitting, and general-rank Transpose. The two-dimensional MatMul path remains the fast path.
+- Added one-op `onnxruntime` parity rows for the new kernels and a fixed-weight transformer encoder proof covering two-head self-attention, feed-forward GELU, residual connections, and LayerNormalization. A manual `INSYRA_DL_REAL_MODEL` smoke path runs supported local models and prints output shapes.
 
 ### CLI
 

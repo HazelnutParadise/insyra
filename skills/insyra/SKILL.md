@@ -671,6 +671,11 @@ models are supported. `Add`, `Sub`, `Mul`, and `Div` broadcast trailing
 dimensions, and the standalone kernel functions can be used without the graph
 interpreter. `int64`, `string`, and `bool` tensors are available for the
 categorical graph paths and classifier labels.
+The same interpreter covers N-D batched `MatMul`, attention shape operations,
+GELU, and LayerNormalization, so a fixed-weight transformer encoder block can
+run without torch, cgo, or an external runtime. Use the operator table in
+`Docs/dl.md` as the support boundary, and use `INSYRA_DL_REAL_MODEL` with the
+manual smoke test when checking a local model's unsupported operators.
 
 To use a loaded network inside the ml protocol, bind it:
 `dl.BindRegressor(model, inputName, features)` or

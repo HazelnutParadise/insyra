@@ -2,8 +2,8 @@
 
 The `dl` package loads a focused subset of ONNX models and runs them with pure
 Go. It is intended for small inference graphs such as exported multilayer
-perceptrons. The graph is validated when it is loaded, and runtime inputs and
-outputs are bound by name.
+perceptrons and transformer encoder blocks. The graph is validated when it is
+loaded, and runtime inputs and outputs are bound by name.
 
 ## Installation
 
@@ -33,7 +33,8 @@ fmt.Println(input.Strides()) // [3 1]
 ```
 
 `Shape`, `Strides`, and the typed data accessors return copies. Elementwise
-float32 arithmetic uses NumPy-style trailing-dimension broadcasting.
+float32 arithmetic and batched `MatMul` use NumPy-style broadcasting. `MatMul`
+keeps a tight two-dimensional path and broadcasts all leading batch dimensions.
 `NewInt64Tensor`, `NewStringTensor`, and `NewBoolTensor` build the control and
 label tensors used by ONNX graphs.
 
@@ -73,16 +74,19 @@ tensors and reports the node name when a graph operation fails.
 | Operator | Notes |
 | --- | --- |
 | `Gemm` | 2-D matrix product with `alpha`, `beta`, `transA`, and `transB` |
-| `MatMul` | 2-D matrix product |
-| `Add`, `Sub`, `Mul`, `Div` | float32 elementwise operations with broadcasting |
-| `Relu`, `Sigmoid`, `Tanh` | elementwise activations |
+| `MatMul` | 2-D fast path plus N-D matrix products with leading-batch broadcasting |
+| `Add`, `Sub`, `Mul`, `Div`, `Pow` | float32 elementwise operations with broadcasting |
+| `Relu`, `Sigmoid`, `Tanh`, `Gelu`, `Erf`, `Sqrt` | elementwise activations and math |
+| `LayerNormalization` | suffix normalization with configurable axis and epsilon |
+| `ReduceMean` | reduction over one or more axes with optional keepdims |
 | `Softmax` | numerically stable, configurable axis |
 | `Identity` | independent tensor copy |
 | `Reshape` | row-major reshape with `-1` inference |
 | `Flatten` | collapse dimensions around an axis |
-| `Transpose` | explicit permutation or reversed dimensions |
-| `Concat`, `Unsqueeze`, `Gather` | standard-domain shape and feature assembly |
-| `GreaterOrEqual`, `Where` | standard-domain categorical missing-value handling |
+| `Transpose` | explicit permutation or reversed dimensions at any rank |
+| `Concat`, `Squeeze`, `Unsqueeze`, `Expand`, `Shape`, `Gather` | standard-domain shape and feature assembly |
+| `Slice`, `Split` | standard-domain tensor partitioning and slicing |
+| `Equal`, `Greater`, `GreaterOrEqual`, `Where` | broadcast comparisons and selection |
 | `Cast` | float32, int64, string, and bool conversions used by the exporter |
 | `Constant` | typed tensor attribute |
 | `ai.onnx.ml:OneHotEncoder` | string or int64 categories to float32 indicator columns |
@@ -95,7 +99,25 @@ tensors and reports the node name when a graph operation fails.
 
 The standalone kernel functions can be called without constructing a graph.
 Their results are checked against one-operator ONNX graphs executed by
-`onnxruntime`, and the package also tests a fixed-weight MLP round trip.
+`onnxruntime`. The package also tests fixed-weight MLP and transformer encoder
+round trips. The encoder proof contains two-head self-attention, residual
+connections, a feed-forward GELU block, and LayerNormalization.
+
+## Real-model smoke test
+
+For a manual smoke run against a local model, set
+`INSYRA_DL_REAL_MODEL` to an `.onnx` path and run:
+
+```bash
+INSYRA_DL_REAL_MODEL=/path/to/model.onnx go test ./dl -run TestRealModelSmoke -v
+```
+
+The test loads the model and fails with the loader's complete unsupported
+operator list when the graph is outside the supported boundary. For a loaded
+model it supplies synthetic inputs from the declared shapes, runs the graph,
+and prints each output shape. Dynamic dimensions use size `1`; mask-like
+integer and boolean inputs use ones or `true`. This path is intentionally
+manual and is not required by CI.
 
 ## The closed loop with `ml`
 
