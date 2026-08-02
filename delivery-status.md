@@ -24,7 +24,7 @@ None. Every proposed change is implemented, verified and archived — `openspec/
 | M15 | Attention-family ops | planning | done | a fixed-weight two-head encoder block — batched MatMul, axis-Softmax, Gelu FFN, residuals, LayerNormalization — matches `onnxruntime` end to end; every operator carries one-op parity rows; `INSYRA_DL_REAL_MODEL` smokes local models. Kernels stay plain functions the future llm package can call |
 | M16 | CNN-family ops | planning | done | a fixed-weight MNIST-class CNN — Conv, BatchNormalization, pooling, Pad — matches `onnxruntime` end to end, with one-op parity enumerating the attribute combinations rather than sampling defaults |
 | M19 | An honest CPU baseline for dl's hot kernels | planning | done | MatMul and Conv use all cores with exact output parity. Across four best-of-5 runs on the 8-core M3 (idle to loaded): encoder layer 3.35s → 0.73–1.11s (3.0x–4.6x, ~3.8x reproducible idle), CNN forward 526ms → 97–169ms (3.1x–5.4x, ~4.4x reproducible idle). The encoder sum keeps ~90ms of deliberately serial small ops; its MatMul share alone is ~4.4x. Ordered before M17 — a device claim measured against one core has been withdrawn once already and will not be manufactured again |
-| M17 | Inference reaches the device | planning | pending | f32 kernels behind the accel seam, landed only where measured to win against the M19 all-core baseline |
+| M17 | Inference reaches the device | planning | in progress | measurement done and positive: large 2-D MatMul wins 8.9x–52x bit-identically on Apple/Metal; batched small products lose and stay CPU. Wiring lands behind an opt-in bridge (the KNN pattern) with per-platform parity asserted and CPU fallback observable |
 | M18 | Training (phase 2) | planning | pending | autodiff + SGD/Adam on the same tensors; first-step gradients match PyTorch under fixed SafeTensors-loaded weights |
 
 Milestone order is the blocking sequence. OpenSpec has no dependency relationship between changes, so nothing else carries it.
@@ -33,13 +33,18 @@ Milestone order is the blocking sequence. OpenSpec has no dependency relationshi
 None. One coverage gap is carried in `AGENTS.md` follow-ups rather than here, because it waits on hardware nobody has rather than on a decision: the device path is verified on Apple and Metal only.
 
 ## Next Verifiable Output
-M17 can now be measured against the all-core M19 baseline. The device path still owes a per-platform bit-parity result before any `dl` f32 kernel is proposed.
+The M17 wiring: a dl inference whose large MatMuls run on the device through an opt-in bridge, asserted bit-equal to the CPU path on hardware, with the CPU fallback observable and the batched attention products untouched.
 
 ## Next Ticket
-`M17` — device inference, measured against the all-core M19 baseline. `dl` tensors are natively f32, so the "types the device holds exactly" row applies if per-platform bit parity holds; where it does not, the ticket must decide tolerance versus bit-exact behavior before any kernel lands.
+The M17 wiring change (to be cut): device 2-D MatMul above a measured size floor, reachable only through an opt-in `accel` bridge so `dl` keeps its zero-dependency default; bit parity asserted exactly on hardware per platform, CPU fallback observable, strict GPU mode failing. The measured floor and the single-dispatch batched kernel are the two open scope questions.
 
 ## Decision Log
 Deltas that still change what someone would do. The standing technical decisions they produced — the precision contract, the device rules, the measured thresholds — live in [ENG.md](ENG.md); the full history is in git.
+
+- decision: Device matmul is earned for large single-dispatch shapes, bit-identically on Apple/Metal; per-batch small dispatches are refused by measurement.
+  rationale: Measured on the M3 against the M19 all-core baseline, best of 5, upload+dispatch+readback included: [4096,256]×[256,256] 9.3ms vs 82.4ms (8.9x), FFN up 58.5ms vs 683ms (11.7x), FFN down 55.4ms vs 730ms (13.2x), [4096,4096]² 1.87s vs 97.2s (52x) — and every shape, including the losers, returned maxULP=0 because the prototype's per-output thread accumulates along k in the CPU's serial order. The attention-shaped batched products lose (1.08x–2.08x against) when driven as 128 separate dispatches, so they stay on the CPU until a single-dispatch batched kernel is measured. Bit parity is an observation about Apple/Metal, not a property of the kernel; the wiring must assert it per platform and fall back to CPU where it fails, which the Apple-only follow-up already anticipates.
+  timestamp: 2026-08-02
+  impacted_ticket_ids: add-dl-device-matmul-measurement (archived), the M17 wiring change
 
 - decision: dl's device milestone waits for a parallel CPU baseline; the ticket cut from the measurement is pure-CPU.
   rationale: Profiled on an 8-core M3 at realistic sizes, MatMul is 98% of an encoder layer (3.37 s) and Conv is 98% of a CNN forward (530 ms) — and both are single-threaded naive loops. A GPU measured against that baseline would repeat the withdrawn one-core comparison with a larger multiplier. Output-element parallelism preserves each element's accumulation order, so the CPU win is bit-identical and costs no precision-contract decision, unlike the device path, which still owes a per-platform bit-parity answer.
