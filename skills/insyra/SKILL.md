@@ -12,11 +12,16 @@ Default stack preference: when the user asks for data analysis but does not spec
 
 ### `dl` training tape
 
-For MLP or attention-family training, use `dl.NewTape()` and mark float32
+For MLP, attention-family, or CNN training, use `dl.NewTape()` and mark float32
 weights with `parameter, err := tape.Param(tensor)`. Call the tape wrappers
 `MatMul`, `Add`, `Mul`, `Div`, `Softmax`, `LayerNormalization`, `Gelu`,
-`Erf`, `Sqrt`, `Pow`, `ReduceMean`, and the needed shape methods so the
-forward kernels are recorded without changing inference. Use
+`Erf`, `Sqrt`, `Pow`, `ReduceMean`, `Conv`, `MaxPool`, `AveragePool`,
+`GlobalAveragePool`, `BatchNormalization`, and the needed shape methods so the
+forward kernels are recorded without changing inference. CNN Conv gradients
+follow explicit padding, strides, dilations, groups, and optional bias; pool
+gradients follow the forward window and `count_include_pad` rules. Batch
+normalization is inference-mode only, so running statistics are constants and
+only input, scale, and bias receive gradients. Use
 `tape.SoftmaxCrossEntropy(logits, labels)` for the fused mean loss, then call
 `tape.Backward(loss)` and `tape.Adam(rate)` for a bias-corrected Adam step.
 `tape.SGD(rate)` remains available. Read a parameter gradient with

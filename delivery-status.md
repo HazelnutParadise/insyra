@@ -1,7 +1,7 @@
 # Delivery Status
 
 ## Current Phase
-`insyra/dl` phase 1 (ONNX inference): the MLP, attention, and CNN operator families are all done and archived — the decided op-family order is complete. Next is M17 (device inference, measured) and M18 (training). `insyra/ml` v1 is shipped, audited and merged to dev (PR #194). Acceleration now has two opt-in wired call sites: KNN and large 2-D `dl` MatMul.
+`insyra/dl` phase 2 (training): the MLP, attention, and CNN operator families are done, and M18 is complete — the tape now trains a deterministic MNIST-class CNN for one Adam step with PyTorch parity. `insyra/ml` v1 is shipped, audited and merged to dev (PR #194). Acceleration now has two opt-in wired call sites: KNN and large 2-D `dl` MatMul.
 
 ## Stage Objective
 `insyra/dl`: run ONNX models in pure Go, verified per-operator and per-model against `onnxruntime`, with the op families landing in the decided order MLP → attention → CNN, then phase 2 adds autodiff and optimisers on the same tensors (first-step gradients verified against PyTorch under fixed initial weights via SafeTensors). GGUF/LLM is a decided future track that reuses the kernels; only two v1 constraints serve it now — dtype-carrying tensors and kernels as plain functions.
@@ -25,7 +25,7 @@ None. Every proposed change is implemented, verified and archived — `openspec/
 | M16 | CNN-family ops | planning | done | a fixed-weight MNIST-class CNN — Conv, BatchNormalization, pooling, Pad — matches `onnxruntime` end to end, with one-op parity enumerating the attribute combinations rather than sampling defaults |
 | M19 | An honest CPU baseline for dl's hot kernels | planning | done | MatMul and Conv use all cores with exact output parity. Across four best-of-5 runs on the 8-core M3 (idle to loaded): encoder layer 3.35s → 0.73–1.11s (3.0x–4.6x, ~3.8x reproducible idle), CNN forward 526ms → 97–169ms (3.1x–5.4x, ~4.4x reproducible idle). The encoder sum keeps ~90ms of deliberately serial small ops; its MatMul share alone is ~4.4x. Ordered before M17 — a device claim measured against one core has been withdrawn once already and will not be manufactured again |
 | M17 | Inference reaches the device | planning | done | large 2-D MatMul runs on the device behind opt-in `accel/dlbridge`, bit-equal to the CPU on hardware (asserted with ==); the floor is measured at 16Mi MACs with the 4M–8M noise band refused; all dl suites pass with the bridge active; the measured encoder layer dropped from ~0.9s all-core CPU to 234ms (14.3x over the pre-M19 serial baseline). Batched products stay CPU by measurement |
-| M18 | Training (phase 2) | planning | in progress | SafeTensors, the tape (MLP VJPs, fused softmax–cross-entropy, SGD), attention-family gradients, and Adam are archived — a fixed two-head encoder block takes one Adam step in dl and PyTorch agrees on loss, every gradient, and every post-step parameter, with every VJP also pinned by ungated finite differences. Remaining slice: CNN gradients |
+| M18 | Training (phase 2) | planning | done | SafeTensors, the tape (MLP VJPs, fused softmax–cross-entropy, SGD), attention-family gradients, Adam, and CNN VJPs are complete — a fixed two-head encoder block and a deterministic MNIST-class CNN each take one Adam step in dl and PyTorch agrees on loss, every gradient, and every post-step parameter; every VJP is pinned by ungated finite differences |
 
 Milestone order is the blocking sequence. OpenSpec has no dependency relationship between changes, so nothing else carries it.
 
@@ -33,10 +33,10 @@ Milestone order is the blocking sequence. OpenSpec has no dependency relationshi
 None. Hardware coverage remains Apple/Metal-only, carried as the standing `AGENTS.md` follow-up.
 
 ## Next Verifiable Output
-The last M18 slice: CNN gradients — Conv, pooling, BatchNormalization VJPs — proved the same two ways, with an MNIST-class CNN taking one optimizer step that PyTorch agrees with. That closes M18.
+M18 is closed. No next `dl` change is selected; future training or inference work needs a new measured ticket.
 
 ## Next Ticket
-The CNN-gradients change (to be cut). Two measured negatives stand as guardrails meanwhile: no batched device kernel without a single-dispatch batched measurement, and no device Conv without its own measurement.
+None selected. Two measured negatives remain guardrails: no batched device kernel without a single-dispatch batched measurement, and no device Conv without its own measurement.
 
 Note for any host running the reference suites locally: the crosslang venv moved to `~/.cache/insyra-crosslang-venv` on 2026-08-03 after macOS's tmp cleaner destroyed the old /private/tmp venv (deleted `pyvenv.cfg` and parts of numpy's binaries, producing no-module false negatives). CI is unaffected — it installs its own toolchains.
 
@@ -128,6 +128,7 @@ Deltas that still change what someone would do. The standing technical decisions
 
 ## Handoff Notes
 - **M17 wiring handoff.** `add-dl-device-matmul` now contains the `dl` hook, production WGSL MatMul, opt-in `accel/dlbridge`, CPU fallback tests, a hardware parity gate, and the runnable floor ladder. `delivery-status.md` changed in this handoff; `AGENTS.md` did not.
+- **M18 training handoff.** `add-dl-cnn-gradients` adds direct-loop Conv, pooling, and inference-mode BatchNormalization VJPs, ungated finite-difference coverage, and a gated PyTorch SafeTensors CNN one-step parity test. The full `./dl/` suite passed with the moved reference venv. `delivery-status.md` changed in this handoff; `AGENTS.md` did not.
 - **Hardware blocker.** The sandbox only exposes a software adapter. The new device tests skip with `ErrUnavailable`; 2.1's measured floor, 3.3's all-`dl` hardware run, and 3.4's encoder timing remain unchecked.
 - **One sample-weight design question remains open, deliberately.** Tree sample weights would push float weights into histogram accumulators the precision contract fixed as integers for associativity — an architecture decision against ENG.md, not a feature. The cross-validation channel turned out not to need a protocol break: scikit-learn routes sample_weight to fit and scores unweighted, so `Estimator` gained an optional `FitWeighted` and `CrossValidateWeighted` subsets weights with each fold's own indices. The metric protocol is untouched.
 - **Two pure-CPU wins are measured and unclaimed**, and both are worth more than anything acceleration offered. `stats`' KNN auto-selection picks a ball tree up to 3.3x slower than parallel brute force on unstructured data (#190). CCL spends 4.8x–6.2x more time on recursion-depth bookkeeping than on evaluating (#191).

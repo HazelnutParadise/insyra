@@ -56,6 +56,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 ### `dl`
 
 - Added an opt-in device MatMul path through `accel/dlbridge`. The hook is nil by default; only 2-D float32 products at or above the measured 16Mi MAC floor consult it, and batched or smaller products remain on the byte-identical CPU path. Measured on the 8-core M3 / Metal, the device result is bit-identical to the CPU's at every ladder rung, wins from 1.35x at the floor to 52x at 4096-square, and drops the measured encoder layer from about 0.9s all-core CPU to 234ms.
+- Extended the autodiff tape with CNN VJPs for 2-D Conv, MaxPool, AveragePool, GlobalAveragePool, and inference-mode BatchNormalization. Grouped Conv, asymmetric padding, strides, pooling denominator semantics, and all three BatchNormalization gradients are covered by finite differences; a deterministic CNN now matches PyTorch through one Adam step.
 
 ### `ml`
 

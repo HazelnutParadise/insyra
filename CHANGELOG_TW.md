@@ -56,6 +56,7 @@ English: [CHANGELOG.md](CHANGELOG.md)
 ### `dl`
 
 - 新增透過 `accel/dlbridge` 啟用的選用裝置 MatMul 路徑。hook 預設為 nil，只有達到實測 16Mi MAC 地板的二維 float32 乘法會詢問裝置，批次或較小形狀維持位元一致的 CPU 路徑。在 8 核 M3／Metal 上實測，裝置結果在階梯每一階都與 CPU 位元一致，勝幅從地板處的 1.35 倍到 4096 方陣的 52 倍，實測 encoder layer 從全核 CPU 約 0.9 秒降到 234 毫秒。
+- autodiff tape 新增 2-D Conv、MaxPool、AveragePool、GlobalAveragePool 與推論模式 BatchNormalization 的 CNN VJP。Grouped Conv、非對稱 padding、stride、pooling denominator 語意，以及 BatchNormalization 三種梯度都通過 finite difference；固定權重 CNN 走一步 Adam 後與 PyTorch 對齊。
 
 ### `ml`
 

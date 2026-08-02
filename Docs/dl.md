@@ -119,8 +119,8 @@ tensors lazily.
 
 ## Training and autodiff
 
-`dl` also provides a small reverse-mode tape for MLP and attention-family
-training. The tape calls
+`dl` also provides a small reverse-mode tape for MLP, attention-family, and
+CNN training. The tape calls
 the existing tensor kernels during the forward pass and stores one VJP record
 per call; it does not transform an ONNX graph.
 
@@ -156,7 +156,9 @@ gradient := w1.Grad()
 The differentiable wrappers are `MatMul`, `Add`, `Relu`, `Sigmoid`, `Tanh`,
 `Gemm`, `Mul`, `Div`, `Softmax`, `LayerNormalization`, `Gelu`, `Erf`, `Sqrt`,
 `Pow`, `ReduceMean`, and the shape wrappers `Transpose`, `Reshape`, `Flatten`,
-`Squeeze`, `Unsqueeze`, `Slice`, `Concat`, and `Split`. `Gemm` accepts alpha,
+`Squeeze`, `Unsqueeze`, `Slice`, `Concat`, and `Split`, together with the CNN
+wrappers `Conv`, `MaxPool`, `AveragePool`, `GlobalAveragePool`, and inference-
+mode `BatchNormalization`. `Gemm` accepts alpha,
 beta, and transpose attributes. `SoftmaxCrossEntropy`
 takes logits
 with shape `[N, C]` and int64 labels with shape `[N]`, and returns one mean-loss
@@ -178,6 +180,16 @@ if err := tape.Adam(0.003); err != nil { log.Fatal(err) }
 Weight decay, AMSGrad, schedules, and device training are not part of this
 API. The tape is intended for the fixed-weight CPU training path; the
 inference kernels and ONNX graph runner remain unchanged.
+
+CNN training uses the same tape and parameter flow. Mark convolution, batch
+normalization affine, and linear weights with `Param`, then compose the
+forward pass with the CNN wrappers before the activation, pooling, global
+average, flatten, and classification layers. Convolution gradients support
+explicit or automatic padding, strides, dilations, groups, and optional bias;
+pooling gradients follow the forward window and `count_include_pad` rules.
+BatchNormalization is inference-mode only: its running mean and variance are
+constants, while input, scale, and bias receive gradients. Training-mode batch
+statistics are refused rather than differentiated with different semantics.
 
 ## Supported operators
 
