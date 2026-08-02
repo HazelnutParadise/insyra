@@ -1,14 +1,12 @@
-## MODIFIED Requirements
+## ADDED Requirements
 
-### Requirement: Tensor kernels are plain functions with reference parity
+### Requirement: Hot kernels parallelize without changing a single bit
 
-The float32 tensor kernels SHALL remain plain exported functions on `*Tensor`,
-each verified against `onnxruntime` through the generated one-op parity
-harness. `MatMul` and `Conv` SHALL distribute their independent output
-elements across CPU cores while preserving the serial accumulation order
-within every output element, so that parallel and serial execution produce
-bit-identical results. Inputs below a measured size threshold SHALL take the
-serial path unchanged.
+`MatMul` (the 2-D fast path and the batched path) and `Conv` SHALL distribute
+their independent output elements across CPU cores while preserving the serial
+accumulation order within every output element, so that parallel and serial
+execution produce bit-identical results. Inputs below a measured size
+threshold SHALL take the serial path unchanged.
 
 #### Scenario: Parallel MatMul is bit-identical to serial
 

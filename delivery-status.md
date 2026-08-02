@@ -7,7 +7,7 @@
 `insyra/dl`: run ONNX models in pure Go, verified per-operator and per-model against `onnxruntime`, with the op families landing in the decided order MLP → attention → CNN, then phase 2 adds autodiff and optimisers on the same tensors (first-step gradients verified against PyTorch under fixed initial weights via SafeTensors). GGUF/LLM is a decided future track that reuses the kernels; only two v1 constraints serve it now — dtype-carrying tensors and kernels as plain functions.
 
 ## Active Workstreams
-`add-dl-parallel-cpu-kernels` (M19, ordered before M17) — implementation and verification complete; operator review and commit happen here.
+None. Every proposed change is implemented, verified and archived — `openspec/changes/` holds nothing but `archive/`.
 
 ## Milestones
 | id | target | owner | status | verification_signal |
