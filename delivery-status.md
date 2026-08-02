@@ -1,13 +1,13 @@
 # Delivery Status
 
 ## Current Phase
-`insyra/dl` phase 1 (ONNX inference): the MLP, attention, and CNN operator families are all done and archived — the decided op-family order is complete. Next is M17 (device inference, measured) and M18 (training). `insyra/ml` v1 is shipped, audited and merged to dev (PR #194). Acceleration has exactly one wired call site (KNN), which measurement earned.
+`insyra/dl` phase 1 (ONNX inference): the MLP, attention, and CNN operator families are all done and archived — the decided op-family order is complete. Next is M17 (device inference, measured) and M18 (training). `insyra/ml` v1 is shipped, audited and merged to dev (PR #194). Acceleration now has two opt-in wired call sites: KNN and large 2-D `dl` MatMul.
 
 ## Stage Objective
 `insyra/dl`: run ONNX models in pure Go, verified per-operator and per-model against `onnxruntime`, with the op families landing in the decided order MLP → attention → CNN, then phase 2 adds autodiff and optimisers on the same tensors (first-step gradients verified against PyTorch under fixed initial weights via SafeTensors). GGUF/LLM is a decided future track that reuses the kernels; only two v1 constraints serve it now — dtype-carrying tensors and kernels as plain functions.
 
 ## Active Workstreams
-None. Every proposed change is implemented, verified and archived — `openspec/changes/` holds nothing but `archive/`.
+M17 wiring is implemented in `add-dl-device-matmul`; hardware floor, parity, and end-to-end verification remain open. No other workstream is active.
 
 ## Milestones
 | id | target | owner | status | verification_signal |
@@ -24,19 +24,19 @@ None. Every proposed change is implemented, verified and archived — `openspec/
 | M15 | Attention-family ops | planning | done | a fixed-weight two-head encoder block — batched MatMul, axis-Softmax, Gelu FFN, residuals, LayerNormalization — matches `onnxruntime` end to end; every operator carries one-op parity rows; `INSYRA_DL_REAL_MODEL` smokes local models. Kernels stay plain functions the future llm package can call |
 | M16 | CNN-family ops | planning | done | a fixed-weight MNIST-class CNN — Conv, BatchNormalization, pooling, Pad — matches `onnxruntime` end to end, with one-op parity enumerating the attribute combinations rather than sampling defaults |
 | M19 | An honest CPU baseline for dl's hot kernels | planning | done | MatMul and Conv use all cores with exact output parity. Across four best-of-5 runs on the 8-core M3 (idle to loaded): encoder layer 3.35s → 0.73–1.11s (3.0x–4.6x, ~3.8x reproducible idle), CNN forward 526ms → 97–169ms (3.1x–5.4x, ~4.4x reproducible idle). The encoder sum keeps ~90ms of deliberately serial small ops; its MatMul share alone is ~4.4x. Ordered before M17 — a device claim measured against one core has been withdrawn once already and will not be manufactured again |
-| M17 | Inference reaches the device | planning | in progress | measurement done and positive: large 2-D MatMul wins 8.9x–52x bit-identically on Apple/Metal; batched small products lose and stay CPU. Wiring lands behind an opt-in bridge (the KNN pattern) with per-platform parity asserted and CPU fallback observable |
+| M17 | Inference reaches the device | planning | done | large 2-D MatMul runs on the device behind opt-in `accel/dlbridge`, bit-equal to the CPU on hardware (asserted with ==); the floor is measured at 16Mi MACs with the 4M–8M noise band refused; all dl suites pass with the bridge active; the measured encoder layer dropped from ~0.9s all-core CPU to 234ms (14.3x over the pre-M19 serial baseline). Batched products stay CPU by measurement |
 | M18 | Training (phase 2) | planning | pending | autodiff + SGD/Adam on the same tensors; first-step gradients match PyTorch under fixed SafeTensors-loaded weights |
 
 Milestone order is the blocking sequence. OpenSpec has no dependency relationship between changes, so nothing else carries it.
 
 ## Current Blockers
-None. One coverage gap is carried in `AGENTS.md` follow-ups rather than here, because it waits on hardware nobody has rather than on a decision: the device path is verified on Apple and Metal only.
+None. Hardware coverage remains Apple/Metal-only, carried as the standing `AGENTS.md` follow-up.
 
 ## Next Verifiable Output
-The M17 wiring: a dl inference whose large MatMuls run on the device through an opt-in bridge, asserted bit-equal to the CPU path on hardware, with the CPU fallback observable and the batched attention products untouched.
+M18 (training, phase 2): autodiff and SGD/Adam on the same tensors, with first-step gradients matching PyTorch under fixed SafeTensors-loaded weights. The ticket is not yet cut; its first slice should be the SafeTensors reader plus reverse-mode autodiff over the existing kernels, with the PyTorch gradient-parity harness as the verifiable output.
 
 ## Next Ticket
-The M17 wiring change (to be cut): device 2-D MatMul above a measured size floor, reachable only through an opt-in `accel` bridge so `dl` keeps its zero-dependency default; bit parity asserted exactly on hardware per platform, CPU fallback observable, strict GPU mode failing. The measured floor and the single-dispatch batched kernel are the two open scope questions.
+The M18 opening change (to be cut). Two measured negatives stand as guardrails meanwhile: no batched device kernel without a single-dispatch batched measurement, and no device Conv without its own measurement.
 
 ## Decision Log
 Deltas that still change what someone would do. The standing technical decisions they produced — the precision contract, the device rules, the measured thresholds — live in [ENG.md](ENG.md); the full history is in git.
@@ -45,6 +45,11 @@ Deltas that still change what someone would do. The standing technical decisions
   rationale: Measured on the M3 against the M19 all-core baseline, best of 5, upload+dispatch+readback included: [4096,256]×[256,256] 9.3ms vs 82.4ms (8.9x), FFN up 58.5ms vs 683ms (11.7x), FFN down 55.4ms vs 730ms (13.2x), [4096,4096]² 1.87s vs 97.2s (52x) — and every shape, including the losers, returned maxULP=0 because the prototype's per-output thread accumulates along k in the CPU's serial order. The attention-shaped batched products lose (1.08x–2.08x against) when driven as 128 separate dispatches, so they stay on the CPU until a single-dispatch batched kernel is measured. Bit parity is an observation about Apple/Metal, not a property of the kernel; the wiring must assert it per platform and fall back to CPU where it fails, which the Apple-only follow-up already anticipates.
   timestamp: 2026-08-02
   impacted_ticket_ids: add-dl-device-matmul-measurement (archived), the M17 wiring change
+
+- decision: The device-matmul floor is 16Mi MACs, measured, and the noise band below it is refused.
+  rationale: The hardware ladder (best of 5, upload+dispatch+readback, all-core CPU opponent) crosses over near 4M MACs, but 4M–8M sit inside the noise band (device/CPU 0.90 and 0.96, flipping run to run); 16Mi is the first rung that wins dependably (0.74, improving monotonically to 0.135 at 268M). Every rung returned maxULP=0. A floor placed at the crossover would trade bit-identical dependability for wins that evaporate under load, so the floor sits at the first dependable rung instead.
+  timestamp: 2026-08-02
+  impacted_ticket_ids: add-dl-device-matmul
 
 - decision: dl's device milestone waits for a parallel CPU baseline; the ticket cut from the measurement is pure-CPU.
   rationale: Profiled on an 8-core M3 at realistic sizes, MatMul is 98% of an encoder layer (3.37 s) and Conv is 98% of a CNN forward (530 ms) — and both are single-threaded naive loops. A GPU measured against that baseline would repeat the withdrawn one-core comparison with a larger multiplier. Output-element parallelism preserves each element's accumulation order, so the CPU win is bit-identical and costs no precision-contract decision, unlike the device path, which still owes a per-platform bit-parity answer.
@@ -120,6 +125,8 @@ Deltas that still change what someone would do. The standing technical decisions
 - Open issues: [#190](https://github.com/HazelnutParadise/insyra/issues/190) KNN algorithm selection, [#191](https://github.com/HazelnutParadise/insyra/issues/191) CCL recursion-depth overhead.
 
 ## Handoff Notes
+- **M17 wiring handoff.** `add-dl-device-matmul` now contains the `dl` hook, production WGSL MatMul, opt-in `accel/dlbridge`, CPU fallback tests, a hardware parity gate, and the runnable floor ladder. `delivery-status.md` changed in this handoff; `AGENTS.md` did not.
+- **Hardware blocker.** The sandbox only exposes a software adapter. The new device tests skip with `ErrUnavailable`; 2.1's measured floor, 3.3's all-`dl` hardware run, and 3.4's encoder timing remain unchecked.
 - **One sample-weight design question remains open, deliberately.** Tree sample weights would push float weights into histogram accumulators the precision contract fixed as integers for associativity — an architecture decision against ENG.md, not a feature. The cross-validation channel turned out not to need a protocol break: scikit-learn routes sample_weight to fit and scores unweighted, so `Estimator` gained an optional `FitWeighted` and `CrossValidateWeighted` subsets weights with each fold's own indices. The metric protocol is untouched.
 - **Two pure-CPU wins are measured and unclaimed**, and both are worth more than anything acceleration offered. `stats`' KNN auto-selection picks a ball tree up to 3.3x slower than parallel brute force on unstructured data (#190). CCL spends 4.8x–6.2x more time on recursion-depth bookkeeping than on evaluating (#191).
 - **A skipped verification now fails when it was supposed to run.** `INSYRA_REQUIRE_REFERENCE_TOOLCHAINS=1` turns every missing-toolchain skip into a failure, and the `Reference Verification` workflow installs R, the Python scientific stack, scikit-learn and onnxruntime and runs with it set. Before this, `Clustering Parity` had been reporting green while running nothing — its gate imports `sklearn` and the workflow never installed it.

@@ -164,6 +164,12 @@ routes large shapes through the device with results identical to brute force
 (k must be ≤ 7). Never required: without the import everything runs on CPU
 unchanged.
 
+To accelerate large `dl` float32 MatMuls, blank-import
+`github.com/HazelnutParadise/insyra/accel/dlbridge`. Only 2-D products at or
+above the measured 16Mi MAC floor consult the device; batched and smaller
+products, and any device failure, stay on the exact CPU path. The bridge is
+opt-in and is not included in `allpkgs`.
+
 Use DataTable categorical encoders before stats methods that require numeric features (`stats.LinearRegression`, KNN, PCA, clustering). These methods return a new table plus a fitted encoder; the receiver is not modified.
 
 Every `stats` numeric entry point refuses a value it cannot read as a finite

@@ -19,6 +19,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 ### `accel`
 
+- Added the opt-in `accel/dlbridge` connection for large `dl` 2-D float32 MatMuls. The device kernel preserves each output's serial `k` accumulation order and records bridge fallback reasons through the existing `accel` report; no device or device error returns to `dl`'s exact CPU path.
 - `accel` now executes on real hardware. `ExecuteDataList`, `ExecuteDataTable`, and `ExecuteProjectedDataset` return the computed value per column in `ExecutionResult.Reductions`, along with measured `Transfer`, `Dispatch`, and `Readback` durations and `BytesUploaded`.
 - `accel.Session` is now safe for concurrent use. Every public method is serialized behind a session lock, so several goroutines can share one session; previously concurrent `ExecuteDataList` calls raced on the cache and report state. Device submission is also serialized process-wide, because all sessions share one GPU handle.
 - Added `accel.Default()`, a session shared by the process and created on first use. Discovery runs once, the resident cache is shared across operations, and `Close` on it is a no-op because no caller owns it. Importing the package still opens no device.
@@ -51,6 +52,10 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - Added `RidgeRegression` and `LassoRegression`, using scikit-learn's objectives exactly — L2 penalty `||y − Xβ||² + α·||β||²` solved in closed form, L1 penalty `(1/2n)·||y − Xβ||² + α·||β||₁` by coordinate descent — with the intercept unpenalized and no standardisation, both verified coefficient-for-coefficient against scikit-learn. Ridge handles collinear predictors that make `LinearRegression` fail; lasso drives priced-out coefficients to exactly zero and reports non-convergence instead of hiding it. Neither result carries standard errors, t or p values, because classical inference does not apply to penalized estimates. scikit-learn rather than R's glmnet is the reference: glmnet standardises by default and scales its penalty differently, so it computes different coefficients from the same data.
 - Added `WeightedLinearRegression` (WLS): weighted normal equations with exact classical inference — coefficients, standard errors, t and p values, weighted R² and predictions all verified field-for-field against statsmodels' `WLS`. Weights must be strictly positive; a zero weight is refused rather than guessed into exclusion semantics, because references disagree on the degrees of freedom and standard errors matching nobody would be the result.
 - Auto-algorithm KNN can use the GPU: blank-import `accel/knnbridge` and profitable shapes route through the exact-nearest device operation, whose answers the CPU recomputes in `float64` — device results are identical to brute force, index for index, verified on hardware, and the win is measured in the wiring's own direction (1.4x at 2k test rows to 3.7x at 10k, on 100k×32 against all cores). Explicitly named algorithms, `k > 7`, small shapes and machines without a device all run the CPU path unchanged, and without the import `stats` carries no accelerator dependency.
+
+### `dl`
+
+- Added an opt-in device MatMul path through `accel/dlbridge`. The hook is nil by default; only 2-D float32 products at or above the measured 16Mi MAC floor consult it, and batched or smaller products remain on the byte-identical CPU path. Measured on the 8-core M3 / Metal, the device result is bit-identical to the CPU's at every ladder rung, wins from 1.35x at the floor to 52x at 4096-square, and drops the measured encoder layer from about 0.9s all-core CPU to 234ms.
 
 ### `ml`
 

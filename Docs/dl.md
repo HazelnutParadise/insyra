@@ -42,6 +42,19 @@ results are bit-identical to serial results; small workloads stay serial.
 `NewInt64Tensor`, `NewStringTensor`, and `NewBoolTensor` build the control and
 label tensors used by ONNX graphs.
 
+## Optional device MatMul
+
+Large 2-D float32 MatMuls can use the device through the opt-in
+[`accel/dlbridge`](dlbridge.md) package. Blank-import it to enable the path:
+
+```go
+import _ "github.com/HazelnutParadise/insyra/accel/dlbridge"
+```
+
+The bridge leaves batched and below-floor products on the CPU. Device failures
+also use the CPU path, preserving the exact result; see the bridge page for
+the hardware parity test and the floor ladder.
+
 ## Loading and running an ONNX model
 
 ```go
