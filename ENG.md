@@ -51,6 +51,8 @@ before the root could reach it directly.
 
 A pipeline step is a **fit function, not a configured object**. scikit-learn refits per fold by cloning the unfitted estimator, and cloning needs `inspect.signature`; Go has no equivalent that is not struct-tag reflection, which this repo uses nowhere. A closure refits by being called again.
 
+`dl`'s autodiff (phase 2) is a **tape of plain functions, not a graph transform**. Each differentiable op pairs its existing forward kernel with a VJP that is itself a plain function on tensors; training-side wrappers record (op, inputs, output) onto a tape, and backward walks the tape calling VJPs. The inference kernels stay untouched — the tape wrapper is one more caller, exactly like the graph interpreter and the future llm package. Differentiating the ONNX graph directly was rejected: it would couple gradients to the interpreter, and the interpreter is deliberately just one consumer of the kernels. Gradient truth is PyTorch under fixed SafeTensors-loaded weights, first step, f32 tolerance; softmax + cross-entropy differentiates as one fused VJP because the separated form loses the cancellation that makes it stable.
+
 ## Test matrix
 
 | Test type | What it covers | Where |
