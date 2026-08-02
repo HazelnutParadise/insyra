@@ -1,0 +1,319 @@
+package dl
+
+import (
+	"fmt"
+	"io"
+	"strings"
+)
+
+// ValueInfo describes a named model input or output. A negative shape
+// dimension is dynamic and accepts any non-negative runtime dimension.
+type ValueInfo struct {
+	Name     string
+	DType    DType
+	Shape    []int
+	HasShape bool
+}
+
+type modelNode struct {
+	name       string
+	opType     string
+	inputs     []string
+	outputs    []string
+	attributes map[string]protoAttribute
+}
+
+// Model is a validated ONNX graph. Initializers are materialised during load.
+type Model struct {
+	inputSpecs   []ValueInfo
+	outputSpecs  []ValueInfo
+	nodes        []modelNode
+	initializers map[string]*Tensor
+	opsetVersion int64
+}
+
+var supportedOperators = map[string]struct{}{
+	"Gemm": {}, "MatMul": {}, "Add": {}, "Sub": {}, "Mul": {},
+	"Relu": {}, "Sigmoid": {}, "Tanh": {}, "Softmax": {}, "Identity": {},
+	"Reshape": {}, "Flatten": {}, "Transpose": {}, "Cast": {}, "Constant": {},
+}
+
+// LoadONNX reads and validates an ONNX ModelProto. The reader is untrusted
+// input: malformed bytes and invalid graph data return errors, never panics.
+func LoadONNX(r io.Reader) (model *Model, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			model = nil
+			err = fmt.Errorf("load onnx model: %v", recovered)
+		}
+	}()
+	data, err := readONNX(r)
+	if err != nil {
+		return nil, err
+	}
+	decoded, err := decodeModelProto(data)
+	if err != nil {
+		return nil, fmt.Errorf("decode onnx model: %w", err)
+	}
+	return buildModel(decoded)
+}
+
+// Inputs returns the model's declared runtime inputs. Initializers that also
+// appear in graph.input are omitted because callers do not provide them.
+func (m *Model) Inputs() []ValueInfo {
+	if m == nil {
+		return nil
+	}
+	return cloneValueInfos(m.inputSpecs)
+}
+
+// Outputs returns the model's declared graph outputs.
+func (m *Model) Outputs() []ValueInfo {
+	if m == nil {
+		return nil
+	}
+	return cloneValueInfos(m.outputSpecs)
+}
+
+// OpsetVersion reports the default-domain ONNX opset declared by the model.
+func (m *Model) OpsetVersion() int64 {
+	if m == nil {
+		return 0
+	}
+	return m.opsetVersion
+}
+
+func buildModel(decoded protoModel) (*Model, error) {
+	if decoded.graph == nil {
+		return nil, fmt.Errorf("onnx model has no graph")
+	}
+	var defaultOpset int64
+	for _, opset := range decoded.ops {
+		if opset.domain != "" && opset.domain != "ai.onnx" {
+			continue
+		}
+		if opset.version <= 0 {
+			return nil, fmt.Errorf("onnx model has invalid default opset version %d", opset.version)
+		}
+		if defaultOpset != 0 && defaultOpset != opset.version {
+			return nil, fmt.Errorf("onnx model declares conflicting default opset versions %d and %d", defaultOpset, opset.version)
+		}
+		defaultOpset = opset.version
+	}
+	if defaultOpset == 0 {
+		return nil, fmt.Errorf("onnx model has no default opset")
+	}
+
+	unsupported := make([]string, 0)
+	seenUnsupported := make(map[string]struct{})
+	for _, node := range decoded.graph.nodes {
+		operatorName := node.opType
+		if node.domain != "" && node.domain != "ai.onnx" {
+			operatorName = node.domain + ":" + node.opType
+		}
+		if node.opType == "" {
+			operatorName = "<empty>"
+		}
+		if node.domain != "" && node.domain != "ai.onnx" {
+			if _, exists := seenUnsupported[operatorName]; !exists {
+				unsupported = append(unsupported, operatorName)
+				seenUnsupported[operatorName] = struct{}{}
+			}
+			continue
+		}
+		if _, supported := supportedOperators[node.opType]; !supported {
+			if _, exists := seenUnsupported[operatorName]; !exists {
+				unsupported = append(unsupported, operatorName)
+				seenUnsupported[operatorName] = struct{}{}
+			}
+		}
+	}
+	if len(unsupported) > 0 {
+		return nil, fmt.Errorf("unsupported operators: %s", strings.Join(unsupported, ", "))
+	}
+
+	model := &Model{
+		initializers: make(map[string]*Tensor, len(decoded.graph.initializers)),
+		opsetVersion: defaultOpset,
+	}
+	for _, initializer := range decoded.graph.initializers {
+		if initializer.name == "" {
+			return nil, fmt.Errorf("initializer has no name")
+		}
+		if _, exists := model.initializers[initializer.name]; exists {
+			return nil, fmt.Errorf("initializer %q is declared more than once", initializer.name)
+		}
+		value, err := tensorProtoToTensor(initializer)
+		if err != nil {
+			return nil, err
+		}
+		model.initializers[initializer.name] = value
+	}
+
+	inputNames := make(map[string]struct{})
+	for index, input := range decoded.graph.inputs {
+		if input.name == "" {
+			return nil, fmt.Errorf("graph input %d has no name", index)
+		}
+		if _, duplicate := inputNames[input.name]; duplicate {
+			return nil, fmt.Errorf("graph input %q is declared more than once", input.name)
+		}
+		inputNames[input.name] = struct{}{}
+		if _, isInitializer := model.initializers[input.name]; isInitializer {
+			continue
+		}
+		if input.elemType == 0 {
+			return nil, fmt.Errorf("graph input %q has no dtype", input.name)
+		}
+		if input.elemType != 1 {
+			return nil, fmt.Errorf("graph input %q has unsupported dtype %s", input.name, onnxDTypeName(input.elemType))
+		}
+		if input.hasShape {
+			if err := validateDeclaredShape(input.shape, fmt.Sprintf("graph input %q", input.name)); err != nil {
+				return nil, err
+			}
+		}
+		model.inputSpecs = append(model.inputSpecs, valueInfoFromProto(input))
+	}
+
+	outputNames := make(map[string]struct{})
+	for index, output := range decoded.graph.outputs {
+		if output.name == "" {
+			return nil, fmt.Errorf("graph output %d has no name", index)
+		}
+		if _, duplicate := outputNames[output.name]; duplicate {
+			return nil, fmt.Errorf("graph output %q is declared more than once", output.name)
+		}
+		outputNames[output.name] = struct{}{}
+		if output.elemType == 0 {
+			return nil, fmt.Errorf("graph output %q has no dtype", output.name)
+		}
+		if output.elemType != 1 {
+			return nil, fmt.Errorf("graph output %q has unsupported dtype %s", output.name, onnxDTypeName(output.elemType))
+		}
+		if output.hasShape {
+			if err := validateDeclaredShape(output.shape, fmt.Sprintf("graph output %q", output.name)); err != nil {
+				return nil, err
+			}
+		}
+		model.outputSpecs = append(model.outputSpecs, valueInfoFromProto(output))
+	}
+	if len(model.outputSpecs) == 0 {
+		return nil, fmt.Errorf("graph has no outputs")
+	}
+
+	declaredValues := make(map[string]struct{}, len(model.initializers)+len(inputNames))
+	for name := range model.initializers {
+		declaredValues[name] = struct{}{}
+	}
+	for name := range inputNames {
+		declaredValues[name] = struct{}{}
+	}
+	for index, node := range decoded.graph.nodes {
+		if len(node.outputs) != 1 {
+			return nil, fmt.Errorf("node %d (%s) has %d outputs, want 1", index, node.opType, len(node.outputs))
+		}
+		name := node.name
+		if name == "" {
+			name = fmt.Sprintf("node_%d", index)
+		}
+		attributes := make(map[string]protoAttribute, len(node.attributes))
+		for _, attribute := range node.attributes {
+			if attribute.name == "" {
+				return nil, fmt.Errorf("node %q has an unnamed attribute", name)
+			}
+			if _, exists := attributes[attribute.name]; exists {
+				return nil, fmt.Errorf("node %q declares attribute %q more than once", name, attribute.name)
+			}
+			attributes[attribute.name] = attribute
+		}
+		output := node.outputs[0]
+		if output == "" {
+			return nil, fmt.Errorf("node %q output has no name", name)
+		}
+		if _, exists := declaredValues[output]; exists {
+			return nil, fmt.Errorf("node %q output %q is already declared", name, output)
+		}
+		declaredValues[output] = struct{}{}
+		model.nodes = append(model.nodes, modelNode{
+			name:       name,
+			opType:     node.opType,
+			inputs:     append([]string(nil), node.inputs...),
+			outputs:    append([]string(nil), node.outputs...),
+			attributes: attributes,
+		})
+	}
+	return model, nil
+}
+
+func valueInfoFromProto(info protoValueInfo) ValueInfo {
+	return ValueInfo{
+		Name:     info.name,
+		DType:    onnxDType(info.elemType),
+		Shape:    append([]int(nil), info.shape...),
+		HasShape: info.hasShape,
+	}
+}
+
+func cloneValueInfos(values []ValueInfo) []ValueInfo {
+	result := make([]ValueInfo, len(values))
+	for index, value := range values {
+		result[index] = ValueInfo{
+			Name:     value.Name,
+			DType:    value.DType,
+			Shape:    append([]int(nil), value.Shape...),
+			HasShape: value.HasShape,
+		}
+	}
+	return result
+}
+
+func validateDeclaredShape(shape []int, name string) error {
+	for index, dimension := range shape {
+		if dimension < -1 {
+			return fmt.Errorf("%s has invalid dimension %d at index %d", name, dimension, index)
+		}
+	}
+	return nil
+}
+
+func onnxDType(dataType int32) DType {
+	switch dataType {
+	case 1:
+		return DTypeFloat32
+	case 2:
+		return DTypeUInt8
+	case 3:
+		return DTypeInt8
+	case 4:
+		return DTypeUInt16
+	case 5:
+		return DTypeInt16
+	case 6:
+		return DTypeInt32
+	case 7:
+		return DTypeInt64
+	case 8:
+		return DTypeString
+	case 9:
+		return DTypeBool
+	case 10:
+		return DTypeFloat16
+	case 11:
+		return DTypeFloat64
+	case 12:
+		return DTypeUInt32
+	case 13:
+		return DTypeUInt64
+	case 14, 15, 16, 17:
+		return DTypeFloat8
+	case 18:
+		return DTypeBFloat16
+	default:
+		return DType(fmt.Sprintf("onnx(%d)", dataType))
+	}
+}
+
+func onnxDTypeName(dataType int32) string {
+	return dtypeName(onnxDType(dataType))
+}
