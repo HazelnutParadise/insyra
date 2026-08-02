@@ -27,13 +27,20 @@ func linearRegressor(input *Tensor, attributes map[string]protoAttribute) (*Tens
 		}
 		targets = int(value.intValue)
 	}
-	if len(coefficients) != input.shape[1]*targets {
-		return nil, fmt.Errorf("linear regressor has %d coefficients, want %d", len(coefficients), input.shape[1]*targets)
+	if input.shape[1] == 0 {
+		return nil, fmt.Errorf("linear regressor requires at least one feature")
+	}
+	expectedCoefficients, err := checkedProduct(input.shape[1], targets, "linear regressor coefficient count")
+	if err != nil {
+		return nil, err
+	}
+	if len(coefficients) != expectedCoefficients {
+		return nil, fmt.Errorf("linear regressor has %d coefficients, want %d", len(coefficients), expectedCoefficients)
 	}
 	if len(intercepts) != 0 && len(intercepts) != targets {
 		return nil, fmt.Errorf("linear regressor has %d intercepts, want %d", len(intercepts), targets)
 	}
-	result, err := newFloat32Tensor([]int{input.shape[0], targets}, make([]float32, input.shape[0]*targets))
+	result, err := newZeroFloat32Tensor([]int{input.shape[0], targets})
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +81,10 @@ func linearClassifier(input *Tensor, attributes map[string]protoAttribute) (*Ten
 	if err != nil {
 		return nil, nil, err
 	}
-	postTransform := mlAttrString(attributes, "post_transform", "NONE")
+	postTransform, err := classifierPostTransform(attributes)
+	if err != nil {
+		return nil, nil, err
+	}
 	classCount := len(classLabels)
 	features := input.shape[1]
 	binaryScore := classCount == 2 && len(coefficients) == features
@@ -88,7 +98,7 @@ func linearClassifier(input *Tensor, attributes map[string]protoAttribute) (*Ten
 	if len(intercepts) != 0 && len(intercepts) != scoreCount {
 		return nil, nil, fmt.Errorf("linear classifier has %d intercepts, want %d", len(intercepts), scoreCount)
 	}
-	probabilities, err := newFloat32Tensor([]int{input.shape[0], classCount}, make([]float32, input.shape[0]*classCount))
+	probabilities, err := newZeroFloat32Tensor([]int{input.shape[0], classCount})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -183,7 +193,7 @@ func oneHotEncoder(input *Tensor, attributes map[string]protoAttribute) (*Tensor
 	if hasInts {
 		categoryCount = len(ints.ints)
 	}
-	result, err := newFloat32Tensor([]int{input.shape[0], categoryCount}, make([]float32, input.shape[0]*categoryCount))
+	result, err := newZeroFloat32Tensor([]int{input.shape[0], categoryCount})
 	if err != nil {
 		return nil, err
 	}
@@ -313,11 +323,29 @@ func treeEnsembleRegressor(input *Tensor, attributes map[string]protoAttribute) 
 	if len(targetTreeIDs) != len(targetNodeIDs) || len(targetIDs) != len(targetTreeIDs) || len(targetWeights) != len(targetTreeIDs) {
 		return nil, fmt.Errorf("tree ensemble regressor target attributes have different lengths")
 	}
+	if len(targetIDs) == 0 {
+		return nil, fmt.Errorf("tree ensemble regressor has no target entries")
+	}
+	maxTargetID := int64(-1)
+	for _, targetID := range targetIDs {
+		if targetID < 0 || targetID >= int64(targets) {
+			return nil, fmt.Errorf("target id %d is outside %d targets", targetID, targets)
+		}
+		if targetID > maxTargetID {
+			maxTargetID = targetID
+		}
+	}
+	if maxTargetID+1 < int64(targets) {
+		return nil, fmt.Errorf("tree ensemble regressor declares %d targets but uses only %d", targets, maxTargetID+1)
+	}
 	baseValues, err := mlAttrFloats(attributes, "base_values", false)
 	if err != nil {
 		return nil, err
 	}
-	result, err := newFloat32Tensor([]int{input.shape[0], targets}, make([]float32, input.shape[0]*targets))
+	if len(baseValues) > targets {
+		return nil, fmt.Errorf("tree ensemble regressor has %d base values, want at most %d", len(baseValues), targets)
+	}
+	result, err := newZeroFloat32Tensor([]int{input.shape[0], targets})
 	if err != nil {
 		return nil, err
 	}
@@ -328,7 +356,8 @@ func treeEnsembleRegressor(input *Tensor, attributes map[string]protoAttribute) 
 			}
 		}
 		rowValues := input.data[row*input.shape[1] : (row+1)*input.shape[1]]
-		for treeID, root := range forest.roots {
+		for _, treeID := range forest.order {
+			root := forest.roots[treeID]
 			node, walkErr := forest.walk(rowValues, treeID, root)
 			if walkErr != nil {
 				return nil, walkErr
@@ -362,6 +391,9 @@ func treeEnsembleClassifier(input *Tensor, attributes map[string]protoAttribute)
 	if err != nil {
 		return nil, nil, err
 	}
+	if len(classLabels) == 0 {
+		return nil, nil, fmt.Errorf("tree ensemble classifier has no class labels")
+	}
 	classTreeIDs, err := mlAttrInts(attributes, "class_treeids", true)
 	if err != nil {
 		return nil, nil, err
@@ -382,8 +414,11 @@ func treeEnsembleClassifier(input *Tensor, attributes map[string]protoAttribute)
 		return nil, nil, fmt.Errorf("tree ensemble classifier class attributes have different lengths")
 	}
 	binaryScore := len(classLabels) == 2 && len(classIDs) > 0 && allZero(classIDs)
-	postTransform := mlAttrString(attributes, "post_transform", "NONE")
-	probabilities, err := newFloat32Tensor([]int{input.shape[0], len(classLabels)}, make([]float32, input.shape[0]*len(classLabels)))
+	postTransform, err := classifierPostTransform(attributes)
+	if err != nil {
+		return nil, nil, err
+	}
+	probabilities, err := newZeroFloat32Tensor([]int{input.shape[0], len(classLabels)})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -403,7 +438,8 @@ func treeEnsembleClassifier(input *Tensor, attributes map[string]protoAttribute)
 			copy(scores, baseValues)
 		}
 		rowValues := input.data[row*input.shape[1] : (row+1)*input.shape[1]]
-		for treeID, root := range forest.roots {
+		for _, treeID := range forest.order {
+			root := forest.roots[treeID]
 			node, walkErr := forest.walk(rowValues, treeID, root)
 			if walkErr != nil {
 				return nil, nil, walkErr
@@ -454,6 +490,7 @@ func treeEnsembleClassifier(input *Tensor, attributes map[string]protoAttribute)
 
 type treeEnsemble struct {
 	roots map[int64]int64
+	order []int64
 	nodes map[treeNodeKey]treeNode
 }
 
@@ -526,6 +563,7 @@ func buildTreeEnsemble(attributes map[string]protoAttribute) (treeEnsemble, erro
 		}
 		if _, exists := forest.roots[treeIDs[index]]; !exists {
 			forest.roots[treeIDs[index]] = nodeIDs[index]
+			forest.order = append(forest.order, treeIDs[index])
 		}
 	}
 	return forest, nil
@@ -583,6 +621,16 @@ func applyMLPostTransform(input *Tensor, transform string) (*Tensor, error) {
 		return unary("post-transform logistic", input, sigmoidScalar)
 	default:
 		return nil, fmt.Errorf("unsupported post_transform %q", transform)
+	}
+}
+
+func classifierPostTransform(attributes map[string]protoAttribute) (string, error) {
+	transform := mlAttrString(attributes, "post_transform", "NONE")
+	switch transform {
+	case "", "NONE", "LOGISTIC":
+		return transform, nil
+	default:
+		return "", fmt.Errorf("unsupported classifier post_transform %q", transform)
 	}
 }
 

@@ -89,7 +89,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 ### `dl`
 
 - Added pure-Go float32 ONNX inference for a focused MLP operator family. Models are decoded with `protowire`, validated at load time, and run with named inputs and outputs. Malformed files return errors without panicking, and unsupported operators are listed together. Standalone tensor kernels and a fixed-weight MLP are verified against `onnxruntime`.
-- `dl` now reads `ml`'s exported regressors, tree ensembles, and preprocessing pipelines in pure Go via the `ai.onnx.ml` operator domain. `BindRegressor` and `BindClassifier` adapt loaded networks into the `ml` protocol structurally, with name-bound columns and conformance checks. The strict closure test keeps the binary single-score `LinearClassifier` export visible as a current `onnxruntime` probability mismatch rather than marking it verified.
+- `dl` now reads `ml`'s exported regressors, tree ensembles, and preprocessing pipelines in pure Go via the `ai.onnx.ml` operator domain. `BindRegressor` and `BindClassifier` adapt loaded networks into the `ml` protocol structurally, with name-bound columns and conformance checks. The strict closure test covers binary logistic classifier labels and probabilities against both the fitted model and `onnxruntime`.
 
 ### CLI
 

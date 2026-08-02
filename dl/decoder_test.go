@@ -81,20 +81,59 @@ func TestLoadONNXReadsOpsetAndMaterialisesInitializer(t *testing.T) {
 }
 
 func TestLoadONNXRejectsUnsupportedInitializerDTypeByName(t *testing.T) {
+	data := testONNXModelWithInitializer(10)
+	_, err := LoadONNX(strings.NewReader(string(data)))
+	if err == nil {
+		t.Fatal("LoadONNX accepted an unsupported float16 initializer")
+	}
+	if !strings.Contains(err.Error(), "float16") {
+		t.Fatalf("error %q does not name float16", err)
+	}
+}
+
+func TestLoadONNXRejectsInitializerElementCountMismatch(t *testing.T) {
 	data := testONNXModelWithInitializer(7)
 	_, err := LoadONNX(strings.NewReader(string(data)))
 	if err == nil {
-		t.Fatal("LoadONNX accepted an int64 initializer as an arithmetic tensor")
+		t.Fatal("LoadONNX accepted an int64 initializer with the wrong element count")
 	}
-	if !strings.Contains(err.Error(), "int64") {
-		t.Fatalf("error %q does not name int64", err)
+	if !strings.Contains(err.Error(), "int64 values, want 3") {
+		t.Fatalf("error %q does not name the int64 element-count mismatch", err)
+	}
+}
+
+func TestLoadONNXRejectsUnexpectedNodeOutputArity(t *testing.T) {
+	data := testONNXModel([]testONNXNode{
+		{opType: "Identity", input: "X", output: "Y", outputs: []string{"Y", "extra"}},
+	}, true)
+	_, err := LoadONNX(strings.NewReader(string(data)))
+	if err == nil || !strings.Contains(err.Error(), "has 2 outputs, want 1") {
+		t.Fatalf("output arity error = %v, want a named arity refusal", err)
+	}
+}
+
+func TestLoadONNXValidatesMLDomainOpsetImport(t *testing.T) {
+	base := []testONNXNode{{opType: "Scaler", domain: "ai.onnx.ml", input: "X", output: "Y"}}
+	withoutImport := testONNXModelWithMLImport(base, 0)
+	if _, err := LoadONNX(strings.NewReader(string(withoutImport))); err == nil || !strings.Contains(err.Error(), "without an ai.onnx.ml opset import") {
+		t.Fatalf("missing ai.onnx.ml import error = %v", err)
+	}
+	withUnsupportedImport := testONNXModelWithMLImport(base, 2)
+	if _, err := LoadONNX(strings.NewReader(string(withUnsupportedImport))); err == nil || !strings.Contains(err.Error(), "unsupported ai.onnx.ml opset version 2") {
+		t.Fatalf("unsupported ai.onnx.ml import error = %v", err)
+	}
+	withSupportedImport := testONNXModelWithMLImport(base, 3)
+	if _, err := LoadONNX(strings.NewReader(string(withSupportedImport))); err != nil {
+		t.Fatalf("supported ai.onnx.ml import rejected: %v", err)
 	}
 }
 
 type testONNXNode struct {
-	opType string
-	input  string
-	output string
+	opType  string
+	domain  string
+	input   string
+	output  string
+	outputs []string
 }
 
 func testONNXModel(nodes []testONNXNode, withInput bool) []byte {
@@ -134,8 +173,17 @@ func testONNXGraph(nodes []testONNXNode, withInput bool, elemType int32, initial
 	for _, node := range nodes {
 		var encoded []byte
 		encoded = appendTestField(encoded, 1, protowire.BytesType, []byte(node.input))
-		encoded = appendTestField(encoded, 2, protowire.BytesType, []byte(node.output))
+		outputs := node.outputs
+		if len(outputs) == 0 {
+			outputs = []string{node.output}
+		}
+		for _, output := range outputs {
+			encoded = appendTestField(encoded, 2, protowire.BytesType, []byte(output))
+		}
 		encoded = appendTestField(encoded, 4, protowire.BytesType, []byte(node.opType))
+		if node.domain != "" {
+			encoded = appendTestField(encoded, 7, protowire.BytesType, []byte(node.domain))
+		}
 		graph = appendTestField(graph, 1, protowire.BytesType, encoded)
 	}
 	for _, initializer := range initializers {
@@ -146,6 +194,19 @@ func testONNXGraph(nodes []testONNXNode, withInput bool, elemType int32, initial
 	}
 	graph = appendTestField(graph, 12, protowire.BytesType, testONNXValueInfo("Y", 1, []int64{-1, 3}))
 	return graph
+}
+
+func testONNXModelWithMLImport(nodes []testONNXNode, version int64) []byte {
+	graph := testONNXGraph(nodes, true, 1)
+	model := appendTestVarint(nil, 1, 9)
+	model = appendTestField(model, 7, protowire.BytesType, graph)
+	model = appendTestField(model, 8, protowire.BytesType, appendTestVarint(nil, 2, 13))
+	if version != 0 {
+		opset := appendTestField(nil, 1, protowire.BytesType, []byte("ai.onnx.ml"))
+		opset = appendTestVarint(opset, 2, uint64(version))
+		model = appendTestField(model, 8, protowire.BytesType, opset)
+	}
+	return model
 }
 
 func testONNXValueInfo(name string, elemType int32, shape []int64) []byte {

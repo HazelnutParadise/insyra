@@ -204,6 +204,29 @@ func newFloat32Tensor(shape []int, data []float32) (*Tensor, error) {
 	}, nil
 }
 
+func newZeroFloat32Tensor(shape []int) (*Tensor, error) {
+	shapeCopy, strides, count, err := makeLayout(shape)
+	if err != nil {
+		return nil, err
+	}
+	return &Tensor{
+		dtype:   DTypeFloat32,
+		shape:   shapeCopy,
+		strides: strides,
+		data:    make([]float32, count),
+	}, nil
+}
+
+func checkedProduct(left, right int, name string) (int, error) {
+	if left < 0 || right < 0 {
+		return 0, fmt.Errorf("%s has a negative factor: %d * %d", name, left, right)
+	}
+	if left != 0 && right > maxInt()/left {
+		return 0, fmt.Errorf("%s overflows element count: %d * %d", name, left, right)
+	}
+	return left * right, nil
+}
+
 func newInt64Tensor(shape []int, data []int64) (*Tensor, error) {
 	shapeCopy, strides, count, err := makeLayout(shape)
 	if err != nil {
@@ -395,19 +418,18 @@ func alignedDimension(shape []int, rank, axis int) int {
 }
 
 func alignedBroadcastStrides(t *Tensor, outputRank int) []int {
-	strides := make([]int, outputRank)
-	axisOffset := outputRank - len(t.shape)
+	return alignedShapeStrides(t.shape, t.strides, outputRank)
+}
+
+func alignedShapeStrides(shape, strides []int, outputRank int) []int {
+	result := make([]int, outputRank)
+	axisOffset := outputRank - len(shape)
 	for axis := 0; axis < outputRank; axis++ {
 		inputAxis := axis - axisOffset
-		if inputAxis < 0 {
-			strides[axis] = 0
+		if inputAxis < 0 || shape[inputAxis] == 1 {
 			continue
 		}
-		if t.shape[inputAxis] == 1 {
-			strides[axis] = 0
-			continue
-		}
-		strides[axis] = t.strides[inputAxis]
+		result[axis] = strides[inputAxis]
 	}
-	return strides
+	return result
 }

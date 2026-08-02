@@ -677,9 +677,10 @@ To use a loaded network inside the ml protocol, bind it:
 `dl.BindClassifier(model, inputName, features, classes)` — both satisfy
 `ml.Model` structurally, so `ml.Score`, pipelines and `mltest.RunConformance`
 work unchanged. Exported regressors, tree ensembles, and preprocessing
-pipelines read back and run in `dl`. The strict closure test also exposes a
-current `onnxruntime` mismatch for the binary single-score `LinearClassifier`
-export, so do not treat that case as a verified probability round trip.
+pipelines read back and run in `dl`. Binary logistic classifiers use the
+exporter's two coefficient rows, and the strict closure test compares their
+label and probability outputs against both the fitted model and
+`onnxruntime`.
 
 Use `engine` when you are building higher-level tooling (agent tools, MCP servers, pipelines) and want reusable building blocks:
 

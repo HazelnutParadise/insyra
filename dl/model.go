@@ -97,20 +97,43 @@ func buildModel(decoded protoModel) (*Model, error) {
 		return nil, fmt.Errorf("onnx model has no graph")
 	}
 	var defaultOpset int64
+	var mlOpset int64
+	var mlOpsetDeclared bool
 	for _, opset := range decoded.ops {
-		if opset.domain != "" && opset.domain != "ai.onnx" {
-			continue
+		switch opset.domain {
+		case "", "ai.onnx":
+			if opset.version <= 0 {
+				return nil, fmt.Errorf("onnx model has invalid default opset version %d", opset.version)
+			}
+			if defaultOpset != 0 && defaultOpset != opset.version {
+				return nil, fmt.Errorf("onnx model declares conflicting default opset versions %d and %d", defaultOpset, opset.version)
+			}
+			defaultOpset = opset.version
+		case "ai.onnx.ml":
+			if opset.version <= 0 {
+				return nil, fmt.Errorf("onnx model has invalid ai.onnx.ml opset version %d", opset.version)
+			}
+			if mlOpsetDeclared && mlOpset != opset.version {
+				return nil, fmt.Errorf("onnx model declares conflicting ai.onnx.ml opset versions %d and %d", mlOpset, opset.version)
+			}
+			mlOpset, mlOpsetDeclared = opset.version, true
 		}
-		if opset.version <= 0 {
-			return nil, fmt.Errorf("onnx model has invalid default opset version %d", opset.version)
-		}
-		if defaultOpset != 0 && defaultOpset != opset.version {
-			return nil, fmt.Errorf("onnx model declares conflicting default opset versions %d and %d", defaultOpset, opset.version)
-		}
-		defaultOpset = opset.version
 	}
 	if defaultOpset == 0 {
 		return nil, fmt.Errorf("onnx model has no default opset")
+	}
+	usesMLDomain := false
+	for _, node := range decoded.graph.nodes {
+		if node.domain == "ai.onnx.ml" {
+			usesMLDomain = true
+			break
+		}
+	}
+	if usesMLDomain && !mlOpsetDeclared {
+		return nil, fmt.Errorf("onnx model uses ai.onnx.ml operators without an ai.onnx.ml opset import")
+	}
+	if mlOpsetDeclared && mlOpset != 3 {
+		return nil, fmt.Errorf("unsupported ai.onnx.ml opset version %d", mlOpset)
 	}
 
 	unsupported := make([]string, 0)
@@ -213,6 +236,9 @@ func buildModel(decoded protoModel) (*Model, error) {
 		if name == "" {
 			name = fmt.Sprintf("node_%d", index)
 		}
+		if err := validateNodeOutputArity(node, name); err != nil {
+			return nil, err
+		}
 		attributes := make(map[string]protoAttribute, len(node.attributes))
 		for _, attribute := range node.attributes {
 			if attribute.name == "" {
@@ -242,6 +268,18 @@ func buildModel(decoded protoModel) (*Model, error) {
 		})
 	}
 	return model, nil
+}
+
+func validateNodeOutputArity(node protoNode, name string) error {
+	want := 1
+	switch operatorKey(node.domain, node.opType) {
+	case "ai.onnx.ml:LinearClassifier", "ai.onnx.ml:TreeEnsembleClassifier":
+		want = 2
+	}
+	if len(node.outputs) != want {
+		return fmt.Errorf("node %q (%s) has %d outputs, want %d", name, operatorDisplayName(node.domain, node.opType), len(node.outputs), want)
+	}
+	return nil
 }
 
 func operatorKey(domain, opType string) string {

@@ -550,12 +550,9 @@ library: [`dl`](/Docs/dl.md) loads every exported family — including pipelines
 — and reproduces the fitted model's own predictions in pure Go. A pipeline is exported as one
 graph, so the ONNX runtime receives the raw feature columns rather than a
 pre-transformed table. ONNX stores model attributes as `float32`; predictions
-are compared with the tolerance of that exchange format. The binary
-`LinearClassifier` export is a known interoperability edge: the exporter writes
-one score with `post_transform=LOGISTIC`, while the current `onnxruntime`
-reference returns the raw score and its complement. The `dl` closure test keeps
-the `ml` model, `dl`, and reference outputs separate so this mismatch cannot be
-mistaken for a passing probability round trip.
+are compared with the tolerance of that exchange format. Binary logistic
+classifiers use two coefficient rows, so the two probability outputs are
+complementary under `onnxruntime`'s `LOGISTIC` transform.
 
 The exporter refuses polynomial, exponential, logarithmic, Poisson, GLM,
 KMeans, KNN, PCA, fitted imputers, and custom transformers. These models do

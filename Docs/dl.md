@@ -101,14 +101,11 @@ Their results are checked against one-operator ONNX graphs executed by
 
 Linear, ridge, lasso, WLS, both decision trees, both random forests, both
 gradient boosters, and the exported preprocessing pipeline load and run in
-`dl`. The round-trip suite compares the result with the fitted `ml` model and
-with `onnxruntime`. The `ai.onnx.ml` operator domain is implemented to match
-the conventions in `ml/onnx_export.go`, including the binary single-score
-tree-classifier convention. One exporter/runtime mismatch remains for the
-binary `LinearClassifier`: `ml` writes one score with `post_transform=LOGISTIC`,
-while the current `onnxruntime` reference returns that score and its
-complement without applying the logistic transform. The strict closure test
-keeps this case visible instead of treating the two references as equivalent.
+`dl`. The round-trip suite compares every output with the fitted `ml` model
+and with `onnxruntime`. The `ai.onnx.ml` operator domain is implemented to
+match the conventions in `ml/onnx_export.go`, including its binary
+single-score tree-ensemble convention and the two-row binary
+`LinearClassifier` convention used for logistic probabilities.
 
 To use a loaded network as an `ml` model, bind it:
 

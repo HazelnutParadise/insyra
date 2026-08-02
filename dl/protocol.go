@@ -2,6 +2,7 @@ package dl
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/HazelnutParadise/insyra"
 )
@@ -225,10 +226,17 @@ func (m *BoundClassifier) PredictProba(dt *insyra.DataTable) (*insyra.DataTable,
 			rowStart := row * width
 			var sum float64
 			for index := 0; index < width; index++ {
-				sum += float64(data[rowStart+index])
+				probability := float64(data[rowStart+index])
+				if math.IsNaN(probability) || math.IsInf(probability, 0) || probability < 0 {
+					return nil, fmt.Errorf("classifier probability output %q has invalid value %v at row %d column %d", m.probabilities.Name, probability, row, index)
+				}
+				sum += probability
 			}
-			if sum <= 0 {
+			if !math.IsInf(sum, 0) && sum <= 0 {
 				return nil, fmt.Errorf("classifier probability output %q has non-positive sum at row %d", m.probabilities.Name, row)
+			}
+			if math.IsInf(sum, 0) || math.IsNaN(sum) {
+				return nil, fmt.Errorf("classifier probability output %q has invalid sum at row %d", m.probabilities.Name, row)
 			}
 			values[row] = float64(data[rowStart+column]) / sum
 		}

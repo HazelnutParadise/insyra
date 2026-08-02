@@ -2,6 +2,7 @@ package dl_test
 
 import (
 	"bytes"
+	"math"
 	"strings"
 	"testing"
 
@@ -62,6 +63,32 @@ func TestBindAdaptersRefuseMismatchesByName(t *testing.T) {
 	}
 	if _, err := dl.BindClassifier(classifierModel, "features", []string{"a", "b"}, insyra.NewDataList("zero", "one", "two")); err == nil || !strings.Contains(err.Error(), "probabilities") {
 		t.Fatalf("class width error = %v, want probability output name", err)
+	}
+}
+
+func TestBoundClassifierRefusesInvalidProbabilities(t *testing.T) {
+	model, err := dl.LoadONNX(bytes.NewReader(protocolIdentityModel("features", []int64{-1, 2}, "probabilities", []int64{-1, 2})))
+	if err != nil {
+		t.Fatalf("load classifier model: %v", err)
+	}
+	classifier, err := dl.BindClassifier(model, "features", []string{"a", "b"}, insyra.NewDataList("zero", "one"))
+	if err != nil {
+		t.Fatalf("bind classifier: %v", err)
+	}
+	for name, values := range map[string][]float64{
+		"negative": {-1, 2},
+		"nan":      {math.NaN(), 1},
+		"infinite": {math.Inf(1), 1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			input := insyra.NewDataTable(
+				insyra.NewDataList(values[0]).SetName("a"),
+				insyra.NewDataList(values[1]).SetName("b"),
+			)
+			if _, err := classifier.PredictProba(input); err == nil || !strings.Contains(err.Error(), "probability output") {
+				t.Fatalf("PredictProba error = %v, want a named probability refusal", err)
+			}
+		})
 	}
 }
 
