@@ -236,6 +236,43 @@ func executeNode(node modelNode, values map[string]*Tensor, initializers map[str
 			return nil, inputErr
 		}
 		result, err = MatMul(a, b)
+	case "Conv":
+		if arityErr := nodeInputArity(node, 2, 3); arityErr != nil {
+			return nil, arityErr
+		}
+		inputValue, inputErr := input(0)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		weights, inputErr := input(1)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		var bias *Tensor
+		if len(node.inputs) > 2 && node.inputs[2] != "" {
+			bias, inputErr = input(2)
+			if inputErr != nil {
+				return nil, inputErr
+			}
+		}
+		if len(node.inputs) > 3 {
+			for index := 3; index < len(node.inputs); index++ {
+				if node.inputs[index] != "" {
+					return nil, fmt.Errorf("node %q Conv input %d %q is unsupported; Conv accepts input, weights, and optional bias", node.name, index, node.inputs[index])
+				}
+			}
+		}
+		options, optionsErr := convOptionsFromNode(node)
+		if optionsErr != nil {
+			return nil, optionsErr
+		}
+		result, err = Conv(inputValue, weights, bias, options)
+		if err != nil {
+			if bias != nil {
+				return nil, fmt.Errorf("node %q Conv inputs %q shape %v, %q shape %v, %q shape %v: %w", node.name, nodeInputName(node, 0), inputValue.shape, nodeInputName(node, 1), weights.shape, nodeInputName(node, 2), bias.shape, err)
+			}
+			return nil, fmt.Errorf("node %q Conv inputs %q shape %v, %q shape %v: %w", node.name, nodeInputName(node, 0), inputValue.shape, nodeInputName(node, 1), weights.shape, err)
+		}
 	case "Add", "Sub", "Mul", "Div", "Pow":
 		left, inputErr := input(0)
 		if inputErr != nil {
@@ -322,6 +359,142 @@ func executeNode(node modelNode, values map[string]*Tensor, initializers map[str
 			return nil, fmt.Errorf("node %q LayerNormalization Mean and InvStdDev outputs are unsupported", node.name)
 		}
 		result, err = LayerNormalization(value, scale, bias, axis, epsilon)
+	case "MaxPool", "AveragePool":
+		if arityErr := nodeInputArity(node, 1, 1); arityErr != nil {
+			return nil, arityErr
+		}
+		if len(node.outputs) != 1 {
+			if node.opType == "MaxPool" && len(node.outputs) == 2 {
+				return nil, fmt.Errorf("node %q MaxPool second Indices output is unsupported", node.name)
+			}
+			return nil, fmt.Errorf("node %q %s requires exactly one output", node.name, node.opType)
+		}
+		value, inputErr := input(0)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		kernelAttribute, present := attribute("kernel_shape")
+		if !present {
+			return nil, fmt.Errorf("node %q %s has no kernel_shape", node.name, node.opType)
+		}
+		kernelShape, kernelErr := attributeInts(kernelAttribute, "kernel_shape")
+		if kernelErr != nil {
+			return nil, fmt.Errorf("node %q %s: %w", node.name, node.opType, kernelErr)
+		}
+		options, optionsErr := poolOptionsFromNode(node)
+		if optionsErr != nil {
+			return nil, optionsErr
+		}
+		if node.opType == "MaxPool" {
+			result, err = MaxPool(value, kernelShape, options)
+		} else {
+			result, err = AveragePool(value, kernelShape, options)
+		}
+	case "GlobalAveragePool":
+		if arityErr := nodeInputArity(node, 1, 1); arityErr != nil {
+			return nil, arityErr
+		}
+		value, inputErr := input(0)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		result, err = GlobalAveragePool(value)
+	case "BatchNormalization":
+		if len(node.outputs) != 1 {
+			return nil, fmt.Errorf("node %q BatchNormalization training-mode extra outputs are unsupported; inference requires one output", node.name)
+		}
+		if len(node.inputs) > 5 {
+			for index := 5; index < len(node.inputs); index++ {
+				if node.inputs[index] != "" {
+					return nil, fmt.Errorf("node %q BatchNormalization training-mode input %q is unsupported; inference requires five inputs", node.name, node.inputs[index])
+				}
+			}
+		}
+		if len(node.inputs) != 5 {
+			return nil, fmt.Errorf("node %q BatchNormalization requires five inference inputs, got %d", node.name, len(node.inputs))
+		}
+		batchInput, inputErr := input(0)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		scale, inputErr := input(1)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		bias, inputErr := input(2)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		mean, inputErr := input(3)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		variance, inputErr := input(4)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		epsilon, epsilonErr := nodeFloatAttribute(node, "epsilon", 1e-5)
+		if epsilonErr != nil {
+			return nil, epsilonErr
+		}
+		result, err = BatchNormalization(batchInput, scale, bias, mean, variance, epsilon)
+		if err != nil {
+			return nil, fmt.Errorf("node %q BatchNormalization inputs %q, %q, %q, %q, %q: %w", node.name, nodeInputName(node, 0), nodeInputName(node, 1), nodeInputName(node, 2), nodeInputName(node, 3), nodeInputName(node, 4), err)
+		}
+	case "Pad":
+		if arityErr := nodeInputArity(node, 1, 3); arityErr != nil {
+			return nil, arityErr
+		}
+		value, inputErr := input(0)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		mode, modeErr := nodeStringAttribute(node, "mode", "constant")
+		if modeErr != nil {
+			return nil, modeErr
+		}
+		if mode != "constant" {
+			return nil, fmt.Errorf("node %q Pad mode %q is unsupported; only constant mode is supported", node.name, mode)
+		}
+		var pads []int
+		if len(node.inputs) > 1 && node.inputs[1] != "" {
+			padsValue, padsErr := initializerInput(1, "pads")
+			if padsErr != nil {
+				return nil, padsErr
+			}
+			pads, err = tensorAxes(padsValue, "pad pads")
+		} else if padsAttribute, present := attribute("pads"); present {
+			pads, err = attributeInts(padsAttribute, "pads")
+		} else {
+			return nil, fmt.Errorf("node %q Pad has no pads attribute or initializer input", node.name)
+		}
+		if err != nil {
+			return nil, err
+		}
+		constantValue := float32(0)
+		if len(node.inputs) > 2 && node.inputs[2] != "" {
+			valueInput, valueErr := initializerInput(2, "constant value")
+			if valueErr != nil {
+				return nil, valueErr
+			}
+			if valueInput.dtype != DTypeFloat32 || len(valueInput.data) != 1 {
+				return nil, fmt.Errorf("node %q Pad constant value input %q has dtype %s and shape %v; want one float32 value", node.name, nodeInputName(node, 2), dtypeName(valueInput.dtype), valueInput.shape)
+			}
+			constantValue = valueInput.data[0]
+		} else if valueAttribute, present := attribute("value"); present {
+			if !valueAttribute.hasFloat {
+				return nil, fmt.Errorf("node %q Pad attribute value is not a float", node.name)
+			}
+			constantValue = valueAttribute.floatValue
+		}
+		if len(node.inputs) > 3 {
+			for index := 3; index < len(node.inputs); index++ {
+				if node.inputs[index] != "" {
+					return nil, fmt.Errorf("node %q Pad input %d %q is unsupported", node.name, index, node.inputs[index])
+				}
+			}
+		}
+		result, err = Pad(value, pads, constantValue)
 	case "ReduceMean":
 		value, inputErr := input(0)
 		if inputErr != nil {
@@ -746,6 +919,129 @@ func nodeAxis(attribute func(string) (protoAttribute, bool), name string, fallba
 		return 0, fmt.Errorf("attribute %s is not a valid integer", name)
 	}
 	return int(value.intValue), nil
+}
+
+func nodeInputName(node modelNode, index int) string {
+	if index < 0 || index >= len(node.inputs) || node.inputs[index] == "" {
+		return fmt.Sprintf("input[%d]", index)
+	}
+	return node.inputs[index]
+}
+
+func nodeInputArity(node modelNode, minimum, maximum int) error {
+	if len(node.inputs) < minimum || len(node.inputs) > maximum {
+		return fmt.Errorf("node %q %s has %d inputs, want %d to %d", node.name, operatorDisplayName(node.domain, node.opType), len(node.inputs), minimum, maximum)
+	}
+	return nil
+}
+
+func nodeStringAttribute(node modelNode, name, fallback string) (string, error) {
+	value, present := node.attributes[name]
+	if !present {
+		return fallback, nil
+	}
+	if len(value.string) == 0 {
+		return "", fmt.Errorf("node %q attribute %s is not a string", node.name, name)
+	}
+	return string(value.string), nil
+}
+
+func nodeFloatAttribute(node modelNode, name string, fallback float32) (float32, error) {
+	value, present := node.attributes[name]
+	if !present {
+		return fallback, nil
+	}
+	if !value.hasFloat {
+		return 0, fmt.Errorf("node %q attribute %s is not a float", node.name, name)
+	}
+	return value.floatValue, nil
+}
+
+func convOptionsFromNode(node modelNode) (ConvOptions, error) {
+	options := ConvOptions{Group: 1}
+	if value, present := node.attributes["pads"]; present {
+		pads, err := attributeInts(value, "pads")
+		if err != nil {
+			return ConvOptions{}, fmt.Errorf("node %q Conv: %w", node.name, err)
+		}
+		options.Pads = pads
+	}
+	if value, present := node.attributes["strides"]; present {
+		strides, err := attributeInts(value, "strides")
+		if err != nil {
+			return ConvOptions{}, fmt.Errorf("node %q Conv: %w", node.name, err)
+		}
+		options.Strides = strides
+	}
+	if value, present := node.attributes["dilations"]; present {
+		dilations, err := attributeInts(value, "dilations")
+		if err != nil {
+			return ConvOptions{}, fmt.Errorf("node %q Conv: %w", node.name, err)
+		}
+		options.Dilations = dilations
+	}
+	if value, present := node.attributes["auto_pad"]; present {
+		if len(value.string) == 0 {
+			return ConvOptions{}, fmt.Errorf("node %q Conv attribute auto_pad is not a string", node.name)
+		}
+		options.AutoPad = string(value.string)
+	}
+	if value, present := node.attributes["group"]; present {
+		if !value.hasInt || value.intValue < 1 || value.intValue > int64(maxInt()) {
+			return ConvOptions{}, fmt.Errorf("node %q Conv attribute group must be a positive integer", node.name)
+		}
+		options.Group = int(value.intValue)
+	}
+	return options, nil
+}
+
+func poolOptionsFromNode(node modelNode) (PoolOptions, error) {
+	options := PoolOptions{}
+	if value, present := node.attributes["pads"]; present {
+		pads, err := attributeInts(value, "pads")
+		if err != nil {
+			return PoolOptions{}, fmt.Errorf("node %q %s: %w", node.name, node.opType, err)
+		}
+		options.Pads = pads
+	}
+	if value, present := node.attributes["strides"]; present {
+		strides, err := attributeInts(value, "strides")
+		if err != nil {
+			return PoolOptions{}, fmt.Errorf("node %q %s: %w", node.name, node.opType, err)
+		}
+		options.Strides = strides
+	}
+	if value, present := node.attributes["auto_pad"]; present {
+		if len(value.string) == 0 {
+			return PoolOptions{}, fmt.Errorf("node %q %s attribute auto_pad is not a string", node.name, node.opType)
+		}
+		options.AutoPad = string(value.string)
+	}
+	if value, present := node.attributes["count_include_pad"]; present {
+		if !value.hasInt || (value.intValue != 0 && value.intValue != 1) {
+			return PoolOptions{}, fmt.Errorf("node %q AveragePool count_include_pad value is unsupported; want 0 or 1", node.name)
+		}
+		options.CountIncludePad = value.intValue != 0
+	}
+	if value, present := node.attributes["ceil_mode"]; present {
+		if !value.hasInt {
+			return PoolOptions{}, fmt.Errorf("node %q %s attribute ceil_mode is not an integer", node.name, node.opType)
+		}
+		options.CeilMode = int(value.intValue)
+		if options.CeilMode != 0 {
+			return PoolOptions{}, fmt.Errorf("node %q %s ceil_mode value %d is unsupported; only 0 is supported", node.name, node.opType, options.CeilMode)
+		}
+	}
+	if value, present := node.attributes["storage_order"]; present {
+		if !value.hasInt {
+			return PoolOptions{}, fmt.Errorf("node %q MaxPool attribute storage_order is not an integer", node.name)
+		}
+		options.StorageOrder = int(value.intValue)
+		if options.StorageOrder != 0 {
+			return PoolOptions{}, fmt.Errorf("node %q MaxPool storage_order value %d is unsupported; only 0 is supported", node.name, options.StorageOrder)
+		}
+	}
+	return options, nil
 }
 
 func reshapeShape(input *Tensor) ([]int, error) {

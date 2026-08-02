@@ -37,6 +37,8 @@ var supportedOperators = map[string]struct{}{
 	"Gemm": {}, "MatMul": {}, "Add": {}, "Sub": {}, "Mul": {}, "Div": {},
 	"Relu": {}, "Sigmoid": {}, "Tanh": {}, "Gelu": {}, "Erf": {}, "Sqrt": {}, "Pow": {},
 	"LayerNormalization": {}, "ReduceMean": {}, "Softmax": {}, "Identity": {},
+	"Conv": {}, "MaxPool": {}, "AveragePool": {}, "GlobalAveragePool": {},
+	"BatchNormalization": {}, "Pad": {},
 	"Reshape": {}, "Flatten": {}, "Transpose": {}, "Cast": {}, "Constant": {},
 	"Concat": {}, "Unsqueeze": {}, "Squeeze": {}, "Expand": {}, "Shape": {}, "Slice": {}, "Split": {},
 	"Gather": {}, "GreaterOrEqual": {}, "Equal": {}, "Greater": {}, "Where": {},
@@ -285,6 +287,14 @@ func validateNodeOutputArity(node protoNode, name string) error {
 			return fmt.Errorf("node %q (%s) has %d outputs, want 1 to 3", name, operatorDisplayName(node.domain, node.opType), len(node.outputs))
 		}
 		return nil
+	case "MaxPool":
+		if len(node.outputs) == 2 {
+			return fmt.Errorf("node %q MaxPool second Indices output is unsupported", name)
+		}
+	case "BatchNormalization":
+		if len(node.outputs) != 1 {
+			return fmt.Errorf("node %q BatchNormalization training-mode extra outputs are unsupported; inference requires one output", name)
+		}
 	case "Split":
 		if len(node.outputs) == 0 {
 			return fmt.Errorf("node %q (%s) has no outputs", name, operatorDisplayName(node.domain, node.opType))

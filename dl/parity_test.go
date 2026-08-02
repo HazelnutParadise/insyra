@@ -86,6 +86,144 @@ func TestOneOpParityAgainstONNXRuntime(t *testing.T) {
 			},
 		},
 		{
+			name: "ConvAutoPadNotSet",
+			run: func() (*Tensor, error) {
+				return Conv(
+					mustTestTensor(t, []int{1, 1, 5, 5}, scaledRange(25, 0.1)),
+					mustTestTensor(t, []int{1, 1, 2, 2}, []float32{1, -1, 0.5, 2}),
+					nil,
+					ConvOptions{AutoPad: "NOTSET", Pads: []int{1, 0, 0, 1}},
+				)
+			},
+		},
+		{
+			name: "ConvAutoPadSameUpper",
+			run: func() (*Tensor, error) {
+				return Conv(
+					mustTestTensor(t, []int{1, 1, 5, 5}, scaledRange(25, 0.1)),
+					mustTestTensor(t, []int{1, 1, 2, 2}, []float32{1, -1, 0.5, 2}),
+					nil,
+					ConvOptions{AutoPad: "SAME_UPPER", Strides: []int{2, 2}},
+				)
+			},
+		},
+		{
+			name: "ConvAutoPadSameLower",
+			run: func() (*Tensor, error) {
+				return Conv(
+					mustTestTensor(t, []int{1, 1, 5, 5}, scaledRange(25, 0.1)),
+					mustTestTensor(t, []int{1, 1, 2, 2}, []float32{1, -1, 0.5, 2}),
+					nil,
+					ConvOptions{AutoPad: "SAME_LOWER", Strides: []int{2, 2}},
+				)
+			},
+		},
+		{
+			name: "ConvAutoPadValid",
+			run: func() (*Tensor, error) {
+				return Conv(
+					mustTestTensor(t, []int{1, 1, 5, 5}, scaledRange(25, 0.1)),
+					mustTestTensor(t, []int{1, 1, 2, 2}, []float32{1, -1, 0.5, 2}),
+					nil,
+					ConvOptions{AutoPad: "VALID"},
+				)
+			},
+		},
+		{
+			name: "ConvStrides",
+			run: func() (*Tensor, error) {
+				return Conv(
+					mustTestTensor(t, []int{1, 1, 5, 5}, scaledRange(25, 0.1)),
+					mustTestTensor(t, []int{1, 1, 2, 2}, []float32{1, -1, 0.5, 2}),
+					nil,
+					ConvOptions{AutoPad: "NOTSET", Strides: []int{2, 2}},
+				)
+			},
+		},
+		{
+			name: "ConvDilations",
+			run: func() (*Tensor, error) {
+				return Conv(
+					mustTestTensor(t, []int{1, 1, 5, 5}, scaledRange(25, 0.1)),
+					mustTestTensor(t, []int{1, 1, 2, 2}, []float32{1, -1, 0.5, 2}),
+					nil,
+					ConvOptions{AutoPad: "NOTSET", Dilations: []int{2, 2}},
+				)
+			},
+		},
+		{
+			name: "ConvDepthwise",
+			run: func() (*Tensor, error) {
+				return Conv(
+					mustTestTensor(t, []int{1, 2, 5, 5}, scaledRange(50, 0.1)),
+					mustTestTensor(t, []int{2, 1, 2, 2}, []float32{1, 0, 0, -1, 2, 1, -1, 0.5}),
+					nil,
+					ConvOptions{AutoPad: "NOTSET", Group: 2, Pads: []int{1, 1, 1, 1}},
+				)
+			},
+		},
+		{
+			name: "MaxPoolStridesPads",
+			run: func() (*Tensor, error) {
+				return MaxPool(
+					mustTestTensor(t, []int{1, 1, 3, 3}, scaledRange(9, 1)),
+					[]int{2, 2},
+					PoolOptions{Pads: []int{1, 0, 0, 1}, Strides: []int{2, 1}},
+				)
+			},
+		},
+		{
+			name: "AveragePoolExcludePad",
+			run: func() (*Tensor, error) {
+				return AveragePool(
+					mustTestTensor(t, []int{1, 1, 3, 3}, scaledRange(9, 1)),
+					[]int{2, 2},
+					PoolOptions{Pads: []int{1, 0, 0, 1}, Strides: []int{2, 1}},
+				)
+			},
+		},
+		{
+			name: "AveragePoolIncludePad",
+			run: func() (*Tensor, error) {
+				return AveragePool(
+					mustTestTensor(t, []int{1, 1, 3, 3}, scaledRange(9, 1)),
+					[]int{2, 2},
+					PoolOptions{Pads: []int{1, 0, 0, 1}, Strides: []int{2, 1}, CountIncludePad: true},
+				)
+			},
+		},
+		{
+			name: "GlobalAveragePool",
+			run: func() (*Tensor, error) {
+				return GlobalAveragePool(mustTestTensor(t, []int{1, 2, 2, 3}, scaledRange(12, 1)))
+			},
+		},
+		{
+			name: "BatchNormalizationEpsilon",
+			run: func() (*Tensor, error) {
+				return BatchNormalization(
+					mustTestTensor(t, []int{1, 2, 1, 2}, []float32{1, 3, 10, 14}),
+					mustTestTensor(t, []int{2}, []float32{2, 0.5}),
+					mustTestTensor(t, []int{2}, []float32{1, -1}),
+					mustTestTensor(t, []int{2}, []float32{1, 12}),
+					mustTestTensor(t, []int{2}, []float32{4, 4}),
+					0.001,
+				)
+			},
+		},
+		{
+			name: "PadAttributes",
+			run: func() (*Tensor, error) {
+				return Pad(mustTestTensor(t, []int{1, 2}, []float32{1, 2}), []int{1, 0, 2, 1}, 0.5)
+			},
+		},
+		{
+			name: "PadInitializers",
+			run: func() (*Tensor, error) {
+				return Pad(mustTestTensor(t, []int{1, 2}, []float32{1, 2}), []int{1, 0, 2, 1}, 0.5)
+			},
+		},
+		{
 			name: "Add",
 			run: func() (*Tensor, error) {
 				return Add(mustTestTensor(t, []int{2, 3}, []float32{1, 2, 3, 4, 5, 6}), mustTestTensor(t, []int{3}, []float32{10, 20, 30}))
@@ -494,6 +632,35 @@ func TestWholeTransformerEncoderParity(t *testing.T) {
 	assertParityOutput(t, outputs["Y"], reference[0])
 }
 
+func TestWholeCNNParity(t *testing.T) {
+	python := requireONNXReference(t)
+	if python == "" {
+		return
+	}
+	modelPath := filepath.Join(t.TempDir(), "cnn.onnx")
+	reference := runONNXParityPython(t, python, "cnn", modelPath)
+	if len(reference) != 1 {
+		t.Fatalf("cnn reference returned %d outputs, want 1", len(reference))
+	}
+	modelBytes, err := os.ReadFile(modelPath)
+	if err != nil {
+		t.Fatalf("read generated cnn: %v", err)
+	}
+	model, err := LoadONNX(bytes.NewReader(modelBytes))
+	if err != nil {
+		t.Fatalf("LoadONNX cnn: %v", err)
+	}
+	inputData := make([]float32, 64)
+	for index := range inputData {
+		inputData[index] = (float32(index) - 32) / 32
+	}
+	outputs, err := model.Run(map[string]*Tensor{"X": mustTestTensor(t, []int{1, 1, 8, 8}, inputData)})
+	if err != nil {
+		t.Fatalf("Run cnn: %v", err)
+	}
+	assertParityOutput(t, outputs["Y"], reference[0])
+}
+
 func TestRealModelSmoke(t *testing.T) {
 	path := os.Getenv("INSYRA_DL_REAL_MODEL")
 	if path == "" {
@@ -697,6 +864,14 @@ func mustTestInt64Tensor(t *testing.T, shape []int, data []int64) *Tensor {
 		t.Fatalf("NewInt64Tensor: %v", err)
 	}
 	return tensor
+}
+
+func scaledRange(count int, scale float32) []float32 {
+	values := make([]float32, count)
+	for index := range values {
+		values[index] = float32(index+1) * scale
+	}
+	return values
 }
 
 func mustTestStringTensor(t *testing.T, shape []int, data []string) *Tensor {

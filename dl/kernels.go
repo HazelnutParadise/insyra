@@ -80,6 +80,506 @@ func Gemm(a, b, c *Tensor, options ...GemmOptions) (*Tensor, error) {
 	})
 }
 
+// ConvOptions controls the spatial attributes of a two-dimensional Conv.
+// The input and output layout is NCHW and the weight layout is OIHW.
+type ConvOptions struct {
+	Pads      []int
+	AutoPad   string
+	Strides   []int
+	Dilations []int
+	Group     int
+}
+
+// PoolOptions controls the spatial attributes shared by MaxPool and
+// AveragePool. CountIncludePad is used by AveragePool only. CeilMode and
+// StorageOrder are exposed so direct kernel callers receive the same refusal
+// as graph execution when an unsupported ONNX value is requested.
+type PoolOptions struct {
+	Pads            []int
+	AutoPad         string
+	Strides         []int
+	CountIncludePad bool
+	CeilMode        int
+	StorageOrder    int
+}
+
+// MaxPoolOptions and AveragePoolOptions are descriptive aliases for callers
+// that want to name the operator-specific option type at a call site.
+type MaxPoolOptions = PoolOptions
+type AveragePoolOptions = PoolOptions
+
+// Conv computes a two-dimensional NCHW convolution. The accumulator stays in
+// float64 until each output value is narrowed to the tensor's float32 dtype.
+func Conv(input, weights, bias *Tensor, options ...ConvOptions) (*Tensor, error) {
+	if err := requireFloat32(input, "conv input"); err != nil {
+		return nil, err
+	}
+	if err := requireFloat32(weights, "conv weights"); err != nil {
+		return nil, err
+	}
+	if bias != nil {
+		if err := requireFloat32(bias, "conv bias"); err != nil {
+			return nil, err
+		}
+	}
+	if len(options) > 1 {
+		return nil, fmt.Errorf("conv accepts at most one options value")
+	}
+	if len(input.shape) != 4 || len(weights.shape) != 4 {
+		return nil, fmt.Errorf("conv requires input and weights to be 4-D, got shapes %v and %v", input.shape, weights.shape)
+	}
+
+	opts := ConvOptions{Group: 1}
+	if len(options) == 1 {
+		opts = options[0]
+		if opts.Group == 0 {
+			opts.Group = 1
+		}
+	}
+	if opts.Group <= 0 {
+		return nil, fmt.Errorf("conv group %d must be positive", opts.Group)
+	}
+	inputChannels := input.shape[1]
+	outputChannels := weights.shape[0]
+	if inputChannels == 0 || outputChannels == 0 {
+		return nil, fmt.Errorf("conv input and output channels must be positive, got shapes %v and %v", input.shape, weights.shape)
+	}
+	if inputChannels%opts.Group != 0 {
+		return nil, fmt.Errorf("conv input channels %d are not divisible by group %d for shapes %v and %v", inputChannels, opts.Group, input.shape, weights.shape)
+	}
+	if outputChannels%opts.Group != 0 {
+		return nil, fmt.Errorf("conv output channels %d are not divisible by group %d for shapes %v and %v", outputChannels, opts.Group, input.shape, weights.shape)
+	}
+	if weights.shape[1] != inputChannels/opts.Group {
+		return nil, fmt.Errorf("conv weight input channels %d do not match input channels per group %d for shapes %v and %v", weights.shape[1], inputChannels/opts.Group, input.shape, weights.shape)
+	}
+	if bias != nil && !sameShape(bias.shape, []int{outputChannels}) {
+		return nil, fmt.Errorf("conv bias shape %v does not match output channels %d", bias.shape, outputChannels)
+	}
+
+	window, err := resolve2DWindow(input.shape[2], input.shape[3], weights.shape[2], weights.shape[3], opts.Pads, opts.AutoPad, opts.Strides, opts.Dilations, "conv")
+	if err != nil {
+		return nil, err
+	}
+	result, err := newZeroFloat32Tensor([]int{input.shape[0], outputChannels, window.outputH, window.outputW})
+	if err != nil {
+		return nil, err
+	}
+	inputHeight, inputWidth := input.shape[2], input.shape[3]
+	inputChannelsPerGroup := inputChannels / opts.Group
+	outputChannelsPerGroup := outputChannels / opts.Group
+	for batch := 0; batch < input.shape[0]; batch++ {
+		for outputChannel := 0; outputChannel < outputChannels; outputChannel++ {
+			group := outputChannel / outputChannelsPerGroup
+			inputChannelStart := group * inputChannelsPerGroup
+			for outputRow := 0; outputRow < window.outputH; outputRow++ {
+				for outputColumn := 0; outputColumn < window.outputW; outputColumn++ {
+					var sum float64
+					for inputChannel := 0; inputChannel < inputChannelsPerGroup; inputChannel++ {
+						for kernelRow := 0; kernelRow < weights.shape[2]; kernelRow++ {
+							inputRow := outputRow*window.strideH - window.padTop + kernelRow*window.dilationH
+							if inputRow < 0 || inputRow >= inputHeight {
+								continue
+							}
+							for kernelColumn := 0; kernelColumn < weights.shape[3]; kernelColumn++ {
+								inputColumn := outputColumn*window.strideW - window.padLeft + kernelColumn*window.dilationW
+								if inputColumn < 0 || inputColumn >= inputWidth {
+									continue
+								}
+								inputIndex := ((batch*inputChannels+(inputChannelStart+inputChannel))*inputHeight+inputRow)*inputWidth + inputColumn
+								weightIndex := ((outputChannel*weights.shape[1]+inputChannel)*weights.shape[2]+kernelRow)*weights.shape[3] + kernelColumn
+								sum += float64(input.data[inputIndex]) * float64(weights.data[weightIndex])
+							}
+						}
+					}
+					if bias != nil {
+						sum += float64(bias.data[outputChannel])
+					}
+					result.data[((batch*outputChannels+outputChannel)*window.outputH+outputRow)*window.outputW+outputColumn] = float32(sum)
+				}
+			}
+		}
+	}
+	return result, nil
+}
+
+// MaxPool computes a two-dimensional NCHW max pool. Values outside the input
+// are treated as negative infinity and do not contribute a second output.
+func MaxPool(input *Tensor, kernelShape []int, options ...PoolOptions) (*Tensor, error) {
+	if err := requireFloat32(input, "max pool input"); err != nil {
+		return nil, err
+	}
+	if len(options) > 1 {
+		return nil, fmt.Errorf("max pool accepts at most one options value")
+	}
+	if len(input.shape) != 4 {
+		return nil, fmt.Errorf("max pool requires a 4-D input, got shape %v", input.shape)
+	}
+	opts := PoolOptions{}
+	if len(options) == 1 {
+		opts = options[0]
+	}
+	if opts.CeilMode != 0 {
+		return nil, fmt.Errorf("max pool ceil_mode value %d is unsupported; only 0 is supported", opts.CeilMode)
+	}
+	if opts.StorageOrder != 0 {
+		return nil, fmt.Errorf("max pool storage_order value %d is unsupported; only 0 is supported", opts.StorageOrder)
+	}
+	window, err := resolvePoolWindow(input, kernelShape, opts, "max pool")
+	if err != nil {
+		return nil, err
+	}
+	result, err := newZeroFloat32Tensor([]int{input.shape[0], input.shape[1], window.outputH, window.outputW})
+	if err != nil {
+		return nil, err
+	}
+	for batch := 0; batch < input.shape[0]; batch++ {
+		for channel := 0; channel < input.shape[1]; channel++ {
+			for outputRow := 0; outputRow < window.outputH; outputRow++ {
+				for outputColumn := 0; outputColumn < window.outputW; outputColumn++ {
+					maximum := float32(math.Inf(-1))
+					for kernelRow := 0; kernelRow < kernelShape[0]; kernelRow++ {
+						inputRow := outputRow*window.strideH - window.padTop + kernelRow
+						if inputRow < 0 || inputRow >= input.shape[2] {
+							continue
+						}
+						for kernelColumn := 0; kernelColumn < kernelShape[1]; kernelColumn++ {
+							inputColumn := outputColumn*window.strideW - window.padLeft + kernelColumn
+							if inputColumn < 0 || inputColumn >= input.shape[3] {
+								continue
+							}
+							inputIndex := ((batch*input.shape[1]+channel)*input.shape[2]+inputRow)*input.shape[3] + inputColumn
+							if input.data[inputIndex] > maximum {
+								maximum = input.data[inputIndex]
+							}
+						}
+					}
+					result.data[((batch*input.shape[1]+channel)*window.outputH+outputRow)*window.outputW+outputColumn] = maximum
+				}
+			}
+		}
+	}
+	return result, nil
+}
+
+// AveragePool computes a two-dimensional NCHW average pool. When
+// CountIncludePad is true the denominator includes every padded element.
+func AveragePool(input *Tensor, kernelShape []int, options ...PoolOptions) (*Tensor, error) {
+	if err := requireFloat32(input, "average pool input"); err != nil {
+		return nil, err
+	}
+	if len(options) > 1 {
+		return nil, fmt.Errorf("average pool accepts at most one options value")
+	}
+	if len(input.shape) != 4 {
+		return nil, fmt.Errorf("average pool requires a 4-D input, got shape %v", input.shape)
+	}
+	opts := PoolOptions{}
+	if len(options) == 1 {
+		opts = options[0]
+	}
+	if opts.CeilMode != 0 {
+		return nil, fmt.Errorf("average pool ceil_mode value %d is unsupported; only 0 is supported", opts.CeilMode)
+	}
+	if opts.StorageOrder != 0 {
+		return nil, fmt.Errorf("average pool storage_order value %d is unsupported; only 0 is supported", opts.StorageOrder)
+	}
+	window, err := resolvePoolWindow(input, kernelShape, opts, "average pool")
+	if err != nil {
+		return nil, err
+	}
+	result, err := newZeroFloat32Tensor([]int{input.shape[0], input.shape[1], window.outputH, window.outputW})
+	if err != nil {
+		return nil, err
+	}
+	for batch := 0; batch < input.shape[0]; batch++ {
+		for channel := 0; channel < input.shape[1]; channel++ {
+			for outputRow := 0; outputRow < window.outputH; outputRow++ {
+				for outputColumn := 0; outputColumn < window.outputW; outputColumn++ {
+					var sum float64
+					validCount := 0
+					for kernelRow := 0; kernelRow < kernelShape[0]; kernelRow++ {
+						inputRow := outputRow*window.strideH - window.padTop + kernelRow
+						if inputRow < 0 || inputRow >= input.shape[2] {
+							continue
+						}
+						for kernelColumn := 0; kernelColumn < kernelShape[1]; kernelColumn++ {
+							inputColumn := outputColumn*window.strideW - window.padLeft + kernelColumn
+							if inputColumn < 0 || inputColumn >= input.shape[3] {
+								continue
+							}
+							inputIndex := ((batch*input.shape[1]+channel)*input.shape[2]+inputRow)*input.shape[3] + inputColumn
+							sum += float64(input.data[inputIndex])
+							validCount++
+						}
+					}
+					denominator := validCount
+					if opts.CountIncludePad {
+						denominator = kernelShape[0] * kernelShape[1]
+					}
+					if denominator > 0 {
+						result.data[((batch*input.shape[1]+channel)*window.outputH+outputRow)*window.outputW+outputColumn] = float32(sum / float64(denominator))
+					}
+				}
+			}
+		}
+	}
+	return result, nil
+}
+
+// GlobalAveragePool averages every spatial location of an NCHW input and
+// retains singleton spatial dimensions in the output.
+func GlobalAveragePool(input *Tensor) (*Tensor, error) {
+	if err := requireFloat32(input, "global average pool input"); err != nil {
+		return nil, err
+	}
+	if len(input.shape) != 4 {
+		return nil, fmt.Errorf("global average pool requires a 4-D input, got shape %v", input.shape)
+	}
+	spatialCount := input.shape[2] * input.shape[3]
+	if spatialCount == 0 {
+		return nil, fmt.Errorf("global average pool cannot reduce an empty spatial shape %v", input.shape[2:])
+	}
+	result, err := newZeroFloat32Tensor([]int{input.shape[0], input.shape[1], 1, 1})
+	if err != nil {
+		return nil, err
+	}
+	for batch := 0; batch < input.shape[0]; batch++ {
+		for channel := 0; channel < input.shape[1]; channel++ {
+			base := (batch*input.shape[1] + channel) * spatialCount
+			var sum float64
+			for index := 0; index < spatialCount; index++ {
+				sum += float64(input.data[base+index])
+			}
+			result.data[batch*input.shape[1]+channel] = float32(sum / float64(spatialCount))
+		}
+	}
+	return result, nil
+}
+
+// BatchNormalization applies inference-mode channel normalization to an input
+// whose channel axis is one. The five parameter tensors are one-dimensional.
+func BatchNormalization(input, scale, bias, mean, variance *Tensor, epsilonValues ...float32) (*Tensor, error) {
+	if err := requireFloat32(input, "batch normalization input"); err != nil {
+		return nil, err
+	}
+	for name, tensor := range map[string]*Tensor{"scale": scale, "bias": bias, "mean": mean, "variance": variance} {
+		if err := requireFloat32(tensor, "batch normalization "+name); err != nil {
+			return nil, err
+		}
+	}
+	if len(epsilonValues) > 1 {
+		return nil, fmt.Errorf("batch normalization accepts at most one epsilon value")
+	}
+	epsilon := float32(1e-5)
+	if len(epsilonValues) == 1 {
+		epsilon = epsilonValues[0]
+	}
+	if epsilon < 0 || math.IsNaN(float64(epsilon)) || math.IsInf(float64(epsilon), 0) {
+		return nil, fmt.Errorf("batch normalization epsilon %g is invalid", epsilon)
+	}
+	if len(input.shape) < 2 {
+		return nil, fmt.Errorf("batch normalization requires input rank at least 2, got shape %v", input.shape)
+	}
+	channels := input.shape[1]
+	wantShape := []int{channels}
+	for name, tensor := range map[string]*Tensor{"scale": scale, "bias": bias, "mean": mean, "variance": variance} {
+		if !sameShape(tensor.shape, wantShape) {
+			return nil, fmt.Errorf("batch normalization %s shape %v does not match input channel shape %v", name, tensor.shape, wantShape)
+		}
+	}
+	result, err := copyTensor(input)
+	if err != nil {
+		return nil, err
+	}
+	channelStride := input.strides[1]
+	for index, value := range input.data {
+		channel := (index / channelStride) % channels
+		normalized := (float64(value) - float64(mean.data[channel])) / math.Sqrt(float64(variance.data[channel])+float64(epsilon))
+		result.data[index] = float32(normalized*float64(scale.data[channel]) + float64(bias.data[channel]))
+	}
+	return result, nil
+}
+
+// Pad applies constant padding. Pads are ordered as all begins followed by
+// all ends, matching ONNX. Negative values crop the corresponding edge.
+func Pad(input *Tensor, pads []int, values ...float32) (*Tensor, error) {
+	if err := requireFloat32(input, "pad input"); err != nil {
+		return nil, err
+	}
+	if len(values) > 1 {
+		return nil, fmt.Errorf("pad accepts at most one constant value")
+	}
+	if len(pads) != 2*len(input.shape) {
+		return nil, fmt.Errorf("pad pads %v has length %d, want %d for input shape %v", pads, len(pads), 2*len(input.shape), input.shape)
+	}
+	outputShape := make([]int, len(input.shape))
+	for axis, dimension := range input.shape {
+		outputDimension := dimension + pads[axis] + pads[len(input.shape)+axis]
+		if outputDimension < 0 {
+			return nil, fmt.Errorf("pad pads %v produce negative dimension %d at axis %d for input shape %v", pads, outputDimension, axis, input.shape)
+		}
+		outputShape[axis] = outputDimension
+	}
+	value := float32(0)
+	if len(values) == 1 {
+		value = values[0]
+	}
+	result, err := newFloat32Tensor(outputShape, make([]float32, elementCount(outputShape)))
+	if err != nil {
+		return nil, err
+	}
+	for index := range result.data {
+		result.data[index] = value
+	}
+	for outputIndex := range result.data {
+		remaining := outputIndex
+		inputIndex := 0
+		valid := true
+		for axis, stride := range result.strides {
+			coordinate := 0
+			if stride != 0 {
+				coordinate = remaining / stride
+				remaining %= stride
+			}
+			sourceCoordinate := coordinate - pads[axis]
+			if sourceCoordinate < 0 || sourceCoordinate >= input.shape[axis] {
+				valid = false
+				break
+			}
+			inputIndex += sourceCoordinate * input.strides[axis]
+		}
+		if valid {
+			result.data[outputIndex] = input.data[inputIndex]
+		}
+	}
+	return result, nil
+}
+
+type resolved2DWindow struct {
+	padTop, padLeft, padBottom, padRight int
+	strideH, strideW                     int
+	dilationH, dilationW                 int
+	outputH, outputW                     int
+}
+
+func resolvePoolWindow(input *Tensor, kernelShape []int, options PoolOptions, operation string) (resolved2DWindow, error) {
+	if len(kernelShape) != 2 {
+		return resolved2DWindow{}, fmt.Errorf("%s kernel shape %v must contain two dimensions", operation, kernelShape)
+	}
+	return resolve2DWindow(input.shape[2], input.shape[3], kernelShape[0], kernelShape[1], options.Pads, options.AutoPad, options.Strides, nil, operation)
+}
+
+func resolve2DWindow(inputH, inputW, kernelH, kernelW int, pads []int, autoPad string, strides, dilations []int, operation string) (resolved2DWindow, error) {
+	if inputH <= 0 || inputW <= 0 {
+		return resolved2DWindow{}, fmt.Errorf("%s requires positive spatial input dimensions, got [%d %d]", operation, inputH, inputW)
+	}
+	if kernelH <= 0 || kernelW <= 0 {
+		return resolved2DWindow{}, fmt.Errorf("%s kernel shape [%d %d] must be positive", operation, kernelH, kernelW)
+	}
+	strideH, strideW, err := pairOption(strides, 1, operation+" strides")
+	if err != nil {
+		return resolved2DWindow{}, err
+	}
+	dilationH, dilationW, err := pairOption(dilations, 1, operation+" dilations")
+	if err != nil {
+		return resolved2DWindow{}, err
+	}
+	if strideH <= 0 || strideW <= 0 {
+		return resolved2DWindow{}, fmt.Errorf("%s strides [%d %d] must be positive", operation, strideH, strideW)
+	}
+	if dilationH <= 0 || dilationW <= 0 {
+		return resolved2DWindow{}, fmt.Errorf("%s dilations [%d %d] must be positive", operation, dilationH, dilationW)
+	}
+	effectiveH, err := effectiveKernelSize(kernelH, dilationH, operation)
+	if err != nil {
+		return resolved2DWindow{}, err
+	}
+	effectiveW, err := effectiveKernelSize(kernelW, dilationW, operation)
+	if err != nil {
+		return resolved2DWindow{}, err
+	}
+	if len(pads) != 0 && len(pads) != 4 {
+		return resolved2DWindow{}, fmt.Errorf("%s pads %v must contain four values", operation, pads)
+	}
+	mode := autoPad
+	if mode == "" {
+		mode = "NOTSET"
+	}
+	if mode != "NOTSET" && len(pads) != 0 {
+		return resolved2DWindow{}, fmt.Errorf("%s cannot combine auto_pad %q with explicit pads %v", operation, autoPad, pads)
+	}
+	window := resolved2DWindow{strideH: strideH, strideW: strideW, dilationH: dilationH, dilationW: dilationW}
+	switch mode {
+	case "NOTSET":
+		if len(pads) == 4 {
+			window.padTop, window.padLeft, window.padBottom, window.padRight = pads[0], pads[1], pads[2], pads[3]
+		}
+		if window.padTop < 0 || window.padLeft < 0 || window.padBottom < 0 || window.padRight < 0 {
+			return resolved2DWindow{}, fmt.Errorf("%s pads %v must be non-negative", operation, pads)
+		}
+	case "VALID":
+	case "SAME_UPPER", "SAME_LOWER":
+		window.outputH = (inputH + strideH - 1) / strideH
+		window.outputW = (inputW + strideW - 1) / strideW
+		totalH := (window.outputH-1)*strideH + effectiveH - inputH
+		totalW := (window.outputW-1)*strideW + effectiveW - inputW
+		if totalH < 0 {
+			totalH = 0
+		}
+		if totalW < 0 {
+			totalW = 0
+		}
+		if mode == "SAME_UPPER" {
+			window.padTop, window.padBottom = totalH/2, totalH-totalH/2
+			window.padLeft, window.padRight = totalW/2, totalW-totalW/2
+		} else {
+			window.padTop, window.padBottom = (totalH+1)/2, totalH-(totalH+1)/2
+			window.padLeft, window.padRight = (totalW+1)/2, totalW-(totalW+1)/2
+		}
+	default:
+		return resolved2DWindow{}, fmt.Errorf("%s auto_pad value %q is unsupported", operation, autoPad)
+	}
+	if window.outputH == 0 {
+		window.outputH, err = windowOutputDimension(inputH, window.padTop, window.padBottom, effectiveH, strideH, operation)
+		if err != nil {
+			return resolved2DWindow{}, err
+		}
+	}
+	if window.outputW == 0 {
+		window.outputW, err = windowOutputDimension(inputW, window.padLeft, window.padRight, effectiveW, strideW, operation)
+		if err != nil {
+			return resolved2DWindow{}, err
+		}
+	}
+	return window, nil
+}
+
+func pairOption(values []int, fallback int, name string) (int, int, error) {
+	if len(values) == 0 {
+		return fallback, fallback, nil
+	}
+	if len(values) != 2 {
+		return 0, 0, fmt.Errorf("%s %v must contain two values", name, values)
+	}
+	return values[0], values[1], nil
+}
+
+func effectiveKernelSize(kernel, dilation int, operation string) (int, error) {
+	if kernel-1 > (maxInt()-1)/dilation {
+		return 0, fmt.Errorf("%s effective kernel size overflows for kernel %d and dilation %d", operation, kernel, dilation)
+	}
+	return (kernel-1)*dilation + 1, nil
+}
+
+func windowOutputDimension(input, padBefore, padAfter, effectiveKernel, stride int, operation string) (int, error) {
+	numerator := input + padBefore + padAfter - effectiveKernel
+	if numerator < 0 {
+		return 0, fmt.Errorf("%s padding and kernel produce no output for input %d", operation, input)
+	}
+	return numerator/stride + 1, nil
+}
+
 // MatMul computes a matrix product with numpy-style broadcasting over leading
 // batch dimensions. The two-dimensional case stays on the original tight
 // loop because it is the common path for Gemm-style graphs.

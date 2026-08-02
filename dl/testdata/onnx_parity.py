@@ -92,6 +92,109 @@ def one_op(name):
             [numpy_helper.from_array(weight, "W")],
         )
         return model, {"X": x}
+    if name.startswith("Conv"):
+        value = np.arange(1, 26, dtype=np.float32).reshape(1, 1, 5, 5) / 10.0
+        weight = np.array([[1, -1], [0.5, 2]], dtype=np.float32).reshape(1, 1, 2, 2)
+        attributes = {}
+        if name == "ConvAutoPadNotSet":
+            attributes = {"auto_pad": "NOTSET", "pads": [1, 0, 0, 1]}
+        elif name == "ConvAutoPadSameUpper":
+            attributes = {"auto_pad": "SAME_UPPER", "strides": [2, 2]}
+        elif name == "ConvAutoPadSameLower":
+            attributes = {"auto_pad": "SAME_LOWER", "strides": [2, 2]}
+        elif name == "ConvAutoPadValid":
+            attributes = {"auto_pad": "VALID"}
+        elif name == "ConvStrides":
+            attributes = {"auto_pad": "NOTSET", "strides": [2, 2]}
+        elif name == "ConvDilations":
+            attributes = {"auto_pad": "NOTSET", "dilations": [2, 2]}
+        elif name == "ConvDepthwise":
+            value = np.arange(1, 51, dtype=np.float32).reshape(1, 2, 5, 5) / 10.0
+            weight = np.array([
+                [[1, 0], [0, -1]],
+                [[2, 1], [-1, 0.5]],
+            ], dtype=np.float32).reshape(2, 1, 2, 2)
+            attributes = {"auto_pad": "NOTSET", "group": 2, "pads": [1, 1, 1, 1]}
+        else:
+            raise ValueError("unknown parity operator: " + name)
+        output_shape = [1, weight.shape[0], 5, 5]
+        if name in ("ConvAutoPadSameUpper", "ConvAutoPadSameLower"):
+            output_shape = [1, weight.shape[0], 3, 3]
+        elif name == "ConvAutoPadValid":
+            output_shape = [1, weight.shape[0], 4, 4]
+        elif name == "ConvStrides":
+            output_shape = [1, weight.shape[0], 2, 2]
+        elif name == "ConvDilations":
+            output_shape = [1, weight.shape[0], 3, 3]
+        elif name == "ConvDepthwise":
+            output_shape = [1, weight.shape[0], 6, 6]
+        model = make_model(
+            [helper.make_node("Conv", ["X", "W"], ["Y"], **attributes)],
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, list(value.shape))],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, output_shape)],
+            [numpy_helper.from_array(weight, "W")],
+        )
+        return model, {"X": value}
+    if name in ("MaxPoolStridesPads", "AveragePoolExcludePad", "AveragePoolIncludePad"):
+        value = np.arange(1, 10, dtype=np.float32).reshape(1, 1, 3, 3)
+        attributes = {"kernel_shape": [2, 2], "pads": [1, 0, 0, 1], "strides": [2, 1]}
+        if name == "MaxPoolStridesPads":
+            op_type = "MaxPool"
+        else:
+            op_type = "AveragePool"
+            attributes["count_include_pad"] = 1 if name == "AveragePoolIncludePad" else 0
+        model = make_model(
+            [helper.make_node(op_type, ["X"], ["Y"], **attributes)],
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [1, 1, 3, 3])],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 1, 2, 3])],
+        )
+        return model, {"X": value}
+    if name == "GlobalAveragePool":
+        value = np.arange(1, 13, dtype=np.float32).reshape(1, 2, 2, 3)
+        model = make_model(
+            [helper.make_node("GlobalAveragePool", ["X"], ["Y"])],
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [1, 2, 2, 3])],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 2, 1, 1])],
+        )
+        return model, {"X": value}
+    if name == "BatchNormalizationEpsilon":
+        value = np.array([1, 3, 10, 14], dtype=np.float32).reshape(1, 2, 1, 2)
+        scale = np.array([2, 0.5], dtype=np.float32)
+        bias = np.array([1, -1], dtype=np.float32)
+        mean = np.array([1, 12], dtype=np.float32)
+        variance = np.array([4, 4], dtype=np.float32)
+        model = make_model(
+            [helper.make_node("BatchNormalization", ["X", "scale", "bias", "mean", "variance"], ["Y"], epsilon=0.001)],
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [1, 2, 1, 2])],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 2, 1, 2])],
+            [
+                numpy_helper.from_array(scale, "scale"),
+                numpy_helper.from_array(bias, "bias"),
+                numpy_helper.from_array(mean, "mean"),
+                numpy_helper.from_array(variance, "variance"),
+            ],
+        )
+        return model, {"X": value}
+    if name in ("PadAttributes", "PadInitializers"):
+        value = np.array([[1, 2]], dtype=np.float32)
+        pads = np.array([1, 0, 2, 1], dtype=np.int64)
+        constant = np.array(0.5, dtype=np.float32)
+        if name == "PadAttributes":
+            node = helper.make_node("Pad", ["X"], ["Y"], pads=pads.tolist(), value=0.5, mode="constant")
+            initializers = []
+            opset = 10
+        else:
+            node = helper.make_node("Pad", ["X", "pads", "constant"], ["Y"], mode="constant")
+            initializers = [numpy_helper.from_array(pads, "pads"), numpy_helper.from_array(constant, "constant")]
+            opset = 13
+        model = make_model(
+            [node],
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [1, 2])],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [4, 3])],
+            initializers,
+            opset=opset,
+        )
+        return model, {"X": value}
     if name in ("Add", "Sub", "Mul", "Div"):
         left = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
         right = np.array([2, 4, 5] if name == "Div" else [10, 20, 30], dtype=np.float32)
@@ -542,6 +645,48 @@ def encoder_model():
     return model, {"X": x}
 
 
+def cnn_model():
+    x = ((np.arange(64, dtype=np.float32).reshape(1, 1, 8, 8) - 32.0) / 32.0)
+    w1 = ((np.arange(18, dtype=np.float32).reshape(2, 1, 3, 3) - 8.0) / 17.0)
+    b1 = np.array([0.1, -0.2], dtype=np.float32)
+    scale1 = np.array([1.0, 0.75], dtype=np.float32)
+    bias1 = np.array([0.1, -0.15], dtype=np.float32)
+    mean1 = np.array([0.0, 0.25], dtype=np.float32)
+    variance1 = np.array([1.0, 0.5], dtype=np.float32)
+    w2 = ((np.arange(72, dtype=np.float32).reshape(4, 2, 3, 3) - 36.0) / 29.0)
+    b2 = np.array([0.05, -0.1, 0.15, -0.2], dtype=np.float32)
+    wg = ((np.arange(40, dtype=np.float32).reshape(4, 10) - 20.0) / 37.0)
+    bg = np.array([0.1, -0.05, 0.2, -0.15, 0.3, -0.25, 0.4, -0.35, 0.5, -0.45], dtype=np.float32)
+    nodes = [
+        helper.make_node("Conv", ["X", "W1", "B1"], ["C1"], pads=[1, 1, 1, 1]),
+        helper.make_node("BatchNormalization", ["C1", "scale1", "bias1", "mean1", "variance1"], ["N1"], epsilon=0.001),
+        helper.make_node("Relu", ["N1"], ["R1"]),
+        helper.make_node("MaxPool", ["R1"], ["P1"], kernel_shape=[2, 2], strides=[2, 2]),
+        helper.make_node("Conv", ["P1", "W2", "B2"], ["C2"], pads=[1, 1, 1, 1]),
+        helper.make_node("Relu", ["C2"], ["R2"]),
+        helper.make_node("GlobalAveragePool", ["R2"], ["G"]),
+        helper.make_node("Flatten", ["G"], ["F"], axis=1),
+        helper.make_node("Gemm", ["F", "WG", "BG"], ["L"]),
+        helper.make_node("Softmax", ["L"], ["Y"], axis=1),
+    ]
+    initializers = [
+        numpy_helper.from_array(value, name)
+        for name, value in [
+            ("W1", w1), ("B1", b1),
+            ("scale1", scale1), ("bias1", bias1), ("mean1", mean1), ("variance1", variance1),
+            ("W2", w2), ("B2", b2), ("WG", wg), ("BG", bg),
+        ]
+    ]
+    model = make_model(
+        nodes,
+        [helper.make_tensor_value_info("X", TensorProto.FLOAT, [1, 1, 8, 8])],
+        [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 10])],
+        initializers,
+        opset=13,
+    )
+    return model, {"X": x}
+
+
 def roundtrip(model_path, payload_path):
     session = ort.InferenceSession(model_path, providers=["CPUExecutionProvider"])
     payload = json.load(open(payload_path))
@@ -588,6 +733,12 @@ def main():
         return
     if mode == "encoder":
         model, feed = encoder_model()
+        with open(sys.argv[2], "wb") as handle:
+            handle.write(model.SerializeToString())
+        run_model(model, feed)
+        return
+    if mode == "cnn":
+        model, feed = cnn_model()
         with open(sys.argv[2], "wb") as handle:
             handle.write(model.SerializeToString())
         run_model(model, feed)

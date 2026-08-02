@@ -36,7 +36,7 @@ func TestLoadONNXRejectsMalformedBytesWithoutPanicking(t *testing.T) {
 
 func TestLoadONNXReportsEveryUnsupportedOperatorAtOnce(t *testing.T) {
 	data := testONNXModel([]testONNXNode{
-		{opType: "Conv", input: "X", output: "C"},
+		{opType: "ConvTranspose", input: "X", output: "C"},
 		{opType: "Attention", input: "C", output: "Y"},
 	}, true)
 
@@ -45,7 +45,7 @@ func TestLoadONNXReportsEveryUnsupportedOperatorAtOnce(t *testing.T) {
 		t.Fatal("LoadONNX accepted unsupported operators")
 	}
 	message := err.Error()
-	for _, operator := range []string{"Conv", "Attention"} {
+	for _, operator := range []string{"ConvTranspose", "Attention"} {
 		if !strings.Contains(message, operator) {
 			t.Errorf("error %q does not name unsupported operator %s", message, operator)
 		}
