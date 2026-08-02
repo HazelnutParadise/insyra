@@ -86,6 +86,37 @@ dimension is dynamic and accepts any non-negative runtime dimension.
 each input's name, dtype, rank, and fixed dimensions. It returns named output
 tensors and reports the node name when a graph operation fails.
 
+## Loading SafeTensors weights
+
+`LoadSafeTensors` reads a complete SafeTensors file from an `io.Reader` and
+returns a `map[string]*dl.Tensor` keyed by the file's tensor names:
+
+```go
+file, err := os.Open("weights.safetensors")
+if err != nil {
+    log.Fatal(err)
+}
+defer file.Close()
+
+weights, err := dl.LoadSafeTensors(file)
+if err != nil {
+    log.Fatal(err)
+}
+kernel := weights["layer.weight"]
+```
+
+The loader validates the 8-byte header length, JSON entries, shape element
+counts, byte offsets, non-overlap, and complete contiguous coverage of the data
+region before materialising any tensor. The optional `__metadata__` entry is
+accepted as a string-to-string object and ignored. Malformed input returns an
+error naming the defect and tensor rather than panicking.
+
+`F32`, `I64`, and `BOOL` load natively into `float32`, `int64`, and `bool`
+Tensors. `F64`, `F16`, `BF16`, quantized dtypes, and other unsupported dtypes
+are refused together in one error, with every tensor name and dtype listed.
+There is no silent widening or narrowing, and the loader does not mmap or load
+tensors lazily.
+
 ## Supported operators
 
 | Operator | Notes |

@@ -699,6 +699,17 @@ exporter's two coefficient rows, and the strict closure test compares their
 label and probability outputs against both the fitted model and
 `onnxruntime`.
 
+### SafeTensors weights
+
+Use `dl.LoadSafeTensors(reader)` to load a complete SafeTensors checkpoint as
+`map[string]*dl.Tensor`. It validates the header, shapes, exact byte lengths,
+non-overlapping contiguous data regions, and duplicate names before returning.
+The optional `__metadata__` string map is accepted and ignored. `F32`, `I64`,
+and `BOOL` load into their matching native Tensor dtypes; unsupported dtypes
+such as `F64`, `F16`, and `BF16` are refused together with each tensor name,
+without silent conversion. Treat the input as untrusted and always check the
+returned error.
+
 Use `engine` when you are building higher-level tooling (agent tools, MCP servers, pipelines) and want reusable building blocks:
 
 - `engine/atomic`: actor-style `AtomicDo` helpers for serialized critical sections.
