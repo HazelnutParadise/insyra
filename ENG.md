@@ -10,15 +10,18 @@ What holds across tickets. Anything scoped to one change lives on that change un
                 DataList / DataTable / CCL
                   values stored as []any
                             |
-        +-------------------+-------------------+
-        |                   |                   |
-     stats/               ml/                accel/
-  float64 throughout   sklearn-shaped     pure-Go WebGPU
-  validated against R   estimator          (gogpu/wgpu)
-        ^                protocol               |
-        |                   |            internal/wgpu
-        +---- wraps --------+            (leaf: imports
-                                          nothing from accel)
+        +-----------+-----------+-----------+-----------+
+        |           |           |           |
+     stats/       ml/         dl/        accel/
+  float64      sklearn-    ONNX inference  pure-Go WebGPU
+  throughout,  shaped      + (phase 2)     (gogpu/wgpu)
+  validated    estimator   autodiff;           |
+  against R    protocol    f32 tensors,   internal/wgpu
+        ^         |        dtype-carrying  (leaf)
+        +- wraps -+           |
+                              | kernels are plain functions on tensors;
+                              | the graph interpreter is ONE caller —
+                              | the future llm package is another
 
 Dependency direction: accel -> insyra. The root package therefore
 CANNOT import accel; a registration seam is the only route, and the
@@ -44,6 +47,7 @@ before the root could reach it directly.
 | `accel.BackendExecutor` | the device | every accel test that does not need real hardware |
 | `accel` builtin probe overrides | device discovery | isolation from whatever GPU the host has |
 | `Rscript` / `python` subprocess | the reference implementation | `stats` cross-language validation |
+| Single-op ONNX graph generator | the reference runtime, per operator | `dl` kernel parity: each kernel gets a generated one-op `.onnx`, run by both `dl` and `onnxruntime`, outputs compared — per-op reference verification without hand-computing |
 
 A pipeline step is a **fit function, not a configured object**. scikit-learn refits per fold by cloning the unfitted estimator, and cloning needs `inspect.signature`; Go has no equivalent that is not struct-tag reflection, which this repo uses nowhere. A closure refits by being called again.
 
@@ -56,6 +60,7 @@ A pipeline step is a **fit function, not a configured object**. scikit-learn ref
 | Conformance | a third-party `ml.Model` obeys the protocol, including that importances and feature names agree in number | `ml/mltest` |
 | Round-trip | an exported model loads and scores in `onnxruntime` | `ml/onnx_export_test.go` |
 | Leakage | a cross-validated pipeline's steps see training rows only | `ml/pipeline_features_test.go` |
+| Op parity | every `dl` kernel against `onnxruntime` on generated one-op graphs, plus whole-model round trips | `dl` (planned) |
 | Order-independence | permuting input rows fits an identical tree | `ml/decision_tree_test.go` |
 | Calibration | where a device wins, across 96 shapes | `accel/shapemap_test.go` |
 
@@ -125,6 +130,9 @@ The floor is one host's number and belongs in a calibrated dispatcher eventually
 - **`Predict` returns a `DataList` whatever the model is.** A measurement, a class label and a cluster id are the same type, so nothing downstream can tell them apart. Four defects came from this — the fourth being a metric's *score*, whose direction is equally invisible in a `float64`: a logistic model satisfying `Classifier` while `Predict` returned probabilities, cluster ids scored by RMSE, and a metric unable to say it needed probabilities. Each is a different party guessing at what the other meant — risk: no check can recover the missing information, because it is not in the data. A model must *declare* what it predicts (`Classifier`, `Clusterer`) and a metric what it consumes; inference is not available.
   The same shape appeared twice more and was fixed the same way. A metric's score is a `float64` whichever way it improves, so `Metric` now declares a `Direction`; without it a caller ranking two means picked the worse model half the time. A pipeline's feature names and its estimator's importances are both `[]string`/`[]float64` with nothing tying them together, so a fitted pipeline now reports `TransformedFeatureNames`.
   The counter-example is `SimpleImputer`, which deliberately does not implement `InverseTransform` rather than implementing one that errors — its comment explains that a method present only to satisfy an assertion tells a caller the capability exists and then refuses at the call, so not having it is the only form of "no" an assertion can read. That is the same reasoning applied before the defect rather than after.
+- **A `.onnx` file is untrusted input.** The `dl` decoder must error on malformed bytes, never panic, and must list every unsupported operator by name at load time rather than failing mid-run — risk: a graph interpreter that panics on attacker-shaped input is a denial-of-service primitive in any service that loads user models.
+- **`dl`'s f32 inference is device-eligible by the existing contract, not a new rule.** ONNX models carry f32 weights, and f32 is "a value type the device holds exactly" in the result-shape table — bit-identical outright. GPU inference still lands only behind a measurement, like everything else.
+- **`dl` v1 constraints for the decided GGUF/LLM future**: tensors carry a dtype (f32 is the only implemented one; the type system must not weld the door shut on quantised types), and kernels are plain functions the graph interpreter merely calls — the future `llm` package hard-codes transformer architectures against the same kernels instead of interpreting graphs.
 - **A test that passes for the wrong reason, or never runs at all.** Caught five times in this phase: a benchmark arm named for a device that never ran, a numerical test that passed against the bound it was meant to exercise, a conformance probe failing on an unrelated assertion, cross-language validation that skipped wherever `Rscript` was absent, and an ONNX round-trip that had skipped on every machine it ever ran on — hiding two defects that made every exported model invalid — risk: a fix is not verified until its test has been shown to fail without it, and a suite is not green until its skips have been read.
 
 ## Migration plan

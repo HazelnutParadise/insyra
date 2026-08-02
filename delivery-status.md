@@ -1,10 +1,10 @@
 # Delivery Status
 
 ## Current Phase
-`insyra/ml` v1 shipped and archived, then audited against its own claims and repaired. Acceleration is dormant by choice — no call site was measured to beat the CPU, so the runtime waits for one rather than being wired into something that would lose.
+`insyra/dl` phase 1 (ONNX inference) has begun; `insyra/ml` v1 is shipped, audited and merged to dev (PR #194). Acceleration has exactly one wired call site (KNN), which measurement earned.
 
 ## Stage Objective
-Nothing is in flight. The stage that just closed had one objective and met it: audit `insyra/ml` against what it claimed and fix what did not hold. Six findings were reported; five were real and are fixed, one was a misdiagnosis and is recorded as one.
+`insyra/dl`: run ONNX models in pure Go, verified per-operator and per-model against `onnxruntime`, with the op families landing in the decided order MLP → attention → CNN, then phase 2 adds autodiff and optimisers on the same tensors (first-step gradients verified against PyTorch under fixed initial weights via SafeTensors). GGUF/LLM is a decided future track that reuses the kernels; only two v1 constraints serve it now — dtype-carrying tensors and kernels as plain functions.
 
 ## Active Workstreams
 None. Every proposed change is implemented, verified and archived — `openspec/changes/` holds nothing but `archive/`.
@@ -19,6 +19,12 @@ None. Every proposed change is implemented, verified and archived — `openspec/
 | M10 | `insyra/ml` v1 | planning | done | protocol, pipelines, model selection, decision trees and ONNX export archived; 21 review findings raised, the blocking ones fixed, the rest adjudicated |
 | M11 | `ml` holds up under audit | planning | done | ONNX round-trip passes against a real `onnxruntime` for all five model shapes; `stats` refuses input it cannot read instead of scoring zeros; metrics declare a direction; pipelines name the columns their estimator saw |
 | M12 | A skip cannot pass for a pass | planning | done | strict mode fails on a missing toolchain and skips without it, verified in both directions; every gate routes through one helper; CI installs all three toolchains and runs with it set |
+| M13 | An ONNX MLP runs in pure Go | planning | in progress | a PyTorch-class MLP `.onnx` loads and predicts in `dl`, every kernel passing generated one-op parity against `onnxruntime` and the whole model matching within f32 tolerance |
+| M14 | `dl` models join the `ml` protocol | planning | pending | a `dl` model satisfies `ml.Model`, takes `DataTable` input, and `ml`'s own exports read back and run |
+| M15 | Attention-family ops | planning | pending | a BERT-class encoder runs and matches `onnxruntime`; kernels reusable by the future llm package |
+| M16 | CNN-family ops | planning | pending | an MNIST-class classifier runs and matches `onnxruntime` |
+| M17 | Inference reaches the device | planning | pending | f32 kernels behind the accel seam, landed only where measured to win |
+| M18 | Training (phase 2) | planning | pending | autodiff + SGD/Adam on the same tensors; first-step gradients match PyTorch under fixed SafeTensors-loaded weights |
 
 Milestone order is the blocking sequence. OpenSpec has no dependency relationship between changes, so nothing else carries it.
 
@@ -29,7 +35,7 @@ None. One coverage gap is carried in `AGENTS.md` follow-ups rather than here, be
 Undecided again, and healthily: KNN is wired (`accel/knnbridge`, opt-in blank import, two measured floors, exact parity on hardware), which was the line's first and so far only justified landing. The DBSCAN neighbourhood scan remains unmeasured and is the remaining candidate. Extending the shortlist beyond k=7, and multi-device execution of a single operation, are both unearned until a workload demands them.
 
 ## Next Ticket
-None pending. `add-knn-device-path` is implemented and archived.
+`add-dl-onnx-mlp-inference` (M13) — being implemented. `add-dl-ml-protocol` (M14) is cut next.
 
 ## Decision Log
 Deltas that still change what someone would do. The standing technical decisions they produced — the precision contract, the device rules, the measured thresholds — live in [ENG.md](ENG.md); the full history is in git.
