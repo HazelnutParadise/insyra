@@ -666,9 +666,20 @@ row-major tensors with `dl.NewTensor`, load from an `io.Reader` with
 input names. Check the returned error: loading rejects malformed files and
 lists unsupported operators together, while running validates required input
 names, dtypes, ranks, and fixed dimensions. The current operator family is
-the MLP subset documented in `Docs/dl.md`; do not assume arbitrary ONNX models
-are supported. `Add`, `Sub`, and `Mul` broadcast trailing dimensions, and the
-standalone kernel functions can be used without the graph interpreter.
+the operator family documented in `Docs/dl.md`; do not assume arbitrary ONNX
+models are supported. `Add`, `Sub`, `Mul`, and `Div` broadcast trailing
+dimensions, and the standalone kernel functions can be used without the graph
+interpreter. `int64`, `string`, and `bool` tensors are available for the
+categorical graph paths and classifier labels.
+
+To use a loaded network inside the ml protocol, bind it:
+`dl.BindRegressor(model, inputName, features)` or
+`dl.BindClassifier(model, inputName, features, classes)` — both satisfy
+`ml.Model` structurally, so `ml.Score`, pipelines and `mltest.RunConformance`
+work unchanged. Exported regressors, tree ensembles, and preprocessing
+pipelines read back and run in `dl`. The strict closure test also exposes a
+current `onnxruntime` mismatch for the binary single-score `LinearClassifier`
+export, so do not treat that case as a verified probability round trip.
 
 Use `engine` when you are building higher-level tooling (agent tools, MCP servers, pipelines) and want reusable building blocks:
 
