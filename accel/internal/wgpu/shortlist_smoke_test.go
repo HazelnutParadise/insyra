@@ -2,6 +2,7 @@ package wgpu
 
 import (
 	"context"
+	"errors"
 	"math"
 	"math/rand"
 	"os"
@@ -37,6 +38,9 @@ func TestShortlistKernelSmoke(t *testing.T) {
 
 	idx, dist, boundary, cost, err := NearestShortlist(context.Background(), cols, queries, k)
 	if err != nil {
+		if errors.Is(err, ErrUnavailable) {
+			t.Skipf("no usable GPU: %v", err)
+		}
 		t.Fatalf("shortlist failed: %v", err)
 	}
 	t.Logf("transfer=%v dispatch=%v readback=%v", cost.Transfer, cost.Dispatch, cost.Readback)

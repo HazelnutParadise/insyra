@@ -782,6 +782,19 @@ func matMulBatchedWithWorkers(a, b *Tensor, workers int) (*Tensor, error) {
 }
 
 func matMul2D(a, b *Tensor) (*Tensor, error) {
+	if a.shape[1] != b.shape[0] {
+		return nil, fmt.Errorf("matmul shapes %v and %v are incompatible", a.shape, b.shape)
+	}
+	if matMulMACsAtLeast(a.shape[0], b.shape[1], a.shape[1]) {
+		if hook := registeredDeviceMatMul(); hook != nil {
+			data, err := hook(a.data, a.shape[0], a.shape[1], b.data, b.shape[0], b.shape[1])
+			if err == nil && len(data) == a.shape[0]*b.shape[1] {
+				if result, resultErr := newFloat32Tensor([]int{a.shape[0], b.shape[1]}, data); resultErr == nil {
+					return result, nil
+				}
+			}
+		}
+	}
 	return matMul2DWithWorkers(a, b, 0)
 }
 
