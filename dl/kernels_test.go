@@ -2,6 +2,7 @@ package dl
 
 import (
 	"math"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -28,6 +29,58 @@ func TestGemmAndMatMul(t *testing.T) {
 		t.Fatalf("Gemm TransA: %v", err)
 	}
 	assertTestTensor(t, transposed, []int{2, 2}, []float32{26, 30, 38, 44}, 0)
+}
+
+func TestMatMulBatchedBroadcast(t *testing.T) {
+	a := mustTestTensor(t, []int{2, 1, 2, 3}, []float32{
+		1, 2, 3, 4, 5, 6,
+		7, 8, 9, 10, 11, 12,
+	})
+	b := mustTestTensor(t, []int{1, 3, 3, 2}, []float32{
+		1, 2, 3, 4, 5, 6,
+		2, 1, 4, 3, 6, 5,
+		3, 2, 5, 4, 7, 6,
+	})
+	got, err := MatMul(a, b)
+	if err != nil {
+		t.Fatalf("MatMul: %v", err)
+	}
+	if !slices.Equal(got.Shape(), []int{2, 3, 2, 2}) {
+		t.Fatalf("shape = %v, want [2 3 2 2]", got.Shape())
+	}
+	// The first A batch is reused across B's three batches. The second A
+	// batch is checked as well so both broadcast dimensions participate.
+	want := []float32{
+		22, 28, 49, 64,
+		28, 22, 64, 49,
+		34, 28, 79, 64,
+		76, 100, 103, 136,
+		100, 76, 136, 103,
+		124, 100, 169, 136,
+	}
+	if !slices.Equal(got.Data(), want) {
+		t.Fatalf("data = %v, want %v", got.Data(), want)
+	}
+}
+
+func TestMatMulRejectsIncompatibleBatchShapes(t *testing.T) {
+	a := mustTestTensor(t, []int{2, 2, 3}, make([]float32, 12))
+	b := mustTestTensor(t, []int{3, 4, 3, 2}, make([]float32, 72))
+	if _, err := MatMul(a, b); err == nil || !strings.Contains(err.Error(), "[2]") || !strings.Contains(err.Error(), "[3 4]") {
+		t.Fatalf("MatMul batch error = %v, want both batch shapes", err)
+	}
+}
+
+func TestMatMulSupportsVectorEdges(t *testing.T) {
+	vector := mustTestTensor(t, []int{3}, []float32{1, 2, 3})
+	column := mustTestTensor(t, []int{3, 1}, []float32{4, 5, 6})
+	got, err := MatMul(vector, column)
+	if err != nil {
+		t.Fatalf("vector-column MatMul: %v", err)
+	}
+	if !slices.Equal(got.Shape(), []int{1}) || !slices.Equal(got.Data(), []float32{32}) {
+		t.Fatalf("vector-column result = shape %v data %v", got.Shape(), got.Data())
+	}
 }
 
 func TestElementwiseKernelsBroadcast(t *testing.T) {

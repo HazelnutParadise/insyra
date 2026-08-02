@@ -80,7 +80,9 @@ func Gemm(a, b, c *Tensor, options ...GemmOptions) (*Tensor, error) {
 	})
 }
 
-// MatMul computes a two-dimensional matrix product.
+// MatMul computes a matrix product with numpy-style broadcasting over leading
+// batch dimensions. The two-dimensional case stays on the original tight
+// loop because it is the common path for Gemm-style graphs.
 func MatMul(a, b *Tensor) (*Tensor, error) {
 	if err := requireFloat32(a, "matmul input A"); err != nil {
 		return nil, err
@@ -88,9 +90,100 @@ func MatMul(a, b *Tensor) (*Tensor, error) {
 	if err := requireFloat32(b, "matmul input B"); err != nil {
 		return nil, err
 	}
-	if len(a.shape) != 2 || len(b.shape) != 2 {
-		return nil, fmt.Errorf("matmul requires 2-D inputs, got shapes %v and %v", a.shape, b.shape)
+	if len(a.shape) == 0 || len(b.shape) == 0 {
+		return nil, fmt.Errorf("matmul requires inputs with rank at least 1, got shapes %v and %v", a.shape, b.shape)
 	}
+	if len(a.shape) == 2 && len(b.shape) == 2 {
+		return matMul2D(a, b)
+	}
+
+	aRows, aCols := 1, a.shape[len(a.shape)-1]
+	aRowStride, aColStride := 0, a.strides[len(a.shape)-1]
+	aBatchShape := a.shape[:0]
+	aBatchStrides := a.strides[:0]
+	if len(a.shape) >= 2 {
+		aRows = a.shape[len(a.shape)-2]
+		aRowStride = a.strides[len(a.shape)-2]
+		aBatchShape = a.shape[:len(a.shape)-2]
+		aBatchStrides = a.strides[:len(a.shape)-2]
+	}
+	bRows, bCols := b.shape[len(b.shape)-1], 1
+	bRowStride, bColStride := b.strides[len(b.shape)-1], 0
+	bBatchShape := b.shape[:0]
+	bBatchStrides := b.strides[:0]
+	if len(b.shape) >= 2 {
+		bRows = b.shape[len(b.shape)-2]
+		bCols = b.shape[len(b.shape)-1]
+		bColStride = b.strides[len(b.shape)-1]
+		bRowStride = b.strides[len(b.shape)-2]
+		bBatchShape = b.shape[:len(b.shape)-2]
+		bBatchStrides = b.strides[:len(b.shape)-2]
+	}
+	if aCols != bRows {
+		return nil, fmt.Errorf("matmul shapes %v and %v are incompatible", a.shape, b.shape)
+	}
+	batchShape, err := tensorBroadcastShape(aBatchShape, bBatchShape)
+	if err != nil {
+		return nil, fmt.Errorf("matmul batch shapes %v and %v are incompatible for input shapes %v and %v: %w", aBatchShape, bBatchShape, a.shape, b.shape, err)
+	}
+	logicalShape := append(append([]int(nil), batchShape...), aRows, bCols)
+	result, err := newFloat32Tensor(logicalShape, make([]float32, elementCount(logicalShape)))
+	if err != nil {
+		return nil, err
+	}
+	aBatchAligned := alignedShapeStrides(aBatchShape, aBatchStrides, len(batchShape))
+	bBatchAligned := alignedShapeStrides(bBatchShape, bBatchStrides, len(batchShape))
+	_, _, batchCount, err := makeLayout(batchShape)
+	if err != nil {
+		return nil, err
+	}
+	batchStrides := stridesForShape(batchShape)
+	resultMatrixSize := aRows * bCols
+	for batchIndex := 0; batchIndex < batchCount; batchIndex++ {
+		aBase, bBase := 0, 0
+		remaining := batchIndex
+		for axis, stride := range batchStrides {
+			coordinate := 0
+			if stride != 0 {
+				coordinate = remaining / stride
+				remaining %= stride
+			}
+			aBase += coordinate * aBatchAligned[axis]
+			bBase += coordinate * bBatchAligned[axis]
+		}
+		resultBase := batchIndex * resultMatrixSize
+		for row := 0; row < aRows; row++ {
+			for column := 0; column < bCols; column++ {
+				var sum float32
+				for inner := 0; inner < aCols; inner++ {
+					sum += a.data[aBase+row*aRowStride+inner*aColStride] * b.data[bBase+inner*bRowStride+column*bColStride]
+				}
+				result.data[resultBase+row*bCols+column] = sum
+			}
+		}
+	}
+	if len(a.shape) == 1 {
+		result.shape = append([]int(nil), batchShape...)
+		if len(b.shape) >= 2 {
+			result.shape = append(result.shape, bCols)
+		}
+		result.strides = stridesForShape(result.shape)
+	}
+	if len(b.shape) == 1 {
+		result.shape = append([]int(nil), batchShape...)
+		if len(a.shape) >= 2 {
+			result.shape = append(result.shape, aRows)
+		}
+		result.strides = stridesForShape(result.shape)
+	}
+	if len(a.shape) == 1 && len(b.shape) == 1 {
+		result.shape = nil
+		result.strides = nil
+	}
+	return result, nil
+}
+
+func matMul2D(a, b *Tensor) (*Tensor, error) {
 	if a.shape[1] != b.shape[0] {
 		return nil, fmt.Errorf("matmul shapes %v and %v are incompatible", a.shape, b.shape)
 	}
@@ -149,6 +242,173 @@ func Sigmoid(input *Tensor) (*Tensor, error) {
 // Tanh computes the hyperbolic tangent element by element.
 func Tanh(input *Tensor) (*Tensor, error) {
 	return unary("tanh", input, func(value float32) float32 { return float32(math.Tanh(float64(value))) })
+}
+
+// Erf computes the Gauss error function element by element.
+func Erf(input *Tensor) (*Tensor, error) {
+	return unary("erf", input, func(value float32) float32 { return float32(math.Erf(float64(value))) })
+}
+
+// Sqrt computes the non-negative square root element by element.
+func Sqrt(input *Tensor) (*Tensor, error) {
+	return unary("sqrt", input, func(value float32) float32 { return float32(math.Sqrt(float64(value))) })
+}
+
+// Pow raises the left tensor to the right tensor element by element with
+// numpy-style broadcasting.
+func Pow(left, right *Tensor) (*Tensor, error) {
+	return tensorBroadcastBinary(left, right, "pow", func(a, b float32) float32 {
+		return float32(math.Pow(float64(a), float64(b)))
+	})
+}
+
+// Gelu computes the Gaussian error linear unit. ONNX's default exact form is
+// used unless approximate is "tanh".
+func Gelu(input *Tensor, approximate ...string) (*Tensor, error) {
+	if len(approximate) > 1 {
+		return nil, fmt.Errorf("gelu accepts at most one approximate mode")
+	}
+	mode := "none"
+	if len(approximate) == 1 {
+		mode = approximate[0]
+	}
+	switch mode {
+	case "none":
+		return unary("gelu", input, func(value float32) float32 {
+			x := float64(value)
+			return float32(0.5 * x * (1 + math.Erf(x/math.Sqrt2)))
+		})
+	case "tanh":
+		return unary("gelu", input, func(value float32) float32 {
+			x := float64(value)
+			return float32(0.5 * x * (1 + math.Tanh(math.Sqrt(2/math.Pi)*(x+0.044715*x*x*x))))
+		})
+	default:
+		return nil, fmt.Errorf("gelu approximate mode %q is unsupported", mode)
+	}
+}
+
+// LayerNormalization normalizes the suffix of input beginning at axis and
+// applies scale and bias over that suffix.
+func LayerNormalization(input, scale, bias *Tensor, axis int, epsilon float32) (*Tensor, error) {
+	if err := requireFloat32(input, "layer normalization input"); err != nil {
+		return nil, err
+	}
+	if err := requireFloat32(scale, "layer normalization scale"); err != nil {
+		return nil, err
+	}
+	if err := requireFloat32(bias, "layer normalization bias"); err != nil {
+		return nil, err
+	}
+	axis, err := normalizeAxis(axis, len(input.shape), "layer normalization")
+	if err != nil {
+		return nil, err
+	}
+	if epsilon < 0 || math.IsNaN(float64(epsilon)) {
+		return nil, fmt.Errorf("layer normalization epsilon %g is invalid", epsilon)
+	}
+	normalizedShape := input.shape[axis:]
+	if !sameShape(scale.shape, normalizedShape) || !sameShape(bias.shape, normalizedShape) {
+		return nil, fmt.Errorf("layer normalization scale and bias shapes %v and %v must match normalized shape %v", scale.shape, bias.shape, normalizedShape)
+	}
+	result, err := copyTensor(input)
+	if err != nil {
+		return nil, err
+	}
+	groupSize := 1
+	for _, dimension := range normalizedShape {
+		groupSize *= dimension
+	}
+	groups := 1
+	for _, dimension := range input.shape[:axis] {
+		groups *= dimension
+	}
+	for group := 0; group < groups; group++ {
+		base := group * groupSize
+		var mean float64
+		for index := 0; index < groupSize; index++ {
+			mean += float64(input.data[base+index])
+		}
+		mean /= float64(groupSize)
+		var variance float64
+		for index := 0; index < groupSize; index++ {
+			delta := float64(input.data[base+index]) - mean
+			variance += delta * delta
+		}
+		variance /= float64(groupSize)
+		denominator := math.Sqrt(variance + float64(epsilon))
+		for index := 0; index < groupSize; index++ {
+			value := (float64(input.data[base+index])-mean)/denominator
+			result.data[base+index] = float32(value*float64(scale.data[index]) + float64(bias.data[index]))
+		}
+	}
+	return result, nil
+}
+
+// ReduceMean averages input over axes. A nil or empty axes list reduces all
+// dimensions, matching ONNX when the axes input is omitted.
+func ReduceMean(input *Tensor, axes []int, keepdims bool) (*Tensor, error) {
+	if err := requireFloat32(input, "reduce mean input"); err != nil {
+		return nil, err
+	}
+	rank := len(input.shape)
+	axisSet := make(map[int]struct{})
+	if len(axes) == 0 {
+		for axis := 0; axis < rank; axis++ {
+			axisSet[axis] = struct{}{}
+		}
+	} else {
+		for _, rawAxis := range axes {
+			axis, axisErr := normalizeAxis(rawAxis, rank, "reduce mean")
+			if axisErr != nil {
+				return nil, axisErr
+			}
+			if _, exists := axisSet[axis]; exists {
+				return nil, fmt.Errorf("reduce mean axis %d is repeated", rawAxis)
+			}
+			axisSet[axis] = struct{}{}
+		}
+	}
+	outShape := make([]int, 0, rank)
+	for axis, dimension := range input.shape {
+		if _, reduced := axisSet[axis]; reduced {
+			if keepdims {
+				outShape = append(outShape, 1)
+			}
+			continue
+		}
+		outShape = append(outShape, dimension)
+	}
+	result, err := newFloat32Tensor(outShape, make([]float32, elementCount(outShape)))
+	if err != nil {
+		return nil, err
+	}
+	counts := make([]int, len(result.data))
+	for inputIndex, value := range input.data {
+		coordinates := linearCoordinates(inputIndex, input.shape, input.strides)
+		outputCoordinates := make([]int, 0, len(outShape))
+		for axis, coordinate := range coordinates {
+			if _, reduced := axisSet[axis]; reduced {
+				if keepdims {
+					outputCoordinates = append(outputCoordinates, 0)
+				}
+				continue
+			}
+			outputCoordinates = append(outputCoordinates, coordinate)
+		}
+		outputIndex := 0
+		for axis, coordinate := range outputCoordinates {
+			outputIndex += coordinate * result.strides[axis]
+		}
+		result.data[outputIndex] += value
+		counts[outputIndex]++
+	}
+	for index, count := range counts {
+		if count != 0 {
+			result.data[index] = float32(float64(result.data[index]) / float64(count))
+		}
+	}
+	return result, nil
 }
 
 func unary(name string, input *Tensor, operation func(float32) float32) (*Tensor, error) {
@@ -311,8 +571,11 @@ func Flatten(input *Tensor, axes ...int) (*Tensor, error) {
 
 // Transpose permutes dimensions. With no permutation, dimensions are reversed.
 func Transpose(input *Tensor, perms ...[]int) (*Tensor, error) {
-	if err := requireFloat32(input, "transpose input"); err != nil {
-		return nil, err
+	if input == nil {
+		return nil, fmt.Errorf("transpose input is nil")
+	}
+	if !supportedTensorDType(input.dtype) {
+		return nil, unsupportedDTypeError(input.dtype)
 	}
 	if len(perms) > 1 {
 		return nil, fmt.Errorf("transpose accepts at most one permutation")
@@ -337,7 +600,7 @@ func Transpose(input *Tensor, perms ...[]int) (*Tensor, error) {
 		seen[source] = true
 		outShape[index] = input.shape[source]
 	}
-	result, err := newFloat32Tensor(outShape, make([]float32, elementCount(outShape)))
+	result, err := newTypedTensor(input.dtype, outShape)
 	if err != nil {
 		return nil, err
 	}
@@ -351,7 +614,7 @@ func Transpose(input *Tensor, perms ...[]int) (*Tensor, error) {
 			}
 			inputIndex += coordinate * input.strides[perm[outputDimension]]
 		}
-		result.data[outputIndex] = input.data[inputIndex]
+		copyTensorElement(result, outputIndex, input, inputIndex)
 	}
 	return result, nil
 }
@@ -478,4 +741,26 @@ func elementCount(shape []int) int {
 		count *= dimension
 	}
 	return count
+}
+
+func sameShape(left, right []int) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
+}
+
+func stridesForShape(shape []int) []int {
+	strides := make([]int, len(shape))
+	stride := 1
+	for index := len(shape) - 1; index >= 0; index-- {
+		strides[index] = stride
+		stride *= shape[index]
+	}
+	return strides
 }

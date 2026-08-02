@@ -27,6 +27,13 @@ type parityOutput struct {
 	StringData []string  `json:"-"`
 }
 
+type parityInput struct {
+	Name  string          `json:"name"`
+	Shape []int           `json:"shape"`
+	DType string          `json:"dtype"`
+	Data  json.RawMessage `json:"data"`
+}
+
 func (output *parityOutput) UnmarshalJSON(data []byte) error {
 	var wire struct {
 		Shape []int           `json:"shape"`
@@ -255,7 +262,9 @@ func TestOneOpParityAgainstONNXRuntime(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			reference := runONNXParityPython(t, python, "one-op", tc.name)
+			modelPath := filepath.Join(t.TempDir(), tc.name+".onnx")
+			payloadPath := filepath.Join(t.TempDir(), tc.name+"-feed.json")
+			reference := runONNXParityPython(t, python, "one-op", tc.name, modelPath, payloadPath)
 			if len(reference) != 1 {
 				t.Fatalf("reference returned %d outputs, want 1", len(reference))
 			}
@@ -264,6 +273,23 @@ func TestOneOpParityAgainstONNXRuntime(t *testing.T) {
 				t.Fatalf("%s: %v", tc.name, err)
 			}
 			assertParityOutput(t, got, reference[0])
+			modelBytes, err := os.ReadFile(modelPath)
+			if err != nil {
+				t.Fatalf("read generated %s model: %v", tc.name, err)
+			}
+			model, err := LoadONNX(bytes.NewReader(modelBytes))
+			if err != nil {
+				t.Fatalf("load generated %s model: %v", tc.name, err)
+			}
+			outputs, err := model.Run(readParityInputs(t, payloadPath))
+			if err != nil {
+				t.Fatalf("run generated %s model: %v", tc.name, err)
+			}
+			modelOutputs := model.Outputs()
+			if len(modelOutputs) != 1 {
+				t.Fatalf("generated %s model declares %d graph outputs, want 1", tc.name, len(modelOutputs))
+			}
+			assertParityOutput(t, outputs[modelOutputs[0].Name], reference[0])
 		})
 	}
 }
@@ -338,6 +364,56 @@ func runONNXParityPython(t *testing.T, python string, args ...string) []parityOu
 		t.Fatalf("decode helper stdout: %v\nstdout=%s\nstderr=%s", err, strings.TrimSpace(stdout.String()), strings.TrimSpace(stderr.String()))
 	}
 	return result
+}
+
+func readParityInputs(t *testing.T, path string) map[string]*Tensor {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read parity feed: %v", err)
+	}
+	var payload []parityInput
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatalf("decode parity feed: %v", err)
+	}
+	inputs := make(map[string]*Tensor, len(payload))
+	for _, input := range payload {
+		var tensor *Tensor
+		var tensorErr error
+		switch input.DType {
+		case "float32":
+			var values []float32
+			if err := json.Unmarshal(input.Data, &values); err != nil {
+				t.Fatalf("decode float32 feed %q: %v", input.Name, err)
+			}
+			tensor, tensorErr = NewTensor(input.Shape, values)
+		case "int64":
+			var values []int64
+			if err := json.Unmarshal(input.Data, &values); err != nil {
+				t.Fatalf("decode int64 feed %q: %v", input.Name, err)
+			}
+			tensor, tensorErr = NewInt64Tensor(input.Shape, values)
+		case "bool":
+			var values []bool
+			if err := json.Unmarshal(input.Data, &values); err != nil {
+				t.Fatalf("decode bool feed %q: %v", input.Name, err)
+			}
+			tensor, tensorErr = NewBoolTensor(input.Shape, values)
+		case "string":
+			var values []string
+			if err := json.Unmarshal(input.Data, &values); err != nil {
+				t.Fatalf("decode string feed %q: %v", input.Name, err)
+			}
+			tensor, tensorErr = NewStringTensor(input.Shape, values)
+		default:
+			t.Fatalf("parity feed %q has unsupported dtype %q", input.Name, input.DType)
+		}
+		if tensorErr != nil {
+			t.Fatalf("build parity feed %q: %v", input.Name, tensorErr)
+		}
+		inputs[input.Name] = tensor
+	}
+	return inputs
 }
 
 func assertParityOutput(t *testing.T, got *Tensor, want parityOutput) {

@@ -42,6 +42,30 @@ def run_model(model, feed):
     print(json.dumps(result))
 
 
+def write_feed(model, feed, path):
+    payload = []
+    for value_info in model.graph.input:
+        if value_info.name not in feed:
+            continue
+        array = np.asarray(feed[value_info.name])
+        if array.dtype == object:
+            dtype = "string"
+        elif array.dtype == np.bool_:
+            dtype = "bool"
+        elif array.dtype == np.int64:
+            dtype = "int64"
+        else:
+            dtype = "float32"
+        payload.append({
+            "name": value_info.name,
+            "shape": list(array.shape),
+            "dtype": dtype,
+            "data": array.reshape(-1).tolist(),
+        })
+    with open(path, "w") as handle:
+        json.dump(payload, handle)
+
+
 def one_op(name):
     if name == "Gemm":
         x = np.array([[1, -2, 3], [4, 5, -6]], dtype=np.float32)
@@ -303,6 +327,11 @@ def main():
     mode = sys.argv[1]
     if mode == "one-op":
         model, feed = one_op(sys.argv[2])
+        if len(sys.argv) > 3:
+            with open(sys.argv[3], "wb") as handle:
+                handle.write(model.SerializeToString())
+        if len(sys.argv) > 4:
+            write_feed(model, feed, sys.argv[4])
         run_model(model, feed)
         return
     if mode == "mlp":
