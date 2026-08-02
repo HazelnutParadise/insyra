@@ -3,10 +3,91 @@ package dl
 import (
 	"fmt"
 	"math"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
 )
+
+func TestParallelMACThreshold(t *testing.T) {
+	if workers := parallelWorkerCountForMACs(parallelMACThreshold); workers != 1 {
+		t.Fatalf("worker count at threshold = %d, want serial", workers)
+	}
+	if workers := parallelWorkerCountForMACs(parallelMACThreshold + 1); workers != runtime.NumCPU() {
+		t.Fatalf("worker count above threshold = %d, want %d", workers, runtime.NumCPU())
+	}
+}
+
+func TestBitIdenticalMatMul2D(t *testing.T) {
+	a := mustTestTensor(t, []int{64, 64}, patternedTestData(64*64))
+	b := mustTestTensor(t, []int{64, 64}, patternedTestData(64*64))
+	if workers := parallelWorkerCountForMACs(64, 64, 64); workers != runtime.NumCPU() {
+		t.Fatalf("2-D MatMul worker count = %d, want %d above threshold", workers, runtime.NumCPU())
+	}
+
+	serial, err := matMul2DWithWorkers(a, b, 1)
+	if err != nil {
+		t.Fatalf("serial 2-D MatMul: %v", err)
+	}
+	parallel, err := matMul2DWithWorkers(a, b, runtime.NumCPU())
+	if err != nil {
+		t.Fatalf("parallel 2-D MatMul: %v", err)
+	}
+	public, err := MatMul(a, b)
+	if err != nil {
+		t.Fatalf("public 2-D MatMul: %v", err)
+	}
+	assertExactTensorEqual(t, parallel, serial)
+	assertExactTensorEqual(t, public, serial)
+}
+
+func TestBitIdenticalBatchedMatMul(t *testing.T) {
+	a := mustTestTensor(t, []int{2, 1, 32, 32}, patternedTestData(2*32*32))
+	b := mustTestTensor(t, []int{1, 3, 32, 32}, patternedTestData(3*32*32))
+	if workers := parallelWorkerCountForMACs(6, 32, 32, 32); workers != runtime.NumCPU() {
+		t.Fatalf("batched MatMul worker count = %d, want %d above threshold", workers, runtime.NumCPU())
+	}
+
+	serial, err := matMulBatchedWithWorkers(a, b, 1)
+	if err != nil {
+		t.Fatalf("serial batched MatMul: %v", err)
+	}
+	parallel, err := matMulBatchedWithWorkers(a, b, runtime.NumCPU())
+	if err != nil {
+		t.Fatalf("parallel batched MatMul: %v", err)
+	}
+	public, err := MatMul(a, b)
+	if err != nil {
+		t.Fatalf("public batched MatMul: %v", err)
+	}
+	assertExactTensorEqual(t, parallel, serial)
+	assertExactTensorEqual(t, public, serial)
+}
+
+func TestBitIdenticalConvWithGroupsAndDilation(t *testing.T) {
+	input := mustTestTensor(t, []int{4, 4, 16, 16}, patternedTestData(4*4*16*16))
+	weights := mustTestTensor(t, []int{8, 2, 3, 3}, patternedTestData(8*2*3*3))
+	bias := mustTestTensor(t, []int{8}, patternedTestData(8))
+	options := ConvOptions{Pads: []int{2, 2, 2, 2}, Dilations: []int{2, 2}, Group: 2}
+	if workers := parallelWorkerCountForMACs(4, 8, 16, 16, 2, 3, 3); workers != runtime.NumCPU() {
+		t.Fatalf("Conv worker count = %d, want %d above threshold", workers, runtime.NumCPU())
+	}
+
+	serial, err := convWithWorkers(input, weights, bias, 1, options)
+	if err != nil {
+		t.Fatalf("serial Conv: %v", err)
+	}
+	parallel, err := convWithWorkers(input, weights, bias, runtime.NumCPU(), options)
+	if err != nil {
+		t.Fatalf("parallel Conv: %v", err)
+	}
+	public, err := Conv(input, weights, bias, options)
+	if err != nil {
+		t.Fatalf("public Conv: %v", err)
+	}
+	assertExactTensorEqual(t, parallel, serial)
+	assertExactTensorEqual(t, public, serial)
+}
 
 func TestGemmAndMatMul(t *testing.T) {
 	a := mustTestTensor(t, []int{2, 2}, []float32{1, 2, 3, 4})
@@ -611,6 +692,32 @@ func assertTestTensor(t *testing.T, got *Tensor, shape []int, want []float32, to
 	for index := range want {
 		if math.Abs(float64(got.data[index]-want[index])) > float64(tolerance) {
 			t.Fatalf("data[%d] = %g, want %g", index, got.data[index], want[index])
+		}
+	}
+}
+
+func patternedTestData(size int) []float32 {
+	data := make([]float32, size)
+	for index := range data {
+		data[index] = float32((index%19)-9)*0.125 + float32(index%7)*0.03125
+	}
+	return data
+}
+
+func assertExactTensorEqual(t *testing.T, got, want *Tensor) {
+	t.Helper()
+	if got == nil || want == nil {
+		t.Fatalf("tensor comparison received nil: got=%v want=%v", got, want)
+	}
+	if !slices.Equal(got.shape, want.shape) {
+		t.Fatalf("shape = %v, want %v", got.shape, want.shape)
+	}
+	if len(got.data) != len(want.data) {
+		t.Fatalf("data length = %d, want %d", len(got.data), len(want.data))
+	}
+	for index := range want.data {
+		if got.data[index] != want.data[index] || math.Float32bits(got.data[index]) != math.Float32bits(want.data[index]) {
+			t.Fatalf("data[%d] = %g (%08x), want %g (%08x)", index, got.data[index], math.Float32bits(got.data[index]), want.data[index], math.Float32bits(want.data[index]))
 		}
 	}
 }

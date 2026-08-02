@@ -3,8 +3,64 @@ package dl
 import (
 	"fmt"
 	"math"
+	"runtime"
 	"strconv"
+	"sync"
 )
+
+// parallelMACThreshold keeps dispatch overhead out of small graphs. A quick
+// best-of-five measurement on the 8-core M3 crossed over between 4K and 16K
+// MatMul MACs and between 2K and 18K Conv MACs; 100K leaves a safety margin.
+// Keep the threshold in multiply-accumulate units so it applies to both.
+const parallelMACThreshold = 100_000
+
+func parallelWorkerCountForMACs(factors ...int) int {
+	work := 1
+	for _, factor := range factors {
+		if factor <= 0 {
+			return 1
+		}
+		if work > parallelMACThreshold/factor {
+			return runtime.NumCPU()
+		}
+		work *= factor
+	}
+	if work <= parallelMACThreshold {
+		return 1
+	}
+	return runtime.NumCPU()
+}
+
+func parallelFor(total, workers int, work func(start, end int)) {
+	if total <= 0 {
+		return
+	}
+	if workers <= 1 {
+		work(0, total)
+		return
+	}
+	if workers > total {
+		workers = total
+	}
+
+	base, remainder := total/workers, total%workers
+	var wg sync.WaitGroup
+	start := 0
+	for worker := 0; worker < workers; worker++ {
+		size := base
+		if worker < remainder {
+			size++
+		}
+		end := start + size
+		wg.Add(1)
+		go func(start, end int) {
+			defer wg.Done()
+			work(start, end)
+		}(start, end)
+		start = end
+	}
+	wg.Wait()
+}
 
 // GemmOptions controls the optional attributes of Gemm. When no options are
 // passed, ONNX defaults alpha=1 and beta=1 are used.
@@ -111,6 +167,10 @@ type AveragePoolOptions = PoolOptions
 // Conv computes a two-dimensional NCHW convolution. The accumulator stays in
 // float64 until each output value is narrowed to the tensor's float32 dtype.
 func Conv(input, weights, bias *Tensor, options ...ConvOptions) (*Tensor, error) {
+	return convWithWorkers(input, weights, bias, 0, options...)
+}
+
+func convWithWorkers(input, weights, bias *Tensor, workers int, options ...ConvOptions) (*Tensor, error) {
 	if err := requireFloat32(input, "conv input"); err != nil {
 		return nil, err
 	}
@@ -168,38 +228,54 @@ func Conv(input, weights, bias *Tensor, options ...ConvOptions) (*Tensor, error)
 	inputHeight, inputWidth := input.shape[2], input.shape[3]
 	inputChannelsPerGroup := inputChannels / opts.Group
 	outputChannelsPerGroup := outputChannels / opts.Group
-	for batch := 0; batch < input.shape[0]; batch++ {
-		for outputChannel := 0; outputChannel < outputChannels; outputChannel++ {
+	if workers <= 0 {
+		workers = parallelWorkerCountForMACs(
+			input.shape[0], outputChannels, window.outputH, window.outputW,
+			inputChannelsPerGroup, weights.shape[2], weights.shape[3],
+		)
+	}
+	outputRows, err := checkedProduct(input.shape[0], outputChannels, "conv output rows")
+	if err != nil {
+		return nil, err
+	}
+	outputRows, err = checkedProduct(outputRows, window.outputH, "conv output rows")
+	if err != nil {
+		return nil, err
+	}
+	parallelFor(outputRows, workers, func(start, end int) {
+		for outputIndex := start; outputIndex < end; outputIndex++ {
+			batchAndChannel := outputIndex / window.outputH
+			outputRow := outputIndex % window.outputH
+			batch := batchAndChannel / outputChannels
+			outputChannel := batchAndChannel % outputChannels
 			group := outputChannel / outputChannelsPerGroup
 			inputChannelStart := group * inputChannelsPerGroup
-			for outputRow := 0; outputRow < window.outputH; outputRow++ {
-				for outputColumn := 0; outputColumn < window.outputW; outputColumn++ {
-					var sum float64
-					for inputChannel := 0; inputChannel < inputChannelsPerGroup; inputChannel++ {
-						for kernelRow := 0; kernelRow < weights.shape[2]; kernelRow++ {
-							inputRow := outputRow*window.strideH - window.padTop + kernelRow*window.dilationH
-							if inputRow < 0 || inputRow >= inputHeight {
+			for outputColumn := 0; outputColumn < window.outputW; outputColumn++ {
+				var sum float64
+				for inputChannel := 0; inputChannel < inputChannelsPerGroup; inputChannel++ {
+					for kernelRow := 0; kernelRow < weights.shape[2]; kernelRow++ {
+						inputRow := outputRow*window.strideH - window.padTop + kernelRow*window.dilationH
+						if inputRow < 0 || inputRow >= inputHeight {
+							continue
+						}
+						for kernelColumn := 0; kernelColumn < weights.shape[3]; kernelColumn++ {
+							inputColumn := outputColumn*window.strideW - window.padLeft + kernelColumn*window.dilationW
+							if inputColumn < 0 || inputColumn >= inputWidth {
 								continue
 							}
-							for kernelColumn := 0; kernelColumn < weights.shape[3]; kernelColumn++ {
-								inputColumn := outputColumn*window.strideW - window.padLeft + kernelColumn*window.dilationW
-								if inputColumn < 0 || inputColumn >= inputWidth {
-									continue
-								}
-								inputIndex := ((batch*inputChannels+(inputChannelStart+inputChannel))*inputHeight+inputRow)*inputWidth + inputColumn
-								weightIndex := ((outputChannel*weights.shape[1]+inputChannel)*weights.shape[2]+kernelRow)*weights.shape[3] + kernelColumn
-								sum += float64(input.data[inputIndex]) * float64(weights.data[weightIndex])
-							}
+							inputIndex := ((batch*inputChannels+(inputChannelStart+inputChannel))*inputHeight+inputRow)*inputWidth + inputColumn
+							weightIndex := ((outputChannel*weights.shape[1]+inputChannel)*weights.shape[2]+kernelRow)*weights.shape[3] + kernelColumn
+							sum += float64(input.data[inputIndex]) * float64(weights.data[weightIndex])
 						}
 					}
-					if bias != nil {
-						sum += float64(bias.data[outputChannel])
-					}
-					result.data[((batch*outputChannels+outputChannel)*window.outputH+outputRow)*window.outputW+outputColumn] = float32(sum)
 				}
+				if bias != nil {
+					sum += float64(bias.data[outputChannel])
+				}
+				result.data[((batch*outputChannels+outputChannel)*window.outputH+outputRow)*window.outputW+outputColumn] = float32(sum)
 			}
 		}
-	}
+	})
 	return result, nil
 }
 
@@ -596,7 +672,10 @@ func MatMul(a, b *Tensor) (*Tensor, error) {
 	if len(a.shape) == 2 && len(b.shape) == 2 {
 		return matMul2D(a, b)
 	}
+	return matMulBatchedWithWorkers(a, b, 0)
+}
 
+func matMulBatchedWithWorkers(a, b *Tensor, workers int) (*Tensor, error) {
 	aRows, aCols := 1, a.shape[len(a.shape)-1]
 	aRowStride, aColStride := 0, a.strides[len(a.shape)-1]
 	aBatchShape := a.shape[:0]
@@ -642,6 +721,8 @@ func MatMul(a, b *Tensor) (*Tensor, error) {
 	if err != nil {
 		return nil, err
 	}
+	aBatchBases := make([]int, batchCount)
+	bBatchBases := make([]int, batchCount)
 	for batchIndex := 0; batchIndex < batchCount; batchIndex++ {
 		aBase, bBase := 0, 0
 		remaining := batchIndex
@@ -654,8 +735,22 @@ func MatMul(a, b *Tensor) (*Tensor, error) {
 			aBase += coordinate * aBatchAligned[axis]
 			bBase += coordinate * bBatchAligned[axis]
 		}
-		resultBase := batchIndex * resultMatrixSize
-		for row := 0; row < aRows; row++ {
+		aBatchBases[batchIndex] = aBase
+		bBatchBases[batchIndex] = bBase
+	}
+	if workers <= 0 {
+		workers = parallelWorkerCountForMACs(batchCount, aRows, bCols, aCols)
+	}
+	outputRows, err := checkedProduct(batchCount, aRows, "matmul output rows")
+	if err != nil {
+		return nil, err
+	}
+	parallelFor(outputRows, workers, func(start, end int) {
+		for outputIndex := start; outputIndex < end; outputIndex++ {
+			batchIndex := outputIndex / aRows
+			row := outputIndex % aRows
+			aBase, bBase := aBatchBases[batchIndex], bBatchBases[batchIndex]
+			resultBase := batchIndex * resultMatrixSize
 			for column := 0; column < bCols; column++ {
 				var sum float32
 				for inner := 0; inner < aCols; inner++ {
@@ -664,7 +759,7 @@ func MatMul(a, b *Tensor) (*Tensor, error) {
 				result.data[resultBase+row*bCols+column] = sum
 			}
 		}
-	}
+	})
 	if len(a.shape) == 1 {
 		result.shape = append([]int(nil), batchShape...)
 		if len(b.shape) >= 2 {
@@ -687,6 +782,10 @@ func MatMul(a, b *Tensor) (*Tensor, error) {
 }
 
 func matMul2D(a, b *Tensor) (*Tensor, error) {
+	return matMul2DWithWorkers(a, b, 0)
+}
+
+func matMul2DWithWorkers(a, b *Tensor, workers int) (*Tensor, error) {
 	if a.shape[1] != b.shape[0] {
 		return nil, fmt.Errorf("matmul shapes %v and %v are incompatible", a.shape, b.shape)
 	}
@@ -694,15 +793,20 @@ func matMul2D(a, b *Tensor) (*Tensor, error) {
 	if err != nil {
 		return nil, err
 	}
-	for row := 0; row < a.shape[0]; row++ {
-		for column := 0; column < b.shape[1]; column++ {
-			var sum float32
-			for inner := 0; inner < a.shape[1]; inner++ {
-				sum += a.data[row*a.shape[1]+inner] * b.data[inner*b.shape[1]+column]
-			}
-			result.data[row*b.shape[1]+column] = sum
-		}
+	if workers <= 0 {
+		workers = parallelWorkerCountForMACs(a.shape[0], b.shape[1], a.shape[1])
 	}
+	parallelFor(a.shape[0], workers, func(start, end int) {
+		for row := start; row < end; row++ {
+			for column := 0; column < b.shape[1]; column++ {
+				var sum float32
+				for inner := 0; inner < a.shape[1]; inner++ {
+					sum += a.data[row*a.shape[1]+inner] * b.data[inner*b.shape[1]+column]
+				}
+				result.data[row*b.shape[1]+column] = sum
+			}
+		}
+	})
 	return result, nil
 }
 
