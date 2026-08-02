@@ -35,9 +35,11 @@ type Model struct {
 
 var supportedOperators = map[string]struct{}{
 	"Gemm": {}, "MatMul": {}, "Add": {}, "Sub": {}, "Mul": {}, "Div": {},
-	"Relu": {}, "Sigmoid": {}, "Tanh": {}, "Softmax": {}, "Identity": {},
+	"Relu": {}, "Sigmoid": {}, "Tanh": {}, "Gelu": {}, "Erf": {}, "Sqrt": {}, "Pow": {},
+	"LayerNormalization": {}, "ReduceMean": {}, "Softmax": {}, "Identity": {},
 	"Reshape": {}, "Flatten": {}, "Transpose": {}, "Cast": {}, "Constant": {},
-	"Concat": {}, "Unsqueeze": {}, "Gather": {}, "GreaterOrEqual": {}, "Where": {},
+	"Concat": {}, "Unsqueeze": {}, "Squeeze": {}, "Expand": {}, "Shape": {}, "Slice": {}, "Split": {},
+	"Gather": {}, "GreaterOrEqual": {}, "Equal": {}, "Greater": {}, "Where": {},
 	"ai.onnx.ml:LinearRegressor":        {},
 	"ai.onnx.ml:LinearClassifier":       {},
 	"ai.onnx.ml:TreeEnsembleRegressor":  {},
@@ -251,6 +253,9 @@ func buildModel(decoded protoModel) (*Model, error) {
 		}
 		for outputIndex, output := range node.outputs {
 			if output == "" {
+				if operatorKey(node.domain, node.opType) == "LayerNormalization" && outputIndex > 0 {
+					continue
+				}
 				return nil, fmt.Errorf("node %q output %d has no name", name, outputIndex)
 			}
 			if _, exists := declaredValues[output]; exists {
@@ -275,6 +280,16 @@ func validateNodeOutputArity(node protoNode, name string) error {
 	switch operatorKey(node.domain, node.opType) {
 	case "ai.onnx.ml:LinearClassifier", "ai.onnx.ml:TreeEnsembleClassifier":
 		want = 2
+	case "LayerNormalization":
+		if len(node.outputs) < 1 || len(node.outputs) > 3 {
+			return fmt.Errorf("node %q (%s) has %d outputs, want 1 to 3", name, operatorDisplayName(node.domain, node.opType), len(node.outputs))
+		}
+		return nil
+	case "Split":
+		if len(node.outputs) == 0 {
+			return fmt.Errorf("node %q (%s) has no outputs", name, operatorDisplayName(node.domain, node.opType))
+		}
+		return nil
 	}
 	if len(node.outputs) != want {
 		return fmt.Errorf("node %q (%s) has %d outputs, want %d", name, operatorDisplayName(node.domain, node.opType), len(node.outputs), want)

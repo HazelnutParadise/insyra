@@ -55,7 +55,7 @@ func (m *Model) Run(inputs map[string]*Tensor) (outputs map[string]*Tensor, err 
 			if done[index] || !nodeInputsReady(node, values) {
 				continue
 			}
-			produced, executeErr := executeNode(node, values)
+			produced, executeErr := executeNode(node, values, m.initializers)
 			if executeErr != nil {
 				return nil, fmt.Errorf("node %q (%s): %w", node.name, node.opType, executeErr)
 			}
@@ -150,7 +150,7 @@ func nodeInputsReady(node modelNode, values map[string]*Tensor) bool {
 	return true
 }
 
-func executeNode(node modelNode, values map[string]*Tensor) (map[string]*Tensor, error) {
+func executeNode(node modelNode, values map[string]*Tensor, initializers map[string]*Tensor) (map[string]*Tensor, error) {
 	if len(node.outputs) == 0 {
 		return nil, fmt.Errorf("operator %s has no outputs", node.opType)
 	}
@@ -161,6 +161,17 @@ func executeNode(node modelNode, values map[string]*Tensor) (map[string]*Tensor,
 		value, present := values[node.inputs[index]]
 		if !present {
 			return nil, fmt.Errorf("input %q is unavailable", node.inputs[index])
+		}
+		return value, nil
+	}
+	initializerInput := func(index int, controlName string) (*Tensor, error) {
+		if index >= len(node.inputs) || node.inputs[index] == "" {
+			return nil, fmt.Errorf("node %q %s %s input is missing", node.name, operatorDisplayName(node.domain, node.opType), controlName)
+		}
+		name := node.inputs[index]
+		value, present := initializers[name]
+		if !present {
+			return nil, fmt.Errorf("node %q %s %s input %q is runtime-computed; only initializer values are supported", node.name, operatorDisplayName(node.domain, node.opType), controlName, name)
 		}
 		return value, nil
 	}
@@ -225,7 +236,7 @@ func executeNode(node modelNode, values map[string]*Tensor) (map[string]*Tensor,
 			return nil, inputErr
 		}
 		result, err = MatMul(a, b)
-	case "Add", "Sub", "Mul", "Div":
+	case "Add", "Sub", "Mul", "Div", "Pow":
 		left, inputErr := input(0)
 		if inputErr != nil {
 			return nil, inputErr
@@ -243,8 +254,10 @@ func executeNode(node modelNode, values map[string]*Tensor) (map[string]*Tensor,
 			result, err = Mul(left, right)
 		case "Div":
 			result, err = Div(left, right)
+		case "Pow":
+			result, err = Pow(left, right)
 		}
-	case "Relu", "Sigmoid", "Tanh":
+	case "Relu", "Sigmoid", "Tanh", "Gelu", "Erf", "Sqrt":
 		value, inputErr := input(0)
 		if inputErr != nil {
 			return nil, inputErr
@@ -256,7 +269,85 @@ func executeNode(node modelNode, values map[string]*Tensor) (map[string]*Tensor,
 			result, err = Sigmoid(value)
 		case "Tanh":
 			result, err = Tanh(value)
+		case "Gelu":
+			approximate := "none"
+			if attributeValue, present := attribute("approximate"); present {
+				approximate = string(attributeValue.string)
+			}
+			result, err = Gelu(value, approximate)
+		case "Erf":
+			result, err = Erf(value)
+		case "Sqrt":
+			result, err = Sqrt(value)
 		}
+	case "LayerNormalization":
+		value, inputErr := input(0)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		scale, inputErr := input(1)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		var bias *Tensor
+		if len(node.inputs) > 2 && node.inputs[2] != "" {
+			bias, inputErr = input(2)
+			if inputErr != nil {
+				return nil, inputErr
+			}
+		} else {
+			bias, inputErr = newZeroFloat32Tensor(scale.shape)
+			if inputErr != nil {
+				return nil, inputErr
+			}
+		}
+		axis, axisErr := nodeAxis(attribute, "axis", -1)
+		if axisErr != nil {
+			return nil, axisErr
+		}
+		epsilon := float32(1e-5)
+		if attributeValue, present := attribute("epsilon"); present {
+			if !attributeValue.hasFloat {
+				return nil, fmt.Errorf("attribute epsilon is not a float")
+			}
+			epsilon = attributeValue.floatValue
+		}
+		requestedStatistics := 0
+		for _, output := range node.outputs[1:] {
+			if output != "" {
+				requestedStatistics++
+			}
+		}
+		if requestedStatistics > 0 {
+			return nil, fmt.Errorf("node %q LayerNormalization Mean and InvStdDev outputs are unsupported", node.name)
+		}
+		result, err = LayerNormalization(value, scale, bias, axis, epsilon)
+	case "ReduceMean":
+		value, inputErr := input(0)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		var axes []int
+		if len(node.inputs) > 1 && node.inputs[1] != "" {
+			axesValue, axesErr := initializerInput(1, "axes")
+			if axesErr != nil {
+				return nil, axesErr
+			}
+			axes, err = tensorAxes(axesValue, "reduce mean axes")
+		} else if axisAttribute, present := attribute("axes"); present {
+			axes, err = attributeInts(axisAttribute, "axes")
+		}
+		if err != nil {
+			return nil, err
+		}
+		keepdims := true
+		if keepdimsAttribute, present := attribute("keepdims"); present {
+			if !keepdimsAttribute.hasInt {
+				return nil, fmt.Errorf("attribute keepdims is not an integer")
+			}
+			keepdims = keepdimsAttribute.intValue != 0
+		}
+		result, err = ReduceMean(value, axes, keepdims)
 	case "Softmax":
 		value, inputErr := input(0)
 		if inputErr != nil {
@@ -300,7 +391,7 @@ func executeNode(node modelNode, values map[string]*Tensor) (map[string]*Tensor,
 			if axesErr != nil {
 				return nil, axesErr
 			}
-			axes, err = reshapeShape(axesValue)
+			axes, err = tensorAxes(axesValue, "unsqueeze axes")
 		} else if axisAttribute, present := attribute("axes"); present {
 			axes, err = attributeInts(axisAttribute, "axes")
 		} else {
@@ -310,6 +401,147 @@ func executeNode(node modelNode, values map[string]*Tensor) (map[string]*Tensor,
 			return nil, err
 		}
 		result, err = Unsqueeze(value, axes)
+	case "Squeeze":
+		value, inputErr := input(0)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		var axes []int
+		if len(node.inputs) > 1 && node.inputs[1] != "" {
+			axesValue, axesErr := initializerInput(1, "axes")
+			if axesErr != nil {
+				return nil, axesErr
+			}
+			axes, err = tensorAxes(axesValue, "squeeze axes")
+		} else if axesAttribute, present := attribute("axes"); present {
+			axes, err = attributeInts(axesAttribute, "axes")
+		}
+		if err != nil {
+			return nil, err
+		}
+		result, err = Squeeze(value, axes)
+	case "Expand":
+		value, inputErr := input(0)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		shapeValue, inputErr := input(1)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		shape, shapeErr := tensorShapeValues(shapeValue, "expand shape")
+		if shapeErr != nil {
+			return nil, shapeErr
+		}
+		result, err = Expand(value, shape)
+	case "Shape":
+		value, inputErr := input(0)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		bounds := make([]int, 0, 2)
+		if startValue, present := attribute("start"); present {
+			if !startValue.hasInt || startValue.intValue < minIntValue() || startValue.intValue > int64(maxInt()) {
+				return nil, fmt.Errorf("attribute start is not a valid integer")
+			}
+			bounds = append(bounds, int(startValue.intValue))
+		}
+		if endValue, present := attribute("end"); present {
+			if !endValue.hasInt || endValue.intValue < minIntValue() || endValue.intValue > int64(maxInt()) {
+				return nil, fmt.Errorf("attribute end is not a valid integer")
+			}
+			if len(bounds) == 0 {
+				bounds = append(bounds, 0)
+			}
+			bounds = append(bounds, int(endValue.intValue))
+		}
+		result, err = Shape(value, bounds...)
+	case "Slice":
+		value, inputErr := input(0)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		var starts, ends []int64
+		if len(node.inputs) > 1 && node.inputs[1] != "" {
+			startsValue, startsErr := initializerInput(1, "starts")
+			if startsErr != nil {
+				return nil, startsErr
+			}
+			starts, startsErr = tensorInt64Values(startsValue, "slice starts")
+			if startsErr != nil {
+				return nil, startsErr
+			}
+		} else if startsAttribute, present := attribute("starts"); present {
+			starts = attributeInt64Values(startsAttribute, "starts")
+		} else {
+			return nil, fmt.Errorf("slice has no starts")
+		}
+		if len(node.inputs) > 2 && node.inputs[2] != "" {
+			endsValue, endsErr := initializerInput(2, "ends")
+			if endsErr != nil {
+				return nil, endsErr
+			}
+			ends, endsErr = tensorInt64Values(endsValue, "slice ends")
+			if endsErr != nil {
+				return nil, endsErr
+			}
+		} else if endsAttribute, present := attribute("ends"); present {
+			ends = attributeInt64Values(endsAttribute, "ends")
+		} else {
+			return nil, fmt.Errorf("slice has no ends")
+		}
+		var axes, steps []int64
+		if len(node.inputs) > 3 && node.inputs[3] != "" {
+			axesValue, axesErr := initializerInput(3, "axes")
+			if axesErr != nil {
+				return nil, axesErr
+			}
+			axes, err = tensorInt64Values(axesValue, "slice axes")
+		} else if axesAttribute, present := attribute("axes"); present {
+			axes = attributeInt64Values(axesAttribute, "axes")
+		}
+		if len(node.inputs) > 4 && node.inputs[4] != "" {
+			stepsValue, stepsErr := initializerInput(4, "steps")
+			if stepsErr != nil {
+				return nil, stepsErr
+			}
+			steps, err = tensorInt64Values(stepsValue, "slice steps")
+		} else if stepsAttribute, present := attribute("steps"); present {
+			steps = attributeInt64Values(stepsAttribute, "steps")
+		}
+		if err != nil {
+			return nil, err
+		}
+		result, err = Slice(value, starts, ends, axes, steps)
+	case "Split":
+		value, inputErr := input(0)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		var splits []int
+		if len(node.inputs) > 1 && node.inputs[1] != "" {
+			splitsValue, splitsErr := initializerInput(1, "split")
+			if splitsErr != nil {
+				return nil, splitsErr
+			}
+			splits, err = tensorShapeValues(splitsValue, "split sizes")
+		} else if splitAttribute, present := attribute("split"); present {
+			splits, err = attributeInts(splitAttribute, "split")
+		}
+		if err != nil {
+			return nil, err
+		}
+		axis, axisErr := nodeAxis(attribute, "axis", 0)
+		if axisErr != nil {
+			return nil, axisErr
+		}
+		var splitOutputs []*Tensor
+		splitOutputs, err = Split(value, splits, axis, len(node.outputs))
+		if err == nil {
+			for index, splitOutput := range splitOutputs {
+				produced[node.outputs[index]] = splitOutput
+			}
+		}
 	case "Gather":
 		data, inputErr := input(0)
 		if inputErr != nil {
@@ -334,6 +566,20 @@ func executeNode(node modelNode, values map[string]*Tensor) (map[string]*Tensor,
 			return nil, inputErr
 		}
 		result, err = GreaterOrEqual(left, right)
+	case "Equal", "Greater":
+		left, inputErr := input(0)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		right, inputErr := input(1)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		if node.opType == "Equal" {
+			result, err = Equal(left, right)
+		} else {
+			result, err = Greater(left, right)
+		}
 	case "Where":
 		condition, inputErr := input(0)
 		if inputErr != nil {
@@ -519,6 +765,46 @@ func reshapeShape(input *Tensor) ([]int, error) {
 	return shape, nil
 }
 
+func tensorInt64Values(input *Tensor, name string) ([]int64, error) {
+	if input == nil {
+		return nil, fmt.Errorf("%s tensor is nil", name)
+	}
+	if input.dtype != DTypeInt64 {
+		return nil, fmt.Errorf("%s has dtype %s, want %s", name, dtypeName(input.dtype), dtypeName(DTypeInt64))
+	}
+	return append([]int64(nil), input.int64Data...), nil
+}
+
+func tensorAxes(input *Tensor, name string) ([]int, error) {
+	values, err := tensorInt64Values(input, name)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]int, len(values))
+	for index, value := range values {
+		if value < minIntValue() || value > int64(maxInt()) {
+			return nil, fmt.Errorf("%s value %d does not fit in an int", name, value)
+		}
+		result[index] = int(value)
+	}
+	return result, nil
+}
+
+func tensorShapeValues(input *Tensor, name string) ([]int, error) {
+	values, err := tensorInt64Values(input, name)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]int, len(values))
+	for index, value := range values {
+		if value < 0 || value > int64(maxInt()) {
+			return nil, fmt.Errorf("%s value %d is not a non-negative int", name, value)
+		}
+		result[index] = int(value)
+	}
+	return result, nil
+}
+
 func attributeInts(attribute protoAttribute, name string) ([]int, error) {
 	values := make([]int, len(attribute.ints))
 	for index, value := range attribute.ints {
@@ -528,6 +814,10 @@ func attributeInts(attribute protoAttribute, name string) ([]int, error) {
 		values[index] = int(value)
 	}
 	return values, nil
+}
+
+func attributeInt64Values(attribute protoAttribute, _ string) []int64 {
+	return append([]int64(nil), attribute.ints...)
 }
 
 func minIntValue() int64 {

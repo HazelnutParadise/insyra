@@ -180,6 +180,25 @@ func TestShapeAndCopyKernels(t *testing.T) {
 	}
 }
 
+func TestSliceHandlesNegativeStepBounds(t *testing.T) {
+	input := mustTestTensor(t, []int{4}, []float32{0, 1, 2, 3})
+	reversed, err := Slice(input, []int64{3}, []int64{-5}, []int64{0}, []int64{-1})
+	if err != nil {
+		t.Fatalf("reverse Slice: %v", err)
+	}
+	assertTestTensor(t, reversed, []int{4}, []float32{3, 2, 1, 0}, 0)
+	clamped, err := Slice(input, []int64{-5}, []int64{-5}, []int64{0}, []int64{-1})
+	if err != nil {
+		t.Fatalf("clamped reverse Slice: %v", err)
+	}
+	assertTestTensor(t, clamped, []int{1}, []float32{0}, 0)
+	empty, err := Slice(mustTestTensor(t, []int{0}, nil), []int64{0}, []int64{-1}, []int64{0}, []int64{-1})
+	if err != nil {
+		t.Fatalf("empty reverse Slice: %v", err)
+	}
+	assertTestTensor(t, empty, []int{0}, nil, 0)
+}
+
 func TestModelRunsReadyNodesByNameAndValidatesInputs(t *testing.T) {
 	modelBytes := testONNXModel([]testONNXNode{
 		{opType: "Identity", input: "H", output: "Y"},
@@ -232,6 +251,171 @@ func TestModelNamesNodeWhenADataShapeFailsMidGraph(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), `node "bad-add"`) {
 		t.Fatalf("mid-graph error = %v, want node name", err)
+	}
+}
+
+func TestModelRejectsRuntimeControlInputs(t *testing.T) {
+	cases := []struct {
+		name   string
+		node   modelNode
+		inputs []ValueInfo
+		values map[string]*Tensor
+	}{
+		{
+			name: "Squeeze axes",
+			node: modelNode{
+				name:    "squeeze-runtime-axes",
+				opType:  "Squeeze",
+				inputs:  []string{"X", "axes"},
+				outputs: []string{"Y"},
+			},
+			inputs: []ValueInfo{
+				{Name: "X", DType: DTypeFloat32, Shape: []int{1, 2, 1}, HasShape: true},
+				{Name: "axes", DType: DTypeInt64, Shape: []int{1}, HasShape: true},
+			},
+			values: map[string]*Tensor{
+				"X":    mustTestTensor(t, []int{1, 2, 1}, []float32{1, 2}),
+				"axes": mustTestInt64Tensor(t, []int{1}, []int64{-1}),
+			},
+		},
+		{
+			name: "ReduceMean axes",
+			node: modelNode{
+				name:    "reduce-runtime-axes",
+				opType:  "ReduceMean",
+				inputs:  []string{"X", "axes"},
+				outputs: []string{"Y"},
+			},
+			inputs: []ValueInfo{
+				{Name: "X", DType: DTypeFloat32, Shape: []int{2, 3}, HasShape: true},
+				{Name: "axes", DType: DTypeInt64, Shape: []int{1}, HasShape: true},
+			},
+			values: map[string]*Tensor{
+				"X":    mustTestTensor(t, []int{2, 3}, []float32{1, 2, 3, 4, 5, 6}),
+				"axes": mustTestInt64Tensor(t, []int{1}, []int64{1}),
+			},
+		},
+		{
+			name: "Slice starts",
+			node: modelNode{
+				name:    "slice-runtime-starts",
+				opType:  "Slice",
+				inputs:  []string{"X", "starts", "ends"},
+				outputs: []string{"Y"},
+			},
+			inputs: []ValueInfo{
+				{Name: "X", DType: DTypeFloat32, Shape: []int{2, 3}, HasShape: true},
+				{Name: "starts", DType: DTypeInt64, Shape: []int{1}, HasShape: true},
+				{Name: "ends", DType: DTypeInt64, Shape: []int{1}, HasShape: true},
+			},
+			values: map[string]*Tensor{
+				"X":      mustTestTensor(t, []int{2, 3}, []float32{1, 2, 3, 4, 5, 6}),
+				"starts": mustTestInt64Tensor(t, []int{1}, []int64{0}),
+				"ends":   mustTestInt64Tensor(t, []int{1}, []int64{1}),
+			},
+		},
+		{
+			name: "Split sizes",
+			node: modelNode{
+				name:    "split-runtime-sizes",
+				opType:  "Split",
+				inputs:  []string{"X", "split"},
+				outputs: []string{"Y1", "Y2"},
+				attributes: map[string]protoAttribute{
+					"axis": {hasInt: true, intValue: 1},
+				},
+			},
+			inputs: []ValueInfo{
+				{Name: "X", DType: DTypeFloat32, Shape: []int{1, 4}, HasShape: true},
+				{Name: "split", DType: DTypeInt64, Shape: []int{2}, HasShape: true},
+			},
+			values: map[string]*Tensor{
+				"X":     mustTestTensor(t, []int{1, 4}, []float32{1, 2, 3, 4}),
+				"split": mustTestInt64Tensor(t, []int{2}, []int64{2, 2}),
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			model := &Model{
+				inputSpecs:  tc.inputs,
+				outputSpecs: []ValueInfo{{Name: tc.node.outputs[0], DType: DTypeFloat32, HasShape: false}},
+				nodes:       []modelNode{tc.node},
+			}
+			outputs, err := model.Run(tc.values)
+			if err == nil {
+				t.Fatal("Run unexpectedly accepted a runtime-computed control input")
+			}
+			if outputs != nil {
+				t.Fatalf("Run returned outputs with error: %v", outputs)
+			}
+			if !strings.Contains(err.Error(), tc.node.name) || !strings.Contains(err.Error(), "runtime-computed") {
+				t.Fatalf("Run error = %v, want node name and runtime-computed", err)
+			}
+		})
+	}
+}
+
+func TestModelRejectsLayerNormalizationStatisticsOutputs(t *testing.T) {
+	model := &Model{
+		inputSpecs: []ValueInfo{
+			{Name: "X", DType: DTypeFloat32, Shape: []int{1, 2}, HasShape: true},
+			{Name: "scale", DType: DTypeFloat32, Shape: []int{2}, HasShape: true},
+			{Name: "bias", DType: DTypeFloat32, Shape: []int{2}, HasShape: true},
+		},
+		outputSpecs: []ValueInfo{
+			{Name: "Y", DType: DTypeFloat32, Shape: []int{1, 2}, HasShape: true},
+			{Name: "Mean", DType: DTypeFloat32, Shape: []int{1, 1}, HasShape: true},
+			{Name: "InvStdDev", DType: DTypeFloat32, Shape: []int{1, 1}, HasShape: true},
+		},
+		nodes: []modelNode{{
+			name:    "encoder-norm-stats",
+			opType:  "LayerNormalization",
+			inputs:  []string{"X", "scale", "bias"},
+			outputs: []string{"Y", "Mean", "InvStdDev"},
+		}},
+	}
+	outputs, err := model.Run(map[string]*Tensor{
+		"X":     mustTestTensor(t, []int{1, 2}, []float32{1, 2}),
+		"scale": mustTestTensor(t, []int{2}, []float32{1, 1}),
+		"bias":  mustTestTensor(t, []int{2}, []float32{0, 0}),
+	})
+	if err == nil {
+		t.Fatal("Run unexpectedly accepted LayerNormalization statistics outputs")
+	}
+	if outputs != nil {
+		t.Fatalf("Run returned outputs with error: %v", outputs)
+	}
+	if !strings.Contains(err.Error(), "encoder-norm-stats") || !strings.Contains(err.Error(), "Mean and InvStdDev") {
+		t.Fatalf("Run error = %v, want node name and unsupported statistics outputs", err)
+	}
+}
+
+func TestModelRunsLayerNormalizationWhenOnlyPrimaryOutputIsConsumed(t *testing.T) {
+	model := &Model{
+		inputSpecs: []ValueInfo{
+			{Name: "X", DType: DTypeFloat32, Shape: []int{1, 2}, HasShape: true},
+			{Name: "scale", DType: DTypeFloat32, Shape: []int{2}, HasShape: true},
+			{Name: "bias", DType: DTypeFloat32, Shape: []int{2}, HasShape: true},
+		},
+		outputSpecs: []ValueInfo{{Name: "Y", DType: DTypeFloat32, HasShape: false}},
+		nodes: []modelNode{{
+			name:    "encoder-norm-primary",
+			opType:  "LayerNormalization",
+			inputs:  []string{"X", "scale", "bias"},
+			outputs: []string{"Y", "", ""},
+		}},
+	}
+	outputs, err := model.Run(map[string]*Tensor{
+		"X":     mustTestTensor(t, []int{1, 2}, []float32{1, 2}),
+		"scale": mustTestTensor(t, []int{2}, []float32{1, 1}),
+		"bias":  mustTestTensor(t, []int{2}, []float32{0, 0}),
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if outputs["Y"] == nil {
+		t.Fatal("Run did not return the primary LayerNormalization output")
 	}
 }
 

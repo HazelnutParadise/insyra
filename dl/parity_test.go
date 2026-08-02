@@ -80,8 +80,8 @@ func TestOneOpParityAgainstONNXRuntime(t *testing.T) {
 			name: "MatMul",
 			run: func() (*Tensor, error) {
 				return MatMul(
-					mustTestTensor(t, []int{2, 3}, []float32{1, 2, 3, 4, 5, 6}),
-					mustTestTensor(t, []int{3, 2}, []float32{1, 2, 3, 4, 5, 6}),
+					mustTestTensor(t, []int{2, 1, 2, 3}, []float32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}),
+					mustTestTensor(t, []int{1, 3, 3, 2}, []float32{1, 2, 3, 4, 5, 6, 2, 1, 4, 3, 6, 5, 3, 2, 5, 4, 7, 6}),
 				)
 			},
 		},
@@ -124,9 +124,73 @@ func TestOneOpParityAgainstONNXRuntime(t *testing.T) {
 			run:  func() (*Tensor, error) { return Tanh(mustTestTensor(t, []int{2, 3}, []float32{-1, 0, 1, 2, -2, 0.5})) },
 		},
 		{
+			name: "LayerNormalization",
+			run: func() (*Tensor, error) {
+				return LayerNormalization(
+					mustTestTensor(t, []int{2, 3, 4}, []float32{-1, 0, 1, 2, 2, 1, 0, -1, 0.5, -0.5, 1.5, -1.5, 3, 2, 1, 0, -2, -1, 0, 1, 1.5, 0.5, -0.5, -1.5}),
+					mustTestTensor(t, []int{4}, []float32{1, 0.5, 2, -1}),
+					mustTestTensor(t, []int{4}, []float32{0.1, -0.2, 0.3, 0.4}),
+					-1, 1e-5,
+				)
+			},
+		},
+		{
+			name: "LayerNormalizationAxis1",
+			run: func() (*Tensor, error) {
+				return LayerNormalization(
+					mustTestTensor(t, []int{2, 3, 4}, []float32{-1, 0, 1, 2, 2, 1, 0, -1, 0.5, -0.5, 1.5, -1.5, 3, 2, 1, 0, -2, -1, 0, 1, 1.5, 0.5, -0.5, -1.5}),
+					mustTestTensor(t, []int{3, 4}, []float32{1, 0.5, 2, -1, 0.75, 1.25, -0.5, 0.25, 1.5, -0.25, 0.5, 2}),
+					mustTestTensor(t, []int{3, 4}, []float32{0.1, -0.2, 0.3, 0.4, -0.1, 0.2, -0.3, 0.5, 0.25, -0.4, 0.15, 0.05}),
+					1, 1e-5,
+				)
+			},
+		},
+		{
+			name: "Gelu",
+			run:  func() (*Tensor, error) { return Gelu(mustTestTensor(t, []int{2, 3}, []float32{-2, -1, 0, 0.5, 1, 2})) },
+		},
+		{
+			name: "Erf",
+			run:  func() (*Tensor, error) { return Erf(mustTestTensor(t, []int{2, 3}, []float32{-2, -1, 0, 0.5, 1, 2})) },
+		},
+		{
+			name: "Sqrt",
+			run:  func() (*Tensor, error) { return Sqrt(mustTestTensor(t, []int{2, 3}, []float32{0, 1, 4, 9, 16, 25})) },
+		},
+		{
+			name: "Pow",
+			run: func() (*Tensor, error) {
+				return Pow(mustTestTensor(t, []int{2, 3}, []float32{1, 2, 3, 4, 5, 6}), mustTestTensor(t, []int{3}, []float32{1, 2, 0.5}))
+			},
+		},
+		{
+			name: "ReduceMean",
+			run: func() (*Tensor, error) {
+				return ReduceMean(mustTestTensor(t, []int{2, 3, 2}, []float32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}), []int{-1}, true)
+			},
+		},
+		{
+			name: "ReduceMeanMultiAxes",
+			run: func() (*Tensor, error) {
+				return ReduceMean(mustTestTensor(t, []int{2, 3, 4}, []float32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24}), []int{0, 2}, true)
+			},
+		},
+		{
+			name: "ReduceMeanNoKeepdims",
+			run: func() (*Tensor, error) {
+				return ReduceMean(mustTestTensor(t, []int{2, 3, 4}, []float32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24}), []int{0, 2}, false)
+			},
+		},
+		{
+			name: "ReduceMeanInitializer",
+			run: func() (*Tensor, error) {
+				return ReduceMean(mustTestTensor(t, []int{2, 3, 4}, []float32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24}), []int{0, 2}, false)
+			},
+		},
+		{
 			name: "Softmax",
 			run: func() (*Tensor, error) {
-				return Softmax(mustTestTensor(t, []int{2, 3}, []float32{-1, 0, 1, 2, -2, 0.5}), 1)
+				return Softmax(mustTestTensor(t, []int{2, 3}, []float32{-1, 0, 1, 2, -2, 0.5}), 0)
 			},
 		},
 		{
@@ -147,7 +211,44 @@ func TestOneOpParityAgainstONNXRuntime(t *testing.T) {
 		{
 			name: "Unsqueeze",
 			run: func() (*Tensor, error) {
-				return Unsqueeze(mustTestTensor(t, []int{3}, []float32{1, 2, 3}), []int{1})
+				return Unsqueeze(mustTestTensor(t, []int{3}, []float32{1, 2, 3}), []int{-1})
+			},
+		},
+		{
+			name: "Squeeze",
+			run: func() (*Tensor, error) {
+				return Squeeze(mustTestTensor(t, []int{1, 2, 1}, []float32{1, 2}), []int{-1})
+			},
+		},
+		{
+			name: "Expand",
+			run: func() (*Tensor, error) {
+				return Expand(mustTestTensor(t, []int{2, 1}, []float32{1, 2}), []int{2, 3})
+			},
+		},
+		{
+			name: "Shape",
+			run:  func() (*Tensor, error) { return Shape(mustTestTensor(t, []int{2, 3, 4}, make([]float32, 24))) },
+		},
+		{
+			name: "Slice",
+			run: func() (*Tensor, error) {
+				return Slice(
+					mustTestTensor(t, []int{3, 4}, []float32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}),
+					[]int64{0, 1}, []int64{3, 4}, []int64{0, 1}, []int64{1, 2},
+				)
+			},
+		},
+		{
+			name: "Equal",
+			run: func() (*Tensor, error) {
+				return Equal(mustTestTensor(t, []int{2, 3}, []float32{1, 2, 3, 4, 5, 6}), mustTestTensor(t, []int{3}, []float32{1, 2, 4}))
+			},
+		},
+		{
+			name: "Greater",
+			run: func() (*Tensor, error) {
+				return Greater(mustTestTensor(t, []int{2, 3}, []float32{1, 2, 3, 4, 5, 6}), mustTestTensor(t, []int{3}, []float32{0, 2, 4}))
 			},
 		},
 		{
@@ -183,7 +284,7 @@ func TestOneOpParityAgainstONNXRuntime(t *testing.T) {
 		{
 			name: "Transpose",
 			run: func() (*Tensor, error) {
-				return Transpose(mustTestTensor(t, []int{2, 3}, []float32{1, 2, 3, 4, 5, 6}), []int{1, 0})
+				return Transpose(mustTestTensor(t, []int{2, 3, 2}, []float32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}), []int{2, 0, 1})
 			},
 		},
 		{
@@ -294,6 +395,42 @@ func TestOneOpParityAgainstONNXRuntime(t *testing.T) {
 	}
 }
 
+func TestSplitParityAgainstONNXRuntime(t *testing.T) {
+	python := requireONNXReference(t)
+	if python == "" {
+		return
+	}
+	reference := runONNXParityPython(t, python, "one-op", "Split")
+	if len(reference) != 2 {
+		t.Fatalf("Split reference returned %d outputs, want 2", len(reference))
+	}
+	outputs, err := Split(mustTestTensor(t, []int{2, 4}, []float32{1, 2, 3, 4, 5, 6, 7, 8}), []int{2, 2}, 1)
+	if err != nil {
+		t.Fatalf("Split: %v", err)
+	}
+	for index, output := range outputs {
+		assertParityOutput(t, output, reference[index])
+	}
+	modelPath := filepath.Join(t.TempDir(), "Split.onnx")
+	payloadPath := filepath.Join(t.TempDir(), "Split-feed.json")
+	runONNXParityPython(t, python, "one-op", "Split", modelPath, payloadPath)
+	modelBytes, err := os.ReadFile(modelPath)
+	if err != nil {
+		t.Fatalf("read generated Split model: %v", err)
+	}
+	model, err := LoadONNX(bytes.NewReader(modelBytes))
+	if err != nil {
+		t.Fatalf("load generated Split model: %v", err)
+	}
+	modelOutputs, err := model.Run(readParityInputs(t, payloadPath))
+	if err != nil {
+		t.Fatalf("run generated Split model: %v", err)
+	}
+	for index, spec := range model.Outputs() {
+		assertParityOutput(t, modelOutputs[spec.Name], reference[index])
+	}
+}
+
 func TestWholeMLPParityAndBatchInvariance(t *testing.T) {
 	python := requireONNXReference(t)
 	if python == "" {
@@ -328,6 +465,106 @@ func TestWholeMLPParityAndBatchInvariance(t *testing.T) {
 		}
 		want := parityOutput{Shape: []int{1, 2}, DType: reference[0].DType, Data: reference[0].Data[row*2 : row*2+2]}
 		assertParityOutput(t, rowOutput["Z"], want)
+	}
+}
+
+func TestWholeTransformerEncoderParity(t *testing.T) {
+	python := requireONNXReference(t)
+	if python == "" {
+		return
+	}
+	modelPath := filepath.Join(t.TempDir(), "encoder.onnx")
+	reference := runONNXParityPython(t, python, "encoder", modelPath)
+	if len(reference) != 1 {
+		t.Fatalf("encoder reference returned %d outputs, want 1", len(reference))
+	}
+	modelBytes, err := os.ReadFile(modelPath)
+	if err != nil {
+		t.Fatalf("read generated encoder: %v", err)
+	}
+	model, err := LoadONNX(bytes.NewReader(modelBytes))
+	if err != nil {
+		t.Fatalf("LoadONNX encoder: %v", err)
+	}
+	input := mustTestTensor(t, []int{1, 2, 4}, []float32{0.25, -0.5, 1, 0.75, -1.25, 0.5, 0.25, 1.5})
+	outputs, err := model.Run(map[string]*Tensor{"X": input})
+	if err != nil {
+		t.Fatalf("Run encoder: %v", err)
+	}
+	assertParityOutput(t, outputs["Y"], reference[0])
+}
+
+func TestRealModelSmoke(t *testing.T) {
+	path := os.Getenv("INSYRA_DL_REAL_MODEL")
+	if path == "" {
+		t.Skip("INSYRA_DL_REAL_MODEL is not set")
+	}
+	modelFile, err := os.Open(path)
+	if err != nil {
+		t.Fatalf("open real model %q: %v", path, err)
+	}
+	defer func() {
+		if closeErr := modelFile.Close(); closeErr != nil {
+			t.Logf("close real model %q: %v", path, closeErr)
+		}
+	}()
+	model, err := LoadONNX(modelFile)
+	if err != nil {
+		t.Fatalf("load real model %q: %v", path, err)
+	}
+	inputs := make(map[string]*Tensor, len(model.Inputs()))
+	for _, spec := range model.Inputs() {
+		inputs[spec.Name] = smokeInputTensor(t, spec)
+	}
+	outputs, err := model.Run(inputs)
+	if err != nil {
+		t.Fatalf("run real model %q: %v", path, err)
+	}
+	for _, spec := range model.Outputs() {
+		output, present := outputs[spec.Name]
+		if !present {
+			t.Fatalf("real model output %q was not returned", spec.Name)
+		}
+		fmt.Printf("INSYRA_DL_REAL_MODEL output %q shape %v\n", spec.Name, output.Shape())
+	}
+}
+
+func smokeInputTensor(t *testing.T, spec ValueInfo) *Tensor {
+	t.Helper()
+	shape := append([]int(nil), spec.Shape...)
+	for index, dimension := range shape {
+		if dimension < 0 {
+			shape[index] = 1
+		}
+	}
+	if !spec.HasShape {
+		shape = []int{1}
+	}
+	count := elementCount(shape)
+	switch spec.DType {
+	case DTypeFloat32:
+		return mustTestTensor(t, shape, make([]float32, count))
+	case DTypeInt64:
+		values := make([]int64, count)
+		if strings.Contains(strings.ToLower(spec.Name), "mask") {
+			for index := range values {
+				values[index] = 1
+			}
+		}
+		return mustTestInt64Tensor(t, shape, values)
+	case DTypeBool:
+		values := make([]bool, count)
+		if strings.Contains(strings.ToLower(spec.Name), "mask") {
+			for index := range values {
+				values[index] = true
+			}
+		}
+		return mustTestBoolTensor(t, shape, values)
+	case DTypeString:
+		return mustTestStringTensor(t, shape, make([]string, count))
+	default:
+		t.Fatalf("real model input %q has unsupported dtype %s", spec.Name, spec.DType)
+		return nil
 	}
 }
 

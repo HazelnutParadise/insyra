@@ -7,7 +7,7 @@ from onnx import TensorProto, helper, numpy_helper
 import onnxruntime as ort
 
 
-def make_model(nodes, inputs, outputs, initializers=(), domains=()):
+def make_model(nodes, inputs, outputs, initializers=(), domains=(), opset=13):
     graph = helper.make_graph(
         nodes,
         "dl-parity",
@@ -18,7 +18,7 @@ def make_model(nodes, inputs, outputs, initializers=(), domains=()):
     model = helper.make_model(
         graph,
         producer_name="insyra-dl-parity",
-        opset_imports=[helper.make_opsetid("", 13)] + [helper.make_opsetid(domain, version) for domain, version in domains],
+        opset_imports=[helper.make_opsetid("", opset)] + [helper.make_opsetid(domain, version) for domain, version in domains],
     )
     model.ir_version = 9
     onnx.checker.check_model(model)
@@ -79,12 +79,16 @@ def one_op(name):
         )
         return model, {"X": x}
     if name == "MatMul":
-        x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
-        weight = np.array([[1, 2], [3, 4], [5, 6]], dtype=np.float32)
+        x = np.arange(1, 13, dtype=np.float32).reshape(2, 1, 2, 3)
+        weight = np.array([
+            1, 2, 3, 4, 5, 6,
+            2, 1, 4, 3, 6, 5,
+            3, 2, 5, 4, 7, 6,
+        ], dtype=np.float32).reshape(1, 3, 3, 2)
         model = make_model(
             [helper.make_node("MatMul", ["X", "W"], ["Y"])],
-            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])],
-            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 2])],
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 1, 2, 3])],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3, 2, 2])],
             [numpy_helper.from_array(weight, "W")],
         )
         return model, {"X": x}
@@ -108,12 +112,63 @@ def one_op(name):
         return model, {"A": left, "B": right}
     if name == "Unsqueeze":
         value = np.array([1, 2, 3], dtype=np.float32)
-        axes = np.array([1], dtype=np.int64)
+        axes = np.array([-1], dtype=np.int64)
         model = make_model(
             [helper.make_node("Unsqueeze", ["X", "axes"], ["Y"])],
             [helper.make_tensor_value_info("X", TensorProto.FLOAT, [3])],
             [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [3, 1])],
             [numpy_helper.from_array(axes, "axes")],
+        )
+        return model, {"X": value}
+    if name == "Squeeze":
+        value = np.array([1, 2], dtype=np.float32).reshape(1, 2, 1)
+        axes = np.array([-1], dtype=np.int64)
+        model = make_model(
+            [helper.make_node("Squeeze", ["X", "axes"], ["Y"])],
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [1, 2, 1])],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 2])],
+            [numpy_helper.from_array(axes, "axes")],
+        )
+        return model, {"X": value}
+    if name == "Expand":
+        value = np.array([[1], [2]], dtype=np.float32)
+        shape = np.array([2, 3], dtype=np.int64)
+        model = make_model(
+            [helper.make_node("Expand", ["X", "shape"], ["Y"])],
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 1])],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3])],
+            [numpy_helper.from_array(shape, "shape")],
+        )
+        return model, {"X": value}
+    if name == "Shape":
+        value = np.zeros((2, 3, 4), dtype=np.float32)
+        model = make_model(
+            [helper.make_node("Shape", ["X"], ["Y"])],
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3, 4])],
+            [helper.make_tensor_value_info("Y", TensorProto.INT64, [3])],
+        )
+        return model, {"X": value}
+    if name == "Slice":
+        value = np.arange(12, dtype=np.float32).reshape(3, 4)
+        starts = np.array([0, 1], dtype=np.int64)
+        ends = np.array([3, 4], dtype=np.int64)
+        axes = np.array([0, 1], dtype=np.int64)
+        steps = np.array([1, 2], dtype=np.int64)
+        model = make_model(
+            [helper.make_node("Slice", ["X", "starts", "ends", "axes", "steps"], ["Y"])],
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [3, 4])],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [3, 2])],
+            [numpy_helper.from_array(starts, "starts"), numpy_helper.from_array(ends, "ends"), numpy_helper.from_array(axes, "axes"), numpy_helper.from_array(steps, "steps")],
+        )
+        return model, {"X": value}
+    if name == "Split":
+        value = np.array([[1, 2, 3, 4], [5, 6, 7, 8]], dtype=np.float32)
+        split = np.array([2, 2], dtype=np.int64)
+        model = make_model(
+            [helper.make_node("Split", ["X", "split"], ["Y1", "Y2"], axis=1)],
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 4])],
+            [helper.make_tensor_value_info("Y1", TensorProto.FLOAT, [2, 2]), helper.make_tensor_value_info("Y2", TensorProto.FLOAT, [2, 2])],
+            [numpy_helper.from_array(split, "split")],
         )
         return model, {"X": value}
     if name == "Gather":
@@ -136,6 +191,15 @@ def one_op(name):
             [numpy_helper.from_array(right, "B")],
         )
         return model, {"A": left}
+    if name in ("Equal", "Greater"):
+        left = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
+        right = np.array([1, 2, 4] if name == "Equal" else [0, 2, 4], dtype=np.float32)
+        model = make_model(
+            [helper.make_node(name, ["A", "B"], ["Y"])],
+            [helper.make_tensor_value_info("A", TensorProto.FLOAT, [2, 3]), helper.make_tensor_value_info("B", TensorProto.FLOAT, [3])],
+            [helper.make_tensor_value_info("Y", TensorProto.BOOL, [2, 3])],
+        )
+        return model, {"A": left, "B": right}
     if name == "Where":
         condition = np.array([True, False, True], dtype=np.bool_)
         left = np.array([1, 2, 3], dtype=np.float32)
@@ -149,11 +213,116 @@ def one_op(name):
         return model, {"C": condition, "A": left}
     if name in ("Relu", "Sigmoid", "Tanh", "Identity", "Softmax"):
         value = np.array([[-1, 0, 1], [2, -2, 0.5]], dtype=np.float32)
-        attributes = {"axis": 1} if name == "Softmax" else {}
+        attributes = {"axis": 0} if name == "Softmax" else {}
         model = make_model(
             [helper.make_node(name, ["X"], ["Y"], **attributes)],
             [helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])],
             [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3])],
+        )
+        return model, {"X": value}
+    if name == "LayerNormalization":
+        value = np.array([
+            -1, 0, 1, 2, 2, 1, 0, -1,
+            0.5, -0.5, 1.5, -1.5, 3, 2, 1, 0,
+            -2, -1, 0, 1, 1.5, 0.5, -0.5, -1.5,
+        ], dtype=np.float32).reshape(2, 3, 4)
+        scale = np.array([1, 0.5, 2, -1], dtype=np.float32)
+        bias = np.array([0.1, -0.2, 0.3, 0.4], dtype=np.float32)
+        model = make_model(
+            [helper.make_node("LayerNormalization", ["X", "scale", "bias"], ["Y"], axis=-1, epsilon=1e-5)],
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3, 4])],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3, 4])],
+            [numpy_helper.from_array(scale, "scale"), numpy_helper.from_array(bias, "bias")],
+            opset=17,
+        )
+        return model, {"X": value}
+    if name == "LayerNormalizationAxis1":
+        value = np.array([
+            -1, 0, 1, 2, 2, 1, 0, -1,
+            0.5, -0.5, 1.5, -1.5, 3, 2, 1, 0,
+            -2, -1, 0, 1, 1.5, 0.5, -0.5, -1.5,
+        ], dtype=np.float32).reshape(2, 3, 4)
+        scale = np.array([
+            1, 0.5, 2, -1, 0.75, 1.25, -0.5, 0.25,
+            1.5, -0.25, 0.5, 2,
+        ], dtype=np.float32).reshape(3, 4)
+        bias = np.array([
+            0.1, -0.2, 0.3, 0.4, -0.1, 0.2, -0.3, 0.5,
+            0.25, -0.4, 0.15, 0.05,
+        ], dtype=np.float32).reshape(3, 4)
+        model = make_model(
+            [helper.make_node("LayerNormalization", ["X", "scale", "bias"], ["Y"], axis=1, epsilon=1e-5)],
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3, 4])],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3, 4])],
+            [numpy_helper.from_array(scale, "scale"), numpy_helper.from_array(bias, "bias")],
+            opset=17,
+        )
+        return model, {"X": value}
+    if name == "Gelu":
+        value = np.array([[-2, -1, 0], [0.5, 1, 2]], dtype=np.float32)
+        model = make_model(
+            [helper.make_node("Gelu", ["X"], ["Y"], approximate="none")],
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3])],
+            opset=20,
+        )
+        return model, {"X": value}
+    if name == "Erf":
+        value = np.array([[-2, -1, 0], [0.5, 1, 2]], dtype=np.float32)
+        model = make_model(
+            [helper.make_node("Erf", ["X"], ["Y"])],
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3])],
+        )
+        return model, {"X": value}
+    if name == "Sqrt":
+        value = np.array([[0, 1, 4], [9, 16, 25]], dtype=np.float32)
+        model = make_model(
+            [helper.make_node("Sqrt", ["X"], ["Y"])],
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3])],
+        )
+        return model, {"X": value}
+    if name == "Pow":
+        value = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
+        exponent = np.array([1, 2, 0.5], dtype=np.float32)
+        model = make_model(
+            [helper.make_node("Pow", ["X", "exponent"], ["Y"])],
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3])],
+            [numpy_helper.from_array(exponent, "exponent")],
+        )
+        return model, {"X": value}
+    if name in ("ReduceMean", "ReduceMeanMultiAxes", "ReduceMeanNoKeepdims", "ReduceMeanInitializer"):
+        if name == "ReduceMean":
+            value = np.arange(1, 13, dtype=np.float32).reshape(2, 3, 2)
+            axes = np.array([-1], dtype=np.int64)
+            output_shape = [2, 3, 1]
+            keepdims = 1
+        else:
+            value = np.arange(1, 25, dtype=np.float32).reshape(2, 3, 4)
+            axes = np.array([0, 2], dtype=np.int64)
+            output_shape = [1, 3, 1] if name == "ReduceMeanMultiAxes" else [3]
+            keepdims = 1 if name == "ReduceMeanMultiAxes" else 0
+        if name == "ReduceMeanInitializer":
+            inputs = ["X", "axes"]
+            attributes = {"keepdims": keepdims}
+            initializers = [numpy_helper.from_array(axes, "axes")]
+            opset = 18
+        else:
+            inputs = ["X"]
+            attributes = {"axes": axes.tolist(), "keepdims": keepdims}
+            initializers = []
+            # ReduceMean used the axes attribute before opset 13. Keep these
+            # rows on that schema so the parity harness covers the attribute
+            # form as well as the initializer-input form above.
+            opset = 12
+        model = make_model(
+            [helper.make_node("ReduceMean", inputs, ["Y"], **attributes)],
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, list(value.shape))],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, output_shape)],
+            initializers,
+            opset=opset,
         )
         return model, {"X": value}
     if name == "Reshape":
@@ -174,11 +343,11 @@ def one_op(name):
         )
         return model, {"X": value}
     if name == "Transpose":
-        value = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
+        value = np.arange(12, dtype=np.float32).reshape(2, 3, 2)
         model = make_model(
-            [helper.make_node("Transpose", ["X"], ["Y"], perm=[1, 0])],
-            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])],
-            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [3, 2])],
+            [helper.make_node("Transpose", ["X"], ["Y"], perm=[2, 0, 1])],
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3, 2])],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 2, 3])],
         )
         return model, {"X": value}
     if name == "Cast":
@@ -296,6 +465,83 @@ def mlp_model():
     return model, {"X": x}
 
 
+def encoder_model():
+    x = np.array([
+        0.25, -0.5, 1.0, 0.75,
+        -1.25, 0.5, 0.25, 1.5,
+    ], dtype=np.float32).reshape(1, 2, 4)
+
+    def matrix(rows, cols, offset):
+        return ((np.arange(rows * cols, dtype=np.float32).reshape(rows, cols) + offset) / 17.0)
+
+    wq, wk, wv, wo = (matrix(4, 4, offset) for offset in (1, 3, 5, 7))
+    bq = np.array([0.01, -0.02, 0.03, -0.04], dtype=np.float32)
+    bk = np.array([-0.03, 0.02, -0.01, 0.04], dtype=np.float32)
+    bv = np.array([0.02, 0.01, -0.04, 0.03], dtype=np.float32)
+    bo = np.array([0.01, 0.02, -0.02, -0.01], dtype=np.float32)
+    w1 = matrix(4, 6, 9)
+    b1 = np.array([0.01, -0.01, 0.02, -0.02, 0.03, -0.03], dtype=np.float32)
+    w2 = matrix(6, 4, 11)
+    b2 = np.array([0.03, -0.02, 0.01, -0.04], dtype=np.float32)
+    gamma1 = np.array([1.0, 0.9, 1.1, 0.8], dtype=np.float32)
+    beta1 = np.array([0.0, 0.1, -0.1, 0.05], dtype=np.float32)
+    gamma2 = np.array([0.95, 1.05, 0.85, 1.15], dtype=np.float32)
+    beta2 = np.array([0.02, -0.03, 0.04, -0.05], dtype=np.float32)
+    q_shape = np.array([1, 2, 2, 2], dtype=np.int64)
+    context_shape = np.array([1, 2, 4], dtype=np.int64)
+    scale = np.array(np.sqrt(2.0), dtype=np.float32)
+
+    nodes = [
+        helper.make_node("MatMul", ["X", "Wq"], ["Q"]),
+        helper.make_node("Add", ["Q", "bq"], ["Qb"]),
+        helper.make_node("Reshape", ["Qb", "q_shape"], ["Q4"]),
+        helper.make_node("Transpose", ["Q4"], ["Qh"], perm=[0, 2, 1, 3]),
+        helper.make_node("MatMul", ["X", "Wk"], ["K"]),
+        helper.make_node("Add", ["K", "bk"], ["Kb"]),
+        helper.make_node("Reshape", ["Kb", "q_shape"], ["K4"]),
+        helper.make_node("Transpose", ["K4"], ["Kh"], perm=[0, 2, 3, 1]),
+        helper.make_node("MatMul", ["Qh", "Kh"], ["Scores"]),
+        helper.make_node("Div", ["Scores", "scale"], ["Scaled"]),
+        helper.make_node("Softmax", ["Scaled"], ["Prob"], axis=-1),
+        helper.make_node("MatMul", ["X", "Wv"], ["V"]),
+        helper.make_node("Add", ["V", "bv"], ["Vb"]),
+        helper.make_node("Reshape", ["Vb", "q_shape"], ["V4"]),
+        helper.make_node("Transpose", ["V4"], ["Vh"], perm=[0, 2, 1, 3]),
+        helper.make_node("MatMul", ["Prob", "Vh"], ["Context"]),
+        helper.make_node("Transpose", ["Context"], ["ContextT"], perm=[0, 2, 1, 3]),
+        helper.make_node("Reshape", ["ContextT", "context_shape"], ["Context2"]),
+        helper.make_node("MatMul", ["Context2", "Wo"], ["Projected"]),
+        helper.make_node("Add", ["Projected", "bo"], ["Attn"]),
+        helper.make_node("Add", ["X", "Attn"], ["R1"]),
+        helper.make_node("LayerNormalization", ["R1", "gamma1", "beta1"], ["N1"], axis=-1, epsilon=1e-5),
+        helper.make_node("MatMul", ["N1", "W1"], ["H1"]),
+        helper.make_node("Add", ["H1", "b1"], ["H1b"]),
+        helper.make_node("Gelu", ["H1b"], ["H2"], approximate="none"),
+        helper.make_node("MatMul", ["H2", "W2"], ["F"]),
+        helper.make_node("Add", ["F", "b2"], ["Fb"]),
+        helper.make_node("Add", ["N1", "Fb"], ["R2"]),
+        helper.make_node("LayerNormalization", ["R2", "gamma2", "beta2"], ["Y"], axis=-1, epsilon=1e-5),
+    ]
+    initializers = [
+        numpy_helper.from_array(value, name)
+        for name, value in [
+            ("Wq", wq), ("Wk", wk), ("Wv", wv), ("Wo", wo),
+            ("bq", bq), ("bk", bk), ("bv", bv), ("bo", bo),
+            ("W1", w1), ("b1", b1), ("W2", w2), ("b2", b2),
+            ("gamma1", gamma1), ("beta1", beta1), ("gamma2", gamma2), ("beta2", beta2),
+            ("q_shape", q_shape), ("context_shape", context_shape), ("scale", scale),
+        ]
+    ]
+    model = make_model(
+        nodes,
+        [helper.make_tensor_value_info("X", TensorProto.FLOAT, [1, 2, 4])],
+        [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 2, 4])],
+        initializers,
+        opset=20,
+    )
+    return model, {"X": x}
+
+
 def roundtrip(model_path, payload_path):
     session = ort.InferenceSession(model_path, providers=["CPUExecutionProvider"])
     payload = json.load(open(payload_path))
@@ -336,6 +582,12 @@ def main():
         return
     if mode == "mlp":
         model, feed = mlp_model()
+        with open(sys.argv[2], "wb") as handle:
+            handle.write(model.SerializeToString())
+        run_model(model, feed)
+        return
+    if mode == "encoder":
+        model, feed = encoder_model()
         with open(sys.argv[2], "wb") as handle:
             handle.write(model.SerializeToString())
         run_model(model, feed)

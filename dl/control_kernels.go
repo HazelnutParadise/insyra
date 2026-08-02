@@ -19,7 +19,6 @@ func Unsqueeze(input *Tensor, axes []int) (*Tensor, error) {
 		return nil, fmt.Errorf("unsqueeze requires at least one axis")
 	}
 	outputRank := len(input.shape) + len(axes)
-	normalized := make([]int, len(axes))
 	seen := make(map[int]struct{}, len(axes))
 	for index, axis := range axes {
 		if axis < 0 {
@@ -32,7 +31,6 @@ func Unsqueeze(input *Tensor, axes []int) (*Tensor, error) {
 			return nil, fmt.Errorf("unsqueeze axis %d is repeated", axis)
 		}
 		seen[axis] = struct{}{}
-		normalized[index] = axis
 	}
 	axisSet := seen
 	shape := make([]int, outputRank)
@@ -64,7 +62,6 @@ func Unsqueeze(input *Tensor, axes []int) (*Tensor, error) {
 		}
 		copyTensorElement(result, outputIndex, input, inputIndex)
 	}
-	_ = normalized
 	return result, nil
 }
 
@@ -202,6 +199,326 @@ func Gather(data, indices *Tensor, axis int) (*Tensor, error) {
 	return result, nil
 }
 
+// Squeeze removes dimensions of size one. When axes is empty, all singleton
+// dimensions are removed, matching the ONNX optional-axes form.
+func Squeeze(input *Tensor, axes []int) (*Tensor, error) {
+	if input == nil {
+		return nil, fmt.Errorf("squeeze input is nil")
+	}
+	axisSet := make(map[int]struct{})
+	if len(axes) == 0 {
+		for axis, dimension := range input.shape {
+			if dimension == 1 {
+				axisSet[axis] = struct{}{}
+			}
+		}
+	} else {
+		for _, rawAxis := range axes {
+			axis, err := normalizeAxis(rawAxis, len(input.shape), "squeeze")
+			if err != nil {
+				return nil, err
+			}
+			if _, exists := axisSet[axis]; exists {
+				return nil, fmt.Errorf("squeeze axis %d is repeated", rawAxis)
+			}
+			if input.shape[axis] != 1 {
+				return nil, fmt.Errorf("squeeze axis %d has dimension %d, want 1", rawAxis, input.shape[axis])
+			}
+			axisSet[axis] = struct{}{}
+		}
+	}
+	shape := make([]int, 0, len(input.shape))
+	for axis, dimension := range input.shape {
+		if _, remove := axisSet[axis]; !remove {
+			shape = append(shape, dimension)
+		}
+	}
+	result, err := copyTensor(input)
+	if err != nil {
+		return nil, err
+	}
+	_, strides, _, err := makeLayout(shape)
+	if err != nil {
+		return nil, err
+	}
+	result.shape, result.strides = shape, strides
+	return result, nil
+}
+
+// Expand broadcasts a tensor to targetShape without changing its dtype.
+func Expand(input *Tensor, targetShape []int) (*Tensor, error) {
+	if input == nil {
+		return nil, fmt.Errorf("expand input is nil")
+	}
+	if !supportedTensorDType(input.dtype) {
+		return nil, unsupportedDTypeError(input.dtype)
+	}
+	shape, err := tensorBroadcastShape(input.shape, targetShape)
+	if err != nil || !sameShape(shape, targetShape) {
+		if err == nil {
+			err = fmt.Errorf("target shape %v is not the broadcast result", targetShape)
+		}
+		return nil, fmt.Errorf("expand cannot broadcast shape %v to %v: %w", input.shape, targetShape, err)
+	}
+	result, err := newTypedTensor(input.dtype, targetShape)
+	if err != nil {
+		return nil, err
+	}
+	inputStrides := alignedBroadcastStrides(input, len(targetShape))
+	for outputIndex := 0; outputIndex < result.Len(); outputIndex++ {
+		inputIndex, _ := broadcastIndex(outputIndex, result.strides, inputStrides, inputStrides)
+		copyTensorElement(result, outputIndex, input, inputIndex)
+	}
+	return result, nil
+}
+
+// Shape returns the selected portion of input's shape as an int64 tensor.
+// With no bounds it returns every dimension. Bounds follow ONNX's start/end
+// convention and may be negative.
+func Shape(input *Tensor, bounds ...int) (*Tensor, error) {
+	if input == nil {
+		return nil, fmt.Errorf("shape input is nil")
+	}
+	if len(bounds) > 2 {
+		return nil, fmt.Errorf("shape accepts at most start and end bounds")
+	}
+	start, end := 0, len(input.shape)
+	if len(bounds) >= 1 {
+		start = bounds[0]
+	}
+	if len(bounds) == 2 {
+		end = bounds[1]
+	}
+	start = normalizeShapeBound(start, len(input.shape), 0)
+	end = normalizeShapeBound(end, len(input.shape), 0)
+	if end < start {
+		end = start
+	}
+	values := make([]int64, end-start)
+	for index := range values {
+		values[index] = int64(input.shape[start+index])
+	}
+	return newInt64Tensor([]int{len(values)}, values)
+}
+
+func normalizeShapeBound(bound, rank, fallback int) int {
+	if bound < 0 {
+		bound += rank
+	}
+	if bound < 0 {
+		return fallback
+	}
+	if bound > rank {
+		return rank
+	}
+	return bound
+}
+
+// Slice applies ONNX starts, ends, axes, and steps to an N-dimensional tensor.
+func Slice(input *Tensor, starts, ends, axes, steps []int64) (*Tensor, error) {
+	if input == nil {
+		return nil, fmt.Errorf("slice input is nil")
+	}
+	if !supportedTensorDType(input.dtype) {
+		return nil, unsupportedDTypeError(input.dtype)
+	}
+	if len(starts) != len(ends) {
+		return nil, fmt.Errorf("slice starts length %d does not match ends length %d", len(starts), len(ends))
+	}
+	if len(axes) == 0 {
+		axes = make([]int64, len(starts))
+		for index := range axes {
+			axes[index] = int64(index)
+		}
+	}
+	if len(axes) != len(starts) {
+		return nil, fmt.Errorf("slice axes length %d does not match starts length %d", len(axes), len(starts))
+	}
+	if len(steps) == 0 {
+		steps = make([]int64, len(starts))
+		for index := range steps {
+			steps[index] = 1
+		}
+	}
+	if len(steps) != len(starts) {
+		return nil, fmt.Errorf("slice steps length %d does not match starts length %d", len(steps), len(starts))
+	}
+	indices := make([][]int, len(input.shape))
+	for axis, dimension := range input.shape {
+		indices[axis] = make([]int, dimension)
+		for index := range indices[axis] {
+			indices[axis][index] = index
+		}
+	}
+	seen := make(map[int]struct{}, len(axes))
+	for index, rawAxis := range axes {
+		if rawAxis < int64(minIntValue()) || rawAxis > int64(maxInt()) {
+			return nil, fmt.Errorf("slice axis %d does not fit in an int", rawAxis)
+		}
+		axis, err := normalizeAxis(int(rawAxis), len(input.shape), "slice")
+		if err != nil {
+			return nil, err
+		}
+		if _, exists := seen[axis]; exists {
+			return nil, fmt.Errorf("slice axis %d is repeated", rawAxis)
+		}
+		seen[axis] = struct{}{}
+		if steps[index] == 0 {
+			return nil, fmt.Errorf("slice step for axis %d is zero", axis)
+		}
+		indices[axis] = sliceIndices(input.shape[axis], starts[index], ends[index], steps[index])
+	}
+	outShape := make([]int, len(input.shape))
+	for axis := range input.shape {
+		outShape[axis] = len(indices[axis])
+	}
+	result, err := newTypedTensor(input.dtype, outShape)
+	if err != nil {
+		return nil, err
+	}
+	for outputIndex := 0; outputIndex < result.Len(); outputIndex++ {
+		coordinates := linearCoordinates(outputIndex, result.shape, result.strides)
+		inputIndex := 0
+		for axis, coordinate := range coordinates {
+			inputIndex += indices[axis][coordinate] * input.strides[axis]
+		}
+		copyTensorElement(result, outputIndex, input, inputIndex)
+	}
+	return result, nil
+}
+
+func sliceIndices(length int, start, end, step int64) []int {
+	if length == 0 {
+		return nil
+	}
+	result := make([]int, 0)
+	if step > 0 {
+		start = normalizeSliceStart(start, length, false)
+		end = normalizeSliceEnd(end, length, false)
+		for index := start; index < end; index += step {
+			result = append(result, int(index))
+		}
+		return result
+	}
+	start = normalizeSliceStart(start, length, true)
+	end = normalizeSliceEnd(end, length, true)
+	for index := start; index > end; index += step {
+		result = append(result, int(index))
+	}
+	return result
+}
+
+func normalizeSliceStart(value int64, length int, reverse bool) int64 {
+	limit := int64(length)
+	if value < 0 && value >= -limit {
+		value += limit
+	}
+	lower, upper := int64(0), limit
+	if reverse {
+		upper--
+	}
+	if upper < lower {
+		return lower
+	}
+	if value < lower {
+		return lower
+	}
+	if value > upper {
+		return upper
+	}
+	return value
+}
+
+func normalizeSliceEnd(value int64, length int, reverse bool) int64 {
+	limit := int64(length)
+	if value < 0 && value >= -limit {
+		value += limit
+	}
+	lower, upper := int64(0), limit
+	if reverse {
+		lower = -1
+		upper--
+	}
+	if upper < lower {
+		return lower
+	}
+	if value < lower {
+		return lower
+	}
+	if value > upper {
+		return upper
+	}
+	return value
+}
+
+// Split partitions input along axis. If splits is nil, outputCount must name
+// the number of equal partitions.
+func Split(input *Tensor, splits []int, axis int, outputCount ...int) ([]*Tensor, error) {
+	if input == nil {
+		return nil, fmt.Errorf("split input is nil")
+	}
+	if !supportedTensorDType(input.dtype) {
+		return nil, unsupportedDTypeError(input.dtype)
+	}
+	if len(outputCount) > 1 {
+		return nil, fmt.Errorf("split accepts at most one output count")
+	}
+	axis, err := normalizeAxis(axis, len(input.shape), "split")
+	if err != nil {
+		return nil, err
+	}
+	if len(splits) == 0 {
+		if len(outputCount) != 1 || outputCount[0] <= 0 {
+			return nil, fmt.Errorf("split needs output count when split sizes are omitted")
+		}
+		if input.shape[axis]%outputCount[0] != 0 {
+			return nil, fmt.Errorf("split axis %d with size %d is not divisible by %d outputs", axis, input.shape[axis], outputCount[0])
+		}
+		size := input.shape[axis] / outputCount[0]
+		splits = make([]int, outputCount[0])
+		for index := range splits {
+			splits[index] = size
+		}
+	} else if len(outputCount) == 1 && outputCount[0] != len(splits) {
+		return nil, fmt.Errorf("split has %d sizes but %d outputs", len(splits), outputCount[0])
+	}
+	total := 0
+	for index, size := range splits {
+		if size < 0 {
+			return nil, fmt.Errorf("split size %d at index %d is negative", size, index)
+		}
+		if size > maxInt()-total {
+			return nil, fmt.Errorf("split sizes overflow element count")
+		}
+		total += size
+	}
+	if total != input.shape[axis] {
+		return nil, fmt.Errorf("split sizes %v sum to %d, want axis %d size %d", splits, total, axis, input.shape[axis])
+	}
+	outputs := make([]*Tensor, len(splits))
+	offset := 0
+	for outputIndex, size := range splits {
+		shape := append([]int(nil), input.shape...)
+		shape[axis] = size
+		output, outputErr := newTypedTensor(input.dtype, shape)
+		if outputErr != nil {
+			return nil, outputErr
+		}
+		for index := 0; index < output.Len(); index++ {
+			coordinates := linearCoordinates(index, output.shape, output.strides)
+			coordinates[axis] += offset
+			inputIndex := 0
+			for dimension, coordinate := range coordinates {
+				inputIndex += coordinate * input.strides[dimension]
+			}
+			copyTensorElement(output, index, input, inputIndex)
+		}
+		outputs[outputIndex] = output
+		offset += size
+	}
+	return outputs, nil
+}
+
 // GreaterOrEqual compares float32 or int64 tensors with broadcasting.
 func GreaterOrEqual(left, right *Tensor) (*Tensor, error) {
 	if left == nil || right == nil {
@@ -230,6 +547,96 @@ func GreaterOrEqual(left, right *Tensor) (*Tensor, error) {
 		}
 	}
 	return result, nil
+}
+
+// Equal compares matching tensors with numpy-style broadcasting.
+func Equal(left, right *Tensor) (*Tensor, error) {
+	return compareBinary(left, right, "equal", func(a, b comparisonValue) bool { return a.equal(b) })
+}
+
+// Greater compares matching numeric tensors with numpy-style broadcasting.
+func Greater(left, right *Tensor) (*Tensor, error) {
+	if left == nil || right == nil {
+		return nil, fmt.Errorf("greater operands must not be nil")
+	}
+	if left.dtype != DTypeFloat32 && left.dtype != DTypeInt64 {
+		return nil, fmt.Errorf("greater supports matching float32 or int64 operands, got %s and %s", dtypeName(left.dtype), dtypeName(right.dtype))
+	}
+	return compareBinary(left, right, "greater", func(a, b comparisonValue) bool { return a.greater(b) })
+}
+
+type comparisonValue struct {
+	float  float32
+	int64  int64
+	bool   bool
+	string string
+	dtype  DType
+}
+
+func (value comparisonValue) equal(other comparisonValue) bool {
+	switch value.dtype {
+	case DTypeFloat32:
+		return value.float == other.float
+	case DTypeInt64:
+		return value.int64 == other.int64
+	case DTypeBool:
+		return value.bool == other.bool
+	case DTypeString:
+		return value.string == other.string
+	default:
+		return false
+	}
+}
+
+func (value comparisonValue) greater(other comparisonValue) bool {
+	switch value.dtype {
+	case DTypeFloat32:
+		return value.float > other.float
+	case DTypeInt64:
+		return value.int64 > other.int64
+	default:
+		return false
+	}
+}
+
+func compareBinary(left, right *Tensor, operation string, compare func(comparisonValue, comparisonValue) bool) (*Tensor, error) {
+	if left == nil || right == nil {
+		return nil, fmt.Errorf("%s operands must not be nil", operation)
+	}
+	if left.dtype != right.dtype || !supportedTensorDType(left.dtype) {
+		return nil, fmt.Errorf("%s supports matching implemented dtypes, got %s and %s", operation, dtypeName(left.dtype), dtypeName(right.dtype))
+	}
+	shape, err := tensorBroadcastShape(left.shape, right.shape)
+	if err != nil {
+		return nil, err
+	}
+	shape, strides, count, err := makeLayout(shape)
+	if err != nil {
+		return nil, err
+	}
+	result := &Tensor{dtype: DTypeBool, shape: shape, strides: strides, boolData: make([]bool, count)}
+	leftStrides := alignedBroadcastStrides(left, len(shape))
+	rightStrides := alignedBroadcastStrides(right, len(shape))
+	for outputIndex := 0; outputIndex < count; outputIndex++ {
+		leftIndex, rightIndex := broadcastIndex(outputIndex, strides, leftStrides, rightStrides)
+		result.boolData[outputIndex] = compare(tensorComparisonValue(left, leftIndex), tensorComparisonValue(right, rightIndex))
+	}
+	return result, nil
+}
+
+func tensorComparisonValue(tensor *Tensor, index int) comparisonValue {
+	value := comparisonValue{dtype: tensor.dtype}
+	switch tensor.dtype {
+	case DTypeFloat32:
+		value.float = tensor.data[index]
+	case DTypeInt64:
+		value.int64 = tensor.int64Data[index]
+	case DTypeBool:
+		value.bool = tensor.boolData[index]
+	case DTypeString:
+		value.string = tensor.stringData[index]
+	}
+	return value
 }
 
 // Where selects values from left and right using a broadcast bool condition.

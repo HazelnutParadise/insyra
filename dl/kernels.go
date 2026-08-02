@@ -127,7 +127,7 @@ func MatMul(a, b *Tensor) (*Tensor, error) {
 		return nil, fmt.Errorf("matmul batch shapes %v and %v are incompatible for input shapes %v and %v: %w", aBatchShape, bBatchShape, a.shape, b.shape, err)
 	}
 	logicalShape := append(append([]int(nil), batchShape...), aRows, bCols)
-	result, err := newFloat32Tensor(logicalShape, make([]float32, elementCount(logicalShape)))
+	result, err := newZeroFloat32Tensor(logicalShape)
 	if err != nil {
 		return nil, err
 	}
@@ -138,7 +138,10 @@ func MatMul(a, b *Tensor) (*Tensor, error) {
 		return nil, err
 	}
 	batchStrides := stridesForShape(batchShape)
-	resultMatrixSize := aRows * bCols
+	resultMatrixSize, err := checkedProduct(aRows, bCols, "matmul result")
+	if err != nil {
+		return nil, err
+	}
 	for batchIndex := 0; batchIndex < batchCount; batchIndex++ {
 		aBase, bBase := 0, 0
 		remaining := batchIndex
@@ -325,20 +328,20 @@ func LayerNormalization(input, scale, bias *Tensor, axis int, epsilon float32) (
 	}
 	for group := 0; group < groups; group++ {
 		base := group * groupSize
-		var mean float64
+		var meanValue float64
 		for index := 0; index < groupSize; index++ {
-			mean += float64(input.data[base+index])
+			meanValue += float64(input.data[base+index])
 		}
-		mean /= float64(groupSize)
+		meanValue /= float64(groupSize)
 		var variance float64
 		for index := 0; index < groupSize; index++ {
-			delta := float64(input.data[base+index]) - mean
+			delta := float64(input.data[base+index]) - meanValue
 			variance += delta * delta
 		}
 		variance /= float64(groupSize)
 		denominator := math.Sqrt(variance + float64(epsilon))
 		for index := 0; index < groupSize; index++ {
-			value := (float64(input.data[base+index])-mean)/denominator
+			value := (float64(input.data[base+index]) - meanValue) / denominator
 			result.data[base+index] = float32(value*float64(scale.data[index]) + float64(bias.data[index]))
 		}
 	}
@@ -383,6 +386,7 @@ func ReduceMean(input *Tensor, axes []int, keepdims bool) (*Tensor, error) {
 	if err != nil {
 		return nil, err
 	}
+	sums := make([]float64, len(result.data))
 	counts := make([]int, len(result.data))
 	for inputIndex, value := range input.data {
 		coordinates := linearCoordinates(inputIndex, input.shape, input.strides)
@@ -400,12 +404,12 @@ func ReduceMean(input *Tensor, axes []int, keepdims bool) (*Tensor, error) {
 		for axis, coordinate := range outputCoordinates {
 			outputIndex += coordinate * result.strides[axis]
 		}
-		result.data[outputIndex] += value
+		sums[outputIndex] += float64(value)
 		counts[outputIndex]++
 	}
 	for index, count := range counts {
 		if count != 0 {
-			result.data[index] = float32(float64(result.data[index]) / float64(count))
+			result.data[index] = float32(sums[index] / float64(count))
 		}
 	}
 	return result, nil
@@ -604,7 +608,7 @@ func Transpose(input *Tensor, perms ...[]int) (*Tensor, error) {
 	if err != nil {
 		return nil, err
 	}
-	for outputIndex := range result.data {
+	for outputIndex := 0; outputIndex < result.Len(); outputIndex++ {
 		remaining, inputIndex := outputIndex, 0
 		for outputDimension := len(outShape) - 1; outputDimension >= 0; outputDimension-- {
 			coordinate := 0

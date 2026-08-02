@@ -112,6 +112,17 @@ func TestLoadONNXRejectsUnexpectedNodeOutputArity(t *testing.T) {
 	}
 }
 
+func TestLoadONNXAllowsOptionalLayerNormalizationOutputs(t *testing.T) {
+	data := testONNXModel([]testONNXNode{{
+		opType:  "LayerNormalization",
+		input:   "X",
+		outputs: []string{"Y", "", ""},
+	}}, true)
+	if _, err := LoadONNX(strings.NewReader(string(data))); err != nil {
+		t.Fatalf("LoadONNX rejected optional LayerNormalization outputs: %v", err)
+	}
+}
+
 func TestLoadONNXValidatesMLDomainOpsetImport(t *testing.T) {
 	base := []testONNXNode{{opType: "Scaler", domain: "ai.onnx.ml", input: "X", output: "Y"}}
 	withoutImport := testONNXModelWithMLImport(base, 0)
