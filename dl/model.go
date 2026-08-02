@@ -17,6 +17,7 @@ type ValueInfo struct {
 
 type modelNode struct {
 	name       string
+	domain     string
 	opType     string
 	inputs     []string
 	outputs    []string
@@ -33,9 +34,17 @@ type Model struct {
 }
 
 var supportedOperators = map[string]struct{}{
-	"Gemm": {}, "MatMul": {}, "Add": {}, "Sub": {}, "Mul": {},
+	"Gemm": {}, "MatMul": {}, "Add": {}, "Sub": {}, "Mul": {}, "Div": {},
 	"Relu": {}, "Sigmoid": {}, "Tanh": {}, "Softmax": {}, "Identity": {},
 	"Reshape": {}, "Flatten": {}, "Transpose": {}, "Cast": {}, "Constant": {},
+	"Concat": {}, "Unsqueeze": {}, "Gather": {}, "GreaterOrEqual": {}, "Where": {},
+	"ai.onnx.ml:LinearRegressor":        {},
+	"ai.onnx.ml:LinearClassifier":       {},
+	"ai.onnx.ml:TreeEnsembleRegressor":  {},
+	"ai.onnx.ml:TreeEnsembleClassifier": {},
+	"ai.onnx.ml:Scaler":                 {},
+	"ai.onnx.ml:OneHotEncoder":          {},
+	"ai.onnx.ml:LabelEncoder":           {},
 }
 
 // LoadONNX reads and validates an ONNX ModelProto. The reader is untrusted
@@ -107,21 +116,8 @@ func buildModel(decoded protoModel) (*Model, error) {
 	unsupported := make([]string, 0)
 	seenUnsupported := make(map[string]struct{})
 	for _, node := range decoded.graph.nodes {
-		operatorName := node.opType
-		if node.domain != "" && node.domain != "ai.onnx" {
-			operatorName = node.domain + ":" + node.opType
-		}
-		if node.opType == "" {
-			operatorName = "<empty>"
-		}
-		if node.domain != "" && node.domain != "ai.onnx" {
-			if _, exists := seenUnsupported[operatorName]; !exists {
-				unsupported = append(unsupported, operatorName)
-				seenUnsupported[operatorName] = struct{}{}
-			}
-			continue
-		}
-		if _, supported := supportedOperators[node.opType]; !supported {
+		operatorName := operatorDisplayName(node.domain, node.opType)
+		if _, supported := supportedOperators[operatorKey(node.domain, node.opType)]; !supported {
 			if _, exists := seenUnsupported[operatorName]; !exists {
 				unsupported = append(unsupported, operatorName)
 				seenUnsupported[operatorName] = struct{}{}
@@ -165,7 +161,7 @@ func buildModel(decoded protoModel) (*Model, error) {
 		if input.elemType == 0 {
 			return nil, fmt.Errorf("graph input %q has no dtype", input.name)
 		}
-		if input.elemType != 1 {
+		if !supportedTensorDType(onnxDType(input.elemType)) {
 			return nil, fmt.Errorf("graph input %q has unsupported dtype %s", input.name, onnxDTypeName(input.elemType))
 		}
 		if input.hasShape {
@@ -188,7 +184,7 @@ func buildModel(decoded protoModel) (*Model, error) {
 		if output.elemType == 0 {
 			return nil, fmt.Errorf("graph output %q has no dtype", output.name)
 		}
-		if output.elemType != 1 {
+		if !supportedTensorDType(onnxDType(output.elemType)) {
 			return nil, fmt.Errorf("graph output %q has unsupported dtype %s", output.name, onnxDTypeName(output.elemType))
 		}
 		if output.hasShape {
@@ -210,8 +206,8 @@ func buildModel(decoded protoModel) (*Model, error) {
 		declaredValues[name] = struct{}{}
 	}
 	for index, node := range decoded.graph.nodes {
-		if len(node.outputs) != 1 {
-			return nil, fmt.Errorf("node %d (%s) has %d outputs, want 1", index, node.opType, len(node.outputs))
+		if len(node.outputs) == 0 {
+			return nil, fmt.Errorf("node %d (%s) has no outputs", index, node.opType)
 		}
 		name := node.name
 		if name == "" {
@@ -227,16 +223,18 @@ func buildModel(decoded protoModel) (*Model, error) {
 			}
 			attributes[attribute.name] = attribute
 		}
-		output := node.outputs[0]
-		if output == "" {
-			return nil, fmt.Errorf("node %q output has no name", name)
+		for outputIndex, output := range node.outputs {
+			if output == "" {
+				return nil, fmt.Errorf("node %q output %d has no name", name, outputIndex)
+			}
+			if _, exists := declaredValues[output]; exists {
+				return nil, fmt.Errorf("node %q output %q is already declared", name, output)
+			}
+			declaredValues[output] = struct{}{}
 		}
-		if _, exists := declaredValues[output]; exists {
-			return nil, fmt.Errorf("node %q output %q is already declared", name, output)
-		}
-		declaredValues[output] = struct{}{}
 		model.nodes = append(model.nodes, modelNode{
 			name:       name,
+			domain:     node.domain,
 			opType:     node.opType,
 			inputs:     append([]string(nil), node.inputs...),
 			outputs:    append([]string(nil), node.outputs...),
@@ -244,6 +242,29 @@ func buildModel(decoded protoModel) (*Model, error) {
 		})
 	}
 	return model, nil
+}
+
+func operatorKey(domain, opType string) string {
+	if domain == "" || domain == "ai.onnx" {
+		return opType
+	}
+	return domain + ":" + opType
+}
+
+func operatorDisplayName(domain, opType string) string {
+	if opType == "" {
+		return "<empty>"
+	}
+	return operatorKey(domain, opType)
+}
+
+func supportedTensorDType(dtype DType) bool {
+	switch dtype {
+	case DTypeFloat32, DTypeInt64, DTypeString, DTypeBool:
+		return true
+	default:
+		return false
+	}
 }
 
 func valueInfoFromProto(info protoValueInfo) ValueInfo {

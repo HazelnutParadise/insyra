@@ -19,8 +19,34 @@ import (
 var onnxParityScript string
 
 type parityOutput struct {
-	Shape []int     `json:"shape"`
-	Data  []float32 `json:"data"`
+	Shape      []int     `json:"shape"`
+	DType      string    `json:"dtype"`
+	Data       []float32 `json:"data"`
+	Int64Data  []int64   `json:"-"`
+	BoolData   []bool    `json:"-"`
+	StringData []string  `json:"-"`
+}
+
+func (output *parityOutput) UnmarshalJSON(data []byte) error {
+	var wire struct {
+		Shape []int           `json:"shape"`
+		DType string          `json:"dtype"`
+		Data  json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return err
+	}
+	output.Shape, output.DType = wire.Shape, wire.DType
+	switch wire.DType {
+	case "int64", "int32", "uint8":
+		return json.Unmarshal(wire.Data, &output.Int64Data)
+	case "bool":
+		return json.Unmarshal(wire.Data, &output.BoolData)
+	case "string":
+		return json.Unmarshal(wire.Data, &output.StringData)
+	default:
+		return json.Unmarshal(wire.Data, &output.Data)
+	}
 }
 
 func TestOneOpParityAgainstONNXRuntime(t *testing.T) {
@@ -71,6 +97,12 @@ func TestOneOpParityAgainstONNXRuntime(t *testing.T) {
 			},
 		},
 		{
+			name: "Div",
+			run: func() (*Tensor, error) {
+				return Div(mustTestTensor(t, []int{2, 3}, []float32{1, 2, 3, 4, 5, 6}), mustTestTensor(t, []int{3}, []float32{2, 4, 5}))
+			},
+		},
+		{
 			name: "Relu",
 			run:  func() (*Tensor, error) { return Relu(mustTestTensor(t, []int{2, 3}, []float32{-1, 0, 1, 2, -2, 0.5})) },
 		},
@@ -97,6 +129,39 @@ func TestOneOpParityAgainstONNXRuntime(t *testing.T) {
 			},
 		},
 		{
+			name: "Concat",
+			run: func() (*Tensor, error) {
+				return Concat([]*Tensor{
+					mustTestTensor(t, []int{2, 1}, []float32{1, 2}),
+					mustTestTensor(t, []int{2, 2}, []float32{3, 4, 5, 6}),
+				}, 1)
+			},
+		},
+		{
+			name: "Unsqueeze",
+			run: func() (*Tensor, error) {
+				return Unsqueeze(mustTestTensor(t, []int{3}, []float32{1, 2, 3}), []int{1})
+			},
+		},
+		{
+			name: "Gather",
+			run: func() (*Tensor, error) {
+				return Gather(mustTestTensor(t, []int{2, 3}, []float32{1, 2, 3, 4, 5, 6}), mustTestInt64Tensor(t, []int{1}, []int64{2}), 1)
+			},
+		},
+		{
+			name: "GreaterOrEqual",
+			run: func() (*Tensor, error) {
+				return GreaterOrEqual(mustTestInt64Tensor(t, []int{3}, []int64{1, 2, 3}), mustTestInt64Tensor(t, []int{}, []int64{2}))
+			},
+		},
+		{
+			name: "Where",
+			run: func() (*Tensor, error) {
+				return Where(mustTestBoolTensor(t, []int{3}, []bool{true, false, true}), mustTestTensor(t, []int{3}, []float32{1, 2, 3}), mustTestTensor(t, []int{}, []float32{-1}))
+			},
+		},
+		{
 			name: "Reshape",
 			run: func() (*Tensor, error) {
 				return Reshape(mustTestTensor(t, []int{2, 3}, []float32{1, 2, 3, 4, 5, 6}), []int{3, 2})
@@ -117,7 +182,70 @@ func TestOneOpParityAgainstONNXRuntime(t *testing.T) {
 		{
 			name: "Cast",
 			run: func() (*Tensor, error) {
-				return Cast(mustTestTensor(t, []int{1, 3}, []float32{-1, 0, 1}), DTypeFloat32)
+				return Cast(mustTestInt64Tensor(t, []int{1, 3}, []int64{-1, 0, 1}), DTypeFloat32)
+			},
+		},
+		{
+			name: "OneHotEncoder",
+			run: func() (*Tensor, error) {
+				return oneHotEncoder(mustTestStringTensor(t, []int{3}, []string{"red", "blue", "unknown"}), map[string]protoAttribute{
+					"cats_strings": {strings: [][]byte{[]byte("red"), []byte("blue")}},
+				})
+			},
+		},
+		{
+			name: "LabelEncoder",
+			run: func() (*Tensor, error) {
+				return labelEncoder(mustTestStringTensor(t, []int{3}, []string{"red", "blue", "unknown"}), map[string]protoAttribute{
+					"keys_strings":  {strings: [][]byte{[]byte("red"), []byte("blue")}},
+					"values_int64s": {ints: []int64{1, 2}},
+					"default_int64": {intValue: -1, hasInt: true},
+				})
+			},
+		},
+		{
+			name: "Scaler",
+			run: func() (*Tensor, error) {
+				return scaler(mustTestTensor(t, []int{2, 2}, []float32{1, 2, 3, 4}), map[string]protoAttribute{
+					"offset": {floats: []float32{-1, 1}},
+					"scale":  {floats: []float32{2, 3}},
+				})
+			},
+		},
+		{
+			name: "LinearRegressor",
+			run: func() (*Tensor, error) {
+				return linearRegressor(mustTestTensor(t, []int{2, 2}, []float32{1, 2, 3, 4}), map[string]protoAttribute{
+					"coefficients":   {floats: []float32{2, -1}},
+					"intercepts":     {floats: []float32{0.5}},
+					"targets":        {intValue: 1, hasInt: true},
+					"post_transform": {string: []byte("NONE")},
+				})
+			},
+		},
+		{
+			name: "LinearClassifier",
+			run: func() (*Tensor, error) {
+				_, probabilities, err := linearClassifier(mustTestTensor(t, []int{2, 2}, []float32{1, 2, 3, 4}), map[string]protoAttribute{
+					"classlabels_ints": {ints: []int64{0, 1}},
+					"coefficients":     {floats: []float32{2, -1, -1, 2}},
+					"intercepts":       {floats: []float32{0.5, 0.1}},
+					"post_transform":   {string: []byte("LOGISTIC")},
+				})
+				return probabilities, err
+			},
+		},
+		{
+			name: "TreeEnsembleRegressor",
+			run: func() (*Tensor, error) {
+				return treeEnsembleRegressor(mustTestTensor(t, []int{2, 1}, []float32{-1, 1}), simpleTreeRegressorAttributes())
+			},
+		},
+		{
+			name: "TreeEnsembleClassifier",
+			run: func() (*Tensor, error) {
+				_, probabilities, err := treeEnsembleClassifier(mustTestTensor(t, []int{2, 1}, []float32{-1, 1}), simpleTreeClassifierAttributes())
+				return probabilities, err
 			},
 		},
 		{
@@ -172,7 +300,7 @@ func TestWholeMLPParityAndBatchInvariance(t *testing.T) {
 		if runErr != nil {
 			t.Fatalf("Run row %d: %v", row, runErr)
 		}
-		want := parityOutput{Shape: []int{1, 2}, Data: reference[0].Data[row*2 : row*2+2]}
+		want := parityOutput{Shape: []int{1, 2}, DType: reference[0].DType, Data: reference[0].Data[row*2 : row*2+2]}
 		assertParityOutput(t, rowOutput["Z"], want)
 	}
 }
@@ -220,14 +348,92 @@ func assertParityOutput(t *testing.T, got *Tensor, want parityOutput) {
 	if fmt.Sprint(got.shape) != fmt.Sprint(want.Shape) {
 		t.Fatalf("shape = %v, want %v", got.shape, want.Shape)
 	}
-	if len(got.data) != len(want.Data) {
-		t.Fatalf("data length = %d, want %d", len(got.data), len(want.Data))
-	}
-	for index := range want.Data {
-		difference := math.Abs(float64(got.data[index] - want.Data[index]))
-		scale := math.Max(1, math.Abs(float64(want.Data[index])))
-		if difference > 1e-5*scale {
-			t.Fatalf("data[%d] = %g, want %g (difference %g)", index, got.data[index], want.Data[index], difference)
+	switch got.dtype {
+	case DTypeFloat32:
+		if len(got.data) != len(want.Data) {
+			t.Fatalf("data length = %d, want %d", len(got.data), len(want.Data))
 		}
+		for index := range want.Data {
+			difference := math.Abs(float64(got.data[index] - want.Data[index]))
+			scale := math.Max(1, math.Abs(float64(want.Data[index])))
+			if difference > 1e-5*scale {
+				t.Fatalf("data[%d] = %g, want %g (difference %g)", index, got.data[index], want.Data[index], difference)
+			}
+		}
+	case DTypeInt64:
+		if fmt.Sprint(got.int64Data) != fmt.Sprint(want.Int64Data) {
+			t.Fatalf("data = %v, want %v", got.int64Data, want.Int64Data)
+		}
+	case DTypeBool:
+		if fmt.Sprint(got.boolData) != fmt.Sprint(want.BoolData) {
+			t.Fatalf("data = %v, want %v", got.boolData, want.BoolData)
+		}
+	case DTypeString:
+		if fmt.Sprint(got.stringData) != fmt.Sprint(want.StringData) {
+			t.Fatalf("data = %v, want %v", got.stringData, want.StringData)
+		}
+	default:
+		t.Fatalf("unsupported output dtype %s", got.dtype)
 	}
+}
+
+func mustTestInt64Tensor(t *testing.T, shape []int, data []int64) *Tensor {
+	t.Helper()
+	tensor, err := NewInt64Tensor(shape, data)
+	if err != nil {
+		t.Fatalf("NewInt64Tensor: %v", err)
+	}
+	return tensor
+}
+
+func mustTestStringTensor(t *testing.T, shape []int, data []string) *Tensor {
+	t.Helper()
+	tensor, err := NewStringTensor(shape, data)
+	if err != nil {
+		t.Fatalf("NewStringTensor: %v", err)
+	}
+	return tensor
+}
+
+func mustTestBoolTensor(t *testing.T, shape []int, data []bool) *Tensor {
+	t.Helper()
+	tensor, err := NewBoolTensor(shape, data)
+	if err != nil {
+		t.Fatalf("NewBoolTensor: %v", err)
+	}
+	return tensor
+}
+
+func simpleTreeRegressorAttributes() map[string]protoAttribute {
+	return map[string]protoAttribute{
+		"nodes_treeids":                   {ints: []int64{0, 0, 0}},
+		"nodes_nodeids":                   {ints: []int64{0, 1, 2}},
+		"nodes_featureids":                {ints: []int64{0, 0, 0}},
+		"nodes_values":                    {floats: []float32{0, 0, 0}},
+		"nodes_modes":                     {strings: [][]byte{[]byte("BRANCH_LEQ"), []byte("LEAF"), []byte("LEAF")}},
+		"nodes_truenodeids":               {ints: []int64{1, 0, 0}},
+		"nodes_falsenodeids":              {ints: []int64{2, 0, 0}},
+		"nodes_missing_value_tracks_true": {ints: []int64{0, 0, 0}},
+		"target_treeids":                  {ints: []int64{0, 0}},
+		"target_nodeids":                  {ints: []int64{1, 2}},
+		"target_ids":                      {ints: []int64{0, 0}},
+		"target_weights":                  {floats: []float32{-1, 2}},
+		"n_targets":                       {intValue: 1, hasInt: true},
+		"post_transform":                  {string: []byte("NONE")},
+	}
+}
+
+func simpleTreeClassifierAttributes() map[string]protoAttribute {
+	attributes := simpleTreeRegressorAttributes()
+	attributes["classlabels_ints"] = protoAttribute{ints: []int64{0, 1}}
+	delete(attributes, "target_treeids")
+	delete(attributes, "target_nodeids")
+	delete(attributes, "target_ids")
+	delete(attributes, "target_weights")
+	delete(attributes, "n_targets")
+	attributes["class_treeids"] = protoAttribute{ints: []int64{0, 0, 0, 0}}
+	attributes["class_nodeids"] = protoAttribute{ints: []int64{1, 1, 2, 2}}
+	attributes["class_ids"] = protoAttribute{ints: []int64{0, 1, 0, 1}}
+	attributes["class_weights"] = protoAttribute{floats: []float32{1, 0, 0, 1}}
+	return attributes
 }

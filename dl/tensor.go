@@ -5,10 +5,10 @@ import (
 	"fmt"
 )
 
-// DType identifies the element type carried by a Tensor. Float32 is the only
-// arithmetic dtype implemented by this package. The other names are retained
-// in the type system so adding quantised tensor storage does not change the
-// public shape of the API.
+// DType identifies the element type carried by a Tensor. Float32 is the
+// arithmetic dtype used by the inference kernels; int64, bool, and string are
+// also stored so ONNX categorical preprocessing and classifier outputs retain
+// their declared types.
 type DType string
 
 const (
@@ -45,11 +45,13 @@ type DataType = DType
 // caller cannot change a model initializer while another goroutine is running
 // the same Model. Data returns a copy for the same reason.
 type Tensor struct {
-	dtype     DType
-	shape     []int
-	strides   []int
-	data      []float32
-	int64Data []int64
+	dtype      DType
+	shape      []int
+	strides    []int
+	data       []float32
+	int64Data  []int64
+	boolData   []bool
+	stringData []string
 }
 
 // NewTensor constructs a float32 tensor with the supplied row-major data.
@@ -64,9 +66,24 @@ func NewFloat32Tensor(shape []int, data []float32) (*Tensor, error) {
 	return newFloat32Tensor(shape, data)
 }
 
+// NewInt64Tensor constructs an int64 tensor.
+func NewInt64Tensor(shape []int, data []int64) (*Tensor, error) {
+	return newInt64Tensor(shape, data)
+}
+
+// NewStringTensor constructs a string tensor.
+func NewStringTensor(shape []int, data []string) (*Tensor, error) {
+	return newStringTensor(shape, data)
+}
+
+// NewBoolTensor constructs a bool tensor.
+func NewBoolTensor(shape []int, data []bool) (*Tensor, error) {
+	return newBoolTensor(shape, data)
+}
+
 // NewTensorWithDType constructs a tensor when the dtype is known at a call
-// site. Only float32 storage is implemented; unsupported dtypes are refused by
-// name instead of being silently reinterpreted as float32.
+// site. The data argument is float32, so this constructor is intentionally
+// limited to float32 tensors.
 func NewTensorWithDType(dtype DType, shape []int, data []float32) (*Tensor, error) {
 	if dtype != DTypeFloat32 {
 		return nil, unsupportedDTypeError(dtype)
@@ -119,15 +136,56 @@ func (t *Tensor) Float32Data() ([]float32, error) {
 	return append([]float32(nil), t.data...), nil
 }
 
+// Int64Data returns a copy of int64 data.
+func (t *Tensor) Int64Data() ([]int64, error) {
+	if t == nil {
+		return nil, fmt.Errorf("tensor is nil")
+	}
+	if t.dtype != DTypeInt64 {
+		return nil, unsupportedDTypeError(t.dtype)
+	}
+	return append([]int64(nil), t.int64Data...), nil
+}
+
+// StringData returns a copy of string data.
+func (t *Tensor) StringData() ([]string, error) {
+	if t == nil {
+		return nil, fmt.Errorf("tensor is nil")
+	}
+	if t.dtype != DTypeString {
+		return nil, unsupportedDTypeError(t.dtype)
+	}
+	return append([]string(nil), t.stringData...), nil
+}
+
+// BoolData returns a copy of bool data.
+func (t *Tensor) BoolData() ([]bool, error) {
+	if t == nil {
+		return nil, fmt.Errorf("tensor is nil")
+	}
+	if t.dtype != DTypeBool {
+		return nil, unsupportedDTypeError(t.dtype)
+	}
+	return append([]bool(nil), t.boolData...), nil
+}
+
 // Len returns the number of elements in the tensor.
 func (t *Tensor) Len() int {
 	if t == nil {
 		return 0
 	}
-	if t.dtype != DTypeFloat32 {
+	switch t.dtype {
+	case DTypeFloat32:
+		return len(t.data)
+	case DTypeInt64:
 		return len(t.int64Data)
+	case DTypeBool:
+		return len(t.boolData)
+	case DTypeString:
+		return len(t.stringData)
+	default:
+		return 0
 	}
-	return len(t.data)
 }
 
 func newFloat32Tensor(shape []int, data []float32) (*Tensor, error) {
@@ -162,18 +220,50 @@ func newInt64Tensor(shape []int, data []int64) (*Tensor, error) {
 	}, nil
 }
 
+func newStringTensor(shape []int, data []string) (*Tensor, error) {
+	shapeCopy, strides, count, err := makeLayout(shape)
+	if err != nil {
+		return nil, err
+	}
+	if len(data) != count {
+		return nil, fmt.Errorf("tensor data has %d elements, want %d for shape %v", len(data), count, shapeCopy)
+	}
+	return &Tensor{
+		dtype:      DTypeString,
+		shape:      shapeCopy,
+		strides:    strides,
+		stringData: append([]string(nil), data...),
+	}, nil
+}
+
+func newBoolTensor(shape []int, data []bool) (*Tensor, error) {
+	shapeCopy, strides, count, err := makeLayout(shape)
+	if err != nil {
+		return nil, err
+	}
+	if len(data) != count {
+		return nil, fmt.Errorf("tensor data has %d elements, want %d for shape %v", len(data), count, shapeCopy)
+	}
+	return &Tensor{
+		dtype:    DTypeBool,
+		shape:    shapeCopy,
+		strides:  strides,
+		boolData: append([]bool(nil), data...),
+	}, nil
+}
+
 func copyTensor(t *Tensor) (*Tensor, error) {
 	if t == nil {
 		return nil, fmt.Errorf("tensor is nil")
 	}
 	result := &Tensor{
-		dtype:   t.dtype,
-		shape:   append([]int(nil), t.shape...),
-		strides: append([]int(nil), t.strides...),
-		data:    append([]float32(nil), t.data...),
-	}
-	if t.dtype != DTypeFloat32 {
-		result.int64Data = append([]int64(nil), t.int64Data...)
+		dtype:      t.dtype,
+		shape:      append([]int(nil), t.shape...),
+		strides:    append([]int(nil), t.strides...),
+		data:       append([]float32(nil), t.data...),
+		int64Data:  append([]int64(nil), t.int64Data...),
+		boolData:   append([]bool(nil), t.boolData...),
+		stringData: append([]string(nil), t.stringData...),
 	}
 	return result, nil
 }

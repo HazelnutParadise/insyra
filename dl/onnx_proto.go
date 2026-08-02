@@ -54,13 +54,14 @@ type protoAttribute struct {
 }
 
 type protoTensor struct {
-	dims      []int64
-	dataType  int32
-	floatData []float32
-	int32Data []int32
-	int64Data []int64
-	name      string
-	rawData   []byte
+	dims       []int64
+	dataType   int32
+	floatData  []float32
+	int32Data  []int32
+	int64Data  []int64
+	stringData [][]byte
+	name       string
+	rawData    []byte
 }
 
 type protoValueInfo struct {
@@ -325,6 +326,11 @@ func decodeTensorProto(data []byte) (tensor protoTensor, err error) {
 				return parseErr
 			}
 			tensor.int32Data = parsed
+		case 6:
+			if typ != protowire.BytesType {
+				return wrongWireType("tensor string_data", protowire.BytesType, typ)
+			}
+			tensor.stringData = append(tensor.stringData, append([]byte(nil), value...))
 		case 7:
 			parsed, parseErr := appendInt64Values(tensor.int64Data, typ, value, "tensor int64_data")
 			if parseErr != nil {
@@ -454,8 +460,11 @@ func decodeDimensionProto(data []byte) (dimension int, err error) {
 	if hasParameter || !hasValue {
 		return -1, nil
 	}
-	if raw < 0 {
+	if raw < -1 {
 		return 0, fmt.Errorf("dimension value %d is negative", raw)
+	}
+	if raw == -1 {
+		return -1, nil
 	}
 	return intFromInt64(raw, "dimension value")
 }
@@ -649,6 +658,18 @@ func tensorProtoToTensor(proto protoTensor) (*Tensor, error) {
 			return nil, dataErr
 		}
 		return newInt64Tensor(shape, values)
+	case 8:
+		values, dataErr := tensorStringData(proto, count)
+		if dataErr != nil {
+			return nil, dataErr
+		}
+		return newStringTensor(shape, values)
+	case 9:
+		values, dataErr := tensorBoolData(proto, count)
+		if dataErr != nil {
+			return nil, dataErr
+		}
+		return newBoolTensor(shape, values)
 	default:
 		return nil, fmt.Errorf("tensor %q has unsupported dtype %s", proto.name, onnxDTypeName(proto.dataType))
 	}
@@ -703,4 +724,42 @@ func tensorInt64Data(proto protoTensor, count int) ([]int64, error) {
 		return nil, fmt.Errorf("tensor %q has %d int64 values, want %d", proto.name, len(proto.int64Data), count)
 	}
 	return append([]int64(nil), proto.int64Data...), nil
+}
+
+func tensorStringData(proto protoTensor, count int) ([]string, error) {
+	if len(proto.stringData) != count {
+		return nil, fmt.Errorf("tensor %q has %d string values, want %d", proto.name, len(proto.stringData), count)
+	}
+	values := make([]string, len(proto.stringData))
+	for index, value := range proto.stringData {
+		values[index] = string(value)
+	}
+	return values, nil
+}
+
+func tensorBoolData(proto protoTensor, count int) ([]bool, error) {
+	if proto.rawData != nil {
+		if len(proto.rawData) != count {
+			return nil, fmt.Errorf("tensor %q raw_data has %d bytes, want %d", proto.name, len(proto.rawData), count)
+		}
+		values := make([]bool, count)
+		for index, value := range proto.rawData {
+			if value > 1 {
+				return nil, fmt.Errorf("tensor %q bool value %d is invalid", proto.name, value)
+			}
+			values[index] = value != 0
+		}
+		return values, nil
+	}
+	if len(proto.int32Data) != count {
+		return nil, fmt.Errorf("tensor %q has %d bool values, want %d", proto.name, len(proto.int32Data), count)
+	}
+	values := make([]bool, count)
+	for index, value := range proto.int32Data {
+		if value != 0 && value != 1 {
+			return nil, fmt.Errorf("tensor %q bool value %d is invalid", proto.name, value)
+		}
+		values[index] = value != 0
+	}
+	return values, nil
 }

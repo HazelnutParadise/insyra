@@ -105,7 +105,7 @@ func validateModelInput(name string, spec ValueInfo, input *Tensor) error {
 	if input == nil {
 		return fmt.Errorf("input %q is nil", name)
 	}
-	if spec.DType != DTypeFloat32 {
+	if !supportedTensorDType(spec.DType) {
 		return fmt.Errorf("input %q declares unsupported dtype %s", name, dtypeName(spec.DType))
 	}
 	if input.dtype != spec.DType {
@@ -117,6 +117,12 @@ func validateModelInput(name string, spec ValueInfo, input *Tensor) error {
 func validateModelValue(name string, spec ValueInfo, value *Tensor) error {
 	if value == nil {
 		return fmt.Errorf("value %q is nil", name)
+	}
+	if !supportedTensorDType(spec.DType) {
+		return fmt.Errorf("value %q declares unsupported dtype %s", name, dtypeName(spec.DType))
+	}
+	if value.dtype != spec.DType {
+		return fmt.Errorf("value %q has dtype %s, want %s", name, dtypeName(value.dtype), dtypeName(spec.DType))
 	}
 	if !spec.HasShape {
 		return nil
@@ -145,8 +151,8 @@ func nodeInputsReady(node modelNode, values map[string]*Tensor) bool {
 }
 
 func executeNode(node modelNode, values map[string]*Tensor) (map[string]*Tensor, error) {
-	if len(node.outputs) != 1 {
-		return nil, fmt.Errorf("operator %s requires exactly one output, got %d", node.opType, len(node.outputs))
+	if len(node.outputs) == 0 {
+		return nil, fmt.Errorf("operator %s has no outputs", node.opType)
 	}
 	input := func(index int) (*Tensor, error) {
 		if index >= len(node.inputs) || node.inputs[index] == "" {
@@ -164,8 +170,9 @@ func executeNode(node modelNode, values map[string]*Tensor) (map[string]*Tensor,
 	}
 	outputName := node.outputs[0]
 	var result *Tensor
+	produced := make(map[string]*Tensor, len(node.outputs))
 	var err error
-	switch node.opType {
+	switch operatorKey(node.domain, node.opType) {
 	case "Gemm":
 		a, inputErr := input(0)
 		if inputErr != nil {
@@ -218,7 +225,7 @@ func executeNode(node modelNode, values map[string]*Tensor) (map[string]*Tensor,
 			return nil, inputErr
 		}
 		result, err = MatMul(a, b)
-	case "Add", "Sub", "Mul":
+	case "Add", "Sub", "Mul", "Div":
 		left, inputErr := input(0)
 		if inputErr != nil {
 			return nil, inputErr
@@ -234,6 +241,8 @@ func executeNode(node modelNode, values map[string]*Tensor) (map[string]*Tensor,
 			result, err = Sub(left, right)
 		case "Mul":
 			result, err = Mul(left, right)
+		case "Div":
+			result, err = Div(left, right)
 		}
 	case "Relu", "Sigmoid", "Tanh":
 		value, inputErr := input(0)
@@ -267,6 +276,78 @@ func executeNode(node modelNode, values map[string]*Tensor) (map[string]*Tensor,
 			return nil, inputErr
 		}
 		result, err = Identity(value)
+	case "Concat":
+		axis, axisErr := nodeAxis(attribute, "axis", 0)
+		if axisErr != nil {
+			return nil, axisErr
+		}
+		inputs := make([]*Tensor, len(node.inputs))
+		for index := range inputs {
+			inputs[index], err = input(index)
+			if err != nil {
+				return nil, err
+			}
+		}
+		result, err = Concat(inputs, axis)
+	case "Unsqueeze":
+		value, inputErr := input(0)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		var axes []int
+		if len(node.inputs) > 1 && node.inputs[1] != "" {
+			axesValue, axesErr := input(1)
+			if axesErr != nil {
+				return nil, axesErr
+			}
+			axes, err = reshapeShape(axesValue)
+		} else if axisAttribute, present := attribute("axes"); present {
+			axes, err = attributeInts(axisAttribute, "axes")
+		} else {
+			return nil, fmt.Errorf("unsqueeze has no axes")
+		}
+		if err != nil {
+			return nil, err
+		}
+		result, err = Unsqueeze(value, axes)
+	case "Gather":
+		data, inputErr := input(0)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		indices, inputErr := input(1)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		axis, axisErr := nodeAxis(attribute, "axis", 0)
+		if axisErr != nil {
+			return nil, axisErr
+		}
+		result, err = Gather(data, indices, axis)
+	case "GreaterOrEqual":
+		left, inputErr := input(0)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		right, inputErr := input(1)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		result, err = GreaterOrEqual(left, right)
+	case "Where":
+		condition, inputErr := input(0)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		left, inputErr := input(1)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		right, inputErr := input(2)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		result, err = Where(condition, left, right)
 	case "Reshape":
 		value, inputErr := input(0)
 		if inputErr != nil {
@@ -335,13 +416,90 @@ func executeNode(node modelNode, values map[string]*Tensor) (map[string]*Tensor,
 			return nil, valueErr
 		}
 		result, err = Constant(value)
+	case "ai.onnx.ml:LinearRegressor":
+		value, inputErr := input(0)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		result, err = linearRegressor(value, node.attributes)
+	case "ai.onnx.ml:LinearClassifier":
+		value, inputErr := input(0)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		var label, probabilities *Tensor
+		label, probabilities, err = linearClassifier(value, node.attributes)
+		if err == nil {
+			if len(node.outputs) != 2 {
+				err = fmt.Errorf("linear classifier has %d outputs, want 2", len(node.outputs))
+			} else {
+				produced[node.outputs[0]] = label
+				produced[node.outputs[1]] = probabilities
+			}
+		}
+	case "ai.onnx.ml:TreeEnsembleRegressor":
+		value, inputErr := input(0)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		result, err = treeEnsembleRegressor(value, node.attributes)
+	case "ai.onnx.ml:TreeEnsembleClassifier":
+		value, inputErr := input(0)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		var label, probabilities *Tensor
+		label, probabilities, err = treeEnsembleClassifier(value, node.attributes)
+		if err == nil {
+			if len(node.outputs) != 2 {
+				err = fmt.Errorf("tree ensemble classifier has %d outputs, want 2", len(node.outputs))
+			} else {
+				produced[node.outputs[0]] = label
+				produced[node.outputs[1]] = probabilities
+			}
+		}
+	case "ai.onnx.ml:Scaler":
+		value, inputErr := input(0)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		result, err = scaler(value, node.attributes)
+	case "ai.onnx.ml:OneHotEncoder":
+		value, inputErr := input(0)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		result, err = oneHotEncoder(value, node.attributes)
+	case "ai.onnx.ml:LabelEncoder":
+		value, inputErr := input(0)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		result, err = labelEncoder(value, node.attributes)
 	default:
-		return nil, fmt.Errorf("unsupported operator %s", node.opType)
+		return nil, fmt.Errorf("unsupported operator %s", operatorDisplayName(node.domain, node.opType))
 	}
 	if err != nil {
 		return nil, err
 	}
-	return map[string]*Tensor{outputName: result}, nil
+	if result != nil {
+		produced[outputName] = result
+	}
+	if len(produced) == 0 {
+		return nil, fmt.Errorf("operator %s produced no outputs", operatorDisplayName(node.domain, node.opType))
+	}
+	return produced, nil
+}
+
+func nodeAxis(attribute func(string) (protoAttribute, bool), name string, fallback int) (int, error) {
+	value, present := attribute(name)
+	if !present {
+		return fallback, nil
+	}
+	if !value.hasInt || value.intValue < minIntValue() || value.intValue > int64(maxInt()) {
+		return 0, fmt.Errorf("attribute %s is not a valid integer", name)
+	}
+	return int(value.intValue), nil
 }
 
 func reshapeShape(input *Tensor) ([]int, error) {

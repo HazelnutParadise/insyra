@@ -3,6 +3,7 @@ package dl
 import (
 	"fmt"
 	"math"
+	"strconv"
 )
 
 // GemmOptions controls the optional attributes of Gemm. When no options are
@@ -355,16 +356,102 @@ func Transpose(input *Tensor, perms ...[]int) (*Tensor, error) {
 	return result, nil
 }
 
-// Cast accepts only float32-to-float32 because other float storage and
-// conversion rules are not implemented.
+// Cast converts among the scalar types used by the exporter: float32, int64,
+// bool, and string. Numeric conversions follow ONNX's truncating integer
+// conversion for the paths used by categorical preprocessing.
 func Cast(input *Tensor, to DType) (*Tensor, error) {
-	if err := requireFloat32(input, "cast input"); err != nil {
-		return nil, err
+	if input == nil {
+		return nil, fmt.Errorf("cast input is nil")
 	}
-	if to != DTypeFloat32 {
+	if !supportedTensorDType(input.dtype) {
+		return nil, unsupportedDTypeError(input.dtype)
+	}
+	if !supportedTensorDType(to) {
 		return nil, fmt.Errorf("cast to dtype %s is not implemented", dtypeName(to))
 	}
-	return copyTensor(input)
+	result, err := newTypedTensor(to, input.shape)
+	if err != nil {
+		return nil, err
+	}
+	for index := 0; index < input.Len(); index++ {
+		if err := castElement(result, index, input, index); err != nil {
+			return nil, fmt.Errorf("cast element %d: %w", index, err)
+		}
+	}
+	return result, nil
+}
+
+func castElement(destination *Tensor, destinationIndex int, source *Tensor, sourceIndex int) error {
+	switch destination.dtype {
+	case DTypeFloat32:
+		switch source.dtype {
+		case DTypeFloat32:
+			destination.data[destinationIndex] = source.data[sourceIndex]
+		case DTypeInt64:
+			destination.data[destinationIndex] = float32(source.int64Data[sourceIndex])
+		case DTypeBool:
+			if source.boolData[sourceIndex] {
+				destination.data[destinationIndex] = 1
+			}
+		case DTypeString:
+			value, err := strconv.ParseFloat(source.stringData[sourceIndex], 32)
+			if err != nil {
+				return fmt.Errorf("string %q is not numeric", source.stringData[sourceIndex])
+			}
+			destination.data[destinationIndex] = float32(value)
+		}
+	case DTypeInt64:
+		switch source.dtype {
+		case DTypeFloat32:
+			if math.IsNaN(float64(source.data[sourceIndex])) || math.IsInf(float64(source.data[sourceIndex]), 0) {
+				return fmt.Errorf("float %v cannot convert to int64", source.data[sourceIndex])
+			}
+			destination.int64Data[destinationIndex] = int64(source.data[sourceIndex])
+		case DTypeInt64:
+			destination.int64Data[destinationIndex] = source.int64Data[sourceIndex]
+		case DTypeBool:
+			if source.boolData[sourceIndex] {
+				destination.int64Data[destinationIndex] = 1
+			}
+		case DTypeString:
+			value, err := strconv.ParseInt(source.stringData[sourceIndex], 10, 64)
+			if err != nil {
+				return fmt.Errorf("string %q is not an integer", source.stringData[sourceIndex])
+			}
+			destination.int64Data[destinationIndex] = value
+		}
+	case DTypeBool:
+		switch source.dtype {
+		case DTypeFloat32:
+			destination.boolData[destinationIndex] = source.data[sourceIndex] != 0
+		case DTypeInt64:
+			destination.boolData[destinationIndex] = source.int64Data[sourceIndex] != 0
+		case DTypeBool:
+			destination.boolData[destinationIndex] = source.boolData[sourceIndex]
+		case DTypeString:
+			switch source.stringData[sourceIndex] {
+			case "1", "true", "True", "TRUE":
+				destination.boolData[destinationIndex] = true
+			case "0", "false", "False", "FALSE":
+			default:
+				return fmt.Errorf("string %q is not boolean", source.stringData[sourceIndex])
+			}
+		}
+	case DTypeString:
+		switch source.dtype {
+		case DTypeFloat32:
+			destination.stringData[destinationIndex] = strconv.FormatFloat(float64(source.data[sourceIndex]), 'g', -1, 32)
+		case DTypeInt64:
+			destination.stringData[destinationIndex] = strconv.FormatInt(source.int64Data[sourceIndex], 10)
+		case DTypeBool:
+			destination.stringData[destinationIndex] = strconv.FormatBool(source.boolData[sourceIndex])
+		case DTypeString:
+			destination.stringData[destinationIndex] = source.stringData[sourceIndex]
+		}
+	default:
+		return unsupportedDTypeError(destination.dtype)
+	}
+	return nil
 }
 
 // Constant returns an independent copy of a tensor attribute.
