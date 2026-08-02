@@ -17,8 +17,11 @@ type Tape struct {
 
 // Parameter is a tensor marked for gradient retrieval and SGD updates.
 type Parameter struct {
-	value *Tensor
-	grad  *Tensor
+	value    *Tensor
+	grad     *Tensor
+	adamM    []float32
+	adamV    []float32
+	adamStep uint64
 }
 
 // Value returns the parameter tensor used by the tape wrappers.
@@ -64,13 +67,11 @@ func (t *Tape) Param(value *Tensor) (*Parameter, error) {
 	return parameter, nil
 }
 
-// MatMul runs the existing 2-D MatMul kernel and records its VJP.
+// MatMul runs the existing MatMul kernel and records its VJP. Rank-1 inputs
+// use the same vector promotion and squeezing rules as the forward kernel.
 func (t *Tape) MatMul(a, b *Tensor) (*Tensor, error) {
 	if a == nil || b == nil {
 		return nil, fmt.Errorf("autodiff matmul inputs must not be nil")
-	}
-	if len(a.shape) != 2 || len(b.shape) != 2 {
-		return nil, fmt.Errorf("autodiff matmul requires 2-D inputs, got shapes %v and %v", a.shape, b.shape)
 	}
 	output, err := MatMul(a, b)
 	if err != nil {
@@ -78,6 +79,30 @@ func (t *Tape) MatMul(a, b *Tensor) (*Tensor, error) {
 	}
 	t.record("MatMul", []*Tensor{a, b}, output, func(upstream *Tensor) ([]*Tensor, error) {
 		return matMulVJP(a, b, upstream)
+	})
+	return output, nil
+}
+
+// Mul runs the existing broadcast multiplication kernel and records its VJP.
+func (t *Tape) Mul(a, b *Tensor) (*Tensor, error) {
+	output, err := Mul(a, b)
+	if err != nil {
+		return nil, err
+	}
+	t.record("Mul", []*Tensor{a, b}, output, func(upstream *Tensor) ([]*Tensor, error) {
+		return mulVJP(a, b, upstream)
+	})
+	return output, nil
+}
+
+// Div runs the existing broadcast division kernel and records its VJP.
+func (t *Tape) Div(a, b *Tensor) (*Tensor, error) {
+	output, err := Div(a, b)
+	if err != nil {
+		return nil, err
+	}
+	t.record("Div", []*Tensor{a, b}, output, func(upstream *Tensor) ([]*Tensor, error) {
+		return divVJP(a, b, upstream)
 	})
 	return output, nil
 }
@@ -128,6 +153,279 @@ func (t *Tape) Tanh(input *Tensor) (*Tensor, error) {
 		return []*Tensor{tanhVJP(output, upstream)}, nil
 	})
 	return output, nil
+}
+
+// Softmax runs the existing axis-softmax kernel and records its VJP.
+func (t *Tape) Softmax(input *Tensor, axes ...int) (*Tensor, error) {
+	if err := requireFloat32(input, "autodiff softmax input"); err != nil {
+		return nil, err
+	}
+	axis := -1
+	if len(axes) > 1 {
+		return nil, fmt.Errorf("autodiff softmax accepts at most one axis")
+	}
+	if len(axes) == 1 {
+		axis = axes[0]
+	}
+	axis, err := normalizeAxis(axis, len(input.shape), "autodiff softmax")
+	if err != nil {
+		return nil, err
+	}
+	output, err := Softmax(input, axis)
+	if err != nil {
+		return nil, err
+	}
+	t.record("Softmax", []*Tensor{input}, output, func(upstream *Tensor) ([]*Tensor, error) {
+		return []*Tensor{softmaxVJP(output, upstream, axis)}, nil
+	})
+	return output, nil
+}
+
+// LayerNormalization runs suffix LayerNormalization and records input, scale,
+// and bias gradients.
+func (t *Tape) LayerNormalization(input, scale, bias *Tensor, axis int, epsilon float32) (*Tensor, error) {
+	if err := requireFloat32(input, "autodiff layer normalization input"); err != nil {
+		return nil, err
+	}
+	resolvedAxis, err := normalizeAxis(axis, len(input.shape), "autodiff layer normalization")
+	if err != nil {
+		return nil, err
+	}
+	output, err := LayerNormalization(input, scale, bias, resolvedAxis, epsilon)
+	if err != nil {
+		return nil, err
+	}
+	t.record("LayerNormalization", []*Tensor{input, scale, bias}, output, func(upstream *Tensor) ([]*Tensor, error) {
+		return layerNormalizationVJP(input, scale, bias, resolvedAxis, epsilon, upstream)
+	})
+	return output, nil
+}
+
+// Gelu records the exact erf-form VJP. The tanh approximation is intentionally
+// refused because this training slice proves only the exact form.
+func (t *Tape) Gelu(input *Tensor, approximate ...string) (*Tensor, error) {
+	if len(approximate) > 1 {
+		return nil, fmt.Errorf("autodiff gelu accepts at most one approximate mode")
+	}
+	mode := "none"
+	if len(approximate) == 1 {
+		mode = approximate[0]
+	}
+	if mode != "none" {
+		return nil, fmt.Errorf("backward Gelu approximate mode %q has no VJP", mode)
+	}
+	output, err := Gelu(input, mode)
+	if err != nil {
+		return nil, err
+	}
+	t.record("Gelu", []*Tensor{input}, output, func(upstream *Tensor) ([]*Tensor, error) {
+		return []*Tensor{geluVJP(input, upstream)}, nil
+	})
+	return output, nil
+}
+
+// Erf records the derivative of the error function.
+func (t *Tape) Erf(input *Tensor) (*Tensor, error) {
+	output, err := Erf(input)
+	if err != nil {
+		return nil, err
+	}
+	t.record("Erf", []*Tensor{input}, output, func(upstream *Tensor) ([]*Tensor, error) {
+		return []*Tensor{erfVJP(input, upstream)}, nil
+	})
+	return output, nil
+}
+
+// Sqrt records the square-root VJP.
+func (t *Tape) Sqrt(input *Tensor) (*Tensor, error) {
+	output, err := Sqrt(input)
+	if err != nil {
+		return nil, err
+	}
+	t.record("Sqrt", []*Tensor{input}, output, func(upstream *Tensor) ([]*Tensor, error) {
+		return []*Tensor{sqrtVJP(output, upstream)}, nil
+	})
+	return output, nil
+}
+
+// Pow records gradients for both broadcast operands.
+func (t *Tape) Pow(left, right *Tensor) (*Tensor, error) {
+	output, err := Pow(left, right)
+	if err != nil {
+		return nil, err
+	}
+	t.record("Pow", []*Tensor{left, right}, output, func(upstream *Tensor) ([]*Tensor, error) {
+		return powVJP(left, right, output, upstream)
+	})
+	return output, nil
+}
+
+// ReduceMean records a mean reduction over the selected axes.
+func (t *Tape) ReduceMean(input *Tensor, axes []int, keepdims bool) (*Tensor, error) {
+	if err := requireFloat32(input, "autodiff reduce mean input"); err != nil {
+		return nil, err
+	}
+	resolvedAxes, err := reduceAxes(axes, len(input.shape))
+	if err != nil {
+		return nil, err
+	}
+	output, err := ReduceMean(input, resolvedAxes, keepdims)
+	if err != nil {
+		return nil, err
+	}
+	t.record("ReduceMean", []*Tensor{input}, output, func(upstream *Tensor) ([]*Tensor, error) {
+		return []*Tensor{reduceMeanVJP(input, resolvedAxes, keepdims, upstream)}, nil
+	})
+	return output, nil
+}
+
+// Reshape records the inverse reshape VJP.
+func (t *Tape) Reshape(input *Tensor, shape []int) (*Tensor, error) {
+	output, err := Reshape(input, shape)
+	if err != nil {
+		return nil, err
+	}
+	t.record("Reshape", []*Tensor{input}, output, func(upstream *Tensor) ([]*Tensor, error) {
+		gradient, err := Reshape(upstream, input.shape)
+		return []*Tensor{gradient}, err
+	})
+	return output, nil
+}
+
+// Flatten records the inverse reshape VJP for Flatten.
+func (t *Tape) Flatten(input *Tensor, axes ...int) (*Tensor, error) {
+	output, err := Flatten(input, axes...)
+	if err != nil {
+		return nil, err
+	}
+	t.record("Flatten", []*Tensor{input}, output, func(upstream *Tensor) ([]*Tensor, error) {
+		gradient, err := Reshape(upstream, input.shape)
+		return []*Tensor{gradient}, err
+	})
+	return output, nil
+}
+
+// Transpose records the inverse permutation VJP.
+func (t *Tape) Transpose(input *Tensor, perms ...[]int) (*Tensor, error) {
+	if err := requireFloat32(input, "autodiff transpose input"); err != nil {
+		return nil, err
+	}
+	perm, err := resolvedTransposePermutation(input, perms...)
+	if err != nil {
+		return nil, err
+	}
+	output, err := Transpose(input, perm)
+	if err != nil {
+		return nil, err
+	}
+	inverse := invertPermutation(perm)
+	t.record("Transpose", []*Tensor{input}, output, func(upstream *Tensor) ([]*Tensor, error) {
+		gradient, err := Transpose(upstream, inverse)
+		return []*Tensor{gradient}, err
+	})
+	return output, nil
+}
+
+// Unsqueeze records the inverse reshape VJP.
+func (t *Tape) Unsqueeze(input *Tensor, axes []int) (*Tensor, error) {
+	if err := requireFloat32(input, "autodiff unsqueeze input"); err != nil {
+		return nil, err
+	}
+	output, err := Unsqueeze(input, axes)
+	if err != nil {
+		return nil, err
+	}
+	t.record("Unsqueeze", []*Tensor{input}, output, func(upstream *Tensor) ([]*Tensor, error) {
+		gradient, err := Reshape(upstream, input.shape)
+		return []*Tensor{gradient}, err
+	})
+	return output, nil
+}
+
+// Squeeze records the inverse reshape VJP.
+func (t *Tape) Squeeze(input *Tensor, axes []int) (*Tensor, error) {
+	if err := requireFloat32(input, "autodiff squeeze input"); err != nil {
+		return nil, err
+	}
+	output, err := Squeeze(input, axes)
+	if err != nil {
+		return nil, err
+	}
+	t.record("Squeeze", []*Tensor{input}, output, func(upstream *Tensor) ([]*Tensor, error) {
+		gradient, err := Reshape(upstream, input.shape)
+		return []*Tensor{gradient}, err
+	})
+	return output, nil
+}
+
+// Slice records a scatter-back VJP for the selected input elements.
+func (t *Tape) Slice(input *Tensor, starts, ends, axes, steps []int64) (*Tensor, error) {
+	if err := requireFloat32(input, "autodiff slice input"); err != nil {
+		return nil, err
+	}
+	output, err := Slice(input, starts, ends, axes, steps)
+	if err != nil {
+		return nil, err
+	}
+	t.record("Slice", []*Tensor{input}, output, func(upstream *Tensor) ([]*Tensor, error) {
+		gradient, err := sliceVJP(input, starts, ends, axes, steps, upstream)
+		return []*Tensor{gradient}, err
+	})
+	return output, nil
+}
+
+// Concat records one slice VJP per participating input.
+func (t *Tape) Concat(inputs []*Tensor, axis int) (*Tensor, error) {
+	for index, input := range inputs {
+		if err := requireFloat32(input, fmt.Sprintf("autodiff concat input %d", index)); err != nil {
+			return nil, err
+		}
+	}
+	output, err := Concat(inputs, axis)
+	if err != nil {
+		return nil, err
+	}
+	resolvedAxis, err := normalizeAxis(axis, len(output.shape), "autodiff concat")
+	if err != nil {
+		return nil, err
+	}
+	t.record("Concat", inputs, output, func(upstream *Tensor) ([]*Tensor, error) {
+		return concatVJP(inputs, resolvedAxis, upstream)
+	})
+	return output, nil
+}
+
+// Split records one reverse slice for each output. Gradients from multiple
+// outputs are accumulated by the tape when they meet at the input tensor.
+func (t *Tape) Split(input *Tensor, splits []int, axis int, outputCount ...int) ([]*Tensor, error) {
+	if err := requireFloat32(input, "autodiff split input"); err != nil {
+		return nil, err
+	}
+	outputs, err := Split(input, splits, axis, outputCount...)
+	if err != nil {
+		return nil, err
+	}
+	resolvedAxis, err := normalizeAxis(axis, len(input.shape), "autodiff split")
+	if err != nil {
+		return nil, err
+	}
+	resolvedSplits := append([]int(nil), splits...)
+	if len(resolvedSplits) == 0 {
+		resolvedSplits = make([]int, len(outputs))
+		for index := range resolvedSplits {
+			resolvedSplits[index] = outputs[index].shape[resolvedAxis]
+		}
+	}
+	offset := 0
+	for index, output := range outputs {
+		start := offset
+		size := resolvedSplits[index]
+		t.record("Split", []*Tensor{input}, output, func(upstream *Tensor) ([]*Tensor, error) {
+			return []*Tensor{splitVJP(input, resolvedAxis, start, upstream)}, nil
+		})
+		offset += size
+	}
+	return outputs, nil
 }
 
 // Gemm runs the existing Gemm kernel and records its VJP. All Gemm options
@@ -194,6 +492,9 @@ func (t *Tape) Backward(loss *Tensor) error {
 		if upstream == nil {
 			continue
 		}
+		if op.vjp == nil {
+			return fmt.Errorf("backward %s: no VJP implemented for %s", op.name, op.name)
+		}
 		inputGradients, err := op.vjp(upstream)
 		if err != nil {
 			return fmt.Errorf("backward %s: %w", op.name, err)
@@ -249,6 +550,50 @@ func (t *Tape) SGD(rate float32) error {
 	return nil
 }
 
+// Adam applies one bias-corrected Adam step to every tracked parameter that
+// has a gradient. State belongs to each parameter and survives later steps.
+// The defaults match torch.optim.Adam: beta1=0.9, beta2=0.999, eps=1e-8,
+// without weight decay or AMSGrad.
+func (t *Tape) Adam(rate float32) error {
+	if math.IsNaN(float64(rate)) || math.IsInf(float64(rate), 0) || rate < 0 {
+		return fmt.Errorf("adam learning rate must be finite and non-negative")
+	}
+	const (
+		beta1 = float32(0.9)
+		beta2 = float32(0.999)
+		eps   = float64(1e-8)
+	)
+	for _, param := range t.params {
+		value := param.value
+		if err := requireFloat32(value, "adam parameter"); err != nil {
+			return err
+		}
+		gradient := t.grads[value]
+		if gradient == nil {
+			continue
+		}
+		if len(param.adamM) == 0 {
+			param.adamM = make([]float32, len(value.data))
+			param.adamV = make([]float32, len(value.data))
+		}
+		if len(param.adamM) != len(value.data) || len(param.adamV) != len(value.data) {
+			return fmt.Errorf("adam state shape does not match parameter shape %v", value.shape)
+		}
+		param.adamStep++
+		step := float64(param.adamStep)
+		bias1 := 1 - math.Pow(float64(beta1), step)
+		bias2 := 1 - math.Pow(float64(beta2), step)
+		for index, grad := range gradient.data {
+			param.adamM[index] = beta1*param.adamM[index] + (1-beta1)*grad
+			param.adamV[index] = beta2*param.adamV[index] + (1-beta2)*grad*grad
+			mHat := float64(param.adamM[index]) / bias1
+			vHat := float64(param.adamV[index]) / bias2
+			value.data[index] -= rate * float32(mHat/(math.Sqrt(vHat)+eps))
+		}
+	}
+	return nil
+}
+
 func (t *Tape) record(name string, inputs []*Tensor, output *Tensor, vjp func(*Tensor) ([]*Tensor, error)) {
 	t.ops = append(t.ops, tapeOp{name: name, inputs: inputs, output: output, vjp: vjp})
 }
@@ -257,26 +602,7 @@ func matMulVJP(a, b, upstream *Tensor) ([]*Tensor, error) {
 	if err := requireFloat32(upstream, "matmul upstream"); err != nil {
 		return nil, err
 	}
-	if len(upstream.shape) != 2 {
-		return nil, fmt.Errorf("matmul upstream must be 2-D, got shape %v", upstream.shape)
-	}
-	bT, err := Transpose(b)
-	if err != nil {
-		return nil, err
-	}
-	aT, err := Transpose(a)
-	if err != nil {
-		return nil, err
-	}
-	dA, err := MatMul(upstream, bT)
-	if err != nil {
-		return nil, err
-	}
-	dB, err := MatMul(aT, upstream)
-	if err != nil {
-		return nil, err
-	}
-	return []*Tensor{dA, dB}, nil
+	return matMulVJPBatched(a, b, upstream)
 }
 
 func addVJP(a, b, upstream *Tensor) ([]*Tensor, error) {
