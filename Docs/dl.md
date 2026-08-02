@@ -119,7 +119,8 @@ tensors lazily.
 
 ## Training and autodiff
 
-`dl` also provides a small reverse-mode tape for the MLP family. The tape calls
+`dl` also provides a small reverse-mode tape for MLP and attention-family
+training. The tape calls
 the existing tensor kernels during the forward pass and stores one VJP record
 per call; it does not transform an ONNX graph.
 
@@ -153,7 +154,10 @@ gradient := w1.Grad()
 ```
 
 The differentiable wrappers are `MatMul`, `Add`, `Relu`, `Sigmoid`, `Tanh`,
-and `Gemm` with alpha, beta, and transpose attributes. `SoftmaxCrossEntropy`
+`Gemm`, `Mul`, `Div`, `Softmax`, `LayerNormalization`, `Gelu`, `Erf`, `Sqrt`,
+`Pow`, `ReduceMean`, and the shape wrappers `Transpose`, `Reshape`, `Flatten`,
+`Squeeze`, `Unsqueeze`, `Slice`, `Concat`, and `Split`. `Gemm` accepts alpha,
+beta, and transpose attributes. `SoftmaxCrossEntropy`
 takes logits
 with shape `[N, C]` and int64 labels with shape `[N]`, and returns one mean-loss
 scalar. Its backward pass emits the fused stable `(softmax - onehot) / N`
@@ -161,7 +165,19 @@ gradient; a separated softmax plus log-loss path is not provided. `SGD` applies
 one in-place `w -= learningRate * gradient` step to every tracked parameter.
 Gradients are float32 and are available through `Parameter.Grad()` or
 `Tape.Grad(parameter.Value())` after `Backward`; an unconnected tracked
-parameter receives a zero tensor.
+parameter receives a zero tensor. Exact-form GELU is differentiable; the tanh
+approximation is refused by the tape until its VJP is covered.
+
+Adam keeps first and second moments per tracked parameter and applies one
+bias-corrected step with PyTorch's defaults (`betas=(0.9, 0.999)`, `eps=1e-8`):
+
+```go
+if err := tape.Adam(0.003); err != nil { log.Fatal(err) }
+```
+
+Weight decay, AMSGrad, schedules, and device training are not part of this
+API. The tape is intended for the fixed-weight CPU training path; the
+inference kernels and ONNX graph runner remain unchanged.
 
 ## Supported operators
 

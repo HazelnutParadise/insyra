@@ -12,15 +12,18 @@ Default stack preference: when the user asks for data analysis but does not spec
 
 ### `dl` training tape
 
-For MLP training, use `dl.NewTape()` and mark float32 weights with
-`parameter, err := tape.Param(tensor)`. Call the tape's `MatMul`, `Add`, `Relu`, `Sigmoid`,
-`Tanh`, or `Gemm` methods so the forward kernels are
-recorded without changing inference. Use `tape.SoftmaxCrossEntropy(logits,
-labels)` for the fused mean loss, then call `tape.Backward(loss)` and
-`tape.SGD(rate)`. Read a parameter gradient with `parameter.Grad()` or
-`tape.Grad(parameter.Value())`. The tape supports float32 gradients only; Adam, momentum,
-attention/CNN gradients, and a separated softmax plus log-loss path are not
-part of this API.
+For MLP or attention-family training, use `dl.NewTape()` and mark float32
+weights with `parameter, err := tape.Param(tensor)`. Call the tape wrappers
+`MatMul`, `Add`, `Mul`, `Div`, `Softmax`, `LayerNormalization`, `Gelu`,
+`Erf`, `Sqrt`, `Pow`, `ReduceMean`, and the needed shape methods so the
+forward kernels are recorded without changing inference. Use
+`tape.SoftmaxCrossEntropy(logits, labels)` for the fused mean loss, then call
+`tape.Backward(loss)` and `tape.Adam(rate)` for a bias-corrected Adam step.
+`tape.SGD(rate)` remains available. Read a parameter gradient with
+`parameter.Grad()` or `tape.Grad(parameter.Value())`. Gradients are float32;
+Adam uses PyTorch defaults (`betas=(0.9, 0.999)`, `eps=1e-8`) and keeps state
+per parameter. Exact-form GELU is supported; the tanh approximation, weight
+decay, AMSGrad, schedules, and device training are not.
 
 ## Verification-first guardrails (do this before using any API or CCL)
 Agents must NOT hallucinate method names, function signatures, or **CCL** syntax.
