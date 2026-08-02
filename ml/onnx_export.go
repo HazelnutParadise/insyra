@@ -973,9 +973,23 @@ func appendONNXPredictor(b *onnxBuilder, model Model, groups []onnxGroup) error 
 		if err != nil {
 			return err
 		}
+		// Two coefficient rows — the negated weights for the first class and
+		// the weights for the second — following skl2onnx's convention for a
+		// binary LinearClassifier. A single row relied on the runtime applying
+		// LOGISTIC on the binary path, and onnxruntime does not: it returned
+		// the raw decision score in the probabilities output, which no one
+		// noticed while the round trip compared labels only. With two rows the
+		// runtime sigmoids each score and sigmoid(-s) = 1 - sigmoid(s), so the
+		// probabilities come out exactly complementary with no normaliser.
+		weights := float32Slice(model.Result.Coefficients[1:])
+		negated := make([]float32, len(weights))
+		for i, w := range weights {
+			negated[i] = -w
+		}
+		intercept := float32(model.Result.Coefficients[0])
 		attrs = append(attrs,
-			onnxAttrFloats("coefficients", float32Slice(model.Result.Coefficients[1:])),
-			onnxAttrFloats("intercepts", []float32{float32(model.Result.Coefficients[0])}),
+			onnxAttrFloats("coefficients", append(negated, weights...)),
+			onnxAttrFloats("intercepts", []float32{-intercept, intercept}),
 			onnxAttrInt("multi_class", 0), onnxAttrString("post_transform", "LOGISTIC"))
 		b.addNode("LinearClassifier", "ai.onnx.ml", []string{input}, []string{"label", "probabilities"}, attrs...)
 		labelType, _ := onnxClassLabelType(model.Result.ClassLabels)
