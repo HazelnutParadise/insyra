@@ -20,6 +20,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 ### `accel`
 
 - Large `dl` 2-D float32 MatMuls now have a default-on device path through `accel.DeviceMatMul`. It preserves each output's serial `k` accumulation order, records fallback reasons through the existing `accel` report, and leaves the exact CPU path in charge when no device is available or the backend fails. `INSYRA_ACCEL_DISABLE_WGPU=1` disables the backend.
+- The wgpu backend is upgraded to v0.30.35, which fixes the upstream Metal checkptr abort — `go test -race` now covers the whole device path instead of skipping it, and the race guards are removed. Device numeric parity is unchanged across the upgrade.
 - `accel` now executes on real hardware. `ExecuteDataList`, `ExecuteDataTable`, and `ExecuteProjectedDataset` return the computed value per column in `ExecutionResult.Reductions`, along with measured `Transfer`, `Dispatch`, and `Readback` durations and `BytesUploaded`.
 - `accel.Session` is now safe for concurrent use. Every public method is serialized behind a session lock, so several goroutines can share one session; previously concurrent `ExecuteDataList` calls raced on the cache and report state. Device submission is also serialized process-wide, because all sessions share one GPU handle.
 - Added `accel.Default()`, a session shared by the process and created on first use. Discovery runs once, the resident cache is shared across operations, and `Close` on it is a no-op because no caller owns it. Importing the package still opens no device.

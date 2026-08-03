@@ -83,31 +83,16 @@ func singleDeviceSession(t *testing.T, cfg Config) *Session {
 	return session
 }
 
-// requireGPU keeps the hardware tests off machines that have no device, and
-// off race-enabled builds.
-//
-// -race turns on checkptr, which aborts the process inside gogpu's Metal
-// completion-block trampoline (hal/metal/objc.go:958, reached through goffi's
-// callback path) with "checkptr: pointer arithmetic result points to invalid
-// allocation". The violation is upstream and predates the session lock —
-// reproduced at the previous commit — so the guard is here rather than a fix.
-// Everything that does not touch a device still runs under -race.
+// requireGPU keeps the hardware tests off machines that have no device.
 func requireGPU(t *testing.T) {
 	t.Helper()
 	if os.Getenv("INSYRA_ACCEL_GPU_TESTS") != "1" {
 		t.Skip("set INSYRA_ACCEL_GPU_TESTS=1 to run tests against a real GPU")
 	}
-	if raceDetectorEnabled {
-		t.Skip("gogpu's Metal path trips checkptr under -race; run device tests without it")
-	}
 }
 
 func gpuTestsEnabled(b *testing.B) bool {
 	b.Helper()
-	if raceDetectorEnabled {
-		b.Skip("gogpu's Metal path trips checkptr under -race; benchmark without it")
-		return false
-	}
 	session, err := Open(Config{})
 	if err != nil {
 		b.Skipf("cannot open an accel session: %v", err)

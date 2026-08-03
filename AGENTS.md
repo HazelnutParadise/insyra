@@ -262,12 +262,6 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **Suggestion**: leave it or remove it, but decide rather than drift. Keeping it costs a little projection work on tables with string columns and would be needed again by any future string operation; removing it trims code that is currently unreachable. Neither is urgent.
 - **Status**: pending
 
-### [2026-07-28] — gogpu's Metal path aborts under `-race`
-- **Where**: `github.com/gogpu/wgpu@v0.30.23/hal/metal/objc.go:958`, reached through `go-webgpu/goffi`'s callback trampoline
-- **What**: `-race` enables `checkptr`, which kills the process with `fatal error: checkptr: pointer arithmetic result points to invalid allocation` the first time a Metal completion block fires. No Insyra frame appears in the trace. Reproduced at the commit before the session-lock work, so it is upstream and pre-existing, not something the accel runtime introduced. Consequence: no test or benchmark that reaches a device can run under `-race` on macOS. Everything that stops short of the device still does.
-- **Suggestion**: Report upstream with the stack trace; the pointer arithmetic in the completion-block invoke needs to keep the base pointer live in an `unsafe.Pointer` rather than deriving it from a `uintptr`. Meanwhile `requireGPU` and `gpuTestsEnabled` skip when the `race` build tag is set — remove those guards once upstream fixes it.
-- **Status**: pending
-
 ### [2026-07-26] — ReadExcelSheet does no type inference (inconsistent with CSV)
 - **Where**: [read.go](read.go) `ReadExcelSheet` → `ReadSlice2D`
 - **What**: excelize `GetRows` returns strings and `ReadSlice2D` appends them as-is, so Excel loads produce all-string DataTables while CSV loads run column-level inference (`inferCSVColumnTypes`). Opposite defaults for the two spreadsheet formats. Noticed while adding `CSVReadOptions.RawStrings` (issue #188).
