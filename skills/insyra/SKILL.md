@@ -17,12 +17,17 @@ weights with `parameter, err := tape.Param(tensor)`. Use `nn.NewTape(seed)` when
 dropout masks must be reproducible. Call the tape wrappers
 `MatMul`, `Add`, `Mul`, `Div`, `Softmax`, `LayerNormalization`, `Gelu`,
 `Erf`, `Sqrt`, `Pow`, `ReduceMean`, `Conv`, `MaxPool`, `AveragePool`,
-`GlobalAveragePool`, `BatchNormalization`, and the needed shape methods so the
-forward kernels are recorded without changing inference. CNN Conv gradients
-follow explicit padding, strides, dilations, groups, and optional bias; pool
-gradients follow the forward window and `count_include_pad` rules. Batch
-normalization is inference-mode only, so running statistics are constants and
-only input, scale, and bias receive gradients. `tape.Dropout(input, p)` uses
+`GlobalAveragePool`, `BatchNormalization`, `BatchNormalizationTraining`,
+`Embedding`, and the needed shape methods so the forward kernels are recorded
+without changing inference. CNN Conv gradients follow explicit padding,
+strides, dilations, groups, and optional bias; pool gradients follow the
+forward window and `count_include_pad` rules. Training BatchNorm normalizes
+with biased batch variance, updates running variance with the unbiased
+estimator and torch momentum, and differentiates input, scale, and bias
+through all three batch-statistics terms. The standalone inference
+`BatchNormalization` path keeps running statistics constant. `tape.Embedding`
+looks up int64 `[N]` or `[N,S]` indices and scatter-adds repeated rows.
+`tape.Dropout(input, p)` uses
 inverted seeded masking and routes gradients through the same mask; the tape
 has no mode flag, so eval code simply does not call it. Use
 `tape.SoftmaxCrossEntropy(logits, labels)` for the fused mean loss, then call
@@ -47,15 +52,22 @@ interface has `Build`, `Forward`, and `Parameters`; build layers eagerly on the
 same tape so seeded `nn.Dense(in, out)` creates its `[in,out]` weight followed
 by a zero bias. The layer surface has no mode flag: call `model.Forward(tape,
 x)` for training, and `model.Predict(x)` for inference. `Predict` structurally
-skips `TrainingOnly` layers such as `nn.Dropout(p)`. The v1 stateless layer
-constructors are `nn.ReLU()`, `nn.NewSigmoid()`, `nn.NewTanh()`,
-`nn.NewGelu()`, `nn.NewFlatten()`, and `nn.Func(fn)`; the `New` prefix is
-needed where the package already has a same-named kernel function. Use
+skips `TrainingOnly` layers such as `nn.Dropout(p)`. The layer catalog
+constructors are `nn.Dense`, `nn.Conv2D`, `nn.MaxPool2D`,
+`nn.AvgPool2D`, `nn.GlobalAvgPool`, `nn.BatchNorm2D`, `nn.LayerNorm`, and
+`nn.Embedding`, alongside the stateless `nn.ReLU()`, `nn.NewSigmoid()`,
+`nn.NewTanh()`, `nn.NewGelu()`, `nn.NewFlatten()`, and `nn.Func(fn)`; the
+`New` prefix is needed where the package already has a same-named kernel
+function. Use
 `model.NamedParameters()` for torch Sequential names (`0.weight`, `3.bias`,
 with parameterless layers still consuming an index), and
 `model.LoadWeights(weights)` for `LoadSafeTensors` output. That loader
 transposes torch Linear `[out,in]` weights at the boundary into Insyra's
-`[in,out]` layout and rejects missing, extra, or mis-shaped names.
+`[in,out]` layout, copies torch Conv2d `[out,in/groups,kh,kw]` unchanged,
+loads BatchNorm2d running buffers, ignores `num_batches_tracked`, and rejects
+missing, extra, or mis-shaped names. `BatchNorm2D` implements the optional
+`EvalLayer` interface, so `Sequential.Predict` uses running statistics without
+a global train/eval flag.
 
 ## Verification-first guardrails (do this before using any API or CCL)
 Agents must NOT hallucinate method names, function signatures, or **CCL** syntax.

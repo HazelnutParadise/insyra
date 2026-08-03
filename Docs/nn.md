@@ -275,9 +275,11 @@ forward pass with the CNN wrappers before the activation, pooling, global
 average, flatten, and classification layers. Convolution gradients support
 explicit or automatic padding, strides, dilations, groups, and optional bias;
 pooling gradients follow the forward window and `count_include_pad` rules.
-BatchNormalization is inference-mode only: its running mean and variance are
-constants, while input, scale, and bias receive gradients. Training-mode batch
-statistics are refused rather than differentiated with different semantics.
+The standalone `BatchNormalization` kernel is inference-mode only: its running
+mean and variance are constants, while input, scale, and bias receive
+gradients. The autodiff tape also exposes training-mode BatchNorm, which
+normalizes with biased batch variance, updates running variance with the
+unbiased estimator, and differentiates through the batch statistics.
 
 ## Layers and Sequential
 
@@ -305,26 +307,43 @@ _ = logits
 _ = predictions
 ```
 
-The v1 stateless layers are `ReLU`, `NewSigmoid`, `NewTanh`, `NewGelu`,
-`Dropout`, `NewFlatten`, and `Func`. `Func` accepts a tape callback for
-residual or other composite blocks. `Dense(in, out)` uses seeded He draws at
-build time and creates `weight` before a zero `bias`. `NewSigmoid`, `NewTanh`,
-`NewGelu`, and `NewFlatten` use the `New` prefix because the package already
-exports kernel functions with the shorter names.
+The catalog layers are:
+
+| Layer | Behavior |
+| --- | --- |
+| `Dense(in, out)` | He-initialized affine layer; torch Linear weights transpose at load time |
+| `Conv2D(in, out, kernel, opts...)` | NCHW convolution with torch `[out,in/groups,kh,kw]` weights, padding, strides, dilations, groups, and optional bias |
+| `MaxPool2D` / `AvgPool2D` | NCHW pooling; omitted stride defaults to the kernel size, matching torch |
+| `GlobalAvgPool` | Reduces spatial dimensions to `[N,C,1,1]` |
+| `BatchNorm2D(features)` | Batch statistics and running-stat updates in `Forward`; running statistics in `Predict` |
+| `LayerNorm(dims)` | Learned suffix normalization over an integer or shape slice |
+| `Embedding(vocab, dim)` | Int64 `[N]` or `[N,S]` lookup with scatter-add gradients |
+| `ReLU`, `NewSigmoid`, `NewTanh`, `NewGelu`, `Dropout`, `NewFlatten`, `Func` | Stateless, training-only, shape, or callback layers |
+
+`Func` accepts a tape callback for residual or other composite blocks. The
+`EvalLayer` interface is optional: when a layer implements
+`PredictForward(x)`, `Sequential.Predict` uses it instead of recording its
+training path. `BatchNorm2D` uses this seam and does not need a global mode
+flag. `NewSigmoid`, `NewTanh`, `NewGelu`, and `NewFlatten` use the `New` prefix
+because the package already exports kernel functions with the shorter names.
 
 `Parameters` returns parameters in layer order. `NamedParameters` follows
 torch `nn.Sequential`: layer positions include parameterless layers, so a
 model with `Dense`, `ReLU`, `Dropout`, `Dense` exposes `0.weight`, `0.bias`,
 `3.weight`, and `3.bias`. `LoadWeights` accepts the map returned by
 `LoadSafeTensors`. Torch Linear stores weights as `[out,in]`; `LoadWeights`
-transposes them into the tape's internal `[in,out]` layout and rejects missing,
-extra, or mis-shaped names with an error.
+transposes them into the tape's internal `[in,out]` layout. Conv2D weights
+already match torch and are copied without a transpose. BatchNorm2D loads
+`weight`, `bias`, `running_mean`, and `running_var`; torch's
+`num_batches_tracked` buffer is tolerated and ignored. Missing, extra, or
+mis-shaped names return an error.
 
 Dimensions are explicit for `Dense`, so adjacent mismatches fail during
-`NewSequential` with the layer index and kind. The Sequential MNIST proof uses
-the same seed, He draw order, minibatch shuffle, Adam rate, and two-epoch loop
-as the hand-written tape proof: mean losses are `0.350281` and `0.163855`, and
-the final test accuracy is `95.84%`.
+`NewSequential` with the layer index and kind. A catalog CNN proof uses a
+30,000-row training subset, retains the second convolution's spatial features
+before its classifier, and evaluates all 10,000 test images: mean losses are
+`0.364155` and `0.110628`, with test accuracy rising from `95.42%` to `97.27%`
+in two epochs.
 
 ## Supported operators
 
