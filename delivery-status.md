@@ -1,7 +1,7 @@
 # Delivery Status
 
 ## Current Phase
-`insyra/nn` phase 2 (training): the MLP, attention, and CNN operator families are done, and M21 is complete — the tape now trains a seeded 784→128→10 MLP to ≥95% MNIST test accuracy with a sane loss curve. `insyra/ml` v1 is shipped, audited and merged to dev (PR #194). Acceleration now has one opt-in wired call site, KNN; large 2-D `nn` MatMul is default-on with CPU fallback.
+`insyra/nn` phase 2 (training): the MLP, attention, and CNN operator families are done, M25–M29 layer-surface work is complete, and M21 is complete — the tape now trains a seeded 784→128→10 MLP to ≥95% MNIST test accuracy with a sane loss curve. `insyra/ml` v1 is shipped, audited and merged to dev (PR #194). Acceleration now has one opt-in wired call site, KNN; large 2-D `nn` MatMul is default-on with CPU fallback.
 
 ## Stage Objective
 `insyra/nn`: run ONNX models in pure Go, verified per-operator and per-model against `onnxruntime`, with the op families landing in the decided order MLP → attention → CNN, then phase 2 adds autodiff and optimisers on the same tensors (first-step gradients verified against PyTorch under fixed initial weights via SafeTensors). GGUF/LLM is a decided future track that reuses the kernels; only two v1 constraints serve it now — dtype-carrying tensors and kernels as plain functions. M23 is complete: half precision is storage-only, with exact f16/bf16 widening into f32.
@@ -36,7 +36,7 @@ None pending review. `add-dl-mnist-convergence` (M21) is implemented and ready t
 | M26 | The complete layer catalog | planning | done | Conv2D, pooling, training-mode BatchNorm2D (new VJP with running stats vs torch train mode), LayerNorm, Embedding (scatter-add VJP vs torch); a Sequential CNN converges on MNIST and a torch CNN loads and predicts |
 | M27 | Training round-trips to disk | planning | done | SaveSafeTensors writes what LoadSafeTensors reads; a trained Sequential exports to ONNX that nn itself and onnxruntime both run, matching Predict; torch reads our safetensors back |
 | M28 | Loss and optimizer toolkit | planning | done | MSE and BCE losses, momentum SGD, cosine schedule, gradient clipping — each torch-verified |
-| M29 | MultiHeadAttention layer | planning | pending | an encoder block composes from layers alone, trains one step matching PyTorch, no Func required |
+| M29 | MultiHeadAttention layer | planning | done | an encoder block composes from layers alone, trains one step matching PyTorch, no Func required |
 
 Milestone order is the blocking sequence. OpenSpec has no dependency relationship between changes, so nothing else carries it.
 
@@ -44,10 +44,10 @@ Milestone order is the blocking sequence. OpenSpec has no dependency relationshi
 None. Hardware coverage remains Apple/Metal-only, carried as the standing `AGENTS.md` follow-up.
 
 ## Next Verifiable Output
-M29: the MultiHeadAttention layer — an encoder block from layers alone, training one step matching PyTorch.
+M29 is complete: an encoder block composes from layers alone and matches PyTorch through one AdamW step.
 
 ## Next Ticket
-M24 the honest performance position. Two measured negatives remain guardrails: no batched device kernel without a single-dispatch batched measurement, and no device Conv without its own measurement.
+No pending nn OpenSpec change is selected. The standing acceleration guardrails remain: no batched device kernel without a single-dispatch batched measurement, and no device Conv without its own measurement.
 
 Note for any host running the reference suites locally: the crosslang venv moved to `~/.cache/insyra-crosslang-venv` on 2026-08-03 after macOS's tmp cleaner destroyed the old /private/tmp venv (deleted `pyvenv.cfg` and parts of numpy's binaries, producing no-module false negatives). CI is unaffected — it installs its own toolchains.
 
@@ -153,6 +153,7 @@ Deltas that still change what someone would do. The standing technical decisions
 - **M20 real-checkpoint handoff.** `add-dl-real-model-support` adds `Clip`, `ConstantOfShape`, runtime control tensors, deterministic real-model parity for MobileNetV2 and MiniLM-L6-v2, and the matching docs, changelogs, and skill note. The normal and strict `./dl/` suites passed; `delivery-status.md` changed in this handoff; `AGENTS.md` did not.
 - **M21 convergence handoff.** `add-dl-mnist-convergence` adds test-side IDX validation, fixed-seed He initialization, a dataset-free micro-convergence test, and a gated MNIST 784→128→10 Adam run. The specified MNIST command reaches 93.91% after epoch 1 and 95.84% after epoch 2 in 12.5 seconds; the uncached `./dl/` suite passes, and missing `INSYRA_NN_MNIST_DIR` skips cleanly. `delivery-status.md` changed in this handoff; `AGENTS.md` did not.
 - **M23 half-precision handoff.** `add-dl-half-precision` adds exact f16/bf16 widening for SafeTensors and ONNX initializers, round-to-nearest-even Cast targets that widen back to f32, hand-built boundary tests, a PyTorch SafeTensors fixture, and an ONNXRuntime parity row. The specified strict `./dl/` suite passes in 20.445 seconds; `delivery-status.md` changed in this handoff; `AGENTS.md` did not.
+- **M29 layer-surface handoff.** `add-nn-attention-layer` adds torch-compatible `MultiHeadAttention`, recursive `Residual` composition, SafeTensors transpose round-trips, finite-difference coverage, ONNX refusal, and a layer-built encoder AdamW parity proof. The requested `./nn/` suite and gated torch fixture pass; `delivery-status.md` changed in this handoff; `AGENTS.md` did not.
 - **Hardware blocker.** The sandbox only exposes a software adapter. The new device tests skip with `ErrUnavailable`; 2.1's measured floor, 3.3's all-`nn` hardware run, and 3.4's encoder timing remain unchecked.
 - **One sample-weight design question remains open, deliberately.** Tree sample weights would push float weights into histogram accumulators the precision contract fixed as integers for associativity — an architecture decision against ENG.md, not a feature. The cross-validation channel turned out not to need a protocol break: scikit-learn routes sample_weight to fit and scores unweighted, so `Estimator` gained an optional `FitWeighted` and `CrossValidateWeighted` subsets weights with each fold's own indices. The metric protocol is untouched.
 - **Two pure-CPU wins are measured and unclaimed**, and both are worth more than anything acceleration offered. `stats`' KNN auto-selection picks a ball tree up to 3.3x slower than parallel brute force on unstructured data (#190). CCL spends 4.8x–6.2x more time on recursion-depth bookkeeping than on evaluating (#191).
