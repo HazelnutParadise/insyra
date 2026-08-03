@@ -2,6 +2,7 @@ package nn
 
 import (
 	"fmt"
+	"io"
 	"sort"
 	"strings"
 )
@@ -140,7 +141,8 @@ func (s *Sequential) NamedParameters() map[string]*Parameter {
 
 // LoadWeights loads a SafeTensors map using torch Sequential names. Dense
 // weights are expected in torch Linear's [out,in] layout and are transposed
-// into the tape's internal [in,out] layout.
+// into the tape's internal [in,out] layout. SaveWeights performs the inverse
+// transpose, so a SaveWeights -> LoadWeights round trip preserves the model.
 func (s *Sequential) LoadWeights(weights map[string]*Tensor) error {
 	if s == nil {
 		return fmt.Errorf("sequential is nil")
@@ -191,6 +193,53 @@ func (s *Sequential) LoadWeights(weights map[string]*Tensor) error {
 		}
 	}
 	return nil
+}
+
+// SaveWeights writes this Sequential's torch.nn.Sequential-style state dict.
+// Dense weights are transposed from the tape's internal [in,out] layout to
+// torch Linear's [out,in] layout. BatchNorm2D running statistics are included
+// under running_mean and running_var alongside its trainable parameters.
+func (s *Sequential) SaveWeights(w io.Writer) error {
+	if s == nil {
+		return fmt.Errorf("save sequential weights: sequential is nil")
+	}
+	weights := make(map[string]*Tensor)
+	for index, layer := range s.layers {
+		state := layerNamedState(layer)
+		if stateful, ok := layer.(statefulLayer); ok {
+			state = stateful.stateDict()
+		}
+		for name, tensor := range state {
+			if tensor == nil {
+				return fmt.Errorf("layer %d (%s) state %q is nil", index, sequentialLayerKind(layer), name)
+			}
+			if dense, ok := layer.(*denseLayer); ok && name == "weight" {
+				var err error
+				tensor, err = transposeDenseWeight(dense, tensor)
+				if err != nil {
+					return fmt.Errorf("layer %d (%s) state %q: %w", index, sequentialLayerKind(layer), name, err)
+				}
+			}
+			weights[fmt.Sprintf("%d.%s", index, name)] = tensor
+		}
+	}
+	if err := SaveSafeTensors(w, weights); err != nil {
+		return fmt.Errorf("save sequential weights: %w", err)
+	}
+	return nil
+}
+
+func transposeDenseWeight(layer *denseLayer, tensor *Tensor) (*Tensor, error) {
+	if tensor.dtype != DTypeFloat32 || !sequentialSameShape(tensor.shape, []int{layer.in, layer.out}) {
+		return nil, fmt.Errorf("weight shape %v and dtype %s, want [%d %d] float32", tensor.shape, tensor.dtype, layer.in, layer.out)
+	}
+	values := make([]float32, len(tensor.data))
+	for input := 0; input < layer.in; input++ {
+		for output := 0; output < layer.out; output++ {
+			values[output*layer.in+input] = tensor.data[input*layer.out+output]
+		}
+	}
+	return newFloat32Tensor([]int{layer.out, layer.in}, values)
 }
 
 type statefulLayer interface {

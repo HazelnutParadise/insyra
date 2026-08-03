@@ -126,6 +126,115 @@ func LoadSafeTensors(r io.Reader) (tensors map[string]*Tensor, err error) {
 	return tensors, nil
 }
 
+// SaveSafeTensors writes F32, I64, and BOOL tensors in the SafeTensors
+// format. Tensor names are sorted before both the JSON header and contiguous
+// data region are built, so the result is deterministic. The writer emits no
+// metadata and never leaves gaps between tensor regions.
+func SaveSafeTensors(w io.Writer, tensors map[string]*Tensor) error {
+	if w == nil {
+		return fmt.Errorf("save safetensors: writer is nil")
+	}
+
+	names := make([]string, 0, len(tensors))
+	for name := range tensors {
+		if name == "__metadata__" {
+			return fmt.Errorf("tensor %q is reserved for SafeTensors metadata", name)
+		}
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	type headerEntry struct {
+		DType       string    `json:"dtype"`
+		Shape       []int     `json:"shape"`
+		DataOffsets [2]uint64 `json:"data_offsets"`
+	}
+	header := make(map[string]headerEntry, len(names))
+	dataLength := uint64(0)
+	for _, name := range names {
+		tensor := tensors[name]
+		if tensor == nil {
+			return fmt.Errorf("tensor %q is nil", name)
+		}
+		var dtype string
+		var byteSize uint64
+		switch tensor.dtype {
+		case DTypeFloat32:
+			dtype, byteSize = "F32", 4
+		case DTypeInt64:
+			dtype, byteSize = "I64", 8
+		case DTypeBool:
+			dtype, byteSize = "BOOL", 1
+		default:
+			return fmt.Errorf("tensor %q has unsupported dtype %s for SafeTensors export", name, tensor.dtype)
+		}
+		count := uint64(tensor.Len())
+		if count > math.MaxUint64/byteSize {
+			return fmt.Errorf("tensor %q has an element byte length overflow for shape %v and dtype %s", name, tensor.shape, dtype)
+		}
+		byteLength := count * byteSize
+		if dataLength > math.MaxUint64-byteLength || dataLength+byteLength > uint64(maxInt()) {
+			return fmt.Errorf("tensor %q data region is too large for this platform", name)
+		}
+		shape := append([]int{}, tensor.shape...)
+		entry := headerEntry{DType: dtype, Shape: shape}
+		entry.DataOffsets = [2]uint64{dataLength, dataLength + byteLength}
+		header[name] = entry
+		dataLength += byteLength
+	}
+
+	data := make([]byte, int(dataLength))
+	for _, name := range names {
+		tensor := tensors[name]
+		entry := header[name]
+		cursor := int(entry.DataOffsets[0])
+		switch tensor.dtype {
+		case DTypeFloat32:
+			for _, value := range tensor.data {
+				binary.LittleEndian.PutUint32(data[cursor:], math.Float32bits(value))
+				cursor += 4
+			}
+		case DTypeInt64:
+			for _, value := range tensor.int64Data {
+				binary.LittleEndian.PutUint64(data[cursor:], uint64(value))
+				cursor += 8
+			}
+		case DTypeBool:
+			for _, value := range tensor.boolData {
+				if value {
+					data[cursor] = 1
+				}
+				cursor++
+			}
+		}
+	}
+	headerJSON, err := json.Marshal(header)
+	if err != nil {
+		return fmt.Errorf("marshal safetensors header: %w", err)
+	}
+	if uint64(len(headerJSON)) > math.MaxUint64-8 || len(headerJSON) > int(^uint(0)>>1)-8-len(data) {
+		return fmt.Errorf("safetensors file is too large for this platform")
+	}
+	file := make([]byte, 8+len(headerJSON)+len(data))
+	binary.LittleEndian.PutUint64(file[:8], uint64(len(headerJSON)))
+	copy(file[8:], headerJSON)
+	copy(file[8+len(headerJSON):], data)
+	for len(file) > 0 {
+		n, writeErr := w.Write(file)
+		if n < 0 || n > len(file) {
+			return fmt.Errorf("save safetensors: invalid writer count %d", n)
+		}
+		if writeErr != nil {
+			return fmt.Errorf("save safetensors: %w", writeErr)
+		}
+		if n == 0 {
+			return fmt.Errorf("save safetensors: %w", io.ErrShortWrite)
+		}
+		file = file[n:]
+	}
+	return nil
+}
+
 type safeTensorEntry struct {
 	name  string
 	dtype string
