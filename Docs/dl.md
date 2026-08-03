@@ -188,6 +188,36 @@ bias-corrected step with PyTorch's defaults (`betas=(0.9, 0.999)`, `eps=1e-8`):
 if err := tape.Adam(0.003); err != nil { log.Fatal(err) }
 ```
 
+For a convergence loop, keep the marked parameters and tape across shuffled
+minibatches so Adam retains its per-parameter moments. A typical MNIST-shaped
+loop is a seeded `784 -> 128 -> 10` MLP with batch size 128:
+
+```go
+tape := dl.NewTape()
+w1, _ := tape.Param(weights["w1"]) // [784, 128], seeded He initialization
+b1, _ := tape.Param(weights["b1"]) // [128]
+w2, _ := tape.Param(weights["w2"]) // [128, 10], seeded He initialization
+b2, _ := tape.Param(weights["b2"]) // [10]
+
+for epoch := 0; epoch < 5; epoch++ {
+	order := rng.Perm(len(trainLabels))
+	for start := 0; start < len(order); start += 128 {
+		input, labels := makeBatch(trainImages, trainLabels, order, start, 128)
+		hidden, _ := tape.MatMul(input, w1.Value())
+		hidden, _ = tape.Add(hidden, b1.Value())
+		hidden, _ = tape.Relu(hidden)
+		logits, _ := tape.MatMul(hidden, w2.Value())
+		logits, _ = tape.Add(logits, b2.Value())
+		loss, _ := tape.SoftmaxCrossEntropy(logits, labels)
+		_ = tape.Backward(loss)
+		_ = tape.Adam(1e-3)
+	}
+}
+```
+
+The repository's convergence proof keeps data loading and seeded initialization
+test-side, so `dl` does not add a public dataset or random-initialization API.
+
 Weight decay, AMSGrad, schedules, and device training are not part of this
 API. The tape is intended for the fixed-weight CPU training path; the
 inference kernels and ONNX graph runner remain unchanged.

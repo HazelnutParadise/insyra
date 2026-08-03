@@ -1,13 +1,13 @@
 # Delivery Status
 
 ## Current Phase
-`insyra/dl` phase 2 (training): the MLP, attention, and CNN operator families are done, and M18 is complete — the tape now trains a deterministic MNIST-class CNN for one Adam step with PyTorch parity. `insyra/ml` v1 is shipped, audited and merged to dev (PR #194). Acceleration now has one opt-in wired call site, KNN; large 2-D `dl` MatMul is default-on with CPU fallback.
+`insyra/dl` phase 2 (training): the MLP, attention, and CNN operator families are done, and M21 is complete — the tape now trains a seeded 784→128→10 MLP to ≥95% MNIST test accuracy with a sane loss curve. `insyra/ml` v1 is shipped, audited and merged to dev (PR #194). Acceleration now has one opt-in wired call site, KNN; large 2-D `dl` MatMul is default-on with CPU fallback.
 
 ## Stage Objective
 `insyra/dl`: run ONNX models in pure Go, verified per-operator and per-model against `onnxruntime`, with the op families landing in the decided order MLP → attention → CNN, then phase 2 adds autodiff and optimisers on the same tensors (first-step gradients verified against PyTorch under fixed initial weights via SafeTensors). GGUF/LLM is a decided future track that reuses the kernels; only two v1 constraints serve it now — dtype-carrying tensors and kernels as plain functions.
 
 ## Active Workstreams
-None pending review. `add-dl-mnist-convergence` (M21) is cut and dispatches next; `openspec/changes/` otherwise holds only `archive/`.
+None pending review. `add-dl-mnist-convergence` (M21) is implemented and ready to archive after merge; `openspec/changes/` otherwise holds only `archive/`.
 
 ## Milestones
 | id | target | owner | status | verification_signal |
@@ -27,7 +27,7 @@ None pending review. `add-dl-mnist-convergence` (M21) is cut and dispatches next
 | M17 | Inference reaches the device | planning | done | large 2-D MatMul runs on the device through `accel.DeviceMatMul` by default, bit-equal to the CPU on hardware (asserted with ==); the floor is measured at 16Mi MACs with the 4M–8M noise band refused; dl falls back observably when the backend is unavailable; the measured encoder layer dropped from ~0.9s all-core CPU to 234ms (14.3x over the pre-M19 serial baseline). Batched products stay CPU by measurement |
 | M18 | Training (phase 2) | planning | done | SafeTensors, the tape (MLP VJPs, fused softmax–cross-entropy, SGD), attention-family gradients, Adam, and CNN VJPs are complete — a fixed two-head encoder block and a deterministic MNIST-class CNN each take one Adam step in dl and PyTorch agrees on loss, every gradient, and every post-step parameter; every VJP is pinned by ungated finite differences |
 | M20 | Real checkpoints run | planning | done | `mobilenetv2-12.onnx` and `minilm-l6-v2.onnx` run in dl and match `onnxruntime` on deterministic fixed inputs. The gated test covers `Clip`, `ConstantOfShape`, runtime-computed int64 shape tensors, and the required broadcast/Cast/Where paths |
-| M21 | Training converges for real | planning | pending | an MNIST classifier trains from initialization to a target accuracy in dl, on the real dataset, with the loss curve sane |
+| M21 | Training converges for real | planning | done | a fixed-seed 784→128→10 MLP reaches 95.84% test accuracy in two epochs; mean training loss is 0.350281 then 0.163855; a dataset-free micro-convergence test reaches 100% |
 | M22 | Training practice ops | planning | pending | dropout, decoupled weight decay, and an LR schedule, each verified against PyTorch |
 | M23 | f16/bf16 | planning | pending | half-precision checkpoints load with a decided storage-vs-compute dtype design; parity gates decide per platform |
 | M24 | Performance is positioned honestly | planning | pending | dl vs onnxruntime CPU measured at the real-model shapes; the number decides SIMD investment or a written positioning, the way M8 decided |
@@ -38,10 +38,10 @@ Milestone order is the blocking sequence. OpenSpec has no dependency relationshi
 None. Hardware coverage remains Apple/Metal-only, carried as the standing `AGENTS.md` follow-up.
 
 ## Next Verifiable Output
-M21: an MNIST MLP trains from seeded initialization to ≥95% test accuracy inside dl, on the real dataset, with the loss curve sane — plus a dataset-free micro-convergence test.
+M22: PyTorch-verified dropout, decoupled weight decay, and an LR schedule for training practice.
 
 ## Next Ticket
-`add-dl-mnist-convergence` (M21) — cut and ready to dispatch. Then M22 practice ops, M23 f16/bf16, M24 the honest performance position. Two measured negatives remain guardrails: no batched device kernel without a single-dispatch batched measurement, and no device Conv without its own measurement.
+M22 training practice ops, then M23 f16/bf16 and M24 the honest performance position. Two measured negatives remain guardrails: no batched device kernel without a single-dispatch batched measurement, and no device Conv without its own measurement.
 
 Note for any host running the reference suites locally: the crosslang venv moved to `~/.cache/insyra-crosslang-venv` on 2026-08-03 after macOS's tmp cleaner destroyed the old /private/tmp venv (deleted `pyvenv.cfg` and parts of numpy's binaries, producing no-module false negatives). CI is unaffected — it installs its own toolchains.
 
@@ -140,6 +140,7 @@ Deltas that still change what someone would do. The standing technical decisions
 - **M17 wiring handoff.** `make-dl-device-matmul-default` now contains the default-on `dl` hook, exported `accel.DeviceMatMul`, production WGSL MatMul, CPU fallback tests, a hardware parity gate, and the runnable floor ladder. `INSYRA_ACCEL_DISABLE_WGPU=1` and `dl.RegisterDeviceMatMul(nil)` are the two switches. `delivery-status.md` changed in this handoff; `AGENTS.md` did not.
 - **M18 training handoff.** `add-dl-cnn-gradients` adds direct-loop Conv, pooling, and inference-mode BatchNormalization VJPs, ungated finite-difference coverage, and a gated PyTorch SafeTensors CNN one-step parity test. The full `./dl/` suite passed with the moved reference venv. `delivery-status.md` changed in this handoff; `AGENTS.md` did not.
 - **M20 real-checkpoint handoff.** `add-dl-real-model-support` adds `Clip`, `ConstantOfShape`, runtime control tensors, deterministic real-model parity for MobileNetV2 and MiniLM-L6-v2, and the matching docs, changelogs, and skill note. The normal and strict `./dl/` suites passed; `delivery-status.md` changed in this handoff; `AGENTS.md` did not.
+- **M21 convergence handoff.** `add-dl-mnist-convergence` adds test-side IDX validation, fixed-seed He initialization, a dataset-free micro-convergence test, and a gated MNIST 784→128→10 Adam run. The specified MNIST command reaches 93.91% after epoch 1 and 95.84% after epoch 2 in 12.5 seconds; the uncached `./dl/` suite passes, and missing `INSYRA_DL_MNIST_DIR` skips cleanly. `delivery-status.md` changed in this handoff; `AGENTS.md` did not.
 - **Hardware blocker.** The sandbox only exposes a software adapter. The new device tests skip with `ErrUnavailable`; 2.1's measured floor, 3.3's all-`dl` hardware run, and 3.4's encoder timing remain unchecked.
 - **One sample-weight design question remains open, deliberately.** Tree sample weights would push float weights into histogram accumulators the precision contract fixed as integers for associativity — an architecture decision against ENG.md, not a feature. The cross-validation channel turned out not to need a protocol break: scikit-learn routes sample_weight to fit and scores unweighted, so `Estimator` gained an optional `FitWeighted` and `CrossValidateWeighted` subsets weights with each fold's own indices. The metric protocol is untouched.
 - **Two pure-CPU wins are measured and unclaimed**, and both are worth more than anything acceleration offered. `stats`' KNN auto-selection picks a ball tree up to 3.3x slower than parallel brute force on unstructured data (#190). CCL spends 4.8x–6.2x more time on recursion-depth bookkeeping than on evaluating (#191).
