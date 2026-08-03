@@ -546,7 +546,7 @@ average, and boosting bakes the learning rate into the leaf weights with the
 prior as the ensemble's base value — the export is the model, not an
 approximation of it. The export tests execute the generated graph in
 `onnxruntime`, rather than accepting it by construction. The loop also closes inside the
-library: [`dl`](/Docs/dl.md) loads every exported family — including pipelines
+library: [`nn`](/Docs/nn.md) loads every exported family — including pipelines
 — and reproduces the fitted model's own predictions in pure Go. A pipeline is exported as one
 graph, so the ONNX runtime receives the raw feature columns rather than a
 pre-transformed table. ONNX stores model attributes as `float32`; predictions

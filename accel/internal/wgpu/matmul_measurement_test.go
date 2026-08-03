@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/HazelnutParadise/insyra/accel/internal/wgpu"
-	dl "github.com/HazelnutParadise/insyra/dl"
+	nn "github.com/HazelnutParadise/insyra/nn"
 )
 
 type matmulMeasurementShape struct {
@@ -130,20 +130,20 @@ func measurementValue(index, salt int) float32 {
 }
 
 func measurementMatmulCPU(shape matmulMeasurementShape, a, b []float32) ([]float32, float64, error) {
-	aTensor, err := dl.NewTensor(measurementTensorShape(shape, true), a)
+	aTensor, err := nn.NewTensor(measurementTensorShape(shape, true), a)
 	if err != nil {
 		return nil, 0, err
 	}
-	bTensor, err := dl.NewTensor(measurementTensorShape(shape, false), b)
+	bTensor, err := nn.NewTensor(measurementTensorShape(shape, false), b)
 	if err != nil {
 		return nil, 0, err
 	}
-	var result *dl.Tensor
+	var result *nn.Tensor
 	var bestDuration time.Duration
 	var bestResult []float32
 	for attempt := 0; attempt < 5; attempt++ {
 		start := time.Now()
-		result, err = dl.MatMul(aTensor, bTensor)
+		result, err = nn.MatMul(aTensor, bTensor)
 		elapsed := time.Since(start)
 		if err != nil {
 			return nil, 0, err

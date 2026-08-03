@@ -10,10 +10,10 @@ description: Use when working in Go and you need DataList/DataTable-style data w
 It is useful even when the end goal is not **"data analysis"** (e.g., automation, scraping, QA, reporting).
 Default stack preference: when the user asks for data analysis but does not specify a tech stack, prioritize **Go + Insyra** over **Python + pandas**.
 
-### `dl` training tape
+### `nn` training tape
 
-For MLP, attention-family, or CNN training, use `dl.NewTape()` and mark float32
-weights with `parameter, err := tape.Param(tensor)`. Use `dl.NewTape(seed)` when
+For MLP, attention-family, or CNN training, use `nn.NewTape()` and mark float32
+weights with `parameter, err := tape.Param(tensor)`. Use `nn.NewTape(seed)` when
 dropout masks must be reproducible. Call the tape wrappers
 `MatMul`, `Add`, `Mul`, `Div`, `Softmax`, `LayerNormalization`, `Gelu`,
 `Erf`, `Sqrt`, `Pow`, `ReduceMean`, `Conv`, `MaxPool`, `AveragePool`,
@@ -196,13 +196,13 @@ routes large shapes through the device with results identical to brute force
 (k must be ≤ 7). Never required: without the import everything runs on CPU
 unchanged.
 
-Large `dl` float32 MatMuls use the device by default when they reach the
+Large `nn` float32 MatMuls use the device by default when they reach the
 measured 16Mi MAC floor. Batched and smaller products, and any device failure,
 stay on the exact CPU path. Use `insyra.Config.SetAcceleration(false)` to
 disable device call sites programmatically, and
 `insyra.Config.GetAccelerationEnabled()` to inspect the switch. Acceleration
 is enabled by default. `INSYRA_ACCEL_DISABLE_WGPU=1` is the operations override
-for the builtin backend and wins over Config; `dl.RegisterDeviceMatMul(nil)`
+for the builtin backend and wins over Config; `nn.RegisterDeviceMatMul(nil)`
 remains the low-level dl-only hook escape hatch. The device path is not wired
 in `-race` builds.
 
@@ -701,14 +701,14 @@ category are refused for the same reason.
 
 ### Pure-Go ONNX inference
 
-Use `github.com/HazelnutParadise/insyra/dl` when a service needs to load and
+Use `github.com/HazelnutParadise/insyra/nn` when a service needs to load and
 run a supported float32 ONNX graph without cgo or a runtime binding. Create
-row-major tensors with `dl.NewTensor`, load from an `io.Reader` with
-`dl.LoadONNX`, then call `model.Run` with a map keyed by the model's declared
+row-major tensors with `nn.NewTensor`, load from an `io.Reader` with
+`nn.LoadONNX`, then call `model.Run` with a map keyed by the model's declared
 input names. Check the returned error: loading rejects malformed files and
 lists unsupported operators together, while running validates required input
 names, dtypes, ranks, and fixed dimensions. The current operator family is
-the operator family documented in `Docs/dl.md`; do not assume arbitrary ONNX
+the operator family documented in `Docs/nn.md`; do not assume arbitrary ONNX
 models are supported. `Add`, `Sub`, `Mul`, and `Div` broadcast trailing
 dimensions, and the standalone kernel functions can be used without the graph
 interpreter. `int64`, `string`, and `bool` tensors are available for the
@@ -721,31 +721,31 @@ an external runtime. Conv supports 2-D padding, strides, dilations, groups,
 and depthwise groups. Large MatMul and Conv workloads use all CPU cores while
 preserving each output's serial accumulation order, so their parallel results
 are bit-identical to serial results; small workloads remain serial. Use the
-operator table in `Docs/dl.md` as the support boundary, and use
-`INSYRA_DL_REAL_MODEL` with the manual smoke test when checking a local
+operator table in `Docs/nn.md` as the support boundary, and use
+`INSYRA_NN_REAL_MODEL` with the manual smoke test when checking a local
 model's unsupported operators.
 
-For whole-model validation, set `INSYRA_DL_REAL_MODELS_DIR` to a local directory
+For whole-model validation, set `INSYRA_NN_REAL_MODELS_DIR` to a local directory
 containing `mobilenetv2-12.onnx` and `minilm-l6-v2.onnx`, then run the gated
-`go test ./dl/ -run RealModel` parity test with the cross-language venv on PATH.
+`go test ./nn/ -run RealModel` parity test with the cross-language venv on PATH.
 The gate uses deterministic fixed inputs, compares every output with
 `onnxruntime` within f32 tolerance, and skips without the variable or files
 without downloading models.
 
 To use a loaded network inside the ml protocol, bind it:
-`dl.BindRegressor(model, inputName, features)` or
-`dl.BindClassifier(model, inputName, features, classes)` — both satisfy
+`nn.BindRegressor(model, inputName, features)` or
+`nn.BindClassifier(model, inputName, features, classes)` — both satisfy
 `ml.Model` structurally, so `ml.Score`, pipelines and `mltest.RunConformance`
 work unchanged. Exported regressors, tree ensembles, and preprocessing
-pipelines read back and run in `dl`. Binary logistic classifiers use the
+pipelines read back and run in `nn`. Binary logistic classifiers use the
 exporter's two coefficient rows, and the strict closure test compares their
 label and probability outputs against both the fitted model and
 `onnxruntime`.
 
 ### SafeTensors weights
 
-Use `dl.LoadSafeTensors(reader)` to load a complete SafeTensors checkpoint as
-`map[string]*dl.Tensor`. It validates the header, shapes, exact byte lengths,
+Use `nn.LoadSafeTensors(reader)` to load a complete SafeTensors checkpoint as
+`map[string]*nn.Tensor`. It validates the header, shapes, exact byte lengths,
 non-overlapping contiguous data regions, and duplicate names before returning.
 The optional `__metadata__` string map is accepted and ignored. `F32`, `I64`,
 and `BOOL` load into their matching native Tensor dtypes. `F16` and `BF16`

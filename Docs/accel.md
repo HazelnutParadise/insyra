@@ -29,7 +29,7 @@ The runtime executes on real hardware. A dataset is uploaded to a GPU, ranked by
   - shardable multi-device planning via `PlanShardable()` / `PlanShardableWorkload(...)`
   - weighted shard assignments and deterministic merge-policy reporting
   - execution via `ExecuteNearestExact(...)`, returning the M nearest query points per row as exact `float64` values
-  - `DeviceMatMul(...)`, the device implementation used by `dl`'s default large 2-D float32 MatMul path
+  - `DeviceMatMul(...)`, the device implementation used by `nn`'s default large 2-D float32 MatMul path
   - backend executor registry: `RegisterBackendExecutor(backend, BackendExecutor)`
   - CLI/DSL surfaces: `accel devices`, `accel cache`, `accel plan`, `show accel.devices`, `show accel.cache`, `config accel.mode`
 
