@@ -338,6 +338,27 @@ already match torch and are copied without a transpose. BatchNorm2D loads
 `num_batches_tracked` buffer is tolerated and ignored. Missing, extra, or
 mis-shaped names return an error.
 
+### Saving weights and exporting ONNX
+
+`SaveSafeTensors` writes a deterministic, contiguous SafeTensors file for
+`F32`, `I64`, and `BOOL` tensors. Names are sorted before the header and data
+region are written, so saving the same map twice produces identical bytes.
+
+`Sequential.SaveWeights` uses torch `nn.Sequential` names, includes
+`BatchNorm2D`'s `running_mean` and `running_var`, and transposes Dense weights
+back to torch Linear's `[out,in]` layout. This is the inverse of
+`LoadWeights`, which accepts that torch layout and stores `[in,out]` for the
+tape. The resulting file can be loaded with `safetensors.torch.load_file`.
+
+`Sequential.ExportONNX` writes a single-input inference graph with output
+`output`. Dense, activations, Conv2D, BatchNorm2D inference, pooling,
+GlobalAvgPool, Flatten, and LayerNorm are exported with their trained values
+and attributes. Dropout is omitted because `Predict` treats it as an identity.
+`Func` and `Embedding` currently return an error naming the layer position and
+kind. The first Dense input is declared as `[-1, in]`; the first Conv2D input is
+`[-1, in, -1, -1]`. The resulting graph can be passed to `nn.LoadONNX` or an
+independent ONNX runtime.
+
 Dimensions are explicit for `Dense`, so adjacent mismatches fail during
 `NewSequential` with the layer index and kind. A catalog CNN proof uses a
 30,000-row training subset, retains the second convolution's spatial features

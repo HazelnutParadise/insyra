@@ -69,6 +69,15 @@ missing, extra, or mis-shaped names. `BatchNorm2D` implements the optional
 `EvalLayer` interface, so `Sequential.Predict` uses running statistics without
 a global train/eval flag.
 
+Use `model.SaveWeights(writer)` to write a deterministic torch-compatible
+SafeTensors state dict. Dense weights are transposed back to torch's `[out,in]`
+layout, while Conv2D weights are copied unchanged and BatchNorm2D running
+statistics are included. Use `model.ExportONNX(writer)` for an inference graph
+with a dynamic batch input and output named `output`; it supports the catalogued
+Dense, activation, Conv2D, BatchNorm2D, pooling, Flatten, and LayerNorm paths.
+Dropout is omitted as an inference identity. Func and Embedding are refused
+with their layer position and kind.
+
 ## Verification-first guardrails (do this before using any API or CCL)
 Agents must NOT hallucinate method names, function signatures, or **CCL** syntax.
 Before proposing code that calls an **Insyra** function/method (or writes a CCL formula), first verify it exists in the target version.
