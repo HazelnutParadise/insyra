@@ -78,6 +78,17 @@ missing, extra, or mis-shaped names. `BatchNorm2D` implements the optional
 `EvalLayer` interface, so `Sequential.Predict` uses running statistics without
 a global train/eval flag.
 
+`nn.MultiHeadAttention(embed, heads)` is mask-free, batch-first self-attention
+over `[batch, sequence, embed]` and requires `embed` divisible by `heads`.
+`nn.Residual(layers...)` adds its input to a nested layer stack and uses nested
+`EvalLayer` paths during `Predict`. Their tape forward paths compose existing
+batched `MatMul`, axis `Softmax`, `Transpose`, and `Reshape` wrappers, so no
+new VJP is needed. MHA state names are `in_proj_weight`, `in_proj_bias`,
+`out_proj.weight`, and `out_proj.bias`; direct Sequential names prefix the
+layer index, while nested Residual names recurse (for example,
+`0.0.in_proj_weight`). Torch projection matrices transpose at the
+LoadWeights/SaveWeights boundary. ONNX export refuses both layers by name.
+
 Use `model.SaveWeights(writer)` to write a deterministic torch-compatible
 SafeTensors state dict. Dense weights are transposed back to torch's `[out,in]`
 layout, while Conv2D weights are copied unchanged and BatchNorm2D running

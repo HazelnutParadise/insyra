@@ -345,7 +345,36 @@ The catalog layers are:
 | `BatchNorm2D(features)` | Batch statistics and running-stat updates in `Forward`; running statistics in `Predict` |
 | `LayerNorm(dims)` | Learned suffix normalization over an integer or shape slice |
 | `Embedding(vocab, dim)` | Int64 `[N]` or `[N,S]` lookup with scatter-add gradients |
+| `MultiHeadAttention(embed, heads)` | Mask-free batch-first self-attention over `[batch, sequence, embed]` |
+| `Residual(layers...)` | Adds the input to a composable sub-stack; inference honors nested `EvalLayer` paths |
 | `ReLU`, `NewSigmoid`, `NewTanh`, `NewGelu`, `Dropout`, `NewFlatten`, `Func` | Stateless, training-only, shape, or callback layers |
+
+`MultiHeadAttention(embed, heads)` accepts and returns `[batch, sequence,
+embed]` tensors. It is self-attention only in v1: it has no attention mask,
+causal mask, or cross-attention input. `embed` must be divisible by `heads`.
+The forward path uses the existing differentiable batched `MatMul`, axis
+`Softmax`, `Transpose`, and `Reshape` tape operations, so its parameters receive
+the existing VJPs without a layer-specific backward implementation.
+
+Its state dict follows `torch.nn.MultiheadAttention`:
+`in_proj_weight`, `in_proj_bias`, `out_proj.weight`, and `out_proj.bias`.
+`LoadWeights` accepts torch's `[out,in]` matrices and stores the internal
+`[in,out]` layout. In a `Sequential`, a direct layer therefore exposes names
+such as `0.in_proj_weight`; a MHA nested in `Residual` uses the recursive name
+`0.0.in_proj_weight`. `SaveWeights` reverses these transposes. ONNX export
+refuses `MultiHeadAttention` and `Residual` by layer position and kind because
+the mask-free composite has no exported layer mapping yet.
+
+An encoder can be assembled without `Func`:
+
+```go
+encoder, err := nn.NewSequential(tape,
+    nn.Residual(nn.MultiHeadAttention(16, 4)),
+    nn.LayerNorm(16),
+    nn.Residual(nn.Dense(16, 32), nn.NewGelu(), nn.Dense(32, 16)),
+    nn.LayerNorm(16),
+)
+```
 
 `Func` accepts a tape callback for residual or other composite blocks. The
 `EvalLayer` interface is optional: when a layer implements
