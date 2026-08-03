@@ -42,18 +42,25 @@ results are bit-identical to serial results; small workloads stay serial.
 `NewInt64Tensor`, `NewStringTensor`, and `NewBoolTensor` build the control and
 label tensors used by ONNX graphs.
 
-## Optional device MatMul
+## Device MatMul
 
-Large 2-D float32 MatMuls can use the device through the opt-in
-[`accel/dlbridge`](dlbridge.md) package. Blank-import it to enable the path:
+Large 2-D float32 MatMuls use the device by default when the measured 16Mi
+multiply-accumulate floor is reached. No blank import is required. Batched and
+below-floor products stay on the CPU because measurement found that separate
+device dispatches do not pay for their transfer cost.
 
-```go
-import _ "github.com/HazelnutParadise/insyra/accel/dlbridge"
-```
+Device errors and missing hardware fall back to the exact CPU result. The
+fallback is observable through `accel.Default().Report()`.
 
-The bridge leaves batched and below-floor products on the CPU. Device failures
-also use the CPU path, preserving the exact result; see the bridge page for
-the hardware parity test and the floor ladder.
+There are two opt-out switches:
+
+- Set `INSYRA_ACCEL_DISABLE_WGPU=1` to disable the builtin WebGPU backend for
+  the process.
+- Call `dl.RegisterDeviceMatMul(nil)` to clear the hook programmatically and
+  restore the CPU path.
+
+The device path is not wired in `-race` builds because the upstream Metal
+binding currently trips `checkptr`; those builds remain on the CPU path.
 
 ## Loading and running an ONNX model
 

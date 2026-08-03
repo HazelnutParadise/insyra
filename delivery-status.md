@@ -1,13 +1,13 @@
 # Delivery Status
 
 ## Current Phase
-`insyra/dl` phase 2 (training): the MLP, attention, and CNN operator families are done, and M18 is complete — the tape now trains a deterministic MNIST-class CNN for one Adam step with PyTorch parity. `insyra/ml` v1 is shipped, audited and merged to dev (PR #194). Acceleration now has two opt-in wired call sites: KNN and large 2-D `dl` MatMul.
+`insyra/dl` phase 2 (training): the MLP, attention, and CNN operator families are done, and M18 is complete — the tape now trains a deterministic MNIST-class CNN for one Adam step with PyTorch parity. `insyra/ml` v1 is shipped, audited and merged to dev (PR #194). Acceleration now has one opt-in wired call site, KNN; large 2-D `dl` MatMul is default-on with CPU fallback.
 
 ## Stage Objective
 `insyra/dl`: run ONNX models in pure Go, verified per-operator and per-model against `onnxruntime`, with the op families landing in the decided order MLP → attention → CNN, then phase 2 adds autodiff and optimisers on the same tensors (first-step gradients verified against PyTorch under fixed initial weights via SafeTensors). GGUF/LLM is a decided future track that reuses the kernels; only two v1 constraints serve it now — dtype-carrying tensors and kernels as plain functions.
 
 ## Active Workstreams
-None. Every proposed change is implemented, verified and archived — `openspec/changes/` holds nothing but `archive/`.
+`make-dl-device-matmul-default` is implemented in the working tree and remains under `openspec/changes/` until it is merged and archived.
 
 ## Milestones
 | id | target | owner | status | verification_signal |
@@ -24,7 +24,7 @@ None. Every proposed change is implemented, verified and archived — `openspec/
 | M15 | Attention-family ops | planning | done | a fixed-weight two-head encoder block — batched MatMul, axis-Softmax, Gelu FFN, residuals, LayerNormalization — matches `onnxruntime` end to end; every operator carries one-op parity rows; `INSYRA_DL_REAL_MODEL` smokes local models. Kernels stay plain functions the future llm package can call |
 | M16 | CNN-family ops | planning | done | a fixed-weight MNIST-class CNN — Conv, BatchNormalization, pooling, Pad — matches `onnxruntime` end to end, with one-op parity enumerating the attribute combinations rather than sampling defaults |
 | M19 | An honest CPU baseline for dl's hot kernels | planning | done | MatMul and Conv use all cores with exact output parity. Across four best-of-5 runs on the 8-core M3 (idle to loaded): encoder layer 3.35s → 0.73–1.11s (3.0x–4.6x, ~3.8x reproducible idle), CNN forward 526ms → 97–169ms (3.1x–5.4x, ~4.4x reproducible idle). The encoder sum keeps ~90ms of deliberately serial small ops; its MatMul share alone is ~4.4x. Ordered before M17 — a device claim measured against one core has been withdrawn once already and will not be manufactured again |
-| M17 | Inference reaches the device | planning | done | large 2-D MatMul runs on the device behind opt-in `accel/dlbridge`, bit-equal to the CPU on hardware (asserted with ==); the floor is measured at 16Mi MACs with the 4M–8M noise band refused; all dl suites pass with the bridge active; the measured encoder layer dropped from ~0.9s all-core CPU to 234ms (14.3x over the pre-M19 serial baseline). Batched products stay CPU by measurement |
+| M17 | Inference reaches the device | planning | done | large 2-D MatMul runs on the device through `accel.DeviceMatMul` by default, bit-equal to the CPU on hardware (asserted with ==); the floor is measured at 16Mi MACs with the 4M–8M noise band refused; dl falls back observably when the backend is unavailable; the measured encoder layer dropped from ~0.9s all-core CPU to 234ms (14.3x over the pre-M19 serial baseline). Batched products stay CPU by measurement |
 | M18 | Training (phase 2) | planning | done | SafeTensors, the tape (MLP VJPs, fused softmax–cross-entropy, SGD), attention-family gradients, Adam, and CNN VJPs are complete — a fixed two-head encoder block and a deterministic MNIST-class CNN each take one Adam step in dl and PyTorch agrees on loss, every gradient, and every post-step parameter; every VJP is pinned by ungated finite differences |
 
 Milestone order is the blocking sequence. OpenSpec has no dependency relationship between changes, so nothing else carries it.
@@ -33,7 +33,7 @@ Milestone order is the blocking sequence. OpenSpec has no dependency relationshi
 None. Hardware coverage remains Apple/Metal-only, carried as the standing `AGENTS.md` follow-up.
 
 ## Next Verifiable Output
-M18 is closed. No next `dl` change is selected; future training or inference work needs a new measured ticket.
+Merge and archive `make-dl-device-matmul-default`; the remaining hardware parity run belongs on an operator GPU host. Future training or inference work needs a new measured ticket.
 
 ## Next Ticket
 None selected. Two measured negatives remain guardrails: no batched device kernel without a single-dispatch batched measurement, and no device Conv without its own measurement.
@@ -42,6 +42,11 @@ Note for any host running the reference suites locally: the crosslang venv moved
 
 ## Decision Log
 Deltas that still change what someone would do. The standing technical decisions they produced — the precision contract, the device rules, the measured thresholds — live in [ENG.md](ENG.md); the full history is in git.
+
+- decision: `dl` device MatMul is default-on; the opt-in bridge is removed.
+  rationale: The dependency-cycle argument only held for the bridge package. Direct `dl → accel → insyra` is acyclic, and the measured compile cost is affordable at about 1.9 seconds of cold build time and 200 KB. The measured 8.9x–52x device win clears the bar the root package did not. `INSYRA_ACCEL_DISABLE_WGPU=1` disables the backend, and `dl.RegisterDeviceMatMul(nil)` clears the hook programmatically.
+  timestamp: 2026-08-03
+  impacted_ticket_ids: make-dl-device-matmul-default
 
 - decision: Device matmul is earned for large single-dispatch shapes, bit-identically on Apple/Metal; per-batch small dispatches are refused by measurement.
   rationale: Measured on the M3 against the M19 all-core baseline, best of 5, upload+dispatch+readback included: [4096,256]×[256,256] 9.3ms vs 82.4ms (8.9x), FFN up 58.5ms vs 683ms (11.7x), FFN down 55.4ms vs 730ms (13.2x), [4096,4096]² 1.87s vs 97.2s (52x) — and every shape, including the losers, returned maxULP=0 because the prototype's per-output thread accumulates along k in the CPU's serial order. The attention-shaped batched products lose (1.08x–2.08x against) when driven as 128 separate dispatches, so they stay on the CPU until a single-dispatch batched kernel is measured. Bit parity is an observation about Apple/Metal, not a property of the kernel; the wiring must assert it per platform and fall back to CPU where it fails, which the Apple-only follow-up already anticipates.
@@ -127,12 +132,12 @@ Deltas that still change what someone would do. The standing technical decisions
 - Open issues: [#190](https://github.com/HazelnutParadise/insyra/issues/190) KNN algorithm selection, [#191](https://github.com/HazelnutParadise/insyra/issues/191) CCL recursion-depth overhead.
 
 ## Handoff Notes
-- **M17 wiring handoff.** `add-dl-device-matmul` now contains the `dl` hook, production WGSL MatMul, opt-in `accel/dlbridge`, CPU fallback tests, a hardware parity gate, and the runnable floor ladder. `delivery-status.md` changed in this handoff; `AGENTS.md` did not.
+- **M17 wiring handoff.** `make-dl-device-matmul-default` now contains the default-on `dl` hook, exported `accel.DeviceMatMul`, production WGSL MatMul, CPU fallback tests, a hardware parity gate, and the runnable floor ladder. `INSYRA_ACCEL_DISABLE_WGPU=1` and `dl.RegisterDeviceMatMul(nil)` are the two switches. `delivery-status.md` changed in this handoff; `AGENTS.md` did not.
 - **M18 training handoff.** `add-dl-cnn-gradients` adds direct-loop Conv, pooling, and inference-mode BatchNormalization VJPs, ungated finite-difference coverage, and a gated PyTorch SafeTensors CNN one-step parity test. The full `./dl/` suite passed with the moved reference venv. `delivery-status.md` changed in this handoff; `AGENTS.md` did not.
 - **Hardware blocker.** The sandbox only exposes a software adapter. The new device tests skip with `ErrUnavailable`; 2.1's measured floor, 3.3's all-`dl` hardware run, and 3.4's encoder timing remain unchecked.
 - **One sample-weight design question remains open, deliberately.** Tree sample weights would push float weights into histogram accumulators the precision contract fixed as integers for associativity — an architecture decision against ENG.md, not a feature. The cross-validation channel turned out not to need a protocol break: scikit-learn routes sample_weight to fit and scores unweighted, so `Estimator` gained an optional `FitWeighted` and `CrossValidateWeighted` subsets weights with each fold's own indices. The metric protocol is untouched.
 - **Two pure-CPU wins are measured and unclaimed**, and both are worth more than anything acceleration offered. `stats`' KNN auto-selection picks a ball tree up to 3.3x slower than parallel brute force on unstructured data (#190). CCL spends 4.8x–6.2x more time on recursion-depth bookkeeping than on evaluating (#191).
 - **A skipped verification now fails when it was supposed to run.** `INSYRA_REQUIRE_REFERENCE_TOOLCHAINS=1` turns every missing-toolchain skip into a failure, and the `Reference Verification` workflow installs R, the Python scientific stack, scikit-learn and onnxruntime and runs with it set. Before this, `Clustering Parity` had been reporting green while running nothing — its gate imports `sklearn` and the workflow never installed it.
 - **The refusal of unreadable numeric input is a breaking change** for anyone whose data contains blanks. What used to return a number now returns an error; the number it used to return was wrong. `ToF64Slice` still backs 54 call sites in `plot`, `gplot`, `quant` and the CLI — display paths where a zero is visible rather than laundered into a coefficient. A new numeric analysis must not join them.
-- **Nothing calls `accel`.** It is reachable through `allpkgs` or a direct import only, so its dormancy costs users nothing today.
+- `dl` now imports `accel` directly for default-on large MatMul wiring. Other callers still reach `accel` through `allpkgs` or a direct import.
 - **The race detector cannot reach the device on macOS**, upstream and pre-existing (gogpu/wgpu#280). Device tests skip under the `race` build tag.

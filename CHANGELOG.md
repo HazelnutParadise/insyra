@@ -19,7 +19,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 ### `accel`
 
-- Added the opt-in `accel/dlbridge` connection for large `dl` 2-D float32 MatMuls. The device kernel preserves each output's serial `k` accumulation order and records bridge fallback reasons through the existing `accel` report; no device or device error returns to `dl`'s exact CPU path.
+- Large `dl` 2-D float32 MatMuls now have a default-on device path through `accel.DeviceMatMul`. It preserves each output's serial `k` accumulation order, records fallback reasons through the existing `accel` report, and leaves the exact CPU path in charge when no device is available or the backend fails. `INSYRA_ACCEL_DISABLE_WGPU=1` disables the backend.
 - `accel` now executes on real hardware. `ExecuteDataList`, `ExecuteDataTable`, and `ExecuteProjectedDataset` return the computed value per column in `ExecutionResult.Reductions`, along with measured `Transfer`, `Dispatch`, and `Readback` durations and `BytesUploaded`.
 - `accel.Session` is now safe for concurrent use. Every public method is serialized behind a session lock, so several goroutines can share one session; previously concurrent `ExecuteDataList` calls raced on the cache and report state. Device submission is also serialized process-wide, because all sessions share one GPU handle.
 - Added `accel.Default()`, a session shared by the process and created on first use. Discovery runs once, the resident cache is shared across operations, and `Close` on it is a no-op because no caller owns it. Importing the package still opens no device.
@@ -55,7 +55,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 ### `dl`
 
-- Added an opt-in device MatMul path through `accel/dlbridge`. The hook is nil by default; only 2-D float32 products at or above the measured 16Mi MAC floor consult it, and batched or smaller products remain on the byte-identical CPU path. Measured on the 8-core M3 / Metal, the device result is bit-identical to the CPU's at every ladder rung, wins from 1.35x at the floor to 52x at 4096-square, and drops the measured encoder layer from about 0.9s all-core CPU to 234ms.
+- Large 2-D float32 MatMuls are now device-on by default without a blank import. Only products at or above the measured 16Mi MAC floor consult the device; batched or smaller products remain on the byte-identical CPU path. `INSYRA_ACCEL_DISABLE_WGPU=1` and `dl.RegisterDeviceMatMul(nil)` restore CPU-only execution. Measured on the 8-core M3 / Metal, the device result is bit-identical to the CPU's at every ladder rung, wins from 1.35x at the floor to 52x at 4096-square, and drops the measured encoder layer from about 0.9s all-core CPU to 234ms.
 - Extended the autodiff tape with CNN VJPs for 2-D Conv, MaxPool, AveragePool, GlobalAveragePool, and inference-mode BatchNormalization. Grouped Conv, asymmetric padding, strides, pooling denominator semantics, and all three BatchNormalization gradients are covered by finite differences; a deterministic CNN now matches PyTorch through one Adam step.
 
 ### `ml`

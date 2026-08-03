@@ -1,6 +1,6 @@
 # [ accel ] Package
 
-The `accel` package defines the opt-in acceleration runtime surface for Insyra.
+The `accel` package defines the acceleration runtime surface for Insyra.
 
 The runtime executes on real hardware. A dataset is uploaded to a GPU, ranked by a compute shader, and the host settles the answer in `float64`, so the result matches the CPU path exactly. Nothing extra to install and nothing to import — the GPU backend registers itself when `accel` is initialised. On a host with no usable GPU, every workload falls back to the CPU with an observable reason.
 
@@ -29,6 +29,7 @@ The runtime executes on real hardware. A dataset is uploaded to a GPU, ranked by
   - shardable multi-device planning via `PlanShardable()` / `PlanShardableWorkload(...)`
   - weighted shard assignments and deterministic merge-policy reporting
   - execution via `ExecuteNearestExact(...)`, returning the M nearest query points per row as exact `float64` values
+  - `DeviceMatMul(...)`, the device implementation used by `dl`'s default large 2-D float32 MatMul path
   - backend executor registry: `RegisterBackendExecutor(backend, BackendExecutor)`
   - CLI/DSL surfaces: `accel devices`, `accel cache`, `accel plan`, `show accel.devices`, `show accel.cache`, `config accel.mode`
 
@@ -51,6 +52,7 @@ The surviving operation resolves that rather than trading it away: the device ra
 | Operation | Shape | Notes |
 | --- | --- | --- |
 | `ExecuteNearestExact` | the M nearest query points per row, in `float64` | The device narrows, the host decides. Exactly the `float64` answer. |
+| `DeviceMatMul` | 2-D `float32` matrix product | Returns an error for the caller's exact CPU fallback and records device status in `accel.Default().Report()`. |
 
 Three other operations existed and were removed once measured against a host using every core it has: a column sum at 0.7x, a squared-distance matrix whose readback grew with the answer, and a single-precision nearest query no `float64` caller could use. Nothing is added back without that measurement.
 

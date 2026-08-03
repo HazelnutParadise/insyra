@@ -98,7 +98,6 @@ dt.Show()
 | Document                | Description                                                 |
 | ----------------------- | ----------------------------------------------------------- |
 | [accel](accel.md)       | Optional GPU acceleration: device discovery, typed projections, and real column reductions |
-| [dlbridge](dlbridge.md) | Opt-in device MatMul bridge for large `dl` float32 products |
 | [py](py.md)             | Execute Python code from Go with an auto-managed Python env |
 | [parallel](parallel.md) | Simple parallel execution of functions                      |
 | [utils](utils.md)       | Helper functions for type conversion and data processing    |
