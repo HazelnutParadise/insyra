@@ -34,7 +34,7 @@ None pending review. `add-dl-mnist-convergence` (M21) is implemented and ready t
 
 | M25 | Sequential layer surface | planning | done | Layer interface (Build/Forward/Parameters, TrainingOnly marker), two-phase construction, torch-name weight interop; the Sequential MNIST run reproduces the hand-written curve digit-for-digit under the same seed |
 | M26 | The complete layer catalog | planning | done | Conv2D, pooling, training-mode BatchNorm2D (new VJP with running stats vs torch train mode), LayerNorm, Embedding (scatter-add VJP vs torch); a Sequential CNN converges on MNIST and a torch CNN loads and predicts |
-| M27 | Training round-trips to disk | planning | in progress | SaveSafeTensors writes what LoadSafeTensors reads; a trained Sequential exports to ONNX that nn itself and onnxruntime both run, matching Predict; torch reads our safetensors back |
+| M27 | Training round-trips to disk | planning | done | SaveSafeTensors writes what LoadSafeTensors reads; a trained Sequential exports to ONNX that nn itself and onnxruntime both run, matching Predict; torch reads our safetensors back |
 | M28 | Loss and optimizer toolkit | planning | pending | MSE and BCE losses, momentum SGD, cosine schedule, gradient clipping — each torch-verified |
 | M29 | MultiHeadAttention layer | planning | pending | an encoder block composes from layers alone, trains one step matching PyTorch, no Func required |
 
@@ -44,7 +44,7 @@ Milestone order is the blocking sequence. OpenSpec has no dependency relationshi
 None. Hardware coverage remains Apple/Metal-only, carried as the standing `AGENTS.md` follow-up.
 
 ## Next Verifiable Output
-M27: the save/export round trip — train, persist, reload, and match in nn's own runtime and onnxruntime.
+M28: the loss and optimizer toolkit, each piece torch-verified.
 
 ## Next Ticket
 M24 the honest performance position. Two measured negatives remain guardrails: no batched device kernel without a single-dispatch batched measurement, and no device Conv without its own measurement.
