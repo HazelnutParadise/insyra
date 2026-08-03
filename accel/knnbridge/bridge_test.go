@@ -134,3 +134,26 @@ func TestBridgeDeclinesLargeK(t *testing.T) {
 		t.Fatal("k=8 exceeds the shortlist budget and was accepted")
 	}
 }
+
+func TestBridgeConfigDisabledDeclinesBeforeDeviceWork(t *testing.T) {
+	previous := insyra.Config.GetAccelerationEnabled()
+	t.Cleanup(func() { insyra.Config.SetAcceleration(previous) })
+	insyra.Config.SetAcceleration(false)
+
+	trainRows, testRows, _, _ := bridgeFixture(4096, 2048, 8, 14)
+	if _, _, ok := search(trainRows, testRows, 5); ok {
+		t.Fatal("Config-disabled bridge consulted the device path")
+	}
+
+	viaAuto, err := knnNeighbors(trainRows, testRows, 5, "auto")
+	if err != nil {
+		t.Fatalf("Config-disabled auto KNN: %v", err)
+	}
+	viaBrute, err := knnNeighbors(trainRows, testRows, 5, "brute")
+	if err != nil {
+		t.Fatalf("CPU KNN: %v", err)
+	}
+	if !reflect.DeepEqual(viaAuto.Indices, viaBrute.Indices) || !reflect.DeepEqual(viaAuto.Distances, viaBrute.Distances) {
+		t.Fatal("Config-disabled KNN changed the CPU result")
+	}
+}

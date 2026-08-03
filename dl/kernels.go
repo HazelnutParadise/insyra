@@ -6,6 +6,8 @@ import (
 	"runtime"
 	"strconv"
 	"sync"
+
+	insyra "github.com/HazelnutParadise/insyra"
 )
 
 // parallelMACThreshold keeps dispatch overhead out of small graphs. A quick
@@ -785,7 +787,7 @@ func matMul2D(a, b *Tensor) (*Tensor, error) {
 	if a.shape[1] != b.shape[0] {
 		return nil, fmt.Errorf("matmul shapes %v and %v are incompatible", a.shape, b.shape)
 	}
-	if matMulMACsAtLeast(a.shape[0], b.shape[1], a.shape[1]) {
+	if matMulMACsAtLeast(a.shape[0], b.shape[1], a.shape[1]) && insyra.Config.GetAccelerationEnabled() {
 		if hook := registeredDeviceMatMul(); hook != nil {
 			data, err := hook(a.data, a.shape[0], a.shape[1], b.data, b.shape[0], b.shape[1])
 			if err == nil && len(data) == a.shape[0]*b.shape[1] {

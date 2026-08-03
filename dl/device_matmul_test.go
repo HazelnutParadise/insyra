@@ -4,8 +4,10 @@ import (
 	"errors"
 	"math"
 	"os"
+	"sync/atomic"
 	"testing"
 
+	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/accel"
 )
 
@@ -82,6 +84,47 @@ func TestDeviceMatMulHookNilAndErrorKeepCPUResult(t *testing.T) {
 	assertExactTensorEqual(t, got, cpu)
 }
 
+func TestDeviceMatMulConfigSwitchesDeviceHook(t *testing.T) {
+	previous := insyra.Config.GetAccelerationEnabled()
+	t.Cleanup(func() {
+		insyra.Config.SetAcceleration(previous)
+		RegisterDeviceMatMul(nil)
+	})
+
+	a := mustTestTensor(t, []int{256, 512}, patternedTestData(256*512))
+	b := mustTestTensor(t, []int{512, 256}, patternedTestData(512*256))
+	cpu, err := matMul2DWithWorkers(a, b, 1)
+	if err != nil {
+		t.Fatalf("CPU MatMul: %v", err)
+	}
+
+	var calls atomic.Int32
+	RegisterDeviceMatMul(func(_ []float32, aRows, _ int, _ []float32, _, bCols int) ([]float32, error) {
+		calls.Add(1)
+		return append([]float32(nil), cpu.data...), nil
+	})
+
+	insyra.Config.SetAcceleration(false)
+	got, err := MatMul(a, b)
+	if err != nil {
+		t.Fatalf("Config-disabled MatMul: %v", err)
+	}
+	assertExactTensorEqual(t, got, cpu)
+	if got := calls.Load(); got != 0 {
+		t.Fatalf("disabled device hook calls = %d, want 0", got)
+	}
+
+	insyra.Config.SetAcceleration(true)
+	got, err = MatMul(a, b)
+	if err != nil {
+		t.Fatalf("re-enabled MatMul: %v", err)
+	}
+	assertExactTensorEqual(t, got, cpu)
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("re-enabled device hook calls = %d, want 1", got)
+	}
+}
+
 func TestDeviceMatMulHookNeverSeesSubFloorOrBatched(t *testing.T) {
 	t.Cleanup(func() { RegisterDeviceMatMul(nil) })
 	calls := 0
@@ -148,6 +191,9 @@ func TestRegisterDeviceMatMulReplacesAndClears(t *testing.T) {
 }
 
 func TestDeviceMatMulDisabledWGPUKeepsCPUResult(t *testing.T) {
+	previous := insyra.Config.GetAccelerationEnabled()
+	t.Cleanup(func() { insyra.Config.SetAcceleration(previous) })
+	insyra.Config.SetAcceleration(true)
 	t.Setenv("INSYRA_ACCEL_DISABLE_WGPU", "1")
 	accel.ResetDefaultForTest()
 	t.Cleanup(accel.ResetDefaultForTest)

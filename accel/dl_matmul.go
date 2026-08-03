@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/accel/internal/wgpu"
 )
 
@@ -14,6 +15,9 @@ import (
 func DeviceMatMul(a []float32, aRows, aCols int, b []float32, bRows, bCols int) ([]float32, error) {
 	if bRows != aCols {
 		return nil, fmt.Errorf("dl matmul shapes [%d,%d]x[%d,%d] are incompatible", aRows, aCols, bRows, bCols)
+	}
+	if !insyra.Config.GetAccelerationEnabled() {
+		return nil, fmt.Errorf("dl matmul acceleration is disabled by Config")
 	}
 
 	session := Default()
