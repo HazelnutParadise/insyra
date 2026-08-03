@@ -8,6 +8,7 @@ Insyra provides a global `Config` object for managing library behavior. You can 
 - Colored output: `true`
 - Panic protection: `false`
 - Thread safety: `true`
+- Acceleration: `true`
 
 ## Log Level Management
 
@@ -77,6 +78,18 @@ insyra.Config.Dangerously_TurnOffThreadSafety()
 // If you need to reset all configs back to library defaults, call:
 insyra.SetDefaultConfig()
 ```
+
+Control device acceleration independently from thread safety:
+
+```go
+insyra.Config.SetAcceleration(false) // use the exact CPU paths
+enabled := insyra.Config.GetAccelerationEnabled()
+insyra.Config.SetAcceleration(true)
+```
+
+Acceleration is enabled by default. `INSYRA_ACCEL_DISABLE_WGPU=1` is the
+operations override for the builtin WebGPU backend and wins over Config, so
+the backend remains disabled while that environment variable is set.
 
 > Thread safety (on by default) serializes access to **one** instance per `AtomicDo`.
 > To operate on **several** instances atomically, use `insyra.AtomicDoAll(func(){ ... }, a, b, ...)`,

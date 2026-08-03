@@ -186,9 +186,13 @@ unchanged.
 
 Large `dl` float32 MatMuls use the device by default when they reach the
 measured 16Mi MAC floor. Batched and smaller products, and any device failure,
-stay on the exact CPU path. Set `INSYRA_ACCEL_DISABLE_WGPU=1` to disable the
-builtin backend, or call `dl.RegisterDeviceMatMul(nil)` to clear the hook
-programmatically. The device path is not wired in `-race` builds.
+stay on the exact CPU path. Use `insyra.Config.SetAcceleration(false)` to
+disable device call sites programmatically, and
+`insyra.Config.GetAccelerationEnabled()` to inspect the switch. Acceleration
+is enabled by default. `INSYRA_ACCEL_DISABLE_WGPU=1` is the operations override
+for the builtin backend and wins over Config; `dl.RegisterDeviceMatMul(nil)`
+remains the low-level dl-only hook escape hatch. The device path is not wired
+in `-race` builds.
 
 Use DataTable categorical encoders before stats methods that require numeric features (`stats.LinearRegression`, KNN, PCA, clustering). These methods return a new table plus a fitted encoder; the receiver is not modified.
 

@@ -52,12 +52,16 @@ device dispatches do not pay for their transfer cost.
 Device errors and missing hardware fall back to the exact CPU result. The
 fallback is observable through `accel.Default().Report()`.
 
-There are two opt-out switches:
+Acceleration has two layers. The programmatic primary switch is
+`insyra.Config.SetAcceleration(false)`, which makes eligible `dl` MatMuls and
+the accelerator bridge stay on their exact CPU paths. It defaults to enabled
+and can be re-enabled with `insyra.Config.SetAcceleration(true)`.
 
-- Set `INSYRA_ACCEL_DISABLE_WGPU=1` to disable the builtin WebGPU backend for
-  the process.
-- Call `dl.RegisterDeviceMatMul(nil)` to clear the hook programmatically and
-  restore the CPU path.
+`INSYRA_ACCEL_DISABLE_WGPU=1` is the operations override for the builtin
+WebGPU backend. It wins over Config, so the backend stays off even when Config
+acceleration is enabled. Both layers must allow the device before a call uses
+it. `dl.RegisterDeviceMatMul(nil)` remains a low-level dl-only escape hatch
+that clears the MatMul hook.
 
 The device path is not wired in `-race` builds because the upstream Metal
 binding currently trips `checkptr`; those builds remain on the CPU path.

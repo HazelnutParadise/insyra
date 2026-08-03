@@ -41,6 +41,18 @@ Programs that never import `accel` do not compile any of it — verified with a 
 
 Set `INSYRA_ACCEL_DISABLE_WGPU=1` to turn the builtin backend off without changing code.
 
+### Acceleration switch and precedence
+
+The primary programmatic switch is `insyra.Config.SetAcceleration(false)`.
+It disables call-time device use for `DeviceMatMul` and the KNN bridge, while
+preserving the existing CPU fallback behavior. Acceleration is enabled by
+default and can be restored with `insyra.Config.SetAcceleration(true)`.
+
+`INSYRA_ACCEL_DISABLE_WGPU=1` is the operations-level override for the builtin
+WebGPU backend. It wins over Config, so setting Config to enabled cannot turn
+that backend back on while the environment variable is set. A device runs only
+when both layers allow it.
+
 ### Precision
 
 WGSL has no `f64`, and Apple GPUs have no double-precision hardware at all. A `float64` column therefore cannot run on the device at its own precision, and the runtime will not narrow it behind your back — a data-analysis library that silently changes your numbers is worse than one that declines to accelerate them.
