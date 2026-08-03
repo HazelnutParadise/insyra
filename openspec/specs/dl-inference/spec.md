@@ -178,42 +178,6 @@ CPU result recorded per shape.
 - **THEN** the milestone SHALL be closed with the recorded numbers and no
   kernel SHALL be written
 
-### Requirement: Large matmuls may run on a device, invisibly and exactly
-
-`dl` SHALL expose a device-matmul hook that is nil by default, consulted only
-for 2-D f32 matmuls at or above a measured MAC floor, and filled only by
-blank-importing an opt-in bridge package. With the hook nil the CPU path SHALL
-be byte-for-byte what it was before this change. With the hook active, device
-results SHALL be asserted bit-equal to the CPU path on hardware, and any
-device absence, error, or parity failure SHALL fall back to the CPU path
-observably rather than change any answer.
-
-#### Scenario: No bridge, no change
-
-- **WHEN** a program uses `dl` without blank-importing the bridge
-- **THEN** no device is discovered, no accel code is linked beyond the hook
-  declaration, and every result is the existing CPU result
-
-#### Scenario: Bridge active, results exact
-
-- **WHEN** the bridge is blank-imported, a device is present, and a 2-D matmul
-  at or above the measured floor executes
-- **THEN** the result SHALL be bit-equal to the CPU path's result, asserted by
-  a hardware test with exact equality
-
-#### Scenario: Device trouble is a performance event
-
-- **WHEN** the bridge is active but the device is missing, errors, or the
-  platform fails the parity assertion
-- **THEN** the matmul SHALL return the CPU result, the fallback SHALL be
-  observable, and only strict GPU mode SHALL fail instead
-
-#### Scenario: Below the floor and batched shapes stay on the CPU
-
-- **WHEN** a matmul is batched or below the measured MAC floor
-- **THEN** the hook SHALL NOT be consulted, because measurement refused those
-  shapes
-
 ### Requirement: SafeTensors files load, validate, and refuse like ONNX does
 
 `dl` SHALL load SafeTensors files into named tensors, validating the header
@@ -241,4 +205,42 @@ harness.
 
 - **WHEN** a file contains tensors of dtypes the runtime does not implement
 - **THEN** the error SHALL list every offending tensor and dtype at once
+
+### Requirement: Large matmuls run on a device by default, invisibly and exactly
+
+`dl` SHALL run 2-D f32 matmuls at or above the measured MAC floor on a
+device by default, wiring the device implementation at package init through
+`accel`'s exported surface — no opt-in import. Setting
+`INSYRA_ACCEL_DISABLE_WGPU=1` or calling `RegisterDeviceMatMul(nil)` SHALL
+restore the pure CPU path. Device results SHALL remain asserted bit-equal to
+the CPU path on hardware, and any device absence, error, or parity failure
+SHALL fall back to the CPU path observably rather than change any answer.
+Under the `race` build tag the device path SHALL NOT be wired.
+
+#### Scenario: Default on, results exact
+
+- **WHEN** a program imports `dl` with no further configuration, a device is
+  present, and a 2-D matmul at or above the measured floor executes
+- **THEN** the result SHALL be bit-equal to the CPU path's result, asserted
+  by a hardware test with exact equality
+
+#### Scenario: The switch restores the CPU path
+
+- **WHEN** `INSYRA_ACCEL_DISABLE_WGPU=1` is set or the hook is cleared with
+  `RegisterDeviceMatMul(nil)`
+- **THEN** every matmul SHALL take the pure CPU path and produce the
+  existing CPU results byte-for-byte
+
+#### Scenario: Device trouble is a performance event
+
+- **WHEN** the device is missing, errors, or the platform fails the parity
+  assertion
+- **THEN** the matmul SHALL return the CPU result, the fallback SHALL be
+  observable, and only strict GPU mode SHALL fail instead
+
+#### Scenario: Below the floor and batched shapes stay on the CPU
+
+- **WHEN** a matmul is batched or below the measured MAC floor
+- **THEN** the device SHALL NOT be consulted, because measurement refused
+  those shapes
 

@@ -1,6 +1,15 @@
-## MODIFIED Requirements
+## REMOVED Requirements
 
 ### Requirement: Large matmuls may run on a device, invisibly and exactly
+
+**Reason**: The opt-in bridge design this requirement described is replaced
+wholesale by default-on wiring. Its cycle argument only held for the bridge
+package itself; the exactness, floor, fallback, and refusal obligations
+survive unchanged in the replacing requirement.
+
+## ADDED Requirements
+
+### Requirement: Large matmuls run on a device by default, invisibly and exactly
 
 `dl` SHALL run 2-D f32 matmuls at or above the measured MAC floor on a
 device by default, wiring the device implementation at package init through
