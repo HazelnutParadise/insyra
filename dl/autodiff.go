@@ -3,6 +3,7 @@ package dl
 import (
 	"fmt"
 	"math"
+	"math/rand"
 )
 
 // Tape records differentiable operations and replays their vector-Jacobian
@@ -13,6 +14,7 @@ type Tape struct {
 	params []*Parameter
 	marked map[*Tensor]*Parameter
 	grads  map[*Tensor]*Tensor
+	rng    *rand.Rand
 }
 
 // Parameter is a tensor marked for gradient retrieval and SGD updates.
@@ -48,9 +50,19 @@ type tapeOp struct {
 	vjp    func(*Tensor) ([]*Tensor, error)
 }
 
-// NewTape creates an empty reverse-mode tape.
-func NewTape() *Tape {
-	return &Tape{marked: make(map[*Tensor]*Parameter), grads: make(map[*Tensor]*Tensor)}
+// NewTape creates an empty reverse-mode tape. Dropout uses the tape-owned RNG;
+// a seed makes masks reproducible, and the default seed is deterministic.
+func NewTape(seed ...int64) *Tape {
+	const defaultSeed = int64(1)
+	rngSeed := defaultSeed
+	if len(seed) > 0 {
+		rngSeed = seed[0]
+	}
+	return &Tape{
+		marked: make(map[*Tensor]*Parameter),
+		grads:  make(map[*Tensor]*Tensor),
+		rng:    rand.New(rand.NewSource(rngSeed)),
+	}
 }
 
 // Param marks a float32 tensor for gradient retrieval and SGD updates.
@@ -555,6 +567,20 @@ func (t *Tape) SGD(rate float32) error {
 // The defaults match torch.optim.Adam: beta1=0.9, beta2=0.999, eps=1e-8,
 // without weight decay or AMSGrad.
 func (t *Tape) Adam(rate float32) error {
+	return t.adamStep(rate, 0)
+}
+
+// AdamW applies one bias-corrected AdamW step to every tracked parameter that
+// has a gradient. Weight decay is decoupled from the moments and uses the
+// scheduled learning rate, matching torch.optim.AdamW.
+func (t *Tape) AdamW(rate, weightDecay float32) error {
+	if math.IsNaN(float64(weightDecay)) || math.IsInf(float64(weightDecay), 0) || weightDecay < 0 {
+		return fmt.Errorf("adamw weight decay must be finite and non-negative")
+	}
+	return t.adamStep(rate, weightDecay)
+}
+
+func (t *Tape) adamStep(rate, weightDecay float32) error {
 	if math.IsNaN(float64(rate)) || math.IsInf(float64(rate), 0) || rate < 0 {
 		return fmt.Errorf("adam learning rate must be finite and non-negative")
 	}
@@ -578,6 +604,11 @@ func (t *Tape) Adam(rate float32) error {
 		}
 		if len(param.adamM) != len(value.data) || len(param.adamV) != len(value.data) {
 			return fmt.Errorf("adam state shape does not match parameter shape %v", value.shape)
+		}
+		if weightDecay != 0 {
+			for index := range value.data {
+				value.data[index] -= rate * weightDecay * value.data[index]
+			}
 		}
 		param.adamStep++
 		step := float64(param.adamStep)
