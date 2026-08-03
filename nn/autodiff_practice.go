@@ -86,3 +86,34 @@ func (s *StepLR) LR(step int) float32 {
 	decays := step / s.stepSize
 	return s.initialRate * float32(math.Pow(float64(s.gamma), float64(decays)))
 }
+
+// CosineAnnealingLR follows torch's eta_min=0 schedule. LR(0) is the
+// initial rate, and the caller reads LR(step) before the optimizer step.
+type CosineAnnealingLR struct {
+	initialRate float32
+	tMax        int
+}
+
+// NewCosineAnnealingLR creates a cosine schedule with PyTorch-compatible
+// zero-based step numbering.
+func NewCosineAnnealingLR(initialRate float32, tMax int) (*CosineAnnealingLR, error) {
+	if math.IsNaN(float64(initialRate)) || math.IsInf(float64(initialRate), 0) || initialRate < 0 {
+		return nil, fmt.Errorf("cosine annealing lr initial rate must be finite and non-negative")
+	}
+	if tMax <= 0 {
+		return nil, fmt.Errorf("cosine annealing lr t max must be positive")
+	}
+	return &CosineAnnealingLR{initialRate: initialRate, tMax: tMax}, nil
+}
+
+// LR returns initialRate*(1+cos(pi*step/tMax))/2. Negative steps use the
+// initial rate, matching the defensive behavior of StepLR.
+func (s *CosineAnnealingLR) LR(step int) float32 {
+	if s == nil || step <= 0 {
+		if s == nil {
+			return 0
+		}
+		return s.initialRate
+	}
+	return s.initialRate * float32((1+math.Cos(math.Pi*float64(step)/float64(s.tMax)))/2)
+}

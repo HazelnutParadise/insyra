@@ -21,6 +21,7 @@ type Tape struct {
 type Parameter struct {
 	value    *Tensor
 	grad     *Tensor
+	velocity []float32
 	adamM    []float32
 	adamV    []float32
 	adamStep uint64
@@ -480,6 +481,41 @@ func (t *Tape) SoftmaxCrossEntropy(logits, labels *Tensor) (*Tensor, error) {
 	return loss, nil
 }
 
+// MSELoss computes the mean squared error over every element. Its VJP is
+// 2*(prediction-target)/N, scaled by the scalar upstream gradient.
+func (t *Tape) MSELoss(prediction, target *Tensor) (*Tensor, error) {
+	loss, err := mseLossForward(prediction, target)
+	if err != nil {
+		return nil, err
+	}
+	t.record("MSELoss", []*Tensor{prediction, target}, loss, func(upstream *Tensor) ([]*Tensor, error) {
+		gradient, err := mseLossVJP(prediction, target, upstream)
+		if err != nil {
+			return nil, err
+		}
+		return []*Tensor{gradient, nil}, nil
+	})
+	return loss, nil
+}
+
+// BCEWithLogitsLoss computes the numerically stable mean binary
+// cross-entropy directly from logits. It intentionally does not compose a
+// sigmoid and logarithm operation.
+func (t *Tape) BCEWithLogitsLoss(logits, targets *Tensor) (*Tensor, error) {
+	loss, err := bceWithLogitsLossForward(logits, targets)
+	if err != nil {
+		return nil, err
+	}
+	t.record("BCEWithLogitsLoss", []*Tensor{logits, targets}, loss, func(upstream *Tensor) ([]*Tensor, error) {
+		gradient, err := bceWithLogitsLossVJP(logits, targets, upstream)
+		if err != nil {
+			return nil, err
+		}
+		return []*Tensor{gradient, nil}, nil
+	})
+	return loss, nil
+}
+
 // Backward clears previous gradients and walks the recorded operations in
 // reverse order from a scalar loss.
 func (t *Tape) Backward(loss *Tensor) error {
@@ -560,6 +596,72 @@ func (t *Tape) SGD(rate float32) error {
 		}
 	}
 	return nil
+}
+
+// SGDMomentum applies one SGD step with torch's velocity convention:
+// velocity = momentum*velocity + gradient, followed by value -= rate*velocity.
+// Velocity state belongs to each tracked parameter and survives later steps.
+func (t *Tape) SGDMomentum(rate, momentum float32) error {
+	if math.IsNaN(float64(rate)) || math.IsInf(float64(rate), 0) || rate < 0 {
+		return fmt.Errorf("sgd momentum learning rate must be finite and non-negative")
+	}
+	if math.IsNaN(float64(momentum)) || math.IsInf(float64(momentum), 0) || momentum < 0 {
+		return fmt.Errorf("sgd momentum must be finite and non-negative")
+	}
+	for _, param := range t.params {
+		value := param.value
+		if err := requireFloat32(value, "sgd momentum parameter"); err != nil {
+			return err
+		}
+		gradient := t.grads[value]
+		if gradient == nil {
+			continue
+		}
+		if len(param.velocity) == 0 {
+			param.velocity = make([]float32, len(value.data))
+		}
+		if len(param.velocity) != len(value.data) {
+			return fmt.Errorf("sgd momentum state shape does not match parameter shape %v", value.shape)
+		}
+		for index, grad := range gradient.data {
+			param.velocity[index] = momentum*param.velocity[index] + grad
+			value.data[index] -= rate * param.velocity[index]
+		}
+	}
+	return nil
+}
+
+// ClipGradNorm clips all tracked gradients by their global L2 norm and
+// returns the norm before clipping. Parameters without a gradient are
+// excluded, matching torch.nn.utils.clip_grad_norm_.
+func (t *Tape) ClipGradNorm(maxNorm float32) (float32, error) {
+	if math.IsNaN(float64(maxNorm)) || math.IsInf(float64(maxNorm), 0) || maxNorm < 0 {
+		return 0, fmt.Errorf("clip grad norm maximum must be finite and non-negative")
+	}
+	var squaredNorm float64
+	for _, param := range t.params {
+		gradient := t.grads[param.value]
+		if gradient == nil {
+			continue
+		}
+		for _, value := range gradient.data {
+			squaredNorm += float64(value) * float64(value)
+		}
+	}
+	totalNorm := float32(math.Sqrt(squaredNorm))
+	if totalNorm > maxNorm && totalNorm > 0 {
+		scale := maxNorm / totalNorm
+		for _, param := range t.params {
+			gradient := t.grads[param.value]
+			if gradient == nil {
+				continue
+			}
+			for index := range gradient.data {
+				gradient.data[index] *= scale
+			}
+		}
+	}
+	return totalNorm, nil
 }
 
 // Adam applies one bias-corrected Adam step to every tracked parameter that
@@ -817,6 +919,101 @@ func addGradient(grads map[*Tensor]*Tensor, input, gradient *Tensor) error {
 		return nil
 	}
 	grads[input], _ = copyTensor(gradient)
+	return nil
+}
+
+func mseLossForward(prediction, target *Tensor) (*Tensor, error) {
+	if err := requireFloat32(prediction, "mse prediction"); err != nil {
+		return nil, err
+	}
+	if err := requireFloat32(target, "mse target"); err != nil {
+		return nil, err
+	}
+	if !sameShape(prediction.shape, target.shape) {
+		return nil, fmt.Errorf("mse prediction and target shapes differ: %v and %v", prediction.shape, target.shape)
+	}
+	if len(prediction.data) == 0 {
+		return nil, fmt.Errorf("mse requires non-empty tensors")
+	}
+	var total float64
+	for index, value := range prediction.data {
+		difference := float64(value - target.data[index])
+		total += difference * difference
+	}
+	return newFloat32Tensor(nil, []float32{float32(total / float64(len(prediction.data)))})
+}
+
+func mseLossVJP(prediction, target, upstream *Tensor) (*Tensor, error) {
+	if err := requireScalarFloat32(upstream, "mse upstream"); err != nil {
+		return nil, err
+	}
+	gradient, err := newZeroFloat32Tensor(prediction.shape)
+	if err != nil {
+		return nil, err
+	}
+	scale := upstream.data[0] * (2 / float32(len(prediction.data)))
+	for index, value := range prediction.data {
+		gradient.data[index] = scale * (value - target.data[index])
+	}
+	return gradient, nil
+}
+
+func bceWithLogitsLossForward(logits, targets *Tensor) (*Tensor, error) {
+	if err := requireFloat32(logits, "bce logits"); err != nil {
+		return nil, err
+	}
+	if err := requireFloat32(targets, "bce targets"); err != nil {
+		return nil, err
+	}
+	if !sameShape(logits.shape, targets.shape) {
+		return nil, fmt.Errorf("bce logits and targets shapes differ: %v and %v", logits.shape, targets.shape)
+	}
+	if len(logits.data) == 0 {
+		return nil, fmt.Errorf("bce requires non-empty tensors")
+	}
+	var total float64
+	for index, logit := range logits.data {
+		target := targets.data[index]
+		if math.IsNaN(float64(target)) || math.IsInf(float64(target), 0) || target < 0 || target > 1 {
+			return nil, fmt.Errorf("bce target at index %d must be in [0,1], got %g", index, target)
+		}
+		x := float64(logit)
+		z := float64(target)
+		total += math.Max(x, 0) - x*z + math.Log1p(math.Exp(-math.Abs(x)))
+	}
+	return newFloat32Tensor(nil, []float32{float32(total / float64(len(logits.data)))})
+}
+
+func bceWithLogitsLossVJP(logits, targets, upstream *Tensor) (*Tensor, error) {
+	if err := requireScalarFloat32(upstream, "bce upstream"); err != nil {
+		return nil, err
+	}
+	gradient, err := newZeroFloat32Tensor(logits.shape)
+	if err != nil {
+		return nil, err
+	}
+	scale := upstream.data[0] / float32(len(logits.data))
+	for index, logit := range logits.data {
+		target := targets.data[index]
+		var probability float32
+		if logit >= 0 {
+			probability = 1 / (1 + float32(math.Exp(-float64(logit))))
+		} else {
+			exponential := float32(math.Exp(float64(logit)))
+			probability = exponential / (1 + exponential)
+		}
+		gradient.data[index] = scale * (probability - target)
+	}
+	return gradient, nil
+}
+
+func requireScalarFloat32(value *Tensor, operand string) error {
+	if err := requireFloat32(value, operand); err != nil {
+		return err
+	}
+	if len(value.shape) != 0 {
+		return fmt.Errorf("%s must be scalar, got shape %v", operand, value.shape)
+	}
 	return nil
 }
 
