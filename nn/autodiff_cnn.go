@@ -94,6 +94,103 @@ func (t *Tape) BatchNormalization(input, scale, bias, mean, variance *Tensor, ep
 	return output, nil
 }
 
+// BatchNormalizationTraining applies BatchNorm's training semantics. The
+// normalization uses the biased batch variance, while the running variance
+// update uses the unbiased estimator, matching torch.nn.BatchNorm2d.
+// options are [momentum, epsilon], with torch's defaults when omitted.
+func (t *Tape) BatchNormalizationTraining(input, scale, bias, runningMean, runningVariance *Tensor, options ...float32) (*Tensor, error) {
+	if t == nil {
+		return nil, fmt.Errorf("training batch normalization tape is nil")
+	}
+	momentum, epsilon, err := batchNormalizationTrainingOptions(options)
+	if err != nil {
+		return nil, err
+	}
+	if err := requireFloat32(input, "training batch normalization input"); err != nil {
+		return nil, err
+	}
+	for name, tensor := range map[string]*Tensor{
+		"scale": scale, "bias": bias, "running mean": runningMean, "running variance": runningVariance,
+	} {
+		if err := requireFloat32(tensor, "training batch normalization "+name); err != nil {
+			return nil, err
+		}
+	}
+	if len(input.shape) < 2 {
+		return nil, fmt.Errorf("training batch normalization requires input rank at least 2, got shape %v", input.shape)
+	}
+	channels := input.shape[1]
+	channelShape := []int{channels}
+	for name, tensor := range map[string]*Tensor{
+		"scale": scale, "bias": bias, "running mean": runningMean, "running variance": runningVariance,
+	} {
+		if !sameShape(tensor.shape, channelShape) {
+			return nil, fmt.Errorf("training batch normalization %s shape %v does not match channel shape %v", name, tensor.shape, channelShape)
+		}
+	}
+	if momentum < 0 || momentum > 1 || math.IsNaN(float64(momentum)) || math.IsInf(float64(momentum), 0) {
+		return nil, fmt.Errorf("training batch normalization momentum %g is invalid", momentum)
+	}
+	if epsilon < 0 || math.IsNaN(float64(epsilon)) || math.IsInf(float64(epsilon), 0) {
+		return nil, fmt.Errorf("training batch normalization epsilon %g is invalid", epsilon)
+	}
+	countPerChannel := len(input.data) / channels
+	if countPerChannel <= 1 {
+		return nil, fmt.Errorf("training batch normalization needs more than one value per channel, got %d", countPerChannel)
+	}
+	mean := make([]float64, channels)
+	for index, value := range input.data {
+		mean[(index/input.strides[1])%channels] += float64(value)
+	}
+	for channel := range mean {
+		mean[channel] /= float64(countPerChannel)
+	}
+	variance := make([]float64, channels)
+	for index, value := range input.data {
+		channel := (index / input.strides[1]) % channels
+		delta := float64(value) - mean[channel]
+		variance[channel] += delta * delta
+	}
+	for channel := range variance {
+		variance[channel] /= float64(countPerChannel)
+		unbiased := variance[channel] * float64(countPerChannel) / float64(countPerChannel-1)
+		runningMean.data[channel] = (1-momentum)*runningMean.data[channel] + momentum*float32(mean[channel])
+		runningVariance.data[channel] = (1-momentum)*runningVariance.data[channel] + momentum*float32(unbiased)
+	}
+	output, err := newZeroFloat32Tensor(input.shape)
+	if err != nil {
+		return nil, err
+	}
+	for index, value := range input.data {
+		channel := (index / input.strides[1]) % channels
+		normalized := (float64(value) - mean[channel]) / math.Sqrt(variance[channel]+float64(epsilon))
+		output.data[index] = float32(normalized*float64(scale.data[channel]) + float64(bias.data[channel]))
+	}
+	t.record("BatchNormalizationTraining", []*Tensor{input, scale, bias}, output, func(upstream *Tensor) ([]*Tensor, error) {
+		return batchNormalizationTrainingVJP(input, scale, bias, mean, variance, epsilon, upstream)
+	})
+	return output, nil
+}
+
+// BatchNormTraining is a concise alias for BatchNormalizationTraining.
+func (t *Tape) BatchNormTraining(input, scale, bias, runningMean, runningVariance *Tensor, options ...float32) (*Tensor, error) {
+	return t.BatchNormalizationTraining(input, scale, bias, runningMean, runningVariance, options...)
+}
+
+func batchNormalizationTrainingOptions(options []float32) (momentum, epsilon float32, err error) {
+	if len(options) > 2 {
+		return 0, 0, fmt.Errorf("training batch normalization accepts at most momentum and epsilon")
+	}
+	momentum, epsilon = 0.1, 1e-5
+	if len(options) >= 1 {
+		momentum = options[0]
+	}
+	if len(options) == 2 {
+		epsilon = options[1]
+	}
+	return momentum, epsilon, nil
+}
+
 func resolvedConvOptions(options []ConvOptions) (ConvOptions, error) {
 	if len(options) > 1 {
 		return ConvOptions{}, fmt.Errorf("autodiff conv accepts at most one options value")
@@ -357,6 +454,51 @@ func batchNormalizationVJP(input, scale, bias, mean, variance *Tensor, epsilon f
 		dInputValues[index] = upstreamValue * float64(scale.data[channel]) / denominator
 		dScaleValues[channel] += upstreamValue * normalized
 		dBiasValues[channel] += upstreamValue
+	}
+	dInput, err := float64Gradient(input.shape, dInputValues)
+	if err != nil {
+		return nil, err
+	}
+	dScale, err := float64Gradient(scale.shape, dScaleValues)
+	if err != nil {
+		return nil, err
+	}
+	dBias, err := float64Gradient(bias.shape, dBiasValues)
+	if err != nil {
+		return nil, err
+	}
+	return []*Tensor{dInput, dScale, dBias}, nil
+}
+
+func batchNormalizationTrainingVJP(input, scale, bias *Tensor, mean, variance []float64, epsilon float32, upstream *Tensor) ([]*Tensor, error) {
+	if err := requireFloat32(upstream, "training batch normalization upstream"); err != nil {
+		return nil, err
+	}
+	if !sameShape(upstream.shape, input.shape) {
+		return nil, fmt.Errorf("training batch normalization upstream shape %v does not match input shape %v", upstream.shape, input.shape)
+	}
+	channels := input.shape[1]
+	countPerChannel := len(input.data) / channels
+	dInputValues := make([]float64, len(input.data))
+	dScaleValues := make([]float64, channels)
+	dBiasValues := make([]float64, channels)
+	sums := make([]float64, channels)
+	weightedSums := make([]float64, channels)
+	for index, value := range input.data {
+		channel := (index / input.strides[1]) % channels
+		xhat := (float64(value) - mean[channel]) / math.Sqrt(variance[channel]+float64(epsilon))
+		dy := float64(upstream.data[index])
+		dScaleValues[channel] += dy * xhat
+		dBiasValues[channel] += dy
+		sums[channel] += dy
+		weightedSums[channel] += dy * xhat
+	}
+	for index, value := range input.data {
+		channel := (index / input.strides[1]) % channels
+		xhat := (float64(value) - mean[channel]) / math.Sqrt(variance[channel]+float64(epsilon))
+		dy := float64(upstream.data[index])
+		invStd := 1 / math.Sqrt(variance[channel]+float64(epsilon))
+		dInputValues[index] = float64(scale.data[channel]) * invStd * (float64(countPerChannel)*dy - sums[channel] - xhat*weightedSums[channel]) / float64(countPerChannel)
 	}
 	dInput, err := float64Gradient(input.shape, dInputValues)
 	if err != nil {

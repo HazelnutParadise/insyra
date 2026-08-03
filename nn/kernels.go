@@ -146,6 +146,9 @@ type ConvOptions struct {
 	Strides   []int
 	Dilations []int
 	Group     int
+	// NoBias is used by the layer catalog. The standalone Conv kernel still
+	// accepts a nil bias directly, as before.
+	NoBias bool
 }
 
 // PoolOptions controls the spatial attributes shared by MaxPool and

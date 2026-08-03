@@ -3,6 +3,7 @@ package nn
 import (
 	"fmt"
 	"sort"
+	"strings"
 )
 
 // Sequential composes layers in construction order. Layer positions include
@@ -88,7 +89,11 @@ func (s *Sequential) Predict(x *Tensor) (*Tensor, error) {
 			continue
 		}
 		var err error
-		output, err = layer.Forward(tape, output)
+		if eval, ok := layer.(EvalLayer); ok {
+			output, err = eval.PredictForward(output)
+		} else {
+			output, err = layer.Forward(tape, output)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("layer %d (%s): %w", index, sequentialLayerKind(layer), err)
 		}
@@ -140,7 +145,18 @@ func (s *Sequential) LoadWeights(weights map[string]*Tensor) error {
 	if s == nil {
 		return fmt.Errorf("sequential is nil")
 	}
-	expected := s.NamedParameters()
+	expected := make(map[string]struct{})
+	for index, layer := range s.layers {
+		if stateful, ok := layer.(statefulLayer); ok {
+			for name := range stateful.stateDict() {
+				expected[fmt.Sprintf("%d.%s", index, name)] = struct{}{}
+			}
+			continue
+		}
+		for name := range layerNamedState(layer) {
+			expected[fmt.Sprintf("%d.%s", index, name)] = struct{}{}
+		}
+	}
 	missing := make([]string, 0)
 	for name := range expected {
 		if _, ok := weights[name]; !ok {
@@ -150,6 +166,9 @@ func (s *Sequential) LoadWeights(weights map[string]*Tensor) error {
 	extra := make([]string, 0)
 	for name := range weights {
 		if _, ok := expected[name]; !ok {
+			if strings.HasSuffix(name, ".num_batches_tracked") {
+				continue
+			}
 			extra = append(extra, name)
 		}
 	}
@@ -159,15 +178,35 @@ func (s *Sequential) LoadWeights(weights map[string]*Tensor) error {
 		return fmt.Errorf("load sequential weights: missing names %v; extra names %v", missing, extra)
 	}
 	for index, layer := range s.layers {
-		dense, ok := layer.(*denseLayer)
+		stateful, ok := layer.(statefulLayer)
 		if !ok {
 			continue
 		}
-		weight := weights[fmt.Sprintf("%d.weight", index)]
-		bias := weights[fmt.Sprintf("%d.bias", index)]
-		if err := loadDenseWeights(dense, weight, bias); err != nil {
-			return fmt.Errorf("layer %d (Dense): %w", index, err)
+		local := make(map[string]*Tensor)
+		for name := range stateful.stateDict() {
+			local[name] = weights[fmt.Sprintf("%d.%s", index, name)]
 		}
+		if err := stateful.loadState(local); err != nil {
+			return fmt.Errorf("layer %d (%s): %w", index, sequentialLayerKind(layer), err)
+		}
+	}
+	return nil
+}
+
+type statefulLayer interface {
+	stateDict() map[string]*Tensor
+	loadState(map[string]*Tensor) error
+}
+
+func layerNamedState(layer Layer) map[string]*Tensor {
+	if named, ok := layer.(namedLayer); ok {
+		state := make(map[string]*Tensor)
+		for name, parameter := range named.namedParameters() {
+			if parameter != nil {
+				state[name] = parameter.Value()
+			}
+		}
+		return state
 	}
 	return nil
 }
@@ -198,6 +237,14 @@ func loadDenseWeights(layer *denseLayer, torchWeight, bias *Tensor) error {
 	}
 	copy(layer.bias.value.data, bias.data)
 	return nil
+}
+
+func (l *denseLayer) stateDict() map[string]*Tensor {
+	return map[string]*Tensor{"weight": l.weight.Value(), "bias": l.bias.Value()}
+}
+
+func (l *denseLayer) loadState(weights map[string]*Tensor) error {
+	return loadDenseWeights(l, weights["weight"], weights["bias"])
 }
 
 func sequentialSameShape(left, right []int) bool {

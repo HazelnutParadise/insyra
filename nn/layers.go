@@ -19,6 +19,13 @@ type TrainingOnly interface {
 	TrainingOnly()
 }
 
+// EvalLayer supplies a layer-specific inference path. Sequential.Predict
+// prefers it over Forward so stateful layers such as BatchNorm2D can use
+// running statistics without introducing a global mode flag.
+type EvalLayer interface {
+	PredictForward(x *Tensor) (*Tensor, error)
+}
+
 type dimensionedLayer interface {
 	layerDimensions() (input, output int, known bool)
 }
