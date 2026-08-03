@@ -1,4 +1,4 @@
-package wgpu
+package wgpu_test
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/HazelnutParadise/insyra/accel/internal/wgpu"
 	dl "github.com/HazelnutParadise/insyra/dl"
 )
 
@@ -22,7 +23,7 @@ func TestDLMatMulDeviceMeasurement(t *testing.T) {
 	if os.Getenv("INSYRA_ACCEL_GPU_TESTS") != "1" {
 		t.Skip("set INSYRA_ACCEL_GPU_TESTS=1")
 	}
-	if _, err := acquire(); err != nil {
+	if _, err := wgpu.Probe(); err != nil {
 		t.Skipf("cannot discover a usable GPU: %v", err)
 	}
 
@@ -67,7 +68,7 @@ func TestDLMatMulDeviceFloorLadder(t *testing.T) {
 	if os.Getenv("INSYRA_ACCEL_GPU_TESTS") != "1" {
 		t.Skip("set INSYRA_ACCEL_GPU_TESTS=1")
 	}
-	if _, err := acquire(); err != nil {
+	if _, err := wgpu.Probe(); err != nil {
 		t.Skipf("cannot discover a usable GPU: %v", err)
 	}
 
@@ -171,7 +172,7 @@ func measurementTensorShape(shape matmulMeasurementShape, left bool) []int {
 func measurementMatmulDevice(ctx context.Context, shape matmulMeasurementShape, a, b []float32) ([]float32, time.Duration, error) {
 	start := time.Now()
 	if shape.batch <= 1 {
-		result, _, err := MatMul(ctx, a, b, shape.aShape[0], shape.aShape[1], shape.bShape[1])
+		result, _, err := wgpu.MatMul(ctx, a, b, shape.aShape[0], shape.aShape[1], shape.bShape[1])
 		return result, time.Since(start), err
 	}
 
@@ -182,7 +183,7 @@ func measurementMatmulDevice(ctx context.Context, shape matmulMeasurementShape, 
 	cSize := shape.aShape[0] * shape.bShape[1]
 	result := make([]float32, 0, shape.batch*cSize)
 	for batch := 0; batch < shape.batch; batch++ {
-		batchResult, _, err := MatMul(ctx,
+		batchResult, _, err := wgpu.MatMul(ctx,
 			a[batch*aSize:(batch+1)*aSize], b[batch*bSize:(batch+1)*bSize],
 			shape.aShape[0], shape.aShape[1], shape.bShape[1])
 		if err != nil {

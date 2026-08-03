@@ -3,8 +3,8 @@ package dl
 import "sync/atomic"
 
 // DeviceMatMul is the optional device implementation for a two-dimensional
-// float32 matrix product. The bridge owns device discovery and fallback
-// observability; returning an error makes MatMul use its CPU implementation.
+// float32 matrix product. Returning an error makes MatMul use its CPU
+// implementation.
 type DeviceMatMul func(a []float32, aRows, aCols int, b []float32, bRows, bCols int) ([]float32, error)
 
 // deviceMatMulMACFloor is measured, not guessed. The hardware ladder on the
