@@ -205,20 +205,10 @@ func (s *Sequential) SaveWeights(w io.Writer) error {
 	}
 	weights := make(map[string]*Tensor)
 	for index, layer := range s.layers {
-		state := layerNamedState(layer)
-		if stateful, ok := layer.(statefulLayer); ok {
-			state = stateful.stateDict()
-		}
+		state := layerStateForSave(layer)
 		for name, tensor := range state {
 			if tensor == nil {
 				return fmt.Errorf("layer %d (%s) state %q is nil", index, sequentialLayerKind(layer), name)
-			}
-			if dense, ok := layer.(*denseLayer); ok && name == "weight" {
-				var err error
-				tensor, err = transposeDenseWeight(dense, tensor)
-				if err != nil {
-					return fmt.Errorf("layer %d (%s) state %q: %w", index, sequentialLayerKind(layer), name, err)
-				}
 			}
 			weights[fmt.Sprintf("%d.%s", index, name)] = tensor
 		}

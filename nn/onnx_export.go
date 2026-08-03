@@ -202,6 +202,8 @@ func buildSequentialONNX(s *Sequential) (*sequentialONNXModel, error) {
 			continue
 		case *funcLayer, *embeddingLayer:
 			return nil, fmt.Errorf("layer %d (%s): ONNX export is unsupported", index, sequentialLayerKind(layer))
+		case *multiHeadAttentionLayer, *residualLayer:
+			return nil, fmt.Errorf("layer %d (%s): ONNX export is unsupported", index, sequentialLayerKind(layer))
 		default:
 			return nil, fmt.Errorf("layer %d (%s): ONNX export is unsupported", index, sequentialLayerKind(layer))
 		}
@@ -227,6 +229,8 @@ func sequentialONNXInputShape(layers []Layer) ([]int, error) {
 			return []int{-1, layer.in}, nil
 		case *conv2DLayer:
 			return []int{-1, layer.in, -1, -1}, nil
+		case *multiHeadAttentionLayer:
+			return []int{-1, -1, layer.embed}, nil
 		default:
 			return nil, fmt.Errorf("layer %d (%s): cannot infer ONNX input shape; the first inference layer must be Dense or Conv2D", index, sequentialLayerKind(layer))
 		}
