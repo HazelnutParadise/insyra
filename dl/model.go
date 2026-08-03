@@ -390,10 +390,10 @@ func onnxDType(dataType int32) DType {
 		return DTypeUInt32
 	case 13:
 		return DTypeUInt64
-	case 14, 15, 16, 17:
-		return DTypeFloat8
-	case 18:
+	case 16:
 		return DTypeBFloat16
+	case 14, 15, 17, 18, 19, 20:
+		return DTypeFloat8
 	default:
 		return DType(fmt.Sprintf("onnx(%d)", dataType))
 	}

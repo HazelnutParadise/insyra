@@ -1313,13 +1313,34 @@ func Transpose(input *Tensor, perms ...[]int) (*Tensor, error) {
 
 // Cast converts among the scalar types used by the exporter: float32, int64,
 // bool, and string. Numeric conversions follow ONNX's truncating integer
-// conversion for the paths used by categorical preprocessing.
+// conversion for the paths used by categorical preprocessing. A FLOAT16 or
+// BFLOAT16 target rounds the f32 value to that storage format and widens it
+// back immediately, because Tensor computation remains f32.
 func Cast(input *Tensor, to DType) (*Tensor, error) {
 	if input == nil {
 		return nil, fmt.Errorf("cast input is nil")
 	}
 	if !supportedTensorDType(input.dtype) {
 		return nil, unsupportedDTypeError(input.dtype)
+	}
+	if to == DTypeFloat16 || to == DTypeBFloat16 {
+		source := input
+		if source.dtype != DTypeFloat32 {
+			var err error
+			source, err = Cast(input, DTypeFloat32)
+			if err != nil {
+				return nil, fmt.Errorf("cast to dtype %s: %w", dtypeName(to), err)
+			}
+		}
+		values := make([]float32, source.Len())
+		for index, value := range source.data {
+			if to == DTypeFloat16 {
+				values[index] = f16BitsToFloat32(float32ToF16Bits(value))
+			} else {
+				values[index] = bf16BitsToFloat32(float32ToBF16Bits(value))
+			}
+		}
+		return newFloat32Tensor(input.shape, values)
 	}
 	if !supportedTensorDType(to) {
 		return nil, fmt.Errorf("cast to dtype %s is not implemented", dtypeName(to))

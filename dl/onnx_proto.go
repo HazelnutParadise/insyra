@@ -642,6 +642,18 @@ func tensorProtoToTensor(proto protoTensor) (*Tensor, error) {
 			return nil, dataErr
 		}
 		return newFloat32Tensor(shape, values)
+	case 10:
+		values, dataErr := tensorFloat16Data(proto, count)
+		if dataErr != nil {
+			return nil, dataErr
+		}
+		return newFloat32Tensor(shape, values)
+	case 16:
+		values, dataErr := tensorBFloat16Data(proto, count)
+		if dataErr != nil {
+			return nil, dataErr
+		}
+		return newFloat32Tensor(shape, values)
 	case 6:
 		values, dataErr := tensorInt32Data(proto, count)
 		if dataErr != nil {
@@ -690,6 +702,35 @@ func tensorFloatData(proto protoTensor, count int) ([]float32, error) {
 		return nil, fmt.Errorf("tensor %q has %d float32 values, want %d", proto.name, len(proto.floatData), count)
 	}
 	return append([]float32(nil), proto.floatData...), nil
+}
+
+func tensorFloat16Data(proto protoTensor, count int) ([]float32, error) {
+	return tensorHalfData(proto, count, f16BitsToFloat32, "float16")
+}
+
+func tensorBFloat16Data(proto protoTensor, count int) ([]float32, error) {
+	return tensorHalfData(proto, count, bf16BitsToFloat32, "bfloat16")
+}
+
+func tensorHalfData(proto protoTensor, count int, widen func(uint16) float32, name string) ([]float32, error) {
+	if proto.rawData != nil {
+		if count > maxInt()/2 || len(proto.rawData) != count*2 {
+			return nil, fmt.Errorf("tensor %q raw_data has %d bytes, want %d", proto.name, len(proto.rawData), count*2)
+		}
+		values := make([]float32, count)
+		for index := range values {
+			values[index] = widen(binary.LittleEndian.Uint16(proto.rawData[index*2:]))
+		}
+		return values, nil
+	}
+	if len(proto.int32Data) != count {
+		return nil, fmt.Errorf("tensor %q has %d %s values, want %d", proto.name, len(proto.int32Data), name, count)
+	}
+	values := make([]float32, count)
+	for index, value := range proto.int32Data {
+		values[index] = widen(uint16(value))
+	}
+	return values, nil
 }
 
 func tensorInt32Data(proto protoTensor, count int) ([]int32, error) {

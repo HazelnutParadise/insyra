@@ -4,10 +4,13 @@ import (
 	"bytes"
 	_ "embed"
 	"encoding/binary"
+	"encoding/json"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -49,13 +52,13 @@ func TestLoadSafeTensorsRejectsMalformedStructure(t *testing.T) {
 }
 
 func TestLoadSafeTensorsReportsEveryUnsupportedDTypeAtOnce(t *testing.T) {
-	header := `{"half":{"dtype":"F16","shape":[2],"data_offsets":[0,4]},"double":{"dtype":"F64","shape":[1],"data_offsets":[4,8]}}`
-	_, err := LoadSafeTensors(bytes.NewReader(safeTensorsFile(header, make([]byte, 8))))
+	header := `{"quant":{"dtype":"I8","shape":[2],"data_offsets":[0,2]},"double":{"dtype":"F64","shape":[1],"data_offsets":[2,10]}}`
+	_, err := LoadSafeTensors(bytes.NewReader(safeTensorsFile(header, make([]byte, 10))))
 	if err == nil {
 		t.Fatal("LoadSafeTensors accepted unsupported dtypes")
 	}
 	message := err.Error()
-	for _, want := range []string{"half", "F16", "double", "F64"} {
+	for _, want := range []string{"quant", "I8", "double", "F64"} {
 		if !strings.Contains(message, want) {
 			t.Errorf("error %q does not name unsupported item %q", message, want)
 		}
@@ -96,10 +99,16 @@ func TestLoadSafeTensorsReferenceRoundTrip(t *testing.T) {
 	}
 	path := filepath.Join(t.TempDir(), "fixture.safetensors")
 	command := exec.Command(python, "-c", safeTensorsFixtureScript, path)
+	var stdout bytes.Buffer
 	var stderr bytes.Buffer
+	command.Stdout = &stdout
 	command.Stderr = &stderr
 	if err := command.Run(); err != nil {
 		t.Fatalf("safetensors fixture helper: %v: %s", err, strings.TrimSpace(stderr.String()))
+	}
+	var reference map[string]safeTensorFixtureReference
+	if err := json.Unmarshal(stdout.Bytes(), &reference); err != nil {
+		t.Fatalf("decode fixture stdout: %v\nstdout=%s\nstderr=%s", err, strings.TrimSpace(stdout.String()), strings.TrimSpace(stderr.String()))
 	}
 	file, err := os.Open(path)
 	if err != nil {
@@ -123,6 +132,8 @@ func TestLoadSafeTensorsReferenceRoundTrip(t *testing.T) {
 		"weights": {shape: []int{2, 3}, dtype: DTypeFloat32, f32: []float32{1.25, -2.5, 3.75, 4.5, 0, -6.25}},
 		"indices": {shape: []int{2, 2}, dtype: DTypeInt64, i64: []int64{0, 3, 8, -1}},
 		"mask":    {shape: []int{2, 3}, dtype: DTypeBool, bools: []bool{true, false, true, false, true, false}},
+		"f16":     {shape: []int{7}, dtype: DTypeFloat32},
+		"bf16":    {shape: []int{7}, dtype: DTypeFloat32},
 	}
 	if len(tensors) != len(want) {
 		t.Fatalf("loaded tensor names = %v, want %v", mapKeys(tensors), mapKeys(want))
@@ -137,6 +148,10 @@ func TestLoadSafeTensorsReferenceRoundTrip(t *testing.T) {
 		}
 		switch expected.dtype {
 		case DTypeFloat32:
+			if referenceValues, ok := reference[name]; ok {
+				assertSafeTensorReference(t, name, got.Data(), referenceValues)
+				continue
+			}
 			if values := got.Data(); !reflect.DeepEqual(values, expected.f32) {
 				t.Fatalf("tensor %q values = %v, want %v", name, values, expected.f32)
 			}
@@ -154,6 +169,48 @@ func TestLoadSafeTensorsReferenceRoundTrip(t *testing.T) {
 	}
 }
 
+type safeTensorFixtureReference struct {
+	Shape  []int    `json:"shape"`
+	Values []string `json:"values"`
+	Bits   []uint32 `json:"bits"`
+}
+
+func assertSafeTensorReference(t *testing.T, name string, got []float32, reference safeTensorFixtureReference) {
+	t.Helper()
+	if len(got) != len(reference.Bits) || len(reference.Values) != len(reference.Bits) {
+		t.Fatalf("tensor %q reference lengths = values %d, bits %d, loaded %d", name, len(reference.Values), len(reference.Bits), len(got))
+	}
+	if !reflect.DeepEqual(reference.Shape, []int{len(got)}) {
+		t.Fatalf("tensor %q reference shape = %v, want [%d]", name, reference.Shape, len(got))
+	}
+	for index, value := range got {
+		referenceValue := reference.Values[index]
+		if referenceValue == "NaN" {
+			if !math.IsNaN(float64(value)) {
+				t.Fatalf("tensor %q value[%d] = %v, want NaN", name, index, value)
+			}
+			continue
+		}
+		if referenceValue == "+Inf" || referenceValue == "-Inf" {
+			wantSign := 1
+			if referenceValue == "-Inf" {
+				wantSign = -1
+			}
+			if !math.IsInf(float64(value), wantSign) {
+				t.Fatalf("tensor %q value[%d] = %v, want %s", name, index, value, referenceValue)
+			}
+			continue
+		}
+		parsed, err := strconv.ParseFloat(referenceValue, 32)
+		if err != nil {
+			t.Fatalf("tensor %q reference value[%d] %q: %v", name, index, referenceValue, err)
+		}
+		if math.Float32bits(value) != reference.Bits[index] || math.Float32bits(float32(parsed)) != reference.Bits[index] {
+			t.Fatalf("tensor %q value[%d] bits = %#08x, reference bits %#08x", name, index, math.Float32bits(value), reference.Bits[index])
+		}
+	}
+}
+
 func requireSafeTensorsReference(t *testing.T) string {
 	t.Helper()
 	python, err := exec.LookPath("python3")
@@ -161,11 +218,11 @@ func requireSafeTensorsReference(t *testing.T) string {
 		reftest.Missing(t, "python3", "the dl SafeTensors round-trip", err)
 		return ""
 	}
-	command := exec.Command(python, "-c", "import numpy, safetensors")
+	command := exec.Command(python, "-c", "import torch, safetensors.torch")
 	var stderr bytes.Buffer
 	command.Stderr = &stderr
 	if err := command.Run(); err != nil {
-		reftest.MissingOutput(t, "python3 with numpy and safetensors", "the dl SafeTensors round-trip", err, stderr.Bytes())
+		reftest.MissingOutput(t, "python3 with torch and safetensors", "the dl SafeTensors round-trip", err, stderr.Bytes())
 		return ""
 	}
 	return python

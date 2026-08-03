@@ -204,6 +204,19 @@ def one_op(name):
             [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3])],
         )
         return model, {"A": left, "B": right}
+    if name == "HalfInitializer":
+        left = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
+        half = np.array([1.1, -2.5, 2**-14], dtype=np.float16)
+        model = make_model(
+            [
+                helper.make_node("Cast", ["H"], ["B"], to=TensorProto.FLOAT),
+                helper.make_node("Add", ["A", "B"], ["Y"]),
+            ],
+            [helper.make_tensor_value_info("A", TensorProto.FLOAT, [2, 3])],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3])],
+            [numpy_helper.from_array(half, "H")],
+        )
+        return model, {"A": left}
     if name == "Concat":
         left = np.array([[1], [2]], dtype=np.float32)
         right = np.array([[3, 4], [5, 6]], dtype=np.float32)

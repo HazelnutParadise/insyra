@@ -1,6 +1,7 @@
 package dl
 
 import (
+	"encoding/binary"
 	"math"
 	"strings"
 	"testing"
@@ -80,14 +81,48 @@ func TestLoadONNXReadsOpsetAndMaterialisesInitializer(t *testing.T) {
 	}
 }
 
-func TestLoadONNXRejectsUnsupportedInitializerDTypeByName(t *testing.T) {
-	data := testONNXModelWithInitializer(10)
-	_, err := LoadONNX(strings.NewReader(string(data)))
-	if err == nil {
-		t.Fatal("LoadONNX accepted an unsupported float16 initializer")
+func TestLoadONNXDecodesHalfInitializers(t *testing.T) {
+	f16Raw := make([]byte, 8)
+	for index, bits := range []uint16{0x0001, 0x7c00, 0xfc00, 0x7e01} {
+		binary.LittleEndian.PutUint16(f16Raw[index*2:], bits)
 	}
-	if !strings.Contains(err.Error(), "float16") {
-		t.Fatalf("error %q does not name float16", err)
+	data := testONNXModelWithHalfInitializers(
+		testONNXInitializer{name: "f16_raw", dataType: 10, dims: []int64{4}, rawData: f16Raw},
+		testONNXInitializer{name: "bf16_packed", dataType: 16, dims: []int64{3}, int32Data: []int32{0x3f80, 0x7f80, 0x8001}},
+	)
+	model, err := LoadONNX(strings.NewReader(string(data)))
+	if err != nil {
+		t.Fatalf("LoadONNX: %v", err)
+	}
+	cases := []struct {
+		name string
+		want []float32
+	}{
+		{name: "f16_raw", want: []float32{f16BitsToFloat32(0x0001), f16BitsToFloat32(0x7c00), f16BitsToFloat32(0xfc00), f16BitsToFloat32(0x7e01)}},
+		{name: "bf16_packed", want: []float32{bf16BitsToFloat32(0x3f80), bf16BitsToFloat32(0x7f80), bf16BitsToFloat32(0x8001)}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := model.initializers[tc.name]
+			if got == nil || got.DType() != DTypeFloat32 {
+				t.Fatalf("initializer = %#v, want float32 tensor", got)
+			}
+			values := got.Data()
+			if len(values) != len(tc.want) {
+				t.Fatalf("values = %v, want %v", values, tc.want)
+			}
+			for index := range values {
+				if math.IsNaN(float64(tc.want[index])) {
+					if !math.IsNaN(float64(values[index])) {
+						t.Fatalf("values[%d] = %v, want NaN", index, values[index])
+					}
+					continue
+				}
+				if math.Float32bits(values[index]) != math.Float32bits(tc.want[index]) {
+					t.Fatalf("values[%d] bits = %#08x, want %#08x", index, math.Float32bits(values[index]), math.Float32bits(tc.want[index]))
+				}
+			}
+		})
 	}
 }
 
@@ -161,6 +196,38 @@ func testONNXModelWithInitializer(dataType int32) []byte {
 	initializer = appendTestField(initializer, 7, protowire.BytesType, appendTestVarint(nil, 1, 2))
 	initializer = appendTestField(initializer, 8, protowire.BytesType, []byte("shape"))
 	graph := testONNXGraph([]testONNXNode{{opType: "Identity", input: "X", output: "Y"}}, true, 1, initializer)
+	model := appendTestVarint(nil, 1, 9)
+	model = appendTestField(model, 7, protowire.BytesType, graph)
+	model = appendTestField(model, 8, protowire.BytesType, appendTestVarint(nil, 2, 13))
+	return model
+}
+
+type testONNXInitializer struct {
+	name      string
+	dataType  int32
+	dims      []int64
+	rawData   []byte
+	int32Data []int32
+}
+
+func testONNXModelWithHalfInitializers(initializers ...testONNXInitializer) []byte {
+	encodedInitializers := make([][]byte, 0, len(initializers))
+	for _, initializer := range initializers {
+		var encoded []byte
+		for _, dimension := range initializer.dims {
+			encoded = appendTestVarint(encoded, 1, uint64(dimension))
+		}
+		encoded = appendTestVarint(encoded, 2, uint64(initializer.dataType))
+		for _, value := range initializer.int32Data {
+			encoded = appendTestVarint(encoded, 5, uint64(uint32(value)))
+		}
+		if initializer.rawData != nil {
+			encoded = appendTestField(encoded, 9, protowire.BytesType, initializer.rawData)
+		}
+		encoded = appendTestField(encoded, 8, protowire.BytesType, []byte(initializer.name))
+		encodedInitializers = append(encodedInitializers, encoded)
+	}
+	graph := testONNXGraph([]testONNXNode{{opType: "Identity", input: "X", output: "Y"}}, true, 1, encodedInitializers...)
 	model := appendTestVarint(nil, 1, 9)
 	model = appendTestField(model, 7, protowire.BytesType, graph)
 	model = appendTestField(model, 8, protowire.BytesType, appendTestVarint(nil, 2, 13))

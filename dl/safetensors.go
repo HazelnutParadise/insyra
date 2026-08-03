@@ -15,8 +15,9 @@ import (
 // and then ignored because this API returns tensors only.
 //
 // SafeTensors input is untrusted: malformed headers and data return errors and
-// never panic. Only F32, I64, and BOOL are materialised because those are the
-// SafeTensors dtypes that Tensor can carry without conversion.
+// never panic. F16 and BF16 are widened value-exactly to f32 because Tensor
+// computation remains f32; F32, I64, and BOOL retain their native Tensor
+// dtypes. Quantized and other unsupported dtypes remain refused by name.
 func LoadSafeTensors(r io.Reader) (tensors map[string]*Tensor, err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
@@ -85,6 +86,18 @@ func LoadSafeTensors(r io.Reader) (tensors map[string]*Tensor, err error) {
 			values := make([]float32, int(entry.count))
 			for index := range values {
 				values[index] = math.Float32frombits(binary.LittleEndian.Uint32(payload[index*4:]))
+			}
+			tensor, err = newFloat32Tensor(entry.shape, values)
+		case "F16":
+			values := make([]float32, int(entry.count))
+			for index := range values {
+				values[index] = f16BitsToFloat32(binary.LittleEndian.Uint16(payload[index*2:]))
+			}
+			tensor, err = newFloat32Tensor(entry.shape, values)
+		case "BF16":
+			values := make([]float32, int(entry.count))
+			for index := range values {
+				values[index] = bf16BitsToFloat32(binary.LittleEndian.Uint16(payload[index*2:]))
 			}
 			tensor, err = newFloat32Tensor(entry.shape, values)
 		case "I64":
@@ -249,6 +262,8 @@ func safeTensorDTypeSize(dtype string) (uint64, bool) {
 	switch dtype {
 	case "F32":
 		return 4, true
+	case "F16", "BF16":
+		return 2, true
 	case "I64":
 		return 8, true
 	case "BOOL":

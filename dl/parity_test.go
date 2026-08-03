@@ -432,6 +432,19 @@ func TestOneOpParityAgainstONNXRuntime(t *testing.T) {
 			},
 		},
 		{
+			name: "HalfInitializer",
+			run: func() (*Tensor, error) {
+				return Add(
+					mustTestTensor(t, []int{2, 3}, []float32{1, 2, 3, 4, 5, 6}),
+					mustTestTensor(t, []int{3}, []float32{
+						f16BitsToFloat32(float32ToF16Bits(1.1)),
+						f16BitsToFloat32(float32ToF16Bits(-2.5)),
+						f16BitsToFloat32(float32ToF16Bits(float32(math.Ldexp(1, -14)))),
+					}),
+				)
+			},
+		},
+		{
 			name: "OneHotEncoder",
 			run: func() (*Tensor, error) {
 				return oneHotEncoder(mustTestStringTensor(t, []int{3}, []string{"red", "blue", "unknown"}), map[string]protoAttribute{
