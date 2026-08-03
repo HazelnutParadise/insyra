@@ -222,6 +222,33 @@ for step := 0; step < 5; step++ {
 }
 ```
 
+### Training toolkit
+
+The tape also provides mean-reduced `MSELoss(pred, target)` and fused,
+numerically stable `BCEWithLogitsLoss(logits, targets)`. Both record one VJP;
+the binary loss expects float32 targets in `[0, 1]` and does not expose a
+separate sigmoid-plus-log training path.
+
+`SGDMomentum(rate, momentum)` keeps one velocity per tracked parameter and uses
+torch's convention `v = momentum*v + gradient`, then `w -= rate*v`:
+
+```go
+loss, err := tape.BCEWithLogitsLoss(logits, targets)
+if err != nil { log.Fatal(err) }
+if err := tape.Backward(loss); err != nil { log.Fatal(err) }
+norm, err := tape.ClipGradNorm(1)
+if err != nil { log.Fatal(err) }
+_ = norm // pre-clip global L2 norm
+if err := tape.SGDMomentum(0.01, 0.9); err != nil { log.Fatal(err) }
+```
+
+`NewCosineAnnealingLR(initialRate, tMax)` returns
+`initialRate*(1+cos(pi*step/tMax))/2`, with `LR(0)` equal to the initial
+rate. Read the scheduled rate before the optimizer step, then advance the
+schedule after it, matching `torch.optim.lr_scheduler.CosineAnnealingLR`.
+`ClipGradNorm(maxNorm)` computes one global L2 norm over all tracked gradients,
+scales every gradient when needed, and returns the pre-clip norm.
+
 Dropout is a training wrapper using the tape-owned seeded RNG. Use
 `nn.NewTape(seed)` when a reproducible mask is needed; kept values are scaled
 by `1/(1-p)` and the backward pass uses that same mask:

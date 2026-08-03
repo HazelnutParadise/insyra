@@ -34,6 +34,15 @@ has no mode flag, so eval code simply does not call it. Use
 `tape.Backward(loss)` and `tape.Adam(rate)` or `tape.AdamW(rate, weightDecay)`
 for a bias-corrected step. `schedule, err := dl.NewStepLR(initialRate, gamma,
 stepSize)` provides `schedule.LR(step)` for scheduled optimizer rates.
+For binary or regression training, use the fused mean losses
+`tape.BCEWithLogitsLoss(logits, targets)` and `tape.MSELoss(pred, target)`;
+BCE targets are float32 values in `[0, 1]`. `tape.SGDMomentum(rate, momentum)`
+uses torch's `v = momentum*v + gradient` convention and keeps velocity per
+parameter. `schedule, err := nn.NewCosineAnnealingLR(initialRate, tMax)`
+provides the cosine rate at zero-based step `step`. Call
+`norm, err := tape.ClipGradNorm(maxNorm)` after `Backward` and before the
+optimizer; it returns the pre-clip global L2 norm. Read the cosine rate before
+the optimizer step, then advance the scheduler after it to match torch.
 `tape.SGD(rate)` remains available. Read a parameter gradient with
 `parameter.Grad()` or `tape.Grad(parameter.Value())`. Gradients are float32;
 Adam uses PyTorch defaults (`betas=(0.9, 0.999)`, `eps=1e-8`) and keeps state
