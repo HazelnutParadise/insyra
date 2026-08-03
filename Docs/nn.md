@@ -279,6 +279,53 @@ BatchNormalization is inference-mode only: its running mean and variance are
 constants, while input, scale, and bias receive gradients. Training-mode batch
 statistics are refused rather than differentiated with different semantics.
 
+## Layers and Sequential
+
+The layer surface is training sugar over the same tape. It has one `Forward`
+method and no train/eval mode flag: `NewSequential` builds layers eagerly on a
+tape, `Forward` records the training path, and `Predict` uses a throwaway tape
+while structurally skipping layers marked `TrainingOnly`.
+
+```go
+tape := nn.NewTape(20260803)
+model, err := nn.NewSequential(
+    tape,
+    nn.Dense(784, 128),
+    nn.ReLU(),
+    nn.Dropout(0.2),
+    nn.Dense(128, 10),
+)
+if err != nil { log.Fatal(err) }
+
+logits, err := model.Forward(tape, batch)
+if err != nil { log.Fatal(err) }
+predictions, err := model.Predict(batch) // Dropout is omitted structurally.
+if err != nil { log.Fatal(err) }
+_ = logits
+_ = predictions
+```
+
+The v1 stateless layers are `ReLU`, `NewSigmoid`, `NewTanh`, `NewGelu`,
+`Dropout`, `NewFlatten`, and `Func`. `Func` accepts a tape callback for
+residual or other composite blocks. `Dense(in, out)` uses seeded He draws at
+build time and creates `weight` before a zero `bias`. `NewSigmoid`, `NewTanh`,
+`NewGelu`, and `NewFlatten` use the `New` prefix because the package already
+exports kernel functions with the shorter names.
+
+`Parameters` returns parameters in layer order. `NamedParameters` follows
+torch `nn.Sequential`: layer positions include parameterless layers, so a
+model with `Dense`, `ReLU`, `Dropout`, `Dense` exposes `0.weight`, `0.bias`,
+`3.weight`, and `3.bias`. `LoadWeights` accepts the map returned by
+`LoadSafeTensors`. Torch Linear stores weights as `[out,in]`; `LoadWeights`
+transposes them into the tape's internal `[in,out]` layout and rejects missing,
+extra, or mis-shaped names with an error.
+
+Dimensions are explicit for `Dense`, so adjacent mismatches fail during
+`NewSequential` with the layer index and kind. The Sequential MNIST proof uses
+the same seed, He draw order, minibatch shuffle, Adam rate, and two-epoch loop
+as the hand-written tape proof: mean losses are `0.350281` and `0.163855`, and
+the final test accuracy is `95.84%`.
+
 ## Supported operators
 
 | Operator | Notes |

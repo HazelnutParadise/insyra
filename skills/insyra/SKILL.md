@@ -42,6 +42,21 @@ dataset. The mean training loss falls from 0.350281 in the first epoch to
 0.163855 in the second epoch. Data loading and initialization remain test-side;
 there is no public MNIST or random-initialization API.
 
+For model composition, use `nn.NewSequential(tape, layers...)`. The `Layer`
+interface has `Build`, `Forward`, and `Parameters`; build layers eagerly on the
+same tape so seeded `nn.Dense(in, out)` creates its `[in,out]` weight followed
+by a zero bias. The layer surface has no mode flag: call `model.Forward(tape,
+x)` for training, and `model.Predict(x)` for inference. `Predict` structurally
+skips `TrainingOnly` layers such as `nn.Dropout(p)`. The v1 stateless layer
+constructors are `nn.ReLU()`, `nn.NewSigmoid()`, `nn.NewTanh()`,
+`nn.NewGelu()`, `nn.NewFlatten()`, and `nn.Func(fn)`; the `New` prefix is
+needed where the package already has a same-named kernel function. Use
+`model.NamedParameters()` for torch Sequential names (`0.weight`, `3.bias`,
+with parameterless layers still consuming an index), and
+`model.LoadWeights(weights)` for `LoadSafeTensors` output. That loader
+transposes torch Linear `[out,in]` weights at the boundary into Insyra's
+`[in,out]` layout and rejects missing, extra, or mis-shaped names.
+
 ## Verification-first guardrails (do this before using any API or CCL)
 Agents must NOT hallucinate method names, function signatures, or **CCL** syntax.
 Before proposing code that calls an **Insyra** function/method (or writes a CCL formula), first verify it exists in the target version.
