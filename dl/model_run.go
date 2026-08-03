@@ -55,7 +55,7 @@ func (m *Model) Run(inputs map[string]*Tensor) (outputs map[string]*Tensor, err 
 			if done[index] || !nodeInputsReady(node, values) {
 				continue
 			}
-			produced, executeErr := executeNode(node, values, m.initializers)
+			produced, executeErr := executeNode(node, values)
 			if executeErr != nil {
 				return nil, fmt.Errorf("node %q (%s): %w", node.name, node.opType, executeErr)
 			}
@@ -150,7 +150,7 @@ func nodeInputsReady(node modelNode, values map[string]*Tensor) bool {
 	return true
 }
 
-func executeNode(node modelNode, values map[string]*Tensor, initializers map[string]*Tensor) (map[string]*Tensor, error) {
+func executeNode(node modelNode, values map[string]*Tensor) (map[string]*Tensor, error) {
 	if len(node.outputs) == 0 {
 		return nil, fmt.Errorf("operator %s has no outputs", node.opType)
 	}
@@ -164,14 +164,14 @@ func executeNode(node modelNode, values map[string]*Tensor, initializers map[str
 		}
 		return value, nil
 	}
-	initializerInput := func(index int, controlName string) (*Tensor, error) {
+	controlInput := func(index int, controlName string) (*Tensor, error) {
 		if index >= len(node.inputs) || node.inputs[index] == "" {
 			return nil, fmt.Errorf("node %q %s %s input is missing", node.name, operatorDisplayName(node.domain, node.opType), controlName)
 		}
 		name := node.inputs[index]
-		value, present := initializers[name]
+		value, present := values[name]
 		if !present {
-			return nil, fmt.Errorf("node %q %s %s input %q is runtime-computed; only initializer values are supported", node.name, operatorDisplayName(node.domain, node.opType), controlName, name)
+			return nil, fmt.Errorf("node %q %s %s input %q is unavailable", node.name, operatorDisplayName(node.domain, node.opType), controlName, name)
 		}
 		return value, nil
 	}
@@ -317,6 +317,25 @@ func executeNode(node modelNode, values map[string]*Tensor, initializers map[str
 		case "Sqrt":
 			result, err = Sqrt(value)
 		}
+	case "Clip":
+		value, inputErr := input(0)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		var minimum, maximum *Tensor
+		if len(node.inputs) > 1 && node.inputs[1] != "" {
+			minimum, err = controlInput(1, "min")
+			if err != nil {
+				return nil, err
+			}
+		}
+		if len(node.inputs) > 2 && node.inputs[2] != "" {
+			maximum, err = controlInput(2, "max")
+			if err != nil {
+				return nil, err
+			}
+		}
+		result, err = Clip(value, minimum, maximum)
 	case "LayerNormalization":
 		value, inputErr := input(0)
 		if inputErr != nil {
@@ -458,7 +477,7 @@ func executeNode(node modelNode, values map[string]*Tensor, initializers map[str
 		}
 		var pads []int
 		if len(node.inputs) > 1 && node.inputs[1] != "" {
-			padsValue, padsErr := initializerInput(1, "pads")
+			padsValue, padsErr := controlInput(1, "pads")
 			if padsErr != nil {
 				return nil, padsErr
 			}
@@ -473,7 +492,7 @@ func executeNode(node modelNode, values map[string]*Tensor, initializers map[str
 		}
 		constantValue := float32(0)
 		if len(node.inputs) > 2 && node.inputs[2] != "" {
-			valueInput, valueErr := initializerInput(2, "constant value")
+			valueInput, valueErr := controlInput(2, "constant value")
 			if valueErr != nil {
 				return nil, valueErr
 			}
@@ -502,7 +521,7 @@ func executeNode(node modelNode, values map[string]*Tensor, initializers map[str
 		}
 		var axes []int
 		if len(node.inputs) > 1 && node.inputs[1] != "" {
-			axesValue, axesErr := initializerInput(1, "axes")
+			axesValue, axesErr := controlInput(1, "axes")
 			if axesErr != nil {
 				return nil, axesErr
 			}
@@ -581,7 +600,7 @@ func executeNode(node modelNode, values map[string]*Tensor, initializers map[str
 		}
 		var axes []int
 		if len(node.inputs) > 1 && node.inputs[1] != "" {
-			axesValue, axesErr := initializerInput(1, "axes")
+			axesValue, axesErr := controlInput(1, "axes")
 			if axesErr != nil {
 				return nil, axesErr
 			}
@@ -636,7 +655,7 @@ func executeNode(node modelNode, values map[string]*Tensor, initializers map[str
 		}
 		var starts, ends []int64
 		if len(node.inputs) > 1 && node.inputs[1] != "" {
-			startsValue, startsErr := initializerInput(1, "starts")
+			startsValue, startsErr := controlInput(1, "starts")
 			if startsErr != nil {
 				return nil, startsErr
 			}
@@ -650,7 +669,7 @@ func executeNode(node modelNode, values map[string]*Tensor, initializers map[str
 			return nil, fmt.Errorf("slice has no starts")
 		}
 		if len(node.inputs) > 2 && node.inputs[2] != "" {
-			endsValue, endsErr := initializerInput(2, "ends")
+			endsValue, endsErr := controlInput(2, "ends")
 			if endsErr != nil {
 				return nil, endsErr
 			}
@@ -665,7 +684,7 @@ func executeNode(node modelNode, values map[string]*Tensor, initializers map[str
 		}
 		var axes, steps []int64
 		if len(node.inputs) > 3 && node.inputs[3] != "" {
-			axesValue, axesErr := initializerInput(3, "axes")
+			axesValue, axesErr := controlInput(3, "axes")
 			if axesErr != nil {
 				return nil, axesErr
 			}
@@ -674,7 +693,7 @@ func executeNode(node modelNode, values map[string]*Tensor, initializers map[str
 			axes = attributeInt64Values(axesAttribute, "axes")
 		}
 		if len(node.inputs) > 4 && node.inputs[4] != "" {
-			stepsValue, stepsErr := initializerInput(4, "steps")
+			stepsValue, stepsErr := controlInput(4, "steps")
 			if stepsErr != nil {
 				return nil, stepsErr
 			}
@@ -693,7 +712,7 @@ func executeNode(node modelNode, values map[string]*Tensor, initializers map[str
 		}
 		var splits []int
 		if len(node.inputs) > 1 && node.inputs[1] != "" {
-			splitsValue, splitsErr := initializerInput(1, "split")
+			splitsValue, splitsErr := controlInput(1, "split")
 			if splitsErr != nil {
 				return nil, splitsErr
 			}
@@ -835,6 +854,22 @@ func executeNode(node modelNode, values map[string]*Tensor, initializers map[str
 			return nil, valueErr
 		}
 		result, err = Constant(value)
+	case "ConstantOfShape":
+		shapeValue, inputErr := input(0)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		var value *Tensor
+		if attributeValue, present := attribute("value"); present {
+			if attributeValue.tensor == nil {
+				return nil, fmt.Errorf("constant of shape value attribute has no tensor")
+			}
+			value, err = tensorProtoToTensor(*attributeValue.tensor)
+			if err != nil {
+				return nil, err
+			}
+		}
+		result, err = ConstantOfShape(shapeValue, value)
 	case "ai.onnx.ml:LinearRegressor":
 		value, inputErr := input(0)
 		if inputErr != nil {

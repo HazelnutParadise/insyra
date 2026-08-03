@@ -825,18 +825,27 @@ func matMul2DWithWorkers(a, b *Tensor, workers int) (*Tensor, error) {
 	return result, nil
 }
 
-// Add performs float32 addition with numpy-style broadcasting.
+// Add performs addition with numpy-style broadcasting for float32 and int64 tensors.
 func Add(a, b *Tensor) (*Tensor, error) {
+	if a != nil && b != nil && a.dtype == DTypeInt64 && b.dtype == DTypeInt64 {
+		return tensorBroadcastInt64Binary(a, b, "add", func(left, right int64) (int64, error) { return left + right, nil })
+	}
 	return tensorBroadcastBinary(a, b, "add", func(left, right float32) float32 { return left + right })
 }
 
-// Sub performs float32 subtraction with numpy-style broadcasting.
+// Sub performs subtraction with numpy-style broadcasting for float32 and int64 tensors.
 func Sub(a, b *Tensor) (*Tensor, error) {
+	if a != nil && b != nil && a.dtype == DTypeInt64 && b.dtype == DTypeInt64 {
+		return tensorBroadcastInt64Binary(a, b, "sub", func(left, right int64) (int64, error) { return left - right, nil })
+	}
 	return tensorBroadcastBinary(a, b, "sub", func(left, right float32) float32 { return left - right })
 }
 
-// Mul performs float32 multiplication with numpy-style broadcasting.
+// Mul performs multiplication with numpy-style broadcasting for float32 and int64 tensors.
 func Mul(a, b *Tensor) (*Tensor, error) {
+	if a != nil && b != nil && a.dtype == DTypeInt64 && b.dtype == DTypeInt64 {
+		return tensorBroadcastInt64Binary(a, b, "mul", func(left, right int64) (int64, error) { return left * right, nil })
+	}
 	return tensorBroadcastBinary(a, b, "mul", func(left, right float32) float32 { return left * right })
 }
 
@@ -879,9 +888,66 @@ func Sqrt(input *Tensor) (*Tensor, error) {
 // Pow raises the left tensor to the right tensor element by element with
 // numpy-style broadcasting.
 func Pow(left, right *Tensor) (*Tensor, error) {
+	if left != nil && right != nil && left.dtype == DTypeInt64 && right.dtype == DTypeInt64 {
+		return tensorBroadcastInt64Binary(left, right, "pow", func(base, exponent int64) (int64, error) {
+			if exponent < 0 {
+				return 0, fmt.Errorf("negative integer exponent %d is unsupported", exponent)
+			}
+			result := int64(1)
+			for index := int64(0); index < exponent; index++ {
+				result *= base
+			}
+			return result, nil
+		})
+	}
 	return tensorBroadcastBinary(left, right, "pow", func(a, b float32) float32 {
 		return float32(math.Pow(float64(a), float64(b)))
 	})
+}
+
+// Clip clamps each float32 element between optional scalar bounds.
+func Clip(input, minimum, maximum *Tensor) (*Tensor, error) {
+	if err := requireFloat32(input, "clip input"); err != nil {
+		return nil, err
+	}
+	minValue, err := clipBound(minimum, "min", float32(math.Inf(-1)))
+	if err != nil {
+		return nil, err
+	}
+	maxValue, err := clipBound(maximum, "max", float32(math.Inf(1)))
+	if err != nil {
+		return nil, err
+	}
+	if minValue > maxValue {
+		return nil, fmt.Errorf("clip min %g is greater than max %g", minValue, maxValue)
+	}
+	result, err := newFloat32Tensor(input.shape, make([]float32, input.Len()))
+	if err != nil {
+		return nil, err
+	}
+	for index, value := range input.data {
+		if value < minValue {
+			value = minValue
+		}
+		if value > maxValue {
+			value = maxValue
+		}
+		result.data[index] = value
+	}
+	return result, nil
+}
+
+func clipBound(value *Tensor, name string, fallback float32) (float32, error) {
+	if value == nil {
+		return fallback, nil
+	}
+	if err := requireFloat32(value, "clip "+name); err != nil {
+		return 0, err
+	}
+	if value.Len() != 1 {
+		return 0, fmt.Errorf("clip %s input has shape %v, want a scalar", name, value.shape)
+	}
+	return value.data[0], nil
 }
 
 // Gelu computes the Gaussian error linear unit. ONNX's default exact form is
@@ -1112,8 +1178,11 @@ func Reshape(input *Tensor, shape []int) (*Tensor, error) {
 }
 
 func reshapeWithOptions(input *Tensor, requested []int, allowZero bool) (*Tensor, error) {
-	if err := requireFloat32(input, "reshape input"); err != nil {
-		return nil, err
+	if input == nil {
+		return nil, fmt.Errorf("reshape input is nil")
+	}
+	if !supportedTensorDType(input.dtype) {
+		return nil, unsupportedDTypeError(input.dtype)
 	}
 	shape := append([]int(nil), requested...)
 	unknown, known := -1, 1
@@ -1142,17 +1211,17 @@ func reshapeWithOptions(input *Tensor, requested []int, allowZero bool) (*Tensor
 		known *= resolved
 	}
 	if unknown != -1 {
-		if known == 0 || len(input.data)%known != 0 {
-			return nil, fmt.Errorf("reshape shape %v cannot infer a dimension from %d elements", requested, len(input.data))
+		if known == 0 || input.Len()%known != 0 {
+			return nil, fmt.Errorf("reshape shape %v cannot infer a dimension from %d elements", requested, input.Len())
 		}
-		shape[unknown] = len(input.data) / known
+		shape[unknown] = input.Len() / known
 	}
 	shapeCopy, strides, count, err := makeLayout(shape)
 	if err != nil {
 		return nil, err
 	}
-	if count != len(input.data) {
-		return nil, fmt.Errorf("reshape shape %v has %d elements, want %d", requested, count, len(input.data))
+	if count != input.Len() {
+		return nil, fmt.Errorf("reshape shape %v has %d elements, want %d", requested, count, input.Len())
 	}
 	result, err := copyTensor(input)
 	if err != nil {

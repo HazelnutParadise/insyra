@@ -7,6 +7,14 @@ import (
 
 // Div performs float32 division with numpy-style broadcasting.
 func Div(a, b *Tensor) (*Tensor, error) {
+	if a != nil && b != nil && a.dtype == DTypeInt64 && b.dtype == DTypeInt64 {
+		return tensorBroadcastInt64Binary(a, b, "div", func(left, right int64) (int64, error) {
+			if right == 0 {
+				return 0, fmt.Errorf("division by zero")
+			}
+			return left / right, nil
+		})
+	}
 	return tensorBroadcastBinary(a, b, "div", func(left, right float32) float32 { return left / right })
 }
 
@@ -299,6 +307,42 @@ func Shape(input *Tensor, bounds ...int) (*Tensor, error) {
 		values[index] = int64(input.shape[start+index])
 	}
 	return newInt64Tensor([]int{len(values)}, values)
+}
+
+// ConstantOfShape fills a tensor with one scalar value. ONNX defaults the
+// value to a float32 zero when the optional value attribute is absent.
+func ConstantOfShape(shapeTensor, value *Tensor) (*Tensor, error) {
+	if shapeTensor == nil {
+		return nil, fmt.Errorf("constant of shape input is nil")
+	}
+	if shapeTensor.dtype != DTypeInt64 {
+		return nil, fmt.Errorf("constant of shape input has dtype %s, want %s", dtypeName(shapeTensor.dtype), dtypeName(DTypeInt64))
+	}
+	shape := make([]int, len(shapeTensor.int64Data))
+	for index, dimension := range shapeTensor.int64Data {
+		if dimension < 0 || dimension > int64(maxInt()) {
+			return nil, fmt.Errorf("constant of shape dimension %d is not a non-negative int", dimension)
+		}
+		shape[index] = int(dimension)
+	}
+	if value == nil {
+		defaultValue, err := newFloat32Tensor(nil, []float32{0})
+		if err != nil {
+			return nil, err
+		}
+		value = defaultValue
+	}
+	if !supportedTensorDType(value.dtype) || value.Len() != 1 {
+		return nil, fmt.Errorf("constant of shape value has dtype %s and shape %v, want one supported scalar", dtypeName(value.dtype), value.shape)
+	}
+	result, err := newTypedTensor(value.dtype, shape)
+	if err != nil {
+		return nil, err
+	}
+	for index := 0; index < result.Len(); index++ {
+		copyTensorElement(result, index, value, 0)
+	}
+	return result, nil
 }
 
 func normalizeShapeBound(bound, rank, fallback int) int {

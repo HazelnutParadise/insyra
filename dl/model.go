@@ -39,6 +39,7 @@ var supportedOperators = map[string]struct{}{
 	"LayerNormalization": {}, "ReduceMean": {}, "Softmax": {}, "Identity": {},
 	"Conv": {}, "MaxPool": {}, "AveragePool": {}, "GlobalAveragePool": {},
 	"BatchNormalization": {}, "Pad": {},
+	"Clip": {}, "ConstantOfShape": {},
 	"Reshape": {}, "Flatten": {}, "Transpose": {}, "Cast": {}, "Constant": {},
 	"Concat": {}, "Unsqueeze": {}, "Squeeze": {}, "Expand": {}, "Shape": {}, "Slice": {}, "Split": {},
 	"Gather": {}, "GreaterOrEqual": {}, "Equal": {}, "Greater": {}, "Where": {},

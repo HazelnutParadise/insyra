@@ -386,6 +386,47 @@ func tensorBroadcastBinary(left, right *Tensor, operation string, fn func(float3
 	return result, nil
 }
 
+func tensorBroadcastInt64Binary(left, right *Tensor, operation string, fn func(int64, int64) (int64, error)) (*Tensor, error) {
+	if left == nil || right == nil {
+		return nil, fmt.Errorf("%s operands must not be nil", operation)
+	}
+	if left.dtype != DTypeInt64 || right.dtype != DTypeInt64 {
+		return nil, fmt.Errorf("%s supports int64 operands, got %s and %s", operation, dtypeName(left.dtype), dtypeName(right.dtype))
+	}
+	if fn == nil {
+		return nil, fmt.Errorf("%s operation is nil", operation)
+	}
+	shape, err := tensorBroadcastShape(left.shape, right.shape)
+	if err != nil {
+		return nil, err
+	}
+	shape, strides, count, err := makeLayout(shape)
+	if err != nil {
+		return nil, err
+	}
+	result := &Tensor{dtype: DTypeInt64, shape: shape, strides: strides, int64Data: make([]int64, count)}
+	leftStrides := alignedBroadcastStrides(left, len(shape))
+	rightStrides := alignedBroadcastStrides(right, len(shape))
+	for outputIndex := 0; outputIndex < count; outputIndex++ {
+		remaining, leftIndex, rightIndex := outputIndex, 0, 0
+		for axis, stride := range strides {
+			coordinate := 0
+			if stride != 0 {
+				coordinate = remaining / stride
+				remaining %= stride
+			}
+			leftIndex += coordinate * leftStrides[axis]
+			rightIndex += coordinate * rightStrides[axis]
+		}
+		value, valueErr := fn(left.int64Data[leftIndex], right.int64Data[rightIndex])
+		if valueErr != nil {
+			return nil, fmt.Errorf("%s at element %d: %w", operation, outputIndex, valueErr)
+		}
+		result.int64Data[outputIndex] = value
+	}
+	return result, nil
+}
+
 func tensorBroadcastShape(left, right []int) ([]int, error) {
 	rank := len(left)
 	if len(right) > rank {

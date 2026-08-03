@@ -232,7 +232,7 @@ func TestCNNNodeErrorsNameNodesAndUnsupportedForms(t *testing.T) {
 		attributes: map[string]protoAttribute{
 			"kernel_shape": {ints: []int64{2, 2}},
 		},
-	}, values, nil)
+	}, values)
 	if err == nil || !strings.Contains(err.Error(), `node "bad-max-output"`) || !strings.Contains(err.Error(), "Indices") {
 		t.Fatalf("MaxPool output error = %v", err)
 	}
@@ -246,7 +246,7 @@ func TestCNNNodeErrorsNameNodesAndUnsupportedForms(t *testing.T) {
 			"mode": {string: []byte("reflect")},
 			"pads": {ints: []int64{1, 0, 1, 0}},
 		},
-	}, values, nil)
+	}, values)
 	if err == nil || !strings.Contains(err.Error(), `node "bad-pad-mode"`) || !strings.Contains(err.Error(), "reflect") {
 		t.Fatalf("Pad mode error = %v", err)
 	}
@@ -256,7 +256,7 @@ func TestCNNNodeErrorsNameNodesAndUnsupportedForms(t *testing.T) {
 		opType:  "BatchNormalization",
 		inputs:  []string{"X", "scale", "bias", "mean", "variance"},
 		outputs: []string{"Y", "mean-output"},
-	}, values, nil)
+	}, values)
 	if err == nil || !strings.Contains(err.Error(), `node "bad-batch-output"`) || !strings.Contains(err.Error(), "training-mode") {
 		t.Fatalf("BatchNormalization output error = %v", err)
 	}
@@ -270,7 +270,7 @@ func TestCNNNodeErrorsNameNodesAndUnsupportedForms(t *testing.T) {
 		"X": input,
 		"W": mustTestTensor(t, []int{1, 1, 1, 1}, []float32{1}),
 		"B": mustTestTensor(t, []int{2}, []float32{1, 2}),
-	}, nil)
+	})
 	if err == nil || !strings.Contains(err.Error(), `node "bad-conv-bias"`) || !strings.Contains(err.Error(), `"B"`) {
 		t.Fatalf("Conv bias error = %v", err)
 	}
@@ -499,7 +499,7 @@ func TestModelNamesNodeWhenADataShapeFailsMidGraph(t *testing.T) {
 	}
 }
 
-func TestModelRejectsRuntimeControlInputs(t *testing.T) {
+func TestModelAcceptsRuntimeControlInputs(t *testing.T) {
 	cases := []struct {
 		name   string
 		node   modelNode
@@ -588,14 +588,11 @@ func TestModelRejectsRuntimeControlInputs(t *testing.T) {
 				nodes:       []modelNode{tc.node},
 			}
 			outputs, err := model.Run(tc.values)
-			if err == nil {
-				t.Fatal("Run unexpectedly accepted a runtime-computed control input")
+			if err != nil {
+				t.Fatalf("Run rejected runtime-computed control input: %v", err)
 			}
-			if outputs != nil {
-				t.Fatalf("Run returned outputs with error: %v", outputs)
-			}
-			if !strings.Contains(err.Error(), tc.node.name) || !strings.Contains(err.Error(), "runtime-computed") {
-				t.Fatalf("Run error = %v, want node name and runtime-computed", err)
+			if outputs == nil || outputs[tc.node.outputs[0]] == nil {
+				t.Fatalf("Run returned no output: %v", outputs)
 			}
 		})
 	}
