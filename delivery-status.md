@@ -33,7 +33,7 @@ None pending review. `add-dl-mnist-convergence` (M21) is implemented and ready t
 | M24 | Performance is positioned honestly | planning | done | measured at the validated real-model shapes on the M3, best of 5: MobileNetV2 batch-1 170ms vs ORT's 7.3ms (~23x), MiniLM b8×s128 3.34s vs 63ms (~53x); disabling the device shows the gap is CPU-structural (pure Go vs per-architecture assembly), so the decision is a written positioning in Docs/nn.md rather than an assembly chase — the GEMM microkernel lever stays unbuilt until a workload demands it |
 
 | M25 | Sequential layer surface | planning | done | Layer interface (Build/Forward/Parameters, TrainingOnly marker), two-phase construction, torch-name weight interop; the Sequential MNIST run reproduces the hand-written curve digit-for-digit under the same seed |
-| M26 | The complete layer catalog | planning | pending | Conv2D, pooling, training-mode BatchNorm2D (new VJP with running stats vs torch train mode), LayerNorm, Embedding (scatter-add VJP vs torch); a Sequential CNN converges on MNIST and a torch CNN loads and predicts |
+| M26 | The complete layer catalog | planning | done | Conv2D, pooling, training-mode BatchNorm2D (new VJP with running stats vs torch train mode), LayerNorm, Embedding (scatter-add VJP vs torch); a Sequential CNN converges on MNIST and a torch CNN loads and predicts |
 
 Milestone order is the blocking sequence. OpenSpec has no dependency relationship between changes, so nothing else carries it.
 
@@ -41,7 +41,7 @@ Milestone order is the blocking sequence. OpenSpec has no dependency relationshi
 None. Hardware coverage remains Apple/Metal-only, carried as the standing `AGENTS.md` follow-up.
 
 ## Next Verifiable Output
-M26: the complete layer catalog — training-mode BatchNorm, Embedding, Conv/pooling layers, a Sequential CNN converging on MNIST.
+All planned milestones through M26 are closed. The next piece of work needs a new decision: the PR to dev, the GGUF/llm track, or a demand-driven assembly GEMM change.
 
 ## Next Ticket
 M24 the honest performance position. Two measured negatives remain guardrails: no batched device kernel without a single-dispatch batched measurement, and no device Conv without its own measurement.
