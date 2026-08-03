@@ -214,7 +214,8 @@ statistics are refused rather than differentiated with different semantics.
 | `GlobalAveragePool` | 2-D spatial average pooling retaining singleton spatial dimensions |
 | `BatchNormalization` | inference-mode channel normalization with five inputs and configurable epsilon |
 | `Pad` | constant padding from attributes or initializer inputs; reflect and edge modes are refused |
-| `Add`, `Sub`, `Mul`, `Div`, `Pow` | float32 elementwise operations with broadcasting |
+| `Add`, `Sub`, `Mul`, `Div`, `Pow` | float32 elementwise operations with broadcasting; shape arithmetic also supports int64 |
+| `Clip` | opset-11+ float32 clipping with optional scalar min/max inputs |
 | `Relu`, `Sigmoid`, `Tanh`, `Gelu`, `Erf`, `Sqrt` | elementwise activations and math |
 | `LayerNormalization` | suffix normalization with configurable axis and epsilon |
 | `ReduceMean` | reduction over one or more axes with optional keepdims |
@@ -228,6 +229,7 @@ statistics are refused rather than differentiated with different semantics.
 | `Equal`, `Greater`, `GreaterOrEqual`, `Where` | broadcast comparisons and selection |
 | `Cast` | float32, int64, string, and bool conversions used by the exporter |
 | `Constant` | typed tensor attribute |
+| `ConstantOfShape` | fills a runtime int64 shape with the typed scalar attribute, defaulting to float32 zero |
 | `ai.onnx.ml:OneHotEncoder` | string or int64 categories to float32 indicator columns |
 | `ai.onnx.ml:LabelEncoder` | string, int64, or float keys to int64 codes |
 | `ai.onnx.ml:Scaler` | `(value - offset) * scale` |
@@ -244,6 +246,28 @@ encoder, and MNIST-class CNN round trips. The encoder proof contains two-head
 self-attention, residual connections, a feed-forward GELU block, and
 LayerNormalization; the CNN proof covers convolution, BatchNormalization,
 pooling, and a softmax classifier.
+
+## Real-model validation
+
+The gated real-model parity test validates two published checkpoints without
+downloading anything. Set `INSYRA_DL_REAL_MODELS_DIR` to a directory containing
+these exact files:
+
+- `mobilenetv2-12.onnx` (opset 12)
+- `minilm-l6-v2.onnx` (opset 14)
+
+Run the gate with the local `onnxruntime` environment:
+
+```bash
+env INSYRA_DL_REAL_MODELS_DIR=$HOME/.cache/insyra-dl-models \
+  PATH="$HOME/.cache/insyra-crosslang-venv/bin:$PATH" \
+  go test ./dl/ -run RealModel -count=1 -v
+```
+
+It feeds deterministic image or token tensors to both `dl` and `onnxruntime`
+and compares every output element within f32 tolerance. If the variable is
+unset or either file is absent, the gate skips and names
+`INSYRA_DL_REAL_MODELS_DIR`; it never accesses the network.
 
 ## Real-model smoke test
 

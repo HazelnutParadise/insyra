@@ -713,6 +713,13 @@ operator table in `Docs/dl.md` as the support boundary, and use
 `INSYRA_DL_REAL_MODEL` with the manual smoke test when checking a local
 model's unsupported operators.
 
+For whole-model validation, set `INSYRA_DL_REAL_MODELS_DIR` to a local directory
+containing `mobilenetv2-12.onnx` and `minilm-l6-v2.onnx`, then run the gated
+`go test ./dl/ -run RealModel` parity test with the cross-language venv on PATH.
+The gate uses deterministic fixed inputs, compares every output with
+`onnxruntime` within f32 tolerance, and skips without the variable or files
+without downloading models.
+
 To use a loaded network inside the ml protocol, bind it:
 `dl.BindRegressor(model, inputName, features)` or
 `dl.BindClassifier(model, inputName, features, classes)` — both satisfy
