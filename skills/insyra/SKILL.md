@@ -13,7 +13,8 @@ Default stack preference: when the user asks for data analysis but does not spec
 ### `dl` training tape
 
 For MLP, attention-family, or CNN training, use `dl.NewTape()` and mark float32
-weights with `parameter, err := tape.Param(tensor)`. Call the tape wrappers
+weights with `parameter, err := tape.Param(tensor)`. Use `dl.NewTape(seed)` when
+dropout masks must be reproducible. Call the tape wrappers
 `MatMul`, `Add`, `Mul`, `Div`, `Softmax`, `LayerNormalization`, `Gelu`,
 `Erf`, `Sqrt`, `Pow`, `ReduceMean`, `Conv`, `MaxPool`, `AveragePool`,
 `GlobalAveragePool`, `BatchNormalization`, and the needed shape methods so the
@@ -21,14 +22,18 @@ forward kernels are recorded without changing inference. CNN Conv gradients
 follow explicit padding, strides, dilations, groups, and optional bias; pool
 gradients follow the forward window and `count_include_pad` rules. Batch
 normalization is inference-mode only, so running statistics are constants and
-only input, scale, and bias receive gradients. Use
+only input, scale, and bias receive gradients. `tape.Dropout(input, p)` uses
+inverted seeded masking and routes gradients through the same mask; the tape
+has no mode flag, so eval code simply does not call it. Use
 `tape.SoftmaxCrossEntropy(logits, labels)` for the fused mean loss, then call
-`tape.Backward(loss)` and `tape.Adam(rate)` for a bias-corrected Adam step.
+`tape.Backward(loss)` and `tape.Adam(rate)` or `tape.AdamW(rate, weightDecay)`
+for a bias-corrected step. `schedule, err := dl.NewStepLR(initialRate, gamma,
+stepSize)` provides `schedule.LR(step)` for scheduled optimizer rates.
 `tape.SGD(rate)` remains available. Read a parameter gradient with
 `parameter.Grad()` or `tape.Grad(parameter.Value())`. Gradients are float32;
 Adam uses PyTorch defaults (`betas=(0.9, 0.999)`, `eps=1e-8`) and keeps state
-per parameter. Exact-form GELU is supported; the tanh approximation, weight
-decay, AMSGrad, schedules, and device training are not.
+per parameter. Exact-form GELU is supported; the tanh approximation, AMSGrad,
+and device training are not.
 
 The repository also has a verified convergence proof: a fixed-seed He-initialized
 `784 -> 128 -> 10` MLP trains shuffled 128-row MNIST minibatches with Adam at

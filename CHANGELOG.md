@@ -96,6 +96,11 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 ### `dl`
 
+- Added a seeded tape `Dropout` wrapper with inverted scaling and a matching
+  masked VJP; eval remains the caller's identity path by omitting the wrapper.
+- Added decoupled `AdamW` weight decay and a PyTorch-compatible `StepLR`
+  helper, with multi-step loss and parameter parity against a fixed PyTorch
+  MLP and an assertion separating AdamW from coupled L2.
 - Added pure-Go float32 ONNX inference for a focused MLP operator family. Models are decoded with `protowire`, validated at load time, and run with named inputs and outputs. Malformed files return errors without panicking, and unsupported operators are listed together. Standalone tensor kernels and a fixed-weight MLP are verified against `onnxruntime`.
 - `dl` now reads `ml`'s exported regressors, tree ensembles, and preprocessing pipelines in pure Go via the `ai.onnx.ml` operator domain. `BindRegressor` and `BindClassifier` adapt loaded networks into the `ml` protocol structurally, with name-bound columns and conformance checks. The strict closure test covers binary logistic classifier labels and probabilities against both the fitted model and `onnxruntime`.
 - `dl` now supports N-D batched `MatMul` with NumPy-style leading-batch broadcasting, LayerNormalization, GELU, reduction and shape-control kernels, comparisons, slicing, splitting, and general-rank Transpose. The two-dimensional MatMul path remains the fast path.

@@ -169,7 +169,7 @@ The differentiable wrappers are `MatMul`, `Add`, `Relu`, `Sigmoid`, `Tanh`,
 `Pow`, `ReduceMean`, and the shape wrappers `Transpose`, `Reshape`, `Flatten`,
 `Squeeze`, `Unsqueeze`, `Slice`, `Concat`, and `Split`, together with the CNN
 wrappers `Conv`, `MaxPool`, `AveragePool`, `GlobalAveragePool`, and inference-
-mode `BatchNormalization`. `Gemm` accepts alpha,
+mode `BatchNormalization`, plus training-mode `Dropout`. `Gemm` accepts alpha,
 beta, and transpose attributes. `SoftmaxCrossEntropy`
 takes logits
 with shape `[N, C]` and int64 labels with shape `[N]`, and returns one mean-loss
@@ -187,6 +187,39 @@ bias-corrected step with PyTorch's defaults (`betas=(0.9, 0.999)`, `eps=1e-8`):
 ```go
 if err := tape.Adam(0.003); err != nil { log.Fatal(err) }
 ```
+
+`AdamW` uses the same moment defaults but applies decoupled weight decay
+separately from the moment update:
+
+```go
+if err := tape.AdamW(0.003, 1e-2); err != nil { log.Fatal(err) }
+```
+
+`NewStepLR(initialRate, gamma, stepSize)` returns a schedule whose `LR(step)`
+starts at `initialRate` for step 0 and decays at `stepSize`, `2*stepSize`, and
+so on. Pass its result into `Adam` or `AdamW` for each optimizer step:
+
+```go
+schedule, err := dl.NewStepLR(1e-3, 0.5, 2)
+if err != nil { log.Fatal(err) }
+for step := 0; step < 5; step++ {
+	// build the forward graph, call Backward, then:
+	if err := tape.AdamW(schedule.LR(step), 1e-2); err != nil { log.Fatal(err) }
+}
+```
+
+Dropout is a training wrapper using the tape-owned seeded RNG. Use
+`dl.NewTape(seed)` when a reproducible mask is needed; kept values are scaled
+by `1/(1-p)` and the backward pass uses that same mask:
+
+```go
+tape := dl.NewTape(42)
+hidden, err := tape.Dropout(hidden, 0.2)
+if err != nil { log.Fatal(err) }
+```
+
+The tape is a training surface and has no mode flag. For evaluation, callers
+simply do not call `Dropout`, so the eval path is the identity.
 
 For a convergence loop, keep the marked parameters and tape across shuffled
 minibatches so Adam retains its per-parameter moments. A typical MNIST-shaped
@@ -218,9 +251,9 @@ for epoch := 0; epoch < 5; epoch++ {
 The repository's convergence proof keeps data loading and seeded initialization
 test-side, so `dl` does not add a public dataset or random-initialization API.
 
-Weight decay, AMSGrad, schedules, and device training are not part of this
-API. The tape is intended for the fixed-weight CPU training path; the
-inference kernels and ONNX graph runner remain unchanged.
+AMSGrad and device training are not part of this API. The tape is intended for
+the fixed-weight CPU training path; the inference kernels and ONNX graph runner
+remain unchanged.
 
 CNN training uses the same tape and parameter flow. Mark convolution, batch
 normalization affine, and linear weights with `Param`, then compose the
