@@ -28,7 +28,7 @@ None pending review. `add-dl-mnist-convergence` (M21) is implemented and ready t
 | M18 | Training (phase 2) | planning | done | SafeTensors, the tape (MLP VJPs, fused softmax–cross-entropy, SGD), attention-family gradients, Adam, and CNN VJPs are complete — a fixed two-head encoder block and a deterministic MNIST-class CNN each take one Adam step in dl and PyTorch agrees on loss, every gradient, and every post-step parameter; every VJP is pinned by ungated finite differences |
 | M20 | Real checkpoints run | planning | done | `mobilenetv2-12.onnx` and `minilm-l6-v2.onnx` run in dl and match `onnxruntime` on deterministic fixed inputs. The gated test covers `Clip`, `ConstantOfShape`, runtime-computed int64 shape tensors, and the required broadcast/Cast/Where paths |
 | M21 | Training converges for real | planning | done | a fixed-seed 784→128→10 MLP reaches 95.84% test accuracy in two epochs; mean training loss is 0.350281 then 0.163855; a dataset-free micro-convergence test reaches 100% |
-| M22 | Training practice ops | planning | pending | dropout, decoupled weight decay, and an LR schedule, each verified against PyTorch |
+| M22 | Training practice ops | planning | done | inverted dropout (seeded, frozen-mask finite-difference), AdamW with a coupled-vs-decoupled divergence assertion, and StepLR — a five-step AdamW+StepLR trajectory matches PyTorch on loss and every parameter at every step |
 | M23 | f16/bf16 | planning | pending | half-precision checkpoints load with a decided storage-vs-compute dtype design; parity gates decide per platform |
 | M24 | Performance is positioned honestly | planning | pending | dl vs onnxruntime CPU measured at the real-model shapes; the number decides SIMD investment or a written positioning, the way M8 decided |
 
