@@ -748,10 +748,13 @@ Use `dl.LoadSafeTensors(reader)` to load a complete SafeTensors checkpoint as
 `map[string]*dl.Tensor`. It validates the header, shapes, exact byte lengths,
 non-overlapping contiguous data regions, and duplicate names before returning.
 The optional `__metadata__` string map is accepted and ignored. `F32`, `I64`,
-and `BOOL` load into their matching native Tensor dtypes; unsupported dtypes
-such as `F64`, `F16`, and `BF16` are refused together with each tensor name,
-without silent conversion. Treat the input as untrusted and always check the
-returned error.
+and `BOOL` load into their matching native Tensor dtypes. `F16` and `BF16`
+load as f32 through value-exact widening, so every kernel still computes in
+f32. `F64`, quantized dtypes, and other unsupported dtypes are refused
+together with each tensor name, without silent narrowing. Treat the input as
+untrusted and always check the returned error. ONNX `FLOAT16` and `BFLOAT16`
+initializers follow the same exact widening rule; a Cast targeting either half
+dtype rounds the f32 value to that storage format and widens it back.
 
 Use `engine` when you are building higher-level tooling (agent tools, MCP servers, pipelines) and want reusable building blocks:
 

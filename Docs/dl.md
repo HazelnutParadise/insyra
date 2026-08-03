@@ -97,6 +97,12 @@ dimension is dynamic and accepts any non-negative runtime dimension.
 each input's name, dtype, rank, and fixed dimensions. It returns named output
 tensors and reports the node name when a graph operation fails.
 
+ONNX `FLOAT16` and `BFLOAT16` initializers are widened value-exactly to
+`float32` when loaded. A `Cast` whose target is `FLOAT16` or `BFLOAT16` rounds
+the f32 value to that storage format and widens it back immediately. The graph
+interpreter computes in f32; it does not claim half-precision arithmetic or
+half-precision outputs.
+
 ## Loading SafeTensors weights
 
 `LoadSafeTensors` reads a complete SafeTensors file from an `io.Reader` and
@@ -122,11 +128,19 @@ region before materialising any tensor. The optional `__metadata__` entry is
 accepted as a string-to-string object and ignored. Malformed input returns an
 error naming the defect and tensor rather than panicking.
 
-`F32`, `I64`, and `BOOL` load natively into `float32`, `int64`, and `bool`
-Tensors. `F64`, `F16`, `BF16`, quantized dtypes, and other unsupported dtypes
-are refused together in one error, with every tensor name and dtype listed.
-There is no silent widening or narrowing, and the loader does not mmap or load
-tensors lazily.
+The supported loading contract is:
+
+| SafeTensors dtype | Tensor dtype | Conversion |
+| --- | --- | --- |
+| `F32` | `float32` | native |
+| `F16` | `float32` | exact IEEE binary16 widening |
+| `BF16` | `float32` | exact top-16-bit binary32 widening |
+| `I64` | `int64` | native |
+| `BOOL` | `bool` | native |
+
+`F64`, quantized dtypes, and other unsupported dtypes are refused together in
+one error, with every tensor name and dtype listed. There is no silent
+narrowing, and the loader does not mmap or load tensors lazily.
 
 ## Training and autodiff
 
@@ -290,7 +304,7 @@ statistics are refused rather than differentiated with different semantics.
 | `Concat`, `Squeeze`, `Unsqueeze`, `Expand`, `Shape`, `Gather` | standard-domain shape and feature assembly |
 | `Slice`, `Split` | standard-domain tensor partitioning and slicing |
 | `Equal`, `Greater`, `GreaterOrEqual`, `Where` | broadcast comparisons and selection |
-| `Cast` | float32, int64, string, and bool conversions used by the exporter |
+| `Cast` | float32, int64, string, and bool conversions; half targets round and widen to f32 |
 | `Constant` | typed tensor attribute |
 | `ConstantOfShape` | fills a runtime int64 shape with the typed scalar attribute, defaulting to float32 zero |
 | `ai.onnx.ml:OneHotEncoder` | string or int64 categories to float32 indicator columns |

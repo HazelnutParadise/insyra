@@ -112,6 +112,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - Extended the float32 autodiff tape to the attention training family: broadcast-aware batched `MatMul`, axis `Softmax`, `LayerNormalization`, exact `Gelu`, `Erf`, `Sqrt`, `Pow`, `ReduceMean`, shape-operation VJPs, and per-parameter bias-corrected `Adam` updates. Unsupported backward operations refuse with the operation name instead of fabricating zero gradients.
 - Added `Clip` and `ConstantOfShape`, runtime-computed int64 shape/control tensors, and the remaining execution support needed by published MobileNetV2 and MiniLM-L6-v2 checkpoints. A gated `INSYRA_DL_REAL_MODELS_DIR` test compares both models against `onnxruntime` on deterministic inputs.
 - Added a dataset-gated MNIST convergence proof for the autodiff tape: a fixed-seed He-initialized `784 -> 128 -> 10` MLP trains shuffled 128-row minibatches with Adam, reaches 95%+ test accuracy within two epochs on the local IDX dataset, and includes a dataset-free two-class micro-convergence test. The IDX reader and initialization helpers remain test-side, not public API.
+- `LoadSafeTensors` now accepts `F16` and `BF16` checkpoints and widens them bit-exactly to f32. ONNX `FLOAT16` and `BFLOAT16` initializers follow the same path, while Cast-to-half rounds through the storage format and widens back; graph computation remains f32 and quantized dtypes remain refused.
 
 ### CLI
 
