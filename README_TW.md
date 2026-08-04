@@ -10,7 +10,7 @@
 
 **繁體中文 | [English](README.md)**
 
-**Insyra** 是 Go 的資料分析與機器學習函式庫，從資料表一路涵蓋到深度學習。每一層都有參照實作把關：統計對 R、模型對 scikit-learn、神經網路對 PyTorch 與 onnxruntime。GPU 加速、平行處理、資料視覺化與 Python 互通全部內建。
+**Insyra** 是 Go 的完整資料分析生態系，涵蓋資料讀取與清理、統計、視覺化、機器學習到深度學習。每一層都有參照實作把關：統計對 R、模型對 scikit-learn、神經網路對 PyTorch 與 onnxruntime。GPU 加速、平行處理、Python 互通與自帶 REPL 的 CLI 全部內建。
 
 **官方網站: <https://insyra.hazelnut-paradise.com>**
 

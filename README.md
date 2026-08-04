@@ -10,7 +10,7 @@
 
 **[繁體中文](README_TW.md) | English**
 
-**Insyra** is a data analysis and machine learning library for Go that covers the whole journey from data frames to deep learning. Every layer is checked against a reference implementation: statistics against R, models against scikit-learn, neural networks against PyTorch and onnxruntime. GPU acceleration, parallel processing, data visualization, and Python interop come built in.
+**Insyra** is a complete data analysis ecosystem for Go, spanning data loading and cleaning, statistics, visualization, machine learning, and deep learning. Every layer is checked against a reference implementation: statistics against R, models against scikit-learn, neural networks against PyTorch and onnxruntime. GPU acceleration, parallel processing, Python interop, and a CLI with its own REPL come built in.
 
 **Official Website: <https://insyra.hazelnut-paradise.com>**
 
