@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"runtime"
+	"sort"
 	"strconv"
 	"sync"
 
@@ -1155,6 +1156,39 @@ func Floor(input *Tensor) (*Tensor, error) {
 	return unary("floor", input, func(value float32) float32 { return float32(math.Floor(float64(value))) })
 }
 
+// LeakyRelu applies max(input, 0) + alpha*min(input, 0) element by element.
+func LeakyRelu(input *Tensor, alpha ...float32) (*Tensor, error) {
+	coefficient := float32(0.01)
+	if len(alpha) > 1 {
+		return nil, fmt.Errorf("leaky relu accepts at most one alpha")
+	}
+	if len(alpha) == 1 {
+		coefficient = alpha[0]
+	}
+	return unary("leaky relu", input, func(value float32) float32 {
+		if value < 0 {
+			return coefficient * value
+		}
+		return value
+	})
+}
+
+// Exp computes the natural exponential element by element.
+func Exp(input *Tensor) (*Tensor, error) {
+	return unary("exp", input, func(value float32) float32 { return float32(math.Exp(float64(value))) })
+}
+
+// Ceil rounds each float32 element toward positive infinity.
+func Ceil(input *Tensor) (*Tensor, error) {
+	return unary("ceil", input, func(value float32) float32 { return float32(math.Ceil(float64(value))) })
+}
+
+// Round rounds each element to the nearest integer, with halfway cases going
+// to the nearest even integer as required by ONNX.
+func Round(input *Tensor) (*Tensor, error) {
+	return unary("round", input, func(value float32) float32 { return float32(math.RoundToEven(float64(value))) })
+}
+
 // Sigmoid computes 1/(1+exp(-input)) element by element.
 func Sigmoid(input *Tensor) (*Tensor, error) {
 	return unary("sigmoid", input, func(value float32) float32 {
@@ -1394,6 +1428,256 @@ func ReduceMean(input *Tensor, axes []int, keepdims bool) (*Tensor, error) {
 		}
 	}
 	return result, nil
+}
+
+// ReduceMin returns the minimum over one or more axes. A nil or empty axes
+// list reduces all dimensions, matching ONNX when the axes input is omitted.
+func ReduceMin(input *Tensor, axes []int, keepdims bool) (*Tensor, error) {
+	if err := requireFloat32(input, "reduce min input"); err != nil {
+		return nil, err
+	}
+	rank := len(input.shape)
+	axisSet := make(map[int]struct{})
+	if len(axes) == 0 {
+		for axis := 0; axis < rank; axis++ {
+			axisSet[axis] = struct{}{}
+		}
+	} else {
+		for _, rawAxis := range axes {
+			axis, axisErr := normalizeAxis(rawAxis, rank, "reduce min")
+			if axisErr != nil {
+				return nil, axisErr
+			}
+			if _, exists := axisSet[axis]; exists {
+				return nil, fmt.Errorf("reduce min axis %d is repeated", rawAxis)
+			}
+			axisSet[axis] = struct{}{}
+		}
+	}
+	outShape := make([]int, 0, rank)
+	for axis, dimension := range input.shape {
+		if _, reduced := axisSet[axis]; reduced {
+			if keepdims {
+				outShape = append(outShape, 1)
+			}
+			continue
+		}
+		outShape = append(outShape, dimension)
+	}
+	result, err := newFloat32Tensor(outShape, make([]float32, elementCount(outShape)))
+	if err != nil {
+		return nil, err
+	}
+	for index := range result.data {
+		result.data[index] = float32(math.Inf(1))
+	}
+	for inputIndex, value := range input.data {
+		coordinates := linearCoordinates(inputIndex, input.shape, input.strides)
+		outputCoordinates := make([]int, 0, len(outShape))
+		for axis, coordinate := range coordinates {
+			if _, reduced := axisSet[axis]; reduced {
+				if keepdims {
+					outputCoordinates = append(outputCoordinates, 0)
+				}
+				continue
+			}
+			outputCoordinates = append(outputCoordinates, coordinate)
+		}
+		outputIndex := 0
+		for axis, coordinate := range outputCoordinates {
+			outputIndex += coordinate * result.strides[axis]
+		}
+		if value < result.data[outputIndex] {
+			result.data[outputIndex] = value
+		}
+	}
+	return result, nil
+}
+
+// Tile repeats input along every axis. repeats is the ONNX int64 control
+// tensor and must contain one non-negative value per input dimension.
+func Tile(input, repeats *Tensor) (*Tensor, error) {
+	if input == nil {
+		return nil, fmt.Errorf("tile input is nil")
+	}
+	if !supportedTensorDType(input.dtype) {
+		return nil, unsupportedDTypeError(input.dtype)
+	}
+	if repeats == nil || repeats.dtype != DTypeInt64 || len(repeats.shape) != 1 {
+		return nil, fmt.Errorf("tile repeats must be a one-dimensional int64 tensor")
+	}
+	if len(repeats.int64Data) != len(input.shape) {
+		return nil, fmt.Errorf("tile repeats has %d values, want %d", len(repeats.int64Data), len(input.shape))
+	}
+	outputShape := make([]int, len(input.shape))
+	for axis, repeat := range repeats.int64Data {
+		if repeat < 0 || repeat > int64(maxInt()) {
+			return nil, fmt.Errorf("tile repeat %d at axis %d is invalid", repeat, axis)
+		}
+		if input.shape[axis] != 0 && repeat > int64(maxInt()/input.shape[axis]) {
+			return nil, fmt.Errorf("tile output shape overflows at axis %d", axis)
+		}
+		outputShape[axis] = input.shape[axis] * int(repeat)
+	}
+	result, err := newTypedTensor(input.dtype, outputShape)
+	if err != nil {
+		return nil, err
+	}
+	for outputIndex := 0; outputIndex < result.Len(); outputIndex++ {
+		remaining := outputIndex
+		inputIndex := 0
+		for axis, stride := range result.strides {
+			coordinate := 0
+			if stride != 0 {
+				coordinate = remaining / stride
+				remaining %= stride
+			}
+			if input.shape[axis] != 0 {
+				inputIndex += (coordinate % input.shape[axis]) * input.strides[axis]
+			}
+		}
+		copyTensorElement(result, outputIndex, input, inputIndex)
+	}
+	return result, nil
+}
+
+// NonMaxSuppression selects boxes independently for every batch and class.
+// Optional control tensors are scalar inputs. An omitted max-output tensor is
+// ONNX's zero default, which selects no boxes.
+func NonMaxSuppression(boxes, scores, maxOutputBoxesPerClass, iouThreshold, scoreThreshold *Tensor, centerPointBox ...int) (*Tensor, error) {
+	if err := requireFloat32(boxes, "non max suppression boxes"); err != nil {
+		return nil, err
+	}
+	if err := requireFloat32(scores, "non max suppression scores"); err != nil {
+		return nil, err
+	}
+	if len(boxes.shape) != 3 || boxes.shape[2] != 4 {
+		return nil, fmt.Errorf("non max suppression boxes shape %v, want [batch, boxes, 4]", boxes.shape)
+	}
+	if len(scores.shape) != 3 || scores.shape[0] != boxes.shape[0] || scores.shape[2] != boxes.shape[1] {
+		return nil, fmt.Errorf("non max suppression scores shape %v is incompatible with boxes shape %v", scores.shape, boxes.shape)
+	}
+	if len(centerPointBox) > 1 || (len(centerPointBox) == 1 && centerPointBox[0] != 0 && centerPointBox[0] != 1) {
+		return nil, fmt.Errorf("non max suppression center_point_box must be 0 or 1")
+	}
+	center := len(centerPointBox) == 1 && centerPointBox[0] == 1
+	maxOutput := int64(0)
+	if maxOutputBoxesPerClass != nil {
+		if maxOutputBoxesPerClass.dtype != DTypeInt64 || maxOutputBoxesPerClass.Len() != 1 {
+			return nil, fmt.Errorf("non max suppression max_output_boxes_per_class must be an int64 scalar")
+		}
+		maxOutput = maxOutputBoxesPerClass.int64Data[0]
+		if maxOutput < 0 {
+			return nil, fmt.Errorf("non max suppression max_output_boxes_per_class %d is negative", maxOutput)
+		}
+	}
+	iou := float32(0)
+	if iouThreshold != nil {
+		if err := scalarFloat32(iouThreshold, "non max suppression iou_threshold"); err != nil {
+			return nil, err
+		}
+		iou = iouThreshold.data[0]
+		if iou < 0 || iou > 1 || math.IsNaN(float64(iou)) {
+			return nil, fmt.Errorf("non max suppression iou_threshold %g is outside [0, 1]", iou)
+		}
+	}
+	scoreLimit := float32(math.Inf(-1))
+	if scoreThreshold != nil {
+		if err := scalarFloat32(scoreThreshold, "non max suppression score_threshold"); err != nil {
+			return nil, err
+		}
+		scoreLimit = scoreThreshold.data[0]
+	}
+	type candidate struct {
+		box   int
+		score float32
+	}
+	selected := make([]int64, 0)
+	for batch := 0; batch < scores.shape[0]; batch++ {
+		for class := 0; class < scores.shape[1]; class++ {
+			candidates := make([]candidate, 0, scores.shape[2])
+			for box := 0; box < scores.shape[2]; box++ {
+				score := scores.data[(batch*scores.shape[1]+class)*scores.shape[2]+box]
+				if score > scoreLimit {
+					candidates = append(candidates, candidate{box: box, score: score})
+				}
+			}
+			sort.SliceStable(candidates, func(left, right int) bool {
+				if candidates[left].score == candidates[right].score {
+					return candidates[left].box < candidates[right].box
+				}
+				return candidates[left].score > candidates[right].score
+			})
+			kept := make([]int, 0, len(candidates))
+			for _, current := range candidates {
+				if int64(len(kept)) >= maxOutput {
+					break
+				}
+				suppressed := false
+				for _, prior := range kept {
+					if nonMaxIoU(boxes, batch, current.box, prior, center) > iou {
+						suppressed = true
+						break
+					}
+				}
+				if !suppressed {
+					kept = append(kept, current.box)
+					selected = append(selected, int64(batch), int64(class), int64(current.box))
+				}
+			}
+		}
+	}
+	return newInt64Tensor([]int{len(selected) / 3, 3}, selected)
+}
+
+func scalarFloat32(value *Tensor, name string) error {
+	if err := requireFloat32(value, name); err != nil {
+		return err
+	}
+	if value.Len() != 1 {
+		return fmt.Errorf("%s must be a float32 scalar", name)
+	}
+	return nil
+}
+
+func nonMaxIoU(boxes *Tensor, batch, left, right int, center bool) float32 {
+	base := (batch*boxes.shape[1] + left) * 4
+	other := (batch*boxes.shape[1] + right) * 4
+	leftX1, leftY1, leftX2, leftY2 := nmsBox(boxes.data[base:base+4], center)
+	rightX1, rightY1, rightX2, rightY2 := nmsBox(boxes.data[other:other+4], center)
+	intersectionX1 := float64(nmsMaxFloat32(leftX1, rightX1))
+	intersectionY1 := float64(nmsMaxFloat32(leftY1, rightY1))
+	intersectionX2 := float64(nmsMinFloat32(leftX2, rightX2))
+	intersectionY2 := float64(nmsMinFloat32(leftY2, rightY2))
+	intersection := math.Max(0, intersectionX2-intersectionX1) * math.Max(0, intersectionY2-intersectionY1)
+	leftArea := math.Max(0, float64(leftX2-leftX1)) * math.Max(0, float64(leftY2-leftY1))
+	rightArea := math.Max(0, float64(rightX2-rightX1)) * math.Max(0, float64(rightY2-rightY1))
+	union := leftArea + rightArea - intersection
+	if union <= 0 {
+		return 0
+	}
+	return float32(intersection / union)
+}
+
+func nmsBox(box []float32, center bool) (float32, float32, float32, float32) {
+	if center {
+		return box[0] - box[2]/2, box[1] - box[3]/2, box[0] + box[2]/2, box[1] + box[3]/2
+	}
+	return box[0], box[1], box[2], box[3]
+}
+
+func nmsMaxFloat32(left, right float32) float32 {
+	if left > right {
+		return left
+	}
+	return right
+}
+
+func nmsMinFloat32(left, right float32) float32 {
+	if left < right {
+		return left
+	}
+	return right
 }
 
 func unary(name string, input *Tensor, operation func(float32) float32) (*Tensor, error) {

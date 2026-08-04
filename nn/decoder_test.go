@@ -158,6 +158,35 @@ func TestLoadONNXAllowsOptionalLayerNormalizationOutputs(t *testing.T) {
 	}
 }
 
+func TestLoadONNXReportsUnsupportedLoopBodyOperator(t *testing.T) {
+	bodyNode := appendTestField(nil, 1, protowire.BytesType, []byte("iter"))
+	bodyNode = appendTestField(bodyNode, 2, protowire.BytesType, []byte("body_out"))
+	bodyNode = appendTestField(bodyNode, 4, protowire.BytesType, []byte("ConvTranspose"))
+	body := appendTestField(nil, 1, protowire.BytesType, bodyNode)
+	body = appendTestField(body, 2, protowire.BytesType, []byte("loop-body"))
+	body = appendTestField(body, 11, protowire.BytesType, testONNXValueInfo("iter", 7, nil))
+	body = appendTestField(body, 12, protowire.BytesType, testONNXValueInfo("body_out", 7, nil))
+
+	attribute := appendTestField(nil, 1, protowire.BytesType, []byte("body"))
+	attribute = appendTestField(attribute, 6, protowire.BytesType, body)
+	attribute = appendTestVarint(attribute, 20, 5)
+	node := appendTestField(nil, 1, protowire.BytesType, []byte("trip"))
+	node = appendTestField(node, 2, protowire.BytesType, []byte("Y"))
+	node = appendTestField(node, 4, protowire.BytesType, []byte("Loop"))
+	node = appendTestField(node, 5, protowire.BytesType, attribute)
+	graph := appendTestField(nil, 1, protowire.BytesType, node)
+	graph = appendTestField(graph, 11, protowire.BytesType, testONNXValueInfo("trip", 7, nil))
+	graph = appendTestField(graph, 12, protowire.BytesType, testONNXValueInfo("Y", 7, nil))
+	modelBytes := appendTestVarint(nil, 1, 9)
+	modelBytes = appendTestField(modelBytes, 7, protowire.BytesType, graph)
+	modelBytes = appendTestField(modelBytes, 8, protowire.BytesType, appendTestVarint(nil, 2, 13))
+
+	_, err := LoadONNX(strings.NewReader(string(modelBytes)))
+	if err == nil || !strings.Contains(err.Error(), "loop-body") || !strings.Contains(err.Error(), "ConvTranspose") {
+		t.Fatalf("LoadONNX error = %v, want loop-body and ConvTranspose", err)
+	}
+}
+
 func TestLoadONNXValidatesMLDomainOpsetImport(t *testing.T) {
 	base := []testONNXNode{{opType: "Scaler", domain: "ai.onnx.ml", input: "X", output: "Y"}}
 	withoutImport := testONNXModelWithMLImport(base, 0)

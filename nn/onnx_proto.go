@@ -40,17 +40,21 @@ type protoNode struct {
 }
 
 type protoAttribute struct {
-	name       string
-	typeID     int32
-	floatValue float32
-	hasFloat   bool
-	intValue   int64
-	hasInt     bool
-	string     []byte
-	tensor     *protoTensor
-	floats     []float32
-	ints       []int64
-	strings    [][]byte
+	name        string
+	typeID      int32
+	floatValue  float32
+	hasFloat    bool
+	intValue    int64
+	hasInt      bool
+	string      []byte
+	tensor      *protoTensor
+	floats      []float32
+	ints        []int64
+	strings     [][]byte
+	graph       *protoGraph
+	graphs      []protoGraph
+	modelGraph  *modelGraph
+	modelGraphs []*modelGraph
 }
 
 type protoTensor struct {
@@ -270,6 +274,15 @@ func decodeAttributeProto(data []byte) (attribute protoAttribute, err error) {
 				return decodeErr
 			}
 			attribute.tensor = &tensor
+		case 6:
+			if typ != protowire.BytesType {
+				return wrongWireType("attribute graph", protowire.BytesType, typ)
+			}
+			graph, decodeErr := decodeGraphProto(value)
+			if decodeErr != nil {
+				return decodeErr
+			}
+			attribute.graph = &graph
 		case 7:
 			parsed, parseErr := appendFloat32Values(attribute.floats, typ, value, "attribute floats")
 			if parseErr != nil {
@@ -287,6 +300,15 @@ func decodeAttributeProto(data []byte) (attribute protoAttribute, err error) {
 				return wrongWireType("attribute strings", protowire.BytesType, typ)
 			}
 			attribute.strings = append(attribute.strings, append([]byte(nil), value...))
+		case 10:
+			if typ != protowire.BytesType {
+				return wrongWireType("attribute graphs", protowire.BytesType, typ)
+			}
+			graph, decodeErr := decodeGraphProto(value)
+			if decodeErr != nil {
+				return decodeErr
+			}
+			attribute.graphs = append(attribute.graphs, graph)
 		case 20:
 			parsed, parseErr := parseInt32(typ, value, "attribute type")
 			if parseErr != nil {

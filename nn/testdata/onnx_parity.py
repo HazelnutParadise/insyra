@@ -222,6 +222,38 @@ def one_op(name):
             [numpy_helper.from_array(scale, "scale"), numpy_helper.from_array(bias, "bias")],
         )
         return model, {"X": value}
+    if name == "LeakyRelu":
+        value = np.array([[-2, -1, 0], [1, 2, 3]], dtype=np.float32)
+        model = make_model(
+            [helper.make_node("LeakyRelu", ["X"], ["Y"], alpha=0.2)],
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3])],
+        )
+        return model, {"X": value}
+    if name == "Exp":
+        value = np.array([[-2, -1, 0], [1, 2, 3]], dtype=np.float32)
+        model = make_model(
+            [helper.make_node("Exp", ["X"], ["Y"])],
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3])],
+        )
+        return model, {"X": value}
+    if name == "Ceil":
+        value = np.array([[-2.75, -1, -0.25], [0, 1.25, 3.9]], dtype=np.float32)
+        model = make_model(
+            [helper.make_node("Ceil", ["X"], ["Y"])],
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3])],
+        )
+        return model, {"X": value}
+    if name == "Round":
+        value = np.array([[-2.5, -1.5, -0.5, 0.5], [1.5, 2.5, 3.5, 4.5]], dtype=np.float32)
+        model = make_model(
+            [helper.make_node("Round", ["X"], ["Y"])],
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 4])],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 4])],
+        )
+        return model, {"X": value}
     if name == "BatchNormalizationEpsilon":
         value = np.array([1, 3, 10, 14], dtype=np.float32).reshape(1, 2, 1, 2)
         scale = np.array([2, 0.5], dtype=np.float32)
@@ -518,6 +550,47 @@ def one_op(name):
             opset=opset,
         )
         return model, {"X": value}
+    if name == "ReduceMin":
+        value = np.arange(1, 25, dtype=np.float32).reshape(2, 3, 4)
+        axes = np.array([0, 2], dtype=np.int64)
+        model = make_model(
+            [helper.make_node("ReduceMin", ["X", "axes"], ["Y"], keepdims=1)],
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3, 4])],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 3, 1])],
+            [numpy_helper.from_array(axes, "axes")],
+            opset=18,
+        )
+        return model, {"X": value}
+    if name == "Tile":
+        value = np.array([[1], [2]], dtype=np.float32)
+        repeats = np.array([2, 3], dtype=np.int64)
+        model = make_model(
+            [helper.make_node("Tile", ["X", "repeats"], ["Y"])],
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 1])],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [4, 3])],
+            [numpy_helper.from_array(repeats, "repeats")],
+        )
+        return model, {"X": value}
+    if name in ("NonMaxSuppression", "NonMaxSuppressionCenter"):
+        if name == "NonMaxSuppression":
+            boxes = np.array([[[0, 0, 1, 1], [0.1, 0.1, 1.1, 1.1], [2, 2, 3, 3]]], dtype=np.float32)
+            score_threshold = np.array([0.0], dtype=np.float32)
+            center_point_box = 0
+        else:
+            boxes = np.array([[[0, 0, 2, 2], [0.1, 0.1, 2, 2], [5, 5, 1, 1]]], dtype=np.float32)
+            score_threshold = np.array([0.75], dtype=np.float32)
+            center_point_box = 1
+        scores = np.array([[[0.9, 0.8, 0.7]]], dtype=np.float32)
+        max_output = np.array([3], dtype=np.int64)
+        iou_threshold = np.array([0.5], dtype=np.float32)
+        model = make_model(
+            [helper.make_node("NonMaxSuppression", ["boxes", "scores", "max_output", "iou_threshold", "score_threshold"], ["Y"], center_point_box=center_point_box)],
+            [helper.make_tensor_value_info("boxes", TensorProto.FLOAT, [1, 3, 4]), helper.make_tensor_value_info("scores", TensorProto.FLOAT, [1, 1, 3])],
+            [helper.make_tensor_value_info("Y", TensorProto.INT64, [None, 3])],
+            [numpy_helper.from_array(max_output, "max_output"), numpy_helper.from_array(iou_threshold, "iou_threshold"), numpy_helper.from_array(score_threshold, "score_threshold")],
+            opset=11,
+        )
+        return model, {"boxes": boxes, "scores": scores}
     if name == "Reshape":
         value = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
         shape = np.array([3, 2], dtype=np.int64)
@@ -777,6 +850,54 @@ def cnn_model():
     return model, {"X": x}
 
 
+def loop_model(kind):
+    trip_count = np.array(0 if kind in ("zero", "scan-empty") else (4 if kind in ("counter", "false") else 6), dtype=np.int64)
+    condition = np.array(kind != "false", dtype=np.bool_)
+    initial = np.array(0, dtype=np.float32)
+    body_inputs = [
+        helper.make_tensor_value_info("iter", TensorProto.INT64, []),
+        helper.make_tensor_value_info("cond_in", TensorProto.BOOL, []),
+        helper.make_tensor_value_info("sum_in", TensorProto.FLOAT, []),
+    ]
+    body_outputs = [
+        helper.make_tensor_value_info("cond_out", TensorProto.BOOL, []),
+        helper.make_tensor_value_info("sum_out", TensorProto.FLOAT, []),
+    ]
+    initializers = []
+    nodes = [helper.make_node("Add", ["sum_in", "one"], ["sum_out"])]
+    initializers.append(numpy_helper.from_array(np.array(1, dtype=np.float32), "one"))
+    if kind in ("counter", "zero", "false"):
+        body_nodes = nodes + [helper.make_node("Identity", ["cond_in"], ["cond_out"])]
+    elif kind == "condition":
+        initializers.append(numpy_helper.from_array(np.array(3, dtype=np.int64), "limit"))
+        body_nodes = nodes + [helper.make_node("Greater", ["limit", "iter"], ["cond_out"])]
+    elif kind in ("scan", "scan-empty"):
+        body_outputs.append(helper.make_tensor_value_info("scan_out", TensorProto.INT64, []))
+        body_nodes = nodes + [
+            helper.make_node("Identity", ["cond_in"], ["cond_out"]),
+            helper.make_node("Identity", ["iter"], ["scan_out"]),
+        ]
+    else:
+        raise ValueError("unknown loop model: " + kind)
+    body = helper.make_graph(body_nodes, kind + "-body", body_inputs, body_outputs, initializer=initializers)
+    outputs = [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [])]
+    node_outputs = ["Y"]
+    if kind in ("scan", "scan-empty"):
+        outputs.append(helper.make_tensor_value_info("Scan", TensorProto.INT64, [None]))
+        node_outputs.append("Scan")
+    model = make_model(
+        [helper.make_node("Loop", ["trip_count", "condition", "initial"], node_outputs, body=body)],
+        [
+            helper.make_tensor_value_info("trip_count", TensorProto.INT64, []),
+            helper.make_tensor_value_info("condition", TensorProto.BOOL, []),
+            helper.make_tensor_value_info("initial", TensorProto.FLOAT, []),
+        ],
+        outputs,
+        opset=13,
+    )
+    return model, {"trip_count": trip_count, "condition": condition, "initial": initial}
+
+
 def roundtrip(model_path, payload_path):
     session = ort.InferenceSession(model_path, providers=["CPUExecutionProvider"])
     payload = json.load(open(payload_path))
@@ -831,6 +952,13 @@ def main():
         model, feed = cnn_model()
         with open(sys.argv[2], "wb") as handle:
             handle.write(model.SerializeToString())
+        run_model(model, feed)
+        return
+    if mode == "loop":
+        model, feed = loop_model(sys.argv[2])
+        with open(sys.argv[3], "wb") as handle:
+            handle.write(model.SerializeToString())
+        write_feed(model, feed, sys.argv[4])
         run_model(model, feed)
         return
     if mode == "roundtrip":

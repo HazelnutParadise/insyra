@@ -24,6 +24,14 @@ type modelNode struct {
 	attributes map[string]protoAttribute
 }
 
+type modelGraph struct {
+	name         string
+	inputSpecs   []ValueInfo
+	outputSpecs  []ValueInfo
+	nodes        []modelNode
+	initializers map[string]*Tensor
+}
+
 // Model is a validated ONNX graph. Initializers are materialised during load.
 type Model struct {
 	inputSpecs   []ValueInfo
@@ -36,14 +44,14 @@ type Model struct {
 var supportedOperators = map[string]struct{}{
 	"Gemm": {}, "MatMul": {}, "Add": {}, "Sub": {}, "Mul": {}, "Div": {},
 	"Relu": {}, "Sigmoid": {}, "Tanh": {}, "Gelu": {}, "Erf": {}, "Sqrt": {}, "Floor": {}, "Pow": {},
-	"LayerNormalization": {}, "ReduceMean": {}, "Softmax": {}, "Identity": {},
+	"LeakyRelu": {}, "Exp": {}, "Ceil": {}, "Round": {}, "LayerNormalization": {}, "ReduceMean": {}, "ReduceMin": {}, "Softmax": {}, "Identity": {},
 	"Conv": {}, "MaxPool": {}, "AveragePool": {}, "GlobalAveragePool": {},
 	"BatchNormalization": {}, "Pad": {},
 	"InstanceNormalization": {}, "Resize": {}, "Upsample": {},
 	"Clip": {}, "ConstantOfShape": {},
 	"Reshape": {}, "Flatten": {}, "Transpose": {}, "Cast": {}, "Constant": {},
 	"Concat": {}, "Unsqueeze": {}, "Squeeze": {}, "Expand": {}, "Shape": {}, "Slice": {}, "Split": {},
-	"Gather": {}, "GreaterOrEqual": {}, "Equal": {}, "Greater": {}, "Where": {},
+	"Gather": {}, "GreaterOrEqual": {}, "Equal": {}, "Greater": {}, "Where": {}, "Tile": {}, "NonMaxSuppression": {}, "Loop": {},
 	"ai.onnx.ml:LinearRegressor":        {},
 	"ai.onnx.ml:LinearClassifier":       {},
 	"ai.onnx.ml:TreeEnsembleRegressor":  {},
@@ -141,7 +149,6 @@ func buildModel(decoded protoModel) (*Model, error) {
 	if mlOpsetDeclared && mlOpset != 3 {
 		return nil, fmt.Errorf("unsupported ai.onnx.ml opset version %d", mlOpset)
 	}
-
 	unsupported := make([]string, 0)
 	seenUnsupported := make(map[string]struct{})
 	for _, node := range decoded.graph.nodes {
@@ -157,126 +164,169 @@ func buildModel(decoded protoModel) (*Model, error) {
 		return nil, fmt.Errorf("unsupported operators: %s", strings.Join(unsupported, ", "))
 	}
 
-	model := &Model{
-		initializers: make(map[string]*Tensor, len(decoded.graph.initializers)),
-		opsetVersion: defaultOpset,
+	graph, err := buildGraph(*decoded.graph, decoded.graph.name)
+	if err != nil {
+		return nil, err
 	}
-	for _, initializer := range decoded.graph.initializers {
+	return &Model{
+		inputSpecs:   graph.inputSpecs,
+		outputSpecs:  graph.outputSpecs,
+		nodes:        graph.nodes,
+		initializers: graph.initializers,
+		opsetVersion: defaultOpset,
+	}, nil
+}
+
+func buildGraph(decoded protoGraph, graphLabel string) (modelGraph, error) {
+	if graphLabel == "" {
+		graphLabel = "<unnamed>"
+	}
+	graph := modelGraph{name: graphLabel, initializers: make(map[string]*Tensor, len(decoded.initializers))}
+	for _, initializer := range decoded.initializers {
 		if initializer.name == "" {
-			return nil, fmt.Errorf("initializer has no name")
+			return modelGraph{}, fmt.Errorf("subgraph %q has an unnamed initializer", graphLabel)
 		}
-		if _, exists := model.initializers[initializer.name]; exists {
-			return nil, fmt.Errorf("initializer %q is declared more than once", initializer.name)
+		if _, exists := graph.initializers[initializer.name]; exists {
+			return modelGraph{}, fmt.Errorf("subgraph %q initializer %q is declared more than once", graphLabel, initializer.name)
 		}
 		value, err := tensorProtoToTensor(initializer)
 		if err != nil {
-			return nil, err
+			return modelGraph{}, fmt.Errorf("subgraph %q: %w", graphLabel, err)
 		}
-		model.initializers[initializer.name] = value
+		graph.initializers[initializer.name] = value
 	}
 
-	inputNames := make(map[string]struct{})
-	for index, input := range decoded.graph.inputs {
+	inputNames := make(map[string]struct{}, len(decoded.inputs))
+	for index, input := range decoded.inputs {
 		if input.name == "" {
-			return nil, fmt.Errorf("graph input %d has no name", index)
+			return modelGraph{}, fmt.Errorf("subgraph %q input %d has no name", graphLabel, index)
 		}
 		if _, duplicate := inputNames[input.name]; duplicate {
-			return nil, fmt.Errorf("graph input %q is declared more than once", input.name)
+			return modelGraph{}, fmt.Errorf("subgraph %q input %q is declared more than once", graphLabel, input.name)
 		}
 		inputNames[input.name] = struct{}{}
-		if _, isInitializer := model.initializers[input.name]; isInitializer {
+		if _, isInitializer := graph.initializers[input.name]; isInitializer {
 			continue
 		}
 		if input.elemType == 0 {
-			return nil, fmt.Errorf("graph input %q has no dtype", input.name)
+			return modelGraph{}, fmt.Errorf("subgraph %q input %q has no dtype", graphLabel, input.name)
 		}
 		if !supportedTensorDType(onnxDType(input.elemType)) {
-			return nil, fmt.Errorf("graph input %q has unsupported dtype %s", input.name, onnxDTypeName(input.elemType))
+			return modelGraph{}, fmt.Errorf("subgraph %q input %q has unsupported dtype %s", graphLabel, input.name, onnxDTypeName(input.elemType))
 		}
 		if input.hasShape {
-			if err := validateDeclaredShape(input.shape, fmt.Sprintf("graph input %q", input.name)); err != nil {
-				return nil, err
+			if err := validateDeclaredShape(input.shape, fmt.Sprintf("subgraph %q input %q", graphLabel, input.name)); err != nil {
+				return modelGraph{}, err
 			}
 		}
-		model.inputSpecs = append(model.inputSpecs, valueInfoFromProto(input))
+		graph.inputSpecs = append(graph.inputSpecs, valueInfoFromProto(input))
 	}
-
-	outputNames := make(map[string]struct{})
-	for index, output := range decoded.graph.outputs {
+	for index, output := range decoded.outputs {
 		if output.name == "" {
-			return nil, fmt.Errorf("graph output %d has no name", index)
+			return modelGraph{}, fmt.Errorf("subgraph %q output %d has no name", graphLabel, index)
 		}
-		if _, duplicate := outputNames[output.name]; duplicate {
-			return nil, fmt.Errorf("graph output %q is declared more than once", output.name)
+		for _, existing := range graph.outputSpecs {
+			if existing.Name == output.name {
+				return modelGraph{}, fmt.Errorf("subgraph %q output %q is declared more than once", graphLabel, output.name)
+			}
 		}
-		outputNames[output.name] = struct{}{}
 		if output.elemType == 0 {
-			return nil, fmt.Errorf("graph output %q has no dtype", output.name)
+			return modelGraph{}, fmt.Errorf("subgraph %q output %q has no dtype", graphLabel, output.name)
 		}
 		if !supportedTensorDType(onnxDType(output.elemType)) {
-			return nil, fmt.Errorf("graph output %q has unsupported dtype %s", output.name, onnxDTypeName(output.elemType))
+			return modelGraph{}, fmt.Errorf("subgraph %q output %q has unsupported dtype %s", graphLabel, output.name, onnxDTypeName(output.elemType))
 		}
 		if output.hasShape {
-			if err := validateDeclaredShape(output.shape, fmt.Sprintf("graph output %q", output.name)); err != nil {
-				return nil, err
+			if err := validateDeclaredShape(output.shape, fmt.Sprintf("subgraph %q output %q", graphLabel, output.name)); err != nil {
+				return modelGraph{}, err
 			}
 		}
-		model.outputSpecs = append(model.outputSpecs, valueInfoFromProto(output))
+		graph.outputSpecs = append(graph.outputSpecs, valueInfoFromProto(output))
 	}
-	if len(model.outputSpecs) == 0 {
-		return nil, fmt.Errorf("graph has no outputs")
+	if len(graph.outputSpecs) == 0 {
+		return modelGraph{}, fmt.Errorf("subgraph %q has no outputs", graphLabel)
 	}
 
-	declaredValues := make(map[string]struct{}, len(model.initializers)+len(inputNames))
-	for name := range model.initializers {
+	declaredValues := make(map[string]struct{}, len(graph.initializers)+len(inputNames))
+	for name := range graph.initializers {
 		declaredValues[name] = struct{}{}
 	}
 	for name := range inputNames {
 		declaredValues[name] = struct{}{}
 	}
-	for index, node := range decoded.graph.nodes {
+	for index, node := range decoded.nodes {
 		if len(node.outputs) == 0 {
-			return nil, fmt.Errorf("node %d (%s) has no outputs", index, node.opType)
+			return modelGraph{}, fmt.Errorf("subgraph %q node %d (%s) has no outputs", graphLabel, index, node.opType)
 		}
 		name := node.name
 		if name == "" {
 			name = fmt.Sprintf("node_%d", index)
 		}
-		if err := validateNodeOutputArity(node, name); err != nil {
-			return nil, err
+		if _, supported := supportedOperators[operatorKey(node.domain, node.opType)]; !supported {
+			return modelGraph{}, fmt.Errorf("unsupported operators in subgraph %q: %s", graphLabel, operatorDisplayName(node.domain, node.opType))
 		}
 		attributes := make(map[string]protoAttribute, len(node.attributes))
 		for _, attribute := range node.attributes {
 			if attribute.name == "" {
-				return nil, fmt.Errorf("node %q has an unnamed attribute", name)
+				return modelGraph{}, fmt.Errorf("subgraph %q node %q has an unnamed attribute", graphLabel, name)
 			}
 			if _, exists := attributes[attribute.name]; exists {
-				return nil, fmt.Errorf("node %q declares attribute %q more than once", name, attribute.name)
+				return modelGraph{}, fmt.Errorf("subgraph %q node %q declares attribute %q more than once", graphLabel, name, attribute.name)
+			}
+			if attribute.graph != nil {
+				nested, nestedErr := buildGraph(*attribute.graph, stringOrDefault(attribute.graph.name, attribute.name))
+				if nestedErr != nil {
+					return modelGraph{}, fmt.Errorf("subgraph %q node %q attribute %q: %w", graphLabel, name, attribute.name, nestedErr)
+				}
+				attribute.graph = nil
+				attribute.modelGraph = &nested
+			}
+			if len(attribute.graphs) > 0 {
+				attribute.modelGraphs = make([]*modelGraph, len(attribute.graphs))
+				for graphIndex, nestedProto := range attribute.graphs {
+					nested, nestedErr := buildGraph(nestedProto, stringOrDefault(nestedProto.name, fmt.Sprintf("%s[%d]", attribute.name, graphIndex)))
+					if nestedErr != nil {
+						return modelGraph{}, fmt.Errorf("subgraph %q node %q attribute %q[%d]: %w", graphLabel, name, attribute.name, graphIndex, nestedErr)
+					}
+					attribute.modelGraphs[graphIndex] = &nested
+				}
 			}
 			attributes[attribute.name] = attribute
+		}
+		if err := validateNodeOutputArity(node, name); err != nil {
+			return modelGraph{}, err
+		}
+		if node.opType == "Loop" {
+			body, present := attributes["body"]
+			if !present || body.modelGraph == nil {
+				return modelGraph{}, fmt.Errorf("subgraph %q node %q Loop has no GRAPH body", graphLabel, name)
+			}
+			if len(node.outputs) != len(body.modelGraph.outputSpecs)-1 {
+				return modelGraph{}, fmt.Errorf("subgraph %q node %q Loop has %d outputs, want %d", graphLabel, name, len(node.outputs), len(body.modelGraph.outputSpecs)-1)
+			}
 		}
 		for outputIndex, output := range node.outputs {
 			if output == "" {
 				if operatorKey(node.domain, node.opType) == "LayerNormalization" && outputIndex > 0 {
 					continue
 				}
-				return nil, fmt.Errorf("node %q output %d has no name", name, outputIndex)
+				return modelGraph{}, fmt.Errorf("subgraph %q node %q output %d has no name", graphLabel, name, outputIndex)
 			}
 			if _, exists := declaredValues[output]; exists {
-				return nil, fmt.Errorf("node %q output %q is already declared", name, output)
+				return modelGraph{}, fmt.Errorf("subgraph %q node %q output %q is already declared", graphLabel, name, output)
 			}
 			declaredValues[output] = struct{}{}
 		}
-		model.nodes = append(model.nodes, modelNode{
-			name:       name,
-			domain:     node.domain,
-			opType:     node.opType,
-			inputs:     append([]string(nil), node.inputs...),
-			outputs:    append([]string(nil), node.outputs...),
-			attributes: attributes,
-		})
+		graph.nodes = append(graph.nodes, modelNode{name: name, domain: node.domain, opType: node.opType, inputs: append([]string(nil), node.inputs...), outputs: append([]string(nil), node.outputs...), attributes: attributes})
 	}
-	return model, nil
+	return graph, nil
+}
+
+func stringOrDefault(value, fallback string) string {
+	if value == "" {
+		return fallback
+	}
+	return value
 }
 
 func validateNodeOutputArity(node protoNode, name string) error {
@@ -298,6 +348,11 @@ func validateNodeOutputArity(node protoNode, name string) error {
 			return fmt.Errorf("node %q BatchNormalization training-mode extra outputs are unsupported; inference requires one output", name)
 		}
 	case "Split":
+		if len(node.outputs) == 0 {
+			return fmt.Errorf("node %q (%s) has no outputs", name, operatorDisplayName(node.domain, node.opType))
+		}
+		return nil
+	case "Loop":
 		if len(node.outputs) == 0 {
 			return fmt.Errorf("node %q (%s) has no outputs", name, operatorDisplayName(node.domain, node.opType))
 		}
@@ -376,7 +431,9 @@ func onnxDType(dataType int32) DType {
 	case 5:
 		return DTypeInt16
 	case 6:
-		return DTypeInt32
+		// Tensor stores ONNX INT32 controls and outputs in the existing int64
+		// representation; the decoder already widens INT32 initializers here.
+		return DTypeInt64
 	case 7:
 		return DTypeInt64
 	case 8:

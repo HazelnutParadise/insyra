@@ -63,6 +63,7 @@ func TestRealModelParity(t *testing.T) {
 		// absolute for small elements, 2% relative above one, both far wider
 		// than anything measured and ~5e-5 of the output range.
 		{name: "mosaic-9", file: "mosaic-9.onnx", feed: mosaicFeed, tolerance: 2e-2},
+		{name: "tiny-YOLOv3", file: "tiny-yolov3-11.onnx", feed: tinyYOLOFeed, tolerance: 1e-4},
 	}
 	for _, tc := range models {
 		if _, err := os.Stat(filepath.Join(modelDir, tc.file)); err != nil {
@@ -142,6 +143,21 @@ func mosaicFeed(t *testing.T, model *Model) map[string]*Tensor {
 		data[index] = float32((index * 37) % 256)
 	}
 	return map[string]*Tensor{model.Inputs()[0].Name: mustTestTensor(t, []int{1, 3, 224, 224}, data)}
+}
+
+func tinyYOLOFeed(t *testing.T, model *Model) map[string]*Tensor {
+	t.Helper()
+	if len(model.Inputs()) != 2 {
+		t.Fatalf("tiny-YOLOv3 input contract = %+v", model.Inputs())
+	}
+	image := make([]float32, 3*416*416)
+	for index := range image {
+		image[index] = float32(index%256) / 255
+	}
+	return map[string]*Tensor{
+		"input_1":     mustTestTensor(t, []int{1, 3, 416, 416}, image),
+		"image_shape": mustTestTensor(t, []int{1, 2}, []float32{416, 416}),
+	}
 }
 
 func miniLMFeed(t *testing.T, model *Model) map[string]*Tensor {

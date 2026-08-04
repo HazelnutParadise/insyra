@@ -2,6 +2,7 @@ package nn
 
 import (
 	"fmt"
+	"strings"
 )
 
 // Run executes the graph in dependency order and returns named output tensors.
@@ -48,39 +49,8 @@ func (m *Model) Run(inputs map[string]*Tensor) (outputs map[string]*Tensor, err 
 		}
 	}
 
-	done := make([]bool, len(m.nodes))
-	for completed := 0; completed < len(m.nodes); {
-		progress := false
-		for index, node := range m.nodes {
-			if done[index] || !nodeInputsReady(node, values) {
-				continue
-			}
-			produced, executeErr := executeNode(node, values)
-			if executeErr != nil {
-				return nil, fmt.Errorf("node %q (%s): %w", node.name, node.opType, executeErr)
-			}
-			for name, value := range produced {
-				values[name] = value
-			}
-			done[index] = true
-			completed++
-			progress = true
-		}
-		if !progress {
-			for index, node := range m.nodes {
-				if done[index] {
-					continue
-				}
-				for _, input := range node.inputs {
-					if input != "" {
-						if _, present := values[input]; !present {
-							return nil, fmt.Errorf("node %q cannot execute because input %q is unavailable", node.name, input)
-						}
-					}
-				}
-				return nil, fmt.Errorf("node %q cannot execute because its dependencies form a cycle", node.name)
-			}
-		}
+	if err := executeNodes(m.nodes, values); err != nil {
+		return nil, err
 	}
 
 	outputs = make(map[string]*Tensor, len(m.outputSpecs))
@@ -148,6 +118,44 @@ func nodeInputsReady(node modelNode, values map[string]*Tensor) bool {
 		}
 	}
 	return true
+}
+
+func executeNodes(nodes []modelNode, values map[string]*Tensor) error {
+	done := make([]bool, len(nodes))
+	for completed := 0; completed < len(nodes); {
+		progress := false
+		for index, node := range nodes {
+			if done[index] || !nodeInputsReady(node, values) {
+				continue
+			}
+			produced, executeErr := executeNode(node, values)
+			if executeErr != nil {
+				return fmt.Errorf("node %q (%s): %w", node.name, node.opType, executeErr)
+			}
+			for name, value := range produced {
+				values[name] = value
+			}
+			done[index] = true
+			completed++
+			progress = true
+		}
+		if !progress {
+			for index, node := range nodes {
+				if done[index] {
+					continue
+				}
+				for _, input := range node.inputs {
+					if input != "" {
+						if _, present := values[input]; !present {
+							return fmt.Errorf("node %q cannot execute because input %q is unavailable", node.name, input)
+						}
+					}
+				}
+				return fmt.Errorf("node %q cannot execute because its dependencies form a cycle", node.name)
+			}
+		}
+	}
+	return nil
 }
 
 func executeNode(node modelNode, values map[string]*Tensor) (map[string]*Tensor, error) {
@@ -294,7 +302,7 @@ func executeNode(node modelNode, values map[string]*Tensor) (map[string]*Tensor,
 		case "Pow":
 			result, err = Pow(left, right)
 		}
-	case "Relu", "Sigmoid", "Tanh", "Gelu", "Erf", "Sqrt", "Floor":
+	case "Relu", "Sigmoid", "Tanh", "Gelu", "Erf", "Sqrt", "Floor", "LeakyRelu", "Exp", "Ceil", "Round":
 		value, inputErr := input(0)
 		if inputErr != nil {
 			return nil, inputErr
@@ -318,7 +326,68 @@ func executeNode(node modelNode, values map[string]*Tensor) (map[string]*Tensor,
 			result, err = Sqrt(value)
 		case "Floor":
 			result, err = Floor(value)
+		case "LeakyRelu":
+			alpha, alphaErr := nodeFloatAttribute(node, "alpha", 0.01)
+			if alphaErr != nil {
+				return nil, alphaErr
+			}
+			result, err = LeakyRelu(value, alpha)
+		case "Exp":
+			result, err = Exp(value)
+		case "Ceil":
+			result, err = Ceil(value)
+		case "Round":
+			result, err = Round(value)
 		}
+	case "Tile":
+		value, inputErr := input(0)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		repeats, inputErr := controlInput(1, "repeats")
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		result, err = Tile(value, repeats)
+	case "NonMaxSuppression":
+		if arityErr := nodeInputArity(node, 2, 5); arityErr != nil {
+			return nil, arityErr
+		}
+		boxes, inputErr := input(0)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		scores, inputErr := input(1)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		var maxOutput, iouThreshold, scoreThreshold *Tensor
+		if len(node.inputs) > 2 && node.inputs[2] != "" {
+			maxOutput, err = controlInput(2, "max_output_boxes_per_class")
+			if err != nil {
+				return nil, err
+			}
+		}
+		if len(node.inputs) > 3 && node.inputs[3] != "" {
+			iouThreshold, err = controlInput(3, "iou_threshold")
+			if err != nil {
+				return nil, err
+			}
+		}
+		if len(node.inputs) > 4 && node.inputs[4] != "" {
+			scoreThreshold, err = controlInput(4, "score_threshold")
+			if err != nil {
+				return nil, err
+			}
+		}
+		centerPointBox := 0
+		if value, present := attribute("center_point_box"); present {
+			if !value.hasInt || (value.intValue != 0 && value.intValue != 1) {
+				return nil, fmt.Errorf("node %q NonMaxSuppression center_point_box must be 0 or 1", node.name)
+			}
+			centerPointBox = int(value.intValue)
+		}
+		result, err = NonMaxSuppression(boxes, scores, maxOutput, iouThreshold, scoreThreshold, centerPointBox)
 	case "Resize", "Upsample":
 		value, inputErr := input(0)
 		if inputErr != nil {
@@ -609,7 +678,7 @@ func executeNode(node modelNode, values map[string]*Tensor) (map[string]*Tensor,
 		} else {
 			result, err = Pad(value, pads, constantValue)
 		}
-	case "ReduceMean":
+	case "ReduceMean", "ReduceMin":
 		value, inputErr := input(0)
 		if inputErr != nil {
 			return nil, inputErr
@@ -620,7 +689,7 @@ func executeNode(node modelNode, values map[string]*Tensor) (map[string]*Tensor,
 			if axesErr != nil {
 				return nil, axesErr
 			}
-			axes, err = tensorAxes(axesValue, "reduce mean axes")
+			axes, err = tensorAxes(axesValue, strings.ToLower(node.opType)+" axes")
 		} else if axisAttribute, present := attribute("axes"); present {
 			axes, err = attributeInts(axisAttribute, "axes")
 		}
@@ -634,7 +703,11 @@ func executeNode(node modelNode, values map[string]*Tensor) (map[string]*Tensor,
 			}
 			keepdims = keepdimsAttribute.intValue != 0
 		}
-		result, err = ReduceMean(value, axes, keepdims)
+		if node.opType == "ReduceMean" {
+			result, err = ReduceMean(value, axes, keepdims)
+		} else {
+			result, err = ReduceMin(value, axes, keepdims)
+		}
 	case "Softmax":
 		value, inputErr := input(0)
 		if inputErr != nil {
@@ -654,6 +727,14 @@ func executeNode(node modelNode, values map[string]*Tensor) (map[string]*Tensor,
 			return nil, inputErr
 		}
 		result, err = Identity(value)
+	case "Loop":
+		loopOutputs, loopErr := executeLoopNode(node, values)
+		if loopErr != nil {
+			return nil, loopErr
+		}
+		for name, value := range loopOutputs {
+			produced[name] = value
+		}
 	case "Concat":
 		axis, axisErr := nodeAxis(attribute, "axis", 0)
 		if axisErr != nil {
@@ -1038,6 +1119,198 @@ func executeNode(node modelNode, values map[string]*Tensor) (map[string]*Tensor,
 		return nil, fmt.Errorf("operator %s produced no outputs", operatorDisplayName(node.domain, node.opType))
 	}
 	return produced, nil
+}
+
+func executeLoopNode(node modelNode, outer map[string]*Tensor) (map[string]*Tensor, error) {
+	bodyAttribute, present := node.attributes["body"]
+	if !present || bodyAttribute.modelGraph == nil {
+		return nil, fmt.Errorf("node %q Loop has no validated GRAPH body", node.name)
+	}
+	body := bodyAttribute.modelGraph
+	if len(node.inputs) < 2 {
+		return nil, fmt.Errorf("node %q Loop requires optional trip-count and condition inputs", node.name)
+	}
+	carryCount := len(node.inputs) - 2
+	if len(body.inputSpecs) != carryCount+2 {
+		return nil, fmt.Errorf("node %q Loop body has %d inputs, want %d", node.name, len(body.inputSpecs), carryCount+2)
+	}
+	if len(body.outputSpecs) < carryCount+1 || len(node.outputs) != len(body.outputSpecs)-1 {
+		return nil, fmt.Errorf("node %q Loop body output count is incompatible with %d loop-carried values", node.name, carryCount)
+	}
+	var tripCount *int64
+	if node.inputs[0] != "" {
+		value, inputErr := loopInputTensor(node, outer, 0, "trip-count")
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		if value.dtype != DTypeInt64 || value.Len() != 1 {
+			return nil, fmt.Errorf("node %q Loop trip-count must be an int64 scalar", node.name)
+		}
+		trip := value.int64Data[0]
+		tripCount = &trip
+	}
+	condition := true
+	if node.inputs[1] != "" {
+		value, inputErr := loopInputTensor(node, outer, 1, "condition")
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		if value.dtype != DTypeBool || value.Len() != 1 {
+			return nil, fmt.Errorf("node %q Loop condition must be a bool scalar", node.name)
+		}
+		condition = value.boolData[0]
+	}
+	carried := make([]*Tensor, carryCount)
+	for index := range carried {
+		if node.inputs[index+2] == "" {
+			return nil, fmt.Errorf("node %q Loop loop-carried input %d is missing", node.name, index)
+		}
+		value, inputErr := loopInputTensor(node, outer, index+2, "loop-carried")
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		carried[index], inputErr = copyTensor(value)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+	}
+	scans := make([][]*Tensor, len(body.outputSpecs)-carryCount-1)
+	for iteration := int64(0); condition && (tripCount == nil || iteration < *tripCount); iteration++ {
+		bodyInputs := make(map[string]*Tensor, len(body.inputSpecs))
+		iterationTensor, err := newInt64Tensor([]int{}, []int64{iteration})
+		if err != nil {
+			return nil, err
+		}
+		conditionTensor, err := newBoolTensor([]int{}, []bool{condition})
+		if err != nil {
+			return nil, err
+		}
+		bodyInputs[body.inputSpecs[0].Name] = iterationTensor
+		bodyInputs[body.inputSpecs[1].Name] = conditionTensor
+		for index, value := range carried {
+			bodyInputs[body.inputSpecs[index+2].Name] = value
+		}
+		bodyValues, runErr := runSubgraph(*body, outer, bodyInputs)
+		if runErr != nil {
+			return nil, fmt.Errorf("node %q Loop body %q iteration %d: %w", node.name, body.name, iteration, runErr)
+		}
+		conditionValue := bodyValues[body.outputSpecs[0].Name]
+		if conditionValue == nil || conditionValue.dtype != DTypeBool || conditionValue.Len() != 1 {
+			return nil, fmt.Errorf("node %q Loop body condition output %q is not a bool scalar", node.name, body.outputSpecs[0].Name)
+		}
+		condition = conditionValue.boolData[0]
+		for index := range carried {
+			value := bodyValues[body.outputSpecs[index+1].Name]
+			if value == nil {
+				return nil, fmt.Errorf("node %q Loop body did not produce loop-carried output %q", node.name, body.outputSpecs[index+1].Name)
+			}
+			carried[index], err = copyTensor(value)
+			if err != nil {
+				return nil, err
+			}
+		}
+		for scanIndex := range scans {
+			value := bodyValues[body.outputSpecs[carryCount+1+scanIndex].Name]
+			if value == nil {
+				return nil, fmt.Errorf("node %q Loop body did not produce scan output %q", node.name, body.outputSpecs[carryCount+1+scanIndex].Name)
+			}
+			copy, copyErr := copyTensor(value)
+			if copyErr != nil {
+				return nil, copyErr
+			}
+			scans[scanIndex] = append(scans[scanIndex], copy)
+		}
+	}
+	produced := make(map[string]*Tensor, len(node.outputs))
+	for index, value := range carried {
+		produced[node.outputs[index]] = value
+	}
+	for scanIndex := range scans {
+		var value *Tensor
+		var err error
+		if len(scans[scanIndex]) == 0 {
+			value, err = emptyScanTensor(body.outputSpecs[carryCount+1+scanIndex])
+		} else {
+			value, err = stackLoopScan(scans[scanIndex])
+		}
+		if err != nil {
+			return nil, fmt.Errorf("node %q Loop scan output %d: %w", node.name, scanIndex, err)
+		}
+		produced[node.outputs[carryCount+scanIndex]] = value
+	}
+	return produced, nil
+}
+
+func loopInputTensor(node modelNode, values map[string]*Tensor, index int, name string) (*Tensor, error) {
+	if index >= len(node.inputs) || node.inputs[index] == "" {
+		return nil, fmt.Errorf("node %q Loop %s input %d is missing", node.name, name, index)
+	}
+	value, present := values[node.inputs[index]]
+	if !present {
+		return nil, fmt.Errorf("node %q Loop %s input %q is unavailable", node.name, name, node.inputs[index])
+	}
+	return value, nil
+}
+
+func runSubgraph(graph modelGraph, outer, inputs map[string]*Tensor) (map[string]*Tensor, error) {
+	values := make(map[string]*Tensor, len(outer)+len(graph.initializers)+len(inputs))
+	for name, value := range outer {
+		values[name] = value
+	}
+	for name, initializer := range graph.initializers {
+		copy, err := copyTensor(initializer)
+		if err != nil {
+			return nil, fmt.Errorf("subgraph initializer %q: %w", name, err)
+		}
+		values[name] = copy
+	}
+	for name, input := range inputs {
+		copy, err := copyTensor(input)
+		if err != nil {
+			return nil, fmt.Errorf("subgraph input %q: %w", name, err)
+		}
+		values[name] = copy
+	}
+	if err := executeNodes(graph.nodes, values); err != nil {
+		return nil, err
+	}
+	return values, nil
+}
+
+func stackLoopScan(values []*Tensor) (*Tensor, error) {
+	if len(values) == 0 || values[0] == nil {
+		return nil, fmt.Errorf("scan has no values")
+	}
+	first := values[0]
+	shape := append([]int{len(values)}, first.shape...)
+	result, err := newTypedTensor(first.dtype, shape)
+	if err != nil {
+		return nil, err
+	}
+	for index, value := range values {
+		if value == nil || value.dtype != first.dtype || !sameShape(value.shape, first.shape) {
+			return nil, fmt.Errorf("scan values have inconsistent dtype or shape")
+		}
+		for element := 0; element < value.Len(); element++ {
+			copyTensorElement(result, index*value.Len()+element, value, element)
+		}
+	}
+	return result, nil
+}
+
+func emptyScanTensor(spec ValueInfo) (*Tensor, error) {
+	if !spec.HasShape {
+		return nil, fmt.Errorf("scan output %q has no declared shape for zero iterations", spec.Name)
+	}
+	shape := make([]int, len(spec.Shape)+1)
+	shape[0] = 0
+	for index, dimension := range spec.Shape {
+		if dimension < 0 {
+			return nil, fmt.Errorf("scan output %q has dynamic dimension %d for zero iterations", spec.Name, index)
+		}
+		shape[index+1] = dimension
+	}
+	return newTypedTensor(spec.DType, shape)
 }
 
 func nodeAxis(attribute func(string) (protoAttribute, bool), name string, fallback int) (int, error) {

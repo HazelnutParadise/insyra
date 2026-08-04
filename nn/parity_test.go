@@ -330,6 +330,28 @@ func TestOneOpParityAgainstONNXRuntime(t *testing.T) {
 			run:  func() (*Tensor, error) { return Relu(mustTestTensor(t, []int{2, 3}, []float32{-1, 0, 1, 2, -2, 0.5})) },
 		},
 		{
+			name: "LeakyRelu",
+			run: func() (*Tensor, error) {
+				return LeakyRelu(mustTestTensor(t, []int{2, 3}, []float32{-2, -1, 0, 1, 2, 3}), 0.2)
+			},
+		},
+		{
+			name: "Exp",
+			run:  func() (*Tensor, error) { return Exp(mustTestTensor(t, []int{2, 3}, []float32{-2, -1, 0, 1, 2, 3})) },
+		},
+		{
+			name: "Ceil",
+			run: func() (*Tensor, error) {
+				return Ceil(mustTestTensor(t, []int{2, 3}, []float32{-2.75, -1, -0.25, 0, 1.25, 3.9}))
+			},
+		},
+		{
+			name: "Round",
+			run: func() (*Tensor, error) {
+				return Round(mustTestTensor(t, []int{2, 4}, []float32{-2.5, -1.5, -0.5, 0.5, 1.5, 2.5, 3.5, 4.5}))
+			},
+		},
+		{
 			name: "Sigmoid",
 			run: func() (*Tensor, error) {
 				return Sigmoid(mustTestTensor(t, []int{2, 3}, []float32{-1, 0, 1, 2, -2, 0.5}))
@@ -401,6 +423,44 @@ func TestOneOpParityAgainstONNXRuntime(t *testing.T) {
 			name: "ReduceMeanInitializer",
 			run: func() (*Tensor, error) {
 				return ReduceMean(mustTestTensor(t, []int{2, 3, 4}, []float32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24}), []int{0, 2}, false)
+			},
+		},
+		{
+			name: "ReduceMin",
+			run: func() (*Tensor, error) {
+				return ReduceMin(mustTestTensor(t, []int{2, 3, 4}, []float32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24}), []int{0, 2}, true)
+			},
+		},
+		{
+			name: "Tile",
+			run: func() (*Tensor, error) {
+				return Tile(mustTestTensor(t, []int{2, 1}, []float32{1, 2}), mustTestInt64Tensor(t, []int{2}, []int64{2, 3}))
+			},
+		},
+		{
+			name: "NonMaxSuppression",
+			run: func() (*Tensor, error) {
+				return NonMaxSuppression(
+					mustTestTensor(t, []int{1, 3, 4}, []float32{0, 0, 1, 1, 0.1, 0.1, 1.1, 1.1, 2, 2, 3, 3}),
+					mustTestTensor(t, []int{1, 1, 3}, []float32{0.9, 0.8, 0.7}),
+					mustTestInt64Tensor(t, []int{}, []int64{3}),
+					mustTestTensor(t, []int{}, []float32{0.5}),
+					mustTestTensor(t, []int{}, []float32{0.0}),
+					0,
+				)
+			},
+		},
+		{
+			name: "NonMaxSuppressionCenter",
+			run: func() (*Tensor, error) {
+				return NonMaxSuppression(
+					mustTestTensor(t, []int{1, 3, 4}, []float32{0, 0, 2, 2, 0.1, 0.1, 2, 2, 5, 5, 1, 1}),
+					mustTestTensor(t, []int{1, 1, 3}, []float32{0.9, 0.8, 0.7}),
+					mustTestInt64Tensor(t, []int{}, []int64{3}),
+					mustTestTensor(t, []int{}, []float32{0.5}),
+					mustTestTensor(t, []int{}, []float32{0.75}),
+					1,
+				)
 			},
 		},
 		{
@@ -658,6 +718,45 @@ func TestSplitParityAgainstONNXRuntime(t *testing.T) {
 	for index, spec := range model.Outputs() {
 		assertParityOutput(t, modelOutputs[spec.Name], reference[index])
 	}
+}
+
+func TestLoopParityAgainstONNXRuntime(t *testing.T) {
+	python := requireONNXReference(t)
+	if python == "" {
+		return
+	}
+	for _, kind := range []string{"counter", "condition", "scan", "zero", "false", "scan-empty"} {
+		t.Run(kind, func(t *testing.T) {
+			modelPath := filepath.Join(t.TempDir(), kind+".onnx")
+			feedPath := filepath.Join(t.TempDir(), kind+"-feed.json")
+			reference := runONNXParityPython(t, python, "loop", kind, modelPath, feedPath)
+			if len(reference) != 1+loopBoolToInt(kind == "scan" || kind == "scan-empty") {
+				t.Fatalf("reference returned %d outputs", len(reference))
+			}
+			modelBytes, err := os.ReadFile(modelPath)
+			if err != nil {
+				t.Fatalf("read loop model: %v", err)
+			}
+			model, err := LoadONNX(bytes.NewReader(modelBytes))
+			if err != nil {
+				t.Fatalf("load loop model: %v", err)
+			}
+			outputs, err := model.Run(readParityInputs(t, feedPath))
+			if err != nil {
+				t.Fatalf("run loop model: %v", err)
+			}
+			for index, spec := range model.Outputs() {
+				assertParityOutput(t, outputs[spec.Name], reference[index])
+			}
+		})
+	}
+}
+
+func loopBoolToInt(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
 }
 
 func TestWholeMLPParityAndBatchInvariance(t *testing.T) {
