@@ -433,7 +433,7 @@ in two epochs.
 | `AveragePool` | 2-D NCHW average pooling with padding, strides, `auto_pad`, and `count_include_pad` |
 | `GlobalAveragePool` | 2-D spatial average pooling retaining singleton spatial dimensions |
 | `BatchNormalization` | inference-mode channel normalization with five inputs and configurable epsilon |
-| `Pad` | constant padding from attributes or initializer inputs; reflect and edge modes are refused |
+| `Pad` | constant and reflect padding from attributes or initializer inputs; edge mode is refused |
 | `Add`, `Sub`, `Mul`, `Div`, `Pow` | float32 elementwise operations with broadcasting; shape arithmetic also supports int64 |
 | `Clip` | opset-11+ float32 clipping with optional scalar min/max inputs |
 | `Relu`, `Sigmoid`, `Tanh`, `Gelu`, `Erf`, `Sqrt` | elementwise activations and math |
@@ -446,6 +446,9 @@ in two epochs.
 | `Transpose` | explicit permutation or reversed dimensions at any rank |
 | `Concat`, `Squeeze`, `Unsqueeze`, `Expand`, `Shape`, `Gather` | standard-domain shape and feature assembly |
 | `Slice`, `Split` | standard-domain tensor partitioning and slicing |
+| `Resize`, `Upsample` | nearest and linear NCHW spatial resize with scales or sizes, asymmetric and pytorch_half_pixel coordinate modes; other modes are refused. Opset-9 `Upsample` decodes to the equivalent resize |
+| `Floor` | elementwise floor |
+| `InstanceNormalization` | per-instance, per-channel spatial normalization with epsilon, scale, and bias |
 | `Equal`, `Greater`, `GreaterOrEqual`, `Where` | broadcast comparisons and selection |
 | `Cast` | float32, int64, string, and bool conversions; half targets round and widen to f32 |
 | `Constant` | typed tensor attribute |
@@ -475,6 +478,8 @@ these exact files:
 
 - `mobilenetv2-12.onnx` (opset 12)
 - `minilm-l6-v2.onnx` (opset 14)
+- `fcn-resnet50-12.onnx` (opset 12, semantic segmentation, exercises linear Resize)
+- `mosaic-9.onnx` (opset 9, fast neural style, exercises Upsample, InstanceNormalization, and reflect Pad)
 
 Run the gate with the local `onnxruntime` environment:
 
@@ -485,7 +490,10 @@ env INSYRA_NN_REAL_MODELS_DIR=$HOME/.cache/insyra-nn-models \
 ```
 
 It feeds deterministic image or token tensors to both `nn` and `onnxruntime`
-and compares every output element within f32 tolerance. If the variable is
+and compares every output element within f32 tolerance. The two deep
+convolutional stacks carry measured, documented bounds: FCN at 1e-4 relative
+and mosaic at 0.02 (its worst measured deviation is 9.5e-3 across a ±379
+output range — 6e-5 relative — pure f32 reassociation noise). If the variable is
 unset or either file is absent, the gate skips and names
 `INSYRA_NN_REAL_MODELS_DIR`; it never accesses the network.
 

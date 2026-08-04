@@ -7,7 +7,7 @@
 `insyra/nn`: run ONNX models in pure Go, verified per-operator and per-model against `onnxruntime`, with the op families landing in the decided order MLP → attention → CNN, then phase 2 adds autodiff and optimisers on the same tensors (first-step gradients verified against PyTorch under fixed initial weights via SafeTensors). GGUF/LLM is a decided future track that reuses the kernels; only two v1 constraints serve it now — dtype-carrying tensors and kernels as plain functions. M23 is complete: half precision is storage-only, with exact f16/bf16 widening into f32.
 
 ## Active Workstreams
-None pending review. `add-dl-mnist-convergence` (M21) is implemented and ready to archive after merge; `openspec/changes/` otherwise holds only `archive/`.
+None. Every proposed change is implemented, verified and archived — `openspec/changes/` holds nothing but `archive/`.
 
 ## Milestones
 | id | target | owner | status | verification_signal |
@@ -31,13 +31,12 @@ None pending review. `add-dl-mnist-convergence` (M21) is implemented and ready t
 | M22 | Training practice ops | planning | done | inverted dropout (seeded, frozen-mask finite-difference), AdamW with a coupled-vs-decoupled divergence assertion, and StepLR — a five-step AdamW+StepLR trajectory matches PyTorch on loss and every parameter at every step |
 | M23 | f16/bf16 | planning | done | SafeTensors and ONNX f16/bf16 values widen bit-exactly into f32; Cast rounding and PyTorch/onnxruntime gates pass |
 | M24 | Performance is positioned honestly | planning | done | measured at the validated real-model shapes on the M3, best of 5: MobileNetV2 batch-1 170ms vs ORT's 7.3ms (~23x), MiniLM b8×s128 3.34s vs 63ms (~53x); disabling the device shows the gap is CPU-structural (pure Go vs per-architecture assembly), so the decision is a written positioning in Docs/nn.md rather than an assembly chase — the GEMM microkernel lever stays unbuilt until a workload demands it |
-
 | M25 | Sequential layer surface | planning | done | Layer interface (Build/Forward/Parameters, TrainingOnly marker), two-phase construction, torch-name weight interop; the Sequential MNIST run reproduces the hand-written curve digit-for-digit under the same seed |
 | M26 | The complete layer catalog | planning | done | Conv2D, pooling, training-mode BatchNorm2D (new VJP with running stats vs torch train mode), LayerNorm, Embedding (scatter-add VJP vs torch); a Sequential CNN converges on MNIST and a torch CNN loads and predicts |
 | M27 | Training round-trips to disk | planning | done | SaveSafeTensors writes what LoadSafeTensors reads; a trained Sequential exports to ONNX that nn itself and onnxruntime both run, matching Predict; torch reads our safetensors back |
 | M28 | Loss and optimizer toolkit | planning | done | MSE and BCE losses, momentum SGD, cosine schedule, gradient clipping — each torch-verified |
 | M29 | MultiHeadAttention layer | planning | done | an encoder block composes from layers alone, trains one step matching PyTorch, no Func required |
-| M30 | Segmentation and style models run | planning | in progress | measured gaps only: Resize (linear+nearest), Upsample, Floor, InstanceNormalization — FCN-ResNet50 and mosaic-9 (real published files) match onnxruntime |
+| M30 | Segmentation and style models run | planning | done | measured gaps only: Resize (linear+nearest), Upsample, Floor, InstanceNormalization — FCN-ResNet50 and mosaic-9 (real published files) match onnxruntime |
 | M31 | A real detector runs | planning | pending | LeakyRelu, Exp, Ceil, Round, Tile, ReduceMin, NonMaxSuppression, and Loop subgraph execution — tiny-YOLOv3 matches onnxruntime; ConvTranspose and TopK stay unbuilt because no target model needs them |
 
 Milestone order is the blocking sequence. OpenSpec has no dependency relationship between changes, so nothing else carries it.
