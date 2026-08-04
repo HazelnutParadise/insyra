@@ -199,7 +199,7 @@ func NearestShortlist(ctx context.Context, columns []Column, queries [][]float32
 
 	h, err := acquire()
 	if err != nil {
-		return nil, nil, nil, Cost{}, err
+		return nil, nil, nil, Cost{}, fmt.Errorf("%w: %v", ErrUnavailable, err)
 	}
 	pipeline, bgLayout, err := h.shortlistPipeline()
 	if err != nil {
@@ -431,6 +431,10 @@ type handle struct {
 	shortlistBGLayout *gowgpu.BindGroupLayout
 	shortlistPipe     *gowgpu.ComputePipeline
 	shortlistErr      error
+	matmulOnce        sync.Once
+	matmulBGLayout    *gowgpu.BindGroupLayout
+	matmulPipe        *gowgpu.ComputePipeline
+	matmulErr         error
 }
 
 // shortlistPipeline compiles the shortlist kernel once per process, the same way

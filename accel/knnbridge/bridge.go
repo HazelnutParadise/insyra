@@ -13,6 +13,7 @@ package knnbridge
 import (
 	"fmt"
 
+	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/accel"
 	"github.com/HazelnutParadise/insyra/accel/internal/wgpu"
 	"github.com/HazelnutParadise/insyra/stats"
@@ -40,6 +41,9 @@ const minWorkPerRow = 2048
 const minTestRows = 2048
 
 func search(train, test [][]float64, k int) ([][]int, [][]float64, bool) {
+	if !insyra.Config.GetAccelerationEnabled() {
+		return nil, nil, false
+	}
 	// One verification slot is reserved past the shortlist, so the device can
 	// carry at most MaxShortlist-1 requested neighbours.
 	if k > wgpu.MaxShortlist-1 {

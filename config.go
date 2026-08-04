@@ -13,6 +13,9 @@ type configStruct struct {
 	// Dangerously_TurnOffThreadSafety / SetDefaultConfig; use an atomic to avoid
 	// a data race between those.
 	threadSafe atomic.Bool
+	// acceleration is read by device dispatch hot paths and written by
+	// SetAcceleration / SetDefaultConfig; use an atomic to avoid a data race.
+	acceleration atomic.Bool
 }
 
 var Config *configStruct = &configStruct{}
@@ -62,6 +65,16 @@ func (c *configStruct) GetDefaultErrHandlingFunc() func(errType LogLevel, packag
 	return c.defaultErrHandlingFunc
 }
 
+// SetAcceleration controls whether device acceleration may be used.
+func (c *configStruct) SetAcceleration(enabled bool) {
+	c.acceleration.Store(enabled)
+}
+
+// GetAccelerationEnabled reports whether device acceleration is enabled.
+func (c *configStruct) GetAccelerationEnabled() bool {
+	return c.acceleration.Load()
+}
+
 // # NOT RECOMMENDED!
 //
 // Dangerously_TurnOffThreadSafety turns off thread safety for all data structures.
@@ -80,4 +93,5 @@ func SetDefaultConfig() {
 	Config.dontPanic = false
 	Config.defaultErrHandlingFunc = nil
 	Config.threadSafe.Store(true)
+	Config.acceleration.Store(true)
 }

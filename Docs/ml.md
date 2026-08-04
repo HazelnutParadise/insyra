@@ -544,11 +544,15 @@ pipelines containing supported root scalers or encoders implement
 leaf contributions are scaled by 1/T so the runtime's sum is the forest's
 average, and boosting bakes the learning rate into the leaf weights with the
 prior as the ensemble's base value — the export is the model, not an
-approximation of it. Every exportable family is proved by execution in the
-`onnxruntime` round trip, not by construction. A pipeline is exported as one
+approximation of it. The export tests execute the generated graph in
+`onnxruntime`, rather than accepting it by construction. The loop also closes inside the
+library: [`nn`](/Docs/nn.md) loads every exported family — including pipelines
+— and reproduces the fitted model's own predictions in pure Go. A pipeline is exported as one
 graph, so the ONNX runtime receives the raw feature columns rather than a
 pre-transformed table. ONNX stores model attributes as `float32`; predictions
-are compared with the tolerance of that exchange format.
+are compared with the tolerance of that exchange format. Binary logistic
+classifiers use two coefficient rows, so the two probability outputs are
+complementary under `onnxruntime`'s `LOGISTIC` transform.
 
 The exporter refuses polynomial, exponential, logarithmic, Poisson, GLM,
 KMeans, KNN, PCA, fitted imputers, and custom transformers. These models do
