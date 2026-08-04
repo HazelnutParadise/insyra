@@ -10,7 +10,7 @@
 
 **繁體中文 | [English](README.md)**
 
-從資料表到深度學習，一個函式庫，純 Go。**Insyra** 讓 Go 開發者擁有完整的分析棧：快速的 DataTable 操作、對 R 驗證過的統計、**scikit-learn 風格的機器學習**，以及能訓練模型、執行真實 ONNX checkpoint 的**神經網路引擎**。GPU 加速、平行處理、資料視覺化與 Python 無縫整合全部內建。
+**Insyra** 是 Go 的資料分析與機器學習函式庫，從資料表一路涵蓋到深度學習。每一層都有參照實作把關：統計對 R、模型對 scikit-learn、神經網路對 PyTorch 與 onnxruntime。GPU 加速、平行處理、資料視覺化與 Python 互通全部內建。
 
 **官方網站: <https://insyra.hazelnut-paradise.com>**
 
@@ -39,16 +39,16 @@
 > **對於 Insyra 文檔中未明確列出的任何函數或方法，表示該功能仍在積極開發中。這些實驗性功能可能會提供不穩定的結果。**<br/>
 > 請參閱我們 **[文檔](https://github.com/HazelnutParadise/insyra/tree/main/Docs)** 資料夾中的最新更新以獲取更多詳細資訊。
 
-## 機器學習與深度學習，純 Go
+## 純 Go 的機器學習與深度學習
 
-生態系最新的兩塊拼圖。不需要 Python 執行環境、不需要 cgo、不需要外部推論引擎：
+訓練模型不再需要離開 Go。這兩個套件背後沒有 Python 執行環境、沒有 cgo、也沒有外部推論引擎：
 
-- **[`ml`](/Docs/ml.md)** 提供 scikit-learn 形狀的建模：線性／ridge／lasso／logistic 回歸、決策樹、隨機森林、梯度提升、pipeline、交叉驗證與網格搜尋。每個估計器都對 scikit-learn、R 或 statsmodels 驗證過，模型可匯出 ONNX。
-- **[`nn`](/Docs/nn.md)** 涵蓋神經網路端到端：
-  - **跑真模型**：MobileNetV2、MiniLM（BERT 級）、FCN-ResNet50、fast-neural-style、tiny-YOLOv3 這些發佈的 ONNX checkpoint 原封不動跑通，對 `onnxruntime` 驗證。
-  - **訓練**：反向模式自動微分 tape 與 Sequential 層 API（Dense、Conv2D、BatchNorm、MultiHeadAttention 等），配 Adam/AdamW、學習率排程與 dropout。梯度與訓練步驟皆對 PyTorch 驗證。
-  - **互通**：SafeTensors 讀**與**寫都用 PyTorch 相容命名，可以在 Go 訓練、到 torch 讀權重，反過來也行。訓練好的模型可匯出 ONNX。
-  - **內建 GPU**：大型矩陣乘法透過純 Go 的 WebGPU 後端自動跑上 Metal／Vulkan／DirectX 12，CPU 回退位元一致，一行即可切換（`insyra.Config.SetAcceleration(false)`）。
+- **[`ml`](/Docs/ml.md)** 帶來 scikit-learn 風格的建模：回歸（線性、ridge、lasso、logistic）、決策樹、隨機森林、梯度提升、pipeline、交叉驗證與網格搜尋。每個估計器都對 scikit-learn、R 或 statsmodels 驗證過，配適好的模型可匯出 ONNX。
+- **[`nn`](/Docs/nn.md)** 是完整的神經網路引擎：
+  - **跑真實模型。** 發佈的 ONNX checkpoint 原封載入直接執行：MobileNetV2、MiniLM（BERT 級編碼器）、FCN-ResNet50、fast-neural-style、tiny-YOLOv3，每一個都對 `onnxruntime` 驗證。
+  - **在 Go 裡訓練。** 自動微分 tape 加上 Sequential 層 API（Dense、Conv2D、BatchNorm、MultiHeadAttention 等），配 AdamW、學習率排程與 dropout，梯度與優化器步驟與 PyTorch 一致。
+  - **權重帶著走。** SafeTensors 讀寫都用 PyTorch 相容命名，權重在 Go 與 torch 之間自由往返，訓練好的模型還能匯出 ONNX。
+  - **GPU 用了不用想。** 大型矩陣乘法透過純 Go 的 WebGPU 後端自動跑上 Metal、Vulkan 或 DirectX 12，沒有裝置時回退到位元一致的 CPU 路徑，一行程式即可關閉。
 
 ```go
 tape := nn.NewTape(42)

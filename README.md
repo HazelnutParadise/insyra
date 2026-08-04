@@ -10,7 +10,7 @@
 
 **[繁體中文](README_TW.md) | English**
 
-From data frames to deep learning, one library in pure Go. **Insyra** gives Go developers the full analytics stack: fast DataTable manipulation, statistics validated against R, **scikit-learn-style machine learning**, and a **neural-network engine** that trains models and runs real ONNX checkpoints. GPU acceleration, parallel processing, data visualization, and seamless Python integration are all built in.
+**Insyra** is a data analysis and machine learning library for Go that covers the whole journey from data frames to deep learning. Every layer is checked against a reference implementation: statistics against R, models against scikit-learn, neural networks against PyTorch and onnxruntime. GPU acceleration, parallel processing, data visualization, and Python interop come built in.
 
 **Official Website: <https://insyra.hazelnut-paradise.com>**
 
@@ -39,16 +39,16 @@ The **Insyra** library is a dynamic and versatile tool designed for managing and
 > **For any functions or methods not explicitly listed in Insyra documents, it indicates that the feature is still under active development. These experimental features might provide unstable results.** <br/>
 > Please refer to our latest updates in **[Docs](/Docs)** folder for more details.
 
-## Machine Learning & Deep Learning, in Pure Go
+## Machine Learning and Deep Learning in Pure Go
 
-The newest additions to the ecosystem. No Python runtime, no cgo, no external inference engine:
+You no longer need to leave Go to train a model. There is no Python runtime behind these packages, no cgo, and no external inference engine:
 
-- **[`ml`](/Docs/ml.md)** provides scikit-learn-shaped modeling: linear/ridge/lasso/logistic regression, decision trees, random forests, gradient boosting, pipelines, cross-validation, and grid search. Every estimator is verified against scikit-learn, R, or statsmodels, and models export to ONNX.
-- **[`nn`](/Docs/nn.md)** covers neural networks end to end:
-  - **Run real models**: published ONNX checkpoints such as MobileNetV2, MiniLM (BERT-class), FCN-ResNet50, fast-neural-style, and tiny-YOLOv3 run unmodified, verified against `onnxruntime`.
-  - **Train**: a reverse-mode autodiff tape and a Sequential layer API (Dense, Conv2D, BatchNorm, MultiHeadAttention, and more) with Adam/AdamW, schedules, and dropout. Gradients and training steps are verified against PyTorch.
-  - **Interop**: SafeTensors load *and* save with PyTorch-compatible naming, so you can train in Go and read the weights in torch, or the other way around. Trained models export to ONNX.
-  - **GPU built in**: large matrix products run on Metal/Vulkan/DirectX 12 automatically through the pure-Go WebGPU backend, with bit-identical CPU fallback and a one-line switch (`insyra.Config.SetAcceleration(false)`).
+- **[`ml`](/Docs/ml.md)** gives you scikit-learn-style modeling: regressions (linear, ridge, lasso, logistic), decision trees, random forests, gradient boosting, pipelines, cross-validation, and grid search. Every estimator is verified against scikit-learn, R, or statsmodels, and fitted models export to ONNX.
+- **[`nn`](/Docs/nn.md)** is a complete neural network engine:
+  - **Run real models.** Published ONNX checkpoints load and run unmodified: MobileNetV2, MiniLM (a BERT-class encoder), FCN-ResNet50, fast-neural-style, and tiny-YOLOv3, each verified against `onnxruntime`.
+  - **Train in Go.** An autodiff tape and a Sequential layer API (Dense, Conv2D, BatchNorm, MultiHeadAttention, and more) with AdamW, learning-rate schedules, and dropout. Gradients and optimizer steps match PyTorch.
+  - **Keep your weights portable.** SafeTensors files load and save with PyTorch-compatible naming, so weights move freely between Go and torch, and trained models export back to ONNX.
+  - **Use the GPU without thinking about it.** Large matrix products run on Metal, Vulkan, or DirectX 12 through a pure-Go WebGPU backend, fall back to a bit-identical CPU path when no device is available, and switch off with one line.
 
 ```go
 tape := nn.NewTape(42)
