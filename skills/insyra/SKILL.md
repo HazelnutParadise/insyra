@@ -781,8 +781,17 @@ operator table in `Docs/nn.md` as the support boundary, and use
 `INSYRA_NN_REAL_MODEL` with the manual smoke test when checking a local
 model's unsupported operators.
 
+Detector graphs also support `LeakyRelu` (alpha defaults to `0.01`), `Exp`,
+`Ceil`, `Round` (half-to-even), `Tile`, `ReduceMin`, and
+`NonMaxSuppression`. `Loop` bodies are decoded and validated at load time and
+run with ONNX child-scope visibility, trip-count and condition termination,
+loop-carried values, and axis-0 scan outputs. NMS returns exact int64
+`(batch, class, box)` selection rows and supports both corner and center box
+encodings.
+
 For whole-model validation, set `INSYRA_NN_REAL_MODELS_DIR` to a local directory
-containing `mobilenetv2-12.onnx` and `minilm-l6-v2.onnx`, then run the gated
+containing `mobilenetv2-12.onnx`, `minilm-l6-v2.onnx`, and
+`tiny-yolov3-11.onnx` (plus the other listed fixtures), then run the gated
 `go test ./nn/ -run RealModel` parity test with the cross-language venv on PATH.
 The gate uses deterministic fixed inputs, compares every output with
 `onnxruntime` within f32 tolerance, and skips without the variable or files

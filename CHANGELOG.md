@@ -65,6 +65,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - Added deterministic `SaveSafeTensors`, `Sequential.SaveWeights`, and `Sequential.ExportONNX`. Saved state dicts use torch names, include BatchNorm running statistics, and reverse the Dense transpose; ONNX exports supported inference layers, omits Dropout, and refuses Func or Embedding by layer position. Trained MLP and CNN exports round-trip through `nn` exactly and through `onnxruntime` within float32 tolerance.
 - Added fused mean `MSELoss` and `BCEWithLogitsLoss` tape operations, per-parameter `SGDMomentum`, `CosineAnnealingLR`, and global-norm `ClipGradNorm`. A six-step BCE training recipe matches PyTorch at every step for learning rate, loss, pre-clip norm, and all parameters.
 - Added torch-compatible `MultiHeadAttention(embed, heads)` and `Residual(layers...)` layers. Mask-free batch-first self-attention composes existing tape operations, nested layer state names round-trip through SafeTensors with torch projection transposes, and a layer-built encoder matches PyTorch through one AdamW step. ONNX export refuses both composite layers by position and kind.
+- Added detector-oriented ONNX inference support: `LeakyRelu`, `Exp`, `Ceil`, `Round`, `Tile`, `ReduceMin`, batched `NonMaxSuppression`, and `Loop` with validated GraphProto bodies, child scopes, loop-carried values, and scan outputs. One-op and synthetic Loop parity pass against `onnxruntime`, and gated tiny-YOLOv3 parity matches exact selection indices and f32 boxes and scores.
 
 ### `ml`
 

@@ -436,9 +436,10 @@ in two epochs.
 | `Pad` | constant and reflect padding from attributes or initializer inputs; edge mode is refused |
 | `Add`, `Sub`, `Mul`, `Div`, `Pow` | float32 elementwise operations with broadcasting; shape arithmetic also supports int64 |
 | `Clip` | opset-11+ float32 clipping with optional scalar min/max inputs |
-| `Relu`, `Sigmoid`, `Tanh`, `Gelu`, `Erf`, `Sqrt` | elementwise activations and math |
+| `Relu`, `LeakyRelu`, `Sigmoid`, `Tanh`, `Gelu`, `Erf`, `Sqrt`, `Exp`, `Ceil`, `Round` | elementwise activations and math; `LeakyRelu` defaults to alpha 0.01 and `Round` uses half-to-even |
 | `LayerNormalization` | suffix normalization with configurable axis and epsilon |
 | `ReduceMean` | reduction over one or more axes with optional keepdims |
+| `ReduceMin` | minimum reduction over one or more axes with optional keepdims |
 | `Softmax` | numerically stable, configurable axis |
 | `Identity` | independent tensor copy |
 | `Reshape` | row-major reshape with `-1` inference |
@@ -453,6 +454,9 @@ in two epochs.
 | `Cast` | float32, int64, string, and bool conversions; half targets round and widen to f32 |
 | `Constant` | typed tensor attribute |
 | `ConstantOfShape` | fills a runtime int64 shape with the typed scalar attribute, defaulting to float32 zero |
+| `Tile` | repeats a tensor using an int64 repeats input |
+| `NonMaxSuppression` | batched, per-class NMS with optional scalar limits and thresholds, deterministic score order, and corner or center box encoding |
+| `Loop` | executes a validated GraphProto body with trip-count, condition, loop-carried values, and axis-0 scan outputs; body-local names shadow visible outer values |
 | `ai.onnx.ml:OneHotEncoder` | string or int64 categories to float32 indicator columns |
 | `ai.onnx.ml:LabelEncoder` | string, int64, or float keys to int64 codes |
 | `ai.onnx.ml:Scaler` | `(value - offset) * scale` |
@@ -464,7 +468,11 @@ in two epochs.
 The standalone kernel functions can be called without constructing a graph.
 Their results are checked against one-operator ONNX graphs executed by
 `onnxruntime`, including the padding, stride, dilation, grouping, and pooling
-attribute combinations. The package also tests fixed-weight MLP, transformer
+attribute combinations. `NonMaxSuppression` returns int64 `(batch, class, box)`
+rows. `Loop` runs its body in a child scope, so outer values remain visible but
+body initializers and outputs can shadow them; zero iterations preserve the
+initial loop-carried values and return empty scan tensors with their declared
+per-iteration shape. The package also tests fixed-weight MLP, transformer
 encoder, and MNIST-class CNN round trips. The encoder proof contains two-head
 self-attention, residual connections, a feed-forward GELU block, and
 LayerNormalization; the CNN proof covers convolution, BatchNormalization,
@@ -472,7 +480,7 @@ pooling, and a softmax classifier.
 
 ## Real-model validation
 
-The gated real-model parity test validates two published checkpoints without
+The gated real-model parity test validates published checkpoints without
 downloading anything. Set `INSYRA_NN_REAL_MODELS_DIR` to a directory containing
 these exact files:
 
@@ -480,6 +488,7 @@ these exact files:
 - `minilm-l6-v2.onnx` (opset 14)
 - `fcn-resnet50-12.onnx` (opset 12, semantic segmentation, exercises linear Resize)
 - `mosaic-9.onnx` (opset 9, fast neural style, exercises Upsample, InstanceNormalization, and reflect Pad)
+- `tiny-yolov3-11.onnx` (opset 11, detector, exercises LeakyRelu, Exp, Ceil, Round, Tile, ReduceMin, NonMaxSuppression, and Loop)
 
 Run the gate with the local `onnxruntime` environment:
 
@@ -490,7 +499,8 @@ env INSYRA_NN_REAL_MODELS_DIR=$HOME/.cache/insyra-nn-models \
 ```
 
 It feeds deterministic image or token tensors to both `nn` and `onnxruntime`
-and compares every output element within f32 tolerance. The two deep
+and compares every output element within f32 tolerance. YOLO selection indices
+must match exactly; its boxes and scores use the f32 tolerance. The two deep
 convolutional stacks carry measured, documented bounds: FCN at 1e-4 relative
 and mosaic at 0.02 (its worst measured deviation is 9.5e-3 across a ±379
 output range — 6e-5 relative — pure f32 reassociation noise). If the variable is
