@@ -1,7 +1,7 @@
 # Delivery Status
 
 ## Current Phase
-`insyra/nn` phase 2 (training): the MLP, attention, and CNN operator families are done, M25–M29 layer-surface work is complete, and M21 is complete — the tape now trains a seeded 784→128→10 MLP to ≥95% MNIST test accuracy with a sane loss curve. `insyra/ml` v1 is shipped, audited and merged to dev (PR #194). Acceleration now has one opt-in wired call site, KNN; large 2-D `nn` MatMul is default-on with CPU fallback.
+`insyra/nn` phase 2 (training): the MLP, attention, and CNN operator families are done, M25–M29 layer-surface work is complete, and M21 is complete — the tape now trains a seeded 784→128→10 MLP to ≥95% MNIST test accuracy with a sane loss curve. `insyra/ml` v1 (PR #194) and the entire `insyra/nn` package (PR #195, 107 commits, M13–M31) are merged to dev. Acceleration now has one opt-in wired call site, KNN; large 2-D `nn` MatMul is default-on with CPU fallback.
 
 ## Stage Objective
 `insyra/nn`: run ONNX models in pure Go, verified per-operator and per-model against `onnxruntime`, with the op families landing in the decided order MLP → attention → CNN, then phase 2 adds autodiff and optimisers on the same tensors (first-step gradients verified against PyTorch under fixed initial weights via SafeTensors). GGUF/LLM is a decided future track that reuses the kernels; only two v1 constraints serve it now — dtype-carrying tensors and kernels as plain functions. M23 is complete: half precision is storage-only, with exact f16/bf16 widening into f32.
