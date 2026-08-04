@@ -37,6 +37,8 @@ None pending review. `add-dl-mnist-convergence` (M21) is implemented and ready t
 | M27 | Training round-trips to disk | planning | done | SaveSafeTensors writes what LoadSafeTensors reads; a trained Sequential exports to ONNX that nn itself and onnxruntime both run, matching Predict; torch reads our safetensors back |
 | M28 | Loss and optimizer toolkit | planning | done | MSE and BCE losses, momentum SGD, cosine schedule, gradient clipping — each torch-verified |
 | M29 | MultiHeadAttention layer | planning | done | an encoder block composes from layers alone, trains one step matching PyTorch, no Func required |
+| M30 | Segmentation and style models run | planning | in progress | measured gaps only: Resize (linear+nearest), Upsample, Floor, InstanceNormalization — FCN-ResNet50 and mosaic-9 (real published files) match onnxruntime |
+| M31 | A real detector runs | planning | pending | LeakyRelu, Exp, Ceil, Round, Tile, ReduceMin, NonMaxSuppression, and Loop subgraph execution — tiny-YOLOv3 matches onnxruntime; ConvTranspose and TopK stay unbuilt because no target model needs them |
 
 Milestone order is the blocking sequence. OpenSpec has no dependency relationship between changes, so nothing else carries it.
 
