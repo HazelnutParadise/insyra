@@ -45,7 +45,11 @@ jobs:
       # without adding its dependency here makes this job fail rather than skip,
       # which is the point.
       - name: Install Python reference implementations
-        run: python -m pip install --upgrade pip numpy scipy statsmodels scikit-learn onnx onnxruntime
+        run: python -m pip install --upgrade pip numpy scipy statsmodels scikit-learn onnx onnxruntime safetensors
+      # torch is the gradient reference for the nn training suite. The CPU
+      # wheel index keeps the download at ~200MB instead of the CUDA ~2GB.
+      - name: Install PyTorch (CPU)
+        run: python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
       - name: Install R reference implementations
         run: Rscript -e "install.packages(c('jsonlite','cluster','dbscan'), repos='https://cloud.r-project.org')"
 
