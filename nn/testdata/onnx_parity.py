@@ -157,6 +157,71 @@ def one_op(name):
             [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 2, 1, 1])],
         )
         return model, {"X": value}
+    if name in (
+        "ResizeNearestScalesAsymmetric",
+        "ResizeNearestSizesAsymmetric",
+        "ResizeLinearScalesPytorchHalfPixel",
+        "ResizeLinearSizesPytorchHalfPixel",
+    ):
+        value = np.arange(1, 17, dtype=np.float32).reshape(1, 1, 4, 4)
+        roi = np.array([], dtype=np.float32)
+        linear = name.startswith("ResizeLinear")
+        use_sizes = "Sizes" in name
+        if use_sizes:
+            control = np.array([1, 1, 3, 2], dtype=np.int64)
+            control_name = "sizes"
+            output_shape = [1, 1, 3, 2]
+            inputs = ["X", "roi", "", control_name]
+        else:
+            control = np.array([1, 1, 1.5, 0.75], dtype=np.float32)
+            control_name = "scales"
+            output_shape = [1, 1, 6, 3]
+            inputs = ["X", "roi", control_name]
+        attributes = {
+            "mode": "linear" if linear else "nearest",
+            "coordinate_transformation_mode": "pytorch_half_pixel" if linear else "asymmetric",
+            "nearest_mode": "floor",
+        }
+        model = make_model(
+            [helper.make_node("Resize", inputs, ["Y"], **attributes)],
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, list(value.shape))],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, output_shape)],
+            [numpy_helper.from_array(roi, "roi"), numpy_helper.from_array(control, control_name)],
+        )
+        return model, {"X": value}
+    if name == "UpsampleOpset9":
+        value = np.arange(1, 7, dtype=np.float32).reshape(1, 1, 2, 3)
+        scales = np.array([1, 1, 2, 2], dtype=np.float32)
+        model = make_model(
+            [helper.make_node("Upsample", ["X", "scales"], ["Y"], mode="nearest")],
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, list(value.shape))],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 1, 4, 6])],
+            [numpy_helper.from_array(scales, "scales")],
+            opset=9,
+        )
+        return model, {"X": value}
+    if name == "Floor":
+        value = np.array([-2.75, -1.0, -0.25, 0.0, 1.25, 3.9], dtype=np.float32)
+        model = make_model(
+            [helper.make_node("Floor", ["X"], ["Y"])],
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3])],
+        )
+        return model, {"X": value.reshape(2, 3)}
+    if name == "InstanceNormalizationEpsilon":
+        value = np.array([
+            1, 2, 4, 8, 3, 5, 7, 11,
+            -1, 0, 2, 6, 4, 4.5, 9, 10,
+        ], dtype=np.float32).reshape(1, 2, 2, 4)
+        scale = np.array([1.5, -0.75], dtype=np.float32)
+        bias = np.array([0.25, 2.0], dtype=np.float32)
+        model = make_model(
+            [helper.make_node("InstanceNormalization", ["X", "scale", "bias"], ["Y"], epsilon=0.01)],
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, list(value.shape))],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, list(value.shape))],
+            [numpy_helper.from_array(scale, "scale"), numpy_helper.from_array(bias, "bias")],
+        )
+        return model, {"X": value}
     if name == "BatchNormalizationEpsilon":
         value = np.array([1, 3, 10, 14], dtype=np.float32).reshape(1, 2, 1, 2)
         scale = np.array([2, 0.5], dtype=np.float32)
@@ -193,6 +258,18 @@ def one_op(name):
             [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [4, 3])],
             initializers,
             opset=opset,
+        )
+        return model, {"X": value}
+    if name == "PadReflect":
+        value = np.arange(1, 10, dtype=np.float32).reshape(1, 1, 3, 3)
+        pads = np.array([0, 0, 2, 2, 0, 0, 2, 2], dtype=np.int64)
+        node = helper.make_node("Pad", ["X", "pads"], ["Y"], mode="reflect")
+        model = make_model(
+            [node],
+            [helper.make_tensor_value_info("X", TensorProto.FLOAT, [1, 1, 3, 3])],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 1, 7, 7])],
+            [numpy_helper.from_array(pads, "pads")],
+            opset=13,
         )
         return model, {"X": value}
     if name in ("Add", "Sub", "Mul", "Div"):

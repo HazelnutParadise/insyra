@@ -199,6 +199,78 @@ func TestOneOpParityAgainstONNXRuntime(t *testing.T) {
 			},
 		},
 		{
+			name: "ResizeNearestScalesAsymmetric",
+			run: func() (*Tensor, error) {
+				return Resize(
+					mustTestTensor(t, []int{1, 1, 4, 4}, scaledRange(16, 1)),
+					mustTestTensor(t, []int{4}, []float32{1, 1, 1.5, 0.75}),
+					nil,
+					ResizeOptions{Mode: "nearest", CoordinateTransformationMode: "asymmetric", NearestMode: "floor"},
+				)
+			},
+		},
+		{
+			name: "ResizeNearestSizesAsymmetric",
+			run: func() (*Tensor, error) {
+				return Resize(
+					mustTestTensor(t, []int{1, 1, 4, 4}, scaledRange(16, 1)),
+					nil,
+					mustTestInt64Tensor(t, []int{4}, []int64{1, 1, 3, 2}),
+					ResizeOptions{Mode: "nearest", CoordinateTransformationMode: "asymmetric", NearestMode: "floor"},
+				)
+			},
+		},
+		{
+			name: "ResizeLinearScalesPytorchHalfPixel",
+			run: func() (*Tensor, error) {
+				return Resize(
+					mustTestTensor(t, []int{1, 1, 4, 4}, scaledRange(16, 1)),
+					mustTestTensor(t, []int{4}, []float32{1, 1, 1.5, 0.75}),
+					nil,
+					ResizeOptions{Mode: "linear", CoordinateTransformationMode: "pytorch_half_pixel", NearestMode: "floor"},
+				)
+			},
+		},
+		{
+			name: "ResizeLinearSizesPytorchHalfPixel",
+			run: func() (*Tensor, error) {
+				return Resize(
+					mustTestTensor(t, []int{1, 1, 4, 4}, scaledRange(16, 1)),
+					nil,
+					mustTestInt64Tensor(t, []int{4}, []int64{1, 1, 3, 2}),
+					ResizeOptions{Mode: "linear", CoordinateTransformationMode: "pytorch_half_pixel", NearestMode: "floor"},
+				)
+			},
+		},
+		{
+			name: "UpsampleOpset9",
+			run: func() (*Tensor, error) {
+				return Resize(
+					mustTestTensor(t, []int{1, 1, 2, 3}, []float32{1, 2, 3, 4, 5, 6}),
+					mustTestTensor(t, []int{4}, []float32{1, 1, 2, 2}),
+					nil,
+					ResizeOptions{Mode: "nearest", CoordinateTransformationMode: "asymmetric", NearestMode: "floor"},
+				)
+			},
+		},
+		{
+			name: "Floor",
+			run: func() (*Tensor, error) {
+				return Floor(mustTestTensor(t, []int{2, 3}, []float32{-2.75, -1, -0.25, 0, 1.25, 3.9}))
+			},
+		},
+		{
+			name: "InstanceNormalizationEpsilon",
+			run: func() (*Tensor, error) {
+				return InstanceNormalization(
+					mustTestTensor(t, []int{1, 2, 2, 4}, []float32{1, 2, 4, 8, 3, 5, 7, 11, -1, 0, 2, 6, 4, 4.5, 9, 10}),
+					mustTestTensor(t, []int{2}, []float32{1.5, -0.75}),
+					mustTestTensor(t, []int{2}, []float32{0.25, 2}),
+					0.01,
+				)
+			},
+		},
+		{
 			name: "BatchNormalizationEpsilon",
 			run: func() (*Tensor, error) {
 				return BatchNormalization(
@@ -221,6 +293,12 @@ func TestOneOpParityAgainstONNXRuntime(t *testing.T) {
 			name: "PadInitializers",
 			run: func() (*Tensor, error) {
 				return Pad(mustTestTensor(t, []int{1, 2}, []float32{1, 2}), []int{1, 0, 2, 1}, 0.5)
+			},
+		},
+		{
+			name: "PadReflect",
+			run: func() (*Tensor, error) {
+				return PadReflect(mustTestTensor(t, []int{1, 1, 3, 3}, []float32{1, 2, 3, 4, 5, 6, 7, 8, 9}), []int{0, 0, 2, 2, 0, 0, 2, 2})
 			},
 		},
 		{
@@ -835,6 +913,13 @@ func readParityInputs(t *testing.T, path string) map[string]*Tensor {
 
 func assertParityOutput(t *testing.T, got *Tensor, want parityOutput) {
 	t.Helper()
+	assertParityOutputTolerance(t, got, want, 1e-5)
+}
+
+// assertParityOutputTolerance is assertParityOutput with a caller-chosen
+// relative bound; deep real-model stacks need a wider one than one-op graphs.
+func assertParityOutputTolerance(t *testing.T, got *Tensor, want parityOutput, tolerance float64) {
+	t.Helper()
 	if got == nil {
 		t.Fatal("got nil tensor")
 	}
@@ -849,7 +934,7 @@ func assertParityOutput(t *testing.T, got *Tensor, want parityOutput) {
 		for index := range want.Data {
 			difference := math.Abs(float64(got.data[index] - want.Data[index]))
 			scale := math.Max(1, math.Abs(float64(want.Data[index])))
-			if difference > 1e-5*scale {
+			if difference > tolerance*scale {
 				t.Fatalf("data[%d] = %g, want %g (difference %g)", index, got.data[index], want.Data[index], difference)
 			}
 		}

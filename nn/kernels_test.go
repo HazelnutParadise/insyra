@@ -243,11 +243,11 @@ func TestCNNNodeErrorsNameNodesAndUnsupportedForms(t *testing.T) {
 		inputs:  []string{"X"},
 		outputs: []string{"Y"},
 		attributes: map[string]protoAttribute{
-			"mode": {string: []byte("reflect")},
+			"mode": {string: []byte("edge")},
 			"pads": {ints: []int64{1, 0, 1, 0}},
 		},
 	}, values)
-	if err == nil || !strings.Contains(err.Error(), `node "bad-pad-mode"`) || !strings.Contains(err.Error(), "reflect") {
+	if err == nil || !strings.Contains(err.Error(), `node "bad-pad-mode"`) || !strings.Contains(err.Error(), "edge") {
 		t.Fatalf("Pad mode error = %v", err)
 	}
 

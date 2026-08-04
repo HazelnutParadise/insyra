@@ -294,7 +294,7 @@ func executeNode(node modelNode, values map[string]*Tensor) (map[string]*Tensor,
 		case "Pow":
 			result, err = Pow(left, right)
 		}
-	case "Relu", "Sigmoid", "Tanh", "Gelu", "Erf", "Sqrt":
+	case "Relu", "Sigmoid", "Tanh", "Gelu", "Erf", "Sqrt", "Floor":
 		value, inputErr := input(0)
 		if inputErr != nil {
 			return nil, inputErr
@@ -316,7 +316,93 @@ func executeNode(node modelNode, values map[string]*Tensor) (map[string]*Tensor,
 			result, err = Erf(value)
 		case "Sqrt":
 			result, err = Sqrt(value)
+		case "Floor":
+			result, err = Floor(value)
 		}
+	case "Resize", "Upsample":
+		value, inputErr := input(0)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		var scales, sizes *Tensor
+		mode, modeErr := nodeStringAttribute(node, "mode", "nearest")
+		if modeErr != nil {
+			return nil, modeErr
+		}
+		coord := "asymmetric"
+		nearestMode := "floor"
+		if node.opType == "Resize" {
+			if arityErr := nodeInputArity(node, 2, 4); arityErr != nil {
+				return nil, arityErr
+			}
+			var coordErr error
+			coord, coordErr = nodeStringAttribute(node, "coordinate_transformation_mode", "half_pixel")
+			if coordErr != nil {
+				return nil, coordErr
+			}
+			var nearestErr error
+			nearestMode, nearestErr = nodeStringAttribute(node, "nearest_mode", "round_prefer_floor")
+			if nearestErr != nil {
+				return nil, nearestErr
+			}
+			if len(node.inputs) > 1 && node.inputs[1] != "" {
+				roi, roiErr := controlInput(1, "roi")
+				if roiErr != nil {
+					return nil, roiErr
+				}
+				if err := requireFloat32(roi, "resize roi"); err != nil {
+					return nil, err
+				}
+			}
+			if len(node.inputs) > 2 && node.inputs[2] != "" {
+				scales, err = controlInput(2, "scales")
+				if err != nil {
+					return nil, err
+				}
+				if scales.Len() == 0 {
+					scales = nil
+				}
+			}
+			if len(node.inputs) > 3 && node.inputs[3] != "" {
+				sizes, err = controlInput(3, "sizes")
+				if err != nil {
+					return nil, err
+				}
+				if sizes.Len() == 0 {
+					sizes = nil
+				}
+			}
+		} else {
+			if arityErr := nodeInputArity(node, 2, 2); arityErr != nil {
+				return nil, arityErr
+			}
+			scales, err = controlInput(1, "scales")
+			if err != nil {
+				return nil, err
+			}
+		}
+		result, err = Resize(value, scales, sizes, ResizeOptions{Mode: mode, CoordinateTransformationMode: coord, NearestMode: nearestMode})
+	case "InstanceNormalization":
+		if arityErr := nodeInputArity(node, 3, 3); arityErr != nil {
+			return nil, arityErr
+		}
+		value, inputErr := input(0)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		scale, inputErr := input(1)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		bias, inputErr := input(2)
+		if inputErr != nil {
+			return nil, inputErr
+		}
+		epsilon, epsilonErr := nodeFloatAttribute(node, "epsilon", 1e-5)
+		if epsilonErr != nil {
+			return nil, epsilonErr
+		}
+		result, err = InstanceNormalization(value, scale, bias, epsilon)
 	case "Clip":
 		value, inputErr := input(0)
 		if inputErr != nil {
@@ -472,8 +558,8 @@ func executeNode(node modelNode, values map[string]*Tensor) (map[string]*Tensor,
 		if modeErr != nil {
 			return nil, modeErr
 		}
-		if mode != "constant" {
-			return nil, fmt.Errorf("node %q Pad mode %q is unsupported; only constant mode is supported", node.name, mode)
+		if mode != "constant" && mode != "reflect" {
+			return nil, fmt.Errorf("node %q Pad mode %q is unsupported; only constant and reflect modes are supported", node.name, mode)
 		}
 		var pads []int
 		if len(node.inputs) > 1 && node.inputs[1] != "" {
@@ -513,7 +599,16 @@ func executeNode(node modelNode, values map[string]*Tensor) (map[string]*Tensor,
 				}
 			}
 		}
-		result, err = Pad(value, pads, constantValue)
+		if mode == "reflect" {
+			for index := 2; index < len(node.inputs); index++ {
+				if node.inputs[index] != "" {
+					return nil, fmt.Errorf("node %q Pad reflect mode does not accept input %d", node.name, index)
+				}
+			}
+			result, err = PadReflect(value, pads)
+		} else {
+			result, err = Pad(value, pads, constantValue)
+		}
 	case "ReduceMean":
 		value, inputErr := input(0)
 		if inputErr != nil {

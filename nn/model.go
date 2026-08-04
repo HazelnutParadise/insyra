@@ -35,10 +35,11 @@ type Model struct {
 
 var supportedOperators = map[string]struct{}{
 	"Gemm": {}, "MatMul": {}, "Add": {}, "Sub": {}, "Mul": {}, "Div": {},
-	"Relu": {}, "Sigmoid": {}, "Tanh": {}, "Gelu": {}, "Erf": {}, "Sqrt": {}, "Pow": {},
+	"Relu": {}, "Sigmoid": {}, "Tanh": {}, "Gelu": {}, "Erf": {}, "Sqrt": {}, "Floor": {}, "Pow": {},
 	"LayerNormalization": {}, "ReduceMean": {}, "Softmax": {}, "Identity": {},
 	"Conv": {}, "MaxPool": {}, "AveragePool": {}, "GlobalAveragePool": {},
 	"BatchNormalization": {}, "Pad": {},
+	"InstanceNormalization": {}, "Resize": {}, "Upsample": {},
 	"Clip": {}, "ConstantOfShape": {},
 	"Reshape": {}, "Flatten": {}, "Transpose": {}, "Cast": {}, "Constant": {},
 	"Concat": {}, "Unsqueeze": {}, "Squeeze": {}, "Expand": {}, "Shape": {}, "Slice": {}, "Split": {},

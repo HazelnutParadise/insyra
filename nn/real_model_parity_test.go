@@ -44,12 +44,25 @@ func TestRealModelParity(t *testing.T) {
 		t.Skip("INSYRA_NN_REAL_MODELS_DIR is not set")
 	}
 	models := []struct {
-		name string
-		file string
-		feed func(*testing.T, *Model) map[string]*Tensor
+		name      string
+		file      string
+		feed      func(*testing.T, *Model) map[string]*Tensor
+		tolerance float64
 	}{
-		{name: "MobileNetV2", file: "mobilenetv2-12.onnx", feed: mobileNetFeed},
-		{name: "MiniLM-L6-v2", file: "minilm-l6-v2.onnx", feed: miniLMFeed},
+		{name: "MobileNetV2", file: "mobilenetv2-12.onnx", feed: mobileNetFeed, tolerance: 1e-5},
+		{name: "MiniLM-L6-v2", file: "minilm-l6-v2.onnx", feed: miniLMFeed, tolerance: 1e-5},
+		// The two deep models keep a wider (still strict) bound: a 50-plus
+		// convolution stack reassociates f32 sums enough that 1e-5 relative
+		// flags pure ordering noise; 1e-4 is the standard deep-model bar.
+		{name: "FCN-ResNet50", file: "fcn-resnet50-12.onnx", feed: fcnResNetFeed, tolerance: 1e-4},
+		// mosaic-9 emits a 0-255 image. Measured against onnxruntime over the
+		// whole 150k-element output: max absolute deviation 9.5e-3 on a ±379
+		// range (6e-5 relative at the worst element), mean 3.5e-4 — smooth
+		// global reassociation noise, not structure. A per-element relative
+		// bound misfires on near-zero pixels, so this case carries 0.02:
+		// absolute for small elements, 2% relative above one, both far wider
+		// than anything measured and ~5e-5 of the output range.
+		{name: "mosaic-9", file: "mosaic-9.onnx", feed: mosaicFeed, tolerance: 2e-2},
 	}
 	for _, tc := range models {
 		if _, err := os.Stat(filepath.Join(modelDir, tc.file)); err != nil {
@@ -89,7 +102,7 @@ func TestRealModelParity(t *testing.T) {
 				if !present {
 					t.Fatalf("nn output %q is missing", spec.Name)
 				}
-				assertParityOutput(t, output, reference[index])
+				assertParityOutputTolerance(t, output, reference[index], tc.tolerance)
 			}
 		})
 	}
@@ -103,6 +116,30 @@ func mobileNetFeed(t *testing.T, model *Model) map[string]*Tensor {
 	data := make([]float32, 3*224*224)
 	for index := range data {
 		data[index] = float32((index%251)-125) / 125
+	}
+	return map[string]*Tensor{model.Inputs()[0].Name: mustTestTensor(t, []int{1, 3, 224, 224}, data)}
+}
+
+func fcnResNetFeed(t *testing.T, model *Model) map[string]*Tensor {
+	t.Helper()
+	if len(model.Inputs()) != 1 || model.Inputs()[0].DType != DTypeFloat32 {
+		t.Fatalf("FCN-ResNet50 input contract = %+v", model.Inputs())
+	}
+	data := make([]float32, 3*224*224)
+	for index := range data {
+		data[index] = float32((index*17)%256) / 255
+	}
+	return map[string]*Tensor{model.Inputs()[0].Name: mustTestTensor(t, []int{1, 3, 224, 224}, data)}
+}
+
+func mosaicFeed(t *testing.T, model *Model) map[string]*Tensor {
+	t.Helper()
+	if len(model.Inputs()) != 1 || model.Inputs()[0].DType != DTypeFloat32 {
+		t.Fatalf("mosaic-9 input contract = %+v", model.Inputs())
+	}
+	data := make([]float32, 3*224*224)
+	for index := range data {
+		data[index] = float32((index * 37) % 256)
 	}
 	return map[string]*Tensor{model.Inputs()[0].Name: mustTestTensor(t, []int{1, 3, 224, 224}, data)}
 }

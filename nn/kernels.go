@@ -169,6 +169,14 @@ type PoolOptions struct {
 type MaxPoolOptions = PoolOptions
 type AveragePoolOptions = PoolOptions
 
+// ResizeOptions controls the ONNX Resize coordinate and interpolation
+// semantics supported by the inference kernels.
+type ResizeOptions struct {
+	Mode                         string
+	CoordinateTransformationMode string
+	NearestMode                  string
+}
+
 // Conv computes a two-dimensional NCHW convolution. The accumulator stays in
 // float64 until each output value is narrowed to the tensor's float32 dtype.
 func Conv(input, weights, bias *Tensor, options ...ConvOptions) (*Tensor, error) {
@@ -438,6 +446,166 @@ func GlobalAveragePool(input *Tensor) (*Tensor, error) {
 	return result, nil
 }
 
+// Resize resizes the H and W axes of a 4-D NCHW tensor. Exactly one of scales
+// or sizes must be supplied. The N and C axes are preserved.
+func Resize(input, scales, sizes *Tensor, options ...ResizeOptions) (*Tensor, error) {
+	if err := requireFloat32(input, "resize input"); err != nil {
+		return nil, err
+	}
+	if len(options) > 1 {
+		return nil, fmt.Errorf("resize accepts at most one options value")
+	}
+	opts := ResizeOptions{Mode: "nearest", CoordinateTransformationMode: "asymmetric", NearestMode: "floor"}
+	if len(options) == 1 {
+		opts = options[0]
+	}
+	if opts.Mode != "nearest" && opts.Mode != "linear" {
+		return nil, fmt.Errorf("resize mode %q is unsupported", opts.Mode)
+	}
+	switch opts.CoordinateTransformationMode {
+	case "asymmetric", "pytorch_half_pixel":
+	default:
+		return nil, fmt.Errorf("resize coordinate_transformation_mode %q is unsupported", opts.CoordinateTransformationMode)
+	}
+	if opts.NearestMode != "floor" && opts.NearestMode != "round_prefer_floor" {
+		return nil, fmt.Errorf("resize nearest_mode %q is unsupported", opts.NearestMode)
+	}
+	if len(input.shape) != 4 {
+		return nil, fmt.Errorf("resize requires a 4-D NCHW input, got shape %v", input.shape)
+	}
+	if (scales == nil) == (sizes == nil) {
+		return nil, fmt.Errorf("resize requires exactly one of scales or sizes")
+	}
+	outH, outW, err := resizeOutputShape(input.shape, scales, sizes)
+	if err != nil {
+		return nil, err
+	}
+	result, err := newZeroFloat32Tensor([]int{input.shape[0], input.shape[1], outH, outW})
+	if err != nil {
+		return nil, err
+	}
+	inH, inW := input.shape[2], input.shape[3]
+	for batch := 0; batch < input.shape[0]; batch++ {
+		for channel := 0; channel < input.shape[1]; channel++ {
+			for row := 0; row < outH; row++ {
+				rowCoordinate := resizeCoordinate(row, inH, outH, opts.CoordinateTransformationMode)
+				for column := 0; column < outW; column++ {
+					columnCoordinate := resizeCoordinate(column, inW, outW, opts.CoordinateTransformationMode)
+					outputIndex := ((batch*input.shape[1]+channel)*outH+row)*outW + column
+					if opts.Mode == "nearest" {
+						inputRow := resizeNearestIndex(rowCoordinate, inH, opts.NearestMode)
+						inputColumn := resizeNearestIndex(columnCoordinate, inW, opts.NearestMode)
+						result.data[outputIndex] = input.data[((batch*input.shape[1]+channel)*inH+inputRow)*inW+inputColumn]
+						continue
+					}
+					row0, row1, rowWeight := resizeLinearIndices(rowCoordinate, inH)
+					column0, column1, columnWeight := resizeLinearIndices(columnCoordinate, inW)
+					base := (batch*input.shape[1] + channel) * inH * inW
+					v00 := float64(input.data[base+row0*inW+column0])
+					v01 := float64(input.data[base+row0*inW+column1])
+					v10 := float64(input.data[base+row1*inW+column0])
+					v11 := float64(input.data[base+row1*inW+column1])
+					rowTop := v00 + (v01-v00)*columnWeight
+					rowBottom := v10 + (v11-v10)*columnWeight
+					result.data[outputIndex] = float32(rowTop + (rowBottom-rowTop)*rowWeight)
+				}
+			}
+		}
+	}
+	return result, nil
+}
+
+func resizeOutputShape(inputShape []int, scales, sizes *Tensor) (int, int, error) {
+	if scales != nil {
+		if err := requireFloat32(scales, "resize scales"); err != nil {
+			return 0, 0, err
+		}
+		if len(scales.shape) != 1 || scales.Len() != len(inputShape) {
+			return 0, 0, fmt.Errorf("resize scales shape %v does not match input rank %d", scales.shape, len(inputShape))
+		}
+		for axis, scale := range scales.data {
+			if math.IsNaN(float64(scale)) || math.IsInf(float64(scale), 0) || scale <= 0 {
+				return 0, 0, fmt.Errorf("resize scale at axis %d is invalid: %g", axis, scale)
+			}
+			if axis < 2 && scale != 1 {
+				return 0, 0, fmt.Errorf("resize scale at non-spatial axis %d is unsupported: %g", axis, scale)
+			}
+		}
+		outH := int(math.Floor(float64(inputShape[2]) * float64(scales.data[2])))
+		outW := int(math.Floor(float64(inputShape[3]) * float64(scales.data[3])))
+		if outH <= 0 || outW <= 0 {
+			return 0, 0, fmt.Errorf("resize scales %v produce invalid spatial shape [%d %d]", scales.data, outH, outW)
+		}
+		return outH, outW, nil
+	}
+	if sizes == nil {
+		return 0, 0, fmt.Errorf("resize sizes tensor is nil")
+	}
+	if sizes.dtype != DTypeInt64 {
+		return 0, 0, fmt.Errorf("resize sizes has dtype %s, want %s", dtypeName(sizes.dtype), dtypeName(DTypeInt64))
+	}
+	if len(sizes.shape) != 1 || sizes.Len() != len(inputShape) {
+		return 0, 0, fmt.Errorf("resize sizes shape %v does not match input rank %d", sizes.shape, len(inputShape))
+	}
+	for axis, size := range sizes.int64Data {
+		if size <= 0 || size > int64(maxInt()) {
+			return 0, 0, fmt.Errorf("resize size at axis %d is invalid: %d", axis, size)
+		}
+		if axis < 2 && int(size) != inputShape[axis] {
+			return 0, 0, fmt.Errorf("resize size at non-spatial axis %d is unsupported: %d", axis, size)
+		}
+	}
+	return int(sizes.int64Data[2]), int(sizes.int64Data[3]), nil
+}
+
+func resizeCoordinate(outputIndex, inputSize, outputSize int, mode string) float64 {
+	switch mode {
+	case "asymmetric":
+		return float64(outputIndex) * float64(inputSize) / float64(outputSize)
+	case "pytorch_half_pixel":
+		if outputSize == 1 {
+			return 0
+		}
+		return (float64(outputIndex)+0.5)*float64(inputSize)/float64(outputSize) - 0.5
+	default:
+		panic(fmt.Sprintf("unsupported resize coordinate mode %q", mode))
+	}
+}
+
+func resizeNearestIndex(coordinate float64, inputSize int, mode string) int {
+	index := int(math.Floor(coordinate))
+	if mode == "round_prefer_floor" {
+		index = int(math.Floor(coordinate + 0.5))
+	}
+	if index < 0 {
+		return 0
+	}
+	if index >= inputSize {
+		return inputSize - 1
+	}
+	return index
+}
+
+func resizeLinearIndices(coordinate float64, inputSize int) (int, int, float64) {
+	base := int(math.Floor(coordinate))
+	weight := coordinate - float64(base)
+	first := base
+	second := base + 1
+	if first < 0 {
+		first = 0
+	}
+	if first >= inputSize {
+		first = inputSize - 1
+	}
+	if second < 0 {
+		second = 0
+	}
+	if second >= inputSize {
+		second = inputSize - 1
+	}
+	return first, second, weight
+}
+
 // BatchNormalization applies inference-mode channel normalization to an input
 // whose channel axis is one. The five parameter tensors are one-dimensional.
 func BatchNormalization(input, scale, bias, mean, variance *Tensor, epsilonValues ...float32) (*Tensor, error) {
@@ -478,6 +646,68 @@ func BatchNormalization(input, scale, bias, mean, variance *Tensor, epsilonValue
 		channel := (index / channelStride) % channels
 		normalized := (float64(value) - float64(mean.data[channel])) / math.Sqrt(float64(variance.data[channel])+float64(epsilon))
 		result.data[index] = float32(normalized*float64(scale.data[channel]) + float64(bias.data[channel]))
+	}
+	return result, nil
+}
+
+// InstanceNormalization normalizes each channel of each instance over its
+// spatial axes, then applies the per-channel scale and bias.
+func InstanceNormalization(input, scale, bias *Tensor, epsilonValues ...float32) (*Tensor, error) {
+	if err := requireFloat32(input, "instance normalization input"); err != nil {
+		return nil, err
+	}
+	if err := requireFloat32(scale, "instance normalization scale"); err != nil {
+		return nil, err
+	}
+	if err := requireFloat32(bias, "instance normalization bias"); err != nil {
+		return nil, err
+	}
+	if len(epsilonValues) > 1 {
+		return nil, fmt.Errorf("instance normalization accepts at most one epsilon value")
+	}
+	epsilon := float32(1e-5)
+	if len(epsilonValues) == 1 {
+		epsilon = epsilonValues[0]
+	}
+	if epsilon < 0 || math.IsNaN(float64(epsilon)) || math.IsInf(float64(epsilon), 0) {
+		return nil, fmt.Errorf("instance normalization epsilon %g is invalid", epsilon)
+	}
+	if len(input.shape) < 3 {
+		return nil, fmt.Errorf("instance normalization requires input rank at least 3, got shape %v", input.shape)
+	}
+	channels := input.shape[1]
+	wantShape := []int{channels}
+	if !sameShape(scale.shape, wantShape) || !sameShape(bias.shape, wantShape) {
+		return nil, fmt.Errorf("instance normalization scale and bias shapes %v and %v must match channel shape %v", scale.shape, bias.shape, wantShape)
+	}
+	spatial := 1
+	for _, dimension := range input.shape[2:] {
+		spatial *= dimension
+	}
+	result, err := copyTensor(input)
+	if err != nil {
+		return nil, err
+	}
+	for batch := 0; batch < input.shape[0]; batch++ {
+		for channel := 0; channel < channels; channel++ {
+			base := (batch*channels + channel) * spatial
+			var meanValue float64
+			for index := 0; index < spatial; index++ {
+				meanValue += float64(input.data[base+index])
+			}
+			meanValue /= float64(spatial)
+			var variance float64
+			for index := 0; index < spatial; index++ {
+				delta := float64(input.data[base+index]) - meanValue
+				variance += delta * delta
+			}
+			variance /= float64(spatial)
+			denominator := math.Sqrt(variance + float64(epsilon))
+			for index := 0; index < spatial; index++ {
+				normalized := (float64(input.data[base+index]) - meanValue) / denominator
+				result.data[base+index] = float32(normalized*float64(scale.data[channel]) + float64(bias.data[channel]))
+			}
+		}
 	}
 	return result, nil
 }
@@ -535,6 +765,64 @@ func Pad(input *Tensor, pads []int, values ...float32) (*Tensor, error) {
 		}
 	}
 	return result, nil
+}
+
+// PadReflect applies ONNX's reflect padding. The edge value is not repeated.
+func PadReflect(input *Tensor, pads []int) (*Tensor, error) {
+	if err := requireFloat32(input, "reflect pad input"); err != nil {
+		return nil, err
+	}
+	if len(pads) != 2*len(input.shape) {
+		return nil, fmt.Errorf("reflect pad pads %v has length %d, want %d for input shape %v", pads, len(pads), 2*len(input.shape), input.shape)
+	}
+	outputShape := make([]int, len(input.shape))
+	for axis, dimension := range input.shape {
+		if pads[axis] < 0 || pads[len(input.shape)+axis] < 0 {
+			return nil, fmt.Errorf("reflect pad pads %v must be non-negative", pads)
+		}
+		if dimension <= 1 && (pads[axis] > 0 || pads[len(input.shape)+axis] > 0) {
+			return nil, fmt.Errorf("reflect pad cannot pad axis %d with input dimension %d", axis, dimension)
+		}
+		if dimension > 1 && (pads[axis] >= dimension || pads[len(input.shape)+axis] >= dimension) {
+			return nil, fmt.Errorf("reflect pad pads %v exceed input dimension %d at axis %d", pads, dimension, axis)
+		}
+		outputShape[axis] = dimension + pads[axis] + pads[len(input.shape)+axis]
+	}
+	result, err := newFloat32Tensor(outputShape, make([]float32, elementCount(outputShape)))
+	if err != nil {
+		return nil, err
+	}
+	for outputIndex := range result.data {
+		remaining := outputIndex
+		inputIndex := 0
+		for axis, stride := range result.strides {
+			coordinate := remaining / stride
+			remaining %= stride
+			coordinate -= pads[axis]
+			inputCoordinate := reflectCoordinate(coordinate, input.shape[axis])
+			inputIndex += inputCoordinate * input.strides[axis]
+		}
+		result.data[outputIndex] = input.data[inputIndex]
+	}
+	return result, nil
+}
+
+func reflectCoordinate(coordinate, dimension int) int {
+	// A dimension of one has nothing to reflect; every coordinate maps to it.
+	// Without this, period is zero and the modulo below divides by zero on
+	// the batch and channel axes real NCHW pads leave at size one.
+	if dimension == 1 {
+		return 0
+	}
+	period := 2 * (dimension - 1)
+	coordinate %= period
+	if coordinate < 0 {
+		coordinate += period
+	}
+	if coordinate >= dimension {
+		return period - coordinate
+	}
+	return coordinate
 }
 
 type resolved2DWindow struct {
@@ -860,6 +1148,11 @@ func Relu(input *Tensor) (*Tensor, error) {
 		}
 		return value
 	})
+}
+
+// Floor rounds each float32 element toward negative infinity.
+func Floor(input *Tensor) (*Tensor, error) {
+	return unary("floor", input, func(value float32) float32 { return float32(math.Floor(float64(value))) })
 }
 
 // Sigmoid computes 1/(1+exp(-input)) element by element.
