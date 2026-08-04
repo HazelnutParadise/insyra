@@ -10,7 +10,7 @@
 
 **[繁體中文](README_TW.md) | English**
 
-A next-generation data analysis library for Golang. Supports **parallel processing**, **data visualization**, and **seamless integration with Python**.
+From data frames to deep learning — one library, pure Go. **Insyra** gives Go developers the full analytics stack: fast DataTable manipulation, statistics validated against R, **scikit-learn-style machine learning**, and a **neural-network engine** that trains models and runs real ONNX checkpoints — with built-in GPU acceleration, parallel processing, data visualization, and seamless Python integration.
 
 **Official Website: <https://insyra.hazelnut-paradise.com>**
 
@@ -38,6 +38,28 @@ The **Insyra** library is a dynamic and versatile tool designed for managing and
 > [!IMPORTANT] 
 > **For any functions or methods not explicitly listed in Insyra documents, it indicates that the feature is still under active development. These experimental features might provide unstable results.** <br/>
 > Please refer to our latest updates in **[Docs](/Docs)** folder for more details.
+
+## Machine Learning & Deep Learning, in Pure Go
+
+The newest additions to the ecosystem — no Python runtime, no cgo, no external inference engine:
+
+- **[`ml`](/Docs/ml.md)** — scikit-learn-shaped modeling: linear/ridge/lasso/logistic regression, decision trees, random forests, gradient boosting, pipelines, cross-validation, and grid search. Every estimator is verified against scikit-learn, R, or statsmodels, and models export to ONNX.
+- **[`nn`](/Docs/nn.md)** — neural networks end to end:
+  - **Run real models**: published ONNX checkpoints — MobileNetV2, MiniLM (BERT-class), FCN-ResNet50, fast-neural-style, tiny-YOLOv3 — run unmodified, verified against `onnxruntime`.
+  - **Train**: a reverse-mode autodiff tape and a Sequential layer API (Dense, Conv2D, BatchNorm, MultiHeadAttention, …) with Adam/AdamW, schedules, and dropout — gradients and training steps verified against PyTorch.
+  - **Interop**: SafeTensors load *and* save with PyTorch-compatible naming — train in Go and read the weights in torch, or the other way around; trained models export to ONNX.
+  - **GPU built in**: large matrix products run on Metal/Vulkan/DirectX 12 automatically through the pure-Go WebGPU backend, with bit-identical CPU fallback and a one-line switch (`insyra.Config.SetAcceleration(false)`).
+
+```go
+tape := nn.NewTape(42)
+model, _ := nn.NewSequential(tape,
+    nn.Dense(784, 128), nn.ReLU(), nn.Dropout(0.2), nn.Dense(128, 10),
+)
+logits, _ := model.Forward(tape, batch)
+loss, _ := tape.SoftmaxCrossEntropy(logits, labels)
+tape.Backward(loss)
+tape.AdamW(1e-3, 1e-2)
+```
 
 ## AI / Agent Skills
 
@@ -374,8 +396,8 @@ For a complete list of DataTable methods and features, please refer to the **[Da
 |---|---|
 | **[isr](/Docs/isr.md)** | Syntactic sugar over **Insyra** — the recommended entry point for new code. |
 | **[stats](/Docs/stats.md)** | Statistical functions for data analysis: skewness, kurtosis, moment calculations, and more. |
-| **[ml](/Docs/ml.md)** | A common estimator and transformer protocol over the models in `stats`. |
-| **[dl](/Docs/nn.md)** | Pure-Go ONNX inference for float32 MLP graphs and their tensor kernels. |
+| **[ml](/Docs/ml.md)** | scikit-learn-style machine learning: regressions, trees, forests, boosting, pipelines, and model selection — verified against scikit-learn and R, with ONNX export. |
+| **[nn](/Docs/nn.md)** | Pure-Go neural networks: runs real ONNX models verified against `onnxruntime`, trains with a PyTorch-verified tape and layer API, SafeTensors in/out, GPU-accelerated MatMul. |
 | **[parallel](/Docs/parallel.md)** | Parallel processing for data manipulation; runs any function and auto-waits for all goroutines. |
 | **[accel](/Docs/accel.md)** | Opt-in GPU acceleration: device discovery, typed columnar projection, and real column reductions on a GPU. Pure Go, no CGO, nothing extra to install. |
 | **[plot](/Docs/plot.md)** | Data visualization wrapping [go-echarts](https://github.com/go-echarts/go-echarts). |

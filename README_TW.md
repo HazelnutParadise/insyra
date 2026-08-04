@@ -10,7 +10,7 @@
 
 **繁體中文 | [English](README.md)**
 
-Go 語言次世代資料分析庫。支援 **平行處理**、**資料視覺化**，並 **與 Python 無縫整合**。
+從資料表到深度學習——一個函式庫，純 Go。**Insyra** 讓 Go 開發者擁有完整的分析棧：快速的 DataTable 操作、對 R 驗證過的統計、**scikit-learn 風格的機器學習**，以及能訓練模型、執行真實 ONNX checkpoint 的**神經網路引擎**——內建 GPU 加速、平行處理、資料視覺化，並與 Python 無縫整合。
 
 **官方網站: <https://insyra.hazelnut-paradise.com>**
 
@@ -38,6 +38,28 @@ Go 語言次世代資料分析庫。支援 **平行處理**、**資料視覺化*
 > [!IMPORTANT] 
 > **對於 Insyra 文檔中未明確列出的任何函數或方法，表示該功能仍在積極開發中。這些實驗性功能可能會提供不穩定的結果。**<br/>
 > 請參閱我們 **[文檔](https://github.com/HazelnutParadise/insyra/tree/main/Docs)** 資料夾中的最新更新以獲取更多詳細資訊。
+
+## 機器學習與深度學習，純 Go
+
+生態系最新的兩塊拼圖——不需要 Python 執行環境、不需要 cgo、不需要外部推論引擎：
+
+- **[`ml`](/Docs/ml.md)**——scikit-learn 形狀的建模：線性／ridge／lasso／logistic 回歸、決策樹、隨機森林、梯度提升、pipeline、交叉驗證與網格搜尋。每個估計器都對 scikit-learn、R 或 statsmodels 驗證過，模型可匯出 ONNX。
+- **[`nn`](/Docs/nn.md)**——神經網路端到端：
+  - **跑真模型**：發佈的 ONNX checkpoint——MobileNetV2、MiniLM（BERT 級）、FCN-ResNet50、fast-neural-style、tiny-YOLOv3——原封不動跑通，對 `onnxruntime` 驗證。
+  - **訓練**：反向模式自動微分 tape 與 Sequential 層 API（Dense、Conv2D、BatchNorm、MultiHeadAttention⋯），配 Adam/AdamW、學習率排程與 dropout——梯度與訓練步驟皆對 PyTorch 驗證。
+  - **互通**：SafeTensors 讀**與**寫都用 PyTorch 相容命名——在 Go 訓練、到 torch 讀權重，反過來也行；訓練好的模型可匯出 ONNX。
+  - **內建 GPU**：大型矩陣乘法透過純 Go 的 WebGPU 後端自動跑上 Metal／Vulkan／DirectX 12，CPU 回退位元一致，一行即可切換（`insyra.Config.SetAcceleration(false)`）。
+
+```go
+tape := nn.NewTape(42)
+model, _ := nn.NewSequential(tape,
+    nn.Dense(784, 128), nn.ReLU(), nn.Dropout(0.2), nn.Dense(128, 10),
+)
+logits, _ := model.Forward(tape, batch)
+loss, _ := tape.SoftmaxCrossEntropy(logits, labels)
+tape.Backward(loss)
+tape.AdamW(1e-3, 1e-2)
+```
 
 ## AI / Agent Skills
 
@@ -361,8 +383,8 @@ err := parquet.ApplyCCL(ctx, "data.parquet", "NEW('total') = A + B + C")
 |---|---|
 | **[isr](/Docs/isr.md)** | Insyra 的語法糖，新專案建議的入口。 |
 | **[stats](/Docs/stats.md)** | 資料分析統計函數：偏度、峰度、矩計算等。 |
-| **[ml](/Docs/ml.md)** | 統一 `stats` 模型的估計器與轉換器協定。 |
-| **[dl](/Docs/nn.md)** | 純 Go 的 float32 ONNX 推論，支援 MLP 圖與張量 kernel。 |
+| **[ml](/Docs/ml.md)** | scikit-learn 風格的機器學習：回歸、樹、森林、梯度提升、pipeline 與模型選擇——對 scikit-learn 與 R 驗證，可匯出 ONNX。 |
+| **[nn](/Docs/nn.md)** | 純 Go 神經網路：跑通對 `onnxruntime` 驗證的真實 ONNX 模型、以 PyTorch 驗證的 tape 與層 API 訓練、SafeTensors 讀寫、GPU 加速 MatMul。 |
 | **[parallel](/Docs/parallel.md)** | 資料操作與分析的平行處理，自動等待所有 goroutine 完成。 |
 | **[accel](/Docs/accel.md)** | 選用的 GPU 加速：裝置探測、型別化欄位投影，以及在 GPU 上真正執行欄位歸約。純 Go、免 CGO，不需要額外安裝。 |
 | **[plot](/Docs/plot.md)** | 封裝 [go-echarts](https://github.com/go-echarts/go-echarts) 的資料視覺化。 |
