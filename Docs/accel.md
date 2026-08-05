@@ -28,6 +28,7 @@ The runtime executes on real hardware. A dataset is uploaded to a GPU, ranked by
 - Planning and inspection:
   - shardable multi-device planning via `PlanShardable()` / `PlanShardableWorkload(...)`
   - weighted shard assignments and deterministic merge-policy reporting
+  - `Config.ShardStrategy`: `single`, `auto` (the default), or `forced`
   - execution via `ExecuteNearestExact(...)`, returning the M nearest query points per row as exact `float64` values
   - `DeviceMatMul(...)`, the device implementation used by `nn`'s default large 2-D float32 MatMul path
   - backend executor registry: `RegisterBackendExecutor(backend, BackendExecutor)`
@@ -52,6 +53,58 @@ default and can be restored with `insyra.Config.SetAcceleration(true)`.
 WebGPU backend. It wins over Config, so setting Config to enabled cannot turn
 that backend back on while the environment variable is set. A device runs only
 when both layers allow it.
+
+### Device bounds and preference
+
+Device selection has three independent axes. Hard bounds decide eligibility;
+`PreferredDevices` only orders devices that remain eligible.
+
+| Mode | Device bounds | Preference |
+| --- | --- | --- |
+| `cpu` | No discovery or device use | Ignored |
+| `auto` | `INSYRA_ACCEL_DEVICES` ∩ `Config.Devices` | Soft ordering within the intersection; empty intersection falls back to CPU with `device-selection-empty` |
+| `gpu` | `INSYRA_ACCEL_DEVICES` ∩ `Config.Devices` | Soft ordering within the intersection; empty intersection follows automatic fallback behavior |
+| `strict-gpu` or `Strict: true` | `INSYRA_ACCEL_DEVICES` ∩ `Config.Devices` | Soft ordering within the intersection; empty intersection returns an error naming the emptying bound |
+
+`Config.Devices` is a per-session hard allowlist. `INSYRA_ACCEL_DEVICES` is a
+process-wide hard mask. An empty value for either leaves that bound open, and
+the default is unchanged when both are open. Both accept exact device IDs and
+zero-based discovery indices, with comma-separated entries in the environment
+variable. IDs are stable and portable across hosts; indices depend on each
+host's discovery order and should only be used for host-local configuration.
+
+When an entry matches no discovered device, `Session.Report()` exposes it in
+`Report.UnmatchedDeviceSelectors`. Masked devices are absent from
+`DiscoveredDeviceIDs`, so planners and executors cannot see or resurrect them.
+
+### Shard strategies
+
+`Config.ShardStrategy` controls how a shardable `ExecuteNearestExact` workload
+uses its eligible devices:
+
+- `single` keeps the whole workload on one eligible device.
+- `auto` is the default. It uses
+  `min(eligible devices, floor(total rows / saturation floor))` assignments,
+  collapsing to one assignment when that count is one. The recorded floor is
+  32,000 rows for the 32-dimensional class and 8,000 rows for the
+  128-dimensional class. Unmeasured shapes use the conservative 32,000-row
+  floor.
+- `forced` uses every eligible device even below the measured floor. Use it
+  when measuring a host whose device topology is different from the recorded
+  Apple M3 curve.
+
+Assignments carry their input range and execution report. Inspect
+`ExecutionResult.Assignments` for `DeviceID`, `RowStart`, `RowEnd`, `WallTime`,
+`Chunks`, and `FallbackReason`. A failed assignment is recomputed on the CPU
+for its own rows; successful assignments are kept and merged by input range,
+independent of completion order. The final nearest indices and `float64`
+distances remain bit-identical to `NearestExactCPU`.
+
+Single-device hardware correctness for the exact-nearest path is verified.
+The concurrent-versus-sequential multi-assignment parity test is written as a
+gated acceptance test and skips in this sandbox. No multi-GPU wall-clock
+measurement exists yet. The multi-GPU speedup is therefore not a claim of this
+release and remains pending the standing hardware-coverage follow-up.
 
 ### Precision
 
@@ -81,9 +134,12 @@ result, err := session.ExecuteNearestExact(ds, centroids, 2, accel.WorkloadEstim
 // result.Index[r*2], result.Index[r*2+1] — nearest and second nearest for row r
 // result.Distance holds float64 squared distances
 // result.Rechecked — how many rows took the full path
+// result.Chunks — how many sequential device submissions ran (zero on CPU)
 ```
 
 No precision opt-in is needed. Narrowing happens inside the operation, where it cannot reach the result.
+
+Device submissions larger than the measured 16,000-row bound are split into sequential row chunks on the same device and merged in input order. Submissions at or below the bound keep the single-submission path. This bounds readback exposure without changing the exact `float64` decision, and `ExecutionResult.Chunks` reports how many submissions ran.
 
 Watch `Rechecked`. It is normally near zero, and a rising count is how data with many near-ties announces itself — long before it shows up as a slowdown.
 
@@ -119,11 +175,12 @@ Two cases deliberately return nothing instead. A dataset nothing can read — `d
 ## Still Not Implemented
 
 - One operation only: the exact nearest query points per row
-- Single-device execution; multi-device plans run on the highest-weighted device
+- Multi-GPU wall-clock measurement and speedup claim
 - No CUDA-native path — NVIDIA hardware is reached through Vulkan or DirectX 12
 - No implicit acceleration of `DataList.Map(func...)` or `DataTable.Map(func...)`
 - No full string-kernel execution path beyond transport and eligibility preparation
-- Verified on macOS and Metal only; other platforms are untested
+- Correctness is verified on single-device macOS/Metal hardware; other
+  platforms and multi-GPU wall clock are untested
 
 ## The shared session
 

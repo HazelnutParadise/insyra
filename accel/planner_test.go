@@ -95,8 +95,8 @@ func TestPlanShardableBuildsWeightedAssignments(t *testing.T) {
 
 	plan := session.PlanShardableWorkload(WorkloadEstimate{
 		Class: WorkloadClassColumnar,
-		Rows:  3000,
-		Bytes: 3000000,
+		Rows:  96_000,
+		Bytes: 96_000_000,
 	})
 	if !plan.Accelerated {
 		t.Fatal("expected accelerated plan")

@@ -238,11 +238,11 @@ Keep the English ([README.md](README.md), [CHANGELOG.md](CHANGELOG.md), `Docs/`)
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
-### [2026-08-01] — multi-GPU planning exists, multi-GPU execution does not
-- **Where**: `accel/planner.go` (`PlanShardable`, weighted per-device `ShardAssignment`s), `accel/executor.go:136` (`executionDevice`)
-- **What**: the planner produces heterogeneous multi-device shard plans — capability-weighted assignments across every shardable device, with a merge policy — but execution then picks the single device carrying the largest share and runs the whole operation there. Every operation today, including the KNN exact-nearest path, executes on one card no matter how many are present. The v1 architecture default ("heterogeneous multi-GPU only for shardable columnar operations") describes the planner, not the executor.
-- **Suggestion**: do not build it until a real workload occupies the measured saturated region. The saturation measurement now exists (`measure-device-saturation`, 2026-08-05, M3/Metal): device wall time is flat only to 4k test rows on 100k×32 — the region the earlier ~467ms readings sampled — and the ≥1.8x-per-doubling criterion trips at 32k rows (converging to ~2.0x by 128k); the heavier 100k×128 arm trips at 8k and a single-device submission dies in `readback-timeout` at 64k. So a shard split has proportional work above those points and would also shrink the oversized submissions that currently fail — but no real caller has been seen there. When one shows up, `executionDevice` → per-assignment dispatch is the seam, and the exact-nearest verification half already merges per-row results without caring which device proposed them.
-- **Status**: measured; execution waits for a real workload past saturation
+### [2026-08-01] — multi-GPU planning and execution coverage
+- **Where**: `accel/planner.go` (`PlanShardable`, weighted per-device `ShardAssignment`s), `accel/exact.go` (per-assignment dispatch)
+- **What**: the planner retains capability-weighted heterogeneous assignments and its existing `MergePolicy`. `ExecuteNearestExact` now dispatches one worker per assignment, uses the bounded chunk seam, merges by input range, and falls back per assignment without changing the exact CPU decision.
+- **Suggestion**: run `INSYRA_ACCEL_GPU_TESTS=1 go test ./accel -run TestMultiDeviceParityConcurrentAndSequentialOnHardware` on a multi-GPU host, then record concurrent-versus-sequential wall clock for the 32k/8k saturation classes. The single-device host verifies correctness only; it cannot supply a multi-GPU speedup number.
+- **Status**: single-device correctness verified; multi-GPU wall clock and non-Apple parity remain pending
 
 ### [2026-08-01] — `ToF64Slice` still fabricates zeros for 54 callers outside `stats`
 - **Where**: `datalist.go` `ToF64Slice`, and its callers in `plot/`, `gplot/`, `quant/`, `cli/`, `datalist_interpolation.go`
@@ -273,4 +273,3 @@ Out-of-scope issues discovered during development, waiting for a decision. Delet
 - **What**: The 2026-07-11 dependency refresh could not move these. (1) `chromedp v0.15.0+` and newer `cdproto` require go >= 1.26, while the module's `go` directive stays on 1.25.x (minimum-Go promise to downstream users). (2) The newest go1.25-compatible version, `chromedp v0.14.2`, hard-requires `go-json-experiment/json`, whose generic-variadic code panics govulncheck's symbol-level scan ("got jsontext.Value, want variadic parameter of unnamed slice or string type" in x/tools go/ssa — still broken as of x/tools v0.48.0 / x/vuln v1.6.0), which would permanently break the Govulncheck CI workflow.
 - **Suggestion**: When raising the minimum Go version to 1.26, retry upgrading the whole chain and re-verify `govulncheck ./...` completes (the x/tools SSA bug may be fixed by then).
 - **Status**: pending
-

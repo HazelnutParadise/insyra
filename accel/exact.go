@@ -8,6 +8,7 @@ import (
 	"sort"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/HazelnutParadise/insyra/accel/internal/wgpu"
 )
@@ -52,6 +53,93 @@ const float32Eps = 1.1920928955078125e-07
 // until then it is a value with a measurement attached rather than a guess. It
 // is a var so the sweep that calibrates it can look below the floor.
 var minWorkPerRowForDevice = 2048
+
+// exactNearestChunkRows bounds one device submission. The bound is derived from
+// openspec/changes/archive/2026-08-05-measure-device-saturation/saturation.md:
+// the slowest runnable 100k x 128 arm took 8.065523s at 16k rows, leaving
+// 21.934477s (73.1%) below the 30s readback timeout. The next 32k rung was
+// flagged for high variance and reached 27.01s in its worst recorded sample.
+const exactNearestChunkRows = 16_000
+
+type nearestRowRange struct {
+	lo int
+	hi int
+}
+
+func exactNearestChunkRanges(rows, maxRows int) []nearestRowRange {
+	if rows <= 0 || maxRows <= 0 {
+		return nil
+	}
+	capacity := rows / maxRows
+	if rows%maxRows != 0 {
+		capacity++
+	}
+	ranges := make([]nearestRowRange, 0, capacity)
+	for lo := 0; lo < rows; {
+		hi := lo + maxRows
+		if hi < lo || hi > rows {
+			hi = rows
+		}
+		ranges = append(ranges, nearestRowRange{lo: lo, hi: hi})
+		lo = hi
+	}
+	return ranges
+}
+
+// executeNearestShortlistChunks submits bounded row ranges sequentially and
+// appends each row-major response in input order. It is only called above the
+// production bound; maxRows is injectable for the ungated merge tests.
+func executeNearestShortlistChunks(
+	ctx context.Context,
+	executor BackendExecutor,
+	device Device,
+	columns []ExecuteColumn,
+	queries [][]float32,
+	precision Precision,
+	shortlist int,
+	maxRows int,
+) (ExecuteResponse, int, error) {
+	ranges := exactNearestChunkRanges(len(columns[0].Values), maxRows)
+	response := ExecuteResponse{
+		ShortlistIndex:    make([]uint32, 0, len(columns[0].Values)*shortlist),
+		ShortlistDistance: make([]float32, 0, len(columns[0].Values)*shortlist),
+		ShortlistBoundary: make([]float32, 0, len(columns[0].Values)),
+	}
+	for chunkNumber, rowRange := range ranges {
+		chunkColumns := make([]ExecuteColumn, len(columns))
+		for i, column := range columns {
+			chunkColumns[i] = ExecuteColumn{Name: column.Name, Values: column.Values[rowRange.lo:rowRange.hi]}
+		}
+		chunk, err := executor.Execute(ctx, ExecuteRequest{
+			Op:        OpNearestShortlist,
+			Device:    device,
+			Columns:   chunkColumns,
+			Queries:   queries,
+			Precision: precision,
+			Shortlist: shortlist,
+		})
+		if err != nil {
+			return ExecuteResponse{}, chunkNumber, err
+		}
+		rows := rowRange.hi - rowRange.lo
+		if len(chunk.ShortlistIndex) != rows*shortlist ||
+			len(chunk.ShortlistDistance) != rows*shortlist ||
+			len(chunk.ShortlistBoundary) != rows {
+			return ExecuteResponse{}, chunkNumber + 1, fmt.Errorf(
+				"accel: backend returned a %d/%d/%d shortlist for chunk %d, expected %d/%d/%d",
+				len(chunk.ShortlistIndex), len(chunk.ShortlistDistance), len(chunk.ShortlistBoundary),
+				chunkNumber, rows*shortlist, rows*shortlist, rows)
+		}
+		response.ShortlistIndex = append(response.ShortlistIndex, chunk.ShortlistIndex...)
+		response.ShortlistDistance = append(response.ShortlistDistance, chunk.ShortlistDistance...)
+		response.ShortlistBoundary = append(response.ShortlistBoundary, chunk.ShortlistBoundary...)
+		response.Transfer += chunk.Transfer
+		response.Dispatch += chunk.Dispatch
+		response.Readback += chunk.Readback
+		response.BytesUploaded += chunk.BytesUploaded
+	}
+	return response, len(ranges), nil
+}
 
 // ExecuteNearestExact reports the M nearest query points for every row, and
 // returns what a float64 computation over every query point would return.
@@ -103,8 +191,15 @@ func (s *Session) ExecuteNearestExact(dataset *Dataset, queries [][]float64, m i
 	if workload.Rows <= 0 {
 		workload.Rows = dataset.Rows
 	}
+	if workload.Dimensions <= 0 {
+		workload.Dimensions = len(dataset.Buffers)
+	}
 	if workload.Bytes == 0 {
 		workload.Bytes = estimateDatasetResidentBytes(dataset)
+	}
+	host, rows, reason := hostColumns(dataset)
+	if reason == FallbackReasonNone && workload.Rows != rows {
+		workload.Rows = rows
 	}
 
 	s.mu.Lock()
@@ -126,7 +221,6 @@ func (s *Session) ExecuteNearestExact(dataset *Dataset, queries [][]float64, m i
 		M:       m,
 	}
 
-	host, rows, reason := hostColumns(dataset)
 	if reason != FallbackReasonNone {
 		result.Accelerated = false
 		result.FallbackReason = reason
@@ -154,16 +248,7 @@ func (s *Session) ExecuteNearestExact(dataset *Dataset, queries [][]float64, m i
 	if len(queries)*len(dataset.Buffers) < minWorkPerRowForDevice {
 		return finishOnHost(FallbackReasonWorkloadNotProfitable, nil)
 	}
-	executor, ok := lookupBackendExecutor(plan.Backend)
-	if !ok {
-		return finishOnHost(FallbackReasonNoBackendExecutor,
-			fmt.Errorf("accel: no execution backend registered for %q", plan.Backend))
-	}
-	device, ok := s.executionDevice(plan)
-	if !ok {
-		return finishOnHost(FallbackReasonNoAccelerator, fmt.Errorf("accel: plan named no usable device"))
-	}
-
+	executor, _ := lookupBackendExecutor(plan.Backend)
 	// Two spare candidates give the float64 pass room to reorder without
 	// falling off the end of the list. A shortlist that cannot even hold m is
 	// no shortlist, so the device is skipped rather than clamped — clamping
@@ -185,47 +270,165 @@ func (s *Session) ExecuteNearestExact(dataset *Dataset, queries [][]float64, m i
 	}
 	narrowed := narrowQueries(queries)
 
-	result.Executor = executor.Name()
 	result.ExecutorKind = ExecutorKindRegistered
-	result.DeviceIDs = []string{device.ID}
-	result.Assignments = assignmentsForDevice(plan, device.ID)
-
-	response, err := executor.Execute(context.Background(), ExecuteRequest{
-		Op:        OpNearestShortlist,
-		Device:    device,
-		Columns:   columns,
-		Queries:   narrowed,
-		Precision: PrecisionFloat32,
-		Shortlist: k,
-	})
-	if err != nil {
-		return finishOnHost(fallbackReasonForExecError(err), err)
-	}
-	if len(response.ShortlistIndex) != rows*k ||
-		len(response.ShortlistDistance) != rows*k ||
-		len(response.ShortlistBoundary) != rows {
-		return finishOnHost(FallbackReasonExecutionFailed, fmt.Errorf(
-			"accel: backend returned a %d/%d/%d shortlist, expected %d/%d/%d",
-			len(response.ShortlistIndex), len(response.ShortlistDistance), len(response.ShortlistBoundary),
-			rows*k, rows*k, rows))
+	result.Assignments = append([]ShardAssignment(nil), plan.Assignments...)
+	result.DeviceIDs = append([]string(nil), plan.DeviceIDs...)
+	result.Index = make([]uint32, rows*m)
+	result.Distance = make([]float64, rows*m)
+	if executor != nil {
+		result.Executor = executor.Name()
 	}
 
-	index, distance, rechecked := decideFromShortlist(
-		host, queries, rows, m, k,
-		response.ShortlistIndex, response.ShortlistDistance, response.ShortlistBoundary)
-	result.Index = index
-	result.Distance = distance
-	result.Rechecked = rechecked
-	result.Transfer = response.Transfer
-	result.Dispatch = response.Dispatch
-	result.Readback = response.Readback
-	result.BytesUploaded = response.BytesUploaded
+	devices := make(map[string]Device, len(s.devices))
+	for _, device := range s.devices {
+		devices[device.ID] = cloneDevice(device)
+	}
+	outcomes := make([]assignmentExecution, len(plan.Assignments))
+	var workers sync.WaitGroup
+	for assignmentIndex, assignment := range plan.Assignments {
+		workers.Add(1)
+		go func(assignmentIndex int, assignment ShardAssignment) {
+			defer workers.Done()
+			device, deviceOK := devices[assignment.DeviceID]
+			assignmentExecutor := executor
+			if deviceOK {
+				if selected, found := lookupBackendExecutor(device.Backend); found {
+					assignmentExecutor = selected
+				} else {
+					assignmentExecutor = nil
+				}
+			}
+			outcomes[assignmentIndex] = executeNearestAssignment(
+				context.Background(), assignmentExecutor, device, deviceOK, assignment,
+				columns, host, queries, narrowed, m, k)
+		}(assignmentIndex, assignment)
+	}
+	workers.Wait()
 
-	s.ensureDatasetCached(dataset)
-	s.applyDeviceResidency(dataset, device.ID)
-	exec, ferr := s.finishExecution(result.ExecutionResult, nil)
+	failed := FallbackReasonNone
+	completed := 0
+	for assignmentIndex, outcome := range outcomes {
+		result.Assignments[assignmentIndex] = outcome.Assignment
+		result.Transfer += outcome.Transfer
+		result.Dispatch += outcome.Dispatch
+		result.Readback += outcome.Readback
+		result.BytesUploaded += outcome.BytesUploaded
+		result.Chunks += outcome.Chunks
+		result.Rechecked += outcome.Rechecked
+		if outcome.Assignment.FallbackReason == FallbackReasonNone {
+			completed++
+			s.ensureDatasetCached(dataset)
+			s.applyDeviceResidency(dataset, outcome.Assignment.DeviceID)
+		} else if failed == FallbackReasonNone {
+			failed = outcome.Assignment.FallbackReason
+		}
+		start := outcome.Assignment.RowStart * m
+		end := outcome.Assignment.RowEnd * m
+		copy(result.Index[start:end], outcome.Index)
+		copy(result.Distance[start:end], outcome.Distance)
+	}
+	result.Accelerated = completed > 0
+	result.FallbackReason = failed
+	if failed != FallbackReasonNone {
+		result.Executor = "multi-device"
+	}
+	var cause error
+	if failed != FallbackReasonNone {
+		cause = fmt.Errorf("accel: one or more assignments fell back")
+	}
+	exec, ferr := s.finishExecution(result.ExecutionResult, cause)
 	result.ExecutionResult = exec
 	return result, ferr
+}
+
+type assignmentExecution struct {
+	Assignment    ShardAssignment
+	Index         []uint32
+	Distance      []float64
+	Rechecked     int
+	Chunks        int
+	Transfer      time.Duration
+	Dispatch      time.Duration
+	Readback      time.Duration
+	BytesUploaded uint64
+}
+
+func executeNearestAssignment(
+	ctx context.Context,
+	executor BackendExecutor,
+	device Device,
+	deviceOK bool,
+	assignment ShardAssignment,
+	columns []ExecuteColumn,
+	host [][]float64,
+	queries [][]float64,
+	narrowed [][]float32,
+	m, k int,
+) (out assignmentExecution) {
+	started := time.Now()
+	out = assignmentExecution{Assignment: assignment}
+	out.Assignment.FallbackReason = FallbackReasonNone
+	lo, hi := assignment.RowStart, assignment.RowEnd
+	localRows := hi - lo
+	localHost := sliceHostColumns(host, lo, hi)
+	localColumns := sliceExecuteColumns(columns, lo, hi)
+	defer func() { out.Assignment.WallTime = time.Since(started) }()
+	fallback := func(reason FallbackReason) assignmentExecution {
+		out.Assignment.FallbackReason = reason
+		out.Index, out.Distance = exactNearestAll(localHost, queries, localRows, m)
+		out.Rechecked = localRows
+		return out
+	}
+	if !deviceOK {
+		return fallback(FallbackReasonNoAccelerator)
+	}
+	if executor == nil {
+		return fallback(FallbackReasonNoBackendExecutor)
+	}
+	var response ExecuteResponse
+	var err error
+	if localRows > exactNearestChunkRows {
+		response, out.Chunks, err = executeNearestShortlistChunks(
+			ctx, executor, device, localColumns, narrowed, PrecisionFloat32, k, exactNearestChunkRows)
+	} else {
+		out.Chunks = 1
+		response, err = executor.Execute(ctx, ExecuteRequest{
+			Op: OpNearestShortlist, Device: device, Columns: localColumns,
+			Queries: narrowed, Precision: PrecisionFloat32, Shortlist: k,
+		})
+	}
+	if err != nil {
+		return fallback(fallbackReasonForExecError(err))
+	}
+	if len(response.ShortlistIndex) != localRows*k ||
+		len(response.ShortlistDistance) != localRows*k ||
+		len(response.ShortlistBoundary) != localRows {
+		return fallback(FallbackReasonExecutionFailed)
+	}
+	out.Index, out.Distance, out.Rechecked = decideFromShortlist(
+		localHost, queries, localRows, m, k,
+		response.ShortlistIndex, response.ShortlistDistance, response.ShortlistBoundary)
+	out.Transfer = response.Transfer
+	out.Dispatch = response.Dispatch
+	out.Readback = response.Readback
+	out.BytesUploaded = response.BytesUploaded
+	return out
+}
+
+func sliceExecuteColumns(columns []ExecuteColumn, lo, hi int) []ExecuteColumn {
+	out := make([]ExecuteColumn, len(columns))
+	for i, column := range columns {
+		out[i] = ExecuteColumn{Name: column.Name, Values: column.Values[lo:hi]}
+	}
+	return out
+}
+
+func sliceHostColumns(columns [][]float64, lo, hi int) [][]float64 {
+	out := make([][]float64, len(columns))
+	for i, column := range columns {
+		out[i] = column[lo:hi]
+	}
+	return out
 }
 
 // NearestExactCPU is the reference: every distance, every query point, float64

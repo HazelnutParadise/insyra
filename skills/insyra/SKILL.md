@@ -249,8 +249,10 @@ one-off mutation instead of a reusable fitted transformer.
 To accelerate KNN on a GPU machine, blank-import
 `github.com/HazelnutParadise/insyra/accel/knnbridge` — auto-algorithm KNN then
 routes large shapes through the device with results identical to brute force
-(k must be ≤ 7). Never required: without the import everything runs on CPU
-unchanged.
+(k must be ≤ 7). Device submissions above the measured 16,000-row bound run as
+sequential chunks and merge in input order; `ExactNearestResult.Chunks` reports
+the submission count. At or below the bound, the single-submission path is
+unchanged. Never required: without the import everything runs on CPU unchanged.
 
 Large `nn` float32 MatMuls use the device by default when they reach the
 measured 16Mi MAC floor. Batched and smaller products, and any device failure,
@@ -261,6 +263,26 @@ is enabled by default. `INSYRA_ACCEL_DISABLE_WGPU=1` is the operations override
 for the builtin backend and wins over Config; `nn.RegisterDeviceMatMul(nil)`
 remains the low-level dl-only hook escape hatch. The device path is not wired
 in `-race` builds.
+
+Use `accel.Config.Devices` for a per-session hard allowlist. The process-wide
+`INSYRA_ACCEL_DEVICES` environment variable is a hard discovery mask; both
+accept device IDs or zero-based discovery indices, and the eligible set is
+their intersection. `PreferredDevices` only orders eligible devices. An empty
+eligible set falls back automatically with `FallbackReasonDeviceSelectionEmpty`
+or errors in strict mode. Check `session.Report().UnmatchedDeviceSelectors` for
+selectors that matched no discovered device. IDs are portable; indices depend
+on host discovery order.
+
+Use `accel.Config.ShardStrategy` to choose `single`, `auto` (the default), or
+`forced` for the shardable exact-nearest operation. `auto` uses the recorded
+32,000-row floor for the 32-dimensional class and the 8,000-row floor for the
+128-dimensional class, and stays on one device below the resulting assignment
+count. `forced` uses every eligible device even below those measured floors.
+Inspect `result.Assignments` for each assignment's `DeviceID`, row range,
+`WallTime`, `Chunks`, and `FallbackReason`; a failed assignment falls back only
+its own rows. Exact-nearest outputs remain bit-identical to the CPU reference.
+Single-device hardware correctness is verified; multi-GPU wall-clock speed is
+not measured yet.
 
 Use DataTable categorical encoders before stats methods that require numeric features (`stats.LinearRegression`, KNN, PCA, clustering). These methods return a new table plus a fitted encoder; the receiver is not modified.
 

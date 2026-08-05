@@ -11,6 +11,17 @@ const (
 	ModeStrictGPU Mode = "strict-gpu"
 )
 
+// ShardStrategy controls how a shardable workload consumes its eligible
+// devices. Auto is the default and only shards above the recorded saturation
+// floor; forced is useful when a caller is measuring its own hardware.
+type ShardStrategy string
+
+const (
+	ShardStrategySingle ShardStrategy = "single"
+	ShardStrategyAuto   ShardStrategy = "auto"
+	ShardStrategyForced ShardStrategy = "forced"
+)
+
 type Backend string
 
 const (
@@ -70,6 +81,7 @@ const (
 	FallbackReasonWorkloadUnsupported   FallbackReason = "workload-unsupported"
 	FallbackReasonWorkloadNotProfitable FallbackReason = "workload-not-profitable"
 	FallbackReasonNoBackendExecutor     FallbackReason = "no-backend-executor"
+	FallbackReasonDeviceSelectionEmpty  FallbackReason = "device-selection-empty"
 	FallbackReasonPrecisionNotAccepted  FallbackReason = "precision-not-accepted"
 	FallbackReasonDTypeNotEligible      FallbackReason = "dtype-not-eligible"
 	FallbackReasonShaderCompileFailed   FallbackReason = "shader-compile-failed"
@@ -139,13 +151,25 @@ type MemoryBudgetPolicy struct {
 
 type Config struct {
 	Mode              Mode
+	ShardStrategy     ShardStrategy
 	PreferredBackends []Backend
 	MemoryBudget      MemoryBudgetPolicy
 	Strict            bool
 	EnableFallback    bool
+	// Devices is a hard per-session allowlist. Entries may be stable device IDs
+	// or zero-based discovery indices. An empty list allows every discovered
+	// device that is not removed by INSYRA_ACCEL_DEVICES.
+	Devices           []string
 	PreferredDevices  []string
 	ReportHistorySize int
 	DiscoveryTimeout  time.Duration
+}
+
+// UnmatchedDeviceSelector records a device bound entry that matched neither a
+// discovered device ID nor a zero-based discovery index.
+type UnmatchedDeviceSelector struct {
+	Bound    string
+	Selector string
 }
 
 type Device struct {
@@ -166,17 +190,18 @@ type Device struct {
 }
 
 type Report struct {
-	Mode                Mode
-	Accelerated         bool
-	SelectedBackend     Backend
-	DiscoveredDeviceIDs []string
-	SelectedDeviceIDs   []string
-	SelectedDevices     []string
-	FallbackReason      FallbackReason
-	StartedAt           time.Time
-	FinishedAt          time.Time
-	GeneratedAt         time.Time
-	Metrics             map[string]float64
+	Mode                     Mode
+	Accelerated              bool
+	SelectedBackend          Backend
+	DiscoveredDeviceIDs      []string
+	SelectedDeviceIDs        []string
+	SelectedDevices          []string
+	UnmatchedDeviceSelectors []UnmatchedDeviceSelector
+	FallbackReason           FallbackReason
+	StartedAt                time.Time
+	FinishedAt               time.Time
+	GeneratedAt              time.Time
+	Metrics                  map[string]float64
 }
 
 func (r Report) Duration() time.Duration {
@@ -241,6 +266,9 @@ type WorkloadEstimate struct {
 	Class WorkloadClass
 	Rows  int
 	Bytes uint64
+	// Dimensions identifies the measured per-row shape used by auto sharding.
+	// Zero means the conservative 32-dimensional class.
+	Dimensions int
 	// Op is the operation to execute on the device. Empty means OpSum.
 	Op Op
 	// Precision is what the caller will accept. Empty means PrecisionExact.
@@ -248,13 +276,18 @@ type WorkloadEstimate struct {
 }
 
 type ShardAssignment struct {
-	DeviceID     string
-	Backend      Backend
-	Weight       float64
-	SharePercent float64
-	Rows         int
-	Bytes        uint64
-	BudgetBytes  uint64
+	DeviceID       string
+	Backend        Backend
+	Weight         float64
+	SharePercent   float64
+	Rows           int
+	Bytes          uint64
+	BudgetBytes    uint64
+	RowStart       int
+	RowEnd         int
+	WallTime       time.Duration
+	FallbackReason FallbackReason
+	Chunks         int
 }
 
 type ExecutionResult struct {
@@ -265,6 +298,9 @@ type ExecutionResult struct {
 	ExecutorKind   ExecutorKind
 	Assignments    []ShardAssignment
 	DeviceIDs      []string
+	// Chunks is the number of sequential device submissions used by an
+	// execution. It is zero when no device submission ran.
+	Chunks int
 
 	// Op and Precision describe what actually ran, not what was asked for.
 	Op        Op
@@ -288,10 +324,12 @@ type ExecutionResult struct {
 func DefaultConfig() Config {
 	return Config{
 		Mode:              ModeAuto,
+		ShardStrategy:     ShardStrategyAuto,
 		PreferredBackends: []Backend{BackendCUDA, BackendMetal, BackendWebGPU},
 		MemoryBudget:      MemoryBudgetPolicy{DeviceFraction: 0.60, SharedFraction: 0.35},
 		Strict:            false,
 		EnableFallback:    true,
+		Devices:           nil,
 		PreferredDevices:  nil,
 		ReportHistorySize: 32,
 		DiscoveryTimeout:  5 * time.Second,

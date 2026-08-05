@@ -2,6 +2,11 @@ package accel
 
 import "sort"
 
+const (
+	saturationRows32  = 32_000
+	saturationRows128 = 8_000
+)
+
 type ShardPlan struct {
 	Accelerated      bool
 	Backend          Backend
@@ -61,6 +66,12 @@ func (s *Session) planShardableWorkloadLocked(workload WorkloadEstimate) ShardPl
 		}
 	}
 
+	strategy := effectiveShardStrategy(s.cfg.ShardStrategy)
+	assignmentCount := shardCountForStrategy(strategy, len(candidates), workload.Rows, saturationPointForWorkload(workload))
+	if assignmentCount < len(candidates) {
+		candidates = candidates[:assignmentCount]
+	}
+
 	plan := ShardPlan{
 		Accelerated:    true,
 		Backend:        report.SelectedBackend,
@@ -84,6 +95,11 @@ func (s *Session) planShardableWorkloadLocked(workload WorkloadEstimate) ShardPl
 
 	remainingRows := workload.Rows
 	remainingBytes := workload.Bytes
+	rowOffset := 0
+	var rowShares []int
+	if workload.Rows > 0 && strategy == ShardStrategyAuto && len(candidates) > 1 {
+		rowShares = minimumShardRows(workload.Rows, weights, saturationPointForWorkload(workload))
+	}
 	for idx, device := range candidates {
 		sharePercent := 0.0
 		if totalWeight > 0 {
@@ -97,7 +113,14 @@ func (s *Session) planShardableWorkloadLocked(workload WorkloadEstimate) ShardPl
 			BudgetBytes:  device.BudgetBytes,
 		}
 		if workload.Rows > 0 {
-			assignment.Rows = proportionalIntShare(workload.Rows, idx, len(candidates), sharePercent, &remainingRows)
+			if len(rowShares) > 0 {
+				assignment.Rows = rowShares[idx]
+			} else {
+				assignment.Rows = proportionalIntShare(workload.Rows, idx, len(candidates), sharePercent, &remainingRows)
+			}
+			assignment.RowStart = rowOffset
+			assignment.RowEnd = rowOffset + assignment.Rows
+			rowOffset = assignment.RowEnd
 		}
 		if workload.Bytes > 0 {
 			assignment.Bytes = proportionalUint64Share(workload.Bytes, idx, len(candidates), sharePercent, &remainingBytes)
@@ -105,6 +128,85 @@ func (s *Session) planShardableWorkloadLocked(workload WorkloadEstimate) ShardPl
 		plan.Assignments = append(plan.Assignments, assignment)
 	}
 	return plan
+}
+
+func effectiveShardStrategy(strategy ShardStrategy) ShardStrategy {
+	switch strategy {
+	case ShardStrategySingle, ShardStrategyForced:
+		return strategy
+	default:
+		return ShardStrategyAuto
+	}
+}
+
+func saturationPointForWorkload(workload WorkloadEstimate) int {
+	if workload.Dimensions >= 128 {
+		return saturationRows128
+	}
+	return saturationRows32
+}
+
+func shardCountForStrategy(strategy ShardStrategy, eligible, rows, saturationPoint int) int {
+	if eligible <= 1 || strategy == ShardStrategySingle {
+		return minInt(eligible, 1)
+	}
+	if strategy == ShardStrategyForced || rows <= 0 {
+		return eligible
+	}
+	if saturationPoint <= 0 {
+		return 1
+	}
+	count := rows / saturationPoint
+	if count < 1 {
+		return 1
+	}
+	if count > eligible {
+		return eligible
+	}
+	return count
+}
+
+func minimumShardRows(total int, weights []float64, floor int) []int {
+	rows := make([]int, len(weights))
+	if len(weights) == 0 {
+		return rows
+	}
+	minimum := floor * len(weights)
+	if floor <= 0 || total < minimum {
+		return nil
+	}
+	for i := range rows {
+		rows[i] = floor
+	}
+	remaining := total - minimum
+	totalWeight := 0.0
+	for _, weight := range weights {
+		totalWeight += weight
+	}
+	for i := range rows {
+		if i == len(rows)-1 {
+			rows[i] += remaining
+			break
+		}
+		share := 0.0
+		if totalWeight > 0 {
+			share = weights[i] / totalWeight
+		}
+		portion := int(float64(total-minimum) * share)
+		if portion > remaining {
+			portion = remaining
+		}
+		rows[i] += portion
+		remaining -= portion
+	}
+	return rows
+}
+
+func minInt(left, right int) int {
+	if left < right {
+		return left
+	}
+	return right
 }
 
 func shouldFallbackForProfitability(workload WorkloadEstimate, cfg Config) bool {

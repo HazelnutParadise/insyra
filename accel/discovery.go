@@ -45,7 +45,7 @@ func (s *Session) Discover() error {
 		return errors.New("accel: session closed")
 	}
 	if s.cfg.Mode == ModeCPU {
-		s.setDiscoveryResult(nil)
+		s.setDiscoveryResult(nil, nil)
 		return nil
 	}
 
@@ -62,9 +62,23 @@ func (s *Session) Discover() error {
 		}
 	}
 	found = dedupeDiscoveredDevices(found)
+	eligible, selection := applyDeviceBounds(found, s.cfg)
 
-	s.setDiscoveryResult(found)
+	s.setDiscoveryResult(eligible, selection.unmatched)
 	joinedErr := errors.Join(errs...)
+	if selection.emptyBound != "" {
+		report := s.reportLocked()
+		report.FallbackReason = FallbackReasonDeviceSelectionEmpty
+		report.Metrics = discoveryMetrics(s.devices, report, len(errs))
+		s.reports[len(s.reports)-1] = cloneReport(report)
+		if strictGPURequired(s.cfg) {
+			selectionErr := fmt.Errorf("accel: device bounds %s leave no eligible devices", selection.emptyBound)
+			if joinedErr != nil {
+				return errors.Join(joinedErr, selectionErr)
+			}
+			return selectionErr
+		}
+	}
 	if joinedErr != nil && !s.reportLocked().Accelerated && !strictGPURequired(s.cfg) {
 		report := s.reportLocked()
 		report.FallbackReason = FallbackReasonDiscoveryError
@@ -86,7 +100,7 @@ func (s *Session) Discover() error {
 }
 
 // setDiscoveryResult assumes s.mu is held.
-func (s *Session) setDiscoveryResult(devices []Device) {
+func (s *Session) setDiscoveryResult(devices []Device, unmatched []UnmatchedDeviceSelector) {
 	s.devices = append([]Device(nil), devices...)
 
 	report := s.reportLocked()
@@ -98,6 +112,7 @@ func (s *Session) setDiscoveryResult(devices []Device) {
 	report.DiscoveredDeviceIDs = deviceIDs(devices)
 	report.SelectedDeviceIDs = nil
 	report.SelectedDevices = nil
+	report.UnmatchedDeviceSelectors = append([]UnmatchedDeviceSelector(nil), unmatched...)
 	report.Accelerated = false
 	report.FallbackReason = initialFallbackReason(s.cfg.Mode)
 

@@ -7,7 +7,10 @@
 `insyra/nn`: run ONNX models in pure Go, verified per-operator and per-model against `onnxruntime`, with the op families landing in the decided order MLP → attention → CNN, then phase 2 adds autodiff and optimisers on the same tensors (first-step gradients verified against PyTorch under fixed initial weights via SafeTensors). GGUF/LLM is a decided future track that reuses the kernels; only two v1 constraints serve it now — dtype-carrying tensors and kernels as plain functions. M23 is complete: half precision is storage-only, with exact f16/bf16 widening into f32.
 
 ## Active Workstreams
-- `measure-device-saturation` (proposed 2026-08-05, not started) — measurement only: sweep exact-nearest up the test-row axis (1k→128k, 100k×32 and 100k×128 arms) to find where single-device wall time stops being flat, with the flat→scaling criterion (first rung ≥1.8x its predecessor) declared before running. The result opens or parks multi-device execution with a number; no wiring in this change.
+None. The multi-device line is complete and archived on 2026-08-05, all tasks checked including the gated hardware runs (unsandboxed M3/Metal):
+1. `add-accel-chunked-submission` — 16k-row bound (73.1% timeout margin); the previously-aborting 64k×128 completes in 32,188 ms across 4 chunks DeepEqual to brute force; per-chunk fixed cost 193 ms (~8%) at 32k×32.
+2. `add-accel-device-selection` — `INSYRA_ACCEL_DEVICES` mask ∩ `Config.Devices` allowlist, soft `PreferredDevices`, `device-selection-empty` fallback reason, unmatched selectors surfaced; five spec scenarios stub-verified, defaults unchanged.
+3. `add-accel-multi-device-dispatch` — `single`/`auto`/`forced` strategies, `auto` gated by the recorded saturation floors (32k/8k rows), per-assignment failure costs only its share, sequential/concurrent/brute-force three-way parity passed on the real device. Multi-GPU wall clock remains honestly unmeasured pending multi-GPU hardware, under the standing follow-up.
 
 Previous batch: `add-knn-probe-selection` (#190) and `thread-ccl-eval-depth` (#191) are implemented, verified, committed to dev (687f625, c64b548) and archived on 2026-08-05; their delta specs are synced into `stats-knn` and the new `ccl-evaluation` capability. Issues #190–#193 are all closed.
 
@@ -44,18 +47,38 @@ Previous batch: `add-knn-probe-selection` (#190) and `thread-ccl-eval-depth` (#1
 Milestone order is the blocking sequence. OpenSpec has no dependency relationship between changes, so nothing else carries it.
 
 ## Current Blockers
-None. The saturation blocker resolved the same day: the software-adapter probe came from a sandboxed worker shell — an unsandboxed shell on the same M3 reaches the real Metal adapter, and the full curve is recorded in the archived change. Hardware coverage remains Apple/Metal-only, carried as the standing `AGENTS.md` follow-up.
+The implementation has no code blocker. Acceptance still needs a multi-GPU host for the gated concurrent/sequential parity run and wall-clock measurement. Hardware coverage remains Apple/Metal-only, carried as the standing `AGENTS.md` follow-up; gated device tests must run from an unsandboxed shell on this host (sandboxed shells see only a software adapter).
 
 ## Next Verifiable Output
-`measure-device-saturation` is complete: both arms measured, the 1.8x criterion applied, saturation points on record (32k test rows at dims=32, 8k at dims=128).
+`add-accel-device-selection` is complete, 8/8: stub probes verify environment masking, per-session allowlists, bound intersection, stable index parsing, strict errors, automatic CPU fallback, preference scoping, and surfaced mismatches. No hardware gate is needed. `add-accel-multi-device-dispatch` is locally complete except for its explicitly gated hardware task.
 
 ## Next Ticket
-No pending change is selected. The KNN decision uses `m=16`, an examined-candidate cutoff of `0.44`, and an `n=64` floor; `LeafSize=16` remains the default after the 8/16/32/64 sweep. The kd-tree branch was measured at dims 4 and 8 and never showed the ball-tree failure mode, so it remains unprobed. The standing acceleration guardrails remain: no batched device kernel without a single-dispatch batched measurement, and no device Conv without its own measurement.
+`add-accel-multi-device-dispatch` — implementation and sandbox verification are complete; the next verifiable output is the unsandboxed multi-GPU parity and wall-clock acceptance run. The KNN decision uses `m=16`, an examined-candidate cutoff of `0.44`, and an `n=64` floor; `LeafSize=16` remains the default after the 8/16/32/64 sweep. The standing acceleration guardrails remain: no batched device kernel without a single-dispatch batched measurement, and no device Conv without its own measurement.
 
 Note for any host running the reference suites locally: the crosslang venv moved to `~/.cache/insyra-crosslang-venv` on 2026-08-03 after macOS's tmp cleaner destroyed the old /private/tmp venv (deleted `pyvenv.cfg` and parts of numpy's binaries, producing no-module false negatives). CI is unaffected — it installs its own toolchains.
 
 ## Decision Log
 Deltas that still change what someone would do. The standing technical decisions they produced — the precision contract, the device rules, the measured thresholds — live in [ENG.md](ENG.md); the full history is in git.
+
+- decision: Device eligibility is the intersection of the process-wide `INSYRA_ACCEL_DEVICES` mask and the per-session `Config.Devices` allowlist; both resolve IDs and zero-based indices against the original discovery order before filtering. `PreferredDevices` remains a soft ordering within the eligible set.
+  rationale: The operator's environment boundary must be unable to be widened by a program, and resolving both bounds before intersection keeps index meaning stable. Empty eligible sets are observable as `device-selection-empty` in automatic modes and as a bound-naming error in strict modes; unmatched selectors stay in the session report.
+  timestamp: 2026-08-05
+  impacted_ticket_ids: add-accel-device-selection
+
+- decision: Exact-nearest device submissions are bounded at 16,000 rows and larger inputs run in sequential chunks.
+  rationale: The archived curve records 8.065523s at 16k on the slowest runnable 100k×128 arm, leaving 21.934477s (73.1%) below the 30s readback timeout. The flagged 32k rung reached 27.01s in its worst recorded sample, so it was not chosen as the bound. The 32-dimension arm is 1.321645s at 16k. The 64k×128 result must therefore use four submissions, while its new wall time and the fixed per-chunk overhead remain unmeasured until an unsandboxed shell reaches Metal.
+  timestamp: 2026-08-05
+  impacted_ticket_ids: add-accel-chunked-submission
+
+- decision: The "stays parked" clause below is superseded same-day: multi-device execution proceeds as a three-change line (chunking → selection → dispatch), because "wait for an observed workload" is application logic misapplied to a library — insyra cannot observe its users' workloads, users with multi-GPU hosts exist regardless of the maintainer's hardware, and the measured saturation points (32k/8k rows) plus the 64k single-submission failure show the capability has real shapes to serve. Correctness is verifiable on this single-device host; multi-GPU wall clock stays honestly unmeasured under the standing hardware follow-up.
+  rationale: project owner's direction on 2026-08-05, accepted on the merits above. The saturation measurement itself stands unchanged.
+  timestamp: 2026-08-05
+  impacted_ticket_ids: add-accel-chunked-submission, add-accel-device-selection, add-accel-multi-device-dispatch
+
+- decision: The dispatch change is implemented with `auto` as the default, using the recorded 32k/8k row floors, while `single` and `forced` remain explicit caller choices. This supersedes the same-day "stays parked" decision for library behavior; the remaining acceptance gap is measurement, not implementation.
+  rationale: A library cannot wait to observe a user's workload before exposing a capability. Stub planning, forced multi-assignment execution, per-assignment CPU fallback, race coverage, and single-device bit parity are now verifiable. No multi-GPU wall-clock number is claimed until a host with multiple real devices runs the gated test and benchmark.
+  timestamp: 2026-08-05
+  impacted_ticket_ids: add-accel-multi-device-dispatch
 
 - decision: Single-device saturation is measured and real; multi-device execution stays parked until a real workload occupies the saturated region.
   rationale: The exact-nearest sweep on the M3 (best of 5, upload+dispatch+readback, one process per rung) is flat only to 4k test rows at 100k×32 — the region every prior ~467ms reading sampled — then bends: the declared ≥1.8x-per-doubling criterion trips at 32k (1.82x, converging to 1.98x by 128k). The heavier 100k×128 arm trips at 8k (2.08x) and stops being runnable at 64k, where a single-device submission dies in `readback-timeout` and falls back. So shard splits would have proportional work above 32k rows (d32) / 8k rows (d128), and would also shrink the oversized submissions that currently fail — but no real caller has been seen there, so the executor seam (`executionDevice` → per-assignment dispatch) waits for one. Curve and flagged rungs in the archived change's `saturation.md`.

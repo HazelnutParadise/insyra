@@ -110,7 +110,7 @@ func lookupBackendExecutor(backend Backend) (BackendExecutor, bool) {
 
 func (s *Session) finishExecution(result ExecutionResult, err error) (ExecutionResult, error) {
 	s.recordExecutionMetrics(result)
-	if !result.Accelerated && strictGPURequired(s.cfg) {
+	if (!result.Accelerated || result.FallbackReason != FallbackReasonNone) && strictGPURequired(s.cfg) {
 		if err != nil {
 			return result, fmt.Errorf("accel: unable to execute on the acceleration path (%s): %w", result.FallbackReason, err)
 		}
@@ -130,36 +130,6 @@ func fallbackReasonForExecError(err error) FallbackReason {
 	default:
 		return FallbackReasonExecutionFailed
 	}
-}
-
-// executionDevice picks the device carrying the largest share of the plan.
-func (s *Session) executionDevice(plan ShardPlan) (Device, bool) {
-	best := ""
-	bestWeight := -1.0
-	for _, assignment := range plan.Assignments {
-		if assignment.Weight > bestWeight {
-			bestWeight = assignment.Weight
-			best = assignment.DeviceID
-		}
-	}
-	if best == "" && len(plan.DeviceIDs) > 0 {
-		best = plan.DeviceIDs[0]
-	}
-	for _, device := range s.devices {
-		if device.ID == best {
-			return cloneDevice(device), true
-		}
-	}
-	return Device{}, false
-}
-
-func assignmentsForDevice(plan ShardPlan, deviceID string) []ShardAssignment {
-	for _, assignment := range plan.Assignments {
-		if assignment.DeviceID == deviceID {
-			return []ShardAssignment{assignment}
-		}
-	}
-	return nil
 }
 
 // deviceValues narrows a projected column into what a device can hold, or says
@@ -230,11 +200,25 @@ func (s *Session) applyDeviceResidency(dataset *Dataset, deviceID string) {
 		if !ok {
 			continue
 		}
-		entry.DeviceIDs = []string{deviceID}
-		entry.DeviceResidentBytes = map[string]uint64{deviceID: entry.ResidentBytes}
+		if !containsString(entry.DeviceIDs, deviceID) {
+			entry.DeviceIDs = append(entry.DeviceIDs, deviceID)
+		}
+		if entry.DeviceResidentBytes == nil {
+			entry.DeviceResidentBytes = map[string]uint64{}
+		}
+		entry.DeviceResidentBytes[deviceID] = entry.ResidentBytes
 		s.cache.entries[key] = entry
 	}
 	s.updateCacheMetrics()
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
 
 // recordExecutionMetrics assumes s.mu is held.
@@ -247,7 +231,7 @@ func (s *Session) recordExecutionMetrics(result ExecutionResult) {
 		report.Metrics = map[string]float64{}
 	}
 	report.Metrics["execution.accelerated"] = boolMetric(result.Accelerated)
-	report.Metrics["execution.fallback"] = boolMetric(!result.Accelerated && result.FallbackReason != FallbackReasonNone)
+	report.Metrics["execution.fallback"] = boolMetric(result.FallbackReason != FallbackReasonNone)
 	report.Metrics["execution.device_participants"] = float64(len(result.DeviceIDs))
 	report.Metrics["execution.assignments"] = float64(len(result.Assignments))
 	report.Metrics["execution.merge_cpu"] = boolMetric(result.MergePolicy == MergePolicyCPU)

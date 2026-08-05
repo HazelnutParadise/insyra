@@ -58,6 +58,7 @@ func (s *Session) Config() Config {
 	defer s.mu.Unlock()
 	cfg := s.cfg
 	cfg.PreferredBackends = append([]Backend(nil), s.cfg.PreferredBackends...)
+	cfg.Devices = append([]string(nil), s.cfg.Devices...)
 	cfg.PreferredDevices = append([]string(nil), s.cfg.PreferredDevices...)
 	return cfg
 }
@@ -184,6 +185,9 @@ func normalizeConfig(cfg Config) Config {
 	if cfg.Mode == "" {
 		cfg.Mode = defaults.Mode
 	}
+	if cfg.ShardStrategy == "" {
+		cfg.ShardStrategy = defaults.ShardStrategy
+	}
 	if cfg.MemoryBudget.DeviceFraction <= 0 {
 		cfg.MemoryBudget.DeviceFraction = defaults.MemoryBudget.DeviceFraction
 	}
@@ -195,6 +199,7 @@ func normalizeConfig(cfg Config) Config {
 	} else {
 		cfg.PreferredBackends = append([]Backend(nil), cfg.PreferredBackends...)
 	}
+	cfg.Devices = append([]string(nil), cfg.Devices...)
 	cfg.PreferredDevices = append([]string(nil), cfg.PreferredDevices...)
 	if cfg.ReportHistorySize <= 0 {
 		cfg.ReportHistorySize = defaults.ReportHistorySize
@@ -237,6 +242,7 @@ func cloneReport(report Report) Report {
 	cloned.DiscoveredDeviceIDs = append([]string(nil), report.DiscoveredDeviceIDs...)
 	cloned.SelectedDeviceIDs = append([]string(nil), report.SelectedDeviceIDs...)
 	cloned.SelectedDevices = append([]string(nil), report.SelectedDevices...)
+	cloned.UnmatchedDeviceSelectors = append([]UnmatchedDeviceSelector(nil), report.UnmatchedDeviceSelectors...)
 	if report.Metrics != nil {
 		cloned.Metrics = make(map[string]float64, len(report.Metrics))
 		for key, value := range report.Metrics {
