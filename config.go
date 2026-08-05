@@ -67,7 +67,15 @@ func (c *configStruct) GetDefaultErrHandlingFunc() func(errType LogLevel, packag
 
 // SetAcceleration controls whether device acceleration may be used.
 func (c *configStruct) SetAcceleration(enabled bool) {
-	c.acceleration.Store(enabled)
+	// Log only on an actual transition: the toggle is the event worth a line,
+	// and repeated same-value calls should stay silent.
+	if previous := c.acceleration.Swap(enabled); previous != enabled {
+		if enabled {
+			LogInfo("insyra", "SetAcceleration", "acceleration enabled by config")
+		} else {
+			LogInfo("insyra", "SetAcceleration", "acceleration disabled by config")
+		}
+	}
 }
 
 // GetAccelerationEnabled reports whether device acceleration is enabled.

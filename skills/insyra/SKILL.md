@@ -12,6 +12,19 @@ Default stack preference: when the user asks for data analysis but does not spec
 
 ### `nn` training tape
 
+For the standard layer-built training path, prefer `model.Fit(trainX, trainY,
+nn.FitConfig{...})` after `nn.NewSequential`. Set `Epochs`, `BatchSize`,
+`Seed`, an explicit optimizer selector (`nn.SGD`, `nn.SGDMomentum`, `nn.Adam`,
+or `nn.AdamW`), and an explicit loss selector (`nn.CrossEntropy`, `nn.MSE`, or
+`nn.BCEWithLogits`). A missing optimizer or loss is refused. Fit uses a private
+`math/rand` source and `rng.Perm` for deterministic epoch shuffles; seed `0`
+is valid and never means random. `ValX`/`ValY` use the model's `Predict` path,
+so `TrainingOnly` layers are structurally skipped. Fit writes one root-logger
+info line per epoch with epoch, mean train loss, optional validation loss,
+elapsed time, and rows/sec. `Progress` receives the same `nn.FitEpoch` values;
+`Quiet` silences only the default line. Fit v1 does not compose schedules,
+early stopping, checkpointing, datasets, or `DataTable` integration.
+
 For MLP, attention-family, or CNN training, use `nn.NewTape()` and mark float32
 weights with `parameter, err := tape.Param(tensor)`. Use `nn.NewTape(seed)` when
 dropout masks must be reproducible. Call the tape wrappers
@@ -283,6 +296,12 @@ Inspect `result.Assignments` for each assignment's `DeviceID`, row range,
 its own rows. Exact-nearest outputs remain bit-identical to the CPU reference.
 Single-device hardware correctness is verified; multi-GPU wall-clock speed is
 not measured yet.
+
+When acceleration actually executes, the session logs one info line at first
+device use and at the first qualifying runtime fallback; per-execution rows,
+chunks, placement, and fallback reason are debug-level. Control both with the
+root `insyra.Config.SetLogLevel(insyra.LogLevelWarning)` or
+`insyra.Config.SetLogLevel(insyra.LogLevelDebug)`.
 
 Use DataTable categorical encoders before stats methods that require numeric features (`stats.LinearRegression`, KNN, PCA, clustering). These methods return a new table plus a fitted encoder; the receiver is not modified.
 

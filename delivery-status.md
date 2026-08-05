@@ -7,7 +7,13 @@
 `insyra/nn`: run ONNX models in pure Go, verified per-operator and per-model against `onnxruntime`, with the op families landing in the decided order MLP → attention → CNN, then phase 2 adds autodiff and optimisers on the same tensors (first-step gradients verified against PyTorch under fixed initial weights via SafeTensors). GGUF/LLM is a decided future track that reuses the kernels; only two v1 constraints serve it now — dtype-carrying tensors and kernels as plain functions. M23 is complete: half precision is storage-only, with exact f16/bf16 widening into f32.
 
 ## Active Workstreams
-None. The multi-device line is complete and archived on 2026-08-05, all tasks checked including the gated hardware runs (unsandboxed M3/Metal):
+The visibility pair (independent, either order):
+- `add-accel-execution-logging` — acceleration announces itself: one info line per session at first device use (device, backend, mode, strategy) and at first qualifying fallback (reason); per-execution detail at debug. Fixes "did the GPU even run?".
+- `add-nn-sequential-fit` — training's front door: `Sequential.Fit` with seeded deterministic shuffling, selectors over the existing optimizers/losses, optional validation, and one progress line per epoch. Fixes "training looks hung". The gate is inherited from ENG.md: Fit must reproduce the documented hand-loop's loss curve to the last digit.
+
+Latest local result: `add-accel-execution-logging` is implemented with stub-only logging coverage and no hardware gate; strict OpenSpec validation passes. Its next state change is archival after merge, not additional code.
+
+Previous: the multi-device line is complete and archived on 2026-08-05, all tasks checked including the gated hardware runs (unsandboxed M3/Metal):
 1. `add-accel-chunked-submission` — 16k-row bound (73.1% timeout margin); the previously-aborting 64k×128 completes in 32,188 ms across 4 chunks DeepEqual to brute force; per-chunk fixed cost 193 ms (~8%) at 32k×32.
 2. `add-accel-device-selection` — `INSYRA_ACCEL_DEVICES` mask ∩ `Config.Devices` allowlist, soft `PreferredDevices`, `device-selection-empty` fallback reason, unmatched selectors surfaced; five spec scenarios stub-verified, defaults unchanged.
 3. `add-accel-multi-device-dispatch` — `single`/`auto`/`forced` strategies, `auto` gated by the recorded saturation floors (32k/8k rows), per-assignment failure costs only its share, sequential/concurrent/brute-force three-way parity passed on the real device. Multi-GPU wall clock remains honestly unmeasured pending multi-GPU hardware, under the standing follow-up.
@@ -43,6 +49,7 @@ Previous batch: `add-knn-probe-selection` (#190) and `thread-ccl-eval-depth` (#1
 | M29 | MultiHeadAttention layer | planning | done | an encoder block composes from layers alone, trains one step matching PyTorch, no Func required |
 | M30 | Segmentation and style models run | planning | done | measured gaps only: Resize (linear+nearest), Upsample, Floor, InstanceNormalization — FCN-ResNet50 and mosaic-9 (real published files) match onnxruntime |
 | M31 | A real detector runs | planning | done | LeakyRelu, Exp, Ceil, Round, Tile, ReduceMin, NonMaxSuppression, and Loop subgraph execution — tiny-YOLOv3 matches onnxruntime; ConvTranspose and TopK stay unbuilt because no target model needs them |
+| M32 | Sequential training has a front door | planning | done | `Sequential.Fit` uses explicit optimizer/loss selectors, seeded `rng.Perm` batching, Predict-based validation, and one root-logger line per epoch; the hand-written loop parity gate failed under a reversed batch walk and passed after restoring `rng.Perm` exactly |
 
 Milestone order is the blocking sequence. OpenSpec has no dependency relationship between changes, so nothing else carries it.
 
@@ -50,15 +57,20 @@ Milestone order is the blocking sequence. OpenSpec has no dependency relationshi
 The implementation has no code blocker. Acceptance still needs a multi-GPU host for the gated concurrent/sequential parity run and wall-clock measurement. Hardware coverage remains Apple/Metal-only, carried as the standing `AGENTS.md` follow-up; gated device tests must run from an unsandboxed shell on this host (sandboxed shells see only a software adapter).
 
 ## Next Verifiable Output
-`add-accel-device-selection` is complete, 8/8: stub probes verify environment masking, per-session allowlists, bound intersection, stable index parsing, strict errors, automatic CPU fallback, preference scoping, and surfaced mismatches. No hardware gate is needed. `add-accel-multi-device-dispatch` is locally complete except for its explicitly gated hardware task.
+`add-accel-execution-logging` is complete locally: stub probes verify one-time device and qualifying-fallback info lines, debug execution detail, caller-ineligible debug-only fallbacks, concurrent session safety, silenced info output, and strict validation. No hardware gate is needed. The multi-device hardware follow-up remains separate.
 
 ## Next Ticket
-`add-accel-multi-device-dispatch` — implementation and sandbox verification are complete; the next verifiable output is the unsandboxed multi-GPU parity and wall-clock acceptance run. The KNN decision uses `m=16`, an examined-candidate cutoff of `0.44`, and an `n=64` floor; `LeafSize=16` remains the default after the 8/16/32/64 sweep. The standing acceleration guardrails remain: no batched device kernel without a single-dispatch batched measurement, and no device Conv without its own measurement.
+`add-nn-sequential-fit` — the next independent visibility-pair change after execution logging. The multi-device parity and wall-clock item remains a standing hardware follow-up, not a blocker for this logging change.
 
 Note for any host running the reference suites locally: the crosslang venv moved to `~/.cache/insyra-crosslang-venv` on 2026-08-03 after macOS's tmp cleaner destroyed the old /private/tmp venv (deleted `pyvenv.cfg` and parts of numpy's binaries, producing no-module false negatives). CI is unaffected — it installs its own toolchains.
 
 ## Decision Log
 Deltas that still change what someone would do. The standing technical decisions they produced — the precision contract, the device rules, the measured thresholds — live in [ENG.md](ENG.md); the full history is in git.
+
+- decision: Acceleration execution logging is session-scoped and output-only: first actual device use and first qualifying runtime fallback are info events, while every execution and caller-ineligible fallback is debug detail.
+  rationale: Discovery does not prove execution, caller-selected ineligibility is not a device failure, and the root logger must remain the single level-control surface. Session locking makes the once-only announcements safe for concurrent callers without changing results or public API.
+  timestamp: 2026-08-05
+  impacted_ticket_ids: add-accel-execution-logging
 
 - decision: Device eligibility is the intersection of the process-wide `INSYRA_ACCEL_DEVICES` mask and the per-session `Config.Devices` allowlist; both resolve IDs and zero-based indices against the original discovery order before filtering. `PreferredDevices` remains a soft ordering within the eligible set.
   rationale: The operator's environment boundary must be unable to be widened by a program, and resolving both bounds before intersection keeps index meaning stable. Empty eligible sets are observable as `device-selection-empty` in automatic modes and as a bound-naming error in strict modes; unmatched selectors stay in the session report.
@@ -185,6 +197,11 @@ Deltas that still change what someone would do. The standing technical decisions
   timestamp: 2026-08-01
   impacted_ticket_ids: none
 
+- decision: `Sequential.Fit` is v1's deterministic front door, and it composes the existing tape methods without adding training policy.
+  rationale: An explicit `FitConfig` makes missing objectives fail loudly, while a private `math/rand` source seeded from the config makes shuffling reproducible without global or time-derived state. The digit-for-digit gate caught a reversed batch walk. Learning-rate schedules and early stopping remain recorded follow-ups rather than hidden Fit behavior.
+  timestamp: 2026-08-05
+  impacted_ticket_ids: add-nn-sequential-fit
+
 ## Source Links
 - [ENG.md](ENG.md) — architecture, test seams, the precision contract, standing assumptions. Read before changing any of them.
 - [AGENTS.md](AGENTS.md) — the operating contract, including the acceleration rules and the open follow-ups.
@@ -194,12 +211,14 @@ Deltas that still change what someone would do. The standing technical decisions
 - Open issues: [#190](https://github.com/HazelnutParadise/insyra/issues/190) KNN algorithm selection, [#191](https://github.com/HazelnutParadise/insyra/issues/191) CCL recursion-depth overhead.
 
 ## Handoff Notes
+- **Execution logging handoff (2026-08-05).** Current phase: `insyra/nn` phase 2 with the independent acceleration visibility pair active. Blockers: no code or hardware blocker for logging; the existing multi-GPU and non-Apple coverage follow-ups remain unchanged. Next verifiable output: archive `add-accel-execution-logging` after merge, then the independent `add-nn-sequential-fit` gate; next OpenSpec change: `add-nn-sequential-fit`. Decision delta: session flags announce first real device use and first qualifying fallback once, with per-execution detail through the root logger at debug. Source links: [change proposal](openspec/changes/add-accel-execution-logging/proposal.md), [change spec](openspec/changes/add-accel-execution-logging/specs/accel-observability/spec.md), [accel docs](Docs/accel.md), [acceleration contract](AGENTS.md). `delivery-status.md` changed: yes. `AGENTS.md` changed: no.
 - **M17 wiring handoff.** `make-dl-device-matmul-default` now contains the default-on `nn` hook, exported `accel.DeviceMatMul`, production WGSL MatMul, CPU fallback tests, a hardware parity gate, and the runnable floor ladder. `INSYRA_ACCEL_DISABLE_WGPU=1` and `nn.RegisterDeviceMatMul(nil)` are the two switches. `delivery-status.md` changed in this handoff; `AGENTS.md` did not.
 - **M18 training handoff.** `add-dl-cnn-gradients` adds direct-loop Conv, pooling, and inference-mode BatchNormalization VJPs, ungated finite-difference coverage, and a gated PyTorch SafeTensors CNN one-step parity test. The full `./dl/` suite passed with the moved reference venv. `delivery-status.md` changed in this handoff; `AGENTS.md` did not.
 - **M20 real-checkpoint handoff.** `add-dl-real-model-support` adds `Clip`, `ConstantOfShape`, runtime control tensors, deterministic real-model parity for MobileNetV2 and MiniLM-L6-v2, and the matching docs, changelogs, and skill note. The normal and strict `./dl/` suites passed; `delivery-status.md` changed in this handoff; `AGENTS.md` did not.
 - **M21 convergence handoff.** `add-dl-mnist-convergence` adds test-side IDX validation, fixed-seed He initialization, a dataset-free micro-convergence test, and a gated MNIST 784→128→10 Adam run. The specified MNIST command reaches 93.91% after epoch 1 and 95.84% after epoch 2 in 12.5 seconds; the uncached `./dl/` suite passes, and missing `INSYRA_NN_MNIST_DIR` skips cleanly. `delivery-status.md` changed in this handoff; `AGENTS.md` did not.
 - **M23 half-precision handoff.** `add-dl-half-precision` adds exact f16/bf16 widening for SafeTensors and ONNX initializers, round-to-nearest-even Cast targets that widen back to f32, hand-built boundary tests, a PyTorch SafeTensors fixture, and an ONNXRuntime parity row. The specified strict `./dl/` suite passes in 20.445 seconds; `delivery-status.md` changed in this handoff; `AGENTS.md` did not.
 - **M29 layer-surface handoff.** `add-nn-attention-layer` adds torch-compatible `MultiHeadAttention`, recursive `Residual` composition, SafeTensors transpose round-trips, finite-difference coverage, ONNX refusal, and a layer-built encoder AdamW parity proof. The requested `./nn/` suite and gated torch fixture pass; `delivery-status.md` changed in this handoff; `AGENTS.md` did not.
+- **Sequential Fit handoff (2026-08-05).** Current phase: `insyra/nn` phase 2, M32 complete. Blockers: no code blocker; the gated MNIST Fit arm is written but skipped here because `INSYRA_NN_MNIST_DIR` is unset. Next verifiable output: run `TestSequentialFitMNISTConvergence` with the local IDX dataset and confirm the M21 losses and 95.84% accuracy. Next OpenSpec change: none until the recorded Fit follow-ups are proposed. Decision delta: Fit requires explicit optimizer/loss selectors, owns seeded `rng.Perm` shuffling, validates through `Predict`, and reports one root-logger line per epoch; schedules and early stopping remain excluded v1 follow-ups. Source links: [Fit proposal](openspec/changes/add-nn-sequential-fit/proposal.md), [Fit design](openspec/changes/add-nn-sequential-fit/design.md), [Fit spec](openspec/changes/add-nn-sequential-fit/specs/nn-training-frontdoor/spec.md), [Fit implementation](nn/fit.go), [Fit docs](Docs/nn.md). `delivery-status.md` changed: yes. `AGENTS.md` changed: no.
 - **Hardware blocker.** The sandbox only exposes a software adapter. The new device tests skip with `ErrUnavailable`; 2.1's measured floor, 3.3's all-`nn` hardware run, and 3.4's encoder timing remain unchecked.
 - **One sample-weight design question remains open, deliberately.** Tree sample weights would push float weights into histogram accumulators the precision contract fixed as integers for associativity — an architecture decision against ENG.md, not a feature. The cross-validation channel turned out not to need a protocol break: scikit-learn routes sample_weight to fit and scores unweighted, so `Estimator` gained an optional `FitWeighted` and `CrossValidateWeighted` subsets weights with each fold's own indices. The metric protocol is untouched.
 - **Two pure-CPU wins are measured and unclaimed**, and both are worth more than anything acceleration offered. `stats`' KNN auto-selection picks a ball tree up to 3.3x slower than parallel brute force on unstructured data (#190). CCL spends 4.8x–6.2x more time on recursion-depth bookkeeping than on evaluating (#191).

@@ -198,6 +198,10 @@ func (s *Session) ExecuteNearestExact(dataset *Dataset, queries [][]float64, m i
 		workload.Bytes = estimateDatasetResidentBytes(dataset)
 	}
 	host, rows, reason := hostColumns(dataset)
+	logRows := rows
+	if logRows <= 0 {
+		logRows = dataset.Rows
+	}
 	if reason == FallbackReasonNone && workload.Rows != rows {
 		workload.Rows = rows
 	}
@@ -224,7 +228,7 @@ func (s *Session) ExecuteNearestExact(dataset *Dataset, queries [][]float64, m i
 	if reason != FallbackReasonNone {
 		result.Accelerated = false
 		result.FallbackReason = reason
-		exec, err := s.finishExecution(result.ExecutionResult, fmt.Errorf(
+		exec, err := s.finishExecution(result.ExecutionResult, logRows, fmt.Errorf(
 			"accel: dataset is not eligible (%s)", reason))
 		result.ExecutionResult = exec
 		return result, err
@@ -237,7 +241,7 @@ func (s *Session) ExecuteNearestExact(dataset *Dataset, queries [][]float64, m i
 		result.Transfer, result.Dispatch, result.Readback, result.BytesUploaded = 0, 0, 0, 0
 		result.Index, result.Distance = exactNearestAll(host, queries, rows, m)
 		result.Rechecked = rows
-		exec, err := s.finishExecution(result.ExecutionResult, cause)
+		exec, err := s.finishExecution(result.ExecutionResult, logRows, cause)
 		result.ExecutionResult = exec
 		return result, err
 	}
@@ -336,7 +340,7 @@ func (s *Session) ExecuteNearestExact(dataset *Dataset, queries [][]float64, m i
 	if failed != FallbackReasonNone {
 		cause = fmt.Errorf("accel: one or more assignments fell back")
 	}
-	exec, ferr := s.finishExecution(result.ExecutionResult, cause)
+	exec, ferr := s.finishExecution(result.ExecutionResult, logRows, cause)
 	result.ExecutionResult = exec
 	return result, ferr
 }
@@ -372,7 +376,9 @@ func executeNearestAssignment(
 	localRows := hi - lo
 	localHost := sliceHostColumns(host, lo, hi)
 	localColumns := sliceExecuteColumns(columns, lo, hi)
-	defer func() { out.Assignment.WallTime = time.Since(started) }()
+	defer func() {
+		out.Assignment.WallTime = time.Since(started)
+	}()
 	fallback := func(reason FallbackReason) assignmentExecution {
 		out.Assignment.FallbackReason = reason
 		out.Index, out.Distance = exactNearestAll(localHost, queries, localRows, m)

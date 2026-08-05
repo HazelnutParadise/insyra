@@ -10,12 +10,14 @@ import (
 // suffixed Locked assume the caller already holds it, which is how the public
 // methods call one another without re-entering a non-reentrant mutex.
 type Session struct {
-	mu      sync.Mutex
-	cfg     Config
-	devices []Device
-	reports []Report
-	cache   *residentCache
-	closed  bool
+	mu                     sync.Mutex
+	cfg                    Config
+	devices                []Device
+	reports                []Report
+	cache                  *residentCache
+	closed                 bool
+	accelerationInfoLogged bool
+	fallbackInfoLogged     bool
 	// shared marks the process-wide session from Default. It never closes,
 	// because no single caller owns it.
 	shared bool

@@ -108,8 +108,9 @@ func lookupBackendExecutor(backend Backend) (BackendExecutor, bool) {
 	return executor, ok
 }
 
-func (s *Session) finishExecution(result ExecutionResult, err error) (ExecutionResult, error) {
+func (s *Session) finishExecution(result ExecutionResult, rows int, err error) (ExecutionResult, error) {
 	s.recordExecutionMetrics(result)
+	s.logExecutionLocked(string(result.Op), result, rows)
 	if (!result.Accelerated || result.FallbackReason != FallbackReasonNone) && strictGPURequired(s.cfg) {
 		if err != nil {
 			return result, fmt.Errorf("accel: unable to execute on the acceleration path (%s): %w", result.FallbackReason, err)

@@ -149,6 +149,49 @@ CNN training. The tape calls
 the existing tensor kernels during the forward pass and stores one VJP record
 per call; it does not transform an ONNX graph.
 
+### Training with `Sequential.Fit`
+
+For a complete layer-built training run, use `Sequential.Fit`. It owns the
+epoch loop, deterministic minibatch order, loss, backward pass, optimizer
+step, optional validation, and progress reporting. The loss and optimizer are
+explicit selectors over the existing tape methods, so an omitted objective is
+an error rather than a default:
+
+```go
+model, err := nn.NewSequential(
+	nn.NewTape(20260803),
+	nn.Dense(784, 128), nn.ReLU(), nn.Dense(128, 10),
+)
+if err != nil { log.Fatal(err) }
+
+result, err := model.Fit(trainX, trainY, nn.FitConfig{
+	Epochs: 5, BatchSize: 128, Seed: 20260803,
+	Optimizer: nn.Adam{Rate: 1e-3},
+	Loss: nn.CrossEntropy{},
+	ValX: testX, ValY: testY,
+})
+if err != nil { log.Fatal(err) }
+_ = result.TrainLosses
+```
+
+`Seed` is always used as the source for `math/rand`'s `Perm` shuffle. Zero is
+a valid seed, not a request for time-based randomness. The same inputs,
+configuration, and seed reproduce the same parameter trajectory. Each epoch
+writes one root-logger info line containing `epoch k/N`, mean training loss,
+validation loss when configured, elapsed time, and rows per second. Set
+`Quiet: true` to suppress that line, or use `Progress: func(nn.FitEpoch) {}`
+for custom reporting; `Quiet` does not suppress the callback. Fit v1 does not
+include schedules, early stopping, checkpointing, datasets, or `DataTable`
+integration.
+
+Validation calls `Predict`, so `TrainingOnly` layers such as Dropout are
+structurally excluded from validation just as they are from inference.
+
+### Advanced path: hand-written tape loop
+
+Use the tape directly when a training loop needs behavior outside Fit's v1
+surface. This is the same loop that the Fit parity test reproduces exactly:
+
 ```go
 tape := nn.NewTape()
 w1, err := tape.Param(weights["layer1.weight"])
@@ -267,7 +310,9 @@ minibatches so Adam retains its per-parameter moments. A typical MNIST-shaped
 loop is a seeded `784 -> 128 -> 10` MLP with batch size 128:
 
 ```go
-tape := nn.NewTape()
+seed := int64(20260803)
+rng := rand.New(rand.NewSource(seed))
+tape := nn.NewTape(seed)
 w1, _ := tape.Param(weights["w1"]) // [784, 128], seeded He initialization
 b1, _ := tape.Param(weights["b1"]) // [128]
 w2, _ := tape.Param(weights["w2"]) // [128, 10], seeded He initialization

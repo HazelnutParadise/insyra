@@ -54,6 +54,8 @@ WebGPU backend. It wins over Config, so setting Config to enabled cannot turn
 that backend back on while the environment variable is set. A device runs only
 when both layers allow it.
 
+At the first device execution and first qualifying fallback, `accel` emits one info line per session; per-execution placement is debug-level. Use `insyra.Config.SetLogLevel(insyra.LogLevelWarning)` to silence it or `insyra.Config.SetLogLevel(insyra.LogLevelDebug)` to amplify it.
+
 ### Device bounds and preference
 
 Device selection has three independent axes. Hard bounds decide eligibility;
