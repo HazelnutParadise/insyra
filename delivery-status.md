@@ -7,7 +7,9 @@
 `insyra/nn`: run ONNX models in pure Go, verified per-operator and per-model against `onnxruntime`, with the op families landing in the decided order MLP → attention → CNN, then phase 2 adds autodiff and optimisers on the same tensors (first-step gradients verified against PyTorch under fixed initial weights via SafeTensors). GGUF/LLM is a decided future track that reuses the kernels; only two v1 constraints serve it now — dtype-carrying tensors and kernels as plain functions. M23 is complete: half precision is storage-only, with exact f16/bf16 widening into f32.
 
 ## Active Workstreams
-None. `add-knn-probe-selection` (#190) and `thread-ccl-eval-depth` (#191) are implemented, verified, committed to dev (687f625, c64b548) and archived on 2026-08-05; their delta specs are synced into `stats-knn` and the new `ccl-evaluation` capability. Issues #190–#193 are all closed.
+- `measure-device-saturation` (proposed 2026-08-05, not started) — measurement only: sweep exact-nearest up the test-row axis (1k→128k, 100k×32 and 100k×128 arms) to find where single-device wall time stops being flat, with the flat→scaling criterion (first rung ≥1.8x its predecessor) declared before running. The result opens or parks multi-device execution with a number; no wiring in this change.
+
+Previous batch: `add-knn-probe-selection` (#190) and `thread-ccl-eval-depth` (#191) are implemented, verified, committed to dev (687f625, c64b548) and archived on 2026-08-05; their delta specs are synced into `stats-knn` and the new `ccl-evaluation` capability. Issues #190–#193 are all closed.
 
 ## Milestones
 | id | target | owner | status | verification_signal |
@@ -42,18 +44,28 @@ None. `add-knn-probe-selection` (#190) and `thread-ccl-eval-depth` (#191) are im
 Milestone order is the blocking sequence. OpenSpec has no dependency relationship between changes, so nothing else carries it.
 
 ## Current Blockers
-None. Hardware coverage remains Apple/Metal-only, carried as the standing `AGENTS.md` follow-up.
+None. The saturation blocker resolved the same day: the software-adapter probe came from a sandboxed worker shell — an unsandboxed shell on the same M3 reaches the real Metal adapter, and the full curve is recorded in the archived change. Hardware coverage remains Apple/Metal-only, carried as the standing `AGENTS.md` follow-up.
 
 ## Next Verifiable Output
-Archive `add-knn-probe-selection` after the implementation is merged.
+`measure-device-saturation` is complete: both arms measured, the 1.8x criterion applied, saturation points on record (32k test rows at dims=32, 8k at dims=128).
 
 ## Next Ticket
-`thread-ccl-eval-depth` — queued behind the completed KNN change. The KNN decision uses `m=16`, an examined-candidate cutoff of `0.44`, and an `n=64` floor; `LeafSize=16` remains the default after the 8/16/32/64 sweep. The kd-tree branch was measured at dims 4 and 8 and never showed the ball-tree failure mode, so it remains unprobed. The standing acceleration guardrails remain: no batched device kernel without a single-dispatch batched measurement, and no device Conv without its own measurement.
+No pending change is selected. The KNN decision uses `m=16`, an examined-candidate cutoff of `0.44`, and an `n=64` floor; `LeafSize=16` remains the default after the 8/16/32/64 sweep. The kd-tree branch was measured at dims 4 and 8 and never showed the ball-tree failure mode, so it remains unprobed. The standing acceleration guardrails remain: no batched device kernel without a single-dispatch batched measurement, and no device Conv without its own measurement.
 
 Note for any host running the reference suites locally: the crosslang venv moved to `~/.cache/insyra-crosslang-venv` on 2026-08-03 after macOS's tmp cleaner destroyed the old /private/tmp venv (deleted `pyvenv.cfg` and parts of numpy's binaries, producing no-module false negatives). CI is unaffected — it installs its own toolchains.
 
 ## Decision Log
 Deltas that still change what someone would do. The standing technical decisions they produced — the precision contract, the device rules, the measured thresholds — live in [ENG.md](ENG.md); the full history is in git.
+
+- decision: Single-device saturation is measured and real; multi-device execution stays parked until a real workload occupies the saturated region.
+  rationale: The exact-nearest sweep on the M3 (best of 5, upload+dispatch+readback, one process per rung) is flat only to 4k test rows at 100k×32 — the region every prior ~467ms reading sampled — then bends: the declared ≥1.8x-per-doubling criterion trips at 32k (1.82x, converging to 1.98x by 128k). The heavier 100k×128 arm trips at 8k (2.08x) and stops being runnable at 64k, where a single-device submission dies in `readback-timeout` and falls back. So shard splits would have proportional work above 32k rows (d32) / 8k rows (d128), and would also shrink the oversized submissions that currently fail — but no real caller has been seen there, so the executor seam (`executionDevice` → per-assignment dispatch) waits for one. Curve and flagged rungs in the archived change's `saturation.md`.
+  timestamp: 2026-08-05
+  impacted_ticket_ids: measure-device-saturation; a future per-assignment dispatch change when a workload shows up
+
+- decision: Sandboxed agent shells cannot reach the Metal adapter; GPU measurements on this host run from an unsandboxed shell.
+  rationale: The same `wgpu.Probe()` that returns the real Apple M3 adapter in a normal shell returns only a software CPU adapter inside a sandboxed worker, which made the first saturation attempt record a false hardware blocker. Gated device benchmarks skip correctly in that state, so nothing lies — but anyone reading a "no usable GPU" skip on this machine should try an unsandboxed shell before declaring hardware absent.
+  timestamp: 2026-08-05
+  impacted_ticket_ids: none; operational note for every future gated GPU run
 
 - decision: CCL evaluation depth is stack-threaded, and the old CCL-on-GPU 11x comparison is no longer a valid baseline.
   rationale: On the Apple M3, the issue #191 expression measured 15.512 ms → 3.429 ms at 10k rows and 143.714 ms → 23.851 ms at 100k rows when global goroutine-ID/sync.Map guards were replaced by stack-local parameters; the same-session guard-removed upper bound was 3.466 ms and 23.992 ms. The threaded path therefore recovered 100.3% and 100.1% of the measured upper bound, within noise. The earlier 11x CCL transform-chain comparison was a single-core interpreter result with the old guards, so it is invalid as an acceleration comparison and cannot decide whether CCL value expressions are worth a device kernel.
