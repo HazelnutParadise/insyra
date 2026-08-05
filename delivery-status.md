@@ -7,8 +7,7 @@
 `insyra/nn`: run ONNX models in pure Go, verified per-operator and per-model against `onnxruntime`, with the op families landing in the decided order MLP → attention → CNN, then phase 2 adds autodiff and optimisers on the same tensors (first-step gradients verified against PyTorch under fixed initial weights via SafeTensors). GGUF/LLM is a decided future track that reuses the kernels; only two v1 constraints serve it now — dtype-carrying tensors and kernels as plain functions. M23 is complete: half precision is storage-only, with exact f16/bf16 widening into f32.
 
 ## Active Workstreams
-- `add-knn-probe-selection` (proposed 2026-08-04, implementation, verification and strict validation complete — ready for handoff) — issue #190: replace the shape-blind KNN auto selection with a construction-time probe that measures examined-candidate fraction on the caller's own test rows. Calibration measurements gate the wiring.
-- `thread-ccl-eval-depth` (proposed 2026-08-04, queued behind the KNN change) — issue #191: replace the goid/sync.Map recursion-depth bookkeeping in the CCL evaluator with stack-threaded depth parameters; measured upper bound 4.8x–6.2x. Note: the goid dependency itself stays — `internal/core/atomic.go` also uses it, so the issue's dependency-removal claim stops at the package boundary.
+None. `add-knn-probe-selection` (#190) and `thread-ccl-eval-depth` (#191) are implemented, verified, committed to dev (687f625, c64b548) and archived on 2026-08-05; their delta specs are synced into `stats-knn` and the new `ccl-evaluation` capability. Issues #190–#193 are all closed.
 
 ## Milestones
 | id | target | owner | status | verification_signal |
