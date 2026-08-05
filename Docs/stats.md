@@ -1467,7 +1467,15 @@ type KNNClassificationResult struct {
 - default algorithm is `auto`
 - `distance` weighting uses inverse distance
 - exact-distance matches dominate distance-weighted predictions
-- `auto` chooses exact brute-force / KD-tree / ball-tree search based on data shape
+- `auto` first chooses a candidate search structure from the data shape. When that
+  candidate is a ball tree on the CPU path, it probes a deterministic fixed-stride
+  sample of the caller's test rows and counts the training rows examined. If the
+  measured mean fraction is too high, it discards the tree and runs exact brute
+  force instead. The probe changes only the search path, so results remain exactly
+  the same. Explicit `Algorithm` values are always honored and never probed or
+  substituted. The default `LeafSize` remains 16 after the measured 8/16/32/64
+  sweep; use `LeafSize` to choose a different tree layout when you have a measured
+  reason to do so.
 
 **Example**:
 

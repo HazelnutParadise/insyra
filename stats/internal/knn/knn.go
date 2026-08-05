@@ -21,6 +21,21 @@ const treeBuildParallelDepth = 5
 // the goroutine launch dwarfs the actual O(n log n) sort + split work.
 const treeBuildParallelCutoff = 256
 
+// knnProbeSampleSize is the measured sample count from the add-knn-probe-
+// selection calibration record. It is intentionally a construction-time
+// constant; the probe is never part of QueryKNN.
+const knnProbeSampleSize = 16
+
+// knnProbeExaminedFractionCutoff is the measured ball-tree/brute crossover,
+// rounded toward brute force. The calibration record brackets the crossover
+// at 0.416–0.449 and records 0.44 as the conservative cutoff.
+const knnProbeExaminedFractionCutoff = 0.44
+
+// knnProbeMinTrainRows is the measured n-floor. The existing static rule
+// already selects brute force below 64 rows, and 64 is the first tree-eligible
+// size whose measured probe overhead stayed below 2.4% of brute time.
+const knnProbeMinTrainRows = 64
+
 type Weighting string
 type Algorithm string
 
@@ -64,6 +79,13 @@ type searcher interface {
 	QueryKNN(query []float64, k int) []neighbor
 }
 
+// treeProbe is deliberately separate from searcher. It is used only while
+// auto-selection is deciding whether a proposed tree prunes enough; the hot
+// QueryKNN path remains unchanged.
+type treeProbe interface {
+	examinedCandidates(query []float64, k int) int
+}
+
 func Classify(train, test [][]float64, labels []string, k int, opts Options) (*ClassificationResult, error) {
 	normalized, err := normalizeOptions(opts)
 	if err != nil {
@@ -78,7 +100,7 @@ func Classify(train, test [][]float64, labels []string, k int, opts Options) (*C
 	batch := deviceBatch(train, test, k, normalized)
 	var search searcher
 	if batch == nil {
-		if search, err = newSearcher(train, normalized); err != nil {
+		if search, err = newSearcher(train, test, k, normalized); err != nil {
 			return nil, err
 		}
 	}
@@ -137,7 +159,7 @@ func Regress(train, test [][]float64, targets []float64, k int, opts Options) (*
 	batch := deviceBatch(train, test, k, normalized)
 	var search searcher
 	if batch == nil {
-		if search, err = newSearcher(train, normalized); err != nil {
+		if search, err = newSearcher(train, test, k, normalized); err != nil {
 			return nil, err
 		}
 	}
@@ -168,7 +190,7 @@ func Neighbors(train, test [][]float64, k int, opts Options) (*NeighborResult, e
 	batch := deviceBatch(train, test, k, normalized)
 	var search searcher
 	if batch == nil {
-		if search, err = newSearcher(train, normalized); err != nil {
+		if search, err = newSearcher(train, test, k, normalized); err != nil {
 			return nil, err
 		}
 	}
@@ -262,17 +284,44 @@ func validateInputs(train, test [][]float64, k int) error {
 	return nil
 }
 
-func newSearcher(train [][]float64, opts Options) (searcher, error) {
+func newSearcher(train, test [][]float64, k int, opts Options) (searcher, error) {
 	switch resolveAlgorithm(len(train), len(train[0]), opts.Algorithm) {
 	case BruteForceAlgorithm:
 		return &bruteSearcher{train: train}, nil
 	case KDTreeAlgorithm:
 		return newKDTreeSearcher(train, opts.LeafSize), nil
 	case BallTreeAlgorithm:
-		return newBallTreeSearcher(train, opts.LeafSize), nil
+		tree := newBallTreeSearcher(train, opts.LeafSize)
+		if opts.Algorithm == AutoAlgorithm && len(train) >= knnProbeMinTrainRows {
+			sample := fixedStrideSample(test, knnProbeSampleSize)
+			examined := 0
+			for _, query := range sample {
+				examined += tree.examinedCandidates(query, k)
+			}
+			fraction := float64(examined) / float64(len(sample)*len(train))
+			if fraction > knnProbeExaminedFractionCutoff {
+				return &bruteSearcher{train: train}, nil
+			}
+		}
+		return tree, nil
 	default:
 		return nil, errors.New("unsupported KNN algorithm")
 	}
+}
+
+func fixedStrideSample(test [][]float64, max int) [][]float64 {
+	count := max
+	if len(test) < count {
+		count = len(test)
+	}
+	if count == len(test) {
+		return test
+	}
+	sample := make([][]float64, count)
+	for i := range sample {
+		sample[i] = test[i*len(test)/count]
+	}
+	return sample
 }
 
 func resolveAlgorithm(n, dims int, algo Algorithm) Algorithm {
@@ -386,6 +435,11 @@ func (s *kdTreeSearcher) QueryKNN(query []float64, k int) []neighbor {
 	return set.results()
 }
 
+func (s *kdTreeSearcher) examinedCandidates(query []float64, k int) int {
+	set := newNeighborSet(k)
+	return searchKDTreeCount(s.train, s.root, query, set)
+}
+
 func searchKDTree(train [][]float64, node *kdNode, query []float64, set *neighborSet) {
 	if node == nil {
 		return
@@ -408,6 +462,31 @@ func searchKDTree(train [][]float64, node *kdNode, query []float64, set *neighbo
 	if !set.full() || diff*diff <= set.worstDist2()+1e-12 {
 		searchKDTree(train, far, query, set)
 	}
+}
+
+func searchKDTreeCount(train [][]float64, node *kdNode, query []float64, set *neighborSet) int {
+	if node == nil {
+		return 0
+	}
+	if len(node.indices) > 0 {
+		for _, idx := range node.indices {
+			set.tryAdd(neighbor{index: idx, dist2: squaredEuclidean(train[idx], query)})
+		}
+		return len(node.indices)
+	}
+
+	pivotPoint := train[node.pivot]
+	set.tryAdd(neighbor{index: node.pivot, dist2: squaredEuclidean(pivotPoint, query)})
+	diff := query[node.axis] - pivotPoint[node.axis]
+	near, far := node.left, node.right
+	if diff > 0 {
+		near, far = node.right, node.left
+	}
+	count := 1 + searchKDTreeCount(train, near, query, set)
+	if !set.full() || diff*diff <= set.worstDist2()+1e-12 {
+		count += searchKDTreeCount(train, far, query, set)
+	}
+	return count
 }
 
 type ballTreeSearcher struct {
@@ -510,6 +589,11 @@ func (s *ballTreeSearcher) QueryKNN(query []float64, k int) []neighbor {
 	return set.results()
 }
 
+func (s *ballTreeSearcher) examinedCandidates(query []float64, k int) int {
+	set := newNeighborSet(k)
+	return searchBallTreeCount(s.train, s.root, query, set)
+}
+
 func searchBallTree(train [][]float64, node *ballNode, query []float64, set *neighborSet) {
 	if node == nil {
 		return
@@ -535,6 +619,35 @@ func searchBallTree(train [][]float64, node *ballNode, query []float64, set *nei
 	if !set.full() || secondBound <= set.worstDist2()+1e-12 {
 		searchBallTree(train, second, query, set)
 	}
+}
+
+func searchBallTreeCount(train [][]float64, node *ballNode, query []float64, set *neighborSet) int {
+	if node == nil {
+		return 0
+	}
+	if len(node.indices) > 0 {
+		for _, idx := range node.indices {
+			set.tryAdd(neighbor{index: idx, dist2: squaredEuclidean(train[idx], query)})
+		}
+		return len(node.indices)
+	}
+
+	leftBound := ballLowerBound(query, node.left)
+	rightBound := ballLowerBound(query, node.right)
+	first, second := node.left, node.right
+	firstBound, secondBound := leftBound, rightBound
+	if rightBound < leftBound && !almostEqual(rightBound, leftBound) {
+		first, second = node.right, node.left
+		firstBound, secondBound = rightBound, leftBound
+	}
+	count := 0
+	if !set.full() || firstBound <= set.worstDist2()+1e-12 {
+		count += searchBallTreeCount(train, first, query, set)
+	}
+	if !set.full() || secondBound <= set.worstDist2()+1e-12 {
+		count += searchBallTreeCount(train, second, query, set)
+	}
+	return count
 }
 
 func ballLowerBound(query []float64, node *ballNode) float64 {
