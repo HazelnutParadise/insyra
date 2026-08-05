@@ -5,17 +5,11 @@ import (
 	"log"
 	"math"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/HazelnutParadise/insyra/internal/utils"
-	"github.com/petermattis/goid"
 )
 
-// 以 goroutine 為單位追蹤遞迴深度。原本的全域 evalDepth 會在多個 goroutine
-// 同時評估獨立運算式時互相競寫（go test -race 可重現），改為 per-goroutine
-// 計數即可消除 race，同時保留遞迴深度防護的語意。
-var evalDepthByGoid sync.Map // map[int64]int
 // maxEvalDepth guards against pathological stack growth. It must be well above
 // the AST depth of any legitimate expression: a long flat expression such as
 // A+B+C+... nests one binary node per term, so a low cap (previously 100) would
@@ -23,11 +17,6 @@ var evalDepthByGoid sync.Map // map[int64]int
 // (runaway recursion via registered functions is bounded separately by
 // funcCallDepth), so a high cap is safe.
 var maxEvalDepth = 10000
-
-// ResetEvalDepth 重置目前 goroutine 的評估深度。
-func ResetEvalDepth() {
-	evalDepthByGoid.Delete(goid.Get())
-}
 
 // EvaluationResult represents the result of evaluating a CCL statement
 type EvaluationResult struct {
@@ -40,7 +29,7 @@ type EvaluationResult struct {
 
 // Evaluate evaluates a CCL node with the given context.
 func Evaluate(n cclNode, ctx Context) (any, error) {
-	return evaluateWithContext(n, ctx)
+	return evaluateWithContext(n, ctx, 0)
 }
 
 // EvaluateStatement evaluates a CCL statement and returns detailed result
@@ -48,7 +37,7 @@ func EvaluateStatement(n cclNode, ctx Context) (*EvaluationResult, error) {
 	switch t := n.(type) {
 	case *cclAssignmentNode:
 		// Evaluate the expression
-		val, err := evaluateWithContext(t.expr, ctx)
+		val, err := evaluateWithContext(t.expr, ctx, 0)
 		if err != nil {
 			return nil, err
 		}
@@ -59,7 +48,7 @@ func EvaluateStatement(n cclNode, ctx Context) (*EvaluationResult, error) {
 		}, nil
 	case *cclNewColNode:
 		// Evaluate the expression for new column
-		val, err := evaluateWithContext(t.expr, ctx)
+		val, err := evaluateWithContext(t.expr, ctx, 0)
 		if err != nil {
 			return nil, err
 		}
@@ -70,7 +59,7 @@ func EvaluateStatement(n cclNode, ctx Context) (*EvaluationResult, error) {
 		}, nil
 	default:
 		// Regular expression
-		val, err := evaluateWithContext(n, ctx)
+		val, err := evaluateWithContext(n, ctx, 0)
 		if err != nil {
 			return nil, err
 		}
@@ -230,28 +219,14 @@ func containsRowIndex(n cclNode) bool {
 	}
 }
 
-func evaluateWithContext(n cclNode, ctx Context) (any, error) {
-	// 檢查遞迴深度（per-goroutine，避免並發評估共用計數器造成 data race）
-	gid := goid.Get()
-	depth := 0
-	if v, ok := evalDepthByGoid.Load(gid); ok {
-		depth = v.(int)
-	}
-	depth++
+func evaluateWithContext(n cclNode, ctx Context, depth int) (any, error) {
+	return evaluateWithCallDepth(n, ctx, depth, 0)
+}
+
+func evaluateWithCallDepth(n cclNode, ctx Context, depth, callDepth int) (any, error) {
 	if depth > maxEvalDepth {
-		evalDepthByGoid.Delete(gid)
 		return nil, fmt.Errorf("evaluate: maximum recursion depth exceeded (%d), possibly infinite recursion", maxEvalDepth)
 	}
-	evalDepthByGoid.Store(gid, depth)
-	defer func() {
-		if v, ok := evalDepthByGoid.Load(gid); ok {
-			if d := v.(int) - 1; d <= 0 {
-				evalDepthByGoid.Delete(gid)
-			} else {
-				evalDepthByGoid.Store(gid, d)
-			}
-		}
-	}()
 
 	switch t := n.(type) {
 	case *cclNumberNode:
@@ -292,7 +267,8 @@ func evaluateWithContext(n cclNode, ctx Context) (any, error) {
 			if len(t.args) != 3 {
 				return nil, fmt.Errorf("IF requires 3 arguments")
 			}
-			condVal, err := evaluateWithContext(t.args[0], ctx)
+			functionDepth := callDepth + 1
+			condVal, err := evaluateWithCallDepth(t.args[0], ctx, depth+1, functionDepth)
 			if err != nil {
 				return nil, err
 			}
@@ -301,14 +277,15 @@ func evaluateWithContext(n cclNode, ctx Context) (any, error) {
 				return nil, fmt.Errorf("first argument to IF cannot be converted to boolean: %T", condVal)
 			}
 			if cond {
-				return evaluateWithContext(t.args[1], ctx)
+				return evaluateWithCallDepth(t.args[1], ctx, depth+1, functionDepth)
 			}
-			return evaluateWithContext(t.args[2], ctx)
+			return evaluateWithCallDepth(t.args[2], ctx, depth+1, functionDepth)
 		}
 
 		if upper == "AND" {
+			functionDepth := callDepth + 1
 			for _, arg := range t.args {
-				val, err := evaluateWithContext(arg, ctx)
+				val, err := evaluateWithCallDepth(arg, ctx, depth+1, functionDepth)
 				if err != nil {
 					return nil, err
 				}
@@ -320,8 +297,9 @@ func evaluateWithContext(n cclNode, ctx Context) (any, error) {
 		}
 
 		if upper == "OR" {
+			functionDepth := callDepth + 1
 			for _, arg := range t.args {
-				val, err := evaluateWithContext(arg, ctx)
+				val, err := evaluateWithCallDepth(arg, ctx, depth+1, functionDepth)
 				if err != nil {
 					return nil, err
 				}
@@ -338,9 +316,10 @@ func evaluateWithContext(n cclNode, ctx Context) (any, error) {
 		// at the top level. Nested usage inside arithmetic is not supported
 		// in v1 and may produce undefined results.
 		if _, isSeq := sequenceFunctions[upper]; isSeq {
+			functionDepth := callDepth + 1
 			seqArgs := make([][]any, len(t.args))
 			for i, arg := range t.args {
-				colData, err := evaluateToColumn(arg, ctx)
+				colData, err := evaluateToColumn(arg, ctx, depth+1, functionDepth)
 				if err != nil {
 					return nil, fmt.Errorf("sequence function %s: %v", t.name, err)
 				}
@@ -351,11 +330,12 @@ func evaluateWithContext(n cclNode, ctx Context) (any, error) {
 
 		// 檢查是否為聚合函數
 		if _, isAgg := aggregateFunctions[upper]; isAgg {
+			functionDepth := callDepth + 1
 			// 如果是行相關的（包含 #），則將其視為普通函數評估（逐行聚合）
 			if containsRowIndex(t) {
 				args := []any{}
 				for _, arg := range t.args {
-					val, err := evaluateWithContext(arg, ctx)
+					val, err := evaluateWithCallDepth(arg, ctx, depth+1, functionDepth)
 					if err != nil {
 						return nil, err
 					}
@@ -376,7 +356,7 @@ func evaluateWithContext(n cclNode, ctx Context) (any, error) {
 			aggArgs := make([][]any, len(t.args))
 			for i, arg := range t.args {
 				// 聚合函數的參數必須是欄位引用或能產生整欄資料的表達式
-				colData, err := evaluateToColumn(arg, ctx)
+				colData, err := evaluateToColumn(arg, ctx, depth+1, functionDepth)
 				if err != nil {
 					return nil, fmt.Errorf("aggregate function %s: %v", t.name, err)
 				}
@@ -386,28 +366,29 @@ func evaluateWithContext(n cclNode, ctx Context) (any, error) {
 		}
 
 		// Default: evaluate all args then call function
+		functionDepth := callDepth + 1
 		args := []any{}
 		for _, arg := range t.args {
-			val, err := evaluateWithContext(arg, ctx)
+			val, err := evaluateWithCallDepth(arg, ctx, depth+1, functionDepth)
 			if err != nil {
 				return nil, err
 			}
 			args = append(args, val)
 		}
-		return callFunction(t.name, args)
+		return callFunction(t.name, args, callDepth)
 	case *cclBinaryOpNode:
 		if t.op == "." {
-			return evaluateRowAccess(t.left, t.right, ctx)
+			return evaluateRowAccess(t.left, t.right, ctx, depth, callDepth)
 		}
 		// 特殊處理 : 運算符，因為它可能涉及欄位索引的解析，而不是值的評估
 		if t.op == ":" {
-			return evaluateRange(t.left, t.right, ctx)
+			return evaluateRange(t.left, t.right, ctx, depth, callDepth)
 		}
-		left, err := evaluateWithContext(t.left, ctx)
+		left, err := evaluateWithCallDepth(t.left, ctx, depth+1, callDepth)
 		if err != nil {
 			return nil, err
 		}
-		right, err := evaluateWithContext(t.right, ctx)
+		right, err := evaluateWithCallDepth(t.right, ctx, depth+1, callDepth)
 		if err != nil {
 			return nil, err
 		}
@@ -416,12 +397,12 @@ func evaluateWithContext(n cclNode, ctx Context) (any, error) {
 		// 左摺疊，運算序列與巢狀二元節點完全一致：逐一「求值運算元、套用
 		// 運算子」由左至右，錯誤同樣先到先回。不引入短路（二元的 && / ||
 		// 本來就不短路，行為必須一致）。
-		acc, err := evaluateWithContext(t.init, ctx)
+		acc, err := evaluateWithCallDepth(t.init, ctx, depth+1, callDepth)
 		if err != nil {
 			return nil, err
 		}
 		for i, operand := range t.operands {
-			rv, err := evaluateWithContext(operand, ctx)
+			rv, err := evaluateWithCallDepth(operand, ctx, depth+1, callDepth)
 			if err != nil {
 				return nil, err
 			}
@@ -440,7 +421,7 @@ func evaluateWithContext(n cclNode, ctx Context) (any, error) {
 		// 評估所有值
 		values := make([]any, len(t.values))
 		for i, valNode := range t.values {
-			val, err := evaluateWithContext(valNode, ctx)
+			val, err := evaluateWithCallDepth(valNode, ctx, depth+1, callDepth)
 			if err != nil {
 				return nil, err
 			}
@@ -711,7 +692,7 @@ func applyOperator(op string, left, right any) (any, error) {
 	return nil, fmt.Errorf("invalid operands for %s: %v, %v", op, left, right)
 }
 
-func evaluateToColumn(n cclNode, ctx Context) ([]any, error) {
+func evaluateToColumn(n cclNode, ctx Context, depth, callDepth int) ([]any, error) {
 	// 1. 針對直接欄位引用的優化
 	switch t := n.(type) {
 	case *cclAtNode:
@@ -744,7 +725,7 @@ func evaluateToColumn(n cclNode, ctx Context) ([]any, error) {
 	// 2. 檢查是否為行無關表達式（如 A.0, @.0, 1+2）
 	if !IsRowDependent(n) {
 		// Evaluate once
-		val, err := evaluateWithContext(n, ctx)
+		val, err := evaluateWithCallDepth(n, ctx, depth, callDepth)
 		if err != nil {
 			return nil, err
 		}
@@ -791,7 +772,7 @@ func evaluateToColumn(n cclNode, ctx Context) ([]any, error) {
 		if err := ctx.SetRowIndex(i); err != nil {
 			return nil, err
 		}
-		val, err := evaluateWithContext(n, ctx)
+		val, err := evaluateWithCallDepth(n, ctx, depth, callDepth)
 		if err != nil {
 			return nil, err
 		}
@@ -816,9 +797,9 @@ func evaluateToColumn(n cclNode, ctx Context) ([]any, error) {
 	return results, nil
 }
 
-func evaluateRowAccess(left, right cclNode, ctx Context) (any, error) {
+func evaluateRowAccess(left, right cclNode, ctx Context, depth, callDepth int) (any, error) {
 	// 1. Determine row index/indices from right
-	rowVal, err := evaluateWithContext(right, ctx)
+	rowVal, err := evaluateWithCallDepth(right, ctx, depth+1, callDepth)
 	if err != nil {
 		return nil, err
 	}
@@ -859,7 +840,7 @@ func evaluateRowAccess(left, right cclNode, ctx Context) (any, error) {
 		leftSimple = true
 	default:
 		// Evaluate left once to see if it's a ColumnRange or other value
-		lVal, err := evaluateWithContext(left, ctx)
+		lVal, err := evaluateWithCallDepth(left, ctx, depth+1, callDepth)
 		if err != nil {
 			return nil, err
 		}
@@ -955,7 +936,7 @@ type RowRange struct {
 	End   int
 }
 
-func evaluateRange(left, right cclNode, ctx Context) (any, error) {
+func evaluateRange(left, right cclNode, ctx Context, depth, callDepth int) (any, error) {
 	// 1. 嘗試解析為欄位範圍 (Column Range)
 	// 檢查左右是否為欄位引用
 	lIdx, lIsCol := resolveColumnIndex(left, ctx)
@@ -987,11 +968,11 @@ func evaluateRange(left, right cclNode, ctx Context) (any, error) {
 
 	// 2. 嘗試解析為數字範圍 (Row Range)
 	// 這裡我們需要評估表達式，因為可能是 1+1 : 5
-	lVal, err := evaluateWithContext(left, ctx)
+	lVal, err := evaluateWithCallDepth(left, ctx, depth+1, callDepth)
 	if err != nil {
 		return nil, err
 	}
-	rVal, err := evaluateWithContext(right, ctx)
+	rVal, err := evaluateWithCallDepth(right, ctx, depth+1, callDepth)
 	if err != nil {
 		return nil, err
 	}

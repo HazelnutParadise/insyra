@@ -3,9 +3,6 @@ package ccl
 import (
 	"fmt"
 	"strings"
-	"sync"
-
-	"github.com/petermattis/goid"
 )
 
 type Func = func(args ...any) (any, error)
@@ -21,13 +18,7 @@ type SeqFunc = func(args ...[]any) ([]any, error)
 var defaultFunctions = map[string]Func{}
 var aggregateFunctions = map[string]AggFunc{}
 var sequenceFunctions = map[string]SeqFunc{}
-// per-goroutine 函數調用深度，避免並發評估共用全域計數器造成 data race。
-var funcCallDepthByGoid sync.Map // map[int64]int
-var maxFuncCallDepth = 20        // 合理的函數調用深度上限
-
-func ResetFuncCallDepth() {
-	funcCallDepthByGoid.Delete(goid.Get())
-}
+var maxFuncCallDepth = 20 // 合理的函數調用深度上限
 
 // RegisterFunction registers a custom scalar function for CCL evaluation.
 func RegisterFunction(name string, fn Func) {
@@ -64,30 +55,11 @@ func IsSequenceFunction(name string) bool {
 	return ok
 }
 
-func callFunction(name string, args []any) (result any, err error) {
-	// 防止過深調用（per-goroutine 計數）
-	gid := goid.Get()
-	depth := 0
-	if v, ok := funcCallDepthByGoid.Load(gid); ok {
-		depth = v.(int)
-	}
-	depth++
-	if depth > maxFuncCallDepth {
-		funcCallDepthByGoid.Delete(gid)
+func callFunction(name string, args []any, callDepth int) (result any, err error) {
+	callDepth++
+	if callDepth > maxFuncCallDepth {
 		return nil, fmt.Errorf("callFunction: maximum function call depth exceeded, possibly recursive function calls")
 	}
-	funcCallDepthByGoid.Store(gid, depth)
-
-	// 使用 defer 確保退出前減少深度計數
-	defer func() {
-		if v, ok := funcCallDepthByGoid.Load(gid); ok {
-			if d := v.(int) - 1; d <= 0 {
-				funcCallDepthByGoid.Delete(gid)
-			} else {
-				funcCallDepthByGoid.Store(gid, d)
-			}
-		}
-	}()
 
 	fn, ok := defaultFunctions[strings.ToUpper(name)]
 	if !ok {

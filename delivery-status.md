@@ -7,7 +7,8 @@
 `insyra/nn`: run ONNX models in pure Go, verified per-operator and per-model against `onnxruntime`, with the op families landing in the decided order MLP → attention → CNN, then phase 2 adds autodiff and optimisers on the same tensors (first-step gradients verified against PyTorch under fixed initial weights via SafeTensors). GGUF/LLM is a decided future track that reuses the kernels; only two v1 constraints serve it now — dtype-carrying tensors and kernels as plain functions. M23 is complete: half precision is storage-only, with exact f16/bf16 widening into f32.
 
 ## Active Workstreams
-None. Every proposed change is implemented, verified and archived — `openspec/changes/` holds nothing but `archive/`.
+- `add-knn-probe-selection` (proposed 2026-08-04, implementation, verification and strict validation complete — ready for handoff) — issue #190: replace the shape-blind KNN auto selection with a construction-time probe that measures examined-candidate fraction on the caller's own test rows. Calibration measurements gate the wiring.
+- `thread-ccl-eval-depth` (proposed 2026-08-04, queued behind the KNN change) — issue #191: replace the goid/sync.Map recursion-depth bookkeeping in the CCL evaluator with stack-threaded depth parameters; measured upper bound 4.8x–6.2x. Note: the goid dependency itself stays — `internal/core/atomic.go` also uses it, so the issue's dependency-removal claim stops at the package boundary.
 
 ## Milestones
 | id | target | owner | status | verification_signal |
@@ -45,15 +46,25 @@ Milestone order is the blocking sequence. OpenSpec has no dependency relationshi
 None. Hardware coverage remains Apple/Metal-only, carried as the standing `AGENTS.md` follow-up.
 
 ## Next Verifiable Output
-M29 is complete: an encoder block composes from layers alone and matches PyTorch through one AdamW step.
+Archive `add-knn-probe-selection` after the implementation is merged.
 
 ## Next Ticket
-No pending nn OpenSpec change is selected. The standing acceleration guardrails remain: no batched device kernel without a single-dispatch batched measurement, and no device Conv without its own measurement.
+`thread-ccl-eval-depth` — queued behind the completed KNN change. The KNN decision uses `m=16`, an examined-candidate cutoff of `0.44`, and an `n=64` floor; `LeafSize=16` remains the default after the 8/16/32/64 sweep. The kd-tree branch was measured at dims 4 and 8 and never showed the ball-tree failure mode, so it remains unprobed. The standing acceleration guardrails remain: no batched device kernel without a single-dispatch batched measurement, and no device Conv without its own measurement.
 
 Note for any host running the reference suites locally: the crosslang venv moved to `~/.cache/insyra-crosslang-venv` on 2026-08-03 after macOS's tmp cleaner destroyed the old /private/tmp venv (deleted `pyvenv.cfg` and parts of numpy's binaries, producing no-module false negatives). CI is unaffected — it installs its own toolchains.
 
 ## Decision Log
 Deltas that still change what someone would do. The standing technical decisions they produced — the precision contract, the device rules, the measured thresholds — live in [ENG.md](ENG.md); the full history is in git.
+
+- decision: CCL evaluation depth is stack-threaded, and the old CCL-on-GPU 11x comparison is no longer a valid baseline.
+  rationale: On the Apple M3, the issue #191 expression measured 15.512 ms → 3.429 ms at 10k rows and 143.714 ms → 23.851 ms at 100k rows when global goroutine-ID/sync.Map guards were replaced by stack-local parameters; the same-session guard-removed upper bound was 3.466 ms and 23.992 ms. The threaded path therefore recovered 100.3% and 100.1% of the measured upper bound, within noise. The earlier 11x CCL transform-chain comparison was a single-core interpreter result with the old guards, so it is invalid as an acceleration comparison and cannot decide whether CCL value expressions are worth a device kernel.
+  timestamp: 2026-08-05
+  impacted_ticket_ids: thread-ccl-eval-depth, #191
+
+- decision: CPU KNN auto-selection probes the proposed ball tree on the caller's test rows and falls back to brute force when pruning examines too much of the training set.
+  rationale: Calibration on the #190 ladder measured the cutoff at 0.44 from wall-clock crossover brackets 0.416–0.449 and 0.447–0.503, selected a fixed-stride sample of m=16 from the observed sample-position variance and overhead, and set the n-floor at 64 after measuring probe cost below 2.4% of brute at the first eligible size. LeafSize=16 remained the default after sweeping 8/16/32/64. Dims 4 and 8 showed the kd-tree staying faster than brute, so the probe is ball-tree-only. The issue ladder later reached a maximum observed auto/best-manual ratio of 1.414, recorded with a 1.45 verification tolerance.
+  timestamp: 2026-08-05
+  impacted_ticket_ids: add-knn-probe-selection
 
 - decision: The performance gap to ONNX Runtime is positioned, not chased.
   rationale: Measured at the validated real-model shapes (M3, best of 5, identical inputs): MobileNetV2 batch-1 170ms vs 7.3ms, MiniLM b8×s128 3.34s vs 63ms — 23x and 53x. Disabling the device path shows the gap lives in CPU kernel throughput: ORT's MLAS runs hand-written per-architecture assembly at ~250 GFLOP/s where pure Go reaches ~4-8, and the Go compiler does not auto-vectorize. Assembly would surrender the portability and auditability the package exists for, so Docs/nn.md now states the honest numbers and the choice they imply. The one lever that moves everything — an assembly GEMM microkernel — is recorded and stays unbuilt until a real workload demands it.

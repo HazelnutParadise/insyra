@@ -13,6 +13,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - Added `CSVReadOptions` together with `ReadCSV_FileWithOptions` and `ReadCSV_StringWithOptions`. Setting `RawStrings` keeps every cell as its original string and skips column-level type inference, so values like stock IDs no longer lose their leading zeros and empty cells stay `""` instead of becoming NaN. `ReadCSV_File` and `ReadCSV_String` keep their existing signatures and behavior.
 - Added fitted `SimpleImputer` strategies for mean, median, mode, and constants. It remembers training-table replacements for later tables, so imputation can be used in leakage-free preprocessing pipelines; the existing in-place `FillWith*` methods are unchanged. It deliberately has no `InverseTransform` and is not an `insyra.Scaler`: imputation cannot be undone, and a method that always failed would tell a type assertion the capability was present.
 - Added `Config.SetAcceleration` and `Config.GetAccelerationEnabled`. Acceleration is enabled by default; the programmatic switch controls device call sites, while `INSYRA_ACCEL_DISABLE_WGPU=1` remains the operations override and wins when both are set.
+- CCL column expressions now thread recursion depth on the evaluation stack instead of doing goroutine-ID and `sync.Map` bookkeeping per AST node. On an Apple M3, the issue #191 expression measured 4.5x faster at 10k rows and 6.0x faster at 100k rows, with results, limits, and error messages unchanged.
 
 ### `isr`
 
