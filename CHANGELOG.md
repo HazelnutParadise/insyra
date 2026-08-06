@@ -8,6 +8,8 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 ## Unreleased
 
+## v0.3.1
+
 ### Core
 
 - Added `CSVReadOptions` together with `ReadCSV_FileWithOptions` and `ReadCSV_StringWithOptions`. Setting `RawStrings` keeps every cell as its original string and skips column-level type inference, so values like stock IDs no longer lose their leading zeros and empty cells stay `""` instead of becoming NaN. `ReadCSV_File` and `ReadCSV_String` keep their existing signatures and behavior.
