@@ -156,7 +156,7 @@ func TestMultiDeviceParityConcurrentAndSequentialOnHardware(t *testing.T) {
 	if session == nil {
 		t.Skip("no session")
 	}
-	defer session.Close()
+	defer func() { _ = session.Close() }()
 	devices := session.Devices()
 	if len(devices) == 0 {
 		t.Skip("no hardware device discovered")
