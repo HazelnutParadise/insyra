@@ -1,0 +1,158 @@
+## Welcome to the Insyra Documentation
+
+Insyra is a Go library for data analysis, providing intuitive data structures and tools for statistics, data manipulation, and visualization.
+
+### Quick Start
+
+```go
+import "github.com/HazelnutParadise/insyra"
+
+// Create a DataList (similar to a column or array)
+dl := insyra.NewDataList(1, 2, 3, 4, 5)
+fmt.Println(dl.Mean())  // Output: 3
+
+// Create a DataTable (similar to a spreadsheet)
+dt := insyra.NewDataTable(
+    insyra.NewDataList("Alice", "Bob", "Charlie").SetName("Name"),
+    insyra.NewDataList(25, 30, 35).SetName("Age"),
+)
+dt.Show()
+```
+
+### Documentation Structure
+
+#### Core Data Structures
+
+| Document                          | Description                                                  |
+| --------------------------------- | ------------------------------------------------------------ |
+| [DataList](DataList.md)           | One-dimensional data container with statistical methods      |
+| [DataTable](DataTable.md)         | Two-dimensional table structure with row/column operations   |
+| [Configuration](Configuration.md) | Global settings for logging, error handling, and performance |
+
+#### Data Processing Languages
+
+| Document      | Description                                                 |
+| ------------- | ----------------------------------------------------------- |
+| [CCL](CCL.md) | Column Calculation Language for DataTable column operations |
+| [isr](isr.md) | Syntax sugar for fluent, readable code                      |
+| [cli-dsl](cli-dsl.md) | Unified guide for CLI, REPL, `.isr` scripts, and Go DSL sessions |
+
+#### Guided Tutorials
+
+| Document | Description |
+| --- | --- |
+| [tutorials/README](tutorials/README.md) | Tutorial hub for all guided, scenario-driven workflows |
+| [tutorials/sales-analysis-end-to-end](tutorials/sales-analysis-end-to-end.md) | Featured tutorial: end-to-end sales analysis with DataTable + CCL |
+| [tutorials/README (9 additional themed tutorials)](tutorials/README.md) | Additional tracks across data engineering, analytics, optimization, and integration |
+
+#### File I/O
+
+| Document              | Description                                                |
+| --------------------- | ---------------------------------------------------------- |
+| [csvxl](csvxl.md)     | CSV and Excel file reading/writing with encoding detection |
+| [parquet](parquet.md) | Apache Parquet file support with streaming                 |
+
+#### Data Acquisition
+
+| Document                  | Description                                                                                       |
+| ------------------------- | ------------------------------------------------------------------------------------------------- |
+| [datafetch](datafetch.md) | Google Maps store review crawler and Yahoo Finance wrapper (network required for remote fetchers) |
+
+#### Statistical Analysis
+
+| Document          | Description                                             |
+| ----------------- | ------------------------------------------------------- |
+| [stats](stats.md) | Correlation, hypothesis testing, regression, ANOVA, PCA, clustering |
+| [ml](ml.md)       | scikit-learn-style modeling: regressions, trees, forests, boosting, pipelines, cross-validation and grid search, with ONNX export |
+| [nn](nn.md)       | Pure-Go neural networks: ONNX inference and training, layers and autodiff, SafeTensors I/O, GPU-accelerated MatMul |
+
+#### Visualization
+
+| Document          | Description                                                |
+| ----------------- | ---------------------------------------------------------- |
+| [gplot](gplot.md) | Static charts using Gonum (bar, line, scatter, histogram)  |
+| [plot](plot.md)   | Interactive charts using ECharts (web-based visualization) |
+
+#### Optimization
+
+| Document          | Description                           |
+| ----------------- | ------------------------------------- |
+| [lp](lp.md)       | Linear programming solver using GLPK  |
+| [lpgen](lpgen.md) | LP model generator with LINGO support |
+
+#### Marketing Analytics
+
+| Document      | Description                              |
+| ------------- | ---------------------------------------- |
+| [mkt](mkt.md) | RFM analysis, Customer Activity Index, and market basket analysis |
+
+#### Financial Calculations
+
+| Document              | Description                                                                                       |
+| --------------------- | ------------------------------------------------------------------------------------------------- |
+| [finance](finance.md) | High-precision TVM, NPV/IRR/MIRR/XNPV/XIRR, depreciation, bonds, T-bills, amortization schedules  |
+| [quant](quant.md)     | Strategy/backtest evaluation: Sharpe, max drawdown, annualized return, PBO (CSCV), Deflated Sharpe Ratio, walk-forward |
+
+#### Integration & Utilities
+
+| Document                | Description                                                 |
+| ----------------------- | ----------------------------------------------------------- |
+| [accel](accel.md)       | Optional GPU acceleration: device discovery, typed projections, and real column reductions |
+| [py](py.md)             | Execute Python code from Go with an auto-managed Python env |
+| [parallel](parallel.md) | Simple parallel execution of functions                      |
+| [utils](utils.md)       | Helper functions for type conversion and data processing    |
+| [pd](pd.md)             | Pandas-like DataFrame helpers and conversions               |
+
+### Installation
+
+```bash
+go get github.com/HazelnutParadise/insyra
+```
+
+Install every package at once:
+
+```bash
+go get github.com/HazelnutParadise/insyra/allpkgs
+```
+
+For sub-packages, install them individually:
+
+```bash
+go get github.com/HazelnutParadise/insyra/accel
+go get github.com/HazelnutParadise/insyra/stats
+go get github.com/HazelnutParadise/insyra/plot
+# ... and so on
+```
+
+`accel` is included in `allpkgs`, so the standard install brings GPU acceleration with it.
+
+### Choosing the Right Tool
+
+| If you need to...                         | Use                             |
+| ----------------------------------------- | ------------------------------- |
+| Store and analyze a single column of data | [DataList](DataList.md)         |
+| Work with tabular data (rows and columns) | [DataTable](DataTable.md)       |
+| Calculate new columns from existing data  | [CCL](CCL.md)                   |
+| Run a column reduction on a GPU           | [accel](accel.md)              |
+| Read/write CSV or Excel files             | [csvxl](csvxl.md)               |
+| Perform statistical tests                 | [stats](stats.md)               |
+| Create static charts for reports          | [gplot](gplot.md)               |
+| Create interactive web charts             | [plot](plot.md)                 |
+| Solve optimization problems               | [lp](lp.md) + [lpgen](lpgen.md) |
+| Analyze customer behavior                 | [mkt](mkt.md)                   |
+| Run high-precision financial math         | [finance](finance.md)           |
+| Evaluate a trading strategy / backtest    | [quant](quant.md)               |
+| Use Python libraries from Go              | [py](py.md)                     |
+| Run functions in parallel                 | [parallel](parallel.md)         |
+
+### Changelog
+
+Changes are recorded in the repository, not on the docs site:
+
+- Next release: [CHANGELOG.md](https://github.com/HazelnutParadise/insyra/blob/main/CHANGELOG.md) · [繁體中文](https://github.com/HazelnutParadise/insyra/blob/main/CHANGELOG_TW.md)
+- Published releases: [GitHub Releases](https://github.com/HazelnutParadise/insyra/releases)
+
+### Requirements & Notes
+
+- Go 1.25+ (per `go.mod`).
+- Some packages download external tools or use network access (see each package doc for details).
