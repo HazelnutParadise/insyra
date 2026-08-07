@@ -1,0 +1,295 @@
+package commands
+
+import (
+	"fmt"
+	"io"
+	"sort"
+	"strings"
+
+	insyra "github.com/HazelnutParadise/insyra"
+	accelpkg "github.com/HazelnutParadise/insyra/accel"
+	clienv "github.com/HazelnutParadise/insyra/cli/env"
+)
+
+type accelArgs struct {
+	cfg         accelpkg.Config
+	positionals []string
+	precision   accelpkg.Precision
+}
+
+func init() {
+	_ = Register(&CommandHandler{
+		Name:               "accel",
+		Usage:              "accel <devices|cache|plan|run> [--mode auto|cpu|gpu|strict-gpu]",
+		Description:        "Inspect acceleration backends, cache state, and planning reports",
+		DisableFlagParsing: false,
+		Run:                runAccelCommand,
+	})
+}
+
+func runAccelCommand(ctx *ExecContext, args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: accel <devices|cache|plan|run> [--mode auto|cpu|gpu|strict-gpu]")
+	}
+
+	action := strings.ToLower(args[0])
+	parsed, err := accelConfigFromArgs(args[1:])
+	if err != nil {
+		return err
+	}
+
+	switch action {
+	case "devices":
+		session, err := accelpkg.Open(parsed.cfg)
+		if err != nil {
+			if session != nil {
+				defer func() { _ = session.Close() }()
+				renderAccelDevices(ctx.Output, session)
+			}
+			return err
+		}
+		defer func() { _ = session.Close() }()
+		renderAccelDevices(ctx.Output, session)
+		return nil
+	case "cache":
+		session, err := accelpkg.Open(parsed.cfg)
+		if session != nil {
+			hydrateAccelCacheFromContext(session, ctx)
+		}
+		if err != nil {
+			if session != nil {
+				defer func() { _ = session.Close() }()
+				renderAccelCache(ctx.Output, session.Report(), session.CacheSnapshot())
+			}
+			return err
+		}
+		defer func() { _ = session.Close() }()
+		renderAccelCache(ctx.Output, session.Report(), session.CacheSnapshot())
+		return nil
+	case "plan":
+		session, err := accelpkg.Open(parsed.cfg)
+		if session != nil {
+			defer func() { _ = session.Close() }()
+			renderAccelRun(ctx.Output, session.Report(), session.PlanShardable())
+		}
+		if err != nil {
+			return err
+		}
+		return nil
+	default:
+		return fmt.Errorf("unknown accel action: %s", action)
+	}
+}
+
+func accelConfigFromArgs(args []string) (accelArgs, error) {
+	parsed := accelArgs{cfg: accelpkg.Config{}, precision: accelpkg.PrecisionExact}
+	explicitMode := ""
+	for idx := 0; idx < len(args); idx++ {
+		switch args[idx] {
+		case "--mode":
+			if idx+1 >= len(args) {
+				return parsed, fmt.Errorf("usage: --mode auto|cpu|gpu|strict-gpu")
+			}
+			explicitMode = args[idx+1]
+			idx++
+		case "--precision":
+			if idx+1 >= len(args) {
+				return parsed, fmt.Errorf("usage: --precision exact|float32")
+			}
+			precision, err := resolveAccelPrecision(args[idx+1])
+			if err != nil {
+				return parsed, err
+			}
+			parsed.precision = precision
+			idx++
+		default:
+			parsed.positionals = append(parsed.positionals, args[idx])
+		}
+	}
+
+	mode, err := resolveAccelMode(explicitMode)
+	if err != nil {
+		return parsed, err
+	}
+	parsed.cfg.Mode = mode
+	return parsed, nil
+}
+
+// resolveAccelPrecision maps the CLI flag onto the runtime's precision opt-in.
+// The default refuses to narrow a float64 column, because GPU backends have no
+// f64 and narrowing silently would change the user's numbers.
+func resolveAccelPrecision(explicit string) (accelpkg.Precision, error) {
+	switch accelpkg.Precision(strings.TrimSpace(strings.ToLower(explicit))) {
+	case accelpkg.PrecisionExact:
+		return accelpkg.PrecisionExact, nil
+	case accelpkg.PrecisionFloat32:
+		return accelpkg.PrecisionFloat32, nil
+	default:
+		return "", fmt.Errorf("invalid accel precision: %s (supported: exact, float32)", explicit)
+	}
+}
+
+func resolveAccelMode(explicit string) (accelpkg.Mode, error) {
+	raw := strings.TrimSpace(strings.ToLower(explicit))
+	if raw == "" {
+		cfg, err := clienv.LoadGlobalConfig()
+		if err != nil {
+			return "", err
+		}
+		raw = strings.TrimSpace(strings.ToLower(cfg.AccelMode))
+	}
+	if raw == "" {
+		raw = string(accelpkg.ModeAuto)
+	}
+
+	switch accelpkg.Mode(raw) {
+	case accelpkg.ModeAuto, accelpkg.ModeCPU, accelpkg.ModeGPU, accelpkg.ModeStrictGPU:
+		return accelpkg.Mode(raw), nil
+	default:
+		return "", fmt.Errorf("invalid accel mode: %s", raw)
+	}
+}
+
+func renderAccelDevices(out io.Writer, session *accelpkg.Session) {
+	devices := session.Devices()
+	report := session.Report()
+	if len(devices) == 0 {
+		_, _ = fmt.Fprintf(out, "no accel devices detected backend=%s fallback=%s\n", report.SelectedBackend, report.FallbackReason)
+		return
+	}
+	for _, device := range devices {
+		_, _ = fmt.Fprintf(
+			out,
+			"id=%s backend=%s probe=%s vendor=%s type=%s memory=%s budget=%d driver=%s compute=%s pci=%s accelerated=%t caps=%s\n",
+			device.ID,
+			device.Backend,
+			device.ProbeSource,
+			device.Vendor,
+			device.Type,
+			device.MemoryClass,
+			device.BudgetBytes,
+			fallbackString(device.DriverVersion),
+			fallbackString(device.ComputeCapability),
+			fallbackString(device.PCIBusID),
+			report.Accelerated,
+			formatCapabilities(device.CapabilitySummary),
+		)
+	}
+}
+
+func renderAccelCache(out io.Writer, report accelpkg.Report, snapshot accelpkg.CacheSnapshot) {
+	_, _ = fmt.Fprintf(
+		out,
+		"backend=%s fallback=%s resident_buffers=%d resident_bytes=%d budget_bytes=%d evicted_buffers=%d evicted_bytes=%d\n",
+		report.SelectedBackend,
+		report.FallbackReason,
+		snapshot.ResidentBuffers,
+		snapshot.ResidentBytes,
+		snapshot.BudgetBytes,
+		snapshot.EvictedBuffers,
+		snapshot.EvictedBytes,
+	)
+	for _, usage := range snapshot.DeviceUsage {
+		_, _ = fmt.Fprintf(
+			out,
+			"device %s resident_buffers=%d resident_bytes=%d budget_bytes=%d\n",
+			usage.DeviceID,
+			usage.ResidentBuffers,
+			usage.ResidentBytes,
+			usage.BudgetBytes,
+		)
+	}
+	for _, entry := range snapshot.Entries {
+		deviceIDs := "none"
+		if len(entry.DeviceIDs) > 0 {
+			deviceIDs = strings.Join(entry.DeviceIDs, ",")
+		}
+		_, _ = fmt.Fprintf(
+			out,
+			"entry dataset=%s lineage=%s buffer=%s type=%s len=%d bytes=%d devices=%s\n",
+			entry.DatasetName,
+			entry.Lineage,
+			entry.BufferName,
+			entry.Type,
+			entry.Len,
+			entry.ResidentBytes,
+			deviceIDs,
+		)
+	}
+}
+
+func renderAccelRun(out io.Writer, report accelpkg.Report, plan accelpkg.ShardPlan) {
+	selected := "none"
+	if len(report.SelectedDeviceIDs) > 0 {
+		selected = strings.Join(report.SelectedDeviceIDs, ",")
+	}
+	shardDevices := "none"
+	if len(plan.DeviceIDs) > 0 {
+		shardDevices = strings.Join(plan.DeviceIDs, ",")
+	}
+	assignments := "none"
+	if len(plan.Assignments) > 0 {
+		parts := make([]string, 0, len(plan.Assignments))
+		for _, assignment := range plan.Assignments {
+			parts = append(
+				parts,
+				fmt.Sprintf("%s:%.1f%%:%d:%d", assignment.DeviceID, assignment.SharePercent*100, assignment.Rows, assignment.Bytes),
+			)
+		}
+		assignments = strings.Join(parts, ",")
+	}
+	_, _ = fmt.Fprintf(
+		out,
+		"mode=%s accelerated=%t backend=%s devices=%s discovered=%.0f selected=%.0f planned=%d shard_devices=%s shard_budget=%d merge=%s assignments=%s planning_only=true reason=%s\n",
+		report.Mode,
+		report.Accelerated,
+		report.SelectedBackend,
+		selected,
+		report.Metrics["devices.discovered"],
+		report.Metrics["devices.selected"],
+		len(plan.DeviceIDs),
+		shardDevices,
+		plan.TotalBudgetBytes,
+		plan.MergePolicy,
+		assignments,
+		report.FallbackReason,
+	)
+}
+
+func hydrateAccelCacheFromContext(session *accelpkg.Session, ctx *ExecContext) {
+	if session == nil || ctx == nil {
+		return
+	}
+	for _, value := range ctx.Vars {
+		switch typed := value.(type) {
+		case *insyra.DataList:
+			_, _ = session.ProjectDataList(typed)
+		case *insyra.DataTable:
+			_, _ = session.ProjectDataTable(typed)
+		}
+	}
+}
+
+func fallbackString(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return "-"
+	}
+	return value
+}
+
+func formatCapabilities(caps map[string]bool) string {
+	if len(caps) == 0 {
+		return "none"
+	}
+	keys := make([]string, 0, len(caps))
+	for key, enabled := range caps {
+		if enabled {
+			keys = append(keys, key)
+		}
+	}
+	if len(keys) == 0 {
+		return "none"
+	}
+	sort.Strings(keys)
+	return strings.Join(keys, ",")
+}

@@ -346,4 +346,3 @@ func seqRollingStd(args ...[]any) ([]any, error) {
 		return math.Sqrt(ss / float64(len(vals)-1))
 	}), nil
 }
-

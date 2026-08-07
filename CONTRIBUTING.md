@@ -20,6 +20,7 @@ All types of contributions are encouraged and valued. See the [Table of Contents
 - [Suggesting Enhancements](#suggesting-enhancements)
 - [Your First Code Contribution](#your-first-code-contribution)
 - [Improving The Documentation](#improving-the-documentation)
+- [Updating the Changelog](#updating-the-changelog)
 - [Styleguides](#styleguides)
 - [Commit Messages](#commit-messages)
 - [Join The Project Team](#join-the-project-team)
@@ -130,11 +131,29 @@ Enhancement suggestions are tracked as [GitHub issues](https://github.com/Hazeln
 1. Fork the repo and create a feature branch.
 2. Make focused changes and keep them scoped to the issue.
 3. Run `go test ./...` locally if you changed code.
-4. Open a PR with a short summary and any relevant context.
+4. If your change is visible to people using Insyra, add a changelog entry — see [Updating the Changelog](#updating-the-changelog).
+5. Open a PR with a short summary and any relevant context.
 
 ### Improving The Documentation
 
 Docs live in `README.md`, `README_TW.md`, and the `Docs/` directory. Keep examples aligned with actual APIs and include the Go version or any external dependency requirements when relevant.
+
+### Updating the Changelog
+
+Pending release notes live in `CHANGELOG.md` (English) and `CHANGELOG_TW.md` (Traditional Chinese), not in a GitHub discussion. Both files are part of the pull request that changes the behavior, so the description gets written while you still remember the details and gets reviewed alongside the code.
+
+**Add an entry** when someone using the library or the CLI can observe the difference: an exported function, type, or method added, removed, or changed; a new CLI command or flag; new or altered DSL syntax; a bug fix that changes what a caller gets back.
+
+**Skip the entry** for internal refactors, test-only changes, formatting, repository assets, dependency bumps with no behavioral effect, and OpenSpec bookkeeping.
+
+How to write one:
+
+- Add it under `## Unreleased`, in **both** files. Never one without the other.
+- Put it under the package heading it belongs to (`### Core`, `### CLI`, `` ### `stats` ``, …), appending to the end of that section. Create the heading if it isn't there yet.
+- Write one entry per user-visible change, not one per commit.
+- Say what changed and what it means for the caller. Mark breaking changes clearly.
+
+Maintainers, at release time: rename `## Unreleased` to the version number in both files, add a fresh empty `## Unreleased` above it, then copy each version section into the GitHub release, promoting its `###` package headings to `##`.
 
 ## Styleguides
 ### Commit Messages

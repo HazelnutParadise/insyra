@@ -27,7 +27,6 @@ require (
 	github.com/andybalholm/brotli v1.2.2 // indirect
 	github.com/apache/arrow/go/v15 v15.0.2 // indirect
 	github.com/apache/thrift v0.23.0 // indirect
-	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/chromedp/cdproto v0.0.0-20241208230723-d1c7de7e5dd2 // indirect
 	github.com/chromedp/chromedp v0.11.2 // indirect
 	github.com/chromedp/sysutil v1.1.0 // indirect
@@ -45,9 +44,13 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-sql-driver/mysql v1.10.0 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
+	github.com/go-webgpu/goffi v0.6.3 // indirect
+	github.com/go-webgpu/webgpu v0.5.5 // indirect
 	github.com/gobwas/httphead v0.1.0 // indirect
 	github.com/gobwas/pool v0.2.1 // indirect
 	github.com/gobwas/ws v1.4.0 // indirect
+	github.com/gogpu/gpucontext v0.24.0 // indirect
+	github.com/gogpu/naga v0.18.0 // indirect
 	github.com/golang-sql/civil v0.0.0-20220223132316-b832511892a9 // indirect
 	github.com/golang-sql/sqlexp v0.1.0 // indirect
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0 // indirect
@@ -121,8 +124,7 @@ require (
 	google.golang.org/genproto v0.0.0-20260706201446-f0a921348800 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260706201446-f0a921348800 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260706201446-f0a921348800 // indirect
-	google.golang.org/grpc v1.82.0 // indirect
-	google.golang.org/protobuf v1.36.11 // indirect
+	google.golang.org/grpc v1.82.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	h12.io/socks v1.0.3 // indirect
 	modernc.org/libc v1.74.1 // indirect
@@ -136,11 +138,14 @@ require (
 	github.com/TimLai666/go-decimal v0.1.3
 	github.com/apache/arrow/go/v17 v17.0.0
 	github.com/apoplexi24/gpandas v0.2.0
+	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/ergochat/readline v0.1.3
 	github.com/glebarez/sqlite v1.11.0
 	github.com/go-echarts/go-echarts/v2 v2.7.2
 	github.com/go-echarts/snapshot-chromedp v0.0.5
 	github.com/goccy/go-json v0.10.6
+	github.com/gogpu/gputypes v0.5.1
+	github.com/gogpu/wgpu v0.30.35
 	github.com/google/uuid v1.6.0
 	github.com/mattn/go-runewidth v0.0.24
 	github.com/petermattis/goid v0.0.0-20260701081913-4f67fd55d3b4
@@ -152,6 +157,7 @@ require (
 	golang.org/x/term v0.45.0
 	gonum.org/v1/gonum v0.17.0
 	gonum.org/v1/plot v0.17.0
+	google.golang.org/protobuf v1.36.11
 	gorm.io/driver/mysql v1.6.0
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/driver/sqlite v1.6.0

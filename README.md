@@ -10,7 +10,7 @@
 
 **[繁體中文](README_TW.md) | English**
 
-A next-generation data analysis library for Golang. Supports **parallel processing**, **data visualization**, and **seamless integration with Python**.
+**Insyra** is a complete data analysis ecosystem for Go, spanning data loading and cleaning, statistics, visualization, machine learning, and deep learning. Every layer is checked against a reference implementation: statistics against R, models against scikit-learn, neural networks against PyTorch and onnxruntime. GPU acceleration, parallel processing, Python interop, and a CLI with its own REPL come built in.
 
 **Official Website: <https://insyra.hazelnut-paradise.com>**
 
@@ -38,6 +38,28 @@ The **Insyra** library is a dynamic and versatile tool designed for managing and
 > [!IMPORTANT] 
 > **For any functions or methods not explicitly listed in Insyra documents, it indicates that the feature is still under active development. These experimental features might provide unstable results.** <br/>
 > Please refer to our latest updates in **[Docs](/Docs)** folder for more details.
+
+## Machine Learning and Deep Learning in Pure Go
+
+You no longer need to leave Go to train a model. There is no Python runtime behind these packages, no cgo, and no external inference engine:
+
+- **[`ml`](/Docs/ml.md)** gives you scikit-learn-style modeling: regressions (linear, ridge, lasso, logistic), decision trees, random forests, gradient boosting, pipelines, cross-validation, and grid search. Every estimator is verified against scikit-learn, R, or statsmodels, and fitted models export to ONNX.
+- **[`nn`](/Docs/nn.md)** is a complete neural network engine:
+  - **Run real models.** Published ONNX checkpoints load and run unmodified: MobileNetV2, MiniLM (a BERT-class encoder), FCN-ResNet50, fast-neural-style, and tiny-YOLOv3, each verified against `onnxruntime`.
+  - **Train in Go.** An autodiff tape and a Sequential layer API (Dense, Conv2D, BatchNorm, MultiHeadAttention, and more) with AdamW, learning-rate schedules, and dropout. Gradients and optimizer steps match PyTorch.
+  - **Keep your weights portable.** SafeTensors files load and save with PyTorch-compatible naming, so weights move freely between Go and torch, and trained models export back to ONNX.
+  - **Use the GPU without thinking about it.** Large matrix products run on Metal, Vulkan, or DirectX 12 through a pure-Go WebGPU backend, fall back to a bit-identical CPU path when no device is available, and switch off with one line.
+
+```go
+tape := nn.NewTape(42)
+model, _ := nn.NewSequential(tape,
+    nn.Dense(784, 128), nn.ReLU(), nn.Dropout(0.2), nn.Dense(128, 10),
+)
+logits, _ := model.Forward(tape, batch)
+loss, _ := tape.SoftmaxCrossEntropy(logits, labels)
+tape.Backward(loss)
+tape.AdamW(1e-3, 1e-2)
+```
 
 ## AI / Agent Skills
 
@@ -143,6 +165,14 @@ CSV setup -> DataTable loading -> CCL enrichment -> sorting -> KPI aggregation -
   ```sh
   go get github.com/HazelnutParadise/insyra/allpkgs
   ```
+
+- To use the optional acceleration runtime surface only:
+
+  ```sh
+  go get github.com/HazelnutParadise/insyra/accel
+  ```
+
+  `accel` is also included in `allpkgs`, so the standard install already covers it.
 
 - Update **Insyra** to the latest version:
 
@@ -366,7 +396,10 @@ For a complete list of DataTable methods and features, please refer to the **[Da
 |---|---|
 | **[isr](/Docs/isr.md)** | Syntactic sugar over **Insyra** — the recommended entry point for new code. |
 | **[stats](/Docs/stats.md)** | Statistical functions for data analysis: skewness, kurtosis, moment calculations, and more. |
+| **[ml](/Docs/ml.md)** | scikit-learn-style machine learning: regressions, trees, forests, boosting, pipelines, and model selection, verified against scikit-learn and R, with ONNX export. |
+| **[nn](/Docs/nn.md)** | Pure-Go neural networks: runs real ONNX models verified against `onnxruntime`, trains with a PyTorch-verified tape and layer API, SafeTensors in/out, GPU-accelerated MatMul. |
 | **[parallel](/Docs/parallel.md)** | Parallel processing for data manipulation; runs any function and auto-waits for all goroutines. |
+| **[accel](/Docs/accel.md)** | Opt-in GPU acceleration: device discovery, typed columnar projection, and real column reductions on a GPU. Pure Go, no CGO, nothing extra to install. |
 | **[plot](/Docs/plot.md)** | Data visualization wrapping [go-echarts](https://github.com/go-echarts/go-echarts). |
 | **[gplot](/Docs/gplot.md)** | Static charts via [gonum/plot](https://github.com/gonum/plot) — fast, no Chrome, supports function plots. |
 | **[csvxl](/Docs/csvxl.md)** | Work with Excel and CSV files (e.g. convert CSV to Excel). |
@@ -384,6 +417,10 @@ For a complete list of DataTable methods and features, please refer to the **[Da
 ## Advanced Usage
 
 Beyond basic usage, **Insyra** provides extensive capabilities for handling different data types and performing complex statistical operations. Explore more in the **[detailed documentation](/Docs)**.
+
+## Changelog
+
+What is coming in the next release: [CHANGELOG.md](CHANGELOG.md). Everything already published: [GitHub Releases](https://github.com/HazelnutParadise/insyra/releases).
 
 ## Contributing
 

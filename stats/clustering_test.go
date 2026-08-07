@@ -4,6 +4,7 @@ import (
 	"math"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
@@ -61,6 +62,101 @@ func TestKMeansReturnsClusterSummary(t *testing.T) {
 	}
 	if got.Iter < 1 {
 		t.Fatalf("expected positive iteration count, got %d", got.Iter)
+	}
+}
+
+func TestKMeansAssignTrainingDataMatchesFit(t *testing.T) {
+	rows := [][]float64{
+		{0, 0},
+		{0, 1},
+		{1, 0},
+		{10, 10},
+		{10, 11},
+		{11, 10},
+	}
+	seed := int64(7)
+	result, err := stats.KMeans(dataTableFromRows(rows), 2, stats.KMeansOptions{NStart: 3, IterMax: 20, Seed: &seed})
+	if err != nil {
+		t.Fatalf("KMeans returned error: %v", err)
+	}
+
+	assignments, distances, err := result.Assign(dataTableFromRows(rows))
+	if err != nil {
+		t.Fatalf("Assign returned error: %v", err)
+	}
+	if !reflect.DeepEqual(assignments, result.Cluster) {
+		t.Fatalf("training assignments differ: got %v, fit %v", assignments, result.Cluster)
+	}
+	if len(distances) != len(rows) {
+		t.Fatalf("expected %d distances, got %d", len(rows), len(distances))
+	}
+	for i, distance := range distances {
+		if distance < 0 || math.IsNaN(distance) || math.IsInf(distance, 0) {
+			t.Fatalf("distance[%d] is invalid: %v", i, distance)
+		}
+	}
+}
+
+func TestKMeansAssignBreaksTiesByLowestCenterIndex(t *testing.T) {
+	result := &stats.KMeansResult{Centers: dataTableFromRows([][]float64{{0}, {10}})}
+	assignments, distances, err := result.Assign(dataTableFromRows([][]float64{{5}}))
+	if err != nil {
+		t.Fatalf("Assign returned error: %v", err)
+	}
+	if !reflect.DeepEqual(assignments, []int{1}) {
+		t.Fatalf("tie should select the first center, got %v", assignments)
+	}
+	if !reflect.DeepEqual(distances, []float64{25}) {
+		t.Fatalf("unexpected tie distance: %v", distances)
+	}
+}
+
+func TestKMeansAssignRejectsColumnCountMismatch(t *testing.T) {
+	seed := int64(7)
+	result, err := stats.KMeans(dataTableFromRows([][]float64{{0, 0}, {1, 1}}), 1, stats.KMeansOptions{Seed: &seed})
+	if err != nil {
+		t.Fatalf("KMeans returned error: %v", err)
+	}
+	_, _, err = result.Assign(dataTableFromRows([][]float64{{0}}))
+	if err == nil {
+		t.Fatal("expected Assign to reject a column count mismatch")
+	}
+	if !strings.Contains(err.Error(), "1") || !strings.Contains(err.Error(), "2") {
+		t.Fatalf("error should name both column counts, got %q", err)
+	}
+}
+
+func TestKMeansAssign_R(t *testing.T) {
+	requireRTools(t)
+	train := [][]float64{{0, 0}, {0, 2}, {8, 8}, {8, 10}}
+	heldout := [][]float64{{1, 1}, {7, 9}, {20, 20}}
+	seed := int64(7)
+	result, err := stats.KMeans(dataTableFromRows(train), 2, stats.KMeansOptions{NStart: 5, IterMax: 40, Seed: &seed})
+	if err != nil {
+		t.Fatalf("KMeans returned error: %v", err)
+	}
+
+	assignments, distances, err := result.Assign(dataTableFromRows(heldout))
+	if err != nil {
+		t.Fatalf("Assign returned error: %v", err)
+	}
+	payload := map[string]any{
+		"rows":    heldout,
+		"centers": tableToFloatMatrix(result.Centers.(*insyra.DataTable)),
+	}
+	rb := runRBaseline(t, "kmeans_assign", payload)
+	rAssignments := baselineIntSlice(t, rb, "assignments")
+	if !reflect.DeepEqual(assignments, rAssignments) {
+		t.Fatalf("assignments mismatch vs R: got %v, want %v", assignments, rAssignments)
+	}
+	rDistances := baselineFloatSlice(t, rb, "distances")
+	if len(distances) != len(rDistances) {
+		t.Fatalf("distance length mismatch: got %d, want %d", len(distances), len(rDistances))
+	}
+	for i := range distances {
+		if math.Abs(distances[i]-rDistances[i]) > 1e-10 {
+			t.Fatalf("distance[%d] mismatch vs R: got %.17g, want %.17g", i, distances[i], rDistances[i])
+		}
 	}
 }
 

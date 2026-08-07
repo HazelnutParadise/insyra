@@ -8,16 +8,6 @@ import (
 	"github.com/HazelnutParadise/insyra/internal/core"
 )
 
-func resetCCLEvalDepth() {
-	// Reset the global evaluation depth variable to 0
-	ccl.ResetEvalDepth()
-}
-
-func resetCCLFuncCallDepth() {
-	// Reset the global function call depth variable to 0
-	ccl.ResetFuncCallDepth()
-}
-
 // dataTableContext implements ccl.Context for DataTable
 type dataTableContext struct {
 	row        []any

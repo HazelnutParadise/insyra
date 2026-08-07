@@ -18,10 +18,6 @@ func (dt *DataTable) AddColUsingCCL(newColName, cclFormula string) *DataTable {
 		}
 	}()
 
-	// 重設遞歸深度和調用深度計數器
-	resetCCLEvalDepth()
-	resetCCLFuncCallDepth()
-
 	resultDtChan := make(chan *DataTable, 1)
 
 	dt.AtomicDo(func(dt *DataTable) {
@@ -71,9 +67,6 @@ func (dt *DataTable) EditColByIndexUsingCCL(colIndex, cclFormula string) *DataTa
 		}
 	}()
 
-	resetCCLEvalDepth()
-	resetCCLFuncCallDepth()
-
 	resultDtChan := make(chan *DataTable, 1)
 
 	dt.AtomicDo(func(dt *DataTable) {
@@ -110,9 +103,6 @@ func (dt *DataTable) EditColByNameUsingCCL(colName, cclFormula string) *DataTabl
 			dt.warn("EditColByNameUsingCCL", "Panic recovered: %v", r)
 		}
 	}()
-
-	resetCCLEvalDepth()
-	resetCCLFuncCallDepth()
 
 	resultDtChan := make(chan *DataTable, 1)
 
@@ -161,10 +151,6 @@ func (dt *DataTable) ExecuteCCL(cclStatements string) *DataTable {
 			dt.warn("ExecuteCCL", "Panic recovered: %v", r)
 		}
 	}()
-
-	// 重設遞歸深度和調用深度計數器
-	resetCCLEvalDepth()
-	resetCCLFuncCallDepth()
 
 	resultDtChan := make(chan *DataTable, 1)
 

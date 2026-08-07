@@ -85,12 +85,13 @@ func RegisterAggregateFunction(name string, fn AggFunc) {
 	internalccl.RegisterAggregateFunction(name, fn)
 }
 
-// ResetEvalDepth resets the evaluator recursion depth.
+// ResetEvalDepth is a no-op kept for API compatibility. Recursion depth is
+// threaded on the call stack since thread-ccl-eval-depth (issue #191), so
+// there is no global state left to reset.
 func ResetEvalDepth() {
-	internalccl.ResetEvalDepth()
 }
 
-// ResetFuncCallDepth resets the function call depth counter.
+// ResetFuncCallDepth is a no-op kept for API compatibility, for the same
+// reason as ResetEvalDepth.
 func ResetFuncCallDepth() {
-	internalccl.ResetFuncCallDepth()
 }

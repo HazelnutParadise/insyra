@@ -309,6 +309,7 @@ insyra --env demo run pipeline.isr
 - `headers true|false` — whether the first row holds column names. Default `true`.
 - `rownames true|false` — whether the first column holds row names. Default `false`.
 - `encoding <enc>` — read-side hint for CSVs that aren't UTF-8 (e.g. `big5`, `gbk`). Auto-detected when omitted.
+- `infer true|false` — read-side, CSV only. `infer false` keeps every cell as its original string (no type inference): leading zeros in stock IDs survive, amounts stay verbatim, empty cells stay empty strings. Default `true`.
 - `bom true|false` — save-side, write a UTF-8 BOM (helps Windows Excel open Chinese CSVs). Default `false`.
 
 Boolean values accept `true|false`, `yes|no`, `on|off`, `1|0` (case-insensitive).
@@ -322,6 +323,9 @@ load gdp.csv rownames true as t
 
 # Big5 legacy CSV
 load legacy.csv encoding big5 as t
+
+# Stock IDs / exact amounts: load everything as raw strings
+load stocks.csv infer false as raw
 
 # Excel: 'sheet' is required; headers/rownames are optional
 load report.xlsx sheet 2025 rownames true as t
@@ -576,7 +580,7 @@ Source policy:
 | `knn_neighbors` | `knn_neighbors <train_var> <test_var> <k> [algorithm <auto\|brute\|kd_tree\|ball_tree>] [leafsize <n>] [as <var>]` | K-nearest neighbors search |
 | `kmeans` | `kmeans <var> <k> [nstart <n>] [itermax <n>] [seed <n>] [as <var>]` | K-means clustering |
 | `kurtosis` | `kurtosis <var>` | Kurtosis of a DataList |
-| `load` | `load <file> [headers true\|false] [rownames true\|false] [encoding <enc>] [sheet <name>] \| load parquet <file> [cols <c1,c2,...>] [rowgroups <i1,i2,...>] \| load sql <conn> <table> [where "..."] [order "..."] [limit N] [offset N] [cols "c1,c2"] [schema <s>] [indexcol <c>] [parsedates "c1,c2"] \| load sql <conn> query "<SQL>" [params <v1> <v2> ...] [as <var>]` | Load data into a DataTable variable from a file, parquet, or SQL connection |
+| `load` | `load <file> [headers true\|false] [rownames true\|false] [encoding <enc>] [infer true\|false] [sheet <name>] \| load parquet <file> [cols <c1,c2,...>] [rowgroups <i1,i2,...>] \| load sql <conn> <table> [where "..."] [order "..."] [limit N] [offset N] [cols "c1,c2"] [schema <s>] [indexcol <c>] [parsedates "c1,c2"] \| load sql <conn> query "<SQL>" [params <v1> <v2> ...] [as <var>]` | Load data into a DataTable variable from a file, parquet, or SQL connection |
 | `lower` | `lower <var> [as <var>]` | Lowercase DataList strings |
 | `max` | `max <var>` | DataList maximum |
 | `mean` | `mean <var>` | DataList mean |
@@ -602,7 +606,7 @@ Source policy:
 | `quartile` | `quartile <var> <q>` | DataList quartile |
 | `range` | `range <var>` | DataList range |
 | `rank` | `rank <var> [asc\|desc\|true\|false] [as <var>]` | Rank DataList |
-| `read` | `read <file> [headers true\|false] [rownames true\|false] [encoding <enc>] [sheet <name>]` | Quick preview a file without saving variable |
+| `read` | `read <file> [headers true\|false] [rownames true\|false] [encoding <enc>] [infer true\|false] [sheet <name>]` | Quick preview a file without saving variable |
 | `regression` | `regression <type> <y> <x...>` | Regression analysis: linear/poly/exp/log/logistic/poisson |
 | `rename` | `rename <var> <new>` | Rename variable |
 | `replace` | `replace <var> <old\|nan\|nil> <new>` | Replace values in DataTable/DataList |

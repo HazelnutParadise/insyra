@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/internal/reftest"
 	"github.com/HazelnutParadise/insyra/stats"
 )
 
@@ -46,15 +47,28 @@ const factorParityTol = 2e-5
 
 func requireFactorAnalysisRTools(t *testing.T) {
 	t.Helper()
+	const verification = "the strict R factor-analysis parity check"
+	// Deliberately NOT forced on by reftest.Strict. Strict mode promotes an
+	// opt-in whose reason was "the tool is usually absent"; this flag's reason
+	// is different and documented at factorParityTol — the comparison is known
+	// to fail ~595 sub-tests on three adversarial datasets, at differences
+	// traced to gonum's LAPACK port differing from R's by 1 ULP and amplified
+	// by ill-conditioning. Those are mathematically equivalent solutions, not
+	// defects. Forcing this on would make the verification job permanently red
+	// over a known and accepted difference.
+	//
+	// The toolchain probes below still report through reftest, so someone who
+	// does opt in on a machine without psych hears about it rather than
+	// getting a silent skip.
 	if os.Getenv("INSYRA_STRICT_FACTOR_R_PARITY") != "1" {
-		t.Skip("set INSYRA_STRICT_FACTOR_R_PARITY=1 to run strict R factor-analysis parity tests")
+		t.Skipf("set INSYRA_STRICT_FACTOR_R_PARITY=1 to run %s", verification)
 	}
 	if _, err := exec.LookPath("Rscript"); err != nil {
-		t.Skipf("Rscript not found: %v", err)
+		reftest.Missing(t, "Rscript", verification, err)
 	}
 	checkR := exec.Command("Rscript", "-e", "pkgs <- c('psych','GPArotation','jsonlite'); ok <- all(sapply(pkgs, function(p) requireNamespace(p, quietly=TRUE))); if (!ok) quit(status=1)")
 	if out, err := checkR.CombinedOutput(); err != nil {
-		t.Skipf("R factor-analysis stack unavailable: %v, out=%s", err, string(out))
+		reftest.MissingOutput(t, "R with psych, GPArotation and jsonlite", verification, err, out)
 	}
 }
 

@@ -147,6 +147,38 @@ if err != nil {
 }
 ```
 
+### ReadCSV_FileWithOptions / ReadCSV_StringWithOptions
+
+```go
+type CSVReadOptions struct {
+    FirstColToRowNames bool
+    FirstRowToColNames bool
+    Encoding           string // file input only; "" or "auto" auto-detects
+    RawStrings         bool   // keep every cell as its original string; skip type inference
+}
+
+func ReadCSV_FileWithOptions(filePath string, opts CSVReadOptions) (*DataTable, error)
+func ReadCSV_StringWithOptions(csvString string, opts CSVReadOptions) (*DataTable, error)
+```
+
+**Description:** Options-based variants of `ReadCSV_File` / `ReadCSV_String`. The zero value of `CSVReadOptions` behaves exactly like the legacy functions with both flags `false`.
+
+Set `RawStrings: true` to disable column type inference entirely: every cell is kept as its original string and empty cells stay `""` (not `NaN`). Use this for data that looks numeric but must not be parsed as numbers — stock IDs (`0050` would otherwise become `int64` `50`, losing the leading zeros), tax IDs, phone numbers, zip codes, or exact monetary amounts you want to parse with a decimal type yourself.
+
+**Example:**
+
+```go
+csvData := "id,price\n0050,600.855\n00878,100.14"
+dt, err := insyra.ReadCSV_StringWithOptions(csvData, insyra.CSVReadOptions{
+    FirstRowToColNames: true,
+    RawStrings:         true,
+})
+if err != nil {
+    log.Fatal(err)
+}
+// dt cells are all strings: "0050", "00878", "600.855", ...
+```
+
 ### ReadJSON_File
 
 ```go
@@ -1147,6 +1179,76 @@ func main() {
         log.Fatal(err)
     }
     fmt.Println(restored.GetColByName("Age").Data())
+}
+```
+
+### Fitted Missing-Value Imputation
+
+```go
+type ImputationStrategy string
+
+const (
+    ImputeMean     ImputationStrategy = "mean"
+    ImputeMedian   ImputationStrategy = "median"
+    ImputeMode     ImputationStrategy = "mode"
+    ImputeConstant ImputationStrategy = "constant"
+)
+
+func NewSimpleImputer(strategy ImputationStrategy, constant ...any) *SimpleImputer
+```
+
+`SimpleImputer` fits one replacement value per selected column and reuses
+those values on later tables. Use it for training, validation, and production
+data so the statistics come from the training table only. `Transform` returns
+a new table and leaves the source unchanged. Columns not selected during
+`Fit` pass through unchanged. Missing values are `nil` or `NaN`.
+
+Mean and median require numeric observed values. If a selected column contains
+an observed non-numeric value, those strategies leave the column unchanged,
+matching `FillWithMean` and `FillWithMedian`. Mode supports mixed values and
+uses the first-occurring value to break ties. Constant requires exactly one
+constant argument. Every selected column must have at least one observed value
+at fit time, and `Fit` reports the column name otherwise. `SimpleImputer` has no
+`InverseTransform` and is not an `insyra.Scaler`, because imputation cannot
+recover which cells were originally missing. That absence is deliberate rather
+than a gap: a method that always returned an error would still satisfy any
+interface asking for it, so code testing for the capability by type assertion
+would be told it is present and then refused at the call. Not having the method
+is the only form of that answer a type assertion can read.
+
+Do not use the fitted imputer and the in-place `FillWithMean`,
+`FillWithMedian`, or `FillWithMode` interchangeably. Use the fitted form in a
+model pipeline; use the in-place methods for one-off table cleaning when
+recomputing from the table being modified is intentional.
+
+**Example — fit on training data, then reuse the replacement:**
+
+```go
+package main
+
+import (
+    "log"
+
+    "github.com/HazelnutParadise/insyra"
+)
+
+func main() {
+    train := insyra.NewDataTable(
+        insyra.NewDataList(10.0, nil, 30.0).SetName("income"),
+    )
+    test := insyra.NewDataTable(
+        insyra.NewDataList(100.0, nil).SetName("income"),
+    )
+
+    imputer := insyra.NewSimpleImputer(insyra.ImputeMean)
+    if err := imputer.Fit(train, "income"); err != nil {
+        log.Fatal(err)
+    }
+    imputedTest, err := imputer.Transform(test) // nil becomes 20.0
+    if err != nil {
+        log.Fatal(err)
+    }
+    _ = imputedTest
 }
 ```
 

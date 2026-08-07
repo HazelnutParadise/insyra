@@ -1,6 +1,7 @@
 ---
 name: "OPSX: Verify"
 description: Verify implementation matches change artifacts before archiving
+allowed-tools: Bash(openspec:*)
 category: Workflow
 tags: [workflow, verify, experimental]
 ---

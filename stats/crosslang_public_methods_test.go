@@ -1147,6 +1147,149 @@ func TestCrossLangRegressionFamily(t *testing.T) {
 	})
 }
 
+func TestCrossLangRegressionPredictions(t *testing.T) {
+	requireCrossLangTools(t)
+
+	newXs := func(xs [][]float64) [][]float64 {
+		out := make([][]float64, len(xs))
+		for i, x := range xs {
+			out[i] = []float64{x[0] + 0.25, x[len(x)-1] - 0.25}
+		}
+		return out
+	}
+	toLists := func(xs [][]float64) []insyra.IDataList {
+		out := make([]insyra.IDataList, len(xs))
+		for i, x := range xs {
+			out[i] = dataListFromFloat64(x)
+		}
+		return out
+	}
+	assertPrediction := func(t *testing.T, name string, got *insyra.DataList, rb, pb map[string]any, key string) {
+		t.Helper()
+		assertSliceCloseToBoth(t, name, got.ToF64Slice(), baselineFloatSlice(t, rb, key), baselineFloatSlice(t, pb, key), 1e-6)
+	}
+
+	linearXs := [][]float64{{1, 2, 3, 4, 5, 6}, {2, 1, 3, 2, 4, 3}}
+	linearY := []float64{5, 7, 10, 11, 14, 15}
+	linearNew := newXs(linearXs)
+	linear, err := stats.LinearRegression(dataListFromFloat64(linearY), toLists(linearXs)...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	linearRB := runRBaseline(t, "linear_reg", map[string]any{"y": linearY, "xs": linearXs, "new_xs": linearNew})
+	linearPB := runPythonBaseline(t, "linear_reg", map[string]any{"y": linearY, "xs": linearXs, "new_xs": linearNew})
+	linearPred, err := linear.Predict(stats.PredictResponse, toLists(linearNew)...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertPrediction(t, "linear", linearPred, linearRB, linearPB, "predictions")
+
+	polyX := []float64{1, 2, 3, 4, 5, 6}
+	polyY := []float64{2.1, 8.9, 20.1, 35.8, 56.2, 81.1}
+	polyNew := []float64{1.5, 5.5}
+	poly, err := stats.PolynomialRegression(dataListFromFloat64(polyY), dataListFromFloat64(polyX), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	polyRB := runRBaseline(t, "poly_reg", map[string]any{"y": polyY, "x": polyX, "degree": 2, "new_x": polyNew})
+	polyPB := runPythonBaseline(t, "poly_reg", map[string]any{"y": polyY, "x": polyX, "degree": 2, "new_x": polyNew})
+	polyPred, err := poly.Predict(stats.PredictResponse, dataListFromFloat64(polyNew))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertPrediction(t, "polynomial", polyPred, polyRB, polyPB, "predictions")
+
+	expX := []float64{1, 2, 3, 4, 5, 6}
+	expY := []float64{2.7, 7.4, 20.1, 54.6, 148.3, 403.2}
+	expNew := []float64{1.5, 5.5}
+	exp, err := stats.ExponentialRegression(dataListFromFloat64(expY), dataListFromFloat64(expX))
+	if err != nil {
+		t.Fatal(err)
+	}
+	expRB := runRBaseline(t, "exp_reg", map[string]any{"y": expY, "x": expX, "new_x": expNew})
+	expPB := runPythonBaseline(t, "exp_reg", map[string]any{"y": expY, "x": expX, "new_x": expNew})
+	expPred, err := exp.Predict(stats.PredictResponse, dataListFromFloat64(expNew))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertPrediction(t, "exponential", expPred, expRB, expPB, "predictions")
+
+	logX := []float64{1, 2, 3, 4, 5, 6}
+	logY := []float64{0, 0.69, 1.1, 1.39, 1.61, 1.79}
+	logNew := []float64{1.5, 5.5}
+	logarithmic, err := stats.LogarithmicRegression(dataListFromFloat64(logY), dataListFromFloat64(logX))
+	if err != nil {
+		t.Fatal(err)
+	}
+	logRB := runRBaseline(t, "log_reg", map[string]any{"y": logY, "x": logX, "new_x": logNew})
+	logPB := runPythonBaseline(t, "log_reg", map[string]any{"y": logY, "x": logX, "new_x": logNew})
+	logPred, err := logarithmic.Predict(stats.PredictResponse, dataListFromFloat64(logNew))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertPrediction(t, "logarithmic", logPred, logRB, logPB, "predictions")
+
+	glmXs := [][]float64{{-2, -1, 0, 1, 2, 3}, {1, 2, 1, 3, 2, 4}}
+	glmNew := newXs(glmXs)
+	logisticY := []float64{0, 0, 0, 1, 1, 1}
+	logistic, err := stats.LogisticRegression(dataListFromFloat64(logisticY), toLists(glmXs)...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	logisticRB := runRBaseline(t, "logistic_reg", map[string]any{"y": logisticY, "xs": glmXs, "new_xs": glmNew})
+	logisticPB := runPythonBaseline(t, "logistic_reg", map[string]any{"y": logisticY, "xs": glmXs, "new_xs": glmNew})
+	logisticPred, err := logistic.Predict(stats.PredictResponse, toLists(glmNew)...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertPrediction(t, "logistic", logisticPred, logisticRB, logisticPB, "predictions")
+
+	countY := []float64{1, 2, 1, 3, 4, 6}
+	countOffset := []float64{0, 0.1, -0.1, 0.2, 0.15, 0.25}
+	newOffset := []float64{0.05, 0.2}
+	poisson, err := stats.PoissonRegression(dataListFromFloat64(countY), toLists(glmXs)...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	poissonOffset, err := stats.PoissonRegressionWithOptions(stats.PoissonRegressionOptions{Offset: dataListFromFloat64(countOffset)}, dataListFromFloat64(countY), toLists(glmXs)...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	poissonRB := runRBaseline(t, "poisson_reg", map[string]any{"y": countY, "xs": glmXs, "offset": countOffset, "new_xs": glmNew, "new_offset": newOffset})
+	poissonPB := runPythonBaseline(t, "poisson_reg", map[string]any{"y": countY, "xs": glmXs, "offset": countOffset, "new_xs": glmNew, "new_offset": newOffset})
+	poissonPred, err := poisson.Predict(stats.PredictResponse, toLists(glmNew)...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertPrediction(t, "poisson", poissonPred, poissonRB, poissonPB, "predictions_no_offset")
+	poissonOffsetPred, err := poissonOffset.PredictWithOffset(stats.PredictResponse, dataListFromFloat64(newOffset), toLists(glmNew)...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertPrediction(t, "poisson_offset", poissonOffsetPred, poissonRB, poissonPB, "predictions")
+
+	glm, err := stats.GLM(stats.GLMOptions{Family: stats.Poisson, Link: stats.Log}, dataListFromFloat64(countY), toLists(glmXs)...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	glmOffset, err := stats.GLM(stats.GLMOptions{Family: stats.Poisson, Link: stats.Log, Offset: dataListFromFloat64(countOffset)}, dataListFromFloat64(countY), toLists(glmXs)...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	glmRB := runRBaseline(t, "glm_generic", map[string]any{"family": "poisson", "link": "log", "y": countY, "xs": glmXs, "offset": countOffset, "weights": []float64{1, 1, 1, 1, 1, 1}, "new_xs": glmNew, "new_offset": newOffset})
+	glmPB := runPythonBaseline(t, "glm_generic", map[string]any{"family": "poisson", "link": "log", "y": countY, "xs": glmXs, "offset": countOffset, "weights": []float64{1, 1, 1, 1, 1, 1}, "new_xs": glmNew, "new_offset": newOffset})
+	glmPred, err := glm.Predict(stats.PredictResponse, toLists(glmNew)...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertPrediction(t, "glm", glmPred, glmRB, glmPB, "predictions_no_offset")
+	glmOffsetPred, err := glmOffset.PredictWithOffset(stats.PredictResponse, dataListFromFloat64(newOffset), toLists(glmNew)...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertPrediction(t, "glm_offset", glmOffsetPred, glmRB, glmPB, "predictions")
+}
+
 func TestCrossLangCorrelationMatrixAndAnalysis(t *testing.T) {
 	requireCrossLangTools(t)
 

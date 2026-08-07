@@ -15,11 +15,10 @@ func init() {
 }
 
 // callFn invokes a registered scalar function by name and returns the result.
-// Wraps callFunction to reset funcCallDepth between tests.
+// Wraps callFunction with a fresh function-call depth for each test.
 func callFn(t *testing.T, name string, args ...any) (any, error) {
 	t.Helper()
-	ResetFuncCallDepth()
-	return callFunction(name, args)
+	return callFunction(name, args, 0)
 }
 
 func callAgg(t *testing.T, name string, cols ...[]any) (any, error) {
@@ -90,8 +89,8 @@ func TestMathFunctions(t *testing.T) {
 		{"POW", []any{2.0, 10.0}, 1024.0},
 		{"SQRT", []any{16.0}, 4.0},
 		{"LN", []any{math.E}, 1.0},
-		{"LOG", []any{1000.0}, 3.0},        // base-10 default
-		{"LOG", []any{8.0, 2.0}, 3.0},      // explicit base
+		{"LOG", []any{1000.0}, 3.0},   // base-10 default
+		{"LOG", []any{8.0, 2.0}, 3.0}, // explicit base
 		{"LOG10", []any{100.0}, 2.0},
 		{"EXP", []any{0.0}, 1.0},
 		{"SIGN", []any{-5.0}, -1.0},

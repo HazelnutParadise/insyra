@@ -10,17 +10,26 @@ import (
 	"github.com/HazelnutParadise/insyra/stats/internal/parutil"
 	"gonum.org/v1/gonum/mat"
 	"gonum.org/v1/gonum/stat"
+	"reflect"
 )
 
 // PCAResult contains the results of a Principal Component Analysis.
 type PCAResult struct {
 	Components        insyra.IDataTable // component loadings matrix
+	Center            []float64         // per-column means subtracted before fitting
+	Scale             []float64         // per-column sample standard deviations used for fitting
+	Scores            insyra.IDataTable // training observations projected onto the components
 	Eigenvalues       []float64
 	ExplainedVariance []float64
 }
 
 // PCA calculates the Principal Component Analysis of a DataTable.
 func PCA(dataTable insyra.IDataTable, nComponents ...int) (*PCAResult, error) {
+	// PCA loads its input itself rather than through numericMatrixFromTable, so
+	// it needs the same nil guard the shared loader has.
+	if dataTable == nil || reflect.ValueOf(dataTable).Kind() == reflect.Pointer && reflect.ValueOf(dataTable).IsNil() {
+		return nil, errors.New("data table must not be nil")
+	}
 	var rowNum, colNum, numComponents int
 	var data *mat.Dense
 	// Bulk-load per column via ToF64Slice. The previous nested-loop form
@@ -36,6 +45,14 @@ func PCA(dataTable insyra.IDataTable, nComponents ...int) (*PCAResult, error) {
 		numComponents = colNum
 		if len(nComponents) == 1 {
 			numComponents = nComponents[0]
+		}
+
+		// The shape guard has to be enforced here, before the allocation:
+		// mat.NewDense panics with mat.ErrZeroLength on a zero dimension, so
+		// an empty table would crash the caller instead of getting the error
+		// back. Leaving data nil lets the check below report it as an error.
+		if rowNum < 2 || colNum < 1 {
+			return
 		}
 
 		data = mat.NewDense(rowNum, colNum, nil)
@@ -69,11 +86,11 @@ func PCA(dataTable insyra.IDataTable, nComponents ...int) (*PCAResult, error) {
 	if len(nComponents) > 1 {
 		return nil, errors.New("nComponents accepts at most one value")
 	}
-	if data == nil {
-		return nil, errors.New("input contains non-numeric values")
-	}
 	if rowNum < 2 || colNum < 1 {
 		return nil, errors.New("insufficient data shape for PCA")
+	}
+	if data == nil {
+		return nil, errors.New("input contains non-numeric values")
 	}
 	if numComponents <= 0 || numComponents > colNum {
 		return nil, fmt.Errorf("nComponents must be between 1 and %d", colNum)
@@ -171,6 +188,7 @@ func PCA(dataTable insyra.IDataTable, nComponents ...int) (*PCAResult, error) {
 	evStride := evRaw.Stride
 	evRows := evRaw.Rows
 	componentCols := make([]*insyra.DataList, numComponents)
+	scoreCols := make([]*insyra.DataList, numComponents)
 	for compIndex := range numComponents {
 		col := indices[compIndex]
 		sign := 1.0
@@ -182,8 +200,20 @@ func PCA(dataTable insyra.IDataTable, nComponents ...int) (*PCAResult, error) {
 			vals[i] = sign * evRaw.Data[i*evStride+col]
 		}
 		componentCols[compIndex] = insyra.NewDataList(vals...).SetName(fmt.Sprintf("PC%d", compIndex+1))
+
+		scores := make([]any, rowNum)
+		for i := range rowNum {
+			score := 0.0
+			base := i * stride
+			for j := range colNum {
+				score += dataBuf[base+j] * sign * evRaw.Data[j*evStride+col]
+			}
+			scores[i] = score
+		}
+		scoreCols[compIndex] = insyra.NewDataList(scores...).SetName(fmt.Sprintf("PC%d", compIndex+1))
 	}
 	componentTable.AppendCols(componentCols...)
+	scoreTable := insyra.NewDataTable(scoreCols...)
 
 	totalVariance := 0.0
 	for _, v := range eigenvalues {
@@ -201,6 +231,9 @@ func PCA(dataTable insyra.IDataTable, nComponents ...int) (*PCAResult, error) {
 
 	return &PCAResult{
 		Components:        componentTable,
+		Center:            means,
+		Scale:             stds,
+		Scores:            scoreTable,
 		Eigenvalues:       sortedEigenvalues,
 		ExplainedVariance: explainedVariance,
 	}, nil

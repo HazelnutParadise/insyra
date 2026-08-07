@@ -300,11 +300,12 @@ This is separate from boolean-flag parsing used by option arguments like `header
 
 ## `load`
 - Description: Load data into a DataTable variable from a file, parquet, or SQL connection
-- Usage: `load <file> [headers true|false] [rownames true|false] [encoding <enc>] [sheet <name>] | load parquet <file> [cols <c1,c2,...>] [rowgroups <i1,i2,...>] | load sql <conn> <table> [where "..."] [order "..."] [limit N] [offset N] [cols "c1,c2"] [schema <s>] [indexcol <c>] [parsedates "c1,c2"] | load sql <conn> query "<SQL>" [params <v1> <v2> ...] [as <var>]`
+- Usage: `load <file> [headers true|false] [rownames true|false] [encoding <enc>] [infer true|false] [sheet <name>] | load parquet <file> [cols <c1,c2,...>] [rowgroups <i1,i2,...>] | load sql <conn> <table> [where "..."] [order "..."] [limit N] [offset N] [cols "c1,c2"] [schema <s>] [indexcol <c>] [parsedates "c1,c2"] | load sql <conn> query "<SQL>" [params <v1> <v2> ...] [as <var>]`
 - File options (CSV / Excel):
 	- `headers true|false` — first row is column names. Default `true`. JSON ignores this option (warns on use); Excel respects it.
 	- `rownames true|false` — first column is row names. Default `false`.
 	- `encoding <enc>` — CSV-only read-side hint (e.g. `big5`, `gbk`). Auto-detect when omitted.
+	- `infer true|false` — CSV-only. `infer false` keeps every cell as its original string (no type inference; empty cells stay `""`). Default `true`.
 	- `sheet <name>` — Excel-only; required for `.xlsx`/`.xlsm`/`.xls`.
 	- Booleans accept `true|false|yes|no|on|off|1|0` (case-insensitive).
 - SQL options:
@@ -410,7 +411,7 @@ This is separate from boolean-flag parsing used by option arguments like `header
 
 ## `read`
 - Description: Quick preview a file without saving variable
-- Usage: `read <file> [headers true|false] [rownames true|false] [encoding <enc>] [sheet <name>]`
+- Usage: `read <file> [headers true|false] [rownames true|false] [encoding <enc>] [infer true|false] [sheet <name>]`
 - Notes: forwards the file-side options to `load`; result is shown but not stored.
 
 ## `regression`

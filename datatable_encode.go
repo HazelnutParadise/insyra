@@ -220,6 +220,41 @@ func (e *OneHotEncoder) OutputColumns() []string {
 	return append([]string(nil), e.outputColumns...)
 }
 
+// OutputColumnsByColumn returns generated indicator names keyed by source
+// column, preserving both fitted column order and category order.
+func (e *OneHotEncoder) OutputColumnsByColumn() map[string][]string {
+	if e == nil {
+		return nil
+	}
+	out := make(map[string][]string, len(e.columns))
+	for _, column := range e.columns {
+		out[column.sourceName] = append([]string(nil), column.outputColumns...)
+	}
+	return out
+}
+
+// Columns returns the fitted source columns in transform order.
+func (e *OneHotEncoder) Columns() []string {
+	if e == nil {
+		return nil
+	}
+	columns := make([]string, len(e.columns))
+	for index, column := range e.columns {
+		columns[index] = column.sourceName
+	}
+	return columns
+}
+
+// Options returns a copy of the options used to fit the encoder.
+func (e *OneHotEncoder) Options() OneHotOptions {
+	if e == nil {
+		return OneHotOptions{}
+	}
+	options := e.opts
+	options.Columns = append([]string(nil), options.Columns...)
+	return options
+}
+
 // Transform applies this fitted label encoder to a new table.
 func (e *LabelEncoder) Transform(dt *DataTable) (*DataTable, error) {
 	if e == nil {
@@ -251,6 +286,30 @@ func (e *LabelEncoder) Kind() string { return "label" }
 // Classes returns category values by id.
 func (e *LabelEncoder) Classes() []any {
 	return append([]any(nil), e.classes...)
+}
+
+// SourceColumn returns the fitted source column name.
+func (e *LabelEncoder) SourceColumn() string {
+	if e == nil {
+		return ""
+	}
+	return e.sourceName
+}
+
+// OutputColumn returns the fitted encoded column name.
+func (e *LabelEncoder) OutputColumn() string {
+	if e == nil {
+		return ""
+	}
+	return e.encodedName
+}
+
+// Options returns a copy of the options used to fit the encoder.
+func (e *LabelEncoder) Options() LabelEncodeOptions {
+	if e == nil {
+		return LabelEncodeOptions{}
+	}
+	return e.opts
 }
 
 // Inverse maps label ids back to category values.
@@ -289,6 +348,32 @@ func (e *OrdinalEncoder) Kind() string { return "ordinal" }
 // Classes returns category values by id.
 func (e *OrdinalEncoder) Classes() []any {
 	return append([]any(nil), e.classes...)
+}
+
+// SourceColumn returns the fitted source column name.
+func (e *OrdinalEncoder) SourceColumn() string {
+	if e == nil {
+		return ""
+	}
+	return e.sourceName
+}
+
+// OutputColumn returns the fitted encoded column name.
+func (e *OrdinalEncoder) OutputColumn() string {
+	if e == nil {
+		return ""
+	}
+	return e.encodedName
+}
+
+// Options returns a copy of the options used to fit the encoder.
+func (e *OrdinalEncoder) Options() OrdinalEncodeOptions {
+	if e == nil {
+		return OrdinalEncodeOptions{}
+	}
+	options := e.opts
+	options.Order = append([]any(nil), options.Order...)
+	return options
 }
 
 // Inverse maps ordinal ids back to category values.

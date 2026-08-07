@@ -114,14 +114,16 @@ func (d dt) From(item any) *dt {
 	case CSV:
 		t.DataTable = insyra.NewDataTable()
 		var err error
+		opts := insyra.CSVReadOptions{
+			FirstColToRowNames: val.InputOpts.FirstCol2RowNames,
+			FirstRowToColNames: val.InputOpts.FirstRow2ColNames,
+			Encoding:           val.InputOpts.Encoding,
+			RawStrings:         val.InputOpts.RawStrings,
+		}
 		if val.FilePath != "" {
-			var encoding = val.InputOpts.Encoding
-			if encoding == "" {
-				encoding = "auto"
-			}
-			t.DataTable, err = insyra.ReadCSV_File(val.FilePath, val.InputOpts.FirstCol2RowNames, val.InputOpts.FirstRow2ColNames, encoding)
+			t.DataTable, err = insyra.ReadCSV_FileWithOptions(val.FilePath, opts)
 		} else {
-			t.DataTable, err = insyra.ReadCSV_String(val.String, val.InputOpts.FirstCol2RowNames, val.InputOpts.FirstRow2ColNames)
+			t.DataTable, err = insyra.ReadCSV_StringWithOptions(val.String, opts)
 		}
 		if err != nil {
 			insyra.LogFatal("DT", "From", "%v", err)
