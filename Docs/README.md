@@ -63,8 +63,8 @@ dt.Show()
 | Document          | Description                                             |
 | ----------------- | ------------------------------------------------------- |
 | [stats](stats.md) | Correlation, hypothesis testing, regression, ANOVA, PCA, clustering |
-| [ml](ml.md)       | Common estimator and transformer protocol over `stats` models |
-| [dl](nn.md)       | Pure-Go float32 ONNX inference for focused MLP graphs |
+| [ml](ml.md)       | scikit-learn-style modeling: regressions, trees, forests, boosting, pipelines, cross-validation and grid search, with ONNX export |
+| [nn](nn.md)       | Pure-Go neural networks: ONNX inference and training, layers and autodiff, SafeTensors I/O, GPU-accelerated MatMul |
 
 #### Visualization
 

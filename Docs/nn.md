@@ -1,10 +1,16 @@
-# `nn` Package
+# [ nn ] Package
 
-The `nn` package loads a focused subset of ONNX models and runs them with pure
-Go. It is intended for small inference graphs such as exported multilayer
-perceptrons, transformer encoder blocks, and MNIST-class CNN classifiers. The
-graph is validated when it is loaded, and runtime inputs and outputs are bound
-by name.
+The `nn` package is a neural network engine in pure Go, with zero non-Go
+dependencies. It loads and runs a focused subset of ONNX models — up to real
+published checkpoints such as MobileNetV2, MiniLM, and tiny-YOLOv3, each
+verified against `onnxruntime` — and it trains networks through a
+reverse-mode tape and a `Sequential` layer API, with gradients verified
+against PyTorch and finite differences.
+
+Weights load and save as SafeTensors, and trained models export back to ONNX.
+The largest matrix products run on a GPU when one is present and fall back to
+a bit-identical CPU path when none is. The graph is validated when it is
+loaded, and runtime inputs and outputs are bound by name.
 
 ## Installation
 

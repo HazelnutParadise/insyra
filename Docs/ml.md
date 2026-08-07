@@ -1,6 +1,6 @@
-# `ml` Package
+# [ ml ] Package
 
-The `ml` package provides one estimator protocol over the classical models already implemented by `stats`. It wraps fitted results without reimplementing the statistical algorithms.
+The `ml` package provides scikit-learn-style modeling under one estimator protocol. The classical regression families wrap the models already implemented by `stats`; decision trees, random forests, and gradient boosting are implemented here as deterministic histogram trees. Splitting and cross-validation, grid search, metrics, pipelines, and ONNX export complete the workflow.
 
 ## Installation
 
