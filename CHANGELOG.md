@@ -8,6 +8,15 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 ## Unreleased
 
+### Core
+
+- Added opt-in `AllowRaggedRows` and `TrimLeadingSpace` to `CSVReadOptions` and matching `isr.CSV_inOpts` fields. Ragged reads pad short rows and retain extra cells in auto-named columns; the zero value remains strict. ([issue #198](https://github.com/HazelnutParadise/insyra/issues/198))
+- Fixed CSV file loading parsing the input twice through a serialize-reparse round trip, which silently dropped rows holding a single empty field. `ReadCSV_File` and `ReadCSV_String` now agree on every input.
+
+### CLI
+
+- Added CSV-only `load` options `ragged true|false` and `trimspace true|false`, with the same strict defaults and explicit rejection on non-CSV formats. ([issue #198](https://github.com/HazelnutParadise/insyra/issues/198))
+
 ## v0.3.1
 
 ### Core

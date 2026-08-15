@@ -104,15 +104,17 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 
 ### `load`
 - Description: Load data into a DataTable variable from a file, parquet, or SQL connection
-- Usage: `load <file> [headers true|false] [rownames true|false] [encoding <enc>] [infer true|false] [sheet <name>] | load parquet <file> [cols <c1,c2,...>] [rowgroups <i1,i2,...>] | load sql <conn> <table> [where "..."] [order "..."] [limit N] [offset N] [cols "c1,c2"] [schema <s>] [indexcol <c>] [parsedates "c1,c2"] | load sql <conn> query "<SQL>" [params <v1> <v2> ...] [as <var>]`
-- Defaults: `headers=true`, `rownames=false`, `infer=true`. Booleans accept `true|false|yes|no|on|off|1|0`.
+- Usage: `load <file> [headers true|false] [rownames true|false] [encoding <enc>] [infer true|false] [ragged true|false] [trimspace true|false] [sheet <name>] | load parquet <file> [cols <c1,c2,...>] [rowgroups <i1,i2,...>] | load sql <conn> <table> [where "..."] [order "..."] [limit N] [offset N] [cols "c1,c2"] [schema <s>] [indexcol <c>] [parsedates "c1,c2"] | load sql <conn> query "<SQL>" [params <v1> <v2> ...] [as <var>]`
+- Defaults: `headers=true`, `rownames=false`, `infer=true`, `ragged=false`, `trimspace=false`. Booleans accept `true|false|yes|no|on|off|1|0`.
 - Types: an all-integer CSV column loads as `int64` (large IDs keep full precision); a column with any decimal loads as `float64`; others stay strings. `infer false` (CSV only) skips this and keeps every cell as its original string — use it for stock IDs, tax IDs, or exact amounts where `0050` must not become `50`.
+- `ragged true` and `trimspace true` are CSV-only. Ragged mode pads short rows with empty cells and keeps extra cells in new columns; trimspace mode accepts leading whitespace before fields and quotes.
 - Examples:
   - `insyra load data.csv as t`
   - `insyra load matrix.csv headers false as t` (no header row)
   - `insyra load gdp.csv rownames true as t` (first column = row names)
   - `insyra load legacy.csv encoding big5 as t`
   - `insyra load stocks.csv infer false as raw` (all cells stay raw strings)
+  - `insyra load inventory.csv ragged true trimspace true as inventory` (tolerate uneven rows and quoted-field spaces)
   - `insyra load report.xlsx sheet 2025 rownames true as t`
   - `insyra load parquet data.parquet cols id,amount rowgroups 0,1 as t`
   - `insyra load sql main customers as customers`
@@ -643,4 +645,3 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 - Usage: `fetch yahoo <ticker> <method> [params...] [as <var>]`
 - Example: `insyra fetch yahoo AAPL quote`
 - Yahoo methods: `quote`, `info`, `history`, `dividends`, `splits`, `actions`, `options`, `news [count]`, `calendar`, `fastinfo`.
-

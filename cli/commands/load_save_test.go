@@ -93,6 +93,24 @@ func TestLoad_CSV_InferFalseKeepsRawStrings(t *testing.T) {
 	}
 }
 
+func TestLoad_CSV_RaggedAndTrimSpace(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "noisy.csv")
+	mustWrite(t, path, "id,name\n1, \"Alice\"\ntrailer\n")
+
+	ctx := newTestExecContext(t)
+	if err := runLoadCommand(ctx, []string{path, "ragged", "true", "trimspace", "true", "as", "t"}); err != nil {
+		t.Fatalf("load failed: %v", err)
+	}
+	dt, _ := getDataTableVar(ctx, "t")
+	if rows, cols := dt.Size(); rows != 2 || cols != 2 {
+		t.Fatalf("expected 2x2 noisy CSV, got %dx%d", rows, cols)
+	}
+	if got := dt.GetColByName("name").Data()[0]; got != "Alice" {
+		t.Fatalf("expected trimmed quoted name Alice, got %v", got)
+	}
+}
+
 func TestLoad_JSON_RejectsInferOption(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "in.json")
@@ -101,6 +119,17 @@ func TestLoad_JSON_RejectsInferOption(t *testing.T) {
 	err := runLoadCommand(ctx, []string{path, "infer", "false", "as", "t"})
 	if err == nil || !strings.Contains(err.Error(), "infer") {
 		t.Fatalf("expected error rejecting 'infer' for JSON, got %v", err)
+	}
+}
+
+func TestLoad_JSON_RejectsRaggedOption(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "in.json")
+	mustWrite(t, path, `[{"a":1}]`)
+	ctx := newTestExecContext(t)
+	err := runLoadCommand(ctx, []string{path, "ragged", "true", "as", "t"})
+	if err == nil || !strings.Contains(err.Error(), "ragged") {
+		t.Fatalf("expected error rejecting 'ragged' for JSON, got %v", err)
 	}
 }
 

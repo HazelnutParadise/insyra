@@ -304,12 +304,14 @@ insyra --env demo run pipeline.isr
 
 ### A1. Controlling headers and row names for CSV / Excel
 
-`load` and `save` accept three shared options for delimited/spreadsheet formats:
+`load` and `save` accept shared options for delimited/spreadsheet formats:
 
 - `headers true|false` — whether the first row holds column names. Default `true`.
 - `rownames true|false` — whether the first column holds row names. Default `false`.
 - `encoding <enc>` — read-side hint for CSVs that aren't UTF-8 (e.g. `big5`, `gbk`). Auto-detected when omitted.
 - `infer true|false` — read-side, CSV only. `infer false` keeps every cell as its original string (no type inference): leading zeros in stock IDs survive, amounts stay verbatim, empty cells stay empty strings. Default `true`.
+- `ragged true|false` — read-side, CSV only. `ragged true` pads short rows with empty cells and keeps extra cells in automatically named columns. Padded cells count as empty for type inference (an otherwise-integer column becomes float with `NaN`); combine with `infer false` to keep cells verbatim. Default `false`, so uneven rows remain strict errors unless enabled.
+- `trimspace true|false` — read-side, CSV only. `trimspace true` ignores leading whitespace before fields, including before quoted fields. Default `false`.
 - `bom true|false` — save-side, write a UTF-8 BOM (helps Windows Excel open Chinese CSVs). Default `false`.
 
 Boolean values accept `true|false`, `yes|no`, `on|off`, `1|0` (case-insensitive).
@@ -326,6 +328,9 @@ load legacy.csv encoding big5 as t
 
 # Stock IDs / exact amounts: load everything as raw strings
 load stocks.csv infer false as raw
+
+# Noisy CSV: trailer rows, extra cells, and whitespace before quotes
+load inventory.csv ragged true trimspace true as inventory
 
 # Excel: 'sheet' is required; headers/rownames are optional
 load report.xlsx sheet 2025 rownames true as t
@@ -694,4 +699,3 @@ load parquet data.parquet cols id,amount,status rowgroups 0,1 as t
 # invalid (unknown option)
 load parquet data.parquet columns id
 ```
-

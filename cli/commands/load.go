@@ -13,18 +13,19 @@ import (
 func init() {
 	_ = Register(&CommandHandler{
 		Name:        "load",
-		Usage:       "load <file> [headers true|false] [rownames true|false] [encoding <enc>] [infer true|false] [sheet <name>] | load parquet <file> [...] | load sql <conn> <table>|query \"<sql>\" [...] [as <var>]",
+		Usage:       "load <file> [headers true|false] [rownames true|false] [encoding <enc>] [infer true|false] [ragged true|false] [trimspace true|false] [sheet <name>] | load parquet <file> [...] | load sql <conn> <table>|query \"<sql>\" [...] [as <var>]",
 		Description: "Load data into a DataTable variable from a file, parquet, or SQL connection",
 		Forms: []string{
-			"load <file.csv> [headers true|false] [rownames true|false] [encoding <enc>] [infer true|false] [as <var>]",
+			"load <file.csv> [headers true|false] [rownames true|false] [encoding <enc>] [infer true|false] [ragged true|false] [trimspace true|false] [as <var>]",
 			"load <file.json> [as <var>]",
 			"load <file.xlsx> sheet <name> [headers true|false] [rownames true|false] [as <var>]",
 			"load parquet <file> [cols <c1,c2,...>] [rowgroups <i1,i2,...>] [as <var>]",
 			"load sql <conn> <table> [where \"...\"] [order \"...\"] [limit N] [offset N] [cols \"c1,c2\"] [schema <s>] [indexcol <c>] [parsedates \"c1,c2\"] [as <var>]",
 			"load sql <conn> query \"<SQL>\" [params <v1> <v2> ...] [as <var>]",
 			"",
-			"File option defaults: headers=true, rownames=false, infer=true.",
+			"File option defaults: headers=true, rownames=false, infer=true, ragged=false, trimspace=false.",
 			"infer false (CSV only) keeps every cell as its original string — no type inference.",
+			"ragged and trimspace are CSV-only; ragged pads short rows and keeps extra cells.",
 			"Booleans accept true|false|yes|no|on|off|1|0.",
 		},
 		Examples: []string{
@@ -33,6 +34,7 @@ func init() {
 			"insyra load gdp.csv rownames true as gdp",
 			"insyra load legacy.csv encoding big5 as legacy",
 			"insyra load stocks.csv infer false as raw",
+			"insyra load inventory.csv ragged true trimspace true as inventory",
 			"insyra load report.xlsx sheet 2025 rownames true as r",
 			"insyra load parquet data.parquet cols id,amount rowgroups 0,1 as p",
 			"insyra load sql main customers as customers",
@@ -45,7 +47,7 @@ func init() {
 func runLoadCommand(ctx *ExecContext, args []string) error {
 	coreArgs, alias := parseAlias(args)
 	if len(coreArgs) == 0 {
-		return fmt.Errorf("usage: load <file> [headers true|false] [rownames true|false] [encoding <enc>] [infer true|false] [sheet <name>] | load parquet <file> [...] | load sql <conn> <table>|query \"<sql>\" [...] [as <var>]")
+		return fmt.Errorf("usage: load <file> [headers true|false] [rownames true|false] [encoding <enc>] [infer true|false] [ragged true|false] [trimspace true|false] [sheet <name>] | load parquet <file> [...] | load sql <conn> <table>|query \"<sql>\" [...] [as <var>]")
 	}
 
 	var table *insyra.DataTable
@@ -85,10 +87,12 @@ func runLoadCommand(ctx *ExecContext, args []string) error {
 				FirstRowToColNames: opts.Headers,
 				Encoding:           opts.Encoding,
 				RawStrings:         !opts.Infer,
+				AllowRaggedRows:    opts.Ragged,
+				TrimLeadingSpace:   opts.TrimSpace,
 			})
 		case "json":
-			if opts.HeadersSet || opts.RowNamesSet || opts.SheetSet || opts.Encoding != "" || opts.InferSet {
-				return fmt.Errorf("load json: headers/rownames/sheet/encoding/infer options are not supported for JSON")
+			if opts.HeadersSet || opts.RowNamesSet || opts.SheetSet || opts.Encoding != "" || opts.InferSet || opts.RaggedSet || opts.TrimSpaceSet {
+				return fmt.Errorf("load json: headers/rownames/sheet/encoding/infer/ragged/trimspace options are not supported for JSON")
 			}
 			table, err = insyra.ReadJSON_File(path)
 		case "excel":
@@ -97,6 +101,9 @@ func runLoadCommand(ctx *ExecContext, args []string) error {
 			}
 			if opts.InferSet {
 				return fmt.Errorf("load excel: 'infer' is not valid for Excel files")
+			}
+			if opts.RaggedSet || opts.TrimSpaceSet {
+				return fmt.Errorf("load excel: 'ragged' and 'trimspace' are not valid for Excel files")
 			}
 			if !opts.SheetSet || opts.Sheet == "" {
 				return fmt.Errorf("usage for excel: load <file.xlsx> sheet <sheet-name> [headers true|false] [rownames true|false] [as <var>]")
@@ -118,15 +125,19 @@ func runLoadCommand(ctx *ExecContext, args []string) error {
 // fileLoadOptions captures the shared CSV/Excel/JSON load options. The *Set
 // flags let format-specific code reject options that don't apply.
 type fileLoadOptions struct {
-	Headers     bool
-	HeadersSet  bool
-	RowNames    bool
-	RowNamesSet bool
-	Encoding    string
-	Sheet       string
-	SheetSet    bool
-	Infer       bool
-	InferSet    bool
+	Headers      bool
+	HeadersSet   bool
+	RowNames     bool
+	RowNamesSet  bool
+	Encoding     string
+	Sheet        string
+	SheetSet     bool
+	Infer        bool
+	InferSet     bool
+	Ragged       bool
+	RaggedSet    bool
+	TrimSpace    bool
+	TrimSpaceSet bool
 }
 
 func parseFileLoadOptions(args []string) (fileLoadOptions, error) {
@@ -191,8 +202,32 @@ func parseFileLoadOptions(args []string) (fileLoadOptions, error) {
 			opts.Infer = b
 			opts.InferSet = true
 			i += 2
+		case "ragged":
+			v, err := next()
+			if err != nil {
+				return opts, err
+			}
+			b, err := parseFlexBool(v)
+			if err != nil {
+				return opts, fmt.Errorf("load: invalid value for ragged: %w", err)
+			}
+			opts.Ragged = b
+			opts.RaggedSet = true
+			i += 2
+		case "trimspace":
+			v, err := next()
+			if err != nil {
+				return opts, err
+			}
+			b, err := parseFlexBool(v)
+			if err != nil {
+				return opts, fmt.Errorf("load: invalid value for trimspace: %w", err)
+			}
+			opts.TrimSpace = b
+			opts.TrimSpaceSet = true
+			i += 2
 		default:
-			return opts, fmt.Errorf("load: unknown option %q (supported: headers, rownames, encoding, sheet, infer)", args[i])
+			return opts, fmt.Errorf("load: unknown option %q (supported: headers, rownames, encoding, sheet, infer, ragged, trimspace)", args[i])
 		}
 	}
 	return opts, nil

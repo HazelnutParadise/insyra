@@ -155,6 +155,8 @@ type CSVReadOptions struct {
     FirstRowToColNames bool
     Encoding           string // file input only; "" or "auto" auto-detects
     RawStrings         bool   // keep every cell as its original string; skip type inference
+    AllowRaggedRows    bool   // pad short rows; keep long rows in extra columns
+    TrimLeadingSpace   bool   // ignore leading spaces before fields and quotes
 }
 
 func ReadCSV_FileWithOptions(filePath string, opts CSVReadOptions) (*DataTable, error)
@@ -165,6 +167,10 @@ func ReadCSV_StringWithOptions(csvString string, opts CSVReadOptions) (*DataTabl
 
 Set `RawStrings: true` to disable column type inference entirely: every cell is kept as its original string and empty cells stay `""` (not `NaN`). Use this for data that looks numeric but must not be parsed as numbers — stock IDs (`0050` would otherwise become `int64` `50`, losing the leading zeros), tax IDs, phone numbers, zip codes, or exact monetary amounts you want to parse with a decimal type yourself.
 
+Set `AllowRaggedRows: true` for exports with uneven row lengths. Missing trailing cells are padded with `""` so columns stay aligned; extra cells are retained in automatically named `extra_N` columns (numbered by their position in the file), and earlier rows get `""` in those columns. This is useful for trailer notes, optional trailing fields, and rows with a trailing comma. The default `false` keeps the current strict `wrong number of fields` error. Note that padded cells count as empty for column type inference: an otherwise-integer column touched by padding loads as `float64` with `NaN` in the padded rows. Combine with `RawStrings: true` when cells must stay verbatim strings.
+
+Set `TrimLeadingSpace: true` to ignore leading whitespace before fields, including whitespace before an opening quote such as `2330, "1,000"`. The default `false` keeps the current CSV parser behavior. These two options are independent and opt-in; combine them when an external export has both uneven rows and whitespace before quoted fields.
+
 **Example:**
 
 ```go
@@ -172,6 +178,8 @@ csvData := "id,price\n0050,600.855\n00878,100.14"
 dt, err := insyra.ReadCSV_StringWithOptions(csvData, insyra.CSVReadOptions{
     FirstRowToColNames: true,
     RawStrings:         true,
+    AllowRaggedRows:    true,
+    TrimLeadingSpace:   true,
 })
 if err != nil {
     log.Fatal(err)

@@ -403,11 +403,17 @@ func main() {
     raw, err := insyra.ReadCSV_FileWithOptions("stocks.csv", insyra.CSVReadOptions{
         FirstRowToColNames: true,
         RawStrings:         true,
+        AllowRaggedRows:    true,
+        TrimLeadingSpace:   true,
     })
     if err != nil {
         log.Fatal(err)
     }
     _ = raw
+
+    // AllowRaggedRows pads short rows with "" and keeps extra cells in
+    // automatically named columns. TrimLeadingSpace also accepts whitespace
+    // before quoted fields. Both are opt-in; the zero value stays strict.
 
     // Quick console preview (first N rows)
     insyra.Show("preview", dt, 5)

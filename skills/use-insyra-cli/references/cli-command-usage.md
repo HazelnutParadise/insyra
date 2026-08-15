@@ -300,12 +300,14 @@ This is separate from boolean-flag parsing used by option arguments like `header
 
 ## `load`
 - Description: Load data into a DataTable variable from a file, parquet, or SQL connection
-- Usage: `load <file> [headers true|false] [rownames true|false] [encoding <enc>] [infer true|false] [sheet <name>] | load parquet <file> [cols <c1,c2,...>] [rowgroups <i1,i2,...>] | load sql <conn> <table> [where "..."] [order "..."] [limit N] [offset N] [cols "c1,c2"] [schema <s>] [indexcol <c>] [parsedates "c1,c2"] | load sql <conn> query "<SQL>" [params <v1> <v2> ...] [as <var>]`
+- Usage: `load <file> [headers true|false] [rownames true|false] [encoding <enc>] [infer true|false] [ragged true|false] [trimspace true|false] [sheet <name>] | load parquet <file> [cols <c1,c2,...>] [rowgroups <i1,i2,...>] | load sql <conn> <table> [where "..."] [order "..."] [limit N] [offset N] [cols "c1,c2"] [schema <s>] [indexcol <c>] [parsedates "c1,c2"] | load sql <conn> query "<SQL>" [params <v1> <v2> ...] [as <var>]`
 - File options (CSV / Excel):
 	- `headers true|false` — first row is column names. Default `true`. JSON ignores this option (warns on use); Excel respects it.
 	- `rownames true|false` — first column is row names. Default `false`.
 	- `encoding <enc>` — CSV-only read-side hint (e.g. `big5`, `gbk`). Auto-detect when omitted.
 	- `infer true|false` — CSV-only. `infer false` keeps every cell as its original string (no type inference; empty cells stay `""`). Default `true`.
+	- `ragged true|false` — CSV-only. `ragged true` pads short rows with `""` and preserves extra cells in automatically named columns. Default `false`.
+	- `trimspace true|false` — CSV-only. `trimspace true` ignores leading whitespace before fields, including quoted fields. Default `false`.
 	- `sheet <name>` — Excel-only; required for `.xlsx`/`.xlsm`/`.xls`.
 	- Booleans accept `true|false|yes|no|on|off|1|0` (case-insensitive).
 - SQL options:
@@ -590,4 +592,3 @@ This is separate from boolean-flag parsing used by option arguments like `header
 - Full forms:
 	- `ztest single <var> <mu> <sigma> [two-sided|greater|less]`
 	- `ztest two <var1> <var2> <sigma1> <sigma2> [two-sided|greater|less]`
-

@@ -1,6 +1,7 @@
 package insyra_test
 
 import (
+	"math"
 	"os"
 	"testing"
 
@@ -309,8 +310,8 @@ func TestReadCSV_StringWithOptions_RawStrings(t *testing.T) {
 	}
 }
 
-// Zero-value CSVReadOptions must reproduce the legacy functions exactly,
-// including column type inference.
+// Options-based CSV loading must reproduce legacy loading exactly, including
+// column type inference.
 func TestReadCSV_WithOptions_ZeroValueMatchesLegacy(t *testing.T) {
 	csvData := "id,val,note\n0050,600.855,a\n2330,100.14,b\n"
 	legacy, err := insyra.ReadCSV_String(csvData, false, true)
@@ -336,6 +337,38 @@ func TestReadCSV_WithOptions_ZeroValueMatchesLegacy(t *testing.T) {
 	// Inference still applies with zero-value options: the id column is all-int.
 	if withOpts.GetColByName("id").Data()[0] != int64(50) {
 		t.Errorf("expected inferred int64(50), got %v (%T)", withOpts.GetColByName("id").Data()[0], withOpts.GetColByName("id").Data()[0])
+	}
+}
+
+func TestReadCSV_StringWithOptions_LiteralZeroValueMatchesLegacyDefaults(t *testing.T) {
+	csvData := "1,2\n3,4\n"
+	legacy, err := insyra.ReadCSV_String(csvData, false, false)
+	if err != nil {
+		t.Fatalf("ReadCSV_String: %v", err)
+	}
+	withOpts, err := insyra.ReadCSV_StringWithOptions(csvData, insyra.CSVReadOptions{})
+	if err != nil {
+		t.Fatalf("ReadCSV_StringWithOptions: %v", err)
+	}
+	if got, want := withOpts.ColNames(), legacy.ColNames(); len(got) != len(want) {
+		t.Fatalf("column count mismatch: options=%v legacy=%v", got, want)
+	} else {
+		for i := range got {
+			if got[i] != want[i] {
+				t.Errorf("column %d name: options=%q legacy=%q", i, got[i], want[i])
+			}
+		}
+	}
+	for colIndex := 0; colIndex < withOpts.NumCols(); colIndex++ {
+		got, want := withOpts.GetColByNumber(colIndex).Data(), legacy.GetColByNumber(colIndex).Data()
+		if len(got) != len(want) {
+			t.Fatalf("column %d length mismatch: options=%v legacy=%v", colIndex, got, want)
+		}
+		for rowIndex := range got {
+			if got[rowIndex] != want[rowIndex] {
+				t.Errorf("cell (%d,%d): options=%v legacy=%v", rowIndex, colIndex, got[rowIndex], want[rowIndex])
+			}
+		}
 	}
 }
 
@@ -373,5 +406,220 @@ func TestReadCSV_ISR_RawStrings(t *testing.T) {
 	}
 	if got := dtt.GetColByName("price").Data()[0]; got != "100.14" {
 		t.Errorf("expected \"100.14\", got %v (%T)", got, got)
+	}
+}
+
+func TestReadCSV_StringWithOptions_RaggedRows(t *testing.T) {
+	cases := []struct {
+		name     string
+		csv      string
+		rownames bool
+		check    func(t *testing.T, dt *insyra.DataTable)
+	}{
+		{
+			name:     "trailer note is padded",
+			csv:      "id,value,note\n1,2,ok\n以上資料僅供參考\n",
+			rownames: true,
+			check: func(t *testing.T, dt *insyra.DataTable) {
+				if got, ok := dt.GetRowNameByIndex(1); !ok || got != "以上資料僅供參考" {
+					t.Errorf("expected trailer note as row name, got (%q, %v)", got, ok)
+				}
+				for _, index := range []int{0, 1} {
+					if got := dt.GetColByNumber(index).Data()[1]; got != "" {
+						t.Errorf("expected padded empty cell in column %d, got %v", index, got)
+					}
+				}
+			},
+		},
+		{
+			name: "trailing comma keeps empty extra column",
+			csv:  "id,value\n1,2,\n3,4\n",
+			check: func(t *testing.T, dt *insyra.DataTable) {
+				if got := dt.NumCols(); got != 3 {
+					t.Fatalf("expected 3 columns, got %d", got)
+				}
+				if got := dt.GetColByNumber(2).Data(); got[0] != "" || got[1] != "" {
+					t.Errorf("expected empty extra column, got %v", got)
+				}
+			},
+		},
+		{
+			name: "non-empty extra cells are retained",
+			csv:  "id,value\n1,2\n3,4,extra,more\n",
+			check: func(t *testing.T, dt *insyra.DataTable) {
+				if got := dt.NumCols(); got != 4 {
+					t.Fatalf("expected 4 columns, got %d", got)
+				}
+				if got := dt.GetColByNumber(2).Data(); got[0] != "" || got[1] != "extra" {
+					t.Errorf("unexpected first extra column: %v", got)
+				}
+				if got := dt.GetColByNumber(3).Data(); got[0] != "" || got[1] != "more" {
+					t.Errorf("unexpected second extra column: %v", got)
+				}
+			},
+		},
+		{
+			name:     "row names and header names stay aligned",
+			csv:      "label,value\nr1,10\ntrailer\nr2,20,extra\n",
+			rownames: true,
+			check: func(t *testing.T, dt *insyra.DataTable) {
+				if got, ok := dt.GetRowNameByIndex(1); !ok || got != "trailer" {
+					t.Errorf("expected trailer row name, got (%q, %v)", got, ok)
+				}
+				if got := dt.GetColByName("value").Data()[1]; got != "" {
+					t.Errorf("expected empty value beside trailer row, got %v", got)
+				}
+				if got := dt.GetColByNumber(1).Data()[2]; got != "extra" {
+					t.Errorf("expected extra cell in auto-named column, got %v", got)
+				}
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dt, err := insyra.ReadCSV_StringWithOptions(tc.csv, insyra.CSVReadOptions{
+				FirstColToRowNames: tc.rownames,
+				FirstRowToColNames: true,
+				RawStrings:         true,
+				AllowRaggedRows:    true,
+			})
+			if err != nil {
+				t.Fatalf("ReadCSV_StringWithOptions: %v", err)
+			}
+			tc.check(t, dt)
+			for colIndex := 0; colIndex < dt.NumCols(); colIndex++ {
+				for rowIndex, value := range dt.GetColByNumber(colIndex).Data() {
+					if _, ok := value.(string); !ok {
+						t.Errorf("cell (%d,%d) has type %T, want string", rowIndex, colIndex, value)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestReadCSV_StringWithOptions_TrimLeadingSpace(t *testing.T) {
+	csvData := "id,name,amount\n2330, \"1,000\",600.86\n"
+	if _, err := insyra.ReadCSV_StringWithOptions(csvData, insyra.CSVReadOptions{}); err == nil {
+		t.Fatal("expected zero-value options to reject a space before a quote")
+	}
+	dt, err := insyra.ReadCSV_StringWithOptions(csvData, insyra.CSVReadOptions{
+		FirstRowToColNames: true,
+		TrimLeadingSpace:   true,
+	})
+	if err != nil {
+		t.Fatalf("TrimLeadingSpace should parse quoted field: %v", err)
+	}
+	if got := dt.GetColByName("name").Data()[0]; got != "1,000" {
+		t.Errorf("expected quoted value 1,000, got %v", got)
+	}
+}
+
+func TestReadCSV_StringWithOptions_ZeroValueRejectsRaggedRows(t *testing.T) {
+	for _, csvData := range []string{
+		"id,value\n1\n",
+		"id,value\n1,2,\n",
+		"id,value\n1,2,extra\n",
+	} {
+		if _, err := insyra.ReadCSV_StringWithOptions(csvData, insyra.CSVReadOptions{}); err == nil {
+			t.Errorf("expected zero-value options to reject %q", csvData)
+		}
+	}
+}
+
+func TestReadCSV_FileAndStringWithOptions_RaggedRowsMatch(t *testing.T) {
+	// The `""` and whitespace-only lines parse to a single empty field; both
+	// must survive the file path (which once re-serialized records and lost
+	// them as blank lines) exactly like the string path.
+	csvData := "id,name\n1, \"Alice\"\n\"\"\ntrailer\n   \n2,Bob,extra\n"
+	opts := insyra.CSVReadOptions{
+		FirstRowToColNames: true,
+		RawStrings:         true,
+		AllowRaggedRows:    true,
+		TrimLeadingSpace:   true,
+	}
+	fromString, err := insyra.ReadCSV_StringWithOptions(csvData, opts)
+	if err != nil {
+		t.Fatalf("ReadCSV_StringWithOptions: %v", err)
+	}
+	path := t.TempDir() + "/ragged.csv"
+	if err := os.WriteFile(path, []byte(csvData), 0o644); err != nil {
+		t.Fatalf("write temp csv: %v", err)
+	}
+	fromFile, err := insyra.ReadCSV_FileWithOptions(path, opts)
+	if err != nil {
+		t.Fatalf("ReadCSV_FileWithOptions: %v", err)
+	}
+
+	if got := fromString.NumRows(); got != 5 {
+		t.Fatalf("expected 5 data rows from string, got %d", got)
+	}
+	if got := fromFile.NumRows(); got != 5 {
+		t.Fatalf("expected 5 data rows from file, got %d", got)
+	}
+	if got, want := fromFile.ColNames(), fromString.ColNames(); len(got) != len(want) {
+		t.Fatalf("column count mismatch: file=%v string=%v", got, want)
+	} else {
+		for i := range got {
+			if got[i] != want[i] {
+				t.Errorf("column %d name: file=%q string=%q", i, got[i], want[i])
+			}
+		}
+	}
+	for colIndex := 0; colIndex < fromString.NumCols(); colIndex++ {
+		got, want := fromFile.GetColByNumber(colIndex).Data(), fromString.GetColByNumber(colIndex).Data()
+		if len(got) != len(want) {
+			t.Fatalf("column %d length mismatch: file=%v string=%v", colIndex, got, want)
+		}
+		for rowIndex := range got {
+			if got[rowIndex] != want[rowIndex] {
+				t.Errorf("cell (%d,%d): file=%v string=%v", rowIndex, colIndex, got[rowIndex], want[rowIndex])
+			}
+		}
+	}
+}
+
+// Extra columns are numbered by their ordinal in the file, so the auto name
+// does not shift when FirstColToRowNames consumes the first field.
+func TestReadCSV_StringWithOptions_RaggedExtraColNameStableAcrossRowNames(t *testing.T) {
+	csvData := "label,value\nr1,10\nr2,20,extra\n"
+	for _, rownames := range []bool{false, true} {
+		dt, err := insyra.ReadCSV_StringWithOptions(csvData, insyra.CSVReadOptions{
+			FirstColToRowNames: rownames,
+			FirstRowToColNames: true,
+			RawStrings:         true,
+			AllowRaggedRows:    true,
+		})
+		if err != nil {
+			t.Fatalf("rownames=%v: %v", rownames, err)
+		}
+		col := dt.GetColByName("extra_3")
+		if col == nil {
+			t.Fatalf("rownames=%v: column extra_3 not found (cols=%v)", rownames, dt.ColNames())
+		}
+		if got := col.Data()[1]; got != "extra" {
+			t.Errorf("rownames=%v: expected extra cell in extra_3, got %v", rownames, got)
+		}
+	}
+}
+
+// Padded cells count as empty for type inference: an otherwise-integer column
+// becomes float64 with NaN once a short row pads it. Use RawStrings to keep
+// cells verbatim instead.
+func TestReadCSV_StringWithOptions_RaggedPaddingAffectsInference(t *testing.T) {
+	dt, err := insyra.ReadCSV_StringWithOptions("id,qty\n1,10\n2\n", insyra.CSVReadOptions{
+		FirstRowToColNames: true,
+		AllowRaggedRows:    true,
+	})
+	if err != nil {
+		t.Fatalf("ReadCSV_StringWithOptions: %v", err)
+	}
+	qty := dt.GetColByName("qty").Data()
+	if v, ok := qty[0].(float64); !ok || v != 10 {
+		t.Errorf("expected float64 10, got %v (%T)", qty[0], qty[0])
+	}
+	if v, ok := qty[1].(float64); !ok || !math.IsNaN(v) {
+		t.Errorf("expected NaN for padded cell, got %v (%T)", qty[1], qty[1])
 	}
 }

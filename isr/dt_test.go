@@ -38,3 +38,19 @@ func TestDT_Push(t *testing.T) {
 	assert.Equal(t, []any{7, 8, 9, nil, nil}, dt.GetCol("D").Data(), "Column D data does not match")
 	assert.Equal(t, []any{"m", "n", "o", nil, nil}, dt.GetCol("E").Data(), "Column E data does not match")
 }
+
+func TestDT_FromCSV_ToleranceOptions(t *testing.T) {
+	dt := DT.From(CSV{
+		String: "id,name\n1, \"Alice\"\ntrailer\n",
+		InputOpts: CSV_inOpts{
+			FirstRow2ColNames: true,
+			AllowRaggedRows:   true,
+			TrimLeadingSpace:  true,
+		},
+	})
+
+	assert.Equal(t, 2, dt.NumRows())
+	assert.Equal(t, 2, dt.NumCols())
+	assert.Equal(t, "Alice", dt.GetColByName("name").Data()[0])
+	assert.Equal(t, "", dt.GetColByName("name").Data()[1])
+}

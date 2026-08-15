@@ -88,8 +88,8 @@ func Slice2DToDataTable(data any) (*DataTable, error) {
 
 // CSVReadOptions configures ReadCSV_FileWithOptions and ReadCSV_StringWithOptions.
 // The zero value reproduces the default behavior of ReadCSV_File/ReadCSV_String:
-// no row/column names taken from the data, auto-detected encoding, and
-// column-level type inference enabled.
+// no row/column names taken from the data, auto-detected encoding, strict row
+// widths, no leading-space trimming, and column-level type inference enabled.
 type CSVReadOptions struct {
 	FirstColToRowNames bool
 	FirstRowToColNames bool
@@ -100,6 +100,14 @@ type CSVReadOptions struct {
 	// not be parsed as numbers (stock IDs like "0050", tax IDs, phone
 	// numbers, exact monetary amounts). Empty cells stay "".
 	RawStrings bool
+	// AllowRaggedRows accepts rows with different field counts. Short rows are
+	// padded with empty strings; extra cells in long rows are kept in
+	// automatically named columns. The default false preserves strict CSV
+	// parsing.
+	AllowRaggedRows bool
+	// TrimLeadingSpace passes through to csv.Reader.TrimLeadingSpace. The
+	// default false preserves strict CSV parsing, including spaces before quotes.
+	TrimLeadingSpace bool
 }
 
 // ReadCSV_File loads a CSV file into a DataTable, with options to set the first column as row names
@@ -133,16 +141,12 @@ func ReadCSV_FileWithOptions(filePath string, opts CSVReadOptions) (*DataTable, 
 		LogInfo("csvxl", "ReadCSV_File", "Auto-detected encoding %s for file %s", useEncoding, filePath)
 	}
 
-	// Use internal CSV reader with encoding support
-	csvString, err := csvInternal.ReadCSVWithEncoding(file, useEncoding)
+	// Use internal CSV reader with encoding support. It returns parsed records
+	// directly so the file path applies the tolerance options in exactly one
+	// parse, matching ReadCSV_StringWithOptions.
+	rows, err := csvInternal.ReadCSVRecordsWithEncodingOptions(file, useEncoding, opts.AllowRaggedRows, opts.TrimLeadingSpace)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read CSV file %s: %w", filePath, err)
-	}
-
-	reader := csv.NewReader(strings.NewReader(csvString))
-	rows, err := reader.ReadAll()
-	if err != nil {
-		return nil, err
 	}
 
 	return csvRowsToDataTable(rows, opts), nil
@@ -151,6 +155,10 @@ func ReadCSV_FileWithOptions(filePath string, opts CSVReadOptions) (*DataTable, 
 // csvRowsToDataTable builds a DataTable from parsed CSV rows, applying the
 // row/column-name options and (unless opts.RawStrings) column type inference.
 func csvRowsToDataTable(rows [][]string, opts CSVReadOptions) *DataTable {
+	if opts.AllowRaggedRows {
+		return csvRaggedRowsToDataTable(rows, opts)
+	}
+
 	dt := NewDataTable()
 	dt.columns = []*DataList{}
 	dt.rowNames = core.NewBiIndex(0)
@@ -195,6 +203,93 @@ func csvRowsToDataTable(rows [][]string, opts CSVReadOptions) *DataTable {
 				continue
 			}
 			column := dt.columns[colIndex]
+			column.data = append(column.data, cell)
+		}
+	}
+
+	if !opts.RawStrings {
+		inferCSVColumnTypes(dt)
+	}
+	return dt
+}
+
+func csvFieldsPerRecord(opts CSVReadOptions) int {
+	if opts.AllowRaggedRows {
+		return -1
+	}
+	return 0
+}
+
+// csvRaggedRowsToDataTable builds a table after normalizing each data row to
+// the current widest row. Extra columns are added as they are encountered so
+// the header row remains the source of names for the columns it defines.
+func csvRaggedRowsToDataTable(rows [][]string, opts CSVReadOptions) *DataTable {
+	dt := NewDataTable()
+	dt.columns = []*DataList{}
+	dt.rowNames = core.NewBiIndex(0)
+
+	if len(rows) == 0 {
+		return dt
+	}
+
+	startRow := 0
+	if opts.FirstRowToColNames {
+		for i, colName := range rows[0] {
+			if opts.FirstColToRowNames && i == 0 {
+				continue
+			}
+			dt.columns = append(dt.columns, &DataList{name: safeColName(dt, colName)})
+		}
+		startRow = 1
+	} else {
+		for i := range rows[0] {
+			if opts.FirstColToRowNames && i == 0 {
+				continue
+			}
+			dt.columns = append(dt.columns, &DataList{})
+		}
+	}
+
+	dataRows := rows[startRow:]
+	for rowIndex, row := range dataRows {
+		cells := row
+		if opts.FirstColToRowNames {
+			rowName := ""
+			if len(row) > 0 {
+				rowName = row[0]
+				cells = row[1:]
+			} else {
+				cells = nil
+			}
+			_, _ = dt.rowNames.Set(rowIndex, safeRowName(dt, rowName))
+		}
+
+		if len(cells) > len(dt.columns) {
+			for len(dt.columns) < len(cells) {
+				// Number extra columns by their ordinal in the file, so the
+				// name does not shift when FirstColToRowNames consumes the
+				// first field.
+				columnNumber := len(dt.columns) + 1
+				if opts.FirstColToRowNames {
+					columnNumber++
+				}
+				name := safeColName(dt, fmt.Sprintf("extra_%d", columnNumber))
+				data := make([]any, rowIndex)
+				for i := range data {
+					data[i] = ""
+				}
+				dt.columns = append(dt.columns, &DataList{
+					name: name,
+					data: data,
+				})
+			}
+		}
+
+		for colIndex, column := range dt.columns {
+			cell := ""
+			if colIndex < len(cells) {
+				cell = cells[colIndex]
+			}
 			column.data = append(column.data, cell)
 		}
 	}
@@ -273,6 +368,8 @@ func ReadCSV_StringWithOptions(csvString string, opts CSVReadOptions) (*DataTabl
 	csvString = strings.TrimPrefix(csvString, string([]byte{0xEF, 0xBB, 0xBF}))
 
 	reader := csv.NewReader(strings.NewReader(csvString))
+	reader.FieldsPerRecord = csvFieldsPerRecord(opts)
+	reader.TrimLeadingSpace = opts.TrimLeadingSpace
 	rows, err := reader.ReadAll()
 	if err != nil {
 		return nil, err
