@@ -17,6 +17,10 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 - Added CSV-only `load` options `ragged true|false` and `trimspace true|false`, with the same strict defaults and explicit rejection on non-CSV formats. ([issue #198](https://github.com/HazelnutParadise/insyra/issues/198))
 
+### `quant`
+
+- Added `BlockBootstrap` and `PercentileBands` for probabilistic forecasting. `BlockBootstrap` resamples a return series in blocks — moving block by default, stationary bootstrap with geometric block lengths via `BootstrapConfig.Stationary` — into `Paths` simulated return series and their equity paths compounded from 1.0, bit-identical for the same `Seed`. `PercentileBands` takes the requested percentiles at every time step across the paths using the same R type-7 quantile as `DataList.Percentile`. Unreadable, NaN, or Inf input values are refused with the row named rather than treated as zero. ([issue #199](https://github.com/HazelnutParadise/insyra/issues/199))
+
 ## v0.3.1
 
 ### Core

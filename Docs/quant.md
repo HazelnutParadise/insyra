@@ -19,10 +19,11 @@ The `quant` package provides quantitative-finance tools for evaluating trading s
 - **Performance metrics**: `SharpeRatio`, `MaxDrawdown`, `AnnualizedReturn` — headline risk/return numbers from a return series or equity curve
 - **Backtest-overfitting diagnostics**: `ProbabilisticSharpeRatio`, `ExpectedMaxSharpe`, `DeflatedSharpeRatio`, `PBO` — quantify how much of a backtest's edge is real versus selection bias from multiple testing (Bailey & López de Prado)
 - **Walk-forward validation**: `WalkForward` — slide train/test windows, pick parameters in-sample, evaluate out-of-sample, and stitch the out-of-sample track record together (Pardo)
+- **Probabilistic forecasting**: `BlockBootstrap`, `PercentileBands` — resample a return series in blocks (moving block or stationary bootstrap) into thousands of simulated equity paths and take percentile bands for a fan chart, reproducible from a seed
 
 Unlike the [`finance`](./finance.md) package (which uses high-precision `decimal.Decimal` for TVM, NPV/IRR, and bond pricing), `quant` works with ordinary floating-point numbers — the industry convention for return/equity analytics, where statistical noise dwarfs floating-point error.
 
-**Input convention.** Functions that take your *raw data series* accept `insyra.IDataList` (a return or equity column) or `insyra.IDataTable` (a strategy×period matrix), the same as the [`stats`](./stats.md) package. Values that are *not* raw data — scalar Sharpe/variance inputs, and the returns/equity that walk-forward *computes* — stay as `float64`. Every exported function follows an **error-first** convention: invalid input returns an `error` rather than logging or panicking. Always handle `err` at the call site.
+**Input convention.** Functions that take your *raw data series* accept `insyra.IDataList` (a return or equity column) or `insyra.IDataTable` (a strategy×period matrix), the same as the [`stats`](./stats.md) package. Values that are *not* raw data — scalar Sharpe/variance inputs, and the returns/equity that walk-forward and the bootstrap *compute* — stay as `float64`. Every exported function follows an **error-first** convention: invalid input returns an `error` rather than logging or panicking. Always handle `err` at the call site.
 
 > **Annualized vs per-period Sharpe.** `SharpeRatio` returns an *annualized* Sharpe (it multiplies by `√periodsPerYear`). The overfitting diagnostics (`ProbabilisticSharpeRatio`, `DeflatedSharpeRatio`, and the Sharpe ratios you feed to them) use the *per-period, non-annualized* Sharpe — i.e. `mean/stddev` with no annualization. Compute that with `SharpeRatio(returns, 0, 1)`. Mixing the two conventions silently corrupts DSR/PBO results.
 
@@ -224,6 +225,61 @@ Convenience aggregations over the stitched out-of-sample track record — they a
 
 ---
 
+## Probabilistic Forecasting
+
+Backtests answer "how would this rule have done"; the question that follows is "if I keep this configuration, where might I be in a year?". A single predicted return is unreliable and misleading. A **distribution** — median with a confidence band, probability of loss, drawdown spread — is defensible and states its uncertainty. `BlockBootstrap` builds that distribution by resampling the observed returns in blocks, which keeps their autocorrelation, volatility clustering, and fat tails without assuming normality, and `PercentileBands` turns the simulated paths into the bands of a fan chart.
+
+### Types
+
+```go
+type BootstrapConfig struct {
+    Horizon    int    // future periods per path (e.g. 252 trading days); > 0
+    BlockSize  int    // block length in periods, 1 <= BlockSize <= len(returns);
+                      // the MEAN block length when Stationary is true
+    Paths      int    // number of simulated paths; > 0
+    Seed       uint64 // always applies; same inputs + seed → bit-identical output
+    Stationary bool   // false: moving block bootstrap; true: stationary bootstrap
+}
+
+type BootstrapResult struct {
+    Returns [][]float64 // Paths × Horizon resampled per-period returns
+    Equity  [][]float64 // Paths × (Horizon+1) compounded from 1.0 (Equity[p][0] == 1)
+}
+```
+
+### BlockBootstrap
+
+```go
+func BlockBootstrap(returns insyra.IDataList, cfg BootstrapConfig) (*BootstrapResult, error)
+```
+
+Resamples `returns` (per-period simple returns, e.g. `0.012` for +1.2%) into `cfg.Paths` future series of `cfg.Horizon` periods and compounds each into an equity path starting at 1.0 — the same convention as `WalkForwardResult.Equity`. Use `Equity` for fan charts and `Returns` for per-path statistics (a bootstrapped Sharpe distribution, for example).
+
+- **`Stationary: false`** (default) is the *moving block bootstrap* (Künsch 1989): every block has exactly `BlockSize` consecutive returns, its start drawn uniformly from `[0, n-BlockSize]`. Blocks are concatenated until `Horizon` values are collected, then truncated.
+- **`Stationary: true`** is the *stationary bootstrap* (Politis & Romano 1994): block lengths are geometrically distributed with mean `BlockSize`, the start is drawn from the whole series, and indexing wraps past the end back to the beginning. This removes the edge effects of fixed blocks and makes the resampled series stationary.
+
+**Seed.** `Seed` always applies and the zero value is simply seed 0 — there is no "unset means random" mode, because auditability is the point of the seed. Pass a clock-derived value yourself when you want a fresh draw. The stream is a PCG generator with the uniform reductions done inside `quant`, so a result does not depend on the Go release.
+
+**Input.** Every element of `returns` must be a finite number. A value that cannot be read, or is NaN or Inf, is an error naming its row — it is never replaced by zero. The equity paths assume `returns >= -1` (a simple return cannot lose more than 100%).
+
+**Choosing the parameters.** A block length around `n^(1/3)` for `n` observations is a common starting point; 20 trading days is a sensible default for daily data. Longer blocks keep more serial structure, shorter blocks give more distinct paths. A few hundred observations and a few thousand paths give stable 5%/95% bands. These are statistical recommendations, not enforced limits.
+
+**Returns:** `(result, err)` — `err` is non-nil for an empty or unreadable series, `Horizon <= 0`, `Paths <= 0`, `BlockSize < 1`, or `BlockSize > len(returns)`. Memory is `Paths × Horizon × 16` bytes (both matrices), about 20 MB at 5000 × 252.
+
+### PercentileBands
+
+```go
+func PercentileBands(paths [][]float64, percentiles []float64) ([][]float64, error)
+```
+
+For every time step, the requested percentiles across all paths — the vertical slices of a fan chart. `paths` is any matrix of equal-length rows (`BootstrapResult.Equity`, `BootstrapResult.Returns`, or your own). `percentiles` are on the `0..100` scale, and `bands[i]` is the series for `percentiles[i]` in the order you gave, each as long as one path.
+
+The quantile is R's **type-7** (linear interpolation between order statistics), the same definition as `DataList.Percentile`, `Quartile`, and `Describe`, so the bands agree with the rest of the library.
+
+**Returns:** `(bands, err)` — `err` is non-nil if `paths` is empty or ragged, or `percentiles` is empty or contains a value outside `[0, 100]`.
+
+---
+
 ## Usage Examples
 
 ### Headline performance metrics
@@ -308,6 +364,38 @@ fmt.Printf("OOS Sharpe=%.3f  OOS MaxDD=%.2f%%  folds=%d\n",
     oosSharpe, oosMDD*100, len(res.Folds))
 ```
 
+### Probabilistic forecast (fan chart)
+
+```go
+// returns: an IDataList of historical daily returns, typically from a backtest.
+res, err := quant.BlockBootstrap(returns, quant.BootstrapConfig{
+    Horizon:   252,  // one trading year
+    BlockSize: 20,   // keep ~a month of serial structure per block
+    Paths:     5000,
+    Seed:      42,   // reproducible, auditable
+})
+if err != nil {
+    log.Fatal(err)
+}
+
+bands, err := quant.PercentileBands(res.Equity, []float64{5, 25, 50, 75, 95})
+if err != nil {
+    log.Fatal(err)
+}
+last := len(bands[0]) - 1
+fmt.Printf("after 1y: p5=%.2f  median=%.2f  p95=%.2f (×start equity)\n",
+    bands[0][last], bands[2][last], bands[4][last])
+
+// Anything else is a few lines over the paths:
+losses := 0
+for _, eq := range res.Equity {
+    if eq[len(eq)-1] < 1 {
+        losses++
+    }
+}
+fmt.Printf("P(loss) = %.1f%%\n", 100*float64(losses)/float64(len(res.Equity)))
+```
+
 ---
 
 ## Error Handling
@@ -322,6 +410,8 @@ All exported functions return `(value, error)` and surface validation problems t
 - **`DeflatedSharpeRatio`** — empty `trialSharpes`, or any downstream error
 - **`PBO`** — empty matrix, columns of unequal length, fewer than 2 strategies, odd/non-positive `nSplits`, `nSplits > T`
 - **`WalkForward`** — non-positive `n`/`TrainSize`/`TestSize`, `TrainSize >= n`, nil callback
+- **`BlockBootstrap`** — empty or unreadable `returns` (non-numeric, NaN, Inf — the error names the row), non-positive `Horizon`/`Paths`, `BlockSize < 1`, `BlockSize > len(returns)`
+- **`PercentileBands`** — empty or ragged `paths`, empty `percentiles`, a percentile outside `[0, 100]`
 
 The package never logs warnings on its own and never panics from valid input — it follows the same error-first contract as [`stats`](./stats.md) and [`finance`](./finance.md).
 
@@ -330,5 +420,6 @@ The package never logs warnings on its own and never panics from valid input —
 ## Related Packages
 
 - [`stats`](./stats.md): `NormCDF` / `NormPPF` (used internally by the overfitting diagnostics), plus skewness/kurtosis, hypothesis tests, and regression
+- [`DataList.Percentile`](./DataList.md): the same R type-7 quantile `PercentileBands` uses, for one-off percentiles of a single series
 - [`finance`](./finance.md): high-precision TVM, NPV/IRR, bonds — use it for exact cashflow/loan math rather than return-series analytics
 - [`insyra`](../README.md): `DataList` / `DataTable` core types — the input types for the performance and overfitting functions. Build a `DataList` from raw numbers with `insyra.NewDataList(vals...)`.

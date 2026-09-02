@@ -714,6 +714,24 @@ enriched, err := g.ReverseTableByColName(dt, "lat", "lng")
 
 On quota exhaustion the batch stops, returns already-resolved rows (rest marked `pending`), and returns a `*datafetch.RateLimitError` (unwraps to `ErrGeocodeRateLimited`; carries `ResetAt`). See `Docs/datafetch.md` for the full API.
 
+### 8) Probabilistic forecast from a return series (quant)
+
+`quant.BlockBootstrap` resamples historical returns in blocks (keeps autocorrelation and fat tails, no normality assumption) into simulated paths; `quant.PercentileBands` turns them into fan-chart bands. Same inputs + `Seed` → bit-identical output; `Seed` always applies (zero value is seed 0). Config is validated, not defaulted. Input values must be finite numbers — an unreadable cell is an error naming the row, never a zero.
+
+```go
+import "github.com/HazelnutParadise/insyra/quant"
+
+// returns: insyra.IDataList of per-period simple returns (0.012 = +1.2%)
+res, err := quant.BlockBootstrap(returns, quant.BootstrapConfig{
+    Horizon: 252, BlockSize: 20, Paths: 5000, Seed: 42, // Stationary: true for geometric block lengths
+})
+if err != nil { /* handle */ }
+// res.Returns: Paths×Horizon resampled returns; res.Equity: Paths×(Horizon+1) compounded from 1.0
+bands, err := quant.PercentileBands(res.Equity, []float64{5, 25, 50, 75, 95}) // bands[i] ↔ percentiles[i], R type-7
+```
+
+See `Docs/quant.md` for parameter guidance (block length ≈ n^(1/3), a few thousand paths) and the other quant tools (Sharpe, max drawdown, PBO, Deflated Sharpe, walk-forward).
+
 ## Engine package (advanced primitives)
 The repo includes an `engine` package that re-exports well-tested internal primitives (see [`engine/`](../../engine) and `engine/README.md).
 
