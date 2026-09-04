@@ -19,6 +19,7 @@ The `quant` package provides quantitative-finance tools for evaluating trading s
 - **Performance metrics**: `SharpeRatio`, `MaxDrawdown`, `AnnualizedReturn` — headline risk/return numbers from a return series or equity curve
 - **Risk metrics**: `ValueAtRisk`, `ConditionalValueAtRisk`, `SortinoRatio`, `CalmarRatio`, `InformationRatio`, `DrawdownSeries` — tail risk, downside performance, benchmark-relative performance, and per-period drawdowns
 - **Market exposure**: `Beta`, `CAPM` — measure an asset's exposure and per-period alpha against a benchmark return series
+- **Factor models**: `FactorModel` — attribute an asset's excess returns to named market, size, value, momentum, or other factor columns
 - **Backtest-overfitting diagnostics**: `ProbabilisticSharpeRatio`, `ExpectedMaxSharpe`, `DeflatedSharpeRatio`, `PBO` — quantify how much of a backtest's edge is real versus selection bias from multiple testing (Bailey & López de Prado)
 - **Walk-forward validation**: `WalkForward` — slide train/test windows, pick parameters in-sample, evaluate out-of-sample, and stitch the out-of-sample track record together (Pardo)
 - **Probabilistic forecasting**: `BlockBootstrap`, `PercentileBands` — resample a return series in blocks (moving block or stationary bootstrap) into thousands of simulated equity paths and take percentile bands for a fan chart, reproducible from a seed
@@ -189,6 +190,44 @@ Regresses `asset - riskFreeRate` on `market - riskFreeRate`. `riskFreeRate` is a
 The standard errors use residual degrees of freedom `N-2`. A constant asset excess-return series is valid: `Beta` is `0`, `Alpha` is the constant, `BetaStdErr` and `AlphaStdErr` are `0`, and `RSquared` is `NaN` because total asset variance is zero.
 
 Both functions return an error for nil input, unequal lengths, fewer than 3 observations, a zero-variance benchmark, or a non-numeric, `NaN`, or `Inf` cell. Unreadable cells are named with their series (`asset` or `market`) and one-based row number.
+
+## Factor Models
+
+`FactorModel` fits a multiple-factor ordinary least-squares model to aligned per-period returns. It subtracts `riskFreeRate` from the asset return only, then regresses the result on every column of `factors`. Factor columns are taken as given: Fama–French-style `Mkt-RF`, `SMB`, and `HML` columns are already excess or long–short factors. If the market column is a raw market return, subtract the same per-period risk-free rate before passing it to `FactorModel`.
+
+### FactorModelResult
+
+```go
+type FactorModelResult struct {
+    Alpha            float64
+    AlphaStdErr      float64
+    AlphaTValue      float64
+    AlphaPValue      float64
+    FactorNames      []string
+    Exposures        []float64
+    StdErrs          []float64
+    TValues          []float64
+    PValues          []float64
+    RSquared         float64
+    AdjustedRSquared float64
+    N                int
+    Residuals        []float64
+}
+
+func (r *FactorModelResult) Exposure(name string) (float64, bool)
+```
+
+`FactorNames` follows the factor table's column order. `Exposures`, `StdErrs`, `TValues`, and `PValues` use the same indexes. `Exposure` returns the named factor's exposure and `true`, or `0` and `false` when the name is not present.
+
+### FactorModel
+
+```go
+func FactorModel(asset insyra.IDataList, factors insyra.IDataTable, riskFreeRate float64) (*FactorModelResult, error)
+```
+
+`FactorModel` uses the same OLS coefficients, inference values, R², adjusted R², and residuals as `stats.LinearRegression`. With one factor, pass an already excess market column and the raw market return plus `riskFreeRate` to `CAPM`; the factor-model exposure, alpha, and standard errors agree with CAPM.
+
+The model requires at least `k + 2` observations for `k` factors. It refuses nil inputs, an empty factor table, unequal asset/factor lengths, unreadable cells, and `NaN` or `Inf` values. Errors identify the factor column and one-based row where applicable. A collinear factor set returns the regression error instead of a near-singular numeric result. Standard errors are ordinary OLS standard errors; heteroskedasticity and autocorrelation adjustments such as Newey–West are outside this API.
 
 ---
 
@@ -458,6 +497,23 @@ fmt.Printf("market beta = %.3f\n", beta)
 
 Choose `Close` or `Adj Close` deliberately: dividends, splits, and other corporate actions can change the return series. The date window and return frequency also change beta, so compare assets with the same dates and sampling interval. See the `CAPM` section above for alpha and standard errors.
 
+### Three-factor attribution
+
+The factor columns below are already aligned with the asset returns. `Mkt-RF` is the market excess return, so it is passed unchanged; `riskFreeRate` is subtracted from the asset only:
+
+```go
+factors := insyra.NewDataTable(
+    aligned.GetColByName("Mkt-RF"), aligned.GetColByName("SMB"), aligned.GetColByName("HML"),
+).SetColNames([]string{"MKT", "SMB", "HML"})
+
+model, err := quant.FactorModel(assetReturns, factors, dailyRiskFreeRate)
+if err != nil {
+    log.Fatal(err)
+}
+smbExposure, _ := model.Exposure("SMB")
+fmt.Printf("alpha = %.4f, SMB exposure = %.3f\n", model.Alpha, smbExposure)
+```
+
 ### Deflated Sharpe Ratio after a parameter search
 
 ```go
@@ -564,6 +620,7 @@ All exported functions return `(value, error)` and surface validation problems t
 - **`PercentileBands`** — empty or ragged `paths`, empty `percentiles`, a percentile outside `[0, 100]`
 - **`Beta`** — nil input, unequal lengths, fewer than 3 returns, zero benchmark variance, or an unreadable/non-finite cell named with its series and row
 - **`CAPM`** — the same input and benchmark validation as `Beta`; `riskFreeRate` is per period
+- **`FactorModel`** — nil input, no factor columns, unequal asset/factor lengths, fewer than `k+2` observations, unreadable/non-finite cells named with the factor and row, or collinear factors
 - **`ValueAtRisk`** — fewer than 2 returns, confidence outside `(0, 1)`, unknown method, or an unreadable/non-finite return named with its row
 - **`ConditionalValueAtRisk`** — the same return, confidence, and method validation as `ValueAtRisk`
 - **`SortinoRatio`** — fewer than 2 returns, non-positive periods per year, zero downside deviation, or an unreadable/non-finite return

@@ -4,7 +4,8 @@
 // information ratio), backtest-overfitting diagnostics (CSCV PBO, Deflated
 // Sharpe Ratio), time-series walk-forward out-of-sample validation, and
 // probabilistic forecasting by block bootstrap (moving block or stationary)
-// with percentile bands, plus market beta and CAPM exposure analysis.
+// with percentile bands, plus market beta, CAPM, and multi-factor exposure
+// analysis.
 //
 // Unlike the finance package (which uses high-precision decimals for TVM,
 // NPV/IRR, and bond pricing), quant operates on plain float64 series — the

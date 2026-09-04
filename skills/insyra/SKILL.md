@@ -788,7 +788,7 @@ See `Docs/quant.md` for parameter guidance (block length ≈ n^(1/3), a few thou
 
 ### 8b) Market beta / CAPM from aligned returns (quant)
 
-`quant.Beta(assetReturns, marketReturns)` returns the market exposure, while `quant.CAPM(assetReturns, marketReturns, riskFreeRate)` also returns per-period alpha, R², standard errors, and observation count. These functions require aligned per-period returns: merge the two price tables with an inner `Merge` on the date, then call `PctChangeCol(..., 1).ClearNils()` on both price columns. They refuse unreadable or non-finite cells rather than treating them as zero. See `Docs/quant.md` for the complete CAPM API and the `Close` versus `Adj Close`, window-length, and frequency choices that change the result.
+`quant.Beta(assetReturns, marketReturns)` returns the market exposure, while `quant.CAPM(assetReturns, marketReturns, riskFreeRate)` also returns per-period alpha, R², standard errors, and observation count. These functions require aligned per-period returns: merge the two price tables with an inner `Merge` on the date, then call `PctChangeCol(..., 1).ClearNils()` on both price columns. They refuse unreadable or non-finite cells rather than treating them as zero. `quant.FactorModel(assetReturns, factors, riskFreeRate)` extends this to named factor columns, subtracting the risk-free rate from the asset only; pass a raw market column after subtracting the same rate yourself. See `Docs/quant.md` for the complete CAPM and factor-model APIs and the `Close` versus `Adj Close`, window-length, and frequency choices that change the result.
 
 ### 8c) Risk metrics (quant)
 
