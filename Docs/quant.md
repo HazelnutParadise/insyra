@@ -17,6 +17,7 @@ go get github.com/HazelnutParadise/insyra/quant
 The `quant` package provides quantitative-finance tools for evaluating trading strategies and portfolios:
 
 - **Performance metrics**: `SharpeRatio`, `MaxDrawdown`, `AnnualizedReturn` — headline risk/return numbers from a return series or equity curve
+- **Market exposure**: `Beta`, `CAPM` — measure an asset's exposure and per-period alpha against a benchmark return series
 - **Backtest-overfitting diagnostics**: `ProbabilisticSharpeRatio`, `ExpectedMaxSharpe`, `DeflatedSharpeRatio`, `PBO` — quantify how much of a backtest's edge is real versus selection bias from multiple testing (Bailey & López de Prado)
 - **Walk-forward validation**: `WalkForward` — slide train/test windows, pick parameters in-sample, evaluate out-of-sample, and stitch the out-of-sample track record together (Pardo)
 - **Probabilistic forecasting**: `BlockBootstrap`, `PercentileBands` — resample a return series in blocks (moving block or stationary bootstrap) into thousands of simulated equity paths and take percentile bands for a fan chart, reproducible from a seed
@@ -80,6 +81,43 @@ Annualized (CAGR-style) return implied by an equity curve spanning `days` **cale
 Only the first and last points of `equity` matter; `days` is the calendar-day span the curve covers.
 
 **Returns:** `(annualized, err)` — `err` is non-nil for fewer than 2 points, non-positive `days`, or a non-positive first/last value.
+
+## Market Exposure (CAPM)
+
+`Beta` and `CAPM` take two already aligned `insyra.IDataList` values of per-period returns. They do not align dates, convert prices to returns, or drop cells. Use `riskFreeRate = 0` for a raw-return regression.
+
+### CAPMResult
+
+```go
+type CAPMResult struct {
+    Beta        float64 // OLS slope, market exposure
+    Alpha       float64 // Jensen's alpha per period, OLS intercept on excess returns
+    RSquared    float64 // coefficient of determination; NaN for a constant asset
+    BetaStdErr  float64 // standard error of Beta
+    AlphaStdErr float64 // standard error of Alpha
+    N           int     // number of aligned observations
+}
+```
+
+### Beta
+
+```go
+func Beta(asset, market insyra.IDataList) (float64, error)
+```
+
+Returns `Cov(asset, market) / Var(market)`, using the same sample (`n-1`) denominator for covariance and variance. This is the same as the one-predictor OLS slope. `asset` and `market` must be aligned per-period returns.
+
+### CAPM
+
+```go
+func CAPM(asset, market insyra.IDataList, riskFreeRate float64) (*CAPMResult, error)
+```
+
+Regresses `asset - riskFreeRate` on `market - riskFreeRate`. `riskFreeRate` is a **per-period** rate, matching `SharpeRatio`; for daily data, convert an annual rate to a daily rate before calling. `Alpha` is also per period, so multiply it by `periodsPerYear` only when a separate annualized headline is required.
+
+The standard errors use residual degrees of freedom `N-2`. A constant asset excess-return series is valid: `Beta` is `0`, `Alpha` is the constant, `BetaStdErr` and `AlphaStdErr` are `0`, and `RSquared` is `NaN` because total asset variance is zero.
+
+Both functions return an error for nil input, unequal lengths, fewer than 3 observations, a zero-variance benchmark, or a non-numeric, `NaN`, or `Inf` cell. Unreadable cells are named with their series (`asset` or `market`) and one-based row number.
 
 ---
 
@@ -308,6 +346,31 @@ func main() {
 
 Already have a column in a `DataTable`? Pass it straight in: `quant.SharpeRatio(dt.GetCol("returns"), 0, 252)`.
 
+### Beta of a stock against its index
+
+`Beta` expects returns, so align the two price tables on their date first. An inner merge avoids inventing returns for dates that appear in only one table:
+
+```go
+// Each table has a Date column and a price column such as Close or Adj Close.
+// When both tables use the same price column name, the merged table keeps the
+// left table's column as "Close" and renames the right one "Close_other".
+aligned, err := assetPrices.Merge(indexPrices,
+    insyra.MergeDirectionHorizontal, insyra.MergeModeInner, "Date")
+if err != nil {
+    log.Fatal(err)
+}
+
+assetReturns := aligned.PctChangeCol("Close", 1).ClearNils()       // asset
+marketReturns := aligned.PctChangeCol("Close_other", 1).ClearNils() // index
+beta, err := quant.Beta(assetReturns, marketReturns)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("market beta = %.3f\n", beta)
+```
+
+Choose `Close` or `Adj Close` deliberately: dividends, splits, and other corporate actions can change the return series. The date window and return frequency also change beta, so compare assets with the same dates and sampling interval. See the `CAPM` section above for alpha and standard errors.
+
 ### Deflated Sharpe Ratio after a parameter search
 
 ```go
@@ -412,6 +475,8 @@ All exported functions return `(value, error)` and surface validation problems t
 - **`WalkForward`** — non-positive `n`/`TrainSize`/`TestSize`, `TrainSize >= n`, nil callback
 - **`BlockBootstrap`** — empty or unreadable `returns` (non-numeric, NaN, Inf — the error names the row), non-positive `Horizon`/`Paths`, `BlockSize < 1`, `BlockSize > len(returns)`
 - **`PercentileBands`** — empty or ragged `paths`, empty `percentiles`, a percentile outside `[0, 100]`
+- **`Beta`** — nil input, unequal lengths, fewer than 3 returns, zero benchmark variance, or an unreadable/non-finite cell named with its series and row
+- **`CAPM`** — the same input and benchmark validation as `Beta`; `riskFreeRate` is per period
 
 The package never logs warnings on its own and never panics from valid input — it follows the same error-first contract as [`stats`](./stats.md) and [`finance`](./finance.md).
 
@@ -419,7 +484,7 @@ The package never logs warnings on its own and never panics from valid input —
 
 ## Related Packages
 
-- [`stats`](./stats.md): `NormCDF` / `NormPPF` (used internally by the overfitting diagnostics), plus skewness/kurtosis, hypothesis tests, and regression
+- [`stats`](./stats.md): `NormCDF` / `NormPPF` (used internally by the overfitting diagnostics), plus skewness/kurtosis, hypothesis tests, and `LinearRegression` when you need p-values or confidence intervals for market exposure
 - [`DataList.Percentile`](./DataList.md): the same R type-7 quantile `PercentileBands` uses, for one-off percentiles of a single series
 - [`finance`](./finance.md): high-precision TVM, NPV/IRR, bonds — use it for exact cashflow/loan math rather than return-series analytics
 - [`insyra`](../README.md): `DataList` / `DataTable` core types — the input types for the performance and overfitting functions. Build a `DataList` from raw numbers with `insyra.NewDataList(vals...)`.

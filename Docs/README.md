@@ -91,7 +91,7 @@ dt.Show()
 | Document              | Description                                                                                       |
 | --------------------- | ------------------------------------------------------------------------------------------------- |
 | [finance](finance.md) | High-precision TVM, NPV/IRR/MIRR/XNPV/XIRR, depreciation, bonds, T-bills, amortization schedules  |
-| [quant](quant.md)     | Strategy/backtest evaluation: Sharpe, max drawdown, annualized return, PBO (CSCV), Deflated Sharpe Ratio, walk-forward, block-bootstrap path simulation |
+| [quant](quant.md)     | Strategy/backtest evaluation: Sharpe, max drawdown, annualized return, market beta/CAPM, PBO (CSCV), Deflated Sharpe Ratio, walk-forward, block-bootstrap path simulation |
 
 #### Integration & Utilities
 
@@ -142,6 +142,7 @@ go get github.com/HazelnutParadise/insyra/plot
 | Analyze customer behavior                 | [mkt](mkt.md)                   |
 | Run high-precision financial math         | [finance](finance.md)           |
 | Evaluate a trading strategy / backtest    | [quant](quant.md)               |
+| Measure market beta / CAPM exposure       | [quant](quant.md)               |
 | Simulate future equity paths (fan chart)  | [quant](quant.md)               |
 | Use Python libraries from Go              | [py](py.md)                     |
 | Run functions in parallel                 | [parallel](parallel.md)         |

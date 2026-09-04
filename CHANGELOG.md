@@ -20,6 +20,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 ### `quant`
 
 - Added `BlockBootstrap` and `PercentileBands` for probabilistic forecasting. `BlockBootstrap` resamples a return series in blocks — moving block by default, stationary bootstrap with geometric block lengths via `BootstrapConfig.Stationary` — into `Paths` simulated return series and their equity paths compounded from 1.0, bit-identical for the same `Seed`. `PercentileBands` takes the requested percentiles at every time step across the paths using the same R type-7 quantile as `DataList.Percentile`. Unreadable, NaN, or Inf input values are refused with the row named rather than treated as zero. ([issue #199](https://github.com/HazelnutParadise/insyra/issues/199))
+- Added `Beta` and `CAPM` for market exposure from aligned per-period return series. `CAPM` reports beta, per-period alpha, R², standard errors, and observation count; nil, misaligned, too-short, zero-variance, unreadable, and non-finite inputs are refused.
 
 ## v0.3.1
 

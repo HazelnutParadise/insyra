@@ -732,6 +732,10 @@ bands, err := quant.PercentileBands(res.Equity, []float64{5, 25, 50, 75, 95}) //
 
 See `Docs/quant.md` for parameter guidance (block length ≈ n^(1/3), a few thousand paths) and the other quant tools (Sharpe, max drawdown, PBO, Deflated Sharpe, walk-forward).
 
+### 8b) Market beta / CAPM from aligned returns (quant)
+
+`quant.Beta(assetReturns, marketReturns)` returns the market exposure, while `quant.CAPM(assetReturns, marketReturns, riskFreeRate)` also returns per-period alpha, R², standard errors, and observation count. These functions require aligned per-period returns: merge the two price tables with an inner `Merge` on the date, then call `PctChangeCol(..., 1).ClearNils()` on both price columns. They refuse unreadable or non-finite cells rather than treating them as zero. See `Docs/quant.md` for the complete CAPM API and the `Close` versus `Adj Close`, window-length, and frequency choices that change the result.
+
 ## Engine package (advanced primitives)
 The repo includes an `engine` package that re-exports well-tested internal primitives (see [`engine/`](../../engine) and `engine/README.md).
 
