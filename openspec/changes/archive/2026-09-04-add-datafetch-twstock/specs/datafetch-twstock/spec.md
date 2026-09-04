@@ -59,7 +59,7 @@
 
 ### Requirement: Live access is opt-in
 
-套件測試 SHALL 只在 `INSYRA_RUN_LIVE_TWSTOCK=1` 時對交易所發出真實請求；未設定時 live 測試 SHALL `Skip`。fixture 測試 SHALL 使用 `httptest.Server` 或可注入的 base URL，不觸網。
+套件測試 SHALL 只在 `INSYRA_RUN_LIVE_TWSTOCK=1` 時對交易所發出真實請求；未設定時 live 測試 SHALL `Skip`。fixture 測試 SHALL 透過可注入的 `http.RoundTripper`（回放 `datafetch/testdata/twstock/` 的錄製回應）進行，不觸網也不開 socket。
 
 #### Scenario: Live test skipped by default
 
