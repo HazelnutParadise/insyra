@@ -56,7 +56,7 @@ dt.Show()
 
 | Document                  | Description                                                                                       |
 | ------------------------- | ------------------------------------------------------------------------------------------------- |
-| [datafetch](datafetch.md) | Google Maps store review crawler and Yahoo Finance wrapper (network required for remote fetchers) |
+| [datafetch](datafetch.md) | Google Maps reviews, Yahoo Finance, Taiwan reverse geocoding, and TWSE/TPEx stock data (network required for remote fetchers) |
 
 #### Statistical Analysis
 

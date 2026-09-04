@@ -747,7 +747,28 @@ enriched, err := g.ReverseTableByColName(dt, "lat", "lng")
 
 On quota exhaustion the batch stops, returns already-resolved rows (rest marked `pending`), and returns a `*datafetch.RateLimitError` (unwraps to `ErrGeocodeRateLimited`; carries `ResetAt`). See `Docs/datafetch.md` for the full API.
 
-### 8) Probabilistic forecast from a return series (quant)
+### 8) Fetch Taiwan stock exchange data (datafetch)
+
+`datafetch.TWStock` returns typed `DataTable` values from the unauthenticated TWSE and TPEx APIs. Historical prices are paged by month; use `TWMarketTWSE`, `TWMarketTPEx`, or `TWMarketAuto`.
+
+```go
+import (
+    "time"
+    "github.com/HazelnutParadise/insyra/datafetch"
+)
+
+stocks, _ := datafetch.TWStock(datafetch.TWStockConfig{
+    Interval: 300 * time.Millisecond,
+})
+prices, err := stocks.DailyPrices(
+    "2330", time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC),
+    time.Date(2026, 9, 3, 0, 0, 0, 0, time.UTC), datafetch.TWMarketTWSE,
+)
+```
+
+The other methods are `InstitutionalTrades`, `MarginBalance`, and `AllDailyQuotes`; all return `*insyra.DataTable` with `time.Time` dates and numeric columns. When combining price data with return series for `quant.Beta`, call `Merge` first so the two series are aligned by date.
+
+### 9) Probabilistic forecast from a return series (quant)
 
 `quant.BlockBootstrap` resamples historical returns in blocks (keeps autocorrelation and fat tails, no normality assumption) into simulated paths; `quant.PercentileBands` turns them into fan-chart bands. Same inputs + `Seed` → bit-identical output; `Seed` always applies (zero value is seed 0). Config is validated, not defaulted. Input values must be finite numbers — an unreadable cell is an error naming the row, never a zero.
 

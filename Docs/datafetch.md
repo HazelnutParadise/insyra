@@ -554,3 +554,81 @@ The free tier allows **15 requests/hour per IP**, reported via `X-Ratelimit-*` r
 
 - Depends on the third-party `geocoding.zuola.com` endpoint; availability and quota are outside this library's control. Override `BaseURL` for a self-hosted or paid tier.
 - Some villages have an empty `village_eng`; this is returned as an empty string, not an error.
+
+## Taiwan Stock Exchanges (TWStock)
+
+`datafetch.TWStock` reads unauthenticated daily data from the Taiwan Stock Exchange (TWSE) and Taipei Exchange (TPEx) into typed `*insyra.DataTable` values. It does not require an API key and makes no request until a fetch method is called.
+
+### Quick Start
+
+```go
+package main
+
+import (
+    "log"
+    "time"
+
+    "github.com/HazelnutParadise/insyra/datafetch"
+)
+
+func main() {
+    stocks, err := datafetch.TWStock(datafetch.TWStockConfig{Interval: 300 * time.Millisecond})
+    if err != nil {
+        log.Fatal(err)
+    }
+    prices, err := stocks.DailyPrices(
+        "2330", time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC),
+        time.Date(2026, 9, 3, 0, 0, 0, 0, time.UTC), datafetch.TWMarketTWSE,
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+    prices.Show()
+}
+```
+
+Use `TWMarketTWSE`, `TWMarketTPEx`, or `TWMarketAuto`. `Auto` tries TWSE first and falls back to TPEx when the exchange reports no data. The returned `Market` column records the exchange used for daily prices.
+
+### Configuration
+
+```go
+func TWStock(cfg TWStockConfig) (*twStock, error)
+```
+
+| Field | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `Timeout` | `time.Duration` | `15s` | Per-request timeout. |
+| `Interval` | `time.Duration` | `0` | Minimum spacing between requests; `0` disables throttling. |
+| `UserAgent` | `string` | `insyra-datafetch/<version>` | HTTP User-Agent header. |
+| `Retries` | `int` | `0` | Retry attempts for HTTP, timeout, network, JSON, and exchange-payload errors. |
+| `RetryBackoff` | `time.Duration` | `300ms` | Base delay before a retry, multiplied by attempt number. |
+| `Concurrency` | `int` | `6` | Normalized concurrency setting reserved for batched fetch extensions. |
+
+Negative `Interval`, `Retries`, `RetryBackoff`, or `Concurrency` values return an error. Non-2xx responses, invalid JSON, and exchange errors are never silently swallowed.
+
+### Methods and columns
+
+```go
+DailyPrices(code string, from, to time.Time, market TWMarket) (*insyra.DataTable, error)
+InstitutionalTrades(date time.Time, market TWMarket) (*insyra.DataTable, error)
+MarginBalance(date time.Time, market TWMarket) (*insyra.DataTable, error)
+AllDailyQuotes(market TWMarket) (*insyra.DataTable, error)
+```
+
+`DailyPrices` requests one month at a time, filters to the inclusive `[from, to]` range, and sorts by `Date` ascending.
+
+| Method | Columns |
+| :--- | :--- |
+| `DailyPrices` | `Date` (`time.Time`), `Code` (`string`), `Volume` (`int64`, shares), `Turnover` (`int64`, currency units), `Open`, `High`, `Low`, `Close`, `Change` (`float64`), `Transactions` (`int64`), `Market` (`string`) |
+| `InstitutionalTrades` | `Date` (`time.Time`), `Code` (`string`), `Name` (`string`), `ForeignNet`, `TrustNet`, `DealerNet`, `TotalNet` (`int64`, shares) |
+| `MarginBalance` | `Date` (`time.Time`), `Code` (`string`), `Name` (`string`), `MarginBalance`, `ShortBalance` (`int64`, source balance units) |
+| `AllDailyQuotes` | `Date` (`time.Time`), `Code` (`string`), `Name` (`string`), `Volume` (`int64`, shares), `Turnover` (`int64`, currency units), `Open`, `High`, `Low`, `Close`, `Change` (`float64`), `Transactions` (`int64`) |
+
+`--`, `X`, and blank numeric cells become `nil`. TPEx historical prices report volume in lots and turnover in thousands of currency units, so `DailyPrices` converts them to shares and currency units to match the TWSE schema. This unit conversion is based on the source field names `成交張數` and `成交仟元`; margin balances retain the source endpoint's units.
+
+### Data source, paging, and limits
+
+- TWSE sources are the [TWSE OpenAPI](https://openapi.twse.com.tw/) and its dated legacy JSON endpoints. TWSE OpenAPI data is subject to the [Taiwan Government Open Data License](https://data.gov.tw/en/license).
+- TPEx sources are its legacy JSON endpoints and [TPEx OpenAPI](https://www.tpex.org.tw/openapi/). Usage is subject to [TPEx's trading-information terms](https://eshop.tpex.org.tw/en/product/shoppingTerm).
+- A ten-year per-stock history is approximately 120 monthly requests. Set `Interval` to at least `300ms` for backfills and tune retries for transient 5xx responses.
+- The exchange rate limit is not published as a stable contract. Intraday, real-time quotes, order books, fundamentals, corporate actions, dividends, and local caching are outside this client.

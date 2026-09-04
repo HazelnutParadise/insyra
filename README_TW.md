@@ -396,7 +396,7 @@ err := parquet.ApplyCCL(ctx, "data.parquet", "NEW('total') = A + B + C")
 | **[quant](/Docs/quant.md)** | 量化金融策略／回測評估：夏普比率、VaR／CVaR、Sortino／Calmar 比率、最大回撤、年化報酬、市場 Beta／CAPM、過擬合機率（CSCV PBO）、通縮夏普比率、walk-forward 驗證、block bootstrap 路徑模擬與百分位帶。 |
 | **[py](/Docs/py.md)** | 在 Go 中執行 Python，免手動安裝環境；變數雙向傳遞。 |
 | **[pd](/Docs/pd.md)** | 基於 `gpandas` 的 Pandas 風格 `DataFrame` 工具，含 `DataTable` 轉換。 |
-| **[datafetch](/Docs/datafetch.md)** | 輕鬆取得網路資料：Google Maps 商家評論、Yahoo Finance、台灣逆地理編碼。 |
+| **[datafetch](/Docs/datafetch.md)** | 輕鬆取得網路資料：Google Maps 商家評論、Yahoo Finance、台灣逆地理編碼，以及 TWSE／TPEx 股票資料。 |
 | **[lpgen](/Docs/lpgen.md)** | 產生線性規劃（LP）模型並輸出 `.lp` 檔。 |
 | **[lp](/Docs/lp.md)** | 使用 [GLPK](https://www.gnu.org/software/glpk/) 的全自動 LP 求解器。 |
 | **[engine](/engine/README.md)** | 匯出部分 Insyra 內部實作，供其他專案重用。 |

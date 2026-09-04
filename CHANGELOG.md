@@ -24,6 +24,10 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - Added `Beta` and `CAPM` for market exposure from aligned per-period return series. `CAPM` reports beta, per-period alpha, R², standard errors, and observation count; nil, misaligned, too-short, zero-variance, unreadable, and non-finite inputs are refused.
 - Added historical and parametric `ValueAtRisk`/`ConditionalValueAtRisk`, plus `SortinoRatio`, `CalmarRatio`, `InformationRatio`, and `DrawdownSeries` for tail-risk, downside, benchmark-relative, and drawdown analysis. New series inputs refuse unreadable and non-finite cells.
 
+### datafetch
+
+- Added `TWStock` for typed TWSE/TPEx daily prices, institutional trades, margin balances, and full daily quote tables, with monthly history paging, throttle/retry controls, automatic market fallback, and opt-in live access in tests.
+
 ## v0.3.1
 
 ### Core
