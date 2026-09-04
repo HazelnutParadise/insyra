@@ -91,7 +91,7 @@ dt.Show()
 | Document              | Description                                                                                       |
 | --------------------- | ------------------------------------------------------------------------------------------------- |
 | [finance](finance.md) | High-precision TVM, NPV/IRR/MIRR/XNPV/XIRR, depreciation, bonds, T-bills, amortization schedules  |
-| [quant](quant.md)     | Strategy/backtest evaluation: Sharpe, max drawdown, annualized return, market beta/CAPM, PBO (CSCV), Deflated Sharpe Ratio, walk-forward, block-bootstrap path simulation |
+| [quant](quant.md)     | Strategy/backtest evaluation: Sharpe, VaR/CVaR, Sortino/Calmar, max drawdown, annualized return, market beta/CAPM, PBO (CSCV), Deflated Sharpe Ratio, walk-forward, block-bootstrap path simulation |
 
 #### Integration & Utilities
 

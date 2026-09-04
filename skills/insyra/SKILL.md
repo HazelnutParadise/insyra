@@ -769,6 +769,18 @@ See `Docs/quant.md` for parameter guidance (block length ≈ n^(1/3), a few thou
 
 `quant.Beta(assetReturns, marketReturns)` returns the market exposure, while `quant.CAPM(assetReturns, marketReturns, riskFreeRate)` also returns per-period alpha, R², standard errors, and observation count. These functions require aligned per-period returns: merge the two price tables with an inner `Merge` on the date, then call `PctChangeCol(..., 1).ClearNils()` on both price columns. They refuse unreadable or non-finite cells rather than treating them as zero. See `Docs/quant.md` for the complete CAPM API and the `Close` versus `Adj Close`, window-length, and frequency choices that change the result.
 
+### 8c) Risk metrics (quant)
+
+`quant.ValueAtRisk` and `quant.ConditionalValueAtRisk` report per-period tail losses (historical or parametric), while `quant.SortinoRatio`, `quant.CalmarRatio`, `quant.InformationRatio`, and `quant.DrawdownSeries` cover downside, drawdown-relative, benchmark-relative, and per-period drawdown analysis. New quant inputs must be finite numbers; unreadable cells are errors naming the row.
+
+```go
+var95, err := quant.ValueAtRisk(returns, 0.95, quant.VaRHistorical)
+if err != nil { /* handle */ }
+cvar95, err := quant.ConditionalValueAtRisk(returns, 0.95, quant.VaRHistorical)
+```
+
+VaR and CVaR use a positive-loss convention and are not annualized. See `Docs/quant.md` for the formulas, confidence direction, and ratio annualization arguments.
+
 ## Engine package (advanced primitives)
 The repo includes an `engine` package that re-exports well-tested internal primitives (see [`engine/`](../../engine) and `engine/README.md).
 

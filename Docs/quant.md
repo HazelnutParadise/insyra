@@ -17,6 +17,7 @@ go get github.com/HazelnutParadise/insyra/quant
 The `quant` package provides quantitative-finance tools for evaluating trading strategies and portfolios:
 
 - **Performance metrics**: `SharpeRatio`, `MaxDrawdown`, `AnnualizedReturn` — headline risk/return numbers from a return series or equity curve
+- **Risk metrics**: `ValueAtRisk`, `ConditionalValueAtRisk`, `SortinoRatio`, `CalmarRatio`, `InformationRatio`, `DrawdownSeries` — tail risk, downside performance, benchmark-relative performance, and per-period drawdowns
 - **Market exposure**: `Beta`, `CAPM` — measure an asset's exposure and per-period alpha against a benchmark return series
 - **Backtest-overfitting diagnostics**: `ProbabilisticSharpeRatio`, `ExpectedMaxSharpe`, `DeflatedSharpeRatio`, `PBO` — quantify how much of a backtest's edge is real versus selection bias from multiple testing (Bailey & López de Prado)
 - **Walk-forward validation**: `WalkForward` — slide train/test windows, pick parameters in-sample, evaluate out-of-sample, and stitch the out-of-sample track record together (Pardo)
@@ -81,6 +82,76 @@ Annualized (CAGR-style) return implied by an equity curve spanning `days` **cale
 Only the first and last points of `equity` matter; `days` is the calendar-day span the curve covers.
 
 **Returns:** `(annualized, err)` — `err` is non-nil for fewer than 2 points, non-positive `days`, or a non-positive first/last value.
+
+## Risk Metrics
+
+### ValueAtRisk and ConditionalValueAtRisk
+
+```go
+type VaRMethod uint8
+
+const (
+    VaRHistorical VaRMethod = iota
+    VaRParametric
+)
+
+func ValueAtRisk(returns insyra.IDataList, confidence float64, method VaRMethod) (float64, error)
+func ConditionalValueAtRisk(returns insyra.IDataList, confidence float64, method VaRMethod) (float64, error)
+```
+
+Both functions report a loss fraction using a positive-loss convention. `confidence = 0.95` names the loss tail below the 5th percentile, and historical VaR is the negated 5th percentile:
+
+```text
+q = Q_(1-confidence)(returns)
+VaR_historical = -q
+CVaR_historical = -mean({r_i | r_i <= q})
+```
+
+`VaRHistorical` uses the empirical R type-7 quantile, matching `DataList.Percentile`. `VaRParametric` assumes normal returns and uses the sample mean and sample standard deviation:
+
+```text
+z = NormPPF(1-confidence)
+VaR_parametric = -(mean + z·sd)
+CVaR_parametric = -(mean - sd·φ(z)/(1-confidence))
+```
+
+`confidence` must be in `(0, 1)`. VaR and CVaR are not annualized; apply a caller-selected horizon model when appropriate because square-root-of-time scaling is not generally valid for tail risk.
+
+### SortinoRatio
+
+```go
+func SortinoRatio(returns insyra.IDataList, minimumAcceptableReturn, periodsPerYear float64) (float64, error)
+```
+
+Returns the annualized downside-adjusted performance ratio. Downside deviation is the root mean square of `min(r - MAR, 0)` over **all** periods, including periods above the minimum acceptable return:
+
+```text
+Sortino = mean(r-MAR) / sqrt(mean(min(r-MAR, 0)^2)) · √periodsPerYear
+```
+
+### CalmarRatio
+
+```go
+func CalmarRatio(equity insyra.IDataList, days int) (float64, error)
+```
+
+Returns `AnnualizedReturn(equity, days) / MaxDrawdown(equity)`. A zero maximum drawdown is rejected because the ratio is undefined.
+
+### InformationRatio
+
+```go
+func InformationRatio(returns, benchmark insyra.IDataList, periodsPerYear float64) (float64, error)
+```
+
+Returns the annualized mean active return divided by tracking error, where `active = returns - benchmark` and tracking error is the sample standard deviation of active returns. The series must be aligned and have equal length; zero tracking error is rejected.
+
+### DrawdownSeries
+
+```go
+func DrawdownSeries(equity insyra.IDataList) (*insyra.DataList, error)
+```
+
+Returns one non-negative drawdown fraction per equity point, `1 - equity[t]/runningPeak[t]`. A non-positive running peak produces `nil` because drawdown is undefined there. The maximum non-nil value equals `MaxDrawdown(equity)`.
 
 ## Market Exposure (CAPM)
 
@@ -346,6 +417,22 @@ func main() {
 
 Already have a column in a `DataTable`? Pass it straight in: `quant.SharpeRatio(dt.GetCol("returns"), 0, 252)`.
 
+### Risk report
+
+```go
+var95, _ := quant.ValueAtRisk(returns, 0.95, quant.VaRHistorical)
+cvar95, _ := quant.ConditionalValueAtRisk(returns, 0.95, quant.VaRHistorical)
+sortino, _ := quant.SortinoRatio(returns, 0, 252)
+calmar, _ := quant.CalmarRatio(equity, 30)
+drawdowns, _ := quant.DrawdownSeries(equity)
+
+fmt.Printf("VaR95=%.2f%% CVaR95=%.2f%% Sortino=%.3f Calmar=%.3f\n",
+    var95*100, cvar95*100, sortino, calmar)
+_ = drawdowns // chart one value per equity period when needed
+```
+
+`ValueAtRisk` and `ConditionalValueAtRisk` are per-period tail measures. `SortinoRatio` and `CalmarRatio` annualize according to their explicit period or calendar-day arguments.
+
 ### Beta of a stock against its index
 
 `Beta` expects returns, so align the two price tables on their date first. An inner merge avoids inventing returns for dates that appear in only one table:
@@ -477,6 +564,12 @@ All exported functions return `(value, error)` and surface validation problems t
 - **`PercentileBands`** — empty or ragged `paths`, empty `percentiles`, a percentile outside `[0, 100]`
 - **`Beta`** — nil input, unequal lengths, fewer than 3 returns, zero benchmark variance, or an unreadable/non-finite cell named with its series and row
 - **`CAPM`** — the same input and benchmark validation as `Beta`; `riskFreeRate` is per period
+- **`ValueAtRisk`** — fewer than 2 returns, confidence outside `(0, 1)`, unknown method, or an unreadable/non-finite return named with its row
+- **`ConditionalValueAtRisk`** — the same return, confidence, and method validation as `ValueAtRisk`
+- **`SortinoRatio`** — fewer than 2 returns, non-positive periods per year, zero downside deviation, or an unreadable/non-finite return
+- **`CalmarRatio`** — invalid annualized-return input, zero maximum drawdown, or an unreadable/non-finite equity point
+- **`InformationRatio`** — unequal lengths, fewer than 2 observations, non-positive periods per year, zero tracking error, or an unreadable/non-finite cell
+- **`DrawdownSeries`** — empty equity or an unreadable/non-finite equity point; non-positive running peaks are represented as `nil`
 
 The package never logs warnings on its own and never panics from valid input — it follows the same error-first contract as [`stats`](./stats.md) and [`finance`](./finance.md).
 
