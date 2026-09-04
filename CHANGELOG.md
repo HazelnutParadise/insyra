@@ -12,6 +12,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 - Added opt-in `AllowRaggedRows` and `TrimLeadingSpace` to `CSVReadOptions` and matching `isr.CSV_inOpts` fields. Ragged reads pad short rows and retain extra cells in auto-named columns; the zero value remains strict. ([issue #198](https://github.com/HazelnutParadise/insyra/issues/198))
 - Fixed CSV file loading parsing the input twice through a serialize-reparse round trip, which silently dropped rows holding a single empty field. `ReadCSV_File` and `ReadCSV_String` now agree on every input.
+- Added pandas-compatible exponentially weighted `DataList` reducers (`EWM().Mean/Var/Std`), rolling `Cov` and `Beta`, and `DataTable` `EWMCol` and calendar `Resample`; `IDataList` and `IDataTable` now expose the new methods.
 
 ### CLI
 

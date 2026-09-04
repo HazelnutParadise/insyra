@@ -124,6 +124,24 @@ CASES: dict[str, list[dict[str, Any]]] = {
     "expanding_var": [
         {"input": [1, 2, 3, 4, 5], "min_obs": 1},
     ],
+    "ewm_mean": [
+        {"input": [1, 2, 3, 4, 5], "alpha": 0.5, "adjust": True},
+        {"input": [1, 2, 3, 4, 5], "span": 3.0, "adjust": False},
+        {"input": [1, None, 3, 4, None, 6], "halflife": 2.0, "adjust": True, "min_periods": 2},
+        {"input": [1, 2, None, 4, 5], "alpha": 0.3, "adjust": False, "min_periods": 3},
+    ],
+    "ewm_var": [
+        {"input": [1, 2, 3, 4, 5], "alpha": 0.5, "adjust": True, "bias": False},
+        {"input": [1, 2, 3, 4, 5], "span": 4.0, "adjust": False, "bias": True},
+        {"input": [1, None, 3, 4, None, 6], "halflife": 2.0, "adjust": True, "bias": True, "min_periods": 2},
+        {"input": [1, 2, None, 4, 5], "alpha": 0.3, "adjust": False, "bias": False, "min_periods": 3},
+    ],
+    "ewm_std": [
+        {"input": [1, 2, 3, 4, 5], "alpha": 0.5, "adjust": True, "bias": False},
+        {"input": [1, 2, 3, 4, 5], "span": 4.0, "adjust": False, "bias": True},
+        {"input": [1, None, 3, 4, None, 6], "halflife": 2.0, "adjust": True, "bias": True, "min_periods": 2},
+        {"input": [1, 2, None, 4, 5], "alpha": 0.3, "adjust": False, "bias": False, "min_periods": 3},
+    ],
 }
 
 
@@ -155,6 +173,13 @@ def run_case(op: str, case: dict[str, Any]) -> list[Any]:
         m = case.get("min_obs", 1)
         e = s.expanding(min_periods=m)
         result = getattr(e, method)()
+        return _clean(result.tolist())
+    if op.startswith("ewm_"):
+        method = op[len("ewm_"):]
+        ewm_kwargs = {key: case[key] for key in ("alpha", "span", "halflife") if key in case}
+        ewm_kwargs["adjust"] = case.get("adjust", True)
+        ewm_kwargs["min_periods"] = case.get("min_periods", 0)
+        result = getattr(s.ewm(**ewm_kwargs), method)(bias=case.get("bias", False)) if method != "mean" else getattr(s.ewm(**ewm_kwargs), method)()
         return _clean(result.tolist())
     raise ValueError(f"unknown op: {op}")
 

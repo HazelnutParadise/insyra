@@ -434,6 +434,39 @@ orderedTrain, orderedTest := dt.TrainTestSplit(0.8, insyra.SamplingOptions{Prese
 listSample := dl.Sample(10, false, insyra.SamplingOptions{UseSeed: true, Seed: 42})
 ```
 
+### 2c) Time-series windows and resampling
+
+Use `DataList.Rolling(opts)` for fixed-size windows, `Expanding(minObs)` for
+all-history windows, and `EWM(EWMOptions{...})` for exponentially weighted
+statistics. Rolling reducers include `Corr`, `Cov`, and `Beta`; `Cov` uses
+sample covariance and `Beta` is `Cov(source, benchmark) / Var(benchmark)`, so a
+flat benchmark returns nil. Paired windows align by index, skip nil or
+non-numeric pairs, truncate to the shorter input, and preserve the existing
+`MinObs` and nil-window rules.
+
+```go
+rolling := prices.Rolling(insyra.RollingOptions{Window: 20, MinObs: 10})
+cov := rolling.Cov(benchmark)
+beta := rolling.Beta(benchmark)
+ewm := prices.EWM(insyra.EWMOptions{Span: 10, Adjust: false})
+mean := ewm.Mean()
+std := ewm.Std()
+```
+
+`EWMOptions` requires exactly one of `Alpha`, `Span`, or `HalfLife`. `Adjust`
+and `Bias` follow pandas, gaps decay without resetting the accumulated state,
+and `MinObs` suppresses early output. Invalid decay options warn and return an
+empty result. For table columns use `EWMCol` with the same name-first,
+Excel-index fallback as `RollingCol`.
+
+For calendar aggregation use `DataTable.Resample(timeCol, freq, aggs...)` with
+`ResampleWeekly`, `ResampleMonthly`, `ResampleQuarterly`, or `ResampleYearly`.
+Weekly buckets are Monday through Sunday, labels are period-end `time.Time`
+values, empty periods are omitted, and `ResampleAgg` reuses `AggregateOp`.
+Input rows are sorted by time for `first`/`last` semantics and the result is
+returned in period order. Missing columns, empty aggregations, unknown
+frequencies, and non-`time.Time` cells return errors.
+
 ### ML model selection
 
 The `ml` package provides seeded `KFold` and `StratifiedKFold` splits, plus
@@ -900,6 +933,7 @@ Note: not every structure in `engine` is concurrent-safe by itself (e.g., `BiInd
 
 ## References (quick lookup)
 - `references/ccl-operators.md` - CCL operators, ranges, row access, quoting rules, and edge-case notes.
+- `references/window-functions.md` - Rolling `Cov`/`Beta`, `EWM` options and reducers, and `DataTable.Resample` semantics.
 
 ## Insyra docs via MCP (recommended for agents)
 If you want up-to-date Insyra documentation inside an MCP-capable client, prefer these:

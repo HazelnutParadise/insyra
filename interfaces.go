@@ -55,6 +55,7 @@ type IDataList interface {
 	WeightedMovingAverage(int, any) *DataList
 	ExponentialSmoothing(float64) *DataList
 	DoubleExponentialSmoothing(float64, float64) *DataList
+	EWM(EWMOptions) *EWMDataList
 	MovingStdev(int) *DataList
 	Len() int
 	Sample(n int, withReplacement bool, options ...SamplingOptions) *DataList
@@ -286,6 +287,8 @@ type IDataTable interface {
 	ToSQL(db *gorm.DB, tableName string, options ...ToSQLOptions) error
 
 	Merge(other IDataTable, direction MergeDirection, mode MergeMode, on ...string) (*DataTable, error)
+	EWMCol(string, EWMOptions) *EWMDataList
+	Resample(string, ResampleFreq, ...ResampleAgg) (*DataTable, error)
 
 	AddColUsingCCL(newColName, ccl string) *DataTable
 

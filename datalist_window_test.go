@@ -319,6 +319,61 @@ func TestDataList_Rolling_Corr(t *testing.T) {
 	sliceEqualApprox(t, got, want, 1e-9)
 }
 
+func TestDataList_Rolling_Cov_MatchesStats(t *testing.T) {
+	x := NewDataList(3.0, 5.0, 7.0, 9.0, 11.0)
+	y := NewDataList(1.0, 2.0, 3.0, 4.0, 5.0)
+	got := x.Rolling(RollingOptions{Window: x.Len()}).Cov(y).Data()
+	if !approxEqual(got[len(got)-1], 5.0, 1e-12) {
+		t.Fatalf("full-window covariance = %v, want 5", got[len(got)-1])
+	}
+}
+
+func TestDataList_Rolling_Beta_MatchesQuant(t *testing.T) {
+	asset := NewDataList(3.0, 5.0, 7.0, 9.0, 11.0)
+	market := NewDataList(1.0, 2.0, 3.0, 4.0, 5.0)
+	got := asset.Rolling(RollingOptions{Window: asset.Len()}).Beta(market).Data()
+	if !approxEqual(got[len(got)-1], 2.0, 1e-12) {
+		t.Fatalf("full-window beta = %v, want 2", got[len(got)-1])
+	}
+}
+
+func TestDataList_Rolling_Beta_ScaledBenchmark(t *testing.T) {
+	benchmark := NewDataList(1.0, 2.0, 3.0, 4.0, 5.0, 6.0)
+	asset := NewDataList(7.0, 9.0, 11.0, 13.0, 15.0, 17.0)
+	got := asset.Rolling(RollingOptions{Window: 5}).Beta(benchmark).Data()
+	want := []any{nil, nil, nil, nil, 2.0, 2.0}
+	sliceEqualApprox(t, got, want, 1e-12)
+}
+
+func TestDataList_Rolling_CovBeta_FlatBenchmark(t *testing.T) {
+	asset := NewDataList(1.0, 2.0, 3.0, 4.0)
+	benchmark := NewDataList(5.0, 5.0, 5.0, 5.0)
+	if got := asset.Rolling(RollingOptions{Window: 3}).Cov(benchmark).Data(); !approxEqual(got[2], 0.0, 1e-12) {
+		t.Fatalf("flat benchmark covariance = %v, want 0", got[2])
+	}
+	if got := asset.Rolling(RollingOptions{Window: 3}).Beta(benchmark).Data(); got[2] != nil {
+		t.Fatalf("flat benchmark beta = %v, want nil", got[2])
+	}
+}
+
+func TestDataList_Rolling_CovBeta_SkipsNilPairs(t *testing.T) {
+	asset := NewDataList(1.0, nil, 3.0, 4.0)
+	benchmark := NewDataList(2.0, 4.0, 6.0, 8.0)
+	got := asset.Rolling(RollingOptions{Window: 3, MinObs: 2}).Cov(benchmark).Data()
+	want := []any{nil, nil, 4.0, 1.0}
+	sliceEqualApprox(t, got, want, 1e-12)
+}
+
+func TestDataList_Rolling_CovBeta_NilOther(t *testing.T) {
+	r := NewDataList(1.0, 2.0, 3.0).Rolling(RollingOptions{Window: 2})
+	if got := r.Cov(nil); got.Len() != 0 {
+		t.Errorf("Cov(nil) returned %v, want empty", got.Data())
+	}
+	if got := r.Beta(nil); got.Len() != 0 {
+		t.Errorf("Beta(nil) returned %v, want empty", got.Data())
+	}
+}
+
 // =============================================================================
 // Expanding
 // =============================================================================

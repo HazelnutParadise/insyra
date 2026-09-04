@@ -1272,11 +1272,12 @@ func (dt *DataTable) CumMaxCol(col string) *DataList
 func (dt *DataTable) CumMinCol(col string) *DataList
 func (dt *DataTable) RollingCol(col string, opts RollingOptions) *RollingDataList
 func (dt *DataTable) ExpandingCol(col string, minObs int) *ExpandingDataList
+func (dt *DataTable) EWMCol(col string, opts EWMOptions) *EWMDataList
 ```
 
 **Description:** Per-column time-series / sequence transforms. Each method resolves `col` by **name first**, then by Excel-style index (`"A"`, `"B"`, ...), and runs the matching operation on a snapshot of that column. The returned `*DataList` (or builder) has the same length as the source so the result lines up with neighbouring columns when appended back.
 
-The scalar transforms (`ShiftCol` / `DiffCol` / `PctChangeCol` / `Cum*Col`) return `*DataList` directly. `RollingCol` and `ExpandingCol` return builders — pick a reducer (`.Mean()` / `.Sum()` / `.Min()` / `.Max()` / `.Median()` / `.Std()` / `.Var()` / `.Apply(...)` / `.Corr(...)`) to materialise the column. See [DataList.Rolling](DataList.md#rolling) and [DataList.Expanding](DataList.md#expanding) for the full reducer list and `RollingOptions` semantics.
+The scalar transforms (`ShiftCol` / `DiffCol` / `PctChangeCol` / `Cum*Col`) return `*DataList` directly. `RollingCol`, `ExpandingCol`, and `EWMCol` return builders — pick a reducer to materialise the column. Rolling supports `.Mean()` / `.Sum()` / `.Min()` / `.Max()` / `.Median()` / `.Std()` / `.Var()` / `.Apply(...)` / `.Corr(...)` / `.Cov(...)` / `.Beta(...)`; EWM supports `.Mean()` / `.Var()` / `.Std()`. See [DataList.Rolling](DataList.md#rolling), [DataList.Expanding](DataList.md#expanding), and [DataList.Exponentially weighted windows](DataList.md#exponentially-weighted-windows) for the full semantics.
 
 **Missing-value behaviour:** edge positions (e.g. the first row of `ShiftCol(_, 1)` or partial windows below `MinObs`) emit `nil`. `Shift` works on any column type (including strings / bools); the rest coerce numerically and emit `nil` for cells that aren't numeric.
 
@@ -1294,11 +1295,59 @@ cum    := dt.CumSumCol("price")                                              // 
 hwm    := dt.CumMaxCol("price")                                              // historical high
 ma7    := dt.RollingCol("price", insyra.RollingOptions{Window: 7}).Mean()    // 7-day MA
 ewmean := dt.ExpandingCol("price", 1).Mean()                                 // expanding mean
+ewm7   := dt.EWMCol("price", insyra.EWMOptions{Span: 7, Adjust: true}).Mean() // EWM mean
 
 // Attach results back to the table.
 ma7.SetName("ma7")
 dt.AppendCols(ma7)
 ```
+
+### Resample
+
+```go
+type ResampleFreq int
+
+const (
+    ResampleWeekly ResampleFreq = iota // Monday through Sunday
+    ResampleMonthly
+    ResampleQuarterly
+    ResampleYearly
+)
+
+type ResampleAgg struct {
+    Col string
+    Op  AggregateOp
+    As  string
+}
+
+func (dt *DataTable) Resample(timeCol string, freq ResampleFreq, aggs ...ResampleAgg) (*DataTable, error)
+```
+
+`Resample` groups rows by calendar period and labels each non-empty period with
+its final calendar day at midnight. Weekly periods run Monday through Sunday;
+monthly, quarterly, and yearly periods end on the corresponding calendar
+boundary. The output is sorted by `timeCol`, empty periods are omitted, and
+each label keeps the input `time.Time` value's location. The input row order
+does not affect the result. `ResampleAgg` reuses `AggregateOp`; an empty `As`
+keeps the source column name.
+
+```go
+monthly, err := dt.Resample("Date", insyra.ResampleMonthly,
+    insyra.ResampleAgg{Col: "Open", Op: insyra.OpFirst},
+    insyra.ResampleAgg{Col: "High", Op: insyra.OpMax},
+    insyra.ResampleAgg{Col: "Low", Op: insyra.OpMin},
+    insyra.ResampleAgg{Col: "Close", Op: insyra.OpLast, As: "MonthClose"},
+    insyra.ResampleAgg{Col: "Volume", Op: insyra.OpSum},
+)
+if err != nil {
+    log.Fatal(err)
+}
+```
+
+`timeCol` and aggregate columns resolve by name first, then Excel-style index.
+The method returns an error when the time or aggregate column is missing, a
+time cell is not `time.Time` (the error includes its row number), `aggs` is
+empty, or `freq` is unknown.
 
 #### GroupBy-aware versions
 

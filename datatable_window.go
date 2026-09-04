@@ -104,8 +104,8 @@ func (dt *DataTable) CumMinCol(col string) *DataList {
 }
 
 // RollingCol returns a RollingDataList view of dt[col]. Terminal reducers
-// (Mean, Sum, Min, Max, Median, Std, Var, Apply, Corr) produce a *DataList
-// the same length as the column.
+// (Mean, Sum, Min, Max, Median, Std, Var, Apply, Corr, Cov, Beta) produce a
+// *DataList the same length as the column.
 func (dt *DataTable) RollingCol(col string, opts RollingOptions) *RollingDataList {
 	snap, _, ok := dt.snapshotCol("RollingCol", col)
 	if !ok {
@@ -121,4 +121,14 @@ func (dt *DataTable) ExpandingCol(col string, minObs int) *ExpandingDataList {
 		return &ExpandingDataList{minObs: minObs, err: "ExpandingCol: column not found"}
 	}
 	return snap.Expanding(minObs)
+}
+
+// EWMCol returns an EWMDataList view of dt[col]. The column may be named or
+// addressed by its Excel-style index.
+func (dt *DataTable) EWMCol(col string, opts EWMOptions) *EWMDataList {
+	snap, _, ok := dt.snapshotCol("EWMCol", col)
+	if !ok {
+		return &EWMDataList{opts: opts, err: "EWMCol: column not found"}
+	}
+	return snap.EWM(opts)
 }
