@@ -76,7 +76,7 @@ Notes:
 
 ## Runtime guardrails
 
-- **First step on any unfamiliar command: run `insyra help <cmd>`.** Complex commands (`ttest`, `ztest`, `anova`, `ftest`, `chisq`, `regression`, `fetch`, `plot`, `db`, `groupby`, `load`, `save`) include `Forms:` and `Examples:` blocks that show every sub-shape and a copy-paste-ready invocation. Use this before falling back to `references/cli-command-guide.md` — `help` reflects the live binary, references can drift.
+- **First step on any unfamiliar command: run `insyra help <cmd>`.** Complex commands (`ttest`, `ztest`, `anova`, `ftest`, `chisq`, `regression`, `quant`, `fetch`, `plot`, `db`, `groupby`, `load`, `save`) include `Forms:` and `Examples:` blocks that show every sub-shape and a copy-paste-ready invocation. Use this before falling back to `references/cli-command-guide.md` — `help` reflects the live binary, references can drift.
 - `insyra help` (no args) lists all registered commands with one-line descriptions. Use it when you don't know the command name.
 - Prefer deterministic commands over ad-hoc manual REPL edits when reproducibility matters.
 - For shell variables in PowerShell, remind users to quote names like `$result` as `"$result"`.
@@ -130,7 +130,7 @@ This file contains, for each command:
 
 - description
 - exact `Usage:` syntax (from `insyra help <command>`)
-- expanded full forms for shorthand commands such as `ttest`, `ztest`, `anova`, `ftest`, `chisq`, `regression`, `fetch`, and `plot`
+- expanded full forms for shorthand commands such as `ttest`, `ztest`, `anova`, `ftest`, `chisq`, `regression`, `quant`, `fetch`, and `plot`
 
 ## Fast command templates
 
@@ -207,6 +207,22 @@ insyra silhouette iris labels as widths
 # Regression models
 insyra regression logistic y x1 x2 as fit
 insyra regression poisson y x1 x2
+
+# Quant: returns-based risk metrics (series are per-period RETURNS, not prices)
+insyra col bars Close as price
+insyra pctchange price 1 as ret
+insyra clean ret nil                                        # pctchange leaves a leading nil
+insyra quant sharpe ret 252 rf 0.0001 as sharpe             # periods is required, never defaulted
+insyra quant sortino ret 252 mar 0.0002
+insyra quant var ret 0.95 as var95                          # default method is historical
+insyra quant cvar ret 0.95 parametric as cvar95
+insyra quant maxdd equity
+insyra quant calmar equity 365
+insyra quant drawdown equity as dd                          # DataList
+insyra quant capm asset market rf 0.0002 as capm            # one-row DataTable
+insyra quant factor asset factors as fm                     # one row per factor, plus fm_alpha
+insyra quant bs call 42 40 0.10 0.20 0.5 as opt             # price + greeks, one-row DataTable
+insyra quant iv call 4.759 42 40 0.10 0.5
 ```
 
 `groupby <var> by <col1>[,<col2>...] agg <col>:<op>[:<alias>] [<col>:<op>[:<alias>] ...] [as <var>]` produces a new DataTable with one row per unique key combination. Supported ops: `sum`, `mean` (alias `avg`), `median`, `min`, `max`, `count` (non-nil), `countall` (group size), `std`/`stdev`, `stdp`/`stdevp`, `var`, `varp`, `first`, `last`, `nunique`. The bare token `count` is shorthand for `:countall:count`.
@@ -216,6 +232,8 @@ insyra regression poisson y x1 x2
 `rolling` also accepts `cov <other>` and `beta <other>`, which consume the next token as a second DataList variable before the usual `minobs` / `center` / `as` options. `beta` is `Cov(var, other) / Var(other)` and yields nil on a flat benchmark window.
 
 `resample <dt> <timecol> weekly|monthly|quarterly|yearly <col>:<op>[:<name>] [...] [as <var>]` aggregates time-keyed rows into calendar periods, labelling each row with the period's final day and omitting empty periods. `op` uses the `groupby` operator names; `:name` renames the output column, and without it the source name is kept. `<timecol>` must hold real `time.Time` values — a CSV load leaves dates as strings and `resample` rejects them with a row-numbered error.
+
+`quant <form> ...` exposes the `quant` package: `sharpe`, `sortino`, `ir`, `maxdd`, `annret`, `calmar`, `drawdown`, `var`, `cvar`, `beta`, `capm`, `factor`, `bs`, `iv`. Series arguments are DataList variables holding per-period **returns** (or an equity curve for the drawdown forms) — passing prices produces a meaningless number, exactly as it would through the Go API. `periods`, `days`, and `confidence` are required positionals because the library refuses to invent an annualization factor; `rf`, `mar`, and `q` default to 0, and the VaR method defaults to `historical`. Scalar forms print `name=value` and store a `float64`; `capm` and `bs` store a one-row DataTable, `factor` stores one row per factor (`Factor, Exposure, StdErr, TValue, PValue`) plus a `<var>_alpha` table, and `drawdown` stores a DataList. Library errors come back verbatim behind a `quant <form>:` prefix.
 
 `describe <var> [by <col1>[,<col2>...]] [all true|false] [percentiles <p1,p2,...>] [as <var>]` creates a reusable summary DataTable. Without `as`, it saves to `$result`. `all true` includes non-numeric and mixed columns; `by` is DataTable-only and returns one row per group.
 

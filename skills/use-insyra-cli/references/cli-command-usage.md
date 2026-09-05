@@ -403,6 +403,25 @@ This is separate from boolean-flag parsing used by option arguments like `header
 	- default output: `<type>.html`
 	- with `save <file>`: `.png` uses PNG export, other extensions use HTML export
 
+## `quant`
+- Description: Quantitative finance metrics from the `quant` package. Series arguments are DataList variables of per-period **returns** (or an equity curve), never prices. `periods`, `days`, and `confidence` are required — there is no CLI default of 252. `rf`, `mar`, and `q` default to 0; the VaR method defaults to `historical`. Scalar forms print `name=value` and store a float64; library errors are returned verbatim behind a `quant <form>:` prefix.
+- Usage: `quant sharpe|sortino|ir|maxdd|annret|calmar|drawdown|var|cvar|beta|capm|factor|bs|iv ...`
+- Full forms:
+	- `quant sharpe <returns> <periods> [rf <r>] [as <var>]` — `SharpeRatio`
+	- `quant sortino <returns> <periods> [mar <r>] [as <var>]` — `SortinoRatio`
+	- `quant ir <returns> <benchmark> <periods> [as <var>]` — `InformationRatio`
+	- `quant maxdd <equity> [as <var>]` — `MaxDrawdown`
+	- `quant annret <equity> <days> [as <var>]` — `AnnualizedReturn`
+	- `quant calmar <equity> <days> [as <var>]` — `CalmarRatio`
+	- `quant drawdown <equity> [as <var>]` — `DrawdownSeries`, stores a DataList
+	- `quant var <returns> <confidence> [historical|parametric] [as <var>]` — `ValueAtRisk`
+	- `quant cvar <returns> <confidence> [historical|parametric] [as <var>]` — `ConditionalValueAtRisk`
+	- `quant beta <asset> <market> [as <var>]` — `Beta`
+	- `quant capm <asset> <market> [rf <r>] [as <var>]` — `CAPM`, stores a one-row DataTable
+	- `quant factor <asset> <factors> [rf <r>] [as <var>]` — `FactorModel`, one row per factor plus `<var>_alpha`
+	- `quant bs call|put <spot> <strike> <rate> <vol> <years> [q <yield>] [as <var>]` — `BlackScholes`, stores a one-row DataTable
+	- `quant iv call|put <price> <spot> <strike> <rate> <years> [q <yield>] [as <var>]` — `ImpliedVolatility`
+
 ## `quartile`
 - Description: DataList quartile
 - Usage: `quartile <var> <q>`

@@ -153,6 +153,20 @@ This list is generated from `insyra help` in this repository state.
 - `plot` - Create charts from variables
 - `fetch` - Fetch external data
 
+## Quantitative Finance
+- `quant sharpe` - SharpeRatio (annualized)
+- `quant sortino` - SortinoRatio (downside deviation)
+- `quant ir` - InformationRatio against a benchmark
+- `quant maxdd` - MaxDrawdown of an equity curve
+- `quant annret` - AnnualizedReturn (CAGR) over a calendar-day span
+- `quant calmar` - CalmarRatio
+- `quant drawdown` - DrawdownSeries, stored as a DataList
+- `quant var` / `quant cvar` - Value at risk and conditional VaR (historical or parametric)
+- `quant beta` - Market beta
+- `quant capm` - CAPM beta, alpha, R2, standard errors, N (one-row DataTable)
+- `quant factor` - Multi-factor exposures (one row per factor, plus `<var>_alpha`)
+- `quant bs` / `quant iv` - Black-Scholes price and greeks, implied volatility
+
 ## Missing-Value Fill Commands
 
 - `fillna <var> mean|median|mode|ffill|bfill|interpolate [cols A,B,C] [limit N] [extrapolate yes|no] [missing nan|nil|both] [as <var>]`

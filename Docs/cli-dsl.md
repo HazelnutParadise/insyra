@@ -487,6 +487,34 @@ show monthly_bars
 
 `<timecol>` must hold `time.Time` values; a column of date *strings* is rejected with a row-numbered error. A CSV load leaves date columns as strings, so resample the output of a source that carries real timestamps (for example `fetch yahoo <ticker> history`), or build the column through the Go API.
 
+### B7. Risk report from a return series
+
+`quant` reaches the `quant` package: performance ratios, tail risk, market exposure, factor attribution, and European option pricing. Every series argument is a DataList variable of **per-period returns**, not prices, so convert a price column first — `pctchange` leaves a leading nil that `clean nil` removes.
+
+```text
+fetch yahoo AAPL history as bars
+col bars Close as price
+pctchange price 1 as ret
+clean ret nil
+quant sharpe ret 252 rf 0.0001 as sharpe
+quant sortino ret 252 as sortino
+quant var ret 0.95 as var95
+quant cvar ret 0.95 parametric as cvar95
+```
+
+Each scalar form prints `name=value` and stores a `float64` under `as <var>` (or `$result`). `periods`, `days`, and `confidence` are required — the library refuses to guess an annualization factor, so there is no CLI-side default of 252. `rf`, `mar`, and `q` default to 0.
+
+`capm` and `bs` store a one-row DataTable; `factor` stores one row per factor plus `<var>_alpha`; `drawdown` stores a DataList.
+
+```text
+quant capm asset market rf 0.0002 as capm
+quant factor asset factors as fm
+show fm
+show fm_alpha
+quant bs call 42 40 0.10 0.20 0.5 as opt
+quant iv call 4.759 42 40 0.10 0.5
+```
+
 ### C. Go `engine/dsl` session flow
 
 ```go
@@ -530,6 +558,7 @@ High-level command map:
 - **DataList Stats**: `sum`, `mean`, `median`, `mode`, `stdev`, `var`, `min`, `max`, `range`, `quartile`, `iqr`, `percentile`, `count`, `counter`, `corr`, `cov`, `corrmatrix`, `skewness`, `kurtosis`
 - **Time Series / Transforms**: `rank`, `normalize`, `standardize`, `reverse`, `upper`, `lower`, `capitalize`, `parsenums`, `parsestrings`, `movavg`, `expsmooth`, `diff`, `diffn`, `shift`, `pctchange`, `cumsum`, `cumprod`, `cummax`, `cummin`, `rolling`, `expanding`, `ewm`, `resample`, `fillna`
 - **Modeling / Viz / Fetch**: `regression`, `pca`, `kmeans`, `hclust`, `cutree`, `dbscan`, `silhouette`, `knn_classify`, `knn_regress`, `knn_neighbors`, `ttest`, `ztest`, `anova`, `ftest`, `chisq`, `plot`, `fetch`
+- **Quant**: `quant` (`sharpe`, `sortino`, `ir`, `maxdd`, `annret`, `calmar`, `drawdown`, `var`, `cvar`, `beta`, `capm`, `factor`, `bs`, `iv`)
 
 ### Missing-Value Fill Commands
 
@@ -636,6 +665,7 @@ Source policy:
 | `silhouette` | `silhouette <var> <labels_var> [as <var>]` | Silhouette analysis |
 | `percentile` | `percentile <var> <p>` | DataList percentile |
 | `plot` | `plot <type> <var> [options...] [save <file>]` | Create charts from variables |
+| `quant` | `quant sharpe\|sortino\|ir\|maxdd\|annret\|calmar\|drawdown\|var\|cvar\|beta\|capm\|factor\|bs\|iv ...` | Quantitative finance: performance, risk, exposure, factor and option analytics |
 | `quartile` | `quartile <var> <q>` | DataList quartile |
 | `range` | `range <var>` | DataList range |
 | `rank` | `rank <var> [asc\|desc\|true\|false] [as <var>]` | Rank DataList |
