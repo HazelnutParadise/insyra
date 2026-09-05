@@ -44,19 +44,19 @@
 | `cli` 系列（cli, commands, env, repl, style） | 79 | 未開始 |
 | `csvxl` | 9 | **完成** |
 | `datafetch` | 89 | **完成** |
-| `engine` 系列（algorithms, atomic, biindex, ccl, dsl, ring） | 41 | 未開始 |
+| `engine` 系列（algorithms, atomic, biindex, ccl, dsl, ring） | 41 | **完成** |
 | `finance` | 60 | **完成** |
-| `gplot` | 15 | 未開始 |
+| `gplot` | 22 | **完成** |
 | `isr` | 44 | **完成** |
-| `lp` / `lpgen` | 12 | 未開始 |
+| `lp` / `lpgen` | 12 | **完成** |
 | `mkt` | 14 | **完成** |
 | `ml` / `ml/mltest` | 217 | 未開始 |
 | `nn` | 231 | 未開始 |
 | `parallel` | 5 | **完成** |
 | `parquet` | 12 | **完成** |
-| `pd` | 8 | 未開始 |
-| `plot` | 80 | 未開始 |
-| `py` | 14 | 未開始 |
+| `pd` | 8 | **完成** |
+| `plot` | 80 | **完成** |
+| `py` | 14 | **完成** |
 | `quant` | 50 | **完成** |
 | `stats` | 197 | **完成** |
 | 無匯出符號：`accel/knnbridge`, `allpkgs`, `benchmark`, `cmd/insyra`, `engine`, `tools/gendocs` | 0 | 不需審查 |
@@ -264,6 +264,38 @@
 | DF-5 | Low | `YFPeriodAnnual` 與 `YFPeriodYearly` 兩個值同義；`MaxWaitingInterval_Milliseconds uint` 底線命名且應為 `time.Duration`；`ReverseTable(dt, latCol, lngCol)` 與 `ReverseTableByColName` 是 T-11 的索引／名稱雙入口；`SortByRelevance` 等常數沒有型別前綴，與 `TWMarketXxx`／`YFPeriodXxx` 風格不一致（準則 1、6、9） | yfinance.go:57-59；googleMapsCommentCrawler.go:38-53；geocoding.go:410-425 | 刪同義值；用 Duration；統一前綴 |
 | DF-6 | Low | `fileGeocodeCache.Set` 每次都把整個 map 序列化重寫檔案，非原子（無 tmp+rename），中途中斷會把快取檔寫壞，之後以空快取重來（doc 有寫「corrupt → empty」但這是可避免的）；`persist` 錯誤只 warn | geocoding.go:601-636 | tmp+rename；或改 append-only |
 | DF-7 | OK | TWStock 與 TWGeocoding 是範本：config `normalize()` 驗證並回 error、零值可用、sentinel error 用 `errors.Is`、`RateLimitError` 帶 `Unwrap` 與 `ResetAt`、`GeocodeCache` 介面明講並行安全與快取語意、回應體用 `LimitReader` 防爆 | — | — |
+
+### plot / gplot
+
+| 編號 | 嚴重度 | 問題 | 位置 | 建議 |
+| --- | --- | --- | --- | --- |
+| PL-1 | High | `SavePNG(chart, path, useOnlineServiceOnFail ...bool)` 的預設值是 **true**：本機 Chrome 渲染失敗時，會把整張圖（含使用者資料）送到「HazelnutParadise online service」，沒有明確 opt-in。生產環境的資料就這樣出境（準則 14） | plot/save_chart.go:61-67 | 預設 false，且在 doc 明講會上傳；或拆成 `SavePNGOnline` 獨立函式 |
+| PL-2 | High | `gplot.SaveChart(plt, filename)` 沒有 error 回傳，存檔失敗直接 `LogFatal` 結束程序（磁碟滿、路徑不存在都會）；尺寸寫死 8×4 英吋無法設定（K-1 實例） | gplot/save_chart.go:14-20 | 回 error；加 size 參數 |
+| PL-3 | Med | 14 個 `CreateXxxChart` 失敗回 nil + LogWarning，無 error；`gplot.CreateBarChart(config, data any)` 等用 `any` 收資料再 type switch；所有圖表經 `ToF64Slice` 讀值，非數值畫成 0（`convertDataTableToGrid` 註解直接寫 "use 0"）。這是 AGENTS follow-up 刻意保留的顯示路徑，但至少要在 doc 標明（準則 8、11、13） | plot/*.go；gplot/*.go | 回 `(chart, error)`；`data any` 改具名型別；doc 標明 0 代入 |
+| PL-4 | Low | `SaveHTML(chart, path, animation ...bool)` variadic bool；`HeatMapPoint[X, Y]` 回傳未匯出的泛型型別；`Width`／`Height` 用 `"900px"` 字串；成功存檔 Info log（C-9） | plot/save_chart.go:39；heatmap.go:60-71 | options struct；匯出型別 |
+
+### py / pd
+
+| 編號 | 嚴重度 | 問題 | 位置 | 建議 |
+| --- | --- | --- | --- | --- |
+| PY-1 | Med | 第一次呼叫 `RunCode` 會靜默下載 uv、Python 與相依套件到安裝目錄（網路 + 磁碟副作用藏在一個看起來純計算的函式後面）；IPC server 綁定失敗走 `LogFatal`（K-1）；`ReinstallPyEnv` 會 `os.RemoveAll` 整個安裝目錄 | py/init.go:28-60；py/pyresult.go:92；py/py.go:22-50 | 提供顯式 `Setup(ctx)`，`RunCode` 未安裝時回錯；Fatal 改 error |
+| PY-2 | Low | `RunCode(out any, code string)` 用 `any` 承接 JSON 綁定，可用泛型 `Run[T](ctx, code) (T, error)`；`$v1` 佔位字串替換有做 JSON 轉義（注入已處理：OK）；`PipInstall`／`PipUninstall` 無 ctx；`RunCodeWithTimeout(timeout, out, code)` 與 `RunCodeContext` 兩套 | py/py.go:53-220, 301-380 | 泛型版；統一 ctx |
+| PD-1 | Low | `pd` 是 `apoplexi24/gpandas` 的薄包裝，`DataFrame` 內嵌第三方型別、`FromGPandasDataFrame` 直接收第三方型別（FI-1 同族）；`FromDataList` 對空 list 回錯（pandas 允許空 Series） | pd/dataframe.go:12-16, 251；pd/series.go:14-20 | 文件標明依賴；空 list 回空 Series |
+
+### lp / lpgen
+
+| 編號 | 嚴重度 | 問題 | 位置 | 建議 |
+| --- | --- | --- | --- | --- |
+| LP-1 | High | 第一次呼叫 `SolveModel`／`SolveFromFile` 時，程式庫自己從 ftp.gnu.org（Windows 走 SourceForge 的 latest/download 轉址）下載 GLPK 原始碼，在使用者機器上執行 `./configure && make && make install` 裝進 `$HOME/local`，再改寫**當前程序**的 `PATH` 環境變數。下載沒有校驗和、失敗路徑有 8 處 `LogFatal`。一個 Go 資料程式庫在執行期編譯 C 程式，是供應鏈與可移植性風險，生產環境不可接受（準則 14；K-1） | lp/init.go:33-260 | 移除自動安裝：找不到 `glpsol` 就回錯並在 Docs 說明安裝方式；或改用純 Go 求解器 |
+| LP-2 | Med | `SolveFromFile`／`SolveModel` 回傳 `(*DataTable, *DataTable)` 沒有 error；錯誤與逾時被編碼成第二張表裡的字串（`Status: "Error"`），且那張表的列順序來自 map 迭代（MK-2）；結果表是 GLPK 輸出「逐行文字」，變數值沒有解析成欄位；`timeoutSeconds ...int` 用 variadic（準則 8、11） | lp/lp.go:21-80, 83-215, 256-280 | 回 `(*Solution, error)`，Solution 含 `Status`、`Objective`、`Variables map[string]float64` |
+| LP-3 | Low | `lpgen.LPModel` 以字串拼 LP 檔（`AddConstraint("x + y <= 10")`），沒有結構化建模；`GenerateLPFile(filename)` 無 error；`ParseLingoModel_str`／`_txt` 底線命名、失敗回 nil 無 error | lpgen/lpgen.go；lingo.go | 回 error；命名 `ParseLingo`／`ParseLingoFile` |
+
+### engine
+
+| 編號 | 嚴重度 | 問題 | 位置 | 建議 |
+| --- | --- | --- | --- | --- |
+| EN-1 | Med | `engine/ccl` 把 `internal/ccl` 的 AST（`CCLNode`、`Context`、`EvaluationResult`、`MapContext`）用型別別名整個公開，編譯器內部結構從此成為相容性承諾；`RegisterFunction`／`RegisterAggregateFunction` 是程序全域登錄表，無移除、無並行安全說明；`ResetEvalDepth`／`ResetFuncCallDepth` 已是 no-op 但沒標 Deprecated（準則 2、10） | engine/ccl/ccl.go | 只公開 `Compile`＋`Evaluate`＋`Register*`；no-op 標 Deprecated |
+| EN-2 | Low | `engine/dsl` 引入 `cli/env` 與 `cli/repl`：程式庫層的 engine 依賴 CLI 層，方向反了；`engine/atomic`、`biindex`、`ring` 是 internal 型別的別名再匯出，doc 說 Ring 非並行安全，OK | engine/dsl/dsl.go:3-8 | DSL session 實作搬到非 cli 套件，cli 依賴它 |
 
 ## 逐項清單
 
@@ -1197,62 +1229,62 @@
 
 ## engine/algorithms (3)
 
-- [ ] `func CompareAny(a, b any) int` (algorithms.go:11)
-- [ ] `func GetTypeSortingRank(v any) int` (algorithms.go:6)
-- [ ] `func ParallelSortStableFunc[S ~[]E, E any](x S, cmp func(E, E) int)` (algorithms.go:16)
+- [x] `func CompareAny(a, b any) int` (algorithms.go:11) — OK 別名再匯出（EN-2）
+- [x] `func GetTypeSortingRank(v any) int` (algorithms.go:6) — OK 別名再匯出（EN-2）
+- [x] `func ParallelSortStableFunc[S ~[]E, E any](x S, cmp func(E, E) int)` (algorithms.go:16) — OK 別名再匯出（EN-2）
 
 ## engine/atomic (9)
 
-- [ ] `func AtomicDoN(actors []*Actor, f func())` (atomic.go:51)
-- [ ] `func AtomicDoNWithInit(actors []*Actor, initHooks []func(), f func())` (atomic.go:57)
-- [ ] `func AtomicDoWithInit[T any](actor *Actor, owner *T, f func(*T), initHook func())` (atomic.go:33)
-- [ ] `func AtomicDo[T any](actor *Actor, owner *T, f func(*T))` (atomic.go:28)
-- [ ] `func DefaultGroup() *Group` (atomic.go:17)
-- [ ] `func NewActor(group *Group) *Actor` (atomic.go:23)
-- [ ] `func NewGroup() *Group` (atomic.go:12)
-- [ ] `type Actor = core.AtomicActor` (atomic.go:9)
-- [ ] `type Group = core.AtomicGroup` (atomic.go:6)
+- [x] `func AtomicDoN(actors []*Actor, f func())` (atomic.go:51) — OK 別名再匯出（EN-2）
+- [x] `func AtomicDoNWithInit(actors []*Actor, initHooks []func(), f func())` (atomic.go:57) — OK 別名再匯出（EN-2）
+- [x] `func AtomicDoWithInit[T any](actor *Actor, owner *T, f func(*T), initHook func())` (atomic.go:33) — OK 別名再匯出（EN-2）
+- [x] `func AtomicDo[T any](actor *Actor, owner *T, f func(*T))` (atomic.go:28) — OK 別名再匯出（EN-2）
+- [x] `func DefaultGroup() *Group` (atomic.go:17) — OK 別名再匯出（EN-2）
+- [x] `func NewActor(group *Group) *Actor` (atomic.go:23) — OK 別名再匯出（EN-2）
+- [x] `func NewGroup() *Group` (atomic.go:12) — OK 別名再匯出（EN-2）
+- [x] `type Actor = core.AtomicActor` (atomic.go:9) — OK 別名再匯出（EN-2）
+- [x] `type Group = core.AtomicGroup` (atomic.go:6) — OK 別名再匯出（EN-2）
 
 ## engine/biindex (2)
 
-- [ ] `func NewBiIndex(cap int) *BiIndex` (biindex.go:9)
-- [ ] `type BiIndex = core.BiIndex` (biindex.go:6)
+- [x] `func NewBiIndex(cap int) *BiIndex` (biindex.go:9) — OK 別名再匯出（EN-2）
+- [x] `type BiIndex = core.BiIndex` (biindex.go:6) — OK 別名再匯出（EN-2）
 
 ## engine/ccl (23)
 
-- [ ] `func Bind(n CCLNode, colNameMap map[string]int) (CCLNode, error)` (ccl.go:29)
-- [ ] `func CompileExpression(expression string) (CCLNode, error)` (ccl.go:19)
-- [ ] `func CompileMultiline(script string) ([]CCLNode, error)` (ccl.go:24)
-- [ ] `func Evaluate(n CCLNode, ctx Context) (any, error)` (ccl.go:34)
-- [ ] `func EvaluateStatement(n CCLNode, ctx Context) (*EvaluationResult, error)` (ccl.go:39)
-- [ ] `func GetAssignmentTarget(n CCLNode) (string, bool)` (ccl.go:44)
-- [ ] `func GetExpressionNode(n CCLNode) CCLNode` (ccl.go:54)
-- [ ] `func GetNewColInfo(n CCLNode) (string, CCLNode, bool)` (ccl.go:49)
-- [ ] `func IsAssignmentNode(n CCLNode) bool` (ccl.go:59)
-- [ ] `func IsNewColNode(n CCLNode) bool` (ccl.go:64)
-- [ ] `func IsRowDependent(n CCLNode) bool` (ccl.go:69)
-- [ ] `func NewMapContext(data map[string][]any) (*MapContext, error)` (ccl.go:14)
-- [ ] `func RegisterAggregateFunction(name string, fn AggFunc)` (ccl.go:84)
-- [ ] `func RegisterFunction(name string, fn Func)` (ccl.go:79)
-- [ ] `func RegisterStandardFunctions()` (ccl.go:74)
-- [ ] `func ResetEvalDepth()` (ccl.go:91)
-- [ ] `func ResetFuncCallDepth()` (ccl.go:96)
-- [ ] `type AggFunc = internalccl.AggFunc` (ccl.go:11)
-- [ ] `type CCLNode = internalccl.CCLNode` (ccl.go:7)
-- [ ] `type Context = internalccl.Context` (ccl.go:6)
-- [ ] `type EvaluationResult = internalccl.EvaluationResult` (ccl.go:8)
-- [ ] `type Func = internalccl.Func` (ccl.go:10)
-- [ ] `type MapContext = internalccl.MapContext` (ccl.go:9)
+- [x] `func Bind(n CCLNode, colNameMap map[string]int) (CCLNode, error)` (ccl.go:29) — OK 回 error
+- [x] `func CompileExpression(expression string) (CCLNode, error)` (ccl.go:19) — OK 回 error
+- [x] `func CompileMultiline(script string) ([]CCLNode, error)` (ccl.go:24) — OK 回 error
+- [x] `func Evaluate(n CCLNode, ctx Context) (any, error)` (ccl.go:34) — OK 回 error
+- [x] `func EvaluateStatement(n CCLNode, ctx Context) (*EvaluationResult, error)` (ccl.go:39) — OK 回 error
+- [x] `func GetAssignmentTarget(n CCLNode) (string, bool)` (ccl.go:44) — OK 回 error
+- [x] `func GetExpressionNode(n CCLNode) CCLNode` (ccl.go:54) — OK 回 error
+- [x] `func GetNewColInfo(n CCLNode) (string, CCLNode, bool)` (ccl.go:49) — OK 回 error
+- [x] `func IsAssignmentNode(n CCLNode) bool` (ccl.go:59) — OK 回 error
+- [x] `func IsNewColNode(n CCLNode) bool` (ccl.go:64) — OK 回 error
+- [x] `func IsRowDependent(n CCLNode) bool` (ccl.go:69) — OK 回 error
+- [x] `func NewMapContext(data map[string][]any) (*MapContext, error)` (ccl.go:14) — OK 回 error
+- [x] `func RegisterAggregateFunction(name string, fn AggFunc)` (ccl.go:84) — EN-1 全域登錄表
+- [x] `func RegisterFunction(name string, fn Func)` (ccl.go:79) — EN-1 全域登錄表
+- [x] `func RegisterStandardFunctions()` (ccl.go:74) — EN-1 全域登錄表
+- [x] `func ResetEvalDepth()` (ccl.go:91) — EN-1 no-op 未標 Deprecated
+- [x] `func ResetFuncCallDepth()` (ccl.go:96) — EN-1 no-op 未標 Deprecated
+- [x] `type AggFunc = internalccl.AggFunc` (ccl.go:11) — EN-1 internal AST 別名公開
+- [x] `type CCLNode = internalccl.CCLNode` (ccl.go:7) — EN-1 internal AST 別名公開
+- [x] `type Context = internalccl.Context` (ccl.go:6) — EN-1 internal AST 別名公開
+- [x] `type EvaluationResult = internalccl.EvaluationResult` (ccl.go:8) — EN-1 internal AST 別名公開
+- [x] `type Func = internalccl.Func` (ccl.go:10) — EN-1 internal AST 別名公開
+- [x] `type MapContext = internalccl.MapContext` (ccl.go:9) — EN-1 internal AST 別名公開
 
 ## engine/dsl (2)
 
-- [ ] `func NewSession(mgr *env.Manager, envName string, output io.Writer) (*Session, error)` (dsl.go:24)
-- [ ] `type Session = repl.DSLSession` (dsl.go:13)
+- [x] `func NewSession(mgr *env.Manager, envName string, output io.Writer) (*Session, error)` (dsl.go:24) — EN-2 engine 依賴 cli
+- [x] `type Session = repl.DSLSession` (dsl.go:13) — EN-2 engine 依賴 cli
 
 ## engine/ring (2)
 
-- [ ] `func NewRing[T any](capacity int) *Ring[T]` (ring.go:10)
-- [ ] `type Ring[T any] = core.Ring[T]` (ring.go:7)
+- [x] `func NewRing[T any](capacity int) *Ring[T]` (ring.go:10) — OK 別名再匯出（EN-2）
+- [x] `type Ring[T any] = core.Ring[T]` (ring.go:7) — OK 別名再匯出（EN-2）
 
 ## finance (60)
 
@@ -1319,28 +1351,28 @@
 
 ## gplot (22)
 
-- [ ] `func CreateBarChart(config BarChartConfig, data any) *plot.Plot` (bar.go:24)
-- [ ] `func CreateFunctionPlot(config FunctionPlotConfig, function func(x float64) float64) *plot.Plot` (function.go:22)
-- [ ] `func CreateHeatmapChart(config HeatmapChartConfig, data any) *plot.Plot` (heatmap.go:61)
-- [ ] `func CreateHistogram(config HistogramConfig, data any) *plot.Plot` (histogram.go:19)
-- [ ] `func CreateLineChart(config LineChartConfig, data any) *plot.Plot` (line.go:24)
-- [ ] `func CreateScatterPlot(config ScatterPlotConfig, data any) *plot.Plot` (scatter.go:24)
-- [ ] `func CreateStepChart(config StepChartConfig, data any) *plot.Plot` (step.go:25)
-- [ ] `func SaveChart(plt *plot.Plot, filename string)` (save_chart.go:14)
-- [ ] `type BarChartConfig struct { Title string XAxis []string XAxisName string YAxisName string BarWidth float64 ErrorBars []float64 }` (bar.go:13)
-- [ ] `type FunctionPlotConfig struct { Title string XAxisName string YAxisName string XMin float64 XMax float64 YMin float64 YMax float64 }` (function.go:11)
-- [ ] `type HeatmapChartConfig struct { Title string XAxisName string YAxisName string XAxis []float64 YAxis []float64 Colors int Alpha float64 }` (heatmap.go:13)
-- [ ] `type HistogramConfig struct { Title string XAxisName string YAxisName string Bins int }` (histogram.go:10)
-- [ ] `type LineChartConfig struct { Title string XAxis []float64 XAxisName string YAxisName string }` (line.go:15)
-- [ ] `type ScatterPlotConfig struct { Title string XAxisName string YAxisName string }` (scatter.go:16)
-- [ ] `type StepChartConfig struct { Title string XAxis []float64 XAxisName string YAxisName string StepStyle string }` (step.go:15)
-- [ ] `func (d *barErrorData) Len() int` (bar.go:97)
-- [ ] `func (d *barErrorData) XY(i int) (float64, float64)` (bar.go:101)
-- [ ] `func (d *barErrorData) YError(i int) (float64, float64)` (bar.go:105)
-- [ ] `func (g *gridData) Dims() (c, r int)` (heatmap.go:31)
-- [ ] `func (g *gridData) X(c int) float64` (heatmap.go:44)
-- [ ] `func (g *gridData) Y(r int) float64` (heatmap.go:52)
-- [ ] `func (g *gridData) Z(c, r int) float64` (heatmap.go:39)
+- [x] `func CreateBarChart(config BarChartConfig, data any) *plot.Plot` (bar.go:24) — PL-3 `data any`、非數值當 0、回 nil 無 error
+- [x] `func CreateFunctionPlot(config FunctionPlotConfig, function func(x float64) float64) *plot.Plot` (function.go:22) — PL-3 `data any`、非數值當 0、回 nil 無 error
+- [x] `func CreateHeatmapChart(config HeatmapChartConfig, data any) *plot.Plot` (heatmap.go:61) — PL-3 `data any`、非數值當 0、回 nil 無 error
+- [x] `func CreateHistogram(config HistogramConfig, data any) *plot.Plot` (histogram.go:19) — PL-3 `data any`、非數值當 0、回 nil 無 error
+- [x] `func CreateLineChart(config LineChartConfig, data any) *plot.Plot` (line.go:24) — PL-3 `data any`、非數值當 0、回 nil 無 error
+- [x] `func CreateScatterPlot(config ScatterPlotConfig, data any) *plot.Plot` (scatter.go:24) — PL-3 `data any`、非數值當 0、回 nil 無 error
+- [x] `func CreateStepChart(config StepChartConfig, data any) *plot.Plot` (step.go:25) — PL-3 `data any`、非數值當 0、回 nil 無 error
+- [x] `func SaveChart(plt *plot.Plot, filename string)` (save_chart.go:14) — PL-2 LogFatal、無 error、尺寸寫死
+- [x] `type BarChartConfig struct { Title string XAxis []string XAxisName string YAxisName string BarWidth float64 ErrorBars []float64 }` (bar.go:13) — OK
+- [x] `type FunctionPlotConfig struct { Title string XAxisName string YAxisName string XMin float64 XMax float64 YMin float64 YMax float64 }` (function.go:11) — OK
+- [x] `type HeatmapChartConfig struct { Title string XAxisName string YAxisName string XAxis []float64 YAxis []float64 Colors int Alpha float64 }` (heatmap.go:13) — OK
+- [x] `type HistogramConfig struct { Title string XAxisName string YAxisName string Bins int }` (histogram.go:10) — OK
+- [x] `type LineChartConfig struct { Title string XAxis []float64 XAxisName string YAxisName string }` (line.go:15) — OK
+- [x] `type ScatterPlotConfig struct { Title string XAxisName string YAxisName string }` (scatter.go:16) — OK
+- [x] `type StepChartConfig struct { Title string XAxis []float64 XAxisName string YAxisName string StepStyle string }` (step.go:15) — OK
+- [x] `func (d *barErrorData) Len() int` (bar.go:97) — OK
+- [x] `func (d *barErrorData) XY(i int) (float64, float64)` (bar.go:101) — OK
+- [x] `func (d *barErrorData) YError(i int) (float64, float64)` (bar.go:105) — OK
+- [x] `func (g *gridData) Dims() (c, r int)` (heatmap.go:31) — OK
+- [x] `func (g *gridData) X(c int) float64` (heatmap.go:44) — OK
+- [x] `func (g *gridData) Y(r int) float64` (heatmap.go:52) — OK
+- [x] `func (g *gridData) Z(c, r int) float64` (heatmap.go:39) — OK
 
 ## isr (44)
 
@@ -1391,21 +1423,21 @@
 
 ## lp (2)
 
-- [ ] `func SolveFromFile(lpFile string, timeoutSeconds ...int) (*insyra.DataTable, *insyra.DataTable)` (lp.go:21)
-- [ ] `func SolveModel(model *lpgen.LPModel, timeoutSeconds ...int) (*insyra.DataTable, *insyra.DataTable)` (lp.go:83)
+- [x] `func SolveFromFile(lpFile string, timeoutSeconds ...int) (*insyra.DataTable, *insyra.DataTable)` (lp.go:21) — LP-1 執行期自動安裝 GLPK；LP-2 無 error、結果為文字列
+- [x] `func SolveModel(model *lpgen.LPModel, timeoutSeconds ...int) (*insyra.DataTable, *insyra.DataTable)` (lp.go:83) — LP-1 執行期自動安裝 GLPK；LP-2 無 error、結果為文字列
 
 ## lpgen (10)
 
-- [ ] `func (lp *LPModel) AddBinaryVar(varName string) *LPModel` (lpgen.go:44)
-- [ ] `func (lp *LPModel) AddBound(bound string) *LPModel` (lpgen.go:38)
-- [ ] `func (lp *LPModel) AddConstraint(constr string) *LPModel` (lpgen.go:32)
-- [ ] `func (lp *LPModel) AddIntegerVar(varName string) *LPModel` (lpgen.go:57)
-- [ ] `func (lp *LPModel) GenerateLPFile(filename string)` (lpgen.go:70)
-- [ ] `func (lp *LPModel) SetObjective(objType, obj string) *LPModel` (lpgen.go:25)
-- [ ] `func NewLPModel() *LPModel` (lpgen.go:20)
-- [ ] `func ParseLingoModel_str(modelStr string) *LPModel` (lingo.go:120)
-- [ ] `func ParseLingoModel_txt(filePath string) *LPModel` (lingo.go:15)
-- [ ] `type LPModel struct { Objective string ObjectiveType string Constraints []string Bounds []string BinaryVars []string IntegerVars []string }` (lpgen.go:11)
+- [x] `func (lp *LPModel) AddBinaryVar(varName string) *LPModel` (lpgen.go:44) — LP-3 字串式建模；鏈式 OK
+- [x] `func (lp *LPModel) AddBound(bound string) *LPModel` (lpgen.go:38) — LP-3 字串式建模；鏈式 OK
+- [x] `func (lp *LPModel) AddConstraint(constr string) *LPModel` (lpgen.go:32) — LP-3 字串式建模；鏈式 OK
+- [x] `func (lp *LPModel) AddIntegerVar(varName string) *LPModel` (lpgen.go:57) — LP-3 字串式建模；鏈式 OK
+- [x] `func (lp *LPModel) GenerateLPFile(filename string)` (lpgen.go:70) — LP-3 無 error
+- [x] `func (lp *LPModel) SetObjective(objType, obj string) *LPModel` (lpgen.go:25) — LP-3 字串式建模；鏈式 OK
+- [x] `func NewLPModel() *LPModel` (lpgen.go:20) — LP-3 字串式建模；鏈式 OK
+- [x] `func ParseLingoModel_str(modelStr string) *LPModel` (lingo.go:120) — LP-3 底線命名、無 error
+- [x] `func ParseLingoModel_txt(filePath string) *LPModel` (lingo.go:15) — LP-3 底線命名、無 error
+- [x] `type LPModel struct { Objective string ObjectiveType string Constraints []string Bounds []string BinaryVars []string IntegerVars []string }` (lpgen.go:11) — LP-3 字串式建模；鏈式 OK
 
 ## mkt (14)
 
@@ -1977,114 +2009,114 @@
 
 ## pd (8)
 
-- [ ] `func (s *Series) ToDataList() (*insyra.DataList, error)` (series.go:131)
-- [ ] `func (t *DataFrame) ToDataTable() (*insyra.DataTable, error)` (dataframe.go:121)
-- [ ] `func FromDataList(dl insyra.IDataList) (*Series, error)` (series.go:14)
-- [ ] `func FromDataTable(dt insyra.IDataTable) (*DataFrame, error)` (dataframe.go:19)
-- [ ] `func FromGPandasDataFrame(df *gpdf.DataFrame) (*DataFrame, error)` (dataframe.go:255)
-- [ ] `func FromGPandasSeries(gpds gpdc.Series) (*Series, error)` (series.go:121)
-- [ ] `type DataFrame struct { *gpdf.DataFrame }` (dataframe.go:13)
-- [ ] `type Series struct { gpdc.Series }` (series.go:10)
+- [x] `func (s *Series) ToDataList() (*insyra.DataList, error)` (series.go:131) — OK 回 error
+- [x] `func (t *DataFrame) ToDataTable() (*insyra.DataTable, error)` (dataframe.go:121) — OK 回 error
+- [x] `func FromDataList(dl insyra.IDataList) (*Series, error)` (series.go:14) — PD-1 空 list 回錯
+- [x] `func FromDataTable(dt insyra.IDataTable) (*DataFrame, error)` (dataframe.go:19) — OK 回 error
+- [x] `func FromGPandasDataFrame(df *gpdf.DataFrame) (*DataFrame, error)` (dataframe.go:255) — PD-1 第三方型別
+- [x] `func FromGPandasSeries(gpds gpdc.Series) (*Series, error)` (series.go:121) — PD-1 第三方型別
+- [x] `type DataFrame struct { *gpdf.DataFrame }` (dataframe.go:13) — OK 回 error
+- [x] `type Series struct { gpdc.Series }` (series.go:10) — OK 回 error
 
 ## plot (80)
 
-- [ ] `const LabelPositionBottom LabelPosition` (positions.go:16)
-- [ ] `const LabelPositionInside LabelPosition` (positions.go:19)
-- [ ] `const LabelPositionInsideBottom LabelPosition` (positions.go:23)
-- [ ] `const LabelPositionInsideBottomLeft LabelPosition` (positions.go:25)
-- [ ] `const LabelPositionInsideBottomRight LabelPosition` (positions.go:27)
-- [ ] `const LabelPositionInsideLeft LabelPosition` (positions.go:20)
-- [ ] `const LabelPositionInsideRight LabelPosition` (positions.go:21)
-- [ ] `const LabelPositionInsideTop LabelPosition` (positions.go:22)
-- [ ] `const LabelPositionInsideTopLeft LabelPosition` (positions.go:24)
-- [ ] `const LabelPositionInsideTopRight LabelPosition` (positions.go:26)
-- [ ] `const LabelPositionLeft LabelPosition` (positions.go:17)
-- [ ] `const LabelPositionRight LabelPosition` (positions.go:18)
-- [ ] `const LabelPositionTop LabelPosition` (positions.go:15)
-- [ ] `const PositionBottom Position` (positions.go:7)
-- [ ] `const PositionLeft Position` (positions.go:8)
-- [ ] `const PositionRight Position` (positions.go:9)
-- [ ] `const PositionTop Position` (positions.go:6)
-- [ ] `const ThemeChalk Theme` (themes.go:8)
-- [ ] `const ThemeEssos Theme` (themes.go:9)
-- [ ] `const ThemeInfographic Theme` (themes.go:10)
-- [ ] `const ThemeMacarons Theme` (themes.go:11)
-- [ ] `const ThemePurplePassion Theme` (themes.go:12)
-- [ ] `const ThemeRiverAxisTypeTime ThemeRiverAxisType` (themeriver.go:19)
-- [ ] `const ThemeRoma Theme` (themes.go:13)
-- [ ] `const ThemeRomantic Theme` (themes.go:14)
-- [ ] `const ThemeShine Theme` (themes.go:15)
-- [ ] `const ThemeVintage Theme` (themes.go:16)
-- [ ] `const ThemeWalden Theme` (themes.go:17)
-- [ ] `const ThemeWesteros Theme` (themes.go:18)
-- [ ] `const ThemeWonderland Theme` (themes.go:19)
-- [ ] `const WordCloudShapeArrow WordCloudShape` (wordcloud.go:20)
-- [ ] `const WordCloudShapeCircle WordCloudShape` (wordcloud.go:14)
-- [ ] `const WordCloudShapeDiamond WordCloudShape` (wordcloud.go:18)
-- [ ] `const WordCloudShapePin WordCloudShape` (wordcloud.go:19)
-- [ ] `const WordCloudShapeRect WordCloudShape` (wordcloud.go:15)
-- [ ] `const WordCloudShapeRoundRect WordCloudShape` (wordcloud.go:16)
-- [ ] `const WordCloudShapeTriangle WordCloudShape` (wordcloud.go:17)
-- [ ] `func CreateBarChart(config BarChartConfig, data ...insyra.IDataList) *charts.Bar` (bar.go:40)
-- [ ] `func CreateBoxPlot(config BoxPlotConfig, series ...BoxPlotSeries) *charts.BoxPlot` (boxplot.go:45)
-- [ ] `func CreateFunnelChart(config FunnelChartConfig, data map[string]float64) *charts.Funnel` (funnel.go:30)
-- [ ] `func CreateGaugeChart(config GaugeChartConfig, value float64) *charts.Gauge` (gauge.go:27)
-- [ ] `func CreateHeatMap[X heapMapAxisValue, Y heapMapAxisValue](config HeatMapConfig, points ...heatMapPoint[X, Y]) *charts.HeatMap` (heatmap.go:71)
-- [ ] `func CreateKlineChart(config KlineChartConfig, klinePoints ...KlinePoint) *charts.Kline` (kline.go:42)
-- [ ] `func CreateLineChart(config LineChartConfig, data ...insyra.IDataList) *charts.Line` (line.go:45)
-- [ ] `func CreatePieChart(config PieChartConfig, data ...PieItem) *charts.Pie` (pie.go:39)
-- [ ] `func CreateRadarChart(config RadarChartConfig, series []RadarSeries) *charts.Radar` (radar.go:38)
-- [ ] `func CreateSankeyChart(config SankeyChartConfig, links ...SankeyLink) *charts.Sankey` (sankey.go:36)
-- [ ] `func CreateScatterChart(config ScatterChartConfig, data map[string][]ScatterPoint) *charts.Scatter` (scatter.go:51)
-- [ ] `func CreateThemeRiverChart(config ThemeRiverChartConfig, data ...ThemeRiverData) *charts.ThemeRiver` (themeriver.go:52)
-- [ ] `func CreateWordCloud(config WordCloudConfig, data insyra.IDataList) *charts.WordCloud` (wordcloud.go:38)
-- [ ] `func HeatMapMissingPoint[X heapMapAxisValue, Y heapMapAxisValue](x X, y Y) heatMapPoint[X, Y]` (heatmap.go:65)
-- [ ] `func HeatMapPoint[X heapMapAxisValue, Y heapMapAxisValue](x X, y Y, value float64) heatMapPoint[X, Y]` (heatmap.go:60)
-- [ ] `func SaveHTML(chart Renderable, path string, animation ...bool) error` (save_chart.go:39)
-- [ ] `func SavePNG(chart Renderable, pngPath string, useOnlineServiceOnFail ...bool) error` (save_chart.go:62)
-- [ ] `type BarChartConfig struct { Width string Height string BackgroundColor string Theme Theme Title string Subtitle string TitlePos Position HideLegend bool LegendPos Position XAxis []string XAxisName string YAxisName string YAxisMin *float64 YAxisMax *float64 YAxisSplitNumber *int YAxisFormatter string Colors []string ShowLabels bool LabelPos LabelPosition }` (bar.go:15)
-- [ ] `type BoxPlotConfig struct { Width string Height string BackgroundColor string Theme Theme Title string Subtitle string TitlePos Position HideLegend bool LegendPos Position XAxis []string XAxisName string YAxisName string YAxisMin *float64 YAxisMax *float64 YAxisSplitNumber *int YAxisFormatter string }` (boxplot.go:23)
-- [ ] `type BoxPlotSeries struct { Name string Data []insyra.IDataList Color string Fill bool }` (boxplot.go:15)
-- [ ] `type FunnelChartConfig struct { Width string Height string BackgroundColor string Theme Theme Title string Subtitle string TitlePos Position HideLegend bool LegendPos Position ShowLabels bool LabelPos LabelPosition }` (funnel.go:13)
-- [ ] `type GaugeChartConfig struct { Width string Height string BackgroundColor string Theme Theme Title string Subtitle string TitlePos Position HideLegend bool LegendPos Position SeriesName string }` (gauge.go:12)
-- [ ] `type HeatMapConfig struct { Width string Height string BackgroundColor string Theme Theme Title string Subtitle string TitlePos Position XAxis []string YAxis []string Colors []string Min *float64 Max *float64 UseCalendar bool CalendarOpts *opts.Calendar }` (heatmap.go:25)
-- [ ] `type KlineChartConfig struct { Width string Height string BackgroundColor string Theme Theme Title string Subtitle string TitlePos Position DateFormat string DataZoom bool }` (kline.go:26)
-- [ ] `type KlinePoint struct { Date time.Time `json:"date"` Open float64 `json:"open"` High float64 `json:"high"` Low float64 `json:"low"` Close float64 `json:"close"` }` (kline.go:17)
-- [ ] `type LabelPosition string` (positions.go:12)
-- [ ] `type LineChartConfig struct { Width string Height string BackgroundColor string Theme Theme Title string Subtitle string TitlePos Position HideLegend bool LegendPos Position XAxis []string XAxisName string YAxisName string YAxis []string YAxisMin *float64 YAxisMax *float64 YAxisSplitNumber *int YAxisFormatter string Colors []string ShowLabels bool LabelPos string Smooth bool FillArea bool }` (line.go:15)
-- [ ] `type PieChartConfig struct { Width string Height string BackgroundColor string Theme Theme Title string Subtitle string TitlePos Position HideLegend bool LegendPos Position Colors []string ShowLabels bool ShowPercent bool LabelPos LabelPosition RoseType string Radius []string Center []string }` (pie.go:18)
-- [ ] `type PieItem struct { Name string Value float64 }` (pie.go:12)
-- [ ] `type Position string` (positions.go:3)
-- [ ] `type RadarChartConfig struct { Width string Height string BackgroundColor string Theme Theme Title string Subtitle string TitlePos Position HideLegend bool LegendPos Position Indicators []string MaxValues map[string]float32 }` (radar.go:15)
-- [ ] `type RadarSeries struct { Name string Values []float32 Color string }` (radar.go:31)
-- [ ] `type Renderable interface { Render(w io.Writer) error RenderContent() []byte }` (save_chart.go:33)
-- [ ] `type SankeyChartConfig struct { Width string Height string BackgroundColor string Theme Theme Title string Subtitle string TitlePos Position Nodes []string Curveness float32 Color string ShowLabels bool }` (sankey.go:20)
-- [ ] `type SankeyLink struct { Source string `json:"source"` Target string `json:"target"` Value float32 `json:"value"` }` (sankey.go:13)
-- [ ] `type ScatterChartConfig struct { Width string Height string BackgroundColor string Theme Theme Title string Subtitle string TitlePos Position HideLegend bool LegendPos Position XAxisName string XAxisMin *float64 XAxisMax *float64 XAxisSplitNumber *int XAxisFormatter string YAxisName string YAxisMin *float64 YAxisMax *float64 YAxisSplitNumber *int YAxisFormatter string Colors []string ShowLabels bool LabelPos LabelPosition SplitLine bool Symbol []string SymbolSize int }` (scatter.go:20)
-- [ ] `type ScatterPoint struct { X float64 Y float64 }` (scatter.go:14)
-- [ ] `type Theme string` (themes.go:5)
-- [ ] `type ThemeRiverAxisType string` (themeriver.go:12)
-- [ ] `type ThemeRiverChartConfig struct { Width string Height string BackgroundColor string Theme Theme Title string Subtitle string TitlePos Position HideLegend bool LegendPos Position AxisType ThemeRiverAxisType AxisData []string AxisMin *float64 AxisMax *float64 }` (themeriver.go:32)
-- [ ] `type ThemeRiverData struct { Date string Value float64 Name string }` (themeriver.go:25)
-- [ ] `type WordCloudConfig struct { Width string Height string BackgroundColor string Theme Theme Title string Subtitle string TitlePos Position Shape WordCloudShape SizeRange []float32 }` (wordcloud.go:24)
-- [ ] `type WordCloudShape string` (wordcloud.go:11)
+- [x] `const LabelPositionBottom LabelPosition` (positions.go:16) — OK
+- [x] `const LabelPositionInside LabelPosition` (positions.go:19) — OK
+- [x] `const LabelPositionInsideBottom LabelPosition` (positions.go:23) — OK
+- [x] `const LabelPositionInsideBottomLeft LabelPosition` (positions.go:25) — OK
+- [x] `const LabelPositionInsideBottomRight LabelPosition` (positions.go:27) — OK
+- [x] `const LabelPositionInsideLeft LabelPosition` (positions.go:20) — OK
+- [x] `const LabelPositionInsideRight LabelPosition` (positions.go:21) — OK
+- [x] `const LabelPositionInsideTop LabelPosition` (positions.go:22) — OK
+- [x] `const LabelPositionInsideTopLeft LabelPosition` (positions.go:24) — OK
+- [x] `const LabelPositionInsideTopRight LabelPosition` (positions.go:26) — OK
+- [x] `const LabelPositionLeft LabelPosition` (positions.go:17) — OK
+- [x] `const LabelPositionRight LabelPosition` (positions.go:18) — OK
+- [x] `const LabelPositionTop LabelPosition` (positions.go:15) — OK
+- [x] `const PositionBottom Position` (positions.go:7) — OK
+- [x] `const PositionLeft Position` (positions.go:8) — OK
+- [x] `const PositionRight Position` (positions.go:9) — OK
+- [x] `const PositionTop Position` (positions.go:6) — OK
+- [x] `const ThemeChalk Theme` (themes.go:8) — OK
+- [x] `const ThemeEssos Theme` (themes.go:9) — OK
+- [x] `const ThemeInfographic Theme` (themes.go:10) — OK
+- [x] `const ThemeMacarons Theme` (themes.go:11) — OK
+- [x] `const ThemePurplePassion Theme` (themes.go:12) — OK
+- [x] `const ThemeRiverAxisTypeTime ThemeRiverAxisType` (themeriver.go:19) — OK
+- [x] `const ThemeRoma Theme` (themes.go:13) — OK
+- [x] `const ThemeRomantic Theme` (themes.go:14) — OK
+- [x] `const ThemeShine Theme` (themes.go:15) — OK
+- [x] `const ThemeVintage Theme` (themes.go:16) — OK
+- [x] `const ThemeWalden Theme` (themes.go:17) — OK
+- [x] `const ThemeWesteros Theme` (themes.go:18) — OK
+- [x] `const ThemeWonderland Theme` (themes.go:19) — OK
+- [x] `const WordCloudShapeArrow WordCloudShape` (wordcloud.go:20) — OK
+- [x] `const WordCloudShapeCircle WordCloudShape` (wordcloud.go:14) — OK
+- [x] `const WordCloudShapeDiamond WordCloudShape` (wordcloud.go:18) — OK
+- [x] `const WordCloudShapePin WordCloudShape` (wordcloud.go:19) — OK
+- [x] `const WordCloudShapeRect WordCloudShape` (wordcloud.go:15) — OK
+- [x] `const WordCloudShapeRoundRect WordCloudShape` (wordcloud.go:16) — OK
+- [x] `const WordCloudShapeTriangle WordCloudShape` (wordcloud.go:17) — OK
+- [x] `func CreateBarChart(config BarChartConfig, data ...insyra.IDataList) *charts.Bar` (bar.go:40) — PL-3 失敗回 nil 無 error；ToF64Slice 零代入
+- [x] `func CreateBoxPlot(config BoxPlotConfig, series ...BoxPlotSeries) *charts.BoxPlot` (boxplot.go:45) — PL-3 失敗回 nil 無 error；ToF64Slice 零代入
+- [x] `func CreateFunnelChart(config FunnelChartConfig, data map[string]float64) *charts.Funnel` (funnel.go:30) — PL-3 失敗回 nil 無 error；ToF64Slice 零代入
+- [x] `func CreateGaugeChart(config GaugeChartConfig, value float64) *charts.Gauge` (gauge.go:27) — PL-3 失敗回 nil 無 error；ToF64Slice 零代入
+- [x] `func CreateHeatMap[X heapMapAxisValue, Y heapMapAxisValue](config HeatMapConfig, points ...heatMapPoint[X, Y]) *charts.HeatMap` (heatmap.go:71) — PL-3 失敗回 nil 無 error；ToF64Slice 零代入
+- [x] `func CreateKlineChart(config KlineChartConfig, klinePoints ...KlinePoint) *charts.Kline` (kline.go:42) — PL-3 失敗回 nil 無 error；ToF64Slice 零代入
+- [x] `func CreateLineChart(config LineChartConfig, data ...insyra.IDataList) *charts.Line` (line.go:45) — PL-3 失敗回 nil 無 error；ToF64Slice 零代入
+- [x] `func CreatePieChart(config PieChartConfig, data ...PieItem) *charts.Pie` (pie.go:39) — PL-3 失敗回 nil 無 error；ToF64Slice 零代入
+- [x] `func CreateRadarChart(config RadarChartConfig, series []RadarSeries) *charts.Radar` (radar.go:38) — PL-3 失敗回 nil 無 error；ToF64Slice 零代入
+- [x] `func CreateSankeyChart(config SankeyChartConfig, links ...SankeyLink) *charts.Sankey` (sankey.go:36) — PL-3 失敗回 nil 無 error；ToF64Slice 零代入
+- [x] `func CreateScatterChart(config ScatterChartConfig, data map[string][]ScatterPoint) *charts.Scatter` (scatter.go:51) — PL-3 失敗回 nil 無 error；ToF64Slice 零代入
+- [x] `func CreateThemeRiverChart(config ThemeRiverChartConfig, data ...ThemeRiverData) *charts.ThemeRiver` (themeriver.go:52) — PL-3 失敗回 nil 無 error；ToF64Slice 零代入
+- [x] `func CreateWordCloud(config WordCloudConfig, data insyra.IDataList) *charts.WordCloud` (wordcloud.go:38) — PL-3 失敗回 nil 無 error；ToF64Slice 零代入
+- [x] `func HeatMapMissingPoint[X heapMapAxisValue, Y heapMapAxisValue](x X, y Y) heatMapPoint[X, Y]` (heatmap.go:65) — PL-4 回傳未匯出泛型型別
+- [x] `func HeatMapPoint[X heapMapAxisValue, Y heapMapAxisValue](x X, y Y, value float64) heatMapPoint[X, Y]` (heatmap.go:60) — PL-4 回傳未匯出泛型型別
+- [x] `func SaveHTML(chart Renderable, path string, animation ...bool) error` (save_chart.go:39) — OK 回 error；PL-4 variadic bool
+- [x] `func SavePNG(chart Renderable, pngPath string, useOnlineServiceOnFail ...bool) error` (save_chart.go:62) — PL-1 預設上傳到線上服務
+- [x] `type BarChartConfig struct { Width string Height string BackgroundColor string Theme Theme Title string Subtitle string TitlePos Position HideLegend bool LegendPos Position XAxis []string XAxisName string YAxisName string YAxisMin *float64 YAxisMax *float64 YAxisSplitNumber *int YAxisFormatter string Colors []string ShowLabels bool LabelPos LabelPosition }` (bar.go:15) — OK 欄位有註解；PL-4 尺寸字串
+- [x] `type BoxPlotConfig struct { Width string Height string BackgroundColor string Theme Theme Title string Subtitle string TitlePos Position HideLegend bool LegendPos Position XAxis []string XAxisName string YAxisName string YAxisMin *float64 YAxisMax *float64 YAxisSplitNumber *int YAxisFormatter string }` (boxplot.go:23) — OK 欄位有註解；PL-4 尺寸字串
+- [x] `type BoxPlotSeries struct { Name string Data []insyra.IDataList Color string Fill bool }` (boxplot.go:15) — OK
+- [x] `type FunnelChartConfig struct { Width string Height string BackgroundColor string Theme Theme Title string Subtitle string TitlePos Position HideLegend bool LegendPos Position ShowLabels bool LabelPos LabelPosition }` (funnel.go:13) — OK 欄位有註解；PL-4 尺寸字串
+- [x] `type GaugeChartConfig struct { Width string Height string BackgroundColor string Theme Theme Title string Subtitle string TitlePos Position HideLegend bool LegendPos Position SeriesName string }` (gauge.go:12) — OK 欄位有註解；PL-4 尺寸字串
+- [x] `type HeatMapConfig struct { Width string Height string BackgroundColor string Theme Theme Title string Subtitle string TitlePos Position XAxis []string YAxis []string Colors []string Min *float64 Max *float64 UseCalendar bool CalendarOpts *opts.Calendar }` (heatmap.go:25) — OK 欄位有註解；PL-4 尺寸字串
+- [x] `type KlineChartConfig struct { Width string Height string BackgroundColor string Theme Theme Title string Subtitle string TitlePos Position DateFormat string DataZoom bool }` (kline.go:26) — OK 欄位有註解；PL-4 尺寸字串
+- [x] `type KlinePoint struct { Date time.Time `json:"date"` Open float64 `json:"open"` High float64 `json:"high"` Low float64 `json:"low"` Close float64 `json:"close"` }` (kline.go:17) — OK
+- [x] `type LabelPosition string` (positions.go:12) — OK
+- [x] `type LineChartConfig struct { Width string Height string BackgroundColor string Theme Theme Title string Subtitle string TitlePos Position HideLegend bool LegendPos Position XAxis []string XAxisName string YAxisName string YAxis []string YAxisMin *float64 YAxisMax *float64 YAxisSplitNumber *int YAxisFormatter string Colors []string ShowLabels bool LabelPos string Smooth bool FillArea bool }` (line.go:15) — OK 欄位有註解；PL-4 尺寸字串
+- [x] `type PieChartConfig struct { Width string Height string BackgroundColor string Theme Theme Title string Subtitle string TitlePos Position HideLegend bool LegendPos Position Colors []string ShowLabels bool ShowPercent bool LabelPos LabelPosition RoseType string Radius []string Center []string }` (pie.go:18) — OK 欄位有註解；PL-4 尺寸字串
+- [x] `type PieItem struct { Name string Value float64 }` (pie.go:12) — OK
+- [x] `type Position string` (positions.go:3) — OK
+- [x] `type RadarChartConfig struct { Width string Height string BackgroundColor string Theme Theme Title string Subtitle string TitlePos Position HideLegend bool LegendPos Position Indicators []string MaxValues map[string]float32 }` (radar.go:15) — OK 欄位有註解；PL-4 尺寸字串
+- [x] `type RadarSeries struct { Name string Values []float32 Color string }` (radar.go:31) — OK
+- [x] `type Renderable interface { Render(w io.Writer) error RenderContent() []byte }` (save_chart.go:33) — OK 介面
+- [x] `type SankeyChartConfig struct { Width string Height string BackgroundColor string Theme Theme Title string Subtitle string TitlePos Position Nodes []string Curveness float32 Color string ShowLabels bool }` (sankey.go:20) — OK 欄位有註解；PL-4 尺寸字串
+- [x] `type SankeyLink struct { Source string `json:"source"` Target string `json:"target"` Value float32 `json:"value"` }` (sankey.go:13) — OK
+- [x] `type ScatterChartConfig struct { Width string Height string BackgroundColor string Theme Theme Title string Subtitle string TitlePos Position HideLegend bool LegendPos Position XAxisName string XAxisMin *float64 XAxisMax *float64 XAxisSplitNumber *int XAxisFormatter string YAxisName string YAxisMin *float64 YAxisMax *float64 YAxisSplitNumber *int YAxisFormatter string Colors []string ShowLabels bool LabelPos LabelPosition SplitLine bool Symbol []string SymbolSize int }` (scatter.go:20) — OK 欄位有註解；PL-4 尺寸字串
+- [x] `type ScatterPoint struct { X float64 Y float64 }` (scatter.go:14) — OK
+- [x] `type Theme string` (themes.go:5) — OK
+- [x] `type ThemeRiverAxisType string` (themeriver.go:12) — OK
+- [x] `type ThemeRiverChartConfig struct { Width string Height string BackgroundColor string Theme Theme Title string Subtitle string TitlePos Position HideLegend bool LegendPos Position AxisType ThemeRiverAxisType AxisData []string AxisMin *float64 AxisMax *float64 }` (themeriver.go:32) — OK 欄位有註解；PL-4 尺寸字串
+- [x] `type ThemeRiverData struct { Date string Value float64 Name string }` (themeriver.go:25) — OK
+- [x] `type WordCloudConfig struct { Width string Height string BackgroundColor string Theme Theme Title string Subtitle string TitlePos Position Shape WordCloudShape SizeRange []float32 }` (wordcloud.go:24) — OK 欄位有註解；PL-4 尺寸字串
+- [x] `type WordCloudShape string` (wordcloud.go:11) — OK
 
 ## py (14)
 
-- [ ] `func PipFreeze() ([]string, error)` (py.go:374)
-- [ ] `func PipInstall(dep string) error` (py.go:301)
-- [ ] `func PipList() (map[string]string, error)` (py.go:338)
-- [ ] `func PipUninstall(dep string) error` (py.go:319)
-- [ ] `func ReinstallPyEnv() error` (py.go:22)
-- [ ] `func RunCode(out any, code string) error` (py.go:80)
-- [ ] `func RunCodeContext(ctx context.Context, out any, code string) error` (py.go:169)
-- [ ] `func RunCodeWithTimeout(timeout time.Duration, out any, code string) error` (py.go:217)
-- [ ] `func RunCodef(out any, code string, args ...any) error` (py.go:86)
-- [ ] `func RunCodefContext(ctx context.Context, out any, code string, args ...any) error` (py.go:176)
-- [ ] `func RunFile(out any, filePath string) error` (py.go:53)
-- [ ] `func RunFileContext(ctx context.Context, out any, filePath string) error` (py.go:185)
-- [ ] `func RunFilef(out any, filePath string, args ...any) error` (py.go:67)
-- [ ] `func RunFilefContext(ctx context.Context, out any, filePath string, args ...any) error` (py.go:198)
+- [x] `func PipFreeze() ([]string, error)` (py.go:374) — PY-2 無 ctx
+- [x] `func PipInstall(dep string) error` (py.go:301) — PY-2 無 ctx
+- [x] `func PipList() (map[string]string, error)` (py.go:338) — PY-2 無 ctx
+- [x] `func PipUninstall(dep string) error` (py.go:319) — PY-2 無 ctx
+- [x] `func ReinstallPyEnv() error` (py.go:22) — PY-1 破壞性且無 ctx
+- [x] `func RunCode(out any, code string) error` (py.go:80) — PY-1 首次呼叫隱含安裝；PY-2
+- [x] `func RunCodeContext(ctx context.Context, out any, code string) error` (py.go:169) — OK 有 ctx；PY-2 out any
+- [x] `func RunCodeWithTimeout(timeout time.Duration, out any, code string) error` (py.go:217) — PY-2 與 ctx 版重複
+- [x] `func RunCodef(out any, code string, args ...any) error` (py.go:86) — PY-1 首次呼叫隱含安裝；PY-2
+- [x] `func RunCodefContext(ctx context.Context, out any, code string, args ...any) error` (py.go:176) — OK 有 ctx；PY-2 out any
+- [x] `func RunFile(out any, filePath string) error` (py.go:53) — PY-1 首次呼叫隱含安裝；PY-2
+- [x] `func RunFileContext(ctx context.Context, out any, filePath string) error` (py.go:185) — OK 有 ctx；PY-2 out any
+- [x] `func RunFilef(out any, filePath string, args ...any) error` (py.go:67) — PY-1 首次呼叫隱含安裝；PY-2
+- [x] `func RunFilefContext(ctx context.Context, out any, filePath string, args ...any) error` (py.go:198) — OK 有 ctx；PY-2 out any
 
 ## quant (50)
 
