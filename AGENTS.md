@@ -240,24 +240,6 @@ Keep the English ([README.md](README.md), [CHANGELOG.md](CHANGELOG.md), `Docs/`)
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
-### [2026-09-05] — top-level scalar variables come back as `json.Number` across sessions
-- **Where**: `cli/env/state.go` `coerceEnvNumber` (applied to DataList elements only), `cli/commands/quant.go` (first command that stores a bare `float64` under `as <var>`)
-- **What**: `quant sharpe r 252 as s` stores a `float64`; after the environment is saved and reloaded the variable is a `json.Number`, so a later command that type-asserts `float64` will not match. Same-session use is fine and `show` never supported scalars, so nothing user-visible breaks yet.
-- **Suggestion**: run scalar variables through the same numeric coercion as DataList elements on load, with a test that saves and reloads a `float64` variable.
-- **Status**: pending
-
-### [2026-09-05] — `newdl` cannot take negative literals in one-shot CLI mode
-- **Where**: `cli/commands/newdl.go`, Cobra flag parsing in `cli/commands/registry.go` `BuildCobraCommands`
-- **What**: `insyra newdl 0.012 -0.004 as r` fails because Cobra reads `-0.004` as the shorthand flag `-0`. A return series therefore cannot be typed on one line; `.isr` scripts and the REPL are unaffected. Noticed while writing the `quant` quickstart, which sidesteps it via `fetch` + `pctchange`.
-- **Suggestion**: set `DisableFlagParsing` on value-taking commands (the `CommandHandler` field already exists) or document `--` before the values.
-- **Status**: pending
-
-### [2026-09-05] — CSV-loaded date columns stay strings, so `resample` is unreachable from `load <file>.csv`
-- **Where**: [read.go](read.go) `inferCSVColumnTypes` (infers int64/float64 only), `cli/commands/resample.go` (requires a `time.Time` column)
-- **What**: a `.isr` script that does `load bars.csv` gets a string `Date` column and `resample` refuses it with a row-numbered error. Today only `fetch yahoo … history`, `fetch tw …`, and the Go API produce `time.Time` columns; `load sql … parsedates` covers SQL. Noticed while adding the `resample` command (`add-cli-timeseries-commands`).
-- **Suggestion**: add a CLI `parsedates <var> <col> [layout]` (or a `load csv … parsedates "c1,c2"` option mirroring `load sql`) so the natural CSV path reaches `resample`; decide whether CSV inference should recognise ISO dates by default (it would change existing loads, so probably opt-in).
-- **Status**: pending
-
 ### [2026-08-01] — multi-GPU planning and execution coverage
 - **Where**: `accel/planner.go` (`PlanShardable`, weighted per-device `ShardAssignment`s), `accel/exact.go` (per-assignment dispatch)
 - **What**: the planner retains capability-weighted heterogeneous assignments and its existing `MergePolicy`. `ExecuteNearestExact` now dispatches one worker per assignment, uses the bounded chunk seam, merges by input range, and falls back per assignment without changing the exact CPU decision.

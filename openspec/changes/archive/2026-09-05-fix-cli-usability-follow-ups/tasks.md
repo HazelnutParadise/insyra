@@ -17,10 +17,10 @@
 
 ## 3. Docs, changelog, skills, follow-ups
 
-- [ ] 3.1 `Docs/DataList.md` 加 `ParseDates`；`Docs/DataTable.md` 加 `ParseDatesCols`；`Docs/cli-dsl.md` 加 `parsedates`（Command Groups、Index、B6 前置步驟）與 `--` 說明
-- [ ] 3.2 `skills/insyra/SKILL.md`、`skills/use-insyra-cli/SKILL.md` 與 references 同步
-- [ ] 3.3 `CHANGELOG.md` 與 `CHANGELOG_TW.md`：`### Core` 一條（ParseDates）、`### CLI` 一條（parsedates、純量 round trip、負數字面值）
-- [ ] 3.4 `AGENTS.md`：刪除三條 2026-09-05 的 follow-up
+- [x] 3.1 `Docs/DataList.md` 加 `ParseDates`；`Docs/DataTable.md` 加 `ParseDatesCols`；`Docs/cli-dsl.md` 加 `parsedates`（Command Groups、Index、B6 前置步驟）與 `--` 說明
+- [x] 3.2 `skills/insyra/SKILL.md`、`skills/use-insyra-cli/SKILL.md` 與 references 同步
+- [x] 3.3 `CHANGELOG.md` 與 `CHANGELOG_TW.md`：`### Core` 一條（ParseDates）、`### CLI` 一條（parsedates、純量 round trip、負數字面值）
+- [x] 3.4 `AGENTS.md`：刪除三條 2026-09-05 的 follow-up
 
 ## 4. Verification
 
