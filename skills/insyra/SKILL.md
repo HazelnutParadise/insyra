@@ -811,6 +811,16 @@ VaR and CVaR use a positive-loss convention and are not annualized. See `Docs/qu
 
 For European option pricing, use `quant.BlackScholes` for the price and five greeks, or `quant.ImpliedVolatility` to recover volatility from a market price; rates and volatility are decimal annual inputs, Vega is per unit of volatility, and Theta is per year.
 
+### 8d) Portfolio weights (quant)
+
+`quant.OptimizePortfolio(returnsTable, quant.PortfolioConfig{...})` returns mean-variance weights from a table of aligned per-period returns (one column per asset), for `MinimumVariance` (the zero value), `TargetReturn`, or `MaximumSharpe`. Weights always sum to 1 and stay inside `MinWeight`/`MaxWeight`, which default to long-only `[0, 1]` — a short position needs an explicit negative `MinWeight`. `quant.OptimizePortfolioMoments(mean, cov, names, cfg)` takes moments you estimated yourself (shrinkage, factor covariance, forecasts) and refuses a `cov` that is not symmetric and positive semidefinite; `quant.EfficientFrontier(returnsTable, points, cfg)` sweeps the frontier. `PortfolioResult.SharpeRatio` is per period — multiply by `math.Sqrt(252)` for daily data. Hitting `MaxIterations` is not an error: check `Converged` before trusting weights from strongly correlated assets. Sector caps, turnover, cardinality, and transaction costs are out of scope.
+
+```go
+res, err := quant.OptimizePortfolio(returns, quant.PortfolioConfig{Objective: quant.MaximumSharpe, RiskFreeRate: 0.0001})
+if err != nil { /* handle */ }
+w, ok := res.Weight("GOLD")
+```
+
 ## Engine package (advanced primitives)
 The repo includes an `engine` package that re-exports well-tested internal primitives (see [`engine/`](../../engine) and `engine/README.md).
 

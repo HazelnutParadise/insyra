@@ -24,6 +24,7 @@ The `quant` package provides quantitative-finance tools for evaluating trading s
 - **Backtest-overfitting diagnostics**: `ProbabilisticSharpeRatio`, `ExpectedMaxSharpe`, `DeflatedSharpeRatio`, `PBO` — quantify how much of a backtest's edge is real versus selection bias from multiple testing (Bailey & López de Prado)
 - **Walk-forward validation**: `WalkForward` — slide train/test windows, pick parameters in-sample, evaluate out-of-sample, and stitch the out-of-sample track record together (Pardo)
 - **Probabilistic forecasting**: `BlockBootstrap`, `PercentileBands` — resample a return series in blocks (moving block or stationary bootstrap) into thousands of simulated equity paths and take percentile bands for a fan chart, reproducible from a seed
+- **Portfolio optimization**: `OptimizePortfolio`, `OptimizePortfolioMoments`, `EfficientFrontier` — mean-variance weights under a sum-to-one and per-asset box constraint, for minimum variance, a target return, or maximum Sharpe, plus the frontier between them
 
 Unlike the [`finance`](./finance.md) package (which uses high-precision `decimal.Decimal` for TVM, NPV/IRR, and bond pricing), `quant` works with ordinary floating-point numbers — the industry convention for return/equity analytics, where statistical noise dwarfs floating-point error.
 
@@ -498,6 +499,91 @@ The quantile is R's **type-7** (linear interpolation between order statistics), 
 
 ---
 
+## Portfolio Optimization
+
+The other tools here judge a strategy that already exists. This one decides the holding: given per-period returns for several assets, what fraction of capital belongs in each? `OptimizePortfolio` answers that in the mean-variance sense (Markowitz) — the portfolio with the least variance, the least variance at a chosen expected return, or the best per-period Sharpe ratio.
+
+The solver is pure Go, so no Python or external optimizer is involved, and the price of that is a deliberately narrow constraint set: weights sum to 1 and each one sits in its own interval. Sector caps, turnover limits, cardinality constraints, and transaction costs are not expressible.
+
+### Types
+
+```go
+type PortfolioObjective uint8
+
+const (
+    MinimumVariance PortfolioObjective = iota // minimize w'Σw            (zero value)
+    TargetReturn                              // minimize w'Σw s.t. μ'w = TargetReturn
+    MaximumSharpe                             // maximize (μ'w − rf)/√(w'Σw)
+)
+
+type PortfolioConfig struct {
+    Objective     PortfolioObjective
+    TargetReturn  float64   // per-period; used only by TargetReturn
+    RiskFreeRate  float64   // per period; used by MaximumSharpe and to report SharpeRatio
+    MinWeight     []float64 // per asset, column order; nil means 0 for every asset
+    MaxWeight     []float64 // per asset, column order; nil means 1 for every asset
+    Tolerance     float64   // projected-gradient stopping threshold; default 1e-10
+    MaxIterations int       // default 10000
+}
+
+type PortfolioResult struct {
+    Weights        []float64 // sums to 1, inside the bounds, in column order
+    AssetNames     []string  // same order as Weights
+    ExpectedReturn float64   // μ'w, per period
+    Variance       float64   // w'Σw, per period
+    Volatility     float64   // √Variance, per period
+    SharpeRatio    float64   // (ExpectedReturn − RiskFreeRate) / Volatility, per period
+    Iterations     int
+    Converged      bool
+}
+
+func (r *PortfolioResult) Weight(name string) (float64, bool)
+```
+
+### OptimizePortfolio
+
+```go
+func OptimizePortfolio(returns insyra.IDataTable, cfg PortfolioConfig) (*PortfolioResult, error)
+```
+
+`returns` is one column per asset and one row per period, already aligned — merge your price tables on the date and take `PctChangeCol(..., 1).ClearNils()` on each before calling. Expected returns are the column means and Σ is the sample covariance with the `n−1` denominator, the same convention as `DataList.Var`.
+
+**Bounds.** The default box is `[0, 1]` per asset: long-only, no leverage. A short position requires an explicit negative `MinWeight` — the package will not infer it. Bounds must be feasible: `Σ MinWeight ≤ 1 ≤ Σ MaxWeight`, and `MinWeight[i] ≤ MaxWeight[i]`.
+
+**Objectives.** `MinimumVariance` ignores the expected returns entirely, which is why it is the usual choice when you distrust your return forecasts. `TargetReturn` adds `μ'w = TargetReturn` and fails before iterating if that target is outside the range the bounds allow. `MaximumSharpe` searches along the efficient frontier for the best `(μ'w − RiskFreeRate) / √(w'Σw)`.
+
+### OptimizePortfolioMoments
+
+```go
+func OptimizePortfolioMoments(mean []float64, cov [][]float64, names []string, cfg PortfolioConfig) (*PortfolioResult, error)
+```
+
+The same solver on moments you supply, which is the seam for shrinkage estimators, factor-model covariances, and return forecasts. `names` may be `nil`, in which case assets are named `"1"`, `"2"`, and so on. `cov` must be square, symmetric, and positive semidefinite — a matrix that is not is refused rather than sent into a non-convex problem. This is also the recommended entry point when assets are highly correlated: a shrunk covariance converges far better than a near-singular sample one.
+
+### EfficientFrontier
+
+```go
+func EfficientFrontier(returns insyra.IDataTable, points int, cfg PortfolioConfig) ([]PortfolioResult, error)
+```
+
+`points` target-return solves spread evenly between the minimum-variance portfolio's expected return and the largest return attainable under the bounds, returned in increasing `ExpectedReturn`. `cfg.Objective` and `cfg.TargetReturn` are ignored; the bounds, tolerance, and risk-free rate are used. `points` below 2 is an error.
+
+### How it is solved, and what `Converged` means
+
+Accelerated projected gradient on the convex quadratic, with an exact Euclidean projection onto `{w : Σw = 1, lo ≤ w ≤ hi}` found by bisecting a single scalar. The step size comes from the largest eigenvalue of Σ by power iteration, momentum restarts whenever the extrapolated step turns back on itself, and the target-return equality is carried by an augmented Lagrangian on top of the same projection. Maximum Sharpe is a golden-section search over target returns, which works because Sharpe is unimodal along the frontier.
+
+`Converged` reports whether the projected-gradient step fell below `Tolerance` before `MaxIterations`. **Reaching the iteration cap is not an error**: the best weights found are returned with `Converged: false`, so a nearly singular covariance degrades into a slower, flagged answer rather than a failure. Always check the flag before trusting weights from strongly correlated assets.
+
+### Per-period Sharpe
+
+`PortfolioResult.SharpeRatio` is per period, like `ExpectedReturn` and `Volatility` and like every input. Multiply by `√periodsPerYear` to annualize — `SharpeRatio * math.Sqrt(252)` for daily data. This is deliberately *not* the convention of the standalone `SharpeRatio` function, which annualizes for you.
+
+### Not covered
+
+General linear constraints (sector caps, turnover), cardinality limits, transaction costs, Black–Litterman, and shrinkage estimators are out of scope. The moments entry point is the seam for estimator work: compute μ and Σ however you like and pass them in.
+
+---
+
 ## Usage Examples
 
 ### Headline performance metrics
@@ -700,6 +786,62 @@ for _, eq := range res.Equity {
 fmt.Printf("P(loss) = %.1f%%\n", 100*float64(losses)/float64(len(res.Equity)))
 ```
 
+### Long-only minimum variance and the frontier
+
+```go
+package main
+
+import (
+    "fmt"
+    "math"
+
+    "github.com/HazelnutParadise/insyra"
+    "github.com/HazelnutParadise/insyra/quant"
+)
+
+func main() {
+    // One column per asset, one row per period, already aligned.
+    a := insyra.NewDataList(0.012, -0.004, 0.009, 0.001, -0.006, 0.014, 0.003, -0.002)
+    b := insyra.NewDataList(0.002, 0.001, -0.001, 0.003, 0.002, -0.002, 0.004, 0.001)
+    c := insyra.NewDataList(-0.008, 0.018, 0.004, -0.010, 0.024, 0.003, -0.004, 0.013)
+    a.SetName("EQUITY")
+    b.SetName("BOND")
+    c.SetName("GOLD")
+    returns := insyra.NewDataTable(a, b, c)
+
+    best, err := quant.OptimizePortfolio(returns, quant.PortfolioConfig{
+        Objective: quant.MinimumVariance,
+    })
+    if err != nil {
+        panic(err)
+    }
+    if !best.Converged {
+        fmt.Printf("warning: stopped after %d iterations\n", best.Iterations)
+    }
+    for i, name := range best.AssetNames {
+        fmt.Printf("%-7s %6.2f%%\n", name, 100*best.Weights[i])
+    }
+    fmt.Printf("annualized volatility %.2f%%\n", 100*best.Volatility*math.Sqrt(252))
+
+    // Cap any single holding at 40% and walk the frontier.
+    frontier, err := quant.EfficientFrontier(returns, 20, quant.PortfolioConfig{
+        MaxWeight: []float64{0.4, 0.4, 0.4},
+    })
+    if err != nil {
+        panic(err)
+    }
+    lowest, highest := frontier[0], frontier[len(frontier)-1]
+    fmt.Printf("frontier spans return %+.5f to %+.5f, volatility %.5f to %.5f\n",
+        lowest.ExpectedReturn, highest.ExpectedReturn, lowest.Volatility, highest.Volatility)
+}
+```
+
+`Weight` looks a holding up by column name, which survives a reordering of the table:
+
+```go
+gold, ok := best.Weight("GOLD")
+```
+
 ---
 
 ## Error Handling
@@ -727,6 +869,9 @@ All exported functions return `(value, error)` and surface validation problems t
 - **`CalmarRatio`** — invalid annualized-return input, zero maximum drawdown, or an unreadable/non-finite equity point
 - **`InformationRatio`** — unequal lengths, fewer than 2 observations, non-positive periods per year, zero tracking error, or an unreadable/non-finite cell
 - **`DrawdownSeries`** — empty equity or an unreadable/non-finite equity point; non-positive running peaks are represented as `nil`
+- **`OptimizePortfolio`** — `nil` table, fewer than 2 asset columns, columns of unequal length, fewer observations than assets plus one, an unreadable/non-finite cell named with its column and one-based row, `MinWeight`/`MaxWeight` of the wrong length or with `MinWeight[i] > MaxWeight[i]`, infeasible bounds (`Σ MinWeight > 1` or `Σ MaxWeight < 1`), a `TargetReturn` outside the attainable range (the error reports that range), or an unknown `Objective`. Hitting `MaxIterations` is **not** an error — it returns `Converged: false`
+- **`OptimizePortfolioMoments`** — everything above, plus a `cov` that is not square, disagrees with `mean` in length, holds a non-finite value, is not symmetric, or is not positive semidefinite (the error reports the smallest eigenvalue), and a non-`nil` `names` of the wrong length
+- **`EfficientFrontier`** — `points < 2`, plus every `OptimizePortfolio` error
 
 The package never logs warnings on its own and never panics from valid input — it follows the same error-first contract as [`stats`](./stats.md) and [`finance`](./finance.md).
 

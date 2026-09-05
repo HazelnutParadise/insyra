@@ -91,7 +91,7 @@ dt.Show()
 | Document              | Description                                                                                       |
 | --------------------- | ------------------------------------------------------------------------------------------------- |
 | [finance](finance.md) | High-precision TVM, NPV/IRR/MIRR/XNPV/XIRR, depreciation, bonds, T-bills, amortization schedules  |
-| [quant](quant.md)     | Strategy/backtest evaluation: Sharpe, VaR/CVaR, Sortino/Calmar, max drawdown, annualized return, market beta/CAPM, European option pricing and greeks, implied volatility, multi-factor attribution, PBO (CSCV), Deflated Sharpe Ratio, walk-forward, block-bootstrap path simulation |
+| [quant](quant.md)     | Strategy/backtest evaluation: Sharpe, VaR/CVaR, Sortino/Calmar, max drawdown, annualized return, market beta/CAPM, European option pricing and greeks, implied volatility, multi-factor attribution, PBO (CSCV), Deflated Sharpe Ratio, walk-forward, block-bootstrap path simulation, mean-variance portfolio optimization |
 
 #### Integration & Utilities
 
@@ -145,6 +145,7 @@ go get github.com/HazelnutParadise/insyra/plot
 | Measure market beta / CAPM exposure       | [quant](quant.md)               |
 | Price European options and their greeks   | [quant](quant.md)               |
 | Simulate future equity paths (fan chart)  | [quant](quant.md)               |
+| Choose portfolio weights (mean-variance)  | [quant](quant.md)               |
 | Use Python libraries from Go              | [py](py.md)                     |
 | Run functions in parallel                 | [parallel](parallel.md)         |
 
