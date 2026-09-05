@@ -571,17 +571,19 @@ _ = drawdowns // chart one value per equity period when needed
 `Beta` expects returns, so align the two price tables on their date first. An inner merge avoids inventing returns for dates that appear in only one table:
 
 ```go
-// Each table has a Date column and a price column such as Close or Adj Close.
-// When both tables use the same price column name, the merged table keeps the
-// left table's column as "Close" and renames the right one "Close_other".
+// Each table has a Date column and an adjusted price column. For Taiwan stocks
+// that is datafetch's DailyPricesAdjusted "AdjClose"; for Yahoo Finance it is
+// "Adj Close". When both tables use the same price column name, the merged table
+// keeps the left table's column as "AdjClose" and renames the right one
+// "AdjClose_other".
 aligned, err := assetPrices.Merge(indexPrices,
     insyra.MergeDirectionHorizontal, insyra.MergeModeInner, "Date")
 if err != nil {
     log.Fatal(err)
 }
 
-assetReturns := aligned.PctChangeCol("Close", 1).ClearNils()       // asset
-marketReturns := aligned.PctChangeCol("Close_other", 1).ClearNils() // index
+assetReturns := aligned.PctChangeCol("AdjClose", 1).ClearNils()       // asset
+marketReturns := aligned.PctChangeCol("AdjClose_other", 1).ClearNils() // index
 beta, err := quant.Beta(assetReturns, marketReturns)
 if err != nil {
     log.Fatal(err)
@@ -589,7 +591,7 @@ if err != nil {
 fmt.Printf("market beta = %.3f\n", beta)
 ```
 
-Choose `Close` or `Adj Close` deliberately: dividends, splits, and other corporate actions can change the return series. The date window and return frequency also change beta, so compare assets with the same dates and sampling interval. See the `CAPM` section above for alpha and standard errors.
+Use adjusted prices, not raw closes. On an ex-dividend or ex-rights day the quoted price drops by the distribution without any loss to the holder, so a raw `Close` series records a fake loss on every ex-date and biases beta, CAPM alpha, VaR, and factor exposures. The date window and return frequency also change beta, so compare assets with the same dates and sampling interval. See the `CAPM` section above for alpha and standard errors.
 
 ### Three-factor attribution
 

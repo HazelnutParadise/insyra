@@ -191,12 +191,20 @@ type dailyPriceRecord struct {
 }
 
 func (t *twStock) DailyPrices(code string, from, to time.Time, market TWMarket) (*insyra.DataTable, error) {
+	rows, err := t.dailyPriceRows("DailyPrices", code, from, to, market)
+	if err != nil {
+		return nil, err
+	}
+	return dailyPriceTable(rows), nil
+}
+
+func (t *twStock) dailyPriceRows(method, code string, from, to time.Time, market TWMarket) ([]dailyPriceRecord, error) {
 	code = strings.TrimSpace(code)
 	if code == "" {
-		return nil, errors.New("datafetch: DailyPrices requires a non-empty code")
+		return nil, fmt.Errorf("datafetch: %s requires a non-empty code", method)
 	}
 	if normalizeDate(from).After(normalizeDate(to)) {
-		return nil, errors.New("datafetch: DailyPrices from must not be after to")
+		return nil, fmt.Errorf("datafetch: %s from must not be after to", method)
 	}
 	if !validMarket(market) {
 		return nil, fmt.Errorf("datafetch: unsupported market %q", market)
@@ -219,7 +227,7 @@ func (t *twStock) DailyPrices(code string, from, to time.Time, market TWMarket) 
 		month = month.AddDate(0, 1, 0)
 	}
 	sort.SliceStable(rows, func(i, j int) bool { return rows[i].date.Before(rows[j].date) })
-	return dailyPriceTable(rows), nil
+	return rows, nil
 }
 
 func (t *twStock) dailyPricesMonth(code string, month time.Time, market TWMarket) ([]dailyPriceRecord, error) {
@@ -333,6 +341,231 @@ func dailyPriceTable(rows []dailyPriceRecord) *insyra.DataTable {
 		newNamedCol("Close", closeValues), newNamedCol("Change", changeValues),
 		newNamedCol("Transactions", transactionValues), newNamedCol("Market", marketValues),
 	)
+}
+
+type exRightsRecord struct {
+	date                              time.Time
+	code, name, kind                  string
+	prevClose, refPrice, distribution any
+	adjFactor                         any
+}
+
+// errTPExExRightsUnsupported is returned instead of an empty table: TPEx
+// publishes only the current announcement list, with no dated history endpoint,
+// so an adjusted TPEx series cannot be built from a confirmed source.
+var errTPExExRightsUnsupported = errors.New("datafetch: TPEx ex-rights not supported: TPEx publishes no dated ex-rights history endpoint")
+
+// ExRights returns the exchange's ex-rights/ex-dividend reference table for the
+// inclusive [from, to] range, sorted by Date then Code. AdjFactor is the
+// exchange's own reference price divided by the prior close.
+func (t *twStock) ExRights(from, to time.Time, market TWMarket) (*insyra.DataTable, error) {
+	if !validMarket(market) {
+		return nil, fmt.Errorf("datafetch: unsupported market %q", market)
+	}
+	if normalizeDate(from).After(normalizeDate(to)) {
+		return nil, errors.New("datafetch: ExRights from must not be after to")
+	}
+	if market == TWMarketTPEx {
+		return nil, errTPExExRightsUnsupported
+	}
+	rows, err := t.exRightsRows(normalizeDate(from), normalizeDate(to))
+	if err != nil {
+		return nil, err
+	}
+	return exRightsTable(rows), nil
+}
+
+func (t *twStock) exRightsRows(from, to time.Time) ([]exRightsRecord, error) {
+	rows := make([]exRightsRecord, 0)
+	for start := from; !start.After(to); {
+		// The server-side range cap is undocumented; one-year slices are
+		// verified to return and keep the request count bounded.
+		end := start.AddDate(1, 0, -1)
+		if end.After(to) {
+			end = to
+		}
+		slice, err := t.exRightsSlice(start, end)
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range slice {
+			if !row.date.Before(from) && !row.date.After(to) {
+				rows = append(rows, row)
+			}
+		}
+		start = end.AddDate(0, 0, 1)
+	}
+	sort.SliceStable(rows, func(i, j int) bool {
+		if !rows[i].date.Equal(rows[j].date) {
+			return rows[i].date.Before(rows[j].date)
+		}
+		return rows[i].code < rows[j].code
+	})
+	return rows, nil
+}
+
+func (t *twStock) exRightsSlice(start, end time.Time) ([]exRightsRecord, error) {
+	values := url.Values{"startDate": {start.Format("20060102")}, "endDate": {end.Format("20060102")}, "response": {"json"}}
+	var response twStockResponse
+	if err := t.doJSON(requestURL(t.twseBaseURL, "/rwd/zh/exRight/TWT49U", values), &response); err != nil {
+		if errors.Is(err, errTWStockNoData) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if err := responseStatus(response.Stat); err != nil {
+		if errors.Is(err, errTWStockNoData) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if len(response.Data) == 0 {
+		return nil, nil
+	}
+	indexes, err := mapHeaders(response.Fields, exRightsHeaderAliases, []string{"Date", "Code", "Name", "PrevClose", "RefPrice", "Distribution", "Kind"})
+	if err != nil {
+		return nil, err
+	}
+	return parseExRightsRows(response.Data, indexes)
+}
+
+func parseExRightsRows(rows [][]string, indexes map[string]int) ([]exRightsRecord, error) {
+	result := make([]exRightsRecord, 0, len(rows))
+	for rowIndex, row := range rows {
+		date, err := parseROCDate(cell(row, indexes["Date"]))
+		if err != nil {
+			return nil, fmt.Errorf("datafetch: ex-rights row %d: %w", rowIndex, err)
+		}
+		prevClose := parseFloat(cell(row, indexes["PrevClose"]))
+		refPrice := parseFloat(cell(row, indexes["RefPrice"]))
+		result = append(result, exRightsRecord{
+			date:         date,
+			code:         strings.TrimSpace(cell(row, indexes["Code"])),
+			name:         strings.TrimSpace(cell(row, indexes["Name"])),
+			kind:         exRightsKind(cell(row, indexes["Kind"])),
+			prevClose:    prevClose,
+			refPrice:     refPrice,
+			distribution: parseFloat(cell(row, indexes["Distribution"])),
+			adjFactor:    adjustmentFactor(prevClose, refPrice),
+		})
+	}
+	return result, nil
+}
+
+func adjustmentFactor(prevClose, refPrice any) any {
+	previous, hasPrevious := prevClose.(float64)
+	reference, hasReference := refPrice.(float64)
+	if !hasPrevious || !hasReference || previous == 0 {
+		return nil
+	}
+	return reference / previous
+}
+
+func exRightsTable(rows []exRightsRecord) *insyra.DataTable {
+	dateValues := make([]any, len(rows))
+	codeValues := make([]any, len(rows))
+	nameValues := make([]any, len(rows))
+	prevCloseValues := make([]any, len(rows))
+	refPriceValues := make([]any, len(rows))
+	distributionValues := make([]any, len(rows))
+	kindValues := make([]any, len(rows))
+	factorValues := make([]any, len(rows))
+	for i, row := range rows {
+		dateValues[i] = row.date.UTC()
+		codeValues[i], nameValues[i], kindValues[i] = row.code, row.name, row.kind
+		prevCloseValues[i], refPriceValues[i] = row.prevClose, row.refPrice
+		distributionValues[i], factorValues[i] = row.distribution, row.adjFactor
+	}
+	return insyra.NewDataTable(
+		newNamedCol("Date", dateValues), newNamedCol("Code", codeValues), newNamedCol("Name", nameValues),
+		newNamedCol("PrevClose", prevCloseValues), newNamedCol("RefPrice", refPriceValues),
+		newNamedCol("Distribution", distributionValues), newNamedCol("Kind", kindValues),
+		newNamedCol("AdjFactor", factorValues),
+	)
+}
+
+// DailyPricesAdjusted returns DailyPrices plus a cumulative backward adjustment
+// factor and the adjusted OHLC prices. Every bar strictly before an ex-date in
+// [from, to] is multiplied by that ex-date's factor, so the last bar keeps the
+// quoted price and a return across an ex-date is the true holder return.
+// Distributions after to are not applied.
+func (t *twStock) DailyPricesAdjusted(code string, from, to time.Time, market TWMarket) (*insyra.DataTable, error) {
+	if market == TWMarketTPEx {
+		return nil, errTPExExRightsUnsupported
+	}
+	rows, err := t.dailyPriceRows("DailyPricesAdjusted", code, from, to, market)
+	if err != nil {
+		return nil, err
+	}
+	// TWMarketAuto may have resolved to TPEx; the TWSE ex-rights table cannot
+	// adjust those bars, so refuse rather than return silently unadjusted prices.
+	for _, row := range rows {
+		if row.market == "TPEx" {
+			return nil, errTPExExRightsUnsupported
+		}
+	}
+	events, err := t.exRightsRows(normalizeDate(from), normalizeDate(to))
+	if err != nil {
+		return nil, err
+	}
+	return adjustedPriceTable(rows, cumulativeAdjFactors(rows, exRightsForCode(events, strings.TrimSpace(code)))), nil
+}
+
+func exRightsForCode(events []exRightsRecord, code string) []exRightsRecord {
+	result := make([]exRightsRecord, 0, len(events))
+	for _, event := range events {
+		if event.code == code {
+			result = append(result, event)
+		}
+	}
+	return result
+}
+
+// cumulativeAdjFactors expects rows sorted by date ascending and events sorted
+// by date ascending. Each row's factor is the product of the factors of every
+// ex-date strictly after it, so the factor is 1 from the last ex-date onwards.
+func cumulativeAdjFactors(rows []dailyPriceRecord, events []exRightsRecord) []float64 {
+	factors := make([]float64, len(rows))
+	running := 1.0
+	next := len(events) - 1
+	for i := len(rows) - 1; i >= 0; i-- {
+		for next >= 0 && events[next].date.After(rows[i].date) {
+			if factor, ok := events[next].adjFactor.(float64); ok {
+				running *= factor
+			}
+			next--
+		}
+		factors[i] = running
+	}
+	return factors
+}
+
+func adjustedPriceTable(rows []dailyPriceRecord, factors []float64) *insyra.DataTable {
+	factorValues := make([]any, len(rows))
+	openValues := make([]any, len(rows))
+	highValues := make([]any, len(rows))
+	lowValues := make([]any, len(rows))
+	closeValues := make([]any, len(rows))
+	for i, row := range rows {
+		factorValues[i] = factors[i]
+		openValues[i] = scalePrice(row.open, factors[i])
+		highValues[i] = scalePrice(row.high, factors[i])
+		lowValues[i] = scalePrice(row.low, factors[i])
+		closeValues[i] = scalePrice(row.close, factors[i])
+	}
+	return dailyPriceTable(rows).AppendCols(
+		newNamedCol("AdjFactor", factorValues), newNamedCol("AdjOpen", openValues),
+		newNamedCol("AdjHigh", highValues), newNamedCol("AdjLow", lowValues),
+		newNamedCol("AdjClose", closeValues),
+	)
+}
+
+func scalePrice(value any, factor float64) any {
+	price, ok := value.(float64)
+	if !ok {
+		return nil
+	}
+	return price * factor
 }
 
 func responseStatus(stat string) error {

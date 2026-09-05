@@ -610,6 +610,8 @@ Negative `Interval`, `Retries`, `RetryBackoff`, or `Concurrency` values return a
 
 ```go
 DailyPrices(code string, from, to time.Time, market TWMarket) (*insyra.DataTable, error)
+DailyPricesAdjusted(code string, from, to time.Time, market TWMarket) (*insyra.DataTable, error)
+ExRights(from, to time.Time, market TWMarket) (*insyra.DataTable, error)
 InstitutionalTrades(date time.Time, market TWMarket) (*insyra.DataTable, error)
 MarginBalance(date time.Time, market TWMarket) (*insyra.DataTable, error)
 AllDailyQuotes(market TWMarket) (*insyra.DataTable, error)
@@ -620,15 +622,44 @@ AllDailyQuotes(market TWMarket) (*insyra.DataTable, error)
 | Method | Columns |
 | :--- | :--- |
 | `DailyPrices` | `Date` (`time.Time`), `Code` (`string`), `Volume` (`int64`, shares), `Turnover` (`int64`, currency units), `Open`, `High`, `Low`, `Close`, `Change` (`float64`), `Transactions` (`int64`), `Market` (`string`) |
+| `DailyPricesAdjusted` | every `DailyPrices` column, plus `AdjFactor`, `AdjOpen`, `AdjHigh`, `AdjLow`, `AdjClose` (`float64`) |
+| `ExRights` | `Date` (`time.Time`, the ex-date), `Code`, `Name` (`string`), `PrevClose`, `RefPrice`, `Distribution` (`float64`), `Kind` (`string`), `AdjFactor` (`float64`) |
 | `InstitutionalTrades` | `Date` (`time.Time`), `Code` (`string`), `Name` (`string`), `ForeignNet`, `TrustNet`, `DealerNet`, `TotalNet` (`int64`, shares) |
 | `MarginBalance` | `Date` (`time.Time`), `Code` (`string`), `Name` (`string`), `MarginBalance`, `ShortBalance` (`int64`, source balance units) |
 | `AllDailyQuotes` | `Date` (`time.Time`), `Code` (`string`), `Name` (`string`), `Volume` (`int64`, shares), `Turnover` (`int64`, currency units), `Open`, `High`, `Low`, `Close`, `Change` (`float64`), `Transactions` (`int64`) |
 
 `--`, `X`, and blank numeric cells become `nil`. TPEx historical prices report volume in lots and turnover in thousands of currency units, so `DailyPrices` converts them to shares and currency units to match the TWSE schema. This unit conversion is based on the source field names `成交張數` and `成交仟元`; margin balances retain the source endpoint's units.
 
+### Adjusted prices and corporate actions
+
+On an ex-dividend or ex-rights day the quoted price drops by the distribution without any loss to the holder, so a return series built from raw `Close` shows a fake loss on every ex-date. `DailyPricesAdjusted` removes it.
+
+```go
+prices, err := stocks.DailyPricesAdjusted(
+    "2330", time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+    time.Now(), datafetch.TWMarketTWSE,
+)
+if err != nil {
+    log.Fatal(err)
+}
+returns := prices.PctChangeCol("AdjClose", 1).ClearNils()
+```
+
+- The factor is the exchange's own 除權息參考價 ÷ 除權息前收盤價, taken from `ExRights`, so it already includes rights and the tax-free portion and needs no dividend arithmetic.
+- Adjustment is **backward**, the same convention as Yahoo Finance's `Adj Close`: every bar strictly before an ex-date is multiplied by that ex-date's factor, factors compound across multiple ex-dates, and the last bar keeps the quoted price (`AdjFactor` is `1` from the last ex-date in range onwards).
+- Ex-dates are fetched for `[from, to]` only. A distribution after `to` is not applied, so two calls with different `to` produce different adjusted histories — extend `to` to today for a stable series.
+- `Volume`, `Turnover`, and `Change` are not adjusted. A `nil` raw price yields a `nil` adjusted price.
+- `AdjClose` and Yahoo's `Adj Close` are both backward-adjusted ratios but not identical: Yahoo builds its factor from cash dividends and splits, while the TWSE reference price also folds in rights. Small differences are expected.
+
+`ExRights` returns the exchange's 除權除息計算結果表 for the range, sorted by `Date` then `Code`. `Kind` is `"dividend"` (息), `"rights"` (權), or `"both"` (權息). Ranges longer than a year are split into contiguous one-year requests and merged. `AdjFactor` is `nil` when either reference price is unreadable.
+
+**TPEx is not supported by `ExRights` or `DailyPricesAdjusted`.** TPEx publishes only a current-announcement list, with no dated ex-rights history endpoint, so both methods return an explicit "TPEx ex-rights not supported" error for `TWMarketTPEx` rather than a silently empty table. `TWMarketAuto` queries TWSE only for these two methods.
+
 ### Data source, paging, and limits
 
 - TWSE sources are the [TWSE OpenAPI](https://openapi.twse.com.tw/) and its dated legacy JSON endpoints. TWSE OpenAPI data is subject to the [Taiwan Government Open Data License](https://data.gov.tw/en/license).
 - TPEx sources are its legacy JSON endpoints and [TPEx OpenAPI](https://www.tpex.org.tw/openapi/). Usage is subject to [TPEx's trading-information terms](https://eshop.tpex.org.tw/en/product/shoppingTerm).
 - A ten-year per-stock history is approximately 120 monthly requests. Set `Interval` to at least `300ms` for backfills and tune retries for transient 5xx responses.
-- The exchange rate limit is not published as a stable contract. Intraday, real-time quotes, order books, fundamentals, corporate actions, dividends, and local caching are outside this client.
+- `ExRights` splits ranges longer than a year into contiguous one-year requests, so a ten-year ex-rights history is ten requests.
+- The exchange table is whatever the exchange serves at call time; nothing is cached, so a reference price the exchange revises afterwards changes later results.
+- The exchange rate limit is not published as a stable contract. Intraday, real-time quotes, order books, fundamentals, dividend payout details beyond the ex-date reference prices, and local caching are outside this client.

@@ -53,6 +53,32 @@ var tpexDailyHeaderAliases = map[string]string{
 	"筆數":   "Transactions",
 }
 
+var exRightsHeaderAliases = map[string]string{
+	"資料日期":    "Date",
+	"股票代號":    "Code",
+	"股票名稱":    "Name",
+	"除權息前收盤價": "PrevClose",
+	"除權息參考價":  "RefPrice",
+	"權值+息值":   "Distribution",
+	"權/息":     "Kind",
+}
+
+// exRightsKind maps the exchange's 權/息 column to a stable English label.
+// Anything the exchange has not published before is passed through as-is
+// rather than silently folded into one of the known kinds.
+func exRightsKind(value string) string {
+	switch strings.TrimSpace(value) {
+	case "息":
+		return "dividend"
+	case "權":
+		return "rights"
+	case "權息":
+		return "both"
+	default:
+		return strings.TrimSpace(value)
+	}
+}
+
 var twseQuoteHeaderAliases = map[string]string{
 	"Date":         "Date",
 	"Code":         "Code",
@@ -85,6 +111,26 @@ func parseROCDate(value string) (time.Time, error) {
 	value = strings.TrimSpace(value)
 	var year, month, day int
 	switch {
+	case strings.Contains(value, "年"):
+		yearPart, rest, hasYear := strings.Cut(value, "年")
+		monthPart, rest, hasMonth := strings.Cut(rest, "月")
+		dayPart, trailing, hasDay := strings.Cut(rest, "日")
+		if !hasYear || !hasMonth || !hasDay || strings.TrimSpace(trailing) != "" {
+			return time.Time{}, fmt.Errorf("datafetch: invalid ROC date %q", value)
+		}
+		var err error
+		year, err = strconv.Atoi(strings.TrimSpace(yearPart))
+		if err != nil {
+			return time.Time{}, fmt.Errorf("datafetch: invalid ROC date %q: %w", value, err)
+		}
+		month, err = strconv.Atoi(strings.TrimSpace(monthPart))
+		if err != nil {
+			return time.Time{}, fmt.Errorf("datafetch: invalid ROC date %q: %w", value, err)
+		}
+		day, err = strconv.Atoi(strings.TrimSpace(dayPart))
+		if err != nil {
+			return time.Time{}, fmt.Errorf("datafetch: invalid ROC date %q: %w", value, err)
+		}
 	case strings.Contains(value, "/"):
 		parts := strings.Split(value, "/")
 		if len(parts) != 3 {

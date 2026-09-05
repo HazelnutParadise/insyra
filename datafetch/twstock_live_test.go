@@ -42,4 +42,25 @@ func TestTWStockLive(t *testing.T) {
 			t.Fatalf("AllDailyQuotes rows=%d error=%v", dt.NumRows(), err)
 		}
 	})
+	t.Run("ExRights", func(t *testing.T) {
+		dt, err := stock.ExRights(time.Now().AddDate(0, 0, -90), time.Now(), TWMarketTWSE)
+		if err != nil || dt.NumRows() == 0 {
+			t.Fatalf("ExRights rows=%d error=%v", dt.NumRows(), err)
+		}
+		if _, ok := dt.GetColByName("Date").Data()[0].(time.Time); !ok {
+			t.Fatalf("Date type = %T", dt.GetColByName("Date").Data()[0])
+		}
+		if _, ok := dt.GetColByName("AdjFactor").Data()[0].(float64); !ok {
+			t.Fatalf("AdjFactor type = %T", dt.GetColByName("AdjFactor").Data()[0])
+		}
+	})
+	t.Run("DailyPricesAdjusted", func(t *testing.T) {
+		dt, err := stock.DailyPricesAdjusted("2330", time.Now().AddDate(0, 0, -90), time.Now(), TWMarketTWSE)
+		if err != nil || dt.NumRows() == 0 {
+			t.Fatalf("DailyPricesAdjusted rows=%d error=%v", dt.NumRows(), err)
+		}
+		if _, ok := dt.GetColByName("AdjClose").Data()[0].(float64); !ok {
+			t.Fatalf("AdjClose type = %T", dt.GetColByName("AdjClose").Data()[0])
+		}
+	})
 }

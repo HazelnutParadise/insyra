@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -12,6 +13,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/HazelnutParadise/insyra"
 )
 
 type fixtureReply struct {
@@ -372,4 +375,276 @@ func TestTWStockTPExInstitutionalAndMarginMappings(t *testing.T) {
 
 func dateUTC(year int, month time.Month, day int) time.Time {
 	return time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
+}
+
+func exRightsBody(rows ...string) []byte {
+	return []byte(`{"stat":"OK","fields":["資料日期","股票代號","股票名稱","除權息前收盤價","除權息參考價","權值+息值","權/息"],"data":[` + strings.Join(rows, ",") + `]}`)
+}
+
+func exRightsKey(start, end string) string {
+	return fixtureKey("/rwd/zh/exRight/TWT49U", query("startDate", start, "endDate", end, "response", "json"))
+}
+
+func TestTWStockExRightsFixture(t *testing.T) {
+	stock, transport := newFixtureTWStock(t, TWStockConfig{})
+	transport.addFixture(t, exRightsKey("20260601", "20260903"), "twse_twt49u_20260601_20260903.json")
+	dt, err := stock.ExRights(dateUTC(2026, time.June, 1), dateUTC(2026, time.September, 3), TWMarketTWSE)
+	if err != nil {
+		t.Fatalf("ExRights error: %v", err)
+	}
+	for _, name := range []string{"Date", "Code", "Name", "PrevClose", "RefPrice", "Distribution", "Kind", "AdjFactor"} {
+		if dt.GetColByName(name) == nil {
+			t.Fatalf("missing column %q", name)
+		}
+	}
+	if dt.NumRows() != 25 {
+		t.Fatalf("rows = %d, want fixture row count 25", dt.NumRows())
+	}
+	if got := dt.GetColByName("Code").Data()[0]; got != "2612" {
+		t.Errorf("Code = %v, want 2612", got)
+	}
+	if got := dt.GetColByName("Date").Data()[0].(time.Time); !got.Equal(dateUTC(2026, time.June, 1)) {
+		t.Errorf("Date = %v, want 2026-06-01", got)
+	}
+	if got := dt.GetColByName("PrevClose").Data()[0]; got != 57.7 {
+		t.Errorf("PrevClose = %v, want 57.7", got)
+	}
+	if got := dt.GetColByName("RefPrice").Data()[0]; got != 55.5 {
+		t.Errorf("RefPrice = %v, want 55.5", got)
+	}
+	if got := dt.GetColByName("Distribution").Data()[0]; got != 2.2 {
+		t.Errorf("Distribution = %v, want 2.2", got)
+	}
+	if got := dt.GetColByName("Kind").Data()[0]; got != "dividend" {
+		t.Errorf("Kind = %v, want dividend", got)
+	}
+	factor, ok := dt.GetColByName("AdjFactor").Data()[0].(float64)
+	if !ok {
+		t.Fatalf("AdjFactor type = %T, want float64", dt.GetColByName("AdjFactor").Data()[0])
+	}
+	if math.Abs(factor-55.5/57.7) > 1e-12 {
+		t.Errorf("AdjFactor = %v, want %v", factor, 55.5/57.7)
+	}
+}
+
+func TestTWStockExRightsKinds(t *testing.T) {
+	stock, transport := newFixtureTWStock(t, TWStockConfig{})
+	transport.replies[exRightsKey("20260601", "20260603")] = []fixtureReply{{status: http.StatusOK, body: exRightsBody(
+		`["115年06月01日","1101","甲","100.00","98.00","2.000000","息"]`,
+		`["115年06月02日","1102","乙","100.00","95.00","5.000000","權"]`,
+		`["115年06月03日","1103","丙","100.00","90.00","10.000000","權息"]`,
+	)}}
+	dt, err := stock.ExRights(dateUTC(2026, time.June, 1), dateUTC(2026, time.June, 3), TWMarketTWSE)
+	if err != nil {
+		t.Fatalf("ExRights error: %v", err)
+	}
+	want := []any{"dividend", "rights", "both"}
+	for i, kind := range dt.GetColByName("Kind").Data() {
+		if kind != want[i] {
+			t.Errorf("Kind[%d] = %v, want %v", i, kind, want[i])
+		}
+	}
+}
+
+func TestTWStockExRightsPagesByYear(t *testing.T) {
+	stock, transport := newFixtureTWStock(t, TWStockConfig{})
+	transport.replies[exRightsKey("20240101", "20241231")] = []fixtureReply{{status: http.StatusOK, body: exRightsBody(
+		`["113年07月01日","1101","甲","100.00","98.00","2.000000","息"]`)}}
+	transport.replies[exRightsKey("20250101", "20251231")] = []fixtureReply{{status: http.StatusOK, body: exRightsBody(
+		`["114年07月01日","1101","甲","100.00","98.00","2.000000","息"]`)}}
+	transport.replies[exRightsKey("20260101", "20260903")] = []fixtureReply{{status: http.StatusOK, body: exRightsBody(
+		`["115年07月01日","1101","甲","100.00","98.00","2.000000","息"]`)}}
+	dt, err := stock.ExRights(dateUTC(2024, time.January, 1), dateUTC(2026, time.September, 3), TWMarketTWSE)
+	if err != nil {
+		t.Fatalf("ExRights error: %v", err)
+	}
+	if got := transport.requestCount(); got != 3 {
+		t.Fatalf("request count = %d, want 3", got)
+	}
+	transport.mu.Lock()
+	keys := make([]string, len(transport.requests))
+	for i, request := range transport.requests {
+		keys[i] = request.key
+	}
+	transport.mu.Unlock()
+	wantKeys := []string{exRightsKey("20240101", "20241231"), exRightsKey("20250101", "20251231"), exRightsKey("20260101", "20260903")}
+	for i, want := range wantKeys {
+		if keys[i] != want {
+			t.Fatalf("request %d = %s, want %s", i, keys[i], want)
+		}
+	}
+	dates := dt.GetColByName("Date").Data()
+	if len(dates) != 3 {
+		t.Fatalf("rows = %d, want 3", len(dates))
+	}
+	for i := 1; i < len(dates); i++ {
+		if !dates[i-1].(time.Time).Before(dates[i].(time.Time)) {
+			t.Fatalf("dates not ascending: %v", dates)
+		}
+	}
+}
+
+func TestTWStockExRightsMissingHeader(t *testing.T) {
+	stock, transport := newFixtureTWStock(t, TWStockConfig{})
+	body := []byte(`{"stat":"OK","fields":["資料日期","股票代號","股票名稱","除權息前收盤價","權值+息值","權/息"],"data":[["115年06月01日","1101","甲","100.00","2.000000","息"]]}`)
+	transport.replies[exRightsKey("20260601", "20260601")] = []fixtureReply{{status: http.StatusOK, body: body}}
+	_, err := stock.ExRights(dateUTC(2026, time.June, 1), dateUTC(2026, time.June, 1), TWMarketTWSE)
+	if err == nil || !strings.Contains(err.Error(), "除權息參考價") {
+		t.Fatalf("ExRights error = %v, want missing 除權息參考價", err)
+	}
+}
+
+func TestTWStockExRightsRejectsInvalidRangeAndTPEx(t *testing.T) {
+	stock, _ := newFixtureTWStock(t, TWStockConfig{})
+	if _, err := stock.ExRights(dateUTC(2026, time.September, 3), dateUTC(2026, time.June, 1), TWMarketTWSE); err == nil {
+		t.Error("ExRights accepted from > to")
+	}
+	_, err := stock.ExRights(dateUTC(2026, time.June, 1), dateUTC(2026, time.September, 3), TWMarketTPEx)
+	if err == nil || !strings.Contains(err.Error(), "not supported") {
+		t.Fatalf("TPEx ExRights error = %v, want \"not supported\"", err)
+	}
+	if _, err := stock.ExRights(dateUTC(2026, time.June, 1), dateUTC(2026, time.September, 3), TWMarket("NYSE")); err == nil {
+		t.Error("ExRights accepted an unsupported market")
+	}
+	_, err = stock.DailyPricesAdjusted("6488", dateUTC(2026, time.August, 1), dateUTC(2026, time.August, 31), TWMarketTPEx)
+	if err == nil || !strings.Contains(err.Error(), "not supported") {
+		t.Fatalf("TPEx DailyPricesAdjusted error = %v, want \"not supported\"", err)
+	}
+	if _, err := stock.DailyPricesAdjusted("2330", dateUTC(2026, time.September, 3), dateUTC(2026, time.August, 3), TWMarketTWSE); err == nil {
+		t.Error("DailyPricesAdjusted accepted from > to")
+	}
+}
+
+// Auto may resolve an OTC code to TPEx prices; those bars cannot be adjusted
+// from the TWSE ex-rights table, so the call must refuse instead of returning
+// silently unadjusted prices.
+func TestTWStockDailyPricesAdjustedRefusesAutoResolvedTPEx(t *testing.T) {
+	stock, transport := newFixtureTWStock(t, TWStockConfig{})
+	transport.addFixture(t, stockDayKey("20260801", "6488"), "twse_stock_day_nodata.json")
+	transport.addFixture(t, fixtureKey("/www/zh-tw/afterTrading/tradingStock", query("code", "6488", "date", "2026/08/01", "response", "json")), "tpex_trading_stock_6488_202608.json")
+	_, err := stock.DailyPricesAdjusted("6488", dateUTC(2026, time.August, 3), dateUTC(2026, time.August, 4), TWMarketAuto)
+	if err == nil || !strings.Contains(err.Error(), "not supported") {
+		t.Fatalf("Auto-resolved TPEx DailyPricesAdjusted error = %v, want \"not supported\"", err)
+	}
+}
+
+func stockDayBody(rows ...string) []byte {
+	return []byte(`{"stat":"OK","fields":["日期","成交股數","成交金額","開盤價","最高價","最低價","收盤價","漲跌價差","成交筆數"],"data":[` + strings.Join(rows, ",") + `]}`)
+}
+
+func stockDayKey(date, code string) string {
+	return fixtureKey("/rwd/zh/afterTrading/STOCK_DAY", query("date", date, "response", "json", "stockNo", code))
+}
+
+func adjustedFixture(t *testing.T, prices, exRights []byte) *insyra.DataTable {
+	t.Helper()
+	stock, transport := newFixtureTWStock(t, TWStockConfig{})
+	transport.replies[stockDayKey("20260801", "2330")] = []fixtureReply{{status: http.StatusOK, body: prices}}
+	transport.replies[exRightsKey("20260801", "20260831")] = []fixtureReply{{status: http.StatusOK, body: exRights}}
+	dt, err := stock.DailyPricesAdjusted("2330", dateUTC(2026, time.August, 1), dateUTC(2026, time.August, 31), TWMarketTWSE)
+	if err != nil {
+		t.Fatalf("DailyPricesAdjusted error: %v", err)
+	}
+	return dt
+}
+
+func TestTWStockDailyPricesAdjustedOneExDate(t *testing.T) {
+	dt := adjustedFixture(t,
+		stockDayBody(
+			`["115/08/14","1,000","100,000","100.00","100.00","100.00","100.00","0.00","10"]`,
+			`["115/08/15","1,000","98,000","98.00","98.00","98.00","98.00","-2.00","10"]`,
+		),
+		exRightsBody(`["115年08月15日","2330","台積電","100.00","98.00","2.000000","息"]`),
+	)
+	for _, name := range []string{"Date", "Code", "Volume", "Turnover", "Open", "High", "Low", "Close", "Change", "Transactions", "Market", "AdjFactor", "AdjOpen", "AdjHigh", "AdjLow", "AdjClose"} {
+		if dt.GetColByName(name) == nil {
+			t.Fatalf("missing column %q", name)
+		}
+	}
+	factors := dt.GetColByName("AdjFactor").Data()
+	adjClose := dt.GetColByName("AdjClose").Data()
+	closes := dt.GetColByName("Close").Data()
+	if dt.NumRows() != 2 {
+		t.Fatalf("rows = %d, want 2", dt.NumRows())
+	}
+	if math.Abs(factors[0].(float64)-0.98) > 1e-12 || factors[1].(float64) != 1 {
+		t.Fatalf("AdjFactor = %v", factors)
+	}
+	if math.Abs(adjClose[0].(float64)-98) > 1e-12 || adjClose[1].(float64) != 98 {
+		t.Fatalf("AdjClose = %v", adjClose)
+	}
+	// Ex-dividend day: the raw close falls 2% while the adjusted return is 0.
+	rawReturn := closes[1].(float64)/closes[0].(float64) - 1
+	adjReturn := adjClose[1].(float64)/adjClose[0].(float64) - 1
+	if math.Abs(rawReturn+0.02) > 1e-12 {
+		t.Errorf("raw return = %v, want -0.02", rawReturn)
+	}
+	if math.Abs(adjReturn) > 1e-12 {
+		t.Errorf("adjusted return = %v, want 0", adjReturn)
+	}
+}
+
+func TestTWStockDailyPricesAdjustedCompoundsTwoExDates(t *testing.T) {
+	dt := adjustedFixture(t,
+		stockDayBody(
+			`["115/08/10","1,000","100,000","100.00","100.00","100.00","100.00","0.00","10"]`,
+			`["115/08/15","1,000","100,000","100.00","100.00","100.00","100.00","0.00","10"]`,
+			`["115/08/20","1,000","100,000","100.00","100.00","100.00","100.00","0.00","10"]`,
+		),
+		exRightsBody(
+			`["115年08月15日","2330","台積電","100.00","98.00","2.000000","息"]`,
+			`["115年08月20日","2330","台積電","100.00","95.00","5.000000","息"]`,
+		),
+	)
+	factors := dt.GetColByName("AdjFactor").Data()
+	if math.Abs(factors[0].(float64)-0.98*0.95) > 1e-12 {
+		t.Errorf("AdjFactor[0] = %v, want %v", factors[0], 0.98*0.95)
+	}
+	if math.Abs(factors[1].(float64)-0.95) > 1e-12 {
+		t.Errorf("AdjFactor[1] = %v, want 0.95", factors[1])
+	}
+	if factors[2].(float64) != 1 {
+		t.Errorf("AdjFactor[2] = %v, want 1", factors[2])
+	}
+}
+
+func TestTWStockDailyPricesAdjustedWithoutExDate(t *testing.T) {
+	dt := adjustedFixture(t,
+		stockDayBody(
+			`["115/08/14","1,000","100,000","100.00","100.00","100.00","100.00","0.00","10"]`,
+			`["115/08/15","1,000","98,000","98.00","98.00","98.00","98.00","-2.00","10"]`,
+		),
+		// Ex-dividend for a different code must not touch 2330.
+		exRightsBody(`["115年08月15日","1101","甲","100.00","98.00","2.000000","息"]`),
+	)
+	for i, factor := range dt.GetColByName("AdjFactor").Data() {
+		if factor.(float64) != 1 {
+			t.Errorf("AdjFactor[%d] = %v, want 1", i, factor)
+		}
+	}
+	closes := dt.GetColByName("Close").Data()
+	for i, adjusted := range dt.GetColByName("AdjClose").Data() {
+		if adjusted != closes[i] {
+			t.Errorf("AdjClose[%d] = %v, want %v", i, adjusted, closes[i])
+		}
+	}
+}
+
+func TestTWStockDailyPricesAdjustedKeepsNils(t *testing.T) {
+	dt := adjustedFixture(t,
+		stockDayBody(
+			`["115/08/14","1,000","100,000","--","100.00","100.00","100.00","0.00","10"]`,
+			`["115/08/15","1,000","98,000","98.00","98.00","98.00","98.00","-2.00","10"]`,
+		),
+		exRightsBody(`["115年08月15日","2330","台積電","100.00","98.00","2.000000","息"]`),
+	)
+	if dt.GetColByName("AdjOpen").Data()[0] != nil {
+		t.Errorf("AdjOpen[0] = %v, want nil", dt.GetColByName("AdjOpen").Data()[0])
+	}
+	if got := dt.GetColByName("AdjHigh").Data()[0]; math.Abs(got.(float64)-98) > 1e-12 {
+		t.Errorf("AdjHigh[0] = %v, want 98", got)
+	}
+	if got := dt.GetColByName("AdjClose").Data()[0]; math.Abs(got.(float64)-98) > 1e-12 {
+		t.Errorf("AdjClose[0] = %v, want 98", got)
+	}
 }

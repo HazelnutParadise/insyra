@@ -13,6 +13,7 @@ func TestParseROCDate(t *testing.T) {
 	}{
 		{input: "115/09/01", want: time.Date(2026, time.September, 1, 0, 0, 0, 0, time.UTC)},
 		{input: "1150903", want: time.Date(2026, time.September, 3, 0, 0, 0, 0, time.UTC)},
+		{input: "115年06月01日", want: time.Date(2026, time.June, 1, 0, 0, 0, 0, time.UTC)},
 	} {
 		got, err := parseROCDate(test.input)
 		if err != nil {
@@ -20,6 +21,22 @@ func TestParseROCDate(t *testing.T) {
 		}
 		if !got.Equal(test.want) {
 			t.Errorf("parseROCDate(%q) = %v, want %v", test.input, got, test.want)
+		}
+	}
+}
+
+func TestParseROCDateLongFormatRejectsInvalid(t *testing.T) {
+	for _, input := range []string{"115年13月01日", "115年06月31日", "115年06月01", "115年06月", "年06月01日", "115年ab月01日"} {
+		if got, err := parseROCDate(input); err == nil {
+			t.Errorf("parseROCDate(%q) = %v, want error", input, got)
+		}
+	}
+}
+
+func TestExRightsKind(t *testing.T) {
+	for input, want := range map[string]string{"息": "dividend", "權": "rights", "權息": "both", " 息 ": "dividend"} {
+		if got := exRightsKind(input); got != want {
+			t.Errorf("exRightsKind(%q) = %q, want %q", input, got, want)
 		}
 	}
 }

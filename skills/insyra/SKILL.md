@@ -766,7 +766,14 @@ prices, err := stocks.DailyPrices(
 )
 ```
 
-The other methods are `InstitutionalTrades`, `MarginBalance`, and `AllDailyQuotes`; all return `*insyra.DataTable` with `time.Time` dates and numeric columns. When combining price data with return series for `quant.Beta`, call `Merge` first so the two series are aligned by date.
+The other methods are `DailyPricesAdjusted`, `ExRights`, `InstitutionalTrades`, `MarginBalance`, and `AllDailyQuotes`; all return `*insyra.DataTable` with `time.Time` dates and numeric columns. When combining price data with return series for `quant.Beta`, call `Merge` first so the two series are aligned by date.
+
+**Compute returns from `AdjClose`, not `Close`.** `DailyPricesAdjusted` adds `AdjFactor` and `AdjOpen/High/Low/Close`, backward-adjusted the same way as Yahoo's `Adj Close`, so an ex-dividend day no longer shows a fake loss. Ex-dates are taken from `[from, to]` only, so extend `to` to today for a stable series. `ExRights` and `DailyPricesAdjusted` are TWSE-only — `TWMarketTPEx` returns an explicit "not supported" error.
+
+```go
+prices, err := stocks.DailyPricesAdjusted("2330", from, time.Now(), datafetch.TWMarketTWSE)
+returns := prices.PctChangeCol("AdjClose", 1).ClearNils()
+```
 
 ### 9) Probabilistic forecast from a return series (quant)
 
