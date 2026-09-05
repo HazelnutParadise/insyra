@@ -39,7 +39,7 @@
 
 | 套件 | 項目數 | 狀態 |
 | --- | --- | --- |
-| `.`（core） | 529 | 未開始 |
+| `.`（core） | 529 | 進行中：基礎層 63 項完成 |
 | `accel` | 127 | 未開始 |
 | `cli` 系列（cli, commands, env, repl, style） | 79 | 未開始 |
 | `csvxl` | 9 | **完成** |
@@ -105,13 +105,35 @@
 | Q-10 | Low | doc comment 是「Read: read …」冒號風格，不是 Go 的「Read reads …」；`FileInfo`、`ColumnInfo`、`RowGroupInfo` 無 doc（準則 E） | api.go | 補齊 |
 | Q-7 | Low | `Stream` 若消費者中途停止讀取又不 cancel ctx，producer goroutine 永久阻塞在 send；doc 沒寫「必須 drain 或 cancel」。記錄不會遺失（unbuffered channel，已推演 close 順序） | api.go:246-286 | doc 明講使用契約 |
 
+### core — 基礎層（version, config, logger, error_buffer, atomic, interfaces, utils, read）
+
+| 編號 | 嚴重度 | 問題 | 位置 | 建議 |
+| --- | --- | --- | --- | --- |
+| K-1 | High | `LogFatal` 走 `log.Fatalf` 直接 `os.Exit(1)`，全 repo 33 個呼叫點（`isr.DT.From` 讀檔失敗、`lp` 下載 GLPK 失敗、`gplot.SaveChart` 存檔失敗都會殺掉整個程序）。程式庫不得結束宿主程序（準則 10、11）。`SetDontPanic(true)` 後 `LogFatal` 只印 log 就返回，呼叫端拿到 nil 繼續跑，下一行就 nil deref panic，所以「不 panic」是假的 | logger.go:9-25；isr/dt.go、isr/use.go、lp/、plot/radar.go、gplot/save_chart.go | 移除 `LogFatal`；33 處改回傳 `error` 或設 `Err()`。`SetDontPanic` 一併刪除 |
+| K-2 | High | `SliceToF64` 對非數值填 0，而 `stats.Kurtosis`、`stats.Skewness` 仍經由它讀資料。2026-08-01 已決議 `stats` 不得捏造零值（AGENTS.md follow-up），這條路徑漏掉了 | utils.go:28-38；stats/kurtosis.go:25；stats/skewness.go:26 | `stats` 兩處改走 `numericSeries` 式的拒絕路徑；`SliceToF64` 改回傳 `([]float64, error)` 或標 Deprecated |
+| K-3 | High | 沒有 `LogLevelError`。等級只有 Debug/Info/Warning/Fatal，所以實例上 `Err()` 記到的失敗全部是 `LogLevelWarning`，「警告」與「這次操作失敗了」無法區分；`HasErrorAboveLevel(LogLevelWarning)` 也因此沒有意義 | config.go:25-34；datalist.go:2140-2145 | 加 `LogLevelError`，`warn` 改 `fail`；這是資料模型變更，要走 OpenSpec |
+| K-4 | Med | 全域錯誤 ring buffer（1536 筆）共 14 個匯出函式：`PopError`、`PopErrorInfo`、`PopErrorAndCallback`、`PopErrorByPackageName`、`PopErrorByFuncName`、`PeekError`、`GetAllErrors`、`GetErrorsByLevel`、`GetErrorsByPackage`、`PopAllErrors`、`HasError`、`HasErrorAboveLevel`、`GetErrorCount`、`ClearErrors`。全程序共用一個緩衝，多 goroutine 下拿到的是別人的錯；`PopError` 空緩衝回 `(LogLevelInfo, "")` 當哨兵，與 `PopErrorInfo` 回 nil 兩套語意並存。業界做法是回傳 error，實例層 `Err()` 已經有了（準則 1、6、10） | error_buffer.go 全檔 | 減到 `GetAllErrors`、`PopAllErrors`、`ClearErrors` 三個，其餘標 Deprecated；或整個 buffer 改為 opt-in |
+| K-5 | Med | `pushError` 對每筆錯誤 `go errHandlingFunc(...)`，goroutine 無上限且順序不保證；使用者的 handler 若慢或阻塞，每個 warning 就漏一個 goroutine | error_buffer.go:68-70 | 同步呼叫，或單一 consumer goroutine + 有界 channel |
+| K-6 | Med | `Config` 是 `*configStruct` 全域，型別未匯出：使用者無法在自己的函式簽名裡引用它，也不能建立第二份設定；`logLevel`、`coloredOutput`、`dontPanic`、`defaultErrHandlingFunc` 是裸欄位，`SetLogLevel` 與熱路徑 `GetLogLevel` 並行時是 data race（只有 threadSafe、acceleration 用了 atomic） | config.go:9-19, 36-70 | 匯出 `type Config struct`；四個欄位改 atomic 或加 mutex |
+| K-7 | Med | `IDataList` 含未匯出方法 `updateTimestamp()`，`IDataTable` 含 `getRowNameByIndex`、`getMaxColLength`、`updateTimestamp`：外部不可能實作，介面等同具體型別。但全 repo 71 個檔案用它當參數型別，回傳卻都是 `*DataList`/`*DataTable`。約 120 個方法的介面沒有抽象價值（「介面越大抽象越弱」，準則 1、8、10） | interfaces.go:6, 121 | 二選一：刪未匯出方法讓它可實作、並拆成小介面；或整個移除改用具體型別。這是 API 設計決策，需要你拍板 |
+| K-8 | Med | `AtomicDoAll(f func(), instances ...any)`：型別是 `any`，傳錯型別只 warning 然後「跳過不鎖」，呼叫端以為鎖住了其實在裸奔（準則 8、12） | atomic.go:109-131 | 定義 `type Lockable interface{ atomicActor() *core.AtomicActor }`，參數改 `...Lockable` |
+| K-9 | Med | `ReadJSON_File` 直接 `json.Unmarshal` 不用 `UseNumber`，整數變 float64；`ReadJSON` 走 `unmarshalJSONRows` 保留 int64。同一個檔案從兩個入口讀，型別不同，大整數 ID 在 `ReadJSON_File` 會失真（準則 6、13） | read.go:410-431 vs 442-460 | `ReadJSON_File` 改成 `os.ReadFile` + `ReadJSON(bytes)` |
+| K-10 | Med | `DetectEncoding` 只看前 8KB，且 `utf8.Valid` 在多位元組字元被切在 8192 邊界時回 false，接著交給 chardet 可能判成別的編碼；chardet 回傳的名稱（`shift_jis`、`iso-8859-1`、`gb-18030`）csvxl 只認 big5/gb/utf-16，其餘靜默當 UTF-8 讀 | utils.go:279-322；csvxl/convert.go:213-222 | 邊界回退到最後一個完整 rune 再驗證；不支援的編碼回錯而非靜默 |
+| K-11 | Med | CSV 只有 `_File` 與 `_String` 兩種入口，沒有 `io.Reader` 版本；Excel、JSON 同樣只吃路徑。與 C-10、Q-8 同一問題 | read.go | 加 `ReadCSV(r io.Reader, opts)`，檔案與字串版包裝它 |
+| K-12 | Med | `ToFloat64`、`ToFloat64Safe`、`ReadSlice2D` 用 `var` 匯出函式值：使用者可以在執行期覆寫（`insyra.ToFloat64 = ...`），godoc 也不會列在 Functions 區；`ReadSlice2D` 與 `Slice2DToDataTable` 是同一件事兩個名字（準則 2、6） | utils.go:22-23；read.go:22 | 改成 `func` 包裝；別名擇一標 Deprecated |
+| K-13 | Low | 命名不符 Go 慣例且與 golint 衝突：`ReadCSV_File`、`ReadCSV_String`、`ReadJSON_File`、`ToJSON_Bytes`、`ToJSON_String`、`Dangerously_TurnOffThreadSafety` 用底線；`GetDoesUseColoredOutput`、`GetDontPanicStatus` 疊字；`ParseColIndex`/`CalcColIndex` 一對函式動詞不對稱（準則 9） | config.go；read.go；utils.go:244-251 | v1 前統一：`ReadCSVFile`、`ColIndexToNumber`/`ColNumberToIndex`、`ColoredOutput()` |
+| K-14 | Low | `ReadCSV_File(path, bool, bool, encoding ...string)`、`ReadExcelSheet(path, sheet, bool, bool)` 兩個裸 bool 加 variadic；`_WithOptions` 版本已存在，舊簽名該退場。`ReadExcelSheet` 沒有 options 版，也沒有型別推斷（既有 follow-up） | read.go:115, 384 | 舊簽名標 Deprecated；加 `ReadExcelSheetWithOptions` 沿用 `CSVReadOptions` 的欄位 |
+| K-15 | Low | 核心套件匯出了與資料表無關的工具：`SqrtRat`、`PowRat`（repo 內無人用）、`SortTimes`（只有 mkt 用一次，`slices.SortFunc` 可替代）、`ProcessData` 回傳 `([]any, int)` 而 int 就是 `len()`、失敗時回 `nil, 0` 靠 log 通知。`F64orRat` 是 internal 介面的匯出別名（準則 1、2） | utils.go:43-87, 90-112, 255-264, 20 | `SqrtRat`/`PowRat`/`SortTimes` 移入 internal 或刪除；`ProcessData` 改回 `([]any, error)` |
+| K-16 | Low | `atomic.go` 的 doc comment 是亂碼（`憒??典??蔭??`，來源檔曾以錯誤編碼存檔）；`SetDefaultConfig` 的 doc 寫成「DefaultConfig returns…」；`ReadCSV_FileWithOptions` 用 `"csvxl"` 當套件名寫 log（實際在 core）；`Slice2DToDataTable` 對空切片回錯而 pandas 允許空表（準則 5、E） | atomic.go:31, 37, 44, 49；config.go:97；read.go:139, 51 | 修文件；空切片回空表 |
+| K-17 | Low | `LogInfo`/`LogWarning` 等四個 logger 函式是唯一的 log 出口，只能輸出到標準 `log`，不能接 `slog`/zap，也沒有 `io.Writer` 可設；成功路徑（Info）預設開啟，生產環境使用者要自己關（準則 14） | logger.go | 提供 `SetLogger(*slog.Logger)` 或 `SetOutput(io.Writer)`；預設等級改 Warning |
+
 ## 逐項清單
 
 
 ## . (529)
 
-- [ ] `const ErrPoppingModeFIFO ErrPoppingMode` (error_buffer.go:16)
-- [ ] `const ErrPoppingModeLIFO` (error_buffer.go:18)
+- [x] `const ErrPoppingModeFIFO ErrPoppingMode` (error_buffer.go:16) — K-4 全域 buffer 過大 API
+- [x] `const ErrPoppingModeLIFO` (error_buffer.go:18) — K-4
 - [ ] `const ImputeConstant ImputationStrategy` (datatable_simple_imputer.go:17)
 - [ ] `const ImputeMean ImputationStrategy` (datatable_simple_imputer.go:14)
 - [ ] `const ImputeMedian ImputationStrategy` (datatable_simple_imputer.go:15)
@@ -119,10 +141,10 @@
 - [ ] `const LabelSortByFrequency` (datatable_encode.go:44)
 - [ ] `const LabelSortFirstSeen LabelSort` (datatable_encode.go:40)
 - [ ] `const LabelSortLexicographic` (datatable_encode.go:42)
-- [ ] `const LogLevelDebug LogLevel` (config.go:27)
-- [ ] `const LogLevelFatal` (config.go:33)
-- [ ] `const LogLevelInfo` (config.go:29)
-- [ ] `const LogLevelWarning` (config.go:31)
+- [x] `const LogLevelDebug LogLevel` (config.go:27) — OK；但整組缺 Error 等級，見 K-3
+- [x] `const LogLevelFatal` (config.go:33) — K-1 Fatal 對程式庫是錯的等級
+- [x] `const LogLevelInfo` (config.go:29) — OK
+- [x] `const LogLevelWarning` (config.go:31) — K-3 被拿來代表失敗
 - [ ] `const MergeDirectionHorizontal MergeDirection` (datatable_merge.go:21)
 - [ ] `const MergeDirectionVertical` (datatable_merge.go:22)
 - [ ] `const MergeModeInner MergeMode` (datatable_merge.go:12)
@@ -157,8 +179,8 @@
 - [ ] `const UnknownAsNew` (datatable_encode.go:32)
 - [ ] `const UnknownError` (datatable_encode.go:30)
 - [ ] `const UnknownIgnore UnknownPolicy` (datatable_encode.go:28)
-- [ ] `const VersionName` (version.go:4)
-- [ ] `const Version` (version.go:3)
+- [x] `const VersionName` (version.go:4) — OK
+- [x] `const Version` (version.go:3) — OK；release 時要同步 bump（AGENTS.md 已記）
 - [ ] `func (dl *DataList) Append(values ...any) *DataList` (datalist.go:102)
 - [ ] `func (dl *DataList) AppendDataList(other IDataList) *DataList` (datalist.go:131)
 - [ ] `func (dl *DataList) Capitalize() *DataList` (datalist.go:1132)
@@ -279,12 +301,12 @@
 - [ ] `func (dt *DataTable) AppendRowsByColIndex(rowsData ...map[string]any) *DataTable` (datatable.go:161)
 - [ ] `func (dt *DataTable) AppendRowsByColName(rowsData ...map[string]any) *DataTable` (datatable.go:219)
 - [ ] `func (dt *DataTable) AppendRowsFromDataList(rowsData ...*DataList) *DataTable` (datatable.go:116)
-- [ ] `func (dt *DataTable) AtomicDo(f func(*DataTable))` (atomic.go:64)
+- [x] `func (dt *DataTable) AtomicDo(f func(*DataTable))` (atomic.go:64) — OK 語意清楚，文件把跨實例陷阱講明；K-16 檔內註解亂碼
 - [ ] `func (dt *DataTable) ChangeColName(oldName, newName string) *DataTable` (datatable_colname.go:48)
 - [ ] `func (dt *DataTable) ChangeRowName(oldName, newName string) *DataTable` (datatable_rowname.go:111)
 - [ ] `func (dt *DataTable) ClearErr() *DataTable` (datatable.go:1615)
 - [ ] `func (dt *DataTable) Clone() *DataTable` (datatable.go:1384)
-- [ ] `func (dt *DataTable) Close()` (atomic.go:79)
+- [x] `func (dt *DataTable) Close()` (atomic.go:79) — OK；doc 亂碼（K-16）；Close 後再用會怎樣未說明
 - [ ] `func (dt *DataTable) ColNames() []string` (datatable_colname.go:146)
 - [ ] `func (dt *DataTable) ColNamesToFirstRow() *DataTable` (datatable_colname.go:109)
 - [ ] `func (dt *DataTable) Count(value any) int` (datatable.go:1271)
@@ -483,7 +505,7 @@
 - [ ] `func (e *OrdinalEncoder) OutputColumn() string` (datatable_encode.go:362)
 - [ ] `func (e *OrdinalEncoder) SourceColumn() string` (datatable_encode.go:354)
 - [ ] `func (e *OrdinalEncoder) Transform(dt *DataTable) (*DataTable, error)` (datatable_encode.go:321)
-- [ ] `func (e ErrorInfo) Error() string` (error_buffer.go:32)
+- [x] `func (e ErrorInfo) Error() string` (error_buffer.go:32) — OK 實作 error 介面
 - [ ] `func (g *GroupedDataTable) Aggregate(configs ...AggregateConfig) *DataTable` (datatable_groupby.go:286)
 - [ ] `func (g *GroupedDataTable) AggregateAll(op AggregateOp) *DataTable` (datatable_groupby.go:350)
 - [ ] `func (g *GroupedDataTable) Count() *DataTable` (datatable_groupby.go:393)
@@ -517,7 +539,7 @@
 - [ ] `func (i *SimpleImputer) Kind() string` (datatable_simple_imputer.go:57)
 - [ ] `func (i *SimpleImputer) Params() map[string]ScalerParams` (datatable_simple_imputer.go:65)
 - [ ] `func (i *SimpleImputer) Transform(dt *DataTable) (*DataTable, error)` (datatable_simple_imputer.go:146)
-- [ ] `func (l LogLevel) String() string` (error_buffer.go:37)
+- [x] `func (l LogLevel) String() string` (error_buffer.go:37) — OK；放在 error_buffer.go 不在 config.go，找不到（Low）
 - [ ] `func (o AggregateOp) String() string` (datatable_groupby.go:48)
 - [ ] `func (r *RollingDataList) Apply(fn func(window []any) any) *DataList` (datalist_window.go:435)
 - [ ] `func (r *RollingDataList) Beta(other *DataList) *DataList` (datalist_window.go:544)
@@ -530,25 +552,25 @@
 - [ ] `func (r *RollingDataList) Std() *DataList` (datalist_window.go:410)
 - [ ] `func (r *RollingDataList) Sum() *DataList` (datalist_window.go:328)
 - [ ] `func (r *RollingDataList) Var() *DataList` (datalist_window.go:421)
-- [ ] `func (s *DataList) AtomicDo(f func(*DataList))` (atomic.go:29)
-- [ ] `func (s *DataList) Close()` (atomic.go:44)
+- [x] `func (s *DataList) AtomicDo(f func(*DataList))` (atomic.go:29) — 同 DataTable.AtomicDo；receiver 名 `s` 與其他方法的 `dl` 不一致（Low）
+- [x] `func (s *DataList) Close()` (atomic.go:44) — 同 DataTable.Close
 - [ ] `func (t *GroupedColumnTransform) As(name string) *DataList` (datatable_groupby_window.go:28)
-- [ ] `func AtomicDoAll(f func(), instances ...any)` (atomic.go:109)
-- [ ] `func CalcColIndex(colNumber int) (colIndex string, ok bool)` (utils.go:249)
-- [ ] `func ClearErrors()` (error_buffer.go:195)
-- [ ] `func ConvertLongDataToWide(data, factor IDataList, independents []IDataList, aggFunc func([]float64) float64) IDataTable` (utils.go:132)
-- [ ] `func DetectEncoding(filePath string) (string, error)` (utils.go:279)
-- [ ] `func GetAllErrors() []ErrorInfo` (error_buffer.go:263)
-- [ ] `func GetErrorCount() int` (error_buffer.go:202)
-- [ ] `func GetErrorsByLevel(level LogLevel) []ErrorInfo` (error_buffer.go:282)
-- [ ] `func GetErrorsByPackage(packageName string) []ErrorInfo` (error_buffer.go:303)
-- [ ] `func HasError() bool` (error_buffer.go:211)
-- [ ] `func HasErrorAboveLevel(level LogLevel) bool` (error_buffer.go:220)
-- [ ] `func IsNumeric(v any) bool` (utils.go:221)
-- [ ] `func LogDebug(packageName, funcName, msg string, args ...any)` (logger.go:44)
-- [ ] `func LogFatal(packageName, funcName, msg string, args ...any)` (logger.go:9)
-- [ ] `func LogInfo(packageName, funcName, msg string, args ...any)` (logger.go:60)
-- [ ] `func LogWarning(packageName, funcName, msg string, args ...any)` (logger.go:27)
+- [x] `func AtomicDoAll(f func(), instances ...any)` (atomic.go:109) — K-8 `...any` 且型別錯誤時靜默不鎖
+- [x] `func CalcColIndex(colNumber int) (colIndex string, ok bool)` (utils.go:249) — OK 功能；K-13 命名不對稱
+- [x] `func ClearErrors()` (error_buffer.go:195) — K-4（保留候選）
+- [x] `func ConvertLongDataToWide(data, factor IDataList, independents []IDataList, aggFunc func([]float64) float64) IDataTable` (utils.go:132) — 已標 Deprecated 且指向替代：OK；錯誤用 fmt.Println（隨 Deprecated 一起走）
+- [x] `func DetectEncoding(filePath string) (string, error)` (utils.go:279) — K-10 8KB 邊界與不支援編碼靜默
+- [x] `func GetAllErrors() []ErrorInfo` (error_buffer.go:263) — K-4（保留候選）
+- [x] `func GetErrorCount() int` (error_buffer.go:202) — K-4
+- [x] `func GetErrorsByLevel(level LogLevel) []ErrorInfo` (error_buffer.go:282) — K-4
+- [x] `func GetErrorsByPackage(packageName string) []ErrorInfo` (error_buffer.go:303) — K-4
+- [x] `func HasError() bool` (error_buffer.go:211) — K-4
+- [x] `func HasErrorAboveLevel(level LogLevel) bool` (error_buffer.go:220) — K-4
+- [x] `func IsNumeric(v any) bool` (utils.go:221) — OK；reflect 分支覆蓋 named types
+- [x] `func LogDebug(packageName, funcName, msg string, args ...any)` (logger.go:44) — K-17 無法接自訂 logger
+- [x] `func LogFatal(packageName, funcName, msg string, args ...any)` (logger.go:9) — K-1 程式庫呼叫 os.Exit
+- [x] `func LogInfo(packageName, funcName, msg string, args ...any)` (logger.go:60) — K-17；預設開啟造成成功路徑噪音（C-9 的根源）
+- [x] `func LogWarning(packageName, funcName, msg string, args ...any)` (logger.go:27) — K-17；同時 pushError（K-4、K-5）
 - [ ] `func NewDataList(values ...any) *DataList` (datalist.go:81)
 - [ ] `func NewDataTable(columns ...*DataList) *DataTable` (datatable.go:47)
 - [ ] `func NewDefaultMinMaxScaler() *MinMaxScaler` (datatable_scale.go:109)
@@ -557,35 +579,35 @@
 - [ ] `func NewRobustScaler() *RobustScaler` (datatable_scale.go:112)
 - [ ] `func NewSimpleImputer(strategy ImputationStrategy, constant ...any) *SimpleImputer` (datatable_simple_imputer.go:44)
 - [ ] `func NewStandardScaler() *StandardScaler` (datatable_scale.go:101)
-- [ ] `func ParseColIndex(colIndex string) (colNumber int, ok bool)` (utils.go:244)
-- [ ] `func PeekError(mode ErrPoppingMode) *ErrorInfo` (error_buffer.go:236)
-- [ ] `func PopAllErrors() []ErrorInfo` (error_buffer.go:325)
-- [ ] `func PopError(mode ErrPoppingMode) (LogLevel, string)` (error_buffer.go:83)
-- [ ] `func PopErrorAndCallback(mode ErrPoppingMode, callback func(errType LogLevel, packageName string, funcName string, errMsg string))` (error_buffer.go:178)
-- [ ] `func PopErrorByFuncName(packageName, funcName string, mode ErrPoppingMode) (LogLevel, string)` (error_buffer.go:139)
-- [ ] `func PopErrorByPackageName(packageName string, mode ErrPoppingMode) (LogLevel, string)` (error_buffer.go:100)
-- [ ] `func PopErrorInfo(mode ErrPoppingMode) *ErrorInfo` (error_buffer.go:346)
-- [ ] `func PowRat(base *big.Rat, exponent int) *big.Rat` (utils.go:105)
-- [ ] `func ProcessData(input any) ([]any, int)` (utils.go:43)
-- [ ] `func ReadCSV_File(filePath string, setFirstColToRowNames bool, setFirstRowToColNames bool, encoding ...string) (*DataTable, error)` (read.go:115)
-- [ ] `func ReadCSV_FileWithOptions(filePath string, opts CSVReadOptions) (*DataTable, error)` (read.go:127)
-- [ ] `func ReadCSV_String(csvString string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error)` (read.go:356)
-- [ ] `func ReadCSV_StringWithOptions(csvString string, opts CSVReadOptions) (*DataTable, error)` (read.go:365)
-- [ ] `func ReadExcelSheet(filePath string, sheetName string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error)` (read.go:384)
-- [ ] `func ReadJSON(data any) (*DataTable, error)` (read.go:465)
-- [ ] `func ReadJSON_File(filePath string) (*DataTable, error)` (read.go:410)
+- [x] `func ParseColIndex(colIndex string) (colNumber int, ok bool)` (utils.go:244) — OK；K-13 命名
+- [x] `func PeekError(mode ErrPoppingMode) *ErrorInfo` (error_buffer.go:236) — K-4
+- [x] `func PopAllErrors() []ErrorInfo` (error_buffer.go:325) — K-4（保留候選）
+- [x] `func PopError(mode ErrPoppingMode) (LogLevel, string)` (error_buffer.go:83) — K-4 空緩衝哨兵 `(LogLevelInfo, "")` 含糊
+- [x] `func PopErrorAndCallback(mode ErrPoppingMode, callback func(errType LogLevel, packageName string, funcName string, errMsg string))` (error_buffer.go:178) — K-4 空緩衝哨兵 `(LogLevelInfo, "")` 含糊
+- [x] `func PopErrorByFuncName(packageName, funcName string, mode ErrPoppingMode) (LogLevel, string)` (error_buffer.go:139) — K-4 空緩衝哨兵 `(LogLevelInfo, "")` 含糊
+- [x] `func PopErrorByPackageName(packageName string, mode ErrPoppingMode) (LogLevel, string)` (error_buffer.go:100) — K-4 空緩衝哨兵 `(LogLevelInfo, "")` 含糊
+- [x] `func PopErrorInfo(mode ErrPoppingMode) *ErrorInfo` (error_buffer.go:346) — K-4 空緩衝哨兵 `(LogLevelInfo, "")` 含糊
+- [x] `func PowRat(base *big.Rat, exponent int) *big.Rat` (utils.go:105) — K-15 無人用
+- [x] `func ProcessData(input any) ([]any, int)` (utils.go:43) — K-15 回傳 `(data, len)` 冗餘、失敗無 error
+- [x] `func ReadCSV_File(filePath string, setFirstColToRowNames bool, setFirstRowToColNames bool, encoding ...string) (*DataTable, error)` (read.go:115) — K-13 底線命名；K-14 裸 bool + variadic
+- [x] `func ReadCSV_FileWithOptions(filePath string, opts CSVReadOptions) (*DataTable, error)` (read.go:127) — K-13 底線命名；K-14 裸 bool + variadic
+- [x] `func ReadCSV_String(csvString string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error)` (read.go:356) — K-13；K-14
+- [x] `func ReadCSV_StringWithOptions(csvString string, opts CSVReadOptions) (*DataTable, error)` (read.go:365) — K-13；K-14
+- [x] `func ReadExcelSheet(filePath string, sheetName string, setFirstColToRowNames bool, setFirstRowToColNames bool) (*DataTable, error)` (read.go:384) — K-14 無 options、無型別推斷（既有 follow-up）；未 Close 前已 defer Close：OK
+- [x] `func ReadJSON(data any) (*DataTable, error)` (read.go:465) — OK 功能；`any` 六路 switch 可接受為便利入口；與 ReadJSON_File 型別不一致（K-9）
+- [x] `func ReadJSON_File(filePath string) (*DataTable, error)` (read.go:410) — K-9 整數失真
 - [ ] `func ReadSQL(db *gorm.DB, tableName string, options ...ReadSQLOptions) (*DataTable, error)` (datatable_from_sql.go:65)
 - [ ] `func ReadSQLContext(ctx context.Context, db *gorm.DB, tableName string, options ...ReadSQLOptions) (*DataTable, error)` (datatable_from_sql.go:71)
 - [ ] `func ReadSQLStream(ctx context.Context, db *gorm.DB, tableName string, options ...ReadSQLOptions) (<-chan ReadSQLChunk, error)` (datatable_from_sql.go:120)
-- [ ] `func SetDefaultConfig()` (config.go:98)
+- [x] `func SetDefaultConfig()` (config.go:98) — OK；K-16 doc 錯；名稱 `Reset` 更貼切（Low）
 - [ ] `func Show(label string, object showable, startEnd ...any)` (show.go:27)
-- [ ] `func Slice2DToDataTable(data any) (*DataTable, error)` (read.go:26)
-- [ ] `func SliceToF64(input []any) []float64` (utils.go:28)
-- [ ] `func SortTimes(times []time.Time)` (utils.go:255)
-- [ ] `func SqrtRat(x *big.Rat) *big.Rat` (utils.go:90)
+- [x] `func Slice2DToDataTable(data any) (*DataTable, error)` (read.go:26) — OK；K-16 空切片回錯
+- [x] `func SliceToF64(input []any) []float64` (utils.go:28) — K-2 捏造零值且 stats 仍在用
+- [x] `func SortTimes(times []time.Time)` (utils.go:255) — K-15
+- [x] `func SqrtRat(x *big.Rat) *big.Rat` (utils.go:90) — K-15
 - [ ] `type AggregateConfig struct { SourceCol string As string Op AggregateOp Custom func(group *DataList) any }` (datatable_groupby.go:85)
 - [ ] `type AggregateOp int` (datatable_groupby.go:12)
-- [ ] `type CSVReadOptions struct { FirstColToRowNames bool FirstRowToColNames bool Encoding string RawStrings bool AllowRaggedRows bool TrimLeadingSpace bool }` (read.go:93)
+- [x] `type CSVReadOptions struct { FirstColToRowNames bool FirstRowToColNames bool Encoding string RawStrings bool AllowRaggedRows bool TrimLeadingSpace bool }` (read.go:93) — OK 零值可用、欄位有 doc：這是套件內最合格的 options struct，其他地方應比照
 - [ ] `type DataList struct { data []any name string creationTimestamp int64 lastModifiedTimestamp atomic.Int64 atomicActor core.AtomicActor lastError *ErrorInfo }` (datalist.go:25)
 - [ ] `type DataListScaler interface { FitDataList(dl *DataList) error TransformDataList(dl *DataList) (*DataList, error) FitTransformDataList(dl *DataList) (*DataList, error) InverseTransformDataList(dl *DataList) (*DataList, error) }` (datatable_scale.go:52)
 - [ ] `type DataTable struct { columns []*DataList rowNames *core.BiIndex name string creationTimestamp int64 lastModifiedTimestamp atomic.Int64 atomicActor core.AtomicActor lastError *ErrorInfo }` (datatable.go:33)
@@ -594,21 +616,21 @@
 - [ ] `type EWMDataList struct { srcData []any srcName string opts EWMOptions alpha float64 parent *DataList err string }` (datalist_ewm.go:19)
 - [ ] `type EWMOptions struct { Alpha float64 Span float64 HalfLife float64 Adjust bool Bias bool MinObs int }` (datalist_ewm.go:8)
 - [ ] `type Encoder interface { Transform(dt *DataTable) (*DataTable, error) InverseTransform(dt *DataTable) (*DataTable, error) Kind() string }` (datatable_encode.go:80)
-- [ ] `type ErrPoppingMode int` (error_buffer.go:11)
-- [ ] `type ErrorInfo struct { Level LogLevel PackageName string FuncName string Message string Timestamp time.Time }` (error_buffer.go:23)
+- [x] `type ErrPoppingMode int` (error_buffer.go:11) — K-4
+- [x] `type ErrorInfo struct { Level LogLevel PackageName string FuncName string Message string Timestamp time.Time }` (error_buffer.go:23) — OK；`Level` 用 LogLevel 而非 error 等級（K-3）
 - [ ] `type ExpandingDataList struct { srcData []any srcName string minObs int parent *DataList err string }` (datalist_window.go:561)
-- [ ] `type F64orRat = utils.F64orRat` (utils.go:20)
+- [x] `type F64orRat = utils.F64orRat` (utils.go:20) — K-15 internal 介面的匯出別名
 - [ ] `type GroupedColumnTransform struct { parent *GroupedDataTable sourceCol int sourceLabel string perGroupFn func(group *DataList) *DataList err string }` (datatable_groupby_window.go:17)
 - [ ] `type GroupedDataTable struct { parent *DataTable keyColNumbers []int keyColLabels []string columnsSnapshot []*DataList rowsByGroup map[string][]int groupOrder []string groupKeyValues map[string][]any initErr string }` (datatable_groupby.go:106)
 - [ ] `type GroupedExpandingCol struct { parent *GroupedDataTable sourceCol int sourceLabel string minObs int err string }` (datatable_groupby_window.go:286)
 - [ ] `type GroupedRollingCol struct { parent *GroupedDataTable sourceCol int sourceLabel string opts RollingOptions err string }` (datatable_groupby_window.go:206)
-- [ ] `type IDataList interface { AtomicDo(func(*DataList)) GetCreationTimestamp() int64 GetLastModifiedTimestamp() int64 updateTimestamp() GetName() string SetName(string) *DataList Data() []any Append(values ...any) *DataList Concat(other IDataList) *DataList AppendDataList(other IDataList) *DataList Get(index int) any Clone() *DataList Count(value any) int Counter() map[any]int Update(index int, value any) *DataList InsertAt(index int, value any) *DataList FindFirst(any) any FindLast(any) any FindAll(any) []int Filter(func(any) bool) *DataList ReplaceFirst(any, any) *DataList ReplaceLast(any, any) *DataList ReplaceAll(any, any) *DataList ReplaceOutliers(float64, float64) *DataList Pop() any Drop(index int) *DataList DropAll(...any) *DataList DropIfContains(string) *DataList Clear() *DataList ClearStrings() *DataList ClearNumbers() *DataList ClearNaNs() *DataList ClearNils() *DataList ClearNilsAndNaNs() *DataList ClearOutliers(float64) *DataList ReplaceNaNsWith(any) *DataList ReplaceNilsWith(any) *DataList ReplaceNaNsAndNilsWith(any) *DataList Normalize() *DataList Standardize() *DataList FillNaNWithMean() *DataList FillWithMean() *DataList FillForward(limit ...int) *DataList FillBackward(limit ...int) *DataList FillWithMedian() *DataList FillWithMode() *DataList FillByInterpolation(extrapolate ...bool) *DataList MovingAverage(int) *DataList WeightedMovingAverage(int, any) *DataList ExponentialSmoothing(float64) *DataList DoubleExponentialSmoothing(float64, float64) *DataList EWM(EWMOptions) *EWMDataList MovingStdev(int) *DataList Len() int Sample(n int, withReplacement bool, options ...SamplingOptions) *DataList SampleFrac(frac float64, withReplacement bool, options ...SamplingOptions) *DataList Shuffle(options ...SamplingOptions) *DataList Sort(ascending ...bool) *DataList Map(mapFunc func(int, any) any) *DataList Rank(ascending ...bool) *DataList Reverse() *DataList Upper() *DataList Lower() *DataList Capitalize() *DataList Sum() float64 Max() float64 Min() float64 Mean() float64 WeightedMean(weights any) float64 GMean() float64 Median() float64 Mode() []float64 MAD() float64 Stdev() float64 StdevP() float64 Var() float64 VarP() float64 Range() float64 Quartile(int) float64 IQR() float64 Percentile(float64) float64 Difference() *DataList Describe(...DescribeOptions) *DataTable Summary() Err() *ErrorInfo ClearErr() *DataList IsEqualTo(*DataList) bool IsTheSameAs(*DataList) bool Show() ShowRange(startEnd ...any) ShowTypes() ShowTypesRange(startEnd ...any) ParseNumbers() *DataList ParseStrings() *DataList ParseDates(layouts ...string) *DataList ToF64Slice() []float64 ToStringSlice() []string LinearInterpolation(float64) float64 QuadraticInterpolation(float64) float64 LagrangeInterpolation(float64) float64 NearestNeighborInterpolation(float64) float64 NewtonInterpolation(float64) float64 HermiteInterpolation(float64, []float64) float64 }` (interfaces.go:6)
-- [ ] `type IDataTable interface { AtomicDo(func(*DataTable)) AppendCols(columns ...*DataList) *DataTable AppendRowsFromDataList(rowsData ...*DataList) *DataTable AppendRowsByColIndex(rowsData ...map[string]any) *DataTable AppendRowsByColName(rowsData ...map[string]any) *DataTable GetElement(rowIndex int, columnIndex string) any GetElementByNumberIndex(rowIndex int, columnIndex int) any GetCol(index string) *DataList GetColByNumber(index int) *DataList GetColByName(name string) *DataList GetRow(index int) *DataList GetRowByName(name string) *DataList UpdateElement(rowIndex int, columnIndex string, value any) *DataTable UpdateCol(index string, dl *DataList) *DataTable UpdateColByNumber(index int, dl *DataList) *DataTable UpdateRow(index int, dl *DataList) *DataTable SetColToRowNames(columnIndex string) *DataTable SetRowToColNames(rowIndex int) *DataTable ChangeColName(oldName, newName string) *DataTable GetColNameByNumber(index int) string GetColIndexByName(name string) string GetColIndexByNumber(number int) string GetColNumberByName(name string) int SetColNameByIndex(index string, name string) *DataTable SetColNameByNumber(numberIndex int, name string) *DataTable ColNamesToFirstRow() *DataTable DropColNames() *DataTable ColNames() []string Headers() []string SetColNames(colNames []string) *DataTable SetHeaders(headers []string) *DataTable FindRowsIfContains(value any) []int FindRowsIfContainsAll(values ...any) []int FindRowsIfAnyElementContainsSubstring(substring string) []int FindRowsIfAllElementsContainSubstring(substring string) []int FindColsIfContains(value any) []string FindColsIfContainsAll(values ...any) []string FindColsIfAnyElementContainsSubstring(substring string) []string FindColsIfAllElementsContainSubstring(substring string) []string DropColsByName(columnNames ...string) *DataTable DropColsByIndex(columnIndices ...string) *DataTable DropColsByNumber(columnIndices ...int) *DataTable DropColsContainString() *DataTable DropColsContainNumber() *DataTable DropColsContainNil() *DataTable DropColsContainNaN() *DataTable DropColsContain(value ...any) *DataTable DropColsContainExcelNA() *DataTable DropRowsByIndex(rowIndices ...int) *DataTable DropRowsByName(rowNames ...string) *DataTable DropRowsContainString() *DataTable DropRowsContainNumber() *DataTable DropRowsContainNil() *DataTable DropRowsContainNaN() *DataTable DropRowsContain(value ...any) *DataTable DropRowsContainExcelNA() *DataTable Data(useNamesAsKeys ...bool) map[string][]any ToMap(useNamesAsKeys ...bool) map[string][]any Show() ShowTypes() ShowRange(startEnd ...any) ShowTypesRange(startEnd ...any) GetRowIndexByName(name string) (int, bool) GetRowNameByIndex(index int) (string, bool) SetRowNameByIndex(index int, name string) *DataTable ChangeRowName(oldName, newName string) *DataTable RowNamesToFirstCol() *DataTable DropRowNames() *DataTable RowNames() []string SetRowNames(rowNames []string) *DataTable GetCreationTimestamp() int64 GetLastModifiedTimestamp() int64 getRowNameByIndex(index int) (string, bool) getMaxColLength() int updateTimestamp() GetName() string SetName(name string) *DataTable Size() (numRows int, numCols int) NumRows() int NumCols() int Count(value any) int Mean() any Describe(...DescribeOptions) *DataTable Summary() Err() *ErrorInfo ClearErr() *DataTable Transpose() *DataTable Clone() *DataTable To2DSlice() [][]any SimpleRandomSample(sampleSize int) *DataTable Sample(n int, withReplacement bool, options ...SamplingOptions) *DataTable SampleFrac(frac float64, withReplacement bool, options ...SamplingOptions) *DataTable Shuffle(options ...SamplingOptions) *DataTable TrainTestSplit(trainFrac float64, options ...SamplingOptions) (*DataTable, *DataTable) Map(mapFunc func(rowIndex int, colIndex string, element any) any) *DataTable SortBy(configs ...DataTableSortConfig) *DataTable Filter(filterFunc func(rowIndex int, columnIndex string, value any) bool) *DataTable FilterByCustomElement(f func(value any) bool) *DataTable FilterRows(filterFunc func(colIndex, colName string, x any) bool) *DataTable FilterCols(filterFunc func(rowIndex int, rowName string, x any) bool) *DataTable FilterColsByColIndexGreaterThan(threshold string) *DataTable FilterColsByColIndexGreaterThanOrEqualTo(threshold string) *DataTable FilterColsByColIndexLessThan(threshold string) *DataTable FilterColsByColIndexLessThanOrEqualTo(threshold string) *DataTable FilterColsByColIndexEqualTo(index string) *DataTable FilterColsByColNameEqualTo(name string) *DataTable FilterColsByColNameContains(substring string) *DataTable FilterRowsByRowNameEqualTo(name string) *DataTable FilterRowsByRowNameContains(substring string) *DataTable FilterRowsByRowIndexGreaterThan(threshold int) *DataTable FilterRowsByRowIndexGreaterThanOrEqualTo(threshold int) *DataTable FilterRowsByRowIndexLessThan(threshold int) *DataTable FilterRowsByRowIndexLessThanOrEqualTo(threshold int) *DataTable FilterRowsByRowIndexEqualTo(index int) *DataTable SwapColsByName(columnName1 string, columnName2 string) *DataTable SwapColsByIndex(columnIndex1 string, columnIndex2 string) *DataTable SwapColsByNumber(columnNumber1 int, columnNumber2 int) *DataTable SwapRowsByIndex(rowIndex1 int, rowIndex2 int) *DataTable SwapRowsByName(rowName1 string, rowName2 string) *DataTable ToCSV(filePath string, setRowNamesToFirstCol bool, setColNamesToFirstRow bool, includeBOM bool) error ToJSON(filePath string, useColNames bool) error ToJSON_Bytes(useColNames bool) []byte ToJSON_String(useColNames bool) string ToSQL(db *gorm.DB, tableName string, options ...ToSQLOptions) error Merge(other IDataTable, direction MergeDirection, mode MergeMode, on ...string) (*DataTable, error) EWMCol(string, EWMOptions) *EWMDataList Resample(string, ResampleFreq, ...ResampleAgg) (*DataTable, error) ParseDatesCols(cols []string, layouts ...string) *DataTable AddColUsingCCL(newColName, ccl string) *DataTable Replace(oldValue, newValue any) *DataTable ReplaceNaNsWith(newValue any) *DataTable ReplaceNilsWith(newValue any) *DataTable ReplaceNaNsAndNilsWith(newValue any) *DataTable FillForward(int, ...string) *DataTable FillBackward(int, ...string) *DataTable FillWithMean(...string) *DataTable FillWithMedian(...string) *DataTable FillWithMode(...string) *DataTable FillByInterpolation(...string) *DataTable OneHotEncode(opts OneHotOptions) (*DataTable, *OneHotEncoder, error) LabelEncode(opts LabelEncodeOptions) (*DataTable, *LabelEncoder, error) OrdinalEncode(opts OrdinalEncodeOptions) (*DataTable, *OrdinalEncoder, error) StandardScale(cols ...string) (*DataTable, *StandardScaler, error) MinMaxScale(featureMin, featureMax float64, cols ...string) (*DataTable, *MinMaxScaler, error) RobustScale(cols ...string) (*DataTable, *RobustScaler, error) MaxAbsScale(cols ...string) (*DataTable, *MaxAbsScaler, error) ReplaceInRow(rowIndex int, oldValue, newValue any, mode ...int) *DataTable ReplaceNaNsInRow(rowIndex int, newValue any, mode ...int) *DataTable ReplaceNilsInRow(rowIndex int, newValue any, mode ...int) *DataTable ReplaceNaNsAndNilsInRow(rowIndex int, newValue any, mode ...int) *DataTable ReplaceInCol(colIndex string, oldValue, newValue any, mode ...int) *DataTable ReplaceNaNsInCol(colIndex string, newValue any, mode ...int) *DataTable ReplaceNilsInCol(colIndex string, newValue any, mode ...int) *DataTable ReplaceNaNsAndNilsInCol(colIndex string, newValue any, mode ...int) *DataTable }` (interfaces.go:121)
+- [x] `type IDataList interface { AtomicDo(func(*DataList)) GetCreationTimestamp() int64 GetLastModifiedTimestamp() int64 updateTimestamp() GetName() string SetName(string) *DataList Data() []any Append(values ...any) *DataList Concat(other IDataList) *DataList AppendDataList(other IDataList) *DataList Get(index int) any Clone() *DataList Count(value any) int Counter() map[any]int Update(index int, value any) *DataList InsertAt(index int, value any) *DataList FindFirst(any) any FindLast(any) any FindAll(any) []int Filter(func(any) bool) *DataList ReplaceFirst(any, any) *DataList ReplaceLast(any, any) *DataList ReplaceAll(any, any) *DataList ReplaceOutliers(float64, float64) *DataList Pop() any Drop(index int) *DataList DropAll(...any) *DataList DropIfContains(string) *DataList Clear() *DataList ClearStrings() *DataList ClearNumbers() *DataList ClearNaNs() *DataList ClearNils() *DataList ClearNilsAndNaNs() *DataList ClearOutliers(float64) *DataList ReplaceNaNsWith(any) *DataList ReplaceNilsWith(any) *DataList ReplaceNaNsAndNilsWith(any) *DataList Normalize() *DataList Standardize() *DataList FillNaNWithMean() *DataList FillWithMean() *DataList FillForward(limit ...int) *DataList FillBackward(limit ...int) *DataList FillWithMedian() *DataList FillWithMode() *DataList FillByInterpolation(extrapolate ...bool) *DataList MovingAverage(int) *DataList WeightedMovingAverage(int, any) *DataList ExponentialSmoothing(float64) *DataList DoubleExponentialSmoothing(float64, float64) *DataList EWM(EWMOptions) *EWMDataList MovingStdev(int) *DataList Len() int Sample(n int, withReplacement bool, options ...SamplingOptions) *DataList SampleFrac(frac float64, withReplacement bool, options ...SamplingOptions) *DataList Shuffle(options ...SamplingOptions) *DataList Sort(ascending ...bool) *DataList Map(mapFunc func(int, any) any) *DataList Rank(ascending ...bool) *DataList Reverse() *DataList Upper() *DataList Lower() *DataList Capitalize() *DataList Sum() float64 Max() float64 Min() float64 Mean() float64 WeightedMean(weights any) float64 GMean() float64 Median() float64 Mode() []float64 MAD() float64 Stdev() float64 StdevP() float64 Var() float64 VarP() float64 Range() float64 Quartile(int) float64 IQR() float64 Percentile(float64) float64 Difference() *DataList Describe(...DescribeOptions) *DataTable Summary() Err() *ErrorInfo ClearErr() *DataList IsEqualTo(*DataList) bool IsTheSameAs(*DataList) bool Show() ShowRange(startEnd ...any) ShowTypes() ShowTypesRange(startEnd ...any) ParseNumbers() *DataList ParseStrings() *DataList ParseDates(layouts ...string) *DataList ToF64Slice() []float64 ToStringSlice() []string LinearInterpolation(float64) float64 QuadraticInterpolation(float64) float64 LagrangeInterpolation(float64) float64 NearestNeighborInterpolation(float64) float64 NewtonInterpolation(float64) float64 HermiteInterpolation(float64, []float64) float64 }` (interfaces.go:6) — K-7 不可實作、過大；`Capitalize() *DataList // Statistics` 註解錯位
+- [x] `type IDataTable interface { AtomicDo(func(*DataTable)) AppendCols(columns ...*DataList) *DataTable AppendRowsFromDataList(rowsData ...*DataList) *DataTable AppendRowsByColIndex(rowsData ...map[string]any) *DataTable AppendRowsByColName(rowsData ...map[string]any) *DataTable GetElement(rowIndex int, columnIndex string) any GetElementByNumberIndex(rowIndex int, columnIndex int) any GetCol(index string) *DataList GetColByNumber(index int) *DataList GetColByName(name string) *DataList GetRow(index int) *DataList GetRowByName(name string) *DataList UpdateElement(rowIndex int, columnIndex string, value any) *DataTable UpdateCol(index string, dl *DataList) *DataTable UpdateColByNumber(index int, dl *DataList) *DataTable UpdateRow(index int, dl *DataList) *DataTable SetColToRowNames(columnIndex string) *DataTable SetRowToColNames(rowIndex int) *DataTable ChangeColName(oldName, newName string) *DataTable GetColNameByNumber(index int) string GetColIndexByName(name string) string GetColIndexByNumber(number int) string GetColNumberByName(name string) int SetColNameByIndex(index string, name string) *DataTable SetColNameByNumber(numberIndex int, name string) *DataTable ColNamesToFirstRow() *DataTable DropColNames() *DataTable ColNames() []string Headers() []string SetColNames(colNames []string) *DataTable SetHeaders(headers []string) *DataTable FindRowsIfContains(value any) []int FindRowsIfContainsAll(values ...any) []int FindRowsIfAnyElementContainsSubstring(substring string) []int FindRowsIfAllElementsContainSubstring(substring string) []int FindColsIfContains(value any) []string FindColsIfContainsAll(values ...any) []string FindColsIfAnyElementContainsSubstring(substring string) []string FindColsIfAllElementsContainSubstring(substring string) []string DropColsByName(columnNames ...string) *DataTable DropColsByIndex(columnIndices ...string) *DataTable DropColsByNumber(columnIndices ...int) *DataTable DropColsContainString() *DataTable DropColsContainNumber() *DataTable DropColsContainNil() *DataTable DropColsContainNaN() *DataTable DropColsContain(value ...any) *DataTable DropColsContainExcelNA() *DataTable DropRowsByIndex(rowIndices ...int) *DataTable DropRowsByName(rowNames ...string) *DataTable DropRowsContainString() *DataTable DropRowsContainNumber() *DataTable DropRowsContainNil() *DataTable DropRowsContainNaN() *DataTable DropRowsContain(value ...any) *DataTable DropRowsContainExcelNA() *DataTable Data(useNamesAsKeys ...bool) map[string][]any ToMap(useNamesAsKeys ...bool) map[string][]any Show() ShowTypes() ShowRange(startEnd ...any) ShowTypesRange(startEnd ...any) GetRowIndexByName(name string) (int, bool) GetRowNameByIndex(index int) (string, bool) SetRowNameByIndex(index int, name string) *DataTable ChangeRowName(oldName, newName string) *DataTable RowNamesToFirstCol() *DataTable DropRowNames() *DataTable RowNames() []string SetRowNames(rowNames []string) *DataTable GetCreationTimestamp() int64 GetLastModifiedTimestamp() int64 getRowNameByIndex(index int) (string, bool) getMaxColLength() int updateTimestamp() GetName() string SetName(name string) *DataTable Size() (numRows int, numCols int) NumRows() int NumCols() int Count(value any) int Mean() any Describe(...DescribeOptions) *DataTable Summary() Err() *ErrorInfo ClearErr() *DataTable Transpose() *DataTable Clone() *DataTable To2DSlice() [][]any SimpleRandomSample(sampleSize int) *DataTable Sample(n int, withReplacement bool, options ...SamplingOptions) *DataTable SampleFrac(frac float64, withReplacement bool, options ...SamplingOptions) *DataTable Shuffle(options ...SamplingOptions) *DataTable TrainTestSplit(trainFrac float64, options ...SamplingOptions) (*DataTable, *DataTable) Map(mapFunc func(rowIndex int, colIndex string, element any) any) *DataTable SortBy(configs ...DataTableSortConfig) *DataTable Filter(filterFunc func(rowIndex int, columnIndex string, value any) bool) *DataTable FilterByCustomElement(f func(value any) bool) *DataTable FilterRows(filterFunc func(colIndex, colName string, x any) bool) *DataTable FilterCols(filterFunc func(rowIndex int, rowName string, x any) bool) *DataTable FilterColsByColIndexGreaterThan(threshold string) *DataTable FilterColsByColIndexGreaterThanOrEqualTo(threshold string) *DataTable FilterColsByColIndexLessThan(threshold string) *DataTable FilterColsByColIndexLessThanOrEqualTo(threshold string) *DataTable FilterColsByColIndexEqualTo(index string) *DataTable FilterColsByColNameEqualTo(name string) *DataTable FilterColsByColNameContains(substring string) *DataTable FilterRowsByRowNameEqualTo(name string) *DataTable FilterRowsByRowNameContains(substring string) *DataTable FilterRowsByRowIndexGreaterThan(threshold int) *DataTable FilterRowsByRowIndexGreaterThanOrEqualTo(threshold int) *DataTable FilterRowsByRowIndexLessThan(threshold int) *DataTable FilterRowsByRowIndexLessThanOrEqualTo(threshold int) *DataTable FilterRowsByRowIndexEqualTo(index int) *DataTable SwapColsByName(columnName1 string, columnName2 string) *DataTable SwapColsByIndex(columnIndex1 string, columnIndex2 string) *DataTable SwapColsByNumber(columnNumber1 int, columnNumber2 int) *DataTable SwapRowsByIndex(rowIndex1 int, rowIndex2 int) *DataTable SwapRowsByName(rowName1 string, rowName2 string) *DataTable ToCSV(filePath string, setRowNamesToFirstCol bool, setColNamesToFirstRow bool, includeBOM bool) error ToJSON(filePath string, useColNames bool) error ToJSON_Bytes(useColNames bool) []byte ToJSON_String(useColNames bool) string ToSQL(db *gorm.DB, tableName string, options ...ToSQLOptions) error Merge(other IDataTable, direction MergeDirection, mode MergeMode, on ...string) (*DataTable, error) EWMCol(string, EWMOptions) *EWMDataList Resample(string, ResampleFreq, ...ResampleAgg) (*DataTable, error) ParseDatesCols(cols []string, layouts ...string) *DataTable AddColUsingCCL(newColName, ccl string) *DataTable Replace(oldValue, newValue any) *DataTable ReplaceNaNsWith(newValue any) *DataTable ReplaceNilsWith(newValue any) *DataTable ReplaceNaNsAndNilsWith(newValue any) *DataTable FillForward(int, ...string) *DataTable FillBackward(int, ...string) *DataTable FillWithMean(...string) *DataTable FillWithMedian(...string) *DataTable FillWithMode(...string) *DataTable FillByInterpolation(...string) *DataTable OneHotEncode(opts OneHotOptions) (*DataTable, *OneHotEncoder, error) LabelEncode(opts LabelEncodeOptions) (*DataTable, *LabelEncoder, error) OrdinalEncode(opts OrdinalEncodeOptions) (*DataTable, *OrdinalEncoder, error) StandardScale(cols ...string) (*DataTable, *StandardScaler, error) MinMaxScale(featureMin, featureMax float64, cols ...string) (*DataTable, *MinMaxScaler, error) RobustScale(cols ...string) (*DataTable, *RobustScaler, error) MaxAbsScale(cols ...string) (*DataTable, *MaxAbsScaler, error) ReplaceInRow(rowIndex int, oldValue, newValue any, mode ...int) *DataTable ReplaceNaNsInRow(rowIndex int, newValue any, mode ...int) *DataTable ReplaceNilsInRow(rowIndex int, newValue any, mode ...int) *DataTable ReplaceNaNsAndNilsInRow(rowIndex int, newValue any, mode ...int) *DataTable ReplaceInCol(colIndex string, oldValue, newValue any, mode ...int) *DataTable ReplaceNaNsInCol(colIndex string, newValue any, mode ...int) *DataTable ReplaceNilsInCol(colIndex string, newValue any, mode ...int) *DataTable ReplaceNaNsAndNilsInCol(colIndex string, newValue any, mode ...int) *DataTable }` (interfaces.go:121) — K-7；`Mean() any` 回 any（DataTable 段再審）
 - [ ] `type ImputationStrategy string` (datatable_simple_imputer.go:11)
 - [ ] `type LabelEncodeOptions struct { Column string NewColumn string SortBy LabelSort HandleNaN NaNPolicy Unknown UnknownPolicy KeepOriginal bool }` (datatable_encode.go:60)
 - [ ] `type LabelEncoder struct { opts LabelEncodeOptions sourceRef string sourceName string encodedName string classes []any keyToID map[string]int }` (datatable_encode.go:104)
 - [ ] `type LabelSort int` (datatable_encode.go:36)
-- [ ] `type LogLevel int` (config.go:23)
+- [x] `type LogLevel int` (config.go:23) — K-3 缺 Error
 - [ ] `type MaxAbsScaler struct{ scaler }` (datatable_scale.go:98)
 - [ ] `type MergeDirection int` (datatable_merge.go:18)
 - [ ] `type MergeMode int` (datatable_merge.go:9)
@@ -635,10 +657,10 @@
 - [ ] `type ToSQLOptions struct { IfExists SQLActionIfTableExists RowNames bool ColumnTypes map[string]string Schema string BatchSize int }` (datatable_to_sql.go:20)
 - [ ] `type UnknownPolicy int` (datatable_encode.go:24)
 - [ ] `type UnpivotConfig struct { IDVars []string ValueVars []string VarName string ValueName string DropNA bool }` (datatable_pivot.go:71)
-- [ ] `var Config *configStruct` (config.go:21)
-- [ ] `var ReadSlice2D` (read.go:22)
-- [ ] `var ToFloat64Safe` (utils.go:23)
-- [ ] `var ToFloat64` (utils.go:22)
+- [x] `var Config *configStruct` (config.go:21) — K-6 型別未匯出、欄位非 atomic
+- [x] `var ReadSlice2D` (read.go:22) — K-12 可被覆寫的 var、重複命名
+- [x] `var ToFloat64Safe` (utils.go:23) — K-12
+- [x] `var ToFloat64` (utils.go:22) — K-12；失敗回 0 無法區分（ToF64Slice follow-up 的根源）
 
 ## accel (127)
 
