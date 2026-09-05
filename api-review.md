@@ -58,7 +58,7 @@
 | `plot` | 80 | 未開始 |
 | `py` | 14 | 未開始 |
 | `quant` | 50 | 未開始 |
-| `stats` | 197 | 未開始 |
+| `stats` | 197 | **完成** |
 | 無匯出符號：`accel/knnbridge`, `allpkgs`, `benchmark`, `cmd/insyra`, `engine`, `tools/gendocs` | 0 | 不需審查 |
 
 ## 發現彙整（依套件）
@@ -210,6 +210,21 @@
 | I-4 | Low | 命名：`CSV_inOpts`、`CSV_outOpts`、`Excel_inOpts` 底線；`FirstCol2RowNames` 用 `2` 代 To；`Of` 是 `From` 別名、`Push` 是 `AppendCols` 別名；`DLs = []insyra.IDataList` 混用介面（K-7）（準則 1、9） | isr/csv.go；isr/excel.go；isr/dl.go:10, 38；isr/dt.go:159 | v1 前統一 |
 | I-5 | Low | `Pivot`／`Unpivot` 把底層 error 丟掉只留 `Err()`（doc 有寫）；`CSV.OutputOpts` 存在但 `From` 用不到，沒有對應的輸出函式 | isr/pivot.go:31-44；isr/csv.go:19 | 保留 error 版本；刪或實作 OutputOpts |
 | I-6 | OK | `groupby.go`／`window.go`／`pivot.go` 三個新檔是好的包裝：一對一轉發、doc 指回底層語意、`Rolling` 選項 struct | — | — |
+
+### stats
+
+| 編號 | 嚴重度 | 問題 | 位置 | 建議 |
+| --- | --- | --- | --- | --- |
+| ST-1 | High | **錯誤的顯著性（已實測）**：`SingleSampleTTest`、`TwoSampleTTest`、`SingleSampleZTest`、`TwoSampleZTest`、`FTestForVarianceEquality`、`BartlettTest`、`LeveneTest` 用 `Len()` 當 n，卻用 `Mean()`／`Stdev()`／`Var()`／`Median()` 算統計量，而這些方法會跳過非數值格子（D-4）。`[1, 2, nil, 3]` 的單樣本 t 檢定：n=4、mean 用 3 個值算，得 t=4.00、p=0.028；正確是 t=3.46、p=0.074。一個空白把不顯著變成顯著。v0.3.1 的 changelog 說 `stats` 已拒絕不可讀值，但這七個檢定沒有走 `numericValues`，`PairedTTest`、ANOVA、非參數檢定則都有拒絕（準則 13） | stats/ttest.go:30-125, 129-215；stats/ztest.go 全檔；stats/ftest.go:18-60, 64-180 | 全部改走 `numericSlice`，與其他檢定一致 |
+| ST-2 | High | `CalculateMoment(dl, n, central)` 對 n≥3 用 `ToF64Slice`，非數值當 0；`Skewness`／`Kurtosis` 已在本輪修正前置驗證，但這個公開函式直接餵 DataList 仍會捏造（K-2 同族） | stats/moments.go:35-100 | 改走 `numericSlice` |
+| ST-3 | Med | 每個雙樣本函式都 `data1.(*insyra.DataList)` 未檢查型別斷言：介面參數 `IDataList` 只是裝飾，傳入其他實作直接 panic。K-7 的證據最集中處（10 餘處） | stats/ttest.go:136-137, 226-227；ztest.go；ftest.go:22-23；correlation.go:365-366, 398-399；nonparam_mwu.go | 參數改 `*insyra.DataList`，或斷言失敗回錯 |
+| ST-4 | Med | 同一族 API 的簽名不一致：t 檢定 `confidenceLevel ...float64` 選填、z 檢定 `confidenceLevel float64` 必填；z／Wilcoxon／MWU 有 `alternative`，t 檢定沒有（只能雙尾，R 的 `t.test` 有）；`LeveneTest(groups []IDataList)` 用切片、`OneWayANOVA(groups ...IDataList)` 用 variadic；`KMeans(…, opts ...KMeansOptions)` 與 `FactorAnalysis(dt, opt FactorAnalysisOptions)` 一個選填一個必填（準則 6、8） | ttest.go；ztest.go；ftest.go:64；anova.go:63；clustering.go:104；factor_analysis.go:347 | 統一為 options struct；t 檢定加 `Alternative` |
+| ST-5 | Med | 結果型別的共同部分 `testResultBase` 未匯出：`Statistic`、`PValue`、`DF`、`CI`、`EffectSizes` 被提升可用，但使用者無法寫一個接受「任何檢定結果」的函式，也無法用介面判斷；`TTestResult.Mean *float64` 與 `ZTestResult.Mean float64` 選填欄位一個用指標一個不用（準則 3、6） | stats/structs.go；ttest.go:13；ztest.go:10 | 匯出 `TestResult` 基底或定義 `interface{ Stat() float64; P() float64 }` |
+| ST-6 | Med | `ChiSquareTestResult.ContingencyTable` 的每格是 `[2]float64{observed, expected}` 陣列塞進 DataTable，全套件沒有其他 API 能處理這種格子，`Show` 印出 `[5 4.5]`；`ChiSquareGoodnessOfFit` 的 `p` 依「類別字串排序後」的順序對位，doc 自己標了 IMPORTANT 警告（準則 5、7） | stats/chi_square.go:14-19, 60-70 | 拆成 `Observed`、`Expected` 兩張表；GoF 改收 `map[string]float64` |
+| ST-7 | Med | `TwoWayANOVA(aLevels, bLevels int, cells ...IDataList)` 要使用者自己按 row-major 排 a×b 個 cell，pandas／R 收長格式加因子欄；`RepeatedMeasuresANOVA(subjects ...)`、`FriedmanTest(subjects ...)` 每個受試者一個 list，同樣不是資料表的自然形狀（準則 5） | stats/anova.go:112, 253；nonparam_friedman.go:36 | 加收 `(dt, valueCol, factorCols...)` 的長格式入口 |
+| ST-8 | Low | 效應量正負號：t 檢定保留方向（註解說 paired 已修），z 檢定用 `math.Abs` 丟掉方向；`SingleSampleTTest` 常數資料回 NaN／Inf 統計量與 p=0 沒有寫進 doc（準則 6、E） | stats/ztest.go:57, 122；ttest.go:76-108 | 統一保留方向；補 doc |
+| ST-9 | Low | `Show()` 只在 `ChiSquareTestResult` 與 `FactorAnalysisResult` 上有，其餘結果型別沒有，也沒有 `io.Writer` 版本；`FactorAnalysisResult` 15 個 `IDataTable` 欄位（K-7）；`Diag(x any, dims ...int) (any, error)` 進出都是 `any`（準則 8） | chi_square.go:21；factor_analysis.go:180；diag.go:11 | 統一 `String()`；Diag 拆成 `DiagOf(*mat.Dense)`／`DiagMatrix([]float64)` |
+| ST-10 | OK | 做得好的部分：regression／GLM／clustering／KNN／PCA／non-parametric 全部先驗證輸入再計算、回 error、結果 struct 欄位齊全且對 R 驗證；`numericinput.go` 的說明是本專案最清楚的設計文件之一；`RegisterKNNDeviceSearcher` 讓 accel 反向掛入而不讓 stats 依賴 accel | — | — |
 
 ## 逐項清單
 
@@ -2087,203 +2102,203 @@
 
 ## stats (197)
 
-- [ ] `const AggloAverage AgglomerativeMethod` (clustering.go:67)
-- [ ] `const AggloCentroid AgglomerativeMethod` (clustering.go:72)
-- [ ] `const AggloComplete AgglomerativeMethod` (clustering.go:65)
-- [ ] `const AggloMcQuitty AgglomerativeMethod` (clustering.go:70)
-- [ ] `const AggloMedian AgglomerativeMethod` (clustering.go:71)
-- [ ] `const AggloSingle AgglomerativeMethod` (clustering.go:66)
-- [ ] `const AggloWardD AgglomerativeMethod` (clustering.go:68)
-- [ ] `const AggloWardD2 AgglomerativeMethod` (clustering.go:69)
-- [ ] `const Binomial GLMFamily` (consts.go:10)
-- [ ] `const Cloglog GLMLink` (consts.go:20)
-- [ ] `const FactorCountFixed FactorCountMethod` (factor_analysis.go:63)
-- [ ] `const FactorCountKaiser FactorCountMethod` (factor_analysis.go:64)
-- [ ] `const FactorExtractionMINRES FactorExtractionMethod` (factor_analysis.go:27)
-- [ ] `const FactorExtractionML FactorExtractionMethod` (factor_analysis.go:26)
-- [ ] `const FactorExtractionPAF FactorExtractionMethod` (factor_analysis.go:25)
-- [ ] `const FactorExtractionPCA FactorExtractionMethod` (factor_analysis.go:24)
-- [ ] `const FactorRotationBentlerQ FactorRotationMethod` (factor_analysis.go:44)
-- [ ] `const FactorRotationBentlerT FactorRotationMethod` (factor_analysis.go:41)
-- [ ] `const FactorRotationGeominQ FactorRotationMethod` (factor_analysis.go:43)
-- [ ] `const FactorRotationGeominT FactorRotationMethod` (factor_analysis.go:40)
-- [ ] `const FactorRotationNone FactorRotationMethod` (factor_analysis.go:35)
-- [ ] `const FactorRotationOblimin FactorRotationMethod` (factor_analysis.go:39)
-- [ ] `const FactorRotationPromax FactorRotationMethod` (factor_analysis.go:45)
-- [ ] `const FactorRotationQuartimax FactorRotationMethod` (factor_analysis.go:37)
-- [ ] `const FactorRotationQuartimin FactorRotationMethod` (factor_analysis.go:38)
-- [ ] `const FactorRotationSimplimax FactorRotationMethod` (factor_analysis.go:42)
-- [ ] `const FactorRotationVarimax FactorRotationMethod` (factor_analysis.go:36)
-- [ ] `const FactorScoreAndersonRubin FactorScoreMethod` (factor_analysis.go:56)
-- [ ] `const FactorScoreBartlett FactorScoreMethod` (factor_analysis.go:55)
-- [ ] `const FactorScoreNone FactorScoreMethod` (factor_analysis.go:53)
-- [ ] `const FactorScoreRegression FactorScoreMethod` (factor_analysis.go:54)
-- [ ] `const Gaussian GLMFamily` (consts.go:12)
-- [ ] `const Greater AlternativeHypothesis` (types.go:7)
-- [ ] `const Identity GLMLink` (consts.go:18)
-- [ ] `const KNNAuto KNNAlgorithm` (knn.go:18)
-- [ ] `const KNNBallTree KNNAlgorithm` (knn.go:21)
-- [ ] `const KNNBruteForce KNNAlgorithm` (knn.go:19)
-- [ ] `const KNNDistanceWeighting KNNWeighting` (knn.go:16)
-- [ ] `const KNNKDTree KNNAlgorithm` (knn.go:20)
-- [ ] `const KNNUniformWeighting KNNWeighting` (knn.go:15)
-- [ ] `const KendallCorrelation` (correlation.go:23)
-- [ ] `const KurtosisAdjusted` (kurtosis.go:15)
-- [ ] `const KurtosisBiasAdjusted` (kurtosis.go:16)
-- [ ] `const KurtosisG2 KurtosisMethod` (kurtosis.go:14)
-- [ ] `const Less AlternativeHypothesis` (types.go:8)
-- [ ] `const Log GLMLink` (consts.go:16)
-- [ ] `const Logit GLMLink` (consts.go:17)
-- [ ] `const PearsonCorrelation CorrelationMethod` (correlation.go:22)
-- [ ] `const Poisson GLMFamily` (consts.go:11)
-- [ ] `const PredictClass PredictType` (glm_predict.go:15)
-- [ ] `const PredictLinear PredictType` (glm_predict.go:13)
-- [ ] `const PredictResponse PredictType` (glm_predict.go:14)
-- [ ] `const Probit GLMLink` (consts.go:19)
-- [ ] `const SepError SeparationPolicy` (consts.go:25)
-- [ ] `const SepRidge SeparationPolicy` (consts.go:26)
-- [ ] `const SepWarn SeparationPolicy` (consts.go:24)
-- [ ] `const SkewnessAdjusted` (skewness.go:15)
-- [ ] `const SkewnessBiasAdjusted` (skewness.go:16)
-- [ ] `const SkewnessG1 SkewnessMethod` (skewness.go:14)
-- [ ] `const SpearmanCorrelation` (correlation.go:24)
-- [ ] `const TwoSided AlternativeHypothesis` (types.go:6)
-- [ ] `const VarimaxGPArotation VarimaxAlgorithm` (factor_analysis.go:83)
-- [ ] `const VarimaxKaiser VarimaxAlgorithm` (factor_analysis.go:84)
-- [ ] `func (r *ChiSquareTestResult) Show()` (chi_square.go:21)
-- [ ] `func (r *ExponentialRegressionResult) Predict(typ PredictType, newXs ...insyra.IDataList) (*insyra.DataList, error)` (regression.go:190)
-- [ ] `func (r *FactorAnalysisResult) Show(startEndRange ...any)` (factor_analysis.go:180)
-- [ ] `func (r *GLMResult) Predict(typ PredictType, newXs ...insyra.IDataList) (*insyra.DataList, error)` (glm_predict.go:53)
-- [ ] `func (r *GLMResult) PredictWithOffset(typ PredictType, offset insyra.IDataList, newXs ...insyra.IDataList) (*insyra.DataList, error)` (glm_predict.go:68)
-- [ ] `func (r *LassoRegressionResult) Predict(typ PredictType, newXs ...insyra.IDataList) (*insyra.DataList, error)` (regression_regularized.go:280)
-- [ ] `func (r *LinearRegressionResult) Predict(typ PredictType, newXs ...insyra.IDataList) (*insyra.DataList, error)` (regression.go:142)
-- [ ] `func (r *LogarithmicRegressionResult) Predict(typ PredictType, newXs ...insyra.IDataList) (*insyra.DataList, error)` (regression.go:206)
-- [ ] `func (r *LogisticRegressionResult) Predict(typ PredictType, newXs ...insyra.IDataList) (*insyra.DataList, error)` (glm_predict.go:18)
-- [ ] `func (r *PoissonRegressionResult) Predict(typ PredictType, newXs ...insyra.IDataList) (*insyra.DataList, error)` (glm_predict.go:25)
-- [ ] `func (r *PoissonRegressionResult) PredictWithOffset(typ PredictType, offset insyra.IDataList, newXs ...insyra.IDataList) (*insyra.DataList, error)` (glm_predict.go:40)
-- [ ] `func (r *PolynomialRegressionResult) Predict(typ PredictType, newXs ...insyra.IDataList) (*insyra.DataList, error)` (regression.go:165)
-- [ ] `func (r *RidgeRegressionResult) Predict(typ PredictType, newXs ...insyra.IDataList) (*insyra.DataList, error)` (regression_regularized.go:272)
-- [ ] `func (r *WeightedLinearRegressionResult) Predict(typ PredictType, newXs ...insyra.IDataList) (*insyra.DataList, error)` (regression_weighted.go:151)
-- [ ] `func (result *KMeansResult) Assign(dataTable insyra.IDataTable) ([]int, []float64, error)` (clustering.go:34)
-- [ ] `func BartlettSphericity(dataTable insyra.IDataTable) (chiSquare float64, pValue float64, df int, err error)` (correlation.go:439)
-- [ ] `func BartlettTest(groups []insyra.IDataList) (*FTestResult, error)` (ftest.go:112)
-- [ ] `func CalculateMoment(dl insyra.IDataList, n int, central bool) (float64, error)` (moments.go:35)
-- [ ] `func ChiSquareGoodnessOfFit(input insyra.IDataList, p []float64, rescaleP bool) (*ChiSquareTestResult, error)` (chi_square.go:69)
-- [ ] `func ChiSquareIndependenceTest(rowData, colData insyra.IDataList) (*ChiSquareTestResult, error)` (chi_square.go:161)
-- [ ] `func Correlation(dlX, dlY insyra.IDataList, method CorrelationMethod) (*CorrelationResult, error)` (correlation.go:389)
-- [ ] `func CorrelationAnalysis(dataTable insyra.IDataTable, method CorrelationMethod) (corrMatrix *insyra.DataTable, pMatrix *insyra.DataTable, chiSquare float64, pValue float64, df int, err error)` (correlation.go:28)
-- [ ] `func CorrelationMatrix(dataTable insyra.IDataTable, method CorrelationMethod) (corrMatrix *insyra.DataTable, pMatrix *insyra.DataTable, err error)` (correlation.go:53)
-- [ ] `func Covariance(dlX, dlY insyra.IDataList) (float64, error)` (correlation.go:359)
-- [ ] `func CutTreeByHeight(tree *HierarchicalResult, h float64) ([]int, error)` (clustering.go:165)
-- [ ] `func CutTreeByK(tree *HierarchicalResult, k int) ([]int, error)` (clustering.go:152)
-- [ ] `func DBSCAN(dataTable insyra.IDataTable, eps float64, minPts int, opts ...DBSCANOptions) (*DBSCANResult, error)` (clustering.go:178)
-- [ ] `func DefaultFactorAnalysisOptions() FactorAnalysisOptions` (factor_analysis.go:222)
-- [ ] `func Diag(x any, dims ...int) (any, error)` (diag.go:11)
-- [ ] `func ExponentialRegression(dlY, dlX insyra.IDataList) (*ExponentialRegressionResult, error)` (regression.go:327)
-- [ ] `func FTestForNestedModels(rssReduced, rssFull float64, dfReduced, dfFull int) (*FTestResult, error)` (ftest.go:207)
-- [ ] `func FTestForRegression(ssr, sse float64, df1, df2 int) (*FTestResult, error)` (ftest.go:183)
-- [ ] `func FTestForVarianceEquality(data1, data2 insyra.IDataList) (*FTestResult, error)` (ftest.go:18)
-- [ ] `func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorModel, error)` (factor_analysis.go:347)
-- [ ] `func FriedmanTest(subjects ...insyra.IDataList) (*FriedmanTestResult, error)` (nonparam_friedman.go:36)
-- [ ] `func GLM(opts GLMOptions, dlY insyra.IDataList, dlXs ...insyra.IDataList) (*GLMResult, error)` (regression_glm.go:51)
-- [ ] `func HierarchicalAgglomerative(dataTable insyra.IDataTable, method AgglomerativeMethod) (*HierarchicalResult, error)` (clustering.go:133)
-- [ ] `func KMeans(dataTable insyra.IDataTable, centers int, opts ...KMeansOptions) (*KMeansResult, error)` (clustering.go:104)
-- [ ] `func KNNClassify(trainData insyra.IDataTable, trainLabels insyra.IDataList, testData insyra.IDataTable, k int, opts ...KNNOptions) (*KNNClassificationResult, error)` (knn.go:58)
-- [ ] `func KNNRegress(trainData insyra.IDataTable, trainTargets insyra.IDataList, testData insyra.IDataTable, k int, opts ...KNNOptions) (*KNNRegressionResult, error)` (knn.go:97)
-- [ ] `func KNearestNeighbors(trainData insyra.IDataTable, testData insyra.IDataTable, k int, opts ...KNNOptions) (*KNNNeighborsResult, error)` (knn.go:121)
-- [ ] `func KruskalWallis(groups ...insyra.IDataList) (*KruskalWallisResult, error)` (nonparam_kw.go:34)
-- [ ] `func Kurtosis(data any, method ...KurtosisMethod) (float64, error)` (kurtosis.go:20)
-- [ ] `func LassoRegression(dlY insyra.IDataList, alpha float64, dlXs []insyra.IDataList, options ...LassoOptions) (*LassoRegressionResult, error)` (regression_regularized.go:139)
-- [ ] `func LeveneTest(groups []insyra.IDataList) (*FTestResult, error)` (ftest.go:64)
-- [ ] `func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) (*LinearRegressionResult, error)` (regression.go:225)
-- [ ] `func LogarithmicRegression(dlY, dlX insyra.IDataList) (*LogarithmicRegressionResult, error)` (regression.go:423)
-- [ ] `func LogisticRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) (*LogisticRegressionResult, error)` (regression_logistic.go:58)
-- [ ] `func LogisticRegressionWithOptions(opts LogisticRegressionOptions, dlY insyra.IDataList, dlXs ...insyra.IDataList) (*LogisticRegressionResult, error)` (regression_logistic.go:62)
-- [ ] `func MannWhitneyU(data1, data2 insyra.IDataList, alt AlternativeHypothesis, confidenceLevel ...float64) (*MannWhitneyUResult, error)` (nonparam_mwu.go:42)
-- [ ] `func NormCDF(x float64) float64` (normal.go:18)
-- [ ] `func NormPPF(p float64) (float64, error)` (normal.go:31)
-- [ ] `func OneWayANOVA(groups ...insyra.IDataList) (*OneWayANOVAResult, error)` (anova.go:63)
-- [ ] `func PCA(dataTable insyra.IDataTable, nComponents ...int) (*PCAResult, error)` (pca.go:27)
-- [ ] `func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel ...float64) (*TTestResult, error)` (ttest.go:221)
-- [ ] `func PairedWilcoxon(data1, data2 insyra.IDataList, alt AlternativeHypothesis, confidenceLevel ...float64) (*WilcoxonTestResult, error)` (nonparam_wilcoxon.go:81)
-- [ ] `func PoissonRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) (*PoissonRegressionResult, error)` (regression_poisson.go:52)
-- [ ] `func PoissonRegressionWithOptions(opts PoissonRegressionOptions, dlY insyra.IDataList, dlXs ...insyra.IDataList) (*PoissonRegressionResult, error)` (regression_poisson.go:56)
-- [ ] `func PolynomialRegression(dlY, dlX insyra.IDataList, degree int) (*PolynomialRegressionResult, error)` (regression.go:504)
-- [ ] `func RegisterKNNDeviceSearcher(fn KNNDeviceSearcher)` (knn.go:39)
-- [ ] `func RepeatedMeasuresANOVA(subjects ...insyra.IDataList) (*RepeatedMeasuresANOVAResult, error)` (anova.go:253)
-- [ ] `func RidgeRegression(dlY insyra.IDataList, alpha float64, dlXs ...insyra.IDataList) (*RidgeRegressionResult, error)` (regression_regularized.go:85)
-- [ ] `func Silhouette(dataTable insyra.IDataTable, labels insyra.IDataList) (*SilhouetteResult, error)` (clustering.go:200)
-- [ ] `func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...float64) (*TTestResult, error)` (ttest.go:30)
-- [ ] `func SingleSampleWilcoxon(data insyra.IDataList, mu float64, alt AlternativeHypothesis, confidenceLevel ...float64) (*WilcoxonTestResult, error)` (nonparam_wilcoxon.go:43)
-- [ ] `func SingleSampleZTest(data insyra.IDataList, mu float64, sigma float64, alternative AlternativeHypothesis, confidenceLevel float64) (*ZTestResult, error)` (ztest.go:18)
-- [ ] `func Skewness(sample any, method ...SkewnessMethod) (float64, error)` (skewness.go:20)
-- [ ] `func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenceLevel ...float64) (*TTestResult, error)` (ttest.go:129)
-- [ ] `func TwoSampleZTest(data1, data2 insyra.IDataList, sigma1, sigma2 float64, alternative AlternativeHypothesis, confidenceLevel float64) (*ZTestResult, error)` (ztest.go:75)
-- [ ] `func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) (*TwoWayANOVAResult, error)` (anova.go:112)
-- [ ] `func WeightedLinearRegression(dlY insyra.IDataList, dlWeights insyra.IDataList, dlXs ...insyra.IDataList) (*WeightedLinearRegressionResult, error)` (regression_weighted.go:42)
-- [ ] `type ANOVAResultComponent struct { SumOfSquares float64 DF int F float64 P float64 EtaSquared float64 }` (anova.go:13)
-- [ ] `type AgglomerativeMethod string` (clustering.go:62)
-- [ ] `type AlternativeHypothesis string` (types.go:3)
-- [ ] `type BartlettTestResult struct { ChiSquare float64 DegreesOfFreedom int PValue float64 SampleSize int }` (factor_analysis.go:129)
-- [ ] `type ChiSquareTestResult struct { testResultBase ContingencyTable *insyra.DataTable }` (chi_square.go:14)
-- [ ] `type CorrelationMethod int` (correlation.go:19)
-- [ ] `type CorrelationResult struct { testResultBase }` (correlation.go:384)
-- [ ] `type DBSCANOptions struct { BorderPoints *bool }` (clustering.go:84)
-- [ ] `type DBSCANResult struct { Cluster []int IsSeed []bool }` (clustering.go:88)
-- [ ] `type EffectSizeEntry struct { Type string Value float64 }` (structs.go:11)
-- [ ] `type ExponentialRegressionResult struct { Intercept float64 Slope float64 Residuals []float64 RSquared float64 AdjustedRSquared float64 StandardErrorIntercept float64 StandardErrorSlope float64 TValueIntercept float64 TValueSlope float64 PValueIntercept float64 PValueSlope float64 ConfidenceIntervalIntercept [2]float64 ConfidenceIntervalSlope [2]float64 }` (regression.go:93)
-- [ ] `type FTestResult struct { testResultBase DF2 float64 }` (ftest.go:12)
-- [ ] `type FactorAnalysisOptions struct { Count FactorCountSpec Extraction FactorExtractionMethod Rotation FactorRotationOptions Scoring FactorScoreMethod MaxIter int MinErr float64 OptimFactr float64 OptimMaxIter int }` (factor_analysis.go:98)
-- [ ] `type FactorAnalysisResult struct { Loadings insyra.IDataTable UnrotatedLoadings insyra.IDataTable Structure insyra.IDataTable Uniquenesses insyra.IDataTable Communalities insyra.IDataTable SamplingAdequacy insyra.IDataTable BartlettTest *BartlettTestResult Phi insyra.IDataTable RotationMatrix insyra.IDataTable Eigenvalues insyra.IDataTable ExplainedProportion insyra.IDataTable CumulativeProportion insyra.IDataTable Scores insyra.IDataTable ScoreCoefficients insyra.IDataTable ScoreCovariance insyra.IDataTable Converged bool RotationConverged bool Iterations int CountUsed int Messages []string }` (factor_analysis.go:137)
-- [ ] `type FactorCountMethod string` (factor_analysis.go:60)
-- [ ] `type FactorCountSpec struct { Method FactorCountMethod FixedK int EigenThreshold float64 MaxFactors int }` (factor_analysis.go:72)
-- [ ] `type FactorExtractionMethod string` (factor_analysis.go:21)
-- [ ] `type FactorModel struct { FactorAnalysisResult }` (factor_analysis.go:212)
-- [ ] `type FactorRotationMethod string` (factor_analysis.go:32)
-- [ ] `type FactorRotationOptions struct { Method FactorRotationMethod Kappa float64 Delta float64 GeominEpsilon float64 Restarts int VarimaxAlgorithm VarimaxAlgorithm }` (factor_analysis.go:88)
-- [ ] `type FactorScoreMethod string` (factor_analysis.go:50)
-- [ ] `type FriedmanTestResult struct { testResultBase NSubjects int KConditions int }` (nonparam_friedman.go:23)
-- [ ] `type GLMFamily string` (consts.go:5)
-- [ ] `type GLMLink string` (consts.go:6)
-- [ ] `type GLMOptions struct { Family GLMFamily Link GLMLink ConfidenceLevel float64 MaxIter int Tolerance float64 Offset insyra.IDataList Weights insyra.IDataList }` (regression_glm.go:11)
-- [ ] `type GLMResult struct { Family GLMFamily Link GLMLink Coefficients []float64 StandardErrors []float64 ZValues []float64 PValues []float64 ConfidenceIntervals [][2]float64 LinearPredictors []float64 FittedValues []float64 Residuals []float64 PearsonResiduals []float64 DevianceResiduals []float64 Deviance float64 NullDeviance float64 LogLikelihood float64 NullLogLikelihood float64 AIC float64 BIC float64 PearsonChi2 float64 Dispersion float64 DFResidual int Iterations int Converged bool ConfidenceLevel float64 family glmFamily link glmLink hasOffset bool }` (regression_glm.go:21)
-- [ ] `type HierarchicalResult struct { Merge [][2]int Height []float64 Order []int Labels []string Method AgglomerativeMethod DistMethod string }` (clustering.go:75)
-- [ ] `type KMeansOptions struct { NStart int IterMax int Seed *int64 }` (clustering.go:14)
-- [ ] `type KMeansResult struct { Cluster []int Centers insyra.IDataTable TotSS float64 WithinSS []float64 TotWithinSS float64 BetweenSS float64 Size []int Iter int IFault int }` (clustering.go:20)
-- [ ] `type KNNAlgorithm string` (knn.go:12)
-- [ ] `type KNNClassificationResult struct { Predictions insyra.IDataList Classes insyra.IDataList Probabilities insyra.IDataTable }` (knn.go:43)
-- [ ] `type KNNDeviceSearcher = internalknn.DeviceSearcher` (knn.go:33)
-- [ ] `type KNNNeighborsResult struct { Indices [][]int Distances [][]float64 }` (knn.go:53)
-- [ ] `type KNNOptions struct { Weighting KNNWeighting Algorithm KNNAlgorithm LeafSize int }` (knn.go:24)
-- [ ] `type KNNRegressionResult struct { Predictions []float64 }` (knn.go:49)
-- [ ] `type KNNWeighting string` (knn.go:11)
-- [ ] `type KruskalWallisResult struct { testResultBase NTotal int GroupRankSum []float64 }` (nonparam_kw.go:22)
-- [ ] `type KurtosisMethod int` (kurtosis.go:11)
-- [ ] `type LassoOptions struct { Tolerance float64 MaxIterations int }` (regression_regularized.go:62)
-- [ ] `type LassoRegressionResult struct { Coefficients []float64 Alpha float64 Residuals []float64 RSquared float64 AdjustedRSquared float64 Converged bool Iterations int }` (regression_regularized.go:42)
-- [ ] `type LinearRegressionResult struct { Slope float64 Intercept float64 StandardError float64 StandardErrorIntercept float64 TValue float64 TValueIntercept float64 PValue float64 PValueIntercept float64 ConfidenceIntervalIntercept [2]float64 ConfidenceIntervalSlope [2]float64 Coefficients []float64 StandardErrors []float64 TValues []float64 PValues []float64 ConfidenceIntervals [][2]float64 Residuals []float64 RSquared float64 AdjustedRSquared float64 }` (regression.go:55)
-- [ ] `type LogarithmicRegressionResult struct { Intercept float64 Slope float64 Residuals []float64 RSquared float64 AdjustedRSquared float64 StandardErrorIntercept float64 StandardErrorSlope float64 TValueIntercept float64 TValueSlope float64 PValueIntercept float64 PValueSlope float64 ConfidenceIntervalIntercept [2]float64 ConfidenceIntervalSlope [2]float64 }` (regression.go:111)
-- [ ] `type LogisticRegressionOptions struct { ConfidenceLevel float64 MaxIter int Tolerance float64 PositiveClass any SeparationPolicy SeparationPolicy Ridge float64 }` (regression_logistic.go:13)
-- [ ] `type LogisticRegressionResult struct { Link GLMLink Coefficients []float64 StandardErrors []float64 ZValues []float64 PValues []float64 ConfidenceIntervals [][2]float64 OddsRatios []float64 OddsRatioCIs [][2]float64 LinearPredictors []float64 FittedProbabilities []float64 Residuals []float64 PearsonResiduals []float64 DevianceResiduals []float64 Deviance float64 NullDeviance float64 LogLikelihood float64 NullLogLikelihood float64 AIC float64 BIC float64 McFaddenR2 float64 CoxSnellR2 float64 NagelkerkeR2 float64 DFResidual int Iterations int Converged bool SeparationDetected bool Penalized bool Ridge float64 PositiveClass any ClassLabels []any ConfidenceLevel float64 family glmFamily link glmLink }` (regression_logistic.go:22)
-- [ ] `type MannWhitneyUResult struct { testResultBase U1 float64 U2 float64 Z float64 Method string }` (nonparam_mwu.go:23)
-- [ ] `type OneWayANOVAResult struct { Factor ANOVAResultComponent Within ANOVAResultComponent TotalSS float64 }` (anova.go:29)
-- [ ] `type PCAResult struct { Components insyra.IDataTable Center []float64 Scale []float64 Scores insyra.IDataTable Eigenvalues []float64 ExplainedVariance []float64 }` (pca.go:17)
-- [ ] `type PoissonRegressionOptions struct { ConfidenceLevel float64 MaxIter int Tolerance float64 Offset insyra.IDataList DispersionCheck bool }` (regression_poisson.go:11)
-- [ ] `type PoissonRegressionResult struct { Link GLMLink Coefficients []float64 StandardErrors []float64 ZValues []float64 PValues []float64 ConfidenceIntervals [][2]float64 IncidenceRateRatios []float64 IRRConfidenceIntervals [][2]float64 LinearPredictors []float64 FittedRates []float64 FittedValues []float64 Residuals []float64 PearsonResiduals []float64 DevianceResiduals []float64 Deviance float64 NullDeviance float64 LogLikelihood float64 NullLogLikelihood float64 AIC float64 BIC float64 PearsonChi2 float64 DispersionStatistic float64 OverDispersed bool DFResidual int Iterations int Converged bool ConfidenceLevel float64 family glmFamily link glmLink hasOffset bool }` (regression_poisson.go:19)
-- [ ] `type PolynomialRegressionResult struct { Coefficients []float64 Degree int Residuals []float64 RSquared float64 AdjustedRSquared float64 StandardErrors []float64 TValues []float64 PValues []float64 ConfidenceIntervals [][2]float64 }` (regression.go:80)
-- [ ] `type PredictType string` (glm_predict.go:10)
-- [ ] `type RepeatedMeasuresANOVAResult struct { Factor ANOVAResultComponent Subject ANOVAResultComponent Within ANOVAResultComponent TotalSS float64 }` (anova.go:35)
-- [ ] `type RidgeRegressionResult struct { Coefficients []float64 Alpha float64 Residuals []float64 RSquared float64 AdjustedRSquared float64 }` (regression_regularized.go:30)
-- [ ] `type SeparationPolicy string` (consts.go:7)
-- [ ] `type SilhouettePoint struct { Cluster int Neighbor int SilWidth float64 }` (clustering.go:93)
-- [ ] `type SilhouetteResult struct { Points []SilhouettePoint AverageSilhouette float64 }` (clustering.go:99)
-- [ ] `type SkewnessMethod int` (skewness.go:11)
-- [ ] `type TTestResult struct { testResultBase Mean *float64 Mean2 *float64 MeanDiff *float64 N int N2 *int }` (ttest.go:13)
-- [ ] `type TwoWayANOVAResult struct { FactorA ANOVAResultComponent FactorB ANOVAResultComponent Interaction ANOVAResultComponent Within ANOVAResultComponent TotalSS float64 }` (anova.go:21)
-- [ ] `type VarimaxAlgorithm string` (factor_analysis.go:80)
-- [ ] `type WeightedLinearRegressionResult struct { Coefficients []float64 StandardErrors []float64 TValues []float64 PValues []float64 Residuals []float64 RSquared float64 AdjustedRSquared float64 }` (regression_weighted.go:20)
-- [ ] `type WilcoxonTestResult struct { testResultBase Z float64 Method string NEffective int }` (nonparam_wilcoxon.go:26)
-- [ ] `type ZTestResult struct { testResultBase Mean float64 Mean2 *float64 N int N2 *int }` (ztest.go:10)
+- [x] `const AggloAverage AgglomerativeMethod` (clustering.go:67) — OK
+- [x] `const AggloCentroid AgglomerativeMethod` (clustering.go:72) — OK
+- [x] `const AggloComplete AgglomerativeMethod` (clustering.go:65) — OK
+- [x] `const AggloMcQuitty AgglomerativeMethod` (clustering.go:70) — OK
+- [x] `const AggloMedian AgglomerativeMethod` (clustering.go:71) — OK
+- [x] `const AggloSingle AgglomerativeMethod` (clustering.go:66) — OK
+- [x] `const AggloWardD AgglomerativeMethod` (clustering.go:68) — OK
+- [x] `const AggloWardD2 AgglomerativeMethod` (clustering.go:69) — OK
+- [x] `const Binomial GLMFamily` (consts.go:10) — OK
+- [x] `const Cloglog GLMLink` (consts.go:20) — OK
+- [x] `const FactorCountFixed FactorCountMethod` (factor_analysis.go:63) — OK
+- [x] `const FactorCountKaiser FactorCountMethod` (factor_analysis.go:64) — OK
+- [x] `const FactorExtractionMINRES FactorExtractionMethod` (factor_analysis.go:27) — OK
+- [x] `const FactorExtractionML FactorExtractionMethod` (factor_analysis.go:26) — OK
+- [x] `const FactorExtractionPAF FactorExtractionMethod` (factor_analysis.go:25) — OK
+- [x] `const FactorExtractionPCA FactorExtractionMethod` (factor_analysis.go:24) — OK
+- [x] `const FactorRotationBentlerQ FactorRotationMethod` (factor_analysis.go:44) — OK
+- [x] `const FactorRotationBentlerT FactorRotationMethod` (factor_analysis.go:41) — OK
+- [x] `const FactorRotationGeominQ FactorRotationMethod` (factor_analysis.go:43) — OK
+- [x] `const FactorRotationGeominT FactorRotationMethod` (factor_analysis.go:40) — OK
+- [x] `const FactorRotationNone FactorRotationMethod` (factor_analysis.go:35) — OK
+- [x] `const FactorRotationOblimin FactorRotationMethod` (factor_analysis.go:39) — OK
+- [x] `const FactorRotationPromax FactorRotationMethod` (factor_analysis.go:45) — OK
+- [x] `const FactorRotationQuartimax FactorRotationMethod` (factor_analysis.go:37) — OK
+- [x] `const FactorRotationQuartimin FactorRotationMethod` (factor_analysis.go:38) — OK
+- [x] `const FactorRotationSimplimax FactorRotationMethod` (factor_analysis.go:42) — OK
+- [x] `const FactorRotationVarimax FactorRotationMethod` (factor_analysis.go:36) — OK
+- [x] `const FactorScoreAndersonRubin FactorScoreMethod` (factor_analysis.go:56) — OK
+- [x] `const FactorScoreBartlett FactorScoreMethod` (factor_analysis.go:55) — OK
+- [x] `const FactorScoreNone FactorScoreMethod` (factor_analysis.go:53) — OK
+- [x] `const FactorScoreRegression FactorScoreMethod` (factor_analysis.go:54) — OK
+- [x] `const Gaussian GLMFamily` (consts.go:12) — OK
+- [x] `const Greater AlternativeHypothesis` (types.go:7) — OK
+- [x] `const Identity GLMLink` (consts.go:18) — OK
+- [x] `const KNNAuto KNNAlgorithm` (knn.go:18) — OK
+- [x] `const KNNBallTree KNNAlgorithm` (knn.go:21) — OK
+- [x] `const KNNBruteForce KNNAlgorithm` (knn.go:19) — OK
+- [x] `const KNNDistanceWeighting KNNWeighting` (knn.go:16) — OK
+- [x] `const KNNKDTree KNNAlgorithm` (knn.go:20) — OK
+- [x] `const KNNUniformWeighting KNNWeighting` (knn.go:15) — OK
+- [x] `const KendallCorrelation` (correlation.go:23) — OK
+- [x] `const KurtosisAdjusted` (kurtosis.go:15) — OK
+- [x] `const KurtosisBiasAdjusted` (kurtosis.go:16) — OK
+- [x] `const KurtosisG2 KurtosisMethod` (kurtosis.go:14) — OK
+- [x] `const Less AlternativeHypothesis` (types.go:8) — OK
+- [x] `const Log GLMLink` (consts.go:16) — OK
+- [x] `const Logit GLMLink` (consts.go:17) — OK
+- [x] `const PearsonCorrelation CorrelationMethod` (correlation.go:22) — OK
+- [x] `const Poisson GLMFamily` (consts.go:11) — OK
+- [x] `const PredictClass PredictType` (glm_predict.go:15) — OK
+- [x] `const PredictLinear PredictType` (glm_predict.go:13) — OK
+- [x] `const PredictResponse PredictType` (glm_predict.go:14) — OK
+- [x] `const Probit GLMLink` (consts.go:19) — OK
+- [x] `const SepError SeparationPolicy` (consts.go:25) — OK
+- [x] `const SepRidge SeparationPolicy` (consts.go:26) — OK
+- [x] `const SepWarn SeparationPolicy` (consts.go:24) — OK
+- [x] `const SkewnessAdjusted` (skewness.go:15) — OK
+- [x] `const SkewnessBiasAdjusted` (skewness.go:16) — OK
+- [x] `const SkewnessG1 SkewnessMethod` (skewness.go:14) — OK
+- [x] `const SpearmanCorrelation` (correlation.go:24) — OK
+- [x] `const TwoSided AlternativeHypothesis` (types.go:6) — OK
+- [x] `const VarimaxGPArotation VarimaxAlgorithm` (factor_analysis.go:83) — OK
+- [x] `const VarimaxKaiser VarimaxAlgorithm` (factor_analysis.go:84) — OK
+- [x] `func (r *ChiSquareTestResult) Show()` (chi_square.go:21) — ST-9 無 Writer 版
+- [x] `func (r *ExponentialRegressionResult) Predict(typ PredictType, newXs ...insyra.IDataList) (*insyra.DataList, error)` (regression.go:190) — OK 走 gatherRegressionInputs 拒絕不可讀值；ST-4 選項風格
+- [x] `func (r *FactorAnalysisResult) Show(startEndRange ...any)` (factor_analysis.go:180) — ST-9 無 Writer 版
+- [x] `func (r *GLMResult) Predict(typ PredictType, newXs ...insyra.IDataList) (*insyra.DataList, error)` (glm_predict.go:53) — OK 回 error；PredictType 用字串 enum（可接受）
+- [x] `func (r *GLMResult) PredictWithOffset(typ PredictType, offset insyra.IDataList, newXs ...insyra.IDataList) (*insyra.DataList, error)` (glm_predict.go:68) — OK 回 error；PredictType 用字串 enum（可接受）
+- [x] `func (r *LassoRegressionResult) Predict(typ PredictType, newXs ...insyra.IDataList) (*insyra.DataList, error)` (regression_regularized.go:280) — OK 走 gatherRegressionInputs 拒絕不可讀值；ST-4 選項風格
+- [x] `func (r *LinearRegressionResult) Predict(typ PredictType, newXs ...insyra.IDataList) (*insyra.DataList, error)` (regression.go:142) — OK 走 gatherRegressionInputs 拒絕不可讀值；ST-4 選項風格
+- [x] `func (r *LogarithmicRegressionResult) Predict(typ PredictType, newXs ...insyra.IDataList) (*insyra.DataList, error)` (regression.go:206) — OK 走 gatherRegressionInputs 拒絕不可讀值；ST-4 選項風格
+- [x] `func (r *LogisticRegressionResult) Predict(typ PredictType, newXs ...insyra.IDataList) (*insyra.DataList, error)` (glm_predict.go:18) — OK 走 gatherRegressionInputs 拒絕不可讀值；ST-4 選項風格
+- [x] `func (r *PoissonRegressionResult) Predict(typ PredictType, newXs ...insyra.IDataList) (*insyra.DataList, error)` (glm_predict.go:25) — OK 走 gatherRegressionInputs 拒絕不可讀值；ST-4 選項風格
+- [x] `func (r *PoissonRegressionResult) PredictWithOffset(typ PredictType, offset insyra.IDataList, newXs ...insyra.IDataList) (*insyra.DataList, error)` (glm_predict.go:40) — OK 走 gatherRegressionInputs 拒絕不可讀值；ST-4 選項風格
+- [x] `func (r *PolynomialRegressionResult) Predict(typ PredictType, newXs ...insyra.IDataList) (*insyra.DataList, error)` (regression.go:165) — OK 走 gatherRegressionInputs 拒絕不可讀值；ST-4 選項風格
+- [x] `func (r *RidgeRegressionResult) Predict(typ PredictType, newXs ...insyra.IDataList) (*insyra.DataList, error)` (regression_regularized.go:272) — OK 走 gatherRegressionInputs 拒絕不可讀值；ST-4 選項風格
+- [x] `func (r *WeightedLinearRegressionResult) Predict(typ PredictType, newXs ...insyra.IDataList) (*insyra.DataList, error)` (regression_weighted.go:151) — OK 走 gatherRegressionInputs 拒絕不可讀值；ST-4 選項風格
+- [x] `func (result *KMeansResult) Assign(dataTable insyra.IDataTable) ([]int, []float64, error)` (clustering.go:34) — OK
+- [x] `func BartlettSphericity(dataTable insyra.IDataTable) (chiSquare float64, pValue float64, df int, err error)` (correlation.go:439) — OK；回 4 個裸值（Low）
+- [x] `func BartlettTest(groups []insyra.IDataList) (*FTestResult, error)` (ftest.go:112) — ST-1 n 與統計量不一致（已實測）；ST-3；ST-4
+- [x] `func CalculateMoment(dl insyra.IDataList, n int, central bool) (float64, error)` (moments.go:35) — ST-2 ToF64Slice
+- [x] `func ChiSquareGoodnessOfFit(input insyra.IDataList, p []float64, rescaleP bool) (*ChiSquareTestResult, error)` (chi_square.go:69) — ST-6
+- [x] `func ChiSquareIndependenceTest(rowData, colData insyra.IDataList) (*ChiSquareTestResult, error)` (chi_square.go:161) — ST-6
+- [x] `func Correlation(dlX, dlY insyra.IDataList, method CorrelationMethod) (*CorrelationResult, error)` (correlation.go:389) — OK 先 requireNumericPair；ST-3 斷言
+- [x] `func CorrelationAnalysis(dataTable insyra.IDataTable, method CorrelationMethod) (corrMatrix *insyra.DataTable, pMatrix *insyra.DataTable, chiSquare float64, pValue float64, df int, err error)` (correlation.go:28) — OK 走 numericValues；CorrelationAnalysis 回 6 個值（應包成 struct，Low）
+- [x] `func CorrelationMatrix(dataTable insyra.IDataTable, method CorrelationMethod) (corrMatrix *insyra.DataTable, pMatrix *insyra.DataTable, err error)` (correlation.go:53) — OK 走 numericValues；CorrelationAnalysis 回 6 個值（應包成 struct，Low）
+- [x] `func Covariance(dlX, dlY insyra.IDataList) (float64, error)` (correlation.go:359) — OK 先 requireNumericPair；ST-3 斷言
+- [x] `func CutTreeByHeight(tree *HierarchicalResult, h float64) ([]int, error)` (clustering.go:165) — OK 走 numericMatrixFromTable；ST-4 opts variadic
+- [x] `func CutTreeByK(tree *HierarchicalResult, k int) ([]int, error)` (clustering.go:152) — OK 走 numericMatrixFromTable；ST-4 opts variadic
+- [x] `func DBSCAN(dataTable insyra.IDataTable, eps float64, minPts int, opts ...DBSCANOptions) (*DBSCANResult, error)` (clustering.go:178) — OK 走 numericMatrixFromTable；ST-4 opts variadic
+- [x] `func DefaultFactorAnalysisOptions() FactorAnalysisOptions` (factor_analysis.go:222) — OK options 必填 + Default 建構子；ST-9
+- [x] `func Diag(x any, dims ...int) (any, error)` (diag.go:11) — ST-9 any 進出
+- [x] `func ExponentialRegression(dlY, dlX insyra.IDataList) (*ExponentialRegressionResult, error)` (regression.go:327) — OK 走 gatherRegressionInputs 拒絕不可讀值；ST-4 選項風格
+- [x] `func FTestForNestedModels(rssReduced, rssFull float64, dfReduced, dfFull int) (*FTestResult, error)` (ftest.go:207) — OK 純數值介面，參數驗證完整
+- [x] `func FTestForRegression(ssr, sse float64, df1, df2 int) (*FTestResult, error)` (ftest.go:183) — OK 純數值介面，參數驗證完整
+- [x] `func FTestForVarianceEquality(data1, data2 insyra.IDataList) (*FTestResult, error)` (ftest.go:18) — ST-1 n 與統計量不一致（已實測）；ST-3；ST-4
+- [x] `func FactorAnalysis(dt insyra.IDataTable, opt FactorAnalysisOptions) (*FactorModel, error)` (factor_analysis.go:347) — OK options 必填 + Default 建構子；ST-9
+- [x] `func FriedmanTest(subjects ...insyra.IDataList) (*FriedmanTestResult, error)` (nonparam_friedman.go:36) — ST-7 資料形狀；驗證輸入 OK
+- [x] `func GLM(opts GLMOptions, dlY insyra.IDataList, dlXs ...insyra.IDataList) (*GLMResult, error)` (regression_glm.go:51) — OK options struct + 驗證
+- [x] `func HierarchicalAgglomerative(dataTable insyra.IDataTable, method AgglomerativeMethod) (*HierarchicalResult, error)` (clustering.go:133) — OK 走 numericMatrixFromTable；ST-4 opts variadic
+- [x] `func KMeans(dataTable insyra.IDataTable, centers int, opts ...KMeansOptions) (*KMeansResult, error)` (clustering.go:104) — OK 走 numericMatrixFromTable；ST-4 opts variadic
+- [x] `func KNNClassify(trainData insyra.IDataTable, trainLabels insyra.IDataList, testData insyra.IDataTable, k int, opts ...KNNOptions) (*KNNClassificationResult, error)` (knn.go:58) — OK；RegisterKNNDeviceSearcher 設計佳
+- [x] `func KNNRegress(trainData insyra.IDataTable, trainTargets insyra.IDataList, testData insyra.IDataTable, k int, opts ...KNNOptions) (*KNNRegressionResult, error)` (knn.go:97) — OK 走 gatherRegressionInputs 拒絕不可讀值；ST-4 選項風格
+- [x] `func KNearestNeighbors(trainData insyra.IDataTable, testData insyra.IDataTable, k int, opts ...KNNOptions) (*KNNNeighborsResult, error)` (knn.go:121) — OK；RegisterKNNDeviceSearcher 設計佳
+- [x] `func KruskalWallis(groups ...insyra.IDataList) (*KruskalWallisResult, error)` (nonparam_kw.go:34) — OK：驗證輸入、alt、CL、對 R 驗證（範本）；ST-3
+- [x] `func Kurtosis(data any, method ...KurtosisMethod) (float64, error)` (kurtosis.go:20) — 本輪已修（fix-api-review-batch-1）；`data any` 參數過寬（準則 8）
+- [x] `func LassoRegression(dlY insyra.IDataList, alpha float64, dlXs []insyra.IDataList, options ...LassoOptions) (*LassoRegressionResult, error)` (regression_regularized.go:139) — OK 走 gatherRegressionInputs 拒絕不可讀值；ST-4 選項風格
+- [x] `func LeveneTest(groups []insyra.IDataList) (*FTestResult, error)` (ftest.go:64) — ST-1 n 與統計量不一致（已實測）；ST-3；ST-4
+- [x] `func LinearRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) (*LinearRegressionResult, error)` (regression.go:225) — OK 走 gatherRegressionInputs 拒絕不可讀值；ST-4 選項風格
+- [x] `func LogarithmicRegression(dlY, dlX insyra.IDataList) (*LogarithmicRegressionResult, error)` (regression.go:423) — OK 走 gatherRegressionInputs 拒絕不可讀值；ST-4 選項風格
+- [x] `func LogisticRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) (*LogisticRegressionResult, error)` (regression_logistic.go:58) — OK 走 gatherRegressionInputs 拒絕不可讀值；ST-4 選項風格
+- [x] `func LogisticRegressionWithOptions(opts LogisticRegressionOptions, dlY insyra.IDataList, dlXs ...insyra.IDataList) (*LogisticRegressionResult, error)` (regression_logistic.go:62) — OK 走 gatherRegressionInputs 拒絕不可讀值；ST-4 選項風格
+- [x] `func MannWhitneyU(data1, data2 insyra.IDataList, alt AlternativeHypothesis, confidenceLevel ...float64) (*MannWhitneyUResult, error)` (nonparam_mwu.go:42) — OK：驗證輸入、alt、CL、對 R 驗證（範本）；ST-3
+- [x] `func NormCDF(x float64) float64` (normal.go:18) — OK doc 清楚，錯誤契約明確（範本）
+- [x] `func NormPPF(p float64) (float64, error)` (normal.go:31) — OK doc 清楚，錯誤契約明確（範本）
+- [x] `func OneWayANOVA(groups ...insyra.IDataList) (*OneWayANOVAResult, error)` (anova.go:63) — OK 驗證輸入；ST-4
+- [x] `func PCA(dataTable insyra.IDataTable, nComponents ...int) (*PCAResult, error)` (pca.go:27) — OK 拒絕非數值；`nComponents ...int` variadic（ST-4）
+- [x] `func PairedTTest(data1, data2 insyra.IDataList, confidenceLevel ...float64) (*TTestResult, error)` (ttest.go:221) — OK 驗證非數值；ST-3 斷言；ST-4 variadic CL
+- [x] `func PairedWilcoxon(data1, data2 insyra.IDataList, alt AlternativeHypothesis, confidenceLevel ...float64) (*WilcoxonTestResult, error)` (nonparam_wilcoxon.go:81) — OK：驗證輸入、alt、CL、對 R 驗證（範本）；ST-3
+- [x] `func PoissonRegression(dlY insyra.IDataList, dlXs ...insyra.IDataList) (*PoissonRegressionResult, error)` (regression_poisson.go:52) — OK 走 gatherRegressionInputs 拒絕不可讀值；ST-4 選項風格
+- [x] `func PoissonRegressionWithOptions(opts PoissonRegressionOptions, dlY insyra.IDataList, dlXs ...insyra.IDataList) (*PoissonRegressionResult, error)` (regression_poisson.go:56) — OK 走 gatherRegressionInputs 拒絕不可讀值；ST-4 選項風格
+- [x] `func PolynomialRegression(dlY, dlX insyra.IDataList, degree int) (*PolynomialRegressionResult, error)` (regression.go:504) — OK 走 gatherRegressionInputs 拒絕不可讀值；ST-4 選項風格
+- [x] `func RegisterKNNDeviceSearcher(fn KNNDeviceSearcher)` (knn.go:39) — OK；RegisterKNNDeviceSearcher 設計佳
+- [x] `func RepeatedMeasuresANOVA(subjects ...insyra.IDataList) (*RepeatedMeasuresANOVAResult, error)` (anova.go:253) — ST-7 資料形狀；驗證輸入 OK
+- [x] `func RidgeRegression(dlY insyra.IDataList, alpha float64, dlXs ...insyra.IDataList) (*RidgeRegressionResult, error)` (regression_regularized.go:85) — OK 走 gatherRegressionInputs 拒絕不可讀值；ST-4 選項風格
+- [x] `func Silhouette(dataTable insyra.IDataTable, labels insyra.IDataList) (*SilhouetteResult, error)` (clustering.go:200) — OK 走 numericMatrixFromTable；ST-4 opts variadic
+- [x] `func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...float64) (*TTestResult, error)` (ttest.go:30) — ST-1 n 與統計量不一致（已實測）；ST-3；ST-4
+- [x] `func SingleSampleWilcoxon(data insyra.IDataList, mu float64, alt AlternativeHypothesis, confidenceLevel ...float64) (*WilcoxonTestResult, error)` (nonparam_wilcoxon.go:43) — OK：驗證輸入、alt、CL、對 R 驗證（範本）；ST-3
+- [x] `func SingleSampleZTest(data insyra.IDataList, mu float64, sigma float64, alternative AlternativeHypothesis, confidenceLevel float64) (*ZTestResult, error)` (ztest.go:18) — ST-1 n 與統計量不一致（已實測）；ST-3；ST-4
+- [x] `func Skewness(sample any, method ...SkewnessMethod) (float64, error)` (skewness.go:20) — 本輪已修（fix-api-review-batch-1）；`data any` 參數過寬（準則 8）
+- [x] `func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenceLevel ...float64) (*TTestResult, error)` (ttest.go:129) — ST-1 n 與統計量不一致（已實測）；ST-3；ST-4
+- [x] `func TwoSampleZTest(data1, data2 insyra.IDataList, sigma1, sigma2 float64, alternative AlternativeHypothesis, confidenceLevel float64) (*ZTestResult, error)` (ztest.go:75) — ST-1 n 與統計量不一致（已實測）；ST-3；ST-4
+- [x] `func TwoWayANOVA(factorALevels, factorBLevels int, cells ...insyra.IDataList) (*TwoWayANOVAResult, error)` (anova.go:112) — ST-7 資料形狀；驗證輸入 OK
+- [x] `func WeightedLinearRegression(dlY insyra.IDataList, dlWeights insyra.IDataList, dlXs ...insyra.IDataList) (*WeightedLinearRegressionResult, error)` (regression_weighted.go:42) — OK 走 gatherRegressionInputs 拒絕不可讀值；ST-4 選項風格
+- [x] `type ANOVAResultComponent struct { SumOfSquares float64 DF int F float64 P float64 EtaSquared float64 }` (anova.go:13) — OK
+- [x] `type AgglomerativeMethod string` (clustering.go:62) — OK typed enum
+- [x] `type AlternativeHypothesis string` (types.go:3) — OK typed enum
+- [x] `type BartlettTestResult struct { ChiSquare float64 DegreesOfFreedom int PValue float64 SampleSize int }` (factor_analysis.go:129) — OK 欄位齊全
+- [x] `type ChiSquareTestResult struct { testResultBase ContingencyTable *insyra.DataTable }` (chi_square.go:14) — ST-6
+- [x] `type CorrelationMethod int` (correlation.go:19) — OK typed enum
+- [x] `type CorrelationResult struct { testResultBase }` (correlation.go:384) — OK 欄位齊全；ST-5 基底未匯出
+- [x] `type DBSCANOptions struct { BorderPoints *bool }` (clustering.go:84) — OK options struct
+- [x] `type DBSCANResult struct { Cluster []int IsSeed []bool }` (clustering.go:88) — OK 欄位齊全
+- [x] `type EffectSizeEntry struct { Type string Value float64 }` (structs.go:11) — OK；Type 用字串（可改 typed enum，Low）
+- [x] `type ExponentialRegressionResult struct { Intercept float64 Slope float64 Residuals []float64 RSquared float64 AdjustedRSquared float64 StandardErrorIntercept float64 StandardErrorSlope float64 TValueIntercept float64 TValueSlope float64 PValueIntercept float64 PValueSlope float64 ConfidenceIntervalIntercept [2]float64 ConfidenceIntervalSlope [2]float64 }` (regression.go:93) — OK 欄位齊全
+- [x] `type FTestResult struct { testResultBase DF2 float64 }` (ftest.go:12) — OK 欄位齊全；ST-5 基底未匯出
+- [x] `type FactorAnalysisOptions struct { Count FactorCountSpec Extraction FactorExtractionMethod Rotation FactorRotationOptions Scoring FactorScoreMethod MaxIter int MinErr float64 OptimFactr float64 OptimMaxIter int }` (factor_analysis.go:98) — OK options struct
+- [x] `type FactorAnalysisResult struct { Loadings insyra.IDataTable UnrotatedLoadings insyra.IDataTable Structure insyra.IDataTable Uniquenesses insyra.IDataTable Communalities insyra.IDataTable SamplingAdequacy insyra.IDataTable BartlettTest *BartlettTestResult Phi insyra.IDataTable RotationMatrix insyra.IDataTable Eigenvalues insyra.IDataTable ExplainedProportion insyra.IDataTable CumulativeProportion insyra.IDataTable Scores insyra.IDataTable ScoreCoefficients insyra.IDataTable ScoreCovariance insyra.IDataTable Converged bool RotationConverged bool Iterations int CountUsed int Messages []string }` (factor_analysis.go:137) — OK 欄位齊全
+- [x] `type FactorCountMethod string` (factor_analysis.go:60) — OK typed enum
+- [x] `type FactorCountSpec struct { Method FactorCountMethod FixedK int EigenThreshold float64 MaxFactors int }` (factor_analysis.go:72) — OK options struct
+- [x] `type FactorExtractionMethod string` (factor_analysis.go:21) — OK typed enum
+- [x] `type FactorModel struct { FactorAnalysisResult }` (factor_analysis.go:212) — OK
+- [x] `type FactorRotationMethod string` (factor_analysis.go:32) — OK typed enum
+- [x] `type FactorRotationOptions struct { Method FactorRotationMethod Kappa float64 Delta float64 GeominEpsilon float64 Restarts int VarimaxAlgorithm VarimaxAlgorithm }` (factor_analysis.go:88) — OK options struct
+- [x] `type FactorScoreMethod string` (factor_analysis.go:50) — OK typed enum
+- [x] `type FriedmanTestResult struct { testResultBase NSubjects int KConditions int }` (nonparam_friedman.go:23) — OK 欄位齊全；ST-5 基底未匯出
+- [x] `type GLMFamily string` (consts.go:5) — OK typed enum
+- [x] `type GLMLink string` (consts.go:6) — OK typed enum
+- [x] `type GLMOptions struct { Family GLMFamily Link GLMLink ConfidenceLevel float64 MaxIter int Tolerance float64 Offset insyra.IDataList Weights insyra.IDataList }` (regression_glm.go:11) — OK options struct
+- [x] `type GLMResult struct { Family GLMFamily Link GLMLink Coefficients []float64 StandardErrors []float64 ZValues []float64 PValues []float64 ConfidenceIntervals [][2]float64 LinearPredictors []float64 FittedValues []float64 Residuals []float64 PearsonResiduals []float64 DevianceResiduals []float64 Deviance float64 NullDeviance float64 LogLikelihood float64 NullLogLikelihood float64 AIC float64 BIC float64 PearsonChi2 float64 Dispersion float64 DFResidual int Iterations int Converged bool ConfidenceLevel float64 family glmFamily link glmLink hasOffset bool }` (regression_glm.go:21) — OK 欄位齊全
+- [x] `type HierarchicalResult struct { Merge [][2]int Height []float64 Order []int Labels []string Method AgglomerativeMethod DistMethod string }` (clustering.go:75) — OK 欄位齊全
+- [x] `type KMeansOptions struct { NStart int IterMax int Seed *int64 }` (clustering.go:14) — OK options struct
+- [x] `type KMeansResult struct { Cluster []int Centers insyra.IDataTable TotSS float64 WithinSS []float64 TotWithinSS float64 BetweenSS float64 Size []int Iter int IFault int }` (clustering.go:20) — OK 欄位齊全
+- [x] `type KNNAlgorithm string` (knn.go:12) — OK typed enum
+- [x] `type KNNClassificationResult struct { Predictions insyra.IDataList Classes insyra.IDataList Probabilities insyra.IDataTable }` (knn.go:43) — OK 欄位齊全
+- [x] `type KNNDeviceSearcher = internalknn.DeviceSearcher` (knn.go:33) — OK internal 型別別名，用途有 doc
+- [x] `type KNNNeighborsResult struct { Indices [][]int Distances [][]float64 }` (knn.go:53) — OK 欄位齊全
+- [x] `type KNNOptions struct { Weighting KNNWeighting Algorithm KNNAlgorithm LeafSize int }` (knn.go:24) — OK options struct
+- [x] `type KNNRegressionResult struct { Predictions []float64 }` (knn.go:49) — OK 欄位齊全
+- [x] `type KNNWeighting string` (knn.go:11) — OK typed enum
+- [x] `type KruskalWallisResult struct { testResultBase NTotal int GroupRankSum []float64 }` (nonparam_kw.go:22) — OK 欄位齊全；ST-5 基底未匯出
+- [x] `type KurtosisMethod int` (kurtosis.go:11) — OK typed enum
+- [x] `type LassoOptions struct { Tolerance float64 MaxIterations int }` (regression_regularized.go:62) — OK options struct
+- [x] `type LassoRegressionResult struct { Coefficients []float64 Alpha float64 Residuals []float64 RSquared float64 AdjustedRSquared float64 Converged bool Iterations int }` (regression_regularized.go:42) — OK 欄位齊全
+- [x] `type LinearRegressionResult struct { Slope float64 Intercept float64 StandardError float64 StandardErrorIntercept float64 TValue float64 TValueIntercept float64 PValue float64 PValueIntercept float64 ConfidenceIntervalIntercept [2]float64 ConfidenceIntervalSlope [2]float64 Coefficients []float64 StandardErrors []float64 TValues []float64 PValues []float64 ConfidenceIntervals [][2]float64 Residuals []float64 RSquared float64 AdjustedRSquared float64 }` (regression.go:55) — OK 欄位齊全
+- [x] `type LogarithmicRegressionResult struct { Intercept float64 Slope float64 Residuals []float64 RSquared float64 AdjustedRSquared float64 StandardErrorIntercept float64 StandardErrorSlope float64 TValueIntercept float64 TValueSlope float64 PValueIntercept float64 PValueSlope float64 ConfidenceIntervalIntercept [2]float64 ConfidenceIntervalSlope [2]float64 }` (regression.go:111) — OK 欄位齊全
+- [x] `type LogisticRegressionOptions struct { ConfidenceLevel float64 MaxIter int Tolerance float64 PositiveClass any SeparationPolicy SeparationPolicy Ridge float64 }` (regression_logistic.go:13) — OK options struct
+- [x] `type LogisticRegressionResult struct { Link GLMLink Coefficients []float64 StandardErrors []float64 ZValues []float64 PValues []float64 ConfidenceIntervals [][2]float64 OddsRatios []float64 OddsRatioCIs [][2]float64 LinearPredictors []float64 FittedProbabilities []float64 Residuals []float64 PearsonResiduals []float64 DevianceResiduals []float64 Deviance float64 NullDeviance float64 LogLikelihood float64 NullLogLikelihood float64 AIC float64 BIC float64 McFaddenR2 float64 CoxSnellR2 float64 NagelkerkeR2 float64 DFResidual int Iterations int Converged bool SeparationDetected bool Penalized bool Ridge float64 PositiveClass any ClassLabels []any ConfidenceLevel float64 family glmFamily link glmLink }` (regression_logistic.go:22) — OK 欄位齊全
+- [x] `type MannWhitneyUResult struct { testResultBase U1 float64 U2 float64 Z float64 Method string }` (nonparam_mwu.go:23) — OK 欄位齊全；ST-5 基底未匯出
+- [x] `type OneWayANOVAResult struct { Factor ANOVAResultComponent Within ANOVAResultComponent TotalSS float64 }` (anova.go:29) — OK 欄位齊全
+- [x] `type PCAResult struct { Components insyra.IDataTable Center []float64 Scale []float64 Scores insyra.IDataTable Eigenvalues []float64 ExplainedVariance []float64 }` (pca.go:17) — OK 欄位齊全
+- [x] `type PoissonRegressionOptions struct { ConfidenceLevel float64 MaxIter int Tolerance float64 Offset insyra.IDataList DispersionCheck bool }` (regression_poisson.go:11) — OK options struct
+- [x] `type PoissonRegressionResult struct { Link GLMLink Coefficients []float64 StandardErrors []float64 ZValues []float64 PValues []float64 ConfidenceIntervals [][2]float64 IncidenceRateRatios []float64 IRRConfidenceIntervals [][2]float64 LinearPredictors []float64 FittedRates []float64 FittedValues []float64 Residuals []float64 PearsonResiduals []float64 DevianceResiduals []float64 Deviance float64 NullDeviance float64 LogLikelihood float64 NullLogLikelihood float64 AIC float64 BIC float64 PearsonChi2 float64 DispersionStatistic float64 OverDispersed bool DFResidual int Iterations int Converged bool ConfidenceLevel float64 family glmFamily link glmLink hasOffset bool }` (regression_poisson.go:19) — OK 欄位齊全
+- [x] `type PolynomialRegressionResult struct { Coefficients []float64 Degree int Residuals []float64 RSquared float64 AdjustedRSquared float64 StandardErrors []float64 TValues []float64 PValues []float64 ConfidenceIntervals [][2]float64 }` (regression.go:80) — OK 欄位齊全
+- [x] `type PredictType string` (glm_predict.go:10) — OK typed enum
+- [x] `type RepeatedMeasuresANOVAResult struct { Factor ANOVAResultComponent Subject ANOVAResultComponent Within ANOVAResultComponent TotalSS float64 }` (anova.go:35) — OK 欄位齊全
+- [x] `type RidgeRegressionResult struct { Coefficients []float64 Alpha float64 Residuals []float64 RSquared float64 AdjustedRSquared float64 }` (regression_regularized.go:30) — OK 欄位齊全
+- [x] `type SeparationPolicy string` (consts.go:7) — OK typed enum
+- [x] `type SilhouettePoint struct { Cluster int Neighbor int SilWidth float64 }` (clustering.go:93) — OK
+- [x] `type SilhouetteResult struct { Points []SilhouettePoint AverageSilhouette float64 }` (clustering.go:99) — OK 欄位齊全
+- [x] `type SkewnessMethod int` (skewness.go:11) — OK typed enum
+- [x] `type TTestResult struct { testResultBase Mean *float64 Mean2 *float64 MeanDiff *float64 N int N2 *int }` (ttest.go:13) — ST-5 指標選填不一致
+- [x] `type TwoWayANOVAResult struct { FactorA ANOVAResultComponent FactorB ANOVAResultComponent Interaction ANOVAResultComponent Within ANOVAResultComponent TotalSS float64 }` (anova.go:21) — OK 欄位齊全
+- [x] `type VarimaxAlgorithm string` (factor_analysis.go:80) — OK typed enum
+- [x] `type WeightedLinearRegressionResult struct { Coefficients []float64 StandardErrors []float64 TValues []float64 PValues []float64 Residuals []float64 RSquared float64 AdjustedRSquared float64 }` (regression_weighted.go:20) — OK 欄位齊全
+- [x] `type WilcoxonTestResult struct { testResultBase Z float64 Method string NEffective int }` (nonparam_wilcoxon.go:26) — OK：驗證輸入、alt、CL、對 R 驗證（範本）；ST-3
+- [x] `type ZTestResult struct { testResultBase Mean float64 Mean2 *float64 N int N2 *int }` (ztest.go:10) — ST-5 指標選填不一致
 
 ## tools/gendocs (0)
 
