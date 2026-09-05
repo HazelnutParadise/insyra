@@ -57,7 +57,7 @@
 | `pd` | 8 | 未開始 |
 | `plot` | 80 | 未開始 |
 | `py` | 14 | 未開始 |
-| `quant` | 50 | 未開始 |
+| `quant` | 50 | **完成** |
 | `stats` | 197 | **完成** |
 | 無匯出符號：`accel/knnbridge`, `allpkgs`, `benchmark`, `cmd/insyra`, `engine`, `tools/gendocs` | 0 | 不需審查 |
 
@@ -225,6 +225,15 @@
 | ST-8 | Low | 效應量正負號：t 檢定保留方向（註解說 paired 已修），z 檢定用 `math.Abs` 丟掉方向；`SingleSampleTTest` 常數資料回 NaN／Inf 統計量與 p=0 沒有寫進 doc（準則 6、E） | stats/ztest.go:57, 122；ttest.go:76-108 | 統一保留方向；補 doc |
 | ST-9 | Low | `Show()` 只在 `ChiSquareTestResult` 與 `FactorAnalysisResult` 上有，其餘結果型別沒有，也沒有 `io.Writer` 版本；`FactorAnalysisResult` 15 個 `IDataTable` 欄位（K-7）；`Diag(x any, dims ...int) (any, error)` 進出都是 `any`（準則 8） | chi_square.go:21；factor_analysis.go:180；diag.go:11 | 統一 `String()`；Diag 拆成 `DiagOf(*mat.Dense)`／`DiagMatrix([]float64)` |
 | ST-10 | OK | 做得好的部分：regression／GLM／clustering／KNN／PCA／non-parametric 全部先驗證輸入再計算、回 error、結果 struct 欄位齊全且對 R 驗證；`numericinput.go` 的說明是本專案最清楚的設計文件之一；`RegisterKNNDeviceSearcher` 讓 accel 反向掛入而不讓 stats 依賴 accel | — | — |
+
+### quant
+
+| 編號 | 嚴重度 | 問題 | 位置 | 建議 |
+| --- | --- | --- | --- | --- |
+| QU-1 | Low | enum 風格：`VaRMethod`、`OptionType`、`PortfolioObjective` 用 `uint8`，`stats` 用 string，core 用 int；同一個程式庫三種 enum 寫法，printf `%d` 出來的錯誤訊息（`unknown method 3`）也不如 string 可讀（準則 6、9） | quant/risk.go:16；options.go:11；portfolio.go:12 | 全庫統一為 typed int + `String()`，或 string |
+| QU-2 | Low | 參數型別 `insyra.IDataList`／`IDataTable`（K-7）；`CAPM`／`Beta` 先 `asset.Len()` 比長度再 `numericSeries`，nil 檢查與長度檢查在 `numericSeries` 之前重複實作（各函式自己寫一次） | quant/capm.go:40-70 | 改具體型別；長度檢查併入 helper |
+| QU-3 | Low | `PercentileBands(paths, percentiles []float64)` 的百分位尺度要與 D-13（0..1 vs 0..100）一起統一；`WalkForward[P any]` 用索引區間回呼，使用者要自己切資料，沒有收 DataTable 的版本（準則 4） | quant/bootstrap.go:217；walkforward.go | 文件標明尺度；加 DataTable 版 |
+| QU-4 | OK | 範本等級：每個函式先 `numericSeries` 拒絕不可讀值並指出列號、全部回 error、doc 寫清單位（per-period vs annualized、calendar days）、`BootstrapConfig.Seed` 語意明確、`PortfolioConfig` 只預設容忍度其餘一律驗證、`Converged=false` 不當錯誤。其他套件應以此為準 | — | — |
 
 ## 逐項清單
 
@@ -2049,56 +2058,56 @@
 
 ## quant (50)
 
-- [ ] `const MaximumSharpe` (portfolio.go:24)
-- [ ] `const MinimumVariance PortfolioObjective` (portfolio.go:18)
-- [ ] `const OptionCall OptionType` (options.go:15)
-- [ ] `const OptionPut` (options.go:17)
-- [ ] `const TargetReturn` (portfolio.go:21)
-- [ ] `const VaRHistorical VaRMethod` (risk.go:21)
-- [ ] `const VaRParametric` (risk.go:24)
-- [ ] `func (r *FactorModelResult) Exposure(name string) (float64, bool)` (factor.go:56)
-- [ ] `func (r *PortfolioResult) Weight(name string) (float64, bool)` (portfolio.go:85)
-- [ ] `func (r *WalkForwardResult) AnnualizedReturn(days int) (float64, error)` (walkforward.go:129)
-- [ ] `func (r *WalkForwardResult) MaxDrawdown() (float64, error)` (walkforward.go:122)
-- [ ] `func (r *WalkForwardResult) Sharpe(riskFreeRate, periodsPerYear float64) (float64, error)` (walkforward.go:116)
-- [ ] `func AnnualizedReturn(equity insyra.IDataList, days int) (float64, error)` (performance.go:119)
-- [ ] `func Beta(asset, market insyra.IDataList) (float64, error)` (capm.go:73)
-- [ ] `func BlackScholes(in BSInput) (*BSResult, error)` (options.go:54)
-- [ ] `func BlockBootstrap(returns insyra.IDataList, cfg BootstrapConfig) (*BootstrapResult, error)` (bootstrap.go:71)
-- [ ] `func CAPM(asset, market insyra.IDataList, riskFreeRate float64) (*CAPMResult, error)` (capm.go:40)
-- [ ] `func CalmarRatio(equity insyra.IDataList, days int) (float64, error)` (risk.go:182)
-- [ ] `func ConditionalValueAtRisk(returns insyra.IDataList, confidence float64, method VaRMethod) (float64, error)` (risk.go:74)
-- [ ] `func DeflatedSharpeRatio(observedSR float64, n int, skew, kurt float64, trialSharpes insyra.IDataList) (float64, error)` (overfitting.go:94)
-- [ ] `func DrawdownSeries(equity insyra.IDataList) (*insyra.DataList, error)` (risk.go:252)
-- [ ] `func EfficientFrontier(returns insyra.IDataTable, points int, cfg PortfolioConfig) ([]PortfolioResult, error)` (portfolio.go:160)
-- [ ] `func ExpectedMaxSharpe(sharpeVariance float64, nTrials int) (float64, error)` (overfitting.go:56)
-- [ ] `func FactorModel(asset insyra.IDataList, factors insyra.IDataTable, riskFreeRate float64) (*FactorModelResult, error)` (factor.go:79)
-- [ ] `func ImpliedVolatility(price float64, in BSInput) (float64, error)` (options.go:157)
-- [ ] `func InformationRatio(returns, benchmark insyra.IDataList, periodsPerYear float64) (float64, error)` (risk.go:211)
-- [ ] `func MaxDrawdown(equity insyra.IDataList) (float64, error)` (performance.go:78)
-- [ ] `func OptimizePortfolio(returns insyra.IDataTable, cfg PortfolioConfig) (*PortfolioResult, error)` (portfolio.go:118)
-- [ ] `func OptimizePortfolioMoments(mean []float64, cov [][]float64, names []string, cfg PortfolioConfig) (*PortfolioResult, error)` (portfolio.go:137)
-- [ ] `func PBO(perf insyra.IDataTable, nSplits int) (float64, error)` (overfitting.go:134)
-- [ ] `func PercentileBands(paths [][]float64, percentiles []float64) ([][]float64, error)` (bootstrap.go:217)
-- [ ] `func ProbabilisticSharpeRatio(observedSR, benchmarkSR float64, n int, skew, kurt float64) (float64, error)` (overfitting.go:32)
-- [ ] `func SharpeRatio(returns insyra.IDataList, riskFreeRate, periodsPerYear float64) (float64, error)` (performance.go:37)
-- [ ] `func SortinoRatio(returns insyra.IDataList, minimumAcceptableReturn, periodsPerYear float64) (float64, error)` (risk.go:140)
-- [ ] `func ValueAtRisk(returns insyra.IDataList, confidence float64, method VaRMethod) (float64, error)` (risk.go:35)
-- [ ] `func WalkForward[P any]( n int, cfg WalkForwardConfig, optimize func(trainStart, trainEnd int) P, evaluate func(p P, testStart, testEnd int) []float64, ) (*WalkForwardResult, error)` (walkforward.go:66)
-- [ ] `type BSInput struct { Spot float64 Strike float64 Rate float64 DividendYield float64 Volatility float64 TimeToExpiry float64 Type OptionType }` (options.go:23)
-- [ ] `type BSResult struct { Price float64 Delta float64 Gamma float64 Vega float64 Theta float64 Rho float64 }` (options.go:37)
-- [ ] `type BootstrapConfig struct { Horizon int BlockSize int Paths int Seed uint64 Stationary bool }` (bootstrap.go:14)
-- [ ] `type BootstrapResult struct { Returns [][]float64 Equity [][]float64 }` (bootstrap.go:45)
-- [ ] `type CAPMResult struct { Beta float64 Alpha float64 RSquared float64 BetaStdErr float64 AlphaStdErr float64 N int }` (capm.go:15)
-- [ ] `type FactorModelResult struct { Alpha float64 AlphaStdErr float64 AlphaTValue float64 AlphaPValue float64 FactorNames []string Exposures []float64 StdErrs []float64 TValues []float64 PValues []float64 RSquared float64 AdjustedRSquared float64 N int Residuals []float64 }` (factor.go:12)
-- [ ] `type OptionType uint8` (options.go:11)
-- [ ] `type PortfolioConfig struct { Objective PortfolioObjective TargetReturn float64 RiskFreeRate float64 MinWeight []float64 MaxWeight []float64 Tolerance float64 MaxIterations int }` (portfolio.go:31)
-- [ ] `type PortfolioObjective uint8` (portfolio.go:12)
-- [ ] `type PortfolioResult struct { Weights []float64 AssetNames []string ExpectedReturn float64 Variance float64 Volatility float64 SharpeRatio float64 Iterations int Converged bool }` (portfolio.go:60)
-- [ ] `type VaRMethod uint8` (risk.go:16)
-- [ ] `type WalkForwardConfig struct { TrainSize int TestSize int Anchored bool }` (walkforward.go:10)
-- [ ] `type WalkForwardFold struct { TrainStart int TrainEnd int TestStart int TestEnd int OOSReturns []float64 }` (walkforward.go:25)
-- [ ] `type WalkForwardResult struct { Folds []WalkForwardFold OOSReturns []float64 Equity []float64 }` (walkforward.go:36)
+- [x] `const MaximumSharpe` (portfolio.go:24) — OK 有 doc
+- [x] `const MinimumVariance PortfolioObjective` (portfolio.go:18) — OK 有 doc
+- [x] `const OptionCall OptionType` (options.go:15) — OK 有 doc
+- [x] `const OptionPut` (options.go:17) — OK 有 doc
+- [x] `const TargetReturn` (portfolio.go:21) — OK 有 doc
+- [x] `const VaRHistorical VaRMethod` (risk.go:21) — OK 有 doc
+- [x] `const VaRParametric` (risk.go:24) — OK 有 doc
+- [x] `func (r *FactorModelResult) Exposure(name string) (float64, bool)` (factor.go:56) — OK（QU-4）
+- [x] `func (r *PortfolioResult) Weight(name string) (float64, bool)` (portfolio.go:85) — OK（QU-4）
+- [x] `func (r *WalkForwardResult) AnnualizedReturn(days int) (float64, error)` (walkforward.go:129) — OK（QU-4）
+- [x] `func (r *WalkForwardResult) MaxDrawdown() (float64, error)` (walkforward.go:122) — OK（QU-4）
+- [x] `func (r *WalkForwardResult) Sharpe(riskFreeRate, periodsPerYear float64) (float64, error)` (walkforward.go:116) — OK（QU-4）
+- [x] `func AnnualizedReturn(equity insyra.IDataList, days int) (float64, error)` (performance.go:119) — OK（QU-4）
+- [x] `func Beta(asset, market insyra.IDataList) (float64, error)` (capm.go:73) — OK；QU-2
+- [x] `func BlackScholes(in BSInput) (*BSResult, error)` (options.go:54) — OK（QU-4）
+- [x] `func BlockBootstrap(returns insyra.IDataList, cfg BootstrapConfig) (*BootstrapResult, error)` (bootstrap.go:71) — OK（QU-4）
+- [x] `func CAPM(asset, market insyra.IDataList, riskFreeRate float64) (*CAPMResult, error)` (capm.go:40) — OK；QU-2
+- [x] `func CalmarRatio(equity insyra.IDataList, days int) (float64, error)` (risk.go:182) — OK（QU-4）
+- [x] `func ConditionalValueAtRisk(returns insyra.IDataList, confidence float64, method VaRMethod) (float64, error)` (risk.go:74) — OK（QU-4）
+- [x] `func DeflatedSharpeRatio(observedSR float64, n int, skew, kurt float64, trialSharpes insyra.IDataList) (float64, error)` (overfitting.go:94) — OK（QU-4）
+- [x] `func DrawdownSeries(equity insyra.IDataList) (*insyra.DataList, error)` (risk.go:252) — OK（QU-4）
+- [x] `func EfficientFrontier(returns insyra.IDataTable, points int, cfg PortfolioConfig) ([]PortfolioResult, error)` (portfolio.go:160) — OK（QU-4）
+- [x] `func ExpectedMaxSharpe(sharpeVariance float64, nTrials int) (float64, error)` (overfitting.go:56) — OK（QU-4）
+- [x] `func FactorModel(asset insyra.IDataList, factors insyra.IDataTable, riskFreeRate float64) (*FactorModelResult, error)` (factor.go:79) — OK（QU-4）
+- [x] `func ImpliedVolatility(price float64, in BSInput) (float64, error)` (options.go:157) — OK（QU-4）
+- [x] `func InformationRatio(returns, benchmark insyra.IDataList, periodsPerYear float64) (float64, error)` (risk.go:211) — OK（QU-4）
+- [x] `func MaxDrawdown(equity insyra.IDataList) (float64, error)` (performance.go:78) — OK（QU-4）
+- [x] `func OptimizePortfolio(returns insyra.IDataTable, cfg PortfolioConfig) (*PortfolioResult, error)` (portfolio.go:118) — OK（QU-4）
+- [x] `func OptimizePortfolioMoments(mean []float64, cov [][]float64, names []string, cfg PortfolioConfig) (*PortfolioResult, error)` (portfolio.go:137) — OK（QU-4）
+- [x] `func PBO(perf insyra.IDataTable, nSplits int) (float64, error)` (overfitting.go:134) — OK（QU-4）
+- [x] `func PercentileBands(paths [][]float64, percentiles []float64) ([][]float64, error)` (bootstrap.go:217) — OK；QU-3 尺度
+- [x] `func ProbabilisticSharpeRatio(observedSR, benchmarkSR float64, n int, skew, kurt float64) (float64, error)` (overfitting.go:32) — OK（QU-4）
+- [x] `func SharpeRatio(returns insyra.IDataList, riskFreeRate, periodsPerYear float64) (float64, error)` (performance.go:37) — OK（QU-4）
+- [x] `func SortinoRatio(returns insyra.IDataList, minimumAcceptableReturn, periodsPerYear float64) (float64, error)` (risk.go:140) — OK（QU-4）
+- [x] `func ValueAtRisk(returns insyra.IDataList, confidence float64, method VaRMethod) (float64, error)` (risk.go:35) — OK（QU-4）
+- [x] `func WalkForward[P any]( n int, cfg WalkForwardConfig, optimize func(trainStart, trainEnd int) P, evaluate func(p P, testStart, testEnd int) []float64, ) (*WalkForwardResult, error)` (walkforward.go:66) — OK generics 用法合理；QU-3
+- [x] `type BSInput struct { Spot float64 Strike float64 Rate float64 DividendYield float64 Volatility float64 TimeToExpiry float64 Type OptionType }` (options.go:23) — OK（QU-4）
+- [x] `type BSResult struct { Price float64 Delta float64 Gamma float64 Vega float64 Theta float64 Rho float64 }` (options.go:37) — OK（QU-4）
+- [x] `type BootstrapConfig struct { Horizon int BlockSize int Paths int Seed uint64 Stationary bool }` (bootstrap.go:14) — OK（QU-4）
+- [x] `type BootstrapResult struct { Returns [][]float64 Equity [][]float64 }` (bootstrap.go:45) — OK（QU-4）
+- [x] `type CAPMResult struct { Beta float64 Alpha float64 RSquared float64 BetaStdErr float64 AlphaStdErr float64 N int }` (capm.go:15) — OK（QU-4）
+- [x] `type FactorModelResult struct { Alpha float64 AlphaStdErr float64 AlphaTValue float64 AlphaPValue float64 FactorNames []string Exposures []float64 StdErrs []float64 TValues []float64 PValues []float64 RSquared float64 AdjustedRSquared float64 N int Residuals []float64 }` (factor.go:12) — OK（QU-4）
+- [x] `type OptionType uint8` (options.go:11) — QU-1 uint8 enum
+- [x] `type PortfolioConfig struct { Objective PortfolioObjective TargetReturn float64 RiskFreeRate float64 MinWeight []float64 MaxWeight []float64 Tolerance float64 MaxIterations int }` (portfolio.go:31) — OK（QU-4）
+- [x] `type PortfolioObjective uint8` (portfolio.go:12) — QU-1 uint8 enum
+- [x] `type PortfolioResult struct { Weights []float64 AssetNames []string ExpectedReturn float64 Variance float64 Volatility float64 SharpeRatio float64 Iterations int Converged bool }` (portfolio.go:60) — OK（QU-4）
+- [x] `type VaRMethod uint8` (risk.go:16) — QU-1 uint8 enum
+- [x] `type WalkForwardConfig struct { TrainSize int TestSize int Anchored bool }` (walkforward.go:10) — OK（QU-4）
+- [x] `type WalkForwardFold struct { TrainStart int TrainEnd int TestStart int TestEnd int OOSReturns []float64 }` (walkforward.go:25) — OK（QU-4）
+- [x] `type WalkForwardResult struct { Folds []WalkForwardFold OOSReturns []float64 Equity []float64 }` (walkforward.go:36) — OK（QU-4）
 
 ## stats (197)
 
