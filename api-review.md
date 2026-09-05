@@ -39,7 +39,7 @@
 
 | 套件 | 項目數 | 狀態 |
 | --- | --- | --- |
-| `.`（core） | 529 | 進行中：基礎層 63 項完成 |
+| `.`（core） | 529 | 進行中：基礎層 63 + DataList 137 項完成 |
 | `accel` | 127 | 未開始 |
 | `cli` 系列（cli, commands, env, repl, style） | 79 | 未開始 |
 | `csvxl` | 9 | **完成** |
@@ -127,6 +127,32 @@
 | K-16 | Low | `atomic.go` 的 doc comment 是亂碼（`憒??典??蔭??`，來源檔曾以錯誤編碼存檔）；`SetDefaultConfig` 的 doc 寫成「DefaultConfig returns…」；`ReadCSV_FileWithOptions` 用 `"csvxl"` 當套件名寫 log（實際在 core）；`Slice2DToDataTable` 對空切片回錯而 pandas 允許空表（準則 5、E） | atomic.go:31, 37, 44, 49；config.go:97；read.go:139, 51 | 修文件；空切片回空表 |
 | K-17 | Low | `LogInfo`/`LogWarning` 等四個 logger 函式是唯一的 log 出口，只能輸出到標準 `log`，不能接 `slog`/zap，也沒有 `io.Writer` 可設；成功路徑（Info）預設開啟，生產環境使用者要自己關（準則 14） | logger.go | 提供 `SetLogger(*slog.Logger)` 或 `SetOutput(io.Writer)`；預設等級改 Warning |
 
+### core — DataList（datalist.go, datalist_*.go, describe_options.go）
+
+實測方式：以拋棄式測試檔在 repo 內執行，結果記在各條「驗證」欄；未實測的標「推論」。
+
+| 編號 | 嚴重度 | 問題 | 位置 | 建議 |
+| --- | --- | --- | --- | --- |
+| D-1 | High | **Bug（已實測）**：`ReplaceLast(old, new)` 在 old 不是 NaN 時，`else if` 分支仍會把最後一個 NaN 換掉。`[5, NaN].ReplaceLast(5, 0)` 得到 `[5, 0]`，5 沒動、NaN 被改了。`replaceFirst_notAtomic` 是對的，兩者不對稱 | datalist.go:353-373 vs datalist_notatomic.go:27-47 | 改成與 replaceFirst 相同的分支結構；補迴歸測試 |
+| D-2 | High | **資料半毀（已實測）**：`Normalize`、`Standardize`、`ClearOutliers`、`Difference`、`FillNaNWithMean` 用 `conv.ParseF64` 原地改寫，遇到非數值 panic 再 recover。`[1, "x", 3].Normalize()` 回傳 nil，且資料已變成 `[0, "x", 3]`。沒有回滾，沒有原子性（準則 11、13）。lock 本身有用 defer 釋放，不會死鎖（已實測） | datalist.go:733-843, 1864-1890 | 先掃描全部可轉換再寫入；失敗時資料不動、設 `Err()`、回傳自身 |
+| D-3 | High | 失敗時有三種回傳形狀：回 **nil**（`Normalize`、`MovingAverage`、`WeightedMovingAverage`、`ExponentialSmoothing`、`DoubleExponentialSmoothing`、`MovingStdev`、`Difference`、`Diff`、`PctChange`）、回**空 list**（`Sample`、`SampleFrac`、`Shuffle`、`Map`、`Describe`、所有 Rolling/EWM/Expanding reducer）、回**自身 + Err()**（其餘）。`Err()` 的 doc 說「不打斷鏈式呼叫」，回 nil 就是打斷：`dl.MovingAverage(0).Sort()` 直接 nil deref panic（準則 6、7、11） | 上列各函式 | 統一為「回傳自身或同長度 nil list，錯誤放 Err()」；nil 回傳全部移除 |
+| D-4 | High | 數值統計對非數值元素「跳過並警告」後仍給出數字：`["a", 1, 2].Mean()` = 1.5（已實測）。這是靠省略捏造結果，和 2026-08-01 禁止 `stats` 捏造零值是同一類問題。更糟的是 `Rank`、`ExponentialSmoothing`、`DoubleExponentialSmoothing`、六個 `*Interpolation` 走 `ToF64Slice`，把非數值當 0 算：`[3, "b", 1].Rank()` = `[3, 1, 2]`（已實測），"b" 排第一。pandas 對 object dtype 的 mean 直接 raise（準則 5、13） | datalist.go:1148-1860；datalist_interpolation.go 全檔 | 決策：數值運算遇到非數值一律失敗（NaN + Err）；要「跳過」就用明確的 `skipNonNumeric` 選項。`ToF64Slice` 不得再被任何運算內部使用 |
+| D-5 | Med | 正常結果被記成錯誤：`Get` 越界、`FindFirst/FindLast` 找不到、`FindAll`/`Count` 在空 list（已實測 `Count` 讓 `Err()` 非 nil）、`Sort`/`Pop`/`Map`/`ToF64Slice` 在空 list 都呼叫 `warn`。呼叫端無法用 `Err() != nil` 判斷「真的失敗」（準則 11） | datalist.go:148-160, 248-327, 441-456, 1007-1012 | 「找不到」「空」不設 Err；只有無效參數與型別錯誤才設 |
+| D-6 | Med | `FindFirst`/`FindLast` 回傳 `any`（int 或 nil），呼叫端要型別斷言；`Get` 越界回 nil，與元素本身是 nil 無法區分。DataTable 的 `GetRowIndexByName` 已用 `(int, bool)`，同一套件兩種慣例（準則 6、8） | datalist.go:148, 248, 274 | 改 `(int, bool)` / `(any, bool)`；舊簽名標 Deprecated |
+| D-7 | Med | 原地修改與回傳新 list 從名稱看不出來。原地：`Sort`、`Reverse`、`Normalize`、`Standardize`、`Clear*`、`Replace*`、`Fill*`、`Upper/Lower/Capitalize`、`Parse*`、`Drop*`。新 list：`Filter`、`Map`、`Concat`、`Rank`、`Shift/Diff/PctChange/Cum*`、`MovingAverage`、`Sample`、`Shuffle`。pandas 預設回新物件；使用者對 `GetCol` 拿到的欄位做 `Sort()` 會不會動到表，要看 DataTable 段（準則 5、6） | 全 DataList | 文件明列兩類；長期考慮 `Sorted()`/`SortInPlace()` 命名或全部回新 list |
+| D-8 | Med | variadic 冒充選填參數：`Sort(ascending ...bool)`、`Rank(ascending ...bool)`、`FillForward/FillBackward(limit ...int)`、`FillByInterpolation(extrapolate ...bool)`、`Shift(periods, fill ...any)`、`Sample(..., options ...SamplingOptions)`、`Describe(options ...DescribeOptions)`。`Sort` 多傳一個參數只在執行期 warn。同一型別上 `Rolling(RollingOptions)`、`EWM(EWMOptions)` 已是 options struct，新舊並存（準則 8） | 各函式 | 新 API 一律 options struct；舊的標 Deprecated |
+| D-9 | Med | 效能：`ClearNaNs`/`ClearNils`/`ClearOutliers` 在迴圈裡 `append(data[:i], data[i+1:]...)`，O(n²)；`DropAll`/`ClearStrings` 為一次線性掃描開 NumCPU 個 goroutine，10 個元素也開，且 `ClearStrings` 留著「此處之後尚未提升性能」註解；`Data()` 每次整份複製，`Get(i)` 每個元素取一次 actor lock，沒有 iterator。逐元素走訪一個 DataList 要嘛 n 次鎖、要嘛全複製（準則 8、12；Go 1.23 `iter.Seq` 是標準做法） | datalist.go:479-571, 615-731, 41-48, 148 | 單趟過濾；加 `All() iter.Seq2[int, any]` |
+| D-10 | Med | `WeightedMean(weights any)`、`WeightedMovingAverage(w int, weights any)` 收 `any` 再用 `ProcessData` 猜型別；`RollingOptions.Weights []float64` 是型別化的。同一件事兩種簽名（準則 8） | datalist.go:880, 1292 | 改 `[]float64` |
+| D-11 | Med | 相等語意有三套：`IsEqualTo`/`FindAll`/`Count`/`ReplaceAll` 用 `==`（NaN 永不相等，已實測 `IsEqualTo` 自己的 Clone 為 false；元素不可比較時 panic）；`Counter()` 用 map key（同樣 panic）；`FillWithMode` 用 `reflect.DeepEqual`（O(n²)）。`FindAll` 有特判 NaN，`IsEqualTo` 沒有（準則 6、13） | datalist.go:1892-1918, 191-199；datalist_impute.go:182 | 一個套件內部 `equalAny` 統一 NaN 與不可比較型別的處理 |
+| D-12 | Med | 時間戳用 Unix 秒：`GetCreationTimestamp() int64`、`updateTimestamp` 同一秒內多次修改看不出來、`IsTheSameAs` 比秒級時間戳，同一秒建立的兩個 list 會被判「相同」。業界回 `time.Time`（準則 10） | datalist.go:2064-2087, 1920 | 改 `time.Time`（或 UnixNano）；`IsTheSameAs` 語意重新定義 |
+| D-13 | Med | 同一個概念三種尺度：`Quartile(q int)` 用 1..3 魔數、`Percentile(p)` 用 0..100、`DescribeOptions.Percentiles` 用 0..1（pandas `quantile` 用 0..1）。`Mode()` 全部頻率相同時回 nil，pandas 回全部值（準則 5、6） | datalist.go:1735, 1816, 1431；describe_options.go:13 | 加 `Quantile(p float64)` 0..1 為主 API；`Mode` 行為寫進文件或對齊 pandas |
+| D-14 | Med | 重複介面：`Difference` vs `Diff(1)`、`FillNaNWithMean` vs `FillWithMean`、`MovingAverage(w)` vs `Rolling({Window:w}).Mean()`、`MovingStdev` vs `Rolling().Std()`、`ExponentialSmoothing(a)` vs `EWM({Alpha:a}).Mean()`、`WeightedMovingAverage` vs `Rolling({Weights}).Mean()`。舊的一組正是 D-3/D-4 問題最集中的地方；新的一組（Rolling/EWM/Expanding）設計品質明顯較好（準則 1、6） | datalist.go:821-1005, 1864 | 舊六個標 Deprecated 指向新 API，下一個 minor 移除 |
+| D-15 | Low | 小行為不一致：`InsertAt` 越界改成 append（pandas raise）；`Update` 的 Err 記成 `ReplaceAtIndex`（函式名錯）；`Sample`/`Shuffle` 把結果改名 `name_Sampled`/`name_Shuffled`，`Filter`/`Concat` 丟掉名稱，`Shift/Diff/Cum*` 保留名稱。名稱傳遞規則沒有一致（準則 6、7） | datalist.go:221, 203；datalist_sampling.go | 統一：衍生 list 一律沿用原名 |
+| D-16 | Low | `ParseNumbers` 把所有元素轉成 float64，int64 大於 2^53 會失真，與 CSV 讀入保留 int64 的決策矛盾；`Capitalize` 寫死 `language.English`（準則 13） | datalist.go:1977, 1132 | 整數保留整數；語言由參數決定或用 `language.Und` |
+| D-17 | Low | 文件：`Len` 無 doc；`ToF64Slice` doc 重複一行且沒寫「非數值變 0」（既有 follow-up）；`MovingStdev` doc 寫 `MovingStdDev`；`Drop` doc 寫「Returns an error」但回傳 `*DataList`；`Rolling*`/`EWM*` 的 doc 是本套件寫得最完整的，其餘應比照（準則 E） | datalist.go:606, 2015-2019, 982, 456 | 修 |
+| D-18 | Low | Rolling/EWM/Expanding 選項無效時，reducer 回傳「空 list」而不是「同長度全 nil」。使用者把結果 `AppendCols` 進表會因長度不符再錯一次，離真正原因更遠（準則 7） | datalist_window.go:301-306；datalist_ewm.go:107-115 | 回同長度全 nil |
+| D-19 | Med | `init.go` 在 import 時就以 Info 印出「Welcome to Insyra」橫幅，且用 `LogInfo("", "", …)`。程式庫不得在 import 時輸出（準則 14；併入 K-17 的 logger 決策） | init.go:7 | 移除橫幅，改由 CLI 自己印 |
+
 ## 逐項清單
 
 
@@ -181,97 +207,97 @@
 - [ ] `const UnknownIgnore UnknownPolicy` (datatable_encode.go:28)
 - [x] `const VersionName` (version.go:4) — OK
 - [x] `const Version` (version.go:3) — OK；release 時要同步 bump（AGENTS.md 已記）
-- [ ] `func (dl *DataList) Append(values ...any) *DataList` (datalist.go:102)
-- [ ] `func (dl *DataList) AppendDataList(other IDataList) *DataList` (datalist.go:131)
-- [ ] `func (dl *DataList) Capitalize() *DataList` (datalist.go:1132)
-- [ ] `func (dl *DataList) Clear() *DataList` (datalist.go:598)
-- [ ] `func (dl *DataList) ClearErr() *DataList` (datalist.go:2123)
-- [ ] `func (dl *DataList) ClearNaNs() *DataList` (datalist.go:697)
-- [ ] `func (dl *DataList) ClearNils() *DataList` (datalist.go:710)
-- [ ] `func (dl *DataList) ClearNilsAndNaNs() *DataList` (datalist.go:723)
-- [ ] `func (dl *DataList) ClearNumbers() *DataList` (datalist.go:675)
-- [ ] `func (dl *DataList) ClearOutliers(stdDevs float64) *DataList` (datalist.go:733)
-- [ ] `func (dl *DataList) ClearStrings() *DataList` (datalist.go:615)
-- [ ] `func (dl *DataList) Clone() *DataList` (datalist.go:166)
-- [ ] `func (dl *DataList) Concat(other IDataList) *DataList` (datalist.go:112)
-- [ ] `func (dl *DataList) Count(value any) int` (datalist.go:182)
-- [ ] `func (dl *DataList) Counter() map[any]int` (datalist.go:191)
-- [ ] `func (dl *DataList) CumMax() *DataList` (datalist_window.go:143)
-- [ ] `func (dl *DataList) CumMin() *DataList` (datalist_window.go:149)
-- [ ] `func (dl *DataList) CumProd() *DataList` (datalist_window.go:137)
-- [ ] `func (dl *DataList) CumSum() *DataList` (datalist_window.go:132)
-- [ ] `func (dl *DataList) Data() []any` (datalist.go:41)
-- [ ] `func (dl *DataList) Describe(options ...DescribeOptions) *DataTable` (datalist_describe.go:4)
-- [ ] `func (dl *DataList) Diff(periods int) *DataList` (datalist_window.go:64)
-- [ ] `func (dl *DataList) Difference() *DataList` (datalist.go:1864)
-- [ ] `func (dl *DataList) DoubleExponentialSmoothing(alpha, beta float64) *DataList` (datalist.go:955)
-- [ ] `func (dl *DataList) Drop(index int) *DataList` (datalist.go:458)
-- [ ] `func (dl *DataList) DropAll(toDrop ...any) *DataList` (datalist.go:479)
-- [ ] `func (dl *DataList) DropIfContains(substring string) *DataList` (datalist.go:573)
-- [ ] `func (dl *DataList) EWM(opts EWMOptions) *EWMDataList` (datalist_ewm.go:30)
-- [ ] `func (dl *DataList) Err() *ErrorInfo` (datalist.go:2117)
-- [ ] `func (dl *DataList) Expanding(minObs int) *ExpandingDataList` (datalist_window.go:570)
-- [ ] `func (dl *DataList) ExponentialSmoothing(alpha float64) *DataList` (datalist.go:930)
-- [ ] `func (dl *DataList) FillBackward(limit ...int) *DataList` (datalist_impute.go:97)
-- [ ] `func (dl *DataList) FillByInterpolation(extrapolate ...bool) *DataList` (datalist_impute.go:227)
-- [ ] `func (dl *DataList) FillForward(limit ...int) *DataList` (datalist_impute.go:71)
-- [ ] `func (dl *DataList) FillNaNWithMean() *DataList` (datalist.go:821)
-- [ ] `func (dl *DataList) FillWithMean() *DataList` (datalist_impute.go:124)
-- [ ] `func (dl *DataList) FillWithMedian() *DataList` (datalist_impute.go:154)
-- [ ] `func (dl *DataList) FillWithMode() *DataList` (datalist_impute.go:182)
-- [ ] `func (dl *DataList) Filter(filterFunc func(any) bool) *DataList` (datalist.go:330)
-- [ ] `func (dl *DataList) FindAll(value any) []int` (datalist.go:300)
-- [ ] `func (dl *DataList) FindFirst(value any) any` (datalist.go:248)
-- [ ] `func (dl *DataList) FindLast(value any) any` (datalist.go:274)
-- [ ] `func (dl *DataList) GMean() float64` (datalist.go:1346)
-- [ ] `func (dl *DataList) Get(index int) any` (datalist.go:148)
-- [ ] `func (dl *DataList) GetCreationTimestamp() int64` (datalist.go:2064)
-- [ ] `func (dl *DataList) GetLastModifiedTimestamp() int64` (datalist.go:2073)
-- [ ] `func (dl *DataList) GetName() string` (datalist.go:2090)
-- [ ] `func (dl *DataList) HermiteInterpolation(x float64, derivatives []float64) float64` (datalist_interpolation.go:117)
-- [ ] `func (dl *DataList) IQR() float64` (datalist.go:1789)
-- [ ] `func (dl *DataList) InsertAt(index int, value any) *DataList` (datalist.go:221)
-- [ ] `func (dl *DataList) IsEqualTo(anotherDl *DataList) bool` (datalist.go:1892)
-- [ ] `func (dl *DataList) IsTheSameAs(anotherDl *DataList) bool` (datalist.go:1920)
-- [ ] `func (dl *DataList) LagrangeInterpolation(x float64) float64` (datalist_interpolation.go:63)
-- [ ] `func (dl *DataList) Len() int` (datalist.go:606)
-- [ ] `func (dl *DataList) LinearInterpolation(x float64) float64` (datalist_interpolation.go:11)
-- [ ] `func (dl *DataList) Lower() *DataList` (datalist.go:1119)
-- [ ] `func (dl *DataList) MAD() float64` (datalist.go:1490)
-- [ ] `func (dl *DataList) Map(mapFunc func(int, any) any) *DataList` (datalist_map.go:5)
-- [ ] `func (dl *DataList) Max() float64` (datalist.go:1180)
-- [ ] `func (dl *DataList) Mean() float64` (datalist.go:1258)
-- [ ] `func (dl *DataList) Median() float64` (datalist.go:1383)
-- [ ] `func (dl *DataList) Min() float64` (datalist.go:1219)
-- [ ] `func (dl *DataList) Mode() []float64` (datalist.go:1431)
-- [ ] `func (dl *DataList) MovingAverage(windowSize int) *DataList` (datalist.go:847)
-- [ ] `func (dl *DataList) MovingStdev(windowSize int) *DataList` (datalist.go:983)
-- [ ] `func (dl *DataList) NearestNeighborInterpolation(x float64) float64` (datalist_interpolation.go:81)
-- [ ] `func (dl *DataList) NewtonInterpolation(x float64) float64` (datalist_interpolation.go:99)
-- [ ] `func (dl *DataList) Normalize() *DataList` (datalist.go:765)
-- [ ] `func (dl *DataList) ParseDates(layouts ...string) *DataList` (datalist_dates.go:29)
-- [ ] `func (dl *DataList) ParseNumbers() *DataList` (datalist.go:1977)
-- [ ] `func (dl *DataList) ParseStrings() *DataList` (datalist.go:1997)
-- [ ] `func (dl *DataList) PctChange(periods int) *DataList` (datalist_window.go:96)
-- [ ] `func (dl *DataList) Percentile(p float64) float64` (datalist.go:1816)
-- [ ] `func (dl *DataList) Pop() any` (datalist.go:441)
-- [ ] `func (dl *DataList) QuadraticInterpolation(x float64) float64` (datalist_interpolation.go:37)
-- [ ] `func (dl *DataList) Quartile(q int) float64` (datalist.go:1735)
-- [ ] `func (dl *DataList) Range() float64` (datalist.go:1681)
-- [ ] `func (dl *DataList) Rank(ascending ...bool) *DataList` (datalist.go:1051)
-- [ ] `func (dl *DataList) ReplaceAll(oldValue, newValue any) *DataList` (datalist.go:376)
-- [ ] `func (dl *DataList) ReplaceFirst(oldValue, newValue any) *DataList` (datalist.go:345)
-- [ ] `func (dl *DataList) ReplaceLast(oldValue, newValue any) *DataList` (datalist.go:353)
-- [ ] `func (dl *DataList) ReplaceNaNsAndNilsWith(value any) *DataList` (datalist.go:431)
-- [ ] `func (dl *DataList) ReplaceNaNsWith(value any) *DataList` (datalist.go:410)
-- [ ] `func (dl *DataList) ReplaceNilsWith(value any) *DataList` (datalist.go:418)
-- [ ] `func (dl *DataList) ReplaceOutliers(stdDevs float64, replacement float64) *DataList` (datalist.go:388)
-- [ ] `func (dl *DataList) Reverse() *DataList` (datalist.go:1097)
-- [ ] `func (dl *DataList) Rolling(opts RollingOptions) *RollingDataList` (datalist_window.go:219)
-- [ ] `func (dl *DataList) Sample(n int, withReplacement bool, options ...SamplingOptions) *DataList` (datalist_sampling.go:6)
-- [ ] `func (dl *DataList) SampleFrac(frac float64, withReplacement bool, options ...SamplingOptions) *DataList` (datalist_sampling.go:42)
-- [ ] `func (dl *DataList) SetName(newName string) *DataList` (datalist.go:2099)
-- [ ] `func (dl *DataList) Shift(periods int, fill ...any) *DataList` (datalist_window.go:19)
+- [x] `func (dl *DataList) Append(values ...any) *DataList` (datalist.go:102) — OK
+- [x] `func (dl *DataList) AppendDataList(other IDataList) *DataList` (datalist.go:131) — OK；先鎖 other 再鎖自己的做法正確
+- [x] `func (dl *DataList) Capitalize() *DataList` (datalist.go:1132) — D-16 寫死英文
+- [x] `func (dl *DataList) Clear() *DataList` (datalist.go:598) — OK
+- [x] `func (dl *DataList) ClearErr() *DataList` (datalist.go:2123) — OK；但 D-5 讓 Err 充滿雜訊
+- [x] `func (dl *DataList) ClearNaNs() *DataList` (datalist.go:697) — D-9 O(n²)
+- [x] `func (dl *DataList) ClearNils() *DataList` (datalist.go:710) — D-9 O(n²)
+- [x] `func (dl *DataList) ClearNilsAndNaNs() *DataList` (datalist.go:723) — D-9
+- [x] `func (dl *DataList) ClearNumbers() *DataList` (datalist.go:675) — OK 單趟；`filteredData := dl.data[:0]` 原地壓縮正確
+- [x] `func (dl *DataList) ClearOutliers(stdDevs float64) *DataList` (datalist.go:733) — D-2 半毀、D-9 O(n²)；Debug log 逐元素輸出（大表噪音）
+- [x] `func (dl *DataList) ClearStrings() *DataList` (datalist.go:615) — D-9 無謂平行化、遺留註解
+- [x] `func (dl *DataList) Clone() *DataList` (datalist.go:166) — OK；不複製 lastError，creation 時間重設，doc 稱 deep copy 但元素是淺拷貝（元素為指標時共享）
+- [x] `func (dl *DataList) Concat(other IDataList) *DataList` (datalist.go:112) — D-15 丟名稱；鎖序正確
+- [x] `func (dl *DataList) Count(value any) int` (datalist.go:182) — D-5 空 list 設 Err（已實測）；D-11
+- [x] `func (dl *DataList) Counter() map[any]int` (datalist.go:191) — D-11 不可比較元素 panic
+- [x] `func (dl *DataList) CumMax() *DataList` (datalist_window.go:143) — OK（nil 語意對齊 pandas skipna，doc 清楚）
+- [x] `func (dl *DataList) CumMin() *DataList` (datalist_window.go:149) — OK
+- [x] `func (dl *DataList) CumProd() *DataList` (datalist_window.go:137) — OK
+- [x] `func (dl *DataList) CumSum() *DataList` (datalist_window.go:132) — OK
+- [x] `func (dl *DataList) Data() []any` (datalist.go:41) — D-9 每次整份複製；文件有寫 copy-on-read：OK
+- [x] `func (dl *DataList) Describe(options ...DescribeOptions) *DataTable` (datalist_describe.go:4) — OK 設計；失敗回空表（D-3）
+- [x] `func (dl *DataList) Diff(periods int) *DataList` (datalist_window.go:64) — OK 語意；失敗回 nil（D-3）
+- [x] `func (dl *DataList) Difference() *DataList` (datalist.go:1864) — D-14 重複、D-2 用 ParseF64、D-3 回 nil
+- [x] `func (dl *DataList) DoubleExponentialSmoothing(alpha, beta float64) *DataList` (datalist.go:955) — D-4 走 ToF64Slice、D-3 回 nil、D-14
+- [x] `func (dl *DataList) Drop(index int) *DataList` (datalist.go:458) — OK；D-17 doc 錯
+- [x] `func (dl *DataList) DropAll(toDrop ...any) *DataList` (datalist.go:479) — D-9 無謂平行化；D-11
+- [x] `func (dl *DataList) DropIfContains(substring string) *DataList` (datalist.go:573) — OK；名稱沒說只作用於字串（doc 有寫）
+- [x] `func (dl *DataList) EWM(opts EWMOptions) *EWMDataList` (datalist_ewm.go:30) — OK：options struct、參數驗證完整、pandas 對齊，是本套件的範本
+- [x] `func (dl *DataList) Err() *ErrorInfo` (datalist.go:2117) — OK 設計；D-5 雜訊、K-3 等級
+- [x] `func (dl *DataList) Expanding(minObs int) *ExpandingDataList` (datalist_window.go:570) — OK；minObs 用 int 參數而非 options struct，與 Rolling 不一致（Low）
+- [x] `func (dl *DataList) ExponentialSmoothing(alpha float64) *DataList` (datalist.go:930) — D-4、D-3、D-14
+- [x] `func (dl *DataList) FillBackward(limit ...int) *DataList` (datalist_impute.go:97) — D-8 variadic limit；邏輯 OK
+- [x] `func (dl *DataList) FillByInterpolation(extrapolate ...bool) *DataList` (datalist_impute.go:227) — D-8 variadic bool；邏輯 OK，非數值時整體拒絕（正確做法）
+- [x] `func (dl *DataList) FillForward(limit ...int) *DataList` (datalist_impute.go:71) — D-8；邏輯 OK
+- [x] `func (dl *DataList) FillNaNWithMean() *DataList` (datalist.go:821) — 已 Deprecated：OK；D-2
+- [x] `func (dl *DataList) FillWithMean() *DataList` (datalist_impute.go:124) — OK：混合型別拒絕填入（正確）
+- [x] `func (dl *DataList) FillWithMedian() *DataList` (datalist_impute.go:154) — OK
+- [x] `func (dl *DataList) FillWithMode() *DataList` (datalist_impute.go:182) — OK 語意；D-11 DeepEqual O(n²)
+- [x] `func (dl *DataList) Filter(filterFunc func(any) bool) *DataList` (datalist.go:330) — OK；D-15 丟名稱；filterFunc panic 會穿出（無 recover，與 Map 不一致）
+- [x] `func (dl *DataList) FindAll(value any) []int` (datalist.go:300) — D-5；D-11
+- [x] `func (dl *DataList) FindFirst(value any) any` (datalist.go:248) — D-6 回 any；D-5
+- [x] `func (dl *DataList) FindLast(value any) any` (datalist.go:274) — D-6；D-5
+- [x] `func (dl *DataList) GMean() float64` (datalist.go:1346) — D-4 跳過非正數與非數值
+- [x] `func (dl *DataList) Get(index int) any` (datalist.go:148) — D-6 nil 二義、D-5
+- [x] `func (dl *DataList) GetCreationTimestamp() int64` (datalist.go:2064) — D-12 Unix 秒
+- [x] `func (dl *DataList) GetLastModifiedTimestamp() int64` (datalist.go:2073) — D-12
+- [x] `func (dl *DataList) GetName() string` (datalist.go:2090) — OK
+- [x] `func (dl *DataList) HermiteInterpolation(x float64, derivatives []float64) float64` (datalist_interpolation.go:117) — D-4 走 ToF64Slice
+- [x] `func (dl *DataList) IQR() float64` (datalist.go:1789) — OK；D-4
+- [x] `func (dl *DataList) InsertAt(index int, value any) *DataList` (datalist.go:221) — D-15 越界 append
+- [x] `func (dl *DataList) IsEqualTo(anotherDl *DataList) bool` (datalist.go:1892) — D-11 NaN 永不相等（已實測）
+- [x] `func (dl *DataList) IsTheSameAs(anotherDl *DataList) bool` (datalist.go:1920) — D-12 秒級比較
+- [x] `func (dl *DataList) LagrangeInterpolation(x float64) float64` (datalist_interpolation.go:63) — D-4
+- [x] `func (dl *DataList) Len() int` (datalist.go:606) — OK；D-17 無 doc
+- [x] `func (dl *DataList) LinearInterpolation(x float64) float64` (datalist_interpolation.go:11) — D-4
+- [x] `func (dl *DataList) Lower() *DataList` (datalist.go:1119) — OK
+- [x] `func (dl *DataList) MAD() float64` (datalist.go:1490) — D-4；命名：MAD 通常指 median absolute deviation，這裡是 mean absolute deviation around median，doc 要講清楚（Low）
+- [x] `func (dl *DataList) Map(mapFunc func(int, any) any) *DataList` (datalist_map.go:5) — OK；recover 保留原值是否該視為錯誤，與 Filter 不一致（Low）；空 list 設 Err（D-5）
+- [x] `func (dl *DataList) Max() float64` (datalist.go:1180) — D-4
+- [x] `func (dl *DataList) Mean() float64` (datalist.go:1258) — D-4（已實測 [a,1,2] = 1.5）
+- [x] `func (dl *DataList) Median() float64` (datalist.go:1383) — D-4
+- [x] `func (dl *DataList) Min() float64` (datalist.go:1219) — D-4
+- [x] `func (dl *DataList) Mode() []float64` (datalist.go:1431) — D-13 全同頻率回 nil；D-4
+- [x] `func (dl *DataList) MovingAverage(windowSize int) *DataList` (datalist.go:847) — D-3、D-14
+- [x] `func (dl *DataList) MovingStdev(windowSize int) *DataList` (datalist.go:983) — D-3、D-14、D-17 doc 名稱錯；每個 window 建一個 DataList（效能）
+- [x] `func (dl *DataList) NearestNeighborInterpolation(x float64) float64` (datalist_interpolation.go:81) — D-4
+- [x] `func (dl *DataList) NewtonInterpolation(x float64) float64` (datalist_interpolation.go:99) — D-4
+- [x] `func (dl *DataList) Normalize() *DataList` (datalist.go:765) — D-2（已實測半毀）、D-3 回 nil
+- [x] `func (dl *DataList) ParseDates(layouts ...string) *DataList` (datalist_dates.go:29) — OK：語意明確且文件完整；不可解析變 nil 是設計決策（可考慮 coerce/raise 選項）
+- [x] `func (dl *DataList) ParseNumbers() *DataList` (datalist.go:1977) — D-16 int 變 float64
+- [x] `func (dl *DataList) ParseStrings() *DataList` (datalist.go:1997) — OK
+- [x] `func (dl *DataList) PctChange(periods int) *DataList` (datalist_window.go:96) — OK 語意；D-3 回 nil
+- [x] `func (dl *DataList) Percentile(p float64) float64` (datalist.go:1816) — D-13 尺度 0..100；D-4
+- [x] `func (dl *DataList) Pop() any` (datalist.go:441) — D-5 空 list 設 Err
+- [x] `func (dl *DataList) QuadraticInterpolation(x float64) float64` (datalist_interpolation.go:37) — D-4
+- [x] `func (dl *DataList) Quartile(q int) float64` (datalist.go:1735) — D-13 魔數；D-4
+- [x] `func (dl *DataList) Range() float64` (datalist.go:1681) — OK；D-4
+- [x] `func (dl *DataList) Rank(ascending ...bool) *DataList` (datalist.go:1051) — D-4（已實測 "b" 被當 0）、D-8
+- [x] `func (dl *DataList) ReplaceAll(oldValue, newValue any) *DataList` (datalist.go:376) — OK；D-11
+- [x] `func (dl *DataList) ReplaceFirst(oldValue, newValue any) *DataList` (datalist.go:345) — OK
+- [x] `func (dl *DataList) ReplaceLast(oldValue, newValue any) *DataList` (datalist.go:353) — D-1 Bug（已實測）
+- [x] `func (dl *DataList) ReplaceNaNsAndNilsWith(value any) *DataList` (datalist.go:431) — OK
+- [x] `func (dl *DataList) ReplaceNaNsWith(value any) *DataList` (datalist.go:410) — OK
+- [x] `func (dl *DataList) ReplaceNilsWith(value any) *DataList` (datalist.go:418) — OK
+- [x] `func (dl *DataList) ReplaceOutliers(stdDevs float64, replacement float64) *DataList` (datalist.go:388) — OK；非數值保留（正確）；閾值用樣本 stdev 應寫進 doc
+- [x] `func (dl *DataList) Reverse() *DataList` (datalist.go:1097) — OK
+- [x] `func (dl *DataList) Rolling(opts RollingOptions) *RollingDataList` (datalist_window.go:219) — OK：與 EWM 同為範本；Center+Weights 對齊註解清楚
+- [x] `func (dl *DataList) Sample(n int, withReplacement bool, options ...SamplingOptions) *DataList` (datalist_sampling.go:6) — D-3 回空 list、D-15 改名、D-8
+- [x] `func (dl *DataList) SampleFrac(frac float64, withReplacement bool, options ...SamplingOptions) *DataList` (datalist_sampling.go:42) — 同 Sample
+- [x] `func (dl *DataList) SetName(newName string) *DataList` (datalist.go:2099) — OK
+- [x] `func (dl *DataList) Shift(periods int, fill ...any) *DataList` (datalist_window.go:19) — OK 語意；D-8 variadic fill
 - [ ] `func (dl *DataList) Show()` (show.go:713)
 - [ ] `func (dl *DataList) ShowRange(startEnd ...any)` (show.go:738)
 - [ ] `func (dl *DataList) ShowRangeTo(w io.Writer, startEnd ...any)` (show.go:744)
@@ -280,22 +306,22 @@
 - [ ] `func (dl *DataList) ShowTypesRange(startEnd ...any)` (show.go:1064)
 - [ ] `func (dl *DataList) ShowTypesRangeTo(w io.Writer, startEnd ...any)` (show.go:1070)
 - [ ] `func (dl *DataList) ShowTypesTo(w io.Writer)` (show.go:1058)
-- [ ] `func (dl *DataList) Shuffle(options ...SamplingOptions) *DataList` (datalist_sampling.go:56)
-- [ ] `func (dl *DataList) Sort(ascending ...bool) *DataList` (datalist.go:1007)
-- [ ] `func (dl *DataList) Standardize() *DataList` (datalist.go:796)
-- [ ] `func (dl *DataList) Stdev() float64` (datalist.go:1536)
-- [ ] `func (dl *DataList) StdevP() float64` (datalist.go:1559)
-- [ ] `func (dl *DataList) Sum() float64` (datalist.go:1148)
-- [ ] `func (dl *DataList) Summary()` (datalist_summary.go:12)
-- [ ] `func (dl *DataList) SummaryTo(w io.Writer)` (datalist_summary.go:17)
-- [ ] `func (dl *DataList) ToF64Slice() []float64` (datalist.go:2020)
-- [ ] `func (dl *DataList) ToStringSlice() []string` (datalist.go:2042)
-- [ ] `func (dl *DataList) Update(index int, newValue any) *DataList` (datalist.go:203)
-- [ ] `func (dl *DataList) Upper() *DataList` (datalist.go:1106)
-- [ ] `func (dl *DataList) Var() float64` (datalist.go:1582)
-- [ ] `func (dl *DataList) VarP() float64` (datalist.go:1632)
-- [ ] `func (dl *DataList) WeightedMean(weights any) float64` (datalist.go:1292)
-- [ ] `func (dl *DataList) WeightedMovingAverage(windowSize int, weights any) *DataList` (datalist.go:880)
+- [x] `func (dl *DataList) Shuffle(options ...SamplingOptions) *DataList` (datalist_sampling.go:56) — D-3、D-15、D-8
+- [x] `func (dl *DataList) Sort(ascending ...bool) *DataList` (datalist.go:1007) — D-8；D-5 空 list 設 Err；混合型別排序有 recover 回滾：OK
+- [x] `func (dl *DataList) Standardize() *DataList` (datalist.go:796) — D-2 半毀
+- [x] `func (dl *DataList) Stdev() float64` (datalist.go:1536) — D-4
+- [x] `func (dl *DataList) StdevP() float64` (datalist.go:1559) — D-4
+- [x] `func (dl *DataList) Sum() float64` (datalist.go:1148) — D-4
+- [x] `func (dl *DataList) Summary()` (datalist_summary.go:12) — OK（委派 SummaryTo）
+- [x] `func (dl *DataList) SummaryTo(w io.Writer)` (datalist_summary.go:17) — OK：接受 io.Writer 是正確模式，Show* 應比照
+- [x] `func (dl *DataList) ToF64Slice() []float64` (datalist.go:2020) — D-4 根源；既有 follow-up；D-17 doc
+- [x] `func (dl *DataList) ToStringSlice() []string` (datalist.go:2042) — OK；空 list 設 Err（D-5）
+- [x] `func (dl *DataList) Update(index int, newValue any) *DataList` (datalist.go:203) — OK；D-15 Err 函式名錯
+- [x] `func (dl *DataList) Upper() *DataList` (datalist.go:1106) — OK
+- [x] `func (dl *DataList) Var() float64` (datalist.go:1582) — D-4
+- [x] `func (dl *DataList) VarP() float64` (datalist.go:1632) — D-4
+- [x] `func (dl *DataList) WeightedMean(weights any) float64` (datalist.go:1292) — D-10 `any`；D-4
+- [x] `func (dl *DataList) WeightedMovingAverage(windowSize int, weights any) *DataList` (datalist.go:880) — D-10、D-3、D-14
 - [ ] `func (dt *DataTable) AddColUsingCCL(newColName, cclFormula string) *DataTable` (datatable_ccl.go:13)
 - [ ] `func (dt *DataTable) AppendCols(columns ...*DataList) *DataTable` (datatable.go:69)
 - [ ] `func (dt *DataTable) AppendRowsByColIndex(rowsData ...map[string]any) *DataTable` (datatable.go:161)
@@ -404,7 +430,7 @@
 - [ ] `func (dt *DataTable) NumRows() int` (datatable.go:1307)
 - [ ] `func (dt *DataTable) OneHotEncode(opts OneHotOptions) (*DataTable, *OneHotEncoder, error)` (datatable_encode.go:124)
 - [ ] `func (dt *DataTable) OrdinalEncode(opts OrdinalEncodeOptions) (*DataTable, *OrdinalEncoder, error)` (datatable_encode.go:150)
-- [ ] `func (dt *DataTable) ParseDatesCols(cols []string, layouts ...string) *DataTable` (datalist_dates.go:46)
+- [x] `func (dt *DataTable) ParseDatesCols(cols []string, layouts ...string) *DataTable` (datalist_dates.go:46) — OK；找不到的欄位跳過並 warn（部分成功，doc 有寫）
 - [ ] `func (dt *DataTable) PctChangeCol(col string, periods int) *DataList` (datatable_window.go:58)
 - [ ] `func (dt *DataTable) Pivot(cfg PivotConfig) (*DataTable, error)` (datatable_pivot.go:101)
 - [ ] `func (dt *DataTable) Replace(oldValue, newValue any) *DataTable` (datatable_replace.go:11)
@@ -471,16 +497,16 @@
 - [ ] `func (dt *DataTable) UpdateColByNumber(index int, dl *DataList) *DataTable` (datatable.go:453)
 - [ ] `func (dt *DataTable) UpdateElement(rowIndex int, columnIndex string, value any) *DataTable` (datatable.go:409)
 - [ ] `func (dt *DataTable) UpdateRow(index int, dl *DataList) *DataTable` (datatable.go:476)
-- [ ] `func (e *EWMDataList) Mean() *DataList` (datalist_ewm.go:85)
-- [ ] `func (e *EWMDataList) Std() *DataList` (datalist_ewm.go:99)
-- [ ] `func (e *EWMDataList) Var() *DataList` (datalist_ewm.go:93)
-- [ ] `func (e *ExpandingDataList) Max() *DataList` (datalist_window.go:644)
-- [ ] `func (e *ExpandingDataList) Mean() *DataList` (datalist_window.go:620)
-- [ ] `func (e *ExpandingDataList) Median() *DataList` (datalist_window.go:657)
-- [ ] `func (e *ExpandingDataList) Min() *DataList` (datalist_window.go:631)
-- [ ] `func (e *ExpandingDataList) Std() *DataList` (datalist_window.go:672)
-- [ ] `func (e *ExpandingDataList) Sum() *DataList` (datalist_window.go:609)
-- [ ] `func (e *ExpandingDataList) Var() *DataList` (datalist_window.go:683)
+- [x] `func (e *EWMDataList) Mean() *DataList` (datalist_ewm.go:85) — OK
+- [x] `func (e *EWMDataList) Std() *DataList` (datalist_ewm.go:99) — OK
+- [x] `func (e *EWMDataList) Var() *DataList` (datalist_ewm.go:93) — OK
+- [x] `func (e *ExpandingDataList) Max() *DataList` (datalist_window.go:644) — OK
+- [x] `func (e *ExpandingDataList) Mean() *DataList` (datalist_window.go:620) — OK
+- [x] `func (e *ExpandingDataList) Median() *DataList` (datalist_window.go:657) — OK
+- [x] `func (e *ExpandingDataList) Min() *DataList` (datalist_window.go:631) — OK
+- [x] `func (e *ExpandingDataList) Std() *DataList` (datalist_window.go:672) — OK
+- [x] `func (e *ExpandingDataList) Sum() *DataList` (datalist_window.go:609) — OK
+- [x] `func (e *ExpandingDataList) Var() *DataList` (datalist_window.go:683) — OK
 - [ ] `func (e *LabelEncoder) Classes() []any` (datatable_encode.go:287)
 - [ ] `func (e *LabelEncoder) Inverse(values ...any) ([]any, error)` (datatable_encode.go:316)
 - [ ] `func (e *LabelEncoder) InverseTransform(dt *DataTable) (*DataTable, error)` (datatable_encode.go:274)
@@ -541,17 +567,17 @@
 - [ ] `func (i *SimpleImputer) Transform(dt *DataTable) (*DataTable, error)` (datatable_simple_imputer.go:146)
 - [x] `func (l LogLevel) String() string` (error_buffer.go:37) — OK；放在 error_buffer.go 不在 config.go，找不到（Low）
 - [ ] `func (o AggregateOp) String() string` (datatable_groupby.go:48)
-- [ ] `func (r *RollingDataList) Apply(fn func(window []any) any) *DataList` (datalist_window.go:435)
-- [ ] `func (r *RollingDataList) Beta(other *DataList) *DataList` (datalist_window.go:544)
-- [ ] `func (r *RollingDataList) Corr(other *DataList) *DataList` (datalist_window.go:528)
-- [ ] `func (r *RollingDataList) Cov(other *DataList) *DataList` (datalist_window.go:535)
-- [ ] `func (r *RollingDataList) Max() *DataList` (datalist_window.go:381)
-- [ ] `func (r *RollingDataList) Mean() *DataList` (datalist_window.go:346)
-- [ ] `func (r *RollingDataList) Median() *DataList` (datalist_window.go:395)
-- [ ] `func (r *RollingDataList) Min() *DataList` (datalist_window.go:368)
-- [ ] `func (r *RollingDataList) Std() *DataList` (datalist_window.go:410)
-- [ ] `func (r *RollingDataList) Sum() *DataList` (datalist_window.go:328)
-- [ ] `func (r *RollingDataList) Var() *DataList` (datalist_window.go:421)
+- [x] `func (r *RollingDataList) Apply(fn func(window []any) any) *DataList` (datalist_window.go:435) — OK；MinObs 以數值計、傳給 fn 的是原始 window：doc 有寫
+- [x] `func (r *RollingDataList) Beta(other *DataList) *DataList` (datalist_window.go:544) — OK
+- [x] `func (r *RollingDataList) Corr(other *DataList) *DataList` (datalist_window.go:528) — OK；`pearson` 回 any 而非 float64（內部，Low）
+- [x] `func (r *RollingDataList) Cov(other *DataList) *DataList` (datalist_window.go:535) — OK
+- [x] `func (r *RollingDataList) Max() *DataList` (datalist_window.go:381) — OK
+- [x] `func (r *RollingDataList) Mean() *DataList` (datalist_window.go:346) — OK
+- [x] `func (r *RollingDataList) Median() *DataList` (datalist_window.go:395) — OK
+- [x] `func (r *RollingDataList) Min() *DataList` (datalist_window.go:368) — OK
+- [x] `func (r *RollingDataList) Std() *DataList` (datalist_window.go:410) — OK
+- [x] `func (r *RollingDataList) Sum() *DataList` (datalist_window.go:328) — OK
+- [x] `func (r *RollingDataList) Var() *DataList` (datalist_window.go:421) — OK
 - [x] `func (s *DataList) AtomicDo(f func(*DataList))` (atomic.go:29) — 同 DataTable.AtomicDo；receiver 名 `s` 與其他方法的 `dl` 不一致（Low）
 - [x] `func (s *DataList) Close()` (atomic.go:44) — 同 DataTable.Close
 - [ ] `func (t *GroupedColumnTransform) As(name string) *DataList` (datatable_groupby_window.go:28)
@@ -571,7 +597,7 @@
 - [x] `func LogFatal(packageName, funcName, msg string, args ...any)` (logger.go:9) — K-1 程式庫呼叫 os.Exit
 - [x] `func LogInfo(packageName, funcName, msg string, args ...any)` (logger.go:60) — K-17；預設開啟造成成功路徑噪音（C-9 的根源）
 - [x] `func LogWarning(packageName, funcName, msg string, args ...any)` (logger.go:27) — K-17；同時 pushError（K-4、K-5）
-- [ ] `func NewDataList(values ...any) *DataList` (datalist.go:81)
+- [x] `func NewDataList(values ...any) *DataList` (datalist.go:81) — OK；遞迴攤平巢狀 slice 是驚喜行為但 doc 有寫；typed slice 直接可用是好的體驗
 - [ ] `func NewDataTable(columns ...*DataList) *DataTable` (datatable.go:47)
 - [ ] `func NewDefaultMinMaxScaler() *MinMaxScaler` (datatable_scale.go:109)
 - [ ] `func NewMaxAbsScaler() *MaxAbsScaler` (datatable_scale.go:115)
@@ -608,17 +634,17 @@
 - [ ] `type AggregateConfig struct { SourceCol string As string Op AggregateOp Custom func(group *DataList) any }` (datatable_groupby.go:85)
 - [ ] `type AggregateOp int` (datatable_groupby.go:12)
 - [x] `type CSVReadOptions struct { FirstColToRowNames bool FirstRowToColNames bool Encoding string RawStrings bool AllowRaggedRows bool TrimLeadingSpace bool }` (read.go:93) — OK 零值可用、欄位有 doc：這是套件內最合格的 options struct，其他地方應比照
-- [ ] `type DataList struct { data []any name string creationTimestamp int64 lastModifiedTimestamp atomic.Int64 atomicActor core.AtomicActor lastError *ErrorInfo }` (datalist.go:25)
+- [x] `type DataList struct { data []any name string creationTimestamp int64 lastModifiedTimestamp atomic.Int64 atomicActor core.AtomicActor lastError *ErrorInfo }` (datalist.go:25) — OK；欄位全私有
 - [ ] `type DataListScaler interface { FitDataList(dl *DataList) error TransformDataList(dl *DataList) (*DataList, error) FitTransformDataList(dl *DataList) (*DataList, error) InverseTransformDataList(dl *DataList) (*DataList, error) }` (datatable_scale.go:52)
 - [ ] `type DataTable struct { columns []*DataList rowNames *core.BiIndex name string creationTimestamp int64 lastModifiedTimestamp atomic.Int64 atomicActor core.AtomicActor lastError *ErrorInfo }` (datatable.go:33)
 - [ ] `type DataTableSortConfig struct { ColumnIndex string ColumnNumber int ColumnName string Descending bool }` (datatable_sort.go:7)
-- [ ] `type DescribeOptions struct { Percentiles []float64 IncludeAll bool }` (describe_options.go:13)
-- [ ] `type EWMDataList struct { srcData []any srcName string opts EWMOptions alpha float64 parent *DataList err string }` (datalist_ewm.go:19)
-- [ ] `type EWMOptions struct { Alpha float64 Span float64 HalfLife float64 Adjust bool Bias bool MinObs int }` (datalist_ewm.go:8)
+- [x] `type DescribeOptions struct { Percentiles []float64 IncludeAll bool }` (describe_options.go:13) — OK；D-13 尺度
+- [x] `type EWMDataList struct { srcData []any srcName string opts EWMOptions alpha float64 parent *DataList err string }` (datalist_ewm.go:19) — OK；`err string` 應為 error（Low）
+- [x] `type EWMOptions struct { Alpha float64 Span float64 HalfLife float64 Adjust bool Bias bool MinObs int }` (datalist_ewm.go:8) — OK 範本
 - [ ] `type Encoder interface { Transform(dt *DataTable) (*DataTable, error) InverseTransform(dt *DataTable) (*DataTable, error) Kind() string }` (datatable_encode.go:80)
 - [x] `type ErrPoppingMode int` (error_buffer.go:11) — K-4
 - [x] `type ErrorInfo struct { Level LogLevel PackageName string FuncName string Message string Timestamp time.Time }` (error_buffer.go:23) — OK；`Level` 用 LogLevel 而非 error 等級（K-3）
-- [ ] `type ExpandingDataList struct { srcData []any srcName string minObs int parent *DataList err string }` (datalist_window.go:561)
+- [x] `type ExpandingDataList struct { srcData []any srcName string minObs int parent *DataList err string }` (datalist_window.go:561) — OK
 - [x] `type F64orRat = utils.F64orRat` (utils.go:20) — K-15 internal 介面的匯出別名
 - [ ] `type GroupedColumnTransform struct { parent *GroupedDataTable sourceCol int sourceLabel string perGroupFn func(group *DataList) *DataList err string }` (datatable_groupby_window.go:17)
 - [ ] `type GroupedDataTable struct { parent *DataTable keyColNumbers []int keyColLabels []string columnsSnapshot []*DataList rowsByGroup map[string][]int groupOrder []string groupKeyValues map[string][]any initErr string }` (datatable_groupby.go:106)
@@ -646,8 +672,8 @@
 - [ ] `type ResampleAgg struct { Col string Op AggregateOp As string }` (datatable_resample.go:21)
 - [ ] `type ResampleFreq int` (datatable_resample.go:10)
 - [ ] `type RobustScaler struct{ scaler }` (datatable_scale.go:94)
-- [ ] `type RollingDataList struct { srcData []any srcName string opts RollingOptions parent *DataList err string }` (datalist_window.go:208)
-- [ ] `type RollingOptions struct { Window int MinObs int Center bool Weights []float64 }` (datalist_window.go:196)
+- [x] `type RollingDataList struct { srcData []any srcName string opts RollingOptions parent *DataList err string }` (datalist_window.go:208) — OK
+- [x] `type RollingOptions struct { Window int MinObs int Center bool Weights []float64 }` (datalist_window.go:196) — OK 範本
 - [ ] `type SQLActionIfTableExists int` (datatable_to_sql.go:37)
 - [ ] `type SamplingOptions struct { Seed uint64 UseSeed bool PreserveOrder bool }` (datatable_sampling.go:14)
 - [ ] `type Scaler interface { Fit(dt *DataTable, cols ...string) error Transform(dt *DataTable) (*DataTable, error) FitTransform(dt *DataTable, cols ...string) (*DataTable, error) InverseTransform(dt *DataTable) (*DataTable, error) Params() map[string]ScalerParams Kind() string }` (datatable_scale.go:42)
