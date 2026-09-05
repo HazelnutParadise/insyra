@@ -43,7 +43,7 @@
 | `accel` | 127 | 未開始 |
 | `cli` 系列（cli, commands, env, repl, style） | 79 | 未開始 |
 | `csvxl` | 9 | **完成** |
-| `datafetch` | 42 | 未開始 |
+| `datafetch` | 89 | **完成** |
 | `engine` 系列（algorithms, atomic, biindex, ccl, dsl, ring） | 41 | 未開始 |
 | `finance` | 60 | **完成** |
 | `gplot` | 15 | 未開始 |
@@ -252,6 +252,18 @@
 | FI-2 | Med | `ScheduleTable` 回傳的 DataTable 格子是 `decimal.Decimal`，core 的 `ToFloat64Safe` 不認識它，這張表的 `Mean`／`Sum`／`Describe` 全部失效，doc 只說「用 `.String()` 轉文字」；且回傳型別是 `insyra.IDataTable`（K-7）（準則 6、13） | finance/amortization.go:93-119 | 提供 `float64` 欄位版本，或讓 core 認識 decimal |
 | FI-3 | Low | `RoundUnnecessary` 模式下需要捨入時「panics with decimal.ErrRoundingNecessary」（doc 原文），程式庫選項導致 panic；`opts ...Options` variadic「最後一個生效」（D-8）；`var Zero` 可被覆寫（K-12）（準則 11） | finance/options.go:66, 128-140；helpers.go:22 | 該模式改回 error；Zero 改 func 或文件註明不可改 |
 | FI-4 | OK | 其餘是範本等級：每個函式驗證參數並回 error、`Options` 零值可用且逐欄位獨立預設、Excel 對應（`basis`、`type`）寫明、`NPV` 與 `NPVExcel` 的 t=0／t=1 差異講清楚、精度以 guard digits 處理 | — | — |
+
+### datafetch
+
+| 編號 | 嚴重度 | 問題 | 位置 | 建議 |
+| --- | --- | --- | --- | --- |
+| DF-1 | High | Google Maps 爬蟲：檔案第一行寫著 `FIXME: this crawler doesn't work anymore because Google has changed their API`，但 `GoogleMapsStores`／`Search`／`GetReviews` 仍是公開 API。而且它在執行期從作者個人 GitHub repo 的 raw URL 下載設定（要打的 URL 與要送的 headers），誰控制那個 repo 就控制程式庫的對外請求與夾帶的標頭，是供應鏈注入面；用沒有 timeout 的 `http.DefaultClient`、`fmt.Printf` 直接印進度到 stdout、全部失敗只回 nil 加 warning（準則 11、14） | datafetch/googleMapsCommentCrawler.go:1, 69-105, 107-160, 169-300 | 從程式庫移除（或拆成獨立 module）；至少標 Deprecated 並在 Docs 註明已失效 |
+| DF-2 | Med | 所有抓取方法都沒有 `context.Context`：`DailyPrices(code, from, to, market)`、`History(params)`、`Reverse(lat, lng)`、`ReverseTable(...)`；限流器內部用 `context.Background()`。跑到一半的批次抓取無法取消，也無法接 HTTP handler 的 ctx（準則 8、12） | twstock.go:110-113, 193；yfinance.go:275；geocoding.go:166-430 | 每個方法加 ctx 版本（`DailyPricesContext`）或直接改簽名 |
+| DF-3 | Med | 建構子回傳未匯出型別：`TWStock() (*twStock, error)`、`YFinance() (*yahooFinance, error)`、`Ticker() *ticker`、`TWGeocoding() (*twGeocoder, error)`、`GoogleMapsStores() *googleMapsStoreCrawler`。使用者無法在自己的 struct 或函式簽名宣告這些型別（I-2 同族） | twstock.go:94；yfinance.go:108, 251；geocoding.go:150 | 匯出型別或定義介面 |
+| DF-4 | Med | 第三方型別直接進公開簽名：`YFHistoryParams = models.HistoryParams`、`News(count int, tab models.NewsTab)` 洩漏 `wnjoon/go-yfinance` 的型別，該套件改版即 breaking；yfinance 預設 User-Agent 偽裝成 Chrome 117（服務條款風險，至少要在 Docs 標明）（準則 8、10、14） | yfinance.go:23, 49, 491 | 自有 `YFHistoryParams` struct 轉接；UA 改為誠實識別並讓使用者自行覆寫 |
+| DF-5 | Low | `YFPeriodAnnual` 與 `YFPeriodYearly` 兩個值同義；`MaxWaitingInterval_Milliseconds uint` 底線命名且應為 `time.Duration`；`ReverseTable(dt, latCol, lngCol)` 與 `ReverseTableByColName` 是 T-11 的索引／名稱雙入口；`SortByRelevance` 等常數沒有型別前綴，與 `TWMarketXxx`／`YFPeriodXxx` 風格不一致（準則 1、6、9） | yfinance.go:57-59；googleMapsCommentCrawler.go:38-53；geocoding.go:410-425 | 刪同義值；用 Duration；統一前綴 |
+| DF-6 | Low | `fileGeocodeCache.Set` 每次都把整個 map 序列化重寫檔案，非原子（無 tmp+rename），中途中斷會把快取檔寫壞，之後以空快取重來（doc 有寫「corrupt → empty」但這是可避免的）；`persist` 錯誤只 warn | geocoding.go:601-636 | tmp+rename；或改 append-only |
+| DF-7 | OK | TWStock 與 TWGeocoding 是範本：config `normalize()` 驗證並回 error、零值可用、sentinel error 用 `errors.Is`、`RateLimitError` 帶 `Unwrap` 與 `ResetAt`、`GeocodeCache` 介面明講並行安全與快取語意、回應體用 `LimitReader` 防爆 | — | — |
 
 ## 逐項清單
 
@@ -1090,95 +1102,95 @@
 
 ## datafetch (89)
 
-- [ ] `const SortByHighestRating GoogleMapsStoreReviewSortBy` (googleMapsCommentCrawler.go:50)
-- [ ] `const SortByLowestRating GoogleMapsStoreReviewSortBy` (googleMapsCommentCrawler.go:52)
-- [ ] `const SortByNewest GoogleMapsStoreReviewSortBy` (googleMapsCommentCrawler.go:48)
-- [ ] `const SortByRelevance GoogleMapsStoreReviewSortBy` (googleMapsCommentCrawler.go:46)
-- [ ] `const TWMarketAuto TWMarket` (twstock.go:77)
-- [ ] `const TWMarketTPEx TWMarket` (twstock.go:76)
-- [ ] `const TWMarketTWSE TWMarket` (twstock.go:75)
-- [ ] `const YFPeriodAnnual YFPeriod` (yfinance.go:57)
-- [ ] `const YFPeriodQuarterly YFPeriod` (yfinance.go:59)
-- [ ] `const YFPeriodYearly YFPeriod` (yfinance.go:58)
-- [ ] `func (e *RateLimitError) Error() string` (geocoding_errors.go:33)
-- [ ] `func (e *RateLimitError) Unwrap() error` (geocoding_errors.go:42)
-- [ ] `func (r *ReverseGeocodeResult) ToDataTable() *insyra.DataTable` (geocoding.go:102)
-- [ ] `func (reviews GoogleMapsStoreReviews) ToDataTable() *insyra.DataTable` (googleMapsCommentCrawler.go:315)
-- [ ] `func GoogleMapsStores() *googleMapsStoreCrawler` (googleMapsCommentCrawler.go:69)
-- [ ] `func NewFileGeocodeCache(path string) GeocodeCache` (geocoding.go:583)
-- [ ] `func NewMemoryGeocodeCache() GeocodeCache` (geocoding.go:544)
-- [ ] `func TWGeocoding(cfg TWGeocodingConfig) (*twGeocoder, error)` (geocoding.go:150)
-- [ ] `func TWStock(cfg TWStockConfig) (*twStock, error)` (twstock.go:94)
-- [ ] `func YFinance(cfg YFinanceConfig) (*yahooFinance, error)` (yfinance.go:108)
-- [ ] `type GeocodeCache interface { Get(key string) (*ReverseGeocodeResult, bool) Set(key string, r *ReverseGeocodeResult) }` (geocoding.go:530)
-- [ ] `type GoogleMapsStoreData struct { ID string Name string }` (googleMapsCommentCrawler.go:62)
-- [ ] `type GoogleMapsStoreReview struct { Reviewer string `json:"reviewer"` ReviewerID string `json:"reviewer_id"` ReviewerState string `json:"reviewer_state"` ReviewerLevel int `json:"reviewer_level"` ReviewTime string `json:"review_time"` ReviewDate string `json:"review_date"` Content string `json:"content"` Rating int `json:"rating"` }` (googleMapsCommentCrawler.go:21)
-- [ ] `type GoogleMapsStoreReviewSortBy uint8` (googleMapsCommentCrawler.go:42)
-- [ ] `type GoogleMapsStoreReviews []GoogleMapsStoreReview` (googleMapsCommentCrawler.go:33)
-- [ ] `type GoogleMapsStoreReviewsFetchingOptions struct { SortBy GoogleMapsStoreReviewSortBy MaxWaitingInterval_Milliseconds uint }` (googleMapsCommentCrawler.go:36)
-- [ ] `type RateLimitError struct { Limit int Remaining int ResetAt time.Time }` (geocoding_errors.go:27)
-- [ ] `type ReverseGeocodeResult struct { Lat float64 `json:"lat"` Lng float64 `json:"lng"` VillCode string `json:"villcode"` CountyName string `json:"county_name"` TownName string `json:"town_name"` VillageName string `json:"village_name"` VillageEng string `json:"village_eng"` CountyID string `json:"county_id"` CountyCode string `json:"county_code"` TownID string `json:"town_id"` TownCode string `json:"town_code"` }` (geocoding.go:86)
-- [ ] `type TWGeocodingConfig struct { Timeout time.Duration Interval time.Duration UserAgent string Retries int RetryBackoff time.Duration BaseURL string Cache GeocodeCache }` (geocoding.go:39)
-- [ ] `type TWMarket string` (twstock.go:72)
-- [ ] `type TWStockConfig struct { Timeout time.Duration Interval time.Duration UserAgent string Retries int RetryBackoff time.Duration Concurrency int }` (twstock.go:27)
-- [ ] `type YFFinancialStatementTables struct { Values *insyra.DataTable Items *insyra.DataTable Meta *insyra.DataTable }` (yfinance_tables.go:22)
-- [ ] `type YFHistoryParams = models.HistoryParams` (yfinance.go:49)
-- [ ] `type YFOptionChainTables struct { Calls *insyra.DataTable Puts *insyra.DataTable Underlying *insyra.DataTable Expiration time.Time }` (yfinance_tables.go:14)
-- [ ] `type YFPeriod string` (yfinance.go:54)
-- [ ] `type YFinanceConfig struct { Timeout time.Duration Interval time.Duration UserAgent string Retries int RetryBackoff time.Duration Concurrency int }` (yfinance.go:28)
-- [ ] `var ErrGeocodeNotFound` (geocoding_errors.go:15)
-- [ ] `var ErrGeocodeRateLimited` (geocoding_errors.go:20)
-- [ ] `var ErrGeocodeTimeout` (geocoding_errors.go:17)
-- [ ] `var ErrInvalidSymbol` (yfinance_errors.go:13)
-- [ ] `var ErrRateLimited` (yfinance_errors.go:11)
-- [ ] `var ErrTimeout` (yfinance_errors.go:12)
-- [ ] `func (c *fileGeocodeCache) Get(key string) (*ReverseGeocodeResult, bool)` (geocoding.go:601)
-- [ ] `func (c *fileGeocodeCache) Set(key string, r *ReverseGeocodeResult)` (geocoding.go:615)
-- [ ] `func (c *googleMapsStoreCrawler) GetReviews(storeId string, pageCount int, options ...GoogleMapsStoreReviewsFetchingOptions) GoogleMapsStoreReviews` (googleMapsCommentCrawler.go:169)
-- [ ] `func (c *googleMapsStoreCrawler) Search(storeName string) []GoogleMapsStoreData` (googleMapsCommentCrawler.go:107)
-- [ ] `func (c *memoryGeocodeCache) Get(key string) (*ReverseGeocodeResult, bool)` (geocoding.go:548)
-- [ ] `func (c *memoryGeocodeCache) Set(key string, r *ReverseGeocodeResult)` (geocoding.go:562)
-- [ ] `func (g *twGeocoder) Reverse(lat, lng float64) (*ReverseGeocodeResult, error)` (geocoding.go:166)
-- [ ] `func (g *twGeocoder) ReverseCols(lat, lng *insyra.DataList) (*insyra.DataTable, error)` (geocoding.go:282)
-- [ ] `func (g *twGeocoder) ReverseTable(dt *insyra.DataTable, latCol, lngCol string) (*insyra.DataTable, error)` (geocoding.go:410)
-- [ ] `func (g *twGeocoder) ReverseTableByColName(dt *insyra.DataTable, latColName, lngColName string) (*insyra.DataTable, error)` (geocoding.go:425)
-- [ ] `func (t *ticker) Actions() (*insyra.DataTable, error)` (yfinance.go:425)
-- [ ] `func (t *ticker) AnalystPriceTargets() (*insyra.DataTable, error)` (yfinance.go:838)
-- [ ] `func (t *ticker) BalanceSheet(freq YFPeriod) (*YFFinancialStatementTables, error)` (yfinance.go:558)
-- [ ] `func (t *ticker) Calendar() (*insyra.DataTable, error)` (yfinance.go:515)
-- [ ] `func (t *ticker) CashFlow(freq YFPeriod) (*YFFinancialStatementTables, error)` (yfinance.go:576)
-- [ ] `func (t *ticker) Dividends() (*insyra.DataTable, error)` (yfinance.go:377)
-- [ ] `func (t *ticker) EPSRevisions() (*insyra.DataTable, error)` (yfinance.go:792)
-- [ ] `func (t *ticker) EPSTrend() (*insyra.DataTable, error)` (yfinance.go:768)
-- [ ] `func (t *ticker) Earnings() (*insyra.DataTable, error)` (yfinance.go:712)
-- [ ] `func (t *ticker) EarningsEstimate() (*insyra.DataTable, error)` (yfinance.go:720)
-- [ ] `func (t *ticker) EarningsHistory() (*insyra.DataTable, error)` (yfinance.go:744)
-- [ ] `func (t *ticker) FastInfo() (*insyra.DataTable, error)` (yfinance.go:687)
-- [ ] `func (t *ticker) FundsData() (*insyra.DataTable, error)` (yfinance.go:917)
-- [ ] `func (t *ticker) GrowthEstimates() (*insyra.DataTable, error)` (yfinance.go:893)
-- [ ] `func (t *ticker) History(params YFHistoryParams) (*insyra.DataTable, error)` (yfinance.go:275)
-- [ ] `func (t *ticker) IncomeStatement(freq YFPeriod) (*YFFinancialStatementTables, error)` (yfinance.go:540)
-- [ ] `func (t *ticker) Info() (*insyra.DataTable, error)` (yfinance.go:353)
-- [ ] `func (t *ticker) InsiderTransactions() (*insyra.DataTable, error)` (yfinance.go:663)
-- [ ] `func (t *ticker) InstitutionalHolders() (*insyra.DataTable, error)` (yfinance.go:617)
-- [ ] `func (t *ticker) MajorHolders() (*insyra.DataTable, error)` (yfinance.go:594)
-- [ ] `func (t *ticker) MutualFundHolders() (*insyra.DataTable, error)` (yfinance.go:640)
-- [ ] `func (t *ticker) News(count int, tab models.NewsTab) (*insyra.DataTable, error)` (yfinance.go:491)
-- [ ] `func (t *ticker) OptionChain(date string) (*YFOptionChainTables, error)` (yfinance.go:473)
-- [ ] `func (t *ticker) Options() (*insyra.DataTable, error)` (yfinance.go:449)
-- [ ] `func (t *ticker) Quote() (*insyra.DataTable, error)` (yfinance.go:314)
-- [ ] `func (t *ticker) Recommendations() (*insyra.DataTable, error)` (yfinance.go:815)
-- [ ] `func (t *ticker) RevenueEstimate() (*insyra.DataTable, error)` (yfinance.go:861)
-- [ ] `func (t *ticker) Splits() (*insyra.DataTable, error)` (yfinance.go:401)
-- [ ] `func (t *ticker) Sustainability() (*insyra.DataTable, error)` (yfinance.go:885)
-- [ ] `func (t *ticker) TopHoldings() (*insyra.DataTable, error)` (yfinance.go:926)
-- [ ] `func (t *twStock) AllDailyQuotes(market TWMarket) (*insyra.DataTable, error)` (twstock.go:851)
-- [ ] `func (t *twStock) DailyPrices(code string, from, to time.Time, market TWMarket) (*insyra.DataTable, error)` (twstock.go:193)
-- [ ] `func (t *twStock) DailyPricesAdjusted(code string, from, to time.Time, market TWMarket) (*insyra.DataTable, error)` (twstock.go:492)
-- [ ] `func (t *twStock) ExRights(from, to time.Time, market TWMarket) (*insyra.DataTable, error)` (twstock.go:361)
-- [ ] `func (t *twStock) InstitutionalTrades(date time.Time, market TWMarket) (*insyra.DataTable, error)` (twstock.go:589)
-- [ ] `func (t *twStock) MarginBalance(date time.Time, market TWMarket) (*insyra.DataTable, error)` (twstock.go:723)
-- [ ] `func (y *yahooFinance) Ticker(symbol string) *ticker` (yfinance.go:251)
+- [x] `const SortByHighestRating GoogleMapsStoreReviewSortBy` (googleMapsCommentCrawler.go:50) — DF-1 已失效且遠端設定注入；DF-3
+- [x] `const SortByLowestRating GoogleMapsStoreReviewSortBy` (googleMapsCommentCrawler.go:52) — DF-1 已失效且遠端設定注入；DF-3
+- [x] `const SortByNewest GoogleMapsStoreReviewSortBy` (googleMapsCommentCrawler.go:48) — DF-1 已失效且遠端設定注入；DF-3
+- [x] `const SortByRelevance GoogleMapsStoreReviewSortBy` (googleMapsCommentCrawler.go:46) — DF-1 已失效且遠端設定注入；DF-3
+- [x] `const TWMarketAuto TWMarket` (twstock.go:77) — OK
+- [x] `const TWMarketTPEx TWMarket` (twstock.go:76) — OK
+- [x] `const TWMarketTWSE TWMarket` (twstock.go:75) — OK
+- [x] `const YFPeriodAnnual YFPeriod` (yfinance.go:57) — DF-5 同義
+- [x] `const YFPeriodQuarterly YFPeriod` (yfinance.go:59) — OK
+- [x] `const YFPeriodYearly YFPeriod` (yfinance.go:58) — DF-5 同義
+- [x] `func (e *RateLimitError) Error() string` (geocoding_errors.go:33) — OK sentinel／typed error（DF-7 範本）
+- [x] `func (e *RateLimitError) Unwrap() error` (geocoding_errors.go:42) — OK sentinel／typed error（DF-7 範本）
+- [x] `func (r *ReverseGeocodeResult) ToDataTable() *insyra.DataTable` (geocoding.go:102) — OK
+- [x] `func (reviews GoogleMapsStoreReviews) ToDataTable() *insyra.DataTable` (googleMapsCommentCrawler.go:315) — DF-1 已失效且遠端設定注入；DF-3
+- [x] `func GoogleMapsStores() *googleMapsStoreCrawler` (googleMapsCommentCrawler.go:69) — DF-1 已失效且遠端設定注入；DF-3
+- [x] `func NewFileGeocodeCache(path string) GeocodeCache` (geocoding.go:583) — OK（DF-7）
+- [x] `func NewMemoryGeocodeCache() GeocodeCache` (geocoding.go:544) — OK（DF-7）
+- [x] `func TWGeocoding(cfg TWGeocodingConfig) (*twGeocoder, error)` (geocoding.go:150) — OK config 驗證；DF-3 回傳未匯出型別
+- [x] `func TWStock(cfg TWStockConfig) (*twStock, error)` (twstock.go:94) — OK config 驗證；DF-3 回傳未匯出型別
+- [x] `func YFinance(cfg YFinanceConfig) (*yahooFinance, error)` (yfinance.go:108) — OK config 驗證；DF-3 回傳未匯出型別
+- [x] `type GeocodeCache interface { Get(key string) (*ReverseGeocodeResult, bool) Set(key string, r *ReverseGeocodeResult) }` (geocoding.go:530) — OK（DF-7）
+- [x] `type GoogleMapsStoreData struct { ID string Name string }` (googleMapsCommentCrawler.go:62) — DF-1 已失效且遠端設定注入；DF-3
+- [x] `type GoogleMapsStoreReview struct { Reviewer string `json:"reviewer"` ReviewerID string `json:"reviewer_id"` ReviewerState string `json:"reviewer_state"` ReviewerLevel int `json:"reviewer_level"` ReviewTime string `json:"review_time"` ReviewDate string `json:"review_date"` Content string `json:"content"` Rating int `json:"rating"` }` (googleMapsCommentCrawler.go:21) — DF-1 已失效且遠端設定注入；DF-3
+- [x] `type GoogleMapsStoreReviewSortBy uint8` (googleMapsCommentCrawler.go:42) — DF-1 已失效且遠端設定注入；DF-3
+- [x] `type GoogleMapsStoreReviews []GoogleMapsStoreReview` (googleMapsCommentCrawler.go:33) — DF-1 已失效且遠端設定注入；DF-3
+- [x] `type GoogleMapsStoreReviewsFetchingOptions struct { SortBy GoogleMapsStoreReviewSortBy MaxWaitingInterval_Milliseconds uint }` (googleMapsCommentCrawler.go:36) — DF-1 已失效且遠端設定注入；DF-3
+- [x] `type RateLimitError struct { Limit int Remaining int ResetAt time.Time }` (geocoding_errors.go:27) — OK sentinel／typed error（DF-7 範本）
+- [x] `type ReverseGeocodeResult struct { Lat float64 `json:"lat"` Lng float64 `json:"lng"` VillCode string `json:"villcode"` CountyName string `json:"county_name"` TownName string `json:"town_name"` VillageName string `json:"village_name"` VillageEng string `json:"village_eng"` CountyID string `json:"county_id"` CountyCode string `json:"county_code"` TownID string `json:"town_id"` TownCode string `json:"town_code"` }` (geocoding.go:86) — OK
+- [x] `type TWGeocodingConfig struct { Timeout time.Duration Interval time.Duration UserAgent string Retries int RetryBackoff time.Duration BaseURL string Cache GeocodeCache }` (geocoding.go:39) — OK（DF-7）
+- [x] `type TWMarket string` (twstock.go:72) — OK
+- [x] `type TWStockConfig struct { Timeout time.Duration Interval time.Duration UserAgent string Retries int RetryBackoff time.Duration Concurrency int }` (twstock.go:27) — OK 零值可用、欄位 doc 完整；YFinanceConfig 註解為中文（其餘英文，Low）
+- [x] `type YFFinancialStatementTables struct { Values *insyra.DataTable Items *insyra.DataTable Meta *insyra.DataTable }` (yfinance_tables.go:22) — OK
+- [x] `type YFHistoryParams = models.HistoryParams` (yfinance.go:49) — DF-4 第三方型別
+- [x] `type YFOptionChainTables struct { Calls *insyra.DataTable Puts *insyra.DataTable Underlying *insyra.DataTable Expiration time.Time }` (yfinance_tables.go:14) — OK
+- [x] `type YFPeriod string` (yfinance.go:54) — OK
+- [x] `type YFinanceConfig struct { Timeout time.Duration Interval time.Duration UserAgent string Retries int RetryBackoff time.Duration Concurrency int }` (yfinance.go:28) — OK 零值可用、欄位 doc 完整；YFinanceConfig 註解為中文（其餘英文，Low）
+- [x] `var ErrGeocodeNotFound` (geocoding_errors.go:15) — OK sentinel／typed error（DF-7 範本）
+- [x] `var ErrGeocodeRateLimited` (geocoding_errors.go:20) — OK sentinel／typed error（DF-7 範本）
+- [x] `var ErrGeocodeTimeout` (geocoding_errors.go:17) — OK sentinel／typed error（DF-7 範本）
+- [x] `var ErrInvalidSymbol` (yfinance_errors.go:13) — OK sentinel／typed error（DF-7 範本）
+- [x] `var ErrRateLimited` (yfinance_errors.go:11) — OK sentinel／typed error（DF-7 範本）
+- [x] `var ErrTimeout` (yfinance_errors.go:12) — OK sentinel／typed error（DF-7 範本）
+- [x] `func (c *fileGeocodeCache) Get(key string) (*ReverseGeocodeResult, bool)` (geocoding.go:601) — OK（DF-7）
+- [x] `func (c *fileGeocodeCache) Set(key string, r *ReverseGeocodeResult)` (geocoding.go:615) — OK（DF-7）
+- [x] `func (c *googleMapsStoreCrawler) GetReviews(storeId string, pageCount int, options ...GoogleMapsStoreReviewsFetchingOptions) GoogleMapsStoreReviews` (googleMapsCommentCrawler.go:169) — DF-1 已失效且遠端設定注入；DF-3
+- [x] `func (c *googleMapsStoreCrawler) Search(storeName string) []GoogleMapsStoreData` (googleMapsCommentCrawler.go:107) — DF-1 已失效且遠端設定注入；DF-3
+- [x] `func (c *memoryGeocodeCache) Get(key string) (*ReverseGeocodeResult, bool)` (geocoding.go:548) — OK（DF-7）
+- [x] `func (c *memoryGeocodeCache) Set(key string, r *ReverseGeocodeResult)` (geocoding.go:562) — OK（DF-7）
+- [x] `func (g *twGeocoder) Reverse(lat, lng float64) (*ReverseGeocodeResult, error)` (geocoding.go:166) — OK 回 error；DF-2 無 ctx
+- [x] `func (g *twGeocoder) ReverseCols(lat, lng *insyra.DataList) (*insyra.DataTable, error)` (geocoding.go:282) — OK 回 error；DF-2 無 ctx
+- [x] `func (g *twGeocoder) ReverseTable(dt *insyra.DataTable, latCol, lngCol string) (*insyra.DataTable, error)` (geocoding.go:410) — OK 回 error；DF-2 無 ctx
+- [x] `func (g *twGeocoder) ReverseTableByColName(dt *insyra.DataTable, latColName, lngColName string) (*insyra.DataTable, error)` (geocoding.go:425) — OK 回 error；DF-2 無 ctx；DF-5 雙入口
+- [x] `func (t *ticker) Actions() (*insyra.DataTable, error)` (yfinance.go:425) — OK 回 error；DF-2 無 ctx
+- [x] `func (t *ticker) AnalystPriceTargets() (*insyra.DataTable, error)` (yfinance.go:838) — OK 回 error；DF-2 無 ctx
+- [x] `func (t *ticker) BalanceSheet(freq YFPeriod) (*YFFinancialStatementTables, error)` (yfinance.go:558) — OK 回 error；DF-2 無 ctx
+- [x] `func (t *ticker) Calendar() (*insyra.DataTable, error)` (yfinance.go:515) — OK 回 error；DF-2 無 ctx
+- [x] `func (t *ticker) CashFlow(freq YFPeriod) (*YFFinancialStatementTables, error)` (yfinance.go:576) — OK 回 error；DF-2 無 ctx
+- [x] `func (t *ticker) Dividends() (*insyra.DataTable, error)` (yfinance.go:377) — OK 回 error；DF-2 無 ctx
+- [x] `func (t *ticker) EPSRevisions() (*insyra.DataTable, error)` (yfinance.go:792) — OK 回 error；DF-2 無 ctx
+- [x] `func (t *ticker) EPSTrend() (*insyra.DataTable, error)` (yfinance.go:768) — OK 回 error；DF-2 無 ctx
+- [x] `func (t *ticker) Earnings() (*insyra.DataTable, error)` (yfinance.go:712) — OK 回 error；DF-2 無 ctx
+- [x] `func (t *ticker) EarningsEstimate() (*insyra.DataTable, error)` (yfinance.go:720) — OK 回 error；DF-2 無 ctx
+- [x] `func (t *ticker) EarningsHistory() (*insyra.DataTable, error)` (yfinance.go:744) — OK 回 error；DF-2 無 ctx
+- [x] `func (t *ticker) FastInfo() (*insyra.DataTable, error)` (yfinance.go:687) — OK 回 error；DF-2 無 ctx
+- [x] `func (t *ticker) FundsData() (*insyra.DataTable, error)` (yfinance.go:917) — OK 回 error；DF-2 無 ctx
+- [x] `func (t *ticker) GrowthEstimates() (*insyra.DataTable, error)` (yfinance.go:893) — OK 回 error；DF-2 無 ctx
+- [x] `func (t *ticker) History(params YFHistoryParams) (*insyra.DataTable, error)` (yfinance.go:275) — DF-4 第三方型別
+- [x] `func (t *ticker) IncomeStatement(freq YFPeriod) (*YFFinancialStatementTables, error)` (yfinance.go:540) — OK 回 error；DF-2 無 ctx
+- [x] `func (t *ticker) Info() (*insyra.DataTable, error)` (yfinance.go:353) — OK 回 error；DF-2 無 ctx
+- [x] `func (t *ticker) InsiderTransactions() (*insyra.DataTable, error)` (yfinance.go:663) — OK 回 error；DF-2 無 ctx
+- [x] `func (t *ticker) InstitutionalHolders() (*insyra.DataTable, error)` (yfinance.go:617) — OK 回 error；DF-2 無 ctx
+- [x] `func (t *ticker) MajorHolders() (*insyra.DataTable, error)` (yfinance.go:594) — OK 回 error；DF-2 無 ctx
+- [x] `func (t *ticker) MutualFundHolders() (*insyra.DataTable, error)` (yfinance.go:640) — OK 回 error；DF-2 無 ctx
+- [x] `func (t *ticker) News(count int, tab models.NewsTab) (*insyra.DataTable, error)` (yfinance.go:491) — DF-4 第三方型別
+- [x] `func (t *ticker) OptionChain(date string) (*YFOptionChainTables, error)` (yfinance.go:473) — OK 回 error；DF-2 無 ctx
+- [x] `func (t *ticker) Options() (*insyra.DataTable, error)` (yfinance.go:449) — OK 回 error；DF-2 無 ctx
+- [x] `func (t *ticker) Quote() (*insyra.DataTable, error)` (yfinance.go:314) — OK 回 error；DF-2 無 ctx
+- [x] `func (t *ticker) Recommendations() (*insyra.DataTable, error)` (yfinance.go:815) — OK 回 error；DF-2 無 ctx
+- [x] `func (t *ticker) RevenueEstimate() (*insyra.DataTable, error)` (yfinance.go:861) — OK 回 error；DF-2 無 ctx
+- [x] `func (t *ticker) Splits() (*insyra.DataTable, error)` (yfinance.go:401) — OK 回 error；DF-2 無 ctx
+- [x] `func (t *ticker) Sustainability() (*insyra.DataTable, error)` (yfinance.go:885) — OK 回 error；DF-2 無 ctx
+- [x] `func (t *ticker) TopHoldings() (*insyra.DataTable, error)` (yfinance.go:926) — OK 回 error；DF-2 無 ctx
+- [x] `func (t *twStock) AllDailyQuotes(market TWMarket) (*insyra.DataTable, error)` (twstock.go:851) — OK 回 error；DF-2 無 ctx
+- [x] `func (t *twStock) DailyPrices(code string, from, to time.Time, market TWMarket) (*insyra.DataTable, error)` (twstock.go:193) — OK 回 error；DF-2 無 ctx
+- [x] `func (t *twStock) DailyPricesAdjusted(code string, from, to time.Time, market TWMarket) (*insyra.DataTable, error)` (twstock.go:492) — OK 回 error；DF-2 無 ctx
+- [x] `func (t *twStock) ExRights(from, to time.Time, market TWMarket) (*insyra.DataTable, error)` (twstock.go:361) — OK 回 error；DF-2 無 ctx
+- [x] `func (t *twStock) InstitutionalTrades(date time.Time, market TWMarket) (*insyra.DataTable, error)` (twstock.go:589) — OK 回 error；DF-2 無 ctx
+- [x] `func (t *twStock) MarginBalance(date time.Time, market TWMarket) (*insyra.DataTable, error)` (twstock.go:723) — OK 回 error；DF-2 無 ctx
+- [x] `func (y *yahooFinance) Ticker(symbol string) *ticker` (yfinance.go:251) — OK config 驗證；DF-3 回傳未匯出型別
 
 ## engine (0)
 
