@@ -5,7 +5,8 @@
 // Sharpe Ratio), time-series walk-forward out-of-sample validation, and
 // probabilistic forecasting by block bootstrap (moving block or stationary)
 // with percentile bands, plus market beta, CAPM, and multi-factor exposure
-// analysis.
+// analysis, European option pricing with Black-Scholes-Merton greeks, and
+// implied volatility.
 //
 // Unlike the finance package (which uses high-precision decimals for TVM,
 // NPV/IRR, and bond pricing), quant operates on plain float64 series — the

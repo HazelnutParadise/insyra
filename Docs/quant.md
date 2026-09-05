@@ -19,6 +19,7 @@ The `quant` package provides quantitative-finance tools for evaluating trading s
 - **Performance metrics**: `SharpeRatio`, `MaxDrawdown`, `AnnualizedReturn` — headline risk/return numbers from a return series or equity curve
 - **Risk metrics**: `ValueAtRisk`, `ConditionalValueAtRisk`, `SortinoRatio`, `CalmarRatio`, `InformationRatio`, `DrawdownSeries` — tail risk, downside performance, benchmark-relative performance, and per-period drawdowns
 - **Market exposure**: `Beta`, `CAPM` — measure an asset's exposure and per-period alpha against a benchmark return series
+- **Options**: `BlackScholes`, `ImpliedVolatility` — price European calls and puts, report five greeks, and recover volatility from a market price
 - **Factor models**: `FactorModel` — attribute an asset's excess returns to named market, size, value, momentum, or other factor columns
 - **Backtest-overfitting diagnostics**: `ProbabilisticSharpeRatio`, `ExpectedMaxSharpe`, `DeflatedSharpeRatio`, `PBO` — quantify how much of a backtest's edge is real versus selection bias from multiple testing (Bailey & López de Prado)
 - **Walk-forward validation**: `WalkForward` — slide train/test windows, pick parameters in-sample, evaluate out-of-sample, and stitch the out-of-sample track record together (Pardo)
@@ -190,6 +191,73 @@ Regresses `asset - riskFreeRate` on `market - riskFreeRate`. `riskFreeRate` is a
 The standard errors use residual degrees of freedom `N-2`. A constant asset excess-return series is valid: `Beta` is `0`, `Alpha` is the constant, `BetaStdErr` and `AlphaStdErr` are `0`, and `RSquared` is `NaN` because total asset variance is zero.
 
 Both functions return an error for nil input, unequal lengths, fewer than 3 observations, a zero-variance benchmark, or a non-numeric, `NaN`, or `Inf` cell. Unreadable cells are named with their series (`asset` or `market`) and one-based row number.
+
+## Options (Black–Scholes–Merton)
+
+`BlackScholes` prices European calls and puts with continuous dividend yield:
+
+```go
+type OptionType uint8
+
+const (
+    OptionCall OptionType = iota
+    OptionPut
+)
+
+type BSInput struct {
+    Spot, Strike, Rate, DividendYield, Volatility, TimeToExpiry float64
+    Type OptionType
+}
+
+type BSResult struct {
+    Price, Delta, Gamma, Vega, Theta, Rho float64
+}
+
+func BlackScholes(in BSInput) (*BSResult, error)
+func ImpliedVolatility(price float64, in BSInput) (float64, error)
+```
+
+`Rate` and `DividendYield` are continuously compounded annual rates as
+decimals, `Volatility` is annualized, and `TimeToExpiry` is in years. The
+model uses:
+
+```text
+d1 = [ln(S/K) + (r - q + σ²/2)T] / (σ√T)
+d2 = d1 - σ√T
+
+Call = S·e^(-qT)·N(d1) - K·e^(-rT)·N(d2)
+Put  = K·e^(-rT)·N(-d2) - S·e^(-qT)·N(-d1)
+```
+
+The greeks returned in `BSResult` are:
+
+| Greek | Meaning and unit |
+|---|---|
+| `Delta` | Change in option value for one unit of spot price |
+| `Gamma` | Change in delta for one unit of spot price |
+| `Vega` | Derivative per unit of volatility; divide by 100 for a one-percentage-point move |
+| `Theta` | `-∂V/∂T`, value lost per year; divide by 365 for a one-day figure |
+| `Rho` | Change in option value for a one-unit change in the annual rate |
+
+At `TimeToExpiry == 0`, `Price` is intrinsic value. `Delta` is its limiting
+value (1 or 0 for a call, -1 or 0 for a put), and the other greeks are zero.
+
+`ImpliedVolatility` ignores `in.Volatility`. It checks the no-arbitrage bounds,
+brackets the solution on volatility `[1e-6, 10]` with bisection, then polishes
+it with Newton iterations using vega. The call bounds are:
+
+```text
+max(S·e^(-qT) - K·e^(-rT), 0) ≤ price ≤ S·e^(-qT)
+```
+
+The put bounds are:
+
+```text
+max(K·e^(-rT) - S·e^(-qT), 0) ≤ price ≤ K·e^(-rT)
+```
+
+Prices outside these bounds and `TimeToExpiry == 0` return errors. The solver
+also has a 200-iteration cap, so it always terminates.
 
 ## Factor Models
 
@@ -456,6 +524,32 @@ func main() {
 
 Already have a column in a `DataTable`? Pass it straight in: `quant.SharpeRatio(dt.GetCol("returns"), 0, 252)`.
 
+### Option pricing and implied volatility from a datafetch chain
+
+`datafetch` returns calls and puts as `DataTable`s. Select a row from a chain,
+read its `strike` and `lastPrice`, and pass the underlying spot and time to
+expiry to `quant.ImpliedVolatility`:
+
+```go
+yf, err := datafetch.YFinance(datafetch.YFinanceConfig{})
+if err != nil { log.Fatal(err) }
+chain, err := yf.Ticker("AAPL").OptionChain("2026-12-18")
+if err != nil { log.Fatal(err) }
+
+// Choose a row from chain.Calls or chain.Puts after inspecting the table.
+// These values are the selected row's strike and lastPrice columns.
+strike := 200.0
+lastPrice := 12.50
+optionType := quant.OptionCall
+iv, err := quant.ImpliedVolatility(lastPrice, quant.BSInput{
+    Spot: 195.0, Strike: strike, Rate: 0.04, DividendYield: 0.00,
+    TimeToExpiry: 0.5, Type: optionType,
+})
+if err != nil { log.Fatal(err) }
+fmt.Printf("implied volatility = %.2f%%\n", iv*100)
+_ = chain // use its Calls/Puts table to supply strike and lastPrice
+```
+
 ### Risk report
 
 ```go
@@ -621,6 +715,8 @@ All exported functions return `(value, error)` and surface validation problems t
 - **`Beta`** — nil input, unequal lengths, fewer than 3 returns, zero benchmark variance, or an unreadable/non-finite cell named with its series and row
 - **`CAPM`** — the same input and benchmark validation as `Beta`; `riskFreeRate` is per period
 - **`FactorModel`** — nil input, no factor columns, unequal asset/factor lengths, fewer than `k+2` observations, unreadable/non-finite cells named with the factor and row, or collinear factors
+- **`BlackScholes`** — non-positive Spot, Strike, or Volatility; negative TimeToExpiry; non-finite inputs; or an unknown option Type
+- **`ImpliedVolatility`** — non-finite price, zero TimeToExpiry, a price outside the option's named lower or upper bound, or failure to converge within 200 iterations
 - **`ValueAtRisk`** — fewer than 2 returns, confidence outside `(0, 1)`, unknown method, or an unreadable/non-finite return named with its row
 - **`ConditionalValueAtRisk`** — the same return, confidence, and method validation as `ValueAtRisk`
 - **`SortinoRatio`** — fewer than 2 returns, non-positive periods per year, zero downside deviation, or an unreadable/non-finite return

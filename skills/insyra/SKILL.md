@@ -802,6 +802,8 @@ cvar95, err := quant.ConditionalValueAtRisk(returns, 0.95, quant.VaRHistorical)
 
 VaR and CVaR use a positive-loss convention and are not annualized. See `Docs/quant.md` for the formulas, confidence direction, and ratio annualization arguments.
 
+For European option pricing, use `quant.BlackScholes` for the price and five greeks, or `quant.ImpliedVolatility` to recover volatility from a market price; rates and volatility are decimal annual inputs, Vega is per unit of volatility, and Theta is per year.
+
 ## Engine package (advanced primitives)
 The repo includes an `engine` package that re-exports well-tested internal primitives (see [`engine/`](../../engine) and `engine/README.md).
 
