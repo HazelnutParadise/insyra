@@ -45,11 +45,11 @@
 | `csvxl` | 9 | **完成** |
 | `datafetch` | 42 | 未開始 |
 | `engine` 系列（algorithms, atomic, biindex, ccl, dsl, ring） | 41 | 未開始 |
-| `finance` | 60 | 未開始 |
+| `finance` | 60 | **完成** |
 | `gplot` | 15 | 未開始 |
 | `isr` | 44 | **完成** |
 | `lp` / `lpgen` | 12 | 未開始 |
-| `mkt` | 14 | 未開始 |
+| `mkt` | 14 | **完成** |
 | `ml` / `ml/mltest` | 217 | 未開始 |
 | `nn` | 231 | 未開始 |
 | `parallel` | 5 | **完成** |
@@ -234,6 +234,24 @@
 | QU-2 | Low | 參數型別 `insyra.IDataList`／`IDataTable`（K-7）；`CAPM`／`Beta` 先 `asset.Len()` 比長度再 `numericSeries`，nil 檢查與長度檢查在 `numericSeries` 之前重複實作（各函式自己寫一次） | quant/capm.go:40-70 | 改具體型別；長度檢查併入 helper |
 | QU-3 | Low | `PercentileBands(paths, percentiles []float64)` 的百分位尺度要與 D-13（0..1 vs 0..100）一起統一；`WalkForward[P any]` 用索引區間回呼，使用者要自己切資料，沒有收 DataTable 的版本（準則 4） | quant/bootstrap.go:217；walkforward.go | 文件標明尺度；加 DataTable 版 |
 | QU-4 | OK | 範本等級：每個函式先 `numericSeries` 拒絕不可讀值並指出列號、全部回 error、doc 寫清單位（per-period vs annualized、calendar days）、`BootstrapConfig.Seed` 語意明確、`PortfolioConfig` 只預設容忍度其餘一律驗證、`Converged=false` 不當錯誤。其他套件應以此為準 | — | — |
+
+### mkt
+
+| 編號 | 嚴重度 | 問題 | 位置 | 建議 |
+| --- | --- | --- | --- | --- |
+| MK-1 | High | **panic（已實測）**：`RFM` 用 `conv.ParseF64` 讀金額欄，遇到 `"abc"` 直接 panic 穿出 `AtomicDo`，整個程序崩潰。三個公開函式（`RFM`、`CustomerActivityIndex`、`BasketAnalysis`）失敗時只 `LogWarning` 後回 nil，沒有 error 回傳、沒有 `Err()`；欄名打錯時 `GetColIndexByName` 回空字串，之後每列 `GetElement(i, "")` 都是 nil，結果是「一張空表、零錯誤」（準則 11） | mkt/rfm.go:26-80, 100；cai.go:38-60；basket.go:38-56 | 三個函式改回 `(result, error)`；金額走 `ToFloat64Safe` 並指出列號 |
+| MK-2 | Med | 輸出列順序來自 Go map 迭代（`for customerID := range customerLastTradingDayMap`），每次執行 RFM／CAI 的列順序都不同，結果不可重現、無法 diff；`BasketAnalysis` 有排序（準則 13） | rfm.go:236；cai.go:180 | 依 CustomerID 排序輸出 |
+| MK-3 | Med | 每個欄位都提供 `XxxColIndex` + `XxxColName` 兩個欄位（三個 config 共 8 對），「同時給時 index 優先」是把 T-11 的歧義寫進設定檔；`DateFormat` 用自訂的 `"YYYY-MM-DD"` 記法再轉 Go layout，`NumGroups uint`；`var CAI = CustomerActivityIndex` 是可被覆寫的函式變數（K-12）（準則 3、6、8） | mkt/rfm.go:12-22；cai.go:12-22；basket.go:12-17 | 只留一個欄位參照（名稱或索引擇一）；`CAI` 改 func |
+| MK-4 | Low | 預設值套用時以 Info 等級 log（DateFormat、TimeScale），噪音；用 `parallel.GroupUp`（P-4）與 `insyra.SortTimes`（K-15）；CAI 對每位客戶排序兩次 | rfm.go:60-70, 157；cai.go:66-73, 118 | 移除 log；直接迴圈 |
+
+### finance
+
+| 編號 | 嚴重度 | 問題 | 位置 | 建議 |
+| --- | --- | --- | --- | --- |
+| FI-1 | Med | 全部 43 個函式的參數與回傳都是 `github.com/TimLai666/go-decimal/decimal.Decimal`。這是作者自己的 decimal 套件而非社群通用的 `shopspring/decimal`，使用者呼叫任何函式都必須引入這個第三方型別；型別一旦改版整個 finance API 跟著 breaking（準則 8、10） | finance 全套件 | 這是設計決策，至少在 Docs 明講並釘住版本；或提供 `float64` 便利版 |
+| FI-2 | Med | `ScheduleTable` 回傳的 DataTable 格子是 `decimal.Decimal`，core 的 `ToFloat64Safe` 不認識它，這張表的 `Mean`／`Sum`／`Describe` 全部失效，doc 只說「用 `.String()` 轉文字」；且回傳型別是 `insyra.IDataTable`（K-7）（準則 6、13） | finance/amortization.go:93-119 | 提供 `float64` 欄位版本，或讓 core 認識 decimal |
+| FI-3 | Low | `RoundUnnecessary` 模式下需要捨入時「panics with decimal.ErrRoundingNecessary」（doc 原文），程式庫選項導致 panic；`opts ...Options` variadic「最後一個生效」（D-8）；`var Zero` 可被覆寫（K-12）（準則 11） | finance/options.go:66, 128-140；helpers.go:22 | 該模式改回 error；Zero 改 func 或文件註明不可改 |
+| FI-4 | OK | 其餘是範本等級：每個函式驗證參數並回 error、`Options` 零值可用且逐欄位獨立預設、Excel 對應（`basis`、`type`）寫明、`NPV` 與 `NPVExcel` 的 t=0／t=1 差異講清楚、精度以 guard digits 處理 | — | — |
 
 ## 逐項清單
 
@@ -1226,66 +1244,66 @@
 
 ## finance (60)
 
-- [ ] `const Basis30_360EU DayCountBasis` (daycount.go:29)
-- [ ] `const Basis30_360US DayCountBasis` (daycount.go:17)
-- [ ] `const BasisActual360 DayCountBasis` (daycount.go:24)
-- [ ] `const BasisActual365 DayCountBasis` (daycount.go:27)
-- [ ] `const BasisActualActual DayCountBasis` (daycount.go:21)
-- [ ] `const DefaultScale int32` (options.go:20)
-- [ ] `const PaymentBegin PaymentTiming` (options.go:16)
-- [ ] `const PaymentEnd PaymentTiming` (options.go:13)
-- [ ] `const Round05Up RoundingMode` (options.go:62)
-- [ ] `const RoundCeiling RoundingMode` (options.go:54)
-- [ ] `const RoundDown RoundingMode` (options.go:51)
-- [ ] `const RoundFloor RoundingMode` (options.go:57)
-- [ ] `const RoundHalfDown RoundingMode` (options.go:45)
-- [ ] `const RoundHalfEven RoundingMode` (options.go:42)
-- [ ] `const RoundHalfUp RoundingMode` (options.go:37)
-- [ ] `const RoundUnnecessary RoundingMode` (options.go:66)
-- [ ] `const RoundUp RoundingMode` (options.go:48)
-- [ ] `func AccrInt(issue, firstInterest, settlement time.Time, rate, par decimal.Decimal, freq int, basis DayCountBasis, calcMethod bool, opts ...Options) (decimal.Decimal, error)` (bonds.go:399)
-- [ ] `func AmortizationSchedule(rate decimal.Decimal, nper int, pv, fv decimal.Decimal, timing PaymentTiming, opts ...Options) ([]AmortizationRow, error)` (amortization.go:22)
-- [ ] `func AnnualFromContinuous(continuous decimal.Decimal, opts ...Options) (decimal.Decimal, error)` (rate.go:83)
-- [ ] `func ContinuousFromAnnual(effective decimal.Decimal, opts ...Options) (decimal.Decimal, error)` (rate.go:69)
-- [ ] `func CumIPMT(rate decimal.Decimal, nper int, pv decimal.Decimal, startPeriod, endPeriod int, timing PaymentTiming, opts ...Options) (decimal.Decimal, error)` (ipmt.go:95)
-- [ ] `func CumPPMT(rate decimal.Decimal, nper int, pv decimal.Decimal, startPeriod, endPeriod int, timing PaymentTiming, opts ...Options) (decimal.Decimal, error)` (ipmt.go:103)
-- [ ] `func DDB(cost, salvage decimal.Decimal, life, per int, factor decimal.Decimal, opts ...Options) (decimal.Decimal, error)` (depreciation.go:65)
-- [ ] `func Duration(settlement, maturity time.Time, coupon, yld decimal.Decimal, freq int, basis DayCountBasis, opts ...Options) (decimal.Decimal, error)` (bonds.go:278)
-- [ ] `func EffectiveRate(nominal decimal.Decimal, periodsPerYear int, opts ...Options) (decimal.Decimal, error)` (rate.go:15)
-- [ ] `func FV(rate decimal.Decimal, nper int, pmt, pv decimal.Decimal, timing PaymentTiming, opts ...Options) (decimal.Decimal, error)` (tvm.go:147)
-- [ ] `func FromFloat(f float64) (decimal.Decimal, error)` (helpers.go:49)
-- [ ] `func FromInt(n int) decimal.Decimal` (helpers.go:42)
-- [ ] `func IPMT(rate decimal.Decimal, per, nper int, pv, fv decimal.Decimal, timing PaymentTiming, opts ...Options) (decimal.Decimal, error)` (ipmt.go:16)
-- [ ] `func IRR(cashflows []decimal.Decimal, guess decimal.Decimal, opts ...Options) (decimal.Decimal, error)` (npv.go:57)
-- [ ] `func MDuration(settlement, maturity time.Time, coupon, yld decimal.Decimal, freq int, basis DayCountBasis, opts ...Options) (decimal.Decimal, error)` (bonds.go:367)
-- [ ] `func MIRR(cashflows []decimal.Decimal, financeRate, reinvestRate decimal.Decimal, opts ...Options) (decimal.Decimal, error)` (mirr.go:22)
-- [ ] `func MustNew(s string) decimal.Decimal` (helpers.go:36)
-- [ ] `func NPER(rate, pmt, pv, fv decimal.Decimal, timing PaymentTiming, opts ...Options) (decimal.Decimal, error)` (tvm.go:167)
-- [ ] `func NPV(rate decimal.Decimal, cashflows []decimal.Decimal, opts ...Options) (decimal.Decimal, error)` (npv.go:18)
-- [ ] `func NPVExcel(rate decimal.Decimal, cashflows []decimal.Decimal, opts ...Options) (decimal.Decimal, error)` (npv.go:34)
-- [ ] `func New(s string) (decimal.Decimal, error)` (helpers.go:30)
-- [ ] `func NominalRate(effective decimal.Decimal, periodsPerYear int, opts ...Options) (decimal.Decimal, error)` (rate.go:42)
-- [ ] `func PMT(rate decimal.Decimal, nper int, pv, fv decimal.Decimal, timing PaymentTiming, opts ...Options) (decimal.Decimal, error)` (tvm.go:82)
-- [ ] `func PPMT(rate decimal.Decimal, per, nper int, pv, fv decimal.Decimal, timing PaymentTiming, opts ...Options) (decimal.Decimal, error)` (ipmt.go:55)
-- [ ] `func PV(rate decimal.Decimal, nper int, pmt, fv decimal.Decimal, timing PaymentTiming, opts ...Options) (decimal.Decimal, error)` (tvm.go:102)
-- [ ] `func Price(settlement, maturity time.Time, rate, yld, redemption decimal.Decimal, freq int, basis DayCountBasis, opts ...Options) (decimal.Decimal, error)` (bonds.go:91)
-- [ ] `func RATE(nper int, pmt, pv, fv decimal.Decimal, timing PaymentTiming, guess decimal.Decimal, opts ...Options) (decimal.Decimal, error)` (tvm.go:230)
-- [ ] `func SLN(cost, salvage decimal.Decimal, life int, opts ...Options) (decimal.Decimal, error)` (depreciation.go:14)
-- [ ] `func SYD(cost, salvage decimal.Decimal, life, per int, opts ...Options) (decimal.Decimal, error)` (depreciation.go:34)
-- [ ] `func ScheduleTable(rate decimal.Decimal, nper int, pv, fv decimal.Decimal, timing PaymentTiming, opts ...Options) (insyra.IDataTable, error)` (amortization.go:97)
-- [ ] `func TBillEq(settlement, maturity time.Time, discount decimal.Decimal, opts ...Options) (decimal.Decimal, error)` (tbill.go:28)
-- [ ] `func TBillPrice(settlement, maturity time.Time, discount decimal.Decimal, opts ...Options) (decimal.Decimal, error)` (tbill.go:98)
-- [ ] `func TBillYield(settlement, maturity time.Time, pr decimal.Decimal, opts ...Options) (decimal.Decimal, error)` (tbill.go:125)
-- [ ] `func VDB(cost, salvage decimal.Decimal, life int, startPeriod, endPeriod, factor decimal.Decimal, noSwitch bool, opts ...Options) (decimal.Decimal, error)` (depreciation.go:117)
-- [ ] `func XIRR(values []decimal.Decimal, dates []time.Time, guess decimal.Decimal, opts ...Options) (decimal.Decimal, error)` (xnpv.go:36)
-- [ ] `func XNPV(rate decimal.Decimal, values []decimal.Decimal, dates []time.Time, opts ...Options) (decimal.Decimal, error)` (xnpv.go:19)
-- [ ] `func Yield(settlement, maturity time.Time, rate, pr, redemption decimal.Decimal, freq int, basis DayCountBasis, guess decimal.Decimal, opts ...Options) (decimal.Decimal, error)` (bonds.go:211)
-- [ ] `type AmortizationRow struct { Period int Payment decimal.Decimal Interest decimal.Decimal Principal decimal.Decimal Balance decimal.Decimal }` (amortization.go:11)
-- [ ] `type DayCountBasis uint8` (daycount.go:13)
-- [ ] `type Options struct { Scale int32 Mode RoundingMode }` (options.go:100)
-- [ ] `type PaymentTiming uint8` (options.go:8)
-- [ ] `type RoundingMode string` (options.go:32)
-- [ ] `var Zero` (helpers.go:22)
+- [x] `const Basis30_360EU DayCountBasis` (daycount.go:29) — OK
+- [x] `const Basis30_360US DayCountBasis` (daycount.go:17) — OK
+- [x] `const BasisActual360 DayCountBasis` (daycount.go:24) — OK
+- [x] `const BasisActual365 DayCountBasis` (daycount.go:27) — OK
+- [x] `const BasisActualActual DayCountBasis` (daycount.go:21) — OK
+- [x] `const DefaultScale int32` (options.go:20) — OK
+- [x] `const PaymentBegin PaymentTiming` (options.go:16) — OK
+- [x] `const PaymentEnd PaymentTiming` (options.go:13) — OK
+- [x] `const Round05Up RoundingMode` (options.go:62) — OK
+- [x] `const RoundCeiling RoundingMode` (options.go:54) — OK
+- [x] `const RoundDown RoundingMode` (options.go:51) — OK
+- [x] `const RoundFloor RoundingMode` (options.go:57) — OK
+- [x] `const RoundHalfDown RoundingMode` (options.go:45) — OK
+- [x] `const RoundHalfEven RoundingMode` (options.go:42) — OK
+- [x] `const RoundHalfUp RoundingMode` (options.go:37) — OK
+- [x] `const RoundUnnecessary RoundingMode` (options.go:66) — FI-3 panic 模式
+- [x] `const RoundUp RoundingMode` (options.go:48) — OK
+- [x] `func AccrInt(issue, firstInterest, settlement time.Time, rate, par decimal.Decimal, freq int, basis DayCountBasis, calcMethod bool, opts ...Options) (decimal.Decimal, error)` (bonds.go:399) — OK 驗證 + error（FI-4）；FI-1 decimal 型別
+- [x] `func AmortizationSchedule(rate decimal.Decimal, nper int, pv, fv decimal.Decimal, timing PaymentTiming, opts ...Options) ([]AmortizationRow, error)` (amortization.go:22) — OK 驗證 + error（FI-4）；FI-1 decimal 型別
+- [x] `func AnnualFromContinuous(continuous decimal.Decimal, opts ...Options) (decimal.Decimal, error)` (rate.go:83) — OK 驗證 + error（FI-4）；FI-1 decimal 型別
+- [x] `func ContinuousFromAnnual(effective decimal.Decimal, opts ...Options) (decimal.Decimal, error)` (rate.go:69) — OK 驗證 + error（FI-4）；FI-1 decimal 型別
+- [x] `func CumIPMT(rate decimal.Decimal, nper int, pv decimal.Decimal, startPeriod, endPeriod int, timing PaymentTiming, opts ...Options) (decimal.Decimal, error)` (ipmt.go:95) — OK 驗證 + error（FI-4）；FI-1 decimal 型別
+- [x] `func CumPPMT(rate decimal.Decimal, nper int, pv decimal.Decimal, startPeriod, endPeriod int, timing PaymentTiming, opts ...Options) (decimal.Decimal, error)` (ipmt.go:103) — OK 驗證 + error（FI-4）；FI-1 decimal 型別
+- [x] `func DDB(cost, salvage decimal.Decimal, life, per int, factor decimal.Decimal, opts ...Options) (decimal.Decimal, error)` (depreciation.go:65) — OK 驗證 + error（FI-4）；FI-1 decimal 型別
+- [x] `func Duration(settlement, maturity time.Time, coupon, yld decimal.Decimal, freq int, basis DayCountBasis, opts ...Options) (decimal.Decimal, error)` (bonds.go:278) — OK 驗證 + error（FI-4）；FI-1 decimal 型別
+- [x] `func EffectiveRate(nominal decimal.Decimal, periodsPerYear int, opts ...Options) (decimal.Decimal, error)` (rate.go:15) — OK 驗證 + error（FI-4）；FI-1 decimal 型別
+- [x] `func FV(rate decimal.Decimal, nper int, pmt, pv decimal.Decimal, timing PaymentTiming, opts ...Options) (decimal.Decimal, error)` (tvm.go:147) — OK 驗證 + error（FI-4）；FI-1 decimal 型別
+- [x] `func FromFloat(f float64) (decimal.Decimal, error)` (helpers.go:49) — OK 驗證 + error（FI-4）；FI-1 decimal 型別
+- [x] `func FromInt(n int) decimal.Decimal` (helpers.go:42) — OK 驗證 + error（FI-4）；FI-1 decimal 型別
+- [x] `func IPMT(rate decimal.Decimal, per, nper int, pv, fv decimal.Decimal, timing PaymentTiming, opts ...Options) (decimal.Decimal, error)` (ipmt.go:16) — OK 驗證 + error（FI-4）；FI-1 decimal 型別
+- [x] `func IRR(cashflows []decimal.Decimal, guess decimal.Decimal, opts ...Options) (decimal.Decimal, error)` (npv.go:57) — OK 驗證 + error（FI-4）；FI-1 decimal 型別
+- [x] `func MDuration(settlement, maturity time.Time, coupon, yld decimal.Decimal, freq int, basis DayCountBasis, opts ...Options) (decimal.Decimal, error)` (bonds.go:367) — OK 驗證 + error（FI-4）；FI-1 decimal 型別
+- [x] `func MIRR(cashflows []decimal.Decimal, financeRate, reinvestRate decimal.Decimal, opts ...Options) (decimal.Decimal, error)` (mirr.go:22) — OK 驗證 + error（FI-4）；FI-1 decimal 型別
+- [x] `func MustNew(s string) decimal.Decimal` (helpers.go:36) — OK 命名依 Go 慣例（Must 前綴）
+- [x] `func NPER(rate, pmt, pv, fv decimal.Decimal, timing PaymentTiming, opts ...Options) (decimal.Decimal, error)` (tvm.go:167) — OK 驗證 + error（FI-4）；FI-1 decimal 型別
+- [x] `func NPV(rate decimal.Decimal, cashflows []decimal.Decimal, opts ...Options) (decimal.Decimal, error)` (npv.go:18) — OK 驗證 + error（FI-4）；FI-1 decimal 型別
+- [x] `func NPVExcel(rate decimal.Decimal, cashflows []decimal.Decimal, opts ...Options) (decimal.Decimal, error)` (npv.go:34) — OK 驗證 + error（FI-4）；FI-1 decimal 型別
+- [x] `func New(s string) (decimal.Decimal, error)` (helpers.go:30) — OK 驗證 + error（FI-4）；FI-1 decimal 型別
+- [x] `func NominalRate(effective decimal.Decimal, periodsPerYear int, opts ...Options) (decimal.Decimal, error)` (rate.go:42) — OK 驗證 + error（FI-4）；FI-1 decimal 型別
+- [x] `func PMT(rate decimal.Decimal, nper int, pv, fv decimal.Decimal, timing PaymentTiming, opts ...Options) (decimal.Decimal, error)` (tvm.go:82) — OK 驗證 + error（FI-4）；FI-1 decimal 型別
+- [x] `func PPMT(rate decimal.Decimal, per, nper int, pv, fv decimal.Decimal, timing PaymentTiming, opts ...Options) (decimal.Decimal, error)` (ipmt.go:55) — OK 驗證 + error（FI-4）；FI-1 decimal 型別
+- [x] `func PV(rate decimal.Decimal, nper int, pmt, fv decimal.Decimal, timing PaymentTiming, opts ...Options) (decimal.Decimal, error)` (tvm.go:102) — OK 驗證 + error（FI-4）；FI-1 decimal 型別
+- [x] `func Price(settlement, maturity time.Time, rate, yld, redemption decimal.Decimal, freq int, basis DayCountBasis, opts ...Options) (decimal.Decimal, error)` (bonds.go:91) — OK 驗證 + error（FI-4）；FI-1 decimal 型別
+- [x] `func RATE(nper int, pmt, pv, fv decimal.Decimal, timing PaymentTiming, guess decimal.Decimal, opts ...Options) (decimal.Decimal, error)` (tvm.go:230) — OK 驗證 + error（FI-4）；FI-1 decimal 型別
+- [x] `func SLN(cost, salvage decimal.Decimal, life int, opts ...Options) (decimal.Decimal, error)` (depreciation.go:14) — OK 驗證 + error（FI-4）；FI-1 decimal 型別
+- [x] `func SYD(cost, salvage decimal.Decimal, life, per int, opts ...Options) (decimal.Decimal, error)` (depreciation.go:34) — OK 驗證 + error（FI-4）；FI-1 decimal 型別
+- [x] `func ScheduleTable(rate decimal.Decimal, nper int, pv, fv decimal.Decimal, timing PaymentTiming, opts ...Options) (insyra.IDataTable, error)` (amortization.go:97) — FI-2
+- [x] `func TBillEq(settlement, maturity time.Time, discount decimal.Decimal, opts ...Options) (decimal.Decimal, error)` (tbill.go:28) — OK 驗證 + error（FI-4）；FI-1 decimal 型別
+- [x] `func TBillPrice(settlement, maturity time.Time, discount decimal.Decimal, opts ...Options) (decimal.Decimal, error)` (tbill.go:98) — OK 驗證 + error（FI-4）；FI-1 decimal 型別
+- [x] `func TBillYield(settlement, maturity time.Time, pr decimal.Decimal, opts ...Options) (decimal.Decimal, error)` (tbill.go:125) — OK 驗證 + error（FI-4）；FI-1 decimal 型別
+- [x] `func VDB(cost, salvage decimal.Decimal, life int, startPeriod, endPeriod, factor decimal.Decimal, noSwitch bool, opts ...Options) (decimal.Decimal, error)` (depreciation.go:117) — OK 驗證 + error（FI-4）；FI-1 decimal 型別
+- [x] `func XIRR(values []decimal.Decimal, dates []time.Time, guess decimal.Decimal, opts ...Options) (decimal.Decimal, error)` (xnpv.go:36) — OK 驗證 + error（FI-4）；FI-1 decimal 型別
+- [x] `func XNPV(rate decimal.Decimal, values []decimal.Decimal, dates []time.Time, opts ...Options) (decimal.Decimal, error)` (xnpv.go:19) — OK 驗證 + error（FI-4）；FI-1 decimal 型別
+- [x] `func Yield(settlement, maturity time.Time, rate, pr, redemption decimal.Decimal, freq int, basis DayCountBasis, guess decimal.Decimal, opts ...Options) (decimal.Decimal, error)` (bonds.go:211) — OK 驗證 + error（FI-4）；FI-1 decimal 型別
+- [x] `type AmortizationRow struct { Period int Payment decimal.Decimal Interest decimal.Decimal Principal decimal.Decimal Balance decimal.Decimal }` (amortization.go:11) — OK
+- [x] `type DayCountBasis uint8` (daycount.go:13) — OK
+- [x] `type Options struct { Scale int32 Mode RoundingMode }` (options.go:100) — OK 零值可用（範本）；FI-3 variadic
+- [x] `type PaymentTiming uint8` (options.go:8) — OK
+- [x] `type RoundingMode string` (options.go:32) — OK
+- [x] `var Zero` (helpers.go:22) — FI-3 可覆寫
 
 ## gplot (22)
 
@@ -1379,20 +1397,20 @@
 
 ## mkt (14)
 
-- [ ] `const TimeScaleDaily TimeScale` (time_scale.go:9)
-- [ ] `const TimeScaleHourly TimeScale` (time_scale.go:8)
-- [ ] `const TimeScaleMonthly TimeScale` (time_scale.go:11)
-- [ ] `const TimeScaleWeekly TimeScale` (time_scale.go:10)
-- [ ] `const TimeScaleYearly TimeScale` (time_scale.go:12)
-- [ ] `func BasketAnalysis(dt insyra.IDataTable, config BasketConfig) *BasketResult` (basket.go:38)
-- [ ] `func CustomerActivityIndex(dt insyra.IDataTable, caiConfig CAIConfig) insyra.IDataTable` (cai.go:38)
-- [ ] `func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable` (rfm.go:26)
-- [ ] `type BasketConfig struct { OrderIDColIndex string OrderIDColName string ProductIDColIndex string ProductIDColName string }` (basket.go:12)
-- [ ] `type BasketResult struct { Support insyra.IDataTable Confidence insyra.IDataTable Lift insyra.IDataTable }` (basket.go:21)
-- [ ] `type CAIConfig struct { CustomerIDColIndex string CustomerIDColName string TradingDayColIndex string TradingDayColName string DateFormat string TimeScale TimeScale }` (cai.go:12)
-- [ ] `type RFMConfig struct { CustomerIDColIndex string CustomerIDColName string TradingDayColIndex string TradingDayColName string AmountColIndex string AmountColName string NumGroups uint DateFormat string TimeScale TimeScale }` (rfm.go:12)
-- [ ] `type TimeScale string` (time_scale.go:5)
-- [ ] `var CAI` (cai.go:22)
+- [x] `const TimeScaleDaily TimeScale` (time_scale.go:9) — OK
+- [x] `const TimeScaleHourly TimeScale` (time_scale.go:8) — OK
+- [x] `const TimeScaleMonthly TimeScale` (time_scale.go:11) — OK
+- [x] `const TimeScaleWeekly TimeScale` (time_scale.go:10) — OK
+- [x] `const TimeScaleYearly TimeScale` (time_scale.go:12) — OK
+- [x] `func BasketAnalysis(dt insyra.IDataTable, config BasketConfig) *BasketResult` (basket.go:38) — MK-1 無 error；輸出有排序：OK
+- [x] `func CustomerActivityIndex(dt insyra.IDataTable, caiConfig CAIConfig) insyra.IDataTable` (cai.go:38) — MK-1 無 error；MK-2
+- [x] `func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable` (rfm.go:26) — MK-1 panic（已實測）、無 error；MK-2 順序不定
+- [x] `type BasketConfig struct { OrderIDColIndex string OrderIDColName string ProductIDColIndex string ProductIDColName string }` (basket.go:12) — MK-3 Index/Name 雙欄位
+- [x] `type BasketResult struct { Support insyra.IDataTable Confidence insyra.IDataTable Lift insyra.IDataTable }` (basket.go:21) — OK；欄位為 IDataTable（K-7）
+- [x] `type CAIConfig struct { CustomerIDColIndex string CustomerIDColName string TradingDayColIndex string TradingDayColName string DateFormat string TimeScale TimeScale }` (cai.go:12) — MK-3 Index/Name 雙欄位
+- [x] `type RFMConfig struct { CustomerIDColIndex string CustomerIDColName string TradingDayColIndex string TradingDayColName string AmountColIndex string AmountColName string NumGroups uint DateFormat string TimeScale TimeScale }` (rfm.go:12) — MK-3 Index/Name 雙欄位
+- [x] `type TimeScale string` (time_scale.go:5) — OK
+- [x] `var CAI` (cai.go:22) — MK-3 可覆寫的函式變數
 
 ## ml (230)
 
