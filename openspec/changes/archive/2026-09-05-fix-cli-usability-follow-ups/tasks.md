@@ -24,5 +24,5 @@
 
 ## 4. Verification
 
-- [ ] 4.1 `go test ./...` 全綠；`golangci-lint run` 無新錯誤；本機一次性執行 `go run ./cmd/insyra newdl 0.01 -0.004 as r` 成功
-- [ ] 4.2 `openspec validate fix-cli-usability-follow-ups --strict` 通過
+- [x] 4.1 `go test ./...` 全綠；`golangci-lint run` 無新錯誤；本機一次性執行 `go run ./cmd/insyra newdl 0.01 -0.004 as r` 成功
+- [x] 4.2 `openspec validate fix-cli-usability-follow-ups --strict` 通過
