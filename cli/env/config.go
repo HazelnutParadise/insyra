@@ -2,15 +2,26 @@ package env
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 )
+
+// defaultFetchTWIntervalMS is the minimum spacing `fetch tw` puts between
+// TWSE/TPEx requests. 300ms is the backfill-safe value the datafetch docs
+// recommend; the CLI is the surface most likely to run a ten-year loop.
+const defaultFetchTWIntervalMS = 300
 
 type GlobalConfig struct {
 	DefaultEnv string `json:"defaultEnv"`
 	LogLevel   string `json:"logLevel"`
 	NoColor    bool   `json:"noColor"`
 	AccelMode  string `json:"accelMode"`
+	// FetchTWIntervalMS is the `fetch tw` request interval in milliseconds.
+	// Zero disables throttling.
+	FetchTWIntervalMS int `json:"fetchTWIntervalMS"`
 }
 
 func defaultGlobalConfig() GlobalConfig {
@@ -19,6 +30,8 @@ func defaultGlobalConfig() GlobalConfig {
 		LogLevel:   "info",
 		NoColor:    false,
 		AccelMode:  "auto",
+
+		FetchTWIntervalMS: defaultFetchTWIntervalMS,
 	}
 }
 
@@ -93,6 +106,12 @@ func (m *Manager) UpdateGlobalConfig(key, value string) (GlobalConfig, error) {
 		cfg.NoColor = value == "true" || value == "1" || value == "yes"
 	case "accel-mode", "accelMode", "accel.mode":
 		cfg.AccelMode = value
+	case "fetch.tw.interval_ms", "fetch-tw-interval-ms", "fetchTWIntervalMS":
+		milliseconds, convErr := strconv.Atoi(strings.TrimSpace(value))
+		if convErr != nil || milliseconds < 0 {
+			return GlobalConfig{}, fmt.Errorf("invalid value %q for fetch.tw.interval_ms: expected a non-negative integer number of milliseconds", value)
+		}
+		cfg.FetchTWIntervalMS = milliseconds
 	}
 	if err := m.SaveGlobalConfig(cfg); err != nil {
 		return GlobalConfig{}, err

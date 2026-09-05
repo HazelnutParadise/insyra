@@ -223,6 +223,19 @@ insyra quant capm asset market rf 0.0002 as capm            # one-row DataTable
 insyra quant factor asset factors as fm                     # one row per factor, plus fm_alpha
 insyra quant bs call 42 40 0.10 0.20 0.5 as opt             # price + greeks, one-row DataTable
 insyra quant iv call 4.759 42 40 0.10 0.5
+
+# Taiwan stocks (TWSE/TPEx), no API key; dates are YYYY-MM-DD, market defaults to auto
+insyra fetch tw 2330 adjprices 2026-01-01 2026-08-31 twse as tsmc   # adjusted: AdjClose has no ex-date fake loss
+insyra fetch tw 0050 adjprices 2026-01-01 2026-08-31 twse as market
+insyra col tsmc AdjClose as tsmc_px
+insyra col market AdjClose as market_px
+insyra pctchange tsmc_px 1 as tsmc_ret
+insyra pctchange market_px 1 as market_ret
+insyra clean tsmc_ret nil
+insyra clean market_ret nil
+insyra quant beta tsmc_ret market_ret as beta
+insyra fetch tw institutional 2026-08-15 twse as inst        # one trading day
+insyra fetch tw quotes twse as quotes                        # every listed code
 ```
 
 `groupby <var> by <col1>[,<col2>...] agg <col>:<op>[:<alias>] [<col>:<op>[:<alias>] ...] [as <var>]` produces a new DataTable with one row per unique key combination. Supported ops: `sum`, `mean` (alias `avg`), `median`, `min`, `max`, `count` (non-nil), `countall` (group size), `std`/`stdev`, `stdp`/`stdevp`, `var`, `varp`, `first`, `last`, `nunique`. The bare token `count` is shorthand for `:countall:count`.
@@ -234,6 +247,8 @@ insyra quant iv call 4.759 42 40 0.10 0.5
 `resample <dt> <timecol> weekly|monthly|quarterly|yearly <col>:<op>[:<name>] [...] [as <var>]` aggregates time-keyed rows into calendar periods, labelling each row with the period's final day and omitting empty periods. `op` uses the `groupby` operator names; `:name` renames the output column, and without it the source name is kept. `<timecol>` must hold real `time.Time` values — a CSV load leaves dates as strings and `resample` rejects them with a row-numbered error.
 
 `quant <form> ...` exposes the `quant` package: `sharpe`, `sortino`, `ir`, `maxdd`, `annret`, `calmar`, `drawdown`, `var`, `cvar`, `beta`, `capm`, `factor`, `bs`, `iv`. Series arguments are DataList variables holding per-period **returns** (or an equity curve for the drawdown forms) — passing prices produces a meaningless number, exactly as it would through the Go API. `periods`, `days`, and `confidence` are required positionals because the library refuses to invent an annualization factor; `rf`, `mar`, and `q` default to 0, and the VaR method defaults to `historical`. Scalar forms print `name=value` and store a `float64`; `capm` and `bs` store a one-row DataTable, `factor` stores one row per factor (`Factor, Exposure, StdErr, TValue, PValue`) plus a `<var>_alpha` table, and `drawdown` stores a DataList. Library errors come back verbatim behind a `quant <form>:` prefix.
+
+`fetch tw` reads the unauthenticated TWSE and TPEx daily datasets: `fetch tw <code> prices <from> <to> [market]`, `fetch tw <code> adjprices <from> <to> [market]`, `fetch tw exrights <from> <to> [market]`, `fetch tw institutional <date> [market]`, `fetch tw margin <date> [market]`, and `fetch tw quotes [market]`. Dates are `YYYY-MM-DD`; `market` is `twse`, `tpex`, or `auto` (the default). Build return series from `adjprices`/`AdjClose`, not `prices`/`Close` — the quoted price drops on an ex-dividend or ex-rights day without any loss to the holder. `adjprices` and `exrights` are TWSE-only, because TPEx publishes no dated ex-rights history; passing `tpex` returns an explicit error instead of an unadjusted table. Bad dates, `from` after `to`, and unknown markets are rejected before any request; library errors come back verbatim behind a `fetch tw:` prefix. Requests are spaced 300 ms apart with two retries — override with `insyra config fetch.tw.interval_ms <milliseconds>`.
 
 `describe <var> [by <col1>[,<col2>...]] [all true|false] [percentiles <p1,p2,...>] [as <var>]` creates a reusable summary DataTable. Without `as`, it saves to `$result`. `all true` includes non-numeric and mixed columns; `by` is DataTable-only and returns one row per group.
 

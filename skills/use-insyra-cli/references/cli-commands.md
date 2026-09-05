@@ -152,6 +152,8 @@ This list is generated from `insyra help` in this repository state.
 - `chisq` - Chi-square test commands
 - `plot` - Create charts from variables
 - `fetch` - Fetch external data
+  - `fetch yahoo` - Yahoo Finance quotes, info, history, dividends, splits, actions, options, news, calendar, fastinfo
+  - `fetch tw` - Taiwan TWSE/TPEx daily prices, adjusted prices, ex-rights, institutional trades, margin balances, all-code quotes
 
 ## Quantitative Finance
 - `quant sharpe` - SharpeRatio (annualized)

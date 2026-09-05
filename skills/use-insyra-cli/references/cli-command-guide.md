@@ -653,9 +653,20 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 
 ### `fetch`
 - Description: Fetch external data
-- Usage: `fetch yahoo <ticker> <method> [params...] [as <var>]`
+- Usage: `fetch yahoo <ticker> <method> [params...] [as <var>]` / `fetch tw [<code>] <form> [args...] [as <var>]`
 - Example: `insyra fetch yahoo AAPL quote`
 - Yahoo methods: `quote`, `info`, `history`, `dividends`, `splits`, `actions`, `options`, `news [count]`, `calendar`, `fastinfo`.
+- Taiwan (TWSE/TPEx) forms:
+	- `fetch tw <code> prices <from> <to> [twse|tpex|auto] [as <var>]` — `DailyPrices`
+	- `fetch tw <code> adjprices <from> <to> [twse|auto] [as <var>]` — `DailyPricesAdjusted`, adds `AdjFactor` and adjusted OHLC
+	- `fetch tw exrights <from> <to> [twse|auto] [as <var>]` — `ExRights`
+	- `fetch tw institutional <date> [twse|tpex|auto] [as <var>]` — `InstitutionalTrades`
+	- `fetch tw margin <date> [twse|tpex|auto] [as <var>]` — `MarginBalance`
+	- `fetch tw quotes [twse|tpex|auto] [as <var>]` — `AllDailyQuotes`
+- Dates are `YYYY-MM-DD`; `market` defaults to `auto`. Bad dates, `from` after `to`, and unknown markets are rejected before any request, and library errors are returned verbatim behind a `fetch tw:` prefix.
+- `adjprices` and `exrights` are TWSE-only: TPEx publishes no dated ex-rights history, so `tpex` (or an `auto` lookup that lands on TPEx) returns an explicit error rather than an unadjusted table.
+- Build return series from `AdjClose`, not `Close` — the quoted price drops on an ex-date without any loss to the holder.
+- Requests are spaced 300 ms apart with two retries; `insyra config fetch.tw.interval_ms <milliseconds>` overrides the interval (non-negative integer, `0` disables throttling).
 
 ## Quantitative Finance
 ### `quant`

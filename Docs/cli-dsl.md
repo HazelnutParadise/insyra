@@ -515,6 +515,43 @@ quant bs call 42 40 0.10 0.20 0.5 as opt
 quant iv call 4.759 42 40 0.10 0.5
 ```
 
+### B8. Taiwan stock beta from the CLI
+
+`fetch tw` reaches the Taiwan Stock Exchange (TWSE) and Taipei Exchange (TPEx) daily datasets. No API key is needed, dates are written `YYYY-MM-DD`, and the trailing market keyword is `twse`, `tpex`, or `auto` (the default).
+
+```text
+fetch tw <code> prices <from> <to> [twse|tpex|auto] [as <var>]
+fetch tw <code> adjprices <from> <to> [twse|auto] [as <var>]
+fetch tw exrights <from> <to> [twse|auto] [as <var>]
+fetch tw institutional <date> [twse|tpex|auto] [as <var>]
+fetch tw margin <date> [twse|tpex|auto] [as <var>]
+fetch tw quotes [twse|tpex|auto] [as <var>]
+```
+
+Use `adjprices` for anything that becomes a return series: on an ex-dividend or ex-rights day the quoted price drops without any loss to the holder, so `Close` shows a fake loss that `AdjClose` removes. `adjprices` and `exrights` are TWSE-only — TPEx publishes no dated ex-rights history, so passing `tpex` returns an explicit error rather than a silently unadjusted table.
+
+Beta of TSMC against the 0050 market ETF, end to end:
+
+```text
+fetch tw 2330 adjprices 2026-01-01 2026-08-31 twse as tsmc
+fetch tw 0050 adjprices 2026-01-01 2026-08-31 twse as market
+col tsmc AdjClose as tsmc_px
+col market AdjClose as market_px
+pctchange tsmc_px 1 as tsmc_ret
+pctchange market_px 1 as market_ret
+clean tsmc_ret nil
+clean market_ret nil
+quant beta tsmc_ret market_ret as beta
+```
+
+Requests are throttled to one every 300 ms with two retries, which is what the exchanges' unauthenticated endpoints tolerate for a multi-year backfill. A script that needs a different pace sets the interval once:
+
+```text
+config fetch.tw.interval_ms 1000
+```
+
+The value is milliseconds and must be a non-negative integer; `0` turns throttling off.
+
 ### C. Go `engine/dsl` session flow
 
 ```go
@@ -626,7 +663,7 @@ Source policy:
 | `exit` | `exit` | Exit REPL |
 | `expanding` | `expanding <var> <minobs> <reducer> [as <var>]` | Expanding-window reduction (reducer: sum\|mean\|min\|max\|median\|std\|var) |
 | `expsmooth` | `expsmooth <var> <alpha> [as <var>]` | Exponential smoothing |
-| `fetch` | `fetch yahoo <ticker> <method> [params...] [as <var>]` | Fetch external data |
+| `fetch` | `fetch yahoo <ticker> <method> [params...] [as <var>]` / `fetch tw [<code>] prices\|adjprices\|exrights\|institutional\|margin\|quotes ... [as <var>]` | Fetch external data |
 | `fillna` | `fillna <var> mean\|median\|mode\|ffill\|bfill\|interpolate [cols A,B,C] [limit N] [extrapolate yes\|no] [missing nan\|nil\|both] [as <var>]` | Fill missing DataList/DataTable values |
 | `fillnan` | `fillnan <var> mean [as <var>]` | Fill NaN with mean (deprecated alias) |
 | `filter` | `filter <var> <expr> [as <var>]` | Filter DataTable by CCL expression |

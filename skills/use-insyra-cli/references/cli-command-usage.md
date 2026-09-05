@@ -220,10 +220,17 @@ This is separate from boolean-flag parsing used by option arguments like `header
 
 ## `fetch`
 - Description: Fetch external data
-- Usage: `fetch yahoo <ticker> <method> [params...] [as <var>]`
-- Supported methods:
+- Usage: `fetch yahoo <ticker> <method> [params...] [as <var>]` / `fetch tw [<code>] <form> [args...] [as <var>]`
+- Supported yahoo methods:
 	- `quote`, `info`, `history`, `dividends`, `splits`, `actions`, `options`, `calendar`, `fastinfo`
 	- `news [count]` (default count = `10`)
+- Supported tw forms (dates `YYYY-MM-DD`, market `twse|tpex|auto`, default `auto`):
+	- `fetch tw <code> prices <from> <to> [market]`
+	- `fetch tw <code> adjprices <from> <to> [market]` (TWSE only)
+	- `fetch tw exrights <from> <to> [market]` (TWSE only)
+	- `fetch tw institutional <date> [market]`
+	- `fetch tw margin <date> [market]`
+	- `fetch tw quotes [market]`
 
 ## `fillna`
 - Description: Fill missing DataList/DataTable values
