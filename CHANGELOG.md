@@ -8,8 +8,6 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 ## Unreleased
 
-## v0.3.2
-
 ### Core
 
 - Added opt-in `AllowRaggedRows` and `TrimLeadingSpace` to `CSVReadOptions` and matching `isr.CSV_inOpts` fields. Ragged reads pad short rows and retain extra cells in auto-named columns; the zero value remains strict. ([issue #198](https://github.com/HazelnutParadise/insyra/issues/198))
@@ -28,7 +26,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - Added `FactorModel` for named multi-factor attribution of asset excess returns, including factor exposures, alpha, OLS inference, fit statistics, residuals, and factor-name lookup. Factor columns are taken as given, while the risk-free rate is subtracted from the asset return.
 - Added `BlackScholes` and `ImpliedVolatility` for European option prices, five greeks, and volatility recovery with continuous dividend yield.
 
-### `datafetch`
+### datafetch
 
 - Added `TWStock` for typed TWSE/TPEx daily prices, institutional trades, margin balances, and full daily quote tables, with monthly history paging, throttle/retry controls, automatic market fallback, and opt-in live access in tests.
 - Added `TWStock.ExRights` and `TWStock.DailyPricesAdjusted`. `ExRights` returns the TWSE ex-rights/ex-dividend reference table for a date range, including the exchange's own `AdjFactor` (reference price ÷ prior close), paging ranges longer than a year. `DailyPricesAdjusted` returns every `DailyPrices` column plus `AdjFactor` and backward-adjusted `AdjOpen`, `AdjHigh`, `AdjLow`, and `AdjClose`, using the Yahoo `Adj Close` convention, so a return series no longer shows a fake loss on ex-dates. Ex-dates outside `[from, to]` are not applied. Both methods are TWSE-only: TPEx publishes no dated ex-rights history endpoint, so `TWMarketTPEx` returns an explicit "not supported" error rather than an empty table.
