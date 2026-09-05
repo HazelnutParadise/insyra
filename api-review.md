@@ -41,7 +41,7 @@
 | --- | --- | --- |
 | `.`（core） | 565 | **完成** |
 | `accel` | 127 | 未開始 |
-| `cli` 系列（cli, commands, env, repl, style） | 79 | 未開始 |
+| `cli` 系列（cli, commands, env, repl, style） | 80 | **完成** |
 | `csvxl` | 9 | **完成** |
 | `datafetch` | 89 | **完成** |
 | `engine` 系列（algorithms, atomic, biindex, ccl, dsl, ring） | 41 | **完成** |
@@ -296,6 +296,15 @@
 | --- | --- | --- | --- | --- |
 | EN-1 | Med | `engine/ccl` 把 `internal/ccl` 的 AST（`CCLNode`、`Context`、`EvaluationResult`、`MapContext`）用型別別名整個公開，編譯器內部結構從此成為相容性承諾；`RegisterFunction`／`RegisterAggregateFunction` 是程序全域登錄表，無移除、無並行安全說明；`ResetEvalDepth`／`ResetFuncCallDepth` 已是 no-op 但沒標 Deprecated（準則 2、10） | engine/ccl/ccl.go | 只公開 `Compile`＋`Evaluate`＋`Register*`；no-op 標 Deprecated |
 | EN-2 | Low | `engine/dsl` 引入 `cli/env` 與 `cli/repl`：程式庫層的 engine 依賴 CLI 層，方向反了；`engine/atomic`、`biindex`、`ring` 是 internal 型別的別名再匯出，doc 說 Ring 非並行安全，OK | engine/dsl/dsl.go:3-8 | DSL session 實作搬到非 cli 套件，cli 依賴它 |
+
+### cli（Go 層 API：cli、cli/commands、cli/env、cli/repl、cli/style）
+
+| 編號 | 嚴重度 | 問題 | 位置 | 建議 |
+| --- | --- | --- | --- | --- |
+| CL-1 | Med | 環境名稱直接 `filepath.Join(envsPath, name)`，只檢查非空：`Create("../../tmp/x")`、`Delete("../something")` 會在 envs 目錄之外建立或刪除目錄。CLI 使用者是自己的機器風險低，但 `engine/dsl` 讓程式嵌入 DSL session、環境名稱可能來自外部輸入（準則 14） | cli/env/manager.go:130-138, 180-230 | 名稱限制為 `[A-Za-z0-9_-]+`，拒絕路徑分隔符 |
+| CL-2 | Med | `commands.Registry` 是匯出的全域 map，`Register` 寫入無鎖、`Dispatch` 讀取無鎖，並行註冊是 data race；`ExecContext` 全部欄位公開可改；`DBConn.DSN` 以明文保存連線字串含密碼（doc 說顯示時遮罩，但值本身在記憶體與任何序列化路徑都是明文）（準則 12、14） | cli/commands/registry.go:47-64；db_conn.go:15-20 | Registry 改私有 + `sync.RWMutex`；DSN 只存遮罩後版本 |
+| CL-3 | Low | `cli/env` 每個 `Manager` 方法都有一個同名的套件層包裝函式（`env.Create` → `Default().Create`），60 個匯出符號有 27 個是重複；`State.LastAccess string` 而非 `time.Time`；`BuildCobraCommands` 以命令名稱字串（`"env"`、`"accel"`）硬編特殊旗標；`NewAutoCompleter` 回傳第三方 `readline.AutoCompleter`（準則 1、8） | cli/env/manager.go:520-540；state.go:20；commands/registry.go:100-150 | 移除包裝函式（或只留 Default()）；LastAccess 改 time.Time |
+| CL-4 | OK | `Manager` 有鎖、`SaveState` 用 tmp+rename 原子寫入（parquet.Write 與 geocode cache 應比照）、`DSLSession` 對嵌入者的 Manager 隔離說明清楚 | — | — |
 
 ## 逐項清單
 
@@ -1024,98 +1033,98 @@
 
 ## cli (2)
 
-- [ ] `func Execute() error` (root.go:19)
-- [ ] `func NewRootCommand() *cobra.Command` (root.go:23)
+- [x] `func Execute() error` (root.go:19) — OK
+- [x] `func NewRootCommand() *cobra.Command` (root.go:23) — OK
 
 ## cli/commands (8)
 
-- [ ] `func BuildCobraCommands(ctx *ExecContext) []*cobra.Command` (registry.go:86)
-- [ ] `func CloseAllDBConns(ctx *ExecContext)` (db_conn.go:184)
-- [ ] `func Dispatch(ctx *ExecContext, name string, args []string) error` (registry.go:66)
-- [ ] `func Register(handler *CommandHandler) error` (registry.go:49)
-- [ ] `type CommandHandler struct { Name string Aliases []string Usage string Description string Forms []string Examples []string DisableFlagParsing bool Run func(ctx *ExecContext, args []string) error }` (registry.go:29)
-- [ ] `type DBConn struct { Name string Dialect string DSN string DB *gorm.DB }` (db_conn.go:15)
-- [ ] `type ExecContext struct { Vars map[string]any DBConns map[string]*DBConn EnvName string EnvPath string Output io.Writer InREPL bool OpenREPL func(ctx *ExecContext) error Env *env.Manager }` (registry.go:14)
-- [ ] `var Registry` (registry.go:47)
+- [x] `func BuildCobraCommands(ctx *ExecContext) []*cobra.Command` (registry.go:86) — CL-3 硬編命令名
+- [x] `func CloseAllDBConns(ctx *ExecContext)` (db_conn.go:184) — OK
+- [x] `func Dispatch(ctx *ExecContext, name string, args []string) error` (registry.go:66) — CL-2 無鎖全域登錄表
+- [x] `func Register(handler *CommandHandler) error` (registry.go:49) — CL-2 無鎖全域登錄表
+- [x] `type CommandHandler struct { Name string Aliases []string Usage string Description string Forms []string Examples []string DisableFlagParsing bool Run func(ctx *ExecContext, args []string) error }` (registry.go:29) — OK
+- [x] `type DBConn struct { Name string Dialect string DSN string DB *gorm.DB }` (db_conn.go:15) — CL-2 明文 DSN
+- [x] `type ExecContext struct { Vars map[string]any DBConns map[string]*DBConn EnvName string EnvPath string Output io.Writer InREPL bool OpenREPL func(ctx *ExecContext) error Env *env.Manager }` (registry.go:14) — CL-2 全公開可改；Env 欄位 doc 清楚
+- [x] `var Registry` (registry.go:47) — CL-2 無鎖全域登錄表
 
 ## cli/env (60)
 
-- [ ] `func (m *Manager) AppendHistory(envName, command string) error` (state.go:161)
-- [ ] `func (m *Manager) BasePath() (string, error)` (manager.go:98)
-- [ ] `func (m *Manager) Clear(name string, keepHistory bool) error` (manager.go:228)
-- [ ] `func (m *Manager) Create(name string) error` (manager.go:180)
-- [ ] `func (m *Manager) Delete(name string) error` (manager.go:214)
-- [ ] `func (m *Manager) EnsureBaseStructure() error` (manager.go:153)
-- [ ] `func (m *Manager) EnsureDefaultEnvironment() error` (manager.go:141)
-- [ ] `func (m *Manager) EnvsDirName() string` (manager.go:112)
-- [ ] `func (m *Manager) EnvsPath() (string, error)` (manager.go:122)
-- [ ] `func (m *Manager) Exists(name string) bool` (manager.go:171)
-- [ ] `func (m *Manager) Export(name, outputPath string) error` (manager.go:319)
-- [ ] `func (m *Manager) GlobalConfigPath() (string, error)` (config.go:38)
-- [ ] `func (m *Manager) Import(inputPath, targetName string, force bool) (string, error)` (manager.go:370)
-- [ ] `func (m *Manager) Info(name string) (EnvironmentInfo, error)` (manager.go:297)
-- [ ] `func (m *Manager) List() ([]EnvironmentInfo, error)` (manager.go:269)
-- [ ] `func (m *Manager) LoadGlobalConfig() (GlobalConfig, error)` (config.go:46)
-- [ ] `func (m *Manager) LoadState(envName string) (*State, error)` (state.go:57)
-- [ ] `func (m *Manager) Open(name string) (string, error)` (manager.go:200)
-- [ ] `func (m *Manager) ReadHistory(envName string) ([]string, error)` (state.go:178)
-- [ ] `func (m *Manager) Rename(oldName, newName string) error` (manager.go:248)
-- [ ] `func (m *Manager) ResolveEnvPath(name string) (string, error)` (manager.go:130)
-- [ ] `func (m *Manager) RestoreVariables(envName string) (map[string]any, error)` (state.go:91)
-- [ ] `func (m *Manager) SaveGlobalConfig(cfg GlobalConfig) error` (config.go:80)
-- [ ] `func (m *Manager) SaveState(envName string, vars map[string]any) error` (state.go:25)
-- [ ] `func (m *Manager) SetBasePath(path string)` (manager.go:83)
-- [ ] `func (m *Manager) SetEnvsDirName(name string)` (manager.go:92)
-- [ ] `func (m *Manager) UpdateGlobalConfig(key, value string) (GlobalConfig, error)` (config.go:95)
-- [ ] `func AppendHistory(envName, command string) error` (state.go:222)
-- [ ] `func BasePath() (string, error)` (manager.go:523)
-- [ ] `func Clear(name string, keepHistory bool) error` (manager.go:534)
-- [ ] `func Create(name string) error` (manager.go:531)
-- [ ] `func Default() *Manager` (manager.go:72)
-- [ ] `func Delete(name string) error` (manager.go:533)
-- [ ] `func EnsureBaseStructure() error` (manager.go:529)
-- [ ] `func EnsureDefaultEnvironment() error` (manager.go:528)
-- [ ] `func EnvsPath() (string, error)` (manager.go:524)
-- [ ] `func Exists(name string) bool` (manager.go:530)
-- [ ] `func Export(name, outputPath string) error` (manager.go:538)
-- [ ] `func GlobalConfigPath() (string, error)` (config.go:124)
-- [ ] `func Import(inputPath, targetName string, force bool) (string, error)` (manager.go:539)
-- [ ] `func Info(name string) (EnvironmentInfo, error)` (manager.go:537)
-- [ ] `func List() ([]EnvironmentInfo, error)` (manager.go:536)
-- [ ] `func LoadGlobalConfig() (GlobalConfig, error)` (config.go:126)
-- [ ] `func LoadState(envName string) (*State, error)` (state.go:214)
-- [ ] `func NewManager(basePath, envsDirName string) *Manager` (manager.go:61)
-- [ ] `func Open(name string) (string, error)` (manager.go:532)
-- [ ] `func ReadHistory(envName string) ([]string, error)` (state.go:226)
-- [ ] `func Rename(oldName, newName string) error` (manager.go:535)
-- [ ] `func ResolveEnvPath(name string) (string, error)` (manager.go:525)
-- [ ] `func RestoreVariables(envName string) (map[string]any, error)` (state.go:218)
-- [ ] `func SaveGlobalConfig(cfg GlobalConfig) error` (config.go:128)
-- [ ] `func SaveState(envName string, vars map[string]any) error` (state.go:210)
-- [ ] `func SetBasePath(path string)` (manager.go:78)
-- [ ] `func UpdateGlobalConfig(key, value string) (GlobalConfig, error)` (config.go:130)
-- [ ] `type EnvironmentInfo struct { Name string Path string LastAccess time.Time VariableCount int }` (manager.go:20)
-- [ ] `type ExportPayload struct { SchemaVersion int `json:"schemaVersion"` ExportedAt string `json:"exportedAt"` Environment string `json:"environment"` State *State `json:"state"` History []string `json:"history"` Config json.RawMessage `json:"config"` }` (manager.go:27)
-- [ ] `type GlobalConfig struct { DefaultEnv string `json:"defaultEnv"` LogLevel string `json:"logLevel"` NoColor bool `json:"noColor"` AccelMode string `json:"accelMode"` FetchTWIntervalMS int `json:"fetchTWIntervalMS"` }` (config.go:17)
-- [ ] `type Manager struct { mu sync.RWMutex basePath string envsDirName string }` (manager.go:44)
-- [ ] `type SerializedVariable struct { Type string `json:"type"` Name string `json:"name,omitempty"` Data any `json:"data"` }` (state.go:14)
-- [ ] `type State struct { Variables map[string]SerializedVariable `json:"variables"` LastAccess string `json:"lastAccess"` }` (state.go:20)
+- [x] `func (m *Manager) AppendHistory(envName, command string) error` (state.go:161) — OK
+- [x] `func (m *Manager) BasePath() (string, error)` (manager.go:98) — OK
+- [x] `func (m *Manager) Clear(name string, keepHistory bool) error` (manager.go:228) — CL-1 名稱未驗證
+- [x] `func (m *Manager) Create(name string) error` (manager.go:180) — CL-1 名稱未驗證
+- [x] `func (m *Manager) Delete(name string) error` (manager.go:214) — CL-1 名稱未驗證
+- [x] `func (m *Manager) EnsureBaseStructure() error` (manager.go:153) — OK
+- [x] `func (m *Manager) EnsureDefaultEnvironment() error` (manager.go:141) — OK
+- [x] `func (m *Manager) EnvsDirName() string` (manager.go:112) — OK
+- [x] `func (m *Manager) EnvsPath() (string, error)` (manager.go:122) — OK
+- [x] `func (m *Manager) Exists(name string) bool` (manager.go:171) — OK
+- [x] `func (m *Manager) Export(name, outputPath string) error` (manager.go:319) — OK
+- [x] `func (m *Manager) GlobalConfigPath() (string, error)` (config.go:38) — OK
+- [x] `func (m *Manager) Import(inputPath, targetName string, force bool) (string, error)` (manager.go:370) — OK
+- [x] `func (m *Manager) Info(name string) (EnvironmentInfo, error)` (manager.go:297) — OK
+- [x] `func (m *Manager) List() ([]EnvironmentInfo, error)` (manager.go:269) — OK
+- [x] `func (m *Manager) LoadGlobalConfig() (GlobalConfig, error)` (config.go:46) — OK
+- [x] `func (m *Manager) LoadState(envName string) (*State, error)` (state.go:57) — OK
+- [x] `func (m *Manager) Open(name string) (string, error)` (manager.go:200) — CL-1 名稱未驗證
+- [x] `func (m *Manager) ReadHistory(envName string) ([]string, error)` (state.go:178) — OK
+- [x] `func (m *Manager) Rename(oldName, newName string) error` (manager.go:248) — CL-1 名稱未驗證
+- [x] `func (m *Manager) ResolveEnvPath(name string) (string, error)` (manager.go:130) — CL-1 名稱未驗證
+- [x] `func (m *Manager) RestoreVariables(envName string) (map[string]any, error)` (state.go:91) — OK
+- [x] `func (m *Manager) SaveGlobalConfig(cfg GlobalConfig) error` (config.go:80) — OK
+- [x] `func (m *Manager) SaveState(envName string, vars map[string]any) error` (state.go:25) — OK 原子寫入（CL-4 範本）
+- [x] `func (m *Manager) SetBasePath(path string)` (manager.go:83) — OK
+- [x] `func (m *Manager) SetEnvsDirName(name string)` (manager.go:92) — OK
+- [x] `func (m *Manager) UpdateGlobalConfig(key, value string) (GlobalConfig, error)` (config.go:95) — OK
+- [x] `func AppendHistory(envName, command string) error` (state.go:222) — CL-3 套件層重複包裝
+- [x] `func BasePath() (string, error)` (manager.go:523) — CL-3 套件層重複包裝
+- [x] `func Clear(name string, keepHistory bool) error` (manager.go:534) — CL-1 名稱未驗證
+- [x] `func Create(name string) error` (manager.go:531) — CL-1 名稱未驗證
+- [x] `func Default() *Manager` (manager.go:72) — OK
+- [x] `func Delete(name string) error` (manager.go:533) — CL-1 名稱未驗證
+- [x] `func EnsureBaseStructure() error` (manager.go:529) — CL-3 套件層重複包裝
+- [x] `func EnsureDefaultEnvironment() error` (manager.go:528) — OK
+- [x] `func EnvsPath() (string, error)` (manager.go:524) — CL-3 套件層重複包裝
+- [x] `func Exists(name string) bool` (manager.go:530) — CL-3 套件層重複包裝
+- [x] `func Export(name, outputPath string) error` (manager.go:538) — CL-3 套件層重複包裝
+- [x] `func GlobalConfigPath() (string, error)` (config.go:124) — CL-3 套件層重複包裝
+- [x] `func Import(inputPath, targetName string, force bool) (string, error)` (manager.go:539) — CL-3 套件層重複包裝
+- [x] `func Info(name string) (EnvironmentInfo, error)` (manager.go:537) — CL-3 套件層重複包裝
+- [x] `func List() ([]EnvironmentInfo, error)` (manager.go:536) — CL-3 套件層重複包裝
+- [x] `func LoadGlobalConfig() (GlobalConfig, error)` (config.go:126) — CL-3 套件層重複包裝
+- [x] `func LoadState(envName string) (*State, error)` (state.go:214) — CL-3 套件層重複包裝
+- [x] `func NewManager(basePath, envsDirName string) *Manager` (manager.go:61) — OK
+- [x] `func Open(name string) (string, error)` (manager.go:532) — CL-1 名稱未驗證
+- [x] `func ReadHistory(envName string) ([]string, error)` (state.go:226) — CL-3 套件層重複包裝
+- [x] `func Rename(oldName, newName string) error` (manager.go:535) — CL-1 名稱未驗證
+- [x] `func ResolveEnvPath(name string) (string, error)` (manager.go:525) — CL-1 名稱未驗證
+- [x] `func RestoreVariables(envName string) (map[string]any, error)` (state.go:218) — CL-3 套件層重複包裝
+- [x] `func SaveGlobalConfig(cfg GlobalConfig) error` (config.go:128) — CL-3 套件層重複包裝
+- [x] `func SaveState(envName string, vars map[string]any) error` (state.go:210) — CL-3 套件層重複包裝
+- [x] `func SetBasePath(path string)` (manager.go:78) — OK
+- [x] `func UpdateGlobalConfig(key, value string) (GlobalConfig, error)` (config.go:130) — CL-3 套件層重複包裝
+- [x] `type EnvironmentInfo struct { Name string Path string LastAccess time.Time VariableCount int }` (manager.go:20) — OK
+- [x] `type ExportPayload struct { SchemaVersion int `json:"schemaVersion"` ExportedAt string `json:"exportedAt"` Environment string `json:"environment"` State *State `json:"state"` History []string `json:"history"` Config json.RawMessage `json:"config"` }` (manager.go:27) — OK
+- [x] `type GlobalConfig struct { DefaultEnv string `json:"defaultEnv"` LogLevel string `json:"logLevel"` NoColor bool `json:"noColor"` AccelMode string `json:"accelMode"` FetchTWIntervalMS int `json:"fetchTWIntervalMS"` }` (config.go:17) — OK
+- [x] `type Manager struct { mu sync.RWMutex basePath string envsDirName string }` (manager.go:44) — OK
+- [x] `type SerializedVariable struct { Type string `json:"type"` Name string `json:"name,omitempty"` Data any `json:"data"` }` (state.go:14) — OK
+- [x] `type State struct { Variables map[string]SerializedVariable `json:"variables"` LastAccess string `json:"lastAccess"` }` (state.go:20) — CL-3 LastAccess string
 
 ## cli/repl (8)
 
-- [ ] `func (session *DSLSession) Context() *commands.ExecContext` (api.go:85)
-- [ ] `func (session *DSLSession) Execute(line string) error` (api.go:62)
-- [ ] `func (session *DSLSession) ExecuteFile(path string) error` (api.go:92)
-- [ ] `func NewAutoCompleter(ctx *commands.ExecContext) readline.AutoCompleter` (completer.go:17)
-- [ ] `func NewDSLSession(mgr *env.Manager, envName string, output io.Writer) (*DSLSession, error)` (api.go:24)
-- [ ] `func Start(ctx *commands.ExecContext) error` (repl.go:15)
-- [ ] `type DSLSession struct { ctx *commands.ExecContext }` (api.go:15)
-- [ ] `func (c *simpleCompleter) Do(line []rune, pos int) ([][]rune, int)` (completer.go:21)
+- [x] `func (session *DSLSession) Context() *commands.ExecContext` (api.go:85) — OK（CL-4）；Execute 每行落盤
+- [x] `func (session *DSLSession) Execute(line string) error` (api.go:62) — OK（CL-4）；Execute 每行落盤
+- [x] `func (session *DSLSession) ExecuteFile(path string) error` (api.go:92) — OK（CL-4）；Execute 每行落盤
+- [x] `func NewAutoCompleter(ctx *commands.ExecContext) readline.AutoCompleter` (completer.go:17) — CL-3 第三方型別；simpleCompleter 未匯出
+- [x] `func NewDSLSession(mgr *env.Manager, envName string, output io.Writer) (*DSLSession, error)` (api.go:24) — OK（CL-4）；Execute 每行落盤
+- [x] `func Start(ctx *commands.ExecContext) error` (repl.go:15) — OK
+- [x] `type DSLSession struct { ctx *commands.ExecContext }` (api.go:15) — OK（CL-4）；Execute 每行落盤
+- [x] `func (c *simpleCompleter) Do(line []rune, pos int) ([][]rune, int)` (completer.go:21) — CL-3 第三方型別；simpleCompleter 未匯出
 
 ## cli/style (2)
 
-- [ ] `func ErrorText(message string) string` (output.go:15)
-- [ ] `func WarningText(message string) string` (output.go:19)
+- [x] `func ErrorText(message string) string` (output.go:15) — OK
+- [x] `func WarningText(message string) string` (output.go:19) — OK
 
 ## cmd/insyra (0)
 
