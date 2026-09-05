@@ -1,8 +1,22 @@
 # API Review — 生產環境可用性逐項審查
 
 目標：insyra 每一個公開符號都經過設計審查後才打勾。打勾的定義是「已讀過實作、對照下列準則、寫下結論」，不是「看起來沒問題」。
-產生方式：`go/ast` 掃描所有非 `internal` 套件的匯出符號（不含 `_test.go`），共 1763 項。清單本身不含 `internal/`，因為那不是使用者會呼叫的介面。
+產生方式：`go/ast` 掃描所有非 `internal` 套件的匯出符號（不含 `_test.go`），共 1963 項（第二次掃描補入未匯出接收者上的匯出方法 200 項）。清單本身不含 `internal/`，因為那不是使用者會呼叫的介面。
 修法：發現的問題不在這裡直接改，彙整成 OpenSpec change 再處理（依 AGENTS.md）。
+
+## 總覽（2026-09-06 全部審完）
+
+1963 項全部打勾。發現 137 條（High 17、Med 70、Low 50），其中 8 條已在 `fix-api-review-batch-1` 修正。以下是會擋住「生產環境可用」的五件事，其餘依套件表逐條看。
+
+| # | 事 | 影響 | 對應編號 |
+| --- | --- | --- | --- |
+| 1 | 程式庫會結束或崩潰宿主程序：`LogFatal` 33 處（isr 讀檔失敗、gplot 存檔失敗、lp 安裝失敗）、`mkt.RFM` 遇非數值金額 panic、`DataTable` 三個方法對錯誤索引 panic、Filter 結果上呼叫方法 panic | 任何一筆壞資料或一次 I/O 失敗都能讓服務下線 | K-1、I-1、PL-2、LP-1、MK-1、T-1、T-5 |
+| 2 | 靜默算錯：t/z/F 檢定把空白格算進 n（p 值從 0.074 變 0.028）、`CalculateMoment` 補零、`DataTable.Mean` 分母含非數值、`DropColsContainNumber` 不認 int64、`DropRowsByIndex` 負索引與重複索引刪錯列、`Transpose` 丟列名、`ChangeRowName` 撞名時偷走別列的名字 | 結果看起來合理但是錯的，沒有任何訊號 | ST-1、ST-2、T-6～T-10 |
+| 3 | 資料外洩與供應鏈：`plot.SavePNG` 預設把圖上傳到線上服務、`lp` 執行期下載並編譯 GLPK 且改 PATH、Google Maps 爬蟲從個人 repo 拉執行期設定且已失效、`ReadSQLOptions.WhereClause` 無注入警告 | 生產環境的資料與機器被程式庫的預設行為帶出去 | PL-1、LP-1、DF-1、E-4 |
+| 4 | 內部狀態外洩與並行：`DataTable.Data()` 回傳內部 slice、Filter 結果與原表共用欄位與列名、GroupBy 淺拷貝快照、`Config` 欄位非 atomic、`commands.Registry` 無鎖 | 使用者一改結果就改到原表，多 goroutine 下是 data race | T-2、T-4、T-16、K-6、CL-2 |
+| 5 | API 形狀不一致，讓上面四類問題無法用一條規則修掉：失敗有 nil／空表／自身+Err 三種回傳、名稱與 Excel 索引共用一個 string 參數、`IDataList`／`IDataTable` 不可實作、variadic 冒充選填參數遍布全庫、四種 enum 風格 | 每個套件各自一套契約，使用者要記 30 種例外 | D-3、T-11、K-7、D-8、QU-1 |
+
+建議的處理順序：先修第 1、2 類（都是明確 bug，可再開一個 batch）；第 3 類是政策決定（預設關掉即可）；第 4 類是小改動但要走 OpenSpec；第 5 類是 v1 前的 API 重整，需要你拍板 K-1、K-7、D-3、T-11 四個方向後一次做。
 
 ## 審查準則
 
@@ -40,7 +54,7 @@
 | 套件 | 項目數 | 狀態 |
 | --- | --- | --- |
 | `.`（core） | 565 | **完成** |
-| `accel` | 127 | 未開始 |
+| `accel` | 142 | **完成** |
 | `cli` 系列（cli, commands, env, repl, style） | 80 | **完成** |
 | `csvxl` | 9 | **完成** |
 | `datafetch` | 89 | **完成** |
@@ -50,10 +64,10 @@
 | `isr` | 44 | **完成** |
 | `lp` / `lpgen` | 12 | **完成** |
 | `mkt` | 14 | **完成** |
-| `ml` / `ml/mltest` | 217 | 未開始 |
-| `nn` | 231 | 未開始 |
+| `ml` / `ml/mltest` | 231 | **完成** |
+| `nn` | 273 | **完成** |
 | `parallel` | 5 | **完成** |
-| `parquet` | 12 | **完成** |
+| `parquet` | 27 | **完成** |
 | `pd` | 8 | **完成** |
 | `plot` | 80 | **完成** |
 | `py` | 14 | **完成** |
@@ -305,6 +319,31 @@
 | CL-2 | Med | `commands.Registry` 是匯出的全域 map，`Register` 寫入無鎖、`Dispatch` 讀取無鎖，並行註冊是 data race；`ExecContext` 全部欄位公開可改；`DBConn.DSN` 以明文保存連線字串含密碼（doc 說顯示時遮罩，但值本身在記憶體與任何序列化路徑都是明文）（準則 12、14） | cli/commands/registry.go:47-64；db_conn.go:15-20 | Registry 改私有 + `sync.RWMutex`；DSN 只存遮罩後版本 |
 | CL-3 | Low | `cli/env` 每個 `Manager` 方法都有一個同名的套件層包裝函式（`env.Create` → `Default().Create`），60 個匯出符號有 27 個是重複；`State.LastAccess string` 而非 `time.Time`；`BuildCobraCommands` 以命令名稱字串（`"env"`、`"accel"`）硬編特殊旗標；`NewAutoCompleter` 回傳第三方 `readline.AutoCompleter`（準則 1、8） | cli/env/manager.go:520-540；state.go:20；commands/registry.go:100-150 | 移除包裝函式（或只留 Default()）；LastAccess 改 time.Time |
 | CL-4 | OK | `Manager` 有鎖、`SaveState` 用 tmp+rename 原子寫入（parquet.Write 與 geocode cache 應比照）、`DSLSession` 對嵌入者的 Manager 隔離說明清楚 | — | — |
+
+### accel
+
+| 編號 | 嚴重度 | 問題 | 位置 | 建議 |
+| --- | --- | --- | --- | --- |
+| AC-1 | Med | 公開面把 runtime 內部整個攤開：`Session.RegisterDevice`／`RecordReport`／`PlanShardable`／`CacheSnapshot`、`Buffer{Values any}`、`Dataset`、`ExecuteRequest`／`ExecuteResponse`、`RegisterBackendExecutor`／`RegisterDiscoverer`／`RegisterSDKProbe`、`NearestExactCPU`，以及四個 `Reset…ForTest` 測試鉤子都是匯出符號。使用者真正需要的只有 `Default`、`Open`、`Config`、`Report`、`Devices`，其餘是 backend 作者與測試的介面，一旦公開就是相容性承諾（準則 2） | accel/session.go:111-131；executor.go:83-100；discovery.go:20-30；sdk_probe.go:34-50；default.go:50；exact.go:442 | 測試鉤子移到 `internal`／`export_test.go`；backend 註冊 API 標明「供 backend 實作者」並獨立成子套件 |
+| AC-2 | Low | 文件過時：`WorkloadEstimate.Op` 說「Empty means OpSum」、`ExecuteRequest.Queries` 說「Only OpSquaredDistance reads it」、`ExecuteResponse` 提到 `OpNearestQuery`，這三個 op 都已移除只剩 `OpNearestShortlist`；`Report.SelectedDeviceIDs` 與 `SelectedDevices` 互相補齊，兩個欄位一個意思；`NewSession(cfgs ...Config)` variadic 與 `Open(cfg)` 兩個建構子；`ExecuteNearestExact` 與 `DeviceMatMul` 沒有 ctx，但 `BackendExecutor.Execute` 有（準則 6、8、E） | types.go:265-275, 165-180；executor.go:30-60；session.go:26-34；exact.go:157；nn_matmul.go:15 | 更新 doc；刪重複欄位；補 ctx |
+| AC-3 | OK | 範本等級：string enum 每個值有 doc、`FallbackReason` 讓「沒加速」可觀測而非錯誤、sentinel error、`Session` 有鎖且 `Default()` 明講共享語意與 Close no-op 的理由、`Config` 零值正規化、閾值來自量測並把數字寫在註解裡（`minWorkPerRowForDevice`、`deviceMatMulMACFloor`） | — | — |
+
+### ml
+
+| 編號 | 嚴重度 | 問題 | 位置 | 建議 |
+| --- | --- | --- | --- | --- |
+| ML-1 | Low | `Fit*` 回傳型別不一致：線性／GLM／KNN／KMeans 回介面 `Model`／`ProbaModel`／`Transformer`，樹模型回具體 `*DecisionTreeClassifier`。使用者要拿 `LinearModel.Result` 得先型別斷言，違反「回傳具體型別」慣例，且同一套件兩種做法（準則 6、8） | ml/models.go:110-340；decision_tree.go:83, 102；random_forest.go:55, 70 | 全部回具體型別（它們都實作介面） |
+| ML-2 | Low | 重複命名：`ExportONNX(w, fitted any)` 與 `WriteONNX(w, fitted any)` 同一件事、參數是 `any`；`DecisionTreeClassifierOptions`／`DecisionTreeRegressorOptions` 是 `DecisionTreeOptions` 的別名；`Accuracy()` 等函式與 `AccuracyMetric{}` 型別兩套（可接受為便利函式）；`Fit…(x, y, opts ...Options)` variadic（D-8）（準則 1） | onnx_export.go:23, 44；decision_tree.go:34-35 | 留一個名字；別名標 Deprecated |
+| ML-3 | OK | 介面切得小且可組合（`Model`／`Classifier`／`ProbaModel`／`Importances`／`Clusterer`／`Exporter`／`TransformedFeatures`），每個介面的 doc 說明「為什麼要有它」；`Metric.Direction` 與 `Better` 讓比較不會選錯邊；`GridSearch` 保證同一組 fold、回報 seed、贏家重新 fit；`Estimator`／`Step` 用閉包取代 sklearn 的 clone 反射，是有記錄的設計決策；`fittedPipeline*` 五個未匯出包裝型別只為保留能力介面，對外不可見：OK | — | — |
+
+### nn
+
+| 編號 | 嚴重度 | 問題 | 位置 | 建議 |
+| --- | --- | --- | --- | --- |
+| NN-1 | Med | 表面積被別名與雙建構子放大一倍：每個 layer 都有 `Dense`／`NewDense`、`ReLU`／`NewReLU`…（14 對）；`SoftmaxCrossEntropy = CrossEntropy`、`MSELoss = MSE`、`BCEWithLogitsLoss = BCEWithLogits`、`Classifier = BoundClassifier`、`Regressor = BoundRegressor`、`AveragePoolOptions`／`MaxPoolOptions = PoolOptions`、`DataType = DType`、`Float32 = DTypeFloat32`…；`Tensor.Data()` 對非 float32 靜默回 nil 而 `Float32Data()` 回 error，兩種拼法兩種契約；`NewTensorWithDType(dtype, shape, data []float32)` 只接受 float32（doc 自承），名稱誤導；`LayerNorm(dims interface{})` 用 `interface{}` 收參數（準則 1、3、8） | nn/layers.go:50-55, 144-217；layers_catalog.go；fit.go:160-162；protocol.go:21, 108；tensor.go:36-42, 87-92, 121-135 | 每組留一個名字，其餘標 Deprecated；`Data()` 改回 error 或刪除；`LayerNorm` 拆 `LayerNorm(dim int)`／`LayerNormShape([]int)` |
+| NN-2 | Med | `Sequential.Fit(x, y, cfg)` 沒有 `context.Context`：一個 epoch 可能跑數分鐘，有 `Progress` 回呼卻無法取消；`LossSpec`／`OptimizerSpec` 介面全是未匯出方法，使用者無法提供自訂 loss 或 optimizer 給 `Fit`（doc 說 v1 刻意如此，但 `Tape` 層其實已經可以）（準則 12） | nn/fit.go:15-20, 96-100, 200 | `FitConfig.Context` 或 `FitContext(ctx, …)`；開放 `LossSpec` 為可實作介面 |
+| NN-3 | Low | 選填參數全用 variadic 對映 ONNX attribute 預設值：`Gelu(x, approximate ...string)`、`LeakyRelu(x, alpha ...float32)`、`Transpose(x, perms ...[]int)`、`BatchNormalization(…, epsilonValues ...float32)`、`BatchNormTraining(…, options ...float32)`（epsilon 與 momentum 靠位置）、`NewTape(seed ...int64)`、`Softmax(x, axes ...int)`、`Shape(x, bounds ...int)`、`NonMaxSuppression(…, centerPointBox ...int)`。與 ONNX 對齊有理由，但 `options ...float32` 這種靠位置的 float 選項不可讀（準則 8） | nn/kernels.go；autodiff_cnn.go:176 | 至少 BatchNormTraining 改 options struct |
+| NN-4 | OK | `LoadONNX` 把不受信任輸入的 panic 收成 error（範本）；`Tensor` 私有資料 + copy-on-read，理由寫在 doc；`RegisterDeviceMatMul` 反向掛鉤讓 nn 不依賴 accel；`Layer`／`TrainingOnly`／`EvalLayer` 用結構型別判斷取代全域 train/eval 旗標；門檻數字（`deviceMatMulMACFloor`）附量測來源 | — | — |
 
 ## 逐項清單
 
@@ -879,148 +918,148 @@
 
 ## accel (142)
 
-- [ ] `const BackendCPU Backend` (types.go:29)
-- [ ] `const BackendCUDA Backend` (types.go:30)
-- [ ] `const BackendMetal Backend` (types.go:31)
-- [ ] `const BackendUnknown Backend` (types.go:28)
-- [ ] `const BackendWebGPU Backend` (types.go:32)
-- [ ] `const DataTypeAny DataType` (types.go:70)
-- [ ] `const DataTypeBool DataType` (types.go:66)
-- [ ] `const DataTypeFloat64 DataType` (types.go:68)
-- [ ] `const DataTypeInt64 DataType` (types.go:67)
-- [ ] `const DataTypeString DataType` (types.go:69)
-- [ ] `const DataTypeUnknown DataType` (types.go:65)
-- [ ] `const DeviceTypeCPU DeviceType` (types.go:39)
-- [ ] `const DeviceTypeDiscrete DeviceType` (types.go:41)
-- [ ] `const DeviceTypeIntegrated DeviceType` (types.go:40)
-- [ ] `const DeviceTypeUnknown DeviceType` (types.go:38)
-- [ ] `const DeviceTypeVirtual DeviceType` (types.go:42)
-- [ ] `const ExecutorKindNone ExecutorKind` (types.go:143)
-- [ ] `const ExecutorKindRegistered ExecutorKind` (types.go:144)
-- [ ] `const ExecutorKindUnknown ExecutorKind` (types.go:142)
-- [ ] `const FallbackReasonBufferTooLarge FallbackReason` (types.go:88)
-- [ ] `const FallbackReasonCPUOnly FallbackReason` (types.go:78)
-- [ ] `const FallbackReasonDTypeNotEligible FallbackReason` (types.go:86)
-- [ ] `const FallbackReasonDeviceSelectionEmpty FallbackReason` (types.go:84)
-- [ ] `const FallbackReasonDiscoveryError FallbackReason` (types.go:79)
-- [ ] `const FallbackReasonExecutionFailed FallbackReason` (types.go:90)
-- [ ] `const FallbackReasonNoAccelerator FallbackReason` (types.go:77)
-- [ ] `const FallbackReasonNoBackendExecutor FallbackReason` (types.go:83)
-- [ ] `const FallbackReasonNone FallbackReason` (types.go:76)
-- [ ] `const FallbackReasonPrecisionNotAccepted FallbackReason` (types.go:85)
-- [ ] `const FallbackReasonReadbackTimeout FallbackReason` (types.go:89)
-- [ ] `const FallbackReasonShaderCompileFailed FallbackReason` (types.go:87)
-- [ ] `const FallbackReasonStrictGPUUnavailable FallbackReason` (types.go:80)
-- [ ] `const FallbackReasonWorkloadNotProfitable FallbackReason` (types.go:82)
-- [ ] `const FallbackReasonWorkloadUnsupported FallbackReason` (types.go:81)
-- [ ] `const MemoryClassDevice MemoryClass` (types.go:50)
-- [ ] `const MemoryClassShared MemoryClass` (types.go:49)
-- [ ] `const MemoryClassUnknown MemoryClass` (types.go:48)
-- [ ] `const MergePolicyBackendNative MergePolicy` (types.go:136)
-- [ ] `const MergePolicyCPU MergePolicy` (types.go:135)
-- [ ] `const MergePolicyUnknown MergePolicy` (types.go:134)
-- [ ] `const ModeAuto Mode` (types.go:8)
-- [ ] `const ModeCPU Mode` (types.go:9)
-- [ ] `const ModeGPU Mode` (types.go:10)
-- [ ] `const ModeStrictGPU Mode` (types.go:11)
-- [ ] `const OpNearestShortlist Op` (types.go:109)
-- [ ] `const OpUnknown Op` (types.go:98)
-- [ ] `const PrecisionExact Precision` (types.go:120)
-- [ ] `const PrecisionFloat32 Precision` (types.go:121)
-- [ ] `const ProbeSourceEnvStub ProbeSource` (types.go:59)
-- [ ] `const ProbeSourceNative ProbeSource` (types.go:58)
-- [ ] `const ProbeSourceSDK ProbeSource` (types.go:57)
-- [ ] `const ProbeSourceUnknown ProbeSource` (types.go:56)
-- [ ] `const ShardStrategyAuto ShardStrategy` (types.go:21)
-- [ ] `const ShardStrategyForced ShardStrategy` (types.go:22)
-- [ ] `const ShardStrategySingle ShardStrategy` (types.go:20)
-- [ ] `const WorkloadClassColumnar WorkloadClass` (types.go:128)
-- [ ] `const WorkloadClassUnknown WorkloadClass` (types.go:127)
-- [ ] `func (r Report) Duration() time.Duration` (types.go:207)
-- [ ] `func (s *Session) CacheSnapshot() CacheSnapshot` (cache.go:27)
-- [ ] `func (s *Session) Close() error` (session.go:168)
-- [ ] `func (s *Session) Closed() bool` (session.go:178)
-- [ ] `func (s *Session) Config() Config` (session.go:58)
-- [ ] `func (s *Session) Devices() []Device` (session.go:68)
-- [ ] `func (s *Session) Discover() error` (discovery.go:41)
-- [ ] `func (s *Session) ExecuteNearestExact(dataset *Dataset, queries [][]float64, m int, workload WorkloadEstimate) (ExactNearestResult, error)` (exact.go:157)
-- [ ] `func (s *Session) LastReport() *Report` (session.go:101)
-- [ ] `func (s *Session) PlanShardable() ShardPlan` (planner.go:21)
-- [ ] `func (s *Session) PlanShardableWorkload(workload WorkloadEstimate) ShardPlan` (planner.go:25)
-- [ ] `func (s *Session) ProjectDataList(dl *insyra.DataList) (*Dataset, error)` (dataset.go:10)
-- [ ] `func (s *Session) ProjectDataTable(dt *insyra.DataTable) (*Dataset, error)` (dataset.go:35)
-- [ ] `func (s *Session) RecordReport(report Report) error` (session.go:124)
-- [ ] `func (s *Session) RegisterDevice(device Device) error` (session.go:111)
-- [ ] `func (s *Session) Report() Report` (session.go:78)
-- [ ] `func (s *Session) Reports() []Report` (session.go:91)
-- [ ] `func Default() *Session` (default.go:27)
-- [ ] `func DefaultConfig() Config` (types.go:324)
-- [ ] `func DeviceMatMul(a []float32, aRows, aCols int, b []float32, bRows, bCols int) ([]float32, error)` (nn_matmul.go:15)
-- [ ] `func NearestExactCPU(dataset *Dataset, queries [][]float64, m int) ([]uint32, []float64, int, error)` (exact.go:442)
-- [ ] `func NewSession(cfgs ...Config) *Session` (session.go:34)
-- [ ] `func Open(cfg Config) (*Session, error)` (session.go:26)
-- [ ] `func RegisterBackendExecutor(backend Backend, executor BackendExecutor) error` (executor.go:83)
-- [ ] `func RegisterDiscoverer(d Discoverer)` (discovery.go:20)
-- [ ] `func RegisterSDKProbe(probe SDKProbe)` (sdk_probe.go:34)
-- [ ] `func ResetBackendExecutorsForTest()` (executor.go:98)
-- [ ] `func ResetDefaultForTest()` (default.go:50)
-- [ ] `func ResetDiscoverersForTest()` (discovery.go:26)
-- [ ] `func ResetSDKProbesForTest()` (sdk_probe.go:46)
-- [ ] `type Backend string` (types.go:25)
-- [ ] `type BackendExecutor interface { Name() string Execute(ctx context.Context, req ExecuteRequest) (ExecuteResponse, error) }` (executor.go:73)
-- [ ] `type Buffer struct { Name string Type DataType Values any Nulls []bool Validity []byte StringOffsets []uint32 StringData []byte Len int }` (types.go:214)
-- [ ] `type CacheDeviceUsage struct { DeviceID string ResidentBuffers int ResidentBytes uint64 BudgetBytes uint64 }` (types.go:248)
-- [ ] `type CacheEntry struct { Key string DatasetName string DatasetID string Lineage string BufferName string Type DataType Len int ResidentBytes uint64 DeviceIDs []string DeviceResidentBytes map[string]uint64 LastAccess time.Time accessOrdinal uint64 }` (types.go:233)
-- [ ] `type CacheSnapshot struct { ResidentBuffers int ResidentBytes uint64 BudgetBytes uint64 EvictedBuffers uint64 EvictedBytes uint64 DeviceUsage []CacheDeviceUsage Entries []CacheEntry }` (types.go:255)
-- [ ] `type Config struct { Mode Mode ShardStrategy ShardStrategy PreferredBackends []Backend MemoryBudget MemoryBudgetPolicy Strict bool EnableFallback bool Devices []string PreferredDevices []string ReportHistorySize int DiscoveryTimeout time.Duration }` (types.go:152)
-- [ ] `type DataType string` (types.go:62)
-- [ ] `type Dataset struct { Name string Fingerprint string Lineage string Rows int Buffers []Buffer }` (types.go:225)
-- [ ] `type Device struct { ID string Name string Vendor string Backend Backend ProbeSource ProbeSource Type DeviceType MemoryClass MemoryClass SharedMemory bool BudgetBytes uint64 Score float64 CapabilitySummary map[string]bool DriverVersion string ComputeCapability string PCIBusID string }` (types.go:175)
-- [ ] `type DeviceType string` (types.go:35)
-- [ ] `type Discoverer interface { Name() string Discover(cfg Config) ([]Device, error) }` (discovery.go:10)
-- [ ] `type ExactNearestResult struct { ExecutionResult Index []uint32 Distance []float64 Rows int Queries int M int Rechecked int }` (exact.go:18)
-- [ ] `type ExecuteColumn struct { Name string Values []float32 }` (executor.go:22)
-- [ ] `type ExecuteRequest struct { Op Op Device Device Columns []ExecuteColumn Precision Precision Queries [][]float32 Shortlist int }` (executor.go:30)
-- [ ] `type ExecuteResponse struct { Reductions map[string]float64 Distances []float32 NearestIndex []uint32 ShortlistIndex []uint32 ShortlistDistance []float32 ShortlistBoundary []float32 Transfer time.Duration Dispatch time.Duration Readback time.Duration BytesUploaded uint64 }` (executor.go:48)
-- [ ] `type ExecutionResult struct { Accelerated bool FallbackReason FallbackReason MergePolicy MergePolicy Executor string ExecutorKind ExecutorKind Assignments []ShardAssignment DeviceIDs []string Chunks int Op Op Precision Precision Reductions map[string]float64 Counts map[string]int Transfer time.Duration Dispatch time.Duration Readback time.Duration BytesUploaded uint64 }` (types.go:293)
-- [ ] `type ExecutorKind string` (types.go:139)
-- [ ] `type FallbackReason string` (types.go:73)
-- [ ] `type MemoryBudgetPolicy struct { DeviceFraction float64 SharedFraction float64 }` (types.go:147)
-- [ ] `type MemoryClass string` (types.go:45)
-- [ ] `type MergePolicy string` (types.go:131)
-- [ ] `type Mode string` (types.go:5)
-- [ ] `type Op string` (types.go:95)
-- [ ] `type Precision string` (types.go:117)
-- [ ] `type ProbeSource string` (types.go:53)
-- [ ] `type Report struct { Mode Mode Accelerated bool SelectedBackend Backend DiscoveredDeviceIDs []string SelectedDeviceIDs []string SelectedDevices []string UnmatchedDeviceSelectors []UnmatchedDeviceSelector FallbackReason FallbackReason StartedAt time.Time FinishedAt time.Time GeneratedAt time.Time Metrics map[string]float64 }` (types.go:192)
-- [ ] `type SDKProbe interface { Name() string Backend() Backend Probe(cfg Config) ([]Device, error) }` (sdk_probe.go:19)
-- [ ] `type Session struct { mu sync.Mutex cfg Config devices []Device reports []Report cache *residentCache closed bool accelerationInfoLogged bool fallbackInfoLogged bool shared bool }` (session.go:12)
-- [ ] `type ShardAssignment struct { DeviceID string Backend Backend Weight float64 SharePercent float64 Rows int Bytes uint64 BudgetBytes uint64 RowStart int RowEnd int WallTime time.Duration FallbackReason FallbackReason Chunks int }` (types.go:278)
-- [ ] `type ShardPlan struct { Accelerated bool Backend Backend DeviceIDs []string Assignments []ShardAssignment TotalBudgetBytes uint64 Heterogeneous bool MergePolicy MergePolicy FallbackReason FallbackReason }` (planner.go:10)
-- [ ] `type ShardStrategy string` (types.go:17)
-- [ ] `type UnmatchedDeviceSelector struct { Bound string Selector string }` (types.go:170)
-- [ ] `type WorkloadClass string` (types.go:124)
-- [ ] `type WorkloadEstimate struct { Class WorkloadClass Rows int Bytes uint64 Dimensions int Op Op Precision Precision }` (types.go:265)
-- [ ] `var ErrBufferTooLarge` (executor.go:15)
-- [ ] `var ErrNativeProbeUnavailable` (discoverers_builtin.go:10)
-- [ ] `var ErrReadbackTimeout` (executor.go:16)
-- [ ] `var ErrSDKProbeUnavailable` (sdk_probe.go:12)
-- [ ] `var ErrShaderCompile` (executor.go:14)
-- [ ] `func (d builtinDiscoverer) Discover(cfg Config) ([]Device, error)` (discoverers_builtin.go:80)
-- [ ] `func (d builtinDiscoverer) Name() string` (discoverers_builtin.go:76)
-- [ ] `func (l *windowsNVMLLoader) Device(index int) (nvmlDeviceInfo, error)` (sdk_probe_nvml_windows.go:162)
-- [ ] `func (l *windowsNVMLLoader) DeviceCount() (int, error)` (sdk_probe_nvml_windows.go:150)
-- [ ] `func (l *windowsNVMLLoader) DriverVersion() (string, error)` (sdk_probe_nvml_windows.go:137)
-- [ ] `func (l *windowsNVMLLoader) Init() error` (sdk_probe_nvml_windows.go:111)
-- [ ] `func (l *windowsNVMLLoader) Shutdown() error` (sdk_probe_nvml_windows.go:118)
-- [ ] `func (p nvmlSDKProbe) Backend() Backend` (sdk_probe_nvml.go:44)
-- [ ] `func (p nvmlSDKProbe) Name() string` (sdk_probe_nvml.go:43)
-- [ ] `func (p nvmlSDKProbe) Probe(cfg Config) ([]Device, error)` (sdk_probe_nvml.go:46)
-- [ ] `func (p wgpuProbe) Backend() Backend` (backend_wgpu.go:51)
-- [ ] `func (p wgpuProbe) Name() string` (backend_wgpu.go:49)
-- [ ] `func (p wgpuProbe) Probe(_ Config) ([]Device, error)` (backend_wgpu.go:53)
-- [ ] `func (wgpuExecutor) Execute(ctx context.Context, req ExecuteRequest) (ExecuteResponse, error)` (backend_wgpu.go:104)
-- [ ] `func (wgpuExecutor) Name() string` (backend_wgpu.go:102)
+- [x] `const BackendCPU Backend` (types.go:29) — OK（AC-3）
+- [x] `const BackendCUDA Backend` (types.go:30) — OK（AC-3）
+- [x] `const BackendMetal Backend` (types.go:31) — OK（AC-3）
+- [x] `const BackendUnknown Backend` (types.go:28) — OK（AC-3）
+- [x] `const BackendWebGPU Backend` (types.go:32) — OK（AC-3）
+- [x] `const DataTypeAny DataType` (types.go:70) — OK（AC-3）
+- [x] `const DataTypeBool DataType` (types.go:66) — OK（AC-3）
+- [x] `const DataTypeFloat64 DataType` (types.go:68) — OK（AC-3）
+- [x] `const DataTypeInt64 DataType` (types.go:67) — OK（AC-3）
+- [x] `const DataTypeString DataType` (types.go:69) — OK（AC-3）
+- [x] `const DataTypeUnknown DataType` (types.go:65) — OK（AC-3）
+- [x] `const DeviceTypeCPU DeviceType` (types.go:39) — OK（AC-3）
+- [x] `const DeviceTypeDiscrete DeviceType` (types.go:41) — OK（AC-3）
+- [x] `const DeviceTypeIntegrated DeviceType` (types.go:40) — OK（AC-3）
+- [x] `const DeviceTypeUnknown DeviceType` (types.go:38) — OK（AC-3）
+- [x] `const DeviceTypeVirtual DeviceType` (types.go:42) — OK（AC-3）
+- [x] `const ExecutorKindNone ExecutorKind` (types.go:143) — OK（AC-3）
+- [x] `const ExecutorKindRegistered ExecutorKind` (types.go:144) — OK（AC-3）
+- [x] `const ExecutorKindUnknown ExecutorKind` (types.go:142) — OK（AC-3）
+- [x] `const FallbackReasonBufferTooLarge FallbackReason` (types.go:88) — OK（AC-3）
+- [x] `const FallbackReasonCPUOnly FallbackReason` (types.go:78) — OK（AC-3）
+- [x] `const FallbackReasonDTypeNotEligible FallbackReason` (types.go:86) — OK（AC-3）
+- [x] `const FallbackReasonDeviceSelectionEmpty FallbackReason` (types.go:84) — OK（AC-3）
+- [x] `const FallbackReasonDiscoveryError FallbackReason` (types.go:79) — OK（AC-3）
+- [x] `const FallbackReasonExecutionFailed FallbackReason` (types.go:90) — OK（AC-3）
+- [x] `const FallbackReasonNoAccelerator FallbackReason` (types.go:77) — OK（AC-3）
+- [x] `const FallbackReasonNoBackendExecutor FallbackReason` (types.go:83) — OK（AC-3）
+- [x] `const FallbackReasonNone FallbackReason` (types.go:76) — OK（AC-3）
+- [x] `const FallbackReasonPrecisionNotAccepted FallbackReason` (types.go:85) — OK（AC-3）
+- [x] `const FallbackReasonReadbackTimeout FallbackReason` (types.go:89) — OK（AC-3）
+- [x] `const FallbackReasonShaderCompileFailed FallbackReason` (types.go:87) — OK（AC-3）
+- [x] `const FallbackReasonStrictGPUUnavailable FallbackReason` (types.go:80) — OK（AC-3）
+- [x] `const FallbackReasonWorkloadNotProfitable FallbackReason` (types.go:82) — OK（AC-3）
+- [x] `const FallbackReasonWorkloadUnsupported FallbackReason` (types.go:81) — OK（AC-3）
+- [x] `const MemoryClassDevice MemoryClass` (types.go:50) — OK（AC-3）
+- [x] `const MemoryClassShared MemoryClass` (types.go:49) — OK（AC-3）
+- [x] `const MemoryClassUnknown MemoryClass` (types.go:48) — OK（AC-3）
+- [x] `const MergePolicyBackendNative MergePolicy` (types.go:136) — OK（AC-3）
+- [x] `const MergePolicyCPU MergePolicy` (types.go:135) — OK（AC-3）
+- [x] `const MergePolicyUnknown MergePolicy` (types.go:134) — OK（AC-3）
+- [x] `const ModeAuto Mode` (types.go:8) — OK（AC-3）
+- [x] `const ModeCPU Mode` (types.go:9) — OK（AC-3）
+- [x] `const ModeGPU Mode` (types.go:10) — OK（AC-3）
+- [x] `const ModeStrictGPU Mode` (types.go:11) — OK（AC-3）
+- [x] `const OpNearestShortlist Op` (types.go:109) — OK（AC-3）
+- [x] `const OpUnknown Op` (types.go:98) — OK（AC-3）
+- [x] `const PrecisionExact Precision` (types.go:120) — OK（AC-3）
+- [x] `const PrecisionFloat32 Precision` (types.go:121) — OK（AC-3）
+- [x] `const ProbeSourceEnvStub ProbeSource` (types.go:59) — OK（AC-3）
+- [x] `const ProbeSourceNative ProbeSource` (types.go:58) — OK（AC-3）
+- [x] `const ProbeSourceSDK ProbeSource` (types.go:57) — OK（AC-3）
+- [x] `const ProbeSourceUnknown ProbeSource` (types.go:56) — OK（AC-3）
+- [x] `const ShardStrategyAuto ShardStrategy` (types.go:21) — OK（AC-3）
+- [x] `const ShardStrategyForced ShardStrategy` (types.go:22) — OK（AC-3）
+- [x] `const ShardStrategySingle ShardStrategy` (types.go:20) — OK（AC-3）
+- [x] `const WorkloadClassColumnar WorkloadClass` (types.go:128) — OK（AC-3）
+- [x] `const WorkloadClassUnknown WorkloadClass` (types.go:127) — OK（AC-3）
+- [x] `func (r Report) Duration() time.Duration` (types.go:207) — OK（AC-3）
+- [x] `func (s *Session) CacheSnapshot() CacheSnapshot` (cache.go:27) — AC-1 內部／backend 介面公開
+- [x] `func (s *Session) Close() error` (session.go:168) — OK（AC-3）
+- [x] `func (s *Session) Closed() bool` (session.go:178) — OK（AC-3）
+- [x] `func (s *Session) Config() Config` (session.go:58) — OK（AC-3）
+- [x] `func (s *Session) Devices() []Device` (session.go:68) — OK（AC-3）
+- [x] `func (s *Session) Discover() error` (discovery.go:41) — OK（AC-3）
+- [x] `func (s *Session) ExecuteNearestExact(dataset *Dataset, queries [][]float64, m int, workload WorkloadEstimate) (ExactNearestResult, error)` (exact.go:157) — AC-2 doc 說 Empty means OpSum（已無此 op）
+- [x] `func (s *Session) LastReport() *Report` (session.go:101) — OK（AC-3）
+- [x] `func (s *Session) PlanShardable() ShardPlan` (planner.go:21) — AC-1 內部／backend 介面公開
+- [x] `func (s *Session) PlanShardableWorkload(workload WorkloadEstimate) ShardPlan` (planner.go:25) — AC-1 內部／backend 介面公開
+- [x] `func (s *Session) ProjectDataList(dl *insyra.DataList) (*Dataset, error)` (dataset.go:10) — OK（AC-3）
+- [x] `func (s *Session) ProjectDataTable(dt *insyra.DataTable) (*Dataset, error)` (dataset.go:35) — OK（AC-3）
+- [x] `func (s *Session) RecordReport(report Report) error` (session.go:124) — AC-1 內部／backend 介面公開
+- [x] `func (s *Session) RegisterDevice(device Device) error` (session.go:111) — AC-1 內部／backend 介面公開
+- [x] `func (s *Session) Report() Report` (session.go:78) — OK（AC-3）
+- [x] `func (s *Session) Reports() []Report` (session.go:91) — OK（AC-3）
+- [x] `func Default() *Session` (default.go:27) — OK（AC-3）
+- [x] `func DefaultConfig() Config` (types.go:324) — OK（AC-3）
+- [x] `func DeviceMatMul(a []float32, aRows, aCols int, b []float32, bRows, bCols int) ([]float32, error)` (nn_matmul.go:15) — OK 契約清楚；AC-2 無 ctx
+- [x] `func NearestExactCPU(dataset *Dataset, queries [][]float64, m int) ([]uint32, []float64, int, error)` (exact.go:442) — AC-1 內部／backend 介面公開
+- [x] `func NewSession(cfgs ...Config) *Session` (session.go:34) — AC-2 variadic cfg；與 Open 重複
+- [x] `func Open(cfg Config) (*Session, error)` (session.go:26) — OK（AC-3）
+- [x] `func RegisterBackendExecutor(backend Backend, executor BackendExecutor) error` (executor.go:83) — AC-1 內部／backend 介面公開
+- [x] `func RegisterDiscoverer(d Discoverer)` (discovery.go:20) — AC-1 內部／backend 介面公開
+- [x] `func RegisterSDKProbe(probe SDKProbe)` (sdk_probe.go:34) — AC-1 內部／backend 介面公開
+- [x] `func ResetBackendExecutorsForTest()` (executor.go:98) — AC-1 測試鉤子在公開 API
+- [x] `func ResetDefaultForTest()` (default.go:50) — AC-1 測試鉤子在公開 API
+- [x] `func ResetDiscoverersForTest()` (discovery.go:26) — AC-1 測試鉤子在公開 API
+- [x] `func ResetSDKProbesForTest()` (sdk_probe.go:46) — AC-1 測試鉤子在公開 API
+- [x] `type Backend string` (types.go:25) — OK（AC-3）
+- [x] `type BackendExecutor interface { Name() string Execute(ctx context.Context, req ExecuteRequest) (ExecuteResponse, error) }` (executor.go:73) — AC-1；AC-2 doc 提到已移除的 op
+- [x] `type Buffer struct { Name string Type DataType Values any Nulls []bool Validity []byte StringOffsets []uint32 StringData []byte Len int }` (types.go:214) — AC-1
+- [x] `type CacheDeviceUsage struct { DeviceID string ResidentBuffers int ResidentBytes uint64 BudgetBytes uint64 }` (types.go:248) — AC-1
+- [x] `type CacheEntry struct { Key string DatasetName string DatasetID string Lineage string BufferName string Type DataType Len int ResidentBytes uint64 DeviceIDs []string DeviceResidentBytes map[string]uint64 LastAccess time.Time accessOrdinal uint64 }` (types.go:233) — AC-1
+- [x] `type CacheSnapshot struct { ResidentBuffers int ResidentBytes uint64 BudgetBytes uint64 EvictedBuffers uint64 EvictedBytes uint64 DeviceUsage []CacheDeviceUsage Entries []CacheEntry }` (types.go:255) — AC-1 內部／backend 介面公開
+- [x] `type Config struct { Mode Mode ShardStrategy ShardStrategy PreferredBackends []Backend MemoryBudget MemoryBudgetPolicy Strict bool EnableFallback bool Devices []string PreferredDevices []string ReportHistorySize int DiscoveryTimeout time.Duration }` (types.go:152) — OK（AC-3）
+- [x] `type DataType string` (types.go:62) — OK（AC-3）
+- [x] `type Dataset struct { Name string Fingerprint string Lineage string Rows int Buffers []Buffer }` (types.go:225) — AC-1
+- [x] `type Device struct { ID string Name string Vendor string Backend Backend ProbeSource ProbeSource Type DeviceType MemoryClass MemoryClass SharedMemory bool BudgetBytes uint64 Score float64 CapabilitySummary map[string]bool DriverVersion string ComputeCapability string PCIBusID string }` (types.go:175) — OK（AC-3）
+- [x] `type DeviceType string` (types.go:35) — OK（AC-3）
+- [x] `type Discoverer interface { Name() string Discover(cfg Config) ([]Device, error) }` (discovery.go:10) — OK（AC-3）
+- [x] `type ExactNearestResult struct { ExecutionResult Index []uint32 Distance []float64 Rows int Queries int M int Rechecked int }` (exact.go:18) — OK（AC-3）
+- [x] `type ExecuteColumn struct { Name string Values []float32 }` (executor.go:22) — OK（AC-3）
+- [x] `type ExecuteRequest struct { Op Op Device Device Columns []ExecuteColumn Precision Precision Queries [][]float32 Shortlist int }` (executor.go:30) — AC-1；AC-2 doc 提到已移除的 op
+- [x] `type ExecuteResponse struct { Reductions map[string]float64 Distances []float32 NearestIndex []uint32 ShortlistIndex []uint32 ShortlistDistance []float32 ShortlistBoundary []float32 Transfer time.Duration Dispatch time.Duration Readback time.Duration BytesUploaded uint64 }` (executor.go:48) — AC-1；AC-2 doc 提到已移除的 op
+- [x] `type ExecutionResult struct { Accelerated bool FallbackReason FallbackReason MergePolicy MergePolicy Executor string ExecutorKind ExecutorKind Assignments []ShardAssignment DeviceIDs []string Chunks int Op Op Precision Precision Reductions map[string]float64 Counts map[string]int Transfer time.Duration Dispatch time.Duration Readback time.Duration BytesUploaded uint64 }` (types.go:293) — OK（AC-3）
+- [x] `type ExecutorKind string` (types.go:139) — OK（AC-3）
+- [x] `type FallbackReason string` (types.go:73) — OK（AC-3）
+- [x] `type MemoryBudgetPolicy struct { DeviceFraction float64 SharedFraction float64 }` (types.go:147) — OK（AC-3）
+- [x] `type MemoryClass string` (types.go:45) — OK（AC-3）
+- [x] `type MergePolicy string` (types.go:131) — OK（AC-3）
+- [x] `type Mode string` (types.go:5) — OK（AC-3）
+- [x] `type Op string` (types.go:95) — OK（AC-3）
+- [x] `type Precision string` (types.go:117) — OK（AC-3）
+- [x] `type ProbeSource string` (types.go:53) — OK（AC-3）
+- [x] `type Report struct { Mode Mode Accelerated bool SelectedBackend Backend DiscoveredDeviceIDs []string SelectedDeviceIDs []string SelectedDevices []string UnmatchedDeviceSelectors []UnmatchedDeviceSelector FallbackReason FallbackReason StartedAt time.Time FinishedAt time.Time GeneratedAt time.Time Metrics map[string]float64 }` (types.go:192) — AC-2 SelectedDeviceIDs／SelectedDevices 重複
+- [x] `type SDKProbe interface { Name() string Backend() Backend Probe(cfg Config) ([]Device, error) }` (sdk_probe.go:19) — OK（AC-3）
+- [x] `type Session struct { mu sync.Mutex cfg Config devices []Device reports []Report cache *residentCache closed bool accelerationInfoLogged bool fallbackInfoLogged bool shared bool }` (session.go:12) — OK（AC-3）
+- [x] `type ShardAssignment struct { DeviceID string Backend Backend Weight float64 SharePercent float64 Rows int Bytes uint64 BudgetBytes uint64 RowStart int RowEnd int WallTime time.Duration FallbackReason FallbackReason Chunks int }` (types.go:278) — OK（AC-3）
+- [x] `type ShardPlan struct { Accelerated bool Backend Backend DeviceIDs []string Assignments []ShardAssignment TotalBudgetBytes uint64 Heterogeneous bool MergePolicy MergePolicy FallbackReason FallbackReason }` (planner.go:10) — OK（AC-3）
+- [x] `type ShardStrategy string` (types.go:17) — OK（AC-3）
+- [x] `type UnmatchedDeviceSelector struct { Bound string Selector string }` (types.go:170) — OK（AC-3）
+- [x] `type WorkloadClass string` (types.go:124) — OK（AC-3）
+- [x] `type WorkloadEstimate struct { Class WorkloadClass Rows int Bytes uint64 Dimensions int Op Op Precision Precision }` (types.go:265) — AC-2 doc 說 Empty means OpSum（已無此 op）
+- [x] `var ErrBufferTooLarge` (executor.go:15) — OK（AC-3）
+- [x] `var ErrNativeProbeUnavailable` (discoverers_builtin.go:10) — OK（AC-3）
+- [x] `var ErrReadbackTimeout` (executor.go:16) — OK（AC-3）
+- [x] `var ErrSDKProbeUnavailable` (sdk_probe.go:12) — OK（AC-3）
+- [x] `var ErrShaderCompile` (executor.go:14) — OK（AC-3）
+- [x] `func (d builtinDiscoverer) Discover(cfg Config) ([]Device, error)` (discoverers_builtin.go:80) — 未匯出型別，僅經介面可見：OK
+- [x] `func (d builtinDiscoverer) Name() string` (discoverers_builtin.go:76) — 未匯出型別，僅經介面可見：OK
+- [x] `func (l *windowsNVMLLoader) Device(index int) (nvmlDeviceInfo, error)` (sdk_probe_nvml_windows.go:162) — 未匯出型別，僅經介面可見：OK
+- [x] `func (l *windowsNVMLLoader) DeviceCount() (int, error)` (sdk_probe_nvml_windows.go:150) — 未匯出型別，僅經介面可見：OK
+- [x] `func (l *windowsNVMLLoader) DriverVersion() (string, error)` (sdk_probe_nvml_windows.go:137) — 未匯出型別，僅經介面可見：OK
+- [x] `func (l *windowsNVMLLoader) Init() error` (sdk_probe_nvml_windows.go:111) — 未匯出型別，僅經介面可見：OK
+- [x] `func (l *windowsNVMLLoader) Shutdown() error` (sdk_probe_nvml_windows.go:118) — 未匯出型別，僅經介面可見：OK
+- [x] `func (p nvmlSDKProbe) Backend() Backend` (sdk_probe_nvml.go:44) — 未匯出型別，僅經介面可見：OK
+- [x] `func (p nvmlSDKProbe) Name() string` (sdk_probe_nvml.go:43) — 未匯出型別，僅經介面可見：OK
+- [x] `func (p nvmlSDKProbe) Probe(cfg Config) ([]Device, error)` (sdk_probe_nvml.go:46) — 未匯出型別，僅經介面可見：OK
+- [x] `func (p wgpuProbe) Backend() Backend` (backend_wgpu.go:51) — 未匯出型別，僅經介面可見：OK
+- [x] `func (p wgpuProbe) Name() string` (backend_wgpu.go:49) — 未匯出型別，僅經介面可見：OK
+- [x] `func (p wgpuProbe) Probe(_ Config) ([]Device, error)` (backend_wgpu.go:53) — 未匯出型別，僅經介面可見：OK
+- [x] `func (wgpuExecutor) Execute(ctx context.Context, req ExecuteRequest) (ExecuteResponse, error)` (backend_wgpu.go:104) — AC-1；AC-2 doc 提到已移除的 op
+- [x] `func (wgpuExecutor) Name() string` (backend_wgpu.go:102) — 未匯出型別，僅經介面可見：OK
 
 ## accel/knnbridge (0)
 
@@ -1467,516 +1506,516 @@
 
 ## ml (230)
 
-- [ ] `const BinaryAverage` (model_selection.go:474)
-- [ ] `const ClassificationMetric MetricKind` (model_selection.go:22)
-- [ ] `const HigherIsBetter` (model_selection.go:66)
-- [ ] `const LowerIsBetter` (model_selection.go:69)
-- [ ] `const MacroAverage ClassAverage` (model_selection.go:461)
-- [ ] `const MicroAverage` (model_selection.go:465)
-- [ ] `const NoDirection MetricDirection` (model_selection.go:64)
-- [ ] `const RegressionMetric MetricKind` (model_selection.go:24)
-- [ ] `const WeightedAverage` (model_selection.go:468)
-- [ ] `func (AccuracyMetric) Direction() MetricDirection` (model_selection.go:714)
-- [ ] `func (AccuracyMetric) Evaluate(yTrue *insyra.DataList, prediction Prediction) (MetricResult, error)` (model_selection.go:715)
-- [ ] `func (AccuracyMetric) Kind() MetricKind` (model_selection.go:713)
-- [ ] `func (AccuracyMetric) Name() string` (model_selection.go:712)
-- [ ] `func (AccuracyMetric) NeedsClassLabels() bool` (model_selection.go:719)
-- [ ] `func (ConfusionMatrixMetric) Direction() MetricDirection` (model_selection.go:762)
-- [ ] `func (ConfusionMatrixMetric) Evaluate(yTrue *insyra.DataList, prediction Prediction) (MetricResult, error)` (model_selection.go:763)
-- [ ] `func (ConfusionMatrixMetric) Kind() MetricKind` (model_selection.go:761)
-- [ ] `func (ConfusionMatrixMetric) Name() string` (model_selection.go:760)
-- [ ] `func (ConfusionMatrixMetric) NeedsClassLabels() bool` (model_selection.go:767)
-- [ ] `func (F1Metric) Direction() MetricDirection` (model_selection.go:636)
-- [ ] `func (F1Metric) Kind() MetricKind` (model_selection.go:635)
-- [ ] `func (F1Metric) Name() string` (model_selection.go:634)
-- [ ] `func (F1Metric) NeedsClassLabels() bool` (model_selection.go:637)
-- [ ] `func (LogLossMetric) Direction() MetricDirection` (model_selection.go:726)
-- [ ] `func (LogLossMetric) Evaluate(yTrue *insyra.DataList, prediction Prediction) (MetricResult, error)` (model_selection.go:727)
-- [ ] `func (LogLossMetric) Kind() MetricKind` (model_selection.go:725)
-- [ ] `func (LogLossMetric) Name() string` (model_selection.go:724)
-- [ ] `func (LogLossMetric) NeedsProbabilities() bool` (model_selection.go:731)
-- [ ] `func (MAEMetric) Direction() MetricDirection` (model_selection.go:785)
-- [ ] `func (MAEMetric) Evaluate(yTrue *insyra.DataList, prediction Prediction) (MetricResult, error)` (model_selection.go:786)
-- [ ] `func (MAEMetric) Kind() MetricKind` (model_selection.go:784)
-- [ ] `func (MAEMetric) Name() string` (model_selection.go:783)
-- [ ] `func (PrecisionMetric) Direction() MetricDirection` (model_selection.go:604)
-- [ ] `func (PrecisionMetric) Kind() MetricKind` (model_selection.go:603)
-- [ ] `func (PrecisionMetric) Name() string` (model_selection.go:602)
-- [ ] `func (PrecisionMetric) NeedsClassLabels() bool` (model_selection.go:605)
-- [ ] `func (R2Metric) Direction() MetricDirection` (model_selection.go:796)
-- [ ] `func (R2Metric) Evaluate(yTrue *insyra.DataList, prediction Prediction) (MetricResult, error)` (model_selection.go:797)
-- [ ] `func (R2Metric) Kind() MetricKind` (model_selection.go:795)
-- [ ] `func (R2Metric) Name() string` (model_selection.go:794)
-- [ ] `func (RMSEMetric) Direction() MetricDirection` (model_selection.go:774)
-- [ ] `func (RMSEMetric) Evaluate(yTrue *insyra.DataList, prediction Prediction) (MetricResult, error)` (model_selection.go:775)
-- [ ] `func (RMSEMetric) Kind() MetricKind` (model_selection.go:773)
-- [ ] `func (RMSEMetric) Name() string` (model_selection.go:772)
-- [ ] `func (ROCAUCMetric) Direction() MetricDirection` (model_selection.go:749)
-- [ ] `func (ROCAUCMetric) Evaluate(yTrue *insyra.DataList, prediction Prediction) (MetricResult, error)` (model_selection.go:750)
-- [ ] `func (ROCAUCMetric) Kind() MetricKind` (model_selection.go:748)
-- [ ] `func (ROCAUCMetric) Name() string` (model_selection.go:747)
-- [ ] `func (ROCAUCMetric) NeedsProbabilities() bool` (model_selection.go:754)
-- [ ] `func (RecallMetric) Direction() MetricDirection` (model_selection.go:620)
-- [ ] `func (RecallMetric) Kind() MetricKind` (model_selection.go:619)
-- [ ] `func (RecallMetric) Name() string` (model_selection.go:618)
-- [ ] `func (RecallMetric) NeedsClassLabels() bool` (model_selection.go:621)
-- [ ] `func (a ClassAverage) String() string` (model_selection.go:478)
-- [ ] `func (d MetricDirection) String() string` (model_selection.go:73)
-- [ ] `func (m *DecisionTreeClassifier) Classes() *insyra.DataList` (decision_tree.go:905)
-- [ ] `func (m *DecisionTreeClassifier) ExportONNX(w io.Writer) error` (onnx_export.go:65)
-- [ ] `func (m *DecisionTreeClassifier) FeatureImportances() []float64` (decision_tree.go:947)
-- [ ] `func (m *DecisionTreeClassifier) LeafValues() []float64` (decision_tree.go:956)
-- [ ] `func (m *DecisionTreeClassifier) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (decision_tree.go:912)
-- [ ] `func (m *DecisionTreeClassifier) PredictProba(dt *insyra.DataTable) (*insyra.DataTable, error)` (decision_tree.go:927)
-- [ ] `func (m *DecisionTreeRegressor) ExportONNX(w io.Writer) error` (onnx_export.go:68)
-- [ ] `func (m *DecisionTreeRegressor) FeatureImportances() []float64` (decision_tree.go:982)
-- [ ] `func (m *DecisionTreeRegressor) LeafValues() []float64` (decision_tree.go:989)
-- [ ] `func (m *DecisionTreeRegressor) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (decision_tree.go:967)
-- [ ] `func (m *ExponentialModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (models.go:393)
-- [ ] `func (m *GLMModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (models.go:443)
-- [ ] `func (m *GradientBoostingClassifier) Classes() *insyra.DataList` (gradient_boosting.go:394)
-- [ ] `func (m *GradientBoostingClassifier) ExportONNX(w io.Writer) error` (onnx_export.go:63)
-- [ ] `func (m *GradientBoostingClassifier) FeatureImportances() []float64` (gradient_boosting.go:401)
-- [ ] `func (m *GradientBoostingClassifier) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (gradient_boosting.go:364)
-- [ ] `func (m *GradientBoostingClassifier) PredictProba(dt *insyra.DataTable) (*insyra.DataTable, error)` (gradient_boosting.go:380)
-- [ ] `func (m *GradientBoostingRegressor) ExportONNX(w io.Writer) error` (onnx_export.go:60)
-- [ ] `func (m *GradientBoostingRegressor) FeatureImportances() []float64` (gradient_boosting.go:339)
-- [ ] `func (m *GradientBoostingRegressor) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (gradient_boosting.go:327)
-- [ ] `func (m *KMeansModel) Clusters() int` (models.go:451)
-- [ ] `func (m *KMeansModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (models.go:459)
-- [ ] `func (m *KNNClassifier) Classes() *insyra.DataList` (models.go:486)
-- [ ] `func (m *KNNClassifier) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (models.go:478)
-- [ ] `func (m *KNNClassifier) PredictProba(dt *insyra.DataTable) (*insyra.DataTable, error)` (models.go:493)
-- [ ] `func (m *KNNRegressor) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (models.go:515)
-- [ ] `func (m *LassoModel) ExportONNX(w io.Writer) error` (onnx_export.go:48)
-- [ ] `func (m *LassoModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (models.go:381)
-- [ ] `func (m *LinearModel) ExportONNX(w io.Writer) error` (onnx_export.go:46)
-- [ ] `func (m *LinearModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (models.go:363)
-- [ ] `func (m *LogarithmicModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (models.go:399)
-- [ ] `func (m *LogisticModel) Classes() *insyra.DataList` (models.go:411)
-- [ ] `func (m *LogisticModel) ExportONNX(w io.Writer) error` (onnx_export.go:64)
-- [ ] `func (m *LogisticModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (models.go:405)
-- [ ] `func (m *LogisticModel) PredictProba(dt *insyra.DataTable) (*insyra.DataTable, error)` (models.go:418)
-- [ ] `func (m *PoissonModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (models.go:437)
-- [ ] `func (m *PolynomialModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (models.go:387)
-- [ ] `func (m *RandomForestClassifier) Classes() *insyra.DataList` (random_forest.go:256)
-- [ ] `func (m *RandomForestClassifier) ExportONNX(w io.Writer) error` (onnx_export.go:54)
-- [ ] `func (m *RandomForestClassifier) FeatureImportances() []float64` (random_forest.go:263)
-- [ ] `func (m *RandomForestClassifier) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (random_forest.go:223)
-- [ ] `func (m *RandomForestClassifier) PredictProba(dt *insyra.DataTable) (*insyra.DataTable, error)` (random_forest.go:241)
-- [ ] `func (m *RandomForestRegressor) ExportONNX(w io.Writer) error` (onnx_export.go:57)
-- [ ] `func (m *RandomForestRegressor) FeatureImportances() []float64` (random_forest.go:289)
-- [ ] `func (m *RandomForestRegressor) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (random_forest.go:270)
-- [ ] `func (m *RidgeModel) ExportONNX(w io.Writer) error` (onnx_export.go:47)
-- [ ] `func (m *RidgeModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (models.go:375)
-- [ ] `func (m *WeightedLinearModel) ExportONNX(w io.Writer) error` (onnx_export.go:51)
-- [ ] `func (m *WeightedLinearModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (models.go:369)
-- [ ] `func (m F1Metric) Evaluate(yTrue *insyra.DataList, prediction Prediction) (MetricResult, error)` (model_selection.go:638)
-- [ ] `func (m PrecisionMetric) Evaluate(yTrue *insyra.DataList, prediction Prediction) (MetricResult, error)` (model_selection.go:606)
-- [ ] `func (m RecallMetric) Evaluate(yTrue *insyra.DataList, prediction Prediction) (MetricResult, error)` (model_selection.go:622)
-- [ ] `func (p *PCATransformer) Features() []string` (models.go:539)
-- [ ] `func (p *PCATransformer) Transform(dt *insyra.DataTable) (*insyra.DataTable, error)` (models.go:546)
-- [ ] `func (t *ColumnTransformer) Transform(dt *insyra.DataTable) (*insyra.DataTable, error)` (pipeline.go:106)
-- [ ] `func Accuracy(yTrue, yPred *insyra.DataList) (float64, error)` (model_selection.go:381)
-- [ ] `func Better(a, b *CrossValidationResult) (bool, error)` (model_selection.go:118)
-- [ ] `func ConfusionMatrix(yTrue, yPred *insyra.DataList) (*ConfusionMatrixResult, error)` (model_selection.go:419)
-- [ ] `func CrossValidate(x *insyra.DataTable, y *insyra.DataList, estimator Estimator, k int, metric Metric, options ...insyra.SamplingOptions) (*CrossValidationResult, error)` (model_selection.go:188)
-- [ ] `func CrossValidateWeighted(x *insyra.DataTable, y *insyra.DataList, weights *insyra.DataList, estimator Estimator, k int, metric Metric, options ...insyra.SamplingOptions) (*CrossValidationResult, error)` (model_selection.go:344)
-- [ ] `func ExportONNX(w io.Writer, fitted any) error` (onnx_export.go:23)
-- [ ] `func F1(yTrue, yPred *insyra.DataList) (float64, error)` (model_selection.go:590)
-- [ ] `func FitDecisionTreeClassifier(x *insyra.DataTable, y *insyra.DataList, opts ...DecisionTreeOptions) (*DecisionTreeClassifier, error)` (decision_tree.go:83)
-- [ ] `func FitDecisionTreeRegressor(x *insyra.DataTable, y *insyra.DataList, opts ...DecisionTreeOptions) (*DecisionTreeRegressor, error)` (decision_tree.go:102)
-- [ ] `func FitExponentialRegression(x *insyra.DataTable, y *insyra.DataList) (Model, error)` (models.go:188)
-- [ ] `func FitGLM(x *insyra.DataTable, y *insyra.DataList, opts GLMOptions) (Model, error)` (models.go:263)
-- [ ] `func FitGradientBoostingClassifier(x *insyra.DataTable, y *insyra.DataList, opts ...GradientBoostingOptions) (*GradientBoostingClassifier, error)` (gradient_boosting.go:168)
-- [ ] `func FitGradientBoostingRegressor(x *insyra.DataTable, y *insyra.DataList, opts ...GradientBoostingOptions) (*GradientBoostingRegressor, error)` (gradient_boosting.go:94)
-- [ ] `func FitKMeans(x *insyra.DataTable, k int, opts ...KMeansOptions) (Model, error)` (models.go:278)
-- [ ] `func FitKNNClassifier(x *insyra.DataTable, y *insyra.DataList, k int, opts ...KNNOptions) (ProbaModel, error)` (models.go:311)
-- [ ] `func FitKNNRegressor(x *insyra.DataTable, y *insyra.DataList, k int, opts ...KNNOptions) (Model, error)` (models.go:337)
-- [ ] `func FitLassoRegression(x *insyra.DataTable, y *insyra.DataList, alpha float64, options ...stats.LassoOptions) (Model, error)` (models.go:176)
-- [ ] `func FitLinearRegression(x *insyra.DataTable, y *insyra.DataList) (Model, error)` (models.go:110)
-- [ ] `func FitLogarithmicRegression(x *insyra.DataTable, y *insyra.DataList) (Model, error)` (models.go:203)
-- [ ] `func FitLogisticRegression(x *insyra.DataTable, y *insyra.DataList, opts ...LogisticOptions) (ProbaModel, error)` (models.go:218)
-- [ ] `func FitPCA(x *insyra.DataTable, components int) (Transformer, error)` (models.go:299)
-- [ ] `func FitPoissonRegression(x *insyra.DataTable, y *insyra.DataList, opts ...PoissonOptions) (Model, error)` (models.go:239)
-- [ ] `func FitPolynomialRegression(x *insyra.DataTable, y *insyra.DataList, degree int) (Model, error)` (models.go:122)
-- [ ] `func FitRandomForestClassifier(x *insyra.DataTable, y *insyra.DataList, opts ...RandomForestOptions) (*RandomForestClassifier, error)` (random_forest.go:55)
-- [ ] `func FitRandomForestRegressor(x *insyra.DataTable, y *insyra.DataList, opts ...RandomForestOptions) (*RandomForestRegressor, error)` (random_forest.go:70)
-- [ ] `func FitRidgeRegression(x *insyra.DataTable, y *insyra.DataList, alpha float64) (Model, error)` (models.go:160)
-- [ ] `func FitWeightedLinearRegression(x *insyra.DataTable, y *insyra.DataList, weights *insyra.DataList) (Model, error)` (models.go:145)
-- [ ] `func GridSearch(x *insyra.DataTable, y *insyra.DataList, candidates []Estimator, k int, metric Metric, options ...insyra.SamplingOptions) (*GridSearchResult, error)` (grid_search.go:45)
-- [ ] `func KFold(dt *insyra.DataTable, k int, options ...insyra.SamplingOptions) ([]*insyra.DataTable, error)` (model_selection.go:144)
-- [ ] `func LogLoss(yTrue *insyra.DataList, probabilities *insyra.DataTable, classes ...*insyra.DataList) (float64, error)` (model_selection.go:398)
-- [ ] `func MAE(yTrue, yPred *insyra.DataList) (float64, error)` (model_selection.go:667)
-- [ ] `func NewColumnTransformer(transformer Transformer, columns ...string) *ColumnTransformer` (pipeline.go:93)
-- [ ] `func NewPipeline(steps []Step, estimator Estimator) Estimator` (pipeline.go:13)
-- [ ] `func Precision(yTrue, yPred *insyra.DataList) (float64, error)` (model_selection.go:577)
-- [ ] `func R2(yTrue, yPred *insyra.DataList) (float64, error)` (model_selection.go:683)
-- [ ] `func RMSE(yTrue, yPred *insyra.DataList) (float64, error)` (model_selection.go:650)
-- [ ] `func ROCAUC(yTrue *insyra.DataList, probabilities *insyra.DataTable, classes ...*insyra.DataList) (float64, error)` (model_selection.go:409)
-- [ ] `func Recall(yTrue, yPred *insyra.DataList) (float64, error)` (model_selection.go:584)
-- [ ] `func Score(model Model, x *insyra.DataTable, y *insyra.DataList, metric Metric) (MetricResult, error)` (model_selection.go:297)
-- [ ] `func StratifiedKFold(dt *insyra.DataTable, labels *insyra.DataList, k int, options ...insyra.SamplingOptions) ([]*insyra.DataTable, error)` (model_selection.go:166)
-- [ ] `func TransformColumns(transformer Transformer, columns ...string) Transformer` (pipeline.go:101)
-- [ ] `func WriteONNX(w io.Writer, fitted any) error` (onnx_export.go:44)
-- [ ] `type AccuracyMetric struct{}` (model_selection.go:710)
-- [ ] `type ClassAverage int` (model_selection.go:452)
-- [ ] `type ClassLabelMetric interface { Metric NeedsClassLabels() bool }` (model_selection.go:813)
-- [ ] `type Classifier interface { Model Classes() *insyra.DataList }` (interfaces.go:24)
-- [ ] `type Clusterer interface { Model Clusters() int }` (interfaces.go:77)
-- [ ] `type ColumnTransformer struct { transformer Transformer columns []string }` (pipeline.go:85)
-- [ ] `type ConfusionMatrixMetric struct{}` (model_selection.go:758)
-- [ ] `type ConfusionMatrixResult struct { Labels []any Counts [][]int }` (model_selection.go:136)
-- [ ] `type CrossValidationResult struct { Metric string Direction MetricDirection Scores []float64 Mean float64 FoldResults []MetricResult }` (model_selection.go:104)
-- [ ] `type DecisionTreeClassifier struct { modelBase Root *DecisionTreeNode classes *insyra.DataList featureSchemas []treeFeature featureImportances []float64 }` (decision_tree.go:64)
-- [ ] `type DecisionTreeClassifierOptions = DecisionTreeOptions` (decision_tree.go:34)
-- [ ] `type DecisionTreeNode struct { IsLeaf bool Feature int FeatureName string Categorical bool Threshold float64 Categories []any MissingGoLeft bool UnseenCategoryGoLeft bool Samples int Gain float64 Impurity float64 Value float64 Prediction any Probabilities []float64 ClassCounts []int64 Left *DecisionTreeNode Right *DecisionTreeNode splitBin int leftCategories map[uint32]struct{} }` (decision_tree.go:40)
-- [ ] `type DecisionTreeOptions struct { MaxDepth int MaxLeaves int MinSamplesLeaf int MaxBins int ExactSplits bool CategoricalFeatures []string }` (decision_tree.go:16)
-- [ ] `type DecisionTreeRegressor struct { modelBase Root *DecisionTreeNode featureSchemas []treeFeature featureImportances []float64 quantizerScale float64 }` (decision_tree.go:74)
-- [ ] `type DecisionTreeRegressorOptions = DecisionTreeOptions` (decision_tree.go:35)
-- [ ] `type Estimator struct { Name string Fit func(x *insyra.DataTable, y *insyra.DataList) (Model, error) FitWeighted func(x *insyra.DataTable, y *insyra.DataList, weights *insyra.DataList) (Model, error) }` (interfaces.go:97)
-- [ ] `type ExponentialModel struct { Result *stats.ExponentialRegressionResult modelBase }` (models.go:42)
-- [ ] `type Exporter interface { Model ExportONNX(w io.Writer) error }` (interfaces.go:84)
-- [ ] `type F1Metric struct { Average ClassAverage PositiveClass any }` (model_selection.go:629)
-- [ ] `type GLMModel struct { Result *stats.GLMResult modelBase }` (models.go:66)
-- [ ] `type GLMOptions = stats.GLMOptions` (interfaces.go:113)
-- [ ] `type GradientBoostingClassifier struct { modelBase classes *insyra.DataList base float64 learningRate float64 trees []*treeFit importances []float64 Stages int }` (gradient_boosting.go:46)
-- [ ] `type GradientBoostingOptions struct { Stages int LearningRate float64 Tree DecisionTreeOptions }` (gradient_boosting.go:13)
-- [ ] `type GradientBoostingRegressor struct { modelBase base float64 learningRate float64 trees []*treeFit importances []float64 Stages int }` (gradient_boosting.go:28)
-- [ ] `type GridSearchResult struct { BestIndex int BestName string BestModel Model Results []*CrossValidationResult Seed uint64 }` (grid_search.go:13)
-- [ ] `type Importances interface { Model FeatureImportances() []float64 }` (interfaces.go:45)
-- [ ] `type InverseTransformer interface { InverseTransform(dt *insyra.DataTable) (*insyra.DataTable, error) }` (interfaces.go:30)
-- [ ] `type KMeansModel struct { Result *stats.KMeansResult modelBase }` (models.go:72)
-- [ ] `type KMeansOptions = stats.KMeansOptions` (interfaces.go:114)
-- [ ] `type KNNClassifier struct { Result *stats.KNNClassificationResult modelBase train *insyra.DataTable labels *insyra.DataList k int options KNNOptions hasOption bool }` (models.go:87)
-- [ ] `type KNNOptions = stats.KNNOptions` (interfaces.go:115)
-- [ ] `type KNNRegressor struct { Result *stats.KNNRegressionResult modelBase train *insyra.DataTable targets *insyra.DataList k int options KNNOptions hasOption bool }` (models.go:100)
-- [ ] `type LassoModel struct { Result *stats.LassoRegressionResult modelBase }` (models.go:36)
-- [ ] `type LinearModel struct { Result *stats.LinearRegressionResult modelBase }` (models.go:12)
-- [ ] `type LogLossMetric struct{}` (model_selection.go:722)
-- [ ] `type LogarithmicModel struct { Result *stats.LogarithmicRegressionResult modelBase }` (models.go:48)
-- [ ] `type LogisticModel struct { Result *stats.LogisticRegressionResult modelBase }` (models.go:54)
-- [ ] `type LogisticOptions = stats.LogisticRegressionOptions` (interfaces.go:111)
-- [ ] `type MAEMetric struct{}` (model_selection.go:781)
-- [ ] `type Metric interface { Name() string Kind() MetricKind Direction() MetricDirection Evaluate(yTrue *insyra.DataList, prediction Prediction) (MetricResult, error) }` (model_selection.go:92)
-- [ ] `type MetricDirection int` (model_selection.go:58)
-- [ ] `type MetricKind string` (model_selection.go:17)
-- [ ] `type MetricResult struct { Name string Score float64 ConfusionMatrix *ConfusionMatrixResult }` (model_selection.go:51)
-- [ ] `type Model interface { Features() []string Predict(dt *insyra.DataTable) (*insyra.DataList, error) }` (interfaces.go:17)
-- [ ] `type PCATransformer struct { Result *stats.PCAResult modelBase }` (models.go:79)
-- [ ] `type PoissonModel struct { Result *stats.PoissonRegressionResult modelBase }` (models.go:60)
-- [ ] `type PoissonOptions = stats.PoissonRegressionOptions` (interfaces.go:112)
-- [ ] `type PolynomialModel struct { Result *stats.PolynomialRegressionResult modelBase }` (models.go:18)
-- [ ] `type PrecisionMetric struct { Average ClassAverage PositiveClass any }` (model_selection.go:597)
-- [ ] `type Prediction struct { Values *insyra.DataList Probabilities *insyra.DataTable Classes *insyra.DataList }` (model_selection.go:30)
-- [ ] `type ProbaModel interface { Classifier PredictProba(dt *insyra.DataTable) (*insyra.DataTable, error) }` (interfaces.go:35)
-- [ ] `type ProbabilityMetric interface { Metric NeedsProbabilities() bool }` (model_selection.go:827)
-- [ ] `type R2Metric struct{}` (model_selection.go:792)
-- [ ] `type RMSEMetric struct{}` (model_selection.go:770)
-- [ ] `type ROCAUCMetric struct{}` (model_selection.go:745)
-- [ ] `type RandomForestClassifier struct { modelBase trees []*treeFit classes *insyra.DataList importances []float64 Seed int64 }` (random_forest.go:34)
-- [ ] `type RandomForestOptions struct { Trees int MaxFeatures int Seed *int64 Tree DecisionTreeOptions }` (random_forest.go:16)
-- [ ] `type RandomForestRegressor struct { modelBase trees []*treeFit importances []float64 Seed int64 }` (random_forest.go:46)
-- [ ] `type RecallMetric struct { Average ClassAverage PositiveClass any }` (model_selection.go:613)
-- [ ] `type RidgeModel struct { Result *stats.RidgeRegressionResult modelBase }` (models.go:30)
-- [ ] `type Step struct { Name string Fit func(x *insyra.DataTable, y *insyra.DataList) (Transformer, error) }` (interfaces.go:90)
-- [ ] `type TransformedFeatures interface { Model TransformedFeatureNames() []string }` (interfaces.go:58)
-- [ ] `type Transformer interface { Transform(dt *insyra.DataTable) (*insyra.DataTable, error) }` (interfaces.go:12)
-- [ ] `type WeightedLinearModel struct { Result *stats.WeightedLinearRegressionResult modelBase }` (models.go:24)
-- [ ] `func (m modelBase) Features() []string` (helpers.go:14)
-- [ ] `func (p *fittedPipeline) ExportONNX(w io.Writer) error` (onnx_export.go:71)
-- [ ] `func (p *fittedPipeline) Features() []string` (pipeline.go:215)
-- [ ] `func (p *fittedPipeline) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (pipeline.go:233)
-- [ ] `func (p *fittedPipeline) TransformedFeatureNames() []string` (pipeline.go:226)
-- [ ] `func (p *fittedPipelineClassifier) Classes() *insyra.DataList` (pipeline.go:267)
-- [ ] `func (p *fittedPipelineClassifierImportances) Classes() *insyra.DataList` (pipeline.go:311)
-- [ ] `func (p *fittedPipelineClassifierImportances) FeatureImportances() []float64` (pipeline.go:319)
-- [ ] `func (p *fittedPipelineImportances) FeatureImportances() []float64` (pipeline.go:299)
-- [ ] `func (p *fittedPipelineProba) Classes() *insyra.DataList` (pipeline.go:277)
-- [ ] `func (p *fittedPipelineProba) PredictProba(dt *insyra.DataTable) (*insyra.DataTable, error)` (pipeline.go:285)
-- [ ] `func (p *fittedPipelineProbaImportances) Classes() *insyra.DataList` (pipeline.go:329)
-- [ ] `func (p *fittedPipelineProbaImportances) FeatureImportances() []float64` (pipeline.go:349)
-- [ ] `func (p *fittedPipelineProbaImportances) PredictProba(dt *insyra.DataTable) (*insyra.DataTable, error)` (pipeline.go:337)
+- [x] `const BinaryAverage` (model_selection.go:474) — OK（ML-3）
+- [x] `const ClassificationMetric MetricKind` (model_selection.go:22) — OK（ML-3）
+- [x] `const HigherIsBetter` (model_selection.go:66) — OK（ML-3）
+- [x] `const LowerIsBetter` (model_selection.go:69) — OK（ML-3）
+- [x] `const MacroAverage ClassAverage` (model_selection.go:461) — OK（ML-3）
+- [x] `const MicroAverage` (model_selection.go:465) — OK（ML-3）
+- [x] `const NoDirection MetricDirection` (model_selection.go:64) — OK（ML-3）
+- [x] `const RegressionMetric MetricKind` (model_selection.go:24) — OK（ML-3）
+- [x] `const WeightedAverage` (model_selection.go:468) — OK（ML-3）
+- [x] `func (AccuracyMetric) Direction() MetricDirection` (model_selection.go:714) — OK 實作 Metric 協定
+- [x] `func (AccuracyMetric) Evaluate(yTrue *insyra.DataList, prediction Prediction) (MetricResult, error)` (model_selection.go:715) — OK 實作 Metric 協定
+- [x] `func (AccuracyMetric) Kind() MetricKind` (model_selection.go:713) — OK 實作 Metric 協定
+- [x] `func (AccuracyMetric) Name() string` (model_selection.go:712) — OK 實作 Metric 協定
+- [x] `func (AccuracyMetric) NeedsClassLabels() bool` (model_selection.go:719) — OK 實作 Metric 協定
+- [x] `func (ConfusionMatrixMetric) Direction() MetricDirection` (model_selection.go:762) — OK 實作 Metric 協定
+- [x] `func (ConfusionMatrixMetric) Evaluate(yTrue *insyra.DataList, prediction Prediction) (MetricResult, error)` (model_selection.go:763) — OK 實作 Metric 協定
+- [x] `func (ConfusionMatrixMetric) Kind() MetricKind` (model_selection.go:761) — OK 實作 Metric 協定
+- [x] `func (ConfusionMatrixMetric) Name() string` (model_selection.go:760) — OK 實作 Metric 協定
+- [x] `func (ConfusionMatrixMetric) NeedsClassLabels() bool` (model_selection.go:767) — OK 實作 Metric 協定
+- [x] `func (F1Metric) Direction() MetricDirection` (model_selection.go:636) — OK 實作 Metric 協定
+- [x] `func (F1Metric) Kind() MetricKind` (model_selection.go:635) — OK 實作 Metric 協定
+- [x] `func (F1Metric) Name() string` (model_selection.go:634) — OK 實作 Metric 協定
+- [x] `func (F1Metric) NeedsClassLabels() bool` (model_selection.go:637) — OK 實作 Metric 協定
+- [x] `func (LogLossMetric) Direction() MetricDirection` (model_selection.go:726) — OK 實作 Metric 協定
+- [x] `func (LogLossMetric) Evaluate(yTrue *insyra.DataList, prediction Prediction) (MetricResult, error)` (model_selection.go:727) — OK 實作 Metric 協定
+- [x] `func (LogLossMetric) Kind() MetricKind` (model_selection.go:725) — OK 實作 Metric 協定
+- [x] `func (LogLossMetric) Name() string` (model_selection.go:724) — OK 實作 Metric 協定
+- [x] `func (LogLossMetric) NeedsProbabilities() bool` (model_selection.go:731) — OK 實作 Metric 協定
+- [x] `func (MAEMetric) Direction() MetricDirection` (model_selection.go:785) — OK 實作 Metric 協定
+- [x] `func (MAEMetric) Evaluate(yTrue *insyra.DataList, prediction Prediction) (MetricResult, error)` (model_selection.go:786) — OK 實作 Metric 協定
+- [x] `func (MAEMetric) Kind() MetricKind` (model_selection.go:784) — OK 實作 Metric 協定
+- [x] `func (MAEMetric) Name() string` (model_selection.go:783) — OK 實作 Metric 協定
+- [x] `func (PrecisionMetric) Direction() MetricDirection` (model_selection.go:604) — OK 實作 Metric 協定
+- [x] `func (PrecisionMetric) Kind() MetricKind` (model_selection.go:603) — OK 實作 Metric 協定
+- [x] `func (PrecisionMetric) Name() string` (model_selection.go:602) — OK 實作 Metric 協定
+- [x] `func (PrecisionMetric) NeedsClassLabels() bool` (model_selection.go:605) — OK 實作 Metric 協定
+- [x] `func (R2Metric) Direction() MetricDirection` (model_selection.go:796) — OK 實作 Metric 協定
+- [x] `func (R2Metric) Evaluate(yTrue *insyra.DataList, prediction Prediction) (MetricResult, error)` (model_selection.go:797) — OK 實作 Metric 協定
+- [x] `func (R2Metric) Kind() MetricKind` (model_selection.go:795) — OK 實作 Metric 協定
+- [x] `func (R2Metric) Name() string` (model_selection.go:794) — OK 實作 Metric 協定
+- [x] `func (RMSEMetric) Direction() MetricDirection` (model_selection.go:774) — OK 實作 Metric 協定
+- [x] `func (RMSEMetric) Evaluate(yTrue *insyra.DataList, prediction Prediction) (MetricResult, error)` (model_selection.go:775) — OK 實作 Metric 協定
+- [x] `func (RMSEMetric) Kind() MetricKind` (model_selection.go:773) — OK 實作 Metric 協定
+- [x] `func (RMSEMetric) Name() string` (model_selection.go:772) — OK 實作 Metric 協定
+- [x] `func (ROCAUCMetric) Direction() MetricDirection` (model_selection.go:749) — OK 實作 Metric 協定
+- [x] `func (ROCAUCMetric) Evaluate(yTrue *insyra.DataList, prediction Prediction) (MetricResult, error)` (model_selection.go:750) — OK 實作 Metric 協定
+- [x] `func (ROCAUCMetric) Kind() MetricKind` (model_selection.go:748) — OK 實作 Metric 協定
+- [x] `func (ROCAUCMetric) Name() string` (model_selection.go:747) — OK 實作 Metric 協定
+- [x] `func (ROCAUCMetric) NeedsProbabilities() bool` (model_selection.go:754) — OK 實作 Metric 協定
+- [x] `func (RecallMetric) Direction() MetricDirection` (model_selection.go:620) — OK 實作 Metric 協定
+- [x] `func (RecallMetric) Kind() MetricKind` (model_selection.go:619) — OK 實作 Metric 協定
+- [x] `func (RecallMetric) Name() string` (model_selection.go:618) — OK 實作 Metric 協定
+- [x] `func (RecallMetric) NeedsClassLabels() bool` (model_selection.go:621) — OK 實作 Metric 協定
+- [x] `func (a ClassAverage) String() string` (model_selection.go:478) — OK（ML-3）
+- [x] `func (d MetricDirection) String() string` (model_selection.go:73) — OK（ML-3）
+- [x] `func (m *DecisionTreeClassifier) Classes() *insyra.DataList` (decision_tree.go:905) — OK（ML-3）
+- [x] `func (m *DecisionTreeClassifier) ExportONNX(w io.Writer) error` (onnx_export.go:65) — OK（ML-3）
+- [x] `func (m *DecisionTreeClassifier) FeatureImportances() []float64` (decision_tree.go:947) — OK（ML-3）
+- [x] `func (m *DecisionTreeClassifier) LeafValues() []float64` (decision_tree.go:956) — OK（ML-3）
+- [x] `func (m *DecisionTreeClassifier) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (decision_tree.go:912) — OK（ML-3）
+- [x] `func (m *DecisionTreeClassifier) PredictProba(dt *insyra.DataTable) (*insyra.DataTable, error)` (decision_tree.go:927) — OK（ML-3）
+- [x] `func (m *DecisionTreeRegressor) ExportONNX(w io.Writer) error` (onnx_export.go:68) — OK（ML-3）
+- [x] `func (m *DecisionTreeRegressor) FeatureImportances() []float64` (decision_tree.go:982) — OK（ML-3）
+- [x] `func (m *DecisionTreeRegressor) LeafValues() []float64` (decision_tree.go:989) — OK（ML-3）
+- [x] `func (m *DecisionTreeRegressor) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (decision_tree.go:967) — OK（ML-3）
+- [x] `func (m *ExponentialModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (models.go:393) — OK（ML-3）
+- [x] `func (m *GLMModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (models.go:443) — OK（ML-3）
+- [x] `func (m *GradientBoostingClassifier) Classes() *insyra.DataList` (gradient_boosting.go:394) — OK（ML-3）
+- [x] `func (m *GradientBoostingClassifier) ExportONNX(w io.Writer) error` (onnx_export.go:63) — OK（ML-3）
+- [x] `func (m *GradientBoostingClassifier) FeatureImportances() []float64` (gradient_boosting.go:401) — OK（ML-3）
+- [x] `func (m *GradientBoostingClassifier) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (gradient_boosting.go:364) — OK（ML-3）
+- [x] `func (m *GradientBoostingClassifier) PredictProba(dt *insyra.DataTable) (*insyra.DataTable, error)` (gradient_boosting.go:380) — OK（ML-3）
+- [x] `func (m *GradientBoostingRegressor) ExportONNX(w io.Writer) error` (onnx_export.go:60) — OK（ML-3）
+- [x] `func (m *GradientBoostingRegressor) FeatureImportances() []float64` (gradient_boosting.go:339) — OK（ML-3）
+- [x] `func (m *GradientBoostingRegressor) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (gradient_boosting.go:327) — OK（ML-3）
+- [x] `func (m *KMeansModel) Clusters() int` (models.go:451) — OK（ML-3）
+- [x] `func (m *KMeansModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (models.go:459) — OK（ML-3）
+- [x] `func (m *KNNClassifier) Classes() *insyra.DataList` (models.go:486) — OK（ML-3）
+- [x] `func (m *KNNClassifier) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (models.go:478) — OK（ML-3）
+- [x] `func (m *KNNClassifier) PredictProba(dt *insyra.DataTable) (*insyra.DataTable, error)` (models.go:493) — OK（ML-3）
+- [x] `func (m *KNNRegressor) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (models.go:515) — OK（ML-3）
+- [x] `func (m *LassoModel) ExportONNX(w io.Writer) error` (onnx_export.go:48) — OK（ML-3）
+- [x] `func (m *LassoModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (models.go:381) — OK（ML-3）
+- [x] `func (m *LinearModel) ExportONNX(w io.Writer) error` (onnx_export.go:46) — OK（ML-3）
+- [x] `func (m *LinearModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (models.go:363) — OK（ML-3）
+- [x] `func (m *LogarithmicModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (models.go:399) — OK（ML-3）
+- [x] `func (m *LogisticModel) Classes() *insyra.DataList` (models.go:411) — OK（ML-3）
+- [x] `func (m *LogisticModel) ExportONNX(w io.Writer) error` (onnx_export.go:64) — OK（ML-3）
+- [x] `func (m *LogisticModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (models.go:405) — OK（ML-3）
+- [x] `func (m *LogisticModel) PredictProba(dt *insyra.DataTable) (*insyra.DataTable, error)` (models.go:418) — OK（ML-3）
+- [x] `func (m *PoissonModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (models.go:437) — OK（ML-3）
+- [x] `func (m *PolynomialModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (models.go:387) — OK（ML-3）
+- [x] `func (m *RandomForestClassifier) Classes() *insyra.DataList` (random_forest.go:256) — OK（ML-3）
+- [x] `func (m *RandomForestClassifier) ExportONNX(w io.Writer) error` (onnx_export.go:54) — OK（ML-3）
+- [x] `func (m *RandomForestClassifier) FeatureImportances() []float64` (random_forest.go:263) — OK（ML-3）
+- [x] `func (m *RandomForestClassifier) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (random_forest.go:223) — OK（ML-3）
+- [x] `func (m *RandomForestClassifier) PredictProba(dt *insyra.DataTable) (*insyra.DataTable, error)` (random_forest.go:241) — OK（ML-3）
+- [x] `func (m *RandomForestRegressor) ExportONNX(w io.Writer) error` (onnx_export.go:57) — OK（ML-3）
+- [x] `func (m *RandomForestRegressor) FeatureImportances() []float64` (random_forest.go:289) — OK（ML-3）
+- [x] `func (m *RandomForestRegressor) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (random_forest.go:270) — OK（ML-3）
+- [x] `func (m *RidgeModel) ExportONNX(w io.Writer) error` (onnx_export.go:47) — OK（ML-3）
+- [x] `func (m *RidgeModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (models.go:375) — OK（ML-3）
+- [x] `func (m *WeightedLinearModel) ExportONNX(w io.Writer) error` (onnx_export.go:51) — OK（ML-3）
+- [x] `func (m *WeightedLinearModel) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (models.go:369) — OK（ML-3）
+- [x] `func (m F1Metric) Evaluate(yTrue *insyra.DataList, prediction Prediction) (MetricResult, error)` (model_selection.go:638) — OK 實作 Metric 協定
+- [x] `func (m PrecisionMetric) Evaluate(yTrue *insyra.DataList, prediction Prediction) (MetricResult, error)` (model_selection.go:606) — OK 實作 Metric 協定
+- [x] `func (m RecallMetric) Evaluate(yTrue *insyra.DataList, prediction Prediction) (MetricResult, error)` (model_selection.go:622) — OK 實作 Metric 協定
+- [x] `func (p *PCATransformer) Features() []string` (models.go:539) — OK（ML-3）
+- [x] `func (p *PCATransformer) Transform(dt *insyra.DataTable) (*insyra.DataTable, error)` (models.go:546) — OK（ML-3）
+- [x] `func (t *ColumnTransformer) Transform(dt *insyra.DataTable) (*insyra.DataTable, error)` (pipeline.go:106) — OK（ML-3）
+- [x] `func Accuracy(yTrue, yPred *insyra.DataList) (float64, error)` (model_selection.go:381) — OK（ML-3）
+- [x] `func Better(a, b *CrossValidationResult) (bool, error)` (model_selection.go:118) — OK（ML-3）
+- [x] `func ConfusionMatrix(yTrue, yPred *insyra.DataList) (*ConfusionMatrixResult, error)` (model_selection.go:419) — OK（ML-3）
+- [x] `func CrossValidate(x *insyra.DataTable, y *insyra.DataList, estimator Estimator, k int, metric Metric, options ...insyra.SamplingOptions) (*CrossValidationResult, error)` (model_selection.go:188) — OK（ML-3）
+- [x] `func CrossValidateWeighted(x *insyra.DataTable, y *insyra.DataList, weights *insyra.DataList, estimator Estimator, k int, metric Metric, options ...insyra.SamplingOptions) (*CrossValidationResult, error)` (model_selection.go:344) — OK（ML-3）
+- [x] `func ExportONNX(w io.Writer, fitted any) error` (onnx_export.go:23) — ML-2 重複且 any
+- [x] `func F1(yTrue, yPred *insyra.DataList) (float64, error)` (model_selection.go:590) — OK（ML-3）
+- [x] `func FitDecisionTreeClassifier(x *insyra.DataTable, y *insyra.DataList, opts ...DecisionTreeOptions) (*DecisionTreeClassifier, error)` (decision_tree.go:83) — OK 回具體型別；opts variadic（ML-2）
+- [x] `func FitDecisionTreeRegressor(x *insyra.DataTable, y *insyra.DataList, opts ...DecisionTreeOptions) (*DecisionTreeRegressor, error)` (decision_tree.go:102) — OK 回具體型別；opts variadic（ML-2）
+- [x] `func FitExponentialRegression(x *insyra.DataTable, y *insyra.DataList) (Model, error)` (models.go:188) — ML-1 回介面
+- [x] `func FitGLM(x *insyra.DataTable, y *insyra.DataList, opts GLMOptions) (Model, error)` (models.go:263) — ML-1 回介面
+- [x] `func FitGradientBoostingClassifier(x *insyra.DataTable, y *insyra.DataList, opts ...GradientBoostingOptions) (*GradientBoostingClassifier, error)` (gradient_boosting.go:168) — OK 回具體型別；opts variadic（ML-2）
+- [x] `func FitGradientBoostingRegressor(x *insyra.DataTable, y *insyra.DataList, opts ...GradientBoostingOptions) (*GradientBoostingRegressor, error)` (gradient_boosting.go:94) — OK 回具體型別；opts variadic（ML-2）
+- [x] `func FitKMeans(x *insyra.DataTable, k int, opts ...KMeansOptions) (Model, error)` (models.go:278) — ML-1 回介面
+- [x] `func FitKNNClassifier(x *insyra.DataTable, y *insyra.DataList, k int, opts ...KNNOptions) (ProbaModel, error)` (models.go:311) — ML-1 回介面
+- [x] `func FitKNNRegressor(x *insyra.DataTable, y *insyra.DataList, k int, opts ...KNNOptions) (Model, error)` (models.go:337) — ML-1 回介面
+- [x] `func FitLassoRegression(x *insyra.DataTable, y *insyra.DataList, alpha float64, options ...stats.LassoOptions) (Model, error)` (models.go:176) — ML-1 回介面
+- [x] `func FitLinearRegression(x *insyra.DataTable, y *insyra.DataList) (Model, error)` (models.go:110) — ML-1 回介面
+- [x] `func FitLogarithmicRegression(x *insyra.DataTable, y *insyra.DataList) (Model, error)` (models.go:203) — ML-1 回介面
+- [x] `func FitLogisticRegression(x *insyra.DataTable, y *insyra.DataList, opts ...LogisticOptions) (ProbaModel, error)` (models.go:218) — ML-1 回介面
+- [x] `func FitPCA(x *insyra.DataTable, components int) (Transformer, error)` (models.go:299) — ML-1 回介面
+- [x] `func FitPoissonRegression(x *insyra.DataTable, y *insyra.DataList, opts ...PoissonOptions) (Model, error)` (models.go:239) — ML-1 回介面
+- [x] `func FitPolynomialRegression(x *insyra.DataTable, y *insyra.DataList, degree int) (Model, error)` (models.go:122) — ML-1 回介面
+- [x] `func FitRandomForestClassifier(x *insyra.DataTable, y *insyra.DataList, opts ...RandomForestOptions) (*RandomForestClassifier, error)` (random_forest.go:55) — OK 回具體型別；opts variadic（ML-2）
+- [x] `func FitRandomForestRegressor(x *insyra.DataTable, y *insyra.DataList, opts ...RandomForestOptions) (*RandomForestRegressor, error)` (random_forest.go:70) — OK 回具體型別；opts variadic（ML-2）
+- [x] `func FitRidgeRegression(x *insyra.DataTable, y *insyra.DataList, alpha float64) (Model, error)` (models.go:160) — ML-1 回介面
+- [x] `func FitWeightedLinearRegression(x *insyra.DataTable, y *insyra.DataList, weights *insyra.DataList) (Model, error)` (models.go:145) — ML-1 回介面
+- [x] `func GridSearch(x *insyra.DataTable, y *insyra.DataList, candidates []Estimator, k int, metric Metric, options ...insyra.SamplingOptions) (*GridSearchResult, error)` (grid_search.go:45) — OK（ML-3）
+- [x] `func KFold(dt *insyra.DataTable, k int, options ...insyra.SamplingOptions) ([]*insyra.DataTable, error)` (model_selection.go:144) — OK（ML-3）
+- [x] `func LogLoss(yTrue *insyra.DataList, probabilities *insyra.DataTable, classes ...*insyra.DataList) (float64, error)` (model_selection.go:398) — OK（ML-3）
+- [x] `func MAE(yTrue, yPred *insyra.DataList) (float64, error)` (model_selection.go:667) — OK（ML-3）
+- [x] `func NewColumnTransformer(transformer Transformer, columns ...string) *ColumnTransformer` (pipeline.go:93) — OK（ML-3）
+- [x] `func NewPipeline(steps []Step, estimator Estimator) Estimator` (pipeline.go:13) — OK（ML-3）
+- [x] `func Precision(yTrue, yPred *insyra.DataList) (float64, error)` (model_selection.go:577) — OK（ML-3）
+- [x] `func R2(yTrue, yPred *insyra.DataList) (float64, error)` (model_selection.go:683) — OK（ML-3）
+- [x] `func RMSE(yTrue, yPred *insyra.DataList) (float64, error)` (model_selection.go:650) — OK（ML-3）
+- [x] `func ROCAUC(yTrue *insyra.DataList, probabilities *insyra.DataTable, classes ...*insyra.DataList) (float64, error)` (model_selection.go:409) — OK（ML-3）
+- [x] `func Recall(yTrue, yPred *insyra.DataList) (float64, error)` (model_selection.go:584) — OK（ML-3）
+- [x] `func Score(model Model, x *insyra.DataTable, y *insyra.DataList, metric Metric) (MetricResult, error)` (model_selection.go:297) — OK（ML-3）
+- [x] `func StratifiedKFold(dt *insyra.DataTable, labels *insyra.DataList, k int, options ...insyra.SamplingOptions) ([]*insyra.DataTable, error)` (model_selection.go:166) — OK（ML-3）
+- [x] `func TransformColumns(transformer Transformer, columns ...string) Transformer` (pipeline.go:101) — OK（ML-3）
+- [x] `func WriteONNX(w io.Writer, fitted any) error` (onnx_export.go:44) — ML-2 重複且 any
+- [x] `type AccuracyMetric struct{}` (model_selection.go:710) — OK（ML-3）
+- [x] `type ClassAverage int` (model_selection.go:452) — OK（ML-3）
+- [x] `type ClassLabelMetric interface { Metric NeedsClassLabels() bool }` (model_selection.go:813) — OK 小介面、doc 有理由（ML-3）
+- [x] `type Classifier interface { Model Classes() *insyra.DataList }` (interfaces.go:24) — OK 小介面、doc 有理由（ML-3）
+- [x] `type Clusterer interface { Model Clusters() int }` (interfaces.go:77) — OK 小介面、doc 有理由（ML-3）
+- [x] `type ColumnTransformer struct { transformer Transformer columns []string }` (pipeline.go:85) — OK（ML-3）
+- [x] `type ConfusionMatrixMetric struct{}` (model_selection.go:758) — OK（ML-3）
+- [x] `type ConfusionMatrixResult struct { Labels []any Counts [][]int }` (model_selection.go:136) — OK（ML-3）
+- [x] `type CrossValidationResult struct { Metric string Direction MetricDirection Scores []float64 Mean float64 FoldResults []MetricResult }` (model_selection.go:104) — OK（ML-3）
+- [x] `type DecisionTreeClassifier struct { modelBase Root *DecisionTreeNode classes *insyra.DataList featureSchemas []treeFeature featureImportances []float64 }` (decision_tree.go:64) — 未匯出包裝，經介面可見：OK（ML-3）
+- [x] `type DecisionTreeClassifierOptions = DecisionTreeOptions` (decision_tree.go:34) — ML-2 別名
+- [x] `type DecisionTreeNode struct { IsLeaf bool Feature int FeatureName string Categorical bool Threshold float64 Categories []any MissingGoLeft bool UnseenCategoryGoLeft bool Samples int Gain float64 Impurity float64 Value float64 Prediction any Probabilities []float64 ClassCounts []int64 Left *DecisionTreeNode Right *DecisionTreeNode splitBin int leftCategories map[uint32]struct{} }` (decision_tree.go:40) — OK（ML-3）
+- [x] `type DecisionTreeOptions struct { MaxDepth int MaxLeaves int MinSamplesLeaf int MaxBins int ExactSplits bool CategoricalFeatures []string }` (decision_tree.go:16) — OK（ML-3）
+- [x] `type DecisionTreeRegressor struct { modelBase Root *DecisionTreeNode featureSchemas []treeFeature featureImportances []float64 quantizerScale float64 }` (decision_tree.go:74) — 未匯出包裝，經介面可見：OK（ML-3）
+- [x] `type DecisionTreeRegressorOptions = DecisionTreeOptions` (decision_tree.go:35) — ML-2 別名
+- [x] `type Estimator struct { Name string Fit func(x *insyra.DataTable, y *insyra.DataList) (Model, error) FitWeighted func(x *insyra.DataTable, y *insyra.DataList, weights *insyra.DataList) (Model, error) }` (interfaces.go:97) — OK 小介面、doc 有理由（ML-3）
+- [x] `type ExponentialModel struct { Result *stats.ExponentialRegressionResult modelBase }` (models.go:42) — 未匯出包裝，經介面可見：OK（ML-3）
+- [x] `type Exporter interface { Model ExportONNX(w io.Writer) error }` (interfaces.go:84) — OK 小介面、doc 有理由（ML-3）
+- [x] `type F1Metric struct { Average ClassAverage PositiveClass any }` (model_selection.go:629) — OK（ML-3）
+- [x] `type GLMModel struct { Result *stats.GLMResult modelBase }` (models.go:66) — 未匯出包裝，經介面可見：OK（ML-3）
+- [x] `type GLMOptions = stats.GLMOptions` (interfaces.go:113) — OK 小介面、doc 有理由（ML-3）
+- [x] `type GradientBoostingClassifier struct { modelBase classes *insyra.DataList base float64 learningRate float64 trees []*treeFit importances []float64 Stages int }` (gradient_boosting.go:46) — 未匯出包裝，經介面可見：OK（ML-3）
+- [x] `type GradientBoostingOptions struct { Stages int LearningRate float64 Tree DecisionTreeOptions }` (gradient_boosting.go:13) — OK（ML-3）
+- [x] `type GradientBoostingRegressor struct { modelBase base float64 learningRate float64 trees []*treeFit importances []float64 Stages int }` (gradient_boosting.go:28) — 未匯出包裝，經介面可見：OK（ML-3）
+- [x] `type GridSearchResult struct { BestIndex int BestName string BestModel Model Results []*CrossValidationResult Seed uint64 }` (grid_search.go:13) — OK（ML-3）
+- [x] `type Importances interface { Model FeatureImportances() []float64 }` (interfaces.go:45) — OK 小介面、doc 有理由（ML-3）
+- [x] `type InverseTransformer interface { InverseTransform(dt *insyra.DataTable) (*insyra.DataTable, error) }` (interfaces.go:30) — OK 小介面、doc 有理由（ML-3）
+- [x] `type KMeansModel struct { Result *stats.KMeansResult modelBase }` (models.go:72) — 未匯出包裝，經介面可見：OK（ML-3）
+- [x] `type KMeansOptions = stats.KMeansOptions` (interfaces.go:114) — OK 小介面、doc 有理由（ML-3）
+- [x] `type KNNClassifier struct { Result *stats.KNNClassificationResult modelBase train *insyra.DataTable labels *insyra.DataList k int options KNNOptions hasOption bool }` (models.go:87) — 未匯出包裝，經介面可見：OK（ML-3）
+- [x] `type KNNOptions = stats.KNNOptions` (interfaces.go:115) — OK 小介面、doc 有理由（ML-3）
+- [x] `type KNNRegressor struct { Result *stats.KNNRegressionResult modelBase train *insyra.DataTable targets *insyra.DataList k int options KNNOptions hasOption bool }` (models.go:100) — 未匯出包裝，經介面可見：OK（ML-3）
+- [x] `type LassoModel struct { Result *stats.LassoRegressionResult modelBase }` (models.go:36) — 未匯出包裝，經介面可見：OK（ML-3）
+- [x] `type LinearModel struct { Result *stats.LinearRegressionResult modelBase }` (models.go:12) — 未匯出包裝，經介面可見：OK（ML-3）
+- [x] `type LogLossMetric struct{}` (model_selection.go:722) — OK（ML-3）
+- [x] `type LogarithmicModel struct { Result *stats.LogarithmicRegressionResult modelBase }` (models.go:48) — 未匯出包裝，經介面可見：OK（ML-3）
+- [x] `type LogisticModel struct { Result *stats.LogisticRegressionResult modelBase }` (models.go:54) — 未匯出包裝，經介面可見：OK（ML-3）
+- [x] `type LogisticOptions = stats.LogisticRegressionOptions` (interfaces.go:111) — OK 小介面、doc 有理由（ML-3）
+- [x] `type MAEMetric struct{}` (model_selection.go:781) — OK（ML-3）
+- [x] `type Metric interface { Name() string Kind() MetricKind Direction() MetricDirection Evaluate(yTrue *insyra.DataList, prediction Prediction) (MetricResult, error) }` (model_selection.go:92) — OK 小介面、doc 有理由（ML-3）
+- [x] `type MetricDirection int` (model_selection.go:58) — OK（ML-3）
+- [x] `type MetricKind string` (model_selection.go:17) — OK（ML-3）
+- [x] `type MetricResult struct { Name string Score float64 ConfusionMatrix *ConfusionMatrixResult }` (model_selection.go:51) — OK（ML-3）
+- [x] `type Model interface { Features() []string Predict(dt *insyra.DataTable) (*insyra.DataList, error) }` (interfaces.go:17) — OK 小介面、doc 有理由（ML-3）
+- [x] `type PCATransformer struct { Result *stats.PCAResult modelBase }` (models.go:79) — 未匯出包裝，經介面可見：OK（ML-3）
+- [x] `type PoissonModel struct { Result *stats.PoissonRegressionResult modelBase }` (models.go:60) — 未匯出包裝，經介面可見：OK（ML-3）
+- [x] `type PoissonOptions = stats.PoissonRegressionOptions` (interfaces.go:112) — OK 小介面、doc 有理由（ML-3）
+- [x] `type PolynomialModel struct { Result *stats.PolynomialRegressionResult modelBase }` (models.go:18) — 未匯出包裝，經介面可見：OK（ML-3）
+- [x] `type PrecisionMetric struct { Average ClassAverage PositiveClass any }` (model_selection.go:597) — OK（ML-3）
+- [x] `type Prediction struct { Values *insyra.DataList Probabilities *insyra.DataTable Classes *insyra.DataList }` (model_selection.go:30) — OK（ML-3）
+- [x] `type ProbaModel interface { Classifier PredictProba(dt *insyra.DataTable) (*insyra.DataTable, error) }` (interfaces.go:35) — OK 小介面、doc 有理由（ML-3）
+- [x] `type ProbabilityMetric interface { Metric NeedsProbabilities() bool }` (model_selection.go:827) — OK 小介面、doc 有理由（ML-3）
+- [x] `type R2Metric struct{}` (model_selection.go:792) — OK（ML-3）
+- [x] `type RMSEMetric struct{}` (model_selection.go:770) — OK（ML-3）
+- [x] `type ROCAUCMetric struct{}` (model_selection.go:745) — OK（ML-3）
+- [x] `type RandomForestClassifier struct { modelBase trees []*treeFit classes *insyra.DataList importances []float64 Seed int64 }` (random_forest.go:34) — 未匯出包裝，經介面可見：OK（ML-3）
+- [x] `type RandomForestOptions struct { Trees int MaxFeatures int Seed *int64 Tree DecisionTreeOptions }` (random_forest.go:16) — OK（ML-3）
+- [x] `type RandomForestRegressor struct { modelBase trees []*treeFit importances []float64 Seed int64 }` (random_forest.go:46) — 未匯出包裝，經介面可見：OK（ML-3）
+- [x] `type RecallMetric struct { Average ClassAverage PositiveClass any }` (model_selection.go:613) — OK（ML-3）
+- [x] `type RidgeModel struct { Result *stats.RidgeRegressionResult modelBase }` (models.go:30) — 未匯出包裝，經介面可見：OK（ML-3）
+- [x] `type Step struct { Name string Fit func(x *insyra.DataTable, y *insyra.DataList) (Transformer, error) }` (interfaces.go:90) — ML-1 回介面
+- [x] `type TransformedFeatures interface { Model TransformedFeatureNames() []string }` (interfaces.go:58) — OK 小介面、doc 有理由（ML-3）
+- [x] `type Transformer interface { Transform(dt *insyra.DataTable) (*insyra.DataTable, error) }` (interfaces.go:12) — OK 小介面、doc 有理由（ML-3）
+- [x] `type WeightedLinearModel struct { Result *stats.WeightedLinearRegressionResult modelBase }` (models.go:24) — 未匯出包裝，經介面可見：OK（ML-3）
+- [x] `func (m modelBase) Features() []string` (helpers.go:14) — 未匯出包裝，經介面可見：OK（ML-3）
+- [x] `func (p *fittedPipeline) ExportONNX(w io.Writer) error` (onnx_export.go:71) — 未匯出包裝，經介面可見：OK（ML-3）
+- [x] `func (p *fittedPipeline) Features() []string` (pipeline.go:215) — 未匯出包裝，經介面可見：OK（ML-3）
+- [x] `func (p *fittedPipeline) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (pipeline.go:233) — 未匯出包裝，經介面可見：OK（ML-3）
+- [x] `func (p *fittedPipeline) TransformedFeatureNames() []string` (pipeline.go:226) — 未匯出包裝，經介面可見：OK（ML-3）
+- [x] `func (p *fittedPipelineClassifier) Classes() *insyra.DataList` (pipeline.go:267) — 未匯出包裝，經介面可見：OK（ML-3）
+- [x] `func (p *fittedPipelineClassifierImportances) Classes() *insyra.DataList` (pipeline.go:311) — 未匯出包裝，經介面可見：OK（ML-3）
+- [x] `func (p *fittedPipelineClassifierImportances) FeatureImportances() []float64` (pipeline.go:319) — 未匯出包裝，經介面可見：OK（ML-3）
+- [x] `func (p *fittedPipelineImportances) FeatureImportances() []float64` (pipeline.go:299) — 未匯出包裝，經介面可見：OK（ML-3）
+- [x] `func (p *fittedPipelineProba) Classes() *insyra.DataList` (pipeline.go:277) — 未匯出包裝，經介面可見：OK（ML-3）
+- [x] `func (p *fittedPipelineProba) PredictProba(dt *insyra.DataTable) (*insyra.DataTable, error)` (pipeline.go:285) — 未匯出包裝，經介面可見：OK（ML-3）
+- [x] `func (p *fittedPipelineProbaImportances) Classes() *insyra.DataList` (pipeline.go:329) — 未匯出包裝，經介面可見：OK（ML-3）
+- [x] `func (p *fittedPipelineProbaImportances) FeatureImportances() []float64` (pipeline.go:349) — 未匯出包裝，經介面可見：OK（ML-3）
+- [x] `func (p *fittedPipelineProbaImportances) PredictProba(dt *insyra.DataTable) (*insyra.DataTable, error)` (pipeline.go:337) — 未匯出包裝，經介面可見：OK（ML-3）
 
 ## ml/mltest (1)
 
-- [ ] `func RunConformance(t *testing.T, model ml.Model, x *insyra.DataTable, y *insyra.DataList)` (conformance.go:22)
+- [x] `func RunConformance(t *testing.T, model ml.Model, x *insyra.DataTable, y *insyra.DataList)` (conformance.go:22) — 測試輔助套件：OK
 
 ## nn (273)
 
-- [ ] `const DTypeBFloat16 DType` (tensor.go:30)
-- [ ] `const DTypeBool DType` (tensor.go:27)
-- [ ] `const DTypeFloat16 DType` (tensor.go:17)
-- [ ] `const DTypeFloat32 DType` (tensor.go:16)
-- [ ] `const DTypeFloat64 DType` (tensor.go:18)
-- [ ] `const DTypeFloat8 DType` (tensor.go:29)
-- [ ] `const DTypeInt16 DType` (tensor.go:21)
-- [ ] `const DTypeInt32 DType` (tensor.go:23)
-- [ ] `const DTypeInt64 DType` (tensor.go:25)
-- [ ] `const DTypeInt8 DType` (tensor.go:19)
-- [ ] `const DTypeString DType` (tensor.go:28)
-- [ ] `const DTypeUInt16 DType` (tensor.go:22)
-- [ ] `const DTypeUInt32 DType` (tensor.go:24)
-- [ ] `const DTypeUInt64 DType` (tensor.go:26)
-- [ ] `const DTypeUInt8 DType` (tensor.go:20)
-- [ ] `const DTypeUnknown DType` (tensor.go:15)
-- [ ] `const Float16` (tensor.go:37)
-- [ ] `const Float32` (tensor.go:36)
-- [ ] `const Float64` (tensor.go:38)
-- [ ] `func (m *BoundClassifier) Classes() *insyra.DataList` (protocol.go:163)
-- [ ] `func (m *BoundClassifier) Features() []string` (protocol.go:155)
-- [ ] `func (m *BoundClassifier) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (protocol.go:172)
-- [ ] `func (m *BoundClassifier) PredictProba(dt *insyra.DataTable) (*insyra.DataTable, error)` (protocol.go:198)
-- [ ] `func (m *BoundRegressor) Features() []string` (protocol.go:49)
-- [ ] `func (m *BoundRegressor) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (protocol.go:58)
-- [ ] `func (m *Model) Inputs() []ValueInfo` (model.go:86)
-- [ ] `func (m *Model) OpsetVersion() int64` (model.go:102)
-- [ ] `func (m *Model) Outputs() []ValueInfo` (model.go:94)
-- [ ] `func (m *Model) Run(inputs map[string]*Tensor) (outputs map[string]*Tensor, err error)` (model_run.go:9)
-- [ ] `func (p *Parameter) Grad() *Tensor` (autodiff.go:39)
-- [ ] `func (p *Parameter) Value() *Tensor` (autodiff.go:31)
-- [ ] `func (s *CosineAnnealingLR) LR(step int) float32` (autodiff_practice.go:111)
-- [ ] `func (s *Sequential) ExportONNX(w io.Writer) error` (onnx_export.go:15)
-- [ ] `func (s *Sequential) Fit(x, y *Tensor, cfg FitConfig) (*FitResult, error)` (fit.go:200)
-- [ ] `func (s *Sequential) Forward(t *Tape, x *Tensor) (*Tensor, error)` (sequential.go:56)
-- [ ] `func (s *Sequential) LoadWeights(weights map[string]*Tensor) error` (sequential.go:146)
-- [ ] `func (s *Sequential) NamedParameters() map[string]*Parameter` (sequential.go:119)
-- [ ] `func (s *Sequential) Parameters() []*Parameter` (sequential.go:106)
-- [ ] `func (s *Sequential) Predict(x *Tensor) (*Tensor, error)` (sequential.go:79)
-- [ ] `func (s *Sequential) SaveWeights(w io.Writer) error` (sequential.go:202)
-- [ ] `func (s *StepLR) LR(step int) float32` (autodiff_practice.go:79)
-- [ ] `func (t *Tape) Adam(rate float32) error` (autodiff.go:671)
-- [ ] `func (t *Tape) AdamW(rate, weightDecay float32) error` (autodiff.go:678)
-- [ ] `func (t *Tape) Add(a, b *Tensor) (*Tensor, error)` (autodiff.go:124)
-- [ ] `func (t *Tape) AveragePool(input *Tensor, kernelShape []int, options ...PoolOptions) (*Tensor, error)` (autodiff_cnn.go:50)
-- [ ] `func (t *Tape) BCEWithLogitsLoss(logits, targets *Tensor) (*Tensor, error)` (autodiff.go:504)
-- [ ] `func (t *Tape) Backward(loss *Tensor) error` (autodiff.go:521)
-- [ ] `func (t *Tape) BatchNormTraining(input, scale, bias, runningMean, runningVariance *Tensor, options ...float32) (*Tensor, error)` (autodiff_cnn.go:176)
-- [ ] `func (t *Tape) BatchNormalization(input, scale, bias, mean, variance *Tensor, epsilonValues ...float32) (*Tensor, error)` (autodiff_cnn.go:82)
-- [ ] `func (t *Tape) BatchNormalizationTraining(input, scale, bias, runningMean, runningVariance *Tensor, options ...float32) (*Tensor, error)` (autodiff_cnn.go:101)
-- [ ] `func (t *Tape) ClipGradNorm(maxNorm float32) (float32, error)` (autodiff.go:637)
-- [ ] `func (t *Tape) Concat(inputs []*Tensor, axis int) (*Tensor, error)` (autodiff.go:391)
-- [ ] `func (t *Tape) Conv(input, weights, bias *Tensor, options ...ConvOptions) (*Tensor, error)` (autodiff_cnn.go:11)
-- [ ] `func (t *Tape) Div(a, b *Tensor) (*Tensor, error)` (autodiff.go:112)
-- [ ] `func (t *Tape) Dropout(input *Tensor, probability float32) (*Tensor, error)` (autodiff_practice.go:12)
-- [ ] `func (t *Tape) Embedding(table, indices *Tensor) (*Tensor, error)` (autodiff_catalog.go:7)
-- [ ] `func (t *Tape) EmbeddingLookup(indices, table *Tensor) (*Tensor, error)` (autodiff_catalog.go:42)
-- [ ] `func (t *Tape) Erf(input *Tensor) (*Tensor, error)` (autodiff.go:241)
-- [ ] `func (t *Tape) Flatten(input *Tensor, axes ...int) (*Tensor, error)` (autodiff.go:309)
-- [ ] `func (t *Tape) Gelu(input *Tensor, approximate ...string) (*Tensor, error)` (autodiff.go:219)
-- [ ] `func (t *Tape) Gemm(a, b, c *Tensor, options ...GemmOptions) (*Tensor, error)` (autodiff.go:447)
-- [ ] `func (t *Tape) GlobalAveragePool(input *Tensor) (*Tensor, error)` (autodiff_cnn.go:67)
-- [ ] `func (t *Tape) Grad(param *Tensor) (*Tensor, error)` (autodiff.go:570)
-- [ ] `func (t *Tape) LayerNormalization(input, scale, bias *Tensor, axis int, epsilon float32) (*Tensor, error)` (autodiff.go:199)
-- [ ] `func (t *Tape) MSELoss(prediction, target *Tensor) (*Tensor, error)` (autodiff.go:486)
-- [ ] `func (t *Tape) MatMul(a, b *Tensor) (*Tensor, error)` (autodiff.go:85)
-- [ ] `func (t *Tape) MaxPool(input *Tensor, kernelShape []int, options ...PoolOptions) (*Tensor, error)` (autodiff_cnn.go:32)
-- [ ] `func (t *Tape) Mul(a, b *Tensor) (*Tensor, error)` (autodiff.go:100)
-- [ ] `func (t *Tape) Param(value *Tensor) (*Parameter, error)` (autodiff.go:70)
-- [ ] `func (t *Tape) Pow(left, right *Tensor) (*Tensor, error)` (autodiff.go:265)
-- [ ] `func (t *Tape) ReduceMean(input *Tensor, axes []int, keepdims bool) (*Tensor, error)` (autodiff.go:277)
-- [ ] `func (t *Tape) Relu(input *Tensor) (*Tensor, error)` (autodiff.go:136)
-- [ ] `func (t *Tape) Reshape(input *Tensor, shape []int) (*Tensor, error)` (autodiff.go:296)
-- [ ] `func (t *Tape) SGD(rate float32) error` (autodiff.go:581)
-- [ ] `func (t *Tape) SGDMomentum(rate, momentum float32) error` (autodiff.go:604)
-- [ ] `func (t *Tape) Sigmoid(input *Tensor) (*Tensor, error)` (autodiff.go:148)
-- [ ] `func (t *Tape) Slice(input *Tensor, starts, ends, axes, steps []int64) (*Tensor, error)` (autodiff.go:375)
-- [ ] `func (t *Tape) Softmax(input *Tensor, axes ...int) (*Tensor, error)` (autodiff.go:172)
-- [ ] `func (t *Tape) SoftmaxCrossEntropy(logits, labels *Tensor) (*Tensor, error)` (autodiff.go:469)
-- [ ] `func (t *Tape) Split(input *Tensor, splits []int, axis int, outputCount ...int) ([]*Tensor, error)` (autodiff.go:413)
-- [ ] `func (t *Tape) Sqrt(input *Tensor) (*Tensor, error)` (autodiff.go:253)
-- [ ] `func (t *Tape) Squeeze(input *Tensor, axes []int) (*Tensor, error)` (autodiff.go:359)
-- [ ] `func (t *Tape) Tanh(input *Tensor) (*Tensor, error)` (autodiff.go:160)
-- [ ] `func (t *Tape) Transpose(input *Tensor, perms ...[]int) (*Tensor, error)` (autodiff.go:322)
-- [ ] `func (t *Tape) Unsqueeze(input *Tensor, axes []int) (*Tensor, error)` (autodiff.go:343)
-- [ ] `func (t *Tensor) BoolData() ([]bool, error)` (tensor.go:162)
-- [ ] `func (t *Tensor) DType() DType` (tensor.go:95)
-- [ ] `func (t *Tensor) Data() []float32` (tensor.go:121)
-- [ ] `func (t *Tensor) Float32Data() ([]float32, error)` (tensor.go:129)
-- [ ] `func (t *Tensor) Int64Data() ([]int64, error)` (tensor.go:140)
-- [ ] `func (t *Tensor) Len() int` (tensor.go:173)
-- [ ] `func (t *Tensor) Shape() []int` (tensor.go:103)
-- [ ] `func (t *Tensor) Strides() []int` (tensor.go:112)
-- [ ] `func (t *Tensor) StringData() ([]string, error)` (tensor.go:151)
-- [ ] `func Add(a, b *Tensor) (*Tensor, error)` (kernels.go:1121)
-- [ ] `func AveragePool(input *Tensor, kernelShape []int, options ...PoolOptions) (*Tensor, error)` (kernels.go:357)
-- [ ] `func AvgPool2D(kernel int, options ...PoolOptions) Layer` (layers_catalog.go:150)
-- [ ] `func BatchNorm2D(features int) Layer` (layers_catalog.go:223)
-- [ ] `func BatchNormalization(input, scale, bias, mean, variance *Tensor, epsilonValues ...float32) (*Tensor, error)` (kernels.go:612)
-- [ ] `func BindClassifier(model *Model, inputName string, features []string, classes *insyra.DataList) (*BoundClassifier, error)` (protocol.go:113)
-- [ ] `func BindRegressor(model *Model, inputName string, features []string) (*BoundRegressor, error)` (protocol.go:27)
-- [ ] `func Cast(input *Tensor, to DType) (*Tensor, error)` (kernels.go:1899)
-- [ ] `func Ceil(input *Tensor) (*Tensor, error)` (kernels.go:1182)
-- [ ] `func Clip(input, minimum, maximum *Tensor) (*Tensor, error)` (kernels.go:1239)
-- [ ] `func Concat(inputs []*Tensor, axis int) (*Tensor, error)` (control_kernels.go:88)
-- [ ] `func Constant(value *Tensor) (*Tensor, error)` (kernels.go:2014)
-- [ ] `func ConstantOfShape(shapeTensor, value *Tensor) (*Tensor, error)` (control_kernels.go:314)
-- [ ] `func Conv(input, weights, bias *Tensor, options ...ConvOptions) (*Tensor, error)` (kernels.go:183)
-- [ ] `func Conv2D(in, out, kernel int, options ...ConvOptions) Layer` (layers_catalog.go:18)
-- [ ] `func Dense(in, out int) Layer` (layers.go:50)
-- [ ] `func Div(a, b *Tensor) (*Tensor, error)` (control_kernels.go:9)
-- [ ] `func Dropout(p float32) Layer` (layers.go:171)
-- [ ] `func Embedding(vocab, dims int) Layer` (layers_catalog.go:400)
-- [ ] `func Equal(left, right *Tensor) (*Tensor, error)` (control_kernels.go:597)
-- [ ] `func Erf(input *Tensor) (*Tensor, error)` (kernels.go:1209)
-- [ ] `func Exp(input *Tensor) (*Tensor, error)` (kernels.go:1177)
-- [ ] `func Expand(input *Tensor, targetShape []int) (*Tensor, error)` (control_kernels.go:257)
-- [ ] `func Flatten(input *Tensor, axes ...int) (*Tensor, error)` (kernels.go:1816)
-- [ ] `func Floor(input *Tensor) (*Tensor, error)` (kernels.go:1155)
-- [ ] `func Func(fn func(*Tape, *Tensor) (*Tensor, error)) Layer` (layers.go:214)
-- [ ] `func Gather(data, indices *Tensor, axis int) (*Tensor, error)` (control_kernels.go:159)
-- [ ] `func Gelu(input *Tensor, approximate ...string) (*Tensor, error)` (kernels.go:1285)
-- [ ] `func Gemm(a, b, c *Tensor, options ...GemmOptions) (*Tensor, error)` (kernels.go:79)
-- [ ] `func GlobalAveragePool(input *Tensor) (*Tensor, error)` (kernels.go:422)
-- [ ] `func GlobalAvgPool() Layer` (layers_catalog.go:201)
-- [ ] `func Greater(left, right *Tensor) (*Tensor, error)` (control_kernels.go:602)
-- [ ] `func GreaterOrEqual(left, right *Tensor) (*Tensor, error)` (control_kernels.go:567)
-- [ ] `func Identity(input *Tensor) (*Tensor, error)` (kernels.go:1750)
-- [ ] `func InstanceNormalization(input, scale, bias *Tensor, epsilonValues ...float32) (*Tensor, error)` (kernels.go:656)
-- [ ] `func LayerNorm(dims interface{}) Layer` (layers_catalog.go:319)
-- [ ] `func LayerNormalization(input, scale, bias *Tensor, axis int, epsilon float32) (*Tensor, error)` (kernels.go:1311)
-- [ ] `func LeakyRelu(input *Tensor, alpha ...float32) (*Tensor, error)` (kernels.go:1160)
-- [ ] `func LoadONNX(r io.Reader) (model *Model, err error)` (model.go:66)
-- [ ] `func LoadSafeTensors(r io.Reader) (tensors map[string]*Tensor, err error)` (safetensors.go:21)
-- [ ] `func MatMul(a, b *Tensor) (*Tensor, error)` (kernels.go:956)
-- [ ] `func MaxPool(input *Tensor, kernelShape []int, options ...PoolOptions) (*Tensor, error)` (kernels.go:298)
-- [ ] `func MaxPool2D(kernel int, options ...PoolOptions) Layer` (layers_catalog.go:140)
-- [ ] `func Mul(a, b *Tensor) (*Tensor, error)` (kernels.go:1137)
-- [ ] `func MultiHeadAttention(embed, heads int) Layer` (layers_attention.go:24)
-- [ ] `func NewAvgPool2D(kernel int, options ...PoolOptions) Layer` (layers_catalog.go:155)
-- [ ] `func NewBatchNorm2D(features int) Layer` (layers_catalog.go:228)
-- [ ] `func NewBoolTensor(shape []int, data []bool) (*Tensor, error)` (tensor.go:80)
-- [ ] `func NewConv2D(in, out, kernel int, options ...ConvOptions) Layer` (layers_catalog.go:30)
-- [ ] `func NewCosineAnnealingLR(initialRate float32, tMax int) (*CosineAnnealingLR, error)` (autodiff_practice.go:99)
-- [ ] `func NewDense(in, out int) Layer` (layers.go:55)
-- [ ] `func NewDropout(p float32) Layer` (layers.go:174)
-- [ ] `func NewEmbedding(vocab, dims int) Layer` (layers_catalog.go:403)
-- [ ] `func NewFlatten() Layer` (layers.go:196)
-- [ ] `func NewFloat32Tensor(shape []int, data []float32) (*Tensor, error)` (tensor.go:65)
-- [ ] `func NewFunc(fn func(*Tape, *Tensor) (*Tensor, error)) Layer` (layers.go:217)
-- [ ] `func NewGelu() Layer` (layers.go:162)
-- [ ] `func NewGlobalAvgPool() Layer` (layers_catalog.go:204)
-- [ ] `func NewInt64Tensor(shape []int, data []int64) (*Tensor, error)` (tensor.go:70)
-- [ ] `func NewLayerNorm(dims interface{}) Layer` (layers_catalog.go:333)
-- [ ] `func NewMaxPool2D(kernel int, options ...PoolOptions) Layer` (layers_catalog.go:145)
-- [ ] `func NewMultiHeadAttention(embed, heads int) Layer` (layers_attention.go:30)
-- [ ] `func NewReLU() Layer` (layers.go:149)
-- [ ] `func NewSequential(t *Tape, layers ...Layer) (*Sequential, error)` (sequential.go:20)
-- [ ] `func NewSigmoid() Layer` (layers.go:152)
-- [ ] `func NewStepLR(initialRate, gamma float32, stepSize int) (*StepLR, error)` (autodiff_practice.go:65)
-- [ ] `func NewStringTensor(shape []int, data []string) (*Tensor, error)` (tensor.go:75)
-- [ ] `func NewTanh() Layer` (layers.go:157)
-- [ ] `func NewTape(seed ...int64) *Tape` (autodiff.go:56)
-- [ ] `func NewTensor(shape []int, data []float32) (*Tensor, error)` (tensor.go:59)
-- [ ] `func NewTensorWithDType(dtype DType, shape []int, data []float32) (*Tensor, error)` (tensor.go:87)
-- [ ] `func NonMaxSuppression(boxes, scores, maxOutputBoxesPerClass, iouThreshold, scoreThreshold *Tensor, centerPointBox ...int) (*Tensor, error)` (kernels.go:1547)
-- [ ] `func Pad(input *Tensor, pads []int, values ...float32) (*Tensor, error)` (kernels.go:718)
-- [ ] `func PadReflect(input *Tensor, pads []int) (*Tensor, error)` (kernels.go:772)
-- [ ] `func Pow(left, right *Tensor) (*Tensor, error)` (kernels.go:1220)
-- [ ] `func ReLU() Layer` (layers.go:144)
-- [ ] `func ReduceMean(input *Tensor, axes []int, keepdims bool) (*Tensor, error)` (kernels.go:1368)
-- [ ] `func ReduceMin(input *Tensor, axes []int, keepdims bool) (*Tensor, error)` (kernels.go:1435)
-- [ ] `func RegisterDeviceMatMul(fn DeviceMatMul)` (device_matmul.go:22)
-- [ ] `func Relu(input *Tensor) (*Tensor, error)` (kernels.go:1145)
-- [ ] `func Reshape(input *Tensor, shape []int) (*Tensor, error)` (kernels.go:1756)
-- [ ] `func Residual(layers ...Layer) Layer` (layers_attention.go:246)
-- [ ] `func Resize(input, scales, sizes *Tensor, options ...ResizeOptions) (*Tensor, error)` (kernels.go:452)
-- [ ] `func Round(input *Tensor) (*Tensor, error)` (kernels.go:1188)
-- [ ] `func SaveSafeTensors(w io.Writer, tensors map[string]*Tensor) error` (safetensors.go:133)
-- [ ] `func Shape(input *Tensor, bounds ...int) (*Tensor, error)` (control_kernels.go:286)
-- [ ] `func Sigmoid(input *Tensor) (*Tensor, error)` (kernels.go:1193)
-- [ ] `func Slice(input *Tensor, starts, ends, axes, steps []int64) (*Tensor, error)` (control_kernels.go:362)
-- [ ] `func Softmax(input *Tensor, axes ...int) (*Tensor, error)` (kernels.go:1699)
-- [ ] `func Split(input *Tensor, splits []int, axis int, outputCount ...int) ([]*Tensor, error)` (control_kernels.go:500)
-- [ ] `func Sqrt(input *Tensor) (*Tensor, error)` (kernels.go:1214)
-- [ ] `func Squeeze(input *Tensor, axes []int) (*Tensor, error)` (control_kernels.go:212)
-- [ ] `func Sub(a, b *Tensor) (*Tensor, error)` (kernels.go:1129)
-- [ ] `func Tanh(input *Tensor) (*Tensor, error)` (kernels.go:1204)
-- [ ] `func Tile(input, repeats *Tensor) (*Tensor, error)` (kernels.go:1499)
-- [ ] `func Transpose(input *Tensor, perms ...[]int) (*Tensor, error)` (kernels.go:1845)
-- [ ] `func Unsqueeze(input *Tensor, axes []int) (*Tensor, error)` (control_kernels.go:22)
-- [ ] `func Where(condition, left, right *Tensor) (*Tensor, error)` (control_kernels.go:687)
-- [ ] `type Adam struct { Rate float32 }` (fit.go:60)
-- [ ] `type AdamW struct { Rate float32 WeightDecay float32 }` (fit.go:76)
-- [ ] `type AveragePoolOptions = PoolOptions` (kernels.go:171)
-- [ ] `type BCEWithLogits struct{}` (fit.go:141)
-- [ ] `type BCEWithLogitsLoss = BCEWithLogits` (fit.go:162)
-- [ ] `type BoundClassifier struct { model *Model inputName string features []string inputSpec ValueInfo probabilities ValueInfo classes *insyra.DataList }` (protocol.go:98)
-- [ ] `type BoundRegressor struct { model *Model inputName string features []string inputSpec ValueInfo output ValueInfo }` (protocol.go:12)
-- [ ] `type Classifier = BoundClassifier` (protocol.go:108)
-- [ ] `type ConvOptions struct { Pads []int AutoPad string Strides []int Dilations []int Group int NoBias bool }` (kernels.go:144)
-- [ ] `type CosineAnnealingLR struct { initialRate float32 tMax int }` (autodiff_practice.go:92)
-- [ ] `type CrossEntropy struct{}` (fit.go:103)
-- [ ] `type DType string` (tensor.go:12)
-- [ ] `type DataType = DType` (tensor.go:42)
-- [ ] `type DeviceMatMul func(a []float32, aRows, aCols int, b []float32, bRows, bCols int) ([]float32, error)` (device_matmul.go:8)
-- [ ] `type EvalLayer interface { PredictForward(x *Tensor) (*Tensor, error) }` (layers.go:25)
-- [ ] `type FitConfig struct { Epochs int BatchSize int Seed int64 NoShuffle bool Optimizer OptimizerSpec Loss LossSpec ValX *Tensor ValY *Tensor Progress func(FitEpoch) Quiet bool }` (fit.go:165)
-- [ ] `type FitEpoch struct { Epoch int Epochs int TrainLoss float64 ValLoss float64 HasValLoss bool Elapsed time.Duration RowsPerSecond float64 }` (fit.go:180)
-- [ ] `type FitResult struct { TrainLosses []float64 ValLosses []float64 Epochs []FitEpoch Elapsed time.Duration }` (fit.go:191)
-- [ ] `type GemmOptions struct { Alpha float32 Beta float32 TransA bool TransB bool }` (kernels.go:70)
-- [ ] `type Layer interface { Build(t *Tape) error Forward(t *Tape, x *Tensor) (*Tensor, error) Parameters() []*Parameter }` (layers.go:10)
-- [ ] `type LossSpec interface { fitLossName() string fitLossValidate(*Tensor, *Tensor) error fitLoss(*Tape, *Tensor, *Tensor) (*Tensor, error) }` (fit.go:96)
-- [ ] `type MSE struct{}` (fit.go:122)
-- [ ] `type MSELoss = MSE` (fit.go:161)
-- [ ] `type MaxPoolOptions = PoolOptions` (kernels.go:170)
-- [ ] `type Model struct { inputSpecs []ValueInfo outputSpecs []ValueInfo nodes []modelNode initializers map[string]*Tensor opsetVersion int64 }` (model.go:36)
-- [ ] `type OptimizerSpec interface { fitOptimizerName() string fitOptimizerValidate() error fitOptimizerStep(*Tape) error }` (fit.go:15)
-- [ ] `type Parameter struct { value *Tensor grad *Tensor velocity []float32 adamM []float32 adamV []float32 adamStep uint64 }` (autodiff.go:21)
-- [ ] `type PoolOptions struct { Pads []int AutoPad string Strides []int CountIncludePad bool CeilMode int StorageOrder int }` (kernels.go:159)
-- [ ] `type Regressor = BoundRegressor` (protocol.go:21)
-- [ ] `type ResizeOptions struct { Mode string CoordinateTransformationMode string NearestMode string }` (kernels.go:175)
-- [ ] `type SGD struct { Rate float32 }` (fit.go:22)
-- [ ] `type SGDMomentum struct { Rate float32 Momentum float32 }` (fit.go:38)
-- [ ] `type Sequential struct { layers []Layer tape *Tape }` (sequential.go:12)
-- [ ] `type SoftmaxCrossEntropy = CrossEntropy` (fit.go:160)
-- [ ] `type StepLR struct { initialRate float32 gamma float32 stepSize int }` (autodiff_practice.go:58)
-- [ ] `type Tape struct { ops []tapeOp params []*Parameter marked map[*Tensor]*Parameter grads map[*Tensor]*Tensor rng *rand.Rand }` (autodiff.go:12)
-- [ ] `type Tensor struct { dtype DType shape []int strides []int data []float32 int64Data []int64 boolData []bool stringData []string }` (tensor.go:47)
-- [ ] `type TrainingOnly interface { TrainingOnly() }` (layers.go:18)
-- [ ] `type ValueInfo struct { Name string DType DType Shape []int HasShape bool }` (model.go:11)
-- [ ] `func (*globalAvgPoolLayer) Build(*Tape) error` (layers_catalog.go:206)
-- [ ] `func (*globalAvgPoolLayer) Parameters() []*Parameter` (layers_catalog.go:210)
-- [ ] `func (l *activationLayer) Build(*Tape) error` (layers.go:130)
-- [ ] `func (l *activationLayer) Forward(t *Tape, x *Tensor) (*Tensor, error)` (layers.go:131)
-- [ ] `func (l *activationLayer) Parameters() []*Parameter` (layers.go:140)
-- [ ] `func (l *batchNorm2DLayer) Build(t *Tape) error` (layers_catalog.go:230)
-- [ ] `func (l *batchNorm2DLayer) Forward(t *Tape, x *Tensor) (*Tensor, error)` (layers_catalog.go:273)
-- [ ] `func (l *batchNorm2DLayer) Parameters() []*Parameter` (layers_catalog.go:290)
-- [ ] `func (l *batchNorm2DLayer) PredictForward(x *Tensor) (*Tensor, error)` (layers_catalog.go:283)
-- [ ] `func (l *conv2DLayer) Build(t *Tape) error` (layers_catalog.go:34)
-- [ ] `func (l *conv2DLayer) Forward(t *Tape, x *Tensor) (*Tensor, error)` (layers_catalog.go:75)
-- [ ] `func (l *conv2DLayer) Parameters() []*Parameter` (layers_catalog.go:91)
-- [ ] `func (l *denseLayer) Build(t *Tape) error` (layers.go:57)
-- [ ] `func (l *denseLayer) Forward(t *Tape, x *Tensor) (*Tensor, error)` (layers.go:91)
-- [ ] `func (l *denseLayer) Parameters() []*Parameter` (layers.go:111)
-- [ ] `func (l *dropoutLayer) Build(*Tape) error` (layers.go:176)
-- [ ] `func (l *dropoutLayer) Forward(t *Tape, x *Tensor) (*Tensor, error)` (layers.go:182)
-- [ ] `func (l *dropoutLayer) Parameters() []*Parameter` (layers.go:188)
-- [ ] `func (l *dropoutLayer) TrainingOnly()` (layers.go:189)
-- [ ] `func (l *embeddingLayer) Build(t *Tape) error` (layers_catalog.go:405)
-- [ ] `func (l *embeddingLayer) Forward(t *Tape, x *Tensor) (*Tensor, error)` (layers_catalog.go:430)
-- [ ] `func (l *embeddingLayer) Parameters() []*Parameter` (layers_catalog.go:437)
-- [ ] `func (l *flattenLayer) Build(*Tape) error` (layers.go:198)
-- [ ] `func (l *flattenLayer) Forward(t *Tape, x *Tensor) (*Tensor, error)` (layers.go:199)
-- [ ] `func (l *flattenLayer) Parameters() []*Parameter` (layers.go:205)
-- [ ] `func (l *funcLayer) Build(*Tape) error` (layers.go:219)
-- [ ] `func (l *funcLayer) Forward(t *Tape, x *Tensor) (*Tensor, error)` (layers.go:225)
-- [ ] `func (l *funcLayer) Parameters() []*Parameter` (layers.go:241)
-- [ ] `func (l *globalAvgPoolLayer) Forward(t *Tape, x *Tensor) (*Tensor, error)` (layers_catalog.go:207)
-- [ ] `func (l *layerNormLayer) Build(t *Tape) error` (layers_catalog.go:335)
-- [ ] `func (l *layerNormLayer) Forward(t *Tape, x *Tensor) (*Tensor, error)` (layers_catalog.go:369)
-- [ ] `func (l *layerNormLayer) Parameters() []*Parameter` (layers_catalog.go:379)
-- [ ] `func (l *multiHeadAttentionLayer) Build(t *Tape) error` (layers_attention.go:34)
-- [ ] `func (l *multiHeadAttentionLayer) Forward(t *Tape, x *Tensor) (*Tensor, error)` (layers_attention.go:86)
-- [ ] `func (l *multiHeadAttentionLayer) Parameters() []*Parameter` (layers_attention.go:187)
-- [ ] `func (l *pool2DLayer) Build(*Tape) error` (layers_catalog.go:170)
-- [ ] `func (l *pool2DLayer) Forward(t *Tape, x *Tensor) (*Tensor, error)` (layers_catalog.go:180)
-- [ ] `func (l *pool2DLayer) Parameters() []*Parameter` (layers_catalog.go:190)
-- [ ] `func (l *residualLayer) Build(t *Tape) error` (layers_attention.go:250)
-- [ ] `func (l *residualLayer) Forward(t *Tape, x *Tensor) (*Tensor, error)` (layers_attention.go:265)
-- [ ] `func (l *residualLayer) Parameters() []*Parameter` (layers_attention.go:313)
-- [ ] `func (l *residualLayer) PredictForward(x *Tensor) (*Tensor, error)` (layers_attention.go:273)
+- [x] `const DTypeBFloat16 DType` (tensor.go:30) — OK（NN-4）
+- [x] `const DTypeBool DType` (tensor.go:27) — OK（NN-4）
+- [x] `const DTypeFloat16 DType` (tensor.go:17) — OK（NN-4）
+- [x] `const DTypeFloat32 DType` (tensor.go:16) — OK（NN-4）
+- [x] `const DTypeFloat64 DType` (tensor.go:18) — OK（NN-4）
+- [x] `const DTypeFloat8 DType` (tensor.go:29) — OK（NN-4）
+- [x] `const DTypeInt16 DType` (tensor.go:21) — OK（NN-4）
+- [x] `const DTypeInt32 DType` (tensor.go:23) — OK（NN-4）
+- [x] `const DTypeInt64 DType` (tensor.go:25) — OK（NN-4）
+- [x] `const DTypeInt8 DType` (tensor.go:19) — OK（NN-4）
+- [x] `const DTypeString DType` (tensor.go:28) — OK（NN-4）
+- [x] `const DTypeUInt16 DType` (tensor.go:22) — OK（NN-4）
+- [x] `const DTypeUInt32 DType` (tensor.go:24) — OK（NN-4）
+- [x] `const DTypeUInt64 DType` (tensor.go:26) — OK（NN-4）
+- [x] `const DTypeUInt8 DType` (tensor.go:20) — OK（NN-4）
+- [x] `const DTypeUnknown DType` (tensor.go:15) — OK（NN-4）
+- [x] `const Float16` (tensor.go:37) — NN-1 別名
+- [x] `const Float32` (tensor.go:36) — NN-1 別名
+- [x] `const Float64` (tensor.go:38) — NN-1 別名
+- [x] `func (m *BoundClassifier) Classes() *insyra.DataList` (protocol.go:163) — OK（NN-4）
+- [x] `func (m *BoundClassifier) Features() []string` (protocol.go:155) — OK（NN-4）
+- [x] `func (m *BoundClassifier) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (protocol.go:172) — OK（NN-4）
+- [x] `func (m *BoundClassifier) PredictProba(dt *insyra.DataTable) (*insyra.DataTable, error)` (protocol.go:198) — OK（NN-4）
+- [x] `func (m *BoundRegressor) Features() []string` (protocol.go:49) — OK（NN-4）
+- [x] `func (m *BoundRegressor) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (protocol.go:58) — OK（NN-4）
+- [x] `func (m *Model) Inputs() []ValueInfo` (model.go:86) — OK（NN-4）
+- [x] `func (m *Model) OpsetVersion() int64` (model.go:102) — OK（NN-4）
+- [x] `func (m *Model) Outputs() []ValueInfo` (model.go:94) — OK（NN-4）
+- [x] `func (m *Model) Run(inputs map[string]*Tensor) (outputs map[string]*Tensor, err error)` (model_run.go:9) — OK（NN-4）
+- [x] `func (p *Parameter) Grad() *Tensor` (autodiff.go:39) — OK（NN-4）
+- [x] `func (p *Parameter) Value() *Tensor` (autodiff.go:31) — OK（NN-4）
+- [x] `func (s *CosineAnnealingLR) LR(step int) float32` (autodiff_practice.go:111) — OK（NN-4）
+- [x] `func (s *Sequential) ExportONNX(w io.Writer) error` (onnx_export.go:15) — OK（NN-4）
+- [x] `func (s *Sequential) Fit(x, y *Tensor, cfg FitConfig) (*FitResult, error)` (fit.go:200) — NN-2 無 ctx
+- [x] `func (s *Sequential) Forward(t *Tape, x *Tensor) (*Tensor, error)` (sequential.go:56) — OK（NN-4）
+- [x] `func (s *Sequential) LoadWeights(weights map[string]*Tensor) error` (sequential.go:146) — OK（NN-4）
+- [x] `func (s *Sequential) NamedParameters() map[string]*Parameter` (sequential.go:119) — OK（NN-4）
+- [x] `func (s *Sequential) Parameters() []*Parameter` (sequential.go:106) — OK（NN-4）
+- [x] `func (s *Sequential) Predict(x *Tensor) (*Tensor, error)` (sequential.go:79) — OK（NN-4）
+- [x] `func (s *Sequential) SaveWeights(w io.Writer) error` (sequential.go:202) — OK（NN-4）
+- [x] `func (s *StepLR) LR(step int) float32` (autodiff_practice.go:79) — OK（NN-4）
+- [x] `func (t *Tape) Adam(rate float32) error` (autodiff.go:671) — OK（NN-4）
+- [x] `func (t *Tape) AdamW(rate, weightDecay float32) error` (autodiff.go:678) — OK（NN-4）
+- [x] `func (t *Tape) Add(a, b *Tensor) (*Tensor, error)` (autodiff.go:124) — OK（NN-4）
+- [x] `func (t *Tape) AveragePool(input *Tensor, kernelShape []int, options ...PoolOptions) (*Tensor, error)` (autodiff_cnn.go:50) — OK（NN-4）
+- [x] `func (t *Tape) BCEWithLogitsLoss(logits, targets *Tensor) (*Tensor, error)` (autodiff.go:504) — OK（NN-4）
+- [x] `func (t *Tape) Backward(loss *Tensor) error` (autodiff.go:521) — OK（NN-4）
+- [x] `func (t *Tape) BatchNormTraining(input, scale, bias, runningMean, runningVariance *Tensor, options ...float32) (*Tensor, error)` (autodiff_cnn.go:176) — NN-3 options ...float32 靠位置
+- [x] `func (t *Tape) BatchNormalization(input, scale, bias, mean, variance *Tensor, epsilonValues ...float32) (*Tensor, error)` (autodiff_cnn.go:82) — NN-3 variadic 選填（對齊 ONNX 預設）
+- [x] `func (t *Tape) BatchNormalizationTraining(input, scale, bias, runningMean, runningVariance *Tensor, options ...float32) (*Tensor, error)` (autodiff_cnn.go:101) — NN-3 options ...float32 靠位置
+- [x] `func (t *Tape) ClipGradNorm(maxNorm float32) (float32, error)` (autodiff.go:637) — OK（NN-4）
+- [x] `func (t *Tape) Concat(inputs []*Tensor, axis int) (*Tensor, error)` (autodiff.go:391) — OK（NN-4）
+- [x] `func (t *Tape) Conv(input, weights, bias *Tensor, options ...ConvOptions) (*Tensor, error)` (autodiff_cnn.go:11) — OK（NN-4）
+- [x] `func (t *Tape) Div(a, b *Tensor) (*Tensor, error)` (autodiff.go:112) — OK（NN-4）
+- [x] `func (t *Tape) Dropout(input *Tensor, probability float32) (*Tensor, error)` (autodiff_practice.go:12) — OK（NN-4）
+- [x] `func (t *Tape) Embedding(table, indices *Tensor) (*Tensor, error)` (autodiff_catalog.go:7) — OK（NN-4）
+- [x] `func (t *Tape) EmbeddingLookup(indices, table *Tensor) (*Tensor, error)` (autodiff_catalog.go:42) — OK（NN-4）
+- [x] `func (t *Tape) Erf(input *Tensor) (*Tensor, error)` (autodiff.go:241) — OK（NN-4）
+- [x] `func (t *Tape) Flatten(input *Tensor, axes ...int) (*Tensor, error)` (autodiff.go:309) — NN-3 variadic 選填（對齊 ONNX 預設）
+- [x] `func (t *Tape) Gelu(input *Tensor, approximate ...string) (*Tensor, error)` (autodiff.go:219) — NN-3 variadic 選填（對齊 ONNX 預設）
+- [x] `func (t *Tape) Gemm(a, b, c *Tensor, options ...GemmOptions) (*Tensor, error)` (autodiff.go:447) — OK（NN-4）
+- [x] `func (t *Tape) GlobalAveragePool(input *Tensor) (*Tensor, error)` (autodiff_cnn.go:67) — OK（NN-4）
+- [x] `func (t *Tape) Grad(param *Tensor) (*Tensor, error)` (autodiff.go:570) — OK（NN-4）
+- [x] `func (t *Tape) LayerNormalization(input, scale, bias *Tensor, axis int, epsilon float32) (*Tensor, error)` (autodiff.go:199) — OK（NN-4）
+- [x] `func (t *Tape) MSELoss(prediction, target *Tensor) (*Tensor, error)` (autodiff.go:486) — OK（NN-4）
+- [x] `func (t *Tape) MatMul(a, b *Tensor) (*Tensor, error)` (autodiff.go:85) — OK（NN-4）
+- [x] `func (t *Tape) MaxPool(input *Tensor, kernelShape []int, options ...PoolOptions) (*Tensor, error)` (autodiff_cnn.go:32) — OK（NN-4）
+- [x] `func (t *Tape) Mul(a, b *Tensor) (*Tensor, error)` (autodiff.go:100) — OK（NN-4）
+- [x] `func (t *Tape) Param(value *Tensor) (*Parameter, error)` (autodiff.go:70) — OK（NN-4）
+- [x] `func (t *Tape) Pow(left, right *Tensor) (*Tensor, error)` (autodiff.go:265) — OK（NN-4）
+- [x] `func (t *Tape) ReduceMean(input *Tensor, axes []int, keepdims bool) (*Tensor, error)` (autodiff.go:277) — OK（NN-4）
+- [x] `func (t *Tape) Relu(input *Tensor) (*Tensor, error)` (autodiff.go:136) — OK（NN-4）
+- [x] `func (t *Tape) Reshape(input *Tensor, shape []int) (*Tensor, error)` (autodiff.go:296) — OK（NN-4）
+- [x] `func (t *Tape) SGD(rate float32) error` (autodiff.go:581) — OK（NN-4）
+- [x] `func (t *Tape) SGDMomentum(rate, momentum float32) error` (autodiff.go:604) — OK（NN-4）
+- [x] `func (t *Tape) Sigmoid(input *Tensor) (*Tensor, error)` (autodiff.go:148) — OK（NN-4）
+- [x] `func (t *Tape) Slice(input *Tensor, starts, ends, axes, steps []int64) (*Tensor, error)` (autodiff.go:375) — OK（NN-4）
+- [x] `func (t *Tape) Softmax(input *Tensor, axes ...int) (*Tensor, error)` (autodiff.go:172) — NN-3 variadic 選填（對齊 ONNX 預設）
+- [x] `func (t *Tape) SoftmaxCrossEntropy(logits, labels *Tensor) (*Tensor, error)` (autodiff.go:469) — OK（NN-4）
+- [x] `func (t *Tape) Split(input *Tensor, splits []int, axis int, outputCount ...int) ([]*Tensor, error)` (autodiff.go:413) — NN-3 variadic 選填（對齊 ONNX 預設）
+- [x] `func (t *Tape) Sqrt(input *Tensor) (*Tensor, error)` (autodiff.go:253) — OK（NN-4）
+- [x] `func (t *Tape) Squeeze(input *Tensor, axes []int) (*Tensor, error)` (autodiff.go:359) — OK（NN-4）
+- [x] `func (t *Tape) Tanh(input *Tensor) (*Tensor, error)` (autodiff.go:160) — OK（NN-4）
+- [x] `func (t *Tape) Transpose(input *Tensor, perms ...[]int) (*Tensor, error)` (autodiff.go:322) — NN-3 variadic 選填（對齊 ONNX 預設）
+- [x] `func (t *Tape) Unsqueeze(input *Tensor, axes []int) (*Tensor, error)` (autodiff.go:343) — OK（NN-4）
+- [x] `func (t *Tensor) BoolData() ([]bool, error)` (tensor.go:162) — OK（NN-4）
+- [x] `func (t *Tensor) DType() DType` (tensor.go:95) — OK（NN-4）
+- [x] `func (t *Tensor) Data() []float32` (tensor.go:121) — NN-1 非 float32 靜默回 nil
+- [x] `func (t *Tensor) Float32Data() ([]float32, error)` (tensor.go:129) — OK（NN-4）
+- [x] `func (t *Tensor) Int64Data() ([]int64, error)` (tensor.go:140) — OK（NN-4）
+- [x] `func (t *Tensor) Len() int` (tensor.go:173) — OK（NN-4）
+- [x] `func (t *Tensor) Shape() []int` (tensor.go:103) — OK（NN-4）
+- [x] `func (t *Tensor) Strides() []int` (tensor.go:112) — OK（NN-4）
+- [x] `func (t *Tensor) StringData() ([]string, error)` (tensor.go:151) — OK（NN-4）
+- [x] `func Add(a, b *Tensor) (*Tensor, error)` (kernels.go:1121) — OK（NN-4）
+- [x] `func AveragePool(input *Tensor, kernelShape []int, options ...PoolOptions) (*Tensor, error)` (kernels.go:357) — OK（NN-4）
+- [x] `func AvgPool2D(kernel int, options ...PoolOptions) Layer` (layers_catalog.go:150) — OK（NN-4）
+- [x] `func BatchNorm2D(features int) Layer` (layers_catalog.go:223) — OK（NN-4）
+- [x] `func BatchNormalization(input, scale, bias, mean, variance *Tensor, epsilonValues ...float32) (*Tensor, error)` (kernels.go:612) — NN-3 variadic 選填（對齊 ONNX 預設）
+- [x] `func BindClassifier(model *Model, inputName string, features []string, classes *insyra.DataList) (*BoundClassifier, error)` (protocol.go:113) — OK（NN-4）
+- [x] `func BindRegressor(model *Model, inputName string, features []string) (*BoundRegressor, error)` (protocol.go:27) — OK（NN-4）
+- [x] `func Cast(input *Tensor, to DType) (*Tensor, error)` (kernels.go:1899) — OK（NN-4）
+- [x] `func Ceil(input *Tensor) (*Tensor, error)` (kernels.go:1182) — OK（NN-4）
+- [x] `func Clip(input, minimum, maximum *Tensor) (*Tensor, error)` (kernels.go:1239) — OK（NN-4）
+- [x] `func Concat(inputs []*Tensor, axis int) (*Tensor, error)` (control_kernels.go:88) — OK（NN-4）
+- [x] `func Constant(value *Tensor) (*Tensor, error)` (kernels.go:2014) — OK（NN-4）
+- [x] `func ConstantOfShape(shapeTensor, value *Tensor) (*Tensor, error)` (control_kernels.go:314) — OK（NN-4）
+- [x] `func Conv(input, weights, bias *Tensor, options ...ConvOptions) (*Tensor, error)` (kernels.go:183) — OK（NN-4）
+- [x] `func Conv2D(in, out, kernel int, options ...ConvOptions) Layer` (layers_catalog.go:18) — OK（NN-4）
+- [x] `func Dense(in, out int) Layer` (layers.go:50) — OK（NN-4）
+- [x] `func Div(a, b *Tensor) (*Tensor, error)` (control_kernels.go:9) — OK（NN-4）
+- [x] `func Dropout(p float32) Layer` (layers.go:171) — OK（NN-4）
+- [x] `func Embedding(vocab, dims int) Layer` (layers_catalog.go:400) — OK（NN-4）
+- [x] `func Equal(left, right *Tensor) (*Tensor, error)` (control_kernels.go:597) — OK（NN-4）
+- [x] `func Erf(input *Tensor) (*Tensor, error)` (kernels.go:1209) — OK（NN-4）
+- [x] `func Exp(input *Tensor) (*Tensor, error)` (kernels.go:1177) — OK（NN-4）
+- [x] `func Expand(input *Tensor, targetShape []int) (*Tensor, error)` (control_kernels.go:257) — OK（NN-4）
+- [x] `func Flatten(input *Tensor, axes ...int) (*Tensor, error)` (kernels.go:1816) — NN-3 variadic 選填（對齊 ONNX 預設）
+- [x] `func Floor(input *Tensor) (*Tensor, error)` (kernels.go:1155) — OK（NN-4）
+- [x] `func Func(fn func(*Tape, *Tensor) (*Tensor, error)) Layer` (layers.go:214) — OK（NN-4）
+- [x] `func Gather(data, indices *Tensor, axis int) (*Tensor, error)` (control_kernels.go:159) — OK（NN-4）
+- [x] `func Gelu(input *Tensor, approximate ...string) (*Tensor, error)` (kernels.go:1285) — NN-3 variadic 選填（對齊 ONNX 預設）
+- [x] `func Gemm(a, b, c *Tensor, options ...GemmOptions) (*Tensor, error)` (kernels.go:79) — OK（NN-4）
+- [x] `func GlobalAveragePool(input *Tensor) (*Tensor, error)` (kernels.go:422) — OK（NN-4）
+- [x] `func GlobalAvgPool() Layer` (layers_catalog.go:201) — OK（NN-4）
+- [x] `func Greater(left, right *Tensor) (*Tensor, error)` (control_kernels.go:602) — OK（NN-4）
+- [x] `func GreaterOrEqual(left, right *Tensor) (*Tensor, error)` (control_kernels.go:567) — OK（NN-4）
+- [x] `func Identity(input *Tensor) (*Tensor, error)` (kernels.go:1750) — OK（NN-4）
+- [x] `func InstanceNormalization(input, scale, bias *Tensor, epsilonValues ...float32) (*Tensor, error)` (kernels.go:656) — NN-3 variadic 選填（對齊 ONNX 預設）
+- [x] `func LayerNorm(dims interface{}) Layer` (layers_catalog.go:319) — NN-1 interface{} 參數
+- [x] `func LayerNormalization(input, scale, bias *Tensor, axis int, epsilon float32) (*Tensor, error)` (kernels.go:1311) — OK（NN-4）
+- [x] `func LeakyRelu(input *Tensor, alpha ...float32) (*Tensor, error)` (kernels.go:1160) — NN-3 variadic 選填（對齊 ONNX 預設）
+- [x] `func LoadONNX(r io.Reader) (model *Model, err error)` (model.go:66) — OK 範本（panic 收斂為 error）
+- [x] `func LoadSafeTensors(r io.Reader) (tensors map[string]*Tensor, err error)` (safetensors.go:21) — OK（NN-4）
+- [x] `func MatMul(a, b *Tensor) (*Tensor, error)` (kernels.go:956) — OK（NN-4）
+- [x] `func MaxPool(input *Tensor, kernelShape []int, options ...PoolOptions) (*Tensor, error)` (kernels.go:298) — OK（NN-4）
+- [x] `func MaxPool2D(kernel int, options ...PoolOptions) Layer` (layers_catalog.go:140) — OK（NN-4）
+- [x] `func Mul(a, b *Tensor) (*Tensor, error)` (kernels.go:1137) — OK（NN-4）
+- [x] `func MultiHeadAttention(embed, heads int) Layer` (layers_attention.go:24) — OK（NN-4）
+- [x] `func NewAvgPool2D(kernel int, options ...PoolOptions) Layer` (layers_catalog.go:155) — NN-1 雙建構子
+- [x] `func NewBatchNorm2D(features int) Layer` (layers_catalog.go:228) — NN-1 雙建構子
+- [x] `func NewBoolTensor(shape []int, data []bool) (*Tensor, error)` (tensor.go:80) — OK（NN-4）
+- [x] `func NewConv2D(in, out, kernel int, options ...ConvOptions) Layer` (layers_catalog.go:30) — NN-1 雙建構子
+- [x] `func NewCosineAnnealingLR(initialRate float32, tMax int) (*CosineAnnealingLR, error)` (autodiff_practice.go:99) — OK（NN-4）
+- [x] `func NewDense(in, out int) Layer` (layers.go:55) — NN-1 雙建構子
+- [x] `func NewDropout(p float32) Layer` (layers.go:174) — NN-1 雙建構子
+- [x] `func NewEmbedding(vocab, dims int) Layer` (layers_catalog.go:403) — NN-1 雙建構子
+- [x] `func NewFlatten() Layer` (layers.go:196) — NN-1 雙建構子
+- [x] `func NewFloat32Tensor(shape []int, data []float32) (*Tensor, error)` (tensor.go:65) — OK（NN-4）
+- [x] `func NewFunc(fn func(*Tape, *Tensor) (*Tensor, error)) Layer` (layers.go:217) — NN-1 雙建構子
+- [x] `func NewGelu() Layer` (layers.go:162) — NN-1 雙建構子
+- [x] `func NewGlobalAvgPool() Layer` (layers_catalog.go:204) — NN-1 雙建構子
+- [x] `func NewInt64Tensor(shape []int, data []int64) (*Tensor, error)` (tensor.go:70) — OK（NN-4）
+- [x] `func NewLayerNorm(dims interface{}) Layer` (layers_catalog.go:333) — NN-1 雙建構子
+- [x] `func NewMaxPool2D(kernel int, options ...PoolOptions) Layer` (layers_catalog.go:145) — NN-1 雙建構子
+- [x] `func NewMultiHeadAttention(embed, heads int) Layer` (layers_attention.go:30) — NN-1 雙建構子
+- [x] `func NewReLU() Layer` (layers.go:149) — NN-1 雙建構子
+- [x] `func NewSequential(t *Tape, layers ...Layer) (*Sequential, error)` (sequential.go:20) — OK（NN-4）
+- [x] `func NewSigmoid() Layer` (layers.go:152) — NN-1 雙建構子
+- [x] `func NewStepLR(initialRate, gamma float32, stepSize int) (*StepLR, error)` (autodiff_practice.go:65) — OK（NN-4）
+- [x] `func NewStringTensor(shape []int, data []string) (*Tensor, error)` (tensor.go:75) — OK（NN-4）
+- [x] `func NewTanh() Layer` (layers.go:157) — NN-1 雙建構子
+- [x] `func NewTape(seed ...int64) *Tape` (autodiff.go:56) — NN-3 variadic 選填（對齊 ONNX 預設）
+- [x] `func NewTensor(shape []int, data []float32) (*Tensor, error)` (tensor.go:59) — OK（NN-4）
+- [x] `func NewTensorWithDType(dtype DType, shape []int, data []float32) (*Tensor, error)` (tensor.go:87) — NN-1 名稱誤導（只收 float32）
+- [x] `func NonMaxSuppression(boxes, scores, maxOutputBoxesPerClass, iouThreshold, scoreThreshold *Tensor, centerPointBox ...int) (*Tensor, error)` (kernels.go:1547) — NN-3 variadic 選填（對齊 ONNX 預設）
+- [x] `func Pad(input *Tensor, pads []int, values ...float32) (*Tensor, error)` (kernels.go:718) — NN-3 variadic 選填（對齊 ONNX 預設）
+- [x] `func PadReflect(input *Tensor, pads []int) (*Tensor, error)` (kernels.go:772) — OK（NN-4）
+- [x] `func Pow(left, right *Tensor) (*Tensor, error)` (kernels.go:1220) — OK（NN-4）
+- [x] `func ReLU() Layer` (layers.go:144) — OK（NN-4）
+- [x] `func ReduceMean(input *Tensor, axes []int, keepdims bool) (*Tensor, error)` (kernels.go:1368) — OK（NN-4）
+- [x] `func ReduceMin(input *Tensor, axes []int, keepdims bool) (*Tensor, error)` (kernels.go:1435) — OK（NN-4）
+- [x] `func RegisterDeviceMatMul(fn DeviceMatMul)` (device_matmul.go:22) — OK（NN-4）
+- [x] `func Relu(input *Tensor) (*Tensor, error)` (kernels.go:1145) — OK（NN-4）
+- [x] `func Reshape(input *Tensor, shape []int) (*Tensor, error)` (kernels.go:1756) — OK（NN-4）
+- [x] `func Residual(layers ...Layer) Layer` (layers_attention.go:246) — OK（NN-4）
+- [x] `func Resize(input, scales, sizes *Tensor, options ...ResizeOptions) (*Tensor, error)` (kernels.go:452) — OK（NN-4）
+- [x] `func Round(input *Tensor) (*Tensor, error)` (kernels.go:1188) — OK（NN-4）
+- [x] `func SaveSafeTensors(w io.Writer, tensors map[string]*Tensor) error` (safetensors.go:133) — OK（NN-4）
+- [x] `func Shape(input *Tensor, bounds ...int) (*Tensor, error)` (control_kernels.go:286) — NN-3 variadic 選填（對齊 ONNX 預設）
+- [x] `func Sigmoid(input *Tensor) (*Tensor, error)` (kernels.go:1193) — OK（NN-4）
+- [x] `func Slice(input *Tensor, starts, ends, axes, steps []int64) (*Tensor, error)` (control_kernels.go:362) — OK（NN-4）
+- [x] `func Softmax(input *Tensor, axes ...int) (*Tensor, error)` (kernels.go:1699) — NN-3 variadic 選填（對齊 ONNX 預設）
+- [x] `func Split(input *Tensor, splits []int, axis int, outputCount ...int) ([]*Tensor, error)` (control_kernels.go:500) — NN-3 variadic 選填（對齊 ONNX 預設）
+- [x] `func Sqrt(input *Tensor) (*Tensor, error)` (kernels.go:1214) — OK（NN-4）
+- [x] `func Squeeze(input *Tensor, axes []int) (*Tensor, error)` (control_kernels.go:212) — OK（NN-4）
+- [x] `func Sub(a, b *Tensor) (*Tensor, error)` (kernels.go:1129) — OK（NN-4）
+- [x] `func Tanh(input *Tensor) (*Tensor, error)` (kernels.go:1204) — OK（NN-4）
+- [x] `func Tile(input, repeats *Tensor) (*Tensor, error)` (kernels.go:1499) — OK（NN-4）
+- [x] `func Transpose(input *Tensor, perms ...[]int) (*Tensor, error)` (kernels.go:1845) — NN-3 variadic 選填（對齊 ONNX 預設）
+- [x] `func Unsqueeze(input *Tensor, axes []int) (*Tensor, error)` (control_kernels.go:22) — OK（NN-4）
+- [x] `func Where(condition, left, right *Tensor) (*Tensor, error)` (control_kernels.go:687) — OK（NN-4）
+- [x] `type Adam struct { Rate float32 }` (fit.go:60) — OK（NN-4）
+- [x] `type AdamW struct { Rate float32 WeightDecay float32 }` (fit.go:76) — OK（NN-4）
+- [x] `type AveragePoolOptions = PoolOptions` (kernels.go:171) — NN-1 別名
+- [x] `type BCEWithLogits struct{}` (fit.go:141) — OK（NN-4）
+- [x] `type BCEWithLogitsLoss = BCEWithLogits` (fit.go:162) — NN-1 別名
+- [x] `type BoundClassifier struct { model *Model inputName string features []string inputSpec ValueInfo probabilities ValueInfo classes *insyra.DataList }` (protocol.go:98) — OK（NN-4）
+- [x] `type BoundRegressor struct { model *Model inputName string features []string inputSpec ValueInfo output ValueInfo }` (protocol.go:12) — OK（NN-4）
+- [x] `type Classifier = BoundClassifier` (protocol.go:108) — NN-1 別名
+- [x] `type ConvOptions struct { Pads []int AutoPad string Strides []int Dilations []int Group int NoBias bool }` (kernels.go:144) — OK（NN-4）
+- [x] `type CosineAnnealingLR struct { initialRate float32 tMax int }` (autodiff_practice.go:92) — OK（NN-4）
+- [x] `type CrossEntropy struct{}` (fit.go:103) — OK（NN-4）
+- [x] `type DType string` (tensor.go:12) — OK（NN-4）
+- [x] `type DataType = DType` (tensor.go:42) — NN-1 別名
+- [x] `type DeviceMatMul func(a []float32, aRows, aCols int, b []float32, bRows, bCols int) ([]float32, error)` (device_matmul.go:8) — OK（NN-4）
+- [x] `type EvalLayer interface { PredictForward(x *Tensor) (*Tensor, error) }` (layers.go:25) — OK（NN-4）
+- [x] `type FitConfig struct { Epochs int BatchSize int Seed int64 NoShuffle bool Optimizer OptimizerSpec Loss LossSpec ValX *Tensor ValY *Tensor Progress func(FitEpoch) Quiet bool }` (fit.go:165) — NN-2 無 ctx
+- [x] `type FitEpoch struct { Epoch int Epochs int TrainLoss float64 ValLoss float64 HasValLoss bool Elapsed time.Duration RowsPerSecond float64 }` (fit.go:180) — OK（NN-4）
+- [x] `type FitResult struct { TrainLosses []float64 ValLosses []float64 Epochs []FitEpoch Elapsed time.Duration }` (fit.go:191) — OK（NN-4）
+- [x] `type GemmOptions struct { Alpha float32 Beta float32 TransA bool TransB bool }` (kernels.go:70) — OK（NN-4）
+- [x] `type Layer interface { Build(t *Tape) error Forward(t *Tape, x *Tensor) (*Tensor, error) Parameters() []*Parameter }` (layers.go:10) — OK（NN-4）
+- [x] `type LossSpec interface { fitLossName() string fitLossValidate(*Tensor, *Tensor) error fitLoss(*Tape, *Tensor, *Tensor) (*Tensor, error) }` (fit.go:96) — NN-2 不可實作
+- [x] `type MSE struct{}` (fit.go:122) — OK（NN-4）
+- [x] `type MSELoss = MSE` (fit.go:161) — NN-1 別名
+- [x] `type MaxPoolOptions = PoolOptions` (kernels.go:170) — NN-1 別名
+- [x] `type Model struct { inputSpecs []ValueInfo outputSpecs []ValueInfo nodes []modelNode initializers map[string]*Tensor opsetVersion int64 }` (model.go:36) — OK（NN-4）
+- [x] `type OptimizerSpec interface { fitOptimizerName() string fitOptimizerValidate() error fitOptimizerStep(*Tape) error }` (fit.go:15) — NN-2 不可實作
+- [x] `type Parameter struct { value *Tensor grad *Tensor velocity []float32 adamM []float32 adamV []float32 adamStep uint64 }` (autodiff.go:21) — OK（NN-4）
+- [x] `type PoolOptions struct { Pads []int AutoPad string Strides []int CountIncludePad bool CeilMode int StorageOrder int }` (kernels.go:159) — OK（NN-4）
+- [x] `type Regressor = BoundRegressor` (protocol.go:21) — NN-1 別名
+- [x] `type ResizeOptions struct { Mode string CoordinateTransformationMode string NearestMode string }` (kernels.go:175) — OK（NN-4）
+- [x] `type SGD struct { Rate float32 }` (fit.go:22) — OK（NN-4）
+- [x] `type SGDMomentum struct { Rate float32 Momentum float32 }` (fit.go:38) — OK（NN-4）
+- [x] `type Sequential struct { layers []Layer tape *Tape }` (sequential.go:12) — OK（NN-4）
+- [x] `type SoftmaxCrossEntropy = CrossEntropy` (fit.go:160) — NN-1 別名
+- [x] `type StepLR struct { initialRate float32 gamma float32 stepSize int }` (autodiff_practice.go:58) — OK（NN-4）
+- [x] `type Tape struct { ops []tapeOp params []*Parameter marked map[*Tensor]*Parameter grads map[*Tensor]*Tensor rng *rand.Rand }` (autodiff.go:12) — OK（NN-4）
+- [x] `type Tensor struct { dtype DType shape []int strides []int data []float32 int64Data []int64 boolData []bool stringData []string }` (tensor.go:47) — OK（NN-4）
+- [x] `type TrainingOnly interface { TrainingOnly() }` (layers.go:18) — OK（NN-4）
+- [x] `type ValueInfo struct { Name string DType DType Shape []int HasShape bool }` (model.go:11) — OK（NN-4）
+- [x] `func (*globalAvgPoolLayer) Build(*Tape) error` (layers_catalog.go:206) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (*globalAvgPoolLayer) Parameters() []*Parameter` (layers_catalog.go:210) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (l *activationLayer) Build(*Tape) error` (layers.go:130) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (l *activationLayer) Forward(t *Tape, x *Tensor) (*Tensor, error)` (layers.go:131) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (l *activationLayer) Parameters() []*Parameter` (layers.go:140) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (l *batchNorm2DLayer) Build(t *Tape) error` (layers_catalog.go:230) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (l *batchNorm2DLayer) Forward(t *Tape, x *Tensor) (*Tensor, error)` (layers_catalog.go:273) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (l *batchNorm2DLayer) Parameters() []*Parameter` (layers_catalog.go:290) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (l *batchNorm2DLayer) PredictForward(x *Tensor) (*Tensor, error)` (layers_catalog.go:283) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (l *conv2DLayer) Build(t *Tape) error` (layers_catalog.go:34) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (l *conv2DLayer) Forward(t *Tape, x *Tensor) (*Tensor, error)` (layers_catalog.go:75) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (l *conv2DLayer) Parameters() []*Parameter` (layers_catalog.go:91) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (l *denseLayer) Build(t *Tape) error` (layers.go:57) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (l *denseLayer) Forward(t *Tape, x *Tensor) (*Tensor, error)` (layers.go:91) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (l *denseLayer) Parameters() []*Parameter` (layers.go:111) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (l *dropoutLayer) Build(*Tape) error` (layers.go:176) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (l *dropoutLayer) Forward(t *Tape, x *Tensor) (*Tensor, error)` (layers.go:182) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (l *dropoutLayer) Parameters() []*Parameter` (layers.go:188) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (l *dropoutLayer) TrainingOnly()` (layers.go:189) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (l *embeddingLayer) Build(t *Tape) error` (layers_catalog.go:405) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (l *embeddingLayer) Forward(t *Tape, x *Tensor) (*Tensor, error)` (layers_catalog.go:430) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (l *embeddingLayer) Parameters() []*Parameter` (layers_catalog.go:437) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (l *flattenLayer) Build(*Tape) error` (layers.go:198) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (l *flattenLayer) Forward(t *Tape, x *Tensor) (*Tensor, error)` (layers.go:199) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (l *flattenLayer) Parameters() []*Parameter` (layers.go:205) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (l *funcLayer) Build(*Tape) error` (layers.go:219) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (l *funcLayer) Forward(t *Tape, x *Tensor) (*Tensor, error)` (layers.go:225) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (l *funcLayer) Parameters() []*Parameter` (layers.go:241) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (l *globalAvgPoolLayer) Forward(t *Tape, x *Tensor) (*Tensor, error)` (layers_catalog.go:207) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (l *layerNormLayer) Build(t *Tape) error` (layers_catalog.go:335) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (l *layerNormLayer) Forward(t *Tape, x *Tensor) (*Tensor, error)` (layers_catalog.go:369) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (l *layerNormLayer) Parameters() []*Parameter` (layers_catalog.go:379) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (l *multiHeadAttentionLayer) Build(t *Tape) error` (layers_attention.go:34) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (l *multiHeadAttentionLayer) Forward(t *Tape, x *Tensor) (*Tensor, error)` (layers_attention.go:86) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (l *multiHeadAttentionLayer) Parameters() []*Parameter` (layers_attention.go:187) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (l *pool2DLayer) Build(*Tape) error` (layers_catalog.go:170) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (l *pool2DLayer) Forward(t *Tape, x *Tensor) (*Tensor, error)` (layers_catalog.go:180) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (l *pool2DLayer) Parameters() []*Parameter` (layers_catalog.go:190) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (l *residualLayer) Build(t *Tape) error` (layers_attention.go:250) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (l *residualLayer) Forward(t *Tape, x *Tensor) (*Tensor, error)` (layers_attention.go:265) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (l *residualLayer) Parameters() []*Parameter` (layers_attention.go:313) — 未匯出 layer 實作，經 Layer 介面可見：OK
+- [x] `func (l *residualLayer) PredictForward(x *Tensor) (*Tensor, error)` (layers_attention.go:273) — 未匯出 layer 實作，經 Layer 介面可見：OK
 
 ## parallel (5)
 
@@ -2000,21 +2039,21 @@
 - [x] `type ReadColumnOptions struct { RowGroups []int MaxValues int64 }` (api.go:25) — Q-1 MaxValues 是死欄位
 - [x] `type ReadOptions struct { Columns []string RowGroups []int }` (api.go:19) — OK
 - [x] `type RowGroupInfo struct { NumRows int64 TotalByteSize int64 TotalCompressedSize int64 }` (api.go:47) — OK，缺 doc（Q-10）
-- [ ] `func (c *parquetContext) GetAllData() ([]any, error)` (ccl.go:210)
-- [ ] `func (c *parquetContext) GetCell(colIndex, rowIndex int) (any, error)` (ccl.go:99)
-- [ ] `func (c *parquetContext) GetCellByName(colName string, rowIndex int) (any, error)` (ccl.go:117)
-- [ ] `func (c *parquetContext) GetCol(index int) any` (ccl.go:73)
-- [ ] `func (c *parquetContext) GetColByName(name string) (any, error)` (ccl.go:80)
-- [ ] `func (c *parquetContext) GetColCount() int` (ccl.go:156)
-- [ ] `func (c *parquetContext) GetColData(index int) ([]any, error)` (ccl.go:182)
-- [ ] `func (c *parquetContext) GetColDataByName(name string) ([]any, error)` (ccl.go:202)
-- [ ] `func (c *parquetContext) GetColIndexByName(colName string) (int, error)` (ccl.go:148)
-- [ ] `func (c *parquetContext) GetCurrentRow() any` (ccl.go:95)
-- [ ] `func (c *parquetContext) GetRowAt(rowIndex int) (any, error)` (ccl.go:125)
-- [ ] `func (c *parquetContext) GetRowCount() int` (ccl.go:163)
-- [ ] `func (c *parquetContext) GetRowIndex() int` (ccl.go:91)
-- [ ] `func (c *parquetContext) GetRowIndexByName(rowName string) (int, error)` (ccl.go:144)
-- [ ] `func (c *parquetContext) SetRowIndex(index int) error` (ccl.go:170)
+- [x] `func (c *parquetContext) GetAllData() ([]any, error)` (ccl.go:210) — 非公開：未匯出型別，僅供 internal/ccl 介面；不需審查
+- [x] `func (c *parquetContext) GetCell(colIndex, rowIndex int) (any, error)` (ccl.go:99) — 非公開：未匯出型別，僅供 internal/ccl 介面；不需審查
+- [x] `func (c *parquetContext) GetCellByName(colName string, rowIndex int) (any, error)` (ccl.go:117) — 非公開：未匯出型別，僅供 internal/ccl 介面；不需審查
+- [x] `func (c *parquetContext) GetCol(index int) any` (ccl.go:73) — 非公開：未匯出型別，僅供 internal/ccl 介面；不需審查
+- [x] `func (c *parquetContext) GetColByName(name string) (any, error)` (ccl.go:80) — 非公開：未匯出型別，僅供 internal/ccl 介面；不需審查
+- [x] `func (c *parquetContext) GetColCount() int` (ccl.go:156) — 非公開：未匯出型別，僅供 internal/ccl 介面；不需審查
+- [x] `func (c *parquetContext) GetColData(index int) ([]any, error)` (ccl.go:182) — 非公開：未匯出型別，僅供 internal/ccl 介面；不需審查
+- [x] `func (c *parquetContext) GetColDataByName(name string) ([]any, error)` (ccl.go:202) — 非公開：未匯出型別，僅供 internal/ccl 介面；不需審查
+- [x] `func (c *parquetContext) GetColIndexByName(colName string) (int, error)` (ccl.go:148) — 非公開：未匯出型別，僅供 internal/ccl 介面；不需審查
+- [x] `func (c *parquetContext) GetCurrentRow() any` (ccl.go:95) — 非公開：未匯出型別，僅供 internal/ccl 介面；不需審查
+- [x] `func (c *parquetContext) GetRowAt(rowIndex int) (any, error)` (ccl.go:125) — 非公開：未匯出型別，僅供 internal/ccl 介面；不需審查
+- [x] `func (c *parquetContext) GetRowCount() int` (ccl.go:163) — 非公開：未匯出型別，僅供 internal/ccl 介面；不需審查
+- [x] `func (c *parquetContext) GetRowIndex() int` (ccl.go:91) — 非公開：未匯出型別，僅供 internal/ccl 介面；不需審查
+- [x] `func (c *parquetContext) GetRowIndexByName(rowName string) (int, error)` (ccl.go:144) — 非公開：未匯出型別，僅供 internal/ccl 介面；不需審查
+- [x] `func (c *parquetContext) SetRowIndex(index int) error` (ccl.go:170) — 非公開：未匯出型別，僅供 internal/ccl 介面；不需審查
 
 ## pd (8)
 
