@@ -39,7 +39,7 @@
 
 | 套件 | 項目數 | 狀態 |
 | --- | --- | --- |
-| `.`（core） | 529 | 進行中：基礎層 63 + DataList 137 項完成 |
+| `.`（core） | 529 | 進行中：基礎層 63 + DataList 137 + DataTable 216 項完成 |
 | `accel` | 127 | 未開始 |
 | `cli` 系列（cli, commands, env, repl, style） | 79 | 未開始 |
 | `csvxl` | 9 | **完成** |
@@ -155,6 +155,37 @@
 | D-18 | Low | Rolling/EWM/Expanding 選項無效時，reducer 回傳「空 list」而不是「同長度全 nil」。使用者把結果 `AppendCols` 進表會因長度不符再錯一次，離真正原因更遠（準則 7） | datalist_window.go:301-306；datalist_ewm.go:107-115 | 回同長度全 nil |
 | D-19 | Med | `init.go` 在 import 時就以 Info 印出「Welcome to Insyra」橫幅，且用 `LogInfo("", "", …)`。程式庫不得在 import 時輸出（準則 14；併入 K-17 的 logger 決策） | init.go:7 | 移除橫幅，改由 CLI 自己印 |
 
+### core — DataTable 第一批（datatable.go、colname/rowname/name/colindex、swap/sort/map/json/csv、summary/describe、filters、replace、sampling、window、resample、groupby、pivot、merge）
+
+實測方式同 DataList；「已實測」表示以拋棄式測試跑過。
+
+| 編號 | 嚴重度 | 問題 | 位置 | 建議 |
+| --- | --- | --- | --- | --- |
+| T-1 | High | **panic（已實測）**：`GetElementByNumberIndex(0, 5)` 對不存在的欄直接 index out of range；`SetRowToColNames(99)`、`SetColToRowNames("ZZ")` 取回 nil 後解引用 nil pointer。三個公開方法對錯誤輸入 panic 而不是設 `Err()`（準則 11） | datatable.go:280-292, 508-540 | 加邊界檢查與 nil 檢查 |
+| T-2 | High | **內部資料外洩（已實測）**：`Data()`／`ToMap()` 直接回傳 `col.data`，呼叫端改 map 裡的 slice 就改到表內部，且繞過 actor lock。DataList 的 `Data()` 是 copy-on-read，同一套件兩種契約（準則 6、12） | datatable.go:1232-1267 | 逐欄 `slices.Clone` |
+| T-3 | High | **資料遺失（已實測）**：`AppendRowsByColIndex(map{"Z": 42})` 在兩欄表上：Z 不存在時「新增一欄」卻是加在尾端變成 C，再用 Z 重新解析仍越界，42 被丟掉，只留下一列全 nil | datatable.go:161-217 | 補齊到目標索引，或回錯 |
+| T-4 | High | **Filter 結果與原表共用欄位（已實測）**：`FilterColsBy*`（7 個）、`FilterCols`、`FilterColsByColNameContains` 回傳的新表直接放入 `dt.columns[i]` 指標與 `dt.rowNames` 指標。改過濾結果會改到原表，兩個表各自的 actor lock 互不知情，是 data race（準則 12）。`Filter`／`FilterRows`／`FilterRowsByRowNameContains` 有複製，同檔案兩種做法 | datatable_filters.go:12-190, 386-440 | 一律 Clone 欄與 rowNames |
+| T-5 | Med | **panic（已實測）**：找不到欄或列時 Filter 系列回傳 `&DataTable{}`（rowNames 為 nil），之後呼叫 `GetRowIndexByName`、`SwapRowsByName` 等直接 nil deref；`FilterRows`／`FilterCols` 以第一欄長度當列數且不檢查邊界，jagged 表 index out of range | datatable_filters.go 多處 | 回 `NewDataTable()`；用 `getMaxColLength` 並用 `cellAt` |
+| T-6 | Med | **Bug（已實測）**：`DropRowsByIndex(-1, 0)` 只刪最後一列，第 0 列沒刪（先排序再換算負索引，adjusted 變成 -1 被跳過）；`DropRowsByIndex(1, 1)` 重複索引刪掉兩列（[0,1,2,3] 變 [2,3]） | datatable.go:959-983 | 先正規化負索引、去重、再由大到小刪 |
+| T-7 | Med | **Bug（已實測）**：`DropColsContainNumber`／`DropRowsContainNumber` 只認 `int` 與 `float64`，CSV 推斷出的 `int64` 欄不算數字，整欄留下 | datatable.go:826-857, 1049-1086 | 改用 `IsNumeric` |
+| T-8 | Med | **Bug（已實測）**：`Transpose` 只把前 ncols 個列名搬成欄名（迴圈變數是舊欄索引），3 列 2 欄的表轉置後第 3 個列名遺失；而且是原地轉置又回傳自己，doc 沒說（pandas `.T` 回新表） | datatable.go:1341-1382 | 迴圈改用列數；doc 標明 in-place |
+| T-9 | Med | **Bug（已實測）**：`ChangeRowName("b", "a")` 在 "a" 已存在時，BiIndex 把 "a" 從第 0 列移到第 1 列，第 0 列悄悄失去名字。其他 setter 都走 `safeRowName`，這個沒有 | datatable_rowname.go:111-129 | 走 `safeRowName` 或回錯 |
+| T-10 | Med | `Mean() any`：回傳 `any`（永遠是 float64），分母用 rows×cols 含非數值與 nil 格子：`[2,"x"],[4,nil]` 得 1.5（6/4），是靠分母捏造（已實測） | datatable.go:1324-1338 | 回 float64，只數數值格 |
+| T-11 | Med | `GetCol(index)` 先 `ToUpper` 再退回名稱查詢，`GetCol("price")` 找不到名為 price 的欄（已實測，專案記憶已有此陷阱）；`ReplaceInCol("a", …)` 把名稱 "a" 當成 Excel 索引 A（已實測），欄名 "b" 若在第 0 欄會改到第 1 欄。名稱與索引共用一個 string 參數是整個 DataTable 的結構性歧義（準則 3、6） | datatable.go:297-317；datatable_replace.go:361 | `GetCol` 不退回名稱；長期：索引用 typed `ColIndex`，名稱用 `ByName` |
+| T-12 | Med | `ToJSON_Bytes`／`ToJSON_String` 遇到 NaN 回 nil／空字串只設 Err（已實測），呼叫端拿到空 JSON 不會察覺；`ToCSV` 用 `%v` 輸出 `time.Time` 成 `2024-01-02 03:04:05 +0000 UTC`，`ParseDates` 預設 layout 讀不回來，CSV 往返壞掉（已實測）；`ToCSV(path, bool, bool, bool)` 三個裸 bool 且無 `io.Writer` 版本 | datatable_json.go:85-105；datatable_csv.go:13 | JSON 回 error；CSV 時間用 RFC3339；加 options struct 與 `WriteCSV(w io.Writer)` |
+| T-13 | Med | `Filter(func(row, col, value) bool)` 與 `FilterRows` 是「任一格子符合就留整列」，不是列謂詞。最常見的 `A > B` 這種跨欄條件無法表達，只能繞去 CCL；`FilterByCustomElement` 與 `Filter` 重複（準則 4、5） | datatable_filters.go:333-440 | 加 `FilterRowsWhere(func(row *DataList) bool)` |
+| T-14 | Med | `SetColNames` 給的名字比欄多時自動新增空欄（已實測），pandas 是長度不符即 raise；`AppendCols` 遇同名自動改成 `name_1` 不通知 | datatable_colname.go:163-185；datatable.go:69 | 長度不符回錯；同名至少 warn |
+| T-15 | Med | `mergeVertical` 對沒有欄名的表（`NewDataTable(NewDataList(...))` 預設）判定「重複欄名 ""」而回錯，兩張無名表無法垂直合併（推論，未實測）；`Merge(other IDataTable, ...)` 內部立刻斷言 `*DataTable`，介面參數只是裝飾（K-7） | datatable_merge.go:31, 389-400 | 無名欄以位置對齊；參數改 `*DataTable` |
+| T-16 | Med | GroupBy 的 `columnsSnapshot` 是欄位指標的淺拷貝，`Aggregate` 在鎖外讀 `sourceCol.data`；父表被並行修改時是 data race（程式碼註解自己承認）。與 Rolling／EWM 深拷貝快照的做法不一致 | datatable_groupby.go:139-146 | 深拷貝或在 Aggregate 期間持鎖 |
+| T-17 | Med | 聚合相關 API 三種寫法：`Aggregate` 用 typed `AggregateOp`，`Pivot.AggFunc` 用字串（含 "avg"、"std" 別名），`Resample` 用 `AggregateOp`。GroupBy 的 key 把 `int 1` 與 `float64 1.0` 分成兩組（CSV 讀進來的 int64 與手動建的 float 會分家），pandas 視為同一組（準則 5、6） | datatable_pivot.go:44, 545-580；datatable_groupby.go:210 | Pivot 改收 `AggregateOp`；數值 key 正規化 |
+| T-18 | Med | 效能：`Count` 為了加總各欄用 `asyncutil.ParallelForEach` 再經 float64 `Sum` 轉回 int；`Clone` 用 `parallel.GroupUp` 跑兩件小事；`Map` 每格經 `originalCol.Get`（每格一次鎖）；`containsSubstring` 手寫遞迴，長字串遞迴深度等於字串長度，`strings.Contains` 就有 | datatable.go:1271-1282, 1384-1410, 1568-1571；datatable_map.go:30 | 直接迴圈；`strings.Contains` |
+| T-19 | Med | `FindColsIfContains`／`FindColsIfContainsAll` 用 `FindFirst != nil` 判斷，每個不含該值的欄都會觸發一次 warn 進 `Err()`（D-5 跨欄放大）；`FindRowsIfAllElementsContainSubstring` 把非字串格子視為「符合」，全數字的列會被當作符合（準則 13） | datatable.go:652-690, 626-650 | 內部用不設 Err 的查找；非字串視為不符 |
+| T-20 | Low | `replace` 系列的 `mode ...int` 用 0/1/-1 魔數當 variadic 選項；`ReplaceInCol` doc 說「index or name」實作只吃索引（T-11）；NaN 判定 InRow/InCol 只認 float64，表層版用 `isNilOrNaN` 認 float32（準則 8、E） | datatable_replace.go 全檔 | typed `ReplaceMode`；統一 `isNilOrNaN` |
+| T-21 | Low | 13 個 `FilterColsByColIndexGreaterThan…`／`FilterRowsByRowIndexLessThanOrEqualTo…` 長名方法做的是切片，pandas 是 `iloc[a:b]`；`Headers`／`SetHeaders` 是 `ColNames`／`SetColNames` 的別名；`Counter` 與 DataList 重複；`SimpleRandomSample` 已 Deprecated（準則 1） | datatable_filters.go；datatable_colname.go:159, 187 | 收斂成 `SliceRows(from, to)`／`SliceCols(from, to)`，舊的標 Deprecated |
+| T-22 | Low | 缺 doc：`NewDataTable`、`GetElementByNumberIndex`、`GetColByNumber`、`GetColByName`、`GetRowByName`、`NumRows`、`NumCols`、`Data`、`GetCreationTimestamp`、`GetLastModifiedTimestamp`、colname.go 前 6 個方法。`AppendRowsByColIndex` doc 標題寫成 `AppendRowsByIndex`；`ToJSON_Bytes` 的 Err 記成 `ToJSON_Byte`（準則 E） | 各檔 | 補 |
+| T-23 | Low | `SortBy` 的 `DataTableSortConfig` 零值 `ColumnNumber: 0` 無法與「沒指定」區分，空 config 會默默用第 0 欄排序；找不到欄時只 `LogWarning` 不設 Err | datatable_sort.go:7-40 | `ColumnNumber` 改 `*int` 或加 `HasColumnNumber` |
+| T-24 | OK | 設計較好、可當範本的部分：`Resample` 回傳 `error`；`Pivot`／`Unpivot` 同時回 error 與設 `Err()`；`GroupBy`／`Aggregate` 的 options struct 與 `AggregateOp.String()`；`SamplingOptions` 有 seed；`SummaryTo(io.Writer)`；Rolling／EWM 的表層包裝。這些是 v1 API 該長的樣子 | — | — |
+
 ## 逐項清單
 
 
@@ -173,34 +204,34 @@
 - [x] `const LogLevelFatal` (config.go:33) — K-1 Fatal 對程式庫是錯的等級
 - [x] `const LogLevelInfo` (config.go:29) — OK
 - [x] `const LogLevelWarning` (config.go:31) — K-3 被拿來代表失敗
-- [ ] `const MergeDirectionHorizontal MergeDirection` (datatable_merge.go:21)
-- [ ] `const MergeDirectionVertical` (datatable_merge.go:22)
-- [ ] `const MergeModeInner MergeMode` (datatable_merge.go:12)
-- [ ] `const MergeModeLeft` (datatable_merge.go:14)
-- [ ] `const MergeModeOuter` (datatable_merge.go:13)
-- [ ] `const MergeModeRight` (datatable_merge.go:15)
+- [x] `const MergeDirectionHorizontal MergeDirection` (datatable_merge.go:21) — OK
+- [x] `const MergeDirectionVertical` (datatable_merge.go:22) — OK
+- [x] `const MergeModeInner MergeMode` (datatable_merge.go:12) — OK
+- [x] `const MergeModeLeft` (datatable_merge.go:14) — OK
+- [x] `const MergeModeOuter` (datatable_merge.go:13) — OK
+- [x] `const MergeModeRight` (datatable_merge.go:15) — OK
 - [ ] `const NaNAsCategory NaNPolicy` (datatable_encode.go:16)
 - [ ] `const NaNError` (datatable_encode.go:18)
 - [ ] `const NaNSkip` (datatable_encode.go:20)
-- [ ] `const OpCountAll` (datatable_groupby.go:28)
-- [ ] `const OpCount` (datatable_groupby.go:26)
-- [ ] `const OpCustom` (datatable_groupby.go:44)
-- [ ] `const OpFirst` (datatable_groupby.go:38)
-- [ ] `const OpLast` (datatable_groupby.go:40)
-- [ ] `const OpMax` (datatable_groupby.go:24)
-- [ ] `const OpMean` (datatable_groupby.go:18)
-- [ ] `const OpMedian` (datatable_groupby.go:20)
-- [ ] `const OpMin` (datatable_groupby.go:22)
-- [ ] `const OpNUnique` (datatable_groupby.go:42)
-- [ ] `const OpStdevP` (datatable_groupby.go:32)
-- [ ] `const OpStdev` (datatable_groupby.go:30)
-- [ ] `const OpSum AggregateOp` (datatable_groupby.go:16)
-- [ ] `const OpVarP` (datatable_groupby.go:36)
-- [ ] `const OpVar` (datatable_groupby.go:34)
-- [ ] `const ResampleMonthly` (datatable_resample.go:14)
-- [ ] `const ResampleQuarterly` (datatable_resample.go:15)
-- [ ] `const ResampleWeekly ResampleFreq` (datatable_resample.go:13)
-- [ ] `const ResampleYearly` (datatable_resample.go:16)
+- [x] `const OpCountAll` (datatable_groupby.go:28) — OK
+- [x] `const OpCount` (datatable_groupby.go:26) — OK
+- [x] `const OpCustom` (datatable_groupby.go:44) — OK
+- [x] `const OpFirst` (datatable_groupby.go:38) — OK
+- [x] `const OpLast` (datatable_groupby.go:40) — OK
+- [x] `const OpMax` (datatable_groupby.go:24) — OK
+- [x] `const OpMean` (datatable_groupby.go:18) — OK
+- [x] `const OpMedian` (datatable_groupby.go:20) — OK
+- [x] `const OpMin` (datatable_groupby.go:22) — OK
+- [x] `const OpNUnique` (datatable_groupby.go:42) — OK
+- [x] `const OpStdevP` (datatable_groupby.go:32) — OK
+- [x] `const OpStdev` (datatable_groupby.go:30) — OK
+- [x] `const OpSum AggregateOp` (datatable_groupby.go:16) — OK 每個常數有 doc
+- [x] `const OpVarP` (datatable_groupby.go:36) — OK
+- [x] `const OpVar` (datatable_groupby.go:34) — OK
+- [x] `const ResampleMonthly` (datatable_resample.go:14) — OK
+- [x] `const ResampleQuarterly` (datatable_resample.go:15) — OK
+- [x] `const ResampleWeekly ResampleFreq` (datatable_resample.go:13) — OK（週日結束，同 pandas W）
+- [x] `const ResampleYearly` (datatable_resample.go:16) — OK
 - [ ] `const SQLActionIfTableExistsAppend` (datatable_to_sql.go:42)
 - [ ] `const SQLActionIfTableExistsFail SQLActionIfTableExists` (datatable_to_sql.go:40)
 - [ ] `const SQLActionIfTableExistsReplace` (datatable_to_sql.go:41)
@@ -325,145 +356,145 @@
 - [x] `func (dl *DataList) WeightedMean(weights any) float64` (datalist.go:1292) — D-10 `any`；D-4
 - [x] `func (dl *DataList) WeightedMovingAverage(windowSize int, weights any) *DataList` (datalist.go:880) — D-10、D-3、D-14
 - [ ] `func (dt *DataTable) AddColUsingCCL(newColName, cclFormula string) *DataTable` (datatable_ccl.go:13)
-- [ ] `func (dt *DataTable) AppendCols(columns ...*DataList) *DataTable` (datatable.go:69)
-- [ ] `func (dt *DataTable) AppendRowsByColIndex(rowsData ...map[string]any) *DataTable` (datatable.go:161)
-- [ ] `func (dt *DataTable) AppendRowsByColName(rowsData ...map[string]any) *DataTable` (datatable.go:219)
-- [ ] `func (dt *DataTable) AppendRowsFromDataList(rowsData ...*DataList) *DataTable` (datatable.go:116)
+- [x] `func (dt *DataTable) AppendCols(columns ...*DataList) *DataTable` (datatable.go:69) — OK 鎖法正確；同名自動改名不通知（T-14）
+- [x] `func (dt *DataTable) AppendRowsByColIndex(rowsData ...map[string]any) *DataTable` (datatable.go:161) — T-3 資料遺失（已實測）；T-22 doc 標題錯
+- [x] `func (dt *DataTable) AppendRowsByColName(rowsData ...map[string]any) *DataTable` (datatable.go:219) — OK；同名欄取第一個（T-14 相關）
+- [x] `func (dt *DataTable) AppendRowsFromDataList(rowsData ...*DataList) *DataTable` (datatable.go:116) — OK
 - [x] `func (dt *DataTable) AtomicDo(f func(*DataTable))` (atomic.go:64) — OK 語意清楚，文件把跨實例陷阱講明；K-16 檔內註解亂碼
-- [ ] `func (dt *DataTable) ChangeColName(oldName, newName string) *DataTable` (datatable_colname.go:48)
-- [ ] `func (dt *DataTable) ChangeRowName(oldName, newName string) *DataTable` (datatable_rowname.go:111)
-- [ ] `func (dt *DataTable) ClearErr() *DataTable` (datatable.go:1615)
-- [ ] `func (dt *DataTable) Clone() *DataTable` (datatable.go:1384)
+- [x] `func (dt *DataTable) ChangeColName(oldName, newName string) *DataTable` (datatable_colname.go:48) — OK 走 safeColName
+- [x] `func (dt *DataTable) ChangeRowName(oldName, newName string) *DataTable` (datatable_rowname.go:111) — T-9 Bug（已實測）
+- [x] `func (dt *DataTable) ClearErr() *DataTable` (datatable.go:1615) — OK
+- [x] `func (dt *DataTable) Clone() *DataTable` (datatable.go:1384) — OK 深拷貝；T-18 用 parallel.GroupUp
 - [x] `func (dt *DataTable) Close()` (atomic.go:79) — OK；doc 亂碼（K-16）；Close 後再用會怎樣未說明
-- [ ] `func (dt *DataTable) ColNames() []string` (datatable_colname.go:146)
-- [ ] `func (dt *DataTable) ColNamesToFirstRow() *DataTable` (datatable_colname.go:109)
-- [ ] `func (dt *DataTable) Count(value any) int` (datatable.go:1271)
-- [ ] `func (dt *DataTable) Counter() map[any]int` (datatable.go:1284)
-- [ ] `func (dt *DataTable) CumMaxCol(col string) *DataList` (datatable_window.go:89)
-- [ ] `func (dt *DataTable) CumMinCol(col string) *DataList` (datatable_window.go:98)
-- [ ] `func (dt *DataTable) CumProdCol(col string) *DataList` (datatable_window.go:80)
-- [ ] `func (dt *DataTable) CumSumCol(col string) *DataList` (datatable_window.go:71)
-- [ ] `func (dt *DataTable) Data(useNamesAsKeys ...bool) map[string][]any` (datatable.go:1232)
-- [ ] `func (dt *DataTable) Describe(options ...DescribeOptions) *DataTable` (datatable_describe.go:6)
-- [ ] `func (dt *DataTable) DiffCol(col string, periods int) *DataList` (datatable_window.go:45)
-- [ ] `func (dt *DataTable) DropColNames() *DataTable` (datatable_colname.go:128)
-- [ ] `func (dt *DataTable) DropColsByIndex(columnIndices ...string) *DataTable` (datatable.go:761)
-- [ ] `func (dt *DataTable) DropColsByName(columnNames ...string) *DataTable` (datatable.go:745)
-- [ ] `func (dt *DataTable) DropColsByNumber(columnIndices ...int) *DataTable` (datatable.go:780)
-- [ ] `func (dt *DataTable) DropColsContain(value ...any) *DataTable` (datatable.go:919)
-- [ ] `func (dt *DataTable) DropColsContainExcelNA() *DataTable` (datatable.go:953)
-- [ ] `func (dt *DataTable) DropColsContainNaN() *DataTable` (datatable.go:889)
-- [ ] `func (dt *DataTable) DropColsContainNil() *DataTable` (datatable.go:859)
-- [ ] `func (dt *DataTable) DropColsContainNumber() *DataTable` (datatable.go:826)
-- [ ] `func (dt *DataTable) DropColsContainString() *DataTable` (datatable.go:796)
-- [ ] `func (dt *DataTable) DropRowNames() *DataTable` (datatable_rowname.go:167)
-- [ ] `func (dt *DataTable) DropRowsByIndex(rowIndices ...int) *DataTable` (datatable.go:959)
-- [ ] `func (dt *DataTable) DropRowsByName(rowNames ...string) *DataTable` (datatable.go:985)
-- [ ] `func (dt *DataTable) DropRowsContain(value ...any) *DataTable` (datatable.go:1178)
-- [ ] `func (dt *DataTable) DropRowsContainExcelNA() *DataTable` (datatable.go:1225)
-- [ ] `func (dt *DataTable) DropRowsContainNaN() *DataTable` (datatable.go:1132)
-- [ ] `func (dt *DataTable) DropRowsContainNil() *DataTable` (datatable.go:1088)
-- [ ] `func (dt *DataTable) DropRowsContainNumber() *DataTable` (datatable.go:1049)
-- [ ] `func (dt *DataTable) DropRowsContainString() *DataTable` (datatable.go:1010)
-- [ ] `func (dt *DataTable) EWMCol(col string, opts EWMOptions) *EWMDataList` (datatable_window.go:128)
+- [x] `func (dt *DataTable) ColNames() []string` (datatable_colname.go:146) — OK
+- [x] `func (dt *DataTable) ColNamesToFirstRow() *DataTable` (datatable_colname.go:109) — OK
+- [x] `func (dt *DataTable) Count(value any) int` (datatable.go:1271) — T-18 無謂平行化與 float 轉 int
+- [x] `func (dt *DataTable) Counter() map[any]int` (datatable.go:1284) — T-21 與 DataList 重複；不可比較元素 panic（D-11）
+- [x] `func (dt *DataTable) CumMaxCol(col string) *DataList` (datatable_window.go:89) — OK
+- [x] `func (dt *DataTable) CumMinCol(col string) *DataList` (datatable_window.go:98) — OK
+- [x] `func (dt *DataTable) CumProdCol(col string) *DataList` (datatable_window.go:80) — OK
+- [x] `func (dt *DataTable) CumSumCol(col string) *DataList` (datatable_window.go:71) — OK
+- [x] `func (dt *DataTable) Data(useNamesAsKeys ...bool) map[string][]any` (datatable.go:1232) — T-2 內部 slice 外洩（已實測）；variadic bool（D-8）
+- [x] `func (dt *DataTable) Describe(options ...DescribeOptions) *DataTable` (datatable_describe.go:6) — OK；失敗回空表（D-3）
+- [x] `func (dt *DataTable) DiffCol(col string, periods int) *DataList` (datatable_window.go:45) — OK；nil 轉空 list 掩蓋失敗（D-3）
+- [x] `func (dt *DataTable) DropColNames() *DataTable` (datatable_colname.go:128) — OK；空表 warn 進 Err（D-5）
+- [x] `func (dt *DataTable) DropColsByIndex(columnIndices ...string) *DataTable` (datatable.go:761) — OK
+- [x] `func (dt *DataTable) DropColsByName(columnNames ...string) *DataTable` (datatable.go:745) — OK；同名只刪第一個（T-14）
+- [x] `func (dt *DataTable) DropColsByNumber(columnIndices ...int) *DataTable` (datatable.go:780) — OK；負索引不支援，與 GetColByNumber 不一致（Low）
+- [x] `func (dt *DataTable) DropColsContain(value ...any) *DataTable` (datatable.go:919) — OK；NaN 特判
+- [x] `func (dt *DataTable) DropColsContainExcelNA() *DataTable` (datatable.go:953) — OK 薄包裝
+- [x] `func (dt *DataTable) DropColsContainNaN() *DataTable` (datatable.go:889) — OK
+- [x] `func (dt *DataTable) DropColsContainNil() *DataTable` (datatable.go:859) — OK
+- [x] `func (dt *DataTable) DropColsContainNumber() *DataTable` (datatable.go:826) — T-7 不認 int64（已實測）
+- [x] `func (dt *DataTable) DropColsContainString() *DataTable` (datatable.go:796) — OK
+- [x] `func (dt *DataTable) DropRowNames() *DataTable` (datatable_rowname.go:167) — OK；D-5
+- [x] `func (dt *DataTable) DropRowsByIndex(rowIndices ...int) *DataTable` (datatable.go:959) — T-6 Bug（已實測）
+- [x] `func (dt *DataTable) DropRowsByName(rowNames ...string) *DataTable` (datatable.go:985) — OK
+- [x] `func (dt *DataTable) DropRowsContain(value ...any) *DataTable` (datatable.go:1178) — OK
+- [x] `func (dt *DataTable) DropRowsContainExcelNA() *DataTable` (datatable.go:1225) — OK
+- [x] `func (dt *DataTable) DropRowsContainNaN() *DataTable` (datatable.go:1132) — OK 單趟重建
+- [x] `func (dt *DataTable) DropRowsContainNil() *DataTable` (datatable.go:1088) — OK 單趟重建
+- [x] `func (dt *DataTable) DropRowsContainNumber() *DataTable` (datatable.go:1049) — T-7；O(n²) 逐列 append 刪除
+- [x] `func (dt *DataTable) DropRowsContainString() *DataTable` (datatable.go:1010) — O(n²) 逐列刪除（D-9）
+- [x] `func (dt *DataTable) EWMCol(col string, opts EWMOptions) *EWMDataList` (datatable_window.go:128) — OK 範本
 - [ ] `func (dt *DataTable) EditColByIndexUsingCCL(colIndex, cclFormula string) *DataTable` (datatable_ccl.go:63)
 - [ ] `func (dt *DataTable) EditColByNameUsingCCL(colName, cclFormula string) *DataTable` (datatable_ccl.go:100)
-- [ ] `func (dt *DataTable) Err() *ErrorInfo` (datatable.go:1609)
+- [x] `func (dt *DataTable) Err() *ErrorInfo` (datatable.go:1609) — OK；K-3/D-5
 - [ ] `func (dt *DataTable) ExecuteCCL(cclStatements string) *DataTable` (datatable_ccl.go:147)
-- [ ] `func (dt *DataTable) ExpandingCol(col string, minObs int) *ExpandingDataList` (datatable_window.go:118)
+- [x] `func (dt *DataTable) ExpandingCol(col string, minObs int) *ExpandingDataList` (datatable_window.go:118) — OK
 - [ ] `func (dt *DataTable) FillBackward(limit int, cols ...string) *DataTable` (datatable_impute.go:50)
 - [ ] `func (dt *DataTable) FillByInterpolation(cols ...string) *DataTable` (datatable_impute.go:88)
 - [ ] `func (dt *DataTable) FillForward(limit int, cols ...string) *DataTable` (datatable_impute.go:41)
 - [ ] `func (dt *DataTable) FillWithMean(cols ...string) *DataTable` (datatable_impute.go:58)
 - [ ] `func (dt *DataTable) FillWithMedian(cols ...string) *DataTable` (datatable_impute.go:69)
 - [ ] `func (dt *DataTable) FillWithMode(cols ...string) *DataTable` (datatable_impute.go:80)
-- [ ] `func (dt *DataTable) Filter(filterFunc func(rowIndex int, columnIndex string, value any) bool) *DataTable` (datatable_filters.go:334)
-- [ ] `func (dt *DataTable) FilterByCustomElement(filterFunc func(value any) bool) *DataTable` (datatable_filters.go:325)
-- [ ] `func (dt *DataTable) FilterCols(filterFunc func(rowIndex int, rowName string, x any) bool) *DataTable` (datatable_filters.go:398)
-- [ ] `func (dt *DataTable) FilterColsByColIndexEqualTo(columnIndexLetter string) *DataTable` (datatable_filters.go:62)
-- [ ] `func (dt *DataTable) FilterColsByColIndexGreaterThan(columnIndexLetter string) *DataTable` (datatable_filters.go:13)
-- [ ] `func (dt *DataTable) FilterColsByColIndexGreaterThanOrEqualTo(columnIndexLetter string) *DataTable` (datatable_filters.go:37)
-- [ ] `func (dt *DataTable) FilterColsByColIndexLessThan(columnIndexLetter string) *DataTable` (datatable_filters.go:87)
-- [ ] `func (dt *DataTable) FilterColsByColIndexLessThanOrEqualTo(columnIndexLetter string) *DataTable` (datatable_filters.go:112)
-- [ ] `func (dt *DataTable) FilterColsByColNameContains(substring string) *DataTable` (datatable_filters.go:169)
-- [ ] `func (dt *DataTable) FilterColsByColNameEqualTo(columnName string) *DataTable` (datatable_filters.go:139)
-- [ ] `func (dt *DataTable) FilterRows(filterFunc func(colIndex, colName string, x any) bool) *DataTable` (datatable_filters.go:462)
-- [ ] `func (dt *DataTable) FilterRowsByRowIndexEqualTo(index int) *DataTable` (datatable_filters.go:208)
-- [ ] `func (dt *DataTable) FilterRowsByRowIndexGreaterThan(threshold int) *DataTable` (datatable_filters.go:194)
-- [ ] `func (dt *DataTable) FilterRowsByRowIndexGreaterThanOrEqualTo(threshold int) *DataTable` (datatable_filters.go:201)
-- [ ] `func (dt *DataTable) FilterRowsByRowIndexLessThan(threshold int) *DataTable` (datatable_filters.go:215)
-- [ ] `func (dt *DataTable) FilterRowsByRowIndexLessThanOrEqualTo(threshold int) *DataTable` (datatable_filters.go:222)
-- [ ] `func (dt *DataTable) FilterRowsByRowNameContains(substring string) *DataTable` (datatable_filters.go:249)
-- [ ] `func (dt *DataTable) FilterRowsByRowNameEqualTo(rowName string) *DataTable` (datatable_filters.go:231)
-- [ ] `func (dt *DataTable) FindColsIfAllElementsContainSubstring(substring string) []string` (datatable.go:717)
-- [ ] `func (dt *DataTable) FindColsIfAnyElementContainsSubstring(substring string) []string` (datatable.go:691)
-- [ ] `func (dt *DataTable) FindColsIfContains(value any) []string` (datatable.go:652)
-- [ ] `func (dt *DataTable) FindColsIfContainsAll(values ...any) []string` (datatable.go:667)
-- [ ] `func (dt *DataTable) FindRowsIfAllElementsContainSubstring(substring string) []int` (datatable.go:626)
-- [ ] `func (dt *DataTable) FindRowsIfAnyElementContainsSubstring(substring string) []int` (datatable.go:606)
-- [ ] `func (dt *DataTable) FindRowsIfContains(value any) []int` (datatable.go:547)
-- [ ] `func (dt *DataTable) FindRowsIfContainsAll(values ...any) []int` (datatable.go:574)
-- [ ] `func (dt *DataTable) GetCol(index string) *DataList` (datatable.go:297)
-- [ ] `func (dt *DataTable) GetColByName(name string) *DataList` (datatable.go:337)
-- [ ] `func (dt *DataTable) GetColByNumber(index int) *DataList` (datatable.go:319)
-- [ ] `func (dt *DataTable) GetColIndexByName(name string) string` (datatable_colindex.go:6)
-- [ ] `func (dt *DataTable) GetColIndexByNumber(number int) string` (datatable_colindex.go:19)
-- [ ] `func (dt *DataTable) GetColNameByIndex(index string) string` (datatable_colname.go:83)
-- [ ] `func (dt *DataTable) GetColNameByNumber(index int) string` (datatable_colname.go:66)
-- [ ] `func (dt *DataTable) GetColNumberByName(name string) int` (datatable_colname.go:97)
-- [ ] `func (dt *DataTable) GetCreationTimestamp() int64` (datatable.go:1591)
-- [ ] `func (dt *DataTable) GetElement(rowIndex int, columnIndex string) any` (datatable.go:258)
-- [ ] `func (dt *DataTable) GetElementByNumberIndex(rowIndex int, columnIndex int) any` (datatable.go:280)
-- [ ] `func (dt *DataTable) GetLastModifiedTimestamp() int64` (datatable.go:1595)
-- [ ] `func (dt *DataTable) GetName() string` (datatable_name.go:6)
-- [ ] `func (dt *DataTable) GetRow(index int) *DataList` (datatable.go:355)
-- [ ] `func (dt *DataTable) GetRowByName(name string) *DataList` (datatable.go:383)
-- [ ] `func (dt *DataTable) GetRowIndexByName(name string) (int, bool)` (datatable_rowname.go:88)
-- [ ] `func (dt *DataTable) GetRowNameByIndex(index int) (string, bool)` (datatable_rowname.go:57)
-- [ ] `func (dt *DataTable) GroupBy(keyCols ...string) *GroupedDataTable` (datatable_groupby.go:152)
-- [ ] `func (dt *DataTable) Headers() []string` (datatable_colname.go:159)
+- [x] `func (dt *DataTable) Filter(filterFunc func(rowIndex int, columnIndex string, value any) bool) *DataTable` (datatable_filters.go:334) — T-13 任一格子符合即留列；資料有複製：OK
+- [x] `func (dt *DataTable) FilterByCustomElement(filterFunc func(value any) bool) *DataTable` (datatable_filters.go:325) — T-13 與 Filter 重複
+- [x] `func (dt *DataTable) FilterCols(filterFunc func(rowIndex int, rowName string, x any) bool) *DataTable` (datatable_filters.go:398) — T-4 共用 rowNames；T-5 以第一欄當列數
+- [x] `func (dt *DataTable) FilterColsByColIndexEqualTo(columnIndexLetter string) *DataTable` (datatable_filters.go:62) — T-4 共用欄位、T-5 &DataTable{}、T-21
+- [x] `func (dt *DataTable) FilterColsByColIndexGreaterThan(columnIndexLetter string) *DataTable` (datatable_filters.go:13) — T-4、T-5、T-21
+- [x] `func (dt *DataTable) FilterColsByColIndexGreaterThanOrEqualTo(columnIndexLetter string) *DataTable` (datatable_filters.go:37) — T-4、T-5、T-21
+- [x] `func (dt *DataTable) FilterColsByColIndexLessThan(columnIndexLetter string) *DataTable` (datatable_filters.go:87) — T-4、T-5、T-21；同上越界風險
+- [x] `func (dt *DataTable) FilterColsByColIndexLessThanOrEqualTo(columnIndexLetter string) *DataTable` (datatable_filters.go:112) — T-4、T-5、T-21；索引越界時 `dt.columns[:colIdx+1]` 會 panic（推論）
+- [x] `func (dt *DataTable) FilterColsByColNameContains(substring string) *DataTable` (datatable_filters.go:169) — T-4、T-5
+- [x] `func (dt *DataTable) FilterColsByColNameEqualTo(columnName string) *DataTable` (datatable_filters.go:139) — T-4（已實測共用）、T-5（已實測 panic）
+- [x] `func (dt *DataTable) FilterRows(filterFunc func(colIndex, colName string, x any) bool) *DataTable` (datatable_filters.go:462) — T-13 任一格子；T-5 jagged panic（已實測）
+- [x] `func (dt *DataTable) FilterRowsByRowIndexEqualTo(index int) *DataTable` (datatable_filters.go:208) — T-21；經 Filter
+- [x] `func (dt *DataTable) FilterRowsByRowIndexGreaterThan(threshold int) *DataTable` (datatable_filters.go:194) — T-21
+- [x] `func (dt *DataTable) FilterRowsByRowIndexGreaterThanOrEqualTo(threshold int) *DataTable` (datatable_filters.go:201) — T-21
+- [x] `func (dt *DataTable) FilterRowsByRowIndexLessThan(threshold int) *DataTable` (datatable_filters.go:215) — T-21
+- [x] `func (dt *DataTable) FilterRowsByRowIndexLessThanOrEqualTo(threshold int) *DataTable` (datatable_filters.go:222) — T-21
+- [x] `func (dt *DataTable) FilterRowsByRowNameContains(substring string) *DataTable` (datatable_filters.go:249) — OK 複製；rowNames nil 有防護
+- [x] `func (dt *DataTable) FilterRowsByRowNameEqualTo(rowName string) *DataTable` (datatable_filters.go:231) — OK
+- [x] `func (dt *DataTable) FindColsIfAllElementsContainSubstring(substring string) []string` (datatable.go:717) — T-19 非字串視為符合；T-18 遞迴 contains
+- [x] `func (dt *DataTable) FindColsIfAnyElementContainsSubstring(substring string) []string` (datatable.go:691) — T-18
+- [x] `func (dt *DataTable) FindColsIfContains(value any) []string` (datatable.go:652) — T-19 每欄 warn
+- [x] `func (dt *DataTable) FindColsIfContainsAll(values ...any) []string` (datatable.go:667) — T-19
+- [x] `func (dt *DataTable) FindRowsIfAllElementsContainSubstring(substring string) []int` (datatable.go:626) — T-19 非字串視為符合
+- [x] `func (dt *DataTable) FindRowsIfAnyElementContainsSubstring(substring string) []int` (datatable.go:606) — T-18
+- [x] `func (dt *DataTable) FindRowsIfContains(value any) []int` (datatable.go:547) — OK；經 DataList.FindAll，空欄 warn（D-5）
+- [x] `func (dt *DataTable) FindRowsIfContainsAll(values ...any) []int` (datatable.go:574) — OK；`==` 對 NaN 無效（D-11）
+- [x] `func (dt *DataTable) GetCol(index string) *DataList` (datatable.go:297) — T-11 ToUpper 後退回名稱（已實測）
+- [x] `func (dt *DataTable) GetColByName(name string) *DataList` (datatable.go:337) — OK 回 Clone；找不到 warn（D-5）；T-22 無 doc
+- [x] `func (dt *DataTable) GetColByNumber(index int) *DataList` (datatable.go:319) — OK；T-22 無 doc
+- [x] `func (dt *DataTable) GetColIndexByName(name string) string` (datatable_colindex.go:6) — OK；找不到 warn（D-5）
+- [x] `func (dt *DataTable) GetColIndexByNumber(number int) string` (datatable_colindex.go:19) — OK
+- [x] `func (dt *DataTable) GetColNameByIndex(index string) string` (datatable_colname.go:83) — OK
+- [x] `func (dt *DataTable) GetColNameByNumber(index int) string` (datatable_colname.go:66) — OK；T-22 無 doc
+- [x] `func (dt *DataTable) GetColNumberByName(name string) int` (datatable_colname.go:97) — 回 -1 且 warn；與 GetRowIndexByName 的 (int,bool) 不一致（D-6）
+- [x] `func (dt *DataTable) GetCreationTimestamp() int64` (datatable.go:1591) — D-12 Unix 秒；T-22
+- [x] `func (dt *DataTable) GetElement(rowIndex int, columnIndex string) any` (datatable.go:258) — OK；越界 warn（D-5）
+- [x] `func (dt *DataTable) GetElementByNumberIndex(rowIndex int, columnIndex int) any` (datatable.go:280) — T-1 panic（已實測）
+- [x] `func (dt *DataTable) GetLastModifiedTimestamp() int64` (datatable.go:1595) — D-12
+- [x] `func (dt *DataTable) GetName() string` (datatable_name.go:6) — OK
+- [x] `func (dt *DataTable) GetRow(index int) *DataList` (datatable.go:355) — OK 補 nil
+- [x] `func (dt *DataTable) GetRowByName(name string) *DataList` (datatable.go:383) — 跳過短欄而非補 nil，與 GetRow 不一致（Low）；T-22
+- [x] `func (dt *DataTable) GetRowIndexByName(name string) (int, bool)` (datatable_rowname.go:88) — OK (int,bool) 是正確形狀；找不到 warn（D-5）
+- [x] `func (dt *DataTable) GetRowNameByIndex(index int) (string, bool)` (datatable_rowname.go:57) — OK
+- [x] `func (dt *DataTable) GroupBy(keyCols ...string) *GroupedDataTable` (datatable_groupby.go:152) — OK 設計；T-16 淺拷貝快照；T-17 int/float key 分家
+- [x] `func (dt *DataTable) Headers() []string` (datatable_colname.go:159) — T-21 別名
 - [ ] `func (dt *DataTable) LabelEncode(opts LabelEncodeOptions) (*DataTable, *LabelEncoder, error)` (datatable_encode.go:137)
-- [ ] `func (dt *DataTable) Map(mapFunc func(rowIndex int, colIndex string, element any) any) *DataTable` (datatable_map.go:8)
+- [x] `func (dt *DataTable) Map(mapFunc func(rowIndex int, colIndex string, element any) any) *DataTable` (datatable_map.go:8) — OK；T-18 每格取鎖；recover 保留原值（與 DataList.Map 一致）
 - [ ] `func (dt *DataTable) MaxAbsScale(cols ...string) (*DataTable, *MaxAbsScaler, error)` (datatable_scale.go:148)
-- [ ] `func (dt *DataTable) Mean() any` (datatable.go:1324)
-- [ ] `func (dt *DataTable) Merge(other IDataTable, direction MergeDirection, mode MergeMode, on ...string) (*DataTable, error)` (datatable_merge.go:29)
+- [x] `func (dt *DataTable) Mean() any` (datatable.go:1324) — T-10 回 any、分母捏造（已實測）
+- [x] `func (dt *DataTable) Merge(other IDataTable, direction MergeDirection, mode MergeMode, on ...string) (*DataTable, error)` (datatable_merge.go:29) — OK 回 error；`on ...string` 0/1/2 個有各自語意（D-8）；T-15；欄名衝突後綴 `_other` 不可設定（pandas suffixes）
 - [ ] `func (dt *DataTable) MinMaxScale(featureMin, featureMax float64, cols ...string) (*DataTable, *MinMaxScaler, error)` (datatable_scale.go:128)
-- [ ] `func (dt *DataTable) NumCols() int` (datatable.go:1315)
-- [ ] `func (dt *DataTable) NumRows() int` (datatable.go:1307)
+- [x] `func (dt *DataTable) NumCols() int` (datatable.go:1315) — OK；T-22
+- [x] `func (dt *DataTable) NumRows() int` (datatable.go:1307) — OK；T-22
 - [ ] `func (dt *DataTable) OneHotEncode(opts OneHotOptions) (*DataTable, *OneHotEncoder, error)` (datatable_encode.go:124)
 - [ ] `func (dt *DataTable) OrdinalEncode(opts OrdinalEncodeOptions) (*DataTable, *OrdinalEncoder, error)` (datatable_encode.go:150)
 - [x] `func (dt *DataTable) ParseDatesCols(cols []string, layouts ...string) *DataTable` (datalist_dates.go:46) — OK；找不到的欄位跳過並 warn（部分成功，doc 有寫）
-- [ ] `func (dt *DataTable) PctChangeCol(col string, periods int) *DataList` (datatable_window.go:58)
-- [ ] `func (dt *DataTable) Pivot(cfg PivotConfig) (*DataTable, error)` (datatable_pivot.go:101)
-- [ ] `func (dt *DataTable) Replace(oldValue, newValue any) *DataTable` (datatable_replace.go:11)
-- [ ] `func (dt *DataTable) ReplaceInCol(colIndex string, oldValue, newValue any, mode ...int) *DataTable` (datatable_replace.go:133)
-- [ ] `func (dt *DataTable) ReplaceInRow(rowIndex int, oldValue, newValue any, mode ...int) *DataTable` (datatable_replace.go:52)
-- [ ] `func (dt *DataTable) ReplaceNaNsAndNilsInCol(colIndex string, newValue any, mode ...int) *DataTable` (datatable_replace.go:193)
-- [ ] `func (dt *DataTable) ReplaceNaNsAndNilsInRow(rowIndex int, newValue any, mode ...int) *DataTable` (datatable_replace.go:112)
-- [ ] `func (dt *DataTable) ReplaceNaNsAndNilsWith(newValue any) *DataTable` (datatable_replace.go:35)
-- [ ] `func (dt *DataTable) ReplaceNaNsInCol(colIndex string, newValue any, mode ...int) *DataTable` (datatable_replace.go:153)
-- [ ] `func (dt *DataTable) ReplaceNaNsInRow(rowIndex int, newValue any, mode ...int) *DataTable` (datatable_replace.go:72)
-- [ ] `func (dt *DataTable) ReplaceNaNsWith(newValue any) *DataTable` (datatable_replace.go:19)
-- [ ] `func (dt *DataTable) ReplaceNilsInCol(colIndex string, newValue any, mode ...int) *DataTable` (datatable_replace.go:173)
-- [ ] `func (dt *DataTable) ReplaceNilsInRow(rowIndex int, newValue any, mode ...int) *DataTable` (datatable_replace.go:92)
-- [ ] `func (dt *DataTable) ReplaceNilsWith(newValue any) *DataTable` (datatable_replace.go:27)
-- [ ] `func (dt *DataTable) Resample(timeCol string, freq ResampleFreq, aggs ...ResampleAgg) (*DataTable, error)` (datatable_resample.go:30)
+- [x] `func (dt *DataTable) PctChangeCol(col string, periods int) *DataList` (datatable_window.go:58) — 同 DiffCol
+- [x] `func (dt *DataTable) Pivot(cfg PivotConfig) (*DataTable, error)` (datatable_pivot.go:101) — OK：error + Err 雙通道；T-17 AggFunc 字串；FillNA 語意清楚
+- [x] `func (dt *DataTable) Replace(oldValue, newValue any) *DataTable` (datatable_replace.go:11) — OK
+- [x] `func (dt *DataTable) ReplaceInCol(colIndex string, oldValue, newValue any, mode ...int) *DataTable` (datatable_replace.go:133) — T-11 名稱被當索引（已實測）；T-20
+- [x] `func (dt *DataTable) ReplaceInRow(rowIndex int, oldValue, newValue any, mode ...int) *DataTable` (datatable_replace.go:52) — T-20 mode 魔數；錯誤經 Err：OK
+- [x] `func (dt *DataTable) ReplaceNaNsAndNilsInCol(colIndex string, newValue any, mode ...int) *DataTable` (datatable_replace.go:193) — T-11、T-20；NaN 只認 float64
+- [x] `func (dt *DataTable) ReplaceNaNsAndNilsInRow(rowIndex int, newValue any, mode ...int) *DataTable` (datatable_replace.go:112) — T-20；NaN 只認 float64
+- [x] `func (dt *DataTable) ReplaceNaNsAndNilsWith(newValue any) *DataTable` (datatable_replace.go:35) — OK 用 isNilOrNaN
+- [x] `func (dt *DataTable) ReplaceNaNsInCol(colIndex string, newValue any, mode ...int) *DataTable` (datatable_replace.go:153) — T-11、T-20
+- [x] `func (dt *DataTable) ReplaceNaNsInRow(rowIndex int, newValue any, mode ...int) *DataTable` (datatable_replace.go:72) — T-20
+- [x] `func (dt *DataTable) ReplaceNaNsWith(newValue any) *DataTable` (datatable_replace.go:19) — OK
+- [x] `func (dt *DataTable) ReplaceNilsInCol(colIndex string, newValue any, mode ...int) *DataTable` (datatable_replace.go:173) — T-11、T-20
+- [x] `func (dt *DataTable) ReplaceNilsInRow(rowIndex int, newValue any, mode ...int) *DataTable` (datatable_replace.go:92) — T-20
+- [x] `func (dt *DataTable) ReplaceNilsWith(newValue any) *DataTable` (datatable_replace.go:27) — OK
+- [x] `func (dt *DataTable) Resample(timeCol string, freq ResampleFreq, aggs ...ResampleAgg) (*DataTable, error)` (datatable_resample.go:30) — OK：回 error、參數驗證完整（T-24 範本）；period end 以各列 Location 計算，混合時區會分組異常（Low）
 - [ ] `func (dt *DataTable) RobustScale(cols ...string) (*DataTable, *RobustScaler, error)` (datatable_scale.go:138)
-- [ ] `func (dt *DataTable) RollingCol(col string, opts RollingOptions) *RollingDataList` (datatable_window.go:109)
-- [ ] `func (dt *DataTable) RowNames() []string` (datatable_rowname.go:184)
-- [ ] `func (dt *DataTable) RowNamesToFirstCol() *DataTable` (datatable_rowname.go:134)
-- [ ] `func (dt *DataTable) Sample(n int, withReplacement bool, options ...SamplingOptions) *DataTable` (datatable_sampling.go:142)
-- [ ] `func (dt *DataTable) SampleFrac(frac float64, withReplacement bool, options ...SamplingOptions) *DataTable` (datatable_sampling.go:163)
-- [ ] `func (dt *DataTable) SetColNameByIndex(index string, name string) *DataTable` (datatable_colname.go:3)
-- [ ] `func (dt *DataTable) SetColNameByNumber(numberIndex int, name string) *DataTable` (datatable_colname.go:27)
-- [ ] `func (dt *DataTable) SetColNames(colNames []string) *DataTable` (datatable_colname.go:163)
-- [ ] `func (dt *DataTable) SetColToRowNames(columnIndex string) *DataTable` (datatable.go:508)
-- [ ] `func (dt *DataTable) SetHeaders(headers []string) *DataTable` (datatable_colname.go:187)
-- [ ] `func (dt *DataTable) SetName(name string) *DataTable` (datatable_name.go:15)
-- [ ] `func (dt *DataTable) SetRowNameByIndex(index int, name string) *DataTable` (datatable_rowname.go:16)
-- [ ] `func (dt *DataTable) SetRowNames(rowNames []string) *DataTable` (datatable_rowname.go:201)
-- [ ] `func (dt *DataTable) SetRowToColNames(rowIndex int) *DataTable` (datatable.go:527)
-- [ ] `func (dt *DataTable) ShiftCol(col string, periods int, fill ...any) *DataList` (datatable_window.go:36)
+- [x] `func (dt *DataTable) RollingCol(col string, opts RollingOptions) *RollingDataList` (datatable_window.go:109) — OK 範本
+- [x] `func (dt *DataTable) RowNames() []string` (datatable_rowname.go:184) — OK
+- [x] `func (dt *DataTable) RowNamesToFirstCol() *DataTable` (datatable_rowname.go:134) — OK（註解記錄了先前的 bug 修法）
+- [x] `func (dt *DataTable) Sample(n int, withReplacement bool, options ...SamplingOptions) *DataTable` (datatable_sampling.go:142) — OK 設計；失敗回空表（D-3）；改名 _Sampled（D-15）
+- [x] `func (dt *DataTable) SampleFrac(frac float64, withReplacement bool, options ...SamplingOptions) *DataTable` (datatable_sampling.go:163) — 同 Sample
+- [x] `func (dt *DataTable) SetColNameByIndex(index string, name string) *DataTable` (datatable_colname.go:3) — OK；T-22 無 doc
+- [x] `func (dt *DataTable) SetColNameByNumber(numberIndex int, name string) *DataTable` (datatable_colname.go:27) — OK
+- [x] `func (dt *DataTable) SetColNames(colNames []string) *DataTable` (datatable_colname.go:163) — T-14 自動加欄（已實測）
+- [x] `func (dt *DataTable) SetColToRowNames(columnIndex string) *DataTable` (datatable.go:508) — T-1 panic（已實測）
+- [x] `func (dt *DataTable) SetHeaders(headers []string) *DataTable` (datatable_colname.go:187) — T-21 別名
+- [x] `func (dt *DataTable) SetName(name string) *DataTable` (datatable_name.go:15) — OK
+- [x] `func (dt *DataTable) SetRowNameByIndex(index int, name string) *DataTable` (datatable_rowname.go:16) — OK；doc 完整（範本）
+- [x] `func (dt *DataTable) SetRowNames(rowNames []string) *DataTable` (datatable_rowname.go:201) — OK
+- [x] `func (dt *DataTable) SetRowToColNames(rowIndex int) *DataTable` (datatable.go:527) — T-1 panic（已實測）
+- [x] `func (dt *DataTable) ShiftCol(col string, periods int, fill ...any) *DataList` (datatable_window.go:36) — OK 薄包裝；找不到欄回空 list（D-18）
 - [ ] `func (dt *DataTable) Show()` (show.go:40)
 - [ ] `func (dt *DataTable) ShowRange(startEnd ...any)` (show.go:63)
 - [ ] `func (dt *DataTable) ShowRangeTo(w io.Writer, startEnd ...any)` (show.go:69)
@@ -472,33 +503,33 @@
 - [ ] `func (dt *DataTable) ShowTypesRange(startEnd ...any)` (show.go:460)
 - [ ] `func (dt *DataTable) ShowTypesRangeTo(w io.Writer, startEnd ...any)` (show.go:466)
 - [ ] `func (dt *DataTable) ShowTypesTo(w io.Writer)` (show.go:443)
-- [ ] `func (dt *DataTable) Shuffle(options ...SamplingOptions) *DataTable` (datatable_sampling.go:177)
-- [ ] `func (dt *DataTable) SimpleRandomSample(sampleSize int) *DataTable` (datatable_sampling.go:228)
-- [ ] `func (dt *DataTable) Size() (numRows int, numCols int)` (datatable.go:1298)
-- [ ] `func (dt *DataTable) SortBy(configs ...DataTableSortConfig) *DataTable` (datatable_sort.go:17)
+- [x] `func (dt *DataTable) Shuffle(options ...SamplingOptions) *DataTable` (datatable_sampling.go:177) — 同 Sample
+- [x] `func (dt *DataTable) SimpleRandomSample(sampleSize int) *DataTable` (datatable_sampling.go:228) — 已 Deprecated：OK
+- [x] `func (dt *DataTable) Size() (numRows int, numCols int)` (datatable.go:1298) — OK
+- [x] `func (dt *DataTable) SortBy(configs ...DataTableSortConfig) *DataTable` (datatable_sort.go:17) — T-23 零值 config；演算法（cycle→swap）已驗算正確
 - [ ] `func (dt *DataTable) StandardScale(cols ...string) (*DataTable, *StandardScaler, error)` (datatable_scale.go:118)
-- [ ] `func (dt *DataTable) Summary()` (datatable_summary.go:16)
-- [ ] `func (dt *DataTable) SummaryTo(w io.Writer)` (datatable_summary.go:23)
-- [ ] `func (dt *DataTable) SwapColsByIndex(columnIndex1 string, columnIndex2 string) *DataTable` (datatable_swap.go:47)
-- [ ] `func (dt *DataTable) SwapColsByName(columnName1 string, columnName2 string) *DataTable` (datatable_swap.go:12)
-- [ ] `func (dt *DataTable) SwapColsByNumber(columnNumber1 int, columnNumber2 int) *DataTable` (datatable_swap.go:70)
-- [ ] `func (dt *DataTable) SwapRowsByIndex(rowIndex1 int, rowIndex2 int) *DataTable` (datatable_swap.go:111)
-- [ ] `func (dt *DataTable) SwapRowsByName(rowName1 string, rowName2 string) *DataTable` (datatable_swap.go:143)
-- [ ] `func (dt *DataTable) To2DSlice() [][]any` (datatable.go:1413)
-- [ ] `func (dt *DataTable) ToCSV(filePath string, setRowNamesToFirstCol bool, setColNamesToFirstRow bool, includeBOM bool) error` (datatable_csv.go:14)
-- [ ] `func (dt *DataTable) ToJSON(filePath string, useColNames bool) error` (datatable_json.go:58)
-- [ ] `func (dt *DataTable) ToJSON_Bytes(useColNames bool) []byte` (datatable_json.go:85)
-- [ ] `func (dt *DataTable) ToJSON_String(useColNames bool) string` (datatable_json.go:102)
-- [ ] `func (dt *DataTable) ToMap(useNamesAsKeys ...bool) map[string][]any` (datatable.go:1264)
+- [x] `func (dt *DataTable) Summary()` (datatable_summary.go:16) — OK 委派 SummaryTo
+- [x] `func (dt *DataTable) SummaryTo(w io.Writer)` (datatable_summary.go:23) — OK 範本
+- [x] `func (dt *DataTable) SwapColsByIndex(columnIndex1 string, columnIndex2 string) *DataTable` (datatable_swap.go:47) — OK
+- [x] `func (dt *DataTable) SwapColsByName(columnName1 string, columnName2 string) *DataTable` (datatable_swap.go:12) — OK
+- [x] `func (dt *DataTable) SwapColsByNumber(columnNumber1 int, columnNumber2 int) *DataTable` (datatable_swap.go:70) — OK 支援負索引
+- [x] `func (dt *DataTable) SwapRowsByIndex(rowIndex1 int, rowIndex2 int) *DataTable` (datatable_swap.go:111) — OK；jagged 補 nil
+- [x] `func (dt *DataTable) SwapRowsByName(rowName1 string, rowName2 string) *DataTable` (datatable_swap.go:143) — OK；rowNames 為 nil 時 panic（T-5）
+- [x] `func (dt *DataTable) To2DSlice() [][]any` (datatable.go:1413) — OK 複製
+- [x] `func (dt *DataTable) ToCSV(filePath string, setRowNamesToFirstCol bool, setColNamesToFirstRow bool, includeBOM bool) error` (datatable_csv.go:14) — T-12 時間格式、三個 bool、無 Writer 版
+- [x] `func (dt *DataTable) ToJSON(filePath string, useColNames bool) error` (datatable_json.go:58) — OK 回 error
+- [x] `func (dt *DataTable) ToJSON_Bytes(useColNames bool) []byte` (datatable_json.go:85) — T-12 NaN 回 nil（已實測）；K-13 底線命名
+- [x] `func (dt *DataTable) ToJSON_String(useColNames bool) string` (datatable_json.go:102) — T-12；K-13
+- [x] `func (dt *DataTable) ToMap(useNamesAsKeys ...bool) map[string][]any` (datatable.go:1264) — T-2 別名同樣外洩
 - [ ] `func (dt *DataTable) ToSQL(db *gorm.DB, tableName string, options ...ToSQLOptions) error` (datatable_to_sql.go:48)
 - [ ] `func (dt *DataTable) ToSQLContext(ctx context.Context, db *gorm.DB, tableName string, options ...ToSQLOptions) error` (datatable_to_sql.go:57)
-- [ ] `func (dt *DataTable) TrainTestSplit(trainFrac float64, options ...SamplingOptions) (*DataTable, *DataTable)` (datatable_sampling.go:188)
-- [ ] `func (dt *DataTable) Transpose() *DataTable` (datatable.go:1341)
-- [ ] `func (dt *DataTable) Unpivot(cfg UnpivotConfig) (*DataTable, error)` (datatable_pivot.go:329)
-- [ ] `func (dt *DataTable) UpdateCol(index string, dl *DataList) *DataTable` (datatable.go:431)
-- [ ] `func (dt *DataTable) UpdateColByNumber(index int, dl *DataList) *DataTable` (datatable.go:453)
-- [ ] `func (dt *DataTable) UpdateElement(rowIndex int, columnIndex string, value any) *DataTable` (datatable.go:409)
-- [ ] `func (dt *DataTable) UpdateRow(index int, dl *DataList) *DataTable` (datatable.go:476)
+- [x] `func (dt *DataTable) TrainTestSplit(trainFrac float64, options ...SamplingOptions) (*DataTable, *DataTable)` (datatable_sampling.go:188) — OK 設計（PreserveOrder、seed）；失敗回兩個空表（D-3）
+- [x] `func (dt *DataTable) Transpose() *DataTable` (datatable.go:1341) — T-8 Bug（已實測）+ 原地未說明
+- [x] `func (dt *DataTable) Unpivot(cfg UnpivotConfig) (*DataTable, error)` (datatable_pivot.go:329) — OK
+- [x] `func (dt *DataTable) UpdateCol(index string, dl *DataList) *DataTable` (datatable.go:431) — OK 鎖兩者並複製
+- [x] `func (dt *DataTable) UpdateColByNumber(index int, dl *DataList) *DataTable` (datatable.go:453) — OK
+- [x] `func (dt *DataTable) UpdateElement(rowIndex int, columnIndex string, value any) *DataTable` (datatable.go:409) — OK；欄不存在 warn 後仍 updateTimestamp（Low）
+- [x] `func (dt *DataTable) UpdateRow(index int, dl *DataList) *DataTable` (datatable.go:476) — OK；dl 較短時只更新前段，doc 未說（Low）
 - [x] `func (e *EWMDataList) Mean() *DataList` (datalist_ewm.go:85) — OK
 - [x] `func (e *EWMDataList) Std() *DataList` (datalist_ewm.go:99) — OK
 - [x] `func (e *EWMDataList) Var() *DataList` (datalist_ewm.go:93) — OK
@@ -534,41 +565,41 @@
 - [ ] `func (e *OrdinalEncoder) SourceColumn() string` (datatable_encode.go:354)
 - [ ] `func (e *OrdinalEncoder) Transform(dt *DataTable) (*DataTable, error)` (datatable_encode.go:321)
 - [x] `func (e ErrorInfo) Error() string` (error_buffer.go:32) — OK 實作 error 介面
-- [ ] `func (g *GroupedDataTable) Aggregate(configs ...AggregateConfig) *DataTable` (datatable_groupby.go:286)
-- [ ] `func (g *GroupedDataTable) AggregateAll(op AggregateOp) *DataTable` (datatable_groupby.go:350)
-- [ ] `func (g *GroupedDataTable) Count() *DataTable` (datatable_groupby.go:393)
-- [ ] `func (g *GroupedDataTable) CumMaxCol(col string) *GroupedColumnTransform` (datatable_groupby_window.go:179)
-- [ ] `func (g *GroupedDataTable) CumMinCol(col string) *GroupedColumnTransform` (datatable_groupby_window.go:191)
-- [ ] `func (g *GroupedDataTable) CumProdCol(col string) *GroupedColumnTransform` (datatable_groupby_window.go:167)
-- [ ] `func (g *GroupedDataTable) CumSumCol(col string) *GroupedColumnTransform` (datatable_groupby_window.go:155)
-- [ ] `func (g *GroupedDataTable) Describe(options ...DescribeOptions) *DataTable` (datatable_groupby_describe.go:5)
-- [ ] `func (g *GroupedDataTable) DiffCol(col string, periods int) *GroupedColumnTransform` (datatable_groupby_window.go:131)
-- [ ] `func (g *GroupedDataTable) ExpandingCol(col string, minObs int) *GroupedExpandingCol` (datatable_groupby_window.go:296)
-- [ ] `func (g *GroupedDataTable) PctChangeCol(col string, periods int) *GroupedColumnTransform` (datatable_groupby_window.go:143)
-- [ ] `func (g *GroupedDataTable) RollingCol(col string, opts RollingOptions) *GroupedRollingCol` (datatable_groupby_window.go:216)
-- [ ] `func (g *GroupedDataTable) ShiftCol(col string, periods int, fill ...any) *GroupedColumnTransform` (datatable_groupby_window.go:119)
-- [ ] `func (ge *GroupedExpandingCol) Max() *GroupedColumnTransform` (datatable_groupby_window.go:334)
-- [ ] `func (ge *GroupedExpandingCol) Mean() *GroupedColumnTransform` (datatable_groupby_window.go:322)
-- [ ] `func (ge *GroupedExpandingCol) Median() *GroupedColumnTransform` (datatable_groupby_window.go:340)
-- [ ] `func (ge *GroupedExpandingCol) Min() *GroupedColumnTransform` (datatable_groupby_window.go:328)
-- [ ] `func (ge *GroupedExpandingCol) Std() *GroupedColumnTransform` (datatable_groupby_window.go:346)
-- [ ] `func (ge *GroupedExpandingCol) Sum() *GroupedColumnTransform` (datatable_groupby_window.go:316)
-- [ ] `func (ge *GroupedExpandingCol) Var() *GroupedColumnTransform` (datatable_groupby_window.go:352)
-- [ ] `func (gr *GroupedRollingCol) Apply(fn func(window []any) any) *GroupedColumnTransform` (datatable_groupby_window.go:278)
-- [ ] `func (gr *GroupedRollingCol) Max() *GroupedColumnTransform` (datatable_groupby_window.go:254)
-- [ ] `func (gr *GroupedRollingCol) Mean() *GroupedColumnTransform` (datatable_groupby_window.go:242)
-- [ ] `func (gr *GroupedRollingCol) Median() *GroupedColumnTransform` (datatable_groupby_window.go:260)
-- [ ] `func (gr *GroupedRollingCol) Min() *GroupedColumnTransform` (datatable_groupby_window.go:248)
-- [ ] `func (gr *GroupedRollingCol) Std() *GroupedColumnTransform` (datatable_groupby_window.go:266)
-- [ ] `func (gr *GroupedRollingCol) Sum() *GroupedColumnTransform` (datatable_groupby_window.go:236)
-- [ ] `func (gr *GroupedRollingCol) Var() *GroupedColumnTransform` (datatable_groupby_window.go:272)
+- [x] `func (g *GroupedDataTable) Aggregate(configs ...AggregateConfig) *DataTable` (datatable_groupby.go:286) — OK；錯誤設在 parent.Err 並回空表（D-3）；OpSum 等繼承 D-4 Med 跳過語意
+- [x] `func (g *GroupedDataTable) AggregateAll(op AggregateOp) *DataTable` (datatable_groupby.go:350) — OK
+- [x] `func (g *GroupedDataTable) Count() *DataTable` (datatable_groupby.go:393) — OK
+- [x] `func (g *GroupedDataTable) CumMaxCol(col string) *GroupedColumnTransform` (datatable_groupby_window.go:179) — OK
+- [x] `func (g *GroupedDataTable) CumMinCol(col string) *GroupedColumnTransform` (datatable_groupby_window.go:191) — OK
+- [x] `func (g *GroupedDataTable) CumProdCol(col string) *GroupedColumnTransform` (datatable_groupby_window.go:167) — OK
+- [x] `func (g *GroupedDataTable) CumSumCol(col string) *GroupedColumnTransform` (datatable_groupby_window.go:155) — OK
+- [x] `func (g *GroupedDataTable) Describe(options ...DescribeOptions) *DataTable` (datatable_groupby_describe.go:5) — OK
+- [x] `func (g *GroupedDataTable) DiffCol(col string, periods int) *GroupedColumnTransform` (datatable_groupby_window.go:131) — OK；nil 轉空 list 掩蓋失敗（D-3）
+- [x] `func (g *GroupedDataTable) ExpandingCol(col string, minObs int) *GroupedExpandingCol` (datatable_groupby_window.go:296) — OK
+- [x] `func (g *GroupedDataTable) PctChangeCol(col string, periods int) *GroupedColumnTransform` (datatable_groupby_window.go:143) — 同 DiffCol
+- [x] `func (g *GroupedDataTable) RollingCol(col string, opts RollingOptions) *GroupedRollingCol` (datatable_groupby_window.go:216) — OK 範本
+- [x] `func (g *GroupedDataTable) ShiftCol(col string, periods int, fill ...any) *GroupedColumnTransform` (datatable_groupby_window.go:119) — OK 薄包裝；找不到欄回空 list（D-18）
+- [x] `func (ge *GroupedExpandingCol) Max() *GroupedColumnTransform` (datatable_groupby_window.go:334) — OK 薄包裝，語意同 DataList 版
+- [x] `func (ge *GroupedExpandingCol) Mean() *GroupedColumnTransform` (datatable_groupby_window.go:322) — T-10 回 any、分母捏造（已實測）
+- [x] `func (ge *GroupedExpandingCol) Median() *GroupedColumnTransform` (datatable_groupby_window.go:340) — OK 薄包裝，語意同 DataList 版
+- [x] `func (ge *GroupedExpandingCol) Min() *GroupedColumnTransform` (datatable_groupby_window.go:328) — OK 薄包裝，語意同 DataList 版
+- [x] `func (ge *GroupedExpandingCol) Std() *GroupedColumnTransform` (datatable_groupby_window.go:346) — OK 薄包裝，語意同 DataList 版
+- [x] `func (ge *GroupedExpandingCol) Sum() *GroupedColumnTransform` (datatable_groupby_window.go:316) — OK 薄包裝，語意同 DataList 版
+- [x] `func (ge *GroupedExpandingCol) Var() *GroupedColumnTransform` (datatable_groupby_window.go:352) — OK 薄包裝，語意同 DataList 版
+- [x] `func (gr *GroupedRollingCol) Apply(fn func(window []any) any) *GroupedColumnTransform` (datatable_groupby_window.go:278) — OK 薄包裝，語意同 DataList 版
+- [x] `func (gr *GroupedRollingCol) Max() *GroupedColumnTransform` (datatable_groupby_window.go:254) — OK 薄包裝，語意同 DataList 版
+- [x] `func (gr *GroupedRollingCol) Mean() *GroupedColumnTransform` (datatable_groupby_window.go:242) — T-10 回 any、分母捏造（已實測）
+- [x] `func (gr *GroupedRollingCol) Median() *GroupedColumnTransform` (datatable_groupby_window.go:260) — OK 薄包裝，語意同 DataList 版
+- [x] `func (gr *GroupedRollingCol) Min() *GroupedColumnTransform` (datatable_groupby_window.go:248) — OK 薄包裝，語意同 DataList 版
+- [x] `func (gr *GroupedRollingCol) Std() *GroupedColumnTransform` (datatable_groupby_window.go:266) — OK 薄包裝，語意同 DataList 版
+- [x] `func (gr *GroupedRollingCol) Sum() *GroupedColumnTransform` (datatable_groupby_window.go:236) — OK 薄包裝，語意同 DataList 版
+- [x] `func (gr *GroupedRollingCol) Var() *GroupedColumnTransform` (datatable_groupby_window.go:272) — OK 薄包裝，語意同 DataList 版
 - [ ] `func (i *SimpleImputer) Fit(dt *DataTable, cols ...string) error` (datatable_simple_imputer.go:82)
 - [ ] `func (i *SimpleImputer) FitTransform(dt *DataTable, cols ...string) (*DataTable, error)` (datatable_simple_imputer.go:138)
 - [ ] `func (i *SimpleImputer) Kind() string` (datatable_simple_imputer.go:57)
 - [ ] `func (i *SimpleImputer) Params() map[string]ScalerParams` (datatable_simple_imputer.go:65)
 - [ ] `func (i *SimpleImputer) Transform(dt *DataTable) (*DataTable, error)` (datatable_simple_imputer.go:146)
 - [x] `func (l LogLevel) String() string` (error_buffer.go:37) — OK；放在 error_buffer.go 不在 config.go，找不到（Low）
-- [ ] `func (o AggregateOp) String() string` (datatable_groupby.go:48)
+- [x] `func (o AggregateOp) String() string` (datatable_groupby.go:48) — OK
 - [x] `func (r *RollingDataList) Apply(fn func(window []any) any) *DataList` (datalist_window.go:435) — OK；MinObs 以數值計、傳給 fn 的是原始 window：doc 有寫
 - [x] `func (r *RollingDataList) Beta(other *DataList) *DataList` (datalist_window.go:544) — OK
 - [x] `func (r *RollingDataList) Corr(other *DataList) *DataList` (datalist_window.go:528) — OK；`pearson` 回 any 而非 float64（內部，Low）
@@ -582,7 +613,7 @@
 - [x] `func (r *RollingDataList) Var() *DataList` (datalist_window.go:421) — OK
 - [x] `func (s *DataList) AtomicDo(f func(*DataList))` (atomic.go:29) — 同 DataTable.AtomicDo；receiver 名 `s` 與其他方法的 `dl` 不一致（Low）
 - [x] `func (s *DataList) Close()` (atomic.go:44) — 同 DataTable.Close
-- [ ] `func (t *GroupedColumnTransform) As(name string) *DataList` (datatable_groupby_window.go:28)
+- [x] `func (t *GroupedColumnTransform) As(name string) *DataList` (datatable_groupby_window.go:28) — OK；錯誤時回空 list（D-18）
 - [x] `func AtomicDoAll(f func(), instances ...any)` (atomic.go:109) — K-8 `...any` 且型別錯誤時靜默不鎖
 - [x] `func CalcColIndex(colNumber int) (colIndex string, ok bool)` (utils.go:249) — OK 功能；K-13 命名不對稱
 - [x] `func ClearErrors()` (error_buffer.go:195) — K-4（保留候選）
@@ -600,7 +631,7 @@
 - [x] `func LogInfo(packageName, funcName, msg string, args ...any)` (logger.go:60) — K-17；預設開啟造成成功路徑噪音（C-9 的根源）
 - [x] `func LogWarning(packageName, funcName, msg string, args ...any)` (logger.go:27) — K-17；同時 pushError（K-4、K-5）
 - [x] `func NewDataList(values ...any) *DataList` (datalist.go:81) — OK；遞迴攤平巢狀 slice 是驚喜行為但 doc 有寫；typed slice 直接可用是好的體驗
-- [ ] `func NewDataTable(columns ...*DataList) *DataTable` (datatable.go:47)
+- [x] `func NewDataTable(columns ...*DataList) *DataTable` (datatable.go:47) — OK；T-22 無 doc
 - [ ] `func NewDefaultMinMaxScaler() *MinMaxScaler` (datatable_scale.go:109)
 - [ ] `func NewMaxAbsScaler() *MaxAbsScaler` (datatable_scale.go:115)
 - [ ] `func NewMinMaxScaler(featureMin, featureMax float64) *MinMaxScaler` (datatable_scale.go:104)
@@ -633,13 +664,13 @@
 - [x] `func SliceToF64(input []any) []float64` (utils.go:28) — K-2 捏造零值且 stats 仍在用
 - [x] `func SortTimes(times []time.Time)` (utils.go:255) — K-15
 - [x] `func SqrtRat(x *big.Rat) *big.Rat` (utils.go:90) — K-15
-- [ ] `type AggregateConfig struct { SourceCol string As string Op AggregateOp Custom func(group *DataList) any }` (datatable_groupby.go:85)
-- [ ] `type AggregateOp int` (datatable_groupby.go:12)
+- [x] `type AggregateConfig struct { SourceCol string As string Op AggregateOp Custom func(group *DataList) any }` (datatable_groupby.go:85) — OK 欄位 doc 完整
+- [x] `type AggregateOp int` (datatable_groupby.go:12) — OK 有 String()
 - [x] `type CSVReadOptions struct { FirstColToRowNames bool FirstRowToColNames bool Encoding string RawStrings bool AllowRaggedRows bool TrimLeadingSpace bool }` (read.go:93) — OK 零值可用、欄位有 doc：這是套件內最合格的 options struct，其他地方應比照
 - [x] `type DataList struct { data []any name string creationTimestamp int64 lastModifiedTimestamp atomic.Int64 atomicActor core.AtomicActor lastError *ErrorInfo }` (datalist.go:25) — OK；欄位全私有
 - [ ] `type DataListScaler interface { FitDataList(dl *DataList) error TransformDataList(dl *DataList) (*DataList, error) FitTransformDataList(dl *DataList) (*DataList, error) InverseTransformDataList(dl *DataList) (*DataList, error) }` (datatable_scale.go:52)
-- [ ] `type DataTable struct { columns []*DataList rowNames *core.BiIndex name string creationTimestamp int64 lastModifiedTimestamp atomic.Int64 atomicActor core.AtomicActor lastError *ErrorInfo }` (datatable.go:33)
-- [ ] `type DataTableSortConfig struct { ColumnIndex string ColumnNumber int ColumnName string Descending bool }` (datatable_sort.go:7)
+- [x] `type DataTable struct { columns []*DataList rowNames *core.BiIndex name string creationTimestamp int64 lastModifiedTimestamp atomic.Int64 atomicActor core.AtomicActor lastError *ErrorInfo }` (datatable.go:33) — OK 欄位私有
+- [x] `type DataTableSortConfig struct { ColumnIndex string ColumnNumber int ColumnName string Descending bool }` (datatable_sort.go:7) — T-23 零值歧義
 - [x] `type DescribeOptions struct { Percentiles []float64 IncludeAll bool }` (describe_options.go:13) — OK；D-13 尺度
 - [x] `type EWMDataList struct { srcData []any srcName string opts EWMOptions alpha float64 parent *DataList err string }` (datalist_ewm.go:19) — OK；`err string` 應為 error（Low）
 - [x] `type EWMOptions struct { Alpha float64 Span float64 HalfLife float64 Adjust bool Bias bool MinObs int }` (datalist_ewm.go:8) — OK 範本
@@ -648,10 +679,10 @@
 - [x] `type ErrorInfo struct { Level LogLevel PackageName string FuncName string Message string Timestamp time.Time }` (error_buffer.go:23) — OK；`Level` 用 LogLevel 而非 error 等級（K-3）
 - [x] `type ExpandingDataList struct { srcData []any srcName string minObs int parent *DataList err string }` (datalist_window.go:561) — OK
 - [x] `type F64orRat = utils.F64orRat` (utils.go:20) — K-15 internal 介面的匯出別名
-- [ ] `type GroupedColumnTransform struct { parent *GroupedDataTable sourceCol int sourceLabel string perGroupFn func(group *DataList) *DataList err string }` (datatable_groupby_window.go:17)
-- [ ] `type GroupedDataTable struct { parent *DataTable keyColNumbers []int keyColLabels []string columnsSnapshot []*DataList rowsByGroup map[string][]int groupOrder []string groupKeyValues map[string][]any initErr string }` (datatable_groupby.go:106)
-- [ ] `type GroupedExpandingCol struct { parent *GroupedDataTable sourceCol int sourceLabel string minObs int err string }` (datatable_groupby_window.go:286)
-- [ ] `type GroupedRollingCol struct { parent *GroupedDataTable sourceCol int sourceLabel string opts RollingOptions err string }` (datatable_groupby_window.go:206)
+- [x] `type GroupedColumnTransform struct { parent *GroupedDataTable sourceCol int sourceLabel string perGroupFn func(group *DataList) *DataList err string }` (datatable_groupby_window.go:17) — OK；`.As(name)` 終端設計清楚
+- [x] `type GroupedDataTable struct { parent *DataTable keyColNumbers []int keyColLabels []string columnsSnapshot []*DataList rowsByGroup map[string][]int groupOrder []string groupKeyValues map[string][]any initErr string }` (datatable_groupby.go:106) — OK；doc 明講非並行安全
+- [x] `type GroupedExpandingCol struct { parent *GroupedDataTable sourceCol int sourceLabel string minObs int err string }` (datatable_groupby_window.go:286) — OK
+- [x] `type GroupedRollingCol struct { parent *GroupedDataTable sourceCol int sourceLabel string opts RollingOptions err string }` (datatable_groupby_window.go:206) — OK
 - [x] `type IDataList interface { AtomicDo(func(*DataList)) GetCreationTimestamp() int64 GetLastModifiedTimestamp() int64 updateTimestamp() GetName() string SetName(string) *DataList Data() []any Append(values ...any) *DataList Concat(other IDataList) *DataList AppendDataList(other IDataList) *DataList Get(index int) any Clone() *DataList Count(value any) int Counter() map[any]int Update(index int, value any) *DataList InsertAt(index int, value any) *DataList FindFirst(any) any FindLast(any) any FindAll(any) []int Filter(func(any) bool) *DataList ReplaceFirst(any, any) *DataList ReplaceLast(any, any) *DataList ReplaceAll(any, any) *DataList ReplaceOutliers(float64, float64) *DataList Pop() any Drop(index int) *DataList DropAll(...any) *DataList DropIfContains(string) *DataList Clear() *DataList ClearStrings() *DataList ClearNumbers() *DataList ClearNaNs() *DataList ClearNils() *DataList ClearNilsAndNaNs() *DataList ClearOutliers(float64) *DataList ReplaceNaNsWith(any) *DataList ReplaceNilsWith(any) *DataList ReplaceNaNsAndNilsWith(any) *DataList Normalize() *DataList Standardize() *DataList FillNaNWithMean() *DataList FillWithMean() *DataList FillForward(limit ...int) *DataList FillBackward(limit ...int) *DataList FillWithMedian() *DataList FillWithMode() *DataList FillByInterpolation(extrapolate ...bool) *DataList MovingAverage(int) *DataList WeightedMovingAverage(int, any) *DataList ExponentialSmoothing(float64) *DataList DoubleExponentialSmoothing(float64, float64) *DataList EWM(EWMOptions) *EWMDataList MovingStdev(int) *DataList Len() int Sample(n int, withReplacement bool, options ...SamplingOptions) *DataList SampleFrac(frac float64, withReplacement bool, options ...SamplingOptions) *DataList Shuffle(options ...SamplingOptions) *DataList Sort(ascending ...bool) *DataList Map(mapFunc func(int, any) any) *DataList Rank(ascending ...bool) *DataList Reverse() *DataList Upper() *DataList Lower() *DataList Capitalize() *DataList Sum() float64 Max() float64 Min() float64 Mean() float64 WeightedMean(weights any) float64 GMean() float64 Median() float64 Mode() []float64 MAD() float64 Stdev() float64 StdevP() float64 Var() float64 VarP() float64 Range() float64 Quartile(int) float64 IQR() float64 Percentile(float64) float64 Difference() *DataList Describe(...DescribeOptions) *DataTable Summary() Err() *ErrorInfo ClearErr() *DataList IsEqualTo(*DataList) bool IsTheSameAs(*DataList) bool Show() ShowRange(startEnd ...any) ShowTypes() ShowTypesRange(startEnd ...any) ParseNumbers() *DataList ParseStrings() *DataList ParseDates(layouts ...string) *DataList ToF64Slice() []float64 ToStringSlice() []string LinearInterpolation(float64) float64 QuadraticInterpolation(float64) float64 LagrangeInterpolation(float64) float64 NearestNeighborInterpolation(float64) float64 NewtonInterpolation(float64) float64 HermiteInterpolation(float64, []float64) float64 }` (interfaces.go:6) — K-7 不可實作、過大；`Capitalize() *DataList // Statistics` 註解錯位
 - [x] `type IDataTable interface { AtomicDo(func(*DataTable)) AppendCols(columns ...*DataList) *DataTable AppendRowsFromDataList(rowsData ...*DataList) *DataTable AppendRowsByColIndex(rowsData ...map[string]any) *DataTable AppendRowsByColName(rowsData ...map[string]any) *DataTable GetElement(rowIndex int, columnIndex string) any GetElementByNumberIndex(rowIndex int, columnIndex int) any GetCol(index string) *DataList GetColByNumber(index int) *DataList GetColByName(name string) *DataList GetRow(index int) *DataList GetRowByName(name string) *DataList UpdateElement(rowIndex int, columnIndex string, value any) *DataTable UpdateCol(index string, dl *DataList) *DataTable UpdateColByNumber(index int, dl *DataList) *DataTable UpdateRow(index int, dl *DataList) *DataTable SetColToRowNames(columnIndex string) *DataTable SetRowToColNames(rowIndex int) *DataTable ChangeColName(oldName, newName string) *DataTable GetColNameByNumber(index int) string GetColIndexByName(name string) string GetColIndexByNumber(number int) string GetColNumberByName(name string) int SetColNameByIndex(index string, name string) *DataTable SetColNameByNumber(numberIndex int, name string) *DataTable ColNamesToFirstRow() *DataTable DropColNames() *DataTable ColNames() []string Headers() []string SetColNames(colNames []string) *DataTable SetHeaders(headers []string) *DataTable FindRowsIfContains(value any) []int FindRowsIfContainsAll(values ...any) []int FindRowsIfAnyElementContainsSubstring(substring string) []int FindRowsIfAllElementsContainSubstring(substring string) []int FindColsIfContains(value any) []string FindColsIfContainsAll(values ...any) []string FindColsIfAnyElementContainsSubstring(substring string) []string FindColsIfAllElementsContainSubstring(substring string) []string DropColsByName(columnNames ...string) *DataTable DropColsByIndex(columnIndices ...string) *DataTable DropColsByNumber(columnIndices ...int) *DataTable DropColsContainString() *DataTable DropColsContainNumber() *DataTable DropColsContainNil() *DataTable DropColsContainNaN() *DataTable DropColsContain(value ...any) *DataTable DropColsContainExcelNA() *DataTable DropRowsByIndex(rowIndices ...int) *DataTable DropRowsByName(rowNames ...string) *DataTable DropRowsContainString() *DataTable DropRowsContainNumber() *DataTable DropRowsContainNil() *DataTable DropRowsContainNaN() *DataTable DropRowsContain(value ...any) *DataTable DropRowsContainExcelNA() *DataTable Data(useNamesAsKeys ...bool) map[string][]any ToMap(useNamesAsKeys ...bool) map[string][]any Show() ShowTypes() ShowRange(startEnd ...any) ShowTypesRange(startEnd ...any) GetRowIndexByName(name string) (int, bool) GetRowNameByIndex(index int) (string, bool) SetRowNameByIndex(index int, name string) *DataTable ChangeRowName(oldName, newName string) *DataTable RowNamesToFirstCol() *DataTable DropRowNames() *DataTable RowNames() []string SetRowNames(rowNames []string) *DataTable GetCreationTimestamp() int64 GetLastModifiedTimestamp() int64 getRowNameByIndex(index int) (string, bool) getMaxColLength() int updateTimestamp() GetName() string SetName(name string) *DataTable Size() (numRows int, numCols int) NumRows() int NumCols() int Count(value any) int Mean() any Describe(...DescribeOptions) *DataTable Summary() Err() *ErrorInfo ClearErr() *DataTable Transpose() *DataTable Clone() *DataTable To2DSlice() [][]any SimpleRandomSample(sampleSize int) *DataTable Sample(n int, withReplacement bool, options ...SamplingOptions) *DataTable SampleFrac(frac float64, withReplacement bool, options ...SamplingOptions) *DataTable Shuffle(options ...SamplingOptions) *DataTable TrainTestSplit(trainFrac float64, options ...SamplingOptions) (*DataTable, *DataTable) Map(mapFunc func(rowIndex int, colIndex string, element any) any) *DataTable SortBy(configs ...DataTableSortConfig) *DataTable Filter(filterFunc func(rowIndex int, columnIndex string, value any) bool) *DataTable FilterByCustomElement(f func(value any) bool) *DataTable FilterRows(filterFunc func(colIndex, colName string, x any) bool) *DataTable FilterCols(filterFunc func(rowIndex int, rowName string, x any) bool) *DataTable FilterColsByColIndexGreaterThan(threshold string) *DataTable FilterColsByColIndexGreaterThanOrEqualTo(threshold string) *DataTable FilterColsByColIndexLessThan(threshold string) *DataTable FilterColsByColIndexLessThanOrEqualTo(threshold string) *DataTable FilterColsByColIndexEqualTo(index string) *DataTable FilterColsByColNameEqualTo(name string) *DataTable FilterColsByColNameContains(substring string) *DataTable FilterRowsByRowNameEqualTo(name string) *DataTable FilterRowsByRowNameContains(substring string) *DataTable FilterRowsByRowIndexGreaterThan(threshold int) *DataTable FilterRowsByRowIndexGreaterThanOrEqualTo(threshold int) *DataTable FilterRowsByRowIndexLessThan(threshold int) *DataTable FilterRowsByRowIndexLessThanOrEqualTo(threshold int) *DataTable FilterRowsByRowIndexEqualTo(index int) *DataTable SwapColsByName(columnName1 string, columnName2 string) *DataTable SwapColsByIndex(columnIndex1 string, columnIndex2 string) *DataTable SwapColsByNumber(columnNumber1 int, columnNumber2 int) *DataTable SwapRowsByIndex(rowIndex1 int, rowIndex2 int) *DataTable SwapRowsByName(rowName1 string, rowName2 string) *DataTable ToCSV(filePath string, setRowNamesToFirstCol bool, setColNamesToFirstRow bool, includeBOM bool) error ToJSON(filePath string, useColNames bool) error ToJSON_Bytes(useColNames bool) []byte ToJSON_String(useColNames bool) string ToSQL(db *gorm.DB, tableName string, options ...ToSQLOptions) error Merge(other IDataTable, direction MergeDirection, mode MergeMode, on ...string) (*DataTable, error) EWMCol(string, EWMOptions) *EWMDataList Resample(string, ResampleFreq, ...ResampleAgg) (*DataTable, error) ParseDatesCols(cols []string, layouts ...string) *DataTable AddColUsingCCL(newColName, ccl string) *DataTable Replace(oldValue, newValue any) *DataTable ReplaceNaNsWith(newValue any) *DataTable ReplaceNilsWith(newValue any) *DataTable ReplaceNaNsAndNilsWith(newValue any) *DataTable FillForward(int, ...string) *DataTable FillBackward(int, ...string) *DataTable FillWithMean(...string) *DataTable FillWithMedian(...string) *DataTable FillWithMode(...string) *DataTable FillByInterpolation(...string) *DataTable OneHotEncode(opts OneHotOptions) (*DataTable, *OneHotEncoder, error) LabelEncode(opts LabelEncodeOptions) (*DataTable, *LabelEncoder, error) OrdinalEncode(opts OrdinalEncodeOptions) (*DataTable, *OrdinalEncoder, error) StandardScale(cols ...string) (*DataTable, *StandardScaler, error) MinMaxScale(featureMin, featureMax float64, cols ...string) (*DataTable, *MinMaxScaler, error) RobustScale(cols ...string) (*DataTable, *RobustScaler, error) MaxAbsScale(cols ...string) (*DataTable, *MaxAbsScaler, error) ReplaceInRow(rowIndex int, oldValue, newValue any, mode ...int) *DataTable ReplaceNaNsInRow(rowIndex int, newValue any, mode ...int) *DataTable ReplaceNilsInRow(rowIndex int, newValue any, mode ...int) *DataTable ReplaceNaNsAndNilsInRow(rowIndex int, newValue any, mode ...int) *DataTable ReplaceInCol(colIndex string, oldValue, newValue any, mode ...int) *DataTable ReplaceNaNsInCol(colIndex string, newValue any, mode ...int) *DataTable ReplaceNilsInCol(colIndex string, newValue any, mode ...int) *DataTable ReplaceNaNsAndNilsInCol(colIndex string, newValue any, mode ...int) *DataTable }` (interfaces.go:121) — K-7；`Mean() any` 回 any（DataTable 段再審）
 - [ ] `type ImputationStrategy string` (datatable_simple_imputer.go:11)
@@ -660,31 +691,31 @@
 - [ ] `type LabelSort int` (datatable_encode.go:36)
 - [x] `type LogLevel int` (config.go:23) — K-3 缺 Error
 - [ ] `type MaxAbsScaler struct{ scaler }` (datatable_scale.go:98)
-- [ ] `type MergeDirection int` (datatable_merge.go:18)
-- [ ] `type MergeMode int` (datatable_merge.go:9)
+- [x] `type MergeDirection int` (datatable_merge.go:18) — OK
+- [x] `type MergeMode int` (datatable_merge.go:9) — OK；命名 pandas 用 how=inner/outer/left/right，語意一致
 - [ ] `type MinMaxScaler struct{ scaler }` (datatable_scale.go:90)
 - [ ] `type NaNPolicy int` (datatable_encode.go:12)
 - [ ] `type OneHotEncoder struct { opts OneHotOptions columns []oneHotColumnState outputColumns []string }` (datatable_encode.go:87)
 - [ ] `type OneHotOptions struct { Columns []string DropFirst bool HandleNaN NaNPolicy Unknown UnknownPolicy Prefix string Separator string KeepOriginal bool SortCategories bool }` (datatable_encode.go:48)
 - [ ] `type OrdinalEncodeOptions struct { Column string Order []any NewColumn string HandleNaN NaNPolicy Unknown UnknownPolicy KeepOriginal bool }` (datatable_encode.go:70)
 - [ ] `type OrdinalEncoder struct { opts OrdinalEncodeOptions sourceRef string sourceName string encodedName string classes []any keyToID map[string]int }` (datatable_encode.go:114)
-- [ ] `type PivotConfig struct { Index []string Columns string Values string AggFunc string Custom func(group *DataList) any FillNA any SortCols bool }` (datatable_pivot.go:26)
+- [x] `type PivotConfig struct { Index []string Columns string Values string AggFunc string Custom func(group *DataList) any FillNA any SortCols bool }` (datatable_pivot.go:26) — OK doc 完整；T-17 AggFunc 字串
 - [ ] `type ReadSQLChunk struct { Table *DataTable Err error }` (datatable_from_sql.go:97)
 - [ ] `type ReadSQLOptions struct { RowNameColumn string IndexCol string Query string Params []any Columns []string Schema string Limit int Offset int WhereClause string OrderBy string ParseDates []string DType map[string]reflect.Type ChunkSize int }` (datatable_from_sql.go:19)
-- [ ] `type ResampleAgg struct { Col string Op AggregateOp As string }` (datatable_resample.go:21)
-- [ ] `type ResampleFreq int` (datatable_resample.go:10)
+- [x] `type ResampleAgg struct { Col string Op AggregateOp As string }` (datatable_resample.go:21) — OK
+- [x] `type ResampleFreq int` (datatable_resample.go:10) — OK
 - [ ] `type RobustScaler struct{ scaler }` (datatable_scale.go:94)
 - [x] `type RollingDataList struct { srcData []any srcName string opts RollingOptions parent *DataList err string }` (datalist_window.go:208) — OK
 - [x] `type RollingOptions struct { Window int MinObs int Center bool Weights []float64 }` (datalist_window.go:196) — OK 範本
 - [ ] `type SQLActionIfTableExists int` (datatable_to_sql.go:37)
-- [ ] `type SamplingOptions struct { Seed uint64 UseSeed bool PreserveOrder bool }` (datatable_sampling.go:14)
+- [x] `type SamplingOptions struct { Seed uint64 UseSeed bool PreserveOrder bool }` (datatable_sampling.go:14) — OK；`UseSeed bool` + `Seed` 可用 `*uint64` 取代（Low）
 - [ ] `type Scaler interface { Fit(dt *DataTable, cols ...string) error Transform(dt *DataTable) (*DataTable, error) FitTransform(dt *DataTable, cols ...string) (*DataTable, error) InverseTransform(dt *DataTable) (*DataTable, error) Params() map[string]ScalerParams Kind() string }` (datatable_scale.go:42)
 - [ ] `type ScalerParams struct { Column string Kind string Replacement any PassThrough bool Mean float64 Std float64 Min float64 Max float64 Median float64 Q1 float64 Q3 float64 IQR float64 MaxAbs float64 OutputMin float64 OutputMax float64 }` (datatable_scale.go:12)
 - [ ] `type SimpleImputer struct { strategy ImputationStrategy constant any constantArgs int columns []simpleImputerColumn fitted bool }` (datatable_simple_imputer.go:25)
 - [ ] `type StandardScaler struct{ scaler }` (datatable_scale.go:87)
 - [ ] `type ToSQLOptions struct { IfExists SQLActionIfTableExists RowNames bool ColumnTypes map[string]string Schema string BatchSize int }` (datatable_to_sql.go:20)
 - [ ] `type UnknownPolicy int` (datatable_encode.go:24)
-- [ ] `type UnpivotConfig struct { IDVars []string ValueVars []string VarName string ValueName string DropNA bool }` (datatable_pivot.go:71)
+- [x] `type UnpivotConfig struct { IDVars []string ValueVars []string VarName string ValueName string DropNA bool }` (datatable_pivot.go:71) — OK
 - [x] `var Config *configStruct` (config.go:21) — K-6 型別未匯出、欄位非 atomic
 - [x] `var ReadSlice2D` (read.go:22) — K-12 可被覆寫的 var、重複命名
 - [x] `var ToFloat64Safe` (utils.go:23) — K-12
