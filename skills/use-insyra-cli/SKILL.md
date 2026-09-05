@@ -167,6 +167,13 @@ insyra show report
 # Multi-key + count shorthand
 insyra groupby sales by region,product agg revenue:sum count as report2
 
+# Time series: exponentially weighted stats, paired rolling stats, calendar resampling
+insyra ewm price span 12 mean adjust yes as ema12          # decay: alpha | span | halflife (pick one)
+insyra ewm returns halflife 5 std minobs 3 as ewvol
+insyra rolling asset 20 beta benchmark minobs 10 as roll_beta   # cov/beta take a second DataList
+insyra fetch yahoo AAPL history as bars
+insyra resample bars Date monthly Open:first High:max Low:min Close:last:MonthClose Volume:sum as monthly_bars
+
 # Programmatic summaries that can be saved
 insyra describe sales all true as summary
 insyra describe sales by region percentiles 0.1,0.5,0.9 as region_summary
@@ -203,6 +210,12 @@ insyra regression poisson y x1 x2
 ```
 
 `groupby <var> by <col1>[,<col2>...] agg <col>:<op>[:<alias>] [<col>:<op>[:<alias>] ...] [as <var>]` produces a new DataTable with one row per unique key combination. Supported ops: `sum`, `mean` (alias `avg`), `median`, `min`, `max`, `count` (non-nil), `countall` (group size), `std`/`stdev`, `stdp`/`stdevp`, `var`, `varp`, `first`, `last`, `nunique`. The bare token `count` is shorthand for `:countall:count`.
+
+`ewm <var> alpha|span|halflife <value> mean|var|std [adjust yes|no] [bias yes|no] [minobs <n>] [as <var>]` returns a same-length DataList. Give exactly one decay keyword: `alpha` in `(0, 1]`, `span >= 1`, or `halflife > 0`. `adjust`/`bias` default to no, `minobs` to 1.
+
+`rolling` also accepts `cov <other>` and `beta <other>`, which consume the next token as a second DataList variable before the usual `minobs` / `center` / `as` options. `beta` is `Cov(var, other) / Var(other)` and yields nil on a flat benchmark window.
+
+`resample <dt> <timecol> weekly|monthly|quarterly|yearly <col>:<op>[:<name>] [...] [as <var>]` aggregates time-keyed rows into calendar periods, labelling each row with the period's final day and omitting empty periods. `op` uses the `groupby` operator names; `:name` renames the output column, and without it the source name is kept. `<timecol>` must hold real `time.Time` values — a CSV load leaves dates as strings and `resample` rejects them with a row-numbered error.
 
 `describe <var> [by <col1>[,<col2>...]] [all true|false] [percentiles <p1,p2,...>] [as <var>]` creates a reusable summary DataTable. Without `as`, it saves to `$result`. `all true` includes non-numeric and mixed columns; `by` is DataTable-only and returns one row per group.
 

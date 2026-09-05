@@ -526,9 +526,20 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 - Example: `insyra cummin price as trough`
 
 ### `rolling`
-- Description: Rolling-window reduction. Reducers: sum, mean, min, max, median, std, var. `minobs` defaults to window; `center yes` anchors at the central row (pandas-style).
-- Usage: `rolling <var> <window> <reducer> [minobs <n>] [center yes|no] [as <var>]`
-- Example: `insyra rolling price 7 mean minobs 1 as ma7_soft`
+- Description: Rolling-window reduction. Reducers: sum, mean, min, max, median, std, var, plus the paired `cov <other>` and `beta <other>`, which take the next token as a second DataList variable. `minobs` defaults to window; `center yes` anchors at the central row (pandas-style). `beta` is Cov(var, other) / Var(other) and emits nil when the benchmark window is flat.
+- Usage: `rolling <var> <window> <reducer> [minobs <n>] [center yes|no] [as <var>]` / `rolling <var> <window> cov|beta <other> [minobs <n>] [center yes|no] [as <var>]`
+- Examples: `insyra rolling price 7 mean minobs 1 as ma7_soft` / `insyra rolling asset 20 beta benchmark minobs 10 as roll_beta`
+
+### `ewm`
+- Description: Exponentially weighted mean, variance, or standard deviation over a DataList. Exactly one decay keyword: `alpha` in (0, 1], `span` >= 1 (alpha = 2 / (span + 1)), or `halflife` > 0. `adjust` and `bias` default to no, `minobs` to 1. Output is the same length as the input, with nil until `minobs` valid observations exist.
+- Usage: `ewm <var> alpha|span|halflife <value> mean|var|std [adjust yes|no] [bias yes|no] [minobs <n>] [as <var>]`
+- Examples: `insyra ewm price span 12 mean adjust yes as ema12` / `insyra ewm returns halflife 5 std minobs 3 as ewvol`
+
+### `resample`
+- Description: Aggregate a time-indexed DataTable into calendar periods. Each output row is labelled with the period's final calendar day; periods with no rows are omitted. `op` uses the `groupby` operator names; the optional `:name` renames the output column, otherwise the source column name is kept. Column names containing `:` cannot be expressed in this syntax.
+- Usage: `resample <dt> <timecol> weekly|monthly|quarterly|yearly <col>:<op>[:<name>] [<col>:<op>[:<name>] ...] [as <var>]`
+- Examples: `insyra resample bars Date monthly Open:first High:max Low:min Close:last:MonthClose Volume:sum as monthly_bars` / `insyra resample sales Date quarterly revenue:sum:total`
+- Notes: `<timecol>` must hold `time.Time` values. A CSV load leaves date columns as strings and the command fails with a row-numbered error; use a source that carries real timestamps (e.g. `fetch yahoo <ticker> history`).
 
 ### `expanding`
 - Description: Expanding-window reduction over `in[0..=i]`. Reducers: sum, mean, min, max, median, std, var. Emits nil until `minobs` valid observations are available.

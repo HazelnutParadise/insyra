@@ -202,6 +202,10 @@ This is separate from boolean-flag parsing used by option arguments like `header
 - Description: Environment management
 - Usage: `env <create|list|open|clear|export|import|delete|rename|info> [args]`
 
+## `ewm`
+- Description: Exponentially weighted mean/var/std. Exactly one decay keyword: alpha in (0, 1], span >= 1, or halflife > 0. `adjust`/`bias` default to no, `minobs` to 1.
+- Usage: `ewm <var> alpha|span|halflife <value> mean|var|std [adjust yes|no] [bias yes|no] [minobs <n>] [as <var>]`
+
 ## `exit`
 - Description: Exit REPL
 - Usage: `exit`
@@ -438,13 +442,17 @@ This is separate from boolean-flag parsing used by option arguments like `header
 - Description: Replace values in DataTable/DataList
 - Usage: `replace <var> <old|nan|nil> <new>`
 
+## `resample`
+- Description: Aggregate a time-indexed DataTable into weekly/monthly/quarterly/yearly periods. `op` uses the `groupby` operator names; `:name` renames the output column. `<timecol>` must hold `time.Time` values.
+- Usage: `resample <dt> <timecol> weekly|monthly|quarterly|yearly <col>:<op>[:<name>] [<col>:<op>[:<name>] ...] [as <var>]`
+
 ## `reverse`
 - Description: Reverse DataList
 - Usage: `reverse <var> [as <var>]`
 
 ## `rolling`
-- Description: Rolling-window reduction. Reducers: sum, mean, min, max, median, std, var. `minobs` defaults to window; `center yes` anchors at the central row (pandas-style).
-- Usage: `rolling <var> <window> <reducer> [minobs <n>] [center yes|no] [as <var>]`
+- Description: Rolling-window reduction. Reducers: sum, mean, min, max, median, std, var, plus `cov <other>` and `beta <other>` against a second DataList. `minobs` defaults to window; `center yes` anchors at the central row (pandas-style).
+- Usage: `rolling <var> <window> <reducer> [minobs <n>] [center yes|no] [as <var>]` / `rolling <var> <window> cov|beta <other> [minobs <n>] [center yes|no] [as <var>]`
 
 ## `row`
 - Description: Extract DataTable row as DataList

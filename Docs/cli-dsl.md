@@ -460,6 +460,33 @@ scale transform sc test as test_scaled
 scale inverse sc train_scaled as train_original
 ```
 
+### B6. Exponential weighting and calendar resampling
+
+`ewm <var> alpha|span|halflife <value> mean|var|std [adjust yes|no] [bias yes|no] [minobs <n>] [as <var>]` computes an exponentially weighted statistic over a DataList. Exactly one decay keyword is given: `alpha` in `(0, 1]`, `span >= 1` (`alpha = 2 / (span + 1)`), or `halflife > 0`. `adjust` and `bias` default to no, `minobs` to 1. The result is a DataList of the same length as the input.
+
+```text
+ewm price alpha 0.5 mean as ewma
+ewm price span 12 mean adjust yes as ema12
+ewm returns halflife 5 std minobs 3 as ewvol
+```
+
+`rolling` additionally takes two paired reducers, each consuming a second DataList variable: `rolling <var> <window> cov <other> [...]` and `rolling <var> <window> beta <other> [...]`. `beta` is `Cov(var, other) / Var(other)`; a flat benchmark window yields nil.
+
+```text
+rolling asset 20 cov benchmark as roll_cov
+rolling asset 20 beta benchmark minobs 10 as roll_beta
+```
+
+`resample <dt> <timecol> weekly|monthly|quarterly|yearly <col>:<op>[:<name>] [...] [as <var>]` turns time-keyed rows into calendar-period aggregates. Each output row is labelled with the period's final calendar day, periods with no rows are omitted, and `op` accepts the same operator names as `groupby`. The optional third field renames the output column; without it the output keeps the source column name. Column names containing `:` cannot be written in this syntax.
+
+```text
+fetch yahoo AAPL history as bars
+resample bars Date monthly Open:first High:max Low:min Close:last:MonthClose Volume:sum as monthly_bars
+show monthly_bars
+```
+
+`<timecol>` must hold `time.Time` values; a column of date *strings* is rejected with a row-numbered error. A CSV load leaves date columns as strings, so resample the output of a source that carries real timestamps (for example `fetch yahoo <ticker> history`), or build the column through the Go API.
+
 ### C. Go `engine/dsl` session flow
 
 ```go
@@ -501,7 +528,7 @@ High-level command map:
 - **DataTable Structure / Access**: `addcol`, `addrow`, `dropcol`, `droprow`, `swap`, `transpose`, `rows`, `cols`, `row`, `col`, `get`, `set`, `setrownames`, `setcolnames`
 - **Data Processing**: `filter`, `sort`, `sample`, `split`, `find`, `replace`, `clean`, `fillna`, `merge`, `groupby`, `pivot`, `unpivot`, `encode`, `scale`, `ccl`, `addcolccl`
 - **DataList Stats**: `sum`, `mean`, `median`, `mode`, `stdev`, `var`, `min`, `max`, `range`, `quartile`, `iqr`, `percentile`, `count`, `counter`, `corr`, `cov`, `corrmatrix`, `skewness`, `kurtosis`
-- **Time Series / Transforms**: `rank`, `normalize`, `standardize`, `reverse`, `upper`, `lower`, `capitalize`, `parsenums`, `parsestrings`, `movavg`, `expsmooth`, `diff`, `diffn`, `shift`, `pctchange`, `cumsum`, `cumprod`, `cummax`, `cummin`, `rolling`, `expanding`, `fillna`
+- **Time Series / Transforms**: `rank`, `normalize`, `standardize`, `reverse`, `upper`, `lower`, `capitalize`, `parsenums`, `parsestrings`, `movavg`, `expsmooth`, `diff`, `diffn`, `shift`, `pctchange`, `cumsum`, `cumprod`, `cummax`, `cummin`, `rolling`, `expanding`, `ewm`, `resample`, `fillna`
 - **Modeling / Viz / Fetch**: `regression`, `pca`, `kmeans`, `hclust`, `cutree`, `dbscan`, `silhouette`, `knn_classify`, `knn_regress`, `knn_neighbors`, `ttest`, `ztest`, `anova`, `ftest`, `chisq`, `plot`, `fetch`
 
 ### Missing-Value Fill Commands
@@ -566,6 +593,7 @@ Source policy:
 | `droprow` | `droprow <var> <index\|name...>` | Drop rows by index or name |
 | `encode` | `encode <var> onehot\|label\|ordinal ... [as <var>]` | One-shot categorical encoding for DataTable variables |
 | `env` | `env <create\|list\|open\|clear\|export\|import\|delete\|rename\|info> [args]` | Environment management |
+| `ewm` | `ewm <var> alpha\|span\|halflife <value> mean\|var\|std [adjust yes\|no] [bias yes\|no] [minobs <n>] [as <var>]` | Exponentially weighted mean/var/std over a DataList |
 | `exit` | `exit` | Exit REPL |
 | `expanding` | `expanding <var> <minobs> <reducer> [as <var>]` | Expanding-window reduction (reducer: sum\|mean\|min\|max\|median\|std\|var) |
 | `expsmooth` | `expsmooth <var> <alpha> [as <var>]` | Exponential smoothing |
@@ -615,8 +643,9 @@ Source policy:
 | `regression` | `regression <type> <y> <x...>` | Regression analysis: linear/poly/exp/log/logistic/poisson |
 | `rename` | `rename <var> <new>` | Rename variable |
 | `replace` | `replace <var> <old\|nan\|nil> <new>` | Replace values in DataTable/DataList |
+| `resample` | `resample <dt> <timecol> weekly\|monthly\|quarterly\|yearly <col>:<op>[:<name>] [...] [as <var>]` | Aggregate a time-indexed DataTable into calendar periods |
 | `reverse` | `reverse <var> [as <var>]` | Reverse DataList |
-| `rolling` | `rolling <var> <window> <reducer> [minobs <n>] [center yes\|no] [as <var>]` | Rolling-window reduction (reducer: sum\|mean\|min\|max\|median\|std\|var) |
+| `rolling` | `rolling <var> <window> <reducer> [minobs <n>] [center yes\|no] [as <var>]` | Rolling-window reduction (reducer: sum\|mean\|min\|max\|median\|std\|var, or cov\|beta with a second DataList) |
 | `row` | `row <var> <index\|name> [as <var>]` | Extract DataTable row as DataList |
 | `rows` | `rows <var>` | List DataTable row names |
 | `run` | `run <script.isr>` | Run DSL script file |

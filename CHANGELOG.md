@@ -17,6 +17,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 ### CLI
 
 - Added CSV-only `load` options `ragged true|false` and `trimspace true|false`, with the same strict defaults and explicit rejection on non-CSV formats. ([issue #198](https://github.com/HazelnutParadise/insyra/issues/198))
+- Added `ewm <var> alpha|span|halflife <value> mean|var|std [adjust yes|no] [bias yes|no] [minobs <n>]` and `resample <dt> <timecol> weekly|monthly|quarterly|yearly <col>:<op>[:<name>] ...`, and gave `rolling` the paired reducers `cov <other>` and `beta <other>`. The CLI now reaches the exponentially weighted, paired-window, and calendar-period primitives that were previously Go-only. `resample` uses the same operator names as `groupby`, and its time column must hold `time.Time` values.
 
 ### `quant`
 

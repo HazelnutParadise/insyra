@@ -127,8 +127,10 @@ This list is generated from `insyra help` in this repository state.
 - `cumprod` - Running product
 - `cummax` - Running maximum (historical high)
 - `cummin` - Running minimum (historical low)
-- `rolling` - Rolling-window reduction (sum/mean/min/max/median/std/var)
+- `rolling` - Rolling-window reduction (sum/mean/min/max/median/std/var, or cov/beta against a second DataList)
 - `expanding` - Expanding-window reduction (sum/mean/min/max/median/std/var)
+- `ewm` - Exponentially weighted mean/var/std (alpha/span/halflife)
+- `resample` - Aggregate a time-indexed DataTable into weekly/monthly/quarterly/yearly periods
 - `fillna` - Fill missing DataList/DataTable values (mean/median/mode/ffill/bfill/interpolate)
 - `fillnan` - Fill NaN with mean (deprecated alias)
 
