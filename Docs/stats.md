@@ -496,7 +496,7 @@ result.Show() // Display complete test results with contingency table
 func Skewness(sample any, method ...SkewnessMethod) (float64, error)
 ```
 
-**Description:** Calculate skewness (asymmetry) of a distribution.
+**Description:** Calculate skewness (asymmetry) of a distribution. A cell that is not a finite number (blank, text, `NaN`, `Inf`) is refused with an error naming `sample` and the one-based row; nothing is substituted for it.
 
 **Parameters:**
 
@@ -526,7 +526,7 @@ const (
 func Kurtosis(data any, method ...KurtosisMethod) (float64, error)
 ```
 
-**Description:** Calculate kurtosis (tail heaviness) of a distribution.
+**Description:** Calculate kurtosis (tail heaviness) of a distribution. A cell that is not a finite number (blank, text, `NaN`, `Inf`) is refused with an error naming `sample` and the one-based row; nothing is substituted for it.
 
 **Parameters:**
 

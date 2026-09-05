@@ -193,7 +193,7 @@ if err != nil {
 func ReadJSON_File(filePath string) (*DataTable, error)
 ```
 
-**Description:** Reads a JSON file and loads the data into a new DataTable. JSON numbers are typed per value: an integer literal (`25`) becomes `int64` so large integers keep full precision, while a decimal literal (`25.5`, `25.0`) stays `float64` — matching Python's `json.loads` and consistent with `ReadCSV` loading integer columns as `int64`.
+**Description:** Reads a JSON file and loads the data into a new DataTable. JSON numbers are typed per value: an integer literal (`25`) becomes `int64` so large integers keep full precision, while a decimal literal (`25.5`, `25.0`) stays `float64` — matching Python's `json.loads` and consistent with `ReadCSV` loading integer columns as `int64`. It decodes through the same path as `ReadJSON`, so a file and its bytes always load identically; a file holding a single object loads as one row.
 
 **Parameters:**
 

@@ -13,6 +13,9 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - Added opt-in `AllowRaggedRows` and `TrimLeadingSpace` to `CSVReadOptions` and matching `isr.CSV_inOpts` fields. Ragged reads pad short rows and retain extra cells in auto-named columns; the zero value remains strict. ([issue #198](https://github.com/HazelnutParadise/insyra/issues/198))
 - Fixed CSV file loading parsing the input twice through a serialize-reparse round trip, which silently dropped rows holding a single empty field. `ReadCSV_File` and `ReadCSV_String` now agree on every input.
 - Added pandas-compatible exponentially weighted `DataList` reducers (`EWM().Mean/Var/Std`), rolling `Cov` and `Beta`, and `DataTable` `EWMCol` and calendar `Resample`; `IDataList` and `IDataTable` now expose the new methods.
+- **BREAKING**: `DataList` numeric transforms no longer rewrite part of a list before failing, and no longer read an unreadable cell as `0`. `Normalize`, `Standardize`, `ClearOutliers`, `Difference`, and `FillNaNWithMean` scan the whole list first; a cell that is neither numeric, `nil`, nor `NaN` sets `Err()` (naming the row) and leaves every cell as it was, where previously `[1, "x", 3].Normalize()` returned `nil` after overwriting the first cell with `0`. `nil` and `NaN` cells pass through unchanged and are excluded from the mean, standard deviation, min, and max the transform uses, so `ClearOutliers` on a list with blanks now checks every numeric cell instead of stopping at the first blank. `Rank`, `ExponentialSmoothing`, `DoubleExponentialSmoothing`, and the six `*Interpolation` methods stop reading through `ToF64Slice`: `Rank` gives `nil`/`NaN` cells a `NaN` rank without consuming a rank position and fails on any other non-numeric cell (`[3, "b", 1].Rank()` used to rank `"b"` first as `0`); the smoothing and interpolation methods require a fully numeric series and fail otherwise. Results on fully numeric input are unchanged.
+- Fixed `DataList.ReplaceLast` replacing the last `NaN` cell instead of the last cell equal to `oldValue` when the list ended in `NaN` (`[5, NaN].ReplaceLast(5, 0)` gave `[5, 0]`).
+- Fixed `ReadJSON_File` loading integer literals as `float64` while `ReadJSON` loaded them as `int64`; both now decode through the same path, so large integers keep full precision from a file and a file holding a single object loads as one row.
 
 ### CLI
 
@@ -36,6 +39,19 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 - Added `TWStock` for typed TWSE/TPEx daily prices, institutional trades, margin balances, and full daily quote tables, with monthly history paging, throttle/retry controls, automatic market fallback, and opt-in live access in tests.
 - Added `TWStock.ExRights` and `TWStock.DailyPricesAdjusted`. `ExRights` returns the TWSE ex-rights/ex-dividend reference table for a date range, including the exchange's own `AdjFactor` (reference price ÷ prior close), paging ranges longer than a year. `DailyPricesAdjusted` returns every `DailyPrices` column plus `AdjFactor` and backward-adjusted `AdjOpen`, `AdjHigh`, `AdjLow`, and `AdjClose`, using the Yahoo `Adj Close` convention, so a return series no longer shows a fake loss on ex-dates. Ex-dates outside `[from, to]` are not applied. Both methods are TWSE-only: TPEx publishes no dated ex-rights history endpoint, so `TWMarketTPEx` returns an explicit "not supported" error rather than an empty table.
+
+### `stats`
+
+- **BREAKING**: `Skewness` and `Kurtosis` now refuse a value they cannot read as a finite number instead of treating it as zero, matching every other `stats` entry point since v0.3.1. They were the last two still reading through `SliceToF64`. The error names `sample` and the one-based row; results on fully numeric input are unchanged.
+
+### `csvxl`
+
+- Fixed `AppendCsvToExcel` leaving the old sheet's cells in place when a sheet of the same name already existed: `excelize.NewSheet` returns the existing sheet, so only the cells covered by the new CSV were overwritten and the rest survived. The sheet is now deleted and recreated, including when it is the workbook's only sheet.
+- Fixed `AppendCsvToExcel`, `ExcelToCsv`, and `EachExcelToCsv` never closing the workbooks they opened.
+
+### `parquet`
+
+- Fixed `ReadColumnOptions.MaxValues` having no effect. `ReadColumn` now sums the row counts of the selected row groups from the file metadata and refuses the read before loading anything when the count exceeds the limit, which is what the field documented.
 
 ## v0.3.1
 

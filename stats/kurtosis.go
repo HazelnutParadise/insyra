@@ -22,7 +22,10 @@ func Kurtosis(data any, method ...KurtosisMethod) (float64, error) {
 	if dLen == 0 {
 		return math.NaN(), errors.New("empty data")
 	}
-	d64 := insyra.SliceToF64(d)
+	d64, err := numericValues(d, "sample")
+	if err != nil {
+		return math.NaN(), err
+	}
 	dl := insyra.NewDataList(d64)
 
 	useMethod := KurtosisG2

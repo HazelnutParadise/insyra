@@ -63,14 +63,16 @@
 
 ## 發現彙整（依套件）
 
+「已修正」表示該項在 `fix-api-review-batch-1`（2026-09-05）處理完畢；D-4 只修了「當 0」的部分，「跳過」的政策決定仍待處理。
+
 ### csvxl
 
 | 編號 | 嚴重度 | 問題 | 位置 | 建議 |
 | --- | --- | --- | --- | --- |
 | C-1 | High | 單一 CSV 轉換失敗時只累加計數，錯誤內容丟棄；Excel 仍然存檔（含空 sheet），最後回傳「N files failed」。呼叫端不知道哪個檔、為什麼 | csvxl/convert.go:64-67, 116-119 | 用 `errors.Join` 帶檔名回傳每個失敗；或改成 fail-fast 不存檔。二選一要由你決定：批次容錯還是全有全無 |
 | C-2 | Med | `csvEncoding ...string` / `encoding ...string` 拿 variadic 當選填參數，傳兩個以上才在執行期報錯；未知編碼字串（如 `"latin1"`）靜默走 raw 讀取 | convert.go:31-37, 86-92; convertDir.go:16; read_csv.go:11 | 改成明確參數或 options struct；未知編碼回傳錯誤 |
-| C-3 | Med | `AppendCsvToExcel` doc 說「sheet 已存在會被覆寫」，但 excelize `NewSheet` 對既有名稱只回傳索引不清空（已查 v2.11.0 sheet.go:57-59），結果是新資料蓋在舊資料上，舊資料超出範圍的儲存格殘留 | convert.go:83-107 | 存在時先 `DeleteSheet` 再建，或改 doc 說明是合併 |
-| C-4 | Med | `excelize.OpenFile` 回傳的 `*File` 從未 `Close()`：`AppendCsvToExcel`、`ExcelToCsv`、`EachExcelToCsv`（每個檔案各漏一次） | convert.go:94, 136; convertDir.go:38 | `defer f.Close()` |
+| C-3 | ~~Med~~ 已修正 | `AppendCsvToExcel` doc 說「sheet 已存在會被覆寫」，但 excelize `NewSheet` 對既有名稱只回傳索引不清空（已查 v2.11.0 sheet.go:57-59），結果是新資料蓋在舊資料上，舊資料超出範圍的儲存格殘留 | convert.go:83-107 | 存在時先 `DeleteSheet` 再建，或改 doc 說明是合併 |
+| C-4 | ~~Med~~ 已修正 | `excelize.OpenFile` 回傳的 `*File` 從未 `Close()`：`AppendCsvToExcel`、`ExcelToCsv`、`EachExcelToCsv`（每個檔案各漏一次） | convert.go:94, 136; convertDir.go:38 | `defer f.Close()` |
 | C-5 | Low | 錯誤用 `%v` 包裝，呼叫端無法 `errors.Is(err, os.ErrNotExist)`；`read_csv.go` 已用 `%w`，套件內不一致 | convert.go 全檔 | 改 `%w` |
 | C-6 | Low | `UTF8/Big5/Auto` 是裸 string 常數，而實際比對用 `strings.Contains`，任何字串都會被接受 | convert.go:22-26 | typed `Encoding` string 型別 |
 | C-7 | Low | 目錄用 `os.ModePerm`（0777）建立 | convert.go:143; convertDir.go:50 | 0755 |
@@ -94,7 +96,7 @@
 
 | 編號 | 嚴重度 | 問題 | 位置 | 建議 |
 | --- | --- | --- | --- | --- |
-| Q-1 | High | `ReadColumnOptions.MaxValues` doc 承諾「超過就回錯避免記憶體爆掉」，但整個套件沒有任何地方讀這個欄位（grep 只命中宣告處）。使用者以為有保護，其實沒有 | parquet/api.go:25-28, 288 | 實作它，或刪掉欄位 |
+| Q-1 | ~~High~~ 已修正 | `ReadColumnOptions.MaxValues` doc 承諾「超過就回錯避免記憶體爆掉」，但整個套件沒有任何地方讀這個欄位（grep 只命中宣告處）。使用者以為有保護，其實沒有 | parquet/api.go:25-28, 288 | 實作它，或刪掉欄位 |
 | Q-2 | Med | `Write(dt, path)` 沒有 ctx、沒有選項；壓縮方式與 chunk size（1Mi）寫死。`Read` 有 ctx，`Write` 沒有，不對稱 | api.go:131-166 | 加 `WriteOptions`（可先空）與 ctx |
 | Q-3 | Med | `Write` 直接開目標路徑寫，中途失敗留下半個檔案；同套件 `ApplyCCL` 已做 tmp+rename 原子替換，做法不一致 | api.go:132 vs ccl.go:591-621 | Write 也走 tmp+rename |
 | Q-4 | Med | 關閉資源的錯誤用標準庫 `log.Printf`，繞過 insyra `Config` 的 log level 與格式；其他套件都用 `insyra.LogWarning` 等 | api.go, internal.go, ccl.go 多處 | 改用 insyra logger |
@@ -110,14 +112,14 @@
 | 編號 | 嚴重度 | 問題 | 位置 | 建議 |
 | --- | --- | --- | --- | --- |
 | K-1 | High | `LogFatal` 走 `log.Fatalf` 直接 `os.Exit(1)`，全 repo 33 個呼叫點（`isr.DT.From` 讀檔失敗、`lp` 下載 GLPK 失敗、`gplot.SaveChart` 存檔失敗都會殺掉整個程序）。程式庫不得結束宿主程序（準則 10、11）。`SetDontPanic(true)` 後 `LogFatal` 只印 log 就返回，呼叫端拿到 nil 繼續跑，下一行就 nil deref panic，所以「不 panic」是假的 | logger.go:9-25；isr/dt.go、isr/use.go、lp/、plot/radar.go、gplot/save_chart.go | 移除 `LogFatal`；33 處改回傳 `error` 或設 `Err()`。`SetDontPanic` 一併刪除 |
-| K-2 | High | `SliceToF64` 對非數值填 0，而 `stats.Kurtosis`、`stats.Skewness` 仍經由它讀資料。2026-08-01 已決議 `stats` 不得捏造零值（AGENTS.md follow-up），這條路徑漏掉了 | utils.go:28-38；stats/kurtosis.go:25；stats/skewness.go:26 | `stats` 兩處改走 `numericSeries` 式的拒絕路徑；`SliceToF64` 改回傳 `([]float64, error)` 或標 Deprecated |
+| K-2 | ~~High~~ 已修正 | `SliceToF64` 對非數值填 0，而 `stats.Kurtosis`、`stats.Skewness` 仍經由它讀資料。2026-08-01 已決議 `stats` 不得捏造零值（AGENTS.md follow-up），這條路徑漏掉了 | utils.go:28-38；stats/kurtosis.go:25；stats/skewness.go:26 | `stats` 兩處改走 `numericSeries` 式的拒絕路徑；`SliceToF64` 改回傳 `([]float64, error)` 或標 Deprecated |
 | K-3 | High | 沒有 `LogLevelError`。等級只有 Debug/Info/Warning/Fatal，所以實例上 `Err()` 記到的失敗全部是 `LogLevelWarning`，「警告」與「這次操作失敗了」無法區分；`HasErrorAboveLevel(LogLevelWarning)` 也因此沒有意義 | config.go:25-34；datalist.go:2140-2145 | 加 `LogLevelError`，`warn` 改 `fail`；這是資料模型變更，要走 OpenSpec |
 | K-4 | Med | 全域錯誤 ring buffer（1536 筆）共 14 個匯出函式：`PopError`、`PopErrorInfo`、`PopErrorAndCallback`、`PopErrorByPackageName`、`PopErrorByFuncName`、`PeekError`、`GetAllErrors`、`GetErrorsByLevel`、`GetErrorsByPackage`、`PopAllErrors`、`HasError`、`HasErrorAboveLevel`、`GetErrorCount`、`ClearErrors`。全程序共用一個緩衝，多 goroutine 下拿到的是別人的錯；`PopError` 空緩衝回 `(LogLevelInfo, "")` 當哨兵，與 `PopErrorInfo` 回 nil 兩套語意並存。業界做法是回傳 error，實例層 `Err()` 已經有了（準則 1、6、10） | error_buffer.go 全檔 | 減到 `GetAllErrors`、`PopAllErrors`、`ClearErrors` 三個，其餘標 Deprecated；或整個 buffer 改為 opt-in |
 | K-5 | Med | `pushError` 對每筆錯誤 `go errHandlingFunc(...)`，goroutine 無上限且順序不保證；使用者的 handler 若慢或阻塞，每個 warning 就漏一個 goroutine | error_buffer.go:68-70 | 同步呼叫，或單一 consumer goroutine + 有界 channel |
 | K-6 | Med | `Config` 是 `*configStruct` 全域，型別未匯出：使用者無法在自己的函式簽名裡引用它，也不能建立第二份設定；`logLevel`、`coloredOutput`、`dontPanic`、`defaultErrHandlingFunc` 是裸欄位，`SetLogLevel` 與熱路徑 `GetLogLevel` 並行時是 data race（只有 threadSafe、acceleration 用了 atomic） | config.go:9-19, 36-70 | 匯出 `type Config struct`；四個欄位改 atomic 或加 mutex |
 | K-7 | Med | `IDataList` 含未匯出方法 `updateTimestamp()`，`IDataTable` 含 `getRowNameByIndex`、`getMaxColLength`、`updateTimestamp`：外部不可能實作，介面等同具體型別。但全 repo 71 個檔案用它當參數型別，回傳卻都是 `*DataList`/`*DataTable`。約 120 個方法的介面沒有抽象價值（「介面越大抽象越弱」，準則 1、8、10） | interfaces.go:6, 121 | 二選一：刪未匯出方法讓它可實作、並拆成小介面；或整個移除改用具體型別。這是 API 設計決策，需要你拍板 |
 | K-8 | Med | `AtomicDoAll(f func(), instances ...any)`：型別是 `any`，傳錯型別只 warning 然後「跳過不鎖」，呼叫端以為鎖住了其實在裸奔（準則 8、12） | atomic.go:109-131 | 定義 `type Lockable interface{ atomicActor() *core.AtomicActor }`，參數改 `...Lockable` |
-| K-9 | Med | `ReadJSON_File` 直接 `json.Unmarshal` 不用 `UseNumber`，整數變 float64；`ReadJSON` 走 `unmarshalJSONRows` 保留 int64。同一個檔案從兩個入口讀，型別不同，大整數 ID 在 `ReadJSON_File` 會失真（準則 6、13） | read.go:410-431 vs 442-460 | `ReadJSON_File` 改成 `os.ReadFile` + `ReadJSON(bytes)` |
+| K-9 | ~~Med~~ 已修正 | `ReadJSON_File` 直接 `json.Unmarshal` 不用 `UseNumber`，整數變 float64；`ReadJSON` 走 `unmarshalJSONRows` 保留 int64。同一個檔案從兩個入口讀，型別不同，大整數 ID 在 `ReadJSON_File` 會失真（準則 6、13） | read.go:410-431 vs 442-460 | `ReadJSON_File` 改成 `os.ReadFile` + `ReadJSON(bytes)` |
 | K-10 | Med | `DetectEncoding` 只看前 8KB，且 `utf8.Valid` 在多位元組字元被切在 8192 邊界時回 false，接著交給 chardet 可能判成別的編碼；chardet 回傳的名稱（`shift_jis`、`iso-8859-1`、`gb-18030`）csvxl 只認 big5/gb/utf-16，其餘靜默當 UTF-8 讀 | utils.go:279-322；csvxl/convert.go:213-222 | 邊界回退到最後一個完整 rune 再驗證；不支援的編碼回錯而非靜默 |
 | K-11 | Med | CSV 只有 `_File` 與 `_String` 兩種入口，沒有 `io.Reader` 版本；Excel、JSON 同樣只吃路徑。與 C-10、Q-8 同一問題 | read.go | 加 `ReadCSV(r io.Reader, opts)`，檔案與字串版包裝它 |
 | K-12 | Med | `ToFloat64`、`ToFloat64Safe`、`ReadSlice2D` 用 `var` 匯出函式值：使用者可以在執行期覆寫（`insyra.ToFloat64 = ...`），godoc 也不會列在 Functions 區；`ReadSlice2D` 與 `Slice2DToDataTable` 是同一件事兩個名字（準則 2、6） | utils.go:22-23；read.go:22 | 改成 `func` 包裝；別名擇一標 Deprecated |
@@ -133,10 +135,10 @@
 
 | 編號 | 嚴重度 | 問題 | 位置 | 建議 |
 | --- | --- | --- | --- | --- |
-| D-1 | High | **Bug（已實測）**：`ReplaceLast(old, new)` 在 old 不是 NaN 時，`else if` 分支仍會把最後一個 NaN 換掉。`[5, NaN].ReplaceLast(5, 0)` 得到 `[5, 0]`，5 沒動、NaN 被改了。`replaceFirst_notAtomic` 是對的，兩者不對稱 | datalist.go:353-373 vs datalist_notatomic.go:27-47 | 改成與 replaceFirst 相同的分支結構；補迴歸測試 |
-| D-2 | High | **資料半毀（已實測）**：`Normalize`、`Standardize`、`ClearOutliers`、`Difference`、`FillNaNWithMean` 用 `conv.ParseF64` 原地改寫，遇到非數值 panic 再 recover。`[1, "x", 3].Normalize()` 回傳 nil，且資料已變成 `[0, "x", 3]`。沒有回滾，沒有原子性（準則 11、13）。lock 本身有用 defer 釋放，不會死鎖（已實測） | datalist.go:733-843, 1864-1890 | 先掃描全部可轉換再寫入；失敗時資料不動、設 `Err()`、回傳自身 |
+| D-1 | ~~High~~ 已修正 | **Bug（已實測）**：`ReplaceLast(old, new)` 在 old 不是 NaN 時，`else if` 分支仍會把最後一個 NaN 換掉。`[5, NaN].ReplaceLast(5, 0)` 得到 `[5, 0]`，5 沒動、NaN 被改了。`replaceFirst_notAtomic` 是對的，兩者不對稱 | datalist.go:353-373 vs datalist_notatomic.go:27-47 | 改成與 replaceFirst 相同的分支結構；補迴歸測試 |
+| D-2 | ~~High~~ 已修正 | **資料半毀（已實測）**：`Normalize`、`Standardize`、`ClearOutliers`、`Difference`、`FillNaNWithMean` 用 `conv.ParseF64` 原地改寫，遇到非數值 panic 再 recover。`[1, "x", 3].Normalize()` 回傳 nil，且資料已變成 `[0, "x", 3]`。沒有回滾，沒有原子性（準則 11、13）。lock 本身有用 defer 釋放，不會死鎖（已實測） | datalist.go:733-843, 1864-1890 | 先掃描全部可轉換再寫入；失敗時資料不動、設 `Err()`、回傳自身 |
 | D-3 | High | 失敗時有三種回傳形狀：回 **nil**（`Normalize`、`MovingAverage`、`WeightedMovingAverage`、`ExponentialSmoothing`、`DoubleExponentialSmoothing`、`MovingStdev`、`Difference`、`Diff`、`PctChange`）、回**空 list**（`Sample`、`SampleFrac`、`Shuffle`、`Map`、`Describe`、所有 Rolling/EWM/Expanding reducer）、回**自身 + Err()**（其餘）。`Err()` 的 doc 說「不打斷鏈式呼叫」，回 nil 就是打斷：`dl.MovingAverage(0).Sort()` 直接 nil deref panic（準則 6、7、11） | 上列各函式 | 統一為「回傳自身或同長度 nil list，錯誤放 Err()」；nil 回傳全部移除 |
-| D-4 | High / Med | 非數值元素的待遇不一致。**High**：`Rank`、`ExponentialSmoothing`、`DoubleExponentialSmoothing`、六個 `*Interpolation` 走 `ToF64Slice`，非數值被當成 0 參與計算：`[3, "b", 1].Rank()` = `[3, 1, 2]`（已實測），"b" 排第一。**Med**：`Sum/Mean/Max/Min/Median/Var/...` 跳過非數值後給出數字（`["a", 1, 2].Mean()` = 1.5，已實測）。跳過本身是合理慣例（R 回 NA 加警告，pandas raise，跳過是第三種），問題在同一份資料有四種待遇：`Mean` 跳過、`Rank` 當 0、`Normalize` 半毀、`FillWithMean` 整欄拒絕；而且跳過只留一筆 Warning 在被 D-5 塞滿雜訊的 `Err()` 裡，等於沒通知（準則 6、13） | datalist.go:1051-1095, 930-980, 1148-1860；datalist_interpolation.go 全檔 | 「當 0」的九個方法改成失敗或跳過；「跳過」保留但寫成一條全套件規則並進 doc，同時處理 D-5 讓 Warning 可見 |
+| D-4 | ~~High~~ 已修正 / Med | 非數值元素的待遇不一致。**High**：`Rank`、`ExponentialSmoothing`、`DoubleExponentialSmoothing`、六個 `*Interpolation` 走 `ToF64Slice`，非數值被當成 0 參與計算：`[3, "b", 1].Rank()` = `[3, 1, 2]`（已實測），"b" 排第一。**Med**：`Sum/Mean/Max/Min/Median/Var/...` 跳過非數值後給出數字（`["a", 1, 2].Mean()` = 1.5，已實測）。跳過本身是合理慣例（R 回 NA 加警告，pandas raise，跳過是第三種），問題在同一份資料有四種待遇：`Mean` 跳過、`Rank` 當 0、`Normalize` 半毀、`FillWithMean` 整欄拒絕；而且跳過只留一筆 Warning 在被 D-5 塞滿雜訊的 `Err()` 裡，等於沒通知（準則 6、13） | datalist.go:1051-1095, 930-980, 1148-1860；datalist_interpolation.go 全檔 | 「當 0」的九個方法改成失敗或跳過；「跳過」保留但寫成一條全套件規則並進 doc，同時處理 D-5 讓 Warning 可見 |
 | D-5 | Med | 正常結果被記成錯誤：`Get` 越界、`FindFirst/FindLast` 找不到、`FindAll`/`Count` 在空 list（已實測 `Count` 讓 `Err()` 非 nil）、`Sort`/`Pop`/`Map`/`ToF64Slice` 在空 list 都呼叫 `warn`。呼叫端無法用 `Err() != nil` 判斷「真的失敗」（準則 11） | datalist.go:148-160, 248-327, 441-456, 1007-1012 | 「找不到」「空」不設 Err；只有無效參數與型別錯誤才設 |
 | D-6 | Med | `FindFirst`/`FindLast` 回傳 `any`（int 或 nil），呼叫端要型別斷言；`Get` 越界回 nil，與元素本身是 nil 無法區分。DataTable 的 `GetRowIndexByName` 已用 `(int, bool)`，同一套件兩種慣例（準則 6、8） | datalist.go:148, 248, 274 | 改 `(int, bool)` / `(any, bool)`；舊簽名標 Deprecated |
 | D-7 | Med | 原地修改與回傳新 list 從名稱看不出來。原地：`Sort`、`Reverse`、`Normalize`、`Standardize`、`Clear*`、`Replace*`、`Fill*`、`Upper/Lower/Capitalize`、`Parse*`、`Drop*`。新 list：`Filter`、`Map`、`Concat`、`Rank`、`Shift/Diff/PctChange/Cum*`、`MovingAverage`、`Sample`、`Shuffle`。pandas 預設回新物件；使用者對 `GetCol` 拿到的欄位做 `Sort()` 會不會動到表，要看 DataTable 段（準則 5、6） | 全 DataList | 文件明列兩類；長期考慮 `Sorted()`/`SortInPlace()` 命名或全部回新 list |

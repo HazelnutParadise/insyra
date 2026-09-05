@@ -40,7 +40,7 @@ Options specifically for the `ReadColumn` function.
 ```go
 type ReadColumnOptions struct {
     RowGroups []int // RowGroup indices to read; if empty, all RowGroups are read
-    MaxValues int64 // Maximum number of values to read; 0 means no limit. If exceeded, an error is returned to prevent memory overflow.
+    MaxValues int64 // Maximum number of values to read; 0 means no limit. The row count of the selected RowGroups is checked from the file metadata before any value is read; if it exceeds MaxValues an error naming both numbers is returned.
 }
 ```
 
@@ -141,7 +141,7 @@ func Stream(ctx context.Context, path string, opt ReadOptions, batchSize int) (<
 func ReadColumn(ctx context.Context, path string, column string, opt ReadColumnOptions) (*insyra.DataList, error)
 ```
 
-**Description:** Reads data from a single column in a Parquet file, returning an `insyra.DataList`.
+**Description:** Reads data from a single column in a Parquet file, returning an `insyra.DataList`. When `opt.MaxValues > 0`, the row count of the selected row groups (all when none are selected) is taken from the metadata first and the call is refused before reading if it exceeds the limit.
 
 **Parameters:**
 

@@ -680,7 +680,9 @@ dl.ClearNilsAndNaNs()
 func (dl *DataList) ClearOutliers(stdDev float64) *DataList
 ```
 
-**Description:** Removes values outside a specified number of standard deviations from the mean.
+**Description:** Removes values outside a specified number of standard deviations from the mean. The mean and (sample) standard deviation are computed over the numeric cells only.
+
+> A cell that is neither numeric, `nil`, nor `NaN` makes the call fail: `Err()` is set, naming the row, and the list is left untouched. `nil` and `NaN` cells pass through unchanged.
 
 **Parameters:**
 
@@ -708,6 +710,8 @@ func (dl *DataList) Normalize() *DataList
 
 **Description:** Normalizes DataList elements to a specified range (default: 0 to 1).
 
+> A cell that is neither numeric, `nil`, nor `NaN` makes the call fail: `Err()` is set, naming the row, and the list is left untouched. `nil` and `NaN` cells pass through unchanged.
+
 **Parameters:**
 
 - None.
@@ -732,6 +736,8 @@ func (dl *DataList) Standardize() *DataList
 
 **Description:** Standardizes DataList elements using z-score normalization (mean=0, std=1).
 
+> A cell that is neither numeric, `nil`, nor `NaN` makes the call fail: `Err()` is set, naming the row, and the list is left untouched. `nil` and `NaN` cells pass through unchanged.
+
 **Parameters:**
 
 - None.
@@ -755,6 +761,8 @@ func (dl *DataList) FillNaNWithMean() *DataList
 ```
 
 **Description:** Replaces all NaN values with the mean value of numeric elements.
+
+> A cell that is neither numeric, `nil`, nor `NaN` makes the call fail: `Err()` is set, naming the row, and the list is left untouched. `nil` and `NaN` cells pass through unchanged.
 
 > **Deprecated:** Use [`FillWithMean`](#fillwithmean) instead, which also fills `nil` (not just `NaN`), leaves non-numeric values untouched, and matches the other `Fill*` imputation methods.
 
@@ -1305,7 +1313,7 @@ mad := dl.MAD()
 func (dl *DataList) Rank(ascending ...bool) *DataList
 ```
 
-**Description:** Assigns ranks to elements based on their values. By default it ranks in ascending order. Pass `false` for descending order.
+**Description:** Assigns ranks to elements based on their values. By default it ranks in ascending order. Pass `false` for descending order. Ties receive the average rank. `nil` and `NaN` cells get a `NaN` rank and do not take a rank position (pandas `na_option="keep"`); any other non-numeric cell makes the call fail with `Err()` set and `nil` returned.
 
 **Parameters:**
 
@@ -1331,7 +1339,7 @@ ranksDesc := dl.Rank(false) // descending
 func (dl *DataList) Difference() *DataList
 ```
 
-**Description:** Calculates differences between consecutive elements. The output is one element **shorter** than the input (`out[i] = in[i+1] - in[i]`).
+**Description:** Calculates differences between consecutive elements. The output is one element **shorter** than the input (`out[i] = in[i+1] - in[i]`). A pair with a `nil` or `NaN` operand yields `NaN`; any other non-numeric cell makes the call fail with `Err()` set and `nil` returned.
 
 > For column-aligned use (same length as the input, leading `nil` instead of a shorter result) prefer [`Diff(1)`](#diff). `Difference` is retained for backwards compatibility.
 
@@ -1407,6 +1415,8 @@ func (dl *DataList) ExponentialSmoothing(alpha float64) *DataList
 
 **Description:** Calculates exponential smoothing with specified smoothing factor.
 
+> Every cell must be a finite number. A `nil`, `NaN`, or non-numeric cell makes the call fail: `Err()` is set, naming the row, and nothing is substituted for it.
+
 **Parameters:**
 
 - `alpha`: Smoothing factor (0 < alpha < 1)
@@ -1429,6 +1439,8 @@ func (dl *DataList) DoubleExponentialSmoothing(alpha, beta float64) *DataList
 ```
 
 **Description:** Calculates double exponential smoothing with alpha and beta parameters.
+
+> Every cell must be a finite number. A `nil`, `NaN`, or non-numeric cell makes the call fail: `Err()` is set, naming the row, and nothing is substituted for it.
 
 **Parameters:**
 
@@ -1883,6 +1895,8 @@ func (dl *DataList) LinearInterpolation(x float64) float64
 ```
 
 **Description:** Performs linear interpolation for a given x value. To fill missing values in a sequence by linear interpolation, use `FillByInterpolation`.
+
+> All six interpolation methods require a fully numeric list: a `nil`, `NaN`, or non-numeric cell makes the call return `NaN` with `Err()` set, naming the row. Nothing is substituted for such a cell.
 
 **Parameters:**
 
@@ -2583,7 +2597,7 @@ dl.ReplaceFirst(2, 99)
 func (dl *DataList) ReplaceLast(oldValue, newValue any) *DataList
 ```
 
-**Description:** Replaces the last occurrence of a value with a new value.
+**Description:** Replaces the last occurrence of a value with a new value. Only cells equal to `oldValue` are candidates; a `NaN` cell matches only when `oldValue` is itself `NaN`.
 
 **Parameters:**
 

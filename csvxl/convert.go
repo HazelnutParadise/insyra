@@ -95,6 +95,7 @@ func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile strin
 	if err != nil {
 		return fmt.Errorf("failed to open Excel file %s: %v", existingFile, err)
 	}
+	defer func() { _ = f.Close() }()
 
 	failedFiles := 0
 
@@ -106,8 +107,7 @@ func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile strin
 		// 如果提供了自訂工作表名稱，則使用它，否則使用 CSV 檔案的名稱
 		sheetName := getSheetName(csvFile, sheetNames, idx)
 
-		_, err := f.NewSheet(sheetName)
-		if err != nil {
+		if err := replaceSheet(f, sheetName); err != nil {
 			return fmt.Errorf("failed to create new sheet %s: %v", sheetName, err)
 		}
 
@@ -137,6 +137,7 @@ func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyConta
 	if err != nil {
 		return fmt.Errorf("failed to open Excel file %s: %v", excelFile, err)
 	}
+	defer func() { _ = f.Close() }()
 
 	// Check if output directory exists, if not create it
 	// todo: 移到後面
@@ -184,6 +185,39 @@ func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyConta
 }
 
 // ===============================
+
+// replaceSheet makes sheetName an empty sheet in f. An existing sheet of that
+// name is deleted first so nothing from it survives; excelize.NewSheet alone
+// would return the existing sheet and leave its cells in place. excelize
+// refuses to delete a workbook's only sheet, so in that case a placeholder is
+// created first and removed once the new sheet exists.
+func replaceSheet(f *excelize.File, sheetName string) error {
+	idx, err := f.GetSheetIndex(sheetName)
+	if err != nil {
+		return err
+	}
+	if idx != -1 {
+		placeholder := ""
+		if f.SheetCount == 1 {
+			placeholder = "__insyra_placeholder__"
+			if _, err := f.NewSheet(placeholder); err != nil {
+				return err
+			}
+		}
+		if err := f.DeleteSheet(sheetName); err != nil {
+			return err
+		}
+		if _, err := f.NewSheet(sheetName); err != nil {
+			return err
+		}
+		if placeholder != "" {
+			return f.DeleteSheet(placeholder)
+		}
+		return nil
+	}
+	_, err = f.NewSheet(sheetName)
+	return err
+}
 
 // saveSheetAsCsv saves a specific sheet in an Excel file as a CSV file.
 func saveSheetAsCsv(f *excelize.File, sheetName string, outputCsvName string) error {

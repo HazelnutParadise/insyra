@@ -23,7 +23,10 @@ func Skewness(sample any, method ...SkewnessMethod) (float64, error) {
 		return math.NaN(), errors.New("empty data")
 	}
 
-	d64 := insyra.SliceToF64(d)
+	d64, err := numericValues(d, "sample")
+	if err != nil {
+		return math.NaN(), err
+	}
 	dl := insyra.NewDataList(d64)
 	n := float64(dl.Len())
 

@@ -351,22 +351,8 @@ func (dl *DataList) ReplaceFirst(oldValue, newValue any) *DataList {
 
 // ReplaceLast replaces the last occurrence of oldValue with newValue.
 func (dl *DataList) ReplaceLast(oldValue, newValue any) *DataList {
-	isOldValueNaN := false
-	if val, ok := oldValue.(float64); ok && math.IsNaN(val) {
-		isOldValueNaN = true
-	}
 	dl.AtomicDo(func(dl *DataList) {
-		for i := len(dl.data) - 1; i >= 0; i-- {
-			if !isOldValueNaN && dl.data[i] == oldValue {
-				dl.data[i] = newValue
-				dl.updateTimestamp()
-				return
-			} else if val, ok := dl.data[i].(float64); ok && math.IsNaN(val) {
-				dl.data[i] = newValue
-				dl.updateTimestamp()
-				return
-			}
-		}
+		dl.replaceLast_notAtomic(oldValue, newValue)
 	})
 	return dl
 }
@@ -731,31 +717,28 @@ func (dl *DataList) ClearNilsAndNaNs() *DataList {
 // ClearOutliers removes values from the DataList that are outside the specified number of standard deviations.
 // This method modifies the original DataList and returns it.
 func (dl *DataList) ClearOutliers(stdDevs float64) *DataList {
-	defer func() {
-		r := recover()
-		if r != nil {
-			dl.warn("ClearOutliers", "Data types cannot be compared")
-		}
-		dl.updateTimestamp()
-	}()
 	dl.AtomicDo(func(dl *DataList) {
-		mean := dl.Mean()
-		stddev := dl.Stdev()
+		values, badRow, ok := numericCells(dl.data, true)
+		if !ok {
+			dl.warn("ClearOutliers", "non-numeric value at row %d; list left unchanged", badRow)
+			return
+		}
+		n, _, _, mean, stddev := observedStats(values)
+		if n < 2 {
+			dl.warn("ClearOutliers", "fewer than two numeric values; list left unchanged")
+			return
+		}
 		threshold := stdDevs * stddev
 
-		// 打印調試信息，確保計算值與 R 相同
-		LogDebug("DataList", "ClearOutliers", "Mean: %f", mean)
-		LogDebug("DataList", "ClearOutliers", "Standard Deviation: %f", stddev)
-		LogDebug("DataList", "ClearOutliers", "Threshold: %f", threshold)
-
-		for i := len(dl.data) - 1; i >= 0; i-- {
-			val := conv.ParseF64(dl.data[i])
-			LogDebug("DataList", "ClearOutliers", "Checking value: %f", val) // 打印每個檢查的值
-			if math.Abs(val-mean) > threshold {
-				LogDebug("DataList", "ClearOutliers", "Removing outlier: %f", val) // 打印要移除的異常值
-				dl.data = append(dl.data[:i], dl.data[i+1:]...)
+		kept := make([]any, 0, len(dl.data))
+		for i, v := range dl.data {
+			// nil and NaN cells are not outliers; they stay where they are.
+			if math.IsNaN(values[i]) || math.Abs(values[i]-mean) <= threshold {
+				kept = append(kept, v)
 			}
 		}
+		dl.data = kept
+		dl.updateTimestamp()
 	})
 	return dl
 }
@@ -763,27 +746,28 @@ func (dl *DataList) ClearOutliers(stdDevs float64) *DataList {
 // Normalize normalizes the data in the DataList, skipping NaN values.
 // Directly modifies the DataList.
 func (dl *DataList) Normalize() *DataList {
-	defer func() {
-		r := recover()
-		if r != nil {
-			dl.warn("Normalize", "Data types cannot be compared, returning nil")
-		}
-
-		dl.updateTimestamp()
-	}()
 	isFailed := false
 	dl.AtomicDo(func(dl *DataList) {
-		min, max := dl.Min(), dl.Max()
-		if math.IsNaN(min) || math.IsNaN(max) {
+		values, badRow, ok := numericCells(dl.data, true)
+		if !ok {
+			dl.warn("Normalize", "non-numeric value at row %d; list left unchanged", badRow)
+			isFailed = true
+			return
+		}
+		n, min, max, _, _ := observedStats(values)
+		if n == 0 {
 			dl.warn("Normalize", "Cannot normalize due to invalid Min/Max values")
 			isFailed = true
 			return
 		}
 
 		for i, v := range dl.data {
-			vfloat := conv.ParseF64(v)
-			dl.data[i] = (vfloat - min) / (max - min)
+			if isMissing(v) {
+				continue
+			}
+			dl.data[i] = (values[i] - min) / (max - min)
 		}
+		dl.updateTimestamp()
 	})
 	if isFailed {
 		return nil
@@ -794,18 +778,22 @@ func (dl *DataList) Normalize() *DataList {
 // Standardize standardizes the data in the DataList.
 // Directly modifies the DataList.
 func (dl *DataList) Standardize() *DataList {
-	defer func() {
-		r := recover()
-		if r != nil {
-			dl.warn("Standardize", "Data types cannot be compared, returning nil")
-		}
-	}()
 	dl.AtomicDo(func(dl *DataList) {
-		mean := dl.Mean()
-		stddev := dl.Stdev()
+		values, badRow, ok := numericCells(dl.data, true)
+		if !ok {
+			dl.warn("Standardize", "non-numeric value at row %d; list left unchanged", badRow)
+			return
+		}
+		n, _, _, mean, stddev := observedStats(values)
+		if n < 2 {
+			dl.warn("Standardize", "fewer than two numeric values; list left unchanged")
+			return
+		}
 		for i, v := range dl.data {
-			vfloat := conv.ParseF64(v)
-			dl.data[i] = (vfloat - mean) / stddev
+			if isMissing(v) {
+				continue
+			}
+			dl.data[i] = (values[i] - mean) / stddev
 		}
 		dl.updateTimestamp()
 	})
@@ -819,22 +807,25 @@ func (dl *DataList) Standardize() *DataList {
 // leaves non-numeric values untouched, and matches the other Fill* imputation
 // methods.
 func (dl *DataList) FillNaNWithMean() *DataList {
-	defer func() {
-		r := recover()
-		if r != nil {
-			dl.warn("FillNaNWithMean", "Data types cannot be compared, returning nil")
-		}
-	}()
 	dl.AtomicDo(func(dl *DataList) {
-		dlclone := dl.Clone()
-		dlNoNaN := dlclone.ClearNaNs()
-		mean := dlNoNaN.Mean()
+		values, badRow, ok := numericCells(dl.data, true)
+		if !ok {
+			dl.warn("FillNaNWithMean", "non-numeric value at row %d; list left unchanged", badRow)
+			return
+		}
+		n, _, _, mean, _ := observedStats(values)
+		if n == 0 {
+			dl.warn("FillNaNWithMean", "no numeric values to compute mean; list left unchanged")
+			return
+		}
 		for i, v := range dl.data {
-			vfloat := conv.ParseF64(v)
-			if math.IsNaN(vfloat) {
+			if v == nil {
+				continue
+			}
+			if math.IsNaN(values[i]) {
 				dl.data[i] = mean
 			} else {
-				dl.data[i] = vfloat
+				dl.data[i] = values[i]
 			}
 		}
 		dl.updateTimestamp()
@@ -934,18 +925,27 @@ func (dl *DataList) ExponentialSmoothing(alpha float64) *DataList {
 	}
 
 	var smoothedData []float64
+	isFailed := false
 	dl.AtomicDo(func(dl *DataList) {
 		if dl.Len() == 0 {
 			dl.warn("ExponentialSmoothing", "DataList is empty")
 			return
 		}
-		floatData := dl.ToF64Slice()
+		floatData, badRow, ok := numericCells(dl.data, false)
+		if !ok {
+			dl.warn("ExponentialSmoothing", "non-numeric or missing value at row %d", badRow)
+			isFailed = true
+			return
+		}
 		smoothedData = make([]float64, dl.Len())
 		smoothedData[0] = floatData[0] // 使用初始值作為第一個平滑值
 		for i := 1; i < dl.Len(); i++ {
 			smoothedData[i] = alpha*floatData[i] + (1-alpha)*smoothedData[i-1]
 		}
 	})
+	if isFailed {
+		return nil
+	}
 	return NewDataList(smoothedData)
 }
 
@@ -958,12 +958,18 @@ func (dl *DataList) DoubleExponentialSmoothing(alpha, beta float64) *DataList {
 		return nil
 	}
 	var smoothedData []float64
+	isFailed := false
 	dl.AtomicDo(func(dl *DataList) {
 		if dl.Len() == 0 {
 			dl.warn("DoubleExponentialSmoothing", "DataList is empty")
 			return
 		}
-		floatData := dl.ToF64Slice()
+		floatData, badRow, ok := numericCells(dl.data, false)
+		if !ok {
+			dl.warn("DoubleExponentialSmoothing", "non-numeric or missing value at row %d", badRow)
+			isFailed = true
+			return
+		}
 		smoothedData = make([]float64, dl.Len())
 		trend := 0.0
 		level := floatData[0]
@@ -976,6 +982,9 @@ func (dl *DataList) DoubleExponentialSmoothing(alpha, beta float64) *DataList {
 			smoothedData[i] = level + trend
 		}
 	})
+	if isFailed {
+		return nil
+	}
 	return NewDataList(smoothedData)
 }
 
@@ -1049,7 +1058,20 @@ func (dl *DataList) Sort(ascending ...bool) *DataList {
 // By default, it ranks in ascending order (smaller value gets smaller rank).
 // Pass false to rank in descending order.
 func (dl *DataList) Rank(ascending ...bool) *DataList {
-	data := dl.ToF64Slice()
+	var data []float64
+	isFailed := false
+	dl.AtomicDo(func(dl *DataList) {
+		var badRow int
+		var ok bool
+		data, badRow, ok = numericCells(dl.data, true)
+		if !ok {
+			dl.warn("Rank", "non-numeric value at row %d", badRow)
+			isFailed = true
+		}
+	})
+	if isFailed {
+		return nil
+	}
 	ranked := make([]float64, len(data))
 
 	ascendingOrder := true
@@ -1060,10 +1082,15 @@ func (dl *DataList) Rank(ascending ...bool) *DataList {
 		dl.warn("Rank", "Too many arguments, using only the first one")
 	}
 
-	// 建立一個索引來追蹤原始位置
-	indexes := make([]int, len(data))
+	// Missing cells (nil / NaN) rank NaN and do not take a rank position,
+	// matching pandas rank(na_option="keep").
+	indexes := make([]int, 0, len(data))
 	for i := range data {
-		indexes[i] = i
+		if math.IsNaN(data[i]) {
+			ranked[i] = math.NaN()
+			continue
+		}
+		indexes = append(indexes, i)
 	}
 
 	// 根據數據排序，並追蹤索引
@@ -1864,21 +1891,21 @@ func (dl *DataList) Percentile(p float64) float64 {
 func (dl *DataList) Difference() *DataList {
 	var result *DataList
 	dl.AtomicDo(func(dl *DataList) {
-		defer func() {
-			if r := recover(); r != nil {
-				dl.warn("Difference", "Data types cannot be compared")
-			}
-		}()
-
 		if len(dl.data) < 2 {
 			dl.warn("Difference", "DataList is too short to calculate differences, returning nil")
 			result = nil
 			return
 		}
+		values, badRow, ok := numericCells(dl.data, true)
+		if !ok {
+			dl.warn("Difference", "non-numeric value at row %d", badRow)
+			result = nil
+			return
+		}
 
-		differenceData := make([]float64, dl.Len()-1)
-		for i := 1; i < dl.Len(); i++ {
-			differenceData[i-1] = conv.ParseF64(dl.data[i]) - conv.ParseF64(dl.data[i-1])
+		differenceData := make([]float64, len(values)-1)
+		for i := 1; i < len(values); i++ {
+			differenceData[i-1] = values[i] - values[i-1]
 		}
 
 		result = NewDataList(differenceData)

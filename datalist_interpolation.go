@@ -9,15 +9,8 @@ import (
 
 // LinearInterpolation performs linear interpolation for the given x value using the DataList.
 func (dl *DataList) LinearInterpolation(x float64) float64 {
-	var data []float64
-	dl.AtomicDo(func(l *DataList) {
-		if len(l.data) < 2 {
-			return
-		}
-		data = l.ToF64Slice()
-	})
-	if len(data) < 2 {
-		dl.warn("LinearInterpolation", "Not enough data points")
+	data, ok := dl.interpolationInput("LinearInterpolation", 2)
+	if !ok {
 		return math.NaN()
 	}
 
@@ -35,15 +28,8 @@ func (dl *DataList) LinearInterpolation(x float64) float64 {
 
 // QuadraticInterpolation performs quadratic interpolation for the given x value using the DataList.
 func (dl *DataList) QuadraticInterpolation(x float64) float64 {
-	var data []float64
-	dl.AtomicDo(func(l *DataList) {
-		if len(l.data) < 3 {
-			return
-		}
-		data = l.ToF64Slice()
-	})
-	if len(data) < 3 {
-		dl.warn("QuadraticInterpolation", "Not enough data points")
+	data, ok := dl.interpolationInput("QuadraticInterpolation", 3)
+	if !ok {
 		return math.NaN()
 	}
 
@@ -61,10 +47,10 @@ func (dl *DataList) QuadraticInterpolation(x float64) float64 {
 
 // LagrangeInterpolation performs Lagrange interpolation for the given x value using the DataList.
 func (dl *DataList) LagrangeInterpolation(x float64) float64 {
-	var floatData []float64
-	dl.AtomicDo(func(l *DataList) {
-		floatData = l.ToF64Slice()
-	})
+	floatData, ok := dl.interpolationInput("LagrangeInterpolation", 0)
+	if !ok {
+		return math.NaN()
+	}
 	result, err := algorithms.LagrangeInterpolation(floatData, x)
 	if err != nil {
 		if errors.Is(err, algorithms.ErrNotEnoughData) {
@@ -79,10 +65,10 @@ func (dl *DataList) LagrangeInterpolation(x float64) float64 {
 
 // NearestNeighborInterpolation performs nearest-neighbor interpolation for the given x value using the DataList.
 func (dl *DataList) NearestNeighborInterpolation(x float64) float64 {
-	var floatData []float64
-	dl.AtomicDo(func(l *DataList) {
-		floatData = l.ToF64Slice()
-	})
+	floatData, ok := dl.interpolationInput("NearestNeighborInterpolation", 0)
+	if !ok {
+		return math.NaN()
+	}
 	result, err := algorithms.NearestNeighborInterpolation(floatData, x)
 	if err != nil {
 		if errors.Is(err, algorithms.ErrOutOfBounds) {
@@ -97,10 +83,10 @@ func (dl *DataList) NearestNeighborInterpolation(x float64) float64 {
 
 // NewtonInterpolation performs Newton's interpolation for the given x value using the DataList.
 func (dl *DataList) NewtonInterpolation(x float64) float64 {
-	var floatData []float64
-	dl.AtomicDo(func(l *DataList) {
-		floatData = l.ToF64Slice()
-	})
+	floatData, ok := dl.interpolationInput("NewtonInterpolation", 0)
+	if !ok {
+		return math.NaN()
+	}
 	result, err := algorithms.NewtonInterpolation(floatData, x)
 	if err != nil {
 		if errors.Is(err, algorithms.ErrNotEnoughData) {
@@ -115,10 +101,10 @@ func (dl *DataList) NewtonInterpolation(x float64) float64 {
 
 // HermiteInterpolation performs Hermite interpolation for the given x value using the DataList.
 func (dl *DataList) HermiteInterpolation(x float64, derivatives []float64) float64 {
-	var floatData []float64
-	dl.AtomicDo(func(l *DataList) {
-		floatData = l.ToF64Slice()
-	})
+	floatData, ok := dl.interpolationInput("HermiteInterpolation", 0)
+	if !ok {
+		return math.NaN()
+	}
 	result, err := algorithms.HermiteInterpolation(floatData, derivatives, x)
 	if err != nil {
 		if errors.Is(err, algorithms.ErrLengthMismatch) {
@@ -131,4 +117,28 @@ func (dl *DataList) HermiteInterpolation(x float64, derivatives []float64) float
 		return math.NaN()
 	}
 	return result
+}
+
+// interpolationInput reads the list as a fully numeric grid. A nil, NaN, or
+// non-numeric cell is refused: an interpolation grid cannot have a hole, and
+// substituting 0 would silently bend the curve. minPoints > 0 additionally
+// requires at least that many points.
+func (dl *DataList) interpolationInput(funcName string, minPoints int) ([]float64, bool) {
+	var data []float64
+	var badRow int
+	var ok bool
+	var n int
+	dl.AtomicDo(func(l *DataList) {
+		n = len(l.data)
+		data, badRow, ok = numericCells(l.data, false)
+	})
+	if !ok {
+		dl.warn(funcName, "non-numeric or missing value at row %d", badRow)
+		return nil, false
+	}
+	if minPoints > 0 && n < minPoints {
+		dl.warn(funcName, "Not enough data points")
+		return nil, false
+	}
+	return data, true
 }

@@ -283,12 +283,43 @@ func Stream(ctx context.Context, path string, opt ReadOptions, batchSize int) (<
 	return dtChan, errChan
 }
 
-// ReadColumn: read a single column's data from Parquet file.
-// Returns insyra.DataList.
+// ReadColumn reads a single column from a Parquet file into a DataList.
+// When opt.MaxValues > 0, the row count of the selected row groups (all when
+// none are selected) is taken from the file metadata first, and an error is
+// returned before any value is read if it exceeds the limit.
 func ReadColumn(ctx context.Context, path string, column string, opt ReadColumnOptions) (*insyra.DataList, error) {
+	if opt.MaxValues > 0 {
+		n, err := selectedRowCount(path, opt.RowGroups)
+		if err != nil {
+			return nil, err
+		}
+		if n > opt.MaxValues {
+			return nil, fmt.Errorf("column %s holds %d values in the selected row groups, exceeding MaxValues %d", column, n, opt.MaxValues)
+		}
+	}
 	table, err := Read(ctx, path, ReadOptions{Columns: []string{column}, RowGroups: opt.RowGroups})
 	if err != nil {
 		return nil, err
 	}
 	return table.GetCol("A"), nil
+}
+
+// selectedRowCount sums the row counts of the given row groups from the file
+// metadata, or of every row group when none are given.
+func selectedRowCount(path string, rowGroups []int) (int64, error) {
+	info, err := Inspect(path)
+	if err != nil {
+		return 0, err
+	}
+	if len(rowGroups) == 0 {
+		return info.NumRows, nil
+	}
+	var n int64
+	for _, rg := range rowGroups {
+		if rg < 0 || rg >= len(info.RowGroups) {
+			return 0, fmt.Errorf("row group %d out of range (file has %d)", rg, len(info.RowGroups))
+		}
+		n += info.RowGroups[rg].NumRows
+	}
+	return n, nil
 }
