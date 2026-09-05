@@ -6,17 +6,34 @@
 
 ## 審查準則
 
-每一項都問這七個問題，答得出來才打勾：
+每一項都要對照下面 14 條，寫得出「哪幾條過、哪幾條不過」才能打勾。「看起來沒問題」不算。
 
-1. 功能：它做的事是使用者需要的嗎？有沒有和其他 API 重疊？
-2. 簽名：參數與回傳型別能不能在編譯期擋住誤用？有沒有用 variadic 或 `any` 假裝選填參數？
-3. 錯誤處理：失敗會不會被吞掉？錯誤有沒有用 `%w` 包、能不能 `errors.Is`？部分成功怎麼表達？
-4. 資源與併發：檔案、goroutine、channel 有沒有洩漏？呼叫兩次、中途取消、空輸入會怎樣？
-5. 文件契約：doc comment 說的和實作做的一致嗎？
-6. 命名：符合 Go 慣例且與同套件一致嗎？
-7. 一致性：和 insyra 其他套件的做法（logger、Err() 模式、ctx 使用）一致嗎？
+**A. 該不該存在**
+1. 功能與範圍：解決的是使用者真的會遇到的問題嗎？和同套件或其他套件的 API 重疊嗎？單一職責嗎？拿掉它會損失什麼？（減法優先）
+2. 公開邊界：這個符號真的需要匯出嗎？只是實作細節就該進 `internal/`。一旦公開就是相容性承諾。
 
-嚴重度：**High** 生產環境會靜默出錯或資料損失；**Med** 誤用不易察覺、資源洩漏、契約不符；**Low** 慣例、命名、文件。
+**B. 好不好用（直覺性）**
+3. 可發現性：只看名稱和簽名，不看文件，猜得到它做什麼、回傳什麼嗎？
+4. 最常見用法是最短路徑：寫出「最典型的三行呼叫」，如果要先建物件、串三個方法、或傳一堆 nil 才能做最基本的事，就不及格。
+5. 心智模型：目標使用者是資料分析者。對照 pandas / numpy / R / Excel 的對應操作，行為、預設值、命名方向一致嗎？（例如 `head`、`dropna`、`groupby` 的語意）
+6. 對稱與可預測：`Read/Write`、`Get/Set`、`ByIndex/ByName`、`Col/Row` 成對出現且行為對稱嗎？同一件事在不同套件有幾種寫法？
+7. 零值與預設：不給選項時的行為是最安全、最常用的嗎？options struct 的零值可用嗎？有沒有「不傳就 panic」的隱藏前提？
+
+**C. 像不像業界標準（Go 慣例與知名程式庫）**
+8. Go 簽名慣例：`ctx` 放第一個參數；選項用 struct 或 functional options，不用 variadic 冒充選填；不用 `any` 逃避型別；不用裸 `bool` 參數；接受介面、回傳具體型別；I/O 接受 `io.Reader`/`io.Writer` 而非只吃路徑；序列考慮 `iter.Seq`（go.mod 已是 1.25）。
+9. Go 命名慣例：縮寫全大寫（`CSV`、`ID`、`URL`、`JSON`）；不加 `Get` 前綴；套件名不重複在符號裡（避免 `plot.PlotBar`）；boolean 用 `Is/Has`；`New`/`From`/`To`/`Parse` 依 Go 標準庫用法。
+10. 對照標竿：與標準庫（`encoding/csv`、`database/sql`、`net/http`）和領域內成熟程式庫（gonum、go-echarts、Arrow、gorgonia）的做法比，差異是有理由的還是隨手寫的？
+
+**D. 會不會壞（生產環境）**
+11. 錯誤處理：失敗不能被吞；`%w` 包裝可 `errors.Is/As`；提供 sentinel 或 typed error 讓呼叫端分流；不對使用者輸入 panic；部分成功要能表達；錯誤訊息帶上下文；不拿 log 代替回傳錯誤；`Err()` 模式與回傳 `error` 兩種風格在同一套件內不能混。
+12. 資源、併發、邊界：`ctx` 取消有效；goroutine/channel/檔案/`*excelize.File` 不洩漏；呼叫兩次、中途中斷、空輸入、nil receiver、超大輸入各會怎樣；thread safety 在文件明講。
+13. 資料正確性（insyra 特有）：nil / NaN / 空字串 / 混合型別的處理明確且有文件；型別轉換不得捏造值（`ToF64Slice` 零值教訓）；遵守 ENG.md 精度契約；排序穩定；浮點比較。
+14. 安全與可觀測：路徑與暫存檔權限；外部請求有 timeout；輸入大小上限；不 log 敏感資料；成功路徑不該噪音 log；能注入時鐘、HTTP client 等依賴以利測試。
+
+**E. 契約**
+- 每個匯出符號都有 Go 風格 doc comment（「Read reads …」，不是「Read: read …」），且描述與實作一致；`Docs/*.md` 與 `skills/` 同步；棄用要標 `Deprecated:`。這條每項必檢，違反直接列入發現。
+
+嚴重度：**High** 生產環境會靜默出錯、資料損失或資源耗盡；**Med** 誤用不易察覺、契約不符、明顯不符業界慣例、資源洩漏；**Low** 命名、文件、直覺性小瑕疵。
 
 ## 進度
 
@@ -58,6 +75,9 @@
 | C-6 | Low | `UTF8/Big5/Auto` 是裸 string 常數，而實際比對用 `strings.Contains`，任何字串都會被接受 | convert.go:22-26 | typed `Encoding` string 型別 |
 | C-7 | Low | 目錄用 `os.ModePerm`（0777）建立 | convert.go:143; convertDir.go:50 | 0755 |
 | C-8 | Low | 路徑沒有 `.csv` 結尾就自動補；`ExcelToCsv` 的 `onlyContainSheets` 指到不存在的 sheet 靜默略過；`EachExcelToCsv` log 標錯函式名 | convert.go:44, 158-164; convertDir.go:62 | 不補副檔名（或改 doc）；找不到的 sheet 回錯；修 log |
+| C-10 | Med | 全套件只吃檔案路徑，沒有 `io.Reader`/`io.Writer` 版本：記憶體中的 CSV、HTTP 回應、`embed.FS` 都得先落地成檔案才能轉（準則 8、10） | 全套件 | 核心改成 Reader/Writer，路徑版當薄包裝 |
+| C-11 | Med | `CsvToExcel(csvFiles, sheetNames, ...)` 用兩個平行切片靠索引對位，錯一格就對到別的 sheet；`ExcelToCsv(…, csvNames, onlyContainSheets...)` 同樣問題（準則 4、8） | convert.go:31, 135 | `[]SheetSpec{Path, Sheet}` 一個切片 |
+| C-12 | Low | 命名不符 Go 慣例：`Csv` 應為 `CSV`；`EachCsvToOneExcel` 讀起來要想一下（「每個 CSV 到一個 Excel」）；doc comment 缺 Go 風格開頭（準則 3、9、E） | 全套件 | v1 前統一改名 |
 | C-9 | Low | 每次成功都以 Info 等級寫 log。這是跨套件模式（parquet 除外），要在 core 的 logger 審查時一併決定 library 該不該在成功路徑上 log | 全套件 | 待 core 決定 |
 
 ### parallel
@@ -67,6 +87,7 @@
 | P-1 | High | 整個 API 以 `any` 進出：函式是 `any`，結果是 `[][]any`。worker panic 被轉成 `error` 塞進結果槽，與函式本身回傳 `error` 的情況無法區分；型別錯誤只能在執行期發現 | parallel/parallel_computing.go:16, 24-58, 61 | 見 P-4 |
 | P-2 | Med | `Run` 呼叫兩次會重新執行所有函式並覆寫結果；沒有 context、沒有併發上限 | parallel_computing.go:24 | 記錄已執行狀態；或整包重設計 |
 | P-3 | Low | `AwaitNoResult` doc 說「避免結果收集開銷」，但 `Run` 一律收集 | parallel_computing.go:66-70 | 修 doc 或真的分開 |
+| P-5 | Med | 最常見用法要串三步 `GroupUp(...).Run().AwaitResult()`，業界標竿 `errgroup.Group` 是 `g.Go(f); g.Wait()` 兩步且回傳 error（準則 4、10） | 全套件 | 併入 P-4 決策 |
 | P-4 | 決策 | 套件內部只有 `datatable.go`、`mkt/rfm.go`、`stats/anova.go` 三處使用，都是「跑幾個無回傳閉包再等」的用法。標準庫 `sync.WaitGroup` / `errgroup.Group` 已涵蓋。要嘛用 generics 重做成型別安全版本，要嘛標 Deprecated 並把三處改回 WaitGroup | 全套件 | 建議後者：一個公開套件維護成本高於三處 WaitGroup |
 
 ### parquet
@@ -79,6 +100,9 @@
 | Q-4 | Med | 關閉資源的錯誤用標準庫 `log.Printf`，繞過 insyra `Config` 的 log level 與格式；其他套件都用 `insyra.LogWarning` 等 | api.go, internal.go, ccl.go 多處 | 改用 insyra logger |
 | Q-5 | Low | `ApplyCCL` doc 範例引用不存在的 `CCLFilterOptions{}` | ccl.go:573 | 修 doc |
 | Q-6 | Low | `FilterWithCCL` / `ApplyCCL` batchSize 寫死 1000，無法調 | ccl.go:456, 577 | 選項或常數說明 |
+| Q-8 | Med | 所有函式只吃路徑；Arrow reader 本來就吃 `io.ReaderAt`，卻沒有暴露 `ReadFrom(r io.ReaderAt, size)` / `WriteTo(w io.Writer)`，S3、HTTP、記憶體來源都得先落地（準則 8、10） | api.go 全檔 | 加 Reader/Writer 版本，路徑版包裝它 |
+| Q-9 | Low | `Stream` 回傳兩個 channel 是 Go 1.23 之前的寫法；`iter.Seq2[*DataTable, error]` 讓 `for dt, err := range` 直接用，也自然解決 Q-7 的洩漏契約（準則 8） | api.go:246 | 改 `iter.Seq2`，舊簽名保留一版 |
+| Q-10 | Low | doc comment 是「Read: read …」冒號風格，不是 Go 的「Read reads …」；`FileInfo`、`ColumnInfo`、`RowGroupInfo` 無 doc（準則 E） | api.go | 補齊 |
 | Q-7 | Low | `Stream` 若消費者中途停止讀取又不 cancel ctx，producer goroutine 永久阻塞在 send；doc 沒寫「必須 drain 或 cancel」。記錄不會遺失（unbuffered channel，已推演 close 順序） | api.go:246-286 | doc 明講使用契約 |
 
 ## 逐項清單
@@ -857,12 +881,12 @@
 - [x] `const Auto` (convert.go:25) — OK。但三個常數是裸 string，非 typed `Encoding`，拼錯字不會被編譯器擋。見 C-6
 - [x] `const Big5` (convert.go:24) — 同上
 - [x] `const UTF8` (convert.go:23) — 同上
-- [x] `func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile string, csvEncoding ...string) error` (convert.go:86) — C-1 失敗被吞、C-2 variadic 選項、C-3 doc 說會覆蓋現有 sheet 但實際只覆蓋重疊的儲存格、C-4 excelize File 未 Close、C-5 %v 包錯誤
-- [x] `func CsvToExcel(csvFiles []string, sheetNames []string, output string, csvEncoding ...string) error` (convert.go:31) — C-1、C-2、C-5；另外個別檔案失敗後仍存檔並回傳成功數字給 log
-- [x] `func EachCsvToOneExcel(dir string, output string, encoding ...string) error` (convertDir.go:16) — C-2；Glob 只抓 `*.csv` 小寫；OK 其餘委派 CsvToExcel
+- [x] `func AppendCsvToExcel(csvFiles []string, sheetNames []string, existingFile string, csvEncoding ...string) error` (convert.go:86) — C-1 失敗被吞、C-2 variadic 選項、C-3 doc 說會覆蓋現有 sheet 但實際只覆蓋重疊的儲存格、C-4 excelize File 未 Close、C-5 %v 包錯誤、C-10 只吃路徑、C-11 平行切片、C-12 命名
+- [x] `func CsvToExcel(csvFiles []string, sheetNames []string, output string, csvEncoding ...string) error` (convert.go:31) — C-1、C-2、C-5；另外個別檔案失敗後仍存檔並回傳成功數字給 log、C-10、C-11、C-12
+- [x] `func EachCsvToOneExcel(dir string, output string, encoding ...string) error` (convertDir.go:16) — C-2；Glob 只抓 `*.csv` 小寫；OK 其餘委派 CsvToExcel、C-12 名稱要想一下
 - [x] `func EachExcelToCsv(dir string, outputDir string) error` (convertDir.go:32) — C-4 每個 xlsx 開了不關；log 標成 EachCsvToOneExcel（錯名）；C-7 0777
-- [x] `func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyContainSheets ...string) error` (convert.go:135) — C-4 未 Close；onlyContainSheets 指到不存在的 sheet 靜默略過（打錯字得到零輸出無錯誤）；C-7 0777；C-5
-- [x] `func ReadCsvToString(filePath string, encoding ...string) (string, error)` (read_csv.go:11) — C-2；缺 doc comment；錯誤已用 %w（此檔正確）
+- [x] `func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyContainSheets ...string) error` (convert.go:135) — C-4 未 Close；onlyContainSheets 指到不存在的 sheet 靜默略過（打錯字得到零輸出無錯誤）；C-7 0777；C-5、C-10、C-11、C-12
+- [x] `func ReadCsvToString(filePath string, encoding ...string) (string, error)` (read_csv.go:11) — C-2；缺 doc comment；錯誤已用 %w（此檔正確）、C-10、C-12
 
 ## datafetch (42)
 
@@ -1573,23 +1597,23 @@
 - [x] `func (pg *ParallelGroup) AwaitNoResult()` (parallel_computing.go:68) — P-3 doc 宣稱省掉結果收集，但 Run 一律收集
 - [x] `func (pg *ParallelGroup) AwaitResult() [][]any` (parallel_computing.go:61) — P-1 回傳 [][]any；未呼叫 Run 直接 Await 立即回傳全 nil，無警示
 - [x] `func (pg *ParallelGroup) Run() *ParallelGroup` (parallel_computing.go:24) — P-1 panic 轉成 error 塞進結果槽，與函式自己回傳的 error 無法區分；P-2 呼叫兩次會重跑；無 context、無併發上限
-- [x] `func GroupUp(fns ...any) *ParallelGroup` (parallel_computing.go:16) — P-1 參數型別 any，錯誤只能在執行期發現
+- [x] `func GroupUp(fns ...any) *ParallelGroup` (parallel_computing.go:16) — P-1 參數型別 any，錯誤只能在執行期發現、P-5 三步串接
 - [x] `type ParallelGroup struct { fns []any results [][]any wg sync.WaitGroup }` (parallel_computing.go:9) — 欄位全私有，零值可用但無意義；建議整體見 P-4
 
 ## parquet (12)
 
 - [x] `func ApplyCCL(ctx context.Context, path string, cclScript string) error` (ccl.go:576) — Q-4 stdlib log；Q-5 doc 範例引用不存在的 CCLFilterOptions；Q-6 batchSize 寫死 1000；tmp+rename 原子替換：OK；空輸入不覆蓋原檔：OK
 - [x] `func FilterWithCCL(ctx context.Context, path string, filterExpr string) (*insyra.DataTable, error)` (ccl.go:455) — Q-6 batchSize 寫死；回傳新表不動原檔：OK
-- [x] `func Inspect(path string) (FileInfo, error)` (api.go:54) — OK。無 ctx 可接受（純 metadata）；Q-4
-- [x] `func Read(ctx context.Context, path string, opt ReadOptions) (*insyra.DataTable, error)` (api.go:168) — OK 主流程；RowGroups 越界未先驗證（依賴 arrow 回錯，未實測）；Q-4
+- [x] `func Inspect(path string) (FileInfo, error)` (api.go:54) — OK。無 ctx 可接受（純 metadata）；Q-4、Q-8、Q-10
+- [x] `func Read(ctx context.Context, path string, opt ReadOptions) (*insyra.DataTable, error)` (api.go:168) — OK 主流程；RowGroups 越界未先驗證（依賴 arrow 回錯，未實測）；Q-4、Q-8 只吃路徑、Q-10 doc 風格
 - [x] `func ReadColumn(ctx context.Context, path string, column string, opt ReadColumnOptions) (*insyra.DataList, error)` (api.go:288) — Q-1 `MaxValues` 完全沒讀，doc 承諾的保護不存在；實作是整表 Read 再取 A 欄
-- [x] `func Stream(ctx context.Context, path string, opt ReadOptions, batchSize int) (<-chan *insyra.DataTable, <-chan error)` (api.go:246) — Q-7 消費者若不 cancel ctx 就停止讀取，goroutine 永久阻塞；doc 未說明必須 drain / cancel；記錄無遺失（unbuffered，已推演）
-- [x] `func Write(dt insyra.IDataTable, path string) error` (api.go:131) — Q-2 無 ctx、無選項（壓縮、chunk 1Mi 寫死）；Q-3 直接寫目標路徑，失敗留下半個檔案，與 ApplyCCL 的 tmp+rename 不一致；Q-4
-- [x] `type ColumnInfo struct { Name string PhysicalType string LogicalType string Repetition string }` (api.go:40) — OK
-- [x] `type FileInfo struct { NumRows int64 NumRowGroups int Version string CreatedBy string Metadata map[string]string Columns []ColumnInfo RowGroups []RowGroupInfo }` (api.go:30) — OK
+- [x] `func Stream(ctx context.Context, path string, opt ReadOptions, batchSize int) (<-chan *insyra.DataTable, <-chan error)` (api.go:246) — Q-7 消費者若不 cancel ctx 就停止讀取，goroutine 永久阻塞；doc 未說明必須 drain / cancel；記錄無遺失（unbuffered，已推演）、Q-9 建議 iter.Seq2
+- [x] `func Write(dt insyra.IDataTable, path string) error` (api.go:131) — Q-2 無 ctx、無選項（壓縮、chunk 1Mi 寫死）；Q-3 直接寫目標路徑，失敗留下半個檔案，與 ApplyCCL 的 tmp+rename 不一致；Q-4、Q-8、Q-10
+- [x] `type ColumnInfo struct { Name string PhysicalType string LogicalType string Repetition string }` (api.go:40) — OK，缺 doc（Q-10）
+- [x] `type FileInfo struct { NumRows int64 NumRowGroups int Version string CreatedBy string Metadata map[string]string Columns []ColumnInfo RowGroups []RowGroupInfo }` (api.go:30) — OK，缺 doc（Q-10）
 - [x] `type ReadColumnOptions struct { RowGroups []int MaxValues int64 }` (api.go:25) — Q-1 MaxValues 是死欄位
 - [x] `type ReadOptions struct { Columns []string RowGroups []int }` (api.go:19) — OK
-- [x] `type RowGroupInfo struct { NumRows int64 TotalByteSize int64 TotalCompressedSize int64 }` (api.go:47) — OK
+- [x] `type RowGroupInfo struct { NumRows int64 TotalByteSize int64 TotalCompressedSize int64 }` (api.go:47) — OK，缺 doc（Q-10）
 
 ## pd (8)
 
