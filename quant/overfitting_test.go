@@ -2,8 +2,10 @@ package quant
 
 import (
 	"math"
+	"strings"
 	"testing"
 
+	"github.com/HazelnutParadise/insyra"
 	"github.com/HazelnutParadise/insyra/stats"
 )
 
@@ -152,5 +154,60 @@ func TestPBOErrors(t *testing.T) {
 		if _, err := PBO(toDT(c.perf), c.nSplits); err == nil {
 			t.Errorf("%s: expected error", c.name)
 		}
+	}
+}
+
+func TestDeflatedSharpeRatioRejectsUnreadableInput(t *testing.T) {
+	cases := []struct {
+		name   string
+		values []any
+		row    string
+	}{
+		{"NaN trial", []any{0.5, math.NaN(), 0.7}, "row 2"},
+		{"Inf trial", []any{0.5, math.Inf(1), 0.7}, "row 2"},
+		{"nil trial", []any{0.5, nil, 0.7}, "row 2"},
+		{"text trial", []any{0.5, 0.6, "n/a"}, "row 3"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := DeflatedSharpeRatio(1.0, 100, 0, 3, insyra.NewDataList(tc.values...))
+			if err == nil {
+				t.Fatalf("DeflatedSharpeRatio returned nil error, got %v", got)
+			}
+			if !strings.Contains(err.Error(), "trialSharpes") || !strings.Contains(err.Error(), tc.row) {
+				t.Errorf("error = %q, want trialSharpes and %s", err, tc.row)
+			}
+			if !math.IsNaN(got) {
+				t.Errorf("DeflatedSharpeRatio = %v on refusal, want NaN", got)
+			}
+		})
+	}
+
+	if got, err := DeflatedSharpeRatio(1.0, 100, 0, 3, nil); err == nil || !strings.Contains(err.Error(), "trialSharpes is nil") {
+		t.Errorf("DeflatedSharpeRatio(nil) = %v, %v; want an error naming \"trialSharpes is nil\"", got, err)
+	}
+}
+
+func TestPBORejectsUnreadableInput(t *testing.T) {
+	// Column 1 (zero-based, the second column) holds a string in row 3
+	// (one-based). The error must name both.
+	colA := insyra.NewDataList(0.01, 0.02, 0.03, 0.04)
+	colB := insyra.NewDataList(0.02, 0.01, "x", 0.03)
+	got, err := PBO(insyra.NewDataTable(colA, colB), 2)
+	if err == nil {
+		t.Fatalf("PBO returned nil error, got %v", got)
+	}
+	if !strings.Contains(err.Error(), "column 1") || !strings.Contains(err.Error(), "row 3") {
+		t.Errorf("PBO error = %q, want column 1 and row 3", err)
+	}
+	if !math.IsNaN(got) {
+		t.Errorf("PBO = %v on refusal, want NaN", got)
+	}
+
+	// A non-finite cell in the first column is refused the same way.
+	nanCol := insyra.NewDataList(0.01, math.NaN(), 0.03, 0.04)
+	if _, err := PBO(insyra.NewDataTable(nanCol, colA), 2); err == nil ||
+		!strings.Contains(err.Error(), "column 0") || !strings.Contains(err.Error(), "row 2") {
+		t.Errorf("PBO error = %v, want column 0 and row 2", err)
 	}
 }

@@ -87,10 +87,15 @@ func ExpectedMaxSharpe(sharpeVariance float64, nTrials int) (float64, error) {
 // considered during the search; their count and (population) variance feed
 // SR₀.
 //
-// Returns an error if trialSharpes is empty or any downstream computation
-// fails.
+// Returns an error if trialSharpes is nil or empty, or any downstream
+// computation fails. Every trial Sharpe must be numeric and finite — an
+// unreadable, NaN, or Inf cell is an error naming its one-based row, never
+// a substituted zero.
 func DeflatedSharpeRatio(observedSR float64, n int, skew, kurt float64, trialSharpes insyra.IDataList) (float64, error) {
-	sharpes := trialSharpes.ToF64Slice()
+	sharpes, err := numericSeries(trialSharpes, "trialSharpes")
+	if err != nil {
+		return math.NaN(), err
+	}
 	if len(sharpes) == 0 {
 		return math.NaN(), errors.New("DeflatedSharpeRatio: trialSharpes is empty")
 	}
@@ -123,7 +128,9 @@ func DeflatedSharpeRatio(observedSR float64, n int, skew, kurt float64, trialSha
 //
 // Returns an error for an empty matrix, columns of unequal length, fewer
 // than 2 strategies, an odd or non-positive nSplits, or nSplits greater
-// than T.
+// than T. Every cell must be numeric and finite — an unreadable, NaN, or
+// Inf cell is an error naming its zero-based column and one-based row,
+// never a substituted zero.
 func PBO(perf insyra.IDataTable, nSplits int) (float64, error) {
 	numRows, numCols := perf.Size()
 	if numRows == 0 || numCols == 0 {
@@ -134,7 +141,10 @@ func PBO(perf insyra.IDataTable, nSplits int) (float64, error) {
 		matrix[i] = make([]float64, numCols)
 	}
 	for j := range numCols {
-		col := perf.GetColByNumber(j).ToF64Slice()
+		col, err := numericSeries(perf.GetColByNumber(j), fmt.Sprintf("column %d", j))
+		if err != nil {
+			return math.NaN(), err
+		}
 		if len(col) != numRows {
 			return math.NaN(), fmt.Errorf("PBO: column %d has %d rows, want %d (columns must be equal length)", j, len(col), numRows)
 		}

@@ -29,6 +29,8 @@ Unlike the [`finance`](./finance.md) package (which uses high-precision `decimal
 
 **Input convention.** Functions that take your *raw data series* accept `insyra.IDataList` (a return or equity column) or `insyra.IDataTable` (a strategy×period matrix), the same as the [`stats`](./stats.md) package. Values that are *not* raw data — scalar Sharpe/variance inputs, and the returns/equity that walk-forward and the bootstrap *compute* — stay as `float64`. Every exported function follows an **error-first** convention: invalid input returns an `error` rather than logging or panicking. Always handle `err` at the call site.
 
+Every function that reads a `DataList` or `DataTable` refuses values it cannot read: a non-numeric cell, a `NaN`, or an `Inf` returns an error naming the series and the one-based row, and a `nil` series returns an error naming it. No cell is ever silently coerced to `0`. Clean a series with gaps before the call — `ClearNils` drops blanks (a `PctChange` column starts with one), or fill them explicitly.
+
 > **Annualized vs per-period Sharpe.** `SharpeRatio` returns an *annualized* Sharpe (it multiplies by `√periodsPerYear`). The overfitting diagnostics (`ProbabilisticSharpeRatio`, `DeflatedSharpeRatio`, and the Sharpe ratios you feed to them) use the *per-period, non-annualized* Sharpe — i.e. `mean/stddev` with no annualization. Compute that with `SharpeRatio(returns, 0, 1)`. Mixing the two conventions silently corrupts DSR/PBO results.
 
 ---
@@ -704,13 +706,13 @@ fmt.Printf("P(loss) = %.1f%%\n", 100*float64(losses)/float64(len(res.Equity)))
 
 All exported functions return `(value, error)` and surface validation problems through the second return value. Common error sources:
 
-- **`SharpeRatio`** — fewer than 2 returns, non-positive `periodsPerYear`, zero volatility
-- **`MaxDrawdown`** — empty `equity`
-- **`AnnualizedReturn`** — fewer than 2 points, non-positive `days`, non-positive first/last value
+- **`SharpeRatio`** — nil or unreadable `returns` (non-numeric, NaN, Inf — the error names the series and row), fewer than 2 returns, non-positive `periodsPerYear`, zero volatility
+- **`MaxDrawdown`** — nil, empty, or unreadable `equity` (the error names the series and row)
+- **`AnnualizedReturn`** — nil or unreadable `equity` (the error names the series and row), fewer than 2 points, non-positive `days`, non-positive first/last value
 - **`ProbabilisticSharpeRatio`** — `n < 2`, non-positive variance term (extreme skew/kurtosis)
 - **`ExpectedMaxSharpe`** — negative `sharpeVariance`
-- **`DeflatedSharpeRatio`** — empty `trialSharpes`, or any downstream error
-- **`PBO`** — empty matrix, columns of unequal length, fewer than 2 strategies, odd/non-positive `nSplits`, `nSplits > T`
+- **`DeflatedSharpeRatio`** — nil, empty, or unreadable `trialSharpes` (the error names the series and row), or any downstream error
+- **`PBO`** — empty matrix, an unreadable cell (the error names the zero-based `column <j>` and the one-based row), columns of unequal length, fewer than 2 strategies, odd/non-positive `nSplits`, `nSplits > T`
 - **`WalkForward`** — non-positive `n`/`TrainSize`/`TestSize`, `TrainSize >= n`, nil callback
 - **`BlockBootstrap`** — empty or unreadable `returns` (non-numeric, NaN, Inf — the error names the row), non-positive `Horizon`/`Paths`, `BlockSize < 1`, `BlockSize > len(returns)`
 - **`PercentileBands`** — empty or ragged `paths`, empty `percentiles`, a percentile outside `[0, 100]`

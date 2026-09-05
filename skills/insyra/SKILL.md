@@ -799,7 +799,7 @@ See `Docs/quant.md` for parameter guidance (block length ≈ n^(1/3), a few thou
 
 ### 8c) Risk metrics (quant)
 
-`quant.ValueAtRisk` and `quant.ConditionalValueAtRisk` report per-period tail losses (historical or parametric), while `quant.SortinoRatio`, `quant.CalmarRatio`, `quant.InformationRatio`, and `quant.DrawdownSeries` cover downside, drawdown-relative, benchmark-relative, and per-period drawdown analysis. New quant inputs must be finite numbers; unreadable cells are errors naming the row.
+`quant.ValueAtRisk` and `quant.ConditionalValueAtRisk` report per-period tail losses (historical or parametric), while `quant.SortinoRatio`, `quant.CalmarRatio`, `quant.InformationRatio`, and `quant.DrawdownSeries` cover downside, drawdown-relative, benchmark-relative, and per-period drawdown analysis. Every `quant` input series must hold finite numbers; an unreadable cell is an error naming the series and the row, never a zero — this covers the older `SharpeRatio`, `MaxDrawdown`, `AnnualizedReturn`, `DeflatedSharpeRatio`, and `PBO` as well.
 
 ```go
 var95, err := quant.ValueAtRisk(returns, 0.95, quant.VaRHistorical)
