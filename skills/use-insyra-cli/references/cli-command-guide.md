@@ -677,7 +677,7 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 ## Quantitative Finance
 ### `quant`
 - Description: Quantitative finance: performance, risk, exposure, factor and option analytics
-- Usage: `quant sharpe|sortino|ir|maxdd|annret|calmar|drawdown|var|cvar|beta|capm|factor|bs|iv ...`
+- Usage: `quant sharpe|sortino|ir|maxdd|annret|calmar|drawdown|var|cvar|beta|capm|factor|bs|iv|portfolio|frontier ...`
 - Example: `insyra quant sharpe returns 252 rf 0.0001 as sharpe`
 - Full forms:
 	- `quant sharpe <returns> <periods> [rf <r>] [as <var>]` — `SharpeRatio`
@@ -694,6 +694,9 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 	- `quant factor <asset> <factors> [rf <r>] [as <var>]` — `FactorModel`, one row per factor plus `<var>_alpha`
 	- `quant bs call|put <spot> <strike> <rate> <vol> <years> [q <yield>] [as <var>]` — `BlackScholes`, stores a one-row DataTable
 	- `quant iv call|put <price> <spot> <strike> <rate> <years> [q <yield>] [as <var>]` — `ImpliedVolatility`
+	- `quant portfolio <returns_dt> minvar|target <r>|maxsharpe [rf <r>] [min <v1,...>] [max <v1,...>] [as <var>]` — `OptimizePortfolio`, stores an `Asset, Weight` DataTable plus a one-row `<var>_stats`
+	- `quant frontier <returns_dt> <points> [rf <r>] [min <v1,...>] [max <v1,...>] [as <var>]` — `EfficientFrontier`, one row per point with fixed columns then one weight column per asset
 - Series arguments are DataList variables of per-period returns (or an equity curve), not prices — convert with `pctchange` then `clean nil` first.
 - `periods`, `days`, and `confidence` are required positionals; `rf`, `mar`, `q` default to 0 and the VaR method to `historical`.
 - Scalar forms print `name=value` and store a float64 under `as <var>` (or `$result`); `capm` and `bs` store a one-row DataTable, `factor` stores one row per factor plus `<var>_alpha`, `drawdown` stores a DataList.
+- `portfolio` and `frontier` take a **DataTable** of aligned per-period returns (one column per asset), not a DataList. `min`/`max` are comma-separated per-asset bounds in column order, default long-only `[0, 1]`; a list whose length does not match the column count is refused before the solver runs. A non-converged solve is reported as `converged=false`, not as an error.

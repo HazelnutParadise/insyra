@@ -544,6 +544,15 @@ quant bs call 42 40 0.10 0.20 0.5 as opt
 quant iv call 4.759 42 40 0.10 0.5
 ```
 
+`portfolio` and `frontier` take a **DataTable** of aligned per-period returns — one column per asset, one row per period — instead of a single series:
+
+```text
+quant portfolio <returns_dt> minvar|target <r>|maxsharpe [rf <r>] [min <v1,...>] [max <v1,...>] [as <var>]
+quant frontier <returns_dt> <points> [rf <r>] [min <v1,...>] [max <v1,...>] [as <var>]
+```
+
+`min` and `max` are comma-separated per-asset bounds in column order; the default box is long-only `[0, 1]`, so a short position needs an explicit negative `min`. A list whose length does not match the table's column count is refused before the solver runs. `rf` is per period and defaults to 0.
+
 ### B8. Taiwan stock beta from the CLI
 
 `fetch tw` reaches the Taiwan Stock Exchange (TWSE) and Taipei Exchange (TPEx) daily datasets. No API key is needed, dates are written `YYYY-MM-DD`, and the trailing market keyword is `twse`, `tpex`, or `auto` (the default).
@@ -580,6 +589,35 @@ config fetch.tw.interval_ms 1000
 ```
 
 The value is milliseconds and must be a non-negative integer; `0` turns throttling off.
+
+### B9. Portfolio weights from the CLI
+
+`quant portfolio` turns a table of aligned return columns into an allocation. Build the table by fetching each asset, taking returns, and putting the series side by side. `setcolnames` matters: `newdt` names each column after its DataList, and two series both extracted from an `AdjClose` column would otherwise arrive with the same name.
+
+```text
+fetch tw 2330 adjprices 2026-01-01 2026-08-31 twse as tsmc
+fetch tw 2317 adjprices 2026-01-01 2026-08-31 twse as hon_hai
+col tsmc AdjClose as tsmc_px
+col hon_hai AdjClose as hon_hai_px
+pctchange tsmc_px 1 as tsmc_ret
+pctchange hon_hai_px 1 as hon_hai_ret
+clean tsmc_ret nil
+clean hon_hai_ret nil
+newdt tsmc_ret hon_hai_ret as rets
+setcolnames rets TSMC HonHai
+quant portfolio rets maxsharpe rf 0.0001 as w
+show w
+show w_stats
+```
+
+`portfolio` prints one `<asset>=<weight>` line plus a summary (`return= vol= sharpe= iterations= converged=`). It stores a two-column `Asset, Weight` DataTable under `as <var>` (or `$result`), and a one-row `<var>_stats` table with `ExpectedReturn`, `Variance`, `Volatility`, `SharpeRatio`, `Iterations` and `Converged`. A solve that hits the iteration cap is reported as `converged=false` with the best weights found — it is not an error.
+
+`frontier` sweeps the same problem across the attainable return range and stores one row per point: the fixed columns `ExpectedReturn`, `Variance`, `Volatility`, `SharpeRatio` and `Converged`, then one weight column per asset named after the asset. An asset literally named after one of those five columns is refused rather than silently renamed.
+
+```text
+quant frontier rets 20 min -0.2,-0.2 max 1,1 as f
+save f frontier.csv
+```
 
 ### C. Go `engine/dsl` session flow
 
@@ -624,7 +662,7 @@ High-level command map:
 - **DataList Stats**: `sum`, `mean`, `median`, `mode`, `stdev`, `var`, `min`, `max`, `range`, `quartile`, `iqr`, `percentile`, `count`, `counter`, `corr`, `cov`, `corrmatrix`, `skewness`, `kurtosis`
 - **Time Series / Transforms**: `rank`, `normalize`, `standardize`, `reverse`, `upper`, `lower`, `capitalize`, `parsenums`, `parsestrings`, `parsedates`, `movavg`, `expsmooth`, `diff`, `diffn`, `shift`, `pctchange`, `cumsum`, `cumprod`, `cummax`, `cummin`, `rolling`, `expanding`, `ewm`, `resample`, `fillna`
 - **Modeling / Viz / Fetch**: `regression`, `pca`, `kmeans`, `hclust`, `cutree`, `dbscan`, `silhouette`, `knn_classify`, `knn_regress`, `knn_neighbors`, `ttest`, `ztest`, `anova`, `ftest`, `chisq`, `plot`, `fetch`
-- **Quant**: `quant` (`sharpe`, `sortino`, `ir`, `maxdd`, `annret`, `calmar`, `drawdown`, `var`, `cvar`, `beta`, `capm`, `factor`, `bs`, `iv`)
+- **Quant**: `quant` (`sharpe`, `sortino`, `ir`, `maxdd`, `annret`, `calmar`, `drawdown`, `var`, `cvar`, `beta`, `capm`, `factor`, `bs`, `iv`, `portfolio`, `frontier`)
 
 ### Missing-Value Fill Commands
 
@@ -732,7 +770,7 @@ Source policy:
 | `silhouette` | `silhouette <var> <labels_var> [as <var>]` | Silhouette analysis |
 | `percentile` | `percentile <var> <p>` | DataList percentile |
 | `plot` | `plot <type> <var> [options...] [save <file>]` | Create charts from variables |
-| `quant` | `quant sharpe\|sortino\|ir\|maxdd\|annret\|calmar\|drawdown\|var\|cvar\|beta\|capm\|factor\|bs\|iv ...` | Quantitative finance: performance, risk, exposure, factor and option analytics |
+| `quant` | `quant sharpe\|sortino\|ir\|maxdd\|annret\|calmar\|drawdown\|var\|cvar\|beta\|capm\|factor\|bs\|iv\|portfolio\|frontier ...` | Quantitative finance: performance, risk, exposure, factor, option and portfolio analytics |
 | `quartile` | `quartile <var> <q>` | DataList quartile |
 | `range` | `range <var>` | DataList range |
 | `rank` | `rank <var> [asc\|desc\|true\|false] [as <var>]` | Rank DataList |

@@ -169,6 +169,8 @@ This list is generated from `insyra help` in this repository state.
 - `quant capm` - CAPM beta, alpha, R2, standard errors, N (one-row DataTable)
 - `quant factor` - Multi-factor exposures (one row per factor, plus `<var>_alpha`)
 - `quant bs` / `quant iv` - Black-Scholes price and greeks, implied volatility
+- `quant portfolio` - OptimizePortfolio: mean-variance weights (`Asset, Weight` plus `<var>_stats`)
+- `quant frontier` - EfficientFrontier: one row per point, one weight column per asset
 
 ## Missing-Value Fill Commands
 

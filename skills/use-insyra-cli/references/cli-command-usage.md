@@ -415,8 +415,8 @@ This is separate from boolean-flag parsing used by option arguments like `header
 	- with `save <file>`: `.png` uses PNG export, other extensions use HTML export
 
 ## `quant`
-- Description: Quantitative finance metrics from the `quant` package. Series arguments are DataList variables of per-period **returns** (or an equity curve), never prices. `periods`, `days`, and `confidence` are required — there is no CLI default of 252. `rf`, `mar`, and `q` default to 0; the VaR method defaults to `historical`. Scalar forms print `name=value` and store a float64; library errors are returned verbatim behind a `quant <form>:` prefix.
-- Usage: `quant sharpe|sortino|ir|maxdd|annret|calmar|drawdown|var|cvar|beta|capm|factor|bs|iv ...`
+- Description: Quantitative finance metrics from the `quant` package. Series arguments are DataList variables of per-period **returns** (or an equity curve), never prices. `periods`, `days`, and `confidence` are required — there is no CLI default of 252. `rf`, `mar`, and `q` default to 0; the VaR method defaults to `historical`. Scalar forms print `name=value` and store a float64; library errors are returned verbatim behind a `quant <form>:` prefix. `portfolio` and `frontier` take a DataTable of aligned return columns instead of a series, with comma-separated per-asset `min`/`max` bounds in column order (default long-only `[0, 1]`).
+- Usage: `quant sharpe|sortino|ir|maxdd|annret|calmar|drawdown|var|cvar|beta|capm|factor|bs|iv|portfolio|frontier ...`
 - Full forms:
 	- `quant sharpe <returns> <periods> [rf <r>] [as <var>]` — `SharpeRatio`
 	- `quant sortino <returns> <periods> [mar <r>] [as <var>]` — `SortinoRatio`
@@ -432,6 +432,8 @@ This is separate from boolean-flag parsing used by option arguments like `header
 	- `quant factor <asset> <factors> [rf <r>] [as <var>]` — `FactorModel`, one row per factor plus `<var>_alpha`
 	- `quant bs call|put <spot> <strike> <rate> <vol> <years> [q <yield>] [as <var>]` — `BlackScholes`, stores a one-row DataTable
 	- `quant iv call|put <price> <spot> <strike> <rate> <years> [q <yield>] [as <var>]` — `ImpliedVolatility`
+	- `quant portfolio <returns_dt> minvar|target <r>|maxsharpe [rf <r>] [min <v1,...>] [max <v1,...>] [as <var>]` — `OptimizePortfolio`, stores an `Asset, Weight` DataTable plus a one-row `<var>_stats`
+	- `quant frontier <returns_dt> <points> [rf <r>] [min <v1,...>] [max <v1,...>] [as <var>]` — `EfficientFrontier`, one row per point with fixed columns then one weight column per asset
 
 ## `quartile`
 - Description: DataList quartile

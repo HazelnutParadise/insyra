@@ -111,6 +111,18 @@ var quantForms = []quantForm{
 		desc:  "ImpliedVolatility: the volatility that reproduces the given price",
 		run:   runQuantImpliedVolatility,
 	},
+	{
+		name:  "portfolio",
+		usage: "quant portfolio <returns_dt> minvar|target <r>|maxsharpe [rf <r>] [min <v1,...>] [max <v1,...>] [as <var>]",
+		desc:  "OptimizePortfolio: mean-variance weights as Asset/Weight, summary in <var>_stats",
+		run:   runQuantPortfolio,
+	},
+	{
+		name:  "frontier",
+		usage: "quant frontier <returns_dt> <points> [rf <r>] [min <v1,...>] [max <v1,...>] [as <var>]",
+		desc:  "EfficientFrontier: one DataTable row per point, one weight column per asset",
+		run:   runQuantFrontier,
+	},
 }
 
 func init() {
@@ -133,6 +145,8 @@ func init() {
 			"insyra quant factor asset factors rf 0.0002 as fm",
 			"insyra quant bs call 42 40 0.10 0.20 0.5 as opt",
 			"insyra quant iv call 4.759 42 40 0.10 0.5 as vol",
+			"insyra quant portfolio returns maxsharpe rf 0.0001 as w",
+			"insyra quant frontier returns 20 as f",
 		},
 		Run: runQuantCommand,
 	})
@@ -540,6 +554,130 @@ func runQuantImpliedVolatility(ctx *ExecContext, form *quantForm, args []string,
 	return nil
 }
 
+// quantFrontierFixedColumns are the per-point columns the frontier table
+// carries before the per-asset weight columns.
+var quantFrontierFixedColumns = []string{"ExpectedReturn", "Variance", "Volatility", "SharpeRatio", "Converged"}
+
+func runQuantPortfolio(ctx *ExecContext, form *quantForm, args []string, alias string) error {
+	if len(args) < 2 {
+		return quantUsageError(form)
+	}
+	returns, err := quantTable(ctx, form, args[0])
+	if err != nil {
+		return err
+	}
+	var config quant.PortfolioConfig
+	consumed, err := parseQuantObjective(form, args[1:], &config)
+	if err != nil {
+		return err
+	}
+	if err := parseQuantPortfolioOptions(form, args[1+consumed:], returns.NumCols(), &config); err != nil {
+		return err
+	}
+
+	result, err := quant.OptimizePortfolio(returns, config)
+	if err != nil {
+		return quantLibraryError(form, err)
+	}
+
+	assets := make([]any, len(result.AssetNames))
+	weights := make([]any, len(result.AssetNames))
+	for i, name := range result.AssetNames {
+		assets[i] = name
+		weights[i] = result.Weights[i]
+	}
+	ctx.Vars[alias] = insyra.NewDataTable(
+		quantColumn("Asset", assets...),
+		quantColumn("Weight", weights...),
+	)
+	ctx.Vars[alias+"_stats"] = quantOneRowTable(
+		quantColumn("ExpectedReturn", result.ExpectedReturn),
+		quantColumn("Variance", result.Variance),
+		quantColumn("Volatility", result.Volatility),
+		quantColumn("SharpeRatio", result.SharpeRatio),
+		quantColumn("Iterations", result.Iterations),
+		quantColumn("Converged", result.Converged),
+	)
+
+	for i, name := range result.AssetNames {
+		_, _ = fmt.Fprintf(ctx.Output, "%s=%v\n", name, result.Weights[i])
+	}
+	_, _ = fmt.Fprintf(ctx.Output, "return=%v vol=%v sharpe=%v iterations=%d converged=%t\n",
+		result.ExpectedReturn, result.Volatility, result.SharpeRatio, result.Iterations, result.Converged)
+	return nil
+}
+
+func runQuantFrontier(ctx *ExecContext, form *quantForm, args []string, alias string) error {
+	if len(args) < 2 {
+		return quantUsageError(form)
+	}
+	returns, err := quantTable(ctx, form, args[0])
+	if err != nil {
+		return err
+	}
+	points, err := quantInt(form, "points", args[1])
+	if err != nil {
+		return err
+	}
+	if points < 2 {
+		return fmt.Errorf("quant %s: points must be at least 2, got %d", form.name, points)
+	}
+	var config quant.PortfolioConfig
+	if err := parseQuantPortfolioOptions(form, args[2:], returns.NumCols(), &config); err != nil {
+		return err
+	}
+
+	results, err := quant.EfficientFrontier(returns, points, config)
+	if err != nil {
+		return quantLibraryError(form, err)
+	}
+	if len(results) == 0 {
+		return fmt.Errorf("quant %s: the frontier came back empty", form.name)
+	}
+	assetNames := results[0].AssetNames
+	for _, name := range assetNames {
+		for _, fixed := range quantFrontierFixedColumns {
+			if name == fixed {
+				return fmt.Errorf("quant %s: asset column %q collides with the frontier's own %s column, rename the asset column", form.name, name, fixed)
+			}
+		}
+	}
+
+	expectedReturn := make([]any, len(results))
+	variance := make([]any, len(results))
+	volatility := make([]any, len(results))
+	sharpeRatio := make([]any, len(results))
+	converged := make([]any, len(results))
+	for i := range results {
+		expectedReturn[i] = results[i].ExpectedReturn
+		variance[i] = results[i].Variance
+		volatility[i] = results[i].Volatility
+		sharpeRatio[i] = results[i].SharpeRatio
+		converged[i] = results[i].Converged
+	}
+	columns := []*insyra.DataList{
+		quantColumn("ExpectedReturn", expectedReturn...),
+		quantColumn("Variance", variance...),
+		quantColumn("Volatility", volatility...),
+		quantColumn("SharpeRatio", sharpeRatio...),
+		quantColumn("Converged", converged...),
+	}
+	for j, name := range assetNames {
+		weights := make([]any, len(results))
+		for i := range results {
+			weights[i] = results[i].Weights[j]
+		}
+		columns = append(columns, quantColumn(name, weights...))
+	}
+	ctx.Vars[alias] = insyra.NewDataTable(columns...)
+
+	for i := range results {
+		_, _ = fmt.Fprintf(ctx.Output, "point=%d return=%v vol=%v sharpe=%v converged=%t\n",
+			i+1, results[i].ExpectedReturn, results[i].Volatility, results[i].SharpeRatio, results[i].Converged)
+	}
+	return nil
+}
+
 // ---------------------------------------------------------------------------
 // shared parsing and output
 // ---------------------------------------------------------------------------
@@ -589,6 +727,87 @@ func parseQuantOptionType(form *quantForm, raw string) (quant.OptionType, error)
 		return quant.OptionPut, nil
 	}
 	return quant.OptionCall, fmt.Errorf("quant %s: unknown option type %q (supported: call, put)", form.name, raw)
+}
+
+// parseQuantObjective reads the positional objective keyword of
+// `quant portfolio` and reports how many tokens it consumed, since
+// `target` also takes the return that follows it.
+func parseQuantObjective(form *quantForm, args []string, config *quant.PortfolioConfig) (int, error) {
+	switch strings.ToLower(strings.TrimSpace(args[0])) {
+	case "minvar":
+		config.Objective = quant.MinimumVariance
+		return 1, nil
+	case "maxsharpe":
+		config.Objective = quant.MaximumSharpe
+		return 1, nil
+	case "target":
+		if len(args) < 2 {
+			return 0, fmt.Errorf("quant %s: objective %q requires a target return (usage: %s)", form.name, args[0], form.usage)
+		}
+		value, err := quantFloat(form, "target", args[1])
+		if err != nil {
+			return 0, err
+		}
+		config.Objective = quant.TargetReturn
+		config.TargetReturn = value
+		return 2, nil
+	}
+	return 0, fmt.Errorf("quant %s: unknown objective %q (supported: minvar, target <r>, maxsharpe)", form.name, args[0])
+}
+
+// parseQuantPortfolioOptions consumes the `rf`, `min` and `max` options the
+// two portfolio forms share. It cannot reuse parseQuantOptions because the
+// bounds are comma-separated lists rather than single floats.
+func parseQuantPortfolioOptions(form *quantForm, args []string, assets int, config *quant.PortfolioConfig) error {
+	for i := 0; i < len(args); i += 2 {
+		key := strings.ToLower(strings.TrimSpace(args[i]))
+		if key != "rf" && key != "min" && key != "max" {
+			return fmt.Errorf("quant %s: unknown option %q (supported: rf, min, max)", form.name, args[i])
+		}
+		if i+1 >= len(args) {
+			return fmt.Errorf("quant %s: option %q requires a value", form.name, args[i])
+		}
+		switch key {
+		case "rf":
+			value, err := quantFloat(form, "rf", args[i+1])
+			if err != nil {
+				return err
+			}
+			config.RiskFreeRate = value
+		case "min":
+			bounds, err := parseQuantWeightBounds(form, "min", args[i+1], assets)
+			if err != nil {
+				return err
+			}
+			config.MinWeight = bounds
+		case "max":
+			bounds, err := parseQuantWeightBounds(form, "max", args[i+1], assets)
+			if err != nil {
+				return err
+			}
+			config.MaxWeight = bounds
+		}
+	}
+	return nil
+}
+
+// parseQuantWeightBounds reads one comma-separated per-asset bound list. The
+// length and the numeric parse are checked here so the error can name the
+// table's column count; everything else is left to the library.
+func parseQuantWeightBounds(form *quantForm, label, raw string, assets int) ([]float64, error) {
+	parts := strings.Split(raw, ",")
+	if len(parts) != assets {
+		return nil, fmt.Errorf("quant %s: %s has %d values but the table has %d asset columns", form.name, label, len(parts), assets)
+	}
+	bounds := make([]float64, assets)
+	for i, part := range parts {
+		value, err := strconv.ParseFloat(strings.TrimSpace(part), 64)
+		if err != nil {
+			return nil, fmt.Errorf("quant %s: invalid %s value %q", form.name, label, part)
+		}
+		bounds[i] = value
+	}
+	return bounds, nil
 }
 
 // parseQuantOptions consumes the trailing `key value` pairs a form accepts.
