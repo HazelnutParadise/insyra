@@ -39,7 +39,7 @@
 
 | 套件 | 項目數 | 狀態 |
 | --- | --- | --- |
-| `.`（core） | 529 | **完成** |
+| `.`（core） | 565 | **完成** |
 | `accel` | 127 | 未開始 |
 | `cli` 系列（cli, commands, env, repl, style） | 79 | 未開始 |
 | `csvxl` | 9 | **完成** |
@@ -47,7 +47,7 @@
 | `engine` 系列（algorithms, atomic, biindex, ccl, dsl, ring） | 41 | 未開始 |
 | `finance` | 60 | 未開始 |
 | `gplot` | 15 | 未開始 |
-| `isr` | 21 | 未開始 |
+| `isr` | 44 | **完成** |
 | `lp` / `lpgen` | 12 | 未開始 |
 | `mkt` | 14 | 未開始 |
 | `ml` / `ml/mltest` | 217 | 未開始 |
@@ -200,10 +200,21 @@
 | E-8 | Low | `Show()` 預設印全部列，百萬列的表會灌爆終端（pandas 預設 60 列並省略中段）；`ShowRange(startEnd ...any)` 用 `any` 收 `(5)`、`(-5)`、`(2, 10)`、`(2, nil)` 四種形狀；`Show(label, object showable, …)` 的參數型別 `showable` 未匯出，使用者無法在自己的函式簽名引用（準則 4、8） | show.go:27-70, 713-750 | 預設 head/tail 截斷；`ShowRange(start, end int)` + `Head(n)`／`Tail(n)`；匯出 `Showable` |
 | E-9 | OK | 設計良好、可當範本：encode 三件組（options struct、typed policy enum、fitted encoder 有 `Transform`／`InverseTransform`／`Options()`、錯誤全部回 error、輸出欄名碰撞偵測）；四個 Scaler 共用仿射核心、`Params()` 可檢視、compile-time 介面檢查；`SimpleImputer` 明確不提供 InverseTransform 並寫出理由；`ToSQL` 的識別字引號與型別白名單；`ReadSQLStream` 把 goroutine／連線洩漏契約寫進 doc（parquet.Stream 應比照） | — | — |
 
+### isr
+
+| 編號 | 嚴重度 | 問題 | 位置 | 建議 |
+| --- | --- | --- | --- | --- |
+| I-1 | High | `isr` 是 README 建議的入口，卻是 `LogFatal` 最密集的地方：`DT.From` 讀 CSV／Excel／JSON 失敗、`Col`／`Row`／`Push` 型別不對、`UseDL`／`UseDT` 型別不對，全部直接結束程序（K-1 的使用者端表現）。檔案不存在這種最常見的錯誤沒有任何回復手段 | isr/dt.go:48-155, 178, 193, 268-318；isr/use.go:15, 30 | 走 `Err()` 或提供 `TryFrom(...) (*dt, error)` |
+| I-2 | Med | `DT.From`／`DL.From` 回傳 `*dt`／`*dl`，型別未匯出。使用者無法寫 `func f(t *isr.dt)`，表在自己的函式間傳遞只能退回 `.DataTable`，語法糖到函式邊界就失效；golint 也把「匯出函式回傳未匯出型別」列為錯誤（準則 3、8、9） | isr/dl.go:14；isr/dt.go:13 | 匯出為 `isr.DL`／`isr.DT` 型別（現有的 `DL`／`DT` 是 var，要改名） |
+| I-3 | Med | 型別安全交給執行期：`From(item any)` 是 20 分支的 type switch，`Row`／`Col` 是 `map[any]any`，`At(row any, col any)`，`Name("x")` 回傳未匯出的 `name`。編譯器擋不住任何誤用，錯了就是 I-1 的 Fatal（準則 8） | isr/dt.go:20-28, 41-155, 197-235；isr/name.go | 分成 `FromCSV(CSV)`、`FromRows(Rows)` 等具名建構子 |
+| I-4 | Low | 命名：`CSV_inOpts`、`CSV_outOpts`、`Excel_inOpts` 底線；`FirstCol2RowNames` 用 `2` 代 To；`Of` 是 `From` 別名、`Push` 是 `AppendCols` 別名；`DLs = []insyra.IDataList` 混用介面（K-7）（準則 1、9） | isr/csv.go；isr/excel.go；isr/dl.go:10, 38；isr/dt.go:159 | v1 前統一 |
+| I-5 | Low | `Pivot`／`Unpivot` 把底層 error 丟掉只留 `Err()`（doc 有寫）；`CSV.OutputOpts` 存在但 `From` 用不到，沒有對應的輸出函式 | isr/pivot.go:31-44；isr/csv.go:19 | 保留 error 版本；刪或實作 OutputOpts |
+| I-6 | OK | `groupby.go`／`window.go`／`pivot.go` 三個新檔是好的包裝：一對一轉發、doc 指回底層語意、`Rolling` 選項 struct | — | — |
+
 ## 逐項清單
 
 
-## . (529)
+## . (565)
 
 - [x] `const ErrPoppingModeFIFO ErrPoppingMode` (error_buffer.go:16) — K-4 全域 buffer 過大 API
 - [x] `const ErrPoppingModeLIFO` (error_buffer.go:18) — K-4
@@ -734,8 +745,44 @@
 - [x] `var ReadSlice2D` (read.go:22) — K-12 可被覆寫的 var、重複命名
 - [x] `var ToFloat64Safe` (utils.go:23) — K-12
 - [x] `var ToFloat64` (utils.go:22) — K-12；失敗回 0 無法區分（ToF64Slice follow-up 的根源）
+- [x] `func (c *configStruct) Dangerously_TurnOffThreadSafety()` (config.go:90) — K-13 底線命名；K-6 型別未匯出
+- [x] `func (c *configStruct) GetAccelerationEnabled() bool` (config.go:82) — OK atomic
+- [x] `func (c *configStruct) GetDefaultErrHandlingFunc() func(errType LogLevel, packageName string, funcName string, errMsg string)` (config.go:64) — K-6 非 atomic 讀寫
+- [x] `func (c *configStruct) GetDoesUseColoredOutput() bool` (config.go:48) — K-13 命名（GetDoesUse/GetDontPanicStatus）；K-6；SetDontPanic 依 K-1 應移除
+- [x] `func (c *configStruct) GetDontPanicStatus() bool` (config.go:56) — K-13 命名（GetDoesUse/GetDontPanicStatus）；K-6；SetDontPanic 依 K-1 應移除
+- [x] `func (c *configStruct) GetLogLevel() LogLevel` (config.go:40) — K-6 非 atomic 讀寫
+- [x] `func (c *configStruct) SetAcceleration(enabled bool)` (config.go:69) — OK atomic
+- [x] `func (c *configStruct) SetDefaultErrHandlingFunc(fn func(errType LogLevel, packageName string, funcName string, errMsg string))` (config.go:60) — K-6 非 atomic 讀寫
+- [x] `func (c *configStruct) SetDontPanic(dontPanic bool)` (config.go:52) — K-13 命名（GetDoesUse/GetDontPanicStatus）；K-6；SetDontPanic 依 K-1 應移除
+- [x] `func (c *configStruct) SetLogLevel(level LogLevel)` (config.go:36) — K-6 非 atomic 讀寫
+- [x] `func (c *configStruct) SetUseColoredOutput(colored bool)` (config.go:44) — K-13 命名（GetDoesUse/GetDontPanicStatus）；K-6；SetDontPanic 依 K-1 應移除
+- [x] `func (c *dataTableContext) GetAllData() ([]any, error)` (ccl.go:166) — 非公開：未匯出型別，沒有任何匯出路徑可取得，僅供 internal/ccl 介面；不需審查
+- [x] `func (c *dataTableContext) GetCell(colIndex, rowIndex int) (any, error)` (ccl.go:49) — 非公開：未匯出型別，沒有任何匯出路徑可取得，僅供 internal/ccl 介面；不需審查
+- [x] `func (c *dataTableContext) GetCellByName(colName string, rowIndex int) (any, error)` (ccl.go:59) — 非公開：未匯出型別，沒有任何匯出路徑可取得，僅供 internal/ccl 介面；不需審查
+- [x] `func (c *dataTableContext) GetCol(index int) any` (ccl.go:20) — 非公開：未匯出型別，沒有任何匯出路徑可取得，僅供 internal/ccl 介面；不需審查
+- [x] `func (c *dataTableContext) GetColByName(name string) (any, error)` (ccl.go:27) — 非公開：未匯出型別，沒有任何匯出路徑可取得，僅供 internal/ccl 介面；不需審查
+- [x] `func (c *dataTableContext) GetColCount() int` (ccl.go:108) — 非公開：未匯出型別，沒有任何匯出路徑可取得，僅供 internal/ccl 介面；不需審查
+- [x] `func (c *dataTableContext) GetColData(index int) ([]any, error)` (ccl.go:112) — 非公開：未匯出型別，沒有任何匯出路徑可取得，僅供 internal/ccl 介面；不需審查
+- [x] `func (c *dataTableContext) GetColDataByName(name string) ([]any, error)` (ccl.go:124) — 非公開：未匯出型別，沒有任何匯出路徑可取得，僅供 internal/ccl 介面；不需審查
+- [x] `func (c *dataTableContext) GetColIndexByName(colName string) (int, error)` (ccl.go:97) — 非公開：未匯出型別，沒有任何匯出路徑可取得，僅供 internal/ccl 介面；不需審查
+- [x] `func (c *dataTableContext) GetCurrentRow() any` (ccl.go:45) — 非公開：未匯出型別，沒有任何匯出路徑可取得，僅供 internal/ccl 介面；不需審查
+- [x] `func (c *dataTableContext) GetRowAt(rowIndex int) (any, error)` (ccl.go:70) — 非公開：未匯出型別，沒有任何匯出路徑可取得，僅供 internal/ccl 介面；不需審查
+- [x] `func (c *dataTableContext) GetRowCount() int` (ccl.go:135) — 非公開：未匯出型別，沒有任何匯出路徑可取得，僅供 internal/ccl 介面；不需審查
+- [x] `func (c *dataTableContext) GetRowIndex() int` (ccl.go:41) — 非公開：未匯出型別，沒有任何匯出路徑可取得，僅供 internal/ccl 介面；不需審查
+- [x] `func (c *dataTableContext) GetRowIndexByName(rowName string) (int, error)` (ccl.go:86) — 非公開：未匯出型別，沒有任何匯出路徑可取得，僅供 internal/ccl 介面；不需審查
+- [x] `func (c *dataTableContext) SetRowIndex(index int) error` (ccl.go:142) — 非公開：未匯出型別，沒有任何匯出路徑可取得，僅供 internal/ccl 介面；不需審查
+- [x] `func (s *scaler) Fit(dt *DataTable, cols ...string) error` (datatable_scale.go:172) — OK（E-9 範本）；經 StandardScaler 等嵌入對外可見；Fit 的 cols variadic 見 E-6
+- [x] `func (s *scaler) FitDataList(dl *DataList) error` (datatable_scale.go:360) — OK（E-9 範本）；經 StandardScaler 等嵌入對外可見；Fit 的 cols variadic 見 E-6
+- [x] `func (s *scaler) FitTransform(dt *DataTable, cols ...string) (*DataTable, error)` (datatable_scale.go:216) — OK（E-9 範本）；經 StandardScaler 等嵌入對外可見；Fit 的 cols variadic 見 E-6
+- [x] `func (s *scaler) FitTransformDataList(dl *DataList) (*DataList, error)` (datatable_scale.go:383) — OK（E-9 範本）；經 StandardScaler 等嵌入對外可見；Fit 的 cols variadic 見 E-6
+- [x] `func (s *scaler) InverseTransform(dt *DataTable) (*DataTable, error)` (datatable_scale.go:233) — OK（E-9 範本）；經 StandardScaler 等嵌入對外可見；Fit 的 cols variadic 見 E-6
+- [x] `func (s *scaler) InverseTransformDataList(dl *DataList) (*DataList, error)` (datatable_scale.go:398) — OK（E-9 範本）；經 StandardScaler 等嵌入對外可見；Fit 的 cols variadic 見 E-6
+- [x] `func (s *scaler) Kind() string` (datatable_scale.go:158) — OK（E-9 範本）；經 StandardScaler 等嵌入對外可見；Fit 的 cols variadic 見 E-6
+- [x] `func (s *scaler) Params() map[string]ScalerParams` (datatable_scale.go:161) — OK（E-9 範本）；經 StandardScaler 等嵌入對外可見；Fit 的 cols variadic 見 E-6
+- [x] `func (s *scaler) Transform(dt *DataTable) (*DataTable, error)` (datatable_scale.go:226) — OK（E-9 範本）；經 StandardScaler 等嵌入對外可見；Fit 的 cols variadic 見 E-6
+- [x] `func (s *scaler) TransformDataList(dl *DataList) (*DataList, error)` (datatable_scale.go:392) — OK（E-9 範本）；經 StandardScaler 等嵌入對外可見；Fit 的 cols variadic 見 E-6
 
-## accel (127)
+## accel (142)
 
 - [ ] `const BackendCPU Backend` (types.go:29)
 - [ ] `const BackendCUDA Backend` (types.go:30)
@@ -864,6 +911,21 @@
 - [ ] `var ErrReadbackTimeout` (executor.go:16)
 - [ ] `var ErrSDKProbeUnavailable` (sdk_probe.go:12)
 - [ ] `var ErrShaderCompile` (executor.go:14)
+- [ ] `func (d builtinDiscoverer) Discover(cfg Config) ([]Device, error)` (discoverers_builtin.go:80)
+- [ ] `func (d builtinDiscoverer) Name() string` (discoverers_builtin.go:76)
+- [ ] `func (l *windowsNVMLLoader) Device(index int) (nvmlDeviceInfo, error)` (sdk_probe_nvml_windows.go:162)
+- [ ] `func (l *windowsNVMLLoader) DeviceCount() (int, error)` (sdk_probe_nvml_windows.go:150)
+- [ ] `func (l *windowsNVMLLoader) DriverVersion() (string, error)` (sdk_probe_nvml_windows.go:137)
+- [ ] `func (l *windowsNVMLLoader) Init() error` (sdk_probe_nvml_windows.go:111)
+- [ ] `func (l *windowsNVMLLoader) Shutdown() error` (sdk_probe_nvml_windows.go:118)
+- [ ] `func (p nvmlSDKProbe) Backend() Backend` (sdk_probe_nvml.go:44)
+- [ ] `func (p nvmlSDKProbe) Name() string` (sdk_probe_nvml.go:43)
+- [ ] `func (p nvmlSDKProbe) Probe(cfg Config) ([]Device, error)` (sdk_probe_nvml.go:46)
+- [ ] `func (p wgpuProbe) Backend() Backend` (backend_wgpu.go:51)
+- [ ] `func (p wgpuProbe) Name() string` (backend_wgpu.go:49)
+- [ ] `func (p wgpuProbe) Probe(_ Config) ([]Device, error)` (backend_wgpu.go:53)
+- [ ] `func (wgpuExecutor) Execute(ctx context.Context, req ExecuteRequest) (ExecuteResponse, error)` (backend_wgpu.go:104)
+- [ ] `func (wgpuExecutor) Name() string` (backend_wgpu.go:102)
 
 ## accel/knnbridge (0)
 
@@ -953,7 +1015,7 @@
 - [ ] `type SerializedVariable struct { Type string `json:"type"` Name string `json:"name,omitempty"` Data any `json:"data"` }` (state.go:14)
 - [ ] `type State struct { Variables map[string]SerializedVariable `json:"variables"` LastAccess string `json:"lastAccess"` }` (state.go:20)
 
-## cli/repl (7)
+## cli/repl (8)
 
 - [ ] `func (session *DSLSession) Context() *commands.ExecContext` (api.go:85)
 - [ ] `func (session *DSLSession) Execute(line string) error` (api.go:62)
@@ -962,6 +1024,7 @@
 - [ ] `func NewDSLSession(mgr *env.Manager, envName string, output io.Writer) (*DSLSession, error)` (api.go:24)
 - [ ] `func Start(ctx *commands.ExecContext) error` (repl.go:15)
 - [ ] `type DSLSession struct { ctx *commands.ExecContext }` (api.go:15)
+- [ ] `func (c *simpleCompleter) Do(line []rune, pos int) ([][]rune, int)` (completer.go:21)
 
 ## cli/style (2)
 
@@ -983,7 +1046,7 @@
 - [x] `func ExcelToCsv(excelFile string, outputDir string, csvNames []string, onlyContainSheets ...string) error` (convert.go:135) — C-4 未 Close；onlyContainSheets 指到不存在的 sheet 靜默略過（打錯字得到零輸出無錯誤）；C-7 0777；C-5、C-10、C-11、C-12
 - [x] `func ReadCsvToString(filePath string, encoding ...string) (string, error)` (read_csv.go:11) — C-2；缺 doc comment；錯誤已用 %w（此檔正確）、C-10、C-12
 
-## datafetch (42)
+## datafetch (89)
 
 - [ ] `const SortByHighestRating GoogleMapsStoreReviewSortBy` (googleMapsCommentCrawler.go:50)
 - [ ] `const SortByLowestRating GoogleMapsStoreReviewSortBy` (googleMapsCommentCrawler.go:52)
@@ -1027,6 +1090,53 @@
 - [ ] `var ErrInvalidSymbol` (yfinance_errors.go:13)
 - [ ] `var ErrRateLimited` (yfinance_errors.go:11)
 - [ ] `var ErrTimeout` (yfinance_errors.go:12)
+- [ ] `func (c *fileGeocodeCache) Get(key string) (*ReverseGeocodeResult, bool)` (geocoding.go:601)
+- [ ] `func (c *fileGeocodeCache) Set(key string, r *ReverseGeocodeResult)` (geocoding.go:615)
+- [ ] `func (c *googleMapsStoreCrawler) GetReviews(storeId string, pageCount int, options ...GoogleMapsStoreReviewsFetchingOptions) GoogleMapsStoreReviews` (googleMapsCommentCrawler.go:169)
+- [ ] `func (c *googleMapsStoreCrawler) Search(storeName string) []GoogleMapsStoreData` (googleMapsCommentCrawler.go:107)
+- [ ] `func (c *memoryGeocodeCache) Get(key string) (*ReverseGeocodeResult, bool)` (geocoding.go:548)
+- [ ] `func (c *memoryGeocodeCache) Set(key string, r *ReverseGeocodeResult)` (geocoding.go:562)
+- [ ] `func (g *twGeocoder) Reverse(lat, lng float64) (*ReverseGeocodeResult, error)` (geocoding.go:166)
+- [ ] `func (g *twGeocoder) ReverseCols(lat, lng *insyra.DataList) (*insyra.DataTable, error)` (geocoding.go:282)
+- [ ] `func (g *twGeocoder) ReverseTable(dt *insyra.DataTable, latCol, lngCol string) (*insyra.DataTable, error)` (geocoding.go:410)
+- [ ] `func (g *twGeocoder) ReverseTableByColName(dt *insyra.DataTable, latColName, lngColName string) (*insyra.DataTable, error)` (geocoding.go:425)
+- [ ] `func (t *ticker) Actions() (*insyra.DataTable, error)` (yfinance.go:425)
+- [ ] `func (t *ticker) AnalystPriceTargets() (*insyra.DataTable, error)` (yfinance.go:838)
+- [ ] `func (t *ticker) BalanceSheet(freq YFPeriod) (*YFFinancialStatementTables, error)` (yfinance.go:558)
+- [ ] `func (t *ticker) Calendar() (*insyra.DataTable, error)` (yfinance.go:515)
+- [ ] `func (t *ticker) CashFlow(freq YFPeriod) (*YFFinancialStatementTables, error)` (yfinance.go:576)
+- [ ] `func (t *ticker) Dividends() (*insyra.DataTable, error)` (yfinance.go:377)
+- [ ] `func (t *ticker) EPSRevisions() (*insyra.DataTable, error)` (yfinance.go:792)
+- [ ] `func (t *ticker) EPSTrend() (*insyra.DataTable, error)` (yfinance.go:768)
+- [ ] `func (t *ticker) Earnings() (*insyra.DataTable, error)` (yfinance.go:712)
+- [ ] `func (t *ticker) EarningsEstimate() (*insyra.DataTable, error)` (yfinance.go:720)
+- [ ] `func (t *ticker) EarningsHistory() (*insyra.DataTable, error)` (yfinance.go:744)
+- [ ] `func (t *ticker) FastInfo() (*insyra.DataTable, error)` (yfinance.go:687)
+- [ ] `func (t *ticker) FundsData() (*insyra.DataTable, error)` (yfinance.go:917)
+- [ ] `func (t *ticker) GrowthEstimates() (*insyra.DataTable, error)` (yfinance.go:893)
+- [ ] `func (t *ticker) History(params YFHistoryParams) (*insyra.DataTable, error)` (yfinance.go:275)
+- [ ] `func (t *ticker) IncomeStatement(freq YFPeriod) (*YFFinancialStatementTables, error)` (yfinance.go:540)
+- [ ] `func (t *ticker) Info() (*insyra.DataTable, error)` (yfinance.go:353)
+- [ ] `func (t *ticker) InsiderTransactions() (*insyra.DataTable, error)` (yfinance.go:663)
+- [ ] `func (t *ticker) InstitutionalHolders() (*insyra.DataTable, error)` (yfinance.go:617)
+- [ ] `func (t *ticker) MajorHolders() (*insyra.DataTable, error)` (yfinance.go:594)
+- [ ] `func (t *ticker) MutualFundHolders() (*insyra.DataTable, error)` (yfinance.go:640)
+- [ ] `func (t *ticker) News(count int, tab models.NewsTab) (*insyra.DataTable, error)` (yfinance.go:491)
+- [ ] `func (t *ticker) OptionChain(date string) (*YFOptionChainTables, error)` (yfinance.go:473)
+- [ ] `func (t *ticker) Options() (*insyra.DataTable, error)` (yfinance.go:449)
+- [ ] `func (t *ticker) Quote() (*insyra.DataTable, error)` (yfinance.go:314)
+- [ ] `func (t *ticker) Recommendations() (*insyra.DataTable, error)` (yfinance.go:815)
+- [ ] `func (t *ticker) RevenueEstimate() (*insyra.DataTable, error)` (yfinance.go:861)
+- [ ] `func (t *ticker) Splits() (*insyra.DataTable, error)` (yfinance.go:401)
+- [ ] `func (t *ticker) Sustainability() (*insyra.DataTable, error)` (yfinance.go:885)
+- [ ] `func (t *ticker) TopHoldings() (*insyra.DataTable, error)` (yfinance.go:926)
+- [ ] `func (t *twStock) AllDailyQuotes(market TWMarket) (*insyra.DataTable, error)` (twstock.go:851)
+- [ ] `func (t *twStock) DailyPrices(code string, from, to time.Time, market TWMarket) (*insyra.DataTable, error)` (twstock.go:193)
+- [ ] `func (t *twStock) DailyPricesAdjusted(code string, from, to time.Time, market TWMarket) (*insyra.DataTable, error)` (twstock.go:492)
+- [ ] `func (t *twStock) ExRights(from, to time.Time, market TWMarket) (*insyra.DataTable, error)` (twstock.go:361)
+- [ ] `func (t *twStock) InstitutionalTrades(date time.Time, market TWMarket) (*insyra.DataTable, error)` (twstock.go:589)
+- [ ] `func (t *twStock) MarginBalance(date time.Time, market TWMarket) (*insyra.DataTable, error)` (twstock.go:723)
+- [ ] `func (y *yahooFinance) Ticker(symbol string) *ticker` (yfinance.go:251)
 
 ## engine (0)
 
@@ -1153,7 +1263,7 @@
 - [ ] `type RoundingMode string` (options.go:32)
 - [ ] `var Zero` (helpers.go:22)
 
-## gplot (15)
+## gplot (22)
 
 - [ ] `func CreateBarChart(config BarChartConfig, data any) *plot.Plot` (bar.go:24)
 - [ ] `func CreateFunctionPlot(config FunctionPlotConfig, function func(x float64) float64) *plot.Plot` (function.go:22)
@@ -1170,30 +1280,60 @@
 - [ ] `type LineChartConfig struct { Title string XAxis []float64 XAxisName string YAxisName string }` (line.go:15)
 - [ ] `type ScatterPlotConfig struct { Title string XAxisName string YAxisName string }` (scatter.go:16)
 - [ ] `type StepChartConfig struct { Title string XAxis []float64 XAxisName string YAxisName string StepStyle string }` (step.go:15)
+- [ ] `func (d *barErrorData) Len() int` (bar.go:97)
+- [ ] `func (d *barErrorData) XY(i int) (float64, float64)` (bar.go:101)
+- [ ] `func (d *barErrorData) YError(i int) (float64, float64)` (bar.go:105)
+- [ ] `func (g *gridData) Dims() (c, r int)` (heatmap.go:31)
+- [ ] `func (g *gridData) X(c int) float64` (heatmap.go:44)
+- [ ] `func (g *gridData) Y(r int) float64` (heatmap.go:52)
+- [ ] `func (g *gridData) Z(c, r int) float64` (heatmap.go:39)
 
-## isr (21)
+## isr (44)
 
-- [ ] `func Name(value string) name` (name.go:7)
-- [ ] `func PtrDL[T *insyra.DataList | dl](l T) *dl` (dl.go:20)
-- [ ] `func PtrDT[T *insyra.DataTable | dt](t T) *dt` (dt.go:36)
-- [ ] `func UseDL[T *insyra.DataList | dl](l T) *dl` (use.go:8)
-- [ ] `func UseDT[T *insyra.DataTable | dt](t T) *dt` (use.go:23)
-- [ ] `type CSV struct { FilePath string String string InputOpts CSV_inOpts OutputOpts CSV_outOpts }` (csv.go:3)
-- [ ] `type CSV_inOpts struct { FirstCol2RowNames bool FirstRow2ColNames bool Encoding string RawStrings bool AllowRaggedRows bool TrimLeadingSpace bool }` (csv.go:10)
-- [ ] `type CSV_outOpts struct { RowNames2FirstCol bool ColNames2FirstRow bool }` (csv.go:19)
-- [ ] `type Col map[any]any` (dt.go:28)
-- [ ] `type Cols = []Col` (dt.go:31)
-- [ ] `type DLs = []insyra.IDataList` (dl.go:10)
-- [ ] `type Excel struct { FilePath string SheetName string InputOpts Excel_inOpts }` (excel.go:4)
-- [ ] `type Excel_inOpts struct { FirstCol2RowNames bool FirstRow2ColNames bool }` (excel.go:10)
-- [ ] `type JSON struct { FilePath string Bytes []byte }` (json.go:3)
-- [ ] `type Pivot struct { Index []string Columns string Values string Agg string Custom func(group *insyra.DataList) any FillNA any SortCols bool }` (pivot.go:8)
-- [ ] `type Rolling struct { Window int MinObs int Center bool Weights []float64 }` (window.go:17)
-- [ ] `type Row map[any]any` (dt.go:20)
-- [ ] `type Rows = []Row` (dt.go:23)
-- [ ] `type Unpivot struct { IDVars []string ValueVars []string VarName string ValueName string DropNA bool }` (pivot.go:20)
-- [ ] `var DL` (dl.go:6)
-- [ ] `var DT` (dt.go:11)
+- [x] `func Name(value string) name` (name.go:7) — I-3 回傳未匯出型別
+- [x] `func PtrDL[T *insyra.DataList | dl](l T) *dl` (dl.go:20) — 已 Deprecated：OK
+- [x] `func PtrDT[T *insyra.DataTable | dt](t T) *dt` (dt.go:36) — 已 Deprecated：OK
+- [x] `func UseDL[T *insyra.DataList | dl](l T) *dl` (use.go:8) — I-1 LogFatal；I-2 回傳未匯出型別
+- [x] `func UseDT[T *insyra.DataTable | dt](t T) *dt` (use.go:23) — I-1 LogFatal；I-2 回傳未匯出型別
+- [x] `type CSV struct { FilePath string String string InputOpts CSV_inOpts OutputOpts CSV_outOpts }` (csv.go:3) — I-4 命名；I-5 OutputOpts 無用
+- [x] `type CSV_inOpts struct { FirstCol2RowNames bool FirstRow2ColNames bool Encoding string RawStrings bool AllowRaggedRows bool TrimLeadingSpace bool }` (csv.go:10) — I-4 命名；I-5 OutputOpts 無用
+- [x] `type CSV_outOpts struct { RowNames2FirstCol bool ColNames2FirstRow bool }` (csv.go:19) — I-4 命名；I-5 OutputOpts 無用
+- [x] `type Col map[any]any` (dt.go:28) — I-3 map[any]any
+- [x] `type Cols = []Col` (dt.go:31) — OK 別名
+- [x] `type DLs = []insyra.IDataList` (dl.go:10) — I-4 混用 IDataList
+- [x] `type Excel struct { FilePath string SheetName string InputOpts Excel_inOpts }` (excel.go:4) — I-4 命名；I-5 OutputOpts 無用
+- [x] `type Excel_inOpts struct { FirstCol2RowNames bool FirstRow2ColNames bool }` (excel.go:10) — I-4 命名；I-5 OutputOpts 無用
+- [x] `type JSON struct { FilePath string Bytes []byte }` (json.go:3) — OK 輸入描述 struct；I-4
+- [x] `type Pivot struct { Index []string Columns string Values string Agg string Custom func(group *insyra.DataList) any FillNA any SortCols bool }` (pivot.go:8) — OK（I-6）；Pivot.Agg 仍是字串（T-17）
+- [x] `type Rolling struct { Window int MinObs int Center bool Weights []float64 }` (window.go:17) — OK（I-6）；Pivot.Agg 仍是字串（T-17）
+- [x] `type Row map[any]any` (dt.go:20) — I-3 map[any]any
+- [x] `type Rows = []Row` (dt.go:23) — OK 別名
+- [x] `type Unpivot struct { IDVars []string ValueVars []string VarName string ValueName string DropNA bool }` (pivot.go:20) — OK（I-6）；Pivot.Agg 仍是字串（T-17）
+- [x] `var DL` (dl.go:6) — I-2 用 var 當命名空間，型別未匯出
+- [x] `var DT` (dt.go:11) — I-2 用 var 當命名空間，型別未匯出
+- [x] `func (d dl) From(data ...any) *dl` (dl.go:26) — I-1 LogFatal；I-3 any；Of 是別名（I-4）
+- [x] `func (d dl) Of(data ...any) *dl` (dl.go:34) — I-1 LogFatal；I-3 any；Of 是別名（I-4）
+- [x] `func (d dt) From(item any) *dt` (dt.go:42) — I-1 LogFatal；I-3 any；Of 是別名（I-4）
+- [x] `func (d dt) Of(item any) *dt` (dt.go:162) — I-1 LogFatal；I-3 any；Of 是別名（I-4）
+- [x] `func (l *dl) At(index int) any` (dl.go:39) — I-3 any×2；錯誤只 warn 回 nil
+- [x] `func (l *dl) Push(data ...any) *dl` (dl.go:44) — I-1；I-3；I-4 別名
+- [x] `func (t *dt) At(row any, col any) any` (dt.go:199) — I-3 any×2；錯誤只 warn 回 nil
+- [x] `func (t *dt) CCL(cclStatements string) *dt` (dt.go:324) — OK 轉發；E-1/E-2 繼承
+- [x] `func (t *dt) Col(col any) *dl` (dt.go:167) — I-1 LogFatal；I-3
+- [x] `func (t *dt) CumMax(col string) *insyra.DataList` (window.go:50) — OK 轉發（I-6）
+- [x] `func (t *dt) CumMin(col string) *insyra.DataList` (window.go:55) — OK 轉發（I-6）
+- [x] `func (t *dt) CumProd(col string) *insyra.DataList` (window.go:45) — OK 轉發（I-6）
+- [x] `func (t *dt) CumSum(col string) *insyra.DataList` (window.go:40) — OK 轉發（I-6）
+- [x] `func (t *dt) Diff(col string, periods int) *insyra.DataList` (window.go:30) — OK 轉發（I-6）
+- [x] `func (t *dt) ExpandingOn(col string, minObs int) *insyra.ExpandingDataList` (window.go:72) — OK（I-6）
+- [x] `func (t *dt) GroupBy(keyCols ...string) *insyra.GroupedDataTable` (groupby.go:12) — OK（I-6）
+- [x] `func (t *dt) PctChange(col string, periods int) *insyra.DataList` (window.go:35) — OK 轉發（I-6）
+- [x] `func (t *dt) Pivot(p Pivot) *dt` (pivot.go:31) — I-5 丟掉 error
+- [x] `func (t *dt) Push(data any) *dt` (dt.go:239) — I-1；I-3；I-4 別名
+- [x] `func (t *dt) RollingOn(col string, r Rolling) *insyra.RollingDataList` (window.go:62) — OK（I-6）
+- [x] `func (t *dt) Row(row any) *dl` (dt.go:184) — I-1 LogFatal；I-3
+- [x] `func (t *dt) Shift(col string, periods int, fill ...any) *insyra.DataList` (window.go:25) — OK 轉發（I-6）
+- [x] `func (t *dt) Unpivot(u Unpivot) *dt` (pivot.go:46) — I-5 丟掉 error
 
 ## lp (2)
 
@@ -1230,7 +1370,7 @@
 - [ ] `type TimeScale string` (time_scale.go:5)
 - [ ] `var CAI` (cai.go:22)
 
-## ml (216)
+## ml (230)
 
 - [ ] `const BinaryAverage` (model_selection.go:474)
 - [ ] `const ClassificationMetric MetricKind` (model_selection.go:22)
@@ -1448,12 +1588,26 @@
 - [ ] `type TransformedFeatures interface { Model TransformedFeatureNames() []string }` (interfaces.go:58)
 - [ ] `type Transformer interface { Transform(dt *insyra.DataTable) (*insyra.DataTable, error) }` (interfaces.go:12)
 - [ ] `type WeightedLinearModel struct { Result *stats.WeightedLinearRegressionResult modelBase }` (models.go:24)
+- [ ] `func (m modelBase) Features() []string` (helpers.go:14)
+- [ ] `func (p *fittedPipeline) ExportONNX(w io.Writer) error` (onnx_export.go:71)
+- [ ] `func (p *fittedPipeline) Features() []string` (pipeline.go:215)
+- [ ] `func (p *fittedPipeline) Predict(dt *insyra.DataTable) (*insyra.DataList, error)` (pipeline.go:233)
+- [ ] `func (p *fittedPipeline) TransformedFeatureNames() []string` (pipeline.go:226)
+- [ ] `func (p *fittedPipelineClassifier) Classes() *insyra.DataList` (pipeline.go:267)
+- [ ] `func (p *fittedPipelineClassifierImportances) Classes() *insyra.DataList` (pipeline.go:311)
+- [ ] `func (p *fittedPipelineClassifierImportances) FeatureImportances() []float64` (pipeline.go:319)
+- [ ] `func (p *fittedPipelineImportances) FeatureImportances() []float64` (pipeline.go:299)
+- [ ] `func (p *fittedPipelineProba) Classes() *insyra.DataList` (pipeline.go:277)
+- [ ] `func (p *fittedPipelineProba) PredictProba(dt *insyra.DataTable) (*insyra.DataTable, error)` (pipeline.go:285)
+- [ ] `func (p *fittedPipelineProbaImportances) Classes() *insyra.DataList` (pipeline.go:329)
+- [ ] `func (p *fittedPipelineProbaImportances) FeatureImportances() []float64` (pipeline.go:349)
+- [ ] `func (p *fittedPipelineProbaImportances) PredictProba(dt *insyra.DataTable) (*insyra.DataTable, error)` (pipeline.go:337)
 
 ## ml/mltest (1)
 
 - [ ] `func RunConformance(t *testing.T, model ml.Model, x *insyra.DataTable, y *insyra.DataList)` (conformance.go:22)
 
-## nn (231)
+## nn (273)
 
 - [ ] `const DTypeBFloat16 DType` (tensor.go:30)
 - [ ] `const DTypeBool DType` (tensor.go:27)
@@ -1686,6 +1840,48 @@
 - [ ] `type Tensor struct { dtype DType shape []int strides []int data []float32 int64Data []int64 boolData []bool stringData []string }` (tensor.go:47)
 - [ ] `type TrainingOnly interface { TrainingOnly() }` (layers.go:18)
 - [ ] `type ValueInfo struct { Name string DType DType Shape []int HasShape bool }` (model.go:11)
+- [ ] `func (*globalAvgPoolLayer) Build(*Tape) error` (layers_catalog.go:206)
+- [ ] `func (*globalAvgPoolLayer) Parameters() []*Parameter` (layers_catalog.go:210)
+- [ ] `func (l *activationLayer) Build(*Tape) error` (layers.go:130)
+- [ ] `func (l *activationLayer) Forward(t *Tape, x *Tensor) (*Tensor, error)` (layers.go:131)
+- [ ] `func (l *activationLayer) Parameters() []*Parameter` (layers.go:140)
+- [ ] `func (l *batchNorm2DLayer) Build(t *Tape) error` (layers_catalog.go:230)
+- [ ] `func (l *batchNorm2DLayer) Forward(t *Tape, x *Tensor) (*Tensor, error)` (layers_catalog.go:273)
+- [ ] `func (l *batchNorm2DLayer) Parameters() []*Parameter` (layers_catalog.go:290)
+- [ ] `func (l *batchNorm2DLayer) PredictForward(x *Tensor) (*Tensor, error)` (layers_catalog.go:283)
+- [ ] `func (l *conv2DLayer) Build(t *Tape) error` (layers_catalog.go:34)
+- [ ] `func (l *conv2DLayer) Forward(t *Tape, x *Tensor) (*Tensor, error)` (layers_catalog.go:75)
+- [ ] `func (l *conv2DLayer) Parameters() []*Parameter` (layers_catalog.go:91)
+- [ ] `func (l *denseLayer) Build(t *Tape) error` (layers.go:57)
+- [ ] `func (l *denseLayer) Forward(t *Tape, x *Tensor) (*Tensor, error)` (layers.go:91)
+- [ ] `func (l *denseLayer) Parameters() []*Parameter` (layers.go:111)
+- [ ] `func (l *dropoutLayer) Build(*Tape) error` (layers.go:176)
+- [ ] `func (l *dropoutLayer) Forward(t *Tape, x *Tensor) (*Tensor, error)` (layers.go:182)
+- [ ] `func (l *dropoutLayer) Parameters() []*Parameter` (layers.go:188)
+- [ ] `func (l *dropoutLayer) TrainingOnly()` (layers.go:189)
+- [ ] `func (l *embeddingLayer) Build(t *Tape) error` (layers_catalog.go:405)
+- [ ] `func (l *embeddingLayer) Forward(t *Tape, x *Tensor) (*Tensor, error)` (layers_catalog.go:430)
+- [ ] `func (l *embeddingLayer) Parameters() []*Parameter` (layers_catalog.go:437)
+- [ ] `func (l *flattenLayer) Build(*Tape) error` (layers.go:198)
+- [ ] `func (l *flattenLayer) Forward(t *Tape, x *Tensor) (*Tensor, error)` (layers.go:199)
+- [ ] `func (l *flattenLayer) Parameters() []*Parameter` (layers.go:205)
+- [ ] `func (l *funcLayer) Build(*Tape) error` (layers.go:219)
+- [ ] `func (l *funcLayer) Forward(t *Tape, x *Tensor) (*Tensor, error)` (layers.go:225)
+- [ ] `func (l *funcLayer) Parameters() []*Parameter` (layers.go:241)
+- [ ] `func (l *globalAvgPoolLayer) Forward(t *Tape, x *Tensor) (*Tensor, error)` (layers_catalog.go:207)
+- [ ] `func (l *layerNormLayer) Build(t *Tape) error` (layers_catalog.go:335)
+- [ ] `func (l *layerNormLayer) Forward(t *Tape, x *Tensor) (*Tensor, error)` (layers_catalog.go:369)
+- [ ] `func (l *layerNormLayer) Parameters() []*Parameter` (layers_catalog.go:379)
+- [ ] `func (l *multiHeadAttentionLayer) Build(t *Tape) error` (layers_attention.go:34)
+- [ ] `func (l *multiHeadAttentionLayer) Forward(t *Tape, x *Tensor) (*Tensor, error)` (layers_attention.go:86)
+- [ ] `func (l *multiHeadAttentionLayer) Parameters() []*Parameter` (layers_attention.go:187)
+- [ ] `func (l *pool2DLayer) Build(*Tape) error` (layers_catalog.go:170)
+- [ ] `func (l *pool2DLayer) Forward(t *Tape, x *Tensor) (*Tensor, error)` (layers_catalog.go:180)
+- [ ] `func (l *pool2DLayer) Parameters() []*Parameter` (layers_catalog.go:190)
+- [ ] `func (l *residualLayer) Build(t *Tape) error` (layers_attention.go:250)
+- [ ] `func (l *residualLayer) Forward(t *Tape, x *Tensor) (*Tensor, error)` (layers_attention.go:265)
+- [ ] `func (l *residualLayer) Parameters() []*Parameter` (layers_attention.go:313)
+- [ ] `func (l *residualLayer) PredictForward(x *Tensor) (*Tensor, error)` (layers_attention.go:273)
 
 ## parallel (5)
 
@@ -1695,7 +1891,7 @@
 - [x] `func GroupUp(fns ...any) *ParallelGroup` (parallel_computing.go:16) — P-1 參數型別 any，錯誤只能在執行期發現、P-5 三步串接
 - [x] `type ParallelGroup struct { fns []any results [][]any wg sync.WaitGroup }` (parallel_computing.go:9) — 欄位全私有，零值可用但無意義；建議整體見 P-4
 
-## parquet (12)
+## parquet (27)
 
 - [x] `func ApplyCCL(ctx context.Context, path string, cclScript string) error` (ccl.go:576) — Q-4 stdlib log；Q-5 doc 範例引用不存在的 CCLFilterOptions；Q-6 batchSize 寫死 1000；tmp+rename 原子替換：OK；空輸入不覆蓋原檔：OK
 - [x] `func FilterWithCCL(ctx context.Context, path string, filterExpr string) (*insyra.DataTable, error)` (ccl.go:455) — Q-6 batchSize 寫死；回傳新表不動原檔：OK
@@ -1709,6 +1905,21 @@
 - [x] `type ReadColumnOptions struct { RowGroups []int MaxValues int64 }` (api.go:25) — Q-1 MaxValues 是死欄位
 - [x] `type ReadOptions struct { Columns []string RowGroups []int }` (api.go:19) — OK
 - [x] `type RowGroupInfo struct { NumRows int64 TotalByteSize int64 TotalCompressedSize int64 }` (api.go:47) — OK，缺 doc（Q-10）
+- [ ] `func (c *parquetContext) GetAllData() ([]any, error)` (ccl.go:210)
+- [ ] `func (c *parquetContext) GetCell(colIndex, rowIndex int) (any, error)` (ccl.go:99)
+- [ ] `func (c *parquetContext) GetCellByName(colName string, rowIndex int) (any, error)` (ccl.go:117)
+- [ ] `func (c *parquetContext) GetCol(index int) any` (ccl.go:73)
+- [ ] `func (c *parquetContext) GetColByName(name string) (any, error)` (ccl.go:80)
+- [ ] `func (c *parquetContext) GetColCount() int` (ccl.go:156)
+- [ ] `func (c *parquetContext) GetColData(index int) ([]any, error)` (ccl.go:182)
+- [ ] `func (c *parquetContext) GetColDataByName(name string) ([]any, error)` (ccl.go:202)
+- [ ] `func (c *parquetContext) GetColIndexByName(colName string) (int, error)` (ccl.go:148)
+- [ ] `func (c *parquetContext) GetCurrentRow() any` (ccl.go:95)
+- [ ] `func (c *parquetContext) GetRowAt(rowIndex int) (any, error)` (ccl.go:125)
+- [ ] `func (c *parquetContext) GetRowCount() int` (ccl.go:163)
+- [ ] `func (c *parquetContext) GetRowIndex() int` (ccl.go:91)
+- [ ] `func (c *parquetContext) GetRowIndexByName(rowName string) (int, error)` (ccl.go:144)
+- [ ] `func (c *parquetContext) SetRowIndex(index int) error` (ccl.go:170)
 
 ## pd (8)
 
