@@ -104,6 +104,7 @@ type IDataList interface {
 	// conversion
 	ParseNumbers() *DataList
 	ParseStrings() *DataList
+	ParseDates(layouts ...string) *DataList
 	ToF64Slice() []float64
 	ToStringSlice() []string
 
@@ -289,6 +290,7 @@ type IDataTable interface {
 	Merge(other IDataTable, direction MergeDirection, mode MergeMode, on ...string) (*DataTable, error)
 	EWMCol(string, EWMOptions) *EWMDataList
 	Resample(string, ResampleFreq, ...ResampleAgg) (*DataTable, error)
+	ParseDatesCols(cols []string, layouts ...string) *DataTable
 
 	AddColUsingCCL(newColName, ccl string) *DataTable
 

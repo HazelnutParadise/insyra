@@ -1349,6 +1349,36 @@ The method returns an error when the time or aggregate column is missing, a
 time cell is not `time.Time` (the error includes its row number), `aggs` is
 empty, or `freq` is unknown.
 
+### ParseDatesCols
+
+```go
+func (dt *DataTable) ParseDatesCols(cols []string, layouts ...string) *DataTable
+```
+
+Converts date strings to `time.Time` in place for the named columns and returns
+the table, so the call chains. Each column is converted by the rules of
+[`DataList.ParseDates`](DataList.md#parsedates): a string matching a layout
+becomes that instant in UTC, a value already `time.Time` is kept unchanged, and
+anything else becomes `nil`. With no `layouts`, the same ISO-style defaults
+`ReadSQLOptions.ParseDates` uses are tried; passing layouts replaces that list.
+
+Columns resolve by name first, then Excel-style index. A column that does not
+exist records a warning (readable through `dt.Err()`) and is skipped, leaving
+the other named columns converted.
+
+This is the conversion `ReadSQL`'s `ParseDates` option performs, available for
+tables loaded from anywhere else. CSV inference produces `int64`/`float64` and
+leaves everything else a string, so a CSV date column needs this step before
+`Resample` will accept it:
+
+```go
+dt, _ := insyra.ReadCSV_File("bars.csv", false, true)
+dt.ParseDatesCols([]string{"Date"})
+monthly, err := dt.Resample("Date", insyra.ResampleMonthly,
+    insyra.ResampleAgg{Col: "Close", Op: insyra.OpLast},
+)
+```
+
 #### GroupBy-aware versions
 
 ```go

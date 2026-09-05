@@ -117,6 +117,7 @@ This list is generated from `insyra help` in this repository state.
 - `capitalize` - Capitalize DataList strings
 - `parsenums` - Parse DataList strings to numbers
 - `parsestrings` - Parse DataList numbers to strings
+- `parsedates` - Convert date strings to `time.Time` in a DataList or DataTable columns
 - `movavg` - Moving average
 - `expsmooth` - Exponential smoothing
 - `diff` - Difference (legacy, length n-1)

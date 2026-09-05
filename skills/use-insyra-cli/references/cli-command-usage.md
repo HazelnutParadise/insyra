@@ -377,6 +377,10 @@ This is separate from boolean-flag parsing used by option arguments like `header
 - Description: Parse DataList numbers to strings
 - Usage: `parsestrings <var> [as <var>]`
 
+## `parsedates`
+- Description: Convert date strings to `time.Time`. A DataList converts whole; a DataTable needs `cols`. `layout` may be repeated and is tried in order; without it, common ISO layouts are tried. Unmatched cells become nil.
+- Usage: `parsedates <var> [cols <c1,c2>] [layout <go-layout>] [as <var>]`
+
 ## `pca`
 - Description: Principal component analysis
 - Usage: `pca <var> <n>`

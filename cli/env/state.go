@@ -66,7 +66,7 @@ func (m *Manager) LoadState(envName string) (*State, error) {
 	var state State
 	// Decode numbers as json.Number so integer variables keep their int64 type
 	// (and large integers keep full precision) instead of collapsing to float64;
-	// coerceEnvNumber types them when a DataList is restored.
+	// they are typed below and, for DataList elements, when the list is restored.
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()
 	if err := dec.Decode(&state); err != nil {
@@ -74,6 +74,16 @@ func (m *Manager) LoadState(envName string) (*State, error) {
 	}
 	if state.Variables == nil {
 		state.Variables = map[string]SerializedVariable{}
+	}
+	// Top-level scalars get the same numeric typing DataList elements get, so a
+	// saved float64 reloads as float64 and an int64 as int64 instead of staying
+	// a json.Number that no type assertion in a command will match.
+	for key, serialized := range state.Variables {
+		if serialized.Type == "DataList" || serialized.Type == "DataTable" {
+			continue
+		}
+		serialized.Data = coerceEnvNumber(serialized.Data)
+		state.Variables[key] = serialized
 	}
 	return &state, nil
 }

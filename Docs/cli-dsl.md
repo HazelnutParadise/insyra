@@ -255,6 +255,23 @@ Commands whose arguments go through this ladder include (non-exhaustive):
 
 This is intentionally separate from the boolean-flag parsing used by option arguments like `headers true|false`, `center yes|no`, `rownames 1|0` — those go through `parseFlexBool` and accept `yes/no/on/off/1/0/true/false` but **not** numeric or special-float tokens. See the option-parsing convention in each command's `help` output.
 
+#### Negative numbers in one-shot mode
+
+A token starting with `-` looks like a flag to the one-shot CLI's argument parser. `newdl`, `addrow`, and `addcol` turn that parsing off, so negative values need nothing special:
+
+```bash
+insyra newdl 0.01 -0.004 0.02 as r
+```
+
+The REPL and `.isr` scripts never parsed flags, so they are unaffected either way. Any *other* command that takes a value starting with `-` needs a bare `--` before the values, which stops flag parsing for the rest of the line:
+
+```bash
+insyra set dt 0 A -- -2.5
+insyra shift x 1 fill -- -1
+```
+
+`help <command>` still works for the commands with flag parsing disabled; `insyra newdl --help` does not, because the command no longer reads flags.
+
 ## CLI Script Runner vs Go DSL API
 
 `insyra run <script.isr>` and `Session.ExecuteFile(path)` are intentionally different on error handling.
@@ -485,7 +502,19 @@ resample bars Date monthly Open:first High:max Low:min Close:last:MonthClose Vol
 show monthly_bars
 ```
 
-`<timecol>` must hold `time.Time` values; a column of date *strings* is rejected with a row-numbered error. A CSV load leaves date columns as strings, so resample the output of a source that carries real timestamps (for example `fetch yahoo <ticker> history`), or build the column through the Go API.
+`<timecol>` must hold `time.Time` values; a column of date *strings* is rejected with a row-numbered error. A CSV load leaves date columns as strings, so convert the column with `parsedates` first (below), or start from a source that carries real timestamps such as `fetch yahoo <ticker> history`.
+
+`parsedates <var> [cols <c1,c2>] [layout <go-layout>] [as <var>]` turns date strings into `time.Time`. On a DataList the whole list is converted; on a DataTable `cols` is required and names the columns to convert (by name, or by Excel index such as `A`). `layout` takes a Go reference layout and may be repeated — the layouts are tried in order and the first match wins. Without `layout`, common ISO shapes are tried (`2006-01-02`, `2006-01-02 15:04:05`, RFC 3339). A cell no layout matches becomes nil, so `resample` then reports it by row rather than converting half a column silently.
+
+```text
+load bars.csv as bars
+parsedates bars cols Date as bars
+resample bars Date monthly Close:last as monthly_close
+```
+
+```text
+parsedates trades cols TradeDate,SettleDate layout 02/01/2006 as trades
+```
 
 ### B7. Risk report from a return series
 
@@ -593,7 +622,7 @@ High-level command map:
 - **DataTable Structure / Access**: `addcol`, `addrow`, `dropcol`, `droprow`, `swap`, `transpose`, `rows`, `cols`, `row`, `col`, `get`, `set`, `setrownames`, `setcolnames`
 - **Data Processing**: `filter`, `sort`, `sample`, `split`, `find`, `replace`, `clean`, `fillna`, `merge`, `groupby`, `pivot`, `unpivot`, `encode`, `scale`, `ccl`, `addcolccl`
 - **DataList Stats**: `sum`, `mean`, `median`, `mode`, `stdev`, `var`, `min`, `max`, `range`, `quartile`, `iqr`, `percentile`, `count`, `counter`, `corr`, `cov`, `corrmatrix`, `skewness`, `kurtosis`
-- **Time Series / Transforms**: `rank`, `normalize`, `standardize`, `reverse`, `upper`, `lower`, `capitalize`, `parsenums`, `parsestrings`, `movavg`, `expsmooth`, `diff`, `diffn`, `shift`, `pctchange`, `cumsum`, `cumprod`, `cummax`, `cummin`, `rolling`, `expanding`, `ewm`, `resample`, `fillna`
+- **Time Series / Transforms**: `rank`, `normalize`, `standardize`, `reverse`, `upper`, `lower`, `capitalize`, `parsenums`, `parsestrings`, `parsedates`, `movavg`, `expsmooth`, `diff`, `diffn`, `shift`, `pctchange`, `cumsum`, `cumprod`, `cummax`, `cummin`, `rolling`, `expanding`, `ewm`, `resample`, `fillna`
 - **Modeling / Viz / Fetch**: `regression`, `pca`, `kmeans`, `hclust`, `cutree`, `dbscan`, `silhouette`, `knn_classify`, `knn_regress`, `knn_neighbors`, `ttest`, `ztest`, `anova`, `ftest`, `chisq`, `plot`, `fetch`
 - **Quant**: `quant` (`sharpe`, `sortino`, `ir`, `maxdd`, `annret`, `calmar`, `drawdown`, `var`, `cvar`, `beta`, `capm`, `factor`, `bs`, `iv`)
 
@@ -692,6 +721,7 @@ Source policy:
 | `newdt` | `newdt <dl_vars...> [as <var>]` | Create DataTable from DataList variables |
 | `normalize` | `normalize <var> [as <var>]` | Normalize DataList |
 | `parsenums` | `parsenums <var> [as <var>]` | Parse DataList strings to numbers |
+| `parsedates` | `parsedates <var> [cols <c1,c2>] [layout <go-layout>] [as <var>]` | Convert date strings to `time.Time` in a DataList or DataTable columns |
 | `parsestrings` | `parsestrings <var> [as <var>]` | Parse DataList numbers to strings |
 | `pca` | `pca <var> <n>` | Principal component analysis |
 | `pctchange` | `pctchange <var> <periods> [as <var>]` | Percent change over `periods` rows |

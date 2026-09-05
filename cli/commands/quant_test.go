@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	insyra "github.com/HazelnutParadise/insyra"
+	"github.com/HazelnutParadise/insyra/cli/env"
 	"github.com/HazelnutParadise/insyra/quant"
 )
 
@@ -777,4 +778,33 @@ func TestQuantCommandIsRegisteredWithEveryForm(t *testing.T) {
 // line, at full precision.
 func strconv64(value float64) string {
 	return strconv.FormatFloat(value, 'g', -1, 64)
+}
+
+// A scalar stored by `quant ... as s` must survive a save/restore cycle as a
+// float64, so a later command that type-asserts it still matches.
+func TestRunQuantCommand_ScalarSurvivesEnvRoundTrip(t *testing.T) {
+	ctx := quantCtx(t)
+	if err := runQuantCommand(ctx, []string{"sharpe", "r", "252", "as", "s"}); err != nil {
+		t.Fatalf("quant sharpe failed: %v", err)
+	}
+	want := resultFloat(t, ctx, "s")
+
+	mgr := env.NewManager(t.TempDir(), "")
+	if err := mgr.EnsureDefaultEnvironment(); err != nil {
+		t.Fatalf("EnsureDefaultEnvironment: %v", err)
+	}
+	if err := mgr.SaveState("default", ctx.Vars); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+	restored, err := mgr.RestoreVariables("default")
+	if err != nil {
+		t.Fatalf("RestoreVariables: %v", err)
+	}
+	got, ok := restored["s"].(float64)
+	if !ok {
+		t.Fatalf("restored s = %T want float64", restored["s"])
+	}
+	if !closeEnough(got, want, quantTol) {
+		t.Errorf("restored s = %v want %v", got, want)
+	}
 }

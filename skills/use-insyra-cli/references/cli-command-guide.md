@@ -475,6 +475,12 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 - Usage: `parsestrings <var> [as <var>]`
 - Example: `insyra parsestrings x`
 
+### `parsedates`
+- Description: Convert date strings to `time.Time`, in place on a copy of the variable. A DataList converts whole; a DataTable requires `cols` (column names or Excel indices) and errors without it. `layout` takes a Go reference layout and may be repeated, tried in order; without it, common ISO layouts are tried. A cell already `time.Time` is kept; anything no layout matches becomes nil.
+- Usage: `parsedates <var> [cols <c1,c2>] [layout <go-layout>] [as <var>]`
+- Examples: `insyra parsedates bars cols Date as bars` / `insyra parsedates trades cols TradeDate,SettleDate layout 02/01/2006 as trades`
+- Notes: This is the step that makes a CSV-loaded date column usable by `resample`.
+
 ### `movavg`
 - Description: Moving average
 - Usage: `movavg <var> <window> [as <var>]`
@@ -539,7 +545,7 @@ Generated from current command registry (`insyra help`, `insyra help <command>`)
 - Description: Aggregate a time-indexed DataTable into calendar periods. Each output row is labelled with the period's final calendar day; periods with no rows are omitted. `op` uses the `groupby` operator names; the optional `:name` renames the output column, otherwise the source column name is kept. Column names containing `:` cannot be expressed in this syntax.
 - Usage: `resample <dt> <timecol> weekly|monthly|quarterly|yearly <col>:<op>[:<name>] [<col>:<op>[:<name>] ...] [as <var>]`
 - Examples: `insyra resample bars Date monthly Open:first High:max Low:min Close:last:MonthClose Volume:sum as monthly_bars` / `insyra resample sales Date quarterly revenue:sum:total`
-- Notes: `<timecol>` must hold `time.Time` values. A CSV load leaves date columns as strings and the command fails with a row-numbered error; use a source that carries real timestamps (e.g. `fetch yahoo <ticker> history`).
+- Notes: `<timecol>` must hold `time.Time` values. A CSV load leaves date columns as strings and the command fails with a row-numbered error; run `parsedates <dt> cols <timecol>` first, or use a source that carries real timestamps (e.g. `fetch yahoo <ticker> history`).
 
 ### `expanding`
 - Description: Expanding-window reduction over `in[0..=i]`. Reducers: sum, mean, min, max, median, std, var. Emits nil until `minobs` valid observations are available.

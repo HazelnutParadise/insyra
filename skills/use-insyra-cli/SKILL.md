@@ -173,6 +173,9 @@ insyra ewm returns halflife 5 std minobs 3 as ewvol
 insyra rolling asset 20 beta benchmark minobs 10 as roll_beta   # cov/beta take a second DataList
 insyra fetch yahoo AAPL history as bars
 insyra resample bars Date monthly Open:first High:max Low:min Close:last:MonthClose Volume:sum as monthly_bars
+insyra load bars.csv as csv_bars
+insyra parsedates csv_bars cols Date as csv_bars                # CSV dates are strings until this runs
+insyra resample csv_bars Date monthly Close:last as monthly_close
 
 # Programmatic summaries that can be saved
 insyra describe sales all true as summary
@@ -244,7 +247,9 @@ insyra fetch tw quotes twse as quotes                        # every listed code
 
 `rolling` also accepts `cov <other>` and `beta <other>`, which consume the next token as a second DataList variable before the usual `minobs` / `center` / `as` options. `beta` is `Cov(var, other) / Var(other)` and yields nil on a flat benchmark window.
 
-`resample <dt> <timecol> weekly|monthly|quarterly|yearly <col>:<op>[:<name>] [...] [as <var>]` aggregates time-keyed rows into calendar periods, labelling each row with the period's final day and omitting empty periods. `op` uses the `groupby` operator names; `:name` renames the output column, and without it the source name is kept. `<timecol>` must hold real `time.Time` values — a CSV load leaves dates as strings and `resample` rejects them with a row-numbered error.
+`resample <dt> <timecol> weekly|monthly|quarterly|yearly <col>:<op>[:<name>] [...] [as <var>]` aggregates time-keyed rows into calendar periods, labelling each row with the period's final day and omitting empty periods. `op` uses the `groupby` operator names; `:name` renames the output column, and without it the source name is kept. `<timecol>` must hold real `time.Time` values — a CSV load leaves dates as strings and `resample` rejects them with a row-numbered error; run `parsedates` first.
+
+`parsedates <var> [cols <c1,c2>] [layout <go-layout>] [as <var>]` converts date strings to `time.Time`. A DataList converts whole; a DataTable requires `cols` (names, or Excel indices like `A`) and errors without it. `layout` takes a Go reference layout and may be repeated — tried in order, first match wins; without it, common ISO shapes are tried. Cells no layout matches become nil, so `resample` reports them by row instead of silently accepting a half-converted column. The source variable is left untouched; the result goes to `as` or `$result`.
 
 `quant <form> ...` exposes the `quant` package: `sharpe`, `sortino`, `ir`, `maxdd`, `annret`, `calmar`, `drawdown`, `var`, `cvar`, `beta`, `capm`, `factor`, `bs`, `iv`. Series arguments are DataList variables holding per-period **returns** (or an equity curve for the drawdown forms) — passing prices produces a meaningless number, exactly as it would through the Go API. `periods`, `days`, and `confidence` are required positionals because the library refuses to invent an annualization factor; `rf`, `mar`, and `q` default to 0, and the VaR method defaults to `historical`. Scalar forms print `name=value` and store a `float64`; `capm` and `bs` store a one-row DataTable, `factor` stores one row per factor (`Factor, Exposure, StdErr, TValue, PValue`) plus a `<var>_alpha` table, and `drawdown` stores a DataList. Library errors come back verbatim behind a `quant <form>:` prefix.
 

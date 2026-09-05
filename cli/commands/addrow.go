@@ -11,7 +11,10 @@ func init() {
 		Name:        "addrow",
 		Usage:       "addrow <var> <values...>",
 		Description: "Add one row to DataTable",
-		Run:         runAddRowCommand,
+		// Values may be negative literals (-0.004), which Cobra would otherwise
+		// read as flags in one-shot mode.
+		DisableFlagParsing: true,
+		Run:                runAddRowCommand,
 	})
 }
 

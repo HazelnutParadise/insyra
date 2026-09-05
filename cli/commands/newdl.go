@@ -11,7 +11,10 @@ func init() {
 		Name:        "newdl",
 		Usage:       "newdl <values...> [as <var>]",
 		Description: "Create DataList manually",
-		Run:         runNewDLCommand,
+		// Values may be negative literals (-0.004), which Cobra would otherwise
+		// read as flags in one-shot mode.
+		DisableFlagParsing: true,
+		Run:                runNewDLCommand,
 	})
 }
 

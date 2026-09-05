@@ -49,3 +49,17 @@ period's final calendar day at midnight, retains the input time location, and
 is sorted by the time column. Empty periods are not fabricated. `ResampleAgg`
 uses `AggregateOp`; `As` defaults to `Col`. Missing columns, no aggregations,
 unknown frequencies, and non-`time.Time` values return errors.
+
+```go
+// A CSV date column is a string; Resample needs time.Time.
+dt.ParseDatesCols([]string{"Date"})              // defaults: ISO layouts
+dt.ParseDatesCols([]string{"Date"}, "02/01/2006") // explicit layouts, tried in order
+```
+
+`DataList.ParseDates(layouts ...string)` is the single-column form. Both
+convert in place and return the receiver. A matching string becomes a UTC
+`time.Time`, a value already `time.Time` is left alone, and everything else
+becomes nil, so a column is either usable or visibly empty. Passing layouts
+replaces the defaults rather than adding to them. `ParseDatesCols` resolves a
+column by name first, then Excel-style index, and warns and skips one that does
+not exist.

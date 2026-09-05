@@ -467,6 +467,14 @@ Input rows are sorted by time for `first`/`last` semantics and the result is
 returned in period order. Missing columns, empty aggregations, unknown
 frequencies, and non-`time.Time` cells return errors.
 
+A CSV load leaves date columns as strings, so `Resample` rejects them. Convert
+first with `dt.ParseDatesCols([]string{"Date"})`, or `dl.ParseDates()` on a
+single list. Both take optional Go layouts (`ParseDates("02/01/2006")`) and
+default to the ISO shapes `ReadSQLOptions.ParseDates` uses. Strings become UTC
+`time.Time`, existing `time.Time` values are kept, and anything unparsable
+becomes nil — never a half-converted column. `ParseDatesCols` warns and skips a
+column that does not exist.
+
 ### ML model selection
 
 The `ml` package provides seeded `KFold` and `StratifiedKFold` splits, plus
