@@ -258,7 +258,7 @@ func (m *Manager) Clear(name string, keepHistory bool) error {
 	if keepHistory {
 		return nil
 	}
-	return os.WriteFile(filepath.Join(envPath, "history.txt"), []byte(""), 0o644)
+	return os.WriteFile(filepath.Join(envPath, "history.txt"), []byte(""), 0o600)
 }
 
 func (m *Manager) Rename(oldName, newName string) error {
@@ -520,7 +520,7 @@ func (m *Manager) isEnvironmentEmpty(name string) (bool, error) {
 }
 
 func writeDefaultFiles(envPath string) error {
-	if err := os.WriteFile(filepath.Join(envPath, "history.txt"), []byte(""), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(envPath, "history.txt"), []byte(""), 0o600); err != nil {
 		return err
 	}
 	if err := os.WriteFile(filepath.Join(envPath, "state.json"), []byte("{\n  \"variables\": {},\n  \"lastAccess\": \"\"\n}\n"), 0o644); err != nil {

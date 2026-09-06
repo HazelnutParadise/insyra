@@ -172,6 +172,8 @@ insyra --no-color show x
 insyra --log-level debug help
 ```
 
+These flags work in front of every command, including the ones that take raw values such as `newdl -1 2 3`.
+
 ## Environment Model
 
 Environment names may contain only letters, digits, `.`, `_` and `-`, must start with a letter or digit, and may not contain `..`. A name is joined onto the environments directory, so anything else is refused before any file is touched.
@@ -185,7 +187,7 @@ Insyra persists state per environment under:
 Each environment contains:
 
 - `state.json`: serialized variables (`DataTable`, `DataList`, and raw values).
-- `history.txt`: command history.
+- `history.txt`: command history. A `db connect` line is stored with its password masked (`user:***@…`, `password=***`), and the file is created private to the user (mode 0600).
 - `config.json`: environment-local config payload.
 
 Default behavior:
@@ -194,6 +196,8 @@ Default behavior:
 - CLI commands restore env variables before execution.
 - REPL saves history and state continuously.
 - DSL session `Execute` saves state after successful command.
+- Variables that hold `NaN` or ±Inf (for example a CSV loaded with blank cells) are saved and restored intact.
+- `run <script.isr>` never opens the interactive REPL: an `env open` line inside a script only switches the environment for the rest of the script. A script that runs itself stops after 16 nested `run` levels.
 
 Export/import:
 

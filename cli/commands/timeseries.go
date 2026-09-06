@@ -115,7 +115,11 @@ func runMovAvgCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	ctx.Vars[alias] = dl.Clone().MovingAverage(window)
+	result := dl.Clone().MovingAverage(window)
+	if result == nil {
+		return fmt.Errorf("movavg: window %d is invalid for a list of %d items", window, dl.Len())
+	}
+	ctx.Vars[alias] = result
 	_, _ = fmt.Fprintf(ctx.Output, "saved as %s\n", alias)
 	return nil
 }
@@ -133,7 +137,11 @@ func runExpSmoothCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	ctx.Vars[alias] = dl.Clone().ExponentialSmoothing(alpha)
+	result := dl.Clone().ExponentialSmoothing(alpha)
+	if result == nil {
+		return fmt.Errorf("expsmooth: alpha %v is invalid (must be in (0, 1]) or the list is empty", alpha)
+	}
+	ctx.Vars[alias] = result
 	_, _ = fmt.Fprintf(ctx.Output, "saved as %s\n", alias)
 	return nil
 }
@@ -147,7 +155,11 @@ func runDiffCommand(ctx *ExecContext, args []string) error {
 	if err != nil {
 		return err
 	}
-	ctx.Vars[alias] = dl.Clone().Difference()
+	result := dl.Clone().Difference()
+	if result == nil {
+		return fmt.Errorf("diff: list %s needs at least 2 items", coreArgs[0])
+	}
+	ctx.Vars[alias] = result
 	_, _ = fmt.Fprintf(ctx.Output, "saved as %s\n", alias)
 	return nil
 }

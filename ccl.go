@@ -6,6 +6,7 @@ import (
 
 	"github.com/HazelnutParadise/insyra/internal/ccl"
 	"github.com/HazelnutParadise/insyra/internal/core"
+	"github.com/HazelnutParadise/insyra/internal/utils"
 )
 
 // dataTableContext implements ccl.Context for DataTable
@@ -42,8 +43,13 @@ func (c *dataTableContext) GetRowIndex() int {
 	return c.rowIndex
 }
 
+// GetCurrentRow returns a copy of the current row. The evaluator reuses one
+// row buffer across rows, so handing out the buffer itself would make every
+// cell produced by `@` alias the last row.
 func (c *dataTableContext) GetCurrentRow() any {
-	return c.row
+	row := make([]any, len(c.row))
+	copy(row, c.row)
+	return row
 }
 
 func (c *dataTableContext) GetCell(colIndex, rowIndex int) (any, error) {
@@ -208,6 +214,10 @@ func applyCCLOnDataTable(table *DataTable, expression string) ([]any, error) {
 			err = err2
 			return
 		}
+		if err2 := checkCCLColRange(boundAST, numCol); err2 != nil {
+			err = err2
+			return
+		}
 
 		// 準備 tableData 和 rowNameMap 以支援 . 運算符
 		tableData := make([][]any, numCol)
@@ -283,4 +293,15 @@ func applyCCLOnDataTable(table *DataTable, expression string) ([]any, error) {
 // InitCCLFunctions registers default functions for use with CCL.
 func initCCLFunctions() {
 	ccl.RegisterStandardFunctions()
+}
+
+// checkCCLColRange rejects a bound expression that references an Excel-style
+// column past the last one, so `E + 1` on a three-column table is an error
+// rather than a column of nil.
+func checkCCLColRange(bound ccl.CCLNode, numCol int) error {
+	if maxIdx := ccl.MaxResolvedColIndex(bound); maxIdx >= numCol {
+		name, _ := utils.CalcColIndex(maxIdx)
+		return fmt.Errorf("column %s does not exist: the table has %d column(s)", name, numCol)
+	}
+	return nil
 }

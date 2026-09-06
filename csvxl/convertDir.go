@@ -63,6 +63,9 @@ func excelFileToCsv(excelFile, outputDir string) error {
 
 	sheets := f.GetSheetList()
 	for _, sheet := range sheets {
+		if err := safeSheetFileName(sheet); err != nil {
+			return err
+		}
 		outputCsv := filepath.Join(outputDir, excelFileName+"_"+sheet+".csv")
 		if err := saveSheetAsCsv(f, sheet, outputCsv); err != nil {
 			return fmt.Errorf("failed to save sheet %s as CSV: %w", sheet, err)

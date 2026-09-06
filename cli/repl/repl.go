@@ -3,6 +3,7 @@ package repl
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -50,15 +51,21 @@ func Start(ctx *commands.ExecContext) error {
 
 	historyFile := filepath.Join(ctx.EnvPath, "history.txt")
 	instance, err := readline.NewFromConfig(&readline.Config{
-		Prompt:          prompt(ctx.EnvName),
-		HistoryFile:     historyFile,
-		AutoComplete:    NewAutoCompleter(ctx),
-		InterruptPrompt: "^C",
-		EOFPrompt:       "exit",
+		Prompt:       prompt(ctx.EnvName),
+		HistoryFile:  historyFile,
+		AutoComplete: NewAutoCompleter(ctx),
+		// History is saved by hand below so a `db connect` line is masked
+		// before it reaches disk.
+		DisableAutoSaveHistory: true,
+		InterruptPrompt:        "^C",
+		EOFPrompt:              "exit",
 	})
 	if err != nil {
 		return err
 	}
+	// readline creates the file with the process umask; history can hold
+	// data paths and connection strings, so keep it private to the user.
+	_ = os.Chmod(historyFile, 0o600)
 	defer func() {
 		_ = instance.Close()
 	}()
@@ -86,6 +93,7 @@ func Start(ctx *commands.ExecContext) error {
 		if len(tokens) == 0 {
 			continue
 		}
+		_ = instance.SaveToHistory(commands.SanitizeHistoryLine(trimmed))
 
 		if err := commands.Dispatch(ctx, tokens[0], tokens[1:]); err != nil {
 			_, _ = fmt.Fprintln(instance.Stderr(), style.ErrorText(err.Error()))

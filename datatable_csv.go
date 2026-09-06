@@ -3,7 +3,7 @@ package insyra
 import (
 	"encoding/csv"
 	"fmt"
-	"os"
+	"io"
 	"time"
 )
 
@@ -13,21 +13,22 @@ import (
 // - setRowNamesToFirstCol: if true, the first column will be used as row names
 // - setColNamesToFirstRow: if true, the first row will be used as column names
 func (dt *DataTable) ToCSV(filePath string, setRowNamesToFirstCol bool, setColNamesToFirstRow bool, includeBOM bool) error {
-	file, err := os.Create(filePath)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = file.Close() }()
+	return writeFileAtomically(filePath, func(w io.Writer) error {
+		return dt.writeCSV(w, setRowNamesToFirstCol, setColNamesToFirstRow, includeBOM)
+	})
+}
 
+// writeCSV streams the table as CSV to w. Every write error, including the
+// one csv.Writer only reports at Flush, is returned.
+func (dt *DataTable) writeCSV(w io.Writer, setRowNamesToFirstCol bool, setColNamesToFirstRow bool, includeBOM bool) error {
 	// 寫入 UTF-8 BOM
 	if includeBOM {
-		if _, err := file.Write([]byte{0xEF, 0xBB, 0xBF}); err != nil {
+		if _, err := w.Write([]byte{0xEF, 0xBB, 0xBF}); err != nil {
 			return err
 		}
 	}
 
-	writer := csv.NewWriter(file)
-	defer writer.Flush()
+	writer := csv.NewWriter(w)
 
 	var maxLength int
 	var columns []*DataList
@@ -88,6 +89,10 @@ func (dt *DataTable) ToCSV(filePath string, setRowNamesToFirstCol bool, setColNa
 	})
 	if err2 != nil {
 		return *err2
+	}
+	writer.Flush()
+	if err := writer.Error(); err != nil {
+		return err
 	}
 	return nil
 }

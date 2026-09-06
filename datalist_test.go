@@ -312,47 +312,170 @@ func TestDataListClearStrings(t *testing.T) {
 }
 
 func TestDataListClearNumbers(t *testing.T) {
-	// TODO
+	dl := NewDataList(1, "a", 2.5, nil, int64(3), "b")
+	dl.ClearNumbers()
+	if got := dl.Data(); !reflect.DeepEqual(got, []any{"a", nil, "b"}) {
+		t.Fatalf("ClearNumbers = %v", got)
+	}
 }
 
 func TestDataListClearNaNs(t *testing.T) {
-	// TODO
+	dl := NewDataList(1.0, math.NaN(), "x", nil, math.NaN(), 2.0)
+	dl.ClearNaNs()
+	if got := dl.Data(); !reflect.DeepEqual(got, []any{1.0, "x", nil, 2.0}) {
+		t.Fatalf("ClearNaNs = %v", got)
+	}
+	if NewDataList().ClearNaNs().Len() != 0 {
+		t.Fatal("ClearNaNs on an empty list must stay empty")
+	}
 }
 
 func TestDataListClearOutliers(t *testing.T) {
-	// TODO
+	// Nine values near 10 and one far away: 1000 is well past 2 standard
+	// deviations, the rest are within.
+	dl := NewDataList(9.0, 10.0, 11.0, 10.0, 9.0, 11.0, 10.0, 9.0, 11.0, 1000.0)
+	dl.ClearOutliers(2)
+	if dl.Len() != 9 {
+		t.Fatalf("ClearOutliers kept %d of 10 values, want 9: %v", dl.Len(), dl.Data())
+	}
+	for _, v := range dl.Data() {
+		if v == 1000.0 {
+			t.Fatal("outlier 1000 survived ClearOutliers")
+		}
+	}
+	// A non-numeric cell leaves the list unchanged.
+	mixed := NewDataList(1.0, "x", 1000.0)
+	mixed.ClearOutliers(2)
+	if mixed.Len() != 3 {
+		t.Fatalf("ClearOutliers with a non-numeric cell changed the list: %v", mixed.Data())
+	}
 }
 
 func TestDataListNormalize(t *testing.T) {
-	// TODO
+	dl := NewDataList(2.0, 4.0, nil, 6.0)
+	if dl.Normalize() == nil {
+		t.Fatal("Normalize returned nil for numeric input")
+	}
+	want := []any{0.0, 0.5, nil, 1.0}
+	if got := dl.Data(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("Normalize = %v, want %v", got, want)
+	}
+	if NewDataList(1.0, "x").Normalize() != nil {
+		t.Fatal("Normalize with a non-numeric cell should return nil")
+	}
 }
 
 func TestDataListStandardize(t *testing.T) {
-	// TODO
+	dl := NewDataList(2.0, 4.0, 6.0)
+	dl.Standardize()
+	got := dl.Data()
+	// mean 4, sample stdev 2 -> (-1, 0, 1)
+	for i, want := range []float64{-1, 0, 1} {
+		if math.Abs(got[i].(float64)-want) > 1e-12 {
+			t.Fatalf("Standardize[%d] = %v, want %v", i, got[i], want)
+		}
+	}
+	single := NewDataList(5.0)
+	single.Standardize()
+	if single.Data()[0] != 5.0 {
+		t.Fatalf("Standardize on one value must leave it unchanged, got %v", single.Data())
+	}
 }
 
 func TestDataListFillNaNWithMean(t *testing.T) {
-	// TODO
+	dl := NewDataList(1.0, math.NaN(), 3.0)
+	dl.FillNaNWithMean()
+	if got := dl.Data(); !reflect.DeepEqual(got, []any{1.0, 2.0, 3.0}) {
+		t.Fatalf("FillNaNWithMean = %v", got)
+	}
 }
 
 func TestDataListMovingAverage(t *testing.T) {
-	// TODO
+	dl := NewDataList(1.0, 2.0, 3.0, 4.0)
+	got := dl.MovingAverage(2)
+	if got == nil {
+		t.Fatal("MovingAverage returned nil")
+	}
+	if !reflect.DeepEqual(got.Data(), []any{1.5, 2.5, 3.5}) {
+		t.Fatalf("MovingAverage(2) = %v", got.Data())
+	}
+	if dl.Len() != 4 {
+		t.Fatal("MovingAverage must not modify the receiver")
+	}
+	if dl.MovingAverage(0) != nil || dl.MovingAverage(5) != nil {
+		t.Fatal("MovingAverage with an invalid window must return nil")
+	}
+	if NewDataList(1.0, "x", 3.0).MovingAverage(2) != nil {
+		t.Fatal("MovingAverage over a non-numeric cell must return nil")
+	}
 }
 
 func TestDataListWeightedMovingAverage(t *testing.T) {
-	// TODO
+	dl := NewDataList(1.0, 2.0, 3.0)
+	got := dl.WeightedMovingAverage(2, []float64{1, 3})
+	if got == nil {
+		t.Fatal("WeightedMovingAverage returned nil")
+	}
+	// (1*1+2*3)/4 = 1.75, (2*1+3*3)/4 = 2.75
+	if !reflect.DeepEqual(got.Data(), []any{1.75, 2.75}) {
+		t.Fatalf("WeightedMovingAverage = %v", got.Data())
+	}
+	if dl.WeightedMovingAverage(2, []float64{1}) != nil {
+		t.Fatal("weights of the wrong length must return nil")
+	}
 }
 
 func TestDataListExponentialSmoothing(t *testing.T) {
-	// TODO
+	dl := NewDataList(10.0, 20.0, 30.0)
+	got := dl.ExponentialSmoothing(0.5)
+	if got == nil {
+		t.Fatal("ExponentialSmoothing returned nil")
+	}
+	// s0 = 10, s1 = 0.5*20 + 0.5*10 = 15, s2 = 0.5*30 + 0.5*15 = 22.5
+	if !reflect.DeepEqual(got.Data(), []any{10.0, 15.0, 22.5}) {
+		t.Fatalf("ExponentialSmoothing = %v", got.Data())
+	}
+	if dl.ExponentialSmoothing(1.5) != nil {
+		t.Fatal("alpha outside [0, 1] must return nil")
+	}
 }
 
 func TestDataListDoubleExponentialSmoothing(t *testing.T) {
-	// TODO
+	dl := NewDataList(10.0, 20.0, 30.0)
+	got := dl.DoubleExponentialSmoothing(0.5, 0.5)
+	if got == nil {
+		t.Fatal("DoubleExponentialSmoothing returned nil")
+	}
+	// level0=10 trend0=0
+	// i=1: level=0.5*20+0.5*(10+0)=15, trend=0.5*(15-10)+0.5*0=2.5, out=17.5
+	// i=2: level=0.5*30+0.5*(15+2.5)=23.75, trend=0.5*(23.75-15)+0.5*2.5=5.625, out=29.375
+	want := []float64{10, 17.5, 29.375}
+	for i, w := range want {
+		if math.Abs(got.Data()[i].(float64)-w) > 1e-12 {
+			t.Fatalf("DoubleExponentialSmoothing[%d] = %v, want %v", i, got.Data()[i], w)
+		}
+	}
+	if dl.DoubleExponentialSmoothing(0.5, -0.1) != nil {
+		t.Fatal("beta outside [0, 1] must return nil")
+	}
 }
 
 func TestDataListMovingStdev(t *testing.T) {
-	// TODO
+	dl := NewDataList(1.0, 2.0, 4.0)
+	got := dl.MovingStdev(2)
+	if got == nil {
+		t.Fatal("MovingStdev returned nil")
+	}
+	// sample stdev of (1,2) = sqrt(0.5), of (2,4) = sqrt(2)
+	want := []float64{math.Sqrt(0.5), math.Sqrt(2)}
+	for i, w := range want {
+		if math.Abs(got.Data()[i].(float64)-w) > 1e-12 {
+			t.Fatalf("MovingStdev[%d] = %v, want %v", i, got.Data()[i], w)
+		}
+	}
+	if dl.MovingStdev(4) != nil {
+		t.Fatal("window larger than the list must return nil")
+	}
 }
 
 func TestDataListSort(t *testing.T) {

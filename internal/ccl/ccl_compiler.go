@@ -236,3 +236,48 @@ func Bind(n cclNode, colNameMap map[string]int) (cclNode, error) {
 		return n, nil
 	}
 }
+
+// MaxResolvedColIndex walks a bound AST and returns the largest column index
+// referenced by an Excel-style or resolved column node, or -1 when none.
+// Callers use it to reject A..Z references past the last column before
+// evaluation, instead of silently reading nil.
+func MaxResolvedColIndex(n cclNode) int {
+	maxIdx := -1
+	var walk func(n cclNode)
+	walk = func(n cclNode) {
+		switch t := n.(type) {
+		case nil:
+			return
+		case *cclResolvedColNode:
+			if t.index > maxIdx {
+				maxIdx = t.index
+			}
+		case *cclColIndexNode:
+			if idx, ok := utils.ParseColIndex(t.index); ok && idx > maxIdx {
+				maxIdx = idx
+			}
+		case *cclBinaryOpNode:
+			walk(t.left)
+			walk(t.right)
+		case *cclFoldChainNode:
+			walk(t.init)
+			for _, o := range t.operands {
+				walk(o)
+			}
+		case *cclChainedComparisonNode:
+			for _, v := range t.values {
+				walk(v)
+			}
+		case *funcCallNode:
+			for _, a := range t.args {
+				walk(a)
+			}
+		case *cclAssignmentNode:
+			walk(t.expr)
+		case *cclNewColNode:
+			walk(t.expr)
+		}
+	}
+	walk(n)
+	return maxIdx
+}

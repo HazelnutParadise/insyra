@@ -11,7 +11,7 @@ import (
 func collectFloats(args [][]any) []float64 {
 	var out []float64
 	forEachValue(args, func(val any) {
-		if f, ok := toFloat64(val); ok {
+		if f, ok := toFloat64(val); ok && !math.IsNaN(f) {
 			out = append(out, f)
 		}
 	})
@@ -20,7 +20,9 @@ func collectFloats(args [][]any) []float64 {
 
 // registerAggregateStatFunctions registers MEDIAN / STDEV / STDEVP / VAR / VARP.
 // Sample variants (STDEV, VAR) divide by n-1; population variants (STDEVP,
-// VARP) divide by n. All ignore nil values, matching SUM/AVG/COUNT semantics.
+// VARP) divide by n. All ignore nil, non-numeric and NaN values, matching
+// SUM/AVG/MAX/MIN. Too few remaining values is an error for the variance
+// family (documented) and nil for MEDIAN.
 func registerAggregateStatFunctions() {
 	registerAggregateFunction("MEDIAN", func(args ...[]any) (any, error) {
 		vals := collectFloats(args)
@@ -64,10 +66,7 @@ func registerAggregateStatFunctions() {
 		vals := collectFloats(args)
 		v, ok := variance(vals, true)
 		if !ok {
-			if len(vals) < 2 {
-				return nil, fmt.Errorf("VAR requires at least 2 numeric values")
-			}
-			return nil, nil
+			return nil, fmt.Errorf("VAR requires at least 2 numeric values")
 		}
 		return v, nil
 	})
@@ -85,10 +84,7 @@ func registerAggregateStatFunctions() {
 		vals := collectFloats(args)
 		v, ok := variance(vals, true)
 		if !ok {
-			if len(vals) < 2 {
-				return nil, fmt.Errorf("STDEV requires at least 2 numeric values")
-			}
-			return nil, nil
+			return nil, fmt.Errorf("STDEV requires at least 2 numeric values")
 		}
 		return math.Sqrt(v), nil
 	})

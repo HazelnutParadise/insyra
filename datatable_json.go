@@ -2,7 +2,7 @@ package insyra
 
 import (
 	"fmt"
-	"os"
+	"io"
 
 	"github.com/HazelnutParadise/insyra/internal/utils"
 	json "github.com/goccy/go-json"
@@ -62,19 +62,10 @@ func (dt *DataTable) ToJSON(filePath string, useColNames bool) error {
 	if err != nil {
 		return err
 	}
-
-	file, err := os.Create(filePath)
-	if err != nil {
+	return writeFileAtomically(filePath, func(w io.Writer) error {
+		_, err := w.Write(jsonData)
 		return err
-	}
-	defer func() { _ = file.Close() }()
-
-	_, err = file.Write(jsonData)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	})
 }
 
 // ToJSON_Byte converts the DataTable to JSON format and returns it as a byte slice.

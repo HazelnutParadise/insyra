@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"time"
@@ -82,7 +83,7 @@ func (m *Manager) LoadState(envName string) (*State, error) {
 		if serialized.Type == "DataList" || serialized.Type == "DataTable" {
 			continue
 		}
-		serialized.Data = coerceEnvNumber(serialized.Data)
+		serialized.Data = decodeEnvValue(serialized.Data)
 		state.Variables[key] = serialized
 	}
 	return &state, nil
@@ -100,37 +101,156 @@ func (m *Manager) RestoreVariables(envName string) (map[string]any, error) {
 	return vars, nil
 }
 
+// specialFloatKey marks a JSON object that stands in for a float64 JSON
+// cannot represent: {"$float": "NaN" | "+Inf" | "-Inf"}. CSV files with
+// blank cells load as NaN, so without this a table with one missing value
+// could not be saved at all.
+const specialFloatKey = "$float"
+
+// encodeSpecialFloats replaces NaN and infinities (at any depth of []any)
+// with their marker objects so encoding/json accepts the value.
+func encodeSpecialFloats(v any) any {
+	switch t := v.(type) {
+	case float64:
+		return encodeSpecialFloat64(t)
+	case float32:
+		return encodeSpecialFloat64(float64(t))
+	case []any:
+		out := make([]any, len(t))
+		for i, e := range t {
+			out[i] = encodeSpecialFloats(e)
+		}
+		return out
+	default:
+		return v
+	}
+}
+
+func encodeSpecialFloat64(f float64) any {
+	switch {
+	case math.IsNaN(f):
+		return map[string]any{specialFloatKey: "NaN"}
+	case math.IsInf(f, 1):
+		return map[string]any{specialFloatKey: "+Inf"}
+	case math.IsInf(f, -1):
+		return map[string]any{specialFloatKey: "-Inf"}
+	default:
+		return f
+	}
+}
+
+// decodeEnvValue is the inverse of encodeSpecialFloats plus the json.Number
+// typing of coerceEnvNumber, applied to one cell.
+func decodeEnvValue(v any) any {
+	if m, ok := v.(map[string]any); ok && len(m) == 1 {
+		if s, ok := m[specialFloatKey].(string); ok {
+			switch s {
+			case "NaN":
+				return math.NaN()
+			case "+Inf":
+				return math.Inf(1)
+			case "-Inf":
+				return math.Inf(-1)
+			}
+		}
+	}
+	return coerceEnvNumber(v)
+}
+
+// serializedTable is the on-disk shape of a DataTable variable: columns in
+// order with their names, plus row names when any are set. Older state
+// files hold the table as a JSON string (ToJSON_String) and are still read.
+type serializedTable struct {
+	Columns  []serializedColumn `json:"columns"`
+	RowNames []string           `json:"rowNames,omitempty"`
+}
+
+type serializedColumn struct {
+	Name string `json:"name"`
+	Data []any  `json:"data"`
+}
+
 func serializeVariable(value any) SerializedVariable {
 	switch typed := value.(type) {
 	case *insyra.DataTable:
-		return SerializedVariable{Type: "DataTable", Name: typed.GetName(), Data: typed.ToJSON_String(true)}
+		if typed == nil {
+			return SerializedVariable{Type: "Raw", Data: nil}
+		}
+		st := serializedTable{}
+		for i := 0; i < typed.NumCols(); i++ {
+			col := typed.GetColByNumber(i)
+			st.Columns = append(st.Columns, serializedColumn{
+				Name: col.GetName(),
+				Data: encodeSpecialFloats(col.Data()).([]any),
+			})
+		}
+		for _, rn := range typed.RowNames() {
+			if rn != "" {
+				st.RowNames = typed.RowNames()
+				break
+			}
+		}
+		return SerializedVariable{Type: "DataTable", Name: typed.GetName(), Data: st}
 	case *insyra.DataList:
-		return SerializedVariable{Type: "DataList", Name: typed.GetName(), Data: typed.Data()}
+		if typed == nil {
+			return SerializedVariable{Type: "Raw", Data: nil}
+		}
+		return SerializedVariable{Type: "DataList", Name: typed.GetName(), Data: encodeSpecialFloats(typed.Data())}
 	default:
-		return SerializedVariable{Type: "Raw", Data: typed}
+		return SerializedVariable{Type: "Raw", Data: encodeSpecialFloats(typed)}
 	}
 }
 
 func deserializeVariable(serialized SerializedVariable) any {
 	switch serialized.Type {
 	case "DataTable":
-		if text, ok := serialized.Data.(string); ok {
-			table, err := insyra.ReadJSON(text)
-			if err != nil {
+		switch data := serialized.Data.(type) {
+		case string:
+			// Legacy layout: the whole table as a JSON document.
+			table, err := insyra.ReadJSON(data)
+			if err != nil || table == nil {
 				return serialized.Data
 			}
-			if table != nil && serialized.Name != "" {
+			if serialized.Name != "" {
 				table.SetName(serialized.Name)
 			}
-			if table != nil {
-				return table
+			return table
+		case map[string]any:
+			table := insyra.NewDataTable()
+			cols, _ := data["columns"].([]any)
+			for _, c := range cols {
+				cm, ok := c.(map[string]any)
+				if !ok {
+					continue
+				}
+				raw, _ := cm["data"].([]any)
+				cells := make([]any, len(raw))
+				for i, e := range raw {
+					cells[i] = decodeEnvValue(e)
+				}
+				dl := insyra.NewDataList(cells...)
+				if name, ok := cm["name"].(string); ok {
+					dl.SetName(name)
+				}
+				table.AppendCols(dl)
 			}
+			if rn, ok := data["rowNames"].([]any); ok && len(rn) > 0 {
+				names := make([]string, len(rn))
+				for i, e := range rn {
+					names[i], _ = e.(string)
+				}
+				table.SetRowNames(names)
+			}
+			if serialized.Name != "" {
+				table.SetName(serialized.Name)
+			}
+			return table
 		}
 	case "DataList":
 		if arr, ok := serialized.Data.([]any); ok {
 			converted := make([]any, len(arr))
 			for i, e := range arr {
-				converted[i] = coerceEnvNumber(e)
+				converted[i] = decodeEnvValue(e)
 			}
 			dl := insyra.NewDataList(converted...)
 			if serialized.Name != "" {
@@ -139,7 +259,7 @@ func deserializeVariable(serialized SerializedVariable) any {
 			return dl
 		}
 	}
-	return serialized.Data
+	return decodeEnvValue(serialized.Data)
 }
 
 // coerceEnvNumber types a json.Number (produced by UseNumber decoding) as int64
@@ -164,7 +284,7 @@ func (m *Manager) AppendHistory(envName, command string) error {
 		return err
 	}
 	file := filepath.Join(envPath, "history.txt")
-	handle, err := os.OpenFile(file, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	handle, err := os.OpenFile(file, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}

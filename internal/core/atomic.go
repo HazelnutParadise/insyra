@@ -212,8 +212,11 @@ func AtomicDoWithInit[T any](actor *AtomicActor, owner *T, f func(*T), initHook 
 // a canonical (pointer-address) order and released in reverse. This is the
 // deadlock-free way to operate on several instances atomically, replacing the
 // racy pattern of nesting AtomicDo on different instances. Actors may belong to
-// different groups; nil/closed actors and actors already held by this goroutine
-// are skipped, and duplicate pointers are de-duplicated.
+// different groups; nil/closed actors are skipped and duplicate pointers are
+// de-duplicated. Call it from the outermost level: when this goroutine already
+// holds one of the actors (it is inside an AtomicDo on it), f runs inline
+// without locking the others, exactly like nested AtomicDo, so the other
+// instances are NOT protected in that case.
 func AtomicDoN(actors []*AtomicActor, f func()) {
 	AtomicDoNWithInit(actors, nil, f)
 }
@@ -234,11 +237,26 @@ func AtomicDoNWithInit(actors []*AtomicActor, initHooks []func(), f func()) {
 
 	gid := goid.Get()
 
-	// Build the lock set: skip nil, closed, and actors this goroutine already
-	// holds (those are protected by the outer frame; re-locking would deadlock).
+	// Re-entry: if this goroutine already holds any of the actors (it is inside
+	// an AtomicDo on one of them), locking the rest here would race another
+	// goroutine doing the mirror image — G1 holds a and asks for b while G2
+	// holds b and asks for a — and deadlock AB-BA. Take the same inline
+	// trust-zone path the single-actor AtomicDo takes for cross-actor nesting:
+	// run f without acquiring more locks and let the hook log it.
+	for _, a := range actors {
+		if a != nil && a.holder.Load() == gid {
+			if h := TrustZoneFallbackHook; h != nil {
+				h()
+			}
+			f()
+			return
+		}
+	}
+
+	// Build the lock set: skip nil and closed actors.
 	toLock := make([]*AtomicActor, 0, len(actors))
 	for _, a := range actors {
-		if a == nil || a.closed.Load() || a.holder.Load() == gid {
+		if a == nil || a.closed.Load() {
 			continue
 		}
 		toLock = append(toLock, a)

@@ -255,6 +255,9 @@ func executeAssignment(dt *DataTable, node ccl.CCLNode, target string, numRow in
 	if err != nil {
 		return err
 	}
+	if err := checkCCLColRange(boundNode, len(dt.columns)); err != nil {
+		return err
+	}
 
 	// 預分配 row slice
 	row := make([]any, len(dt.columns))
@@ -332,6 +335,9 @@ func executeNewColumn(dt *DataTable, node ccl.CCLNode, newColName string, numRow
 	// Bind the node first
 	boundNode, err := ccl.Bind(node, colNameMap)
 	if err != nil {
+		return err
+	}
+	if err := checkCCLColRange(boundNode, len(dt.columns)); err != nil {
 		return err
 	}
 

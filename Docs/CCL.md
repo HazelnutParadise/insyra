@@ -172,19 +172,21 @@ CCL supports the following data types:
    "'123'"             // Numeric string
    ```
 
-3. **Boolean Values** - `true` or `false`
+3. **Boolean Values** - `true` or `false` (case-insensitive: `TRUE`, `False` work too)
 
    ```
    "true"              // Boolean true
    "false"             // Boolean false
    ```
 
-4. **Nil/Null** - `nil` or `null`
+4. **Nil/Null** - `nil` or `null` (case-insensitive: `NULL` works too)
 
    ```
    "nil"               // Nil value
    "null"              // Alias for nil
    ```
+
+   Keywords are never read as column references. Any other bare word is first tried as an Excel-style column index (`A`, `B`, ... `AA`); an index past the last column is an error, not a column of `nil`. Refer to a column by name with `['name']`.
 
 ## Operators
 
@@ -481,6 +483,8 @@ You can also use another column as the row index:
 
 ### All-Column Reference `@`
 
+Used as a value, `@` yields a fresh copy of the current row (`[]any`) for every row, so a column built from `@` never aliases another row.
+
 The `@` symbol represents all columns in the current row. It is typically used with the row access operator to retrieve an entire row of data.
 
 ```
@@ -601,7 +605,7 @@ Standard scalar math functions. All accept any value coercible to a number; pass
 | `MOD(a, b)` | Floating-point remainder of `a / b` | `MOD(10, 3)` → `1` |
 | `POW(base, exp)` | Power | `POW(2, 10)` → `1024` |
 | `SQRT(x)` | Square root (errors on negatives) | `SQRT(16)` → `4` |
-| `LN(x)` | Natural log | `LN(E)` → `1` |
+| `LN(x)` | Natural log | `LN(EXP(1))` → `1` |
 | `LOG(x, base?)` | `LOG(x)` defaults to base 10; otherwise log base `base` | `LOG(8, 2)` → `3` |
 | `LOG10(x)` | Base-10 log | `LOG10(100)` → `2` |
 | `EXP(x)` | e^x | `EXP(0)` → `1` |
@@ -681,13 +685,14 @@ dt.AddColUsingCCL("order_iso", "FORMAT_DATE(['order_date'], '2006-01-02')")
 
 Aggregate functions perform calculations on a set of values (a column, a row, or an expression) and return a single value. This value is then "broadcasted" to all rows in the resulting column (unless in row-wise mode).
 
-**Important Note on `nil` values:** All aggregate functions **automatically ignore `nil` values**. For example, `AVG` only divides the sum by the number of non-nil elements.
+**Important Note on `nil` and `NaN` values:** All aggregate functions **automatically ignore `nil`, non-numeric and `NaN` values**. For example, `AVG` only divides the sum by the number of usable elements, and one `NaN` cell does not turn `SUM` into `NaN`.
 
 ## Duration & Time Functions
 
 CCL supports basic date and duration arithmetic and comparison. Key points:
 
 - Date strings (e.g., `"2006-01-02"`, RFC3339) are automatically parsed as `time.Time` when possible; parsed values are treated as date/time values.
+- A date difference (`A - B`) is a duration. In a numeric context it counts **seconds**, so `(A - B) > 0` and `(A - B) / 86400` work; `DAY(A - B)` converts it to days directly.
 - `date - date` returns a `time.Duration` representing the difference between the two dates. Use `DAY(...)`, `HOUR(...)`, `MINUTE(...)`, or `SECOND(...)` to convert the result to numeric values.
 - `date - number` or `date + number` treats the number as days and returns a `time.Time` (date shifted by the specified number of days).
 - Date comparisons (`>`, `<`, `>=`, `<=`, `==`, `!=`) work on date/time values.
@@ -852,12 +857,12 @@ dt.AddColUsingCCL("rolling_via_name", "ROLLING_SUM(['price'], 2)")
 
 ### v1 limitation: top-level usage only
 
-Sequence functions are designed to be the **root** of an expression assigned to a new column. Combining them inside binary ops in a single expression — e.g. `LAG(B, 1) + 1` — is **undefined in v1**. Split into two statements instead:
+Sequence functions are designed to be the **root** of an expression assigned to a new column, or an argument of another sequence or aggregate function: `LAG(LAG(A, 1), 1)`, `CUMSUM(DIFF(A))` and `SUM(LAG(A, 1))` keep every row. Combining them inside binary ops in a single expression — e.g. `LAG(B, 1) + 1` — is **undefined in v1**. Split into two statements instead:
 
 ```go
 dt.ExecuteCCL(`
     NEW('prev') = LAG(B, 1)
-    NEW('adj')  = prev + 1
+    NEW('adj')  = ['prev'] + 1
 `)
 ```
 
@@ -941,7 +946,7 @@ dt.AddColUsingCCL("cube", "A ^ 3")
 // A and B are date/time columns
 dt.AddColUsingCCL("diff", "A - B")                     // -> time.Duration
 dt.AddColUsingCCL("diff_days", "DAY(A - B)")           // -> float64 days
-dt.AddColUsingCCL("prev_diff", "IF(#>0, A.(#-1) - A, NULL)") // uses IF short-circuiting to avoid row -1
+dt.AddColUsingCCL("prev_diff", "IF(#>0, A.(#-1) - A, NULL)") // uses IF short-circuiting to avoid row -1; NULL is the nil literal
 ```
 
 ### String Operations

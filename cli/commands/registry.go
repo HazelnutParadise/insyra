@@ -25,6 +25,9 @@ type ExecContext struct {
 	// Manager don't get their writes redirected to the default ~/.insyra.
 	// Dispatch fills this with env.Default() if the caller left it nil.
 	Env *env.Manager
+
+	// scriptDepth counts nested `run` invocations (see maxScriptDepth).
+	scriptDepth int
 }
 
 type CommandHandler struct {
@@ -153,7 +156,7 @@ func BuildCobraCommands(ctx *ExecContext) []*cobra.Command {
 					if mgr == nil {
 						mgr = env.Default()
 					}
-					_ = mgr.AppendHistory(envName, line)
+					_ = mgr.AppendHistory(envName, SanitizeHistoryLine(line))
 				}
 				return err
 			},

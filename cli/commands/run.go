@@ -13,9 +13,16 @@ func init() {
 	_ = Register(&CommandHandler{Name: "run", Usage: "run <script.isr>", Description: "Run DSL script file", Run: runScriptCommand})
 }
 
+// maxScriptDepth bounds nested `run` calls so a script that runs itself
+// (directly or through another script) stops instead of recursing forever.
+const maxScriptDepth = 16
+
 func runScriptCommand(ctx *ExecContext, args []string) error {
 	if len(args) < 1 {
 		return fmt.Errorf("usage: run <script.isr>")
+	}
+	if ctx.scriptDepth >= maxScriptDepth {
+		return fmt.Errorf("run: script nesting depth exceeds %d (is %s running itself?)", maxScriptDepth, args[0])
 	}
 	file, err := os.Open(args[0])
 	if err != nil {
@@ -23,6 +30,16 @@ func runScriptCommand(ctx *ExecContext, args []string) error {
 	}
 	defer func() {
 		_ = file.Close()
+	}()
+
+	// A script is non-interactive: `env open` inside it must only switch the
+	// environment, never start the REPL and wait on stdin.
+	ctx.scriptDepth++
+	savedOpenREPL := ctx.OpenREPL
+	ctx.OpenREPL = nil
+	defer func() {
+		ctx.scriptDepth--
+		ctx.OpenREPL = savedOpenREPL
 	}()
 
 	scanner := bufio.NewScanner(file)

@@ -511,7 +511,7 @@ if err != nil {
 func (dt *DataTable) ToCSV(filePath string, setRowNamesToFirstCol bool, setColNamesToFirstRow bool, includeBOM bool) error
 ```
 
-**Description:** Saves the DataTable as a CSV file. `time.Time` cells are written in RFC 3339 form (with nanoseconds), which is the first layout `ParseDates` tries, so a table written here reads back as the same instants.
+**Description:** Saves the DataTable as a CSV file. `time.Time` cells are written in RFC 3339 form (with nanoseconds), which is the first layout `ParseDates` tries, so a table written here reads back as the same instants. The file is written to a temporary file in the same directory and renamed into place once every write succeeded, so a failure (disk full, closed pipe) returns an error and never leaves a truncated file at `filePath`. `ToJSON` follows the same rule.
 
 **Parameters:**
 

@@ -150,7 +150,7 @@ func RegisterStandardFunctions() {
 		}
 		var sum float64
 		forEachValue(args, func(val any) {
-			if f, ok := toFloat64(val); ok {
+			if f, ok := toFloat64(val); ok && !math.IsNaN(f) {
 				sum += f
 			}
 		})
@@ -164,7 +164,7 @@ func RegisterStandardFunctions() {
 		var sum float64
 		var count int
 		forEachValue(args, func(val any) {
-			if f, ok := toFloat64(val); ok {
+			if f, ok := toFloat64(val); ok && !math.IsNaN(f) {
 				sum += f
 				count++
 			}
@@ -369,6 +369,10 @@ func toFloat64(val any) (float64, bool) {
 		return float64(v), true
 	case float32:
 		return float64(v), true
+	case time.Duration:
+		// A date difference is a number of seconds, so (A - B) > 0 and
+		// (A - B) / 86400 behave the way the docs describe.
+		return v.Seconds(), true
 	case bool:
 		if v {
 			return 1.0, true

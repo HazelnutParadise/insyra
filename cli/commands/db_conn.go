@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 
 	"github.com/glebarez/sqlite"
@@ -123,7 +124,30 @@ func (c *DBConn) maskedDSN() string {
 	return maskDSNPassword(c.DSN)
 }
 
+// dsnKVPassword matches libpq / ODBC style "password=secret" (or pwd=) keys.
+var dsnKVPassword = regexp.MustCompile(`(?i)\b(password|pwd)=[^\s;]+`)
+
+// SanitizeHistoryLine returns line with any database password masked, so a
+// `db connect <name> <dsn>` never lands in history.txt or an exported
+// environment in clear text. Other lines are returned unchanged.
+func SanitizeHistoryLine(line string) string {
+	fields := strings.Fields(line)
+	if len(fields) < 4 || !strings.EqualFold(fields[0], "db") || !strings.EqualFold(fields[1], "connect") {
+		return line
+	}
+	// The DSN may contain spaces (key=value form), so mask everything after
+	// the connection name.
+	idx := strings.Index(line, fields[3])
+	if idx < 0 {
+		return line
+	}
+	return line[:idx] + maskDSNPassword(line[idx:])
+}
+
 func maskDSNPassword(dsn string) string {
+	if dsnKVPassword.MatchString(dsn) {
+		dsn = dsnKVPassword.ReplaceAllString(dsn, "$1=***")
+	}
 	// URL-style: <scheme>://user:pass@host/...
 	if i := strings.Index(dsn, "://"); i > 0 {
 		head := dsn[:i+3]
