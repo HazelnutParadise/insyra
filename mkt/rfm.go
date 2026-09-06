@@ -1,6 +1,7 @@
 package mkt
 
 import (
+	"sort"
 	"time"
 
 	"github.com/HazelnutParadise/Go-Utils/conv"
@@ -89,10 +90,15 @@ func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable {
 			dateValue := dt.GetElement(i, tradingDayColIndex)
 			lastTradingDayStr := utils.ConvertToDateString(dateValue, goDateFormat)
 			customerID := conv.ToString(dt.GetElement(i, customerIDColIndex))
-			amount := conv.ParseF64(dt.GetElement(i, amountColIndex))
 
 			// 跳過無效的資料
 			if lastTradingDayStr == "" || customerID == "" {
+				continue
+			}
+			amountValue := dt.GetElement(i, amountColIndex)
+			amount, ok := insyra.ToFloat64Safe(amountValue)
+			if !ok {
+				insyra.LogWarning("mkt", "RFM", "Amount at row %d is not numeric (%v), skipping the row", i+1, amountValue)
 				continue
 			}
 
@@ -201,8 +207,15 @@ func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable {
 	// 創建RFM表
 	rfmTable := insyra.NewDataTable()
 
-	// 為每個客戶計算分數
+	// 依 CustomerID 排序輸出，讓結果可重現（map 迭代順序每次不同）。
+	customerIDs := make([]string, 0, len(customerLastTradingDayMap))
 	for customerID := range customerLastTradingDayMap {
+		customerIDs = append(customerIDs, customerID)
+	}
+	sort.Strings(customerIDs)
+
+	// 為每個客戶計算分數
+	for _, customerID := range customerIDs {
 		rValue := customerRMap[customerID]
 		fValue := customerTradingFrequencyMap[customerID]
 		mValue := customerTotalAmountMap[customerID]

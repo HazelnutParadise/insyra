@@ -531,7 +531,7 @@ func NewMemoryGeocodeCache() GeocodeCache          // in-process, concurrency-sa
 func NewFileGeocodeCache(path string) GeocodeCache // JSON file; survives across runs
 ```
 
-`NewFileGeocodeCache` is the highest-value option under the 15/hour cap — resolved coordinates persist between program runs. Keys are the coordinate quantized to 6 decimal places (`"%.6f,%.6f"`, ~0.1 m — far finer than GPS accuracy), so a cache hit returns the correct region in practice.
+`NewFileGeocodeCache` is the highest-value option under the 15/hour cap — resolved coordinates persist between program runs. Each write goes to a temporary file that is then renamed over the cache, so an interrupted write cannot corrupt it. Keys are the coordinate quantized to 6 decimal places (`"%.6f,%.6f"`, ~0.1 m — far finer than GPS accuracy), so a cache hit returns the correct region in practice.
 
 ### Errors
 

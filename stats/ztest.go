@@ -26,21 +26,15 @@ func SingleSampleZTest(data insyra.IDataList, mu float64, sigma float64, alterna
 		return nil, errors.New("confidenceLevel must be between 0 and 1")
 	}
 
-	var n int
-	var mean float64
-	var err error
-	data.AtomicDo(func(dl *insyra.DataList) {
-		n = dl.Len()
-		if n <= 0 {
-			err = errors.New("sample size too small")
-			return
-		}
-
-		mean = dl.Mean()
-	})
+	values, err := testSeries(data, "data")
 	if err != nil {
 		return nil, err
 	}
+	n := len(values)
+	if n <= 0 {
+		return nil, errors.New("sample size too small")
+	}
+	mean := meanOfF64(values)
 
 	standardError := sampleSE(sigma, float64(n))
 	zValue := (mean - mu) / standardError
@@ -83,25 +77,19 @@ func TwoSampleZTest(data1, data2 insyra.IDataList, sigma1, sigma2 float64, alter
 		return nil, errors.New("confidenceLevel must be between 0 and 1")
 	}
 
-	var n1, n2 int
-	var mean1, mean2 float64
-	var err error
-	dl1 := data1.(*insyra.DataList)
-	dl2 := data2.(*insyra.DataList)
-	insyra.AtomicDoAll(func() {
-		n1 = dl1.Len()
-		n2 = dl2.Len()
-		if n1 <= 0 || n2 <= 0 {
-			err = errors.New("sample sizes too small")
-			return
-		}
-
-		mean1 = dl1.Mean()
-		mean2 = dl2.Mean()
-	}, dl1, dl2)
+	values1, err := testSeries(data1, "data1")
 	if err != nil {
 		return nil, err
 	}
+	values2, err := testSeries(data2, "data2")
+	if err != nil {
+		return nil, err
+	}
+	n1, n2 := len(values1), len(values2)
+	if n1 <= 0 || n2 <= 0 {
+		return nil, errors.New("sample sizes too small")
+	}
+	mean1, mean2 := meanOfF64(values1), meanOfF64(values2)
 
 	meanDiff := mean1 - mean2
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -127,9 +128,24 @@ func (m *Manager) EnvsPath() (string, error) {
 	return filepath.Join(base, m.EnvsDirName()), nil
 }
 
-func (m *Manager) ResolveEnvPath(name string) (string, error) {
+// envNamePattern is the only shape an environment name may take. The name is
+// joined onto the envs directory, so anything with a separator or ".." would
+// address a path outside it.
+var envNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
+func validateEnvName(name string) error {
 	if strings.TrimSpace(name) == "" {
-		return "", errors.New("environment name is required")
+		return errors.New("environment name is required")
+	}
+	if !envNamePattern.MatchString(name) || strings.Contains(name, "..") {
+		return fmt.Errorf("invalid environment name %q: use letters, digits, '.', '_' or '-', starting with a letter or digit", name)
+	}
+	return nil
+}
+
+func (m *Manager) ResolveEnvPath(name string) (string, error) {
+	if err := validateEnvName(name); err != nil {
+		return "", err
 	}
 	envsPath, err := m.EnvsPath()
 	if err != nil {
@@ -520,8 +536,8 @@ func writeDefaultFiles(envPath string) error {
 // backward compatibility with code that doesn't yet thread a Manager
 // through. New code should prefer NewManager + method calls.
 
-func BasePath() (string, error)               { return defaultManager.BasePath() }
-func EnvsPath() (string, error)                { return defaultManager.EnvsPath() }
+func BasePath() (string, error) { return defaultManager.BasePath() }
+func EnvsPath() (string, error) { return defaultManager.EnvsPath() }
 func ResolveEnvPath(name string) (string, error) {
 	return defaultManager.ResolveEnvPath(name)
 }

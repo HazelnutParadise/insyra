@@ -16,15 +16,15 @@ func (dt *DataTable) FilterColsByColIndexGreaterThan(columnIndexLetter string) *
 		columnIndexLetter = strings.ToUpper(columnIndexLetter)
 		colIdx, ok := utils.ParseColIndex(columnIndexLetter)
 		if !ok || colIdx < 0 || colIdx >= len(dt.columns)-1 {
-			newDt = &DataTable{}
+			newDt = NewDataTable()
 			return
 		}
 
 		filteredCols := dt.columns[colIdx+1:]
 
 		newDt = &DataTable{
-			columns:           filteredCols,
-			rowNames:          dt.rowNames,
+			columns:           cloneColumns(filteredCols),
+			rowNames:          cloneRowNames(dt.rowNames),
 			creationTimestamp: dt.creationTimestamp,
 		}
 
@@ -40,15 +40,15 @@ func (dt *DataTable) FilterColsByColIndexGreaterThanOrEqualTo(columnIndexLetter 
 		columnIndexLetter = strings.ToUpper(columnIndexLetter)
 		colIdx, ok := utils.ParseColIndex(columnIndexLetter)
 		if !ok || colIdx < 0 || colIdx >= len(dt.columns) {
-			result = &DataTable{}
+			result = NewDataTable()
 			return
 		}
 
 		filteredCols := dt.columns[colIdx:]
 
 		newDt := &DataTable{
-			columns:           filteredCols,
-			rowNames:          dt.rowNames,
+			columns:           cloneColumns(filteredCols),
+			rowNames:          cloneRowNames(dt.rowNames),
 			creationTimestamp: dt.creationTimestamp,
 		}
 
@@ -65,15 +65,15 @@ func (dt *DataTable) FilterColsByColIndexEqualTo(columnIndexLetter string) *Data
 		columnIndexLetter = strings.ToUpper(columnIndexLetter)
 		colIdx, ok := utils.ParseColIndex(columnIndexLetter)
 		if !ok || colIdx < 0 || colIdx >= len(dt.columns) {
-			result = &DataTable{}
+			result = NewDataTable()
 			return
 		}
 
 		filteredCols := []*DataList{dt.columns[colIdx]}
 
 		newDt := &DataTable{
-			columns:           filteredCols,
-			rowNames:          dt.rowNames,
+			columns:           cloneColumns(filteredCols),
+			rowNames:          cloneRowNames(dt.rowNames),
 			creationTimestamp: dt.creationTimestamp,
 		}
 
@@ -90,15 +90,15 @@ func (dt *DataTable) FilterColsByColIndexLessThan(columnIndexLetter string) *Dat
 		columnIndexLetter = strings.ToUpper(columnIndexLetter)
 		colIdx, ok := utils.ParseColIndex(columnIndexLetter)
 		if !ok || colIdx <= 0 {
-			result = &DataTable{}
+			result = NewDataTable()
 			return
 		}
 
 		filteredCols := dt.columns[:colIdx]
 
 		newDt := &DataTable{
-			columns:           filteredCols,
-			rowNames:          dt.rowNames,
+			columns:           cloneColumns(filteredCols),
+			rowNames:          cloneRowNames(dt.rowNames),
 			creationTimestamp: dt.creationTimestamp,
 		}
 
@@ -115,15 +115,15 @@ func (dt *DataTable) FilterColsByColIndexLessThanOrEqualTo(columnIndexLetter str
 		columnIndexLetter = strings.ToUpper(columnIndexLetter)
 		colIdx, ok := utils.ParseColIndex(columnIndexLetter)
 		if !ok || colIdx < 0 {
-			result = &DataTable{}
+			result = NewDataTable()
 			return
 		}
 
 		filteredCols := dt.columns[:colIdx+1]
 
 		newDt := &DataTable{
-			columns:           filteredCols,
-			rowNames:          dt.rowNames,
+			columns:           cloneColumns(filteredCols),
+			rowNames:          cloneRowNames(dt.rowNames),
 			creationTimestamp: dt.creationTimestamp,
 		}
 
@@ -147,15 +147,15 @@ func (dt *DataTable) FilterColsByColNameEqualTo(columnName string) *DataTable {
 			}
 		}
 		if colIdx == -1 {
-			result = &DataTable{}
+			result = NewDataTable()
 			return
 		}
 
 		filteredCols := []*DataList{dt.columns[colIdx]}
 
 		newDt := &DataTable{
-			columns:           filteredCols,
-			rowNames:          dt.rowNames,
+			columns:           cloneColumns(filteredCols),
+			rowNames:          cloneRowNames(dt.rowNames),
 			creationTimestamp: dt.creationTimestamp,
 		}
 
@@ -177,8 +177,8 @@ func (dt *DataTable) FilterColsByColNameContains(substring string) *DataTable {
 		}
 
 		newDt := &DataTable{
-			columns:           filteredCols,
-			rowNames:          dt.rowNames,
+			columns:           cloneColumns(filteredCols),
+			rowNames:          cloneRowNames(dt.rowNames),
 			creationTimestamp: dt.creationTimestamp,
 		}
 
@@ -232,12 +232,12 @@ func (dt *DataTable) FilterRowsByRowNameEqualTo(rowName string) *DataTable {
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
 		if dt.rowNames == nil {
-			result = &DataTable{}
+			result = NewDataTable()
 			return
 		}
 		id, ok := dt.rowNames.Index(rowName)
 		if !ok || id < 0 || id >= dt.getMaxColLength() {
-			result = &DataTable{}
+			result = NewDataTable()
 			return
 		}
 		result = dt.FilterRowsByRowIndexEqualTo(id)
@@ -261,7 +261,7 @@ func (dt *DataTable) FilterRowsByRowNameContains(substring string) *DataTable {
 
 		// 如果沒有符合條件的行，返回空的 DataTable
 		if len(filteredRowIndices) == 0 {
-			result = &DataTable{}
+			result = NewDataTable()
 			return
 		}
 
@@ -399,14 +399,11 @@ func (dt *DataTable) FilterCols(filterFunc func(rowIndex int, rowName string, x 
 	var result *DataTable
 	dt.AtomicDo(func(dt *DataTable) {
 		if len(dt.columns) == 0 {
-			result = &DataTable{}
+			result = NewDataTable()
 			return
 		}
 
-		numRows := 0
-		if len(dt.columns) > 0 {
-			numRows = len(dt.columns[0].data)
-		}
+		numRows := dt.getMaxColLength()
 
 		filteredCols := make([]*DataList, 0)
 
@@ -438,13 +435,13 @@ func (dt *DataTable) FilterCols(filterFunc func(rowIndex int, rowName string, x 
 		}
 
 		if len(filteredCols) == 0 {
-			result = &DataTable{}
+			result = NewDataTable()
 			return
 		}
 
 		newDt := &DataTable{
-			columns:           filteredCols,
-			rowNames:          dt.rowNames,
+			columns:           cloneColumns(filteredCols),
+			rowNames:          cloneRowNames(dt.rowNames),
 			creationTimestamp: dt.creationTimestamp,
 		}
 
@@ -467,10 +464,7 @@ func (dt *DataTable) FilterRows(filterFunc func(colIndex, colName string, x any)
 			filteredCols[i] = NewDataList()
 		}
 
-		numRows := 0
-		if len(dt.columns) > 0 {
-			numRows = len(dt.columns[0].data)
-		}
+		numRows := dt.getMaxColLength()
 
 		var filteredRowIndices []int
 		for rowIdx := 0; rowIdx < numRows; rowIdx++ {
@@ -478,7 +472,10 @@ func (dt *DataTable) FilterRows(filterFunc func(colIndex, colName string, x any)
 			rowData := make([]any, len(dt.columns))
 
 			for colIdx, col := range dt.columns {
-				value := col.data[rowIdx]
+				var value any
+				if rowIdx < len(col.data) {
+					value = col.data[rowIdx]
+				}
 				colLetter, _ := utils.CalcColIndex(colIdx)
 				colName := col.name
 
@@ -509,4 +506,27 @@ func (dt *DataTable) FilterRows(filterFunc func(colIndex, colName string, x any)
 		result = newDt
 	})
 	return result
+}
+
+// cloneColumns deep-copies the selected columns so a filtered table owns its
+// storage. Sharing the *DataList pointers let a filtered table and its source
+// mutate each other through two independent actor locks.
+func cloneColumns(cols []*DataList) []*DataList {
+	out := make([]*DataList, len(cols))
+	for i, col := range cols {
+		c := &DataList{name: col.name, creationTimestamp: col.creationTimestamp}
+		c.data = append([]any(nil), col.data...)
+		c.lastModifiedTimestamp.Store(col.lastModifiedTimestamp.Load())
+		out[i] = c
+	}
+	return out
+}
+
+// cloneRowNames copies a row-name index, yielding an empty index for nil so a
+// result table always has a usable rowNames.
+func cloneRowNames(idx *core.BiIndex) *core.BiIndex {
+	if idx == nil {
+		return core.NewBiIndex(0)
+	}
+	return idx.Clone()
 }

@@ -188,17 +188,17 @@ func (dt *DataTable) AppendRowsByColIndex(rowsData ...map[string]any) *DataTable
 				colPos, ok := utils.ParseColIndex(colIndex)
 				LogDebug("DataTable", "AppendRowsByColIndex", "Handling column %s, colPos: %d, ok: %t", colIndex, colPos, ok)
 
-				if !ok || colPos < 0 || colPos >= len(dt.columns) {
-					// 如果該欄位不存在，新增該欄位
-					newCol := newEmptyDataList(maxLength)
-					dt.columns = append(dt.columns, newCol)
-					LogDebug("DataTable", "AppendRowsByColIndex", "Added new column %s at index %d", colIndex, len(dt.columns)-1)
+				if !ok || colPos < 0 {
+					dt.warn("AppendRowsByColIndex", "Invalid column index '%s', value skipped", colIndex)
+					continue
 				}
-
-				colPos, _ = utils.ParseColIndex(colIndex)
-				if colPos >= 0 && colPos < len(dt.columns) {
-					dt.columns[colPos].data = append(dt.columns[colPos].data, value)
+				// Grow the table up to and including the requested column so the
+				// value lands where the caller addressed it instead of being dropped.
+				for colPos >= len(dt.columns) {
+					dt.columns = append(dt.columns, newEmptyDataList(maxLength))
+					LogDebug("DataTable", "AppendRowsByColIndex", "Added new column at index %d for %s", len(dt.columns)-1, colIndex)
 				}
+				dt.columns[colPos].data = append(dt.columns[colPos].data, value)
 			}
 
 			// 確保所有欄位的長度一致
@@ -280,6 +280,14 @@ func (dt *DataTable) GetElement(rowIndex int, columnIndex string) any {
 func (dt *DataTable) GetElementByNumberIndex(rowIndex int, columnIndex int) any {
 	var result any
 	dt.AtomicDo(func(dt *DataTable) {
+		if columnIndex < 0 {
+			columnIndex += len(dt.columns)
+		}
+		if columnIndex < 0 || columnIndex >= len(dt.columns) {
+			dt.warn("GetElementByNumberIndex", "Column index is out of range, returning nil")
+			result = nil
+			return
+		}
 		if rowIndex < 0 {
 			rowIndex = len(dt.columns[columnIndex].data) + rowIndex
 		}
@@ -509,6 +517,10 @@ func (dt *DataTable) SetColToRowNames(columnIndex string) *DataTable {
 	columnIndex = strings.ToUpper(columnIndex)
 	dt.AtomicDo(func(dt *DataTable) {
 		column := dt.GetCol(columnIndex)
+		if column == nil {
+			dt.warn("SetColToRowNames", "Column '%s' not found, returning", columnIndex)
+			return
+		}
 		for i, value := range column.data {
 			if value != nil {
 				rowName := safeRowName(dt, conv.ToString(value))
@@ -527,6 +539,10 @@ func (dt *DataTable) SetColToRowNames(columnIndex string) *DataTable {
 func (dt *DataTable) SetRowToColNames(rowIndex int) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		row := dt.GetRow(rowIndex)
+		if row == nil {
+			dt.warn("SetRowToColNames", "Row index %d is out of range, returning", rowIndex)
+			return
+		}
 		for i, value := range row.data {
 			if value != nil {
 				columnName := safeColName(dt, conv.ToString(value))
@@ -831,10 +847,7 @@ func (dt *DataTable) DropColsContainNumber() *DataTable {
 			containsNumber := false
 
 			for _, value := range column.data {
-				if _, isNumber := value.(int); isNumber {
-					containsNumber = true
-					break
-				} else if _, isNumber := value.(float64); isNumber {
+				if IsNumeric(value) {
 					containsNumber = true
 					break
 				}
@@ -958,23 +971,33 @@ func (dt *DataTable) DropColsContainExcelNA() *DataTable {
 // DropRowsByIndex drops rows by their indices.
 func (dt *DataTable) DropRowsByIndex(rowIndices ...int) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
-		sort.Ints(rowIndices) // 確保從最小索引開始刪除
-
-		for i, rowIndex := range rowIndices {
+		// Normalise negative indices against the ORIGINAL row count, drop
+		// out-of-range and duplicate entries, then delete from the highest
+		// index down so earlier deletions never shift a later target.
+		n := dt.getMaxColLength()
+		seen := make(map[int]struct{}, len(rowIndices))
+		targets := make([]int, 0, len(rowIndices))
+		for _, rowIndex := range rowIndices {
 			if rowIndex < 0 {
-				rowIndex = dt.getMaxColLength() + rowIndex
+				rowIndex += n
 			}
-			adjustedIndex := rowIndex - i // 因為每刪除一行，後續的行索引會變動
-			if adjustedIndex < 0 || adjustedIndex >= dt.getMaxColLength() {
+			if rowIndex < 0 || rowIndex >= n {
 				continue
 			}
+			if _, dup := seen[rowIndex]; dup {
+				continue
+			}
+			seen[rowIndex] = struct{}{}
+			targets = append(targets, rowIndex)
+		}
+		sort.Sort(sort.Reverse(sort.IntSlice(targets)))
+		for _, rowIndex := range targets {
 			for _, column := range dt.columns {
-				if adjustedIndex >= 0 && adjustedIndex < len(column.data) {
-					column.data = append(column.data[:adjustedIndex], column.data[adjustedIndex+1:]...)
+				if rowIndex < len(column.data) {
+					column.data = append(column.data[:rowIndex], column.data[rowIndex+1:]...)
 				}
 			}
-
-			dt.reindexRowNamesAfterRemoval(adjustedIndex)
+			dt.reindexRowNamesAfterRemoval(rowIndex)
 		}
 		dt.updateTimestamp()
 	})
@@ -1054,14 +1077,9 @@ func (dt *DataTable) DropRowsContainNumber() *DataTable {
 		for rowIndex := 0; rowIndex < maxLength; rowIndex++ {
 			keepRow := true
 			for _, column := range dt.columns {
-				if rowIndex < len(column.data) {
-					if _, isNumber := column.data[rowIndex].(int); isNumber {
-						keepRow = false
-						break
-					} else if _, isNumber := column.data[rowIndex].(float64); isNumber {
-						keepRow = false
-						break
-					}
+				if rowIndex < len(column.data) && IsNumeric(column.data[rowIndex]) {
+					keepRow = false
+					break
 				}
 			}
 			rowsToKeep[rowIndex] = keepRow
@@ -1251,7 +1269,7 @@ func (dt *DataTable) Data(useNamesAsKeys ...bool) map[string][]any {
 			} else {
 				key, _ = utils.CalcColIndex(i)
 			}
-			dataMap[key] = col.data
+			dataMap[key] = slices.Clone(col.data)
 		}
 
 		result = dataMap
@@ -1325,10 +1343,18 @@ func (dt *DataTable) Mean() any {
 	var result any
 	dt.AtomicDo(func(dt *DataTable) {
 		var totalSum float64
-		rowNum, colNum := dt.getMaxColLength(), len(dt.columns)
-		totalCount := rowNum * colNum
+		totalCount := 0
 		for _, column := range dt.columns {
-			totalSum += column.Sum()
+			for _, v := range column.data {
+				if f, ok := ToFloat64Safe(v); ok {
+					totalSum += f
+					totalCount++
+				}
+			}
+		}
+		if totalCount == 0 {
+			result = math.NaN()
+			return
 		}
 		result = totalSum / float64(totalCount)
 	})
@@ -1361,10 +1387,14 @@ func (dt *DataTable) Transpose() *DataTable {
 
 		newDt.lastModifiedTimestamp.Store(dt.GetLastModifiedTimestamp())
 
-		for i, col := range dls {
+		for _, col := range dls {
 			newDt.AppendRowsFromDataList(col)
-			if name, ok := nameByIndex[i]; ok {
-				newDt.columns[i].name = name
+		}
+		// Every old row name becomes the name of the matching new column,
+		// independent of how many columns the old table had.
+		for rowIndex, name := range nameByIndex {
+			if rowIndex >= 0 && rowIndex < len(newDt.columns) {
+				newDt.columns[rowIndex].name = name
 			}
 		}
 

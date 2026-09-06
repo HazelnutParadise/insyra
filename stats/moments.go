@@ -37,47 +37,32 @@ func CalculateMoment(dl insyra.IDataList, n int, central bool) (float64, error) 
 		return math.NaN(), errors.New("invalid moment order")
 	}
 
-	var length int
+	// Read through numericSlice so an unreadable cell is an error naming its
+	// row rather than a zero folded into the moment (review item ST-2).
+	floatData, err := testSeries(dl, "data")
+	if err != nil {
+		return math.NaN(), err
+	}
+	length := len(floatData)
+	if length == 0 {
+		return math.NaN(), errors.New("empty data")
+	}
 	var mean float64
-	var floatData []float64
-	var result float64
-	hasResult := false
-	dl.AtomicDo(func(l *insyra.DataList) {
-		length = l.Len()
-		if length == 0 {
-			result = math.NaN()
-			hasResult = true
-			return
-		}
-
-		if central {
-			if n == 1 {
-				result = 0.0
-				hasResult = true
-				return
+	if central {
+		mean = meanOfF64(floatData)
+		switch n {
+		case 1:
+			return 0.0, nil
+		case 2:
+			// Population variance, same two-pass form as DataList.VarP.
+			var numerator float64
+			for _, v := range floatData {
+				numerator += (v - mean) * (v - mean)
 			}
-			if n == 2 {
-				result = l.VarP()
-				hasResult = true
-				return
-			}
-		} else if n == 1 {
-			result = l.Mean()
-			hasResult = true
-			return
+			return numerator / float64(length), nil
 		}
-
-		floatData = l.ToF64Slice()
-		if central {
-			mean = l.Mean()
-		}
-	})
-
-	if hasResult {
-		if math.IsNaN(result) {
-			return result, errors.New("empty data")
-		}
-		return result, nil
+	} else if n == 1 {
+		return meanOfF64(floatData), nil
 	}
 
 	if length > 10000 && n > 2 {

@@ -511,7 +511,7 @@ if err != nil {
 func (dt *DataTable) ToCSV(filePath string, setRowNamesToFirstCol bool, setColNamesToFirstRow bool, includeBOM bool) error
 ```
 
-**Description:** Saves the DataTable as a CSV file.
+**Description:** Saves the DataTable as a CSV file. `time.Time` cells are written in RFC 3339 form (with nanoseconds), which is the first layout `ParseDates` tries, so a table written here reads back as the same instants.
 
 **Parameters:**
 
@@ -611,7 +611,7 @@ fmt.Println(jsonStr)
 func (dt *DataTable) ToMap(useNamesAsKeys ...bool) map[string][]any
 ```
 
-**Description:** Alias for `Data()`. Returns the table as a map from column index/name to the column data slice.
+**Description:** Alias for `Data()`. Returns the table as a map from column index/name to a copy of the column data; modifying the returned slices does not affect the table.
 
 **Parameters:**
 
@@ -1450,7 +1450,7 @@ dt.AppendCols(col)
 func (dt *DataTable) AppendRowsByColIndex(rowsData ...map[string]any) *DataTable
 ```
 
-**Description:** Appends rows using column indices.
+**Description:** Appends rows using column indices. A column index beyond the current width grows the table up to that column (intermediate columns are empty), so the value is never dropped.
 
 **Parameters:**
 
@@ -1775,7 +1775,7 @@ dt.UpdateRow(0, newRow).UpdateCol("A", newCol)
 func (dt *DataTable) GetElementByNumberIndex(rowIndex int, columnIndex int) any
 ```
 
-**Description:** Gets the value at a specific row and column using numeric indices.
+**Description:** Gets the value at a specific row and column using numeric indices. Negative indices count from the end; an out-of-range row or column returns nil and sets `Err()`.
 
 **Parameters:**
 
@@ -1843,7 +1843,7 @@ dt.SetRowToColNames(0) // Use first row values as column names
 func (dt *DataTable) ChangeRowName(oldName, newName string) *DataTable
 ```
 
-**Description:** Changes the name of a row.
+**Description:** Changes the name of a row. If `newName` is already used by another row, the renamed row gets a suffixed name (`name_1`), as with the other row-name setters; the other row keeps its name.
 
 **Parameters:**
 
@@ -2411,7 +2411,7 @@ dt.DropColsByName("Age", "Address")
 func (dt *DataTable) DropRowsByIndex(rowIndices ...int) *DataTable
 ```
 
-**Description:** Drops rows by their numeric indices (0-based).
+**Description:** Drops rows by their numeric indices (0-based). Negative indices count from the end and are resolved against the original row count; duplicates and out-of-range indices are ignored, so `DropRowsByIndex(-1, 0)` removes exactly the first and last rows.
 
 **Parameters:**
 
@@ -2521,7 +2521,7 @@ dt.DropColsContainString() // Drops all columns that have at least one string el
 func (dt *DataTable) DropColsContainNumber() *DataTable
 ```
 
-**Description:** Drops columns that contain any numeric elements.
+**Description:** Drops columns that contain any numeric elements (every Go integer and float type, as judged by `IsNumeric`).
 
 **Parameters:**
 
@@ -3480,7 +3480,7 @@ colIndices := dt.FindColsIfAllElementsContainSubstring("data")
 func (dt *DataTable) Filter(filterFunc func(rowIndex int, columnIndex string, value any) bool) *DataTable
 ```
 
-**Description:** Filters the DataTable using a custom filter function. Keeps only rows where the filter function returns true for at least one cell.
+**Description:** Filters the DataTable using a custom filter function. Keeps only rows where the filter function returns true for at least one cell. Every `Filter*` method returns a new table that owns its columns and row names; editing the result never touches the source, and a result with no match is an empty table.
 
 **Parameters:**
 
@@ -3587,7 +3587,7 @@ filtered := dt.FilterRows(func(colIndex, colName, x any) bool {
 func (dt *DataTable) FilterCols(filterFunc func(rowIndex int, rowName string, x any) bool) *DataTable
 ```
 
-**Description:** Filters columns based on a custom function applied to each cell. Keeps only columns where the filter function returns true for at least one cell in that column.
+**Description:** Filters columns based on a custom function applied to each cell. Keeps only columns where the filter function returns true for at least one cell in that column. Rows are counted across the whole table; shorter columns are read as nil beyond their length.
 
 **Parameters:**
 
@@ -4056,7 +4056,7 @@ fmt.Printf("Table has %d columns\n", cols)
 func (dt *DataTable) Mean() any
 ```
 
-**Description:** Calculates the mean of all numeric values in the DataTable.
+**Description:** Calculates the mean of all numeric values in the DataTable. Only cells that can be read as numbers count, in both the sum and the denominator; a table with no numeric cell returns NaN.
 
 **Parameters:**
 
@@ -4296,7 +4296,7 @@ transformedDt := dt.Map(func(rowIndex int, colIndex string, element any) any {
 func (dt *DataTable) Transpose() *DataTable
 ```
 
-**Description:** Transposes the DataTable (rows become columns and vice versa).
+**Description:** Transposes the DataTable in place (rows become columns and vice versa) and returns it. Every row name becomes the corresponding column name and every column name becomes a row name.
 
 **Parameters:**
 

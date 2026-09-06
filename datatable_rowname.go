@@ -117,8 +117,10 @@ func (dt *DataTable) ChangeRowName(oldName, newName string) *DataTable {
 		if index, exists := dt.rowNames.Index(oldName); exists {
 			if newName == "" {
 				_, _ = dt.rowNames.DeleteByID(index)
-			} else {
-				_, _ = dt.rowNames.Set(index, newName)
+			} else if newName != oldName {
+				// safeRowName keeps the rename from taking another row's name
+				// (BiIndex.Set would silently move the name off that row).
+				_, _ = dt.rowNames.Set(index, safeRowName(dt, newName))
 			}
 		}
 		dt.updateTimestamp()

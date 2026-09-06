@@ -174,6 +174,8 @@ insyra --log-level debug help
 
 ## Environment Model
 
+Environment names may contain only letters, digits, `.`, `_` and `-`, must start with a letter or digit, and may not contain `..`. A name is joined onto the environments directory, so anything else is refused before any file is touched.
+
 Insyra persists state per environment under:
 
 ```text

@@ -28,21 +28,16 @@ type TTestResult struct {
 //
 // ** Verified using R **
 func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...float64) (*TTestResult, error) {
-	var n int
-	var mean, stddev float64
-	var err error
-	data.AtomicDo(func(dl *insyra.DataList) {
-		n = dl.Len()
-		if n <= 1 {
-			err = errors.New("sample size too small")
-			return
-		}
-		mean = dl.Mean()
-		stddev = dl.Stdev()
-	})
+	values, err := testSeries(data, "data")
 	if err != nil {
 		return nil, err
 	}
+	n := len(values)
+	if n <= 1 {
+		return nil, errors.New("sample size too small")
+	}
+	mean := meanOfF64(values)
+	stddev := math.Sqrt(sampleVarianceF64(values))
 
 	standardError := sampleSE(stddev, float64(n))
 	tValue := (mean - mu) / standardError
@@ -127,28 +122,21 @@ func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...flo
 //
 // ** Verified using R **
 func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenceLevel ...float64) (*TTestResult, error) {
-	var n1, n2 int
-	var mean1, mean2 float64
-	var stddev1, stddev2 float64
-	var err error
-	dl1 := data1.(*insyra.DataList)
-	dl2 := data2.(*insyra.DataList)
-	insyra.AtomicDoAll(func() {
-		n1 = dl1.Len()
-		n2 = dl2.Len()
-		if n1 <= 1 || n2 <= 1 {
-			err = errors.New("sample sizes too small")
-			return
-		}
-
-		mean1 = dl1.Mean()
-		mean2 = dl2.Mean()
-		stddev1 = dl1.Stdev()
-		stddev2 = dl2.Stdev()
-	}, dl1, dl2)
+	values1, err := testSeries(data1, "data1")
 	if err != nil {
 		return nil, err
 	}
+	values2, err := testSeries(data2, "data2")
+	if err != nil {
+		return nil, err
+	}
+	n1, n2 := len(values1), len(values2)
+	if n1 <= 1 || n2 <= 1 {
+		return nil, errors.New("sample sizes too small")
+	}
+	mean1, mean2 := meanOfF64(values1), meanOfF64(values2)
+	stddev1 := math.Sqrt(sampleVarianceF64(values1))
+	stddev2 := math.Sqrt(sampleVarianceF64(values2))
 
 	meanDiff := mean1 - mean2
 

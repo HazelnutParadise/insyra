@@ -77,7 +77,7 @@
 
 ## 發現彙整（依套件）
 
-「已修正」表示該項在 `fix-api-review-batch-1`（2026-09-05）處理完畢；D-4 只修了「當 0」的部分，「跳過」的政策決定仍待處理。
+「已修正」表示該項在 `fix-api-review-batch-1`（2026-09-05）或 `fix-api-review-batch-2`（2026-09-06）處理完畢；D-4 只修了「當 0」的部分，「跳過」的政策決定仍待處理。
 
 ### csvxl
 
@@ -175,18 +175,18 @@
 
 | 編號 | 嚴重度 | 問題 | 位置 | 建議 |
 | --- | --- | --- | --- | --- |
-| T-1 | High | **panic（已實測）**：`GetElementByNumberIndex(0, 5)` 對不存在的欄直接 index out of range；`SetRowToColNames(99)`、`SetColToRowNames("ZZ")` 取回 nil 後解引用 nil pointer。三個公開方法對錯誤輸入 panic 而不是設 `Err()`（準則 11） | datatable.go:280-292, 508-540 | 加邊界檢查與 nil 檢查 |
-| T-2 | High | **內部資料外洩（已實測）**：`Data()`／`ToMap()` 直接回傳 `col.data`，呼叫端改 map 裡的 slice 就改到表內部，且繞過 actor lock。DataList 的 `Data()` 是 copy-on-read，同一套件兩種契約（準則 6、12） | datatable.go:1232-1267 | 逐欄 `slices.Clone` |
-| T-3 | High | **資料遺失（已實測）**：`AppendRowsByColIndex(map{"Z": 42})` 在兩欄表上：Z 不存在時「新增一欄」卻是加在尾端變成 C，再用 Z 重新解析仍越界，42 被丟掉，只留下一列全 nil | datatable.go:161-217 | 補齊到目標索引，或回錯 |
-| T-4 | High | **Filter 結果與原表共用欄位（已實測）**：`FilterColsBy*`（7 個）、`FilterCols`、`FilterColsByColNameContains` 回傳的新表直接放入 `dt.columns[i]` 指標與 `dt.rowNames` 指標。改過濾結果會改到原表，兩個表各自的 actor lock 互不知情，是 data race（準則 12）。`Filter`／`FilterRows`／`FilterRowsByRowNameContains` 有複製，同檔案兩種做法 | datatable_filters.go:12-190, 386-440 | 一律 Clone 欄與 rowNames |
-| T-5 | Med | **panic（已實測）**：找不到欄或列時 Filter 系列回傳 `&DataTable{}`（rowNames 為 nil），之後呼叫 `GetRowIndexByName`、`SwapRowsByName` 等直接 nil deref；`FilterRows`／`FilterCols` 以第一欄長度當列數且不檢查邊界，jagged 表 index out of range | datatable_filters.go 多處 | 回 `NewDataTable()`；用 `getMaxColLength` 並用 `cellAt` |
-| T-6 | Med | **Bug（已實測）**：`DropRowsByIndex(-1, 0)` 只刪最後一列，第 0 列沒刪（先排序再換算負索引，adjusted 變成 -1 被跳過）；`DropRowsByIndex(1, 1)` 重複索引刪掉兩列（[0,1,2,3] 變 [2,3]） | datatable.go:959-983 | 先正規化負索引、去重、再由大到小刪 |
-| T-7 | Med | **Bug（已實測）**：`DropColsContainNumber`／`DropRowsContainNumber` 只認 `int` 與 `float64`，CSV 推斷出的 `int64` 欄不算數字，整欄留下 | datatable.go:826-857, 1049-1086 | 改用 `IsNumeric` |
-| T-8 | Med | **Bug（已實測）**：`Transpose` 只把前 ncols 個列名搬成欄名（迴圈變數是舊欄索引），3 列 2 欄的表轉置後第 3 個列名遺失；而且是原地轉置又回傳自己，doc 沒說（pandas `.T` 回新表） | datatable.go:1341-1382 | 迴圈改用列數；doc 標明 in-place |
-| T-9 | Med | **Bug（已實測）**：`ChangeRowName("b", "a")` 在 "a" 已存在時，BiIndex 把 "a" 從第 0 列移到第 1 列，第 0 列悄悄失去名字。其他 setter 都走 `safeRowName`，這個沒有 | datatable_rowname.go:111-129 | 走 `safeRowName` 或回錯 |
-| T-10 | Med | `Mean() any`：回傳 `any`（永遠是 float64），分母用 rows×cols 含非數值與 nil 格子：`[2,"x"],[4,nil]` 得 1.5（6/4），是靠分母捏造（已實測） | datatable.go:1324-1338 | 回 float64，只數數值格 |
+| T-1 | ~~High~~ 已修正（batch 2） | **panic（已實測）**：`GetElementByNumberIndex(0, 5)` 對不存在的欄直接 index out of range；`SetRowToColNames(99)`、`SetColToRowNames("ZZ")` 取回 nil 後解引用 nil pointer。三個公開方法對錯誤輸入 panic 而不是設 `Err()`（準則 11） | datatable.go:280-292, 508-540 | 加邊界檢查與 nil 檢查 |
+| T-2 | ~~High~~ 已修正（batch 2） | **內部資料外洩（已實測）**：`Data()`／`ToMap()` 直接回傳 `col.data`，呼叫端改 map 裡的 slice 就改到表內部，且繞過 actor lock。DataList 的 `Data()` 是 copy-on-read，同一套件兩種契約（準則 6、12） | datatable.go:1232-1267 | 逐欄 `slices.Clone` |
+| T-3 | ~~High~~ 已修正（batch 2） | **資料遺失（已實測）**：`AppendRowsByColIndex(map{"Z": 42})` 在兩欄表上：Z 不存在時「新增一欄」卻是加在尾端變成 C，再用 Z 重新解析仍越界，42 被丟掉，只留下一列全 nil | datatable.go:161-217 | 補齊到目標索引，或回錯 |
+| T-4 | ~~High~~ 已修正（batch 2） | **Filter 結果與原表共用欄位（已實測）**：`FilterColsBy*`（7 個）、`FilterCols`、`FilterColsByColNameContains` 回傳的新表直接放入 `dt.columns[i]` 指標與 `dt.rowNames` 指標。改過濾結果會改到原表，兩個表各自的 actor lock 互不知情，是 data race（準則 12）。`Filter`／`FilterRows`／`FilterRowsByRowNameContains` 有複製，同檔案兩種做法 | datatable_filters.go:12-190, 386-440 | 一律 Clone 欄與 rowNames |
+| T-5 | ~~Med~~ 已修正（batch 2） | **panic（已實測）**：找不到欄或列時 Filter 系列回傳 `&DataTable{}`（rowNames 為 nil），之後呼叫 `GetRowIndexByName`、`SwapRowsByName` 等直接 nil deref；`FilterRows`／`FilterCols` 以第一欄長度當列數且不檢查邊界，jagged 表 index out of range | datatable_filters.go 多處 | 回 `NewDataTable()`；用 `getMaxColLength` 並用 `cellAt` |
+| T-6 | ~~Med~~ 已修正（batch 2） | **Bug（已實測）**：`DropRowsByIndex(-1, 0)` 只刪最後一列，第 0 列沒刪（先排序再換算負索引，adjusted 變成 -1 被跳過）；`DropRowsByIndex(1, 1)` 重複索引刪掉兩列（[0,1,2,3] 變 [2,3]） | datatable.go:959-983 | 先正規化負索引、去重、再由大到小刪 |
+| T-7 | ~~Med~~ 已修正（batch 2） | **Bug（已實測）**：`DropColsContainNumber`／`DropRowsContainNumber` 只認 `int` 與 `float64`，CSV 推斷出的 `int64` 欄不算數字，整欄留下 | datatable.go:826-857, 1049-1086 | 改用 `IsNumeric` |
+| T-8 | ~~Med~~ 已修正（batch 2） | **Bug（已實測）**：`Transpose` 只把前 ncols 個列名搬成欄名（迴圈變數是舊欄索引），3 列 2 欄的表轉置後第 3 個列名遺失；而且是原地轉置又回傳自己，doc 沒說（pandas `.T` 回新表） | datatable.go:1341-1382 | 迴圈改用列數；doc 標明 in-place |
+| T-9 | ~~Med~~ 已修正（batch 2） | **Bug（已實測）**：`ChangeRowName("b", "a")` 在 "a" 已存在時，BiIndex 把 "a" 從第 0 列移到第 1 列，第 0 列悄悄失去名字。其他 setter 都走 `safeRowName`，這個沒有 | datatable_rowname.go:111-129 | 走 `safeRowName` 或回錯 |
+| T-10 | ~~Med~~ 已修正（batch 2） | `Mean() any`：回傳 `any`（永遠是 float64），分母用 rows×cols 含非數值與 nil 格子：`[2,"x"],[4,nil]` 得 1.5（6/4），是靠分母捏造（已實測） | datatable.go:1324-1338 | 回 float64，只數數值格 |
 | T-11 | Med | `GetCol(index)` 先 `ToUpper` 再退回名稱查詢，`GetCol("price")` 找不到名為 price 的欄（已實測，專案記憶已有此陷阱）；`ReplaceInCol("a", …)` 把名稱 "a" 當成 Excel 索引 A（已實測），欄名 "b" 若在第 0 欄會改到第 1 欄。名稱與索引共用一個 string 參數是整個 DataTable 的結構性歧義（準則 3、6） | datatable.go:297-317；datatable_replace.go:361 | `GetCol` 不退回名稱；長期：索引用 typed `ColIndex`，名稱用 `ByName` |
-| T-12 | Med | `ToJSON_Bytes`／`ToJSON_String` 遇到 NaN 回 nil／空字串只設 Err（已實測），呼叫端拿到空 JSON 不會察覺；`ToCSV` 用 `%v` 輸出 `time.Time` 成 `2024-01-02 03:04:05 +0000 UTC`，`ParseDates` 預設 layout 讀不回來，CSV 往返壞掉（已實測）；`ToCSV(path, bool, bool, bool)` 三個裸 bool 且無 `io.Writer` 版本 | datatable_json.go:85-105；datatable_csv.go:13 | JSON 回 error；CSV 時間用 RFC3339；加 options struct 與 `WriteCSV(w io.Writer)` |
+| T-12 | Med（時間格式已修正 batch 2；JSON 部分待決） | `ToJSON_Bytes`／`ToJSON_String` 遇到 NaN 回 nil／空字串只設 Err（已實測），呼叫端拿到空 JSON 不會察覺；`ToCSV` 用 `%v` 輸出 `time.Time` 成 `2024-01-02 03:04:05 +0000 UTC`，`ParseDates` 預設 layout 讀不回來，CSV 往返壞掉（已實測）；`ToCSV(path, bool, bool, bool)` 三個裸 bool 且無 `io.Writer` 版本 | datatable_json.go:85-105；datatable_csv.go:13 | JSON 回 error；CSV 時間用 RFC3339；加 options struct 與 `WriteCSV(w io.Writer)` |
 | T-13 | Med | `Filter(func(row, col, value) bool)` 與 `FilterRows` 是「任一格子符合就留整列」，不是列謂詞。最常見的 `A > B` 這種跨欄條件無法表達，只能繞去 CCL；`FilterByCustomElement` 與 `Filter` 重複（準則 4、5） | datatable_filters.go:333-440 | 加 `FilterRowsWhere(func(row *DataList) bool)` |
 | T-14 | Med | `SetColNames` 給的名字比欄多時自動新增空欄（已實測），pandas 是長度不符即 raise；`AppendCols` 遇同名自動改成 `name_1` 不通知 | datatable_colname.go:163-185；datatable.go:69 | 長度不符回錯；同名至少 warn |
 | T-15 | Med | `mergeVertical` 對沒有欄名的表（`NewDataTable(NewDataList(...))` 預設）判定「重複欄名 ""」而回錯，兩張無名表無法垂直合併（推論，未實測）；`Merge(other IDataTable, ...)` 內部立刻斷言 `*DataTable`，介面參數只是裝飾（K-7） | datatable_merge.go:31, 389-400 | 無名欄以位置對齊；參數改 `*DataTable` |
@@ -204,7 +204,7 @@
 
 | 編號 | 嚴重度 | 問題 | 位置 | 建議 |
 | --- | --- | --- | --- | --- |
-| E-1 | Med | 四個 CCL 方法用 `defer recover()` 把 panic 轉成 warn，但函式回傳值是未命名的 `*DataTable`，recover 後回傳 **nil**（`return <-resultDtChan` 不會執行）。CCL 引擎任何 panic 都讓 `dt.AddColUsingCCL(...).Show()` 變成 nil deref；`resultDtChan` 在同步的 `AtomicDo` 裡毫無作用（推論，未實測） | datatable_ccl.go:13-60, 80-146, 147-235 | 命名回傳值並在 recover 中設為 dt；或不 recover，讓引擎錯誤走 error |
+| E-1 | ~~Med~~ 已修正（batch 2） | 四個 CCL 方法用 `defer recover()` 把 panic 轉成 warn，但函式回傳值是未命名的 `*DataTable`，recover 後回傳 **nil**（`return <-resultDtChan` 不會執行）。CCL 引擎任何 panic 都讓 `dt.AddColUsingCCL(...).Show()` 變成 nil deref；`resultDtChan` 在同步的 `AtomicDo` 裡毫無作用（推論，未實測） | datatable_ccl.go:13-60, 80-146, 147-235 | 命名回傳值並在 recover 中設為 dt；或不 recover，讓引擎錯誤走 error |
 | E-2 | Med | `ExecuteCCL` 多條語句在第 n 條失敗時，前 n-1 條已套用，表處於半改狀態，doc 沒說；四個 CCL 方法只用 `Err()` 回報，沒有 error 回傳，CLI 與 parquet 的 CCL 都拿 error，同一功能兩種契約（準則 6、11） | datatable_ccl.go:147-235 | 先編譯全部再套用，或在 doc 明講「逐條套用」；加 `ExecuteCCLErr` 回 error |
 | E-3 | Med | 核心套件直接依賴 `gorm`：`ToSQL(db *gorm.DB, …)`、`ReadSQL(db *gorm.DB, …)`。所有只用 DataTable 的使用者都要拉進 gorm 及其相依圖；標準做法是收 `*sql.DB`／`database/sql` 介面，gorm 當可選轉接（準則 8、10） | datatable_to_sql.go:48, 57；datatable_from_sql.go:546-601 | 改收 `*sql.DB`（或 `interface{ QueryContext; ExecContext }`），gorm 使用者傳 `db.DB()` |
 | E-4 | Med | `ReadSQLOptions.WhereClause`／`OrderBy` 是直接拼進 SQL 的原始字串，`Params` 只綁 `Query`；使用者把資料塞進 WhereClause 就是 SQL injection，doc 沒有警語（準則 14）。對照組：`ToSQL` 端有做識別字引號與型別白名單 | datatable_from_sql.go:500-545, 674-712 | doc 標明「不得放入使用者資料」；或提供 `Where(expr, args...)` 綁參數 |
@@ -229,15 +229,15 @@
 
 | 編號 | 嚴重度 | 問題 | 位置 | 建議 |
 | --- | --- | --- | --- | --- |
-| ST-1 | High | **錯誤的顯著性（已實測）**：`SingleSampleTTest`、`TwoSampleTTest`、`SingleSampleZTest`、`TwoSampleZTest`、`FTestForVarianceEquality`、`BartlettTest`、`LeveneTest` 用 `Len()` 當 n，卻用 `Mean()`／`Stdev()`／`Var()`／`Median()` 算統計量，而這些方法會跳過非數值格子（D-4）。`[1, 2, nil, 3]` 的單樣本 t 檢定：n=4、mean 用 3 個值算，得 t=4.00、p=0.028；正確是 t=3.46、p=0.074。一個空白把不顯著變成顯著。v0.3.1 的 changelog 說 `stats` 已拒絕不可讀值，但這七個檢定沒有走 `numericValues`，`PairedTTest`、ANOVA、非參數檢定則都有拒絕（準則 13） | stats/ttest.go:30-125, 129-215；stats/ztest.go 全檔；stats/ftest.go:18-60, 64-180 | 全部改走 `numericSlice`，與其他檢定一致 |
-| ST-2 | High | `CalculateMoment(dl, n, central)` 對 n≥3 用 `ToF64Slice`，非數值當 0；`Skewness`／`Kurtosis` 已在本輪修正前置驗證，但這個公開函式直接餵 DataList 仍會捏造（K-2 同族） | stats/moments.go:35-100 | 改走 `numericSlice` |
+| ST-1 | ~~High~~ 已修正（batch 2） | **錯誤的顯著性（已實測）**：`SingleSampleTTest`、`TwoSampleTTest`、`SingleSampleZTest`、`TwoSampleZTest`、`FTestForVarianceEquality`、`BartlettTest`、`LeveneTest` 用 `Len()` 當 n，卻用 `Mean()`／`Stdev()`／`Var()`／`Median()` 算統計量，而這些方法會跳過非數值格子（D-4）。`[1, 2, nil, 3]` 的單樣本 t 檢定：n=4、mean 用 3 個值算，得 t=4.00、p=0.028；正確是 t=3.46、p=0.074。一個空白把不顯著變成顯著。v0.3.1 的 changelog 說 `stats` 已拒絕不可讀值，但這七個檢定沒有走 `numericValues`，`PairedTTest`、ANOVA、非參數檢定則都有拒絕（準則 13） | stats/ttest.go:30-125, 129-215；stats/ztest.go 全檔；stats/ftest.go:18-60, 64-180 | 全部改走 `numericSlice`，與其他檢定一致 |
+| ST-2 | ~~High~~ 已修正（batch 2） | `CalculateMoment(dl, n, central)` 對 n≥3 用 `ToF64Slice`，非數值當 0；`Skewness`／`Kurtosis` 已在本輪修正前置驗證，但這個公開函式直接餵 DataList 仍會捏造（K-2 同族） | stats/moments.go:35-100 | 改走 `numericSlice` |
 | ST-3 | Med | 每個雙樣本函式都 `data1.(*insyra.DataList)` 未檢查型別斷言：介面參數 `IDataList` 只是裝飾，傳入其他實作直接 panic。K-7 的證據最集中處（10 餘處） | stats/ttest.go:136-137, 226-227；ztest.go；ftest.go:22-23；correlation.go:365-366, 398-399；nonparam_mwu.go | 參數改 `*insyra.DataList`，或斷言失敗回錯 |
 | ST-4 | Med | 同一族 API 的簽名不一致：t 檢定 `confidenceLevel ...float64` 選填、z 檢定 `confidenceLevel float64` 必填；z／Wilcoxon／MWU 有 `alternative`，t 檢定沒有（只能雙尾，R 的 `t.test` 有）；`LeveneTest(groups []IDataList)` 用切片、`OneWayANOVA(groups ...IDataList)` 用 variadic；`KMeans(…, opts ...KMeansOptions)` 與 `FactorAnalysis(dt, opt FactorAnalysisOptions)` 一個選填一個必填（準則 6、8） | ttest.go；ztest.go；ftest.go:64；anova.go:63；clustering.go:104；factor_analysis.go:347 | 統一為 options struct；t 檢定加 `Alternative` |
 | ST-5 | Med | 結果型別的共同部分 `testResultBase` 未匯出：`Statistic`、`PValue`、`DF`、`CI`、`EffectSizes` 被提升可用，但使用者無法寫一個接受「任何檢定結果」的函式，也無法用介面判斷；`TTestResult.Mean *float64` 與 `ZTestResult.Mean float64` 選填欄位一個用指標一個不用（準則 3、6） | stats/structs.go；ttest.go:13；ztest.go:10 | 匯出 `TestResult` 基底或定義 `interface{ Stat() float64; P() float64 }` |
 | ST-6 | Med | `ChiSquareTestResult.ContingencyTable` 的每格是 `[2]float64{observed, expected}` 陣列塞進 DataTable，全套件沒有其他 API 能處理這種格子，`Show` 印出 `[5 4.5]`；`ChiSquareGoodnessOfFit` 的 `p` 依「類別字串排序後」的順序對位，doc 自己標了 IMPORTANT 警告（準則 5、7） | stats/chi_square.go:14-19, 60-70 | 拆成 `Observed`、`Expected` 兩張表；GoF 改收 `map[string]float64` |
 | ST-7 | Med | `TwoWayANOVA(aLevels, bLevels int, cells ...IDataList)` 要使用者自己按 row-major 排 a×b 個 cell，pandas／R 收長格式加因子欄；`RepeatedMeasuresANOVA(subjects ...)`、`FriedmanTest(subjects ...)` 每個受試者一個 list，同樣不是資料表的自然形狀（準則 5） | stats/anova.go:112, 253；nonparam_friedman.go:36 | 加收 `(dt, valueCol, factorCols...)` 的長格式入口 |
-| ST-8 | Low | 效應量正負號：t 檢定保留方向（註解說 paired 已修），z 檢定用 `math.Abs` 丟掉方向；`SingleSampleTTest` 常數資料回 NaN／Inf 統計量與 p=0 沒有寫進 doc（準則 6、E） | stats/ztest.go:57, 122；ttest.go:76-108 | 統一保留方向；補 doc |
-| ST-9 | Low | `Show()` 只在 `ChiSquareTestResult` 與 `FactorAnalysisResult` 上有，其餘結果型別沒有，也沒有 `io.Writer` 版本；`FactorAnalysisResult` 15 個 `IDataTable` 欄位（K-7）；`Diag(x any, dims ...int) (any, error)` 進出都是 `any`（準則 8） | chi_square.go:21；factor_analysis.go:180；diag.go:11 | 統一 `String()`；Diag 拆成 `DiagOf(*mat.Dense)`／`DiagMatrix([]float64)` |
+| ST-8 | Low（batch 2 評估後保留：z 檢定的 R 對照測試釘住 |d|，改符號會違反參考值） | 效應量正負號：t 檢定保留方向（註解說 paired 已修），z 檢定用 `math.Abs` 丟掉方向；`SingleSampleTTest` 常數資料回 NaN／Inf 統計量與 p=0 沒有寫進 doc（準則 6、E） | stats/ztest.go:57, 122；ttest.go:76-108 | 統一保留方向；補 doc |
+| ST-9 | Low（另：`Docs/stats.md` 沒有 `TwoSampleZTest` 章節） | `Show()` 只在 `ChiSquareTestResult` 與 `FactorAnalysisResult` 上有，其餘結果型別沒有，也沒有 `io.Writer` 版本；`FactorAnalysisResult` 15 個 `IDataTable` 欄位（K-7）；`Diag(x any, dims ...int) (any, error)` 進出都是 `any`（準則 8） | chi_square.go:21；factor_analysis.go:180；diag.go:11 | 統一 `String()`；Diag 拆成 `DiagOf(*mat.Dense)`／`DiagMatrix([]float64)` |
 | ST-10 | OK | 做得好的部分：regression／GLM／clustering／KNN／PCA／non-parametric 全部先驗證輸入再計算、回 error、結果 struct 欄位齊全且對 R 驗證；`numericinput.go` 的說明是本專案最清楚的設計文件之一；`RegisterKNNDeviceSearcher` 讓 accel 反向掛入而不讓 stats 依賴 accel | — | — |
 
 ### quant
@@ -253,8 +253,8 @@
 
 | 編號 | 嚴重度 | 問題 | 位置 | 建議 |
 | --- | --- | --- | --- | --- |
-| MK-1 | High | **panic（已實測）**：`RFM` 用 `conv.ParseF64` 讀金額欄，遇到 `"abc"` 直接 panic 穿出 `AtomicDo`，整個程序崩潰。三個公開函式（`RFM`、`CustomerActivityIndex`、`BasketAnalysis`）失敗時只 `LogWarning` 後回 nil，沒有 error 回傳、沒有 `Err()`；欄名打錯時 `GetColIndexByName` 回空字串，之後每列 `GetElement(i, "")` 都是 nil，結果是「一張空表、零錯誤」（準則 11） | mkt/rfm.go:26-80, 100；cai.go:38-60；basket.go:38-56 | 三個函式改回 `(result, error)`；金額走 `ToFloat64Safe` 並指出列號 |
-| MK-2 | Med | 輸出列順序來自 Go map 迭代（`for customerID := range customerLastTradingDayMap`），每次執行 RFM／CAI 的列順序都不同，結果不可重現、無法 diff；`BasketAnalysis` 有排序（準則 13） | rfm.go:236；cai.go:180 | 依 CustomerID 排序輸出 |
+| MK-1 | ~~High~~ 已修正（batch 2） | **panic（已實測）**：`RFM` 用 `conv.ParseF64` 讀金額欄，遇到 `"abc"` 直接 panic 穿出 `AtomicDo`，整個程序崩潰。三個公開函式（`RFM`、`CustomerActivityIndex`、`BasketAnalysis`）失敗時只 `LogWarning` 後回 nil，沒有 error 回傳、沒有 `Err()`；欄名打錯時 `GetColIndexByName` 回空字串，之後每列 `GetElement(i, "")` 都是 nil，結果是「一張空表、零錯誤」（準則 11） | mkt/rfm.go:26-80, 100；cai.go:38-60；basket.go:38-56 | 三個函式改回 `(result, error)`；金額走 `ToFloat64Safe` 並指出列號 |
+| MK-2 | ~~Med~~ 已修正（batch 2） | 輸出列順序來自 Go map 迭代（`for customerID := range customerLastTradingDayMap`），每次執行 RFM／CAI 的列順序都不同，結果不可重現、無法 diff；`BasketAnalysis` 有排序（準則 13） | rfm.go:236；cai.go:180 | 依 CustomerID 排序輸出 |
 | MK-3 | Med | 每個欄位都提供 `XxxColIndex` + `XxxColName` 兩個欄位（三個 config 共 8 對），「同時給時 index 優先」是把 T-11 的歧義寫進設定檔；`DateFormat` 用自訂的 `"YYYY-MM-DD"` 記法再轉 Go layout，`NumGroups uint`；`var CAI = CustomerActivityIndex` 是可被覆寫的函式變數（K-12）（準則 3、6、8） | mkt/rfm.go:12-22；cai.go:12-22；basket.go:12-17 | 只留一個欄位參照（名稱或索引擇一）；`CAI` 改 func |
 | MK-4 | Low | 預設值套用時以 Info 等級 log（DateFormat、TimeScale），噪音；用 `parallel.GroupUp`（P-4）與 `insyra.SortTimes`（K-15）；CAI 對每位客戶排序兩次 | rfm.go:60-70, 157；cai.go:66-73, 118 | 移除 log；直接迴圈 |
 
@@ -276,7 +276,7 @@
 | DF-3 | Med | 建構子回傳未匯出型別：`TWStock() (*twStock, error)`、`YFinance() (*yahooFinance, error)`、`Ticker() *ticker`、`TWGeocoding() (*twGeocoder, error)`、`GoogleMapsStores() *googleMapsStoreCrawler`。使用者無法在自己的 struct 或函式簽名宣告這些型別（I-2 同族） | twstock.go:94；yfinance.go:108, 251；geocoding.go:150 | 匯出型別或定義介面 |
 | DF-4 | Med | 第三方型別直接進公開簽名：`YFHistoryParams = models.HistoryParams`、`News(count int, tab models.NewsTab)` 洩漏 `wnjoon/go-yfinance` 的型別，該套件改版即 breaking；yfinance 預設 User-Agent 偽裝成 Chrome 117（服務條款風險，至少要在 Docs 標明）（準則 8、10、14） | yfinance.go:23, 49, 491 | 自有 `YFHistoryParams` struct 轉接；UA 改為誠實識別並讓使用者自行覆寫 |
 | DF-5 | Low | `YFPeriodAnnual` 與 `YFPeriodYearly` 兩個值同義；`MaxWaitingInterval_Milliseconds uint` 底線命名且應為 `time.Duration`；`ReverseTable(dt, latCol, lngCol)` 與 `ReverseTableByColName` 是 T-11 的索引／名稱雙入口；`SortByRelevance` 等常數沒有型別前綴，與 `TWMarketXxx`／`YFPeriodXxx` 風格不一致（準則 1、6、9） | yfinance.go:57-59；googleMapsCommentCrawler.go:38-53；geocoding.go:410-425 | 刪同義值；用 Duration；統一前綴 |
-| DF-6 | Low | `fileGeocodeCache.Set` 每次都把整個 map 序列化重寫檔案，非原子（無 tmp+rename），中途中斷會把快取檔寫壞，之後以空快取重來（doc 有寫「corrupt → empty」但這是可避免的）；`persist` 錯誤只 warn | geocoding.go:601-636 | tmp+rename；或改 append-only |
+| DF-6 | ~~Low~~ 已修正（batch 2） | `fileGeocodeCache.Set` 每次都把整個 map 序列化重寫檔案，非原子（無 tmp+rename），中途中斷會把快取檔寫壞，之後以空快取重來（doc 有寫「corrupt → empty」但這是可避免的）；`persist` 錯誤只 warn | geocoding.go:601-636 | tmp+rename；或改 append-only |
 | DF-7 | OK | TWStock 與 TWGeocoding 是範本：config `normalize()` 驗證並回 error、零值可用、sentinel error 用 `errors.Is`、`RateLimitError` 帶 `Unwrap` 與 `ResetAt`、`GeocodeCache` 介面明講並行安全與快取語意、回應體用 `LimitReader` 防爆 | — | — |
 
 ### plot / gplot
@@ -301,7 +301,7 @@
 | 編號 | 嚴重度 | 問題 | 位置 | 建議 |
 | --- | --- | --- | --- | --- |
 | LP-1 | High | 第一次呼叫 `SolveModel`／`SolveFromFile` 時，程式庫自己從 ftp.gnu.org（Windows 走 SourceForge 的 latest/download 轉址）下載 GLPK 原始碼，在使用者機器上執行 `./configure && make && make install` 裝進 `$HOME/local`，再改寫**當前程序**的 `PATH` 環境變數。下載沒有校驗和、失敗路徑有 8 處 `LogFatal`。一個 Go 資料程式庫在執行期編譯 C 程式，是供應鏈與可移植性風險，生產環境不可接受（準則 14；K-1） | lp/init.go:33-260 | 移除自動安裝：找不到 `glpsol` 就回錯並在 Docs 說明安裝方式；或改用純 Go 求解器 |
-| LP-2 | Med | `SolveFromFile`／`SolveModel` 回傳 `(*DataTable, *DataTable)` 沒有 error；錯誤與逾時被編碼成第二張表裡的字串（`Status: "Error"`），且那張表的列順序來自 map 迭代（MK-2）；結果表是 GLPK 輸出「逐行文字」，變數值沒有解析成欄位；`timeoutSeconds ...int` 用 variadic（準則 8、11） | lp/lp.go:21-80, 83-215, 256-280 | 回 `(*Solution, error)`，Solution 含 `Status`、`Objective`、`Variables map[string]float64` |
+| LP-2 | Med（列順序已修正 batch 2；error 形狀待決） | `SolveFromFile`／`SolveModel` 回傳 `(*DataTable, *DataTable)` 沒有 error；錯誤與逾時被編碼成第二張表裡的字串（`Status: "Error"`），且那張表的列順序來自 map 迭代（MK-2）；結果表是 GLPK 輸出「逐行文字」，變數值沒有解析成欄位；`timeoutSeconds ...int` 用 variadic（準則 8、11） | lp/lp.go:21-80, 83-215, 256-280 | 回 `(*Solution, error)`，Solution 含 `Status`、`Objective`、`Variables map[string]float64` |
 | LP-3 | Low | `lpgen.LPModel` 以字串拼 LP 檔（`AddConstraint("x + y <= 10")`），沒有結構化建模；`GenerateLPFile(filename)` 無 error；`ParseLingoModel_str`／`_txt` 底線命名、失敗回 nil 無 error | lpgen/lpgen.go；lingo.go | 回 error；命名 `ParseLingo`／`ParseLingoFile` |
 
 ### engine
@@ -315,7 +315,7 @@
 
 | 編號 | 嚴重度 | 問題 | 位置 | 建議 |
 | --- | --- | --- | --- | --- |
-| CL-1 | Med | 環境名稱直接 `filepath.Join(envsPath, name)`，只檢查非空：`Create("../../tmp/x")`、`Delete("../something")` 會在 envs 目錄之外建立或刪除目錄。CLI 使用者是自己的機器風險低，但 `engine/dsl` 讓程式嵌入 DSL session、環境名稱可能來自外部輸入（準則 14） | cli/env/manager.go:130-138, 180-230 | 名稱限制為 `[A-Za-z0-9_-]+`，拒絕路徑分隔符 |
+| CL-1 | ~~Med~~ 已修正（batch 2） | 環境名稱直接 `filepath.Join(envsPath, name)`，只檢查非空：`Create("../../tmp/x")`、`Delete("../something")` 會在 envs 目錄之外建立或刪除目錄。CLI 使用者是自己的機器風險低，但 `engine/dsl` 讓程式嵌入 DSL session、環境名稱可能來自外部輸入（準則 14） | cli/env/manager.go:130-138, 180-230 | 名稱限制為 `[A-Za-z0-9_-]+`，拒絕路徑分隔符 |
 | CL-2 | Med | `commands.Registry` 是匯出的全域 map，`Register` 寫入無鎖、`Dispatch` 讀取無鎖，並行註冊是 data race；`ExecContext` 全部欄位公開可改；`DBConn.DSN` 以明文保存連線字串含密碼（doc 說顯示時遮罩，但值本身在記憶體與任何序列化路徑都是明文）（準則 12、14） | cli/commands/registry.go:47-64；db_conn.go:15-20 | Registry 改私有 + `sync.RWMutex`；DSN 只存遮罩後版本 |
 | CL-3 | Low | `cli/env` 每個 `Manager` 方法都有一個同名的套件層包裝函式（`env.Create` → `Default().Create`），60 個匯出符號有 27 個是重複；`State.LastAccess string` 而非 `time.Time`；`BuildCobraCommands` 以命令名稱字串（`"env"`、`"accel"`）硬編特殊旗標；`NewAutoCompleter` 回傳第三方 `readline.AutoCompleter`（準則 1、8） | cli/env/manager.go:520-540；state.go:20；commands/registry.go:100-150 | 移除包裝函式（或只留 Default()）；LastAccess 改 time.Time |
 | CL-4 | OK | `Manager` 有鎖、`SaveState` 用 tmp+rename 原子寫入（parquet.Write 與 geocode cache 應比照）、`DSLSession` 對嵌入者的 Manager 隔離說明清楚 | — | — |

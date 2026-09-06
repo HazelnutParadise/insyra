@@ -145,7 +145,7 @@ func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable
 **Description:**
 Performs RFM (Recency, Frequency, Monetary) analysis on customer transaction data.
 
-The function calculates percentile-based scores for each metric and assigns customers to groups. The TimeScale parameter determines how recency is calculated (hours, days, weeks, months, or years) and also affects how Frequency is counted (transactions within the same time period are counted as one).
+The function calculates percentile-based scores for each metric and assigns customers to groups. A row whose amount cannot be read as a number is skipped with a warning (it never panics), and output rows are sorted by customer ID so two runs on the same input produce the same table. The TimeScale parameter determines how recency is calculated (hours, days, weeks, months, or years) and also affects how Frequency is counted (transactions within the same time period are counted as one).
 
 **Parameters:**
 
@@ -186,7 +186,7 @@ The calculation involves:
 func CustomerActivityIndex(dt insyra.IDataTable, caiConfig CAIConfig) insyra.IDataTable
 ```
 
-**Description:**
+**Description:** Output rows are sorted by customer ID.
 
 Calculates the Customer Activity Index (CAI) for each customer based on their transaction history.
 

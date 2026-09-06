@@ -34,7 +34,7 @@ func SolveFromFile(lpFile string, timeoutSeconds ...int) (*DataTable, *DataTable
 **Returns:**
 
 - `*DataTable`: The solution DataTable(the column name and the row name will not be set).
-- `*DataTable`: The additional information DataTable(the column name and the row name will be set).
+- `*DataTable`: The additional information DataTable(the column name and the row name will be set). Rows are always in the order Status, Execution Time, Warnings, Full Output, Iterations, Nodes.
 
 #### Example
 
@@ -67,7 +67,7 @@ func SolveModel(model *lpgen.LPModel, timeoutSeconds ...int) (*DataTable, *DataT
 **Returns:**
 
 - `*DataTable`: The solution DataTable(the column name and the row name will not be set).
-- `*DataTable`: The additional information DataTable(the column name and the row name will be set).
+- `*DataTable`: The additional information DataTable(the column name and the row name will be set). Rows are always in the order Status, Execution Time, Warnings, Full Output, Iterations, Nodes.
 
 #### Example
 

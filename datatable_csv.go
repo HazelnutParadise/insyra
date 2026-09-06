@@ -4,6 +4,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"os"
+	"time"
 )
 
 // ToCSV converts the DataTable to CSV format and writes it to the provided file path.
@@ -65,9 +66,14 @@ func (dt *DataTable) ToCSV(filePath string, setRowNamesToFirstCol bool, setColNa
 			for _, column := range columns {
 				if rowIndex < len(column.data) {
 					value := column.data[rowIndex]
-					if value == nil {
+					switch v := value.(type) {
+					case nil:
 						record = append(record, "")
-					} else {
+					case time.Time:
+						// RFC 3339 is the first layout ParseDates tries, so a
+						// table written here reads back as the same instants.
+						record = append(record, v.Format(time.RFC3339Nano))
+					default:
 						record = append(record, fmt.Sprintf("%v", value))
 					}
 				} else {

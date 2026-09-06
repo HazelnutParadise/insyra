@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"sync"
 
 	"github.com/HazelnutParadise/insyra"
 )
@@ -16,17 +15,16 @@ type FTestResult struct {
 
 // FTestForVarianceEquality performs an F-test for variance equality.
 func FTestForVarianceEquality(data1, data2 insyra.IDataList) (*FTestResult, error) {
-	var var1, var2 float64
-	var len1, len2 int
-
-	d1 := data1.(*insyra.DataList)
-	d2 := data2.(*insyra.DataList)
-	insyra.AtomicDoAll(func() {
-		var1 = d1.Var()
-		var2 = d2.Var()
-		len1 = d1.Len()
-		len2 = d2.Len()
-	}, d1, d2)
+	values1, err := testSeries(data1, "data1")
+	if err != nil {
+		return nil, err
+	}
+	values2, err := testSeries(data2, "data2")
+	if err != nil {
+		return nil, err
+	}
+	len1, len2 := len(values1), len(values2)
+	var1, var2 := sampleVarianceF64(values1), sampleVarianceF64(values2)
 	if len1 < 2 || len2 < 2 {
 		return nil, errors.New("both samples must have at least two observations")
 	}
@@ -71,35 +69,15 @@ func LeveneTest(groups []insyra.IDataList) (*FTestResult, error) {
 	// actor so per-group AtomicDo entries can run concurrently. Collapses
 	// the previously-serial actor-handshake chain (same fix pattern as
 	// OneWayANOVA / TwoWayANOVA).
-	type groupExtract struct {
-		raw    []any
-		median float64
-	}
-	extracted := make([]groupExtract, len(groups))
-	var wg sync.WaitGroup
-	for i := range groups {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
-			groups[i].AtomicDo(func(gdl *insyra.DataList) {
-				extracted[i] = groupExtract{
-					raw:    gdl.Data(),
-					median: gdl.Median(),
-				}
-			})
-		}(i)
-	}
-	wg.Wait()
-
 	var allDiffs []float64
 	var groupLabels []int
-	for i, ex := range extracted {
-		median := ex.median
-		for idx, v := range ex.raw {
-			x, ok := insyra.ToFloat64Safe(v)
-			if !ok {
-				return nil, fmt.Errorf("invalid value in group %d at index %d", i, idx)
-			}
+	for i := range groups {
+		values, err := testSeries(groups[i], fmt.Sprintf("group %d", i))
+		if err != nil {
+			return nil, err
+		}
+		median := medianOfF64(values)
+		for _, x := range values {
 			allDiffs = append(allDiffs, math.Abs(x-median))
 			groupLabels = append(groupLabels, i)
 		}
@@ -123,17 +101,13 @@ func BartlettTest(groups []insyra.IDataList) (*FTestResult, error) {
 		v float64
 	}
 	bx := make([]bartlettExtract, len(groups))
-	var wg sync.WaitGroup
 	for i := range groups {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
-			groups[i].AtomicDo(func(gdl *insyra.DataList) {
-				bx[i] = bartlettExtract{n: gdl.Len(), v: gdl.Var()}
-			})
-		}(i)
+		values, err := testSeries(groups[i], fmt.Sprintf("group %d", i))
+		if err != nil {
+			return nil, err
+		}
+		bx[i] = bartlettExtract{n: len(values), v: sampleVarianceF64(values)}
 	}
-	wg.Wait()
 
 	var pooledLogVar float64
 	var sumNMinus1 int

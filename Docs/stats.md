@@ -270,7 +270,7 @@ fmt.Printf("Bartlett's test: chi-square=%.4f, p=%.4f, df=%d\n", chiSquare, pValu
 func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...float64) (*TTestResult, error)
 ```
 
-**Description:** Test if sample mean differs from hypothesized population mean.
+**Description:** Test if sample mean differs from hypothesized population mean. Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the series and the one-based row, and is never counted in `n`.
 
 **Parameters:**
 
@@ -288,7 +288,7 @@ func SingleSampleTTest(data insyra.IDataList, mu float64, confidenceLevel ...flo
 func TwoSampleTTest(data1, data2 insyra.IDataList, equalVariance bool, confidenceLevel ...float64) (*TTestResult, error)
 ```
 
-**Description:** Compare means of two independent samples.
+**Description:** Compare means of two independent samples. Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the series and the one-based row, and is never counted in `n`.
 
 **Parameters:**
 
@@ -365,7 +365,7 @@ fmt.Printf("t=%.4f, p=%.4f, mean diff=%.4f\n", result.Statistic, result.PValue, 
 func SingleSampleZTest(data insyra.IDataList, mu float64, sigma float64, alternative AlternativeHypothesis, confidenceLevel float64) (*ZTestResult, error)
 ```
 
-**Description:** Test sample mean against population mean when population standard deviation is known.
+**Description:** Test sample mean against population mean when population standard deviation is known. Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the series and the one-based row, and is never counted in `n`.
 
 **Parameters:**
 
@@ -556,7 +556,7 @@ const (
 func CalculateMoment(dl insyra.IDataList, n int, central bool) (float64, error)
 ```
 
-**Description:** Calculate n-th moment of a dataset.
+**Description:** Calculate n-th moment of a dataset. Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the series and the one-based row, and is never counted in `n`.
 
 **Parameters:**
 
@@ -743,7 +743,7 @@ fmt.Printf("Factor A F=%.4f, p=%.4f\n", result.FactorA.F, result.FactorA.P)
 func FTestForVarianceEquality(data1, data2 insyra.IDataList) (*FTestResult, error)
 ```
 
-**Description:** Test equality of variances between two groups.
+**Description:** Test equality of variances between two groups. Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the series and the one-based row, and is never counted in `n`.
 
 **Parameters:**
 
@@ -760,7 +760,7 @@ func FTestForVarianceEquality(data1, data2 insyra.IDataList) (*FTestResult, erro
 func LeveneTest(groups []insyra.IDataList) (*FTestResult, error)
 ```
 
-**Description:** Test equality of variances across multiple groups (robust).
+**Description:** Test equality of variances across multiple groups (robust). Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the series and the one-based row, and is never counted in `n`.
 
 **Parameters:**
 
@@ -776,7 +776,7 @@ func LeveneTest(groups []insyra.IDataList) (*FTestResult, error)
 func BartlettTest(groups []insyra.IDataList) (*FTestResult, error)
 ```
 
-**Description:** Test equality of variances across multiple groups (assumes normality).
+**Description:** Test equality of variances across multiple groups (assumes normality). Every observation must be a finite number: a blank, text, `NaN`, or `Inf` cell is refused with an error naming the series and the one-based row, and is never counted in `n`.
 
 **Parameters:**
 

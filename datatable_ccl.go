@@ -10,15 +10,14 @@ import (
 	"github.com/HazelnutParadise/insyra/internal/core"
 )
 
-func (dt *DataTable) AddColUsingCCL(newColName, cclFormula string) *DataTable {
+func (dt *DataTable) AddColUsingCCL(newColName, cclFormula string) (result *DataTable) {
+	result = dt
 	// 添加 recover 以防止程序崩潰
 	defer func() {
 		if r := recover(); r != nil {
 			dt.warn("AddColUsingCCL", "Panic recovered: %v", r)
 		}
 	}()
-
-	resultDtChan := make(chan *DataTable, 1)
 
 	dt.AtomicDo(func(dt *DataTable) {
 		// 優先記錄表達式開始評估的時間
@@ -52,22 +51,20 @@ func (dt *DataTable) AddColUsingCCL(newColName, cclFormula string) *DataTable {
 			newCol.lastModifiedTimestamp.Store(timestamp)
 			dt.AppendCols(newCol)
 		}
-		resultDtChan <- dt
 	})
-	return <-resultDtChan
+	return result
 }
 
 // EditColByIndexUsingCCL modifies an existing column at the specified index using a CCL expression.
 // The column index uses Excel-style letters (A, B, C, ..., AA, AB, etc.) where A = first column.
 // Returns the modified DataTable.
-func (dt *DataTable) EditColByIndexUsingCCL(colIndex, cclFormula string) *DataTable {
+func (dt *DataTable) EditColByIndexUsingCCL(colIndex, cclFormula string) (result *DataTable) {
+	result = dt
 	defer func() {
 		if r := recover(); r != nil {
 			dt.warn("EditColByIndexUsingCCL", "Panic recovered: %v", r)
 		}
 	}()
-
-	resultDtChan := make(chan *DataTable, 1)
 
 	dt.AtomicDo(func(dt *DataTable) {
 		startTime := time.Now()
@@ -77,7 +74,6 @@ func (dt *DataTable) EditColByIndexUsingCCL(colIndex, cclFormula string) *DataTa
 		targetColIdx, ok := ParseColIndex(colIndex)
 		if !ok || targetColIdx < 0 || targetColIdx >= len(dt.columns) {
 			dt.warn("EditColByIndexUsingCCL", "Column index '%s' out of range", colIndex)
-			resultDtChan <- dt
 			return
 		}
 
@@ -90,21 +86,19 @@ func (dt *DataTable) EditColByIndexUsingCCL(colIndex, cclFormula string) *DataTa
 			LogDebug("DataTable", "EditColByIndexUsingCCL", "CCL evaluation completed in %v", elapsed)
 			dt.columns[targetColIdx].data = result
 		}
-		resultDtChan <- dt
 	})
-	return <-resultDtChan
+	return result
 }
 
 // EditColByNameUsingCCL modifies an existing column with the specified name using a CCL expression.
 // Returns the modified DataTable. If the column name is not found, a warning is logged.
-func (dt *DataTable) EditColByNameUsingCCL(colName, cclFormula string) *DataTable {
+func (dt *DataTable) EditColByNameUsingCCL(colName, cclFormula string) (result *DataTable) {
+	result = dt
 	defer func() {
 		if r := recover(); r != nil {
 			dt.warn("EditColByNameUsingCCL", "Panic recovered: %v", r)
 		}
 	}()
-
-	resultDtChan := make(chan *DataTable, 1)
 
 	dt.AtomicDo(func(dt *DataTable) {
 		startTime := time.Now()
@@ -121,7 +115,6 @@ func (dt *DataTable) EditColByNameUsingCCL(colName, cclFormula string) *DataTabl
 
 		if targetColIdx < 0 {
 			dt.warn("EditColByNameUsingCCL", "Column '%s' not found", colName)
-			resultDtChan <- dt
 			return
 		}
 
@@ -134,9 +127,8 @@ func (dt *DataTable) EditColByNameUsingCCL(colName, cclFormula string) *DataTabl
 			LogDebug("DataTable", "EditColByNameUsingCCL", "CCL evaluation completed in %v", elapsed)
 			dt.columns[targetColIdx].data = result
 		}
-		resultDtChan <- dt
 	})
-	return <-resultDtChan
+	return result
 }
 
 // ExecuteCCL executes multi-line CCL statements on the DataTable.
@@ -144,15 +136,14 @@ func (dt *DataTable) EditColByNameUsingCCL(colName, cclFormula string) *DataTabl
 // Multiple statements can be separated by ; or newline.
 // Assignment operations modify existing columns; if the target column doesn't exist, an error is returned.
 // Returns the modified DataTable.
-func (dt *DataTable) ExecuteCCL(cclStatements string) *DataTable {
+func (dt *DataTable) ExecuteCCL(cclStatements string) (result *DataTable) {
+	result = dt
 	// 添加 recover 以防止程序崩潰
 	defer func() {
 		if r := recover(); r != nil {
 			dt.warn("ExecuteCCL", "Panic recovered: %v", r)
 		}
 	}()
-
-	resultDtChan := make(chan *DataTable, 1)
 
 	dt.AtomicDo(func(dt *DataTable) {
 		startTime := time.Now()
@@ -162,7 +153,6 @@ func (dt *DataTable) ExecuteCCL(cclStatements string) *DataTable {
 		nodes, err := ccl.CompileMultiline(cclStatements)
 		if err != nil {
 			dt.warn("ExecuteCCL", "Failed to parse CCL statements: %v", err)
-			resultDtChan <- dt
 			return
 		}
 
@@ -189,7 +179,6 @@ func (dt *DataTable) ExecuteCCL(cclStatements string) *DataTable {
 		for _, node := range nodes {
 			if err := executeCCLNode(dt, node, numRow, colNameMap, tableData, rowNameMap); err != nil {
 				dt.warn("ExecuteCCL", "Failed to execute CCL statement: %v", err)
-				resultDtChan <- dt
 				return
 			}
 			// 更新 numCol 和 colNameMap（如果添加了新列）
@@ -210,9 +199,8 @@ func (dt *DataTable) ExecuteCCL(cclStatements string) *DataTable {
 
 		elapsed := time.Since(startTime)
 		LogDebug("DataTable", "ExecuteCCL", "CCL execution completed in %v", elapsed)
-		resultDtChan <- dt
 	})
-	return <-resultDtChan
+	return result
 }
 
 // executeCCLNode executes a single CCL node on the DataTable

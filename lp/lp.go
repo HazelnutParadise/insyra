@@ -228,23 +228,11 @@ func parseGLPKOutputFromFile(filePath string) *insyra.DataTable {
 
 // createAdditionalInfoDataTable stores additional info like execution time, status, and warnings
 func createAdditionalInfoDataTable(status string, executionTime float64, warnings, fullOutput, iterations, nodes string) *insyra.DataTable {
-	additionalInfo := map[string]any{
-		"Status":         status,
-		"Execution Time": fmt.Sprintf("%.2f seconds", executionTime),
-		"Warnings":       warnings,
-		"Full Output":    fullOutput,
-		"Iterations":     iterations,
-		"Nodes":          nodes,
-	}
+	// Fixed order: a map here made the row order differ between runs.
+	rowNames := []string{"Status", "Execution Time", "Warnings", "Full Output", "Iterations", "Nodes"}
+	values := []any{status, fmt.Sprintf("%.2f seconds", executionTime), warnings, fullOutput, iterations, nodes}
 
 	dataTable := insyra.NewDataTable()
-	rowNames := []string{}
-	values := []any{}
-
-	for name, value := range additionalInfo {
-		rowNames = append(rowNames, name)
-		values = append(values, value)
-	}
 
 	// Append results to a horizontal row
 	rowNameDl := insyra.NewDataList(rowNames)
