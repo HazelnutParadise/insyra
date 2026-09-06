@@ -74,6 +74,7 @@
 | `quant` | 50 | **完成** |
 | `stats` | 197 | **完成** |
 | 無匯出符號：`accel/knnbridge`, `allpkgs`, `benchmark`, `cmd/insyra`, `engine`, `tools/gendocs` | 0 | 不需審查 |
+| 第二輪：CLI 指令面（123 個 Register）、CCL（79 個 stdlib 函數）、internal/*、安全、測試、CI | — | **完成**（2026-09-06） |
 
 ## 發現彙整（依套件）
 
@@ -345,6 +346,354 @@
 | NN-2 | Med | `Sequential.Fit(x, y, cfg)` 沒有 `context.Context`：一個 epoch 可能跑數分鐘，有 `Progress` 回呼卻無法取消；`LossSpec`／`OptimizerSpec` 介面全是未匯出方法，使用者無法提供自訂 loss 或 optimizer 給 `Fit`（doc 說 v1 刻意如此，但 `Tape` 層其實已經可以）（準則 12） | nn/fit.go:15-20, 96-100, 200 | `FitConfig.Context` 或 `FitContext(ctx, …)`；開放 `LossSpec` 為可實作介面 |
 | NN-3 | Low | 選填參數全用 variadic 對映 ONNX attribute 預設值：`Gelu(x, approximate ...string)`、`LeakyRelu(x, alpha ...float32)`、`Transpose(x, perms ...[]int)`、`BatchNormalization(…, epsilonValues ...float32)`、`BatchNormTraining(…, options ...float32)`（epsilon 與 momentum 靠位置）、`NewTape(seed ...int64)`、`Softmax(x, axes ...int)`、`Shape(x, bounds ...int)`、`NonMaxSuppression(…, centerPointBox ...int)`。與 ONNX 對齊有理由，但 `options ...float32` 這種靠位置的 float 選項不可讀（準則 8） | nn/kernels.go；autodiff_cnn.go:176 | 至少 BatchNormTraining 改 options struct |
 | NN-4 | OK | `LoadONNX` 把不受信任輸入的 panic 收成 error（範本）；`Tensor` 私有資料 + copy-on-read，理由寫在 doc；`RegisterDeviceMatMul` 反向掛鉤讓 nn 不依賴 accel；`Layer`／`TrainingOnly`／`EvalLayer` 用結構型別判斷取代全域 train/eval 旗標；門檻數字（`deviceMatMulMACFloor`）附量測來源 | — | — |
+
+
+## 第二輪發現（2026-09-06，全 repo 審查）
+
+第一輪只審匯出符號；第二輪補審匯出符號之外的一切：CLI 指令的實際行為、CCL 語言語意、internal 套件正確性、安全與強韌性、測試是否真的在保護什麼、倉庫與 CI 衛生。六個面向由六個獨立審查各自實測後彙整，High 項目由主審查者抽驗重現（CCL-1、CCL-2、IN-1、IN-3、CLI-1 根因、TS-1、RP-1、SEC-2、SEC-4）。每一條都已開成 GitHub issue（見文末「Issue 對照」）。
+
+### CLI／DSL 指令面（第二輪，逐指令實跑）
+
+| 編號 | 嚴重度 | 發現 | 位置 | 建議 |
+| --- | --- | --- | --- | --- |
+| CLI-1 | High | 使用者輸入可觸發 panic：`col`／`row` 用 `var dl any` 接 typed-nil `*DataList`，`dl == nil` 永遠不成立，nil 指標存進 `ctx.Vars`；`movavg`／`expsmooth`／`diff` 直接把 library 回傳的 nil 存進去；存檔時 `serializeVariable` 呼叫 `GetName()` 對 nil 解參考崩潰。實測 `col dt A`（不存在欄名）、`movavg x 0`、`movavg x 99`、`expsmooth x 5`、`diff empty` 全部印「saved …」後 panic（堆疊在 `cli/env/state.go:108`）；REPL 每行後都 `SaveState`，整個 session 炸掉 | cli/commands/col.go:27-36；row.go:27-36；timeseries.go:118, 136, 150；cli/env/state.go:105-108 | 用具型別變數判 nil；結果 nil 即回錯；`serializeVariable` 對 nil 防禦；加回歸測試（與 D-3 同根） |
+| CLI-2 | High | 含 NaN 的變數無法持久化，DataTable 靜默變成空字串：`ToJSON_String` 遇 NaN 失敗回 `""`，state.json 存成 `{"type":"Raw","data":""}`，下一個指令 `vars` 顯示 `dt string`；DataList 版本 `SaveState` 回錯「json: unsupported value: NaN」變數整個不存。實測 `load nan.csv as dt`（一個空儲存格）後 `vars` → `dt string`；`newdl 1 nan 3 as xn` 後 `show xn` → variable not found。CSV 有缺值是常態，one-shot 模式幾乎不能用 | cli/env/state.go:103-111；datatable_json.go:102-105 | NaN／±Inf 編成哨兵；`SaveState` 失敗回錯而非寫空字串；`ToJSON_String` 不吞錯（T-12） |
+| CLI-3 | High | `--env`／`--no-color`／`--log-level` 放在 `newdl`／`addcol`／`addrow`／`show` 前面時被當成資料：四個指令 `DisableFlagParsing: true`，Cobra 把根旗標原樣交給 `Run`。實測 `insyra --env e2 newdl 1 2 3 as ex` 寫進 default 環境，內容 `['--env','e2',1,2,3]`；`insyra --no-color show ex` → `variable not found: --no-color`；Docs/cli-dsl.md:171 的範例本身跑不動 | cli/root.go:69-71；cli/commands/newdl.go:16；addcol.go:16；addrow.go:16；show.go:17；registry.go:121 | `RunE` 先剝除已知根旗標或改 `SetInterspersed(false)`；加測試 |
+| CLI-4 | High | 資料庫密碼明文寫進 `history.txt` 並隨 `env export` 外流：one-shot `AppendHistory` 記整行（連線失敗也記）、REPL readline `HistoryFile` 寫同一檔、`DSLSession.Execute` 也記；實測 `db connect bad mysql://alice:S3cretPW@…` 後 `history.txt`、`history` 指令、`env export` JSON 都含密碼；只有 `db list` 有遮罩；檔案 0644（與 SEC-11 同） | cli/commands/registry.go:147-156；cli/repl/repl.go:51-58；cli/repl/api.go:81；cli/env/state.go:161-176；cli/env/manager.go:352, 366；db_conn.go:126 | 三條路徑共用 `sanitizeHistoryLine`（套 `maskDSNPassword`，補 KV 形式）；`env export` 同樣過濾；history／state 改 0600 |
+| CLI-5 | High | `run` 腳本裡的 `env open` 會在腳本中途啟動互動 REPL：`env open` 在 `!ctx.InREPL` 時呼叫 `OpenREPL`，`run` 不設 `InREPL`。實測含 `env open scr` 的 `.isr` 以 one-shot `run` 執行卡住等 stdin；`run` 也沒有遞迴防護（`run loop.isr` 自呼叫無限迴圈，讀碼確認未實測） | cli/commands/env.go:70-72；run.go:16-49 | `run` 標記腳本模式，`env open` 只切換環境；加遞迴深度防護 |
+| CLI-6 | Med | 「用欄名」還是「用 Excel 字母」各指令不一致且無文件：實測同一張表（欄 name/price/qty）`col dt price` ✓、`col dt A` ✗（並觸發 CLI-1）；`get dt 0 price` → nil、`get dt 0 B` → 1.5；`set dt 0 price 9` 錯、`set dt 0 B 9` ✓；`sort dt B` 找不到、`sort dt price` ✓；`swap dt col A B` 找不到；而 `fillna cols B`、`parsedates cols B`、`scale fit cols B`、`groupby by A` 同時接受兩者。Usage 只寫 `<name|index>` 沒說 index 是數字還是字母（T-11 在 CLI 的映射） | col.go:28-32；row.go:28-32；get.go:31-35；set.go:30-31；sort.go:32-36；swap.go:31-48；dropcol.go:28-32；droprow.go:28-32 | 共用 `resolveColSelector(table, token)`（先欄名、再字母、再數字）放 helpers.go，八個指令改用；Usage 與 Docs 寫出解析順序 |
+| CLI-7 | Med | 結構操作找不到目標仍回報成功：實測 `sort dt nonexistent` → 只 Warning 後印「sorted」；`dropcol dt nonexistent` →「columns dropped」；`droprow dt 99` →「rows dropped」；`swap dt col A B` →「swap complete」；`ccl dt "bogus ((("` →「ccl executed」；`addcolccl dt newc "nonsense((("` →「column added by ccl」但 `cols` 沒有新欄。腳本模式 exit code 0 | sort.go:37-38；dropcol.go:34-40；droprow.go:34-40；swap.go:33-53；ccl.go:21-22, 34-35 | 執行前驗證目標存在；CCL 指令執行後檢查 `table.Err()`（`groupby.go:73` 已有此模式） |
+| CLI-8 | Med | 拼錯的列舉值被靜默當成預設值：實測 `sort dt price dsc` → 升冪；`ttest two x x eqaul` → 當 equal 算；`ztest single x 3 1 bogus` → two-sided；`clean x outliers abc` → 用 2.0；`merge dt dt horizontal inner junk` → 忽略 `junk`。統計結果悄悄算錯（`rank x dsc` 有正確拒絕） | sort.go:29；hypothesis.go:129, 183, 213, 395-404；clean.go:25-29；merge.go:36-41 | 封閉 switch，未知值回錯並列支援值 |
+| CLI-9 | Med | `config` 接受任何 key、任何值且立即持久化：實測 `config bogus-key 123` 無錯誤；`config log-level nonsense` 寫入 `~/.insyra/config.json`；`config no-color maybe` → false 無錯誤。`UpdateGlobalConfig` 的 switch 沒 `default`，`no-color` 自己寫 `== "true"` 鏈（違反 cli/AGENTS.md 要用 `parseFlexBool`） | cli/env/config.go:95-120；cli/commands/config.go:31-44 | `default:` 回錯列合法 key；驗證 log-level／accel-mode 值；`parseFlexBool` |
+| CLI-10 | Med | `accel` Usage 宣稱有 `run` 子命令，程式碼沒有（實測 `accel run` → `unknown accel action: run`；references/cli-commands.md:213 自己也寫沒有）；`--precision` 旗標被解析（accel.go:95-104）卻不在 Usage 也未註冊到 Cobra，one-shot 下會被 Cobra 拒絕 | cli/commands/accel.go:23, 41-81, 95-104 | Usage 改 `accel <devices|cache|plan>`；`--precision` 移除或註冊到 registry.go:167-169 並寫進 Usage |
+| CLI-11 | Med | `env open`／`env delete`／`save`／`plot`／`env export` 覆寫或刪除無確認，含 `default` 環境：實測 `env delete default` 成功；`save dt out.csv` 連跑兩次直接截斷；`plot line dt` 把 `line.html` 寫進 cwd；`env clear` 也清 history。文件完全沒提 | env.go:118-129；save.go:56-66；plot.go:76-85, 100；manager.go:230-242, 383 | Docs 明講會覆寫；`env delete default` 拒絕或加 `--force` |
+| CLI-12 | Med | 文件與程式不符：(1) Docs/cli-dsl.md:751, 779、cli-command-usage.md:453、cli-command-guide.md:125 的 `load`／`read` Usage 缺 `[ragged] [trimspace]`；(2) cli-command-usage.md:316 說 JSON 對 `headers` 只 warn，程式碼是回錯（load.go:94-95）；(3) cli-command-guide.md:281 範例 `insyra merge x1 x2 inner strict` 實測 → `invalid merge direction: inner`；:400 `insyra count x` 實測 usage error（`count` value 必填但 Usage 寫 `[value]`，stats_dl_extra.go:65-74）；:627-651 `ttest single`、`ztest single`、`anova oneway`、`ftest var`、`chisq gof` 範例皆為不完整呼叫；(4) `accel` 不在 Docs/cli-dsl.md 附錄、cli-command-usage.md、cli-command-guide.md；(5) `pca`、`regression` Usage 少 `[as <var>]` 但程式碼有解析（pca.go:15、regression.go:38）；(6) Docs:171 `insyra --no-color show x` 跑不動（CLI-3）；(7) `save … sql … [rownames]` 文件 vs 程式碼 `[rownames [true|false]]` | 上列 | 由 registry 產生 usage 表並加測試比對；修正錯誤範例；補 `accel` |
+| CLI-13 | Med | `plot` Usage 的 `[options...]` 不存在，任何多餘 token 靜默忽略（實測 `plot line dt extra junk options save p2.html` 成功）；`fetch yahoo` 多餘參數同樣忽略。違反 cli/AGENTS.md「未知選項必須拒絕」 | plot.go:15, 91-101；fetch.go:63 | `parsePlotSavePath` 改 key/value 迴圈拒絕未知 token；Usage 移除 `[options...]` |
+| CLI-14 | Med | `sample x 0`、`sample x 99`（n 超過長度）回傳空 DataList 並印「saved sample as」；`setcolnames dt only_one` 名稱少於欄數時其餘欄名清成空也印「column names updated」 | sample.go:81-82；setcolnames.go:22-23；datatable_colname.go:163-185 | CLI 層檢查 n 範圍與名稱數量 |
+| CLI-15 | Low | 錯誤訊息未標指令名，直接洩漏 `strconv` 原文（`ttest single x abc` → `strconv.ParseFloat: parsing "abc": invalid syntax`）；同型 `ztest`、`anova twoway`、`chisq gof`、`movavg`／`expsmooth`、`quartile`／`percentile`、`fetch yahoo … news abc` | hypothesis.go:105-107, 173-179, 203-209, 249-255, 360-363；timeseries.go:114-116, 132-134；stats_dl_extra.go:24-27, 52-55；fetch.go:117-120 | 統一 `fmt.Errorf("<cmd>: invalid <field> %q")` |
+| CLI-16 | Low | `kmeans`／`knn_*` 選項 key 區分大小寫且未知選項訊息無支援清單（`kmeans dt 2 NSTART 3` → `unknown option: NSTART`）；`weighting`／`algorithm` 值不驗證直接轉型交給 library | clustering.go:160-190；knn.go:118-140 | 套 cli/AGENTS.md key/value 樣板 |
+| CLI-17 | Low | 多個結果變數副作用：`kmeans` 寫 9 個 `<alias>_*`、`pca` 3 個、`corrmatrix` 寫 `<alias>_p`、`knn_classify` 2 個，靜默覆蓋既有同名變數；`hclust`／`regression` 結果型別非 DataList/DataTable，`show` 不支援、`SaveState` 存成 `Raw`（restore 後變 `map[string]any`，`cutree` 認不得），文件未說「session-only」 | clustering.go:40-48, 66, 127-128, 154-155；pca.go:31-33；stats_adv.go:70-73；regression.go:63-138；state.go:109-110 | 文件列出副作用變數與存活期；`SaveState` 對無法還原型別明確跳過並警告 |
+| CLI-18 | Low | `help` 表格 `%-12s`，`knn_neighbors`（13 字）錯位；`help` 直接讀 `Registry` 未取 `registryMu`；`read`、`env` 沒有 Forms／Examples（`env` 有 9 個子命令） | help.go:19, 39-48；read.go:6-11；env.go:10-16 | `%-14s`；上讀鎖；補 Forms |
+| CLI-19 | Low | `clone`／`replace`／`clean`／`fillna`／`count` 對「變數存在但型別不對」回報「variable not found」 | clone.go:30；replace.go:49；clean.go:63；fillna.go:110；stats_dl_extra.go:78 | 先判存在再 type switch，訊息區分 |
+| CLI-20 | Low | `exit`／`quit` 註冊為指令但只在 REPL 攔截；one-shot `insyra exit` 與 `.isr` 內的 `exit` 都是 no-op（實測 `run s2.isr` 含 `exit` 仍繼續執行）；cli-command-guide.md:19 給了 `insyra exit` 當範例 | exit.go:1-13；run.go:40；repl.go:82-84 | `run` 支援 `exit` 提前結束；或文件說明 |
+| CLI-21 | Low | `save` 不支援 `.xlsx`（實測 → `unsupported output file type`），但 `load` 能讀 excel、`convert` 能 csv→xlsx；`read <file> as x` 被 `load` 以「unknown option "as"」拒絕，訊息誤導 | save.go:54-69；read.go:18-19 | `save` 加 excel 分支；`read` 對 `as` 給專屬訊息 |
+
+### CCL 語言（第二輪，語意探測 120 餘條、fuzz 130 餘條、-race）
+
+| 編號 | 嚴重度 | 發現 | 位置 | 建議 |
+| --- | --- | --- | --- | --- |
+| CCL-1 | High | 任何純英文字母的識別字都先被當成 Excel 欄位索引，永遠不會落到欄位名稱查表；索引超出範圍時 `GetCol` 靜默回 nil。實測欄名 `price` 的表上 `price * 2` → 全欄 0；`NULL`、`TRUE`、`FALSE`、`PI` → 全欄 nil；`[nope] + 1` → 1；文件自己的範例 `NEW('prev') = LAG(B,1); NEW('adj') = prev + 1` 得到 `adj = [1 1 1]`；文件 `LN(E) → 1` 實際是取第 5 欄；賦值目標 `total = A + 1` 反而會落到名稱查表，左右規則不一致 | internal/ccl/ccl_compiler.go:151-160；ccl.go:20-25；internal/utils/utils.go:63-88；datatable_ccl.go:240-250；Docs/CCL.md:604, 855-862, 944 | `Bind` 先查 `colNameMap` 再嘗試 Excel 索引，索引超過欄數回錯而非 nil；`NULL`／`TRUE`／`FALSE` 加進關鍵字；修文件三處範例（T-11 同族） |
+| CCL-2 | High | `@` 直接當值時回傳的是 evaluator 重複使用的同一個 `row` slice，整欄所有 cell 共用同一底層陣列，最後全部顯示最後一列：`AddColUsingCCL("r","@")` 三列皆 `[30 3]`，`%p` 相同；`IF(A > 15, @, nil)` 第 2 列顯示 `[30 3]`。`ExecuteCCL` 兩條路徑同樣重用 `row` | ccl.go:45-47, 221, 236；datatable_ccl.go:260-282, 339-361 | `GetCurrentRow` 回傳複本 |
+| CCL-3 | High | 日期相減得到 `time.Duration`，但 `toFloat64` 不認識 `time.Duration`，`(A - B) > 0` 靜默回 `false`（三列全 false），`(A - B) / 86400` 報 `invalid operands`；`DAY(A - B)` 才正確 | internal/ccl/ccl_evaluator.go:477-479, 659-662；internal/ccl/stdlib.go:360-386 | `toFloat64` 加 `time.Duration` 分支，或比較遇到 Duration 對 number 時回錯而非 false |
+| CCL-4 | High | `NewMapContext` 用 `range map` 決定欄位順序，`A`／`B` 指到哪一欄是隨機的：同一份資料 20 次 `Evaluate("A")` 得到 1、2、3 三種值 | internal/ccl/map_context.go:24-37；engine/ccl/ccl.go:14-16 | 排序 key 或提供帶順序的建構子 |
+| CCL-5 | High | 序列函數當另一個序列／聚合函數的引數時，內層結果被包成單元素欄位再處理：`LAG(LAG(A,1),1)` → 每列 `[<nil>]`（應為 `[nil nil 10]`）；`CUMSUM(SUM(A))` → 每列 `[60]`；`LAG(A,1) + A` 報錯（文件說 undefined） | internal/ccl/ccl_evaluator.go:725-756 | `evaluateToColumn` 若 `val` 是 `[]any` 且長度等於列數直接回傳 |
+| CCL-6 | High | 使用者運算式可觸發 panic：`LEAD(A, 10^300)`、`LAG(A, 0-10^300)` 因 `int(f)` 溢位後 `k := -periods` 再溢位，`col[負數]` → index out of range。序列函數沒有 recover；經 `AddColUsingCCL` 靠外層 `recover` 變 `Err()`「Panic recovered」，經 `engine/ccl.Evaluate` 直接 panic 到呼叫端（實測）。`MID('abc',2,10^300)`、`REPEAT('x',10^300)` 也 panic（`callFunction` 有 recover） | internal/ccl/stdlib_sequences.go:43, 64-73；internal/ccl/ccl_functions.go:78-85 vs 91-96；internal/ccl/stdlib_string.go:37, 225 | `scalarInt` 檢查範圍；`callSequenceFunction`／`callAggregateFunction` 比照 `callFunction` 加 recover；`runeSlice` 避免加法溢位 |
+| CCL-7 | High | 三個函數註冊表是裸 `map` 沒有鎖：`-race` 實測 `RegisterFunction` 與 `AddColUsingCCL` 併發 → DATA RACE（寫入點 ccl_functions.go:40） | internal/ccl/ccl_functions.go:18-20, 40, 71 | `sync.RWMutex` 或 `sync.Map`；或文件明說只能在 init 註冊 |
+| CCL-8 | High | `SUM`／`AVG` 把 NaN 累加進去，`MAX`／`MIN`／`MEDIAN`／`CUMSUM`／`ROLLING_*` 卻跳過 NaN：欄位 `["10","abc","",nil,NaN,5]` → `SUM` NaN、`AVG` NaN、`MAX` 10、`MEDIAN` 5、`CUMSUM` `[10 nil nil 10 nil 15]`。文件只說「忽略 nil」 | internal/ccl/stdlib.go:147-176 vs 188-226；stdlib_aggregates.go:11-19；stdlib_sequences.go:182, 239；Docs/CCL.md:684 | 統一策略（建議跳過 NaN）並寫進文件 |
+| CCL-9 | Med | 文件說 `"hello" > 5` 與非數字字串比大小會報錯；實際靜默回 `false`，且字串之間沒有字典序：`'abc' < 'abd'` 與 `'abc' > 'abd'` 都是 false；`'10' > '9'` 因數字轉換為 true | internal/ccl/ccl_evaluator.go:659-662；Docs/CCL.md:295-301, 374 | 兩邊皆字串時字典序；其他型別混比回錯；修文件 |
+| CCL-10 | Med | 文件說 `1 && 0`、`"yes" && true` 會報錯；實際 `1 && 0` → false、`'yes' && true` → true（`toBool` 接受數字與 true/yes/1/false/no/0/空字串），`'abc' && true` 才報錯 | internal/ccl/ccl_evaluator.go:564-581；stdlib.go:390-421；Docs/CCL.md:364-367, 378 | 改嚴格布林或修正文件寫出強制轉換表 |
+| CCL-11 | Med | `nil & 'x'` → `"<nil>x"`、`CONCAT(nil,'x')` → `"<nil>x"`，但 `UPPER(nil) & 'x'` → `"x"`。Go 的 `%v` 字面漏到資料裡 | internal/ccl/ccl_evaluator.go:523-562；stdlib.go:107；stdlib_string.go:12-20 | `&` 與 `CONCAT` 改用 `toString`；文件同步 nil→空字串 |
+| CCL-12 | Med | `&&`、`\|\|`、`CASE` 都先算完所有引數，只有 `IF`／`AND()`／`OR()` 短路：B 含 0 時 `B != 0 && A / B > 1` → `division by zero`，`CASE(B != 0, A / B, nil)` 同樣報錯 | internal/ccl/ccl_evaluator.go:387-395, 368-378；stdlib.go:80-98 | `cclBinaryOpNode` 對 `&&`／`\|\|` 短路；`CASE` 比照 `IF`；文件寫明 |
+| CCL-13 | Med | 函數引數之間漏逗號、多逗號都被接受：`SUM(A B)` → 66、`IF(A > 15 1 0)` 正常、`IF(A>15,1,0,)` 正常；`SUM(A,,B)` 才報錯 | internal/ccl/ccl_parser.go:270-279 | 引數迴圈要求逗號分隔 |
+| CCL-14 | Med | `&` 與 `+`／`-` 同優先級（Excel 的 `&` 低於算術）：`'a' & 1 + 2` → `invalid operands for +: a1, 2`。文件沒有優先級表 | internal/ccl/ccl_parser.go:373-377；Docs/CCL.md:189-274 | `&` 降到比較之上、加減之下；文件列優先級表 |
+| CCL-15 | Med | E-2 補充：`ExecuteCCL("NEW('x') = A + 1; NEW('y') = A / 0; NEW('z') = A")` 後表有 `x` 沒有 `y`、`z`，`Err()` 只有 `division by zero` 不說第幾條；每條語句後都整表 copy 一次 snapshot | datatable_ccl.go:179-197 | 先全部 Bind 再執行；錯誤帶語句序號與原文（併入 E-2） |
+| CCL-16 | Med | 錯誤回報：(1) 編譯錯與執行錯共用前綴 `Failed to apply CCL on DataTable after …` 無法區分；(2) 執行期錯誤沒有列號；(3) parser 的 `position N` 是 token 序號、tokenizer 的是位元組偏移，同名不同義；(4) 訊息洩漏內部結構（`unexpected token: {5 )}`、`invalid range operands: &{: 0x1d48…}`）；(5) 全是 `fmt.Errorf` 純字串，沒有可 `errors.As` 的型別 | datatable_ccl.go:30, 83, 124；internal/ccl/ccl_parser.go:28, 44, 352；ccl_tokenizer.go:206；ccl_evaluator.go:599, 1022 | 定義 `CompileError{Pos,Token,Expr}` 與 `EvalError{Row,Expr,Cause}`；token 加 byte offset |
+| CCL-18 | Med | 聚合函數放在逐列運算式裡會每列重算整欄並 copy 整欄：20k 列 `A / 1` 1.9ms、`A / SUM(A)` 3.3s、文件 776 行的 z-score `(A - AVG(A)) / STDEV(A)` 10.0s；100k 列估計 4 分鐘以上 | internal/ccl/ccl_evaluator.go:356-365, 758-797；ccl.go:112-122；Docs/CCL.md:776 | 不含 `#` 的聚合子樹在迴圈外先算一次（常數摺疊）；`GetColData` 不要每次 copy |
+| CCL-19 | Med | `%` 運算子已實作（`10 % 3` → 1、`A % 0` → `modulo by zero`），文件運算子清單沒有它 | internal/ccl/ccl_evaluator.go:602-608；Docs/CCL.md:191-200 | 補文件 |
+| CCL-20 | Med | 日期加小數天數先乘 24 再轉 `time.Duration` 才乘 `Hour`，小於 1 小時的部分被截掉：`A + 0.001` 完全沒變，`A + 0.5` 才有效 | internal/ccl/ccl_evaluator.go:502, 504, 514 | `time.Duration(rf * 24 * float64(time.Hour))` |
+| CCL-21 | Med | 所有算術都經 float64：`int64(9007199254740993) + 0` → `9.007199254740992e+15`；整數欄任何運算後整欄變 float64（`A * 1`）。文件未提 | internal/ccl/stdlib.go:360-386；ccl_evaluator.go:584-626 | 至少文件寫明；長期保留整數路徑（與 D-16、IN-3 同根） |
+| CCL-22 | Med | `DAY()` 名稱撞 Excel 的 DAY（取日）但語意是「時長轉天數」：`DAY('2024-01-02T06:00:00Z')` → 0.25、`DAY(A)` 數字欄 → 0.000116（當秒）。日期字串走這條分支的行為文件沒寫 | internal/ccl/stdlib.go:229-255；Docs/CCL.md:696-701 | 日期字串進 `DAY/HOUR/MINUTE/SECOND` 時報錯並提示 `DAYOFMONTH`；文件加對照表 |
+| CCL-23 | Med | 內部型別漏到資料裡：`AddColUsingCCL("r", "A:B")` 每個 cell 是 `ccl.ColumnRange{0 1}`；`engine/ccl` 沒匯出 `ColumnRange`／`RowRange`，使用者無法型別斷言 | internal/ccl/ccl_evaluator.go:927-936；ccl.go:268-277；engine/ccl/ccl.go:5-11 | 頂層結果是 Range 型別時回錯 |
+| CCL-24 | Med | `AND()`／`OR()` 零或一個引數被接受（`AND()` → true、`OR()` → false）；`AND('abc', true)` 靜默回 false，但 `'abc' && true` 報錯。evaluator 特判路徑繞過 `stdlib.go` 註冊函數的引數檢查，那些檢查是死碼 | internal/ccl/ccl_evaluator.go:285-311 vs stdlib.go:37-78 | 特判路徑補同樣檢查，或刪死碼 |
+| CCL-25 | Med | 小數索引／視窗靜默截斷：`A.(1.7)` → 第 1 列、`ROLLING_MEAN(A, 2.9)` → 視窗 2；`A.(POW(-8,1/3))`（NaN）→ 第 0 列（arm64 `int(NaN)=0`，amd64 會是 MinInt 而報錯，跨平台結果不同） | internal/ccl/ccl_evaluator.go:820-821, 984-985；stdlib_sequences.go:43 | 要求 `f == math.Trunc(f)` 且非 NaN／Inf |
+| CCL-26 | Med | 註冊函數內存取「另一張表」走 trust-zone 內聯路徑不上鎖：`-race` 實測 `A + OTHERSUM()` 與另一 goroutine 對 other 表 `AppendCols` 併發 → DATA RACE（datatable.go:335）。文件沒警告 | internal/core/atomic.go:186-196；internal/ccl/ccl_functions.go:78 | 文件明列自訂函數不可碰其他表，需用 `AtomicDoAll`（IN-1 相關） |
+| CCL-27 | Med | 字串字面值沒有跳脫語法：`'it\'s'` → `unclosed string`；雙引號可用但文件 168 行只寫單引號。同時含兩種引號的字串寫不出來 | internal/ccl/ccl_tokenizer.go:106-117；Docs/CCL.md:168-173 | 支援 `\'`、`\"`、`\\`（`CompileMultiline` 切割同步） |
+| CCL-28 | Med | 聚合函數對「值不夠」處理不一致：`STDEV(A.(0:0))` 整欄報錯，`MEDIAN(A.(1:1))` 靜默整欄 nil，`MAX` 無值回 nil | internal/ccl/stdlib_aggregates.go:25-36, 63-103；stdlib.go:188-226 | 統一並寫文件 |
+| CCL-29 | Med | EN-1 補充：`engine/ccl` 匯出 `Func`／`AggFunc` 與 `RegisterFunction`／`RegisterAggregateFunction`，但沒有 `SeqFunc`／`RegisterSequenceFunction`；`ResetEvalDepth`／`ResetFuncCallDepth` 是空函數；`EvaluationResult`、`MapContext`（含 CCL-4）以型別別名直接暴露 | engine/ccl/ccl.go:5-11, 88-97；internal/ccl/ccl_functions.go:31-34 | 補 `RegisterSequenceFunction`；no-op 標 Deprecated（併入 EN-1） |
+| CCL-30 | Low | `-2^2` → 4、`-A^2` → 100（一元負號綁得比 `^` 緊，與 Excel 同但與數學慣例不同）；`2^3^2` → 64（左結合）。文件未提 | internal/ccl/ccl_parser.go:349-364, 205 | 文件寫明 |
+| CCL-31 | Low | 數字字面值溢位靜默成 `+Inf`（`ParseFloat` 錯誤被 `_` 丟掉）；`1e5` 字面值不支援（tokenize 成 `1` 與識別字 `e5`），但 `VALUE('1e3')` 可以 | internal/ccl/ccl_parser.go:337；ccl_tokenizer.go:45-78 | 檢查 `ParseFloat` 錯誤；決定是否支援科學記號 |
+| CCL-32 | Low | `TOSTR(1.5, '%d')` → `"%!d(float64=1.5)"`、`TOSTR(1,'%')` → `"%!(NOVERB)…"` 靜默寫進資料 | internal/ccl/stdlib_typeconv.go:52-56 | 格式化後檢查 `%!` 前綴回錯，或限制動詞 |
+| CCL-33 | Low | `DATEADD('2024-01-31', 1, 'month')` → `2024-03-02`（Go `AddDate` 正規化，Excel `EDATE` 是 2/29）；`DATEADD(d, 10^300, 'year')` 溢位繞回 2022 年 | internal/ccl/stdlib_datetime.go:128-138 | 文件寫明或月底夾住；限制 n 範圍 |
+| CCL-34 | Low | 函數名與 Excel 欄位索引大小寫不分（`sum(a)` 可用），`['name']` 區分大小寫；文件只提後者 | internal/ccl/ccl_functions.go:40；internal/utils/utils.go:73-76；Docs/CCL.md:436 | 文件寫明 |
+| CCL-35 | Low | 字串函數對數字直接 `fmt.Sprint`：`LEN(A)`（int 10）→ 2、`LEN(123.0)` → 3 | internal/ccl/stdlib_string.go:12-20 | 文件寫明 |
+| CCL-36 | Low | 非 ASCII 識別字錯誤訊息是位元組層級：`中文 + 1` → `unexpected character '¸' at position 1` | internal/ccl/ccl_tokenizer.go:14-30, 202-207 | tokenizer 改以 rune 走訪 |
+| CCL-37 | Low | `AVG` 沒有自己的文件章節；文件有 `E` 常數與 `NULL` 關鍵字但實作沒有（實際是 CCL-1 的欄位索引） | Docs/CCL.md:228, 604, 713-786, 944 | 補章節；移除或實作 `E`／`NULL` |
+| CCL-38 | Low | 效能：字串運算元每次 `applyOperator` 先跑 4 次 `time.Parse` 探測日期（100k 列 `A + 1` 38ms vs 數字欄 4.7ms）；`REGEX_MATCH` 每列重新 `regexp.Compile`（159ms vs `CONTAINS` 16ms）；`ROLLING_*` 是 O(n·w)（100k 列視窗 5000 要 3.5s） | internal/ccl/ccl_evaluator.go:457-470；stdlib_string.go:205；stdlib_sequences.go:230-251 | 日期探測先看首字元；regex LRU 快取；rolling 改累積和 |
+| CCL-39 | Low | `LAG(@, 1)` 把整表攤平後位移，每個 cell 得到 `[<nil> 10 20 30 1 2]`；`@.@` 報 `invalid row index type: []interface {}` | internal/ccl/ccl_evaluator.go:698-700 | 序列函數拒絕 `@` |
+| CCL-17 | Med | CLI `ccl`／`addcolccl` 呼叫後不檢查 `table.Err()`，一律印 `ccl executed`／`column added by ccl`，失敗的運算式在 REPL 看起來像成功；`filter.go:32` 同 | cli/commands/ccl.go:21-23, 34-36；cli/commands/filter.go:32 | 呼叫後檢查 `Err()` 回錯 |
+
+### internal 套件與根層工具（第二輪，覆蓋層測試實測）
+
+| 編號 | 嚴重度 | 發現 | 位置 | 建議 |
+| --- | --- | --- | --- | --- |
+| IN-1 | High | `AtomicDoAll` 在 `AtomicDo` 內巢狀呼叫會 AB-BA 死鎖：`AtomicDoN` 跳過「本 goroutine 已持有」的 actor 後只鎖剩下的，G1 `a.AtomicDo{ AtomicDoAll(f,a,b) }`、G2 `b.AtomicDo{ AtomicDoAll(f,a,b) }` → 永久卡住（覆蓋層測試 2 秒 timeout）。文件宣稱 deadlock-free | internal/core/atomic.go:241；atomic.go:93-108（文件） | 已持有任一 actor 時改走 trust-zone inline 路徑並觸發 `TrustZoneFallbackHook`；或文件明寫不得巢狀並在 debug 偵測 |
+| IN-2 | Med | `Close()` 期間有其他 goroutine 正在等鎖時，等待者的 f 被靜默跳過：G1 持有 `dl` 並在 f 內 `dl.Close()`，G2 同時 `dl.Append(2)` → `Len()==1` 無錯誤。鎖前 closed → inline 執行；鎖後 closed → `return` 不執行 | internal/core/atomic.go:205, 284 | 鎖後檢查改為與鎖前一致（closed 就 inline 執行） |
+| IN-3 | Med | `CompareAny` 把所有整數轉 float64 比較，超過 2^53 的 int64 視為相等，排序錯：`NewDataList(int64(2^53+1), int64(2^53), int64(2^53+2)).Sort()` → `[2^53+1, 2^53, 2^53+2]`；`Rank` 同根因（`[1.5 1.5]`），`SortBy`、`Pivot`、`Describe` min/max 同受影響 | internal/algorithms/sort.go:58 | 兩邊都是整數時走 int64／uint64 精確比較 |
+| IN-4 | Med | `HermiteInterpolation` 不是 Hermite 插值：基底用一次 Lagrange 的 `l_i(x)` 而非 `l_i(x)^2`，導數項缺 `1-2(x-x_i)l_i'(x_i)` 因子。重現 data=[0,0]、derivs=[1,0]：`p(0.5)=0.25`（正解 0.125），`p'(1)≈-1`（正解 0）。現有測試只驗「不是 NaN」 | internal/algorithms/interpolation.go:110-126 | 改標準 Hermite 基底；補正確導數測試 |
+| IN-5 | Med | `KMeans` 在 `NStart=1` 且資料有重複列時，初始中心抽到相同列就直接回「empty cluster」錯誤：20 列 `[0,0]` + 1 列 `[10,10]`、centers=2、seed 1..50 → 44/50 失敗。R 的 `kmeans` 會改從 unique rows 重抽 | stats/internal/clustering/cluster.go:116-121 | 對齊 R：重複中心時從 `uniqueRows` 重抽（保留 RNG 消耗順序，需更新 fixture） |
+| IN-6 | Med | `TryParseTime` 不支援最常見的無時區格式 `2006-01-02 15:04:05`、`2006-01-02T15:04:05` 與 `/` 分隔：`TryParseTime("2024-01-02 03:04:05")` → false。影響 CCL 日期函式（internal/ccl/stdlib.go:241-323）與 `datafetch/yfinance.go:209` | internal/utils/utils.go:310-316 | 加無時區格式並明確定義時區 |
+| IN-7 | Med | 錯誤緩衝區無上限：`Ring` 滿了會擴容而非覆寫，`pushError` 也不裁剪，長時間執行且沒人 `PopError` 的程式記憶體持續成長。5000 次 `LogWarning` → `GetErrorCount()==5000`，初始容量 1536 顯然是想當上限 | error_buffer.go:63, 76；internal/core/ring.go:64-72 | `pushError` 在 `Len()>=cap` 時先 `PopFront`；文件註明上限與丟棄策略（K-4 相關） |
+| IN-8 | Med | `DataList.ShowRange(2, -1)` 文件說「顯示到最後」，實際負數 end 是 `totalItems+end`，最後一項被排除（5 項資料只顯示 index 2..3）；`ShowTypesRange` 同 | show.go:736（文件）, 793, 1076 | 改文件（`-1` 排除最後一項，與 Python slice 一致）並提供「到最後」的正式寫法 |
+| IN-9 | Med | `DataTable.ShowTypes` 超過 26 欄時欄位順序錯：用 `sort.Strings` 得到 `A, AA, AB, B, C…`，`Show` 則正確用 `ParseColIndex` 排序（28 欄表 `ShowTypesRangeTo` 表頭 `A AA AB B C …`） | show.go:484 | 抽出 `ShowRangeTo` 的欄序比較器共用 |
+| IN-10 | Low | `ConvertToDateString` 對 16 位（微秒）時間戳當秒處理：`int64(1700000000000000)` → `"53872825-06-17 22:13:20"` | internal/utils/utils.go:292-296 | `>= 1e15 && < 1e18` 視為微秒 |
+| IN-11 | Low | `TruncateString(s, n)` 在 `n<0` 時 panic（`rs[:maxLength]`），目前呼叫端不可達 | internal/utils/utils.go:125 | `maxLength<=0` 回 `""` |
+| IN-12 | Low | `CalcColIndex(MaxInt64)` 產生的字串 `ParseColIndex` 解不回來（內部先算 `n+1` 溢位被拒）；其他範圍往返正確 | internal/utils/utils.go:82-87 | 溢位檢查允許最後一步 |
+| IN-13 | Low | `FormatValue(float64(1<<63))` 印出 `9223372036854775807`（arm64 `int(v)` 飽和轉換，amd64 行為不同）；`9999.99999` 印 `10000` | internal/utils/utils.go:161 | 整數判斷限制在 `|v| < 2^53` |
+| IN-14 | Low | `ConvertDateFormat` 逐序字串取代：`"MMM"`→`"011"`、`"Mon DD"`→`"1on 02"`；`hh` 對到 24 小時制、`A` 不支援 | internal/utils/utils.go:387-394 | 改 tokenizer |
+| IN-15 | Low | `AtomicDoAll(f, (*DataList)(nil))` 直接 nil deref panic；`nil any` 與 nil actor 會被跳過，型別化 nil 不會 | atomic.go:118 | `case *DataList: if v == nil { continue }`（K-8 相關） |
+| IN-16 | Low | `BiIndex.Set(id, name)` 當 name 已屬另一 id 時，舊 id 被刪但不進 freelist，成為永久空洞（`Len` 少 1）。公開 API 有 `safeRowName` 擋住，內部直接呼叫者會踩到 | internal/core/biindex.go:63 | `oldID` push 到 `freed`，或回 `false` 拒絕搶名 |
+| IN-17 | Low | `PowRat(base, -2)` 回 1（負指數被 `range` 靜默忽略）；`SqrtRat(-1)` panic，文件都沒說 | utils.go:90, 105 | 負指數取倒數或回錯；`SqrtRat` 負數回 nil 並註明（K-15 相關） |
+| IN-18 | Low | `IsNumeric(MyInt(3))` 為 true（反射），但 `ToFloat64Safe(MyInt(3))` 為 false，同一值一邊說是數字一邊轉不了 | utils.go:221-238；internal/utils/utils.go:20-49 | 兩邊統一 |
+| IN-19 | Low | `ipc.WriteMessage` 不檢查 `maxMessageSize` 與 `len(b) > 2^32`（長度前綴截斷讓對端解框錯位）：寫 256MiB+1 成功、`ReadMessage` 回「exceeds maximum」 | py/internal/ipc/framing.go:34 | 寫入前檢查回錯 |
+| IN-20 | Low | `DetectEncoding`：`FF FE 00 00`（UTF-32LE BOM）判成 utf-16le；小樣本 Big5（4 bytes 中文）判成 iso-8859-1 讀出亂碼；小樣本 Latin-1 chardet 回「Charset not detected」導致 `ReadCSV_File` 整個失敗而非退回 utf-8 | utils.go:301, 322-330 | UTF-32 BOM 先判；chardet 失敗退回 utf-8 並記警告（SEC-5 相關） |
+| IN-21 | Low | `NearestNeighborInterpolation(x=NaN)` 靜默回 `data[0]`；`Linear`／`Quadratic` 對 NaN 回 `ErrOutOfBounds`，不一致 | internal/algorithms/interpolation.go:74 | 開頭 `IsNaN` 回 `ErrOutOfBounds` |
+| IN-22 | Low | `Show(5)` 對 1M×3 表花 475ms：`prepareTableLayout` 對每個 cell 跑 `FormatValue` 計寬度，不看顯示範圍 | show.go:1241 | 只對要顯示的列計寬（E-8 相關） |
+
+### 安全與強韌性（第二輪，跨套件；含 -race 全套件結果）
+
+| 編號 | 嚴重度 | 發現 | 位置 | 建議 |
+| --- | --- | --- | --- | --- |
+| SEC-1 | High | 惡意 xlsx 的工作表名稱可穿越目錄並清空任意檔案：`GetSheetList` 回傳原始名稱不驗證，`filepath.Join(outputDir, sheet+".csv")` 後直接 `os.Create`。實測 sheet 名 `../important` 讓 `outDir/../important.csv` 被截成 0 bytes（excelize 的 `GetRows` 之後才拒絕該名稱，但檔案已 truncate）；`EachExcelToCsv` 同路徑 | csvxl/convert.go:176, 224；csvxl/convertDir.go:66 | sheet 名稱做 `filepath.Base` 或拒絕含 `/ \ ..`；先 `GetRows` 成功再開檔；寫暫存檔再 rename |
+| SEC-2 | High | `ToCSV` 吞掉最後一次 Flush 的錯誤，寫入失敗仍回傳 nil：`defer writer.Flush()` 沒接 `writer.Error()`，小表（<4KB）全留在 bufio。實測目標為讀端已關閉的 FIFO，3 列小表 `ToCSV` 回 nil 但資料沒寫出；`ToJSON` 同樣忽略 Close 錯誤 | datatable_csv.go:30；datatable_json.go:66-80 | 明確 `Flush()` + `writer.Error()`，檢查 `file.Close()` 回傳值 |
+| SEC-3 | Med | CSV 公式注入：儲存格以 `= + - @` 開頭時原樣寫出。實測 `ToCSV` 輸出逐字為 `=cmd\|' /C calc'!A0`；`saveSheetAsCsv` 同。XLSX 端用 `SetCellValue` 寫字串，安全 | datatable_csv.go:77；csvxl/convert.go:245 | 加選項（預設開）對 `= + - @ \t \r` 開頭字串前置 `'`；Docs 註明 |
+| SEC-4 | Med | sqlite Append 路徑的識別字未引號：其他 SQL 都走 `quoteSQLIdent`，唯獨 `PRAGMA table_info(%s)` 直接串字串。實測表名 `my table` 用 Fail 建表成功、`IfExists: Append` → syntax error；注入字串靠驅動行為擋住而非程式碼 | datatable_to_sql.go:353 | 改 `quoteSQLIdent` 或改查 `pragma_table_info(?)` 綁參數 |
+| SEC-5 | Med | 編碼轉換失敗靜默產生亂碼：(a) `DetectEncoding` 回 `iso-8859-1` 但讀取端 switch 無此分支，落到 `default` 原始位元組直接進表，實測 windows-1252 檔讀出無效 UTF-8 且無警告；(b) 指定 `big5` 時無效位元組換成 U+FFFD 無警告；(c) `trimIncompleteRune` 切掉尾端 1–3 位元組再判斷，短檔尾端非 UTF-8 位元組會被誤判成 utf-8（實測 `name\ncaf\xe9\n` → `utf-8`） | internal/csv/read_csv.go:55；utils.go:311, 328-335；csvxl/convert.go:281-291 | 偵測結果無對應解碼器時回錯誤；補 Windows1252／ISO8859_1 分支；解碼後含 U+FFFD 至少 LogWarning；`trimIncompleteRune` 只在尾端確實是未完的多位元組前導時才裁 |
+| SEC-6 | Med | `gplot.CreateHistogram` 零值設定即 panic：`HistogramConfig{}` 的 `Bins` 為 0，`plotter.NewHist` 回錯後直接 `panic(err)`。實測 `CreateHistogram(HistogramConfig{}, NewDataList(1.0, 2.0))` → PANIC；`line.go:127`、`step.go:101` 同樣 `panic(err)` | gplot/histogram.go:45-46；gplot/line.go:127；gplot/step.go:101 | `Bins <= 0` 給預設值或 LogWarning 回 nil；移除三處 `panic(err)` |
+| SEC-7 | Med | `ToCSV`／`ToJSON` 非原子寫入，失敗留下半截檔：實測 512 KiB RAM disk 寫 1 MB 表，`ToCSV` 回 ENOSPC 但留下 376,832 bytes 殘檔；`ToJSON` 留 0 byte 檔。parquet、cli/env、geocode cache 已是 tmp+rename | datatable_csv.go:16；datatable_json.go:66 | 比照 parquet：寫 `*.tmp` 成功後 `os.Rename` |
+| SEC-8 | Med | 函式庫路徑內 `os.Exit`（K-1 的新呼叫點清單）：GLPK 下載／解壓／編譯失敗 `lp/init.go:151,156,162,195,203,211,219`、Windows 初始化 `:127`、`SolveModel` 建暫存檔失敗 `lp/lp.go:143,150`、py IPC socket 監聽失敗 `py/pyresult.go:88` | logger.go:20-24 及上述 | 改回傳 error；併入 K-1 |
+| SEC-9 | Med | LP-1 新細節：暫存路徑可預測且 `os.Create` 跟隨 symlink：下載到固定 `os.TempDir()/glpk.tar.gz`、解壓到 `os.TempDir()/glpk` 後在該目錄執行 `./configure && make`，共用主機上他人可預佔或放 symlink；無 checksum／簽章；Windows 走 SourceForge `latest/download` 未釘版且跟隨任意轉址；`http.Get` 無 timeout | lp/init.go:145-147, 199, 265-268, 320, 330 | `os.MkdirTemp`／`CreateTemp`；釘版本比對 SHA-256；`http.Client{Timeout}` + `CheckRedirect` 白名單；安裝改成明確 `lp.Install()` |
+| SEC-10 | Med | py 環境安裝鏈未釘版本、無驗證：`curl -LsSf https://astral.sh/uv/install.sh \| sh` 與 PowerShell `irm \| iex` 直接執行遠端腳本；`pythonVersion = "3.12.*"`；13 個 Python 套件 `uv pip install <name>` 抓最新版，每台機器版本不同 | py/init.go:152-167；py/const.go:11, 19-33 | 釘 uv 版本並比對 hash；套件 `name==version` 或 `uv sync` + `uv.lock` |
+| SEC-11 | Med | 資料庫密碼明文落地：readline `HistoryFile` 把 `db connect x postgres://user:PASS@…` 整行寫進 `history.txt`（0644）；`env export` 把整份 history 放進匯出檔；`maskDSNPassword` 只處理 `://` 與 `user:pass@`，libpq KV 形式 `password=secret` 不遮罩 | cli/repl/repl.go:51；cli/env/state.go:161-176；cli/env/manager.go:355-371；cli/commands/db_conn.go:118-150 | 寫 history 前先 `maskDSNPassword`；補 KV 形式遮罩；history.txt 改 0600；Docs 建議用環境變數／`~/.pgpass` |
+| SEC-12 | Low | SQL 參數值進入日誌：gorm 預設 logger 在錯誤與慢查詢時把綁定參數內嵌印出，實測 `ReadSQL(Query: "… token = ?", Params: {"SECRET"})` 失敗時 stderr 出現完整值；`LogDebug` 印含 WhereClause 字面值的查詢 | datatable_from_sql.go:87, 140；cli/commands/db_conn.go:38-42 | CLI 開連線設 `logger.Silent` 或 `ParameterizedQueries: true` |
+| SEC-13 | Low | 線上 PNG 備援（已 opt-in）仍用無 timeout 的 `http.Client{}` 並 `io.ReadAll` 無上限；chromedp 失敗時可能無限等 | plot/save_chart.go:115, 127 | `Timeout: 60s`；`io.LimitReader` |
+| SEC-14 | Low | DF-1 細節：`GoogleMapsStores()` 執行期從個人 GitHub repo 拉 JSON，其中 `headers` 與三個 URL 直接套用到後續請求；`Search`／`getStoreName` 的 `io.ReadAll` 無上限 | datafetch/googleMapsCommentCrawler.go:70-71, 109-124, 337-354 | 併入 DF-1 |
+| SEC-15 | Low | `os.MkdirAll(..., os.ModePerm)`（0777）用於 py 環境目錄與 GLPK 解壓目錄 | py/init.go:85, 113；py/py.go:31；lp/init.go:383, 415, 420 | 改 0o755 |
+| SEC-16 | Low | Excel 讀取沒設 `UnzipSizeLimit`（excelize 預設 16 GB），zip bomb 幾乎無保護；CSV 一律 `ReadAll` 進記憶體，無串流入口 | read.go:385；csvxl/convert.go:94, 136；csvxl/convertDir.go:50 | `excelize.Options{UnzipSizeLimit}` 可設定；CSV 補串流入口（與 K-11 同族） |
+| SEC-17 | Low | py IPC 伺服器：`Accept` 永久失敗時 `continue` 忙迴圈；socket 檔留在 `os.TempDir()` 不清；連線無讀取 deadline | py/pyresult.go:81, 96-103, 110-118 | `net.ErrClosed` 時 return；`SetDeadline`；結束時 `os.Remove` |
+| SEC-18 | Low | 每次呼叫重新 `regexp.MustCompile` | lp/lp.go:252-253, 271；lpgen/lingo.go:33-37, 130-134；datafetch/googleMapsCommentCrawler.go:131, 361, 369 | 提到套件層 `var` |
+| SEC-19 | Low | `untar` 在 `io.Copy` 失敗時 `outFile` 未關閉；tar/zip 解壓無大小上限；`TypeReg` 沒先 `MkdirAll(filepath.Dir)` | lp/init.go:387-392, 424-432 | `defer Close`；`io.CopyN` 上限；補 MkdirAll |
+| SEC-20 | Low | `PipInstall(dep)` 把使用者字串當單一 argv 交給 `uv pip install`，`--requirement=/path` 可安裝任意需求檔 | py/py.go:305, 323 | 拒絕 `-` 開頭或加 `--` |
+| SEC-21 | Med（未實測，依 MySQL 文件推論） | MySQL 上 `IfExists: Replace` 的 `DROP TABLE` 在 `db.Transaction` 內，但 MySQL DDL 隱式 commit，後續 INSERT 失敗（例如 `BatchSize × 欄數 > 65535`）時舊表已無法還原 | datatable_to_sql.go:213 | Replace 改「建新表 → 寫入 → RENAME 交換 → DROP 舊表」 |
+
+### 測試品質（第二輪，覆蓋率與 CI 實際執行面）
+
+| 編號 | 嚴重度 | 發現 | 位置 | 建議 |
+| --- | --- | --- | --- | --- |
+| TS-1 | High | `DataList.ClearNaNs`、`ClearNumbers`、`ReplaceOutliers`、`MovingAverage`、`WeightedMovingAverage`、`MovingStdev` 函式層級覆蓋率 0%，對應測試函式本體只有 `// TODO` 卻回報 PASS，造成已驗證假象 | datalist_test.go:318-347；`go tool cover -func` datalist.go:561, 570, 750, 783, 904 | 補真實斷言（含 NaN／nil 邊界），或刪除空殼測試 |
+| TS-2 | High | `stats.FactorAnalysis` 邊界測試在 p>n 與高共線性情境不論成功或失敗都只 `fmt.Printf`，永遠不會失敗 | stats/verify_more_test.go:307-328（TestEdgeCaseSmallSample）、460-482（TestEdgeCaseHighCollinearity） | 明確斷言預期行為 |
+| TS-3 | High | `ml.TestExactTreeMatchesScikitLearnPredictions` 設計為 Strict 模式強制執行，但 `reference-verification.yml` 只用 `-run "AgainstScikitLearn"` 篩選，函式名不含此字串，在任何 workflow 都不會執行；`test.yml` 也一律 skip | ml/exact_split_test.go:87-91；.github/workflows/reference-verification.yml | `-run` 改 `ScikitLearn` |
+| TS-4 | High | `quant/portfolio_cvxpy_test.go` 的 `TestPortfolioAgreesWithCVXPY` 受 `INSYRA_RUN_CVXPY` 或 Strict 保護，但沒有 workflow 設定它、`reference-verification.yml` 不跑 `./quant/`，且 pip 清單沒裝 cvxpy，打開也會失敗 | quant/portfolio_cvxpy_test.go:90-95；.github/workflows/reference-verification.yml | 新增 quant 步驟並安裝 cvxpy；否則在 ENG.md 記錄「從未在 CI 執行」 |
+| TS-5 | High | `nn` 所有需真實資料的測試（MNIST 收斂、真實模型 parity）與 `accel`／`nn` GPU 測試全靠環境變數守門（`INSYRA_NN_MNIST_DIR`、`INSYRA_NN_REAL_MODELS_DIR`、`INSYRA_NN_REAL_MODEL`、`INSYRA_ACCEL_GPU_TESTS`），沒有任何 workflow 設定，CI 全部 skip | nn/mnist_convergence_test.go:346-351；nn/fit_mnist_test.go:15-19；nn/real_model_parity_test.go:44；nn/device_matmul_test.go:16；accel/multi_device_test.go:154-167；accel/chunked_test.go:123-235；accel/knnbridge/bridge_test.go:49 | 建排程 workflow 在有 GPU／資料集的 runner 跑；短期在 delivery-status.md 標明僅手動執行 |
+| TS-7 | Med | `Docs/DataTable.md` 記載並附範例的 `MergeModeLeft`／`MergeModeRight`，全 repo 沒有任何測試呼叫（`datatable_merge_test.go` 只測 Inner／Outer） | Docs/DataTable.md:725-726, 761, 769；datatable_merge_test.go | 補 Left／Right 測試，覆蓋非配對列補 nil |
+| TS-8 | Med | Docs 記載 `Sort` 多欄排序穩定，但 `datatable_sort_test.go` 沒有 tie-break 穩定性斷言 | Docs/DataTable.md:4325, 4336；datatable_sort_test.go | 補穩定性測試 |
+| TS-9 | Med | `internal/core`（BiIndex／Ring／Actor）套件覆蓋率 20.5%，`BiIndex.Get/DeleteByName/Has/Len/IDs/Clone/Clear`、`Ring` 全部方法、`AtomicDo/AtomicDoN/Close` 沒有直接單元測試釘住邊界（空 Ring 取值、BiIndex 重複 id／name） | internal/core/*.go | 補直接單元測試 |
+| TS-10 | Med | `lp` 套件覆蓋率 2.2%，`SolveFromFile`、`SolveModel`、`parseGLPKOutputFromFile`、`extractWarnings` 全 0%；純字串解析函式不需 GLPK 也能測 | lp/lp.go:21, 83, 195 | 為解析函式補單元測試；文件註記需 GLPK |
+| TS-11 | Med | `gplot` 覆蓋率 14.9%，所有 `CreateXxxChart`／`SaveChart` 0%，沒有任何 `gplot/*_test.go` | gplot/ | 補「合法輸入無 panic 產檔」煙霧測試（`t.TempDir()`） |
+| TS-12 | Med | `parquet/ccl.go` 整個 CCL 介接層（`FilterWithCCL`、`ApplyCCL`、`GetCol`、`GetCellByName` 等 20+ 函式）覆蓋率 0% | parquet/ccl.go | 補 parquet 上跑 CCL 的整合測試 |
+| TS-13 | Med | 完全沒有測試檔的套件：`cli`（根）、`cli/style`、`cmd/insyra`、`engine/algorithms`、`engine/atomic`、`engine/biindex`、`engine/ccl`、`engine/ring`、`internal/csv`、`lpgen`、`plot`、`plot/internal`、`py`、`stats/internal/parutil`、`tools/gendocs`、`datafetch/internal/limiter`。`plot`（對外 API）與 `cli` 根套件最值得優先 | 上列套件 | 先為 `plot`、`cli`、`internal/csv`、`lpgen` 補測試 |
+| TS-14 | Med | 全域 `Config` 在多個測試中被改成 `LogLevelFatal` 後沒有還原（`datalist_numeric_test.go:12`、`datatable_batch2_test.go:17`、`stats/nil_input_test.go:17`），而 `config_acceleration_log_test.go:18-29`、`accel/logging_test.go:21-30` 有正確的 `t.Cleanup` 還原寫法 | 上列 | 統一「讀舊值 + `t.Cleanup` 還原」 |
+| TS-15 | Low | `TestDataListGetCreationTimestamp` 用真實 `time.Sleep(1s)` 跨秒界，每次固定拖慢 1 秒（與 D-12 秒級時間戳同根） | datalist_test.go:678-687 | 注入時鐘 |
+| TS-17 | Low | `TestCrossLangFactorAnalysis*` 被 `reference-verification.yml` 明確 `-skip`，且 `INSYRA_STRICT_FACTOR_R_PARITY` 從未在任何 workflow 設定；已在 AGENTS.md 記錄為數學等價差異，僅供稽核完整性 | stats/factor_analysis_test.go:64 | 維持現狀，文件已有 |
+| TS-18 | Med | 覆蓋率低於 50% 的套件：`cli/repl` 39.5%、`datafetch` 44.5%、`internal/algorithms` 34.8%、`internal/utils` 28.7%、`isr` 32.9%（README 推薦入口）、`ml/mltest` 39.8%、`stats/internal/fa` 22.2%、`accel/knnbridge` 21.1% | `go test -cover ./...` | 依使用頻率優先補 `isr`、`internal/utils`、`internal/algorithms` |
+| TS-16 | Low | `.gitignore` 列有 `line_plot.png`、`output.csv`、`bar_basic.html`、`bar_with_colors.png`、`output_pie_chart_datalist.html` 等舊產物規則，目前沒有任何程式碼會產出這些檔名 | .gitignore | 清理 |
+
+### 倉庫衛生、CI、文件同步（第二輪）
+
+| 編號 | 嚴重度 | 發現 | 位置 | 建議 |
+| --- | --- | --- | --- | --- |
+| RP-1 | High | repo 根目錄有 29MB 的編譯後 Mach-O test 執行檔 `insyra.test` 被 commit 進 git（867af87，2026-07-29 的文件 commit 意外帶進），且 `.gitignore` 沒有 `*.test` 規則 | 根目錄 `insyra.test`；`git ls-files`、`git log -- insyra.test` | `git rm insyra.test`，`.gitignore` 補 `*.test` |
+| RP-2 | High | `delivery-status.md` 嚴重過期：仍描述 `add-accel-execution-logging` 與 `add-nn-sequential-fit` 為進行中，兩者 2026-08-06 已歸檔；之後還有約 100 個 change 歸檔到 2026-09-06 都沒提到。AGENTS.md 要求每個里程碑後更新 | `delivery-status.md`（最後修改 2026-08-06）；`openspec/changes/archive/` 110 筆 | 補寫近一個月進度，反映目前無進行中 change |
+| RP-3 | Med | `gofmt -l .` 有 6 個非 vendored 檔案未格式化（`allpkgs/allpkgs.go`、`benchmark/datalist_bench_test.go`、`datatable_batch2_test.go`、`datatable_groupby.go`、`py/init.go`、`stats/internal/clustering/dispatch_coverage_test.go`），CI 抓不到：沒有 `gofmt -l` 步驟，`.golangci.yml`（v2）沒有 `formatters:` 區塊 | `.golangci.yml:3-8` | `.golangci.yml` 加 `formatters: enable: [gofmt]`，或 CI 加 gofmt 檢查（排除 `stats/internal/fa`） |
+| RP-4 | Med | `test.yml` 沒有 `-race`、沒有覆蓋率、沒有獨立 `go vet` 步驟；三個 OS 都只跑 `go test -v ./...`，跨語言驗證在三個 OS 上都靜默 skip（已由 `reference-verification.yml` 補強，屬已知） | `.github/workflows/test.yml:20-25` | ubuntu leg 加 `-race`；加 `go vet ./...` 步驟 |
+| RP-5 | Med | `deploy-docs.yml` 用 `persist-credentials: true` 但實際用的是 `peaceiris/actions-gh-pages` 自帶 token；其餘 6 個 workflow 完全沒有 `permissions:` block，用 repo 預設權限 | `.github/workflows/deploy-docs.yml:19`；其他 workflow | 拿掉 `persist-credentials: true`；每個 workflow 補 `permissions: contents: read` |
+| RP-6 | Low | Action 版本沒有統一釘版：`checkout@v4`／`@v5`、`setup-go@v5`／`@v6` 混用；`golangci-lint-action` 寫 `version: latest`，lint 結果不可重現 | `.github/workflows/golangci-lint.yml:20` 等 | 統一 major 版本；`version` 改明確版號 |
+| RP-7 | Low | `clustering-parity.yml`、`knn-parity.yml`、`reference-verification.yml` 各自重複貼一模一樣的 Python/R 安裝步驟 | 三檔 `:20-31` 等段 | 抽成 composite action |
+| RP-8 | Low | `.golangci.yml` 只啟用 5 個預設 linter，沒開 `gosec`、`unparam`、`bodyclose` 等；本專案有 SQL builder、chromedp 等外部輸入面 | `.golangci.yml` | 評估加開 `gosec`、`unparam` |
+| RP-9 | Low | `.gitignore` 含過期項目 `/.insyra_py_env`、`/.insyra_py25a`、`/insyra_py25b`，目前 `py/const.go:12` 用 `.insyra_env/py25c_…`（已被 `.insyra_env/` 涵蓋） | `.gitignore`；`py/const.go:12` | 清掉三行舊命名 |
+| RP-14 | Low | `skills/insyra/references/` 只有 3 份主題式檔案，`stats`、`plot`、`gplot`、`parquet`、`mkt`、`finance`、`lp`、`py`、`pd`、`parallel`、`accel` 沒有專屬深挖段落，覆蓋深度不一 | `skills/insyra/references/`；`skills/insyra/SKILL.md` | 為常用套件（`stats`、`plot`）補 reference 檔 |
+
+
+## Issue 對照（2026-09-06）
+
+所有未修正的發現都已開成 GitHub issue（標籤 `api-review` + `severity:*`），同根因的合併為一張。「補充留言」表示該編號的細節以留言附在既有 issue 上。
+
+| 編號 | Issue | 備註 |
+| --- | --- | --- |
+| K-1、I-1、PL-2 | [#205](https://github.com/HazelnutParadise/insyra/issues/205) |  |
+| K-3 | [#206](https://github.com/HazelnutParadise/insyra/issues/206) |  |
+| K-4 | [#207](https://github.com/HazelnutParadise/insyra/issues/207) |  |
+| K-7、QU-2 | [#208](https://github.com/HazelnutParadise/insyra/issues/208) |  |
+| K-8 | [#209](https://github.com/HazelnutParadise/insyra/issues/209) |  |
+| K-11、C-10、Q-8 | [#210](https://github.com/HazelnutParadise/insyra/issues/210) |  |
+| K-12 | [#211](https://github.com/HazelnutParadise/insyra/issues/211) |  |
+| K-13、C-12、I-4、DF-5 | [#212](https://github.com/HazelnutParadise/insyra/issues/212) |  |
+| K-14、D-8、E-6、E-7、PL-4、NN-3、C-2 | [#213](https://github.com/HazelnutParadise/insyra/issues/213) |  |
+| K-15 | [#214](https://github.com/HazelnutParadise/insyra/issues/214) |  |
+| K-17、C-9 | [#215](https://github.com/HazelnutParadise/insyra/issues/215) |  |
+| D-3 | [#216](https://github.com/HazelnutParadise/insyra/issues/216) |  |
+| D-5、D-6 | [#217](https://github.com/HazelnutParadise/insyra/issues/217) |  |
+| D-7 | [#218](https://github.com/HazelnutParadise/insyra/issues/218) |  |
+| D-10 | [#219](https://github.com/HazelnutParadise/insyra/issues/219) |  |
+| D-12 | [#220](https://github.com/HazelnutParadise/insyra/issues/220) |  |
+| D-13、QU-3 | [#221](https://github.com/HazelnutParadise/insyra/issues/221) |  |
+| D-14 | [#222](https://github.com/HazelnutParadise/insyra/issues/222) |  |
+| D-16 | [#223](https://github.com/HazelnutParadise/insyra/issues/223) |  |
+| D-18 | [#224](https://github.com/HazelnutParadise/insyra/issues/224) |  |
+| T-11、T-20、MK-3 | [#225](https://github.com/HazelnutParadise/insyra/issues/225) |  |
+| T-13 | [#226](https://github.com/HazelnutParadise/insyra/issues/226) |  |
+| T-14 | [#227](https://github.com/HazelnutParadise/insyra/issues/227) |  |
+| T-15 | [#228](https://github.com/HazelnutParadise/insyra/issues/228) |  |
+| T-16 | [#229](https://github.com/HazelnutParadise/insyra/issues/229) |  |
+| T-17 | [#230](https://github.com/HazelnutParadise/insyra/issues/230) |  |
+| T-21 | [#231](https://github.com/HazelnutParadise/insyra/issues/231) |  |
+| T-22 | [#232](https://github.com/HazelnutParadise/insyra/issues/232) |  |
+| T-23 | [#233](https://github.com/HazelnutParadise/insyra/issues/233) |  |
+| E-2 | [#234](https://github.com/HazelnutParadise/insyra/issues/234) |  |
+| E-3 | [#235](https://github.com/HazelnutParadise/insyra/issues/235) |  |
+| E-8 | [#236](https://github.com/HazelnutParadise/insyra/issues/236) |  |
+| I-2 | [#237](https://github.com/HazelnutParadise/insyra/issues/237) |  |
+| I-3 | [#238](https://github.com/HazelnutParadise/insyra/issues/238) |  |
+| I-5 | [#239](https://github.com/HazelnutParadise/insyra/issues/239) |  |
+| ST-4 | [#240](https://github.com/HazelnutParadise/insyra/issues/240) |  |
+| ST-5 | [#241](https://github.com/HazelnutParadise/insyra/issues/241) |  |
+| ST-6 | [#242](https://github.com/HazelnutParadise/insyra/issues/242) |  |
+| ST-7 | [#243](https://github.com/HazelnutParadise/insyra/issues/243) |  |
+| ST-8 | [#244](https://github.com/HazelnutParadise/insyra/issues/244) |  |
+| ST-9 | [#245](https://github.com/HazelnutParadise/insyra/issues/245) |  |
+| QU-1 | [#246](https://github.com/HazelnutParadise/insyra/issues/246) |  |
+| FI-1、FI-2 | [#247](https://github.com/HazelnutParadise/insyra/issues/247) |  |
+| FI-3 | [#248](https://github.com/HazelnutParadise/insyra/issues/248) |  |
+| DF-1 | [#249](https://github.com/HazelnutParadise/insyra/issues/249) |  |
+| DF-2 | [#250](https://github.com/HazelnutParadise/insyra/issues/250) |  |
+| DF-3 | [#251](https://github.com/HazelnutParadise/insyra/issues/251) |  |
+| DF-4 | [#252](https://github.com/HazelnutParadise/insyra/issues/252) |  |
+| PL-3 | [#253](https://github.com/HazelnutParadise/insyra/issues/253) |  |
+| PY-1 | [#254](https://github.com/HazelnutParadise/insyra/issues/254) |  |
+| PY-2 | [#255](https://github.com/HazelnutParadise/insyra/issues/255) |  |
+| PD-1 | [#256](https://github.com/HazelnutParadise/insyra/issues/256) |  |
+| LP-1 | [#257](https://github.com/HazelnutParadise/insyra/issues/257) |  |
+| LP-3 | [#258](https://github.com/HazelnutParadise/insyra/issues/258) |  |
+| EN-1 | [#259](https://github.com/HazelnutParadise/insyra/issues/259) |  |
+| EN-2 | [#260](https://github.com/HazelnutParadise/insyra/issues/260) |  |
+| CL-3 | [#261](https://github.com/HazelnutParadise/insyra/issues/261) |  |
+| AC-1 | [#262](https://github.com/HazelnutParadise/insyra/issues/262) |  |
+| ML-1 | [#263](https://github.com/HazelnutParadise/insyra/issues/263) |  |
+| ML-2 | [#264](https://github.com/HazelnutParadise/insyra/issues/264) |  |
+| NN-1 | [#265](https://github.com/HazelnutParadise/insyra/issues/265) |  |
+| NN-2 | [#266](https://github.com/HazelnutParadise/insyra/issues/266) |  |
+| C-1 | [#267](https://github.com/HazelnutParadise/insyra/issues/267) |  |
+| C-6 | [#268](https://github.com/HazelnutParadise/insyra/issues/268) |  |
+| C-8 | [#269](https://github.com/HazelnutParadise/insyra/issues/269) |  |
+| C-11 | [#270](https://github.com/HazelnutParadise/insyra/issues/270) |  |
+| P-1、P-2、P-5、P-4 | [#271](https://github.com/HazelnutParadise/insyra/issues/271) |  |
+| Q-2、Q-6 | [#272](https://github.com/HazelnutParadise/insyra/issues/272) |  |
+| Q-9、Q-7 | [#273](https://github.com/HazelnutParadise/insyra/issues/273) |  |
+| Q-10 | [#274](https://github.com/HazelnutParadise/insyra/issues/274) |  |
+| RP-1 | [#275](https://github.com/HazelnutParadise/insyra/issues/275) |  |
+| RP-2 | [#276](https://github.com/HazelnutParadise/insyra/issues/276) |  |
+| RP-3 | [#277](https://github.com/HazelnutParadise/insyra/issues/277) |  |
+| RP-4 | [#278](https://github.com/HazelnutParadise/insyra/issues/278) |  |
+| RP-5 | [#279](https://github.com/HazelnutParadise/insyra/issues/279) |  |
+| RP-6、RP-7、RP-8 | [#280](https://github.com/HazelnutParadise/insyra/issues/280) |  |
+| RP-9、TS-16 | [#281](https://github.com/HazelnutParadise/insyra/issues/281) |  |
+| RP-14 | [#282](https://github.com/HazelnutParadise/insyra/issues/282) |  |
+| SEC-1 | [#283](https://github.com/HazelnutParadise/insyra/issues/283) |  |
+| SEC-2、SEC-7 | [#284](https://github.com/HazelnutParadise/insyra/issues/284) |  |
+| SEC-3 | [#285](https://github.com/HazelnutParadise/insyra/issues/285) |  |
+| SEC-4 | [#286](https://github.com/HazelnutParadise/insyra/issues/286) |  |
+| SEC-5、IN-20 | [#287](https://github.com/HazelnutParadise/insyra/issues/287) |  |
+| SEC-6 | [#288](https://github.com/HazelnutParadise/insyra/issues/288) |  |
+| SEC-10 | [#289](https://github.com/HazelnutParadise/insyra/issues/289) |  |
+| SEC-11、CLI-4 | [#290](https://github.com/HazelnutParadise/insyra/issues/290) |  |
+| SEC-12 | [#291](https://github.com/HazelnutParadise/insyra/issues/291) |  |
+| SEC-13 | [#292](https://github.com/HazelnutParadise/insyra/issues/292) |  |
+| SEC-15 | [#293](https://github.com/HazelnutParadise/insyra/issues/293) |  |
+| SEC-16 | [#294](https://github.com/HazelnutParadise/insyra/issues/294) |  |
+| SEC-17 | [#295](https://github.com/HazelnutParadise/insyra/issues/295) |  |
+| SEC-18 | [#296](https://github.com/HazelnutParadise/insyra/issues/296) |  |
+| SEC-20 | [#297](https://github.com/HazelnutParadise/insyra/issues/297) |  |
+| SEC-21 | [#298](https://github.com/HazelnutParadise/insyra/issues/298) |  |
+| TS-1 | [#299](https://github.com/HazelnutParadise/insyra/issues/299) |  |
+| TS-2 | [#300](https://github.com/HazelnutParadise/insyra/issues/300) |  |
+| TS-3 | [#301](https://github.com/HazelnutParadise/insyra/issues/301) |  |
+| TS-4 | [#302](https://github.com/HazelnutParadise/insyra/issues/302) |  |
+| TS-5、TS-17 | [#303](https://github.com/HazelnutParadise/insyra/issues/303) |  |
+| TS-7、TS-8 | [#304](https://github.com/HazelnutParadise/insyra/issues/304) |  |
+| TS-9 | [#305](https://github.com/HazelnutParadise/insyra/issues/305) |  |
+| TS-10 | [#306](https://github.com/HazelnutParadise/insyra/issues/306) |  |
+| TS-11 | [#307](https://github.com/HazelnutParadise/insyra/issues/307) |  |
+| TS-12 | [#308](https://github.com/HazelnutParadise/insyra/issues/308) |  |
+| TS-13、TS-18 | [#309](https://github.com/HazelnutParadise/insyra/issues/309) |  |
+| TS-14 | [#310](https://github.com/HazelnutParadise/insyra/issues/310) |  |
+| CLI-1 | [#311](https://github.com/HazelnutParadise/insyra/issues/311) |  |
+| CLI-2 | [#312](https://github.com/HazelnutParadise/insyra/issues/312) |  |
+| CLI-3 | [#313](https://github.com/HazelnutParadise/insyra/issues/313) |  |
+| CLI-5 | [#314](https://github.com/HazelnutParadise/insyra/issues/314) |  |
+| CLI-6 | [#315](https://github.com/HazelnutParadise/insyra/issues/315) |  |
+| CLI-7、CCL-17 | [#316](https://github.com/HazelnutParadise/insyra/issues/316) |  |
+| CLI-8 | [#317](https://github.com/HazelnutParadise/insyra/issues/317) |  |
+| CLI-9 | [#318](https://github.com/HazelnutParadise/insyra/issues/318) |  |
+| CLI-10 | [#319](https://github.com/HazelnutParadise/insyra/issues/319) |  |
+| CLI-11 | [#320](https://github.com/HazelnutParadise/insyra/issues/320) |  |
+| CLI-12 | [#321](https://github.com/HazelnutParadise/insyra/issues/321) |  |
+| CLI-13 | [#322](https://github.com/HazelnutParadise/insyra/issues/322) |  |
+| CLI-14 | [#323](https://github.com/HazelnutParadise/insyra/issues/323) |  |
+| CLI-15、CLI-16 | [#324](https://github.com/HazelnutParadise/insyra/issues/324) |  |
+| CLI-17 | [#325](https://github.com/HazelnutParadise/insyra/issues/325) |  |
+| CLI-18 | [#326](https://github.com/HazelnutParadise/insyra/issues/326) |  |
+| CLI-19 | [#327](https://github.com/HazelnutParadise/insyra/issues/327) |  |
+| CLI-20 | [#328](https://github.com/HazelnutParadise/insyra/issues/328) |  |
+| CLI-21 | [#329](https://github.com/HazelnutParadise/insyra/issues/329) |  |
+| IN-1 | [#330](https://github.com/HazelnutParadise/insyra/issues/330) |  |
+| IN-2 | [#331](https://github.com/HazelnutParadise/insyra/issues/331) |  |
+| IN-3 | [#332](https://github.com/HazelnutParadise/insyra/issues/332) |  |
+| IN-4 | [#333](https://github.com/HazelnutParadise/insyra/issues/333) |  |
+| IN-5 | [#334](https://github.com/HazelnutParadise/insyra/issues/334) |  |
+| IN-6 | [#335](https://github.com/HazelnutParadise/insyra/issues/335) |  |
+| IN-8、IN-9 | [#336](https://github.com/HazelnutParadise/insyra/issues/336) |  |
+| IN-10、IN-11、IN-12、IN-13、IN-14、IN-18 | [#337](https://github.com/HazelnutParadise/insyra/issues/337) |  |
+| IN-16 | [#338](https://github.com/HazelnutParadise/insyra/issues/338) |  |
+| IN-19 | [#339](https://github.com/HazelnutParadise/insyra/issues/339) |  |
+| IN-21 | [#340](https://github.com/HazelnutParadise/insyra/issues/340) |  |
+| CCL-1 | [#341](https://github.com/HazelnutParadise/insyra/issues/341) |  |
+| CCL-2 | [#342](https://github.com/HazelnutParadise/insyra/issues/342) |  |
+| CCL-3 | [#343](https://github.com/HazelnutParadise/insyra/issues/343) |  |
+| CCL-4 | [#344](https://github.com/HazelnutParadise/insyra/issues/344) |  |
+| CCL-5 | [#345](https://github.com/HazelnutParadise/insyra/issues/345) |  |
+| CCL-6 | [#346](https://github.com/HazelnutParadise/insyra/issues/346) |  |
+| CCL-7 | [#347](https://github.com/HazelnutParadise/insyra/issues/347) |  |
+| CCL-8、CCL-28 | [#348](https://github.com/HazelnutParadise/insyra/issues/348) |  |
+| CCL-9、CCL-10 | [#349](https://github.com/HazelnutParadise/insyra/issues/349) |  |
+| CCL-11 | [#350](https://github.com/HazelnutParadise/insyra/issues/350) |  |
+| CCL-12 | [#351](https://github.com/HazelnutParadise/insyra/issues/351) |  |
+| CCL-13 | [#352](https://github.com/HazelnutParadise/insyra/issues/352) |  |
+| CCL-14、CCL-30 | [#353](https://github.com/HazelnutParadise/insyra/issues/353) |  |
+| CCL-16 | [#354](https://github.com/HazelnutParadise/insyra/issues/354) |  |
+| CCL-18、CCL-38 | [#355](https://github.com/HazelnutParadise/insyra/issues/355) |  |
+| CCL-19、CCL-34、CCL-35、CCL-37 | [#356](https://github.com/HazelnutParadise/insyra/issues/356) |  |
+| CCL-20 | [#357](https://github.com/HazelnutParadise/insyra/issues/357) |  |
+| CCL-21 | [#358](https://github.com/HazelnutParadise/insyra/issues/358) |  |
+| CCL-22 | [#359](https://github.com/HazelnutParadise/insyra/issues/359) |  |
+| CCL-23、CCL-39 | [#360](https://github.com/HazelnutParadise/insyra/issues/360) |  |
+| CCL-24 | [#361](https://github.com/HazelnutParadise/insyra/issues/361) |  |
+| CCL-25 | [#362](https://github.com/HazelnutParadise/insyra/issues/362) |  |
+| CCL-26 | [#363](https://github.com/HazelnutParadise/insyra/issues/363) |  |
+| CCL-27 | [#364](https://github.com/HazelnutParadise/insyra/issues/364) |  |
+| CCL-31 | [#365](https://github.com/HazelnutParadise/insyra/issues/365) |  |
+| CCL-32 | [#366](https://github.com/HazelnutParadise/insyra/issues/366) |  |
+| CCL-33 | [#367](https://github.com/HazelnutParadise/insyra/issues/367) |  |
+| CCL-36 | [#368](https://github.com/HazelnutParadise/insyra/issues/368) |  |
+| SEC-8 | [#205](https://github.com/HazelnutParadise/insyra/issues/205) | 補充留言 |
+| SEC-14 | [#249](https://github.com/HazelnutParadise/insyra/issues/249) | 補充留言 |
+| CCL-15 | [#234](https://github.com/HazelnutParadise/insyra/issues/234) | 補充留言 |
+| CCL-29 | [#259](https://github.com/HazelnutParadise/insyra/issues/259) | 補充留言 |
+| IN-15 | [#209](https://github.com/HazelnutParadise/insyra/issues/209) | 補充留言 |
+| IN-17 | [#214](https://github.com/HazelnutParadise/insyra/issues/214) | 補充留言 |
+| SEC-9、SEC-19 | [#257](https://github.com/HazelnutParadise/insyra/issues/257) | 補充留言 |
+| TS-15 | [#220](https://github.com/HazelnutParadise/insyra/issues/220) | 補充留言 |
+| IN-22 | [#236](https://github.com/HazelnutParadise/insyra/issues/236) | 補充留言 |
+| CLI-6 | [#225](https://github.com/HazelnutParadise/insyra/issues/225) | 補充留言 |
+| IN-7 | [#207](https://github.com/HazelnutParadise/insyra/issues/207) | 補充留言 |
 
 ## 逐項清單
 
