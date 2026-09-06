@@ -90,12 +90,12 @@ func asAnyStrings(ss []string) insyra.IDataList {
 
 func TestChiSquareGoodnessOfFit_R(t *testing.T) {
 	cases := []struct {
-		name     string
-		data     []string
-		p        []float64
-		rescale  bool
-		prefix   string
-		nCats    int
+		name    string
+		data    []string
+		p       []float64
+		rescale bool
+		prefix  string
+		nCats   int
 	}{
 		{name: "uniform_no_p",
 			data:   []string{"A", "A", "A", "B", "B", "C", "D", "D", "D", "D"},
@@ -198,9 +198,9 @@ func TestChiSquareGoodnessOfFit_Errors(t *testing.T) {
 
 func TestChiSquareIndependenceTest_R(t *testing.T) {
 	cases := []struct {
-		name        string
-		rows, cols  []string
-		prefix      string
+		name         string
+		rows, cols   []string
+		prefix       string
 		nRows, nCols int
 	}{
 		{name: "existing_3x2",

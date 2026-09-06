@@ -17,7 +17,7 @@ func LogFatal(packageName, funcName, msg string, args ...any) {
 		fullMsg += packageName + "." + funcName + ": "
 	}
 	fullMsg += msg
-	if Config.dontPanic {
+	if Config.GetDontPanicStatus() {
 		log.Printf(fullMsg, args...)
 		return
 	}

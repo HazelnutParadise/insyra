@@ -33,7 +33,7 @@ type ExecuteRequest struct {
 	Columns   []ExecuteColumn
 	Precision Precision
 	// Queries holds one point per entry, each carrying one value per column in
-	// Columns order. Only OpSquaredDistance reads it.
+	// Columns order. OpNearestShortlist ranks every row against them.
 	Queries [][]float32
 	// Shortlist is how many candidates per row OpNearestShortlist keeps. Other
 	// operations ignore it.
@@ -47,12 +47,9 @@ type ExecuteRequest struct {
 // not implement GPU timestamp queries.
 type ExecuteResponse struct {
 	Reductions map[string]float64
-	// Distances is query-major for OpSquaredDistance: entry q*rows+r is the
-	// distance from row r to query q. For OpNearestQuery it holds one distance
-	// per row, the smallest one.
-	Distances []float32
-	// NearestIndex holds the closest query point per row. Only OpNearestQuery
-	// fills it.
+	// Distances and NearestIndex are retained for backends that still fill
+	// them; the shipped operation reports through the Shortlist fields below.
+	Distances    []float32
 	NearestIndex []uint32
 	// ShortlistIndex and ShortlistDistance are row-major, holding Shortlist
 	// entries per row: entry r*Shortlist+j is row r's j-th nearest.

@@ -328,8 +328,8 @@ func ExponentialRegression(dlY, dlX insyra.IDataList) (*ExponentialRegressionRes
 	var xs, ys []float64
 	var xsRaw, ysRaw []any
 	isFailed := false
-	dlx := dlX.(*insyra.DataList)
-	dly := dlY.(*insyra.DataList)
+	dlx := asDataList(dlX)
+	dly := asDataList(dlY)
 	insyra.AtomicDoAll(func() {
 		if dlx.Len() != dly.Len() || dlx.Len() == 0 {
 			isFailed = true
@@ -424,8 +424,8 @@ func LogarithmicRegression(dlY, dlX insyra.IDataList) (*LogarithmicRegressionRes
 	var xs, ys []float64
 	var xsRaw, ysRaw []any
 	isFailed := false
-	dlx := dlX.(*insyra.DataList)
-	dly := dlY.(*insyra.DataList)
+	dlx := asDataList(dlX)
+	dly := asDataList(dlY)
 	insyra.AtomicDoAll(func() {
 		if dlx.Len() != dly.Len() || dlx.Len() == 0 {
 			isFailed = true
@@ -505,8 +505,8 @@ func PolynomialRegression(dlY, dlX insyra.IDataList, degree int) (*PolynomialReg
 	var xs, ys []float64
 	var xsRaw, ysRaw []any
 	isFailed := false
-	dlx := dlX.(*insyra.DataList)
-	dly := dlY.(*insyra.DataList)
+	dlx := asDataList(dlX)
+	dly := asDataList(dlY)
 	insyra.AtomicDoAll(func() {
 		if dlx.Len() != dly.Len() || dlx.Len() == 0 {
 			isFailed = true

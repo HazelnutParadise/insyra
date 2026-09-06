@@ -63,8 +63,8 @@ func (pg *ParallelGroup) AwaitResult() [][]any {
 	return pg.results
 }
 
-// AwaitNoResult waits for all functions to complete without returning results.
-// This is optimized for functions that do not return values, avoiding result collection overhead.
+// AwaitNoResult waits for all functions to complete and discards their results.
+// Results are still collected by Run; this only saves the caller the return value.
 func (pg *ParallelGroup) AwaitNoResult() {
 	pg.wg.Wait()
 }

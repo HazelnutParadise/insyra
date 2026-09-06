@@ -1891,4 +1891,3 @@ func sampleCovarianceDense(scores *mat.Dense) *mat.Dense {
 	}
 	return dense
 }
-

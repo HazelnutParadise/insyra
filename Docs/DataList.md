@@ -2159,7 +2159,7 @@ dl.ShowTypesRange(2, nil) // Show types from index 2 to end
 func (dl *DataList) IsEqualTo(other *DataList) bool
 ```
 
-**Description:** Checks if the data content is equal to another DataList.
+**Description:** Checks if the data content is equal to another DataList. Two `NaN` cells compare equal (pandas `equals` semantics), so a list always equals its own `Clone()`; cells Go cannot compare with `==` are simply unequal rather than a panic.
 
 **Parameters:**
 

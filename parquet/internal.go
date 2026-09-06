@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"time"
 
@@ -34,7 +33,7 @@ func streamAsArrowRecord(ctx context.Context, path string, opt ReadOptions, batc
 		}
 		defer func() {
 			if err := f.Close(); err != nil {
-				log.Printf("parquet: failed to close file %s: %v", path, err)
+				insyra.LogWarning("parquet", "close", "failed to close file %s: %v", path, err)
 			}
 		}()
 
@@ -45,7 +44,7 @@ func streamAsArrowRecord(ctx context.Context, path string, opt ReadOptions, batc
 		}
 		defer func() {
 			if err := r.Close(); err != nil {
-				log.Printf("parquet: failed to close reader for %s: %v", path, err)
+				insyra.LogWarning("parquet", "close", "failed to close reader for %s: %v", path, err)
 			}
 		}()
 

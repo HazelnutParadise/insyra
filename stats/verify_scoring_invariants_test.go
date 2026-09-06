@@ -24,7 +24,6 @@ import (
 //
 //	Anderson-Rubin scores:
 //	  Cov(scores) = I (uncorrelated factors with unit variance)
-//
 func TestScoringInvariants(t *testing.T) {
 	const n = 80
 	rows := make([][]any, n)

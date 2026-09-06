@@ -5,8 +5,7 @@ The `plot` package creates interactive web-based charts using [go-echarts](https
 **PNG export notes:**
 
 - `SavePNG` renders via Chrome/Chromium when available.
-- If local rendering fails and `useOnlineServiceOnFail` is `true` (default), it sends the chart to HazelnutParadise's online renderer.
-- Disable the online fallback by passing `false` to `SavePNG`.
+- Local rendering needs Chrome/Chromium. Nothing leaves your machine unless you pass `true` as the third argument, which lets a failed local render fall back to HazelnutParadise's online renderer — that fallback uploads the whole chart, data included.
 
 ## Installation
 
@@ -153,13 +152,13 @@ func SaveHTML(chart Renderable, path string, animation ...bool) error
 func SavePNG(chart Renderable, pngPath string, useOnlineServiceOnFail ...bool) error
 ```
 
-**Description:** Renders the chart to a PNG image. Requires Chrome/Chromium installed or uses an online fallback service.
+**Description:** Renders the chart to a PNG image with a local Chrome/Chromium. Off by default, an online fallback can be enabled per call; it sends the chart and its data to `server3.hazelnut-paradise.com`.
 
 **Parameters:**
 
 - `chart`: The chart object. Type: `Renderable`.
 - `pngPath`: The file path to save the PNG. Type: `string`.
-- `useOnlineServiceOnFail`: Optional boolean. If true (default), it tries to use an online rendering service if local rendering fails.
+- `useOnlineServiceOnFail`: Optional boolean, default `false`. Pass `true` to allow the online rendering service when local rendering fails; the chart data is uploaded in that case.
 
 **Returns:**
 

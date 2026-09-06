@@ -266,7 +266,7 @@ func SortTimes(times []time.Time) {
 // colorText 根據環境支持自動決定是否添加顏色到文本
 // code 是 ANSI 顏色代碼，text 是要設置顏色的文本
 func colorText(code string, text any) string {
-	if Config.coloredOutput && utils.IsColorSupported() {
+	if Config.GetDoesUseColoredOutput() && utils.IsColorSupported() {
 		return fmt.Sprintf("\033[%sm%v\033[0m", code, text)
 	}
 	return fmt.Sprintf("%v", text)
@@ -305,8 +305,10 @@ func DetectEncoding(filePath string) (string, error) {
 		return "utf-16be", nil
 	}
 
-	// Quick UTF-8 heuristic
-	if utf8.Valid(sample) {
+	// Quick UTF-8 heuristic. The sample may end in the middle of a multi-byte
+	// rune, which is not invalid UTF-8, just truncated: back off to the last
+	// complete rune before judging.
+	if utf8.Valid(sample) || utf8.Valid(trimIncompleteRune(sample)) {
 		return "utf-8", nil
 	}
 
@@ -319,4 +321,15 @@ func DetectEncoding(filePath string) (string, error) {
 
 	charset := strings.ToLower(res.Charset)
 	return charset, nil
+}
+
+// trimIncompleteRune drops a trailing partial UTF-8 sequence (at most 3
+// bytes) so a sample cut at an arbitrary byte boundary can still be judged.
+func trimIncompleteRune(b []byte) []byte {
+	for cut := 1; cut <= 3 && cut <= len(b); cut++ {
+		if utf8.Valid(b[:len(b)-cut]) {
+			return b[:len(b)-cut]
+		}
+	}
+	return b
 }

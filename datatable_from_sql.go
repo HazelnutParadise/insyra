@@ -40,9 +40,12 @@ type ReadSQLOptions struct {
 	// for the auto-built query. SQLite ignores this.
 	Schema string
 
-	Limit       int    // Limit the number of rows to read
-	Offset      int    // Starting position for reading rows
-	WhereClause string // WHERE clause body (without the "WHERE" keyword)
+	Limit  int // Limit the number of rows to read
+	Offset int // Starting position for reading rows
+	// WhereClause is the WHERE clause body (without the "WHERE" keyword). It is
+	// concatenated into the SQL as-is and is NOT parameterised: never place user
+	// input in it. Use Query with Params to bind values safely.
+	WhereClause string
 	OrderBy     string // ORDER BY clause body (without the "ORDER BY" keyword)
 
 	// ParseDates names columns whose string/[]byte values should be parsed

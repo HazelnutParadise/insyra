@@ -17,6 +17,9 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - Fixed `DataList.ReplaceLast` replacing the last `NaN` cell instead of the last cell equal to `oldValue` when the list ended in `NaN` (`[5, NaN].ReplaceLast(5, 0)` gave `[5, 0]`).
 - Fixed `ReadJSON_File` loading integer literals as `float64` while `ReadJSON` loaded them as `int64`; both now decode through the same path, so large integers keep full precision from a file and a file holding a single object loads as one row.
 - Fixed several `DataTable` behaviours found by the API review: `GetElementByNumberIndex`, `SetRowToColNames`, and `SetColToRowNames` no longer panic on an out-of-range index (they set `Err()`); `Data()`/`ToMap()` return copies instead of the table's own slices; every `Filter*` result now owns its columns and row names, so editing a filtered table no longer edits the source, and a no-match result is an empty table whose methods are safe to call; `FilterRows`/`FilterCols` no longer panic on a ragged table; `DropRowsByIndex` resolves negative indices against the original row count and ignores duplicates (`(-1, 0)` used to keep row 0, `(1, 1)` used to delete two rows); `Transpose` keeps every row name (names beyond the old column count were lost); `ChangeRowName` onto an existing name suffixes the renamed row instead of silently stripping the other row's name; `AppendRowsByColIndex` grows the table to the addressed column instead of dropping the value; `DropColsContainNumber`/`DropRowsContainNumber` recognise every numeric type (an `int64` column from CSV inference was not dropped); `Mean` divides by the number of numeric cells; `ToCSV` writes `time.Time` cells as RFC 3339 so `ParseDates` reads them back; and the four CCL methods return the receiver rather than nil after a recovered panic.
+- `Config.SetLogLevel`, `SetUseColoredOutput`, `SetDontPanic`, and `SetDefaultErrHandlingFunc` are now atomic, so calling them while another goroutine logs is no longer a data race. The error hook installed by `SetDefaultErrHandlingFunc` runs on one goroutine behind a bounded queue, in order, instead of one goroutine per warning. Importing the package no longer prints the "Welcome to Insyra" banner; the CLI REPL prints it at startup.
+- `DetectEncoding` no longer misjudges a UTF-8 file whose multi-byte character straddles its 8 KB sample boundary.
+- `DataList.IsEqualTo` (and `IsTheSameAs`) treat two `NaN` cells as equal, so a list now equals its own clone; `ClearNaNs`, `ClearNils`, `ClearNilsAndNaNs`, `ClearNumbers`, `DropAll`, and `ClearStrings` filter in one pass instead of quadratic in-place deletion or a goroutine per call; `Update` records itself, not `ReplaceAtIndex`, in `Err()`. `DataTable.FindColsIfContains`/`FindColsIfContainsAll` no longer leave a warning on every column that lacks the value; `Count` and `Clone` drop their goroutine fan-out. `AppendRowsByColName` (and therefore `ReadJSON`/`ReadJSON_File`) adds new columns in sorted key order, so a JSON document no longer loads with a different column order on each run.
 
 ### CLI
 
@@ -26,6 +29,7 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - Added the `tw` source to `fetch`: `fetch tw <code> prices|adjprices <from> <to> [market]`, `fetch tw exrights <from> <to> [market]`, `fetch tw institutional|margin <date> [market]`, and `fetch tw quotes [market]` reach all six `datafetch.TWStock` methods, so a `.isr` script can pull Taiwan daily prices, adjusted prices, ex-rights tables, institutional trades, margin balances, and the full quote table. Dates are `YYYY-MM-DD` and `market` is `twse`, `tpex`, or `auto` (the default); malformed dates, a `from` after `to`, and unknown markets are rejected before any request, and library errors — including the TPEx "not supported" refusal for `adjprices` and `exrights` — come back verbatim behind a `fetch tw:` prefix. Requests are spaced 300 ms apart with two retries, overridable with the new `config fetch.tw.interval_ms <milliseconds>` key. Existing `fetch yahoo` forms are unchanged.
 - Added `quant portfolio <returns_dt> minvar|target <r>|maxsharpe [rf <r>] [min <v1,...>] [max <v1,...>]` and `quant frontier <returns_dt> <points> [rf <r>] [min <v1,...>] [max <v1,...>]`, reaching `quant.OptimizePortfolio` and `quant.EfficientFrontier`. These are the first `quant` forms that take a DataTable of aligned per-period returns — one column per asset — instead of a single series, so a `.isr` script can now ask for an allocation rather than only measuring one. `portfolio` prints one `<asset>=<weight>` line plus a summary and stores an `Asset, Weight` DataTable together with a one-row `<var>_stats` table (`ExpectedReturn`, `Variance`, `Volatility`, `SharpeRatio`, `Iterations`, `Converged`); `frontier` stores one row per point with those fixed columns followed by one weight column per asset. `min`/`max` are comma-separated per-asset bounds in column order and default to long-only `[0, 1]`, a list of the wrong length or with a non-numeric entry is refused before the solver runs, and a non-converged solve is reported as `converged=false` rather than as an error, matching the library.
 - Environment names are now validated: only letters, digits, `.`, `_` and `-` (starting with a letter or digit, no `..`). A name was previously joined straight onto the environments directory, so `../x` created or deleted directories outside it.
+- The command registry is guarded by a lock, so registering commands from several goroutines (embedders) is no longer a data race.
 
 ### `quant`
 
@@ -47,23 +51,31 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 
 - **BREAKING**: `Skewness` and `Kurtosis` now refuse a value they cannot read as a finite number instead of treating it as zero, matching every other `stats` entry point since v0.3.1. They were the last two still reading through `SliceToF64`. The error names `sample` and the one-based row; results on fully numeric input are unchanged.
 - **BREAKING**: `SingleSampleTTest`, `TwoSampleTTest`, `SingleSampleZTest`, `TwoSampleZTest`, `FTestForVarianceEquality`, `BartlettTest`, `LeveneTest`, and `CalculateMoment` now refuse a cell they cannot read as a finite number, naming the series and the one-based row. They used to take `n` from the list length while the mean and standard deviation skipped the unreadable cell, so `[1, 2, nil, 3]` reported t = 4.00, p = 0.028 instead of t = 3.46, p = 0.074 — a blank turned an insignificant result significant. Results on fully numeric input are unchanged; clean blanks with `ClearNils` before testing.
+- Functions taking `insyra.IDataList` no longer panic on a `nil` argument or on an implementation other than `*insyra.DataList`; the value is converted and a `nil` is reported as an ordinary error.
 
 ### `csvxl`
 
 - Fixed `AppendCsvToExcel` leaving the old sheet's cells in place when a sheet of the same name already existed: `excelize.NewSheet` returns the existing sheet, so only the cells covered by the new CSV were overwritten and the rest survived. The sheet is now deleted and recreated, including when it is the workbook's only sheet.
 - Fixed `AppendCsvToExcel`, `ExcelToCsv`, and `EachExcelToCsv` never closing the workbooks they opened.
+- Errors wrap their cause with `%w` (so `errors.Is(err, os.ErrNotExist)` works) and output directories are created with mode 0755 instead of 0777.
 
 ### `parquet`
 
 - Fixed `ReadColumnOptions.MaxValues` having no effect. `ReadColumn` now sums the row counts of the selected row groups from the file metadata and refuses the read before loading anything when the count exceeds the limit, which is what the field documented.
+- `Write` writes to a temporary file and renames it into place, so a failure part-way cannot leave a truncated Parquet file; close-time errors are logged through Insyra's logger instead of the standard `log` package, so `Config.SetLogLevel` applies to them.
 
 ### `mkt`
 
 - Fixed `RFM` crashing the process when an amount cell was not numeric; the row is now skipped with a warning naming it. `RFM` and `CustomerActivityIndex` output rows are sorted by customer ID, where they previously came out in Go map order and differed between runs.
+- The notices for defaulted `DateFormat`/`TimeScale` in `RFM` and `CustomerActivityIndex` are logged at Debug instead of Info.
 
 ### `lp`
 
 - The additional-info table returned by `SolveFromFile` and `SolveModel` has a fixed row order (Status, Execution Time, Warnings, Full Output, Iterations, Nodes); it previously followed Go map iteration and changed between runs.
+
+### `plot`
+
+- **BREAKING**: `SavePNG` no longer falls back to the online rendering service by default. Passing no third argument (or `false`) now returns an error when the local Chrome/Chromium render fails; pass `true` to opt in to the fallback, which uploads the chart and its data to `server3.hazelnut-paradise.com`. The previous default sent user data off the host without being asked.
 
 ## v0.3.1
 

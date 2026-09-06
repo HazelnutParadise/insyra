@@ -68,10 +68,11 @@ func loadF64s(t *testing.T, label string) []float64 {
 // Tolerances (chosen empirically — distuv vs R's pt/qt implementations of the
 // Student's t CDF/quantile produce results that agree to roughly 1e-12 .. 1e-14
 // in this range; CI bounds and p-values inherit that error):
-//   tolStat = 1e-12   (t statistic, mean, mean diff, Cohen's d)
-//   tolP    = 1e-12   (p-value)
-//   tolCI   = 1e-10   (CI bounds, multiplied by t-quantile)
-//   df is exact match for integer-valued, 1e-12 for Welch.
+//
+//	tolStat = 1e-12   (t statistic, mean, mean diff, Cohen's d)
+//	tolP    = 1e-12   (p-value)
+//	tolCI   = 1e-10   (CI bounds, multiplied by t-quantile)
+//	df is exact match for integer-valued, 1e-12 for Welch.
 const (
 	tolStat = 1e-12
 	tolP    = 1e-12
@@ -510,7 +511,7 @@ func TestTwoSampleTTest_R(t *testing.T) {
 			n1: 2, n2: 2,
 		},
 		{
-			name: "very_imbalanced_welch",
+			name:  "very_imbalanced_welch",
 			data1: []float64{50.0, 51.0, 49.5, 50.5},
 			data2: []float64{45.1, 46.3, 44.8, 45.9, 46.0, 45.5, 46.2, 45.7, 45.8, 46.4,
 				45.6, 45.3, 46.1, 45.4, 45.9, 46.0, 45.7, 45.8, 45.6, 45.5},
@@ -634,13 +635,13 @@ func TestTwoSampleTTest_R(t *testing.T) {
 }
 
 type pairedTCase struct {
-	name             string
-	data1, data2     []float64
-	cl               float64 // 0 = use 0.95
-	t, p, df         float64
-	ciLo, ciHi       float64
-	meanDiff, d      float64
-	n                int
+	name         string
+	data1, data2 []float64
+	cl           float64 // 0 = use 0.95
+	t, p, df     float64
+	ciLo, ciHi   float64
+	meanDiff, d  float64
+	n            int
 }
 
 func TestPairedTTest_R(t *testing.T) {
@@ -682,7 +683,7 @@ func TestPairedTTest_R(t *testing.T) {
 		{
 			name:  "largeN_40",
 			data1: loadF64s(t, "pairedA_largeN_a"), data2: loadF64s(t, "pairedA_largeN_b"),
-			t:     13.48388522003841, p: 2.8891848936739809e-16, df: 39,
+			t: 13.48388522003841, p: 2.8891848936739809e-16, df: 39,
 			ciLo: 1.7310086678331182, ciHi: 2.3419913321668822,
 			meanDiff: 2.0365000000000002, d: 2.1319894501801024,
 			n: 40,

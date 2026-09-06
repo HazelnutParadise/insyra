@@ -50,8 +50,8 @@ func MannWhitneyU(data1, data2 insyra.IDataList, alt AlternativeHypothesis, conf
 
 	var s1, s2 []any
 	var inputErr error
-	dl1 := data1.(*insyra.DataList)
-	dl2 := data2.(*insyra.DataList)
+	dl1 := asDataList(data1)
+	dl2 := asDataList(data2)
 	insyra.AtomicDoAll(func() {
 		if dl1.Len() == 0 || dl2.Len() == 0 {
 			inputErr = errors.New("both samples must be non-empty")

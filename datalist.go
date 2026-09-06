@@ -5,14 +5,11 @@ import (
 	"fmt"
 	"math"
 	"reflect"
-	"runtime"
-	"slices"
 	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
 
-	"github.com/HazelnutParadise/Go-Utils/asyncutil"
 	"github.com/HazelnutParadise/Go-Utils/conv"
 	"github.com/HazelnutParadise/Go-Utils/sliceutil"
 	"github.com/HazelnutParadise/insyra/internal/algorithms"
@@ -206,7 +203,7 @@ func (dl *DataList) Update(index int, newValue any) *DataList {
 			index += len(dl.data)
 		}
 		if index < 0 || index >= len(dl.data) {
-			dl.warn("ReplaceAtIndex", "Index %d out of bounds", index)
+			dl.warn("Update", "Index %d out of bounds", index)
 			return
 		}
 		dl.data[index] = newValue
@@ -267,6 +264,21 @@ func (dl *DataList) FindFirst(value any) any {
 		result = nil
 	})
 	return result
+}
+
+// findFirstIndex is FindFirst without the not-found warning, for callers
+// (such as DataTable.FindColsIfContains) where a miss is an ordinary outcome.
+func (dl *DataList) findFirstIndex(value any) (int, bool) {
+	idx, found := -1, false
+	dl.AtomicDo(func(dl *DataList) {
+		for i, v := range dl.data {
+			if equalCell(v, value) {
+				idx, found = i, true
+				return
+			}
+		}
+	})
+	return idx, found
 }
 
 // FindLast returns the index of the last occurrence of the specified value in the DataList.
@@ -440,7 +452,7 @@ func (dl *DataList) Pop() any {
 }
 
 // Drop removes the element at the specified index from the DataList and updates the timestamp.
-// Returns an error if the index is out of bounds.
+// Supports negative indexing. An out-of-bounds index sets Err() and leaves the list unchanged.
 func (dl *DataList) Drop(index int) *DataList {
 	dl.AtomicDo(func(dl *DataList) {
 		if index < 0 {
@@ -464,91 +476,23 @@ func (dl *DataList) Drop(index int) *DataList {
 // Supports multiple values to drop.
 func (dl *DataList) DropAll(toDrop ...any) *DataList {
 	dl.AtomicDo(func(dl *DataList) {
-		length := len(dl.data)
-		if length == 0 {
+		if len(dl.data) == 0 {
 			return
 		}
-
-		// 決定要開多少個線程，但不超過資料長度
-		numGoroutines := runtime.NumCPU()
-		if numGoroutines == 0 {
-			numGoroutines = 1
-		}
-		if numGoroutines > length {
-			numGoroutines = length
-		}
-
-		chunkSize := length / numGoroutines
-		remainder := length % numGoroutines
-
-		// 預先檢查 toDrop 中是否包含 NaN
-		hasNaNInToDrop := false
-		for _, td := range toDrop {
-			if f, ok := td.(float64); ok && math.IsNaN(f) {
-				hasNaNInToDrop = true
-				break
+		kept := make([]any, 0, len(dl.data))
+		for _, v := range dl.data {
+			drop := false
+			for _, td := range toDrop {
+				if equalCell(v, td) {
+					drop = true
+					break
+				}
+			}
+			if !drop {
+				kept = append(kept, v)
 			}
 		}
-
-		// 儲存所有的 Awaitable
-		var awaitables []*asyncutil.Awaitable
-
-		// 啟動 Awaitables 處理每個部分
-		start := 0
-		for i := 0; i < numGoroutines; i++ {
-			// 計算當前塊的大小，前 remainder 個塊多分配一個元素
-			currentChunkSize := chunkSize
-			if i < remainder {
-				currentChunkSize++
-			}
-
-			end := start + currentChunkSize
-
-			// 確保不會超出邊界
-			if end > length {
-				end = length
-			}
-
-			// 只有當 start < end 時才創建任務，避免空塊
-			if start < end {
-				awaitable := asyncutil.Async(func(dataChunk []any) []any {
-					var result []any
-					for _, v := range dataChunk {
-						shouldDrop := false
-						if f, ok := v.(float64); ok && math.IsNaN(f) {
-							shouldDrop = hasNaNInToDrop
-						} else {
-							shouldDrop = slices.Contains(toDrop, v)
-						}
-						if !shouldDrop {
-							result = append(result, v)
-						}
-					}
-					return result
-				}, dl.data[start:end])
-
-				awaitables = append(awaitables, awaitable)
-			}
-
-			start = end
-		}
-
-		// 收集所有結果並合併
-		var finalResult []any
-		for _, awaitable := range awaitables {
-			results, err := awaitable.Await()
-			if err != nil {
-				dl.warn("DropAll", "Error in async task: %v", err)
-				continue
-			}
-
-			if len(results) > 0 {
-				finalResult = append(finalResult, results[0].([]any)...)
-			}
-		}
-
-		// 更新 DataList
-		dl.data = finalResult
+		dl.data = kept
 		dl.updateTimestamp()
 	})
 	return dl
@@ -589,6 +533,7 @@ func (dl *DataList) Clear() *DataList {
 	return dl
 }
 
+// Len returns the number of elements in the DataList.
 func (dl *DataList) Len() int {
 	var l int
 	dl.AtomicDo(func(dl *DataList) {
@@ -600,80 +545,22 @@ func (dl *DataList) Len() int {
 // ClearStrings removes all string elements from the DataList and updates the timestamp.
 func (dl *DataList) ClearStrings() *DataList {
 	dl.AtomicDo(func(dl *DataList) {
-		length := len(dl.data)
-		if length == 0 {
-			return
-		}
-
-		// 獲取可用的 CPU 核心數量
-		numGoroutines := min(runtime.NumCPU(), length)
-
-		// 決定每個線程處理的數據量
-		chunkSize := length / numGoroutines
-		if length%numGoroutines != 0 {
-			chunkSize++
-		}
-
-		// 構建任務切片
-		var tasks []asyncutil.Task
-
-		for i := range numGoroutines {
-			start := i * chunkSize
-			end := start + chunkSize
-			if end > length {
-				end = length
+		kept := make([]any, 0, len(dl.data))
+		for _, v := range dl.data {
+			if _, ok := v.(string); !ok {
+				kept = append(kept, v)
 			}
-
-			task := asyncutil.Task{
-				ID: fmt.Sprintf("Task-%d", i),
-				Fn: func(dataChunk []any) []any {
-					var result []any
-					for _, v := range dataChunk {
-						if _, ok := v.(string); !ok {
-							result = append(result, v)
-						}
-					}
-					return result
-				},
-				Args: []any{dl.data[start:end]},
-			}
-
-			tasks = append(tasks, task)
 		}
-
-		// 使用 ParallelProcess 進行平行處理
-		taskResults := asyncutil.ParallelProcess(tasks)
-
-		// 合併所有的結果
-		var finalResult []any
-		for _, taskResult := range taskResults {
-			finalResult = append(finalResult, taskResult.Results[0].([]any)...)
-		}
-
-		// 更新 DataList
-		dl.data = finalResult
+		dl.data = kept
 		dl.updateTimestamp()
 	})
 	return dl
-} // ++++ 此處之後尚未提升性能 ++++
+}
 
 // ClearNumbers removes all numeric elements (int, float, etc.) from the DataList and updates the timestamp.
 func (dl *DataList) ClearNumbers() *DataList {
 	dl.AtomicDo(func(dl *DataList) {
-		filteredData := dl.data[:0] // Create a new slice with the same length as the original
-
-		for _, v := range dl.data {
-			// If the element is not a number, keep it
-			switch v.(type) {
-			case int, int8, int16, int32, int64:
-			case uint, uint8, uint16, uint32, uint64:
-			case float32, float64:
-			default:
-				filteredData = append(filteredData, v)
-			}
-		}
-
-		dl.data = filteredData
+		dl.data = filterCells(dl.data, func(v any) bool { return !IsNumeric(v) })
 		dl.updateTimestamp()
 	})
 	return dl
@@ -681,37 +568,62 @@ func (dl *DataList) ClearNumbers() *DataList {
 
 // ClearNaNs removes all NaN values from the DataList and updates the timestamp.
 func (dl *DataList) ClearNaNs() *DataList {
-	defer dl.updateTimestamp()
 	dl.AtomicDo(func(dl *DataList) {
-		for i := len(dl.data) - 1; i >= 0; i-- {
-			if v, ok := dl.data[i].(float64); ok && math.IsNaN(v) {
-				dl.data = append(dl.data[:i], dl.data[i+1:]...)
-			}
-		}
+		dl.data = filterCells(dl.data, func(v any) bool {
+			f, ok := v.(float64)
+			return !(ok && math.IsNaN(f))
+		})
+		dl.updateTimestamp()
 	})
 	return dl
 }
 
 // ClearNils removes all nil values from the DataList and updates the timestamp.
 func (dl *DataList) ClearNils() *DataList {
-	defer dl.updateTimestamp()
 	dl.AtomicDo(func(dl *DataList) {
-		for i := len(dl.data) - 1; i >= 0; i-- {
-			if dl.data[i] == nil {
-				dl.data = append(dl.data[:i], dl.data[i+1:]...)
-			}
-		}
+		dl.data = filterCells(dl.data, func(v any) bool { return v != nil })
+		dl.updateTimestamp()
 	})
 	return dl
 }
 
 // ClearNilsAndNaNs removes all nil and NaN values from the DataList and updates the timestamp.
 func (dl *DataList) ClearNilsAndNaNs() *DataList {
-	defer dl.updateTimestamp()
 	dl.AtomicDo(func(dl *DataList) {
-		dl.ClearNaNs().ClearNils()
+		dl.data = filterCells(dl.data, func(v any) bool { return !isMissing(v) })
+		dl.updateTimestamp()
 	})
 	return dl
+}
+
+// filterCells returns the cells for which keep is true, in one pass. The
+// previous Clear* implementations deleted in place inside a loop, which is
+// O(n²) on a list with many hits.
+func filterCells(data []any, keep func(any) bool) []any {
+	out := make([]any, 0, len(data))
+	for _, v := range data {
+		if keep(v) {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// equalCell compares two cells the way a data analyst expects: two float64
+// NaNs are equal (pandas `equals` semantics), and values that Go cannot
+// compare with == never panic — they are simply unequal.
+func equalCell(a, b any) (eq bool) {
+	if fa, ok := a.(float64); ok {
+		if fb, ok := b.(float64); ok && math.IsNaN(fa) && math.IsNaN(fb) {
+			return true
+		}
+	}
+	defer func() {
+		if recover() != nil {
+			eq = false
+		}
+	}()
+	return a == b
 }
 
 // ClearOutliers removes values from the DataList that are outside the specified number of standard deviations.
@@ -988,7 +900,7 @@ func (dl *DataList) DoubleExponentialSmoothing(alpha, beta float64) *DataList {
 	return NewDataList(smoothedData)
 }
 
-// MovingStdDev calculates the moving standard deviation for the DataList using a specified window size.
+// MovingStdev calculates the moving standard deviation for the DataList using a specified window size.
 func (dl *DataList) MovingStdev(windowSize int) *DataList {
 	var movingStdDevData []float64
 	isFailed := false
@@ -1931,7 +1843,7 @@ func (dl *DataList) IsEqualTo(anotherDl *DataList) bool {
 		}
 
 		for i, v := range dl.data {
-			if v != otherData[i] {
+			if !equalCell(v, otherData[i]) {
 				result = false
 				return
 			}
@@ -1976,7 +1888,7 @@ func (dl *DataList) IsTheSameAs(anotherDl *DataList) bool {
 		}
 
 		for i, v := range dl.data {
-			if v != otherData[i] {
+			if !equalCell(v, otherData[i]) {
 				result = false
 				return
 			}
@@ -2040,10 +1952,12 @@ func (dl *DataList) ParseStrings() *DataList {
 	return dl
 }
 
-// ToF64Slice converts the DataList to a float64 slice.
-// Returns the float64 slice.
+// ToF64Slice converts the DataList to a float64 slice of the same length.
 // Returns nil if the DataList is empty.
-// ToF64Slice converts the DataList to a float64 slice.
+//
+// A cell that cannot be read as a number becomes 0 — this method has no
+// failure channel. It is kept for display and reporting paths; numeric
+// analysis must not read through it (see the AGENTS.md follow-up).
 func (dl *DataList) ToF64Slice() []float64 {
 	var result []float64
 	dl.AtomicDo(func(dl *DataList) {

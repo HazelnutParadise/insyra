@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 
 	"github.com/HazelnutParadise/insyra"
@@ -63,7 +62,7 @@ func Inspect(path string) (FileInfo, error) {
 			if errors.Is(err, os.ErrClosed) {
 				return
 			}
-			log.Printf("parquet: failed to close file %s: %v", path, err)
+			insyra.LogWarning("parquet", "close", "failed to close file %s: %v", path, err)
 		}
 	}()
 
@@ -73,7 +72,7 @@ func Inspect(path string) (FileInfo, error) {
 	}
 	defer func() {
 		if err := r.Close(); err != nil {
-			log.Printf("parquet: failed to close reader for %s: %v", path, err)
+			insyra.LogWarning("parquet", "close", "failed to close reader for %s: %v", path, err)
 		}
 	}()
 
@@ -129,22 +128,19 @@ func Inspect(path string) (FileInfo, error) {
 
 // Write: write insyra.DataTable to parquet file
 func Write(dt insyra.IDataTable, path string) error {
-	f, err := os.Create(path)
+	// Write to a sibling temp file and rename so a failure part-way never
+	// leaves a truncated file at path (same shape as ApplyCCL).
+	tmpPath := path + ".tmp"
+	f, err := os.Create(tmpPath)
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if err := f.Close(); err != nil {
-			// NewFileWriter.Writer.Close() may already close the underlying file.
-			if errors.Is(err, os.ErrClosed) {
-				return
-			}
-			log.Printf("parquet: failed to close file %s: %v", path, err)
-		}
-	}()
+	cleanup := func() { _ = os.Remove(tmpPath) }
 
 	arrowTable, err := dataTableToArrowTable(dt)
 	if err != nil {
+		_ = f.Close()
+		cleanup()
 		return err
 	}
 	defer arrowTable.Release()
@@ -153,15 +149,25 @@ func Write(dt insyra.IDataTable, path string) error {
 
 	writer, err := pqarrow.NewFileWriter(arrowTable.Schema(), f, parquet.NewWriterProperties(parquet.WithCreatedBy(createdBy)), pqarrow.DefaultWriterProps())
 	if err != nil {
+		_ = f.Close()
+		cleanup()
 		return err
 	}
-	defer func() {
-		if err := writer.Close(); err != nil {
-			log.Printf("parquet: failed to close writer for %s: %v", path, err)
-		}
-	}()
-
-	return writer.WriteTable(arrowTable, 1024*1024) // chunk size
+	if err := writer.WriteTable(arrowTable, 1024*1024); err != nil {
+		_ = writer.Close()
+		cleanup()
+		return err
+	}
+	// pqarrow.FileWriter.Close closes the underlying *os.File as well.
+	if err := writer.Close(); err != nil {
+		cleanup()
+		return fmt.Errorf("parquet: failed to close writer: %w", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		cleanup()
+		return fmt.Errorf("parquet: failed to replace %s: %w", path, err)
+	}
+	return nil
 }
 
 // Read: read parquet file into insyra.DataTable at once
@@ -176,7 +182,7 @@ func Read(ctx context.Context, path string, opt ReadOptions) (*insyra.DataTable,
 			if errors.Is(err, os.ErrClosed) {
 				return
 			}
-			log.Printf("parquet: failed to close file %s: %v", path, err)
+			insyra.LogWarning("parquet", "close", "failed to close file %s: %v", path, err)
 		}
 	}()
 
@@ -186,7 +192,7 @@ func Read(ctx context.Context, path string, opt ReadOptions) (*insyra.DataTable,
 	}
 	defer func() {
 		if err := r.Close(); err != nil {
-			log.Printf("parquet: failed to close reader for %s: %v", path, err)
+			insyra.LogWarning("parquet", "close", "failed to close reader for %s: %v", path, err)
 		}
 	}()
 

@@ -104,7 +104,7 @@ func Read(ctx context.Context, path string, opt ReadOptions) (*insyra.DataTable,
 func Write(dt insyra.IDataTable, path string) error
 ```
 
-**Description:** Writes an `insyra.IDataTable` to a Parquet file.
+**Description:** Writes an `insyra.IDataTable` to a Parquet file. The data goes to a sibling temporary file that is renamed into place, so a failure part-way never leaves a truncated file at `path`.
 
 **Parameters:**
 

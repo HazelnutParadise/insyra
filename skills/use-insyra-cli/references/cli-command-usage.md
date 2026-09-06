@@ -413,6 +413,7 @@ This is separate from boolean-flag parsing used by option arguments like `header
 - Save behavior:
 	- default output: `<type>.html`
 	- with `save <file>`: `.png` uses PNG export, other extensions use HTML export
+	- PNG export renders with a local Chrome/Chromium and fails with an error when none is available; the CLI never uploads the chart to the online renderer.
 
 ## `quant`
 - Description: Quantitative finance metrics from the `quant` package. Series arguments are DataList variables of per-period **returns** (or an equity curve), never prices. `periods`, `days`, and `confidence` are required — there is no CLI default of 252. `rf`, `mar`, and `q` default to 0; the VaR method defaults to `historical`. Scalar forms print `name=value` and store a float64; library errors are returned verbatim behind a `quant <form>:` prefix. `portfolio` and `frontier` take a DataTable of aligned return columns instead of a series, with comma-separated per-asset `min`/`max` bounds in column order (default long-only `[0, 1]`).

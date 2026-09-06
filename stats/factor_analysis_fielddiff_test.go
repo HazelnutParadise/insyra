@@ -23,12 +23,12 @@ func TestFieldDiffAllFailingCombos(t *testing.T) {
 
 	// Replicate dataset map from factor_analysis_test.go
 	datasetMap := map[string][][]any{
-		"generated_near_collinear":      generatedNearCollinearRows(),
-		"generated_mixed_scale":         generatedMixedScaleRows(),
-		"generated_moderate_three":      generatedModerateThreeFactorRows(),
-		"generated_high_correlation":    generatedHighCorrelationRows(),
-		"generated_negative_dominant":   generatedNegativeDominantRows(),
-		"generated_wide_two_factor":     generatedWideTwoFactorRows(),
+		"generated_near_collinear":    generatedNearCollinearRows(),
+		"generated_mixed_scale":       generatedMixedScaleRows(),
+		"generated_moderate_three":    generatedModerateThreeFactorRows(),
+		"generated_high_correlation":  generatedHighCorrelationRows(),
+		"generated_negative_dominant": generatedNegativeDominantRows(),
+		"generated_wide_two_factor":   generatedWideTwoFactorRows(),
 	}
 	datasetNFactors := map[string]int{
 		"generated_near_collinear":    2,

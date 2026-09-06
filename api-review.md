@@ -77,7 +77,7 @@
 
 ## 發現彙整（依套件）
 
-「已修正」表示該項在 `fix-api-review-batch-1`（2026-09-05）或 `fix-api-review-batch-2`（2026-09-06）處理完畢；D-4 只修了「當 0」的部分，「跳過」的政策決定仍待處理。
+「已修正」表示該項在 `fix-api-review-batch-1`（2026-09-05）、`fix-api-review-batch-2` 或 `fix-api-review-batch-3`（2026-09-06）處理完畢；D-4 只修了「當 0」的部分，「跳過」的政策決定仍待處理。
 
 ### csvxl
 
@@ -87,9 +87,9 @@
 | C-2 | Med | `csvEncoding ...string` / `encoding ...string` 拿 variadic 當選填參數，傳兩個以上才在執行期報錯；未知編碼字串（如 `"latin1"`）靜默走 raw 讀取 | convert.go:31-37, 86-92; convertDir.go:16; read_csv.go:11 | 改成明確參數或 options struct；未知編碼回傳錯誤 |
 | C-3 | ~~Med~~ 已修正 | `AppendCsvToExcel` doc 說「sheet 已存在會被覆寫」，但 excelize `NewSheet` 對既有名稱只回傳索引不清空（已查 v2.11.0 sheet.go:57-59），結果是新資料蓋在舊資料上，舊資料超出範圍的儲存格殘留 | convert.go:83-107 | 存在時先 `DeleteSheet` 再建，或改 doc 說明是合併 |
 | C-4 | ~~Med~~ 已修正 | `excelize.OpenFile` 回傳的 `*File` 從未 `Close()`：`AppendCsvToExcel`、`ExcelToCsv`、`EachExcelToCsv`（每個檔案各漏一次） | convert.go:94, 136; convertDir.go:38 | `defer f.Close()` |
-| C-5 | Low | 錯誤用 `%v` 包裝，呼叫端無法 `errors.Is(err, os.ErrNotExist)`；`read_csv.go` 已用 `%w`，套件內不一致 | convert.go 全檔 | 改 `%w` |
+| C-5 | ~~Low~~ 已修正（batch 3） | 錯誤用 `%v` 包裝，呼叫端無法 `errors.Is(err, os.ErrNotExist)`；`read_csv.go` 已用 `%w`，套件內不一致 | convert.go 全檔 | 改 `%w` |
 | C-6 | Low | `UTF8/Big5/Auto` 是裸 string 常數，而實際比對用 `strings.Contains`，任何字串都會被接受 | convert.go:22-26 | typed `Encoding` string 型別 |
-| C-7 | Low | 目錄用 `os.ModePerm`（0777）建立 | convert.go:143; convertDir.go:50 | 0755 |
+| C-7 | ~~Low~~ 已修正（batch 3） | 目錄用 `os.ModePerm`（0777）建立 | convert.go:143; convertDir.go:50 | 0755 |
 | C-8 | Low | 路徑沒有 `.csv` 結尾就自動補；`ExcelToCsv` 的 `onlyContainSheets` 指到不存在的 sheet 靜默略過；`EachExcelToCsv` log 標錯函式名 | convert.go:44, 158-164; convertDir.go:62 | 不補副檔名（或改 doc）；找不到的 sheet 回錯；修 log |
 | C-10 | Med | 全套件只吃檔案路徑，沒有 `io.Reader`/`io.Writer` 版本：記憶體中的 CSV、HTTP 回應、`embed.FS` 都得先落地成檔案才能轉（準則 8、10） | 全套件 | 核心改成 Reader/Writer，路徑版當薄包裝 |
 | C-11 | Med | `CsvToExcel(csvFiles, sheetNames, ...)` 用兩個平行切片靠索引對位，錯一格就對到別的 sheet；`ExcelToCsv(…, csvNames, onlyContainSheets...)` 同樣問題（準則 4、8） | convert.go:31, 135 | `[]SheetSpec{Path, Sheet}` 一個切片 |
@@ -102,7 +102,7 @@
 | --- | --- | --- | --- | --- |
 | P-1 | High | 整個 API 以 `any` 進出：函式是 `any`，結果是 `[][]any`。worker panic 被轉成 `error` 塞進結果槽，與函式本身回傳 `error` 的情況無法區分；型別錯誤只能在執行期發現 | parallel/parallel_computing.go:16, 24-58, 61 | 見 P-4 |
 | P-2 | Med | `Run` 呼叫兩次會重新執行所有函式並覆寫結果；沒有 context、沒有併發上限 | parallel_computing.go:24 | 記錄已執行狀態；或整包重設計 |
-| P-3 | Low | `AwaitNoResult` doc 說「避免結果收集開銷」，但 `Run` 一律收集 | parallel_computing.go:66-70 | 修 doc 或真的分開 |
+| P-3 | ~~Low~~ 已修正（batch 3） | `AwaitNoResult` doc 說「避免結果收集開銷」，但 `Run` 一律收集 | parallel_computing.go:66-70 | 修 doc 或真的分開 |
 | P-5 | Med | 最常見用法要串三步 `GroupUp(...).Run().AwaitResult()`，業界標竿 `errgroup.Group` 是 `g.Go(f); g.Wait()` 兩步且回傳 error（準則 4、10） | 全套件 | 併入 P-4 決策 |
 | P-4 | 決策 | 套件內部只有 `datatable.go`、`mkt/rfm.go`、`stats/anova.go` 三處使用，都是「跑幾個無回傳閉包再等」的用法。標準庫 `sync.WaitGroup` / `errgroup.Group` 已涵蓋。要嘛用 generics 重做成型別安全版本，要嘛標 Deprecated 並把三處改回 WaitGroup | 全套件 | 建議後者：一個公開套件維護成本高於三處 WaitGroup |
 
@@ -112,9 +112,9 @@
 | --- | --- | --- | --- | --- |
 | Q-1 | ~~High~~ 已修正 | `ReadColumnOptions.MaxValues` doc 承諾「超過就回錯避免記憶體爆掉」，但整個套件沒有任何地方讀這個欄位（grep 只命中宣告處）。使用者以為有保護，其實沒有 | parquet/api.go:25-28, 288 | 實作它，或刪掉欄位 |
 | Q-2 | Med | `Write(dt, path)` 沒有 ctx、沒有選項；壓縮方式與 chunk size（1Mi）寫死。`Read` 有 ctx，`Write` 沒有，不對稱 | api.go:131-166 | 加 `WriteOptions`（可先空）與 ctx |
-| Q-3 | Med | `Write` 直接開目標路徑寫，中途失敗留下半個檔案；同套件 `ApplyCCL` 已做 tmp+rename 原子替換，做法不一致 | api.go:132 vs ccl.go:591-621 | Write 也走 tmp+rename |
-| Q-4 | Med | 關閉資源的錯誤用標準庫 `log.Printf`，繞過 insyra `Config` 的 log level 與格式；其他套件都用 `insyra.LogWarning` 等 | api.go, internal.go, ccl.go 多處 | 改用 insyra logger |
-| Q-5 | Low | `ApplyCCL` doc 範例引用不存在的 `CCLFilterOptions{}` | ccl.go:573 | 修 doc |
+| Q-3 | ~~Med~~ 已修正（batch 3） | `Write` 直接開目標路徑寫，中途失敗留下半個檔案；同套件 `ApplyCCL` 已做 tmp+rename 原子替換，做法不一致 | api.go:132 vs ccl.go:591-621 | Write 也走 tmp+rename |
+| Q-4 | ~~Med~~ 已修正（batch 3） | 關閉資源的錯誤用標準庫 `log.Printf`，繞過 insyra `Config` 的 log level 與格式；其他套件都用 `insyra.LogWarning` 等 | api.go, internal.go, ccl.go 多處 | 改用 insyra logger |
+| Q-5 | ~~Low~~ 已修正（batch 3） | `ApplyCCL` doc 範例引用不存在的 `CCLFilterOptions{}` | ccl.go:573 | 修 doc |
 | Q-6 | Low | `FilterWithCCL` / `ApplyCCL` batchSize 寫死 1000，無法調 | ccl.go:456, 577 | 選項或常數說明 |
 | Q-8 | Med | 所有函式只吃路徑；Arrow reader 本來就吃 `io.ReaderAt`，卻沒有暴露 `ReadFrom(r io.ReaderAt, size)` / `WriteTo(w io.Writer)`，S3、HTTP、記憶體來源都得先落地（準則 8、10） | api.go 全檔 | 加 Reader/Writer 版本，路徑版包裝它 |
 | Q-9 | Low | `Stream` 回傳兩個 channel 是 Go 1.23 之前的寫法；`iter.Seq2[*DataTable, error]` 讓 `for dt, err := range` 直接用，也自然解決 Q-7 的洩漏契約（準則 8） | api.go:246 | 改 `iter.Seq2`，舊簽名保留一版 |
@@ -129,18 +129,19 @@
 | K-2 | ~~High~~ 已修正 | `SliceToF64` 對非數值填 0，而 `stats.Kurtosis`、`stats.Skewness` 仍經由它讀資料。2026-08-01 已決議 `stats` 不得捏造零值（AGENTS.md follow-up），這條路徑漏掉了 | utils.go:28-38；stats/kurtosis.go:25；stats/skewness.go:26 | `stats` 兩處改走 `numericSeries` 式的拒絕路徑；`SliceToF64` 改回傳 `([]float64, error)` 或標 Deprecated |
 | K-3 | High | 沒有 `LogLevelError`。等級只有 Debug/Info/Warning/Fatal，所以實例上 `Err()` 記到的失敗全部是 `LogLevelWarning`，「警告」與「這次操作失敗了」無法區分；`HasErrorAboveLevel(LogLevelWarning)` 也因此沒有意義 | config.go:25-34；datalist.go:2140-2145 | 加 `LogLevelError`，`warn` 改 `fail`；這是資料模型變更，要走 OpenSpec |
 | K-4 | Med | 全域錯誤 ring buffer（1536 筆）共 14 個匯出函式：`PopError`、`PopErrorInfo`、`PopErrorAndCallback`、`PopErrorByPackageName`、`PopErrorByFuncName`、`PeekError`、`GetAllErrors`、`GetErrorsByLevel`、`GetErrorsByPackage`、`PopAllErrors`、`HasError`、`HasErrorAboveLevel`、`GetErrorCount`、`ClearErrors`。全程序共用一個緩衝，多 goroutine 下拿到的是別人的錯；`PopError` 空緩衝回 `(LogLevelInfo, "")` 當哨兵，與 `PopErrorInfo` 回 nil 兩套語意並存。業界做法是回傳 error，實例層 `Err()` 已經有了（準則 1、6、10） | error_buffer.go 全檔 | 減到 `GetAllErrors`、`PopAllErrors`、`ClearErrors` 三個，其餘標 Deprecated；或整個 buffer 改為 opt-in |
-| K-5 | Med | `pushError` 對每筆錯誤 `go errHandlingFunc(...)`，goroutine 無上限且順序不保證；使用者的 handler 若慢或阻塞，每個 warning 就漏一個 goroutine | error_buffer.go:68-70 | 同步呼叫，或單一 consumer goroutine + 有界 channel |
-| K-6 | Med | `Config` 是 `*configStruct` 全域，型別未匯出：使用者無法在自己的函式簽名裡引用它，也不能建立第二份設定；`logLevel`、`coloredOutput`、`dontPanic`、`defaultErrHandlingFunc` 是裸欄位，`SetLogLevel` 與熱路徑 `GetLogLevel` 並行時是 data race（只有 threadSafe、acceleration 用了 atomic） | config.go:9-19, 36-70 | 匯出 `type Config struct`；四個欄位改 atomic 或加 mutex |
+| K-5 | ~~Med~~ 已修正（batch 3） | `pushError` 對每筆錯誤 `go errHandlingFunc(...)`，goroutine 無上限且順序不保證；使用者的 handler 若慢或阻塞，每個 warning 就漏一個 goroutine | error_buffer.go:68-70 | 同步呼叫，或單一 consumer goroutine + 有界 channel |
+| K-6 | ~~Med~~ 已修正（batch 3） | `Config` 是 `*configStruct` 全域，型別未匯出：使用者無法在自己的函式簽名裡引用它，也不能建立第二份設定；`logLevel`、`coloredOutput`、`dontPanic`、`defaultErrHandlingFunc` 是裸欄位，`SetLogLevel` 與熱路徑 `GetLogLevel` 並行時是 data race（只有 threadSafe、acceleration 用了 atomic） | config.go:9-19, 36-70 | 匯出 `type Config struct`；四個欄位改 atomic 或加 mutex |
 | K-7 | Med | `IDataList` 含未匯出方法 `updateTimestamp()`，`IDataTable` 含 `getRowNameByIndex`、`getMaxColLength`、`updateTimestamp`：外部不可能實作，介面等同具體型別。但全 repo 71 個檔案用它當參數型別，回傳卻都是 `*DataList`/`*DataTable`。約 120 個方法的介面沒有抽象價值（「介面越大抽象越弱」，準則 1、8、10） | interfaces.go:6, 121 | 二選一：刪未匯出方法讓它可實作、並拆成小介面；或整個移除改用具體型別。這是 API 設計決策，需要你拍板 |
 | K-8 | Med | `AtomicDoAll(f func(), instances ...any)`：型別是 `any`，傳錯型別只 warning 然後「跳過不鎖」，呼叫端以為鎖住了其實在裸奔（準則 8、12） | atomic.go:109-131 | 定義 `type Lockable interface{ atomicActor() *core.AtomicActor }`，參數改 `...Lockable` |
 | K-9 | ~~Med~~ 已修正 | `ReadJSON_File` 直接 `json.Unmarshal` 不用 `UseNumber`，整數變 float64；`ReadJSON` 走 `unmarshalJSONRows` 保留 int64。同一個檔案從兩個入口讀，型別不同，大整數 ID 在 `ReadJSON_File` 會失真（準則 6、13） | read.go:410-431 vs 442-460 | `ReadJSON_File` 改成 `os.ReadFile` + `ReadJSON(bytes)` |
-| K-10 | Med | `DetectEncoding` 只看前 8KB，且 `utf8.Valid` 在多位元組字元被切在 8192 邊界時回 false，接著交給 chardet 可能判成別的編碼；chardet 回傳的名稱（`shift_jis`、`iso-8859-1`、`gb-18030`）csvxl 只認 big5/gb/utf-16，其餘靜默當 UTF-8 讀 | utils.go:279-322；csvxl/convert.go:213-222 | 邊界回退到最後一個完整 rune 再驗證；不支援的編碼回錯而非靜默 |
+| K-10 | ~~Med~~ 已修正（batch 3） | `DetectEncoding` 只看前 8KB，且 `utf8.Valid` 在多位元組字元被切在 8192 邊界時回 false，接著交給 chardet 可能判成別的編碼；chardet 回傳的名稱（`shift_jis`、`iso-8859-1`、`gb-18030`）csvxl 只認 big5/gb/utf-16，其餘靜默當 UTF-8 讀 | utils.go:279-322；csvxl/convert.go:213-222 | 邊界回退到最後一個完整 rune 再驗證；不支援的編碼回錯而非靜默 |
 | K-11 | Med | CSV 只有 `_File` 與 `_String` 兩種入口，沒有 `io.Reader` 版本；Excel、JSON 同樣只吃路徑。與 C-10、Q-8 同一問題 | read.go | 加 `ReadCSV(r io.Reader, opts)`，檔案與字串版包裝它 |
 | K-12 | Med | `ToFloat64`、`ToFloat64Safe`、`ReadSlice2D` 用 `var` 匯出函式值：使用者可以在執行期覆寫（`insyra.ToFloat64 = ...`），godoc 也不會列在 Functions 區；`ReadSlice2D` 與 `Slice2DToDataTable` 是同一件事兩個名字（準則 2、6） | utils.go:22-23；read.go:22 | 改成 `func` 包裝；別名擇一標 Deprecated |
 | K-13 | Low | 命名不符 Go 慣例且與 golint 衝突：`ReadCSV_File`、`ReadCSV_String`、`ReadJSON_File`、`ToJSON_Bytes`、`ToJSON_String`、`Dangerously_TurnOffThreadSafety` 用底線；`GetDoesUseColoredOutput`、`GetDontPanicStatus` 疊字；`ParseColIndex`/`CalcColIndex` 一對函式動詞不對稱（準則 9） | config.go；read.go；utils.go:244-251 | v1 前統一：`ReadCSVFile`、`ColIndexToNumber`/`ColNumberToIndex`、`ColoredOutput()` |
 | K-14 | Low | `ReadCSV_File(path, bool, bool, encoding ...string)`、`ReadExcelSheet(path, sheet, bool, bool)` 兩個裸 bool 加 variadic；`_WithOptions` 版本已存在，舊簽名該退場。`ReadExcelSheet` 沒有 options 版，也沒有型別推斷（既有 follow-up） | read.go:115, 384 | 舊簽名標 Deprecated；加 `ReadExcelSheetWithOptions` 沿用 `CSVReadOptions` 的欄位 |
 | K-15 | Low | 核心套件匯出了與資料表無關的工具：`SqrtRat`、`PowRat`（repo 內無人用）、`SortTimes`（只有 mkt 用一次，`slices.SortFunc` 可替代）、`ProcessData` 回傳 `([]any, int)` 而 int 就是 `len()`、失敗時回 `nil, 0` 靠 log 通知。`F64orRat` 是 internal 介面的匯出別名（準則 1、2） | utils.go:43-87, 90-112, 255-264, 20 | `SqrtRat`/`PowRat`/`SortTimes` 移入 internal 或刪除；`ProcessData` 改回 `([]any, error)` |
-| K-16 | Low | `atomic.go` 的 doc comment 是亂碼（`憒??典??蔭??`，來源檔曾以錯誤編碼存檔）；`SetDefaultConfig` 的 doc 寫成「DefaultConfig returns…」；`ReadCSV_FileWithOptions` 用 `"csvxl"` 當套件名寫 log（實際在 core）；`Slice2DToDataTable` 對空切片回錯而 pandas 允許空表（準則 5、E） | atomic.go:31, 37, 44, 49；config.go:97；read.go:139, 51 | 修文件；空切片回空表 |
+| K-16 | ~~Low~~ 已修正（batch 3） | `atomic.go` 的 doc comment 是亂碼（`憒??典??蔭??`，來源檔曾以錯誤編碼存檔）；`SetDefaultConfig` 的 doc 寫成「DefaultConfig returns…」；`ReadCSV_FileWithOptions` 用 `"csvxl"` 當套件名寫 log（實際在 core）；`Slice2DToDataTable` 對空切片回錯而 pandas 允許空表（準則 5、E） | atomic.go:31, 37, 44, 49；config.go:97；read.go:139, 51 | 修文件；空切片回空表 |
+| K-18 | ~~Med~~ 已修正（batch 3） | `AppendRowsByColName` 直接 range map 新增欄位，Go map 迭代順序隨機，`ReadJSON`／`ReadJSON_File` 同一份 JSON 每次讀出的欄序不同（`TestReadJSONFileMatchesReadJSON` 隨機失敗）（準則 6、13） | datatable.go:222 | 欄名排序後新增 |
 | K-17 | Low | `LogInfo`/`LogWarning` 等四個 logger 函式是唯一的 log 出口，只能輸出到標準 `log`，不能接 `slog`/zap，也沒有 `io.Writer` 可設；成功路徑（Info）預設開啟，生產環境使用者要自己關（準則 14） | logger.go | 提供 `SetLogger(*slog.Logger)` 或 `SetOutput(io.Writer)`；預設等級改 Warning |
 
 ### core — DataList（datalist.go, datalist_*.go, describe_options.go）
@@ -157,17 +158,17 @@
 | D-6 | Med | `FindFirst`/`FindLast` 回傳 `any`（int 或 nil），呼叫端要型別斷言；`Get` 越界回 nil，與元素本身是 nil 無法區分。DataTable 的 `GetRowIndexByName` 已用 `(int, bool)`，同一套件兩種慣例（準則 6、8） | datalist.go:148, 248, 274 | 改 `(int, bool)` / `(any, bool)`；舊簽名標 Deprecated |
 | D-7 | Med | 原地修改與回傳新 list 從名稱看不出來。原地：`Sort`、`Reverse`、`Normalize`、`Standardize`、`Clear*`、`Replace*`、`Fill*`、`Upper/Lower/Capitalize`、`Parse*`、`Drop*`。新 list：`Filter`、`Map`、`Concat`、`Rank`、`Shift/Diff/PctChange/Cum*`、`MovingAverage`、`Sample`、`Shuffle`。pandas 預設回新物件；使用者對 `GetCol` 拿到的欄位做 `Sort()` 會不會動到表，要看 DataTable 段（準則 5、6） | 全 DataList | 文件明列兩類；長期考慮 `Sorted()`/`SortInPlace()` 命名或全部回新 list |
 | D-8 | Med | variadic 冒充選填參數：`Sort(ascending ...bool)`、`Rank(ascending ...bool)`、`FillForward/FillBackward(limit ...int)`、`FillByInterpolation(extrapolate ...bool)`、`Shift(periods, fill ...any)`、`Sample(..., options ...SamplingOptions)`、`Describe(options ...DescribeOptions)`。`Sort` 多傳一個參數只在執行期 warn。同一型別上 `Rolling(RollingOptions)`、`EWM(EWMOptions)` 已是 options struct，新舊並存（準則 8） | 各函式 | 新 API 一律 options struct；舊的標 Deprecated |
-| D-9 | Med | 效能：`ClearNaNs`/`ClearNils`/`ClearOutliers` 在迴圈裡 `append(data[:i], data[i+1:]...)`，O(n²)；`DropAll`/`ClearStrings` 為一次線性掃描開 NumCPU 個 goroutine，10 個元素也開，且 `ClearStrings` 留著「此處之後尚未提升性能」註解；`Data()` 每次整份複製，`Get(i)` 每個元素取一次 actor lock，沒有 iterator。逐元素走訪一個 DataList 要嘛 n 次鎖、要嘛全複製（準則 8、12；Go 1.23 `iter.Seq` 是標準做法） | datalist.go:479-571, 615-731, 41-48, 148 | 單趟過濾；加 `All() iter.Seq2[int, any]` |
+| D-9 | ~~Med~~ 已修正（batch 3） | 效能：`ClearNaNs`/`ClearNils`/`ClearOutliers` 在迴圈裡 `append(data[:i], data[i+1:]...)`，O(n²)；`DropAll`/`ClearStrings` 為一次線性掃描開 NumCPU 個 goroutine，10 個元素也開，且 `ClearStrings` 留著「此處之後尚未提升性能」註解；`Data()` 每次整份複製，`Get(i)` 每個元素取一次 actor lock，沒有 iterator。逐元素走訪一個 DataList 要嘛 n 次鎖、要嘛全複製（準則 8、12；Go 1.23 `iter.Seq` 是標準做法） | datalist.go:479-571, 615-731, 41-48, 148 | 單趟過濾；加 `All() iter.Seq2[int, any]` |
 | D-10 | Med | `WeightedMean(weights any)`、`WeightedMovingAverage(w int, weights any)` 收 `any` 再用 `ProcessData` 猜型別；`RollingOptions.Weights []float64` 是型別化的。同一件事兩種簽名（準則 8） | datalist.go:880, 1292 | 改 `[]float64` |
-| D-11 | Med | 相等語意有三套：`IsEqualTo`/`FindAll`/`Count`/`ReplaceAll` 用 `==`（NaN 永不相等，已實測 `IsEqualTo` 自己的 Clone 為 false；元素不可比較時 panic）；`Counter()` 用 map key（同樣 panic）；`FillWithMode` 用 `reflect.DeepEqual`（O(n²)）。`FindAll` 有特判 NaN，`IsEqualTo` 沒有（準則 6、13） | datalist.go:1892-1918, 191-199；datalist_impute.go:182 | 一個套件內部 `equalAny` 統一 NaN 與不可比較型別的處理 |
+| D-11 | ~~Med~~ 已修正（batch 3） | 相等語意有三套：`IsEqualTo`/`FindAll`/`Count`/`ReplaceAll` 用 `==`（NaN 永不相等，已實測 `IsEqualTo` 自己的 Clone 為 false；元素不可比較時 panic）；`Counter()` 用 map key（同樣 panic）；`FillWithMode` 用 `reflect.DeepEqual`（O(n²)）。`FindAll` 有特判 NaN，`IsEqualTo` 沒有（準則 6、13） | datalist.go:1892-1918, 191-199；datalist_impute.go:182 | 一個套件內部 `equalAny` 統一 NaN 與不可比較型別的處理 |
 | D-12 | Med | 時間戳用 Unix 秒：`GetCreationTimestamp() int64`、`updateTimestamp` 同一秒內多次修改看不出來、`IsTheSameAs` 比秒級時間戳，同一秒建立的兩個 list 會被判「相同」。業界回 `time.Time`（準則 10） | datalist.go:2064-2087, 1920 | 改 `time.Time`（或 UnixNano）；`IsTheSameAs` 語意重新定義 |
 | D-13 | Med | 同一個概念三種尺度：`Quartile(q int)` 用 1..3 魔數、`Percentile(p)` 用 0..100、`DescribeOptions.Percentiles` 用 0..1（pandas `quantile` 用 0..1）。`Mode()` 全部頻率相同時回 nil，pandas 回全部值（準則 5、6） | datalist.go:1735, 1816, 1431；describe_options.go:13 | 加 `Quantile(p float64)` 0..1 為主 API；`Mode` 行為寫進文件或對齊 pandas |
 | D-14 | Med | 重複介面：`Difference` vs `Diff(1)`、`FillNaNWithMean` vs `FillWithMean`、`MovingAverage(w)` vs `Rolling({Window:w}).Mean()`、`MovingStdev` vs `Rolling().Std()`、`ExponentialSmoothing(a)` vs `EWM({Alpha:a}).Mean()`、`WeightedMovingAverage` vs `Rolling({Weights}).Mean()`。舊的一組正是 D-3/D-4 問題最集中的地方；新的一組（Rolling/EWM/Expanding）設計品質明顯較好（準則 1、6） | datalist.go:821-1005, 1864 | 舊六個標 Deprecated 指向新 API，下一個 minor 移除 |
-| D-15 | Low | 小行為不一致：`InsertAt` 越界改成 append（pandas raise）；`Update` 的 Err 記成 `ReplaceAtIndex`（函式名錯）；`Sample`/`Shuffle` 把結果改名 `name_Sampled`/`name_Shuffled`，`Filter`/`Concat` 丟掉名稱，`Shift/Diff/Cum*` 保留名稱。名稱傳遞規則沒有一致（準則 6、7） | datalist.go:221, 203；datalist_sampling.go | 統一：衍生 list 一律沿用原名 |
+| D-15 | Low（Update 函式名已修正 batch 3；命名傳遞待決） | 小行為不一致：`InsertAt` 越界改成 append（pandas raise）；`Update` 的 Err 記成 `ReplaceAtIndex`（函式名錯）；`Sample`/`Shuffle` 把結果改名 `name_Sampled`/`name_Shuffled`，`Filter`/`Concat` 丟掉名稱，`Shift/Diff/Cum*` 保留名稱。名稱傳遞規則沒有一致（準則 6、7） | datalist.go:221, 203；datalist_sampling.go | 統一：衍生 list 一律沿用原名 |
 | D-16 | Low | `ParseNumbers` 把所有元素轉成 float64，int64 大於 2^53 會失真，與 CSV 讀入保留 int64 的決策矛盾；`Capitalize` 寫死 `language.English`（準則 13） | datalist.go:1977, 1132 | 整數保留整數；語言由參數決定或用 `language.Und` |
-| D-17 | Low | 文件：`Len` 無 doc；`ToF64Slice` doc 重複一行且沒寫「非數值變 0」（既有 follow-up）；`MovingStdev` doc 寫 `MovingStdDev`；`Drop` doc 寫「Returns an error」但回傳 `*DataList`；`Rolling*`/`EWM*` 的 doc 是本套件寫得最完整的，其餘應比照（準則 E） | datalist.go:606, 2015-2019, 982, 456 | 修 |
+| D-17 | ~~Low~~ 已修正（batch 3） | 文件：`Len` 無 doc；`ToF64Slice` doc 重複一行且沒寫「非數值變 0」（既有 follow-up）；`MovingStdev` doc 寫 `MovingStdDev`；`Drop` doc 寫「Returns an error」但回傳 `*DataList`；`Rolling*`/`EWM*` 的 doc 是本套件寫得最完整的，其餘應比照（準則 E） | datalist.go:606, 2015-2019, 982, 456 | 修 |
 | D-18 | Low | Rolling/EWM/Expanding 選項無效時，reducer 回傳「空 list」而不是「同長度全 nil」。使用者把結果 `AppendCols` 進表會因長度不符再錯一次，離真正原因更遠（準則 7） | datalist_window.go:301-306；datalist_ewm.go:107-115 | 回同長度全 nil |
-| D-19 | Med | `init.go` 在 import 時就以 Info 印出「Welcome to Insyra」橫幅，且用 `LogInfo("", "", …)`。程式庫不得在 import 時輸出（準則 14；併入 K-17 的 logger 決策） | init.go:7 | 移除橫幅，改由 CLI 自己印 |
+| D-19 | ~~Med~~ 已修正（batch 3） | `init.go` 在 import 時就以 Info 印出「Welcome to Insyra」橫幅，且用 `LogInfo("", "", …)`。程式庫不得在 import 時輸出（準則 14；併入 K-17 的 logger 決策） | init.go:7 | 移除橫幅，改由 CLI 自己印 |
 
 ### core — DataTable 第一批（datatable.go、colname/rowname/name/colindex、swap/sort/map/json/csv、summary/describe、filters、replace、sampling、window、resample、groupby、pivot、merge）
 
@@ -192,9 +193,9 @@
 | T-15 | Med | `mergeVertical` 對沒有欄名的表（`NewDataTable(NewDataList(...))` 預設）判定「重複欄名 ""」而回錯，兩張無名表無法垂直合併（推論，未實測）；`Merge(other IDataTable, ...)` 內部立刻斷言 `*DataTable`，介面參數只是裝飾（K-7） | datatable_merge.go:31, 389-400 | 無名欄以位置對齊；參數改 `*DataTable` |
 | T-16 | Med | GroupBy 的 `columnsSnapshot` 是欄位指標的淺拷貝，`Aggregate` 在鎖外讀 `sourceCol.data`；父表被並行修改時是 data race（程式碼註解自己承認）。與 Rolling／EWM 深拷貝快照的做法不一致 | datatable_groupby.go:139-146 | 深拷貝或在 Aggregate 期間持鎖 |
 | T-17 | Med | 聚合相關 API 三種寫法：`Aggregate` 用 typed `AggregateOp`，`Pivot.AggFunc` 用字串（含 "avg"、"std" 別名），`Resample` 用 `AggregateOp`。GroupBy 的 key 把 `int 1` 與 `float64 1.0` 分成兩組（CSV 讀進來的 int64 與手動建的 float 會分家），pandas 視為同一組（準則 5、6） | datatable_pivot.go:44, 545-580；datatable_groupby.go:210 | Pivot 改收 `AggregateOp`；數值 key 正規化 |
-| T-18 | Med | 效能：`Count` 為了加總各欄用 `asyncutil.ParallelForEach` 再經 float64 `Sum` 轉回 int；`Clone` 用 `parallel.GroupUp` 跑兩件小事；`Map` 每格經 `originalCol.Get`（每格一次鎖）；`containsSubstring` 手寫遞迴，長字串遞迴深度等於字串長度，`strings.Contains` 就有 | datatable.go:1271-1282, 1384-1410, 1568-1571；datatable_map.go:30 | 直接迴圈；`strings.Contains` |
-| T-19 | Med | `FindColsIfContains`／`FindColsIfContainsAll` 用 `FindFirst != nil` 判斷，每個不含該值的欄都會觸發一次 warn 進 `Err()`（D-5 跨欄放大）；`FindRowsIfAllElementsContainSubstring` 把非字串格子視為「符合」，全數字的列會被當作符合（準則 13） | datatable.go:652-690, 626-650 | 內部用不設 Err 的查找；非字串視為不符 |
-| T-20 | Low | `replace` 系列的 `mode ...int` 用 0/1/-1 魔數當 variadic 選項；`ReplaceInCol` doc 說「index or name」實作只吃索引（T-11）；NaN 判定 InRow/InCol 只認 float64，表層版用 `isNilOrNaN` 認 float32（準則 8、E） | datatable_replace.go 全檔 | typed `ReplaceMode`；統一 `isNilOrNaN` |
+| T-18 | ~~Med~~ 已修正（batch 3） | 效能：`Count` 為了加總各欄用 `asyncutil.ParallelForEach` 再經 float64 `Sum` 轉回 int；`Clone` 用 `parallel.GroupUp` 跑兩件小事；`Map` 每格經 `originalCol.Get`（每格一次鎖）；`containsSubstring` 手寫遞迴，長字串遞迴深度等於字串長度，`strings.Contains` 就有 | datatable.go:1271-1282, 1384-1410, 1568-1571；datatable_map.go:30 | 直接迴圈；`strings.Contains` |
+| T-19 | ~~Med~~ 已修正（batch 3） | `FindColsIfContains`／`FindColsIfContainsAll` 用 `FindFirst != nil` 判斷，每個不含該值的欄都會觸發一次 warn 進 `Err()`（D-5 跨欄放大）；`FindRowsIfAllElementsContainSubstring` 把非字串格子視為「符合」，全數字的列會被當作符合（準則 13） | datatable.go:652-690, 626-650 | 內部用不設 Err 的查找；非字串視為不符 |
+| T-20 | Low（doc 部分見 T-11） | `replace` 系列的 `mode ...int` 用 0/1/-1 魔數當 variadic 選項；`ReplaceInCol` doc 說「index or name」實作只吃索引（T-11）；NaN 判定 InRow/InCol 只認 float64，表層版用 `isNilOrNaN` 認 float32（準則 8、E） | datatable_replace.go 全檔 | typed `ReplaceMode`；統一 `isNilOrNaN` |
 | T-21 | Low | 13 個 `FilterColsByColIndexGreaterThan…`／`FilterRowsByRowIndexLessThanOrEqualTo…` 長名方法做的是切片，pandas 是 `iloc[a:b]`；`Headers`／`SetHeaders` 是 `ColNames`／`SetColNames` 的別名；`Counter` 與 DataList 重複；`SimpleRandomSample` 已 Deprecated（準則 1） | datatable_filters.go；datatable_colname.go:159, 187 | 收斂成 `SliceRows(from, to)`／`SliceCols(from, to)`，舊的標 Deprecated |
 | T-22 | Low | 缺 doc：`NewDataTable`、`GetElementByNumberIndex`、`GetColByNumber`、`GetColByName`、`GetRowByName`、`NumRows`、`NumCols`、`Data`、`GetCreationTimestamp`、`GetLastModifiedTimestamp`、colname.go 前 6 個方法。`AppendRowsByColIndex` doc 標題寫成 `AppendRowsByIndex`；`ToJSON_Bytes` 的 Err 記成 `ToJSON_Byte`（準則 E） | 各檔 | 補 |
 | T-23 | Low | `SortBy` 的 `DataTableSortConfig` 零值 `ColumnNumber: 0` 無法與「沒指定」區分，空 config 會默默用第 0 欄排序；找不到欄時只 `LogWarning` 不設 Err | datatable_sort.go:7-40 | `ColumnNumber` 改 `*int` 或加 `HasColumnNumber` |
@@ -207,8 +208,8 @@
 | E-1 | ~~Med~~ 已修正（batch 2） | 四個 CCL 方法用 `defer recover()` 把 panic 轉成 warn，但函式回傳值是未命名的 `*DataTable`，recover 後回傳 **nil**（`return <-resultDtChan` 不會執行）。CCL 引擎任何 panic 都讓 `dt.AddColUsingCCL(...).Show()` 變成 nil deref；`resultDtChan` 在同步的 `AtomicDo` 裡毫無作用（推論，未實測） | datatable_ccl.go:13-60, 80-146, 147-235 | 命名回傳值並在 recover 中設為 dt；或不 recover，讓引擎錯誤走 error |
 | E-2 | Med | `ExecuteCCL` 多條語句在第 n 條失敗時，前 n-1 條已套用，表處於半改狀態，doc 沒說；四個 CCL 方法只用 `Err()` 回報，沒有 error 回傳，CLI 與 parquet 的 CCL 都拿 error，同一功能兩種契約（準則 6、11） | datatable_ccl.go:147-235 | 先編譯全部再套用，或在 doc 明講「逐條套用」；加 `ExecuteCCLErr` 回 error |
 | E-3 | Med | 核心套件直接依賴 `gorm`：`ToSQL(db *gorm.DB, …)`、`ReadSQL(db *gorm.DB, …)`。所有只用 DataTable 的使用者都要拉進 gorm 及其相依圖；標準做法是收 `*sql.DB`／`database/sql` 介面，gorm 當可選轉接（準則 8、10） | datatable_to_sql.go:48, 57；datatable_from_sql.go:546-601 | 改收 `*sql.DB`（或 `interface{ QueryContext; ExecContext }`），gorm 使用者傳 `db.DB()` |
-| E-4 | Med | `ReadSQLOptions.WhereClause`／`OrderBy` 是直接拼進 SQL 的原始字串，`Params` 只綁 `Query`；使用者把資料塞進 WhereClause 就是 SQL injection，doc 沒有警語（準則 14）。對照組：`ToSQL` 端有做識別字引號與型別白名單 | datatable_from_sql.go:500-545, 674-712 | doc 標明「不得放入使用者資料」；或提供 `Where(expr, args...)` 綁參數 |
-| E-5 | Low | 選項重複與過時註解：`ReadSQLOptions.IndexCol` 是 `RowNameColumn` 的別名；`ToSQLOptions.IfExists` 註解寫 `"fail", "replace", "append"` 字串但型別是 int enum；`SQLActionIfTableExistsFail` 命名冗長（準則 1、E） | datatable_from_sql.go:500-509；datatable_to_sql.go:20-43 | 留一個；修註解；enum 改 `TableExistsFail` |
+| E-4 | ~~Med~~ 已修正（batch 3） | `ReadSQLOptions.WhereClause`／`OrderBy` 是直接拼進 SQL 的原始字串，`Params` 只綁 `Query`；使用者把資料塞進 WhereClause 就是 SQL injection，doc 沒有警語（準則 14）。對照組：`ToSQL` 端有做識別字引號與型別白名單 | datatable_from_sql.go:500-545, 674-712 | doc 標明「不得放入使用者資料」；或提供 `Where(expr, args...)` 綁參數 |
+| E-5 | ~~Low~~ 已修正（batch 3） | 選項重複與過時註解：`ReadSQLOptions.IndexCol` 是 `RowNameColumn` 的別名；`ToSQLOptions.IfExists` 註解寫 `"fail", "replace", "append"` 字串但型別是 int enum；`SQLActionIfTableExistsFail` 命名冗長（準則 1、E） | datatable_from_sql.go:500-509；datatable_to_sql.go:20-43 | 留一個；修註解；enum 改 `TableExistsFail` |
 | E-6 | Low | `NewSimpleImputer(strategy, constant ...any)`：常數用 variadic 傳，數量錯誤要到 `Fit` 才報；`Scaler.Fit(dt, cols ...string)` cols 必填卻是 variadic，零個參數是執行期錯誤（準則 8） | datatable_simple_imputer.go:39；datatable_scale.go:169 | `NewConstantImputer(value)`；cols 改 `[]string` |
 | E-7 | Low | `DataTable.FillForward(limit int, cols …)` 與 `DataList.FillForward(limit ...int)` 簽名不對稱；`FillWithMean`／`FillWithMedian`／`FillByInterpolation` 對非數值欄靜默跳過（不 warn），pandas 會填所有欄（準則 6） | datatable_impute.go:41-96 | 對稱簽名；跳過時至少 warn |
 | E-8 | Low | `Show()` 預設印全部列，百萬列的表會灌爆終端（pandas 預設 60 列並省略中段）；`ShowRange(startEnd ...any)` 用 `any` 收 `(5)`、`(-5)`、`(2, 10)`、`(2, nil)` 四種形狀；`Show(label, object showable, …)` 的參數型別 `showable` 未匯出，使用者無法在自己的函式簽名引用（準則 4、8） | show.go:27-70, 713-750 | 預設 head/tail 截斷；`ShowRange(start, end int)` + `Head(n)`／`Tail(n)`；匯出 `Showable` |
@@ -231,7 +232,7 @@
 | --- | --- | --- | --- | --- |
 | ST-1 | ~~High~~ 已修正（batch 2） | **錯誤的顯著性（已實測）**：`SingleSampleTTest`、`TwoSampleTTest`、`SingleSampleZTest`、`TwoSampleZTest`、`FTestForVarianceEquality`、`BartlettTest`、`LeveneTest` 用 `Len()` 當 n，卻用 `Mean()`／`Stdev()`／`Var()`／`Median()` 算統計量，而這些方法會跳過非數值格子（D-4）。`[1, 2, nil, 3]` 的單樣本 t 檢定：n=4、mean 用 3 個值算，得 t=4.00、p=0.028；正確是 t=3.46、p=0.074。一個空白把不顯著變成顯著。v0.3.1 的 changelog 說 `stats` 已拒絕不可讀值，但這七個檢定沒有走 `numericValues`，`PairedTTest`、ANOVA、非參數檢定則都有拒絕（準則 13） | stats/ttest.go:30-125, 129-215；stats/ztest.go 全檔；stats/ftest.go:18-60, 64-180 | 全部改走 `numericSlice`，與其他檢定一致 |
 | ST-2 | ~~High~~ 已修正（batch 2） | `CalculateMoment(dl, n, central)` 對 n≥3 用 `ToF64Slice`，非數值當 0；`Skewness`／`Kurtosis` 已在本輪修正前置驗證，但這個公開函式直接餵 DataList 仍會捏造（K-2 同族） | stats/moments.go:35-100 | 改走 `numericSlice` |
-| ST-3 | Med | 每個雙樣本函式都 `data1.(*insyra.DataList)` 未檢查型別斷言：介面參數 `IDataList` 只是裝飾，傳入其他實作直接 panic。K-7 的證據最集中處（10 餘處） | stats/ttest.go:136-137, 226-227；ztest.go；ftest.go:22-23；correlation.go:365-366, 398-399；nonparam_mwu.go | 參數改 `*insyra.DataList`，或斷言失敗回錯 |
+| ST-3 | ~~Med~~ 已修正（batch 3） | 每個雙樣本函式都 `data1.(*insyra.DataList)` 未檢查型別斷言：介面參數 `IDataList` 只是裝飾，傳入其他實作直接 panic。K-7 的證據最集中處（10 餘處） | stats/ttest.go:136-137, 226-227；ztest.go；ftest.go:22-23；correlation.go:365-366, 398-399；nonparam_mwu.go | 參數改 `*insyra.DataList`，或斷言失敗回錯 |
 | ST-4 | Med | 同一族 API 的簽名不一致：t 檢定 `confidenceLevel ...float64` 選填、z 檢定 `confidenceLevel float64` 必填；z／Wilcoxon／MWU 有 `alternative`，t 檢定沒有（只能雙尾，R 的 `t.test` 有）；`LeveneTest(groups []IDataList)` 用切片、`OneWayANOVA(groups ...IDataList)` 用 variadic；`KMeans(…, opts ...KMeansOptions)` 與 `FactorAnalysis(dt, opt FactorAnalysisOptions)` 一個選填一個必填（準則 6、8） | ttest.go；ztest.go；ftest.go:64；anova.go:63；clustering.go:104；factor_analysis.go:347 | 統一為 options struct；t 檢定加 `Alternative` |
 | ST-5 | Med | 結果型別的共同部分 `testResultBase` 未匯出：`Statistic`、`PValue`、`DF`、`CI`、`EffectSizes` 被提升可用，但使用者無法寫一個接受「任何檢定結果」的函式，也無法用介面判斷；`TTestResult.Mean *float64` 與 `ZTestResult.Mean float64` 選填欄位一個用指標一個不用（準則 3、6） | stats/structs.go；ttest.go:13；ztest.go:10 | 匯出 `TestResult` 基底或定義 `interface{ Stat() float64; P() float64 }` |
 | ST-6 | Med | `ChiSquareTestResult.ContingencyTable` 的每格是 `[2]float64{observed, expected}` 陣列塞進 DataTable，全套件沒有其他 API 能處理這種格子，`Show` 印出 `[5 4.5]`；`ChiSquareGoodnessOfFit` 的 `p` 依「類別字串排序後」的順序對位，doc 自己標了 IMPORTANT 警告（準則 5、7） | stats/chi_square.go:14-19, 60-70 | 拆成 `Observed`、`Expected` 兩張表；GoF 改收 `map[string]float64` |
@@ -256,7 +257,7 @@
 | MK-1 | ~~High~~ 已修正（batch 2） | **panic（已實測）**：`RFM` 用 `conv.ParseF64` 讀金額欄，遇到 `"abc"` 直接 panic 穿出 `AtomicDo`，整個程序崩潰。三個公開函式（`RFM`、`CustomerActivityIndex`、`BasketAnalysis`）失敗時只 `LogWarning` 後回 nil，沒有 error 回傳、沒有 `Err()`；欄名打錯時 `GetColIndexByName` 回空字串，之後每列 `GetElement(i, "")` 都是 nil，結果是「一張空表、零錯誤」（準則 11） | mkt/rfm.go:26-80, 100；cai.go:38-60；basket.go:38-56 | 三個函式改回 `(result, error)`；金額走 `ToFloat64Safe` 並指出列號 |
 | MK-2 | ~~Med~~ 已修正（batch 2） | 輸出列順序來自 Go map 迭代（`for customerID := range customerLastTradingDayMap`），每次執行 RFM／CAI 的列順序都不同，結果不可重現、無法 diff；`BasketAnalysis` 有排序（準則 13） | rfm.go:236；cai.go:180 | 依 CustomerID 排序輸出 |
 | MK-3 | Med | 每個欄位都提供 `XxxColIndex` + `XxxColName` 兩個欄位（三個 config 共 8 對），「同時給時 index 優先」是把 T-11 的歧義寫進設定檔；`DateFormat` 用自訂的 `"YYYY-MM-DD"` 記法再轉 Go layout，`NumGroups uint`；`var CAI = CustomerActivityIndex` 是可被覆寫的函式變數（K-12）（準則 3、6、8） | mkt/rfm.go:12-22；cai.go:12-22；basket.go:12-17 | 只留一個欄位參照（名稱或索引擇一）；`CAI` 改 func |
-| MK-4 | Low | 預設值套用時以 Info 等級 log（DateFormat、TimeScale），噪音；用 `parallel.GroupUp`（P-4）與 `insyra.SortTimes`（K-15）；CAI 對每位客戶排序兩次 | rfm.go:60-70, 157；cai.go:66-73, 118 | 移除 log；直接迴圈 |
+| MK-4 | ~~Low~~ 已修正（batch 3） | 預設值套用時以 Info 等級 log（DateFormat、TimeScale），噪音；用 `parallel.GroupUp`（P-4）與 `insyra.SortTimes`（K-15）；CAI 對每位客戶排序兩次 | rfm.go:60-70, 157；cai.go:66-73, 118 | 移除 log；直接迴圈 |
 
 ### finance
 
@@ -283,7 +284,7 @@
 
 | 編號 | 嚴重度 | 問題 | 位置 | 建議 |
 | --- | --- | --- | --- | --- |
-| PL-1 | High | `SavePNG(chart, path, useOnlineServiceOnFail ...bool)` 的預設值是 **true**：本機 Chrome 渲染失敗時，會把整張圖（含使用者資料）送到「HazelnutParadise online service」，沒有明確 opt-in。生產環境的資料就這樣出境（準則 14） | plot/save_chart.go:61-67 | 預設 false，且在 doc 明講會上傳；或拆成 `SavePNGOnline` 獨立函式 |
+| PL-1 | ~~High~~ 已修正（batch 3） | `SavePNG(chart, path, useOnlineServiceOnFail ...bool)` 的預設值是 **true**：本機 Chrome 渲染失敗時，會把整張圖（含使用者資料）送到「HazelnutParadise online service」，沒有明確 opt-in。生產環境的資料就這樣出境（準則 14） | plot/save_chart.go:61-67 | 預設 false，且在 doc 明講會上傳；或拆成 `SavePNGOnline` 獨立函式 |
 | PL-2 | High | `gplot.SaveChart(plt, filename)` 沒有 error 回傳，存檔失敗直接 `LogFatal` 結束程序（磁碟滿、路徑不存在都會）；尺寸寫死 8×4 英吋無法設定（K-1 實例） | gplot/save_chart.go:14-20 | 回 error；加 size 參數 |
 | PL-3 | Med | 14 個 `CreateXxxChart` 失敗回 nil + LogWarning，無 error；`gplot.CreateBarChart(config, data any)` 等用 `any` 收資料再 type switch；所有圖表經 `ToF64Slice` 讀值，非數值畫成 0（`convertDataTableToGrid` 註解直接寫 "use 0"）。這是 AGENTS follow-up 刻意保留的顯示路徑，但至少要在 doc 標明（準則 8、11、13） | plot/*.go；gplot/*.go | 回 `(chart, error)`；`data any` 改具名型別；doc 標明 0 代入 |
 | PL-4 | Low | `SaveHTML(chart, path, animation ...bool)` variadic bool；`HeatMapPoint[X, Y]` 回傳未匯出的泛型型別；`Width`／`Height` 用 `"900px"` 字串；成功存檔 Info log（C-9） | plot/save_chart.go:39；heatmap.go:60-71 | options struct；匯出型別 |
@@ -316,7 +317,7 @@
 | 編號 | 嚴重度 | 問題 | 位置 | 建議 |
 | --- | --- | --- | --- | --- |
 | CL-1 | ~~Med~~ 已修正（batch 2） | 環境名稱直接 `filepath.Join(envsPath, name)`，只檢查非空：`Create("../../tmp/x")`、`Delete("../something")` 會在 envs 目錄之外建立或刪除目錄。CLI 使用者是自己的機器風險低，但 `engine/dsl` 讓程式嵌入 DSL session、環境名稱可能來自外部輸入（準則 14） | cli/env/manager.go:130-138, 180-230 | 名稱限制為 `[A-Za-z0-9_-]+`，拒絕路徑分隔符 |
-| CL-2 | Med | `commands.Registry` 是匯出的全域 map，`Register` 寫入無鎖、`Dispatch` 讀取無鎖，並行註冊是 data race；`ExecContext` 全部欄位公開可改；`DBConn.DSN` 以明文保存連線字串含密碼（doc 說顯示時遮罩，但值本身在記憶體與任何序列化路徑都是明文）（準則 12、14） | cli/commands/registry.go:47-64；db_conn.go:15-20 | Registry 改私有 + `sync.RWMutex`；DSN 只存遮罩後版本 |
+| CL-2 | Med（Registry 鎖已修正 batch 3；DSN 明文待決） | `commands.Registry` 是匯出的全域 map，`Register` 寫入無鎖、`Dispatch` 讀取無鎖，並行註冊是 data race；`ExecContext` 全部欄位公開可改；`DBConn.DSN` 以明文保存連線字串含密碼（doc 說顯示時遮罩，但值本身在記憶體與任何序列化路徑都是明文）（準則 12、14） | cli/commands/registry.go:47-64；db_conn.go:15-20 | Registry 改私有 + `sync.RWMutex`；DSN 只存遮罩後版本 |
 | CL-3 | Low | `cli/env` 每個 `Manager` 方法都有一個同名的套件層包裝函式（`env.Create` → `Default().Create`），60 個匯出符號有 27 個是重複；`State.LastAccess string` 而非 `time.Time`；`BuildCobraCommands` 以命令名稱字串（`"env"`、`"accel"`）硬編特殊旗標；`NewAutoCompleter` 回傳第三方 `readline.AutoCompleter`（準則 1、8） | cli/env/manager.go:520-540；state.go:20；commands/registry.go:100-150 | 移除包裝函式（或只留 Default()）；LastAccess 改 time.Time |
 | CL-4 | OK | `Manager` 有鎖、`SaveState` 用 tmp+rename 原子寫入（parquet.Write 與 geocode cache 應比照）、`DSLSession` 對嵌入者的 Manager 隔離說明清楚 | — | — |
 
@@ -325,7 +326,7 @@
 | 編號 | 嚴重度 | 問題 | 位置 | 建議 |
 | --- | --- | --- | --- | --- |
 | AC-1 | Med | 公開面把 runtime 內部整個攤開：`Session.RegisterDevice`／`RecordReport`／`PlanShardable`／`CacheSnapshot`、`Buffer{Values any}`、`Dataset`、`ExecuteRequest`／`ExecuteResponse`、`RegisterBackendExecutor`／`RegisterDiscoverer`／`RegisterSDKProbe`、`NearestExactCPU`，以及四個 `Reset…ForTest` 測試鉤子都是匯出符號。使用者真正需要的只有 `Default`、`Open`、`Config`、`Report`、`Devices`，其餘是 backend 作者與測試的介面，一旦公開就是相容性承諾（準則 2） | accel/session.go:111-131；executor.go:83-100；discovery.go:20-30；sdk_probe.go:34-50；default.go:50；exact.go:442 | 測試鉤子移到 `internal`／`export_test.go`；backend 註冊 API 標明「供 backend 實作者」並獨立成子套件 |
-| AC-2 | Low | 文件過時：`WorkloadEstimate.Op` 說「Empty means OpSum」、`ExecuteRequest.Queries` 說「Only OpSquaredDistance reads it」、`ExecuteResponse` 提到 `OpNearestQuery`，這三個 op 都已移除只剩 `OpNearestShortlist`；`Report.SelectedDeviceIDs` 與 `SelectedDevices` 互相補齊，兩個欄位一個意思；`NewSession(cfgs ...Config)` variadic 與 `Open(cfg)` 兩個建構子；`ExecuteNearestExact` 與 `DeviceMatMul` 沒有 ctx，但 `BackendExecutor.Execute` 有（準則 6、8、E） | types.go:265-275, 165-180；executor.go:30-60；session.go:26-34；exact.go:157；nn_matmul.go:15 | 更新 doc；刪重複欄位；補 ctx |
+| AC-2 | ~~Low~~ 已修正（batch 3） | 文件過時：`WorkloadEstimate.Op` 說「Empty means OpSum」、`ExecuteRequest.Queries` 說「Only OpSquaredDistance reads it」、`ExecuteResponse` 提到 `OpNearestQuery`，這三個 op 都已移除只剩 `OpNearestShortlist`；`Report.SelectedDeviceIDs` 與 `SelectedDevices` 互相補齊，兩個欄位一個意思；`NewSession(cfgs ...Config)` variadic 與 `Open(cfg)` 兩個建構子；`ExecuteNearestExact` 與 `DeviceMatMul` 沒有 ctx，但 `BackendExecutor.Execute` 有（準則 6、8、E） | types.go:265-275, 165-180；executor.go:30-60；session.go:26-34；exact.go:157；nn_matmul.go:15 | 更新 doc；刪重複欄位；補 ctx |
 | AC-3 | OK | 範本等級：string enum 每個值有 doc、`FallbackReason` 讓「沒加速」可觀測而非錯誤、sentinel error、`Session` 有鎖且 `Default()` 明講共享語意與 Close no-op 的理由、`Config` 零值正規化、閾值來自量測並把數字寫在註解裡（`minWorkPerRowForDevice`、`deviceMatMulMACFloor`） | — | — |
 
 ### ml

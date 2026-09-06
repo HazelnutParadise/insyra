@@ -3,7 +3,6 @@ package parquet
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 
@@ -570,7 +569,7 @@ func FilterWithCCL(ctx context.Context, path string, filterExpr string) (*insyra
 // Processing is done batch by batch to minimize memory usage.
 // cclScript can contain multiple statements separated by semicolons.
 //
-// Example: ApplyCCL(ctx, "input.parquet", "NEW('C') = ['A'] + ['B']; ['D'] = ['D'] * 2", CCLFilterOptions{})
+// Example: ApplyCCL(ctx, "input.parquet", "NEW('C') = ['A'] + ['B']; ['D'] = ['D'] * 2")
 //
 //	The input file will be overwritten.
 func ApplyCCL(ctx context.Context, path string, cclScript string) error {
@@ -590,10 +589,10 @@ func ApplyCCL(ctx context.Context, path string, cclScript string) error {
 	}
 	defer func() {
 		if err := outFile.Close(); err != nil {
-			log.Printf("parquet: failed to close temporary file %s: %v", tmpPath, err)
+			insyra.LogWarning("parquet", "close", "failed to close temporary file %s: %v", tmpPath, err)
 		}
 		if err := os.Remove(tmpPath); err != nil && !os.IsNotExist(err) {
-			log.Printf("parquet: failed to remove temporary file %s: %v", tmpPath, err)
+			insyra.LogWarning("parquet", "close", "failed to remove temporary file %s: %v", tmpPath, err)
 		}
 	}()
 
@@ -627,7 +626,7 @@ func ApplyCCL(ctx context.Context, path string, cclScript string) error {
 		case <-ctx.Done():
 			if writer != nil {
 				if err := writer.Close(); err != nil {
-					log.Printf("parquet: failed to close writer on context done: %v", err)
+					insyra.LogWarning("parquet", "close", "failed to close writer on context done: %v", err)
 				}
 			}
 			return ctx.Err()
@@ -635,7 +634,7 @@ func ApplyCCL(ctx context.Context, path string, cclScript string) error {
 			if err != nil {
 				if writer != nil {
 					if cerr := writer.Close(); cerr != nil {
-						log.Printf("parquet: failed to close writer: %v", cerr)
+						insyra.LogWarning("parquet", "close", "failed to close writer: %v", cerr)
 					}
 				}
 				return err
@@ -666,7 +665,7 @@ func ApplyCCL(ctx context.Context, path string, cclScript string) error {
 				rec.Release()
 				if writer != nil {
 					if cerr := writer.Close(); cerr != nil {
-						log.Printf("parquet: failed to close writer: %v", cerr)
+						insyra.LogWarning("parquet", "close", "failed to close writer: %v", cerr)
 					}
 				}
 				return fmt.Errorf("failed to apply CCL: %w", err)
@@ -695,7 +694,7 @@ func ApplyCCL(ctx context.Context, path string, cclScript string) error {
 
 			if err != nil {
 				if cerr := writer.Close(); cerr != nil {
-					log.Printf("parquet: failed to close writer: %v", cerr)
+					insyra.LogWarning("parquet", "close", "failed to close writer: %v", cerr)
 				}
 				return fmt.Errorf("failed to write batch: %w", err)
 			}

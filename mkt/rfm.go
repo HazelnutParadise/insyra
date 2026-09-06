@@ -63,13 +63,13 @@ func RFM(dt insyra.IDataTable, rfmConfig RFMConfig) insyra.IDataTable {
 
 	dateFormat := rfmConfig.DateFormat
 	if dateFormat == "" {
-		insyra.LogInfo("mkt", "RFM", "No DateFormat specified, using default format YYYY-MM-DD")
+		insyra.LogDebug("mkt", "RFM", "No DateFormat specified, using default format YYYY-MM-DD")
 		dateFormat = "YYYY-MM-DD" // 預設使用 ISO 8601 格式（大寫）
 	}
 
 	timeScale := rfmConfig.TimeScale
 	if timeScale == "" {
-		insyra.LogInfo("mkt", "RFM", "No TimeScale specified, using default scale 'daily'")
+		insyra.LogDebug("mkt", "RFM", "No TimeScale specified, using default scale 'daily'")
 		timeScale = TimeScaleDaily
 	}
 

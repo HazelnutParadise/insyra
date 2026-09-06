@@ -174,3 +174,7 @@ func insyra.DetectEncoding(csvFile string) (string, error)
 
 - `string`: Return value.
 - `error`: Error when the operation fails.
+
+## Errors
+
+Errors wrap the underlying cause, so `errors.Is(err, os.ErrNotExist)` and similar checks work through them. Output directories are created with mode 0755.

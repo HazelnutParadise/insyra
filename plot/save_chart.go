@@ -58,13 +58,19 @@ func SaveHTML(chart Renderable, path string, animation ...bool) error {
 	return nil
 }
 
-// SavePNG render chart and save as PNG file using local Chrome or HazelnutParadise online service
+// SavePNG renders the chart to a PNG file with a local Chrome/Chromium.
+//
+// It never sends data off the host unless asked: only when useOnlineServiceOnFail
+// is explicitly true does a failed local render fall back to POSTing the chart
+// (including all of its data) to HazelnutParadise's online renderer at
+// server3.hazelnut-paradise.com. With no argument, or false, a failed local
+// render is returned as an error.
 func SavePNG(chart Renderable, pngPath string, useOnlineServiceOnFail ...bool) error {
 	if len(useOnlineServiceOnFail) > 1 {
 		return fmt.Errorf("invalid number of arguments for useOnlineServiceOnFail; expected at most 1")
 	}
 
-	doesUseOnlineServiceOnFail := len(useOnlineServiceOnFail) == 0 || useOnlineServiceOnFail[0]
+	doesUseOnlineServiceOnFail := len(useOnlineServiceOnFail) > 0 && useOnlineServiceOnFail[0]
 
 	disableAnimation(chart)
 
@@ -87,7 +93,7 @@ func SavePNG(chart Renderable, pngPath string, useOnlineServiceOnFail ...bool) e
 	err := render.MakeSnapshot(snapshotConfig)
 	if err != nil {
 		if !doesUseOnlineServiceOnFail {
-			return fmt.Errorf("failed to render chart to PNG: %w", err)
+			return fmt.Errorf("failed to render chart to PNG (a local Chrome/Chromium is required; pass true as the third argument to allow the online fallback, which uploads the chart data): %w", err)
 		}
 		insyra.LogWarning("plot", "SavePNG", "failed to render chart to PNG: %v, trying to use HazelnutParadise online service...", err)
 		useOnlineService = true

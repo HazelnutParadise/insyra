@@ -218,14 +218,14 @@ func TestCorrelationMatrixDispatchCoverage(t *testing.T) {
 	}
 	cfgs := []cfg{
 		// Below pair-parallel gate (pairs < 4): serial pairs.
-		{"tiny_2cols", 100, 2},  // pairs=1
-		{"tiny_3cols", 100, 3},  // pairs=3
+		{"tiny_2cols", 100, 2},     // pairs=1
+		{"tiny_3cols", 100, 3},     // pairs=3
 		{"tiny_rows_4cols", 49, 4}, // rows < 50, serial regardless
 		// At/above pair-parallel gate.
-		{"medium_4cols", 100, 4},  // pairs=6, rows≥50
-		{"medium_6cols", 200, 6},  // pairs=15
-		{"large_10cols", 500, 10}, // pairs=45, exercises Spearman parallel rank
-		{"big_15cols_99rows", 99, 15},  // n*rows=1485 < 100*4=400 — rank serial
+		{"medium_4cols", 100, 4},        // pairs=6, rows≥50
+		{"medium_6cols", 200, 6},        // pairs=15
+		{"large_10cols", 500, 10},       // pairs=45, exercises Spearman parallel rank
+		{"big_15cols_99rows", 99, 15},   // n*rows=1485 < 100*4=400 — rank serial
 		{"big_15cols_200rows", 200, 15}, // rank parallel
 	}
 	methods := []struct {
@@ -355,12 +355,12 @@ func TestPCADispatchCoverage(t *testing.T) {
 	cases := []struct {
 		rows, cols int
 	}{
-		{20, 3},     // 60 cells — serial standardise
-		{50, 4},     // 200 — serial
-		{200, 20},   // 4000 — serial (just below 5000)
-		{300, 20},   // 6000 — parallel
-		{1000, 12},  // parallel
-		{5000, 8},   // parallel, larger
+		{20, 3},    // 60 cells — serial standardise
+		{50, 4},    // 200 — serial
+		{200, 20},  // 4000 — serial (just below 5000)
+		{300, 20},  // 6000 — parallel
+		{1000, 12}, // parallel
+		{5000, 8},  // parallel, larger
 	}
 	for _, c := range cases {
 		t.Run(fmt.Sprintf("r%d_c%d", c.rows, c.cols), func(t *testing.T) {
