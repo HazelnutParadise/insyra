@@ -149,7 +149,7 @@ Use Insyra when you need any of these in Go:
 - DataTable: multiple named DataList columns as a table.
 - isr syntactic sugar: preferred entrypoint for new codebases.
 - CCL (Column Calculation Language): Excel-like formulas for derived columns.
-- Instance error tracking: chain fluent ops, then check Err() / ClearErr().
+- Error handling has exactly two shapes. Ordinary functions return `(T, error)`. Chainable types (DataList, DataTable, isr) never return nil and never end the program: they record a **sticky** `Err()` that keeps the FIRST failure, so check once at the end of a chain with `PopErr()` (reads and clears) or `Err()`. A name or value that is not found, or an empty input, is a normal result and does NOT set `Err()`; an out-of-range index or a bad argument does. `insyra.Config.SetPanicOnError(true)` opts into fail-fast: every recorded error then panics (recoverably) with an `*insyra.ErrorInfo`.
 
 ### Fitted KMeans assignment
 
@@ -534,8 +534,8 @@ dt.AddColUsingCCL(
     "category",
     "IF(A > 90, 'Excellent', IF(A > 70, 'Good', 'Average'))",
 )
-if dt.Err() != nil {
-    log.Fatal(dt.Err())
+if err := dt.PopErr(); err != nil {
+    log.Fatal(err)
 }
 ```
 

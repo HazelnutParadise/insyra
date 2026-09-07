@@ -27,7 +27,7 @@ func (dt *DataTable) SortBy(configs ...DataTableSortConfig) *DataTable {
 		}
 		for _, config := range reversedConfigs {
 			if config.ColumnIndex == "" && config.ColumnName == "" && config.ColumnNumber < 0 {
-				dt.warn("SortBy", "Invalid sorting configuration: %+v, skipping this configuration.", config)
+				dt.fail("SortBy", "Invalid sorting configuration: %+v, skipping this configuration.", config)
 				continue
 			}
 			var column *DataList

@@ -13,7 +13,7 @@ type configStruct struct {
 	// that a program may call at any time, so all of them are atomic.
 	logLevel               atomic.Int32
 	coloredOutput          atomic.Bool
-	dontPanic              atomic.Bool
+	panicOnError           atomic.Bool
 	defaultErrHandlingFunc atomic.Pointer[errHandlingFunc]
 	// threadSafe is read on every AtomicDo (hot path) and written by
 	// Dangerously_TurnOffThreadSafety / SetDefaultConfig; use an atomic to avoid
@@ -33,9 +33,14 @@ const (
 	LogLevelDebug LogLevel = iota
 	// LogLevelInfo is the log level for info messages.
 	LogLevelInfo
-	// LogLevelWarning is the log level for warning messages.
+	// LogLevelWarning is the log level for messages about something that was
+	// done but is worth noticing. A warning never reaches Err().
 	LogLevelWarning
-	// LogLevelFatal is the log level for fatal messages.
+	// LogLevelError is the log level for a call that could not do what it was
+	// asked. Everything recorded on an instance's Err() uses this level.
+	LogLevelError
+	// LogLevelFatal is the log level for a failure the library cannot work
+	// around. It still does not end the process: see Config.SetPanicOnError.
 	LogLevelFatal
 )
 
@@ -55,12 +60,41 @@ func (c *configStruct) GetDoesUseColoredOutput() bool {
 	return c.coloredOutput.Load()
 }
 
-func (c *configStruct) SetDontPanic(dontPanic bool) {
-	c.dontPanic.Store(dontPanic)
+// SetPanicOnError controls what happens when the library records an error.
+//
+// The default is false: insyra never ends or interrupts your program. An
+// error is written to the instance's Err() (for DataList, DataTable and isr)
+// and to the global diagnostic buffer, and the call returns something usable.
+//
+// Set it to true to fail fast instead: every recorded error, including the
+// ones LogFatal produces, panics immediately with an *ErrorInfo (which
+// implements error). It is a panic, never os.Exit, so a caller can recover.
+// This suits a script or a notebook, where stopping at the first mistake beats
+// carrying on with empty data.
+func (c *configStruct) SetPanicOnError(panicOnError bool) {
+	c.panicOnError.Store(panicOnError)
 }
 
+// GetPanicOnError reports whether a recorded error panics; see SetPanicOnError.
+func (c *configStruct) GetPanicOnError() bool {
+	return c.panicOnError.Load()
+}
+
+// SetDontPanic is the inverse of SetPanicOnError.
+//
+// Deprecated: use SetPanicOnError. insyra no longer terminates the process on
+// a fatal, so "don't panic" is the default and this setter only remains so
+// existing code keeps compiling. It will be removed in the release after next.
+func (c *configStruct) SetDontPanic(dontPanic bool) {
+	c.panicOnError.Store(!dontPanic)
+}
+
+// GetDontPanicStatus reports the inverse of GetPanicOnError.
+//
+// Deprecated: use GetPanicOnError. It will be removed in the release after
+// next.
 func (c *configStruct) GetDontPanicStatus() bool {
-	return c.dontPanic.Load()
+	return !c.panicOnError.Load()
 }
 
 // SetDefaultErrHandlingFunc installs a hook that receives every warning and
@@ -114,12 +148,12 @@ func (c *configStruct) Dangerously_TurnOffThreadSafety() {
 // ======================== Configs ========================
 
 // SetDefaultConfig resets every Config field to its default value: log level
-// Info, coloured output on, dontPanic off, no error hook, thread safety on,
-// acceleration on.
+// Info, coloured output on, panic-on-error off, no error hook, thread safety
+// on, acceleration on.
 func SetDefaultConfig() {
 	Config.logLevel.Store(int32(LogLevelInfo))
 	Config.coloredOutput.Store(true)
-	Config.dontPanic.Store(false)
+	Config.panicOnError.Store(false)
 	Config.defaultErrHandlingFunc.Store(nil)
 	Config.threadSafe.Store(true)
 	Config.acceleration.Store(true)

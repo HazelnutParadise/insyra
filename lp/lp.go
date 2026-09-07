@@ -140,8 +140,8 @@ func SolveModel(model *lpgen.LPModel, timeoutSeconds ...int) (*insyra.DataTable,
 	// 創建臨時文件來存儲解決結果
 	tmpFile, err := os.CreateTemp("", "solution-*.txt")
 	if err != nil {
-		insyra.LogFatal("lp", "SolveModel", "Failed to create temporary file for solution: %v", err)
-		return nil, nil
+		insyra.LogError("lp", "SolveModel", "Failed to create temporary file for solution: %v", err)
+		return nil, createAdditionalInfoDataTable("Error", 0, err.Error(), "", "", "")
 	}
 	defer func() { _ = os.Remove(tmpFile.Name()) }() // 確保在解決完成後刪除臨時文件
 
@@ -150,8 +150,8 @@ func SolveModel(model *lpgen.LPModel, timeoutSeconds ...int) (*insyra.DataTable,
 	// 上不是有效路徑，會導致 glpsol 失敗、SolveModel 只回傳錯誤資訊表。
 	lpFile, err := os.CreateTemp("", "model-*.lp")
 	if err != nil {
-		insyra.LogFatal("lp", "SolveModel", "Failed to create temporary LP file: %v", err)
-		return nil, nil
+		insyra.LogError("lp", "SolveModel", "Failed to create temporary LP file: %v", err)
+		return nil, createAdditionalInfoDataTable("Error", 0, err.Error(), "", "", "")
 	}
 	defer func() { _ = os.Remove(lpFile.Name()) }()
 	if _, werr := lpFile.Write(lpBuffer.Bytes()); werr != nil {

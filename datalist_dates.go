@@ -49,7 +49,7 @@ func (dt *DataTable) ParseDatesCols(cols []string, layouts ...string) *DataTable
 		for _, col := range cols {
 			num, _, found := resolveColForGroup(t, col)
 			if !found {
-				t.warn("ParseDatesCols", "column %q not found", col)
+				t.fail("ParseDatesCols", "column %q not found", col)
 				continue
 			}
 			parseDatesInPlace(t.columns[num].data, use)

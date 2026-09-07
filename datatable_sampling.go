@@ -142,7 +142,7 @@ func dataTableFromSampledRows(snap dataTableSamplingSnapshot, indices []int, suf
 func (dt *DataTable) Sample(n int, withReplacement bool, options ...SamplingOptions) *DataTable {
 	snap := dt.snapshotForSampling()
 	if n <= 0 {
-		dt.warn("Sample", "n must be > 0")
+		dt.fail("Sample", "n must be > 0")
 		return NewDataTable()
 	}
 	if snap.rows == 0 {
@@ -150,7 +150,7 @@ func (dt *DataTable) Sample(n int, withReplacement bool, options ...SamplingOpti
 		return NewDataTable()
 	}
 	if !withReplacement && n > snap.rows {
-		dt.warn("Sample", "n cannot exceed DataTable row count when sampling without replacement")
+		dt.fail("Sample", "n cannot exceed DataTable row count when sampling without replacement")
 		return NewDataTable()
 	}
 
@@ -163,7 +163,7 @@ func (dt *DataTable) Sample(n int, withReplacement bool, options ...SamplingOpti
 func (dt *DataTable) SampleFrac(frac float64, withReplacement bool, options ...SamplingOptions) *DataTable {
 	rows := dt.NumRows()
 	if frac <= 0 || frac > 1 {
-		dt.warn("SampleFrac", "frac must be in (0, 1]")
+		dt.fail("SampleFrac", "frac must be in (0, 1]")
 		return NewDataTable()
 	}
 	if rows == 0 {
@@ -188,7 +188,7 @@ func (dt *DataTable) Shuffle(options ...SamplingOptions) *DataTable {
 func (dt *DataTable) TrainTestSplit(trainFrac float64, options ...SamplingOptions) (*DataTable, *DataTable) {
 	snap := dt.snapshotForSampling()
 	if trainFrac <= 0 || trainFrac >= 1 {
-		dt.warn("TrainTestSplit", "trainFrac must be in (0, 1) so both train and test are non-empty")
+		dt.fail("TrainTestSplit", "trainFrac must be in (0, 1) so both train and test are non-empty")
 		return NewDataTable(), NewDataTable()
 	}
 	if snap.rows == 0 {
@@ -198,7 +198,7 @@ func (dt *DataTable) TrainTestSplit(trainFrac float64, options ...SamplingOption
 
 	trainN := fracCount(snap.rows, trainFrac)
 	if trainN <= 0 || trainN >= snap.rows {
-		dt.warn("TrainTestSplit", "trainFrac leaves train or test empty for this row count")
+		dt.fail("TrainTestSplit", "trainFrac leaves train or test empty for this row count")
 		return NewDataTable(), NewDataTable()
 	}
 
@@ -227,7 +227,7 @@ func (dt *DataTable) TrainTestSplit(trainFrac float64, options ...SamplingOption
 // cloning the whole table.
 func (dt *DataTable) SimpleRandomSample(sampleSize int) *DataTable {
 	if sampleSize <= 0 {
-		dt.warn("SimpleRandomSample", "Sample size is less than or equal to 0. Returning an empty DataTable.")
+		dt.fail("SimpleRandomSample", "Sample size is less than or equal to 0. Returning an empty DataTable.")
 		return NewDataTable()
 	}
 	var colNames []string

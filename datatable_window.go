@@ -17,7 +17,7 @@ func (dt *DataTable) snapshotCol(funcName, col string) (snap *DataList, label st
 	dt.AtomicDo(func(t *DataTable) {
 		num, lbl, found := resolveColForGroup(t, col)
 		if !found {
-			t.warn(funcName, "column %q not found", col)
+			t.fail(funcName, "column %q not found", col)
 			return
 		}
 		src := t.columns[num]

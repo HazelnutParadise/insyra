@@ -98,7 +98,8 @@ func addStepSeries(plt *plot.Plot, seriesName string, values []float64, xAxis []
 	// Create the line plot with step style
 	line, err := plotter.NewLine(stepData)
 	if err != nil {
-		panic(err)
+		insyra.LogError("gplot", "addStepSeries", "failed to build the step line for series %s: %v", seriesName, err)
+		return
 	}
 
 	// Set the step style

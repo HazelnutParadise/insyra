@@ -15,7 +15,7 @@ func (dt *DataTable) AddColUsingCCL(newColName, cclFormula string) (result *Data
 	// 添加 recover 以防止程序崩潰
 	defer func() {
 		if r := recover(); r != nil {
-			dt.warn("AddColUsingCCL", "Panic recovered: %v", r)
+			dt.fail("AddColUsingCCL", "Panic recovered: %v", r)
 		}
 	}()
 
@@ -27,7 +27,7 @@ func (dt *DataTable) AddColUsingCCL(newColName, cclFormula string) (result *Data
 		result, err := applyCCLOnDataTable(dt, cclFormula)
 		if err != nil {
 			elapsed := time.Since(startTime)
-			dt.warn("AddColUsingCCL", "Failed to apply CCL on DataTable after %v: %v", elapsed, err)
+			dt.fail("AddColUsingCCL", "Failed to apply CCL on DataTable after %v: %v", elapsed, err)
 		} else {
 			elapsed := time.Since(startTime)
 			LogDebug("DataTable", "AddColUsingCCL", "CCL evaluation completed in %v", elapsed)
@@ -62,7 +62,7 @@ func (dt *DataTable) EditColByIndexUsingCCL(colIndex, cclFormula string) (result
 	result = dt
 	defer func() {
 		if r := recover(); r != nil {
-			dt.warn("EditColByIndexUsingCCL", "Panic recovered: %v", r)
+			dt.fail("EditColByIndexUsingCCL", "Panic recovered: %v", r)
 		}
 	}()
 
@@ -73,14 +73,14 @@ func (dt *DataTable) EditColByIndexUsingCCL(colIndex, cclFormula string) (result
 		// 解析欄位索引
 		targetColIdx, ok := ParseColIndex(colIndex)
 		if !ok || targetColIdx < 0 || targetColIdx >= len(dt.columns) {
-			dt.warn("EditColByIndexUsingCCL", "Column index '%s' out of range", colIndex)
+			dt.fail("EditColByIndexUsingCCL", "Column index '%s' out of range", colIndex)
 			return
 		}
 
 		result, err := applyCCLOnDataTable(dt, cclFormula)
 		if err != nil {
 			elapsed := time.Since(startTime)
-			dt.warn("EditColByIndexUsingCCL", "Failed to apply CCL on DataTable after %v: %v", elapsed, err)
+			dt.fail("EditColByIndexUsingCCL", "Failed to apply CCL on DataTable after %v: %v", elapsed, err)
 		} else {
 			elapsed := time.Since(startTime)
 			LogDebug("DataTable", "EditColByIndexUsingCCL", "CCL evaluation completed in %v", elapsed)
@@ -96,7 +96,7 @@ func (dt *DataTable) EditColByNameUsingCCL(colName, cclFormula string) (result *
 	result = dt
 	defer func() {
 		if r := recover(); r != nil {
-			dt.warn("EditColByNameUsingCCL", "Panic recovered: %v", r)
+			dt.fail("EditColByNameUsingCCL", "Panic recovered: %v", r)
 		}
 	}()
 
@@ -114,14 +114,14 @@ func (dt *DataTable) EditColByNameUsingCCL(colName, cclFormula string) (result *
 		}
 
 		if targetColIdx < 0 {
-			dt.warn("EditColByNameUsingCCL", "Column '%s' not found", colName)
+			dt.fail("EditColByNameUsingCCL", "Column '%s' not found", colName)
 			return
 		}
 
 		result, err := applyCCLOnDataTable(dt, cclFormula)
 		if err != nil {
 			elapsed := time.Since(startTime)
-			dt.warn("EditColByNameUsingCCL", "Failed to apply CCL on DataTable after %v: %v", elapsed, err)
+			dt.fail("EditColByNameUsingCCL", "Failed to apply CCL on DataTable after %v: %v", elapsed, err)
 		} else {
 			elapsed := time.Since(startTime)
 			LogDebug("DataTable", "EditColByNameUsingCCL", "CCL evaluation completed in %v", elapsed)
@@ -141,7 +141,7 @@ func (dt *DataTable) ExecuteCCL(cclStatements string) (result *DataTable) {
 	// 添加 recover 以防止程序崩潰
 	defer func() {
 		if r := recover(); r != nil {
-			dt.warn("ExecuteCCL", "Panic recovered: %v", r)
+			dt.fail("ExecuteCCL", "Panic recovered: %v", r)
 		}
 	}()
 
@@ -152,7 +152,7 @@ func (dt *DataTable) ExecuteCCL(cclStatements string) (result *DataTable) {
 		// 編譯多行 CCL 語句
 		nodes, err := ccl.CompileMultiline(cclStatements)
 		if err != nil {
-			dt.warn("ExecuteCCL", "Failed to parse CCL statements: %v", err)
+			dt.fail("ExecuteCCL", "Failed to parse CCL statements: %v", err)
 			return
 		}
 
@@ -178,7 +178,7 @@ func (dt *DataTable) ExecuteCCL(cclStatements string) (result *DataTable) {
 		// 執行每個 CCL 語句
 		for _, node := range nodes {
 			if err := executeCCLNode(dt, node, numRow, colNameMap, tableData, rowNameMap); err != nil {
-				dt.warn("ExecuteCCL", "Failed to execute CCL statement: %v", err)
+				dt.fail("ExecuteCCL", "Failed to execute CCL statement: %v", err)
 				return
 			}
 			// 更新 numCol 和 colNameMap（如果添加了新列）

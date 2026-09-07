@@ -63,7 +63,7 @@ func (dl *DataList) Shift(periods int, fill ...any) *DataList {
 // input length so the result lines up with neighbouring columns.
 func (dl *DataList) Diff(periods int) *DataList {
 	if periods <= 0 {
-		dl.warn("Diff", "periods must be > 0, got %d", periods)
+		dl.fail("Diff", "periods must be > 0, got %d", periods)
 		return nil
 	}
 	var result *DataList
@@ -95,7 +95,7 @@ func (dl *DataList) Diff(periods int) *DataList {
 // denominator is zero, are emitted as nil. periods must be > 0.
 func (dl *DataList) PctChange(periods int) *DataList {
 	if periods <= 0 {
-		dl.warn("PctChange", "periods must be > 0, got %d", periods)
+		dl.fail("PctChange", "periods must be > 0, got %d", periods)
 		return nil
 	}
 	var result *DataList
@@ -220,19 +220,19 @@ func (dl *DataList) Rolling(opts RollingOptions) *RollingDataList {
 	r := &RollingDataList{opts: opts, parent: dl}
 	if opts.Window <= 0 {
 		r.err = "Rolling: Window must be > 0"
-		dl.warn("Rolling", "%s", r.err)
+		dl.fail("Rolling", "%s", r.err)
 		return r
 	}
 	if opts.MinObs <= 0 {
 		r.opts.MinObs = opts.Window
 	} else if opts.MinObs > opts.Window {
 		r.err = "Rolling: MinObs cannot exceed Window"
-		dl.warn("Rolling", "%s", r.err)
+		dl.fail("Rolling", "%s", r.err)
 		return r
 	}
 	if len(opts.Weights) > 0 && len(opts.Weights) != opts.Window {
 		r.err = "Rolling: Weights length must equal Window"
-		dl.warn("Rolling", "%s", r.err)
+		dl.fail("Rolling", "%s", r.err)
 		return r
 	}
 	dl.AtomicDo(func(dl *DataList) {
@@ -439,7 +439,7 @@ func (r *RollingDataList) Apply(fn func(window []any) any) *DataList {
 		return out
 	}
 	if fn == nil {
-		r.parent.warn("RollingApply", "fn must not be nil")
+		r.parent.fail("RollingApply", "fn must not be nil")
 		out := NewDataList()
 		out.name = r.srcName
 		return out
@@ -477,7 +477,7 @@ func (r *RollingDataList) pairWindow(other *DataList, operation string, reducer 
 	}
 	if other == nil {
 		if r.parent != nil {
-			r.parent.warn(operation, "other DataList is nil")
+			r.parent.fail(operation, "other DataList is nil")
 		}
 		out := NewDataList()
 		out.name = r.srcName

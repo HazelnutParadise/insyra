@@ -23,7 +23,9 @@ func main() {
     }
     data := []float64{100, 150, 120, 180}
     plt := gplot.CreateBarChart(config, data)
-    gplot.SaveChart(plt, "sales.png")
+    if err := gplot.SaveChart(plt, "sales.png"); err != nil {
+        log.Fatal(err)
+    }
 }
 ```
 
@@ -42,10 +44,10 @@ func main() {
 ## Saving Charts
 
 ```go
-func SaveChart(plt *plot.Plot, filename string)
+func SaveChart(plt *plot.Plot, filename string) error
 ```
 
-**Description:** Saves the chart to a file. The format is determined by the file extension.
+**Description:** Saves the chart to a file. The format is determined by the file extension. A write failure (missing directory, no permission, disk full) is returned; it does not end the program.
 
 **Parameters:**
 
@@ -54,14 +56,14 @@ func SaveChart(plt *plot.Plot, filename string)
 
 **Returns:**
 
-- None.
+- `error`: non-nil when the chart could not be written.
 
 **Supported formats:** `.png`, `.jpg`, `.jpeg`, `.pdf`, `.svg`, `.tex`, `.tif`, `.tiff`
 
 ```go
-gplot.SaveChart(plt, "chart.png")  // PNG format
-gplot.SaveChart(plt, "chart.pdf")  // PDF format
-gplot.SaveChart(plt, "chart.svg")  // SVG format
+if err := gplot.SaveChart(plt, "chart.png"); err != nil {
+    log.Fatal(err)
+}
 ```
 
 ## Chart Types
@@ -93,7 +95,7 @@ config := gplot.BarChartConfig{
 }
 data := []float64{250, 300, 280, 350}
 plt := gplot.CreateBarChart(config, data)
-gplot.SaveChart(plt, "revenue.png")
+_ = gplot.SaveChart(plt, "revenue.png")
 ```
 
 ![bar_example](./img/gplot_bar_example.png)
@@ -108,7 +110,7 @@ config := gplot.BarChartConfig{
 }
 data := []float64{5.2, 7.8, 6.4, 9.1}
 plt := gplot.CreateBarChart(config, data)
-gplot.SaveChart(plt, "experiment.png")
+_ = gplot.SaveChart(plt, "experiment.png")
 ```
 
 ![bar_errorbars_example](./img/gplot_bar_errorbars_example.png)
@@ -144,7 +146,7 @@ config := gplot.HistogramConfig{
     Bins:      20,
 }
 plt := gplot.CreateHistogram(config, data)
-gplot.SaveChart(plt, "distribution.png")
+_ = gplot.SaveChart(plt, "distribution.png")
 ```
 
 ![histogram_example](./img/gplot_histogram_example.png)
@@ -175,7 +177,7 @@ data := map[string][]float64{
     "City B": {18, 19, 20, 21, 22},
 }
 plt := gplot.CreateLineChart(config, data)
-gplot.SaveChart(plt, "temperature.png")
+_ = gplot.SaveChart(plt, "temperature.png")
 ```
 
 ![line_example](./img/gplot_line_example.png)
@@ -211,7 +213,7 @@ data := map[string][][]float64{
     },
 }
 plt := gplot.CreateScatterPlot(config, data)
-gplot.SaveChart(plt, "height_weight.png")
+_ = gplot.SaveChart(plt, "height_weight.png")
 ```
 
 ### Step Chart
@@ -248,7 +250,7 @@ data := map[string][]float64{
     "Stock A": {100, 102, 101, 105, 103},
 }
 plt := gplot.CreateStepChart(config, data)
-gplot.SaveChart(plt, "stock.png")
+_ = gplot.SaveChart(plt, "stock.png")
 ```
 
 ![step_example](./img/gplot_step_example.png)
@@ -282,7 +284,7 @@ config := gplot.FunctionPlotConfig{
     XMax:  2 * math.Pi,
 }
 plt := gplot.CreateFunctionPlot(config, math.Sin)
-gplot.SaveChart(plt, "sine.png")
+_ = gplot.SaveChart(plt, "sine.png")
 
 // Custom function
 config2 := gplot.FunctionPlotConfig{
@@ -334,7 +336,7 @@ config := gplot.HeatmapChartConfig{
     Colors: 20,
 }
 plt := gplot.CreateHeatmapChart(config, data)
-gplot.SaveChart(plt, "correlation.png")
+_ = gplot.SaveChart(plt, "correlation.png")
 ```
 
 ![heatmap_example](./img/gplot_heatmap_example.png)

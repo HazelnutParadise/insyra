@@ -28,7 +28,7 @@ func (dt *DataTable) Map(mapFunc func(rowIndex int, colIndex string, element any
 				func() {
 					defer func() {
 						if r := recover(); r != nil {
-							dt.warn("Map", "Error applying function to element at row %d, column %s: %v, keeping original value.", rowIndex, colIndex, r)
+							dt.fail("Map", "Error applying function to element at row %d, column %s: %v, keeping original value.", rowIndex, colIndex, r)
 							// 保留原始值
 							if rowIndex < originalCol.Len() {
 								newCol.Append(originalCol.Get(rowIndex))

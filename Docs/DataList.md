@@ -2643,7 +2643,18 @@ dl.ReplaceAll(2, 99)
 
 ## Error Handling
 
-Insyra provides both a global error buffer and instance-level error tracking for `DataList`. For fluent/chained operations, use the instance-level `Err()` method to check for errors after a chain and `ClearErr()` to clear them before continuing.
+Insyra never ends your program on a failure: the error is recorded on the instance and the call returns something usable. For fluent/chained operations, check `Err()` (or `PopErr()`) once at the end of the chain.
+
+`Err()` is **sticky**: it holds the *first* failure until you clear it, so a
+long chain reports the root cause rather than whatever broke downstream. A
+lookup that simply finds nothing (a missing name, a value that is not there,
+a statistic over an empty list) is a normal result and does **not** set it; an
+out-of-range index or an invalid argument does.
+
+Nothing in a chain ever returns `nil`, so a failed step cannot turn the next
+one into a nil dereference — the result is an empty, usable value carrying the
+same error.
+
 
 ### Instance-Level Error Checking
 
@@ -2659,18 +2670,27 @@ if err := dl.Err(); err != nil {
     // Handle the error
 }
 
+// Or read and clear in one step
+if err := dl.PopErr(); err != nil {
+    fmt.Printf("Error occurred: %s\n", err.Message)
+}
+
 // Clear the error for future operations and continue chaining
 dl.ClearErr()
 ```
+
+To stop at the first mistake instead of collecting errors, set
+`insyra.Config.SetPanicOnError(true)`: every recorded error then panics with an
+`*insyra.ErrorInfo`, which you can still recover.
 
 #### Available Methods
 
 | Method                 | Description                                                                                     |
 | ---------------------- | ----------------------------------------------------------------------------------------------- |
-| `Err() *ErrorInfo`     | Returns the last error that occurred during a chained operation, or `nil` if no error occurred. |
-| `ClearErr() *DataList` | Clears the last error and returns the DataList for continued chaining.                          |
-
-> **Note:** `setError` is an internal helper used by methods to record the last error on the instance. Most chainable methods will call it when an operation fails.
+| `Err() *ErrorInfo`     | Returns the first error recorded since creation or the last clear, or `nil`.                    |
+| `PopErr() *ErrorInfo`  | Returns that error and clears it, so the list can be reused straight away.                      |
+| `ClearErr() *DataList` | Clears the error and returns the DataList for continued chaining.                               |
+| `SetErr(pkg, fn, msg string, args ...any) *DataList` | Records an error as insyra would. Wrapper packages (such as `isr`) use it; application code rarely needs it. |
 
 ## AtomicDo
 

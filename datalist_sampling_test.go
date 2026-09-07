@@ -68,8 +68,10 @@ func TestDataListSamplingErrors(t *testing.T) {
 	if got := empty.Shuffle(); got.Len() != 0 {
 		t.Fatalf("empty shuffle should return empty list")
 	}
-	if empty.Err() == nil {
-		t.Fatalf("empty shuffle should set Err")
+	// Shuffling an empty list is a normal result, not a failure: only an
+	// invalid argument sets Err().
+	if empty.Err() != nil {
+		t.Fatalf("empty shuffle should not set Err, got %v", empty.Err())
 	}
 }
 

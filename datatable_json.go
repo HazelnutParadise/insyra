@@ -78,7 +78,7 @@ func (dt *DataTable) ToJSON_Bytes(useColNames bool) []byte {
 
 	jsonData, err := json.MarshalIndent(rows, "", "  ")
 	if err != nil {
-		dt.warn("ToJSON_Byte", "%v", err)
+		dt.fail("ToJSON_Byte", "%v", err)
 		return nil
 	}
 

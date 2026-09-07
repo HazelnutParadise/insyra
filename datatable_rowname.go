@@ -23,7 +23,7 @@ func (dt *DataTable) SetRowNameByIndex(index int, name string) *DataTable {
 			index = dt.getMaxColLength() + index
 		}
 		if index < 0 || index >= dt.getMaxColLength() {
-			dt.warn("SetRowNameByIndex", "Row index %d is out of range, returning", originalIndex)
+			dt.fail("SetRowNameByIndex", "Row index %d is out of range, returning", originalIndex)
 			return
 		}
 

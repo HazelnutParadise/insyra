@@ -11,11 +11,15 @@ type HistogramConfig struct {
 	Title     string // Title of the chart.
 	XAxisName string // Optional: X-axis name.
 	YAxisName string // Optional: Y-axis name.
-	Bins      int    // Number of bins for the histogram.
+	Bins      int    // Number of bins for the histogram. Zero or negative means the default (10).
 }
 
 // CreateHistogram generates and returns a plot.Plot object based on HistogramConfig.
 // The Data field can be of type []float64, *insyra.DataList, or insyra.IDataList.
+// defaultHistogramBins is used when HistogramConfig.Bins is left at its zero
+// value, so a zero-value config still produces a chart.
+const defaultHistogramBins = 10
+
 func CreateHistogram(config HistogramConfig, data any) *plot.Plot {
 	// Create a new plot.
 	plt := plot.New()
@@ -40,10 +44,16 @@ func CreateHistogram(config HistogramConfig, data any) *plot.Plot {
 		return nil
 	}
 
-	// Create the histogram.
-	hist, err := plotter.NewHist(plotter.Values(values), config.Bins)
+	// Create the histogram. A zero-value config asks for 0 bins, which
+	// plotter rejects; pick a usable default rather than failing on it.
+	bins := config.Bins
+	if bins <= 0 {
+		bins = defaultHistogramBins
+	}
+	hist, err := plotter.NewHist(plotter.Values(values), bins)
 	if err != nil {
-		panic(err)
+		insyra.LogError("gplot", "CreateHistogram", "failed to build the histogram: %v", err)
+		return nil
 	}
 
 	// Add the histogram to the plot.

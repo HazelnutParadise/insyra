@@ -109,11 +109,13 @@ func CreateHeatMap[X heapMapAxisValue, Y heapMapAxisValue](config HeatMapConfig,
 			case time.Time:
 				// ok
 			default:
-				panic("CreateHeatMap: calendar mode requires X axis values to be time.Time")
+				insyra.LogError("plot", "CreateHeatMap", "calendar mode requires X axis values to be time.Time, got %T", p.X)
+				return nil
 			}
 		}
 		if config.CalendarOpts == nil {
-			panic("CreateHeatMap: calendar mode requires CalendarOpts to be set")
+			insyra.LogError("plot", "CreateHeatMap", "calendar mode requires CalendarOpts to be set")
+			return nil
 		}
 		if config.CalendarOpts.ItemStyle == nil {
 			config.CalendarOpts.ItemStyle = &opts.ItemStyle{BorderWidth: 0.5}

@@ -18,8 +18,9 @@ Control what level of messages are logged:
 // Set log level - only messages at this level or above will be logged
 insyra.Config.SetLogLevel(insyra.LogLevelDebug)    // Most verbose
 insyra.Config.SetLogLevel(insyra.LogLevelInfo)     // Default
-insyra.Config.SetLogLevel(insyra.LogLevelWarning)  // Only warnings and errors
-insyra.Config.SetLogLevel(insyra.LogLevelFatal)    // Only fatal errors
+insyra.Config.SetLogLevel(insyra.LogLevelWarning)  // Warnings and above
+insyra.Config.SetLogLevel(insyra.LogLevelError)    // Only failures
+insyra.Config.SetLogLevel(insyra.LogLevelFatal)    // Only fatal failures
 
 // Get current log level
 level := insyra.Config.GetLogLevel()
@@ -37,16 +38,56 @@ insyra.Config.SetUseColoredOutput(true)
 usesColor := insyra.Config.GetDoesUseColoredOutput()
 ```
 
-## Error Handling (global)
+## Error Handling
 
-Configure how errors are handled globally across Insyra:
+Insyra never ends or interrupts your program. A failure is recorded and the
+call returns something usable, so you decide when and how to react. Errors
+reach you in exactly two shapes:
+
+| Shape | Where |
+| --- | --- |
+| A returned `error` | ordinary functions: `stats`, `quant`, `csvxl`, `parquet`, `gplot.SaveChart`, file readers |
+| A sticky `Err()` on the value | the chainable types: `DataList`, `DataTable`, and the `isr` wrappers |
+
+`Err()` is **sticky**: the first failure stays until you clear it, so a long
+chain reports the root cause rather than the last symptom. Read and clear in
+one step with `PopErr()`:
 
 ```go
-// Prevent panics and handle errors gracefully instead
-insyra.Config.SetDontPanic(true)
+result := dl.Sort().Normalize().MovingAverage(3)
+if err := result.PopErr(); err != nil {
+    // handle it; `result` is a usable (empty) list either way
+}
+```
 
-// Check panic prevention status
-isPanicPrevented := insyra.Config.GetDontPanicStatus()
+A lookup that simply finds nothing — a missing column name, a value that is
+not in the list, a statistic over an empty list — is a normal result, not an
+error, and does not touch `Err()`. An out-of-range index does.
+
+### Failing fast (opt-in)
+
+For a script or a notebook, stopping at the first mistake can beat carrying on
+with empty data. `SetPanicOnError(true)` turns every recorded error into a
+`panic` carrying an `*insyra.ErrorInfo` (which implements `error`). It is a
+panic, never `os.Exit`, so you can still recover.
+
+```go
+// Default: nothing panics, nothing exits. Check Err() / the returned error.
+insyra.Config.SetPanicOnError(false)
+
+// Opt in to fail-fast.
+insyra.Config.SetPanicOnError(true)
+
+// Read the current setting.
+failFast := insyra.Config.GetPanicOnError()
+```
+
+> `SetDontPanic` / `GetDontPanicStatus` are the old inverse of this switch.
+> They still work and will be removed in the release after next; use
+> `SetPanicOnError`.
+
+### Watching everything that happened (global)
+
 
 // Set custom error handling function for all errors
 insyra.Config.SetDefaultErrHandlingFunc(func(errType insyra.LogLevel, packageName, funcName, errMsg string) {
@@ -63,7 +104,11 @@ insyra.Config.SetDefaultErrHandlingFunc(func(errType insyra.LogLevel, packageNam
 handler := insyra.Config.GetDefaultErrHandlingFunc()
 ```
 
-**Note:** For chainable methods on `DataList` and `DataTable`, you can inspect and clear instance-level errors using `Err()` and `ClearErr()` (e.g., `dl.Err()`, `dt.Err()`).
+The global buffer behind `GetAllErrors`, `PopAllErrors`, `HasError`,
+`GetErrorCount` and `ClearErrors` is a **diagnostic log**, not an
+error-handling API: it holds up to 1536 records from every goroutine and every
+object mixed together, dropping the oldest when full. Use it to see what a run
+did; handle errors through `Err()`/`PopErr()` or the returned `error`.
 
 ## Performance Configuration
 
@@ -110,7 +155,7 @@ import (
 func main() {
     // Initialize with custom configuration
     insyra.Config.SetLogLevel(insyra.LogLevelDebug)
-    insyra.Config.SetDontPanic(true)
+    insyra.Config.SetPanicOnError(true) // fail fast in this script
     
     // Custom error handler
     insyra.Config.SetDefaultErrHandlingFunc(func(errType insyra.LogLevel, pkg, fn, msg string) {

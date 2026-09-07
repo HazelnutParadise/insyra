@@ -40,14 +40,16 @@ func PtrDT[T *insyra.DataTable | dt](t T) *dt {
 // From converts a DataList, DL, Row, Col, []DL, []Row, []Col, CSV, map[string]any, or map[int]any to a DataTable.
 // nolint:govet
 func (d dt) From(item any) *dt {
-	t := dt{}
+	// Start from a usable table: isr is a block-syntax API, so a failure has
+	// to leave something the caller can keep chaining on.
+	t := dt{DataTable: insyra.NewDataTable()}
 	switch val := item.(type) {
 	case [][]any, [][]int, [][]float64, [][]string, [][]bool, [][]uint, [][]int8, [][]int16, [][]int32, [][]int64, [][]uint8, [][]uint16, [][]uint32, [][]uint64, [][]float32, [][]complex64, [][]complex128, [][]uintptr:
-		dt, err := insyra.Slice2DToDataTable(val)
+		converted, err := insyra.Slice2DToDataTable(val)
 		if err != nil {
-			insyra.LogFatal("DT", "From", "%v", err)
+			return failDT(&t, "DT.From", "%v", err)
 		}
-		t.DataTable = dt
+		t.DataTable = converted
 	case *insyra.DataList:
 		t.DataTable = insyra.NewDataTable(val)
 	case *dl:
@@ -72,47 +74,41 @@ func (d dt) From(item any) *dt {
 			t.AppendCols(newdl)
 		}
 	case Row:
-		t.DataTable = insyra.NewDataTable()
 		err := fromRowToDT(&t, val)
 		if err != nil {
-			insyra.LogFatal("DT", "From", "%v", err)
+			return failDT(&t, "DT.From", "%v", err)
 		}
 	case Rows:
-		t.DataTable = insyra.NewDataTable()
 		for _, r := range val {
 			err := fromRowToDT(&t, r)
 			if err != nil {
-				insyra.LogFatal("DT", "From", "%v", err)
+				return failDT(&t, "DT.From", "%v", err)
 			}
 		}
 	case Col:
-		t.DataTable = insyra.NewDataTable()
 		err := fromRowToDT(&t, val)
 		if err != nil {
-			insyra.LogFatal("DT", "From", "%v", err)
+			return failDT(&t, "DT.From", "%v", err)
 		}
 		t.Transpose()
 	case Cols:
-		t.DataTable = insyra.NewDataTable()
 		for _, r := range val {
 			err := fromRowToDT(&t, r)
 			if err != nil {
-				insyra.LogFatal("DT", "From", "%v", err)
+				return failDT(&t, "DT.From", "%v", err)
 			}
 		}
 		t.Transpose()
 	case Excel:
-		t.DataTable = insyra.NewDataTable()
-		var err error
 		if val.FilePath == "" {
-			insyra.LogFatal("DT", "From", "Excel FilePath cannot be empty")
+			return failDT(&t, "DT.From", "Excel FilePath cannot be empty")
 		}
-		t.DataTable, err = insyra.ReadExcelSheet(val.FilePath, val.SheetName, val.InputOpts.FirstCol2RowNames, val.InputOpts.FirstRow2ColNames)
+		read, err := insyra.ReadExcelSheet(val.FilePath, val.SheetName, val.InputOpts.FirstCol2RowNames, val.InputOpts.FirstRow2ColNames)
 		if err != nil {
-			insyra.LogFatal("DT", "From", "%v", err)
+			return failDT(&t, "DT.From", "%v", err)
 		}
+		t.DataTable = read
 	case CSV:
-		t.DataTable = insyra.NewDataTable()
 		var err error
 		opts := insyra.CSVReadOptions{
 			FirstColToRowNames: val.InputOpts.FirstCol2RowNames,
@@ -122,25 +118,28 @@ func (d dt) From(item any) *dt {
 			AllowRaggedRows:    val.InputOpts.AllowRaggedRows,
 			TrimLeadingSpace:   val.InputOpts.TrimLeadingSpace,
 		}
+		var read *insyra.DataTable
 		if val.FilePath != "" {
-			t.DataTable, err = insyra.ReadCSV_FileWithOptions(val.FilePath, opts)
+			read, err = insyra.ReadCSV_FileWithOptions(val.FilePath, opts)
 		} else {
-			t.DataTable, err = insyra.ReadCSV_StringWithOptions(val.String, opts)
+			read, err = insyra.ReadCSV_StringWithOptions(val.String, opts)
 		}
 		if err != nil {
-			insyra.LogFatal("DT", "From", "%v", err)
+			return failDT(&t, "DT.From", "%v", err)
 		}
+		t.DataTable = read
 	case JSON:
-		t.DataTable = insyra.NewDataTable()
 		var err error
+		var read *insyra.DataTable
 		if val.FilePath != "" {
-			t.DataTable, err = insyra.ReadJSON_File(val.FilePath)
+			read, err = insyra.ReadJSON_File(val.FilePath)
 		} else {
-			t.DataTable, err = insyra.ReadJSON(val.Bytes)
+			read, err = insyra.ReadJSON(val.Bytes)
 		}
 		if err != nil {
-			insyra.LogFatal("DT", "From", "%v", err)
+			return failDT(&t, "DT.From", "%v", err)
 		}
+		t.DataTable = read
 	case map[string]any:
 		t.DataTable = insyra.NewDataTable().AppendRowsByColIndex(val)
 	case map[int]any:
@@ -152,7 +151,7 @@ func (d dt) From(item any) *dt {
 	case nil:
 		// do nothing, return an empty DataTable
 	default:
-		insyra.LogFatal("DT", "From", "got unexpected type %T", item)
+		return failDT(&t, "DT.From", "got unexpected type %T", item)
 	}
 	return &t
 }
@@ -175,7 +174,10 @@ func (t *dt) Col(col any) *dl {
 		colDt := t.FilterColsByColNameEqualTo(v.value)
 		l.DataList = colDt.GetColByNumber(0)
 	default:
-		insyra.LogFatal("DT", "Col", "got unexpected type %T", col)
+		return failDL(&l, "DT.Col", "got unexpected selector type %T; use an int, an Excel index string, or isr.Name", col)
+	}
+	if l.DataList == nil {
+		return failDL(&l, "DT.Col", "column %v not found", col)
 	}
 	return &l
 }
@@ -190,7 +192,10 @@ func (t *dt) Row(row any) *dl {
 		rowDt := t.FilterRowsByRowNameEqualTo(v.value)
 		l.DataList = rowDt.GetRow(0)
 	default:
-		insyra.LogFatal("DT", "Row", "got unexpected type %T", row)
+		return failDL(&l, "DT.Row", "got unexpected selector type %T; use an int or isr.Name", row)
+	}
+	if l.DataList == nil {
+		return failDL(&l, "DT.Row", "row %v not found", row)
 	}
 	return &l
 }
@@ -265,24 +270,28 @@ func (t *dt) Push(data any) *dt {
 	case Row:
 		err := fromRowToDT(t, val)
 		if err != nil {
-			insyra.LogFatal("DT", "Push", "%v", err)
+			return failDT(t, "DT.Push", "%v", err)
 		}
 	case []Row:
+		var pushErr error
 		t.AtomicDo(func(dt *insyra.DataTable) {
 			for _, r := range val {
-				err := fromRowToDT(UseDT(dt), r)
-				if err != nil {
-					insyra.LogFatal("DT", "Push", "%v", err)
+				if err := fromRowToDT(UseDT(dt), r); err != nil {
+					pushErr = err
+					return
 				}
 			}
 		})
+		if pushErr != nil {
+			return failDT(t, "DT.Push", "%v", pushErr)
+		}
 	case Col:
 		// 先創建新dt 當成row插入 再轉置
 		// 轉置後抽出為dl 再插入
 		temDT := UseDT(insyra.NewDataTable())
 		err := fromRowToDT(temDT, val)
 		if err != nil {
-			insyra.LogFatal("DT", "Push", "%v", err)
+			return failDT(t, "DT.Push", "%v", err)
 		}
 		numRow, _ := temDT.Size()
 		// Snapshot rows via temDT's own lock (top level) before entering t's actor,
@@ -301,7 +310,7 @@ func (t *dt) Push(data any) *dt {
 			temDT := UseDT(insyra.NewDataTable())
 			err := fromRowToDT(temDT, r)
 			if err != nil {
-				insyra.LogFatal("DT", "Push", "%v", err)
+				return failDT(t, "DT.Push", "%v", err)
 			}
 			numRow, _ := temDT.Size()
 			rows := make([]*insyra.DataList, 0, numRow)
@@ -315,7 +324,7 @@ func (t *dt) Push(data any) *dt {
 			})
 		}
 	default:
-		insyra.LogFatal("DT", "Push", "got unexpected type %T", data)
+		return failDT(t, "DT.Push", "got unexpected type %T", data)
 	}
 	return t
 }

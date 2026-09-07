@@ -202,7 +202,9 @@ Column references use Excel-style indices (`A`, `B`, … `AA`, `AB`, …) or nam
 - `GetRowIndexByName` returns `(-1, false)` when not found — always check the boolean, because `-1` is also a valid "last element" index in many `Get` methods.
 - Thread safety is on by default via the actor model. `Config.Dangerously_TurnOffThreadSafety()` exists but is explicitly discouraged.
 - `AtomicDo` serializes access to ONE instance (same-instance nesting is safe, e.g. `Stdev`→`Var`). To read/operate on MULTIPLE instances atomically, use `insyra.AtomicDoAll(func(){...}, a, b, ...)` — it locks all given DataList/DataTable instances together in a deadlock-free order. Call it from the outermost level: inside an `AtomicDo` on one of those instances it runs inline without locking the others (the same trust-zone rule as nested `AtomicDo`), because locking there would deadlock against a goroutine doing the mirror image. Do NOT nest `AtomicDo` on a *different* instance inside a callback: that inner call runs WITHOUT locking the other instance and can race a concurrent mutation. (`engine/atomic.AtomicDoN([]*Actor, f)` is the same primitive for arbitrary user structs holding an `*atomic.Actor`.)
-- Error handling uses an instance-level `Err()` pattern rather than returning errors from every method (check `.Err()` after chained calls).
+- **The library never terminates or panics by default.** `LogFatal` records and returns; `Config.SetPanicOnError(true)` is the opt-in that turns any recorded error into a recoverable `panic`. Never call `os.Exit` or `panic` from library code — record the error and return something usable.
+- **Two error shapes, no others.** An ordinary function returns `(T, error)`. A chainable method (`DataList`, `DataTable`, `isr`) returns a usable receiver or result and records the error on it — never `nil`. Inside those types use `fail(...)` for a call that could not do what it was asked, and `warn(...)` for a normal-but-notable outcome (a name or value that was not found, an empty input, a value skipped by a documented convention); `warn` must not touch `Err()`.
+- Error handling uses an instance-level `Err()` pattern rather than returning errors from every method. `Err()` is **sticky**: it keeps the first failure until `ClearErr()` or `PopErr()`, so a chain is checked once at the end and reports the root cause. Wrapper packages record through the exported `SetErr(packageName, funcName, msg, args...)`.
 - The `isr` package is the recommended public API for new projects; the root `insyra` package is the implementation layer.
 
 ## Docs, Changelog & Skills Must Stay in Sync
@@ -240,11 +242,17 @@ Keep the English ([README.md](README.md), [CHANGELOG.md](CHANGELOG.md), `Docs/`)
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
-### [2026-09-07] — remove `Config.SetDontPanic` one release after `SetPanicOnFatal` ships
-- **Where**: `config.go` (`SetDontPanic`, `GetDontPanicStatus`), `logger.go` (`LogFatal`)
-- **What**: The decided philosophy is that the library never terminates or panics the host process by default. `LogFatal` records the error (error buffer, instance `Err()`, a Fatal-level log line) and returns; `Config.SetPanicOnFatal(true)` is the opt-in that turns a fatal into a `panic` (never `os.Exit`). The old opt-out `SetDontPanic(v)` stays one release as a Deprecated alias for `SetPanicOnFatal(!v)` so existing callers keep compiling.
-- **Suggestion**: In the first release after the one that ships `SetPanicOnFatal` (change `make-fatal-non-terminating`), delete `SetDontPanic` and `GetDontPanicStatus`, drop the alias mention from `Docs/Configuration.md`, and add a BREAKING changelog entry. Do not let the alias drift into a second release.
-- **Status**: pending — `make-fatal-non-terminating` not yet proposed
+### [2026-09-07] — remove `Config.SetDontPanic` one release after `SetPanicOnError` shipped
+- **Where**: `config.go` (`SetDontPanic`, `GetDontPanicStatus`)
+- **What**: The library never terminates or panics by default. `LogFatal` records the error and returns; `Config.SetPanicOnError(true)` is the opt-in that turns any recorded error into a `panic` (never `os.Exit`). `SetDontPanic(v)` remains one release as a Deprecated alias for `SetPanicOnError(!v)` so existing callers keep compiling. Shipped in `make-errors-non-terminating` (2026-09-07).
+- **Suggestion**: In the first release after the one that ships `make-errors-non-terminating`, delete `SetDontPanic` and `GetDontPanicStatus`, drop the alias note from `Docs/Configuration.md`, and add a BREAKING changelog entry. Do not let the alias drift into a second release.
+- **Status**: pending
+
+### [2026-09-07] — delete the nine Deprecated global error-buffer accessors
+- **Where**: `error_buffer.go` (`PopError`, `PopErrorByPackageName`, `PopErrorByFuncName`, `PopErrorAndCallback`, `PeekError`, `GetErrorsByLevel`, `GetErrorsByPackage`, `PopErrorInfo`, `HasErrorAboveLevel`)
+- **What**: The global buffer is a diagnostic log, not an error-handling API — it mixes records from every goroutine and object. `make-errors-non-terminating` marked these nine Deprecated and kept `GetAllErrors`, `PopAllErrors`, `HasError`, `GetErrorCount` and `ClearErrors` as the supported surface.
+- **Suggestion**: Delete them in the same release that drops `SetDontPanic`, with a BREAKING changelog entry.
+- **Status**: pending
 
 ### [2026-08-01] — multi-GPU planning and execution coverage
 - **Where**: `accel/planner.go` (`PlanShardable`, weighted per-device `ShardAssignment`s), `accel/exact.go` (per-assignment dispatch)

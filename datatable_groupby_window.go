@@ -33,7 +33,7 @@ func (t *GroupedColumnTransform) As(name string) *DataList {
 	}
 	if t.err != "" {
 		if t.parent != nil && t.parent.parent != nil {
-			t.parent.parent.warn("GroupedColumnTransform.As", "%s", t.err)
+			t.parent.parent.fail("GroupedColumnTransform.As", "%s", t.err)
 		}
 		out := NewDataList()
 		out.SetName(name)
@@ -101,14 +101,14 @@ func (g *GroupedDataTable) resolveSource(funcName, col string) (int, string, boo
 	}
 	if g.initErr != "" {
 		if g.parent != nil {
-			g.parent.warn(funcName, "%s", g.initErr)
+			g.parent.fail(funcName, "%s", g.initErr)
 		}
 		return 0, "", false
 	}
 	num, label, ok := g.lookupSnapshotCol(col)
 	if !ok {
 		if g.parent != nil {
-			g.parent.warn(funcName, "column %q not found", col)
+			g.parent.fail(funcName, "column %q not found", col)
 		}
 		return 0, col, false
 	}

@@ -45,7 +45,7 @@ func (dl *DataList) EWM(opts EWMOptions) *EWMDataList {
 	}
 	if decayCount != 1 {
 		e.err = "EWM: exactly one of Alpha, Span, or HalfLife must be specified"
-		dl.warn("EWM", "%s", e.err)
+		dl.fail("EWM", "%s", e.err)
 		return e
 	}
 
@@ -69,7 +69,7 @@ func (dl *DataList) EWM(opts EWMOptions) *EWMDataList {
 		}
 	}
 	if e.err != "" {
-		dl.warn("EWM", "%s", e.err)
+		dl.fail("EWM", "%s", e.err)
 		return e
 	}
 

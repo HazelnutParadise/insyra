@@ -360,8 +360,9 @@ func TestDataListNormalize(t *testing.T) {
 	if got := dl.Data(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("Normalize = %v, want %v", got, want)
 	}
-	if NewDataList(1.0, "x").Normalize() != nil {
-		t.Fatal("Normalize with a non-numeric cell should return nil")
+	bad := NewDataList(1.0, "x")
+	if got := bad.Normalize(); got == nil || got.Len() != 0 || bad.Err() == nil {
+		t.Fatalf("Normalize with a non-numeric cell should give an empty result and set Err, got %v / %v", got, bad.Err())
 	}
 }
 
@@ -402,11 +403,15 @@ func TestDataListMovingAverage(t *testing.T) {
 	if dl.Len() != 4 {
 		t.Fatal("MovingAverage must not modify the receiver")
 	}
-	if dl.MovingAverage(0) != nil || dl.MovingAverage(5) != nil {
-		t.Fatal("MovingAverage with an invalid window must return nil")
+	for _, w := range []int{0, 5} {
+		src := NewDataList(1.0, 2.0, 3.0, 4.0)
+		if got := src.MovingAverage(w); got == nil || got.Len() != 0 || src.Err() == nil {
+			t.Fatalf("MovingAverage(%d) should give an empty result and set Err, got %v / %v", w, got, src.Err())
+		}
 	}
-	if NewDataList(1.0, "x", 3.0).MovingAverage(2) != nil {
-		t.Fatal("MovingAverage over a non-numeric cell must return nil")
+	nonNumeric := NewDataList(1.0, "x", 3.0)
+	if got := nonNumeric.MovingAverage(2); got == nil || got.Len() != 0 || nonNumeric.Err() == nil {
+		t.Fatalf("MovingAverage over a non-numeric cell should give an empty result and set Err, got %v / %v", got, nonNumeric.Err())
 	}
 }
 
@@ -420,8 +425,9 @@ func TestDataListWeightedMovingAverage(t *testing.T) {
 	if !reflect.DeepEqual(got.Data(), []any{1.75, 2.75}) {
 		t.Fatalf("WeightedMovingAverage = %v", got.Data())
 	}
-	if dl.WeightedMovingAverage(2, []float64{1}) != nil {
-		t.Fatal("weights of the wrong length must return nil")
+	src := NewDataList(1.0, 2.0, 3.0)
+	if got := src.WeightedMovingAverage(2, []float64{1}); got == nil || got.Len() != 0 || src.Err() == nil {
+		t.Fatalf("weights of the wrong length should give an empty result and set Err, got %v / %v", got, src.Err())
 	}
 }
 
@@ -435,8 +441,9 @@ func TestDataListExponentialSmoothing(t *testing.T) {
 	if !reflect.DeepEqual(got.Data(), []any{10.0, 15.0, 22.5}) {
 		t.Fatalf("ExponentialSmoothing = %v", got.Data())
 	}
-	if dl.ExponentialSmoothing(1.5) != nil {
-		t.Fatal("alpha outside [0, 1] must return nil")
+	src := NewDataList(10.0, 20.0, 30.0)
+	if got := src.ExponentialSmoothing(1.5); got == nil || got.Len() != 0 || src.Err() == nil {
+		t.Fatalf("alpha outside [0, 1] should give an empty result and set Err, got %v / %v", got, src.Err())
 	}
 }
 
@@ -455,8 +462,9 @@ func TestDataListDoubleExponentialSmoothing(t *testing.T) {
 			t.Fatalf("DoubleExponentialSmoothing[%d] = %v, want %v", i, got.Data()[i], w)
 		}
 	}
-	if dl.DoubleExponentialSmoothing(0.5, -0.1) != nil {
-		t.Fatal("beta outside [0, 1] must return nil")
+	src := NewDataList(10.0, 20.0, 30.0)
+	if got := src.DoubleExponentialSmoothing(0.5, -0.1); got == nil || got.Len() != 0 || src.Err() == nil {
+		t.Fatalf("beta outside [0, 1] should give an empty result and set Err, got %v / %v", got, src.Err())
 	}
 }
 
@@ -473,8 +481,9 @@ func TestDataListMovingStdev(t *testing.T) {
 			t.Fatalf("MovingStdev[%d] = %v, want %v", i, got.Data()[i], w)
 		}
 	}
-	if dl.MovingStdev(4) != nil {
-		t.Fatal("window larger than the list must return nil")
+	src := NewDataList(1.0, 2.0, 4.0)
+	if got := src.MovingStdev(4); got == nil || got.Len() != 0 || src.Err() == nil {
+		t.Fatalf("a window larger than the list should give an empty result and set Err, got %v / %v", got, src.Err())
 	}
 }
 

@@ -23,6 +23,12 @@ English: [CHANGELOG.md](CHANGELOG.md)
 - CCL：`NULL`、`TRUE`、`FALSE` 不分大小寫都是關鍵字而非欄位參照；Excel 式參照超過最後一欄（三欄表寫 `E`）回錯誤而不是整欄 nil；`@` 當值使用時每列拿到自己的 slice（過去每格都顯示最後一列）；日期相減以秒參與比較與除法，`(A - B) > 0` 不再靜默為 false；`SUM`、`AVG` 與 `MAX`、`MEDIAN` 一樣跳過 `NaN`；序列函數放在另一個序列或聚合函數裡（`LAG(LAG(A,1),1)`、`SUM(LAG(A,1))`）保留整欄；離譜的 `LAG`／`LEAD`／`ROLLING_*` 位移與 `REPEAT` 次數回錯誤而非 panic；函數註冊表可在另一個 goroutine 求值時安全新增；`engine/ccl.NewMapContext` 依欄名排序，`A`／`B` 指向固定的欄。
 - `ToCSV` 會回傳最後一次 flush 的錯誤（小表寫到已斷的 pipe 過去會回報成功），並與 `ToJSON` 一樣先寫暫存檔再 rename，寫入失敗不會留下截斷的檔案。
 - 在某個實例的 `AtomicDo` 內呼叫 `AtomicDoAll` 不再與另一個做鏡像操作的 goroutine 死鎖：改成不再加鎖、內聯執行回呼，與巢狀 `AtomicDo` 同一規則。
+- **BREAKING**：insyra 不再結束你的程式。`LogFatal` 改為記錄失敗後返回，不再呼叫 `os.Exit(1)`，所以存圖失敗、GLPK 安裝失敗或檔案讀不到都不會讓程式中止。想要原本的 fail-fast，開 `Config.SetPanicOnError(true)`：任何被記錄的錯誤都會帶著 `*ErrorInfo` panic（可 recover，不是 `os.Exit`）。`SetDontPanic`／`GetDontPanicStatus` 仍是新開關的反向別名，已標為 **Deprecated**，會在下下個版本移除。
+- 新增介於 Warning 與 Fatal 之間的 `LogLevelError` 與 `LogError`。所有寫進實例 `Err()` 的紀錄改用 Error 等級，Warning 回歸「做完了但值得注意」的原意。
+- **BREAKING**：`DataList` 與 `DataTable` 的 `Err()` 改為**黏性**：保留第一個失敗直到清除，串接結尾檢查一次就能看到根因而不是最後的症狀。新增 `PopErr()` 一次讀取並清除；`Clone()` 從無錯誤開始。`IDataList`／`IDataTable` 新增 `PopErr()` 與 `SetErr()`。
+- **BREAKING**：查無結果不再設定 `Err()`。`FindFirst`、`FindLast`、`GetColByName`、`GetRowByName`、`GetColIndexByName` 與空 list 的統計量改以 Warning 記錄，不動 `Err()`，黏性錯誤才不會被一般讀取填滿。越界的**索引**仍然算錯誤。
+- **BREAKING**：可串接的 `DataList` 方法不再回傳 `nil`。`Normalize`、`MovingAverage`、`WeightedMovingAverage`、`ExponentialSmoothing`、`DoubleExponentialSmoothing`、`MovingStdev`、`Difference`、`Rank` 失敗時回傳帶著錯誤的空 list（接收者也會記錄），`dl.MovingAverage(0).Sort()` 不再因 nil 而 panic。
+- 全域錯誤緩衝區上限 1536 筆，滿了丟最舊的，不再無限成長。文件定位改為診斷用日誌而非錯誤處理 API；其中九個存取函式（`PopError`、`PopErrorByPackageName`、`PopErrorByFuncName`、`PopErrorAndCallback`、`PeekError`、`GetErrorsByLevel`、`GetErrorsByPackage`、`PopErrorInfo`、`HasErrorAboveLevel`）標為 **Deprecated**，改用 `GetAllErrors`、`PopAllErrors`、`HasError`、`GetErrorCount`、`ClearErrors`。
 
 ### CLI
 
@@ -81,10 +87,22 @@ English: [CHANGELOG.md](CHANGELOG.md)
 ### `lp`
 
 - `SolveFromFile` 與 `SolveModel` 回傳的附加資訊表列順序固定為 Status、Execution Time、Warnings、Full Output、Iterations、Nodes，過去依 Go map 順序每次不同。
+- GLPK 下載、解壓或編譯失敗不再結束程式：失敗會被記錄，`SolveModel`／`SolveFromFile` 透過附加資訊表回報。`SolveModel` 兩處暫存檔失敗同樣改為回報，不再回傳兩個 nil。
 
 ### `plot`
 
 - **BREAKING**：`SavePNG` 預設不再退回線上渲染服務。不傳第三個參數（或傳 `false`）時，本機 Chrome／Chromium 渲染失敗會回傳錯誤；傳 `true` 才允許退回線上服務，該服務會把圖表連同資料上傳到 `server3.hazelnut-paradise.com`。過去的預設會在沒有詢問的情況下把使用者資料送出主機。
+- `CreateRadarChart` 未提供 indicators、`CreateHeatMap` 日曆模式的 X 型別錯誤或未設 `CalendarOpts` 時，改為記錄錯誤並回傳 `nil`，不再結束程式或 panic。
+
+### `isr`
+- `DT.From`、`Col`、`Row`、`Push`、`UseDL`、`UseDT` 遇到錯誤的輸入不再結束程式，改為回傳帶著錯誤、可繼續串接的物件：`t := isr.DT.From(isr.CSV{FilePath: p}); if err := t.PopErr(); err != nil { ... }`。`UseDL`／`UseDT` 也不再回傳 `nil`。
+
+### `gplot`
+- **BREAKING**：`SaveChart` 檔案寫不出來時改為回傳 `error`，不再結束程式。既有呼叫要改成 `if err := gplot.SaveChart(...); err != nil { ... }` 或明確寫 `_ =`。
+- `CreateHistogram` 用零值設定不再 panic：`Bins` 為 0 或負數時採用預設值 10。`CreateLineChart` 與 `CreateStepChart` 在建立序列失敗時改為記錄錯誤而非 panic。
+
+### `py`
+- IPC 監聽失敗改為記錄並讓伺服器保持關閉，不再結束程式。
 
 ## v0.3.1
 

@@ -909,7 +909,25 @@ processed := isr.DL.From(1, 2, 3).Push(4, 5).At(4) // Returns 5
 
 ## Error Handling
 
-All methods use `insyra.LogFatal()` for error handling. Invalid operations will terminate the program with descriptive error messages.
+`isr` is a block-syntax API, so nothing throws the chain away: every method
+returns a usable object even when it fails, and the failure is recorded on
+that object. Nothing ever ends your program.
+
+```go
+t := isr.DT.From(isr.CSV{FilePath: "sales.csv"}).Push(isr.Row{"total": 0})
+if err := t.PopErr(); err != nil {
+    log.Printf("could not build the table: %v", err)
+    return
+}
+```
+
+`Err()` is sticky — it keeps the **first** failure, so the message points at
+the root cause rather than at whatever broke downstream. `PopErr()` reads and
+clears it in one step; `ClearErr()` just clears.
+
+To stop at the first mistake instead (handy in a script), set
+`insyra.Config.SetPanicOnError(true)`; every recorded error then panics with
+an `*insyra.ErrorInfo`, which you can still recover.
 
 ## Best Practices
 

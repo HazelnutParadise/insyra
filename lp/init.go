@@ -114,8 +114,11 @@ findGLPK:
 
 	insyra.LogInfo("lp", "init", "GLPK not found, installing from source on Linux...")
 
-	// 下載並安裝 GLPK 源碼
-	downloadAndInstallGLPK_Source()
+	// 下載並安裝 GLPK 源碼。安裝失敗只記錄錯誤：程式庫不結束宿主程序，
+	// 後續 Solve* 會因為找不到 glpsol 而回報錯誤資訊表。
+	if !downloadAndInstallGLPK_Source() {
+		return
+	}
 	goto findGLPK
 }
 
@@ -124,7 +127,7 @@ func initializeOnWindows() {
 	// 檢查 glpsol 是否已經安裝
 	glpsolPath, err := locateOrInstallGLPK_Win()
 	if err != nil {
-		insyra.LogFatal("lp", "init", "Failed to initialize: %v", err)
+		insyra.LogError("lp", "init", "Failed to initialize: %v", err)
 	}
 
 	// 設置 GLPK_PATH 環境變數
@@ -139,8 +142,9 @@ func initializeOnWindows() {
 	insyra.LogDebug("lp", "init", "GLPK environment variables set. GLPK_PATH=%s", glpkDir)
 }
 
-// 用於下載並安裝 GLPK 源碼
-func downloadAndInstallGLPK_Source() {
+// downloadAndInstallGLPK_Source 下載並安裝 GLPK 源碼，回報是否成功。
+// 任何一步失敗都只記錄錯誤並回傳 false，不結束宿主程序。
+func downloadAndInstallGLPK_Source() bool {
 	// 下載 GLPK 源碼包
 	downloadURL := "https://ftp.gnu.org/gnu/glpk/glpk-5.0.tar.gz"
 	tarPath := filepath.Join(os.TempDir(), "glpk.tar.gz")
@@ -148,22 +152,25 @@ func downloadAndInstallGLPK_Source() {
 
 	insyra.LogDebug("lp", "init", "Downloading GLPK from %s", downloadURL)
 	if err := downloadFile(tarPath, downloadURL); err != nil {
-		insyra.LogFatal("lp", "init", "Failed to download GLPK: %v", err)
+		insyra.LogError("lp", "init", "Failed to download GLPK: %v", err)
+		return false
 	}
 
 	// 解壓並安裝
 	if err := untar(tarPath, installDir); err != nil {
-		insyra.LogFatal("lp", "init", "Failed to extract GLPK: %v", err)
+		insyra.LogError("lp", "init", "Failed to extract GLPK: %v", err)
+		return false
 	}
 
 	// 查找 configure 文件的路徑
 	configurePath, err := findSubDirWithConfigure(installDir)
 	if err != nil {
-		insyra.LogFatal("lp", "init", "Failed to find configure file: %v", err)
+		insyra.LogError("lp", "init", "Failed to find configure file: %v", err)
+		return false
 	}
 
 	// 編譯安裝 GLPK
-	buildAndInstallGLPK(configurePath)
+	return buildAndInstallGLPK(configurePath)
 }
 
 // 查找 configure 文件所在的目錄
@@ -187,12 +194,14 @@ func findSubDirWithConfigure(baseDir string) (string, error) {
 }
 
 // 編譯並安裝 GLPK
-func buildAndInstallGLPK(configurePath string) {
+// buildAndInstallGLPK 編譯並安裝 GLPK，回報是否成功。
+func buildAndInstallGLPK(configurePath string) bool {
 	// 設置 configure 文件的執行權限
 	chmodCmd := exec.Command("chmod", "+x", filepath.Join(configurePath, "configure"))
 	utils.ApplyHideWindow(chmodCmd)
 	if err := chmodCmd.Run(); err != nil {
-		insyra.LogFatal("lp", "init", "Failed to set configure executable permission: %v", err)
+		insyra.LogError("lp", "init", "Failed to set configure executable permission: %v", err)
+		return false
 	}
 
 	// 執行 configure
@@ -200,7 +209,8 @@ func buildAndInstallGLPK(configurePath string) {
 	configureCmd.Dir = configurePath
 	utils.ApplyHideWindow(configureCmd)
 	if output, err := configureCmd.CombinedOutput(); err != nil {
-		insyra.LogFatal("lp", "init", "Failed to configure GLPK: %v, output: %s", err, string(output))
+		insyra.LogError("lp", "init", "Failed to configure GLPK: %v, output: %s", err, string(output))
+		return false
 	}
 
 	// 執行 make
@@ -208,7 +218,8 @@ func buildAndInstallGLPK(configurePath string) {
 	makeCmd.Dir = configurePath
 	utils.ApplyHideWindow(makeCmd)
 	if output, err := makeCmd.CombinedOutput(); err != nil {
-		insyra.LogFatal("lp", "init", "Failed to make GLPK: %v, output: %s", err, string(output))
+		insyra.LogError("lp", "init", "Failed to make GLPK: %v, output: %s", err, string(output))
+		return false
 	}
 
 	// 執行 make install，將 GLPK 安裝到用戶目錄
@@ -216,10 +227,12 @@ func buildAndInstallGLPK(configurePath string) {
 	makeInstallCmd.Dir = configurePath
 	utils.ApplyHideWindow(makeInstallCmd)
 	if output, err := makeInstallCmd.CombinedOutput(); err != nil {
-		insyra.LogFatal("lp", "init", "Failed to install GLPK: %v, output: %s", err, string(output))
+		insyra.LogError("lp", "init", "Failed to install GLPK: %v, output: %s", err, string(output))
+		return false
 	}
 
 	insyra.LogInfo("lp", "init", "GLPK installed successfully.")
+	return true
 }
 
 // 用於查找常見路徑中的 glpsol

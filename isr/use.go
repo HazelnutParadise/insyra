@@ -8,12 +8,17 @@ import "github.com/HazelnutParadise/insyra"
 func UseDL[T *insyra.DataList | dl](l T) *dl {
 	switch concrete := any(l).(type) {
 	case *insyra.DataList:
+		if concrete == nil {
+			return &dl{insyra.NewDataList().SetErr("isr", "UseDL", "got a nil *insyra.DataList")}
+		}
 		return &dl{concrete}
 	case dl:
+		if concrete.DataList == nil {
+			concrete.DataList = insyra.NewDataList().SetErr("isr", "UseDL", "got a DL with no underlying DataList")
+		}
 		return &concrete
 	default:
-		insyra.LogFatal("isr", "PtrDL", "got unexpected type %T", l)
-		return nil
+		return &dl{insyra.NewDataList().SetErr("isr", "UseDL", "got unexpected type %T", l)}
 	}
 }
 
@@ -23,11 +28,16 @@ func UseDL[T *insyra.DataList | dl](l T) *dl {
 func UseDT[T *insyra.DataTable | dt](t T) *dt {
 	switch concrete := any(t).(type) {
 	case *insyra.DataTable:
+		if concrete == nil {
+			return &dt{insyra.NewDataTable().SetErr("isr", "UseDT", "got a nil *insyra.DataTable")}
+		}
 		return &dt{concrete}
 	case dt:
+		if concrete.DataTable == nil {
+			concrete.DataTable = insyra.NewDataTable().SetErr("isr", "UseDT", "got a DT with no underlying DataTable")
+		}
 		return &concrete
 	default:
-		insyra.LogFatal("isr", "PtrDT", "got unexpected type %T", t)
-		return nil
+		return &dt{insyra.NewDataTable().SetErr("isr", "UseDT", "got unexpected type %T", t)}
 	}
 }

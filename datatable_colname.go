@@ -5,14 +5,14 @@ func (dt *DataTable) SetColNameByIndex(index string, name string) *DataTable {
 	dt.AtomicDo(func(dt *DataTable) {
 		nIndex, ok := ParseColIndex(index)
 		if !ok {
-			dt.warn("SetColNameByIndex", "invalid column index: %s", index)
+			dt.fail("SetColNameByIndex", "invalid column index: %s", index)
 			result = dt
 			return
 		}
 		name = safeColName(dt, name)
 
 		if nIndex < 0 || nIndex >= len(dt.columns) {
-			dt.warn("SetColNameByIndex", "Index out of bounds")
+			dt.fail("SetColNameByIndex", "Index out of bounds")
 			result = dt
 			return
 		}
@@ -32,7 +32,7 @@ func (dt *DataTable) SetColNameByNumber(numberIndex int, name string) *DataTable
 		}
 
 		if numberIndex < 0 || numberIndex >= len(dt.columns) {
-			dt.warn("SetColNameByNumber", "Index out of bounds")
+			dt.fail("SetColNameByNumber", "Index out of bounds")
 			result = dt
 			return
 		}
@@ -70,7 +70,7 @@ func (dt *DataTable) GetColNameByNumber(index int) string {
 			index += len(dt.columns)
 		}
 		if index < 0 || index >= len(dt.columns) {
-			dt.warn("GetColNameByNumber", "index out of range")
+			dt.fail("GetColNameByNumber", "index out of range")
 			result = ""
 			return
 		}
@@ -85,7 +85,7 @@ func (dt *DataTable) GetColNameByIndex(index string) string {
 	dt.AtomicDo(func(dt *DataTable) {
 		nIndex, ok := ParseColIndex(index)
 		if !ok {
-			dt.warn("GetColNameByIndex", "invalid column index: %s", index)
+			dt.fail("GetColNameByIndex", "invalid column index: %s", index)
 			result = ""
 			return
 		}

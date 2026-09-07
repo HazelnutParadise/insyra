@@ -12,7 +12,7 @@ func (dl *DataList) Sample(n int, withReplacement bool, options ...SamplingOptio
 		name = dl.name
 	})
 	if n <= 0 {
-		dl.warn("Sample", "n must be > 0")
+		dl.fail("Sample", "n must be > 0")
 		return NewDataList()
 	}
 	if len(data) == 0 {
@@ -20,7 +20,7 @@ func (dl *DataList) Sample(n int, withReplacement bool, options ...SamplingOptio
 		return NewDataList()
 	}
 	if !withReplacement && n > len(data) {
-		dl.warn("Sample", "n cannot exceed DataList length when sampling without replacement")
+		dl.fail("Sample", "n cannot exceed DataList length when sampling without replacement")
 		return NewDataList()
 	}
 
@@ -42,7 +42,7 @@ func (dl *DataList) Sample(n int, withReplacement bool, options ...SamplingOptio
 func (dl *DataList) SampleFrac(frac float64, withReplacement bool, options ...SamplingOptions) *DataList {
 	length := dl.Len()
 	if frac <= 0 || frac > 1 {
-		dl.warn("SampleFrac", "frac must be in (0, 1]")
+		dl.fail("SampleFrac", "frac must be in (0, 1]")
 		return NewDataList()
 	}
 	if length == 0 {

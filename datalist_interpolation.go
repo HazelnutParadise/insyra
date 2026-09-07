@@ -17,9 +17,9 @@ func (dl *DataList) LinearInterpolation(x float64) float64 {
 	result, err := algorithms.LinearInterpolation(data, x)
 	if err != nil {
 		if errors.Is(err, algorithms.ErrOutOfBounds) {
-			dl.warn("LinearInterpolation", "X value out of bounds")
+			dl.fail("LinearInterpolation", "X value out of bounds")
 		} else {
-			dl.warn("LinearInterpolation", "Interpolation failed: %v", err)
+			dl.fail("LinearInterpolation", "Interpolation failed: %v", err)
 		}
 		return math.NaN()
 	}
@@ -36,9 +36,9 @@ func (dl *DataList) QuadraticInterpolation(x float64) float64 {
 	result, err := algorithms.QuadraticInterpolation(data, x)
 	if err != nil {
 		if errors.Is(err, algorithms.ErrOutOfBounds) {
-			dl.warn("QuadraticInterpolation", "X value out of bounds")
+			dl.fail("QuadraticInterpolation", "X value out of bounds")
 		} else {
-			dl.warn("QuadraticInterpolation", "Interpolation failed: %v", err)
+			dl.fail("QuadraticInterpolation", "Interpolation failed: %v", err)
 		}
 		return math.NaN()
 	}
@@ -54,9 +54,9 @@ func (dl *DataList) LagrangeInterpolation(x float64) float64 {
 	result, err := algorithms.LagrangeInterpolation(floatData, x)
 	if err != nil {
 		if errors.Is(err, algorithms.ErrNotEnoughData) {
-			dl.warn("LagrangeInterpolation", "Not enough data points")
+			dl.fail("LagrangeInterpolation", "Not enough data points")
 		} else {
-			dl.warn("LagrangeInterpolation", "Interpolation failed: %v", err)
+			dl.fail("LagrangeInterpolation", "Interpolation failed: %v", err)
 		}
 		return math.NaN()
 	}
@@ -72,9 +72,9 @@ func (dl *DataList) NearestNeighborInterpolation(x float64) float64 {
 	result, err := algorithms.NearestNeighborInterpolation(floatData, x)
 	if err != nil {
 		if errors.Is(err, algorithms.ErrOutOfBounds) {
-			dl.warn("NearestNeighborInterpolation", "X value out of bounds")
+			dl.fail("NearestNeighborInterpolation", "X value out of bounds")
 		} else {
-			dl.warn("NearestNeighborInterpolation", "Interpolation failed: %v", err)
+			dl.fail("NearestNeighborInterpolation", "Interpolation failed: %v", err)
 		}
 		return math.NaN()
 	}
@@ -90,9 +90,9 @@ func (dl *DataList) NewtonInterpolation(x float64) float64 {
 	result, err := algorithms.NewtonInterpolation(floatData, x)
 	if err != nil {
 		if errors.Is(err, algorithms.ErrNotEnoughData) {
-			dl.warn("NewtonInterpolation", "Not enough data points")
+			dl.fail("NewtonInterpolation", "Not enough data points")
 		} else {
-			dl.warn("NewtonInterpolation", "Interpolation failed: %v", err)
+			dl.fail("NewtonInterpolation", "Interpolation failed: %v", err)
 		}
 		return math.NaN()
 	}
@@ -108,11 +108,11 @@ func (dl *DataList) HermiteInterpolation(x float64, derivatives []float64) float
 	result, err := algorithms.HermiteInterpolation(floatData, derivatives, x)
 	if err != nil {
 		if errors.Is(err, algorithms.ErrLengthMismatch) {
-			dl.warn("HermiteInterpolation", "Data and derivatives length mismatch")
+			dl.fail("HermiteInterpolation", "Data and derivatives length mismatch")
 		} else if errors.Is(err, algorithms.ErrNotEnoughData) {
-			dl.warn("HermiteInterpolation", "Not enough data points")
+			dl.fail("HermiteInterpolation", "Not enough data points")
 		} else {
-			dl.warn("HermiteInterpolation", "Interpolation failed: %v", err)
+			dl.fail("HermiteInterpolation", "Interpolation failed: %v", err)
 		}
 		return math.NaN()
 	}
@@ -133,11 +133,11 @@ func (dl *DataList) interpolationInput(funcName string, minPoints int) ([]float6
 		data, badRow, ok = numericCells(l.data, false)
 	})
 	if !ok {
-		dl.warn(funcName, "non-numeric or missing value at row %d", badRow)
+		dl.fail(funcName, "non-numeric or missing value at row %d", badRow)
 		return nil, false
 	}
 	if minPoints > 0 && n < minPoints {
-		dl.warn(funcName, "Not enough data points")
+		dl.fail(funcName, "Not enough data points")
 		return nil, false
 	}
 	return data, true

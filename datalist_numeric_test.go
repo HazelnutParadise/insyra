@@ -135,11 +135,18 @@ func TestDifferenceEmitsNaNForMissingOperand(t *testing.T) {
 
 func TestRankRefusesString(t *testing.T) {
 	dl := NewDataList(3, "b", 1)
-	if got := dl.Rank(); got != nil {
-		t.Fatalf("expected nil, got %v", got.Data())
+	got := dl.Rank()
+	if got == nil {
+		t.Fatal("Rank returned nil; a chainable method must return a usable list")
+	}
+	if got.Len() != 0 {
+		t.Fatalf("expected an empty result, got %v", got.Data())
 	}
 	if dl.Err() == nil {
 		t.Fatal("expected Err")
+	}
+	if got.Err() == nil {
+		t.Fatal("the returned list should carry the error too")
 	}
 }
 
@@ -155,12 +162,12 @@ func TestRankKeepsNaNPositions(t *testing.T) {
 
 func TestSmoothingRefusesString(t *testing.T) {
 	dl := NewDataList(1, "2", 3)
-	if dl.ExponentialSmoothing(0.5) != nil || dl.Err() == nil {
-		t.Fatal("ExponentialSmoothing should fail")
+	if got := dl.ExponentialSmoothing(0.5); got == nil || got.Len() != 0 || dl.Err() == nil {
+		t.Fatalf("ExponentialSmoothing should fail with an empty result and an Err, got %v / %v", got, dl.Err())
 	}
 	dl2 := NewDataList(1, "2", 3)
-	if dl2.DoubleExponentialSmoothing(0.5, 0.5) != nil || dl2.Err() == nil {
-		t.Fatal("DoubleExponentialSmoothing should fail")
+	if got := dl2.DoubleExponentialSmoothing(0.5, 0.5); got == nil || got.Len() != 0 || dl2.Err() == nil {
+		t.Fatalf("DoubleExponentialSmoothing should fail with an empty result and an Err, got %v / %v", got, dl2.Err())
 	}
 }
 

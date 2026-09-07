@@ -23,6 +23,12 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 - CCL: `NULL`, `TRUE` and `FALSE` are keywords in any case instead of column references; an Excel-style reference past the last column (`E` on a three-column table) is an error instead of a column of `nil`; `@` used as a value gives each row its own slice (every cell used to show the last row); a date difference compares and divides as seconds, so `(A - B) > 0` no longer reads as `false`; `SUM` and `AVG` skip `NaN` like `MAX` and `MEDIAN` already did; a sequence function inside another sequence or aggregate function (`LAG(LAG(A,1),1)`, `SUM(LAG(A,1))`) keeps the whole column; absurd `LAG`/`LEAD`/`ROLLING_*` shifts and `REPEAT` counts are errors instead of panics; the function registry is safe to extend while another goroutine evaluates; `engine/ccl.NewMapContext` orders columns by name so `A`/`B` are deterministic.
 - `ToCSV` returns the error from its final flush (a small table written to a broken pipe used to report success) and, like `ToJSON`, writes through a temporary file that is renamed into place, so a failed write never leaves a truncated file.
 - `AtomicDoAll` called from inside an `AtomicDo` on one of its instances no longer deadlocks against a goroutine doing the mirror image: it runs the callback inline without locking the others, the same rule nested `AtomicDo` follows.
+- **BREAKING**: insyra no longer ends your program. `LogFatal` records the failure and returns instead of calling `os.Exit(1)`, so a failed chart save, a missing GLPK install or an unreadable file leaves your program running. Opt into the old fail-fast behaviour with `Config.SetPanicOnError(true)`, which panics — recoverably, never `os.Exit` — with an `*ErrorInfo` on any recorded error. `SetDontPanic`/`GetDontPanicStatus` still work as the inverse of the new switch and are **Deprecated**; they will be removed in the release after next.
+- Added `LogLevelError` between Warning and Fatal, and `LogError`. Everything recorded on an instance's `Err()` now uses Error level, so Warning goes back to meaning "done, but worth noticing".
+- **BREAKING**: `Err()` on `DataList` and `DataTable` is now **sticky** — it keeps the *first* failure until cleared, so one check at the end of a chain reports the root cause instead of the last symptom. New `PopErr()` returns the error and clears it in one step; `Clone()` starts clean. `IDataList`/`IDataTable` gained `PopErr()` and `SetErr()`.
+- **BREAKING**: a lookup that finds nothing no longer sets `Err()`. `FindFirst`, `FindLast`, `GetColByName`, `GetRowByName`, `GetColIndexByName` and the statistics over an empty list log at Warning and leave `Err()` alone, so a sticky error cannot be filled in by ordinary reads. An out-of-range *index* is still recorded as an error.
+- **BREAKING**: chainable `DataList` methods never return `nil`. `Normalize`, `MovingAverage`, `WeightedMovingAverage`, `ExponentialSmoothing`, `DoubleExponentialSmoothing`, `MovingStdev`, `Difference` and `Rank` return an empty, usable list carrying the error (the receiver records it too), so `dl.MovingAverage(0).Sort()` no longer panics on a nil dereference.
+- The global error buffer is bounded at 1536 records and drops the oldest instead of growing without limit. It is documented as a diagnostic log rather than an error-handling API; nine of its accessors (`PopError`, `PopErrorByPackageName`, `PopErrorByFuncName`, `PopErrorAndCallback`, `PeekError`, `GetErrorsByLevel`, `GetErrorsByPackage`, `PopErrorInfo`, `HasErrorAboveLevel`) are **Deprecated** in favour of `GetAllErrors`, `PopAllErrors`, `HasError`, `GetErrorCount` and `ClearErrors`.
 
 ### CLI
 
@@ -81,10 +87,22 @@ v0.3.0 and everything before it is not repeated here — see [GitHub Releases](h
 ### `lp`
 
 - The additional-info table returned by `SolveFromFile` and `SolveModel` has a fixed row order (Status, Execution Time, Warnings, Full Output, Iterations, Nodes); it previously followed Go map iteration and changed between runs.
+- A failed GLPK download, extraction or build no longer ends the program: the failure is recorded and `SolveModel`/`SolveFromFile` report it through the additional-info table. The two temporary-file failures in `SolveModel` do the same instead of returning two nils.
 
 ### `plot`
 
 - **BREAKING**: `SavePNG` no longer falls back to the online rendering service by default. Passing no third argument (or `false`) now returns an error when the local Chrome/Chromium render fails; pass `true` to opt in to the fallback, which uploads the chart and its data to `server3.hazelnut-paradise.com`. The previous default sent user data off the host without being asked.
+- `CreateRadarChart` without indicators and `CreateHeatMap` in calendar mode with the wrong X type or no `CalendarOpts` record an error and return `nil` instead of ending the program or panicking.
+
+### `isr`
+- `DT.From`, `Col`, `Row`, `Push`, `UseDL` and `UseDT` no longer end the program on a bad input. They return a usable object carrying the error, so the block syntax survives a failure: `t := isr.DT.From(isr.CSV{FilePath: p}); if err := t.PopErr(); err != nil { ... }`. `UseDL`/`UseDT` also stopped returning `nil`.
+
+### `gplot`
+- **BREAKING**: `SaveChart` returns an `error` instead of ending the program when the file cannot be written. Existing calls need `if err := gplot.SaveChart(...); err != nil { ... }` or an explicit `_ =`.
+- `CreateHistogram` with a zero-value config no longer panics: `Bins` of zero or less means the default of 10. `CreateLineChart` and `CreateStepChart` record an error instead of panicking when a series cannot be built.
+
+### `py`
+- A failed IPC listen is recorded and leaves the server down instead of ending the program.
 
 ## v0.3.1
 

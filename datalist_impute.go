@@ -126,14 +126,14 @@ func (dl *DataList) FillWithMean() *DataList {
 	dl.AtomicDo(func(dl *DataList) {
 		values := numericObservedValues(dl.data)
 		if len(values) == 0 {
-			dl.warn("FillWithMean", "No numeric values to compute mean")
+			dl.fail("FillWithMean", "No numeric values to compute mean")
 			return
 		}
 		// Do not inject a numeric mean into a mixed/categorical column, matching
 		// the DataTable-level wrappers. numericObservedValues silently skips
 		// non-numeric values, so guard explicitly here.
 		if !hasOnlyNumericObservedValues(dl) {
-			dl.warn("FillWithMean", "column has non-numeric observed values; not imputing a numeric mean")
+			dl.fail("FillWithMean", "column has non-numeric observed values; not imputing a numeric mean")
 			return
 		}
 		var sum float64
@@ -156,11 +156,11 @@ func (dl *DataList) FillWithMedian() *DataList {
 	dl.AtomicDo(func(dl *DataList) {
 		values := numericObservedValues(dl.data)
 		if len(values) == 0 {
-			dl.warn("FillWithMedian", "No numeric values to compute median")
+			dl.fail("FillWithMedian", "No numeric values to compute median")
 			return
 		}
 		if !hasOnlyNumericObservedValues(dl) {
-			dl.warn("FillWithMedian", "column has non-numeric observed values; not imputing a numeric median")
+			dl.fail("FillWithMedian", "column has non-numeric observed values; not imputing a numeric median")
 			return
 		}
 		sort.Float64s(values)
@@ -205,7 +205,7 @@ func (dl *DataList) FillWithMode() *DataList {
 			}
 		}
 		if len(entries) == 0 {
-			dl.warn("FillWithMode", "No non-missing values to compute mode")
+			dl.fail("FillWithMode", "No non-missing values to compute mode")
 			return
 		}
 		mode := entries[0]
@@ -230,11 +230,11 @@ func (dl *DataList) FillByInterpolation(extrapolate ...bool) *DataList {
 	dl.AtomicDo(func(dl *DataList) {
 		indices, values, ok := numericObservedPoints(dl.data)
 		if !ok {
-			dl.warn("FillByInterpolation", "DataList contains non-numeric values")
+			dl.fail("FillByInterpolation", "DataList contains non-numeric values")
 			return
 		}
 		if len(indices) == 0 {
-			dl.warn("FillByInterpolation", "No numeric values to interpolate")
+			dl.fail("FillByInterpolation", "No numeric values to interpolate")
 			return
 		}
 

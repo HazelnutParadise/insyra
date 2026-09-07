@@ -7,7 +7,7 @@ func (dt *DataTable) Describe(options ...DescribeOptions) *DataTable {
 	out := NewDataTable()
 	cfg, err := normalizeDescribeOptions(options)
 	if err != nil {
-		dt.warn("Describe", "%s", err)
+		dt.fail("Describe", "%s", err)
 		return out
 	}
 

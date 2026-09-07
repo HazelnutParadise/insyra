@@ -150,7 +150,7 @@ func (dl *DataList) Get(index int) any {
 			index += len(dl.data)
 		}
 		if index < 0 || index >= len(dl.data) {
-			dl.warn("Get", "Index out of bounds, returning nil.")
+			dl.fail("Get", "Index out of bounds, returning nil.")
 			result = nil
 			return
 		}
@@ -203,7 +203,7 @@ func (dl *DataList) Update(index int, newValue any) *DataList {
 			index += len(dl.data)
 		}
 		if index < 0 || index >= len(dl.data) {
-			dl.warn("Update", "Index %d out of bounds", index)
+			dl.fail("Update", "Index %d out of bounds", index)
 			return
 		}
 		dl.data[index] = newValue
@@ -230,7 +230,7 @@ func (dl *DataList) InsertAt(index int, value any) *DataList {
 			var err error
 			dl.data, err = sliceutil.InsertAt(dl.data, index, value)
 			if err != nil {
-				dl.warn("InsertAt", "Failed to insert value at index: %v", err)
+				dl.fail("InsertAt", "Failed to insert value at index: %v", err)
 				return
 			}
 		}
@@ -441,7 +441,7 @@ func (dl *DataList) Pop() any {
 	dl.AtomicDo(func(dl *DataList) {
 		n, err := sliceutil.Drt_PopFrom(&dl.data)
 		if err != nil {
-			dl.warn("Pop", "DataList is empty, returning nil.")
+			dl.fail("Pop", "DataList is empty, returning nil.")
 			result = nil
 			return
 		}
@@ -463,7 +463,7 @@ func (dl *DataList) Drop(index int) *DataList {
 		// slicing, otherwise dl.data[:index] panics. Valid negatives (-1..-len)
 		// have already been mapped into range and are unaffected.
 		if index < 0 || index >= len(dl.data) {
-			dl.warn("Drop", "Index out of bounds, returning")
+			dl.fail("Drop", "Index out of bounds, returning")
 			return
 		}
 		dl.data = append(dl.data[:index], dl.data[index+1:]...)
@@ -632,12 +632,12 @@ func (dl *DataList) ClearOutliers(stdDevs float64) *DataList {
 	dl.AtomicDo(func(dl *DataList) {
 		values, badRow, ok := numericCells(dl.data, true)
 		if !ok {
-			dl.warn("ClearOutliers", "non-numeric value at row %d; list left unchanged", badRow)
+			dl.fail("ClearOutliers", "non-numeric value at row %d; list left unchanged", badRow)
 			return
 		}
 		n, _, _, mean, stddev := observedStats(values)
 		if n < 2 {
-			dl.warn("ClearOutliers", "fewer than two numeric values; list left unchanged")
+			dl.fail("ClearOutliers", "fewer than two numeric values; list left unchanged")
 			return
 		}
 		threshold := stdDevs * stddev
@@ -662,13 +662,13 @@ func (dl *DataList) Normalize() *DataList {
 	dl.AtomicDo(func(dl *DataList) {
 		values, badRow, ok := numericCells(dl.data, true)
 		if !ok {
-			dl.warn("Normalize", "non-numeric value at row %d; list left unchanged", badRow)
+			dl.fail("Normalize", "non-numeric value at row %d; list left unchanged", badRow)
 			isFailed = true
 			return
 		}
 		n, min, max, _, _ := observedStats(values)
 		if n == 0 {
-			dl.warn("Normalize", "Cannot normalize due to invalid Min/Max values")
+			dl.fail("Normalize", "Cannot normalize due to invalid Min/Max values")
 			isFailed = true
 			return
 		}
@@ -682,7 +682,7 @@ func (dl *DataList) Normalize() *DataList {
 		dl.updateTimestamp()
 	})
 	if isFailed {
-		return nil
+		return dl.failedResult()
 	}
 	return dl
 }
@@ -693,12 +693,12 @@ func (dl *DataList) Standardize() *DataList {
 	dl.AtomicDo(func(dl *DataList) {
 		values, badRow, ok := numericCells(dl.data, true)
 		if !ok {
-			dl.warn("Standardize", "non-numeric value at row %d; list left unchanged", badRow)
+			dl.fail("Standardize", "non-numeric value at row %d; list left unchanged", badRow)
 			return
 		}
 		n, _, _, mean, stddev := observedStats(values)
 		if n < 2 {
-			dl.warn("Standardize", "fewer than two numeric values; list left unchanged")
+			dl.fail("Standardize", "fewer than two numeric values; list left unchanged")
 			return
 		}
 		for i, v := range dl.data {
@@ -722,12 +722,12 @@ func (dl *DataList) FillNaNWithMean() *DataList {
 	dl.AtomicDo(func(dl *DataList) {
 		values, badRow, ok := numericCells(dl.data, true)
 		if !ok {
-			dl.warn("FillNaNWithMean", "non-numeric value at row %d; list left unchanged", badRow)
+			dl.fail("FillNaNWithMean", "non-numeric value at row %d; list left unchanged", badRow)
 			return
 		}
 		n, _, _, mean, _ := observedStats(values)
 		if n == 0 {
-			dl.warn("FillNaNWithMean", "no numeric values to compute mean; list left unchanged")
+			dl.fail("FillNaNWithMean", "no numeric values to compute mean; list left unchanged")
 			return
 		}
 		for i, v := range dl.data {
@@ -752,7 +752,7 @@ func (dl *DataList) MovingAverage(windowSize int) *DataList {
 	isFailed := false
 	dl.AtomicDo(func(dl *DataList) {
 		if windowSize <= 0 || windowSize > dl.Len() {
-			dl.warn("MovingAverage", "Invalid window size")
+			dl.fail("MovingAverage", "Invalid window size")
 			isFailed = true
 			return
 		}
@@ -762,7 +762,7 @@ func (dl *DataList) MovingAverage(windowSize int) *DataList {
 			for j := range windowSize {
 				v, ok := ToFloat64Safe(dl.data[i+j])
 				if !ok {
-					dl.warn("MovingAverage", "Element %v is not numeric, aborting", dl.data[i+j])
+					dl.fail("MovingAverage", "Element %v is not numeric, aborting", dl.data[i+j])
 					isFailed = true
 					return
 				}
@@ -772,7 +772,7 @@ func (dl *DataList) MovingAverage(windowSize int) *DataList {
 		}
 	})
 	if isFailed {
-		return nil
+		return dl.failedResult()
 	}
 	return NewDataList(movingAverageData)
 }
@@ -786,7 +786,7 @@ func (dl *DataList) WeightedMovingAverage(windowSize int, weights any) *DataList
 	isFailed := false
 	dl.AtomicDo(func(dl *DataList) {
 		if windowSize <= 0 || windowSize > dl.Len() || sliceLen != windowSize {
-			dl.warn("WeightedMovingAverage", "Invalid window size or weights length")
+			dl.fail("WeightedMovingAverage", "Invalid window size or weights length")
 			isFailed = true
 			return
 		}
@@ -797,7 +797,7 @@ func (dl *DataList) WeightedMovingAverage(windowSize int, weights any) *DataList
 		for idx, w := range weightsSlice {
 			wf, ok := ToFloat64Safe(w)
 			if !ok {
-				dl.warn("WeightedMovingAverage", "Weight %v is not numeric, aborting", w)
+				dl.fail("WeightedMovingAverage", "Weight %v is not numeric, aborting", w)
 				isFailed = true
 				return
 			}
@@ -812,7 +812,7 @@ func (dl *DataList) WeightedMovingAverage(windowSize int, weights any) *DataList
 			for j := 0; j < windowSize; j++ {
 				wv, ok := ToFloat64Safe(window[j])
 				if !ok {
-					dl.warn("WeightedMovingAverage", "Element %v is not numeric, aborting", window[j])
+					dl.fail("WeightedMovingAverage", "Element %v is not numeric, aborting", window[j])
 					isFailed = true
 					return
 				}
@@ -822,7 +822,7 @@ func (dl *DataList) WeightedMovingAverage(windowSize int, weights any) *DataList
 		}
 	})
 	if isFailed {
-		return nil
+		return dl.failedResult()
 	}
 	return NewDataList(movingAvgData)
 }
@@ -832,8 +832,8 @@ func (dl *DataList) WeightedMovingAverage(windowSize int, weights any) *DataList
 // Returns a new DataList containing the smoothed values.
 func (dl *DataList) ExponentialSmoothing(alpha float64) *DataList {
 	if alpha < 0 || alpha > 1 {
-		dl.warn("ExponentialSmoothing", "Invalid alpha value")
-		return nil
+		dl.fail("ExponentialSmoothing", "Invalid alpha value")
+		return dl.failedResult()
 	}
 
 	var smoothedData []float64
@@ -845,7 +845,7 @@ func (dl *DataList) ExponentialSmoothing(alpha float64) *DataList {
 		}
 		floatData, badRow, ok := numericCells(dl.data, false)
 		if !ok {
-			dl.warn("ExponentialSmoothing", "non-numeric or missing value at row %d", badRow)
+			dl.fail("ExponentialSmoothing", "non-numeric or missing value at row %d", badRow)
 			isFailed = true
 			return
 		}
@@ -856,7 +856,7 @@ func (dl *DataList) ExponentialSmoothing(alpha float64) *DataList {
 		}
 	})
 	if isFailed {
-		return nil
+		return dl.failedResult()
 	}
 	return NewDataList(smoothedData)
 }
@@ -866,8 +866,8 @@ func (dl *DataList) ExponentialSmoothing(alpha float64) *DataList {
 // Returns a new DataList containing the smoothed values.
 func (dl *DataList) DoubleExponentialSmoothing(alpha, beta float64) *DataList {
 	if alpha < 0 || alpha > 1 || beta < 0 || beta > 1 {
-		dl.warn("DoubleExponentialSmoothing", "Invalid alpha or beta value")
-		return nil
+		dl.fail("DoubleExponentialSmoothing", "Invalid alpha or beta value")
+		return dl.failedResult()
 	}
 	var smoothedData []float64
 	isFailed := false
@@ -878,7 +878,7 @@ func (dl *DataList) DoubleExponentialSmoothing(alpha, beta float64) *DataList {
 		}
 		floatData, badRow, ok := numericCells(dl.data, false)
 		if !ok {
-			dl.warn("DoubleExponentialSmoothing", "non-numeric or missing value at row %d", badRow)
+			dl.fail("DoubleExponentialSmoothing", "non-numeric or missing value at row %d", badRow)
 			isFailed = true
 			return
 		}
@@ -895,7 +895,7 @@ func (dl *DataList) DoubleExponentialSmoothing(alpha, beta float64) *DataList {
 		}
 	})
 	if isFailed {
-		return nil
+		return dl.failedResult()
 	}
 	return NewDataList(smoothedData)
 }
@@ -906,7 +906,7 @@ func (dl *DataList) MovingStdev(windowSize int) *DataList {
 	isFailed := false
 	dl.AtomicDo(func(dl *DataList) {
 		if windowSize <= 0 || windowSize > dl.Len() {
-			dl.warn("MovingStdev", "Invalid window size")
+			dl.fail("MovingStdev", "Invalid window size")
 			isFailed = true
 			return
 		}
@@ -917,7 +917,7 @@ func (dl *DataList) MovingStdev(windowSize int) *DataList {
 		}
 	})
 	if isFailed {
-		return nil
+		return dl.failedResult()
 	}
 	return NewDataList(movingStdDevData)
 }
@@ -938,7 +938,7 @@ func (dl *DataList) Sort(ascending ...bool) *DataList {
 
 		defer func() {
 			if r := recover(); r != nil {
-				dl.warn("Sort", "Sorting failed, restoring original order: %v", r)
+				dl.fail("Sort", "Sorting failed, restoring original order: %v", r)
 				dl.data = originalData
 			}
 		}()
@@ -948,7 +948,7 @@ func (dl *DataList) Sort(ascending ...bool) *DataList {
 			ascendingOrder = ascending[0]
 		}
 		if len(ascending) > 1 {
-			dl.warn("Sort", "Too many arguments, returning")
+			dl.fail("Sort", "Too many arguments, returning")
 			return
 		}
 
@@ -977,12 +977,12 @@ func (dl *DataList) Rank(ascending ...bool) *DataList {
 		var ok bool
 		data, badRow, ok = numericCells(dl.data, true)
 		if !ok {
-			dl.warn("Rank", "non-numeric value at row %d", badRow)
+			dl.fail("Rank", "non-numeric value at row %d", badRow)
 			isFailed = true
 		}
 	})
 	if isFailed {
-		return nil
+		return dl.failedResult()
 	}
 	ranked := make([]float64, len(data))
 
@@ -991,7 +991,7 @@ func (dl *DataList) Rank(ascending ...bool) *DataList {
 		ascendingOrder = ascending[0]
 	}
 	if len(ascending) > 1 {
-		dl.warn("Rank", "Too many arguments, using only the first one")
+		dl.fail("Rank", "Too many arguments, using only the first one")
 	}
 
 	// Missing cells (nil / NaN) rank NaN and do not take a rank position,
@@ -1238,7 +1238,7 @@ func (dl *DataList) WeightedMean(weights any) float64 {
 		}
 		weightsSlice, sliceLen := ProcessData(weights)
 		if sliceLen != len(dl.data) {
-			dl.warn("WeightedMean", "Weights length does not match data length")
+			dl.fail("WeightedMean", "Weights length does not match data length")
 			result = math.NaN()
 			return
 		}
@@ -1630,7 +1630,7 @@ func (dl *DataList) Range() float64 {
 		min := dl.Min()
 
 		if math.IsNaN(max) || math.IsNaN(min) {
-			dl.warn("Range", "Max or Min calculation failed")
+			dl.fail("Range", "Max or Min calculation failed")
 			result = math.NaN()
 			return
 		}
@@ -1680,7 +1680,7 @@ func (dl *DataList) Quartile(q int) float64 {
 			return
 		}
 		if q < 1 || q > 3 {
-			dl.warn("Quartile", "Invalid quartile value")
+			dl.fail("Quartile", "Invalid quartile value")
 			result = math.NaN()
 			return
 		}
@@ -1697,7 +1697,7 @@ func (dl *DataList) Quartile(q int) float64 {
 		}
 
 		if len(numericData) == 0 {
-			dl.warn("Quartile", "No valid elements to compute quartile")
+			dl.fail("Quartile", "No valid elements to compute quartile")
 			result = math.NaN()
 			return
 		}
@@ -1761,7 +1761,7 @@ func (dl *DataList) Percentile(p float64) float64 {
 			return
 		}
 		if p < 0 || p > 100 {
-			dl.warn("Percentile", "Invalid percentile value")
+			dl.fail("Percentile", "Invalid percentile value")
 			result = math.NaN()
 			return
 		}
@@ -1771,14 +1771,14 @@ func (dl *DataList) Percentile(p float64) float64 {
 		for _, v := range dl.data {
 			vfloat, ok := ToFloat64Safe(v)
 			if !ok {
-				dl.warn("Percentile", "Element %v cannot be converted to float64, skipping", v)
+				dl.fail("Percentile", "Element %v cannot be converted to float64, skipping", v)
 				continue
 			}
 			numericData = append(numericData, vfloat)
 		}
 
 		if len(numericData) == 0 {
-			dl.warn("Percentile", "No valid elements to compute percentile")
+			dl.fail("Percentile", "No valid elements to compute percentile")
 			result = math.NaN()
 			return
 		}
@@ -1804,14 +1804,14 @@ func (dl *DataList) Difference() *DataList {
 	var result *DataList
 	dl.AtomicDo(func(dl *DataList) {
 		if len(dl.data) < 2 {
-			dl.warn("Difference", "DataList is too short to calculate differences, returning nil")
-			result = nil
+			dl.warn("Difference", "DataList is too short to calculate differences, returning an empty list")
+			result = dl.failedResult()
 			return
 		}
 		values, badRow, ok := numericCells(dl.data, true)
 		if !ok {
-			dl.warn("Difference", "non-numeric value at row %d", badRow)
-			result = nil
+			dl.fail("Difference", "non-numeric value at row %d", badRow)
+			result = dl.failedResult()
 			return
 		}
 
@@ -1919,7 +1919,7 @@ func (dl *DataList) ParseNumbers() *DataList {
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
-						dl.warn("ParseNumbers", "Failed to parse %v to float64: %v, the element left unchanged", v, r)
+						dl.fail("ParseNumbers", "Failed to parse %v to float64: %v, the element left unchanged", v, r)
 					}
 				}()
 
@@ -1939,7 +1939,7 @@ func (dl *DataList) ParseStrings() *DataList {
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
-						dl.warn("ParseStrings", "Failed to convert %v to string: %v, the element left unchanged", v, r)
+						dl.fail("ParseStrings", "Failed to convert %v to string: %v, the element left unchanged", v, r)
 					}
 				}()
 
@@ -2045,7 +2045,10 @@ func (dl *DataList) SetName(newName string) *DataList {
 	return dl
 }
 
-// Err returns the last error that occurred during a chained operation.
+// Err returns the first error recorded on this DataList since it was created
+// or last cleared. It is sticky: later failures do not overwrite it, so the
+// value reported is the root cause of a broken chain. Use PopErr to read and
+// clear in one step, or ClearErr to reset.
 // Returns nil if no error occurred.
 // This method allows for error checking after chained calls without breaking the chain.
 //
@@ -2059,6 +2062,42 @@ func (dl *DataList) Err() *ErrorInfo {
 	return dl.lastError
 }
 
+// failedResult is what a transform that produces a new list hands back when
+// it could not compute one: an empty, fully usable DataList carrying the same
+// error as the receiver. Returning nil here is what used to turn a failed
+// step into a nil dereference on the next one.
+func (dl *DataList) failedResult() *DataList {
+	out := NewDataList()
+	out.lastError = dl.lastError
+	return out
+}
+
+// PopErr returns the recorded error and clears it, so a chain can be checked
+// and the list reused in one step:
+//
+//	if err := dl.Sort().Normalize().PopErr(); err != nil { ... }
+//
+// It returns nil when nothing failed.
+func (dl *DataList) PopErr() *ErrorInfo {
+	err := dl.lastError
+	dl.lastError = nil
+	return err
+}
+
+// SetErr records an error on this DataList as if the failure had happened inside
+// insyra itself: it logs at Error level, sets the sticky Err(), and honours
+// Config.SetPanicOnError. Wrapper packages such as isr use it so that their
+// failures reach the caller the same way the core's do.
+//
+// packageName and funcName identify the reporting call site (for example
+// "isr", "DT.From"); msg and args are formatted with fmt.Sprintf.
+func (dl *DataList) SetErr(packageName, funcName, msg string, args ...any) *DataList {
+	fullMsg := fmt.Sprintf(msg, args...)
+	dl.setError(LogLevelError, packageName, funcName, fullMsg)
+	LogError(packageName, funcName, "%s", fullMsg)
+	return dl
+}
+
 // ClearErr clears the last error stored in the DataList.
 // Returns the DataList to support chaining.
 func (dl *DataList) ClearErr() *DataList {
@@ -2066,8 +2105,13 @@ func (dl *DataList) ClearErr() *DataList {
 	return dl
 }
 
-// setError is an internal method to record an error on the DataList instance.
+// setError records an error on the DataList instance. It is sticky: the first
+// error stays until ClearErr or PopErr is called, so a long chain reports the
+// root cause instead of a downstream symptom.
 func (dl *DataList) setError(level LogLevel, packageName, funcName, message string) {
+	if dl.lastError != nil {
+		return
+	}
 	dl.lastError = &ErrorInfo{
 		Level:       level,
 		PackageName: packageName,
@@ -2077,10 +2121,19 @@ func (dl *DataList) setError(level LogLevel, packageName, funcName, message stri
 	}
 }
 
-// warn logs a warning and sets the error on the DataList instance.
-// This is a convenience method that combines LogWarning and setError.
+// warn reports a normal but notable outcome: a lookup that found nothing, an
+// operation over an empty list, a value skipped by an documented convention.
+// It logs at Warning and deliberately does NOT touch Err(), so ordinary
+// results cannot fill up the sticky instance error.
 func (dl *DataList) warn(funcName, msg string, args ...any) {
+	LogWarning("DataList", funcName, "%s", fmt.Sprintf(msg, args...))
+}
+
+// fail reports that the call could not do what it was asked: a bad argument,
+// an unreadable cell, a mutation that could not be applied. It records the
+// sticky Err() and logs at Error; with Config.SetPanicOnError(true) it panics.
+func (dl *DataList) fail(funcName, msg string, args ...any) {
 	fullMsg := fmt.Sprintf(msg, args...)
-	LogWarning("DataList", funcName, "%s", fullMsg)
-	dl.setError(LogLevelWarning, "DataList", funcName, fullMsg)
+	dl.setError(LogLevelError, "DataList", funcName, fullMsg)
+	LogError("DataList", funcName, "%s", fullMsg)
 }

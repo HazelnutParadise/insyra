@@ -64,7 +64,8 @@ func CreateRadarChart(config RadarChartConfig, series []RadarSeries) *charts.Rad
 			}
 			sort.Strings(indicators) // 保證穩定順序
 		} else {
-			insyra.LogFatal("plot", "CreateRadarChart", "Indicators must be provided in RadarChartConfig when passing series directly")
+			insyra.LogError("plot", "CreateRadarChart", "Indicators must be provided in RadarChartConfig when passing series directly")
+			return nil
 		}
 	}
 

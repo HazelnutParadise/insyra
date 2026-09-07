@@ -10,6 +10,13 @@ import (
 	"github.com/HazelnutParadise/insyra/internal/core"
 )
 
+// The global error buffer is a bounded, program-wide diagnostic log: every
+// warning, error and fatal insyra records lands here so a program can inspect
+// what happened. It is NOT the error-handling API. Handle errors through the
+// error a function returns, or through the sticky Err()/PopErr() on the
+// instance you called — the global buffer mixes records from every goroutine
+// and every object, so what you pop may belong to someone else.
+
 type ErrPoppingMode int
 
 // ErrPoppingMode defines the mode for popping errors.
@@ -44,6 +51,8 @@ func (l LogLevel) String() string {
 		return "INFO"
 	case LogLevelWarning:
 		return "WARNING"
+	case LogLevelError:
+		return "ERROR"
 	case LogLevelFatal:
 		return "FATAL"
 	default:
@@ -59,8 +68,13 @@ type errorStruct struct {
 	timestamp   time.Time
 }
 
+// ErrorBufferCapacity is the number of records the global diagnostic buffer
+// keeps. When it is full the oldest record is dropped, so a long-running
+// program that never reads the buffer cannot grow without bound.
+const ErrorBufferCapacity = 1536
+
 var (
-	errRing    = core.NewRing[errorStruct](1536)
+	errRing    = core.NewRing[errorStruct](ErrorBufferCapacity)
 	errorMutex = sync.Mutex{}
 )
 
@@ -73,6 +87,10 @@ func pushError(errType LogLevel, packageName, fnName, errMes string) {
 		timestamp:   time.Now(),
 	}
 	errorMutex.Lock()
+	// Bounded: drop the oldest record rather than letting the ring grow.
+	for errRing.Len() >= ErrorBufferCapacity {
+		errRing.PopFront()
+	}
 	errRing.Push(err)
 	errorMutex.Unlock()
 	if errHandlingFunc := Config.GetDefaultErrHandlingFunc(); errHandlingFunc != nil {
@@ -116,6 +134,11 @@ func dispatchToHook(call hookCall) {
 
 // PopError retrieves and removes the first error from the buffer.
 // If the buffer is empty, it returns an empty string and LogLevelInfo.
+//
+// Deprecated: the global buffer is a diagnostic log, not an error-handling
+// API. Handle errors through the instance Err()/PopErr() on DataList and
+// DataTable, or the error a function returns. For diagnostics use
+// GetAllErrors, PopAllErrors, HasError, GetErrorCount and ClearErrors.
 func PopError(mode ErrPoppingMode) (LogLevel, string) {
 	errorMutex.Lock()
 	defer errorMutex.Unlock()
@@ -133,6 +156,12 @@ func PopError(mode ErrPoppingMode) (LogLevel, string) {
 	return err.errType, err.message
 }
 
+// PopErrorByPackageName reads the global diagnostic buffer.
+//
+// Deprecated: the global buffer is a diagnostic log, not an error-handling
+// API. Handle errors through the instance Err()/PopErr() on DataList and
+// DataTable, or the error a function returns. For diagnostics use
+// GetAllErrors, PopAllErrors, HasError, GetErrorCount and ClearErrors.
 func PopErrorByPackageName(packageName string, mode ErrPoppingMode) (LogLevel, string) {
 	errorMutex.Lock()
 	defer errorMutex.Unlock()
@@ -172,6 +201,12 @@ func PopErrorByPackageName(packageName string, mode ErrPoppingMode) (LogLevel, s
 	return LogLevelInfo, "" // No error found for the given package name
 }
 
+// PopErrorByFuncName reads the global diagnostic buffer.
+//
+// Deprecated: the global buffer is a diagnostic log, not an error-handling
+// API. Handle errors through the instance Err()/PopErr() on DataList and
+// DataTable, or the error a function returns. For diagnostics use
+// GetAllErrors, PopAllErrors, HasError, GetErrorCount and ClearErrors.
 func PopErrorByFuncName(packageName, funcName string, mode ErrPoppingMode) (LogLevel, string) {
 	errorMutex.Lock()
 	defer errorMutex.Unlock()
@@ -211,6 +246,12 @@ func PopErrorByFuncName(packageName, funcName string, mode ErrPoppingMode) (LogL
 	return LogLevelInfo, "" // No error found for the given package and function name
 }
 
+// PopErrorAndCallback reads the global diagnostic buffer.
+//
+// Deprecated: the global buffer is a diagnostic log, not an error-handling
+// API. Handle errors through the instance Err()/PopErr() on DataList and
+// DataTable, or the error a function returns. For diagnostics use
+// GetAllErrors, PopAllErrors, HasError, GetErrorCount and ClearErrors.
 func PopErrorAndCallback(mode ErrPoppingMode, callback func(errType LogLevel, packageName string, funcName string, errMsg string)) {
 	errorMutex.Lock()
 	defer errorMutex.Unlock()
@@ -253,6 +294,11 @@ func HasError() bool {
 
 // HasErrorAboveLevel returns true if there are any errors at or above the specified level.
 // This is a non-destructive check that doesn't modify the error buffer.
+//
+// Deprecated: the global buffer is a diagnostic log, not an error-handling
+// API. Handle errors through the instance Err()/PopErr() on DataList and
+// DataTable, or the error a function returns. For diagnostics use
+// GetAllErrors, PopAllErrors, HasError, GetErrorCount and ClearErrors.
 func HasErrorAboveLevel(level LogLevel) bool {
 	errorMutex.Lock()
 	defer errorMutex.Unlock()
@@ -269,6 +315,11 @@ func HasErrorAboveLevel(level LogLevel) bool {
 // PeekError returns the error at the specified position without removing it.
 // Returns nil if the buffer is empty or index is out of bounds.
 // Mode determines whether to peek from the front (FIFO) or back (LIFO).
+//
+// Deprecated: the global buffer is a diagnostic log, not an error-handling
+// API. Handle errors through the instance Err()/PopErr() on DataList and
+// DataTable, or the error a function returns. For diagnostics use
+// GetAllErrors, PopAllErrors, HasError, GetErrorCount and ClearErrors.
 func PeekError(mode ErrPoppingMode) *ErrorInfo {
 	errorMutex.Lock()
 	defer errorMutex.Unlock()
@@ -315,6 +366,11 @@ func GetAllErrors() []ErrorInfo {
 }
 
 // GetErrorsByLevel returns all errors at the specified level without removing them.
+//
+// Deprecated: the global buffer is a diagnostic log, not an error-handling
+// API. Handle errors through the instance Err()/PopErr() on DataList and
+// DataTable, or the error a function returns. For diagnostics use
+// GetAllErrors, PopAllErrors, HasError, GetErrorCount and ClearErrors.
 func GetErrorsByLevel(level LogLevel) []ErrorInfo {
 	errorMutex.Lock()
 	defer errorMutex.Unlock()
@@ -336,6 +392,11 @@ func GetErrorsByLevel(level LogLevel) []ErrorInfo {
 }
 
 // GetErrorsByPackage returns all errors from the specified package without removing them.
+//
+// Deprecated: the global buffer is a diagnostic log, not an error-handling
+// API. Handle errors through the instance Err()/PopErr() on DataList and
+// DataTable, or the error a function returns. For diagnostics use
+// GetAllErrors, PopAllErrors, HasError, GetErrorCount and ClearErrors.
 func GetErrorsByPackage(packageName string) []ErrorInfo {
 	errorMutex.Lock()
 	defer errorMutex.Unlock()
@@ -379,6 +440,11 @@ func PopAllErrors() []ErrorInfo {
 
 // PopErrorInfo retrieves and removes an error with full context information.
 // Returns nil if the buffer is empty.
+//
+// Deprecated: the global buffer is a diagnostic log, not an error-handling
+// API. Handle errors through the instance Err()/PopErr() on DataList and
+// DataTable, or the error a function returns. For diagnostics use
+// GetAllErrors, PopAllErrors, HasError, GetErrorCount and ClearErrors.
 func PopErrorInfo(mode ErrPoppingMode) *ErrorInfo {
 	errorMutex.Lock()
 	defer errorMutex.Unlock()

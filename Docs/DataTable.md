@@ -4465,10 +4465,21 @@ Insyra provides a comprehensive error handling system that supports both global 
 
 ### Error Handling Mechanisms
 
-Insyra offers two complementary error handling approaches:
+Insyra never ends your program on a failure. Errors reach you two ways:
 
-1. **Global Error Buffer**: A centralized error collection system that captures all warnings and errors across the application.
-2. **Instance-Level Error Tracking**: Each DataTable (and DataList) instance maintains its own `lastError` field, allowing you to check errors after chained operations.
+1. **Instance-Level Error Tracking** (what you use): each DataTable and DataList keeps its own error, which you check after a chain.
+2. **Global Error Buffer** (diagnostics only): a bounded, program-wide log of everything that happened, useful for inspecting a run. It mixes records from every goroutine and object, so do not handle errors with it.
+
+`Err()` is **sticky**: it holds the *first* failure until you clear it, so a
+long chain reports the root cause rather than whatever broke downstream. A
+lookup that simply finds nothing (a missing name, a value that is not there,
+a statistic over an empty list) is a normal result and does **not** set it; an
+out-of-range index or an invalid argument does.
+
+Nothing in a chain ever returns `nil`, so a failed step cannot turn the next
+one into a nil dereference — the result is an empty, usable value carrying the
+same error.
+
 
 ### Instance-Level Error Checking
 
@@ -4482,6 +4493,11 @@ dt.Replace(oldVal, newVal).ReplaceInRow(999, "a", "b").SortBy(config)
 if err := dt.Err(); err != nil {
     fmt.Printf("Error occurred: %s\n", err.Error())
     // Handle the error
+}
+
+// Or read and clear in one step
+if err := dt.PopErr(); err != nil {
+    fmt.Printf("Error occurred: %s\n", err.Error())
 }
 
 // Clear the error for future operations

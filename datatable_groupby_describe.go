@@ -10,13 +10,13 @@ func (g *GroupedDataTable) Describe(options ...DescribeOptions) *DataTable {
 	cfg, err := normalizeDescribeOptions(options)
 	if err != nil {
 		if g.parent != nil {
-			g.parent.warn("Describe", "%s", err)
+			g.parent.fail("Describe", "%s", err)
 		}
 		return out
 	}
 	if g.initErr != "" {
 		if g.parent != nil {
-			g.parent.warn("Describe", "%s", g.initErr)
+			g.parent.fail("Describe", "%s", g.initErr)
 		}
 		return out
 	}

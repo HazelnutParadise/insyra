@@ -17,7 +17,7 @@ func (dl *DataList) Map(mapFunc func(int, any) any) *DataList {
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
-						dl.warn("Map", "Error applying function to element at index %d: %v, keeping original value", i, r)
+						dl.fail("Map", "Error applying function to element at index %d: %v, keeping original value", i, r)
 						mappedData[i] = v // 保留原始值
 					}
 				}()

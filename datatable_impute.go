@@ -18,7 +18,7 @@ func (dt *DataTable) imputeColumnIndices(methodName string, cols []string) []int
 			indices = append(indices, idx)
 			continue
 		}
-		dt.warn(methodName, "Column '%s' not found, skipping", col)
+		dt.fail(methodName, "Column '%s' not found, skipping", col)
 	}
 	return indices
 }

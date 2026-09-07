@@ -156,7 +156,7 @@ func (dt *DataTable) GroupBy(keyCols ...string) *GroupedDataTable {
 		groupKeyValues: map[string][]any{},
 	}
 	if len(keyCols) == 0 {
-		dt.warn("GroupBy", "no key columns provided")
+		dt.fail("GroupBy", "no key columns provided")
 		g.initErr = "GroupBy requires at least one key column"
 		return g
 	}
@@ -172,7 +172,7 @@ func (dt *DataTable) GroupBy(keyCols ...string) *GroupedDataTable {
 		for _, raw := range keyCols {
 			num, label, ok := resolveColForGroup(t, raw)
 			if !ok {
-				dt.warn("GroupBy", "key column %q not found", raw)
+				dt.fail("GroupBy", "key column %q not found", raw)
 				g.initErr = fmt.Sprintf("GroupBy: key column %q not found", raw)
 				return
 			}
@@ -290,13 +290,13 @@ func (g *GroupedDataTable) Aggregate(configs ...AggregateConfig) *DataTable {
 	}
 	if g.initErr != "" {
 		if g.parent != nil {
-			g.parent.warn("Aggregate", "%s", g.initErr)
+			g.parent.fail("Aggregate", "%s", g.initErr)
 		}
 		return out
 	}
 	if len(configs) == 0 {
 		if g.parent != nil {
-			g.parent.warn("Aggregate", "no aggregate configs provided")
+			g.parent.fail("Aggregate", "no aggregate configs provided")
 		}
 		return out
 	}
@@ -306,7 +306,7 @@ func (g *GroupedDataTable) Aggregate(configs ...AggregateConfig) *DataTable {
 	for i, cfg := range configs {
 		resolved[i] = g.resolveConfig(cfg)
 		if resolved[i].err != "" && g.parent != nil {
-			g.parent.warn("Aggregate", "%s", resolved[i].err)
+			g.parent.fail("Aggregate", "%s", resolved[i].err)
 		}
 	}
 
@@ -353,13 +353,13 @@ func (g *GroupedDataTable) AggregateAll(op AggregateOp) *DataTable {
 	}
 	if g.initErr != "" {
 		if g.parent != nil {
-			g.parent.warn("AggregateAll", "%s", g.initErr)
+			g.parent.fail("AggregateAll", "%s", g.initErr)
 		}
 		return NewDataTable()
 	}
 	if op == OpCustom {
 		if g.parent != nil {
-			g.parent.warn("AggregateAll", "OpCustom is not supported by AggregateAll")
+			g.parent.fail("AggregateAll", "OpCustom is not supported by AggregateAll")
 		}
 		return NewDataTable()
 	}

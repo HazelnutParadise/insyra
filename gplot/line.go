@@ -124,7 +124,8 @@ func addLineSeries(plt *plot.Plot, seriesName string, values []float64, xAxis []
 	// Create the line plot
 	line, err := plotter.NewLine(lineData)
 	if err != nil {
-		panic(err)
+		insyra.LogError("gplot", "addLineSeries", "failed to build the line for series %s: %v", seriesName, err)
+		return
 	}
 
 	// Apply color if provided
