@@ -240,6 +240,12 @@ Keep the English ([README.md](README.md), [CHANGELOG.md](CHANGELOG.md), `Docs/`)
 
 Out-of-scope issues discovered during development, waiting for a decision. Delete an entry once it is resolved.
 
+### [2026-09-07] — remove `Config.SetDontPanic` one release after `SetPanicOnFatal` ships
+- **Where**: `config.go` (`SetDontPanic`, `GetDontPanicStatus`), `logger.go` (`LogFatal`)
+- **What**: The decided philosophy is that the library never terminates or panics the host process by default. `LogFatal` records the error (error buffer, instance `Err()`, a Fatal-level log line) and returns; `Config.SetPanicOnFatal(true)` is the opt-in that turns a fatal into a `panic` (never `os.Exit`). The old opt-out `SetDontPanic(v)` stays one release as a Deprecated alias for `SetPanicOnFatal(!v)` so existing callers keep compiling.
+- **Suggestion**: In the first release after the one that ships `SetPanicOnFatal` (change `make-fatal-non-terminating`), delete `SetDontPanic` and `GetDontPanicStatus`, drop the alias mention from `Docs/Configuration.md`, and add a BREAKING changelog entry. Do not let the alias drift into a second release.
+- **Status**: pending — `make-fatal-non-terminating` not yet proposed
+
 ### [2026-08-01] — multi-GPU planning and execution coverage
 - **Where**: `accel/planner.go` (`PlanShardable`, weighted per-device `ShardAssignment`s), `accel/exact.go` (per-assignment dispatch)
 - **What**: the planner retains capability-weighted heterogeneous assignments and its existing `MergePolicy`. `ExecuteNearestExact` now dispatches one worker per assignment, uses the bounded chunk seam, merges by input range, and falls back per assignment without changing the exact CPU decision.
